@@ -13,6 +13,7 @@ export type EntityId = number;
 /** 바깥에서 sim으로 들어가는 유일한 입력 */
 export type Command =
   | { t: "move"; x: number; y: number }
+  | { t: "look"; x: number; y: number }
   | { t: "choose"; index: number }
   | { t: "pause" }
   | { t: "resume" };

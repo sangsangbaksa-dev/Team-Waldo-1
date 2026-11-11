@@ -28,7 +28,7 @@ describe("finished combat", () => {
       w.projectiles.hp[k] = PROJ_HOSTILE;
     }
     collision(w);
-    expect(w.player.hp).toBe(88);
+    expect(w.player.hp).toBe(w.data.balance.player.hp - 12);
     expect(w.enemies.hp[0]).toBe(hp);
     expect(w.projectiles.count).toBe(0);
     expect(w.stats.damageTaken).toBe(12);

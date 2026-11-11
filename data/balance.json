@@ -1,10 +1,10 @@
 {
   "player": {
-    "hp": 100,
+    "hp": 80,
     "moveSpeed": 90,
     "pickupRange": 45,
     "radius": 6,
-    "invulnTime": 0.5
+    "invulnTime": 0.34
   },
   "xpCurve": {
     "base": 5,
@@ -14,7 +14,7 @@
   "maxWeapons": 6,
   "maxPassives": 6,
   "startingWeapon": "magic_bolt",
-  "spawnRadius": 350,
+  "spawnRadius": 255,
   "score": {
     "perKillXp": 10,
     "perSecond": 1,

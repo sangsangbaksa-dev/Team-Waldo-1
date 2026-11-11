@@ -14,6 +14,7 @@ import {
   type World,
 } from "../sim";
 import { mountForest, type Forest3D } from "../render/Forest3D";
+import { applySkillTree } from "../skillTree";
 import { HudScene } from "./HudScene";
 import { key } from "../ui";
 
@@ -26,6 +27,9 @@ const GEM_COLOR = 0x40e0ff;
  */
 export class GameScene extends Phaser.Scene {
   private forest?: Forest3D;
+  private yaw = 0;
+  private pitch = -0.1;
+  private lookPointer: { id: number; x: number; y: number } | null = null;
   private world!: World;
   private acc = 0;
   private speed = 1;
@@ -56,7 +60,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
-    const data = this.registry.get("data") as GameData;
+    const data = applySkillTree(this.registry.get("data") as GameData);
     const params = new URLSearchParams(window.location.search);
     // ?seed=123 으로 같은 판을 재현하고, ?speed=10 으로 빨리 돌려 볼 수 있다
     const seed = Number(params.get("seed")) || Date.now() & 0x7fffffff;
@@ -71,6 +75,9 @@ export class GameScene extends Phaser.Scene {
       this.forest?.dispose();
       this.forest = undefined;
     });
+    this.yaw = 0;
+    this.pitch = -0.1;
+    this.lookPointer = null;
     this.touch = null;
     this.scenery = [];
     this.bg = this.add
@@ -134,13 +141,32 @@ export class GameScene extends Phaser.Scene {
     this.audio = new AudioBridge();
 
     this.keys = this.input.keyboard!.addKeys(
-      "W,A,S,D,UP,DOWN,LEFT,RIGHT,ESC",
+      "W,A,S,D,UP,DOWN,LEFT,RIGHT,ESC,Q,E",
     ) as Record<string, Phaser.Input.Keyboard.Key>;
     const toggle = () => {
       if (!this.world.pendingChoices)
         this.queued.push({ t: this.world.paused ? "resume" : "pause" });
     };
     key(this, "ESC", toggle);
+    const canvas = this.game.canvas;
+    const unlock = () => {
+      this.lookPointer = null;
+      if (document.pointerLockElement === canvas) document.exitPointerLock();
+    };
+    const mouseLook = (event: MouseEvent) => {
+      if (
+        this.forest &&
+        document.pointerLockElement === canvas &&
+        !this.world.paused &&
+        !this.world.pendingChoices
+      )
+        this.look(event.movementX, event.movementY);
+    };
+    document.addEventListener("mousemove", mouseLook);
+    this.events.once("shutdown", () => {
+      unlock();
+      document.removeEventListener("mousemove", mouseLook);
+    });
     const blur = () => {
       this.touch = null;
       this.queued.push({ t: "pause" });
@@ -157,16 +183,37 @@ export class GameScene extends Phaser.Scene {
     });
     this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {
       if (this.world.paused || this.world.pendingChoices) return;
+      if (this.forest && (!p.wasTouch || p.x > GAME_WIDTH / 2)) {
+        if (!p.wasTouch && !document.pointerLockElement) {
+          try {
+            void canvas.requestPointerLock?.()?.catch(() => {});
+          } catch {
+            /* Drag still works. */
+          }
+        }
+        this.lookPointer = { id: p.id, x: p.x, y: p.y };
+        return;
+      }
       this.touch = { id: p.id, x: p.x, y: p.y, dx: 0, dy: 0 };
     });
     this.input.on("pointermove", (p: Phaser.Input.Pointer) => {
+      if (
+        this.lookPointer?.id === p.id &&
+        !document.pointerLockElement &&
+        !this.world.paused &&
+        !this.world.pendingChoices
+      ) {
+        this.look(p.x - this.lookPointer.x, p.y - this.lookPointer.y);
+        this.lookPointer = { id: p.id, x: p.x, y: p.y };
+      }
       if (this.touch && p.id === this.touch.id) {
         this.touch.dx = (p.x - this.touch.x) / 28;
         this.touch.dy = (p.y - this.touch.y) / 28;
       }
     });
-    const release = () => {
-      this.touch = null;
+    const release = (p?: Phaser.Input.Pointer) => {
+      if (!p || this.touch?.id === p.id) this.touch = null;
+      if (!p || this.lookPointer?.id === p.id) this.lookPointer = null;
     };
     this.input.on("pointerup", release);
     this.input.on("pointerupoutside", release);
@@ -180,6 +227,11 @@ export class GameScene extends Phaser.Scene {
         this.scene.start("Title");
       },
     });
+  }
+
+  private look(dx: number, dy: number) {
+    this.yaw += dx * 0.004;
+    this.pitch = Phaser.Math.Clamp(this.pitch - dy * 0.004, -0.77, 0.66);
   }
 
   update(_time: number, delta: number): void {
@@ -196,11 +248,26 @@ export class GameScene extends Phaser.Scene {
           (k.W.isDown || k.UP.isDown ? 1 : 0),
     };
 
+    if (this.forest && !this.world.paused && !this.world.pendingChoices) {
+      this.yaw +=
+        (Number(k.E.isDown) - Number(k.Q.isDown)) *
+        Math.min(delta, 50) *
+        0.0025;
+      const { x, y } = move;
+      move.x = Math.cos(this.yaw) * x - Math.sin(this.yaw) * y;
+      move.y = Math.sin(this.yaw) * x + Math.cos(this.yaw) * y;
+    }
     this.effects.beginFrame();
     this.acc += (delta / 1000) * this.speed;
     let steps = 0;
     while (this.acc >= DT && steps < MAX_STEPS_PER_FRAME * this.speed) {
       this.queued.push(move);
+      if (this.forest)
+        this.queued.push({
+          t: "look",
+          x: Math.sin(this.yaw),
+          y: -Math.cos(this.yaw),
+        });
       step(this.world, this.queued);
       this.queued = [];
       this.acc -= DT;
@@ -210,6 +277,11 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.acc > DT) this.acc = 0; // 탭 전환 등으로 밀린 시간은 버린다
 
+    if (
+      (this.world.paused || this.world.pendingChoices) &&
+      document.pointerLockElement === this.game.canvas
+    )
+      document.exitPointerLock();
     this.draw(this.acc / DT);
     if (!this.world.paused && !this.world.pendingChoices)
       this.audio.ambience(this.world.time);
@@ -224,6 +296,7 @@ export class GameScene extends Phaser.Scene {
       this.scene.launch("LevelUp", {
         level: e.level,
         choices: e.choices,
+        world: this.world,
         onChoose: (index: number) => this.queued.push({ t: "choose", index }),
       });
     } else if (e.t === "stageStart") {
@@ -267,7 +340,7 @@ export class GameScene extends Phaser.Scene {
             auraRadius(def.levels[weapon.level - 1], p.stats),
           );
       }
-      this.forest.draw(w, a, radius);
+      this.forest.draw(w, a, radius, this.yaw, this.pitch);
       return;
     }
     this.playerSprite.setPosition(x, y).setAlpha(p.invuln > 0 ? 0.5 : 1);

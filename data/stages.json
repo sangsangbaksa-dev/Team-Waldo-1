@@ -10,33 +10,33 @@
           "from": 0,
           "to": 120,
           "enemy": "slime_green",
-          "rate": 1.152,
+          "rate": 1.67,
           "pattern": "random_edge"
         },
         {
           "from": 26,
           "to": 120,
           "enemy": "bat_purple",
-          "rate": 0.768,
+          "rate": 1.114,
           "pattern": "random_edge"
         },
         {
           "at": 51,
           "enemy": "bat_purple",
-          "count": 20,
+          "count": 26,
           "pattern": "swarm"
         },
         {
           "at": 86,
           "enemy": "slime_green",
-          "count": 26,
+          "count": 34,
           "pattern": "ring"
         }
       ],
       "miniboss": {
         "enemy": "slime_king",
         "at": 100,
-        "hpScale": 0.5
+        "hpScale": 0.64
       }
     },
     {
@@ -48,40 +48,40 @@
           "from": 0,
           "to": 120,
           "enemy": "slime_red",
-          "rate": 1.6199999999999999,
+          "rate": 2.349,
           "pattern": "random_edge"
         },
         {
           "from": 9,
           "to": 120,
           "enemy": "wolf_gray",
-          "rate": 0.756,
+          "rate": 1.096,
           "pattern": "random_edge"
         },
         {
           "at": 57,
           "enemy": "wolf_gray",
-          "count": 16,
+          "count": 21,
           "pattern": "swarm"
         },
         {
           "at": 91,
           "enemy": "slime_red",
-          "count": 33,
+          "count": 43,
           "pattern": "ring"
         },
         {
           "from": 30,
           "to": 120,
           "enemy": "cultist",
-          "rate": 0.225,
+          "rate": 0.326,
           "pattern": "random_edge"
         }
       ],
       "miniboss": {
         "enemy": "slime_king",
         "at": 100,
-        "hpScale": 0.8
+        "hpScale": 1.024
       }
     },
     {
@@ -93,46 +93,46 @@
           "from": 0,
           "to": 120,
           "enemy": "slime_red",
-          "rate": 2.16,
+          "rate": 3.132,
           "pattern": "random_edge"
         },
         {
           "from": 0,
           "to": 120,
           "enemy": "wolf_gray",
-          "rate": 1.08,
+          "rate": 1.566,
           "pattern": "random_edge"
         },
         {
           "from": 17,
           "to": 120,
           "enemy": "golem_stone",
-          "rate": 0.27,
+          "rate": 0.392,
           "pattern": "random_edge"
         },
         {
           "at": 69,
           "enemy": "bat_purple",
-          "count": 52,
+          "count": 68,
           "pattern": "ring"
         },
         {
           "from": 0,
           "to": 120,
           "enemy": "cultist",
-          "rate": 0.36000000000000004,
+          "rate": 0.522,
           "pattern": "random_edge"
         }
       ],
       "miniboss": {
         "enemy": "slime_king",
         "at": 100,
-        "hpScale": 1.1
+        "hpScale": 1.4080000000000001
       }
     }
   ],
   "boss": {
     "enemy": "lich",
-    "hpScale": 0.65
+    "hpScale": 1.05
   }
 }

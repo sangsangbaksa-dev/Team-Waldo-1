@@ -750,3 +750,124 @@ button:hover {
 #ui {
   z-index: 2;
 }
+.fps-reticle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  transform: translate(-50%, -50%);
+  border: 1px solid #f4dba7;
+  border-radius: 50%;
+  box-shadow: 0 0 6px #000;
+}
+#shell:not(:has(.forest-3d)) .fps-reticle {
+  display: none;
+}
+.upgrade-stats {
+  display: grid;
+  gap: 5px;
+  margin: 8px 0 14px;
+}
+.upgrade-stat {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.8em;
+  color: #bacdc6;
+}
+.upgrade-stat strong {
+  color: #f4dba7;
+}
+@container (max-width:700px) {
+  .upgrade-stat {
+    font-size: 0.73em;
+  }
+  .upgrade-stats {
+    margin: 4px 0 8px;
+  }
+}
+.tree-panel {
+  width: min(88%, 900px);
+  max-height: 94%;
+  overflow: auto;
+  background: #11272d;
+  border: 1px solid #66887e;
+  padding: clamp(10px, 2.3cqw, 28px);
+}
+.tree-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.tree-header h2,
+.tree-header p {
+  margin: 0 0 4px;
+}
+.tree-header p,
+.tree-panel footer {
+  color: #a0b8af;
+  font-size: 0.8em;
+}
+.tree-balance {
+  margin-left: auto;
+  white-space: nowrap;
+  color: #f0cf94;
+}
+.tree-branches {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(5px, 1.2cqw, 16px);
+  margin: 12px 0;
+}
+.tree-branches h3 {
+  margin: 0 0 7px;
+  color: #e8d9b6;
+}
+.tree-branches h3 span {
+  color: #e3bb77;
+}
+.tree-node {
+  position: relative;
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  text-align: left;
+  color: #e8e3cd;
+  border: 1px solid #688477;
+  background: #1a373b;
+  padding: clamp(4px, 0.85cqw, 10px);
+}
+.tree-node + .tree-node {
+  margin-top: 9px;
+}
+.tree-node + .tree-node::before {
+  content: "";
+  position: absolute;
+  top: -10px;
+  left: 20px;
+  width: 1px;
+  height: 9px;
+  background: #b59764;
+}
+.tree-node span,
+.tree-node small {
+  font-size: 0.77em;
+}
+.tree-node small,
+.tree-node.unlocked b {
+  color: #eed29a;
+}
+.tree-node.unlocked {
+  border-color: #ccaf79;
+  background: #31443d;
+}
+.tree-node:disabled:not(.unlocked) {
+  opacity: 0.61;
+}
+.tree-node:not(:disabled):hover {
+  background: #315353;
+}
+.title-actions {
+  flex-wrap: wrap;
+}

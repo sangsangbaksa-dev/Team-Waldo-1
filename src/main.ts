@@ -10,6 +10,7 @@ import { TitleScene } from "./scenes/TitleScene";
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
+  input: { activePointers: 2 },
   parent: "game",
   width: GAME_WIDTH,
   height: GAME_HEIGHT,

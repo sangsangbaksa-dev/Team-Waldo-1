@@ -10,14 +10,7 @@ const gold = 0xffbe72;
 export class Forest3D {
   private readonly renderer: T.WebGLRenderer;
   private readonly scene = new T.Scene();
-  private readonly camera = new T.OrthographicCamera(
-    -11.2,
-    11.2,
-    6.3,
-    -6.3,
-    0.1,
-    120,
-  );
+  private readonly camera = new T.PerspectiveCamera(67, 16 / 9, 0.035, 100);
   private readonly cover = new T.PerspectiveCamera(43, 16 / 9, 0.1, 100);
   private readonly fog = new T.FogExp2(fogColors[0], 0.027);
   private readonly materials = new Map<number, T.MeshStandardMaterial>();
@@ -32,6 +25,7 @@ export class Forest3D {
   private readonly available = new Map<string, T.Group[]>();
   private readonly landscape: T.Group[] = [];
   private readonly player = new T.Group();
+  private readonly heldLamp = new T.Group();
   private readonly lantern = new T.PointLight(gold, 48, 12, 2);
   private readonly aura: T.Mesh;
   private readonly ground: T.Mesh;
@@ -68,6 +62,45 @@ export class Forest3D {
     this.ground.rotation.x = -Math.PI / 2;
     this.scene.add(this.ground);
     this.makeWarden();
+    this.scene.add(this.camera);
+    this.camera.add(this.heldLamp);
+    this.heldLamp.scale.setScalar(0.76);
+    this.part(this.heldLamp, this.box, 0x373039, 0, 0, 0, 0.16, 0.25, 0.15);
+    this.part(
+      this.heldLamp,
+      this.box,
+      0xfbc374,
+      0,
+      0,
+      0.005,
+      0.13,
+      0.16,
+      0.157,
+      false,
+    );
+    this.part(
+      this.heldLamp,
+      this.cone,
+      0x554638,
+      0,
+      0.17,
+      0,
+      0.116,
+      0.13,
+      0.116,
+    );
+    for (const side of [-1, 1])
+      this.part(
+        this.heldLamp,
+        this.box,
+        0x4c3c33,
+        side * 0.066,
+        0,
+        0.088,
+        0.025,
+        0.24,
+        0.023,
+      );
     this.aura = new T.Mesh(this.ring, this.emissive(0x8adcf0));
     this.aura.visible = false;
     this.scene.add(this.aura);
@@ -173,17 +206,7 @@ export class Forest3D {
 
   private makeWarden() {
     const p = this.player;
-    this.part(
-      p,
-      this.cloak,
-      0x305766,
-      0,
-      0.49,
-      0.05,
-      0.34,
-      0.7,
-      0.3,
-    );
+    this.part(p, this.cloak, 0x305766, 0, 0.49, 0.05, 0.34, 0.7, 0.3);
     this.part(p, this.sphere, 0x456c7c, 0, 0.79, 0, 0.27, 0.31, 0.26);
     this.part(p, this.sphere, 0x1d2d37, 0, 0.82, 0.19, 0.17, 0.18, 0.12);
     this.part(p, this.box, 0xd6a96f, 0, 0.8, 0.29, 0.16, 0.035, 0.02);
@@ -560,7 +583,7 @@ export class Forest3D {
     this.flashes.push({ mesh, end: time + 0.18 });
   }
 
-  draw(world?: World, alpha = 1, auraRadius = 0) {
+  draw(world?: World, alpha = 1, auraRadius = 0, yaw = 0, pitch = 0) {
     const p = world?.player;
     const x = p ? T.MathUtils.lerp(p.px, p.x, alpha) * UNIT : 0;
     const z = p ? T.MathUtils.lerp(p.py, p.y, alpha) * UNIT : 0;
@@ -618,9 +641,24 @@ export class Forest3D {
         canvas.height !== Math.floor(height * this.renderer.getPixelRatio()))
     )
       this.renderer.setSize(width, height, false);
+    this.camera.visible = Boolean(world);
     if (world) {
-      this.camera.position.set(x, 15, z + 13);
-      this.camera.lookAt(x, 0, z);
+      this.heldLamp.position.set(0.39, -0.3 + stride * 0.13, -0.69);
+      this.heldLamp.rotation.z = -0.12 + stride * 0.23;
+      this.player.visible = false;
+      const eye = 0.92 + Math.abs(stride) * 0.14;
+      this.camera.position.set(x, eye, z);
+      this.camera.lookAt(
+        x + Math.sin(yaw),
+        eye + Math.tan(pitch),
+        z - Math.cos(yaw),
+      );
+      this.lantern.position.set(
+        x + Math.sin(yaw) * 0.35,
+        0.68,
+        z - Math.cos(yaw) * 0.35,
+      );
+      this.fog.density = 0.064;
     } else {
       this.player.position.set(2.45, 0, 1.25);
       this.player.rotation.y = -0.55;

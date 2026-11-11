@@ -1,0 +1,8 @@
+[
+  { "id": "swift_boots", "name": "신속의 장화", "icon": "icon_boots", "maxLevel": 5, "stat": "moveSpeed", "op": "mul", "perLevel": 0.08 },
+  { "id": "heart", "name": "생명의 심장", "icon": "icon_heart", "maxLevel": 5, "stat": "maxHp", "op": "mul", "perLevel": 0.15 },
+  { "id": "power_stone", "name": "힘의 돌", "icon": "icon_power", "maxLevel": 5, "stat": "damage", "op": "mul", "perLevel": 0.1 },
+  { "id": "hourglass", "name": "모래시계", "icon": "icon_hourglass", "maxLevel": 5, "stat": "cooldown", "op": "mul", "perLevel": -0.06 },
+  { "id": "magnet", "name": "자석", "icon": "icon_magnet", "maxLevel": 5, "stat": "pickupRange", "op": "mul", "perLevel": 0.25 },
+  { "id": "tome", "name": "지혜의 서", "icon": "icon_tome", "maxLevel": 5, "stat": "xpGain", "op": "mul", "perLevel": 0.08 }
+]

@@ -1,6 +1,6 @@
 # 서바이벌 픽셀 아키텍처
 
-> 상태: 초안 v0.1 (2026-11-11) · 대상: 7인 팀, 3주 · 스택: Phaser 3 + TypeScript + Vite + Vitest
+> 상태: v0.2 (2026-11-11, 스캐폴딩 반영) · 대상: 7인 팀, 3주 · 스택: Phaser 3 + TypeScript + Vite + Vitest
 
 ## 1. 원칙
 
@@ -16,7 +16,7 @@
 Team-Waldo-1/
 ├─ index.html
 ├─ package.json / tsconfig.json / vite.config.ts / vitest.config.ts
-├─ .github/workflows/ci.yml        # lint + typecheck + test + data 검증, main 머지 시 Pages 배포
+├─ .github/workflows/ci.yml        # lint + typecheck + test + data 검증 + build (Pages 배포는 추후 추가)
 ├─ data/                            # 기획 소유. 코드 없이 수정
 │  ├─ enemies.json
 │  ├─ weapons.json
@@ -54,7 +54,8 @@ Team-Waldo-1/
 │  │  └─ bosses/                    # 보스 패턴 상태 기계
 │  ├─ data/
 │  │  ├─ schema.ts                  # zod 스키마 = JSON의 유일한 정의
-│  │  └─ load.ts                    # JSON 로드 + 검증 → GameData
+│  │  ├─ load.ts                    # 검증 + id 참조 확인 → GameData
+│  │  └─ index.ts                   # data/*.json을 import해서 loadGameData() 제공
 │  ├─ render/                       # sim → 화면. 로직 금지
 │  │  ├─ EntityRenderer.ts          # 엔티티 id ↔ 스프라이트 풀 동기화
 │  │  ├─ EffectRenderer.ts          # SimEvent → 파티클, 데미지 숫자, 화면 흔들림
@@ -70,6 +71,7 @@ Team-Waldo-1/
 │  └─ ui/                           # 버튼, 바, 패널 등 재사용 위젯
 ├─ tools/
 │  ├─ validate-data.ts              # CI용: data/*.json 스키마 검증
+│  ├─ bot.ts                        # 헤드리스 실행용 봇 (테스트와 시뮬레이션 공용)
 │  └─ balance-sim.ts                # 헤드리스 N판 시뮬레이션 → CSV
 └─ tests/
    ├─ sim/*.test.ts
@@ -198,6 +200,7 @@ type SimEvent =
 
 - `behavior`: `chase` | `dash` | `ranged` | `swarm` | `tank` (enemyAI.ts에 구현, 베이스 5종에 대응)
 - 팔레트 변형은 같은 `sprite` + 다른 `palette`. render가 팔레트 텍스처 또는 tint로 처리한다.
+- `placeholderColor`: 스프라이트가 준비되기 전까지 원으로 그릴 때 쓰는 임시 색(적, 무기 공통).
 
 ### weapons.json
 
@@ -209,9 +212,8 @@ type SimEvent =
     "icon": "icon_magic_bolt",
     "pattern": "projectile",
     "targeting": "nearest",
-    "maxLevel": 5,
     "levels": [
-      { "damage": 10, "cooldown": 1.0, "count": 1, "speed": 200, "pierce": 0, "area": 1 },
+      { "damage": 10, "cooldown": 1.0, "count": 1, "speed": 200, "pierce": 0, "area": 1, "life": 1.5 },
       { "damage": 12, "cooldown": 0.9, "count": 1, "speed": 200, "pierce": 0, "area": 1 },
       { "damage": 12, "cooldown": 0.9, "count": 2, "speed": 220, "pierce": 1, "area": 1 }
     ]
@@ -220,7 +222,9 @@ type SimEvent =
 ```
 
 - `pattern`: `projectile` | `orbit` | `aura` | `beam` | `area_drop` | `boomerang` … (sim/weapons/에 1:1 구현). 무기 8종은 패턴 5~6개 + 수치 조합으로 만든다.
-- `targeting`: `nearest` | `random` | `facing` | `none`
+- `targeting`: `nearest` | `random` | `facing`
+- 레벨 표의 `life`는 투사체 수명(초). 최대 레벨은 `levels` 배열 길이로 정한다.
+- **현재 구현된 패턴은 `projectile` 하나**다. 나머지는 `sim/weapons/`에 파일을 추가하고 `index.ts`와 `schema.ts`에 등록한다.
 
 ### passives.json
 
@@ -251,7 +255,7 @@ type SimEvent =
       "miniboss": { "enemy": "slime_king", "at": 400 }
     }
   ],
-  "boss": { "id": "lich", "hpScale": 1.0 }
+  "boss": { "enemy": "lich", "hpScale": 1.0 }
 }
 ```
 

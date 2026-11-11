@@ -1,0 +1,43 @@
+# 서바이벌 픽셀 (가칭)
+
+탑다운 자동 공격 서바이벌 게임입니다. WASD로 움직이면 무기가 알아서 공격하고, 레벨이 오를 때마다 셋 중 하나를 골라 강해집니다.
+
+Phaser 3 + TypeScript + Vite로 만들며, 구조와 규칙은 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)에 정리되어 있습니다.
+
+## 시작하기
+
+Node 22 이상이 필요합니다.
+
+```bash
+npm install
+npm run dev        # http://localhost:5173 에서 실행
+```
+
+| 명령 | 하는 일 |
+|---|---|
+| `npm run dev` | 개발 서버 |
+| `npm test` | sim과 데이터 테스트 |
+| `npm run lint` / `npm run typecheck` | 코드 검사 |
+| `npm run validate-data` | `data/*.json` 검증 |
+| `npm run balance -- --runs 20` | 봇으로 20판을 돌려 결과를 CSV로 출력 |
+| `npm run build` | 배포용 빌드 (`dist/`) |
+
+개발할 때 유용한 주소 옵션: `?seed=123`은 같은 판을 재현하고, `?speed=10`은 10배속으로 돌립니다.
+
+## 폴더
+
+| 폴더 | 내용 | 규칙 |
+|---|---|---|
+| `data/` | 적, 무기, 패시브, 구간, 밸런스 JSON | 코드 없이 수정. 잘못된 값은 실행 시 화면과 CI에서 알려 줍니다 |
+| `src/sim/` | 게임 규칙 전부 | Phaser, `Math.random`, `Date` 사용 금지 (린트가 막습니다) |
+| `src/render/`, `src/scenes/` | 화면, UI, 연출 | sim 상태를 읽기만 하고 바꾸지 않습니다 |
+| `src/data/` | JSON 스키마와 로더 | `schema.ts`가 JSON 형식의 유일한 정의 |
+| `public/assets/` | 스프라이트, 타일, UI, 오디오 | |
+| `tools/` | 데이터 검증, 밸런스 시뮬레이션 | |
+| `tests/` | 자동 테스트 | |
+
+## 지금 되는 것과 남은 것
+
+되는 것: 이동, 구간별 스폰, 자동 공격(투사체형 무기 3종), 경험치와 레벨업 3지선다, 패시브 6종, 구간 전환과 미니보스, 마지막 보스, 결과 화면과 재시작. 그림은 전부 색칠한 원(플레이스홀더)입니다.
+
+남은 것: 무기 패턴 추가(회전, 오라, 광선 등), 적 행동(원거리, 무리), 보스 패턴, 적끼리 밀어내기, 스프라이트와 타일셋, 이펙트와 사운드, 밸런스, 배포 자동화.

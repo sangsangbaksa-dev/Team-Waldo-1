@@ -1,42 +1,35 @@
-import Phaser from 'phaser';
-import { FONT, GAME_HEIGHT, GAME_WIDTH } from '../config';
-import type { RunStats } from '../sim';
-
-const BEST_KEY = 'survival-pixel.best';
-
+import { awardSkillPoints, openSkillTree } from "../skillTree";
+import Phaser from "phaser";
+import { titleLandscape } from "../render/Art";
+import { formatTime, key, mount, saveBest } from "../ui";
+import type { RunStats } from "../sim";
 export class ResultScene extends Phaser.Scene {
   constructor() {
-    super('Result');
+    super("Result");
   }
-
-  create(data: { stats: RunStats }): void {
-    const s = data.stats;
-    let best = s.score;
-    try {
-      best = Math.max(s.score, Number(localStorage.getItem(BEST_KEY)) || 0);
-      localStorage.setItem(BEST_KEY, String(best));
-    } catch {
-      // 저장소를 못 쓰는 환경에서는 최고 점수 없이 진행
-    }
-
-    const t = Math.floor(s.time);
-    const cx = GAME_WIDTH / 2;
-    this.add.text(cx, 50, s.victory ? '클리어!' : '게임 오버', { ...FONT, fontSize: '24px', color: s.victory ? '#ffe080' : '#ff8080' }).setOrigin(0.5);
-    this.add.text(cx, GAME_HEIGHT / 2 + 10, [
-      `점수  ${s.score}`,
-      `최고 점수  ${best}`,
-      `처치  ${s.kills}`,
-      `생존 시간  ${Math.floor(t / 60)}분 ${t % 60}초`,
-      `레벨  ${s.level}`,
-      '',
-      '클릭하거나 스페이스를 눌러 다시 시작',
-    ].join('\n'), { ...FONT, align: 'center', lineSpacing: 4 }).setOrigin(0.5);
-
-    const restart = () => this.scene.start('Game');
-    // 죽는 순간의 입력으로 바로 넘어가지 않도록 잠깐 기다린다
-    this.time.delayedCall(500, () => {
-      this.input.once('pointerdown', restart);
-      this.input.keyboard?.once('keydown-SPACE', restart);
-    });
+  create(data: { stats: RunStats; cursed?: boolean }): void {
+    const s = data.stats,
+      best = saveBest(s.score);
+    const earned = awardSkillPoints(s);
+    titleLandscape(this);
+    const ui = mount(
+      this,
+      "result",
+      `<div class="crest">${s.victory ? "✧" : "☾"}</div><div class="eyebrow">${s.victory ? "DAWN HAS FOUND YOU" : "THE FOREST WILL REMEMBER"}</div><h1>${s.victory ? "숲에 새벽이 찾아왔습니다" : data.cursed ? "저주가 불빛을 삼켰습니다" : "불빛은 다시 피어납니다"}</h1><p>${s.victory ? "밤의 군주를 쓰러뜨렸습니다. 당신이 지킨 불빛은 오래도록 남을 것입니다." : "어둠 속에 남긴 발자취. 다음 밤에는 조금 더 멀리."}</p><div class="stats"><div><b>${s.score.toLocaleString()}</b><small>획득 점수</small></div><div><b>${formatTime(s.time)}</b><small>생존 시간</small></div><div><b>${s.kills}</b><small>처치</small></div><div><b>${s.level}</b><small>도달 레벨</small></div></div><div class="result-actions"><button class="primary" id="retry">다시 도전하기 <span>→</span></button><button class="text-button" id="skill-tree">스킬 트리</button><button class="text-button" id="home">타이틀로 돌아가기</button></div><p>불씨 +${earned} &nbsp; · &nbsp; 최고 기록 &nbsp; ${best.toLocaleString()}</p>`,
+    );
+    const tree = ui.querySelector<HTMLButtonElement>("#skill-tree")!;
+    const nextRun = () => this.scene.start("Game");
+    tree.onclick = () => openSkillTree(ui, tree, nextRun);
+    if (!s.victory) openSkillTree(ui, tree, nextRun);
+    let ready = false;
+    this.time.delayedCall(500, () => (ready = true));
+    const retry = () => {
+      if (ready && !ui.querySelector(".modal-shade")) this.scene.start("Game");
+    };
+    ui.querySelector("#retry")!.addEventListener("click", retry);
+    ui.querySelector("#home")!.addEventListener("click", () =>
+      this.scene.start("Title"),
+    );
+    key(this, "SPACE", retry);
   }
 }

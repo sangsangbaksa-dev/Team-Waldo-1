@@ -19,7 +19,9 @@ function spawnGroup(world: World, wave: WaveDef, count: number, maxAlive: number
       a = baseAngle + range(rng, -0.25, 0.25);
       r = radius + range(rng, 0, 60);
     } else {
-      a = next(rng) * Math.PI * 2;
+      a = world.firstPerson && world.time < 14
+        ? Math.atan2(player.faceY, player.faceX) + range(rng, -.57, .57)
+        : next(rng) * Math.PI * 2;
     }
     spawnEnemy(world, kind, player.x + Math.cos(a) * r, player.y + Math.sin(a) * r);
   }

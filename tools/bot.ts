@@ -1,11 +1,11 @@
-import type { Command, World } from '../src/sim';
+import type { Command, World } from "../src/sim";
 
 /**
  * 헤드리스 실행용 간단한 봇: 가까운 적들에게서 멀어지되, 위험이 없으면 가장 가까운 젬으로 간다.
  * 레벨업은 항상 첫 번째 선택지를 고른다. 테스트와 밸런스 시뮬레이션이 같이 쓴다.
  */
 export function botCommands(world: World): Command[] {
-  if (world.pendingChoices) return [{ t: 'choose', index: 0 }];
+  if (world.pendingChoices) return [{ t: "choose", index: 0 }];
   const { player, enemies: e, pickups: g } = world;
   let ax = 0;
   let ay = 0;
@@ -31,5 +31,7 @@ export function botCommands(world: World): Command[] {
       }
     }
   }
-  return [{ t: 'move', x: ax, y: ay }];
+  // Avoidance forces are tiny; normalize them so the bot actually runs at full speed.
+  const length = Math.hypot(ax, ay) || 1;
+  return [{ t: "move", x: ax / length, y: ay / length }];
 }

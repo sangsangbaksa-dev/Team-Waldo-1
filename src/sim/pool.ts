@@ -1,4 +1,4 @@
-import type { EntityId } from './types';
+import type { EntityId } from "./types";
 
 /**
  * 타입별 SoA 엔티티 풀. 0..count-1이 살아 있는 엔티티이고, 제거는 swap-remove라서
@@ -32,8 +32,23 @@ export interface Pool {
 
 export const PROJ_LINEAR = 0;
 export const PROJ_ORBIT = 1;
+export const PROJ_HOSTILE = 2;
+export const PROJ_BOOMERANG = 3;
 
-const FLOAT_FIELDS = ['x', 'y', 'px', 'py', 'vx', 'vy', 'r', 'hp', 'timer', 'a', 'b', 'c'] as const;
+const FLOAT_FIELDS = [
+  "x",
+  "y",
+  "px",
+  "py",
+  "vx",
+  "vy",
+  "r",
+  "hp",
+  "timer",
+  "a",
+  "b",
+  "c",
+] as const;
 
 export function createPool(capacity: number): Pool {
   const f = () => new Float32Array(capacity);
@@ -42,13 +57,29 @@ export function createPool(capacity: number): Pool {
     count: 0,
     id: new Uint32Array(capacity),
     kind: new Uint16Array(capacity),
-    x: f(), y: f(), px: f(), py: f(), vx: f(), vy: f(),
-    r: f(), hp: f(), timer: f(), a: f(), b: f(), c: f(),
+    x: f(),
+    y: f(),
+    px: f(),
+    py: f(),
+    vx: f(),
+    vy: f(),
+    r: f(),
+    hp: f(),
+    timer: f(),
+    a: f(),
+    b: f(),
+    c: f(),
   };
 }
 
 /** 새 슬롯을 0으로 초기화해 돌려준다. 가득 차면 -1. */
-export function spawn(pool: Pool, id: EntityId, kind: number, x: number, y: number): number {
+export function spawn(
+  pool: Pool,
+  id: EntityId,
+  kind: number,
+  x: number,
+  y: number,
+): number {
   if (pool.count >= pool.capacity) return -1;
   const i = pool.count++;
   for (const k of FLOAT_FIELDS) pool[k][i] = 0;

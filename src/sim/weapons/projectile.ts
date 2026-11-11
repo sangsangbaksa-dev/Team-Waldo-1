@@ -1,4 +1,5 @@
 import type { WeaponDef, WeaponLevel } from '../../data/schema';
+import { nearestTarget } from "./target";
 import { next } from '../rng';
 import { spawnProjectile } from '../spawn';
 import type { WeaponState, World } from '../types';
@@ -11,22 +12,12 @@ export function fireProjectile(world: World, state: WeaponState, def: WeaponDef,
   const { player, enemies } = world;
   let angle: number;
 
-  if (def.targeting === 'facing') {
+  if (def.targeting === 'facing' || (world.firstPerson && def.targeting === 'random')) {
     angle = Math.atan2(player.faceY, player.faceX);
   } else if (def.targeting === 'random') {
     angle = next(world.rng) * Math.PI * 2;
   } else {
-    let best = -1;
-    let bestD = Infinity;
-    for (let i = 0; i < enemies.count; i++) {
-      const dx = enemies.x[i] - player.x;
-      const dy = enemies.y[i] - player.y;
-      const d = dx * dx + dy * dy;
-      if (d < bestD) {
-        bestD = d;
-        best = i;
-      }
-    }
+    const best = nearestTarget(world, world.firstPerson ? lv.speed * lv.life : Infinity);
     if (best < 0) return false;
     angle = Math.atan2(enemies.y[best] - player.y, enemies.x[best] - player.x);
   }

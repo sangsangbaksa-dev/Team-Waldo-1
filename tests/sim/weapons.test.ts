@@ -22,6 +22,7 @@ describe('weapon patterns', () => {
     const w = worldWith('guardian_orb');
     const lv = w.data.weapons[w.player.weapons[0].def].levels[0];
     const golem = w.data.enemyIndex['golem_stone'];
+    w.data.enemies[golem].speed = 0;
     spawnEnemy(w, golem, lv.range, 0);
     const hp0 = w.enemies.hp[0];
 
@@ -33,7 +34,7 @@ describe('weapon patterns', () => {
     for (let i = 0; i < 60; i++) step(w, []);
     expect(w.enemies.hp[0]).toBeLessThan(hp0);
 
-    for (let i = 0; i < 30 * lv.life; i++) step(w, []);
+    for (let i = 0; i < 30 * (lv.life - 1); i++) step(w, []);
     // 쿨다운(5초)이 수명(3초)보다 길어서 그 사이에는 구슬이 없다
     expect(w.projectiles.count).toBe(0);
   });

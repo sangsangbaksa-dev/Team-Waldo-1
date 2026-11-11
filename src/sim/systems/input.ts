@@ -18,6 +18,10 @@ export function applyCommands(world: World, commands: readonly Command[]): void 
         }
         break;
       }
+      case 'look':
+        p.faceX = c.x;
+        p.faceY = c.y;
+        break;
       case 'choose':
         applyChoice(world, c.index);
         break;

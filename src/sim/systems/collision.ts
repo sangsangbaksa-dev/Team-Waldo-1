@@ -1,6 +1,6 @@
-import { PROJ_ORBIT, remove } from '../pool';
-import { damageEnemy } from '../spawn';
-import type { World } from '../types';
+import { PROJ_HOSTILE, PROJ_ORBIT, remove } from "../pool";
+import { damageEnemy } from "../spawn";
+import type { World } from "../types";
 
 const candidates = new Int32Array(512);
 const HIT_KNOCKBACK = 3;
@@ -16,7 +16,30 @@ export function collision(world: World): void {
   hash.rebuild(e.x, e.y, e.count);
 
   for (let i = p.count - 1; i >= 0; i--) {
-    const n = hash.query(p.x[i], p.y[i], p.r[i] + world.maxEnemyRadius, candidates);
+    if (p.hp[i] === PROJ_HOSTILE) {
+      const rr = p.r[i] + world.data.balance.player.radius;
+      if (Math.hypot(p.x[i] - player.x, p.y[i] - player.y) <= rr) {
+        if (player.invuln <= 0) {
+          const dmg = Math.max(1, p.a[i] - player.stats.armor);
+          player.hp -= dmg;
+          player.invuln = world.data.balance.player.invulnTime;
+          world.stats.damageTaken += dmg;
+          world.events.push({
+            t: "playerHurt",
+            dmg,
+            hp: Math.max(0, player.hp),
+          });
+        }
+        remove(p, i);
+      }
+      continue;
+    }
+    const n = hash.query(
+      p.x[i],
+      p.y[i],
+      p.r[i] + world.maxEnemyRadius,
+      candidates,
+    );
     for (let k = 0; k < n; k++) {
       const j = candidates[k];
       const orbit = p.hp[i] === PROJ_ORBIT;
@@ -29,7 +52,14 @@ export function collision(world: World): void {
 
       if (orbit) {
         // 회전형은 사라지지 않고, 같은 적을 잠깐 동안 다시 때리지 않는다
-        damageEnemy(world, j, p.a[i], e.x[j] - player.x, e.y[j] - player.y, ORBIT_KNOCKBACK);
+        damageEnemy(
+          world,
+          j,
+          p.a[i],
+          e.x[j] - player.x,
+          e.y[j] - player.y,
+          ORBIT_KNOCKBACK,
+        );
         e.a[j] = ORBIT_REHIT_TIME;
         continue;
       }
@@ -45,7 +75,12 @@ export function collision(world: World): void {
 
   if (player.invuln > 0) return;
   const pr = world.data.balance.player.radius;
-  const n = hash.query(player.x, player.y, pr + world.maxEnemyRadius, candidates);
+  const n = hash.query(
+    player.x,
+    player.y,
+    pr + world.maxEnemyRadius,
+    candidates,
+  );
   let dmg = 0;
   for (let k = 0; k < n; k++) {
     const j = candidates[k];
@@ -53,13 +88,14 @@ export function collision(world: World): void {
     const dx = e.x[j] - player.x;
     const dy = e.y[j] - player.y;
     const rr = e.r[j] + pr;
-    if (dx * dx + dy * dy <= rr * rr) dmg = Math.max(dmg, world.data.enemies[e.kind[j]].damage);
+    if (dx * dx + dy * dy <= rr * rr)
+      dmg = Math.max(dmg, world.data.enemies[e.kind[j]].damage);
   }
   if (dmg > 0) {
     dmg = Math.max(1, dmg - player.stats.armor);
     player.hp -= dmg;
     player.invuln = world.data.balance.player.invulnTime;
     world.stats.damageTaken += dmg;
-    world.events.push({ t: 'playerHurt', dmg, hp: Math.max(0, player.hp) });
+    world.events.push({ t: "playerHurt", dmg, hp: Math.max(0, player.hp) });
   }
 }

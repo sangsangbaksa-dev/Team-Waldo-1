@@ -2,35 +2,137 @@
   "map": "meadow",
   "stages": [
     {
-      "id": "stage1", "duration": 420, "maxAlive": 250,
+      "id": "stage1",
+      "duration": 120,
+      "maxAlive": 160,
       "waves": [
-        { "from": 0, "to": 420, "enemy": "slime_green", "rate": 1.2, "pattern": "random_edge" },
-        { "from": 90, "to": 420, "enemy": "bat_purple", "rate": 0.8, "pattern": "random_edge" },
-        { "at": 180, "enemy": "bat_purple", "count": 30, "pattern": "swarm" },
-        { "at": 300, "enemy": "slime_green", "count": 40, "pattern": "ring" }
+        {
+          "from": 0,
+          "to": 120,
+          "enemy": "slime_green",
+          "rate": 1.67,
+          "pattern": "random_edge"
+        },
+        {
+          "from": 26,
+          "to": 120,
+          "enemy": "bat_purple",
+          "rate": 1.114,
+          "pattern": "random_edge"
+        },
+        {
+          "at": 51,
+          "enemy": "bat_purple",
+          "count": 26,
+          "pattern": "swarm"
+        },
+        {
+          "at": 86,
+          "enemy": "slime_green",
+          "count": 34,
+          "pattern": "ring"
+        }
       ],
-      "miniboss": { "enemy": "slime_king", "at": 390 }
+      "miniboss": {
+        "enemy": "slime_king",
+        "at": 100,
+        "hpScale": 0.64
+      }
     },
     {
-      "id": "stage2", "duration": 420, "maxAlive": 350,
+      "id": "stage2",
+      "duration": 120,
+      "maxAlive": 220,
       "waves": [
-        { "from": 0, "to": 420, "enemy": "slime_red", "rate": 1.5, "pattern": "random_edge" },
-        { "from": 30, "to": 420, "enemy": "wolf_gray", "rate": 0.7, "pattern": "random_edge" },
-        { "at": 200, "enemy": "wolf_gray", "count": 25, "pattern": "swarm" },
-        { "at": 320, "enemy": "slime_red", "count": 50, "pattern": "ring" }
+        {
+          "from": 0,
+          "to": 120,
+          "enemy": "slime_red",
+          "rate": 2.349,
+          "pattern": "random_edge"
+        },
+        {
+          "from": 9,
+          "to": 120,
+          "enemy": "wolf_gray",
+          "rate": 1.096,
+          "pattern": "random_edge"
+        },
+        {
+          "at": 57,
+          "enemy": "wolf_gray",
+          "count": 21,
+          "pattern": "swarm"
+        },
+        {
+          "at": 91,
+          "enemy": "slime_red",
+          "count": 43,
+          "pattern": "ring"
+        },
+        {
+          "from": 30,
+          "to": 120,
+          "enemy": "cultist",
+          "rate": 0.326,
+          "pattern": "random_edge"
+        }
       ],
-      "miniboss": { "enemy": "slime_king", "at": 390, "hpScale": 2 }
+      "miniboss": {
+        "enemy": "slime_king",
+        "at": 100,
+        "hpScale": 1.024
+      }
     },
     {
-      "id": "stage3", "duration": 420, "maxAlive": 450,
+      "id": "stage3",
+      "duration": 120,
+      "maxAlive": 280,
       "waves": [
-        { "from": 0, "to": 420, "enemy": "slime_red", "rate": 2.0, "pattern": "random_edge" },
-        { "from": 0, "to": 420, "enemy": "wolf_gray", "rate": 1.0, "pattern": "random_edge" },
-        { "from": 60, "to": 420, "enemy": "golem_stone", "rate": 0.25, "pattern": "random_edge" },
-        { "at": 240, "enemy": "bat_purple", "count": 80, "pattern": "ring" }
+        {
+          "from": 0,
+          "to": 120,
+          "enemy": "slime_red",
+          "rate": 3.132,
+          "pattern": "random_edge"
+        },
+        {
+          "from": 0,
+          "to": 120,
+          "enemy": "wolf_gray",
+          "rate": 1.566,
+          "pattern": "random_edge"
+        },
+        {
+          "from": 17,
+          "to": 120,
+          "enemy": "golem_stone",
+          "rate": 0.392,
+          "pattern": "random_edge"
+        },
+        {
+          "at": 69,
+          "enemy": "bat_purple",
+          "count": 68,
+          "pattern": "ring"
+        },
+        {
+          "from": 0,
+          "to": 120,
+          "enemy": "cultist",
+          "rate": 0.522,
+          "pattern": "random_edge"
+        }
       ],
-      "miniboss": { "enemy": "slime_king", "at": 390, "hpScale": 4 }
+      "miniboss": {
+        "enemy": "slime_king",
+        "at": 100,
+        "hpScale": 1.4080000000000001
+      }
     }
   ],
-  "boss": { "enemy": "lich", "hpScale": 1 }
+  "boss": {
+    "enemy": "lich",
+    "hpScale": 1.05
+  }
 }

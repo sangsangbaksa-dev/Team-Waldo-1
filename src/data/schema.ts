@@ -1,5 +1,5 @@
 // data/*.json의 유일한 정의. TS 타입은 여기서 추론한다.
-import { z } from 'zod';
+import { z } from "zod";
 
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 
@@ -9,13 +9,13 @@ export const EnemySchema = z.object({
   sprite: z.string(),
   palette: z.string(),
   /** 스프라이트가 준비되기 전까지 쓰는 임시 색 */
-  placeholderColor: color.default('#ff00ff'),
+  placeholderColor: color.default("#ff00ff"),
   hp: z.number().positive(),
   speed: z.number().nonnegative(),
   damage: z.number().nonnegative(),
   radius: z.number().positive(),
   xp: z.number().nonnegative(),
-  behavior: z.enum(['chase', 'dash', 'ranged', 'swarm', 'tank']),
+  behavior: z.enum(["chase", "dash", "ranged", "swarm", "tank"]),
   knockbackResist: z.number().min(0).max(1).default(0),
 });
 
@@ -35,21 +35,28 @@ export const WeaponSchema = z.object({
   id: z.string().min(1),
   name: z.string(),
   icon: z.string(),
-  pattern: z.enum(['projectile', 'orbit', 'aura']), // sim/weapons/index.ts에 구현을 추가하면 여기에도 추가
-  targeting: z.enum(['nearest', 'random', 'facing', 'none']),
-  placeholderColor: color.default('#ffffff'),
+  pattern: z.enum([
+    "projectile",
+    "orbit",
+    "aura",
+    "beam",
+    "boomerang",
+    "storm",
+  ]),
+  targeting: z.enum(["nearest", "random", "facing", "none"]),
+  placeholderColor: color.default("#ffffff"),
   levels: z.array(WeaponLevelSchema).min(1),
 });
 
 export const StatSchema = z.enum([
-  'moveSpeed',
-  'maxHp',
-  'damage',
-  'cooldown',
-  'area',
-  'pickupRange',
-  'xpGain',
-  'armor',
+  "moveSpeed",
+  "maxHp",
+  "damage",
+  "cooldown",
+  "area",
+  "pickupRange",
+  "xpGain",
+  "armor",
 ]);
 
 export const PassiveSchema = z.object({
@@ -58,11 +65,11 @@ export const PassiveSchema = z.object({
   icon: z.string(),
   maxLevel: z.number().int().positive(),
   stat: StatSchema,
-  op: z.enum(['add', 'mul']),
+  op: z.enum(["add", "mul"]),
   perLevel: z.number(),
 });
 
-const spawnPattern = z.enum(['random_edge', 'ring', 'swarm']);
+const spawnPattern = z.enum(["random_edge", "ring", "swarm"]);
 
 export const WaveSchema = z.union([
   // 지속 웨이브: from~to 초 동안 초당 rate 마리
@@ -88,14 +95,21 @@ export const StageSchema = z.object({
   maxAlive: z.number().int().positive(),
   waves: z.array(WaveSchema),
   miniboss: z
-    .object({ enemy: z.string(), at: z.number().nonnegative(), hpScale: z.number().positive().default(1) })
+    .object({
+      enemy: z.string(),
+      at: z.number().nonnegative(),
+      hpScale: z.number().positive().default(1),
+    })
     .optional(),
 });
 
 export const StagesFileSchema = z.object({
   map: z.string(),
   stages: z.array(StageSchema).min(1),
-  boss: z.object({ enemy: z.string(), hpScale: z.number().positive().default(1) }),
+  boss: z.object({
+    enemy: z.string(),
+    hpScale: z.number().positive().default(1),
+  }),
 });
 
 export const BalanceSchema = z.object({
@@ -112,7 +126,11 @@ export const BalanceSchema = z.object({
   maxPassives: z.number().int().positive(),
   startingWeapon: z.string(),
   spawnRadius: z.number().positive(),
-  score: z.object({ perKillXp: z.number(), perSecond: z.number(), bossBonus: z.number() }),
+  score: z.object({
+    perKillXp: z.number(),
+    perSecond: z.number(),
+    bossBonus: z.number(),
+  }),
 });
 
 export type EnemyDef = z.infer<typeof EnemySchema>;

@@ -1,52 +1,467 @@
 [
   {
-    "id": "magic_bolt", "name": "마법탄", "icon": "icon_magic_bolt", "pattern": "projectile", "targeting": "nearest", "placeholderColor": "#60c8ff",
+    "id": "magic_bolt",
+    "name": "마법탄",
+    "icon": "icon_magic_bolt",
+    "pattern": "projectile",
+    "targeting": "nearest",
+    "placeholderColor": "#60c8ff",
     "levels": [
-      {"damage": 10, "cooldown": 1.0, "count": 1, "speed": 200, "pierce": 0, "area": 1, "life": 1.5},
-      {"damage": 12, "cooldown": 0.9, "count": 1, "speed": 200, "pierce": 0, "area": 1, "life": 1.5},
-      {"damage": 12, "cooldown": 0.9, "count": 2, "speed": 220, "pierce": 1, "area": 1, "life": 1.5},
-      {"damage": 16, "cooldown": 0.8, "count": 2, "speed": 220, "pierce": 1, "area": 1.2, "life": 1.5},
-      {"damage": 20, "cooldown": 0.7, "count": 3, "speed": 240, "pierce": 2, "area": 1.2, "life": 1.5}
+      {
+        "damage": 10,
+        "cooldown": 0.8,
+        "count": 1,
+        "speed": 200,
+        "pierce": 0,
+        "area": 1,
+        "life": 1.5
+      },
+      {
+        "damage": 12,
+        "cooldown": 0.7200000000000001,
+        "count": 1,
+        "speed": 200,
+        "pierce": 0,
+        "area": 1,
+        "life": 1.5
+      },
+      {
+        "damage": 12,
+        "cooldown": 0.7200000000000001,
+        "count": 2,
+        "speed": 220,
+        "pierce": 1,
+        "area": 1,
+        "life": 1.5
+      },
+      {
+        "damage": 16,
+        "cooldown": 0.6400000000000001,
+        "count": 2,
+        "speed": 220,
+        "pierce": 1,
+        "area": 1.2,
+        "life": 1.5
+      },
+      {
+        "damage": 20,
+        "cooldown": 0.5599999999999999,
+        "count": 3,
+        "speed": 240,
+        "pierce": 2,
+        "area": 1.2,
+        "life": 1.5
+      }
     ]
   },
   {
-    "id": "knife", "name": "단검", "icon": "icon_knife", "pattern": "projectile", "targeting": "facing", "placeholderColor": "#f0f0f0",
+    "id": "knife",
+    "name": "단검",
+    "icon": "icon_knife",
+    "pattern": "projectile",
+    "targeting": "facing",
+    "placeholderColor": "#f0f0f0",
     "levels": [
-      {"damage": 7, "cooldown": 0.6, "count": 1, "speed": 300, "pierce": 1, "area": 0.8, "life": 1.0},
-      {"damage": 7, "cooldown": 0.6, "count": 2, "speed": 300, "pierce": 1, "area": 0.8, "life": 1.0},
-      {"damage": 10, "cooldown": 0.5, "count": 2, "speed": 320, "pierce": 2, "area": 0.8, "life": 1.0},
-      {"damage": 10, "cooldown": 0.5, "count": 3, "speed": 320, "pierce": 2, "area": 0.8, "life": 1.0},
-      {"damage": 14, "cooldown": 0.4, "count": 4, "speed": 340, "pierce": 3, "area": 0.8, "life": 1.0}
+      {
+        "damage": 7,
+        "cooldown": 0.6,
+        "count": 1,
+        "speed": 300,
+        "pierce": 1,
+        "area": 0.8,
+        "life": 1
+      },
+      {
+        "damage": 7,
+        "cooldown": 0.6,
+        "count": 2,
+        "speed": 300,
+        "pierce": 1,
+        "area": 0.8,
+        "life": 1
+      },
+      {
+        "damage": 10,
+        "cooldown": 0.5,
+        "count": 2,
+        "speed": 320,
+        "pierce": 2,
+        "area": 0.8,
+        "life": 1
+      },
+      {
+        "damage": 10,
+        "cooldown": 0.5,
+        "count": 3,
+        "speed": 320,
+        "pierce": 2,
+        "area": 0.8,
+        "life": 1
+      },
+      {
+        "damage": 14,
+        "cooldown": 0.4,
+        "count": 4,
+        "speed": 340,
+        "pierce": 3,
+        "area": 0.8,
+        "life": 1
+      }
     ]
   },
   {
-    "id": "spark", "name": "불꽃", "icon": "icon_spark", "pattern": "projectile", "targeting": "random", "placeholderColor": "#ffa040",
+    "id": "spark",
+    "name": "불꽃",
+    "icon": "icon_spark",
+    "pattern": "projectile",
+    "targeting": "random",
+    "placeholderColor": "#ffa040",
     "levels": [
-      {"damage": 18, "cooldown": 1.6, "count": 1, "speed": 140, "pierce": 3, "area": 1.8, "life": 2.0},
-      {"damage": 22, "cooldown": 1.5, "count": 1, "speed": 140, "pierce": 4, "area": 2.0, "life": 2.0},
-      {"damage": 22, "cooldown": 1.5, "count": 2, "speed": 150, "pierce": 4, "area": 2.0, "life": 2.0},
-      {"damage": 28, "cooldown": 1.3, "count": 2, "speed": 150, "pierce": 6, "area": 2.4, "life": 2.0},
-      {"damage": 34, "cooldown": 1.1, "count": 3, "speed": 160, "pierce": 8, "area": 2.6, "life": 2.0}
+      {
+        "damage": 18,
+        "cooldown": 1.6,
+        "count": 1,
+        "speed": 140,
+        "pierce": 3,
+        "area": 1.8,
+        "life": 2
+      },
+      {
+        "damage": 22,
+        "cooldown": 1.5,
+        "count": 1,
+        "speed": 140,
+        "pierce": 4,
+        "area": 2,
+        "life": 2
+      },
+      {
+        "damage": 22,
+        "cooldown": 1.5,
+        "count": 2,
+        "speed": 150,
+        "pierce": 4,
+        "area": 2,
+        "life": 2
+      },
+      {
+        "damage": 28,
+        "cooldown": 1.3,
+        "count": 2,
+        "speed": 150,
+        "pierce": 6,
+        "area": 2.4,
+        "life": 2
+      },
+      {
+        "damage": 34,
+        "cooldown": 1.1,
+        "count": 3,
+        "speed": 160,
+        "pierce": 8,
+        "area": 2.6,
+        "life": 2
+      }
     ]
   },
   {
-    "id": "guardian_orb", "name": "수호 구슬", "icon": "icon_orb", "pattern": "orbit", "targeting": "none", "placeholderColor": "#ffe060",
+    "id": "guardian_orb",
+    "name": "수호 구슬",
+    "icon": "icon_orb",
+    "pattern": "orbit",
+    "targeting": "none",
+    "placeholderColor": "#ffe060",
     "levels": [
-      {"damage": 8, "cooldown": 5.0, "count": 2, "speed": 3.5, "pierce": 0, "area": 1, "life": 3.0, "range": 36},
-      {"damage": 10, "cooldown": 5.0, "count": 3, "speed": 3.5, "pierce": 0, "area": 1, "life": 3.0, "range": 36},
-      {"damage": 10, "cooldown": 4.5, "count": 3, "speed": 4.0, "pierce": 0, "area": 1.2, "life": 3.5, "range": 40},
-      {"damage": 14, "cooldown": 4.5, "count": 4, "speed": 4.0, "pierce": 0, "area": 1.2, "life": 3.5, "range": 40},
-      {"damage": 18, "cooldown": 4.0, "count": 5, "speed": 4.5, "pierce": 0, "area": 1.4, "life": 4.0, "range": 44}
+      {
+        "damage": 8,
+        "cooldown": 5,
+        "count": 2,
+        "speed": 3.5,
+        "pierce": 0,
+        "area": 1,
+        "life": 3,
+        "range": 36
+      },
+      {
+        "damage": 10,
+        "cooldown": 5,
+        "count": 3,
+        "speed": 3.5,
+        "pierce": 0,
+        "area": 1,
+        "life": 3,
+        "range": 36
+      },
+      {
+        "damage": 10,
+        "cooldown": 4.5,
+        "count": 3,
+        "speed": 4,
+        "pierce": 0,
+        "area": 1.2,
+        "life": 3.5,
+        "range": 40
+      },
+      {
+        "damage": 14,
+        "cooldown": 4.5,
+        "count": 4,
+        "speed": 4,
+        "pierce": 0,
+        "area": 1.2,
+        "life": 3.5,
+        "range": 40
+      },
+      {
+        "damage": 18,
+        "cooldown": 4,
+        "count": 5,
+        "speed": 4.5,
+        "pierce": 0,
+        "area": 1.4,
+        "life": 4,
+        "range": 44
+      }
     ]
   },
   {
-    "id": "frost_aura", "name": "서리 오라", "icon": "icon_aura", "pattern": "aura", "targeting": "none", "placeholderColor": "#80d0ff",
+    "id": "frost_aura",
+    "name": "서리 오라",
+    "icon": "icon_aura",
+    "pattern": "aura",
+    "targeting": "none",
+    "placeholderColor": "#80d0ff",
     "levels": [
-      {"damage": 3, "cooldown": 0.5, "count": 1, "speed": 0, "pierce": 0, "area": 1, "life": 1, "range": 30},
-      {"damage": 4, "cooldown": 0.5, "count": 1, "speed": 0, "pierce": 0, "area": 1.15, "life": 1, "range": 30},
-      {"damage": 5, "cooldown": 0.45, "count": 1, "speed": 0, "pierce": 0, "area": 1.3, "life": 1, "range": 30},
-      {"damage": 7, "cooldown": 0.45, "count": 1, "speed": 0, "pierce": 0, "area": 1.45, "life": 1, "range": 30},
-      {"damage": 9, "cooldown": 0.4, "count": 1, "speed": 0, "pierce": 0, "area": 1.6, "life": 1, "range": 30}
+      {
+        "damage": 3,
+        "cooldown": 0.5,
+        "count": 1,
+        "speed": 0,
+        "pierce": 0,
+        "area": 1,
+        "life": 1,
+        "range": 30
+      },
+      {
+        "damage": 4,
+        "cooldown": 0.5,
+        "count": 1,
+        "speed": 0,
+        "pierce": 0,
+        "area": 1.15,
+        "life": 1,
+        "range": 30
+      },
+      {
+        "damage": 5,
+        "cooldown": 0.45,
+        "count": 1,
+        "speed": 0,
+        "pierce": 0,
+        "area": 1.3,
+        "life": 1,
+        "range": 30
+      },
+      {
+        "damage": 7,
+        "cooldown": 0.45,
+        "count": 1,
+        "speed": 0,
+        "pierce": 0,
+        "area": 1.45,
+        "life": 1,
+        "range": 30
+      },
+      {
+        "damage": 9,
+        "cooldown": 0.4,
+        "count": 1,
+        "speed": 0,
+        "pierce": 0,
+        "area": 1.6,
+        "life": 1,
+        "range": 30
+      }
+    ]
+  },
+  {
+    "id": "moon_beam",
+    "name": "달빛 광선",
+    "icon": "icon_moon_beam",
+    "pattern": "beam",
+    "targeting": "nearest",
+    "placeholderColor": "#d5e6d9",
+    "levels": [
+      {
+        "damage": 24,
+        "cooldown": 2.6,
+        "count": 1,
+        "speed": 0,
+        "pierce": 0,
+        "area": 1,
+        "life": 0.2,
+        "range": 250
+      },
+      {
+        "damage": 31.200000000000003,
+        "cooldown": 2.4179999999999997,
+        "count": 1,
+        "speed": 0,
+        "pierce": 0,
+        "area": 1.1,
+        "life": 0.2,
+        "range": 250
+      },
+      {
+        "damage": 38.400000000000006,
+        "cooldown": 2.236,
+        "count": 1,
+        "speed": 0,
+        "pierce": 0,
+        "area": 1.2,
+        "life": 0.2,
+        "range": 250
+      },
+      {
+        "damage": 45.599999999999994,
+        "cooldown": 2.0540000000000003,
+        "count": 1,
+        "speed": 0,
+        "pierce": 0,
+        "area": 1.3,
+        "life": 0.2,
+        "range": 250
+      },
+      {
+        "damage": 52.800000000000004,
+        "cooldown": 1.8719999999999999,
+        "count": 1,
+        "speed": 0,
+        "pierce": 0,
+        "area": 1.4,
+        "life": 0.2,
+        "range": 250
+      }
+    ]
+  },
+  {
+    "id": "boomerang",
+    "name": "초승달",
+    "icon": "icon_boomerang",
+    "pattern": "boomerang",
+    "targeting": "nearest",
+    "placeholderColor": "#e8d6a0",
+    "levels": [
+      {
+        "damage": 12,
+        "cooldown": 2.2,
+        "count": 1,
+        "speed": 170,
+        "pierce": 8,
+        "area": 1,
+        "life": 1.8,
+        "range": 0
+      },
+      {
+        "damage": 15.600000000000001,
+        "cooldown": 2.046,
+        "count": 2,
+        "speed": 170,
+        "pierce": 8,
+        "area": 1.1,
+        "life": 1.8,
+        "range": 0
+      },
+      {
+        "damage": 19.200000000000003,
+        "cooldown": 1.8920000000000001,
+        "count": 3,
+        "speed": 170,
+        "pierce": 8,
+        "area": 1.2,
+        "life": 1.8,
+        "range": 0
+      },
+      {
+        "damage": 22.799999999999997,
+        "cooldown": 1.7380000000000002,
+        "count": 4,
+        "speed": 170,
+        "pierce": 8,
+        "area": 1.3,
+        "life": 1.8,
+        "range": 0
+      },
+      {
+        "damage": 26.400000000000002,
+        "cooldown": 1.584,
+        "count": 5,
+        "speed": 170,
+        "pierce": 8,
+        "area": 1.4,
+        "life": 1.8,
+        "range": 0
+      }
+    ]
+  },
+  {
+    "id": "storm",
+    "name": "번개 가시",
+    "icon": "icon_storm",
+    "pattern": "storm",
+    "targeting": "nearest",
+    "placeholderColor": "#92c7b4",
+    "levels": [
+      {
+        "damage": 10,
+        "cooldown": 2.4,
+        "count": 6,
+        "speed": 180,
+        "pierce": 1,
+        "area": 1,
+        "life": 1.5,
+        "range": 0
+      },
+      {
+        "damage": 13,
+        "cooldown": 2.2319999999999998,
+        "count": 7,
+        "speed": 180,
+        "pierce": 1,
+        "area": 1.1,
+        "life": 1.5,
+        "range": 0
+      },
+      {
+        "damage": 16,
+        "cooldown": 2.064,
+        "count": 8,
+        "speed": 180,
+        "pierce": 1,
+        "area": 1.2,
+        "life": 1.5,
+        "range": 0
+      },
+      {
+        "damage": 19,
+        "cooldown": 1.896,
+        "count": 9,
+        "speed": 180,
+        "pierce": 1,
+        "area": 1.3,
+        "life": 1.5,
+        "range": 0
+      },
+      {
+        "damage": 22,
+        "cooldown": 1.728,
+        "count": 10,
+        "speed": 180,
+        "pierce": 1,
+        "area": 1.4,
+        "life": 1.5,
+        "range": 0
+      }
     ]
   }
 ]

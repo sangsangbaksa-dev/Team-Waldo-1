@@ -1,6 +1,6 @@
-import Phaser from 'phaser';
-import { FONT } from '../config';
-import type { SimEvent } from '../sim';
+import Phaser from "phaser";
+import { FONT } from "../config";
+import type { SimEvent } from "../sim";
 
 const MAX_NUMBERS_PER_FRAME = 12;
 const MAX_PUFFS_PER_FRAME = 20;
@@ -25,16 +25,31 @@ export class EffectRenderer {
 
   handle(e: SimEvent): void {
     switch (e.t) {
-      case 'hit':
+      case "beam": {
+        const line = this.scene.add.graphics().setDepth(5);
+        line
+          .lineStyle(8, 0xb2d8cc, 0.18)
+          .lineBetween(e.x, e.y, e.tx, e.ty)
+          .lineStyle(2, 0xf0ecd3, 0.9)
+          .lineBetween(e.x, e.y, e.tx, e.ty);
+        this.scene.tweens.add({
+          targets: line,
+          alpha: 0,
+          duration: 220,
+          onComplete: () => line.destroy(),
+        });
+        break;
+      }
+      case "hit":
         this.damageNumber(e.x, e.y, e.dmg);
         break;
-      case 'kill':
+      case "kill":
         this.puff(e.x, e.y);
         break;
-      case 'playerHurt':
+      case "playerHurt":
         this.scene.cameras.main.shake(80, 0.004);
         break;
-      case 'bossSpawn':
+      case "bossSpawn":
         this.scene.cameras.main.flash(200, 255, 255, 255);
         break;
     }
@@ -42,8 +57,16 @@ export class EffectRenderer {
 
   private damageNumber(x: number, y: number, dmg: number): void {
     if (this.numbersThisFrame++ >= MAX_NUMBERS_PER_FRAME) return;
-    const t = this.numbers.pop() ?? this.scene.add.text(0, 0, '', { ...FONT, fontSize: '8px' }).setOrigin(0.5).setDepth(10);
-    t.setText(String(Math.round(dmg))).setPosition(x, y - 6).setAlpha(1).setVisible(true);
+    const t =
+      this.numbers.pop() ??
+      this.scene.add
+        .text(0, 0, "", { ...FONT, fontSize: "8px" })
+        .setOrigin(0.5)
+        .setDepth(10);
+    t.setText(String(Math.round(dmg)))
+      .setPosition(x, y - 6)
+      .setAlpha(1)
+      .setVisible(true);
     this.scene.tweens.add({
       targets: t,
       y: y - 20,
@@ -58,7 +81,8 @@ export class EffectRenderer {
 
   private puff(x: number, y: number): void {
     if (this.puffsThisFrame++ >= MAX_PUFFS_PER_FRAME) return;
-    const s = this.puffs.pop() ?? this.scene.add.image(0, 0, 'circle').setDepth(5);
+    const s =
+      this.puffs.pop() ?? this.scene.add.image(0, 0, "circle").setDepth(5);
     s.setPosition(x, y).setDisplaySize(6, 6).setAlpha(0.8).setVisible(true);
     this.scene.tweens.add({
       targets: s,

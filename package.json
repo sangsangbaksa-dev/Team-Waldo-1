@@ -1,7 +1,7 @@
 {
-  "name": "survival-pixel",
+  "name": "night-warden",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,7 +11,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "validate-data": "tsx tools/validate-data.ts",
-    "balance": "tsx tools/balance-sim.ts"
+    "balance": "tsx tools/balance-sim.ts",
+    "package-game": "node tools/package-game.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0",

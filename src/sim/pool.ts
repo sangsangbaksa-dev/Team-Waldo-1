@@ -5,8 +5,10 @@ import type { EntityId } from './types';
  * 인덱스는 틱 사이에 바뀔 수 있다. 바깥에서 엔티티를 추적할 때는 id를 쓴다.
  *
  * a, b, c는 풀마다 뜻이 다른 범용 필드다.
- *   enemies:     timer = AI 타이머
- *   projectiles: a = 데미지, b = 남은 관통 수, c = 마지막으로 맞힌 적 id, timer = 남은 수명
+ *   enemies:     timer = AI 타이머, a = 회전형 무기에 다시 맞기까지 남은 시간
+ *   projectiles: a = 데미지, timer = 남은 수명, hp = 모드(PROJ_LINEAR | PROJ_ORBIT)
+ *                직선형: b = 남은 관통 수, c = 마지막으로 맞힌 적 id
+ *                회전형: vx = 현재 각도, vy = 각속도, c = 플레이어로부터의 거리
  *   pickups:     a = 경험치 값
  */
 export interface Pool {
@@ -27,6 +29,9 @@ export interface Pool {
   b: Float32Array;
   c: Float32Array;
 }
+
+export const PROJ_LINEAR = 0;
+export const PROJ_ORBIT = 1;
 
 const FLOAT_FIELDS = ['x', 'y', 'px', 'py', 'vx', 'vy', 'r', 'hp', 'timer', 'a', 'b', 'c'] as const;
 

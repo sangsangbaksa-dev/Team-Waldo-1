@@ -10,6 +10,7 @@ import { movement } from './systems/movement';
 import { pickups } from './systems/pickups';
 import { progression, recomputeStats, xpForLevel } from './systems/progression';
 import { projectiles } from './systems/projectiles';
+import { separation } from './systems/separation';
 import { spawner } from './systems/spawner';
 import { createStageState, stage } from './systems/stage';
 import { weapons } from './systems/weapons';
@@ -76,6 +77,7 @@ export function step(world: World, commands: readonly Command[]): void {
   movement(world);
   projectiles(world);
   collision(world);
+  separation(world);
   pickups(world);
   progression(world);
   cleanup(world);

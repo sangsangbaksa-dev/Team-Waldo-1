@@ -27,14 +27,16 @@ export const WeaponLevelSchema = z.object({
   pierce: z.number().int().nonnegative(),
   area: z.number().positive(),
   life: z.number().positive(),
+  /** orbit: 플레이어로부터의 거리, aura: 반경. projectile은 쓰지 않는다 */
+  range: z.number().nonnegative().default(0),
 });
 
 export const WeaponSchema = z.object({
   id: z.string().min(1),
   name: z.string(),
   icon: z.string(),
-  pattern: z.enum(['projectile']), // sim/weapons/index.ts에 구현을 추가하면 여기에도 추가
-  targeting: z.enum(['nearest', 'random', 'facing']),
+  pattern: z.enum(['projectile', 'orbit', 'aura']), // sim/weapons/index.ts에 구현을 추가하면 여기에도 추가
+  targeting: z.enum(['nearest', 'random', 'facing', 'none']),
   placeholderColor: color.default('#ffffff'),
   levels: z.array(WeaponLevelSchema).min(1),
 });

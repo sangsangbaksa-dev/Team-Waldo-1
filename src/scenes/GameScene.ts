@@ -4,7 +4,7 @@ import type { GameData } from '../data';
 import { AudioBridge } from '../render/AudioBridge';
 import { EffectRenderer } from '../render/EffectRenderer';
 import { EntityRenderer } from '../render/EntityRenderer';
-import { DT, createWorld, step, type Command, type SimEvent, type World } from '../sim';
+import { DT, auraRadius, createWorld, step, type Command, type SimEvent, type World } from '../sim';
 
 const MAX_STEPS_PER_FRAME = 5;
 const GEM_COLOR = 0x40e0ff;
@@ -21,6 +21,7 @@ export class GameScene extends Phaser.Scene {
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
   private bg!: Phaser.GameObjects.TileSprite;
   private playerSprite!: Phaser.GameObjects.Image;
+  private aura!: Phaser.GameObjects.Arc;
   private enemies!: EntityRenderer;
   private projectiles!: EntityRenderer;
   private pickups!: EntityRenderer;
@@ -48,6 +49,7 @@ export class GameScene extends Phaser.Scene {
     this.projectiles = new EntityRenderer(this, 4, (k) => hexToInt(data.weapons[k].placeholderColor));
     const r = data.balance.player.radius;
     this.playerSprite = this.add.image(0, 0, 'circle').setDisplaySize(r * 2, r * 2).setDepth(3);
+    this.aura = this.add.circle(0, 0, 1, 0x80d0ff, 0.12).setStrokeStyle(1, 0x80d0ff, 0.5).setDepth(1).setVisible(false);
     this.effects = new EffectRenderer(this);
     this.audio = new AudioBridge();
 
@@ -65,6 +67,7 @@ export class GameScene extends Phaser.Scene {
       y: (k.S.isDown || k.DOWN.isDown ? 1 : 0) - (k.W.isDown || k.UP.isDown ? 1 : 0),
     };
 
+    this.effects.beginFrame();
     this.acc += (delta / 1000) * this.speed;
     let steps = 0;
     while (this.acc >= DT && steps < MAX_STEPS_PER_FRAME * this.speed) {
@@ -109,6 +112,14 @@ export class GameScene extends Phaser.Scene {
     const cam = this.cameras.main;
     cam.setScroll(x - GAME_WIDTH / 2, y - GAME_HEIGHT / 2);
     this.bg.setTilePosition(cam.scrollX, cam.scrollY);
+
+    // 오라형 무기가 있으면 범위를 보여준다
+    let auraR = 0;
+    for (const ws of p.weapons) {
+      const def = w.data.weapons[ws.def];
+      if (def.pattern === 'aura') auraR = Math.max(auraR, auraRadius(def.levels[ws.level - 1], p.stats));
+    }
+    this.aura.setVisible(auraR > 0).setPosition(x, y).setRadius(auraR);
 
     this.pickups.draw(w.pickups, a);
     this.enemies.draw(w.enemies, a);

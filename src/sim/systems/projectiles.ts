@@ -1,4 +1,4 @@
-import { remove } from '../pool';
+import { PROJ_ORBIT, remove } from '../pool';
 import { DT, type World } from '../types';
 
 export function projectiles(world: World): void {
@@ -11,7 +11,13 @@ export function projectiles(world: World): void {
     }
     p.px[i] = p.x[i];
     p.py[i] = p.y[i];
-    p.x[i] += p.vx[i] * DT;
-    p.y[i] += p.vy[i] * DT;
+    if (p.hp[i] === PROJ_ORBIT) {
+      p.vx[i] += p.vy[i] * DT;
+      p.x[i] = world.player.x + Math.cos(p.vx[i]) * p.c[i];
+      p.y[i] = world.player.y + Math.sin(p.vx[i]) * p.c[i];
+    } else {
+      p.x[i] += p.vx[i] * DT;
+      p.y[i] += p.vy[i] * DT;
+    }
   }
 }

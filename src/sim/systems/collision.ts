@@ -1,7 +1,11 @@
-import { remove } from '../pool';
+import { PROJ_ORBIT, remove } from '../pool';
+import { damageEnemy } from '../spawn';
 import type { World } from '../types';
 
 const candidates = new Int32Array(512);
+const HIT_KNOCKBACK = 3;
+const ORBIT_KNOCKBACK = 8;
+const ORBIT_REHIT_TIME = 0.4;
 
 /**
  * 투사체↔적, 적↔플레이어 충돌. 죽은 적은 여기서 지우지 않고 hp <= 0으로 남겨 두며
@@ -15,14 +19,21 @@ export function collision(world: World): void {
     const n = hash.query(p.x[i], p.y[i], p.r[i] + world.maxEnemyRadius, candidates);
     for (let k = 0; k < n; k++) {
       const j = candidates[k];
-      if (e.hp[j] <= 0 || e.id[j] === p.c[i]) continue;
+      const orbit = p.hp[i] === PROJ_ORBIT;
+      if (e.hp[j] <= 0) continue;
+      if (orbit ? e.a[j] > 0 : e.id[j] === p.c[i]) continue;
       const dx = e.x[j] - p.x[i];
       const dy = e.y[j] - p.y[i];
       const rr = e.r[j] + p.r[i];
       if (dx * dx + dy * dy > rr * rr) continue;
 
-      e.hp[j] -= p.a[i];
-      world.events.push({ t: 'hit', target: e.id[j], x: e.x[j], y: e.y[j], dmg: p.a[i] });
+      if (orbit) {
+        // 회전형은 사라지지 않고, 같은 적을 잠깐 동안 다시 때리지 않는다
+        damageEnemy(world, j, p.a[i], e.x[j] - player.x, e.y[j] - player.y, ORBIT_KNOCKBACK);
+        e.a[j] = ORBIT_REHIT_TIME;
+        continue;
+      }
+      damageEnemy(world, j, p.a[i], p.vx[i], p.vy[i], HIT_KNOCKBACK);
       if (p.b[i] <= 0) {
         remove(p, i);
         break;

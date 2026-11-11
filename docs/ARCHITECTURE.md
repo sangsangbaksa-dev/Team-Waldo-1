@@ -95,7 +95,7 @@ renderer.draw(world, acc / DT);     // alpha로 이전 위치~현재 위치 보�
 
 - 일시정지(레벨업 선택, 메뉴)는 `world.paused = true`로 sim 틱만 멈춘다. render와 UI는 계속 돈다.
 - `world.step()` 안의 시스템 순서는 고정한다:
-  `input → stage → spawner → enemyAI → weapons → movement → projectiles → spatialHash 재구축 → collision → pickups → progression → cleanup`
+  `input → stage → spawner → enemyAI → weapons → movement → projectiles → collision(해시 재구축 포함) → separation → pickups → progression → cleanup`
 
 ## 4. sim 상태 모델
 
@@ -224,7 +224,7 @@ type SimEvent =
 - `pattern`: `projectile` | `orbit` | `aura` | `beam` | `area_drop` | `boomerang` … (sim/weapons/에 1:1 구현). 무기 8종은 패턴 5~6개 + 수치 조합으로 만든다.
 - `targeting`: `nearest` | `random` | `facing`
 - 레벨 표의 `life`는 투사체 수명(초). 최대 레벨은 `levels` 배열 길이로 정한다.
-- **현재 구현된 패턴은 `projectile` 하나**다. 나머지는 `sim/weapons/`에 파일을 추가하고 `index.ts`와 `schema.ts`에 등록한다.
+- 구현된 패턴은 `projectile`, `orbit`(speed = 각속도, range = 거리), `aura`(range = 반경) 세 가지다. 나머지는 `sim/weapons/`에 파일을 추가하고 `index.ts`와 `schema.ts`에 등록한다.
 
 ### passives.json
 

@@ -9,6 +9,7 @@ export function enemyAI(world: World): void {
   const { enemies: e, player, data } = world;
   for (let i = 0; i < e.count; i++) {
     const def = data.enemies[e.kind[i]];
+    if (e.a[i] > 0) e.a[i] -= DT;
     const dx = player.x - e.x[i];
     const dy = player.y - e.y[i];
     const d = Math.hypot(dx, dy) || 1;

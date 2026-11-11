@@ -871,3 +871,23 @@ button:hover {
 .title-actions {
   flex-wrap: wrap;
 }
+#curse:not(:empty),
+.trial-note {
+  color: #f3b783;
+}
+.trial-note {
+  font-size: 0.75em;
+  margin: -4px 0 12px;
+}
+.rear-warning {
+  position: absolute;
+  left: 50%;
+  bottom: 12%;
+  transform: translateX(-50%);
+  color: #ffb088;
+  font-weight: 700;
+  text-shadow: 0 1px 6px #21100d;
+}
+.tree-next {
+  margin: 12px auto 0;
+}

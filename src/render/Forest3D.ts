@@ -496,6 +496,19 @@ export class Forest3D {
     warn.visible = false;
     warn.position.y = 0.04;
     g.add(warn);
+    this.part(
+      g,
+      this.box,
+      0xec9f64,
+      0,
+      0.03,
+      1.9,
+      0.045,
+      0.018,
+      3.8,
+      false,
+    ).name = "warning-path";
+    g.getObjectByName("warning-path")!.visible = false;
     return g;
   }
 
@@ -547,6 +560,9 @@ export class Forest3D {
         warning.visible =
           (def.behavior === "ranged" && pool.timer[i] > 2.1) ||
           (def.behavior === "dash" && pool.timer[i] > 2.2);
+        const path = model.getObjectByName("warning-path")!;
+        path.visible = warning.visible;
+        if (path.visible) model.rotation.y = Math.atan2(pool.b[i], pool.c[i]);
         warning.scale.setScalar(0.53 + Math.sin(motion * 2) * 0.05);
         const wing = model.getObjectByName("left");
         if (wing) {

@@ -26,11 +26,17 @@ export function enemyAI(world: World): void {
     let ux = dx / d,
       uy = dy / d;
     if (def.behavior === "dash") {
+      if (e.timer[i] <= 2.2 && e.timer[i] + DT > 2.2) {
+        e.b[i] = ux;
+        e.c[i] = uy;
+      }
       e.timer[i] += DT;
       if (e.timer[i] >= 3) {
         e.timer[i] -= 3;
-        e.b[i] = ux;
-        e.c[i] = uy;
+        if (!world.firstPerson) {
+          e.b[i] = ux;
+          e.c[i] = uy;
+        }
       }
       if (e.timer[i] < 0.45 && Math.hypot(e.b[i], e.c[i]) > 0.5) {
         speed *= 3.2;
@@ -38,12 +44,18 @@ export function enemyAI(world: World): void {
         uy = e.c[i];
       } else if (e.timer[i] > 2.2) speed = 0;
     } else if (def.behavior === "ranged") {
+      if (e.timer[i] <= 2.1) {
+        e.b[i] = ux;
+        e.c[i] = uy;
+      }
       e.timer[i] += DT;
       speed *= d > 140 ? 1 : d < 100 ? -1 : 0;
       if (e.timer[i] > 2.1) speed = 0;
       if (e.timer[i] >= 2.8) {
         e.timer[i] = 0;
-        const angle = Math.atan2(dy, dx);
+        const angle = world.firstPerson
+          ? Math.atan2(e.c[i], e.b[i])
+          : Math.atan2(dy, dx);
         if (def.base === "boss") {
           for (let k = 0; k < 10; k++)
             shoot(world, i, angle + (k * Math.PI) / 5);

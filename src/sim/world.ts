@@ -2,7 +2,7 @@ import type { GameData } from '../data/schema';
 import { createPool } from './pool';
 import { createRng } from './rng';
 import { SpatialHash } from './spatialHash';
-import { cleanup } from './systems/cleanup';
+import { cleanup, endRun } from './systems/cleanup';
 import { collision } from './systems/collision';
 import { enemyAI } from './systems/enemyAI';
 import { applyCommands } from './systems/input';
@@ -21,9 +21,11 @@ const PROJECTILE_CAPACITY = 2000;
 const PICKUP_CAPACITY = 1000;
 const CELL_SIZE = 32;
 
-export function createWorld(data: GameData, seed: number): World {
+export function createWorld(data: GameData, seed: number, options: {firstPerson?: boolean; curseDeadline?: number} = {}): World {
   const b = data.balance.player;
   const world: World = {
+    firstPerson: options.firstPerson ?? false,
+    curseDeadline: options.curseDeadline,
     tick: 0,
     time: 0,
     rng: createRng(seed),
@@ -69,6 +71,11 @@ export function step(world: World, commands: readonly Command[]): void {
 
   world.tick++;
   world.time += DT;
+  if (world.curseDeadline !== undefined && world.tick >= Math.ceil(world.curseDeadline / DT)) {
+    world.player.hp = 0;
+    endRun(world, false);
+    return;
+  }
 
   stage(world);
   spawner(world);

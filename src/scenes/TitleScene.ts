@@ -1,4 +1,4 @@
-import { openSkillTree } from "../skillTree";
+import { openSkillTree, trialInfo } from "../skillTree";
 import Phaser from "phaser";
 import { titleLandscape } from "../render/Art";
 import { AudioBridge } from "../render/AudioBridge";
@@ -9,10 +9,11 @@ export class TitleScene extends Phaser.Scene {
   }
   create(): void {
     titleLandscape(this);
+    const trial = trialInfo();
     const ui = mount(
       this,
       "title-screen",
-      `<div class="brand"><span class="brand-mark">✧</span> TEAM WALDO</div><div class="edition">1인칭 · 고난도</div><div class="title-copy"><h1>NIGHT<span>WARDEN</span></h1><div class="subtitle">밤의 파수꾼</div><p class="description">마지막 불빛이 꺼지기 전에.<br>잠든 숲을 깨우는 어둠에 맞서세요.</p><div class="title-actions"><button class="primary" id="start">숲으로 들어가기 <span>→</span></button><button class="text-button" id="skill-tree">스킬 트리</button><button class="text-button" id="help">플레이 방법 ↗</button></div></div><div class="title-footer"><span class="keyboard-hint"><span class="keycap">W A S D</span> 이동 &nbsp; · &nbsp; 공격은 자동</span><span>최고 기록 &nbsp; ${readBest().toLocaleString()} &nbsp; / &nbsp; 6분 생존 + 보스전</span><button class="sound-button" id="sound"></button></div>`,
+      `<div class="brand"><span class="brand-mark">✧</span> TEAM WALDO</div><div class="edition">1인칭 · 고난도</div><div class="title-copy"><h1>NIGHT<span>WARDEN</span></h1><div class="subtitle">밤의 파수꾼</div><p class="description">마지막 불빛이 꺼지기 전에.<br>잠든 숲을 깨우는 어둠에 맞서세요.</p>${trial.deadline === undefined ? "" : '<p class="trial-note">저주받은 시련 ' + trial.attempt + " / 5 · " + trial.deadline + "초 후 저주 발동</p>"}<div class="title-actions"><button class="primary" id="start">숲으로 들어가기 <span>→</span></button><button class="text-button" id="skill-tree">스킬 트리</button><button class="text-button" id="help">플레이 방법 ↗</button></div></div><div class="title-footer"><span class="keyboard-hint"><span class="keycap">W A S D</span> 이동 &nbsp; · &nbsp; 공격은 자동</span><span>최고 기록 &nbsp; ${readBest().toLocaleString()} &nbsp; / &nbsp; 6분 생존 + 보스전</span><button class="sound-button" id="sound"></button></div>`,
     );
     const tree = ui.querySelector<HTMLButtonElement>("#skill-tree")!;
     tree.onclick = () => openSkillTree(ui, tree);

@@ -95,8 +95,8 @@ const branches = [
 ] as const;
 
 const key = "night-warden.skill-tree.v1";
-type Progress = { points: number; unlocked: string[] };
-let progress: Progress = { points: 0, unlocked: [] };
+type Progress = { points: number; unlocked: string[]; completed: number };
+let progress: Progress = { points: 0, unlocked: [], completed: 0 };
 
 try {
   const saved = JSON.parse(
@@ -110,6 +110,10 @@ try {
   ) {
     progress = {
       points: saved.points!,
+      completed:
+        Number.isSafeInteger(saved.completed) && saved.completed! >= 0
+          ? saved.completed!
+          : 0,
       unlocked: branches
         .flatMap((branch) => branch.nodes.map((node) => node.id))
         .filter((id) => saved.unlocked!.includes(id)),
@@ -127,8 +131,19 @@ function save() {
   }
 }
 
+export function trialInfo() {
+  const attempt = progress.completed + 1;
+  return {
+    attempt,
+    deadline: [30, 45, 60, 75, 90][attempt - 1] as number | undefined,
+  };
+}
+
 export function awardSkillPoints(stats: RunStats): number {
+  const initiationReward = trialInfo().deadline === undefined ? 0 : 2;
+  progress.completed++;
   const earned =
+    initiationReward +
     Math.floor(stats.kills / 10) +
     Math.floor(stats.time / 60) +
     (stats.victory ? 8 : 0);
@@ -159,7 +174,11 @@ export function applySkillTree(base: GameData): GameData {
   return data;
 }
 
-export function openSkillTree(parent: HTMLElement, trigger: HTMLButtonElement) {
+export function openSkillTree(
+  parent: HTMLElement,
+  trigger: HTMLButtonElement,
+  nextRun?: () => void,
+) {
   if (parent.querySelector(".modal-shade")) return;
   const overlay = document.createElement("div");
   overlay.className = "modal-shade skill-tree";
@@ -190,10 +209,12 @@ export function openSkillTree(parent: HTMLElement, trigger: HTMLButtonElement) {
       )
       .join(
         "",
-      )}</div><footer>적 10마리 처치 또는 1분 생존마다 불씨 1개 · 보스 처치 보너스 8개</footer></section>`;
+      )}</div><footer>첫 다섯 판은 종료마다 불씨 2개 · 적 10마리 처치 또는 1분 생존마다 불씨 1개 · 보스 처치 보너스 8개</footer>${nextRun ? '<button class="primary tree-next">다음 판 시작 <span>→</span></button>' : ""}</section>`;
     const closeButton =
       overlay.querySelector<HTMLButtonElement>(".tree-close")!;
     closeButton.onclick = close;
+    const nextButton = overlay.querySelector<HTMLButtonElement>(".tree-next");
+    if (nextButton && nextRun) nextButton.onclick = nextRun;
     for (const button of overlay.querySelectorAll<HTMLButtonElement>(
       "[data-node]",
     )) {

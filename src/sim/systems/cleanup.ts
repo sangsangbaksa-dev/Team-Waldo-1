@@ -2,7 +2,7 @@ import { remove } from "../pool";
 import { spawnPickup } from "../spawn";
 import type { World } from "../types";
 
-function endRun(world: World, victory: boolean): void {
+export function endRun(world: World, victory: boolean): void {
   if (world.over) return;
   const { score } = world.data.balance;
   world.over = true;

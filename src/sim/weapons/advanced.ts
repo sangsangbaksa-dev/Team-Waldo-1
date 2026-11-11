@@ -2,36 +2,24 @@ import type { WeaponDef, WeaponLevel } from "../../data/schema";
 import { damageEnemy, spawnProjectile } from "../spawn";
 import { PROJ_BOOMERANG } from "../pool";
 import type { WeaponState, World } from "../types";
-function nearest(w: World): number {
-  let j = -1,
-    d = Infinity;
-  for (let i = 0; i < w.enemies.count; i++) {
-    if (w.enemies.hp[i] <= 0) continue;
-    const dd = Math.hypot(
-      w.enemies.x[i] - w.player.x,
-      w.enemies.y[i] - w.player.y,
-    );
-    if (dd < d) {
-      j = i;
-      d = dd;
-    }
-  }
-  return j;
-}
+import { nearestTarget } from "./target";
 export function fireBeam(
   w: World,
   _s: WeaponState,
   _def: WeaponDef,
   lv: WeaponLevel,
 ): boolean {
-  const j = nearest(w);
+  const j = nearestTarget(w, w.firstPerson ? lv.range || 240 : Infinity);
   if (j < 0) return false;
   const p = w.player,
     e = w.enemies;
-  const angle = Math.atan2(e.y[j] - p.y, e.x[j] - p.x),
+  const angle = w.firstPerson
+      ? Math.atan2(p.faceY, p.faceX)
+      : Math.atan2(e.y[j] - p.y, e.x[j] - p.x),
     ux = Math.cos(angle),
     uy = Math.sin(angle),
     range = lv.range || 240;
+  let hit = false;
   for (let i = 0; i < e.count; i++) {
     if (e.hp[i] <= 0) continue;
     const dx = e.x[i] - p.x,
@@ -42,9 +30,12 @@ export function fireBeam(
       along >= 0 &&
       along <= range &&
       across < e.r[i] + 5 * lv.area * p.stats.area
-    )
+    ) {
+      hit = true;
       damageEnemy(w, i, lv.damage * p.stats.damage, ux, uy, 4);
+    }
   }
+  if (w.firstPerson && !hit) return false;
   w.events.push({
     t: "beam",
     x: p.x,
@@ -60,7 +51,7 @@ export function fireBoomerang(
   _def: WeaponDef,
   lv: WeaponLevel,
 ): boolean {
-  const j = nearest(w);
+  const j = nearestTarget(w);
   if (j < 0) return false;
   const p = w.player;
   const a = Math.atan2(w.enemies.y[j] - p.y, w.enemies.x[j] - p.x);

@@ -14,7 +14,7 @@ import {
   type World,
 } from "../sim";
 import { mountForest, type Forest3D } from "../render/Forest3D";
-import { applySkillTree } from "../skillTree";
+import { applySkillTree, trialInfo } from "../skillTree";
 import { HudScene } from "./HudScene";
 import { key } from "../ui";
 
@@ -30,6 +30,7 @@ export class GameScene extends Phaser.Scene {
   private yaw = 0;
   private pitch = -0.1;
   private lookPointer: { id: number; x: number; y: number } | null = null;
+
   private world!: World;
   private acc = 0;
   private speed = 1;
@@ -66,11 +67,15 @@ export class GameScene extends Phaser.Scene {
     const seed = Number(params.get("seed")) || Date.now() & 0x7fffffff;
     this.speed = Math.min(20, Math.max(1, Number(params.get("speed")) || 1));
 
-    this.world = createWorld(data, seed);
+    const trial = trialInfo();
+    this.forest = mountForest(document.querySelector<HTMLElement>("#shell")!);
+    this.world = createWorld(data, seed, {
+      firstPerson: Boolean(this.forest),
+      curseDeadline: trial.deadline,
+    });
     this.acc = 0;
     this.queued = [];
 
-    this.forest = mountForest(document.querySelector<HTMLElement>("#shell")!);
     this.events.once("shutdown", () => {
       this.forest?.dispose();
       this.forest = undefined;
@@ -220,6 +225,7 @@ export class GameScene extends Phaser.Scene {
     this.input.on("gameout", release);
     this.scene.launch("Hud", {
       world: this.world,
+      trial: trial.attempt,
       toggle,
       home: () => {
         this.scene.stop("Hud");
@@ -318,7 +324,13 @@ export class GameScene extends Phaser.Scene {
     } else if (e.t === "runEnd") {
       this.scene.stop("Hud");
       this.scene.stop("LevelUp");
-      this.scene.start("Result", { stats: e.stats });
+      this.scene.start("Result", {
+        stats: e.stats,
+
+        cursed:
+          this.world.curseDeadline !== undefined &&
+          this.world.tick >= Math.ceil(this.world.curseDeadline / DT),
+      });
     }
   }
 

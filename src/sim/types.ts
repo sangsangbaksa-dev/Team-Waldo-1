@@ -107,6 +107,8 @@ export interface StageState {
 }
 
 export interface World {
+  firstPerson: boolean;
+  curseDeadline?: number;
   tick: number;
   time: number;
   rng: Rng;

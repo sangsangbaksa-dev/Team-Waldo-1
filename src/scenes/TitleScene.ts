@@ -11,7 +11,7 @@ export class TitleScene extends Phaser.Scene {
     const ui = mount(
       this,
       "title-screen",
-      `<div class="brand"><span class="brand-mark">✧</span> TEAM WALDO</div><div class="edition">A PIXEL SURVIVAL TALE</div><div class="title-copy"><div class="eyebrow">THE FOREST REMEMBERS</div><h1>NIGHT<span>WARDEN</span></h1><div class="subtitle">밤의 파수꾼</div><p class="description">마지막 불빛이 꺼지기 전에.<br>잠든 숲을 깨우는 어둠에 맞서세요.</p><div class="title-actions"><button class="primary" id="start">숲으로 들어가기 <span>→</span></button><button class="text-button" id="help">플레이 방법 ↗</button></div></div><div class="title-footer"><span class="keyboard-hint"><span class="keycap">W A S D</span> 이동 &nbsp; · &nbsp; 공격은 자동</span><span>최고 기록 &nbsp; ${readBest().toLocaleString()} &nbsp; / &nbsp; 6분 생존 + 보스전</span><button class="sound-button" id="sound"></button></div>`,
+      `<div class="brand"><span class="brand-mark">✧</span> TEAM WALDO</div><div class="edition">3D SURVIVAL</div><div class="title-copy"><h1>NIGHT<span>WARDEN</span></h1><div class="subtitle">밤의 파수꾼</div><p class="description">마지막 불빛이 꺼지기 전에.<br>잠든 숲을 깨우는 어둠에 맞서세요.</p><div class="title-actions"><button class="primary" id="start">숲으로 들어가기 <span>→</span></button><button class="text-button" id="help">플레이 방법 ↗</button></div></div><div class="title-footer"><span class="keyboard-hint"><span class="keycap">W A S D</span> 이동 &nbsp; · &nbsp; 공격은 자동</span><span>최고 기록 &nbsp; ${readBest().toLocaleString()} &nbsp; / &nbsp; 6분 생존 + 보스전</span><button class="sound-button" id="sound"></button></div>`,
     );
     let starting = false;
     const start = () => {

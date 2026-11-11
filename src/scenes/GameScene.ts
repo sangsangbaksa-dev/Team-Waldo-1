@@ -13,6 +13,7 @@ import {
   type SimEvent,
   type World,
 } from "../sim";
+import { mountForest, type Forest3D } from "../render/Forest3D";
 import { HudScene } from "./HudScene";
 import { key } from "../ui";
 
@@ -24,6 +25,7 @@ const GEM_COLOR = 0x40e0ff;
  * 게임 규칙은 여기에 넣지 않는다.
  */
 export class GameScene extends Phaser.Scene {
+  private forest?: Forest3D;
   private world!: World;
   private acc = 0;
   private speed = 1;
@@ -64,6 +66,11 @@ export class GameScene extends Phaser.Scene {
     this.acc = 0;
     this.queued = [];
 
+    this.forest = mountForest(document.querySelector<HTMLElement>("#shell")!);
+    this.events.once("shutdown", () => {
+      this.forest?.dispose();
+      this.forest = undefined;
+    });
     this.touch = null;
     this.scenery = [];
     this.bg = this.add
@@ -209,7 +216,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onEvent(e: SimEvent): void {
-    this.effects.handle(e);
+    if (this.forest) this.forest.handle(e, this.world.time);
+    else this.effects.handle(e);
     this.audio.handle(e);
     if (e.t === "levelUp") {
       this.touch = null;
@@ -249,6 +257,19 @@ export class GameScene extends Phaser.Scene {
     const x = p.px + (p.x - p.px) * a;
     const y = p.py + (p.y - p.py) * a;
 
+    if (this.forest) {
+      let radius = 0;
+      for (const weapon of p.weapons) {
+        const def = w.data.weapons[weapon.def];
+        if (def.pattern === "aura")
+          radius = Math.max(
+            radius,
+            auraRadius(def.levels[weapon.level - 1], p.stats),
+          );
+      }
+      this.forest.draw(w, a, radius);
+      return;
+    }
     this.playerSprite.setPosition(x, y).setAlpha(p.invuln > 0 ? 0.5 : 1);
     this.playerSprite.setFlipX(p.faceX < 0);
     if (!frozen && (p.moveX || p.moveY))

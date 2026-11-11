@@ -1,3 +1,4 @@
+import { mountForest } from "./Forest3D";
 import type Phaser from "phaser";
 
 // Original pixel artwork. All textures are local, deterministic, and generated once.
@@ -275,6 +276,17 @@ export function createArt(scene: Phaser.Scene): void {
 }
 
 export function titleLandscape(scene: Phaser.Scene): void {
+  const forest = mountForest(document.querySelector<HTMLElement>("#shell")!);
+  if (forest) {
+    const redraw = () => forest.draw();
+    redraw();
+    window.addEventListener("resize", redraw);
+    scene.events.once("shutdown", () => {
+      window.removeEventListener("resize", redraw);
+      forest.dispose();
+    });
+    return;
+  }
   const g = scene.add.graphics();
   g.fillStyle(0x10292f).fillRect(0, 0, 640, 360);
   g.fillStyle(0x17363b).fillCircle(462, 102, 82);

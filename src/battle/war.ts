@@ -35,7 +35,7 @@ export interface War {
   squadOrders?: [SquadCommand | null, SquadCommand | null, SquadCommand | null];
 }
 export const DIFFICULTIES: Record<Difficulty, {label:string;description:string;aiIncome:number;aiInterval:number;aiAttackAfter:number}> = {
-  easy: {label:'입문',description:'AI 자원 생산 20% 감소 · 판단 간격 30% 증가 · AI 본부 공세는 130초 이후',aiIncome:.8,aiInterval:1.3,aiAttackAfter:130},
+  easy: {label:'입문',description:'아군 자원 +35% · AI 생산 45% 감소 · AI 본부 공세 260초 이후 · 폭풍 3분 이후',aiIncome:.55,aiInterval:1.7,aiAttackAfter:260},
   normal: {label:'보통',description:'같은 시작 자원 · 기본 AI 생산과 판단 속도 · AI 본부 공세는 105초 이후',aiIncome:1,aiInterval:1,aiAttackAfter:105},
   hard: {label:'도전',description:'AI 자원 생산 20% 증가 · 판단 간격 20% 감소 · AI 본부 공세 대기 없음',aiIncome:1.2,aiInterval:.8,aiAttackAfter:0},
 };
@@ -55,6 +55,7 @@ export const OUTPOST_BONUSES: ReadonlyArray<{gold:number;food:number}> = [
 export const MAP_HALF_SIZE = 260;
 export const MAP_SIZE = MAP_HALF_SIZE * 2;
 export const STORM_START = 130;
+export const stormStartFor = (w: War) => w.difficulty === 'easy' ? 180 : STORM_START;
 export const STORM_HQ_DAMAGE = 3.5;
 const CORNERS = [[-112,-112],[112,-112],[-112,112],[112,112]] as const;
 const OUTPOSTS = [[0,-95],[95,0],[0,95],[-95,0],[0,0],[-62,-62],[62,-62],[-62,62],[62,62]] as const;
@@ -104,7 +105,7 @@ export function getIncome(w:War,id:number):{gold:number;food:number} {
   if(!f?.alive)return {gold:0,food:0};
   const owned=w.outposts.filter(p=>p.owner===id);
   const policy=f.policy==='growth'?1.25:f.policy==='war'?.88:1;
-  const multiplier=policy*(1+f.research.logistics*.06)*(id===0?1:DIFFICULTIES[w.difficulty].aiIncome);
+  const multiplier=policy*(1+f.research.logistics*.06)*(id===0?(w.difficulty==='easy'?1.35:1):DIFFICULTIES[w.difficulty].aiIncome);
   return {
     gold:owned.reduce((a,p)=>a+OUTPOST_BONUSES[p.id].gold,f.mine*1.5)*multiplier,
     food:owned.reduce((a,p)=>a+OUTPOST_BONUSES[p.id].food,f.farm*1.3)*multiplier,
@@ -287,7 +288,7 @@ export function captureHeroPost(w: War, x: number, z: number, dt: number): Outpo
 /** Armor mitigates combat only. Storm damage bypasses armor. */
 function attack(w:War,attacker:number,target:Unit,damage:number):void {
   if(target.hp<=0)return;
-  const actual=damage*(1-w.factions[target.owner].research.armor*.08);
+  const actual=damage*(w.difficulty==='easy'&&attacker!==0?.72:1)*(1-w.factions[target.owner].research.armor*.08);
   w.stats[attacker].damageDealt+=Math.min(target.hp,actual);
   target.hp-=actual;
   if(target.hp<=0)w.stats[attacker].kills++;
@@ -295,7 +296,7 @@ function attack(w:War,attacker:number,target:Unit,damage:number):void {
 export function stepWar(w: War,dt: number):void {
   if (w.over||!Number.isFinite(dt)||dt<=0) return;
   dt=Math.min(dt,.1); w.time+=dt;
-  w.zone=Math.max(24,MAP_HALF_SIZE-6-Math.max(0,w.time-STORM_START)*.48);
+  w.zone=Math.max(24,MAP_HALF_SIZE-6-Math.max(0,w.time-stormStartFor(w))*.48);
   for (const f of w.factions) {
     if (!f.alive) continue;
     const income=getIncome(w,f.id);
@@ -386,7 +387,7 @@ export function stepWar(w: War,dt: number):void {
       const d=distance(u.x,u.z,target.x,target.z);
       if (d>Math.max(5,s.range)) moveToward(w,u,target.x,target.z,dt);
       else if (u.cooldown<=0) {
-        const damage=(s.damage*.9+f.barracks*1.5)*combatMultiplier;
+        const damage=(s.damage*.9+f.barracks*1.5)*combatMultiplier*(w.difficulty==='easy'&&u.owner!==0?.72:1);
         w.stats[u.owner].damageDealt+=Math.min(target.hp,damage);
         target.hp-=damage;u.cooldown=s.cooldown;
       }

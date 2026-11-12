@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { captureOrder, createWar, order, stepWar, train, upgrade, MAX_UNITS } from '../../src/battle/war';
+import { captureOrder, createWar, order, repair, stepWar, train, trainSquad, upgrade, MAP_HALF_SIZE, MAX_UNITS } from '../../src/battle/war';
 
 describe('3D management war strategic rules', () => {
- it('starts with four living factions, five neutral objectives, and four squads of recruits', () => {
+ it('starts with four living factions, nine neutral objectives, and four squads of recruits', () => {
   const w=createWar();
   expect(w.factions).toHaveLength(4);
   expect(w.units).toHaveLength(16);
-  expect(w.outposts).toHaveLength(5);
+  expect(w.outposts).toHaveLength(9);
+  expect(MAP_HALF_SIZE).toBe(185);
+  expect(w.factions[0].x).toBe(-112);
   expect(w.outposts.every(p=>p.owner===null)).toBe(true);
  });
  it('cannot recruit advanced units without researching the barracks', () => {
@@ -59,6 +61,35 @@ describe('3D management war strategic rules', () => {
   invader.x=f.x;invader.z=f.z;const hp=invader.hp;
   stepWar(w,.05);
   expect(invader.hp).toBeLessThan(hp);
+ });
+ it('repairs damaged HQ without wasting resources at full HP',()=>{
+  const w=createWar(),f=w.factions[0];
+  expect(repair(w,0)).toBe(false);
+  f.hp=250;
+  const gold=f.gold,food=f.food;
+  expect(repair(w,0)).toBe(true);
+  expect(f.hp).toBe(350);
+  expect(f.gold).toBe(gold-45);
+  expect(f.food).toBe(food-25);
+  f.gold=0;
+  expect(repair(w,0)).toBe(false);
+ });
+ it('trains squads only when whole squad is affordable and within cap',()=>{
+  const w=createWar(),f=w.factions[0];
+  f.gold=2000;f.food=2000;
+  expect(trainSquad(w,0,'infantry',3)).toBe(true);
+  expect(w.units.filter(u=>u.owner===0)).toHaveLength(7);
+  expect(trainSquad(w,0,'archer',3)).toBe(false);
+  expect(trainSquad(w,0,'infantry',0)).toBe(false);
+  expect(trainSquad(w,0,'infantry',6)).toBe(false);
+  for(let i=0;i<11;i++)train(w,0);
+  expect(trainSquad(w,0,'infantry',3)).toBe(false);
+  expect(w.units.filter(u=>u.owner===0)).toHaveLength(MAX_UNITS);
+ });
+ it('keeps the storm wide enough for early expansion, then shrinks it',()=>{
+  const w=createWar();expect(w.zone).toBe(179);
+  w.time=100;stepWar(w,.1);expect(w.zone).toBe(179);
+  w.time=300;stepWar(w,.1);expect(w.zone).toBeLessThan(110);
  });
  it('simulates strictly finite, nonnegative time increments', () => {
   const w=createWar();

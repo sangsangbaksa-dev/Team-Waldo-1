@@ -17,7 +17,7 @@ export function openWar(onExit:()=>void):void {
  const w:War=createWar();
  const outpostMats=w.outposts.map(p=>{const pedestal=make(cylinder,grey,p.x,.4,p.z,5,.8,5);
   const beacon=make(cylinder,white,p.x,2.2,p.z,.45,3.8,.45);
-  const banner=make(box,gold,p.x,4.5,p.z,2,1.2,.2);
+  const banner=make(box,material(0xf5c45d),p.x,4.5,p.z,2,1.2,.2);
   return {pedestal,beacon,banner};
  });
  const bases=w.factions.map(f=>{const tower=make(box,mats[f.id],f.x,3,f.z,9,6,9);const roof=make(box,dark,f.x,6.6,f.z,10,1.2,10);const flag=make(box,mats[f.id],f.x,10,f.z,3,2,.25);const pole=make(cylinder,white,f.x-1.4,8.7,f.z,.15,5,.15);const buildings=[make(box,green,f.x-8,1.3,f.z+9,4,2.6,4),make(box,gold,f.x,1.3,f.z+10,4,2.6,4),make(box,grey,f.x+8,1.3,f.z+9,4,2.6,4)];return {tower,roof,flag,pole,buildings};});

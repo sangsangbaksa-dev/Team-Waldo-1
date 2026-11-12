@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MAP_HALF_SIZE, UNIT_STATS, type Unit, type UnitKind, type War } from './war';
+import { MAP_HALF_SIZE, OUTPOST_NAMES, UNIT_STATS, type Unit, type UnitKind, type War } from './war';
 
 /** Procedural, self-contained stylized 3D battlefield. No external models or textures. */
 export const FACTION_COLORS = [0x50d9d1, 0xf06a77, 0xf5c45d, 0xaa8eed] as const;
@@ -13,7 +13,7 @@ type Fortress = {
   root:THREE.Group; towers:THREE.Group; structures:THREE.Group[];
   banner:THREE.Mesh; rubble:THREE.Group; alive:boolean;
 };
-type PostVisual = {banner:THREE.Mesh; crystal:THREE.Mesh; progress:THREE.Mesh};
+type PostVisual = {banner:THREE.Mesh; crystal:THREE.Mesh; progress:THREE.Mesh; label:THREE.Sprite};
 type Projectile = {sprite:THREE.Mesh;start:THREE.Vector3;end:THREE.Vector3;age:number;duration:number};
 export interface BattleWorld { update(dt:number):void; dispose():void; }
 const seeded = (seed:number) => () => {
@@ -229,7 +229,24 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     const banner=add(root,box,flagMaterial,1.3,7,-2.6,2.65,1.55,.16);
     const progress=add(root,torus,material(FACTION_COLORS[0]),0,1.63,0,3.1,3.1,3.1);
     progress.rotation.x=Math.PI/2;progress.visible=false;
-    return {banner,crystal,progress};
+    const sign=document.createElement('canvas');sign.width=512;sign.height=128;
+    const ctx=sign.getContext('2d');
+    if(ctx){
+      ctx.fillStyle='rgba(9,26,28,0.88)';ctx.beginPath();
+      ctx.roundRect(14,14,484,100,22);ctx.fill();
+      ctx.strokeStyle='#d5c49e';ctx.lineWidth=4;ctx.stroke();
+      ctx.fillStyle='#fff1cc';ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.font='bold 42px system-ui, sans-serif';
+      ctx.fillText(OUTPOST_NAMES[p.id],256,64,430);
+    }
+    const signTexture=new THREE.CanvasTexture(sign);
+    signTexture.colorSpace=THREE.SRGBColorSpace;
+    const label=new THREE.Sprite(new THREE.SpriteMaterial({
+      map:signTexture,color:0xffffff,depthTest:false,depthWrite:false,
+    }));
+    label.position.set(0,12.8,0);label.scale.set(20,5,1);
+    label.renderOrder=10;root.add(label);
+    return {banner,crystal,progress,label};
   });
   // Shrinking safe-zone border, with a faint translucent vertical storm curtain.
   const ring=add(world,new THREE.TorusGeometry(1,.075,6,160),
@@ -336,6 +353,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     for(const p of war.outposts){
       const v=posts[p.id],color=p.owner===null?0xffd184:FACTION_COLORS[p.owner];
       (v.banner.material as THREE.MeshStandardMaterial).color.setHex(color);
+      (v.label.material as THREE.SpriteMaterial).color.setHex(p.owner===null?0xffffff:color);
       (v.crystal.material as THREE.MeshStandardMaterial).color.setHex(color);
       v.crystal.rotation.y+=dt*.55;
       v.crystal.position.y=5.25+Math.sin(time*2.1+p.id)*.32;
@@ -383,11 +401,14 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   }
   const dispose=():void=>{
     scene.remove(world,ambient,sun,sun.target,fill);
-    const geos=new Set<THREE.BufferGeometry>(),mats=new Set<THREE.Material>();
+    const geos=new Set<THREE.BufferGeometry>(),mats=new Set<THREE.Material>(),textures=new Set<THREE.Texture>();
     world.traverse(o=>{
       if(o instanceof THREE.Mesh || o instanceof THREE.InstancedMesh){
         geos.add(o.geometry);
         for(const m of Array.isArray(o.material)?o.material:[o.material])mats.add(m);
+      }else if(o instanceof THREE.Sprite){
+        mats.add(o.material);
+        if(o.material.map)textures.add(o.material.map);
       }
     });
     geos.add(box);geos.add(cylinder);geos.add(sphere);geos.add(cone);
@@ -397,6 +418,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     [stone,stoneDark,mortar,roof,timber,woodDark,cream,gold,meadow,leaves,leafLight,
       waterMat,roadMat,soilMat,ember,...teamMats,...bannerMats].forEach(m=>mats.add(m));
     mats.forEach(m=>m.dispose());
+    textures.forEach(texture=>texture.dispose());
     sun.shadow.map?.dispose();
   };
   return {update,dispose};

@@ -129,6 +129,15 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
     mode = 'strategy';
     notice = '전략 지도로 돌아왔습니다. 병력 훈련과 출전 명령을 내리세요.';
   }
+  /** Dev-only smoke test hook: complete the cinematic without waiting for a real-time animation. */
+  function skipDrop() {
+    if (mode !== 'drop') return;
+    dropTime = 6.2;
+    mode = 'field';
+    avatar.position.set(x, 0, z);
+    canopy.visible = false;
+    notice = '착륙 성공! 거점 점령을 시작하세요.';
+  }
   function onPointerDelta(dx: number, dy: number) {
     if (mode !== 'field' && mode !== 'tower') return;
     yaw -= dx * .004;
@@ -259,6 +268,6 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
     get inDrop() { return mode === 'drop'; },
     get canEnterTower() { return mode === 'field' && nearestFriendlyCastle().range <= 18; },
     takeNotice() { const message = notice; notice = ''; return message; },
-    toField, toStrategy, enterTower, leaveTower, onPointerDelta, shoot, update, hint, dispose,
+    toField, toStrategy, enterTower, leaveTower, skipDrop, onPointerDelta, shoot, update, hint, dispose,
   };
 }

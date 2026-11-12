@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { captureOrder, createWar, order, repair, stepWar, train, trainSquad, upgrade, MAP_HALF_SIZE, MAX_UNITS } from '../../src/battle/war';
+import { captureOrder, createWar, order, repair, setPolicy, setReserve, stepWar, train, trainSquad, upgrade, OUTPOST_BONUSES, MAP_HALF_SIZE, MAX_UNITS } from '../../src/battle/war';
 
 describe('3D management war strategic rules', () => {
  it('starts with four living factions, nine neutral objectives, and four squads of recruits', () => {
@@ -98,4 +98,55 @@ describe('3D management war strategic rules', () => {
   stepWar(w,999);
   expect(w.time).toBeCloseTo(.1);
  });
+ it('lets the player switch between economic policies with distinct yields',()=>{
+  const regular=createWar(),rapid=createWar(),military=createWar();
+  expect(setPolicy(rapid,0,'growth')).toBe(true);
+  expect(setPolicy(military,0,'war')).toBe(true);
+  expect(setPolicy(rapid,0,'invalid' as never)).toBe(false);
+  stepWar(regular,.1);stepWar(rapid,.1);stepWar(military,.1);
+  expect(rapid.factions[0].gold).toBeGreaterThan(regular.factions[0].gold);
+  expect(military.factions[0].gold).toBeLessThan(regular.factions[0].gold);
+ });
+ it('limits reserve troops and keeps a defensive detachment behind',()=>{
+  const w=createWar();
+  expect(setReserve(w,0,7)).toBe(false);
+  expect(setReserve(w,0,-1)).toBe(false);
+  expect(setReserve(w,0,2.5)).toBe(false);
+  expect(setReserve(w,0,3)).toBe(true);
+  expect(captureOrder(w,0,4)).toBe(true);
+  w.units=w.units.filter(u=>u.owner===0);
+  const units=w.units.filter(u=>u.owner===0);
+  const first=units[0],last=units[3];
+  const a=Math.hypot(first.x,first.z),b=Math.hypot(last.x,last.z);
+  for(let i=0;i<30;i++)stepWar(w,.1);
+  expect(Math.hypot(first.x,first.z)).toBeGreaterThan(a-3);
+  expect(Math.hypot(last.x,last.z)).toBeLessThan(b-10);
+ });
+ it('specialty outposts produce different resources and announce capture',()=>{
+  const w=createWar(),post=w.outposts[0],f=w.factions[0];
+  expect(OUTPOST_BONUSES[0].gold).toBeGreaterThan(OUTPOST_BONUSES[2].gold);
+  w.units=w.units.filter(u=>u.owner===0);
+  w.factions.slice(1).forEach(op=>{op.aiTimer=9999;});
+  for(const u of w.units){u.x=post.x;u.z=post.z;}
+  for(let i=0;i<230;i++)stepWar(w,.05);
+  expect(post.owner).toBe(0);
+  expect(w.events.some(e=>e.text.includes('북부 광산'))).toBe(true);
+  const gold=f.gold,food=f.food;
+  stepWar(w,.1);
+  expect(f.gold-gold).toBeCloseTo((1.5+OUTPOST_BONUSES[0].gold)*.1);
+  expect(f.food-food).toBeCloseTo((1.3+OUTPOST_BONUSES[0].food)*.1);
+ });
+ it('stores only a bounded set of strategic events',()=>{
+  const w=createWar();
+  w.factions.slice(1).forEach(f=>f.aiTimer=9999);
+  for(let i=0;i<w.outposts.length;i++){
+   const post=w.outposts[i];
+   post.contender=0;post.progress=99;
+   for(const u of w.units.filter(u=>u.owner===0)){u.x=post.x;u.z=post.z;}
+   stepWar(w,.1);
+  }
+  expect(w.events.length).toBeLessThanOrEqual(8);
+  expect(w.events[0].text).toContain('남동부 교역소');
+ });
+
 });

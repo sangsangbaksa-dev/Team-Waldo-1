@@ -47,8 +47,8 @@ export function openWar(onExit:()=>void,forceNew=false):void {
     paused=!paused;el<HTMLButtonElement>('#pause').textContent=paused?'계속하기':'일시정지';
     event.preventDefault();return;
   }
-  if(['1','2','3'].includes(event.key)&&!event.repeat){
-    train(w,0,(['infantry','archer','guardian'] as UnitKind[])[Number(event.key)-1]);
+  if(['1','2','3','4'].includes(event.key)&&!event.repeat){
+    train(w,0,(['infantry','archer','guardian','cavalry'] as UnitKind[])[Number(event.key)-1]);
     ui();event.preventDefault();return;
   }
   if(['w','a','s','d','arrowup','arrowleft','arrowdown','arrowright'].includes(event.key.toLowerCase())){
@@ -158,7 +158,7 @@ export function openWar(onExit:()=>void,forceNew=false):void {
   repairButton.disabled=!p.alive||w.over||p.hp>=p.maxHp-1||p.gold<45||p.food<25;
   repairButton.onclick=()=>{repair(w,0);ui();};
   const training=el('#unit-train');training.innerHTML='';
-  for(const kind of ['infantry','archer','guardian'] as UnitKind[]){
+  for(const kind of ['infantry','archer','guardian','cavalry'] as UnitKind[]){
    const stat=UNIT_STATS[kind],btn=document.createElement('button');
    btn.className='war-action';btn.textContent=`${stat.label} · 금 ${stat.gold} / 식량 ${stat.food}`;
    btn.disabled=!p.alive||w.over||p.barracks<stat.unlock||p.gold<stat.gold||p.food<stat.food||count(0)>=MAX_UNITS;

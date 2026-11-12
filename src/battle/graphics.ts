@@ -254,6 +254,9 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   }
 
   const models=new Map<number,UnitVisual>(),projectiles:Projectile[]=[];
+  // Reuse resources for short-lived soldiers/projectiles; avoid per-death GPU leaks.
+  const bowGeometry=new THREE.TorusGeometry(.75,.08,5,18,Math.PI*1.3);
+  const healthMaterial=material(0x82e4a0);
   const missileGeometry=new THREE.SphereGeometry(.27,8,6);
   const missileMaterial=new THREE.MeshBasicMaterial({color:0xffeea5});
   const cooldowns=new Map<number,number>();
@@ -271,7 +274,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     const rightLeg=add(root,box,woodDark,.4,.43,0,.52,.83,.61);
     if(u.kind==='archer'){
       add(root,box,timber,-.85,1.65,-.8,.65,1.35,.65);
-      const bow=add(root,new THREE.TorusGeometry(.75,.08,5,18,Math.PI*1.3),timber,1.25,1.3,.55);
+      const bow=add(root,bowGeometry,timber,1.25,1.3,.55);
       bow.rotation.y=Math.PI/2;
       add(root,box,cream,1.24,1.3,.55,.035,1.5,.04);
     }else{
@@ -281,7 +284,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
       add(root,box,timber,1.14,.62,.55,.48,.18,.3);
     }
     const hpBack=add(root,box,woodDark,0,3.8,0,1.8,.24,.1);
-    const health=add(root,box,material(0x82e4a0),0,3.8,.075,1.8,.2,.12);
+    const health=add(root,box,healthMaterial,0,3.8,.075,1.8,.2,.12);
     hpBack.visible=true;health.visible=true;
     body.castShadow=true;
     return {root,kind:u.kind,previousX:u.x,previousZ:u.z,leftLeg,rightLeg,health};
@@ -333,7 +336,10 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     }
     const active=new Set(war.units.map(u=>u.id));
     for(const [id,v] of models){
-      if(!active.has(id)){world.remove(v.root);models.delete(id);cooldowns.delete(id);}
+      if(!active.has(id)){
+        world.remove(v.root);
+        models.delete(id);cooldowns.delete(id);
+      }
     }
     for(const u of war.units){
       let v=models.get(u.id);
@@ -375,7 +381,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     });
     geos.add(box);geos.add(cylinder);geos.add(sphere);geos.add(cone);
     geos.add(rock);geos.add(torus);geos.add(trunkGeo);geos.add(crownGeo);
-    geos.add(missileGeometry);
+    geos.add(missileGeometry);geos.add(bowGeometry);mats.add(healthMaterial);
     geos.forEach(g=>g.dispose());mats.add(missileMaterial);
     [stone,stoneDark,mortar,roof,timber,woodDark,cream,gold,meadow,leaves,leafLight,
       waterMat,roadMat,soilMat,ember,...teamMats,...bannerMats].forEach(m=>mats.add(m));

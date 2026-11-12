@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createBattleWorld, FACTION_COLORS } from './graphics';
 import { createAdventure } from './adventure';
+import { SQUAD_NAMES, squadUnits, assignSquad, dismissSquad, commandSquad, squadDestination, squadOrderLabel, type SquadId, type SquadCommand } from './squads';
 import { loadWar, saveWar, deleteWarSave } from './save';
 import { worldToMinimap, minimapToWorld, pickMapTarget, type StrategicTarget } from './mapCommands';
 import { BattleAudio } from './audio';
@@ -68,7 +69,24 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
       <div class="war-panel-scroll">
         <section id="pane-economy" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-economy"><div class="section-heading"><h2>생산과 성장</h2><span>최대 Lv.4</span></div><div id="buildings" class="action-list"></div><div class="section-heading"><h2>왕국 정책</h2></div><div id="policy" class="segmented"></div><p id="policy-description" class="panel-note"></p><button id="repair" class="repair-button">${icon('shield', 17)}<span>본부 수리<small>체력 +100 · 금 45 / 식량 25</small></span></button></section>
         <section id="pane-army" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-army" hidden><div class="section-heading"><h2>병종 훈련</h2><span>숫자 1–4</span></div><div id="unit-train"></div><div class="section-heading"><h2>본부 수비대</h2></div><div id="reserve" class="segmented"></div><p class="panel-note">지정한 병력은 본부를 지킵니다. 나머지 병력이 작전 명령을 수행합니다.</p></section>
-        <section id="pane-orders" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-orders" hidden><div class="section-heading"><h2>부대 명령</h2></div><div id="targets" class="action-list"></div><div class="section-heading"><h2>거점 점령</h2><span>9개 전략 거점</span></div><div id="outposts" class="outpost-list"></div><p class="panel-note">거점마다 생산 자원이 다릅니다. 점령 거점 1개당 본부 폭풍 피해가 12% 감소합니다 (최대 60%).</p></section>
+        <section id="pane-orders" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-orders" hidden>
+          <div class="squad-manager" aria-label="부대 그룹 편성">
+            <div class="section-heading"><h2>부대 편성 및 직접 이동</h2><span>3개 그룹</span></div>
+            <div class="squad-tabs" aria-label="선택할 부대 그룹">
+              <button data-squad-select="0" aria-pressed="true">① 주력군 <small>4명</small></button>
+              <button data-squad-select="1" aria-pressed="false">② 기동대 <small>0명</small></button>
+              <button data-squad-select="2" aria-pressed="false">③ 수비대 <small>0명</small></button>
+            </div>
+            <p class="squad-order-status" id="squad-order-status" role="status">주력군 · 기본 작전</p>
+            <div class="squad-actions">
+              <button id="squad-assign">+3명 편성</button>
+              <button id="squad-release">주력군에 합류</button>
+              <button id="squad-home">선택 부대 → 본부</button>
+              <button id="squad-move-mode">지도에서 이동 지점 지정</button>
+            </div>
+            <p class="panel-note">①②③ 부대 선택 → 전장이나 미니맵에서 목적지를 클릭하세요. 아무 땅으로도 이동할 수 있으며, 아군 본부를 찍으면 복귀합니다. <kbd>5</kbd><kbd>6</kbd><kbd>7</kbd> 그룹 전환 · <kbd>G</kbd> 이동 모드 · <kbd>B</kbd> 본부 복귀</p>
+          </div>
+          <div class="section-heading"><h2>공격 및 방어 명령</h2></div><div id="targets" class="action-list"></div><div class="section-heading"><h2>거점 점령</h2><span>9개 전략 거점</span></div><div id="outposts" class="outpost-list"></div><p class="panel-note">거점마다 생산 자원이 다릅니다. 점령 거점 1개당 본부 폭풍 피해가 12% 감소합니다 (최대 60%).</p></section>
         <section id="pane-research" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-research" hidden><div class="section-heading"><h2>왕국 연구소</h2><span>병영 Lv.2 해금</span></div><p class="panel-note">연구 효과는 모든 아군 병력에 즉시 적용됩니다. 각 연구는 3단계까지 성장합니다.</p><div id="research" class="action-list"></div><div class="research-summary" id="research-summary"></div></section>
       </div>
       <footer class="panel-footer"><span id="save-status" role="status">15초마다 자동 저장</span><span class="render-performance" id="render-fps" title="지난 1초 동안 실제로 그린 화면 수" aria-label="화면 렌더링 프레임 속도">— FPS</span><button id="save" class="text-button">${icon('save', 14)}저장</button></footer>
@@ -76,9 +94,17 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     <section class="mission-card" aria-label="현재 목표"><div class="mission-icon">${icon('flag', 21)}</div><div><span class="kicker">NEXT OBJECTIVE</span><h2 id="mission-title"></h2><p id="mission-description"></p></div><button id="mission-action" class="tool-button" aria-label="목표로 이동">${icon('arrow', 18)}</button></section>
     <aside class="war-intel" aria-label="전황"><div class="section-heading"><h2>왕국 현황</h2><span id="alive-count">4 세력</span></div><div id="standings"></div><div class="event-heading">전장 소식<span class="live-dot"></span></div><div id="events" class="war-events" aria-live="polite" aria-relevant="additions"></div></aside>
     <div class="storm-warning" id="storm-warning" hidden>${icon('bolt', 17)}<span id="storm-warning-text"></span></div>
-    <section class="war-minimap" aria-label="전장 지도"><div class="map-heading"><span>${icon('map', 15)}전략 지도</span><button id="map-mode" class="text-button" aria-pressed="false">시점 이동</button></div><canvas id="war-map" width="220" height="220" aria-label="미니맵: 클릭으로 시점 이동. 명령 모드에서 거점을 눌러 출전." tabindex="0"></canvas><div class="map-footer"><span id="storm-clock"></span><span id="zone-size"></span></div></section>
+    <section class="war-minimap" aria-label="전장 지도"><div class="map-heading"><span>${icon('map', 15)}전략 지도</span><button id="map-mode" class="text-button" aria-pressed="false">시점 이동</button></div><canvas id="war-map" width="220" height="220" aria-label="미니맵: 그룹 선택 후 위치 지정 모드에서는 원하는 좌표를 클릭해 출전합니다. 아군 본부 클릭으로 복귀합니다." tabindex="0"></canvas><div class="map-footer"><span id="storm-clock"></span><span id="zone-size"></span></div></section>
     <div class="camera-controls"><button id="zoom-in" class="tool-button" aria-label="확대">+</button><button id="zoom-out" class="tool-button" aria-label="축소">−</button><button id="overview" class="tool-button" aria-label="전장 전체 보기">${icon('expand', 18)}</button><button id="panel-toggle" class="tool-button mobile-only" aria-label="관리 패널 접기" aria-expanded="true">${icon('chevron', 18)}</button></div>
-    <div class="war-help"><span><kbd>WASD</kbd> 시점 이동</span><span>드래그: 회전</span><span><kbd>V</kbd> 직접 조작 · <kbd>T</kbd> 전략</span><span><kbd>Shift</kbd> + 클릭: 부대 명령</span></div>
+    <div class="war-help"><span><kbd>WASD</kbd> 시점 이동</span><span>드래그: 회전</span><span><kbd>5–7</kbd> 부대 선택</span><span><kbd>G</kbd> 이동 · <kbd>B</kbd> 본부</span></div>
+    <nav class="squad-quickbar" aria-label="빠른 부대 지휘">
+      <span>부대 지휘</span>
+      <button data-squad-select="0" aria-pressed="true">① 주력군 <small>4명</small></button>
+      <button data-squad-select="1" aria-pressed="false">② 기동대 <small>0명</small></button>
+      <button data-squad-select="2" aria-pressed="false">③ 수비대 <small>0명</small></button>
+      <button id="quick-move" aria-pressed="false">📍 위치 지정</button>
+      <button id="quick-home">⌂ 본부</button>
+    </nav>
     <div class="target-card" id="target-card" hidden><button id="target-close" class="target-close tool-button" aria-label="대상 닫기">${icon('close', 16)}</button><span class="kicker" id="target-type"></span><h3 id="target-name"></h3><p id="target-description"></p><button id="target-command" class="button primary">병력 출전 ${icon('arrow', 16)}</button></div>
     <div class="adventure-switch"><button id="adventure-enter" class="button primary">직접 플레이 (V) · 낙하산/탐험</button></div>
     <section id="adventure-hud" class="adventure-hud" aria-label="직접 조작" hidden>
@@ -106,6 +132,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   let graphicsLost = false;
   let dead = false, done = false, paused = false, speed = .65, frame = 0, acc = 0, last = performance.now(), lastUI = 0;
   let toastUntil = 0, lastAutosave = w.time, previousEvent = '', lowHpWarned = false, wasThreatened = false, selectedTarget: StrategicTarget | null = null;
+  let selectedSquad: SquadId = 0;
   let modalClose: (() => void) | null = null;
   const announce = (message: string) => { text('#toast', message); el('#toast').hidden = false; toastUntil = performance.now() + 3300; };
   let renderer: THREE.WebGLRenderer;
@@ -180,11 +207,35 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     const button = document.createElement('button'); button.id = `reserve-${amount}`; button.textContent = amount === 0 ? '전군 출전' : `${amount}명`;
     button.onclick = () => perform(() => setReserve(w, 0, amount), amount === 0 ? '전군이 작전에 참여합니다.' : `${amount}명을 본부 수비대로 지정했습니다.`); el('#reserve').append(button);
   }
-  const issue = (target: StrategicTarget) => {
-    const success = target.kind === 'outpost' ? captureOrder(w, 0, target.id) : order(w, 0, target.id);
-    if (success) { audio.play('click'); announce(`${target.kind === 'outpost' ? OUTPOST_NAMES[target.id] + ' 점령' : FACTIONS[target.id] + ' 공격'} 명령을 내렸습니다.`); ui(); drawMap(); }
+  const commandTo = (command: SquadCommand): boolean => commandSquad(w, selectedSquad, command);
+  const issueHome = () => {
+    const success = selectedSquad === 0 ? order(w, 0, null) : commandTo({ kind: 'home' });
+    if (success) { audio.play('click'); announce(SQUAD_NAMES[selectedSquad] + '이(가) 아군 본부로 복귀합니다.'); ui(); drawMap(); }
+    else announce('선택한 부대에 병력이 없습니다. 먼저 3명 편성을 눌러 주세요.');
   };
-  addAction('#targets', 'defend', '기지 방어', '모든 출전 병력을 본부로 복귀', 'shield', () => perform(() => order(w, 0, null), '병력이 본부로 복귀합니다.'));
+  const issue = (target: StrategicTarget) => {
+    const success = selectedSquad === 0 ?
+      target.kind === 'outpost' ? captureOrder(w, 0, target.id) : order(w, 0, target.id) :
+      commandTo(target.kind === 'outpost' ? { kind: 'outpost', id: target.id } : { kind: 'faction', id: target.id });
+    if (success) { audio.play('click'); announce(SQUAD_NAMES[selectedSquad] + ' → ' +
+      (target.kind === 'outpost' ? OUTPOST_NAMES[target.id] + ' 점령' : FACTIONS[target.id] + ' 공격') + ' 명령을 내렸습니다.'); ui(); drawMap(); }
+    else announce('이 부대에 병력이 없습니다. 작전 탭에서 먼저 편성하세요.');
+  };
+  const issuePosition = (x: number, z: number) => {
+    const clampedX = THREE.MathUtils.clamp(x, -MAP_HALF_SIZE + 5, MAP_HALF_SIZE - 5);
+    const clampedZ = THREE.MathUtils.clamp(z, -MAP_HALF_SIZE + 5, MAP_HALF_SIZE - 5);
+    if (commandTo({ kind: 'move', x: clampedX, z: clampedZ })) {
+      audio.play('click'); announce(SQUAD_NAMES[selectedSquad] + ' 이동! 지정 위치로 출발합니다.'); ui(); drawMap();
+    } else announce('선택 부대에 병력이 없습니다. 주력군에서 3명 편성하세요.');
+  };
+  const issueAt = (x: number, z: number) => {
+    const base = w.factions[0];
+    if (Math.hypot(base.x - x, base.z - z) < 17) { issueHome(); return; }
+    const target = pickMapTarget(w, 0, x, z);
+    if (target) issue(target);
+    else issuePosition(x, z);
+  };
+  addAction('#targets', 'defend', '본부 방어 · 부대 복귀', '선택한 그룹을 아군 본부로 이동', 'shield', issueHome);
   for (let id = 1; id < 4; id++) addAction('#targets', `attack-${id}`, FACTIONS[id], '상대 본부를 공격합니다', 'sword', () => issue({ kind: 'faction', id }));
   for (const post of w.outposts) {
     const income = OUTPOST_BONUSES[post.id];

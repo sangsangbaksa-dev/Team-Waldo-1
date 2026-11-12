@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createGrandArmyVisuals } from './grandArmyVisuals';
 import { MAP_HALF_SIZE, OUTPOST_NAMES, OUTPOST_BONUSES, UNIT_STATS, type Unit, type UnitKind, type War } from './war';
 import { createWorldLabel, type WorldLabel } from './renderLabels';
 import { createBattleEffects } from './renderEffects';
@@ -354,6 +355,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     clouds.push(c);
   }
 
+  const grandVisuals=war.grandBattle?createGrandArmyVisuals(world,war):null;
   const models=new Map<number,UnitVisual>(),projectiles:Projectile[]=[];
   // Reuse resources for short-lived soldiers/projectiles; avoid per-death GPU leaks.
   const bowGeometry=new THREE.TorusGeometry(.75,.08,5,18,Math.PI*1.3);
@@ -498,6 +500,8 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
       destinationRing.scale.set(pulse,pulse,1);
       pointer.position.y=14+(reducedMotion?0:Math.sin(time*2.3)*.65);
     }
+    if(grandVisuals)grandVisuals.update();
+    else {
     const active=new Set(war.units.map(u=>u.id));
     for(const [id,v] of models){
       if(!active.has(id)){
@@ -527,6 +531,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
       const old=cooldowns.get(u.id)??u.cooldown;
       if(u.cooldown>old+.4)attackFeedback(u);
       cooldowns.set(u.id,u.cooldown);
+    }
     }
     for(let i=projectiles.length-1;i>=0;i--){
       const p=projectiles[i];p.age+=dt;

@@ -10,3 +10,16 @@
 .pause-actions{display:flex;gap:7px;margin-top:18px;flex-wrap:wrap}.pause-actions .button{flex:1;min-height:38px;font-size:10px;padding:10px;white-space:nowrap}
 
 @media(max-width:640px){.difficulty-option{min-width:0;grid-template-columns:14px minmax(0,1fr)}.difficulty-option>span{grid-row:auto}.difficulty-option small{grid-column:1/-1;white-space:normal;line-height:1.4}.difficulty-picker{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+
+/* Army-scale expedition remains prominent without crowding the compact landing layout. */
+.launch-actions{flex-wrap:wrap}
+.grand-launch-button{display:flex;flex:1 1 185px;min-width:0;align-items:center;justify-content:center;
+ flex-direction:column;gap:3px;min-height:57px;padding:8px 11px;border:1px solid #d8bd73b0;
+ border-radius:5px;background:linear-gradient(125deg,#23483a,#4b3b24);color:#f3e3b9;
+ box-shadow:0 7px 24px #08161185;font-size:11px;font-weight:600}
+.grand-launch-button strong{display:block;font-family:Georgia,serif;font-size:19px;letter-spacing:.06em;line-height:1.1}
+.grand-launch-button small{font-size:8px;opacity:.82;font-weight:400;white-space:normal;line-height:1.4}
+.grand-launch-button:hover{filter:brightness(1.13);border-color:#ffdfa4}
+@media(max-width:480px){.launch-actions{gap:8px}.grand-launch-button{flex-basis:180px;min-height:53px}
+.launch-button{flex-basis:150px;min-width:0}.continue-button{flex:1 1 100%}}

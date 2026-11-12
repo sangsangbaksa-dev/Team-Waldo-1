@@ -147,3 +147,10 @@
 .war-minimap #map-mode{width:100%;font-size:11px;padding:4px 6px;min-height:25px}
 .war-minimap #map-mode[aria-pressed="true"]{background:#326d5a;border-color:#a3daba;color:#fff}
 @media(max-width:700px){.war-minimap #map-mode{font-size:10px;padding:3px;min-height:24px}.war-minimap span{font-size:9px}}
+
+/* Short, optional introduction: hidden until opened to preserve playfield space. */
+.war-guide{margin:11px 0 0;padding:7px 8px;border:1px solid rgba(211,196,151,.26);
+ border-radius:8px;background:rgba(13,30,31,.52)}
+.war-guide summary{color:#e8d4a4;font-weight:650;font-size:12px;cursor:pointer;list-style-position:inside}
+.war-guide[open] summary{padding-bottom:5px;border-bottom:1px solid rgba(211,196,151,.2)}
+.war-guide p{font-size:11px;line-height:1.55;color:#c6daca;margin:7px 0}

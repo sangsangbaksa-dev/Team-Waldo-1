@@ -1,11 +1,12 @@
 name: Browser smoke
 on:
   pull_request:
+  push:
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: browser-${{ github.ref }}
+  group: browser-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 jobs:
   browser:

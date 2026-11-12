@@ -126,6 +126,7 @@ describe('3D management war strategic rules', () => {
   const w=createWar(),post=w.outposts[0],f=w.factions[0];
   expect(OUTPOST_BONUSES[0].gold).toBeGreaterThan(OUTPOST_BONUSES[2].gold);
   w.units=w.units.filter(u=>u.owner===0);
+  captureOrder(w,0,0);
   w.factions.slice(1).forEach(op=>{op.aiTimer=9999;});
   for(const u of w.units){u.x=post.x;u.z=post.z;}
   for(let i=0;i<230;i++)stepWar(w,.05);

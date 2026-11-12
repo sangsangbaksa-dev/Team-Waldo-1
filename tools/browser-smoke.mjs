@@ -45,11 +45,21 @@ function assertLayout(boxes) {
   for (const [a, b] of [
     ['.war-top', '.war-panel'], ['.war-top', '.war-minimap'], ['.war-top', '.mission-card'], ['.war-top', '.camera-controls'], ['.war-top', '.war-intel'],
     ['.war-panel', '.war-minimap'], ['.war-panel', '.camera-controls'], ['.war-panel', '.mission-card'], ['.war-minimap', '.camera-controls'], ['.war-minimap', '.war-intel'], ['.mission-card', '.war-intel'],
+    ['.mission-card', '.war-minimap'], ['.mission-card', '.camera-controls'],
   ]) if (boxes.regions[a] && boxes.regions[b]) assert.ok(intersect(boxes.regions[a], boxes.regions[b]) < 1, `${a} overlaps ${b}`);
   for (const [index, button] of boxes.topButtons.entries()) {
     assert.ok(button.left >= 0 && button.right <= boxes.width, `${button.id} outside viewport`);
     for (const next of boxes.topButtons.slice(index + 1)) assert.ok(intersect(button, next) < 1, `${button.id} overlaps ${next.id}`);
   }
+}
+async function assertElementFits(page, selector, result, name) {
+  const box = await page.locator(selector).evaluate(el => {
+    const r = el.getBoundingClientRect();
+    return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, viewportWidth: innerWidth, viewportHeight: innerHeight, scrollWidth: el.scrollWidth, clientWidth: el.clientWidth };
+  });
+  (result.dialogs ??= {})[name] = box;
+  assert.ok(box.left >= -1 && box.right <= box.viewportWidth + 1 && box.top >= -1 && box.bottom <= box.viewportHeight + 1, `${name} is clipped: ${JSON.stringify(box)}`);
+  assert.ok(box.scrollWidth <= box.clientWidth + 1, `${name} content overflows horizontally`);
 }
 async function waitForBattle(page) {
   await page.locator('.war-ui').waitFor({ timeout: 30000 });
@@ -93,9 +103,11 @@ try {
       assert.equal(await page.locator('[data-release="kingdoms-1.0"]').count(), 1);
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Landing overflows horizontally');
       await page.locator('#guide').click(); await page.getByRole('dialog').waitFor();
+      await assertElementFits(page, '.game-dialog', result, 'guide');
       await page.keyboard.press('Escape'); await page.getByRole('dialog').waitFor({ state: 'hidden' });
       assert.ok(await page.locator('#guide').evaluate(el => el === document.activeElement), 'Guide must restore focus');
       await page.locator('#preferences').click();
+      await assertElementFits(page, '.game-dialog', result, 'settings');
       await page.locator('#menu-quality').selectOption(name === 'desktop' ? 'high' : 'standard');
       await page.locator('#menu-sound').uncheck(); await page.locator('#menu-motion').check(); await page.locator('.dialog-cancel').click();
       await page.locator('#difficulty-easy').click(); assert.equal(await page.locator('#difficulty-easy').getAttribute('aria-pressed'), 'true');
@@ -114,6 +126,31 @@ try {
       await page.locator('#reserve-4').click(); assert.equal(await page.locator('#reserve-4').getAttribute('aria-pressed'), 'true');
       await page.locator('#tab-orders').click(); assert.equal(await page.locator('#outposts button').count(), 9);
       await page.locator('#outpost-5').click(); assert.equal((await snapshot(page)).rally, 5);
+      await stage('3D raycast and seeded defense warning');
+      await page.locator('#overview').click();
+      // World input intentionally ignores a paused game, so briefly resume for a
+      // real pointer gesture. Project the actual camera rather than guessing pixels.
+      await page.evaluate(() => window.__war.setPaused(false));
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => resolve())));
+      const projected = await page.evaluate(() => { const camera = window.__war.camera, point = camera.position.clone().set(0, 0, 0).project(camera); return { x: point.x, y: point.y }; });
+      const field = page.locator('.war-view canvas'), fieldBox = await field.boundingBox(); assert.ok(fieldBox);
+      await field.click({ position: { x: (projected.x + 1) * fieldBox.width / 2, y: (1 - projected.y) * fieldBox.height / 2 } });
+      await page.locator('#target-card').waitFor();
+      assert.equal(await page.locator('#target-name').innerText(), '중앙 요새');
+      await page.evaluate(() => window.__war.setPaused(true));
+      await capture(page, `${name}-3d-target`);
+      await page.locator('#target-command').click(); assert.equal((await snapshot(page)).rally, 4);
+      result.scenarios.push('seeded enemy attack order for threat UI');
+      const enemyOrder = await page.evaluate(() => {
+        const { world, ui } = window.__war, enemy = world.factions[1], previous = { target: enemy.target, rally: enemy.rally };
+        enemy.target = 0; enemy.rally = null; ui(); return previous;
+      });
+      assert.equal(await page.locator('.mission-card.under-attack').count(), 1);
+      await page.locator('#mission-action').click();
+      assert.ok(await page.locator('#defend').evaluate(el => el === document.activeElement));
+      await page.locator('#defend').click(); assert.equal((await snapshot(page)).rally, null);
+      assert.equal(await page.evaluate(() => window.__war.world.factions[0].target), null);
+      await page.evaluate(previous => { Object.assign(window.__war.world.factions[1], previous); window.__war.ui(); }, enemyOrder);
       await page.locator('#map-mode').click(); assert.equal(await page.locator('#map-mode').getAttribute('aria-pressed'), 'true');
       const map = page.locator('#war-map'), bounds = await map.boundingBox(); assert.ok(bounds);
       await map.click({ position: { x: bounds.width / 2, y: bounds.height / 2 } });
@@ -156,6 +193,7 @@ try {
       });
       await page.locator('.result-panel').waitFor(); assert.match(await page.locator('#result-title').innerText(), /마지막 왕국/);
       await capture(page, `${name}-victory`);
+      await assertElementFits(page, '.result-panel', result, 'victory');
       const career = await page.evaluate(() => JSON.parse(localStorage.getItem('waldo.career.v1')));
       assert.equal(career.matches, 1); assert.equal(career.wins, 1);
       await page.locator('#again').click(); await waitForBattle(page);

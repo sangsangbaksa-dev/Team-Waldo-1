@@ -26,6 +26,7 @@ export interface BattleWorld {
   setQuality(high:boolean):void;
   setReducedMotion(enabled:boolean):void;
   setLabelsVisible(visible:boolean):void;
+  setStrategicOverlaysVisible(visible:boolean):void;
   dispose():void;
 }
 const seeded = (seed:number) => () => {
@@ -39,6 +40,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   const world=new THREE.Group();world.name='Stylized kingdom';scene.add(world);
   let highQuality=true;
   let reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let strategicOverlaysVisible=true;
   const labels:WorldLabel[]=[];
   const effects=createBattleEffects(world);
   scene.background=new THREE.Color(0xb9d1d0);
@@ -287,8 +289,8 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     new THREE.MeshBasicMaterial({color:0xffe1a0}),0,14,0);
   pointer.rotation.z=Math.PI;pointer.castShadow=false;
   // Shrinking safe-zone border, with a faint translucent vertical storm curtain.
-  const ring=add(world,new THREE.TorusGeometry(1,.075,6,160),
-    new THREE.MeshBasicMaterial({color:0x84e9ff,transparent:true,opacity:.9,depthWrite:false}),
+  const ring=add(world,new THREE.RingGeometry(.997,1.003,160),
+    new THREE.MeshBasicMaterial({color:0x84e9ff,side:THREE.DoubleSide,transparent:true,opacity:.9,depthWrite:false}),
     0,.33,0);
   ring.rotation.x=Math.PI/2;ring.castShadow=false;
   const storm=add(world,new THREE.CylinderGeometry(1,1,13,120,1,true),
@@ -406,7 +408,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
         if(invader)launch(new THREE.Vector3(f.x,12,f.z),new THREE.Vector3(invader.x,1.5,invader.z),.35);
       }
       v.previousCooldown=f.turretCooldown;v.previousHp=f.hp;v.alive=f.alive;
-      const name=['내 왕국','적색 왕국','황금 왕국','보라 왕국'][f.id];
+      const name=['에메랄드 왕국','붉은 사자','황금 태양','보랏빛 달'][f.id];
       v.label.update(name,f.alive?`본부 ${Math.ceil(f.hp)} / ${f.maxHp}`:'함락된 왕국',
         f.alive?FACTION_COLORS[f.id]:0x8b9890,f.alive?f.hp/f.maxHp:0);
       v.rubble.visible=!f.alive;
@@ -427,7 +429,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
       (v.territory.material as THREE.MeshBasicMaterial).color.setHex(color);
       if(!reducedMotion)v.crystal.rotation.y+=dt*.55;
       v.crystal.position.y=reducedMotion?5.25:5.25+Math.sin(time*2.1+p.id)*.32;
-      v.progress.visible=p.contender!==null&&p.progress>1;
+      v.progress.visible=strategicOverlaysVisible&&p.contender!==null&&p.progress>1;
       if(p.contender!==null){
         (v.progress.material as THREE.MeshBasicMaterial).color.setHex(FACTION_COLORS[p.contender]);
         v.progress.geometry.setDrawRange(0,Math.floor(p.progress/100*64)*6);
@@ -442,7 +444,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     }
     const player=war.factions[0];
     const goal=player.target!==null?war.factions[player.target]:player.rally!==null?war.outposts[player.rally]:undefined;
-    route.visible=destination.visible=!!goal&&player.alive;
+    route.visible=destination.visible=strategicOverlaysVisible&&!!goal&&player.alive;
     if(goal){
       const points=routeGeometry.getAttribute('position');
       points.setXYZ(0,player.x,.4,player.z);points.setXYZ(1,goal.x,.4,goal.z);
@@ -509,6 +511,13 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   const setLabelsVisible=(visible:boolean):void=>{
     labels.forEach(label=>{label.sprite.visible=visible;});
   };
+  const setStrategicOverlaysVisible=(visible:boolean):void=>{
+    strategicOverlaysVisible=visible;
+    ring.visible=storm.visible=visible;
+    fortresses.forEach((fort,index)=>{fort.ring.visible=visible&&war.factions[index].alive;});
+    posts.forEach(post=>{post.territory.visible=visible;});
+    if(!visible){route.visible=false;destination.visible=false;}
+  };
   const dispose=():void=>{
     labels.forEach(label=>label.dispose());effects.dispose();
     scene.remove(world,ambient,sun,sun.target,fill);
@@ -532,5 +541,5 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     models.clear();cooldowns.clear();unitBatches.clear();projectiles.length=0;freeMissiles.length=0;
   };
   configureEffects();update(0);
-  return {update,setQuality,setReducedMotion,setLabelsVisible,dispose};
+  return {update,setQuality,setReducedMotion,setLabelsVisible,setStrategicOverlaysVisible,dispose};
 }

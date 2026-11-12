@@ -87,7 +87,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   const mount = el<HTMLDivElement>('.war-view');
   let graphicsLost = false;
   let dead = false, done = false, paused = false, speed = 1, frame = 0, acc = 0, last = performance.now(), lastUI = 0;
-  let toastUntil = 0, lastAutosave = w.time, previousEvent = '', lowHpWarned = false, selectedTarget: StrategicTarget | null = null;
+  let toastUntil = 0, lastAutosave = w.time, previousEvent = '', lowHpWarned = false, wasThreatened = false, selectedTarget: StrategicTarget | null = null;
   let modalClose: (() => void) | null = null;
   const announce = (message: string) => { text('#toast', message); el('#toast').hidden = false; toastUntil = performance.now() + 3300; };
   let renderer: THREE.WebGLRenderer;
@@ -120,6 +120,10 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   const heldKeys = new Set<string>();
   const resize = () => { renderer.setSize(mount.clientWidth, mount.clientHeight); camera.aspect = mount.clientWidth / mount.clientHeight; camera.updateProjectionMatrix(); };
   window.addEventListener('resize', resize, { signal });
+  const missionObserver = new ResizeObserver(() => {
+    overlay.style.setProperty('--mission-bottom', `${Math.ceil(el('.mission-card').getBoundingClientRect().bottom)}px`);
+  });
+  missionObserver.observe(el('.mission-card'));
   const home = () => { focus.set(w.factions[0].x + 24, 0, w.factions[0].z + 24); setZoom(155); };
   const showTab = (name: string) => {
     overlay.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(button => { const active = button.dataset.tab === name; button.setAttribute('aria-selected', String(active)); button.tabIndex = active ? 0 : -1; });
@@ -191,7 +195,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   };
   const close = (returnToMenu = true) => {
     if (dead) return; dead = true; modalClose?.(); modalClose = null;
-    cancelAnimationFrame(frame); controller.abort(); world.dispose(); renderer.dispose(); renderer.forceContextLoss(); audio.dispose(); overlay.remove();
+    cancelAnimationFrame(frame); controller.abort(); missionObserver.disconnect(); world.dispose(); renderer.dispose(); renderer.forceContextLoss(); audio.dispose(); overlay.remove();
     if (import.meta.env.DEV) delete (window as unknown as Record<string, unknown>).__war;
     if (returnToMenu) onExit();
   };
@@ -322,7 +326,16 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
       if (w.events[0]?.text.startsWith('나 세력') && w.events[0]?.text.includes('점령')) audio.play('capture');
     }
     if (!w.events.length) text('#events', '전령이 새로운 소식을 기다립니다.');
-    if (p.mine < 2 || p.farm < 2) { text('#mission-title', '풍요로운 영지의 시작'); text('#mission-description', '금광과 농장을 Lv.2로 강화하세요.'); el<HTMLButtonElement>('#mission-action').onclick = () => showTab('economy'); }
+    // Warn on an incoming order, while there is still time to recall troops.
+    // Nearby invaders also count when their current objective is a territory.
+    const threatened = !unavailable && w.units.some(unit => unit.owner !== 0 && unit.hp > 0 && w.factions[unit.owner].alive &&
+      (w.factions[unit.owner].target === 0 || Math.hypot(unit.x - p.x, unit.z - p.z) < 55));
+    el('.mission-card').classList.toggle('under-attack', threatened);
+    el('#mission-action').setAttribute('aria-label', threatened ? '본부로 이동하고 방어 명령 확인' : '목표로 이동');
+    if (threatened && !wasThreatened) { audio.play('warning'); announce('적의 본부 공세가 감지됐습니다. 병력을 복귀시키거나 본부 수비대를 확보하세요.'); }
+    wasThreatened = threatened;
+    if (threatened) { text('#mission-title', '본부에 적 병력이 접근합니다'); text('#mission-description', '화살표를 눌러 본부와 방어 명령을 확인하세요.'); el<HTMLButtonElement>('#mission-action').onclick = () => { home(); showTab('orders'); el<HTMLButtonElement>('#defend').focus({ preventScroll: true }); }; }
+    else if (p.mine < 2 || p.farm < 2) { text('#mission-title', '풍요로운 영지의 시작'); text('#mission-description', '금광과 농장을 Lv.2로 강화하세요.'); el<HTMLButtonElement>('#mission-action').onclick = () => showTab('economy'); }
     else if (counts[0] < 6 && owned === 0) { text('#mission-title', '첫 원정대를 준비하세요'); text('#mission-description', '6명 이상의 병력을 모아 거점으로 출전하세요.'); el<HTMLButtonElement>('#mission-action').onclick = () => showTab('army'); }
     else if (owned === 0) { text('#mission-title', '첫 번째 깃발을 세우세요'); text('#mission-description', '가까운 북서부 관문을 점령해 보세요.'); el<HTMLButtonElement>('#mission-action').onclick = () => { showTab('orders'); showTarget({ kind: 'outpost', id: 5 }); }; }
     else if (p.barracks < 2 || w.stats[0].researches === 0) { text('#mission-title', '왕국의 기술을 발전시키세요'); text('#mission-description', '병영 Lv.2를 달성하고 첫 연구를 완료하세요.'); el<HTMLButtonElement>('#mission-action').onclick = () => showTab(p.barracks < 2 ? 'economy' : 'research'); }
@@ -386,5 +399,5 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__war = { world: w, renderer, camera, scene, ui, finish, setPaused: (value: boolean) => { paused = value; } };
   frame = requestAnimationFrame(loop);
   el<HTMLButtonElement>('#home').focus({ preventScroll: true });
-  announce(resumed ? '저장한 전투를 이어갑니다.' : '영주님, 금광과 농장을 성장시켜 첫 원정을 준비하세요.');
+  if (!wasThreatened) announce(resumed ? '저장한 전투를 이어갑니다.' : '영주님, 금광과 농장을 성장시켜 첫 원정을 준비하세요.');
 }

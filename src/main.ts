@@ -29,7 +29,7 @@ function renderMenu(): void {
       <section class="hero-content">
         <div class="edition"><span></span>THE STRATEGY COLLECTION <b>01</b></div>
         <h1>작은 영지에서,<br><em>마지막 왕국으로.</em></h1>
-        <p class="hero-description">자원을 모으고, 군대를 이끌고, 영토를 넓히세요.<br>세 개의 라이벌 왕국과 다가오는 폭풍 속에서<br>당신만의 전략으로 끝까지 살아남으세요.</p>
+        <p class="hero-description">자원을 모으고, 군대를 이끌고, 영토를 넓히세요. <br>세 개의 라이벌 왕국과 다가오는 폭풍 속에서 <br>당신만의 전략으로 끝까지 살아남으세요.</p>
         <div class="game-facts"><div><b>4</b><span>경쟁하는 왕국</span></div><div><b>9</b><span>전략 거점</span></div><div><b>4</b><span>개성 있는 병종</span></div></div>
         <div class="start-section"><div class="section-heading"><h2>원정 난이도</h2><span>시작 자원은 모두 동일</span></div><div class="difficulty-picker" role="group" aria-label="원정 난이도">${(['easy', 'normal', 'hard'] as Difficulty[]).map((key, i) => `<button id="difficulty-${key}" data-difficulty="${key}" class="difficulty-option${key === selectedDifficulty ? ' selected' : ''}" aria-pressed="${key === selectedDifficulty}"><span>${['I', 'II', 'III'][i]}</span><b>${DIFFICULTIES[key].label}</b><small>${['전략을 배우는 시간', '균형 잡힌 도전', '노련한 지휘관에게'][i]}</small></button>`).join('')}</div><p id="difficulty-description" class="difficulty-description">${DIFFICULTIES[selectedDifficulty].description}</p><div class="launch-actions"><button id="start-war" class="button primary launch-button">${icon('sword', 21)}새 원정 시작<span>${icon('arrow', 20)}</span></button>${resumable ? `<button id="continue-war" class="button continue-button">${icon('play', 19)}이어하기<small>${DIFFICULTIES[saved.difficulty].label} · ${clock(saved.time)}</small></button>` : ''}</div><p class="play-note">설치 없이 플레이 · 15초마다 자동 저장 · 키보드와 터치 지원</p></div>
       </section>

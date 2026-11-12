@@ -129,6 +129,29 @@ afterEach(() => {
 });
 
 describe('battle UI through real player actions', () => {
+  it('warns about an incoming HQ assault before damage and leads to the real defend control', () => {
+    openWar(vi.fn(), true);
+    const world = game().world;
+    click('#tab-orders'); click('#outpost-5');
+    world.factions[1].target = 0;
+    game().ui();
+    expect(world.factions[0].hp).toBe(world.factions[0].maxHp);
+    expect(element('.mission-card').classList.contains('under-attack')).toBe(true);
+    expect(element('#mission-title').textContent).toContain('적 병력');
+    expect(element('#toast').textContent).toContain('공세가 감지');
+    click('#mission-action');
+    expect(button('#tab-orders').getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(button('#defend'));
+    expect(world.factions[0].rally).toBe(5);
+    click('#defend');
+    expect(world.factions[0].rally).toBeNull();
+    expect(world.factions[0].target).toBeNull();
+    world.factions[1].target = null;
+    game().ui();
+    expect(element('.mission-card').classList.contains('under-attack')).toBe(false);
+    expect(element('#mission-title').textContent).toBe('풍요로운 영지의 시작');
+  });
+
   it('trains troops, charges displayed resources, and disables unaffordable or locked training', () => {
     openWar(vi.fn(), true); click('#tab-army');
     expect(button('#train-archer').disabled).toBe(true);

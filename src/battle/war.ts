@@ -32,10 +32,10 @@ export interface War {
   time: number; zone: number; over: boolean; winner: number | null; nextUnit: number;
   difficulty: Difficulty; stats: WarStats[];
 }
-export const DIFFICULTIES: Record<Difficulty, {label:string;description:string;aiIncome:number;aiInterval:number}> = {
-  easy: {label:'입문',description:'AI 자원 생산 20% 감소 · 판단 간격 30% 증가',aiIncome:.8,aiInterval:1.3},
-  normal: {label:'보통',description:'같은 시작 자원 · 기본 AI 생산과 판단 속도',aiIncome:1,aiInterval:1},
-  hard: {label:'도전',description:'AI 자원 생산 20% 증가 · 판단 간격 20% 감소',aiIncome:1.2,aiInterval:.8},
+export const DIFFICULTIES: Record<Difficulty, {label:string;description:string;aiIncome:number;aiInterval:number;aiAttackAfter:number}> = {
+  easy: {label:'입문',description:'AI 자원 생산 20% 감소 · 판단 간격 30% 증가 · AI 본부 공세는 130초 이후',aiIncome:.8,aiInterval:1.3,aiAttackAfter:130},
+  normal: {label:'보통',description:'같은 시작 자원 · 기본 AI 생산과 판단 속도 · AI 본부 공세는 105초 이후',aiIncome:1,aiInterval:1,aiAttackAfter:105},
+  hard: {label:'도전',description:'AI 자원 생산 20% 증가 · 판단 간격 20% 감소 · AI 본부 공세 대기 없음',aiIncome:1.2,aiInterval:.8,aiAttackAfter:0},
 };
 export const RESEARCH: Record<Research, {label:string;description:string;maxLevel:number;requiredBarracks:number;gold:number;food:number}> = {
   weapons: {label:'강철 무기',description:'단계마다 병사 공격력 +12%',maxLevel:3,requiredBarracks:2,gold:80,food:50},
@@ -214,13 +214,17 @@ function aiTurn(w: War,f: Faction): void {
   else if (f.fort<3&&f.hp<f.maxHp*.85) upgrade(w,f.id,'fort');
   const free=w.outposts.filter(p=>p.owner!==f.id);
   free.sort((a,b)=>distance(a.x,a.z,f.x,f.z)-distance(b.x,b.z,f.x,f.z));
-  if (army>=9&&(w.time>180||owned>=3)) {
+  // Stage early AI armies around objectives before committing to HQ sieges.
+  const canSiege=w.time>=DIFFICULTIES[w.difficulty].aiAttackAfter;
+  if (army>=9&&canSiege&&(w.time>180||owned>=3)) {
     const target=nearestEnemy(w,f);
     if (target) { f.target=target.id;f.rally=null; }
   } else if (free.length) {
     f.target=null;f.rally=free[0].id;
-  } else if (army>=8) {
+  } else if (army>=8&&canSiege) {
     f.target=nearestEnemy(w,f)?.id??null;f.rally=null;
+  } else if (!canSiege) {
+    f.target=null;f.rally=null;
   }
 }
 function moveToward(w:War,u:Unit,x:number,z:number,dt:number):void {

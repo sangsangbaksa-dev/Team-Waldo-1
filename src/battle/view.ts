@@ -4,7 +4,7 @@ import { createWar, stepWar, upgrade, train, order, cost, NAMES, OUTPOST_NAMES, 
 const colors=FACTION_COLORS;
 export function openWar(onExit:()=>void):void {
  const overlay=document.createElement('div'); overlay.className='war-ui'; document.body.append(overlay);
- overlay.innerHTML=`<div class="war-view"></div><div class="war-top"><b>⚔ 영지 생존전</b><span id="war-clock"></span><button id="pause">일시정지</button><button id="speed">속도 1×</button><button id="quality">그래픽 높음</button><button id="exit">메뉴로</button></div><div class="war-panel"><div class="eyebrow">내 영지</div><div id="war-res"></div><div class="war-section">생산과 성장</div><div id="buildings"></div><button id="train" class="war-action">병사 훈련 <small>금 25 · 식량 20</small></button><div class="war-section">병종 훈련</div><div id="unit-train"></div><div class="war-section">부대 명령</div><div id="targets"></div><div class="war-section">거점 점령</div><div id="outposts"></div><div class="war-hint">병사는 적과 마주치면 자동으로 싸웁니다.<br>90초 후 안전지대가 줄어듭니다.</div></div><div class="war-standings" id="standings"></div><div class="war-help">드래그: 회전 · 휠: 확대/축소</div><div class="war-end" hidden></div>`;
+ overlay.innerHTML=`<div class="war-view"></div><div class="war-top"><b>⚔ 영지 생존전</b><span id="war-clock"></span><button id="pause">일시정지</button><button id="speed">속도 1×</button><button id="quality">그래픽 높음</button><button id="exit">메뉴로</button></div><div class="war-panel"><div class="eyebrow">내 영지</div><div id="war-res"></div><div class="war-section">생산과 성장</div><div id="buildings"></div><div class="war-section">병종 훈련</div><div id="unit-train"></div><div class="war-section">부대 명령</div><div id="targets"></div><div class="war-section">거점 점령</div><div id="outposts"></div><div class="war-hint">병사는 적과 마주치면 자동으로 싸웁니다.<br>90초 후 안전지대가 줄어듭니다.</div></div><div class="war-standings" id="standings"></div><div class="war-help">드래그: 회전 · 휠: 확대/축소</div><div class="war-end" hidden></div>`;
  const el=<T extends HTMLElement>(s:string)=>overlay.querySelector<T>(s)!;
  const mount=el<HTMLDivElement>('.war-view');
  let highQuality=!window.matchMedia('(max-width: 700px)').matches;
@@ -46,7 +46,6 @@ export function openWar(onExit:()=>void):void {
   el('#war-clock').textContent=`${Math.floor(w.time/60)}:${String(Math.floor(w.time%60)).padStart(2,'0')}  ·  생존 ${w.factions.filter(f=>f.alive).length}/4`;
   el('#war-res').innerHTML=`<strong>🪙 ${Math.floor(p.gold)}</strong><strong>🌾 ${Math.floor(p.food)}</strong><span>본부 ${Math.ceil(p.hp)} / ${p.maxHp}</span><span>병력 ${count(0)} / ${MAX_UNITS}</span>`;
   const b=el('#buildings');b.innerHTML='';for(const k of ['farm','mine','barracks','fort'] as Upgrade[]){const c=cost(p,k),button=document.createElement('button');button.className='war-action';button.disabled=!p.alive||w.over||p[k]>=4||p.gold<c.gold||p.food<c.food;button.innerHTML=`${names[k]} <span>Lv.${p[k]}</span><small>${p[k]>=4?'최대':`금 ${c.gold} · 식량 ${c.food}`}</small>`;button.onclick=()=>{upgrade(w,0,k);ui();};b.append(button);}
-  el<HTMLButtonElement>('#train').disabled=!p.alive||p.gold<25||p.food<20||count(0)>=MAX_UNITS;el<HTMLButtonElement>('#train').onclick=()=>{train(w,0);ui();};
   const training=el('#unit-train');training.innerHTML='';
   for(const kind of ['infantry','archer','guardian'] as UnitKind[]){
    const stat=UNIT_STATS[kind],btn=document.createElement('button');

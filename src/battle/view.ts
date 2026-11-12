@@ -453,7 +453,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
       if (!adventureControl.isActionMode && (h('s') || h('arrowdown'))) pan(Math.sin(angle) * amount, Math.cos(angle) * amount);
       if (!adventureControl.isActionMode && (h('a') || h('arrowleft'))) pan(-Math.cos(angle) * amount, Math.sin(angle) * amount);
       if (!adventureControl.isActionMode && (h('d') || h('arrowright'))) pan(Math.cos(angle) * amount, -Math.sin(angle) * amount);
-      if (!done && !adventureControl.inDrop) acc += elapsed * speed;
+      if (!done) acc += elapsed * speed;
       while (acc >= .05 && !w.over && w.factions[0].alive && !done) { stepWar(w, .05); acc -= .05; }
     }
     adventureControl.update(paused || done || graphicsLost ? 0 : elapsed, heldKeys);

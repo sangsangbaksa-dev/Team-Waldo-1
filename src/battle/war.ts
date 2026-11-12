@@ -1,35 +1,214 @@
-/** Pure real-time economy and combat simulation for the four-faction match. */
+/** Deterministic, renderer-independent economy, territory and combat simulation. */
 export type Upgrade = 'farm' | 'mine' | 'barracks' | 'fort';
-export interface Faction { id:number; x:number; z:number; hp:number; maxHp:number; gold:number; food:number; farm:number; mine:number; barracks:number; fort:number; alive:boolean; target:number | null; aiTimer:number; }
-export interface Unit { id:number; owner:number; x:number; z:number; hp:number; cooldown:number; }
-export interface War { factions:Faction[]; units:Unit[]; time:number; zone:number; over:boolean; winner:number | null; nextUnit:number; }
-export const NAMES=['나','적색','황색','보라'];
-const CORNERS=[[-35,-35],[35,-35],[-35,35],[35,35]];
-export function createWar():War {
- const factions= CORNERS.map(([x,z],id)=>({id,x,z,hp:400,maxHp:400,gold:140,food:100,farm:1,mine:1,barracks:1,fort:1,alive:true,target:null,aiTimer:4+id}));
- const w:War={factions,units:[],time:0,zone:68,over:false,winner:null,nextUnit:1};
- for(let id=0;id<4;id++)for(let i=0;i<4;i++) spawn(w,id);
- return w;
+export type UnitKind = 'infantry' | 'archer' | 'guardian';
+export interface Faction {
+  id: number; x: number; z: number; hp: number; maxHp: number;
+  gold: number; food: number; farm: number; mine: number; barracks: number; fort: number;
+  alive: boolean; target: number | null; rally: number | null;
+  aiTimer: number; turretCooldown: number;
 }
-function spawn(w:War,id:number):void {const f=w.factions[id],n=w.nextUnit++; w.units.push({id:n,owner:id,x:f.x+(n%3-1)*2.5,z:f.z+4+Math.floor(n%4)*2,hp:45,cooldown:0});}
-export function cost(f:Faction,k:Upgrade):{gold:number;food:number} {const lv=f[k];return {gold:Math.round((k==='fort'?80:60)*lv),food:k==='fort'?30*lv:20*lv};}
-export function upgrade(w:War,id:number,k:Upgrade):boolean {const f=w.factions[id];if(!f?.alive||w.over||f[k]>=4)return false;const c=cost(f,k);if(f.gold<c.gold||f.food<c.food)return false;f.gold-=c.gold;f.food-=c.food;f[k]++;if(k==='fort'){f.maxHp+=100;f.hp=Math.min(f.maxHp,f.hp+100);}return true;}
-export function train(w:War,id:number):boolean {const f=w.factions[id];if(!f?.alive||w.over||f.gold<25||f.food<20||w.units.filter(u=>u.owner===id).length>=15)return false;f.gold-=25;f.food-=20;spawn(w,id);return true;}
-export function order(w:War,id:number,target:number|null):boolean {const f=w.factions[id];if(!f?.alive||w.over|| (target!==null && (target===id||!w.factions[target]?.alive)))return false;f.target=target;return true;}
-function nearestEnemy(w:War,f:Faction):Faction|undefined{return w.factions.filter(e=>e.alive&&e.id!==f.id).sort((a,b)=>Math.hypot(a.x-f.x,a.z-f.z)-Math.hypot(b.x-f.x,b.z-f.z))[0];}
-function go(u:Unit,x:number,z:number,dt:number):void {const dx=x-u.x,dz=z-u.z,d=Math.hypot(dx,dz);if(d>0.01){const n=Math.min(d,7*dt);u.x+=dx/d*n;u.z+=dz/d*n;}}
-export function stepWar(w:War,dt:number):void {
- if(w.over||dt<=0)return;dt=Math.min(dt,.1);w.time+=dt;w.zone=Math.max(25,68-Math.max(0,w.time-90)*.22);
- for(const f of w.factions){if(!f.alive)continue;f.gold+=f.mine*1.5*dt;f.food+=f.farm*1.3*dt;
-  if(Math.hypot(f.x,f.z)>w.zone) f.hp-=3*dt;
-  if(f.id>0){f.aiTimer-=dt;if(f.aiTimer<=0){f.aiTimer=4;const count=w.units.filter(u=>u.owner===f.id).length;if(f.mine<3&&f.gold>100)upgrade(w,f.id,'mine');else if(f.farm<3&&f.food<100)upgrade(w,f.id,'farm');else if(f.barracks<3&&f.gold>120)upgrade(w,f.id,'barracks');else if(count<10)train(w,f.id);else if(f.fort<3)upgrade(w,f.id,'fort');if(count>=5||w.time>90)f.target=nearestEnemy(w,f)?.id??null;}}
- }
- for(const u of w.units){const f=w.factions[u.owner];if(!f.alive||u.hp<=0)continue;u.cooldown=Math.max(0,u.cooldown-dt);if(Math.hypot(u.x,u.z)>w.zone)u.hp-=1.5*dt;
-  const enemies=w.units.filter(e=>e.owner!==u.owner&&e.hp>0&&w.factions[e.owner].alive);let enemy:Unit|undefined;let distance=Infinity;for(const e of enemies){const d=Math.hypot(e.x-u.x,e.z-u.z);if(d<distance){distance=d;enemy=e;}}
-  if(enemy&&distance<9){if(u.cooldown===0){enemy.hp-=6+f.barracks*2;u.cooldown=.85;} if(distance>5)go(u,enemy.x,enemy.z,dt);}
-  else {const target=f.target===null?undefined:w.factions[f.target];if(target?.alive){const d=Math.hypot(target.x-u.x,target.z-u.z);if(d>7)go(u,target.x,target.z,dt);else if(u.cooldown===0){target.hp-=5+f.barracks*2;u.cooldown=.85;}} else {f.target=null;const angle=u.id*2.4;const x=f.x+Math.cos(angle)*6,z=f.z+Math.sin(angle)*6;if(Math.hypot(x-u.x,z-u.z)>1)go(u,x,z,dt);}}
- }
- for(const f of w.factions) if(f.alive&&f.hp<=0){f.hp=0;f.alive=false;}
- w.units=w.units.filter(u=>u.hp>0&&w.factions[u.owner].alive);
- const alive=w.factions.filter(f=>f.alive);if(alive.length<=1){w.over=true;w.winner=alive[0]?.id??null;}
+export interface Unit {
+  id: number; owner: number; kind: UnitKind; x: number; z: number;
+  hp: number; cooldown: number;
+}
+export interface Outpost {
+  id: number; x: number; z: number; owner: number | null;
+  contender: number | null; progress: number;
+}
+export interface War {
+  factions: Faction[]; units: Unit[]; outposts: Outpost[];
+  time: number; zone: number; over: boolean; winner: number | null; nextUnit: number;
+}
+export const NAMES = ['나', '적색', '황색', '보라'] as const;
+export const OUTPOST_NAMES = ['북부 광산', '동부 시장', '남부 곡창', '서부 항구', '중앙 요새'] as const;
+const CORNERS = [[-35,-35],[35,-35],[-35,35],[35,35]] as const;
+const OUTPOSTS = [[0,-28],[28,0],[0,28],[-28,0],[0,0]] as const;
+export const UNIT_STATS: Record<UnitKind, {
+  label: string; gold: number; food: number; hp: number;
+  damage: number; range: number; speed: number; cooldown: number; unlock: number;
+}> = {
+  infantry: { label: '보병', gold: 25, food: 20, hp: 52, damage: 8, range: 3.5, speed: 8.4, cooldown: .9, unlock: 1 },
+  archer: { label: '궁병', gold: 45, food: 30, hp: 36, damage: 7, range: 15, speed: 7, cooldown: 1.2, unlock: 2 },
+  guardian: { label: '중장병', gold: 75, food: 45, hp: 125, damage: 14, range: 4, speed: 5.5, cooldown: 1.45, unlock: 3 },
+};
+export const MAX_UNITS = 18;
+export function createWar(): War {
+  const factions: Faction[] = CORNERS.map(([x,z],id) => ({
+    id,x,z,hp:400,maxHp:400,gold:140,food:100,
+    farm:1,mine:1,barracks:1,fort:1,alive:true,target:null,rally:null,
+    aiTimer:2.5+id*.6,turretCooldown:0,
+  }));
+  const outposts: Outpost[] = OUTPOSTS.map(([x,z],id) => ({
+    id,x,z,owner:null,contender:null,progress:0,
+  }));
+  const war: War = { factions,units:[],outposts,time:0,zone:68,over:false,winner:null,nextUnit:1 };
+  for (let id=0;id<4;id++) for (let i=0;i<4;i++) spawn(war,id,'infantry');
+  return war;
+}
+function spawn(w: War, id: number, kind: UnitKind): void {
+  const f=w.factions[id], n=w.nextUnit++;
+  w.units.push({
+    id:n,owner:id,kind,x:f.x+((n*3)%5-2)*1.6,
+    z:f.z+4+(n%4)*1.8,hp:UNIT_STATS[kind].hp,cooldown:0,
+  });
+}
+export function cost(f: Faction,k: Upgrade): {gold:number;food:number} {
+  const lv=f[k]; return { gold:Math.round((k==='fort'?80:60)*lv),food:(k==='fort'?30:20)*lv };
+}
+export function upgrade(w: War,id: number,k: Upgrade): boolean {
+  const f=w.factions[id]; if (!f?.alive||w.over||f[k]>=4) return false;
+  const c=cost(f,k); if (f.gold<c.gold||f.food<c.food) return false;
+  f.gold-=c.gold;f.food-=c.food;f[k]++;
+  if (k==='fort') { f.maxHp+=100;f.hp=Math.min(f.maxHp,f.hp+100); }
+  return true;
+}
+export function train(w: War,id: number,kind: UnitKind='infantry'): boolean {
+  const f=w.factions[id],s=UNIT_STATS[kind];
+  if (!f?.alive||w.over||!s||f.barracks<s.unlock||f.gold<s.gold||
+      f.food<s.food||w.units.filter(u=>u.owner===id).length>=MAX_UNITS) return false;
+  f.gold-=s.gold;f.food-=s.food;spawn(w,id,kind);return true;
+}
+export function order(w: War,id: number,target: number|null): boolean {
+  const f=w.factions[id];
+  if (!f?.alive||w.over||(target!==null&&(target===id||!w.factions[target]?.alive))) return false;
+  f.target=target;f.rally=null;return true;
+}
+export function captureOrder(w: War,id: number,postId: number): boolean {
+  const f=w.factions[id];
+  if (!f?.alive||w.over||!w.outposts[postId]) return false;
+  f.target=null;f.rally=postId;return true;
+}
+function distance(ax:number,az:number,bx:number,bz:number):number {
+  return Math.hypot(ax-bx,az-bz);
+}
+function nearestEnemy(w: War,f: Faction): Faction|undefined {
+  return w.factions.filter(e=>e.alive&&e.id!==f.id)
+    .sort((a,b)=>distance(a.x,a.z,f.x,f.z)-distance(b.x,b.z,f.x,f.z))[0];
+}
+function count(w: War,id: number): number {
+  return w.units.filter(u=>u.owner===id&&u.hp>0).length;
+}
+function aiTurn(w: War,f: Faction): void {
+  const army=count(w,f.id),owned=w.outposts.filter(p=>p.owner===f.id).length;
+  // Keep economies operational before investing in expensive elite troops.
+  if (army<6&&train(w,f.id,'infantry')) { /* early defense */ }
+  else if (f.mine<3&&f.gold<140&&upgrade(w,f.id,'mine')) { /* cash flow */ }
+  else if (f.farm<3&&f.food<115&&upgrade(w,f.id,'farm')) { /* supplies */ }
+  else if (f.barracks<3&&w.time>36&&upgrade(w,f.id,'barracks')) { /* tech */ }
+  else if (army<14&&train(w,f.id,f.barracks>=3&&army%4===0?'guardian':f.barracks>=2&&army%3===0?'archer':'infantry')) { /* recruit */ }
+  else if (f.fort<3&&f.hp<f.maxHp*.85) upgrade(w,f.id,'fort');
+  const free=w.outposts.filter(p=>p.owner!==f.id);
+  free.sort((a,b)=>distance(a.x,a.z,f.x,f.z)-distance(b.x,b.z,f.x,f.z));
+  if (army>=9&&(w.time>115||owned>=2)) {
+    const target=nearestEnemy(w,f);
+    if (target) { f.target=target.id;f.rally=null; }
+  } else if (free.length) {
+    f.target=null;f.rally=free[0].id;
+  } else if (army>=8) {
+    f.target=nearestEnemy(w,f)?.id??null;f.rally=null;
+  }
+}
+function moveToward(u: Unit,x:number,z:number,dt:number):void {
+  const d=distance(u.x,u.z,x,z);
+  if (d<.01) return;
+  const step=Math.min(d,UNIT_STATS[u.kind].speed*dt);
+  u.x+=(x-u.x)/d*step;u.z+=(z-u.z)/d*step;
+}
+function updateOutposts(w: War,dt:number):void {
+  for (const p of w.outposts) {
+    const groups=new Map<number,number>();
+    for (const u of w.units) {
+      if (u.hp>0&&w.factions[u.owner].alive&&distance(u.x,u.z,p.x,p.z)<7.5)
+        groups.set(u.owner,(groups.get(u.owner)??0)+1);
+    }
+    if (groups.size!==1) {
+      p.progress=Math.max(0,p.progress-3*dt);
+      if (p.progress===0) p.contender=null;
+      continue;
+    }
+    const [id,amount]=[...groups][0];
+    if (p.owner===id) { p.progress=0;p.contender=null;continue; }
+    if (p.contender!==id) {
+      p.progress=Math.max(0,p.progress-8*dt);
+      if (p.progress===0) p.contender=id;
+      continue;
+    }
+    p.progress+=dt*(2.5+Math.min(amount,5)*1.8);
+    if (p.progress>=100) {p.owner=id;p.contender=null;p.progress=0;}
+  }
+}
+function attack(a: Unit,damage:number):void {a.hp-=damage;}
+export function stepWar(w: War,dt: number):void {
+  if (w.over||!Number.isFinite(dt)||dt<=0) return;
+  dt=Math.min(dt,.1); w.time+=dt;
+  w.zone=Math.max(18,68-Math.max(0,w.time-90)*.25);
+  for (const f of w.factions) {
+    if (!f.alive) continue;
+    const owned=w.outposts.filter(p=>p.owner===f.id).length;
+    f.gold+=(f.mine*1.5+owned*1.15)*dt;
+    f.food+=(f.farm*1.3+owned*.9)*dt;
+    if (distance(f.x,f.z,0,0)>w.zone) f.hp-=3.5*dt;
+    f.turretCooldown=Math.max(0,f.turretCooldown-dt);
+    if (f.id>0) {
+      f.aiTimer-=dt;
+      if (f.aiTimer<=0) {f.aiTimer=3+f.id*.35;aiTurn(w,f);}
+    }
+  }
+  // Siege towers protect their own base; fort upgrades also increase their damage.
+  for (const f of w.factions) {
+    if (!f.alive||f.turretCooldown>0) continue;
+    const invaders=w.units.filter(u=>u.hp>0&&u.owner!==f.id&&
+      w.factions[u.owner].alive&&distance(u.x,u.z,f.x,f.z)<13);
+    if (invaders.length) {
+      invaders.sort((a,b)=>distance(a.x,a.z,f.x,f.z)-distance(b.x,b.z,f.x,f.z));
+      attack(invaders[0],5+3*f.fort);f.turretCooldown=1.6;
+    }
+  }
+  for (const u of w.units) {
+    const f=w.factions[u.owner];
+    if (!f.alive||u.hp<=0) continue;
+    const s=UNIT_STATS[u.kind];
+    u.cooldown=Math.max(0,u.cooldown-dt);
+    if (distance(u.x,u.z,0,0)>w.zone) u.hp-=1.8*dt;
+    if (u.hp<=0) continue;
+    let enemy:Unit|undefined,nearest=Infinity;
+    for (const e of w.units) {
+      if (e.hp<=0||e.owner===u.owner||!w.factions[e.owner].alive) continue;
+      const d=distance(u.x,u.z,e.x,e.z);
+      if (d<nearest) {nearest=d;enemy=e;}
+    }
+    if (enemy&&nearest<Math.max(12,s.range+3)) {
+      if (nearest<=s.range) {
+        if (u.cooldown<=0) { attack(enemy,s.damage+f.barracks*1.5);u.cooldown=s.cooldown; }
+      } else moveToward(u,enemy.x,enemy.z,dt);
+      continue;
+    }
+    const target=f.target===null?undefined:w.factions[f.target];
+    if (target?.alive) {
+      const d=distance(u.x,u.z,target.x,target.z);
+      if (d>Math.max(5,s.range)) moveToward(u,target.x,target.z,dt);
+      else if (u.cooldown<=0) {
+        target.hp-=s.damage*.9+f.barracks*1.5;u.cooldown=s.cooldown;
+      }
+    } else if (f.rally!==null&&w.outposts[f.rally]) {
+      const p=w.outposts[f.rally],offset=(u.id%5)*1.3-2.6;
+      if (distance(u.x,u.z,p.x+offset,p.z+offset*.5)>2)
+        moveToward(u,p.x+offset,p.z+offset*.5,dt);
+    } else {
+      if (f.target!==null) f.target=null;
+      const angle=u.id*2.4,x=f.x+Math.cos(angle)*6,z=f.z+Math.sin(angle)*6;
+      if (distance(u.x,u.z,x,z)>1) moveToward(u,x,z,dt);
+    }
+  }
+  updateOutposts(w,dt);
+  for (const f of w.factions) {
+    if (f.alive&&f.hp<=0) {f.hp=0;f.alive=false;f.target=null;f.rally=null;}
+  }
+  w.units=w.units.filter(u=>u.hp>0&&w.factions[u.owner].alive);
+  for (const p of w.outposts) {
+    if (p.owner!==null&&!w.factions[p.owner].alive) p.owner=null;
+    if (p.contender!==null&&!w.factions[p.contender].alive) {p.contender=null;p.progress=0;}
+  }
+  const survivors=w.factions.filter(f=>f.alive);
+  if (survivors.length<=1) {w.over=true;w.winner=survivors[0]?.id??null;}
 }

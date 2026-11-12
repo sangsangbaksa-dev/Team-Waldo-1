@@ -15,12 +15,14 @@ describe('3D management war strategic rules', () => {
   const w=createWar(),f=w.factions[0];
   expect(train(w,0,'archer')).toBe(false);
   expect(train(w,0,'guardian')).toBe(false);
+  expect(train(w,0,'cavalry')).toBe(false);
   f.gold=1000;f.food=1000;
   expect(upgrade(w,0,'barracks')).toBe(true);
   expect(train(w,0,'archer')).toBe(true);
   expect(train(w,0,'guardian')).toBe(false);
   expect(upgrade(w,0,'barracks')).toBe(true);
   expect(train(w,0,'guardian')).toBe(true);
+  expect(train(w,0,'cavalry')).toBe(true);
  });
  it('enforces a hard army cap', () => {
   const w=createWar(),f=w.factions[0];f.gold=2000;f.food=2000;

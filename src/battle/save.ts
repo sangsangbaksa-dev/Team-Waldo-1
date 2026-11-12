@@ -23,7 +23,8 @@ function validFaction(candidate:unknown,reference:Faction):candidate is Faction 
   integer(f.barracks,1,4)&&integer(f.fort,1,4)&&
   finite(f.maxHp,400,700)&&f.maxHp===400+(Number(f.fort)-1)*100&&
   finite(f.hp,0,Number(f.maxHp))&&finite(f.gold,0,1e9)&&finite(f.food,0,1e9)&&
-  typeof f.alive==='boolean'&&factionId(f.target)&&factionId(f.rally)&&
+  typeof f.alive==='boolean'&&factionId(f.target)&&
+  (f.rally===null||integer(f.rally,0,8))&&
   (f.target===null||f.target!==f.id)&&
   (f.target===null||f.rally===null)&&
   integer(f.reserve,0,6)&&policy(f.policy)&&

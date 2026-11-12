@@ -10,7 +10,7 @@ export function openWar(onExit:()=>void,forceNew=false):void {
  overlay.innerHTML=`<div class="war-view"></div><div class="war-top"><b>⚔ 영지 생존전</b><span id="war-clock"></span><button id="pause">일시정지</button><button id="speed">속도 1×</button><button id="quality">그래픽 높음</button><button id="home">내 영지</button><button id="audio" aria-label="소리 끄기">🔊</button><button id="exit">메뉴로</button></div><div class="war-panel"><div class="eyebrow">내 영지</div><div id="war-res"></div><div class="war-section">생산과 성장</div><div id="buildings"></div><div class="war-section">왕국 경제 정책</div><div id="policy"></div><button id="repair" class="war-action">본부 수리 <small>금 45 · 식량 25</small></button><div class="war-section">병종 훈련</div><div id="unit-train"></div><div class="war-section">부대 명령</div><div id="targets"></div><div class="war-section">본부 수비대</div><div id="reserve"></div><div class="war-section">거점 점령</div><div id="outposts"></div><div class="war-section">전투 저장</div><div id="save-actions"><button id="save">저장</button><button id="load">이어하기</button><button id="new">새 전투</button></div><div id="save-status" role="status"></div><details class="war-guide"><summary>전술 가이드 · 조작법</summary><p>① 성장 정책으로 금과 식량을 확보하세요.</p><p>② 병영을 강화해 궁병·중장병·기병을 훈련하세요.</p><p>③ 거점을 점령해 추가 자원을 얻고, 적 본부를 공격하세요.</p><p>④ 안전지대는 130초 뒤부터 줄어듭니다. 최후의 왕국으로 살아남으세요.</p><p>WASD 이동 · 휠 확대 · 드래그 회전 · ESC 일시정지 · 숫자 1~4 병력 생산</p></details><div class="war-hint">병사는 가까운 적을 자동으로 공격합니다. 수비 병력은 출전하지 않습니다.<br>130초 후 안전지대가 줄어듭니다.</div></div><div class="war-standings" id="standings"></div><div class="war-events" id="events" aria-live="polite"></div><div class="war-minimap"><canvas id="war-map" width="200" height="200" aria-label="전장 미니맵"></canvas><button id="map-mode" aria-pressed="false">이동 모드</button><span>Shift+클릭 또는 명령 모드 선택</span></div><div class="war-help">드래그: 회전 · Shift+드래그/WASD: 이동 · 휠: 확대/축소 <span id="war-fps">-- FPS</span></div><div class="war-end" hidden></div>`;
  const el=<T extends HTMLElement>(s:string)=>overlay.querySelector<T>(s)!;
  const mount=el<HTMLDivElement>('.war-view');
- let highQuality=!window.matchMedia('(max-width: 700px)').matches;
+ let quality: 'high'|'normal'|'low'=window.matchMedia('(max-width: 700px)').matches?'normal':'high';
  let renderer:THREE.WebGLRenderer;
  try{
   renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
@@ -22,12 +22,12 @@ export function openWar(onExit:()=>void,forceNew=false):void {
  renderer.outputColorSpace=THREE.SRGBColorSpace;
  renderer.toneMapping=THREE.ACESFilmicToneMapping;
  renderer.toneMappingExposure=1.22;
- renderer.shadowMap.enabled=highQuality;
+ renderer.shadowMap.enabled=quality==='high';
  renderer.shadowMap.type=THREE.PCFSoftShadowMap;
- renderer.setPixelRatio(Math.min(window.devicePixelRatio,highQuality?2:1.25));
+ renderer.setPixelRatio(Math.min(window.devicePixelRatio,quality==='high'?2:quality==='normal'?1.25:.85));
  renderer.setSize(mount.clientWidth,mount.clientHeight);
  mount.append(renderer.domElement);
- el<HTMLButtonElement>('#quality').textContent=highQuality?'그래픽 높음':'그래픽 보통';
+ el<HTMLButtonElement>('#quality').textContent=quality==='high'?'그래픽 높음':quality==='normal'?'그래픽 보통':'그래픽 낮음';
  const scene=new THREE.Scene();
  const camera=new THREE.PerspectiveCamera(45,mount.clientWidth/mount.clientHeight,.1,1300);
  const focus=new THREE.Vector3(0,0,0);
@@ -157,11 +157,12 @@ export function openWar(onExit:()=>void,forceNew=false):void {
  el<HTMLButtonElement>('#pause').onclick=()=>{paused=!paused;el<HTMLButtonElement>('#pause').textContent=paused?'계속하기':'일시정지';};
  el<HTMLButtonElement>('#speed').onclick=()=>{speed=speed===1?2:speed===2?4:1;el<HTMLButtonElement>('#speed').textContent=`속도 ${speed}×`;};
  el<HTMLButtonElement>('#quality').onclick=()=>{
-  highQuality=!highQuality;
-  renderer.shadowMap.enabled=highQuality;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio,highQuality?2:1.25));
+  quality=quality==='high'?'normal':quality==='normal'?'low':'high';
+  renderer.shadowMap.enabled=quality==='high';
+  renderer.toneMapping=quality==='low'?THREE.NoToneMapping:THREE.ACESFilmicToneMapping;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,quality==='high'?2:quality==='normal'?1.25:.85));
   resize();
-  el<HTMLButtonElement>('#quality').textContent=highQuality?'그래픽 높음':'그래픽 보통';
+  el<HTMLButtonElement>('#quality').textContent=quality==='high'?'그래픽 높음':quality==='normal'?'그래픽 보통':'그래픽 낮음';
  };
  const names:Record<Upgrade,string>={farm:'농장',mine:'금광',barracks:'병영',fort:'본부 방어'};
  // Reuse button DOM nodes across the 250ms HUD updates to avoid lost pointer clicks.

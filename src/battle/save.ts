@@ -40,7 +40,7 @@ function validUnit(candidate:unknown,maxId:number):candidate is Unit {
  if(!isRecord(candidate))return false;
  const u=candidate;
  if(!integer(u.id,1,maxId)||!integer(u.owner,0,3)||
-    (u.kind!=='infantry'&&u.kind!=='archer'&&u.kind!=='guardian'))return false;
+    (u.kind!=='infantry'&&u.kind!=='archer'&&u.kind!=='guardian'&&u.kind!=='cavalry'))return false;
  return finite(u.x,-MAP_HALF_SIZE,MAP_HALF_SIZE)&&
   finite(u.z,-MAP_HALF_SIZE,MAP_HALF_SIZE)&&
   finite(u.hp,0,UNIT_STATS[u.kind].hp)&&finite(u.cooldown,0,10);

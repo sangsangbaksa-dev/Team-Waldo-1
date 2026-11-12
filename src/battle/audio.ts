@@ -14,6 +14,7 @@ export class BattleAudio {
     if (kind === 'warning') this.lastNotice = ctx.currentTime;
     const notes = { click: [440], upgrade: [392, 523, 659], capture: [523, 659, 784], warning: [220, 174], victory: [392, 523, 659, 784], defeat: [330, 262, 196] }[kind];
     notes.forEach((frequency, i) => {
+      try {
       const oscillator = ctx.createOscillator(), gain = ctx.createGain();
       const start = ctx.currentTime + i * .09;
       oscillator.type = kind === 'warning' ? 'triangle' : 'sine';
@@ -23,8 +24,25 @@ export class BattleAudio {
       gain.gain.exponentialRampToValueAtTime(.001, start + .22);
       oscillator.connect(gain); gain.connect(ctx.destination);
       oscillator.start(start); oscillator.stop(start + .24);
-      oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); };
+      oscillator.onended = () => { try { oscillator.disconnect(); gain.disconnect(); } catch { /* Device may have disconnected. */ } };
+      } catch { /* Sound device failure must never interrupt gameplay or results. */ }
     });
   }
-  dispose(): void { if (this.context) void this.context.close().catch(() => undefined); }
+  dispose(): void {
+    try { if (this.context) void this.context.close().catch(() => undefined); } catch { /* Device already unavailable. */ }
+    this.context = undefined;
+  }
+}
+
+/** Compatibility for the original strategy mode's sound API. */
+export type WarSfx = 'command' | 'train' | 'upgrade' | 'capture' | 'loss' | 'victory';
+export interface WarAudio { play(effect: WarSfx): void; getMuted(): boolean; toggle(): boolean; dispose(): void; }
+export function createWarAudio(): WarAudio {
+  const bridge = new BattleAudio(); let muted = false;
+  return {
+    play(effect) { bridge.unlock(); bridge.play(effect === 'command' || effect === 'train' ? 'click' : effect === 'loss' ? 'defeat' : effect); },
+    getMuted: () => muted,
+    toggle() { muted = !muted; bridge.setMuted(muted); return muted; },
+    dispose: () => bridge.dispose(),
+  };
 }

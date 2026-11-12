@@ -14,3 +14,43 @@
 @media(max-width:500px) and (max-height:650px){.war-panel{max-height:36vh}.war-panel-scroll{max-height:18vh}.war-minimap{width:112px}.war-tabs button{padding-block:7px}.kingdom-heading{padding-block:7px}}
 
 .panel-footer .render-performance{flex:0 0 auto;white-space:nowrap;font-variant-numeric:tabular-nums;font-size:10px;color:#a4b893}.panel-footer .text-button{flex:0 0 auto}
+
+
+/* Direct-control / parachute / battlement HUD. Deliberately separate from the strategy panels. */
+.war-ui [hidden]{display:none!important}
+.adventure-switch{position:absolute;bottom:74px;left:331px;z-index:6}
+.adventure-switch .button{padding:11px 16px;border-radius:7px;box-shadow:0 9px 28px #07181099;font-size:12px}
+.adventure-active .war-panel,.adventure-active .war-intel,.adventure-active .war-minimap,
+.adventure-active .mission-card,.adventure-active .camera-controls,.adventure-active .war-help,
+.adventure-active .target-card,.adventure-active .adventure-switch{display:none!important}
+.adventure-hud{position:absolute;inset:0;pointer-events:none;z-index:7}
+.adventure-head{position:absolute;top:96px;left:50%;transform:translateX(-50%);width:min(440px,calc(100% - 24px));padding:17px 22px;text-align:center;border:1px solid #c3cfad50;border-radius:10px;background:#0d231cda;box-shadow:0 15px 35px #08191080;backdrop-filter:blur(12px)}
+.adventure-head .kicker{letter-spacing:.18em;font-size:9px;color:#ddc38e}
+.adventure-head h2{font-size:20px;margin:5px 0;color:#f0e7cc;font-weight:650}
+.adventure-head p{color:#c1d8c2;line-height:1.65;font-size:12px}
+.adventure-progress{margin:12px auto 0;max-width:300px;height:5px;background:#718f7c45;border-radius:30px;overflow:hidden}
+.adventure-progress i{height:100%;display:block;width:0;background:linear-gradient(90deg,#58d2be,#e7c37b);transition:width .12s linear}
+.adventure-crosshair{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#f8e7af;text-shadow:0 0 4px #173427,0 0 10px #051d16;font:bold 32px/1 monospace}
+.adventure-actions{position:absolute;left:50%;bottom:27px;transform:translateX(-50%);display:flex;align-items:center;gap:9px;justify-content:center;flex-wrap:wrap;width:calc(100% - 32px);pointer-events:auto}
+.adventure-actions .button{font-size:12px;min-height:41px;padding:11px 17px;border-radius:7px;box-shadow:0 8px 24px #04140d9c}
+.adventure-pad{position:absolute;left:24px;bottom:25px;display:grid;grid-template-columns:repeat(3,43px);grid-template-rows:repeat(2,43px);gap:4px;pointer-events:auto;opacity:.83}
+.adventure-pad button{border:1px solid #c2dcb670;border-radius:7px;background:#19372fe9;color:#ecf0d5;font-size:18px;touch-action:none;user-select:none}
+.adventure-pad [data-move="w"]{grid-column:2;grid-row:1}
+.adventure-pad [data-move="a"]{grid-column:1;grid-row:2}
+.adventure-pad [data-move="s"]{grid-column:2;grid-row:2}
+.adventure-pad [data-move="d"]{grid-column:3;grid-row:2}
+.adventure-dropping .adventure-pad,.adventure-dropping .adventure-crosshair,.adventure-dropping #adventure-fire{display:none!important}
+.adventure-active .war-toast{bottom:104px;z-index:12}
+@media(max-width:1020px){.adventure-switch{left:282px}}
+@media(max-width:760px){
+ .adventure-switch{left:auto;right:12px;bottom:15px}
+ .adventure-switch .button{font-size:11px;padding:10px 12px}
+ .adventure-head{top:78px;padding:10px 14px}
+ .adventure-head h2{font-size:15px}
+ .adventure-head p{font-size:10px}
+ .adventure-actions{bottom:12px;left:auto;right:10px;transform:none;max-width:60%;width:auto;justify-content:flex-end}
+ .adventure-actions .button{min-height:35px;padding:8px 10px;font-size:10px}
+ .adventure-pad{left:9px;bottom:15px;grid-template-columns:repeat(3,38px);grid-template-rows:repeat(2,38px)}
+ .adventure-active .war-toast{bottom:122px}
+}
+@media(max-height:500px){.adventure-head{top:65px}.adventure-head p{display:none}.adventure-progress{margin-top:5px}}

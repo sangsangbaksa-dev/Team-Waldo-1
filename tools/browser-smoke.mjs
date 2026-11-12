@@ -76,6 +76,23 @@ const snapshot = page => page.evaluate(() => {
   const w = window.__war.world, p = w.factions[0];
   return { time: w.time, difficulty: w.difficulty, mine: p.mine, policy: p.policy, reserve: p.reserve, rally: p.rally, trained: w.stats[0].trained, weapons: p.research.weapons };
 });
+const graphics = page => page.evaluate(() => ({
+  quality: JSON.parse(localStorage.getItem('waldo.preferences.v1')).quality,
+  pixelRatio: window.__war.renderer.getPixelRatio(),
+  shadows: window.__war.renderer.shadowMap.enabled,
+  toneMapping: window.__war.renderer.toneMapping,
+}));
+function assertGraphics(state, quality) {
+  assert.equal(state.quality, quality, 'Graphics preference was not saved');
+  assert.equal(state.shadows, quality === 'high', 'Shadow quality did not change');
+  if (quality === 'low') {
+    assert.ok(state.pixelRatio <= 0.85, 'Low quality must reduce rendering resolution');
+    assert.equal(state.toneMapping, 0, 'Low quality must disable tone mapping');
+  } else {
+    assert.ok(state.pixelRatio > 0.85, 'Normal quality must restore rendering resolution');
+    assert.notEqual(state.toneMapping, 0, 'Normal quality must restore tone mapping');
+  }
+}
 
 await mkdir(artifacts, { recursive: true });
 try {
@@ -91,6 +108,7 @@ try {
     const context = await browser.newContext({ viewport: { width, height }, isMobile: width < 900, hasTouch: width < 900, reducedMotion: 'reduce' });
     const page = await context.newPage(); page.setDefaultTimeout(15000);
     const result = { name, width, height, status: 'running', pageErrors: [], consoleErrors: [], scenarios: ['normal UI actions', 'DEV time freeze', 'seeded victory result'] };
+    const initialQuality = name === 'desktop' ? 'high' : 'standard';
     report.cases.push(result);
     const stage = async value => { result.stage = value; console.log(`STAGE ${name}: ${value}`); await writeFile(`${artifacts}/report.json`, JSON.stringify(report, null, 2)); };
     page.on('pageerror', error => result.pageErrors.push(error.message));
@@ -108,7 +126,12 @@ try {
       assert.ok(await page.locator('#guide').evaluate(el => el === document.activeElement), 'Guide must restore focus');
       await page.locator('#preferences').click();
       await assertElementFits(page, '.game-dialog', result, 'settings');
-      await page.locator('#menu-quality').selectOption(name === 'desktop' ? 'high' : 'standard');
+      for (const quality of ['low', 'high', initialQuality]) {
+        await page.locator('#menu-quality').selectOption(quality);
+        await page.waitForFunction(() => document.querySelector('#landing-preview')?.dataset.preview === 'ready');
+        assert.equal(await page.locator('#landing-preview canvas').count(), 1, 'Quality changes must retain exactly one preview canvas');
+        assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('waldo.preferences.v1')).quality), quality);
+      }
       await page.locator('#menu-sound').uncheck(); await page.locator('#menu-motion').check(); await page.locator('.dialog-cancel').click();
       await page.locator('#difficulty-easy').click(); assert.equal(await page.locator('#difficulty-easy').getAttribute('aria-pressed'), 'true');
       await capture(page, `${name}-menu`); await page.locator('#start-war').click();
@@ -117,6 +140,18 @@ try {
       assert.ok(result.gpu.calls > 0 && result.gpu.triangles > 0 && !result.gpu.contextLost, '3D frame not rendered');
       assert.equal(result.gpu.difficulty, 'easy');
       result.layout = await layout(page); await capture(page, `${name}-battle`); assertLayout(result.layout);
+      await stage('graphics quality and preview lifecycle');
+      await page.locator('#pause').click(); await page.locator('#pause-settings').click();
+      await assertElementFits(page, '.game-dialog', result, 'battle settings');
+      result.graphics = [];
+      for (const quality of ['low', 'high', 'standard', initialQuality]) {
+        await page.locator('#graphics-setting').selectOption(quality);
+        const state = await graphics(page); assertGraphics(state, quality); result.graphics.push(state);
+      }
+      await page.keyboard.press('Escape'); await page.getByRole('dialog').waitFor({ state: 'hidden' });
+      await page.evaluate(() => window.__war.setPaused(true));
+      await page.waitForFunction(() => /^\d+ FPS$/.test(document.querySelector('#render-fps')?.textContent ?? ''));
+      result.fps = await page.locator('#render-fps').innerText();
       await stage('economy, army and minimap');
       await page.locator('#build-mine').click(); assert.equal((await snapshot(page)).mine, 2);
       await page.locator('#policy-growth').click(); assert.equal(await page.locator('#policy-growth').getAttribute('aria-pressed'), 'true');
@@ -146,6 +181,9 @@ try {
         enemy.target = 0; enemy.rally = null; ui(); return previous;
       });
       assert.equal(await page.locator('.mission-card.under-attack').count(), 1);
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      result.threatLayout = await layout(page); assertLayout(result.threatLayout);
+      await capture(page, `${name}-threat`);
       await page.locator('#mission-action').click();
       assert.ok(await page.locator('#defend').evaluate(el => el === document.activeElement));
       await page.locator('#defend').click(); assert.equal((await snapshot(page)).rally, null);
@@ -167,8 +205,11 @@ try {
       await page.locator('#save').click(); const expected = await snapshot(page);
       const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('team-waldo-3d-war-v1')));
       assert.equal(saved.version, 2); assert.equal(saved.war.factions[0].policy, 'growth');
-      await page.locator('#exit').click(); await page.locator('#continue-war').waitFor(); await page.locator('#continue-war').click();
+      await page.locator('#exit').click(); await page.locator('#continue-war').waitFor();
+      await page.locator('#preferences').click(); assert.equal(await page.locator('#menu-quality').inputValue(), initialQuality);
+      await page.keyboard.press('Escape'); await page.locator('#continue-war').click();
       await waitForBattle(page); const restored = await snapshot(page);
+      assertGraphics(await graphics(page), initialQuality);
       for (const key of ['difficulty', 'mine', 'policy', 'reserve', 'rally', 'trained', 'weapons']) assert.equal(restored[key], expected[key], `Save/load lost ${key}`);
       assert.ok(restored.time >= expected.time, 'Saved time moved backwards');
       await page.locator('#pause').click(); await page.getByRole('dialog').waitFor();
@@ -192,6 +233,13 @@ try {
         world.over = true; world.winner = 0; finish();
       });
       await page.locator('.result-panel').waitFor(); assert.match(await page.locator('#result-title').innerText(), /마지막 왕국/);
+      const resultHeading = await page.locator('#result-title').evaluate(el => {
+        const panel = el.closest('.result-panel'), heading = el.getBoundingClientRect(), bounds = panel.getBoundingClientRect();
+        return { top: heading.top, bottom: heading.bottom, panelTop: bounds.top, panelBottom: bounds.bottom, scrollTop: panel.scrollTop };
+      });
+      result.resultHeading = resultHeading;
+      assert.equal(resultHeading.scrollTop, 0, 'Results should open at the title, not scroll to the retry button');
+      assert.ok(resultHeading.top >= resultHeading.panelTop && resultHeading.bottom <= resultHeading.panelBottom, 'Result title must be visible when results open');
       await capture(page, `${name}-victory`);
       await assertElementFits(page, '.result-panel', result, 'victory');
       const career = await page.evaluate(() => JSON.parse(localStorage.getItem('waldo.career.v1')));

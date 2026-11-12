@@ -260,6 +260,8 @@ describe('battle UI through real player actions', () => {
 
   it('contains result focus between the menu and retry actions while disabling background controls', () => {
     openWar(vi.fn(), true); completeVictory();
+    expect(document.activeElement).toBe(element('#result-title'));
+    key(element('#result-title'), 'Tab', { shiftKey: true });
     expect(document.activeElement).toBe(button('#again'));
     key(button('#again'), 'Tab');
     expect(document.activeElement).toBe(button('#back'));

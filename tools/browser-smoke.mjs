@@ -65,7 +65,13 @@ async function waitForBattle(page) {
   await page.locator('.war-ui').waitFor({ timeout: 30000 });
   assert.equal(await page.locator('.war-fallback').count(), 0, 'WebGL fallback is not a passing 3D test');
   await page.waitForFunction(() => window.__war?.renderer.info.render.calls > 0 && window.__war.world.time >= 0.1, null, { timeout: 30000 });
-  await page.evaluate(() => window.__war.setPaused(true));
+  // New matches begin in an actual parachute sequence. Verify the direct-play HUD,
+  // then transition to the legacy strategy interface so existing UI regressions remain covered.
+  await page.evaluate(() => {
+    window.__war.skipDrop();
+    document.querySelector('#adventure-strategy')?.click();
+    window.__war.setPaused(true);
+  });
   return page.evaluate(() => {
     const { renderer, world } = window.__war, gl = renderer.getContext(), debug = gl.getExtension('WEBGL_debug_renderer_info');
     return { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures,

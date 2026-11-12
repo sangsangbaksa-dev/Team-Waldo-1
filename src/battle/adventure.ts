@@ -74,7 +74,8 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
       add(tower, new THREE.BoxGeometry(1.4, 1.6, 1.2), stone, offset, 10.5, side * 4);
     }
     add(tower, new THREE.CylinderGeometry(.1, .1, 4, 6), wood, 0, 12.1, 0);
-    const flag = add(tower, new THREE.BoxGeometry(2.8, 1.4, .15), cloth, 1.3, 13.1, 0);
+    const flagMaterial = createMaterial(0xcfb97d); materialList.push(flagMaterial);
+    const flag = add(tower, new THREE.BoxGeometry(2.8, 1.4, .15), flagMaterial, 1.3, 13.1, 0);
     watchtowers.push({ post, flag });
   }
 

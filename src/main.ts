@@ -6,6 +6,7 @@ import { HudScene } from './scenes/HudScene';
 import { LevelUpScene } from './scenes/LevelUpScene';
 import { ResultScene } from './scenes/ResultScene';
 import { TitleScene } from './scenes/TitleScene';
+import './battle/war.css';
 
 new Phaser.Game({
   type: Phaser.AUTO,

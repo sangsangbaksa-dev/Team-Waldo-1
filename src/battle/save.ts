@@ -1,5 +1,5 @@
 import {
-  createWar, createWarStats, DIFFICULTIES, MAP_HALF_SIZE, MAX_UNITS, UNIT_STATS,
+  createWar, createWarStats, DIFFICULTIES, MAP_HALF_SIZE, MAX_UNITS, GRAND_MAX_UNITS, UNIT_STATS,
   type Difficulty, type EconomyPolicy, type Faction, type Outpost, type Unit, type War, type WarEvent, type WarStats,
 } from './war';
 
@@ -74,18 +74,20 @@ function validStats(candidate:unknown):candidate is WarStats {
  if(!isRecord(candidate))return false;
  return ['trained','kills','lost','captures','researches','upgrades'].every(key=>integer(candidate[key],0,1e7))&&
   ['goldEarned','foodEarned','damageDealt'].every(key=>finite(candidate[key],0,1e12))&&
-  integer(candidate.peakArmy,0,MAX_UNITS);
+  integer(candidate.peakArmy,0,GRAND_MAX_UNITS);
 }
 /** Reject malformed and inconsistent localStorage data before it reaches the game. */
 export function decodeWar(raw:string|null):War|null {
- if(!raw||raw.length>150000)return null;
+ if(!raw||raw.length>450000)return null;
  try{
   const parsed:unknown=JSON.parse(raw);
   if(!isRecord(parsed)||(parsed.version!==1&&parsed.version!==VERSION)||!isRecord(parsed.war))return null;
   const w=parsed.war,initial=createWar(),legacy=parsed.version===1;
+  if(w.grandBattle!==undefined&&typeof w.grandBattle!=='boolean')return null;
+  const grand=w.grandBattle===true,limit=grand?GRAND_MAX_UNITS:MAX_UNITS;
   if(!Array.isArray(w.factions)||w.factions.length!==4||
      !Array.isArray(w.outposts)||w.outposts.length!==initial.outposts.length||
-     !Array.isArray(w.units)||w.units.length>MAX_UNITS*4||
+     !Array.isArray(w.units)||w.units.length>limit*4||
      !Array.isArray(w.events)||w.events.length>8||
      !finite(w.time,0,86400)||!finite(w.zone,24,MAP_HALF_SIZE-6)||
      !integer(w.nextUnit,17,100000)||
@@ -98,6 +100,7 @@ export function decodeWar(raw:string|null):War|null {
    }
   }
   if(!difficulty(w.difficulty)||!Array.isArray(w.stats)||w.stats.length!==4||!w.stats.every(validStats))return null;
+  if(w.stats.some((stats:WarStats)=>stats.peakArmy>limit))return null;
   if(w.squadOrders!==undefined&&(!Array.isArray(w.squadOrders)||w.squadOrders.length!==3||
      !w.squadOrders.every(value=>validSquadOrder(value,w))))return null;
   if(!w.factions.every((f,i)=>validFaction(f,initial.factions[i])))return null;
@@ -108,7 +111,7 @@ export function decodeWar(raw:string|null):War|null {
   for(const u of w.units){
    if(!validUnit(u,Number(w.nextUnit)-1)||ids.has(u.id))return null;
    ids.add(u.id);counts[u.owner]++;
-   if(counts[u.owner]>MAX_UNITS||!w.factions[u.owner].alive)return null;
+   if(counts[u.owner]>limit||!w.factions[u.owner].alive)return null;
   }
   for(const f of w.factions){
    // v1 could leave a stale offensive order after the target's last unit died.

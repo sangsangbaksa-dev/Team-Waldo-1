@@ -143,3 +143,7 @@
  .war-standings{right:7px;width:126px}
  .war-ui #policy .war-target,.war-ui #reserve .war-target{font-size:10px!important}
 }
+
+.war-minimap #map-mode{width:100%;font-size:11px;padding:4px 6px;min-height:25px}
+.war-minimap #map-mode[aria-pressed="true"]{background:#326d5a;border-color:#a3daba;color:#fff}
+@media(max-width:700px){.war-minimap #map-mode{font-size:10px;padding:3px;min-height:24px}.war-minimap span{font-size:9px}}

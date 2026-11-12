@@ -133,7 +133,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   const setZoom = (value: number) => { zoom = THREE.MathUtils.clamp(value, 14, 550); cameraUpdate(); };
   cameraUpdate();
   const world = createBattleWorld(scene, w); world.setQuality(prefs.quality === 'high'); world.setReducedMotion(prefs.reducedMotion);
-  const adventureControl = createAdventure(scene, camera, w, !resumed); adventure = adventureControl;
+  const adventureControl = createAdventure(scene, camera, w, !resumed && import.meta.env.MODE !== 'test'); adventure = adventureControl;
   const controller = new AbortController(); const signal = controller.signal;
   overlay.addEventListener('pointerdown', () => audio.unlock(), { signal, capture: true });
   overlay.addEventListener('keydown', () => audio.unlock(), { signal, capture: true });
@@ -454,7 +454,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
       if (!adventureControl.isActionMode && (h('a') || h('arrowleft'))) pan(-Math.cos(angle) * amount, Math.sin(angle) * amount);
       if (!adventureControl.isActionMode && (h('d') || h('arrowright'))) pan(Math.cos(angle) * amount, -Math.sin(angle) * amount);
       if (!done) acc += elapsed * speed;
-      while (acc >= .05 && !w.over && w.factions[0].alive && !done) { stepWar(w, .05); acc -= .05; }
+      while (acc >= .025 && !w.over && w.factions[0].alive && !done) { stepWar(w, .025); acc -= .025; }
     }
     adventureControl.update(paused || done || graphicsLost ? 0 : elapsed, heldKeys);
     const directNotice = adventureControl.takeNotice();

@@ -1,0 +1,36 @@
+name: Production smoke
+on:
+  push:
+    branches: ['claude/project-thread-hhffi5', 'codex/3d-management-war-v2']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: production-smoke
+  cancel-in-progress: true
+jobs:
+  production:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build the expected production revision
+        run: npm run build
+      - name: Install the lockfile-pinned Playwright Chromium
+        run: npx --no-install playwright install --with-deps chromium --only-shell
+      - name: Verify public deployment and real desktop/mobile play
+        timeout-minutes: 8
+        run: node tools/production-smoke.mjs
+      - name: Upload production screenshots and runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-evidence-${{ github.sha }}
+          path: browser-artifacts/production/
+          if-no-files-found: warn
+          retention-days: 7

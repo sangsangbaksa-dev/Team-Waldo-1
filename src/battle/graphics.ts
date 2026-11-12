@@ -44,7 +44,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   const labels:WorldLabel[]=[];
   const effects=createBattleEffects(world);
   scene.background=new THREE.Color(0xb9d1d0);
-  scene.fog=new THREE.FogExp2(0xb9d1d0,.0023);
+  scene.fog=new THREE.FogExp2(0xb9d1d0,.0011);
   const ambient=new THREE.HemisphereLight(0xe9f6ff,0x60704c,2.15);
   scene.add(ambient);
   const sun=new THREE.DirectionalLight(0xffe2ab,2.7);

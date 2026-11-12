@@ -27,7 +27,7 @@
 3. 배포된 페이지에서 제목 화면, 새 게임, 병력 훈련, 거점 명령, 저장 및 이어하기를 확인합니다. 모바일에서는 패널과 전장 입력도 확인합니다.
 4. 운영 배포에는 Vercel에 설정된 Production Branch를 사용하거나 검증한 배포를 Vercel에서 운영으로 승격합니다. 저장소 기본 브랜치와 Vercel Production Branch는 서로 다를 수 있으므로 이름을 추정하지 않습니다.
 
-기존 공개 주소는 [team-waldo-3d-war.vercel.app](https://team-waldo-3d-war.vercel.app)입니다. 특정 변경이 반영되었는지는 URL의 존재만으로 판단하지 않고 해당 배포의 소스 커밋을 확인해야 합니다.
+기존 공개 주소는 [team-waldo-3d-war.vercel.app](https://team-waldo-3d-war.vercel.app)입니다. 이번 작업에서는 공개 자산을 별도 빌드와 바이트 단위로 대조해 `codex/3d-management-war-v2` 소스가 운영 주소에 게시되어 있음을 확인했습니다. 기본 브랜치 통합만으로 운영 주소가 바뀐다고 가정하지 않습니다. 특정 변경이 반영되었는지는 URL의 존재만으로 판단하지 않고 해당 배포의 소스 커밋을 확인해야 합니다.
 
 ## 새 Vercel 프로젝트로 가져오기
 
@@ -48,6 +48,8 @@ npm run preview
 GitHub Actions는 모든 브랜치의 push와 pull request에서 같은 코드·데이터·빌드 검사를 실행합니다. Actions의 **Run workflow**로 수동 실행할 수도 있습니다. Vercel 배포와 CI는 별도 검사이므로 둘 다 성공했는지 확인합니다.
 
 추가 **Browser smoke** workflow는 실제 Chromium·WebGL에서 네 화면 크기의 메뉴·전장 조작과 저장·결과 화면을 검사합니다. 연구/승리 상태를 지정하는 시나리오는 결과 JSON에 표시됩니다. 실행의 Artifacts에서 스크린샷, `report.json`, 개발 서버 로그를 확인할 수 있습니다. 이 검사는 물리적인 휴대폰 GPU 성능 측정을 대신하지 않습니다.
+
+추가 **Production smoke** workflow는 기본 브랜치와 `codex/3d-management-war-v2` 반영 후 공개 운영 주소를 검사합니다. 배포 자산 이름과 SHA-256이 해당 소스의 프로덕션 빌드와 같아야 진행하며, 실제 공개 사이트에서 데스크톱·모바일의 훈련·명령·저장·이어하기·일시정지를 확인합니다. 개발용 상태 핸들이 운영 번들에 노출되지 않는지도 검사합니다.
 
 ## 운영 확인과 복구
 

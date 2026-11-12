@@ -6,9 +6,10 @@ import { readPreferences } from './preferences';
 /** A decorative scene: no match progress, saved data, or input handlers. */
 export function createLandingPreview(mount: HTMLElement): () => void {
   let preferences = readPreferences();
+  let antialias = preferences.quality === 'high';
   let renderer: THREE.WebGLRenderer;
   try {
-    renderer = new THREE.WebGLRenderer({ antialias: preferences.quality === 'high', alpha: false, powerPreference: 'low-power' });
+    renderer = new THREE.WebGLRenderer({ antialias, alpha: false, powerPreference: 'low-power' });
   } catch {
     mount.dataset.preview = 'unavailable';
     return () => undefined;
@@ -21,14 +22,18 @@ export function createLandingPreview(mount: HTMLElement): () => void {
   let frame = 0;
   let elapsed = 0;
   let last = 0;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, preferences.quality === 'high' ? 1.5 : 1));
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
-  renderer.shadowMap.enabled = preferences.quality === 'high';
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.domElement.setAttribute('aria-hidden', 'true');
-  renderer.domElement.style.cssText = 'display:block;width:100%;height:100%;pointer-events:none';
+  const configureRenderer = () => {
+    const limit = preferences.quality === 'high' ? 1.5 : preferences.quality === 'low' ? 0.85 : 1;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, limit));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = preferences.quality === 'low' ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    renderer.shadowMap.enabled = preferences.quality === 'high';
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.domElement.setAttribute('aria-hidden', 'true');
+    renderer.domElement.style.cssText = 'display:block;width:100%;height:100%;pointer-events:none';
+  };
+  configureRenderer();
   mount.append(renderer.domElement);
   mount.dataset.preview = 'ready';
 
@@ -77,10 +82,29 @@ export function createLandingPreview(mount: HTMLElement): () => void {
     if (dead) return;
     preferences = readPreferences();
     reducedMotion = preferences.reducedMotion;
+    const nextAntialias = preferences.quality === 'high';
+    // Context antialiasing is immutable: replace only this decorative renderer.
+    if (nextAntialias !== antialias || mount.dataset.preview === 'unavailable') {
+      let next: THREE.WebGLRenderer;
+      try { next = new THREE.WebGLRenderer({ antialias: nextAntialias, alpha: false, powerPreference: 'low-power' }); }
+      catch {
+        mount.dataset.preview = 'unavailable';
+        renderer.domElement.style.visibility = 'hidden';
+        visible = false;
+        return;
+      }
+      renderer.domElement.removeEventListener('webglcontextlost', contextLost);
+      renderer.domElement.replaceWith(next.domElement);
+      renderer.dispose(); renderer.forceContextLoss();
+      renderer = next; antialias = nextAntialias;
+      renderer.domElement.addEventListener('webglcontextlost', contextLost);
+      mount.dataset.preview = 'ready';
+      const bounds = mount.getBoundingClientRect();
+      visible = bounds.bottom > 0 && bounds.top < innerHeight;
+    }
     world.setQuality(preferences.quality === 'high');
     world.setReducedMotion(reducedMotion);
-    renderer.shadowMap.enabled = preferences.quality === 'high';
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, preferences.quality === 'high' ? 1.5 : 1));
+    configureRenderer();
     last = 0;
     resize();
   };

@@ -17,7 +17,7 @@ export function createWorldLabel(width: number, height: number): WorldLabel {
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
   texture.generateMipmaps = false;
-  const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: false });
+  const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: false, fog: false });
   const sprite = new THREE.Sprite(material);
   sprite.scale.set(width, height, 1);
   sprite.renderOrder = 20;

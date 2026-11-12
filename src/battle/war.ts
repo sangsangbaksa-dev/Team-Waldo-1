@@ -20,9 +20,11 @@ export interface War {
   time: number; zone: number; over: boolean; winner: number | null; nextUnit: number;
 }
 export const NAMES = ['나', '적색', '황색', '보라'] as const;
-export const OUTPOST_NAMES = ['북부 광산', '동부 시장', '남부 곡창', '서부 항구', '중앙 요새'] as const;
-const CORNERS = [[-35,-35],[35,-35],[-35,35],[35,35]] as const;
-const OUTPOSTS = [[0,-28],[28,0],[0,28],[-28,0],[0,0]] as const;
+export const OUTPOST_NAMES = ['북부 광산', '동부 시장', '남부 곡창', '서부 항구', '중앙 요새', '북서부 관문', '북동부 초소', '남서부 요새', '남동부 교역소'] as const;
+export const MAP_HALF_SIZE = 185;
+export const MAP_SIZE = MAP_HALF_SIZE * 2;
+const CORNERS = [[-112,-112],[112,-112],[-112,112],[112,112]] as const;
+const OUTPOSTS = [[0,-95],[95,0],[0,95],[-95,0],[0,0],[-62,-62],[62,-62],[-62,62],[62,62]] as const;
 export const UNIT_STATS: Record<UnitKind, {
   label: string; gold: number; food: number; hp: number;
   damage: number; range: number; speed: number; cooldown: number; unlock: number;
@@ -41,7 +43,7 @@ export function createWar(): War {
   const outposts: Outpost[] = OUTPOSTS.map(([x,z],id) => ({
     id,x,z,owner:null,contender:null,progress:0,
   }));
-  const war: War = { factions,units:[],outposts,time:0,zone:68,over:false,winner:null,nextUnit:1 };
+  const war: War = { factions,units:[],outposts,time:0,zone:MAP_HALF_SIZE-6,over:false,winner:null,nextUnit:1 };
   for (let id=0;id<4;id++) for (let i=0;i<4;i++) spawn(war,id,'infantry');
   return war;
 }
@@ -51,6 +53,21 @@ function spawn(w: War, id: number, kind: UnitKind): void {
     id:n,owner:id,kind,x:f.x+((n*3)%5-2)*1.6,
     z:f.z+4+(n%4)*1.8,hp:UNIT_STATS[kind].hp,cooldown:0,
   });
+}
+/** Restore a damaged stronghold using the shared economy. */
+export function repair(w:War,id:number):boolean {
+ const f=w.factions[id];
+ if(!f?.alive||w.over||f.hp>=f.maxHp-1||f.gold<45||f.food<25)return false;
+ f.gold-=45;f.food-=25;f.hp=Math.min(f.maxHp,f.hp+100);return true;
+}
+/** Queue a small squad atomically; never charge for units that cannot spawn. */
+export function trainSquad(w:War,id:number,kind:UnitKind='infantry',amount=3):boolean {
+ const f=w.factions[id],unit=UNIT_STATS[kind];
+ if(!f?.alive||w.over||!unit||!Number.isInteger(amount)||amount<1||
+   amount>5||f.barracks<unit.unlock||count(w,id)+amount>MAX_UNITS||
+   f.gold<unit.gold*amount||f.food<unit.food*amount)return false;
+ for(let i=0;i<amount;i++)train(w,id,kind);
+ return true;
 }
 export function cost(f: Faction,k: Upgrade): {gold:number;food:number} {
   const lv=f[k]; return { gold:Math.round((k==='fort'?80:60)*lv),food:(k==='fort'?30:20)*lv };
@@ -75,7 +92,7 @@ export function order(w: War,id: number,target: number|null): boolean {
 }
 export function captureOrder(w: War,id: number,postId: number): boolean {
   const f=w.factions[id];
-  if (!f?.alive||w.over||!w.outposts[postId]) return false;
+  if (!f?.alive||w.over||!Number.isInteger(postId)||!w.outposts[postId]) return false;
   f.target=null;f.rally=postId;return true;
 }
 function distance(ax:number,az:number,bx:number,bz:number):number {
@@ -96,10 +113,11 @@ function aiTurn(w: War,f: Faction): void {
   else if (f.farm<3&&f.food<115&&upgrade(w,f.id,'farm')) { /* supplies */ }
   else if (f.barracks<3&&w.time>36&&upgrade(w,f.id,'barracks')) { /* tech */ }
   else if (army<14&&train(w,f.id,f.barracks>=3&&army%4===0?'guardian':f.barracks>=2&&army%3===0?'archer':'infantry')) { /* recruit */ }
+  else if (f.hp<f.maxHp*.65&&repair(w,f.id)) { /* emergency repairs */ }
   else if (f.fort<3&&f.hp<f.maxHp*.85) upgrade(w,f.id,'fort');
   const free=w.outposts.filter(p=>p.owner!==f.id);
   free.sort((a,b)=>distance(a.x,a.z,f.x,f.z)-distance(b.x,b.z,f.x,f.z));
-  if (army>=9&&(w.time>115||owned>=2)) {
+  if (army>=9&&(w.time>180||owned>=3)) {
     const target=nearestEnemy(w,f);
     if (target) { f.target=target.id;f.rally=null; }
   } else if (free.length) {
@@ -141,7 +159,7 @@ function attack(a: Unit,damage:number):void {a.hp-=damage;}
 export function stepWar(w: War,dt: number):void {
   if (w.over||!Number.isFinite(dt)||dt<=0) return;
   dt=Math.min(dt,.1); w.time+=dt;
-  w.zone=Math.max(18,68-Math.max(0,w.time-90)*.25);
+  w.zone=Math.max(24,MAP_HALF_SIZE-6-Math.max(0,w.time-130)*.48);
   for (const f of w.factions) {
     if (!f.alive) continue;
     const owned=w.outposts.filter(p=>p.owner===f.id).length;

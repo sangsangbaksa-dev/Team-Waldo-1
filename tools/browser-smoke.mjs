@@ -90,7 +90,7 @@ try{
    assert.equal(await page.evaluate(()=>localStorage.getItem('team-waldo-3d-war-v1')),null);
    // The render loop should publish a numeric FPS without throwing.
    await page.waitForTimeout(1250);
-   assert.match(await page.locator('#war-fps').textContent(),/\\d+ FPS/);
+   assert.match(await page.locator('#war-fps').textContent(),/[0-9]+ FPS/);
    assert.deepEqual(errors,[],'Browser runtime errors');
    console.log('PASS '+width+'px: start, stable controls, strategy, save/load and minimap commands');
   }finally{await page.close();}

@@ -33,6 +33,8 @@ export interface War {
   time: number; zone: number; over: boolean; winner: number | null; nextUnit: number;
   difficulty: Difficulty; stats: WarStats[];
   squadOrders?: [SquadCommand | null, SquadCommand | null, SquadCommand | null];
+  /** Grand battle preserves original skirmish rules for existing saves. */
+  grandBattle?: boolean;
 }
 export const DIFFICULTIES: Record<Difficulty, {label:string;description:string;aiIncome:number;aiInterval:number;aiAttackAfter:number}> = {
   easy: {label:'입문',description:'아군 자원 +35% · AI 생산 45% 감소 · AI 본부 공세 260초 이후 · 폭풍 3분 이후',aiIncome:.55,aiInterval:1.7,aiAttackAfter:260},
@@ -55,7 +57,7 @@ export const OUTPOST_BONUSES: ReadonlyArray<{gold:number;food:number}> = [
 export const MAP_HALF_SIZE = 260;
 export const MAP_SIZE = MAP_HALF_SIZE * 2;
 export const STORM_START = 130;
-export const stormStartFor = (w: War) => w.difficulty === 'easy' ? 180 : STORM_START;
+export const stormStartFor = (w: War) => w.grandBattle ? (w.difficulty === 'easy' ? 360 : 270) : w.difficulty === 'easy' ? 180 : STORM_START;
 export const STORM_HQ_DAMAGE = 3.5;
 const CORNERS = [[-112,-112],[112,-112],[-112,112],[112,112]] as const;
 const OUTPOSTS = [[0,-95],[95,0],[0,95],[-95,0],[0,0],[-62,-62],[62,-62],[-62,62],[62,62]] as const;
@@ -69,15 +71,21 @@ export const UNIT_STATS: Record<UnitKind, {
   cavalry: { label: '기병', gold: 65, food: 55, hp: 82, damage: 12, range: 4, speed: 13.5, cooldown: .95, unlock: 3 },
 };
 export const MAX_UNITS = 18;
+export const GRAND_MAX_UNITS = 400;
+export const GRAND_INITIAL_FORCES = [100, 167, 167, 166] as const;
+export const maxUnitsFor = (w: War) => w.grandBattle ? GRAND_MAX_UNITS : MAX_UNITS;
 export function createWarStats():WarStats {
   return {trained:0,kills:0,lost:0,captures:0,goldEarned:0,foodEarned:0,damageDealt:0,researches:0,upgrades:0,peakArmy:4};
 }
-export function createWar(options:{difficulty?:Difficulty}={}): War {
+export function createWar(options:{difficulty?:Difficulty;grandBattle?:boolean}={}): War {
+  const grandBattle=options.grandBattle===true;
   const difficulty=options.difficulty && Object.hasOwn(DIFFICULTIES,options.difficulty)?options.difficulty:'normal';
   const factions: Faction[] = CORNERS.map(([x,z],id) => ({
-    id,x,z,hp:400,maxHp:400,gold:140,food:100,
-    farm:1,mine:1,barracks:1,fort:1,alive:true,target:null,rally:null,
-    reserve:id===0?0:2,policy:'balanced' as EconomyPolicy,
+    id,x,z,hp:grandBattle?600:400,maxHp:grandBattle?600:400,
+    gold:grandBattle?(id===0?8500:6500):140,food:grandBattle?(id===0?7500:6000):100,
+    farm:grandBattle?3:1,mine:grandBattle?3:1,barracks:grandBattle?3:1,
+    fort:grandBattle?3:1,alive:true,target:null,rally:null,
+    reserve:id===0?0:grandBattle?12:2,policy:'balanced' as EconomyPolicy,
     research:{weapons:0,armor:0,logistics:0},
     aiTimer:(2.5+id*.6)*DIFFICULTIES[difficulty].aiInterval,turretCooldown:0,
   }));
@@ -86,17 +94,24 @@ export function createWar(options:{difficulty?:Difficulty}={}): War {
   }));
   const war: War = {
     factions,units:[],outposts,events:[],time:0,zone:MAP_HALF_SIZE-6,over:false,winner:null,nextUnit:1,
-    difficulty,stats:Array.from({length:4},createWarStats),squadOrders:[null,null,null],
+    difficulty,stats:Array.from({length:4},createWarStats),squadOrders:[null,null,null],grandBattle,
   };
-  for (let id=0;id<4;id++) for (let i=0;i<4;i++) spawn(war,id,'infantry');
+  for(let id=0;id<4;id++){
+    const total=grandBattle?GRAND_INITIAL_FORCES[id]:4;
+    for(let i=0;i<total;i++){
+      const kind:UnitKind=!grandBattle?'infantry':
+        i%10===0?'guardian':i%10===1?'cavalry':i%4===0?'archer':'infantry';
+      spawn(war,id,kind);
+    }
+  }
   return war;
 }
 function spawn(w: War, id: number, kind: UnitKind): void {
   const f=w.factions[id], n=w.nextUnit++;
-  w.units.push({
-    id:n,owner:id,kind,x:f.x+((n*3)%5-2)*1.6,
-    z:f.z+4+(n%4)*1.8,hp:UNIT_STATS[kind].hp,cooldown:0,squad:0,
-  });
+  const index=w.grandBattle?w.units.reduce((total,u)=>total+(u.owner===id?1:0),0):0;
+  const x=w.grandBattle?f.x+(index%16-7.5)*2.8:f.x+((n*3)%5-2)*1.6;
+  const z=w.grandBattle?f.z+(f.z<0?1:-1)*(20+Math.floor(index/16)*3.1):f.z+4+(n%4)*1.8;
+  w.units.push({id:n,owner:id,kind,x,z,hp:UNIT_STATS[kind].hp,cooldown:0,squad:0});
   w.stats[id].peakArmy=Math.max(w.stats[id].peakArmy,count(w,id));
 }
 /** One source of truth for economy previews, AI difficulty and the simulation. */
@@ -142,7 +157,7 @@ export function repair(w:War,id:number):boolean {
 export function trainSquad(w:War,id:number,kind:UnitKind='infantry',amount=3):boolean {
  const f=w.factions[id],unit=UNIT_STATS[kind];
  if(!f?.alive||w.over||!Object.hasOwn(UNIT_STATS,kind)||!Number.isInteger(amount)||amount<1||
-   amount>5||f.barracks<unit.unlock||count(w,id)+amount>MAX_UNITS||
+   amount>(w.grandBattle?50:5)||f.barracks<unit.unlock||count(w,id)+amount>maxUnitsFor(w)||
    f.gold<unit.gold*amount||f.food<unit.food*amount)return false;
  for(let i=0;i<amount;i++)train(w,id,kind);
  return true;
@@ -150,7 +165,7 @@ export function trainSquad(w:War,id:number,kind:UnitKind='infantry',amount=3):bo
 /** Keep a defensive detachment at home during offensive orders. */
 export function setReserve(w:War,id:number,amount:number):boolean {
  const f=w.factions[id];
- if(!f?.alive||w.over||!Number.isInteger(amount)||amount<0||amount>6)return false;
+ if(!f?.alive||w.over||!Number.isInteger(amount)||amount<0||amount>(w.grandBattle?60:6))return false;
  f.reserve=amount;return true;
 }
 export function setPolicy(w:War,id:number,policy:EconomyPolicy):boolean {
@@ -176,7 +191,7 @@ export function upgrade(w: War,id: number,k: Upgrade): boolean {
 export function train(w: War,id: number,kind: UnitKind='infantry'): boolean {
   const f=w.factions[id],s=UNIT_STATS[kind];
   if (!f?.alive||w.over||!Object.hasOwn(UNIT_STATS,kind)||f.barracks<s.unlock||f.gold<s.gold||
-      f.food<s.food||count(w,id)>=MAX_UNITS) return false;
+      f.food<s.food||count(w,id)>=maxUnitsFor(w)) return false;
   f.gold-=s.gold;f.food-=s.food;spawn(w,id,kind);w.stats[id].trained++;return true;
 }
 export function order(w: War,id: number,target: number|null): boolean {
@@ -202,7 +217,7 @@ function count(w: War,id: number): number {
 function aiTurn(w: War,f: Faction): void {
   const army=count(w,f.id),owned=w.outposts.filter(p=>p.owner===f.id).length;
   f.policy=army<8&&w.time<160?'growth':(army>=11||w.time>220)?'war':'balanced';
-  f.reserve=army>10?2:Math.min(2,Math.floor(army/3));
+  f.reserve=w.grandBattle?Math.min(24,Math.floor(army/12)):army>10?2:Math.min(2,Math.floor(army/3));
   // Repair before purchasing when the HQ is critically damaged.
   if (f.hp<f.maxHp*.35&&repair(w,f.id)) { /* immediate survival */ }
   else if (army<6&&train(w,f.id,'infantry')) { /* early defense */ }
@@ -212,7 +227,10 @@ function aiTurn(w: War,f: Faction): void {
   else if (army>=8&&f.barracks>=2&&f.research.logistics<1&&research(w,f.id,'logistics')) { /* field supplies */ }
   else if (army>=12&&f.research.weapons<2&&research(w,f.id,'weapons')) { /* attack specialization */ }
   else if (army>=12&&f.research.armor<1&&research(w,f.id,'armor')) { /* sustain troops */ }
-  else if (army<16&&train(w,f.id,f.barracks>=3&&army%5===0?'cavalry':f.barracks>=3&&army%4===0?'guardian':f.barracks>=2&&army%3===0?'archer':'infantry')) { /* recruit */ }
+  else if (army<(w.grandBattle?GRAND_MAX_UNITS-10:16)&&
+    (w.grandBattle?trainSquad(w,f.id,
+      f.barracks>=3&&army%5===0?'cavalry':f.barracks>=2&&army%3===0?'archer':'infantry',10):
+      train(w,f.id,f.barracks>=3&&army%5===0?'cavalry':f.barracks>=3&&army%4===0?'guardian':f.barracks>=2&&army%3===0?'archer':'infantry'))) { /* recruit */ }
   else if (f.hp<f.maxHp*.65&&repair(w,f.id)) { /* emergency repairs */ }
   else if (f.fort<3&&f.hp<f.maxHp*.85) upgrade(w,f.id,'fort');
   const free=w.outposts.filter(p=>p.owner!==f.id);
@@ -256,7 +274,7 @@ function updateOutposts(w: War,dt:number):void {
       if (p.progress===0) p.contender=id;
       continue;
     }
-    p.progress+=dt*(2.5+Math.min(amount,5)*1.8);
+    p.progress+=dt*(2.5+Math.min(amount,w.grandBattle?24:5)*1.8);
     if (p.progress>=100) {
       const previous=p.owner;
       p.owner=id;p.contender=null;p.progress=0;
@@ -325,6 +343,17 @@ export function stepWar(w: War,dt: number):void {
     const home=w.units.filter(u=>u.owner===f.id&&u.hp>0&&(f.id!==0||(u.squad??0)===0)).sort((a,b)=>a.id-b.id);
     for(const u of home.slice(0,f.reserve))reserveIds.add(u.id);
   }
+  // Spatial grid limits enemy lookups to 9 neighboring cells, avoiding O(N²)
+  // scans when the 100 vs 500 battle starts (and as armies recruit).
+  const cellSize=22, spatial=new Map<number,Unit[]>();
+  const column=(value:number)=>Math.floor((value+MAP_HALF_SIZE)/cellSize);
+  const cellKey=(cx:number,cz:number)=>cx*128+cz;
+  for(const unit of w.units){
+    if(unit.hp<=0||!w.factions[unit.owner].alive)continue;
+    const key=cellKey(column(unit.x),column(unit.z));
+    const bucket=spatial.get(key);
+    if(bucket)bucket.push(unit);else spatial.set(key,[unit]);
+  }
   for (const u of w.units) {
     const f=w.factions[u.owner];
     if (!f.alive||f.hp<=0||u.hp<=0) continue;
@@ -333,13 +362,21 @@ export function stepWar(w: War,dt: number):void {
     u.cooldown=Math.max(0,u.cooldown-dt);
     if (distance(u.x,u.z,0,0)>w.zone) u.hp-=1.8*dt;
     if (u.hp<=0) continue;
-    let enemy:Unit|undefined,nearest=Infinity;
-    for (const e of w.units) {
-      if (e.hp<=0||e.owner===u.owner||!w.factions[e.owner].alive||w.factions[e.owner].hp<=0) continue;
-      const d=distance(u.x,u.z,e.x,e.z);
-      if (d<nearest) {nearest=d;enemy=e;}
+    let enemy:Unit|undefined;
+    const noticeRange=Math.max(12,s.range+3);
+    let nearestSq=noticeRange*noticeRange;
+    const cx=column(u.x),cz=column(u.z);
+    for(let ix=-1;ix<=1;ix++)for(let iz=-1;iz<=1;iz++){
+      const bucket=spatial.get(cellKey(cx+ix,cz+iz));
+      if(!bucket)continue;
+      for(const e of bucket){
+        if(e.hp<=0||e.owner===u.owner||!w.factions[e.owner].alive||w.factions[e.owner].hp<=0)continue;
+        const dx=u.x-e.x,dz=u.z-e.z,d2=dx*dx+dz*dz;
+        if(d2<nearestSq){nearestSq=d2;enemy=e;}
+      }
     }
-    if (enemy&&nearest<Math.max(12,s.range+3)) {
+    if (enemy) {
+      const nearest=Math.sqrt(nearestSq);
       if (nearest<=s.range) {
         if (u.cooldown<=0) {attack(w,u.owner,enemy,(s.damage+f.barracks*1.5)*combatMultiplier);u.cooldown=s.cooldown;}
       } else moveToward(w,u,enemy.x,enemy.z,dt);
@@ -367,15 +404,16 @@ export function stepWar(w: War,dt: number):void {
             if (distance(u.x,u.z,opponent.x,opponent.z) > Math.max(5,s.range))
               moveToward(w,u,opponent.x,opponent.z,dt);
             else if (u.cooldown <= 0) {
-              const damage = (s.damage*.9+f.barracks*1.5)*combatMultiplier;
+              const damage = (s.damage*.9+f.barracks*1.5)*combatMultiplier*(w.grandBattle?.075:1);
               w.stats[u.owner].damageDealt += Math.min(opponent.hp,damage);
               opponent.hp -= damage; u.cooldown = s.cooldown;
             }
           }
         } else {
-          const spread = command.kind === 'outpost' ? 2 : 3.4;
-          const dx = ((u.id % 3) - 1) * spread;
-          const dz = ((Math.floor(u.id / 3) % 3) - 1) * spread;
+          const spread = command.kind === 'outpost' ? (w.grandBattle?1.7:2) : (w.grandBattle?2.3:3.4);
+          const grid=w.grandBattle?12:3;
+          const dx = ((u.id % grid) - (grid-1)/2) * spread;
+          const dz = ((Math.floor(u.id / grid) % grid) - (grid-1)/2) * spread;
           if (distance(u.x,u.z,destination.x+dx,destination.z+dz) > 1.8)
             moveToward(w,u,destination.x+dx,destination.z+dz,dt);
         }
@@ -387,14 +425,15 @@ export function stepWar(w: War,dt: number):void {
       const d=distance(u.x,u.z,target.x,target.z);
       if (d>Math.max(5,s.range)) moveToward(w,u,target.x,target.z,dt);
       else if (u.cooldown<=0) {
-        const damage=(s.damage*.9+f.barracks*1.5)*combatMultiplier*(w.difficulty==='easy'&&u.owner!==0?.72:1);
+        const damage=(s.damage*.9+f.barracks*1.5)*combatMultiplier*(w.difficulty==='easy'&&u.owner!==0?.72:1)*(w.grandBattle?.075:1);
         w.stats[u.owner].damageDealt+=Math.min(target.hp,damage);
         target.hp-=damage;u.cooldown=s.cooldown;
       }
     } else if (f.rally!==null&&w.outposts[f.rally]) {
-      const p=w.outposts[f.rally],offset=(u.id%5)*1.3-2.6;
-      if (distance(u.x,u.z,p.x+offset,p.z+offset*.5)>2)
-        moveToward(w,u,p.x+offset,p.z+offset*.5,dt);
+      const p=w.outposts[f.rally],offset=w.grandBattle?(u.id%13-6)*1.5:(u.id%5)*1.3-2.6;
+      const offsetZ=w.grandBattle?(Math.floor(u.id/13)%11-5)*1.5:offset*.5;
+      if (distance(u.x,u.z,p.x+offset,p.z+offsetZ)>2)
+        moveToward(w,u,p.x+offset,p.z+offsetZ,dt);
     } else {
       if (f.target!==null) f.target=null;
       const angle=u.id*2.4,x=f.x+Math.cos(angle)*6,z=f.z+Math.sin(angle)*6;

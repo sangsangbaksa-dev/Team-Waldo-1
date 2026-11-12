@@ -272,6 +272,17 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     add(root,box,timber,.92,1.35,0,.55,1.4,.65);
     const leftLeg=add(root,box,woodDark,-.4,.43,0,.52,.83,.61);
     const rightLeg=add(root,box,woodDark,.4,.43,0,.52,.83,.61);
+    if(u.kind==='cavalry'){
+      // A recognizable mount is assembled from shared low-poly primitives.
+      add(root,box,timber,0,.92,-.35,2,1.25,2.85);
+      const neck=add(root,box,timber,0,1.42,.9,.85,1.75,.75);
+      neck.rotation.x=-.12;
+      add(root,sphere,cream,0,2.12,1.18,.95,.76,.85);
+      for(const x of [-.7,.7])for(const z of [-1.25,.5]){
+        add(root,box,woodDark,x,.33,z,.32,.68,.32);
+      }
+      add(root,box,gold,0,1.56,-.36,1.4,.2,1.35);
+    }
     if(u.kind==='archer'){
       add(root,box,timber,-.85,1.65,-.8,.65,1.35,.65);
       const bow=add(root,bowGeometry,timber,1.25,1.3,.55);

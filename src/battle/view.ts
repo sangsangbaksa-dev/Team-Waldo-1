@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { createBattleWorld, FACTION_COLORS } from './graphics';
 import { loadWar, saveWar, deleteWarSave } from './save';
+import { worldToMinimap, minimapToWorld, pickMapTarget } from './mapCommands';
 import { createWar, stepWar, upgrade, train, trainSquad, repair, setPolicy, setReserve, order, cost, NAMES, OUTPOST_NAMES, OUTPOST_BONUSES, UNIT_STATS, MAX_UNITS, MAP_HALF_SIZE, captureOrder, type EconomyPolicy, type UnitKind, type Upgrade, type War } from './war';
 const colors=FACTION_COLORS;
 export function openWar(onExit:()=>void,forceNew=false):void {
  const overlay=document.createElement('div'); overlay.className='war-ui'; document.body.append(overlay);
- overlay.innerHTML=`<div class="war-view"></div><div class="war-top"><b>⚔ 영지 생존전</b><span id="war-clock"></span><button id="pause">일시정지</button><button id="speed">속도 1×</button><button id="quality">그래픽 높음</button><button id="home">내 영지</button><button id="exit">메뉴로</button></div><div class="war-panel"><div class="eyebrow">내 영지</div><div id="war-res"></div><div class="war-section">생산과 성장</div><div id="buildings"></div><div class="war-section">왕국 경제 정책</div><div id="policy"></div><button id="repair" class="war-action">본부 수리 <small>금 45 · 식량 25</small></button><div class="war-section">병종 훈련</div><div id="unit-train"></div><div class="war-section">부대 명령</div><div id="targets"></div><div class="war-section">본부 수비대</div><div id="reserve"></div><div class="war-section">거점 점령</div><div id="outposts"></div><div class="war-section">전투 저장</div><div id="save-actions"><button id="save">저장</button><button id="load">이어하기</button><button id="new">새 전투</button></div><div id="save-status" role="status"></div><div class="war-hint">병사는 가까운 적을 자동으로 공격합니다. 수비 병력은 출전하지 않습니다.<br>130초 후 안전지대가 줄어듭니다.</div></div><div class="war-standings" id="standings"></div><div class="war-events" id="events" aria-live="polite"></div><div class="war-minimap"><canvas id="war-map" width="200" height="200" aria-label="전장 미니맵"></canvas><span>미니맵 클릭: 카메라 이동</span></div><div class="war-help">드래그: 회전 · Shift+드래그/WASD: 이동 · 휠: 확대/축소</div><div class="war-end" hidden></div>`;
+ overlay.innerHTML=`<div class="war-view"></div><div class="war-top"><b>⚔ 영지 생존전</b><span id="war-clock"></span><button id="pause">일시정지</button><button id="speed">속도 1×</button><button id="quality">그래픽 높음</button><button id="home">내 영지</button><button id="exit">메뉴로</button></div><div class="war-panel"><div class="eyebrow">내 영지</div><div id="war-res"></div><div class="war-section">생산과 성장</div><div id="buildings"></div><div class="war-section">왕국 경제 정책</div><div id="policy"></div><button id="repair" class="war-action">본부 수리 <small>금 45 · 식량 25</small></button><div class="war-section">병종 훈련</div><div id="unit-train"></div><div class="war-section">부대 명령</div><div id="targets"></div><div class="war-section">본부 수비대</div><div id="reserve"></div><div class="war-section">거점 점령</div><div id="outposts"></div><div class="war-section">전투 저장</div><div id="save-actions"><button id="save">저장</button><button id="load">이어하기</button><button id="new">새 전투</button></div><div id="save-status" role="status"></div><div class="war-hint">병사는 가까운 적을 자동으로 공격합니다. 수비 병력은 출전하지 않습니다.<br>130초 후 안전지대가 줄어듭니다.</div></div><div class="war-standings" id="standings"></div><div class="war-events" id="events" aria-live="polite"></div><div class="war-minimap"><canvas id="war-map" width="200" height="200" aria-label="전장 미니맵"></canvas><span>클릭: 이동 · Shift+클릭: 명령</span></div><div class="war-help">드래그: 회전 · Shift+드래그/WASD: 이동 · 휠: 확대/축소</div><div class="war-end" hidden></div>`;
  const el=<T extends HTMLElement>(s:string)=>overlay.querySelector<T>(s)!;
  const mount=el<HTMLDivElement>('.war-view');
  let highQuality=!window.matchMedia('(max-width: 700px)').matches;
@@ -77,11 +78,18 @@ export function openWar(onExit:()=>void,forceNew=false):void {
  renderer.domElement.addEventListener('wheel',wheel,{passive:false});
  const map=el<HTMLCanvasElement>('#war-map');
  const ctx=map.getContext('2d');
- const project=(x:number,z:number)=>({x:(x/MAP_HALF_SIZE+1)*100,y:(z/MAP_HALF_SIZE+1)*100});
+ const project=worldToMinimap;
  const mapClick=(event:MouseEvent)=>{
   const rect=map.getBoundingClientRect();
-  pan(((event.clientX-rect.left)/rect.width*2-1)*MAP_HALF_SIZE-focus.x,
-      ((event.clientY-rect.top)/rect.height*2-1)*MAP_HALF_SIZE-focus.z);
+  const pos=minimapToWorld(event.clientX-rect.left,event.clientY-rect.top,rect.width,rect.height);
+  if(event.shiftKey){
+    const target=pickMapTarget(w,0,pos.x,pos.z);
+    if(target){
+      if(target.kind==='outpost')captureOrder(w,0,target.id);
+      else order(w,0,target.id);
+      ui();drawMap();
+    }
+  }else pan(pos.x-focus.x,pos.z-focus.z);
  };
  map.addEventListener('click',mapClick);
  const drawMap=()=>{
@@ -102,6 +110,14 @@ export function openWar(onExit:()=>void,forceNew=false):void {
   ctx.fillStyle='#f2f7e9';for(const u of w.units){const pt=project(u.x,u.z);
     ctx.fillStyle='#'+colors[u.owner].toString(16).padStart(6,'0');
     ctx.fillRect(pt.x-1,pt.y-1,2,2);
+  }
+  const current=w.factions[0],goal=current.target!==null?w.factions[current.target]:
+    current.rally!==null?w.outposts[current.rally]:null;
+  if(goal){
+    const origin=project(current.x,current.z),destination=project(goal.x,goal.z);
+    ctx.strokeStyle='#fff1ab';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(origin.x,origin.y);ctx.lineTo(destination.x,destination.y);ctx.stroke();
+    ctx.setLineDash([]);ctx.strokeRect(destination.x-7,destination.y-7,14,14);
   }
   const f=project(focus.x,focus.z);ctx.strokeStyle='#ffffff';ctx.lineWidth=1;
   ctx.strokeRect(f.x-7,f.y-7,14,14);

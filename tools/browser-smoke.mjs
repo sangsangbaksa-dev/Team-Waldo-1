@@ -36,6 +36,13 @@ try{
    await page.locator('.war-ui').waitFor({timeout:15000});
    assert.equal(await page.locator('#outposts button').count(),9);
    assert.equal(await page.locator('#unit-train button').count(),8);
+   // Onboarding instructions must work on both desktop and mobile.
+   const guide=page.locator('.war-guide');
+   await guide.locator('summary').click();
+   assert.equal(await guide.getAttribute('open'),'');
+   assert.match(await guide.innerText(),/안전지대/);
+   await guide.locator('summary').click();
+   assert.equal(await guide.getAttribute('open'),null);
    await page.locator('#policy button').nth(1).click();
    await page.locator('#reserve button').nth(2).click();
    assert.match(await page.locator('#policy .selected').innerText(),/성장/);
@@ -81,6 +88,9 @@ try{
    await page.locator('.war-ui').waitFor();
    assert.match((await page.locator('#policy .selected').allInnerTexts()).join(' '),/균형/);
    assert.equal(await page.evaluate(()=>localStorage.getItem('team-waldo-3d-war-v1')),null);
+   // The render loop should publish a numeric FPS without throwing.
+   await page.waitForTimeout(1250);
+   assert.match(await page.locator('#war-fps').textContent(),/\\d+ FPS/);
    assert.deepEqual(errors,[],'Browser runtime errors');
    console.log('PASS '+width+'px: start, stable controls, strategy, save/load and minimap commands');
   }finally{await page.close();}

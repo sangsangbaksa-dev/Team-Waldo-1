@@ -51,7 +51,19 @@ function validUnit(candidate:unknown,maxId:number):candidate is Unit {
     (u.kind!=='infantry'&&u.kind!=='archer'&&u.kind!=='guardian'&&u.kind!=='cavalry'))return false;
  return finite(u.x,-MAP_HALF_SIZE,MAP_HALF_SIZE)&&
   finite(u.z,-MAP_HALF_SIZE,MAP_HALF_SIZE)&&
-  finite(u.hp,Number.MIN_VALUE,UNIT_STATS[u.kind].hp)&&finite(u.cooldown,0,10);
+  finite(u.hp,Number.MIN_VALUE,UNIT_STATS[u.kind].hp)&&finite(u.cooldown,0,10)&&
+  (u.squad===undefined||integer(u.squad,0,2));
+}
+function validSquadOrder(value: unknown, w: Record<string,unknown>): boolean {
+  if(value===null)return true;
+  if(!isRecord(value)||typeof value.kind!=='string')return false;
+  if(value.kind==='home')return true;
+  if(value.kind==='move')return finite(value.x,-MAP_HALF_SIZE+5,MAP_HALF_SIZE-5)&&
+      finite(value.z,-MAP_HALF_SIZE+5,MAP_HALF_SIZE-5);
+  if(value.kind==='outpost')return integer(value.id,0,8);
+  if(value.kind==='faction')return integer(value.id,1,3)&&
+    Array.isArray(w.factions)&&isRecord(w.factions[value.id])&&w.factions[value.id].alive===true;
+  return false;
 }
 function validEvent(candidate:unknown,time:number):candidate is WarEvent{
  if(!isRecord(candidate))return false;
@@ -86,6 +98,8 @@ export function decodeWar(raw:string|null):War|null {
    }
   }
   if(!difficulty(w.difficulty)||!Array.isArray(w.stats)||w.stats.length!==4||!w.stats.every(validStats))return null;
+  if(w.squadOrders!==undefined&&(!Array.isArray(w.squadOrders)||w.squadOrders.length!==3||
+     !w.squadOrders.every(value=>validSquadOrder(value,w))))return null;
   if(!w.factions.every((f,i)=>validFaction(f,initial.factions[i])))return null;
   if(!w.outposts.every((p,i)=>validOutpost(p,initial.outposts[i])))return null;
   if(!w.events.every(event=>validEvent(event,Number(w.time))))return null;

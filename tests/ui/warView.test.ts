@@ -129,6 +129,23 @@ afterEach(() => {
 });
 
 describe('battle UI through real player actions', () => {
+  it('lets a player split, select, independently order and return a squad with simple buttons', () => {
+    openWar(vi.fn(), true);
+    click('#tab-orders');
+    click('[data-squad-select="1"]');
+    expect(button('#squad-assign').disabled).toBe(false);
+    click('#squad-assign');
+    expect(game().world.units.filter(u => u.owner === 0 && u.squad === 1)).toHaveLength(3);
+    click('#outpost-5');
+    expect(game().world.squadOrders?.[1]).toEqual({ kind: 'outpost', id: 5 });
+    expect(game().world.factions[0].rally).toBeNull();
+    click('#quick-home');
+    expect(game().world.squadOrders?.[1]).toEqual({ kind: 'home' });
+    click('#squad-release');
+    expect(game().world.units.filter(u => u.owner === 0 && u.squad === 1)).toHaveLength(0);
+    expect(game().world.squadOrders?.[1]).toBeNull();
+  });
+
   it('warns about an incoming HQ assault before damage and leads to the real defend control', () => {
     openWar(vi.fn(), true);
     const world = game().world;

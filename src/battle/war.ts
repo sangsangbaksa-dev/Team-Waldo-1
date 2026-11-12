@@ -1,4 +1,5 @@
 /** Deterministic, renderer-independent economy, territory and combat simulation. */
+import type { SquadCommand } from './squads';
 export type Upgrade = 'farm' | 'mine' | 'barracks' | 'fort';
 export type EconomyPolicy = 'balanced' | 'growth' | 'war';
 export type UnitKind = 'infantry' | 'archer' | 'guardian' | 'cavalry';
@@ -14,7 +15,7 @@ export interface Faction {
 }
 export interface Unit {
   id: number; owner: number; kind: UnitKind; x: number; z: number;
-  hp: number; cooldown: number;
+  hp: number; cooldown: number; squad?: 0 | 1 | 2;
 }
 export interface Outpost {
   id: number; x: number; z: number; owner: number | null;
@@ -31,9 +32,10 @@ export interface War {
   factions: Faction[]; units: Unit[]; outposts: Outpost[]; events: WarEvent[];
   time: number; zone: number; over: boolean; winner: number | null; nextUnit: number;
   difficulty: Difficulty; stats: WarStats[];
+  squadOrders?: [SquadCommand | null, SquadCommand | null, SquadCommand | null];
 }
 export const DIFFICULTIES: Record<Difficulty, {label:string;description:string;aiIncome:number;aiInterval:number;aiAttackAfter:number}> = {
-  easy: {label:'입문',description:'AI 자원 생산 20% 감소 · 판단 간격 30% 증가 · AI 본부 공세는 130초 이후',aiIncome:.8,aiInterval:1.3,aiAttackAfter:130},
+  easy: {label:'입문',description:'아군 자원 +35% · AI 생산 45% 감소 · AI 본부 공세 260초 이후 · 폭풍 3분 이후',aiIncome:.55,aiInterval:1.7,aiAttackAfter:260},
   normal: {label:'보통',description:'같은 시작 자원 · 기본 AI 생산과 판단 속도 · AI 본부 공세는 105초 이후',aiIncome:1,aiInterval:1,aiAttackAfter:105},
   hard: {label:'도전',description:'AI 자원 생산 20% 증가 · 판단 간격 20% 감소 · AI 본부 공세 대기 없음',aiIncome:1.2,aiInterval:.8,aiAttackAfter:0},
 };
@@ -50,9 +52,10 @@ export const OUTPOST_BONUSES: ReadonlyArray<{gold:number;food:number}> = [
   {gold:2.1,food:2.1}, {gold:1.15,food:.9}, {gold:1.1,food:1.7},
   {gold:1.8,food:.8}, {gold:.7,food:2.3}, {gold:2.4,food:1.2},
 ];
-export const MAP_HALF_SIZE = 185;
+export const MAP_HALF_SIZE = 260;
 export const MAP_SIZE = MAP_HALF_SIZE * 2;
 export const STORM_START = 130;
+export const stormStartFor = (w: War) => w.difficulty === 'easy' ? 180 : STORM_START;
 export const STORM_HQ_DAMAGE = 3.5;
 const CORNERS = [[-112,-112],[112,-112],[-112,112],[112,112]] as const;
 const OUTPOSTS = [[0,-95],[95,0],[0,95],[-95,0],[0,0],[-62,-62],[62,-62],[-62,62],[62,62]] as const;
@@ -83,7 +86,7 @@ export function createWar(options:{difficulty?:Difficulty}={}): War {
   }));
   const war: War = {
     factions,units:[],outposts,events:[],time:0,zone:MAP_HALF_SIZE-6,over:false,winner:null,nextUnit:1,
-    difficulty,stats:Array.from({length:4},createWarStats),
+    difficulty,stats:Array.from({length:4},createWarStats),squadOrders:[null,null,null],
   };
   for (let id=0;id<4;id++) for (let i=0;i<4;i++) spawn(war,id,'infantry');
   return war;
@@ -92,7 +95,7 @@ function spawn(w: War, id: number, kind: UnitKind): void {
   const f=w.factions[id], n=w.nextUnit++;
   w.units.push({
     id:n,owner:id,kind,x:f.x+((n*3)%5-2)*1.6,
-    z:f.z+4+(n%4)*1.8,hp:UNIT_STATS[kind].hp,cooldown:0,
+    z:f.z+4+(n%4)*1.8,hp:UNIT_STATS[kind].hp,cooldown:0,squad:0,
   });
   w.stats[id].peakArmy=Math.max(w.stats[id].peakArmy,count(w,id));
 }
@@ -102,7 +105,7 @@ export function getIncome(w:War,id:number):{gold:number;food:number} {
   if(!f?.alive)return {gold:0,food:0};
   const owned=w.outposts.filter(p=>p.owner===id);
   const policy=f.policy==='growth'?1.25:f.policy==='war'?.88:1;
-  const multiplier=policy*(1+f.research.logistics*.06)*(id===0?1:DIFFICULTIES[w.difficulty].aiIncome);
+  const multiplier=policy*(1+f.research.logistics*.06)*(id===0?(w.difficulty==='easy'?1.35:1):DIFFICULTIES[w.difficulty].aiIncome);
   return {
     gold:owned.reduce((a,p)=>a+OUTPOST_BONUSES[p.id].gold,f.mine*1.5)*multiplier,
     food:owned.reduce((a,p)=>a+OUTPOST_BONUSES[p.id].food,f.farm*1.3)*multiplier,
@@ -179,12 +182,12 @@ export function train(w: War,id: number,kind: UnitKind='infantry'): boolean {
 export function order(w: War,id: number,target: number|null): boolean {
   const f=w.factions[id];
   if (!f?.alive||w.over||(target!==null&&(!Number.isInteger(target)||target===id||!w.factions[target]?.alive))) return false;
-  f.target=target;f.rally=null;return true;
+  f.target=target;f.rally=null;if(id===0&&w.squadOrders)w.squadOrders[0]=null;return true;
 }
 export function captureOrder(w: War,id: number,postId: number): boolean {
   const f=w.factions[id];
   if (!f?.alive||w.over||!Number.isInteger(postId)||!w.outposts[postId]) return false;
-  f.target=null;f.rally=postId;return true;
+  f.target=null;f.rally=postId;if(id===0&&w.squadOrders)w.squadOrders[0]=null;return true;
 }
 function distance(ax:number,az:number,bx:number,bz:number):number {
   return Math.hypot(ax-bx,az-bz);
@@ -285,7 +288,7 @@ export function captureHeroPost(w: War, x: number, z: number, dt: number): Outpo
 /** Armor mitigates combat only. Storm damage bypasses armor. */
 function attack(w:War,attacker:number,target:Unit,damage:number):void {
   if(target.hp<=0)return;
-  const actual=damage*(1-w.factions[target.owner].research.armor*.08);
+  const actual=damage*(w.difficulty==='easy'&&attacker!==0?.72:1)*(1-w.factions[target.owner].research.armor*.08);
   w.stats[attacker].damageDealt+=Math.min(target.hp,actual);
   target.hp-=actual;
   if(target.hp<=0)w.stats[attacker].kills++;
@@ -293,7 +296,7 @@ function attack(w:War,attacker:number,target:Unit,damage:number):void {
 export function stepWar(w: War,dt: number):void {
   if (w.over||!Number.isFinite(dt)||dt<=0) return;
   dt=Math.min(dt,.1); w.time+=dt;
-  w.zone=Math.max(24,MAP_HALF_SIZE-6-Math.max(0,w.time-STORM_START)*.48);
+  w.zone=Math.max(24,MAP_HALF_SIZE-6-Math.max(0,w.time-stormStartFor(w))*.48);
   for (const f of w.factions) {
     if (!f.alive) continue;
     const income=getIncome(w,f.id);
@@ -319,7 +322,7 @@ export function stepWar(w: War,dt: number):void {
   // Deterministic veteran reservation avoids stripping the HQ of all defenders.
   const reserveIds=new Set<number>();
   for(const f of w.factions){
-    const home=w.units.filter(u=>u.owner===f.id&&u.hp>0).sort((a,b)=>a.id-b.id);
+    const home=w.units.filter(u=>u.owner===f.id&&u.hp>0&&(f.id!==0||(u.squad??0)===0)).sort((a,b)=>a.id-b.id);
     for(const u of home.slice(0,f.reserve))reserveIds.add(u.id);
   }
   for (const u of w.units) {
@@ -348,12 +351,43 @@ export function stepWar(w: War,dt: number):void {
       if(distance(u.x,u.z,rx,rz)>1.25)moveToward(w,u,rx,rz,dt);
       continue;
     }
+    // Independent player squads never inherit the main army's destination.
+    // An uncommanded split squad holds near HQ until explicitly moved.
+    const squad = u.owner === 0 ? (u.squad === 1 || u.squad === 2 ? u.squad : 0) : 0;
+    const independent = u.owner === 0 && (squad !== 0 || Boolean(w.squadOrders?.[0]));
+    if (independent) {
+      const command = w.squadOrders?.[squad] ?? { kind: 'home' as const };
+      const destination = command.kind === 'move' ? command :
+        command.kind === 'home' ? f :
+        command.kind === 'outpost' ? w.outposts[command.id] : w.factions[command.id];
+      if (destination) {
+        if (command.kind === 'faction') {
+          const opponent = w.factions[command.id];
+          if (opponent?.alive && opponent.hp > 0) {
+            if (distance(u.x,u.z,opponent.x,opponent.z) > Math.max(5,s.range))
+              moveToward(w,u,opponent.x,opponent.z,dt);
+            else if (u.cooldown <= 0) {
+              const damage = (s.damage*.9+f.barracks*1.5)*combatMultiplier;
+              w.stats[u.owner].damageDealt += Math.min(opponent.hp,damage);
+              opponent.hp -= damage; u.cooldown = s.cooldown;
+            }
+          }
+        } else {
+          const spread = command.kind === 'outpost' ? 2 : 3.4;
+          const dx = ((u.id % 3) - 1) * spread;
+          const dz = ((Math.floor(u.id / 3) % 3) - 1) * spread;
+          if (distance(u.x,u.z,destination.x+dx,destination.z+dz) > 1.8)
+            moveToward(w,u,destination.x+dx,destination.z+dz,dt);
+        }
+      }
+      continue;
+    }
     const target=f.target===null?undefined:w.factions[f.target];
     if (target?.alive&&target.hp>0) {
       const d=distance(u.x,u.z,target.x,target.z);
       if (d>Math.max(5,s.range)) moveToward(w,u,target.x,target.z,dt);
       else if (u.cooldown<=0) {
-        const damage=(s.damage*.9+f.barracks*1.5)*combatMultiplier;
+        const damage=(s.damage*.9+f.barracks*1.5)*combatMultiplier*(w.difficulty==='easy'&&u.owner!==0?.72:1);
         w.stats[u.owner].damageDealt+=Math.min(target.hp,damage);
         target.hp-=damage;u.cooldown=s.cooldown;
       }
@@ -376,6 +410,10 @@ export function stepWar(w: War,dt: number):void {
   for(const u of w.units){if(u.hp<=0||!w.factions[u.owner].alive)w.stats[u.owner].lost++;}
   w.units=w.units.filter(u=>u.hp>0&&w.factions[u.owner].alive);
   for(const f of w.factions){if(f.target!==null&&!w.factions[f.target].alive)f.target=null;}
+  if(w.squadOrders)for(let i=0;i<w.squadOrders.length;i++){
+    const command=w.squadOrders[i];
+    if(command?.kind==='faction'&&!w.factions[command.id]?.alive)w.squadOrders[i]=null;
+  }
   for (const p of w.outposts) {
     if (p.owner!==null&&!w.factions[p.owner].alive) p.owner=null;
     if (p.contender!==null&&!w.factions[p.contender].alive) {p.contender=null;p.progress=0;}

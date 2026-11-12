@@ -132,7 +132,7 @@ describe('kingdom research and match statistics',()=>{
 
   it('does not credit a last-moment capture to an army whose HQ has already fallen',()=>{
     const w=rich(),post=w.outposts[4];
-    w.time=200;w.factions[0].hp=.001;
+    w.time=400;w.factions[0].hp=.001;
     post.progress=99.9;post.contender=0;
     for(const unit of w.units.filter(u=>u.owner===0)){unit.x=post.x;unit.z=post.z;}
     stepWar(w,.1);
@@ -158,11 +158,12 @@ describe('transparent deterministic difficulty',()=>{
     for(const w of [easy,normal,hard]){
       expect(w.factions.every(f=>f.gold===140&&f.food===100)).toBe(true);
       expect(w.units).toHaveLength(16);
-      expect(getIncome(w,0)).toEqual({gold:1.5,food:1.3});
+      expect(getIncome(w,0).gold).toBeCloseTo(w.difficulty==='easy'?1.5*1.35:1.5);
+      expect(getIncome(w,0).food).toBeCloseTo(w.difficulty==='easy'?1.3*1.35:1.3);
     }
-    expect(getIncome(easy,1).gold).toBeCloseTo(1.5*.8);
+    expect(getIncome(easy,1).gold).toBeCloseTo(1.5*.55);
     expect(getIncome(hard,1).gold).toBeCloseTo(1.5*1.2);
-    expect(easy.factions[1].aiTimer).toBeCloseTo(normal.factions[1].aiTimer*1.3);
+    expect(easy.factions[1].aiTimer).toBeCloseTo(normal.factions[1].aiTimer*1.7);
     expect(hard.factions[1].aiTimer).toBeCloseTo(normal.factions[1].aiTimer*.8);
   });
 

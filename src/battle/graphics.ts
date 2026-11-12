@@ -44,15 +44,15 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   const labels:WorldLabel[]=[];
   const effects=createBattleEffects(world);
   scene.background=new THREE.Color(0xb9d1d0);
-  scene.fog=new THREE.FogExp2(0xb9d1d0,.0011);
+  scene.fog=new THREE.FogExp2(0xb9d1d0,.00085);
   const ambient=new THREE.HemisphereLight(0xe9f6ff,0x60704c,2.15);
   scene.add(ambient);
   const sun=new THREE.DirectionalLight(0xffe2ab,2.7);
   sun.position.set(-130,220,140);
   sun.castShadow=true;
-  sun.shadow.mapSize.set(2048,2048);
-  sun.shadow.camera.left=-210;sun.shadow.camera.right=210;
-  sun.shadow.camera.top=210;sun.shadow.camera.bottom=-210;
+  sun.shadow.mapSize.set(3072,3072);
+  sun.shadow.camera.left=-280;sun.shadow.camera.right=280;
+  sun.shadow.camera.top=280;sun.shadow.camera.bottom=-280;
   sun.shadow.camera.near=10;sun.shadow.camera.far=520;
   sun.shadow.normalBias=.035;sun.shadow.bias=-.0001;
   scene.add(sun,sun.target);
@@ -94,7 +94,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   };
   // Low-height sculpted terrain: game-space remains planar and unit movement unchanged.
   add(world,new THREE.PlaneGeometry(700,700),waterMat,0,-1.15,0).rotation.x=-Math.PI/2;
-  const terrain=new THREE.PlaneGeometry(MAP_HALF_SIZE*2,MAP_HALF_SIZE*2,110,110);
+  const terrain=new THREE.PlaneGeometry(MAP_HALF_SIZE*2,MAP_HALF_SIZE*2,150,150);
   terrain.rotateX(-Math.PI/2);
   const position=terrain.getAttribute('position');
   const vertexColors:number[]=[];
@@ -125,11 +125,11 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   // Track junctions, clumps of flowers and low-poly foliage give the ground depth.
   const trunkGeo=new THREE.CylinderGeometry(.16,.24,1,6);
   const crownGeo=new THREE.ConeGeometry(1,2.2,6);
-  const treeTrunks=new THREE.InstancedMesh(trunkGeo,timber,340);
-  const treeCrowns=new THREE.InstancedMesh(crownGeo,leaves,340);
+  const treeTrunks=new THREE.InstancedMesh(trunkGeo,timber,620);
+  const treeCrowns=new THREE.InstancedMesh(crownGeo,leaves,620);
   const dummy=new THREE.Object3D();
   let treeCount=0;
-  for(let i=0;i<1600&&treeCount<340;i++){
+  for(let i=0;i<2900&&treeCount<620;i++){
     const x=(rng()-.5)*(MAP_HALF_SIZE*1.85),z=(rng()-.5)*(MAP_HALF_SIZE*1.85);
     if(Math.abs(x)>MAP_HALF_SIZE-7||Math.abs(z)>MAP_HALF_SIZE-7||
       war.factions.some(f=>dist(x,z,f.x,f.z)<18)||
@@ -147,9 +147,9 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   treeTrunks.instanceMatrix.needsUpdate=true;treeCrowns.instanceMatrix.needsUpdate=true;
   treeTrunks.castShadow=false;treeCrowns.castShadow=false;
   world.add(treeTrunks,treeCrowns);
-  const rocks=new THREE.InstancedMesh(rock,stoneDark,260);
+  const rocks=new THREE.InstancedMesh(rock,stoneDark,420);
   let rockCount=0;
-  for(let i=0;i<860&&rockCount<260;i++){
+  for(let i=0;i<1400&&rockCount<420;i++){
     const x=(rng()-.5)*(MAP_HALF_SIZE*1.86),z=(rng()-.5)*(MAP_HALF_SIZE*1.86);
     if(war.factions.some(f=>dist(x,z,f.x,f.z)<13)||
        war.outposts.some(p=>dist(x,z,p.x,p.z)<9))continue;
@@ -160,6 +160,50 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   }
   rocks.count=rockCount;rocks.instanceMatrix.needsUpdate=true;
   rocks.castShadow=false;world.add(rocks);
+
+  // Scenic ruins, colorful wildflower meadows and abandoned watchfires add depth
+  // to the expanded world without new textures or external assets.
+  const ruins = [
+    [-213,-208],[212,-205],[-210,213],[214,209],
+    [-208,19],[212,22],[7,-217],[16,211],[-142,192],[177,-156],
+  ] as const;
+  for(let i=0;i<ruins.length;i++){
+    const [x,z]=ruins[i];
+    const ruin=new THREE.Group();ruin.position.set(x,0,z);
+    ruin.rotation.y=(i*1.4)%6.28;world.add(ruin);
+    const platform=add(ruin,box,stoneDark,0,.23,0,10,.45,9);
+    platform.castShadow=false;
+    for(const [px,pz] of [[-3.7,-3.5],[3.6,-3.4],[-3.6,3.5],[3.5,3.6]]){
+      const height=3.5+(i%3)*1.15;
+      add(ruin,box,stone,px,height*.5,pz,.95,height,.95);
+      add(ruin,box,cream,px,height+.12,pz,1.45,.42,1.45);
+    }
+    add(ruin,box,stone,-.3,2.1,-3.6,4.2,3.7,.8);
+    add(ruin,box,stoneDark,-.3,3.9,-3.6,5,.35,1.05);
+    add(ruin,box,woodDark,0,.25,0,2.4,.36,2.4);
+    add(ruin,sphere,ember,0,1.1,0,.84,1.1,.84).castShadow=false;
+    road(x,z,x*.78,z*.78,1.9);
+  }
+  const flowerGeometry=new THREE.SphereGeometry(.35,5,5);
+  const flowerMats=[material(0xffd790),material(0xf8b7c9),material(0xcbdfff)];
+  const flowers=flowerMats.map(mat=>new THREE.InstancedMesh(flowerGeometry,mat,420));
+  const flowerCounts=[0,0,0];
+  for(let i=0;i<3100;i++){
+    const x=(rng()-.5)*MAP_HALF_SIZE*1.9,z=(rng()-.5)*MAP_HALF_SIZE*1.9;
+    if(war.factions.some(f=>dist(x,z,f.x,f.z)<21) ||
+       war.outposts.some(p=>dist(x,z,p.x,p.z)<12) ||
+       ruins.some(([rx,rz])=>dist(x,z,rx,rz)<12))continue;
+    const type=i%3;
+    if(flowerCounts[type]>=420)continue;
+    dummy.position.set(x,.17+rng()*.15,z);
+    dummy.scale.set(.46+rng()*.65,.32+rng()*.45,.48+rng()*.5);
+    dummy.rotation.set(0,rng()*Math.PI*2,0);dummy.updateMatrix();
+    flowers[type].setMatrixAt(flowerCounts[type]++,dummy.matrix);
+  }
+  flowers.forEach((mesh,index)=>{
+    mesh.count=flowerCounts[index];mesh.instanceMatrix.needsUpdate=true;
+    mesh.castShadow=false;mesh.receiveShadow=false;world.add(mesh);
+  });
 
   const fortresses:Fortress[]=war.factions.map(f=>{
     const root=new THREE.Group();root.position.set(f.x,0,f.z);world.add(root);
@@ -299,7 +343,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   storm.castShadow=false;
   // Small moving clouds cast light atmospheric silhouettes without expensive volumetrics.
   const clouds:THREE.Group[]=[];
-  for(let i=0;i<12;i++){
+  for(let i=0;i<16;i++){
     const c=new THREE.Group();world.add(c);
     c.position.set(-175+i*32,58+i%3*5,-128+i*24);
     const cloudMat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.12,depthWrite:false});
@@ -534,7 +578,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     geos.add(missileGeometry);geos.add(bowGeometry);mats.add(healthMaterial);
     unitBatches.forEach(batch=>[...batch.rider,...batch.mount].forEach(part=>geos.add(part.geometry)));
     geos.forEach(g=>g.dispose());mats.add(missileMaterial);
-    [stone,stoneDark,mortar,roof,timber,woodDark,cream,gold,meadow,leaves,leafLight,
+    [stone,stoneDark,mortar,roof,timber,woodDark,cream,gold,meadow,leaves,leafLight,...flowerMats,
       waterMat,roadMat,soilMat,ember,routeMaterial,farmRoofMaterial,...wheatMats,...teamMats,...bannerMats,...markerMats].forEach(m=>mats.add(m));
     mats.forEach(m=>m.dispose());
     sun.shadow.map?.dispose();

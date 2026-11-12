@@ -7,7 +7,7 @@ import { createWar, stepWar, upgrade, train, trainSquad, repair, setPolicy, setR
 const colors=FACTION_COLORS;
 export function openWar(onExit:()=>void,forceNew=false):void {
  const overlay=document.createElement('div'); overlay.className='war-ui'; document.body.append(overlay);
- overlay.innerHTML=`<div class="war-view"></div><div class="war-top"><b>⚔ 영지 생존전</b><span id="war-clock"></span><button id="pause">일시정지</button><button id="speed">속도 1×</button><button id="quality">그래픽 높음</button><button id="home">내 영지</button><button id="audio" aria-label="소리 끄기">🔊</button><button id="exit">메뉴로</button></div><div class="war-panel"><div class="eyebrow">내 영지</div><div id="war-res"></div><div class="war-section">생산과 성장</div><div id="buildings"></div><div class="war-section">왕국 경제 정책</div><div id="policy"></div><button id="repair" class="war-action">본부 수리 <small>금 45 · 식량 25</small></button><div class="war-section">병종 훈련</div><div id="unit-train"></div><div class="war-section">부대 명령</div><div id="targets"></div><div class="war-section">본부 수비대</div><div id="reserve"></div><div class="war-section">거점 점령</div><div id="outposts"></div><div class="war-section">전투 저장</div><div id="save-actions"><button id="save">저장</button><button id="load">이어하기</button><button id="new">새 전투</button></div><div id="save-status" role="status"></div><details class="war-guide"><summary>전술 가이드 · 조작법</summary><p>① 성장 정책으로 금과 식량을 확보하세요.</p><p>② 병영을 강화해 궁병·중장병·기병을 훈련하세요.</p><p>③ 거점을 점령해 추가 자원을 얻고, 적 본부를 공격하세요.</p><p>④ 안전지대는 130초 뒤부터 줄어듭니다. 최후의 왕국으로 살아남으세요.</p><p>WASD 이동 · 휠 확대 · 드래그 회전 · ESC 일시정지 · 숫자 1~4 병력 생산</p></details><div class="war-hint">병사는 가까운 적을 자동으로 공격합니다. 수비 병력은 출전하지 않습니다.<br>130초 후 안전지대가 줄어듭니다.</div></div><div class="war-standings" id="standings"></div><div class="war-events" id="events" aria-live="polite"></div><div class="war-minimap"><canvas id="war-map" width="200" height="200" aria-label="전장 미니맵"></canvas><button id="map-mode" aria-pressed="false">이동 모드</button><span>Shift+클릭 또는 명령 모드 선택</span></div><div class="war-help">드래그: 회전 · Shift+드래그/WASD: 이동 · 휠: 확대/축소</div><div class="war-end" hidden></div>`;
+ overlay.innerHTML=`<div class="war-view"></div><div class="war-top"><b>⚔ 영지 생존전</b><span id="war-clock"></span><button id="pause">일시정지</button><button id="speed">속도 1×</button><button id="quality">그래픽 높음</button><button id="home">내 영지</button><button id="audio" aria-label="소리 끄기">🔊</button><button id="exit">메뉴로</button></div><div class="war-panel"><div class="eyebrow">내 영지</div><div id="war-res"></div><div class="war-section">생산과 성장</div><div id="buildings"></div><div class="war-section">왕국 경제 정책</div><div id="policy"></div><button id="repair" class="war-action">본부 수리 <small>금 45 · 식량 25</small></button><div class="war-section">병종 훈련</div><div id="unit-train"></div><div class="war-section">부대 명령</div><div id="targets"></div><div class="war-section">본부 수비대</div><div id="reserve"></div><div class="war-section">거점 점령</div><div id="outposts"></div><div class="war-section">전투 저장</div><div id="save-actions"><button id="save">저장</button><button id="load">이어하기</button><button id="new">새 전투</button></div><div id="save-status" role="status"></div><details class="war-guide"><summary>전술 가이드 · 조작법</summary><p>① 성장 정책으로 금과 식량을 확보하세요.</p><p>② 병영을 강화해 궁병·중장병·기병을 훈련하세요.</p><p>③ 거점을 점령해 추가 자원을 얻고, 적 본부를 공격하세요.</p><p>④ 안전지대는 130초 뒤부터 줄어듭니다. 최후의 왕국으로 살아남으세요.</p><p>WASD 이동 · 휠 확대 · 드래그 회전 · ESC 일시정지 · 숫자 1~4 병력 생산</p></details><div class="war-hint">병사는 가까운 적을 자동으로 공격합니다. 수비 병력은 출전하지 않습니다.<br>130초 후 안전지대가 줄어듭니다.</div></div><div class="war-standings" id="standings"></div><div class="war-events" id="events" aria-live="polite"></div><div class="war-minimap"><canvas id="war-map" width="200" height="200" aria-label="전장 미니맵"></canvas><button id="map-mode" aria-pressed="false">이동 모드</button><span>Shift+클릭 또는 명령 모드 선택</span></div><div class="war-help">드래그: 회전 · Shift+드래그/WASD: 이동 · 휠: 확대/축소 <span id="war-fps">-- FPS</span></div><div class="war-end" hidden></div>`;
  const el=<T extends HTMLElement>(s:string)=>overlay.querySelector<T>(s)!;
  const mount=el<HTMLDivElement>('.war-view');
  let highQuality=!window.matchMedia('(max-width: 700px)').matches;
@@ -44,6 +44,7 @@ export function openWar(onExit:()=>void,forceNew=false):void {
  const audio=createWarAudio();
  let lastAudioEvent=w.events[0]??null;
  let dead=false,done=false,paused=false,speed=1,last=performance.now(),acc=0,uiClock=0,drag=false,prevX=0,prevY=0,frame=0;
+ let fpsStart=performance.now(),fpsFrames=0;
  const heldKeys=new Set<string>();
  const pan=(dx:number,dz:number)=>{focus.x=THREE.MathUtils.clamp(focus.x+dx,-MAP_HALF_SIZE+20,MAP_HALF_SIZE-20);focus.z=THREE.MathUtils.clamp(focus.z+dz,-MAP_HALF_SIZE+20,MAP_HALF_SIZE-20);cameraUpdate();};
  const keyDown=(event:KeyboardEvent)=>{
@@ -233,6 +234,12 @@ export function openWar(onExit:()=>void,forceNew=false):void {
   el('#standings').innerHTML=w.factions.map(f=>`<div><i style="background:#${colors[f.id].toString(16).padStart(6,'0')}"></i><b>${NAMES[f.id]}</b><span>${f.alive?`본부 ${Math.ceil(f.hp)} · 병사 ${count(f.id)}`:'탈락'}</span></div>`).join('');
  }
  function loop(now:number){if(dead)return;const elapsed=Math.min((now-last)/1000,.1);last=now;
+  fpsFrames++;
+  if(now-fpsStart>=1000){
+    const fps=Math.round(fpsFrames*1000/(now-fpsStart));
+    el('#war-fps').textContent=fps+' FPS';
+    fpsStart=now;fpsFrames=0;
+  }
   const cameraStep=elapsed*100;
   const h=(k:string)=>heldKeys.has(k);
   if(h('w')||h('arrowup'))pan(-Math.sin(angle)*cameraStep,-Math.cos(angle)*cameraStep);

@@ -130,3 +130,16 @@
 .war-fallback p{max-width:430px;line-height:1.7}
 .war-fallback button{min-width:150px}
 @media(max-width:700px){.war-ui #save-actions button{font-size:10px;padding:5px 6px}}
+
+/* Ultra-narrow phones: keep the toolbar clickable and prevent map/panel overlap. */
+@media(max-width:360px){
+ .war-top{top:3px;left:6px;right:6px;padding:4px 0;gap:4px;justify-content:flex-end;flex-wrap:nowrap}
+ .war-top b{display:none}
+ .war-top button{font-size:9px;padding:4px;margin-left:0}
+ .war-panel{top:49px;left:7px;width:171px;padding:7px;max-height:calc(100dvh - 55px)}
+ .war-minimap{right:7px;width:126px;padding:4px;bottom:110px}
+ .war-minimap canvas{width:116px;height:116px}
+ .war-minimap span{font-size:9px;text-align:center}
+ .war-standings{right:7px;width:126px}
+ .war-ui #policy .war-target,.war-ui #reserve .war-target{font-size:10px!important}
+}

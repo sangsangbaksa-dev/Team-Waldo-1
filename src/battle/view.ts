@@ -11,7 +11,7 @@ import { showDialog } from '../ui/dialog';
 import {
   createWar, stepWar, upgrade, train, trainSquad, repair, setPolicy, setReserve, order, cost,
   NAMES, OUTPOST_NAMES, OUTPOST_BONUSES, UNIT_STATS, MAX_UNITS, MAP_HALF_SIZE, captureOrder,
-  DIFFICULTIES, RESEARCH, research, researchCost, getIncome, STORM_START, stormDamage,
+  DIFFICULTIES, RESEARCH, research, researchCost, getIncome, stormStartFor, stormDamage,
   type Difficulty, type EconomyPolicy, type UnitKind, type Upgrade, type Research,
 } from './war';
 
@@ -157,7 +157,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   let adventure: ReturnType<typeof createAdventure> | null = null;
   const cameraUpdate = () => { if (adventure?.isActionMode) return; camera.position.set(focus.x + Math.sin(angle) * zoom, zoom * .83, focus.z + Math.cos(angle) * zoom); camera.lookAt(focus); };
   const pan = (dx: number, dz: number) => { focus.x = THREE.MathUtils.clamp(focus.x + dx, -MAP_HALF_SIZE + 12, MAP_HALF_SIZE - 12); focus.z = THREE.MathUtils.clamp(focus.z + dz, -MAP_HALF_SIZE + 12, MAP_HALF_SIZE - 12); cameraUpdate(); };
-  const setZoom = (value: number) => { zoom = THREE.MathUtils.clamp(value, 14, 550); cameraUpdate(); };
+  const setZoom = (value: number) => { zoom = THREE.MathUtils.clamp(value, 14, 680); cameraUpdate(); };
   cameraUpdate();
   const world = createBattleWorld(scene, w); world.setQuality(prefs.quality === 'high'); world.setReducedMotion(prefs.reducedMotion);
   const adventureControl = createAdventure(scene, camera, w, !resumed && import.meta.env.MODE !== 'test'); adventure = adventureControl;
@@ -288,7 +288,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
       document.querySelector<HTMLButtonElement>('#pause-menu')!.onclick = () => { modalClose?.(); exitWithSave(); };
     });
   };
-  const help = () => openModal('왕국을 지배하는 방법', `<div class="guide-steps"><article><b>01 · 경제를 성장시키세요</b><p>금광과 농장을 강화하면 병력을 꾸준히 생산할 수 있습니다. 성장 정책은 자원 수입을 25% 늘립니다.</p></article><article><b>02 · 거점을 점령하세요</b><p>작전 탭에서 거점을 선택하세요. 출전 병력이 이동해 점령하며, 수비대는 본부를 지킵니다. 적과 아군이 함께 있으면 점령이 정지합니다.</p></article><article><b>03 · 연구하고 정복하세요</b><p>병영 Lv.2에서 연구와 궁병, Lv.3에서 중장병과 기병이 해금됩니다. 모든 적 본부를 함락하면 승리합니다.</p></article><article><b>04 · 폭풍에 대비하세요</b><p>2분 10초부터 안전지대가 줄어듭니다. 밖에 있는 본부·병력이 피해를 받으며, 거점 1개당 본부 폭풍 피해가 12% 줄어듭니다 (최대 60%).</p></article></div><div class="shortcut-grid"><span><kbd>WASD</kbd> 시점 이동</span><span><kbd>H</kbd> 내 영지</span><span><kbd>V/T</kbd> 직접 플레이/전략</span><span><kbd>E</kbd> 성벽 올라가기·내려가기</span><span><kbd>F</kbd> 활 발사</span><span><kbd>1–4</kbd> 병종 훈련</span><span><kbd>Esc</kbd> 일시정지</span><span>드래그: 회전 · Shift+드래그: 이동</span><span>휠: 확대 · Shift+클릭: 명령</span><span>터치: 드래그 이동 · 두 손가락 확대</span><span>미니맵: 시점 이동 / 명령 모드</span></div>`);
+  const help = () => openModal('왕국을 지배하는 방법', `<div class="guide-steps"><article><b>01 · 경제를 성장시키세요</b><p>금광과 농장을 강화하면 병력을 꾸준히 생산할 수 있습니다. 성장 정책은 자원 수입을 25% 늘립니다.</p></article><article><b>02 · 거점을 점령하세요</b><p>작전 탭에서 거점을 선택하세요. 출전 병력이 이동해 점령하며, 수비대는 본부를 지킵니다. 적과 아군이 함께 있으면 점령이 정지합니다.</p></article><article><b>03 · 연구하고 정복하세요</b><p>병영 Lv.2에서 연구와 궁병, Lv.3에서 중장병과 기병이 해금됩니다. 모든 적 본부를 함락하면 승리합니다.</p></article><article><b>04 · 폭풍에 대비하세요</b><p>보통 난이도는 2분 10초, 쉬움은 3분부터 안전지대가 줄어듭니다. 밖에 있는 본부·병력이 피해를 받으며, 거점 1개당 본부 폭풍 피해가 12% 줄어듭니다 (최대 60%).</p></article></div><div class="shortcut-grid"><span><kbd>WASD</kbd> 시점 이동</span><span><kbd>H</kbd> 내 영지</span><span><kbd>V/T</kbd> 직접 플레이/전략</span><span><kbd>E</kbd> 성벽 올라가기·내려가기</span><span><kbd>F</kbd> 활 발사</span><span><kbd>1–4</kbd> 병종 훈련</span><span><kbd>Esc</kbd> 일시정지</span><span>드래그: 회전 · Shift+드래그: 이동</span><span>휠: 확대 · Shift+클릭: 명령</span><span>터치: 드래그 이동 · 두 손가락 확대</span><span>미니맵: 시점 이동 / 명령 모드</span></div>`);
   const syncSound = () => { el('#sound').innerHTML = icon(prefs.sound ? 'sound' : 'muted'); el('#sound').setAttribute('aria-label', prefs.sound ? '효과음 끄기' : '효과음 켜기'); audio.setMuted(!prefs.sound); };
   const openSettings = () => openModal('전장 설정', `<div class="settings-grid"><label>그래픽 품질<select id="graphics-setting"><option value="high">높음 · 그림자와 효과</option><option value="standard">보통 · 성능 우선</option><option value="low">낮음 · 저사양 기기</option></select></label><label>효과음<input type="checkbox" id="audio-setting"></label><label>움직임 줄이기<input type="checkbox" id="motion-setting"></label></div><p class="dialog-tip">설정은 이 브라우저에 저장됩니다. 보통은 그림자·효과를 줄이고, 낮음은 해상도와 색 보정도 줄입니다. 관리 패널 아래 FPS로 실제 화면 속도를 확인하세요.</p>`, () => {
     const quality = document.querySelector<HTMLSelectElement>('#graphics-setting')!, sound = document.querySelector<HTMLInputElement>('#audio-setting')!, motion = document.querySelector<HTMLInputElement>('#motion-setting')!;
@@ -304,7 +304,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   el<HTMLButtonElement>('#speed').onclick = () => { const rates = [.5, .65, .85, 1, 1.5]; speed = rates[(rates.findIndex(value => Math.abs(value - speed) < .001) + 1) % rates.length]; text('#speed', speed + '×'); el('#speed').setAttribute('aria-label', '게임 속도 ' + speed + '배'); announce('전투 속도를 ' + speed + '배로 변경했습니다.'); };
   el<HTMLButtonElement>('#sound').onclick = () => { prefs.sound = !prefs.sound; syncSound(); writePreferences(prefs); };
   el<HTMLButtonElement>('#zoom-in').onclick = () => setZoom(zoom - 30); el<HTMLButtonElement>('#zoom-out').onclick = () => setZoom(zoom + 30);
-  el<HTMLButtonElement>('#overview').onclick = () => { focus.set(0, 0, 0); setZoom(390); };
+  el<HTMLButtonElement>('#overview').onclick = () => { focus.set(0, 0, 0); setZoom(530); };
   el<HTMLButtonElement>('#panel-toggle').onclick = () => { overlay.classList.toggle('panel-collapsed'); const expanded = !overlay.classList.contains('panel-collapsed'); el('#panel-toggle').setAttribute('aria-expanded', String(expanded)); el('#panel-toggle').setAttribute('aria-label', expanded ? '관리 패널 접기' : '관리 패널 펼치기'); };
   const updateAdventureUI = () => {
     const active = adventureControl.isActionMode;
@@ -526,8 +526,8 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     else if (owned === 0) { text('#mission-title', '첫 번째 깃발을 세우세요'); text('#mission-description', '가까운 북서부 관문을 점령해 보세요.'); el<HTMLButtonElement>('#mission-action').onclick = () => { showTab('orders'); showTarget({ kind: 'outpost', id: 5 }); }; }
     else if (p.barracks < 2 || w.stats[0].researches === 0) { text('#mission-title', '왕국의 기술을 발전시키세요'); text('#mission-description', '병영 Lv.2를 달성하고 첫 연구를 완료하세요.'); el<HTMLButtonElement>('#mission-action').onclick = () => showTab(p.barracks < 2 ? 'economy' : 'research'); }
     else { text('#mission-title', '마지막 왕국으로 남으세요'); text('#mission-description', `남은 적 왕국 ${w.factions.filter(f => f.alive && f.id !== 0).length}개 · 거점 ${owned}/9 확보`); el<HTMLButtonElement>('#mission-action').onclick = () => showTab('orders'); }
-    const storm = stormDamage(w, 0), beforeStorm = w.time < STORM_START;
-    text('#storm-clock', beforeStorm ? `폭풍까지 ${clock(STORM_START - w.time)}` : '폭풍 진행 중'); text('#zone-size', `${Math.round(w.zone)}m`);
+    const storm = stormDamage(w, 0), stormStart = stormStartFor(w), beforeStorm = w.time < stormStart;
+    text('#storm-clock', beforeStorm ? `폭풍까지 ${clock(stormStart - w.time)}` : '폭풍 진행 중'); text('#zone-size', `${Math.round(w.zone)}m`);
     el('#storm-warning').hidden = storm === 0;
     text('#storm-warning-text', `본부가 폭풍에 노출됐습니다 · 체력 −${storm.toFixed(1)}/초`);
     if (p.hp < p.maxHp * .3 && !lowHpWarned) { audio.play('warning'); announce('본부 체력이 낮습니다. 수리하거나 방어 병력을 확보하세요.'); lowHpWarned = true; }

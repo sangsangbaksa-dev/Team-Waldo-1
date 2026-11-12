@@ -1,1 +1,17 @@
 .war-ui {position:fixed;inset:0;z-index:1000;color:#eef8e9;background:#243c30;font:14px/1.4 system-ui,sans-serif;overflow:hidden}.war-ui *{box-sizing:border-box}.war-view{position:absolute;inset:0}.war-view canvas{display:block;touch-action:none}.war-top{position:absolute;top:16px;left:20px;right:20px;display:flex;align-items:center;gap:20px;pointer-events:none;text-shadow:0 1px 3px #17251c}.war-top b{font-size:22px;letter-spacing:-1px}.war-top span{font-size:13px}.war-top button{margin-left:auto;pointer-events:auto}.war-ui button{font:inherit;cursor:pointer;color:#ecf7ed;background:#314b3e;border:1px solid #6f9580;border-radius:7px;padding:8px 11px}.war-ui button:hover:not(:disabled){background:#436b55;border-color:#a8e0bd}.war-ui button:disabled{opacity:.38;cursor:default}.war-panel,.war-standings{position:absolute;background:#14271fef;border:1px solid #72947b;border-radius:12px;box-shadow:0 8px 30px #0d201b55}.war-panel{left:20px;top:65px;width:250px;padding:15px}.eyebrow{font-weight:800;font-size:18px}.war-section{color:#9dcbb0;font-size:12px;font-weight:700;margin:13px 0 7px}.war-ui #war-res{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}.war-ui #war-res span{font-size:12px;color:#b9cfbf}.war-action{width:100%;text-align:left;margin:3px 0;display:flex;align-items:center;gap:5px;font-size:13px!important}.war-action span{color:#b9dcbf}.war-action small{font-size:11px;color:#c1d4c2;margin-left:auto}.war-target{font-size:12px!important;margin:3px 3px 0 0;padding:7px!important}.war-target.selected{background:#489077;border-color:#aaf6d6}.war-hint{font-size:11px;line-height:1.55;color:#aac3af;margin-top:12px}.war-standings{right:20px;top:65px;width:190px;padding:9px 12px}.war-standings div{display:flex;align-items:center;gap:7px;padding:5px 0;font-size:12px}.war-standings i{width:9px;height:9px;border-radius:50%}.war-standings span{margin-left:auto;color:#bfd1c2}.war-help{position:absolute;bottom:15px;right:20px;background:#14271fdb;padding:6px 10px;border-radius:6px;font-size:11px}.war-end{position:absolute;inset:0;background:#091a15b8;display:grid;place-items:center;text-align:center}.war-end[hidden]{display:none}.war-end>div{background:#193329;border:1px solid #8bb69a;border-radius:15px;padding:30px 55px}.war-end h1{font-size:25px}.war-end button{margin:10px 4px 0}@media(max-width:700px){.war-panel{left:8px;top:52px;width:200px;padding:9px}.war-top{top:8px;left:10px;right:10px}.war-top b{font-size:17px}.war-standings{right:8px;top:52px;width:135px;padding:5px}.war-standings span{font-size:10px}.war-action{margin:1px 0;padding:5px!important}.war-hint{display:none}.war-section{margin:7px 0 3px}}
+
+/* Strategy mode: panels remain usable when the number of commands grows. */
+.war-panel { max-height:calc(100dvh - 85px); overflow-y:auto; scrollbar-width:thin; overscroll-behavior:contain; }
+.war-standings { max-height:calc(100dvh - 85px); overflow-y:auto; }
+.war-top button { white-space:nowrap; }
+#outposts { display:flex; flex-wrap:wrap; gap:3px; }
+#outposts .war-target { margin:0; }
+.war-view canvas { width:100%; height:100%; }
+@media(max-width:700px) {
+ .war-panel { max-height:calc(100dvh - 67px); }
+ .war-top { gap:5px; }
+ .war-top span { display:none; }
+ .war-top button { padding:5px 6px; font-size:11px; }
+ .war-standings { top:auto; bottom:12px; right:8px; max-height:95px; overflow:auto; }
+ .war-help { display:none; }
+}

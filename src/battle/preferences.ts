@@ -11,6 +11,7 @@ export function readPreferences(): Preferences {
 }
 export function writePreferences(value: Preferences): void {
   try { localStorage.setItem(KEY, JSON.stringify(value)); } catch { /* Settings are optional. */ }
+  window.dispatchEvent(new Event('waldo:preferences'));
 }
 
 export interface Career { matches: number; wins: number; bestSurvival: number; bestKills: number; }

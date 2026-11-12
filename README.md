@@ -145,13 +145,21 @@ AI도 자원을 사용해 건물을 강화하고 병력을 훈련하며 연구�
 | `npm run dev` | Vite 개발 서버 |
 | `npm run lint` | ESLint 검사 |
 | `npm run typecheck` | TypeScript 타입 검사 |
-| `npm test` | 전략·저장·서바이벌·데이터 테스트 |
+| `npm test` | 전략·저장·UI 통합·서바이벌·데이터 테스트 |
+| `npm run test:browser` | 실제 Chromium의 데스크톱·모바일 WebGL 회귀 검사 |
 | `npm run validate-data` | 기존 서바이벌 데이터 JSON 검증 |
 | `npm run balance -- --runs 20` | 기존 서바이벌 봇 20회 시뮬레이션 |
 | `npm run build` | 배포 파일을 `dist/`에 생성 |
 | `npm run preview` | 배포 빌드 로컬 확인 |
 
-샌드박스 환경에서 `tsx` 실행이 IPC 소켓 권한 때문에 막히면 `node --import tsx tools/validate-data.ts`처럼 Node의 import 훅으로 같은 도구를 실행할 수 있습니다.
+브라우저 검사는 Playwright 1.56.1을 사용합니다. `npm ci` 후 브라우저를 한 번 설치하고 실행하세요.
+
+```bash
+npx playwright install --with-deps chromium --only-shell
+npm run test:browser
+```
+
+검사 스크립트는 개발 서버를 자동으로 시작하고 종료합니다. 1440×900, 390×844, 320×780, 844×390에서 실제 WebGL 프레임, 조작, 저장·이어하기, 결과·재도전, 화면 겹침을 확인하고 `browser-artifacts/`에 스크린샷과 JSON 결과를 남깁니다. 연구·승리 화면은 보고서에 명시한 테스트 상태를 사용합니다. GitHub Actions도 같은 검사를 실행하며 결과 파일을 7일 동안 보관합니다.
 
 ## 구조와 검증
 
@@ -167,10 +175,12 @@ AI도 자원을 사용해 건물을 강화하고 병력을 훈련하며 연구�
 | `src/ui/` | 공용 아이콘과 대화상자 |
 | `src/scenes/`, `src/render/`, `src/sim/`, `data/` | 기존 서바이벌 게임 |
 | `tests/battle/` | 경제·전술·연구·난이도·저장·장기 실행 회귀 테스트 |
+| `tests/ui/` | 저장 실패·포커스·재시작·그래픽/오디오 오류 통합 테스트 |
+| `tools/browser-smoke.mjs` | 실제 Chromium과 WebGL로 실행하는 화면 회귀 검사 |
 
 전략 시뮬레이션과 Three.js 화면을 분리해 실제 게임 규칙을 브라우저 없이 검사합니다. 연구 효과와 비용, 병력 제한, 거점 점령, 동일 입력의 결정성, 손상된 저장 거부와 v1 이전, 자연 진행 저장·복원 등을 검증합니다. 장시간 AI 시뮬레이션으로 자원·체력·병력·이벤트 수치가 유효한지도 확인합니다.
 
-3D 모델과 게임 내 효과음은 코드로 생성합니다. 서버 API·비밀 키·외부 3D 에셋 없이 빌드할 수 있습니다. 화면의 그래픽 품질은 기기와 브라우저의 WebGL 성능에 영향을 받습니다.
+3D 모델·SVG 배경과 게임 내 효과음은 코드로 생성합니다. 한국어 웹폰트는 Google Fonts에서 제공하며, 연결되지 않을 때 시스템 글꼴로 대체됩니다. 서버 API·비밀 키·외부 3D 에셋 없이 빌드할 수 있습니다. 화면의 그래픽 품질은 기기와 브라우저의 WebGL 성능에 영향을 받습니다.
 
 기존 서바이벌 구조의 상세 설계는 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)에 있으며, 이 문서는 해당 모드의 역사적 설계 기록입니다.
 

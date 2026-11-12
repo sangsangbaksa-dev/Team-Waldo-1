@@ -1,29 +1,31 @@
 import * as THREE from 'three';
 import { createBattleWorld } from './graphics';
 import { createWar } from './war';
+import { readPreferences } from './preferences';
 
 /** A decorative scene: no match progress, saved data, or input handlers. */
 export function createLandingPreview(mount: HTMLElement): () => void {
+  let preferences = readPreferences();
   let renderer: THREE.WebGLRenderer;
   try {
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'low-power' });
+    renderer = new THREE.WebGLRenderer({ antialias: preferences.quality === 'high', alpha: false, powerPreference: 'low-power' });
   } catch {
     mount.dataset.preview = 'unavailable';
     return () => undefined;
   }
   const compact = window.matchMedia('(max-width: 700px)').matches;
   const preference = window.matchMedia('(prefers-reduced-motion: reduce)');
-  let reducedMotion = preference.matches;
+  let reducedMotion = preferences.reducedMotion;
   let dead = false;
   let visible = true;
   let frame = 0;
   let elapsed = 0;
   let last = 0;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, compact ? 1 : 1.5));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, preferences.quality === 'high' ? 1.5 : 1));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
-  renderer.shadowMap.enabled = !compact;
+  renderer.shadowMap.enabled = preferences.quality === 'high';
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.domElement.setAttribute('aria-hidden', 'true');
   renderer.domElement.style.cssText = 'display:block;width:100%;height:100%;pointer-events:none';
@@ -34,7 +36,7 @@ export function createLandingPreview(mount: HTMLElement): () => void {
   const war = createWar();
   war.units = [];
   const world = createBattleWorld(scene, war);
-  world.setQuality(!compact);
+  world.setQuality(preferences.quality === 'high');
   world.setReducedMotion(reducedMotion);
   world.setLabelsVisible(false);
   scene.background = new THREE.Color(0x91b4a8);
@@ -71,9 +73,15 @@ export function createLandingPreview(mount: HTMLElement): () => void {
     frame = requestAnimationFrame(loop);
   };
   const preferenceChanged = () => {
-    reducedMotion = preference.matches;
+    if (dead) return;
+    preferences = readPreferences();
+    reducedMotion = preferences.reducedMotion;
+    world.setQuality(preferences.quality === 'high');
     world.setReducedMotion(reducedMotion);
-    draw();
+    renderer.shadowMap.enabled = preferences.quality === 'high';
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, preferences.quality === 'high' ? 1.5 : 1));
+    last = 0;
+    resize();
   };
   const visibilityChanged = () => { last = 0; draw(); };
   const contextLost = (event: Event) => {
@@ -91,6 +99,7 @@ export function createLandingPreview(mount: HTMLElement): () => void {
   });
   intersection.observe(mount);
   preference.addEventListener('change', preferenceChanged);
+  window.addEventListener('waldo:preferences', preferenceChanged);
   document.addEventListener('visibilitychange', visibilityChanged);
   renderer.domElement.addEventListener('webglcontextlost', contextLost);
   resize();
@@ -103,6 +112,7 @@ export function createLandingPreview(mount: HTMLElement): () => void {
     observer.disconnect();
     intersection.disconnect();
     preference.removeEventListener('change', preferenceChanged);
+    window.removeEventListener('waldo:preferences', preferenceChanged);
     document.removeEventListener('visibilitychange', visibilityChanged);
     renderer.domElement.removeEventListener('webglcontextlost', contextLost);
     world.dispose();

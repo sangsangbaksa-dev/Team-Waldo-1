@@ -13,7 +13,7 @@
 | Install Command | `npm ci` |
 | Build Command | `npm run typecheck && npm run build` |
 | Output Directory | `dist` |
-| Node.js | 22 이상, 프로젝트 의존성과 호환되는 버전 |
+| Node.js | 22.13 이상인 22 LTS 또는 24 LTS |
 | 환경 변수 | 필요 없음 |
 
 `package-lock.json`을 함께 커밋해야 같은 의존성으로 빌드됩니다. 파일 기반 설정은 Vercel 대시보드의 빌드 설정보다 우선하므로 별도 사용자 지정 명령을 추가할 필요가 없습니다.
@@ -46,6 +46,8 @@ npm run preview
 ```
 
 GitHub Actions는 모든 브랜치의 push와 pull request에서 같은 코드·데이터·빌드 검사를 실행합니다. Actions의 **Run workflow**로 수동 실행할 수도 있습니다. Vercel 배포와 CI는 별도 검사이므로 둘 다 성공했는지 확인합니다.
+
+추가 **Browser smoke** workflow는 실제 Chromium·WebGL에서 네 화면 크기의 메뉴·전장 조작과 저장·결과 화면을 검사합니다. 연구/승리 상태를 지정하는 시나리오는 결과 JSON에 표시됩니다. 실행의 Artifacts에서 스크린샷, `report.json`, 개발 서버 로그를 확인할 수 있습니다. 이 검사는 물리적인 휴대폰 GPU 성능 측정을 대신하지 않습니다.
 
 ## 운영 확인과 복구
 

@@ -12,7 +12,8 @@ const viewports = [
 ];
 const report = { commit: process.env.GITHUB_SHA ?? 'local', started: new Date().toISOString(), cases: [] };
 let browser, serverOutput = '';
-const server = spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'] });
+// Terminate the server itself, not an npm parent that leaves open output pipes.
+const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'] });
 server.stdout.on('data', chunk => { serverOutput += chunk; });
 server.stderr.on('data', chunk => { serverOutput += chunk; });
 server.on('error', error => { serverOutput += `\n${error.stack}`; });
@@ -81,11 +82,14 @@ try {
     const page = await context.newPage(); page.setDefaultTimeout(15000);
     const result = { name, width, height, status: 'running', pageErrors: [], consoleErrors: [], scenarios: ['normal UI actions', 'DEV time freeze', 'seeded victory result'] };
     report.cases.push(result);
+    const stage = async value => { result.stage = value; console.log(`STAGE ${name}: ${value}`); await writeFile(`${artifacts}/report.json`, JSON.stringify(report, null, 2)); };
     page.on('pageerror', error => result.pageErrors.push(error.message));
     page.on('console', message => { if (message.type() === 'error') result.consoleErrors.push(message.text()); });
     try {
+      await stage('landing');
       await page.goto(origin, { waitUntil: 'domcontentloaded' });
-      await page.locator('#start-war').waitFor(); await page.evaluate(() => document.fonts.ready);
+      await page.locator('#start-war').waitFor();
+      await page.evaluate(() => Promise.race([document.fonts.ready, new Promise(resolve => setTimeout(resolve, 3000))]));
       assert.equal(await page.locator('[data-release="kingdoms-1.0"]').count(), 1);
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Landing overflows horizontally');
       await page.locator('#guide').click(); await page.getByRole('dialog').waitFor();
@@ -96,11 +100,12 @@ try {
       await page.locator('#menu-sound').uncheck(); await page.locator('#menu-motion').check(); await page.locator('.dialog-cancel').click();
       await page.locator('#difficulty-easy').click(); assert.equal(await page.locator('#difficulty-easy').getAttribute('aria-pressed'), 'true');
       await capture(page, `${name}-menu`); await page.locator('#start-war').click();
+      await stage('WebGL startup');
       result.gpu = await waitForBattle(page);
       assert.ok(result.gpu.calls > 0 && result.gpu.triangles > 0 && !result.gpu.contextLost, '3D frame not rendered');
       assert.equal(result.gpu.difficulty, 'easy');
       result.layout = await layout(page); await capture(page, `${name}-battle`); assertLayout(result.layout);
-
+      await stage('economy, army and minimap');
       await page.locator('#build-mine').click(); assert.equal((await snapshot(page)).mine, 2);
       await page.locator('#policy-growth').click(); assert.equal(await page.locator('#policy-growth').getAttribute('aria-pressed'), 'true');
       await page.locator('#tab-army').click(); assert.equal(await page.locator('#tab-army').getAttribute('aria-selected'), 'true');
@@ -121,6 +126,7 @@ try {
         await page.locator('#tab-research').click(); await page.locator('#research-weapons').click();
         assert.equal((await snapshot(page)).weapons, 1); await capture(page, `${name}-research`);
       }
+      await stage('save and resume');
       await page.locator('#save').click(); const expected = await snapshot(page);
       const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('team-waldo-3d-war-v1')));
       assert.equal(saved.version, 2); assert.equal(saved.war.factions[0].policy, 'growth');
@@ -138,6 +144,7 @@ try {
       await page.locator('#start-war').click(); await page.locator('.dialog-confirm').click(); await waitForBattle(page);
       assert.equal((await snapshot(page)).mine, 1); assert.equal((await snapshot(page)).policy, 'balanced');
 
+      await stage('victory and retry fixture');
       // Explicit terminal-world fixture tests the result UI without waiting for a match.
       await page.evaluate(() => {
         const { world, finish } = window.__war;

@@ -1,0 +1,23 @@
+name: Browser smoke
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install pinned browser testing runtime
+        run: npm install --no-save playwright@1.56.1
+      - name: Install headless Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Exercise desktop and mobile 3D game
+        run: node tools/browser-smoke.mjs

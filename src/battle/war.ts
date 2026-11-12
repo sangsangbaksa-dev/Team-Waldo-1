@@ -264,6 +264,24 @@ function updateOutposts(w: War,dt:number):void {
     }
   }
 }
+/** Player-controlled capture presence; rival troops contest the flag. */
+export function captureHeroPost(w: War, x: number, z: number, dt: number): Outpost | null {
+  if (w.over || !w.factions[0].alive || !Number.isFinite(dt) || dt <= 0) return null;
+  const p = w.outposts.find(post => post.owner !== 0 && distance(x, z, post.x, post.z) < 7.5);
+  if (!p) return null;
+  const contested = w.units.some(u => u.owner !== 0 && u.hp > 0 &&
+    w.factions[u.owner].alive && distance(u.x, u.z, p.x, p.z) < 8.5);
+  if (contested) return null;
+  if (p.contender !== 0) { p.contender = 0; p.progress = 0; }
+  p.progress = Math.min(100, p.progress + dt * 11);
+  if (p.progress >= 100) {
+    p.owner = 0; p.contender = null; p.progress = 0;
+    w.stats[0].captures++;
+    addEvent(w, NAMES[0] + ' 세력이 ' + OUTPOST_NAMES[p.id] + ' 점령');
+  }
+  return p;
+}
+
 /** Armor mitigates combat only. Storm damage bypasses armor. */
 function attack(w:War,attacker:number,target:Unit,damage:number):void {
   if(target.hp<=0)return;

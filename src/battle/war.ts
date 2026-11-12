@@ -410,6 +410,10 @@ export function stepWar(w: War,dt: number):void {
   for(const u of w.units){if(u.hp<=0||!w.factions[u.owner].alive)w.stats[u.owner].lost++;}
   w.units=w.units.filter(u=>u.hp>0&&w.factions[u.owner].alive);
   for(const f of w.factions){if(f.target!==null&&!w.factions[f.target].alive)f.target=null;}
+  if(w.squadOrders)for(let i=0;i<w.squadOrders.length;i++){
+    const command=w.squadOrders[i];
+    if(command?.kind==='faction'&&!w.factions[command.id]?.alive)w.squadOrders[i]=null;
+  }
   for (const p of w.outposts) {
     if (p.owner!==null&&!w.factions[p.owner].alive) p.owner=null;
     if (p.contender!==null&&!w.factions[p.contender].alive) {p.contender=null;p.progress=0;}

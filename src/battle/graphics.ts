@@ -1,5 +1,8 @@
 import * as THREE from 'three';
-import { MAP_HALF_SIZE, OUTPOST_NAMES, UNIT_STATS, type Unit, type UnitKind, type War } from './war';
+import { MAP_HALF_SIZE, OUTPOST_NAMES, OUTPOST_BONUSES, UNIT_STATS, type Unit, type UnitKind, type War } from './war';
+import { createWorldLabel, type WorldLabel } from './renderLabels';
+import { createBattleEffects } from './renderEffects';
+import { batchStaticChildren, type StaticBatch } from './renderBatches';
 
 /** Procedural, self-contained stylized 3D battlefield. No external models or textures. */
 export const FACTION_COLORS = [0x50d9d1, 0xf06a77, 0xf5c45d, 0xaa8eed] as const;
@@ -8,14 +11,24 @@ const dist = (x:number,z:number,a:number,b:number) => Math.hypot(x-a,z-b);
 type UnitVisual = {
   root: THREE.Group; kind: UnitKind; previousX: number; previousZ: number;
   leftLeg: THREE.Mesh; rightLeg: THREE.Mesh; health: THREE.Mesh;
+  previousHp: number; owner: number;
 };
 type Fortress = {
   root:THREE.Group; towers:THREE.Group; structures:THREE.Group[];
-  banner:THREE.Mesh; rubble:THREE.Group; alive:boolean;
+  banner:THREE.Mesh; rubble:THREE.Group; alive:boolean; label:WorldLabel;
+  ring:THREE.Mesh; previousHp:number; previousCooldown:number;
 };
-type PostVisual = {banner:THREE.Mesh; crystal:THREE.Mesh; progress:THREE.Mesh; label:THREE.Sprite};
+type PostVisual = {banner:THREE.Mesh; crystal:THREE.Mesh; progress:THREE.Mesh;
+  territory:THREE.Mesh; label:WorldLabel; previousOwner:number|null};
 type Projectile = {sprite:THREE.Mesh;start:THREE.Vector3;end:THREE.Vector3;age:number;duration:number};
-export interface BattleWorld { update(dt:number):void; dispose():void; }
+export interface BattleWorld {
+  update(dt:number):void;
+  setQuality(high:boolean):void;
+  setReducedMotion(enabled:boolean):void;
+  setLabelsVisible(visible:boolean):void;
+  setStrategicOverlaysVisible(visible:boolean):void;
+  dispose():void;
+}
 const seeded = (seed:number) => () => {
   seed=(Math.imul(seed,1664525)+1013904223)>>>0;
   return seed/4294967296;
@@ -25,8 +38,13 @@ export function terrainShade(x:number,z:number):number {
 }
 export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   const world=new THREE.Group();world.name='Stylized kingdom';scene.add(world);
+  let highQuality=true;
+  let reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let strategicOverlaysVisible=true;
+  const labels:WorldLabel[]=[];
+  const effects=createBattleEffects(world);
   scene.background=new THREE.Color(0xb9d1d0);
-  scene.fog=new THREE.FogExp2(0xb9d1d0,.0023);
+  scene.fog=new THREE.FogExp2(0xb9d1d0,.0011);
   const ambient=new THREE.HemisphereLight(0xe9f6ff,0x60704c,2.15);
   scene.add(ambient);
   const sun=new THREE.DirectionalLight(0xffe2ab,2.7);
@@ -55,12 +73,19 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   const bannerMats=FACTION_COLORS.map(color=>new THREE.MeshStandardMaterial({
     color,side:THREE.DoubleSide,roughness:.65
   }));
+  const markerMats=FACTION_COLORS.map(color=>new THREE.MeshBasicMaterial({
+    color,transparent:true,opacity:.76,depthWrite:false,side:THREE.DoubleSide
+  }));
+  const wheatMats=[material(0xc0a461),material(0x9c874f)];
+  const farmRoofMaterial=material(0x976e47);
   const box=new THREE.BoxGeometry(1,1,1),
     cylinder=new THREE.CylinderGeometry(.5,.5,1,10),
     sphere=new THREE.SphereGeometry(.5,12,8),
     cone=new THREE.ConeGeometry(.5,1,5),
     rock=new THREE.DodecahedronGeometry(.5,0),
-    torus=new THREE.TorusGeometry(1,.022,5,120);
+    torus=new THREE.TorusGeometry(1,.022,5,120),
+    unitRingGeometry=new THREE.RingGeometry(1.15,1.42,18),
+    baseRingGeometry=new THREE.RingGeometry(21.5,22,64);
   const add=(parent:THREE.Object3D,g:THREE.BufferGeometry,m:THREE.Material,
     x:number,y:number,z:number,sx=1,sy=1,sz=1)=>{
     const object=new THREE.Mesh(g,m);
@@ -138,6 +163,12 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
 
   const fortresses:Fortress[]=war.factions.map(f=>{
     const root=new THREE.Group();root.position.set(f.x,0,f.z);world.add(root);
+    const territoryRing=add(root,baseRingGeometry,markerMats[f.id],0,.15,0);
+    territoryRing.rotation.x=-Math.PI/2;
+    territoryRing.castShadow=false;
+    const label=createWorldLabel(34,8.5);
+    label.sprite.position.set(f.x,25,f.z);
+    world.add(label.sprite);labels.push(label);
     const slab=add(root,cylinder,stoneDark,0,.28,0,19,1.2,19);
     slab.rotation.y=Math.PI/4;
     // Stone curtain walls with center gate and four individual watchtowers.
@@ -181,10 +212,10 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     const structures:THREE.Group[]=[];
     const farm=new THREE.Group();farm.position.set(-12.8,0,12.5);root.add(farm);
     add(farm,box,timber,0,1.7,0,6.5,3.4,5.4);
-    const farmRoof=add(farm,cone,material(0x976e47),0,4.3,0,9.5,3.5,8);
+    const farmRoof=add(farm,cone,farmRoofMaterial,0,4.3,0,9.5,3.5,8);
     farmRoof.rotation.y=Math.PI/4;
     add(farm,box,cream,0,2,2.79,1.8,2,.18);
-    for(let i=0;i<5;i++)add(farm,box,material(i%2?0x9c874f:0xc0a461),-5+i*2.2,.13,6.8,1.7,.15,5.2);
+    for(let i=0;i<5;i++)add(farm,box,wheatMats[i%2],-5+i*2.2,.13,6.8,1.7,.15,5.2);
     structures.push(farm);
     const mine=new THREE.Group();mine.position.set(0,0,14);root.add(mine);
     add(mine,box,stoneDark,0,1.45,0,6.6,3,5.2);
@@ -209,11 +240,21 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
       const debris=add(rubble,rock,stoneDark,Math.cos(a)*r,.5,Math.sin(a)*r,1.7,.8,1.2);
       debris.rotation.set(i*.24,i*.65,0);
     }
-    return {root,towers,structures,banner,rubble,alive:true};
+    batchStaticChildren(root,new Set([banner,territoryRing]));
+    batchStaticChildren(towers);batchStaticChildren(rubble);
+    structures.forEach(building=>batchStaticChildren(building));
+    return {root,towers,structures,banner,rubble,alive:f.alive,label,ring:territoryRing,
+      previousHp:f.hp,previousCooldown:f.turretCooldown};
   });
 
   const posts:PostVisual[]=war.outposts.map(p=>{
     const root=new THREE.Group();root.position.set(p.x,0,p.z);world.add(root);
+    const territory=add(root,new THREE.RingGeometry(8.5,9,48),
+      new THREE.MeshBasicMaterial({color:0xc8b67b,transparent:true,opacity:.65,depthWrite:false,side:THREE.DoubleSide}),0,.12,0);
+    territory.rotation.x=-Math.PI/2;territory.castShadow=false;
+    const label=createWorldLabel(25,6.25);
+    label.sprite.position.set(p.x,12.5,p.z);
+    world.add(label.sprite);labels.push(label);
     add(root,cylinder,stoneDark,0,.5,0,10,1,10);
     add(root,cylinder,stone,0,1,0,7.5,1,7.5);
     add(root,cylinder,gold,0,1.6,0,4,.5,4);
@@ -227,30 +268,29 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     add(root,cylinder,timber,0,5.9,-2.6,.2,7,.2);
     const flagMaterial=new THREE.MeshStandardMaterial({color:0xc8b67b,side:THREE.DoubleSide,roughness:.65});
     const banner=add(root,box,flagMaterial,1.3,7,-2.6,2.65,1.55,.16);
-    const progress=add(root,torus,material(FACTION_COLORS[0]),0,1.63,0,3.1,3.1,3.1);
-    progress.rotation.x=Math.PI/2;progress.visible=false;
-    const sign=document.createElement('canvas');sign.width=512;sign.height=128;
-    const ctx=sign.getContext('2d');
-    if(ctx){
-      ctx.fillStyle='rgba(9,26,28,0.88)';ctx.beginPath();
-      ctx.roundRect(14,14,484,100,22);ctx.fill();
-      ctx.strokeStyle='#d5c49e';ctx.lineWidth=4;ctx.stroke();
-      ctx.fillStyle='#fff1cc';ctx.textAlign='center';ctx.textBaseline='middle';
-      ctx.font='bold 42px system-ui, sans-serif';
-      ctx.fillText(OUTPOST_NAMES[p.id],256,64,430);
-    }
-    const signTexture=new THREE.CanvasTexture(sign);
-    signTexture.colorSpace=THREE.SRGBColorSpace;
-    const label=new THREE.Sprite(new THREE.SpriteMaterial({
-      map:signTexture,color:0xffffff,depthTest:false,depthWrite:false,
-    }));
-    label.position.set(0,12.8,0);label.scale.set(20,5,1);
-    label.renderOrder=10;root.add(label);
-    return {banner,crystal,progress,label};
+    const progress=add(root,new THREE.RingGeometry(6.7,7.4,64),
+      new THREE.MeshBasicMaterial({color:FACTION_COLORS[0],side:THREE.DoubleSide,depthWrite:false}),0,.14,0);
+    progress.rotation.x=-Math.PI/2;progress.visible=false;progress.castShadow=false;
+    batchStaticChildren(root,new Set([banner,crystal,progress,territory]));
+    return {banner,crystal,progress,territory,label,previousOwner:p.owner};
   });
+  // The current order is visible on the terrain as well as the HUD/minimap.
+  const routeGeometry=new THREE.BufferGeometry();
+  routeGeometry.setAttribute('position',new THREE.Float32BufferAttribute(new Float32Array(6),3));
+  const routeMaterial=new THREE.LineDashedMaterial({color:0xffe1a0,dashSize:3,gapSize:2,
+    transparent:true,opacity:.8,depthWrite:false});
+  const route=new THREE.Line(routeGeometry,routeMaterial);route.frustumCulled=false;
+  route.renderOrder=1;world.add(route);
+  const destination=new THREE.Group();world.add(destination);
+  const destinationRing=add(destination,new THREE.RingGeometry(9,9.5,64),
+    new THREE.MeshBasicMaterial({color:0xffe1a0,side:THREE.DoubleSide,transparent:true,opacity:.9,depthWrite:false}),0,.22,0);
+  destinationRing.rotation.x=-Math.PI/2;destinationRing.castShadow=false;
+  const pointer=add(destination,new THREE.ConeGeometry(1.6,2.4,4),
+    new THREE.MeshBasicMaterial({color:0xffe1a0}),0,14,0);
+  pointer.rotation.z=Math.PI;pointer.castShadow=false;
   // Shrinking safe-zone border, with a faint translucent vertical storm curtain.
-  const ring=add(world,new THREE.TorusGeometry(1,.075,6,160),
-    new THREE.MeshBasicMaterial({color:0x84e9ff,transparent:true,opacity:.9,depthWrite:false}),
+  const ring=add(world,new THREE.RingGeometry(.997,1.003,160),
+    new THREE.MeshBasicMaterial({color:0x84e9ff,side:THREE.DoubleSide,transparent:true,opacity:.9,depthWrite:false}),
     0,.33,0);
   ring.rotation.x=Math.PI/2;ring.castShadow=false;
   const storm=add(world,new THREE.CylinderGeometry(1,1,13,120,1,true),
@@ -277,18 +317,24 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   const missileGeometry=new THREE.SphereGeometry(.27,8,6);
   const missileMaterial=new THREE.MeshBasicMaterial({color:0xffeea5});
   const cooldowns=new Map<number,number>();
+  const freeMissiles:THREE.Mesh[]=[];
+  const unitBatches=new Map<string,{rider:readonly StaticBatch[];mount:readonly StaticBatch[]}>();
   function makeUnit(u:Unit):UnitVisual {
     const root=new THREE.Group();world.add(root);
+    const marker=add(root,unitRingGeometry,markerMats[u.owner],0,.08,0);
+    marker.rotation.x=-Math.PI/2;marker.castShadow=false;
+    const rider=new THREE.Group();root.add(rider);
+    if(u.kind==='cavalry')rider.position.y=1.35;
     const team=teamMats[u.owner];
     const armor=u.kind==='guardian'?stoneDark:team;
-    const body=add(root,cylinder,armor,0,1.32,0,1.35,1.6,.92);
-    add(root,cylinder,team,0,.95,0,1.5,.45,1.1);
-    add(root,sphere,cream,0,2.43,0,1,.95,1);
-    add(root,cone,u.kind==='guardian'?gold:roof,0,3.11,0,1.25,.95,1.25);
-    add(root,box,timber,-.92,1.35,0,.55,1.4,.65);
-    add(root,box,timber,.92,1.35,0,.55,1.4,.65);
-    const leftLeg=add(root,box,woodDark,-.4,.43,0,.52,.83,.61);
-    const rightLeg=add(root,box,woodDark,.4,.43,0,.52,.83,.61);
+    const body=add(rider,cylinder,armor,0,1.32,0,1.35,1.6,.92);
+    add(rider,cylinder,team,0,.95,0,1.5,.45,1.1);
+    add(rider,sphere,cream,0,2.43,0,1,.95,1);
+    add(rider,cone,u.kind==='guardian'?gold:roof,0,3.11,0,1.25,.95,1.25);
+    add(rider,box,timber,-.92,1.35,0,.55,1.4,.65);
+    add(rider,box,timber,.92,1.35,0,.55,1.4,.65);
+    const leftLeg=add(rider,box,woodDark,-.4,.43,0,.52,.83,.61);
+    const rightLeg=add(rider,box,woodDark,.4,.43,0,.52,.83,.61);
     if(u.kind==='cavalry'){
       // A recognizable mount is assembled from shared low-poly primitives.
       add(root,box,timber,0,.92,-.35,2,1.25,2.85);
@@ -301,44 +347,70 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
       add(root,box,gold,0,1.56,-.36,1.4,.2,1.35);
     }
     if(u.kind==='archer'){
-      add(root,box,timber,-.85,1.65,-.8,.65,1.35,.65);
-      const bow=add(root,bowGeometry,timber,1.25,1.3,.55);
+      add(rider,box,timber,-.85,1.65,-.8,.65,1.35,.65);
+      const bow=add(rider,bowGeometry,timber,1.25,1.3,.55);
       bow.rotation.y=Math.PI/2;
-      add(root,box,cream,1.24,1.3,.55,.035,1.5,.04);
+      add(rider,box,cream,1.24,1.3,.55,.035,1.5,.04);
     }else{
-      add(root,box,u.kind==='guardian'?gold:stoneDark,-1.2,1.35,.3,.2,1.6,1.3);
-      const weapon=add(root,box,gold,1.14,1.55,.55,.17,u.kind==='guardian'?2.2:1.6,.2);
+      add(rider,box,u.kind==='guardian'?gold:stoneDark,-1.2,1.35,.3,.2,1.6,1.3);
+      const weapon=add(rider,box,gold,1.14,1.55,.55,.17,u.kind==='guardian'?2.2:1.6,.2);
       weapon.rotation.z=-.22;
-      add(root,box,timber,1.14,.62,.55,.48,.18,.3);
+      add(rider,box,timber,1.14,.62,.55,.48,.18,.3);
     }
-    const hpBack=add(root,box,woodDark,0,3.8,0,1.8,.24,.1);
-    const health=add(root,box,healthMaterial,0,3.8,.075,1.8,.2,.12);
+    const hpBack=add(root,box,woodDark,0,u.kind==='cavalry'?5.1:3.8,0,1.8,.24,.1);
+    const health=add(root,box,healthMaterial,0,u.kind==='cavalry'?5.1:3.8,.075,1.8,.2,.12);
     hpBack.visible=true;health.visible=true;
+    root.traverse(child=>{if(child instanceof THREE.Mesh)child.castShadow=false;});
     body.castShadow=true;
-    return {root,kind:u.kind,previousX:u.x,previousZ:u.z,leftLeg,rightLeg,health};
+    const key=`${u.kind}:${u.owner}`,cached=unitBatches.get(key);
+    const riderBatches=batchStaticChildren(rider,new Set([leftLeg,rightLeg]),cached?.rider);
+    const mountBatches=batchStaticChildren(root,new Set([marker,hpBack,health]),cached?.mount);
+    if(!cached)unitBatches.set(key,{rider:riderBatches,mount:mountBatches});
+    return {root,kind:u.kind,previousX:u.x,previousZ:u.z,leftLeg,rightLeg,health,previousHp:u.hp,owner:u.owner};
   }
-  function shoot(u:Unit):void {
-    if(projectiles.length>=55||u.kind!=='archer')return;
+  function launch(start:THREE.Vector3,end:THREE.Vector3,duration=.28):void {
+    if(projectiles.length>=55||reducedMotion)return;
+    const sprite=freeMissiles.pop()??new THREE.Mesh(missileGeometry,missileMaterial);
+    sprite.position.copy(start);sprite.scale.setScalar(1.1);sprite.castShadow=false;
+    world.add(sprite);
+    projectiles.push({sprite,start,end,age:0,duration});
+  }
+  function attackFeedback(u:Unit):void {
     let target:Unit|undefined,closest=Infinity;
     for(const enemy of war.units){
       if(enemy.owner===u.owner||enemy.hp<=0)continue;
       const d=dist(u.x,u.z,enemy.x,enemy.z);
       if(d<closest){closest=d;target=enemy;}
     }
-    if(!target||closest>UNIT_STATS.archer.range+4)return;
-    const sprite=add(world,missileGeometry,missileMaterial,u.x,2.2,u.z,.9,.9,.9);
-    sprite.castShadow=false;
-    projectiles.push({sprite,start:new THREE.Vector3(u.x,2.2,u.z),
-      end:new THREE.Vector3(target.x,1.25,target.z),age:0,duration:.24});
+    let goal:{x:number;z:number}|undefined;
+    if(target&&closest<=UNIT_STATS[u.kind].range+4)goal=target;
+    if(!goal){
+      const f=war.factions[u.owner],base=f.target===null?undefined:war.factions[f.target];
+      if(base?.alive&&dist(u.x,u.z,base.x,base.z)<=Math.max(5,UNIT_STATS[u.kind].range)+2)goal=base;
+    }
+    if(!goal)return;
+    if(u.kind==='archer')launch(new THREE.Vector3(u.x,2.5,u.z),new THREE.Vector3(goal.x,1.7,goal.z));
+    else effects.burst((goal.x+u.x)*.5,1.8,(goal.z+u.z)*.5,0xffe7a4,4,.65);
   }
   function update(dt:number):void {
     const time=war.time;
     ring.scale.set(war.zone,war.zone,war.zone);
     storm.scale.set(war.zone,1,war.zone);
     const ringMat=ring.material as THREE.MeshBasicMaterial;
-    ringMat.opacity=.69+.23*Math.sin(time*2.6);
+    ringMat.opacity=reducedMotion?.8:.69+.23*Math.sin(time*2.6);
     for(const f of war.factions){
-      const v=fortresses[f.id];v.alive=f.alive;
+      const v=fortresses[f.id];
+      if(v.alive&&!f.alive)effects.burst(f.x,7,f.z,0xe8c08b,28,2.2);
+      else if(f.hp<v.previousHp-1)effects.burst(f.x,8,f.z,0xffa26a,5,1.2);
+      if(f.turretCooldown>v.previousCooldown+.5){
+        const invader=war.units.filter(u=>u.owner!==f.id&&u.hp>0&&dist(u.x,u.z,f.x,f.z)<14)
+          .sort((a,b)=>dist(a.x,a.z,f.x,f.z)-dist(b.x,b.z,f.x,f.z))[0];
+        if(invader)launch(new THREE.Vector3(f.x,12,f.z),new THREE.Vector3(invader.x,1.5,invader.z),.35);
+      }
+      v.previousCooldown=f.turretCooldown;v.previousHp=f.hp;v.alive=f.alive;
+      const name=['에메랄드 왕국','붉은 사자','황금 태양','보랏빛 달'][f.id];
+      v.label.update(name,f.alive?`본부 ${Math.ceil(f.hp)} / ${f.maxHp}`:'함락된 왕국',
+        f.alive?FACTION_COLORS[f.id]:0x8b9890,f.alive?f.hp/f.maxHp:0);
       v.rubble.visible=!f.alive;
       v.towers.visible=f.alive;
       v.banner.visible=f.alive;
@@ -348,24 +420,44 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
         v.structures[i].scale.setScalar(.78+level*.13);
       }
       v.towers.scale.set(1,1+(f.fort-1)*.09,1);
-      v.banner.rotation.y=Math.sin(time*1.7+f.id)*.12;
+      v.banner.rotation.y=reducedMotion?0:Math.sin(time*1.7+f.id)*.12;
     }
     for(const p of war.outposts){
       const v=posts[p.id],color=p.owner===null?0xffd184:FACTION_COLORS[p.owner];
       (v.banner.material as THREE.MeshStandardMaterial).color.setHex(color);
-      (v.label.material as THREE.SpriteMaterial).color.setHex(p.owner===null?0xffffff:color);
       (v.crystal.material as THREE.MeshStandardMaterial).color.setHex(color);
-      v.crystal.rotation.y+=dt*.55;
-      v.crystal.position.y=5.25+Math.sin(time*2.1+p.id)*.32;
-      v.progress.visible=p.contender!==null&&p.progress>1;
+      (v.territory.material as THREE.MeshBasicMaterial).color.setHex(color);
+      if(!reducedMotion)v.crystal.rotation.y+=dt*.55;
+      v.crystal.position.y=reducedMotion?5.25:5.25+Math.sin(time*2.1+p.id)*.32;
+      v.progress.visible=strategicOverlaysVisible&&p.contender!==null&&p.progress>1;
       if(p.contender!==null){
-        (v.progress.material as THREE.MeshStandardMaterial).color.setHex(FACTION_COLORS[p.contender]);
-        v.progress.scale.setScalar(3.1*(.5+p.progress/200));
+        (v.progress.material as THREE.MeshBasicMaterial).color.setHex(FACTION_COLORS[p.contender]);
+        v.progress.geometry.setDrawRange(0,Math.floor(p.progress/100*64)*6);
       }
+      const bonus=OUTPOST_BONUSES[p.id];
+      const detail=p.contender!==null?`점령 진행 ${Math.floor(p.progress)}%`:
+        `금 +${bonus.gold.toFixed(1)} · 식량 +${bonus.food.toFixed(1)}`;
+      v.label.update(OUTPOST_NAMES[p.id],detail,p.contender===null?color:FACTION_COLORS[p.contender],
+        p.contender===null?undefined:p.progress/100);
+      if(v.previousOwner!==p.owner&&p.owner!==null)effects.burst(p.x,5,p.z,color,22,1.8);
+      v.previousOwner=p.owner;
+    }
+    const player=war.factions[0];
+    const goal=player.target!==null?war.factions[player.target]:player.rally!==null?war.outposts[player.rally]:undefined;
+    route.visible=destination.visible=strategicOverlaysVisible&&!!goal&&player.alive;
+    if(goal){
+      const points=routeGeometry.getAttribute('position');
+      points.setXYZ(0,player.x,.4,player.z);points.setXYZ(1,goal.x,.4,goal.z);
+      points.needsUpdate=true;route.computeLineDistances();
+      destination.position.set(goal.x,0,goal.z);
+      const pulse=reducedMotion?1:1+Math.sin(time*2.3)*.05;
+      destinationRing.scale.set(pulse,pulse,1);
+      pointer.position.y=14+(reducedMotion?0:Math.sin(time*2.3)*.65);
     }
     const active=new Set(war.units.map(u=>u.id));
     for(const [id,v] of models){
       if(!active.has(id)){
+        effects.burst(v.root.position.x,1.3,v.root.position.z,FACTION_COLORS[v.owner],8,1);
         world.remove(v.root);
         models.delete(id);cooldowns.delete(id);
       }
@@ -377,17 +469,19 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
       const moving=Math.hypot(dx,dz)>.008;
       if(moving)v.root.rotation.y=Math.atan2(dx,dz);
       v.previousX=u.x;v.previousZ=u.z;
-      const bob=moving?Math.abs(Math.sin(time*11+u.id))*.13:0;
+      const bob=moving&&!reducedMotion?Math.abs(Math.sin(time*11+u.id))*.13:0;
       v.root.position.set(u.x,bob,u.z);
-      const gait=moving?Math.sin(time*11+u.id)*.42:0;
+      const gait=moving&&!reducedMotion?Math.sin(time*11+u.id)*.42:0;
       v.leftLeg.rotation.x=gait;v.rightLeg.rotation.x=-gait;
       v.root.scale.setScalar(u.kind==='guardian'?1.24:u.kind==='archer'?.91:1);
       const maxHp=UNIT_STATS[u.kind].hp,healthFrac=clamp(u.hp/maxHp,0,1);
       v.health.visible=healthFrac<.95;
       v.health.scale.x=1.8*healthFrac;
       v.health.position.x=-(1-healthFrac)*.9;
+      if(u.hp<v.previousHp-.5)effects.burst(u.x,1.8,u.z,0xffdbba,3,.5);
+      v.previousHp=u.hp;
       const old=cooldowns.get(u.id)??u.cooldown;
-      if(u.cooldown>old+.4)shoot(u);
+      if(u.cooldown>old+.4)attackFeedback(u);
       cooldowns.set(u.id,u.cooldown);
     }
     for(let i=projectiles.length-1;i>=0;i--){
@@ -395,31 +489,57 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
       const t=clamp(p.age/p.duration,0,1);
       p.sprite.position.lerpVectors(p.start,p.end,t);
       p.sprite.position.y+=Math.sin(t*Math.PI)*2.1;
-      if(t>=1){world.remove(p.sprite);projectiles.splice(i,1);}
+      if(t>=1){
+        effects.burst(p.end.x,p.end.y,p.end.z,0xffe7a4,3,.55);
+        world.remove(p.sprite);freeMissiles.push(p.sprite);projectiles.splice(i,1);
+      }
     }
-    clouds.forEach((cloud,i)=>{cloud.position.x=-175+i*32+Math.sin(time*.06+i)*9;});
+    effects.update(dt);
+    if(!reducedMotion)clouds.forEach((cloud,i)=>{cloud.position.x=-175+i*32+Math.sin(time*.06+i)*9;});
   }
+  function configureEffects():void {
+    effects.setEnabled(highQuality&&!reducedMotion);
+    clouds.forEach(cloud=>{cloud.visible=highQuality&&!reducedMotion;});
+  }
+  const setQuality=(high:boolean):void=>{
+    highQuality=high;sun.castShadow=high;
+    configureEffects();
+  };
+  const setReducedMotion=(enabled:boolean):void=>{
+    reducedMotion=enabled;configureEffects();
+  };
+  const setLabelsVisible=(visible:boolean):void=>{
+    labels.forEach(label=>{label.sprite.visible=visible;});
+  };
+  const setStrategicOverlaysVisible=(visible:boolean):void=>{
+    strategicOverlaysVisible=visible;
+    ring.visible=storm.visible=visible;
+    fortresses.forEach((fort,index)=>{fort.ring.visible=visible&&war.factions[index].alive;});
+    posts.forEach(post=>{post.territory.visible=visible;});
+    if(!visible){route.visible=false;destination.visible=false;}
+  };
   const dispose=():void=>{
+    labels.forEach(label=>label.dispose());effects.dispose();
     scene.remove(world,ambient,sun,sun.target,fill);
-    const geos=new Set<THREE.BufferGeometry>(),mats=new Set<THREE.Material>(),textures=new Set<THREE.Texture>();
+    const geos=new Set<THREE.BufferGeometry>(),mats=new Set<THREE.Material>();
     world.traverse(o=>{
       if(o instanceof THREE.Mesh || o instanceof THREE.InstancedMesh){
         geos.add(o.geometry);
         for(const m of Array.isArray(o.material)?o.material:[o.material])mats.add(m);
-      }else if(o instanceof THREE.Sprite){
-        mats.add(o.material);
-        if(o.material.map)textures.add(o.material.map);
       }
     });
     geos.add(box);geos.add(cylinder);geos.add(sphere);geos.add(cone);
     geos.add(rock);geos.add(torus);geos.add(trunkGeo);geos.add(crownGeo);
+    geos.add(baseRingGeometry);geos.add(unitRingGeometry);geos.add(routeGeometry);
     geos.add(missileGeometry);geos.add(bowGeometry);mats.add(healthMaterial);
+    unitBatches.forEach(batch=>[...batch.rider,...batch.mount].forEach(part=>geos.add(part.geometry)));
     geos.forEach(g=>g.dispose());mats.add(missileMaterial);
     [stone,stoneDark,mortar,roof,timber,woodDark,cream,gold,meadow,leaves,leafLight,
-      waterMat,roadMat,soilMat,ember,...teamMats,...bannerMats].forEach(m=>mats.add(m));
+      waterMat,roadMat,soilMat,ember,routeMaterial,farmRoofMaterial,...wheatMats,...teamMats,...bannerMats,...markerMats].forEach(m=>mats.add(m));
     mats.forEach(m=>m.dispose());
-    textures.forEach(texture=>texture.dispose());
     sun.shadow.map?.dispose();
+    models.clear();cooldowns.clear();unitBatches.clear();projectiles.length=0;freeMissiles.length=0;
   };
-  return {update,dispose};
+  configureEffects();update(0);
+  return {update,setQuality,setReducedMotion,setLabelsVisible,setStrategicOverlaysVisible,dispose};
 }

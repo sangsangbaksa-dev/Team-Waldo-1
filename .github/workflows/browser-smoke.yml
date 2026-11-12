@@ -1,13 +1,17 @@
 name: Browser smoke
 on:
   pull_request:
+  push:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: browser-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
 jobs:
   browser:
     runs-on: ubuntu-24.04
-    timeout-minutes: 8
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -15,9 +19,16 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Install pinned browser testing runtime
-        run: npm install --no-save playwright@1.56.1
       - name: Install headless Chromium
-        run: npx playwright install --with-deps chromium
-      - name: Exercise desktop and mobile 3D game
-        run: node tools/browser-smoke.mjs
+        run: npx playwright install --with-deps chromium --only-shell
+      - name: Exercise real WebGL on desktop, portrait and landscape
+        timeout-minutes: 6
+        run: npm run test:browser
+      - name: Upload screenshots and runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-evidence-${{ github.sha }}
+          path: browser-artifacts/
+          if-no-files-found: warn
+          retention-days: 7

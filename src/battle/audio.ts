@@ -1,72 +1,48 @@
-/** Small original synthesized UI/siege effects with no external audio assets. */
-export type WarSfx='command'|'train'|'upgrade'|'capture'|'loss'|'victory';
-interface Note {frequency:number;start:number;duration:number;volume:number;}
-const SFX: Record<WarSfx,{wave:OscillatorType;notes:Note[]}> = {
- command:{wave:'triangle',notes:[{frequency:430,start:0,duration:.09,volume:.022}]},
- train:{wave:'square',notes:[
-  {frequency:294,start:0,duration:.08,volume:.012},
-  {frequency:392,start:.09,duration:.12,volume:.011},
- ]},
- upgrade:{wave:'triangle',notes:[
-  {frequency:330,start:0,duration:.11,volume:.03},
-  {frequency:440,start:.1,duration:.16,volume:.025},
- ]},
- capture:{wave:'triangle',notes:[
-  {frequency:392,start:0,duration:.26,volume:.024},
-  {frequency:523.25,start:.13,duration:.32,volume:.028},
-  {frequency:659.25,start:.26,duration:.43,volume:.02},
- ]},
- loss:{wave:'sawtooth',notes:[
-  {frequency:196,start:0,duration:.38,volume:.013},
-  {frequency:155.56,start:.18,duration:.45,volume:.013},
-  {frequency:110,start:.4,duration:.58,volume:.013},
- ]},
- victory:{wave:'triangle',notes:[
-  {frequency:392,start:0,duration:.28,volume:.03},
-  {frequency:523.25,start:.19,duration:.3,volume:.03},
-  {frequency:659.25,start:.38,duration:.3,volume:.032},
-  {frequency:783.99,start:.58,duration:.52,volume:.035},
- ]},
-};
-export interface WarAudio {
- play(effect:WarSfx):void;
- getMuted():boolean;
- toggle():boolean;
- dispose():void;
-}
-export function createWarAudio():WarAudio {
- let context:AudioContext|null=null;
- let muted=false;
- const getContext=():AudioContext|null=>{
-  if(typeof AudioContext==='undefined')return null;
-  try{
-   if(!context)context=new AudioContext();
-   if(context.state==='suspended')void context.resume().catch(()=>{});
-   return context;
-  }catch{return null;}
- };
- const play=(effect:WarSfx)=>{
-  if(muted)return;
-  const ctx=getContext();
-  if(!ctx)return;
-  const info=SFX[effect],base=ctx.currentTime;
-  for(const n of info.notes){
-   try{
-    const osc=ctx.createOscillator(),gain=ctx.createGain();
-    osc.type=info.wave;osc.frequency.setValueAtTime(n.frequency,base+n.start);
-    gain.gain.setValueAtTime(.0001,base+n.start);
-    gain.gain.exponentialRampToValueAtTime(n.volume,base+n.start+.018);
-    gain.gain.exponentialRampToValueAtTime(.0001,base+n.start+n.duration);
-    osc.connect(gain);gain.connect(ctx.destination);
-    osc.start(base+n.start);osc.stop(base+n.start+n.duration+.025);
-    osc.onended=()=>{osc.disconnect();gain.disconnect();};
-   }catch{ /* Unavailable audio never interrupts the game. */ }
+/** Short original synthesized cues. No network requests or audio files. */
+export class BattleAudio {
+  private context?: AudioContext;
+  private muted = false;
+  private lastNotice = 0;
+  unlock(): void {
+    try { this.context ??= new AudioContext(); void this.context.resume().catch(() => undefined); } catch { /* Audio is optional. */ }
   }
- };
- return {
-  play,
-  getMuted:()=>muted,
-  toggle:()=>{muted=!muted;return muted;},
-  dispose:()=>{if(context){void context.close().catch(()=>{});context=null;}},
- };
+  setMuted(muted: boolean): void { this.muted = muted; }
+  play(kind: 'click' | 'upgrade' | 'capture' | 'warning' | 'victory' | 'defeat'): void {
+    if (this.muted || !this.context || this.context.state !== 'running') return;
+    const ctx = this.context;
+    if (kind === 'warning' && ctx.currentTime - this.lastNotice < 3) return;
+    if (kind === 'warning') this.lastNotice = ctx.currentTime;
+    const notes = { click: [440], upgrade: [392, 523, 659], capture: [523, 659, 784], warning: [220, 174], victory: [392, 523, 659, 784], defeat: [330, 262, 196] }[kind];
+    notes.forEach((frequency, i) => {
+      try {
+      const oscillator = ctx.createOscillator(), gain = ctx.createGain();
+      const start = ctx.currentTime + i * .09;
+      oscillator.type = kind === 'warning' ? 'triangle' : 'sine';
+      oscillator.frequency.setValueAtTime(frequency, start);
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(.065, start + .012);
+      gain.gain.exponentialRampToValueAtTime(.001, start + .22);
+      oscillator.connect(gain); gain.connect(ctx.destination);
+      oscillator.start(start); oscillator.stop(start + .24);
+      oscillator.onended = () => { try { oscillator.disconnect(); gain.disconnect(); } catch { /* Device may have disconnected. */ } };
+      } catch { /* Sound device failure must never interrupt gameplay or results. */ }
+    });
+  }
+  dispose(): void {
+    try { if (this.context) void this.context.close().catch(() => undefined); } catch { /* Device already unavailable. */ }
+    this.context = undefined;
+  }
+}
+
+/** Compatibility for the original strategy mode's sound API. */
+export type WarSfx = 'command' | 'train' | 'upgrade' | 'capture' | 'loss' | 'victory';
+export interface WarAudio { play(effect: WarSfx): void; getMuted(): boolean; toggle(): boolean; dispose(): void; }
+export function createWarAudio(): WarAudio {
+  const bridge = new BattleAudio(); let muted = false;
+  return {
+    play(effect) { bridge.unlock(); bridge.play(effect === 'command' || effect === 'train' ? 'click' : effect === 'loss' ? 'defeat' : effect); },
+    getMuted: () => muted,
+    toggle() { muted = !muted; bridge.setMuted(muted); return muted; },
+    dispose: () => bridge.dispose(),
+  };
 }

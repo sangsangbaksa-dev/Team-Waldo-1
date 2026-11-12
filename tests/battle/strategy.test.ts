@@ -27,6 +27,7 @@ describe('3D management war strategic rules', () => {
  });
  it('captures a neutral outpost with uncontested presence and yields recurring income', () => {
   const w=createWar(),p=w.outposts[4],f=w.factions[0];
+  for(const opponent of w.factions.slice(1)) opponent.aiTimer=10000;
   w.units=w.units.filter(u=>u.owner===0);
   for(const u of w.units){u.x=p.x;u.z=p.z;}
   expect(captureOrder(w,0,4)).toBe(true);

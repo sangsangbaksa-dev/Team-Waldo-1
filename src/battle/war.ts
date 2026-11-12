@@ -1,7 +1,7 @@
 /** Deterministic, renderer-independent economy, territory and combat simulation. */
 export type Upgrade = 'farm' | 'mine' | 'barracks' | 'fort';
 export type EconomyPolicy = 'balanced' | 'growth' | 'war';
-export type UnitKind = 'infantry' | 'archer' | 'guardian';
+export type UnitKind = 'infantry' | 'archer' | 'guardian' | 'cavalry';
 export interface Faction {
   id: number; x: number; z: number; hp: number; maxHp: number;
   gold: number; food: number; farm: number; mine: number; barracks: number; fort: number;
@@ -41,6 +41,7 @@ export const UNIT_STATS: Record<UnitKind, {
   infantry: { label: '보병', gold: 25, food: 20, hp: 52, damage: 8, range: 3.5, speed: 8.4, cooldown: .9, unlock: 1 },
   archer: { label: '궁병', gold: 45, food: 30, hp: 36, damage: 7, range: 15, speed: 7, cooldown: 1.2, unlock: 2 },
   guardian: { label: '중장병', gold: 75, food: 45, hp: 125, damage: 14, range: 4, speed: 5.5, cooldown: 1.45, unlock: 3 },
+  cavalry: { label: '기병', gold: 65, food: 55, hp: 82, damage: 12, range: 4, speed: 13.5, cooldown: .95, unlock: 3 },
 };
 export const MAX_UNITS = 18;
 export function createWar(): War {
@@ -139,7 +140,7 @@ function aiTurn(w: War,f: Faction): void {
   else if (f.mine<3&&f.gold<140&&upgrade(w,f.id,'mine')) { /* cash flow */ }
   else if (f.farm<3&&f.food<115&&upgrade(w,f.id,'farm')) { /* supplies */ }
   else if (f.barracks<3&&w.time>36&&upgrade(w,f.id,'barracks')) { /* tech */ }
-  else if (army<16&&train(w,f.id,f.barracks>=3&&army%4===0?'guardian':f.barracks>=2&&army%3===0?'archer':'infantry')) { /* recruit */ }
+  else if (army<16&&train(w,f.id,f.barracks>=3&&army%5===0?'cavalry':f.barracks>=3&&army%4===0?'guardian':f.barracks>=2&&army%3===0?'archer':'infantry')) { /* recruit */ }
   else if (f.hp<f.maxHp*.65&&repair(w,f.id)) { /* emergency repairs */ }
   else if (f.fort<3&&f.hp<f.maxHp*.85) upgrade(w,f.id,'fort');
   const free=w.outposts.filter(p=>p.owner!==f.id);

@@ -1,4 +1,5 @@
 /** Deterministic, renderer-independent economy, territory and combat simulation. */
+import type { SquadCommand } from './squads';
 export type Upgrade = 'farm' | 'mine' | 'barracks' | 'fort';
 export type EconomyPolicy = 'balanced' | 'growth' | 'war';
 export type UnitKind = 'infantry' | 'archer' | 'guardian' | 'cavalry';
@@ -14,7 +15,7 @@ export interface Faction {
 }
 export interface Unit {
   id: number; owner: number; kind: UnitKind; x: number; z: number;
-  hp: number; cooldown: number;
+  hp: number; cooldown: number; squad?: 0 | 1 | 2;
 }
 export interface Outpost {
   id: number; x: number; z: number; owner: number | null;
@@ -31,6 +32,7 @@ export interface War {
   factions: Faction[]; units: Unit[]; outposts: Outpost[]; events: WarEvent[];
   time: number; zone: number; over: boolean; winner: number | null; nextUnit: number;
   difficulty: Difficulty; stats: WarStats[];
+  squadOrders?: [SquadCommand | null, SquadCommand | null, SquadCommand | null];
 }
 export const DIFFICULTIES: Record<Difficulty, {label:string;description:string;aiIncome:number;aiInterval:number;aiAttackAfter:number}> = {
   easy: {label:'입문',description:'AI 자원 생산 20% 감소 · 판단 간격 30% 증가 · AI 본부 공세는 130초 이후',aiIncome:.8,aiInterval:1.3,aiAttackAfter:130},
@@ -50,7 +52,7 @@ export const OUTPOST_BONUSES: ReadonlyArray<{gold:number;food:number}> = [
   {gold:2.1,food:2.1}, {gold:1.15,food:.9}, {gold:1.1,food:1.7},
   {gold:1.8,food:.8}, {gold:.7,food:2.3}, {gold:2.4,food:1.2},
 ];
-export const MAP_HALF_SIZE = 185;
+export const MAP_HALF_SIZE = 260;
 export const MAP_SIZE = MAP_HALF_SIZE * 2;
 export const STORM_START = 130;
 export const STORM_HQ_DAMAGE = 3.5;
@@ -83,7 +85,7 @@ export function createWar(options:{difficulty?:Difficulty}={}): War {
   }));
   const war: War = {
     factions,units:[],outposts,events:[],time:0,zone:MAP_HALF_SIZE-6,over:false,winner:null,nextUnit:1,
-    difficulty,stats:Array.from({length:4},createWarStats),
+    difficulty,stats:Array.from({length:4},createWarStats),squadOrders:[null,null,null],
   };
   for (let id=0;id<4;id++) for (let i=0;i<4;i++) spawn(war,id,'infantry');
   return war;
@@ -92,7 +94,7 @@ function spawn(w: War, id: number, kind: UnitKind): void {
   const f=w.factions[id], n=w.nextUnit++;
   w.units.push({
     id:n,owner:id,kind,x:f.x+((n*3)%5-2)*1.6,
-    z:f.z+4+(n%4)*1.8,hp:UNIT_STATS[kind].hp,cooldown:0,
+    z:f.z+4+(n%4)*1.8,hp:UNIT_STATS[kind].hp,cooldown:0,squad:0,
   });
   w.stats[id].peakArmy=Math.max(w.stats[id].peakArmy,count(w,id));
 }
@@ -179,12 +181,12 @@ export function train(w: War,id: number,kind: UnitKind='infantry'): boolean {
 export function order(w: War,id: number,target: number|null): boolean {
   const f=w.factions[id];
   if (!f?.alive||w.over||(target!==null&&(!Number.isInteger(target)||target===id||!w.factions[target]?.alive))) return false;
-  f.target=target;f.rally=null;return true;
+  f.target=target;f.rally=null;if(id===0&&w.squadOrders)w.squadOrders[0]=null;return true;
 }
 export function captureOrder(w: War,id: number,postId: number): boolean {
   const f=w.factions[id];
   if (!f?.alive||w.over||!Number.isInteger(postId)||!w.outposts[postId]) return false;
-  f.target=null;f.rally=postId;return true;
+  f.target=null;f.rally=postId;if(id===0&&w.squadOrders)w.squadOrders[0]=null;return true;
 }
 function distance(ax:number,az:number,bx:number,bz:number):number {
   return Math.hypot(ax-bx,az-bz);
@@ -319,7 +321,7 @@ export function stepWar(w: War,dt: number):void {
   // Deterministic veteran reservation avoids stripping the HQ of all defenders.
   const reserveIds=new Set<number>();
   for(const f of w.factions){
-    const home=w.units.filter(u=>u.owner===f.id&&u.hp>0).sort((a,b)=>a.id-b.id);
+    const home=w.units.filter(u=>u.owner===f.id&&u.hp>0&&(f.id!==0||(u.squad??0)===0)).sort((a,b)=>a.id-b.id);
     for(const u of home.slice(0,f.reserve))reserveIds.add(u.id);
   }
   for (const u of w.units) {
@@ -346,6 +348,37 @@ export function stepWar(w: War,dt: number):void {
     if(reserveIds.has(u.id)){
       const angle=u.id*2.399,rx=f.x+Math.cos(angle)*9,rz=f.z+Math.sin(angle)*9;
       if(distance(u.x,u.z,rx,rz)>1.25)moveToward(w,u,rx,rz,dt);
+      continue;
+    }
+    // Independent player squads never inherit the main army's destination.
+    // An uncommanded split squad holds near HQ until explicitly moved.
+    const squad = u.owner === 0 ? (u.squad === 1 || u.squad === 2 ? u.squad : 0) : 0;
+    const independent = u.owner === 0 && (squad !== 0 || Boolean(w.squadOrders?.[0]));
+    if (independent) {
+      const command = w.squadOrders?.[squad] ?? { kind: 'home' as const };
+      const destination = command.kind === 'move' ? command :
+        command.kind === 'home' ? f :
+        command.kind === 'outpost' ? w.outposts[command.id] : w.factions[command.id];
+      if (destination) {
+        if (command.kind === 'faction') {
+          const opponent = w.factions[command.id];
+          if (opponent?.alive && opponent.hp > 0) {
+            if (distance(u.x,u.z,opponent.x,opponent.z) > Math.max(5,s.range))
+              moveToward(w,u,opponent.x,opponent.z,dt);
+            else if (u.cooldown <= 0) {
+              const damage = (s.damage*.9+f.barracks*1.5)*combatMultiplier;
+              w.stats[u.owner].damageDealt += Math.min(opponent.hp,damage);
+              opponent.hp -= damage; u.cooldown = s.cooldown;
+            }
+          }
+        } else {
+          const spread = command.kind === 'outpost' ? 2 : 3.4;
+          const dx = ((u.id % 3) - 1) * spread;
+          const dz = ((Math.floor(u.id / 3) % 3) - 1) * spread;
+          if (distance(u.x,u.z,destination.x+dx,destination.z+dz) > 1.8)
+            moveToward(w,u,destination.x+dx,destination.z+dz,dt);
+        }
+      }
       continue;
     }
     const target=f.target===null?undefined:w.factions[f.target];

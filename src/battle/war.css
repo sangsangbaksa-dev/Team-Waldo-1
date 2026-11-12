@@ -54,3 +54,38 @@
  .adventure-active .war-toast{bottom:122px}
 }
 @media(max-height:500px){.adventure-head{top:65px}.adventure-head p{display:none}.adventure-progress{margin-top:5px}}
+
+
+/* Fast, ergonomic squad command bar and assignment panel. */
+.squad-manager{border:1px solid #98cbb56b;background:linear-gradient(135deg,#1d453abf,#13291f99);padding:12px;border-radius:8px;margin-bottom:15px}
+.squad-manager .section-heading{margin:0 0 10px;display:flex;justify-content:space-between}
+.squad-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+.squad-tabs button,.squad-quickbar button{border:1px solid #a8c0aa50;background:#1a3027;color:#dce8d7;border-radius:6px;padding:8px 3px;font-size:10px;white-space:normal}
+.squad-tabs button small,.squad-quickbar button small{display:block;font-size:9px;color:#b2c3af}
+.squad-tabs button.active,.squad-quickbar button.active,.squad-quickbar button[aria-pressed=true],.squad-actions button.active{border-color:#efd88d;background:#436047;color:#fff6d3}
+.squad-order-status{font-size:11px;color:#e6d29d;margin:12px 0;line-height:1.7}
+.squad-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.squad-actions button{background:#2b513d;border:1px solid #9ac6a24d;color:#dfebd7;border-radius:5px;min-height:36px;font-size:10px}
+.squad-actions button:disabled{opacity:.3}
+.squad-manager .panel-note{margin-bottom:0}
+.squad-manager kbd{margin:0 3px;font-size:9px;color:#f2e1a9}
+.squad-quickbar{position:absolute;bottom:22px;left:330px;right:270px;display:flex;justify-content:center;align-items:stretch;gap:5px;z-index:6;pointer-events:auto}
+.squad-quickbar>span{align-self:center;font-size:10px;padding:0 5px;white-space:nowrap;color:#fff1bc;text-shadow:0 2px 5px #101b17}
+.squad-quickbar button{padding:6px 9px;min-width:66px;box-shadow:0 4px 16px #071910a0;background:#15352cdd}
+.squad-quickbar #quick-move{border-color:#acb9a2;min-width:79px}
+.squad-quickbar #quick-home{border-color:#cbbb86;min-width:68px}
+.war-ui:not(.adventure-active) .war-help{display:none}
+.adventure-active .squad-quickbar{display:none!important}
+@media(max-width:1150px){.squad-quickbar{left:280px;right:222px;gap:3px}.squad-quickbar>span{display:none}.squad-quickbar button{min-width:48px;padding:5px;font-size:9px}}
+@media(max-width:760px){
+.squad-quickbar{left:10px;right:185px;bottom:calc(48vh + 22px);justify-content:flex-start;flex-wrap:wrap}
+.squad-quickbar button{min-width:40px;flex:1;font-size:9px}
+.squad-quickbar button small{font-size:8px}
+.squad-quickbar #quick-move,.squad-quickbar #quick-home{min-width:52px}
+}
+@media(max-width:500px){
+.squad-quickbar{left:10px;right:142px;bottom:calc(44vh + 18px);flex-wrap:wrap}
+.squad-quickbar button{padding:3px;font-size:8px;min-width:34px}
+.squad-quickbar #quick-move,.squad-quickbar #quick-home{min-width:43px;font-size:8px}
+}
+@media(max-width:500px) and (max-height:650px){.squad-quickbar{bottom:calc(36vh + 20px)}}

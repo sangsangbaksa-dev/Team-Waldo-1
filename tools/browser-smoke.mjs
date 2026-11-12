@@ -29,6 +29,9 @@ try{
   page.setDefaultTimeout(7000);
   const errors=[];
   page.on('pageerror',error=>errors.push(error.message));
+  page.on('console',message=>{
+    if(message.type()==='error')errors.push(message.text().slice(0,350));
+  });
   try{
    await page.goto('http://127.0.0.1:'+port+'/',{waitUntil:'domcontentloaded'});
    await page.waitForTimeout(700);

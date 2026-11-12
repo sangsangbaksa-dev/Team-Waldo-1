@@ -101,3 +101,8 @@
   .war-top button { font-size:10px;padding:5px; }
   .war-ui #war-res { padding:6px; }
 }
+
+.war-minimap{position:absolute;right:20px;bottom:46px;width:214px;padding:7px;display:flex;flex-direction:column;align-items:center;gap:4px;border:1px solid rgba(190,227,201,.35);border-radius:12px;background:rgba(10,26,30,.87);box-shadow:0 10px 30px rgba(0,0,0,.28);backdrop-filter:blur(10px)}
+.war-minimap canvas{width:200px;height:200px;display:block;cursor:crosshair;touch-action:manipulation;border-radius:6px}
+.war-minimap span{font-size:11px;color:#d1decd}
+@media(max-width:700px){.war-minimap{right:8px;bottom:113px;width:140px;padding:4px}.war-minimap canvas{width:130px;height:130px}.war-minimap span{font-size:9px}.war-top button{font-size:9px}}

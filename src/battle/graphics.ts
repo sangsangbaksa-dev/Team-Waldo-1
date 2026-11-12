@@ -227,7 +227,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     add(root,cylinder,timber,0,5.9,-2.6,.2,7,.2);
     const flagMaterial=new THREE.MeshStandardMaterial({color:0xc8b67b,side:THREE.DoubleSide,roughness:.65});
     const banner=add(root,box,flagMaterial,1.3,7,-2.6,2.65,1.55,.16);
-    const progress=add(root,torus,teamMats[0],0,1.63,0,3.1,3.1,3.1);
+    const progress=add(root,torus,material(FACTION_COLORS[0]),0,1.63,0,3.1,3.1,3.1);
     progress.rotation.x=Math.PI/2;progress.visible=false;
     return {banner,crystal,progress};
   });

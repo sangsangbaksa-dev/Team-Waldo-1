@@ -338,12 +338,76 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     button.addEventListener('lostpointercapture', stop, { signal });
   });
   let commandMode = false;
-  el<HTMLButtonElement>('#map-mode').onclick = () => { commandMode = !commandMode; text('#map-mode', commandMode ? '부대 명령' : '시점 이동'); el('#map-mode').setAttribute('aria-pressed', String(commandMode)); announce(commandMode ? '지도 또는 전장에서 거점을 누르면 병력이 출전합니다.' : '미니맵을 눌러 시점을 이동하세요.'); };
+  const syncCommandMode = (enabled: boolean) => {
+    commandMode = enabled;
+    text('#map-mode', enabled ? '부대 이동' : '시점 이동');
+    el('#map-mode').setAttribute('aria-pressed', String(enabled));
+    el('#quick-move').setAttribute('aria-pressed', String(enabled));
+    el('#squad-move-mode').setAttribute('aria-pressed', String(enabled));
+    el('#quick-move').classList.toggle('active', enabled);
+    el('#squad-move-mode').classList.toggle('active', enabled);
+  };
+  const selectSquad = (value: SquadId) => {
+    selectedSquad = value;
+    showTab('orders');
+    syncCommandMode(true);
+    ui();
+    announce(SQUAD_NAMES[value] + ' 선택 · 미니맵 또는 전장에서 목적지를 클릭하세요.');
+  };
+  overlay.querySelectorAll<HTMLButtonElement>('[data-squad-select]').forEach(button => {
+    button.onclick = () => selectSquad(Number(button.dataset.squadSelect) as SquadId);
+  });
+  const assignSelectedSquad = () => {
+    const moved = assignSquad(w, selectedSquad, 3);
+    announce(moved ? SQUAD_NAMES[selectedSquad] + '에 병력 ' + moved + '명을 편성했습니다.' :
+      '기동대 또는 수비대를 선택하고 주력군에 남은 병력을 확인하세요.');
+    if (moved) { audio.play('click'); syncCommandMode(true); }
+    ui(); drawMap();
+  };
+  const dismissSelectedSquad = () => {
+    const moved = dismissSquad(w, selectedSquad);
+    announce(moved ? moved + '명이 주력군으로 복귀했습니다.' : '복귀시킬 독립 부대가 없습니다.');
+    ui(); drawMap();
+  };
+  el<HTMLButtonElement>('#squad-assign').onclick = assignSelectedSquad;
+  el<HTMLButtonElement>('#squad-release').onclick = dismissSelectedSquad;
+  el<HTMLButtonElement>('#squad-home').onclick = issueHome;
+  el<HTMLButtonElement>('#quick-home').onclick = issueHome;
+  el<HTMLButtonElement>('#squad-move-mode').onclick = () => {
+    syncCommandMode(true); announce(SQUAD_NAMES[selectedSquad] + ' 이동 모드 · 지도 또는 바닥 아무 곳이나 클릭하세요.');
+  };
+  el<HTMLButtonElement>('#quick-move').onclick = () => {
+    syncCommandMode(!commandMode);
+    announce(commandMode ? SQUAD_NAMES[selectedSquad] + ' 이동 모드: 목적지를 클릭하세요.' : '시점 이동 모드입니다.');
+  };
+  el<HTMLButtonElement>('#map-mode').onclick = () => {
+    syncCommandMode(!commandMode);
+    announce(commandMode ? '선택 부대의 목적지를 미니맵에서 지정하세요. 본부 클릭으로 복귀합니다.' : '미니맵을 클릭해 카메라를 이동하세요.');
+  };
+  const refreshSquads = (unavailable: boolean) => {
+    const counts = ([0, 1, 2] as SquadId[]).map(group => squadUnits(w, group).length);
+    overlay.querySelectorAll<HTMLButtonElement>('[data-squad-select]').forEach(button => {
+      const group = Number(button.dataset.squadSelect) as SquadId;
+      const selected = group === selectedSquad;
+      button.setAttribute('aria-pressed', String(selected));
+      button.classList.toggle('active', selected);
+      const count = button.querySelector('small');
+      if (count) count.textContent = counts[group] + '명';
+    });
+    const active = counts[selectedSquad] > 0 && !unavailable;
+    el<HTMLButtonElement>('#squad-assign').disabled = selectedSquad === 0 || counts[0] === 0 || unavailable;
+    el<HTMLButtonElement>('#squad-release').disabled = selectedSquad === 0 || !active;
+    el<HTMLButtonElement>('#squad-home').disabled = !active;
+    el<HTMLButtonElement>('#quick-home').disabled = !active;
+    el<HTMLButtonElement>('#squad-move-mode').disabled = !active;
+    el<HTMLButtonElement>('#quick-move').disabled = !active;
+    text('#squad-order-status', SQUAD_NAMES[selectedSquad] + ' · ' + counts[selectedSquad] + '명 · ' + squadOrderLabel(w, selectedSquad));
+  };
   const map = el<HTMLCanvasElement>('#war-map'), ctx = map.getContext('2d');
   const point = (x: number, z: number) => worldToMinimap(x, z, 220);
   map.addEventListener('click', event => {
     const rect = map.getBoundingClientRect(); const p = minimapToWorld(event.clientX - rect.left, event.clientY - rect.top, rect.width, rect.height);
-    if (event.shiftKey || commandMode) { const target = pickMapTarget(w, 0, p.x, p.z); if (target) issue(target); else announce('거점 또는 적 본부를 선택하세요.'); }
+    if (event.shiftKey || commandMode) issueAt(p.x, p.z);
     else pan(p.x - focus.x, p.z - focus.z);
   }, { signal });
   map.addEventListener('keydown', event => { const move: Record<string, [number, number]> = { ArrowLeft: [-15, 0], ArrowRight: [15, 0], ArrowUp: [0, -15], ArrowDown: [0, 15] }; if (move[event.key]) { event.preventDefault(); event.stopPropagation(); pan(...move[event.key]); } }, { signal });
@@ -370,7 +434,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     if (!moved && !pinched && !paused && !done && adventureControl.isActionMode) adventureControl.shoot();
     if (!moved && !pinched && !paused && !done && !adventureControl.isActionMode) {
       const rect = renderer.domElement.getBoundingClientRect(); raycaster.setFromCamera(new THREE.Vector2((event.clientX - rect.left) / rect.width * 2 - 1, 1 - (event.clientY - rect.top) / rect.height * 2), camera);
-      if (raycaster.ray.intersectPlane(ground, hit)) { const target = pickMapTarget(w, 0, hit.x, hit.z); if (target) { if (commandMode || event.shiftKey || event.button === 2) issue(target); else showTarget(target); } else { el('#target-card').hidden = true; } }
+      if (raycaster.ray.intersectPlane(ground, hit)) { const target = pickMapTarget(w, 0, hit.x, hit.z); if (commandMode || event.shiftKey || event.button === 2) { issueAt(hit.x, hit.z); el('#target-card').hidden = true; } else if (target) showTarget(target); else el('#target-card').hidden = true; }
     }
     if (!pointers.size) pinched = false;
   }, { signal });
@@ -383,6 +447,11 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     const key = event.key.toLowerCase();
     if (key === 'escape' && !event.repeat) { event.preventDefault(); togglePause(); return; }
     if (key === 'h' && !event.repeat) home();
+    if (!adventureControl.isActionMode && !event.repeat) {
+      if (key === '5' || key === '6' || key === '7') { selectSquad((Number(key) - 5) as SquadId); event.preventDefault(); }
+      if (key === 'g') { syncCommandMode(true); announce('전장이나 미니맵에서 부대 이동 목적지를 클릭하세요.'); event.preventDefault(); }
+      if (key === 'b') { issueHome(); event.preventDefault(); }
+    }
     if (key === 'v' && !event.repeat) { event.preventDefault(); goField(); }
     if (key === 't' && !event.repeat) { event.preventDefault(); goStrategy(); }
     if (key === 'e' && !event.repeat) {
@@ -416,7 +485,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     const income = getIncome(w, 0), unavailable = !p.alive || done || w.over;
     text('#gold', Math.floor(p.gold).toLocaleString('ko-KR')); text('#food', Math.floor(p.food).toLocaleString('ko-KR'));
     text('#gold-income', `+${income.gold.toFixed(1)}/초`); text('#food-income', `+${income.food.toFixed(1)}/초`);
-    text('#army-count', `${counts[0]} / ${MAX_UNITS}`); text('#territory-count', `${owned} / 9`);
+    text('#army-count', `${counts[0]} / ${MAX_UNITS}`); text('#territory-count', `${owned} / 9`); refreshSquads(unavailable);
     text('#war-clock', clock(w.time)); text('#difficulty-badge', DIFFICULTIES[w.difficulty].label); text('#hq-value', `${Math.max(0, Math.ceil(p.hp))} / ${p.maxHp}`);
     el('#hq-fill').style.width = `${Math.max(0, p.hp / p.maxHp) * 100}%`; el('#hq-fill').classList.toggle('danger', p.hp < p.maxHp * .3);
     for (const b of BUILDINGS) { const c = cost(p, b.key); updateAction(`#build-${b.key}`, unavailable || p[b.key] >= 4 || p.gold < c.gold || p.food < c.food, p[b.key] >= 4 ? 'Lv.4 · 최대' : `Lv.${p[b.key]} → ${p[b.key] + 1}\n${price(c.gold, c.food)}`); }
@@ -472,7 +541,21 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     ctx.fillStyle = '#254337'; ctx.beginPath(); ctx.arc(110, 110, w.zone / MAP_HALF_SIZE * 110, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = '#72c7d9'; ctx.stroke();
     for (const post of w.outposts) { const p = point(post.x, post.z); ctx.fillStyle = post.owner === null ? '#c2b68c' : factionColor(post.owner); ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(Math.PI / 4); ctx.fillRect(-3, -3, 6, 6); ctx.restore(); }
     for (const f of w.factions) { const p = point(f.x, f.z); ctx.fillStyle = f.alive ? factionColor(f.id) : '#4d5954'; ctx.fillRect(p.x - 5, p.y - 5, 10, 10); if (f.id === 0) { ctx.strokeStyle = '#fff4d1'; ctx.strokeRect(p.x - 7, p.y - 7, 14, 14); } }
-    for (const unit of w.units) { const p = point(unit.x, unit.z); ctx.fillStyle = factionColor(unit.owner); ctx.fillRect(p.x - 1, p.y - 1, 2, 2); }
+    for (const unit of w.units) {
+      const p = point(unit.x, unit.z);
+      ctx.fillStyle = unit.owner === 0 && (unit.squad === 1 || unit.squad === 2) ?
+        unit.squad === 1 ? '#f8e09c' : '#e0b5fa' : factionColor(unit.owner);
+      const extent = unit.owner === 0 && (unit.squad ?? 0) === selectedSquad ? 2.6 : 1.4;
+      ctx.fillRect(p.x - extent / 2, p.y - extent / 2, extent, extent);
+    }
+    ([0, 1, 2] as SquadId[]).forEach(group => {
+      const goal = squadDestination(w, group);
+      if (!goal) return;
+      const target = point(goal.x, goal.z);
+      ctx.strokeStyle = group === 0 ? '#5ee3ca' : group === 1 ? '#f8e09c' : '#e0b5fa';
+      ctx.lineWidth = group === selectedSquad ? 2.5 : 1.3;
+      ctx.beginPath(); ctx.arc(target.x, target.y, group === selectedSquad ? 7 : 4.5, 0, Math.PI * 2); ctx.stroke();
+    });
     const player = w.factions[0], goal = player.target !== null ? w.factions[player.target] : player.rally !== null ? w.outposts[player.rally] : null;
     if (goal) { const a = point(player.x, player.z), b = point(goal.x, goal.z); ctx.strokeStyle = '#efcf8b'; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.setLineDash([]); ctx.strokeRect(b.x - 7, b.y - 7, 14, 14); }
     const f = point(focus.x, focus.z); ctx.strokeStyle = '#f1eee1'; ctx.lineWidth = 1; const size = zoom / 15; ctx.strokeRect(f.x - size, f.y - size * .65, size * 2, size * 1.3);

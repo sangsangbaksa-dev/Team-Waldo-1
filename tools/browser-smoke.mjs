@@ -40,6 +40,13 @@ try{
    await page.locator('#reserve button').nth(2).click();
    assert.match(await page.locator('#policy .selected').innerText(),/성장/);
    assert.match(await page.locator('#reserve .selected').innerText(),/4명 수비/);
+   // Quality and audio settings must remain interactive while simulation runs.
+   await page.locator('#quality').click();
+   assert.match(await page.locator('#quality').innerText(),/그래픽/);
+   await page.locator('#audio').click();
+   assert.equal(await page.locator('#audio').innerText(),'🔇');
+   await page.locator('#audio').click();
+   assert.equal(await page.locator('#audio').innerText(),'🔊');
    await page.locator('#save').click();
    const isSaved=await page.evaluate(()=>Boolean(localStorage.getItem('team-waldo-3d-war-v1')));
    assert.ok(isSaved,'Local battle was not saved');
@@ -68,6 +75,12 @@ try{
    await page.locator('#load').click();
    await page.locator('.war-ui').waitFor();
    assert.match((await page.locator('#policy .selected').allInnerTexts()).join(' '),/성장/);
+   // Repeatedly freeing/creating WebGL contexts must not corrupt game restarts.
+   page.on('dialog',dialog=>void dialog.accept());
+   await page.locator('#new').click();
+   await page.locator('.war-ui').waitFor();
+   assert.match((await page.locator('#policy .selected').allInnerTexts()).join(' '),/균형/);
+   assert.equal(await page.evaluate(()=>localStorage.getItem('team-waldo-3d-war-v1')),null);
    assert.deepEqual(errors,[],'Browser runtime errors');
    console.log('PASS '+width+'px: start, stable controls, strategy, save/load and minimap commands');
   }finally{await page.close();}

@@ -52,7 +52,8 @@ try{
    assert.match(await page.locator('#reserve .selected').innerText(),/4명 수비/);
    // Quality and audio settings must remain interactive while simulation runs.
    await page.locator('#quality').click();
-   assert.match(await page.locator('#quality').innerText(),/그래픽/);
+   const qualityLabel=await page.locator('#quality').innerText();
+   assert.match(qualityLabel,width<=480?/그래픽 낮음/:/그래픽 보통/);
    await page.locator('#audio').click();
    assert.equal(await page.locator('#audio').innerText(),'🔇');
    await page.locator('#audio').click();

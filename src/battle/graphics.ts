@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { UNIT_STATS, type Unit, type UnitKind, type War } from './war';
+import { MAP_HALF_SIZE, UNIT_STATS, type Unit, type UnitKind, type War } from './war';
 
 /** Procedural, self-contained stylized 3D battlefield. No external models or textures. */
 export const FACTION_COLORS = [0x50d9d1, 0xf06a77, 0xf5c45d, 0xaa8eed] as const;
@@ -26,16 +26,16 @@ export function terrainShade(x:number,z:number):number {
 export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   const world=new THREE.Group();world.name='Stylized kingdom';scene.add(world);
   scene.background=new THREE.Color(0xb9d1d0);
-  scene.fog=new THREE.FogExp2(0xb9d1d0,.0047);
+  scene.fog=new THREE.FogExp2(0xb9d1d0,.0023);
   const ambient=new THREE.HemisphereLight(0xe9f6ff,0x60704c,2.15);
   scene.add(ambient);
   const sun=new THREE.DirectionalLight(0xffe2ab,2.7);
-  sun.position.set(-48,95,40);
+  sun.position.set(-130,220,140);
   sun.castShadow=true;
   sun.shadow.mapSize.set(2048,2048);
-  sun.shadow.camera.left=-79;sun.shadow.camera.right=79;
-  sun.shadow.camera.top=79;sun.shadow.camera.bottom=-79;
-  sun.shadow.camera.near=10;sun.shadow.camera.far=230;
+  sun.shadow.camera.left=-210;sun.shadow.camera.right=210;
+  sun.shadow.camera.top=210;sun.shadow.camera.bottom=-210;
+  sun.shadow.camera.near=10;sun.shadow.camera.far=520;
   sun.shadow.normalBias=.035;sun.shadow.bias=-.0001;
   scene.add(sun,sun.target);
   const fill=new THREE.DirectionalLight(0x91b4e5,.65);fill.position.set(35,35,-45);scene.add(fill);
@@ -68,8 +68,8 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     object.castShadow=true;object.receiveShadow=true;parent.add(object);return object;
   };
   // Low-height sculpted terrain: game-space remains planar and unit movement unchanged.
-  add(world,new THREE.PlaneGeometry(240,240),waterMat,0,-1.15,0).rotation.x=-Math.PI/2;
-  const terrain=new THREE.PlaneGeometry(142,142,70,70);
+  add(world,new THREE.PlaneGeometry(700,700),waterMat,0,-1.15,0).rotation.x=-Math.PI/2;
+  const terrain=new THREE.PlaneGeometry(MAP_HALF_SIZE*2,MAP_HALF_SIZE*2,110,110);
   terrain.rotateX(-Math.PI/2);
   const position=terrain.getAttribute('position');
   const vertexColors:number[]=[];
@@ -77,7 +77,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   for(let i=0;i<position.count;i++){
     const x=position.getX(i),z=position.getZ(i);
     const edge=Math.max(Math.abs(x),Math.abs(z));
-    position.setY(i,-.23+.085*Math.sin(x*.28)*Math.cos(z*.24)-Math.max(0,edge-68)*.26);
+    position.setY(i,-.23+.085*Math.sin(x*.28)*Math.cos(z*.24)-Math.max(0,edge-(MAP_HALF_SIZE-9))*.26);
     const shade=terrainShade(x,z),c=greenA.clone().lerp(greenB,shade);
     vertexColors.push(c.r,c.g,c.b);
   }
@@ -96,17 +96,17 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     road(f.x,f.z,f.x*.42,f.z*.42,3.9);
     road(f.x*.42,f.z*.42,0,0,2.8);
   }
-  for(const p of war.outposts)if(p.id<4)road(p.x,p.z,0,0,2.3);
+  for(const p of war.outposts)road(p.x,p.z,0,0,2.3);
   // Track junctions, clumps of flowers and low-poly foliage give the ground depth.
   const trunkGeo=new THREE.CylinderGeometry(.16,.24,1,6);
   const crownGeo=new THREE.ConeGeometry(1,2.2,6);
-  const treeTrunks=new THREE.InstancedMesh(trunkGeo,timber,100);
-  const treeCrowns=new THREE.InstancedMesh(crownGeo,leaves,100);
+  const treeTrunks=new THREE.InstancedMesh(trunkGeo,timber,340);
+  const treeCrowns=new THREE.InstancedMesh(crownGeo,leaves,340);
   const dummy=new THREE.Object3D();
   let treeCount=0;
-  for(let i=0;i<440&&treeCount<100;i++){
-    const x=(rng()-.5)*132,z=(rng()-.5)*132;
-    if(Math.abs(x)>68||Math.abs(z)>68||
+  for(let i=0;i<1600&&treeCount<340;i++){
+    const x=(rng()-.5)*(MAP_HALF_SIZE*1.85),z=(rng()-.5)*(MAP_HALF_SIZE*1.85);
+    if(Math.abs(x)>MAP_HALF_SIZE-7||Math.abs(z)>MAP_HALF_SIZE-7||
       war.factions.some(f=>dist(x,z,f.x,f.z)<18)||
       war.outposts.some(p=>dist(x,z,p.x,p.z)<11)||
       Math.abs(Math.abs(x)-Math.abs(z))<3.6)continue;
@@ -122,10 +122,10 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   treeTrunks.instanceMatrix.needsUpdate=true;treeCrowns.instanceMatrix.needsUpdate=true;
   treeTrunks.castShadow=false;treeCrowns.castShadow=false;
   world.add(treeTrunks,treeCrowns);
-  const rocks=new THREE.InstancedMesh(rock,stoneDark,96);
+  const rocks=new THREE.InstancedMesh(rock,stoneDark,260);
   let rockCount=0;
-  for(let i=0;i<270&&rockCount<96;i++){
-    const x=(rng()-.5)*135,z=(rng()-.5)*135;
+  for(let i=0;i<860&&rockCount<260;i++){
+    const x=(rng()-.5)*(MAP_HALF_SIZE*1.86),z=(rng()-.5)*(MAP_HALF_SIZE*1.86);
     if(war.factions.some(f=>dist(x,z,f.x,f.z)<13)||
        war.outposts.some(p=>dist(x,z,p.x,p.z)<9))continue;
     const scale=.4+rng()*1.2;
@@ -242,9 +242,9 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   storm.castShadow=false;
   // Small moving clouds cast light atmospheric silhouettes without expensive volumetrics.
   const clouds:THREE.Group[]=[];
-  for(let i=0;i<7;i++){
+  for(let i=0;i<12;i++){
     const c=new THREE.Group();world.add(c);
-    c.position.set(-65+i*21,38+i%3*4,-45+i*11);
+    c.position.set(-175+i*32,58+i%3*5,-128+i*24);
     const cloudMat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.12,depthWrite:false});
     for(let p=0;p<3;p++){
       const puff=add(c,sphere,cloudMat,p*4,0,(p%2)*2,13,3.8,7);
@@ -282,7 +282,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     }
     const hpBack=add(root,box,woodDark,0,3.8,0,1.8,.24,.1);
     const health=add(root,box,material(0x82e4a0),0,3.8,.075,1.8,.2,.12);
-    hpBack.visible=false;health.visible=false;
+    hpBack.visible=true;health.visible=true;
     body.castShadow=true;
     return {root,kind:u.kind,previousX:u.x,previousZ:u.z,leftLeg,rightLeg,health};
   }
@@ -362,7 +362,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
       p.sprite.position.y+=Math.sin(t*Math.PI)*2.1;
       if(t>=1){world.remove(p.sprite);projectiles.splice(i,1);}
     }
-    clouds.forEach((cloud,i)=>{cloud.position.x=-65+i*21+Math.sin(time*.06+i)*5;});
+    clouds.forEach((cloud,i)=>{cloud.position.x=-175+i*32+Math.sin(time*.06+i)*9;});
   }
   const dispose=():void=>{
     scene.remove(world,ambient,sun,sun.target,fill);

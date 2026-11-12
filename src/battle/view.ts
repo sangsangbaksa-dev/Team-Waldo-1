@@ -7,7 +7,7 @@ import { createWar, stepWar, upgrade, train, trainSquad, repair, setPolicy, setR
 const colors=FACTION_COLORS;
 export function openWar(onExit:()=>void,forceNew=false):void {
  const overlay=document.createElement('div'); overlay.className='war-ui'; document.body.append(overlay);
- overlay.innerHTML=`<div class="war-view"></div><div class="war-top"><b>⚔ 영지 생존전</b><span id="war-clock"></span><button id="pause">일시정지</button><button id="speed">속도 1×</button><button id="quality">그래픽 높음</button><button id="home">내 영지</button><button id="audio" aria-label="소리 끄기">🔊</button><button id="exit">메뉴로</button></div><div class="war-panel"><div class="eyebrow">내 영지</div><div id="war-res"></div><div class="war-section">생산과 성장</div><div id="buildings"></div><div class="war-section">왕국 경제 정책</div><div id="policy"></div><button id="repair" class="war-action">본부 수리 <small>금 45 · 식량 25</small></button><div class="war-section">병종 훈련</div><div id="unit-train"></div><div class="war-section">부대 명령</div><div id="targets"></div><div class="war-section">본부 수비대</div><div id="reserve"></div><div class="war-section">거점 점령</div><div id="outposts"></div><div class="war-section">전투 저장</div><div id="save-actions"><button id="save">저장</button><button id="load">이어하기</button><button id="new">새 전투</button></div><div id="save-status" role="status"></div><div class="war-hint">병사는 가까운 적을 자동으로 공격합니다. 수비 병력은 출전하지 않습니다.<br>130초 후 안전지대가 줄어듭니다.</div></div><div class="war-standings" id="standings"></div><div class="war-events" id="events" aria-live="polite"></div><div class="war-minimap"><canvas id="war-map" width="200" height="200" aria-label="전장 미니맵"></canvas><span>클릭: 이동 · Shift+클릭: 명령</span></div><div class="war-help">드래그: 회전 · Shift+드래그/WASD: 이동 · 휠: 확대/축소</div><div class="war-end" hidden></div>`;
+ overlay.innerHTML=`<div class="war-view"></div><div class="war-top"><b>⚔ 영지 생존전</b><span id="war-clock"></span><button id="pause">일시정지</button><button id="speed">속도 1×</button><button id="quality">그래픽 높음</button><button id="home">내 영지</button><button id="audio" aria-label="소리 끄기">🔊</button><button id="exit">메뉴로</button></div><div class="war-panel"><div class="eyebrow">내 영지</div><div id="war-res"></div><div class="war-section">생산과 성장</div><div id="buildings"></div><div class="war-section">왕국 경제 정책</div><div id="policy"></div><button id="repair" class="war-action">본부 수리 <small>금 45 · 식량 25</small></button><div class="war-section">병종 훈련</div><div id="unit-train"></div><div class="war-section">부대 명령</div><div id="targets"></div><div class="war-section">본부 수비대</div><div id="reserve"></div><div class="war-section">거점 점령</div><div id="outposts"></div><div class="war-section">전투 저장</div><div id="save-actions"><button id="save">저장</button><button id="load">이어하기</button><button id="new">새 전투</button></div><div id="save-status" role="status"></div><div class="war-hint">병사는 가까운 적을 자동으로 공격합니다. 수비 병력은 출전하지 않습니다.<br>130초 후 안전지대가 줄어듭니다.</div></div><div class="war-standings" id="standings"></div><div class="war-events" id="events" aria-live="polite"></div><div class="war-minimap"><canvas id="war-map" width="200" height="200" aria-label="전장 미니맵"></canvas><button id="map-mode" aria-pressed="false">이동 모드</button><span>Shift+클릭 또는 명령 모드 선택</span></div><div class="war-help">드래그: 회전 · Shift+드래그/WASD: 이동 · 휠: 확대/축소</div><div class="war-end" hidden></div>`;
  const el=<T extends HTMLElement>(s:string)=>overlay.querySelector<T>(s)!;
  const mount=el<HTMLDivElement>('.war-view');
  let highQuality=!window.matchMedia('(max-width: 700px)').matches;
@@ -79,13 +79,14 @@ export function openWar(onExit:()=>void,forceNew=false):void {
  renderer.domElement.addEventListener('pointerdown',down);
  window.addEventListener('pointermove',move);window.addEventListener('pointerup',up);
  renderer.domElement.addEventListener('wheel',wheel,{passive:false});
+ let commandMode=false;
  const map=el<HTMLCanvasElement>('#war-map');
  const ctx=map.getContext('2d');
  const project=worldToMinimap;
  const mapClick=(event:MouseEvent)=>{
   const rect=map.getBoundingClientRect();
   const pos=minimapToWorld(event.clientX-rect.left,event.clientY-rect.top,rect.width,rect.height);
-  if(event.shiftKey){
+  if(event.shiftKey||commandMode){
     const target=pickMapTarget(w,0,pos.x,pos.z);
     if(target){
       const success=target.kind==='outpost'?captureOrder(w,0,target.id):order(w,0,target.id);
@@ -94,6 +95,12 @@ export function openWar(onExit:()=>void,forceNew=false):void {
   }else pan(pos.x-focus.x,pos.z-focus.z);
  };
  map.addEventListener('click',mapClick);
+ const modeButton=el<HTMLButtonElement>('#map-mode');
+ modeButton.onclick=()=>{
+   commandMode=!commandMode;
+   modeButton.textContent=commandMode?'명령 모드':'이동 모드';
+   modeButton.setAttribute('aria-pressed',String(commandMode));
+ };
  const drawMap=()=>{
   if(!ctx)return;
   ctx.clearRect(0,0,200,200);
@@ -124,7 +131,7 @@ export function openWar(onExit:()=>void,forceNew=false):void {
   const f=project(focus.x,focus.z);ctx.strokeStyle='#ffffff';ctx.lineWidth=1;
   ctx.strokeRect(f.x-7,f.y-7,14,14);
  };
- const close=(resume=true)=>{if(dead)return;dead=true;cancelAnimationFrame(frame);window.removeEventListener('resize',resize);window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);window.removeEventListener('keydown',keyDown);window.removeEventListener('keyup',keyUp);map.removeEventListener('click',mapClick);audio.dispose();world.dispose();renderer.dispose();overlay.remove();if(resume)onExit();};el<HTMLButtonElement>('#exit').onclick=()=>close();
+ const close=(resume=true)=>{if(dead)return;dead=true;cancelAnimationFrame(frame);window.removeEventListener('resize',resize);window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);window.removeEventListener('keydown',keyDown);window.removeEventListener('keyup',keyUp);map.removeEventListener('click',mapClick);audio.dispose();world.dispose();renderer.dispose();renderer.forceContextLoss();overlay.remove();if(resume)onExit();};el<HTMLButtonElement>('#exit').onclick=()=>close();
  el<HTMLButtonElement>('#home').onclick=()=>{focus.set(w.factions[0].x,0,w.factions[0].z);zoom=165;cameraUpdate();};
  el<HTMLButtonElement>('#audio').onclick=()=>{
   const muted=audio.toggle();

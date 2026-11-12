@@ -156,6 +156,13 @@ export function openWar(onExit:()=>void,forceNew=false):void {
   el<HTMLButtonElement>('#quality').textContent=highQuality?'그래픽 높음':'그래픽 보통';
  };
  const names:Record<Upgrade,string>={farm:'농장',mine:'금광',barracks:'병영',fort:'본부 방어'};
+ // Reuse button DOM nodes across the 250ms HUD updates to avoid lost pointer clicks.
+ const stableButton=(parent:HTMLElement,key:string):HTMLButtonElement=>{
+   const found=parent.querySelector<HTMLButtonElement>('button[data-control="'+key+'"]');
+   if(found)return found;
+   const btn=document.createElement('button');btn.dataset.control=key;parent.append(btn);
+   return btn;
+ };
  function ui(){const p=w.factions[0];const count=(id:number)=>w.units.filter(u=>u.owner===id).length;
   el('#war-clock').textContent=`${Math.floor(w.time/60)}:${String(Math.floor(w.time%60)).padStart(2,'0')}  ·  생존 ${w.factions.filter(f=>f.alive).length}/4`;
   const objectiveBonuses=w.outposts.filter(o=>o.owner===0).map(o=>OUTPOST_BONUSES[o.id]);
@@ -163,51 +170,51 @@ export function openWar(onExit:()=>void,forceNew=false):void {
   const goldIncome=(p.mine*1.5+objectiveBonuses.reduce((sum,v)=>sum+v.gold,0))*modifier;
   const foodIncome=(p.farm*1.3+objectiveBonuses.reduce((sum,v)=>sum+v.food,0))*modifier;
   el('#war-res').innerHTML=`<strong>🪙 ${Math.floor(p.gold)}</strong><strong>🌾 ${Math.floor(p.food)}</strong><span>본부 ${Math.ceil(p.hp)} / ${p.maxHp}</span><span>병력 ${count(0)} / ${MAX_UNITS}</span><span>금 +${goldIncome.toFixed(1)}/초</span><span>식량 +${foodIncome.toFixed(1)}/초</span>`;
-  const b=el('#buildings');b.innerHTML='';for(const k of ['farm','mine','barracks','fort'] as Upgrade[]){const c=cost(p,k),button=document.createElement('button');button.className='war-action';button.disabled=!p.alive||w.over||p[k]>=4||p.gold<c.gold||p.food<c.food;button.innerHTML=`${names[k]} <span>Lv.${p[k]}</span><small>${p[k]>=4?'최대':`금 ${c.gold} · 식량 ${c.food}`}</small>`;button.onclick=()=>{if(upgrade(w,0,k))audio.play('upgrade');ui();};b.append(button);}
+  const b=el('#buildings');for(const k of ['farm','mine','barracks','fort'] as Upgrade[]){const c=cost(p,k),button=stableButton(b,k);button.className='war-action';button.disabled=!p.alive||w.over||p[k]>=4||p.gold<c.gold||p.food<c.food;button.innerHTML=`${names[k]} <span>Lv.${p[k]}</span><small>${p[k]>=4?'최대':`금 ${c.gold} · 식량 ${c.food}`}</small>`;button.onclick=()=>{if(upgrade(w,0,k))audio.play('upgrade');ui();};}
   el<HTMLButtonElement>('#save').disabled=!p.alive||w.over;
   el<HTMLButtonElement>('#load').disabled=!hasSaved;
-  const policyNode=el('#policy');policyNode.innerHTML='';
+  const policyNode=el('#policy');
   const policies: {key:EconomyPolicy;label:string;title:string}[]=[
     {key:'balanced',label:'균형',title:'표준 자원 생산과 전투'},
     {key:'growth',label:'성장 +25%',title:'금·식량 생산 25% 증가'},
     {key:'war',label:'전시 +18%',title:'부대 공격력 18% 증가, 자원 생산 12% 감소'},
   ];
   for(const candidate of policies){
-    const btn=document.createElement('button');
+    const btn=stableButton(policyNode,candidate.key);
     btn.className='war-target'+(p.policy===candidate.key?' selected':'');
     btn.textContent=candidate.label;btn.title=candidate.title;
     btn.disabled=!p.alive||w.over;
-    btn.onclick=()=>{if(setPolicy(w,0,candidate.key))audio.play('command');ui();};policyNode.append(btn);
+    btn.onclick=()=>{if(setPolicy(w,0,candidate.key))audio.play('command');ui();};
   }
   const repairButton=el<HTMLButtonElement>('#repair');
   repairButton.disabled=!p.alive||w.over||p.hp>=p.maxHp-1||p.gold<45||p.food<25;
   repairButton.onclick=()=>{if(repair(w,0))audio.play('upgrade');ui();};
-  const training=el('#unit-train');training.innerHTML='';
+  const training=el('#unit-train');
   for(const kind of ['infantry','archer','guardian','cavalry'] as UnitKind[]){
-   const stat=UNIT_STATS[kind],btn=document.createElement('button');
+   const stat=UNIT_STATS[kind],btn=stableButton(training,kind+'-single');
    btn.className='war-action';btn.textContent=`${stat.label} · 금 ${stat.gold} / 식량 ${stat.food}`;
    btn.disabled=!p.alive||w.over||p.barracks<stat.unlock||p.gold<stat.gold||p.food<stat.food||count(0)>=MAX_UNITS;
-   if(p.barracks<stat.unlock)btn.title=`병영 레벨 ${stat.unlock} 필요`;
-   btn.onclick=()=>{if(train(w,0,kind))audio.play('train');ui();};training.append(btn);
-   const squad=document.createElement('button');squad.className='war-action';squad.textContent=`${stat.label} 3명 일괄 훈련`;
+   btn.title=p.barracks<stat.unlock?`병영 레벨 ${stat.unlock} 필요`:'';
+   btn.onclick=()=>{if(train(w,0,kind))audio.play('train');ui();};
+   const squad=stableButton(training,kind+'-squad');squad.className='war-action';squad.textContent=`${stat.label} 3명 일괄 훈련`;
    squad.disabled=!p.alive||w.over||p.barracks<stat.unlock||p.gold<stat.gold*3||p.food<stat.food*3||count(0)+3>MAX_UNITS;
-   squad.onclick=()=>{if(trainSquad(w,0,kind,3))audio.play('train');ui();};training.append(squad);
+   squad.onclick=()=>{if(trainSquad(w,0,kind,3))audio.play('train');ui();};
   }
-  const targets=el('#targets');targets.innerHTML='';for(const t of [null,1,2,3] as (number|null)[]){const button=document.createElement('button');button.textContent=t===null?'기지 방어':`${NAMES[t]} 공격`;button.className='war-target'+(p.target===t?' selected':'');button.disabled=!p.alive||(t!==null&&!w.factions[t].alive);button.onclick=()=>{if(order(w,0,t))audio.play('command');ui();};targets.append(button);}
-  const reserveNode=el('#reserve');reserveNode.innerHTML='';
+  const targets=el('#targets');for(const t of [null,1,2,3] as (number|null)[]){const button=stableButton(targets,t===null?'defend':'attack-'+t);button.textContent=t===null?'기지 방어':`${NAMES[t]} 공격`;button.className='war-target'+(p.target===t?' selected':'');button.disabled=!p.alive||w.over||(t!==null&&!w.factions[t].alive);button.onclick=()=>{if(order(w,0,t))audio.play('command');ui();};}
+  const reserveNode=el('#reserve');
   for(const amount of [0,2,4,6]){
-    const btn=document.createElement('button');btn.className='war-target'+(p.reserve===amount?' selected':'');
+    const btn=stableButton(reserveNode,String(amount));btn.className='war-target'+(p.reserve===amount?' selected':'');
     btn.textContent=amount===0?'전군 출전':`${amount}명 수비`;
-    btn.disabled=!p.alive||w.over;btn.onclick=()=>{if(setReserve(w,0,amount))audio.play('command');ui();};reserveNode.append(btn);
+    btn.disabled=!p.alive||w.over;btn.onclick=()=>{if(setReserve(w,0,amount))audio.play('command');ui();};
   }
-  const outposts=el('#outposts');outposts.innerHTML='';
+  const outposts=el('#outposts');
   for(const post of w.outposts){
-   const btn=document.createElement('button'),owner=post.owner===null?'중립':NAMES[post.owner];
+   const btn=stableButton(outposts,String(post.id)),owner=post.owner===null?'중립':NAMES[post.owner];
    const income=OUTPOST_BONUSES[post.id];
    btn.textContent=`${OUTPOST_NAMES[post.id]} · ${owner}${post.contender!==null?' '+Math.round(post.progress)+'%':''}`;
    btn.title=`점령 시 금 +${income.gold.toFixed(1)}/초, 식량 +${income.food.toFixed(1)}/초`;
    btn.className='war-target'+(p.rally===post.id?' selected':'');
-   btn.disabled=!p.alive||w.over;btn.onclick=()=>{if(captureOrder(w,0,post.id))audio.play('command');ui();};outposts.append(btn);
+   btn.disabled=!p.alive||w.over;btn.onclick=()=>{if(captureOrder(w,0,post.id))audio.play('command');ui();};
   }
   const eventPanel=el('#events');eventPanel.replaceChildren();
   for(const evt of w.events.slice(0,5)){

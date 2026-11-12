@@ -142,7 +142,7 @@ describe('3D management war strategic rules', () => {
   w.factions.slice(1).forEach(f=>f.aiTimer=9999);
   for(let i=0;i<w.outposts.length;i++){
    const post=w.outposts[i];
-   post.contender=0;post.progress=99;
+   post.contender=0;post.progress=99.5;
    for(const u of w.units.filter(u=>u.owner===0)){u.x=post.x;u.z=post.z;}
    stepWar(w,.1);
   }

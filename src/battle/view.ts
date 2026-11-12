@@ -1,14 +1,22 @@
 import * as THREE from 'three';
 import { createBattleWorld, FACTION_COLORS } from './graphics';
+import { loadWar, saveWar, deleteWarSave } from './save';
 import { createWar, stepWar, upgrade, train, trainSquad, repair, setPolicy, setReserve, order, cost, NAMES, OUTPOST_NAMES, OUTPOST_BONUSES, UNIT_STATS, MAX_UNITS, MAP_HALF_SIZE, captureOrder, type EconomyPolicy, type UnitKind, type Upgrade, type War } from './war';
 const colors=FACTION_COLORS;
-export function openWar(onExit:()=>void):void {
+export function openWar(onExit:()=>void,forceNew=false):void {
  const overlay=document.createElement('div'); overlay.className='war-ui'; document.body.append(overlay);
- overlay.innerHTML=`<div class="war-view"></div><div class="war-top"><b>⚔ 영지 생존전</b><span id="war-clock"></span><button id="pause">일시정지</button><button id="speed">속도 1×</button><button id="quality">그래픽 높음</button><button id="home">내 영지</button><button id="exit">메뉴로</button></div><div class="war-panel"><div class="eyebrow">내 영지</div><div id="war-res"></div><div class="war-section">생산과 성장</div><div id="buildings"></div><div class="war-section">왕국 경제 정책</div><div id="policy"></div><button id="repair" class="war-action">본부 수리 <small>금 45 · 식량 25</small></button><div class="war-section">병종 훈련</div><div id="unit-train"></div><div class="war-section">부대 명령</div><div id="targets"></div><div class="war-section">본부 수비대</div><div id="reserve"></div><div class="war-section">거점 점령</div><div id="outposts"></div><div class="war-hint">병사는 가까운 적을 자동으로 공격합니다. 수비 병력은 출전하지 않습니다.<br>130초 후 안전지대가 줄어듭니다.</div></div><div class="war-standings" id="standings"></div><div class="war-events" id="events" aria-live="polite"></div><div class="war-minimap"><canvas id="war-map" width="200" height="200" aria-label="전장 미니맵"></canvas><span>미니맵 클릭: 카메라 이동</span></div><div class="war-help">드래그: 회전 · Shift+드래그/WASD: 이동 · 휠: 확대/축소</div><div class="war-end" hidden></div>`;
+ overlay.innerHTML=`<div class="war-view"></div><div class="war-top"><b>⚔ 영지 생존전</b><span id="war-clock"></span><button id="pause">일시정지</button><button id="speed">속도 1×</button><button id="quality">그래픽 높음</button><button id="home">내 영지</button><button id="exit">메뉴로</button></div><div class="war-panel"><div class="eyebrow">내 영지</div><div id="war-res"></div><div class="war-section">생산과 성장</div><div id="buildings"></div><div class="war-section">왕국 경제 정책</div><div id="policy"></div><button id="repair" class="war-action">본부 수리 <small>금 45 · 식량 25</small></button><div class="war-section">병종 훈련</div><div id="unit-train"></div><div class="war-section">부대 명령</div><div id="targets"></div><div class="war-section">본부 수비대</div><div id="reserve"></div><div class="war-section">거점 점령</div><div id="outposts"></div><div class="war-section">전투 저장</div><div id="save-actions"><button id="save">저장</button><button id="load">이어하기</button><button id="new">새 전투</button></div><div id="save-status" role="status"></div><div class="war-hint">병사는 가까운 적을 자동으로 공격합니다. 수비 병력은 출전하지 않습니다.<br>130초 후 안전지대가 줄어듭니다.</div></div><div class="war-standings" id="standings"></div><div class="war-events" id="events" aria-live="polite"></div><div class="war-minimap"><canvas id="war-map" width="200" height="200" aria-label="전장 미니맵"></canvas><span>미니맵 클릭: 카메라 이동</span></div><div class="war-help">드래그: 회전 · Shift+드래그/WASD: 이동 · 휠: 확대/축소</div><div class="war-end" hidden></div>`;
  const el=<T extends HTMLElement>(s:string)=>overlay.querySelector<T>(s)!;
  const mount=el<HTMLDivElement>('.war-view');
  let highQuality=!window.matchMedia('(max-width: 700px)').matches;
- const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
+ let renderer:THREE.WebGLRenderer;
+ try{
+  renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
+ }catch{
+  overlay.innerHTML='<div class="war-fallback"><h2>3D 실행 불가</h2><p>이 기기에서는 WebGL을 시작할 수 없습니다. 브라우저 그래픽 가속 설정을 확인해 주세요.</p><button id="back-to-menu">메뉴로</button></div>';
+  overlay.querySelector<HTMLButtonElement>('#back-to-menu')!.onclick=()=>{overlay.remove();onExit();};
+  return;
+ }
  renderer.outputColorSpace=THREE.SRGBColorSpace;
  renderer.toneMapping=THREE.ACESFilmicToneMapping;
  renderer.toneMappingExposure=1.22;
@@ -27,19 +35,40 @@ export function openWar(onExit:()=>void):void {
   camera.lookAt(focus);
  };
  cameraUpdate();
- const w:War=createWar();
+ const savedWar=forceNew?null:loadWar();
+ const w:War=savedWar??createWar();
+ let hasSaved=savedWar!==null || loadWar()!==null;
  const world=createBattleWorld(scene,w);
- let dead=false,done=false,paused=false,speed=1,last=performance.now(),acc=0,uiClock=0,drag=false,prevX=0,frame=0;
+ let dead=false,done=false,paused=false,speed=1,last=performance.now(),acc=0,uiClock=0,drag=false,prevX=0,prevY=0,frame=0;
  const heldKeys=new Set<string>();
  const pan=(dx:number,dz:number)=>{focus.x=THREE.MathUtils.clamp(focus.x+dx,-MAP_HALF_SIZE+20,MAP_HALF_SIZE-20);focus.z=THREE.MathUtils.clamp(focus.z+dz,-MAP_HALF_SIZE+20,MAP_HALF_SIZE-20);cameraUpdate();};
- const keyDown=(event:KeyboardEvent)=>{if(['w','a','s','d','arrowup','arrowleft','arrowdown','arrowright'].includes(event.key.toLowerCase())){heldKeys.add(event.key.toLowerCase());event.preventDefault();}};
+ const keyDown=(event:KeyboardEvent)=>{
+  if(event.key==='Escape'&&!event.repeat){
+    paused=!paused;el<HTMLButtonElement>('#pause').textContent=paused?'계속하기':'일시정지';
+    event.preventDefault();return;
+  }
+  if(['1','2','3'].includes(event.key)&&!event.repeat){
+    train(w,0,(['infantry','archer','guardian'] as UnitKind[])[Number(event.key)-1]);
+    ui();event.preventDefault();return;
+  }
+  if(['w','a','s','d','arrowup','arrowleft','arrowdown','arrowright'].includes(event.key.toLowerCase())){
+    heldKeys.add(event.key.toLowerCase());event.preventDefault();
+  }
+ };
  const keyUp=(event:KeyboardEvent)=>heldKeys.delete(event.key.toLowerCase());
  window.addEventListener('keydown',keyDown);window.addEventListener('keyup',keyUp);
  const resize=()=>{renderer.setSize(mount.clientWidth,mount.clientHeight);camera.aspect=mount.clientWidth/mount.clientHeight;camera.updateProjectionMatrix();};window.addEventListener('resize',resize);
- const down=(e:PointerEvent)=>{drag=true;prevX=e.clientX;};
- const move=(e:PointerEvent)=>{if(!drag)return;const delta=e.clientX-prevX;prevX=e.clientX;
-  if(e.shiftKey)pan(-delta*.65,0);
-  else {angle+=delta*.008;cameraUpdate();}
+ const down=(e:PointerEvent)=>{drag=true;prevX=e.clientX;prevY=e.clientY;};
+ const move=(e:PointerEvent)=>{
+  if(!drag)return;
+  const dx=e.clientX-prevX,dy=e.clientY-prevY;
+  prevX=e.clientX;prevY=e.clientY;
+  if(e.shiftKey){
+    pan(-Math.cos(angle)*dx*.65+Math.sin(angle)*dy*.65,
+      Math.sin(angle)*dx*.65+Math.cos(angle)*dy*.65);
+  }else{
+    angle+=dx*.008;cameraUpdate();
+  }
  };
  const up=()=>{drag=false;};
  const wheel=(e:WheelEvent)=>{e.preventDefault();zoom=THREE.MathUtils.clamp(zoom+e.deltaY*.15,75,525);cameraUpdate();};
@@ -79,6 +108,19 @@ export function openWar(onExit:()=>void):void {
  };
  const close=(resume=true)=>{if(dead)return;dead=true;cancelAnimationFrame(frame);window.removeEventListener('resize',resize);window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);window.removeEventListener('keydown',keyDown);window.removeEventListener('keyup',keyUp);map.removeEventListener('click',mapClick);world.dispose();renderer.dispose();overlay.remove();if(resume)onExit();};el<HTMLButtonElement>('#exit').onclick=()=>close();
  el<HTMLButtonElement>('#home').onclick=()=>{focus.set(w.factions[0].x,0,w.factions[0].z);zoom=165;cameraUpdate();};
+ el<HTMLButtonElement>('#save').onclick=()=>{
+  hasSaved=saveWar(w);
+  el('#save-status').textContent=hasSaved?'현재 전투가 저장됐습니다.':'이 브라우저에서는 저장할 수 없습니다.';
+  ui();
+ };
+ el<HTMLButtonElement>('#load').onclick=()=>{
+  if(!loadWar())return;
+  close(false);openWar(onExit);
+ };
+ el<HTMLButtonElement>('#new').onclick=()=>{
+  if(!window.confirm('현재 전투를 종료하고 새 전투를 시작할까요? 저장한 데이터도 삭제됩니다.'))return;
+  deleteWarSave();close(false);openWar(onExit,true);
+ };
  el<HTMLButtonElement>('#pause').onclick=()=>{paused=!paused;el<HTMLButtonElement>('#pause').textContent=paused?'계속하기':'일시정지';};
  el<HTMLButtonElement>('#speed').onclick=()=>{speed=speed===1?2:speed===2?4:1;el<HTMLButtonElement>('#speed').textContent=`속도 ${speed}×`;};
  el<HTMLButtonElement>('#quality').onclick=()=>{
@@ -97,6 +139,8 @@ export function openWar(onExit:()=>void):void {
   const foodIncome=(p.farm*1.3+objectiveBonuses.reduce((sum,v)=>sum+v.food,0))*modifier;
   el('#war-res').innerHTML=`<strong>🪙 ${Math.floor(p.gold)}</strong><strong>🌾 ${Math.floor(p.food)}</strong><span>본부 ${Math.ceil(p.hp)} / ${p.maxHp}</span><span>병력 ${count(0)} / ${MAX_UNITS}</span><span>금 +${goldIncome.toFixed(1)}/초</span><span>식량 +${foodIncome.toFixed(1)}/초</span>`;
   const b=el('#buildings');b.innerHTML='';for(const k of ['farm','mine','barracks','fort'] as Upgrade[]){const c=cost(p,k),button=document.createElement('button');button.className='war-action';button.disabled=!p.alive||w.over||p[k]>=4||p.gold<c.gold||p.food<c.food;button.innerHTML=`${names[k]} <span>Lv.${p[k]}</span><small>${p[k]>=4?'최대':`금 ${c.gold} · 식량 ${c.food}`}</small>`;button.onclick=()=>{upgrade(w,0,k);ui();};b.append(button);}
+  el<HTMLButtonElement>('#save').disabled=!p.alive||w.over;
+  el<HTMLButtonElement>('#load').disabled=!hasSaved;
   const policyNode=el('#policy');policyNode.innerHTML='';
   const policies: {key:EconomyPolicy;label:string;title:string}[]=[
     {key:'balanced',label:'균형',title:'표준 자원 생산과 전투'},
@@ -151,7 +195,7 @@ export function openWar(onExit:()=>void):void {
   if(h('a')||h('arrowleft'))pan(-Math.cos(angle)*cameraStep,Math.sin(angle)*cameraStep);
   if(h('d')||h('arrowright'))pan(Math.cos(angle)*cameraStep,-Math.sin(angle)*cameraStep);
   if(!paused&&!done)acc+=elapsed*speed;while(acc>=.05&&!w.over&&w.factions[0].alive){stepWar(w,.05);acc-=.05;}world.update(paused?0:elapsed);
-  if(now-uiClock>250){ui();drawMap();uiClock=now;}if(!done&&(w.over||!w.factions[0].alive)){done=true;const end=el<HTMLDivElement>('.war-end');end.hidden=false;end.innerHTML=`<div><h1>${w.winner===0?'최후의 영지 승리!':'영지가 함락됐습니다'}</h1><p>${Math.floor(w.time)}초 생존 · ${w.winner===0?'모든 경쟁자를 물리쳤습니다.':'다시 도전해 보세요.'}</p><button id="again">다시 시작</button><button id="back">메뉴로</button></div>`;el<HTMLButtonElement>('#again').onclick=()=>{close(false);openWar(onExit);};el<HTMLButtonElement>('#back').onclick=()=>close();}
+  if(now-uiClock>250){ui();drawMap();uiClock=now;}if(!done&&(w.over||!w.factions[0].alive)){done=true;const end=el<HTMLDivElement>('.war-end');end.hidden=false;end.innerHTML=`<div><h1>${w.winner===0?'최후의 영지 승리!':'영지가 함락됐습니다'}</h1><p>${Math.floor(w.time)}초 생존 · ${w.winner===0?'모든 경쟁자를 물리쳤습니다.':'다시 도전해 보세요.'}</p><button id="again">다시 시작</button><button id="back">메뉴로</button></div>`;el<HTMLButtonElement>('#again').onclick=()=>{close(false);openWar(onExit,true);};el<HTMLButtonElement>('#back').onclick=()=>close();}
   renderer.render(scene,camera);frame=requestAnimationFrame(loop);
  }
  ui();frame=requestAnimationFrame(loop);

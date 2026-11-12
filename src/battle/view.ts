@@ -209,7 +209,13 @@ export function openWar(onExit:()=>void,forceNew=false):void {
    btn.className='war-target'+(p.rally===post.id?' selected':'');
    btn.disabled=!p.alive||w.over;btn.onclick=()=>{if(captureOrder(w,0,post.id))audio.play('command');ui();};outposts.append(btn);
   }
-  el('#events').innerHTML=w.events.slice(0,5).map(evt=>`<p><span>${Math.floor(evt.time/60)}:${String(evt.time%60).padStart(2,'0')}</span> ${evt.text}</p>`).join('');
+  const eventPanel=el('#events');eventPanel.replaceChildren();
+  for(const evt of w.events.slice(0,5)){
+    const line=document.createElement('p'),stamp=document.createElement('span');
+    stamp.textContent=`${Math.floor(evt.time/60)}:${String(evt.time%60).padStart(2,'0')}`;
+    line.append(stamp,document.createTextNode(' '+evt.text));
+    eventPanel.append(line);
+  }
   el('#standings').innerHTML=w.factions.map(f=>`<div><i style="background:#${colors[f.id].toString(16).padStart(6,'0')}"></i><b>${NAMES[f.id]}</b><span>${f.alive?`본부 ${Math.ceil(f.hp)} · 병사 ${count(f.id)}`:'탈락'}</span></div>`).join('');
  }
  function loop(now:number){if(dead)return;const elapsed=Math.min((now-last)/1000,.1);last=now;

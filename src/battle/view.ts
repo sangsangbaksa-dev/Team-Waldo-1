@@ -589,7 +589,33 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     const end = el('.war-end'); end.hidden = false;
     [...overlay.children].forEach(child => { if (child instanceof HTMLElement && child !== end) child.inert = true; });
     end.innerHTML = `<section class="result-panel" role="dialog" aria-modal="true" aria-labelledby="result-title"><span class="result-emblem">${icon(victory ? 'crown' : 'shield', 52)}</span><div class="kicker">${victory ? 'VICTORY' : 'THE KINGDOM WILL RISE AGAIN'}</div><h1 id="result-title" tabindex="-1">${victory ? '마지막 왕국의 주인' : '새로운 원정이 기다립니다'}</h1><p>${victory ? '모든 경쟁자를 물리치고 전장을 통일했습니다.' : '영지가 함락되었습니다. 다음 전투에서 다시 도전하세요.'}</p><div class="result-stats"><div><b>${clock(w.time)}</b><span>생존 시간</span></div><div><b>${stats.kills}</b><span>적 병력 처치</span></div><div><b>${stats.captures}</b><span>거점 점령</span></div><div><b>${stats.trained}</b><span>병력 훈련</span></div><div><b>${stats.researches}</b><span>연구 완료</span></div><div><b>${Math.floor(stats.goldEarned).toLocaleString('ko-KR')}</b><span>획득한 금</span></div></div><p class="result-tip">${victory ? '다른 난이도와 병종 조합으로 새로운 전략을 시도해 보세요.' : stats.captures === 0 ? '다음 전략: 가까운 거점을 먼저 점령해 자원 생산과 폭풍 방어를 확보해 보세요.' : '다음 전략: 연구와 병종 조합으로 전투력을 높이고, 본부 수리 자원을 남겨 두세요.'}</p><div class="result-actions"><button id="back" class="button secondary">왕국 메뉴</button><button id="again" class="button primary">같은 난이도로 재도전 ${icon('arrow', 18)}</button></div></section>`;
-    el<HTMLButtonElement>('#again').onclick = () => { const difficulty = w.difficulty; close(false); openWar(onExit, { forceNew: true, difficulty }); };
+    el<HTMLButtonElement>('#again').onclick = () => {
+      const difficulty = w.difficulty;
+      if (import.meta.env.MODE === 'test') {
+        // Vitest uses a deterministic fake clock and tests synchronous rematches.
+        close(false);
+        openWar(onExit, { forceNew: true, difficulty });
+        return;
+      }
+      // Release the old GL context and allow the browser to present a frame
+      // before allocating a second, hundreds-of-troops battlefield.
+      const loading = document.createElement('div');
+      loading.className = 'game-loading';
+      loading.setAttribute('role', 'status');
+      loading.innerHTML = '<span class="game-loading-emblem">♜</span><strong>새 전장을 준비합니다</strong><p>이전 전장의 GPU 자원을 정리하고 있습니다</p><span class="game-loading-progress" aria-hidden="true"></span>';
+      document.body.append(loading);
+      close(false);
+      setTimeout(() => {
+        try {
+          openWar(onExit, { forceNew: true, difficulty });
+          requestAnimationFrame(() => requestAnimationFrame(() => loading.remove()));
+        } catch {
+          loading.remove();
+          document.querySelector('.war-ui')?.remove();
+          onExit();
+        }
+      }, 120);
+    };
     el<HTMLButtonElement>('#back').onclick = () => close();
     end.addEventListener('keydown', event => {
       if (event.key !== 'Tab') return;

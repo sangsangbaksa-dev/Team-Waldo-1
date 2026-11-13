@@ -125,3 +125,12 @@ font-size:11px;font-weight:700;letter-spacing:.025em}
   .war-top .resource-strip{min-width:0;flex-shrink:1}
   .war-top .war-tools{margin-left:auto;flex-shrink:0}
 }
+
+/* Mobile direct-play access belongs inside the bottom panel: the former
+   floating button covered Save and other panel actions on portrait phones. */
+.mobile-direct-button{display:none!important}
+@media(max-width:760px){
+  .war-ui:not(.adventure-active) .adventure-switch{display:none!important}
+  .war-ui .panel-footer .mobile-direct-button{display:inline-flex!important;white-space:nowrap;font-size:10px;color:#e6cf94}
+  .war-ui .panel-footer .render-performance{display:none}
+}

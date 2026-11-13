@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { readPreferences, writePreferences } from '../../src/battle/preferences';
+import { readPreferences, writePreferences, readCareer, recordMatch } from '../../src/battle/preferences';
 
 const KEY = 'waldo.preferences.v1';
 
@@ -55,5 +55,29 @@ describe('graphics preference compatibility', () => {
       localStorage.setItem(KEY, damaged);
       expect(readPreferences()).toEqual({ quality: 'standard', sound: true, reducedMotion: false });
     }
+  });
+  it('uses accessible defaults when matchMedia is missing or blocked', () => {
+    vi.stubGlobal('matchMedia', undefined);
+    expect(readPreferences()).toEqual({ quality: 'standard', sound: true, reducedMotion: false });
+    localStorage.setItem(KEY, JSON.stringify({ quality: 'low', sound: false, reducedMotion: true }));
+    expect(readPreferences()).toEqual({ quality: 'low', sound: false, reducedMotion: true });
+    localStorage.removeItem(KEY);
+    vi.stubGlobal('matchMedia', () => { throw new Error('Media queries blocked'); });
+    expect(readPreferences()).toEqual({ quality: 'standard', sound: true, reducedMotion: false });
+  });
+});
+
+describe('career storage resilience', () => {
+  it('ignores non-finite and negative scores instead of corrupting the career record', () => {
+    recordMatch(true, Number.NaN, -9);
+    expect(readCareer()).toEqual({ matches: 1, wins: 1, bestSurvival: 0, bestKills: 0 });
+    recordMatch(false, Number.POSITIVE_INFINITY, 1e12);
+    expect(readCareer()).toEqual({ matches: 2, wins: 1, bestSurvival: 0, bestKills: 1e9 });
+  });
+
+  it('does not exceed the profile counter bounds', () => {
+    localStorage.setItem('waldo.career.v1', JSON.stringify({ matches: 1e9, wins: 1e9, bestSurvival: 3, bestKills: 5 }));
+    recordMatch(true, 9.8, 7.3);
+    expect(readCareer()).toEqual({ matches: 1e9, wins: 1e9, bestSurvival: 9, bestKills: 7 });
   });
 });

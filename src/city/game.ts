@@ -10,6 +10,7 @@ import { CityAudio } from './audio';
 import { reload, switchWeapon } from './actors';
 import { ACTORS, BLOCKS, PITCH, ROAD } from './defs';
 import { mapPointerToWorld } from './uiMath';
+import { missionLog, missionSummary } from './missions';
 import { readPreferences, recordMatch, writePreferences } from '../battle/preferences';
 
 const $ = (n: number): string => Math.floor(n).toLocaleString('en-US');
@@ -29,11 +30,12 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
   <div class="city-hud" hidden>
     <div class="c-tl"><div class="c-res" id="c-res"></div><div class="c-quest" id="c-quest"></div></div>
     <div class="c-tc" id="c-zone"></div>
-    <div class="c-tr"><canvas id="c-mini" width="200" height="200" aria-label="미니맵"></canvas><div id="c-wanted"></div><div class="c-topbtns"><button data-act="view" id="c-view" title="시점 전환 (V)">1인칭</button><button data-act="map" title="전술 지도 (M)">지도</button><button data-act="pause" title="일시정지 (Esc)">Ⅱ</button></div></div>
+    <div class="c-tr"><canvas id="c-mini" width="200" height="200" aria-label="미니맵"></canvas><div id="c-wanted"></div><div class="c-topbtns"><button data-act="view" id="c-view" title="시점 전환 (V)">1인칭</button><button data-act="missions" title="작전 지령 (J)">임무</button><button data-act="map" title="전술 지도 (M)">지도</button><button data-act="pause" title="일시정지 (Esc)">Ⅱ</button></div></div>
     <div class="c-target" id="c-target"></div><aside class="c-tut" id="c-tut" hidden></aside><div class="c-area" id="c-area"></div><div class="c-feed" id="c-feed"></div><div class="c-banner" id="c-banner"></div><div class="c-prompt" id="c-prompt"></div><div class="c-toast" id="c-toast"></div>
     <div class="c-bl" id="c-boss"></div>
     <div class="c-bc" id="c-cmd"></div>
     <aside class="c-panel" id="c-panel" hidden></aside>
+    <aside class="c-missions" id="c-missions" hidden aria-label="작전 지령 목록"><header><div><span>OPERATIONS / LAST CITY</span><h2>도시 작전 지령</h2></div><button data-act="closemissions" aria-label="작전 지령 닫기">닫기 ✕</button></header><div class="c-mission-summary" id="c-mission-summary"></div><div class="c-mission-list" id="c-mission-list"></div><footer>임무를 완료하면 보상이 자동 지급됩니다 · <kbd>J</kbd> 닫기</footer></aside>
     <div class="c-bigmap" id="c-bigmap" hidden><div><canvas id="c-big" width="620" height="620"></canvas><p>지도를 누르면 전 병력이 그 지점으로 <b>돌격</b>합니다 · M 닫기</p></div></div>
     <button class="c-fire" id="c-fire">사격</button><div class="c-touch" id="c-touch"><button data-act="interact">E</button><button data-act="vehicle">차량</button><button data-act="skill">스킬</button><button data-act="dash">대시</button><button data-act="weapon">무기</button><button data-act="medkit">회복</button><button data-act="charge">돌격</button><button data-act="order:follow">집결</button><button data-act="panel">지휘</button></div>
   </div>
@@ -56,7 +58,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
 
   function setup(): void {
     modal.innerHTML = `<section class="c-setup"><div class="c-kicker">WALDO · KINGDOMS AT WAR — 도시 전선</div><h2>LAST CITY <small>최후의 왕국</small></h2>
-      <p class="c-lead">여덟 왕국이 한 도시에 떨어졌습니다. 직접 총을 들고 뛰고, 차를 빼앗고, 사업체를 사들여 돈을 벌고, 군대를 길러 <b>자기장이 닫히기 전 마지막 왕국</b>이 되세요.</p>
+      <p class="c-lead">여덟 왕국이 한 도시에 떨어졌습니다. 직접 총을 들고 뛰고, 차를 빼앗고, 사업체를 사들여 돈을 벌고, 군대를 길러 <b>자기장이 닫히기 전 마지막 왕국</b>이 되세요. <b>J</b>에서 8단계 도시 작전과 보상을 확인할 수 있습니다.</p>
       <button class="c-tutcard${tutDone ? '' : ' rec'}" data-act="tutorial"><span>${tutDone ? '다시 연습' : '처음이라면 추천 · 약 5분'}</span><b>튜토리얼 시작</b><p>이동·사격·사업체·기지 건설·병력 지휘·차량·시장까지 한 단계씩 안전하게 익힙니다. 연습장에서는 자기장과 라이벌이 멈춰 있습니다.</p></button>
       <div class="c-sub">${tutDone ? '바로 시작할 영웅을 고르세요' : '또는 바로 시작할 영웅을 고르세요'}</div>
       <div class="c-classes">${(Object.keys(CLASSES) as ClassId[]).map(k => `<button class="c-class" data-act="class:${k}"><span>${CLASSES[k].tag}</span><b>${CLASSES[k].name}</b><p>${CLASSES[k].desc}</p><em>Q · ${CLASSES[k].skill}</em><small>${CLASSES[k].skillDesc}</small></button>`).join('')}</div>
@@ -65,7 +67,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
       <div class="c-setup-foot"><span>난이도 · ${DIFFICULTY[diffSel].label}</span><button data-act="exit" class="c-ghost">메뉴로</button></div></section>`;
   }
   function start(k: ClassId, tutorial = false): void {
-    klass = k; modal.innerHTML = ''; hud.hidden = false; resultShown = false; paused = false; ghost = null; shopOpen = false; panel.hidden = true; bigmap.hidden = true;
+    klass = k; modal.innerHTML = ''; hud.hidden = false; resultShown = false; paused = false; ghost = null; shopOpen = false; panel.hidden = true; bigmap.hidden = true; q('#c-missions').hidden = true;
     // A retry must not inherit held keys, touch gestures, firing or frame debt.
     keys.clear(); mouse.down = false; touchFire = false; acc = 0; looks.clear();
     for (const stick of [sticks.move, sticks.aim]) { stick.id = -1; stick.x = 0; stick.y = 0; }
@@ -78,7 +80,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
     lastYaw = R3 ? R3.yaw : 0; lastPos = { x: b.x, y: b.y };
     setView(R3 ? (view === 'top' ? 'fp' : view) : 'top'); lock();
     if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__city = { world, renderer: R, r3: R3 };
-    audio.unlock(); if (!tutorial) banner('본부 앞 사업체를 매입하고 병영을 지으세요');
+    audio.unlock(); if (!tutorial) banner('작전 지령 01 · 첫 사업체를 확보하세요 · J 전체 임무');
     renderCmd(); last = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(frame);
   }
   let everLocked = false, lockErrors = 0;
@@ -89,7 +91,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
     view = v; canvas.hidden = v !== 'top'; canvas3.hidden = v === 'top'; cross.hidden = v === 'top'; layer.hidden = v === 'top'; if (R3 && v !== 'top') R3.mode = v; if (v === 'top') unlock(); else { R3?.resize(); }
     R?.resize(); q('#c-view').textContent = v === 'fp' ? '1인칭' : v === 'tp' ? '3인칭' : '전술뷰';
   }
-  const onLock = (): void => { locked = document.pointerLockElement === canvas3; if (locked) { expectUnlock = false; everLocked = true; return; } const was = expectUnlock; expectUnlock = false; if (!was && view !== 'top' && world && !world.over && !paused && panel.hidden && bigmap.hidden && world.factions[0].pending === 0) pause(); };
+  const onLock = (): void => { locked = document.pointerLockElement === canvas3; if (locked) { expectUnlock = false; everLocked = true; return; } const was = expectUnlock; expectUnlock = false; if (!was && view !== 'top' && world && !world.over && !paused && panel.hidden && bigmap.hidden && q('#c-missions').hidden && world.factions[0].pending === 0) pause(); };
 
   const onMouseMove = (e: MouseEvent): void => { if (!R3 || view === 'top' || paused) return; if (locked || (lockFail && mouse.down)) { R3.yaw += e.movementX * 0.0024; R3.pitch = Math.max(-1.2, Math.min(1.0, R3.pitch - e.movementY * 0.0024)); lastLook = performance.now(); } };
   document.addEventListener('pointerlockchange', onLock); document.addEventListener('pointerlockerror', onLockErr); document.addEventListener('mousemove', onMouseMove);
@@ -118,10 +120,18 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
     if (a === 'tutskip') { finishTutorial(true); return; }
     if (a === 'view') { if (tut) tut.c.viewSwitches++; setView(view === 'fp' ? 'tp' : view === 'tp' ? 'top' : R3 ? 'fp' : 'top'); if (!paused) lock(); audio.play('click'); return; }
     if (paused || w.over) return;
+    if (a === 'missions') {
+      const board = q('#c-missions');
+      board.hidden = !board.hidden;
+      if (!board.hidden) { panel.hidden = true; bigmap.hidden = true; shopOpen = false; renderMissions(); unlock(); }
+      else lock();
+      audio.play('click'); return;
+    }
+    if (a === 'closemissions') { q('#c-missions').hidden = true; lock(); audio.play('click'); return; }
     if (a === 'tab') { tab = arg; renderPanel(); audio.play('click'); }
-    else if (a === 'panel') { panel.hidden = !panel.hidden; shopOpen = false; if (!panel.hidden) { renderPanel(); unlock(); } else lock(); audio.play('click'); }
+    else if (a === 'panel') { q('#c-missions').hidden = true; panel.hidden = !panel.hidden; shopOpen = false; if (!panel.hidden) { renderPanel(); unlock(); } else lock(); audio.play('click'); }
     else if (a === 'closepanel') { panel.hidden = true; shopOpen = false; lock(); }
-    else if (a === 'map') { bigmap.hidden = !bigmap.hidden; if (bigmap.hidden) lock(); else unlock(); }
+    else if (a === 'map') { q('#c-missions').hidden = true; bigmap.hidden = !bigmap.hidden; if (bigmap.hidden) lock(); else unlock(); }
     else if (a === 'train') res(w.train(0, arg as UnitId));
     else if (a === 'build') { ghost = { kind: arg as StructKind, x: 0, y: 0, ok: false }; if (view !== 'top' || innerWidth < 900) { panel.hidden = true; lock(); } toast(view === 'top' ? '배치할 위치를 누르세요 (우클릭·Esc 취소)' : '바닥을 조준하고 클릭해 배치 (우클릭 취소)', false); }
     else if (a === 'research') res(w.research(0, arg as ResearchId));
@@ -156,7 +166,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
 
   // ---------- HUD ----------
   function renderCmd(): void {
-    q('#c-cmd').innerHTML = `<button data-act="order:follow"><kbd>Z</kbd>집결</button><button data-act="order:hold"><kbd>X</kbd>사수</button><button data-act="charge"><kbd>우클릭</kbd>돌격</button><button data-act="panel" class="c-cmd-main"><kbd>Tab</kbd>지휘 패널</button>`;
+    q('#c-cmd').innerHTML = `<button data-act="order:follow"><kbd>Z</kbd>집결</button><button data-act="order:hold"><kbd>X</kbd>사수</button><button data-act="charge"><kbd>우클릭</kbd>돌격</button><button data-act="missions"><kbd>J</kbd>임무</button><button data-act="panel" class="c-cmd-main"><kbd>Tab</kbd>지휘 패널</button>`;
   }
   function renderPanel(): void {
     const w = world!, f = w.factions[0]; let body = '';
@@ -212,10 +222,30 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
   function put(el: HTMLElement, html: string): void {
     const t = document.createElement('div'); t.innerHTML = html; sync(el, t);
   }
+
+  function renderMissions(): void {
+    const entries = missionLog(world!), summary = missionSummary(entries);
+    put(q('#c-mission-summary'), `<div><span>완료한 작전</span><strong>${summary.completed}<small> / ${summary.total}</small></strong></div><div class="c-overall-progress" role="progressbar" aria-label="전체 작전 진행률" aria-valuemin="0" aria-valuemax="${summary.total}" aria-valuenow="${summary.completed}"><i style="width:${summary.completed / Math.max(1, summary.total) * 100}%"></i></div><p>사업체 확보 → 전력 증강 → 도시 장악 → 최후의 생존</p>`);
+    put(q('#c-mission-list'), entries.map((entry, i) => {
+      const current = entry === summary.active;
+      const state = entry.done ? '완료' : current ? '현재 임무' : '진행 가능';
+      return `<article class="c-mission-card${entry.done ? ' complete' : ''}${current ? ' active' : ''}">
+        <div class="c-mission-top"><span>${entry.chapter}</span><b>${state}</b></div>
+        <h3>${String(i + 1).padStart(2, '0')}. ${entry.title}</h3>
+        <p>${entry.objective}</p>
+        <div class="c-mission-bar" role="progressbar" aria-label="${entry.title} 진행률" aria-valuemin="0" aria-valuemax="${entry.target}" aria-valuenow="${entry.current}"><i style="width:${entry.current / entry.target * 100}%"></i></div>
+        <div class="c-mission-meta"><span>${entry.done ? '완료됨' : entry.current + ' / ' + entry.target}</span><span>${entry.reward ? '보상 $' + $(entry.reward) : '최종 승리'}</span></div>
+        ${current ? '<div class="c-mission-hint"><b>전술 안내</b> ' + entry.hint + '</div>' : ''}
+      </article>`;
+    }).join(''));
+  }
+
   function renderHud(): void {
     const w = world!, f = w.factions[0], b = w.boss(0), z = w.zone;
     put(q('#c-res'), `<span class="ca" title="자금">$ <b>${$(f.cash)}</b><small>+${$(f.income)}/s</small></span><span class="cr" title="크리스탈">◆ <b>${$(f.crystal)}</b></span><span title="인구">병력 <b>${f.supply}/${f.supplyMax}</b></span>`);
-    const quest = tut ? null : w.quests.find(x => !x.done); put(q('#c-quest'), tut ? '' : quest ? `<em>목표</em> ${quest.text} <b>+$${quest.reward}</b>` : '<em>목표</em> 마지막 왕국이 되세요');
+    const entries = tut ? [] : missionLog(w), summary = missionSummary(entries), current = summary.active;
+    put(q('#c-quest'), tut ? '' : current ? `<div class="c-quest-head"><span>작전 지령 <b>${summary.completed}/${summary.total}</b></span><button data-act="missions" aria-label="전체 작전 지령 보기"><kbd>J</kbd>전체 보기</button></div><strong>${current.title}</strong><p>${current.objective}</p><div class="c-quest-progress" role="progressbar" aria-label="${current.title} 진행률" aria-valuemin="0" aria-valuemax="${current.target}" aria-valuenow="${current.current}"><i style="width:${current.current / current.target * 100}%"></i></div><small>${current.current}/${current.target}${current.reward ? ' · 완료 보상 $' + $(current.reward) : ' · 최종 작전'}</small>` : '<div class="c-quest-head"><span>작전 지령 완료</span><button data-act="missions">전체 보기</button></div><strong>최후의 왕국!</strong>');
+    if (!q('#c-missions').hidden) renderMissions();
     void z; if (tut) put(q('#c-zone'), `<b>튜토리얼</b><span>연습장 · 라이벌 정지</span><span>${Math.min(tut.s.i, STEPS.length - 1) + 1}/${STEPS.length}</span>`); else put(q('#c-zone'), `<b>${clock(w.time)}</b><span>생존 왕국 <b>${w.aliveCount()}</b>/8</span>`);
     put(q('#c-wanted'), f.wanted >= 1 ? `<span class="stars">${'★'.repeat(Math.floor(f.wanted))}${'☆'.repeat(5 - Math.floor(f.wanted))}</span> 수배 중` : '');
     put(q('#c-feed'), w.feed.filter(x => w.time - x.t < 7).slice(-5).map(x => `<div style="border-color:${x.color}">${x.text}</div>`).join(''));
@@ -260,13 +290,13 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
     if (closed) return; const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, w = world;
     if (!w) return; const f = w.factions[0];
     if (f.pending > 0) { if (!e.repeat && k >= '1' && k <= '3') act(`perk:${Number(k) - 1}`); return; }
-    if (k === 'Escape') { if (ghost) ghost = null; else if (!bigmap.hidden) { bigmap.hidden = true; lock(); } else if (!panel.hidden) { panel.hidden = true; shopOpen = false; lock(); } else if (paused) act('resume'); else pause(); return; }
+    if (k === 'Escape') { if (ghost) ghost = null; else if (!bigmap.hidden) { bigmap.hidden = true; lock(); } else if (!q('#c-missions').hidden) { q('#c-missions').hidden = true; lock(); } else if (!panel.hidden) { panel.hidden = true; shopOpen = false; lock(); } else if (paused) act('resume'); else pause(); return; }
     if (tut && k === 'Enter' && STEPS[tut.s.i]?.info && !paused) { act('tutnext'); return; }
     // Never preserve movement during pause/results; allow native Tab/Space on focused controls.
     if (paused || w.over) return;
     const focusedControl = e.target instanceof Element && !!e.target.closest('button,a,input,select,textarea,[contenteditable="true"]');
     if (k === 'Tab') {
-      if (panel.hidden && bigmap.hidden && !focusedControl) { e.preventDefault(); act('panel'); }
+      if (panel.hidden && bigmap.hidden && q('#c-missions').hidden && !focusedControl) { e.preventDefault(); act('panel'); }
       return;
     }
     if (focusedControl || e.repeat) return;
@@ -274,7 +304,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
     if (k === ' ') e.preventDefault();
     if (k === 'e') interact(); else if (k === 'f') w.toggleVehicle(0); else if (k === 'r') reload(w, 0); else if (k === 'q') res(w.useSkill(0)); else if (k === 'h') w.useMedkit(0);
     else if (k === 'z') act('order:follow'); else if (k === 'x') act('order:hold'); else if (k === 'c') { const p = aimPoint(); w.order(0, 'amove', p.x, p.y); } else if (k === 'v') act('view');
-    else if (k === 'm') act('map'); else if (k === 'b') { tab = 'build'; shopOpen = false; panel.hidden = false; renderPanel(); unlock(); }
+    else if (k === 'j') act('missions'); else if (k === 'm') act('map'); else if (k === 'b') { tab = 'build'; shopOpen = false; panel.hidden = false; renderPanel(); unlock(); }
     else if (k >= '1' && k <= '3') switchWeapon(w, 0, Number(k) - 1);
   }
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key); };

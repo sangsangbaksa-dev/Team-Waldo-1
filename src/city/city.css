@@ -124,3 +124,72 @@
 .c-diff{flex:1 1 90px;padding:8px 6px;border:1px solid rgba(216,188,128,.35);border-radius:8px;background:rgba(255,255,255,.04);color:#e8e0cc;font-size:12px;cursor:pointer}
 .c-diff:hover{border-color:#d8bc80}.c-diff.on{background:#d8bc80;color:#1b1710;font-weight:700;border-color:#d8bc80}
 .c-diffdesc{font-size:12px;margin:2px 0 8px;opacity:.8}
+
+
+/* LAST CITY / OPERATIONS — compact tactical briefing and responsive mission journal */
+.c-quest{width:min(390px,100%);max-width:100%;padding:11px 13px 12px;border:1px solid #d8bc8055;border-left:3px solid #d8bc80;border-radius:9px;background:linear-gradient(135deg,#101f22f0,#111a1eea);box-shadow:0 12px 30px #0006;backdrop-filter:blur(10px);pointer-events:auto}
+.c-quest-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10px;font-weight:800;letter-spacing:.07em;color:#d8bc80}
+.c-quest-head b{margin-left:6px;color:#fff;font-size:11px;letter-spacing:0}
+.c-quest-head button{border:1px solid #d8bc8066;border-radius:6px;background:#d8bc801b;color:#f4e3b9;padding:3px 7px;font-size:10px;font-weight:800;letter-spacing:0}
+.c-quest-head button:hover{background:#d8bc8035}
+.c-quest>strong{display:block;font-size:15px;color:#fff;font-weight:900;margin:7px 0 4px;letter-spacing:-.02em}
+.c-quest>p{font-size:11.5px;line-height:1.5;opacity:.85;margin:0 0 8px;max-width:36ch}
+.c-quest>small{display:block;font-size:10px;font-weight:700;color:#d5e9dd;margin-top:5px}
+.c-quest-progress,.c-overall-progress,.c-mission-bar{height:5px;border-radius:99px;overflow:hidden;background:#ffffff1a}
+.c-quest-progress i,.c-overall-progress i,.c-mission-bar i{display:block;width:0;height:100%;background:linear-gradient(90deg,#aa8c55,#f5d68b);border-radius:inherit;transition:width .3s ease}
+.c-missions{top:74px;left:50%;transform:translateX(-50%);width:min(560px,calc(100vw - 28px));max-height:calc(100dvh - 92px);display:flex;flex-direction:column;background:linear-gradient(150deg,#142328f7,#0d191ef9);border:1px solid #c9a86d91;border-radius:18px;box-shadow:0 24px 90px #000d,0 0 0 1px #0009 inset;backdrop-filter:blur(18px);pointer-events:auto;z-index:8;overflow:hidden}
+.c-missions>header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:20px 22px 14px;border-bottom:1px solid #d8bc8024}
+.c-missions>header span{display:block;font-size:10px;letter-spacing:.18em;color:#d8bc80;font-weight:900}
+.c-missions>header h2{margin:4px 0 0;font-size:clamp(21px,3vw,27px);font-weight:900;color:#f5f1e8;letter-spacing:-.04em}
+.c-missions>header button{background:#ffffff0c;border:1px solid #ffffff30;border-radius:9px;padding:8px 11px;font-size:12px;font-weight:800;white-space:nowrap}
+.c-missions>header button:hover{border-color:#d8bc80}
+.c-mission-summary{padding:15px 22px 13px;border-bottom:1px solid #ffffff12;background:#ffffff06}
+.c-mission-summary>div:first-child{display:flex;align-items:baseline;justify-content:space-between;font-weight:800}
+.c-mission-summary>div:first-child span{font-size:12px;color:#d8bc80}
+.c-mission-summary strong{font-size:24px;color:#f5e3b9;font-variant-numeric:tabular-nums}
+.c-mission-summary strong small{color:#ffffff8c;font-size:13px}
+.c-mission-summary .c-overall-progress{height:7px;margin-top:8px}
+.c-mission-summary>p{font-size:11px;color:#ccd8d7;margin:8px 0 0;line-height:1.5}
+.c-mission-list{display:grid;gap:9px;padding:14px 17px 17px;overflow-y:auto;overscroll-behavior:contain;min-height:0;scrollbar-color:#d8bc8066 #142228;scrollbar-width:thin}
+.c-mission-card{background:#ffffff08;border:1px solid #ffffff1c;border-radius:12px;padding:13px 14px 12px}
+.c-mission-card.active{background:linear-gradient(130deg,#d8bc8019,#ffffff09);border-color:#d8bc80a6;box-shadow:0 0 0 1px #d8bc8017 inset}
+.c-mission-card.complete{border-color:#6bcc9c57;background:#68b58c0c}
+.c-mission-top,.c-mission-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11px}
+.c-mission-top{letter-spacing:.03em;font-weight:800;color:#b6c9c6}
+.c-mission-top b{font-size:10px;color:#d8bc80}
+.c-mission-card.complete .c-mission-top b{color:#8de8b3}
+.c-mission-card h3{font-size:15px;font-weight:900;margin:6px 0 3px;color:#f3f2ed}
+.c-mission-card p{font-size:11.5px;line-height:1.55;color:#d0dcd9;margin:0 0 10px}
+.c-mission-card .c-mission-bar{height:5px}
+.c-mission-card.complete .c-mission-bar i{background:#71cf9f}
+.c-mission-meta{margin-top:6px;font-weight:800;color:#bccbc9;font-variant-numeric:tabular-nums}
+.c-mission-meta span:last-child{color:#e7c987}
+.c-mission-hint{margin-top:10px;background:#0713138f;border:1px solid #d8bc8029;border-radius:8px;padding:10px 11px;font-size:11px;line-height:1.7;color:#d4dedb}
+.c-mission-hint b{color:#d8bc80;margin-right:4px}
+.c-missions>footer{padding:10px 20px 13px;border-top:1px solid #ffffff12;font-size:10.5px;font-weight:700;color:#a7bcb6;text-align:center}
+@media (max-width:760px){
+  .c-missions{top:52px;max-height:calc(100dvh - 64px);width:calc(100vw - 20px);border-radius:13px}
+  .c-missions>header{padding:12px 15px 10px}
+  .c-mission-summary{padding:10px 15px}
+  .c-mission-list{padding:10px;gap:7px}
+  .c-mission-card{padding:10px 12px}
+  .c-missions>footer{padding:8px 12px}
+  .c-topbtns button{padding:7px 9px;min-height:34px}
+}
+@media (max-height:520px){
+  .c-missions{top:6px;max-height:calc(100dvh - 12px);width:min(530px,calc(100vw - 26px))}
+  .c-missions>header{padding:8px 13px}
+  .c-missions>header h2{font-size:19px}
+  .c-mission-summary{padding:7px 13px}
+  .c-mission-summary strong{font-size:19px}
+  .c-mission-summary>p{display:none}
+  .c-mission-list{padding:8px}
+  .c-mission-card{padding:8px 10px}
+  .c-missions>footer{padding:5px}
+}
+@media (prefers-reduced-motion:reduce){
+  .c-quest-progress i,.c-overall-progress i,.c-mission-bar i{transition:none}
+}
+
+/* Mobile mission journal must accept native vertical swipes inside the game viewport. */
+.c-mission-list{touch-action:pan-y;-webkit-overflow-scrolling:touch}

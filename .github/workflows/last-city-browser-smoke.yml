@@ -1,0 +1,32 @@
+name: Last City mission UI smoke
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium --only-shell
+      - name: Smoke Last City mission journal on desktop and mobile
+        timeout-minutes: 5
+        run: node tools/city-browser-smoke.mjs
+      - name: Upload Last City UI screenshots and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: last-city-ui-evidence
+          path: browser-artifacts/last-city-*
+          if-no-files-found: warn
+          retention-days: 7

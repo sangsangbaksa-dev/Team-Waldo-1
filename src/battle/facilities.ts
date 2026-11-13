@@ -1,3 +1,4 @@
+import { isBattlefieldBlocked } from './battlefieldLayout';
 import { walkable } from './terrain';
 import { MAP_HALF_SIZE, UNIT_STATS, type War } from './war';
 export const FACILITY_LIMIT = 30; // Includes the headquarters.
@@ -37,16 +38,16 @@ export function buildFacility(w:War,id:number,kind:FacilityKind,x:number,z:numbe
  if(facilitiesFor(w,id).length>=FACILITY_LIMIT-1||f.gold<d.gold||f.food<d.food)return false;
  // Build within supply range of the HQ, a captured post or a completed forward barracks.
  const supplied=Math.hypot(x-f.x,z-f.z)<=90||w.outposts.some(p=>p.owner===id&&Math.hypot(x-p.x,z-p.z)<=60)||list.some(b=>b.owner===id&&b.hp>0&&b.kind==='barracks'&&b.remaining===0&&Math.hypot(x-b.x,z-b.z)<=60);
- if(!walkable(x,z,10)||!supplied||w.factions.some(base=>Math.hypot(x-base.x,z-base.z)<20)||w.outposts.some(p=>Math.hypot(x-p.x,z-p.z)<13)||list.some(b=>b.hp>0&&Math.hypot(x-b.x,z-b.z)<13))return false;
+ if(!walkable(x,z,10)||isBattlefieldBlocked(x,z,8)||!supplied||w.factions.some(base=>Math.hypot(x-base.x,z-base.z)<20)||w.outposts.some(p=>Math.hypot(x-p.x,z-p.z)<13)||list.some(b=>b.hp>0&&Math.hypot(x-b.x,z-b.z)<13))return false;
  f.gold-=d.gold;f.food-=d.food;
  const next=(w.nextFacility??1);w.nextFacility=next+1;
  (w.facilities??=[]).push({id:next,owner:id,kind,x,z,hp:d.hp,remaining:d.seconds,cooldown:0});return true;
 }
 export function autoBuildFacility(w:War,id:number,kind:FacilityKind,site?:{x:number;z:number}):boolean {
  const f=site??w.factions[id];if(!f)return false;
- for(let ring=1;ring<=3;ring++)for(let slot=0;slot<16;slot++){
-  const a=slot*Math.PI/8;
-  if(buildFacility(w,id,kind,f.x+Math.cos(a)*ring*25,f.z+Math.sin(a)*ring*25))return true;
+ for(let ring=1;ring<=4;ring++)for(let slot=0;slot<64;slot++){
+  const a=slot*Math.PI/32;
+  if(buildFacility(w,id,kind,f.x+Math.cos(a)*ring*20,f.z+Math.sin(a)*ring*20))return true;
  }
  return false;
 }

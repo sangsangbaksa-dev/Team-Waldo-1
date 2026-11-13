@@ -4,6 +4,7 @@ import {
   createWar, createWarStats, DIFFICULTIES, MAP_HALF_SIZE, OUTPOST_NAMES, MAX_UNITS, GRAND_MAX_UNITS, UNIT_STATS,
   type Difficulty, type EconomyPolicy, type Faction, type Outpost, type Unit, type War, type WarEvent, type WarStats,
 } from './war';
+import { getBaseState, validBaseState } from './base';
 
 // Retain the original key so an upgrade can discover and migrate v1 saves.
 export const WAR_SAVE_KEY='team-waldo-3d-war-v1';
@@ -153,6 +154,9 @@ export function decodeWar(raw:string|null):War|null {
    if(p.owner!==null&&!w.factions[p.owner].alive)return null;
    if(p.contender!==null&&!w.factions[p.contender].alive)return null;
   }
+  // Version 1/2 had upgrades but no placeable base layout: migrate without losing progress.
+  if(parsed.version!==VERSION&&w.base===undefined)getBaseState(w as unknown as War);
+  if(!validBaseState(w.base,w as unknown as War))return null;
   const survivors=w.factions.filter(f=>f.alive);
   if(w.over){
    if(survivors.length>1||w.winner!==(survivors[0]?.id??null))return null;

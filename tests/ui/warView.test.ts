@@ -129,6 +129,146 @@ afterEach(() => {
 });
 
 describe('battle UI through real player actions', () => {
+  it('opens the base command center and constructs a real building in a selected plot',()=>{
+    openWar(vi.fn(),true);
+    const w=game().world;
+    click('#open-base');
+    expect(element('.base-manager').hidden).toBe(false);
+    expect(element('[data-base-panel="build"]').hidden).toBe(false);
+    click('[data-base-kind="mine"]');
+    click('[data-base-slot="0"]');
+    expect(w.factions[0].mine).toBe(2);
+    expect(w.factions[0].gold).toBe(80);
+    expect(w.factions[0].food).toBe(80);
+    expect(w.base?.structures.some(s=>s.kind==='mine'&&s.slot===0)).toBe(true);
+    expect(element('[data-base-slot="0"]').textContent).toContain('금광');
+    expect(loadWar()?.base?.structures.some(s=>s.slot===0)).toBe(true);
+    click('.base-close');
+    expect(element('.base-manager').hidden).toBe(true);
+  });
+
+  it('enters a mine interior, upgrades its facilities, returns by Escape and freezes combat time', () => {
+    openWar(vi.fn(), true);
+    const w = game().world;
+    advanceFrames(6);
+    click('#open-base');
+    const time = w.time;
+    click('[data-base-slot="6"]');
+    expect(element('.base-interior').hidden).toBe(false);
+    expect(element('#interior-title').textContent).toBe('지하 금광');
+    expect(element('[data-base-panel="build"]').hidden).toBe(true);
+    expect(button('[data-interior-command="upgrade"]').disabled).toBe(false);
+    advanceFrames(10);
+    expect(w.time).toBe(time);
+    const goldBefore = w.factions[0].gold, foodBefore = w.factions[0].food;
+    click('[data-interior-command="upgrade"]');
+    expect(w.factions[0].mine).toBe(2);
+    expect(w.factions[0].gold).toBeCloseTo(goldBefore - 60);
+    expect(w.factions[0].food).toBeCloseTo(foodBefore - 20);
+    expect(element('#interior-level').textContent).toBe('Lv.2 / 4');
+    expect(loadWar()?.factions[0].mine).toBe(2);
+    key(button('[data-interior-back]'), 'Escape');
+    expect(element('.base-interior').hidden).toBe(true);
+    expect(element('[data-base-panel="build"]').hidden).toBe(false);
+    key(button('.base-close'), 'Escape');
+    expect(element('.base-manager').hidden).toBe(true);
+    advanceFrames(4);
+    expect(w.time).toBeGreaterThan(time);
+  });
+
+  it('uses the barracks interior to train soldiers and research upgraded weapons', () => {
+    openWar(vi.fn(), true);
+    const w = game().world;
+    w.factions[0].gold = 2000; w.factions[0].food = 2000;
+    click('#open-base');
+    click('[data-base-slot="16"]');
+    expect(element('#interior-title').textContent).toBe('왕립 병영');
+    expect(button('.interior-action[data-interior-command="special"]').disabled).toBe(true);
+    click('.interior-action[data-interior-command="upgrade"]');
+    expect(w.factions[0].barracks).toBe(2);
+    click('.interior-action[data-interior-command="special"]');
+    expect(w.factions[0].research.weapons).toBe(1);
+    click('.interior-action[data-interior-command="service"]');
+    expect(w.units.filter(u => u.owner === 0)).toHaveLength(7);
+    expect(loadWar()?.stats[0].trained).toBe(3);
+    click('[data-interior-back]');
+    expect(element('.base-interior').hidden).toBe(true);
+    expect(element('[data-base-slot="16"]').textContent).toContain('병영');
+  });
+
+  it('purchases a permanent workshop upgrade inside the building and saves it', () => {
+    openWar(vi.fn(), true);
+    const w=game().world;
+    click('#open-base');
+    click('[data-base-slot="6"]');
+    expect(element('#interior-title').textContent).toBe('지하 금광');
+    expect(element('#interior-workshop-level').textContent).toBe('Lv.0 / 3');
+    const oldIncome=w.factions[0].gold, oldFood=w.factions[0].food;
+    click('.interior-action[data-interior-command="workshop"]');
+    expect(w.base?.workshopLevels?.mine).toBe(1);
+    expect(w.factions[0].gold).toBe(oldIncome-75);
+    expect(w.factions[0].food).toBe(oldFood-30);
+    expect(element('#interior-workshop-level').textContent).toBe('Lv.1 / 3');
+    expect(button('.interior-action[data-interior-command="workshop"]').disabled).toBe(true);
+    expect(loadWar()?.base?.workshopLevels?.mine).toBe(1);
+  });
+
+  it('recruits a general, assigns a squad and persists the command assignment',()=>{
+    openWar(vi.fn(),true);
+    const w=game().world;
+    w.factions[0].gold=1000;w.factions[0].food=1000;
+    click('#tab-army');click('#open-base-generals');
+    expect(element('[data-base-panel="generals"]').hidden).toBe(false);
+    click('[data-base-recruit="leon"]');
+    expect(w.base?.generals.find(g=>g.id==='leon')?.squad).toBeNull();
+    const select=element<HTMLSelectElement>('[data-base-assignment="leon"]');
+    select.value='1';select.dispatchEvent(new Event('change',{bubbles:true}));
+    expect(w.base?.generals.find(g=>g.id==='leon')?.squad).toBe(1);
+    expect(loadWar()?.base?.generals.find(g=>g.id==='leon')?.squad).toBe(1);
+    click('.base-close');
+  });
+
+  it('switches to relocation mode without entering the building interior',()=>{
+    openWar(vi.fn(),true);
+    const w=game().world;
+    click('#open-base');
+    const oldGold=w.factions[0].gold;
+    click('[data-base-relocate]');
+    expect(button('[data-base-relocate]').getAttribute('aria-pressed')).toBe('true');
+    click('[data-base-slot="6"]');
+    expect(element('[data-base-slot="6"]').classList.contains('relocating-from')).toBe(true);
+    click('[data-base-slot="0"]');
+    expect(w.base?.structures.find(s=>s.kind==='mine')?.slot).toBe(0);
+    expect(w.factions[0].gold).toBe(oldGold);
+    expect(loadWar()?.base?.structures.some(s=>s.kind==='mine'&&s.slot===0)).toBe(true);
+    expect(button('[data-base-relocate]').getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('lets a recruited commander activate and save a timed battlefield ability',()=>{
+    openWar(vi.fn(),true);
+    const w=game().world;
+    w.factions[0].gold=1000;w.factions[0].food=1000;
+    click('#open-base');click('[data-base-tab="generals"]');
+    const ability=button('[data-general-ability="leon"]');
+    expect(ability.disabled).toBe(true);
+    click('[data-base-recruit="leon"]');
+    expect(ability.disabled).toBe(true);
+    const assignment=element<HTMLSelectElement>('[data-base-assignment="leon"]');
+    assignment.value='0';assignment.dispatchEvent(new Event('change',{bubbles:true}));
+    expect(ability.disabled).toBe(false);
+    click('[data-general-ability="leon"]');
+    expect(ability.disabled).toBe(true);
+    expect(element('[data-general-ability-state="leon"]').textContent).toContain('효과 적용 중');
+    expect(loadWar()?.base?.generals[0].activeUntil).toBe(10);
+  });
+
+  it('opens the command center with K and dismisses it using Escape',()=>{
+    openWar(vi.fn(),true);
+    key(document.body,'k');
+    expect(element('.base-manager').hidden).toBe(false);
+    key(button('.base-close'),'Escape');
+    expect(element('.base-manager').hidden).toBe(true);
+  });
   it('lets a player split, select, independently order and return a squad with simple buttons', () => {
     openWar(vi.fn(), true);
     click('#tab-orders');

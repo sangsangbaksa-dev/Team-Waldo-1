@@ -1,5 +1,10 @@
 /** Shared terrain data: renderers and pathfinding use the same impassable footprint. */
 export const WORLD_HALF = 520;
+export const KINGDOM_CORNERS = [[-260,-260],[260,-260],[-260,260],[260,260]] as const;
+export const STRATEGIC_POSTS: readonly (readonly [number,number])[] = [
+ [0,-230],[230,0],[0,230],[-230,0],[0,0],[-145,-145],[145,-145],[-145,145],[145,145],
+ ...Array.from({length:24},(_,i)=>{const a=(i%12)*Math.PI/6+.12,r=i<12?355:455;return [Math.round(Math.cos(a)*r),Math.round(Math.sin(a)*r)] as const;}),
+];
 export const MOUNTAINS = [
  {x:-100,z:0,radius:42,height:65},{x:100,z:0,radius:42,height:65},
  {x:0,z:-100,radius:42,height:65},{x:0,z:100,radius:42,height:65},

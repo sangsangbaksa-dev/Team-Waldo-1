@@ -1,8 +1,10 @@
-import { WORLD_HALF, moveAcrossTerrain } from './terrain';
+import { WORLD_HALF, KINGDOM_CORNERS, STRATEGIC_POSTS, walkable, moveAcrossTerrain } from './terrain';
 import { facilityIncome, completedFacilities, stepFacilities, autoBuildFacility, type Facility } from './facilities';
 /** Deterministic, renderer-independent economy, territory and combat simulation. */
 import { createEconomy, economicIncome, stepEconomy, develop, assignWorker, exportFood, acceptContract, deliverContract, type Economy } from './economy';
 import type { SquadCommand } from './squads';
+import { createBaseState, getBaseState, generalBonus, incomeGeneralBonus, workshopLevel, type BaseState } from './base';
+import { battlefieldCoverAt, resolveBattlefieldStep } from './battlefieldLayout';
 export type Upgrade = 'farm' | 'mine' | 'barracks' | 'fort';
 export type EconomyPolicy = 'balanced' | 'growth' | 'war';
 export type UnitKind = 'infantry' | 'archer' | 'guardian' | 'cavalry';
@@ -40,6 +42,7 @@ export interface War {
   /** Grand battle preserves original skirmish rules for existing saves. */
   grandBattle?: boolean;
   facilities?: Facility[]; nextFacility?: number;
+  base?: BaseState;
   humanFactions?: number[];
 }
 export const DIFFICULTIES: Record<Difficulty, {label:string;description:string;aiIncome:number;aiInterval:number;aiAttackAfter:number}> = {
@@ -66,11 +69,8 @@ export const MAP_SIZE = MAP_HALF_SIZE * 2;
 export const STORM_START = 130;
 export const stormStartFor = (w: War) => w.grandBattle ? (w.difficulty === 'easy' ? 360 : 270) : w.difficulty === 'easy' ? 180 : STORM_START;
 export const STORM_HQ_DAMAGE = 3.5;
-const CORNERS = [[-260,-260],[260,-260],[-260,260],[260,260]] as const;
-const OUTPOSTS: readonly (readonly [number,number])[] = [
- [0,-230],[230,0],[0,230],[-230,0],[0,0],[-145,-145],[145,-145],[-145,145],[145,145],
- ...Array.from({length:24},(_,i)=>{const a=(i%12)*Math.PI/6+.12,r=i<12?355:455;return [Math.round(Math.cos(a)*r),Math.round(Math.sin(a)*r)] as const;}),
-];
+const CORNERS=KINGDOM_CORNERS;
+const OUTPOSTS=STRATEGIC_POSTS;
 export const UNIT_STATS: Record<UnitKind, {
   label: string; gold: number; food: number; hp: number;
   damage: number; range: number; speed: number; cooldown: number; unlock: number;
@@ -105,7 +105,7 @@ export function createWar(options:{difficulty?:Difficulty;grandBattle?:boolean}=
   }));
   const war: War = {
     factions,units:[],outposts,events:[],time:0,zone:MAP_HALF_SIZE-6,over:false,winner:null,nextUnit:1,
-    difficulty,stats:Array.from({length:4},createWarStats),squadOrders:[null,null,null],grandBattle,facilities:[],nextFacility:1,
+    difficulty,stats:Array.from({length:4},createWarStats),squadOrders:[null,null,null],grandBattle,facilities:[],nextFacility:1,base:createBaseState(),
   };
   for(let id=0;id<4;id++){
     const total=grandBattle?GRAND_INITIAL_FORCES[id]:4;
@@ -115,6 +115,7 @@ export function createWar(options:{difficulty?:Difficulty;grandBattle?:boolean}=
       spawn(war,id,kind);
     }
   }
+  getBaseState(war);
   return war;
 }
 function spawn(w: War, id: number, kind: UnitKind): void {
@@ -132,8 +133,8 @@ export function getIncome(w:War,id:number):{gold:number;food:number} {
   const owned=w.outposts.filter(p=>p.owner===id);
   const policy=f.policy==='growth'?1.25:f.policy==='war'?.88:1;
   const bonus=economicIncome(w,id), buildings=facilityIncome(w,id);
-  bonus.gold+=buildings.gold;bonus.food+=buildings.food;
-  const multiplier=policy*(1+f.research.logistics*.06)*(id===0?(w.difficulty==='easy'?1.35:1):DIFFICULTIES[w.difficulty].aiIncome);
+  bonus.gold+=buildings.gold+(id===0?workshopLevel(w,'mine')*.8:0);bonus.food+=buildings.food+(id===0?workshopLevel(w,'farm')*.75:0);
+  const multiplier=policy*(1+f.research.logistics*.06)*(1+incomeGeneralBonus(w,id))*(id===0?(w.difficulty==='easy'?1.35:1):DIFFICULTIES[w.difficulty].aiIncome);
   return {
     gold:owned.reduce((a,p)=>a+OUTPOST_BONUSES[p.id].gold,f.mine*1.5+bonus.gold)*multiplier,
     food:owned.reduce((a,p)=>a+OUTPOST_BONUSES[p.id].food,f.farm*1.3+bonus.food)*multiplier,
@@ -199,6 +200,7 @@ export function upgrade(w: War,id: number,k: Upgrade): boolean {
   const c=cost(f,k); if (f.gold<c.gold||f.food<c.food) return false;
   f.gold-=c.gold;f.food-=c.food;f[k]++;w.stats[id].upgrades++;
   if (k==='fort') { f.maxHp+=100;f.hp=Math.min(f.maxHp,f.hp+100); }
+  if(id===0)getBaseState(w);
   return true;
 }
 export function train(w: War,id: number,kind: UnitKind='infantry'): boolean {
@@ -274,9 +276,10 @@ function aiTurn(w: War,f: Faction): void {
 function moveToward(w:War,u:Unit,x:number,z:number,dt:number):void {
   const d=distance(u.x,u.z,x,z);
   if (d<.01) return;
-  const speed=UNIT_STATS[u.kind].speed*(1+w.factions[u.owner].research.logistics*.08)*(1+completedFacilities(w,u.owner,'academy')*.04);
+  const speed=UNIT_STATS[u.kind].speed*(1+w.factions[u.owner].research.logistics*.08)*(1+completedFacilities(w,u.owner,'academy')*.04)*(1+generalBonus(w,u,'speed'));
   const step=Math.min(d,speed*dt);
-  const next=moveAcrossTerrain(u.x,u.z,x,z,step);u.x=next.x;u.z=next.z;
+  const mountainStep=moveAcrossTerrain(u.x,u.z,x,z,step);
+  const next=resolveBattlefieldStep(u.x,u.z,mountainStep.x,mountainStep.z,x,z);if(walkable(next.x,next.z)){u.x=next.x;u.z=next.z;}
 }
 function updateOutposts(w: War,dt:number):void {
   for (const p of w.outposts) {
@@ -329,7 +332,8 @@ export function captureHeroPost(w: War, x: number, z: number, dt: number): Outpo
 /** Armor mitigates combat only. Storm damage bypasses armor. */
 function attack(w:War,attacker:number,target:Unit,damage:number):void {
   if(target.hp<=0)return;
-  const actual=damage*(w.difficulty==='easy'&&attacker!==0?.72:1)*(1-w.factions[target.owner].research.armor*.08);
+  const cover=battlefieldCoverAt(target.x,target.z);
+  const actual=damage*(w.difficulty==='easy'&&attacker!==0?.72:1)*(1-w.factions[target.owner].research.armor*.08)*(1-cover)*(1-generalBonus(w,target,'armor'));
   w.stats[attacker].damageDealt+=Math.min(target.hp,actual);
   target.hp-=actual;
   if(target.hp<=0)w.stats[attacker].kills++;
@@ -358,7 +362,7 @@ export function stepWar(w: War,dt: number):void {
       w.factions[u.owner].alive&&w.factions[u.owner].hp>0&&distance(u.x,u.z,f.x,f.z)<13);
     if (invaders.length) {
       invaders.sort((a,b)=>distance(a.x,a.z,f.x,f.z)-distance(b.x,b.z,f.x,f.z));
-      attack(w,f.id,invaders[0],5+3*f.fort);f.turretCooldown=1.6;
+      attack(w,f.id,invaders[0],5+3*f.fort+(f.id===0?workshopLevel(w,'fort')*2.5:0));f.turretCooldown=1.6;
     }
   }
   // Deterministic veteran reservation avoids stripping the HQ of all defenders.
@@ -382,7 +386,7 @@ export function stepWar(w: War,dt: number):void {
     const f=w.factions[u.owner];
     if (!f.alive||f.hp<=0||u.hp<=0) continue;
     const s=UNIT_STATS[u.kind];
-    const combatMultiplier=(1+completedFacilities(w,u.owner,'workshop')*.06)*(f.policy==='war'?1.18:1)*(1+f.research.weapons*.12);
+    const combatMultiplier=(1+completedFacilities(w,u.owner,'workshop')*.06)*(f.policy==='war'?1.18:1)*(1+f.research.weapons*.12)*(1+generalBonus(w,u,'damage'))*(u.owner===0?1+workshopLevel(w,'barracks')*.09:1);
     u.cooldown=Math.max(0,u.cooldown-dt);
     if (distance(u.x,u.z,0,0)>w.zone) u.hp-=1.8*dt;
     if (u.hp<=0) continue;

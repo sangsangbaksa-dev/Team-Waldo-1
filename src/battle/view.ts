@@ -97,7 +97,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
           <div class="section-heading"><h2>공격 및 방어 명령</h2></div><div id="targets" class="action-list"></div><div class="section-heading"><h2>거점 점령</h2><span>9개 전략 거점</span></div><div id="outposts" class="outpost-list"></div><p class="panel-note">거점마다 생산 자원이 다릅니다. 점령 거점 1개당 본부 폭풍 피해가 12% 감소합니다 (최대 60%).</p></section>
         <section id="pane-research" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-research" hidden><div class="section-heading"><h2>왕국 연구소</h2><span>병영 Lv.2 해금</span></div><p class="panel-note">연구 효과는 모든 아군 병력에 즉시 적용됩니다. 각 연구는 3단계까지 성장합니다.</p><div id="research" class="action-list"></div><div class="research-summary" id="research-summary"></div></section>
       </div>
-      <footer class="panel-footer"><span id="save-status" role="status">15초마다 자동 저장</span><span class="render-performance" id="render-fps" title="지난 1초 동안 실제로 그린 화면 수" aria-label="화면 렌더링 프레임 속도">— FPS</span><button id="save" class="text-button">${icon('save', 14)}저장</button></footer>
+      <footer class="panel-footer"><span id="save-status" role="status">15초마다 자동 저장</span><span class="render-performance" id="render-fps" title="지난 1초 동안 실제로 그린 화면 수" aria-label="화면 렌더링 프레임 속도">— FPS</span><button id="save" class="text-button">${icon('save', 14)}저장</button><button id="adventure-enter-mobile" class="text-button mobile-direct-button" aria-label="직접 플레이 시작">직접 플레이</button></footer>
     </aside>
     <section class="mission-card" aria-label="현재 목표"><div class="mission-icon">${icon('flag', 21)}</div><div><span class="kicker">NEXT OBJECTIVE</span><h2 id="mission-title"></h2><p id="mission-description"></p></div><button id="mission-action" class="tool-button" aria-label="목표로 이동">${icon('arrow', 18)}</button></section>
     <aside class="war-intel" aria-label="전황"><div class="section-heading"><h2>왕국 현황</h2><span id="alive-count">4 세력</span></div><div id="standings"></div><div class="event-heading">전장 소식<span class="live-dot"></span></div><div id="events" class="war-events" aria-live="polite" aria-relevant="additions"></div></aside>
@@ -329,6 +329,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     world.setStrategicOverlaysVisible(!active);
     el('#adventure-hud').hidden = !active;
     el('#adventure-enter').hidden = active;
+    el('#adventure-enter-mobile').hidden = active;
     el('#adventure-tower').hidden = !adventureControl.canEnterTower;
     el('#adventure-down').hidden = mode !== 'tower';
     el<HTMLButtonElement>('#adventure-fire').disabled = mode === 'drop';
@@ -345,6 +346,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   el<HTMLButtonElement>('#open-base-generals').onclick = () => openBase('generals');
   const goField = () => { adventureControl.toField(); updateAdventureUI(); };
   el<HTMLButtonElement>('#adventure-enter').onclick = goField;
+  el<HTMLButtonElement>('#adventure-enter-mobile').onclick = goField;
   el<HTMLButtonElement>('#adventure-strategy').onclick = goStrategy;
   el<HTMLButtonElement>('#adventure-tower').onclick = () => { adventureControl.enterTower(); updateAdventureUI(); };
   el<HTMLButtonElement>('#adventure-down').onclick = () => { adventureControl.leaveTower(); updateAdventureUI(); };

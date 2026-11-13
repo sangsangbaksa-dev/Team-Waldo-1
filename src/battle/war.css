@@ -162,9 +162,15 @@ font-size:11px;font-weight:700;letter-spacing:.025em}
   .war-ui .war-top .base-shortcut::before{display:none}
   .mission-card{top:calc(var(--hud-bottom,107px) + 10px)}
   .adventure-head{top:calc(var(--hud-bottom,107px) + 10px)}
-  .adventure-switch{top:max(218px,calc(var(--mission-bottom,166px) + 14px));bottom:auto;left:50px;right:144px}
-  .adventure-switch .button{width:100%;min-height:32px;padding:7px 6px;font-size:10px;gap:7px;white-space:nowrap}
   .grand-battle-tag{margin:0 12px 9px;padding:6px 10px}
   .grand-battle-tag>b{font-size:13px}
   .war-ui:not(.adventure-active) .war-toast{bottom:calc(44vh + 66px);max-width:calc(100% - 28px)}
+
+/* Mobile direct-play access belongs inside the bottom panel: the former
+   floating button covered Save and other panel actions on portrait phones. */
+.mobile-direct-button{display:none!important}
+@media(max-width:760px){
+  .war-ui:not(.adventure-active) .adventure-switch{display:none!important}
+  .war-ui .panel-footer .mobile-direct-button{display:inline-flex!important;white-space:nowrap;font-size:10px;color:#e6cf94}
+  .war-ui .panel-footer .render-performance{display:none}
 }

@@ -114,7 +114,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
       <button id="quick-home">⌂ 본부</button>
     </nav>
     <div class="target-card" id="target-card" hidden><button id="target-close" class="target-close tool-button" aria-label="대상 닫기">${icon('close', 16)}</button><span class="kicker" id="target-type"></span><h3 id="target-name"></h3><p id="target-description"></p><button id="target-command" class="button primary">병력 출전 ${icon('arrow', 16)}</button></div>
-    <div class="adventure-switch"><button id="adventure-enter" class="button primary">직접 플레이 (V) · 낙하산/탐험</button></div>
+    <div class="adventure-switch"><button id="adventure-enter" class="button primary">직접 플레이 (V) · 왕국 탐험</button></div>
     <section id="adventure-hud" class="adventure-hud" aria-label="직접 조작" hidden>
       <div class="adventure-head"><span class="kicker">DIRECT CONTROL</span><h2 id="adventure-title"></h2><p id="adventure-description"></p><div class="adventure-progress"><i id="adventure-progress-fill"></i></div></div>
       <span class="adventure-crosshair" aria-hidden="true">+</span>
@@ -171,7 +171,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   const baseDistrict = createBaseDistrict(scene,w);
   world.setQuality(prefs.quality === 'high'); world.setReducedMotion(prefs.reducedMotion);
   baseDistrict.setReducedMotion(prefs.reducedMotion);
-  const adventureControl = createAdventure(scene, camera, w, !resumed && import.meta.env.MODE !== 'test'); adventure = adventureControl;
+  const adventureControl = createAdventure(scene, camera, w); adventure = adventureControl;
   const controller = new AbortController(); const signal = controller.signal;
   overlay.addEventListener('pointerdown', () => audio.unlock(), { signal, capture: true });
   overlay.addEventListener('keydown', () => audio.unlock(), { signal, capture: true });
@@ -322,14 +322,11 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     const active = adventureControl.isActionMode;
     const mode = adventureControl.mode;
     overlay.classList.toggle('adventure-active', active);
-    overlay.classList.toggle('adventure-dropping', mode === 'drop');
     el('#adventure-hud').hidden = !active;
     el('#adventure-enter').hidden = active;
     el('#adventure-enter-mobile').hidden = active;
     el('#adventure-tower').hidden = !adventureControl.canEnterTower;
     el('#adventure-down').hidden = mode !== 'tower';
-    el<HTMLButtonElement>('#adventure-fire').disabled = mode === 'drop';
-    el<HTMLButtonElement>('#adventure-strategy').disabled = mode === 'drop';
     const detail = adventureControl.hint();
     text('#adventure-title', detail.headline);
     text('#adventure-description', detail.detail);
@@ -629,8 +626,8 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     frame = requestAnimationFrame(loop);
   }
   syncSound(); ui(); drawMap(); updateAdventureUI();
-  if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__war = { world: w, renderer, camera, scene, ui, finish, skipDrop: () => { adventureControl.skipDrop(); updateAdventureUI(); }, setPaused: (value: boolean) => { paused = value; } };
+  if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__war = { world: w, renderer, camera, scene, ui, finish, setPaused: (value: boolean) => { paused = value; } };
   frame = requestAnimationFrame(loop);
   el<HTMLButtonElement>('#home').focus({ preventScroll: true });
-  if (!wasThreatened) announce(resumed ? '저장한 전투를 이어갑니다. V 키로 직접 탐험할 수 있습니다.' : '낙하산으로 강하합니다! 착륙 후 거점을 점령하고 성벽 위에서 활을 쏘세요.');
+  if (!wasThreatened) announce(resumed ? '저장한 전투를 이어갑니다. V 키로 직접 탐험할 수 있습니다.' : '왕국에 오신 것을 환영합니다! 병력을 지휘하고, K로 건설하며, V로 직접 탐험할 수 있습니다.');
 }

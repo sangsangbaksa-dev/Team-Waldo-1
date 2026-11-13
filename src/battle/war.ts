@@ -1,5 +1,6 @@
 /** Deterministic, renderer-independent economy, territory and combat simulation. */
 import type { SquadCommand } from './squads';
+import { createBaseState, getBaseState, generalBonus, incomeGeneralBonus, type BaseState } from './base';
 export type Upgrade = 'farm' | 'mine' | 'barracks' | 'fort';
 export type EconomyPolicy = 'balanced' | 'growth' | 'war';
 export type UnitKind = 'infantry' | 'archer' | 'guardian' | 'cavalry';
@@ -35,6 +36,8 @@ export interface War {
   squadOrders?: [SquadCommand | null, SquadCommand | null, SquadCommand | null];
   /** Grand battle preserves original skirmish rules for existing saves. */
   grandBattle?: boolean;
+  /** Player's home-base layout and hired generals; legacy saves initialize on load. */
+  base?: BaseState;
 }
 export const DIFFICULTIES: Record<Difficulty, {label:string;description:string;aiIncome:number;aiInterval:number;aiAttackAfter:number}> = {
   easy: {label:'입문',description:'아군 자원 +35% · AI 생산 45% 감소 · AI 본부 공세 260초 이후 · 폭풍 3분 이후',aiIncome:.55,aiInterval:1.7,aiAttackAfter:260},
@@ -95,6 +98,7 @@ export function createWar(options:{difficulty?:Difficulty;grandBattle?:boolean}=
   const war: War = {
     factions,units:[],outposts,events:[],time:0,zone:MAP_HALF_SIZE-6,over:false,winner:null,nextUnit:1,
     difficulty,stats:Array.from({length:4},createWarStats),squadOrders:[null,null,null],grandBattle,
+    base:createBaseState(),
   };
   for(let id=0;id<4;id++){
     const total=grandBattle?GRAND_INITIAL_FORCES[id]:4;
@@ -120,7 +124,7 @@ export function getIncome(w:War,id:number):{gold:number;food:number} {
   if(!f?.alive)return {gold:0,food:0};
   const owned=w.outposts.filter(p=>p.owner===id);
   const policy=f.policy==='growth'?1.25:f.policy==='war'?.88:1;
-  const multiplier=policy*(1+f.research.logistics*.06)*(id===0?(w.difficulty==='easy'?1.35:1):DIFFICULTIES[w.difficulty].aiIncome);
+  const multiplier=policy*(1+f.research.logistics*.06)*(1+incomeGeneralBonus(w,id))*(id===0?(w.difficulty==='easy'?1.35:1):DIFFICULTIES[w.difficulty].aiIncome);
   return {
     gold:owned.reduce((a,p)=>a+OUTPOST_BONUSES[p.id].gold,f.mine*1.5)*multiplier,
     food:owned.reduce((a,p)=>a+OUTPOST_BONUSES[p.id].food,f.farm*1.3)*multiplier,
@@ -186,6 +190,7 @@ export function upgrade(w: War,id: number,k: Upgrade): boolean {
   const c=cost(f,k); if (f.gold<c.gold||f.food<c.food) return false;
   f.gold-=c.gold;f.food-=c.food;f[k]++;w.stats[id].upgrades++;
   if (k==='fort') { f.maxHp+=100;f.hp=Math.min(f.maxHp,f.hp+100); }
+  if(id===0)getBaseState(w);
   return true;
 }
 export function train(w: War,id: number,kind: UnitKind='infantry'): boolean {
@@ -251,7 +256,7 @@ function aiTurn(w: War,f: Faction): void {
 function moveToward(w:War,u:Unit,x:number,z:number,dt:number):void {
   const d=distance(u.x,u.z,x,z);
   if (d<.01) return;
-  const speed=UNIT_STATS[u.kind].speed*(1+w.factions[u.owner].research.logistics*.08);
+  const speed=UNIT_STATS[u.kind].speed*(1+w.factions[u.owner].research.logistics*.08)*(1+generalBonus(w,u,'speed'));
   const step=Math.min(d,speed*dt);
   u.x+=(x-u.x)/d*step;u.z+=(z-u.z)/d*step;
 }
@@ -306,7 +311,7 @@ export function captureHeroPost(w: War, x: number, z: number, dt: number): Outpo
 /** Armor mitigates combat only. Storm damage bypasses armor. */
 function attack(w:War,attacker:number,target:Unit,damage:number):void {
   if(target.hp<=0)return;
-  const actual=damage*(w.difficulty==='easy'&&attacker!==0?.72:1)*(1-w.factions[target.owner].research.armor*.08);
+  const actual=damage*(w.difficulty==='easy'&&attacker!==0?.72:1)*(1-w.factions[target.owner].research.armor*.08)*(1-generalBonus(w,target,'armor'));
   w.stats[attacker].damageDealt+=Math.min(target.hp,actual);
   target.hp-=actual;
   if(target.hp<=0)w.stats[attacker].kills++;
@@ -358,7 +363,7 @@ export function stepWar(w: War,dt: number):void {
     const f=w.factions[u.owner];
     if (!f.alive||f.hp<=0||u.hp<=0) continue;
     const s=UNIT_STATS[u.kind];
-    const combatMultiplier=(f.policy==='war'?1.18:1)*(1+f.research.weapons*.12);
+    const combatMultiplier=(f.policy==='war'?1.18:1)*(1+f.research.weapons*.12)*(1+generalBonus(w,u,'damage'));
     u.cooldown=Math.max(0,u.cooldown-dt);
     if (distance(u.x,u.z,0,0)>w.zone) u.hp-=1.8*dt;
     if (u.hp<=0) continue;

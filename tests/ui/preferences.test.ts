@@ -36,7 +36,7 @@ describe('graphics preference compatibility', () => {
   });
 
   it.each([
-    { compact: false, reducedMotion: false, quality: 'high' },
+    { compact: false, reducedMotion: false, quality: 'standard' },
     { compact: true, reducedMotion: true, quality: 'standard' },
   ])('keeps the existing $quality default until explicitly selected', ({ compact, reducedMotion, quality }) => {
     device(compact, reducedMotion);
@@ -53,7 +53,7 @@ describe('graphics preference compatibility', () => {
   it('uses safe defaults for malformed stored data and invalid setting types', () => {
     for (const damaged of ['{invalid', 'null', '[]', JSON.stringify({ quality: 0, sound: 'false', reducedMotion: 1 })]) {
       localStorage.setItem(KEY, damaged);
-      expect(readPreferences()).toEqual({ quality: 'high', sound: true, reducedMotion: false });
+      expect(readPreferences()).toEqual({ quality: 'standard', sound: true, reducedMotion: false });
     }
   });
 });

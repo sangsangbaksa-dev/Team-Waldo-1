@@ -1,6 +1,20 @@
-# Vercel 배포
+# 웹 배포
 
 이 프로젝트는 Vite가 생성한 정적 파일을 배포합니다. 서버, 데이터베이스, API 키 없이 실행되며 전투 저장 기록은 각 브라우저에 보관됩니다.
+
+## GitHub Pages
+
+`.github/workflows/pages.yml`이 게임을 빌드한 뒤 공식 Pages Actions로 게시합니다. 별도 API 키가 필요하지 않습니다. 현재 작업 브랜치 `codex/optimize-battle-architecture`와 기본 브랜치 `claude/project-thread-hhffi5`의 push에 반응합니다.
+
+처음 한 번은 저장소 관리자가 [Settings → Pages](https://github.com/sangsangbaksa-dev/Team-Waldo-1/settings/pages)에서 **Build and deployment → Source → GitHub Actions**를 선택해야 합니다. Pages를 활성화하는 API는 Pages 쓰기와 Administration 쓰기 권한을 모두 요구하므로, 코드 수정 권한만 있는 연결에서는 대신 설정할 수 없습니다.
+
+예상 기본 주소는 `https://sangsangbaksa-dev.github.io/Team-Waldo-1/`입니다. 실제 게시 주소는 **Deploy GitHub Pages** 실행의 `github-pages` 환경 링크로 확인합니다. 사이트의 `build-info.json`에 게시한 소스 커밋을 기록합니다. Vite의 상대 경로 설정(`base: './'`)으로 프로젝트 하위 경로에서도 이미지·CSS·동적 JS 청크를 불러옵니다.
+
+Pages 활성화 전에 배포 단계가 실패했다면 설정 후 해당 실행의 **Re-run failed jobs**를 실행합니다. 빌드 작업은 Pages 설정과 별개로 완료되어 `github-pages` 아티팩트를 보관합니다. `github-pages` 환경에 별도의 배포 브랜치 제한을 설정했다면 게시할 브랜치도 허용해야 합니다.
+
+GitHub Pages는 Vercel과 주소가 달라 기존 브라우저 저장 기록이 자동으로 옮겨지지 않습니다.
+
+## Vercel
 
 ## 빌드 설정
 

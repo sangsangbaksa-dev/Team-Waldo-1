@@ -12,6 +12,7 @@
     "test": "vitest run",
     "validate-data": "node --import tsx tools/validate-data.ts",
     "balance": "node --import tsx tools/balance-sim.ts",
+    "benchmark:war": "node --import tsx tools/benchmark-war.ts",
     "test:browser": "node tools/browser-smoke.mjs"
   },
   "dependencies": {

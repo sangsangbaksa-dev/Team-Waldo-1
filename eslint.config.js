@@ -4,6 +4,18 @@ export default tseslint.config(
   { ignores: ['dist', 'node_modules'] },
   ...tseslint.configs.recommended,
   {
+    // The strategy domain must remain executable in Node without a renderer.
+    files: ['src/battle/{war,model,rules,combat,territory,unitSpatialIndex,base,squads,battlefieldLayout,events}.ts'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: ['three', 'three/*', 'phaser', './view', './graphics', './baseUI', '**/render/*', '**/scenes/*'] }],
+      'no-restricted-globals': ['error', 'Date', 'performance', 'window', 'document'],
+      'no-restricted-properties': [
+        'error',
+        { object: 'Math', property: 'random', message: 'Keep strategy simulation deterministic.' },
+      ],
+    },
+  },
+  {
     rules: {
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },

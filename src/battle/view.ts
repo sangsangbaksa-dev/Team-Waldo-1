@@ -155,7 +155,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = prefs.quality === 'low' ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.12;
   renderer.shadowMap.enabled = prefs.quality === 'high'; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.setPixelRatio(Math.min(devicePixelRatio, prefs.quality === 'high' ? 1.65 : prefs.quality === 'low' ? .85 : 1));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, prefs.quality === 'high' ? 1.4 : prefs.quality === 'low' ? .85 : 1));
   renderer.setSize(mount.clientWidth, mount.clientHeight); mount.append(renderer.domElement);
   renderer.domElement.setAttribute('aria-label', '3D 왕국 전장. 관리 패널에서도 모든 명령을 내릴 수 있습니다.');
   const scene = new THREE.Scene();
@@ -306,7 +306,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   const openSettings = () => openModal('전장 설정', `<div class="settings-grid"><label>그래픽 품질<select id="graphics-setting"><option value="high">높음 · 그림자와 효과</option><option value="standard">보통 · 성능 우선</option><option value="low">낮음 · 저사양 기기</option></select></label><label>효과음<input type="checkbox" id="audio-setting"></label><label>움직임 줄이기<input type="checkbox" id="motion-setting"></label></div><p class="dialog-tip">설정은 이 브라우저에 저장됩니다. 보통은 그림자·효과를 줄이고, 낮음은 해상도와 색 보정도 줄입니다. 관리 패널 아래 FPS로 실제 화면 속도를 확인하세요.</p>`, () => {
     const quality = document.querySelector<HTMLSelectElement>('#graphics-setting')!, sound = document.querySelector<HTMLInputElement>('#audio-setting')!, motion = document.querySelector<HTMLInputElement>('#motion-setting')!;
     quality.value = prefs.quality; sound.checked = prefs.sound; motion.checked = prefs.reducedMotion;
-    quality.onchange = () => { prefs.quality = quality.value === 'high' ? 'high' : quality.value === 'low' ? 'low' : 'standard'; renderer.toneMapping = prefs.quality === 'low' ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping; renderer.shadowMap.enabled = prefs.quality === 'high'; renderer.setPixelRatio(Math.min(devicePixelRatio, prefs.quality === 'high' ? 1.65 : prefs.quality === 'low' ? .85 : 1)); world.setQuality(prefs.quality === 'high'); resize(); writePreferences(prefs); };
+    quality.onchange = () => { prefs.quality = quality.value === 'high' ? 'high' : quality.value === 'low' ? 'low' : 'standard'; renderer.toneMapping = prefs.quality === 'low' ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping; renderer.shadowMap.enabled = prefs.quality === 'high'; renderer.setPixelRatio(Math.min(devicePixelRatio, prefs.quality === 'high' ? 1.4 : prefs.quality === 'low' ? .85 : 1)); world.setQuality(prefs.quality === 'high'); resize(); writePreferences(prefs); };
     sound.onchange = () => { prefs.sound = sound.checked; syncSound(); writePreferences(prefs); };
     motion.onchange = () => { prefs.reducedMotion = motion.checked; world.setReducedMotion(prefs.reducedMotion); baseDistrict.setReducedMotion(prefs.reducedMotion); writePreferences(prefs); };
   });
@@ -589,7 +589,33 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     const end = el('.war-end'); end.hidden = false;
     [...overlay.children].forEach(child => { if (child instanceof HTMLElement && child !== end) child.inert = true; });
     end.innerHTML = `<section class="result-panel" role="dialog" aria-modal="true" aria-labelledby="result-title"><span class="result-emblem">${icon(victory ? 'crown' : 'shield', 52)}</span><div class="kicker">${victory ? 'VICTORY' : 'THE KINGDOM WILL RISE AGAIN'}</div><h1 id="result-title" tabindex="-1">${victory ? '마지막 왕국의 주인' : '새로운 원정이 기다립니다'}</h1><p>${victory ? '모든 경쟁자를 물리치고 전장을 통일했습니다.' : '영지가 함락되었습니다. 다음 전투에서 다시 도전하세요.'}</p><div class="result-stats"><div><b>${clock(w.time)}</b><span>생존 시간</span></div><div><b>${stats.kills}</b><span>적 병력 처치</span></div><div><b>${stats.captures}</b><span>거점 점령</span></div><div><b>${stats.trained}</b><span>병력 훈련</span></div><div><b>${stats.researches}</b><span>연구 완료</span></div><div><b>${Math.floor(stats.goldEarned).toLocaleString('ko-KR')}</b><span>획득한 금</span></div></div><p class="result-tip">${victory ? '다른 난이도와 병종 조합으로 새로운 전략을 시도해 보세요.' : stats.captures === 0 ? '다음 전략: 가까운 거점을 먼저 점령해 자원 생산과 폭풍 방어를 확보해 보세요.' : '다음 전략: 연구와 병종 조합으로 전투력을 높이고, 본부 수리 자원을 남겨 두세요.'}</p><div class="result-actions"><button id="back" class="button secondary">왕국 메뉴</button><button id="again" class="button primary">같은 난이도로 재도전 ${icon('arrow', 18)}</button></div></section>`;
-    el<HTMLButtonElement>('#again').onclick = () => { const difficulty = w.difficulty; close(false); openWar(onExit, { forceNew: true, difficulty }); };
+    el<HTMLButtonElement>('#again').onclick = () => {
+      const difficulty = w.difficulty;
+      if (import.meta.env.MODE === 'test') {
+        // Vitest uses a deterministic fake clock and tests synchronous rematches.
+        close(false);
+        openWar(onExit, { forceNew: true, difficulty });
+        return;
+      }
+      // Release the old GL context and allow the browser to present a frame
+      // before allocating a second, hundreds-of-troops battlefield.
+      const loading = document.createElement('div');
+      loading.className = 'game-loading';
+      loading.setAttribute('role', 'status');
+      loading.innerHTML = '<span class="game-loading-emblem">♜</span><strong>새 전장을 준비합니다</strong><p>이전 전장의 GPU 자원을 정리하고 있습니다</p><span class="game-loading-progress" aria-hidden="true"></span>';
+      document.body.append(loading);
+      close(false);
+      setTimeout(() => {
+        try {
+          openWar(onExit, { forceNew: true, difficulty });
+          requestAnimationFrame(() => requestAnimationFrame(() => loading.remove()));
+        } catch {
+          loading.remove();
+          document.querySelector('.war-ui')?.remove();
+          onExit();
+        }
+      }, 120);
+    };
     el<HTMLButtonElement>('#back').onclick = () => close();
     end.addEventListener('keydown', event => {
       if (event.key !== 'Tab') return;

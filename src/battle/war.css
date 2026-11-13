@@ -43,8 +43,8 @@
 .adventure-active .war-toast{bottom:104px;z-index:12}
 @media(max-width:1020px){.adventure-switch{left:282px}}
 @media(max-width:760px){
- .adventure-switch{left:auto;right:12px;bottom:15px}
- .adventure-switch .button{font-size:11px;padding:10px 12px}
+ .adventure-switch{left:52px;right:185px;top:calc(var(--mission-bottom,166px) + 14px);bottom:auto}
+ .adventure-switch .button{width:100%;min-height:44px;font-size:10px;line-height:1.5;padding:8px 6px}
  .adventure-head{top:78px;padding:10px 14px}
  .adventure-head h2{font-size:15px}
  .adventure-head p{font-size:10px}
@@ -53,6 +53,7 @@
  .adventure-pad{left:9px;bottom:15px;grid-template-columns:repeat(3,38px);grid-template-rows:repeat(2,38px)}
  .adventure-active .war-toast{bottom:122px}
 }
+@media(max-width:500px){.adventure-switch{right:142px}}
 @media(max-height:500px){.adventure-head{top:65px}.adventure-head p{display:none}.adventure-progress{margin-top:5px}}
 
 

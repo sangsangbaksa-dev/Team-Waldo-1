@@ -30,7 +30,7 @@ async function layout(page) {
       return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height };
     };
     return { width: innerWidth, height: innerHeight, documentWidth: document.documentElement.scrollWidth,
-      regions: Object.fromEntries(['.war-top', '.war-panel', '.war-minimap', '.mission-card', '.camera-controls', '.war-intel'].map(s => [s, rect(s)])),
+      regions: Object.fromEntries(['.war-top', '.war-panel', '.war-minimap', '.mission-card', '.camera-controls', '.war-intel', '.adventure-switch'].map(s => [s, rect(s)])),
       topButtons: [...document.querySelectorAll('.war-top button')].filter(el => el.getClientRects().length).map(el => {
         const r = el.getBoundingClientRect(); return { id: el.id, left: r.left, right: r.right, top: r.top, bottom: r.bottom };
       }),
@@ -46,6 +46,7 @@ function assertLayout(boxes) {
     ['.war-top', '.war-panel'], ['.war-top', '.war-minimap'], ['.war-top', '.mission-card'], ['.war-top', '.camera-controls'], ['.war-top', '.war-intel'],
     ['.war-panel', '.war-minimap'], ['.war-panel', '.camera-controls'], ['.war-panel', '.mission-card'], ['.war-minimap', '.camera-controls'], ['.war-minimap', '.war-intel'], ['.mission-card', '.war-intel'],
     ['.mission-card', '.war-minimap'], ['.mission-card', '.camera-controls'],
+    ['.adventure-switch', '.war-panel'], ['.adventure-switch', '.war-minimap'], ['.adventure-switch', '.camera-controls'], ['.adventure-switch', '.mission-card'],
   ]) if (boxes.regions[a] && boxes.regions[b]) assert.ok(intersect(boxes.regions[a], boxes.regions[b]) < 1, `${a} overlaps ${b}`);
   for (const [index, button] of boxes.topButtons.entries()) {
     assert.ok(button.left >= 0 && button.right <= boxes.width, `${button.id} outside viewport`);
@@ -114,7 +115,9 @@ try {
     const context = await browser.newContext({ viewport: { width, height }, isMobile: width < 900, hasTouch: width < 900, reducedMotion: 'reduce' });
     const page = await context.newPage(); page.setDefaultTimeout(15000);
     const result = { name, width, height, status: 'running', pageErrors: [], consoleErrors: [], scenarios: ['normal UI actions', 'DEV time freeze', 'seeded victory result'] };
-    const initialQuality = name === 'desktop' ? 'high' : 'standard';
+    // Keep software WebGL responsive during the full story; exercise high/low in
+    // the explicit graphics-quality matrix below, on every viewport.
+    const initialQuality = 'standard';
     report.cases.push(result);
     const stage = async value => { result.stage = value; console.log(`STAGE ${name}: ${value}`); await writeFile(`${artifacts}/report.json`, JSON.stringify(report, null, 2)); };
     page.on('pageerror', error => result.pageErrors.push(error.message));

@@ -49,6 +49,7 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
   add(avatar, new THREE.BoxGeometry(.24, 1.25, .28), wood, -.4, .62, 0);
   add(avatar, new THREE.BoxGeometry(.24, 1.25, .28), wood, .4, .62, 0);
   const canopy = new THREE.Group();
+  canopy.visible = newMatch;
   avatar.add(canopy);
   add(canopy, new THREE.SphereGeometry(7.1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), cloth, 0, 18, 0);
   for (let i = 0; i < 8; i++) {

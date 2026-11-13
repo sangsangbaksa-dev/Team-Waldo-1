@@ -45,6 +45,7 @@ export function commandSquad(w: War, squad: SquadId, command: SquadCommand): boo
       (!Number.isInteger(command.id) || !w.outposts[command.id])) return false;
   if (command.kind === 'faction' &&
       (!Number.isInteger(command.id) || command.id === 0 || !w.factions[command.id]?.alive)) return false;
+  for(const unit of squadUnits(w,squad))delete unit.rallyPoint;
   w.squadOrders ??= [null, null, null];
   w.squadOrders[squad] = command;
   return true;

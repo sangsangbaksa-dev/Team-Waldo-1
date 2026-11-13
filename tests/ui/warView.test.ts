@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PerspectiveCamera } from 'three';
-import type { War } from '../../src/battle/war';
+import { stepWar, type War } from '../../src/battle/war';
 import { loadWar } from '../../src/battle/save';
 import { openWar } from '../../src/battle/view';
 
@@ -129,6 +129,70 @@ afterEach(() => {
 });
 
 describe('battle UI through real player actions', () => {
+  it('reserves visible training supply and refunds only the unfinished part of a queue', () => {
+    openWar(vi.fn(), { forceNew: true, economyCampaign: true });
+    const w = game().world; w.factions[0].gold = 1000; w.factions[0].food = 1000;
+    w.factions.slice(1).forEach(f => { f.aiTimer = 99999; }); game().ui();
+    click('#tab-army'); click('#squad-infantry');
+    expect(element('#army-count').textContent).toBe('4 +3 / 18');
+    expect(element('#training-label').textContent).toContain('3명 훈련 중');
+    for (let i = 0; i < 40; i++) stepWar(w, .1); game().ui();
+    expect(element('#army-count').textContent).toBe('5 +2 / 18');
+    const gold = w.factions[0].gold; click('#cancel-training-0');
+    expect(w.factions[0].gold).toBe(gold + 50);
+    expect(element('#army-count').textContent).toBe('5 / 18');
+    expect(w.stats[0].trained).toBe(1);
+  });
+
+  it('guides the first economic contract without forcing unrelated combat research', () => {
+    openWar(vi.fn(), { forceNew: true, economyCampaign: true });
+    const w = game().world; w.factions[0].mine = 2; w.factions[0].farm = 2; w.stats[0].captures = 1; game().ui();
+    click('#mission-action');
+    expect(button('#tab-city').getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(button('#civil-build-market'));
+    w.economy[0].market = 1; game().ui(); click('#mission-action');
+    expect(button('#tab-trade').getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(button('#contract-provisions'));
+    expect(button('#contract-provisions').classList.contains('guided-control')).toBe(true);
+  });
+
+  it('manages workers, timed construction, exports and contracts through visible controls', () => {
+    openWar(vi.fn(), { forceNew: true, economyCampaign: true });
+    const world = game().world, f = world.factions[0], e = world.economy[0];
+    f.gold = 1000; f.food = 1000;
+    world.factions.slice(1).forEach(other => { other.aiTimer = 99999; }); game().ui();
+    click('#worker-minus-farm'); click('#worker-plus-mine');
+    expect(e.workers.mine).toBe(7); expect(e.workers.farm).toBe(5);
+    click('#tab-city'); click('#civil-build-market'); expect(e.market).toBe(0);
+    expect(button('#civil-build-city').disabled).toBe(true);
+    // Advance the real fixed simulation directly, avoiding thousands of redundant DOM paints.
+    const advanceEconomy = (seconds: number) => { for (let i = 0; i < seconds * 10; i++) stepWar(world, .1); game().ui(); };
+    advanceEconomy(20); expect(e.market).toBe(1);
+    click('#tab-economy'); click('#worker-minus-mine'); click('#worker-plus-trade');
+    click('#tab-trade'); expect(element('#pane-trade').hidden).toBe(false);
+    click('#export-caravan'); expect(e.shipment?.route).toBe('caravan');
+    expect(button('#export-caravan').disabled).toBe(true);
+    click('#contract-provisions'); expect(e.contract?.key).toBe('provisions');
+    click('#fulfill-contract'); expect(e.completed).toBe(1); expect(e.reputation).toBe(60);
+    advanceEconomy(20); expect(e.exports).toBe(1);
+    click('#save'); expect(loadWar()?.economy[0]).toEqual(e);
+    click('#tab-city'); click('#civil-build-city');
+    expect(e.city).toBe(1); advanceEconomy(25);
+    expect(e.city).toBe(2); expect(element('#army-count').textContent).toBe('4 / 24');
+  });
+
+  it('announces economic victory accurately and retries the management campaign', () => {
+    openWar(vi.fn(), { forceNew: true, economyCampaign: true });
+    const w = game().world, e = w.economy[0];
+    e.city = 4; e.completed = 3; e.reputation = 80;
+    w.outposts.slice(0, 3).forEach(post => { post.owner = 0; }); advanceFrames(2);
+    expect(element('#result-title').textContent).toBe('교역 제국의 탄생');
+    expect(element('.result-economy').textContent).toContain('계약 3건');
+    expect(loadWar()?.victory).toBe('economic');
+    click('#again'); expect(game().world.economyCampaign).toBe(true);
+    expect(game().world.economy[0].completed).toBe(0);
+  });
+
   it('opens the base command center and constructs a real building in a selected plot',()=>{
     openWar(vi.fn(),true);
     const w=game().world;

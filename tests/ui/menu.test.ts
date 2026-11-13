@@ -35,6 +35,15 @@ afterEach(async () => {
 });
 
 describe('menu navigation and recovery', () => {
+  it('separates the conquest objective and short storm rules from the economic campaign', async () => {
+    await loadMenu(); button('#mode-conquest').click();
+    expect(button('#mode-conquest').getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelector('#mode-goal')?.textContent).toContain('정복 승리');
+    expect(button('#start-war').textContent).toContain('정복전 시작');
+    button('#start-war').click(); await vi.dynamicImportSettled();
+    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), { forceNew: true, difficulty: 'normal' });
+  });
+
   it('starts only one classic engine when classic and strategy controls are clicked rapidly', async () => {
     await loadMenu();
     const classic = button('#legacy'), strategy = button('#start-war');
@@ -62,7 +71,7 @@ describe('menu navigation and recovery', () => {
     strategy.click(); strategy.click(); classic.click();
     await vi.dynamicImportSettled();
     expect(navigation.openWar).toHaveBeenCalledTimes(1);
-    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), { forceNew: true, difficulty: 'hard' });
+    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), { forceNew: true, difficulty: 'hard', economyCampaign: true });
     expect(navigation.startLegacy).not.toHaveBeenCalled();
   });
 

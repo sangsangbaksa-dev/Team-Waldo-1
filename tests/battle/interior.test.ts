@@ -79,3 +79,20 @@ describe('enterable building interiors', () => {
     expect(encodeWar(war)).toBe(before);
   });
 });
+
+describe('interiors share campaign storage and queued supply',()=>{
+ it('caps exchange receipts and refuses to spend when the receiving warehouse is full',()=>{
+  const w=createWar({economyCampaign:true}),f=w.factions[0];f.gold=1190;f.food=100;
+  expect(interiorOption(w,'mine','service')?.price).toContain('10');
+  expect(performInteriorAction(w,'mine','service')).toBe(true);expect(f.gold).toBe(1200);expect(f.food).toBe(20);
+  f.food=100;const saved=encodeWar(w);expect(performInteriorAction(w,'mine','service')).toBe(false);expect(encodeWar(w)).toBe(saved);
+ });
+ it('uses the same training queue and reserves pending troops in the barracks interior',()=>{
+  const w=createWar({economyCampaign:true});w.factions[0].gold=1000;w.factions[0].food=1000;
+  for(let i=0;i<4;i++)expect(performInteriorAction(w,'barracks','service')).toBe(true);
+  expect(w.units.filter(u=>u.owner===0)).toHaveLength(4);
+  expect(interiorOption(w,'barracks','service')?.enabled).toBe(false);
+  expect(w.recruitment[0].queue.reduce((sum,item)=>sum+item.amount,0)).toBe(12);
+  expect(decodeWar(encodeWar(w))).toEqual(w);
+ });
+});

@@ -12,7 +12,8 @@
     "test": "vitest run",
     "validate-data": "node --import tsx tools/validate-data.ts",
     "balance": "node --import tsx tools/balance-sim.ts",
-    "test:browser": "node tools/browser-smoke.mjs"
+    "test:browser": "node tools/browser-smoke.mjs && node tools/economy-browser-smoke.mjs && node tools/management-browser-smoke.mjs",
+    "test:management": "node tools/management-browser-smoke.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0",

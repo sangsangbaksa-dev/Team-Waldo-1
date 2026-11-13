@@ -11,8 +11,12 @@ import { BattleAudio } from './audio';
 import { readPreferences, writePreferences, recordMatch } from './preferences';
 import { icon } from '../ui/icons';
 import { showDialog } from '../ui/dialog';
+import { mountEconomyPanels, waitLabel } from './economyView';
+import { affordability, upgradePreview, nextMilestone, tutorialProgress } from './management';
+import { queuedUnits, queuedSeconds, TRAINING_SECONDS, TRAINING_SLOTS } from './recruitment';
+import { exportDestination, exportPosition, ROUTES, routeRequirement, type Route } from './economy';
 import {
-  createWar, stepWar, upgrade, train, trainSquad, repair, setPolicy, setReserve, order, cost, maxUnitsFor,
+  createWar, stepWar, upgrade, train, trainSquad, cancelTraining, setRecruitRally, repair, setPolicy, setReserve, order, cost, maxUnitsFor,
   NAMES, OUTPOST_NAMES, OUTPOST_BONUSES, UNIT_STATS, MAP_HALF_SIZE, captureOrder,
   DIFFICULTIES, RESEARCH, research, researchCost, getIncome, stormStartFor, stormDamage,
   type Difficulty, type EconomyPolicy, type UnitKind, type Upgrade, type Research,
@@ -30,15 +34,15 @@ const BUILDINGS: { key: Upgrade; label: string; symbol: string; description: str
 const clock = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 const factionColor = (id: number) => '#' + FACTION_COLORS[id].toString(16).padStart(6, '0');
 const price = (gold: number, food: number) => `${Math.ceil(gold)} 금 · ${Math.ceil(food)} 식량`;
-export interface WarViewOptions { forceNew?: boolean; difficulty?: Difficulty; grandBattle?: boolean; }
+export interface WarViewOptions { forceNew?: boolean; difficulty?: Difficulty; grandBattle?: boolean; economyCampaign?: boolean; }
 
 export function openWar(onExit: () => void, options: boolean | WarViewOptions = false): void {
   if (document.querySelector('.war-ui')) return;
   const settings = typeof options === 'boolean' ? { forceNew: options } : options;
   const saved = settings.forceNew ? null : loadWar();
   const resumed = Boolean(saved && saved.factions[0].alive && !saved.over);
-  const w = resumed && saved ? saved : createWar({ difficulty: settings.difficulty, grandBattle: settings.grandBattle });
-  const armyLimit = maxUnitsFor(w);
+  const w = resumed && saved ? saved : createWar({ difficulty: settings.difficulty, grandBattle: settings.grandBattle, economyCampaign: settings.economyCampaign });
+  let armyLimit = maxUnitsFor(w);
   const recruitBatch = w.grandBattle ? 25 : 3;
   const reserveAmounts = w.grandBattle ? [0, 10, 25, 50] : [0, 2, 4, 6];
   const prefs = readPreferences();
@@ -67,16 +71,19 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     <aside class="war-panel" aria-label="왕국 관리">
       <div class="kingdom-heading"><span class="faction-mark">${icon('shield', 23)}</span><div><span class="kicker">YOUR KINGDOM</span><h1>에메랄드 왕국</h1></div><button class="tool-button" id="home" title="내 영지로 이동 (H)" aria-label="내 영지로 이동">${icon('home', 17)}</button></div>
       ${w.grandBattle ? '<div class="grand-battle-tag">⚔ 대규모 전장 · 아군 100명 VS 적 500명</div>' : ''}
+      <div class="campaign-objective" id="campaign-objective" aria-label="승리 목표"></div>
       <div class="hq-line"><span>본부 내구도</span><b id="hq-value"></b></div><div class="hq-meter"><i id="hq-fill"></i></div>
       <nav class="war-tabs" aria-label="왕국 관리 탭" role="tablist">
-        <button role="tab" id="tab-economy" aria-selected="true" aria-controls="pane-economy" data-tab="economy">${icon('coin', 16)}경영</button>
+        <button role="tab" id="tab-economy" aria-selected="true" aria-controls="pane-economy" data-tab="economy">${icon('coin', 16)}생산</button>
         <button role="tab" id="tab-army" aria-selected="false" aria-controls="pane-army" data-tab="army" tabindex="-1">${icon('army', 16)}병력</button>
         <button role="tab" id="tab-orders" aria-selected="false" aria-controls="pane-orders" data-tab="orders" tabindex="-1">${icon('flag', 16)}작전</button>
         <button role="tab" id="tab-research" aria-selected="false" aria-controls="pane-research" data-tab="research" tabindex="-1">${icon('science', 16)}연구</button>
+        <button role="tab" id="tab-trade" aria-selected="false" aria-controls="pane-trade" data-tab="trade" tabindex="-1">${icon('home', 16)}교역</button>
+        <button role="tab" id="tab-city" aria-selected="false" aria-controls="pane-city" data-tab="city" tabindex="-1">${icon('tower', 16)}도시</button>
       </nav>
       <div class="war-panel-scroll">
-        <section id="pane-economy" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-economy"><div class="section-heading"><h2>생산과 성장</h2><span>최대 Lv.4</span></div><div id="buildings" class="action-list"></div><button id="open-base-economy" class="base-economy-link">▦ 건설 부지에서 직접 건물 배치하기</button><div class="section-heading"><h2>왕국 정책</h2></div><div id="policy" class="segmented"></div><p id="policy-description" class="panel-note"></p><button id="repair" class="repair-button">${icon('shield', 17)}<span>본부 수리<small>체력 +100 · 금 45 / 식량 25</small></span></button></section>
-        <section id="pane-army" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-army" hidden><div class="section-heading"><h2>병종 훈련</h2><span>숫자 1–4</span></div><div id="unit-train"></div><button id="open-base-generals" class="base-economy-link">♛ 장군 모집과 부대 배치</button><div class="section-heading"><h2>본부 수비대</h2></div><div id="reserve" class="segmented"></div><p class="panel-note">지정한 병력은 본부를 지킵니다. 나머지 병력이 작전 명령을 수행합니다.</p></section>
+        <section id="pane-economy" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-economy"><div id="civil-economy"></div><div id="buildings" class="action-list"></div><button id="open-base-economy" class="base-economy-link">▦ 건설 부지에서 직접 건물 배치하기</button><div class="section-heading"><h2>왕국 정책</h2></div><div id="policy" class="segmented"></div><p id="policy-description" class="panel-note"></p><button id="repair" class="repair-button">${icon('shield', 17)}<span>본부 수리<small>체력 +100 · 금 45 / 식량 25</small></span></button></section>
+        <section id="pane-army" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-army" hidden><div class="section-heading"><h2>병종 훈련</h2><span>숫자 1–4</span></div><div id="training-panel" ${w.economyCampaign ? '' : 'hidden'}><div class="training-status" id="training-status" tabindex="-1"><b id="training-label"></b><progress id="training-progress" max="1" value="0" aria-label="병력 훈련 진행률"></progress><div id="training-queue"></div><p id="recruit-rally-summary"></p><div class="trade-route-actions"><button id="rally-set" class="civil-button" aria-pressed="false">지도에서 집결지 지정</button><button id="rally-clear" class="civil-button">집결지 초기화</button></div><p class="panel-note">비용과 병력 자리를 미리 확보합니다. 취소 시 남은 병력 비용을 저장 한도까지 환불합니다.</p></div></div><div id="unit-train"></div><button id="open-base-generals" class="base-economy-link">♛ 장군 모집과 부대 배치</button><div class="section-heading"><h2>본부 수비대</h2></div><div id="reserve" class="segmented"></div><p class="panel-note">지정한 병력은 본부를 지킵니다. 나머지 병력이 작전 명령을 수행합니다.</p></section>
         <section id="pane-orders" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-orders" hidden>
           <div class="squad-manager" aria-label="부대 그룹 편성">
             <div class="section-heading"><h2>부대 편성 및 직접 이동</h2><span>3개 그룹</span></div>
@@ -85,7 +92,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
               <button data-squad-select="1" aria-pressed="false">② 기동대 <small>0명</small></button>
               <button data-squad-select="2" aria-pressed="false">③ 수비대 <small>0명</small></button>
             </div>
-            <p class="squad-order-status" id="squad-order-status" role="status">주력군 · 기본 작전</p>
+            <p class="squad-order-status" id="squad-order-status" role="status">주력군 · 기본 작전</p><div id="squad-combat" class="squad-combat"></div><p id="combat-summary" class="panel-note"></p>
             <div class="squad-actions">
               <button id="squad-assign">+${w.grandBattle ? 25 : 3}명 편성</button>
               <button id="squad-release">주력군에 합류</button>
@@ -96,10 +103,12 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
           </div>
           <div class="section-heading"><h2>공격 및 방어 명령</h2></div><div id="targets" class="action-list"></div><div class="section-heading"><h2>거점 점령</h2><span>9개 전략 거점</span></div><div id="outposts" class="outpost-list"></div><p class="panel-note">거점마다 생산 자원이 다릅니다. 점령 거점 1개당 본부 폭풍 피해가 12% 감소합니다 (최대 60%).</p></section>
         <section id="pane-research" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-research" hidden><div class="section-heading"><h2>왕국 연구소</h2><span>병영 Lv.2 해금</span></div><p class="panel-note">연구 효과는 모든 아군 병력에 즉시 적용됩니다. 각 연구는 3단계까지 성장합니다.</p><div id="research" class="action-list"></div><div class="research-summary" id="research-summary"></div></section>
+        <section id="pane-city" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-city" hidden></section>
+        <section id="pane-trade" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-trade" hidden></section>
       </div>
       <footer class="panel-footer"><span id="save-status" role="status">15초마다 자동 저장</span><span class="render-performance" id="render-fps" title="지난 1초 동안 실제로 그린 화면 수" aria-label="화면 렌더링 프레임 속도">— FPS</span><button id="save" class="text-button">${icon('save', 14)}저장</button></footer>
     </aside>
-    <section class="mission-card" aria-label="현재 목표"><div class="mission-icon">${icon('flag', 21)}</div><div><span class="kicker">NEXT OBJECTIVE</span><h2 id="mission-title"></h2><p id="mission-description"></p></div><button id="mission-action" class="tool-button" aria-label="목표로 이동">${icon('arrow', 18)}</button></section>
+    <section class="mission-card" aria-label="현재 목표"><div class="mission-icon">${icon('flag', 21)}</div><div><span class="kicker">NEXT OBJECTIVE</span><h2 id="mission-title"></h2><p id="mission-description"></p><div class="tutorial-progress" id="tutorial-progress" aria-label="초반 원정 진행"></div></div><button id="mission-action" class="tool-button" aria-label="목표로 이동">${icon('arrow', 18)}</button></section>
     <aside class="war-intel" aria-label="전황"><div class="section-heading"><h2>왕국 현황</h2><span id="alive-count">4 세력</span></div><div id="standings"></div><div class="event-heading">전장 소식<span class="live-dot"></span></div><div id="events" class="war-events" aria-live="polite" aria-relevant="additions"></div></aside>
     <div class="storm-warning" id="storm-warning" hidden>${icon('bolt', 17)}<span id="storm-warning-text"></span></div>
     <section class="war-minimap" aria-label="전장 지도"><div class="map-heading"><span>${icon('map', 15)}전략 지도</span><button id="map-mode" class="text-button" aria-pressed="false">시점 이동</button></div><canvas id="war-map" width="220" height="220" aria-label="미니맵: 그룹 선택 후 위치 지정 모드에서는 원하는 좌표를 클릭해 출전합니다. 아군 본부 클릭으로 복귀합니다." tabindex="0"></canvas><div class="map-footer"><span id="storm-clock"></span><span id="zone-size"></span></div></section>
@@ -141,6 +150,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   let dead = false, done = false, paused = false, speed = .65, frame = 0, acc = 0, last = performance.now(), lastUI = 0;
   let toastUntil = 0, lastAutosave = w.time, previousEvent = '', lowHpWarned = false, wasThreatened = false, selectedTarget: StrategicTarget | null = null;
   let selectedSquad: SquadId = 0;
+  let rallyMode = false, previousLost = w.stats[0].lost, previousKills = w.stats[0].kills;
   let modalClose: (() => void) | null = null;
   const announce = (message: string) => { text('#toast', message); el('#toast').hidden = false; toastUntil = performance.now() + 3300; };
   let renderer: THREE.WebGLRenderer;
@@ -154,7 +164,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   }
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = prefs.quality === 'low' ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.12;
-  renderer.shadowMap.enabled = prefs.quality === 'high'; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.enabled = prefs.quality === 'high'; renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.setPixelRatio(Math.min(devicePixelRatio, prefs.quality === 'high' ? 1.65 : prefs.quality === 'low' ? .85 : 1));
   renderer.setSize(mount.clientWidth, mount.clientHeight); mount.append(renderer.domElement);
   renderer.domElement.setAttribute('aria-label', '3D 왕국 전장. 관리 패널에서도 모든 명령을 내릴 수 있습니다.');
@@ -171,7 +181,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   const baseDistrict = createBaseDistrict(scene,w);
   world.setQuality(prefs.quality === 'high'); world.setReducedMotion(prefs.reducedMotion);
   baseDistrict.setReducedMotion(prefs.reducedMotion);
-  const adventureControl = createAdventure(scene, camera, w, !resumed && import.meta.env.MODE !== 'test'); adventure = adventureControl;
+  const adventureControl = createAdventure(scene, camera, w, !resumed && !w.economyCampaign && import.meta.env.MODE !== 'test'); adventure = adventureControl;
   const controller = new AbortController(); const signal = controller.signal;
   overlay.addEventListener('pointerdown', () => audio.unlock(), { signal, capture: true });
   overlay.addEventListener('keydown', () => audio.unlock(), { signal, capture: true });
@@ -186,6 +196,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   const showTab = (name: string) => {
     overlay.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(button => { const active = button.dataset.tab === name; button.setAttribute('aria-selected', String(active)); button.tabIndex = active ? 0 : -1; });
     overlay.querySelectorAll<HTMLElement>('.war-tab-pane').forEach(pane => { pane.hidden = pane.id !== `pane-${name}`; });
+    el('.war-panel-scroll').scrollTop = 0;
     overlay.classList.remove('panel-collapsed'); el('#panel-toggle').setAttribute('aria-expanded', 'true'); el('#panel-toggle').setAttribute('aria-label', '관리 패널 접기');
   };
   overlay.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach((button, index, buttons) => {
@@ -201,6 +212,21 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     button.innerHTML = `<span class="action-icon">${icon(symbol, 20)}</span><span class="action-copy"><b>${label}</b><small>${description}</small></span><span class="action-meta"></span>`;
     button.onclick = action; el(parent).append(button); return button;
   };
+  const refreshEconomy = mountEconomyPanels(overlay, w, perform, (route: Route) => {
+    adventureControl.toStrategy();
+    const from = w.factions[0], to = exportDestination(w, 0, route);
+    focus.set((from.x + to.x) / 2, 0, (from.z + to.z) / 2); setZoom(Math.max(150, Math.hypot(from.x - to.x, from.z - to.z) * 1.45));
+    announce(ROUTES[route].label + ' · ' + (routeRequirement(w, 0, route) || '항로 개방') + ' · 미니맵의 금색 선을 확인하세요.');
+    previewRoute = route; drawMap();
+  });
+  for (let i = 0; i < TRAINING_SLOTS; i++) {
+    const row = document.createElement('div'); row.className = 'training-queue-row'; row.id = `training-row-${i}`;
+    row.innerHTML = `<span id="training-item-${i}"></span><button id="cancel-training-${i}" aria-label="${i + 1}번째 병력 훈련 취소">취소</button>`;
+    row.querySelector<HTMLButtonElement>('button')!.onclick = () => perform(() => cancelTraining(w, 0, i), '남은 병력 훈련을 취소했습니다.'); el('#training-queue').append(row);
+  }
+  const revealControl = (selector: string) => { const control = el(selector); control.scrollIntoView({ block: 'nearest', inline: 'nearest' }); control.focus({ preventScroll: true }); };
+  let previewRoute: Route | null = null;
+  el('#tutorial-progress').innerHTML = ['① 생산', '② 거점', w.economyCampaign ? '③ 계약' : '③ 연구'].map((label, i) => `<span id="tutorial-step-${i}">${label}</span>`).join('');
   for (const building of BUILDINGS) addAction('#buildings', `build-${building.key}`, building.label, building.description, building.symbol, () => perform(() => upgrade(w, 0, building.key), `${building.label}을 강화했습니다.`, 'upgrade'));
   const policyDescriptions: Record<EconomyPolicy, string> = { balanced: '표준 자원 생산과 전투 능력을 유지합니다.', growth: '금·식량 생산 +25%. 초반 영지 성장에 유리합니다.', war: '병사 공격력 +18%, 자원 생산 −12%. 공세에 유리합니다.' };
   for (const [key, label] of [['balanced', '균형'], ['growth', '성장'], ['war', '전시']] as [EconomyPolicy, string][]) {
@@ -211,8 +237,8 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     const unit = UNIT_STATS[kind], card = document.createElement('article'); card.className = 'unit-card';
     card.innerHTML = `<div class="unit-heading"><span class="unit-symbol">${icon(i === 1 ? 'target' : i === 2 ? 'shield' : i === 3 ? 'bolt' : 'sword', 22)}</span><div><h3>${unit.label}<kbd>${i + 1}</kbd></h3><p>${UNIT_ROLES[i]}</p></div><b id="count-${kind}">0</b></div><div class="unit-stats">체력 ${unit.hp} <span>기본 공격 ${unit.damage}</span><span id="unlock-${kind}"></span></div><div class="unit-buttons"><button id="train-${kind}">1명 훈련<small>${price(unit.gold, unit.food)}</small></button><button id="squad-${kind}" aria-label="${unit.label} ${recruitBatch}명 일괄 동원">+${recruitBatch}<small>${price(unit.gold * recruitBatch, unit.food * recruitBatch)}</small></button></div>`;
     el('#unit-train').append(card);
-    el<HTMLButtonElement>(`#train-${kind}`).onclick = () => perform(() => train(w, 0, kind), `${unit.label} 1명이 합류했습니다.`);
-    el<HTMLButtonElement>(`#squad-${kind}`).onclick = () => perform(() => trainSquad(w, 0, kind, recruitBatch), `${unit.label} ${recruitBatch}명이 합류했습니다.`);
+    el<HTMLButtonElement>(`#train-${kind}`).onclick = () => perform(() => train(w, 0, kind), w.economyCampaign ? `${unit.label} 1명 훈련을 예약했습니다.` : `${unit.label} 1명이 합류했습니다.`);
+    el<HTMLButtonElement>(`#squad-${kind}`).onclick = () => perform(() => trainSquad(w, 0, kind, recruitBatch), w.economyCampaign ? `${unit.label} ${recruitBatch}명 훈련을 예약했습니다.` : `${unit.label} ${recruitBatch}명이 합류했습니다.`);
   });
   for (const amount of reserveAmounts) {
     const button = document.createElement('button'); button.id = `reserve-${amount}`; button.textContent = amount === 0 ? '전군 출전' : `${amount}명`;
@@ -220,11 +246,13 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   }
   const commandTo = (command: SquadCommand): boolean => commandSquad(w, selectedSquad, command);
   const issueHome = () => {
+    rallyMode = false; syncCommandMode(false);
     const success = selectedSquad === 0 ? order(w, 0, null) : commandTo({ kind: 'home' });
     if (success) { audio.play('click'); announce(SQUAD_NAMES[selectedSquad] + '이(가) 아군 본부로 복귀합니다.'); ui(); drawMap(); }
     else announce('선택한 부대에 병력이 없습니다. 먼저 병력을 편성해 주세요.');
   };
   const issue = (target: StrategicTarget) => {
+    rallyMode = false;
     const success = selectedSquad === 0 ?
       target.kind === 'outpost' ? captureOrder(w, 0, target.id) : order(w, 0, target.id) :
       commandTo(target.kind === 'outpost' ? { kind: 'outpost', id: target.id } : { kind: 'faction', id: target.id });
@@ -240,6 +268,10 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     } else announce('선택 부대에 병력이 없습니다. 주력군에서 3명 편성하세요.');
   };
   const issueAt = (x: number, z: number) => {
+    if (rallyMode) {
+      if (setRecruitRally(w, 0, { x, z })) { rallyMode = false; syncCommandMode(false); announce('새로 훈련한 병력의 집결지를 지정했습니다.'); ui(); drawMap(); }
+      return;
+    }
     const base = w.factions[0];
     if (Math.hypot(base.x - x, base.z - z) < 17) { issueHome(); return; }
     const target = pickMapTarget(w, 0, x, z);
@@ -294,13 +326,13 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   const togglePause = (reason = '잠시 전략을 정비하세요.') => {
     if (done) return;
     if (modalClose) { modalClose(); return; }
-    openModal('전투 일시정지', `<p>${reason}</p><div class="pause-stats"><span>생존 시간<b>${clock(w.time)}</b></span><span>점령 거점<b>${w.outposts.filter(p => p.owner === 0).length} / 9</b></span><span>현재 병력<b>${w.units.filter(u => u.owner === 0).length} / 18</b></span></div><p class="dialog-tip">시간이 멈췄습니다. Esc 키나 아래 버튼으로 계속할 수 있습니다.</p><div class="pause-actions"><button id="pause-guide" class="button secondary">플레이 가이드</button><button id="pause-settings" class="button secondary">화면·소리 설정</button><button id="pause-menu" class="button secondary">저장하고 메뉴로</button></div>`, () => {
+    openModal('전투 일시정지', `<p>${reason}</p><div class="pause-stats"><span>생존 시간<b>${clock(w.time)}</b></span><span>점령 거점<b>${w.outposts.filter(p => p.owner === 0).length} / 9</b></span><span>현재 병력<b>${w.units.filter(u => u.owner === 0).length} / ${armyLimit}</b></span></div><p class="dialog-tip">시간이 멈췄습니다. Esc 키나 아래 버튼으로 계속할 수 있습니다.</p><div class="pause-actions"><button id="pause-guide" class="button secondary">플레이 가이드</button><button id="pause-settings" class="button secondary">화면·소리 설정</button><button id="pause-menu" class="button secondary">저장하고 메뉴로</button></div>`, () => {
       document.querySelector<HTMLButtonElement>('#pause-guide')!.onclick = () => { modalClose?.(); help(); };
       document.querySelector<HTMLButtonElement>('#pause-settings')!.onclick = () => { modalClose?.(); openSettings(); };
       document.querySelector<HTMLButtonElement>('#pause-menu')!.onclick = () => { modalClose?.(); exitWithSave(); };
     });
   };
-  const help = () => openModal('왕국을 지배하는 방법', `<div class="guide-steps"><article><b>승리 조건 · 살아남는 마지막 왕국</b><p>적색·황색·보라 왕국의 본부 3곳을 모두 함락시키면 승리합니다. 쉬움에서는 AI가 늦게 공격하므로 먼저 병력과 자원을 확보하세요.</p></article><article><b>00 · 기지 건설과 장군 모집</b><p>K 키 또는 상단 기지 관리 버튼으로 5×5 영지에 들어가세요. 빈 칸은 건설, 완공된 건물은 클릭해 실내로 입장합니다. 실제 3D 전장에 배치된 내 건물을 클릭해도 실내에 들어갈 수 있으며, 내부 설비 확장·자원 교환·병력 훈련·성벽 수리가 가능합니다. 건설과 실내 관리 중에는 전투 시간이 멈춥니다. 장군은 부대에 배치할 수 있습니다.</p></article><article><b>01 · 경제를 성장시키세요</b><p>금광과 농장을 강화하면 병력을 꾸준히 생산할 수 있습니다. 성장 정책은 자원 수입을 25% 늘립니다.</p></article><article><b>02 · 거점을 점령하세요</b><p>작전 탭에서 기동대를 선택해 +3명 편성하세요. 부대 선택 후 지도에서 목적지를 클릭하면 그 부대만 이동하며, '본부' 버튼으로 즉시 복귀 명령을 내릴 수 있습니다. 적과 아군이 함께 있으면 점령이 정지합니다.</p></article><article><b>03 · 연구하고 정복하세요</b><p>병영 Lv.2에서 연구와 궁병, Lv.3에서 중장병과 기병이 해금됩니다. 모든 적 본부를 함락하면 승리합니다.</p></article><article><b>04 · 폭풍에 대비하세요</b><p>보통 난이도는 2분 10초, 쉬움은 3분부터 안전지대가 줄어듭니다. 밖에 있는 본부·병력이 피해를 받으며, 거점 1개당 본부 폭풍 피해가 12% 줄어듭니다 (최대 60%).</p></article></div><div class="shortcut-grid"><span><kbd>WASD</kbd> 시점 이동</span><span><kbd>H</kbd> 내 영지</span><span><kbd>V/T</kbd> 직접 플레이/전략</span><span><kbd>E</kbd> 성벽 올라가기·내려가기</span><span><kbd>F</kbd> 활 발사</span><span><kbd>1–4</kbd> 병종 훈련</span><span><kbd>5–7</kbd> 부대 그룹 선택</span><span><kbd>G</kbd> 위치 지정 · <kbd>B</kbd> 본부 복귀</span><span><kbd>Esc</kbd> 일시정지</span><span>드래그: 회전 · Shift+드래그: 이동</span><span>휠: 확대 · Shift+클릭: 명령</span><span>터치: 드래그 이동 · 두 손가락 확대</span><span>미니맵: 이동 모드에서 어디든 클릭해 부대 이동</span></div>`);
+  const help = () => openModal('왕국을 지배하는 방법', `<div class="guide-steps"><article><b>00 · 기지 건설과 장군 모집</b><p>K 키 또는 상단 기지 관리 버튼으로 5×5 영지에 들어가세요. 빈 칸은 건설, 완공된 건물은 클릭해 실내로 입장합니다. 실제 3D 전장에 배치된 내 건물을 클릭해도 실내에 들어갈 수 있으며, 내부 설비 확장·자원 교환·병력 훈련·성벽 수리가 가능합니다. 건설과 실내 관리 중에는 전투 시간이 멈춥니다. 장군은 부대에 배치할 수 있습니다.</p></article><article><b>승리 조건 · 경제 패권 또는 정복</b><p>${w.economyCampaign ? '경영 원정: 도시 Lv.4·계약 3건·평판 80·거점 3개로 경제 승리합니다. 도시 단계마다 병력 한도가 6명씩 늘어납니다.' : '이 원정은 정복 승리 규칙을 사용합니다.'} 모든 적 본부를 함락해도 승리합니다.</p></article><article><b>01 · 일꾼과 도시를 관리하세요</b><p>금광·농장에 6명씩 배치된 상태로 시작합니다. −로 대기시킨 뒤 +로 다른 시설에 배치하세요. 시민 모집은 금 20·식량 30입니다. 도시를 확장하면 인구 한도가 늘어납니다. 시민 12명 초과분은 세금을 내고 식량을 소비합니다.</p></article><article><b>02 · 수출하고 계약을 이행하세요</b><p>시장을 건설하고 상인 1명을 배치하면 교역 탭에서 수출할 수 있습니다. 무역항과 서부 항구 또는 남동부 교역소를 확보하면 해상 항로가 열립니다. 계약은 보증금을 내고 수락한 뒤 기한 안에 직접 납품하세요. 성공하면 평판이 오르고, 만료되면 보증금을 잃습니다. 창고가 가득 차면 넘치는 생산·교역 보상은 받지 못합니다.</p></article><article><b>03 · 교역로를 지키세요</b><p>작전 탭에서 기동대를 선택해 병력을 편성하고 지도를 클릭해 이동하세요. 병영 Lv.2에서 연구와 궁병, Lv.3에서 중장병과 기병이 해금됩니다. 상인이나 해상 거점이 없으면 운송이 멈추며, 조건을 되찾으면 재개합니다.</p></article><article><b>04 · 폭풍에 대비하세요</b><p>이 원정의 폭풍은 ${clock(stormStartFor(w))}부터 시작합니다. 밖에 있는 본부·병력이 피해를 받으며, 거점 1개당 본부 폭풍 피해가 12% 줄어듭니다 (최대 60%).</p></article></div><div class="shortcut-grid"><span><kbd>WASD</kbd> 시점 이동</span><span><kbd>H</kbd> 내 영지</span><span><kbd>V/T</kbd> 직접 플레이/전략</span><span><kbd>E</kbd> 성벽 올라가기·내려가기</span><span><kbd>F</kbd> 활 발사</span><span><kbd>1–4</kbd> 병종 훈련</span><span><kbd>5–7</kbd> 부대 그룹 선택</span><span><kbd>G</kbd> 위치 지정 · <kbd>B</kbd> 본부 복귀</span><span><kbd>Esc</kbd> 일시정지</span><span>드래그: 회전 · Shift+드래그: 이동</span><span>휠: 확대 · Shift+클릭: 명령</span><span>터치: 드래그 이동 · 두 손가락 확대</span><span>미니맵: 이동 모드에서 어디든 클릭해 부대 이동</span></div>`);
   const syncSound = () => { el('#sound').innerHTML = icon(prefs.sound ? 'sound' : 'muted'); el('#sound').setAttribute('aria-label', prefs.sound ? '효과음 끄기' : '효과음 켜기'); audio.setMuted(!prefs.sound); };
   const openSettings = () => openModal('전장 설정', `<div class="settings-grid"><label>그래픽 품질<select id="graphics-setting"><option value="high">높음 · 그림자와 효과</option><option value="standard">보통 · 성능 우선</option><option value="low">낮음 · 저사양 기기</option></select></label><label>효과음<input type="checkbox" id="audio-setting"></label><label>움직임 줄이기<input type="checkbox" id="motion-setting"></label></div><p class="dialog-tip">설정은 이 브라우저에 저장됩니다. 보통은 그림자·효과를 줄이고, 낮음은 해상도와 색 보정도 줄입니다. 관리 패널 아래 FPS로 실제 화면 속도를 확인하세요.</p>`, () => {
     const quality = document.querySelector<HTMLSelectElement>('#graphics-setting')!, sound = document.querySelector<HTMLInputElement>('#audio-setting')!, motion = document.querySelector<HTMLInputElement>('#motion-setting')!;
@@ -335,11 +367,11 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     el('#adventure-progress-fill').style.width = detail.progress + '%';
   };
   const goStrategy = () => { adventureControl.toStrategy(); cameraUpdate(); updateAdventureUI(); };
-  const openBase = (tab:'build'|'generals'='build') => { if(done||modalClose)return; goStrategy(); heldKeys.clear(); baseManager.open(tab); };
+  const openBase = (tab:'build'|'generals'='build') => { if(done||modalClose)return; rallyMode = false; syncCommandMode(false); goStrategy(); heldKeys.clear(); baseManager.open(tab); };
   el<HTMLButtonElement>('#open-base').onclick = () => openBase('build');
   el<HTMLButtonElement>('#open-base-economy').onclick = () => openBase('build');
   el<HTMLButtonElement>('#open-base-generals').onclick = () => openBase('generals');
-  const goField = () => { adventureControl.toField(); updateAdventureUI(); };
+  const goField = () => { rallyMode = false; syncCommandMode(false); adventureControl.toField(); updateAdventureUI(); };
   el<HTMLButtonElement>('#adventure-enter').onclick = goField;
   el<HTMLButtonElement>('#adventure-strategy').onclick = goStrategy;
   el<HTMLButtonElement>('#adventure-tower').onclick = () => { adventureControl.enterTower(); updateAdventureUI(); };
@@ -364,6 +396,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     el('#squad-move-mode').classList.toggle('active', enabled);
   };
   const selectSquad = (value: SquadId) => {
+    rallyMode = false;
     selectedSquad = value;
     showTab('orders');
     syncCommandMode(true);
@@ -390,13 +423,18 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   el<HTMLButtonElement>('#squad-home').onclick = issueHome;
   el<HTMLButtonElement>('#quick-home').onclick = issueHome;
   el<HTMLButtonElement>('#squad-move-mode').onclick = () => {
+    rallyMode = false;
     syncCommandMode(true); announce(SQUAD_NAMES[selectedSquad] + ' 이동 모드 · 지도 또는 바닥 아무 곳이나 클릭하세요.');
   };
   el<HTMLButtonElement>('#quick-move').onclick = () => {
+    rallyMode = false;
     syncCommandMode(!commandMode);
     announce(commandMode ? SQUAD_NAMES[selectedSquad] + ' 이동 모드: 목적지를 클릭하세요.' : '시점 이동 모드입니다.');
   };
+  el<HTMLButtonElement>('#rally-set').onclick = () => { rallyMode = !rallyMode; syncCommandMode(rallyMode); ui(); announce(rallyMode ? '전장이나 미니맵에서 새 병력의 집결지를 누르세요.' : '집결지 지정 모드를 종료했습니다.'); };
+  el<HTMLButtonElement>('#rally-clear').onclick = () => perform(() => setRecruitRally(w, 0, null), '집결지를 본부로 초기화했습니다.');
   el<HTMLButtonElement>('#map-mode').onclick = () => {
+    rallyMode = false;
     syncCommandMode(!commandMode);
     announce(commandMode ? '선택 부대의 목적지를 미니맵에서 지정하세요. 본부 클릭으로 복귀합니다.' : '미니맵을 클릭해 카메라를 이동하세요.');
   };
@@ -417,6 +455,11 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     el<HTMLButtonElement>('#quick-home').disabled = !active;
     el<HTMLButtonElement>('#squad-move-mode').disabled = !active;
     el<HTMLButtonElement>('#quick-move').disabled = !active;
+    const selected = squadUnits(w, selectedSquad);
+    const maxHp = selected.reduce((sum, unit) => sum + UNIT_STATS[unit.kind].hp, 0);
+    const hp = selected.reduce((sum, unit) => sum + unit.hp, 0);
+    text('#squad-combat', `${SQUAD_NAMES[selectedSquad]} ${selected.length}명 · 체력 ${maxHp ? Math.round(hp / maxHp * 100) : 0}% · 교전 ${selected.filter(unit => unit.cooldown > 0).length}명`);
+    text('#combat-summary', `전투 누적 · 처치 ${w.stats[0].kills} · 손실 ${w.stats[0].lost} · 피해 ${Math.floor(w.stats[0].damageDealt)}`);
     text('#squad-order-status', SQUAD_NAMES[selectedSquad] + ' · ' + counts[selectedSquad] + '명 · ' + squadOrderLabel(w, selectedSquad));
   };
   const map = el<HTMLCanvasElement>('#war-map'), ctx = map.getContext('2d');
@@ -503,21 +546,43 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     const value = button.querySelector('.action-meta'); if (value && value.textContent !== meta) value.textContent = meta;
   }
   function ui(): void {
+    armyLimit = maxUnitsFor(w);
     const p = w.factions[0], counts = w.factions.map(f => w.units.filter(u => u.owner === f.id).length), owned = w.outposts.filter(post => post.owner === 0).length;
     const income = getIncome(w, 0), unavailable = !p.alive || done || w.over;
     text('#gold', Math.floor(p.gold).toLocaleString('ko-KR')); text('#food', Math.floor(p.food).toLocaleString('ko-KR'));
-    text('#gold-income', `+${income.gold.toFixed(1)}/초`); text('#food-income', `+${income.food.toFixed(1)}/초`);
-    text('#army-count', `${counts[0]} / ${armyLimit}`); text('#territory-count', `${owned} / 9`); refreshSquads(unavailable);
+    text('#gold-income', `+${income.gold.toFixed(1)}/초`); text('#food-income', `${income.food >= 0 ? '+' : ''}${income.food.toFixed(1)}/초`);
+    refreshEconomy(unavailable);
+    const recruitment = w.recruitment[0], queued = queuedUnits(recruitment);
+    text('#army-count', `${counts[0]}${queued ? ' +' + queued : ''} / ${armyLimit}`); text('#territory-count', `${owned} / 9`); refreshSquads(unavailable);
+    text('#campaign-objective', w.economyCampaign ? `경제 승리 · 도시 ${w.economy[0].city}/4 · 계약 ${Math.min(3,w.economy[0].completed)}/3 · 평판 ${w.economy[0].reputation}/80 · 거점 ${owned}/3` : `정복 승리 · 남은 적 본부 ${w.factions.filter(f => f.id !== 0 && f.alive).length}개 · 폭풍 ${clock(stormStartFor(w))}`);
+    const head = recruitment.queue[0];
+    text('#training-label', queued ? `${queued}명 훈련 중 · 전체 완료 약 ${waitLabel(queuedSeconds(recruitment))}` : '병력 훈련 대기 중');
+    el<HTMLProgressElement>('#training-progress').value = head ? 1 - head.remaining / TRAINING_SECONDS[head.kind] : 0;
+    for (let i = 0; i < TRAINING_SLOTS; i++) {
+      const item = recruitment.queue[i]; el(`#training-row-${i}`).hidden = !item;
+      if(item)text(`#training-item-${i}`, `${i + 1}. ${UNIT_STATS[item.kind].label} ${item.amount}명 · ${i ? '대기' : waitLabel(item.remaining) + ' 후 1명 완료'}`);
+      el<HTMLButtonElement>(`#cancel-training-${i}`).disabled = unavailable || !item;
+    }
+    text('#recruit-rally-summary', recruitment.rally ? `새 병력 집결지: ${Math.round(recruitment.rally.x)}, ${Math.round(recruitment.rally.z)}` : '새 병력 집결지: 본부');
+    el<HTMLButtonElement>('#rally-set').disabled = unavailable;
+    el('#rally-set').setAttribute('aria-pressed',String(rallyMode));
+    text('#rally-set',rallyMode ? '지도에서 집결지를 누르세요' : '지도에서 집결지 지정');
+    el<HTMLButtonElement>('#rally-clear').disabled = unavailable || !recruitment.rally;
     text('#war-clock', clock(w.time)); text('#difficulty-badge', DIFFICULTIES[w.difficulty].label); text('#hq-value', `${Math.max(0, Math.ceil(p.hp))} / ${p.maxHp}`);
     el('#hq-fill').style.width = `${Math.max(0, p.hp / p.maxHp) * 100}%`; el('#hq-fill').classList.toggle('danger', p.hp < p.maxHp * .3);
-    for (const b of BUILDINGS) { const c = cost(p, b.key); updateAction(`#build-${b.key}`, unavailable || p[b.key] >= 4 || p.gold < c.gold || p.food < c.food, p[b.key] >= 4 ? 'Lv.4 · 최대' : `Lv.${p[b.key]} → ${p[b.key] + 1}\n${price(c.gold, c.food)}`); }
+    for (const b of BUILDINGS) {
+      const c = cost(p, b.key), needed = affordability(w,c.gold,c.food), preview = upgradePreview(w,b.key);
+      updateAction(`#build-${b.key}`, unavailable || p[b.key] >= 4 || needed.seconds > 0, p[b.key] >= 4 ? 'Lv.4 · 최대' : `Lv.${p[b.key]} → ${p[b.key] + 1}\n${price(c.gold,c.food)}${needed.seconds ? '\n준비 ' + waitLabel(needed.seconds) : ''}`);
+      const detail = el(`#build-${b.key} .action-copy small`);
+      if(b.key==='mine'||b.key==='farm')detail.textContent = p[b.key] >= 4 ? '최대 생산 단계' : `${b.key==='mine'?'금':'식량'} +${(b.key==='mine'?preview.gold:preview.food).toFixed(2)}/초 · ${b.key==='mine'?'금':'식량'} 비용 회수 ${waitLabel(preview.payback)}`;
+    }
     for (const key of ['balanced', 'growth', 'war'] as EconomyPolicy[]) { const button = el<HTMLButtonElement>(`#policy-${key}`); button.classList.toggle('selected', p.policy === key); button.setAttribute('aria-pressed', String(p.policy === key)); button.disabled = unavailable; }
     text('#policy-description', policyDescriptions[p.policy]); el<HTMLButtonElement>('#repair').disabled = unavailable || p.hp >= p.maxHp - 1 || p.gold < 45 || p.food < 25;
     for (const kind of UNIT_KINDS) {
       const s = UNIT_STATS[kind], locked = p.barracks < s.unlock;
-      text(`#count-${kind}`, String(w.units.filter(u => u.owner === 0 && u.kind === kind).length)); text(`#unlock-${kind}`, locked ? `병영 Lv.${s.unlock} 필요` : '훈련 가능');
-      el<HTMLButtonElement>(`#train-${kind}`).disabled = unavailable || locked || p.gold < s.gold || p.food < s.food || counts[0] >= armyLimit;
-      el<HTMLButtonElement>(`#squad-${kind}`).disabled = unavailable || locked || p.gold < s.gold * recruitBatch || p.food < s.food * recruitBatch || counts[0] + recruitBatch > armyLimit;
+      text(`#count-${kind}`, String(w.units.filter(u => u.owner === 0 && u.kind === kind).length)); text(`#unlock-${kind}`, locked ? `병영 Lv.${s.unlock} 필요` : w.economyCampaign ? `1명 ${TRAINING_SECONDS[kind]}초 · 대기 ${queued}명` : '즉시 동원');
+      el<HTMLButtonElement>(`#train-${kind}`).disabled = unavailable || locked || p.gold < s.gold || p.food < s.food || counts[0] + queued >= armyLimit || (w.economyCampaign === true && recruitment.queue.length >= TRAINING_SLOTS);
+      el<HTMLButtonElement>(`#squad-${kind}`).disabled = unavailable || locked || p.gold < s.gold * recruitBatch || p.food < s.food * recruitBatch || counts[0] + queued + recruitBatch > armyLimit || (w.economyCampaign === true && recruitment.queue.length >= TRAINING_SLOTS);
     }
     for (const amount of reserveAmounts) { const button = el<HTMLButtonElement>(`#reserve-${amount}`); button.classList.toggle('selected', p.reserve === amount); button.setAttribute('aria-pressed', String(p.reserve === amount)); button.disabled = unavailable; }
     updateAction('#defend', unavailable, p.target === null && p.rally === null ? '현재 명령' : '복귀', p.target === null && p.rally === null);
@@ -542,12 +607,20 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     el('#mission-action').setAttribute('aria-label', threatened ? '본부로 이동하고 방어 명령 확인' : '목표로 이동');
     if (threatened && !wasThreatened) { audio.play('warning'); announce('적의 본부 공세가 감지됐습니다. 병력을 복귀시키거나 본부 수비대를 확보하세요.'); }
     wasThreatened = threatened;
-    if (threatened) { text('#mission-title', '본부에 적 병력이 접근합니다'); text('#mission-description', '화살표를 눌러 본부와 방어 명령을 확인하세요.'); el<HTMLButtonElement>('#mission-action').onclick = () => { home(); showTab('orders'); el<HTMLButtonElement>('#defend').focus({ preventScroll: true }); }; }
-    else if (p.mine < 2 || p.farm < 2) { text('#mission-title', '풍요로운 영지의 시작'); text('#mission-description', '금광과 농장을 Lv.2로 강화하세요.'); el<HTMLButtonElement>('#mission-action').onclick = () => showTab('economy'); }
-    else if (counts[0] < 6 && owned === 0) { text('#mission-title', '첫 원정대를 준비하세요'); text('#mission-description', '6명 이상의 병력을 모아 거점으로 출전하세요.'); el<HTMLButtonElement>('#mission-action').onclick = () => showTab('army'); }
-    else if (owned === 0) { text('#mission-title', '첫 번째 깃발을 세우세요'); text('#mission-description', '가까운 북서부 관문을 점령해 보세요.'); el<HTMLButtonElement>('#mission-action').onclick = () => { showTab('orders'); showTarget({ kind: 'outpost', id: 5 }); }; }
-    else if (p.barracks < 2 || w.stats[0].researches === 0) { text('#mission-title', '왕국의 기술을 발전시키세요'); text('#mission-description', '병영 Lv.2를 달성하고 첫 연구를 완료하세요.'); el<HTMLButtonElement>('#mission-action').onclick = () => showTab(p.barracks < 2 ? 'economy' : 'research'); }
-    else { text('#mission-title', '마지막 왕국으로 남으세요'); text('#mission-description', `남은 적 왕국 ${w.factions.filter(f => f.alive && f.id !== 0).length}개 · 거점 ${owned}/9 확보`); el<HTMLButtonElement>('#mission-action').onclick = () => showTab('orders'); }
+    const milestone = nextMilestone(w), progress = tutorialProgress(w);
+    el('#tutorial-progress').hidden = w.grandBattle === true;
+    progress.forEach((complete,i) => { el(`#tutorial-step-${i}`).classList.toggle('complete',complete); el(`#tutorial-step-${i}`).setAttribute('aria-label',`${['생산 확보','첫 거점',w.economyCampaign?'첫 계약':'첫 연구'][i]} ${complete?'완료':'진행 전'}`); });
+    overlay.querySelectorAll<HTMLElement>('.guided-control').forEach(node=>node.classList.remove('guided-control'));
+    el(milestone.control).classList.add('guided-control');
+    if (threatened) {
+      text('#mission-title', '본부에 적 병력이 접근합니다'); text('#mission-description', '화살표를 눌러 본부와 방어 명령을 확인하세요.');
+      el<HTMLButtonElement>('#mission-action').onclick = () => { home(); showTab('orders'); revealControl('#defend'); };
+    } else {
+      text('#mission-title',milestone.title); text('#mission-description',milestone.description);
+      el<HTMLButtonElement>('#mission-action').onclick = () => { showTab(milestone.tab); revealControl(milestone.control); };
+    }
+    if(!threatened && !unavailable && (w.stats[0].lost>previousLost || w.stats[0].kills>previousKills))announce(`전투 변화 · 적 처치 +${w.stats[0].kills-previousKills} · 아군 손실 +${w.stats[0].lost-previousLost}`);
+    previousLost=w.stats[0].lost;previousKills=w.stats[0].kills;
     const storm = stormDamage(w, 0), stormStart = stormStartFor(w), beforeStorm = w.time < stormStart;
     text('#storm-clock', beforeStorm ? `폭풍까지 ${clock(stormStart - w.time)}` : '폭풍 진행 중'); text('#zone-size', `${Math.round(w.zone)}m`);
     el('#storm-warning').hidden = storm === 0;
@@ -581,6 +654,16 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     });
     const player = w.factions[0], goal = player.target !== null ? w.factions[player.target] : player.rally !== null ? w.outposts[player.rally] : null;
     if (goal) { const a = point(player.x, player.z), b = point(goal.x, goal.z); ctx.strokeStyle = '#efcf8b'; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.setLineDash([]); ctx.strokeRect(b.x - 7, b.y - 7, 14, 14); }
+    const shipment = w.economy[0].shipment, route = shipment?.route ?? previewRoute;
+    if(route){
+      const from=point(player.x,player.z), destination=exportDestination(w,0,route), to=point(destination.x,destination.z);
+      ctx.strokeStyle=shipment&&routeRequirement(w,0,route,shipment.loads)?'#e88c73':'#ffd887';ctx.lineWidth=2;ctx.setLineDash([4,3]);
+      ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.lineTo(to.x,to.y);ctx.stroke();ctx.setLineDash([]);
+      const cargo=exportPosition(w,0);
+      if(cargo){const dot=point(cargo.x,cargo.z);ctx.fillStyle='#ffe6a1';ctx.fillRect(dot.x-3,dot.y-3,6,6);}
+    }
+    const rally=w.recruitment[0].rally;
+    if(rally){const marker=point(rally.x,rally.z);ctx.strokeStyle='#fff1a2';ctx.lineWidth=2;ctx.strokeRect(marker.x-4,marker.y-4,8,8);ctx.fillStyle='#fff1a2';ctx.font='10px sans-serif';ctx.fillText('集',marker.x+5,marker.y);}
     const f = point(focus.x, focus.z); ctx.strokeStyle = '#f1eee1'; ctx.lineWidth = 1; const size = zoom / 15; ctx.strokeRect(f.x - size, f.y - size * .65, size * 2, size * 1.3);
   }
   function finish(): void {
@@ -589,7 +672,14 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     const end = el('.war-end'); end.hidden = false;
     [...overlay.children].forEach(child => { if (child instanceof HTMLElement && child !== end) child.inert = true; });
     end.innerHTML = `<section class="result-panel" role="dialog" aria-modal="true" aria-labelledby="result-title"><span class="result-emblem">${icon(victory ? 'crown' : 'shield', 52)}</span><div class="kicker">${victory ? 'VICTORY' : 'THE KINGDOM WILL RISE AGAIN'}</div><h1 id="result-title" tabindex="-1">${victory ? '마지막 왕국의 주인' : '새로운 원정이 기다립니다'}</h1><p>${victory ? '모든 경쟁자를 물리치고 전장을 통일했습니다.' : '영지가 함락되었습니다. 다음 전투에서 다시 도전하세요.'}</p><div class="result-stats"><div><b>${clock(w.time)}</b><span>생존 시간</span></div><div><b>${stats.kills}</b><span>적 병력 처치</span></div><div><b>${stats.captures}</b><span>거점 점령</span></div><div><b>${stats.trained}</b><span>병력 훈련</span></div><div><b>${stats.researches}</b><span>연구 완료</span></div><div><b>${Math.floor(stats.goldEarned).toLocaleString('ko-KR')}</b><span>획득한 금</span></div></div><p class="result-tip">${victory ? '다른 난이도와 병종 조합으로 새로운 전략을 시도해 보세요.' : stats.captures === 0 ? '다음 전략: 가까운 거점을 먼저 점령해 자원 생산과 폭풍 방어를 확보해 보세요.' : '다음 전략: 연구와 병종 조합으로 전투력을 높이고, 본부 수리 자원을 남겨 두세요.'}</p><div class="result-actions"><button id="back" class="button secondary">왕국 메뉴</button><button id="again" class="button primary">같은 난이도로 재도전 ${icon('arrow', 18)}</button></div></section>`;
-    el<HTMLButtonElement>('#again').onclick = () => { const difficulty = w.difficulty, grandBattle = w.grandBattle; close(false); openWar(onExit, { forceNew: true, difficulty, grandBattle }); };
+    const economy = w.economy[0];
+    if (w.victory === 'economic') {
+      text('#result-title', victory ? '교역 제국의 탄생' : '경제 패권을 빼앗겼습니다');
+      text('.result-panel > p', victory ? '도시와 무역, 계약과 영토를 연결해 경제 승리를 달성했습니다.' : '다른 왕국이 도시 성장과 계약 이행으로 경제 승리를 달성했습니다.');
+    }
+    const economicStats = document.createElement('p'); economicStats.className = 'result-economy'; economicStats.textContent = `도시 Lv.${economy.city} · 수출 ${economy.exports}회 · 계약 ${economy.completed}건 · 교역 수입 ${Math.floor(economy.tradeGold)}금`;
+    el('.result-stats').after(economicStats);
+    el<HTMLButtonElement>('#again').onclick = () => { const difficulty = w.difficulty, grandBattle = w.grandBattle, economyCampaign = w.economyCampaign; close(false); openWar(onExit, { forceNew: true, difficulty, grandBattle, economyCampaign }); };
     el<HTMLButtonElement>('#back').onclick = () => close();
     end.addEventListener('keydown', event => {
       if (event.key !== 'Tab') return;
@@ -630,5 +720,5 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__war = { world: w, renderer, camera, scene, ui, finish, skipDrop: () => { adventureControl.skipDrop(); updateAdventureUI(); }, setPaused: (value: boolean) => { paused = value; } };
   frame = requestAnimationFrame(loop);
   el<HTMLButtonElement>('#home').focus({ preventScroll: true });
-  if (!wasThreatened) announce(resumed ? '저장한 전투를 이어갑니다. V 키로 직접 탐험할 수 있습니다.' : '낙하산으로 강하합니다! 착륙 후 거점을 점령하고 성벽 위에서 활을 쏘세요.');
+  if (!wasThreatened) announce(resumed ? '저장한 전투를 이어갑니다. V 키로 직접 탐험할 수 있습니다.' : w.economyCampaign ? '경영 원정 시작! 일꾼과 도시를 관리하고 교역 탭에서 수출과 계약을 시작하세요.' : '낙하산으로 강하합니다! 착륙 후 거점을 점령하고 성벽 위에서 활을 쏘세요.');
 }

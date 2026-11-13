@@ -4,13 +4,11 @@ import { createWar } from '../../src/battle/war';
 import { loadWar, saveWar, WAR_SAVE_KEY } from '../../src/battle/save';
 
 const navigation = vi.hoisted(() => ({
-  openWar: vi.fn<(onExit: () => void, options: { forceNew: boolean; difficulty: string; grandBattle: boolean }) => void>(),
-  startLegacy: vi.fn<(parent: HTMLElement, onExit: () => void) => void>(),
+  openWar: vi.fn<(onExit: () => void, options: { forceNew: boolean; difficulty: string }) => void>(),
   preview: vi.fn<(mount: HTMLElement) => () => void>(),
   disposePreview: vi.fn(),
 }));
 vi.mock('../../src/battle/view', () => ({ openWar: navigation.openWar }));
-vi.mock('../../src/legacy', () => ({ startLegacy: navigation.startLegacy }));
 vi.mock('../../src/battle/preview', () => ({ createLandingPreview: navigation.preview }));
 
 function button(selector: string): HTMLButtonElement {
@@ -45,8 +43,7 @@ describe('menu navigation and recovery', () => {
     expect(start.disabled).toBe(true);
     await vi.dynamicImportSettled();
     expect(navigation.openWar).toHaveBeenCalledTimes(1);
-    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), { forceNew: true, difficulty: 'hard', grandBattle: true });
-    expect(navigation.startLegacy).not.toHaveBeenCalled();
+    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), { forceNew: true, difficulty: 'hard' });
     expect(navigation.disposePreview).toHaveBeenCalledTimes(1);
     navigation.openWar.mock.calls[0][0]();
     await vi.dynamicImportSettled();
@@ -55,13 +52,13 @@ describe('menu navigation and recovery', () => {
 
   it('explains the actual grand-campaign storm times for the selected difficulty', async () => {
     await loadMenu();
-    expect(document.querySelector('#difficulty-description')?.textContent).toContain('4분 30초');
+    expect(document.querySelector('#difficulty-description')?.textContent).toContain('5분 30초');
     button('#difficulty-easy').click();
-    expect(document.querySelector('#difficulty-description')?.textContent).toContain('6분');
+    expect(document.querySelector('#difficulty-description')?.textContent).toContain('7분');
     expect(button('#difficulty-easy').getAttribute('aria-pressed')).toBe('true');
     button('#guide').click();
     expect(document.querySelector('.dialog-body')?.textContent).toContain('25명');
-    expect(document.querySelector('.dialog-body')?.textContent).toContain('4분 30초');
+    expect(document.querySelector('.dialog-body')?.textContent).toContain('5분 30초');
   });
 
   it('keeps a small battle save untouched until the user confirms a new grand campaign', async () => {
@@ -75,7 +72,7 @@ describe('menu navigation and recovery', () => {
     expect(loadWar()).toEqual(saved);
     button('#start-grand').click(); button('.dialog-confirm').click();
     await vi.dynamicImportSettled();
-    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), { forceNew: true, difficulty: 'normal', grandBattle: true });
+    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), { forceNew: true, difficulty: 'normal' });
   });
 
   it('opens the menu and settings even when saved battle, career, and preferences are corrupt', async () => {
@@ -102,8 +99,7 @@ describe('menu navigation and recovery', () => {
     button('#difficulty-easy').click(); button('#continue-war').click();
     await vi.dynamicImportSettled();
     expect(navigation.openWar).toHaveBeenCalledTimes(1);
-    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), { forceNew: false, difficulty: 'hard', grandBattle: true });
+    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), { forceNew: false, difficulty: 'hard' });
     expect(loadWar()).toEqual(saved);
-    expect(navigation.startLegacy).not.toHaveBeenCalled();
   });
 });

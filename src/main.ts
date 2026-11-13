@@ -1,7 +1,7 @@
 import './style.css';
 import './battle/war.css';
 import { loadWar } from './battle/save';
-import { DIFFICULTIES, difficultyDescription, type Difficulty } from './battle/war';
+import { DIFFICULTIES, difficultyDescription, stormStartFor, type Difficulty } from './battle/war';
 import { readPreferences, writePreferences, readCareer } from './battle/preferences';
 import { icon } from './ui/icons';
 import { showDialog } from './ui/dialog';
@@ -10,6 +10,7 @@ const app = document.querySelector<HTMLDivElement>('#game')!;
 let disposePreview: (() => void) | undefined;
 let generation = 0;
 let selectedDifficulty: Difficulty = 'normal';
+const stormTime = (difficulty: Difficulty) => clock(stormStartFor({ difficulty, grandBattle: true }));
 const clock = (time: number) => `${Math.floor(time / 60)}분 ${Math.floor(time % 60)}초`;
 
 function renderMenu(): void {
@@ -62,7 +63,7 @@ function renderMenu(): void {
       const { openWar } = await import('./battle/view');
       if (generation !== navigation) return;
       app.hidden = true;
-      openWar(renderMenu, { forceNew: !resume, difficulty: resume && saved ? saved.difficulty : selectedDifficulty, grandBattle: true });
+      openWar(renderMenu, { forceNew: !resume, difficulty: resume && saved ? saved.difficulty : selectedDifficulty });
     } catch {
       renderMenu();
       showDialog({ title: '전장을 불러오지 못했어요', body: '<p>네트워크 연결을 확인한 뒤 다시 시작해 주세요. 저장한 전투는 변경되지 않았습니다.</p>' });
@@ -81,7 +82,7 @@ function renderMenu(): void {
       app.querySelector('#difficulty-description')!.textContent = difficultyDescription(selectedDifficulty, true);
     };
   });
-  app.querySelector<HTMLButtonElement>('#guide')!.onclick = () => showDialog({ eyebrow: 'FIELD GUIDE', title: '첫 군단전을 위한 작전 브리핑', body: `<div class="guide-steps"><article><span>01</span><div><b>먼저, 튼튼한 경제를.</b><p>아군 100명과 Lv.3 시설로 시작합니다. 성장 정책으로 생산을 늘리고 병력과 연구에 투자하세요.</p></div></article><article><span>02</span><div><b>가까운 거점에 깃발을.</b><p>작전 탭에서 북서부 관문을 선택해 출전하세요. 거점마다 자원 보너스가 다르고, 본부 폭풍 피해도 줄어듭니다.</p></div></article><article><span>03</span><div><b>서로 다른 병종을 조합하세요.</b><p>처음부터 네 병종을 훈련할 수 있습니다. 작전 탭에서 기동대에 25명을 편성하고, 주력군과 나누어 지휘하세요.</p></div></article><article><span>04</span><div><b>폭풍보다 빠르게 정복하세요.</b><p>보통·도전은 4분 30초, 입문은 6분부터 안전지대가 줄어듭니다. 모든 적 본부를 함락하고 마지막 생존 왕국이 되세요.</p></div></article></div><p class="dialog-tip">온라인 멀티플레이가 아닌 1명 대 AI 3개 세력의 실시간 전략 게임입니다. 저장 내용은 현재 브라우저와 사이트 주소에만 보관됩니다.</p>`, cancel: '이제 시작해 볼게요' });
+  app.querySelector<HTMLButtonElement>('#guide')!.onclick = () => showDialog({ eyebrow: 'FIELD GUIDE', title: '첫 군단전을 위한 작전 브리핑', body: `<div class="guide-steps"><article><span>01</span><div><b>먼저, 튼튼한 경제를.</b><p>아군 100명과 Lv.3 시설로 시작합니다. 성장 정책으로 생산을 늘리고 병력과 연구에 투자하세요.</p></div></article><article><span>02</span><div><b>가까운 거점에 깃발을.</b><p>작전 탭에서 북서부 관문을 선택해 출전하세요. 거점마다 자원 보너스가 다르고, 본부 폭풍 피해도 줄어듭니다.</p></div></article><article><span>03</span><div><b>서로 다른 병종을 조합하세요.</b><p>처음부터 네 병종을 훈련할 수 있습니다. 작전 탭에서 기동대에 25명을 편성하고, 주력군과 나누어 지휘하세요.</p></div></article><article><span>04</span><div><b>폭풍보다 빠르게 정복하세요.</b><p>입문은 ${stormTime('easy')}, 보통은 ${stormTime('normal')}, 도전은 ${stormTime('hard')}부터 안전지대가 줄어듭니다. 모든 적 본부를 함락하고 마지막 생존 왕국이 되세요.</p></div></article></div><p class="dialog-tip">온라인 멀티플레이가 아닌 1명 대 AI 3개 세력의 실시간 전략 게임입니다. 저장 내용은 현재 브라우저와 사이트 주소에만 보관됩니다.</p>`, cancel: '이제 시작해 볼게요' });
   app.querySelector<HTMLButtonElement>('#preferences')!.onclick = () => {
     const p = readPreferences();
     showDialog({ eyebrow: 'PREFERENCES', title: '나에게 맞는 전장', body: '<div class="settings-grid"><label>그래픽 품질<select id="menu-quality"><option value="high">높음 · 그림자와 효과</option><option value="standard">보통 · 성능 우선</option><option value="low">낮음 · 저사양 기기</option></select></label><label>효과음<input id="menu-sound" type="checkbox"></label><label>움직임 줄이기<input id="menu-motion" type="checkbox"></label></div><p class="dialog-tip">게임에는 WebGL을 지원하는 브라우저가 필요합니다. 모바일에서는 가로 화면을 권장합니다.</p>', cancel: '설정 완료' });

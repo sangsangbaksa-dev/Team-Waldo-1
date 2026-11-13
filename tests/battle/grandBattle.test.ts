@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createWar, GRAND_INITIAL_FORCES, GRAND_MAX_UNITS, maxUnitsFor,
-  MAX_UNITS, stepWar, trainSquad, stormStartFor } from '../../src/battle/war';
+  stepWar, trainSquad, stormStartFor } from '../../src/battle/war';
 import { decodeWar, encodeWar } from '../../src/battle/save';
 import { assignSquad, commandSquad, squadUnits } from '../../src/battle/squads';
 
@@ -15,9 +15,7 @@ describe('600 soldier grand-battle expedition', () => {
     expect(war.units.filter(u => u.owner !== 0)).toHaveLength(500);
     expect(new Set(war.units.map(u => u.kind)).size).toBe(4);
     expect(maxUnitsFor(war)).toBe(GRAND_MAX_UNITS);
-    expect(stormStartFor(war)).toBe(360);
-    expect(createWar().units).toHaveLength(16);
-    expect(maxUnitsFor(createWar())).toBe(MAX_UNITS);
+    expect(stormStartFor(war)).toBe(420);
   });
 
   it('mobilizes 25 more troops and saves or resumes a high-population scenario', () => {

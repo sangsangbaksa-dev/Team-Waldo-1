@@ -28,11 +28,12 @@ export function openPvp(onExit:()=>void):void{
    el('#pvp-room').hidden=false;el('#pvp-code').textContent=room.code;
    el('#pvp-players').replaceChildren(...players.map(p=>{const li=document.createElement('li');li.textContent=`${p.faction+1}군 · ${p.name}${p.user_id===room.host_id?' / 방장':''}`;li.style.color=colors[p.faction];return li;}));
    el<HTMLButtonElement>('#pvp-start').disabled=!session.isHost||players.length<2||room.phase!=='waiting';
+   if(room.phase==='playing')notice('전투 진행 중 · 실시간 연결됨');
    if(room.phase==='waiting')notice(players.length<2?'상대 지휘관 참가 대기':`${players.length}명 참가 · 방장 전투 개시 대기`);
   },
   state:incoming=>{
    if(closed)return;
-   if(!war){war=structuredClone(incoming);try{setupBattle();}catch{notice('WebGL 전장을 시작하지 못했습니다. 하드웨어 가속을 확인하세요.');void session.close();}}
+   if(!war){war=structuredClone(incoming);try{setupBattle();}catch(error){console.error('PvP battlefield initialization failed',error);notice('WebGL 전장을 시작하지 못했습니다. 하드웨어 가속을 확인하세요.');void session.close();}}
    else if(incoming!==war)Object.assign(war,structuredClone(incoming));
   },
  });
@@ -63,7 +64,7 @@ export function openPvp(onExit:()=>void):void{
  const resizeObserver=new ResizeObserver(resize);
  function setupBattle(){
   el('.pvp-lobby').hidden=true;el('.pvp-battle').hidden=false;
-  const prefs=readPreferences();scene=new THREE.Scene();renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,prefs.quality==='high'?2:1));renderer.shadowMap.enabled=prefs.quality==='high';renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;
+  const prefs=readPreferences();scene=new THREE.Scene();renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,prefs.quality==='high'?2:prefs.quality==='low'?.6:1));renderer.shadowMap.enabled=prefs.quality==='high';renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;
   el('.pvp-viewport').append(renderer.domElement);camera=new THREE.PerspectiveCamera(43,1,.1,1800);
   const f=war!.factions[session.faction];camera.position.set(f.x+120,160,f.z+140);controls=new OrbitControls(camera,renderer.domElement);controls.target.set(f.x,0,f.z);controls.enableDamping=true;controls.maxPolarAngle=Math.PI*.46;controls.minDistance=35;controls.maxDistance=850;
   world=createBattleWorld(scene,war!);world.setQuality(prefs.quality==='high');world.setReducedMotion(prefs.reducedMotion);resizeObserver.observe(el('.pvp-viewport'));resize();

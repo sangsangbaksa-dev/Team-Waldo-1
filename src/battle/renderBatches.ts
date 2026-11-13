@@ -26,7 +26,8 @@ export function batchStaticChildren(
     return [...byMaterial].map(([material, meshes]) => {
       const transformed = meshes.map(mesh => {
         mesh.updateMatrix();
-        return mesh.geometry.clone().applyMatrix4(mesh.matrix);
+        const geometry = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
+        return geometry.applyMatrix4(mesh.matrix);
       });
       const geometry = mergeGeometries(transformed, false);
       transformed.forEach(part => part.dispose());

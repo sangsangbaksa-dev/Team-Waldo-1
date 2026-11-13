@@ -3,7 +3,7 @@ import { BASE_WIDTH, HQ_SLOT, getBaseState, type PlacedStructure } from './base'
 import type { War } from './war';
 
 /** Lightweight low-poly structures appear in the actual 3D home-base district. */
-export function createBaseDistrict(scene:THREE.Scene,war:War):{update():void;dispose():void}{
+export function createBaseDistrict(scene:THREE.Scene,war:War):{update():void;slotAt(x:number,z:number):number|null;dispose():void}{
   const owner=war.factions[0],district=new THREE.Group();
   district.name='Player construction district';
   district.position.set(owner.x+38,.12,owner.z-2);
@@ -72,6 +72,16 @@ export function createBaseDistrict(scene:THREE.Scene,war:War):{update():void;dis
     last=next;constructed.clear();
     for(const structure of base.structures)construct(structure);
   };
+  /** World-space hit test for entering a constructed building from the real battlefield. */
+  const slotAt=(x:number,z:number):number|null=>{
+    if(!Number.isFinite(x)||!Number.isFinite(z))return null;
+    const localX=x-district.position.x,localZ=z-district.position.z;
+    const col=Math.round(localX/9)+2,row=Math.round(localZ/9)+2;
+    if(col<0||col>=BASE_WIDTH||row<0||row>=BASE_WIDTH)return null;
+    if(Math.abs(localX-(col-2)*9)>4.1||Math.abs(localZ-(row-2)*9)>4.1)return null;
+    const slot=row*BASE_WIDTH+col;
+    return getBaseState(war).structures.some(s=>s.slot===slot)?slot:null;
+  };
   update();
-  return {update,dispose:()=>{scene.remove(district);geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());}};
+  return {update,slotAt,dispose:()=>{scene.remove(district);geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());}};
 }

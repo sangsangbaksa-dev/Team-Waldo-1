@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createWar, GRAND_INITIAL_FORCES, GRAND_MAX_UNITS, maxUnitsFor,
-  stepWar, trainSquad, stormStartFor } from '../../src/battle/war';
+  GRAND_AI_ARMY_LIMITS, stepWar, train, trainSquad, stormStartFor } from '../../src/battle/war';
 import { decodeWar, encodeWar } from '../../src/battle/save';
 import { assignSquad, commandSquad, squadUnits } from '../../src/battle/squads';
 
@@ -53,5 +53,46 @@ describe('600 soldier grand-battle expedition', () => {
     for (let i = 0; i < 6; i++) expect(trainSquad(limited, 0, 'infantry', 50)).toBe(true);
     expect(limited.units.filter(u => u.owner === 0)).toHaveLength(400);
     expect(trainSquad(limited, 0, 'infantry', 1)).toBe(false);
+  });
+
+  it.each(['easy', 'normal', 'hard'] as const)(
+    'caps AI reinforcements on %s while preserving the opening 100 versus 500 battle',
+    difficulty => {
+      const war = createWar({ grandBattle: true, difficulty });
+      expect(war.units.filter(u => u.owner !== 0)).toHaveLength(500);
+      const ai = war.factions[1], cap = GRAND_AI_ARMY_LIMITS[difficulty];
+      ai.gold = 1e7; ai.food = 1e7;
+      ai.research = { weapons: 2, armor: 1, logistics: 1 };
+      const deficit = cap - 4 - war.units.filter(u => u.owner === 1).length;
+      for (let i = 0; i < Math.floor(deficit / 50); i++)
+        expect(trainSquad(war, 1, 'infantry', 50)).toBe(true);
+      if (deficit % 50) expect(trainSquad(war, 1, 'infantry', deficit % 50)).toBe(true);
+      ai.aiTimer = 0;
+      stepWar(war, .05);
+      expect(war.units.filter(u => u.owner === 1)).toHaveLength(cap);
+      ai.aiTimer = 0;
+      stepWar(war, .05);
+      expect(war.units.filter(u => u.owner === 1)).toHaveLength(cap);
+    },
+  );
+
+  it('fires fort-scaled salvos at packed attackers without hitting everyone', () => {
+    const war = createWar({ grandBattle: true });
+    const home = war.factions[0];
+    war.units = Array.from({ length: 6 }, (_, i) => ({
+      id: 1000 + i, owner: 1, kind: 'infantry' as const,
+      x: home.x + i * .2, z: home.z, hp: 52, cooldown: 10,
+    }));
+    for (const opponent of war.factions.slice(1)) opponent.aiTimer = 10000;
+    stepWar(war, .05);
+    expect(war.units.filter(u => u.hp < 52)).toHaveLength(5);
+  });
+
+  it('refuses unknown unit kinds without crashing or charging the player', () => {
+    const war = createWar({ grandBattle: true });
+    const before = [war.factions[0].gold, war.factions[0].food, war.units.length];
+    expect(train(war, 0, 'missing' as never)).toBe(false);
+    expect(trainSquad(war, 0, 'missing' as never, 25)).toBe(false);
+    expect([war.factions[0].gold, war.factions[0].food, war.units.length]).toEqual(before);
   });
 });

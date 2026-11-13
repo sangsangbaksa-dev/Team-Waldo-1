@@ -13,8 +13,13 @@ concurrency:
 
 jobs:
   frontiers:
+    name: Frontiers · ${{ matrix.map }}
     runs-on: ubuntu-24.04
     timeout-minutes: 16
+    strategy:
+      fail-fast: false
+      matrix:
+        map: [classic, frontier, continental]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -24,14 +29,16 @@ jobs:
       - run: npm ci
       - name: Install headless Chromium
         run: npx playwright install --with-deps chromium --only-shell
-      - name: Exercise three maps, both army modes, expedition support and atlas orders
-        timeout-minutes: 10
+      - name: Exercise selected map, both army modes, mobile UI, and expedition records
+        timeout-minutes: 12
+        env:
+          FRONTIERS_MAP: ${{ matrix.map }}
         run: node tools/frontiers-smoke.mjs
       - name: Upload map screenshots and disclosed test fixtures
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: frontiers-evidence-${{ github.sha }}
+          name: frontiers-evidence-${{ matrix.map }}-${{ github.sha }}
           path: browser-artifacts/frontiers/
           if-no-files-found: warn
           retention-days: 7

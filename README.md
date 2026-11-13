@@ -293,7 +293,7 @@ npm run test:browser
 node tools/frontiers-smoke.mjs
 ```
 
-브라우저 스크립트는 각각 로컬 Vite 서버를 시작하고 종료합니다. 기본 회귀 검사는 데스크톱·390px 모바일·320px 소형 모바일·가로 화면을 다룹니다. Frontiers 검사는 세 맵의 일반·대규모 전쟁과 추가 모바일 사례를 다룹니다. 스크린샷, 서버 로그, `report.json`은 `browser-artifacts/`와 `browser-artifacts/frontiers/`에 기록합니다.
+브라우저 스크립트는 각각 로컬 Vite 서버를 시작하고 종료합니다. 기본 회귀 검사는 데스크톱·390px 모바일·320px 소형 모바일·가로 화면을 다룹니다. Frontiers 검사는 맵마다 데스크톱 일반·군단전과 모바일 한 사례, 총 9개를 다루며 CI에서는 맵별로 병렬 실행합니다. 한 맵만 확인하려면 `FRONTIERS_MAP=continental node tools/frontiers-smoke.mjs`처럼 실행합니다. 스크린샷, 서버 로그, `report.json`은 `browser-artifacts/`와 `browser-artifacts/frontiers/`에 기록합니다.
 
 GitHub Actions의 **CI**, **Browser smoke**, **Frontiers browser smoke**에서 같은 검사를 실행합니다. 실행 페이지의 Artifacts에서 스크린샷과 보고서를 내려받을 수 있습니다. 브라우저 검사의 자원·부상·승리 상태 지정은 보고서에 명시합니다. 이는 실제 DOM·WebGL 동작 검사이며, 무개입 완주 기록이나 물리적인 휴대폰 GPU 측정을 뜻하지 않습니다. 현재 통과 여부와 테스트 수는 해당 커밋의 CI 결과를 확인하세요.
 

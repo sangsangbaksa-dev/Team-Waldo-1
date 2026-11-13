@@ -454,6 +454,37 @@
 }
 @media(max-width:500px) and (max-height:650px){.squad-quickbar{bottom:calc(36vh + 20px)}}
 
+/* Portrait phones keep map input clear and reserve space for every command. */
+@media(max-width:500px){
+  .war-brand{flex:0 0 28px;min-width:28px;height:34px;justify-content:center}
+  .war-tools{align-items:center}
+  .war-tools .tool-button{height:34px}
+  .war-tools #speed{width:34px;min-width:34px;font-size:10px;white-space:nowrap}
+  .war-tools #pause{width:30px;min-width:30px}
+}
+@media(max-width:360px){
+  .war-top{display:grid;grid-template-columns:34px minmax(0,1fr) auto;grid-template-rows:30px 20px;grid-template-areas:'home resources tools' 'clock resources tools';gap:0 5px;min-height:0}
+  .war-brand{grid-area:home;width:34px;min-width:34px;height:30px}
+  .resource-strip{grid-area:resources;gap:5px;margin:0}
+  .resource{min-width:30px;gap:3px}
+  .resource.army{min-width:43px}
+  .battle-time{grid-area:clock;justify-self:center;border:0;padding:0}
+  .battle-time b{font-size:9px;line-height:1.1;letter-spacing:0}
+  .battle-time span{font-size:7px;line-height:1.2;display:block}
+  .war-tools{grid-area:tools;gap:3px}
+  .mission-card{top:88px}
+}
+@media(max-width:500px) and (min-height:651px){
+  .war-ui{--portrait-tools-offset:50px}
+  .war-panel{padding-bottom:60px}
+  .squad-quickbar{left:18px;right:18px;bottom:18px;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;width:auto;max-width:none}
+  .squad-quickbar button,.squad-quickbar #quick-move,.squad-quickbar #quick-home{min-width:0;min-height:44px;padding:5px 2px;font-size:9px;line-height:1.4}
+  .squad-quickbar button small{font-size:8px}
+  .adventure-switch{left:10px;right:10px;top:calc(var(--mission-bottom,166px) + 8px);bottom:auto}
+  .adventure-switch .button{display:flex;width:100%;min-height:32px;padding:6px 10px;font-size:10px}
+  .target-card{top:calc(var(--mission-bottom,166px) + 50px)}
+}
+
 
 /* Layout hotfix from real Chromium screenshots: preserve zoom controls and mini-map spacing. */
 @media(min-width:1021px){
@@ -461,7 +492,7 @@
 }
 @media(max-width:500px){
   .war-ui:not(.adventure-active) .war-minimap{
-    top:max(205px,calc(var(--mission-bottom,166px) + 14px))!important;
+    top:max(205px,calc(var(--mission-bottom,166px) + var(--portrait-tools-offset,14px)))!important;
     bottom:auto!important;
   }
 }
@@ -475,7 +506,7 @@ font-size:11px;font-weight:700;letter-spacing:.025em}
 /* Browser smoke fix: mobile zoom controls must remain below the tall top HUD. */
 @media(max-width:500px){
   .war-ui:not(.adventure-active) .camera-controls{
-    top:max(205px,calc(var(--mission-bottom,166px) + 14px))!important;
+    top:max(205px,calc(var(--mission-bottom,166px) + var(--portrait-tools-offset,14px)))!important;
     bottom:auto!important;
     left:10px!important;
     right:auto!important;

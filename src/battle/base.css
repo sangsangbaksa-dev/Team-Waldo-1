@@ -1,4 +1,7 @@
 /* Home base uses the same blue-teal command palette as the campaign interface. */
+.war-ui .base-economy-link{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;min-height:42px;margin:10px 0;padding:10px 12px;border:1px solid #73deca55;border-radius:7px;background:#17343e;color:#d7f3ec;font:inherit;font-size:11px;font-weight:600;line-height:1.5;text-align:center;cursor:pointer;}
+.war-ui .base-economy-link:hover{background:#254951;border-color:#73deca99;}
+.war-ui .base-economy-link:focus-visible{outline:2px solid #73deca;outline-offset:2px;}
 
 /* Separate full-screen command center; the existing battlefield remains mounted. */
 .war-ui .base-manager{position:absolute;inset:0;z-index:45;display:flex;justify-content:center;align-items:center;padding:22px;color:#e9e8db;font-family:'Noto Sans KR',system-ui,sans-serif;}

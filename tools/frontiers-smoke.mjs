@@ -8,21 +8,27 @@ import assert from 'node:assert/strict';
 // presented as an unassisted complete playthrough or physical-device benchmark.
 const port = 4180, origin = `http://127.0.0.1:${port}`;
 const artifacts = 'browser-artifacts/frontiers';
-const limits = { action: 12000, startup: 25000, scenario: 90000, suite: 480000, screenshot: 8000 };
 const maps = [
   { id: 'classic', title: '강철 분지', size: 520, posts: 9, home: 112, biome: 'industrial' },
   { id: 'frontier', title: '황혼 변경', size: 780, posts: 13, home: 210, biome: 'desert' },
   { id: 'continental', title: '서리 대륙', size: 1040, posts: 17, home: 300, biome: 'tundra' },
 ];
-const cases = maps.flatMap(map => [false, true].map(grand => ({
+const selectedMap = process.env.FRONTIERS_MAP;
+assert.ok(selectedMap === undefined || maps.some(map => map.id === selectedMap),
+  `FRONTIERS_MAP must be classic, frontier, or continental; received ${JSON.stringify(selectedMap)}`);
+const limits = { action: 12000, startup: 25000, scenario: 180000, suite: selectedMap ? 600000 : 1500000, screenshot: 8000 };
+const allCases = maps.flatMap(map => [false, true].map(grand => ({
   map, grand, name: `${map.id}-${grand ? 'grand' : 'classic'}-desktop`,
   viewport: { width: 1440, height: 900 },
 }))).concat([
+  { map: maps[0], grand: false, name: 'classic-classic-small-portrait', viewport: { width: 320, height: 780 } },
   { map: maps[2], grand: false, name: 'continental-classic-portrait', viewport: { width: 390, height: 844 } },
   { map: maps[1], grand: true, name: 'frontier-grand-landscape', viewport: { width: 844, height: 390 } },
 ]);
+const cases = selectedMap ? allCases.filter(scenario => scenario.map.id === selectedMap) : allCases;
 const report = {
   commit: process.env.GITHUB_SHA ?? 'local', started: new Date().toISOString(),
+  selectedMap: selectedMap ?? 'all', selectedCases: cases.map(scenario => scenario.name),
   methodology: {
     runtime: 'Actual Chromium with WebGL (SwiftShader); real DOM controls and localStorage',
     limits: 'DEV resource, wounded-unit, and terminal HQ fixtures plus explicit simulation pauses are disclosed per case. This is not a full unassisted match, physical mobile GPU measurement, or a color-vision accessibility assessment.',

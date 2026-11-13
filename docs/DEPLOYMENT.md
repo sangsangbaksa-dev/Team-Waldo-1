@@ -64,7 +64,7 @@ node tools/frontiers-smoke.mjs
 | --- | --- | --- |
 | **CI** | `.github/workflows/ci.yml` | lint·타입·테스트·서바이벌 데이터·빌드 |
 | **Browser smoke** | `.github/workflows/browser-smoke.yml` | 기존 플레이 경로와 반응형 회귀 |
-| **Frontiers browser smoke** | `.github/workflows/frontiers-smoke.yml` | 확대 맵·지원·전체 지도 회귀 |
+| **Frontiers browser smoke** | `.github/workflows/frontiers-smoke.yml` | 3개 맵을 병렬 실행; 맵마다 일반·군단·모바일 회귀 |
 | **Production smoke** | `.github/workflows/production-smoke.yml` | 실제 공개 운영 빌드와 조작 |
 
 CI·Browser smoke·Frontiers browser smoke는 push와 pull request를 검사합니다. 수동 실행 설정도 있습니다. Production smoke는 workflow 파일에 지정된 브랜치 push 또는 수동 실행으로 시작합니다. 그 트리거 목록은 Vercel의 현재 Production Branch를 증명하지 않습니다.
@@ -75,7 +75,7 @@ CI·Browser smoke·Frontiers browser smoke는 push와 pull request를 검사합�
 2. 필요한 job이 완료되었는지와 실패한 step을 확인합니다.
 3. 실행 아래 **Artifacts**에서 다음 묶음을 내려받습니다.
    - `browser-evidence-<SHA>`
-   - `frontiers-evidence-<SHA>`
+   - `frontiers-evidence-<MAP>-<SHA>` (classic / frontier / continental)
    - 운영 검사를 실행했다면 `production-evidence-<SHA>`
 4. `report.json`, 서버 로그, 스크린샷을 함께 확인합니다. 최신 커밋과 이전 실행의 결과를 혼동하지 않습니다.
 

@@ -1,28 +1,49 @@
 import * as THREE from 'three';
 import { GRAND_MAX_UNITS, type UnitKind, type War } from './war';
 
-/** Dense, low-poly soldiers share a handful of GPU draw calls via instancing. */
+/**
+ * 100 vs 500 visual LOD: ten-plus armor details per warrior, still instanced
+ * rather than creating a separate draw call for every soldier.
+ */
 const TYPES: UnitKind[] = ['infantry', 'archer', 'guardian', 'cavalry'];
-const COLORS = [0x50d9d1, 0xf06a77, 0xf5c45d, 0xaa8eed];
-type MeshGroup = { torso: THREE.InstancedMesh; head: THREE.InstancedMesh;
-  helmet: THREE.InstancedMesh; weapon: THREE.InstancedMesh; mount?: THREE.InstancedMesh;
-  shields?: THREE.InstancedMesh; count: number; kind: UnitKind };
-
+const COLORS = [0x368c85, 0xb75d5a, 0xba984e, 0x806ca8];
+type MeshGroup = {
+  body: THREE.InstancedMesh; breastplate: THREE.InstancedMesh;
+  face: THREE.InstancedMesh; helmet: THREE.InstancedMesh; visor: THREE.InstancedMesh;
+  shoulder: THREE.InstancedMesh; cloak: THREE.InstancedMesh;
+  leftLeg: THREE.InstancedMesh; rightLeg: THREE.InstancedMesh;
+  weapon: THREE.InstancedMesh; shield?: THREE.InstancedMesh;
+  mount?: THREE.InstancedMesh; horseNeck?: THREE.InstancedMesh;
+  horseHead?: THREE.InstancedMesh; horseLegs?: THREE.InstancedMesh;
+  count: number; kind: UnitKind;
+};
 export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
-  const torsoGeo = new THREE.CylinderGeometry(.65, .58, 1.48, 6);
-  const headGeo = new THREE.SphereGeometry(.53, 8, 6);
-  const helmetGeo = new THREE.ConeGeometry(.65, .88, 6);
-  const swordGeo = new THREE.BoxGeometry(.2, 2.0, .18);
-  const bowGeo = new THREE.TorusGeometry(.63, .1, 4, 10, Math.PI * 1.45);
-  const horseGeo = new THREE.BoxGeometry(2.1, 1.18, 2.7);
-  const shieldGeo = new THREE.BoxGeometry(.86, 1.4, .23);
-  const helmetMat = new THREE.MeshStandardMaterial({ color: 0x445a63, roughness: .54, metalness: .2 });
-  const skinMat = new THREE.MeshStandardMaterial({ color: 0xe6d2ad, roughness: .8 });
-  const weaponMat = new THREE.MeshStandardMaterial({ color: 0xc3ac80, roughness: .42, metalness: .27 });
-  const mountMat = new THREE.MeshStandardMaterial({ color: 0x76533f, roughness: .88 });
-  const shieldMat = new THREE.MeshStandardMaterial({ color: 0xd1c2a0, roughness: .55 });
-  const teamMats = COLORS.map(color => new THREE.MeshStandardMaterial({color,roughness:.7,metalness:.08}));
-  function mesh(geometry: THREE.BufferGeometry, material: THREE.Material): THREE.InstancedMesh {
+  const torsoGeo = new THREE.CylinderGeometry(.58, .7, 1.44, 7);
+  const chestGeo = new THREE.BoxGeometry(1.16, 1.05, .18);
+  const headGeo = new THREE.SphereGeometry(.48, 9, 7);
+  const helmetGeo = new THREE.CylinderGeometry(.54, .64, .65, 8);
+  const visorGeo = new THREE.BoxGeometry(.94, .2, .26);
+  const shoulderGeo = new THREE.SphereGeometry(.42, 6, 5);
+  const cloakGeo = new THREE.BoxGeometry(1.25, 1.55, .16);
+  const legGeo = new THREE.BoxGeometry(.49, .85, .55);
+  const swordGeo = new THREE.BoxGeometry(.19, 2.05, .2);
+  const spearGeo = new THREE.CylinderGeometry(.07, .08, 3.2, 5);
+  const bowGeo = new THREE.TorusGeometry(.67, .075, 4, 12, Math.PI * 1.5);
+  const shieldGeo = new THREE.BoxGeometry(.83, 1.52, .22);
+  const horseGeo = new THREE.BoxGeometry(1.9, 1.23, 2.8);
+  const neckGeo = new THREE.BoxGeometry(.73, 1.55, .82);
+  const horseHeadGeo = new THREE.BoxGeometry(.95, .73, 1.03);
+  const horseLegsGeo = new THREE.BoxGeometry(.36, .77, .4);
+  const steel = new THREE.MeshStandardMaterial({ color: 0x8a9790, roughness: .54, metalness: .47 });
+  const darkSteel = new THREE.MeshStandardMaterial({ color: 0x39474b, roughness: .59, metalness: .43 });
+  const leather = new THREE.MeshStandardMaterial({ color: 0x514034, roughness: .95 });
+  const skin = new THREE.MeshStandardMaterial({ color: 0xc9b092, roughness: .86 });
+  const steelWeapon = new THREE.MeshStandardMaterial({ color: 0xbdc1b3, roughness: .45, metalness: .63 });
+  const horseMat = new THREE.MeshStandardMaterial({ color: 0x705443, roughness: .94 });
+  const uniform = COLORS.map(color => new THREE.MeshStandardMaterial({ color, roughness: .9 }));
+  const cloaks = [0x244944, 0x703d3b, 0x68572e, 0x463960].map(color =>
+    new THREE.MeshStandardMaterial({ color, roughness: .94 }));
+  const mesh = (geometry: THREE.BufferGeometry, material: THREE.Material): THREE.InstancedMesh => {
     const object = new THREE.InstancedMesh(geometry, material, GRAND_MAX_UNITS);
     object.count = 0;
     object.frustumCulled = false;
@@ -30,51 +51,101 @@ export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
     object.receiveShadow = false;
     parent.add(object);
     return object;
-  }
+  };
   const groups = new Map<string, MeshGroup>();
   for (let owner = 0; owner < 4; owner++) for (const kind of TYPES) {
     groups.set(owner + ':' + kind, {
-      torso: mesh(torsoGeo, teamMats[owner]),
-      head: mesh(headGeo, skinMat),
-      helmet: mesh(helmetGeo, helmetMat),
-      weapon: mesh(kind === 'archer' ? bowGeo : swordGeo, weaponMat),
-      mount: kind === 'cavalry' ? mesh(horseGeo, mountMat) : undefined,
-      shields: kind === 'guardian' ? mesh(shieldGeo, shieldMat) : undefined,
-      kind, count: 0,
+      body: mesh(torsoGeo, uniform[owner]),
+      breastplate: mesh(chestGeo, kind === 'guardian' ? steel : darkSteel),
+      face: mesh(headGeo, skin),
+      helmet: mesh(helmetGeo, kind === 'guardian' ? steel : darkSteel),
+      visor: mesh(visorGeo, darkSteel),
+      shoulder: mesh(shoulderGeo, steel),
+      cloak: mesh(cloakGeo, cloaks[owner]),
+      leftLeg: mesh(legGeo, leather),
+      rightLeg: mesh(legGeo, leather),
+      weapon: mesh(kind === 'archer' ? bowGeo : kind === 'guardian' ? spearGeo : swordGeo, steelWeapon),
+      shield: kind === 'infantry' || kind === 'guardian' ? mesh(shieldGeo, uniform[owner]) : undefined,
+      mount: kind === 'cavalry' ? mesh(horseGeo, horseMat) : undefined,
+      horseNeck: kind === 'cavalry' ? mesh(neckGeo, horseMat) : undefined,
+      horseHead: kind === 'cavalry' ? mesh(horseHeadGeo, horseMat) : undefined,
+      horseLegs: kind === 'cavalry' ? mesh(horseLegsGeo, leather) : undefined,
+      kind,
+      count: 0,
     });
   }
   const dummy = new THREE.Object3D();
-  function set(mesh: THREE.InstancedMesh, index: number, x: number, y: number, z: number,
-    sx = 1, sy = 1, sz = 1, angle = 0) {
+  const facingById = new Map<number, {x: number; z: number; angle: number}>();
+  const set = (target: THREE.InstancedMesh | undefined, index: number,
+    x: number, y: number, z: number, sx = 1, sy = 1, sz = 1, angle = 0) => {
+    if (!target) return;
     dummy.position.set(x, y, z);
     dummy.rotation.set(0, angle, 0);
     dummy.scale.set(sx, sy, sz);
     dummy.updateMatrix();
-    mesh.setMatrixAt(index, dummy.matrix);
-  }
-  function update() {
+    target.setMatrixAt(index, dummy.matrix);
+  };
+  // Convert model-space left/right/front offsets into an individual unit's facing.
+  const offset = (x: number, z: number, right: number, front: number, angle: number): [number, number] =>
+    [x + right * Math.cos(angle) + front * Math.sin(angle),
+     z - right * Math.sin(angle) + front * Math.cos(angle)];
+  function update(): void {
     for (const group of groups.values()) group.count = 0;
+    const alive = new Set<number>();
     for (const unit of war.units) {
       if (unit.hp <= 0 || !war.factions[unit.owner].alive) continue;
       const group = groups.get(unit.owner + ':' + unit.kind);
       if (!group || group.count >= GRAND_MAX_UNITS) continue;
-      const i = group.count++;
-      const x = unit.x, z = unit.z;
-      const cavalry = unit.kind === 'cavalry';
-      const height = cavalry ? 1.22 : unit.kind === 'guardian' ? 1.15 : .96;
-      const base = cavalry ? 1.4 : 0;
-      const facing = (unit.id * 1.31) % (Math.PI * 2);
-      set(group.torso, i, x, base + 1.35 * height, z, height, height, height, facing);
-      set(group.head, i, x, base + 2.43 * height, z, height, height, height);
-      set(group.helmet, i, x, base + 3.12 * height, z, height, height, height);
-      set(group.weapon, i, x + 1.1, base + 1.45 * height, z + .4,
-        unit.kind === 'archer' ? 1 : .7, unit.kind === 'archer' ? 1 : .85, 1, facing);
-      if (group.mount) set(group.mount, i, x, .93, z, 1, 1, 1, facing);
-      if (group.shields) set(group.shields, i, x - 1, base + 1.5, z + .3);
+      alive.add(unit.id);
+      const prev = facingById.get(unit.id);
+      const dx = unit.x - (prev?.x ?? unit.x), dz = unit.z - (prev?.z ?? unit.z);
+      const angle = dx * dx + dz * dz > .00002 ? Math.atan2(dx, dz) : (prev?.angle ?? (unit.id * 1.31) % (Math.PI * 2));
+      facingById.set(unit.id, { x: unit.x, z: unit.z, angle });
+      const i = group.count++, x = unit.x, z = unit.z, cavalry = unit.kind === 'cavalry';
+      const height = unit.kind === 'guardian' ? 1.16 : unit.kind === 'archer' ? .94 : 1;
+      const base = cavalry ? 1.34 : 0;
+      const bob = Math.sin(war.time * 8.2 + unit.id * .71) * .045;
+      const y = base + bob;
+      set(group.body, i, x, y + 1.32 * height, z, height, height, height, angle);
+      const [chestX, chestZ] = offset(x, z, 0, .55 * height, angle);
+      set(group.breastplate, i, chestX, y + 1.42 * height, chestZ, height, height, height, angle);
+      set(group.face, i, x, y + 2.37 * height, z, height, height, height, angle);
+      set(group.helmet, i, x, y + 2.82 * height, z, height, height, height, angle);
+      const [visorX, visorZ] = offset(x, z, 0, .51 * height, angle);
+      set(group.visor, i, visorX, y + 2.66 * height, visorZ, height, height, height, angle);
+      const [shoulderX, shoulderZ] = offset(x, z, -.8 * height, 0, angle);
+      set(group.shoulder, i, shoulderX, y + 1.97 * height, shoulderZ, height, height, height, angle);
+      const [capeX, capeZ] = offset(x, z, 0, -.55 * height, angle);
+      set(group.cloak, i, capeX, y + 1.2 * height, capeZ, height, height, height, angle);
+      for (const [meshLeg, sign] of [[group.leftLeg, -1], [group.rightLeg, 1]] as const) {
+        const [lx, lz] = offset(x, z, sign * .4 * height, 0, angle);
+        set(meshLeg, i, lx, y + .42 * height, lz, height, height, height, angle);
+      }
+      const [wx, wz] = offset(x, z, 1.18 * height, .35 * height, angle);
+      set(group.weapon, i, wx, y + (unit.kind === 'guardian' ? 1.84 : 1.59) * height, wz,
+        unit.kind === 'archer' ? 1 : .8, unit.kind === 'guardian' ? 1 : .94, 1, angle);
+      if (group.shield) {
+        const [sx, sz] = offset(x, z, -1.16 * height, .52 * height, angle);
+        set(group.shield, i, sx, y + 1.44 * height, sz,
+          unit.kind === 'guardian' ? 1.28 : 1, unit.kind === 'guardian' ? 1.22 : 1, 1, angle);
+      }
+      if (cavalry) {
+        set(group.mount, i, x, .9, z, 1, 1, 1, angle);
+        const [nx, nz] = offset(x, z, 0, 1.05, angle);
+        set(group.horseNeck, i, nx, 1.5, nz, 1, 1, 1, angle);
+        const [hx, hz] = offset(x, z, 0, 1.54, angle);
+        set(group.horseHead, i, hx, 2.2, hz, 1, 1, 1, angle);
+        const [fx, fz] = offset(x, z, -.64, .9, angle);
+        set(group.horseLegs, i, fx, .35, fz, 1, 1, 1, angle);
+      }
     }
+    for (const id of facingById.keys()) if (!alive.has(id)) facingById.delete(id);
     for (const group of groups.values()) {
-      const meshes = [group.torso, group.head, group.helmet, group.weapon, group.mount, group.shields];
-      for (const object of meshes) if (object) {
+      const all = [group.body, group.breastplate, group.face, group.helmet,
+        group.visor, group.shoulder, group.cloak, group.leftLeg, group.rightLeg,
+        group.weapon, group.shield, group.mount, group.horseNeck,
+        group.horseHead, group.horseLegs];
+      for (const object of all) if (object) {
         object.count = group.count;
         if (group.count) object.instanceMatrix.needsUpdate = true;
       }

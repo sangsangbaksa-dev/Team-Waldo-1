@@ -1,6 +1,7 @@
 /** Deterministic, renderer-independent economy, territory and combat simulation. */
 import type { SquadCommand } from './squads';
 import { createBaseState, getBaseState, generalBonus, incomeGeneralBonus, type BaseState } from './base';
+import { battlefieldCoverAt, resolveBattlefieldStep } from './battlefieldLayout';
 export type Upgrade = 'farm' | 'mine' | 'barracks' | 'fort';
 export type EconomyPolicy = 'balanced' | 'growth' | 'war';
 export type UnitKind = 'infantry' | 'archer' | 'guardian' | 'cavalry';
@@ -259,7 +260,8 @@ function moveToward(w:War,u:Unit,x:number,z:number,dt:number):void {
   if (d<.01) return;
   const speed=UNIT_STATS[u.kind].speed*(1+w.factions[u.owner].research.logistics*.08)*(1+generalBonus(w,u,'speed'));
   const step=Math.min(d,speed*dt);
-  u.x+=(x-u.x)/d*step;u.z+=(z-u.z)/d*step;
+  const next=resolveBattlefieldStep(u.x,u.z,u.x+(x-u.x)/d*step,u.z+(z-u.z)/d*step,x,z);
+  u.x=next.x;u.z=next.z;
 }
 function updateOutposts(w: War,dt:number):void {
   for (const p of w.outposts) {
@@ -312,7 +314,8 @@ export function captureHeroPost(w: War, x: number, z: number, dt: number): Outpo
 /** Armor mitigates combat only. Storm damage bypasses armor. */
 function attack(w:War,attacker:number,target:Unit,damage:number):void {
   if(target.hp<=0)return;
-  const actual=damage*(w.difficulty==='easy'&&attacker!==0?.72:1)*(1-w.factions[target.owner].research.armor*.08)*(1-generalBonus(w,target,'armor'));
+  const cover=battlefieldCoverAt(target.x,target.z);
+  const actual=damage*(w.difficulty==='easy'&&attacker!==0?.72:1)*(1-w.factions[target.owner].research.armor*.08)*(1-cover)*(1-generalBonus(w,target,'armor'));
   w.stats[attacker].damageDealt+=Math.min(target.hp,actual);
   target.hp-=actual;
   if(target.hp<=0)w.stats[attacker].kills++;

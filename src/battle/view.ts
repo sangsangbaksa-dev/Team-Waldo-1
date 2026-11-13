@@ -4,16 +4,20 @@ import { createBaseManager } from './baseUI';
 import { createBaseDistrict } from './baseVisuals';
 import { createBattleWorld, FACTION_COLORS } from './graphics';
 import { createAdventure } from './adventure';
-import { SQUAD_NAMES, squadUnits, assignSquad, dismissSquad, commandSquad, squadDestination, squadOrderLabel, type SquadId, type SquadCommand } from './squads';
+import { mapDefinitionFor, outpostName, outpostBonus, type MapId } from './maps';
+import { createOperationsPanel, operationsMarkup } from './operationsUI';
+import { atlasMarkup, bindAtlas } from './atlas';
+import { drawStrategicMap } from './strategicMap';
+import { SQUAD_NAMES, squadUnits, assignSquad, dismissSquad, commandSquad, squadOrderLabel, type SquadId, type SquadCommand } from './squads';
 import { loadWar, saveWar, deleteWarSave } from './save';
-import { worldToMinimap, minimapToWorld, pickMapTarget, type StrategicTarget } from './mapCommands';
+import { minimapToWorld, pickMapTarget, type StrategicTarget } from './mapCommands';
 import { BattleAudio } from './audio';
 import { readPreferences, writePreferences, recordMatch } from './preferences';
 import { icon } from '../ui/icons';
 import { showDialog } from '../ui/dialog';
 import {
   createWar, stepWar, upgrade, train, trainSquad, repair, setPolicy, setReserve, order, cost, maxUnitsFor,
-  NAMES, OUTPOST_NAMES, OUTPOST_BONUSES, UNIT_STATS, MAP_HALF_SIZE, captureOrder,
+  NAMES, UNIT_STATS, captureOrder,
   DIFFICULTIES, RESEARCH, research, researchCost, getIncome, stormStartFor, stormDamage,
   type Difficulty, type EconomyPolicy, type UnitKind, type Upgrade, type Research,
 } from './war';
@@ -30,20 +34,21 @@ const BUILDINGS: { key: Upgrade; label: string; symbol: string; description: str
 const clock = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 const factionColor = (id: number) => '#' + FACTION_COLORS[id].toString(16).padStart(6, '0');
 const price = (gold: number, food: number) => `${Math.ceil(gold)} 금 · ${Math.ceil(food)} 식량`;
-export interface WarViewOptions { forceNew?: boolean; difficulty?: Difficulty; grandBattle?: boolean; }
+export interface WarViewOptions { forceNew?: boolean; difficulty?: Difficulty; grandBattle?: boolean; mapId?: MapId; }
 
 export function openWar(onExit: () => void, options: boolean | WarViewOptions = false): void {
   if (document.querySelector('.war-ui')) return;
   const settings = typeof options === 'boolean' ? { forceNew: options } : options;
   const saved = settings.forceNew ? null : loadWar();
   const resumed = Boolean(saved && saved.factions[0].alive && !saved.over);
-  const w = resumed && saved ? saved : createWar({ difficulty: settings.difficulty, grandBattle: settings.grandBattle });
+  const w = resumed && saved ? saved : createWar({ difficulty: settings.difficulty, grandBattle: settings.grandBattle, mapId: settings.mapId });
+  const battlefield = mapDefinitionFor(w), mapHalfSize = battlefield.halfSize;
   const armyLimit = maxUnitsFor(w);
   const recruitBatch = w.grandBattle ? 25 : 3;
   const reserveAmounts = w.grandBattle ? [0, 10, 25, 50] : [0, 2, 4, 6];
   const prefs = readPreferences();
   const audio = new BattleAudio(); audio.unlock(); audio.setMuted(!prefs.sound);
-  const overlay = document.createElement('main'); overlay.className = 'war-ui'; overlay.setAttribute('aria-label', '왕국 전쟁 전장');
+  const overlay = document.createElement('main'); overlay.className = 'war-ui'; overlay.setAttribute('aria-label', '왕국 전쟁 전장'); overlay.dataset.biome = battlefield.biome;
   overlay.innerHTML = `
     <div class="war-view" aria-label="3D 전장"></div>
     <header class="war-top">
@@ -52,7 +57,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
         <div class="resource gold">${icon('coin')}<span><b id="gold">140</b><small id="gold-income"></small></span></div>
         <div class="resource food">${icon('leaf')}<span><b id="food">100</b><small id="food-income"></small></span></div>
         <div class="resource army">${icon('army')}<span><b id="army-count">${w.grandBattle ? 100 : 4} / ${armyLimit}</b><small>보유 병력</small></span></div>
-        <div class="resource territory">${icon('flag')}<span><b id="territory-count">0 / 9</b><small>점령 거점</small></span></div>
+        <div class="resource territory">${icon('flag')}<span><b id="territory-count">0 / ${w.outposts.length}</b><small>점령 거점</small></span></div>
       </div>
       <div class="battle-time"><b id="war-clock">00:00</b><span id="difficulty-badge"></span></div>
       <div class="war-tools">
@@ -73,6 +78,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
         <button role="tab" id="tab-army" aria-selected="false" aria-controls="pane-army" data-tab="army" tabindex="-1">${icon('army', 16)}병력</button>
         <button role="tab" id="tab-orders" aria-selected="false" aria-controls="pane-orders" data-tab="orders" tabindex="-1">${icon('flag', 16)}작전</button>
         <button role="tab" id="tab-research" aria-selected="false" aria-controls="pane-research" data-tab="research" tabindex="-1">${icon('science', 16)}연구</button>
+        <button role="tab" id="tab-operations" aria-selected="false" aria-controls="pane-operations" data-tab="operations" tabindex="-1">${icon('target', 16)}원정<span id="operations-badge" hidden></span></button>
       </nav>
       <div class="war-panel-scroll">
         <section id="pane-economy" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-economy"><div class="section-heading"><h2>생산과 성장</h2><span>최대 Lv.4</span></div><div id="buildings" class="action-list"></div><button id="open-base-economy" class="base-economy-link">▦ 건설 부지에서 직접 건물 배치하기</button><div class="section-heading"><h2>왕국 정책</h2></div><div id="policy" class="segmented"></div><p id="policy-description" class="panel-note"></p><button id="repair" class="repair-button">${icon('shield', 17)}<span>본부 수리<small>체력 +100 · 금 45 / 식량 25</small></span></button></section>
@@ -94,17 +100,18 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
             </div>
             <p class="panel-note">①②③ 부대 선택 → 전장이나 미니맵에서 목적지를 클릭하세요. 아무 땅으로도 이동할 수 있으며, 아군 본부를 찍으면 복귀합니다. <kbd>5</kbd><kbd>6</kbd><kbd>7</kbd> 그룹 전환 · <kbd>G</kbd> 이동 모드 · <kbd>B</kbd> 본부 복귀</p>
           </div>
-          <div class="section-heading"><h2>공격 및 방어 명령</h2></div><div id="targets" class="action-list"></div><div class="section-heading"><h2>거점 점령</h2><span>9개 전략 거점</span></div><div id="outposts" class="outpost-list"></div><p class="panel-note">거점마다 생산 자원이 다릅니다. 점령 거점 1개당 본부 폭풍 피해가 12% 감소합니다 (최대 60%).</p></section>
+          <div class="section-heading"><h2>공격 및 방어 명령</h2></div><div id="targets" class="action-list"></div><div class="section-heading"><h2>거점 점령</h2><span>${w.outposts.length}개 전략 거점</span></div><div id="outposts" class="outpost-list"></div><p class="panel-note">거점마다 생산 자원이 다릅니다. 점령 거점 1개당 본부 폭풍 피해가 12% 감소합니다 (최대 60%).</p></section>
         <section id="pane-research" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-research" hidden><div class="section-heading"><h2>왕국 연구소</h2><span>병영 Lv.2 해금</span></div><p class="panel-note">연구 효과는 모든 아군 병력에 즉시 적용됩니다. 각 연구는 3단계까지 성장합니다.</p><div id="research" class="action-list"></div><div class="research-summary" id="research-summary"></div></section>
+        <section id="pane-operations" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-operations" hidden>${operationsMarkup}</section>
       </div>
       <footer class="panel-footer"><span id="save-status" role="status">15초마다 자동 저장</span><span class="render-performance" id="render-fps" title="지난 1초 동안 실제로 그린 화면 수" aria-label="화면 렌더링 프레임 속도">— FPS</span><button id="save" class="text-button">${icon('save', 14)}저장</button></footer>
     </aside>
     <section class="mission-card" aria-label="현재 목표"><div class="mission-icon">${icon('flag', 21)}</div><div><span class="kicker">NEXT OBJECTIVE</span><h2 id="mission-title"></h2><p id="mission-description"></p></div><button id="mission-action" class="tool-button" aria-label="목표로 이동">${icon('arrow', 18)}</button></section>
     <aside class="war-intel" aria-label="전황"><div class="section-heading"><h2>왕국 현황</h2><span id="alive-count">4 세력</span></div><div id="standings"></div><div class="event-heading">전장 소식<span class="live-dot"></span></div><div id="events" class="war-events" aria-live="polite" aria-relevant="additions"></div></aside>
     <div class="storm-warning" id="storm-warning" hidden>${icon('bolt', 17)}<span id="storm-warning-text"></span></div>
-    <section class="war-minimap" aria-label="전장 지도"><div class="map-heading"><span>${icon('map', 15)}전략 지도</span><button id="map-mode" class="text-button" aria-pressed="false">시점 이동</button></div><canvas id="war-map" width="220" height="220" aria-label="미니맵: 그룹 선택 후 위치 지정 모드에서는 원하는 좌표를 클릭해 출전합니다. 아군 본부 클릭으로 복귀합니다." tabindex="0"></canvas><div class="map-footer"><span id="storm-clock"></span><span id="zone-size"></span></div></section>
+    <section class="war-minimap" aria-label="전장 지도"><div class="map-heading"><span>${icon('map', 15)}${battlefield.name}</span><div class="map-actions"><button id="map-mode" class="text-button" aria-pressed="false">시점 이동</button><button id="open-atlas" class="text-button" aria-label="전체 작전 지도 열기, M 키" title="전체 작전 지도 (M)">${icon('expand', 15)}</button></div></div><canvas id="war-map" width="220" height="220" aria-label="미니맵: 그룹 선택 후 위치 지정 모드에서는 원하는 좌표를 클릭해 출전합니다. 아군 본부 클릭으로 복귀합니다." tabindex="0"></canvas><div class="map-footer"><span id="storm-clock"></span><span id="zone-size"></span></div></section>
     <div class="camera-controls"><button id="zoom-in" class="tool-button" aria-label="확대">+</button><button id="zoom-out" class="tool-button" aria-label="축소">−</button><button id="overview" class="tool-button" aria-label="전장 전체 보기">${icon('expand', 18)}</button><button id="panel-toggle" class="tool-button mobile-only" aria-label="관리 패널 접기" aria-expanded="true">${icon('chevron', 18)}</button></div>
-    <div class="war-help"><span><kbd>WASD</kbd> 시점 이동</span><span>드래그: 회전</span><span><kbd>5–7</kbd> 부대 선택</span><span><kbd>G</kbd> 이동 · <kbd>B</kbd> 본부</span><span><kbd>K</kbd> 기지 관리</span></div>
+    <div class="war-help"><span><kbd>WASD</kbd> 시점 이동</span><span>드래그: 회전</span><span><kbd>5–7</kbd> 부대 선택</span><span><kbd>G</kbd> 이동 · <kbd>B</kbd> 본부</span><span><kbd>K</kbd> 기지 · <kbd>M</kbd> 전체 지도</span></div>
     <nav class="squad-quickbar" aria-label="빠른 부대 지휘">
       <span>부대 지휘</span>
       <button data-squad-select="0" aria-pressed="true">① 주력군 <small>${w.grandBattle ? 100 : 4}명</small></button>
@@ -159,13 +166,13 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   renderer.setSize(mount.clientWidth, mount.clientHeight); mount.append(renderer.domElement);
   renderer.domElement.setAttribute('aria-label', '3D 왕국 전장. 관리 패널에서도 모든 명령을 내릴 수 있습니다.');
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(43, mount.clientWidth / mount.clientHeight, .1, 1300);
-  const focus = new THREE.Vector3(-75, 0, -75);
+  const camera = new THREE.PerspectiveCamera(43, mount.clientWidth / mount.clientHeight, .1, mapHalfSize * 6);
+  const focus = new THREE.Vector3(w.factions[0].x + 30, 0, w.factions[0].z + 30);
   let angle = Math.PI + .72, zoom = innerWidth < 800 ? 155 : 175;
   let adventure: ReturnType<typeof createAdventure> | null = null;
   const cameraUpdate = () => { if (adventure?.isActionMode) return; camera.position.set(focus.x + Math.sin(angle) * zoom, zoom * .83, focus.z + Math.cos(angle) * zoom); camera.lookAt(focus); };
-  const pan = (dx: number, dz: number) => { focus.x = THREE.MathUtils.clamp(focus.x + dx, -MAP_HALF_SIZE + 12, MAP_HALF_SIZE - 12); focus.z = THREE.MathUtils.clamp(focus.z + dz, -MAP_HALF_SIZE + 12, MAP_HALF_SIZE - 12); cameraUpdate(); };
-  const setZoom = (value: number) => { zoom = THREE.MathUtils.clamp(value, 14, 680); cameraUpdate(); };
+  const pan = (dx: number, dz: number) => { focus.x = THREE.MathUtils.clamp(focus.x + dx, -mapHalfSize + 12, mapHalfSize - 12); focus.z = THREE.MathUtils.clamp(focus.z + dz, -mapHalfSize + 12, mapHalfSize - 12); cameraUpdate(); };
+  const setZoom = (value: number) => { zoom = THREE.MathUtils.clamp(value, 24, mapHalfSize * 2.65); cameraUpdate(); };
   cameraUpdate();
   const world = createBattleWorld(scene, w);
   const baseDistrict = createBaseDistrict(scene,w);
@@ -228,12 +235,12 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
       target.kind === 'outpost' ? captureOrder(w, 0, target.id) : order(w, 0, target.id) :
       commandTo(target.kind === 'outpost' ? { kind: 'outpost', id: target.id } : { kind: 'faction', id: target.id });
     if (success) { audio.play('click'); announce(SQUAD_NAMES[selectedSquad] + ' → ' +
-      (target.kind === 'outpost' ? OUTPOST_NAMES[target.id] + ' 점령' : FACTIONS[target.id] + ' 공격') + ' 명령을 내렸습니다.'); ui(); drawMap(); }
+      (target.kind === 'outpost' ? outpostName(w, target.id) + ' 점령' : FACTIONS[target.id] + ' 공격') + ' 명령을 내렸습니다.'); ui(); drawMap(); }
     else announce('이 부대에 병력이 없습니다. 작전 탭에서 먼저 편성하세요.');
   };
   const issuePosition = (x: number, z: number) => {
-    const clampedX = THREE.MathUtils.clamp(x, -MAP_HALF_SIZE + 5, MAP_HALF_SIZE - 5);
-    const clampedZ = THREE.MathUtils.clamp(z, -MAP_HALF_SIZE + 5, MAP_HALF_SIZE - 5);
+    const clampedX = THREE.MathUtils.clamp(x, -mapHalfSize + 5, mapHalfSize - 5);
+    const clampedZ = THREE.MathUtils.clamp(z, -mapHalfSize + 5, mapHalfSize - 5);
     if (commandTo({ kind: 'move', x: clampedX, z: clampedZ })) {
       audio.play('click'); announce(SQUAD_NAMES[selectedSquad] + ' 이동! 지정 위치로 출발합니다.'); ui(); drawMap();
     } else announce('선택 부대에 병력이 없습니다. 주력군에서 3명 편성하세요.');
@@ -248,8 +255,8 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   addAction('#targets', 'defend', '본부 방어 · 부대 복귀', '선택한 그룹을 아군 본부로 이동', 'shield', issueHome);
   for (let id = 1; id < 4; id++) addAction('#targets', `attack-${id}`, FACTIONS[id], '상대 본부를 공격합니다', 'sword', () => issue({ kind: 'faction', id }));
   for (const post of w.outposts) {
-    const income = OUTPOST_BONUSES[post.id];
-    addAction('#outposts', `outpost-${post.id}`, OUTPOST_NAMES[post.id], `금 +${income.gold}/초 · 식량 +${income.food}/초`, 'flag', () => issue({ kind: 'outpost', id: post.id }));
+    const income = outpostBonus(w, post.id);
+    addAction('#outposts', `outpost-${post.id}`, outpostName(w, post.id), `금 +${income.gold}/초 · 식량 +${income.food}/초`, 'flag', () => issue({ kind: 'outpost', id: post.id }));
   }
   for (const key of ['weapons', 'armor', 'logistics'] as Research[]) {
     const def = RESEARCH[key];
@@ -262,7 +269,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   });
   function showTarget(target: StrategicTarget): void {
     selectedTarget = target;
-    if (target.kind === 'outpost') { const post = w.outposts[target.id]; const bonus = OUTPOST_BONUSES[target.id]; text('#target-type', post.owner === null ? 'NEUTRAL TERRITORY' : post.owner === 0 ? 'YOUR TERRITORY' : 'ENEMY TERRITORY'); text('#target-name', OUTPOST_NAMES[target.id]); text('#target-description', `점령 보너스 · 금 +${bonus.gold}/초 / 식량 +${bonus.food}/초`); }
+    if (target.kind === 'outpost') { const post = w.outposts[target.id]; const bonus = outpostBonus(w, target.id); text('#target-type', post.owner === null ? 'NEUTRAL TERRITORY' : post.owner === 0 ? 'YOUR TERRITORY' : 'ENEMY TERRITORY'); text('#target-name', outpostName(w, target.id)); text('#target-description', `점령 보너스 · 금 +${bonus.gold}/초 / 식량 +${bonus.food}/초`); }
     else { const f = w.factions[target.id]; text('#target-type', 'RIVAL KINGDOM'); text('#target-name', FACTIONS[target.id]); text('#target-description', `본부 체력 ${Math.ceil(f.hp)} / ${f.maxHp} · 병력 ${w.units.filter(u => u.owner === f.id).length}명`); }
     el('#target-card').hidden = false;
   }
@@ -293,13 +300,13 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   const togglePause = (reason = '잠시 전략을 정비하세요.') => {
     if (done) return;
     if (modalClose) { modalClose(); return; }
-    openModal('전투 일시정지', `<p>${reason}</p><div class="pause-stats"><span>생존 시간<b>${clock(w.time)}</b></span><span>점령 거점<b>${w.outposts.filter(p => p.owner === 0).length} / 9</b></span><span>현재 병력<b>${w.units.filter(u => u.owner === 0).length} / 18</b></span></div><p class="dialog-tip">시간이 멈췄습니다. Esc 키나 아래 버튼으로 계속할 수 있습니다.</p><div class="pause-actions"><button id="pause-guide" class="button secondary">플레이 가이드</button><button id="pause-settings" class="button secondary">화면·소리 설정</button><button id="pause-menu" class="button secondary">저장하고 메뉴로</button></div>`, () => {
+    openModal('전투 일시정지', `<p>${reason}</p><div class="pause-stats"><span>생존 시간<b>${clock(w.time)}</b></span><span>점령 거점<b>${w.outposts.filter(p => p.owner === 0).length} / ${w.outposts.length}</b></span><span>현재 병력<b>${w.units.filter(u => u.owner === 0).length} / ${armyLimit}</b></span></div><p class="dialog-tip">시간이 멈췄습니다. Esc 키나 아래 버튼으로 계속할 수 있습니다.</p><div class="pause-actions"><button id="pause-guide" class="button secondary">플레이 가이드</button><button id="pause-settings" class="button secondary">화면·소리 설정</button><button id="pause-menu" class="button secondary">저장하고 메뉴로</button></div>`, () => {
       document.querySelector<HTMLButtonElement>('#pause-guide')!.onclick = () => { modalClose?.(); help(); };
       document.querySelector<HTMLButtonElement>('#pause-settings')!.onclick = () => { modalClose?.(); openSettings(); };
       document.querySelector<HTMLButtonElement>('#pause-menu')!.onclick = () => { modalClose?.(); exitWithSave(); };
     });
   };
-  const help = () => openModal('왕국을 지배하는 방법', `<div class="guide-steps"><article><b>승리 조건 · 살아남는 마지막 왕국</b><p>적색·황색·보라 왕국의 본부 3곳을 모두 함락시키면 승리합니다. 쉬움에서는 AI가 늦게 공격하므로 먼저 병력과 자원을 확보하세요.</p></article><article><b>00 · 기지 건설과 장군 모집</b><p>K 키 또는 상단의 기지 관리 버튼으로 건설 화면에 들어가세요. 5×5 영지의 빈 칸을 골라 농장·금광·병영·방어탑을 건설할 수 있습니다. 장군을 영입해 부대별로 배치하면 공격·이동·방어 효과가 적용됩니다.</p></article><article><b>01 · 경제를 성장시키세요</b><p>금광과 농장을 강화하면 병력을 꾸준히 생산할 수 있습니다. 성장 정책은 자원 수입을 25% 늘립니다.</p></article><article><b>02 · 거점을 점령하세요</b><p>작전 탭에서 기동대를 선택해 +3명 편성하세요. 부대 선택 후 지도에서 목적지를 클릭하면 그 부대만 이동하며, '본부' 버튼으로 즉시 복귀 명령을 내릴 수 있습니다. 적과 아군이 함께 있으면 점령이 정지합니다.</p></article><article><b>03 · 연구하고 정복하세요</b><p>병영 Lv.2에서 연구와 궁병, Lv.3에서 중장병과 기병이 해금됩니다. 모든 적 본부를 함락하면 승리합니다.</p></article><article><b>04 · 폭풍에 대비하세요</b><p>보통 난이도는 2분 10초, 쉬움은 3분부터 안전지대가 줄어듭니다. 밖에 있는 본부·병력이 피해를 받으며, 거점 1개당 본부 폭풍 피해가 12% 줄어듭니다 (최대 60%).</p></article></div><div class="shortcut-grid"><span><kbd>WASD</kbd> 시점 이동</span><span><kbd>H</kbd> 내 영지</span><span><kbd>V/T</kbd> 직접 플레이/전략</span><span><kbd>E</kbd> 성벽 올라가기·내려가기</span><span><kbd>F</kbd> 활 발사</span><span><kbd>1–4</kbd> 병종 훈련</span><span><kbd>5–7</kbd> 부대 그룹 선택</span><span><kbd>G</kbd> 위치 지정 · <kbd>B</kbd> 본부 복귀</span><span><kbd>Esc</kbd> 일시정지</span><span>드래그: 회전 · Shift+드래그: 이동</span><span>휠: 확대 · Shift+클릭: 명령</span><span>터치: 드래그 이동 · 두 손가락 확대</span><span>미니맵: 이동 모드에서 어디든 클릭해 부대 이동</span></div>`);
+  const help = () => openModal('왕국을 지배하는 방법', `<div class="guide-steps"><article><b>승리 조건 · 살아남는 마지막 왕국</b><p>적색·황색·보라 왕국의 본부 3곳을 모두 함락시키면 승리합니다. 쉬움에서는 AI가 늦게 공격하므로 먼저 병력과 자원을 확보하세요.</p></article><article><b>00 · 기지 건설과 장군 모집</b><p>K 키 또는 상단의 기지 관리 버튼으로 건설 화면에 들어가세요. 5×5 영지의 빈 칸을 골라 농장·금광·병영·방어탑을 건설할 수 있습니다. 장군을 영입해 부대별로 배치하면 공격·이동·방어 효과가 적용됩니다.</p></article><article><b>01 · 경제를 성장시키세요</b><p>금광과 농장을 강화하면 병력을 꾸준히 생산할 수 있습니다. 성장 정책은 자원 수입을 25% 늘립니다.</p></article><article><b>02 · 거점을 점령하세요</b><p>작전 탭에서 기동대를 선택해 +3명 편성하세요. 부대 선택 후 지도에서 목적지를 클릭하면 그 부대만 이동하며, '본부' 버튼으로 즉시 복귀 명령을 내릴 수 있습니다. 적과 아군이 함께 있으면 점령이 정지합니다.</p></article><article><b>03 · 연구하고 정복하세요</b><p>병영 Lv.2에서 연구와 궁병, Lv.3에서 중장병과 기병이 해금됩니다. 모든 적 본부를 함락하면 승리합니다.</p></article><article><b>04 · 폭풍에 대비하세요</b><p>${battlefield.name}에서는 게임 시간 ${clock(stormStartFor(w))}부터 안전지대가 줄어듭니다. 밖에 있는 본부·병력이 피해를 받으며, 거점 1개당 본부 폭풍 피해가 12% 줄어듭니다 (최대 60%).</p></article></div><div class="shortcut-grid"><span><kbd>WASD</kbd> 시점 이동</span><span><kbd>H</kbd> 내 영지</span><span><kbd>V/T</kbd> 직접 플레이/전략</span><span><kbd>E</kbd> 성벽 올라가기·내려가기</span><span><kbd>F</kbd> 활 발사</span><span><kbd>1–4</kbd> 병종 훈련</span><span><kbd>5–7</kbd> 부대 그룹 선택</span><span><kbd>G</kbd> 위치 지정 · <kbd>B</kbd> 본부 복귀</span><span><kbd>Esc</kbd> 일시정지</span><span>드래그: 회전 · Shift+드래그: 이동</span><span>휠: 확대 · Shift+클릭: 명령</span><span>터치: 드래그 이동 · 두 손가락 확대</span><span>미니맵: 이동 모드에서 어디든 클릭해 부대 이동</span></div>`);
   const syncSound = () => { el('#sound').innerHTML = icon(prefs.sound ? 'sound' : 'muted'); el('#sound').setAttribute('aria-label', prefs.sound ? '효과음 끄기' : '효과음 켜기'); audio.setMuted(!prefs.sound); };
   const openSettings = () => openModal('전장 설정', `<div class="settings-grid"><label>그래픽 품질<select id="graphics-setting"><option value="high">높음 · 그림자와 효과</option><option value="standard">보통 · 성능 우선</option><option value="low">낮음 · 저사양 기기</option></select></label><label>효과음<input type="checkbox" id="audio-setting"></label><label>움직임 줄이기<input type="checkbox" id="motion-setting"></label></div><p class="dialog-tip">설정은 이 브라우저에 저장됩니다. 보통은 그림자·효과를 줄이고, 낮음은 해상도와 색 보정도 줄입니다. 관리 패널 아래 FPS로 실제 화면 속도를 확인하세요.</p>`, () => {
     const quality = document.querySelector<HTMLSelectElement>('#graphics-setting')!, sound = document.querySelector<HTMLInputElement>('#audio-setting')!, motion = document.querySelector<HTMLInputElement>('#motion-setting')!;
@@ -315,7 +322,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   el<HTMLButtonElement>('#speed').onclick = () => { const rates = [.5, .65, .85, 1, 1.5]; speed = rates[(rates.findIndex(value => Math.abs(value - speed) < .001) + 1) % rates.length]; text('#speed', speed + '×'); el('#speed').setAttribute('aria-label', '게임 속도 ' + speed + '배'); announce('전투 속도를 ' + speed + '배로 변경했습니다.'); };
   el<HTMLButtonElement>('#sound').onclick = () => { prefs.sound = !prefs.sound; syncSound(); writePreferences(prefs); };
   el<HTMLButtonElement>('#zoom-in').onclick = () => setZoom(zoom - 30); el<HTMLButtonElement>('#zoom-out').onclick = () => setZoom(zoom + 30);
-  el<HTMLButtonElement>('#overview').onclick = () => { focus.set(0, 0, 0); setZoom(530); };
+  el<HTMLButtonElement>('#overview').onclick = () => { focus.set(0, 0, 0); setZoom(mapHalfSize * 2.05); };
   el<HTMLButtonElement>('#panel-toggle').onclick = () => { overlay.classList.toggle('panel-collapsed'); const expanded = !overlay.classList.contains('panel-collapsed'); el('#panel-toggle').setAttribute('aria-expanded', String(expanded)); el('#panel-toggle').setAttribute('aria-label', expanded ? '관리 패널 접기' : '관리 패널 펼치기'); };
   const updateAdventureUI = () => {
     const active = adventureControl.isActionMode;
@@ -339,6 +346,21 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   el<HTMLButtonElement>('#open-base-economy').onclick = () => openBase('build');
   el<HTMLButtonElement>('#open-base-generals').onclick = () => openBase('generals');
   const goField = () => { adventureControl.toField(); updateAdventureUI(); };
+  const openAtlas = () => {
+    if (adventureControl.inDrop || done || baseManager.isOpen()) return;
+    goStrategy();
+    openModal(`${battlefield.name} · 전체 작전 지도`, atlasMarkup(w), () => {
+      const dialog = document.querySelector<HTMLElement>('.game-dialog')!;
+      bindAtlas(dialog, w, {
+        squad: () => selectedSquad,
+        selectSquad: squad => { selectedSquad = squad; ui(); },
+        viewAt: (x, z) => { modalClose?.(); focus.set(x, 0, z); setZoom(155); drawMap(); },
+        orderAt: (x, z) => { modalClose?.(); issueAt(x, z); writeSave(); },
+        viewport: cameraFootprint,
+      });
+    });
+  };
+  el<HTMLButtonElement>('#open-atlas').onclick = openAtlas;
   el<HTMLButtonElement>('#adventure-enter').onclick = goField;
   el<HTMLButtonElement>('#adventure-strategy').onclick = goStrategy;
   el<HTMLButtonElement>('#adventure-tower').onclick = () => { adventureControl.enterTower(); updateAdventureUI(); };
@@ -418,10 +440,16 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     el<HTMLButtonElement>('#quick-move').disabled = !active;
     text('#squad-order-status', SQUAD_NAMES[selectedSquad] + ' · ' + counts[selectedSquad] + '명 · ' + squadOrderLabel(w, selectedSquad));
   };
+  const operationsPanel = createOperationsPanel(overlay, w, {
+    selectedSquad: () => selectedSquad,
+    selectSquad: squad => { selectedSquad = squad; ui(); },
+    focus: target => { if (target === 'base') openBase('generals'); else showTab(target); },
+    available: () => !paused && !done && !graphicsLost && !baseManager.isOpen(),
+    changed: message => { audio.play('upgrade'); announce(message); ui(); writeSave(); },
+  });
   const map = el<HTMLCanvasElement>('#war-map'), ctx = map.getContext('2d');
-  const point = (x: number, z: number) => worldToMinimap(x, z, 220);
   map.addEventListener('click', event => {
-    const rect = map.getBoundingClientRect(); const p = minimapToWorld(event.clientX - rect.left, event.clientY - rect.top, rect.width, rect.height);
+    const rect = map.getBoundingClientRect(); const p = minimapToWorld(event.clientX - rect.left, event.clientY - rect.top, rect.width, rect.height, w.mapId);
     if (event.shiftKey || commandMode) issueAt(p.x, p.z);
     else pan(p.x - focus.x, p.z - focus.z);
   }, { signal });
@@ -466,6 +494,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     if (key === 'h' && !event.repeat) home();
     if (!adventureControl.isActionMode && !event.repeat) {
       if (key === '5' || key === '6' || key === '7') { selectSquad((Number(key) - 5) as SquadId); event.preventDefault(); }
+      if (key === 'm') { openAtlas(); event.preventDefault(); }
       if (key === 'g') { syncCommandMode(true); announce('전장이나 미니맵에서 부대 이동 목적지를 클릭하세요.'); event.preventDefault(); }
       if (key === 'b') { issueHome(); event.preventDefault(); }
     }
@@ -502,7 +531,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     const income = getIncome(w, 0), unavailable = !p.alive || done || w.over;
     text('#gold', Math.floor(p.gold).toLocaleString('ko-KR')); text('#food', Math.floor(p.food).toLocaleString('ko-KR'));
     text('#gold-income', `+${income.gold.toFixed(1)}/초`); text('#food-income', `+${income.food.toFixed(1)}/초`);
-    text('#army-count', `${counts[0]} / ${armyLimit}`); text('#territory-count', `${owned} / 9`); refreshSquads(unavailable);
+    text('#army-count', `${counts[0]} / ${armyLimit}`); text('#territory-count', `${owned} / ${w.outposts.length}`); refreshSquads(unavailable);
     text('#war-clock', clock(w.time)); text('#difficulty-badge', DIFFICULTIES[w.difficulty].label); text('#hq-value', `${Math.max(0, Math.ceil(p.hp))} / ${p.maxHp}`);
     el('#hq-fill').style.width = `${Math.max(0, p.hp / p.maxHp) * 100}%`; el('#hq-fill').classList.toggle('danger', p.hp < p.maxHp * .3);
     for (const b of BUILDINGS) { const c = cost(p, b.key); updateAction(`#build-${b.key}`, unavailable || p[b.key] >= 4 || p.gold < c.gold || p.food < c.food, p[b.key] >= 4 ? 'Lv.4 · 최대' : `Lv.${p[b.key]} → ${p[b.key] + 1}\n${price(c.gold, c.food)}`); }
@@ -540,9 +569,9 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     if (threatened) { text('#mission-title', '본부에 적 병력이 접근합니다'); text('#mission-description', '화살표를 눌러 본부와 방어 명령을 확인하세요.'); el<HTMLButtonElement>('#mission-action').onclick = () => { home(); showTab('orders'); el<HTMLButtonElement>('#defend').focus({ preventScroll: true }); }; }
     else if (p.mine < 2 || p.farm < 2) { text('#mission-title', '풍요로운 영지의 시작'); text('#mission-description', '금광과 농장을 Lv.2로 강화하세요.'); el<HTMLButtonElement>('#mission-action').onclick = () => showTab('economy'); }
     else if (counts[0] < 6 && owned === 0) { text('#mission-title', '첫 원정대를 준비하세요'); text('#mission-description', '6명 이상의 병력을 모아 거점으로 출전하세요.'); el<HTMLButtonElement>('#mission-action').onclick = () => showTab('army'); }
-    else if (owned === 0) { text('#mission-title', '첫 번째 깃발을 세우세요'); text('#mission-description', '가까운 북서부 관문을 점령해 보세요.'); el<HTMLButtonElement>('#mission-action').onclick = () => { showTab('orders'); showTarget({ kind: 'outpost', id: 5 }); }; }
+    else if (owned === 0) { text('#mission-title', '첫 번째 깃발을 세우세요'); text('#mission-description', `가까운 ${outpostName(w, 5)}을 점령해 보세요.`); el<HTMLButtonElement>('#mission-action').onclick = () => { showTab('orders'); showTarget({ kind: 'outpost', id: 5 }); }; }
     else if (p.barracks < 2 || w.stats[0].researches === 0) { text('#mission-title', '왕국의 기술을 발전시키세요'); text('#mission-description', '병영 Lv.2를 달성하고 첫 연구를 완료하세요.'); el<HTMLButtonElement>('#mission-action').onclick = () => showTab(p.barracks < 2 ? 'economy' : 'research'); }
-    else { text('#mission-title', '마지막 왕국으로 남으세요'); text('#mission-description', `남은 적 왕국 ${w.factions.filter(f => f.alive && f.id !== 0).length}개 · 거점 ${owned}/9 확보`); el<HTMLButtonElement>('#mission-action').onclick = () => showTab('orders'); }
+    else { text('#mission-title', '마지막 왕국으로 남으세요'); text('#mission-description', `남은 적 왕국 ${w.factions.filter(f => f.alive && f.id !== 0).length}개 · 거점 ${owned}/${w.outposts.length} 확보`); el<HTMLButtonElement>('#mission-action').onclick = () => showTab('orders'); }
     const storm = stormDamage(w, 0), stormStart = stormStartFor(w), beforeStorm = w.time < stormStart;
     text('#storm-clock', beforeStorm ? `폭풍까지 ${clock(stormStart - w.time)}` : '폭풍 진행 중'); text('#zone-size', `${Math.round(w.zone)}m`);
     el('#storm-warning').hidden = storm === 0;
@@ -550,33 +579,22 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     if (p.hp < p.maxHp * .3 && !lowHpWarned) { audio.play('warning'); announce('본부 체력이 낮습니다. 수리하거나 방어 병력을 확보하세요.'); lowHpWarned = true; }
     if (p.hp > p.maxHp * .5) lowHpWarned = false;
     baseManager.refresh();
+    operationsPanel.refresh();
+  }
+  function cameraFootprint(): { x: number; z: number }[] {
+    if (adventureControl.isActionMode) return [];
+    const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+    const result: { x: number; z: number }[] = [];
+    for (const [x, y] of corners) {
+      raycaster.setFromCamera(new THREE.Vector2(x, y), camera);
+      const position = new THREE.Vector3();
+      if (raycaster.ray.intersectPlane(ground, position)) result.push({ x: position.x, z: position.z });
+    }
+    return result;
   }
   function drawMap(): void {
     if (!ctx) return;
-    ctx.clearRect(0, 0, 220, 220); ctx.fillStyle = '#182a28'; ctx.fillRect(0, 0, 220, 220);
-    ctx.strokeStyle = '#243c36'; ctx.lineWidth = 1;
-    for (let i = 22; i < 220; i += 22) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 220); ctx.moveTo(0, i); ctx.lineTo(220, i); ctx.stroke(); }
-    ctx.fillStyle = '#254337'; ctx.beginPath(); ctx.arc(110, 110, w.zone / MAP_HALF_SIZE * 110, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = '#72c7d9'; ctx.stroke();
-    for (const post of w.outposts) { const p = point(post.x, post.z); ctx.fillStyle = post.owner === null ? '#c2b68c' : factionColor(post.owner); ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(Math.PI / 4); ctx.fillRect(-3, -3, 6, 6); ctx.restore(); }
-    for (const f of w.factions) { const p = point(f.x, f.z); ctx.fillStyle = f.alive ? factionColor(f.id) : '#4d5954'; ctx.fillRect(p.x - 5, p.y - 5, 10, 10); if (f.id === 0) { ctx.strokeStyle = '#fff4d1'; ctx.strokeRect(p.x - 7, p.y - 7, 14, 14); } }
-    for (const unit of w.units) {
-      const p = point(unit.x, unit.z);
-      ctx.fillStyle = unit.owner === 0 && (unit.squad === 1 || unit.squad === 2) ?
-        unit.squad === 1 ? '#f8e09c' : '#e0b5fa' : factionColor(unit.owner);
-      const extent = unit.owner === 0 && (unit.squad ?? 0) === selectedSquad ? 2.6 : 1.4;
-      ctx.fillRect(p.x - extent / 2, p.y - extent / 2, extent, extent);
-    }
-    ([0, 1, 2] as SquadId[]).forEach(group => {
-      const goal = squadDestination(w, group);
-      if (!goal) return;
-      const target = point(goal.x, goal.z);
-      ctx.strokeStyle = group === 0 ? '#5ee3ca' : group === 1 ? '#f8e09c' : '#e0b5fa';
-      ctx.lineWidth = group === selectedSquad ? 2.5 : 1.3;
-      ctx.beginPath(); ctx.arc(target.x, target.y, group === selectedSquad ? 7 : 4.5, 0, Math.PI * 2); ctx.stroke();
-    });
-    const player = w.factions[0], goal = player.target !== null ? w.factions[player.target] : player.rally !== null ? w.outposts[player.rally] : null;
-    if (goal) { const a = point(player.x, player.z), b = point(goal.x, goal.z); ctx.strokeStyle = '#efcf8b'; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.setLineDash([]); ctx.strokeRect(b.x - 7, b.y - 7, 14, 14); }
-    const f = point(focus.x, focus.z); ctx.strokeStyle = '#f1eee1'; ctx.lineWidth = 1; const size = zoom / 15; ctx.strokeRect(f.x - size, f.y - size * .65, size * 2, size * 1.3);
+    drawStrategicMap(ctx, w, { size: 220, selectedSquad, viewport: cameraFootprint() });
   }
   function finish(): void {
     baseManager.close();done = true; heldKeys.clear(); if (!saveWar(w)) deleteWarSave(); const victory = w.winner === 0, stats = w.stats[0];
@@ -584,7 +602,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     const end = el('.war-end'); end.hidden = false;
     [...overlay.children].forEach(child => { if (child instanceof HTMLElement && child !== end) child.inert = true; });
     end.innerHTML = `<section class="result-panel" role="dialog" aria-modal="true" aria-labelledby="result-title"><span class="result-emblem">${icon(victory ? 'crown' : 'shield', 52)}</span><div class="kicker">${victory ? 'VICTORY' : 'THE KINGDOM WILL RISE AGAIN'}</div><h1 id="result-title" tabindex="-1">${victory ? '마지막 왕국의 주인' : '새로운 원정이 기다립니다'}</h1><p>${victory ? '모든 경쟁자를 물리치고 전장을 통일했습니다.' : '영지가 함락되었습니다. 다음 전투에서 다시 도전하세요.'}</p><div class="result-stats"><div><b>${clock(w.time)}</b><span>생존 시간</span></div><div><b>${stats.kills}</b><span>적 병력 처치</span></div><div><b>${stats.captures}</b><span>거점 점령</span></div><div><b>${stats.trained}</b><span>병력 훈련</span></div><div><b>${stats.researches}</b><span>연구 완료</span></div><div><b>${Math.floor(stats.goldEarned).toLocaleString('ko-KR')}</b><span>획득한 금</span></div></div><p class="result-tip">${victory ? '다른 난이도와 병종 조합으로 새로운 전략을 시도해 보세요.' : stats.captures === 0 ? '다음 전략: 가까운 거점을 먼저 점령해 자원 생산과 폭풍 방어를 확보해 보세요.' : '다음 전략: 연구와 병종 조합으로 전투력을 높이고, 본부 수리 자원을 남겨 두세요.'}</p><div class="result-actions"><button id="back" class="button secondary">왕국 메뉴</button><button id="again" class="button primary">같은 난이도로 재도전 ${icon('arrow', 18)}</button></div></section>`;
-    el<HTMLButtonElement>('#again').onclick = () => { const difficulty = w.difficulty, grandBattle = w.grandBattle; close(false); openWar(onExit, { forceNew: true, difficulty, grandBattle }); };
+    el<HTMLButtonElement>('#again').onclick = () => { const difficulty = w.difficulty, grandBattle = w.grandBattle, mapId = w.mapId; close(false); openWar(onExit, { forceNew: true, difficulty, grandBattle, mapId }); };
     el<HTMLButtonElement>('#back').onclick = () => close();
     end.addEventListener('keydown', event => {
       if (event.key !== 'Tab') return;

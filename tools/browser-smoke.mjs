@@ -210,7 +210,7 @@ try {
       await stage('save and resume');
       await page.locator('#save').click(); const expected = await snapshot(page);
       const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('team-waldo-3d-war-v1')));
-      assert.equal(saved.version, 2); assert.equal(saved.war.factions[0].policy, 'growth');
+      assert.equal(saved.version, 4); assert.equal(saved.war.factions[0].policy, 'growth');
       await page.locator('#exit').click(); await page.locator('#continue-war').waitFor();
       await page.locator('#preferences').click(); assert.equal(await page.locator('#menu-quality').inputValue(), initialQuality);
       await page.keyboard.press('Escape'); await page.locator('#continue-war').click();

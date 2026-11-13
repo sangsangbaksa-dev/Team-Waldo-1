@@ -2,6 +2,9 @@
 import type { SquadCommand } from './squads';
 import { createBaseState, getBaseState, generalBonus, incomeGeneralBonus, type BaseState } from './base';
 import { battlefieldCoverAt, resolveBattlefieldStep } from './battlefieldLayout';
+import { createOperationsState, operationsBonus, type OperationsState } from './operations';
+import { getMap, mapDefinitionFor, mapHalfSizeFor, outpostName, outpostBonus, type MapId } from './maps';
+export { MAPS, MAP_IDS, getMap, mapDefinitionFor, mapHalfSizeFor, outpostName, outpostBonus, type MapId } from './maps';
 export type Upgrade = 'farm' | 'mine' | 'barracks' | 'fort';
 export type EconomyPolicy = 'balanced' | 'growth' | 'war';
 export type UnitKind = 'infantry' | 'archer' | 'guardian' | 'cavalry';
@@ -34,6 +37,9 @@ export interface War {
   factions: Faction[]; units: Unit[]; outposts: Outpost[]; events: WarEvent[];
   time: number; zone: number; over: boolean; winner: number | null; nextUnit: number;
   difficulty: Difficulty; stats: WarStats[];
+  /** Missing IDs in older saves mean the original industrial battlefield. */
+  mapId?: MapId;
+  operations?: OperationsState;
   squadOrders?: [SquadCommand | null, SquadCommand | null, SquadCommand | null];
   /** Grand battle preserves original skirmish rules for existing saves. */
   grandBattle?: boolean;
@@ -51,20 +57,17 @@ export const RESEARCH: Record<Research, {label:string;description:string;maxLeve
   logistics: {label:'보급 체계',description:'단계마다 이동 속도 +8% · 자원 생산 +6%',maxLevel:3,requiredBarracks:2,gold:60,food:80},
 };
 export const NAMES = ['나', '적색', '황색', '보라'] as const;
-export const OUTPOST_NAMES = ['북부 광산', '동부 시장', '남부 곡창', '서부 항구', '중앙 요새', '북서부 관문', '북동부 초소', '남서부 요새', '남동부 교역소'] as const;
-/** Specialty income is added on top of mine and farm production. */
-export const OUTPOST_BONUSES: ReadonlyArray<{gold:number;food:number}> = [
-  {gold:3.1,food:.3}, {gold:2.5,food:1.6}, {gold:.3,food:3.4},
-  {gold:2.1,food:2.1}, {gold:1.15,food:.9}, {gold:1.1,food:1.7},
-  {gold:1.8,food:.8}, {gold:.7,food:2.3}, {gold:2.4,food:1.2},
-];
-export const MAP_HALF_SIZE = 260;
+/** Legacy exports retain the original battlefield's public API. */
+export const OUTPOST_NAMES: ReadonlyArray<string> = getMap('classic').outposts.map(p => p.name);
+export const OUTPOST_BONUSES: ReadonlyArray<{gold:number;food:number}> =
+  getMap('classic').outposts.map(({gold,food}) => ({gold,food}));
+export const MAP_HALF_SIZE = getMap('classic').halfSize;
 export const MAP_SIZE = MAP_HALF_SIZE * 2;
 export const STORM_START = 130;
-export const stormStartFor = (w: War) => w.grandBattle ? (w.difficulty === 'easy' ? 360 : 270) : w.difficulty === 'easy' ? 180 : STORM_START;
+export const stormStartFor = (w: War) => Math.round((w.grandBattle ?
+  (w.difficulty === 'easy' ? 360 : 270) : w.difficulty === 'easy' ? 180 : STORM_START) *
+  mapDefinitionFor(w).stormDelayFactor);
 export const STORM_HQ_DAMAGE = 3.5;
-const CORNERS = [[-112,-112],[112,-112],[-112,112],[112,112]] as const;
-const OUTPOSTS = [[0,-95],[95,0],[0,95],[-95,0],[0,0],[-62,-62],[62,-62],[-62,62],[62,62]] as const;
 export const UNIT_STATS: Record<UnitKind, {
   label: string; gold: number; food: number; hp: number;
   damage: number; range: number; speed: number; cooldown: number; unlock: number;
@@ -81,10 +84,11 @@ export const maxUnitsFor = (w: War) => w.grandBattle ? GRAND_MAX_UNITS : MAX_UNI
 export function createWarStats():WarStats {
   return {trained:0,kills:0,lost:0,captures:0,goldEarned:0,foodEarned:0,damageDealt:0,researches:0,upgrades:0,peakArmy:4};
 }
-export function createWar(options:{difficulty?:Difficulty;grandBattle?:boolean}={}): War {
+export function createWar(options:{difficulty?:Difficulty;grandBattle?:boolean;mapId?:MapId}={}): War {
+  const map = getMap(options.mapId);
   const grandBattle=options.grandBattle===true;
   const difficulty=options.difficulty && Object.hasOwn(DIFFICULTIES,options.difficulty)?options.difficulty:'normal';
-  const factions: Faction[] = CORNERS.map(([x,z],id) => ({
+  const factions: Faction[] = map.factionPositions.map(([x,z],id) => ({
     id,x,z,hp:grandBattle?600:400,maxHp:grandBattle?600:400,
     gold:grandBattle?(id===0?8500:6500):140,food:grandBattle?(id===0?7500:6000):100,
     farm:grandBattle?3:1,mine:grandBattle?3:1,barracks:grandBattle?3:1,
@@ -93,13 +97,13 @@ export function createWar(options:{difficulty?:Difficulty;grandBattle?:boolean}=
     research:{weapons:0,armor:0,logistics:0},
     aiTimer:(2.5+id*.6)*DIFFICULTIES[difficulty].aiInterval,turretCooldown:0,
   }));
-  const outposts: Outpost[] = OUTPOSTS.map(([x,z],id) => ({
+  const outposts: Outpost[] = map.outposts.map(({x,z},id) => ({
     id,x,z,owner:null,contender:null,progress:0,
   }));
   const war: War = {
-    factions,units:[],outposts,events:[],time:0,zone:MAP_HALF_SIZE-6,over:false,winner:null,nextUnit:1,
-    difficulty,stats:Array.from({length:4},createWarStats),squadOrders:[null,null,null],grandBattle,
-    base:createBaseState(),
+    factions,units:[],outposts,events:[],time:0,zone:map.halfSize-6,over:false,winner:null,nextUnit:1,
+    difficulty,mapId:map.id,stats:Array.from({length:4},createWarStats),squadOrders:[null,null,null],grandBattle,
+    base:createBaseState(),operations:createOperationsState(),
   };
   for(let id=0;id<4;id++){
     const total=grandBattle?GRAND_INITIAL_FORCES[id]:4;
@@ -128,8 +132,8 @@ export function getIncome(w:War,id:number):{gold:number;food:number} {
   const policy=f.policy==='growth'?1.25:f.policy==='war'?.88:1;
   const multiplier=policy*(1+f.research.logistics*.06)*(1+incomeGeneralBonus(w,id))*(id===0?(w.difficulty==='easy'?1.35:1):DIFFICULTIES[w.difficulty].aiIncome);
   return {
-    gold:owned.reduce((a,p)=>a+OUTPOST_BONUSES[p.id].gold,f.mine*1.5)*multiplier,
-    food:owned.reduce((a,p)=>a+OUTPOST_BONUSES[p.id].food,f.farm*1.3)*multiplier,
+    gold:owned.reduce((a,p)=>a+outpostBonus(w,p.id).gold,f.mine*1.5)*multiplier,
+    food:owned.reduce((a,p)=>a+outpostBonus(w,p.id).food,f.farm*1.3)*multiplier,
   };
 }
 /** Captured supply points protect immobile HQs: 12% each, up to 60%. */
@@ -243,8 +247,8 @@ function aiTurn(w: War,f: Faction): void {
   const free=w.outposts.filter(p=>p.owner!==f.id);
   free.sort((a,b)=>distance(a.x,a.z,f.x,f.z)-distance(b.x,b.z,f.x,f.z));
   // Stage early AI armies around objectives before committing to HQ sieges.
-  const canSiege=w.time>=DIFFICULTIES[w.difficulty].aiAttackAfter;
-  if (army>=9&&canSiege&&(w.time>180||owned>=3)) {
+  const canSiege=w.time>=DIFFICULTIES[w.difficulty].aiAttackAfter*mapDefinitionFor(w).stormDelayFactor;
+  if (army>=9&&canSiege&&(w.time>180*mapDefinitionFor(w).stormDelayFactor||owned>=3)) {
     const target=nearestEnemy(w,f);
     if (target) { f.target=target.id;f.rally=null; }
   } else if (free.length) {
@@ -256,12 +260,14 @@ function aiTurn(w: War,f: Faction): void {
   }
 }
 function moveToward(w:War,u:Unit,x:number,z:number,dt:number):void {
+  const edge=mapHalfSizeFor(w)-1;
+  x=Math.max(-edge,Math.min(edge,x));z=Math.max(-edge,Math.min(edge,z));
   const d=distance(u.x,u.z,x,z);
   if (d<.01) return;
-  const speed=UNIT_STATS[u.kind].speed*(1+w.factions[u.owner].research.logistics*.08)*(1+generalBonus(w,u,'speed'));
+  const speed=UNIT_STATS[u.kind].speed*(1+w.factions[u.owner].research.logistics*.08)*(1+generalBonus(w,u,'speed'))*(1+operationsBonus(w,u,'speed'))*mapDefinitionFor(w).movementFactor;
   const step=Math.min(d,speed*dt);
-  const next=resolveBattlefieldStep(u.x,u.z,u.x+(x-u.x)/d*step,u.z+(z-u.z)/d*step,x,z);
-  u.x=next.x;u.z=next.z;
+  const next=resolveBattlefieldStep(u.x,u.z,u.x+(x-u.x)/d*step,u.z+(z-u.z)/d*step,x,z,w.mapId);
+  u.x=Math.max(-edge,Math.min(edge,next.x));u.z=Math.max(-edge,Math.min(edge,next.z));
 }
 function updateOutposts(w: War,dt:number):void {
   for (const p of w.outposts) {
@@ -288,7 +294,7 @@ function updateOutposts(w: War,dt:number):void {
       p.owner=id;p.contender=null;p.progress=0;
       if(previous!==id){
         w.stats[id].captures++;
-        addEvent(w,`${NAMES[id]} 세력이 ${OUTPOST_NAMES[p.id]} 점령`);
+        addEvent(w,`${NAMES[id]} 세력이 ${outpostName(w,p.id)} 점령`);
       }
     }
   }
@@ -306,7 +312,7 @@ export function captureHeroPost(w: War, x: number, z: number, dt: number): Outpo
   if (p.progress >= 100) {
     p.owner = 0; p.contender = null; p.progress = 0;
     w.stats[0].captures++;
-    addEvent(w, NAMES[0] + ' 세력이 ' + OUTPOST_NAMES[p.id] + ' 점령');
+    addEvent(w, NAMES[0] + ' 세력이 ' + outpostName(w,p.id) + ' 점령');
   }
   return p;
 }
@@ -314,8 +320,8 @@ export function captureHeroPost(w: War, x: number, z: number, dt: number): Outpo
 /** Armor mitigates combat only. Storm damage bypasses armor. */
 function attack(w:War,attacker:number,target:Unit,damage:number):void {
   if(target.hp<=0)return;
-  const cover=battlefieldCoverAt(target.x,target.z);
-  const actual=damage*(w.difficulty==='easy'&&attacker!==0?.72:1)*(1-w.factions[target.owner].research.armor*.08)*(1-cover)*(1-generalBonus(w,target,'armor'));
+  const cover=battlefieldCoverAt(target.x,target.z,w.mapId);
+  const actual=damage*(w.difficulty==='easy'&&attacker!==0?.72:1)*(1-w.factions[target.owner].research.armor*.08)*(1-cover)*(1-generalBonus(w,target,'armor'))*(1-operationsBonus(w,target,'armor'));
   w.stats[attacker].damageDealt+=Math.min(target.hp,actual);
   target.hp-=actual;
   if(target.hp<=0)w.stats[attacker].kills++;
@@ -323,7 +329,8 @@ function attack(w:War,attacker:number,target:Unit,damage:number):void {
 export function stepWar(w: War,dt: number):void {
   if (w.over||!Number.isFinite(dt)||dt<=0) return;
   dt=Math.min(dt,.1); w.time+=dt;
-  w.zone=Math.max(24,MAP_HALF_SIZE-6-Math.max(0,w.time-stormStartFor(w))*.48);
+  const halfSize=mapHalfSizeFor(w);
+  w.zone=Math.max(24,halfSize-6-Math.max(0,w.time-stormStartFor(w))*.48*halfSize/MAP_HALF_SIZE);
   for (const f of w.factions) {
     if (!f.alive) continue;
     const income=getIncome(w,f.id);
@@ -355,7 +362,7 @@ export function stepWar(w: War,dt: number):void {
   // Spatial grid limits enemy lookups to 9 neighboring cells, avoiding O(N²)
   // scans when the 100 vs 500 battle starts (and as armies recruit).
   const cellSize=22, spatial=new Map<number,Unit[]>();
-  const column=(value:number)=>Math.floor((value+MAP_HALF_SIZE)/cellSize);
+  const column=(value:number)=>Math.floor((value+halfSize)/cellSize);
   const cellKey=(cx:number,cz:number)=>cx*128+cz;
   for(const unit of w.units){
     if(unit.hp<=0||!w.factions[unit.owner].alive)continue;

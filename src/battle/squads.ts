@@ -1,4 +1,4 @@
-import { MAP_HALF_SIZE, type War, type Unit } from './war';
+import { mapHalfSizeFor, type War, type Unit } from './war';
 
 export const SQUAD_NAMES = ['주력군', '기동대', '수비대'] as const;
 export type SquadId = 0 | 1 | 2;
@@ -40,7 +40,7 @@ export function commandSquad(w: War, squad: SquadId, command: SquadCommand): boo
       squadUnits(w, squad).length === 0) return false;
   if (command.kind === 'move' &&
       (!Number.isFinite(command.x) || !Number.isFinite(command.z) ||
-       Math.abs(command.x) > MAP_HALF_SIZE - 5 || Math.abs(command.z) > MAP_HALF_SIZE - 5)) return false;
+       Math.abs(command.x) > mapHalfSizeFor(w) - 5 || Math.abs(command.z) > mapHalfSizeFor(w) - 5)) return false;
   if (command.kind === 'outpost' &&
       (!Number.isInteger(command.id) || !w.outposts[command.id])) return false;
   if (command.kind === 'faction' &&

@@ -1,12 +1,14 @@
 import {
-  createWar, createWarStats, DIFFICULTIES, MAP_HALF_SIZE, MAX_UNITS, GRAND_MAX_UNITS, UNIT_STATS,
+  createWar, createWarStats, DIFFICULTIES, MAX_UNITS, GRAND_MAX_UNITS, UNIT_STATS,
   type Difficulty, type EconomyPolicy, type Faction, type Outpost, type Unit, type War, type WarEvent, type WarStats,
 } from './war';
 import { getBaseState, validBaseState } from './base';
+import { getMap, isMapId } from './maps';
+import { createOperationsState, validOperationsState } from './operations';
 
 // Retain the original key so an upgrade can discover and migrate v1 saves.
 export const WAR_SAVE_KEY='team-waldo-3d-war-v1';
-const VERSION=3;
+const VERSION=4;
 const isRecord=(x:unknown):x is Record<string,unknown> =>
   typeof x==='object'&&x!==null&&!Array.isArray(x);
 const finite=(x:unknown,min=-Infinity,max=Infinity):x is number =>
@@ -19,7 +21,7 @@ const policy=(x:unknown):x is EconomyPolicy=>
 const difficulty=(x:unknown):x is Difficulty=>
   typeof x==='string'&&Object.hasOwn(DIFFICULTIES,x);
 
-function validFaction(candidate:unknown,reference:Faction,grand=false):candidate is Faction {
+function validFaction(candidate:unknown,reference:Faction,grand=false,postCount=9):candidate is Faction {
  if(!isRecord(candidate))return false;
  const f=candidate;
  return f.id===reference.id&&f.x===reference.x&&f.z===reference.z&&
@@ -28,7 +30,7 @@ function validFaction(candidate:unknown,reference:Faction,grand=false):candidate
   finite(f.maxHp,400,700)&&f.maxHp===400+(Number(f.fort)-1)*100&&
   finite(f.hp,0,Number(f.maxHp))&&finite(f.gold,0,1e9)&&finite(f.food,0,1e9)&&
   typeof f.alive==='boolean'&&f.alive===(Number(f.hp)>0)&&factionId(f.target)&&
-  (f.rally===null||integer(f.rally,0,8))&&
+  (f.rally===null||integer(f.rally,0,postCount-1))&&
   (f.target===null||f.target!==f.id)&&
   (f.target===null||f.rally===null)&&
   (f.alive||(f.target===null&&f.rally===null))&&
@@ -45,23 +47,23 @@ function validOutpost(candidate:unknown,reference:Outpost):candidate is Outpost 
   factionId(p.owner)&&factionId(p.contender)&&finite(p.progress,0,100)&&
   (p.contender!==null||p.progress===0);
 }
-function validUnit(candidate:unknown,maxId:number):candidate is Unit {
+function validUnit(candidate:unknown,maxId:number,halfSize:number):candidate is Unit {
  if(!isRecord(candidate))return false;
  const u=candidate;
  if(!integer(u.id,1,maxId)||!integer(u.owner,0,3)||
     (u.kind!=='infantry'&&u.kind!=='archer'&&u.kind!=='guardian'&&u.kind!=='cavalry'))return false;
- return finite(u.x,-MAP_HALF_SIZE,MAP_HALF_SIZE)&&
-  finite(u.z,-MAP_HALF_SIZE,MAP_HALF_SIZE)&&
+ return finite(u.x,-halfSize,halfSize)&&
+  finite(u.z,-halfSize,halfSize)&&
   finite(u.hp,Number.MIN_VALUE,UNIT_STATS[u.kind].hp)&&finite(u.cooldown,0,10)&&
   (u.squad===undefined||integer(u.squad,0,2));
 }
-function validSquadOrder(value: unknown, w: Record<string,unknown>): boolean {
+function validSquadOrder(value: unknown, w: Record<string,unknown>,halfSize:number,postCount:number): boolean {
   if(value===null)return true;
   if(!isRecord(value)||typeof value.kind!=='string')return false;
   if(value.kind==='home')return true;
-  if(value.kind==='move')return finite(value.x,-MAP_HALF_SIZE+5,MAP_HALF_SIZE-5)&&
-      finite(value.z,-MAP_HALF_SIZE+5,MAP_HALF_SIZE-5);
-  if(value.kind==='outpost')return integer(value.id,0,8);
+  if(value.kind==='move')return finite(value.x,-halfSize+5,halfSize-5)&&
+      finite(value.z,-halfSize+5,halfSize-5);
+  if(value.kind==='outpost')return integer(value.id,0,postCount-1);
   if(value.kind==='faction')return integer(value.id,1,3)&&
     Array.isArray(w.factions)&&isRecord(w.factions[value.id])&&w.factions[value.id].alive===true;
   return false;
@@ -82,15 +84,23 @@ export function decodeWar(raw:string|null):War|null {
  if(!raw||raw.length>450000)return null;
  try{
   const parsed:unknown=JSON.parse(raw);
-  if(!isRecord(parsed)||(parsed.version!==1&&parsed.version!==2&&parsed.version!==VERSION)||!isRecord(parsed.war))return null;
-  const w=parsed.war,initial=createWar(),legacy=parsed.version===1;
+  if(!isRecord(parsed)||(parsed.version!==1&&parsed.version!==2&&parsed.version!==3&&parsed.version!==VERSION)||!isRecord(parsed.war))return null;
+  const w=parsed.war,legacy=parsed.version===1;
+  if(parsed.version!==VERSION){
+   // Earlier save formats describe the original map only.
+   if(w.mapId!==undefined&&w.mapId!=='classic')return null;
+   w.mapId='classic';
+   if(w.operations===undefined)w.operations=createOperationsState();
+  }
+  if(!isMapId(w.mapId))return null;
+  const map=getMap(w.mapId),initial=createWar({mapId:w.mapId});
   if(w.grandBattle!==undefined&&typeof w.grandBattle!=='boolean')return null;
   const grand=w.grandBattle===true,limit=grand?GRAND_MAX_UNITS:MAX_UNITS;
   if(!Array.isArray(w.factions)||w.factions.length!==4||
      !Array.isArray(w.outposts)||w.outposts.length!==initial.outposts.length||
      !Array.isArray(w.units)||w.units.length>limit*4||
      !Array.isArray(w.events)||w.events.length>8||
-     !finite(w.time,0,86400)||!finite(w.zone,24,MAP_HALF_SIZE-6)||
+     !finite(w.time,0,86400)||!finite(w.zone,24,map.halfSize-6)||
      !integer(w.nextUnit,17,100000)||
      typeof w.over!=='boolean'||!factionId(w.winner))return null;
   if(legacy){
@@ -103,14 +113,14 @@ export function decodeWar(raw:string|null):War|null {
   if(!difficulty(w.difficulty)||!Array.isArray(w.stats)||w.stats.length!==4||!w.stats.every(validStats))return null;
   if(w.stats.some((stats:WarStats)=>stats.peakArmy>limit))return null;
   if(w.squadOrders!==undefined&&(!Array.isArray(w.squadOrders)||w.squadOrders.length!==3||
-     !w.squadOrders.every(value=>validSquadOrder(value,w))))return null;
-  if(!w.factions.every((f,i)=>validFaction(f,initial.factions[i],grand)))return null;
+     !w.squadOrders.every(value=>validSquadOrder(value,w,map.halfSize,map.outposts.length))))return null;
+  if(!w.factions.every((f,i)=>validFaction(f,initial.factions[i],grand,map.outposts.length)))return null;
   if(!w.outposts.every((p,i)=>validOutpost(p,initial.outposts[i])))return null;
   if(!w.events.every(event=>validEvent(event,Number(w.time))))return null;
   const ids=new Set<number>();
   const counts=[0,0,0,0];
   for(const u of w.units){
-   if(!validUnit(u,Number(w.nextUnit)-1)||ids.has(u.id))return null;
+   if(!validUnit(u,Number(w.nextUnit)-1,map.halfSize)||ids.has(u.id))return null;
    ids.add(u.id);counts[u.owner]++;
    if(counts[u.owner]>limit||!w.factions[u.owner].alive)return null;
   }
@@ -127,8 +137,9 @@ export function decodeWar(raw:string|null):War|null {
    if(p.contender!==null&&!w.factions[p.contender].alive)return null;
   }
   // Version 1/2 had upgrades but no placeable base layout: migrate without losing progress.
-  if(parsed.version!==VERSION&&w.base===undefined)getBaseState(w as unknown as War);
+  if((parsed.version===1||parsed.version===2)&&w.base===undefined)getBaseState(w as unknown as War);
   if(!validBaseState(w.base,w as unknown as War))return null;
+  if(!validOperationsState(w.operations,w as unknown as War))return null;
   const survivors=w.factions.filter(f=>f.alive);
   if(w.over){
    if(survivors.length>1||w.winner!==(survivors[0]?.id??null))return null;

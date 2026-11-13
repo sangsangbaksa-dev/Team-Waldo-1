@@ -1,0 +1,40 @@
+.game-dialog.atlas-dialog { width: min(1000px, 96vw); max-width: 1000px; padding: 26px; }
+.atlas-meta { display: flex; gap: 18px; flex-wrap: wrap; margin: 0 0 18px; font-size: 11px; color: var(--text-muted, #8fa8b9); }
+.atlas-meta > :last-child { color: var(--accent, #73deca); margin-left: auto; }
+.atlas-layout { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(215px, 1fr); gap: 24px; }
+.atlas-main { min-width: 0; }
+#atlas-map { display: block; width: 100%; height: auto; aspect-ratio: 1; border: 1px solid #9ed8dc35; border-radius: 8px; cursor: crosshair; background: #152b36; }
+#atlas-map:focus-visible { outline: 2px solid var(--accent, #73deca); outline-offset: 3px; }
+.atlas-legend { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 10px; color: var(--text-muted, #8fa8b9); padding-top: 12px; }
+.atlas-legend > span { display: flex; align-items: center; gap: 5px; }
+.atlas-legend i { width: 6px; height: 6px; border-radius: 1px; display: inline-block; }
+.atlas-friendly { background: #65dfca; }.atlas-neutral { background: #e4d5b1; }.atlas-hostile { background: #f77f8f; }
+.atlas-sidebar { min-width: 0; }
+.atlas-sidebar h3 { font-size: 12px; margin: 0; }
+.atlas-squads { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin-top: 10px; }
+.atlas-squads button { padding: 9px 3px; background: #b7dddf08; border: 1px solid #b4d4e12a; color: #b7d0dc; border-radius: 5px; font-size: 11px; cursor: pointer; }
+.atlas-squads small { display: block; margin-top: 5px; font-size: 9px; opacity: .65; }
+.atlas-squads [aria-pressed="true"] { color: #89efdb; background: #73deca14; border-color: #73deca70; }
+.atlas-help { color: var(--text-muted, #8fa8b9); font-size: 11px; line-height: 1.7; margin: 14px 0; }
+.atlas-selection { padding: 13px; border-radius: 6px; background: #08202f90; border: 1px solid #8ec6d327; display: grid; gap: 6px; }
+.atlas-selection b { font-size: 13px; color: #e2f3f6; }.atlas-selection span { font-size: 10px; color: var(--text-muted, #8fa8b9); }
+.atlas-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 10px 0 22px; }
+.atlas-actions .button { padding: 10px 6px; min-height: 38px; font-size: 11px; }
+.atlas-posts { display: grid; gap: 4px; max-height: 246px; overflow-y: auto; padding-right: 3px; margin-top: 10px; scrollbar-width: thin; }
+.atlas-posts button { background: #94c5d308; border: 1px solid #9ecad51a; border-radius: 4px; color: #c5dbe4; display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 9px 10px; text-align: left; font-size: 11px; cursor: pointer; }
+.atlas-posts small { color: var(--text-muted, #8fa8b9); font-size: 9px; flex-shrink: 0; }
+.atlas-posts button.selected { background: #73deca17; border-color: #73deca70; color: #b9ffed; }
+.map-actions { display: flex; align-items: center; gap: 8px; }.map-actions #open-atlas { padding: 4px; min-width: 24px; min-height: 24px; }
+@media (max-width: 650px) {
+  .game-dialog.atlas-dialog { padding: 20px 15px; }
+  .atlas-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .atlas-main { width: min(100%, 400px); margin: 0 auto; }
+  .atlas-posts { max-height: 160px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .atlas-posts button { padding: 9px 6px; font-size: 10px; }
+  .atlas-posts small { display: none; }
+  .atlas-meta { gap: 10px; font-size: 10px; }
+}
+@media (max-height: 500px) and (min-width: 651px) {
+  .atlas-layout { grid-template-columns: minmax(210px, 1fr) minmax(225px, 1fr); gap: 18px; }
+  .atlas-main { max-width: 310px; }.atlas-posts { max-height: 130px; }
+}

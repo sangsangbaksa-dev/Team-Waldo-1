@@ -15,7 +15,7 @@ describe('versioned research and statistics saves',()=>{
     trainSquad(w,0,'archer',3);
     for(let i=0;i<400;i++)stepWar(w,.1);
     expect(decodeWar(encodeWar(w))).toEqual(w);
-    expect(JSON.parse(encodeWar(w)).version).toBe(3);
+    expect(JSON.parse(encodeWar(w)).version).toBe(4);
   });
 
   it('migrates an actual v1 snapshot and preserves its armies, resources, and orders',()=>{

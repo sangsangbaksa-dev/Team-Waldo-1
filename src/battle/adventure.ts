@@ -1,5 +1,7 @@
 import * as THREE from 'three';
-import { captureHeroPost, OUTPOST_NAMES, type Outpost, type Unit, type War } from './war';
+import { mapDefinitionFor, outpostName } from './maps';
+import { resolveBattlefieldStep } from './battlefieldLayout';
+import { captureHeroPost, type Outpost, type Unit, type War } from './war';
 
 /** A lightweight direct-control layer over the existing deterministic strategy simulation. */
 export type AdventureMode = 'drop' | 'field' | 'tower' | 'strategy';
@@ -8,6 +10,7 @@ const clamp = THREE.MathUtils.clamp;
 const distance = (a: number, b: number, x: number, z: number) => Math.hypot(a - x, b - z);
 
 export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCamera, war: War, newMatch: boolean) {
+  const battlefield = mapDefinitionFor(war);
   const destination = war.outposts[5];
   const player = war.factions[0];
   let mode: AdventureMode = newMatch ? 'drop' : 'strategy';
@@ -97,7 +100,7 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
   function nearestFriendlyCastle() {
     const locations: Array<{ x: number; z: number; name: string; range: number }> =
       war.outposts.filter(p => p.owner === 0).map(p => ({
-        x: p.x + 11.5, z: p.z, name: OUTPOST_NAMES[p.id], range: distance(x, z, p.x, p.z),
+        x: p.x + 11.5, z: p.z, name: outpostName(war, p.id), range: distance(x, z, p.x, p.z),
       }));
     locations.push({ x: player.x, z: player.z, name: '아군 본부', range: distance(x, z, player.x, player.z) });
     return locations.sort((a, b) => a.range - b.range)[0];
@@ -202,7 +205,7 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
       camera.lookAt(avatar.position.x, altitude + 8, avatar.position.z);
       if (progress >= 1) {
         mode = 'field'; avatar.position.set(x, 0, z); canopy.visible = false;
-        notice = '착륙 성공! 깃발 근처에 머물러 북서부 관문을 점령하세요.';
+        notice = `착륙 성공! 깃발 근처에 머물러 ${outpostName(war, destination.id)}을 점령하세요.`;
       }
       return;
     }
@@ -217,19 +220,22 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
     if (held('a') || held('arrowleft')) move.x--;
     if (held('d') || held('arrowright')) move.x++;
     if (move.lengthSq() > 0) {
-      move.normalize().multiplyScalar(dt * (mode === 'tower' ? 6.5 : 12));
+      move.normalize().multiplyScalar(dt * (mode === 'tower' ? 6.5 : 12 * battlefield.movementFactor));
       const sine = Math.sin(yaw), cosine = Math.cos(yaw);
-      x += -sine * move.y + cosine * move.x;
-      z += -cosine * move.y - sine * move.x;
+      const nextX = x - sine * move.y + cosine * move.x;
+      const nextZ = z - cosine * move.y - sine * move.x;
+      const step = mode === 'tower' ? { x: nextX, z: nextZ } :
+        resolveBattlefieldStep(x, z, nextX, nextZ, nextX, nextZ, war.mapId);
+      x = step.x; z = step.z;
     }
     if (mode === 'tower') {
       x = clamp(x, castleX - 3.1, castleX + 3.1);
       z = clamp(z, castleZ - 3.1, castleZ + 3.1);
     } else {
-      x = clamp(x, -177, 177);
-      z = clamp(z, -177, 177);
+      x = clamp(x, -battlefield.halfSize + 5, battlefield.halfSize - 5);
+      z = clamp(z, -battlefield.halfSize + 5, battlefield.halfSize - 5);
       const post = captureHeroPost(war, x, z, dt);
-      if (post && post.owner === 0) notice = OUTPOST_NAMES[post.id] + ' 점령 성공! E로 감시탑에 올라가세요.';
+      if (post && post.owner === 0) notice = outpostName(war, post.id) + ' 점령 성공! E로 감시탑에 올라가세요.';
     }
     camera.position.set(x, mode === 'tower' ? 11.9 : 2.85, z);
     camera.rotation.order = 'YXZ';
@@ -244,7 +250,7 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
     if (post && post.owner !== 0) {
       const guarded = war.units.some(u => u.owner !== 0 && u.hp > 0 &&
         distance(u.x, u.z, post.x, post.z) < 8.5);
-      return { headline: OUTPOST_NAMES[post.id] + ' 점령', detail: guarded ? '적 병력을 먼저 물리쳐야 점령이 진행됩니다.' : '이곳에서 머물면 점령 진행도가 올라갑니다.', progress: post.progress };
+      return { headline: outpostName(war, post.id) + ' 점령', detail: guarded ? '적 병력을 먼저 물리쳐야 점령이 진행됩니다.' : '이곳에서 머물면 점령 진행도가 올라갑니다.', progress: post.progress };
     }
     const nearby = nearestFriendlyCastle();
     if (nearby && nearby.range <= 18) return { headline: nearby.name + ' 입구', detail: 'E 또는 성벽 올라가기 버튼으로 망루에 진입하세요.', progress: 0 };

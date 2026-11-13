@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import { createGrandArmyVisuals } from './grandArmyVisuals';
-import { BATTLEFIELD_FEATURES } from './battlefieldLayout';
+import { getBattlefieldFeatures } from './battlefieldLayout';
+import { mapDefinitionFor, outpostName, outpostBonus } from './maps';
+import { BIOME_PALETTES } from './biomes';
 import { createBattlefieldEnvironment } from './environment3d';
-import { MAP_HALF_SIZE, OUTPOST_NAMES, OUTPOST_BONUSES, UNIT_STATS, type Unit, type UnitKind, type War } from './war';
+import { UNIT_STATS, type Unit, type UnitKind, type War } from './war';
 import { createWorldLabel, type WorldLabel } from './renderLabels';
 import { createBattleEffects } from './renderEffects';
 import { batchStaticChildren, type StaticBatch } from './renderBatches';
@@ -41,6 +43,8 @@ export function terrainShade(x:number,z:number):number {
   return clamp(.5+.24*Math.sin(x*.24)*Math.cos(z*.21)+.1*Math.sin((x+z)*.77),0,1);
 }
 export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
+  const battlefield=mapDefinitionFor(war), halfSize=battlefield.halfSize;
+  const palette=BIOME_PALETTES[battlefield.biome];
   const world=new THREE.Group();world.name='Stylized kingdom';scene.add(world);
   let highQuality=true;
   let reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -48,31 +52,31 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   const labels:WorldLabel[]=[];
   const effects=createBattleEffects(world);
   const art=createVisualDetails();
-  scene.background=new THREE.Color(0x344248);
-  scene.fog=new THREE.FogExp2(0x344248,.0013);
-  const ambient=new THREE.HemisphereLight(0x97abb6,0x28352f,1.85);
+  scene.background=new THREE.Color(palette.sky);
+  scene.fog=new THREE.FogExp2(palette.fog,.00105 * 260 / halfSize);
+  const ambient=new THREE.HemisphereLight(palette.ambientSky,palette.ambientGround,1.85);
   scene.add(ambient);
-  const sun=new THREE.DirectionalLight(0xd2c7b0,2.6);
-  sun.position.set(-130,220,140);
+  const sun=new THREE.DirectionalLight(palette.sunlight,2.6);
+  sun.position.set(-halfSize*.5,halfSize*.92,halfSize*.54);
   sun.castShadow=true;
   sun.shadow.mapSize.set(3072,3072);
-  sun.shadow.camera.left=-280;sun.shadow.camera.right=280;
-  sun.shadow.camera.top=280;sun.shadow.camera.bottom=-280;
-  sun.shadow.camera.near=10;sun.shadow.camera.far=520;
+  sun.shadow.camera.left=-halfSize-20;sun.shadow.camera.right=halfSize+20;
+  sun.shadow.camera.top=halfSize+20;sun.shadow.camera.bottom=-halfSize-20;
+  sun.shadow.camera.near=10;sun.shadow.camera.far=halfSize*2.8;
   sun.shadow.normalBias=.035;sun.shadow.bias=-.0001;
   scene.add(sun,sun.target);
   const fill=new THREE.DirectionalLight(0x799cac,.6);fill.position.set(35,35,-45);scene.add(fill);
 
   const material=(color:number,metalness=0,roughness=.83,emissive=0)=>
     new THREE.MeshStandardMaterial({color,metalness,roughness,emissive,emissiveIntensity:emissive?.55:0});
-  const stone=material(0x697277),stoneDark=material(0x343e43),
+  const stone=material(palette.stone),stoneDark=material(palette.stoneDark),
     mortar=material(0x505e65),roof=material(0x273b46),
     timber=material(0x51473e),woodDark=material(0x2f3331),
     cream=material(0x9da49c),gold=material(0xc5a16c,.45,.35),
-    meadow=material(0x46554b),leaves=material(0x374d42),
-    leafLight=material(0x536556),waterMat=new THREE.MeshStandardMaterial({
-      color:0x31525c,roughness:.25,metalness:.1,transparent:true,opacity:.94
-    }),roadMat=material(0x465055),soilMat=material(0x5d554b),
+    meadow=material(palette.terrainHigh),leaves=material(palette.vegetation),
+    leafLight=material(palette.vegetationLight),waterMat=new THREE.MeshStandardMaterial({
+      color:palette.water,roughness:.25,metalness:.1,transparent:true,opacity:.94
+    }),roadMat=material(palette.road),soilMat=material(palette.sand),
     ember=material(0xffb45a,0,.4,0xff8130);
   const teamMats=FACTION_COLORS.map(color=>material(new THREE.Color(color).lerp(new THREE.Color(0x465450),.35).getHex(),.25,.52));
   const bannerMats=FACTION_COLORS.map(color=>new THREE.MeshStandardMaterial({
@@ -109,16 +113,16 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     object.castShadow=true;object.receiveShadow=true;parent.add(object);return object;
   };
   // Low-height sculpted terrain: game-space remains planar and unit movement unchanged.
-  add(world,new THREE.PlaneGeometry(700,700),waterMat,0,-1.15,0).rotation.x=-Math.PI/2;
-  const terrain=new THREE.PlaneGeometry(MAP_HALF_SIZE*2,MAP_HALF_SIZE*2,150,150);
+  add(world,new THREE.PlaneGeometry(halfSize*2.7,halfSize*2.7),waterMat,0,-1.15,0).rotation.x=-Math.PI/2;
+  const terrain=new THREE.PlaneGeometry(halfSize*2,halfSize*2,150,150);
   terrain.rotateX(-Math.PI/2);
   const position=terrain.getAttribute('position');
   const vertexColors:number[]=[];
-  const greenA=new THREE.Color(0x313c3c),greenB=new THREE.Color(0x57635b);
+  const greenA=new THREE.Color(palette.terrainLow),greenB=new THREE.Color(palette.terrainHigh);
   for(let i=0;i<position.count;i++){
     const x=position.getX(i),z=position.getZ(i);
     const edge=Math.max(Math.abs(x),Math.abs(z));
-    position.setY(i,-.23+.085*Math.sin(x*.28)*Math.cos(z*.24)-Math.max(0,edge-(MAP_HALF_SIZE-9))*.26);
+    position.setY(i,-.23+.085*Math.sin(x*.28)*Math.cos(z*.24)-Math.max(0,edge-(halfSize-9))*.26);
     const shade=terrainShade(x,z),c=greenA.clone().lerp(greenB,shade);
     vertexColors.push(c.r,c.g,c.b);
   }
@@ -127,7 +131,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   const ground=add(world,terrain,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1}),0,0,0);
   ground.castShadow=false;ground.receiveShadow=true;
 
-  const rng=seeded(738139);
+  const rng=seeded(battlefield.seed ^ 738139);
   const road=(ax:number,az:number,bx:number,bz:number,width=2.9)=>{
     const dx=bx-ax,dz=bz-az,d=Math.hypot(dx,dz);
     const segment=add(world,box,roadMat,(ax+bx)/2,.005,(az+bz)/2,width,.065,d);
@@ -141,13 +145,14 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   // Track junctions, clumps of flowers and low-poly foliage give the ground depth.
   const trunkGeo=new THREE.CylinderGeometry(.16,.24,1,6);
   const crownGeo=new THREE.ConeGeometry(1,2.2,6);
-  const treeTrunks=new THREE.InstancedMesh(trunkGeo,timber,620);
-  const treeCrowns=new THREE.InstancedMesh(crownGeo,leaves,620);
+  const treeCapacity=battlefield.biome==='desert'?180:battlefield.biome==='tundra'?440:620;
+  const treeTrunks=new THREE.InstancedMesh(trunkGeo,timber,treeCapacity);
+  const treeCrowns=new THREE.InstancedMesh(crownGeo,leaves,treeCapacity);
   const dummy=new THREE.Object3D();
   let treeCount=0;
-  for(let i=0;i<2900&&treeCount<620;i++){
-    const x=(rng()-.5)*(MAP_HALF_SIZE*1.85),z=(rng()-.5)*(MAP_HALF_SIZE*1.85);
-    if(Math.abs(x)>MAP_HALF_SIZE-7||Math.abs(z)>MAP_HALF_SIZE-7||
+  for(let i=0;i<2900&&treeCount<treeCapacity;i++){
+    const x=(rng()-.5)*(halfSize*1.85),z=(rng()-.5)*(halfSize*1.85);
+    if(Math.abs(x)>halfSize-7||Math.abs(z)>halfSize-7||
       war.factions.some(f=>dist(x,z,f.x,f.z)<18)||
       war.outposts.some(p=>dist(x,z,p.x,p.z)<11)||
       Math.abs(Math.abs(x)-Math.abs(z))<3.6)continue;
@@ -166,7 +171,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   const rocks=new THREE.InstancedMesh(rock,stoneDark,420);
   let rockCount=0;
   for(let i=0;i<1400&&rockCount<420;i++){
-    const x=(rng()-.5)*(MAP_HALF_SIZE*1.86),z=(rng()-.5)*(MAP_HALF_SIZE*1.86);
+    const x=(rng()-.5)*(halfSize*1.86),z=(rng()-.5)*(halfSize*1.86);
     if(war.factions.some(f=>dist(x,z,f.x,f.z)<13)||
        war.outposts.some(p=>dist(x,z,p.x,p.z)<9))continue;
     const scale=.4+rng()*1.2;
@@ -182,7 +187,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   const ruins = [
     [-213,-208],[212,-205],[-210,213],[214,209],
     [-208,19],[212,22],[7,-217],[16,211],[-142,192],[177,-156],
-  ] as const;
+  ].map(([x,z])=>[x*halfSize/260,z*halfSize/260]);
   for(let i=0;i<ruins.length;i++){
     const [x,z]=ruins[i];
     const ruin=new THREE.Group();ruin.position.set(x,0,z);
@@ -205,7 +210,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   const flowers=flowerMats.map(mat=>new THREE.InstancedMesh(flowerGeometry,mat,420));
   const flowerCounts=[0,0,0];
   for(let i=0;i<3100;i++){
-    const x=(rng()-.5)*MAP_HALF_SIZE*1.9,z=(rng()-.5)*MAP_HALF_SIZE*1.9;
+    const x=(rng()-.5)*halfSize*1.9,z=(rng()-.5)*halfSize*1.9;
     if(war.factions.some(f=>dist(x,z,f.x,f.z)<21) ||
        war.outposts.some(p=>dist(x,z,p.x,p.z)<12) ||
        ruins.some(([rx,rz])=>dist(x,z,rx,rz)<12))continue;
@@ -223,7 +228,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
 
   // Tactical installations share the exact deterministic layout used by unit movement.
   // Instanced parts keep the additional geometry affordable in the grand-battle mode.
-  createBattlefieldEnvironment(world,BATTLEFIELD_FEATURES);
+  createBattlefieldEnvironment(world,getBattlefieldFeatures(war.mapId),battlefield.biome);
 
   // Extra vegetation uses instancing to preserve large-battle frame rates.
   art.landscape(world,war);
@@ -368,7 +373,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   const clouds:THREE.Group[]=[];
   for(let i=0;i<16;i++){
     const c=new THREE.Group();world.add(c);
-    c.position.set(-175+i*32,58+i%3*5,-128+i*24);
+    c.position.set((-175+i*32)*halfSize/260,58+i%3*5,(-128+i*24)*halfSize/260);
     const cloudMat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.12,depthWrite:false});
     for(let p=0;p<3;p++){
       const puff=add(c,sphere,cloudMat,p*4,0,(p%2)*2,13,3.8,7);
@@ -503,10 +508,10 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
         (v.progress.material as THREE.MeshBasicMaterial).color.setHex(FACTION_COLORS[p.contender]);
         v.progress.geometry.setDrawRange(0,Math.floor(p.progress/100*64)*6);
       }
-      const bonus=OUTPOST_BONUSES[p.id];
+      const bonus=outpostBonus(war,p.id);
       const detail=p.contender!==null?`점령 진행 ${Math.floor(p.progress)}%`:
         `금 +${bonus.gold.toFixed(1)} · 식량 +${bonus.food.toFixed(1)}`;
-      v.label.update(OUTPOST_NAMES[p.id],detail,p.contender===null?color:FACTION_COLORS[p.contender],
+      v.label.update(outpostName(war,p.id),detail,p.contender===null?color:FACTION_COLORS[p.contender],
         p.contender===null?undefined:p.progress/100);
       if(v.previousOwner!==p.owner&&p.owner!==null)effects.burst(p.x,5,p.z,color,22,1.8);
       v.previousOwner=p.owner;
@@ -567,7 +572,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
       }
     }
     effects.update(dt);
-    if(!reducedMotion)clouds.forEach((cloud,i)=>{cloud.position.x=-175+i*32+Math.sin(time*.06+i)*9;});
+    if(!reducedMotion)clouds.forEach((cloud,i)=>{cloud.position.x=(-175+i*32)*halfSize/260+Math.sin(time*.06+i)*9;});
   }
   function configureEffects():void {
     effects.setEnabled(highQuality&&!reducedMotion);

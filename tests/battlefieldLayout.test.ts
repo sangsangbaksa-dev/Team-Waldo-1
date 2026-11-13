@@ -37,6 +37,21 @@ describe('industrial battlefield layout', () => {
     expect(next.x === attemptedX && next.z === startZ).toBe(false);
   });
 
+  it('lets an older saved position escape from inside a solid installation', () => {
+    const structure = BATTLEFIELD_FEATURES.find(f => f.kind === 'hangar')!;
+    let x = structure.x, z = structure.z;
+    const goalX = x + 30, goalZ = z;
+    for (let step = 0; step < 160; step++) {
+      const distance = Math.hypot(goalX - x, goalZ - z);
+      if (distance < 1) break;
+      const next = resolveBattlefieldStep(x, z, x + (goalX - x) / distance * .84,
+        z + (goalZ - z) / distance * .84, goalX, goalZ);
+      x = next.x; z = next.z;
+    }
+    expect(isBattlefieldBlocked(x, z)).toBe(false);
+    expect(Math.hypot(goalX - x, goalZ - z)).toBeLessThan(1);
+  });
+
   it('preserves unobstructed motion along clear roads', () => {
     const result = resolveBattlefieldStep(0, -7, 0, -6, 0, 0);
     expect(result).toEqual({ x: 0, z: -6 });

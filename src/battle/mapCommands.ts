@@ -1,4 +1,5 @@
-import { MAP_HALF_SIZE, type War } from './war';
+import type { War } from './war';
+import { getMap, type MapId } from './maps';
 
 export interface MapPosition { x:number; z:number; }
 export type StrategicTarget =
@@ -6,15 +7,17 @@ export type StrategicTarget =
  | {kind:'faction';id:number};
 
 /** Same world-to-minimap transform is used for drawing and hit detection. */
-export function worldToMinimap(x:number,z:number,size=200):{x:number;y:number}{
- return {x:(x/MAP_HALF_SIZE+1)*size/2,y:(z/MAP_HALF_SIZE+1)*size/2};
+export function worldToMinimap(x:number,z:number,size=200,mapId:MapId='classic'):{x:number;y:number}{
+ const half=getMap(mapId).halfSize;
+ return {x:(x/half+1)*size/2,y:(z/half+1)*size/2};
 }
-export function minimapToWorld(x:number,y:number,width:number,height:number):MapPosition{
- if(!Number.isFinite(x)||!Number.isFinite(y)||width<=0||height<=0)
+export function minimapToWorld(x:number,y:number,width:number,height:number,mapId:MapId='classic'):MapPosition{
+ const half=getMap(mapId).halfSize;
+ if(!Number.isFinite(x)||!Number.isFinite(y)||!Number.isFinite(width)||!Number.isFinite(height)||width<=0||height<=0)
    return {x:0,z:0};
  return {
-  x:Math.max(-MAP_HALF_SIZE,Math.min(MAP_HALF_SIZE,(x/width*2-1)*MAP_HALF_SIZE)),
-  z:Math.max(-MAP_HALF_SIZE,Math.min(MAP_HALF_SIZE,(y/height*2-1)*MAP_HALF_SIZE)),
+  x:Math.max(-half,Math.min(half,(x/width*2-1)*half)),
+  z:Math.max(-half,Math.min(half,(y/height*2-1)*half)),
  };
 }
 /** Shift-click on an objective to send the standing army there. */

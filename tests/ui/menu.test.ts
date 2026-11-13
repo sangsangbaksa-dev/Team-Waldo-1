@@ -2,11 +2,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createWar } from '../../src/battle/war';
 import { loadWar, saveWar, WAR_SAVE_KEY } from '../../src/battle/save';
+import { MAPS, type MapId } from '../../src/battle/maps';
 
 const navigation = vi.hoisted(() => ({
-  openWar: vi.fn<(onExit: () => void, options: { forceNew: boolean; difficulty: string }) => void>(),
+  openWar: vi.fn<(onExit: () => void, options: { forceNew: boolean; difficulty: string; mapId?: string; grandBattle?: boolean }) => void>(),
   startLegacy: vi.fn<(parent: HTMLElement, onExit: () => void) => void>(),
-  preview: vi.fn<(mount: HTMLElement) => () => void>(),
+  preview: vi.fn<(mount: HTMLElement, mapId?: MapId) => () => void>(),
   disposePreview: vi.fn(),
 }));
 vi.mock('../../src/battle/view', () => ({ openWar: navigation.openWar }));
@@ -93,5 +94,78 @@ describe('menu navigation and recovery', () => {
     expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), { forceNew: false, difficulty: 'hard' });
     expect(loadWar()).toEqual(saved);
     expect(navigation.startLegacy).not.toHaveBeenCalled();
+  });
+
+  it('launches the selected expanded battlefield and explains its actual size and territory count', async () => {
+    await loadMenu();
+    const continental = button('[data-map="continental"]');
+    expect(continental.getAttribute('aria-label')).toContain(String(MAPS.continental.halfSize * 2));
+    expect(continental.getAttribute('aria-label')).toContain(`${MAPS.continental.outposts.length}개 거점`);
+    continental.click();
+    expect(continental.getAttribute('aria-pressed')).toBe('true');
+    expect(button('[data-map="classic"]').getAttribute('aria-pressed')).toBe('false');
+    expect(document.querySelector('#map-description')?.textContent).toContain(MAPS.continental.description);
+    button('#difficulty-easy').click();
+    expect(document.querySelector('#launch-map-name')?.textContent).toContain('서리 대륙 · 입문');
+    button('#start-war').click();
+    await vi.dynamicImportSettled();
+    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), {
+      forceNew: true, difficulty: 'easy', mapId: 'continental',
+    });
+  });
+
+  it('combines the selected large map with grand-battle mode', async () => {
+    await loadMenu();
+    button('[data-map="frontier"]').click();
+    button('#start-grand').click();
+    await vi.dynamicImportSettled();
+    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), {
+      forceNew: true, difficulty: 'normal', grandBattle: true, mapId: 'frontier',
+    });
+  });
+
+  it('keeps a saved expanded map when continuing after choosing another new-game map', async () => {
+    const saved = createWar({ difficulty: 'hard', mapId: 'frontier' });
+    saved.time = 91;
+    expect(saveWar(saved)).toBe(true);
+    await loadMenu();
+    expect(button('#continue-war').textContent).toContain(MAPS.frontier.name);
+    button('[data-map="continental"]').click();
+    button('#difficulty-easy').click();
+    button('#continue-war').click();
+    await vi.dynamicImportSettled();
+    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), {
+      forceNew: false, difficulty: 'hard',
+    });
+    expect(loadWar()?.mapId).toBe('frontier');
+    expect(loadWar()?.outposts).toHaveLength(MAPS.frontier.outposts.length);
+  });
+
+  it('leaves the previous campaign intact when a new expanded-map launch is cancelled', async () => {
+    const saved = createWar({ mapId: 'classic' });
+    expect(saveWar(saved)).toBe(true);
+    await loadMenu();
+    button('[data-map="continental"]').click();
+    button('#start-war').click();
+    expect(document.querySelector('.dialog-body')?.textContent).toContain(MAPS.continental.name);
+    button('.dialog-cancel').click();
+    expect(navigation.openWar).not.toHaveBeenCalled();
+    expect(loadWar()).toEqual(saved);
+    expect(button('#start-war').disabled).toBe(false);
+  });
+
+  it('only mounts the latest map preview and cannot mount a late preview over a launched battle', async () => {
+    await loadMenu();
+    expect(navigation.preview).toHaveBeenCalledTimes(1);
+    button('[data-map="frontier"]').click();
+    button('[data-map="continental"]').click();
+    await vi.dynamicImportSettled();
+    expect(navigation.preview).toHaveBeenCalledTimes(2);
+    expect(navigation.preview).toHaveBeenLastCalledWith(expect.any(HTMLElement), 'continental');
+    button('[data-map="frontier"]').click();
+    button('#start-war').click();
+    await vi.dynamicImportSettled();
+    expect(navigation.preview).toHaveBeenCalledTimes(2);
+    expect(navigation.openWar).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import type { MapBiome } from './maps';
+import { BIOME_PALETTES } from './biomes';
 import type { BattlefieldFeature, BattlefieldFeatureKind } from './battlefieldLayout';
 
 /**
@@ -19,7 +21,7 @@ type Stamp = {
 type Bucket = { geometry: GeometryName; surface: Surface; stamps: Stamp[] };
 
 export function createBattlefieldEnvironment(
-  parent: THREE.Object3D, features: ReadonlyArray<BattlefieldFeature>,
+  parent: THREE.Object3D, features: ReadonlyArray<BattlefieldFeature>, biome: MapBiome = 'industrial',
 ): THREE.Group {
   const world = new THREE.Group();
   world.name = 'Industrial battlefront: structures, cover and wilderness';
@@ -31,23 +33,24 @@ export function createBattlefieldEnvironment(
     sphere: new THREE.SphereGeometry(.5, 9, 6),
     rock: new THREE.DodecahedronGeometry(.5, 0),
   };
+  const palette = BIOME_PALETTES[biome];
   const colors: Record<Surface, number> = {
     foundation: 0x22292d,
-    concrete: 0x4b565c,
-    armor: 0x425560,
-    steel: 0x778890,
+    concrete: palette.stone,
+    armor: palette.armor,
+    steel: palette.steel,
     dark: 0x1b252b,
     rust: 0x735747,
-    sand: 0x65675c,
+    sand: palette.sand,
     scorch: 0x202628,
     hazard: 0xc58d44,
     lamp: 0xe8ab62,
     glass: 0x364d5b,
-    vegetation: 0x30483e,
-    bark: 0x424139,
-    crystal: 0x40a1b7,
+    vegetation: palette.vegetation,
+    bark: palette.bark,
+    crystal: palette.crystal,
     blue: 0x6fbbca,
-    dust: 0x565450,
+    dust: palette.dust,
   };
   const surfaces = Object.fromEntries((Object.keys(colors) as Surface[]).map(name => [
     name,

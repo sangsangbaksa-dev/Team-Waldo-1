@@ -2,19 +2,18 @@ import * as THREE from 'three';
 import { createBattleWorld } from './graphics';
 import { createWar } from './war';
 import { readPreferences } from './preferences';
+import type { MapId } from './maps';
 
 /** A decorative scene: no match progress, saved data, or input handlers. */
-export function createLandingPreview(mount: HTMLElement): () => void {
+export function createLandingPreview(mount: HTMLElement, mapId: MapId = 'classic'): () => void {
   let preferences = readPreferences();
-  let antialias = preferences.quality === 'high';
   let renderer: THREE.WebGLRenderer;
   try {
-    renderer = new THREE.WebGLRenderer({ antialias, alpha: false, powerPreference: 'low-power' });
+    renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false, powerPreference: 'low-power' });
   } catch {
     mount.dataset.preview = 'unavailable';
     return () => undefined;
   }
-  const compact = window.matchMedia('(max-width: 700px)').matches;
   const preference = window.matchMedia('(prefers-reduced-motion: reduce)');
   let reducedMotion = preferences.reducedMotion;
   let dead = false;
@@ -23,12 +22,13 @@ export function createLandingPreview(mount: HTMLElement): () => void {
   let elapsed = 0;
   let last = 0;
   const configureRenderer = () => {
-    const limit = preferences.quality === 'high' ? 1.5 : preferences.quality === 'low' ? 0.85 : 1;
+    // The decorative menu scene stays inexpensive even when battles use high quality.
+    const limit = preferences.quality === 'low' ? 0.85 : 1;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, limit));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = preferences.quality === 'low' ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.05;
-    renderer.shadowMap.enabled = preferences.quality === 'high';
+    renderer.shadowMap.enabled = false;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.domElement.setAttribute('aria-hidden', 'true');
     renderer.domElement.style.cssText = 'display:block;width:100%;height:100%;pointer-events:none';
@@ -38,22 +38,22 @@ export function createLandingPreview(mount: HTMLElement): () => void {
   mount.dataset.preview = 'ready';
 
   const scene = new THREE.Scene();
-  const war = createWar();
+  const war = createWar({ mapId });
   war.units = [];
   const world = createBattleWorld(scene, war);
-  world.setQuality(preferences.quality === 'high');
+  world.setQuality(false);
   world.setReducedMotion(reducedMotion);
   world.setLabelsVisible(false);
   world.setStrategicOverlaysVisible(false);
-  scene.background = new THREE.Color(0x344248);
-  scene.fog = new THREE.FogExp2(0x344248, 0.0039);
+  // createBattleWorld supplies the selected biome's lighting and sky palette.
+  if (scene.fog instanceof THREE.FogExp2) scene.fog.density = 0.0039;
   const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 620);
   const home = war.factions[0];
 
   const draw = () => {
     if (dead || document.hidden || !visible) return;
     const angle = 0.65 + (reducedMotion ? 0 : Math.sin(elapsed * 0.055) * 0.12);
-    const distance = compact ? 98 : 105;
+    const distance = mount.clientWidth < 450 ? 98 : 105;
     camera.position.set(home.x + Math.sin(angle) * distance, 78, home.z + Math.cos(angle) * distance);
     camera.lookAt(home.x, 5, home.z);
     renderer.render(scene, camera);
@@ -82,11 +82,9 @@ export function createLandingPreview(mount: HTMLElement): () => void {
     if (dead) return;
     preferences = readPreferences();
     reducedMotion = preferences.reducedMotion;
-    const nextAntialias = preferences.quality === 'high';
-    // Context antialiasing is immutable: replace only this decorative renderer.
-    if (nextAntialias !== antialias || mount.dataset.preview === 'unavailable') {
+    if (mount.dataset.preview === 'unavailable') {
       let next: THREE.WebGLRenderer;
-      try { next = new THREE.WebGLRenderer({ antialias: nextAntialias, alpha: false, powerPreference: 'low-power' }); }
+      try { next = new THREE.WebGLRenderer({ antialias: false, alpha: false, powerPreference: 'low-power' }); }
       catch {
         mount.dataset.preview = 'unavailable';
         renderer.domElement.style.visibility = 'hidden';
@@ -96,13 +94,13 @@ export function createLandingPreview(mount: HTMLElement): () => void {
       renderer.domElement.removeEventListener('webglcontextlost', contextLost);
       renderer.domElement.replaceWith(next.domElement);
       renderer.dispose(); renderer.forceContextLoss();
-      renderer = next; antialias = nextAntialias;
+      renderer = next;
       renderer.domElement.addEventListener('webglcontextlost', contextLost);
       mount.dataset.preview = 'ready';
       const bounds = mount.getBoundingClientRect();
       visible = bounds.bottom > 0 && bounds.top < innerHeight;
     }
-    world.setQuality(preferences.quality === 'high');
+    world.setQuality(false);
     world.setReducedMotion(reducedMotion);
     configureRenderer();
     last = 0;

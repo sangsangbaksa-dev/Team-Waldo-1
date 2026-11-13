@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { mapDefinitionFor } from './maps';
+import { BIOME_PALETTES } from './biomes';
 import type { UnitKind, War } from './war';
 
 /**
@@ -46,9 +48,13 @@ export function createVisualDetails() {
   };
 
   function landscape(parent: THREE.Group, war: War): void {
-    const random = rng(8273549), dummy = new THREE.Object3D();
+    const map = mapDefinitionFor(war), palette = BIOME_PALETTES[map.biome];
+    const halfSize = map.halfSize;
+    moss.color.setHex(palette.vegetation); grass.color.setHex(palette.grass); grassLight.color.setHex(palette.grassLight);
+    fir.color.setHex(palette.vegetation); firLight.color.setHex(palette.vegetationLight);
+    const random = rng(map.seed ^ 8273549), dummy = new THREE.Object3D();
     const clear = (x: number, z: number, radius = 0) => {
-      if (Math.abs(x) > 249 || Math.abs(z) > 249) return false;
+      if (Math.abs(x) > halfSize - 11 || Math.abs(z) > halfSize - 11) return false;
       if (war.factions.some(f => Math.hypot(x - f.x, z - f.z) < 25 + radius)) return false;
       if (war.outposts.some(p => Math.hypot(x - p.x, z - p.z) < 13 + radius)) return false;
       // Keep the great roads legible and open for armies.
@@ -80,10 +86,10 @@ export function createVisualDetails() {
     };
     let pineCount = 0, bushCount = 0, stoneCount = 0, tuftCount = 0, lightCount = 0;
     for (let trial = 0; trial < 3200; trial++) {
-      const x = (random() - .5) * 485, z = (random() - .5) * 485;
+      const x = (random() - .5) * (halfSize * 1.86), z = (random() - .5) * (halfSize * 1.86);
       if (!clear(x, z)) continue;
       const pocket = .5 + .5 * Math.sin(x * .047 + 1.5) * Math.cos(z * .041);
-      if (pineCount < 320 && random() < pocket * .19) {
+      if (pineCount < (map.biome === 'desert' ? 60 : 320) && random() < pocket * .19) {
         const h = 3.5 + random() * 3.1;
         set(trunks, pineCount, x, h * .29, z, .48, h * .6, .48);
         set(canopies, pineCount, x, h * .66, z, h * .42, h * .72, h * .42, random() * 6.28);
@@ -98,7 +104,7 @@ export function createVisualDetails() {
       }
     }
     for (let trial = 0; trial < 7400 && (tuftCount < 1600 || lightCount < 1100); trial++) {
-      const x = (random() - .5) * 495, z = (random() - .5) * 495;
+      const x = (random() - .5) * (halfSize * 1.9), z = (random() - .5) * (halfSize * 1.9);
       if (!clear(x, z)) continue;
       const s = .38 + random() * .95, angle = random() * 6.28;
       if (random() < .58 && tuftCount < 1600)

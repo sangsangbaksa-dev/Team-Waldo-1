@@ -1,0 +1,37 @@
+name: Frontiers browser smoke
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontiers-browser-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  frontiers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install headless Chromium
+        run: npx playwright install --with-deps chromium --only-shell
+      - name: Exercise three maps, both army modes, expedition support and atlas orders
+        timeout-minutes: 10
+        run: node tools/frontiers-smoke.mjs
+      - name: Upload map screenshots and disclosed test fixtures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontiers-evidence-${{ github.sha }}
+          path: browser-artifacts/frontiers/
+          if-no-files-found: warn
+          retention-days: 7

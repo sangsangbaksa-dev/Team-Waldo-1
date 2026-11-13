@@ -118,7 +118,7 @@ export class Renderer3D {
   private mat(c: number): THREE.MeshLambertMaterial { let m = this.mats.get(c); if (!m) { m = new THREE.MeshLambertMaterial({ color: c }); this.mats.set(c, m); } return m; }
 
   private buildCity(): void {
-    const w = this.world; buildBuildings(w, this.scene, import.meta.env.BASE_URL); buildPerimeter(this.scene);
+    const w = this.world; buildBuildings(w, this.scene, import.meta.env.BASE_URL, this.quality); buildPerimeter(this.scene);
     if (this.models) return;
     // 나무·가로등
     const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(3, 4, 40, 6), this.mat(0x5b4030), w.map.trees.length), leaf = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), this.mat(0x3f7d45), w.map.trees.length);

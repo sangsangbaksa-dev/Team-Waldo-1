@@ -110,7 +110,7 @@ async function exercise(page, result) {
   result.fps = await page.locator('#render-fps').innerText();
   await page.locator('#tab-army').click();
   const before = Number(await page.locator('#count-infantry').innerText());
-  assert.ok(before > 4, 'A new campaign must start with a large infantry formation');
+  assert.equal(before, 60, 'The allied grand army starts with 60 infantry');
   await page.locator('#train-infantry').click();
   assert.equal(Number(await page.locator('#count-infantry').innerText()), before + 1, 'Training did not add one infantry');
   result.infantryAfterTraining = before + 1;
@@ -145,6 +145,7 @@ async function exercise(page, result) {
   await page.waitForFunction(previous => document.querySelector('#war-clock')?.textContent !== previous, pausedClock, { timeout: 15000 });
   await page.locator('#exit').click(); await page.locator('#start-grand').waitFor();
 
+  assert.equal(await page.locator('#start-war, #legacy').count(), 0);
   await assertProduction(page); await page.waitForTimeout(300);
   assert.deepEqual(result.pageErrors, [], 'Uncaught production browser errors');
   assert.deepEqual(result.consoleErrors, [], 'Production browser console errors');

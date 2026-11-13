@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import './base.css';
+import { createBaseManager } from './baseUI';
+import { createBaseDistrict } from './baseVisuals';
 import { createBattleWorld, FACTION_COLORS } from './graphics';
 import { createAdventure } from './adventure';
 import { SQUAD_NAMES, squadUnits, assignSquad, dismissSquad, commandSquad, squadDestination, squadOrderLabel, type SquadId, type SquadCommand } from './squads';
@@ -53,6 +56,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
       </div>
       <div class="battle-time"><b id="war-clock">00:00</b><span id="difficulty-badge"></span></div>
       <div class="war-tools">
+        <button id="open-base" class="base-shortcut" title="건설과 장군 모집 (K)">▦ 기지 관리 · 장군 <kbd>K</kbd></button>
         <button id="speed" class="tool-button" title="게임 속도 변경" aria-label="게임 속도 0.65배">0.65×</button>
         <button id="pause" class="tool-button" title="일시정지 (Esc)" aria-label="일시정지">${icon('pause')}</button>
         <button id="sound" class="tool-button optional-tool" title="효과음 켜기/끄기" aria-label="효과음 끄기">${icon('sound')}</button>
@@ -71,8 +75,8 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
         <button role="tab" id="tab-research" aria-selected="false" aria-controls="pane-research" data-tab="research" tabindex="-1">${icon('science', 16)}연구</button>
       </nav>
       <div class="war-panel-scroll">
-        <section id="pane-economy" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-economy"><div class="section-heading"><h2>생산과 성장</h2><span>최대 Lv.4</span></div><div id="buildings" class="action-list"></div><div class="section-heading"><h2>왕국 정책</h2></div><div id="policy" class="segmented"></div><p id="policy-description" class="panel-note"></p><button id="repair" class="repair-button">${icon('shield', 17)}<span>본부 수리<small>체력 +100 · 금 45 / 식량 25</small></span></button></section>
-        <section id="pane-army" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-army" hidden><div class="section-heading"><h2>병종 훈련</h2><span>숫자 1–4</span></div><div id="unit-train"></div><div class="section-heading"><h2>본부 수비대</h2></div><div id="reserve" class="segmented"></div><p class="panel-note">지정한 병력은 본부를 지킵니다. 나머지 병력이 작전 명령을 수행합니다.</p></section>
+        <section id="pane-economy" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-economy"><div class="section-heading"><h2>생산과 성장</h2><span>최대 Lv.4</span></div><div id="buildings" class="action-list"></div><button id="open-base-economy" class="base-economy-link">▦ 건설 부지에서 직접 건물 배치하기</button><div class="section-heading"><h2>왕국 정책</h2></div><div id="policy" class="segmented"></div><p id="policy-description" class="panel-note"></p><button id="repair" class="repair-button">${icon('shield', 17)}<span>본부 수리<small>체력 +100 · 금 45 / 식량 25</small></span></button></section>
+        <section id="pane-army" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-army" hidden><div class="section-heading"><h2>병종 훈련</h2><span>숫자 1–4</span></div><div id="unit-train"></div><button id="open-base-generals" class="base-economy-link">♛ 장군 모집과 부대 배치</button><div class="section-heading"><h2>본부 수비대</h2></div><div id="reserve" class="segmented"></div><p class="panel-note">지정한 병력은 본부를 지킵니다. 나머지 병력이 작전 명령을 수행합니다.</p></section>
         <section id="pane-orders" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-orders" hidden>
           <div class="squad-manager" aria-label="부대 그룹 편성">
             <div class="section-heading"><h2>부대 편성 및 직접 이동</h2><span>3개 그룹</span></div>
@@ -163,7 +167,9 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   const pan = (dx: number, dz: number) => { focus.x = THREE.MathUtils.clamp(focus.x + dx, -MAP_HALF_SIZE + 12, MAP_HALF_SIZE - 12); focus.z = THREE.MathUtils.clamp(focus.z + dz, -MAP_HALF_SIZE + 12, MAP_HALF_SIZE - 12); cameraUpdate(); };
   const setZoom = (value: number) => { zoom = THREE.MathUtils.clamp(value, 14, 680); cameraUpdate(); };
   cameraUpdate();
-  const world = createBattleWorld(scene, w); world.setQuality(prefs.quality === 'high'); world.setReducedMotion(prefs.reducedMotion);
+  const world = createBattleWorld(scene, w);
+  const baseDistrict = createBaseDistrict(scene,w);
+  world.setQuality(prefs.quality === 'high'); world.setReducedMotion(prefs.reducedMotion);
   const adventureControl = createAdventure(scene, camera, w, !resumed && import.meta.env.MODE !== 'test'); adventure = adventureControl;
   const controller = new AbortController(); const signal = controller.signal;
   overlay.addEventListener('pointerdown', () => audio.unlock(), { signal, capture: true });
@@ -270,7 +276,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   };
   const close = (returnToMenu = true) => {
     if (dead) return; dead = true; modalClose?.(); modalClose = null;
-    cancelAnimationFrame(frame); controller.abort(); missionObserver.disconnect(); adventureControl.dispose(); world.dispose(); renderer.dispose(); renderer.forceContextLoss(); audio.dispose(); overlay.remove();
+    cancelAnimationFrame(frame); controller.abort(); missionObserver.disconnect(); adventureControl.dispose(); baseDistrict.dispose(); world.dispose(); renderer.dispose(); renderer.forceContextLoss(); audio.dispose(); overlay.remove();
     if (import.meta.env.DEV) delete (window as unknown as Record<string, unknown>).__war;
     if (returnToMenu) onExit();
   };
@@ -279,6 +285,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     paused = true;
     modalClose = showDialog({ title: '전투를 저장할 수 없어요', body: '<p>브라우저 저장 공간을 사용할 수 없습니다. 메뉴로 나가면 현재 진행 상황이 사라집니다.</p>', cancel: '전투로 돌아가기', confirm: '저장 없이 나가기', onConfirm: () => close(), onClose: () => { if (!dead) paused = false; modalClose = null; } });
   };
+  const baseManager = createBaseManager(overlay,w,() => { audio.play('upgrade'); ui(); writeSave(); });
   const openModal = (title: string, body: string, setup?: () => void) => {
     if (modalClose || done) return; paused = true; heldKeys.clear();
     modalClose = showDialog({ title, body, cancel: '전투로 돌아가기', onClose: () => { paused = graphicsLost; modalClose = null; last = performance.now(); } }); setup?.();
@@ -327,6 +334,10 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     el('#adventure-progress-fill').style.width = detail.progress + '%';
   };
   const goStrategy = () => { adventureControl.toStrategy(); cameraUpdate(); updateAdventureUI(); };
+  const openBase = (tab:'build'|'generals'='build') => { if(done||modalClose)return; goStrategy(); heldKeys.clear(); baseManager.open(tab); };
+  el<HTMLButtonElement>('#open-base').onclick = () => openBase('build');
+  el<HTMLButtonElement>('#open-base-economy').onclick = () => openBase('build');
+  el<HTMLButtonElement>('#open-base-generals').onclick = () => openBase('generals');
   const goField = () => { adventureControl.toField(); updateAdventureUI(); };
   el<HTMLButtonElement>('#adventure-enter').onclick = goField;
   el<HTMLButtonElement>('#adventure-strategy').onclick = goStrategy;
@@ -446,9 +457,11 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   renderer.domElement.addEventListener('contextmenu', event => event.preventDefault(), { signal });
   renderer.domElement.addEventListener('wheel', event => { event.preventDefault(); if (!adventureControl.isActionMode) setZoom(zoom + event.deltaY * .13); }, { signal, passive: false });
   window.addEventListener('keydown', event => {
+    if(baseManager.isOpen()) { if(event.key==='Escape') {event.preventDefault();baseManager.close();} return; }
     if (modalClose || done || event.ctrlKey || event.metaKey || event.altKey) return;
     if ((event.target as HTMLElement).matches('input, select, textarea')) return;
     const key = event.key.toLowerCase();
+    if (key === 'k' && !event.repeat) { event.preventDefault();openBase();return; }
     if (key === 'escape' && !event.repeat) { event.preventDefault(); togglePause(); return; }
     if (key === 'h' && !event.repeat) home();
     if (!adventureControl.isActionMode && !event.repeat) {
@@ -536,6 +549,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     text('#storm-warning-text', `본부가 폭풍에 노출됐습니다 · 체력 −${storm.toFixed(1)}/초`);
     if (p.hp < p.maxHp * .3 && !lowHpWarned) { audio.play('warning'); announce('본부 체력이 낮습니다. 수리하거나 방어 병력을 확보하세요.'); lowHpWarned = true; }
     if (p.hp > p.maxHp * .5) lowHpWarned = false;
+    baseManager.refresh();
   }
   function drawMap(): void {
     if (!ctx) return;
@@ -565,7 +579,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     const f = point(focus.x, focus.z); ctx.strokeStyle = '#f1eee1'; ctx.lineWidth = 1; const size = zoom / 15; ctx.strokeRect(f.x - size, f.y - size * .65, size * 2, size * 1.3);
   }
   function finish(): void {
-    done = true; heldKeys.clear(); if (!saveWar(w)) deleteWarSave(); const victory = w.winner === 0, stats = w.stats[0];
+    baseManager.close();done = true; heldKeys.clear(); if (!saveWar(w)) deleteWarSave(); const victory = w.winner === 0, stats = w.stats[0];
     recordMatch(victory, w.time, stats.kills); audio.play(victory ? 'victory' : 'defeat');
     const end = el('.war-end'); end.hidden = false;
     [...overlay.children].forEach(child => { if (child instanceof HTMLElement && child !== end) child.inert = true; });
@@ -597,6 +611,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     adventureControl.update(paused || done || graphicsLost ? 0 : elapsed, heldKeys);
     const directNotice = adventureControl.takeNotice();
     if (directNotice) announce(directNotice);
+    baseDistrict.update();
     world.update(paused || done || graphicsLost ? 0 : elapsed * speed);
     if (now - lastUI > 250) { ui(); drawMap(); updateAdventureUI(); lastUI = now; }
     if (!done && (w.over || !w.factions[0].alive)) finish();

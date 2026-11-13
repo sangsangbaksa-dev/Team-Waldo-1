@@ -5,3 +5,4 @@ dist
 browser-artifacts/
 qa/
 .vercel/
+__pycache__/

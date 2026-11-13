@@ -4,6 +4,8 @@ import { BIZ, BUILD_ORDER, CLASSES, DIFFICULTY, FACTIONS, PERKS, RESEARCH, STRUC
 import { World } from './world';
 import { Renderer, type Ghost } from './render';
 import { Renderer3D } from './render3d';
+import { loadModels, type Models } from './models';
+import { STEPS, TUT_KEY, advance, newCounters, newTutState, type Counters, type TutState } from './tutorial';
 import { CityAudio } from './audio';
 import { reload, switchWeapon } from './actors';
 import { ACTORS, BLOCKS, PITCH, ROAD } from './defs';
@@ -16,6 +18,7 @@ export function readCityCareer(): { matches: number; wins: number; best: number 
   try { const r = JSON.parse(localStorage.getItem(CITY_KEY) ?? '{}') as Record<string, unknown>; const n = (v: unknown): number => typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0; return { matches: n(r.matches), wins: n(r.wins), best: n(r.best) }; } catch { return { matches: 0, wins: 0, best: 0 }; }
 }
 
+function readTutDone(): boolean { try { return localStorage.getItem(TUT_KEY) === '1'; } catch { return false; } }
 export function openCity(onExit: () => void, options: { difficulty: Difficulty }): void {
   const prefs = readPreferences(), touch = matchMedia('(pointer: coarse)').matches;
   const root = document.createElement('div'); root.className = 'city-root' + (touch ? ' touch' : '');
@@ -24,7 +27,7 @@ export function openCity(onExit: () => void, options: { difficulty: Difficulty }
     <div class="c-tl"><div class="c-res" id="c-res"></div><div class="c-quest" id="c-quest"></div></div>
     <div class="c-tc" id="c-zone"></div>
     <div class="c-tr"><canvas id="c-mini" width="200" height="200" aria-label="미니맵"></canvas><div id="c-wanted"></div><div class="c-topbtns"><button data-act="view" id="c-view" title="시점 전환 (V)">1인칭</button><button data-act="map" title="전술 지도 (M)">지도</button><button data-act="pause" title="일시정지 (Esc)">Ⅱ</button></div></div>
-    <div class="c-target" id="c-target"></div><div class="c-area" id="c-area"></div><div class="c-feed" id="c-feed"></div><div class="c-banner" id="c-banner"></div><div class="c-prompt" id="c-prompt"></div><div class="c-toast" id="c-toast"></div>
+    <div class="c-target" id="c-target"></div><aside class="c-tut" id="c-tut" hidden></aside><div class="c-area" id="c-area"></div><div class="c-feed" id="c-feed"></div><div class="c-banner" id="c-banner"></div><div class="c-prompt" id="c-prompt"></div><div class="c-toast" id="c-toast"></div>
     <div class="c-bl" id="c-boss"></div>
     <div class="c-bc" id="c-cmd"></div>
     <aside class="c-panel" id="c-panel" hidden></aside>
@@ -37,7 +40,8 @@ export function openCity(onExit: () => void, options: { difficulty: Difficulty }
   const canvas = q<HTMLCanvasElement>('.city-canvas'), canvas3 = q<HTMLCanvasElement>('.city-canvas3d'), layer = q('#c-layer'), cross = q('#c-cross'), hurtEl = q('#c-hurt'), hud = q('.city-hud'), modal = q('#c-modal'), panel = q('#c-panel'), bigmap = q('#c-bigmap');
   const audio = new CityAudio(); audio.enabled = prefs.sound;
   type View = 'fp' | 'tp' | 'top';
-  let R3: Renderer3D | null = null, view: View = 'fp', locked = false, lockFail = false, expectUnlock = false, touchFire = false, hurt = 0, lastLook = 0, hitT = 0;
+  let tut: { s: TutState; c: Counters } | null = null, tutSig = '', tutDone = readTutDone(), lastPos = { x: 0, y: 0 }, lastYaw = 0, tutInfoLock = false;
+  let models: Models | null = null, R3: Renderer3D | null = null, view: View = 'fp', locked = false, lockFail = false, expectUnlock = false, touchFire = false, hurt = 0, lastLook = 0, hitT = 0;
   const tags: HTMLElement[] = [], marks: HTMLElement[] = []; let area = '', areaT = 0, sirenT = 0;
   let world: World | null = null, R: Renderer | null = null, raf = 0, last = 0, acc = 0, paused = false, closed = false, ghost: Ghost | null = null, tab = 'train', hudT = 0, toastT = 0, bannerT = 0, shopOpen = false, resultShown = false, userZoom = 1, combat = 0, klass: ClassId = 'warlord';
   const keys = new Set<string>(), mouse = { x: innerWidth / 2, y: innerHeight / 2, down: false };
@@ -50,20 +54,24 @@ export function openCity(onExit: () => void, options: { difficulty: Difficulty }
   function setup(): void {
     modal.innerHTML = `<section class="c-setup"><div class="c-kicker">WALDO · KINGDOMS AT WAR — 도시 전선</div><h2>LAST CITY <small>최후의 왕국</small></h2>
       <p class="c-lead">여덟 왕국이 한 도시에 떨어졌습니다. 직접 총을 들고 뛰고, 차를 빼앗고, 사업체를 사들여 돈을 벌고, 군대를 길러 <b>자기장이 닫히기 전 마지막 왕국</b>이 되세요.</p>
+      <button class="c-tutcard${tutDone ? '' : ' rec'}" data-act="tutorial"><span>${tutDone ? '다시 연습' : '처음이라면 추천 · 약 5분'}</span><b>튜토리얼 시작</b><p>이동·사격·사업체·기지 건설·병력 지휘·차량·시장까지 한 단계씩 안전하게 익힙니다. 연습장에서는 자기장과 라이벌이 멈춰 있습니다.</p></button>
+      <div class="c-sub">${tutDone ? '바로 시작할 영웅을 고르세요' : '또는 바로 시작할 영웅을 고르세요'}</div>
       <div class="c-classes">${(Object.keys(CLASSES) as ClassId[]).map(k => `<button class="c-class" data-act="class:${k}"><span>${CLASSES[k].tag}</span><b>${CLASSES[k].name}</b><p>${CLASSES[k].desc}</p><em>Q · ${CLASSES[k].skill}</em><small>${CLASSES[k].skillDesc}</small></button>`).join('')}</div>
       <div class="c-keys">${touch ? '<span>왼쪽 드래그 이동</span><span>오른쪽 드래그 시점</span><span>사격 버튼</span><span>버튼으로 상호작용·지휘</span>' : '<span><b>WASD</b> 이동</span><span><b>마우스</b> 시점·사격</span><span><b>V</b> 1인칭/3인칭/전술뷰</span><span><b>E</b> 매입·줍기</span><span><b>F</b> 차량 탑승</span><span><b>Tab</b> 지휘 패널</span><span><b>우클릭</b> 병력 돌격</span><span><b>Z/X</b> 집결·사수</span><span><b>Space</b> 대시</span><span><b>M</b> 지도</span>'}</div>
       <div class="c-setup-foot"><span>난이도 · ${DIFFICULTY[options.difficulty].label}</span><button data-act="exit" class="c-ghost">메뉴로</button></div></section>`;
   }
-  function start(k: ClassId): void {
+  function start(k: ClassId, tutorial = false): void {
     klass = k; modal.innerHTML = ''; hud.hidden = false; resultShown = false; paused = false; ghost = null; shopOpen = false; panel.hidden = true; bigmap.hidden = true;
-    world = new World({ seed: (Math.random() * 2 ** 31) | 0, difficulty: options.difficulty, klass: k });
+    world = new World({ seed: (Math.random() * 2 ** 31) | 0, difficulty: options.difficulty, klass: k, tutorial });
+    tut = tutorial ? { s: newTutState(), c: newCounters() } : null;  tutSig = ''; q('#c-tut').hidden = true; tutInfoLock = false;
     R = new Renderer(canvas, world); R.reduced = prefs.reducedMotion; const b = world.boss(0)!; R.cam.x = b.x; R.cam.y = b.y; R.cam.zoom = 0.6;
     R3?.dispose(); R3 = null; layer.innerHTML = ''; tags.length = 0; marks.length = 0;
-    try { R3 = new Renderer3D(canvas3, world, prefs.quality, layer); R3.reduced = prefs.reducedMotion; const hq = world.hq(0); if (hq) R3.yaw = Math.atan2(hq.y + 60 - b.y, hq.x + 60 - b.x) + Math.PI; R3.camPos.set(b.x, 46, b.y); }
+    try { R3 = new Renderer3D(canvas3, world, prefs.quality, layer, models); R3.reduced = prefs.reducedMotion; const hq = world.hq(0); if (hq) R3.yaw = Math.atan2(hq.y + 60 - b.y, hq.x + 60 - b.x) + Math.PI; R3.camPos.set(b.x, 46, b.y); }
     catch { R3 = null; toast('3D를 사용할 수 없어 전술 뷰로 시작합니다'); }
+    lastYaw = R3 ? R3.yaw : 0; lastPos = { x: b.x, y: b.y };
     setView(R3 ? (view === 'top' ? 'fp' : view) : 'top'); lock();
     if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__city = { world, renderer: R, r3: R3 };
-    audio.unlock(); banner('본부 앞 사업체를 매입하고 병영을 지으세요');
+    audio.unlock(); if (!tutorial) banner('본부 앞 사업체를 매입하고 병영을 지으세요');
     renderCmd(); last = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(frame);
   }
   let everLocked = false, lockErrors = 0;
@@ -89,6 +97,8 @@ export function openCity(onExit: () => void, options: { difficulty: Difficulty }
   function act(code: string, ev?: Event): void {
     const [a, arg] = code.split(':'), w = world; audio.unlock();
     if (a === 'class') { start(arg as ClassId); return; }
+    if (a === 'tutorial') { klass = 'warlord'; start('warlord', true); return; }
+    if (a === 'tutdone') { tut = null; setup(); return; }
     if (a === 'exit') { exit(); return; }
     if (a === 'retry') { start(klass); return; }
     if (!w) return; const f = w.factions[0];
@@ -96,7 +106,9 @@ export function openCity(onExit: () => void, options: { difficulty: Difficulty }
     if (a === 'pause') { pause(); return; }
     if (a === 'sound') { prefs.sound = !prefs.sound; writePreferences(prefs); audio.setEnabled(prefs.sound); pause(); return; }
     if (a === 'perk') { w.pickPerk(Number(arg)); audio.play('levelup'); modal.innerHTML = ''; last = performance.now(); if (f.pending === 0) lock(); return; }
-    if (a === 'view') { setView(view === 'fp' ? 'tp' : view === 'tp' ? 'top' : R3 ? 'fp' : 'top'); if (!paused) lock(); audio.play('click'); return; }
+    if (a === 'tutnext') { if (tut) { tut.c.acked = true; lock(); } return; }
+    if (a === 'tutskip') { finishTutorial(true); return; }
+    if (a === 'view') { if (tut) tut.c.viewSwitches++; setView(view === 'fp' ? 'tp' : view === 'tp' ? 'top' : R3 ? 'fp' : 'top'); if (!paused) lock(); audio.play('click'); return; }
     if (paused || w.over) return;
     if (a === 'tab') { tab = arg; renderPanel(); audio.play('click'); }
     else if (a === 'panel') { panel.hidden = !panel.hidden; shopOpen = false; if (!panel.hidden) { renderPanel(); unlock(); } else lock(); audio.play('click'); }
@@ -105,7 +117,7 @@ export function openCity(onExit: () => void, options: { difficulty: Difficulty }
     else if (a === 'train') res(w.train(0, arg as UnitId));
     else if (a === 'build') { ghost = { kind: arg as StructKind, x: 0, y: 0, ok: false }; if (view !== 'top' || innerWidth < 900) { panel.hidden = true; lock(); } toast(view === 'top' ? '배치할 위치를 누르세요 (우클릭·Esc 취소)' : '바닥을 조준하고 클릭해 배치 (우클릭 취소)', false); }
     else if (a === 'research') res(w.research(0, arg as ResearchId));
-    else if (a === 'sell') res(w.market(0, true, arg === 'all' ? f.crystal : Number(arg)));
+    else if (a === 'sell') { const e = w.market(0, true, arg === 'all' ? f.crystal : Number(arg)); res(e); if (!e && tut) tut.c.sells++; }
     else if (a === 'buy') res(w.market(0, false, Number(arg)));
     else if (a === 'upg') { const z = w.businesses.find(b => b.id === Number(arg)); if (z) { const e = w.upgradeBiz(0, z); if (e) toast(e); else audio.play('cash'); } }
     else if (a === 'item') { const e = w.buyItem(0, arg as WeaponId | 'armor' | 'medkit'); if (e) toast(e); else audio.play('cash'); }
@@ -174,8 +186,8 @@ export function openCity(onExit: () => void, options: { difficulty: Difficulty }
   function renderHud(): void {
     const w = world!, f = w.factions[0], b = w.boss(0), z = w.zone;
     q('#c-res').innerHTML = `<span class="ca" title="자금">$ <b>${$(f.cash)}</b><small>+${$(f.income)}/s</small></span><span class="cr" title="크리스탈">◆ <b>${$(f.crystal)}</b></span><span title="인구">병력 <b>${f.supply}/${f.supplyMax}</b></span>`;
-    const quest = w.quests.find(x => !x.done); q('#c-quest').innerHTML = quest ? `<em>목표</em> ${quest.text} <b>+$${quest.reward}</b>` : '<em>목표</em> 마지막 왕국이 되세요';
-    const ph = z.phase < ZONE_PHASES.length; q('#c-zone').innerHTML = `<b>${clock(w.time)}</b><span class="${z.shrinking ? 'warn' : ''}">${!ph ? '자기장 완전 수축' : z.shrinking ? `자기장 수축 중 ${clock(z.t)}` : `자기장 ${z.phase + 1}단계 ${clock(z.t)} 후`}</span><span>생존 왕국 <b>${w.aliveCount()}</b>/8</span>`;
+    const quest = tut ? null : w.quests.find(x => !x.done); q('#c-quest').innerHTML = tut ? '' : quest ? `<em>목표</em> ${quest.text} <b>+$${quest.reward}</b>` : '<em>목표</em> 마지막 왕국이 되세요';
+    const ph = z.phase < ZONE_PHASES.length; if (tut) q('#c-zone').innerHTML = `<b>튜토리얼</b><span>연습장 · 자기장과 라이벌 정지</span><span>${Math.min(tut.s.i, STEPS.length - 1) + 1}/${STEPS.length}</span>`; else q('#c-zone').innerHTML = `<b>${clock(w.time)}</b><span class="${z.shrinking ? 'warn' : ''}">${!ph ? '자기장 완전 수축' : z.shrinking ? `자기장 수축 중 ${clock(z.t)}` : `자기장 ${z.phase + 1}단계 ${clock(z.t)} 후`}</span><span>생존 왕국 <b>${w.aliveCount()}</b>/8</span>`;
     q('#c-wanted').innerHTML = f.wanted >= 1 ? `<span class="stars">${'★'.repeat(Math.floor(f.wanted))}${'☆'.repeat(5 - Math.floor(f.wanted))}</span> 수배 중` : '';
     q('#c-feed').innerHTML = w.feed.filter(x => w.time - x.t < 7).slice(-5).map(x => `<div style="border-color:${x.color}">${x.text}</div>`).join('');
     const army = w.armyOf(0).length;
@@ -221,6 +233,7 @@ export function openCity(onExit: () => void, options: { difficulty: Difficulty }
     if (!w) return; const f = w.factions[0];
     if (f.pending > 0) { if (k >= '1' && k <= '3') act(`perk:${Number(k) - 1}`); return; }
     if (k === 'Escape') { if (ghost) ghost = null; else if (!bigmap.hidden) { bigmap.hidden = true; lock(); } else if (!panel.hidden) { panel.hidden = true; shopOpen = false; lock(); } else if (paused) act('resume'); else pause(); return; }
+    if (tut && k === 'Enter' && STEPS[tut.s.i]?.info && !paused) { act('tutnext'); return; }
     if (paused || w.over || e.repeat) { keys.add(k); return; }
     keys.add(k);
     if (k === ' ') e.preventDefault();
@@ -269,6 +282,28 @@ export function openCity(onExit: () => void, options: { difficulty: Difficulty }
   const mapClick = (c: HTMLCanvasElement) => (e: PointerEvent): void => { if (!world || paused) return; const r = c.getBoundingClientRect(), k = 5160 / r.width; world.order(0, 'amove', (e.clientX - r.left) * k, (e.clientY - r.top) * k); toast('전 병력 돌격!', false); e.stopPropagation(); };
   q<HTMLCanvasElement>('#c-mini').addEventListener('pointerdown', mapClick(q<HTMLCanvasElement>('#c-mini'))); q<HTMLCanvasElement>('#c-big').addEventListener('pointerdown', mapClick(q<HTMLCanvasElement>('#c-big')));
 
+  // ---------- 튜토리얼 ----------
+  function tutTick(): void {
+    if (!tut || !world || !R3 && view !== 'top') return; const w = world, x = { w, c: tut.c, s: tut.s, yaw: R3?.yaw ?? 0 };
+    if (w.factions[0].pending > 0) return;
+    for (let n = 0; n < 3 && advance(x); n++) { audio.play('quest'); tutSig = ''; }
+    if (tut.s.i >= STEPS.length) { finishTutorial(false); return; }
+    const st = STEPS[tut.s.i], pr = st.progress?.(x), card = q('#c-tut'), body = touch && st.touch ? st.touch : st.body;
+    const sig = `${tut.s.i}|${pr ? pr[0].toFixed(1) : ''}|${touch}`;
+    if (st.info && !tutInfoLock) { tutInfoLock = true; unlock(); } else if (!st.info && tutInfoLock) tutInfoLock = false;
+    if (sig !== tutSig) {
+      tutSig = sig; card.hidden = false;
+      card.innerHTML = `<header><span>튜토리얼 ${tut.s.i + 1}/${STEPS.length}</span><button data-act="tutskip">건너뛰기</button></header><b>${st.title}</b><p>${body}</p>${pr ? `<div class="bar"><i style="width:${Math.min(100, pr[0] / pr[1] * 100)}%"></i></div>` : ''}${st.info ? `<button class="go" data-act="tutnext">확인${touch ? '' : ' <kbd>Enter</kbd>'}</button>` : ''}`;
+    }
+    root.querySelectorAll('.c-pulse').forEach(el => el.classList.remove('c-pulse'));
+    for (const sel of st.pulse ?? []) root.querySelectorAll(sel).forEach(el => { if (el instanceof HTMLElement && el.offsetParent !== null) el.classList.add('c-pulse'); });
+  }
+  function finishTutorial(skipped: boolean): void {
+    try { localStorage.setItem(TUT_KEY, '1'); } catch { /* 기록은 선택 사항 */ }
+    tutDone = true; q('#c-tut').hidden = true; root.querySelectorAll('.c-pulse').forEach(el => el.classList.remove('c-pulse')); unlock(); audio.setEngine(-1); paused = true; panel.hidden = true; bigmap.hidden = true;
+    modal.innerHTML = `<section class="c-result win"><div class="c-kicker">${skipped ? 'TUTORIAL SKIPPED' : 'TUTORIAL COMPLETE'}</div><h2>${skipped ? '연습 종료' : '준비 완료!'}</h2><p class="c-lead">${skipped ? '튜토리얼은 시작 화면에서 언제든 다시 할 수 있습니다.' : '이동·사격·사업체·기지·병력·차량·시장을 모두 익혔습니다. 이제 진짜 전쟁입니다. 경제를 먼저 굴리고, 병력과 함께 움직이세요.'}</p><div class="c-actions"><button data-act="tutdone" class="c-primary">영웅 고르고 시작</button><button data-act="tutorial">튜토리얼 다시</button><button data-act="exit">메뉴로</button></div></section>`;
+  }
+
   // ---------- 3D 화면 표식 ----------
   function overlay(): void {
     const w = world!, r3 = R3!, b = w.boss(0), list: { x: number; y: number; h: number; text: string; color: string; edge: boolean }[] = [];
@@ -277,6 +312,7 @@ export function openCity(onExit: () => void, options: { difficulty: Difficulty }
     const z = w.zone; if (b && Math.hypot(b.x - z.nx, b.y - z.ny) > z.nr && z.nr < 3800) list.push({ x: z.nx, y: z.ny, h: 40, text: '안전지대', color: '#c9a2ff', edge: true });
     if (b && !w.businesses.some(q2 => q2.owner === 0)) { let best: { x: number; y: number } | null = null, bd = 1e9; for (const q2 of w.businesses) if (q2.owner < 0 && q2.kind !== 'gunshop') { const d = Math.hypot(q2.x - b.x, q2.y - b.y); if (d < bd) { bd = d; best = q2; } } if (best) list.push({ x: best.x, y: best.y, h: 60, text: '매입 가능', color: '#ffffff', edge: true }); }
     for (const f of w.factions) { if (f.id === 0) continue; const o = w.boss(f.id); if (!o || !b) continue; const d = Math.hypot(o.x - b.x, o.y - b.y); if (d < 1500) list.push({ x: o.x, y: o.y, h: 62, text: `${f.name} Lv.${f.level} · ${Math.ceil(o.hp)}`, color: f.color, edge: false }); }
+    if (tut) { list.length = 0; const st = STEPS[tut.s.i], mk = st?.marker?.({ w, c: tut.c, s: tut.s, yaw: r3.yaw }); if (mk) list.push({ x: mk.x, y: mk.y, h: mk.h, text: mk.text, color: '#ffe27a', edge: true }); }
     while (marks.length < list.length) { const el = document.createElement('div'); el.className = 'c-mark'; layer.append(el); marks.push(el); }
     marks.forEach((el, i) => {
       const m = list[i]; if (!m) { el.style.display = 'none'; return; }
@@ -325,7 +361,7 @@ export function openCity(onExit: () => void, options: { difficulty: Difficulty }
         else if (e.t === 'kill') { hitT = 0.3; cross.classList.add('hit', 'kill'); audio.play('pickup', 0.8); }
         else if (e.t === 'phurt') hurt = Math.min(1, hurt + (e.a ?? 10) / 45);
         else if (e.t === 'cash' && e.f === 0) audio.play('cash'); else if (e.t === 'pickup' && d < 60) audio.play('pickup'); else if (e.t === 'levelup' && e.f === 0) audio.play('levelup');
-        else if (e.t === 'quest') { audio.play('quest'); banner(`목표 달성 +$${e.a}`); } else if (e.t === 'siren') audio.play('siren'); else if (e.t === 'announce') { audio.play('announce'); banner(e.s!); }
+        else if (e.t === 'order') { if (tut) tut.c.orders++; } else if (e.t === 'quest') { audio.play('quest'); banner(`목표 달성 +$${e.a}`); } else if (e.t === 'siren') audio.play('siren'); else if (e.t === 'announce') { audio.play('announce'); banner(e.s!); }
         else if (e.t === 'crash') audio.play('crash', 0.8); else if (e.t === 'reload') audio.play('reload'); else if (e.t === 'dash') audio.play('dash'); else if (e.t === 'door') audio.play('door'); else if ((e.t === 'built' || e.t === 'capture') && e.f === 0) audio.play('build');
         else if (e.t === 'thud') audio.play('boom', vol * 0.5); else if (e.t === 'playerdown') { audio.play('lose'); hurt = 1; }
       }
@@ -353,10 +389,13 @@ export function openCity(onExit: () => void, options: { difficulty: Difficulty }
     }
     if (areaT > 0) { areaT -= dt; if (areaT <= 0) q('#c-area').className = 'c-area'; }
     if (f.wanted >= 2 && !paused && now - sirenT > 2400 && w.vehicles.some(v => v.ai === 'chase' && b && Math.hypot(v.x - b.x, v.y - b.y) < 900)) { sirenT = now; audio.play('wail'); }
-    hudT -= dt; if (hudT <= 0) { hudT = 0.12; renderHud(); q('#c-target').innerHTML = three ? crossTarget() : ''; }
+    if (tut && !paused && b) { if (!b.inVeh) tut.c.move += Math.hypot(b.x - lastPos.x, b.y - lastPos.y) * (Math.hypot(b.x - lastPos.x, b.y - lastPos.y) < 80 ? 1 : 0); else if (veh) tut.c.vehicleDist += spd * dt; lastPos = { x: b.x, y: b.y }; if (R3) { let dy = R3.yaw - lastYaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2; tut.c.look += Math.min(1, Math.abs(dy)); lastYaw = R3.yaw; } }
+    hudT -= dt; if (hudT <= 0) { hudT = 0.12; renderHud(); if (tut && !paused) tutTick(); q('#c-target').innerHTML = three ? crossTarget() : ''; }
     if (toastT > 0) { toastT -= dt; if (toastT <= 0) q('#c-toast').className = 'c-toast'; }
     if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) q('#c-banner').className = 'c-banner'; }
     if (w.over && !resultShown) showResult();
   }
+  if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__tut = () => tut;
+  void loadModels(import.meta.env.BASE_URL).then(m => { models = m; }).catch(() => { models = null; });
   setup();
 }

@@ -4,6 +4,21 @@ import { createGrandArmyVisuals } from '../../src/battle/grandArmyVisuals';
 import { createWar } from '../../src/battle/war';
 
 describe('large-army visual LOD', () => {
+  it('keeps troop locomotion but suppresses decorative gait when reduced motion is enabled', () => {
+    const war = createWar({ grandBattle: true }), parent = new THREE.Group();
+    const visual = createGrandArmyVisuals(parent, war);
+    const body = parent.children[0] as THREE.InstancedMesh;
+    const infantry = war.units.find(unit => unit.owner === 0 && unit.kind === 'infantry')!;
+    infantry.x += 1; war.time = .137;
+    visual.update(true);
+    const matrix = new THREE.Matrix4(); body.getMatrixAt(0, matrix);
+    const position = new THREE.Vector3().setFromMatrixPosition(matrix);
+    expect(position.x).toBeCloseTo(infantry.x);
+    expect(position.y).toBeCloseTo(1.32);
+    infantry.x += 1; war.time += .07;
+    visual.update(false); body.getMatrixAt(0, matrix);
+    expect(new THREE.Vector3().setFromMatrixPosition(matrix).y).toBeGreaterThan(1.32);
+  });
   it('renders 600 warriors with shared instanced armor and complete cavalry legs', () => {
     const war = createWar({ grandBattle: true });
     const group = new THREE.Group();

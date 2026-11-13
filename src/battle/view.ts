@@ -66,7 +66,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     </header>
     <aside class="war-panel" aria-label="왕국 관리">
       <div class="kingdom-heading"><span class="faction-mark">${icon('shield', 23)}</span><div><span class="kicker">YOUR KINGDOM</span><h1>에메랄드 왕국</h1></div><button class="tool-button" id="home" title="내 영지로 이동 (H)" aria-label="내 영지로 이동">${icon('home', 17)}</button></div>
-      <div class="grand-battle-tag">⚔ 대규모 전장 · 아군 100명 VS 적 500명</div>
+      ${w.grandBattle ? `<div class="grand-battle-tag"><span>${icon('army', 15)}군단 작전</span><b>100 <small>VS</small> 500</b></div>` : ''}
       <div class="hq-line"><span>본부 내구도</span><b id="hq-value"></b></div><div class="hq-meter"><i id="hq-fill"></i></div>
       <nav class="war-tabs" aria-label="왕국 관리 탭" role="tablist">
         <button role="tab" id="tab-economy" aria-selected="true" aria-controls="pane-economy" data-tab="economy">${icon('coin', 16)}경영</button>
@@ -114,7 +114,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
       <button id="quick-home">⌂ 본부</button>
     </nav>
     <div class="target-card" id="target-card" hidden><button id="target-close" class="target-close tool-button" aria-label="대상 닫기">${icon('close', 16)}</button><span class="kicker" id="target-type"></span><h3 id="target-name"></h3><p id="target-description"></p><button id="target-command" class="button primary">병력 출전 ${icon('arrow', 16)}</button></div>
-    <div class="adventure-switch"><button id="adventure-enter" class="button primary">직접 플레이 (V) · 낙하산/탐험</button></div>
+    <div class="adventure-switch"><button id="adventure-enter" class="button primary" title="땅 위에서 이동하고 활을 쏘세요">직접 조작 <kbd>V</kbd></button></div>
     <section id="adventure-hud" class="adventure-hud" aria-label="직접 조작" hidden>
       <div class="adventure-head"><span class="kicker">DIRECT CONTROL</span><h2 id="adventure-title"></h2><p id="adventure-description"></p><div class="adventure-progress"><i id="adventure-progress-fill"></i></div></div>
       <span class="adventure-crosshair" aria-hidden="true">+</span>
@@ -180,8 +180,10 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   window.addEventListener('resize', resize, { signal });
   const missionObserver = new ResizeObserver(() => {
     overlay.style.setProperty('--mission-bottom', `${Math.ceil(el('.mission-card').getBoundingClientRect().bottom)}px`);
+    overlay.style.setProperty('--hud-bottom', `${Math.ceil(el('.war-top').getBoundingClientRect().bottom)}px`);
   });
   missionObserver.observe(el('.mission-card'));
+  missionObserver.observe(el('.war-top'));
   const home = () => { adventureControl.toStrategy(); focus.set(w.factions[0].x + 24, 0, w.factions[0].z + 24); setZoom(125); };
   const showTab = (name: string) => {
     overlay.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(button => { const active = button.dataset.tab === name; button.setAttribute('aria-selected', String(active)); button.tabIndex = active ? 0 : -1; });
@@ -323,6 +325,8 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     const mode = adventureControl.mode;
     overlay.classList.toggle('adventure-active', active);
     overlay.classList.toggle('adventure-dropping', mode === 'drop');
+    world.setLabelsVisible(!active);
+    world.setStrategicOverlaysVisible(!active);
     el('#adventure-hud').hidden = !active;
     el('#adventure-enter').hidden = active;
     el('#adventure-enter-mobile').hidden = active;
@@ -545,8 +549,8 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     if (threatened && !wasThreatened) { audio.play('warning'); announce('적의 본부 공세가 감지됐습니다. 병력을 복귀시키거나 본부 수비대를 확보하세요.'); }
     wasThreatened = threatened;
     if (threatened) { text('#mission-title', '본부에 적 병력이 접근합니다'); text('#mission-description', '화살표를 눌러 본부와 방어 명령을 확인하세요.'); el<HTMLButtonElement>('#mission-action').onclick = () => { home(); showTab('orders'); el<HTMLButtonElement>('#defend').focus({ preventScroll: true }); }; }
-    else if (p.mine < 2 || p.farm < 2) { text('#mission-title', '풍요로운 영지의 시작'); text('#mission-description', '금광과 농장을 Lv.2로 강화하세요.'); el<HTMLButtonElement>('#mission-action').onclick = () => showTab('economy'); }
-    else if (counts[0] < 6 && owned === 0) { text('#mission-title', '첫 원정대를 준비하세요'); text('#mission-description', '6명 이상의 병력을 모아 거점으로 출전하세요.'); el<HTMLButtonElement>('#mission-action').onclick = () => showTab('army'); }
+    else if (!w.grandBattle && (p.mine < 2 || p.farm < 2)) { text('#mission-title', '풍요로운 영지의 시작'); text('#mission-description', '금광과 농장을 Lv.2로 강화하세요.'); el<HTMLButtonElement>('#mission-action').onclick = () => showTab('economy'); }
+    else if (counts[0] < (w.grandBattle ? 25 : 6) && owned === 0) { text('#mission-title', '첫 원정대를 준비하세요'); text('#mission-description', w.grandBattle ? '25명 단위로 병력을 동원해 전선을 보강하세요.' : '6명 이상의 병력을 모아 거점으로 출전하세요.'); el<HTMLButtonElement>('#mission-action').onclick = () => showTab('army'); }
     else if (owned === 0) { text('#mission-title', '첫 번째 깃발을 세우세요'); text('#mission-description', '가까운 북서부 관문을 점령해 보세요.'); el<HTMLButtonElement>('#mission-action').onclick = () => { showTab('orders'); showTarget({ kind: 'outpost', id: 5 }); }; }
     else if (p.barracks < 2 || w.stats[0].researches === 0) { text('#mission-title', '왕국의 기술을 발전시키세요'); text('#mission-description', '병영 Lv.2를 달성하고 첫 연구를 완료하세요.'); el<HTMLButtonElement>('#mission-action').onclick = () => showTab(p.barracks < 2 ? 'economy' : 'research'); }
     else { text('#mission-title', '마지막 왕국으로 남으세요'); text('#mission-description', `남은 적 왕국 ${w.factions.filter(f => f.alive && f.id !== 0).length}개 · 거점 ${owned}/9 확보`); el<HTMLButtonElement>('#mission-action').onclick = () => showTab('orders'); }

@@ -105,9 +105,11 @@ async function exercise(page, result) {
   await capture(page, `${result.name}-landing`);
 
   await stage('real WebGL, training and capture order');
-  await page.locator('#start-war').click(); result.graphics = await waitForBattle(page);
+  await page.locator('#start-grand').click(); result.graphics = await waitForBattle(page);
   assert.equal(await page.locator('#difficulty-badge').innerText(), '입문');
   result.fps = await page.locator('#render-fps').innerText();
+  const strategy = page.locator('#adventure-strategy');
+  if (await strategy.isVisible()) { await strategy.waitFor({ state: 'visible' }); await strategy.click(); }
   await page.locator('#tab-army').click();
   const before = Number(await page.locator('#count-infantry').innerText());
   assert.equal(before, 60, 'The allied grand army starts with 60 infantry');
@@ -143,10 +145,9 @@ async function exercise(page, result) {
   result.pausedClock = pausedClock; await capture(page, `${result.name}-paused`);
   await page.keyboard.press('Escape'); await page.getByRole('dialog').waitFor({ state: 'hidden' });
   await page.waitForFunction(previous => document.querySelector('#war-clock')?.textContent !== previous, pausedClock, { timeout: 15000 });
-  await page.locator('#exit').click(); await page.locator('#start-war').waitFor();
+  await page.locator('#exit').click(); await page.locator('#start-grand').waitFor();
 
-  // The retired small-battle and classic-survival buttons must stay hidden.
-  assert.equal(await page.locator('#start-grand, #legacy').count(), 0);
+  assert.equal(await page.locator('#legacy, #start-war').count(), 0, 'Removed battle modes must not be offered');
   await assertProduction(page); await page.waitForTimeout(300);
   assert.deepEqual(result.pageErrors, [], 'Uncaught production browser errors');
   assert.deepEqual(result.consoleErrors, [], 'Production browser console errors');

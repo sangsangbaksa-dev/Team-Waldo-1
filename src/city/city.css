@@ -120,3 +120,7 @@
 @media (prefers-reduced-motion:reduce){.c-pulse{animation:none}}
 @media (max-width:760px){.c-tut{top:94px;padding:9px 11px}.c-tut p{font-size:12px;line-height:1.5}.c-tut>b{font-size:15px}}
 @media (max-height:520px){.c-tut{top:40px;left:auto;right:206px;transform:none;width:min(330px,40vw);padding:7px 10px}.c-tut p{font-size:11px;line-height:1.4}.c-tut>b{font-size:13px}.c-tut .go{padding:6px;margin-top:6px}}
+.c-diffs{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 4px}
+.c-diff{flex:1 1 90px;padding:8px 6px;border:1px solid rgba(216,188,128,.35);border-radius:8px;background:rgba(255,255,255,.04);color:#e8e0cc;font-size:12px;cursor:pointer}
+.c-diff:hover{border-color:#d8bc80}.c-diff.on{background:#d8bc80;color:#1b1710;font-weight:700;border-color:#d8bc80}
+.c-diffdesc{font-size:12px;margin:2px 0 8px;opacity:.8}

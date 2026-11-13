@@ -1,7 +1,7 @@
 // 헤드리스 LAST CITY 시뮬레이션: 밸런스·안정성 점검용 (npm run city-sim -- <seed> <difficulty>)
 import { World } from '../src/city/world';
 
-const seed = Number(process.argv[2] ?? 1), diff = (process.argv[3] ?? 'normal') as 'easy' | 'normal' | 'hard';
+const seed = Number(process.argv[2] ?? 1), diff = (process.argv[3] ?? 'd4') as 'd1' | 'd2' | 'd3' | 'd4' | 'd5';
 const w = new World({ seed, difficulty: diff, klass: 'warlord', autoPlayer: true });
 const t0 = Date.now(); let next = 60;
 while (!w.over && w.time < 1500) {

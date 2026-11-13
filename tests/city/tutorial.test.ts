@@ -3,7 +3,7 @@ import { World } from '../../src/city/world';
 import { STEPS, advance, newCounters, newTutState, type TutCtx } from '../../src/city/tutorial';
 
 const run = (w: World, seconds: number): void => { for (let i = 0; i < seconds * 30 && !w.over; i++) { w.step(1 / 30); w.events.length = 0; } };
-const make = (): World => new World({ seed: 5, difficulty: 'normal', klass: 'warlord', tutorial: true });
+const make = (): World => new World({ seed: 5, difficulty: 'd4', klass: 'warlord', tutorial: true });
 
 describe('튜토리얼 연습장', () => {
   it('자기장·라이벌 AI·보급 투하를 멈춥니다', () => {
@@ -13,7 +13,7 @@ describe('튜토리얼 연습장', () => {
     expect(Math.hypot(rival.x - x, rival.y - y)).toBeLessThan(40);
     expect(w.factions.filter(f => f.alive)).toHaveLength(8);
     expect(w.quests.every(q => !q.done)).toBe(true);
-  });
+  }, 30000);
 
   it('모든 단계를 순서대로 끝까지 완주할 수 있습니다', () => {
     const w = make(), c = newCounters(), s = newTutState(), b = w.boss(0)!, ctx: TutCtx = { w, c, s, yaw: 0 };

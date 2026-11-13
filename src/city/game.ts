@@ -1,6 +1,6 @@
 // LAST CITY — 게임 루프, 입력, HUD
 import './city.css';
-import { BIZ, BUILD_ORDER, CLASSES, DIFFICULTY, FACTIONS, PERKS, RESEARCH, STRUCTS, UNITS, WEAPONS, type ClassId, type Difficulty, type ResearchId, type StructKind, type UnitId, type WeaponId } from './defs';
+import { BIZ, BUILD_ORDER, CLASSES, DIFFICULTY, DIFFICULTY_ORDER, FACTIONS, PERKS, RESEARCH, STRUCTS, UNITS, WEAPONS, type ClassId, type Difficulty, type ResearchId, type StructKind, type UnitId, type WeaponId } from './defs';
 import { World } from './world';
 import { Renderer, type Ghost } from './render';
 import { Renderer3D } from './render3d';
@@ -20,7 +20,9 @@ export function readCityCareer(): { matches: number; wins: number; best: number 
 }
 
 function readTutDone(): boolean { try { return localStorage.getItem(TUT_KEY) === '1'; } catch { return false; } }
-export function openCity(onExit: () => void, options: { difficulty: Difficulty }): void {
+export function openCity(onExit: () => void, options: { difficulty?: string } = {}): void {
+  let diffSel: Difficulty = 'd4'; try { const sv = localStorage.getItem('waldo-city-diff'); if (sv && sv in DIFFICULTY) diffSel = sv as Difficulty; } catch { /* 저장 불가 환경 */ }
+  void options;
   const prefs = readPreferences(), touch = matchMedia('(pointer: coarse)').matches;
   const root = document.createElement('div'); root.className = 'city-root' + (touch ? ' touch' : '');
   root.innerHTML = `<canvas class="city-canvas3d"></canvas><canvas class="city-canvas" hidden></canvas><div class="c-layer" id="c-layer"></div><div class="c-hurt" id="c-hurt"></div><div class="c-cross" id="c-cross"><i></i><b></b></div>
@@ -59,14 +61,15 @@ export function openCity(onExit: () => void, options: { difficulty: Difficulty }
       <div class="c-sub">${tutDone ? '바로 시작할 영웅을 고르세요' : '또는 바로 시작할 영웅을 고르세요'}</div>
       <div class="c-classes">${(Object.keys(CLASSES) as ClassId[]).map(k => `<button class="c-class" data-act="class:${k}"><span>${CLASSES[k].tag}</span><b>${CLASSES[k].name}</b><p>${CLASSES[k].desc}</p><em>Q · ${CLASSES[k].skill}</em><small>${CLASSES[k].skillDesc}</small></button>`).join('')}</div>
       <div class="c-keys">${touch ? '<span>왼쪽 드래그 이동</span><span>오른쪽 드래그 시점</span><span>사격 버튼</span><span>버튼으로 상호작용·지휘</span>' : '<span><b>WASD</b> 이동</span><span><b>마우스</b> 시점·사격</span><span><b>V</b> 1인칭/3인칭/전술뷰</span><span><b>E</b> 매입·줍기</span><span><b>F</b> 차량 탑승</span><span><b>Tab</b> 지휘 패널</span><span><b>우클릭</b> 병력 돌격</span><span><b>Z/X</b> 집결·사수</span><span><b>Space</b> 대시</span><span><b>M</b> 지도</span>'}</div>
-      <div class="c-setup-foot"><span>난이도 · ${DIFFICULTY[options.difficulty].label}</span><button data-act="exit" class="c-ghost">메뉴로</button></div></section>`;
+      <div class="c-sub">난이도</div><div class="c-diffs">${DIFFICULTY_ORDER.map(d => `<button class="c-diff${d === diffSel ? ' on' : ''}" data-act="diff:${d}" title="${DIFFICULTY[d].desc}">${DIFFICULTY[d].label}</button>`).join('')}</div><p class="c-lead c-diffdesc">${DIFFICULTY[diffSel].desc}</p>
+      <div class="c-setup-foot"><span>난이도 · ${DIFFICULTY[diffSel].label}</span><button data-act="exit" class="c-ghost">메뉴로</button></div></section>`;
   }
   function start(k: ClassId, tutorial = false): void {
     klass = k; modal.innerHTML = ''; hud.hidden = false; resultShown = false; paused = false; ghost = null; shopOpen = false; panel.hidden = true; bigmap.hidden = true;
     // A retry must not inherit held keys, touch gestures, firing or frame debt.
     keys.clear(); mouse.down = false; touchFire = false; acc = 0; looks.clear();
     for (const stick of [sticks.move, sticks.aim]) { stick.id = -1; stick.x = 0; stick.y = 0; }
-    world = new World({ seed: (Math.random() * 2 ** 31) | 0, difficulty: options.difficulty, klass: k, tutorial });
+    world = new World({ seed: (Math.random() * 2 ** 31) | 0, difficulty: diffSel, klass: k, tutorial });
     tut = tutorial ? { s: newTutState(), c: newCounters() } : null;  tutSig = ''; q('#c-tut').hidden = true; tutInfoLock = false;
     R = new Renderer(canvas, world); R.reduced = prefs.reducedMotion; const b = world.boss(0)!; R.cam.x = b.x; R.cam.y = b.y; R.cam.zoom = 0.6;
     R3?.dispose(); R3 = null; layer.innerHTML = ''; tags.length = 0; marks.length = 0;
@@ -100,6 +103,7 @@ export function openCity(onExit: () => void, options: { difficulty: Difficulty }
   // ---------- 동작 ----------
   function act(code: string, ev?: Event): void {
     const [a, arg] = code.split(':'), w = world; audio.unlock();
+    if (a === 'diff') { diffSel = arg as Difficulty; try { localStorage.setItem('waldo-city-diff', arg); } catch { /* 무시 */ } setup(); audio.play('click'); return; }
     if (a === 'class') { start(arg as ClassId); return; }
     if (a === 'tutorial') { klass = 'warlord'; start('warlord', true); return; }
     if (a === 'tutdone') { tut = null; setup(); return; }

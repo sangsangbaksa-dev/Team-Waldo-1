@@ -30,7 +30,7 @@ async function layout(page) {
       return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height };
     };
     return { width: innerWidth, height: innerHeight, documentWidth: document.documentElement.scrollWidth,
-      regions: Object.fromEntries(['.war-top', '.war-panel', '.war-minimap', '.mission-card', '.camera-controls', '.war-intel'].map(s => [s, rect(s)])),
+      regions: Object.fromEntries(['.war-top', '.war-panel', '.war-minimap', '.mission-card', '.camera-controls', '.war-intel', '.squad-quickbar'].map(s => [s, rect(s)])),
       topButtons: [...document.querySelectorAll('.war-top button')].filter(el => el.getClientRects().length).map(el => {
         const r = el.getBoundingClientRect(); return { id: el.id, left: r.left, right: r.right, top: r.top, bottom: r.bottom };
       }),
@@ -46,6 +46,7 @@ function assertLayout(boxes) {
     ['.war-top', '.war-panel'], ['.war-top', '.war-minimap'], ['.war-top', '.mission-card'], ['.war-top', '.camera-controls'], ['.war-top', '.war-intel'],
     ['.war-panel', '.war-minimap'], ['.war-panel', '.camera-controls'], ['.war-panel', '.mission-card'], ['.war-minimap', '.camera-controls'], ['.war-minimap', '.war-intel'], ['.mission-card', '.war-intel'],
     ['.mission-card', '.war-minimap'], ['.mission-card', '.camera-controls'],
+    ['.squad-quickbar', '.war-panel'], ['.squad-quickbar', '.war-minimap'], ['.squad-quickbar', '.camera-controls'],
   ]) if (boxes.regions[a] && boxes.regions[b]) assert.ok(intersect(boxes.regions[a], boxes.regions[b]) < 1, `${a} overlaps ${b}`);
   for (const [index, button] of boxes.topButtons.entries()) {
     assert.ok(button.left >= 0 && button.right <= boxes.width, `${button.id} outside viewport`);
@@ -64,9 +65,8 @@ async function assertElementFits(page, selector, result, name) {
 async function waitForBattle(page) {
   await page.locator('.war-ui').waitFor({ timeout: 30000 });
   assert.equal(await page.locator('.war-fallback').count(), 0, 'WebGL fallback is not a passing 3D test');
-  await page.waitForFunction(() => window.__war?.renderer.info.render.calls > 0 && window.__war.world.time >= 0.1, null, { timeout: 30000 });
-  // New matches begin in an actual parachute sequence. Verify the direct-play HUD,
-  // then transition to the legacy strategy interface so existing UI regressions remain covered.
+  await page.waitForFunction(() => window.__war?.renderer.info.render.calls > 0 && window.__war.world.time > 0, null, { timeout: 30000 });
+  // Freeze simulation after a real frame so recruiting and save assertions are deterministic.
   await page.evaluate(() => {
     window.__war.skipDrop();
     document.querySelector('#adventure-strategy')?.click();
@@ -112,9 +112,11 @@ try {
   browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage'] });
   for (const { name, width, height } of viewports) {
     const context = await browser.newContext({ viewport: { width, height }, isMobile: width < 900, hasTouch: width < 900, reducedMotion: 'reduce' });
-    const page = await context.newPage(); page.setDefaultTimeout(15000);
+    const page = await context.newPage(); page.setDefaultTimeout(30000);
     const result = { name, width, height, status: 'running', pageErrors: [], consoleErrors: [], scenarios: ['normal UI actions', 'DEV time freeze', 'seeded victory result'] };
-    const initialQuality = name === 'desktop' ? 'high' : 'standard';
+    // Exercise every graphics setting, then keep the long action suite affordable
+    // on CI's software GPU. The dedicated grand scenario also renders high quality.
+    const initialQuality = 'low';
     report.cases.push(result);
     const stage = async value => { result.stage = value; console.log(`STAGE ${name}: ${value}`); await writeFile(`${artifacts}/report.json`, JSON.stringify(report, null, 2)); };
     page.on('pageerror', error => result.pageErrors.push(error.message));
@@ -122,7 +124,8 @@ try {
     try {
       await stage('landing');
       await page.goto(origin, { waitUntil: 'domcontentloaded' });
-      await page.locator('#start-war').waitFor();
+      await page.locator('#start-grand').waitFor();
+      assert.equal(await page.locator('#start-war, #legacy').count(), 0, 'Removed small modes must not be offered');
       await page.evaluate(() => Promise.race([document.fonts.ready, new Promise(resolve => setTimeout(resolve, 3000))]));
       assert.equal(await page.locator('[data-release="kingdoms-1.0"]').count(), 1);
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Landing overflows horizontally');
@@ -140,7 +143,7 @@ try {
       }
       await page.locator('#menu-sound').uncheck(); await page.locator('#menu-motion').check(); await page.locator('.dialog-cancel').click();
       await page.locator('#difficulty-easy').click(); assert.equal(await page.locator('#difficulty-easy').getAttribute('aria-pressed'), 'true');
-      await capture(page, `${name}-menu`); await page.locator('#start-war').click();
+      await capture(page, `${name}-menu`); await page.locator('#start-grand').click();
       await stage('WebGL startup');
       result.gpu = await waitForBattle(page);
       assert.ok(result.gpu.calls > 0 && result.gpu.triangles > 0 && !result.gpu.contextLost, '3D frame not rendered');
@@ -159,14 +162,26 @@ try {
       await page.waitForFunction(() => /^\d+ FPS$/.test(document.querySelector('#render-fps')?.textContent ?? ''));
       result.fps = await page.locator('#render-fps').innerText();
       await stage('economy, army and minimap');
-      await page.locator('#build-mine').click(); assert.equal((await snapshot(page)).mine, 2);
+      await page.locator('#build-mine').click(); assert.equal((await snapshot(page)).mine, 4);
       await page.locator('#policy-growth').click(); assert.equal(await page.locator('#policy-growth').getAttribute('aria-pressed'), 'true');
       await page.locator('#tab-army').click(); assert.equal(await page.locator('#tab-army').getAttribute('aria-selected'), 'true');
-      assert.equal(await page.locator('#unit-train button').count(), 8); assert.equal(await page.locator('#train-archer').isDisabled(), true);
+      assert.equal(await page.locator('#unit-train button').count(), 8); assert.equal(await page.locator('#train-archer').isDisabled(), false);
       await page.locator('#train-infantry').click(); assert.equal((await snapshot(page)).trained, 1);
-      await page.locator('#reserve-4').click(); assert.equal(await page.locator('#reserve-4').getAttribute('aria-pressed'), 'true');
+      await page.locator('#reserve-25').click(); assert.equal(await page.locator('#reserve-25').getAttribute('aria-pressed'), 'true');
       await page.locator('#tab-orders').click(); assert.equal(await page.locator('#outposts button').count(), 9);
       await page.locator('#outpost-5').click(); assert.equal((await snapshot(page)).rally, 5);
+      if (name === 'desktop') {
+        await stage('base interior and keyboard focus');
+        await page.locator('#open-base').click();
+        await assertElementFits(page, '.base-window', result, 'base manager');
+        await page.locator('.base-close').focus(); await page.keyboard.press('Shift+Tab');
+        assert.ok(await page.evaluate(() => document.activeElement.closest('.base-window')), 'Base focus escaped into the battle');
+        await page.locator('[data-base-slot="6"]').click();
+        assert.equal(await page.locator('#interior-title').innerText(), '지하 금광');
+        await capture(page, 'desktop-mine-interior');
+        await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
+        assert.ok(await page.locator('#open-base').evaluate(el => el === document.activeElement), 'Base must restore the opener focus');
+      }
       await stage('3D raycast and seeded defense warning');
       await page.locator('#overview').click();
       // World input intentionally ignores a paused game, so briefly resume for a
@@ -200,7 +215,7 @@ try {
       await map.click({ position: { x: bounds.width / 2, y: bounds.height / 2 } });
       assert.equal((await snapshot(page)).rally, 4, 'Map center must target central fortress');
       if (name === 'desktop') {
-        await page.locator('#tab-research').click(); assert.equal(await page.locator('#research-weapons').isDisabled(), true);
+        await page.locator('#tab-research').click(); assert.equal(await page.locator('#research-weapons').isDisabled(), false);
         result.scenarios.push('seeded resources for research controls');
         await page.evaluate(() => { const { world, ui } = window.__war; world.factions[0].gold = 1000; world.factions[0].food = 1000; ui(); });
         await page.locator('#tab-economy').click(); await page.locator('#build-barracks').click();
@@ -210,7 +225,7 @@ try {
       await stage('save and resume');
       await page.locator('#save').click(); const expected = await snapshot(page);
       const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('team-waldo-3d-war-v1')));
-      assert.equal(saved.version, 2); assert.equal(saved.war.factions[0].policy, 'growth');
+      assert.equal(saved.version, 3); assert.equal(saved.war.factions[0].policy, 'growth');
       await page.locator('#exit').click(); await page.locator('#continue-war').waitFor();
       await page.locator('#preferences').click(); assert.equal(await page.locator('#menu-quality').inputValue(), initialQuality);
       await page.keyboard.press('Escape'); await page.locator('#continue-war').click();
@@ -223,10 +238,10 @@ try {
       await page.waitForTimeout(350); assert.equal(await page.evaluate(() => window.__war.world.time), pausedTime);
       await page.keyboard.press('Escape'); await page.getByRole('dialog').waitFor({ state: 'hidden' });
       await page.evaluate(() => window.__war.setPaused(true));
-      await page.locator('#exit').click(); await page.locator('#start-war').click(); await page.getByRole('dialog').waitFor();
+      await page.locator('#exit').click(); await page.locator('#start-grand').click(); await page.getByRole('dialog').waitFor();
       await page.keyboard.press('Escape'); assert.equal(await page.locator('#continue-war').isVisible(), true);
-      await page.locator('#start-war').click(); await page.locator('.dialog-confirm').click(); await waitForBattle(page);
-      assert.equal((await snapshot(page)).mine, 1); assert.equal((await snapshot(page)).policy, 'balanced');
+      await page.locator('#start-grand').click(); await page.locator('.dialog-confirm').click(); await waitForBattle(page);
+      assert.equal((await snapshot(page)).mine, 3); assert.equal((await snapshot(page)).policy, 'balanced');
 
       await stage('victory and retry fixture');
       // Explicit terminal-world fixture tests the result UI without waiting for a match.
@@ -261,12 +276,11 @@ try {
     } finally { await context.close(); }
     await writeFile(`${artifacts}/report.json`, JSON.stringify(report, null, 2));
   }
-  // In addition to the classic campaign, verify that the optional 600-soldier
-  // mode actually renders in WebGL, accepts mass recruiting, and can be saved.
+  // Verify the campaign starts with 600 soldiers and supports mass recruiting and group orders.
   const grandContext = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
   const grandPage = await grandContext.newPage();
   grandPage.setDefaultTimeout(30000);
-  const grandResult = { name: 'grand-100-vs-500', status: 'running', scenarios: ['600 live units', 'GPU instancing', '25 recruits', 'saved grand match'] };
+  const grandResult = { name: 'grand-100-vs-500', status: 'running', scenarios: ['600 live units', 'GPU instancing', '25 recruits', 'selected squad rings', 'wounded soldier health', 'independent squad route', 'saved grand match'] };
   report.cases.push(grandResult);
   grandPage.on('pageerror', error => { grandResult.error = error.message; });
   try {
@@ -286,11 +300,45 @@ try {
     await grandPage.locator('#tab-orders').click();
     await grandPage.locator('.squad-tabs [data-squad-select="1"]').click();
     await grandPage.locator('#squad-assign').click();
+    await grandPage.waitForFunction(() => window.__war.scene.getObjectByName('selected-squad-rings')?.count === 25);
     assert.equal(await grandPage.evaluate(() => window.__war.world.units.filter(u => u.squad === 1 && u.owner === 0).length), 25);
+    await grandPage.evaluate(() => { window.__war.world.units.find(unit => unit.owner === 0).hp /= 2; });
+    await grandPage.waitForFunction(() => window.__war.scene.children.some(root => {
+      let found = false; root.traverse(object => { if (object.name === 'army-health' && object.count > 0) found = true; }); return found;
+    }));
+    const mapBounds = await grandPage.locator('#war-map').boundingBox();
+    await grandPage.locator('#war-map').click({ position: { x: mapBounds.width / 2, y: mapBounds.height / 2 } });
+    await grandPage.waitForFunction(() => window.__war.scene.getObjectByName('selected-squad-route')?.visible);
+    const route = await grandPage.evaluate(() => {
+      const geometry = window.__war.scene.getObjectByName('selected-squad-route').geometry;
+      const position = geometry.getAttribute('position'); return [position.getX(1), position.getZ(1)];
+    });
+    assert.deepEqual(route, [0, 0], 'The selected independent squad route must reach the central fortress');
     await grandPage.locator('#save').click();
     const persisted = await grandPage.evaluate(() => JSON.parse(localStorage.getItem('team-waldo-3d-war-v1')));
     assert.equal(persisted.war.grandBattle, true);
     assert.equal(persisted.war.units.length, 625);
+    // Explicit adjacent-enemy fixture verifies that the grand renderer emits combat feedback.
+    grandResult.scenarios.push('seeded adjacent enemy and attack cooldown for combat effects');
+    await grandPage.locator('#settings').click();
+    await grandPage.locator('#motion-setting').uncheck(); await grandPage.keyboard.press('Escape');
+    await grandPage.evaluate(() => {
+      window.__war.setPaused(true);
+      const world = window.__war.world;
+      const attacker = world.units.find(unit => unit.owner === 0 && unit.kind === 'infantry');
+      const target = world.units.find(unit => unit.owner === 1);
+      attacker.x = -62; attacker.z = -62; attacker.cooldown = 0;
+      target.x = -60; target.z = -60;
+    });
+    await grandPage.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await grandPage.evaluate(() => { window.__war.world.units.find(unit => unit.owner === 0 && unit.kind === 'infantry').cooldown = 1; });
+    await grandPage.waitForFunction(() => {
+      let count = 0;
+      window.__war.scene.traverse(object => {
+        if (object.isInstancedMesh && object.geometry.type === 'OctahedronGeometry' && object.instanceMatrix.count === 240) count += object.count;
+      });
+      return count > 0 && count <= 240;
+    });
     grandResult.gpu = gpu;
     grandResult.armies = armies;
     await capture(grandPage, 'grand-600-unit-battle');

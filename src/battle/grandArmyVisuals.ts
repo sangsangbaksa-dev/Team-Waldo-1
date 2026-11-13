@@ -1,12 +1,13 @@
 import * as THREE from 'three';
-import { GRAND_MAX_UNITS, type UnitKind, type War } from './war';
+import { createSurfaceTexture } from './surfaceTextures';
+import { GRAND_MAX_UNITS, UNIT_STATS, type UnitKind, type War } from './war';
 
 /**
  * 100 vs 500 visual LOD: ten-plus armor details per warrior, still instanced
  * rather than creating a separate draw call for every soldier.
  */
 const TYPES: UnitKind[] = ['infantry', 'archer', 'guardian', 'cavalry'];
-const COLORS = [0x368c85, 0xb75d5a, 0xba984e, 0x806ca8];
+const COLORS = [0x40b8a5, 0xcf6d67, 0xd2ad59, 0x9c7dc5];
 type MeshGroup = {
   body: THREE.InstancedMesh; breastplate: THREE.InstancedMesh;
   face: THREE.InstancedMesh; helmet: THREE.InstancedMesh; visor: THREE.InstancedMesh;
@@ -21,6 +22,9 @@ type MeshGroup = {
   count: number; kind: UnitKind;
 };
 export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
+  let reducedMotion = false;
+  let selectedSquad: 0 | 1 | 2 = 0;
+  let overlaysVisible = true;
   const torsoGeo = new THREE.CylinderGeometry(.58, .7, 1.44, 7);
   const chestGeo = new THREE.BoxGeometry(1.16, 1.05, .18);
   const headGeo = new THREE.SphereGeometry(.48, 9, 7);
@@ -39,19 +43,20 @@ export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
   const horseLegsGeo = new THREE.BoxGeometry(.36, .77, .4);
   const saddleGeo = new THREE.BoxGeometry(1.55, .22, 1.36);
   const quiverGeo = new THREE.CylinderGeometry(.24, .19, 1.18, 5);
-  const steel = new THREE.MeshStandardMaterial({ color: 0x8a9790, roughness: .54, metalness: .47 });
+  const steel = new THREE.MeshStandardMaterial({ color: 0xaebeb7, roughness: .42, metalness: .52 });
   const darkSteel = new THREE.MeshStandardMaterial({ color: 0x39474b, roughness: .59, metalness: .43 });
   const leather = new THREE.MeshStandardMaterial({ color: 0x514034, roughness: .95 });
   const skin = new THREE.MeshStandardMaterial({ color: 0xc9b092, roughness: .86 });
   const steelWeapon = new THREE.MeshStandardMaterial({ color: 0xbdc1b3, roughness: .45, metalness: .63 });
   const horseMat = new THREE.MeshStandardMaterial({ color: 0x705443, roughness: .94 });
-  const uniform = COLORS.map(color => new THREE.MeshStandardMaterial({ color, roughness: .9 }));
+  const uniform = COLORS.map(color => new THREE.MeshStandardMaterial({ color, roughness: .76, emissive: color, emissiveIntensity: .08 }));
   const cloaks = [0x244944, 0x703d3b, 0x68572e, 0x463960].map(color =>
-    new THREE.MeshStandardMaterial({ color, roughness: .94 }));
+    new THREE.MeshStandardMaterial({ color, roughness: .76, emissive: color, emissiveIntensity: .084 }));
   const mesh = (geometry: THREE.BufferGeometry, material: THREE.Material): THREE.InstancedMesh => {
     const object = new THREE.InstancedMesh(geometry, material, GRAND_MAX_UNITS);
     object.count = 0;
     object.frustumCulled = false;
+    object.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     object.castShadow = geometry === torsoGeo;
     object.receiveShadow = false;
     parent.add(object);
@@ -85,6 +90,26 @@ export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
       count: 0,
     });
   }
+  // Contact shadows stay available on standard quality; selection and health use
+  // a fixed number of batches, independent of the number of live soldiers.
+  const shadowTexture = createSurfaceTexture('shadow');
+  const shadowGeometry = new THREE.PlaneGeometry(4.4, 3.4).rotateX(-Math.PI / 2);
+  const shadowMaterial = new THREE.MeshBasicMaterial({ color: 0x071915, alphaMap: shadowTexture,
+    transparent: true, opacity: .36, depthWrite: false });
+  const shadows = COLORS.map(() => mesh(shadowGeometry, shadowMaterial));
+  shadows.forEach(object => { object.name = 'army-contact-shadows'; object.renderOrder = 1; });
+  const selectionGeometry = new THREE.RingGeometry(1.55, 1.75, 20).rotateX(-Math.PI / 2);
+  const selectionMaterial = new THREE.MeshBasicMaterial({ color: 0x8ae9ca, transparent: true,
+    opacity: .72, depthWrite: false, side: THREE.DoubleSide });
+  const selection = mesh(selectionGeometry, selectionMaterial);
+  selection.name = 'selected-squad-rings'; selection.renderOrder = 2;
+  const healthGeometry = new THREE.BoxGeometry(2.6, .1, .34);
+  const healthBackMaterial = new THREE.MeshBasicMaterial({ color: 0x132523 });
+  const healthMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const healthBack = COLORS.map(() => mesh(healthGeometry, healthBackMaterial));
+  const healthFill = COLORS.map(() => mesh(healthGeometry, healthMaterial));
+  healthFill.forEach(object => { object.name = 'army-health'; });
+  const tint = new THREE.Color();
   const dummy = new THREE.Object3D();
   const facingById = new Map<number, {x: number; z: number; angle: number}>();
   const set = (target: THREE.InstancedMesh | undefined, index: number,
@@ -103,6 +128,8 @@ export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
   function update(): void {
     for (const group of groups.values()) group.count = 0;
     const alive = new Set<number>();
+    const shadowCounts = [0, 0, 0, 0], healthCounts = [0, 0, 0, 0];
+    let selectedCount = 0;
     for (const unit of war.units) {
       if (unit.hp <= 0 || !war.factions[unit.owner].alive) continue;
       const group = groups.get(unit.owner + ':' + unit.kind);
@@ -111,15 +138,27 @@ export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
       const prev = facingById.get(unit.id);
       const dx = unit.x - (prev?.x ?? unit.x), dz = unit.z - (prev?.z ?? unit.z);
       const moving = dx * dx + dz * dz > .00002;
-      const angle = moving ? Math.atan2(dx, dz) : (prev?.angle ?? (unit.id * 1.31) % (Math.PI * 2));
+      const angle = moving ? Math.atan2(dx, dz) : (prev?.angle ?? (unit.z < 0 ? 0 : Math.PI));
       facingById.set(unit.id, { x: unit.x, z: unit.z, angle });
       const i = group.count++, x = unit.x, z = unit.z, cavalry = unit.kind === 'cavalry';
       const height = unit.kind === 'guardian' ? 1.16 : unit.kind === 'archer' ? .94 : 1;
       const base = cavalry ? 1.34 : 0;
       // Individual phase offsets keep hundreds of soldiers from marching in lockstep.
-      const gait = moving ? Math.sin(war.time * (cavalry ? 12.2 : 9.6) + unit.id * .71) : 0;
+      const gait = moving && !reducedMotion ? Math.sin(war.time * (cavalry ? 12.2 : 9.6) + unit.id * .71) : 0;
       const bob = moving ? Math.abs(gait) * .075 : 0;
       const y = base + bob;
+      set(shadows[unit.owner], shadowCounts[unit.owner]++, x, .1, z,
+        cavalry ? 1.25 : height, 1, cavalry ? 1.4 : height, angle);
+      if (overlaysVisible && unit.owner === 0 && (unit.squad ?? 0) === selectedSquad) {
+        set(selection, selectedCount++, x, .16, z, cavalry ? 1.3 : height, 1, cavalry ? 1.3 : height);
+      }
+      const health = Math.max(0, Math.min(1, unit.hp / UNIT_STATS[unit.kind].hp));
+      if (overlaysVisible && health < .98) {
+        const index = healthCounts[unit.owner]++;
+        set(healthBack[unit.owner], index, x, y + 3.8 * height, z);
+        set(healthFill[unit.owner], index, x - (1 - health) * 1.3, y + 3.87 * height, z, health);
+        healthFill[unit.owner].setColorAt(index, tint.setHex(health < .3 ? 0xf5917d : COLORS[unit.owner]));
+      }
       set(group.body, i, x, y + 1.32 * height, z, height, height, height, angle);
       const [chestX, chestZ] = offset(x, z, 0, .55 * height, angle);
       set(group.breastplate, i, chestX, y + 1.42 * height, chestZ, height, height, height, angle);
@@ -169,6 +208,15 @@ export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
         }
       }
     }
+    for (let owner = 0; owner < 4; owner++) {
+      shadows[owner].count = shadowCounts[owner];
+      shadows[owner].instanceMatrix.needsUpdate = true;
+      for (const object of [healthBack[owner], healthFill[owner]]) {
+        object.count = healthCounts[owner]; object.instanceMatrix.needsUpdate = true;
+      }
+      if (healthFill[owner].instanceColor) healthFill[owner].instanceColor!.needsUpdate = true;
+    }
+    selection.count = selectedCount; selection.instanceMatrix.needsUpdate = true;
     for (const id of facingById.keys()) if (!alive.has(id)) facingById.delete(id);
     for (const group of groups.values()) {
       const all = [group.body, group.breastplate, group.face, group.helmet,
@@ -183,5 +231,11 @@ export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
     }
   }
   update();
-  return { update };
+  return {
+    update,
+    setReducedMotion(value: boolean) { reducedMotion = value; },
+    setSelectedSquad(value: 0 | 1 | 2) { selectedSquad = value; update(); },
+    setOverlaysVisible(value: boolean) { overlaysVisible = value; update(); },
+    dispose() { shadowTexture?.dispose(); facingById.clear(); },
+  };
 }

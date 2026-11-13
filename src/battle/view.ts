@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import './base.css';
+import './command.css';
 import { createBaseManager } from './baseUI';
 import { createBaseDistrict } from './baseVisuals';
 import { createBattleWorld, FACTION_COLORS } from './graphics';
@@ -56,7 +57,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
       </div>
       <div class="battle-time"><b id="war-clock">00:00</b><span id="difficulty-badge"></span></div>
       <div class="war-tools">
-        <button id="open-base" class="base-shortcut" title="건설과 장군 모집 (K)" aria-label="기지 건설과 장군 모집 열기, K 키">▦ 기지 관리 · 장군 <kbd>K</kbd></button>
+        <button id="open-base" class="base-shortcut" title="건설과 장군 모집 (K)" aria-label="기지 건설과 장군 모집 열기, K 키">${icon('tower', 17)}<span>기지 관리</span><kbd>K</kbd></button>
         <button id="speed" class="tool-button" title="게임 속도 변경" aria-label="게임 속도 0.65배">0.65×</button>
         <button id="pause" class="tool-button" title="일시정지 (Esc)" aria-label="일시정지">${icon('pause')}</button>
         <button id="sound" class="tool-button optional-tool" title="효과음 켜기/끄기" aria-label="효과음 끄기">${icon('sound')}</button>
@@ -66,7 +67,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     </header>
     <aside class="war-panel" aria-label="왕국 관리">
       <div class="kingdom-heading"><span class="faction-mark">${icon('shield', 23)}</span><div><span class="kicker">YOUR KINGDOM</span><h1>에메랄드 왕국</h1></div><button class="tool-button" id="home" title="내 영지로 이동 (H)" aria-label="내 영지로 이동">${icon('home', 17)}</button></div>
-      ${w.grandBattle ? '<div class="grand-battle-tag">⚔ 대규모 전장 · 아군 100명 VS 적 500명</div>' : ''}
+      ${w.grandBattle ? `<div class="grand-battle-tag">${icon('sword', 13)}군단전 <span>100 VS 500</span></div>` : ''}
       <div class="hq-line"><span>본부 내구도</span><b id="hq-value"></b></div><div class="hq-meter"><i id="hq-fill"></i></div>
       <nav class="war-tabs" aria-label="왕국 관리 탭" role="tablist">
         <button role="tab" id="tab-economy" aria-selected="true" aria-controls="pane-economy" data-tab="economy">${icon('coin', 16)}경영</button>
@@ -75,8 +76,8 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
         <button role="tab" id="tab-research" aria-selected="false" aria-controls="pane-research" data-tab="research" tabindex="-1">${icon('science', 16)}연구</button>
       </nav>
       <div class="war-panel-scroll">
-        <section id="pane-economy" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-economy"><div class="section-heading"><h2>생산과 성장</h2><span>최대 Lv.4</span></div><div id="buildings" class="action-list"></div><button id="open-base-economy" class="base-economy-link">▦ 건설 부지에서 직접 건물 배치하기</button><div class="section-heading"><h2>왕국 정책</h2></div><div id="policy" class="segmented"></div><p id="policy-description" class="panel-note"></p><button id="repair" class="repair-button">${icon('shield', 17)}<span>본부 수리<small>체력 +100 · 금 45 / 식량 25</small></span></button></section>
-        <section id="pane-army" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-army" hidden><div class="section-heading"><h2>병종 훈련</h2><span>숫자 1–4</span></div><div id="unit-train"></div><button id="open-base-generals" class="base-economy-link">♛ 장군 모집과 부대 배치</button><div class="section-heading"><h2>본부 수비대</h2></div><div id="reserve" class="segmented"></div><p class="panel-note">지정한 병력은 본부를 지킵니다. 나머지 병력이 작전 명령을 수행합니다.</p></section>
+        <section id="pane-economy" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-economy"><div class="section-heading"><h2>생산과 성장</h2><span>최대 Lv.4</span></div><div id="buildings" class="action-list"></div><button id="open-base-economy" class="base-economy-link">${icon('tower', 16)}건설 부지에서 건물 배치하기</button><div class="section-heading"><h2>왕국 정책</h2></div><div id="policy" class="segmented"></div><p id="policy-description" class="panel-note"></p><button id="repair" class="repair-button">${icon('shield', 17)}<span>본부 수리<small>체력 +100 · 금 45 / 식량 25</small></span></button></section>
+        <section id="pane-army" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-army" hidden><div class="section-heading"><h2>병종 훈련</h2><span>숫자 1–4</span></div><div id="unit-train"></div><button id="open-base-generals" class="base-economy-link">${icon('crown', 16)}장군 모집과 부대 배치</button><div class="section-heading"><h2>본부 수비대</h2></div><div id="reserve" class="segmented"></div><p class="panel-note">지정한 병력은 본부를 지킵니다. 나머지 병력이 작전 명령을 수행합니다.</p></section>
         <section id="pane-orders" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-orders" hidden>
           <div class="squad-manager" aria-label="부대 그룹 편성">
             <div class="section-heading"><h2>부대 편성 및 직접 이동</h2><span>3개 그룹</span></div>
@@ -103,18 +104,17 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     <aside class="war-intel" aria-label="전황"><div class="section-heading"><h2>왕국 현황</h2><span id="alive-count">4 세력</span></div><div id="standings"></div><div class="event-heading">전장 소식<span class="live-dot"></span></div><div id="events" class="war-events" aria-live="polite" aria-relevant="additions"></div></aside>
     <div class="storm-warning" id="storm-warning" hidden>${icon('bolt', 17)}<span id="storm-warning-text"></span></div>
     <section class="war-minimap" aria-label="전장 지도"><div class="map-heading"><span>${icon('map', 15)}전략 지도</span><button id="map-mode" class="text-button" aria-pressed="false">시점 이동</button></div><canvas id="war-map" width="220" height="220" aria-label="미니맵: 그룹 선택 후 위치 지정 모드에서는 원하는 좌표를 클릭해 출전합니다. 아군 본부 클릭으로 복귀합니다." tabindex="0"></canvas><div class="map-footer"><span id="storm-clock"></span><span id="zone-size"></span></div></section>
-    <div class="camera-controls"><button id="zoom-in" class="tool-button" aria-label="확대">+</button><button id="zoom-out" class="tool-button" aria-label="축소">−</button><button id="overview" class="tool-button" aria-label="전장 전체 보기">${icon('expand', 18)}</button><button id="panel-toggle" class="tool-button mobile-only" aria-label="관리 패널 접기" aria-expanded="true">${icon('chevron', 18)}</button></div>
+    <div class="camera-controls"><button id="zoom-in" class="tool-button" aria-label="확대">+</button><button id="zoom-out" class="tool-button" aria-label="축소">−</button><button id="overview" class="tool-button" aria-label="전장 전체 보기">${icon('expand', 18)}</button><button id="adventure-enter" class="tool-button" title="직접 탐험 (V)" aria-label="직접 탐험 (V)">${icon('army', 18)}</button><button id="panel-toggle" class="tool-button mobile-only" aria-label="관리 패널 접기" aria-expanded="true">${icon('chevron', 18)}</button></div>
     <div class="war-help"><span><kbd>WASD</kbd> 시점 이동</span><span>드래그: 회전</span><span><kbd>5–7</kbd> 부대 선택</span><span><kbd>G</kbd> 이동 · <kbd>B</kbd> 본부</span><span><kbd>K</kbd> 기지 관리</span></div>
     <nav class="squad-quickbar" aria-label="빠른 부대 지휘">
-      <span>부대 지휘</span>
+      <span>부대 지휘<small>COMMAND</small></span>
       <button data-squad-select="0" aria-pressed="true">① 주력군 <small>${w.grandBattle ? 100 : 4}명</small></button>
       <button data-squad-select="1" aria-pressed="false">② 기동대 <small>0명</small></button>
       <button data-squad-select="2" aria-pressed="false">③ 수비대 <small>0명</small></button>
-      <button id="quick-move" aria-pressed="false">📍 위치 지정</button>
-      <button id="quick-home">⌂ 본부</button>
+      <button id="quick-move" aria-pressed="false">${icon('target', 14)}<span>위치 지정</span></button>
+      <button id="quick-home">${icon('home', 14)}<span>본부</span></button>
     </nav>
     <div class="target-card" id="target-card" hidden><button id="target-close" class="target-close tool-button" aria-label="대상 닫기">${icon('close', 16)}</button><span class="kicker" id="target-type"></span><h3 id="target-name"></h3><p id="target-description"></p><button id="target-command" class="button primary">병력 출전 ${icon('arrow', 16)}</button></div>
-    <div class="adventure-switch"><button id="adventure-enter" class="button primary">직접 플레이 (V) · 낙하산/탐험</button></div>
     <section id="adventure-hud" class="adventure-hud" aria-label="직접 조작" hidden>
       <div class="adventure-head"><span class="kicker">DIRECT CONTROL</span><h2 id="adventure-title"></h2><p id="adventure-description"></p><div class="adventure-progress"><i id="adventure-progress-fill"></i></div></div>
       <span class="adventure-crosshair" aria-hidden="true">+</span>
@@ -160,8 +160,8 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   renderer.domElement.setAttribute('aria-label', '3D 왕국 전장. 관리 패널에서도 모든 명령을 내릴 수 있습니다.');
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(43, mount.clientWidth / mount.clientHeight, .1, 1300);
-  const focus = new THREE.Vector3(-75, 0, -75);
-  let angle = Math.PI + .72, zoom = innerWidth < 800 ? 155 : 175;
+  const focus = new THREE.Vector3(w.factions[0].x + 24, 0, w.factions[0].z + 24);
+  let angle = Math.PI + .72, zoom = innerWidth < 800 ? 160 : 145;
   let adventure: ReturnType<typeof createAdventure> | null = null;
   const cameraUpdate = () => { if (adventure?.isActionMode) return; camera.position.set(focus.x + Math.sin(angle) * zoom, zoom * .83, focus.z + Math.cos(angle) * zoom); camera.lookAt(focus); };
   const pan = (dx: number, dz: number) => { focus.x = THREE.MathUtils.clamp(focus.x + dx, -MAP_HALF_SIZE + 12, MAP_HALF_SIZE - 12); focus.z = THREE.MathUtils.clamp(focus.z + dz, -MAP_HALF_SIZE + 12, MAP_HALF_SIZE - 12); cameraUpdate(); };
@@ -171,7 +171,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   const baseDistrict = createBaseDistrict(scene,w);
   world.setQuality(prefs.quality === 'high'); world.setReducedMotion(prefs.reducedMotion);
   baseDistrict.setReducedMotion(prefs.reducedMotion);
-  const adventureControl = createAdventure(scene, camera, w, !resumed && import.meta.env.MODE !== 'test'); adventure = adventureControl;
+  const adventureControl = createAdventure(scene, camera, w, false); adventure = adventureControl;
   const controller = new AbortController(); const signal = controller.signal;
   overlay.addEventListener('pointerdown', () => audio.unlock(), { signal, capture: true });
   overlay.addEventListener('keydown', () => audio.unlock(), { signal, capture: true });
@@ -237,7 +237,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     const clampedZ = THREE.MathUtils.clamp(z, -MAP_HALF_SIZE + 5, MAP_HALF_SIZE - 5);
     if (commandTo({ kind: 'move', x: clampedX, z: clampedZ })) {
       audio.play('click'); announce(SQUAD_NAMES[selectedSquad] + ' 이동! 지정 위치로 출발합니다.'); ui(); drawMap();
-    } else announce('선택 부대에 병력이 없습니다. 주력군에서 3명 편성하세요.');
+    } else announce(`선택 부대에 병력이 없습니다. 주력군에서 ${recruitBatch}명을 편성하세요.`);
   };
   const issueAt = (x: number, z: number) => {
     const base = w.factions[0];
@@ -294,13 +294,13 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   const togglePause = (reason = '잠시 전략을 정비하세요.') => {
     if (done) return;
     if (modalClose) { modalClose(); return; }
-    openModal('전투 일시정지', `<p>${reason}</p><div class="pause-stats"><span>생존 시간<b>${clock(w.time)}</b></span><span>점령 거점<b>${w.outposts.filter(p => p.owner === 0).length} / 9</b></span><span>현재 병력<b>${w.units.filter(u => u.owner === 0).length} / 18</b></span></div><p class="dialog-tip">시간이 멈췄습니다. Esc 키나 아래 버튼으로 계속할 수 있습니다.</p><div class="pause-actions"><button id="pause-guide" class="button secondary">플레이 가이드</button><button id="pause-settings" class="button secondary">화면·소리 설정</button><button id="pause-menu" class="button secondary">저장하고 메뉴로</button></div>`, () => {
+    openModal('전투 일시정지', `<p>${reason}</p><div class="pause-stats"><span>생존 시간<b>${clock(w.time)}</b></span><span>점령 거점<b>${w.outposts.filter(p => p.owner === 0).length} / 9</b></span><span>현재 병력<b>${w.units.filter(u => u.owner === 0).length} / ${armyLimit}</b></span></div><p class="dialog-tip">시간이 멈췄습니다. Esc 키나 아래 버튼으로 계속할 수 있습니다.</p><div class="pause-actions"><button id="pause-guide" class="button secondary">플레이 가이드</button><button id="pause-settings" class="button secondary">화면·소리 설정</button><button id="pause-menu" class="button secondary">저장하고 메뉴로</button></div>`, () => {
       document.querySelector<HTMLButtonElement>('#pause-guide')!.onclick = () => { modalClose?.(); help(); };
       document.querySelector<HTMLButtonElement>('#pause-settings')!.onclick = () => { modalClose?.(); openSettings(); };
       document.querySelector<HTMLButtonElement>('#pause-menu')!.onclick = () => { modalClose?.(); exitWithSave(); };
     });
   };
-  const help = () => openModal('왕국을 지배하는 방법', `<div class="guide-steps"><article><b>승리 조건 · 살아남는 마지막 왕국</b><p>적색·황색·보라 왕국의 본부 3곳을 모두 함락시키면 승리합니다. 쉬움에서는 AI가 늦게 공격하므로 먼저 병력과 자원을 확보하세요.</p></article><article><b>00 · 기지 건설과 장군 모집</b><p>K 키 또는 상단 기지 관리 버튼으로 5×5 영지에 들어가세요. 빈 칸은 건설, 완공된 건물은 클릭해 실내로 입장합니다. 실제 3D 전장에 배치된 내 건물을 클릭해도 실내에 들어갈 수 있으며, 내부 설비 확장·자원 교환·병력 훈련·성벽 수리가 가능합니다. 건설과 실내 관리 중에는 전투 시간이 멈춥니다. 장군은 부대에 배치할 수 있습니다.</p></article><article><b>01 · 경제를 성장시키세요</b><p>금광과 농장을 강화하면 병력을 꾸준히 생산할 수 있습니다. 성장 정책은 자원 수입을 25% 늘립니다.</p></article><article><b>02 · 거점을 점령하세요</b><p>작전 탭에서 기동대를 선택해 +3명 편성하세요. 부대 선택 후 지도에서 목적지를 클릭하면 그 부대만 이동하며, '본부' 버튼으로 즉시 복귀 명령을 내릴 수 있습니다. 적과 아군이 함께 있으면 점령이 정지합니다.</p></article><article><b>03 · 연구하고 정복하세요</b><p>병영 Lv.2에서 연구와 궁병, Lv.3에서 중장병과 기병이 해금됩니다. 모든 적 본부를 함락하면 승리합니다.</p></article><article><b>04 · 폭풍에 대비하세요</b><p>보통 난이도는 2분 10초, 쉬움은 3분부터 안전지대가 줄어듭니다. 밖에 있는 본부·병력이 피해를 받으며, 거점 1개당 본부 폭풍 피해가 12% 줄어듭니다 (최대 60%).</p></article></div><div class="shortcut-grid"><span><kbd>WASD</kbd> 시점 이동</span><span><kbd>H</kbd> 내 영지</span><span><kbd>V/T</kbd> 직접 플레이/전략</span><span><kbd>E</kbd> 성벽 올라가기·내려가기</span><span><kbd>F</kbd> 활 발사</span><span><kbd>1–4</kbd> 병종 훈련</span><span><kbd>5–7</kbd> 부대 그룹 선택</span><span><kbd>G</kbd> 위치 지정 · <kbd>B</kbd> 본부 복귀</span><span><kbd>Esc</kbd> 일시정지</span><span>드래그: 회전 · Shift+드래그: 이동</span><span>휠: 확대 · Shift+클릭: 명령</span><span>터치: 드래그 이동 · 두 손가락 확대</span><span>미니맵: 이동 모드에서 어디든 클릭해 부대 이동</span></div>`);
+  const help = () => openModal('왕국을 지배하는 방법', `<div class="guide-steps"><article><b>승리 조건 · 살아남는 마지막 왕국</b><p>적색·황색·보라 왕국의 본부 3곳을 모두 함락시키면 승리합니다. 쉬움에서는 AI가 늦게 공격하므로 먼저 병력과 자원을 확보하세요.</p></article><article><b>00 · 기지 건설과 장군 모집</b><p>K 키 또는 상단 기지 관리 버튼으로 5×5 영지에 들어가세요. 빈 칸은 건설, 완공된 건물은 클릭해 실내로 입장합니다. 실제 3D 전장에 배치된 내 건물을 클릭해도 실내에 들어갈 수 있으며, 내부 설비 확장·자원 교환·병력 훈련·성벽 수리가 가능합니다. 건설과 실내 관리 중에는 전투 시간이 멈춥니다. 장군은 부대에 배치할 수 있습니다.</p></article><article><b>01 · 경제를 성장시키세요</b><p>금광과 농장을 강화하면 병력을 꾸준히 생산할 수 있습니다. 성장 정책은 자원 수입을 25% 늘립니다.</p></article><article><b>02 · 거점을 점령하세요</b><p>작전 탭에서 기동대를 선택해 +${recruitBatch}명 편성하세요. 부대 선택 후 지도에서 목적지를 클릭하면 그 부대만 이동하며, '본부' 버튼으로 즉시 복귀 명령을 내릴 수 있습니다. 적과 아군이 함께 있으면 점령이 정지합니다.</p></article><article><b>03 · 연구하고 정복하세요</b><p>병영 Lv.2에서 연구와 궁병, Lv.3에서 중장병과 기병이 해금됩니다. 모든 적 본부를 함락하면 승리합니다.</p></article><article><b>04 · 폭풍에 대비하세요</b><p>현재 전투는 ${Math.floor(stormStartFor(w) / 60)}분 ${stormStartFor(w) % 60}초부터 안전지대가 줄어듭니다. 밖에 있는 본부·병력이 피해를 받으며, 거점 1개당 본부 폭풍 피해가 12% 줄어듭니다 (최대 60%).</p></article></div><div class="shortcut-grid"><span><kbd>WASD</kbd> 시점 이동</span><span><kbd>H</kbd> 내 영지</span><span><kbd>V/T</kbd> 직접 플레이/전략</span><span><kbd>E</kbd> 성벽 올라가기·내려가기</span><span><kbd>F</kbd> 활 발사</span><span><kbd>1–4</kbd> 병종 훈련</span><span><kbd>5–7</kbd> 부대 그룹 선택</span><span><kbd>G</kbd> 위치 지정 · <kbd>B</kbd> 본부 복귀</span><span><kbd>Esc</kbd> 일시정지</span><span>드래그: 회전 · Shift+드래그: 이동</span><span>휠: 확대 · Shift+클릭: 명령</span><span>터치: 드래그 이동 · 두 손가락 확대</span><span>미니맵: 이동 모드에서 어디든 클릭해 부대 이동</span></div>`);
   const syncSound = () => { el('#sound').innerHTML = icon(prefs.sound ? 'sound' : 'muted'); el('#sound').setAttribute('aria-label', prefs.sound ? '효과음 끄기' : '효과음 켜기'); audio.setMuted(!prefs.sound); };
   const openSettings = () => openModal('전장 설정', `<div class="settings-grid"><label>그래픽 품질<select id="graphics-setting"><option value="high">높음 · 그림자와 효과</option><option value="standard">보통 · 성능 우선</option><option value="low">낮음 · 저사양 기기</option></select></label><label>효과음<input type="checkbox" id="audio-setting"></label><label>움직임 줄이기<input type="checkbox" id="motion-setting"></label></div><p class="dialog-tip">설정은 이 브라우저에 저장됩니다. 보통은 그림자·효과를 줄이고, 낮음은 해상도와 색 보정도 줄입니다. 관리 패널 아래 FPS로 실제 화면 속도를 확인하세요.</p>`, () => {
     const quality = document.querySelector<HTMLSelectElement>('#graphics-setting')!, sound = document.querySelector<HTMLInputElement>('#audio-setting')!, motion = document.querySelector<HTMLInputElement>('#motion-setting')!;
@@ -365,6 +365,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   };
   const selectSquad = (value: SquadId) => {
     selectedSquad = value;
+    world.setSelectedSquad?.(value);
     showTab('orders');
     syncCommandMode(true);
     ui();
@@ -630,5 +631,5 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__war = { world: w, renderer, camera, scene, ui, finish, skipDrop: () => { adventureControl.skipDrop(); updateAdventureUI(); }, setPaused: (value: boolean) => { paused = value; } };
   frame = requestAnimationFrame(loop);
   el<HTMLButtonElement>('#home').focus({ preventScroll: true });
-  if (!wasThreatened) announce(resumed ? '저장한 전투를 이어갑니다. V 키로 직접 탐험할 수 있습니다.' : '낙하산으로 강하합니다! 착륙 후 거점을 점령하고 성벽 위에서 활을 쏘세요.');
+  if (!wasThreatened) announce(resumed ? '저장한 전투를 이어갑니다. V 키로 직접 탐험할 수 있습니다.' : '군단 지휘를 시작합니다. 작전 탭에서 부대를 편성하고 가까운 거점으로 출전하세요.');
 }

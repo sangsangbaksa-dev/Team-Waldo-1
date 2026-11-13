@@ -4,7 +4,7 @@ import { createWar } from '../../src/battle/war';
 import { loadWar, saveWar, WAR_SAVE_KEY } from '../../src/battle/save';
 
 const navigation = vi.hoisted(() => ({
-  openWar: vi.fn<(onExit: () => void, options: { forceNew: boolean; difficulty: string }) => void>(),
+  openWar: vi.fn<(onExit: () => void, options: { forceNew: boolean; difficulty: string; grandBattle: boolean }) => void>(),
   startLegacy: vi.fn<(parent: HTMLElement, onExit: () => void) => void>(),
   preview: vi.fn<(mount: HTMLElement) => () => void>(),
   disposePreview: vi.fn(),
@@ -35,35 +35,47 @@ afterEach(async () => {
 });
 
 describe('menu navigation and recovery', () => {
-  it('starts only one classic engine when classic and strategy controls are clicked rapidly', async () => {
+  it('offers only the grand campaign and starts one engine on repeated clicks', async () => {
     await loadMenu();
-    const classic = button('#legacy'), strategy = button('#start-war');
-    classic.click(); classic.click(); strategy.click();
-    expect(classic.disabled).toBe(true);
-    expect(strategy.disabled).toBe(true);
-    await vi.dynamicImportSettled();
-    expect(navigation.startLegacy).toHaveBeenCalledTimes(1);
-    expect(navigation.openWar).not.toHaveBeenCalled();
-    expect(navigation.disposePreview).toHaveBeenCalledTimes(1);
-
-    // An ordinary return from the engine creates a fresh, usable menu generation.
-    navigation.startLegacy.mock.calls[0][1]();
-    await vi.dynamicImportSettled();
-    expect(button('#start-war').disabled).toBe(false);
-    button('#start-war').click();
+    expect(document.querySelector('#start-war')).toBeNull();
+    expect(document.querySelector('#legacy')).toBeNull();
+    button('#difficulty-hard').click();
+    const start = button('#start-grand');
+    start.click(); start.click();
+    expect(start.disabled).toBe(true);
     await vi.dynamicImportSettled();
     expect(navigation.openWar).toHaveBeenCalledTimes(1);
-    expect(navigation.startLegacy).toHaveBeenCalledTimes(1);
+    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), { forceNew: true, difficulty: 'hard', grandBattle: true });
+    expect(navigation.startLegacy).not.toHaveBeenCalled();
+    expect(navigation.disposePreview).toHaveBeenCalledTimes(1);
+    navigation.openWar.mock.calls[0][0]();
+    await vi.dynamicImportSettled();
+    expect(button('#start-grand').disabled).toBe(false);
   });
 
-  it('starts only one strategy engine when start and classic are clicked rapidly', async () => {
-    await loadMenu(); button('#difficulty-hard').click();
-    const strategy = button('#start-war'), classic = button('#legacy');
-    strategy.click(); strategy.click(); classic.click();
+  it('explains the actual grand-campaign storm times for the selected difficulty', async () => {
+    await loadMenu();
+    expect(document.querySelector('#difficulty-description')?.textContent).toContain('4분 30초');
+    button('#difficulty-easy').click();
+    expect(document.querySelector('#difficulty-description')?.textContent).toContain('6분');
+    expect(button('#difficulty-easy').getAttribute('aria-pressed')).toBe('true');
+    button('#guide').click();
+    expect(document.querySelector('.dialog-body')?.textContent).toContain('25명');
+    expect(document.querySelector('.dialog-body')?.textContent).toContain('4분 30초');
+  });
+
+  it('keeps a small battle save untouched until the user confirms a new grand campaign', async () => {
+    const saved = createWar();
+    saveWar(saved);
+    await loadMenu();
+    expect(document.querySelector('#continue-war')).toBeNull();
+    expect(document.querySelector('.save-notice')?.textContent).toContain('소규모 원정은 종료');
+    button('#start-grand').click(); button('.dialog-cancel').click();
+    expect(navigation.openWar).not.toHaveBeenCalled();
+    expect(loadWar()).toEqual(saved);
+    button('#start-grand').click(); button('.dialog-confirm').click();
     await vi.dynamicImportSettled();
-    expect(navigation.openWar).toHaveBeenCalledTimes(1);
-    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), { forceNew: true, difficulty: 'hard' });
-    expect(navigation.startLegacy).not.toHaveBeenCalled();
+    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), { forceNew: true, difficulty: 'normal', grandBattle: true });
   });
 
   it('opens the menu and settings even when saved battle, career, and preferences are corrupt', async () => {
@@ -73,16 +85,16 @@ describe('menu navigation and recovery', () => {
     await loadMenu();
     expect(document.querySelector('.landing')).not.toBeNull();
     expect(document.querySelector('#continue-war')).toBeNull();
-    expect(button('#start-war').disabled).toBe(false);
+    expect(button('#start-grand').disabled).toBe(false);
     button('#preferences').click();
     expect(document.querySelector('.game-dialog')).not.toBeNull();
     expect(document.querySelector<HTMLSelectElement>('#menu-quality')?.value).toMatch(/^(high|standard)$/);
     button('.dialog-cancel').click();
-    expect(button('#start-war').disabled).toBe(false);
+    expect(button('#start-grand').disabled).toBe(false);
   });
 
   it('continues a saved hard match at its saved difficulty despite a different new-game selection', async () => {
-    const saved = createWar({ difficulty: 'hard' }); saved.time = 83;
+    const saved = createWar({ difficulty: 'hard', grandBattle: true }); saved.time = 83;
     expect(saveWar(saved)).toBe(true);
     await loadMenu();
     expect(button('#continue-war').textContent).toContain('1분 23초');
@@ -90,7 +102,7 @@ describe('menu navigation and recovery', () => {
     button('#difficulty-easy').click(); button('#continue-war').click();
     await vi.dynamicImportSettled();
     expect(navigation.openWar).toHaveBeenCalledTimes(1);
-    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), { forceNew: false, difficulty: 'hard' });
+    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), { forceNew: false, difficulty: 'hard', grandBattle: true });
     expect(loadWar()).toEqual(saved);
     expect(navigation.startLegacy).not.toHaveBeenCalled();
   });

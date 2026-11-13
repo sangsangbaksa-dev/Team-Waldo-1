@@ -105,12 +105,12 @@ async function exercise(page, result) {
   await capture(page, `${result.name}-landing`);
 
   await stage('real WebGL, training and capture order');
-  await page.locator('#start-war').click(); result.graphics = await waitForBattle(page);
+  await page.locator('#start-grand').click(); result.graphics = await waitForBattle(page);
   assert.equal(await page.locator('#difficulty-badge').innerText(), '입문');
   result.fps = await page.locator('#render-fps').innerText();
   await page.locator('#tab-army').click();
   const before = Number(await page.locator('#count-infantry').innerText());
-  assert.equal(before, 4, 'A new battle must start with four infantry');
+  assert.ok(before > 4, 'A new campaign must start with a large infantry formation');
   await page.locator('#train-infantry').click();
   assert.equal(Number(await page.locator('#count-infantry').innerText()), before + 1, 'Training did not add one infantry');
   result.infantryAfterTraining = before + 1;
@@ -143,19 +143,8 @@ async function exercise(page, result) {
   result.pausedClock = pausedClock; await capture(page, `${result.name}-paused`);
   await page.keyboard.press('Escape'); await page.getByRole('dialog').waitFor({ state: 'hidden' });
   await page.waitForFunction(previous => document.querySelector('#war-clock')?.textContent !== previous, pausedClock, { timeout: 15000 });
-  await page.locator('#exit').click(); await page.locator('#start-war').waitFor();
+  await page.locator('#exit').click(); await page.locator('#start-grand').waitFor();
 
-  if (result.name === 'desktop') {
-    await stage('classic survival launch and return');
-    await page.locator('#legacy').click(); await page.locator('#classic-game canvas').waitFor({ state: 'visible', timeout: 30000 });
-    await page.waitForFunction(() => {
-      const canvas = document.querySelector('#classic-game canvas'); return canvas && canvas.width > 0 && canvas.height > 0;
-    });
-    await capture(page, 'desktop-classic');
-    await page.locator('#classic-exit').click(); await page.locator('#start-war').waitFor();
-    assert.equal(await page.locator('#classic-game canvas').count(), 0, 'Classic renderer remained after exit');
-    result.classic = 'launched and returned to menu';
-  }
   await assertProduction(page); await page.waitForTimeout(300);
   assert.deepEqual(result.pageErrors, [], 'Uncaught production browser errors');
   assert.deepEqual(result.consoleErrors, [], 'Production browser console errors');

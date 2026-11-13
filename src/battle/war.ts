@@ -41,8 +41,8 @@ export interface War {
   base?: BaseState;
 }
 export const DIFFICULTIES: Record<Difficulty, {label:string;description:string;aiIncome:number;aiInterval:number;aiAttackAfter:number}> = {
-  easy: {label:'입문',description:'아군 자원 +35% · AI 생산 45% 감소 · AI 본부 공세 260초 이후 · 폭풍 3분 이후',aiIncome:.55,aiInterval:1.7,aiAttackAfter:260},
-  normal: {label:'보통',description:'같은 시작 자원 · 기본 AI 생산과 판단 속도 · AI 본부 공세는 105초 이후',aiIncome:1,aiInterval:1,aiAttackAfter:105},
+  easy: {label:'입문',description:'아군 생산 +35% · AI 생산 −45% · AI 본부 공세 260초 이후',aiIncome:.55,aiInterval:1.7,aiAttackAfter:260},
+  normal: {label:'보통',description:'기본 AI 생산과 판단 속도 · AI 본부 공세 105초 이후',aiIncome:1,aiInterval:1,aiAttackAfter:105},
   hard: {label:'도전',description:'AI 자원 생산 20% 증가 · 판단 간격 20% 감소 · AI 본부 공세 대기 없음',aiIncome:1.2,aiInterval:.8,aiAttackAfter:0},
 };
 export const RESEARCH: Record<Research, {label:string;description:string;maxLevel:number;requiredBarracks:number;gold:number;food:number}> = {
@@ -61,7 +61,12 @@ export const OUTPOST_BONUSES: ReadonlyArray<{gold:number;food:number}> = [
 export const MAP_HALF_SIZE = 260;
 export const MAP_SIZE = MAP_HALF_SIZE * 2;
 export const STORM_START = 130;
-export const stormStartFor = (w: War) => w.grandBattle ? (w.difficulty === 'easy' ? 360 : 270) : w.difficulty === 'easy' ? 180 : STORM_START;
+export const stormStartFor = (w: Pick<War, 'grandBattle' | 'difficulty'>) => w.grandBattle ? (w.difficulty === 'easy' ? 360 : 270) : w.difficulty === 'easy' ? 180 : STORM_START;
+export function difficultyDescription(difficulty: Difficulty, grandBattle = false): string {
+  const seconds = stormStartFor({ difficulty, grandBattle });
+  const time = `${Math.floor(seconds / 60)}분${seconds % 60 ? ` ${seconds % 60}초` : ''}`;
+  return `${DIFFICULTIES[difficulty].description} · 폭풍 ${time} 이후`;
+}
 export const STORM_HQ_DAMAGE = 3.5;
 const CORNERS = [[-112,-112],[112,-112],[-112,112],[112,112]] as const;
 const OUTPOSTS = [[0,-95],[95,0],[0,95],[-95,0],[0,0],[-62,-62],[62,-62],[-62,62],[62,62]] as const;

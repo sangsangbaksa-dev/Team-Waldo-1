@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { createGrandArmyVisuals } from './grandArmyVisuals';
+import { createSurfaceTexture } from './surfaceTextures';
+import { squadDestination, squadUnits, type SquadId } from './squads';
 import { BATTLEFIELD_FEATURES } from './battlefieldLayout';
 import { createBattlefieldEnvironment } from './environment3d';
 import { MAP_HALF_SIZE, OUTPOST_NAMES, OUTPOST_BONUSES, UNIT_STATS, type Unit, type UnitKind, type War } from './war';
@@ -29,6 +31,7 @@ export interface BattleWorld {
   update(dt:number):void;
   setQuality(high:boolean):void;
   setReducedMotion(enabled:boolean):void;
+  setSelectedSquad(squad:0|1|2):void;
   setLabelsVisible(visible:boolean):void;
   setStrategicOverlaysVisible(visible:boolean):void;
   dispose():void;
@@ -45,14 +48,15 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   let highQuality=true;
   let reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let strategicOverlaysVisible=true;
+  let selectedSquad:SquadId=0;
   const labels:WorldLabel[]=[];
   const effects=createBattleEffects(world);
   const art=createVisualDetails();
-  scene.background=new THREE.Color(0x344248);
-  scene.fog=new THREE.FogExp2(0x344248,.0013);
-  const ambient=new THREE.HemisphereLight(0x97abb6,0x28352f,1.85);
+  scene.background=new THREE.Color(0x52696d);
+  scene.fog=new THREE.FogExp2(0x52696d,.0013);
+  const ambient=new THREE.HemisphereLight(0xb3ccd6,0x344a3c,2.05);
   scene.add(ambient);
-  const sun=new THREE.DirectionalLight(0xd2c7b0,2.6);
+  const sun=new THREE.DirectionalLight(0xffdda8,3.1);
   sun.position.set(-130,220,140);
   sun.castShadow=true;
   sun.shadow.mapSize.set(3072,3072);
@@ -61,7 +65,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   sun.shadow.camera.near=10;sun.shadow.camera.far=520;
   sun.shadow.normalBias=.035;sun.shadow.bias=-.0001;
   scene.add(sun,sun.target);
-  const fill=new THREE.DirectionalLight(0x799cac,.6);fill.position.set(35,35,-45);scene.add(fill);
+  const fill=new THREE.DirectionalLight(0x86b7c7,.85);fill.position.set(35,35,-45);scene.add(fill);
 
   const material=(color:number,metalness=0,roughness=.83,emissive=0)=>
     new THREE.MeshStandardMaterial({color,metalness,roughness,emissive,emissiveIntensity:emissive?.55:0});
@@ -69,11 +73,18 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     mortar=material(0x505e65),roof=material(0x273b46),
     timber=material(0x51473e),woodDark=material(0x2f3331),
     cream=material(0x9da49c),gold=material(0xc5a16c,.45,.35),
-    meadow=material(0x46554b),leaves=material(0x374d42),
-    leafLight=material(0x536556),waterMat=new THREE.MeshStandardMaterial({
+    meadow=material(0x506a50),leaves=material(0x315743),
+    leafLight=material(0x6d8b62),waterMat=new THREE.MeshStandardMaterial({
       color:0x31525c,roughness:.25,metalness:.1,transparent:true,opacity:.94
-    }),roadMat=material(0x465055),soilMat=material(0x5d554b),
+    }),roadMat=material(0x807964),soilMat=material(0x5d554b),
     ember=material(0xffb45a,0,.4,0xff8130);
+  const groundTexture=createSurfaceTexture('ground');
+  groundTexture?.repeat.set(48,48);
+  const roadTexture=createSurfaceTexture('tracks');
+  roadTexture?.repeat.set(1,12);roadMat.map=roadTexture??null;roadMat.roughness=1;
+  const contactTexture=createSurfaceTexture('shadow');
+  const contactMaterial=new THREE.MeshBasicMaterial({color:0x071a18,alphaMap:contactTexture,
+    transparent:true,opacity:.3,depthWrite:false});
   const teamMats=FACTION_COLORS.map(color=>material(new THREE.Color(color).lerp(new THREE.Color(0x465450),.35).getHex(),.25,.52));
   const bannerMats=FACTION_COLORS.map(color=>new THREE.MeshStandardMaterial({
     color,side:THREE.DoubleSide,roughness:.65
@@ -114,7 +125,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   terrain.rotateX(-Math.PI/2);
   const position=terrain.getAttribute('position');
   const vertexColors:number[]=[];
-  const greenA=new THREE.Color(0x313c3c),greenB=new THREE.Color(0x57635b);
+  const greenA=new THREE.Color(0x2f443c),greenB=new THREE.Color(0x6d7b61);
   for(let i=0;i<position.count;i++){
     const x=position.getX(i),z=position.getZ(i);
     const edge=Math.max(Math.abs(x),Math.abs(z));
@@ -124,7 +135,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   }
   terrain.setAttribute('color',new THREE.Float32BufferAttribute(vertexColors,3));
   terrain.computeVertexNormals();
-  const ground=add(world,terrain,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1}),0,0,0);
+  const ground=add(world,terrain,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,map:groundTexture}),0,0,0);
   ground.castShadow=false;ground.receiveShadow=true;
 
   const rng=seeded(738139);
@@ -230,6 +241,8 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
 
   const fortresses:Fortress[]=war.factions.map(f=>{
     const root=new THREE.Group();root.position.set(f.x,0,f.z);world.add(root);
+    const contactShadow=add(root,new THREE.PlaneGeometry(58,52),contactMaterial,0,.08,0);
+    contactShadow.rotation.x=-Math.PI/2;contactShadow.castShadow=false;
     const territoryRing=add(root,baseRingGeometry,markerMats[f.id],0,.15,0);
     territoryRing.rotation.x=-Math.PI/2;
     territoryRing.castShadow=false;
@@ -307,7 +320,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
       const debris=add(rubble,rock,stoneDark,Math.cos(a)*r,.5,Math.sin(a)*r,1.7,.8,1.2);
       debris.rotation.set(i*.24,i*.65,0);
     }
-    batchStaticChildren(root,new Set([banner,territoryRing]));
+    batchStaticChildren(root,new Set([banner,territoryRing,contactShadow]));
     batchStaticChildren(towers);batchStaticChildren(rubble);
     structures.forEach(building=>batchStaticChildren(building));
     return {root,towers,structures,banner,rubble,alive:f.alive,label,ring:territoryRing,
@@ -346,7 +359,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   routeGeometry.setAttribute('position',new THREE.Float32BufferAttribute(new Float32Array(6),3));
   const routeMaterial=new THREE.LineDashedMaterial({color:0xffe1a0,dashSize:3,gapSize:2,
     transparent:true,opacity:.8,depthWrite:false});
-  const route=new THREE.Line(routeGeometry,routeMaterial);route.frustumCulled=false;
+  const route=new THREE.Line(routeGeometry,routeMaterial);route.name='selected-squad-route';route.frustumCulled=false;
   route.renderOrder=1;world.add(route);
   const destination=new THREE.Group();world.add(destination);
   const destinationRing=add(destination,new THREE.RingGeometry(9,9.5,64),
@@ -378,6 +391,8 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   }
 
   const grandVisuals=war.grandBattle?createGrandArmyVisuals(world,war):null;
+  grandVisuals?.setReducedMotion(reducedMotion);
+  const grandHealth=new Map<number,number>();
   const models=new Map<number,UnitVisual>(),projectiles:Projectile[]=[];
   // Reuse resources for short-lived soldiers/projectiles; avoid per-death GPU leaks.
   const bowGeometry=new THREE.TorusGeometry(.75,.08,5,18,Math.PI*1.3);
@@ -512,18 +527,40 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
       v.previousOwner=p.owner;
     }
     const player=war.factions[0];
-    const goal=player.target!==null?war.factions[player.target]:player.rally!==null?war.outposts[player.rally]:undefined;
+    const fallback=selectedSquad===0?(player.target!==null?war.factions[player.target]:player.rally!==null?war.outposts[player.rally]:undefined):undefined;
+    const goal=squadDestination(war,selectedSquad)??fallback;
     route.visible=destination.visible=strategicOverlaysVisible&&!!goal&&player.alive;
     if(goal){
       const points=routeGeometry.getAttribute('position');
-      points.setXYZ(0,player.x,.4,player.z);points.setXYZ(1,goal.x,.4,goal.z);
+      const members=squadUnits(war,selectedSquad);
+      const origin=members.length?members.reduce((sum,unit)=>({x:sum.x+unit.x/members.length,z:sum.z+unit.z/members.length}),{x:0,z:0}):player;
+      points.setXYZ(0,origin.x,.4,origin.z);points.setXYZ(1,goal.x,.4,goal.z);
       points.needsUpdate=true;route.computeLineDistances();
       destination.position.set(goal.x,0,goal.z);
       const pulse=reducedMotion?1:1+Math.sin(time*2.3)*.05;
       destinationRing.scale.set(pulse,pulse,1);
       pointer.position.y=14+(reducedMotion?0:Math.sin(time*2.3)*.65);
     }
-    if(grandVisuals)grandVisuals.update();
+    if(grandVisuals){
+      grandVisuals.update();
+      // Grand armies share the same bounded combat feedback as individual models.
+      // Limit effects per frame so large clashes cannot create hundreds of projectiles.
+      let feedbackBudget=8;
+      const active=new Set<number>();
+      for(const unit of war.units){
+        active.add(unit.id);
+        if(highQuality&&!reducedMotion&&feedbackBudget>0){
+          const hp=grandHealth.get(unit.id);
+          if(hp!==undefined&&unit.hp<hp-.5){
+            effects.burst(unit.x,2,unit.z,0xffd3a0,3,.65);feedbackBudget--;
+          }
+          const old=cooldowns.get(unit.id)??unit.cooldown;
+          if(unit.cooldown>old+.4&&feedbackBudget>0){attackFeedback(unit);feedbackBudget--;}
+        }
+        grandHealth.set(unit.id,unit.hp);cooldowns.set(unit.id,unit.cooldown);
+      }
+      for(const id of grandHealth.keys())if(!active.has(id)){grandHealth.delete(id);cooldowns.delete(id);}
+    }
     else {
     const active=new Set(war.units.map(u=>u.id));
     for(const [id,v] of models){
@@ -578,23 +615,26 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     configureEffects();
   };
   const setReducedMotion=(enabled:boolean):void=>{
-    reducedMotion=enabled;configureEffects();
+    reducedMotion=enabled;grandVisuals?.setReducedMotion(enabled);configureEffects();
   };
   const setLabelsVisible=(visible:boolean):void=>{
     labels.forEach(label=>{label.sprite.visible=visible;});
   };
   const setStrategicOverlaysVisible=(visible:boolean):void=>{
     strategicOverlaysVisible=visible;
+    grandVisuals?.setOverlaysVisible(visible);
     ring.visible=storm.visible=visible;
     fortresses.forEach((fort,index)=>{fort.ring.visible=visible&&war.factions[index].alive;});
     posts.forEach(post=>{post.territory.visible=visible;});
     if(!visible){route.visible=false;destination.visible=false;}
   };
   const dispose=():void=>{
-    labels.forEach(label=>label.dispose());effects.dispose();
+    labels.forEach(label=>label.dispose());effects.dispose();grandVisuals?.dispose();
+    groundTexture?.dispose();roadTexture?.dispose();contactTexture?.dispose();
     scene.remove(world,ambient,sun,sun.target,fill);
     const geos=new Set<THREE.BufferGeometry>(),mats=new Set<THREE.Material>();
     world.traverse(o=>{
+      if(o instanceof THREE.InstancedMesh)o.dispose();
       if(o instanceof THREE.Mesh || o instanceof THREE.InstancedMesh){
         geos.add(o.geometry);
         for(const m of Array.isArray(o.material)?o.material:[o.material])mats.add(m);
@@ -611,8 +651,8 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     mats.forEach(m=>m.dispose());
     art.dispose();
     sun.shadow.map?.dispose();
-    models.clear();cooldowns.clear();unitBatches.clear();projectiles.length=0;freeMissiles.length=0;
+    models.clear();cooldowns.clear();grandHealth.clear();unitBatches.clear();projectiles.length=0;freeMissiles.length=0;
   };
   configureEffects();update(0);
-  return {update,setQuality,setReducedMotion,setLabelsVisible,setStrategicOverlaysVisible,dispose};
+  return {update,setQuality,setReducedMotion,setSelectedSquad:(squad)=>{selectedSquad=squad;grandVisuals?.setSelectedSquad(squad);},setLabelsVisible,setStrategicOverlaysVisible,dispose};
 }

@@ -492,3 +492,31 @@ describe('battle UI through real player actions', () => {
     expect(renderer.render.mock.calls.length).toBeGreaterThan(renders);
   });
 });
+
+describe('grand campaign guidance', () => {
+  it('shows the real population cap and storm timing for a grand battle', () => {
+    openWar(vi.fn(), { forceNew: true, difficulty: 'easy', grandBattle: true });
+    expect(element('.war-ui').classList.contains('adventure-active')).toBe(false);
+    click('#pause');
+    expect(element('.pause-stats').textContent).toContain('100 / 400');
+    click('#pause-guide');
+    expect(element('.dialog-body').textContent).toContain('+25명');
+    expect(element('.dialog-body').textContent).toContain('6분 0초');
+  });
+});
+
+
+describe('base dialog keyboard isolation', () => {
+  it('keeps keyboard focus in the base and restores the opener when closing', () => {
+    openWar(vi.fn(), true);
+    button('#open-base').focus(); click('#open-base');
+    expect(element('.war-top').inert).toBe(true);
+    const first = button('.base-close'), last = button('[data-base-relocate]');
+    key(first, 'Tab', { shiftKey: true });
+    expect(document.activeElement).toBe(last);
+    key(last, 'Tab'); expect(document.activeElement).toBe(first);
+    key(first, 'Escape');
+    expect(element('.war-top').inert).toBe(false);
+    expect(document.activeElement).toBe(button('#open-base'));
+  });
+});

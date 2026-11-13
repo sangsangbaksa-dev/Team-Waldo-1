@@ -13,6 +13,7 @@ describe('large-army visual LOD', () => {
     expect(war.units).toHaveLength(600);
     expect(batches.length).toBeGreaterThan(80);
     expect(batches.every(mesh => mesh.count <= 400)).toBe(true);
+    expect(group.getObjectByName('selected-squad-rings')).toHaveProperty('count', 100);
     const legBatches = batches.filter(mesh => mesh.geometry.type === 'BoxGeometry' &&
       (mesh.geometry as THREE.BoxGeometry).parameters.width === .36);
     // Four legs per mount, one instance group for each faction.
@@ -36,4 +37,34 @@ describe('large-army visual LOD', () => {
     expect(after).toBeLessThan(before);
     expect(war.units).toHaveLength(599);
   });
+
+  it('highlights only the selected squad and shows health for wounded soldiers', () => {
+    const war = createWar({ grandBattle: true }), parent = new THREE.Group();
+    const visual = createGrandArmyVisuals(parent, war);
+    war.units[0].squad = 1; war.units[0].hp /= 2;
+    visual.setSelectedSquad(1);
+    expect(parent.getObjectByName('selected-squad-rings')).toHaveProperty('count', 1);
+    const health = parent.children.filter((object): object is THREE.InstancedMesh =>
+      object instanceof THREE.InstancedMesh && object.name === 'army-health');
+    expect(health.reduce((sum, mesh) => sum + mesh.count, 0)).toBe(1);
+    visual.setOverlaysVisible(false);
+    expect(parent.getObjectByName('selected-squad-rings')).toHaveProperty('count', 0);
+    expect(health.reduce((sum, mesh) => sum + mesh.count, 0)).toBe(0);
+  });
+
+  it('honors reduced motion while continuing to turn and translate soldiers', () => {
+    const war = createWar({ grandBattle: true }), parent = new THREE.Group();
+    const visual = createGrandArmyVisuals(parent, war);
+    visual.setReducedMotion(true);
+    const leg = parent.children.find((object): object is THREE.InstancedMesh =>
+      object instanceof THREE.InstancedMesh && object.geometry.type === 'BoxGeometry' &&
+      (object.geometry as THREE.BoxGeometry).parameters.width === .49)!;
+    const before = new THREE.Matrix4(), after = new THREE.Matrix4();
+    leg.getMatrixAt(0, before);
+    war.time = 1; war.units.find(unit => unit.owner === 0 && unit.kind === 'infantry')!.x += 2; visual.update();
+    leg.getMatrixAt(0, after);
+    expect(after.elements[13]).toBe(before.elements[13]);
+    expect(after.elements[12]).not.toBe(before.elements[12]);
+  });
+
 });

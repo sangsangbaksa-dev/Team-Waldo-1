@@ -47,7 +47,7 @@ function renderMenu(): void {
       const { openWar } = await import('./battle/view');
       if (generation !== navigation) return;
       app.hidden = true;
-      openWar(renderMenu, { forceNew: !resume, difficulty: resume && saved ? saved.difficulty : selectedDifficulty, grandBattle: true });
+      openWar(renderMenu, { forceNew: !resume, difficulty: resume && saved ? saved.difficulty : selectedDifficulty });
     } catch {
       renderMenu();
       showDialog({ title: '전장을 불러오지 못했어요', body: '<p>네트워크 연결을 확인한 뒤 다시 시작해 주세요. 저장한 전투는 변경되지 않았습니다.</p>' });

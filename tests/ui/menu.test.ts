@@ -4,7 +4,7 @@ import { createWar } from '../../src/battle/war';
 import { loadWar, saveWar, WAR_SAVE_KEY } from '../../src/battle/save';
 
 const navigation = vi.hoisted(() => ({
-  openWar: vi.fn<(onExit: () => void, options: { forceNew: boolean; difficulty: string; grandBattle: true }) => void>(),
+  openWar: vi.fn<(onExit: () => void, options: { forceNew: boolean; difficulty: string }) => void>(),
   preview: vi.fn<(mount: HTMLElement) => () => void>(),
   disposePreview: vi.fn(),
 }));
@@ -42,7 +42,7 @@ describe('grand-battle-only navigation', () => {
     await vi.dynamicImportSettled();
     expect(navigation.openWar).toHaveBeenCalledTimes(1);
     expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), {
-      forceNew: true, difficulty: 'hard', grandBattle: true,
+      forceNew: true, difficulty: 'hard',
     });
     expect(navigation.disposePreview).toHaveBeenCalledTimes(1);
   });
@@ -71,7 +71,7 @@ describe('grand-battle-only navigation', () => {
     button('#difficulty-easy').click(); button('#continue-war').click();
     await vi.dynamicImportSettled();
     expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), {
-      forceNew: false, difficulty: 'hard', grandBattle: true,
+      forceNew: false, difficulty: 'hard',
     });
     expect(loadWar()).toEqual(saved);
   });
@@ -84,7 +84,7 @@ describe('grand-battle-only navigation', () => {
     button('#start-war').click();
     await vi.dynamicImportSettled();
     expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), {
-      forceNew: true, difficulty: 'normal', grandBattle: true,
+      forceNew: true, difficulty: 'normal',
     });
   });
 });

@@ -147,6 +147,53 @@ describe('battle UI through real player actions', () => {
     expect(element('.base-manager').hidden).toBe(true);
   });
 
+  it('enters a mine interior, upgrades its facilities, returns by Escape and freezes combat time', () => {
+    openWar(vi.fn(), true);
+    const w = game().world;
+    advanceFrames(6);
+    click('#open-base');
+    const time = w.time;
+    click('[data-base-slot="6"]');
+    expect(element('.base-interior').hidden).toBe(false);
+    expect(element('#interior-title').textContent).toBe('지하 금광');
+    expect(element('[data-base-panel="build"]').hidden).toBe(true);
+    expect(button('[data-interior-command="upgrade"]').disabled).toBe(false);
+    advanceFrames(10);
+    expect(w.time).toBe(time);
+    click('[data-interior-command="upgrade"]');
+    expect(w.factions[0].mine).toBe(2);
+    expect(w.factions[0].gold).toBe(80);
+    expect(element('#interior-level').textContent).toBe('Lv.2 / 4');
+    expect(loadWar()?.factions[0].mine).toBe(2);
+    key(button('[data-interior-back]'), 'Escape');
+    expect(element('.base-interior').hidden).toBe(true);
+    expect(element('[data-base-panel="build"]').hidden).toBe(false);
+    key(button('.base-close'), 'Escape');
+    expect(element('.base-manager').hidden).toBe(true);
+    advanceFrames(4);
+    expect(w.time).toBeGreaterThan(time);
+  });
+
+  it('uses the barracks interior to train soldiers and research upgraded weapons', () => {
+    openWar(vi.fn(), true);
+    const w = game().world;
+    w.factions[0].gold = 2000; w.factions[0].food = 2000;
+    click('#open-base');
+    click('[data-base-slot="16"]');
+    expect(element('#interior-title').textContent).toBe('왕립 병영');
+    expect(button('.interior-action[data-interior-command="special"]').disabled).toBe(true);
+    click('.interior-action[data-interior-command="upgrade"]');
+    expect(w.factions[0].barracks).toBe(2);
+    click('.interior-action[data-interior-command="special"]');
+    expect(w.factions[0].research.weapons).toBe(1);
+    click('.interior-action[data-interior-command="service"]');
+    expect(w.units.filter(u => u.owner === 0)).toHaveLength(7);
+    expect(loadWar()?.stats[0].trained).toBe(3);
+    click('[data-interior-back]');
+    expect(element('.base-interior').hidden).toBe(true);
+    expect(element('[data-base-slot="16"]').textContent).toContain('병영');
+  });
+
   it('recruits a general, assigns a squad and persists the command assignment',()=>{
     openWar(vi.fn(),true);
     const w=game().world;

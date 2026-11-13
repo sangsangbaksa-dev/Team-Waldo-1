@@ -299,7 +299,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
       document.querySelector<HTMLButtonElement>('#pause-menu')!.onclick = () => { modalClose?.(); exitWithSave(); };
     });
   };
-  const help = () => openModal('왕국을 지배하는 방법', `<div class="guide-steps"><article><b>승리 조건 · 살아남는 마지막 왕국</b><p>적색·황색·보라 왕국의 본부 3곳을 모두 함락시키면 승리합니다. 쉬움에서는 AI가 늦게 공격하므로 먼저 병력과 자원을 확보하세요.</p></article><article><b>00 · 기지 건설과 장군 모집</b><p>K 키 또는 상단의 기지 관리 버튼으로 건설 화면에 들어가세요. 5×5 영지의 빈 칸을 골라 농장·금광·병영·방어탑을 건설할 수 있습니다. 장군을 영입해 부대별로 배치하면 공격·이동·방어 효과가 적용됩니다.</p></article><article><b>01 · 경제를 성장시키세요</b><p>금광과 농장을 강화하면 병력을 꾸준히 생산할 수 있습니다. 성장 정책은 자원 수입을 25% 늘립니다.</p></article><article><b>02 · 거점을 점령하세요</b><p>작전 탭에서 기동대를 선택해 +3명 편성하세요. 부대 선택 후 지도에서 목적지를 클릭하면 그 부대만 이동하며, '본부' 버튼으로 즉시 복귀 명령을 내릴 수 있습니다. 적과 아군이 함께 있으면 점령이 정지합니다.</p></article><article><b>03 · 연구하고 정복하세요</b><p>병영 Lv.2에서 연구와 궁병, Lv.3에서 중장병과 기병이 해금됩니다. 모든 적 본부를 함락하면 승리합니다.</p></article><article><b>04 · 폭풍에 대비하세요</b><p>보통 난이도는 2분 10초, 쉬움은 3분부터 안전지대가 줄어듭니다. 밖에 있는 본부·병력이 피해를 받으며, 거점 1개당 본부 폭풍 피해가 12% 줄어듭니다 (최대 60%).</p></article></div><div class="shortcut-grid"><span><kbd>WASD</kbd> 시점 이동</span><span><kbd>H</kbd> 내 영지</span><span><kbd>V/T</kbd> 직접 플레이/전략</span><span><kbd>E</kbd> 성벽 올라가기·내려가기</span><span><kbd>F</kbd> 활 발사</span><span><kbd>1–4</kbd> 병종 훈련</span><span><kbd>5–7</kbd> 부대 그룹 선택</span><span><kbd>G</kbd> 위치 지정 · <kbd>B</kbd> 본부 복귀</span><span><kbd>Esc</kbd> 일시정지</span><span>드래그: 회전 · Shift+드래그: 이동</span><span>휠: 확대 · Shift+클릭: 명령</span><span>터치: 드래그 이동 · 두 손가락 확대</span><span>미니맵: 이동 모드에서 어디든 클릭해 부대 이동</span></div>`);
+  const help = () => openModal('왕국을 지배하는 방법', `<div class="guide-steps"><article><b>승리 조건 · 살아남는 마지막 왕국</b><p>적색·황색·보라 왕국의 본부 3곳을 모두 함락시키면 승리합니다. 쉬움에서는 AI가 늦게 공격하므로 먼저 병력과 자원을 확보하세요.</p></article><article><b>00 · 기지 건설과 장군 모집</b><p>K 키 또는 상단 기지 관리 버튼으로 5×5 영지에 들어가세요. 빈 칸은 건설, 완공된 건물은 클릭해 실내로 입장합니다. 실제 3D 전장에 배치된 내 건물을 클릭해도 실내에 들어갈 수 있으며, 내부 설비 확장·자원 교환·병력 훈련·성벽 수리가 가능합니다. 건설과 실내 관리 중에는 전투 시간이 멈춥니다. 장군은 부대에 배치할 수 있습니다.</p></article><article><b>01 · 경제를 성장시키세요</b><p>금광과 농장을 강화하면 병력을 꾸준히 생산할 수 있습니다. 성장 정책은 자원 수입을 25% 늘립니다.</p></article><article><b>02 · 거점을 점령하세요</b><p>작전 탭에서 기동대를 선택해 +3명 편성하세요. 부대 선택 후 지도에서 목적지를 클릭하면 그 부대만 이동하며, '본부' 버튼으로 즉시 복귀 명령을 내릴 수 있습니다. 적과 아군이 함께 있으면 점령이 정지합니다.</p></article><article><b>03 · 연구하고 정복하세요</b><p>병영 Lv.2에서 연구와 궁병, Lv.3에서 중장병과 기병이 해금됩니다. 모든 적 본부를 함락하면 승리합니다.</p></article><article><b>04 · 폭풍에 대비하세요</b><p>보통 난이도는 2분 10초, 쉬움은 3분부터 안전지대가 줄어듭니다. 밖에 있는 본부·병력이 피해를 받으며, 거점 1개당 본부 폭풍 피해가 12% 줄어듭니다 (최대 60%).</p></article></div><div class="shortcut-grid"><span><kbd>WASD</kbd> 시점 이동</span><span><kbd>H</kbd> 내 영지</span><span><kbd>V/T</kbd> 직접 플레이/전략</span><span><kbd>E</kbd> 성벽 올라가기·내려가기</span><span><kbd>F</kbd> 활 발사</span><span><kbd>1–4</kbd> 병종 훈련</span><span><kbd>5–7</kbd> 부대 그룹 선택</span><span><kbd>G</kbd> 위치 지정 · <kbd>B</kbd> 본부 복귀</span><span><kbd>Esc</kbd> 일시정지</span><span>드래그: 회전 · Shift+드래그: 이동</span><span>휠: 확대 · Shift+클릭: 명령</span><span>터치: 드래그 이동 · 두 손가락 확대</span><span>미니맵: 이동 모드에서 어디든 클릭해 부대 이동</span></div>`);
   const syncSound = () => { el('#sound').innerHTML = icon(prefs.sound ? 'sound' : 'muted'); el('#sound').setAttribute('aria-label', prefs.sound ? '효과음 끄기' : '효과음 켜기'); audio.setMuted(!prefs.sound); };
   const openSettings = () => openModal('전장 설정', `<div class="settings-grid"><label>그래픽 품질<select id="graphics-setting"><option value="high">높음 · 그림자와 효과</option><option value="standard">보통 · 성능 우선</option><option value="low">낮음 · 저사양 기기</option></select></label><label>효과음<input type="checkbox" id="audio-setting"></label><label>움직임 줄이기<input type="checkbox" id="motion-setting"></label></div><p class="dialog-tip">설정은 이 브라우저에 저장됩니다. 보통은 그림자·효과를 줄이고, 낮음은 해상도와 색 보정도 줄입니다. 관리 패널 아래 FPS로 실제 화면 속도를 확인하세요.</p>`, () => {
     const quality = document.querySelector<HTMLSelectElement>('#graphics-setting')!, sound = document.querySelector<HTMLInputElement>('#audio-setting')!, motion = document.querySelector<HTMLInputElement>('#motion-setting')!;
@@ -449,7 +449,11 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     if (!moved && !pinched && !paused && !done && adventureControl.isActionMode) adventureControl.shoot();
     if (!moved && !pinched && !paused && !done && !adventureControl.isActionMode) {
       const rect = renderer.domElement.getBoundingClientRect(); raycaster.setFromCamera(new THREE.Vector2((event.clientX - rect.left) / rect.width * 2 - 1, 1 - (event.clientY - rect.top) / rect.height * 2), camera);
-      if (raycaster.ray.intersectPlane(ground, hit)) { const target = pickMapTarget(w, 0, hit.x, hit.z); if (commandMode || event.shiftKey || event.button === 2) { issueAt(hit.x, hit.z); el('#target-card').hidden = true; } else if (target) showTarget(target); else el('#target-card').hidden = true; }
+      if (raycaster.ray.intersectPlane(ground, hit)) { const target = pickMapTarget(w, 0, hit.x, hit.z);
+        const building = baseDistrict.slotAt(hit.x, hit.z);
+        if (commandMode || event.shiftKey || event.button === 2) { issueAt(hit.x, hit.z); el('#target-card').hidden = true; }
+        else if (building !== null && baseManager.openBuilding(building)) { heldKeys.clear(); el('#target-card').hidden = true; }
+        else if (target) showTarget(target); else el('#target-card').hidden = true; }
     }
     if (!pointers.size) pinched = false;
   }, { signal });
@@ -457,7 +461,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   renderer.domElement.addEventListener('contextmenu', event => event.preventDefault(), { signal });
   renderer.domElement.addEventListener('wheel', event => { event.preventDefault(); if (!adventureControl.isActionMode) setZoom(zoom + event.deltaY * .13); }, { signal, passive: false });
   window.addEventListener('keydown', event => {
-    if(baseManager.isOpen()) { if(event.key==='Escape') {event.preventDefault();baseManager.close();} return; }
+    if(baseManager.isOpen()) { if(event.key==='Escape') {event.preventDefault();baseManager.back();} return; }
     if (modalClose || done || event.ctrlKey || event.metaKey || event.altKey) return;
     if ((event.target as HTMLElement).matches('input, select, textarea')) return;
     const key = event.key.toLowerCase();
@@ -599,7 +603,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   function loop(now: number): void {
     if (dead) return;
     const elapsed = Math.min((now - last) / 1000, .1); last = now;
-    if (!paused && !graphicsLost) {
+    if (!paused && !graphicsLost && !baseManager.isOpen()) {
       const amount = elapsed * 100, h = (key: string) => heldKeys.has(key);
       if (!adventureControl.isActionMode && (h('w') || h('arrowup'))) pan(-Math.sin(angle) * amount, -Math.cos(angle) * amount);
       if (!adventureControl.isActionMode && (h('s') || h('arrowdown'))) pan(Math.sin(angle) * amount, Math.cos(angle) * amount);
@@ -608,11 +612,11 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
       if (!done) acc += elapsed * speed;
       while (acc >= .025 && !w.over && w.factions[0].alive && !done) { stepWar(w, .025); acc -= .025; }
     }
-    adventureControl.update(paused || done || graphicsLost ? 0 : elapsed, heldKeys);
+    adventureControl.update(paused || done || graphicsLost || baseManager.isOpen() ? 0 : elapsed, heldKeys);
     const directNotice = adventureControl.takeNotice();
     if (directNotice) announce(directNotice);
     baseDistrict.update();
-    world.update(paused || done || graphicsLost ? 0 : elapsed * speed);
+    world.update(paused || done || graphicsLost || baseManager.isOpen() ? 0 : elapsed * speed);
     if (now - lastUI > 250) { ui(); drawMap(); updateAdventureUI(); lastUI = now; }
     if (!done && (w.over || !w.factions[0].alive)) finish();
     if (!done && w.time - lastAutosave >= 15) writeSave();

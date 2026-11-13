@@ -83,6 +83,7 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
   const arrows: ArrowFlight[] = [];
   const heldBow = new THREE.Group();
   heldBow.name = 'First-person royal bow';
+  heldBow.scale.setScalar(.8);
   scene.add(heldBow); resources.push(heldBow);
   const bowModel = new THREE.Group(); heldBow.add(bowModel);
   bowModel.rotation.z = -.16;
@@ -267,7 +268,7 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
     camera.position.set(x, mode === 'tower' ? 11.9 : 2.85, z);
     camera.rotation.order = 'YXZ';
     camera.rotation.set(pitch, yaw, 0, 'YXZ');
-    bowOffset.set(.36, -.29, -.8 + recoil).applyQuaternion(camera.quaternion);
+    bowOffset.set(.24, -.29, -.8 + recoil).applyQuaternion(camera.quaternion);
     heldBow.position.copy(camera.position).add(bowOffset);
     heldBow.quaternion.copy(camera.quaternion);
   }

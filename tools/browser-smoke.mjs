@@ -6,10 +6,12 @@ import assert from 'node:assert/strict';
 // DEV inspection freezes time and arranges explicitly labelled test scenarios.
 // Ordinary play, saving and restarting are exercised through visible controls.
 const port = 4179, origin = `http://127.0.0.1:${port}`, artifacts = 'browser-artifacts';
+const viewportNames = new Set((process.env.BROWSER_VIEWPORTS ?? '').split(',').filter(Boolean));
 const viewports = [
   { name: 'desktop', width: 1440, height: 900 }, { name: 'mobile', width: 390, height: 844 },
   { name: 'small-mobile', width: 320, height: 780 }, { name: 'landscape', width: 844, height: 390 },
-];
+].filter(viewport => !viewportNames.size || viewportNames.has(viewport.name));
+assert.ok(viewports.length, 'No matching browser viewports selected');
 const report = { commit: process.env.GITHUB_SHA ?? 'local', started: new Date().toISOString(), cases: [] };
 let browser, serverOutput = '';
 // Terminate the server itself, not an npm parent that leaves open output pipes.
@@ -182,7 +184,17 @@ try {
       await page.evaluate(() => window.__war.setPaused(false));
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => resolve())));
       // Pan through real input so the target clears the compact command bar.
-      if (width < 501) { await page.keyboard.down('s'); await page.waitForTimeout(500); await page.keyboard.up('s'); }
+      if (width < 501) {
+        await page.keyboard.down('s');
+        try {
+          await page.waitForFunction(() => {
+            const camera = window.__war.camera, point = camera.position.clone().set(0, 0, 0).project(camera);
+            const x = (point.x + 1) * innerWidth / 2, y = (1 - point.y) * innerHeight / 2;
+            return x > 0 && x < innerWidth && y > 0 && y < innerHeight &&
+              document.elementFromPoint(x, y) === document.querySelector('.war-view canvas');
+          }, null, { timeout: 10000 });
+        } finally { await page.keyboard.up('s'); }
+      }
       const projected = await page.evaluate(() => { const camera = window.__war.camera, point = camera.position.clone().set(0, 0, 0).project(camera); return { x: point.x, y: point.y }; });
       const field = page.locator('.war-view canvas'), fieldBox = await field.boundingBox(); assert.ok(fieldBox);
       await field.click({ position: { x: (projected.x + 1) * fieldBox.width / 2, y: (1 - projected.y) * fieldBox.height / 2 } });

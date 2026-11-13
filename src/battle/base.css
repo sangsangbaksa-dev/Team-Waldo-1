@@ -145,3 +145,16 @@
 @media(max-width:980px){.interior-layout{grid-template-columns:minmax(0,1fr) minmax(290px,.9fr)}.interior-view{padding:14px}.interior-console{padding:18px 15px}}
 @media(max-width:760px){.interior-layout{grid-template-columns:1fr;overflow-y:auto}.interior-scene{min-height:300px;flex:none}.interior-console{overflow:visible;border-left:0;border-top:1px solid #9ba58c2f}.interior-view{padding:13px}.interior-nav{padding:10px 13px}.interior-sector{display:none}.interior-view-caption{font-size:10px}.interior-prop{bottom:20%;height:28%}}
 @media(max-width:400px){.interior-scene{min-height:250px}.interior-console h3{font-size:22px}.interior-status strong{font-size:12px}.war-ui .interior-hotspot{font-size:9px;padding:7px}.interior-view-top{font-size:10px}}
+
+/* Tactical command and cost-free building relocation. */
+.war-ui .base-selection [data-base-relocate]{display:block;margin-top:12px;padding:9px 12px;border:1px solid #b29e78;border-radius:5px;color:#eed49d;background:#273e40;font-size:11px;font-weight:700;cursor:pointer;}
+.war-ui .base-selection [data-base-relocate].chosen{background:#9c7b43;color:#102327;border-color:#f2d5a4;}
+.war-ui .base-cell.relocating-from{outline:3px solid #efcd86;outline-offset:-3px;background:#94713b55;}
+.war-ui .base-cell.available:hover{border-color:#f1d59c;}
+.base-general-ability{display:flex;flex-direction:column;gap:7px;margin-top:13px;padding:12px 10px;border:1px solid #ba9e6b46;border-radius:6px;background:#0f1c1fc9;width:100%;}
+.base-general-ability strong{font-size:12px;color:#e8cb8d;}
+.base-general-ability small{font-size:10px;color:#aebfb2;line-height:1.45;min-height:28px;}
+.war-ui .base-general-ability button{padding:9px 8px;background:#385c53;border:1px solid #a5c4a4;border-radius:5px;color:#f0ead7;font-weight:800;font-size:11px;cursor:pointer;}
+.war-ui .base-general-ability button:disabled{cursor:default;color:#91a09a;background:#253439;border-color:#64756b;}
+.base-general-ability output{font-size:10px;color:#d6caab;}
+.base-general-card.power-active{border-color:#e5cc7b;box-shadow:0 0 25px #d0a45e25;}

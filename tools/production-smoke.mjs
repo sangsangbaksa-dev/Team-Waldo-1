@@ -110,7 +110,7 @@ async function exercise(page, result) {
   result.fps = await page.locator('#render-fps').innerText();
   await page.locator('#tab-army').click();
   const before = Number(await page.locator('#count-infantry').innerText());
-  assert.equal(before, 60, 'A grand battle must start with 60 infantry in the 100-soldier allied army');
+  assert.equal(before, 60, 'The allied grand army starts with 60 infantry');
   await page.locator('#train-infantry').click();
   assert.equal(Number(await page.locator('#count-infantry').innerText()), before + 1, 'Training did not add one infantry');
   result.infantryAfterTraining = before + 1;
@@ -145,17 +145,8 @@ async function exercise(page, result) {
   await page.waitForFunction(previous => document.querySelector('#war-clock')?.textContent !== previous, pausedClock, { timeout: 15000 });
   await page.locator('#exit').click(); await page.locator('#start-war').waitFor();
 
-  if (result.name === 'desktop') {
-    await stage('classic survival launch and return');
-    await page.locator('#legacy').click(); await page.locator('#classic-game canvas').waitFor({ state: 'visible', timeout: 30000 });
-    await page.waitForFunction(() => {
-      const canvas = document.querySelector('#classic-game canvas'); return canvas && canvas.width > 0 && canvas.height > 0;
-    });
-    await capture(page, 'desktop-classic');
-    await page.locator('#classic-exit').click(); await page.locator('#start-war').waitFor();
-    assert.equal(await page.locator('#classic-game canvas').count(), 0, 'Classic renderer remained after exit');
-    result.classic = 'launched and returned to menu';
-  }
+  // The retired small-battle and classic-survival buttons must stay hidden.
+  assert.equal(await page.locator('#start-grand, #legacy').count(), 0);
   await assertProduction(page); await page.waitForTimeout(300);
   assert.deepEqual(result.pageErrors, [], 'Uncaught production browser errors');
   assert.deepEqual(result.consoleErrors, [], 'Production browser console errors');

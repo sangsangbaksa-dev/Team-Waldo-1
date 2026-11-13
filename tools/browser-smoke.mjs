@@ -66,7 +66,7 @@ async function waitForBattle(page) {
   assert.equal(await page.locator('.war-fallback').count(), 0, 'WebGL fallback is not a passing 3D test');
   await page.waitForFunction(() => window.__war?.renderer.info.render.calls > 0 && window.__war.world.time >= 0.1, null, { timeout: 30000 });
   // New matches begin in an actual parachute sequence. Verify the direct-play HUD,
-  // then transition to the legacy strategy interface so existing UI regressions remain covered.
+  // then transition to strategic control to exercise real gameplay.
   await page.evaluate(() => {
     window.__war.skipDrop();
     document.querySelector('#adventure-strategy')?.click();
@@ -143,6 +143,14 @@ try {
       await capture(page, `${name}-menu`); await page.locator('#start-war').click();
       await stage('WebGL startup');
       result.gpu = await waitForBattle(page);
+      const initialArmies = await page.evaluate(() => {
+        const w = window.__war.world;
+        return { grand: w.grandBattle, counts: [0, 1, 2, 3].map(id => w.units.filter(u => u.owner === id).length) };
+      });
+      assert.equal(initialArmies.grand, true);
+      assert.deepEqual(initialArmies.counts, [100, 167, 167, 166]);
+      assert.ok(result.gpu.calls < 1500, '600 soldiers must be GPU instanced');
+      result.armies = initialArmies;
       assert.ok(result.gpu.calls > 0 && result.gpu.triangles > 0 && !result.gpu.contextLost, '3D frame not rendered');
       assert.equal(result.gpu.difficulty, 'easy');
       result.layout = await layout(page); await capture(page, `${name}-battle`); assertLayout(result.layout);
@@ -259,51 +267,6 @@ try {
       result.status = 'failed'; result.error = String(error.stack ?? error); process.exitCode = 1;
       await capture(page, `${name}-failure`).catch(() => undefined); console.error(`FAIL ${name}: ${result.error}`);
     } finally { await context.close(); }
-    await writeFile(`${artifacts}/report.json`, JSON.stringify(report, null, 2));
-  }
-  // Independently verify the standard 600-soldier launch renders in WebGL,
-  // accepts mass recruiting, and can be saved.
-  const grandContext = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
-  const grandPage = await grandContext.newPage();
-  grandPage.setDefaultTimeout(30000);
-  const grandResult = { name: 'grand-100-vs-500', status: 'running', scenarios: ['600 live units', 'GPU instancing', '25 recruits', 'saved grand match'] };
-  report.cases.push(grandResult);
-  grandPage.on('pageerror', error => { grandResult.error = error.message; });
-  try {
-    await grandPage.goto(origin, { waitUntil: 'domcontentloaded' });
-    await grandPage.locator('#start-war').click();
-    const gpu = await waitForBattle(grandPage);
-    const armies = await grandPage.evaluate(() => {
-      const war = window.__war.world;
-      return { grand: war.grandBattle, sizes: [0, 1, 2, 3].map(id => war.units.filter(u => u.owner === id).length) };
-    });
-    assert.equal(armies.grand, true);
-    assert.deepEqual(armies.sizes, [100, 167, 167, 166]);
-    assert.ok(gpu.calls > 0 && gpu.triangles > 0 && gpu.calls < 1500, '600 soldiers must be GPU-instanced');
-    await grandPage.locator('#tab-army').click();
-    await grandPage.locator('#squad-infantry').click();
-    assert.equal(await grandPage.evaluate(() => window.__war.world.stats[0].trained), 25);
-    await grandPage.locator('#tab-orders').click();
-    await grandPage.locator('.squad-tabs [data-squad-select="1"]').click();
-    await grandPage.locator('#squad-assign').click();
-    assert.equal(await grandPage.evaluate(() => window.__war.world.units.filter(u => u.squad === 1 && u.owner === 0).length), 25);
-    await grandPage.locator('#save').click();
-    const persisted = await grandPage.evaluate(() => JSON.parse(localStorage.getItem('team-waldo-3d-war-v1')));
-    assert.equal(persisted.war.grandBattle, true);
-    assert.equal(persisted.war.units.length, 625);
-    grandResult.gpu = gpu;
-    grandResult.armies = armies;
-    await capture(grandPage, 'grand-600-unit-battle');
-    grandResult.status = 'passed';
-    console.log('PASS grand 100 vs 500: ' + gpu.calls + ' draw calls / ' + gpu.triangles + ' triangles');
-  } catch (error) {
-    grandResult.status = 'failed';
-    grandResult.error = String(error.stack ?? error);
-    process.exitCode = 1;
-    await capture(grandPage, 'grand-failure').catch(() => undefined);
-    console.error('FAIL grand battle: ' + grandResult.error);
-  } finally {
-    await grandContext.close();
     await writeFile(`${artifacts}/report.json`, JSON.stringify(report, null, 2));
   }
 } catch (error) { report.error = String(error.stack ?? error); console.error(report.error); process.exitCode = 1; }

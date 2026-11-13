@@ -35,14 +35,14 @@ export interface War {
   time: number; zone: number; over: boolean; winner: number | null; nextUnit: number;
   difficulty: Difficulty; stats: WarStats[];
   squadOrders?: [SquadCommand | null, SquadCommand | null, SquadCommand | null];
-  /** Legacy small-match saves remain loadable; new menu campaigns are grand battles. */
+  /** Grand battle preserves original skirmish rules for existing saves. */
   grandBattle?: boolean;
   /** Player's home-base layout and hired generals; legacy saves initialize on load. */
   base?: BaseState;
 }
 export const DIFFICULTIES: Record<Difficulty, {label:string;description:string;aiIncome:number;aiInterval:number;aiAttackAfter:number}> = {
-  easy: {label:'입문',description:'아군 자원 +35% · AI 생산 45% 감소 · AI 본부 공세 260초 이후 · 폭풍 6분 이후',aiIncome:.55,aiInterval:1.7,aiAttackAfter:260},
-  normal: {label:'보통',description:'같은 시작 자원 · 기본 AI 생산과 판단 속도 · AI 본부 공세는 105초 이후',aiIncome:1,aiInterval:1,aiAttackAfter:105},
+  easy: {label:'입문',description:'아군 자원 +35% · AI 생산 45% 감소 · 대군 전투 아군 공격 +45% · AI 대아군 피해 −45% · 본부 공세 350초 이후 · 폭풍 7분 이후',aiIncome:.55,aiInterval:1.7,aiAttackAfter:350},
+  normal: {label:'보통',description:'대군 전투 아군 공격 +15% · AI 대아군 피해 −10% · AI 본부 공세 180초 이후 · 폭풍 5분 30초 이후',aiIncome:1,aiInterval:1,aiAttackAfter:180},
   hard: {label:'도전',description:'AI 자원 생산 20% 증가 · 판단 간격 20% 감소 · AI 본부 공세 대기 없음',aiIncome:1.2,aiInterval:.8,aiAttackAfter:0},
 };
 export const RESEARCH: Record<Research, {label:string;description:string;maxLevel:number;requiredBarracks:number;gold:number;food:number}> = {
@@ -61,7 +61,7 @@ export const OUTPOST_BONUSES: ReadonlyArray<{gold:number;food:number}> = [
 export const MAP_HALF_SIZE = 260;
 export const MAP_SIZE = MAP_HALF_SIZE * 2;
 export const STORM_START = 130;
-export const stormStartFor = (w: War) => w.grandBattle ? (w.difficulty === 'easy' ? 360 : 270) : w.difficulty === 'easy' ? 180 : STORM_START;
+export const stormStartFor = (w: War) => w.grandBattle ? (w.difficulty === 'easy' ? 420 : w.difficulty === 'normal' ? 330 : 270) : w.difficulty === 'easy' ? 180 : STORM_START;
 export const STORM_HQ_DAMAGE = 3.5;
 const CORNERS = [[-112,-112],[112,-112],[-112,112],[112,112]] as const;
 const OUTPOSTS = [[0,-95],[95,0],[0,95],[-95,0],[0,0],[-62,-62],[62,-62],[-62,62],[62,62]] as const;
@@ -76,7 +76,7 @@ export const UNIT_STATS: Record<UnitKind, {
 };
 export const MAX_UNITS = 18;
 export const GRAND_MAX_UNITS = 400;
-/** Rival expansion caps preserve the 100 vs 500 opening while making easy sustainable. */
+/** AI reinforcement cap does not change the initial 500 enemy soldiers. */
 export const GRAND_AI_ARMY_LIMITS: Record<Difficulty, number> = {easy:225,normal:300,hard:400};
 export const GRAND_INITIAL_FORCES = [100, 167, 167, 166] as const;
 export const maxUnitsFor = (w: War) => w.grandBattle ? GRAND_MAX_UNITS : MAX_UNITS;
@@ -88,7 +88,7 @@ export function createWar(options:{difficulty?:Difficulty;grandBattle?:boolean}=
   const difficulty=options.difficulty && Object.hasOwn(DIFFICULTIES,options.difficulty)?options.difficulty:'normal';
   const factions: Faction[] = CORNERS.map(([x,z],id) => ({
     id,x,z,hp:grandBattle?600:400,maxHp:grandBattle?600:400,
-    gold:grandBattle?(id===0?8500:6500):140,food:grandBattle?(id===0?7500:6000):100,
+    gold:grandBattle?(id===0?9000:6500):140,food:grandBattle?(id===0?8000:6000):100,
     farm:grandBattle?3:1,mine:grandBattle?3:1,barracks:grandBattle?3:1,
     fort:grandBattle?3:1,alive:true,target:null,rally:null,
     reserve:id===0?0:grandBattle?12:2,policy:'balanced' as EconomyPolicy,
@@ -318,11 +318,19 @@ export function captureHeroPost(w: War, x: number, z: number, dt: number): Outpo
   return p;
 }
 
+/** Large-army difficulty offsets the 100:500 numerical disadvantage.
+ * It is applied to both unit combat and HQ sieges, never to storm damage. */
+export function combatDifficultyMultiplier(w:War, attacker:number, defender:number):number {
+  if(!w.grandBattle) return w.difficulty==='easy'&&attacker!==0?.72:1;
+  if(w.difficulty==='easy') return attacker===0?1.45:defender===0?.55:1;
+  if(w.difficulty==='normal') return attacker===0?1.15:defender===0?.9:1;
+  return 1;
+}
 /** Armor mitigates combat only. Storm damage bypasses armor. */
 function attack(w:War,attacker:number,target:Unit,damage:number):void {
   if(target.hp<=0)return;
   const cover=battlefieldCoverAt(target.x,target.z);
-  const actual=damage*(w.difficulty==='easy'&&attacker!==0?.72:1)*(1-w.factions[target.owner].research.armor*.08)*(1-cover)*(1-generalBonus(w,target,'armor'));
+  const actual=damage*combatDifficultyMultiplier(w,attacker,target.owner)*(1-w.factions[target.owner].research.armor*.08)*(1-cover)*(1-generalBonus(w,target,'armor'));
   w.stats[attacker].damageDealt+=Math.min(target.hp,actual);
   target.hp-=actual;
   if(target.hp<=0)w.stats[attacker].kills++;
@@ -350,7 +358,7 @@ export function stepWar(w: War,dt: number):void {
       w.factions[u.owner].alive&&w.factions[u.owner].hp>0&&distance(u.x,u.z,f.x,f.z)<13);
     if (invaders.length) {
       invaders.sort((a,b)=>distance(a.x,a.z,f.x,f.z)-distance(b.x,b.z,f.x,f.z));
-      // A massed siege needs a limited, fort-scaled defensive salvo.
+      // Mass battles need a limited, fort-scaled salvo against packed invaders.
       const targets=w.grandBattle?Math.min(invaders.length,2+f.fort):1;
       for(let i=0;i<targets;i++)
         attack(w,f.id,invaders[i],5+3*f.fort+(f.id===0?workshopLevel(w,'fort')*2.5:0));
@@ -424,7 +432,7 @@ export function stepWar(w: War,dt: number):void {
             if (distance(u.x,u.z,opponent.x,opponent.z) > Math.max(5,s.range))
               moveToward(w,u,opponent.x,opponent.z,dt);
             else if (u.cooldown <= 0) {
-              const damage = (s.damage*.9+f.barracks*1.5)*combatMultiplier*(w.grandBattle?.075:1);
+              const damage = (s.damage*.9+f.barracks*1.5)*combatMultiplier*combatDifficultyMultiplier(w,u.owner,opponent.id)*(w.grandBattle?.075:1);
               w.stats[u.owner].damageDealt += Math.min(opponent.hp,damage);
               opponent.hp -= damage; u.cooldown = s.cooldown;
             }
@@ -445,7 +453,7 @@ export function stepWar(w: War,dt: number):void {
       const d=distance(u.x,u.z,target.x,target.z);
       if (d>Math.max(5,s.range)) moveToward(w,u,target.x,target.z,dt);
       else if (u.cooldown<=0) {
-        const damage=(s.damage*.9+f.barracks*1.5)*combatMultiplier*(w.difficulty==='easy'&&u.owner!==0?.72:1)*(w.grandBattle?.075:1);
+        const damage=(s.damage*.9+f.barracks*1.5)*combatMultiplier*combatDifficultyMultiplier(w,u.owner,target.id)*(w.grandBattle?.075:1);
         w.stats[u.owner].damageDealt+=Math.min(target.hp,damage);
         target.hp-=damage;u.cooldown=s.cooldown;
       }

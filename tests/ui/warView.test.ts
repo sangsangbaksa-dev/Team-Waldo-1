@@ -129,6 +129,46 @@ afterEach(() => {
 });
 
 describe('battle UI through real player actions', () => {
+  it('opens the base command center and constructs a real building in a selected plot',()=>{
+    openWar(vi.fn(),true);
+    const w=game().world;
+    click('#open-base');
+    expect(element('.base-manager').hidden).toBe(false);
+    expect(element('[data-base-panel="build"]').hidden).toBe(false);
+    click('[data-base-kind="mine"]');
+    click('[data-base-slot="0"]');
+    expect(w.factions[0].mine).toBe(2);
+    expect(w.factions[0].gold).toBe(80);
+    expect(w.factions[0].food).toBe(80);
+    expect(w.base?.structures.some(s=>s.kind==='mine'&&s.slot===0)).toBe(true);
+    expect(element('[data-base-slot="0"]').textContent).toContain('금광');
+    expect(loadWar()?.base?.structures.some(s=>s.slot===0)).toBe(true);
+    click('.base-close');
+    expect(element('.base-manager').hidden).toBe(true);
+  });
+
+  it('recruits a general, assigns a squad and persists the command assignment',()=>{
+    openWar(vi.fn(),true);
+    const w=game().world;
+    w.factions[0].gold=1000;w.factions[0].food=1000;
+    click('#tab-army');click('#open-base-generals');
+    expect(element('[data-base-panel="generals"]').hidden).toBe(false);
+    click('[data-base-recruit="leon"]');
+    expect(w.base?.generals.find(g=>g.id==='leon')?.squad).toBeNull();
+    const select=element<HTMLSelectElement>('[data-base-assignment="leon"]');
+    select.value='1';select.dispatchEvent(new Event('change',{bubbles:true}));
+    expect(w.base?.generals.find(g=>g.id==='leon')?.squad).toBe(1);
+    expect(loadWar()?.base?.generals.find(g=>g.id==='leon')?.squad).toBe(1);
+    click('.base-close');
+  });
+
+  it('opens the command center with K and dismisses it using Escape',()=>{
+    openWar(vi.fn(),true);
+    key(document.body,'k');
+    expect(element('.base-manager').hidden).toBe(false);
+    key(button('.base-close'),'Escape');
+    expect(element('.base-manager').hidden).toBe(true);
+  });
   it('lets a player split, select, independently order and return a squad with simple buttons', () => {
     openWar(vi.fn(), true);
     click('#tab-orders');

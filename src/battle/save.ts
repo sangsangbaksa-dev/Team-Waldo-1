@@ -2,10 +2,11 @@ import {
   createWar, createWarStats, DIFFICULTIES, MAP_HALF_SIZE, MAX_UNITS, GRAND_MAX_UNITS, UNIT_STATS,
   type Difficulty, type EconomyPolicy, type Faction, type Outpost, type Unit, type War, type WarEvent, type WarStats,
 } from './war';
+import { getBaseState, validBaseState } from './base';
 
 // Retain the original key so an upgrade can discover and migrate v1 saves.
 export const WAR_SAVE_KEY='team-waldo-3d-war-v1';
-const VERSION=2;
+const VERSION=3;
 const isRecord=(x:unknown):x is Record<string,unknown> =>
   typeof x==='object'&&x!==null&&!Array.isArray(x);
 const finite=(x:unknown,min=-Infinity,max=Infinity):x is number =>
@@ -81,7 +82,7 @@ export function decodeWar(raw:string|null):War|null {
  if(!raw||raw.length>450000)return null;
  try{
   const parsed:unknown=JSON.parse(raw);
-  if(!isRecord(parsed)||(parsed.version!==1&&parsed.version!==VERSION)||!isRecord(parsed.war))return null;
+  if(!isRecord(parsed)||(parsed.version!==1&&parsed.version!==2&&parsed.version!==VERSION)||!isRecord(parsed.war))return null;
   const w=parsed.war,initial=createWar(),legacy=parsed.version===1;
   if(w.grandBattle!==undefined&&typeof w.grandBattle!=='boolean')return null;
   const grand=w.grandBattle===true,limit=grand?GRAND_MAX_UNITS:MAX_UNITS;
@@ -125,6 +126,9 @@ export function decodeWar(raw:string|null):War|null {
    if(p.owner!==null&&!w.factions[p.owner].alive)return null;
    if(p.contender!==null&&!w.factions[p.contender].alive)return null;
   }
+  // Version 1/2 had upgrades but no placeable base layout: migrate without losing progress.
+  if(parsed.version!==VERSION&&w.base===undefined)getBaseState(w as unknown as War);
+  if(!validBaseState(w.base,w as unknown as War))return null;
   const survivors=w.factions.filter(f=>f.alive);
   if(w.over){
    if(survivors.length>1||w.winner!==(survivors[0]?.id??null))return null;

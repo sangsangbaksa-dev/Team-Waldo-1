@@ -64,9 +64,10 @@ export function canPlaceBuilding(w:War,kind:Upgrade,slot:number):boolean {
 export function placeBaseBuilding(w:War,kind:Upgrade,slot:number):boolean {
   if(!canPlaceBuilding(w,kind,slot))return false;
   const f=w.factions[0], price=baseBuildingPrice(w,kind);
+  const base=getBaseState(w); // Resolve layout before the faction level increments.
   f.gold-=price.gold;f.food-=price.food;f[kind]++;
   if(kind==='fort'){f.maxHp+=100;f.hp=Math.min(f.maxHp,f.hp+100);}
-  getBaseState(w).structures.push({kind,slot});
+  base.structures.push({kind,slot});
   w.stats[0].upgrades++;
   const name=BASE_BUILDINGS.find(b=>b.kind===kind)!.name;
   w.events.unshift({time:Math.floor(w.time),text:name+' 건설 완료 · Lv.'+f[kind]});
@@ -100,7 +101,7 @@ export function generalBonus(w:War,unit:Unit,specialty:'damage'|'speed'|'armor')
   return definition?.specialty===specialty?definition.bonus:0;
 }
 export function incomeGeneralBonus(w:War,id:number):number {
-  return id===0&&w.base?.generals.some(g=>g.id==='han')?.12:0;
+  return id===0&&Boolean(w.base?.generals.some(g=>g.id==='han')) ? 0.12 : 0;
 }
 /** Extra fields are validated rather than blindly trusting user-controlled localStorage. */
 export function validBaseState(candidate:unknown,w:War):candidate is BaseState {

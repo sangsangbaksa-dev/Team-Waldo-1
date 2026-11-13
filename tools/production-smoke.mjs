@@ -110,7 +110,7 @@ async function exercise(page, result) {
   result.fps = await page.locator('#render-fps').innerText();
   await page.locator('#tab-army').click();
   const before = Number(await page.locator('#count-infantry').innerText());
-  assert.equal(before, 4, 'A new battle must start with four infantry');
+  assert.equal(before, 60, 'A grand battle must start with 60 infantry in the 100-soldier allied army');
   await page.locator('#train-infantry').click();
   assert.equal(Number(await page.locator('#count-infantry').innerText()), before + 1, 'Training did not add one infantry');
   result.infantryAfterTraining = before + 1;

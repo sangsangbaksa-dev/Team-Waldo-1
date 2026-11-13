@@ -60,6 +60,8 @@ function renderMenu(): void {
       // Leave the loading overlay until WebGL has had a chance to draw its first frame.
       requestAnimationFrame(() => requestAnimationFrame(() => loading.remove()));
     } catch {
+      // Do not leave an incomplete full-screen battlefield blocking the retry button.
+      document.querySelector('.war-ui')?.remove();
       renderMenu();
       showDialog({ title: '전장을 불러오지 못했어요', body: '<p>전장을 초기화하지 못했습니다. 그래픽 품질을 낮음으로 바꾸거나 브라우저를 새로고침해 다시 시도해 주세요. 저장 내용은 변경되지 않았습니다.</p>' });
     } finally {

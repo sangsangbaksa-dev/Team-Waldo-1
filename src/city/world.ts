@@ -42,11 +42,11 @@ export interface Quest { text: string; reward: number; done: boolean; check: (w:
 const MATCH_LIMIT = 1500;
 const HC = 128, HN = Math.ceil(SIZE / HC);
 export const VEHICLES: Record<string, { hp: number; max: number; accel: number; r: number; len: number; wid: number; colors: string[] }> = {
-  sedan: { hp: 320, max: 430, accel: 420, r: 19, len: 46, wid: 22, colors: ['#d9d9d9', '#4b6cb7', '#a33', '#3c7a52', '#c9a227', '#444b59'] },
-  sports: { hp: 260, max: 620, accel: 620, r: 19, len: 48, wid: 22, colors: ['#ff3b3b', '#ffd400', '#00d0ff', '#ff7ad9'] },
-  truck: { hp: 700, max: 340, accel: 300, r: 24, len: 62, wid: 28, colors: ['#8b6f47', '#5d6d7e', '#7a8b5a'] },
-  police: { hp: 420, max: 540, accel: 540, r: 19, len: 46, wid: 22, colors: ['#f4f6ff'] },
-  tank: { hp: 2600, max: 235, accel: 260, r: 30, len: 64, wid: 40, colors: ['#5c6b45'] },
+  sedan: { hp: 320, max: 430, accel: 420, r: 28, len: 85, wid: 36, colors: ['#d9d9d9', '#4b6cb7', '#a33', '#3c7a52', '#c9a227', '#444b59'] },
+  sports: { hp: 260, max: 620, accel: 620, r: 28, len: 85, wid: 36, colors: ['#ff3b3b', '#ffd400', '#00d0ff', '#ff7ad9'] },
+  truck: { hp: 700, max: 340, accel: 300, r: 34, len: 108, wid: 44, colors: ['#8b6f47', '#5d6d7e', '#7a8b5a'] },
+  police: { hp: 420, max: 540, accel: 540, r: 28, len: 85, wid: 36, colors: ['#f4f6ff'] },
+  tank: { hp: 2600, max: 235, accel: 260, r: 38, len: 90, wid: 56, colors: ['#5c6b45'] },
 };
 
 export class World {
@@ -171,7 +171,7 @@ export class World {
   }
 
   // ---------- 피해 ----------
-  crime(f: number, amount: number): void { if (f < 0 || f >= 8) return; const fac = this.factions[f]; fac.wanted = Math.min(5, fac.wanted + amount); fac.crimeT = this.time; }
+  crime(_f: number, _amount: number): void { /* 수배 시스템 없음 */ }
   hurtActor(a: Actor, dmg: number, srcF: number, direct = true): void {
     if (!a.alive) return;
     if (a.inVeh) { const v = this.vehicles.find(q => q.id === a.inVeh); if (v) this.hurtVehicle(v, dmg, srcF); return; }
@@ -185,7 +185,7 @@ export class World {
     a.hp -= dmg; a.hurtT = this.time; a.hurtBy = srcF; a.flash = 0.12;
     if (a.kind === 'boss' && a.f === 0) this.fx('phurt', a.x, a.y, dmg);
     if (a.f === CIV) { a.fleeT = 6; if (direct) this.crime(srcF, 0.25); }
-    if (a.f === POLICE && direct) { this.crime(srcF, 0.4); if (srcF < 8 && srcF >= 0) this.factions[srcF].wanted = Math.max(1, this.factions[srcF].wanted); }
+    
     if (srcF >= 0 && srcF < 8) { const sf = this.factions[srcF]; if (sf.mods.steal > 0 && direct) { const b = this.boss(srcF); if (b) b.hp = Math.min(b.maxHp, b.hp + dmg * sf.mods.steal); } }
     if (a.hp <= 0) this.killActor(a, srcF);
   }

@@ -93,7 +93,7 @@ export class ModelLayer {
   makeStruct(s: Structure): THREE.Object3D | null { const t = this.models.structures[s.kind]; if (!t) return null; const g = instantiate(t, { team: fcol(s.f) }); g.scale.setScalar(10); g.position.set(s.x + s.w / 2, 0, s.y + s.h / 2); return g; }
   makeVehicle(v: Vehicle): THREE.Object3D | null {
     const t = this.models.vehicles[v.kind === 'sedan' ? CIV_CARS[v.id % CIV_CARS.length] : VEHICLE_MODEL[v.kind]]; if (!t) return null;
-    const g = instantiate(t, { paint: new THREE.Color(v.color).getHex(), team: fcol(Math.max(0, v.f)) }); g.scale.setScalar(10); return g;
+    const g = instantiate(t, { paint: new THREE.Color(v.color).getHex(), team: fcol(Math.max(0, v.f)) }); g.scale.setScalar(v.kind === 'tank' ? 14 : 18); return g;
   }
   makeLootGun(id: string): THREE.Object3D | null { const t = this.models.groundGuns[id]; return t ? instantiate(t) : null; }
   makeCrate(): THREE.Object3D | null { const t = this.models.props.crate; return t ? instantiate(t) : null; }
@@ -132,7 +132,7 @@ export class ModelLayer {
   }
   private syncMech(a: Actor): void {
     let g = this.mechs.get(a.id);
-    if (!g) { const t = this.models.vehicles[a.kind]; if (!t) return; g = instantiate(t, { team: fcol(a.f) }); g.scale.setScalar(a.kind === 'tank' ? 10 : 10); this.scene.add(g); this.mechs.set(a.id, g); }
+    if (!g) { const t = this.models.vehicles[a.kind]; if (!t) return; g = instantiate(t, { team: fcol(a.f) }); g.scale.setScalar(12); this.scene.add(g); this.mechs.set(a.id, g); }
     g.position.set(a.x, 0, a.y); g.rotation.y = -a.ang;
   }
 

@@ -47,7 +47,8 @@ try {
       await page.locator('[data-act="class:warlord"]').click();
       await page.locator('.city-hud').waitFor({ state: 'visible' });
       await page.waitForFunction(() => !!window.__city?.world);
-      await page.locator('.c-topbtns [data-act="missions"]').click();
+      if (size.name === 'desktop') await page.keyboard.press('j');
+      else await page.locator('.c-topbtns [data-act="missions"]').click();
       await page.locator('.c-missions').waitFor({ state: 'visible' });
       assert.equal(await page.locator('.c-mission-card').count(), 8, 'Eight mission cards must render');
       assert.match(await page.locator('.c-mission-card.active h3').innerText(), /첫 수익원 확보/);

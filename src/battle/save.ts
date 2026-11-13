@@ -1,5 +1,5 @@
 import {
-  createWar, createWarStats, DIFFICULTIES, MAX_UNITS, GRAND_MAX_UNITS, UNIT_STATS,
+  createWar, createWarStats, DIFFICULTIES, GRAND_MAX_UNITS, UNIT_STATS,
   type Difficulty, type EconomyPolicy, type Faction, type Outpost, type Unit, type War, type WarEvent, type WarStats,
 } from './war';
 import { getBaseState, validBaseState } from './base';
@@ -21,7 +21,7 @@ const policy=(x:unknown):x is EconomyPolicy=>
 const difficulty=(x:unknown):x is Difficulty=>
   typeof x==='string'&&Object.hasOwn(DIFFICULTIES,x);
 
-function validFaction(candidate:unknown,reference:Faction,grand=false,postCount=9):candidate is Faction {
+function validFaction(candidate:unknown,reference:Faction,reserveLimit=6,postCount=9):candidate is Faction {
  if(!isRecord(candidate))return false;
  const f=candidate;
  return f.id===reference.id&&f.x===reference.x&&f.z===reference.z&&
@@ -34,7 +34,7 @@ function validFaction(candidate:unknown,reference:Faction,grand=false,postCount=
   (f.target===null||f.target!==f.id)&&
   (f.target===null||f.rally===null)&&
   (f.alive||(f.target===null&&f.rally===null))&&
-  integer(f.reserve,0,grand?60:6)&&policy(f.policy)&&
+  integer(f.reserve,0,reserveLimit)&&policy(f.policy)&&
   isRecord(f.research)&&integer(f.research.weapons,0,3)&&
   integer(f.research.armor,0,3)&&integer(f.research.logistics,0,3)&&
   (Number(f.barracks)>=2||Object.values(f.research).every(value=>value===0))&&
@@ -95,7 +95,7 @@ export function decodeWar(raw:string|null):War|null {
   if(!isMapId(w.mapId))return null;
   const map=getMap(w.mapId),initial=createWar({mapId:w.mapId});
   if(w.grandBattle!==undefined&&typeof w.grandBattle!=='boolean')return null;
-  const grand=w.grandBattle===true,limit=grand?GRAND_MAX_UNITS:MAX_UNITS;
+  const grand=w.grandBattle===true,limit=grand?GRAND_MAX_UNITS:map.normalArmyLimit;
   if(!Array.isArray(w.factions)||w.factions.length!==4||
      !Array.isArray(w.outposts)||w.outposts.length!==initial.outposts.length||
      !Array.isArray(w.units)||w.units.length>limit*4||
@@ -114,7 +114,7 @@ export function decodeWar(raw:string|null):War|null {
   if(w.stats.some((stats:WarStats)=>stats.peakArmy>limit))return null;
   if(w.squadOrders!==undefined&&(!Array.isArray(w.squadOrders)||w.squadOrders.length!==3||
      !w.squadOrders.every(value=>validSquadOrder(value,w,map.halfSize,map.outposts.length))))return null;
-  if(!w.factions.every((f,i)=>validFaction(f,initial.factions[i],grand,map.outposts.length)))return null;
+  if(!w.factions.every((f,i)=>validFaction(f,initial.factions[i],grand?60:Math.floor(limit/3),map.outposts.length)))return null;
   if(!w.outposts.every((p,i)=>validOutpost(p,initial.outposts[i])))return null;
   if(!w.events.every(event=>validEvent(event,Number(w.time))))return null;
   const ids=new Set<number>();

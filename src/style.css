@@ -64,7 +64,7 @@ h1,h2,h3,p { margin:0; }
 .header-nav { display:flex; align-items:center; gap:24px; }
 .offline-status { display:flex; align-items:center; gap:8px; color:#91adba; font-size:10px; }
 .offline-status i,.live-dot { width:5px; height:5px; border-radius:50%; background:#73deca; box-shadow:0 0 9px #73deca55; }
-.nav-button { font-size:11px; color:#c3d4de; padding:10px 0; }
+.nav-button { font-size:11px; color:#c3d4de; padding:10px 0; white-space:nowrap; }
 .nav-button:hover { color:var(--mint); }
 .frontier-shell { width:min(1280px,90%); margin:0 auto; position:relative; z-index:2; }
 .hero-grid { display:grid; grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr); align-items:center; min-height:356px; gap:30px; padding:36px 0 28px; }
@@ -131,7 +131,7 @@ h1,h2,h3,p { margin:0; }
 .start-section .section-heading h2 { font-size:11px; color:#c3d7df; }
 .start-section .section-heading h2>span { font:9px monospace; color:#65ac9f; margin-right:9px; }
 .difficulty-picker { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
-.difficulty-option { display:grid; grid-template-columns:16px minmax(0,1fr); align-items:center; gap:5px 8px; text-align:left; border:1px solid #98bac02e; border-radius:6px; background:#1a30343d; padding:10px 12px; color:#a7becb; min-height:58px; min-width:0; }
+.difficulty-option { display:grid; grid-template-columns:22px minmax(0,1fr); align-items:center; gap:5px 8px; text-align:left; border:1px solid #98bac02e; border-radius:6px; background:#1a30343d; padding:10px 12px; color:#a7becb; min-height:58px; min-width:0; }
 .difficulty-option>span { grid-row:span 2; font-family:Georgia,serif; color:#6e929f; font-size:18px; }
 .difficulty-option b { font-size:11px; font-weight:600; }
 .difficulty-option small { font-size:8px; white-space:nowrap; color:#7396a6; }
@@ -142,8 +142,8 @@ h1,h2,h3,p { margin:0; }
 .launch-column { padding-top:1px; }
 .launch-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:9px; font-size:10px; color:#8faeba; }
 .launch-heading b { font-size:11px; font-weight:600; color:#c6dce1; }
-.launch-actions { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
-.launch-button { min-height:58px; font-size:12px; padding-inline:15px; justify-content:flex-start; gap:9px; }
+.launch-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
+.launch-button { min-width:0; min-height:58px; font-size:12px; padding-inline:15px; justify-content:flex-start; gap:9px; white-space:nowrap; }
 .launch-button>span { margin-left:auto; }
 .grand-launch-button { display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:3px; min-width:0; min-height:58px; padding:8px 14px; border:1px solid #c5a7747d; background:linear-gradient(120deg,#2b3738,#36372b); color:#edd6ad; font-size:10px; font-weight:600; border-radius:7px; }
 .grand-launch-button strong { font-family:Georgia,serif; font-size:20px; letter-spacing:.045em; line-height:1.1; }
@@ -234,7 +234,7 @@ kbd { display:inline-grid; place-items:center; background:#a8bcc00c; border:1px 
   .map-copy>em { font-size:9px; }
   .map-check { top:19px; right:19px; }
   .departure-console { grid-template-columns:minmax(0,1fr) minmax(280px,.85fr); gap:20px; }
-  .difficulty-option { padding:10px 8px; grid-template-columns:12px minmax(0,1fr); gap:4px; }
+  .difficulty-option { padding:10px 8px; grid-template-columns:20px minmax(0,1fr); gap:4px; }
   .difficulty-option small { font-size:7px; }
   .difficulty-option>span { font-size:16px; }
   .launch-button { font-size:11px; padding-inline:11px; gap:6px; }
@@ -246,7 +246,7 @@ kbd { display:inline-grid; place-items:center; background:#a8bcc00c; border:1px 
   .wordmark>span:last-child { font-size:20px; }
   .brand-seal { width:34px; height:39px; }
   .wordmark small { font-size:5px; }
-  .header-nav { gap:13px; }
+  .header-nav { gap:13px; flex-shrink:0; }
   .offline-status { display:none; }
   .nav-button { font-size:10px; }
   .header-nav .icon-button { width:32px; height:32px; }
@@ -256,7 +256,6 @@ kbd { display:inline-grid; place-items:center; background:#a8bcc00c; border:1px 
   .edition { font-size:8px; margin-bottom:14px; letter-spacing:.13em; }
   .hero-content h1 { font-size:36px; line-height:1.4; }
   .hero-description { max-width:100%; font-size:11px; margin-top:14px; }
-  .hero-description br { display:none; }
   .game-facts { margin-top:20px; gap:22px; }
   .game-facts>div { padding-right:22px; }
   .game-facts span { font-size:8px; }
@@ -282,19 +281,20 @@ kbd { display:inline-grid; place-items:center; background:#a8bcc00c; border:1px 
   .map-intel { font-size:9px; margin:10px 0 20px; align-items:flex-start; }
   .map-intel svg { margin-top:2px; }
   .departure-console { grid-template-columns:1fr; gap:20px; }
-  .difficulty-option { padding:12px 10px; grid-template-columns:15px minmax(0,1fr); gap:4px 6px; }
-  .difficulty-option>span { font-size:19px; }
-  .difficulty-option small { font-size:8px; }
+  .difficulty-option { padding:12px 10px; grid-template-columns:20px minmax(0,1fr); gap:4px 6px; }
+  .difficulty-option>span { font-size:17px; grid-row:auto; }
+  .difficulty-option small { font-size:8px; grid-column:1/-1; white-space:normal; line-height:1.4; }
   .difficulty-option b { font-size:11px; }
   .difficulty-description { font-size:9px; }
   .launch-button { font-size:13px; padding-inline:17px; }
   .launch-button>svg { width:20px; }
   .grand-launch-button { min-height:60px; align-items:center; }
   .play-note { font-size:8px; }
-  .landing-footer { flex-wrap:wrap; gap:10px; padding:16px 24px; min-height:63px; }
-  .footer-credit { font-size:6px; letter-spacing:.1em; }
+  .landing-footer { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 12px; padding:16px 24px; min-height:63px; }
+  .footer-credit { grid-column:1/-1; font-size:6px; letter-spacing:.1em; }
   .footer-credit i { margin:0 5px; }
-  .landing-footer .text-button { font-size:8px; }
+  .landing-footer .text-button { justify-content:flex-start; min-height:36px; font-size:9px; white-space:nowrap; }
+  .landing-footer #legacy { justify-self:end; }
   .game-dialog { padding:28px 23px; }
   .game-dialog h2 { font-size:22px; padding-right:16px; }
   .dialog-backdrop { padding:14px; }
@@ -305,18 +305,22 @@ kbd { display:inline-grid; place-items:center; background:#a8bcc00c; border:1px 
 }
 @media(max-width:370px) {
   .frontier-shell { margin-inline:18px; }
-  .site-header { margin-inline:18px; }
+  .site-header { margin-inline:18px; gap:10px; }
+  .wordmark { gap:9px; }
+  .wordmark>span:last-child { font-size:18px; }
+  .header-nav { gap:9px; }
   .hero-content h1 { font-size:32px; }
   .hero-description { font-size:10px; }
   .game-facts { gap:15px; }
   .game-facts>div { padding-right:15px; }
   .game-facts b { font-size:24px; }
   .game-facts span { font-size:7px; }
-  .difficulty-option { padding:11px 8px; grid-template-columns:13px minmax(0,1fr); }
-  .difficulty-option small { grid-column:1/-1; white-space:normal; line-height:1.4; }
-  .difficulty-option>span { grid-row:auto; }
+  .difficulty-option { padding:11px 8px; }
   .map-copy>em { font-size:8px; }
-  .launch-button { font-size:12px; padding-inline:13px; }
+  .launch-button { font-size:12px; padding-inline:10px; gap:5px; }
+  .launch-button>svg { width:18px; }
+  .launch-button>span svg { width:16px; height:16px; }
+  .landing-footer { padding-inline:18px; }
 }
 @media(prefers-reduced-motion:reduce) {
   *,*::before,*::after { animation-duration:.01ms!important; transition-duration:.01ms!important; scroll-behavior:auto!important; }

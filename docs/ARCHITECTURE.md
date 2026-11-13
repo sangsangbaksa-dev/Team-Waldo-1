@@ -1,333 +1,200 @@
-# 서바이벌 픽셀 아키텍처
+# WALDO 아키텍처
 
-> 상태: v0.2 (2026-11-11, 스캐폴딩 반영) · 대상: 7인 팀, 3주 · 스택: Phaser 3 + TypeScript + Vite + Vitest
+현재 기본 게임은 **Three.js 기반 왕국 전략 게임**이며, 기존 Phaser 서바이벌은 별도 진입점으로 유지합니다. 이 문서는 구현된 구조를 설명합니다. 예전 서바이벌 개발 일정·가상 담당자·미구현 무기 예시는 현재 구조의 요구사항으로 사용하지 않습니다.
 
-## 1. 원칙
+## 1. 두 게임의 경계
 
-1. **sim은 게임의 진실이다.** 게임 규칙(이동, 충돌, 데미지, 스폰, 경험치, 레벨업)은 전부 `src/sim/`에 있고, Phaser를 import하지 않는다. Node에서 그대로 돌아가야 한다.
-2. **render는 읽기만 한다.** `src/render/`와 `src/scenes/`는 sim 상태를 읽어서 그리고, 입력을 sim에 "명령"으로 넘길 뿐 상태를 직접 바꾸지 않는다.
-3. **결정성.** 같은 시드 + 같은 입력 = 같은 결과. 고정 틱, 시드 RNG, `Math.random()`/`Date.now()` 금지(sim 안에서).
-4. **콘텐츠는 데이터다.** 적, 무기, 패시브, 구간은 `data/*.json`에만 정의한다. 새 적을 추가할 때 코드 수정이 필요하면 설계가 잘못된 것이다.
-5. **폴더 = 담당자.** 한 폴더는 한 사람이 주로 소유한다. 공용 파일(`sim/types.ts`, `data/schema.ts`)은 리드 리뷰 필수.
+| 영역 | 왕국 전략 / Frontiers | 클래식 서바이벌 |
+| --- | --- | --- |
+| 진입 | `src/main.ts` → `src/battle/view.ts` | 메뉴 → `src/legacy.ts` |
+| 규칙 | `src/battle/war.ts`, `base.ts`, `squads.ts`, `operations.ts` | `src/sim/` |
+| 화면 | Three.js + HTML/CSS | Phaser scenes/render |
+| 데이터 | `maps.ts`, `biomes.ts`, 각 규칙 모듈의 정의 | `data/*.json` + `src/data/schema.ts` |
+| 기본 틱 | 전략 루프 0.025초 | `src/sim/types.ts`의 `DT`, 30Hz |
+| 진행 저장 | `src/battle/save.ts`, v4 | 전략 원정 저장과 분리 |
+| 검증 | `tests/battle/`, `tests/ui/`, 브라우저 smoke | `tests/sim/`, `tests/data/`, balance 도구 |
 
-## 2. 폴더 구조
+`npm run balance`, `?seed=...`, `?speed=...`는 클래식 서바이벌 도구입니다. 이를 왕국 전략 게임의 성능·밸런스 결과로 해석하지 않습니다.
 
-```
-Team-Waldo-1/
-├─ index.html
-├─ package.json / tsconfig.json / vite.config.ts / vitest.config.ts
-├─ .github/workflows/ci.yml        # lint + typecheck + test + data 검증 + build (Pages 배포는 추후 추가)
-├─ data/                            # 기획 소유. 코드 없이 수정
-│  ├─ enemies.json
-│  ├─ weapons.json
-│  ├─ passives.json
-│  ├─ stages.json                   # 구간, 스폰 테이블, 보스
-│  └─ balance.json                  # 경험치 곡선, 플레이어 기본 스탯, 전역 상수
-├─ public/assets/                   # 아트 소유
-│  ├─ sprites/  (atlas.png + atlas.json, TexturePacker/Aseprite 내보내기)
-│  ├─ tiles/
-│  ├─ ui/
-│  └─ audio/sfx, audio/bgm
-├─ src/
-│  ├─ main.ts                       # Phaser.Game 생성, 씬 등록
-│  ├─ sim/                          # 순수 TS. Phaser import 금지 (ESLint로 강제)
-│  │  ├─ types.ts                   # 공용 타입: Vec2, EntityId, SimEvent, Command
-│  │  ├─ world.ts                   # World 생성, step(), 시스템 실행 순서
-│  │  ├─ rng.ts                     # 시드 RNG (mulberry32)
-│  │  ├─ pool.ts                    # SoA 엔티티 풀
-│  │  ├─ spatialHash.ts             # 충돌 질의
-│  │  ├─ systems/
-│  │  │  ├─ input.ts                # Command → 플레이어 속도
-│  │  │  ├─ movement.ts
-│  │  │  ├─ enemyAI.ts              # 추적, 돌진, 원거리 등 behavior 별
-│  │  │  ├─ weapons.ts              # 쿨다운, 타깃팅, 투사체 생성
-│  │  │  ├─ projectiles.ts
-│  │  │  ├─ collision.ts            # 피격, 데미지, 넉백
-│  │  │  ├─ pickups.ts              # 경험치 젬 흡수
-│  │  │  ├─ progression.ts          # 경험치, 레벨업, 3지선다 생성
-│  │  │  ├─ spawner.ts              # stages.json 기반 스폰
-│  │  │  ├─ stage.ts                # 구간 전환, 미니보스, 보스
-│  │  │  └─ cleanup.ts              # 죽은 엔티티 반납
-│  │  ├─ weapons/                   # 무기 "패턴" 구현 (data의 pattern 값과 1:1)
-│  │  │  ├─ index.ts                # pattern 이름 → 구현 레지스트리
-│  │  │  ├─ projectile.ts / orbit.ts / aura.ts / beam.ts / ...
-│  │  └─ bosses/                    # 보스 패턴 상태 기계
-│  ├─ data/
-│  │  ├─ schema.ts                  # zod 스키마 = JSON의 유일한 정의
-│  │  ├─ load.ts                    # 검증 + id 참조 확인 → GameData
-│  │  └─ index.ts                   # data/*.json을 import해서 loadGameData() 제공
-│  ├─ render/                       # sim → 화면. 로직 금지
-│  │  ├─ EntityRenderer.ts          # 엔티티 id ↔ 스프라이트 풀 동기화
-│  │  ├─ EffectRenderer.ts          # SimEvent → 파티클, 데미지 숫자, 화면 흔들림
-│  │  ├─ AudioBridge.ts             # SimEvent → 효과음
-│  │  └─ Camera.ts
-│  ├─ scenes/
-│  │  ├─ BootScene.ts               # 에셋, data 로드
-│  │  ├─ TitleScene.ts
-│  │  ├─ GameScene.ts               # 틱 루프, 입력 → Command
-│  │  ├─ HudScene.ts                # GameScene 위에 겹치는 UI (HP, 경험치, 타이머)
-│  │  ├─ LevelUpScene.ts            # 3지선다 오버레이
-│  │  └─ ResultScene.ts
-│  └─ ui/                           # 버튼, 바, 패널 등 재사용 위젯
-├─ tools/
-│  ├─ validate-data.ts              # CI용: data/*.json 스키마 검증
-│  ├─ bot.ts                        # 헤드리스 실행용 봇 (테스트와 시뮬레이션 공용)
-│  └─ balance-sim.ts                # 헤드리스 N판 시뮬레이션 → CSV
-└─ tests/
-   ├─ sim/*.test.ts
-   └─ data/*.test.ts
-```
+## 2. 실행과 소유권
 
-## 3. 틱 모델
+### 메뉴와 화면 전환
 
-- sim은 **고정 30Hz**(`DT = 1/30`)로 진행한다. 30Hz면 수백 마리 적도 여유 있고, render는 60fps로 두 틱 사이를 보간한다.
-- `GameScene.update(time, delta)`에서 누적기 방식으로 돌린다.
+`src/main.ts`는 저장된 전투를 검사하고 전장·난이도 선택을 표시합니다. 전투 화면과 클래식 엔진은 필요할 때 동적으로 불러옵니다. `generation`으로 오래된 비동기 로드가 새 화면에 붙는 것을 막으며, 중복 출격 입력은 잠급니다.
 
-```ts
-acc += delta / 1000;
-let steps = 0;
-while (acc >= DT && steps < 5) {   // 5틱 상한: 탭 전환 후 폭주 방지
-  world.step(commandsForThisTick);
-  acc -= DT; steps++;
-}
-renderer.draw(world, acc / DT);     // alpha로 이전 위치~현재 위치 보간
-```
+메뉴 프리뷰는 `preview.ts`가 맡습니다. `createLandingPreview(mount, mapId)`는 실제 전장 생성기를 사용하지만 병력과 전략 표시를 제거한 본부 전경입니다. 맵 전환·메뉴 종료 시 renderer, world, 관찰자와 이벤트 리스너를 정리합니다. 프리뷰는 그림자를 끄고 DPR 상한을 1로 제한합니다. 장식 렌더링이 실패해도 메뉴와 맵별 SVG fallback은 사용할 수 있습니다.
 
-- 일시정지(레벨업 선택, 메뉴)는 `world.paused = true`로 sim 틱만 멈춘다. render와 UI는 계속 돈다.
-- `world.step()` 안의 시스템 순서는 고정한다:
-  `input → stage → spawner → enemyAI → weapons → movement → projectiles → collision(해시 재구축 포함) → separation → pickups → progression → cleanup`
+### 전략 전투
 
-## 4. sim 상태 모델
+`openWar`는 `forceNew`, `difficulty`, `grandBattle`, `mapId`를 받습니다. 이어하기에서는 복원된 전투를 사용하고, 새 원정에서는 `createWar`로 상태를 만듭니다. 화면 종료는 입력 리스너·프레임 루프·오디오·GPU 자원을 정리합니다. 실패한 WebGL 초기화는 복귀 화면으로 처리합니다.
 
-엔티티가 수백~천 단위라서 객체 배열 대신 **타입별 SoA 풀**(Float32Array)을 쓴다. GC가 없고, 풀링이 기본으로 해결된다.
+| 모듈 | 주요 책임 |
+| --- | --- |
+| `view.ts` | 화면 구성, 카메라, 입력, 일시정지, 자동 저장, 결과, 각 기능 연결 |
+| `war.ts` | 경제·AI·병력 전투·거점·폭풍·승패·통계 |
+| `maps.ts` | 맵 ID, 크기, 본부 좌표, 거점 정의, 맵별 규칙 배율 |
+| `biomes.ts` | 산업·사막·설원 팔레트와 환경 표시 정보 |
+| `battlefieldLayout.ts` | 고정 시드 시설 배치, 충돌·엄폐 공간 인덱스 |
+| `graphics.ts` | Three.js 전장·본부·거점·병력 표시와 연출 |
+| `environment3d.ts`, `visualDetails.ts` | 반복 시설 모델, 재질과 세부 묘사 |
+| `grandArmyVisuals.ts`, `renderBatches.ts` | 대규모 병력·반복 물체 인스턴싱 |
+| `renderEffects.ts`, `renderLabels.ts` | 전투 피드백과 라벨 |
+| `squads.ts` | 부대 편성, 검증된 독립 명령, 목적지 |
+| `base.ts` | 건설 부지·시설 강화·장군 모집과 배속 |
+| `baseUI.ts`, `baseVisuals.ts` | 기지 관리 창과 부지 모델 |
+| `operations.ts`, `operationsUI.ts` | 계약·지원 규칙과 화면 |
+| `atlas.ts`, `strategicMap.ts`, `mapCommands.ts` | 전체 지도·미니맵·좌표·명령 선택 |
+| `adventure.ts` | 직접 조작 캐릭터의 강하·이동·성벽·화살과 전투 연결 |
+| `save.ts`, `preferences.ts`, `audio.ts` | 저장·설정·전적·합성 효과음 |
 
-```ts
-// sim/pool.ts
-interface Pool {
-  capacity: number;
-  count: number;              // 살아 있는 수 (0..count-1이 활성, swap-remove)
-  id: Uint32Array;            // 안정적 EntityId (render 매핑용, 재사용 시 증가)
-  x: Float32Array; y: Float32Array;
-  px: Float32Array; py: Float32Array;   // 이전 틱 위치 (보간용)
-  vx: Float32Array; vy: Float32Array;
-  hp: Float32Array;
-  kind: Uint16Array;          // data 인덱스 (enemies[kind], weapons[kind] ...)
-  flags: Uint8Array;          // 넉백, 무적 등
-}
+전략 규칙은 WebGL 없이 실행할 수 있어 Node 단위 테스트로 검증합니다. 직접 조작 모듈은 캐릭터 동작과 3D 표현을 함께 처리하므로, 전체 프로젝트의 모든 행동이 하나의 순수 시뮬레이션 모듈에만 들어 있다고 가정하지 않습니다.
 
-interface World {
-  tick: number;
-  time: number;               // 초
-  rng: Rng;
-  data: GameData;             // 검증된 JSON (읽기 전용)
-  player: PlayerState;        // 단일 객체로 충분
-  enemies: Pool;              // 용량 1500
-  projectiles: Pool;          // 용량 2000
-  pickups: Pool;              // 경험치 젬, 용량 1000 (초과 시 합치기)
-  stage: StageState;          // 현재 구간, 경과 시간, 보스 상태
-  events: SimEvent[];         // 이번 틱에 생긴 이벤트, 매 틱 비움
-  paused: boolean;
-  pendingChoices: UpgradeChoice[] | null;
-  stats: RunStats;            // 처치 수, 점수, 받은 피해 등 결과 화면용
-}
-```
+## 3. 상태 모델과 시간
 
-- 플레이어 무기와 패시브는 `player.weapons: {id, level, cooldown}[]`, `player.passives: {id, level}[]`.
-- 최종 스탯은 매 틱 계산하지 않고, 레벨업 시 `recomputeStats(player, data)`로 한 번 계산해 캐시한다.
+`War`는 왕국 4개, 병력, 거점, 최근 이벤트, 시간, 안전지대, 승패, 난이도, 맵 ID, 통계와 선택 기능 상태를 담습니다.
 
-## 5. sim ↔ render 인터페이스
+- `Faction`: 자원·시설·연구·본부 체력·정책·수비대·AI 타이머·현재 기본 작전.
+- `Unit`: 안정적인 ID, 소유 세력, 병종, X/Z 좌표, 체력, 공격 재사용 시간, 플레이어 부대 번호.
+- `Outpost`: 맵 안의 인덱스 ID, 고정 좌표, 소유자, 점령 중 세력과 진행도.
+- `squadOrders`: 주력군·기동대·수비대의 독립 명령 3개.
+- `base`: 건설 슬롯과 모집한 장군의 배속.
+- `operations`: 수령한 계약 ID, 지원별 재사용 가능 시각, 활성 효과, 사용 횟수.
 
-**경계는 세 가지뿐이다.** 이 파일들이 바뀌면 리드 리뷰.
+`view.ts`는 실제 프레임의 경과 시간을 최대 0.1초로 제한하고 배속을 곱해 누적합니다. 누적 시간이 0.025초 이상이면 `stepWar(w, .025)`를 반복합니다. 관리 화면과 미니맵은 약 250ms 간격으로 갱신하며 3D 렌더링은 `requestAnimationFrame`으로 진행합니다.
 
-### 5.1 입력: Command
+`stepWar` 자체도 유효하지 않은 시간 입력을 거부하고 한 호출의 `dt`를 0.1초로 제한합니다. 같은 초기 상태·명령·시간 간격을 주면 같은 전략 시뮬레이션을 재현할 수 있습니다. 실제 마우스 입력 시각이나 직접 조작의 프레임별 입력까지 자동으로 재현하는 리플레이 저장 기능을 뜻하지는 않습니다.
 
-```ts
-type Command =
-  | { t: 'move'; x: number; y: number }      // 정규화된 방향, WASD → GameScene이 변환
-  | { t: 'choose'; index: 0 | 1 | 2 }        // 레벨업 선택
-  | { t: 'pause' } | { t: 'resume' };
-```
+일시정지·모달·브라우저 비활성 상태에서는 전투 시간 진행을 멈춥니다. 계약과 지원은 `Date.now()`가 아닌 `war.time`을 기준으로 작동하므로 일시정지와 배속의 영향을 일관되게 받습니다.
 
-- 리플레이 = 시드 + 틱별 Command 목록. 버그 재현과 테스트에 그대로 쓴다.
+## 4. 맵 정의를 한 곳에서 사용하기
 
-### 5.2 상태 읽기
+[`maps.ts`](../src/battle/maps.ts)의 `MAPS`가 맵의 원본입니다.
 
-render는 `world`를 **읽기 전용**으로 받는다(`Readonly<World>` 타입 + 리뷰 규칙). `EntityRenderer`는 `pool.id`로 스프라이트를 매핑하고, 사라진 id의 스프라이트는 Phaser 쪽 풀에 반납한다.
+| ID | 크기 | 거점 | 일반 병력 상한 | 폭풍·AI 공세 준비 배율 | 이동 배율 |
+| --- | --- | --- | --- | --- | --- |
+| `classic` | 520 × 520 | 9 | 18 | 1 | 1 |
+| `frontier` | 780 × 780 | 13 | 30 | 1.35 | 1.12 |
+| `continental` | 1040 × 1040 | 17 | 48 | 1.7 | 1.24 |
 
-### 5.3 이벤트: SimEvent
+`BattleMap`에는 본부 좌표, 거점 이름·좌표·수입, 바이옴, 고정 시드와 환경 시설 개수도 있습니다. 세 맵의 환경 시설 목표 수는 525·700·860으로, 면적 증가보다 완만하게 늘어납니다. 대규모전 병력 상한은 맵과 관계없이 세력당 400명입니다.
 
-연출(이펙트, 사운드, 화면 흔들림, 데미지 숫자)은 상태 폴링이 아니라 이벤트로 받는다.
+새 기능은 다음 helper를 사용합니다.
 
-```ts
-type SimEvent =
-  | { t: 'hit'; target: EntityId; x: number; y: number; dmg: number; crit: boolean }
-  | { t: 'kill'; target: EntityId; kind: number; x: number; y: number }
-  | { t: 'playerHurt'; dmg: number; hp: number }
-  | { t: 'fire'; weapon: string; x: number; y: number }
-  | { t: 'pickup'; value: number }
-  | { t: 'levelUp'; level: number; choices: UpgradeChoice[] }
-  | { t: 'stageStart'; index: number }
-  | { t: 'bossSpawn'; id: string }
-  | { t: 'runEnd'; victory: boolean; stats: RunStats };
-```
+- `mapDefinitionFor(w)`, `mapHalfSizeFor(w)` — 현재 전장의 정의·경계.
+- `outpostName(w, id)`, `outpostBonus(w, id)` — 맵별 거점 표시·수입.
+- `maxUnitsFor(w)`, `maxReserveFor(w)` — 현재 모드·맵에 맞는 병력과 수비대 상한.
+- `worldToMinimap`, `minimapToWorld` — 같은 맵 ID를 사용하는 좌표 변환.
 
-- `fire`처럼 잦은 이벤트는 render 쪽에서 틱당 재생 수를 제한한다(사운드 겹침 방지).
+`MAP_HALF_SIZE`, `MAP_SIZE`, `OUTPOST_NAMES`, `OUTPOST_BONUSES`는 기존 기본 맵과의 호환을 위해 남아 있는 값입니다. 신규 전장을 처리하는 코드에서 전역 고정 크기나 9개 고정 거점을 새로 가정하지 않습니다.
 
-## 6. 데이터 스키마
+### 기존 맵을 수정할 때
 
-`src/data/schema.ts`의 zod 스키마가 유일한 정의이고, TS 타입은 `z.infer`로 만든다. 로드 시 검증 실패하면 BootScene에서 어느 파일 어느 필드인지 화면에 띄운다. CI에서도 `tools/validate-data.ts`로 검사한다.
+거점 ID는 배열 순서와 연결되고 저장 검증은 맵의 고정 좌표와 비교합니다. 기존 ID의 좌표·순서를 바꾸면 과거 저장을 그대로 복원할 수 없습니다. 새 맵 ID를 추가하거나 명시적인 저장 마이그레이션을 함께 설계해야 합니다.
 
-모든 항목은 사람이 읽는 `id`(문자열)를 키로 쓰고, 다른 파일에서도 id로 참조한다. 로더가 id → 숫자 인덱스로 바꿔 sim에 넘긴다.
+카메라 범위만 늘리는 것으로 맵 확장이 끝나지 않습니다. 생성·저장·충돌·미니맵·전체 지도·직접 조작 경계·AI·군대 상한·폭풍을 같은 정의로 확인합니다.
 
-### enemies.json
+## 5. 전장 시설·이동·전투
 
-```json
-[
-  {
-    "id": "slime_green",
-    "base": "slime",
-    "sprite": "slime",
-    "palette": "green",
-    "hp": 10, "speed": 40, "damage": 5, "radius": 6,
-    "xp": 1,
-    "behavior": "chase",
-    "knockbackResist": 0
-  },
-  { "id": "slime_red", "base": "slime", "sprite": "slime", "palette": "red",
-    "hp": 25, "speed": 45, "damage": 8, "radius": 6, "xp": 3, "behavior": "chase" }
-]
-```
+`battlefieldLayout.ts`는 맵의 본부·거점 위치와 고정 시드로 시설을 만듭니다. 본부의 출병 구역, 점령 반경과 주요 진군 통로에는 공간을 남깁니다. 결과는 맵별로 캐시되며 저장 파일에는 수백 개 환경 물체를 넣지 않습니다.
 
-- `behavior`: `chase` | `dash` | `ranged` | `swarm` | `tank` (enemyAI.ts에 구현, 베이스 5종에 대응)
-- 팔레트 변형은 같은 `sprite` + 다른 `palette`. render가 팔레트 텍스처 또는 tint로 처리한다.
-- `placeholderColor`: 스프라이트가 준비되기 전까지 원으로 그릴 때 쓰는 임시 색(적, 무기 공통).
+시설의 시각 모델은 `environment3d.ts`가 만들고, 규칙은 시설 레코드의 `radius`와 `cover`만 사용합니다. 충돌·엄폐 질의는 공간 인덱스를 이용합니다. 이동이 막히면 이동 방향에 수직·대각인 짧은 후보를 검토합니다. 완전한 경로 탐색, 파괴 가능한 지형과 탄환 차폐 시스템은 별도 구현 대상입니다.
 
-### weapons.json
+병력 전투는 매 틱 공간 격자를 만들어 가까운 셀의 적만 검사합니다. 현재 전장 크기에서는 고정 셀 키 간격 안에 모든 열이 들어갑니다. 앞으로 더 큰 월드를 추가할 때는 좌표 경계뿐 아니라 셀 키 충돌 가능성도 다시 확인합니다.
 
-```json
-[
-  {
-    "id": "magic_bolt",
-    "name": "마법탄",
-    "icon": "icon_magic_bolt",
-    "pattern": "projectile",
-    "targeting": "nearest",
-    "levels": [
-      { "damage": 10, "cooldown": 1.0, "count": 1, "speed": 200, "pierce": 0, "area": 1, "life": 1.5 },
-      { "damage": 12, "cooldown": 0.9, "count": 1, "speed": 200, "pierce": 0, "area": 1 },
-      { "damage": 12, "cooldown": 0.9, "count": 2, "speed": 220, "pierce": 1, "area": 1 }
-    ]
-  }
-]
-```
+배율은 의미별로 구분합니다.
 
-- `pattern`: `projectile` | `orbit` | `aura` | `beam` | `area_drop` | `boomerang` … (sim/weapons/에 1:1 구현). 무기 8종은 패턴 5~6개 + 수치 조합으로 만든다.
-- `targeting`: `nearest` | `random` | `facing`
-- 레벨 표의 `life`는 투사체 수명(초). 최대 레벨은 `levels` 배열 길이로 정한다.
-- 구현된 패턴은 `projectile`, `orbit`(speed = 각속도, range = 거리), `aura`(range = 반경) 세 가지다. 나머지는 `sim/weapons/`에 파일을 추가하고 `index.ts`와 `schema.ts`에 등록한다.
+- 이동: 병종 속도 × 보급 연구 × 배속 장군 × 강행군 × 맵 이동 배율.
+- 공격: 병종·병영 기본 공격값에 전시 정책·무기 연구·장군을 적용.
+- 받는 전투 피해: 갑옷 연구·지형 엄폐·방어 장군·방어 진형 등의 감소를 곱해 적용.
+- 폭풍 피해: 전투 방어 배율과 분리. 본부에는 보유 거점에 따른 폭풍 보호가 적용.
 
-### passives.json
+대규모전은 많은 병력이 본부를 순간적으로 파괴하지 않도록 별도 공성 배율을 사용합니다. 시작 자원·병력과 상한도 일반 원정과 분리합니다.
 
-```json
-[
-  { "id": "swift_boots", "name": "신속의 장화", "icon": "icon_boots", "maxLevel": 5,
-    "stat": "moveSpeed", "op": "mul", "perLevel": 0.1 }
-]
-```
+## 6. 계약과 전술 지원
 
-- `stat`: `moveSpeed` | `maxHp` | `damage` | `cooldown` | `area` | `pickupRange` | `xpGain` | `armor`
+`operations.ts`는 DOM·Three.js에 의존하지 않습니다. `operationsUI.ts`는 상태를 표시하고 정해진 명령 함수를 호출합니다.
 
-### stages.json
+| 함수 | 역할 |
+| --- | --- |
+| `createOperationsState` | 새 계약·지원 상태 |
+| `listContracts`, `contractProgress` | 실제 게임 상태로 계약 진행도 계산 |
+| `claimContract` | 조건 재확인 후 한 번만 보상 지급 |
+| `supportStatus` | 선택 부대·자원·재사용 시간·부상 여부 계산 |
+| `useSupport` | 비용 차감과 지원 사용을 한 동작으로 수행 |
+| `operationsBonus` | 현재 부대에 적용되는 이동·방어 효과 |
+| `validOperationsState` | 저장된 계약·지원 데이터 검증 |
 
-```json
-{
-  "map": "meadow",
-  "stages": [
-    {
-      "id": "stage1",
-      "duration": 420,
-      "waves": [
-        { "from": 0,   "to": 120, "enemy": "slime_green", "rate": 1.5, "pattern": "ring" },
-        { "from": 60,  "to": 420, "enemy": "bat_purple",  "rate": 0.8, "pattern": "random_edge" },
-        { "at": 300, "enemy": "slime_red", "count": 30, "pattern": "swarm" }
-      ],
-      "maxAlive": 300,
-      "miniboss": { "enemy": "slime_king", "at": 400 }
-    }
-  ],
-  "boss": { "enemy": "lich", "hpScale": 1.0 }
-}
-```
+계약 보상은 명령을 제출할 때 다시 조건을 검사합니다. 이미 수령한 계약이나 오래된 화면 상태가 중복 보상을 만들 수 없습니다. 보상은 획득 자원 통계에도 반영합니다.
 
-- `rate`는 초당 스폰 수, `at`은 일회성 웨이브. `duration`을 줄이면 개발 중 빠른 테스트가 된다.
-- 개발용 `?speed=N` URL 파라미터 → 프레임당 틱을 N배 돌린다. DT는 그대로라서 결정성이 유지된다.
+지원 재사용 시간은 종류별 `readyAt`에 기록합니다. 강행군과 방어 진형은 시작·종료 게임 시각과 부대 번호를 보관합니다. 체력이 가득 찬 치료, 빈 부대, 자원 부족, 재사용 대기 중 요청은 비용을 소비하지 않습니다. 부대가 바뀌면 현재 배속을 기준으로 효과 적용 대상을 판단합니다.
 
-### balance.json
+## 7. 지도와 입력
 
-```json
-{
-  "player": { "hp": 100, "moveSpeed": 90, "pickupRange": 32, "radius": 6, "invulnTime": 0.5 },
-  "xpCurve": { "base": 5, "growth": 1.25 },
-  "choicesPerLevel": 3,
-  "startingWeapon": "magic_bolt",
-  "score": { "perKillXp": 10, "perSecond": 1, "bossBonus": 5000 }
-}
-```
+`strategicMap.ts`를 미니맵과 전체 지도에서 함께 사용합니다. 맵 경계, 본부·거점·병력·부대 경로와 현재 카메라 범위를 일관된 좌표계로 그립니다.
 
-## 7. 충돌
+`atlas.ts`는 다음 단계를 분리합니다.
 
-- 공간 해시 셀 크기 32px. 매 틱 적 위치로 재구축(배열 기반, 할당 없음).
-- 질의: `queryCircle(x, y, r, out: Int32Array): number` → 결과 수 반환.
-- 충돌 쌍: 투사체↔적, 적↔플레이어, 젬↔플레이어(흡수 반경), 적↔적 분리(약한 밀어내기, 매 틱 일부만).
-- 원형 충돌만 사용. 맵 경계는 무한 맵 + 카메라 추적이므로 지형 충돌은 없음(맵 2개째에 벽이 필요하면 그때 추가).
+1. `M` 또는 전체 지도 버튼으로 전투를 멈추고 지도를 엽니다.
+2. 지도 클릭, 방향키, 거점 목록으로 **선택 위치**만 바꿉니다.
+3. 부대·목적지·거점 수입 또는 본부 체력을 확인합니다.
+4. 시점 이동 또는 부대 출전 버튼으로 의도한 행동을 실행합니다.
 
-## 8. 레벨업 3지선다
+지도 선택 자체는 부대 명령을 변경하지 않습니다. 빈 부대에는 출전 버튼을 비활성화합니다. `commandSquad`는 맵 경계와 유효한 거점·세력 참조를 검사합니다.
 
-1. 경험치가 임계값을 넘으면 `progression`이 후보를 만든다: 보유 무기 강화, 보유 패시브 강화, 새 무기(슬롯 6개 미만일 때), 새 패시브(슬롯 6개 미만일 때).
-2. 최대 레벨인 항목은 제외하고, `world.rng`로 가중치 추첨해 3개를 뽑는다(후보가 없으면 회복/골드).
-3. `world.paused = true`, `levelUp` 이벤트 발행 → LevelUpScene 표시 → `choose` Command → 적용 후 재개.
-4. 한 번에 여러 레벨이 오르면 큐에 쌓아 연속으로 보여준다.
+기지 창·작전 지도·일시정지 대화상자는 키 입력이 전투 화면으로 흘러가지 않도록 처리합니다. `ui/dialog.ts`는 포커스와 외부 영역의 `inert` 상태를 관리합니다. 버튼 ID와 ARIA 상태는 UI 테스트·브라우저 검사에서 확인합니다.
 
-## 9. 테스트와 밸런스 시뮬레이션
+## 8. 저장 형식과 호환성
 
-- **유닛 테스트(Vitest)**: spatialHash, rng, xp 곡선, 무기 쿨다운, 레벨업 후보 생성, 스폰 테이블 해석.
-- **결정성 테스트**: 같은 시드 + 같은 Command 리플레이를 두 번 돌려 `world` 해시가 같은지 확인.
-- **데이터 테스트**: 모든 JSON이 스키마 통과, id 참조가 전부 존재.
-- **밸런스 시뮬레이션** (`npm run balance -- --runs 200`): 간단한 봇(가장 가까운 젬 쪽으로, 적 밀집 반대로 이동, 레벨업은 정책별 선택)으로 헤드리스 실행 → 생존 시간, 레벨 곡선, 무기별 처치 비율을 CSV로. 기획이 시트에 붙여 넣어 조정한다.
+저장 키는 `team-waldo-3d-war-v1`을 유지하지만 **payload 버전은 4**입니다. 키 이름을 현재 형식 버전으로 해석하지 않습니다.
 
-## 10. 성능 예산
+| 입력 형식 | 복원 처리 |
+| --- | --- |
+| v1 | 기존 필드를 검증하고 누락된 기본 난이도·연구·통계·기지 상태를 보완 |
+| v2 | 기존 기본 맵 상태를 검증하고 누락된 기지 상태를 보완 |
+| v3 | 기지·장군이 있는 기존 기본 맵 상태를 검증 |
+| v1·v2·v3 공통 | `classic` 맵으로 이전, 새 계약·지원 상태 보완 |
+| v4 | 명시적인 유효 맵 ID와 맵에 맞는 모든 추가 상태 검증 |
 
-- 목표: 적 500 + 투사체 1000에서 60fps (중급 노트북 크롬 기준).
-- sim 틱당 4ms 이하. 3주차에 `?perf=1`로 틱 시간 오버레이 표시.
-- render: 스프라이트는 아틀라스 1~2장, 데미지 숫자는 BitmapText 풀, 파티클은 이미터 재사용.
+이전 버전 payload에 새로운 확대 맵 ID를 임의로 붙인 데이터는 마이그레이션 대상으로 인정하지 않습니다. `decodeWar`는 입력을 신뢰하지 않고 다음 관계를 함께 확인합니다.
 
-## 11. 코드 규칙과 협업
+- 세력 수·ID·본부 좌표·시설 레벨과 최대 체력의 일치.
+- 거점 수·ID·좌표, 생존 세력에 대한 소유·점령 참조.
+- 병력 ID의 유일성, 소유자, 병종, 좌표·체력·상한.
+- 독립 부대 명령과 목적지 참조, 맵 경계.
+- 건설 슬롯 중복, 시설 수와 레벨의 일치, 장군과 배속 중복.
+- 계약 ID·중복 보상, 지원 효과의 시간·종류·부대·재사용 시각의 일치.
+- 안전지대·통계·이벤트와 승패 상태의 유효성.
 
-- **ESLint 규칙**: `src/sim/**`에서 `phaser`, `Math.random`, `Date`, `performance` import/사용 금지. `src/render/**`, `src/scenes/**`에서 world 필드 대입 금지(리뷰로 확인).
-- **브랜치**: `main` 보호, 기능별 `feat/<담당>-<내용>`, PR 1명 리뷰 + CI 통과 후 머지.
-- **CI**: `npm run lint && npm run typecheck && npm test && npm run validate-data`, main 머지 시 GitHub Pages 배포.
-- **공용 파일**: `sim/types.ts`, `sim/world.ts`, `data/schema.ts`는 리드가 소유, 변경은 PR 설명에 이유를 적는다.
+`saveWar`는 직렬화한 결과가 실제로 복원 가능한지 다시 검사한 후 저장합니다. 실패하면 기존 정상 저장을 덮어쓰지 않습니다. 자동 저장 기준은 게임 시간 15초입니다. 설정·전적은 별도 키를 사용합니다.
 
-## 12. 폴더별 담당 (팀 구성 확정 전 가정: 개발 4, 아트 2, 기획 1)
+카메라 좌표와 직접 조작 캐릭터의 현재 자세·위치는 전투 저장의 중심 상태가 아닙니다. 경제·영토·군대·기지·계약·지원과 같은 지속 전투 상태를 우선 복원합니다.
 
-| 영역 | 담당 |
-|---|---|
-| 스캐폴딩, `sim/world.ts`, `pool.ts`, `rng.ts`, `types.ts`, CI/배포, `data/schema.ts` | 개발1 (리드) |
-| `spatialHash.ts`, `systems/weapons·projectiles·collision·pickups`, `sim/weapons/` | 개발2 |
-| `systems/enemyAI·spawner·stage·progression`, `sim/bosses/` | 개발3 |
-| `scenes/`, `render/`, `ui/` | 개발4 |
-| `public/assets/sprites` (캐릭터, 적, 보스) | 아트1 |
-| `public/assets/sprites` (무기, 이펙트), `tiles/`, `ui/` | 아트2 |
-| `data/*.json`, `tools/balance-sim.ts` 결과 분석, `public/assets/audio` | 기획 |
+## 9. 렌더링과 시각 시스템
 
-## 13. 1주차 첫 3일 순서 (병목 제거용)
+`BIOME_PALETTES`는 하늘·안개·지형·재질·식생·광물·미니맵 색을 제공하며 각 렌더 모듈이 이를 참조합니다. 반복 시설은 `InstancedMesh`로 묶고, 대규모 병력에는 전용 인스턴싱 표현을 사용합니다. 그래픽 품질과 움직임 줄이기는 효과·그림자·해상도 부담을 조정합니다.
 
-1. **1일차**: 개발1이 스캐폴딩 + `types.ts`/`world.ts` 뼈대 + `schema.ts` 초안 + CI를 올린다. 나머지 개발은 이 인터페이스를 리뷰한다. 아트는 팔레트와 32×32/16×16 크기 규격 확정, 기획은 balance.json/enemies.json 초안.
-2. **2일차**: 개발2 충돌+자동공격, 개발3 스폰+적 추적, 개발4 GameScene 루프+EntityRenderer(사각형 플레이스홀더). 서로 `types.ts`만 공유하므로 병렬 진행 가능.
-3. **3일차**: 합쳐서 "움직이고, 적이 오고, 쏘고, 죽고, 젬 먹는" 루프 확인 → Pages에 첫 배포.
+`src/style.css`가 공유 타이포·색 토큰·메뉴·대화상자를 정의합니다. 전투·기지·계약·지도 CSS는 각각의 기능 레이아웃을 맡습니다. `--surface`, `--surface-raised`, `--accent`, `--text-muted`, `--text-primary`를 새로운 패널에서도 사용할 수 있습니다.
 
-## 14. 열린 질문
+모델·텍스처·renderer를 만드는 기능은 종료 시 해당 GPU 자원을 해제해야 합니다. 프리뷰에서 전투로 전환하거나 같은 맵을 다시 시작하는 경로를 함께 검증합니다. 모델 수나 픽셀 수만으로 실제 FPS를 보장하지 않습니다.
 
-- 픽셀 해상도: 내부 해상도 480×270 + 정수배 확대를 제안 (아트 규격과 함께 1일차 확정).
-- 팔레트 변형 방식: tint(간단, 색 표현 제한) vs 팔레트 스왑 셰이더/미리 만든 시트(정확). 제안은 **아트가 변형 시트를 미리 내보내기** — 구현 비용 0.
-- 저장: 영구 성장이 없으므로 localStorage에 최고 점수만 저장.
+## 10. 클래식 서바이벌 구조
+
+기존 서바이벌은 렌더러에 독립적인 `src/sim/` 상태를 Phaser가 표시합니다. 내부 화면 크기는 `src/config.ts`의 480×270이며 무기·적·패시브·스테이지 정의는 `data/*.json`을 Zod 스키마로 검증합니다.
+
+현재 틱 순서는 다음과 같습니다.
+
+`입력 → 구간 → 스폰 → 적 AI → 무기 → 이동 → 투사체 → 충돌 → 분리 → 획득 → 성장 → 정리`
+
+엔티티는 타입별 SoA 풀을 사용하고 시드 RNG로 결정성을 유지합니다. `src/sim/world.ts`의 `hashWorld`는 같은 명령 실행의 상태 비교에 사용합니다. 레벨업 선택 대기·일시정지·종료 상태에서는 입력을 처리한 뒤 시간 진행을 멈춥니다.
+
+새 무기 패턴을 추가할 때는 JSON 정의뿐 아니라 실제 패턴 구현과 레지스트리·스키마를 함께 확장합니다. 역사적 기획서에 있던 미구현 파일명을 현재 존재하는 기능으로 표시하지 않습니다.
+
+## 11. 검증과 변경 순서
+
+1. 규칙·저장·맵 정의를 바꾸면 해당 동작과 기존 저장의 호환성을 테스트합니다.
+2. `npm run lint`, `npm run typecheck`, `npm test`, `npm run validate-data`, `npm run build`를 실행합니다.
+3. `npm run test:browser`로 기존 플레이·저장·반응형 화면을 확인합니다.
+4. `node tools/frontiers-smoke.mjs`로 확대 맵·대규모전·지원·전체 지도를 확인합니다.
+5. 해당 커밋의 CI 보고서와 스크린샷을 검토하고 배포 여부는 별도로 확인합니다.
+
+브라우저 검사의 개발용 상태 지정은 보고서에 명시합니다. `window.__war`는 개발 모드에서만 노출되는 검사 핸들이며 운영 게임 기능이 아닙니다. 운영 자산 일치와 실제 공개 페이지 검증은 [배포 문서](DEPLOYMENT.md)의 Production smoke 절차를 따릅니다.

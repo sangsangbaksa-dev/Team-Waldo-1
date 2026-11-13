@@ -24,9 +24,19 @@ export function batchStaticChildren(
       group.push(mesh); byMaterial.set(material, group);
     }
     return [...byMaterial].map(([material, meshes]) => {
+      // Three.js can only merge buffers with identical index and attribute layouts.
+      // Roof wedges are non-indexed and have no UVs, while stock primitives are
+      // indexed with UVs. Standardize both before merging to prevent a real
+      // WebGL startup failure in the castle, outposts, and unit batches.
       const transformed = meshes.map(mesh => {
         mesh.updateMatrix();
-        return mesh.geometry.clone().applyMatrix4(mesh.matrix);
+        const source = mesh.geometry;
+        const normalized = source.index ? source.toNonIndexed() : source.clone();
+        for (const attribute of Object.keys(normalized.attributes)) {
+          if (attribute !== 'position' && attribute !== 'normal') normalized.deleteAttribute(attribute);
+        }
+        if (!normalized.getAttribute('normal')) normalized.computeVertexNormals();
+        return normalized.applyMatrix4(mesh.matrix);
       });
       const geometry = mergeGeometries(transformed, false);
       transformed.forEach(part => part.dispose());

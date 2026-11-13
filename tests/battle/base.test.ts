@@ -3,8 +3,8 @@ import { createWar, getIncome, upgrade, type War } from '../../src/battle/war';
 import { decodeWar, encodeWar } from '../../src/battle/save';
 import {
   BASE_BUILDINGS, GENERAL_CATALOG, HQ_SLOT, assignGeneral, baseBuildingPrice,
-  canPlaceBuilding, generalBonus, getBaseState, incomeGeneralBonus,
-  placeBaseBuilding, recruitGeneral,
+  activateGeneralAbility, canPlaceBuilding, generalAbilityState, generalBonus, getBaseState,
+  incomeGeneralBonus, placeBaseBuilding, recruitGeneral, relocateBaseBuilding,
 } from '../../src/battle/base';
 
 describe('buildable home base',()=>{
@@ -95,6 +95,86 @@ describe('buildable home base',()=>{
     expect(getIncome(w,0).gold).toBeCloseTo(before.gold*1.12);
     expect(getIncome(w,0).food).toBeCloseTo(before.food*1.12);
     expect(assignGeneral(w,'han',0)).toBe(false);
+    expect(decodeWar(encodeWar(w))).toEqual(w);
+  });
+
+  it('moves an existing structure without paying or changing its economic output',()=>{
+    const w=createWar(),before=JSON.stringify(w.factions[0]),income=getIncome(w,0);
+    expect(relocateBaseBuilding(w,6,0)).toBe(true);
+    expect(w.base!.structures.find(s=>s.kind==='mine')?.slot).toBe(0);
+    expect(relocateBaseBuilding(w,0,8)).toBe(false);
+    expect(relocateBaseBuilding(w,0,12)).toBe(false);
+    expect(relocateBaseBuilding(w,0,25)).toBe(false);
+    expect(relocateBaseBuilding(w,0,0)).toBe(false);
+    expect(relocateBaseBuilding(w,6,4)).toBe(false);
+    expect(JSON.stringify(w.factions[0])).toBe(before);
+    expect(getIncome(w,0)).toEqual(income);
+    expect(decodeWar(encodeWar(w))).toEqual(w);
+  });
+
+  it('activates combat tactics only for assigned generals with timed effects and cooldowns',()=>{
+    const w=createWar();w.factions[0].gold=2000;w.factions[0].food=2000;
+    expect(activateGeneralAbility(w,'leon')).toBe(false);
+    expect(recruitGeneral(w,'leon')).toBe(true);
+    expect(activateGeneralAbility(w,'leon')).toBe(false);
+    expect(assignGeneral(w,'leon',1)).toBe(true);
+    const soldier=w.units[0];soldier.squad=1;
+    expect(generalAbilityState(w,'leon').ready).toBe(true);
+    expect(activateGeneralAbility(w,'leon')).toBe(true);
+    expect(generalBonus(w,soldier,'damage')).toBeCloseTo(.43);
+    expect(activateGeneralAbility(w,'leon')).toBe(false);
+    expect(generalAbilityState(w,'leon').activeFor).toBe(10);
+    w.time=10;
+    expect(generalBonus(w,soldier,'damage')).toBe(.18);
+    expect(generalAbilityState(w,'leon').cooldownFor).toBe(30);
+    expect(activateGeneralAbility(w,'leon')).toBe(false);
+    w.time=40;
+    expect(activateGeneralAbility(w,'leon')).toBe(true);
+    expect(generalAbilityState(w,'leon').activeFor).toBe(10);
+    expect(decodeWar(encodeWar(w))).toEqual(w);
+  });
+
+  it('boosts logistics income temporarily and rejects forged ability timers',()=>{
+    const w=createWar();w.factions[0].gold=3000;w.factions[0].food=3000;
+    const before=getIncome(w,0);
+    expect(recruitGeneral(w,'han')).toBe(true);
+    expect(activateGeneralAbility(w,'han')).toBe(true);
+    expect(incomeGeneralBonus(w,0)).toBeCloseTo(.30);
+    expect(getIncome(w,0).gold).toBeCloseTo(before.gold*1.30);
+    w.time=12;
+    expect(incomeGeneralBonus(w,0)).toBeCloseTo(.12);
+    expect(activateGeneralAbility(w,'han')).toBe(false);
+    const tamper=(change:(w:War)=>void)=>{
+      const saved=JSON.parse(encodeWar(w)) as {war:War};
+      change(saved.war);return decodeWar(JSON.stringify(saved));
+    };
+    expect(tamper(x=>{x.base!.generals[0].readyAt=Infinity;})).toBeNull();
+    expect(tamper(x=>{x.base!.generals[0].activeUntil=999;})).toBeNull();
+    expect(tamper(x=>{delete x.base!.generals[0].readyAt;})).toBeNull();
+    expect(decodeWar(encodeWar(w))).toEqual(w);
+  });
+
+  it.each(['leon','sora','mira','han'] as const)('preserves valid %s timers in v3/v4 and rejects shortened cooldowns',id=>{
+    const w=createWar();w.time=17.125;w.factions[0].gold=5000;w.factions[0].food=5000;
+    expect(recruitGeneral(w,id)).toBe(true);
+    if(id!=='han')expect(assignGeneral(w,id,0)).toBe(true);
+    expect(activateGeneralAbility(w,id)).toBe(true);
+    expect(decodeWar(encodeWar(w))).toEqual(w);
+    const forged=JSON.parse(encodeWar(w)) as {version:number;war:War};
+    const general=forged.war.base!.generals[0];
+    general.readyAt=general.activeUntil;
+    expect(decodeWar(JSON.stringify(forged))).toBeNull();
+    general.readyAt=w.base!.generals[0].readyAt!-1;
+    expect(decodeWar(JSON.stringify(forged))).toBeNull();
+    general.readyAt=w.base!.generals[0].readyAt!+.0005;
+    expect(decodeWar(JSON.stringify(forged))).not.toBeNull();
+    const legacy=JSON.parse(encodeWar(w)) as {version:number;war:War};
+    legacy.version=3;delete legacy.war.mapId;delete legacy.war.operations;
+    expect(decodeWar(JSON.stringify(legacy))).toEqual(w);
+    delete legacy.war.base!.generals[0].activeUntil;
+    delete legacy.war.base!.generals[0].readyAt;
+    expect(decodeWar(JSON.stringify(legacy))).not.toBeNull();
+    w.time=100; // Expired ability metadata remains a legitimate saved history.
     expect(decodeWar(encodeWar(w))).toEqual(w);
   });
 

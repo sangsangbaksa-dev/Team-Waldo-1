@@ -5,7 +5,11 @@ export type GeneralId = 'leon' | 'sora' | 'mira' | 'han';
 export type GeneralSpecialty = 'damage' | 'speed' | 'armor' | 'income';
 export type SquadIndex = 0 | 1 | 2;
 export interface PlacedStructure { kind: Upgrade; slot: number; }
-export interface RecruitedGeneral { id: GeneralId; squad: SquadIndex | null; }
+export interface RecruitedGeneral {
+  id: GeneralId; squad: SquadIndex | null;
+  /** Absolute simulation timestamps; absent in older saves. */
+  activeUntil?: number; readyAt?: number;
+}
 export interface BaseState {
   structures: PlacedStructure[];
   generals: RecruitedGeneral[];
@@ -27,6 +31,15 @@ export const GENERAL_CATALOG: ReadonlyArray<{
   {id:'mira',name:'미라 카엘',title:'불굴의 수호장',glyph:'♜',specialty:'armor',bonus:.15,gold:175,food:115,description:'배속 부대가 받는 전투 피해 −15%'},
   {id:'han',name:'한 유진',title:'왕국 병참총감',glyph:'◆',specialty:'income',bonus:.12,gold:190,food:130,description:'모든 자원 수입 +12% (모집 즉시 적용)'},
 ];
+/** Active tactical orders complement the generals' permanent passive specialties. */
+export const GENERAL_ABILITIES: Record<GeneralId, {
+  name:string; effect:string; duration:number; cooldown:number; bonus:number;
+}> = {
+  leon:{name:'전장의 함성',effect:'10초 동안 지휘 부대 공격력 추가 +25%',duration:10,cooldown:40,bonus:.25},
+  sora:{name:'질풍 진군',effect:'10초 동안 지휘 부대 이동 속도 추가 +25%',duration:10,cooldown:40,bonus:.25},
+  mira:{name:'철벽 방진',effect:'10초 동안 지휘 부대가 받는 피해 추가 −20%',duration:10,cooldown:40,bonus:.20},
+  han:{name:'긴급 보급',effect:'12초 동안 모든 자원 생산 추가 +18%',duration:12,cooldown:45,bonus:.18},
+};
 const STARTER_STRUCTURES: PlacedStructure[] = [
   {kind:'mine',slot:6},{kind:'farm',slot:8},
   {kind:'barracks',slot:16},{kind:'fort',slot:18},
@@ -74,6 +87,16 @@ export function placeBaseBuilding(w:War,kind:Upgrade,slot:number):boolean {
   w.events.length=Math.min(w.events.length,8);
   return true;
 }
+/** Move a completed facility without changing its tier, cost, or economic output. */
+export function relocateBaseBuilding(w:War,from:number,to:number):boolean {
+  if(w.over||!w.factions[0].alive||!validSlot(from)||!validSlot(to)||from===to)return false;
+  const base=getBaseState(w),building=base.structures.find(s=>s.slot===from);
+  if(!building||base.structures.some(s=>s.slot===to))return false;
+  building.slot=to;
+  w.events.unshift({time:Math.floor(w.time),text:BASE_BUILDINGS.find(b=>b.kind===building.kind)!.name+' 부지 이전 완료'});
+  w.events.length=Math.min(w.events.length,8);
+  return true;
+}
 export function recruitGeneral(w:War,id:GeneralId):boolean {
   const def=GENERAL_CATALOG.find(g=>g.id===id),f=w.factions[0],base=getBaseState(w);
   if(!def||!f.alive||w.over||base.generals.some(g=>g.id===id)||
@@ -93,15 +116,35 @@ export function assignGeneral(w:War,id:GeneralId,squad:SquadIndex|null):boolean 
   general.squad=squad;
   return true;
 }
+/** These timers use game time, so pause, save/resume and speed changes stay deterministic. */
+export function generalAbilityState(w:War,id:GeneralId):{activeFor:number;cooldownFor:number;ready:boolean} {
+  const general=getBaseState(w).generals.find(g=>g.id===id);
+  const activeFor=Math.max(0,(general?.activeUntil??0)-w.time);
+  const cooldownFor=Math.max(0,(general?.readyAt??0)-w.time);
+  return {activeFor,cooldownFor,ready:Boolean(general&&!w.over&&w.factions[0].alive&&
+    (id==='han'||general.squad!==null)&&cooldownFor===0)};
+}
+export function activateGeneralAbility(w:War,id:GeneralId):boolean {
+  if(!GENERAL_CATALOG.some(g=>g.id===id)||!generalAbilityState(w,id).ready)return false;
+  const general=getBaseState(w).generals.find(g=>g.id===id)!;
+  const ability=GENERAL_ABILITIES[id];
+  general.activeUntil=w.time+ability.duration;
+  general.readyAt=w.time+ability.cooldown;
+  w.events.unshift({time:Math.floor(w.time),text:ability.name+' 발동 · '+GENERAL_CATALOG.find(g=>g.id===id)!.name});
+  w.events.length=Math.min(w.events.length,8);
+  return true;
+}
 export function generalBonus(w:War,unit:Unit,specialty:'damage'|'speed'|'armor'):number {
   if(unit.owner!==0||!w.base)return 0;
   const group=unit.squad===1||unit.squad===2?unit.squad:0;
   const member=w.base.generals.find(g=>g.squad===group);
   const definition=GENERAL_CATALOG.find(g=>g.id===member?.id);
-  return definition?.specialty===specialty?definition.bonus:0;
+  return definition?.specialty===specialty?definition.bonus+(member?.activeUntil!==undefined&&member.activeUntil>w.time?GENERAL_ABILITIES[definition.id].bonus:0):0;
 }
 export function incomeGeneralBonus(w:War,id:number):number {
-  return id===0&&Boolean(w.base?.generals.some(g=>g.id==='han')) ? 0.12 : 0;
+  if(id!==0)return 0;
+  const general=w.base?.generals.find(g=>g.id==='han');
+  return general ? .12+(general.activeUntil!==undefined&&general.activeUntil>w.time?GENERAL_ABILITIES.han.bonus:0) : 0;
 }
 /** Extra fields are validated rather than blindly trusting user-controlled localStorage. */
 export function validBaseState(candidate:unknown,w:War):candidate is BaseState {
@@ -127,6 +170,16 @@ export function validBaseState(candidate:unknown,w:War):candidate is BaseState {
       if(obj.id==='han'||(obj.squad!==0&&obj.squad!==1&&obj.squad!==2)||
         squads.has(obj.squad as number))return false;
       squads.add(obj.squad as number);
+    }
+    // Optional timestamps are accepted for pre-ability saves only when both are absent.
+    if((obj.activeUntil===undefined)!==(obj.readyAt===undefined))return false;
+    if(obj.activeUntil!==undefined){
+      const ability=GENERAL_ABILITIES[obj.id as GeneralId];
+      const active=obj.activeUntil,ready=obj.readyAt;
+      if(typeof active!=='number'||!Number.isFinite(active)||active<0||
+         typeof ready!=='number'||!Number.isFinite(ready)||ready<active||
+         Math.abs((ready-active)-(ability.cooldown-ability.duration))>.001||
+         active>w.time+ability.duration+.001||ready>w.time+ability.cooldown+.001)return false;
     }
   }
   return true;

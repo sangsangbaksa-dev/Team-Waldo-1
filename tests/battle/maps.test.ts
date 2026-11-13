@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createWar, getIncome, mapHalfSizeFor, outpostName, stepWar, stormStartFor,
+  train, trainSquad, maxUnitsFor, maxReserveFor, setReserve,
   MAP_HALF_SIZE, OUTPOST_NAMES,
 } from '../../src/battle/war';
 import { getMap, MAP_IDS, type MapId } from '../../src/battle/maps';
@@ -35,6 +36,40 @@ describe('three distinct battlefields', () => {
     expect(continental.outposts.some(p => Math.abs(p.z) > getMap('frontier').halfSize)).toBe(true);
     expect(stormStartFor(frontier)).toBeGreaterThan(stormStartFor(classic));
     expect(stormStartFor(continental)).toBeGreaterThan(stormStartFor(frontier));
+  });
+
+  it.each([['classic', 18, 6], ['frontier', 30, 10], ['continental', 48, 16]] as const)(
+    'lets %s field %i troops with a matching defensive reserve', (mapId, limit, reserve) => {
+      const w = createWar({ mapId }), faction = w.factions[0];
+      faction.gold = 100000; faction.food = 100000;
+      expect(maxUnitsFor(w)).toBe(limit);
+      expect(maxReserveFor(w)).toBe(reserve);
+      for (let i = 4; i < limit; i++) expect(train(w, 0)).toBe(true);
+      expect(w.units.filter(unit => unit.owner === 0)).toHaveLength(limit);
+      const resources = [faction.gold, faction.food];
+      expect(train(w, 0)).toBe(false);
+      expect(trainSquad(w, 0, 'infantry', 3)).toBe(false);
+      expect([faction.gold, faction.food]).toEqual(resources);
+      expect(setReserve(w, 0, reserve)).toBe(true);
+      expect(setReserve(w, 0, reserve + 1)).toBe(false);
+      expect(decodeWar(encodeWar(w))).toEqual(w);
+    },
+  );
+
+  it('preserves batch limits and the 400-troop grand-battle cap on every map', () => {
+    for (const mapId of MAP_IDS) {
+      const ordinary = createWar({ mapId }), grand = createWar({ mapId, grandBattle: true });
+      ordinary.factions[0].gold = grand.factions[0].gold = 100000;
+      ordinary.factions[0].food = grand.factions[0].food = 100000;
+      expect(trainSquad(ordinary, 0, 'infantry', 6)).toBe(false);
+      expect(trainSquad(grand, 0, 'infantry', 51)).toBe(false);
+      expect(maxUnitsFor(grand)).toBe(400);
+      expect(maxReserveFor(grand)).toBe(60);
+      for (let i = 0; i < 6; i++) expect(trainSquad(grand, 0, 'infantry', 50)).toBe(true);
+      expect(train(grand, 0)).toBe(false);
+      expect(grand.units.filter(unit => unit.owner === 0)).toHaveLength(400);
+      expect(decodeWar(encodeWar(grand))).toEqual(grand);
+    }
   });
 
   it('makes outer supply posts produce their actual regional income', () => {

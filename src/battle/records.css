@@ -1,0 +1,73 @@
+.game-dialog.records-dialog { width: 890px; padding: 30px; }
+.records-dialog .dialog-body { margin-top: 18px; }
+.records-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid #8eb2c333; border-radius: 9px; overflow: hidden; background: #07182055; }
+.records-summary > div { display: grid; gap: 5px; padding: 18px 15px; border-right: 1px solid #8eb2c322; min-width: 0; }
+.records-summary > div:last-child { border-right: 0; }
+.records-summary b { color: #e8efed; font-size: 27px; line-height: 1.2; font-weight: 650; font-variant-numeric: tabular-nums; }
+.records-summary b small { font-size: 12px; margin-left: 5px; color: #88aaa8; font-weight: 500; }
+.records-summary span { font-size: 10px; color: #88a7b7; }
+.records-map-wins { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 9px; padding: 15px 2px 7px; }
+.records-map-wins > span { display: inline-flex; align-items: center; gap: 7px; font-size: 10px; color: #91adbb; }
+.records-map-wins svg { color: #7fbcae; }
+.records-map-wins b { color: #d9c495; font-size: 10px; margin-left: 5px; }
+.records-tabs { display: flex; gap: 20px; border-bottom: 1px solid #86a9b32b; margin: 17px 0 0; }
+.records-tabs button { padding: 11px 2px; border: 0; border-bottom: 2px solid transparent; background: none; color: #8aa7b7; display: flex; align-items: center; gap: 9px; font-size: 12px; font-weight: 650; }
+.records-tabs button[aria-selected="true"] { color: #d7ece5; border-color: #79c7b1; }
+.records-tabs button span { font-size: 10px; padding: 1px 6px; border-radius: 7px; background: #9fc4ca16; color: #91b7bc; font-weight: 400; }
+.records-caption { color: #829fac; font-size: 10px; margin: 13px 0 !important; }
+.record-list { display: grid; gap: 10px; }
+.expedition-record { padding: 16px; border: 1px solid #8ca6b52c; border-radius: 8px; background: #081c2759; }
+.expedition-record header { display: flex; align-items: center; gap: 13px; }
+.record-result { display: inline-flex; gap: 6px; align-items: center; color: #9db3c4; font-size: 12px; font-weight: 650; }
+.record-victory { border-left: 3px solid #7bc5ad; }
+.record-victory .record-result { color: #a2dcc4; }
+.record-defeat { border-left: 3px solid #7e91aa; }
+.record-location { min-width: 0; }
+.record-location h3 { color: #dbe8eb; font-size: 13px; line-height: 1.5; }
+.record-location > span { font-size: 9px; color: #809eaf; }
+.expedition-record time { margin-left: auto; font-size: 9px; color: #6f90a3; text-align: right; line-height: 1.5; }
+.record-metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 15px; }
+.record-metrics > span { display: grid; gap: 3px; min-width: 0; }
+.record-metrics small { font-size: 9px; color: #7898a9; }
+.record-metrics b { font-size: 12px; line-height: 1.4; color: #c8dcdf; font-weight: 500; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.record-detail { font-size: 9px; color: #6d8d9f; margin-top: 12px !important; border-top: 1px solid #8daeb91a; padding-top: 9px; }
+.records-empty { padding: 34px 10px; text-align: center; background: #081a243b; border: 1px dashed #8ba8b335; border-radius: 9px; }
+.records-empty > svg { color: #6aa99a; margin-bottom: 10px; }
+.records-empty h3 { font-size: 15px; color: #c5dcde; margin: 5px 0; }
+.records-empty p { font-size: 11px; color: #7896a6; margin-top: 9px; }
+.achievement-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.achievement-card { display: flex; align-items: flex-start; gap: 12px; padding: 16px; border: 1px solid #8ea6b327; border-radius: 8px; background: #0b1c2559; }
+.achievement-symbol { display: grid; place-items: center; width: 43px; height: 43px; border: 1px solid #8ba3b12b; border-radius: 50%; color: #64818d; flex-shrink: 0; }
+.achievement-card > div { min-width: 0; flex: 1; }
+.achievement-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 7px; }
+.achievement-title h3 { color: #9db4be; font-size: 12px; line-height: 1.5; word-break: keep-all; }
+.achievement-title > span { font-size: 8px; white-space: nowrap; color: #658491; padding-top: 2px; }
+.achievement-card p { color: #6f8c9a; font-size: 10px; margin: 6px 0 10px; }
+.achievement-progress { height: 3px; border-radius: 4px; overflow: hidden; background: #8dacb91a; }
+.achievement-progress i { height: 100%; display: block; background: #6d9d99; }
+.achievement-card small { display: block; margin-top: 6px; color: #6e8c9a; font-size: 8px; }
+.achievement-unlocked { border-color: #c9ba7a45; background: linear-gradient(135deg, #4e4b2829, #102a334a); }
+.achievement-unlocked .achievement-symbol { color: #dbcb8e; border-color: #c5b47466; background: #c4b4790b; }
+.achievement-unlocked h3 { color: #e1d7b6; }
+.achievement-unlocked .achievement-title > span { color: #cfbd81; }
+.achievement-unlocked p { color: #91a6ad; }
+.achievement-unlocked .achievement-progress i { background: #cbbb7d; }
+.records-storage-note { color: #607f8e; font-size: 9px; padding-top: 16px; margin-top: 17px !important; border-top: 1px solid #8eaab21c; }
+@media (max-width: 620px) {
+  .game-dialog.records-dialog { padding: 25px 18px; }
+  .records-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .records-summary > div { padding: 13px; border-bottom: 1px solid #8eb2c322; }
+  .records-summary > div:nth-child(2) { border-right: 0; }
+  .records-summary > div:nth-last-child(-n+2) { border-bottom: 0; }
+  .records-summary b { font-size: 23px; }
+  .records-map-wins { gap: 8px 12px; padding-top: 12px; }
+  .records-map-wins > span { font-size: 9px; gap: 5px; }
+  .records-map-wins b { margin-left: 0; }
+  .achievement-grid { grid-template-columns: 1fr; }
+  .expedition-record { padding: 12px; }
+  .expedition-record header { gap: 9px; flex-wrap: wrap; }
+  .expedition-record time { width: 100%; text-align: left; margin-left: 0; }
+  .record-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 11px; }
+  .record-result { font-size: 11px; }
+  .record-location h3 { font-size: 12px; }
+}

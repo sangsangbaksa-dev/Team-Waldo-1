@@ -35,12 +35,21 @@ export function createLandingPreview(mount: HTMLElement, mapId: MapId = 'classic
   };
   configureRenderer();
   mount.append(renderer.domElement);
-  mount.dataset.preview = 'ready';
 
   const scene = new THREE.Scene();
   const war = createWar({ mapId });
   war.units = [];
-  const world = createBattleWorld(scene, war);
+  let world: ReturnType<typeof createBattleWorld>;
+  try {
+    world = createBattleWorld(scene, war);
+  } catch {
+    // Keep the authored map illustration visible if scene construction fails.
+    renderer.dispose();
+    renderer.forceContextLoss();
+    renderer.domElement.remove();
+    mount.dataset.preview = 'unavailable';
+    return () => { delete mount.dataset.preview; };
+  }
   world.setQuality(false);
   world.setReducedMotion(reducedMotion);
   world.setLabelsVisible(false);
@@ -57,6 +66,7 @@ export function createLandingPreview(mount: HTMLElement, mapId: MapId = 'classic
     camera.position.set(home.x + Math.sin(angle) * distance, 78, home.z + Math.cos(angle) * distance);
     camera.lookAt(home.x, 5, home.z);
     renderer.render(scene, camera);
+    mount.dataset.preview = 'ready';
   };
   const resize = () => {
     if (dead) return;

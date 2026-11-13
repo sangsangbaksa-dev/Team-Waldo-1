@@ -1,0 +1,81 @@
+{
+  "measuredAt": "2026-11-13T02:38:16.291Z",
+  "node": "v24.22.1",
+  "scope": "Simulation CPU only. Rendering, browser overhead and device FPS are not measured.",
+  "baseline": "war.ts snapshot from local checkpoint 7e77c21, identical tree to remote 507090867faa801625f903f059b79bc2d75d7ff2; shared terrain and operations modules held constant",
+  "candidate": "Reusable faction-partitioned WarSpatialIndex",
+  "method": {
+    "map": "continental",
+    "warmups": 3,
+    "repetitions": 7,
+    "ticksPerSample": 40,
+    "simulatedSecondsPerTick": 0.05,
+    "order": "alternating baseline/candidate",
+    "fixtureTiming": "construction and cloning excluded",
+    "attackCooldownSeconds": 10
+  },
+  "results": [
+    {
+      "amount": 600,
+      "scene": "staging",
+      "beforeMsPerTick": 1.3728156749999982,
+      "afterMsPerTick": 0.464998774999998,
+      "reductionPercent": 66.12809836979764
+    },
+    {
+      "amount": 600,
+      "scene": "contested",
+      "beforeMsPerTick": 4.074940049999998,
+      "afterMsPerTick": 1.7996631250000064,
+      "reductionPercent": 55.835838002082816
+    },
+    {
+      "amount": 1600,
+      "scene": "staging",
+      "beforeMsPerTick": 5.335602675000018,
+      "afterMsPerTick": 1.3150920499999983,
+      "reductionPercent": 75.3525116073229
+    },
+    {
+      "amount": 1600,
+      "scene": "contested",
+      "beforeMsPerTick": 27.103321574999974,
+      "afterMsPerTick": 12.283772050000016,
+      "reductionPercent": 54.677982859006725
+    }
+  ],
+  "semanticChecks": [
+    {
+      "amount": 600,
+      "scene": "staging",
+      "ticks": 200,
+      "exactStateEqual": true,
+      "remainingBefore": 600,
+      "remainingAfter": 600
+    },
+    {
+      "amount": 600,
+      "scene": "contested",
+      "ticks": 200,
+      "exactStateEqual": true,
+      "remainingBefore": 101,
+      "remainingAfter": 101
+    },
+    {
+      "amount": 1600,
+      "scene": "staging",
+      "ticks": 200,
+      "exactStateEqual": true,
+      "remainingBefore": 1600,
+      "remainingAfter": 1600
+    },
+    {
+      "amount": 1600,
+      "scene": "contested",
+      "ticks": 200,
+      "exactStateEqual": true,
+      "remainingBefore": 296,
+      "remainingAfter": 296
+    }
+  ]
+}

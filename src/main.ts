@@ -64,7 +64,7 @@ function renderMenu(): void {
   disposePreview?.(); disposePreview = undefined;
   const saved = loadWar(), resumable = saved && saved.factions[0].alive && !saved.over;
   const career = readCareer();
-  let launching = false;
+  let launching = false, recordsLoading = false;
   app.hidden = false;
   app.innerHTML = `
     <main class="landing" data-release="kingdoms-1.0" data-edition="frontiers" data-battlefield="${selectedMap}">
@@ -110,7 +110,7 @@ function renderMenu(): void {
           </div>
         </section>
       </div>
-      <footer class="landing-footer"><span class="footer-credit">TEAM WALDO <i>/</i> FRONTIERS EXPANSION</span><div class="career-inline">${career.matches ? `<span>완료한 원정 <b>${career.matches}</b></span><span>승리 <b>${career.wins}</b></span><span>최다 처치 <b>${career.bestKills}</b></span>` : '<span>첫 번째 원정의 기록을 남겨 보세요.</span>'}</div><button id="legacy" class="text-button">클래식 서바이벌 ${icon('arrow', 14)}</button></footer>
+      <footer class="landing-footer"><span class="footer-credit">TEAM WALDO <i>/</i> FRONTIERS EXPANSION</span><div class="career-inline">${career.matches ? `<span>완료한 원정 <b>${career.matches}</b></span><span>승리 <b>${career.wins}</b></span><span>최다 처치 <b>${career.bestKills}</b></span>` : '<span>첫 번째 원정의 기록을 남겨 보세요.</span>'}</div><button id="records" class="text-button" aria-label="원정 기록과 업적 열기">${icon('chart', 14)}원정 기록 · 업적</button><button id="legacy" class="text-button">클래식 서바이벌 ${icon('arrow', 14)}</button></footer>
     </main>`;
   document.title = 'WALDO · Frontiers | 더 넓은 전장, 당신의 지휘로';
   let previewRevision = 0;
@@ -188,6 +188,17 @@ function renderMenu(): void {
       updateLaunchLabel();
     };
   });
+  app.querySelector<HTMLButtonElement>('#records')!.onclick = async () => {
+    if (launching || recordsLoading) return;
+    recordsLoading = true;
+    const navigation = generation;
+    try {
+      const { showRecordsDialog } = await import('./battle/recordsUI');
+      if (generation === navigation && !launching) showRecordsDialog();
+    } catch {
+      if (generation === navigation && !launching) showDialog({ title: '기록실을 불러오지 못했어요', body: '<p>잠시 후 다시 열어 주세요. 저장한 원정 기록은 변경되지 않았습니다.</p>' });
+    } finally { recordsLoading = false; }
+  };
   app.querySelector<HTMLButtonElement>('#guide')!.onclick = () => showDialog({
     eyebrow: 'FIELD GUIDE', title: '첫 원정을 위한 네 가지 조언',
     body: `<div class="guide-steps">

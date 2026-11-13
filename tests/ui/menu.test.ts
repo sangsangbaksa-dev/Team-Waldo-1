@@ -44,7 +44,8 @@ describe('grand-battle-only navigation', () => {
     expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), {
       forceNew: true, difficulty: 'hard',
     });
-    expect(navigation.disposePreview).toHaveBeenCalledTimes(1);
+    expect(navigation.disposePreview).not.toHaveBeenCalled();
+    expect(document.querySelector('#landing-preview canvas')).toBeNull();
   });
 
   it('opens settings despite corrupt save, career and preferences', async () => {

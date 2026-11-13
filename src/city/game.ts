@@ -66,14 +66,16 @@ export function openCity(onExit: () => void, options: { difficulty: Difficulty }
     audio.unlock(); banner('본부 앞 사업체를 매입하고 병영을 지으세요');
     renderCmd(); last = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(frame);
   }
-  function lock(): void { if (touch || view === 'top' || lockFail || locked) return; try { const r = canvas3.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(() => { lockFail = true; }); } catch { lockFail = true; } }
+  let everLocked = false, lockErrors = 0;
+  function onLockErr(): void { if (!everLocked && ++lockErrors >= 2) lockFail = true; }
+  function lock(): void { if (touch || view === 'top' || lockFail || locked) return; try { const r = canvas3.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(onLockErr); } catch { onLockErr(); } }
   function unlock(): void { if (document.pointerLockElement) { expectUnlock = true; document.exitPointerLock(); } }
   function setView(v: View): void {
     view = v; canvas.hidden = v !== 'top'; canvas3.hidden = v === 'top'; cross.hidden = v === 'top'; layer.hidden = v === 'top'; if (R3 && v !== 'top') R3.mode = v; if (v === 'top') unlock(); else { R3?.resize(); }
     R?.resize(); q('#c-view').textContent = v === 'fp' ? '1인칭' : v === 'tp' ? '3인칭' : '전술뷰';
   }
-  const onLock = (): void => { locked = document.pointerLockElement === canvas3; if (locked) { expectUnlock = false; return; } const was = expectUnlock; expectUnlock = false; if (!was && view !== 'top' && world && !world.over && !paused && panel.hidden && bigmap.hidden && world.factions[0].pending === 0) pause(); };
-  const onLockErr = (): void => { lockFail = true; };
+  const onLock = (): void => { locked = document.pointerLockElement === canvas3; if (locked) { expectUnlock = false; everLocked = true; return; } const was = expectUnlock; expectUnlock = false; if (!was && view !== 'top' && world && !world.over && !paused && panel.hidden && bigmap.hidden && world.factions[0].pending === 0) pause(); };
+
   const onMouseMove = (e: MouseEvent): void => { if (!R3 || view === 'top' || paused) return; if (locked || (lockFail && mouse.down)) { R3.yaw += e.movementX * 0.0024; R3.pitch = Math.max(-1.2, Math.min(1.0, R3.pitch - e.movementY * 0.0024)); lastLook = performance.now(); } };
   document.addEventListener('pointerlockchange', onLock); document.addEventListener('pointerlockerror', onLockErr); document.addEventListener('mousemove', onMouseMove);
   function exit(): void {

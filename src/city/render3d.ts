@@ -56,13 +56,13 @@ export class Renderer3D {
     const sc = this.scene, w = world;
     sc.fog = new THREE.Fog(0xd8a488, 700, 4300); sc.add(this.camera);
     // 하늘 돔 (노을)
-    const skyGeo = new THREE.SphereGeometry(5000, 24, 12), sp = skyGeo.attributes.position, cols = new Float32Array(sp.count * 3), top = new THREE.Color(0x3d5a9e), mid = new THREE.Color(0xf0a878), low = new THREE.Color(0xd8a488);
-    for (let i = 0; i < sp.count; i++) { const k = Math.max(0, sp.getY(i) / 5000), c = k < 0.25 ? low.clone().lerp(mid, k / 0.25) : mid.clone().lerp(top, Math.min(1, (k - 0.25) / 0.6)); cols.set([c.r, c.g, c.b], i * 3); }
-    skyGeo.setAttribute('color', new THREE.BufferAttribute(cols, 3)); const sky = new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false })); sky.renderOrder = -1; sc.add(sky);
+    const skyGeo = new THREE.SphereGeometry(4800, 24, 12), sp = skyGeo.attributes.position, cols = new Float32Array(sp.count * 3), top = new THREE.Color(0x3d5a9e), mid = new THREE.Color(0xf0a878), low = new THREE.Color(0xd8a488);
+    for (let i = 0; i < sp.count; i++) { const k = Math.max(0, sp.getY(i) / 4800), c = k < 0.25 ? low.clone().lerp(mid, k / 0.25) : mid.clone().lerp(top, Math.min(1, (k - 0.25) / 0.6)); cols.set([c.r, c.g, c.b], i * 3); }
+    skyGeo.setAttribute('color', new THREE.BufferAttribute(cols, 3)); const sky = new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false })); sky.renderOrder = -1; sky.name = 'sky'; sc.add(sky);
     sc.add(new THREE.HemisphereLight(0xb9c8ff, 0x5a4a40, 1.25));
     this.sun = new THREE.DirectionalLight(0xffd2a0, 2.3); this.sun.position.set(-600, 700, -400); sc.add(this.sun); sc.add(this.sun.target);
     if (quality === 'high') { this.sun.castShadow = true; const s = this.sun.shadow; s.mapSize.set(2048, 2048); s.camera.left = s.camera.bottom = -1100; s.camera.right = s.camera.top = 1100; s.camera.near = 10; s.camera.far = 3000; s.bias = -0.0012; }
-    const sunDisc = new THREE.Mesh(new THREE.SphereGeometry(190, 16, 8), new THREE.MeshBasicMaterial({ color: 0xfff0c8, fog: false })); sunDisc.position.set(-3300, 950, -2200).add(new THREE.Vector3(SIZE / 2, 0, SIZE / 2)); sc.add(sunDisc);
+    const sunDisc = new THREE.Mesh(new THREE.SphereGeometry(190, 16, 8), new THREE.MeshBasicMaterial({ color: 0xfff0c8, fog: false })); sunDisc.position.set(-3700, 1000, -2400); sky.add(sunDisc);
     // 바다 + 지면
     const sea = new THREE.Mesh(new THREE.PlaneGeometry(30000, 30000), new THREE.MeshLambertMaterial({ color: 0x2b5f7a })); sea.rotation.x = -Math.PI / 2; sea.position.set(SIZE / 2, -6, SIZE / 2); sc.add(sea);
     const T = quality === 'low' ? 2048 : 4096, k = T / SIZE, gt = canvasTex(T, T, g => {
@@ -264,6 +264,7 @@ export class Renderer3D {
     }
     if (this.shake > 0 && !this.reduced) { this.camera.position.x += (Math.random() - 0.5) * this.shake; this.camera.position.y += (Math.random() - 0.5) * this.shake; }
     const spd = veh ? Math.hypot(veh.vx, veh.vy) : 0, fov = 74 + Math.min(14, spd / 45); if (Math.abs(fov - this.camera.fov) > 0.2) { this.camera.fov += (fov - this.camera.fov) * 0.1; this.camera.updateProjectionMatrix(); }
+    const sky = this.scene.getObjectByName('sky'); if (sky) sky.position.set(this.camera.position.x, 0, this.camera.position.z);
     this.sun.position.set(fx - 700, 800, fz - 450); this.sun.target.position.set(fx, 0, fz);
     this.gun.visible = !third && !!pb; if (this.gun.visible) { const tier = WEAPONS[f0.slots[f0.cur]?.id ?? 'pistol'].tier, rl = f0.reloadT > 0 ? 1 : 0; this.gun.scale.setScalar(0.62 + tier * 0.13); this.gun.position.set(5.6, -5.2 - rl * 4, -14 + this.recoil * 2.2); this.gun.rotation.x = this.recoil * 0.12 - rl * 0.7; this.muzzle.visible = this.flashT > 0; this.muzzle.rotation.z = this.t * 40; }
     // 캐릭터

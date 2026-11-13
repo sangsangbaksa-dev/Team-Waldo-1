@@ -60,3 +60,9 @@ GitHub Actions는 모든 브랜치의 push와 pull request에서 같은 코드·
 - 운영 중 문제가 생기면 Vercel의 이전 정상 배포를 복원합니다. 코드 수정은 별도 커밋으로 남기고 검증 후 다시 배포합니다.
 
 설정 참고: [Vite on Vercel](https://vercel.com/docs/frameworks/frontend/vite), [vercel.json](https://vercel.com/docs/project-configuration/vercel-json).
+
+## GitHub Pages
+
+`.github/workflows/pages.yml`이 타입 검사·테스트·빌드 후 `dist`를 GitHub Pages로 게시합니다. 주소는 [sangsangbaksa-dev.github.io/Team-Waldo-1](https://sangsangbaksa-dev.github.io/Team-Waldo-1/)입니다. Vite `base`가 `./`라서 하위 경로에서도 그대로 동작합니다.
+
+`github-pages` 환경에는 배포 가능한 브랜치 제한이 걸려 있습니다. 허용되지 않은 브랜치에서 실행하면 build는 성공하고 deploy 작업만 로그 없이 실패합니다. 저장소 **Settings → Environments → github-pages → Deployment branches**에서 브랜치를 추가하거나, 허용된 브랜치에 병합한 뒤 실행하세요.

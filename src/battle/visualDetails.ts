@@ -14,13 +14,13 @@ export function createVisualDetails() {
   const ring = new THREE.TorusGeometry(.5, .075, 6, 14);
   const mat = (color: number, metalness = 0, roughness = .9) =>
     new THREE.MeshStandardMaterial({ color, metalness, roughness });
-  const slate = mat(0x283d45), iron = mat(0x35434b, .65, .47),
-    agedSteel = mat(0x87968f, .57, .55), bronze = mat(0xaa8856, .6, .42),
-    limestone = mat(0xb7b39f), darkStone = mat(0x626e6a),
-    soot = mat(0x302f2b), timber = mat(0x624632), paleWood = mat(0x947451),
-    canvas = mat(0xa99b7b), moss = mat(0x536747),
-    grass = mat(0x617c4d), grassLight = mat(0x83935b),
-    bark = mat(0x5b4735), fir = mat(0x385d4a), firLight = mat(0x52735a),
+  const slate = mat(0x23383e), iron = mat(0x2f3e45, .65, .47),
+    agedSteel = mat(0x879893, .58, .52), bronze = mat(0xbe9c63, .62, .38),
+    limestone = mat(0xa7b0a5), darkStone = mat(0x4d5b5a),
+    soot = mat(0x292d2b), timber = mat(0x594232), paleWood = mat(0x8d7253),
+    canvas = mat(0xa59a7d), moss = mat(0x3b5244),
+    grass = mat(0x40594a), grassLight = mat(0x5d7661),
+    bark = mat(0x514133), fir = mat(0x2b493d), firLight = mat(0x3e5f50),
     skin = mat(0xc6a98d), leather = mat(0x5b3e33), horse = mat(0x6d5343);
   const regalia = [0x368c85, 0xb75d5a, 0xba984e, 0x806ca8].map(c => mat(c, .15, .72));
   const cloak = [0x244b48, 0x713b3b, 0x66532a, 0x493b66].map(c => mat(c));

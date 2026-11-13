@@ -45,23 +45,23 @@ export function createBaseDistrict(scene: THREE.Scene, war: War): {
 
   const matte = (color: number, metalness = .08, roughness = .87) =>
     new THREE.MeshStandardMaterial({ color, metalness, roughness });
-  const concrete = matte(0x536166), concreteLight = matte(0x89948f);
-  const concreteDark = matte(0x303c42), steel = matte(0x81928d, .62, .5);
-  const iron = matte(0x26383e, .55, .49), bronze = matte(0xc1a16b, .49, .45);
-  const wood = matte(0x5b4739), woodLight = matte(0x96795d);
-  const roof = matte(0x2e4e55, .22, .66), soil = matte(0x655a46);
-  const crop = matte(0x8ba76d), straw = matte(0xc7ac69);
-  const grass = matte(0x405a4e), gravel = matte(0x424e50);
-  const glass = matte(0x537e83, .32, .24);
+  const concrete = matte(0x4f5e62), concreteLight = matte(0x889590);
+  const concreteDark = matte(0x283438), steel = matte(0x829590, .62, .48);
+  const iron = matte(0x23353a, .56, .48), bronze = matte(0xc9a86c, .54, .4);
+  const wood = matte(0x564438), woodLight = matte(0x91775d);
+  const roof = matte(0x244247, .24, .64), soil = matte(0x5c5342);
+  const crop = matte(0x7d9e68), straw = matte(0xc7ae6d);
+  const grass = matte(0x395247), gravel = matte(0x323f40);
+  const glass = matte(0x4d7b7e, .34, .23);
   const banner = new THREE.MeshStandardMaterial({
-    color: 0x49b7a8, side: THREE.DoubleSide, roughness: .72,
+    color: 0x4ec4b5, side: THREE.DoubleSide, roughness: .7,
   });
   const light = new THREE.MeshStandardMaterial({
-    color: 0xffd69b, emissive: 0xc17a2c, emissiveIntensity: .8, roughness: .34,
+    color: 0xffd89e, emissive: 0xc27e30, emissiveIntensity: .8, roughness: .34,
   });
   const ore = new THREE.MeshStandardMaterial({
-    color: 0x7bd5de, emissive: 0x2e8093, emissiveIntensity: .32,
-    roughness: .27, metalness: .38,
+    color: 0x6cd8cb, emissive: 0x237971, emissiveIntensity: .36,
+    roughness: .26, metalness: .4,
   });
   const geometries = [box, cylinder, hex, cone, crystal, sphere, torus, roofGeometry];
   const materials = [concrete, concreteLight, concreteDark, steel, iron, bronze,

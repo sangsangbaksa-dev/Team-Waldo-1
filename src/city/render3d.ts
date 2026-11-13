@@ -88,6 +88,7 @@ export class Renderer3D {
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(SIZE, SIZE), new THREE.MeshLambertMaterial({ map: gt })); ground.rotation.x = -Math.PI / 2; ground.position.set(SIZE / 2, 0, SIZE / 2); ground.receiveShadow = true; sc.add(ground);
     this.buildCity();
     this.glow = canvasTex(64, 64, g => { const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.4, 'rgba(255,255,255,0.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); });
+    // Keep one pooled geometry per particle family: bursts stay cheap even during large battles.
     this.sparks = new Points(500, 7, true, this.glow, false); this.fire = new Points(400, 46, true, this.glow, false); this.smoke = new Points(300, 70, false, this.glow, true); sc.add(this.sparks.mesh, this.fire.mesh, this.smoke.mesh);
     if (this.models) { try { this.ml = new ModelLayer(sc, w, this.models, this.glow, quality === 'high'); } catch { this.ml = null; } }
     // 인스턴스 메시
@@ -98,14 +99,14 @@ export class Renderer3D {
     this.hulls = inst(this.box, lam(), 90); this.turrets = inst(new THREE.CylinderGeometry(1, 1, 1, 10), lam(), 90); this.barrels = inst(this.box, new THREE.MeshLambertMaterial({ color: 0x1c1e22 }), 90, false);
     this.crystals = inst(new THREE.OctahedronGeometry(1), new THREE.MeshLambertMaterial({ color: 0x52d9ff, emissive: 0x1a7fa8, emissiveIntensity: 0.9 }), w.crystals.length, false);
     this.tracers = inst(this.box, new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false }), 500, false);
-    const ringGeo = new THREE.RingGeometry(0.86, 1, 40); ringGeo.rotateX(-Math.PI / 2); this.rings = inst(ringGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false }), 60, false);
+    const ringGeo = new THREE.RingGeometry(0.86, 1, 40); ringGeo.rotateX(-Math.PI / 2); this.rings = inst(ringGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }), 60, false);
     for (let i = 0; i < 8; i++) { const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: fcol(i), side: THREE.DoubleSide, transparent: true, opacity: 0.9, depthWrite: false })); m.visible = false; sc.add(m); this.bossRings.push(m); }
-    for (let i = 0; i < 6; i++) { const m = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), new THREE.MeshBasicMaterial({ color: 0xffc070, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); m.visible = false; sc.add(m); this.booms.push({ m, life: 0, r: 1 }); }
+    for (let i = 0; i < 6; i++) { const m = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), new THREE.MeshBasicMaterial({ color: 0xffc070, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); m.visible = false; sc.add(m); this.booms.push({ m, life: 0, r: 1 }); }
     this.light = new THREE.PointLight(0xffb060, 0, 900, 0); sc.add(this.light);
     // 자기장
     this.zoneTex = canvasTex(64, 64, g => { g.fillStyle = 'rgba(150,90,255,0.55)'; g.fillRect(0, 0, 64, 64); g.strokeStyle = 'rgba(225,190,255,0.95)'; g.lineWidth = 7; for (let i = -64; i < 128; i += 32) { g.beginPath(); g.moveTo(i, 64); g.lineTo(i + 64, 0); g.stroke(); } });
     this.zoneTex.wrapS = this.zoneTex.wrapT = THREE.RepeatWrapping;
-    this.zoneWall = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 96, 1, true), new THREE.MeshBasicMaterial({ map: this.zoneTex, transparent: true, opacity: 0.42, side: THREE.DoubleSide, depthWrite: false, fog: false })); this.zoneWall.renderOrder = 5; sc.add(this.zoneWall);
+    this.zoneWall = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 96, 1, true), new THREE.MeshBasicMaterial({ map: this.zoneTex, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false, fog: false })); this.zoneWall.renderOrder = 5; sc.add(this.zoneWall);
     this.nextRing = new THREE.Mesh(new THREE.RingGeometry(0.992, 1, 128).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.9, depthWrite: false, fog: false })); sc.add(this.nextRing);
     this.ghost = new THREE.Mesh(this.box, new THREE.MeshBasicMaterial({ color: 0x66ff9c, transparent: true, opacity: 0.45, depthWrite: false })); this.ghost.visible = false; sc.add(this.ghost);
     // 1인칭 무기 모델
@@ -145,18 +146,56 @@ export class Renderer3D {
     const rnd = Math.random, cx = this.camPos.x, cz = this.camPos.z;
     for (const e of events) {
       const d = Math.hypot(e.x - cx, e.y - cz), near = d < 1500;
-      if (e.t === 'shot' && near) { const a = e.a ?? 0; this.fire.add(e.x, 30, e.y, Math.cos(a) * 40, 0, Math.sin(a) * 40, 0.07, 0xffd98a); for (let k = 0; k < 2; k++) this.sparks.add(e.x, 30, e.y, Math.cos(a + (rnd() - 0.5)) * 160, 30 + rnd() * 60, Math.sin(a + (rnd() - 0.5)) * 160, 0.25, 0xffe9a8, 300); }
-      else if ((e.t === 'hit' || e.t === 'splat') && near) for (let k = 0; k < (e.t === 'splat' ? 14 : 5); k++) this.sparks.add(e.x, 26, e.y, (rnd() - 0.5) * 180, rnd() * 140, (rnd() - 0.5) * 180, 0.5, 0xc0182b, 420);
-      else if (e.t === 'spark' && near) for (let k = 0; k < 4; k++) this.sparks.add(e.x, 28, e.y, (rnd() - 0.5) * 220, rnd() * 160, (rnd() - 0.5) * 220, 0.3, 0xffe9a8, 420);
+      if (e.t === 'shot' && near) {
+        const a = e.a ?? 0, dx = Math.cos(a), dz = Math.sin(a);
+        this.fire.add(e.x + dx * 10, 30, e.y + dz * 10, dx * 70, 0, dz * 70, 0.09, 0xffe6a4);
+        const count = this.quality === 'low' ? 1 : this.quality === 'high' ? 4 : 2;
+        for (let k = 0; k < count; k++) {
+          const spread = a + (rnd() - 0.5) * 0.75, speed = 110 + rnd() * 110;
+          this.sparks.add(e.x, 30, e.y, Math.cos(spread) * speed, 18 + rnd() * 60, Math.sin(spread) * speed, 0.12 + rnd() * 0.16, k % 2 ? 0xffbf67 : 0xfff0bc, 270);
+        }
+        if (d < 500 && rnd() < 0.3) this.smoke.add(e.x, 27, e.y, dx * 9, 18, dz * 9, 0.38, 0x66656a);
+      }
+      else if ((e.t === 'hit' || e.t === 'splat') && near) {
+        const splat = e.t === 'splat', count = splat ? 12 : 5;
+        for (let k = 0; k < count; k++) this.sparks.add(e.x, 26, e.y, (rnd() - 0.5) * 180, rnd() * 140, (rnd() - 0.5) * 180, 0.25 + rnd() * 0.22, splat ? 0xc0182b : 0xd44e4e, 420);
+        if (splat) this.ring(e.x, e.y, 4, 25, 0xff647a, 0.2);
+      }
+      else if (e.t === 'spark' && near) {
+        for (let k = 0; k < 5; k++) this.sparks.add(e.x, 28, e.y, (rnd() - 0.5) * 260, 30 + rnd() * 160, (rnd() - 0.5) * 260, 0.2 + rnd() * 0.2, k % 2 ? 0xffb957 : 0xfff2d1, 460);
+        if (rnd() < 0.3) this.smoke.add(e.x, 17, e.y, 0, 25, 0, 0.5, 0x54575d);
+      }
       else if (e.t === 'death' && near) for (let k = 0; k < 14; k++) this.sparks.add(e.x, 22, e.y, (rnd() - 0.5) * 220, rnd() * 200, (rnd() - 0.5) * 220, 0.7, k % 3 ? 0xb3142a : fcol(e.f ?? CIV), 420);
       else if (e.t === 'boom') {
-        const r = Math.max(50, e.a ?? 80);
-        if (near) { for (let k = 0; k < 16; k++) { const a = rnd() * 6.28, s = rnd() * r * 1.6; this.fire.add(e.x, 20 + rnd() * 30, e.y, Math.cos(a) * s, rnd() * r * 1.4, Math.sin(a) * s, 0.4 + rnd() * 0.4, k % 2 ? 0xff9a3c : 0xff5a1f); }
-          for (let k = 0; k < 9; k++) { const a = rnd() * 6.28; this.smoke.add(e.x, 30, e.y, Math.cos(a) * 40, 50 + rnd() * 70, Math.sin(a) * 40, 1.6 + rnd(), 0x3c3c42); }
-          for (let k = 0; k < 14; k++) this.sparks.add(e.x, 20, e.y, (rnd() - 0.5) * 500, rnd() * 420, (rnd() - 0.5) * 500, 0.8, 0xffd28a, 500);
-          const bm = this.booms.find(q => q.life <= 0); if (bm) { bm.life = 0.32; bm.r = r; bm.m.position.set(e.x, 24, e.y); bm.m.visible = true; }
-          this.light.position.set(e.x, 80, e.y); this.lightT = 0.25; this.ring(e.x, e.y, 10, r * 1.2, 0xffd28a, 0.35); }
+        // Flash, expanding shockwaves, hot fragments and lingering smoke have separate lifetimes.
+        const radius = Math.max(50, Math.min(240, e.a ?? 80));
+        if (near) {
+          const density = this.quality === 'low' ? 0.45 : this.quality === 'standard' ? 0.72 : 1;
+          for (let k = 0; k < Math.ceil(22 * density); k++) {
+            const a = rnd() * Math.PI * 2, speed = radius * (0.55 + rnd() * 1.35);
+            this.fire.add(e.x, 15 + rnd() * 35, e.y, Math.cos(a) * speed, 25 + rnd() * radius, Math.sin(a) * speed, 0.35 + rnd() * 0.4, k % 3 === 0 ? 0xffe2a1 : k % 2 ? 0xff9a3c : 0xff5429);
+          }
+          for (let k = 0; k < Math.ceil(16 * density); k++) {
+            const a = rnd() * Math.PI * 2, speed = 20 + rnd() * radius * 0.75;
+            this.smoke.add(e.x, 22 + rnd() * 28, e.y, Math.cos(a) * speed, 30 + rnd() * 70, Math.sin(a) * speed, 1.1 + rnd() * 1.7, k % 3 === 0 ? 0x5a514d : 0x35363d);
+          }
+          for (let k = 0; k < Math.ceil(22 * density); k++) {
+            const a = rnd() * Math.PI * 2, speed = 130 + rnd() * 410;
+            this.sparks.add(e.x, 20, e.y, Math.cos(a) * speed, 100 + rnd() * 350, Math.sin(a) * speed, 0.45 + rnd() * 0.5, k % 3 ? 0xffb45f : 0xfff2c3, 530);
+          }
+          const bm = this.booms.find(q => q.life <= 0);
+          if (bm) { bm.life = 0.32; bm.r = radius; bm.m.position.set(e.x, 24, e.y); bm.m.visible = true; }
+          this.light.position.set(e.x, 80, e.y); this.lightT = 0.25;
+          this.ring(e.x, e.y, 8, radius * 1.35, 0xffe2a1, 0.38);
+          this.ring(e.x, e.y, 3, radius * 0.78, 0xff7d41, 0.25);
+        }
         if (d < 1000) this.shake = Math.max(this.shake, (1 - d / 1000) * 9);
+      }
+      else if (e.t === 'burn' && near) {
+        for (let k = 0; k < (this.quality === 'low' ? 4 : 9); k++) {
+          this.fire.add(e.x + (rnd() - 0.5) * 30, 18, e.y + (rnd() - 0.5) * 30, (rnd() - 0.5) * 50, 45 + rnd() * 80, (rnd() - 0.5) * 50, 0.6 + rnd() * 0.6, k % 2 ? 0xff812e : 0xffd376);
+        }
+        this.ring(e.x, e.y, 6, 65, 0xff8547, 0.28);
       } else if (e.t === 'cash' && near) this.floater(e.x, e.y, 60, `${(e.a ?? 0) >= 0 ? '+' : '-'}$${Math.abs(Math.round(e.a ?? 0))}`, (e.a ?? 0) >= 0 ? '#7dffb0' : '#ffd27a');
       else if (e.t === 'crystal' && d < 500) this.floater(e.x, e.y, 40, `+${e.a}`, '#8fe9ff');
       else if (e.t === 'pickup' && near) this.ring(e.x, e.y, 6, 40, 0xffffff, 0.3);
@@ -294,13 +333,27 @@ export class Renderer3D {
     while (this.planes.length < w.planes.length) { const pm = this.ml?.makePlane(); if (pm) { const pg = new THREE.Group(); pg.add(pm); this.scene.add(pg); this.planes.push(pg); continue; } const g = new THREE.Group(), m = this.mat(0xcfd6e0), a = new THREE.Mesh(this.box, m), b = new THREE.Mesh(this.box, m), c = new THREE.Mesh(this.box, m); a.scale.set(150, 22, 24); b.scale.set(34, 5, 190); c.scale.set(18, 30, 5); c.position.set(-64, 22, 0); g.add(a, b, c); this.scene.add(g); this.planes.push(g); }
     this.planes.forEach((g, i) => { const p = w.planes[i]; g.visible = !!p; if (p) { g.position.set(p.x, 620, p.y); g.rotation.y = -Math.atan2(p.vy, p.vx); } });
     // 링·폭발·파티클
-    let nr = 0; for (const r of this.ringList) { r.life -= dt; const k = 1 - Math.max(0, r.life) / r.max, rad = r.r0 + (r.r1 - r.r0) * k; d.rotation.set(0, 0, 0); d.position.set(r.x, 2, r.y); d.scale.set(rad, 1, rad); d.updateMatrix(); this.rings.setMatrixAt(nr, d.matrix); this.rings.setColorAt(nr, col.set(r.color)); nr++; } this.ringList = this.ringList.filter(r => r.life > 0); upd(this.rings, nr);
+    let nr = 0; for (const r of this.ringList) {
+      r.life -= dt; if (r.life <= 0) continue;
+      const k = Math.min(1, 1 - r.life / r.max), rad = r.r0 + (r.r1 - r.r0) * k;
+      d.rotation.set(0, 0, 0); d.position.set(r.x, 2, r.y); d.scale.set(rad, 1, rad); d.updateMatrix();
+      this.rings.setMatrixAt(nr, d.matrix);
+      this.rings.setColorAt(nr, col.set(r.color).multiplyScalar(Math.pow(1 - k, 1.4)));
+      nr++;
+    } this.ringList = this.ringList.filter(r => r.life > 0); upd(this.rings, nr);
     for (const b of this.booms) { if (b.life <= 0) { b.m.visible = false; continue; } b.life -= dt; const k = 1 - b.life / 0.32; b.m.scale.setScalar(b.r * (0.3 + k * 0.8)); (b.m.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 1 - k) * 0.85; }
     this.lightT -= dt; this.light.intensity = Math.max(0, this.lightT * 22);
     this.sparks.update(dt); this.fire.update(dt); this.smoke.update(dt);
     // 자기장
-    const z = w.zone; this.zoneWall.visible = false; this.nextRing.visible = false; this.zoneWall.position.set(z.x, 450, z.y); this.zoneWall.scale.set(Math.max(1, z.r), 900, Math.max(1, z.r)); this.zoneTex.repeat.set(Math.max(8, z.r / 30), 14); this.zoneTex.offset.y = -this.t * 0.25;
+    const z = w.zone;
+    // Keep the opening phase unobstructed; reveal the closing storm and its next safe circle.
+    this.zoneWall.visible = z.r < 3800 || z.shrinking;
+    this.nextRing.visible = z.nr < z.r - 12 && z.nr < 3800;
+    this.zoneWall.position.set(z.x, 450, z.y); this.zoneWall.scale.set(Math.max(1, z.r), 900, Math.max(1, z.r));
+    this.zoneTex.repeat.set(Math.max(8, z.r / 30), 14); this.zoneTex.offset.y = -this.t * 0.25;
+    (this.zoneWall.material as THREE.MeshBasicMaterial).opacity = (z.shrinking ? 0.22 : 0.13) + Math.sin(this.t * 2.4) * 0.025;
     this.nextRing.position.set(z.nx, 3, z.ny); this.nextRing.scale.set(Math.max(2, z.nr), 1, Math.max(2, z.nr));
+    (this.nextRing.material as THREE.MeshBasicMaterial).opacity = 0.42 + Math.sin(this.t * 2.2) * 0.16;
     // 건설 고스트
     this.ghost.visible = !!ghost; if (ghost) { const sd = STRUCTS[ghost.kind], H = STRUCT_H[ghost.kind]; this.ghost.position.set(ghost.x, H / 2, ghost.y); this.ghost.scale.set(sd.w, H, sd.h); (this.ghost.material as THREE.MeshBasicMaterial).color.setHex(ghost.ok ? 0x66ff9c : 0xff5a5a); }
     this.renderer.render(this.scene, this.camera);

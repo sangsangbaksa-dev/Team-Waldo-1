@@ -18,6 +18,9 @@
 .atlas-help { color: var(--text-muted, #8fa8b9); font-size: 11px; line-height: 1.7; margin: 14px 0; }
 .atlas-selection { padding: 13px; border-radius: 6px; background: #08202f90; border: 1px solid #8ec6d327; display: grid; gap: 6px; }
 .atlas-selection b { font-size: 13px; color: #e2f3f6; }.atlas-selection span { font-size: 10px; color: var(--text-muted, #8fa8b9); }
+.atlas-selection small { display: block; font-size: 10px; line-height: 1.6; color: #9ac4d0; overflow-wrap: anywhere; }
+.atlas-selection small.atlas-risk { color: #f2bd8e; }
+.atlas-selection span, .atlas-selection b { overflow-wrap: anywhere; }
 .atlas-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 10px 0 22px; }
 .atlas-actions .button { padding: 10px 6px; min-height: 38px; font-size: 11px; }
 .atlas-posts { display: grid; gap: 4px; max-height: 246px; overflow-y: auto; padding-right: 3px; margin-top: 10px; scrollbar-width: thin; }

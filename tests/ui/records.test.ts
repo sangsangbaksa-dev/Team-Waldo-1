@@ -58,6 +58,8 @@ describe('expedition record room', () => {
     expect(entry.textContent).toContain('5분 6초');
     expect(entry.textContent).toContain('217');
     expect(entry.textContent).toContain('3회');
+    expect(entry.textContent).toContain('생산·계약 보상 금');
+    expect(el('.records-storage-note').textContent).toContain('시설 내부 교환');
     expect(el('[data-record-map="continental"]').textContent).toContain('1승');
     expect(el('[data-record-map="frontier"]').textContent).toContain('0승');
     el<HTMLButtonElement>('#records-tab-achievements').click();

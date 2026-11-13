@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { atlasMarkup, bindAtlas } from '../../src/battle/atlas';
+import { atlasMarkup, bindAtlas, atlasSituation } from '../../src/battle/atlas';
 import { MAP_IDS, MAPS, type MapId } from '../../src/battle/maps';
 import { createWar } from '../../src/battle/war';
 import { assignSquad, type SquadId } from '../../src/battle/squads';
@@ -54,12 +54,36 @@ describe('reviewed atlas orders', () => {
     });
   }
 
+  it('uses real unit positions, nearby enemy presence and zone status for tactical intelligence', () => {
+    const ui = mount('continental');
+    const post = ui.war.outposts[16];
+    ui.click('[data-atlas-post="16"]');
+    const situation = atlasSituation(ui.war, 0, { x: post.x, z: post.z });
+    expect(situation.members).toBe(4);
+    expect(situation.straightDistance).toBeGreaterThan(0);
+    expect(situation.nearbyEnemies).toBe(0);
+    expect(ui.el('#atlas-selection-text').textContent).toContain('주력군 4명 · 직선 거리');
+    expect(ui.el('#atlas-selection-text').textContent).toContain('중립 거점');
+    const enemy = ui.war.units.find(unit => unit.owner === 1)!;
+    enemy.x = post.x; enemy.z = post.z;
+    post.contender = 0; post.progress = 46;
+    ui.click('[data-atlas-post="16"]');
+    expect(ui.el('#atlas-selection-text').textContent).toContain('아군 점령 진행 46%');
+    expect(ui.el('#atlas-selection-text').textContent).toContain('인근 적 병력 1명');
+    expect(ui.el('#atlas-selection-text').querySelector('.atlas-risk')).not.toBeNull();
+    ui.war.zone = 100;
+    ui.click('[data-atlas-post="16"]');
+    expect(ui.el('#atlas-selection-text').textContent).toContain('현재 폭풍 안전 구역 밖');
+    expect(ui.orderAt).not.toHaveBeenCalled();
+  });
+
   it('keeps empty squads uncommandable and sends the chosen group only after confirmation', () => {
     const ui = mount('continental');
     ui.click('[data-atlas-squad="1"]');
     expect(ui.selectSquad).toHaveBeenCalledWith(1);
     expect(ui.el('[data-atlas-squad="1"]').getAttribute('aria-pressed')).toBe('true');
     expect(ui.el<HTMLButtonElement>('#atlas-order').disabled).toBe(true);
+    expect(ui.el('#atlas-selection-text').textContent).toContain('기동대에 생존 병력 없음');
     ui.click('#atlas-order');
     expect(ui.orderAt).not.toHaveBeenCalled();
     assignSquad(ui.war, 1, 3);

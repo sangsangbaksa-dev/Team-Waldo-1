@@ -3,7 +3,7 @@ import { icon } from '../ui/icons';
 import { mapDefinitionFor, outpostName, outpostBonus } from './maps';
 import { minimapToWorld, pickMapTarget } from './mapCommands';
 import { drawStrategicMap } from './strategicMap';
-import { SQUAD_NAMES, squadUnits, type SquadId } from './squads';
+import { SQUAD_NAMES, squadUnits, squadOf, type SquadId } from './squads';
 import type { War } from './war';
 
 export function atlasMarkup(war: War): string {
@@ -17,6 +17,35 @@ export function atlasMarkup(war: War): string {
         <div class="atlas-actions"><button id="atlas-center" class="button secondary">${icon('target', 15)}시점 이동</button><button id="atlas-order" class="button primary">${icon('flag', 15)}부대 출전</button></div>
         <div class="section-heading"><h3>전략 거점</h3><span>선택해서 상세 보기</span></div><div class="atlas-posts">${war.outposts.map(post => `<button data-atlas-post="${post.id}"><span>${outpostName(war, post.id)}</span><small>${post.owner === null ? '중립' : post.owner === 0 ? '아군' : '적군'}</small></button>`).join('')}</div>
       </aside></div>`;
+}
+
+/** Live, straight-line intelligence; it does not claim pathfinding or predict arrival time. */
+export function atlasSituation(war: War, squad: SquadId, target: { x: number; z: number }): {
+  members: number; straightDistance: number | null; nearbyEnemies: number;
+  outsideZone: boolean; occupation: string | null;
+} {
+  const members = war.units.filter(unit => unit.owner === 0 && unit.hp > 0 && squadOf(unit) === squad);
+  const centroid = members.length ? {
+    x: members.reduce((sum, unit) => sum + unit.x, 0) / members.length,
+    z: members.reduce((sum, unit) => sum + unit.z, 0) / members.length,
+  } : null;
+  const nearbyEnemies = war.units.filter(unit =>
+    unit.owner !== 0 && unit.hp > 0 && war.factions[unit.owner]?.alive &&
+    Math.hypot(unit.x - target.x, unit.z - target.z) <= 30).length;
+  const picked = pickMapTarget(war, 0, target.x, target.z);
+  const post = picked?.kind === 'outpost' ? war.outposts[picked.id] : undefined;
+  const owners = ['아군', '적색', '황색', '보라'];
+  const occupation = !post ? null :
+    post.contender !== null && post.progress > 0 ?
+      `${owners[post.contender] ?? '다른 세력'} 점령 진행 ${Math.round(post.progress)}%` :
+      post.owner === null ? '중립 거점' : `${owners[post.owner] ?? '다른 세력'} 점령 거점`;
+  return {
+    members: members.length,
+    straightDistance: centroid ? Math.round(Math.hypot(centroid.x - target.x, centroid.z - target.z)) : null,
+    nearbyEnemies,
+    outsideZone: Math.hypot(target.x, target.z) > war.zone,
+    occupation,
+  };
 }
 
 interface AtlasControls {
@@ -46,9 +75,22 @@ export function bindAtlas(root: HTMLElement, war: War, controls: AtlasControls):
       const bonus = outpostBonus(war, target.id);
       title = outpostName(war, target.id); detail = `금 +${bonus.gold}/초 · 식량 +${bonus.food}/초`;
     } else if (target?.kind === 'faction') { title = ['에메랄드', '적색', '황색', '보라'][target.id] + ' 본부 공격'; detail = `내구도 ${Math.ceil(war.factions[target.id].hp)} / ${war.factions[target.id].maxHp}`; }
+    const intel = atlasSituation(war, squad, selected);
     details.replaceChildren();
     const name = document.createElement('b'), description = document.createElement('span');
-    name.textContent = title; description.textContent = detail; details.append(name, description);
+    const route = document.createElement('span'), risk = document.createElement('small');
+    name.textContent = title;
+    description.textContent = detail;
+    route.textContent = intel.members
+      ? `${SQUAD_NAMES[squad]} ${intel.members}명 · 직선 거리 ${intel.straightDistance}m`
+      : `${SQUAD_NAMES[squad]}에 생존 병력 없음 · 출전 불가`;
+    risk.textContent = [
+      intel.occupation,
+      intel.nearbyEnemies ? `인근 적 병력 ${intel.nearbyEnemies}명 (반경 30m)` : '인근 적 병력 관측 없음 (반경 30m)',
+      intel.outsideZone ? '현재 폭풍 안전 구역 밖' : '현재 폭풍 안전 구역 안',
+    ].filter(Boolean).join(' · ');
+    risk.classList.toggle('atlas-risk', intel.nearbyEnemies > 0 || intel.outsideZone);
+    details.append(name, description, route, risk);
     canvas.setAttribute('aria-label', `전체 작전 지도. 선택 ${title}, 좌표 ${Math.round(selected.x)}, ${Math.round(selected.z)}. 방향키로 이동하세요.`);
     order.disabled = war.over || !war.factions[0].alive || squadUnits(war, squad).length === 0;
     order.textContent = `${SQUAD_NAMES[squad]} ${atHome ? '복귀' : '출전'}`;

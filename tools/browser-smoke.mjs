@@ -172,7 +172,7 @@ try {
       await page.locator('#tab-army').click(); assert.equal(await page.locator('#tab-army').getAttribute('aria-selected'), 'true');
       assert.equal(await page.locator('#unit-train button').count(), 8); assert.equal(await page.locator('#train-archer').isDisabled(), false);
       await page.locator('#train-infantry').click(); assert.equal((await snapshot(page)).trained, 1);
-      await page.locator('#reserve-25').click(); assert.equal(await page.locator('#reserve-4').getAttribute('aria-pressed'), 'true');
+      await page.locator('#reserve-25').click(); assert.equal(await page.locator('#reserve-25').getAttribute('aria-pressed'), 'true');
       await page.locator('#tab-orders').click(); assert.equal(await page.locator('#outposts button').count(), 9);
       await page.locator('#outpost-5').click(); assert.equal((await snapshot(page)).rally, 5);
       await stage('3D raycast and seeded defense warning');

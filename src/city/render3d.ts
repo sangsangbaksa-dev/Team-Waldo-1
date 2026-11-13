@@ -4,6 +4,9 @@ import { ACTORS, BIZ, BLOCK, BLOCKS, CIV, FACTIONS, PITCH, POLICE, ROAD, SIZE, S
 import { solidAt } from './map';
 import type { Business, Fx, Loot, Structure, Vehicle, World } from './world';
 import type { Ghost } from './render';
+import { ModelLayer } from './modellayer';
+import { buildBuildings } from './buildings';
+import type { Models } from './models';
 
 export type ViewMode = 'fp' | 'tp';
 const EYE = 46, STRUCT_H: Record<StructKind, number> = { hq: 150, barracks: 86, depot: 58, factory: 104, lab: 96, turret: 50 };
@@ -42,14 +45,14 @@ export class Renderer3D {
   private dummy = new THREE.Object3D(); private color = new THREE.Color();
   private bodies: THREE.InstancedMesh; private heads: THREE.InstancedMesh; private guns: THREE.InstancedMesh; private hulls: THREE.InstancedMesh; private turrets: THREE.InstancedMesh; private barrels: THREE.InstancedMesh;
   private crystals: THREE.InstancedMesh; private tracers: THREE.InstancedMesh; private rings: THREE.InstancedMesh; private ringList: { x: number; y: number; r0: number; r1: number; life: number; max: number; color: number }[] = [];
-  private sparks: Points; private fire: Points; private smoke: Points;
+  private sparks: Points; private fire: Points; private smoke: Points; private ml: ModelLayer | null = null;
   private structs = new Map<number, THREE.Group>(); private vehs = new Map<number, THREE.Group>(); private loots = new Map<number, THREE.Group>(); private biz = new Map<number, { g: THREE.Group; sig: string; label: THREE.Sprite; ring: THREE.Mesh; beam: THREE.Mesh }>();
   private booms: { m: THREE.Mesh; life: number; r: number }[] = []; private light: THREE.PointLight; private lightT = 0;
   private zoneWall: THREE.Mesh; private zoneTex: THREE.Texture; private nextRing: THREE.Mesh; private ghost: THREE.Mesh; private sun: THREE.DirectionalLight; private gun = new THREE.Group(); private muzzle: THREE.Mesh; private planes: THREE.Group[] = [];
   private bossRings: THREE.Mesh[] = []; floaters: { el: HTMLElement; x: number; y: number; h: number; life: number }[] = [];
   private mats = new Map<number, THREE.MeshLambertMaterial>(); private box = new THREE.BoxGeometry(1, 1, 1); private glow: THREE.Texture;
 
-  constructor(public canvas: HTMLCanvasElement, public world: World, public quality: 'high' | 'standard' | 'low', public layer: HTMLElement) {
+  constructor(public canvas: HTMLCanvasElement, public world: World, public quality: 'high' | 'standard' | 'low', public layer: HTMLElement, public models: Models | null = null) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(quality === 'high' ? 2 : quality === 'standard' ? 1.5 : 1, window.devicePixelRatio || 1));
     this.renderer.shadowMap.enabled = quality === 'high'; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -72,11 +75,13 @@ export class Renderer3D {
       for (let j = 0; j <= BLOCKS; j++) for (let i = 0; i <= BLOCKS; i++) { const x = i * PITCH, y = j * PITCH; g.fillStyle = '#3a3d44'; g.fillRect(x, y, ROAD, ROAD); g.fillStyle = 'rgba(240,240,245,0.5)'; for (let q = 0; q < 6; q++) { g.fillRect(x + 12 + q * 17, y - 18, 9, 14); g.fillRect(x + 12 + q * 17, y + ROAD + 4, 9, 14); g.fillRect(x - 18, y + 12 + q * 17, 14, 9); g.fillRect(x + ROAD + 4, y + 12 + q * 17, 14, 9); } }
       const fill: Record<string, string> = { city: '#6f7178', park: '#4d7a4a', lot: '#4a4d54', police: '#5d6880', military: '#6b7055', plaza: '#8d8a84', base: '#5c6660' };
       for (const b of w.map.blocks) {
-        g.fillStyle = '#9a9c9f'; g.fillRect(b.x, b.y, BLOCK, BLOCK); g.fillStyle = '#b3b5b8'; g.fillRect(b.x + 3, b.y + 3, BLOCK - 6, BLOCK - 6); g.fillStyle = fill[b.type]; g.fillRect(b.x + 14, b.y + 14, BLOCK - 28, BLOCK - 28);
+        g.fillStyle = '#1f2125'; g.fillRect(b.x - 3, b.y - 3, BLOCK + 6, BLOCK + 6); g.fillStyle = '#c9cacd'; g.fillRect(b.x, b.y, BLOCK, BLOCK); g.fillStyle = '#a9abaf'; g.fillRect(b.x + 3, b.y + 3, BLOCK - 6, BLOCK - 6);
+        g.strokeStyle = 'rgba(70,72,78,0.45)'; g.lineWidth = 1; g.beginPath(); for (let q = 6; q < BLOCK - 4; q += 20) { g.moveTo(b.x + q, b.y + 4); g.lineTo(b.x + q, b.y + BLOCK - 4); g.moveTo(b.x + 4, b.y + q); g.lineTo(b.x + BLOCK - 4, b.y + q); } g.stroke(); g.fillStyle = fill[b.type]; g.fillRect(b.x + 14, b.y + 14, BLOCK - 28, BLOCK - 28);
         if (b.type === 'plaza' || b.type === 'city') { g.strokeStyle = 'rgba(0,0,0,0.1)'; g.lineWidth = 1; g.beginPath(); for (let q = 1; q < 11; q++) { g.moveTo(b.x + q * 40, b.y + 14); g.lineTo(b.x + q * 40, b.y + BLOCK - 14); g.moveTo(b.x + 14, b.y + q * 40); g.lineTo(b.x + BLOCK - 14, b.y + q * 40); } g.stroke(); }
         if (b.type === 'lot') { g.strokeStyle = 'rgba(255,255,255,0.6)'; g.lineWidth = 2.5; g.beginPath(); for (let q = 0; q < 6; q++) { g.moveTo(b.x + 56 + q * 68, b.y + 290); g.lineTo(b.x + 56 + q * 68, b.y + 372); } g.stroke(); }
         if (b.type === 'park') for (let q = 0; q < 60; q++) { g.fillStyle = q % 2 ? 'rgba(90,140,80,0.5)' : 'rgba(60,100,60,0.5)'; g.beginPath(); g.arc(b.x + 20 + (q * 97) % 400, b.y + 20 + (q * 61) % 400, 10 + q % 9, 0, 6.29); g.fill(); }
       }
+      for (let q = 0; q < 9000; q++) { g.fillStyle = q % 3 ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.06)'; g.fillRect((q * 7561) % SIZE, (q * 6029) % SIZE, 2 + q % 6, 2 + q % 4); }
       for (let q = 0; q < 2600; q++) { g.fillStyle = q % 2 ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.035)'; g.fillRect((q * 7919) % SIZE, (q * 104729) % SIZE, 14 + q % 30, 3 + q % 5); }
     });
     gt.anisotropy = this.renderer.capabilities.getMaxAnisotropy(); gt.minFilter = THREE.LinearMipmapLinearFilter;
@@ -84,6 +89,7 @@ export class Renderer3D {
     this.buildCity();
     this.glow = canvasTex(64, 64, g => { const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.4, 'rgba(255,255,255,0.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); });
     this.sparks = new Points(500, 7, true, this.glow, false); this.fire = new Points(400, 46, true, this.glow, false); this.smoke = new Points(300, 70, false, this.glow, true); sc.add(this.sparks.mesh, this.fire.mesh, this.smoke.mesh);
+    if (this.models) { try { this.ml = new ModelLayer(sc, w, this.models, this.glow, quality === 'high'); } catch { this.ml = null; } }
     // 인스턴스 메시
     const inst = (geo: THREE.BufferGeometry, mat: THREE.Material, n: number, shadow = true): THREE.InstancedMesh => { const m = new THREE.InstancedMesh(geo, mat, n); m.count = 0; m.frustumCulled = false; m.castShadow = shadow; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); sc.add(m); return m; };
     const lam = (): THREE.MeshLambertMaterial => new THREE.MeshLambertMaterial({ color: 0xffffff });
@@ -112,27 +118,8 @@ export class Renderer3D {
   private mat(c: number): THREE.MeshLambertMaterial { let m = this.mats.get(c); if (!m) { m = new THREE.MeshLambertMaterial({ color: c }); this.mats.set(c, m); } return m; }
 
   private buildCity(): void {
-    const w = this.world, pos: number[] = [], uv: number[] = [], col: number[] = [], nor: number[] = [], idx: number[] = []; const c = new THREE.Color();
-    const quad = (p: number[][], n: number[], color: THREE.Color, u: number, v: number, flat: boolean): void => {
-      const b = pos.length / 3; for (let i = 0; i < 4; i++) { pos.push(...p[i]); nor.push(...n); col.push(color.r, color.g, color.b); }
-      if (flat) uv.push(0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01); else uv.push(0, 0, u, 0, u, v, 0, v); idx.push(b, b + 1, b + 2, b, b + 2, b + 3);
-    };
-    w.map.solids.forEach((s, i) => {
-      if (s.struct || !s.alive) return; const H = 130 + s.height * 1250 + (i * 37 % 60), x0 = s.x, x1 = s.x + s.w, z0 = s.y, z1 = s.y + s.h; c.set(s.wall).lerp(new THREE.Color(0xd9d4cc), 0.45);
-      const u = (len: number): number => Math.max(1, Math.round(len / 44)) / 4, v = Math.max(1, Math.round(H / 46)) / 4;
-      quad([[x0, 0, z1], [x1, 0, z1], [x1, H, z1], [x0, H, z1]], [0, 0, 1], c, u(s.w), v, false); quad([[x1, 0, z0], [x0, 0, z0], [x0, H, z0], [x1, H, z0]], [0, 0, -1], c, u(s.w), v, false);
-      quad([[x1, 0, z1], [x1, 0, z0], [x1, H, z0], [x1, H, z1]], [1, 0, 0], c, u(s.h), v, false); quad([[x0, 0, z0], [x0, 0, z1], [x0, H, z1], [x0, H, z0]], [-1, 0, 0], c, u(s.h), v, false);
-      const rc = new THREE.Color(s.roof).multiplyScalar(0.7); quad([[x0, H, z1], [x1, H, z1], [x1, H, z0], [x0, H, z0]], [0, 1, 0], rc, 0, 0, true);
-      if (s.sign) { // 옥상 간판
-        const tex = canvasTex(256, 96, g => { g.fillStyle = '#14161a'; g.fillRect(0, 0, 256, 96); g.strokeStyle = s.signColor!; g.lineWidth = 6; g.strokeRect(5, 5, 246, 86); g.fillStyle = s.signColor!; g.font = '900 60px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(s.sign!, 128, 52); });
-        const sm = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, fog: true }), W = Math.min(s.w, s.h, 150) * 0.9;
-        for (let q = 0; q < 2; q++) { const m = new THREE.Mesh(new THREE.PlaneGeometry(W, W * 0.375), sm); m.position.set(s.x + s.w / 2, H + W * 0.22, s.y + s.h / 2); m.rotation.y = q * Math.PI / 2; this.scene.add(m); }
-      }
-    });
-    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); geo.setIndex(idx);
-    const win = canvasTex(256, 256, g => { g.fillStyle = '#fff'; g.fillRect(0, 0, 256, 256); for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) { const lit = (x * 7 + y * 13) % 5 === 0; g.fillStyle = lit ? '#ffe9a6' : (x + y) % 3 ? '#39485c' : '#4b5d75'; g.fillRect(x * 64 + 14, y * 64 + 12, 36, 40); g.fillStyle = 'rgba(255,255,255,0.18)'; g.fillRect(x * 64 + 14, y * 64 + 12, 36, 9); g.fillStyle = 'rgba(0,0,0,0.12)'; g.fillRect(x * 64, y * 64 + 60, 64, 4); } });
-    win.wrapS = win.wrapT = THREE.RepeatWrapping; win.anisotropy = 4;
-    const city = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: win, vertexColors: true })); city.castShadow = true; city.receiveShadow = true; this.scene.add(city);
+    const w = this.world; buildBuildings(w, this.scene, import.meta.env.BASE_URL);
+    if (this.models) return;
     // 나무·가로등
     const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(3, 4, 40, 6), this.mat(0x5b4030), w.map.trees.length), leaf = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), this.mat(0x3f7d45), w.map.trees.length);
     w.map.trees.forEach((t, i) => { this.dummy.rotation.set(0, i, 0); this.dummy.position.set(t.x, 20, t.y); this.dummy.scale.set(1, 1, 1); this.dummy.updateMatrix(); trunk.setMatrixAt(i, this.dummy.matrix); this.dummy.position.set(t.x, 52 + t.r * 0.5, t.y); this.dummy.scale.set(t.r * 1.15, t.r * 1.3, t.r * 1.15); this.dummy.updateMatrix(); leaf.setMatrixAt(i, this.dummy.matrix); });
@@ -190,6 +177,7 @@ export class Renderer3D {
 
   private syncStruct(s: Structure): void {
     let g = this.structs.get(s.id); const H = STRUCT_H[s.kind], f = FACTIONS[s.f];
+    if (!g && this.ml) { const mg = this.ml.makeStruct(s); if (mg) { g = mg as THREE.Group; if (s.kind === 'hq') { const beam = new THREE.Mesh(new THREE.CylinderGeometry(5, 5, 900, 6), new THREE.MeshBasicMaterial({ color: fcol(s.f), transparent: true, opacity: 0.35, depthWrite: false, fog: false })); beam.scale.setScalar(0.1); beam.position.y = 60; g.add(beam); } this.scene.add(g); this.structs.set(s.id, g); } }
     if (!g) {
       g = new THREE.Group(); const body = new THREE.Mesh(this.box, this.mat(new THREE.Color(f.dark).lerp(new THREE.Color(0x8a8f96), 0.35).getHex())); body.scale.set(s.w, H, s.h); body.position.y = H / 2; body.castShadow = body.receiveShadow = true; g.add(body);
       const trim = new THREE.Mesh(this.box, this.mat(fcol(s.f))); trim.scale.set(s.w + 4, 8, s.h + 4); trim.position.y = H; g.add(trim);
@@ -199,10 +187,11 @@ export class Renderer3D {
       if (s.kind === 'lab') { const d = new THREE.Mesh(new THREE.SphereGeometry(24, 12, 8, 0, 6.29, 0, 1.57), new THREE.MeshLambertMaterial({ color: 0x9fe8ff, emissive: 0x2a6a80 })); d.position.y = H; g.add(d); }
       g.position.set(s.x + s.w / 2, 0, s.y + s.h / 2); this.scene.add(g); this.structs.set(s.id, g);
     }
-    g.scale.y = 0.15 + 0.85 * s.built; const head = g.getObjectByName('head'); if (head) head.rotation.y = -s.ang;
+    if (this.ml) { g.scale.set(10, 10 * (0.15 + 0.85 * s.built), 10); const th = g.getObjectByName('turret_Head'); if (th) th.rotation.y = -s.ang; } else { g.scale.y = 0.15 + 0.85 * s.built; const head = g.getObjectByName('head'); if (head) head.rotation.y = -s.ang; }
   }
   private syncVehicle(v: Vehicle): void {
     let g = this.vehs.get(v.id);
+    if (!g && this.ml) { const mg = this.ml.makeVehicle(v); if (mg) { g = mg as THREE.Group; this.scene.add(g); this.vehs.set(v.id, g); } }
     if (!g) {
       g = new THREE.Group(); const col = new THREE.Color(v.color).getHex(), m = (sx: number, sy: number, sz: number, x: number, y: number, z: number, c: number): THREE.Mesh => { const o = new THREE.Mesh(this.box, this.mat(c)); o.scale.set(sx, sy, sz); o.position.set(x, y, z); o.castShadow = true; g!.add(o); return o; };
       if (v.kind === 'tank') { m(v.len, 16, v.wid, 0, 13, 0, col); m(v.len + 4, 12, 8, 0, 7, -v.wid / 2, 0x23261f); m(v.len + 4, 12, 8, 0, 7, v.wid / 2, 0x23261f); const t = new THREE.Group(); t.name = 'turret'; const dome = new THREE.Mesh(new THREE.CylinderGeometry(14, 16, 12, 10), this.mat(0x4a5733)), bar = new THREE.Mesh(this.box, this.mat(0x1e2218)); bar.scale.set(44, 5, 5); bar.position.set(28, 2, 0); t.add(dome, bar); t.position.y = 27; g.add(t); }
@@ -215,8 +204,8 @@ export class Renderer3D {
       this.scene.add(g); this.vehs.set(v.id, g);
     }
     g.position.set(v.x, 0, v.y); g.rotation.y = -v.ang;
-    const t = g.getObjectByName('turret'); if (t) { const d = this.world.byId.get(v.driver); t.rotation.y = -((d ? d.ang : v.ang) - v.ang); }
-    const la = g.getObjectByName('la'), lb = g.getObjectByName('lb'); if (la && lb) { const on = v.ai === 'chase' && Math.floor(this.t * 6) % 2 === 0; la.visible = v.ai !== 'chase' || on; lb.visible = v.ai !== 'chase' || !on; }
+    const t = g.getObjectByName('turret') ?? g.getObjectByName('tank_Turret'); if (t) { const d = this.world.byId.get(v.driver); t.rotation.y = -((d ? d.ang : v.ang) - v.ang); }
+    const la = g.getObjectByName('la') ?? g.getObjectByName('police_LightA'), lb = g.getObjectByName('lb') ?? g.getObjectByName('police_LightB'); if (la && lb) { const on = v.ai === 'chase' && Math.floor(this.t * 6) % 2 === 0; la.visible = v.ai !== 'chase' || on; lb.visible = v.ai !== 'chase' || !on; }
     if (v.hp < v.maxHp * 0.5 && Math.random() < 0.25) { if (v.burn > 0) this.fire.add(v.x, 24, v.y, (Math.random() - 0.5) * 30, 60, (Math.random() - 0.5) * 30, 0.6, 0xff7a2a); else this.smoke.add(v.x, 24, v.y, (Math.random() - 0.5) * 16, 50, (Math.random() - 0.5) * 16, 1.2, 0x333338); }
   }
   private syncLoot(l: Loot): void {
@@ -227,10 +216,12 @@ export class Renderer3D {
       if (l.type === 'crate') { item.scale.set(32, 26, 32); const ch = new THREE.Mesh(new THREE.SphereGeometry(34, 12, 8, 0, 6.29, 0, 1.57), new THREE.MeshLambertMaterial({ color: 0xff5d5d, side: THREE.DoubleSide })); ch.position.y = 50; ch.name = 'chute'; g.add(ch); }
       else if (l.type === 'weapon') item.scale.set(22, 5, 4); else if (l.type === 'cash') item.scale.set(14, 4, 9); else item.scale.set(11, 11, 11);
       const beam = new THREE.Mesh(new THREE.CylinderGeometry(l.type === 'crate' ? 6 : 2, l.type === 'crate' ? 6 : 2, l.type === 'crate' ? 1400 : 130, 6), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: l.type === 'crate' ? 0.5 : 0.35, depthWrite: false, fog: false })); beam.position.y = l.type === 'crate' ? 700 : 65; beam.name = 'beam';
+      if (this.ml && l.type === 'weapon') { const gm = this.ml.makeLootGun(l.weapon!); if (gm) { gm.name = 'item'; gm.scale.setScalar(22); item.visible = false; item.name = 'item_old'; g.add(gm); } }
+      else if (this.ml && l.type === 'crate') { const cm = this.ml.makeCrate(); if (cm) { const chute = cm.getObjectByName('crate_Chute'); if (chute) { cm.remove(chute); chute.name = 'chute'; chute.scale.setScalar(10); chute.position.set(0, 30, 0); g.add(chute); const old = g.getObjectByName('chute'); if (old && old !== chute) old.visible = false; } cm.name = 'item'; cm.scale.setScalar(10); item.visible = false; item.name = 'item_old'; g.add(cm); } }
       g.add(item, beam); g.position.set(l.x, 0, l.y); this.scene.add(g); this.loots.set(l.id, g);
     }
-    const item = g.getObjectByName('item')!, fall = Math.max(0, l.fall) * 150; item.position.y = (l.type === 'crate' ? 13 : 16 + Math.sin(this.t * 3 + l.id) * 3) + fall; if (l.type !== 'crate') item.rotation.y = this.t * 1.5 + l.id;
-    const ch = g.getObjectByName('chute'); if (ch) { ch.visible = l.fall > 0; ch.position.y = 50 + fall; }
+    const item = g.getObjectByName('item')!, fall = Math.max(0, l.fall) * 150; item.position.y = (l.type === 'crate' ? (this.ml ? 0 : 13) : 16 + Math.sin(this.t * 3 + l.id) * 3) + fall; if (l.type !== 'crate') item.rotation.y = this.t * 1.5 + l.id;
+    const ch = g.getObjectByName('chute'); if (ch) { ch.visible = l.fall > 0; ch.position.y = (this.ml ? 30 : 50) + fall; }
   }
   private syncBiz(z: Business): void {
     let o = this.biz.get(z.id); const w = this.world, d = BIZ[z.kind], col = z.kind === 'gunshop' ? 0xff5d5d : z.owner >= 0 ? fcol(z.owner) : 0xf2f2f2;
@@ -266,7 +257,7 @@ export class Renderer3D {
     const spd = veh ? Math.hypot(veh.vx, veh.vy) : 0, fov = 74 + Math.min(14, spd / 45); if (Math.abs(fov - this.camera.fov) > 0.2) { this.camera.fov += (fov - this.camera.fov) * 0.1; this.camera.updateProjectionMatrix(); }
     const sky = this.scene.getObjectByName('sky'); if (sky) sky.position.set(this.camera.position.x, 0, this.camera.position.z);
     this.sun.position.set(fx - 700, 800, fz - 450); this.sun.target.position.set(fx, 0, fz);
-    this.gun.visible = !third && !!pb; if (this.gun.visible) { const tier = WEAPONS[f0.slots[f0.cur]?.id ?? 'pistol'].tier, rl = f0.reloadT > 0 ? 1 : 0; this.gun.scale.setScalar(0.62 + tier * 0.13); this.gun.position.set(5.6, -5.2 - rl * 4, -14 + this.recoil * 2.2); this.gun.rotation.x = this.recoil * 0.12 - rl * 0.7; this.muzzle.visible = this.flashT > 0; this.muzzle.rotation.z = this.t * 40; }
+    if (this.ml) { this.gun.visible = false; this.ml.viewmodel(!third && !!pb, f0.slots[f0.cur]?.id ?? 'pistol', dt, this.recoil, f0.reloadT > 0, pb ? Math.min(1, Math.hypot(pb.vx, pb.vy) / 160) : 0, this.t, this.flashT > 0); } else { this.gun.visible = !third && !!pb; } if (!this.ml && this.gun.visible) { const tier = WEAPONS[f0.slots[f0.cur]?.id ?? 'pistol'].tier, rl = f0.reloadT > 0 ? 1 : 0; this.gun.scale.setScalar(0.62 + tier * 0.13); this.gun.position.set(5.6, -5.2 - rl * 4, -14 + this.recoil * 2.2); this.gun.rotation.x = this.recoil * 0.12 - rl * 0.7; this.muzzle.visible = this.flashT > 0; this.muzzle.rotation.z = this.t * 40; }
     // 캐릭터
     let nb = 0, nh = 0, ng = 0, nm = 0;
     for (const m of this.bossRings) m.visible = false;
@@ -274,7 +265,7 @@ export class Renderer3D {
       if (!a.alive || a.inVeh) continue; const dx = a.x - this.camPos.x, dz = a.y - this.camPos.z; if (dx * dx + dz * dz > 2600 * 2600) continue;
       const def = ACTORS[a.kind], c = a.flash > 0 ? 0xffffff : a.f === CIV ? CLOTH[a.slot % CLOTH.length] : fcol(a.f);
       if (a.kind === 'boss') { const r = this.bossRings[a.f]; r.visible = true; r.position.set(a.x, 1.5, a.y); r.scale.setScalar(a.r + 9); }
-      if (a === pb && !third) continue;
+      if (a === pb && !third) continue; if (this.ml) continue;
       if (def.mech) {
         if (nm >= 90) continue; const tank = a.kind === 'tank', L = a.r * 2.4, W = a.r * 1.7, H = tank ? 22 : 17;
         d.rotation.set(0, -a.ang, 0); d.position.set(a.x, H / 2 + 4, a.y); d.scale.set(L, H, W); d.updateMatrix(); this.hulls.setMatrixAt(nm, d.matrix); this.hulls.setColorAt(nm, col.set(a.flash > 0 ? 0xffffff : FACTIONS[a.f].dark));
@@ -287,9 +278,9 @@ export class Renderer3D {
       if (a.f !== CIV && a.kind !== 'worker') { const gl = a.kind === 'sniper' || a.kind === 'heavy' ? 22 : 15; d.position.set(a.x + Math.cos(a.ang) * (gl / 2 + 2) - Math.sin(a.ang) * 5, bh * 0.72 + bob, a.y + Math.sin(a.ang) * (gl / 2 + 2) + Math.cos(a.ang) * 5); d.scale.set(gl, a.kind === 'heavy' ? 5 : 2.6, a.kind === 'heavy' ? 5 : 2.6); d.updateMatrix(); this.guns.setMatrixAt(ng++, d.matrix); }
     }
     const upd = (m: THREE.InstancedMesh, n: number): void => { m.count = n; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; };
-    upd(this.bodies, nb); upd(this.heads, nh); upd(this.guns, ng); upd(this.hulls, nm); upd(this.turrets, nm); upd(this.barrels, nm);
+    upd(this.bodies, nb); upd(this.heads, nh); upd(this.guns, ng); upd(this.hulls, nm); upd(this.turrets, nm); upd(this.barrels, nm); if (this.ml) this.ml.update(pb, third, this.camPos);
     // 크리스탈
-    let nc = 0; for (const c of w.crystals) { if (c.amount <= 0) continue; const s = 9 + 9 * c.amount / c.max; d.rotation.set(0, c.id, 0); d.position.set(c.x, s * 1.1, c.y); d.scale.set(s * 0.75, s * 1.5, s * 0.75); d.updateMatrix(); this.crystals.setMatrixAt(nc++, d.matrix); } upd(this.crystals, nc);
+    let nc = 0; for (const c of w.crystals) { if (c.amount <= 0) continue; const s = 9 + 9 * c.amount / c.max; d.rotation.set(0, c.id, 0); d.position.set(c.x, s * 1.1, c.y); d.scale.set(s * 0.75, s * 1.5, s * 0.75); d.updateMatrix(); this.crystals.setMatrixAt(nc++, d.matrix); } upd(this.crystals, 0); void nc;
     // 탄환
     let nt = 0; for (const b of w.bullets) { if (nt >= 500) break; const wd = WEAPONS[b.w], a = Math.atan2(b.vy, b.vx), len = wd.splash ? 12 : wd.pierce ? 150 : 46, th = wd.splash ? 5 : wd.pierce ? 3 : b.boss ? 1.5 : 1.1; d.rotation.set(0, -a, 0); d.position.set(b.x - Math.cos(a) * len / 2, 30, b.y - Math.sin(a) * len / 2); d.scale.set(len, th, th); d.updateMatrix(); this.tracers.setMatrixAt(nt, d.matrix); this.tracers.setColorAt(nt, col.set(wd.color)); nt++; if (wd.splash && Math.random() < 0.6) this.smoke.add(b.x, 30, b.y, 0, 8, 0, 0.5, 0xcfcfcf); } upd(this.tracers, nt);
     // 동적 오브젝트 동기화
@@ -298,7 +289,7 @@ export class Renderer3D {
     const seenL = new Set<number>(); for (const l of w.loot) if (l.alive) { seenL.add(l.id); this.syncLoot(l); } for (const [id, g] of this.loots) if (!seenL.has(id)) { this.scene.remove(g); this.loots.delete(id); }
     for (const z of w.businesses) this.syncBiz(z);
     // 수송기
-    while (this.planes.length < w.planes.length) { const g = new THREE.Group(), m = this.mat(0xcfd6e0), a = new THREE.Mesh(this.box, m), b = new THREE.Mesh(this.box, m), c = new THREE.Mesh(this.box, m); a.scale.set(150, 22, 24); b.scale.set(34, 5, 190); c.scale.set(18, 30, 5); c.position.set(-64, 22, 0); g.add(a, b, c); this.scene.add(g); this.planes.push(g); }
+    while (this.planes.length < w.planes.length) { const pm = this.ml?.makePlane(); if (pm) { const pg = new THREE.Group(); pg.add(pm); this.scene.add(pg); this.planes.push(pg); continue; } const g = new THREE.Group(), m = this.mat(0xcfd6e0), a = new THREE.Mesh(this.box, m), b = new THREE.Mesh(this.box, m), c = new THREE.Mesh(this.box, m); a.scale.set(150, 22, 24); b.scale.set(34, 5, 190); c.scale.set(18, 30, 5); c.position.set(-64, 22, 0); g.add(a, b, c); this.scene.add(g); this.planes.push(g); }
     this.planes.forEach((g, i) => { const p = w.planes[i]; g.visible = !!p; if (p) { g.position.set(p.x, 620, p.y); g.rotation.y = -Math.atan2(p.vy, p.vx); } });
     // 링·폭발·파티클
     let nr = 0; for (const r of this.ringList) { r.life -= dt; const k = 1 - Math.max(0, r.life) / r.max, rad = r.r0 + (r.r1 - r.r0) * k; d.rotation.set(0, 0, 0); d.position.set(r.x, 2, r.y); d.scale.set(rad, 1, rad); d.updateMatrix(); this.rings.setMatrixAt(nr, d.matrix); this.rings.setColorAt(nr, col.set(r.color)); nr++; } this.ringList = this.ringList.filter(r => r.life > 0); upd(this.rings, nr);
@@ -311,6 +302,7 @@ export class Renderer3D {
     // 건설 고스트
     this.ghost.visible = !!ghost; if (ghost) { const sd = STRUCTS[ghost.kind], H = STRUCT_H[ghost.kind]; this.ghost.position.set(ghost.x, H / 2, ghost.y); this.ghost.scale.set(sd.w, H, sd.h); (this.ghost.material as THREE.MeshBasicMaterial).color.setHex(ghost.ok ? 0x66ff9c : 0xff5a5a); }
     this.renderer.render(this.scene, this.camera);
+    if (this.ml && !third && pb) { this.ml.syncViewCam(this.camera); this.renderer.autoClear = false; this.renderer.clearDepth(); this.renderer.render(this.ml.vmScene, this.ml.vmCam); this.renderer.autoClear = true; }
     // 떠오르는 글자
     for (const f of this.floaters) { f.life -= dt; f.h += dt * 26; const p = this.project(f.x, f.y, f.h); f.el.style.transform = `translate(${p.x}px,${p.y}px) translate(-50%,-50%)`; f.el.style.opacity = p.behind ? '0' : String(Math.min(1, f.life * 2)); if (f.life <= 0) f.el.remove(); }
     this.floaters = this.floaters.filter(f => f.life > 0);

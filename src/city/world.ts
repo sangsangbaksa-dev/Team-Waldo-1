@@ -36,7 +36,7 @@ export interface Bullet { x: number; y: number; vx: number; vy: number; life: nu
 export interface Fx { t: string; x: number; y: number; a?: number; b?: number; s?: string; f?: number }
 export interface Crystal { id: number; x: number; y: number; amount: number; max: number }
 export interface PlayerInput { mx: number; my: number; ax: number; ay: number; fire: boolean; dash: boolean; brake: boolean }
-export interface WorldOptions { seed: number; difficulty: Difficulty; klass: ClassId; autoPlayer?: boolean }
+export interface WorldOptions { seed: number; difficulty: Difficulty; klass: ClassId; autoPlayer?: boolean; /** 연습 모드: 자기장·라이벌 AI·보급 투하 정지 */ tutorial?: boolean }
 export interface Quest { text: string; reward: number; done: boolean; check: (w: World) => boolean }
 
 const HC = 128, HN = Math.ceil(SIZE / HC);
@@ -400,7 +400,7 @@ export class World {
     for (const c of this.hash) c.length = 0;
     for (const a of this.actors) if (a.alive && !a.inVeh) this.hash[Math.min(HN - 1, Math.max(0, Math.floor(a.y / HC))) * HN + Math.min(HN - 1, Math.max(0, Math.floor(a.x / HC)))].push(a);
     for (const f of this.factions) if (f.alive) {
-      f.ai.t -= dt; if (f.ai.t <= 0 && (!f.player || this.opts.autoPlayer)) { f.ai.t = 0.8 + this.rng() * 0.4; thinkFaction(this, f); }
+      f.ai.t -= dt; if (f.ai.t <= 0 && (!f.player || this.opts.autoPlayer) && !this.opts.tutorial) { f.ai.t = 0.8 + this.rng() * 0.4; thinkFaction(this, f); }
       f.skillCd = Math.max(0, f.skillCd - dt); f.buffT = Math.max(0, f.buffT - dt); f.dashCd = Math.max(0, f.dashCd - dt); f.dashT = Math.max(0, f.dashT - dt);
       if (this.time - f.crimeT > 14) f.wanted = Math.max(0, f.wanted - dt * 0.12);
       const b = this.boss(f.id);
@@ -504,14 +504,15 @@ export class World {
     for (const b of this.businesses) if (b.owner >= 0 && Math.hypot(b.x - z.x, b.y - z.y) > z.r + 60) { b.owner = -1; b.level = 1; }
     // 보급 투하
     this.dropT -= 1;
-    if (this.dropT <= 0 && z.nr > 100) {
+    if (this.dropT <= 0 && z.nr > 100 && !this.opts.tutorial) {
       this.dropT = 70 + this.rng() * 25;
       for (let k = 0; k < 30; k++) { const a = this.rng() * 6.28, d = this.rng() * z.nr * 0.75, x = z.nx + Math.cos(a) * d, y = z.ny + Math.sin(a) * d; if (x > 60 && y > 60 && x < SIZE - 60 && y < SIZE - 60 && !navBlocked(this.map, x, y)) { const ang = this.rng() * 6.28; this.planes.push({ x: x - Math.cos(ang) * 2600, y: y - Math.sin(ang) * 2600, vx: Math.cos(ang) * 520, vy: Math.sin(ang) * 520, tx: x, ty: y, dropped: false }); this.say('✈️ 보급 수송기 접근 — 전설 무기 투하 예정', '#ffe27a'); this.fx('announce', 0, 0, 0, '보급 투하'); break; } }
     }
-    for (const q of this.quests) if (!q.done && q.check(this)) { q.done = true; this.factions[0].cash += q.reward; this.fx('quest', 0, 0, q.reward, q.text); }
+    if (!this.opts.tutorial) for (const q of this.quests) if (!q.done && q.check(this)) { q.done = true; this.factions[0].cash += q.reward; this.fx('quest', 0, 0, q.reward, q.text); }
     updatePopulation(this, false);
   }
   updateZone(dt: number): void {
+    if (this.opts.tutorial) return;
     const z = this.zone; for (const p of this.planes) { p.x += p.vx * dt; p.y += p.vy * dt; if (!p.dropped && (p.tx - p.x) * p.vx + (p.ty - p.y) * p.vy <= 0) { p.dropped = true; this.spawnLoot('crate', p.tx, p.ty, 0, undefined, 5); } }
     this.planes = this.planes.filter(p => p.x > -3000 && p.y > -3000 && p.x < SIZE + 3000 && p.y < SIZE + 3000);
     if (z.phase >= ZONE_PHASES.length) return;

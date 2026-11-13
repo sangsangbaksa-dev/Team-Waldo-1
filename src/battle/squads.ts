@@ -17,7 +17,7 @@ export function squadUnits(w: War, squad: SquadId): Unit[] {
 
 /** Transfer up to three available troops from the main army to an independent squad. */
 export function assignSquad(w: War, squad: SquadId, amount = 3): number {
-  if (squad === 0 || w.over || !w.factions[0].alive ||
+  if ((squad !== 1 && squad !== 2) || w.over || !w.factions[0].alive ||
       !Number.isInteger(amount) || amount < 1 || amount > (w.grandBattle ? 100 : 18)) return 0;
   const source = squadUnits(w, 0).sort((a, b) => a.id - b.id);
   const selected = source.slice(0, amount);
@@ -27,7 +27,7 @@ export function assignSquad(w: War, squad: SquadId, amount = 3): number {
 
 /** Rejoin the main army, including troops whose independent orders have not completed. */
 export function dismissSquad(w: War, squad: SquadId): number {
-  if (squad === 0 || w.over) return 0;
+  if ((squad !== 1 && squad !== 2) || w.over) return 0;
   const units = squadUnits(w, squad);
   for (const unit of units) unit.squad = 0;
   if (w.squadOrders) w.squadOrders[squad] = null;

@@ -10,7 +10,7 @@ export function worldToMinimap(x:number,z:number,size=200):{x:number;y:number}{
  return {x:(x/MAP_HALF_SIZE+1)*size/2,y:(z/MAP_HALF_SIZE+1)*size/2};
 }
 export function minimapToWorld(x:number,y:number,width:number,height:number):MapPosition{
- if(!Number.isFinite(x)||!Number.isFinite(y)||width<=0||height<=0)
+ if(!Number.isFinite(x)||!Number.isFinite(y)||!Number.isFinite(width)||!Number.isFinite(height)||width<=0||height<=0)
    return {x:0,z:0};
  return {
   x:Math.max(-MAP_HALF_SIZE,Math.min(MAP_HALF_SIZE,(x/width*2-1)*MAP_HALF_SIZE)),

@@ -263,12 +263,19 @@ function aiTurn(w: War,f: Faction): void {
   }
 }
 function moveToward(w:War,u:Unit,x:number,z:number,dt:number):void {
+  // Formation offsets can extend past the edge even when a squad order is valid.
+  // Out-of-bounds units make an otherwise healthy battle impossible to save.
+  const edge=MAP_HALF_SIZE-1;
+  x=Math.max(-edge,Math.min(edge,x));
+  z=Math.max(-edge,Math.min(edge,z));
   const d=distance(u.x,u.z,x,z);
   if (d<.01) return;
   const speed=UNIT_STATS[u.kind].speed*(1+w.factions[u.owner].research.logistics*.08)*(1+generalBonus(w,u,'speed'));
   const step=Math.min(d,speed*dt);
   const next=resolveBattlefieldStep(u.x,u.z,u.x+(x-u.x)/d*step,u.z+(z-u.z)/d*step,x,z);
-  u.x=next.x;u.z=next.z;
+  // Sidesteps around obstacles must obey the same world boundary.
+  u.x=Math.max(-edge,Math.min(edge,next.x));
+  u.z=Math.max(-edge,Math.min(edge,next.z));
 }
 function updateOutposts(w: War,dt:number):void {
   for (const p of w.outposts) {

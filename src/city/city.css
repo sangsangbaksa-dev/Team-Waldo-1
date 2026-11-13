@@ -190,3 +190,6 @@
 @media (prefers-reduced-motion:reduce){
   .c-quest-progress i,.c-overall-progress i,.c-mission-bar i{transition:none}
 }
+
+/* Mobile mission journal must accept native vertical swipes inside the game viewport. */
+.c-mission-list{touch-action:pan-y;-webkit-overflow-scrolling:touch}

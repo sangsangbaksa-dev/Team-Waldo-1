@@ -85,8 +85,10 @@ describe('LAST CITY rules', () => {
     const w = make(), f = w.factions[3], boss = w.boss(3)!;
     w.giveWeapon(f, 'rocket', 2);
     f.slots.find(s => s.id === 'rocket')!.ammo = 0;
+    const existing = w.loot.filter(l => l.alive && l.type === 'weapon' && l.weapon === 'rocket').length;
     w.killActor(boss, 0);
-    expect(w.loot.some(l => l.alive && l.type === 'weapon' && l.weapon === 'rocket')).toBe(false);
+    // The world can contain a pre-generated rocket pickup; the death must add none.
+    expect(w.loot.filter(l => l.alive && l.type === 'weapon' && l.weapon === 'rocket')).toHaveLength(existing);
   });
   it('lets the boss steal a parked car and drive it', () => {
     const w = make(), b = w.boss(0)!, car = w.vehicles.find(v => !v.driver && v.kind !== 'tank')!;

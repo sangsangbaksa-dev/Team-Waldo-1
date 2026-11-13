@@ -1,11 +1,13 @@
 import * as THREE from 'three';
 import { createGrandArmyVisuals } from './grandArmyVisuals';
+import { BATTLEFIELD_FEATURES } from './battlefieldLayout';
+import { createBattlefieldEnvironment } from './environment3d';
 import { MAP_HALF_SIZE, OUTPOST_NAMES, OUTPOST_BONUSES, UNIT_STATS, type Unit, type UnitKind, type War } from './war';
 import { createWorldLabel, type WorldLabel } from './renderLabels';
 import { createBattleEffects } from './renderEffects';
 import { batchStaticChildren, type StaticBatch } from './renderBatches';
 
-/** Procedural, self-contained stylized 3D battlefield. No external models or textures. */
+/** Procedural, self-contained industrial 3D battlefield. No external models or textures. */
 export const FACTION_COLORS = [0x50d9d1, 0xf06a77, 0xf5c45d, 0xaa8eed] as const;
 const clamp = THREE.MathUtils.clamp;
 const dist = (x:number,z:number,a:number,b:number) => Math.hypot(x-a,z-b);
@@ -44,11 +46,11 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   let strategicOverlaysVisible=true;
   const labels:WorldLabel[]=[];
   const effects=createBattleEffects(world);
-  scene.background=new THREE.Color(0xb9d1d0);
-  scene.fog=new THREE.FogExp2(0xb9d1d0,.00085);
-  const ambient=new THREE.HemisphereLight(0xe9f6ff,0x60704c,2.15);
+  scene.background=new THREE.Color(0x344248);
+  scene.fog=new THREE.FogExp2(0x344248,.0013);
+  const ambient=new THREE.HemisphereLight(0x97abb6,0x28352f,1.85);
   scene.add(ambient);
-  const sun=new THREE.DirectionalLight(0xffe2ab,2.7);
+  const sun=new THREE.DirectionalLight(0xd2c7b0,2.6);
   sun.position.set(-130,220,140);
   sun.castShadow=true;
   sun.shadow.mapSize.set(3072,3072);
@@ -57,18 +59,18 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   sun.shadow.camera.near=10;sun.shadow.camera.far=520;
   sun.shadow.normalBias=.035;sun.shadow.bias=-.0001;
   scene.add(sun,sun.target);
-  const fill=new THREE.DirectionalLight(0x91b4e5,.65);fill.position.set(35,35,-45);scene.add(fill);
+  const fill=new THREE.DirectionalLight(0x799cac,.6);fill.position.set(35,35,-45);scene.add(fill);
 
   const material=(color:number,metalness=0,roughness=.83,emissive=0)=>
     new THREE.MeshStandardMaterial({color,metalness,roughness,emissive,emissiveIntensity:emissive?.55:0});
-  const stone=material(0xb4ad96),stoneDark=material(0x626a6b),
-    mortar=material(0x878a7b),roof=material(0x334a55),
-    timber=material(0x72513c),woodDark=material(0x45372e),
-    cream=material(0xe7d5b2),gold=material(0xe9b85e,.45,.35),
-    meadow=material(0x638a55),leaves=material(0x4d785c),
-    leafLight=material(0x729764),waterMat=new THREE.MeshStandardMaterial({
-      color:0x5e9baa,roughness:.25,metalness:.1,transparent:true,opacity:.94
-    }),roadMat=material(0x9e9277),soilMat=material(0x896e51),
+  const stone=material(0x697277),stoneDark=material(0x343e43),
+    mortar=material(0x505e65),roof=material(0x273b46),
+    timber=material(0x51473e),woodDark=material(0x2f3331),
+    cream=material(0x9da49c),gold=material(0xc5a16c,.45,.35),
+    meadow=material(0x46554b),leaves=material(0x374d42),
+    leafLight=material(0x536556),waterMat=new THREE.MeshStandardMaterial({
+      color:0x31525c,roughness:.25,metalness:.1,transparent:true,opacity:.94
+    }),roadMat=material(0x465055),soilMat=material(0x5d554b),
     ember=material(0xffb45a,0,.4,0xff8130);
   const teamMats=FACTION_COLORS.map(color=>material(color,.25,.43));
   const bannerMats=FACTION_COLORS.map(color=>new THREE.MeshStandardMaterial({
@@ -99,7 +101,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   terrain.rotateX(-Math.PI/2);
   const position=terrain.getAttribute('position');
   const vertexColors:number[]=[];
-  const greenA=new THREE.Color(0x48794c),greenB=new THREE.Color(0x7d9c62);
+  const greenA=new THREE.Color(0x313c3c),greenB=new THREE.Color(0x57635b);
   for(let i=0;i<position.count;i++){
     const x=position.getX(i),z=position.getZ(i);
     const edge=Math.max(Math.abs(x),Math.abs(z));
@@ -186,7 +188,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     road(x,z,x*.78,z*.78,1.9);
   }
   const flowerGeometry=new THREE.SphereGeometry(.35,5,5);
-  const flowerMats=[material(0xffd790),material(0xf8b7c9),material(0xcbdfff)];
+  const flowerMats=[material(0x7b8071),material(0x896c62),material(0x778487)];
   const flowers=flowerMats.map(mat=>new THREE.InstancedMesh(flowerGeometry,mat,420));
   const flowerCounts=[0,0,0];
   for(let i=0;i<3100;i++){
@@ -205,6 +207,10 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     mesh.count=flowerCounts[index];mesh.instanceMatrix.needsUpdate=true;
     mesh.castShadow=false;mesh.receiveShadow=false;world.add(mesh);
   });
+
+  // Tactical installations share the exact deterministic layout used by unit movement.
+  // Instanced parts keep the additional geometry affordable in the grand-battle mode.
+  createBattlefieldEnvironment(world,BATTLEFIELD_FEATURES);
 
   const fortresses:Fortress[]=war.factions.map(f=>{
     const root=new THREE.Group();root.position.set(f.x,0,f.z);world.add(root);

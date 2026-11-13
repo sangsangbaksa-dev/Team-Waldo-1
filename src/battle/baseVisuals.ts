@@ -15,7 +15,8 @@ type Marker = { mesh: THREE.Mesh; phase: number };
  * buffers are disposed when a building is added, rather than leaking GPU memory.
  */
 export function createBaseDistrict(scene: THREE.Scene, war: War): {
-  update(): void; slotAt(x: number, z: number): number | null; dispose(): void;
+  update(): void; slotAt(x: number, z: number): number | null;
+  setReducedMotion(enabled: boolean): void; dispose(): void;
 } {
   const owner = war.factions[0];
   const district = new THREE.Group();
@@ -283,8 +284,7 @@ export function createBaseDistrict(scene: THREE.Scene, war: War): {
     for (const batch of batchStaticChildren(g, new Set([beacon])))
       buildingBuffers.add(batch.geometry);
   }
-  let frame = 0;
-  const reducedMotion = typeof window !== 'undefined' &&
+  let reducedMotion = typeof window !== 'undefined' &&
     typeof window.matchMedia === 'function' &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -301,10 +301,10 @@ export function createBaseDistrict(scene: THREE.Scene, war: War): {
       for (const item of base.structures) construct(item);
     }
     if (!reducedMotion) {
-      frame += .026;
+      const time = performance.now() * .0013;
       for (const marker of markers) {
         marker.mesh.position.y = 7.6 + (marker.mesh.parent?.userData.kind === 'fort' ? 1.35 : 0) +
-          Math.sin(frame + marker.phase) * .13;
+          Math.sin(time + marker.phase) * .13;
       }
     }
   }
@@ -319,6 +319,11 @@ export function createBaseDistrict(scene: THREE.Scene, war: War): {
     const slot = row * BASE_WIDTH + col;
     return getBaseState(war).structures.some(s => s.slot === slot) ? slot : null;
   }
+  function setReducedMotion(enabled: boolean): void {
+    reducedMotion = enabled;
+    if (enabled) for (const marker of markers)
+      marker.mesh.position.y = 7.6 + (marker.mesh.parent?.userData.kind === 'fort' ? 1.35 : 0);
+  }
   function dispose(): void {
     scene.remove(district);
     for (const buffer of staticGeometry) buffer.dispose();
@@ -327,5 +332,5 @@ export function createBaseDistrict(scene: THREE.Scene, war: War): {
     for (const material of materials) material.dispose();
   }
   update();
-  return { update, slotAt, dispose };
+  return { update, slotAt, setReducedMotion, dispose };
 }

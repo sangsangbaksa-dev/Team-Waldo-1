@@ -170,6 +170,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   const world = createBattleWorld(scene, w);
   const baseDistrict = createBaseDistrict(scene,w);
   world.setQuality(prefs.quality === 'high'); world.setReducedMotion(prefs.reducedMotion);
+  baseDistrict.setReducedMotion(prefs.reducedMotion);
   const adventureControl = createAdventure(scene, camera, w, !resumed && import.meta.env.MODE !== 'test'); adventure = adventureControl;
   const controller = new AbortController(); const signal = controller.signal;
   overlay.addEventListener('pointerdown', () => audio.unlock(), { signal, capture: true });
@@ -306,7 +307,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     quality.value = prefs.quality; sound.checked = prefs.sound; motion.checked = prefs.reducedMotion;
     quality.onchange = () => { prefs.quality = quality.value === 'high' ? 'high' : quality.value === 'low' ? 'low' : 'standard'; renderer.toneMapping = prefs.quality === 'low' ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping; renderer.shadowMap.enabled = prefs.quality === 'high'; renderer.setPixelRatio(Math.min(devicePixelRatio, prefs.quality === 'high' ? 1.65 : prefs.quality === 'low' ? .85 : 1)); world.setQuality(prefs.quality === 'high'); resize(); writePreferences(prefs); };
     sound.onchange = () => { prefs.sound = sound.checked; syncSound(); writePreferences(prefs); };
-    motion.onchange = () => { prefs.reducedMotion = motion.checked; world.setReducedMotion(prefs.reducedMotion); writePreferences(prefs); };
+    motion.onchange = () => { prefs.reducedMotion = motion.checked; world.setReducedMotion(prefs.reducedMotion); baseDistrict.setReducedMotion(prefs.reducedMotion); writePreferences(prefs); };
   });
   el<HTMLButtonElement>('#exit').onclick = exitWithSave; el<HTMLButtonElement>('#home').onclick = home;
   el<HTMLButtonElement>('#save').onclick = () => writeSave(true); el<HTMLButtonElement>('#pause').onclick = () => togglePause();

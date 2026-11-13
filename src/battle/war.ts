@@ -35,7 +35,7 @@ export interface War {
   time: number; zone: number; over: boolean; winner: number | null; nextUnit: number;
   difficulty: Difficulty; stats: WarStats[];
   squadOrders?: [SquadCommand | null, SquadCommand | null, SquadCommand | null];
-  /** Grand battle preserves original skirmish rules for existing saves. */
+  /** Legacy small-match saves remain loadable; new menu campaigns are grand battles. */
   grandBattle?: boolean;
   /** Player's home-base layout and hired generals; legacy saves initialize on load. */
   base?: BaseState;
@@ -76,6 +76,8 @@ export const UNIT_STATS: Record<UnitKind, {
 };
 export const MAX_UNITS = 18;
 export const GRAND_MAX_UNITS = 400;
+/** Rival expansion caps preserve the 100 vs 500 opening while making easy sustainable. */
+export const GRAND_AI_ARMY_LIMITS: Record<Difficulty, number> = {easy:225,normal:300,hard:400};
 export const GRAND_INITIAL_FORCES = [100, 167, 167, 166] as const;
 export const maxUnitsFor = (w: War) => w.grandBattle ? GRAND_MAX_UNITS : MAX_UNITS;
 export function createWarStats():WarStats {
@@ -161,8 +163,10 @@ export function repair(w:War,id:number):boolean {
 }
 /** Train a small squad atomically; never charge for units that cannot spawn. */
 export function trainSquad(w:War,id:number,kind:UnitKind='infantry',amount=3):boolean {
- const f=w.factions[id],unit=UNIT_STATS[kind];
- if(!f?.alive||w.over||!Object.hasOwn(UNIT_STATS,kind)||!Number.isInteger(amount)||amount<1||
+ const f=w.factions[id];
+ if(!f?.alive||w.over||!Object.hasOwn(UNIT_STATS,kind))return false;
+ const unit=UNIT_STATS[kind];
+ if(!Number.isInteger(amount)||amount<1||
    amount>(w.grandBattle?50:5)||f.barracks<unit.unlock||count(w,id)+amount>maxUnitsFor(w)||
    f.gold<unit.gold*amount||f.food<unit.food*amount)return false;
  for(let i=0;i<amount;i++)train(w,id,kind);
@@ -196,8 +200,10 @@ export function upgrade(w: War,id: number,k: Upgrade): boolean {
   return true;
 }
 export function train(w: War,id: number,kind: UnitKind='infantry'): boolean {
-  const f=w.factions[id],s=UNIT_STATS[kind];
-  if (!f?.alive||w.over||!Object.hasOwn(UNIT_STATS,kind)||f.barracks<s.unlock||f.gold<s.gold||
+  const f=w.factions[id];
+  if (!f?.alive||w.over||!Object.hasOwn(UNIT_STATS,kind))return false;
+  const s=UNIT_STATS[kind];
+  if (f.barracks<s.unlock||f.gold<s.gold||
       f.food<s.food||count(w,id)>=maxUnitsFor(w)) return false;
   f.gold-=s.gold;f.food-=s.food;spawn(w,id,kind);w.stats[id].trained++;return true;
 }
@@ -234,9 +240,10 @@ function aiTurn(w: War,f: Faction): void {
   else if (army>=8&&f.barracks>=2&&f.research.logistics<1&&research(w,f.id,'logistics')) { /* field supplies */ }
   else if (army>=12&&f.research.weapons<2&&research(w,f.id,'weapons')) { /* attack specialization */ }
   else if (army>=12&&f.research.armor<1&&research(w,f.id,'armor')) { /* sustain troops */ }
-  else if (army<(w.grandBattle?GRAND_MAX_UNITS-10:16)&&
+  else if (army<(w.grandBattle?GRAND_AI_ARMY_LIMITS[w.difficulty]:16)&&
     (w.grandBattle?trainSquad(w,f.id,
-      f.barracks>=3&&army%5===0?'cavalry':f.barracks>=2&&army%3===0?'archer':'infantry',10):
+      f.barracks>=3&&army%5===0?'cavalry':f.barracks>=2&&army%3===0?'archer':'infantry',
+      Math.min(10,GRAND_AI_ARMY_LIMITS[w.difficulty]-army)):
       train(w,f.id,f.barracks>=3&&army%5===0?'cavalry':f.barracks>=3&&army%4===0?'guardian':f.barracks>=2&&army%3===0?'archer':'infantry'))) { /* recruit */ }
   else if (f.hp<f.maxHp*.65&&repair(w,f.id)) { /* emergency repairs */ }
   else if (f.fort<3&&f.hp<f.maxHp*.85) upgrade(w,f.id,'fort');
@@ -343,7 +350,11 @@ export function stepWar(w: War,dt: number):void {
       w.factions[u.owner].alive&&w.factions[u.owner].hp>0&&distance(u.x,u.z,f.x,f.z)<13);
     if (invaders.length) {
       invaders.sort((a,b)=>distance(a.x,a.z,f.x,f.z)-distance(b.x,b.z,f.x,f.z));
-      attack(w,f.id,invaders[0],5+3*f.fort+(f.id===0?workshopLevel(w,'fort')*2.5:0));f.turretCooldown=1.6;
+      // A massed siege needs a limited, fort-scaled defensive salvo.
+      const targets=w.grandBattle?Math.min(invaders.length,2+f.fort):1;
+      for(let i=0;i<targets;i++)
+        attack(w,f.id,invaders[i],5+3*f.fort+(f.id===0?workshopLevel(w,'fort')*2.5:0));
+      f.turretCooldown=1.6;
     }
   }
   // Deterministic veteran reservation avoids stripping the HQ of all defenders.

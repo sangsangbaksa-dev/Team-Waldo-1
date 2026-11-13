@@ -1,4 +1,4 @@
-import type { Upgrade, Unit, War } from './war';
+import type { Upgrade, Unit, War } from './model';
 
 /** A compact, persistent plan of the player's 5x5 home-base district. */
 export type GeneralId = 'leon' | 'sora' | 'mira' | 'han';

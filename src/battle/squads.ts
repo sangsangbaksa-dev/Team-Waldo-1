@@ -1,4 +1,5 @@
-import { MAP_HALF_SIZE, type War, type Unit } from './war';
+import { MAP_HALF_SIZE } from './rules';
+import type { War, Unit } from './model';
 
 export const SQUAD_NAMES = ['주력군', '기동대', '수비대'] as const;
 export type SquadId = 0 | 1 | 2;

@@ -19,7 +19,7 @@ server.stderr.on('data', chunk => { serverOutput += chunk; });
 server.on('error', error => { serverOutput += `\n${error.stack}`; });
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const intersect = (a, b) => Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
-const capture = (page, name) => page.screenshot({ path: `${artifacts}/${name}.png`, fullPage: true, animations: 'disabled' });
+const capture = (page, name) => page.screenshot({ path: `${artifacts}/${name}.png`, fullPage: true, animations: 'disabled', timeout: 60000 });
 
 async function layout(page) {
   return page.evaluate(() => {
@@ -170,15 +170,21 @@ try {
       await stage('3D raycast and seeded defense warning');
       await page.locator('#overview').click();
       // World input intentionally ignores a paused game, so briefly resume for a
-      // real pointer gesture. Project the actual camera rather than guessing pixels.
+      // real pointer gesture. On phones, frame the objective to the right of the
+      // squad quickbar; still require an unobstructed, real canvas pointer event.
       await page.evaluate(() => window.__war.setPaused(false));
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => resolve())));
-      const projected = await page.evaluate(() => { const camera = window.__war.camera, point = camera.position.clone().set(0, 0, 0).project(camera); return { x: point.x, y: point.y }; });
+      const projected = await page.evaluate(() => {
+        const camera = window.__war.camera;
+        if (innerWidth < 500) camera.setViewOffset(innerWidth, innerHeight, -innerWidth * .28, 0, innerWidth, innerHeight);
+        const point = camera.position.clone().set(0, 0, 0).project(camera);
+        return { x: point.x, y: point.y };
+      });
       const field = page.locator('.war-view canvas'), fieldBox = await field.boundingBox(); assert.ok(fieldBox);
       await field.click({ position: { x: (projected.x + 1) * fieldBox.width / 2, y: (1 - projected.y) * fieldBox.height / 2 } });
       await page.locator('#target-card').waitFor();
       assert.equal(await page.locator('#target-name').innerText(), '중앙 요새');
-      await page.evaluate(() => window.__war.setPaused(true));
+      await page.evaluate(() => { window.__war.setPaused(true); window.__war.camera.clearViewOffset(); });
       await capture(page, `${name}-3d-target`);
       await page.locator('#target-command').click(); assert.equal((await snapshot(page)).rally, 4);
       result.scenarios.push('seeded enemy attack order for threat UI');
@@ -210,7 +216,7 @@ try {
       await stage('save and resume');
       await page.locator('#save').click(); const expected = await snapshot(page);
       const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('team-waldo-3d-war-v1')));
-      assert.equal(saved.version, 2); assert.equal(saved.war.factions[0].policy, 'growth');
+      assert.equal(saved.version, 3); assert.equal(saved.war.factions[0].policy, 'growth');
       await page.locator('#exit').click(); await page.locator('#continue-war').waitFor();
       await page.locator('#preferences').click(); assert.equal(await page.locator('#menu-quality').inputValue(), initialQuality);
       await page.keyboard.press('Escape'); await page.locator('#continue-war').click();

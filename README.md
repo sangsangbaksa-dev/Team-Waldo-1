@@ -182,6 +182,7 @@ AI도 자원을 사용해 건물을 강화하고 병력을 훈련하며 연구�
 | `npm run typecheck` | TypeScript 타입 검사 |
 | `npm test` | 전략·저장·UI 통합·서바이벌·데이터 테스트 |
 | `npm run test:browser` | 실제 Chromium의 데스크톱·모바일 WebGL 회귀 검사 |
+| `npm run benchmark:war` | 일반전·600명 전투 2,400틱 성능 측정과 상태 체크섬 |
 | `npm run validate-data` | 기존 서바이벌 데이터 JSON 검증 |
 | `npm run balance -- --runs 20` | 기존 서바이벌 봇 20회 시뮬레이션 |
 | `npm run build` | 배포 파일을 `dist/`에 생성 |
@@ -200,7 +201,10 @@ npm run test:browser
 
 | 경로 | 역할 |
 | --- | --- |
-| `src/battle/war.ts` | 렌더러 독립 전략 시뮬레이션, 경제·전투·연구·AI·통계 |
+| `src/battle/war.ts` | 공개 API, 경제·연구·AI와 시뮬레이션 실행 순서 |
+| `src/battle/model.ts`, `rules.ts` | 저장 가능한 상태 타입과 공통 밸런스 정의 |
+| `src/battle/combat.ts`, `unitSpatialIndex.ts` | 전투·이동과 전투별로 재사용하는 공간 인덱스 |
+| `src/battle/territory.ts`, `events.ts` | 거점 점령과 이벤트 기록 |
 | `src/battle/save.ts` | 버전별 저장 검증·이전 저장 마이그레이션 |
 | `src/battle/view.ts` | 관리 화면, 게임 루프, 카메라·입력·저장 흐름 |
 | `src/battle/graphics.ts` | Three.js 전장·모델·전투 연출과 GPU 자원 수명 관리 |
@@ -214,6 +218,10 @@ npm run test:browser
 | `tools/browser-smoke.mjs` | 실제 Chromium과 WebGL로 실행하는 화면 회귀 검사 |
 
 전략 시뮬레이션과 Three.js 화면을 분리해 실제 게임 규칙을 브라우저 없이 검사합니다. 연구 효과와 비용, 병력 제한, 거점 점령, 동일 입력의 결정성, 손상된 저장 거부와 v1 이전, 자연 진행 저장·복원 등을 검증합니다. 장시간 AI 시뮬레이션으로 자원·체력·병력·이벤트 수치가 유효한지도 확인합니다.
+
+전투 처리용 공간 인덱스와 수비대 작업 버퍼는 `WeakMap<War, ...>`에 보관합니다. 매 틱 버킷을 재사용하고 아군만 있는 셀은 건너뛰며, 저장 데이터에는 캐시를 추가하지 않습니다. 처리 순서는 경제·AI → 포탑·부대 전투·이동 → 거점 점령 → 탈락·승패 판정입니다. 도메인 파일의 렌더러·DOM·비결정적 API 의존은 ESLint로 제한합니다.
+
+`npm run benchmark:war`는 같은 명령으로 게임 시간 60초를 실행해 예열 후 5회 중앙값과 최종 상태 SHA-256을 출력합니다. 브라우저 검사·빌드와 동시에 실행하지 말고 같은 Node 버전과 기기에서 비교하세요. 이 수치는 렌더링 FPS가 아닌 시뮬레이션 CPU 시간입니다.
 
 3D 모델·SVG 배경과 게임 내 효과음은 코드로 생성합니다. 한국어 웹폰트는 Google Fonts에서 제공하며, 연결되지 않을 때 시스템 글꼴로 대체됩니다. 서버 API·비밀 키·외부 3D 에셋 없이 빌드할 수 있습니다. 화면의 그래픽 품질은 기기와 브라우저의 WebGL 성능에 영향을 받습니다.
 

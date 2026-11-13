@@ -7,7 +7,7 @@ function stagedArmy(difficulty: Difficulty, faction: number, allOutposts: boolea
   const ai = world.factions[faction]; ai.gold = 10000; ai.food = 10000; ai.aiTimer = 0;
   const size = allOutposts ? 8 : 12;
   for (let i = 4; i < size; i++) train(world, faction);
-  for (const post of world.outposts.slice(0, allOutposts ? 9 : 3)) post.owner = faction;
+  for (const post of world.outposts.slice(0, allOutposts ? world.outposts.length : 3)) post.owner = faction;
   return { world, ai };
 }
 

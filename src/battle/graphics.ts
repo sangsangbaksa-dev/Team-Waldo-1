@@ -1,3 +1,5 @@
+import { MOUNTAINS } from './terrain';
+import { createFacilityVisuals } from './facilityVisuals';
 import * as THREE from 'three';
 import { createGrandArmyVisuals } from './grandArmyVisuals';
 import { MAP_HALF_SIZE, OUTPOST_NAMES, OUTPOST_BONUSES, UNIT_STATS, type Unit, type UnitKind, type War } from './war';
@@ -6,7 +8,7 @@ import { createBattleEffects } from './renderEffects';
 import { batchStaticChildren, type StaticBatch } from './renderBatches';
 
 /** Procedural, self-contained stylized 3D battlefield. No external models or textures. */
-export const FACTION_COLORS = [0x50d9d1, 0xf06a77, 0xf5c45d, 0xaa8eed] as const;
+export const FACTION_COLORS = [0x639b90, 0xa35c60, 0xb4a16b, 0x827a9e] as const;
 const clamp = THREE.MathUtils.clamp;
 const dist = (x:number,z:number,a:number,b:number) => Math.hypot(x-a,z-b);
 type UnitVisual = {
@@ -39,22 +41,23 @@ export function terrainShade(x:number,z:number):number {
 }
 export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   const world=new THREE.Group();world.name='Stylized kingdom';scene.add(world);
+  const facilityVisuals=createFacilityVisuals(world,war);
   let highQuality=true;
   let reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let strategicOverlaysVisible=true;
   const labels:WorldLabel[]=[];
   const effects=createBattleEffects(world);
-  scene.background=new THREE.Color(0xb9d1d0);
-  scene.fog=new THREE.FogExp2(0xb9d1d0,.00085);
+  scene.background=new THREE.Color(0xb0b7b5);
+  scene.fog=new THREE.FogExp2(0xb0b7b5,.00065);
   const ambient=new THREE.HemisphereLight(0xe9f6ff,0x60704c,2.15);
   scene.add(ambient);
   const sun=new THREE.DirectionalLight(0xffe2ab,2.7);
-  sun.position.set(-130,220,140);
+  sun.position.set(-230,400,260);
   sun.castShadow=true;
-  sun.shadow.mapSize.set(3072,3072);
-  sun.shadow.camera.left=-280;sun.shadow.camera.right=280;
-  sun.shadow.camera.top=280;sun.shadow.camera.bottom=-280;
-  sun.shadow.camera.near=10;sun.shadow.camera.far=520;
+  sun.shadow.mapSize.set(4096,4096);
+  sun.shadow.camera.left=-550;sun.shadow.camera.right=550;
+  sun.shadow.camera.top=550;sun.shadow.camera.bottom=-550;
+  sun.shadow.camera.near=10;sun.shadow.camera.far=950;
   sun.shadow.normalBias=.035;sun.shadow.bias=-.0001;
   scene.add(sun,sun.target);
   const fill=new THREE.DirectionalLight(0x91b4e5,.65);fill.position.set(35,35,-45);scene.add(fill);
@@ -94,12 +97,12 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     object.castShadow=true;object.receiveShadow=true;parent.add(object);return object;
   };
   // Low-height sculpted terrain: game-space remains planar and unit movement unchanged.
-  add(world,new THREE.PlaneGeometry(700,700),waterMat,0,-1.15,0).rotation.x=-Math.PI/2;
-  const terrain=new THREE.PlaneGeometry(MAP_HALF_SIZE*2,MAP_HALF_SIZE*2,150,150);
+  add(world,new THREE.PlaneGeometry(MAP_HALF_SIZE*2+80,MAP_HALF_SIZE*2+80),waterMat,0,-1.15,0).rotation.x=-Math.PI/2;
+  const terrain=new THREE.PlaneGeometry(MAP_HALF_SIZE*2,MAP_HALF_SIZE*2,200,200);
   terrain.rotateX(-Math.PI/2);
   const position=terrain.getAttribute('position');
   const vertexColors:number[]=[];
-  const greenA=new THREE.Color(0x48794c),greenB=new THREE.Color(0x7d9c62);
+  const greenA=new THREE.Color(0x3d5040),greenB=new THREE.Color(0x77816a);
   for(let i=0;i<position.count;i++){
     const x=position.getX(i),z=position.getZ(i);
     const edge=Math.max(Math.abs(x),Math.abs(z));
@@ -112,6 +115,16 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   const ground=add(world,terrain,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1}),0,0,0);
   ground.castShadow=false;ground.receiveShadow=true;
 
+  // Textured rock masses share the same circular footprints used by pathfinding.
+  const mountainMaterial=new THREE.MeshStandardMaterial({color:0x737674,roughness:.96,flatShading:true});
+  const snowMaterial=new THREE.MeshStandardMaterial({color:0xc6cbc6,roughness:.9,flatShading:true});
+  for(const m of MOUNTAINS){
+    add(world,new THREE.ConeGeometry(m.radius,m.height,9,3),mountainMaterial,m.x,m.height/2-.3,m.z);
+    add(world,new THREE.ConeGeometry(m.radius*.25,m.height*.27,9),snowMaterial,m.x,m.height*.875,m.z);
+    for(let i=0;i<5;i++){const a=i*Math.PI*2/5,r=m.radius*.6;
+      const shard=add(world,new THREE.ConeGeometry(m.radius*.37,m.height*.48,6),mountainMaterial,m.x+Math.cos(a)*r,m.height*.22,m.z+Math.sin(a)*r);shard.rotation.y=a;
+    }
+  }
   const rng=seeded(738139);
   const road=(ax:number,az:number,bx:number,bz:number,width=2.9)=>{
     const dx=bx-ax,dz=bz-az,d=Math.hypot(dx,dz);
@@ -300,7 +313,20 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     const label=createWorldLabel(25,6.25);
     label.sprite.position.set(p.x,12.5,p.z);
     world.add(label.sprite);labels.push(label);
-    add(root,cylinder,stoneDark,0,.5,0,10,1,10);
+    if(p.id>=9){
+      const kind=(p.id-9)%3;
+      if(kind===0){
+        add(root,rock,stoneDark,0,2,0,9,5,7);
+        for(let i=0;i<6;i++)add(root,new THREE.OctahedronGeometry(1),gold,Math.cos(i)*5,3+i*.4,Math.sin(i)*4,1,2,1);
+        add(root,box,timber,0,7,-2,12,.6,1);add(root,box,timber,-5,3,-2,.8,7,.8);add(root,box,timber,5,3,-2,.8,7,.8);
+      }else if(kind===1){
+        add(root,box,cream,-5,2,0,5,4,7);add(root,cone,roof,-5,5,0,5,3,5);
+        for(let row=0;row<6;row++)for(let col=0;col<5;col++)add(root,box,gold,2+row*.9,.8,col*1.8-4,.5,1.6,.5);
+      }else{
+        add(root,box,stone,0,3,0,10,6,9);add(root,cone,roof,0,7.5,0,8,4,8);
+        for(const x of [-7,7]){add(root,box,timber,x,1.2,4,3,2.4,4);add(root,box,cream,x,4,4,4,.3,5);}
+      }
+    }else{add(root,cylinder,stoneDark,0,.5,0,10,1,10);}
     add(root,cylinder,stone,0,1,0,7.5,1,7.5);
     add(root,cylinder,gold,0,1.6,0,4,.5,4);
     for(let i=0;i<6;i++){
@@ -439,6 +465,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     else effects.burst((goal.x+u.x)*.5,1.8,(goal.z+u.z)*.5,0xffe7a4,4,.65);
   }
   function update(dt:number):void {
+    facilityVisuals.update();
     const time=war.time;
     ring.scale.set(war.zone,war.zone,war.zone);
     storm.scale.set(war.zone,1,war.zone);
@@ -568,7 +595,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     if(!visible){route.visible=false;destination.visible=false;}
   };
   const dispose=():void=>{
-    labels.forEach(label=>label.dispose());effects.dispose();
+    facilityVisuals.dispose();labels.forEach(label=>label.dispose());effects.dispose();
     scene.remove(world,ambient,sun,sun.target,fill);
     const geos=new Set<THREE.BufferGeometry>(),mats=new Set<THREE.Material>();
     world.traverse(o=>{
@@ -586,7 +613,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     [stone,stoneDark,mortar,roof,timber,woodDark,cream,gold,meadow,leaves,leafLight,...flowerMats,
       waterMat,roadMat,soilMat,ember,routeMaterial,farmRoofMaterial,...wheatMats,...teamMats,...bannerMats,...markerMats].forEach(m=>mats.add(m));
     mats.forEach(m=>m.dispose());
-    sun.shadow.map?.dispose();
+    mountainMaterial.dispose();snowMaterial.dispose();sun.shadow.map?.dispose();
     models.clear();cooldowns.clear();unitBatches.clear();projectiles.length=0;freeMissiles.length=0;
   };
   configureEffects();update(0);

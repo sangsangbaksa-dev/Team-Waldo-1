@@ -5,3 +5,6 @@ dist
 browser-artifacts/
 qa/
 .vercel/
+
+supabase/.temp/
+.env*

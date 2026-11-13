@@ -1,3 +1,4 @@
+import { walkable } from './terrain';
 import * as THREE from 'three';
 import { captureHeroPost, OUTPOST_NAMES, type Outpost, type Unit, type War } from './war';
 
@@ -219,8 +220,9 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
     if (move.lengthSq() > 0) {
       move.normalize().multiplyScalar(dt * (mode === 'tower' ? 6.5 : 12));
       const sine = Math.sin(yaw), cosine = Math.cos(yaw);
-      x += -sine * move.y + cosine * move.x;
-      z += -cosine * move.y - sine * move.x;
+      const nextX=x-sine*move.y+cosine*move.x,nextZ=z-cosine*move.y-sine*move.x;
+      if(walkable(nextX,z))x=nextX;
+      if(walkable(x,nextZ))z=nextZ;
     }
     if (mode === 'tower') {
       x = clamp(x, castleX - 3.1, castleX + 3.1);

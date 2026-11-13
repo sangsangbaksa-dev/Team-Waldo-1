@@ -121,3 +121,21 @@ font-size:11px;font-weight:700;letter-spacing:.025em}
 
 .economy-expansion { margin-top: 22px; border-top: 1px solid #bda56d44; padding-top: 12px; }
 .economy-control { white-space: normal; text-align: left; line-height: 1.6; padding: 12px; width: 100%; overflow-wrap: anywhere; }
+
+.war-ui{--panel:rgba(20,29,33,.97);--gold:#b8a27d;--mint:#93a99b;--border:rgba(150,160,149,.25);color:#d4dbd4}
+.war-ui .war-top,.war-ui .war-panel,.war-ui .war-minimap,.war-ui .war-intel,.war-ui .mission-card{border-radius:3px;background:rgba(20,29,33,.95);box-shadow:0 8px 30px #0005}
+.war-ui .war-action,.war-ui .tool-button,.war-ui .button,.war-ui .segmented button{border-radius:2px}
+.war-ui .grand-battle-tag{color:#c7b48d;background:#282f2c;border-color:#65674f}
+.war-ui .economy-expansion select{display:block;max-width:100%;width:100%;background:#1c282b;color:#d4dbd4;border:1px solid #596052;padding:8px;margin:8px 0}
+.war-ui .economy-expansion h2{letter-spacing:.05em}
+.base-dialog{position:fixed;inset:3vh 3vw;width:94vw;height:94vh;max-width:none;max-height:none;margin:0;box-sizing:border-box;padding:24px;border:1px solid #77806b;background:#131d22;color:#dce0d5;font:14px/1.6 system-ui,sans-serif;overflow:auto;box-shadow:0 24px 100px #000b}
+.base-dialog::backdrop{background:#070c10cf}.base-dialog header{display:flex;justify-content:space-between;gap:20px;border-bottom:1px solid #465047;padding-bottom:15px}.base-dialog h1{font-weight:500;letter-spacing:.08em;margin:5px 0}
+.base-layout{display:grid;grid-template-columns:290px minmax(0,1fr);gap:28px;margin-top:20px}.base-layout aside{max-height:72vh;overflow:auto;padding-right:8px}.base-layout select{display:block;width:100%;padding:9px;background:#202a2c;color:#dce0d5;border:1px solid #626953}.base-catalog{display:grid;gap:8px}
+.base-choice{padding:12px;background:#222e31;color:#dce0d5;border:1px solid #4d594c;text-align:left;cursor:pointer}.base-choice b,.base-choice small,.base-choice span{display:block}.base-choice small{color:#a9b5a8}.base-choice span{font-size:11px;color:#c1ab7d}.base-choice[aria-pressed=true]{border-color:#c1ab7d;background:#3c3d2c}.base-choice:disabled{opacity:.4;cursor:default}
+.base-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;padding:18px;background:repeating-linear-gradient(0deg,#1a2725 0,#1a2725 2px,#26312a 2px,#26312a 42px);border:2px solid #626b57;box-shadow:inset 0 0 50px #0008}
+.base-cell{aspect-ratio:1;white-space:pre-line;min-width:0;border:1px dashed #7f8a6b;background:#303b3099;color:#a8b698;cursor:crosshair;font:12px/1.7 system-ui,sans-serif;box-shadow:inset 0 0 12px #0005}
+.base-cell.occupied{border-style:solid;border-color:#a1a48e;background:linear-gradient(145deg,#657266,#283d37);box-shadow:inset 0 3px 0 #c1b692,4px 4px 0 #070e0c66;color:#e7e7d5;cursor:default;opacity:1}.base-cell[data-kind=hospital],.base-cell[data-kind=clinic]{background:linear-gradient(145deg,#667878,#28494b)}.base-cell[data-kind=university],.base-cell[data-kind=school]{background:linear-gradient(145deg,#7a7165,#494237)}.base-cell[data-kind=powerplant],.base-cell[data-kind=workshop]{background:linear-gradient(145deg,#77715c,#464632)}
+.base-plan-heading{display:flex;align-items:center;justify-content:space-between;color:#c1ab7d}.base-legend{text-align:center;border:1px solid #626b57;padding:8px;color:#96a591;font-size:12px}
+@media(max-width:800px){.base-dialog{inset:0;width:100vw;height:100dvh;padding:14px}.base-layout{display:flex;flex-direction:column-reverse;gap:15px}.base-layout aside{max-height:none;overflow:visible}.base-grid{gap:3px;padding:6px}.base-cell{font-size:9px}.base-catalog{grid-template-columns:repeat(2,minmax(0,1fr))}.base-dialog h1{font-size:20px}.base-dialog header .button{font-size:11px;padding:8px}}
+.base-cell.occupied{position:relative}.base-cell svg{position:absolute;top:0;left:15%;width:70%;height:68%;filter:drop-shadow(3px 5px 2px #0006)}.base-cell>span{position:absolute;bottom:4%;left:0;width:100%;line-height:1.35;font-size:11px}
+@media(max-width:800px){.base-cell>span{font-size:8px}.base-cell svg{height:60%;width:66%;left:17%}}

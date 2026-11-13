@@ -4,15 +4,15 @@ import { createWar, GRAND_INITIAL_FORCES, GRAND_MAX_UNITS, maxUnitsFor,
 import { decodeWar, encodeWar } from '../../src/battle/save';
 import { assignSquad, commandSquad, squadUnits } from '../../src/battle/squads';
 
-describe('600 soldier grand-battle expedition', () => {
-  it('spawns 100 allied soldiers against exactly 500 enemy soldiers with mixed classes', () => {
+describe('400 soldier grand-battle expedition', () => {
+  it('spawns four equal armies of 100 soldiers with mixed classes', () => {
     const war = createWar({ grandBattle: true, difficulty: 'easy' });
     expect(war.grandBattle).toBe(true);
-    expect(war.units).toHaveLength(600);
+    expect(war.units).toHaveLength(400);
     for (const [index, expected] of GRAND_INITIAL_FORCES.entries()) {
       expect(war.units.filter(unit => unit.owner === index)).toHaveLength(expected);
     }
-    expect(war.units.filter(u => u.owner !== 0)).toHaveLength(500);
+    expect(war.units.filter(u => u.owner !== 0)).toHaveLength(300);
     expect(new Set(war.units.map(u => u.kind)).size).toBe(4);
     expect(maxUnitsFor(war)).toBe(GRAND_MAX_UNITS);
     expect(stormStartFor(war)).toBe(360);
@@ -32,7 +32,7 @@ describe('600 soldier grand-battle expedition', () => {
     expect(restored!.grandBattle).toBe(true);
     expect(squadUnits(restored!, 1)).toHaveLength(25);
     expect(restored!.squadOrders?.[1]).toEqual({kind:'outpost', id:5});
-    expect(restored!.units).toHaveLength(625);
+    expect(restored!.units).toHaveLength(425);
   });
 
   it('simulates 600 active units without numerical drift or invalid positions', () => {

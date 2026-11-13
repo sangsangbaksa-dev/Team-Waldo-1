@@ -31,7 +31,7 @@ describe('independent army groups', () => {
       expect(Math.hypot(current.x - original.x, current.z - original.z)).toBeLessThan(15);
     }
     expect(commandSquad(war, 1, { kind: 'home' })).toBe(true);
-    expect(squadDestination(war, 1)).toEqual({ x: -112, z: -112 });
+    expect(squadDestination(war, 1)).toEqual({ x: -260, z: -260 });
   });
 
   it('validates map orders and persists independent squad destinations', () => {

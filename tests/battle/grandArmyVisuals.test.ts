@@ -4,13 +4,13 @@ import { createGrandArmyVisuals } from '../../src/battle/grandArmyVisuals';
 import { createWar } from '../../src/battle/war';
 
 describe('large-army visual LOD', () => {
-  it('renders 600 warriors with shared instanced armor and complete cavalry legs', () => {
+  it('renders 400 warriors with shared instanced armor and complete cavalry legs', () => {
     const war = createWar({ grandBattle: true });
     const group = new THREE.Group();
     const visual = createGrandArmyVisuals(group, war);
     const batches = group.children.filter((object): object is THREE.InstancedMesh =>
       object instanceof THREE.InstancedMesh);
-    expect(war.units).toHaveLength(600);
+    expect(war.units).toHaveLength(400);
     expect(batches.length).toBeGreaterThan(80);
     expect(batches.every(mesh => mesh.count <= 400)).toBe(true);
     const legBatches = batches.filter(mesh => mesh.geometry.type === 'BoxGeometry' &&
@@ -34,6 +34,6 @@ describe('large-army visual LOD', () => {
     visual.update();
     const after = batches.reduce((sum, mesh) => sum + mesh.count, 0);
     expect(after).toBeLessThan(before);
-    expect(war.units).toHaveLength(599);
+    expect(war.units).toHaveLength(399);
   });
 });

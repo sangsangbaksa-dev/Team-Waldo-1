@@ -1,4 +1,7 @@
+import { WORLD_HALF, KINGDOM_CORNERS, STRATEGIC_POSTS, walkable, moveAcrossTerrain } from './terrain';
+import { facilityIncome, completedFacilities, stepFacilities, autoBuildFacility, type Facility } from './facilities';
 /** Deterministic, renderer-independent economy, territory and combat simulation. */
+import { createEconomy, economicIncome, stepEconomy, develop, assignWorker, exportFood, acceptContract, deliverContract, type Economy } from './economy';
 import type { SquadCommand } from './squads';
 import { createBaseState, getBaseState, generalBonus, incomeGeneralBonus, workshopLevel, type BaseState } from './base';
 import { battlefieldCoverAt, resolveBattlefieldStep } from './battlefieldLayout';
@@ -13,6 +16,7 @@ export interface Faction {
   alive: boolean; target: number | null; rally: number | null;
   reserve: number; policy: EconomyPolicy;
   research: Record<Research, number>;
+  economy?: Economy; researchDiscount?: number;
   aiTimer: number; turretCooldown: number;
 }
 export interface Unit {
@@ -37,8 +41,9 @@ export interface War {
   squadOrders?: [SquadCommand | null, SquadCommand | null, SquadCommand | null];
   /** Grand battle preserves original skirmish rules for existing saves. */
   grandBattle?: boolean;
-  /** Player's home-base layout and hired generals; legacy saves initialize on load. */
+  facilities?: Facility[]; nextFacility?: number;
   base?: BaseState;
+  humanFactions?: number[];
 }
 export const DIFFICULTIES: Record<Difficulty, {label:string;description:string;aiIncome:number;aiInterval:number;aiAttackAfter:number}> = {
   easy: {label:'입문',description:'아군 자원 +35% · AI 생산 45% 감소 · AI 본부 공세 260초 이후 · 폭풍 3분 이후',aiIncome:.55,aiInterval:1.7,aiAttackAfter:260},
@@ -51,20 +56,21 @@ export const RESEARCH: Record<Research, {label:string;description:string;maxLeve
   logistics: {label:'보급 체계',description:'단계마다 이동 속도 +8% · 자원 생산 +6%',maxLevel:3,requiredBarracks:2,gold:60,food:80},
 };
 export const NAMES = ['나', '적색', '황색', '보라'] as const;
-export const OUTPOST_NAMES = ['북부 광산', '동부 시장', '남부 곡창', '서부 항구', '중앙 요새', '북서부 관문', '북동부 초소', '남서부 요새', '남동부 교역소'] as const;
+export const OUTPOST_NAMES = ['북부 광산', '동부 시장', '남부 곡창', '서부 항구', '중앙 요새', '북서부 관문', '북동부 초소', '남서부 요새', '남동부 교역소', ...Array.from({length:24},(_,i)=>`${i<12?'외곽':'국경'} ${['금광','농장','교역 기지'][i%3]} ${i+1}`)];
 /** Specialty income is added on top of mine and farm production. */
 export const OUTPOST_BONUSES: ReadonlyArray<{gold:number;food:number}> = [
   {gold:3.1,food:.3}, {gold:2.5,food:1.6}, {gold:.3,food:3.4},
   {gold:2.1,food:2.1}, {gold:1.15,food:.9}, {gold:1.1,food:1.7},
   {gold:1.8,food:.8}, {gold:.7,food:2.3}, {gold:2.4,food:1.2},
+  ...Array.from({length:24},(_,i)=>i%3===0?{gold:3.5,food:.3}:i%3===1?{gold:.3,food:3.5}:{gold:2,food:2}),
 ];
-export const MAP_HALF_SIZE = 260;
+export const MAP_HALF_SIZE = WORLD_HALF;
 export const MAP_SIZE = MAP_HALF_SIZE * 2;
 export const STORM_START = 130;
 export const stormStartFor = (w: War) => w.grandBattle ? (w.difficulty === 'easy' ? 360 : 270) : w.difficulty === 'easy' ? 180 : STORM_START;
 export const STORM_HQ_DAMAGE = 3.5;
-const CORNERS = [[-112,-112],[112,-112],[-112,112],[112,112]] as const;
-const OUTPOSTS = [[0,-95],[95,0],[0,95],[-95,0],[0,0],[-62,-62],[62,-62],[-62,62],[62,62]] as const;
+const CORNERS=KINGDOM_CORNERS;
+const OUTPOSTS=STRATEGIC_POSTS;
 export const UNIT_STATS: Record<UnitKind, {
   label: string; gold: number; food: number; hp: number;
   damage: number; range: number; speed: number; cooldown: number; unlock: number;
@@ -76,7 +82,7 @@ export const UNIT_STATS: Record<UnitKind, {
 };
 export const MAX_UNITS = 18;
 export const GRAND_MAX_UNITS = 400;
-export const GRAND_INITIAL_FORCES = [100, 167, 167, 166] as const;
+export const GRAND_INITIAL_FORCES = [100, 100, 100, 100] as const;
 export const maxUnitsFor = (w: War) => w.grandBattle ? GRAND_MAX_UNITS : MAX_UNITS;
 export function createWarStats():WarStats {
   return {trained:0,kills:0,lost:0,captures:0,goldEarned:0,foodEarned:0,damageDealt:0,researches:0,upgrades:0,peakArmy:4};
@@ -86,10 +92,11 @@ export function createWar(options:{difficulty?:Difficulty;grandBattle?:boolean}=
   const difficulty=options.difficulty && Object.hasOwn(DIFFICULTIES,options.difficulty)?options.difficulty:'normal';
   const factions: Faction[] = CORNERS.map(([x,z],id) => ({
     id,x,z,hp:grandBattle?600:400,maxHp:grandBattle?600:400,
-    gold:grandBattle?(id===0?8500:6500):140,food:grandBattle?(id===0?7500:6000):100,
+    gold:grandBattle?6500:140,food:grandBattle?6000:100,
     farm:grandBattle?3:1,mine:grandBattle?3:1,barracks:grandBattle?3:1,
     fort:grandBattle?3:1,alive:true,target:null,rally:null,
     reserve:id===0?0:grandBattle?12:2,policy:'balanced' as EconomyPolicy,
+    economy:createEconomy(),
     research:{weapons:0,armor:0,logistics:0},
     aiTimer:(2.5+id*.6)*DIFFICULTIES[difficulty].aiInterval,turretCooldown:0,
   }));
@@ -98,8 +105,7 @@ export function createWar(options:{difficulty?:Difficulty;grandBattle?:boolean}=
   }));
   const war: War = {
     factions,units:[],outposts,events:[],time:0,zone:MAP_HALF_SIZE-6,over:false,winner:null,nextUnit:1,
-    difficulty,stats:Array.from({length:4},createWarStats),squadOrders:[null,null,null],grandBattle,
-    base:createBaseState(),
+    difficulty,stats:Array.from({length:4},createWarStats),squadOrders:[null,null,null],grandBattle,facilities:[],nextFacility:1,base:createBaseState(),
   };
   for(let id=0;id<4;id++){
     const total=grandBattle?GRAND_INITIAL_FORCES[id]:4;
@@ -126,21 +132,23 @@ export function getIncome(w:War,id:number):{gold:number;food:number} {
   if(!f?.alive)return {gold:0,food:0};
   const owned=w.outposts.filter(p=>p.owner===id);
   const policy=f.policy==='growth'?1.25:f.policy==='war'?.88:1;
+  const bonus=economicIncome(w,id), buildings=facilityIncome(w,id);
+  bonus.gold+=buildings.gold+(id===0?workshopLevel(w,'mine')*.8:0);bonus.food+=buildings.food+(id===0?workshopLevel(w,'farm')*.75:0);
   const multiplier=policy*(1+f.research.logistics*.06)*(1+incomeGeneralBonus(w,id))*(id===0?(w.difficulty==='easy'?1.35:1):DIFFICULTIES[w.difficulty].aiIncome);
   return {
-    gold:owned.reduce((a,p)=>a+OUTPOST_BONUSES[p.id].gold,f.mine*1.5+(id===0?workshopLevel(w,'mine')*.8:0))*multiplier,
-    food:owned.reduce((a,p)=>a+OUTPOST_BONUSES[p.id].food,f.farm*1.3+(id===0?workshopLevel(w,'farm')*.75:0))*multiplier,
+    gold:owned.reduce((a,p)=>a+OUTPOST_BONUSES[p.id].gold,f.mine*1.5+bonus.gold)*multiplier,
+    food:owned.reduce((a,p)=>a+OUTPOST_BONUSES[p.id].food,f.farm*1.3+bonus.food)*multiplier,
   };
 }
 /** Captured supply points protect immobile HQs: 12% each, up to 60%. */
 export function stormDamage(w:War,id:number):number {
   const f=w.factions[id];
   if(!f?.alive||distance(f.x,f.z,0,0)<=w.zone)return 0;
-  return STORM_HQ_DAMAGE*(1-Math.min(5,w.outposts.filter(p=>p.owner===id).length)*.12);
+  return STORM_HQ_DAMAGE*(1-Math.min(5,w.outposts.filter(p=>p.owner===id).length)*.12)*(1-Math.min(.4,completedFacilities(w,id,'wall')*.08));
 }
 export function researchCost(f:Faction,key:Research):{gold:number;food:number} {
   const definition=RESEARCH[key],level=f.research[key]+1;
-  return {gold:definition.gold*level,food:definition.food*level};
+  return {gold:Math.ceil(definition.gold*level*(1-(f.researchDiscount??0))),food:Math.ceil(definition.food*level*(1-(f.researchDiscount??0)))};
 }
 export function research(w:War,id:number,key:Research):boolean {
   const f=w.factions[id];
@@ -221,7 +229,17 @@ function nearestEnemy(w: War,f: Faction): Faction|undefined {
 function count(w: War,id: number): number {
   return w.units.filter(u=>u.owner===id&&u.hp>0).length;
 }
+const facilitiesForAI=(w:War,id:number)=>(w.facilities??[]).filter(b=>b.owner===id).length;
 function aiTurn(w: War,f: Faction): void {
+  if(f.gold>300&&f.food>180&&facilitiesForAI(w,f.id)<12)autoBuildFacility(w,f.id,(["mine","farm","tower","barracks"] as const)[Math.floor(w.time/15)%4]);
+  const e=f.economy;
+  if(e){
+    if(e.miners+e.farmers<4+(e.city-1)*2)assignWorker(w,f.id,e.miners<=e.farmers?'miners':'farmers',1);
+    if(!e.construction && f.gold>250 && f.food>160)develop(w,f.id,e.market===0?'market':'city');
+    if(e.contract)deliverContract(w,f.id);
+    else if(e.market && f.food>200)acceptContract(w,f.id,'grain');
+    if(f.food>350)exportFood(w,f.id);
+  }
   const army=count(w,f.id),owned=w.outposts.filter(p=>p.owner===f.id).length;
   f.policy=army<8&&w.time<160?'growth':(army>=11||w.time>220)?'war':'balanced';
   f.reserve=w.grandBattle?Math.min(24,Math.floor(army/12)):army>10?2:Math.min(2,Math.floor(army/3));
@@ -258,10 +276,10 @@ function aiTurn(w: War,f: Faction): void {
 function moveToward(w:War,u:Unit,x:number,z:number,dt:number):void {
   const d=distance(u.x,u.z,x,z);
   if (d<.01) return;
-  const speed=UNIT_STATS[u.kind].speed*(1+w.factions[u.owner].research.logistics*.08)*(1+generalBonus(w,u,'speed'));
+  const speed=UNIT_STATS[u.kind].speed*(1+w.factions[u.owner].research.logistics*.08)*(1+completedFacilities(w,u.owner,'academy')*.04)*(1+generalBonus(w,u,'speed'));
   const step=Math.min(d,speed*dt);
-  const next=resolveBattlefieldStep(u.x,u.z,u.x+(x-u.x)/d*step,u.z+(z-u.z)/d*step,x,z);
-  u.x=next.x;u.z=next.z;
+  const mountainStep=moveAcrossTerrain(u.x,u.z,x,z,step);
+  const next=resolveBattlefieldStep(u.x,u.z,mountainStep.x,mountainStep.z,x,z);if(walkable(next.x,next.z)){u.x=next.x;u.z=next.z;}
 }
 function updateOutposts(w: War,dt:number):void {
   for (const p of w.outposts) {
@@ -326,12 +344,13 @@ export function stepWar(w: War,dt: number):void {
   w.zone=Math.max(24,MAP_HALF_SIZE-6-Math.max(0,w.time-stormStartFor(w))*.48);
   for (const f of w.factions) {
     if (!f.alive) continue;
+    stepEconomy(w,f.id,dt);
     const income=getIncome(w,f.id);
     f.gold+=income.gold*dt;f.food+=income.food*dt;
     w.stats[f.id].goldEarned+=income.gold*dt;w.stats[f.id].foodEarned+=income.food*dt;
     f.hp-=stormDamage(w,f.id)*dt;
     f.turretCooldown=Math.max(0,f.turretCooldown-dt);
-    if (f.id>0&&f.hp>0) {
+    if (f.id>0&&f.hp>0&&!w.humanFactions?.includes(f.id)) {
       f.aiTimer-=dt;
       if (f.aiTimer<=0) {f.aiTimer=(3+f.id*.35)*DIFFICULTIES[w.difficulty].aiInterval;aiTurn(w,f);}
     }
@@ -367,7 +386,7 @@ export function stepWar(w: War,dt: number):void {
     const f=w.factions[u.owner];
     if (!f.alive||f.hp<=0||u.hp<=0) continue;
     const s=UNIT_STATS[u.kind];
-    const combatMultiplier=(f.policy==='war'?1.18:1)*(1+f.research.weapons*.12)*(1+generalBonus(w,u,'damage'))*(u.owner===0?1+workshopLevel(w,'barracks')*.09:1);
+    const combatMultiplier=(1+completedFacilities(w,u.owner,'workshop')*.06)*(f.policy==='war'?1.18:1)*(1+f.research.weapons*.12)*(1+generalBonus(w,u,'damage'))*(u.owner===0?1+workshopLevel(w,'barracks')*.09:1);
     u.cooldown=Math.max(0,u.cooldown-dt);
     if (distance(u.x,u.z,0,0)>w.zone) u.hp-=1.8*dt;
     if (u.hp<=0) continue;
@@ -449,6 +468,7 @@ export function stepWar(w: War,dt: number):void {
       if (distance(u.x,u.z,x,z)>1) moveToward(w,u,x,z,dt);
     }
   }
+  stepFacilities(w,dt);
   updateOutposts(w,dt);
   for (const f of w.factions) {
     if (f.alive&&f.hp<=0) {f.hp=0;f.alive=false;f.target=null;f.rally=null;

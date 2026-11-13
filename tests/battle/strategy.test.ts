@@ -6,9 +6,9 @@ describe('3D management war strategic rules', () => {
   const w=createWar();
   expect(w.factions).toHaveLength(4);
   expect(w.units).toHaveLength(16);
-  expect(w.outposts).toHaveLength(9);
-  expect(MAP_HALF_SIZE).toBe(260);
-  expect(w.factions[0].x).toBe(-112);
+  expect(w.outposts).toHaveLength(33);
+  expect(MAP_HALF_SIZE).toBe(520);
+  expect(w.factions[0].x).toBe(-260);
   expect(w.outposts.every(p=>p.owner===null)).toBe(true);
  });
  it('cannot recruit advanced units without researching the barracks', () => {
@@ -91,7 +91,7 @@ describe('3D management war strategic rules', () => {
  it('keeps the storm wide enough for early expansion, then shrinks it',()=>{
   const w=createWar();expect(w.zone).toBe(MAP_HALF_SIZE-6);
   w.time=100;stepWar(w,.1);expect(w.zone).toBe(MAP_HALF_SIZE-6);
-  w.time=300;stepWar(w,.1);expect(w.zone).toBeLessThan(180);
+  w.time=900;stepWar(w,.1);expect(w.zone).toBeLessThan(180);
  });
  it('simulates strictly finite, nonnegative time increments', () => {
   const w=createWar();
@@ -149,7 +149,7 @@ describe('3D management war strategic rules', () => {
    stepWar(w,.1);
   }
   expect(w.events.length).toBeLessThanOrEqual(8);
-  expect(w.events[0].text).toContain('남동부 교역소');
+  expect(w.events[0].text).toContain('국경 교역 기지 24');
  });
 
 });

@@ -1,3 +1,4 @@
+import { WORLD_HALF,KINGDOM_CORNERS,STRATEGIC_POSTS,walkable } from './terrain';
 /**
  * Deterministic, authored + procedural battlefield layout.
  * All coordinates use the same flat X/Z plane as the strategy simulation.
@@ -23,10 +24,9 @@ export interface BattlefieldFeature {
   cover: number;
 }
 
-const HALF = 260;
-const HQ = [[-112, -112], [112, -112], [-112, 112], [112, 112]] as const;
-const POSTS = [[0, -95], [95, 0], [0, 95], [-95, 0], [0, 0],
-  [-62, -62], [62, -62], [-62, 62], [62, 62]] as const;
+const HALF = WORLD_HALF;
+const HQ = KINGDOM_CORNERS;
+const POSTS = STRATEGIC_POSTS;
 const RAND_KINDS: BattlefieldFeatureKind[] = [
   'outcrop', 'outcrop', 'crater', 'barricade', 'cargo', 'trench',
   'pine', 'pine', 'pine', 'deadwood', 'deadwood', 'crystal',
@@ -72,6 +72,7 @@ export function createBattlefieldLayout(seed = 0x7a11d0): BattlefieldFeature[] {
     scale = 1, rotation = rng() * Math.PI * 2): void {
     if (Math.abs(x) > HALF - 13 || Math.abs(z) > HALF - 13) return;
     const [baseRadius, cover] = SIZES[kind];
+    if(!walkable(x,z,baseRadius*scale+4))return;
     features.push({
       id: features.length, kind, x, z, scale, rotation,
       radius: baseRadius * scale,
@@ -103,7 +104,7 @@ export function createBattlefieldLayout(seed = 0x7a11d0): BattlefieldFeature[] {
     const [x, z] = POSTS[index];
     const angle = (index * 2.399) % (Math.PI * 2);
     const dx = Math.cos(angle), dz = Math.sin(angle);
-    add(postTypes[index], x + dx * 26, z + dz * 26, .76 + (index % 3) * .08, angle);
+    add(postTypes[index%postTypes.length], x + dx * 26, z + dz * 26, .76 + (index % 3) * .08, angle);
     add('barricade', x - dx * 19, z - dz * 19, .9, angle);
     add('pylon', x + dx * 20 - dz * 9, z + dz * 20 + dx * 9, .85, angle);
   }

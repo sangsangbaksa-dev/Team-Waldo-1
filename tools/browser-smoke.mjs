@@ -165,7 +165,7 @@ try {
       assert.equal(await page.locator('#unit-train button').count(), 8); assert.equal(await page.locator('#train-archer').isDisabled(), true);
       await page.locator('#train-infantry').click(); assert.equal((await snapshot(page)).trained, 1);
       await page.locator('#reserve-4').click(); assert.equal(await page.locator('#reserve-4').getAttribute('aria-pressed'), 'true');
-      await page.locator('#tab-orders').click(); assert.equal(await page.locator('#outposts button').count(), 9);
+      await page.locator('#tab-orders').click(); assert.equal(await page.locator('#outposts button').count(), 33);
       await page.locator('#outpost-5').click(); assert.equal((await snapshot(page)).rally, 5);
       await stage('3D raycast and seeded defense warning');
       await page.locator('#overview').click();
@@ -210,7 +210,7 @@ try {
       await stage('save and resume');
       await page.locator('#save').click(); const expected = await snapshot(page);
       const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('team-waldo-3d-war-v1')));
-      assert.equal(saved.version, 2); assert.equal(saved.war.factions[0].policy, 'growth');
+      assert.equal(saved.version, 5); assert.equal(saved.war.factions[0].policy, 'growth');
       await page.locator('#exit').click(); await page.locator('#continue-war').waitFor();
       await page.locator('#preferences').click(); assert.equal(await page.locator('#menu-quality').inputValue(), initialQuality);
       await page.keyboard.press('Escape'); await page.locator('#continue-war').click();
@@ -261,12 +261,12 @@ try {
     } finally { await context.close(); }
     await writeFile(`${artifacts}/report.json`, JSON.stringify(report, null, 2));
   }
-  // In addition to the classic campaign, verify that the optional 600-soldier
+  // In addition to the classic campaign, verify that the optional 400-soldier
   // mode actually renders in WebGL, accepts mass recruiting, and can be saved.
   const grandContext = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
   const grandPage = await grandContext.newPage();
   grandPage.setDefaultTimeout(30000);
-  const grandResult = { name: 'grand-100-vs-500', status: 'running', scenarios: ['600 live units', 'GPU instancing', '25 recruits', 'saved grand match'] };
+  const grandResult = { name: 'grand-four-equal-armies', status: 'running', scenarios: ['400 live units', 'GPU instancing', '25 recruits', 'saved grand match'] };
   report.cases.push(grandResult);
   grandPage.on('pageerror', error => { grandResult.error = error.message; });
   try {
@@ -278,8 +278,8 @@ try {
       return { grand: war.grandBattle, sizes: [0, 1, 2, 3].map(id => war.units.filter(u => u.owner === id).length) };
     });
     assert.equal(armies.grand, true);
-    assert.deepEqual(armies.sizes, [100, 167, 167, 166]);
-    assert.ok(gpu.calls > 0 && gpu.triangles > 0 && gpu.calls < 1500, '600 soldiers must be GPU-instanced');
+    assert.deepEqual(armies.sizes, [100, 100, 100, 100]);
+    assert.ok(gpu.calls > 0 && gpu.triangles > 0 && gpu.calls < 1500, '400 soldiers must be GPU-instanced');
     await grandPage.locator('#tab-army').click();
     await grandPage.locator('#squad-infantry').click();
     assert.equal(await grandPage.evaluate(() => window.__war.world.stats[0].trained), 25);
@@ -293,9 +293,9 @@ try {
     assert.equal(persisted.war.units.length, 625);
     grandResult.gpu = gpu;
     grandResult.armies = armies;
-    await capture(grandPage, 'grand-600-unit-battle');
+    await capture(grandPage, 'grand-400-unit-battle');
     grandResult.status = 'passed';
-    console.log('PASS grand 100 vs 500: ' + gpu.calls + ' draw calls / ' + gpu.triangles + ' triangles');
+    console.log('PASS four equal armies: ' + gpu.calls + ' draw calls / ' + gpu.triangles + ' triangles');
   } catch (error) {
     grandResult.status = 'failed';
     grandResult.error = String(error.stack ?? error);

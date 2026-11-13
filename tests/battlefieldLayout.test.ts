@@ -10,7 +10,7 @@ describe('industrial battlefield layout', () => {
     expect(BATTLEFIELD_FEATURES.length).toBeGreaterThan(180);
     expect(new Set(BATTLEFIELD_FEATURES.map(feature => feature.kind)).size).toBeGreaterThan(12);
     expect(BATTLEFIELD_FEATURES.every(f =>
-      Math.abs(f.x) <= 247 && Math.abs(f.z) <= 247 &&
+      Math.abs(f.x) <= 507 && Math.abs(f.z) <= 507 &&
       Number.isFinite(f.rotation) && f.radius >= 0 && f.cover >= 0 && f.cover <= 1,
     )).toBe(true);
     expect(createBattlefieldLayout(123)).not.toEqual(createBattlefieldLayout(456));
@@ -18,8 +18,8 @@ describe('industrial battlefield layout', () => {
 
   it('keeps the exact strategic center walkable for capturing the middle outpost', () => {
     expect(isBattlefieldBlocked(0, 0)).toBe(false);
-    expect(isBattlefieldBlocked(0, -95)).toBe(false);
-    expect(isBattlefieldBlocked(-112, -112)).toBe(false);
+    expect(isBattlefieldBlocked(0, -230)).toBe(false);
+    expect(isBattlefieldBlocked(-260, -260)).toBe(false);
   });
 
   it('uses physical cover and routes around an occupied bunker or hangar footprint', () => {

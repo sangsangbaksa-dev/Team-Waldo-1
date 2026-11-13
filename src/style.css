@@ -23,3 +23,38 @@
 .grand-launch-button:hover{filter:brightness(1.13);border-color:#ffdfa4}
 @media(max-width:480px){.launch-actions{gap:8px}.grand-launch-button{flex-basis:180px;min-height:53px}
 .launch-button{flex-basis:150px;min-width:0}.continue-button{flex:1 1 100%}}
+
+/* Command edition: restrained typography, mineral palette and crisp panels. */
+:root{color-scheme:dark}
+.landing{background:#11191e;color:#d7dbd9}
+.landing .hero-content h1{font-family:Georgia,'Noto Serif KR',serif;font-weight:500;letter-spacing:-.035em}
+.landing .hero-content h1 em{color:#b6a077}
+.landing-art{filter:saturate(.38) brightness(.65)}
+.landing .brand-seal,.landing .edition b{border-radius:2px}
+.landing .difficulty-option,.landing .button,.landing .icon-button{border-radius:3px}
+.landing .hero-description,.landing .play-note{color:#a7afae}
+.landing .grand-launch-button{background:#27342f;border:1px solid #6c8071;color:#dde4dc;box-shadow:none}
+.landing .launch-actions{gap:8px}
+.landing .launch-actions .button{font-size:13px;min-height:48px}
+.pvp-shell{position:fixed;inset:0;z-index:1100;background:#10171c;color:#d5dcd9;font:14px/1.6 system-ui,sans-serif;overflow:auto}
+.pvp-shell[hidden],.pvp-shell [hidden]{display:none!important}
+.pvp-header{display:flex;align-items:center;gap:22px;padding:16px 24px;border-bottom:1px solid #34413f;background:#182126}
+.pvp-header h1{font-size:22px;letter-spacing:.08em;margin:0;font-weight:500}
+.pvp-header small{color:#a39a7d;font-size:10px;letter-spacing:.18em}
+#pvp-link{margin-left:auto;font-size:12px;color:#a9bcae;max-width:40%;overflow-wrap:anywhere}
+.pvp-lobby{max-width:640px;margin:6vh auto;padding:32px;border:1px solid #46504b;background:#182126}
+.pvp-lobby h2{font:32px Georgia,serif;letter-spacing:.14em;color:#c3b28c}
+.pvp-shell label{display:block;margin:12px 0;color:#afb9b3}
+.pvp-shell input,.pvp-shell select{box-sizing:border-box;width:100%;padding:10px;border:1px solid #47524c;background:#10191d;color:#e1e5df;border-radius:2px;font:inherit}
+.pvp-form-actions{display:flex;gap:12px;margin:22px 0}
+.pvp-battle{height:calc(100dvh - 88px);display:grid;grid-template-columns:minmax(0,1fr) 320px}
+.pvp-viewport{min-width:0;min-height:0;overflow:hidden}.pvp-viewport canvas{display:block;touch-action:none}
+.pvp-command{overflow:auto;padding:16px;background:#182126;border-left:1px solid #3b4841}
+.pvp-command h2{font-size:18px;margin:0}.pvp-command p{font-size:12px}
+.pvp-command details{border-top:1px solid #3c4841;margin-top:16px;padding-top:12px}
+.pvp-command summary{cursor:pointer;color:#c6b28b;font-weight:600;margin-bottom:10px}
+.pvp-shell button{cursor:pointer;font:inherit;border-radius:2px}.pvp-shell button:disabled{opacity:.4;cursor:default}
+.pvp-shell .war-action{background:#222d30;color:#d9dfd9;border:1px solid #46514a;display:block}
+#pvp-map{width:100%;height:auto;border:1px solid #526057;touch-action:manipulation}
+.pvp-command .button{width:100%}.pvp-shell .action-list{display:grid;gap:6px}
+@media(max-width:700px){.pvp-header{padding:10px;gap:8px}.pvp-header small{display:none}.pvp-header h1{font-size:16px}.pvp-header .button{padding:8px;font-size:12px}.pvp-lobby{margin:14px;padding:18px}.pvp-battle{height:auto;display:flex;flex-direction:column}.pvp-viewport{height:42dvh;position:sticky;top:0;z-index:1}.pvp-command{border-left:0;overflow:visible}.pvp-command #pvp-map{width:170px;float:right;margin:0 0 12px 12px}.pvp-command details{clear:both}.pvp-form-actions{flex-direction:column}.pvp-lobby h2{font-size:24px}}

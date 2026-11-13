@@ -28,12 +28,12 @@ function renderMenu(): void {
       <div class="landing-art" aria-hidden="true"><img src="${import.meta.env.BASE_URL}kingdom-art.svg" alt="" class="kingdom-illustration"><div class="landing-preview" id="landing-preview"></div><div class="art-vignette"></div><div class="art-coordinates"><span>THE EMERALD KINGDOM</span><i></i><small>북서부 영지 · 당신의 이야기가 시작되는 곳</small></div></div>
       <section class="hero-content">
         <div class="edition"><span></span>THE STRATEGY COLLECTION <b>01</b></div>
-        <h1>작은 영지에서,<br><em>마지막 왕국으로.</em></h1>
-        <p class="hero-description">수백 명의 병사를 직접 지휘하는 3D 전쟁. <br>100 대 500 대규모 군단전 또는 클래식 원정을 선택하세요.<br>거점을 점령하고 마지막 왕국이 되세요.</p>
-        <div class="game-facts"><div><b>4</b><span>경쟁하는 왕국</span></div><div><b>9</b><span>전략 거점</span></div><div><b>4</b><span>개성 있는 병종</span></div></div>
-        <div class="start-section"><div class="section-heading"><h2>원정 난이도</h2><span>시작 자원은 모두 동일</span></div><div class="difficulty-picker" role="group" aria-label="원정 난이도">${(['easy', 'normal', 'hard'] as Difficulty[]).map((key, i) => `<button id="difficulty-${key}" data-difficulty="${key}" class="difficulty-option${key === selectedDifficulty ? ' selected' : ''}" aria-pressed="${key === selectedDifficulty}"><span>${['I', 'II', 'III'][i]}</span><b>${DIFFICULTIES[key].label}</b><small>${['전략을 배우는 시간', '균형 잡힌 도전', '노련한 지휘관에게'][i]}</small></button>`).join('')}</div><p id="difficulty-description" class="difficulty-description">${DIFFICULTIES[selectedDifficulty].description}</p><div class="launch-actions"><button id="start-war" class="button primary launch-button">${icon('sword', 21)}새 원정 시작<span>${icon('arrow', 20)}</span></button><button id="start-grand" class="button grand-launch-button" aria-label="대규모 전쟁 시작, 아군 100명 대 적군 500명">⚔ 대규모 전쟁 <strong>100 VS 500</strong><small>병력 600명 동시 등장 · 군단 전투</small></button>${resumable ? `<button id="continue-war" class="button continue-button">${icon('play', 19)}이어하기<small>${DIFFICULTIES[saved.difficulty].label} · ${clock(saved.time)}</small></button>` : ''}</div><p class="play-note">설치 없이 플레이 · 15초마다 자동 저장 · 키보드와 터치 지원</p></div>
+        <h1>영토를 확보하고,<br><em>전쟁을 지휘하라.</em></h1>
+        <p class="hero-description">수백 명의 병사를 직접 지휘하는 3D 전쟁. <br>100명씩 4세력 대규모 군단전 또는 클래식 원정을 선택하세요.<br>거점을 점령하고 마지막 왕국이 되세요.</p>
+        <div class="game-facts"><div><b>4</b><span>경쟁하는 왕국</span></div><div><b>33</b><span>전략 거점</span></div><div><b>4</b><span>개성 있는 병종</span></div></div>
+        <div class="start-section"><div class="section-heading"><h2>원정 난이도</h2><span>시작 자원은 모두 동일</span></div><div class="difficulty-picker" role="group" aria-label="원정 난이도">${(['easy', 'normal', 'hard'] as Difficulty[]).map((key, i) => `<button id="difficulty-${key}" data-difficulty="${key}" class="difficulty-option${key === selectedDifficulty ? ' selected' : ''}" aria-pressed="${key === selectedDifficulty}"><span>${['I', 'II', 'III'][i]}</span><b>${DIFFICULTIES[key].label}</b><small>${['전략을 배우는 시간', '균형 잡힌 도전', '노련한 지휘관에게'][i]}</small></button>`).join('')}</div><p id="difficulty-description" class="difficulty-description">${DIFFICULTIES[selectedDifficulty].description}</p><div class="launch-actions"><button id="start-pvp" class="button secondary">실시간 PvP 작전실 <small>2–4인 · 각 100명</small></button><button id="start-war" class="button primary launch-button">${icon('sword', 21)}새 원정 시작<span>${icon('arrow', 20)}</span></button><button id="start-grand" class="button grand-launch-button" aria-label="대규모 전쟁 시작, 아군 100명씩 4세력">4세력 군단전 <strong>100 × 4</strong><small>병력 400명 동시 등장 · 군단 전투</small></button>${resumable ? `<button id="continue-war" class="button continue-button">${icon('play', 19)}이어하기<small>${DIFFICULTIES[saved.difficulty].label} · ${clock(saved.time)}</small></button>` : ''}</div><p class="play-note">설치 없이 플레이 · 15초마다 자동 저장 · 키보드와 터치 지원</p></div>
       </section>
-      <aside class="campaign-note"><span class="note-line"></span><div><span class="kicker">BUILD. COMMAND. CONQUER.</span><p>왕국의 운명은<br>당신의 선택에 달려 있습니다.</p></div><span class="compass-rose" aria-hidden="true">${icon('target', 38)}</span></aside>
+      <aside class="campaign-note"><span class="note-line"></span><div><span class="kicker">BUILD. COMMAND. CONQUER.</span><p>왕국의 운명은<br>당신의 지휘에 달려 있습니다.</p></div><span class="compass-rose" aria-hidden="true">${icon('target', 38)}</span></aside>
       <footer class="landing-footer"><span class="footer-credit">TEAM WALDO <i>/</i> KINGDOMS AT WAR</span><div class="career-inline">${career.matches ? `<span>완료한 원정 <b>${career.matches}</b></span><span>승리 <b>${career.wins}</b></span><span>최다 처치 <b>${career.bestKills}</b></span>` : '<span>당신의 첫 번째 왕국을 기다립니다.</span>'}</div><button id="legacy" class="text-button">클래식 서바이벌 ${icon('arrow', 14)}</button></footer>
     </main>`;
   document.title = 'WALDO · 왕국 전쟁 | 당신의 왕국을 건설하세요';
@@ -54,8 +54,12 @@ function renderMenu(): void {
     }
   };
   const launchNew = (grandBattle: boolean) => {
-    if (resumable) showDialog({ eyebrow: 'NEW EXPEDITION', title: grandBattle ? '600명 규모의 전쟁을 시작할까요?' : '새로운 원정을 시작할까요?', body: '<p>새 원정이 자동 저장되면 이전 전투의 저장 내용을 덮어씁니다. 이전 전투를 계속하려면 이어하기를 선택하세요.</p>', confirm: '새 원정 시작', cancel: '돌아가기', onConfirm: () => { void start(false, grandBattle); } });
+    if (resumable) showDialog({ eyebrow: 'NEW EXPEDITION', title: grandBattle ? '400명 규모의 전쟁을 시작할까요?' : '새로운 원정을 시작할까요?', body: '<p>새 원정이 자동 저장되면 이전 전투의 저장 내용을 덮어씁니다. 이전 전투를 계속하려면 이어하기를 선택하세요.</p>', confirm: '새 원정 시작', cancel: '돌아가기', onConfirm: () => { void start(false, grandBattle); } });
     else void start(false, grandBattle);
+  };
+  app.querySelector<HTMLButtonElement>('#start-pvp')!.onclick = async () => {
+    if(launching)return;launching=true;disposePreview?.();disposePreview=undefined;
+    try{const {openPvp}=await import('./battle/pvpView');app.hidden=true;openPvp(renderMenu);}catch{renderMenu();showDialog({title:'작전실 연결 실패',body:'<p>다시 시도해 주세요.</p>'});}
   };
   app.querySelector<HTMLButtonElement>('#start-war')!.onclick = () => launchNew(false);
   app.querySelector<HTMLButtonElement>('#start-grand')!.onclick = () => launchNew(true);

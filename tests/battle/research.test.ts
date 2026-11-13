@@ -126,13 +126,13 @@ describe('kingdom research and match statistics',()=>{
     expect(stormDamage(w,0)).toBeCloseTo(3.5*.88);
     for(const p of w.outposts)p.owner=0;
     expect(stormDamage(w,0)).toBeCloseTo(3.5*.4);
-    w.zone=179;
+    w.zone=400;
     expect(stormDamage(w,0)).toBe(0);
   });
 
   it('does not credit a last-moment capture to an army whose HQ has already fallen',()=>{
     const w=rich(),post=w.outposts[4];
-    w.time=400;w.factions[0].hp=.001;
+    w.time=900;w.factions[0].hp=.001;
     post.progress=99.9;post.contender=0;
     for(const unit of w.units.filter(u=>u.owner===0)){unit.x=post.x;unit.z=post.z;}
     stepWar(w,.1);

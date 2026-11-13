@@ -43,5 +43,6 @@ loadModels('/').then(m => {
   ps.forEach((p, i) => { if (i === 5) p.scale.setScalar(0.35); });
   row('props', ps, 4.2, 40, 26);
   (window as unknown as Record<string, unknown>).__view = (name: string): void => { const s = sections[name]; cam.position.set(s.c.x, s.c.y + s.d * 0.22, s.c.z + s.d); cam.lookAt(s.c); renderer.render(scene, cam); };
+  (window as unknown as Record<string, unknown>).__look = (kind: string, ang: number): void => { const i = CHAR_KINDS.indexOf(kind as never), n = CHAR_KINDS.length, x = (i - (n - 1) / 2) * 1.5; cam.position.set(x + Math.sin(ang) * 3.6, 1.5, -400 + Math.cos(ang) * 3.6); cam.lookAt(x, 1.15, -400); renderer.render(scene, cam); };
   (window as unknown as Record<string, unknown>).__ready = true;
 }).catch(e => { document.title = 'ERR ' + e; (window as unknown as Record<string, unknown>).__err = String(e?.stack ?? e); });

@@ -129,6 +129,33 @@ afterEach(() => {
 });
 
 describe('battle UI through real player actions', () => {
+  it('keeps keyboard focus inside base management and restores it after closing', () => {
+    openWar(vi.fn(), true);
+    const opener = button('#open-base');
+    opener.focus();
+    opener.click();
+    const close = button('.base-close');
+    expect(document.activeElement).toBe(close);
+    key(close, 'Tab', { shiftKey: true });
+    expect(document.activeElement).toBe(button('[data-base-relocate]'));
+    key(button('[data-base-relocate]'), 'Tab');
+    expect(document.activeElement).toBe(close);
+    key(close, 'Escape');
+    expect(element('.base-manager').hidden).toBe(true);
+    expect(document.activeElement).toBe(opener);
+
+    opener.click();
+    click('[data-base-slot="6"]');
+    // The hidden blueprint must no longer receive keyboard focus.
+    key(close, 'Tab', { shiftKey: true });
+    expect(document.activeElement).toBe(button('.interior-action[data-interior-command="service"]'));
+    key(button('.interior-action[data-interior-command="service"]'), 'Tab');
+    expect(document.activeElement).toBe(close);
+    key(close, 'Escape');
+    key(close, 'Escape');
+    expect(document.activeElement).toBe(opener);
+  });
+
   it('opens the base command center and constructs a real building in a selected plot',()=>{
     openWar(vi.fn(),true);
     const w=game().world;

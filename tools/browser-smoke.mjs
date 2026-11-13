@@ -180,6 +180,18 @@ try {
       await page.waitForFunction(() => /^\d+ FPS$/.test(document.querySelector('#render-fps')?.textContent ?? ''));
       result.fps = await page.locator('#render-fps').innerText();
       await stage('economy, army and minimap');
+      // Verify the fullscreen base dialog stays reachable on narrow/short screens.
+      await page.locator('#open-base').click();
+      await page.locator('.base-window').waitFor({ state: 'visible' });
+      await assertElementFits(page, '.base-window', result, 'base manager');
+      await page.keyboard.press('Shift+Tab');
+      assert.ok(await page.locator('[data-base-relocate]').evaluate(el => el === document.activeElement),
+        'Shift+Tab must wrap to the last visible base control');
+      await page.keyboard.press('Tab');
+      assert.ok(await page.locator('.base-close').evaluate(el => el === document.activeElement),
+        'Tab must wrap back to the base close button');
+      await page.keyboard.press('Escape');
+      await page.locator('.base-manager').waitFor({ state: 'hidden' });
       await page.locator('#build-mine').click(); assert.equal((await snapshot(page)).mine, 4);
       await page.locator('#policy-growth').click(); assert.equal(await page.locator('#policy-growth').getAttribute('aria-pressed'), 'true');
       await page.locator('#tab-army').click(); assert.equal(await page.locator('#tab-army').getAttribute('aria-selected'), 'true');

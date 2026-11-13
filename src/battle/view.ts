@@ -160,8 +160,9 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   renderer.domElement.setAttribute('aria-label', '3D 왕국 전장. 관리 패널에서도 모든 명령을 내릴 수 있습니다.');
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(43, mount.clientWidth / mount.clientHeight, .1, 1300);
-  const focus = new THREE.Vector3(-75, 0, -75);
-  let angle = Math.PI + .72, zoom = innerWidth < 800 ? 155 : 175;
+  // Showcase the fortified capital and surrounding settlements on first launch.
+  const focus = new THREE.Vector3(w.factions[0].x + 14, 0, w.factions[0].z + 14);
+  let angle = Math.PI + .72, zoom = innerWidth < 800 ? 145 : 170;
   let adventure: ReturnType<typeof createAdventure> | null = null;
   const cameraUpdate = () => { if (adventure?.isActionMode) return; camera.position.set(focus.x + Math.sin(angle) * zoom, zoom * .83, focus.z + Math.cos(angle) * zoom); camera.lookAt(focus); };
   const pan = (dx: number, dz: number) => { focus.x = THREE.MathUtils.clamp(focus.x + dx, -MAP_HALF_SIZE + 12, MAP_HALF_SIZE - 12); focus.z = THREE.MathUtils.clamp(focus.z + dz, -MAP_HALF_SIZE + 12, MAP_HALF_SIZE - 12); cameraUpdate(); };

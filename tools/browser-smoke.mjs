@@ -64,7 +64,22 @@ async function assertElementFits(page, selector, result, name) {
 async function waitForBattle(page) {
   await page.locator('.war-ui').waitFor({ timeout: 30000 });
   assert.equal(await page.locator('.war-fallback').count(), 0, 'WebGL fallback is not a passing 3D test');
-  await page.waitForFunction(() => window.__war?.renderer.info.render.calls > 0 && window.__war.world.time >= 0.1, null, { timeout: 30000 });
+  try {
+    await page.waitForFunction(() => window.__war?.renderer.info.render.calls > 0 && window.__war.world.time >= 0.1, null, { timeout: 30000 });
+  } catch (cause) {
+    const diagnostics = await page.evaluate(() => {
+      const war = window.__war;
+      return {
+        hasBattle: Boolean(document.querySelector('.war-ui')),
+        hasFallback: Boolean(document.querySelector('.war-fallback')),
+        loadingVisible: Boolean(document.querySelector('.game-loading')),
+        renderCalls: war?.renderer?.info?.render?.calls ?? null,
+        worldTime: war?.world?.time ?? null,
+        contextLost: war?.renderer?.getContext()?.isContextLost?.() ?? null,
+      };
+    }).catch(() => ({ pageUnresponsive: true }));
+    throw new Error(`War startup stalled: ${JSON.stringify(diagnostics)}`, { cause });
+  }
   // Campaigns open immediately in strategy mode: no parachute cinematic.
   await page.evaluate(() => {
     if (document.querySelector('.adventure-dropping')) throw new Error('Parachute intro should be gone');
@@ -267,6 +282,7 @@ try {
       const career = await page.evaluate(() => JSON.parse(localStorage.getItem('waldo.career.v1')));
       assert.equal(career.matches, 1); assert.equal(career.wins, 1);
       await page.locator('#again').click(); await waitForBattle(page);
+      await page.locator('.game-loading').waitFor({ state: 'hidden', timeout: 15000 });
       assert.equal((await snapshot(page)).difficulty, 'easy'); assert.equal(await page.locator('.result-panel').count(), 0);
       assert.deepEqual(result.pageErrors, [], 'Uncaught browser errors'); assert.deepEqual(result.consoleErrors, [], 'Browser console errors');
       result.status = 'passed';

@@ -1,4 +1,4 @@
-import { getBaseState } from './base';
+import { getBaseState, workshopLevel } from './base';
 import { interiorOption, performInteriorAction, type InteriorAction } from './interiorActions';
 import type { Upgrade, War } from './war';
 
@@ -34,7 +34,7 @@ const ROOMS: Record<Upgrade, {
   },
 };
 
-const ACTIONS: InteriorAction[] = ['upgrade', 'service', 'special'];
+const ACTIONS: InteriorAction[] = ['upgrade', 'workshop', 'service', 'special'];
 
 /** A persistent, keyboard-accessible interior scene mounted inside the base manager. */
 export function createBuildingInterior(
@@ -69,6 +69,7 @@ export function createBuildingInterior(
           '<div class="interior-view-top"><span id="interior-chamber"></span><b id="interior-badge"></b></div>' +
           '<button type="button" class="interior-hotspot hotspot-upgrade" data-interior-command="upgrade"><span>✦</span>설비 확장</button>' +
           '<button type="button" class="interior-hotspot hotspot-service" data-interior-command="service"><span>⚙</span>현장 작업</button>' +
+          '<button type="button" class="interior-hotspot hotspot-workshop" data-interior-command="workshop"><span>◈</span>특수 설비</button>' +
         '</div>' +
         '<p class="interior-view-caption">직접 들어온 시설의 내부입니다. 설비를 누르거나 오른쪽 작업 메뉴에서 업그레이드를 진행하세요.</p>' +
       '</div>' +
@@ -79,6 +80,7 @@ export function createBuildingInterior(
           '<div><small>시설 단계</small><strong id="interior-level"></strong></div>' +
           '<div><small>왕국 금</small><strong id="interior-gold"></strong></div>' +
           '<div><small>왕국 식량</small><strong id="interior-food"></strong></div>' +
+          '<div><small>전용 설비</small><strong id="interior-workshop-level"></strong></div>' +
         '</div>' +
         '<div class="interior-console-heading">현장 작업 지시 <span>자원 비용과 현재 상태 적용</span></div>' +
         '<div class="interior-actions">' +
@@ -110,6 +112,8 @@ export function createBuildingInterior(
     one('#interior-level').textContent = 'Lv.' + faction[kind] + ' / 4';
     one('#interior-gold').textContent = Math.floor(faction.gold).toLocaleString('ko-KR');
     one('#interior-food').textContent = Math.floor(faction.food).toLocaleString('ko-KR');
+    one('#interior-workshop-level').textContent = 'Lv.' + workshopLevel(war,kind) + ' / 3';
+    one('.interior-scene').dataset.workshopLevel = String(workshopLevel(war,kind));
     for (const action of ACTIONS) {
       const option = interiorOption(war, kind, action);
       for (const button of root.querySelectorAll<HTMLButtonElement>('[data-interior-command="' + action + '"]')) {

@@ -1,6 +1,6 @@
 /** Deterministic, renderer-independent economy, territory and combat simulation. */
 import type { SquadCommand } from './squads';
-import { createBaseState, getBaseState, generalBonus, incomeGeneralBonus, type BaseState } from './base';
+import { createBaseState, getBaseState, generalBonus, incomeGeneralBonus, workshopLevel, type BaseState } from './base';
 import { battlefieldCoverAt, resolveBattlefieldStep } from './battlefieldLayout';
 export type Upgrade = 'farm' | 'mine' | 'barracks' | 'fort';
 export type EconomyPolicy = 'balanced' | 'growth' | 'war';
@@ -128,8 +128,8 @@ export function getIncome(w:War,id:number):{gold:number;food:number} {
   const policy=f.policy==='growth'?1.25:f.policy==='war'?.88:1;
   const multiplier=policy*(1+f.research.logistics*.06)*(1+incomeGeneralBonus(w,id))*(id===0?(w.difficulty==='easy'?1.35:1):DIFFICULTIES[w.difficulty].aiIncome);
   return {
-    gold:owned.reduce((a,p)=>a+OUTPOST_BONUSES[p.id].gold,f.mine*1.5)*multiplier,
-    food:owned.reduce((a,p)=>a+OUTPOST_BONUSES[p.id].food,f.farm*1.3)*multiplier,
+    gold:owned.reduce((a,p)=>a+OUTPOST_BONUSES[p.id].gold,f.mine*1.5+(id===0?workshopLevel(w,'mine')*.8:0))*multiplier,
+    food:owned.reduce((a,p)=>a+OUTPOST_BONUSES[p.id].food,f.farm*1.3+(id===0?workshopLevel(w,'farm')*.75:0))*multiplier,
   };
 }
 /** Captured supply points protect immobile HQs: 12% each, up to 60%. */
@@ -343,7 +343,7 @@ export function stepWar(w: War,dt: number):void {
       w.factions[u.owner].alive&&w.factions[u.owner].hp>0&&distance(u.x,u.z,f.x,f.z)<13);
     if (invaders.length) {
       invaders.sort((a,b)=>distance(a.x,a.z,f.x,f.z)-distance(b.x,b.z,f.x,f.z));
-      attack(w,f.id,invaders[0],5+3*f.fort);f.turretCooldown=1.6;
+      attack(w,f.id,invaders[0],5+3*f.fort+(f.id===0?workshopLevel(w,'fort')*2.5:0));f.turretCooldown=1.6;
     }
   }
   // Deterministic veteran reservation avoids stripping the HQ of all defenders.
@@ -367,7 +367,7 @@ export function stepWar(w: War,dt: number):void {
     const f=w.factions[u.owner];
     if (!f.alive||f.hp<=0||u.hp<=0) continue;
     const s=UNIT_STATS[u.kind];
-    const combatMultiplier=(f.policy==='war'?1.18:1)*(1+f.research.weapons*.12)*(1+generalBonus(w,u,'damage'));
+    const combatMultiplier=(f.policy==='war'?1.18:1)*(1+f.research.weapons*.12)*(1+generalBonus(w,u,'damage'))*(u.owner===0?1+workshopLevel(w,'barracks')*.09:1);
     u.cooldown=Math.max(0,u.cooldown-dt);
     if (distance(u.x,u.z,0,0)>w.zone) u.hp-=1.8*dt;
     if (u.hp<=0) continue;

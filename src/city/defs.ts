@@ -10,11 +10,14 @@ export const POLICE = 8;
 export const CIV = 9;
 export const FACTION_COUNT = 8;
 
-export type Difficulty = 'easy' | 'normal' | 'hard';
+export type Difficulty = 'd1' | 'd2' | 'd3' | 'd4' | 'd5';
+export const DIFFICULTY_ORDER: Difficulty[] = ['d1', 'd2', 'd3', 'd4', 'd5'];
 export const DIFFICULTY: Record<Difficulty, { label: string; desc: string; income: number; dmg: number; cap: number; attackArmy: number }> = {
-  easy: { label: '입문', desc: '라이벌 조직이 느리게 성장하고 약하게 공격합니다. 처음이라면 여기서.', income: 0.5, dmg: 0.6, cap: 14, attackArmy: 13 },
-  normal: { label: '보통', desc: '균형 잡힌 7개 라이벌 조직. 경제와 전투를 함께 굴려야 합니다.', income: 0.78, dmg: 0.85, cap: 20, attackArmy: 11 },
-  hard: { label: '도전', desc: '라이벌이 빠르게 확장하고 일찍 쳐들어옵니다. 숙련자용.', income: 1.0, dmg: 1.05, cap: 28, attackArmy: 9 },
+  d1: { label: '1단계 · 입문', desc: '라이벌이 아주 느리게 크고 약하게 공격합니다.', income: 0.35, dmg: 0.45, cap: 10, attackArmy: 16 },
+  d2: { label: '2단계 · 쉬움', desc: '라이벌 성장이 느리고 공격이 드뭅니다.', income: 0.5, dmg: 0.6, cap: 14, attackArmy: 14 },
+  d3: { label: '3단계 · 보통', desc: '경제와 전투를 함께 굴리면 충분히 이길 수 있습니다.', income: 0.65, dmg: 0.72, cap: 17, attackArmy: 13 },
+  d4: { label: '4단계 · 어려움', desc: '기존 난이도. 라이벌이 꾸준히 확장하고 압박합니다.', income: 0.78, dmg: 0.85, cap: 20, attackArmy: 11 },
+  d5: { label: '5단계 · 극한', desc: '라이벌이 빠르게 확장하고 일찍 쳐들어옵니다. 숙련자용.', income: 1.0, dmg: 1.05, cap: 28, attackArmy: 9 },
 };
 
 export const FACTIONS = [

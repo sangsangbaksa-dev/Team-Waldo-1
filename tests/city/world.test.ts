@@ -3,7 +3,7 @@ import { World } from '../../src/city/world';
 import { findPath, generateCity, makeRng, navBlocked } from '../../src/city/map';
 import { BIZ, FACTION_COUNT, SIZE, STRUCTS, UNITS } from '../../src/city/defs';
 
-const make = (seed = 7): World => new World({ seed, difficulty: 'normal', klass: 'tycoon' });
+const make = (seed = 7): World => new World({ seed, difficulty: 'd4', klass: 'tycoon' });
 const run = (w: World, seconds: number): void => { for (let i = 0; i < seconds * 30 && !w.over; i++) { w.step(1 / 30); w.events.length = 0; } };
 
 describe('LAST CITY map', () => {
@@ -107,7 +107,7 @@ describe('LAST CITY rules', () => {
 
 describe('LAST CITY full match', () => {
   it('always ends with a single winning kingdom by the match time limit', () => {
-    const w = new World({ seed: 11, difficulty: 'normal', klass: 'warlord', autoPlayer: true });
+    const w = new World({ seed: 11, difficulty: 'd4', klass: 'warlord', autoPlayer: true });
     run(w, 1600);
     expect(w.over).toBe(true); expect(w.winner).toBeGreaterThanOrEqual(0); expect(w.time).toBeGreaterThan(240);
     for (const a of w.actors) expect(Number.isFinite(a.x + a.y + a.hp)).toBe(true);

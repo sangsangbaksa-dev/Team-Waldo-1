@@ -249,14 +249,30 @@ export function createBattlefieldEnvironment(
         for (const i of [-1, 1]) {
           part(f, 'rock', 'rust', i * 3, .4, -4, 1.5, .8, 2.2);
         }
+        // Exposed strata and rare ore seams give each rock face a useful
+        // silhouette, without placing any extra collision obstacles.
+        for (let band = 0; band < 3; band++) {
+          part(f, 'box', band % 2 ? 'steel' : 'sand', -.6, 1.05 + band * .72,
+            2.8 - band * .26, 6.1 - band * .75, .18, .38, .12 * band);
+        }
+        for (let i = 0; i < 4; i++) {
+          const angle = (i * 2.399 + f.id * .4) % (Math.PI * 2);
+          part(f, 'cone', i % 2 ? 'crystal' : 'blue',
+            Math.cos(angle) * 2.2, .85 + i * .3, Math.sin(angle) * 2.2,
+            .4 + .12 * i, 1.45 + .5 * (i % 3), .4 + .12 * i, angle, .16);
+        }
         break;
       case 'crater':
         part(f, 'cylinder', 'scorch', 0, .025, 0, 13, .065, 13);
         part(f, 'cylinder', 'dust', 0, .04, 0, 10.5, .07, 10.5);
-        for (let i = 0; i < 9; i++) {
-          const a = i * Math.PI * 2 / 9;
-          part(f, 'rock', i % 3 ? 'sand' : 'rust', Math.cos(a) * 6.3, .35,
-            Math.sin(a) * 6.3, 2.4, .8, 1.8, a);
+        // Broken, uneven impact rim; repeated wedges remain instanced.
+        for (let i = 0; i < 12; i++) {
+          const a = i * Math.PI * 2 / 12, r = 5.8 + .45 * Math.sin(i * 2.7);
+          part(f, 'rock', i % 3 ? 'sand' : 'rust', Math.cos(a) * r, .36,
+            Math.sin(a) * r, 1.55 + i % 3 * .4, .65, 1.65, a);
+          if (i % 3 === 0)
+            part(f, 'rock', 'dark', Math.cos(a) * 3.55, .16,
+              Math.sin(a) * 3.55, 1.4, .35, 1.8, a);
         }
         break;
       case 'trench':
@@ -283,12 +299,28 @@ export function createBattlefieldEnvironment(
           [9.1, 3, 4.7]] as const) {
           part(f, 'cone', 'vegetation', 0, h, 0, width, height, width);
         }
+        // Exposed roots and shrubs anchor the tree to the ground. These are
+        // visual-only, so infantry can still travel through the same routes.
+        for (let i = 0; i < 5; i++) {
+          const a = i * 2.399, radius = 1.05 + (i % 2) * .48;
+          part(f, 'box', 'bark', Math.cos(a) * .65, .22,
+            Math.sin(a) * .65, .42, .31, 2.25, a);
+          part(f, 'sphere', 'vegetation', Math.cos(a) * radius, .48,
+            Math.sin(a) * radius, 1.8, .86, 1.45, a);
+        }
         break;
       case 'deadwood':
         part(f, 'cylinder', 'bark', 0, 3.5, 0, 1.05, 7, 1.05);
         for (const [x, y, a] of [[-1.8, 5.3, -.7], [2, 6.2, .7],
           [-1.4, 7.1, -.4]] as const) {
           part(f, 'cylinder', 'bark', x, y, 0, .4, 4.6, .4, 0, 0, a);
+        }
+        for (let i = 0; i < 4; i++) {
+          const a = i * 1.57 + f.id * .32;
+          part(f, 'rock', 'sand', Math.cos(a) * 1.8, .23,
+            Math.sin(a) * 1.8, 1.5, .55, .95, a);
+          part(f, 'cylinder', 'bark', Math.cos(a) * .85, .36,
+            Math.sin(a) * .85, .31, 1.9, .31, 0, 0, a);
         }
         break;
       case 'scrap':

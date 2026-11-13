@@ -146,7 +146,9 @@ describe('battle UI through real player actions', () => {
 
     opener.click();
     click('[data-base-slot="6"]');
-    // The hidden blueprint must no longer receive keyboard focus.
+    // The interior initially focuses its back button; move to the modal boundary
+    // before checking that Shift+Tab wraps to its final visible action.
+    close.focus();
     key(close, 'Tab', { shiftKey: true });
     expect(document.activeElement).toBe(button('.interior-action[data-interior-command="service"]'));
     key(button('.interior-action[data-interior-command="service"]'), 'Tab');

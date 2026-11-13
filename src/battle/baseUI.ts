@@ -1,9 +1,10 @@
 import type { Upgrade, War } from './war';
 import { createBuildingInterior } from './interior';
 import {
-  BASE_BUILDINGS, BASE_WIDTH, GENERAL_CATALOG, HQ_SLOT,
-  assignGeneral, baseBuildingPrice, canPlaceBuilding, getBaseState,
-  placeBaseBuilding, recruitGeneral, type GeneralId, type SquadIndex,
+  BASE_BUILDINGS, BASE_WIDTH, GENERAL_CATALOG, GENERAL_ABILITIES, HQ_SLOT,
+  activateGeneralAbility, assignGeneral, baseBuildingPrice, canPlaceBuilding,
+  generalAbilityState, getBaseState, placeBaseBuilding, recruitGeneral,
+  relocateBaseBuilding, type GeneralId, type SquadIndex,
 } from './base';
 
 export interface BaseManager {
@@ -16,6 +17,7 @@ export interface BaseManager {
 }
 export function createBaseManager(parent:HTMLElement,w:War,onChange:(message:string)=>void):BaseManager {
   let tab:'build'|'generals'='build', selected:Upgrade='mine';
+  let relocating=false, movingSlot:number|null=null;
   const root=document.createElement('section');
   root.className='base-manager';root.hidden=true;
   root.setAttribute('aria-label','왕국 기지 건설과 장군 모집');
@@ -40,7 +42,7 @@ export function createBaseManager(parent:HTMLElement,w:War,onChange:(message:str
             ${Array.from({length:BASE_WIDTH*BASE_WIDTH},(_,slot)=>`<button type="button" class="base-cell" role="gridcell" data-base-slot="${slot}" aria-label="${slot===HQ_SLOT?'왕궁':'빈 건설 구획 '+(slot+1)}"></button>`).join('')}
           </div>
           <div class="base-grid-legend"><span><i class="base-dot built"></i> 건설된 시설</span><span><i class="base-dot free"></i> 비어 있는 부지</span><span><i class="base-dot hq"></i> 왕궁</span></div>
-          <p class="base-help">빈 칸을 누르면 건설하고, <strong>이미 건설된 시설을 누르면 내부로 입장</strong>합니다. 시설 안에서 설비 확장·훈련·수리·자원 작업을 할 수 있습니다.</p>
+          <p class="base-help">빈 칸을 누르면 건설하고, <strong>이미 건설된 시설을 누르면 내부로 입장</strong>합니다. 시설을 옮기려면 오른쪽의 <b>배치 변경</b>을 선택하세요.</p>
         </div>
         <div class="base-build-list">
           <div class="base-section-title"><span>CONSTRUCTION OFFICE</span><b>건설 가능한 시설</b></div>
@@ -51,7 +53,10 @@ export function createBaseManager(parent:HTMLElement,w:War,onChange:(message:str
               <strong data-base-level="${b.kind}"></strong>
             </button>`).join('')}
           </div>
-          <div class="base-selection"><span>현재 선택</span><strong id="base-selection"></strong><p id="base-selection-hint"></p></div>
+          <div class="base-selection"><span>현재 선택</span><strong id="base-selection"></strong>
+            <p id="base-selection-hint"></p>
+            <button type="button" data-base-relocate aria-pressed="false">↔ 배치 변경 · 건물 이전</button>
+          </div>
         </div>
       </div>
       <div class="base-section base-generals-section" data-base-panel="generals" hidden>
@@ -70,6 +75,12 @@ export function createBaseManager(parent:HTMLElement,w:War,onChange:(message:str
                 <option value="0">① 주력군</option><option value="1">② 기동대</option><option value="2">③ 수비대</option>
               </select>
             </label>
+            <div class="base-general-ability">
+              <strong>${GENERAL_ABILITIES[g.id].name}</strong>
+              <small>${GENERAL_ABILITIES[g.id].effect}</small>
+              <button type="button" data-general-ability="${g.id}">전술 발동</button>
+              <output data-general-ability-state="${g.id}" aria-live="off">모집 후 사용 가능</output>
+            </div>
           </article>`).join('')}
         </div>
         <p class="base-help">한 부대에는 장군 1명만 배치할 수 있습니다. 장군을 다른 부대에 배치하면 기존 장군은 대기로 돌아갑니다. 장군의 전투 효과는 해당 부대에만 적용됩니다.</p>
@@ -96,9 +107,12 @@ export function createBaseManager(parent:HTMLElement,w:War,onChange:(message:str
       if(button.innerHTML!==markup)button.innerHTML=markup;
       button.classList.toggle('palace',palace);
       button.classList.toggle('occupied',Boolean(occupied));
-      button.classList.toggle('available',!palace&&!occupied&&canPlaceBuilding(w,selected,slot));
-      button.title=palace?'왕궁 · 건설할 수 없습니다.':def?def.name+' 내부 입장':'클릭하여 '+buildingByKind(selected).name+' 건설';
-      button.setAttribute('aria-label',palace?'중앙 왕궁':def?label+' 내부로 입장':label+' · '+buildingByKind(selected).name+' 건설');
+      button.classList.toggle('relocating-from',relocating&&movingSlot===slot);
+      button.classList.toggle('available',!palace&&!occupied&&(relocating?movingSlot!==null:canPlaceBuilding(w,selected,slot)));
+      button.title=palace?'왕궁 · 건설할 수 없습니다.':relocating
+        ? occupied?def!.name+' 이전 출발지 선택':movingSlot!==null?'이 구획으로 건물 이전':'먼저 옮길 건물을 선택하세요'
+        :def?def.name+' 내부 입장':'클릭하여 '+buildingByKind(selected).name+' 건설';
+      button.setAttribute('aria-label',button.title);
     }
     for(const b of BASE_BUILDINGS){
       const card=one<HTMLButtonElement>('[data-base-kind="'+b.kind+'"]'),cost=baseBuildingPrice(w,b.kind);
@@ -108,8 +122,14 @@ export function createBaseManager(parent:HTMLElement,w:War,onChange:(message:str
       one('[data-base-level="'+b.kind+'"]').textContent='Lv.'+f[b.kind]+'/4';
       one('[data-base-price="'+b.kind+'"]').textContent=f[b.kind]>=4?'최대 건설 완료':'건설비 · 금 '+cost.gold+' / 식량 '+cost.food;
     }
-    one('#base-selection').textContent=buildingByKind(selected).name+' · Lv.'+f[selected];
-    one('#base-selection-hint').textContent=f[selected]>=4?'최고 단계에 도달했습니다. 다른 시설을 선택하세요.':'선택한 건물을 빈 칸에 배치하세요. 자원이 모자라면 건설할 수 없습니다.';
+    one('#base-selection').textContent=relocating?'건물 배치 변경':buildingByKind(selected).name+' · Lv.'+f[selected];
+    one('#base-selection-hint').textContent=relocating
+      ? movingSlot===null?'이전할 건물을 먼저 선택하세요. 건물 내부로 들어가지는 않습니다.':'선택한 건물을 옮길 빈 부지를 누르세요. 이동 비용은 없습니다.'
+      :f[selected]>=4?'최고 단계에 도달했습니다. 다른 시설을 선택하세요.':'선택한 건물을 빈 칸에 배치하세요. 자원이 모자라면 건설할 수 없습니다.';
+    const relocate=one<HTMLButtonElement>('[data-base-relocate]');
+    relocate.classList.toggle('chosen',relocating);
+    relocate.setAttribute('aria-pressed',String(relocating));
+    relocate.textContent=relocating?'✕ 배치 변경 취소':'↔ 배치 변경 · 건물 이전';
     for(const g of GENERAL_CATALOG){
       const card=one('[data-general-card="'+g.id+'"]'),hired=base.generals.find(general=>general.id===g.id);
       const button=one<HTMLButtonElement>('[data-base-recruit="'+g.id+'"]');
@@ -120,6 +140,15 @@ export function createBaseManager(parent:HTMLElement,w:War,onChange:(message:str
       select.disabled=!hired||g.specialty==='income'||w.over||!f.alive;
       select.value=hired?.squad===null||hired?.squad===undefined?'':String(hired.squad);
       if(g.specialty==='income')select.title='병참총감의 경제 보너스는 배치 없이 적용됩니다.';
+      const skill=generalAbilityState(w,g.id);
+      const abilityButton=one<HTMLButtonElement>('[data-general-ability="'+g.id+'"]');
+      abilityButton.disabled=!skill.ready;
+      abilityButton.textContent=skill.activeFor>0?'전술 발동 중':skill.cooldownFor>0?'재충전 중':'전술 발동';
+      card.classList.toggle('power-active',skill.activeFor>0);
+      one('[data-general-ability-state="'+g.id+'"]').textContent=!hired?'모집 후 사용 가능':
+        skill.activeFor>0?'효과 적용 중 · '+Math.ceil(skill.activeFor)+'초 남음':
+        skill.cooldownFor>0?'재사용까지 '+Math.ceil(skill.cooldownFor)+'초':
+        g.specialty!=='income'&&hired.squad===null?'부대 배치 후 발동 가능':'발동 준비 완료';
     }
     for(const button of root.querySelectorAll<HTMLButtonElement>('[data-base-tab]')){
       const active=button.dataset.baseTab===tab;button.classList.toggle('active',active);
@@ -129,11 +158,11 @@ export function createBaseManager(parent:HTMLElement,w:War,onChange:(message:str
     for(const panel of root.querySelectorAll<HTMLElement>('[data-base-panel]'))panel.hidden=interior.isInside()||panel.dataset.basePanel!==tab;
     interior.refresh();
   };
-  const close=()=>{interior.leave();root.hidden=true;};
+  const close=()=>{interior.leave();relocating=false;movingSlot=null;root.hidden=true;};
   const back=()=>{if(interior.isInside()){interior.leave();refresh();one<HTMLButtonElement>('[data-base-slot="'+lastInteriorSlot+'"]')?.focus({preventScroll:true});}else close();};
   const open=(next:'build'|'generals'='build')=>{
     if(w.over||!w.factions[0].alive)return;
-    tab=next;interior.leave();root.hidden=false;refresh();
+    tab=next;relocating=false;movingSlot=null;interior.leave();root.hidden=false;refresh();
     one<HTMLButtonElement>('button[data-base-close]').focus({preventScroll:true});
   };
   root.addEventListener('keydown',event=>{
@@ -147,18 +176,38 @@ export function createBaseManager(parent:HTMLElement,w:War,onChange:(message:str
     const button=source.closest<HTMLButtonElement>('button');
     if(!button)return;
     if(button.dataset.baseTab==='build'||button.dataset.baseTab==='generals'){
-      tab=button.dataset.baseTab;refresh();return;
+      tab=button.dataset.baseTab;relocating=false;movingSlot=null;refresh();return;
     }
     if(button.dataset.baseKind){
-      selected=button.dataset.baseKind as Upgrade;refresh();return;
+      selected=button.dataset.baseKind as Upgrade;relocating=false;movingSlot=null;refresh();return;
+    }
+    if(button.hasAttribute('data-base-relocate')){
+      relocating=!relocating;movingSlot=null;refresh();return;
     }
     if(button.dataset.baseSlot!==undefined){
       const slot=Number(button.dataset.baseSlot),def=buildingByKind(selected);
       if(slot===HQ_SLOT){notify('왕궁은 이미 건설되어 있습니다.');return;}
       const occupied=getBaseState(w).structures.find(s=>s.slot===slot);
+      if(relocating){
+        if(occupied){movingSlot=movingSlot===slot?null:slot;refresh();return;}
+        if(movingSlot===null){notify('먼저 이전할 건물을 선택하세요.');return;}
+        if(relocateBaseBuilding(w,movingSlot,slot)){
+          movingSlot=null;relocating=false;notify('시설 이전 완료 · 건물 효과 유지');
+          onChange('기지 건물 이전 완료');refresh();
+        }else notify('이전할 수 없는 부지입니다.');
+        return;
+      }
       if(occupied){lastInteriorSlot=slot;interior.enter(slot);refresh();return;}
       if(placeBaseBuilding(w,selected,slot)){notify(def.name+' 건설 완료 · 생산과 방어 효과 적용');onChange(def.name+' 건설 완료');refresh();}
       else notify('건설할 수 없습니다. 자원과 건설 레벨(최대 4)을 확인하세요.');
+      return;
+    }
+    if(button.dataset.generalAbility){
+      const id=button.dataset.generalAbility as GeneralId;
+      if(activateGeneralAbility(w,id)){
+        notify(GENERAL_ABILITIES[id].name+' 발동 · 전장에 즉시 적용');
+        onChange('장군 전술 발동');refresh();
+      }else notify('전술을 사용할 수 없습니다. 장군 배치와 재사용 대기시간을 확인하세요.');
       return;
     }
     if(button.dataset.baseRecruit){

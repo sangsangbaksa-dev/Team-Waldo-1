@@ -162,6 +162,40 @@ describe('battle UI through real player actions', () => {
     click('.base-close');
   });
 
+  it('switches to relocation mode without entering the building interior',()=>{
+    openWar(vi.fn(),true);
+    const w=game().world;
+    click('#open-base');
+    const oldGold=w.factions[0].gold;
+    click('[data-base-relocate]');
+    expect(button('[data-base-relocate]').getAttribute('aria-pressed')).toBe('true');
+    click('[data-base-slot="6"]');
+    expect(element('[data-base-slot="6"]').classList.contains('relocating-from')).toBe(true);
+    click('[data-base-slot="0"]');
+    expect(w.base?.structures.find(s=>s.kind==='mine')?.slot).toBe(0);
+    expect(w.factions[0].gold).toBe(oldGold);
+    expect(loadWar()?.base?.structures.some(s=>s.kind==='mine'&&s.slot===0)).toBe(true);
+    expect(button('[data-base-relocate]').getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('lets a recruited commander activate and save a timed battlefield ability',()=>{
+    openWar(vi.fn(),true);
+    const w=game().world;
+    w.factions[0].gold=1000;w.factions[0].food=1000;
+    click('#open-base');click('[data-base-tab="generals"]');
+    const ability=button('[data-general-ability="leon"]');
+    expect(ability.disabled).toBe(true);
+    click('[data-base-recruit="leon"]');
+    expect(ability.disabled).toBe(true);
+    const assignment=element<HTMLSelectElement>('[data-base-assignment="leon"]');
+    assignment.value='0';assignment.dispatchEvent(new Event('change',{bubbles:true}));
+    expect(ability.disabled).toBe(false);
+    click('[data-general-ability="leon"]');
+    expect(ability.disabled).toBe(true);
+    expect(element('[data-general-ability-state="leon"]').textContent).toContain('효과 적용 중');
+    expect(loadWar()?.base?.generals[0].activeUntil).toBe(10);
+  });
+
   it('opens the command center with K and dismisses it using Escape',()=>{
     openWar(vi.fn(),true);
     key(document.body,'k');

@@ -314,12 +314,12 @@ describe('battle UI through real player actions', () => {
     expect(button('#train-archer').disabled).toBe(false);
     click('#train-infantry');
     expect(element('#army-count').textContent).toBe('101 / 400');
-    expect(element('#gold').textContent).toBe('8975');
-    expect(element('#food').textContent).toBe('7980');
+    expect(element('#gold').textContent).toBe('8,975');
+    expect(element('#food').textContent).toBe('7,980');
     click('#squad-infantry');
     expect(element('#army-count').textContent).toBe('126 / 400');
-    expect(element('#gold').textContent).toBe('8350');
-    expect(element('#food').textContent).toBe('7480');
+    expect(element('#gold').textContent).toBe('8,350');
+    expect(element('#food').textContent).toBe('7,480');
     const world=game().world;
     world.factions[0].gold=0; world.factions[0].food=0;
     game().ui();

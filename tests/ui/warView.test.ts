@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PerspectiveCamera } from 'three';
-import type { War } from '../../src/battle/war';
+import { maxUnitsFor, type War } from '../../src/battle/war';
 import { loadWar } from '../../src/battle/save';
 import { openWar } from '../../src/battle/view';
 
@@ -397,6 +397,17 @@ describe('battle UI through real player actions', () => {
     expect(document.querySelector('.game-dialog')).toBeNull();
     const time = game().world.time; advanceFrames(4);
     expect(game().world.time).toBeGreaterThan(time);
+  });
+
+  it('reports the real army size against the real population cap in the pause summary', () => {
+    openWar(vi.fn(), true); advanceFrames(2); click('#pause');
+    const world = game().world;
+    const owned = world.units.filter(unit => unit.owner === 0).length;
+    // The campaign allows hundreds of soldiers; a small-skirmish cap would read as "100 / 18".
+    expect(owned).toBeGreaterThan(18);
+    const army = [...document.querySelectorAll('.pause-stats span')]
+      .find(item => item.textContent?.includes('현재 병력'));
+    expect(army?.querySelector('b')?.textContent).toBe(`${owned} / ${maxUnitsFor(world)}`);
   });
 
   it('keeps settings keyboard focus in the dialog and restores the battlefield after Escape', () => {

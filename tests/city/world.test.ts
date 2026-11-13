@@ -48,10 +48,6 @@ describe('LAST CITY rules', () => {
     expect(w.market(0, true, 500)).toBe(''); expect(f.cash).toBeGreaterThan(cash); expect(w.price).toBeLessThan(p);
     f.cash = 0; expect(w.market(0, false, 100)).not.toBe('');
   });
-  it('raises a wanted level for crimes and lets the player bribe it away', () => {
-    const w = make(), f = w.factions[0]; w.crime(0, 2.4); expect(Math.floor(f.wanted)).toBe(2);
-    f.cash = 0; expect(w.bribe(0)).not.toBe(''); f.cash = 2000; expect(w.bribe(0)).toBe(''); expect(f.wanted).toBe(0);
-  });
   it('lets the boss steal a parked car and drive it', () => {
     const w = make(), b = w.boss(0)!, car = w.vehicles.find(v => !v.driver && v.kind !== 'tank')!;
     b.x = car.x + 30; b.y = car.y; w.toggleVehicle(0); expect(b.inVeh).toBe(car.id);

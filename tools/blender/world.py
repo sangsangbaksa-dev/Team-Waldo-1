@@ -119,13 +119,12 @@ def buggy() -> tuple[B, B]:
 def build_vehicles(path: str) -> int:
     reset()
     objs = []
-    for k in ('sedan', 'sports', 'police'):
-        b, _ = sedan(k)
-        o = b.build(k)
-        objs.append(o)
+    import cars
+    for k, paint in (('sedan', 'Paint'), ('hatch', 'Paint'), ('suv', 'Paint'), ('sports', 'Paint'), ('van', 'Paint'), ('taxi', 'Yellow'), ('police', 'Navy')):
+        objs.append(cars.car(k, paint).build(k, bevel=0.02))
     # 경광등은 별도 노드: 경찰차 지붕
-    la = B().box((0, 0.26, 0), (0.34, 0.45, 0.14), 'GlowRed').build('police_LightA', loc=(0.1, 0.0, 1.88))
-    lb = B().box((0, -0.26, 0), (0.34, 0.45, 0.14), 'GlowBlue').build('police_LightB', loc=(0.1, 0.0, 1.88))
+    la = B().box((0, 0.26, 0), (0.34, 0.45, 0.14), 'GlowRed').build('police_LightA', loc=(0.1, 0.0, 1.6))
+    lb = B().box((0, -0.26, 0), (0.34, 0.45, 0.14), 'GlowBlue').build('police_LightB', loc=(0.1, 0.0, 1.6))
     for o in (la, lb):
         o.parent = bpy.data.objects['police']
     objs += [la, lb, truck().build('truck')]

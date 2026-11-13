@@ -7,8 +7,10 @@ import type { Actor, Structure, Vehicle, World } from './world';
 
 const CLOTH = [0x8d99ae, 0xb08968, 0x6d8a96, 0xa58fb3, 0x9aa37b, 0xc58f8f, 0xd27d5a, 0x5f9ea0], SKIN = [0xf1c9a5, 0xd9a47a, 0xa8744f, 0x7a5236, 0xf5d6b8];
 export const fcol = (f: number): number => f === POLICE ? 0x3f6fe0 : f === CIV ? 0x9aa3ad : new THREE.Color(FACTIONS[f]?.color ?? '#fff').getHex();
-const CAP: Record<string, number> = { civ: 160, rifle: 260, worker: 160, merc: 120, guard: 80, boss: 12, heavy: 120, sniper: 80, medic: 60, cop: 60, swat: 60 };
+const CAP: Record<string, number> = { civ: 160, civ2: 120, civ3: 120, civ4: 120, rifle: 260, worker: 160, merc: 120, guard: 80, boss: 12, heavy: 120, sniper: 80, medic: 60, cop: 60, swat: 60 };
 const MUZZLE: Record<string, number> = { pistol: 0.26, smg: 0.5, shotgun: 0.7, rifle: 0.82, sniper: 1.12, rocket: 0.95, minigun: 0.75, railgun: 0.98 };
+const CIV_SKINS = ['civ', 'civ2', 'civ3', 'civ4'];
+const CIV_CARS = ['sedan', 'hatch', 'suv', 'sedan', 'taxi', 'van', 'hatch'];
 const VEHICLE_MODEL: Record<string, string> = { sedan: 'sedan', sports: 'sports', truck: 'truck', police: 'police', tank: 'tank' };
 
 interface CharSet { fixed?: THREE.InstancedMesh; team?: THREE.InstancedMesh; skin?: THREE.InstancedMesh; glow?: THREE.InstancedMesh; leg?: THREE.InstancedMesh; n: number; nl: number }
@@ -90,7 +92,7 @@ export class ModelLayer {
   // ---------- 개별 모델 ----------
   makeStruct(s: Structure): THREE.Object3D | null { const t = this.models.structures[s.kind]; if (!t) return null; const g = instantiate(t, { team: fcol(s.f) }); g.scale.setScalar(10); g.position.set(s.x + s.w / 2, 0, s.y + s.h / 2); return g; }
   makeVehicle(v: Vehicle): THREE.Object3D | null {
-    const t = this.models.vehicles[VEHICLE_MODEL[v.kind]]; if (!t) return null;
+    const t = this.models.vehicles[v.kind === 'sedan' ? CIV_CARS[v.id % CIV_CARS.length] : VEHICLE_MODEL[v.kind]]; if (!t) return null;
     const g = instantiate(t, { paint: new THREE.Color(v.color).getHex(), team: fcol(Math.max(0, v.f)) }); g.scale.setScalar(10); return g;
   }
   makeLootGun(id: string): THREE.Object3D | null { const t = this.models.groundGuns[id]; return t ? instantiate(t) : null; }
@@ -106,8 +108,8 @@ export class ModelLayer {
       if (!a.alive || a.inVeh) continue; const dx = a.x - cam.x, dz = a.y - cam.z; if (dx * dx + dz * dz > 2600 * 2600) continue;
       const def = ACTORS[a.kind];
       if (def.mech) { seenMech.add(a.id); this.syncMech(a); continue; }
-      if (a === pb && !third) continue; const s = this.sets[a.kind]; if (!s) continue;
-      const cap = CAP[a.kind] ?? 80; if (s.n >= cap) continue;
+      if (a === pb && !third) continue; const key = a.kind === 'civ' ? CIV_SKINS[a.id % 4] : a.kind, s = this.sets[key]; if (!s) continue;
+      const cap = CAP[key] ?? 80; if (s.n >= cap) continue;
       const S = a.kind === 'boss' ? 21 : a.kind === 'heavy' ? 20 : 19, spd = Math.hypot(a.vx, a.vy), bob = Math.abs(Math.sin(a.walk * 0.09)) * Math.min(1, spd / 70) * 0.04 * S;
       this.q.setFromAxisAngle(this.yAxis, -a.ang); this.v1.set(a.x, bob, a.y); base.compose(this.v1, this.q, d.scale.set(S, S, S));
       const i = s.n++; const team = a.flash > 0 ? 0xffffff : a.f === CIV ? CLOTH[a.slot % CLOTH.length] : fcol(a.f);

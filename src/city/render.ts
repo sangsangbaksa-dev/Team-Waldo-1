@@ -247,7 +247,7 @@ export class Renderer {
     for (const t of w.map.trees) if (this.visible(t.x, t.y)) { const tx = cx + (t.x - cx) * 1.06, ty = cy + (t.y - cy) * 1.06, hide = pb && Math.hypot(pb.x - tx, pb.y - ty) < t.r; ctx.globalAlpha = hide ? 0.4 : 0.95; ctx.fillStyle = '#2f6b3d'; ctx.beginPath(); ctx.arc(tx, ty, t.r, 0, 6.29); ctx.fill(); ctx.fillStyle = '#3f8a4f'; ctx.beginPath(); ctx.arc(tx - t.r * 0.25, ty - t.r * 0.25, t.r * 0.6, 0, 6.29); ctx.fill(); ctx.globalAlpha = 1; }
   }
   zoneLayer(x0: number, y0: number, x1: number, y1: number): void {
-    const { ctx, world: w } = this, z = w.zone;
+    const { ctx, world: w } = this, z = w.zone; if (z.r > 3000) return;
     ctx.fillStyle = 'rgba(128,64,220,0.3)'; ctx.beginPath(); ctx.rect(x0 - 50, y0 - 50, x1 - x0 + 100, y1 - y0 + 100); ctx.arc(z.x, z.y, Math.max(0, z.r), 0, 6.29, true); ctx.fill('evenodd');
     ctx.strokeStyle = '#c59bff'; ctx.lineWidth = 5; ctx.setLineDash([26, 14]); ctx.lineDashOffset = -this.t * 40; ctx.beginPath(); ctx.arc(z.x, z.y, Math.max(0, z.r), 0, 6.29); ctx.stroke();
     if (z.nr < z.r) { ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2.5; ctx.setLineDash([8, 12]); ctx.beginPath(); ctx.arc(z.nx, z.ny, Math.max(2, z.nr), 0, 6.29); ctx.stroke(); }

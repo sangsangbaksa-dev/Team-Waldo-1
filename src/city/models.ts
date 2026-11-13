@@ -5,7 +5,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 
 export interface Baked { fixed: THREE.BufferGeometry | null; team: THREE.BufferGeometry | null; skin: THREE.BufferGeometry | null; glow: THREE.BufferGeometry | null }
 export interface CharModel { body: Baked; leg: Baked }
-export const CHAR_KINDS = ['boss', 'worker', 'rifle', 'heavy', 'sniper', 'medic', 'civ', 'cop', 'swat', 'guard', 'merc'] as const;
+export const CHAR_KINDS = ['boss', 'worker', 'rifle', 'heavy', 'sniper', 'medic', 'civ', 'civ2', 'civ3', 'civ4', 'cop', 'swat', 'guard', 'merc'] as const;
 export type CharKind = typeof CHAR_KINDS[number];
 export const WEAPON_KINDS = ['pistol', 'smg', 'shotgun', 'rifle', 'sniper', 'rocket', 'minigun', 'railgun'] as const;
 
@@ -85,7 +85,7 @@ export function loadModels(base: string): Promise<Models> {
     const groundGuns: Record<string, THREE.Object3D> = {}, viewGuns: Record<string, THREE.Object3D> = {};
     for (const k of WEAPON_KINDS) { if (!wn[`g_${k}`] || !wn[`vm_${k}`]) throw new Error(`missing weapon ${k}`); groundGuns[k] = wn[`g_${k}`]; viewGuns[k] = wn[`vm_${k}`]; }
     const need = (m: Record<string, THREE.Object3D>, names: string[]): Record<string, THREE.Object3D> => { for (const n of names) if (!m[n]) throw new Error(`missing ${n}`); return m; };
-    need(vn, ['sedan', 'sports', 'police', 'truck', 'tank', 'buggy']); need(sn, ['hq', 'barracks', 'depot', 'factory', 'lab', 'turret']);
+    need(vn, ['sedan', 'hatch', 'suv', 'taxi', 'van', 'sports', 'police', 'truck', 'tank', 'buggy']); need(sn, ['hq', 'barracks', 'depot', 'factory', 'lab', 'turret']);
     need(pn, ['tree_round', 'tree_pine', 'lamp', 'crystal', 'crate', 'plane', 'hydrant', 'bench', 'bin', 'cone', 'mailbox', 'dumpster', 'barrier', 'tl_red', 'tl_green']);
     const baked: Record<string, Baked> = {};
     for (const k of ['tree_round', 'tree_pine', 'lamp', 'crystal', 'hydrant', 'bench', 'bin', 'cone', 'mailbox', 'dumpster', 'barrier', 'tl_red', 'tl_green']) baked[k] = bake(pn[k]);

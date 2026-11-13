@@ -55,8 +55,8 @@ export function thinkFaction(w: World, f: Faction): void {
       for (const q of w.businesses) if (q.owner >= 0 && q.owner !== f.id && inNext(q.x, q.y, 0)) { const s = dist(q.x, q.y) * (q.kind === 'bank' || q.kind === 'casino' ? 0.75 : 1); if (s < best) { best = s; bx = q.x; by = q.y; found = true; } }
       for (const s of w.structures) if (s.alive && s.kind === 'hq' && s.f !== f.id && army.length >= diff.attackArmy + 3) { const sc = dist(s.x, s.y) * 0.85; if (sc < best) { best = sc; bx = s.x + 60; by = s.y + 150; found = true; } }
       for (const o of w.factions) if (o.alive && o.id !== f.id) { const ob = w.boss(o.id); if (!ob) continue; const d = dist(ob.x, ob.y); if (d < 1100 || final) { const sc = d * (final ? 0.5 : 0.8); if (sc < best) { best = sc; bx = ob.x; by = ob.y; found = true; } } }
-      if (found && (best < 2600 || final)) { goal = 'attack'; tx = bx; ty = by; if (ai.goal !== 'attack') ai.stuckT = t; if (t - ai.stuckT > 110 && !final) { ai.attackT = t + 50 + w.rng() * 60; goal = 'idle'; } }
-      if (!final && army.length < 3) { ai.attackT = t + 60; goal = 'idle'; }
+      if (found && (best < 2600 || final)) { goal = 'attack'; tx = bx; ty = by; if (ai.goal !== 'attack') ai.stuckT = t; if (t - ai.stuckT > 110 && !final) { ai.attackT = t + 140 + w.rng() * 120; goal = 'idle'; } }
+      if (!final && army.length < 3) { ai.attackT = t + 130; goal = 'idle'; }
     }
     if (goal === 'idle') {
       let best = 1900, target: { x: number; y: number } | null = null;

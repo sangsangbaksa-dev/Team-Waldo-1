@@ -7,9 +7,9 @@ const make = (): World => new World({ seed: 5, difficulty: 'normal', klass: 'war
 
 describe('튜토리얼 연습장', () => {
   it('자기장·라이벌 AI·보급 투하를 멈춥니다', () => {
-    const w = make(), rival = w.boss(2)!, x = rival.x, y = rival.y, r = w.zone.r;
+    const w = make(), rival = w.boss(2)!, x = rival.x, y = rival.y, r = w.zone.r, ph = w.zone.phase;
     run(w, 240);
-    expect(w.zone.r).toBe(r); expect(w.zone.phase).toBe(0); expect(w.planes).toHaveLength(0);
+    expect(w.zone.r).toBe(r); expect(w.zone.phase).toBe(ph); expect(w.planes).toHaveLength(0);
     expect(Math.hypot(rival.x - x, rival.y - y)).toBeLessThan(40);
     expect(w.factions.filter(f => f.alive)).toHaveLength(8);
     expect(w.quests.every(q => !q.done)).toBe(true);

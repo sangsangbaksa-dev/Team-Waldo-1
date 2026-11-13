@@ -1,6 +1,6 @@
 // LAST CITY — 게임 루프, 입력, HUD
 import './city.css';
-import { BIZ, BUILD_ORDER, CLASSES, DIFFICULTY, FACTIONS, PERKS, RESEARCH, STRUCTS, UNITS, WEAPONS, ZONE_PHASES, type ClassId, type Difficulty, type ResearchId, type StructKind, type UnitId, type WeaponId } from './defs';
+import { BIZ, BUILD_ORDER, CLASSES, DIFFICULTY, FACTIONS, PERKS, RESEARCH, STRUCTS, UNITS, WEAPONS, type ClassId, type Difficulty, type ResearchId, type StructKind, type UnitId, type WeaponId } from './defs';
 import { World } from './world';
 import { Renderer, type Ghost } from './render';
 import { Renderer3D } from './render3d';
@@ -187,7 +187,7 @@ export function openCity(onExit: () => void, options: { difficulty: Difficulty }
     const w = world!, f = w.factions[0], b = w.boss(0), z = w.zone;
     q('#c-res').innerHTML = `<span class="ca" title="자금">$ <b>${$(f.cash)}</b><small>+${$(f.income)}/s</small></span><span class="cr" title="크리스탈">◆ <b>${$(f.crystal)}</b></span><span title="인구">병력 <b>${f.supply}/${f.supplyMax}</b></span>`;
     const quest = tut ? null : w.quests.find(x => !x.done); q('#c-quest').innerHTML = tut ? '' : quest ? `<em>목표</em> ${quest.text} <b>+$${quest.reward}</b>` : '<em>목표</em> 마지막 왕국이 되세요';
-    const ph = z.phase < ZONE_PHASES.length; if (tut) q('#c-zone').innerHTML = `<b>튜토리얼</b><span>연습장 · 자기장과 라이벌 정지</span><span>${Math.min(tut.s.i, STEPS.length - 1) + 1}/${STEPS.length}</span>`; else q('#c-zone').innerHTML = `<b>${clock(w.time)}</b><span class="${z.shrinking ? 'warn' : ''}">${!ph ? '자기장 완전 수축' : z.shrinking ? `자기장 수축 중 ${clock(z.t)}` : `자기장 ${z.phase + 1}단계 ${clock(z.t)} 후`}</span><span>생존 왕국 <b>${w.aliveCount()}</b>/8</span>`;
+    void z; if (tut) q('#c-zone').innerHTML = `<b>튜토리얼</b><span>연습장 · 라이벌 정지</span><span>${Math.min(tut.s.i, STEPS.length - 1) + 1}/${STEPS.length}</span>`; else q('#c-zone').innerHTML = `<b>${clock(w.time)}</b><span>생존 왕국 <b>${w.aliveCount()}</b>/8</span>`;
     q('#c-wanted').innerHTML = f.wanted >= 1 ? `<span class="stars">${'★'.repeat(Math.floor(f.wanted))}${'☆'.repeat(5 - Math.floor(f.wanted))}</span> 수배 중` : '';
     q('#c-feed').innerHTML = w.feed.filter(x => w.time - x.t < 7).slice(-5).map(x => `<div style="border-color:${x.color}">${x.text}</div>`).join('');
     const army = w.armyOf(0).length;

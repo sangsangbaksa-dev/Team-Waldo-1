@@ -35,8 +35,8 @@ loadModels('/').then(m => {
   const vms: THREE.Object3D[] = []; for (const k of WEAPON_KINDS) vms.push(yaw(instantiate(m.viewGuns[k]), -0.5));
   row('viewmodels', vms, 1.7, -250, 12);
   const colors = [0xd9d9d9, 0xff3b3b, 0x8b6f47, 0xf4f6ff];
-  const vs = ['sedan', 'sports', 'truck', 'police', 'tank', 'buggy'].map((k, i) => yaw(instantiate(m.vehicles[k], { paint: colors[i % 4], team: 0x3ddc97 }), -0.6));
-  row('vehicles', vs, 8, -170, 24);
+  const vs = ['sedan', 'hatch', 'suv', 'taxi', 'van', 'sports', 'police', 'truck', 'tank', 'buggy'].map((k, i) => yaw(instantiate(m.vehicles[k], { paint: colors[i % 4], team: 0x3ddc97 }), -0.6));
+  row('vehicles', vs, 6.5, -170, 30);
   const ss = ['hq', 'barracks', 'depot', 'factory', 'lab', 'turret'].map(k => yaw(instantiate(m.structures[k], { team: 0x4da3ff }), -0.6));
   row('structures', ss, 14, -70, 40);
   const ps = ['tree_round', 'tree_pine', 'lamp', 'crystal', 'crate', 'plane', 'hydrant', 'bench', 'bin', 'cone', 'mailbox', 'dumpster', 'barrier', 'tl_red', 'tl_green'].map(k => yaw(instantiate(m.props[k], { team: 0x4da3ff }), -0.6));

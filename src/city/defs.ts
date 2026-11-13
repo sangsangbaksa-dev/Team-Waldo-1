@@ -12,9 +12,9 @@ export const FACTION_COUNT = 8;
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
 export const DIFFICULTY: Record<Difficulty, { label: string; desc: string; income: number; dmg: number; cap: number; attackArmy: number }> = {
-  easy: { label: '입문', desc: '라이벌 조직이 느리게 성장하고 약하게 공격합니다. 처음이라면 여기서.', income: 0.65, dmg: 0.7, cap: 16, attackArmy: 9 },
-  normal: { label: '보통', desc: '균형 잡힌 7개 라이벌 조직. 경제와 전투를 함께 굴려야 합니다.', income: 1, dmg: 1, cap: 24, attackArmy: 7 },
-  hard: { label: '도전', desc: '라이벌이 빠르게 확장하고 일찍 쳐들어옵니다. 숙련자용.', income: 1.3, dmg: 1.15, cap: 34, attackArmy: 6 },
+  easy: { label: '입문', desc: '라이벌 조직이 느리게 성장하고 약하게 공격합니다. 처음이라면 여기서.', income: 0.5, dmg: 0.6, cap: 14, attackArmy: 13 },
+  normal: { label: '보통', desc: '균형 잡힌 7개 라이벌 조직. 경제와 전투를 함께 굴려야 합니다.', income: 0.78, dmg: 0.85, cap: 20, attackArmy: 11 },
+  hard: { label: '도전', desc: '라이벌이 빠르게 확장하고 일찍 쳐들어옵니다. 숙련자용.', income: 1.0, dmg: 1.05, cap: 28, attackArmy: 9 },
 };
 
 export const FACTIONS = [

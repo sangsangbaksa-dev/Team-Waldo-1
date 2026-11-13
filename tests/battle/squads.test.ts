@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createWar, getIncome, MAP_HALF_SIZE, stepWar, stormStartFor } from '../../src/battle/war';
-import { assignSquad, commandSquad, dismissSquad, squadDestination, squadUnits, SQUAD_NAMES } from '../../src/battle/squads';
+import { assignSquad, commandSquad, dismissSquad, squadDestination, squadUnits, SQUAD_NAMES, type SquadCommand } from '../../src/battle/squads';
 import { encodeWar, decodeWar } from '../../src/battle/save';
 
 describe('independent army groups', () => {
@@ -59,6 +59,14 @@ describe('independent army groups', () => {
     expect(dismissSquad(war, 3 as never)).toBe(0);
     expect(dismissSquad(war, -1 as never)).toBe(0);
     expect(encodeWar(war)).toBe(before);
+  });
+
+  it('rejects unsupported squad commands without corrupting the current save', () => {
+    const war = createWar(), before = encodeWar(war);
+    expect(commandSquad(war, 0, { kind: 'patrol' } as unknown as SquadCommand)).toBe(false);
+    expect(commandSquad(war, 0, null as unknown as SquadCommand)).toBe(false);
+    expect(encodeWar(war)).toBe(before);
+    expect(decodeWar(encodeWar(war))).toEqual(war);
   });
 
   it('keeps old saved matches readable without requiring new squad fields', () => {

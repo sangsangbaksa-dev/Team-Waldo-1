@@ -37,6 +37,7 @@ export function dismissSquad(w: War, squad: SquadId): number {
 /** Validate commands before storing them: map-clicks cannot send troops outside the world. */
 export function commandSquad(w: War, squad: SquadId, command: SquadCommand): boolean {
   if (w.over || !w.factions[0].alive || ![0, 1, 2].includes(squad) ||
+      !command || !['home', 'move', 'outpost', 'faction'].includes(command.kind) ||
       squadUnits(w, squad).length === 0) return false;
   if (command.kind === 'move' &&
       (!Number.isFinite(command.x) || !Number.isFinite(command.z) ||

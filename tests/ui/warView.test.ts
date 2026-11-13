@@ -390,6 +390,7 @@ describe('battle UI through real player actions', () => {
   it('freezes both time and economy during pause and resumes after Escape', () => {
     openWar(vi.fn(), true); advanceFrames(10); click('#pause');
     expect(element('.game-dialog').textContent).toContain('전투 일시정지');
+    expect(element('.game-dialog').textContent).toContain('100 / 400');
     const snapshot = JSON.stringify(game().world);
     key(button('.dialog-cancel'), '1'); advanceFrames(30);
     expect(JSON.stringify(game().world)).toBe(snapshot);

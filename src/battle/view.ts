@@ -295,7 +295,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   const togglePause = (reason = '잠시 전략을 정비하세요.') => {
     if (done) return;
     if (modalClose) { modalClose(); return; }
-    openModal('전투 일시정지', `<p>${reason}</p><div class="pause-stats"><span>생존 시간<b>${clock(w.time)}</b></span><span>점령 거점<b>${w.outposts.filter(p => p.owner === 0).length} / 9</b></span><span>현재 병력<b>${w.units.filter(u => u.owner === 0).length} / 18</b></span></div><p class="dialog-tip">시간이 멈췄습니다. Esc 키나 아래 버튼으로 계속할 수 있습니다.</p><div class="pause-actions"><button id="pause-guide" class="button secondary">플레이 가이드</button><button id="pause-settings" class="button secondary">화면·소리 설정</button><button id="pause-menu" class="button secondary">저장하고 메뉴로</button></div>`, () => {
+    openModal('전투 일시정지', `<p>${reason}</p><div class="pause-stats"><span>생존 시간<b>${clock(w.time)}</b></span><span>점령 거점<b>${w.outposts.filter(p => p.owner === 0).length} / 9</b></span><span>현재 병력<b>${w.units.filter(u => u.owner === 0).length} / ${armyLimit}</b></span></div><p class="dialog-tip">시간이 멈췄습니다. Esc 키나 아래 버튼으로 계속할 수 있습니다.</p><div class="pause-actions"><button id="pause-guide" class="button secondary">플레이 가이드</button><button id="pause-settings" class="button secondary">화면·소리 설정</button><button id="pause-menu" class="button secondary">저장하고 메뉴로</button></div>`, () => {
       document.querySelector<HTMLButtonElement>('#pause-guide')!.onclick = () => { modalClose?.(); help(); };
       document.querySelector<HTMLButtonElement>('#pause-settings')!.onclick = () => { modalClose?.(); openSettings(); };
       document.querySelector<HTMLButtonElement>('#pause-menu')!.onclick = () => { modalClose?.(); exitWithSave(); };

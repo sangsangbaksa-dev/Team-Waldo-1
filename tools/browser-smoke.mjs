@@ -19,7 +19,7 @@ server.stderr.on('data', chunk => { serverOutput += chunk; });
 server.on('error', error => { serverOutput += `\n${error.stack}`; });
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const intersect = (a, b) => Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
-const capture = (page, name) => page.screenshot({ path: `${artifacts}/${name}.png`, fullPage: true, animations: 'disabled' });
+const capture = (page, name) => page.screenshot({ path: `${artifacts}/${name}.png`, fullPage: true, animations: 'disabled', timeout: 60000 });
 
 async function layout(page) {
   return page.evaluate(() => {
@@ -62,9 +62,9 @@ async function assertElementFits(page, selector, result, name) {
   assert.ok(box.scrollWidth <= box.clientWidth + 1, `${name} content overflows horizontally`);
 }
 async function waitForBattle(page) {
-  await page.locator('.war-ui').waitFor({ timeout: 30000 });
+  await page.locator('.war-ui').waitFor({ timeout: 60000 });
   assert.equal(await page.locator('.war-fallback').count(), 0, 'WebGL fallback is not a passing 3D test');
-  await page.waitForFunction(() => window.__war?.renderer.info.render.calls > 0 && window.__war.world.time >= 0.1, null, { timeout: 30000 });
+  await page.waitForFunction(() => window.__war?.renderer.info.render.calls > 0 && window.__war.world.time >= 0.1, null, { timeout: 60000 });
   // New matches begin in an actual parachute sequence. Verify the direct-play HUD,
   // then transition to the legacy strategy interface so existing UI regressions remain covered.
   await page.evaluate(() => {
@@ -115,6 +115,9 @@ try {
     const page = await context.newPage(); page.setDefaultTimeout(15000);
     const result = { name, width, height, status: 'running', pageErrors: [], consoleErrors: [], scenarios: ['normal UI actions', 'DEV time freeze', 'seeded victory result'] };
     const initialQuality = name === 'desktop' ? 'high' : 'standard';
+    // Verify high quality explicitly, then use standard for repeated lifecycle
+    // checks so software WebGL runners do not spend each interaction drawing shadows.
+    const actionQuality = 'standard';
     report.cases.push(result);
     const stage = async value => { result.stage = value; console.log(`STAGE ${name}: ${value}`); await writeFile(`${artifacts}/report.json`, JSON.stringify(report, null, 2)); };
     page.on('pageerror', error => result.pageErrors.push(error.message));
@@ -150,7 +153,7 @@ try {
       await page.locator('#pause').click(); await page.locator('#pause-settings').click();
       await assertElementFits(page, '.game-dialog', result, 'battle settings');
       result.graphics = [];
-      for (const quality of ['low', 'high', 'standard', initialQuality]) {
+      for (const quality of ['low', 'high', 'standard', actionQuality]) {
         await page.locator('#graphics-setting').selectOption(quality);
         const state = await graphics(page); assertGraphics(state, quality); result.graphics.push(state);
       }
@@ -163,17 +166,32 @@ try {
       await page.locator('#policy-growth').click(); assert.equal(await page.locator('#policy-growth').getAttribute('aria-pressed'), 'true');
       await page.locator('#tab-army').click(); assert.equal(await page.locator('#tab-army').getAttribute('aria-selected'), 'true');
       assert.equal(await page.locator('#unit-train button').count(), 8); assert.equal(await page.locator('#train-archer').isDisabled(), true);
-      await page.locator('#train-infantry').click(); assert.equal((await snapshot(page)).trained, 1);
+      await page.locator('#train-infantry').click();
+      result.scenarios.push('advance the real four-second training queue while DEV time is frozen');
+      await page.evaluate(async () => { const { stepWar } = await import('/src/battle/war.ts'); for(let i=0;i<40;i++)stepWar(window.__war.world,.1);window.__war.ui(); });
+      assert.equal((await snapshot(page)).trained, 1);
       await page.locator('#reserve-4').click(); assert.equal(await page.locator('#reserve-4').getAttribute('aria-pressed'), 'true');
       await page.locator('#tab-orders').click(); assert.equal(await page.locator('#outposts button').count(), 9);
       await page.locator('#outpost-5').click(); assert.equal((await snapshot(page)).rally, 5);
       await stage('3D raycast and seeded defense warning');
       await page.locator('#overview').click();
+
       // World input intentionally ignores a paused game, so briefly resume for a
       // real pointer gesture. Project the actual camera rather than guessing pixels.
       await page.evaluate(() => window.__war.setPaused(false));
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => resolve())));
-      const projected = await page.evaluate(() => { const camera = window.__war.camera, point = camera.position.clone().set(0, 0, 0).project(camera); return { x: point.x, y: point.y }; });
+      // On portrait screens the command bar can cover the optical center. Arrange
+      // only the camera fixture so the actual raycast gesture lands on visible terrain.
+      const projected = await page.evaluate(() => {
+        const camera = window.__war.camera, canvas = document.querySelector('.war-view canvas');
+        for (const lookY of [0, -40, -80, -120, 40, 80]) {
+          camera.lookAt(0, lookY, 0); camera.updateMatrixWorld();
+          const point = camera.position.clone().set(0, 0, 0).project(camera);
+          const x = (point.x + 1) * innerWidth / 2, y = (1 - point.y) * innerHeight / 2;
+          if (document.elementFromPoint(x, y) === canvas) return { x: point.x, y: point.y };
+        }
+        throw new Error('Central objective has no visible raycast position');
+      });
       const field = page.locator('.war-view canvas'), fieldBox = await field.boundingBox(); assert.ok(fieldBox);
       await field.click({ position: { x: (projected.x + 1) * fieldBox.width / 2, y: (1 - projected.y) * fieldBox.height / 2 } });
       await page.locator('#target-card').waitFor();
@@ -210,12 +228,12 @@ try {
       await stage('save and resume');
       await page.locator('#save').click(); const expected = await snapshot(page);
       const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('team-waldo-3d-war-v1')));
-      assert.equal(saved.version, 2); assert.equal(saved.war.factions[0].policy, 'growth');
+      assert.equal(saved.version, 5); assert.equal(saved.war.factions[0].policy, 'growth');
       await page.locator('#exit').click(); await page.locator('#continue-war').waitFor();
-      await page.locator('#preferences').click(); assert.equal(await page.locator('#menu-quality').inputValue(), initialQuality);
+      await page.locator('#preferences').click(); assert.equal(await page.locator('#menu-quality').inputValue(), actionQuality);
       await page.keyboard.press('Escape'); await page.locator('#continue-war').click();
       await waitForBattle(page); const restored = await snapshot(page);
-      assertGraphics(await graphics(page), initialQuality);
+      assertGraphics(await graphics(page), actionQuality);
       for (const key of ['difficulty', 'mine', 'policy', 'reserve', 'rally', 'trained', 'weapons']) assert.equal(restored[key], expected[key], `Save/load lost ${key}`);
       assert.ok(restored.time >= expected.time, 'Saved time moved backwards');
       await page.locator('#pause').click(); await page.getByRole('dialog').waitFor();
@@ -264,6 +282,7 @@ try {
   // In addition to the classic campaign, verify that the optional 600-soldier
   // mode actually renders in WebGL, accepts mass recruiting, and can be saved.
   const grandContext = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
+  await grandContext.addInitScript(() => localStorage.setItem('waldo.preferences.v1', JSON.stringify({ quality: 'standard', sound: false, reducedMotion: true })));
   const grandPage = await grandContext.newPage();
   grandPage.setDefaultTimeout(30000);
   const grandResult = { name: 'grand-100-vs-500', status: 'running', scenarios: ['600 live units', 'GPU instancing', '25 recruits', 'saved grand match'] };

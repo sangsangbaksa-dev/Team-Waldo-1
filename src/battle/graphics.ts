@@ -6,6 +6,7 @@ import { MAP_HALF_SIZE, OUTPOST_NAMES, OUTPOST_BONUSES, UNIT_STATS, type Unit, t
 import { createWorldLabel, type WorldLabel } from './renderLabels';
 import { createBattleEffects } from './renderEffects';
 import { batchStaticChildren, type StaticBatch } from './renderBatches';
+import { exportDestination, exportPosition, type Infrastructure } from './economy';
 import { createVisualDetails } from './visualDetails';
 
 /** Procedural, self-contained industrial 3D battlefield. No external models or textures. */
@@ -21,6 +22,7 @@ type Fortress = {
   root:THREE.Group; towers:THREE.Group; structures:THREE.Group[];
   banner:THREE.Mesh; rubble:THREE.Group; alive:boolean; label:WorldLabel;
   ring:THREE.Mesh; previousHp:number; previousCooldown:number;
+  civil: { homes:THREE.Group[]; facilities:Record<Exclude<Infrastructure,'city'>,THREE.Group>; workers:THREE.InstancedMesh; transport:THREE.Group; scaffold:THREE.Group };
 };
 type PostVisual = {banner:THREE.Mesh; crystal:THREE.Mesh; progress:THREE.Mesh;
   territory:THREE.Mesh; label:WorldLabel; previousOwner:number|null};
@@ -299,6 +301,44 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     add(barracks,box,woodDark,0,1.8,3.24,2.2,3.3,.3);
     for(const x of [-2.6,2.6])add(barracks,box,teamMats[f.id],x,3,3.24,1.1,1.5,.18);
     structures.push(barracks);
+    // Civil expansion grows outside the castle walls as the economy develops.
+    const homes:THREE.Group[]=[];
+    for(let i=0;i<9;i++){
+      const house=new THREE.Group();house.position.set(-20+(i%3)*7,0,-18-Math.floor(i/3)*8);root.add(house);
+      add(house,box,cream,0,1.4,0,4.5,2.8,4);
+      add(house,roofShape,farmRoofMaterial,0,3.8,0,6.5,2.8,6);
+      add(house,box,woodDark,0,1,2.1,1.2,2,.2);
+      batchStaticChildren(house);homes.push(house);
+    }
+    const warehouse=new THREE.Group();warehouse.position.set(70,0,-15);root.add(warehouse);
+    add(warehouse,box,timber,0,2,0,8,4,7);
+    add(warehouse,roofShape,roof,0,5.4,0,11,3.5,10);
+    for(let i=0;i<3;i++)add(warehouse,box,gold,-3+i*2.4,.7,5,1.7,1.4,1.7);
+    const market=new THREE.Group();market.position.set(-23,0,7);root.add(market);
+    for(let i=0;i<3;i++){
+      add(market,box,timber,0,1.1,i*4,5,2,2.4);
+      add(market,box,teamMats[f.id],0,3.2,i*4,6,.4,3.4);
+      add(market,cylinder,woodDark,-2.4,1.9,i*4,.2,3.8,.2);
+      add(market,cylinder,woodDark,2.4,1.9,i*4,.2,3.8,.2);
+    }
+    const port=new THREE.Group();port.position.set(70,0,22);root.add(port);
+    add(port,box,timber,0,.5,0,9,1,8);
+    add(port,cylinder,woodDark,-3,5,-2,.4,10,.4);
+    add(port,box,timber,0,9,-2,7,.4,.4);
+    add(port,box,gold,2,1.8,0,2,2.6,2);
+    add(port,box,teamMats[f.id],-1.5,7,-2,2.7,2,.15);
+    for(const facility of [warehouse,market,port])batchStaticChildren(facility);
+    const workerGeometry=new THREE.CapsuleGeometry(.35,.65,2,5);
+    const workers=new THREE.InstancedMesh(workerGeometry,teamMats[f.id],36);workers.instanceMatrix.setUsage(THREE.DynamicDrawUsage);workers.frustumCulled=false;root.add(workers);
+    const transport=new THREE.Group();root.add(transport);
+    add(transport,box,timber,0,1,0,2.6,1.4,3.8);
+    add(transport,box,gold,0,2,0,2,1,2.7);
+    for(const x of [-1.5,1.5])for(const z of [-1.1,1.1])add(transport,sphere,woodDark,x,.6,z,.7,.7,.7);
+    batchStaticChildren(transport);
+    const scaffold=new THREE.Group();root.add(scaffold);
+    for(const x of [-4,4])for(const z of [-4,4])add(scaffold,box,timber,x,3,z,.4,6,.4);
+    for(const y of [2,5]){add(scaffold,box,gold,0,y,-4,9,.3,.3);add(scaffold,box,timber,0,y,4,9,.3,.3);}
+    batchStaticChildren(scaffold);
     art.fortress(root,structures,f.id);
     for(const building of structures)building.scale.setScalar(.9);
     const rubble=new THREE.Group();root.add(rubble);rubble.visible=false;
@@ -307,10 +347,10 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
       const debris=add(rubble,rock,stoneDark,Math.cos(a)*r,.5,Math.sin(a)*r,1.7,.8,1.2);
       debris.rotation.set(i*.24,i*.65,0);
     }
-    batchStaticChildren(root,new Set([banner,territoryRing]));
+    batchStaticChildren(root,new Set([banner,territoryRing,workers]));
     batchStaticChildren(towers);batchStaticChildren(rubble);
     structures.forEach(building=>batchStaticChildren(building));
-    return {root,towers,structures,banner,rubble,alive:f.alive,label,ring:territoryRing,
+    return {root,towers,structures,banner,rubble,alive:f.alive,label,ring:territoryRing,civil:{homes,facilities:{warehouse,market,port},workers,transport,scaffold},
       previousHp:f.hp,previousCooldown:f.turretCooldown};
   });
 
@@ -489,6 +529,28 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
         v.structures[i].scale.setScalar(.78+level*.13);
       }
       v.towers.scale.set(1,1+(f.fort-1)*.09,1);
+      const e=war.economy[f.id], civil=v.civil;
+      civil.homes.forEach((house,i)=>{house.visible=i<(e.city-1)*3;});
+      for(const key of ['warehouse','market','port'] as const){civil.facilities[key].visible=e[key]>0;civil.facilities[key].scale.setScalar(1+Math.max(0,e[key]-1)*.12);}
+      civil.scaffold.visible=Boolean(e.construction);
+      if(e.construction){const target=e.construction.key==='city'?civil.homes[Math.min(8,(e.city-1)*3)]:civil.facilities[e.construction.key];civil.scaffold.position.copy(target.position);}
+      const dummy=new THREE.Object3D();let workerIndex=0;
+      for(const job of ['mine','farm','trade','idle'] as const){
+        for(let i=0;i<e.workers[job];i++){
+          const progress=reducedMotion?.5:(Math.sin(time*.55+i*1.7)+1)/2;
+          const goal=job==='mine'?{x:0,z:18}:job==='farm'?{x:-13,z:20}:job==='trade'?{x:-23,z:11}:{x:9,z:9};
+          dummy.position.set(goal.x*progress+(i%3-1)*1.1,.9,goal.z*progress+Math.floor(i/3)*.8);
+          dummy.scale.setScalar(.85);dummy.rotation.y=progress*Math.PI;dummy.updateMatrix();civil.workers.setMatrixAt(workerIndex++,dummy.matrix);
+        }
+      }
+      civil.workers.count=workerIndex;civil.workers.instanceMatrix.needsUpdate=true;
+      civil.transport.visible=Boolean(e.shipment);
+      if(e.shipment){
+        const post=exportDestination(war,f.id,e.shipment.route), cargo=exportPosition(war,f.id)!;
+        civil.transport.position.set(cargo.x-f.x,0,cargo.z-f.z);
+        civil.transport.scale.setScalar(1+(e.shipment.loads-1)*.2);
+        civil.transport.rotation.y=Math.atan2(post.x-f.x,post.z-f.z);
+      }
       v.banner.rotation.y=reducedMotion?0:Math.sin(time*1.7+f.id)*.12;
     }
     for(const p of war.outposts){

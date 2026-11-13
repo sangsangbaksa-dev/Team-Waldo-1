@@ -1,5 +1,7 @@
 /** Deterministic, renderer-independent economy, territory and combat simulation. */
 import type { SquadCommand } from './squads';
+import { createRecruitment, queuedUnits, TRAINING_SECONDS, TRAINING_SLOTS, type Recruitment, type RallyPoint } from './recruitment';
+import { createEconomy, productivity, taxIncome, foodUpkeep, storageCap, stepEconomy, construct, recruitWorker, assignWorker, acceptContract, fulfillContract, dispatchExport, type KingdomEconomy } from './economy';
 import { createBaseState, getBaseState, generalBonus, incomeGeneralBonus, workshopLevel, type BaseState } from './base';
 import { battlefieldCoverAt, resolveBattlefieldStep } from './battlefieldLayout';
 export type Upgrade = 'farm' | 'mine' | 'barracks' | 'fort';
@@ -17,7 +19,7 @@ export interface Faction {
 }
 export interface Unit {
   id: number; owner: number; kind: UnitKind; x: number; z: number;
-  hp: number; cooldown: number; squad?: 0 | 1 | 2;
+  hp: number; cooldown: number; squad?: 0 | 1 | 2; rallyPoint?: RallyPoint;
 }
 export interface Outpost {
   id: number; x: number; z: number; owner: number | null;
@@ -37,6 +39,10 @@ export interface War {
   squadOrders?: [SquadCommand | null, SquadCommand | null, SquadCommand | null];
   /** Grand battle preserves original skirmish rules for existing saves. */
   grandBattle?: boolean;
+  economy: KingdomEconomy[];
+  recruitment: Recruitment[];
+  economyCampaign?: boolean;
+  victory?: 'economic';
   /** Player's home-base layout and hired generals; legacy saves initialize on load. */
   base?: BaseState;
 }
@@ -61,7 +67,8 @@ export const OUTPOST_BONUSES: ReadonlyArray<{gold:number;food:number}> = [
 export const MAP_HALF_SIZE = 260;
 export const MAP_SIZE = MAP_HALF_SIZE * 2;
 export const STORM_START = 130;
-export const stormStartFor = (w: War) => w.grandBattle ? (w.difficulty === 'easy' ? 360 : 270) : w.difficulty === 'easy' ? 180 : STORM_START;
+export const stormStartFor = (w: War) => w.economyCampaign ? (w.difficulty === 'easy' ? 1080 : 900) : w.grandBattle ? (w.difficulty === 'easy' ? 360 : 270) : w.difficulty === 'easy' ? 180 : STORM_START;
+export const aiAttackAfterFor = (w: Pick<War,'economyCampaign'|'difficulty'>) => w.economyCampaign ? Math.max(240,DIFFICULTIES[w.difficulty].aiAttackAfter+180) : DIFFICULTIES[w.difficulty].aiAttackAfter;
 export const STORM_HQ_DAMAGE = 3.5;
 const CORNERS = [[-112,-112],[112,-112],[-112,112],[112,112]] as const;
 const OUTPOSTS = [[0,-95],[95,0],[0,95],[-95,0],[0,0],[-62,-62],[62,-62],[-62,62],[62,62]] as const;
@@ -77,11 +84,11 @@ export const UNIT_STATS: Record<UnitKind, {
 export const MAX_UNITS = 18;
 export const GRAND_MAX_UNITS = 400;
 export const GRAND_INITIAL_FORCES = [100, 167, 167, 166] as const;
-export const maxUnitsFor = (w: War) => w.grandBattle ? GRAND_MAX_UNITS : MAX_UNITS;
+export const maxUnitsFor = (w: War, id = 0) => w.grandBattle ? GRAND_MAX_UNITS : MAX_UNITS + (w.economyCampaign ? (w.economy[id].city - 1) * 6 : 0);
 export function createWarStats():WarStats {
   return {trained:0,kills:0,lost:0,captures:0,goldEarned:0,foodEarned:0,damageDealt:0,researches:0,upgrades:0,peakArmy:4};
 }
-export function createWar(options:{difficulty?:Difficulty;grandBattle?:boolean}={}): War {
+export function createWar(options:{difficulty?:Difficulty;grandBattle?:boolean;economyCampaign?:boolean}={}): War {
   const grandBattle=options.grandBattle===true;
   const difficulty=options.difficulty && Object.hasOwn(DIFFICULTIES,options.difficulty)?options.difficulty:'normal';
   const factions: Faction[] = CORNERS.map(([x,z],id) => ({
@@ -99,6 +106,7 @@ export function createWar(options:{difficulty?:Difficulty;grandBattle?:boolean}=
   const war: War = {
     factions,units:[],outposts,events:[],time:0,zone:MAP_HALF_SIZE-6,over:false,winner:null,nextUnit:1,
     difficulty,stats:Array.from({length:4},createWarStats),squadOrders:[null,null,null],grandBattle,
+    economy:Array.from({length:4},createEconomy),recruitment:Array.from({length:4},createRecruitment),economyCampaign:options.economyCampaign===true,
     base:createBaseState(),
   };
   for(let id=0;id<4;id++){
@@ -117,7 +125,8 @@ function spawn(w: War, id: number, kind: UnitKind): void {
   const index=w.grandBattle?w.units.reduce((total,u)=>total+(u.owner===id?1:0),0):0;
   const x=w.grandBattle?f.x+(index%16-7.5)*2.8:f.x+((n*3)%5-2)*1.6;
   const z=w.grandBattle?f.z+(f.z<0?1:-1)*(20+Math.floor(index/16)*3.1):f.z+4+(n%4)*1.8;
-  w.units.push({id:n,owner:id,kind,x,z,hp:UNIT_STATS[kind].hp,cooldown:0,squad:0});
+  const rally=w.economyCampaign&&w.recruitment[id].rally;
+  w.units.push({id:n,owner:id,kind,x,z,hp:UNIT_STATS[kind].hp,cooldown:0,squad:0,...(rally?{rallyPoint:{...rally}}:{})});
   w.stats[id].peakArmy=Math.max(w.stats[id].peakArmy,count(w,id));
 }
 /** One source of truth for economy previews, AI difficulty and the simulation. */
@@ -125,11 +134,12 @@ export function getIncome(w:War,id:number):{gold:number;food:number} {
   const f=w.factions[id];
   if(!f?.alive)return {gold:0,food:0};
   const owned=w.outposts.filter(p=>p.owner===id);
+  const e=w.economy[id], efficiency=productivity(e);
   const policy=f.policy==='growth'?1.25:f.policy==='war'?.88:1;
   const multiplier=policy*(1+f.research.logistics*.06)*(1+incomeGeneralBonus(w,id))*(id===0?(w.difficulty==='easy'?1.35:1):DIFFICULTIES[w.difficulty].aiIncome);
   return {
-    gold:owned.reduce((a,p)=>a+OUTPOST_BONUSES[p.id].gold,f.mine*1.5+(id===0?workshopLevel(w,'mine')*.8:0))*multiplier,
-    food:owned.reduce((a,p)=>a+OUTPOST_BONUSES[p.id].food,f.farm*1.3+(id===0?workshopLevel(w,'farm')*.75:0))*multiplier,
+    gold:(owned.reduce((a,p)=>a+OUTPOST_BONUSES[p.id].gold,f.mine*1.5*e.workers.mine/6*efficiency+(id===0?workshopLevel(w,'mine')*.8:0))+e.workers.trade*e.market*.35)*multiplier+taxIncome(e),
+    food:owned.reduce((a,p)=>a+OUTPOST_BONUSES[p.id].food,f.farm*1.3*e.workers.farm/6*efficiency+(id===0?workshopLevel(w,'farm')*.75:0))*multiplier-foodUpkeep(e),
   };
 }
 /** Captured supply points protect immobile HQs: 12% each, up to 60%. */
@@ -163,8 +173,14 @@ export function repair(w:War,id:number):boolean {
 export function trainSquad(w:War,id:number,kind:UnitKind='infantry',amount=3):boolean {
  const f=w.factions[id],unit=UNIT_STATS[kind];
  if(!f?.alive||w.over||!Object.hasOwn(UNIT_STATS,kind)||!Number.isInteger(amount)||amount<1||
-   amount>(w.grandBattle?50:5)||f.barracks<unit.unlock||count(w,id)+amount>maxUnitsFor(w)||
+   amount>(w.grandBattle?50:5)||f.barracks<unit.unlock||count(w,id)+amount+queuedUnits(w.recruitment[id])>maxUnitsFor(w,id)||
    f.gold<unit.gold*amount||f.food<unit.food*amount)return false;
+ if(w.economyCampaign){
+  const queue=w.recruitment[id].queue;
+  if(queue.length>=TRAINING_SLOTS)return false;
+  f.gold-=unit.gold*amount;f.food-=unit.food*amount;
+  queue.push({kind,amount,remaining:TRAINING_SECONDS[kind]});return true;
+ }
  for(let i=0;i<amount;i++)train(w,id,kind);
  return true;
 }
@@ -196,20 +212,45 @@ export function upgrade(w: War,id: number,k: Upgrade): boolean {
   return true;
 }
 export function train(w: War,id: number,kind: UnitKind='infantry'): boolean {
+  if(w.economyCampaign)return trainSquad(w,id,kind,1);
   const f=w.factions[id],s=UNIT_STATS[kind];
   if (!f?.alive||w.over||!Object.hasOwn(UNIT_STATS,kind)||f.barracks<s.unlock||f.gold<s.gold||
-      f.food<s.food||count(w,id)>=maxUnitsFor(w)) return false;
+      f.food<s.food||count(w,id)>=maxUnitsFor(w,id)) return false;
   f.gold-=s.gold;f.food-=s.food;spawn(w,id,kind);w.stats[id].trained++;return true;
+}
+export function cancelTraining(w:War,id:number,index:number):boolean {
+  const f=w.factions[id],r=w.recruitment[id];
+  if(!f?.alive||w.over||!r||!Number.isInteger(index)||!r.queue[index])return false;
+  const [item]=r.queue.splice(index,1),unit=UNIT_STATS[item.kind],cap=storageCap(w,id);
+  f.gold+=Math.min(unit.gold*item.amount,Math.max(0,cap-f.gold));
+  f.food+=Math.min(unit.food*item.amount,Math.max(0,cap-f.food));return true;
+}
+export function setRecruitRally(w:War,id:number,point:RallyPoint|null):boolean {
+  if(!w.factions[id]?.alive||w.over||!w.economyCampaign||point&&(!Number.isFinite(point.x)||!Number.isFinite(point.z)||Math.abs(point.x)>MAP_HALF_SIZE-5||Math.abs(point.z)>MAP_HALF_SIZE-5))return false;
+  w.recruitment[id].rally=point?{...point}:null;return true;
+}
+function stepRecruitment(w:War,id:number,dt:number):void {
+  const r=w.recruitment[id];let budget=dt;
+  while(r.queue.length&&budget>0){
+    const item=r.queue[0],elapsed=Math.min(item.remaining,budget);
+    item.remaining-=elapsed;budget-=elapsed;
+    if(item.remaining<1e-7){
+      spawn(w,id,item.kind);w.stats[id].trained++;item.amount--;
+      if(!item.amount){r.queue.shift();addEvent(w,`${NAMES[id]} 세력 ${UNIT_STATS[item.kind].label} 훈련 완료`);}else item.remaining=TRAINING_SECONDS[item.kind];
+    }
+  }
 }
 export function order(w: War,id: number,target: number|null): boolean {
   const f=w.factions[id];
   if (!f?.alive||w.over||(target!==null&&(!Number.isInteger(target)||target===id||!w.factions[target]?.alive))) return false;
-  f.target=target;f.rally=null;if(id===0&&w.squadOrders)w.squadOrders[0]=null;return true;
+  f.target=target;f.rally=null;if(id===0&&w.squadOrders)w.squadOrders[0]=null;
+  w.units.forEach(u=>{if(u.owner===id&&(id!==0||(u.squad??0)===0))delete u.rallyPoint;});return true;
 }
 export function captureOrder(w: War,id: number,postId: number): boolean {
   const f=w.factions[id];
   if (!f?.alive||w.over||!Number.isInteger(postId)||!w.outposts[postId]) return false;
-  f.target=null;f.rally=postId;if(id===0&&w.squadOrders)w.squadOrders[0]=null;return true;
+  f.target=null;f.rally=postId;if(id===0&&w.squadOrders)w.squadOrders[0]=null;
+  w.units.forEach(u=>{if(u.owner===id&&(id!==0||(u.squad??0)===0))delete u.rallyPoint;});return true;
 }
 function distance(ax:number,az:number,bx:number,bz:number):number {
   return Math.hypot(ax-bx,az-bz);
@@ -223,6 +264,7 @@ function count(w: War,id: number): number {
 }
 function aiTurn(w: War,f: Faction): void {
   const army=count(w,f.id),owned=w.outposts.filter(p=>p.owner===f.id).length;
+  if(w.economyCampaign&&army>=6)manageEconomyAI(w,f);
   f.policy=army<8&&w.time<160?'growth':(army>=11||w.time>220)?'war':'balanced';
   f.reserve=w.grandBattle?Math.min(24,Math.floor(army/12)):army>10?2:Math.min(2,Math.floor(army/3));
   // Repair before purchasing when the HQ is critically damaged.
@@ -234,7 +276,7 @@ function aiTurn(w: War,f: Faction): void {
   else if (army>=8&&f.barracks>=2&&f.research.logistics<1&&research(w,f.id,'logistics')) { /* field supplies */ }
   else if (army>=12&&f.research.weapons<2&&research(w,f.id,'weapons')) { /* attack specialization */ }
   else if (army>=12&&f.research.armor<1&&research(w,f.id,'armor')) { /* sustain troops */ }
-  else if (army<(w.grandBattle?GRAND_MAX_UNITS-10:16)&&
+  else if (army<(w.grandBattle?GRAND_MAX_UNITS-10:maxUnitsFor(w,f.id)-2)&&
     (w.grandBattle?trainSquad(w,f.id,
       f.barracks>=3&&army%5===0?'cavalry':f.barracks>=2&&army%3===0?'archer':'infantry',10):
       train(w,f.id,f.barracks>=3&&army%5===0?'cavalry':f.barracks>=3&&army%4===0?'guardian':f.barracks>=2&&army%3===0?'archer':'infantry'))) { /* recruit */ }
@@ -243,7 +285,7 @@ function aiTurn(w: War,f: Faction): void {
   const free=w.outposts.filter(p=>p.owner!==f.id);
   free.sort((a,b)=>distance(a.x,a.z,f.x,f.z)-distance(b.x,b.z,f.x,f.z));
   // Stage early AI armies around objectives before committing to HQ sieges.
-  const canSiege=w.time>=DIFFICULTIES[w.difficulty].aiAttackAfter;
+  const canSiege=w.time>=aiAttackAfterFor(w);
   if (army>=9&&canSiege&&(w.time>180||owned>=3)) {
     const target=nearestEnemy(w,f);
     if (target) { f.target=target.id;f.rally=null; }
@@ -254,6 +296,26 @@ function aiTurn(w: War,f: Faction): void {
   } else if (!canSiege) {
     f.target=null;f.rally=null;
   }
+}
+/** Rivals pay the same costs and fulfill the same trade requirements as the player. */
+function manageEconomyAI(w:War,f:Faction):void {
+  const e=w.economy[f.id];
+  if(e.contract)fulfillContract(w,f.id);
+  else if(f.food>170)acceptContract(w,f.id,e.market>=2&&f.food>300?'harvest':'provisions');
+  if(!e.construction&&f.gold>260&&f.food>150){
+    if(e.market<1)construct(w,f.id,'market');
+    else if(e.city<4)construct(w,f.id,'city');
+    else if(e.market<2)construct(w,f.id,'market');
+    else if(e.warehouse<1)construct(w,f.id,'warehouse');
+  }
+  if(f.gold>140&&f.food>100&&Object.values(e.workers).reduce((a,b)=>a+b,0)<12+e.city*6)recruitWorker(w,f.id);
+  if(e.market&&e.workers.trade<2&&!e.workers.idle)assignWorker(w,f.id,e.workers.mine>=e.workers.farm?'mine':'farm',-1);
+  if(e.workers.idle)assignWorker(w,f.id,e.market&&e.workers.trade<2?'trade':e.workers.mine>e.workers.farm?'farm':'mine',1);
+  if(!e.contract&&f.food>220)dispatchExport(w,f.id,'caravan');
+}
+export function economicVictoryReady(w:War,id:number):boolean {
+  const e=w.economy[id];
+  return Boolean(w.economyCampaign&&w.factions[id]?.alive&&e&&e.city>=4&&e.completed>=3&&e.reputation>=80&&w.outposts.filter(p=>p.owner===id).length>=3);
 }
 function moveToward(w:War,u:Unit,x:number,z:number,dt:number):void {
   const d=distance(u.x,u.z,x,z);
@@ -327,9 +389,13 @@ export function stepWar(w: War,dt: number):void {
   for (const f of w.factions) {
     if (!f.alive) continue;
     const income=getIncome(w,f.id);
-    f.gold+=income.gold*dt;f.food+=income.food*dt;
-    w.stats[f.id].goldEarned+=income.gold*dt;w.stats[f.id].foodEarned+=income.food*dt;
+    const cap=storageCap(w,f.id);
+    f.gold=Math.max(f.gold,Math.min(cap,f.gold+income.gold*dt));
+    f.food=income.food>=0?Math.max(f.food,Math.min(cap,f.food+income.food*dt)):Math.max(0,f.food+income.food*dt);
+    w.stats[f.id].goldEarned+=income.gold*dt;w.stats[f.id].foodEarned+=Math.max(0,income.food)*dt;
     f.hp-=stormDamage(w,f.id)*dt;
+    stepEconomy(w,f.id,dt);
+    if(f.hp>0)stepRecruitment(w,f.id,dt);
     f.turretCooldown=Math.max(0,f.turretCooldown-dt);
     if (f.id>0&&f.hp>0) {
       f.aiTimer-=dt;
@@ -429,6 +495,10 @@ export function stepWar(w: War,dt: number):void {
       }
       continue;
     }
+    if(u.rallyPoint){
+      if(distance(u.x,u.z,u.rallyPoint.x,u.rallyPoint.z)>1.8)moveToward(w,u,u.rallyPoint.x,u.rallyPoint.z,dt);
+      continue;
+    }
     const target=f.target===null?undefined:w.factions[f.target];
     if (target?.alive&&target.hp>0) {
       const d=distance(u.x,u.z,target.x,target.z);
@@ -452,6 +522,8 @@ export function stepWar(w: War,dt: number):void {
   updateOutposts(w,dt);
   for (const f of w.factions) {
     if (f.alive&&f.hp<=0) {f.hp=0;f.alive=false;f.target=null;f.rally=null;
+      w.recruitment[f.id].queue=[];
+      w.economy[f.id].construction=null;w.economy[f.id].shipment=null;w.economy[f.id].contract=null;
       addEvent(w,`${NAMES[f.id]} 세력 본부 함락`);
     }
   }
@@ -468,4 +540,8 @@ export function stepWar(w: War,dt: number):void {
   }
   const survivors=w.factions.filter(f=>f.alive);
   if (survivors.length<=1) {w.over=true;w.winner=survivors[0]?.id??null;}
+  else {
+    const winner=survivors.find(f=>economicVictoryReady(w,f.id));
+    if(winner){w.over=true;w.winner=winner.id;w.victory='economic';addEvent(w,`${NAMES[winner.id]} 세력 경제 패권 달성`);}
+  }
 }

@@ -3,6 +3,8 @@ import {
   cost, getIncome, maxUnitsFor, repair, research, researchCost, setPolicy,
   setReserve, trainSquad, upgrade, UNIT_STATS, type Upgrade, type War,
 } from './war';
+import { storageCap } from './economy';
+import { queuedUnits, TRAINING_SLOTS } from './recruitment';
 
 /** Building interiors operate on the existing economy and save format. */
 export type InteriorAction = 'upgrade' | 'service' | 'special' | 'workshop';
@@ -49,23 +51,24 @@ export function interiorOption(war: War, kind: Upgrade, action: InteriorAction):
     if (kind === 'mine') return {
       title: '긴급 광석 반출',
       description: '남는 식량을 광부에게 지급하고 금을 확보합니다.',
-      price: '식량 80 → 금 55',
-      enabled: available && faction.food >= 80,
+      price: faction.gold >= storageCap(war,0) ? '금 저장 한도 도달' : '식량 80 → 금 ' + Math.min(55,Math.max(0,storageCap(war,0)-faction.gold)).toFixed(0),
+      enabled: available && faction.food >= 80 && faction.gold < storageCap(war,0),
     };
     if (kind === 'farm') return {
       title: '긴급 수확',
       description: '상인에게 금을 지급하고 식량을 확보합니다.',
-      price: '금 80 → 식량 55',
-      enabled: available && faction.gold >= 80,
+      price: faction.food >= storageCap(war,0) ? '식량 저장 한도 도달' : '금 80 → 식량 ' + Math.min(55,Math.max(0,storageCap(war,0)-faction.food)).toFixed(0),
+      enabled: available && faction.gold >= 80 && faction.food < storageCap(war,0),
     };
     if (kind === 'barracks') {
       const amount = recruitAmount(war), unit = UNIT_STATS.infantry;
       return {
-        title: '보병 ' + amount + '명 훈련',
-        description: '훈련소에서 병력을 즉시 동원합니다. 인구 제한을 초과하지 않습니다.',
+        title: '보병 ' + amount + (war.economyCampaign ? '명 훈련 예약' : '명 훈련'),
+        description: war.economyCampaign ? '병력 자리를 예약하고 차례로 훈련합니다. 기지 관리창을 닫으면 훈련 시간이 진행됩니다.' : '훈련소에서 병력을 즉시 동원합니다. 인구 제한을 초과하지 않습니다.',
         price: '금 ' + (unit.gold * amount) + ' · 식량 ' + (unit.food * amount),
         enabled: available && faction.barracks >= unit.unlock &&
-          war.units.filter(u => u.owner === 0).length + amount <= maxUnitsFor(war) &&
+          war.units.filter(u => u.owner === 0).length + queuedUnits(war.recruitment[0]) + amount <= maxUnitsFor(war) &&
+          (!war.economyCampaign || war.recruitment[0].queue.length < TRAINING_SLOTS) &&
           faction.gold >= unit.gold * amount && faction.food >= unit.food * amount,
       };
     }
@@ -123,11 +126,11 @@ export function performInteriorAction(war: War, kind: Upgrade, action: InteriorA
   if (action === 'upgrade') return upgrade(war, 0, kind);
   if (action === 'workshop') return upgradeWorkshop(war,kind);
   if (action === 'service') {
-    if (kind === 'mine') { faction.food -= 80; faction.gold += 55; }
-    else if (kind === 'farm') { faction.gold -= 80; faction.food += 55; }
+    if (kind === 'mine') { const received=Math.min(55,Math.max(0,storageCap(war,0)-faction.gold));faction.food -= 80; faction.gold += received;war.stats[0].goldEarned+=received; }
+    else if (kind === 'farm') { const received=Math.min(55,Math.max(0,storageCap(war,0)-faction.food));faction.gold -= 80; faction.food += received;war.stats[0].foodEarned+=received; }
     else if (kind === 'barracks') return trainSquad(war, 0, 'infantry', recruitAmount(war));
     else return repair(war, 0);
-    war.events.unshift({ time: Math.floor(war.time), text: kind === 'mine' ? '금광 광석 반출 · 금 +55' : '농장 긴급 수확 · 식량 +55' });
+    war.events.unshift({ time: Math.floor(war.time), text: kind === 'mine' ? '금광 광석 반출 완료' : '농장 긴급 수확 완료' });
     war.events.length = Math.min(war.events.length, 8);
     return true;
   }

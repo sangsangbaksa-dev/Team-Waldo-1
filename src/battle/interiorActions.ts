@@ -1,10 +1,11 @@
+import { WORKSHOP_UPGRADES, workshopCost, workshopLevel, upgradeWorkshop } from './base';
 import {
   cost, getIncome, maxUnitsFor, repair, research, researchCost, setPolicy,
   setReserve, trainSquad, upgrade, UNIT_STATS, type Upgrade, type War,
 } from './war';
 
 /** Building interiors operate on the existing economy and save format. */
-export type InteriorAction = 'upgrade' | 'service' | 'special';
+export type InteriorAction = 'upgrade' | 'service' | 'special' | 'workshop';
 export interface InteriorOption {
   title: string;
   description: string;
@@ -29,6 +30,19 @@ export function interiorOption(war: War, kind: Upgrade, action: InteriorAction):
       description: '같은 종류의 시설을 1동 증설합니다. 기존 왕국 레벨과 효과가 즉시 증가합니다.',
       price: next > 4 ? '최대 Lv.4' : '금 ' + payment.gold + ' · 식량 ' + payment.food,
       enabled: available && next <= 4 && faction.gold >= payment.gold && faction.food >= payment.food,
+    };
+  }
+  if (action === 'workshop') {
+    const definition = WORKSHOP_UPGRADES[kind], level = workshopLevel(war,kind);
+    const payment = workshopCost(war,kind);
+    return {
+      title: definition.name+' 개량',
+      description: definition.effect+' · 해당 건물 단계만큼 최대 Lv.3까지 개량 가능합니다.',
+      price: level >= definition.maxLevel ? '최대 Lv.3' :
+        faction[kind] <= level ? '시설 Lv.'+(level+1)+' 필요' :
+        'Lv.'+level+' → '+(level+1)+' · 금 '+payment.gold+' / 식량 '+payment.food,
+      enabled: available && level<definition.maxLevel && faction[kind]>level &&
+        faction.gold>=payment.gold && faction.food>=payment.food,
     };
   }
   if (action === 'service') {
@@ -107,6 +121,7 @@ export function performInteriorAction(war: War, kind: Upgrade, action: InteriorA
   if (!option?.enabled) return false;
   const faction = war.factions[0];
   if (action === 'upgrade') return upgrade(war, 0, kind);
+  if (action === 'workshop') return upgradeWorkshop(war,kind);
   if (action === 'service') {
     if (kind === 'mine') { faction.food -= 80; faction.gold += 55; }
     else if (kind === 'farm') { faction.gold -= 80; faction.food += 55; }

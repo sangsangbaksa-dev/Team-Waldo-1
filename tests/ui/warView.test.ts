@@ -196,6 +196,23 @@ describe('battle UI through real player actions', () => {
     expect(element('[data-base-slot="16"]').textContent).toContain('병영');
   });
 
+  it('purchases a permanent workshop upgrade inside the building and saves it', () => {
+    openWar(vi.fn(), true);
+    const w=game().world;
+    click('#open-base');
+    click('[data-base-slot="6"]');
+    expect(element('#interior-title').textContent).toBe('지하 금광');
+    expect(element('#interior-workshop-level').textContent).toBe('Lv.0 / 3');
+    const oldIncome=w.factions[0].gold, oldFood=w.factions[0].food;
+    click('.interior-action[data-interior-command="workshop"]');
+    expect(w.base?.workshopLevels?.mine).toBe(1);
+    expect(w.factions[0].gold).toBe(oldIncome-75);
+    expect(w.factions[0].food).toBe(oldFood-30);
+    expect(element('#interior-workshop-level').textContent).toBe('Lv.1 / 3');
+    expect(button('.interior-action[data-interior-command="workshop"]').disabled).toBe(true);
+    expect(loadWar()?.base?.workshopLevels?.mine).toBe(1);
+  });
+
   it('recruits a general, assigns a squad and persists the command assignment',()=>{
     openWar(vi.fn(),true);
     const w=game().world;

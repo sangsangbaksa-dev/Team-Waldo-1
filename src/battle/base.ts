@@ -13,6 +13,8 @@ export interface RecruitedGeneral {
 export interface BaseState {
   structures: PlacedStructure[];
   generals: RecruitedGeneral[];
+  /** Permanent interior upgrades shared by each kind of facility. Older saves omit this. */
+  workshopLevels?: Record<Upgrade, number>;
 }
 export const BASE_WIDTH = 5;
 export const HQ_SLOT = 12;
@@ -45,10 +47,41 @@ const STARTER_STRUCTURES: PlacedStructure[] = [
   {kind:'barracks',slot:16},{kind:'fort',slot:18},
 ];
 const kinds:Upgrade[]=['mine','farm','barracks','fort'];
+export const WORKSHOP_UPGRADES: Record<Upgrade,{
+  name:string;effect:string;maxLevel:number;gold:number;food:number;goldStep:number;foodStep:number;
+}> = {
+  mine:{name:'동력 시추기',effect:'금 생산 +0.8/초 (단계당)',maxLevel:3,gold:75,food:30,goldStep:40,foodStep:20},
+  farm:{name:'자동 관개 설비',effect:'식량 생산 +0.75/초 (단계당)',maxLevel:3,gold:60,food:40,goldStep:40,foodStep:25},
+  barracks:{name:'전술 훈련 시뮬레이터',effect:'아군 병사 공격력 +9% (단계당)',maxLevel:3,gold:95,food:65,goldStep:65,foodStep:35},
+  fort:{name:'정밀 방어 포대',effect:'본부 방어탑 공격 피해 +2.5 (단계당)',maxLevel:3,gold:90,food:50,goldStep:60,foodStep:30},
+};
+const freshWorkshops=():Record<Upgrade,number>=>({mine:0,farm:0,barracks:0,fort:0});
+/** Missing workshop state is treated as an unmodified legacy base. */
+export const workshopLevel=(w:War,kind:Upgrade):number=>w.base?.workshopLevels?.[kind]??0;
+export function workshopCost(w:War,kind:Upgrade):{gold:number;food:number}{
+  const def=WORKSHOP_UPGRADES[kind],level=workshopLevel(w,kind);
+  return {gold:def.gold+level*def.goldStep,food:def.food+level*def.foodStep};
+}
+/** A workshop tier requires its matching building tier and is purchased atomically. */
+export function upgradeWorkshop(w:War,kind:Upgrade):boolean{
+  if(!kinds.includes(kind)||w.over||!w.factions[0].alive)return false;
+  const level=workshopLevel(w,kind),definition=WORKSHOP_UPGRADES[kind],f=w.factions[0];
+  if(level>=definition.maxLevel||f[kind]<=level)return false;
+  const price=workshopCost(w,kind);
+  if(f.gold<price.gold||f.food<price.food)return false;
+  const base=getBaseState(w);
+  base.workshopLevels ??= freshWorkshops();
+  f.gold-=price.gold;f.food-=price.food;
+  base.workshopLevels[kind]=level+1;
+  w.stats[0].upgrades++;
+  w.events.unshift({time:Math.floor(w.time),text:definition.name+' 개량 · Lv.'+(level+1)});
+  w.events.length=Math.min(8,w.events.length);
+  return true;
+}
 const validSlot=(slot:number)=>Number.isInteger(slot)&&slot>=0&&slot<BASE_WIDTH*BASE_WIDTH&&slot!==HQ_SLOT;
 
 export function createBaseState(): BaseState {
-  return {structures:STARTER_STRUCTURES.map(s=>({...s})),generals:[]};
+  return {structures:STARTER_STRUCTURES.map(s=>({...s})),generals:[],workshopLevels:freshWorkshops()};
 }
 /** Older saves and the classic economy tab both use the same physical blueprint. */
 export function getBaseState(w:War): BaseState {
@@ -152,6 +185,14 @@ export function validBaseState(candidate:unknown,w:War):candidate is BaseState {
   const b=candidate as Record<string,unknown>;
   if(!Array.isArray(b.structures)||b.structures.length>16||
      !Array.isArray(b.generals)||b.generals.length>GENERAL_CATALOG.length)return false;
+  if(b.workshopLevels!==undefined){
+    if(typeof b.workshopLevels!=='object'||b.workshopLevels===null||Array.isArray(b.workshopLevels))return false;
+    const levels=b.workshopLevels as Record<string,unknown>;
+    if(Object.keys(levels).length!==kinds.length||kinds.some(kind=>
+      !Number.isInteger(levels[kind])||(levels[kind] as number)<0||
+      (levels[kind] as number)>WORKSHOP_UPGRADES[kind].maxLevel||
+      (levels[kind] as number)>w.factions[0][kind]))return false;
+  }
   const slots=new Set<number>(),counts:Record<Upgrade,number>={mine:0,farm:0,barracks:0,fort:0};
   for(const s of b.structures) {
     if(typeof s!=='object'||s===null||Array.isArray(s))return false;

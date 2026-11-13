@@ -6,6 +6,7 @@ import { MAP_HALF_SIZE, OUTPOST_NAMES, OUTPOST_BONUSES, UNIT_STATS, type Unit, t
 import { createWorldLabel, type WorldLabel } from './renderLabels';
 import { createBattleEffects } from './renderEffects';
 import { batchStaticChildren, type StaticBatch } from './renderBatches';
+import { createVisualDetails } from './visualDetails';
 
 /** Procedural, self-contained industrial 3D battlefield. No external models or textures. */
 export const FACTION_COLORS = [0x50d9d1, 0xf06a77, 0xf5c45d, 0xaa8eed] as const;
@@ -46,6 +47,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   let strategicOverlaysVisible=true;
   const labels:WorldLabel[]=[];
   const effects=createBattleEffects(world);
+  const art=createVisualDetails();
   scene.background=new THREE.Color(0x344248);
   scene.fog=new THREE.FogExp2(0x344248,.0013);
   const ambient=new THREE.HemisphereLight(0x97abb6,0x28352f,1.85);
@@ -212,6 +214,9 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   // Instanced parts keep the additional geometry affordable in the grand-battle mode.
   createBattlefieldEnvironment(world,BATTLEFIELD_FEATURES);
 
+  // Extra vegetation uses instancing to preserve large-battle frame rates.
+  art.landscape(world,war);
+
   const fortresses:Fortress[]=war.factions.map(f=>{
     const root=new THREE.Group();root.position.set(f.x,0,f.z);world.add(root);
     const territoryRing=add(root,baseRingGeometry,markerMats[f.id],0,.15,0);
@@ -284,6 +289,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     add(barracks,box,woodDark,0,1.8,3.24,2.2,3.3,.3);
     for(const x of [-2.6,2.6])add(barracks,box,teamMats[f.id],x,3,3.24,1.1,1.5,.18);
     structures.push(barracks);
+    art.fortress(root,structures,f.id);
     for(const building of structures)building.scale.setScalar(.9);
     const rubble=new THREE.Group();root.add(rubble);rubble.visible=false;
     for(let i=0;i<14;i++){
@@ -409,6 +415,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
       weapon.rotation.z=-.22;
       add(rider,box,timber,1.14,.62,.55,.48,.18,.3);
     }
+    art.soldier(rider,root,u.kind,u.owner);
     const hpBack=add(root,box,woodDark,0,u.kind==='cavalry'?5.1:3.8,0,1.8,.24,.1);
     const health=add(root,box,healthMaterial,0,u.kind==='cavalry'?5.1:3.8,.075,1.8,.2,.12);
     hpBack.visible=true;health.visible=true;
@@ -592,6 +599,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     [stone,stoneDark,mortar,roof,timber,woodDark,cream,gold,meadow,leaves,leafLight,...flowerMats,
       waterMat,roadMat,soilMat,ember,routeMaterial,farmRoofMaterial,...wheatMats,...teamMats,...bannerMats,...markerMats].forEach(m=>mats.add(m));
     mats.forEach(m=>m.dispose());
+    art.dispose();
     sun.shadow.map?.dispose();
     models.clear();cooldowns.clear();unitBatches.clear();projectiles.length=0;freeMissiles.length=0;
   };

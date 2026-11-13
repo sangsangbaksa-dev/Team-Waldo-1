@@ -187,24 +187,42 @@ export function openCity(onExit: () => void, options: { difficulty: Difficulty }
     const tabs: [string, string][] = [['train', '생산'], ['build', '건설'], ['research', '연구'], ['market', '시장'], ['assets', '자산'], ['rank', '순위']];
     const head = `<header>${shopOpen ? '<b>무기상</b>' : tabs.map(([k, n]) => `<button data-act="tab:${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}<button data-act="closepanel" class="c-x" aria-label="닫기">✕</button></header>`;
     const cur = panel.querySelector<HTMLElement>('.c-body');
-    if (cur && panel.dataset.head === head) { if (cur.innerHTML !== body) { const top = cur.scrollTop; cur.innerHTML = body; cur.scrollTop = top; } return; }   // 본문만 갱신: 스크롤 위치·스크롤바 드래그 유지
+    if (cur && panel.dataset.head === head) { const top = cur.scrollTop; put(cur, body); cur.scrollTop = top; return; }   // 본문만 갱신: 스크롤 위치·스크롤바 드래그 유지
     panel.dataset.head = head; panel.innerHTML = `${head}<div class="c-body">${body}</div>`;
+  }
+  /** innerHTML 통째 교체 대신 DOM 을 제자리에서 맞춰 갱신(버튼이 매 틱 새로 생겨 깜박이는 것 방지). */
+  function sync(a: Node, b: Node): void {
+    const ak = Array.from(a.childNodes), bk = Array.from(b.childNodes);
+    for (let i = 0; i < bk.length; i++) {
+      const x = ak[i], y = bk[i];
+      if (!x) { a.appendChild(y.cloneNode(true)); continue; }
+      if (x.nodeType !== y.nodeType || x.nodeName !== y.nodeName) { a.replaceChild(y.cloneNode(true), x); continue; }
+      if (x.nodeType === 3) { if (x.nodeValue !== y.nodeValue) x.nodeValue = y.nodeValue; continue; }
+      const ex = x as Element, ey = y as Element;
+      for (const at of Array.from(ex.attributes)) if (!ey.hasAttribute(at.name)) ex.removeAttribute(at.name);
+      for (const at of Array.from(ey.attributes)) if (ex.getAttribute(at.name) !== at.value) ex.setAttribute(at.name, at.value);
+      sync(ex, ey);
+    }
+    for (let i = ak.length - 1; i >= bk.length; i--) a.removeChild(ak[i]);
+  }
+  function put(el: HTMLElement, html: string): void {
+    const t = document.createElement('div'); t.innerHTML = html; sync(el, t);
   }
   function renderHud(): void {
     const w = world!, f = w.factions[0], b = w.boss(0), z = w.zone;
-    q('#c-res').innerHTML = `<span class="ca" title="자금">$ <b>${$(f.cash)}</b><small>+${$(f.income)}/s</small></span><span class="cr" title="크리스탈">◆ <b>${$(f.crystal)}</b></span><span title="인구">병력 <b>${f.supply}/${f.supplyMax}</b></span>`;
-    const quest = tut ? null : w.quests.find(x => !x.done); q('#c-quest').innerHTML = tut ? '' : quest ? `<em>목표</em> ${quest.text} <b>+$${quest.reward}</b>` : '<em>목표</em> 마지막 왕국이 되세요';
-    void z; if (tut) q('#c-zone').innerHTML = `<b>튜토리얼</b><span>연습장 · 라이벌 정지</span><span>${Math.min(tut.s.i, STEPS.length - 1) + 1}/${STEPS.length}</span>`; else q('#c-zone').innerHTML = `<b>${clock(w.time)}</b><span>생존 왕국 <b>${w.aliveCount()}</b>/8</span>`;
-    q('#c-wanted').innerHTML = f.wanted >= 1 ? `<span class="stars">${'★'.repeat(Math.floor(f.wanted))}${'☆'.repeat(5 - Math.floor(f.wanted))}</span> 수배 중` : '';
-    q('#c-feed').innerHTML = w.feed.filter(x => w.time - x.t < 7).slice(-5).map(x => `<div style="border-color:${x.color}">${x.text}</div>`).join('');
+    put(q('#c-res'), `<span class="ca" title="자금">$ <b>${$(f.cash)}</b><small>+${$(f.income)}/s</small></span><span class="cr" title="크리스탈">◆ <b>${$(f.crystal)}</b></span><span title="인구">병력 <b>${f.supply}/${f.supplyMax}</b></span>`);
+    const quest = tut ? null : w.quests.find(x => !x.done); put(q('#c-quest'), tut ? '' : quest ? `<em>목표</em> ${quest.text} <b>+$${quest.reward}</b>` : '<em>목표</em> 마지막 왕국이 되세요');
+    void z; if (tut) put(q('#c-zone'), `<b>튜토리얼</b><span>연습장 · 라이벌 정지</span><span>${Math.min(tut.s.i, STEPS.length - 1) + 1}/${STEPS.length}</span>`); else put(q('#c-zone'), `<b>${clock(w.time)}</b><span>생존 왕국 <b>${w.aliveCount()}</b>/8</span>`);
+    put(q('#c-wanted'), f.wanted >= 1 ? `<span class="stars">${'★'.repeat(Math.floor(f.wanted))}${'☆'.repeat(5 - Math.floor(f.wanted))}</span> 수배 중` : '');
+    put(q('#c-feed'), w.feed.filter(x => w.time - x.t < 7).slice(-5).map(x => `<div style="border-color:${x.color}">${x.text}</div>`).join(''));
     const army = w.armyOf(0).length;
     if (b) {
       const s = f.slots[f.cur], wd = WEAPONS[s.id];
-      q('#c-boss').innerHTML = `<div class="c-bars"><div class="hp"><i style="width:${Math.max(0, b.hp / b.maxHp * 100)}%"></i><span>${Math.ceil(b.hp)} / ${b.maxHp}</span></div><div class="ar"><i style="width:${f.armor}%"></i></div><div class="xp"><i style="width:${f.xp / w.xpNeed(f.level) * 100}%"></i></div></div>
+      put(q('#c-boss'), `<div class="c-bars"><div class="hp"><i style="width:${Math.max(0, b.hp / b.maxHp * 100)}%"></i><span>${Math.ceil(b.hp)} / ${b.maxHp}</span></div><div class="ar"><i style="width:${f.armor}%"></i></div><div class="xp"><i style="width:${f.xp / w.xpNeed(f.level) * 100}%"></i></div></div>
         <div class="c-slots">${f.slots.map((x, i) => `<button data-act="slot:${i}" class="${i === f.cur ? 'on' : ''}"><kbd>${i + 1}</kbd>${WEAPONS[x.id].name}</button>`).join('')}</div>
         <div class="c-ammo"><b>${f.reloadT > 0 ? '재장전…' : s.mag}</b><small>/ ${wd.ammo > 0 ? s.ammo - s.mag : '∞'}</small><span>Lv.${f.level} · 병력 ${army} · 키트 ${f.medkits}</span></div>
-        <div class="c-skills"><span class="${f.skillCd > 0 ? 'cd' : ''}"><kbd>Q</kbd>${CLASSES[f.klass].skill}${f.skillCd > 0 ? ' ' + Math.ceil(f.skillCd) : ''}</span><span class="${f.dashCd > 0 ? 'cd' : ''}"><kbd>␣</kbd>대시</span></div>`;
-    } else q('#c-boss').innerHTML = `<div class="c-down"><b>쓰러짐</b> ${f.respawnT > 0 ? `${Math.ceil(f.respawnT)}초 후 본부에서 부활` : '…'}</div>`;
+        <div class="c-skills"><span class="${f.skillCd > 0 ? 'cd' : ''}"><kbd>Q</kbd>${CLASSES[f.klass].skill}${f.skillCd > 0 ? ' ' + Math.ceil(f.skillCd) : ''}</span><span class="${f.dashCd > 0 ? 'cd' : ''}"><kbd>␣</kbd>대시</span></div>`);
+    } else put(q('#c-boss'), `<div class="c-down"><b>쓰러짐</b> ${f.respawnT > 0 ? `${Math.ceil(f.respawnT)}초 후 본부에서 부활` : '…'}</div>`);
     // 상호작용 안내
     let prompt = '';
     if (b && !b.inVeh) {
@@ -215,7 +233,7 @@ export function openCity(onExit: () => void, options: { difficulty: Difficulty }
       else if (zb) prompt = zb.kind === 'gunshop' ? '<kbd>E</kbd> 무기상 열기' : zb.owner < 0 ? `<kbd>E</kbd> ${BIZ[zb.kind].name} 매입 <b>$${w.bizPrice(f, zb)}</b> · 초당 +$${BIZ[zb.kind].income}` : zb.owner === 0 ? (zb.level < 3 ? `<kbd>E</kbd> ${BIZ[zb.kind].name} 업그레이드 <b>$${w.upgradePrice(zb)}</b>` : `${BIZ[zb.kind].name} ★★★ 최고 등급`) : `${FACTIONS[zb.owner].name}의 ${BIZ[zb.kind].name} — 적대적 인수 ${Math.max(0, 6 - zb.cap).toFixed(1)}초${zb.cap <= 0.05 ? ' (경비 제거 필요)' : ''}`;
       else if (v) prompt = `<kbd>F</kbd> ${v.kind === 'tank' ? '전차 탈취' : v.kind === 'police' ? '경찰차 탈취 (수배 ★)' : v.driver ? '차량 강탈' : `${v.kind === 'sports' ? '스포츠카' : v.kind === 'truck' ? '트럭' : '세단'} 탑승`}`;
     } else if (b) prompt = '<kbd>F</kbd> 하차 · <kbd>Space</kbd> 핸드브레이크';
-    const pe = q('#c-prompt'); pe.innerHTML = prompt; pe.className = 'c-prompt' + (prompt ? ' show' : '');
+    const pe = q('#c-prompt'); put(pe, prompt); pe.className = 'c-prompt' + (prompt ? ' show' : '');
     if (!panel.hidden && (tab === 'market' || tab === 'rank' || tab === 'assets' || tab === 'train' || shopOpen)) renderPanel();
     const head = view !== 'top' && R3 ? R3.yaw : null; R!.minimap(q<HTMLCanvasElement>('#c-mini'), false, head); if (!bigmap.hidden) R!.minimap(q<HTMLCanvasElement>('#c-big'), true, head);
   }

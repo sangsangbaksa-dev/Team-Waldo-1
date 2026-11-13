@@ -39,11 +39,11 @@ export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
   const horseLegsGeo = new THREE.BoxGeometry(.36, .77, .4);
   const saddleGeo = new THREE.BoxGeometry(1.55, .22, 1.36);
   const quiverGeo = new THREE.CylinderGeometry(.24, .19, 1.18, 5);
-  const steel = new THREE.MeshStandardMaterial({ color: 0x8a9790, roughness: .54, metalness: .47 });
-  const darkSteel = new THREE.MeshStandardMaterial({ color: 0x39474b, roughness: .59, metalness: .43 });
+  const steel = new THREE.MeshStandardMaterial({ color: 0x8e9d98, roughness: .46, metalness: .55 });
+  const darkSteel = new THREE.MeshStandardMaterial({ color: 0x314044, roughness: .52, metalness: .5 });
   const leather = new THREE.MeshStandardMaterial({ color: 0x514034, roughness: .95 });
   const skin = new THREE.MeshStandardMaterial({ color: 0xc9b092, roughness: .86 });
-  const steelWeapon = new THREE.MeshStandardMaterial({ color: 0xbdc1b3, roughness: .45, metalness: .63 });
+  const steelWeapon = new THREE.MeshStandardMaterial({ color: 0xcad2c8, roughness: .36, metalness: .68 });
   const horseMat = new THREE.MeshStandardMaterial({ color: 0x705443, roughness: .94 });
   const uniform = COLORS.map(color => new THREE.MeshStandardMaterial({ color, roughness: .9 }));
   const cloaks = [0x244944, 0x703d3b, 0x68572e, 0x463960].map(color =>
@@ -87,6 +87,9 @@ export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
   }
   const dummy = new THREE.Object3D();
   const facingById = new Map<number, {x: number; z: number; angle: number}>();
+  let reducedMotion = typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const set = (target: THREE.InstancedMesh | undefined, index: number,
     x: number, y: number, z: number, sx = 1, sy = 1, sz = 1, angle = 0) => {
     if (!target) return;
@@ -117,8 +120,8 @@ export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
       const height = unit.kind === 'guardian' ? 1.16 : unit.kind === 'archer' ? .94 : 1;
       const base = cavalry ? 1.34 : 0;
       // Individual phase offsets keep hundreds of soldiers from marching in lockstep.
-      const gait = moving ? Math.sin(war.time * (cavalry ? 12.2 : 9.6) + unit.id * .71) : 0;
-      const bob = moving ? Math.abs(gait) * .075 : 0;
+      const gait = moving && !reducedMotion ? Math.sin(war.time * (cavalry ? 12.2 : 9.6) + unit.id * .71) : 0;
+      const bob = moving && !reducedMotion ? Math.abs(gait) * .075 : 0;
       const y = base + bob;
       set(group.body, i, x, y + 1.32 * height, z, height, height, height, angle);
       const [chestX, chestZ] = offset(x, z, 0, .55 * height, angle);
@@ -182,6 +185,9 @@ export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
       }
     }
   }
+  function setReducedMotion(enabled: boolean): void {
+    reducedMotion = enabled;
+  }
   update();
-  return { update };
+  return { update, setReducedMotion };
 }

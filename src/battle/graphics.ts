@@ -48,11 +48,11 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   const labels:WorldLabel[]=[];
   const effects=createBattleEffects(world);
   const art=createVisualDetails();
-  scene.background=new THREE.Color(0x344248);
-  scene.fog=new THREE.FogExp2(0x344248,.0013);
-  const ambient=new THREE.HemisphereLight(0x97abb6,0x28352f,1.85);
+  scene.background=new THREE.Color(0x1d2d2e);
+  scene.fog=new THREE.FogExp2(0x1d2d2e,.00158);
+  const ambient=new THREE.HemisphereLight(0x93bdb5,0x172320,1.18);
   scene.add(ambient);
-  const sun=new THREE.DirectionalLight(0xd2c7b0,2.6);
+  const sun=new THREE.DirectionalLight(0xebd8b2,2.95);
   sun.position.set(-130,220,140);
   sun.castShadow=true;
   sun.shadow.mapSize.set(3072,3072);
@@ -61,18 +61,18 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   sun.shadow.camera.near=10;sun.shadow.camera.far=520;
   sun.shadow.normalBias=.035;sun.shadow.bias=-.0001;
   scene.add(sun,sun.target);
-  const fill=new THREE.DirectionalLight(0x799cac,.6);fill.position.set(35,35,-45);scene.add(fill);
+  const fill=new THREE.DirectionalLight(0x64d4c6,1.32);fill.position.set(165,52,-165);scene.add(fill);
 
   const material=(color:number,metalness=0,roughness=.83,emissive=0)=>
     new THREE.MeshStandardMaterial({color,metalness,roughness,emissive,emissiveIntensity:emissive?.55:0});
-  const stone=material(0x697277),stoneDark=material(0x343e43),
-    mortar=material(0x505e65),roof=material(0x273b46),
-    timber=material(0x51473e),woodDark=material(0x2f3331),
-    cream=material(0x9da49c),gold=material(0xc5a16c,.45,.35),
-    meadow=material(0x46554b),leaves=material(0x374d42),
-    leafLight=material(0x536556),waterMat=new THREE.MeshStandardMaterial({
-      color:0x31525c,roughness:.25,metalness:.1,transparent:true,opacity:.94
-    }),roadMat=material(0x465055),soilMat=material(0x5d554b),
+  const stone=material(0x5b686c,.08,.82),stoneDark=material(0x2a3539,.14,.8),
+    mortar=material(0x435357,.08,.84),roof=material(0x21383d,.22,.64),
+    timber=material(0x4b4239),woodDark=material(0x282e2d),
+    cream=material(0x949f97),gold=material(0xcfb074,.52,.34),
+    meadow=material(0x394b42),leaves=material(0x2b4339),
+    leafLight=material(0x3f594c),waterMat=new THREE.MeshStandardMaterial({
+      color:0x193134,roughness:.22,metalness:.28,transparent:true,opacity:.95
+    }),roadMat=material(0x354044,.08,.88),soilMat=material(0x4f4940),
     ember=material(0xffb45a,0,.4,0xff8130);
   const teamMats=FACTION_COLORS.map(color=>material(new THREE.Color(color).lerp(new THREE.Color(0x465450),.35).getHex(),.25,.52));
   const bannerMats=FACTION_COLORS.map(color=>new THREE.MeshStandardMaterial({
@@ -114,17 +114,22 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   terrain.rotateX(-Math.PI/2);
   const position=terrain.getAttribute('position');
   const vertexColors:number[]=[];
-  const greenA=new THREE.Color(0x313c3c),greenB=new THREE.Color(0x57635b);
+  const greenA=new THREE.Color(0x212e2c),greenB=new THREE.Color(0x3f5349);
+  const ash=new THREE.Color(0x2d3a3b),basalt=new THREE.Color(0x182324);
   for(let i=0;i<position.count;i++){
     const x=position.getX(i),z=position.getZ(i);
     const edge=Math.max(Math.abs(x),Math.abs(z));
     position.setY(i,-.23+.085*Math.sin(x*.28)*Math.cos(z*.24)-Math.max(0,edge-(MAP_HALF_SIZE-9))*.26);
     const shade=terrainShade(x,z),c=greenA.clone().lerp(greenB,shade);
+    const lane=Math.min(Math.abs(Math.abs(x)-Math.abs(z)),Math.min(Math.abs(x),Math.abs(z)));
+    if(lane<18)c.lerp(ash,(1-lane/18)*.38);
+    const rim=clamp((edge-(MAP_HALF_SIZE-52))/52,0,1);
+    if(rim>0)c.lerp(basalt,rim*rim*.58);
     vertexColors.push(c.r,c.g,c.b);
   }
   terrain.setAttribute('color',new THREE.Float32BufferAttribute(vertexColors,3));
   terrain.computeVertexNormals();
-  const ground=add(world,terrain,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1}),0,0,0);
+  const ground=add(world,terrain,new THREE.MeshStandardMaterial({vertexColors:true,roughness:.95,metalness:.04}),0,0,0);
   ground.castShadow=false;ground.receiveShadow=true;
 
   const rng=seeded(738139);
@@ -201,7 +206,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     road(x,z,x*.78,z*.78,1.9);
   }
   const flowerGeometry=new THREE.SphereGeometry(.35,5,5);
-  const flowerMats=[material(0x7b8071),material(0x896c62),material(0x778487)];
+  const flowerMats=[material(0x57695e),material(0x766454),material(0x4f6668)];
   const flowers=flowerMats.map(mat=>new THREE.InstancedMesh(flowerGeometry,mat,420));
   const flowerCounts=[0,0,0];
   for(let i=0;i<3100;i++){
@@ -357,19 +362,19 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   pointer.rotation.z=Math.PI;pointer.castShadow=false;
   // Shrinking safe-zone border, with a faint translucent vertical storm curtain.
   const ring=add(world,new THREE.RingGeometry(.997,1.003,160),
-    new THREE.MeshBasicMaterial({color:0x84e9ff,side:THREE.DoubleSide,transparent:true,opacity:.9,depthWrite:false}),
+    new THREE.MeshBasicMaterial({color:0x6fe3d3,side:THREE.DoubleSide,transparent:true,opacity:.9,depthWrite:false}),
     0,.33,0);
   ring.rotation.x=Math.PI/2;ring.castShadow=false;
   const storm=add(world,new THREE.CylinderGeometry(1,1,13,120,1,true),
-    new THREE.MeshBasicMaterial({color:0x90b9ff,side:THREE.DoubleSide,transparent:true,
-      opacity:.085,depthWrite:false}),0,6.6,0);
+    new THREE.MeshBasicMaterial({color:0x4d9490,side:THREE.DoubleSide,transparent:true,
+      opacity:.075,depthWrite:false}),0,6.6,0);
   storm.castShadow=false;
   // Small moving clouds cast light atmospheric silhouettes without expensive volumetrics.
   const clouds:THREE.Group[]=[];
   for(let i=0;i<16;i++){
     const c=new THREE.Group();world.add(c);
     c.position.set(-175+i*32,58+i%3*5,-128+i*24);
-    const cloudMat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.12,depthWrite:false});
+    const cloudMat=new THREE.MeshBasicMaterial({color:0xa8c0be,transparent:true,opacity:.085,depthWrite:false});
     for(let p=0;p<3;p++){
       const puff=add(c,sphere,cloudMat,p*4,0,(p%2)*2,13,3.8,7);
       puff.castShadow=false;
@@ -578,7 +583,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     configureEffects();
   };
   const setReducedMotion=(enabled:boolean):void=>{
-    reducedMotion=enabled;configureEffects();
+    reducedMotion=enabled;grandVisuals?.setReducedMotion(enabled);configureEffects();
   };
   const setLabelsVisible=(visible:boolean):void=>{
     labels.forEach(label=>{label.sprite.visible=visible;});

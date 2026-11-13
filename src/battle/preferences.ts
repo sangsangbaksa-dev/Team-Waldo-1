@@ -1,7 +1,11 @@
 export interface Preferences { sound: boolean; quality: 'high' | 'standard' | 'low'; reducedMotion: boolean; }
 const KEY = 'waldo.preferences.v1';
 export function readPreferences(): Preferences {
-  const defaults: Preferences = { sound: true, quality: 'standard', reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches };
+  let reducedMotion = false;
+  try {
+    reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch { /* Older browsers and restricted environments may block this API. */ }
+  const defaults: Preferences = { sound: true, quality: 'standard', reducedMotion };
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? '{}');
     return { sound: typeof saved.sound === 'boolean' ? saved.sound : defaults.sound,
@@ -28,8 +32,14 @@ export function readCareer(): Career {
   } catch { /* A fresh profile is always playable. */ }
   return career;
 }
+/** Keep every recorded result finite and within the same bounds as readCareer. */
+const safeScore = (value: number): number =>
+  Number.isFinite(value) ? Math.max(0, Math.min(1e9, Math.floor(value))) : 0;
 export function recordMatch(victory: boolean, seconds: number, kills: number): void {
   const c = readCareer();
-  c.matches++; c.wins += Number(victory); c.bestSurvival = Math.max(c.bestSurvival, Math.floor(seconds)); c.bestKills = Math.max(c.bestKills, kills);
+  c.matches = Math.min(1e9, c.matches + 1);
+  c.wins = Math.min(c.matches, c.wins + Number(victory));
+  c.bestSurvival = Math.max(c.bestSurvival, safeScore(seconds));
+  c.bestKills = Math.max(c.bestKills, safeScore(kills));
   try { localStorage.setItem(CAREER_KEY, JSON.stringify(c)); } catch { /* Do not block results. */ }
 }

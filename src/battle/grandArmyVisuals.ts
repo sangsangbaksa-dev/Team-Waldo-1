@@ -13,8 +13,11 @@ type MeshGroup = {
   shoulder: THREE.InstancedMesh; cloak: THREE.InstancedMesh;
   leftLeg: THREE.InstancedMesh; rightLeg: THREE.InstancedMesh;
   weapon: THREE.InstancedMesh; shield?: THREE.InstancedMesh;
+  shieldBoss?: THREE.InstancedMesh; quiver?: THREE.InstancedMesh;
   mount?: THREE.InstancedMesh; horseNeck?: THREE.InstancedMesh;
   horseHead?: THREE.InstancedMesh; horseLegs?: THREE.InstancedMesh;
+  horseRearLeft?: THREE.InstancedMesh; horseFrontRight?: THREE.InstancedMesh;
+  horseRearRight?: THREE.InstancedMesh; saddle?: THREE.InstancedMesh;
   count: number; kind: UnitKind;
 };
 export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
@@ -34,6 +37,8 @@ export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
   const neckGeo = new THREE.BoxGeometry(.73, 1.55, .82);
   const horseHeadGeo = new THREE.BoxGeometry(.95, .73, 1.03);
   const horseLegsGeo = new THREE.BoxGeometry(.36, .77, .4);
+  const saddleGeo = new THREE.BoxGeometry(1.55, .22, 1.36);
+  const quiverGeo = new THREE.CylinderGeometry(.24, .19, 1.18, 5);
   const steel = new THREE.MeshStandardMaterial({ color: 0x8a9790, roughness: .54, metalness: .47 });
   const darkSteel = new THREE.MeshStandardMaterial({ color: 0x39474b, roughness: .59, metalness: .43 });
   const leather = new THREE.MeshStandardMaterial({ color: 0x514034, roughness: .95 });
@@ -66,10 +71,16 @@ export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
       rightLeg: mesh(legGeo, leather),
       weapon: mesh(kind === 'archer' ? bowGeo : kind === 'guardian' ? spearGeo : swordGeo, steelWeapon),
       shield: kind === 'infantry' || kind === 'guardian' ? mesh(shieldGeo, uniform[owner]) : undefined,
+      shieldBoss: kind === 'infantry' || kind === 'guardian' ? mesh(shoulderGeo, steel) : undefined,
+      quiver: kind === 'archer' ? mesh(quiverGeo, leather) : undefined,
       mount: kind === 'cavalry' ? mesh(horseGeo, horseMat) : undefined,
       horseNeck: kind === 'cavalry' ? mesh(neckGeo, horseMat) : undefined,
       horseHead: kind === 'cavalry' ? mesh(horseHeadGeo, horseMat) : undefined,
       horseLegs: kind === 'cavalry' ? mesh(horseLegsGeo, leather) : undefined,
+      horseRearLeft: kind === 'cavalry' ? mesh(horseLegsGeo, leather) : undefined,
+      horseFrontRight: kind === 'cavalry' ? mesh(horseLegsGeo, leather) : undefined,
+      horseRearRight: kind === 'cavalry' ? mesh(horseLegsGeo, leather) : undefined,
+      saddle: kind === 'cavalry' ? mesh(saddleGeo, uniform[owner]) : undefined,
       kind,
       count: 0,
     });
@@ -99,12 +110,15 @@ export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
       alive.add(unit.id);
       const prev = facingById.get(unit.id);
       const dx = unit.x - (prev?.x ?? unit.x), dz = unit.z - (prev?.z ?? unit.z);
-      const angle = dx * dx + dz * dz > .00002 ? Math.atan2(dx, dz) : (prev?.angle ?? (unit.id * 1.31) % (Math.PI * 2));
+      const moving = dx * dx + dz * dz > .00002;
+      const angle = moving ? Math.atan2(dx, dz) : (prev?.angle ?? (unit.id * 1.31) % (Math.PI * 2));
       facingById.set(unit.id, { x: unit.x, z: unit.z, angle });
       const i = group.count++, x = unit.x, z = unit.z, cavalry = unit.kind === 'cavalry';
       const height = unit.kind === 'guardian' ? 1.16 : unit.kind === 'archer' ? .94 : 1;
       const base = cavalry ? 1.34 : 0;
-      const bob = Math.sin(war.time * 8.2 + unit.id * .71) * .045;
+      // Individual phase offsets keep hundreds of soldiers from marching in lockstep.
+      const gait = moving ? Math.sin(war.time * (cavalry ? 12.2 : 9.6) + unit.id * .71) : 0;
+      const bob = moving ? Math.abs(gait) * .075 : 0;
       const y = base + bob;
       set(group.body, i, x, y + 1.32 * height, z, height, height, height, angle);
       const [chestX, chestZ] = offset(x, z, 0, .55 * height, angle);
@@ -118,8 +132,9 @@ export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
       const [capeX, capeZ] = offset(x, z, 0, -.55 * height, angle);
       set(group.cloak, i, capeX, y + 1.2 * height, capeZ, height, height, height, angle);
       for (const [meshLeg, sign] of [[group.leftLeg, -1], [group.rightLeg, 1]] as const) {
-        const [lx, lz] = offset(x, z, sign * .4 * height, 0, angle);
-        set(meshLeg, i, lx, y + .42 * height, lz, height, height, height, angle);
+        const [lx, lz] = offset(x, z, sign * .4 * height, -sign * gait * .24, angle);
+        set(meshLeg, i, lx, y + (.42 + Math.max(0, sign * gait) * .12) * height,
+          lz, height, height, height, angle);
       }
       const [wx, wz] = offset(x, z, 1.18 * height, .35 * height, angle);
       set(group.weapon, i, wx, y + (unit.kind === 'guardian' ? 1.84 : 1.59) * height, wz,
@@ -128,6 +143,12 @@ export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
         const [sx, sz] = offset(x, z, -1.16 * height, .52 * height, angle);
         set(group.shield, i, sx, y + 1.44 * height, sz,
           unit.kind === 'guardian' ? 1.28 : 1, unit.kind === 'guardian' ? 1.22 : 1, 1, angle);
+        const [bx, bz] = offset(x, z, -1.16 * height, .7 * height, angle);
+        set(group.shieldBoss, i, bx, y + 1.44 * height, bz, .36, .36, .2, angle);
+      }
+      if (group.quiver) {
+        const [qx, qz] = offset(x, z, -.58 * height, -.53 * height, angle);
+        set(group.quiver, i, qx, y + 1.8 * height, qz, .9, 1, .9, angle);
       }
       if (cavalry) {
         set(group.mount, i, x, .9, z, 1, 1, 1, angle);
@@ -135,16 +156,26 @@ export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
         set(group.horseNeck, i, nx, 1.5, nz, 1, 1, 1, angle);
         const [hx, hz] = offset(x, z, 0, 1.54, angle);
         set(group.horseHead, i, hx, 2.2, hz, 1, 1, 1, angle);
-        const [fx, fz] = offset(x, z, -.64, .9, angle);
-        set(group.horseLegs, i, fx, .35, fz, 1, 1, 1, angle);
+        set(group.saddle, i, x, 1.63, z, 1, 1, 1, angle);
+        const positions = [
+          [group.horseLegs, -.64, .9, 1],
+          [group.horseFrontRight, .64, .9, -1],
+          [group.horseRearLeft, -.64, -.98, -1],
+          [group.horseRearRight, .64, -.98, 1],
+        ] as const;
+        for (const [leg, side, forward, phase] of positions) {
+          const [lx, lz] = offset(x, z, side, forward + gait * phase * .18, angle);
+          set(leg, i, lx, .37 + Math.max(0, gait * phase) * .13, lz, 1, 1, 1, angle);
+        }
       }
     }
     for (const id of facingById.keys()) if (!alive.has(id)) facingById.delete(id);
     for (const group of groups.values()) {
       const all = [group.body, group.breastplate, group.face, group.helmet,
         group.visor, group.shoulder, group.cloak, group.leftLeg, group.rightLeg,
-        group.weapon, group.shield, group.mount, group.horseNeck,
-        group.horseHead, group.horseLegs];
+        group.weapon, group.shield, group.shieldBoss, group.quiver, group.mount,
+        group.horseNeck, group.horseHead, group.horseLegs, group.horseRearLeft,
+        group.horseFrontRight, group.horseRearRight, group.saddle];
       for (const object of all) if (object) {
         object.count = group.count;
         if (group.count) object.instanceMatrix.needsUpdate = true;

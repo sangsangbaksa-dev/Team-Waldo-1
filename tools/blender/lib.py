@@ -151,6 +151,26 @@ class B:
                     self._poly([a, b, cc, d], material)
         return self
 
+    def loft(self, st, material: str, n: int = 14, sq: float = 3.2, cap: bool = True, mats=None) -> 'B':
+        """길이(X) 방향으로 단면을 이어 붙인 둥근 몸체. st: [(x, z_bottom, z_top, half_width), ...]"""
+        self._begin()
+        rings = []
+        for x, zb, zt, hw in st:
+            zc, hh, r = (zb + zt) / 2, (zt - zb) / 2, []
+            for k in range(n):
+                t = 2 * math.pi * k / n
+                c, sn = math.cos(t), math.sin(t)
+                r.append(Vector((x, hw * math.copysign(abs(c) ** (2 / sq), c), zc + hh * math.copysign(abs(sn) ** (2 / sq), sn))))
+            rings.append(r)
+        for a in range(len(rings) - 1):
+            for k in range(n):
+                j = (k + 1) % n
+                self._poly([rings[a][k], rings[a][j], rings[a + 1][j], rings[a + 1][k]][::-1], material)
+        if cap:
+            self._poly(rings[0][:], material)
+            self._poly(rings[-1][::-1], material)
+        return self
+
     def cone(self, c, r: float, h: float, material: str, axis: str = 'z', seg: int = 6) -> 'B':
         return self.cyl(c, r, h, material, axis, seg, r2=0.0)
 

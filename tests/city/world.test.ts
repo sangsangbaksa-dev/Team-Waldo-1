@@ -68,9 +68,9 @@ describe('LAST CITY rules', () => {
 });
 
 describe('LAST CITY full match', () => {
-  it('always ends with a single winning kingdom before the storm timer runs out', () => {
+  it('always ends with a single winning kingdom by the match time limit', () => {
     const w = new World({ seed: 11, difficulty: 'normal', klass: 'warlord', autoPlayer: true });
-    run(w, 1300);
+    run(w, 1600);
     expect(w.over).toBe(true); expect(w.winner).toBeGreaterThanOrEqual(0); expect(w.time).toBeGreaterThan(240);
     for (const a of w.actors) expect(Number.isFinite(a.x + a.y + a.hp)).toBe(true);
     expect(new Set(w.factions.map(f => f.place)).size).toBe(8);

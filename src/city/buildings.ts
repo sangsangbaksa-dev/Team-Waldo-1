@@ -1,6 +1,7 @@
 // LAST CITY — 건물 생성기: Blender 로 구운 외벽 타일 + 1층 상점가 + 돌림띠·벽기둥·셋백·옥상 설비.
 import * as THREE from 'three';
 import type { World } from './world';
+import { SIZE } from './defs';
 
 export const FACADE_STYLES = ['brick', 'glass', 'deco', 'industrial', 'ribbon'] as const;
 const GF = 56;                       // 1층 높이
@@ -121,4 +122,16 @@ export function buildBuildings(world: World, scene: THREE.Scene, base: string): 
   FACADE_STYLES.forEach((n, k) => add(facades[k], new THREE.MeshLambertMaterial({ map: tex(`facade_${n}`), emissiveMap: tex(`facade_${n}_e`), emissive: 0xffffff, emissiveIntensity: 0.5, vertexColors: true, side: THREE.DoubleSide })));
   shops.forEach((m, k) => add(m, new THREE.MeshLambertMaterial({ map: shopTexture(k * 2), vertexColors: true, side: THREE.DoubleSide })));
   add(trim, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+}
+
+/** 맵 가장자리를 둘러싼 방파제 벽 + 철조망 기둥 (자기장 대신 자연스러운 경계) */
+export function buildPerimeter(scene: THREE.Scene): void {
+  const m = new Mesh(), conc = new THREE.Color(0x8f9196), cap = new THREE.Color(0xc7c8cc), dark = new THREE.Color(0x4c4e54), H = 130, T = 40, E = 6000;
+  const ring = (x0: number, z0: number, x1: number, z1: number, y0: number, y1: number, c: THREE.Color): void => {
+    m.box(x0 - T, y0, z0 - T, x1 + T, y1, z0, c); m.box(x0 - T, y0, z1, x1 + T, y1, z1 + T, c); m.box(x0 - T, y0, z0, x0, y1, z1, c); m.box(x1, y0, z0, x1 + T, y1, z1, c);
+  };
+  ring(0, 0, SIZE, SIZE, -20, H, conc); ring(-6, -6, SIZE + 6, SIZE + 6, H, H + 10, cap); ring(0, 0, SIZE, SIZE, -20, 14, dark);
+  for (let k = 0; k <= SIZE; k += 120) for (const [x, z] of [[k, -2], [k, SIZE + 2], [-2, k], [SIZE + 2, k]]) m.box(x - 2, H + 10, z - 2, x + 2, H + 56, z + 2, dark);
+  for (const [a, b, c2, d] of [[-E, -E, SIZE + E, -T - 1], [-E, SIZE + T + 1, SIZE + E, SIZE + E], [-E, -T - 1, -T - 1, SIZE + T + 1], [SIZE + T + 1, -T - 1, SIZE + E, SIZE + T + 1]]) m.box(a, -40, b, c2, -8, d, new THREE.Color(0x2b5f7a));
+  const o = new THREE.Mesh(m.geo(), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })); o.castShadow = false; scene.add(o);
 }

@@ -101,13 +101,16 @@ def human(kind: str, s: dict) -> tuple[B, B]:
     b.box((0, 0, 1.0), (0.29 * bulk, 0.4 * bulk, 0.045), 'Black')                                  # 벨트
     b.box((0, 0, 1.23), (0.3 * bulk, 0.4 * bulk, 0.5), sh, taper=(0.96, 1.1))
     b.cyl((0.0, 0, 1.55), 0.055, 0.1, 'Skin', seg=6)
-    b.sphere((0.01, 0, 1.68), 0.125, 'Skin', scale=(1.0, 0.92, 1.06), seg=8, rings=5)
+    b.sphere((0.01, 0, 1.69), 0.14, 'Skin', scale=(1.0, 0.9, 1.08), seg=14, rings=9)
+    b.box((0.135, 0, 1.675), (0.04, 0.035, 0.05), 'Skin')                                      # 코
+    for yy in (-0.05, 0.05):
+        b.box((0.13, yy, 1.715), (0.02, 0.03, 0.02), 'Black')                                 # 눈
     if s.get('glasses'):
         b.box((0.11, 0, 1.7), (0.035, 0.2, 0.045), 'Black')
     if s.get('hair'):
-        b.sphere((-0.015, 0, 1.73), 0.132, 'Hair', scale=(1.0, 0.96, 0.7), seg=8, rings=4)
+        b.sphere((-0.02, 0, 1.75), 0.15, 'Hair', scale=(1.0, 0.98, 0.75), seg=12, rings=6)
     if s.get('helmet'):
-        b.sphere((0.0, 0, 1.72), 0.15, s['helmet'], scale=(1.06, 1.02, 0.86), seg=8, rings=4)
+        b.sphere((0.0, 0, 1.74), 0.17, s['helmet'], scale=(1.06, 1.02, 0.86), seg=12, rings=6)
         b.box((0.0, 0, 1.655), (0.3, 0.3, 0.025), s['helmet'], taper=(1.0, 1.0))
         if s.get('visor'):
             b.box((0.12, 0, 1.69), (0.045, 0.2, 0.06), 'Black')
@@ -190,6 +193,9 @@ def human(kind: str, s: dict) -> tuple[B, B]:
 
 
 SPECS = {
+    'civ2': dict(shirt='Orange', hair=True, arms='down', pants='Khaki', boots='White', sleeve='Orange', gun=None),
+    'civ3': dict(shirt='White', vest='Black', hair=True, glasses=True, arms='down', pants='Black', boots='Black', sleeve='White', gun=None),
+    'civ4': dict(shirt='Team', cap='Red', hair=True, arms='down', pants='Navy', boots='Rubber', sleeve='Team', gun=None),
     'boss': dict(shirt='White', coat=True, hair=True, glasses=True, epaulette=True, gun='smg', pants='Black', sleeve='Black'),
     'worker': dict(shirt='Orange', vest='Team', helmet='Yellow', pants='Khaki', boots='Wood', gun=None, tool='pick', sleeve='Orange'),
     'rifle': dict(shirt='Olive', vest='Team', helmet='Olive', pack='Olive', gun='rifle', pants='Olive', boots='Black', sleeve='Olive', knee=True),

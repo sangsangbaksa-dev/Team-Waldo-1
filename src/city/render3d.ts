@@ -5,7 +5,7 @@ import { solidAt } from './map';
 import type { Business, Fx, Loot, Structure, Vehicle, World } from './world';
 import type { Ghost } from './render';
 import { ModelLayer } from './modellayer';
-import { buildBuildings } from './buildings';
+import { buildBuildings, buildPerimeter } from './buildings';
 import type { Models } from './models';
 
 export type ViewMode = 'fp' | 'tp';
@@ -41,7 +41,7 @@ class Points {
 
 export class Renderer3D {
   renderer: THREE.WebGLRenderer; scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(74, 1, 3, 5200);
-  yaw = 0; pitch = -0.05; mode: ViewMode = 'fp'; w = 0; h = 0; shake = 0; t = 0; reduced = false; recoil = 0; flashT = 0; camPos = new THREE.Vector3(); chaseYaw = 0;
+  yaw = 0; pitch = -0.05; mode: ViewMode = 'fp'; w = 0; h = 0; shake = 0; t = 0; reduced = false; recoil = 0; flashT = 0; camPos = new THREE.Vector3(); chaseYaw = 0; private focus = new THREE.Vector2(SIZE / 2, SIZE / 2); private deadT = 0;
   private dummy = new THREE.Object3D(); private color = new THREE.Color();
   private bodies: THREE.InstancedMesh; private heads: THREE.InstancedMesh; private guns: THREE.InstancedMesh; private hulls: THREE.InstancedMesh; private turrets: THREE.InstancedMesh; private barrels: THREE.InstancedMesh;
   private crystals: THREE.InstancedMesh; private tracers: THREE.InstancedMesh; private rings: THREE.InstancedMesh; private ringList: { x: number; y: number; r0: number; r1: number; life: number; max: number; color: number }[] = [];
@@ -118,7 +118,7 @@ export class Renderer3D {
   private mat(c: number): THREE.MeshLambertMaterial { let m = this.mats.get(c); if (!m) { m = new THREE.MeshLambertMaterial({ color: c }); this.mats.set(c, m); } return m; }
 
   private buildCity(): void {
-    const w = this.world; buildBuildings(w, this.scene, import.meta.env.BASE_URL);
+    const w = this.world; buildBuildings(w, this.scene, import.meta.env.BASE_URL); buildPerimeter(this.scene);
     if (this.models) return;
     // 나무·가로등
     const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(3, 4, 40, 6), this.mat(0x5b4030), w.map.trees.length), leaf = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), this.mat(0x3f7d45), w.map.trees.length);
@@ -245,7 +245,8 @@ export class Renderer3D {
     this.shake = Math.max(0, this.shake - dt * 30); this.recoil = Math.max(0, this.recoil - dt * 7); this.flashT -= dt;
     // 카메라
     const veh = pb && pb.inVeh ? w.vehicles.find(v => v.id === pb.inVeh) : undefined, cy = Math.cos(this.yaw), sy = Math.sin(this.yaw), cp = Math.cos(this.pitch), spt = Math.sin(this.pitch);
-    const fx = pb ? pb.x : this.camPos.x, fz = pb ? pb.y : this.camPos.z, third = this.mode === 'tp' || !!veh || !pb;
+    if (pb) { this.focus.set(pb.x, pb.y); this.deadT = 0; } else { this.deadT += dt; this.yaw += dt * 0.25; }
+    const fx = this.focus.x, fz = this.focus.y, third = this.mode === 'tp' || !!veh || !pb;
     if (!third) { const bob = pb ? Math.sin(pb.walk * 0.09) * Math.min(1.6, Math.hypot(pb.vx, pb.vy) / 120) : 0; this.camPos.set(fx, EYE + bob, fz); this.camera.position.copy(this.camPos); this.camera.lookAt(fx + cy * cp * 100, EYE + bob + spt * 100, fz + sy * cp * 100); }
     else {
       const dist = veh ? (veh.kind === 'tank' ? 250 : 200) : 135, hgt = veh ? 95 : 78, pivotY = veh ? 30 : 50; let k = 1;
@@ -253,6 +254,7 @@ export class Renderer3D {
       const tx = fx - cy * dist * k * cp, ty = pivotY + hgt * k + (1 - k) * 130 - spt * dist * k * 0.9, tz = fz - sy * dist * k * cp;
       this.camPos.lerp(new THREE.Vector3(tx, Math.max(12, ty), tz), Math.min(1, dt * 14)); this.camera.position.copy(this.camPos); this.camera.lookAt(fx + cy * 140, pivotY + 12 + spt * 140, fz + sy * 140);
     }
+    { const m = 14, cp2 = this.camera.position; cp2.x = Math.max(m, Math.min(SIZE - m, cp2.x)); cp2.z = Math.max(m, Math.min(SIZE - m, cp2.z)); this.camPos.x = cp2.x; this.camPos.z = cp2.z; }
     if (this.shake > 0 && !this.reduced) { this.camera.position.x += (Math.random() - 0.5) * this.shake; this.camera.position.y += (Math.random() - 0.5) * this.shake; }
     const spd = veh ? Math.hypot(veh.vx, veh.vy) : 0, fov = 74 + Math.min(14, spd / 45); if (Math.abs(fov - this.camera.fov) > 0.2) { this.camera.fov += (fov - this.camera.fov) * 0.1; this.camera.updateProjectionMatrix(); }
     const sky = this.scene.getObjectByName('sky'); if (sky) sky.position.set(this.camera.position.x, 0, this.camera.position.z);
@@ -297,8 +299,8 @@ export class Renderer3D {
     this.lightT -= dt; this.light.intensity = Math.max(0, this.lightT * 22);
     this.sparks.update(dt); this.fire.update(dt); this.smoke.update(dt);
     // 자기장
-    const z = w.zone; this.zoneWall.position.set(z.x, 450, z.y); this.zoneWall.scale.set(Math.max(1, z.r), 900, Math.max(1, z.r)); this.zoneTex.repeat.set(Math.max(8, z.r / 30), 14); this.zoneTex.offset.y = -this.t * 0.25;
-    this.nextRing.visible = z.nr < z.r; this.nextRing.position.set(z.nx, 3, z.ny); this.nextRing.scale.set(Math.max(2, z.nr), 1, Math.max(2, z.nr));
+    const z = w.zone; this.zoneWall.visible = false; this.nextRing.visible = false; this.zoneWall.position.set(z.x, 450, z.y); this.zoneWall.scale.set(Math.max(1, z.r), 900, Math.max(1, z.r)); this.zoneTex.repeat.set(Math.max(8, z.r / 30), 14); this.zoneTex.offset.y = -this.t * 0.25;
+    this.nextRing.position.set(z.nx, 3, z.ny); this.nextRing.scale.set(Math.max(2, z.nr), 1, Math.max(2, z.nr));
     // 건설 고스트
     this.ghost.visible = !!ghost; if (ghost) { const sd = STRUCTS[ghost.kind], H = STRUCT_H[ghost.kind]; this.ghost.position.set(ghost.x, H / 2, ghost.y); this.ghost.scale.set(sd.w, H, sd.h); (this.ghost.material as THREE.MeshBasicMaterial).color.setHex(ghost.ok ? 0x66ff9c : 0xff5a5a); }
     this.renderer.render(this.scene, this.camera);

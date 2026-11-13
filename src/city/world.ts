@@ -39,6 +39,7 @@ export interface PlayerInput { mx: number; my: number; ax: number; ay: number; f
 export interface WorldOptions { seed: number; difficulty: Difficulty; klass: ClassId; autoPlayer?: boolean; /** 연습 모드: 자기장·라이벌 AI·보급 투하 정지 */ tutorial?: boolean }
 export interface Quest { text: string; reward: number; done: boolean; check: (w: World) => boolean }
 
+const MATCH_LIMIT = 1500;
 const HC = 128, HN = Math.ceil(SIZE / HC);
 export const VEHICLES: Record<string, { hp: number; max: number; accel: number; r: number; len: number; wid: number; colors: string[] }> = {
   sedan: { hp: 320, max: 430, accel: 420, r: 19, len: 46, wid: 22, colors: ['#d9d9d9', '#4b6cb7', '#a33', '#3c7a52', '#c9a227', '#444b59'] },
@@ -52,7 +53,7 @@ export class World {
   time = 0; rng: Rng; map: CityMap; opts: WorldOptions; factions: Faction[] = []; actors: Actor[] = []; byId = new Map<number, Actor>();
   structures: Structure[] = []; businesses: Business[] = []; vehicles: Vehicle[] = []; loot: Loot[] = []; bullets: Bullet[] = []; crystals: Crystal[] = [];
   events: Fx[] = []; feed: { text: string; t: number; color: string }[] = []; hash: Actor[][] = Array.from({ length: HN * HN }, () => []);
-  zone = { x: SIZE / 2, y: SIZE / 2, r: 3900, sx: SIZE / 2, sy: SIZE / 2, sr: 3900, nx: SIZE / 2, ny: SIZE / 2, nr: 3900, phase: 0, t: ZONE_PHASES[0][0], shrinking: false };
+  zone = { x: SIZE / 2, y: SIZE / 2, r: 3900, sx: SIZE / 2, sy: SIZE / 2, sr: 3900, nx: SIZE / 2, ny: SIZE / 2, nr: 3900, phase: ZONE_PHASES.length, t: ZONE_PHASES[0][0], shrinking: false };
   price = 10; priceHistory: number[] = []; nextId = 1; over = false; winner = -1; secT = 0; dropT = 95; pathBudget = 0; quests: Quest[] = [];
   input: PlayerInput = { mx: 0, my: 0, ax: 0, ay: 0, fire: false, dash: false, brake: false };
   planes: { x: number; y: number; vx: number; vy: number; tx: number; ty: number; dropped: boolean }[] = [];
@@ -68,7 +69,7 @@ export class World {
         id: i, name: FACTIONS[i].name, color: FACTIONS[i].color, dark: FACTIONS[i].dark, player, alive: true, cash: 500, crystal: 150, supply: 0, supplyMax: SUPPLY_HQ, boss: 0, hq: 0,
         up: { dmg: 0, armor: 0, eco: 0 }, mods: baseMods(), slots: [{ id: 'pistol', mag: 12, ammo: -1 }], cur: 0, medkits: 1, armor: 0, xp: 0, level: 1, pending: 0, choices: [], perks: [],
         skillCd: 8, buffT: 0, dashCd: 0, dashT: 0, reloadT: 0, respawnT: 0, wanted: 0, crimeT: -99, kills: 0, bossKills: 0, earned: 0, place: 0, klass, income: 0, combatT: -99, diedAt: 0, deaths: 0,
-        ai: { goal: 'idle', tx: base.x, ty: base.y, biz: 0, t: this.rng(), attackT: 150 + this.rng() * 90, stuckT: 0 },
+        ai: { goal: 'idle', tx: base.x, ty: base.y, biz: 0, t: this.rng(), attackT: 400 + this.rng() * 200, stuckT: 0 },
       };
       this.factions.push(f);
       if (klass === 'tycoon') { f.cash = 1600; f.mods.income += 0.3; }
@@ -148,7 +149,7 @@ export class World {
     const x0 = Math.max(0, Math.floor((x - r) / HC)), x1 = Math.min(HN - 1, Math.floor((x + r) / HC)), y0 = Math.max(0, Math.floor((y - r) / HC)), y1 = Math.min(HN - 1, Math.floor((y + r) / HC));
     for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) { const cell = this.hash[cy * HN + cx]; for (let k = 0; k < cell.length; k++) fn(cell[k]); }
   }
-  bossMaxHp(f: Faction): number { return ACTORS.boss.hp + f.mods.hp + (f.level - 1) * 8; }
+  bossMaxHp(f: Faction): number { return Math.round((ACTORS.boss.hp + f.mods.hp + (f.level - 1) * 12) * (f.id === 0 ? 2.2 : 1)); }
   xpNeed(level: number): number { return Math.round(55 * Math.pow(level, 1.35)); }
   cost(f: Faction, v: number): number { return Math.round(v * f.mods.cost); }
   armyOf(f: number): Actor[] { return this.actors.filter(a => a.alive && a.f === f && a.kind !== 'worker' && a.kind !== 'boss' && a.kind !== 'guard'); }
@@ -556,6 +557,10 @@ export class World {
       this.say(`☠️ ${f.name} 궤멸 — 남은 조직 ${this.aliveCount()}`, f.color); this.fx('announce', 0, 0, 0, `${f.name} 궤멸 · 남은 조직 ${this.aliveCount()}`);
     }
     const alive = this.factions.filter(f => f.alive);
+    if (!this.over && !this.opts.tutorial && this.time >= MATCH_LIMIT && alive.length > 1) {   // 시간 종료: 순자산 1위가 승리
+      const rank = [...alive].sort((x, y) => this.netWorth(y) - this.netWorth(x)); rank.forEach((f, i) => { f.place = i + 1; });
+      this.over = true; this.winner = rank[0].id; this.fx('announce', 0, 0, 0, `시간 종료 — ${rank[0].name} 승리`); return;
+    }
     if (alive.length <= 1 || (!this.factions[0].alive && !this.opts.autoPlayer)) {
       this.over = true; const w = alive.length === 1 ? alive[0] : alive.length === 0 ? [...this.factions].sort((a, b) => b.diedAt - a.diedAt)[0] : null;
       if (w && alive.length <= 1) { w.place = 1; this.winner = w.id; }

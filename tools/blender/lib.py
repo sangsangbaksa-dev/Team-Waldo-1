@@ -47,7 +47,7 @@ def palette() -> None:
         'Cloth': '#6f7a86', 'Jeans': '#3d5a80', 'Khaki': '#8b8467', 'Olive': '#4f5d3a', 'Tan': '#b39a68', 'Navy': '#1f3466',
         'White': '#f3f4f6', 'Red': '#d6343a', 'Yellow': '#f2c230', 'Orange': '#ee7d2a', 'Green': '#3f7d45', 'Leaf': '#47894e', 'Leaf2': '#2f6b3d',
         'Bark': '#5b4030', 'Concrete': '#9a9ca0', 'DarkConc': '#6b6d72', 'Glass': '#27394d', 'Crate': '#a8822e', 'Hair': '#2a211c',
-        'CrystalA': '#52d9ff', 'CrystalB': '#2fa7d6', 'Brick': '#8f5a48', 'Roof': '#555a63', 'Sand': '#c9b98a', 'Ghillie': '#586b3a', 'Ghillie2': '#6e7f46',
+        'CrystalA': '#52d9ff', 'CrystalB': '#2fa7d6', 'Brick': '#8f5a48', 'Roof': '#555a63', 'Sand': '#c9b98a', 'OliveD': '#3a4630', 'Coyote': '#8a7448', 'Webbing': '#2c3026', 'Camo': '#5d6b3f', 'Camo2': '#3f4b2c', 'Ghillie': '#586b3a', 'Ghillie2': '#6e7f46',
     }.items():
         mat(n, c)
     for n, c in {'Glow': '#fff3bd', 'GlowRed': '#ff3b3b', 'GlowBlue': '#3b6bff', 'GlowCyan': '#52d9ff', 'GlowGreen': '#6dff9c', 'GlowOrange': '#ffa83a'}.items():
@@ -169,6 +169,25 @@ class B:
         if cap:
             self._poly(rings[0][:], material)
             self._poly(rings[-1][::-1], material)
+        return self
+
+    def loftz(self, st, material: str, n: int = 14, sq: float = 2.6, cx: float = 0.0) -> 'B':
+        """높이(Z) 방향 단면 몸통. st: [(z, 반깊이x, 반폭y), ...]"""
+        self._begin()
+        rings = []
+        for z, hx, hy in st:
+            r = []
+            for k in range(n):
+                t = 2 * math.pi * k / n
+                c, sn = math.cos(t), math.sin(t)
+                r.append(Vector((cx + hx * math.copysign(abs(c) ** (2 / sq), c), hy * math.copysign(abs(sn) ** (2 / sq), sn), z)))
+            rings.append(r)
+        for a in range(len(rings) - 1):
+            for k in range(n):
+                j = (k + 1) % n
+                self._poly([rings[a][k], rings[a][j], rings[a + 1][j], rings[a + 1][k]], material)
+        self._poly(rings[0][::-1], material)
+        self._poly(rings[-1][:], material)
         return self
 
     def cone(self, c, r: float, h: float, material: str, axis: str = 'z', seg: int = 6) -> 'B':

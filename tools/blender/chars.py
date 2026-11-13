@@ -97,9 +97,15 @@ def human(kind: str, s: dict) -> tuple[B, B]:
     bulk = s.get('bulk', 1.0)
     b = B()
     sh = s['shirt']
-    b.box((0, 0, 0.98), (0.27 * bulk, 0.36 * bulk, 0.2), s.get('pants', 'Black'))
-    b.box((0, 0, 1.0), (0.29 * bulk, 0.4 * bulk, 0.045), 'Black')                                  # 벨트
-    b.box((0, 0, 1.23), (0.3 * bulk, 0.4 * bulk, 0.5), sh, taper=(0.96, 1.1))
+    pants = s.get('pants', 'Black')
+    b.loftz([(0.86, 0.12, 0.15 * bulk), (0.98, 0.135, 0.17 * bulk), (1.06, 0.125, 0.165 * bulk)], pants)           # 골반
+    b.loftz([(0.99, 0.145, 0.18 * bulk), (1.04, 0.145, 0.18 * bulk)], 'Black')                                    # 벨트
+    b.box((0.15, 0, 1.015), (0.03, 0.05, 0.04), 'Steel')
+    b.loftz([(1.03, 0.125, 0.17 * bulk), (1.2, 0.13, 0.19 * bulk), (1.38, 0.15, 0.235 * bulk), (1.5, 0.13, 0.255 * bulk), (1.57, 0.095, 0.21 * bulk)], sh)   # 몸통(허리→가슴→어깨)
+    if s.get('camo'):
+        for _ in range(14):
+            px, py, pz = rnd.choice((-1, 1)) * 0.13, rnd.uniform(-0.2, 0.2), rnd.uniform(1.1, 1.5)
+            b.box((px, py, pz), (0.03, rnd.uniform(0.05, 0.1), rnd.uniform(0.04, 0.09)), rnd.choice(('Camo', 'Camo2')), rot=0.0)
     b.cyl((0.0, 0, 1.55), 0.055, 0.1, 'Skin', seg=6)
     b.sphere((0.01, 0, 1.69), 0.14, 'Skin', scale=(1.0, 0.9, 1.08), seg=14, rings=9)
     b.box((0.135, 0, 1.675), (0.04, 0.035, 0.05), 'Skin')                                      # 코
@@ -110,10 +116,16 @@ def human(kind: str, s: dict) -> tuple[B, B]:
     if s.get('hair'):
         b.sphere((-0.02, 0, 1.75), 0.15, 'Hair', scale=(1.0, 0.98, 0.75), seg=12, rings=6)
     if s.get('helmet'):
-        b.sphere((0.0, 0, 1.74), 0.17, s['helmet'], scale=(1.06, 1.02, 0.86), seg=12, rings=6)
-        b.box((0.0, 0, 1.655), (0.3, 0.3, 0.025), s['helmet'], taper=(1.0, 1.0))
+        h = s['helmet']
+        b.sphere((0.0, 0, 1.74), 0.17, h, scale=(1.08, 1.04, 0.9), seg=14, rings=7)
+        b.cyl((0.0, 0, 1.675), 0.168, 0.025, h, seg=16, scale=(1.08, 1.04))                                 # 챙
+        b.box((0.17, 0, 1.78), (0.05, 0.07, 0.07), 'Black')                                                 # NVG 마운트
+        b.box((0.0, 0, 1.915), (0.2, 0.05, 0.015), 'Team') if s.get('accent', True) else None             # 팀색 띠
+        for y in (-1, 1):
+            b.box((0.02, y * 0.165, 1.62), (0.02, 0.015, 0.1), 'Black')                                     # 턱끈
         if s.get('visor'):
-            b.box((0.12, 0, 1.69), (0.045, 0.2, 0.06), 'Black')
+            b.box((0.15, 0, 1.7), (0.045, 0.21, 0.07), 'Black')
+            b.box((0.15, 0, 1.7), (0.05, 0.19, 0.04), 'GlowCyan')
     if s.get('cap'):
         b.sphere((0.0, 0, 1.73), 0.14, s['cap'], scale=(1.0, 1.0, 0.7), seg=8, rings=3)
         b.box((0.14, 0, 1.7), (0.13, 0.2, 0.022), s['cap'])
@@ -123,9 +135,19 @@ def human(kind: str, s: dict) -> tuple[B, B]:
         b.box((0.0, 0, 1.76), (0.27, 0.27, 0.05), 'Team')
         b.box((-0.16, 0, 1.73), (0.1, 0.04, 0.06), 'Team')
     if s.get('vest'):
-        b.box((0.012, 0, 1.27), (0.335 * bulk, 0.445 * bulk, 0.34), s['vest'], taper=(0.98, 1.04))
-        for y in (-0.12, 0.0, 0.12):
-            b.box((0.18 * bulk, y, 1.2), (0.05, 0.09, 0.1), 'Black')
+        v = s['vest']
+        b.loftz([(1.12, 0.145, 0.2 * bulk), (1.3, 0.165, 0.235 * bulk), (1.46, 0.165, 0.25 * bulk), (1.52, 0.12, 0.215 * bulk)], v)    # 플레이트 캐리어
+        b.box((0.178, 0, 1.38), (0.04, 0.26 * bulk, 0.2), 'Webbing')                                                                 # 앞판
+        for y in (-0.12, -0.04, 0.04, 0.12):
+            b.box((0.2, y * bulk, 1.2), (0.06, 0.065, 0.11), 'Gunmetal')                                                              # 탄창 파우치
+            b.box((0.23, y * bulk, 1.21), (0.01, 0.05, 0.08), 'Black')
+        b.box((0.19, 0.0, 1.5), (0.04, 0.2 * bulk, 0.03), 'Webbing')
+        b.box((-0.16, 0, 1.36), (0.04, 0.24 * bulk, 0.18), 'Webbing')
+        if s.get('accent', True):
+            for y in (-1, 1):
+                b.sphere((0.0, y * 0.27 * bulk, 1.47), 0.075, 'Team', scale=(1.0, 0.8, 0.8), seg=8, rings=5)                    # 어깨 팀색 견장(전방위 식별)
+                b.box((0.02, y * 0.2 * bulk, 1.53), (0.1, 0.07, 0.025), 'Team')                                                      # 어깨끈 팀색
+            b.box((0.2, 0.0, 1.32), (0.012, 0.09, 0.05), 'Team')                                                                      # 가슴 표식
     if s.get('coat'):
         b.box((0.0, 0, 1.0), (0.35, 0.5, 0.78), 'Team', taper=(0.9, 0.95))
         b.box((0.17, 0.13, 1.34), (0.05, 0.1, 0.34), 'Black', rot=0.0)
@@ -139,8 +161,14 @@ def human(kind: str, s: dict) -> tuple[B, B]:
         for y in (-1, 1):
             b.box((0.0, y * 0.25, 1.47), (0.08, 0.1, 0.03), 'Yellow')
     if s.get('pack'):
-        b.box((-0.25, 0, 1.28), (0.17, 0.3 * bulk, 0.4), s['pack'])
-        b.box((-0.34, 0, 1.12), (0.04, 0.24, 0.12), 'Black')
+        pk = s['pack']
+        b.loftz([(1.04, 0.1, 0.16 * bulk), (1.3, 0.14, 0.2 * bulk), (1.52, 0.11, 0.17 * bulk)], pk, cx=-0.26)
+        b.cyl((-0.33, 0, 1.55), 0.09, 0.4 * bulk, 'Coyote', axis='y', seg=10)
+        for y in (-1, 1):
+            b.box((-0.28, y * 0.11, 1.18), (0.1, 0.07, 0.14), 'Webbing')
+            b.limb((-0.14, y * 0.14, 1.52), (0.12, y * 0.18, 1.5), 0.05, 'Webbing', round_end=False)
+        if s.get('accent', True):
+            b.box((-0.36, 0, 1.3), (0.02, 0.1, 0.18), 'Team')
     if s.get('armband'):
         b.box((0.0, 0.265 * bulk, 1.32), (0.12, 0.05, 0.12), 'Team')
     # 팔 + 무기
@@ -198,7 +226,7 @@ SPECS = {
     'civ4': dict(shirt='Team', cap='Red', hair=True, arms='down', pants='Navy', boots='Rubber', sleeve='Team', gun=None),
     'boss': dict(shirt='White', coat=True, hair=True, glasses=True, epaulette=True, gun='smg', pants='Black', sleeve='Black'),
     'worker': dict(shirt='Orange', vest='Team', helmet='Yellow', pants='Khaki', boots='Wood', gun=None, tool='pick', sleeve='Orange'),
-    'rifle': dict(shirt='Olive', vest='Team', helmet='Olive', pack='Olive', gun='rifle', pants='Olive', boots='Black', sleeve='Olive', knee=True),
+    'rifle': dict(shirt='Camo', camo=True, vest='OliveD', helmet='Olive', pack='Coyote', gun='rifle', pants='Camo2', boots='Black', sleeve='Camo', knee=True),
     'heavy': dict(shirt='Steel', vest='Black', helmet='Black', visor=True, pads='Team', pack='Olive', rockets=True, gun='rocket', bulk=1.22, pants='Gunmetal', boots='Black', sleeve='Steel', knee=True),
     'sniper': dict(shirt='Ghillie', helmet=None, ghillie=True, armband=True, gun='sniper', pants='Ghillie', boots='Wood', sleeve='Ghillie'),
     'medic': dict(shirt='White', vest='White', helmet='White', cross=True, pack='Team', gun='pistol', pants='Cloth', boots='Black', sleeve='White', armband=True),

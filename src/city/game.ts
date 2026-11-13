@@ -181,7 +181,10 @@ export function openCity(onExit: () => void, options: { difficulty: Difficulty }
       body = '<h3>왕국 순위</h3><table class="c-rank"><tr><th>왕국</th><th>순자산</th><th>병력</th><th>사업</th><th>Lv</th></tr>' + rows.map(r => `<tr class="${r.alive ? '' : 'dead'}"><td><i style="background:${r.color}"></i>${r.name}${w.hq(r.id) ? '' : r.alive ? ' <small>본부 없음</small>' : ''}</td><td>${r.alive ? '$' + $(w.netWorth(r)) : '궤멸'}</td><td>${w.armyOf(r.id).length}</td><td>${w.businesses.filter(b => b.owner === r.id).length}</td><td>${r.level}</td></tr>`).join('') + '</table>';
     }
     const tabs: [string, string][] = [['train', '생산'], ['build', '건설'], ['research', '연구'], ['market', '시장'], ['assets', '자산'], ['rank', '순위']];
-    panel.innerHTML = `<header>${shopOpen ? '<b>무기상</b>' : tabs.map(([k, n]) => `<button data-act="tab:${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}<button data-act="closepanel" class="c-x" aria-label="닫기">✕</button></header><div class="c-body">${body}</div>`;
+    const head = `<header>${shopOpen ? '<b>무기상</b>' : tabs.map(([k, n]) => `<button data-act="tab:${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}<button data-act="closepanel" class="c-x" aria-label="닫기">✕</button></header>`;
+    const cur = panel.querySelector<HTMLElement>('.c-body');
+    if (cur && panel.dataset.head === head) { if (cur.innerHTML !== body) { const top = cur.scrollTop; cur.innerHTML = body; cur.scrollTop = top; } return; }   // 본문만 갱신: 스크롤 위치·스크롤바 드래그 유지
+    panel.dataset.head = head; panel.innerHTML = `${head}<div class="c-body">${body}</div>`;
   }
   function renderHud(): void {
     const w = world!, f = w.factions[0], b = w.boss(0), z = w.zone;

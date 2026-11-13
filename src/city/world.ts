@@ -106,7 +106,7 @@ export class World {
   }
   spawnUnit(unit: UnitId | 'merc' | 'guard', f: number, x: number, y: number): Actor {
     const a = this.spawnActor(unit, f, x, y), fac = this.factions[f];
-    a.maxHp = Math.round(a.maxHp * fac.mods.unitHp * (1 + 0.15 * fac.up.armor)); a.hp = a.maxHp;
+    a.maxHp = Math.round(a.maxHp * fac.mods.unitHp * (1 + 0.15 * fac.up.armor) * (f === 0 ? 1.9 : 1.4)); a.hp = a.maxHp;
     if (unit === 'worker') a.order = { type: 'mine', x, y };
     else if (unit === 'guard') a.order = { type: 'guard', x, y };
     else a.order = { type: 'follow', x, y };
@@ -175,7 +175,7 @@ export class World {
   hurtActor(a: Actor, dmg: number, srcF: number, direct = true): void {
     if (!a.alive) return;
     if (a.inVeh) { const v = this.vehicles.find(q => q.id === a.inVeh); if (v) this.hurtVehicle(v, dmg, srcF); return; }
-    dmg *= 1 - ACTORS[a.kind].armor;
+    dmg *= 1 - ACTORS[a.kind].armor; if (a.f === 0) dmg *= 0.75;
     if (srcF < 8 && srcF >= 0 && !this.factions[srcF].player) dmg *= DIFFICULTY[this.opts.difficulty].dmg;
     if (a.kind === 'boss') {
       const f = this.factions[a.f]; dmg *= 1 - Math.min(0.6, f.mods.armor); if (f.dashT > 0) dmg *= 0.3;
@@ -277,8 +277,8 @@ export class World {
   }
   canBuild(fi: number, kind: StructKind, cx: number, cy: number): boolean {
     const d = STRUCTS[kind], hq = this.hq(fi);
-    let near = hq ? Math.hypot(cx - (hq.x + 60), cy - (hq.y + 60)) < 330 : false;
-    if (!near) near = this.businesses.some(b => b.owner === fi && Math.hypot(b.x - cx, b.y - cy) < 210);
+    let near = hq ? Math.hypot(cx - (hq.x + 60), cy - (hq.y + 60)) < 720 : false;
+    if (!near) near = this.businesses.some(b => b.owner === fi && Math.hypot(b.x - cx, b.y - cy) < 460);
     if (!near || !rectFree(this.map, cx - d.w / 2, cy - d.h / 2, d.w, d.h)) return false;
     for (const c of this.crystals) if (c.amount > 0 && Math.abs(c.x - cx) < d.w / 2 + 22 && Math.abs(c.y - cy) < d.h / 2 + 22) return false;
     for (const b of this.businesses) if (Math.abs(b.x - cx) < d.w / 2 + 30 && Math.abs(b.y - cy) < d.h / 2 + 30) return false;

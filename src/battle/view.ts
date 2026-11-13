@@ -30,17 +30,17 @@ const BUILDINGS: { key: Upgrade; label: string; symbol: string; description: str
 const clock = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 const factionColor = (id: number) => '#' + FACTION_COLORS[id].toString(16).padStart(6, '0');
 const price = (gold: number, food: number) => `${Math.ceil(gold)} 금 · ${Math.ceil(food)} 식량`;
-export interface WarViewOptions { forceNew?: boolean; difficulty?: Difficulty; grandBattle?: boolean; }
+export interface WarViewOptions { forceNew?: boolean; difficulty?: Difficulty; }
 
 export function openWar(onExit: () => void, options: boolean | WarViewOptions = false): void {
   if (document.querySelector('.war-ui')) return;
   const settings = typeof options === 'boolean' ? { forceNew: options } : options;
   const saved = settings.forceNew ? null : loadWar();
-  const resumed = Boolean(saved && saved.factions[0].alive && !saved.over);
-  const w = resumed && saved ? saved : createWar({ difficulty: settings.difficulty, grandBattle: settings.grandBattle });
+  const resumed = Boolean(saved && saved.grandBattle === true && saved.factions[0].alive && !saved.over);
+  const w = resumed && saved ? saved : createWar({ difficulty: settings.difficulty, grandBattle: true });
   const armyLimit = maxUnitsFor(w);
-  const recruitBatch = w.grandBattle ? 25 : 3;
-  const reserveAmounts = w.grandBattle ? [0, 10, 25, 50] : [0, 2, 4, 6];
+  const recruitBatch = 25;
+  const reserveAmounts = [0, 10, 25, 50];
   const prefs = readPreferences();
   const audio = new BattleAudio(); audio.unlock(); audio.setMuted(!prefs.sound);
   const overlay = document.createElement('main'); overlay.className = 'war-ui'; overlay.setAttribute('aria-label', '왕국 전쟁 전장');
@@ -49,9 +49,9 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     <header class="war-top">
       <button class="war-brand" id="exit" aria-label="저장하고 왕국 메뉴로">${icon('crown', 24)}<span>WALDO<small>KINGDOMS AT WAR</small></span></button>
       <div class="resource-strip" aria-label="내 왕국 자원">
-        <div class="resource gold">${icon('coin')}<span><b id="gold">140</b><small id="gold-income"></small></span></div>
-        <div class="resource food">${icon('leaf')}<span><b id="food">100</b><small id="food-income"></small></span></div>
-        <div class="resource army">${icon('army')}<span><b id="army-count">${w.grandBattle ? 100 : 4} / ${armyLimit}</b><small>보유 병력</small></span></div>
+        <div class="resource gold">${icon('coin')}<span><b id="gold">9000</b><small id="gold-income"></small></span></div>
+        <div class="resource food">${icon('leaf')}<span><b id="food">8000</b><small id="food-income"></small></span></div>
+        <div class="resource army">${icon('army')}<span><b id="army-count">${100} / ${armyLimit}</b><small>보유 병력</small></span></div>
         <div class="resource territory">${icon('flag')}<span><b id="territory-count">0 / 9</b><small>점령 거점</small></span></div>
       </div>
       <div class="battle-time"><b id="war-clock">00:00</b><span id="difficulty-badge"></span></div>
@@ -66,7 +66,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     </header>
     <aside class="war-panel" aria-label="왕국 관리">
       <div class="kingdom-heading"><span class="faction-mark">${icon('shield', 23)}</span><div><span class="kicker">YOUR KINGDOM</span><h1>에메랄드 왕국</h1></div><button class="tool-button" id="home" title="내 영지로 이동 (H)" aria-label="내 영지로 이동">${icon('home', 17)}</button></div>
-      ${w.grandBattle ? '<div class="grand-battle-tag">⚔ 대규모 전장 · 아군 100명 VS 적 500명</div>' : ''}
+      <div class="grand-battle-tag">⚔ 대규모 전장 · 아군 100명 VS 적 500명</div>
       <div class="hq-line"><span>본부 내구도</span><b id="hq-value"></b></div><div class="hq-meter"><i id="hq-fill"></i></div>
       <nav class="war-tabs" aria-label="왕국 관리 탭" role="tablist">
         <button role="tab" id="tab-economy" aria-selected="true" aria-controls="pane-economy" data-tab="economy">${icon('coin', 16)}경영</button>
@@ -81,13 +81,13 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
           <div class="squad-manager" aria-label="부대 그룹 편성">
             <div class="section-heading"><h2>부대 편성 및 직접 이동</h2><span>3개 그룹</span></div>
             <div class="squad-tabs" aria-label="선택할 부대 그룹">
-              <button data-squad-select="0" aria-pressed="true">① 주력군 <small>${w.grandBattle ? 100 : 4}명</small></button>
+              <button data-squad-select="0" aria-pressed="true">① 주력군 <small>${100}명</small></button>
               <button data-squad-select="1" aria-pressed="false">② 기동대 <small>0명</small></button>
               <button data-squad-select="2" aria-pressed="false">③ 수비대 <small>0명</small></button>
             </div>
             <p class="squad-order-status" id="squad-order-status" role="status">주력군 · 기본 작전</p>
             <div class="squad-actions">
-              <button id="squad-assign">+${w.grandBattle ? 25 : 3}명 편성</button>
+              <button id="squad-assign">+${25}명 편성</button>
               <button id="squad-release">주력군에 합류</button>
               <button id="squad-home">선택 부대 → 본부</button>
               <button id="squad-move-mode">지도에서 이동 지점 지정</button>
@@ -107,7 +107,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     <div class="war-help"><span><kbd>WASD</kbd> 시점 이동</span><span>드래그: 회전</span><span><kbd>5–7</kbd> 부대 선택</span><span><kbd>G</kbd> 이동 · <kbd>B</kbd> 본부</span><span><kbd>K</kbd> 기지 관리</span></div>
     <nav class="squad-quickbar" aria-label="빠른 부대 지휘">
       <span>부대 지휘</span>
-      <button data-squad-select="0" aria-pressed="true">① 주력군 <small>${w.grandBattle ? 100 : 4}명</small></button>
+      <button data-squad-select="0" aria-pressed="true">① 주력군 <small>${100}명</small></button>
       <button data-squad-select="1" aria-pressed="false">② 기동대 <small>0명</small></button>
       <button data-squad-select="2" aria-pressed="false">③ 수비대 <small>0명</small></button>
       <button id="quick-move" aria-pressed="false">📍 위치 지정</button>
@@ -237,7 +237,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     const clampedZ = THREE.MathUtils.clamp(z, -MAP_HALF_SIZE + 5, MAP_HALF_SIZE - 5);
     if (commandTo({ kind: 'move', x: clampedX, z: clampedZ })) {
       audio.play('click'); announce(SQUAD_NAMES[selectedSquad] + ' 이동! 지정 위치로 출발합니다.'); ui(); drawMap();
-    } else announce('선택 부대에 병력이 없습니다. 주력군에서 3명 편성하세요.');
+    } else announce('선택 부대에 병력이 없습니다. 주력군에서 25명 편성하세요.');
   };
   const issueAt = (x: number, z: number) => {
     const base = w.factions[0];
@@ -589,7 +589,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     const end = el('.war-end'); end.hidden = false;
     [...overlay.children].forEach(child => { if (child instanceof HTMLElement && child !== end) child.inert = true; });
     end.innerHTML = `<section class="result-panel" role="dialog" aria-modal="true" aria-labelledby="result-title"><span class="result-emblem">${icon(victory ? 'crown' : 'shield', 52)}</span><div class="kicker">${victory ? 'VICTORY' : 'THE KINGDOM WILL RISE AGAIN'}</div><h1 id="result-title" tabindex="-1">${victory ? '마지막 왕국의 주인' : '새로운 원정이 기다립니다'}</h1><p>${victory ? '모든 경쟁자를 물리치고 전장을 통일했습니다.' : '영지가 함락되었습니다. 다음 전투에서 다시 도전하세요.'}</p><div class="result-stats"><div><b>${clock(w.time)}</b><span>생존 시간</span></div><div><b>${stats.kills}</b><span>적 병력 처치</span></div><div><b>${stats.captures}</b><span>거점 점령</span></div><div><b>${stats.trained}</b><span>병력 훈련</span></div><div><b>${stats.researches}</b><span>연구 완료</span></div><div><b>${Math.floor(stats.goldEarned).toLocaleString('ko-KR')}</b><span>획득한 금</span></div></div><p class="result-tip">${victory ? '다른 난이도와 병종 조합으로 새로운 전략을 시도해 보세요.' : stats.captures === 0 ? '다음 전략: 가까운 거점을 먼저 점령해 자원 생산과 폭풍 방어를 확보해 보세요.' : '다음 전략: 연구와 병종 조합으로 전투력을 높이고, 본부 수리 자원을 남겨 두세요.'}</p><div class="result-actions"><button id="back" class="button secondary">왕국 메뉴</button><button id="again" class="button primary">같은 난이도로 재도전 ${icon('arrow', 18)}</button></div></section>`;
-    el<HTMLButtonElement>('#again').onclick = () => { const difficulty = w.difficulty, grandBattle = w.grandBattle; close(false); openWar(onExit, { forceNew: true, difficulty, grandBattle }); };
+    el<HTMLButtonElement>('#again').onclick = () => { const difficulty = w.difficulty; close(false); openWar(onExit, { forceNew: true, difficulty }); };
     el<HTMLButtonElement>('#back').onclick = () => close();
     end.addEventListener('keydown', event => {
       if (event.key !== 'Tab') return;

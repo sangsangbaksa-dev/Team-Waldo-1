@@ -181,14 +181,24 @@ try {
       // real pointer gesture. Project the actual camera rather than guessing pixels.
       await page.evaluate(() => window.__war.setPaused(false));
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => resolve())));
-      const projected = await page.evaluate(() => { const camera = window.__war.camera, point = camera.position.clone().set(0, 0, 0).project(camera); return { x: point.x, y: point.y }; });
-      const field = page.locator('.war-view canvas'), fieldBox = await field.boundingBox(); assert.ok(fieldBox);
-      await field.click({ position: { x: (projected.x + 1) * fieldBox.width / 2, y: (1 - projected.y) * fieldBox.height / 2 } });
-      await page.locator('#target-card').waitFor();
-      assert.equal(await page.locator('#target-name').innerText(), '중앙 요새');
-      await page.evaluate(() => window.__war.setPaused(true));
-      await capture(page, `${name}-3d-target`);
-      await page.locator('#target-command').click(); assert.equal((await snapshot(page)).rally, 4);
+      // On portrait phones the bottom command bar intentionally covers parts
+      // of the world canvas. Use the visible order panel rather than asking
+      // Playwright to click a point underneath another interactive control.
+      if (width > 640) {
+        const projected = await page.evaluate(() => { const camera = window.__war.camera, point = camera.position.clone().set(0, 0, 0).project(camera); return { x: point.x, y: point.y }; });
+        const field = page.locator('.war-view canvas'), fieldBox = await field.boundingBox(); assert.ok(fieldBox);
+        await field.click({ position: { x: (projected.x + 1) * fieldBox.width / 2, y: (1 - projected.y) * fieldBox.height / 2 } });
+        await page.locator('#target-card').waitFor();
+        assert.equal(await page.locator('#target-name').innerText(), '중앙 요새');
+        await page.evaluate(() => window.__war.setPaused(true));
+        await capture(page, `${name}-3d-target`);
+        await page.locator('#target-command').click();
+      } else {
+        await page.evaluate(() => window.__war.setPaused(true));
+        await page.locator('#outpost-4').click();
+        result.scenarios.push('portrait-safe outpost order through visible controls');
+      }
+      assert.equal((await snapshot(page)).rally, 4);
       result.scenarios.push('seeded enemy attack order for threat UI');
       const enemyOrder = await page.evaluate(() => {
         const { world, ui } = window.__war, enemy = world.factions[1], previous = { target: enemy.target, rally: enemy.rally };

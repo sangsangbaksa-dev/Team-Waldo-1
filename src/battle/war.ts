@@ -108,6 +108,7 @@ export function createWar(options:{difficulty?:Difficulty;grandBattle?:boolean}=
       spawn(war,id,kind);
     }
   }
+  getBaseState(war);
   return war;
 }
 function spawn(w: War, id: number, kind: UnitKind): void {

@@ -74,7 +74,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
       color:0x31525c,roughness:.25,metalness:.1,transparent:true,opacity:.94
     }),roadMat=material(0x465055),soilMat=material(0x5d554b),
     ember=material(0xffb45a,0,.4,0xff8130);
-  const teamMats=FACTION_COLORS.map(color=>material(color,.25,.43));
+  const teamMats=FACTION_COLORS.map(color=>material(new THREE.Color(color).lerp(new THREE.Color(0x465450),.35).getHex(),.25,.52));
   const bannerMats=FACTION_COLORS.map(color=>new THREE.MeshStandardMaterial({
     color,side:THREE.DoubleSide,roughness:.65
   }));
@@ -83,6 +83,17 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   }));
   const wheatMats=[material(0xc0a461),material(0x9c874f)];
   const farmRoofMaterial=material(0x976e47);
+  // Sloped masonry roofs give working buildings a grounded architectural profile.
+  const roofShape=new THREE.BufferGeometry();
+  roofShape.setAttribute('position',new THREE.Float32BufferAttribute([
+    -.5,-.5,-.5, 0,.5,-.5, .5,-.5,-.5,
+    -.5,-.5,.5, .5,-.5,.5, 0,.5,.5,
+    -.5,-.5,-.5, -.5,-.5,.5, 0,.5,-.5,
+    -.5,-.5,.5, 0,.5,.5, 0,.5,-.5,
+    0,.5,-.5, 0,.5,.5, .5,-.5,-.5,
+    .5,-.5,-.5, 0,.5,.5, .5,-.5,.5,
+  ],3));
+  roofShape.computeVertexNormals();
   const box=new THREE.BoxGeometry(1,1,1),
     cylinder=new THREE.CylinderGeometry(.5,.5,1,10),
     sphere=new THREE.SphereGeometry(.5,12,8),
@@ -268,14 +279,13 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     const structures:THREE.Group[]=[];
     const farm=new THREE.Group();farm.position.set(-12.8,0,12.5);root.add(farm);
     add(farm,box,timber,0,1.7,0,6.5,3.4,5.4);
-    const farmRoof=add(farm,cone,farmRoofMaterial,0,4.3,0,9.5,3.5,8);
-    farmRoof.rotation.y=Math.PI/4;
+    add(farm,roofShape,farmRoofMaterial,0,4.45,0,9.2,3.15,7.2);
     add(farm,box,cream,0,2,2.79,1.8,2,.18);
     for(let i=0;i<5;i++)add(farm,box,wheatMats[i%2],-5+i*2.2,.13,6.8,1.7,.15,5.2);
     structures.push(farm);
     const mine=new THREE.Group();mine.position.set(0,0,14);root.add(mine);
     add(mine,box,stoneDark,0,1.45,0,6.6,3,5.2);
-    add(mine,cone,roof,0,4.5,0,8.5,4.3,7.3).rotation.y=Math.PI/4;
+    add(mine,roofShape,roof,0,4.48,0,8.6,3.4,7.2);
     for(let i=0;i<3;i++){
       const ore=add(mine,rock,gold,-2+i*2.2,.45,4.4,1.6,1.4,1.6);
       ore.rotation.set(i*.35,i*.9,0);
@@ -285,7 +295,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     structures.push(mine);
     const barracks=new THREE.Group();barracks.position.set(13,0,12.5);root.add(barracks);
     add(barracks,box,stone,0,2.2,0,7.4,4.4,6.3);
-    add(barracks,cone,roof,0,5.35,0,10.5,3.5,9.5).rotation.y=Math.PI/4;
+    add(barracks,roofShape,roof,0,5.58,0,10.5,3.2,8.5);
     add(barracks,box,woodDark,0,1.8,3.24,2.2,3.3,.3);
     for(const x of [-2.6,2.6])add(barracks,box,teamMats[f.id],x,3,3.24,1.1,1.5,.18);
     structures.push(barracks);
@@ -591,7 +601,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
       }
     });
     geos.add(box);geos.add(cylinder);geos.add(sphere);geos.add(cone);
-    geos.add(rock);geos.add(torus);geos.add(trunkGeo);geos.add(crownGeo);
+    geos.add(rock);geos.add(torus);geos.add(trunkGeo);geos.add(crownGeo);geos.add(roofShape);
     geos.add(baseRingGeometry);geos.add(unitRingGeometry);geos.add(routeGeometry);
     geos.add(missileGeometry);geos.add(bowGeometry);mats.add(healthMaterial);
     unitBatches.forEach(batch=>[...batch.rider,...batch.mount].forEach(part=>geos.add(part.geometry)));

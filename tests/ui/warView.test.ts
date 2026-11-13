@@ -161,7 +161,6 @@ describe('battle UI through real player actions', () => {
     advanceFrames(10);
     expect(w.time).toBe(time);
     const goldBefore = w.factions[0].gold, foodBefore = w.factions[0].food;
-    const goldBefore = w.factions[0].gold, foodBefore = w.factions[0].food;
     click('[data-interior-command="upgrade"]');
     expect(w.factions[0].mine).toBe(2);
     expect(w.factions[0].gold).toBeCloseTo(goldBefore - 60);

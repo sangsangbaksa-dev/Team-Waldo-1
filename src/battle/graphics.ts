@@ -7,6 +7,7 @@ import { createWorldLabel, type WorldLabel } from './renderLabels';
 import { createBattleEffects } from './renderEffects';
 import { batchStaticChildren, type StaticBatch } from './renderBatches';
 import { createVisualDetails } from './visualDetails';
+import { createKingdomScenery } from './kingdomScenery';
 
 /** Procedural, self-contained industrial 3D battlefield. No external models or textures. */
 export const FACTION_COLORS = [0x50d9d1, 0xf06a77, 0xf5c45d, 0xaa8eed] as const;
@@ -225,8 +226,9 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   // Instanced parts keep the additional geometry affordable in the grand-battle mode.
   createBattlefieldEnvironment(world,BATTLEFIELD_FEATURES);
 
-  // Extra vegetation uses instancing to preserve large-battle frame rates.
+  // Extra vegetation and populated medieval kingdoms use GPU instancing.
   art.landscape(world,war);
+  createKingdomScenery(world,war);
 
   const fortresses:Fortress[]=war.factions.map(f=>{
     const root=new THREE.Group();root.position.set(f.x,0,f.z);world.add(root);

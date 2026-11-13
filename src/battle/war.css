@@ -16,7 +16,7 @@
 .panel-footer .render-performance{flex:0 0 auto;white-space:nowrap;font-variant-numeric:tabular-nums;font-size:10px;color:#a4b893}.panel-footer .text-button{flex:0 0 auto}
 
 
-/* Direct-control / parachute / battlement HUD. Deliberately separate from the strategy panels. */
+/* Direct-control / battlement HUD. Strategically separate from the kingdom overview. */
 .war-ui [hidden]{display:none!important}
 .adventure-switch{position:absolute;bottom:74px;left:331px;z-index:6}
 .adventure-switch .button{padding:11px 16px;border-radius:7px;box-shadow:0 9px 28px #07181099;font-size:12px}
@@ -39,7 +39,7 @@
 .adventure-pad [data-move="a"]{grid-column:1;grid-row:2}
 .adventure-pad [data-move="s"]{grid-column:2;grid-row:2}
 .adventure-pad [data-move="d"]{grid-column:3;grid-row:2}
-.adventure-dropping .adventure-pad,.adventure-dropping .adventure-crosshair,.adventure-dropping #adventure-fire{display:none!important}
+
 .adventure-active .war-toast{bottom:104px;z-index:12}
 @media(max-width:1020px){.adventure-switch{left:282px}}
 @media(max-width:760px){

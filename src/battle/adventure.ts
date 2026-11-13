@@ -2,20 +2,19 @@ import * as THREE from 'three';
 import { captureHeroPost, OUTPOST_NAMES, type Outpost, type Unit, type War } from './war';
 
 /** A lightweight direct-control layer over the existing deterministic strategy simulation. */
-export type AdventureMode = 'drop' | 'field' | 'tower' | 'strategy';
+export type AdventureMode = 'field' | 'tower' | 'strategy';
 type ArrowFlight = { mesh: THREE.Group; start: THREE.Vector3; end: THREE.Vector3; age: number };
 const clamp = THREE.MathUtils.clamp;
 const distance = (a: number, b: number, x: number, z: number) => Math.hypot(a - x, b - z);
 
-export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCamera, war: War, newMatch: boolean) {
-  const destination = war.outposts[5];
+export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCamera, war: War) {
   const player = war.factions[0];
-  let mode: AdventureMode = newMatch ? 'drop' : 'strategy';
-  let x = newMatch ? destination.x : player.x + 9;
-  let z = newMatch ? destination.z : player.z + 9;
+  // Begin directly in the kingdom strategy view.
+  let mode: AdventureMode = 'strategy';
+  let x = player.x + 9;
+  let z = player.z + 9;
   let yaw = -2.36;
   let pitch = -.14;
-  let dropTime = 0;
   let fireCooldown = 0;
   let notice = '';
   let castleX = player.x;
@@ -41,26 +40,13 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
     return mesh;
   }
 
-  // The avatar and its canopy are 3D objects, not a video overlay.
+  // The ground avatar is available for direct exploration without a parachute sequence.
   const avatar = new THREE.Group();
   scene.add(avatar); resources.push(avatar);
   add(avatar, new THREE.CapsuleGeometry(.78, 1.2, 4, 8), cloth, 0, 1.7, 0);
   add(avatar, new THREE.SphereGeometry(.54, 10, 8), gold, 0, 3.05, 0);
   add(avatar, new THREE.BoxGeometry(.24, 1.25, .28), wood, -.4, .62, 0);
   add(avatar, new THREE.BoxGeometry(.24, 1.25, .28), wood, .4, .62, 0);
-  const canopy = new THREE.Group();
-  avatar.add(canopy);
-  add(canopy, new THREE.SphereGeometry(7.1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), cloth, 0, 18, 0);
-  for (let i = 0; i < 8; i++) {
-    const theta = i * Math.PI / 4;
-    const top = new THREE.Vector3(Math.sin(theta) * 6.2, 18, Math.cos(theta) * 6.2);
-    const bottom = new THREE.Vector3(Math.sin(theta) * .4, 3, Math.cos(theta) * .4);
-    const d = top.clone().sub(bottom);
-    const cord = add(canopy, new THREE.CylinderGeometry(.035, .035, d.length(), 4), wood,
-      (top.x + bottom.x) / 2, (top.y + bottom.y) / 2, (top.z + bottom.z) / 2);
-    cord.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
-  }
-
   // Capturable wooden/stone battlements. Any friendly post can be entered on foot.
   const watchtowers: Array<{ post: Outpost; flag: THREE.Mesh }> = [];
   for (const post of war.outposts) {
@@ -119,24 +105,13 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
     notice = '성벽에서 내려왔습니다. WASD로 걸어 이동하세요.';
   }
   function toField() {
-    if (mode === 'drop') return;
     if (mode === 'tower') leaveTower();
     mode = 'field';
     notice = '직접 이동 모드 · WASD 이동 · 드래그 시점 회전 · 활 발사';
   }
   function toStrategy() {
-    if (mode === 'drop') return;
     mode = 'strategy';
     notice = '전략 지도로 돌아왔습니다. 병력 훈련과 출전 명령을 내리세요.';
-  }
-  /** Dev-only smoke test hook: complete the cinematic without waiting for a real-time animation. */
-  function skipDrop() {
-    if (mode !== 'drop') return;
-    dropTime = 6.2;
-    mode = 'field';
-    avatar.position.set(x, 0, z);
-    canopy.visible = false;
-    notice = '착륙 성공! 거점 점령을 시작하세요.';
   }
   function onPointerDelta(dx: number, dy: number) {
     if (mode !== 'field' && mode !== 'tower') return;
@@ -191,21 +166,6 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
         [0x50d9d1, 0xf06a77, 0xf5c45d, 0xaa8eed][tower.post.owner];
       (tower.flag.material as THREE.MeshStandardMaterial).color.setHex(color);
     }
-    if (mode === 'drop') {
-      dropTime += dt;
-      const progress = clamp(dropTime / 6.2, 0, 1);
-      const altitude = Math.pow(1 - progress, 1.45) * 88;
-      avatar.position.set(x - (1 - progress) * 19, altitude, z - (1 - progress) * 19);
-      avatar.visible = true; canopy.visible = true;
-      canopy.rotation.z = Math.sin(dropTime * 1.8) * .055;
-      camera.position.set(avatar.position.x + 23, altitude + 17, avatar.position.z + 28);
-      camera.lookAt(avatar.position.x, altitude + 8, avatar.position.z);
-      if (progress >= 1) {
-        mode = 'field'; avatar.position.set(x, 0, z); canopy.visible = false;
-        notice = '착륙 성공! 깃발 근처에 머물러 북서부 관문을 점령하세요.';
-      }
-      return;
-    }
     avatar.position.set(x, 0, z);
     avatar.visible = mode === 'strategy';
     if (mode === 'strategy') return;
@@ -226,8 +186,8 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
       x = clamp(x, castleX - 3.1, castleX + 3.1);
       z = clamp(z, castleZ - 3.1, castleZ + 3.1);
     } else {
-      x = clamp(x, -177, 177);
-      z = clamp(z, -177, 177);
+      x = clamp(x, -250, 250);
+      z = clamp(z, -250, 250);
       const post = captureHeroPost(war, x, z, dt);
       if (post && post.owner === 0) notice = OUTPOST_NAMES[post.id] + ' 점령 성공! E로 감시탑에 올라가세요.';
     }
@@ -237,7 +197,6 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
   }
 
   function hint() {
-    if (mode === 'drop') return { headline: '낙하산 강하 중', detail: '착륙 후 깃발 옆에 머물면 직접 점령할 수 있습니다.', progress: clamp(dropTime / 6.2 * 100, 0, 100) };
     if (mode === 'strategy') return { headline: '전략 지휘 시점', detail: '직접 플레이 버튼을 눌러 땅 위로 내려가세요.', progress: 0 };
     if (mode === 'tower') return { headline: castleName + ' · 성벽 궁수', detail: '화면 드래그: 조준 · 클릭/F: 화살 · E: 내려가기 · T: 전략 시점', progress: 0 };
     const post = war.outposts.find(p => distance(x, z, p.x, p.z) < 8);
@@ -265,9 +224,8 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
   return {
     get mode() { return mode; },
     get isActionMode() { return mode !== 'strategy'; },
-    get inDrop() { return mode === 'drop'; },
     get canEnterTower() { return mode === 'field' && nearestFriendlyCastle().range <= 18; },
     takeNotice() { const message = notice; notice = ''; return message; },
-    toField, toStrategy, enterTower, leaveTower, skipDrop, onPointerDelta, shoot, update, hint, dispose,
+    toField, toStrategy, enterTower, leaveTower, onPointerDelta, shoot, update, hint, dispose,
   };
 }

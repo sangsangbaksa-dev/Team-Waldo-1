@@ -41,8 +41,8 @@ export interface War {
   base?: BaseState;
 }
 export const DIFFICULTIES: Record<Difficulty, {label:string;description:string;aiIncome:number;aiInterval:number;aiAttackAfter:number}> = {
-  easy: {label:'입문',description:'아군 자원 +35% · AI 생산 45% 감소 · 대군 전투 아군 공격 +45% · AI 대아군 피해 −45% · 본부 공세 350초 이후 · 폭풍 7분 이후',aiIncome:.55,aiInterval:1.7,aiAttackAfter:350},
-  normal: {label:'보통',description:'대군 전투 아군 공격 +15% · AI 대아군 피해 −10% · AI 본부 공세 180초 이후 · 폭풍 5분 30초 이후',aiIncome:1,aiInterval:1,aiAttackAfter:180},
+  easy: {label:'입문',description:'아군 생산 +35% · AI 생산 −45% · 아군 공격 +45% · AI 대아군 피해 −45% · 본부 공세 350초 이후',aiIncome:.55,aiInterval:1.7,aiAttackAfter:350},
+  normal: {label:'보통',description:'아군 공격 +15% · AI 대아군 피해 −10% · AI 본부 공세 180초 이후',aiIncome:1,aiInterval:1,aiAttackAfter:180},
   hard: {label:'도전',description:'AI 자원 생산 20% 증가 · 판단 간격 20% 감소 · AI 본부 공세 대기 없음',aiIncome:1.2,aiInterval:.8,aiAttackAfter:0},
 };
 export const RESEARCH: Record<Research, {label:string;description:string;maxLevel:number;requiredBarracks:number;gold:number;food:number}> = {
@@ -61,7 +61,12 @@ export const OUTPOST_BONUSES: ReadonlyArray<{gold:number;food:number}> = [
 export const MAP_HALF_SIZE = 260;
 export const MAP_SIZE = MAP_HALF_SIZE * 2;
 export const STORM_START = 130;
-export const stormStartFor = (w: War) => w.grandBattle ? (w.difficulty === 'easy' ? 420 : w.difficulty === 'normal' ? 330 : 270) : w.difficulty === 'easy' ? 180 : STORM_START;
+export const stormStartFor = (w: Pick<War, 'grandBattle' | 'difficulty'>) => w.grandBattle ? (w.difficulty === 'easy' ? 420 : w.difficulty === 'normal' ? 330 : 270) : w.difficulty === 'easy' ? 180 : STORM_START;
+export function difficultyDescription(difficulty: Difficulty, grandBattle = false): string {
+  const seconds = stormStartFor({ difficulty, grandBattle });
+  const time = `${Math.floor(seconds / 60)}분${seconds % 60 ? ` ${seconds % 60}초` : ''}`;
+  return `${DIFFICULTIES[difficulty].description} · 폭풍 ${time} 이후`;
+}
 export const STORM_HQ_DAMAGE = 3.5;
 const CORNERS = [[-112,-112],[112,-112],[-112,112],[112,112]] as const;
 const OUTPOSTS = [[0,-95],[95,0],[0,95],[-95,0],[0,0],[-62,-62],[62,-62],[-62,62],[62,62]] as const;

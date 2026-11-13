@@ -20,6 +20,7 @@ async function loadMenu(): Promise<void> {
   await import('../../src/main');
   await vi.dynamicImportSettled();
 }
+
 beforeEach(() => {
   vi.resetModules(); vi.clearAllMocks();
   document.body.innerHTML = '<div id="game"></div>';
@@ -31,60 +32,74 @@ afterEach(async () => {
   document.body.replaceChildren(); localStorage.clear();
 });
 
-describe('grand-battle-only navigation', () => {
-  it('exposes a single 100 vs 500 start action and ignores repeat clicks', async () => {
-    await loadMenu(); button('#difficulty-hard').click();
+describe('menu navigation and recovery', () => {
+  it('offers only the grand campaign and starts one engine on repeated clicks', async () => {
+    await loadMenu();
+    expect(document.querySelector('#start-war')).toBeNull();
     expect(document.querySelector('#legacy')).toBeNull();
-    expect(document.querySelector('#start-grand')).toBeNull();
-    expect(button('#start-war').getAttribute('aria-label')).toContain('100명');
-    const start = button('#start-war');
+    button('#difficulty-hard').click();
+    const start = button('#start-grand');
     start.click(); start.click();
+    expect(start.disabled).toBe(true);
     await vi.dynamicImportSettled();
     expect(navigation.openWar).toHaveBeenCalledTimes(1);
-    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), {
-      forceNew: true, difficulty: 'hard',
-    });
+    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), { forceNew: true, difficulty: 'hard' });
     expect(navigation.disposePreview).toHaveBeenCalledTimes(1);
+    navigation.openWar.mock.calls[0][0]();
+    await vi.dynamicImportSettled();
+    expect(button('#start-grand').disabled).toBe(false);
   });
 
-  it('opens settings despite corrupt save, career and preferences', async () => {
+  it('explains the actual grand-campaign storm times for the selected difficulty', async () => {
+    await loadMenu();
+    expect(document.querySelector('#difficulty-description')?.textContent).toContain('5분 30초');
+    button('#difficulty-easy').click();
+    expect(document.querySelector('#difficulty-description')?.textContent).toContain('7분');
+    expect(button('#difficulty-easy').getAttribute('aria-pressed')).toBe('true');
+    button('#guide').click();
+    expect(document.querySelector('.dialog-body')?.textContent).toContain('25명');
+    expect(document.querySelector('.dialog-body')?.textContent).toContain('5분 30초');
+  });
+
+  it('keeps a small battle save untouched until the user confirms a new grand campaign', async () => {
+    const saved = createWar();
+    saveWar(saved);
+    await loadMenu();
+    expect(document.querySelector('#continue-war')).toBeNull();
+    expect(document.querySelector('.save-notice')?.textContent).toContain('소규모 원정은 종료');
+    button('#start-grand').click(); button('.dialog-cancel').click();
+    expect(navigation.openWar).not.toHaveBeenCalled();
+    expect(loadWar()).toEqual(saved);
+    button('#start-grand').click(); button('.dialog-confirm').click();
+    await vi.dynamicImportSettled();
+    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), { forceNew: true, difficulty: 'normal' });
+  });
+
+  it('opens the menu and settings even when saved battle, career, and preferences are corrupt', async () => {
     localStorage.setItem(WAR_SAVE_KEY, '{not valid JSON');
     localStorage.setItem('waldo.career.v1', '{also broken');
     localStorage.setItem('waldo.preferences.v1', 'null');
     await loadMenu();
     expect(document.querySelector('.landing')).not.toBeNull();
     expect(document.querySelector('#continue-war')).toBeNull();
-    expect(button('#start-war').disabled).toBe(false);
+    expect(button('#start-grand').disabled).toBe(false);
     button('#preferences').click();
     expect(document.querySelector('.game-dialog')).not.toBeNull();
     expect(document.querySelector<HTMLSelectElement>('#menu-quality')?.value).toMatch(/^(high|standard)$/);
     button('.dialog-cancel').click();
-    expect(button('#start-war').disabled).toBe(false);
+    expect(button('#start-grand').disabled).toBe(false);
   });
 
-  it('continues a large saved hard match at its original difficulty', async () => {
-    const saved = createWar({ grandBattle: true, difficulty: 'hard' }); saved.time = 83;
+  it('continues a saved hard match at its saved difficulty despite a different new-game selection', async () => {
+    const saved = createWar({ difficulty: 'hard', grandBattle: true }); saved.time = 83;
     expect(saveWar(saved)).toBe(true);
     await loadMenu();
     expect(button('#continue-war').textContent).toContain('1분 23초');
     expect(button('#continue-war').textContent).toContain('도전');
     button('#difficulty-easy').click(); button('#continue-war').click();
     await vi.dynamicImportSettled();
-    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), {
-      forceNew: false, difficulty: 'hard',
-    });
+    expect(navigation.openWar).toHaveBeenCalledTimes(1);
+    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), { forceNew: false, difficulty: 'hard' });
     expect(loadWar()).toEqual(saved);
-  });
-
-  it('never resumes a deprecated small skirmish, even when the old save exists', async () => {
-    const skirmish = createWar({ difficulty: 'easy' });
-    expect(saveWar(skirmish)).toBe(true);
-    await loadMenu();
-    expect(document.querySelector('#continue-war')).toBeNull();
-    button('#start-war').click();
-    await vi.dynamicImportSettled();
-    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), {
-      forceNew: true, difficulty: 'normal',
-    });
   });
 });

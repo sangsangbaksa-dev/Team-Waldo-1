@@ -49,6 +49,8 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
   add(avatar, new THREE.BoxGeometry(.24, 1.25, .28), wood, -.4, .62, 0);
   add(avatar, new THREE.BoxGeometry(.24, 1.25, .28), wood, .4, .62, 0);
   const canopy = new THREE.Group();
+  canopy.name = 'hero-parachute';
+  canopy.visible = newMatch;
   avatar.add(canopy);
   add(canopy, new THREE.SphereGeometry(7.1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), cloth, 0, 18, 0);
   for (let i = 0; i < 8; i++) {
@@ -206,6 +208,7 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
       }
       return;
     }
+    canopy.visible = false;
     avatar.position.set(x, 0, z);
     avatar.visible = mode === 'strategy';
     if (mode === 'strategy') return;
@@ -238,7 +241,7 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
 
   function hint() {
     if (mode === 'drop') return { headline: '낙하산 강하 중', detail: '착륙 후 깃발 옆에 머물면 직접 점령할 수 있습니다.', progress: clamp(dropTime / 6.2 * 100, 0, 100) };
-    if (mode === 'strategy') return { headline: '전략 지휘 시점', detail: '직접 플레이 버튼을 눌러 땅 위로 내려가세요.', progress: 0 };
+    if (mode === 'strategy') return { headline: '전략 지휘 시점', detail: '탐험 버튼 또는 V 키로 땅 위로 내려가세요.', progress: 0 };
     if (mode === 'tower') return { headline: castleName + ' · 성벽 궁수', detail: '화면 드래그: 조준 · 클릭/F: 화살 · E: 내려가기 · T: 전략 시점', progress: 0 };
     const post = war.outposts.find(p => distance(x, z, p.x, p.z) < 8);
     if (post && post.owner !== 0) {

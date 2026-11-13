@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createWar, GRAND_INITIAL_FORCES, GRAND_MAX_UNITS, maxUnitsFor,
-  MAX_UNITS, stepWar, trainSquad, stormStartFor } from '../../src/battle/war';
+  MAX_UNITS, GRAND_AI_ARMY_LIMITS, stepWar, train, trainSquad, stormStartFor } from '../../src/battle/war';
 import { decodeWar, encodeWar } from '../../src/battle/save';
 import { assignSquad, commandSquad, squadUnits } from '../../src/battle/squads';
 
@@ -55,5 +55,47 @@ describe('600 soldier grand-battle expedition', () => {
     for (let i = 0; i < 6; i++) expect(trainSquad(limited, 0, 'infantry', 50)).toBe(true);
     expect(limited.units.filter(u => u.owner === 0)).toHaveLength(400);
     expect(trainSquad(limited, 0, 'infantry', 1)).toBe(false);
+  });
+
+  it.each(['easy', 'normal', 'hard'] as const)(
+    'limits grand-war AI reinforcements on %s without changing the initial 500 opponents',
+    difficulty => {
+      const war = createWar({ grandBattle: true, difficulty });
+      expect(war.units.filter(u => u.owner !== 0)).toHaveLength(500);
+      const faction = war.factions[1], cap = GRAND_AI_ARMY_LIMITS[difficulty];
+      faction.gold = 1e7; faction.food = 1e7;
+      faction.research = { weapons: 2, armor: 1, logistics: 1 };
+      faction.aiTimer = 0;
+      const recruits = cap - 4 - war.units.filter(u => u.owner === 1).length;
+      for (let i = 0; i < Math.floor(recruits / 50); i++)
+        expect(trainSquad(war, 1, 'infantry', 50)).toBe(true);
+      if (recruits % 50)
+        expect(trainSquad(war, 1, 'infantry', recruits % 50)).toBe(true);
+      stepWar(war, .05);
+      expect(war.units.filter(u => u.owner === 1)).toHaveLength(cap);
+      faction.aiTimer = 0;
+      stepWar(war, .05);
+      expect(war.units.filter(u => u.owner === 1)).toHaveLength(cap);
+    },
+  );
+
+  it('protects the HQ with a fort-scaled salvo against a packed siege', () => {
+    const war = createWar({ grandBattle: true });
+    const home = war.factions[0];
+    war.units = Array.from({ length: 6 }, (_, i) => ({
+      id: 1000 + i, owner: 1, kind: 'infantry' as const,
+      x: home.x + i * .2, z: home.z, hp: 52, cooldown: 10,
+    }));
+    for (const faction of war.factions.slice(1)) faction.aiTimer = 10000;
+    stepWar(war, .05);
+    expect(war.units.filter(u => u.hp < 52)).toHaveLength(5);
+  });
+
+  it('rejects unknown troop kinds without crashing or charging resources', () => {
+    const war = createWar({ grandBattle: true });
+    const before = [war.factions[0].gold, war.factions[0].food, war.units.length];
+    expect(train(war, 0, 'unknown' as never)).toBe(false);
+    expect(trainSquad(war, 0, 'unknown' as never, 25)).toBe(false);
+    expect([war.factions[0].gold, war.factions[0].food, war.units.length]).toEqual(before);
   });
 });

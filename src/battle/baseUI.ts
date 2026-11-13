@@ -126,7 +126,7 @@ export function createBaseManager(parent:HTMLElement,w:War,onChange:(message:str
   const open=(next:'build'|'generals'='build')=>{
     if(w.over||!w.factions[0].alive)return;
     tab=next;root.hidden=false;refresh();
-    one<HTMLButtonElement>('[data-base-close]').focus({preventScroll:true});
+    one<HTMLButtonElement>('button[data-base-close]').focus({preventScroll:true});
   };
   root.addEventListener('keydown',event=>{
     if(event.key==='Escape'){event.preventDefault();close();}

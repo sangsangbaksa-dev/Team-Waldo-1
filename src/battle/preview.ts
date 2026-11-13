@@ -45,8 +45,8 @@ export function createLandingPreview(mount: HTMLElement): () => void {
   world.setReducedMotion(reducedMotion);
   world.setLabelsVisible(false);
   world.setStrategicOverlaysVisible(false);
-  scene.background = new THREE.Color(0x91b4a8);
-  scene.fog = new THREE.FogExp2(0x91b4a8, 0.0039);
+  scene.background = new THREE.Color(0x344248);
+  scene.fog = new THREE.FogExp2(0x344248, 0.0039);
   const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 620);
   const home = war.factions[0];
 

@@ -65,11 +65,9 @@ async function waitForBattle(page) {
   await page.locator('.war-ui').waitFor({ timeout: 30000 });
   assert.equal(await page.locator('.war-fallback').count(), 0, 'WebGL fallback is not a passing 3D test');
   await page.waitForFunction(() => window.__war?.renderer.info.render.calls > 0 && window.__war.world.time >= 0.1, null, { timeout: 30000 });
-  // New matches begin in an actual parachute sequence. Verify the direct-play HUD,
-  // then transition to strategic control to exercise real gameplay.
+  // Campaigns open immediately in strategy mode: no parachute cinematic.
   await page.evaluate(() => {
-    window.__war.skipDrop();
-    document.querySelector('#adventure-strategy')?.click();
+    if (document.querySelector('.adventure-dropping')) throw new Error('Parachute intro should be gone');
     window.__war.setPaused(true);
   });
   return page.evaluate(() => {
@@ -134,14 +132,14 @@ try {
       await assertElementFits(page, '.game-dialog', result, 'settings');
       for (const quality of ['low', 'high', initialQuality]) {
         await page.locator('#menu-quality').selectOption(quality);
-        await page.waitForFunction(() => document.querySelector('#landing-preview')?.dataset.preview === 'ready');
-        assert.equal(await page.locator('#landing-preview canvas').count(), 1, 'Quality changes must retain exactly one preview canvas');
+        assert.equal(await page.locator('#landing-preview canvas').count(), 0, 'Landing must not allocate a second WebGL context');
         assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('waldo.preferences.v1')).quality), quality);
       }
       await page.locator('#menu-sound').uncheck(); await page.locator('#menu-motion').check(); await page.locator('.dialog-cancel').click();
       await page.locator('#difficulty-easy').click(); assert.equal(await page.locator('#difficulty-easy').getAttribute('aria-pressed'), 'true');
       await capture(page, `${name}-menu`); await page.locator('#start-war').click();
       await stage('WebGL startup');
+      await page.locator('.game-loading, .war-ui').first().waitFor({ timeout: 10000 });
       result.gpu = await waitForBattle(page);
       const initialArmies = await page.evaluate(() => {
         const w = window.__war.world;

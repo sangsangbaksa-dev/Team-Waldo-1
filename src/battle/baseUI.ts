@@ -1,4 +1,5 @@
 import type { Upgrade, War } from './war';
+import { createBuildingInterior } from './interior';
 import {
   BASE_BUILDINGS, BASE_WIDTH, GENERAL_CATALOG, HQ_SLOT,
   assignGeneral, baseBuildingPrice, canPlaceBuilding, getBaseState,
@@ -10,6 +11,8 @@ export interface BaseManager {
   close():void;
   refresh():void;
   isOpen():boolean;
+  openBuilding(slot:number):boolean;
+  back():void;
 }
 export function createBaseManager(parent:HTMLElement,w:War,onChange:(message:string)=>void):BaseManager {
   let tab:'build'|'generals'='build', selected:Upgrade='mine';
@@ -37,7 +40,7 @@ export function createBaseManager(parent:HTMLElement,w:War,onChange:(message:str
             ${Array.from({length:BASE_WIDTH*BASE_WIDTH},(_,slot)=>`<button type="button" class="base-cell" role="gridcell" data-base-slot="${slot}" aria-label="${slot===HQ_SLOT?'왕궁':'빈 건설 구획 '+(slot+1)}"></button>`).join('')}
           </div>
           <div class="base-grid-legend"><span><i class="base-dot built"></i> 건설된 시설</span><span><i class="base-dot free"></i> 비어 있는 부지</span><span><i class="base-dot hq"></i> 왕궁</span></div>
-          <p class="base-help">오른쪽에서 건물을 선택한 다음 빈 구획을 누르세요. 완공 시 생산·훈련·방어 효과가 전투에 즉시 반영됩니다.</p>
+          <p class="base-help">빈 칸을 누르면 건설하고, <strong>이미 건설된 시설을 누르면 내부로 입장</strong>합니다. 시설 안에서 설비 확장·훈련·수리·자원 작업을 할 수 있습니다.</p>
         </div>
         <div class="base-build-list">
           <div class="base-section-title"><span>CONSTRUCTION OFFICE</span><b>건설 가능한 시설</b></div>
@@ -77,6 +80,8 @@ export function createBaseManager(parent:HTMLElement,w:War,onChange:(message:str
   const one=<T extends HTMLElement=HTMLElement>(selector:string)=>root.querySelector<T>(selector)!;
   const notify=(message:string)=>{one('#base-feedback').textContent=message;};
   const buildingByKind=(kind:Upgrade)=>BASE_BUILDINGS.find(b=>b.kind===kind)!;
+  const interior=createBuildingInterior(one('.base-window'),w,onChange,()=>{interior.leave();refresh();one<HTMLButtonElement>('[data-base-slot="'+lastInteriorSlot+'"]')?.focus({preventScroll:true});});
+  let lastInteriorSlot=0;
   const refresh=()=>{
     if(root.hidden)return;
     const f=w.factions[0],base=getBaseState(w);
@@ -92,8 +97,8 @@ export function createBaseManager(parent:HTMLElement,w:War,onChange:(message:str
       button.classList.toggle('palace',palace);
       button.classList.toggle('occupied',Boolean(occupied));
       button.classList.toggle('available',!palace&&!occupied&&canPlaceBuilding(w,selected,slot));
-      button.title=palace?'왕궁 · 건설할 수 없습니다.':def?def.name+' 건설됨':'클릭하여 '+buildingByKind(selected).name+' 건설';
-      button.setAttribute('aria-label',palace?'중앙 왕궁':def?label+' 건설된 구획':label+' · '+buildingByKind(selected).name+' 건설');
+      button.title=palace?'왕궁 · 건설할 수 없습니다.':def?def.name+' 내부 입장':'클릭하여 '+buildingByKind(selected).name+' 건설';
+      button.setAttribute('aria-label',palace?'중앙 왕궁':def?label+' 내부로 입장':label+' · '+buildingByKind(selected).name+' 건설');
     }
     for(const b of BASE_BUILDINGS){
       const card=one<HTMLButtonElement>('[data-base-kind="'+b.kind+'"]'),cost=baseBuildingPrice(w,b.kind);
@@ -120,16 +125,19 @@ export function createBaseManager(parent:HTMLElement,w:War,onChange:(message:str
       const active=button.dataset.baseTab===tab;button.classList.toggle('active',active);
       button.setAttribute('aria-pressed',String(active));
     }
-    for(const panel of root.querySelectorAll<HTMLElement>('[data-base-panel]'))panel.hidden=panel.dataset.basePanel!==tab;
+    one('.base-tabs').hidden=interior.isInside();
+    for(const panel of root.querySelectorAll<HTMLElement>('[data-base-panel]'))panel.hidden=interior.isInside()||panel.dataset.basePanel!==tab;
+    interior.refresh();
   };
-  const close=()=>{root.hidden=true;};
+  const close=()=>{interior.leave();root.hidden=true;};
+  const back=()=>{if(interior.isInside()){interior.leave();refresh();one<HTMLButtonElement>('[data-base-slot="'+lastInteriorSlot+'"]')?.focus({preventScroll:true});}else close();};
   const open=(next:'build'|'generals'='build')=>{
     if(w.over||!w.factions[0].alive)return;
-    tab=next;root.hidden=false;refresh();
+    tab=next;interior.leave();root.hidden=false;refresh();
     one<HTMLButtonElement>('button[data-base-close]').focus({preventScroll:true});
   };
   root.addEventListener('keydown',event=>{
-    if(event.key==='Escape'){event.preventDefault();close();}
+    if(event.key==='Escape'){event.preventDefault();back();}
     // Do not send gameplay hotkeys to the 3D battle while navigating the base.
     event.stopPropagation();
   });
@@ -148,7 +156,7 @@ export function createBaseManager(parent:HTMLElement,w:War,onChange:(message:str
       const slot=Number(button.dataset.baseSlot),def=buildingByKind(selected);
       if(slot===HQ_SLOT){notify('왕궁은 이미 건설되어 있습니다.');return;}
       const occupied=getBaseState(w).structures.find(s=>s.slot===slot);
-      if(occupied){notify(buildingByKind(occupied.kind).name+'이(가) 이미 자리하고 있습니다.');return;}
+      if(occupied){lastInteriorSlot=slot;interior.enter(slot);refresh();return;}
       if(placeBaseBuilding(w,selected,slot)){notify(def.name+' 건설 완료 · 생산과 방어 효과 적용');onChange(def.name+' 건설 완료');refresh();}
       else notify('건설할 수 없습니다. 자원과 건설 레벨(최대 4)을 확인하세요.');
       return;
@@ -170,5 +178,10 @@ export function createBaseManager(parent:HTMLElement,w:War,onChange:(message:str
       onChange('장군 배치 변경');refresh();
     }
   });
-  return {open,close,refresh,isOpen:()=>!root.hidden};
+  const openBuilding=(slot:number):boolean=>{
+    if(!getBaseState(w).structures.some(s=>s.slot===slot)||w.over||!w.factions[0].alive)return false;
+    open('build');lastInteriorSlot=slot;
+    const entered=interior.enter(slot);refresh();return entered;
+  };
+  return {open,close,refresh,back,openBuilding,isOpen:()=>!root.hidden};
 }

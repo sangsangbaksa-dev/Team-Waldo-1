@@ -112,7 +112,7 @@ async function exercise(page, result) {
   if (await strategy.isVisible()) { await strategy.waitFor({ state: 'visible' }); await strategy.click(); }
   await page.locator('#tab-army').click();
   const before = Number(await page.locator('#count-infantry').innerText());
-  assert.ok(before > 50, 'A grand battle must start with a full infantry formation');
+  assert.equal(before, 60, 'The allied grand army starts with 60 infantry');
   await page.locator('#train-infantry').click();
   assert.equal(Number(await page.locator('#count-infantry').innerText()), before + 1, 'Training did not add one infantry');
   result.infantryAfterTraining = before + 1;

@@ -84,3 +84,12 @@
 - 이 환경은 로컬 Chromium의 소켓 생성을 차단했습니다. 자동 승인 검토도 거절했습니다. 제한을 우회하지 말고 GitHub Actions의 실제 브라우저 검사와 아티팩트를 사용합니다.
 - Git CLI의 HTTPS 쓰기 인증이 없는 경우 연결된 GitHub의 tree/commit/ref 도구를 사용합니다. 업로드한 tree SHA가 검증한 로컬 tree와 같은지 확인하고, 브랜치 갱신에는 이전 SHA의 lease를 사용합니다. 강제 push로 다른 변경을 제거하지 않습니다.
 - 작업마다 이 문서에 변경 내용, 검증한 커밋, 실제 검사 결과, 미해결 항목을 추가합니다. 17:15 KST의 마지막 작업에서는 추가 범위를 벌리지 말고 통합·검증·업로드 결과를 한국어로 정리합니다.
+
+### 14:39 KST — 13시 전술 정보 커밋의 원격 검사 확인
+
+- 확인된 작업 브랜치 커밋: `37b8421e6354dc1fb91fcd97444582a29a6ec605` (작전 지도 정보와 기록실 집계 명칭 개선).
+- [GitHub CI #43365202626](https://github.com/sangsangbaksa-dev/Team-Waldo-1/actions/runs/43365202626): **success**. 이전 242개 테스트와 별개로 이 커밋의 자동 CI도 통과했습니다.
+- [Frontiers WebGL #43365202634](https://github.com/sangsangbaksa-dev/Team-Waldo-1/actions/runs/43365202634): 강철 분지·황혼 변경·서리 대륙의 세 작업 **모두 성공**. 실제 Chromium 전장/모바일 조작과 결과 아티팩트를 생성했습니다.
+- [일반 Browser smoke #43365202568](https://github.com/sangsangbaksa-dev/Team-Waldo-1/actions/runs/43365202568): **success**. 기존 데스크톱/세로·가로 모바일/군단전 회귀 검사를 통과했습니다.
+- PR #14는 여전히 **draft/open**이고 GitHub 메타데이터의 `mergeable=false`는 해결됐다고 주장하지 않습니다. 기본 브랜치의 후속 변경 통합 여부를 코드 충돌과 기능 보존 관점에서 다음 실행에서 검토합니다.
+- 이 체크포인트는 **검사 결과와 문서만 갱신**합니다. 게임 기능을 새로 구현한 실행으로 집계하지 않습니다.

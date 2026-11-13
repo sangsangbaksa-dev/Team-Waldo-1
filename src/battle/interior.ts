@@ -55,7 +55,7 @@ export function createBuildingInterior(
     '</div>' +
     '<div class="interior-layout">' +
       '<div class="interior-view">' +
-        '<div class="interior-scene" data-interior-kind="mine" role="img" aria-label="건물 내부를 보여주는 3D풍 장면">' +
+        '<div class="interior-scene" data-interior-kind="mine" role="group" aria-label="건물 내부 설비와 작업 버튼">' +
           '<div class="interior-light"></div><div class="interior-wall"></div>' +
           '<div class="interior-window"><span></span><span></span><span></span></div>' +
           '<div class="interior-beam left"></div><div class="interior-beam right"></div>' +

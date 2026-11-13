@@ -1,3 +1,4 @@
+import { createEconomy, validEconomy } from './economy';
 import {
   createWar, createWarStats, DIFFICULTIES, MAP_HALF_SIZE, MAX_UNITS, GRAND_MAX_UNITS, UNIT_STATS,
   type Difficulty, type EconomyPolicy, type Faction, type Outpost, type Unit, type War, type WarEvent, type WarStats,
@@ -5,7 +6,7 @@ import {
 
 // Retain the original key so an upgrade can discover and migrate v1 saves.
 export const WAR_SAVE_KEY='team-waldo-3d-war-v1';
-const VERSION=2;
+const VERSION=3;
 const isRecord=(x:unknown):x is Record<string,unknown> =>
   typeof x==='object'&&x!==null&&!Array.isArray(x);
 const finite=(x:unknown,min=-Infinity,max=Infinity):x is number =>
@@ -81,7 +82,7 @@ export function decodeWar(raw:string|null):War|null {
  if(!raw||raw.length>450000)return null;
  try{
   const parsed:unknown=JSON.parse(raw);
-  if(!isRecord(parsed)||(parsed.version!==1&&parsed.version!==VERSION)||!isRecord(parsed.war))return null;
+  if(!isRecord(parsed)||(parsed.version!==1&&parsed.version!==2&&parsed.version!==VERSION)||!isRecord(parsed.war))return null;
   const w=parsed.war,initial=createWar(),legacy=parsed.version===1;
   if(w.grandBattle!==undefined&&typeof w.grandBattle!=='boolean')return null;
   const grand=w.grandBattle===true,limit=grand?GRAND_MAX_UNITS:MAX_UNITS;
@@ -103,6 +104,11 @@ export function decodeWar(raw:string|null):War|null {
   if(w.stats.some((stats:WarStats)=>stats.peakArmy>limit))return null;
   if(w.squadOrders!==undefined&&(!Array.isArray(w.squadOrders)||w.squadOrders.length!==3||
      !w.squadOrders.every(value=>validSquadOrder(value,w))))return null;
+  for(const f of w.factions){
+   if(!isRecord(f))return null;
+   if(parsed.version!==VERSION && f.economy===undefined)f.economy=createEconomy();
+   if(!validEconomy(f.economy,Number(w.time)))return null;
+  }
   if(!w.factions.every((f,i)=>validFaction(f,initial.factions[i],grand)))return null;
   if(!w.outposts.every((p,i)=>validOutpost(p,initial.outposts[i])))return null;
   if(!w.events.every(event=>validEvent(event,Number(w.time))))return null;

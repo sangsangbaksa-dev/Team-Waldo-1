@@ -1,4 +1,5 @@
 /** Deterministic, renderer-independent economy, territory and combat simulation. */
+import { createEconomy, economicIncome, stepEconomy, develop, assignWorker, exportFood, acceptContract, deliverContract, type Economy } from './economy';
 import type { SquadCommand } from './squads';
 export type Upgrade = 'farm' | 'mine' | 'barracks' | 'fort';
 export type EconomyPolicy = 'balanced' | 'growth' | 'war';
@@ -11,6 +12,7 @@ export interface Faction {
   alive: boolean; target: number | null; rally: number | null;
   reserve: number; policy: EconomyPolicy;
   research: Record<Research, number>;
+  economy?: Economy;
   aiTimer: number; turretCooldown: number;
 }
 export interface Unit {
@@ -86,6 +88,7 @@ export function createWar(options:{difficulty?:Difficulty;grandBattle?:boolean}=
     farm:grandBattle?3:1,mine:grandBattle?3:1,barracks:grandBattle?3:1,
     fort:grandBattle?3:1,alive:true,target:null,rally:null,
     reserve:id===0?0:grandBattle?12:2,policy:'balanced' as EconomyPolicy,
+    economy:createEconomy(),
     research:{weapons:0,armor:0,logistics:0},
     aiTimer:(2.5+id*.6)*DIFFICULTIES[difficulty].aiInterval,turretCooldown:0,
   }));
@@ -120,10 +123,11 @@ export function getIncome(w:War,id:number):{gold:number;food:number} {
   if(!f?.alive)return {gold:0,food:0};
   const owned=w.outposts.filter(p=>p.owner===id);
   const policy=f.policy==='growth'?1.25:f.policy==='war'?.88:1;
+  const bonus=economicIncome(w,id);
   const multiplier=policy*(1+f.research.logistics*.06)*(id===0?(w.difficulty==='easy'?1.35:1):DIFFICULTIES[w.difficulty].aiIncome);
   return {
-    gold:owned.reduce((a,p)=>a+OUTPOST_BONUSES[p.id].gold,f.mine*1.5)*multiplier,
-    food:owned.reduce((a,p)=>a+OUTPOST_BONUSES[p.id].food,f.farm*1.3)*multiplier,
+    gold:owned.reduce((a,p)=>a+OUTPOST_BONUSES[p.id].gold,f.mine*1.5+bonus.gold)*multiplier,
+    food:owned.reduce((a,p)=>a+OUTPOST_BONUSES[p.id].food,f.farm*1.3+bonus.food)*multiplier,
   };
 }
 /** Captured supply points protect immobile HQs: 12% each, up to 60%. */
@@ -215,6 +219,14 @@ function count(w: War,id: number): number {
   return w.units.filter(u=>u.owner===id&&u.hp>0).length;
 }
 function aiTurn(w: War,f: Faction): void {
+  const e=f.economy;
+  if(e){
+    if(e.miners+e.farmers<4+(e.city-1)*2)assignWorker(w,f.id,e.miners<=e.farmers?'miners':'farmers',1);
+    if(!e.construction && f.gold>250 && f.food>160)develop(w,f.id,e.market===0?'market':'city');
+    if(e.contract)deliverContract(w,f.id);
+    else if(e.market && f.food>200)acceptContract(w,f.id,'grain');
+    if(f.food>350)exportFood(w,f.id);
+  }
   const army=count(w,f.id),owned=w.outposts.filter(p=>p.owner===f.id).length;
   f.policy=army<8&&w.time<160?'growth':(army>=11||w.time>220)?'war':'balanced';
   f.reserve=w.grandBattle?Math.min(24,Math.floor(army/12)):army>10?2:Math.min(2,Math.floor(army/3));
@@ -317,6 +329,7 @@ export function stepWar(w: War,dt: number):void {
   w.zone=Math.max(24,MAP_HALF_SIZE-6-Math.max(0,w.time-stormStartFor(w))*.48);
   for (const f of w.factions) {
     if (!f.alive) continue;
+    stepEconomy(w,f.id,dt);
     const income=getIncome(w,f.id);
     f.gold+=income.gold*dt;f.food+=income.food*dt;
     w.stats[f.id].goldEarned+=income.gold*dt;w.stats[f.id].foodEarned+=income.food*dt;

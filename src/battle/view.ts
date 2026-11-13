@@ -1,3 +1,4 @@
+import { mountEconomy } from './economyView';
 import * as THREE from 'three';
 import { createBattleWorld, FACTION_COLORS } from './graphics';
 import { createAdventure } from './adventure';
@@ -195,6 +196,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     button.onclick = action; el(parent).append(button); return button;
   };
   for (const building of BUILDINGS) addAction('#buildings', `build-${building.key}`, building.label, building.description, building.symbol, () => perform(() => upgrade(w, 0, building.key), `${building.label}을 강화했습니다.`, 'upgrade'));
+  const updateEconomy = mountEconomy(el('#pane-economy'), w, perform);
   const policyDescriptions: Record<EconomyPolicy, string> = { balanced: '표준 자원 생산과 전투 능력을 유지합니다.', growth: '금·식량 생산 +25%. 초반 영지 성장에 유리합니다.', war: '병사 공격력 +18%, 자원 생산 −12%. 공세에 유리합니다.' };
   for (const [key, label] of [['balanced', '균형'], ['growth', '성장'], ['war', '전시']] as [EconomyPolicy, string][]) {
     const button = document.createElement('button'); button.id = `policy-${key}`; button.textContent = label;
@@ -485,6 +487,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     const value = button.querySelector('.action-meta'); if (value && value.textContent !== meta) value.textContent = meta;
   }
   function ui(): void {
+    updateEconomy();
     const p = w.factions[0], counts = w.factions.map(f => w.units.filter(u => u.owner === f.id).length), owned = w.outposts.filter(post => post.owner === 0).length;
     const income = getIncome(w, 0), unavailable = !p.alive || done || w.over;
     text('#gold', Math.floor(p.gold).toLocaleString('ko-KR')); text('#food', Math.floor(p.food).toLocaleString('ko-KR'));

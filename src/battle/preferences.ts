@@ -1,7 +1,7 @@
 export interface Preferences { sound: boolean; quality: 'high' | 'standard' | 'low'; reducedMotion: boolean; }
 const KEY = 'waldo.preferences.v1';
 export function readPreferences(): Preferences {
-  const defaults: Preferences = { sound: true, quality: matchMedia('(max-width: 850px)').matches ? 'standard' : 'high', reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches };
+  const defaults: Preferences = { sound: true, quality: 'standard', reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches };
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? '{}');
     return { sound: typeof saved.sound === 'boolean' ? saved.sound : defaults.sound,

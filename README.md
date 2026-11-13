@@ -227,7 +227,9 @@ npm run test:browser
 
 기존 서바이벌 구조의 상세 설계는 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)에 있으며, 이 문서는 해당 모드의 역사적 설계 기록입니다.
 
-## Vercel 배포
+## GitHub Pages · Vercel 배포
+
+GitHub Pages 게시 설정은 `.github/workflows/pages.yml`에 있습니다. 저장소 **Settings → Pages → Source → GitHub Actions**를 한 번 선택하면 게임 빌드와 게시를 실행할 수 있습니다. 게시 주소와 초기 설정은 [배포 안내](docs/DEPLOYMENT.md#github-pages)를 참고하세요.
 
 저장소 루트의 `vercel.json`에 Vite 배포 설정을 포함합니다.
 

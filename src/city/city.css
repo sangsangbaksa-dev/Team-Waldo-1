@@ -101,3 +101,5 @@
 .c-area.show{opacity:.95}.touch .c-area{bottom:auto;top:200px}
 .city-root.down .city-canvas3d,.city-root.down .city-canvas{filter:grayscale(1) contrast(1.15) brightness(.75);transition:filter .5s}
 .c-down{font-weight:700;color:#ffd0d0;text-align:center;padding:8px}.c-down b{display:block;font:italic 900 34px/1.1 Georgia,'Noto Serif KR',serif;color:#ff4d4d;text-shadow:0 2px 0 #000}
+.touch #c-mini{width:112px;height:112px}.touch .c-fire{right:204px;bottom:22px;width:78px;height:78px}.touch .c-area{display:none}.touch .c-feed{top:176px}
+@media (max-height:520px){.c-tc{left:50%;top:6px;transform:translateX(-50%);font-size:11px;padding:4px 12px;border-radius:999px}.c-banner{top:24%;font-size:20px}.c-res{max-width:34vw}.touch .c-prompt{bottom:auto;top:56px}.touch .c-toast{bottom:auto;top:96px}.c-target{top:calc(50% + 26px)}}

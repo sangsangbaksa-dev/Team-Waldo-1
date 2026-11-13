@@ -7,13 +7,12 @@ import { icon } from './ui/icons';
 import { showDialog } from './ui/dialog';
 
 const app = document.querySelector<HTMLDivElement>('#game')!;
-let disposePreview: (() => void) | undefined;
 let generation = 0;
 let selectedDifficulty: Difficulty = 'normal';
 const clock = (time: number) => `${Math.floor(time / 60)}분 ${Math.floor(time % 60)}초`;
 
 function renderMenu(): void {
-  generation++; const currentGeneration = generation; disposePreview?.(); disposePreview = undefined;
+  generation++;
   const saved = loadWar(), resumable = saved && saved.grandBattle === true && saved.factions[0].alive && !saved.over;
   const career = readCareer();
   let launching = false;
@@ -25,7 +24,7 @@ function renderMenu(): void {
         <a class="wordmark" href="#" aria-label="Waldo 왕국 전쟁 홈"><span class="brand-seal">${icon('crown', 24)}</span><span>WALDO<small>KINGDOMS AT WAR</small></span></a>
         <nav class="header-nav" aria-label="메뉴"><span class="offline-status"><i></i>1인 플레이 · AI 대전</span><button id="guide" class="nav-button">플레이 가이드 ${icon('help', 16)}</button><button id="preferences" class="icon-button" aria-label="게임 설정">${icon('settings', 20)}</button></nav>
       </header>
-      <div class="landing-art" aria-hidden="true"><img src="${import.meta.env.BASE_URL}kingdom-art.svg" alt="" class="kingdom-illustration"><div class="landing-preview" id="landing-preview"></div><div class="art-vignette"></div><div class="art-coordinates"><span>THE EMERALD KINGDOM</span><i></i><small>북서부 영지 · 당신의 이야기가 시작되는 곳</small></div></div>
+      <div class="landing-art" aria-hidden="true"><img src="${import.meta.env.BASE_URL}kingdom-art.svg" alt="" class="kingdom-illustration"><div class="art-vignette"></div><div class="art-coordinates"><span>THE EMERALD KINGDOM</span><i></i><small>북서부 영지 · 당신의 이야기가 시작되는 곳</small></div></div>
       <section class="hero-content">
         <div class="edition"><span></span>THE STRATEGY COLLECTION <b>01</b></div>
         <h1>작은 영지에서,<br><em>마지막 왕국으로.</em></h1>
@@ -39,18 +38,32 @@ function renderMenu(): void {
   document.title = 'WALDO · 왕국 전쟁 | 당신의 왕국을 건설하세요';
   const start = async (resume: boolean) => {
     if (launching) return; launching = true;
-    const navigation = ++generation; disposePreview?.(); disposePreview = undefined;
+    const navigation = ++generation;
     const button = app.querySelector<HTMLButtonElement>(resume ? '#continue-war' : '#start-war')!;
     app.querySelectorAll<HTMLButtonElement>('button').forEach(b => { b.disabled = true; });
     button.textContent = '전장 준비 중…';
+    const loading = document.createElement('div');
+    loading.className = 'game-loading';
+    loading.setAttribute('role', 'status');
+    loading.setAttribute('aria-live', 'polite');
+    loading.innerHTML = '<span class="game-loading-emblem">♜</span><strong>왕국을 준비하고 있습니다</strong><p>성벽 · 도시 · 병력 600명 구성 중</p><span class="game-loading-progress" aria-hidden="true"></span>';
+    document.body.append(loading);
     try {
+      // Let the loading screen paint before the synchronous Three.js world setup.
+      if (import.meta.env.MODE !== 'test') {
+        await new Promise<void>(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+      }
       const { openWar } = await import('./battle/view');
       if (generation !== navigation) return;
       app.hidden = true;
       openWar(renderMenu, { forceNew: !resume, difficulty: resume && saved ? saved.difficulty : selectedDifficulty });
+      // Leave the loading overlay until WebGL has had a chance to draw its first frame.
+      requestAnimationFrame(() => requestAnimationFrame(() => loading.remove()));
     } catch {
       renderMenu();
-      showDialog({ title: '전장을 불러오지 못했어요', body: '<p>네트워크 연결을 확인한 뒤 다시 시작해 주세요. 저장한 전투는 변경되지 않았습니다.</p>' });
+      showDialog({ title: '전장을 불러오지 못했어요', body: '<p>전장을 초기화하지 못했습니다. 그래픽 품질을 낮음으로 바꾸거나 브라우저를 새로고침해 다시 시도해 주세요. 저장 내용은 변경되지 않았습니다.</p>' });
+    } finally {
+      if (generation !== navigation || !document.querySelector('.war-ui')) loading.remove();
     }
   };
   const launchNew = () => {
@@ -75,10 +88,7 @@ function renderMenu(): void {
     const update = () => { p.quality = quality.value === 'high' ? 'high' : quality.value === 'low' ? 'low' : 'standard'; p.sound = sound.checked; p.reducedMotion = motion.checked; writePreferences(p); };
     quality.onchange = update; sound.onchange = update; motion.onchange = update;
   };
-  // The menu is fully useful before the optional decorative 3D chunk loads.
-  void import('./battle/preview').then(({ createLandingPreview }) => {
-    const mount = app.querySelector<HTMLElement>('#landing-preview');
-    if (generation === currentGeneration && mount?.isConnected) disposePreview = createLandingPreview(mount);
-  }).catch(() => undefined);
+  // The original menu illustration replaces the expensive decorative 3D preview.
+  // A second WebGL renderer used to compete with the actual battle on slow GPUs.
 }
 renderMenu();

@@ -203,7 +203,11 @@ export class World {
       f.deaths++; f.diedAt = this.time;
       const drop = Math.min(2000, Math.floor(f.cash * 0.25)); f.cash -= drop; if (drop > 20) this.spawnLoot('cash', a.x, a.y, drop);
       const best = f.slots.slice(1).sort((p, q) => WEAPONS[q.id].tier - WEAPONS[p.id].tier)[0];
-      if (best && WEAPONS[best.id].tier >= 3) { this.spawnLoot('weapon', a.x + 20, a.y, best.ammo, best.id); f.slots = f.slots.filter(s => s !== best); f.cur = 0; }
+      // An exhausted rare weapon must not respawn as a full-ammo pickup.
+      if (best && WEAPONS[best.id].tier >= 3) {
+        if (WEAPONS[best.id].ammo < 0 || best.ammo > 0) this.spawnLoot('weapon', a.x + 20, a.y, best.ammo, best.id);
+        f.slots = f.slots.filter(s => s !== best); f.cur = 0;
+      }
       if (src && src !== f) src.bossKills++;
       const hq = this.hq(f.id);
       this.say(`${src ? src.name : srcF === POLICE ? '경찰' : '자기장'} ▸ ${f.name} 보스 처치${hq ? '' : ' (본부 없음 → 궤멸)'}`, src ? src.color : '#c9a2ff');
@@ -337,8 +341,13 @@ export class World {
   }
   giveWeapon(f: Faction, id: WeaponId, ammo?: number): void {
     const d = WEAPONS[id], have = f.slots.find(s => s.id === id), total = ammo && ammo > 0 ? ammo : d.ammo;
-    if (have) { have.mag = d.mag; if (d.ammo > 0) have.ammo += total; return; }
-    const slot: WeaponSlot = { id, mag: d.mag, ammo: total };
+    if (have) {
+      if (d.ammo > 0) { have.ammo += total; have.mag = Math.min(d.mag, Math.max(0, have.ammo)); }
+      else have.mag = d.mag;
+      return;
+    }
+    // A limited-ammo pickup cannot begin with more bullets loaded than it owns.
+    const slot: WeaponSlot = { id, mag: d.ammo > 0 ? Math.min(d.mag, Math.max(0, total)) : d.mag, ammo: total };
     if (f.slots.length < 3) { f.slots.push(slot); f.cur = f.slots.length - 1; return; }
     const at = f.cur === 0 ? (WEAPONS[f.slots[1].id].tier <= WEAPONS[f.slots[2].id].tier ? 1 : 2) : f.cur, old = f.slots[at], b = this.boss(f.id);
     if (b) this.spawnLoot('weapon', b.x + 26, b.y + 10, old.ammo, old.id);

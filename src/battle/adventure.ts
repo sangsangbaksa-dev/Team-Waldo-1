@@ -40,7 +40,7 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
     return mesh;
   }
 
-  // The avatar and its canopy are 3D objects, not a video overlay.
+  // The ground avatar is available for direct exploration without a parachute sequence.
   const avatar = new THREE.Group();
   scene.add(avatar); resources.push(avatar);
   add(avatar, new THREE.CapsuleGeometry(.78, 1.2, 4, 8), cloth, 0, 1.7, 0);

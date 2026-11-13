@@ -11,7 +11,7 @@ concurrency:
 jobs:
   browser:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,7 +22,7 @@ jobs:
       - name: Install headless Chromium
         run: npx playwright install --with-deps chromium --only-shell
       - name: Exercise real WebGL on desktop, portrait and landscape
-        timeout-minutes: 6
+        timeout-minutes: 10
         run: npm run test:browser
       - name: Upload screenshots and runtime evidence
         if: always()

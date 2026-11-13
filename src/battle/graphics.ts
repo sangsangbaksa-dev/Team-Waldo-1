@@ -56,7 +56,8 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   const sun=new THREE.DirectionalLight(0xd2c7b0,2.6);
   sun.position.set(-130,220,140);
   sun.castShadow=true;
-  sun.shadow.mapSize.set(3072,3072);
+  // A 2048px atlas avoids the 3K shadow allocation stall on repeated 600-unit battles.
+  sun.shadow.mapSize.set(2048,2048);
   sun.shadow.camera.left=-280;sun.shadow.camera.right=280;
   sun.shadow.camera.top=280;sun.shadow.camera.bottom=-280;
   sun.shadow.camera.near=10;sun.shadow.camera.far=520;

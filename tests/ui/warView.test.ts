@@ -17,6 +17,8 @@ const boundaries = vi.hoisted(() => ({
     dispose: ReturnType<typeof vi.fn>;
     setQuality: ReturnType<typeof vi.fn>;
     setReducedMotion: ReturnType<typeof vi.fn>;
+    setLabelsVisible: ReturnType<typeof vi.fn>;
+    setStrategicOverlaysVisible: ReturnType<typeof vi.fn>;
   }>,
 }));
 
@@ -40,7 +42,7 @@ vi.mock('three', async importOriginal => {
 vi.mock('../../src/battle/graphics', () => ({
   FACTION_COLORS: [0x48ac8c, 0xd96957, 0xddbb63, 0x9d80c9],
   createBattleWorld: () => {
-    const graphics = { update: vi.fn(), dispose: vi.fn(), setQuality: vi.fn(), setReducedMotion: vi.fn() };
+    const graphics = { update: vi.fn(), dispose: vi.fn(), setQuality: vi.fn(), setReducedMotion: vi.fn(), setLabelsVisible: vi.fn(), setStrategicOverlaysVisible: vi.fn() };
     boundaries.graphics.push(graphics); return graphics;
   },
 }));

@@ -12,7 +12,8 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
   const player = war.factions[0];
   let mode: AdventureMode = newMatch ? 'drop' : 'strategy';
   let x = newMatch ? destination.x : player.x + 9;
-  let z = newMatch ? destination.z : player.z + 9;
+  // Land inside capture range, beside the monument rather than inside its mesh.
+  let z = newMatch ? destination.z + 6 : player.z + 9;
   let yaw = -2.36;
   let pitch = -.14;
   let dropTime = 0;
@@ -80,6 +81,31 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
   }
 
   const arrows: ArrowFlight[] = [];
+  const heldBow = new THREE.Group();
+  heldBow.name = 'First-person royal bow';
+  scene.add(heldBow); resources.push(heldBow);
+  const bowModel = new THREE.Group(); heldBow.add(bowModel);
+  bowModel.rotation.z = -.16;
+  for (const sign of [-1, 1]) {
+    let previous = new THREE.Vector3(0, sign * .07, 0);
+    for (let i = 1; i <= 6; i++) {
+      const t = i / 6;
+      const next = new THREE.Vector3(.17 * t * t, sign * (.07 + t * .46), -.025 * t);
+      const axis = next.clone().sub(previous);
+      const limb = add(bowModel, new THREE.CylinderGeometry(.016, .023, axis.length(), 6),
+        i === 6 ? gold : wood, (previous.x + next.x) / 2, (previous.y + next.y) / 2, (previous.z + next.z) / 2);
+      limb.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), axis.normalize());
+      previous = next;
+    }
+  }
+  add(bowModel, new THREE.CylinderGeometry(.026, .026, .17, 7), cloth, 0, 0, 0);
+  const bowString = new THREE.Line(new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(.17, -.53, -.025), new THREE.Vector3(.22, 0, .025), new THREE.Vector3(.17, .53, -.025),
+  ]), new THREE.LineBasicMaterial({ color: 0xd6c79e }));
+  bowModel.add(bowString);
+  add(bowModel, new THREE.BoxGeometry(.08, .13, .11), cloth, -.015, -.025, .04);
+  const bowOffset = new THREE.Vector3();
+  let recoil = 0;
   function tickArrows(dt: number) {
     for (let i = arrows.length - 1; i >= 0; i--) {
       const flight = arrows[i]; flight.age += dt;
@@ -147,6 +173,7 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
   function shoot() {
     if ((mode !== 'field' && mode !== 'tower') || fireCooldown > 0 || war.over) return false;
     fireCooldown = .82;
+    recoil = .075;
     const direction = new THREE.Vector3(); camera.getWorldDirection(direction);
     const origin = camera.position.clone();
     let target: Unit | null = null;
@@ -168,6 +195,10 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
       war.stats[0].damageDealt += before - target.hp;
       if (target.hp <= 0) {
         war.stats[0].kills++;
+        // Direct hits happen after the simulation tick. Settle the loss now so
+        // an autosave or immediate menu exit cannot serialize a dead unit.
+        war.stats[target.owner].lost++;
+        war.units = war.units.filter(unit => unit !== target);
         war.events.unshift({ time: war.time, text: '직접 조준한 화살로 적 병력을 처치했습니다.' });
         war.events.length = Math.min(war.events.length, 8);
       }
@@ -185,6 +216,8 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
 
   function update(dt: number, keys: ReadonlySet<string>) {
     fireCooldown = Math.max(0, fireCooldown - dt);
+    recoil = Math.max(0, recoil - dt * .35);
+    heldBow.visible = mode === 'field' || mode === 'tower';
     tickArrows(dt);
     for (const tower of watchtowers) {
       const color = tower.post.owner === null ? 0xcfb97d :
@@ -234,6 +267,9 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
     camera.position.set(x, mode === 'tower' ? 11.9 : 2.85, z);
     camera.rotation.order = 'YXZ';
     camera.rotation.set(pitch, yaw, 0, 'YXZ');
+    bowOffset.set(.36, -.29, -.8 + recoil).applyQuaternion(camera.quaternion);
+    heldBow.position.copy(camera.position).add(bowOffset);
+    heldBow.quaternion.copy(camera.quaternion);
   }
 
   function hint() {
@@ -257,8 +293,9 @@ export function createAdventure(scene: THREE.Scene, camera: THREE.PerspectiveCam
     }); }
     for (const resource of resources) {
       scene.remove(resource);
-      resource.traverse(object => { if (object instanceof THREE.Mesh) object.geometry.dispose(); });
+      resource.traverse(object => { if (object instanceof THREE.Mesh || object instanceof THREE.Line) object.geometry.dispose(); });
     }
+    (bowString.material as THREE.Material).dispose();
     materialList.forEach(mat => mat.dispose());
     arrows.length = 0;
   }

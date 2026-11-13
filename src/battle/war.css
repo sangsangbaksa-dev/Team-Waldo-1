@@ -125,3 +125,46 @@ font-size:11px;font-weight:700;letter-spacing:.025em}
   .war-top .resource-strip{min-width:0;flex-shrink:1}
   .war-top .war-tools{margin-left:auto;flex-shrink:0}
 }
+
+/* Command surfaces share the landing's slate, ivory and emerald palette. */
+.war-ui{--panel:rgba(17,32,33,.96);--border:rgba(163,192,176,.27)}
+.war-top{background:linear-gradient(110deg,#172b2df5,#101f23f5);box-shadow:0 8px 28px #050c1238}
+.war-panel,.war-intel,.war-minimap,.mission-card{box-shadow:0 12px 35px #06101455;border-radius:6px}
+.resource b{white-space:nowrap}
+.war-tabs button{color:#a0b4aa}
+.war-tabs button[aria-selected=true]{color:#efcf91;background:#d5bd7710}
+.action-copy small{color:#a0b5a5}
+.war-action{background:#bad5c506;border-color:#a9c4b32e}
+.war-action:disabled{opacity:.58}
+.war-action.selected{border-color:#99cbb585;background:#73a69a19}
+.war-ui .base-economy-link{display:block;width:100%;margin:12px 0 20px;min-height:42px;padding:10px 12px;text-align:left;font-size:11px;line-height:1.6;color:#cbdac8;border:1px solid #9fbca648;border-radius:4px;background:#8faf9d0c}
+.war-ui .base-economy-link:hover{background:#8faf9d24;border-color:#c3d0aa}
+.grand-battle-tag{display:flex;justify-content:space-between;align-items:center;margin:0 15px 12px;padding:10px 12px;border-color:#a7c6b444;background:linear-gradient(110deg,#28463f,#1a3132);border-radius:4px;letter-spacing:0}
+.grand-battle-tag>span{display:flex;align-items:center;gap:7px;color:#a9c9b6;font-size:10px;font-weight:500}
+.grand-battle-tag>b{color:#e3dfc5;font-size:15px;font-weight:500;font-variant-numeric:tabular-nums}
+.grand-battle-tag small{font-size:8px;color:#a9b19a;margin:0 4px}
+.adventure-switch .button{background:#18352deb;color:#e2d5ad;border-color:#b8b37e70;font-size:11px;min-height:40px;box-shadow:0 5px 22px #06151860}
+.adventure-switch kbd{color:#d2c494;border-color:#d2c49450}
+.war-ui:not(.adventure-active) .war-toast{bottom:84px}
+@media(max-width:500px){
+  .war-top{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px 10px;padding:10px 11px;min-height:0}
+  .war-brand{grid-column:1;grid-row:1}
+  .resource-strip{grid-column:2;grid-row:1;justify-content:space-evenly;gap:10px;margin:0;min-width:0}
+  .resource{min-width:0;gap:4px;flex-shrink:0}
+  .resource.army{min-width:0}
+  .resource b{font-size:12px}
+  .resource small{font-size:8px}
+  .battle-time{grid-column:3;grid-row:1;min-width:42px;padding-left:8px}
+  .war-tools{grid-column:1/-1;grid-row:2;justify-content:flex-end;border-top:1px solid #a5bda421;padding-top:8px;gap:7px}
+  .war-tools #help{display:inline-flex}
+  .war-tools .tool-button{width:29px;height:29px;min-width:29px}
+  .war-ui .war-top .base-shortcut{font-size:10px;width:auto;min-width:0;height:29px;padding:0 11px;margin-right:auto}
+  .war-ui .war-top .base-shortcut::before{display:none}
+  .mission-card{top:calc(var(--hud-bottom,107px) + 10px)}
+  .adventure-head{top:calc(var(--hud-bottom,107px) + 10px)}
+  .adventure-switch{top:max(218px,calc(var(--mission-bottom,166px) + 14px));bottom:auto;left:50px;right:144px}
+  .adventure-switch .button{width:100%;min-height:32px;padding:7px 6px;font-size:10px;gap:7px;white-space:nowrap}
+  .grand-battle-tag{margin:0 12px 9px;padding:6px 10px}
+  .grand-battle-tag>b{font-size:13px}
+  .war-ui:not(.adventure-active) .war-toast{bottom:calc(44vh + 66px);max-width:calc(100% - 28px)}
+}

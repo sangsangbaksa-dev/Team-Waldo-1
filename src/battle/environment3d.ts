@@ -32,10 +32,10 @@ export function createBattlefieldEnvironment(
     rock: new THREE.DodecahedronGeometry(.5, 0),
   };
   const colors: Record<Surface, number> = {
-    foundation: 0x22292d,
-    concrete: 0x4b565c,
-    armor: 0x425560,
-    steel: 0x778890,
+    foundation: 0x333d3e,
+    concrete: 0x69756f,
+    armor: 0x526d78,
+    steel: 0x93a5aa,
     dark: 0x1b252b,
     rust: 0x735747,
     sand: 0x65675c,
@@ -43,9 +43,9 @@ export function createBattlefieldEnvironment(
     hazard: 0xc58d44,
     lamp: 0xe8ab62,
     glass: 0x364d5b,
-    vegetation: 0x30483e,
+    vegetation: 0x3f6249,
     bark: 0x424139,
-    crystal: 0x40a1b7,
+    crystal: 0x5cc9d0,
     blue: 0x6fbbca,
     dust: 0x565450,
   };

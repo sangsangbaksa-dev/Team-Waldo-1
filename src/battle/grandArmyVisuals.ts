@@ -6,7 +6,7 @@ import { GRAND_MAX_UNITS, type UnitKind, type War } from './war';
  * rather than creating a separate draw call for every soldier.
  */
 const TYPES: UnitKind[] = ['infantry', 'archer', 'guardian', 'cavalry'];
-const COLORS = [0x368c85, 0xb75d5a, 0xba984e, 0x806ca8];
+const COLORS = [0x40b6a4, 0xd26a64, 0xd6b15a, 0x9f81c4];
 type MeshGroup = {
   body: THREE.InstancedMesh; breastplate: THREE.InstancedMesh;
   face: THREE.InstancedMesh; helmet: THREE.InstancedMesh; visor: THREE.InstancedMesh;
@@ -39,14 +39,14 @@ export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
   const horseLegsGeo = new THREE.BoxGeometry(.36, .77, .4);
   const saddleGeo = new THREE.BoxGeometry(1.55, .22, 1.36);
   const quiverGeo = new THREE.CylinderGeometry(.24, .19, 1.18, 5);
-  const steel = new THREE.MeshStandardMaterial({ color: 0x8a9790, roughness: .54, metalness: .47 });
-  const darkSteel = new THREE.MeshStandardMaterial({ color: 0x39474b, roughness: .59, metalness: .43 });
+  const steel = new THREE.MeshStandardMaterial({ color: 0xb3c0bd, roughness: .36, metalness: .5 });
+  const darkSteel = new THREE.MeshStandardMaterial({ color: 0x546b74, roughness: .48, metalness: .35 });
   const leather = new THREE.MeshStandardMaterial({ color: 0x514034, roughness: .95 });
   const skin = new THREE.MeshStandardMaterial({ color: 0xc9b092, roughness: .86 });
   const steelWeapon = new THREE.MeshStandardMaterial({ color: 0xbdc1b3, roughness: .45, metalness: .63 });
   const horseMat = new THREE.MeshStandardMaterial({ color: 0x705443, roughness: .94 });
-  const uniform = COLORS.map(color => new THREE.MeshStandardMaterial({ color, roughness: .9 }));
-  const cloaks = [0x244944, 0x703d3b, 0x68572e, 0x463960].map(color =>
+  const uniform = COLORS.map(color => new THREE.MeshStandardMaterial({ color, roughness: .76 }));
+  const cloaks = [0x2e7567, 0x964a45, 0x957a3e, 0x6b508e].map(color =>
     new THREE.MeshStandardMaterial({ color, roughness: .94 }));
   const mesh = (geometry: THREE.BufferGeometry, material: THREE.Material): THREE.InstancedMesh => {
     const object = new THREE.InstancedMesh(geometry, material, GRAND_MAX_UNITS);
@@ -100,7 +100,7 @@ export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
   const offset = (x: number, z: number, right: number, front: number, angle: number): [number, number] =>
     [x + right * Math.cos(angle) + front * Math.sin(angle),
      z - right * Math.sin(angle) + front * Math.cos(angle)];
-  function update(): void {
+  function update(reducedMotion = false): void {
     for (const group of groups.values()) group.count = 0;
     const alive = new Set<number>();
     for (const unit of war.units) {
@@ -117,7 +117,7 @@ export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
       const height = unit.kind === 'guardian' ? 1.16 : unit.kind === 'archer' ? .94 : 1;
       const base = cavalry ? 1.34 : 0;
       // Individual phase offsets keep hundreds of soldiers from marching in lockstep.
-      const gait = moving ? Math.sin(war.time * (cavalry ? 12.2 : 9.6) + unit.id * .71) : 0;
+      const gait = moving && !reducedMotion ? Math.sin(war.time * (cavalry ? 12.2 : 9.6) + unit.id * .71) : 0;
       const bob = moving ? Math.abs(gait) * .075 : 0;
       const y = base + bob;
       set(group.body, i, x, y + 1.32 * height, z, height, height, height, angle);

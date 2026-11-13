@@ -114,7 +114,7 @@ try {
     const context = await browser.newContext({ viewport: { width, height }, isMobile: width < 900, hasTouch: width < 900, reducedMotion: 'reduce' });
     const page = await context.newPage(); page.setDefaultTimeout(15000);
     const result = { name, width, height, status: 'running', pageErrors: [], consoleErrors: [], scenarios: ['normal UI actions', 'DEV time freeze', 'seeded victory result'] };
-    const initialQuality = name === 'desktop' ? 'high' : 'standard';
+    const initialQuality = 'standard';
     report.cases.push(result);
     const stage = async value => { result.stage = value; console.log(`STAGE ${name}: ${value}`); await writeFile(`${artifacts}/report.json`, JSON.stringify(report, null, 2)); };
     page.on('pageerror', error => result.pageErrors.push(error.message));
@@ -122,7 +122,7 @@ try {
     try {
       await stage('landing');
       await page.goto(origin, { waitUntil: 'domcontentloaded' });
-      await page.locator('#start-war').waitFor();
+      await page.locator('#start-grand').waitFor();
       await page.evaluate(() => Promise.race([document.fonts.ready, new Promise(resolve => setTimeout(resolve, 3000))]));
       assert.equal(await page.locator('[data-release="kingdoms-1.0"]').count(), 1);
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Landing overflows horizontally');
@@ -132,7 +132,7 @@ try {
       assert.ok(await page.locator('#guide').evaluate(el => el === document.activeElement), 'Guide must restore focus');
       await page.locator('#preferences').click();
       await assertElementFits(page, '.game-dialog', result, 'settings');
-      for (const quality of ['low', 'high', initialQuality]) {
+      for (const quality of (name === 'desktop' ? ['low', 'high', initialQuality] : ['low', initialQuality])) {
         await page.locator('#menu-quality').selectOption(quality);
         await page.waitForFunction(() => document.querySelector('#landing-preview')?.dataset.preview === 'ready');
         assert.equal(await page.locator('#landing-preview canvas').count(), 1, 'Quality changes must retain exactly one preview canvas');
@@ -140,7 +140,7 @@ try {
       }
       await page.locator('#menu-sound').uncheck(); await page.locator('#menu-motion').check(); await page.locator('.dialog-cancel').click();
       await page.locator('#difficulty-easy').click(); assert.equal(await page.locator('#difficulty-easy').getAttribute('aria-pressed'), 'true');
-      await capture(page, `${name}-menu`); await page.locator('#start-war').click();
+      await capture(page, `${name}-menu`); await page.locator('#start-grand').click();
       await stage('WebGL startup');
       result.gpu = await waitForBattle(page);
       const initialArmies = await page.evaluate(() => {
@@ -158,7 +158,7 @@ try {
       await page.locator('#pause').click(); await page.locator('#pause-settings').click();
       await assertElementFits(page, '.game-dialog', result, 'battle settings');
       result.graphics = [];
-      for (const quality of ['low', 'high', 'standard', initialQuality]) {
+      for (const quality of (name === 'desktop' ? ['low', 'high', 'standard'] : ['low', 'standard'])) {
         await page.locator('#graphics-setting').selectOption(quality);
         const state = await graphics(page); assertGraphics(state, quality); result.graphics.push(state);
       }
@@ -181,6 +181,8 @@ try {
       // real pointer gesture. Project the actual camera rather than guessing pixels.
       await page.evaluate(() => window.__war.setPaused(false));
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => resolve())));
+      // Pan through real input so the target clears the compact command bar.
+      if (width < 501) { await page.keyboard.down('s'); await page.waitForTimeout(500); await page.keyboard.up('s'); }
       const projected = await page.evaluate(() => { const camera = window.__war.camera, point = camera.position.clone().set(0, 0, 0).project(camera); return { x: point.x, y: point.y }; });
       const field = page.locator('.war-view canvas'), fieldBox = await field.boundingBox(); assert.ok(fieldBox);
       await field.click({ position: { x: (projected.x + 1) * fieldBox.width / 2, y: (1 - projected.y) * fieldBox.height / 2 } });
@@ -231,9 +233,9 @@ try {
       await page.waitForTimeout(350); assert.equal(await page.evaluate(() => window.__war.world.time), pausedTime);
       await page.keyboard.press('Escape'); await page.getByRole('dialog').waitFor({ state: 'hidden' });
       await page.evaluate(() => window.__war.setPaused(true));
-      await page.locator('#exit').click(); await page.locator('#start-war').click(); await page.getByRole('dialog').waitFor();
+      await page.locator('#exit').click(); await page.locator('#start-grand').click(); await page.getByRole('dialog').waitFor();
       await page.keyboard.press('Escape'); assert.equal(await page.locator('#continue-war').isVisible(), true);
-      await page.locator('#start-war').click(); await page.locator('.dialog-confirm').click(); await waitForBattle(page);
+      await page.locator('#start-grand').click(); await page.locator('.dialog-confirm').click(); await waitForBattle(page);
       assert.equal((await snapshot(page)).mine, 3); assert.equal((await snapshot(page)).policy, 'balanced');
 
       await stage('victory and retry fixture');

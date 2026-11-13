@@ -4,7 +4,7 @@ import { createWar } from '../../src/battle/war';
 import { loadWar, saveWar, WAR_SAVE_KEY } from '../../src/battle/save';
 
 const navigation = vi.hoisted(() => ({
-  openWar: vi.fn<(onExit: () => void, options: { forceNew: boolean; difficulty: string }) => void>(),
+  openWar: vi.fn<(onExit: () => void, options: { forceNew: boolean; difficulty: string; grandBattle?: boolean }) => void>(),
   startLegacy: vi.fn<(parent: HTMLElement, onExit: () => void) => void>(),
   preview: vi.fn<(mount: HTMLElement) => () => void>(),
   disposePreview: vi.fn(),
@@ -62,8 +62,20 @@ describe('menu navigation and recovery', () => {
     strategy.click(); strategy.click(); classic.click();
     await vi.dynamicImportSettled();
     expect(navigation.openWar).toHaveBeenCalledTimes(1);
-    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), { forceNew: true, difficulty: 'hard' });
+    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), { forceNew: true, difficulty: 'hard', grandBattle: true });
     expect(navigation.startLegacy).not.toHaveBeenCalled();
+  });
+
+  it('removes the small-match start and uses 600 soldiers for every new campaign', async () => {
+    await loadMenu();
+    expect(document.querySelector('#start-grand')).toBeNull();
+    expect(button('#start-war').textContent).toContain('100 VS 500');
+    button('#difficulty-easy').click();
+    button('#start-war').click();
+    await vi.dynamicImportSettled();
+    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), {
+      forceNew: true, difficulty: 'easy', grandBattle: true,
+    });
   });
 
   it('opens the menu and settings even when saved battle, career, and preferences are corrupt', async () => {

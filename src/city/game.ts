@@ -9,6 +9,7 @@ import { STEPS, TUT_KEY, advance, newCounters, newTutState, type Counters, type 
 import { CityAudio } from './audio';
 import { reload, switchWeapon } from './actors';
 import { ACTORS, BLOCKS, PITCH, ROAD } from './defs';
+import { mapPointerToWorld } from './uiMath';
 import { readPreferences, recordMatch, writePreferences } from '../battle/preferences';
 
 const $ = (n: number): string => Math.floor(n).toLocaleString('en-US');
@@ -92,7 +93,7 @@ export function openCity(onExit: () => void, options: { difficulty: Difficulty }
   function exit(): void {
     if (closed) return; closed = true; cancelAnimationFrame(raf); audio.dispose(); unlock(); R3?.dispose(); root.remove();
     document.removeEventListener('pointerlockchange', onLock); document.removeEventListener('pointerlockerror', onLockErr); document.removeEventListener('mousemove', onMouseMove);
-    window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('resize', onResize); window.removeEventListener('blur', onBlur); window.removeEventListener('pointerup', onWindowPointerUp); document.removeEventListener('visibilitychange', onBlur);
+    window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('resize', onResize); window.removeEventListener('blur', onBlur); window.removeEventListener('pointerup', onWindowPointerEnd); window.removeEventListener('pointercancel', onWindowPointerEnd); document.removeEventListener('visibilitychange', onBlur);
     onExit();
   }
 
@@ -235,25 +236,39 @@ export function openCity(onExit: () => void, options: { difficulty: Difficulty }
   // ---------- 입력 ----------
   function onKey(e: KeyboardEvent): void {
     if (closed) return; const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, w = world;
-    if (k === 'Tab') e.preventDefault();
     if (!w) return; const f = w.factions[0];
-    if (f.pending > 0) { if (k >= '1' && k <= '3') act(`perk:${Number(k) - 1}`); return; }
+    if (f.pending > 0) { if (!e.repeat && k >= '1' && k <= '3') act(`perk:${Number(k) - 1}`); return; }
     if (k === 'Escape') { if (ghost) ghost = null; else if (!bigmap.hidden) { bigmap.hidden = true; lock(); } else if (!panel.hidden) { panel.hidden = true; shopOpen = false; lock(); } else if (paused) act('resume'); else pause(); return; }
     if (tut && k === 'Enter' && STEPS[tut.s.i]?.info && !paused) { act('tutnext'); return; }
-    if (paused || w.over || e.repeat) { keys.add(k); return; }
+    // Never preserve movement during pause/results; allow native Tab/Space on focused controls.
+    if (paused || w.over) return;
+    const focusedControl = e.target instanceof Element && !!e.target.closest('button,a,input,select,textarea,[contenteditable="true"]');
+    if (k === 'Tab') {
+      if (panel.hidden && bigmap.hidden && !focusedControl) { e.preventDefault(); act('panel'); }
+      return;
+    }
+    if (focusedControl || e.repeat) return;
     keys.add(k);
     if (k === ' ') e.preventDefault();
     if (k === 'e') interact(); else if (k === 'f') w.toggleVehicle(0); else if (k === 'r') reload(w, 0); else if (k === 'q') res(w.useSkill(0)); else if (k === 'h') w.useMedkit(0);
     else if (k === 'z') act('order:follow'); else if (k === 'x') act('order:hold'); else if (k === 'c') { const p = aimPoint(); w.order(0, 'amove', p.x, p.y); } else if (k === 'v') act('view');
-    else if (k === 'Tab') act('panel'); else if (k === 'm') act('map'); else if (k === 'b') { tab = 'build'; shopOpen = false; panel.hidden = false; renderPanel(); unlock(); }
+    else if (k === 'm') act('map'); else if (k === 'b') { tab = 'build'; shopOpen = false; panel.hidden = false; renderPanel(); unlock(); }
     else if (k >= '1' && k <= '3') switchWeapon(w, 0, Number(k) - 1);
   }
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key); };
   const onResize = (): void => { R?.resize(); R3?.resize(); };
   const aimPoint = (): { x: number; y: number } => view === 'top' || !R3 ? R!.toWorld(mouse.x, mouse.y) : R3.groundPoint(900);
-  const onBlur = (): void => { keys.clear(); mouse.down = false; if (world && !world.over && !paused && world.factions[0].pending === 0 && document.hidden) pause(); };
+  const onBlur = (): void => {
+    keys.clear(); mouse.down = false; touchFire = false; looks.clear();
+    for (const stick of [sticks.move, sticks.aim]) { stick.id = -1; stick.x = 0; stick.y = 0; }
+    if (world && !world.over && !paused && world.factions[0].pending === 0 && document.hidden) pause();
+  };
   window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKeyUp); window.addEventListener('resize', onResize); window.addEventListener('blur', onBlur); document.addEventListener('visibilitychange', onBlur);
-  root.addEventListener('pointerdown', e => { const t = (e.target as HTMLElement).closest<HTMLElement>('[data-act]'); if (t && !(t as HTMLButtonElement).disabled) { e.stopPropagation(); act(t.dataset.act!, e); } });
+  // Click fires for mouse, touch and keyboard activation; pointerdown excluded keyboard users.
+  root.addEventListener('click', e => {
+    const t = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-act]') : null;
+    if (t && !(t as HTMLButtonElement).disabled) { e.stopPropagation(); act(t.dataset.act!, e); }
+  });
   root.addEventListener('contextmenu', e => e.preventDefault());
   const place = (sx: number, sy: number): void => { const w = world!, p = view === 'top' || !R3 ? R!.toWorld(sx, sy) : { x: ghost!.x, y: ghost!.y }, e = w.build(0, ghost!.kind, p.x, p.y); if (e) toast(e); else { audio.play('build'); if (!keys.has('Shift')) ghost = null; } };
   const looks = new Map<number, { x: number; y: number }>();
@@ -283,10 +298,22 @@ export function openCity(onExit: () => void, options: { difficulty: Difficulty }
     cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
     cv.addEventListener('wheel', e => { e.preventDefault(); if (cv === canvas) userZoom = Math.max(0.6, Math.min(1.5, userZoom * (e.deltaY > 0 ? 0.92 : 1.08))); else if (world) { const f = world.factions[0]; switchWeapon(world, 0, (f.cur + (e.deltaY > 0 ? 1 : f.slots.length - 1)) % f.slots.length); } }, { passive: false });
   }
-  const onWindowPointerUp = (e: PointerEvent): void => { if (e.pointerType !== 'touch') mouse.down = false; };
-  window.addEventListener('pointerup', onWindowPointerUp);
+  const onWindowPointerEnd = (e: PointerEvent): void => {
+    looks.delete(e.pointerId);
+    for (const stick of [sticks.move, sticks.aim]) if (stick.id === e.pointerId) { stick.id = -1; stick.x = 0; stick.y = 0; }
+    if (e.pointerType !== 'touch') mouse.down = false;
+  };
+  // Mobile pointers may end over the HUD rather than the canvas.
+  window.addEventListener('pointerup', onWindowPointerEnd);
+  window.addEventListener('pointercancel', onWindowPointerEnd);
   const fireBtn = q('#c-fire'); fireBtn.addEventListener('pointerdown', e => { touchFire = true; e.preventDefault(); e.stopPropagation(); audio.unlock(); }); for (const n of ['pointerup', 'pointercancel', 'pointerleave']) fireBtn.addEventListener(n, () => { touchFire = false; });
-  const mapClick = (c: HTMLCanvasElement) => (e: PointerEvent): void => { if (!world || paused) return; const r = c.getBoundingClientRect(), k = 5160 / r.width; world.order(0, 'amove', (e.clientX - r.left) * k, (e.clientY - r.top) * k); toast('전 병력 돌격!', false); e.stopPropagation(); };
+  const mapClick = (c: HTMLCanvasElement) => (e: PointerEvent): void => {
+    if (!world || paused || world.over || world.factions[0].pending > 0) return;
+    const r = c.getBoundingClientRect(), point = mapPointerToWorld(e.clientX, e.clientY, r.left, r.top, r.width, r.height);
+    if (!point) return;
+    world.order(0, 'amove', point.x, point.y);
+    toast('전 병력 돌격!', false); e.stopPropagation();
+  };
   q<HTMLCanvasElement>('#c-mini').addEventListener('pointerdown', mapClick(q<HTMLCanvasElement>('#c-mini'))); q<HTMLCanvasElement>('#c-big').addEventListener('pointerdown', mapClick(q<HTMLCanvasElement>('#c-big')));
 
   // ---------- 튜토리얼 ----------

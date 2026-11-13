@@ -71,6 +71,23 @@ describe('LAST CITY rules', () => {
     expect(f.cash).toBe(cash);
     expect(w.actors.filter(a => a.alive && a.f === 0 && a.kind === 'merc')).toHaveLength(8);
   });
+  it('does not load more bullets than a limited-ammo pickup owns', () => {
+    const w = make(), f = w.factions[0];
+    w.giveWeapon(f, 'railgun', 2);
+    const rail = f.slots.find(s => s.id === 'railgun')!;
+    expect(rail.ammo).toBe(2);
+    expect(rail.mag).toBe(2);
+    w.giveWeapon(f, 'railgun', 1);
+    expect(rail.ammo).toBe(3);
+    expect(rail.mag).toBe(3);
+  });
+  it('does not drop a depleted rare weapon with free ammunition', () => {
+    const w = make(), f = w.factions[3], boss = w.boss(3)!;
+    w.giveWeapon(f, 'rocket', 2);
+    f.slots.find(s => s.id === 'rocket')!.ammo = 0;
+    w.killActor(boss, 0);
+    expect(w.loot.some(l => l.alive && l.type === 'weapon' && l.weapon === 'rocket')).toBe(false);
+  });
   it('lets the boss steal a parked car and drive it', () => {
     const w = make(), b = w.boss(0)!, car = w.vehicles.find(v => !v.driver && v.kind !== 'tank')!;
     b.x = car.x + 30; b.y = car.y; w.toggleVehicle(0); expect(b.inVeh).toBe(car.id);

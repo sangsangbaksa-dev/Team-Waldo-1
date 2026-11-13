@@ -160,9 +160,11 @@ describe('battle UI through real player actions', () => {
     expect(button('[data-interior-command="upgrade"]').disabled).toBe(false);
     advanceFrames(10);
     expect(w.time).toBe(time);
+    const goldBefore = w.factions[0].gold, foodBefore = w.factions[0].food;
     click('[data-interior-command="upgrade"]');
     expect(w.factions[0].mine).toBe(2);
-    expect(w.factions[0].gold).toBe(80);
+    expect(w.factions[0].gold).toBeCloseTo(goldBefore - 60);
+    expect(w.factions[0].food).toBeCloseTo(foodBefore - 20);
     expect(element('#interior-level').textContent).toBe('Lv.2 / 4');
     expect(loadWar()?.factions[0].mine).toBe(2);
     key(button('[data-interior-back]'), 'Escape');

@@ -305,10 +305,13 @@ export class World {
     f.crystal -= c; f.cash -= m; lab.queue.push({ research: id, t: 22 + lvl * 8, total: 22 + lvl * 8 }); return '';
   }
   market(fi: number, sell: boolean, amount: number): string {
-    const f = this.factions[fi];
-    if (sell) { const n = Math.min(amount, Math.floor(f.crystal)); if (n <= 0) return '팔 크리스탈이 없습니다'; f.crystal -= n; const g = Math.floor(n * this.price * 0.92); f.cash += g; f.earned += g; this.price = Math.max(4, this.price * (1 - n / 4000)); return ''; }
-    const costC = Math.ceil(amount * this.price * 1.08); if (f.cash < costC) return '자금이 부족합니다';
-    f.cash -= costC; f.crystal += amount; this.price = Math.min(26, this.price * (1 + amount / 4000)); return '';
+    const f = this.factions[fi], quantity = Math.floor(amount);
+    // The "sell all" action may pass fractional stock; trade only whole crystals.
+    // Reject non-finite, zero and negative quantities before changing balances.
+    if (!Number.isSafeInteger(quantity) || quantity <= 0) return '거래 수량이 올바르지 않습니다';
+    if (sell) { const n = Math.min(quantity, Math.floor(f.crystal)); if (n <= 0) return '팔 크리스탈이 없습니다'; f.crystal -= n; const g = Math.floor(n * this.price * 0.92); f.cash += g; f.earned += g; this.price = Math.max(4, this.price * (1 - n / 4000)); return ''; }
+    const costC = Math.ceil(quantity * this.price * 1.08); if (f.cash < costC) return '자금이 부족합니다';
+    f.cash -= costC; f.crystal += quantity; this.price = Math.min(26, this.price * (1 + quantity / 4000)); return '';
   }
   bizPrice(f: Faction, b: Business): number { return Math.round(BIZ[b.kind].price * (f.klass === 'tycoon' ? 0.9 : 1)); }
   upgradePrice(b: Business): number { return Math.round(BIZ[b.kind].price * BIZ_UPGRADE_COST[b.level]); }
@@ -355,7 +358,7 @@ export class World {
   }
   hireMercs(fi: number, free = false): string {
     const f = this.factions[fi], b = this.boss(fi); if (!b) return '보스가 쓰러져 있습니다';
-    if (this.actors.filter(a => a.alive && a.f === fi && a.kind === 'merc').length >= 9) return '용병은 최대 9명입니다';
+    if (this.actors.filter(a => a.alive && a.f === fi && a.kind === 'merc').length + 3 > 9) return '용병은 최대 9명입니다';
     if (!free) { if (f.cash < 350) return '용병 호출에 $350 필요'; f.cash -= 350; }
     for (let k = 0; k < 3; k++) { const m = this.spawnUnit('merc', fi, b.x + Math.cos(k * 2.1) * 36, b.y + Math.sin(k * 2.1) * 36); m.temp = 0; this.fx('spawn', m.x, m.y, 0, undefined, fi); }
     return '';

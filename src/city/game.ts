@@ -62,6 +62,9 @@ export function openCity(onExit: () => void, options: { difficulty: Difficulty }
   }
   function start(k: ClassId, tutorial = false): void {
     klass = k; modal.innerHTML = ''; hud.hidden = false; resultShown = false; paused = false; ghost = null; shopOpen = false; panel.hidden = true; bigmap.hidden = true;
+    // A retry must not inherit held keys, touch gestures, firing or frame debt.
+    keys.clear(); mouse.down = false; touchFire = false; acc = 0; looks.clear();
+    for (const stick of [sticks.move, sticks.aim]) { stick.id = -1; stick.x = 0; stick.y = 0; }
     world = new World({ seed: (Math.random() * 2 ** 31) | 0, difficulty: options.difficulty, klass: k, tutorial });
     tut = tutorial ? { s: newTutState(), c: newCounters() } : null;  tutSig = ''; q('#c-tut').hidden = true; tutInfoLock = false;
     R = new Renderer(canvas, world); R.reduced = prefs.reducedMotion; const b = world.boss(0)!; R.cam.x = b.x; R.cam.y = b.y; R.cam.zoom = 0.6;
@@ -89,7 +92,7 @@ export function openCity(onExit: () => void, options: { difficulty: Difficulty }
   function exit(): void {
     if (closed) return; closed = true; cancelAnimationFrame(raf); audio.dispose(); unlock(); R3?.dispose(); root.remove();
     document.removeEventListener('pointerlockchange', onLock); document.removeEventListener('pointerlockerror', onLockErr); document.removeEventListener('mousemove', onMouseMove);
-    window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('resize', onResize); window.removeEventListener('blur', onBlur); document.removeEventListener('visibilitychange', onBlur);
+    window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('resize', onResize); window.removeEventListener('blur', onBlur); window.removeEventListener('pointerup', onWindowPointerUp); document.removeEventListener('visibilitychange', onBlur);
     onExit();
   }
 
@@ -280,7 +283,8 @@ export function openCity(onExit: () => void, options: { difficulty: Difficulty }
     cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
     cv.addEventListener('wheel', e => { e.preventDefault(); if (cv === canvas) userZoom = Math.max(0.6, Math.min(1.5, userZoom * (e.deltaY > 0 ? 0.92 : 1.08))); else if (world) { const f = world.factions[0]; switchWeapon(world, 0, (f.cur + (e.deltaY > 0 ? 1 : f.slots.length - 1)) % f.slots.length); } }, { passive: false });
   }
-  window.addEventListener('pointerup', e => { if (e.pointerType !== 'touch') mouse.down = false; });
+  const onWindowPointerUp = (e: PointerEvent): void => { if (e.pointerType !== 'touch') mouse.down = false; };
+  window.addEventListener('pointerup', onWindowPointerUp);
   const fireBtn = q('#c-fire'); fireBtn.addEventListener('pointerdown', e => { touchFire = true; e.preventDefault(); e.stopPropagation(); audio.unlock(); }); for (const n of ['pointerup', 'pointercancel', 'pointerleave']) fireBtn.addEventListener(n, () => { touchFire = false; });
   const mapClick = (c: HTMLCanvasElement) => (e: PointerEvent): void => { if (!world || paused) return; const r = c.getBoundingClientRect(), k = 5160 / r.width; world.order(0, 'amove', (e.clientX - r.left) * k, (e.clientY - r.top) * k); toast('전 병력 돌격!', false); e.stopPropagation(); };
   q<HTMLCanvasElement>('#c-mini').addEventListener('pointerdown', mapClick(q<HTMLCanvasElement>('#c-mini'))); q<HTMLCanvasElement>('#c-big').addEventListener('pointerdown', mapClick(q<HTMLCanvasElement>('#c-big')));

@@ -48,6 +48,29 @@ describe('LAST CITY rules', () => {
     expect(w.market(0, true, 500)).toBe(''); expect(f.cash).toBeGreaterThan(cash); expect(w.price).toBeLessThan(p);
     f.cash = 0; expect(w.market(0, false, 100)).not.toBe('');
   });
+  it('rejects invalid trade amounts and sells only whole crystals', () => {
+    const w = make(), f = w.factions[0];
+    f.cash = 1000; f.crystal = 102.75;
+    const before = { cash: f.cash, crystal: f.crystal, price: w.price };
+    for (const amount of [-100, -Infinity, 0, 0.9, NaN, Infinity]) {
+      expect(w.market(0, true, amount)).not.toBe('');
+      expect(w.market(0, false, amount)).not.toBe('');
+    }
+    expect(f.cash).toBe(before.cash);
+    expect(f.crystal).toBe(before.crystal);
+    expect(w.price).toBe(before.price);
+    expect(w.market(0, true, f.crystal)).toBe('');
+    expect(f.crystal).toBeCloseTo(0.75);
+  });
+  it('never recruits past the nine-mercenary cap or charges for a rejected call', () => {
+    const w = make(), f = w.factions[0], boss = w.boss(0)!;
+    f.cash = 3000;
+    for (let i = 0; i < 8; i++) w.spawnUnit('merc', 0, boss.x + i, boss.y);
+    const cash = f.cash;
+    expect(w.hireMercs(0)).toContain('최대 9명');
+    expect(f.cash).toBe(cash);
+    expect(w.actors.filter(a => a.alive && a.f === 0 && a.kind === 'merc')).toHaveLength(8);
+  });
   it('lets the boss steal a parked car and drive it', () => {
     const w = make(), b = w.boss(0)!, car = w.vehicles.find(v => !v.driver && v.kind !== 'tank')!;
     b.x = car.x + 30; b.y = car.y; w.toggleVehicle(0); expect(b.inVeh).toBe(car.id);

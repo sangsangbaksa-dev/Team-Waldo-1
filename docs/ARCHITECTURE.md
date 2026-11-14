@@ -1,7 +1,7 @@
 # 구조
 
 - **메인 페이지** (`src/main.ts`, `src/style.css`): 두 게임의 선택 화면. 진입 번들은 작게 유지하고 게임은 선택 시 `import()`로 불러옵니다. 저장 기록 표시에는 `src/records.ts`만 씁니다.
-- **LAST CITY** (`src/city`): 시뮬레이션(`world.ts`, `actors.ts`, `ai.ts`)은 DOM 없이 돌아가며 `tools/city-sim.ts`와 `tests/city`가 검증합니다. 화면은 `render3d.ts`(Three.js), `render.ts`(전술 탑뷰), HUD는 `game.ts`입니다.
+- **LAST CITY** (`src/city`): 시뮬레이션(`world.ts`, `actors.ts`, `ai.ts`)은 DOM 없이 돌아가며 `tools/city-sim.ts`와 `tests/city`가 검증합니다. 화면은 `render3d.ts`(Three.js), `render.ts`(전술 탑뷰), HUD는 `game.ts`입니다. 사업체 내부는 `interior.ts`(배치·충돌·앉은/선 사람 목록, 사람 눈금 1m≈21)와 `interior3d.ts`(장면) + `interiorfurn.ts`(가구)·`interiordecor.ts`(업종별 소품·조명)·`interiorfolk.ts`(거리 시민 모델을 앉히는 자세)·`interiorkit.ts`(공용 도구)로 나뉩니다. 눈으로 확인하려면 `npm run dev` 후 `/tools/interior-preview.html?kind=store&x=165&y=226&yaw=-1.57` 를 엽니다.
 - **SPEED RUSH** (`src/race`): `track.ts`·`physics.ts`·`race.ts`는 Three.js 비의존 순수 로직이고, `view.ts`·`audio.ts`·`game.ts`가 화면과 입력을 맡습니다.
 - **공유**: `src/prefs.ts`(소리·품질 설정), `src/records.ts`(저장 기록), `public/assets/models/vehicles.glb`(두 게임이 같은 스포츠카 모델 사용).
 

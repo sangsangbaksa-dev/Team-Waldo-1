@@ -7,6 +7,8 @@ export const HUMAN = 21;
 export const CHAR_SCALE = HUMAN;
 /** 1인칭 눈높이: 키 1.9m 모델의 눈(머리 꼭대기 약간 아래, 1.78m)에 맞춥니다. */
 export const EYE_HEIGHT = Math.round(1.78 * HUMAN);
+/** 인간형 모델의 뼈대(1단위 = 1m, 발바닥 기준): 골반 높이, 무릎까지의 허벅지 길이, 다리 좌우 간격. 걷기·앉기 자세가 함께 씁니다. */
+export const HIP = 0.9, KNEE = 0.44, LEG_Z = 0.11;
 /** 보도 폭(블록 가장자리~건물 외벽)과 차양이 튀어나오는 길이·높이. 소품이 건물에 파고들지 않게 합니다. */
 export const SIDEWALK = 40, AWNING_OUT = 15, AWNING_Y = 66;
 

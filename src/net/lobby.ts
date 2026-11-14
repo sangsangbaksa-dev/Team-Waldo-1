@@ -20,7 +20,7 @@ export function openLobby(opts: LobbyOptions): { close(): void } {
   const root = document.createElement('div'); root.className = 'pvp-root'; root.setAttribute('role', 'dialog'); root.setAttribute('aria-modal', 'true'); root.setAttribute('aria-label', '1대1 대전');
   document.body.append(root);
   let backend: Backend | null = null, me: Account | null = null, screen: 'load' | 'auth' | 'home' | 'wait' | 'ranks' = 'load', authMode: 'in' | 'up' = 'in', closed = false;
-  let firstEnter = true, msg = opts.notice ?? '', busy = false, waiting: MatchRow | null = null, poll = 0, rankGame: GameKind = opts.game ?? 'race', ranks: RankRow[] | null = null, rate: { rating: number; wins: number; losses: number } | null = null;
+  let firstEnter = true, msg = opts.notice ?? '', busy = false, waiting: MatchRow | null = null, poll = 0, waitSince = 0, tick = 0, rankGame: GameKind = opts.game ?? 'race', ranks: RankRow[] | null = null, rate: { rating: number; wins: number; losses: number } | null = null;
   const form: Record<string, string> = {};
 
   const set = (patch: () => void): void => { patch(); if (!closed) paint(); };
@@ -49,9 +49,18 @@ export function openLobby(opts: LobbyOptions): { close(): void } {
     if (closed) return; stopPoll(); closed = true; root.remove();
     opts.onMatch?.({ backend: b, game: m.game, match: m, me: account, host, opponent: { id: oppId, nickname }, open: h => b.open(m.id, h) });
   }
-  function stopPoll(): void { window.clearInterval(poll); poll = 0; }
+  // 서버가 대기방을 정리하는 시간(빠른 매칭 2분, 방 10분)에 맞춰 화면도 끝냅니다.
+  const waitLimit = (m: MatchRow): number => (m.code ? 600 : 120);
+  const waitLeft = (): number => waiting ? Math.max(0, waitLimit(waiting) - Math.floor((Date.now() - waitSince) / 1000)) : 0;
+  const clock = (sec: number): string => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+  function stopPoll(): void { window.clearInterval(poll); window.clearInterval(tick); poll = 0; tick = 0; }
   function watch(m: MatchRow): void {
-    waiting = m; stopPoll();
+    waiting = m; stopPoll(); waitSince = Date.now();
+    tick = window.setInterval(() => {
+      if (closed || waiting?.id !== m.id) return;
+      if (waitLeft() <= 0) { void cancel('상대가 나타나지 않아 대기를 끝냈습니다. 다시 시도해 주세요.'); return; }
+      const el = root.querySelector('#pvp-left'); if (el) el.textContent = clock(waitLeft());
+    }, 1000);
     poll = window.setInterval(() => {
       void backend?.getMatch(m.id).then(row => {
         if (closed || waiting?.id !== m.id) return;
@@ -66,12 +75,15 @@ export function openLobby(opts: LobbyOptions): { close(): void } {
       const m = kind === 'quick' ? await backend.quickMatch(opts.game, cfg) : kind === 'room' ? await backend.createRoom(opts.game, cfg) : await backend.joinRoom(code);
       busy = false;
       if (m.status === 'playing') { await start(m); return; }
-      set(() => { screen = 'wait'; }); watch(m);
+      watch(m); set(() => { screen = 'wait'; });
     } catch (e) { failure(e); }
   }
-  async function cancel(): Promise<void> {
-    stopPoll(); const m = waiting; waiting = null; set(() => { screen = 'home'; msg = ''; });
+  async function cancel(note = ''): Promise<void> {
+    stopPoll(); const m = waiting; waiting = null; set(() => { screen = 'home'; msg = note; });
     if (m && backend) await backend.cancelMatch(m.id).catch(() => undefined);
+  }
+  async function switchTo(kind: 'quick' | 'room'): Promise<void> {
+    if (busy) return; await cancel(); await find(kind);
   }
   async function submitAuth(): Promise<void> {
     if (!backend || busy) return; const email = (form.email ?? '').trim(), password = form.password ?? '', nick = (form.nick ?? '').trim();
@@ -116,7 +128,14 @@ export function openLobby(opts: LobbyOptions): { close(): void } {
         <button class="pvp-primary" type="submit"${busy ? ' disabled' : ''}>${authMode === 'up' ? '가입하고 시작' : '로그인'}</button>
         ${authMode === 'in' ? `<button type="button" class="pvp-link" data-act="resend"${busy ? ' disabled' : ''}>인증 메일 다시 받기</button>` : ''}
         <p class="pvp-dim">로그인하면 대전 기록과 레이팅이 저장됩니다. 혼자 하는 모드는 로그인 없이 그대로 즐길 수 있습니다.</p></form>`;
-    if (screen === 'wait') return `<div class="pvp-wait"><div class="pvp-spin" aria-hidden="true"></div>${waiting?.code ? `<p>친구에게 이 코드를 알려 주세요</p><b class="pvp-code" id="pvp-code">${esc(waiting.code)}</b><p class="pvp-dim">친구가 대전 화면에서 코드를 입력하면 바로 시작합니다.</p>` : '<p>비슷한 상대를 찾는 중…</p><p class="pvp-dim">다른 플레이어가 같은 게임에서 매칭을 누르면 연결됩니다.</p>'}<button type="button" data-act="cancel">취소</button></div>`;
+    if (screen === 'wait') {
+      const room = !!waiting?.code;
+      return `<div class="pvp-wait"><div class="pvp-spin" aria-hidden="true"></div>${room
+        ? `<p><b>상대를 기다리는 중</b></p><p>상대에게 이 코드를 알려 주세요</p><b class="pvp-code" id="pvp-code">${esc(waiting?.code ?? '')}</b><p class="pvp-dim">상대는 같은 게임의 대전 화면에서 <b>코드로 입장</b>에 이 코드를 입력합니다. 두 사람이 각자 방을 만들면 서로를 찾지 못하니, 한 명만 방을 만들고 다른 한 명은 코드로 입장하세요.</p>`
+        : '<p><b>비슷한 상대를 찾는 중…</b></p><p class="pvp-dim">다른 플레이어가 같은 게임에서 빠른 매칭을 누르면 연결됩니다. 방을 만든 사람과는 연결되지 않습니다.</p>'}
+        <p class="pvp-dim">남은 시간 <span id="pvp-left">${clock(waitLeft())}</span></p>
+        <div class="pvp-actions"><button type="button" data-act="cancel">취소</button><button type="button" data-act="${room ? 'switch-quick' : 'switch-room'}"${busy ? ' disabled' : ''}>${room ? '빠른 매칭으로 바꾸기' : '방 만들기로 바꾸기'}</button></div></div>`;
+    }
     if (screen === 'ranks' || (screen === 'home' && !opts.game)) return `${me ? `<div class="pvp-me"><b>${esc(me.nickname)}</b><span>${esc(me.email)}</span></div>` : ''}${tabs()}${rankTable()}
         ${me ? `<form class="pvp-inline" data-form="rename"><input name="rename" maxlength="16" placeholder="새 닉네임" value="${esc(form.rename ?? '')}"><button type="submit"${busy ? ' disabled' : ''}>닉네임 변경</button></form><button type="button" class="pvp-link" data-act="logout">로그아웃</button>` : ''}`;
     const r = rate ?? { rating: 1000, wins: 0, losses: 0 };
@@ -139,7 +158,7 @@ export function openLobby(opts: LobbyOptions): { close(): void } {
   root.addEventListener('click', e => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-act]'); if (!b) return; const [a, arg] = b.dataset.act!.split(':');
     if (a === 'close') close(); else if (a === 'mode') set(() => { authMode = arg as 'in' | 'up'; msg = ''; }); else if (a === 'quick') void find('quick'); else if (a === 'room') void find('room');
-    else if (a === 'resend') void resend(); else if (a === 'cancel') void cancel(); else if (a === 'logout') void logout(); else if (a === 'ranks') { set(() => { screen = 'ranks'; }); void loadRanks(); }
+    else if (a === 'resend') void resend(); else if (a === 'cancel') void cancel(); else if (a === 'switch-quick' || a === 'switch-room') void switchTo(a === 'switch-quick' ? 'quick' : 'room'); else if (a === 'logout') void logout(); else if (a === 'ranks') { set(() => { screen = 'ranks'; }); void loadRanks(); }
     else if (a === 'back') set(() => { screen = 'home'; }); else if (a === 'rank') { rankGame = arg as GameKind; void loadRanks(); }
   });
   root.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } });

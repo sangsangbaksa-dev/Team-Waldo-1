@@ -1,5 +1,5 @@
 import './style.css';
-import { readCityCareer, readRaceSave, fmtTime } from './records';
+import { readCityCareer, readRaceRecords, fmtTime } from './records';
 
 type GameId = 'city' | 'race';
 
@@ -34,13 +34,13 @@ const ENTRIES: Entry[] = [
     id: 'race',
     name: 'SPEED RUSH',
     genre: '스포츠카 레이싱',
-    summary: '노을이 지는 도심 서킷을 세 바퀴 달립니다. 드리프트로 부스트를 모아 라이벌 세 대를 앞지르세요.',
-    facts: ['1인 플레이', '3랩 · 라이벌 3대', '키보드 · 터치'],
+    summary: '코스 네 곳 가운데 하나를 골라 달립니다. 차량과 난이도, 1~3랩을 정하고 드리프트로 부스트를 모아 라이벌 세 대를 앞지르세요.',
+    facts: ['코스 4곳 · 차량 6종', '난이도 5단계 · 1~3랩', '키보드 · 터치'],
     image: `${base}assets/home/speed-rush.jpg`,
     imageAlt: '도심 서킷을 달리는 붉은 스포츠카',
     status: () => {
-      const { best } = readRaceSave();
-      return Number.isFinite(best) ? `최고 랩 ${fmtTime(best)}` : '';
+      const { bestLap, last } = readRaceRecords(), best = last ? bestLap[last.map] : undefined;
+      return last && best !== undefined ? `${last.label} 최고 랩 ${fmtTime(best)}` : '';
     },
   },
 ];

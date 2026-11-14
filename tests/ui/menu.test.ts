@@ -61,7 +61,7 @@ describe('메인 페이지', () => {
     localStorage.setItem('waldo.race.v1', JSON.stringify({ best: 61.234, bestRace: 200 }));
     localStorage.setItem('waldo.city.v1', JSON.stringify({ matches: 5, wins: 2, best: 0 }));
     await loadMenu();
-    expect(button('#start-race').textContent).toContain('1:01.234');
+    expect(button('#start-race').textContent).toContain('선셋 서킷 최고 랩 1:01.234');
     expect(button('#start-city').textContent).toContain('5판 · 2승');
   });
 });

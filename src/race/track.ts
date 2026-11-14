@@ -1,13 +1,9 @@
-// SPEED RUSH — 서킷 정의. 닫힌 Catmull-Rom 스플라인을 일정 간격으로 샘플링하고, 충돌·AI·진행도 계산을 돕습니다. (THREE 의존 없음)
+// SPEED RUSH — 서킷 계산. 닫힌 Catmull-Rom 스플라인을 일정 간격으로 샘플링하고, 충돌·AI·진행도 계산을 돕습니다. (THREE 의존 없음)
+import { MAPS, type MapDef } from './maps';
 
 /** 중심선 제어점: x, z 는 수평 위치(m), y 는 고도(m). */
-export const CONTROL_POINTS: ReadonlyArray<readonly [number, number, number]> = [
-  [-60, 0, 0], [240, 0, 5], [480, 10, 13], [620, 110, 22], [670, 270, 25], [640, 430, 19], [540, 530, 11],
-  [420, 520, 6], [330, 600, 2], [200, 610, 0], [100, 510, 0], [-20, 540, 3], [-130, 610, 6],
-  [-290, 570, 9], [-420, 430, 13], [-440, 250, 14], [-410, 90, 9], [-330, 10, 3],
-];
+export type ControlPoint = readonly [number, number, number];
 
-export const TRACK_HALF_WIDTH = 13;
 export const SAMPLE_SPACING = 4;
 
 export interface Track {
@@ -30,7 +26,7 @@ function catmull(p0: V3, p1: V3, p2: V3, p3: V3, t: number): V3 {
   return out;
 }
 
-export function buildTrack(points: ReadonlyArray<readonly [number, number, number]> = CONTROL_POINTS, halfWidth = TRACK_HALF_WIDTH, spacing = SAMPLE_SPACING): Track {
+export function buildTrack(points: ReadonlyArray<ControlPoint> = MAPS[0].points, halfWidth = MAPS[0].halfWidth, spacing = SAMPLE_SPACING, padFractions: readonly number[] = MAPS[0].pads): Track {
   const m = points.length, dense: V3[] = [], per = 48;
   for (let i = 0; i < m; i++) {
     const a = points[(i + m - 1) % m], b = points[i], c = points[(i + 1) % m], d = points[(i + 2) % m];
@@ -56,7 +52,7 @@ export function buildTrack(points: ReadonlyArray<readonly [number, number, numbe
     raw[i] = Math.atan2(cross, dot) / ds;
   }
   for (let i = 0; i < n; i++) { let s = 0; for (let o = -3; o <= 3; o++) s += raw[(i + o + n) % n]; k[i] = s / 7; }
-  const pads: number[] = []; for (const f of [0.1, 0.3, 0.52, 0.74, 0.9]) pads.push(Math.round(f * n) % n);
+  const pads: number[] = []; for (const f of padFractions) pads.push(Math.round(f * n) % n);
   return { n, ds, length: total, halfWidth, x, y, z, tx, tz, k, pitch, pads };
 }
 
@@ -78,3 +74,6 @@ export const wrapIdx = (t: Track, i: number): number => ((i % t.n) + t.n) % t.n;
 export function idxDelta(t: Track, from: number, to: number): number {
   let d = to - from; if (d < -t.n / 2) d += t.n; else if (d > t.n / 2) d -= t.n; return d;
 }
+
+/** 코스 정의로 서킷을 만듭니다. */
+export const buildMapTrack = (m: MapDef): Track => buildTrack(m.points, m.halfWidth, SAMPLE_SPACING, m.pads);

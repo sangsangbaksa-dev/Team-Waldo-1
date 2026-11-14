@@ -73,11 +73,11 @@ function renderMenu(): void {
     <main class="home">
       <header class="home-head">
         <a class="mark" href="${base}" aria-label="WALDO 홈">WALDO</a>
-        <span class="head-note">브라우저 3D 게임</span>
+        <button class="head-account" id="head-account" type="button" aria-label="로그인과 랭킹">로그인 · 랭킹</button>
       </header>
       <section class="home-intro">
         <h1>두 편의 3D 게임.</h1>
-        <p>설치도 가입도 없이, 이 페이지에서 바로 시작합니다.</p>
+        <p>설치 없이 이 페이지에서 바로 시작합니다. 1대1 대전은 로그인하면 두 게임 모두에서 할 수 있습니다.</p>
       </section>
       <ul class="tiles" aria-label="게임 목록">${ENTRIES.map(tile).join('')}</ul>
       <p class="home-notice" id="home-notice" role="status" aria-live="polite"></p>
@@ -89,6 +89,27 @@ function renderMenu(): void {
   app.querySelectorAll<HTMLButtonElement>('.tile').forEach(button => {
     button.onclick = () => { void launch(button.dataset.game as GameId); };
   });
+  wireAccount();
+}
+
+/** 헤더의 계정 버튼. 네트워크 모듈은 누를 때나 한가한 때에만 불러와서 첫 화면을 가볍게 둡니다. */
+function wireAccount(): void {
+  const button = app.querySelector<HTMLButtonElement>('#head-account');
+  if (!button) return;
+  const label = (nickname: string | null): void => { button.textContent = nickname ? `${nickname} · 랭킹` : '로그인 · 랭킹'; };
+  button.onclick = () => {
+    button.disabled = true;
+    void import('./net/lobby').then(({ openLobby }) => { openLobby({ onClose: () => { button.disabled = false; } }); })
+      .catch(() => { button.disabled = false; });
+  };
+  const gen = generation;
+  window.setTimeout(() => {
+    if (gen !== generation) return;
+    void import('./net/backend').then(async ({ currentAccount, onAccount }) => {
+      label((await currentAccount())?.nickname ?? null);
+      onAccount(a => { if (button.isConnected) label(a?.nickname ?? null); });
+    }).catch(() => undefined);
+  }, 1200);
 }
 
 async function launch(id: GameId): Promise<void> {

@@ -7,9 +7,11 @@ interface Decal { x: number; y: number; r: number; color: string; ang: number; k
 export interface Ghost { kind: StructKind; x: number; y: number; ok: boolean }
 const SKIN = ['#f1c9a5', '#d9a47a', '#a8744f', '#7a5236', '#f5d6b8'];
 const CLOTH = ['#8d99ae', '#b08968', '#6d8a96', '#a58fb3', '#9aa37b', '#c58f8f'];
-const BLOCK_COLORS: Record<string, string> = { city: '#3a4049', park: '#2c4a35', lot: '#31353c', police: '#34405a', military: '#3d4233', plaza: '#4a4e58', base: '#33393a' };
+const BLOCK_COLORS: Record<string, string> = { city: '#3a4049', park: '#2c4a35', lot: '#31353c', police: '#34405a', military: '#3d4233', plaza: '#4a4e58', base: '#33393a', void: '#1d2026' };
 const fcolor = (f: number): string => f === POLICE ? '#5b8cff' : f === CIV ? '#9aa3ad' : FACTIONS[f]?.color ?? '#fff';
 
+/** 1대1 결투에서 상대가 벽 너머여도 미니맵에 잡히는 근접 거리(그보다 멀면 시야에 보일 때만 표시). */
+const DUEL_RADAR = 700;
 export class Renderer {
   ctx: CanvasRenderingContext2D; cam = { x: 0, y: 0, zoom: 1 }; shake = 0; parts: Particle[] = []; decals: Decal[] = []; rings: { x: number; y: number; r: number; max: number; life: number; color: string }[] = [];
   w = 0; h = 0; dpr = 1; hurt = 0; mini: HTMLCanvasElement | null = null; reduced = false; t = 0;
@@ -255,25 +257,26 @@ export class Renderer {
 
   /** 미니맵 (size px 정사각형 캔버스에 그림) */
   minimap(c: HTMLCanvasElement, big: boolean, heading: number | null = null): void {
-    const w = this.world, g = c.getContext('2d')!, S = c.width, k = S / SIZE;
-    if (!this.mini) {
-      this.mini = document.createElement('canvas'); this.mini.width = this.mini.height = 520; const m = this.mini.getContext('2d')!, mk = 520 / SIZE;
+    const w = this.world, g = c.getContext('2d')!, S = c.width, ar = w.map.arena, ox = ar ? ar.x0 : 0, oy = ar ? ar.y0 : 0, span = ar ? ar.x1 - ar.x0 : SIZE, k = S / span;
+    if (!this.mini) { // 1대1 전용 맵은 경기장 영역만 잘라 그립니다.
+      this.mini = document.createElement('canvas'); this.mini.width = this.mini.height = 520; const m = this.mini.getContext('2d')!, mk = 520 / span;
       m.fillStyle = '#1b1e24'; m.fillRect(0, 0, 520, 520);
-      for (const b of w.map.blocks) { m.fillStyle = b.type === 'park' ? '#27442f' : b.type === 'base' ? '#2f3b3a' : b.type === 'plaza' ? '#4a4e58' : '#343943'; m.fillRect(b.x * mk, b.y * mk, BLOCK * mk, BLOCK * mk); }
-      m.fillStyle = '#596170'; for (const s of w.map.solids) if (!s.struct) m.fillRect(s.x * mk, s.y * mk, s.w * mk, s.h * mk);
+      for (const b of w.map.blocks) { if (b.type === 'void') continue; m.fillStyle = b.type === 'park' ? '#27442f' : b.type === 'base' ? '#2f3b3a' : b.type === 'plaza' ? '#4a4e58' : '#343943'; m.fillRect((b.x - ox) * mk, (b.y - oy) * mk, BLOCK * mk, BLOCK * mk); }
+      m.fillStyle = '#596170'; for (const s of w.map.solids) if (!s.struct) m.fillRect((s.x - ox) * mk, (s.y - oy) * mk, s.w * mk, s.h * mk);
     }
-    g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(this.mini, 0, 0, S, S);
+    g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(this.mini, 0, 0, S, S); g.setTransform(1, 0, 0, 1, -ox * k, -oy * k);
     for (const c2 of w.crystals) if (c2.amount > 0) { g.fillStyle = '#39c6e8'; g.fillRect(c2.x * k - 1, c2.y * k - 1, 2, 2); }
     for (const z of w.businesses) { g.fillStyle = z.kind === 'gunshop' ? '#ff5d5d' : z.owner >= 0 ? FACTIONS[z.owner].color : '#cfd4da'; const r = big ? 5 : 3; if (z.kind === 'gunshop') { g.fillRect(z.x * k - r, z.y * k - 1, r * 2, 2); g.fillRect(z.x * k - 1, z.y * k - r, 2, r * 2); } else { g.beginPath(); g.arc(z.x * k, z.y * k, r * (z.owner >= 0 ? 1 : 0.7), 0, 6.29); g.fill(); } }
     for (const s of w.structures) if (s.alive) { g.fillStyle = FACTIONS[s.f].color; const r = s.kind === 'hq' ? (big ? 9 : 6) : (big ? 4 : 2.5); g.fillRect((s.x + s.w / 2) * k - r, (s.y + s.h / 2) * k - r, r * 2, r * 2); if (s.kind === 'hq') { g.strokeStyle = '#000'; g.lineWidth = 1; g.strokeRect((s.x + s.w / 2) * k - r, (s.y + s.h / 2) * k - r, r * 2, r * 2); } }
     const pb = w.boss(0);
     for (const a of w.actors) { if (!a.alive || a.f === CIV) continue; if (a.kind === 'boss') continue; if (a.f !== 0 && !(pb && Math.hypot(a.x - pb.x, a.y - pb.y) < 1000)) continue; g.fillStyle = fcolor(a.f); g.fillRect(a.x * k - 1, a.y * k - 1, big ? 3 : 2, big ? 3 : 2); }
     for (const l of w.loot) if (l.alive && l.type === 'crate') { g.fillStyle = '#ffe27a'; g.beginPath(); g.arc(l.x * k, l.y * k, (big ? 7 : 4) + Math.sin(this.t * 6) * 1.5, 0, 6.29); g.fill(); }
-    for (const f of w.factions) { const b = w.boss(f.id); if (!b) continue; g.fillStyle = f.color; g.strokeStyle = f.id === 0 ? '#fff' : '#000'; g.lineWidth = f.id === 0 ? 2 : 1; g.beginPath(); g.arc(b.x * k, b.y * k, f.id === 0 ? (big ? 7 : 5) : (big ? 6 : 4), 0, 6.29); g.fill(); g.stroke(); }
-    const z = w.zone; g.fillStyle = 'rgba(128,64,220,0.35)'; g.beginPath(); g.rect(0, 0, S, S); g.arc(z.x * k, z.y * k, Math.max(0, z.r * k), 0, 6.29, true); g.fill('evenodd');
+    for (const f of w.factions) { const b = w.boss(f.id); if (!b) continue; if (w.opts.duel && f.id !== 0 && pb && !(Math.hypot(b.x - pb.x, b.y - pb.y) < DUEL_RADAR || w.canSee(pb.x, pb.y, b.x, b.y))) continue; g.fillStyle = f.color; g.strokeStyle = f.id === 0 ? '#fff' : '#000'; g.lineWidth = f.id === 0 ? 2 : 1; g.beginPath(); g.arc(b.x * k, b.y * k, f.id === 0 ? (big ? 7 : 5) : (big ? 6 : 4), 0, 6.29); g.fill(); g.stroke(); }
+    const z = w.zone; g.fillStyle = 'rgba(128,64,220,0.35)'; g.beginPath(); g.rect(ox * k, oy * k, S, S); g.arc(z.x * k, z.y * k, Math.max(0, z.r * k), 0, 6.29, true); g.fill('evenodd');
     g.strokeStyle = '#c59bff'; g.lineWidth = 2; g.beginPath(); g.arc(z.x * k, z.y * k, Math.max(0, z.r * k), 0, 6.29); g.stroke();
     if (z.nr < z.r) { g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.setLineDash([4, 4]); g.beginPath(); g.arc(z.nx * k, z.ny * k, Math.max(1, z.nr * k), 0, 6.29); g.stroke(); g.setLineDash([]); }
     if (heading !== null && pb) { g.save(); g.translate(pb.x * k, pb.y * k); g.rotate(heading); g.fillStyle = '#fff'; g.beginPath(); g.moveTo(big ? 16 : 11, 0); g.lineTo(big ? 5 : 3, big ? -6 : -4); g.lineTo(big ? 5 : 3, big ? 6 : 4); g.fill(); g.restore(); }
     else if (!big) { g.strokeStyle = 'rgba(255,255,255,0.6)'; g.lineWidth = 1; g.strokeRect((this.cam.x - this.w / 2 / this.cam.zoom) * k, (this.cam.y - this.h / 2 / this.cam.zoom) * k, this.w / this.cam.zoom * k, this.h / this.cam.zoom * k); }
+    g.setTransform(1, 0, 0, 1, 0, 0);
   }
 }

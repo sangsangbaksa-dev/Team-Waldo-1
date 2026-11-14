@@ -8,13 +8,15 @@ export function makeRng(seed: number): Rng {
 }
 
 export interface Solid { x: number; y: number; w: number; h: number; height: number; wall: string; roof: string; struct: number; alive: boolean; sign?: string; signColor?: string }
-export type BlockType = 'base' | 'plaza' | 'city' | 'park' | 'lot' | 'police' | 'military';
+export type BlockType = 'base' | 'plaza' | 'city' | 'park' | 'lot' | 'police' | 'military' | 'void';
 export interface Block { i: number; j: number; x: number; y: number; type: BlockType }
 export interface BizSite { kind: BizKind; x: number; y: number; solid: number }
 export interface CityMap {
-  solids: Solid[]; grid: number[][]; nav: Uint8Array; blocks: Block[]; bases: { x: number; y: number; bx: number; by: number }[];
+  solids: Solid[]; grid: number[][]; nav: Uint8Array; blocks: Block[]; bases: { x: number; y: number; bx: number; by: number; /** 보스가 본부의 어느 쪽(1: 남, -1: 북)에서 시작하는가. 기본 1 */ face?: 1 | -1 }[];
   biz: BizSite[]; crystals: { x: number; y: number; amount: number }[]; loot: { x: number; y: number; tier: number }[];
   cars: { x: number; y: number; ang: number; kind: string }[]; trees: { x: number; y: number; r: number }[]; police: { x: number; y: number };
+  /** 1대1 전용 맵(arena.ts)일 때만: 경기장 이름과 경기장 영역(월드 좌표). 영역 밖은 'void' 블록입니다. */
+  arena?: { name: string; x0: number; y0: number; x1: number; y1: number };
 }
 const GC = 160, GN = Math.ceil(SIZE / GC);
 const WALLS = ['#59606e', '#6b5a52', '#4f6470', '#6d6654', '#5b5470', '#48606a', '#70585e', '#5a6b5c'];
@@ -172,8 +174,11 @@ export function findPath(map: CityMap, x0: number, y0: number, x1: number, y1: n
 }
 
 // ---------- 생성 ----------
+export function emptyMap(): CityMap {
+  return { solids: [], grid: Array.from({ length: GN * GN }, () => []), nav: new Uint8Array(NAVN * NAVN), blocks: [], bases: [], biz: [], crystals: [], loot: [], cars: [], trees: [], police: { x: 0, y: 0 } };
+}
 export function generateCity(rng: Rng): CityMap {
-  const map: CityMap = { solids: [], grid: Array.from({ length: GN * GN }, () => []), nav: new Uint8Array(NAVN * NAVN), blocks: [], bases: [], biz: [], crystals: [], loot: [], cars: [], trees: [], police: { x: 0, y: 0 } };
+  const map = emptyMap();
   const pick = <T>(a: T[]): T => a[Math.floor(rng() * a.length)];
   const types = new Map<string, BlockType>();
   for (const [i, j] of BASE_BLOCKS) types.set(`${i},${j}`, 'base');

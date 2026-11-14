@@ -255,7 +255,7 @@ export class Renderer3D {
 
   /** 보스가 사업체 안에 있을 때: 도시 대신 내부 장면만 그립니다. */
   private drawInside(dt: number, kind: string, lay: NonNullable<ReturnType<World['insideLayout']>>, s: NonNullable<World['inside']>): void {
-    if (!this.ins || this.insKind !== kind) { this.ins?.dispose(); this.ins = new Interior3D(lay, this.quality); this.insKind = kind; }
+    if (!this.ins || this.insKind !== kind) { this.ins?.dispose(); this.ins = new Interior3D(lay, this.quality, this.models); this.insKind = kind; }
     this.t += dt; this.ins.update(this.t, s.x, s.y, this.yaw, this.pitch, Math.sin(s.walk * 0.09) * 1.4, this.w / Math.max(1, this.h));
     this.renderer.render(this.ins.scene, this.ins.camera);
     for (const f of this.floaters) f.el.remove(); this.floaters = [];

@@ -42,6 +42,17 @@ describe('사업체 내부 배치', () => {
   });
 });
 
+describe('출입문 입장', () => {
+  it('문 앞에서 건물 쪽으로 걸으면 바로 들어가고, 등지고 걸으면 들어가지 않으며, 나오면 문 밖에 서 있습니다', () => {
+    const w = make(), z = w.businesses.find(q => q.kind === 'store' && q.owner < 0)!, b = w.boss(0)!, o = w.doorOut(z);
+    b.x = z.x; b.y = z.y; w.input.mx = o.x; w.input.my = o.y; run(w, 0.05); expect(w.inside).toBeNull(); b.x = z.x; b.y = z.y;
+    w.input.mx = -o.x; w.input.my = -o.y; run(w, 0.1); expect(w.insideBiz()).toBe(z); expect(w.enteredByDoor).toBe(true);
+    const lay = w.insideLayout()!; w.inside!.x = lay.door.x; w.inside!.y = lay.door.y; w.interactInside(0); expect(w.inside).toBeNull();
+    w.input.mx = -o.x; w.input.my = -o.y; w.step(1 / 30); expect(w.inside).toBeNull();   // 퇴장 직후 재입장 방지
+    const hp = b.hp; w.input.mx = 0; w.input.my = 0; w.hurtActor(b, 10, 1); expect(b.hp).toBeLessThan(hp);
+  });
+});
+
 describe('건물 입장과 구매', () => {
   it('패드에서 E 를 누르면 안으로 들어가고, 안에서는 표적이 되지 않으며 문으로 나옵니다', () => {
     const w = make(), z = enter(w, 'store'), b = w.boss(0)!; expect(w.insideBiz()).toBe(z); expect(w.hidden(b)).toBe(true);

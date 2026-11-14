@@ -4,7 +4,8 @@ import type { World } from './world';
 import { SIZE } from './defs';
 
 export const FACADE_STYLES = ['brick', 'glass', 'deco', 'industrial', 'ribbon'] as const;
-const GF = 56;                       // 1층 높이
+const GF = 100;                      // 1층 높이 (보스 키 약 40 의 2배 이상)
+const DOOR_H = 78, DOOR_W = 22;      // 출입문 높이 · 반폭
 const AWN = [0xb83a3a, 0x2f6b8f, 0x3f7d45, 0xd9a43a, 0x6b4a8f, 0xc9c2b0];
 const hash = (n: number): number => { let h = Math.imul(n ^ 0x9e3779b9, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 
@@ -39,7 +40,7 @@ function shopTexture(variant: number): THREE.CanvasTexture {
   for (let b = 0; b < 4; b++) {
     const x = b * 128;
     g.fillStyle = '#b6b1a6'; g.fillRect(x, 38, 9, H - 60);                // 벽기둥
-    const gx = x + 16, gw = 98, door = (b + variant) % 3 === 1;
+    const gx = x + 16, gw = 98, door = false;
     const grd = g.createLinearGradient(0, 44, 0, H - 24); grd.addColorStop(0, '#5f7d99'); grd.addColorStop(0.5, '#2c4259'); grd.addColorStop(1, '#1c2733');
     g.fillStyle = grd; g.fillRect(gx, 44, gw, H - 70);
     g.fillStyle = 'rgba(255,255,255,0.14)'; g.beginPath(); g.moveTo(gx + 8, 44); g.lineTo(gx + 44, 44); g.lineTo(gx + 16, H - 26); g.lineTo(gx - 8 + 8, H - 26); g.fill();
@@ -55,6 +56,7 @@ export function buildBuildings(world: World, scene: THREE.Scene, base: string): 
   const loader = new THREE.TextureLoader(), tex = (n: string): THREE.Texture => { const t = loader.load(`${base}assets/tex/${n}.png`); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; return t; };
   const facades = FACADE_STYLES.map(() => new Mesh()), shops = [new Mesh(), new Mesh()], trim = new Mesh(), c = new THREE.Color(), wall = new THREE.Color();
   const tint = (s: { wall: string }): THREE.Color => wall.set(s.wall).lerp(new THREE.Color(0xe2ddd4), 0.5).clone();
+  const doors = new Map<number, { x: number; y: number }>(); for (const z of world.businesses) doors.set(z.solid, z);
   world.map.solids.forEach((s, i) => {
     if (s.struct || !s.alive) return;
     const r = (k: number): number => hash(i * 31 + k), style = Math.floor(r(1) * FACADE_STYLES.length), F = facades[style], H = 150 + s.height * 1250 + r(2) * 60, tall = H > 520 && r(3) < 0.7;
@@ -72,18 +74,31 @@ export function buildBuildings(world: World, scene: THREE.Scene, base: string): 
         { a: [t.x1, t.z1], d: [0, -1], n: [1, 0], L: t.z1 - t.z0 }, { a: [t.x0, t.z0], d: [0, 1], n: [-1, 0], L: t.z1 - t.z0 },
       ];
       const yb = ti === 0 ? GF : t.y0, P = (sd: typeof sides[0], tt: number, y: number): number[] => [sd.a[0] + sd.d[0] * tt, y, sd.a[1] + sd.d[1] * tt];
+      const dz = ti === 0 ? doors.get(i) : undefined;
       sides.forEach((sd, si) => {
+        // 이 면에 출입문이 있으면 문 위치(벽 위 거리)를 구한다
+        let door = -1;
+        if (dz && ((si === 0 && dz.y > t.z1) || (si === 1 && dz.y < t.z0) || (si === 2 && dz.x > t.x1) || (si === 3 && dz.x < t.x0))) door = si === 0 ? dz.x - t.x0 : si === 1 ? t.x1 - dz.x : si === 2 ? t.z1 - dz.y : dz.y - t.z0;
         // 외벽(윗부분)
         const u1 = sd.L / 176, vb = (yb - GF) / 184, vt = (t.y1 - GF) / 184, uo2 = uo + si * 0.37, bay = Math.max(1, Math.round(sd.L / 44));
         F.quad([P(sd, 0, yb), P(sd, sd.L, yb), P(sd, sd.L, t.y1), P(sd, 0, t.y1)], [sd.n[0], 0, sd.n[1]], tintC, [[uo2, vb], [uo2 + u1 * (bay * 44 / sd.L), vb], [uo2 + u1 * (bay * 44 / sd.L), vt], [uo2, vt]]);
         if (ti === 0) {   // 1층 상점가 + 차양
           const S = shops[(style + si) % 2], gu = sd.L / 176;
           S.quad([P(sd, 0, 0), P(sd, sd.L, 0), P(sd, sd.L, GF), P(sd, 0, GF)], [sd.n[0], 0, sd.n[1]], light, [[0, 0], [gu, 0], [gu, 1], [0, 1]]);
+          if (door >= 0) {   // 실제 출입문: 어두운 문틀 + 유리문 + 문턱, 위에는 작은 차양
+            const q = (tt: number, y: number, out: number): number[] => { const p = P(sd, tt, y); return [p[0] + sd.n[0] * out, p[1], p[2] + sd.n[1] * out]; }, dn = [sd.n[0], 0, sd.n[1]], a0 = door - DOOR_W - 4, a1 = door + DOOR_W + 4;
+            trim.quad([q(a0, 0, 1.2), q(a1, 0, 1.2), q(a1, DOOR_H + 5, 1.2), q(a0, DOOR_H + 5, 1.2)], dn, c.setHex(0x1a1c20).clone());
+            trim.quad([q(door - DOOR_W, 0, 1.8), q(door + DOOR_W, 0, 1.8), q(door + DOOR_W, DOOR_H, 1.8), q(door - DOOR_W, DOOR_H, 1.8)], dn, c.setHex(0x6fa3c4).clone());
+            trim.quad([q(door - 2, 0, 2.2), q(door + 2, 0, 2.2), q(door + 2, DOOR_H, 2.2), q(door - 2, DOOR_H, 2.2)], dn, c.setHex(0x1a1c20).clone());
+            trim.quad([q(door - 14, 36, 2.6), q(door - 8, 36, 2.6), q(door - 8, 48, 2.6), q(door - 14, 48, 2.6)], dn, c.setHex(0xe8c868).clone());   // 손잡이
+            const s0 = q(door - DOOR_W - 6, 0, 0), s1 = q(door + DOOR_W + 6, 0, 12);   // 문턱 계단
+            trim.box(Math.min(s0[0], s1[0]), 0, Math.min(s0[2], s1[2]), Math.max(s0[0], s1[0]), 3, Math.max(s0[2], s1[2]), c.setHex(0x8d8f94).clone());
+          }
           for (let b = 0; b < bay; b++) if (hash(i * 97 + si * 13 + b) < 0.55 && H > 140) {
-            const t0 = (b + 0.1) * sd.L / bay, t1 = (b + 0.9) * sd.L / bay, o = 15, col = c.setHex(AWN[Math.floor(hash(i + si * 7 + b * 3) * AWN.length)]).clone();
+            const t0 = (b + 0.1) * sd.L / bay, t1 = (b + 0.9) * sd.L / bay, o = 15; if (door >= 0 && t1 > door - DOOR_W - 10 && t0 < door + DOOR_W + 10) continue; const col = c.setHex(AWN[Math.floor(hash(i + si * 7 + b * 3) * AWN.length)]).clone();
             const q = (tt: number, y: number, out: number): number[] => { const p = P(sd, tt, y); return [p[0] + sd.n[0] * out, p[1], p[2] + sd.n[1] * out]; };
-            trim.quad([q(t0, 38, 0.5), q(t1, 38, 0.5), q(t1, 28, o), q(t0, 28, o)], [sd.n[0] * 0.5, 0.8, sd.n[1] * 0.5], col);
-            trim.quad([q(t0, 28, o), q(t1, 28, o), q(t1, 24, o), q(t0, 24, o)], [sd.n[0], 0, sd.n[1]], col.clone().multiplyScalar(0.8));
+            trim.quad([q(t0, GF - 22, 0.5), q(t1, GF - 22, 0.5), q(t1, GF - 34, o), q(t0, GF - 34, o)], [sd.n[0] * 0.5, 0.8, sd.n[1] * 0.5], col);
+            trim.quad([q(t0, GF - 34, o), q(t1, GF - 34, o), q(t1, GF - 38, o), q(t0, GF - 38, o)], [sd.n[0], 0, sd.n[1]], col.clone().multiplyScalar(0.8));
           }
         }
       });

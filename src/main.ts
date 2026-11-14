@@ -1,4 +1,5 @@
 import './style.css';
+import { readPreferences, writePreferences } from './prefs';
 import { readCityCareer, readRaceRecords, fmtTime } from './records';
 
 type GameId = 'city' | 'race';
@@ -67,13 +68,22 @@ function tile(entry: Entry, index: number): string {
 
 function renderMenu(): void {
   generation++;
+  const sound = readPreferences().sound;
   document.title = 'WALDO · LAST CITY / SPEED RUSH';
   app.hidden = false;
   app.innerHTML = `
     <main class="home">
       <header class="home-head">
         <a class="mark" href="${base}" aria-label="WALDO 홈">WALDO</a>
-        <span class="head-note">브라우저 3D 게임</span>
+        <span class="head-tools">
+          <span class="head-note">브라우저 3D 게임</span>
+          <button class="sound-toggle" id="sound-toggle" type="button" aria-pressed="${sound}" aria-label="소리 ${sound ? '켜짐' : '꺼짐'}">
+            <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M3 8v4h3l4 3.5v-11L6 8z" fill="currentColor"/>${sound
+              ? '<path d="M13 7.2a4 4 0 0 1 0 5.6M15.2 5a7 7 0 0 1 0 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'
+              : '<path d="M13.2 7.8l4.6 4.4m0-4.4l-4.6 4.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'}</svg>
+            <span id="sound-label">소리 ${sound ? '켜짐' : '꺼짐'}</span>
+          </button>
+        </span>
       </header>
       <section class="home-intro">
         <h1>두 편의 3D 게임.</h1>
@@ -86,6 +96,11 @@ function renderMenu(): void {
         <span>Team Waldo</span>
       </footer>
     </main>`;
+  app.querySelector<HTMLButtonElement>('#sound-toggle')!.onclick = () => {
+    writePreferences({ ...readPreferences(), sound: !sound });
+    renderMenu();
+    document.querySelector<HTMLButtonElement>('#sound-toggle')?.focus();
+  };
   app.querySelectorAll<HTMLButtonElement>('.tile').forEach(button => {
     button.onclick = () => { void launch(button.dataset.game as GameId); };
   });

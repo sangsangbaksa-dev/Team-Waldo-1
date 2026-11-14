@@ -7,6 +7,12 @@
 - **전적·랭킹**: 게임별 Elo(K=32) 레이팅, 승패 기록. `pvp_leaderboard`.
 - 스키마는 `supabase/migrations/` 에 있고, 프로젝트 `team-waldo-pvp` 에 적용되어 있습니다. 같은 프로젝트의 `waldo_*` 테이블은 건드리지 않습니다.
 
+## 가입 확인 메일 설정 (Supabase 대시보드)
+확인 메일의 링크는 Supabase Auth 의 **Site URL** 로 돌아옵니다. 기본값이 `http://localhost:3000` 이면 링크를 눌러도 연결 거부 화면이 뜹니다.
+- **Authentication → URL Configuration**: Site URL 을 `https://team-waldo.vercel.app` 으로, Redirect URLs 에 `https://team-waldo.vercel.app/**` 와 `https://sangsangbaksa-dev.github.io/Team-Waldo-1/**` 를 추가합니다. 코드는 가입·재전송 때 `emailRedirectTo` 로 지금 접속한 주소를 넘기므로, 허용 목록에 있는 배포 주소에서는 그 주소로 돌아옵니다.
+- 링크가 만료됐거나 한 번 눌렀다면(메일 보안 검사기가 링크를 먼저 열어 버리는 경우도 있습니다) 로그인 화면의 "인증 메일 다시 받기"로 새 링크를 받습니다.
+- 이메일 확인 자체를 끄려면 **Authentication → Providers → Email → Confirm email** 을 끕니다. 가입 즉시 쓸 수 있지만 이메일 소유 확인이 없어 가짜 주소로도 가입됩니다(친구끼리 하는 게임이면 보통 충분). 켜 둘 경우 Supabase 기본 메일 발송은 시간당 개수 제한이 작으므로 사용자가 늘면 자체 SMTP 를 연결하세요.
+
 ## 보안 모델
 - 클라이언트는 공개(publishable) 키만 씁니다(`src/net/config.ts`). 비밀 키는 저장소에 없습니다.
 - 모든 테이블에 RLS. 프로필·레이팅은 공개 읽기(랭킹용), 매치는 참가자만 읽기, 직접 쓰기 정책은 없고 함수로만 바뀝니다.

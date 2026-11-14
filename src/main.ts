@@ -31,7 +31,7 @@ function renderMenu(): void {
         <h1>작은 영지에서,<br><em>마지막 왕국으로.</em></h1>
         <p class="hero-description">수백 명의 병사를 직접 지휘하는 3D 전쟁. <br>100 대 500 대규모 군단전에서 경제와 군대를 함께 지휘하세요.<br>거점을 점령하고 마지막 왕국이 되세요.</p>
         <div class="game-facts"><div><b>4</b><span>경쟁하는 왕국</span></div><div><b>9</b><span>전략 거점</span></div><div><b>4</b><span>개성 있는 병종</span></div></div>
-        <div class="start-section"><div class="section-heading"><h2>원정 난이도</h2><span>난이도별 적의 공격과 생산 속도가 달라집니다</span></div><div class="difficulty-picker" role="group" aria-label="원정 난이도">${(['easy', 'normal', 'hard'] as Difficulty[]).map((key, i) => `<button id="difficulty-${key}" data-difficulty="${key}" class="difficulty-option${key === selectedDifficulty ? ' selected' : ''}" aria-pressed="${key === selectedDifficulty}"><span>${['I', 'II', 'III'][i]}</span><b>${DIFFICULTIES[key].label}</b><small>${['전략을 배우는 시간', '균형 잡힌 도전', '노련한 지휘관에게'][i]}</small></button>`).join('')}</div><p id="difficulty-description" class="difficulty-description">${DIFFICULTIES[selectedDifficulty].description}</p><button id="start-city" class="button city-launch" aria-label="라스트 시티 시작, 여덟 왕국 도시 생존전"><span class="city-launch-tag">NEW · 도시 전선</span><b>LAST CITY 시작</b><small>직접 뛰고 쏘는 8왕국 생존전 — 사업 매입 · 군대 육성 · 차량 탈취 · 자기장</small></button><div class="launch-actions"><button id="start-war" class="button primary launch-button" aria-label="대규모 전쟁 시작, 아군 100명 대 적군 500명">${icon('sword', 21)}대규모 전쟁 시작 <strong>100 VS 500</strong><span>${icon('arrow', 20)}</span></button>${resumable ? `<button id="continue-war" class="button continue-button">${icon('play', 19)}이어하기<small>${DIFFICULTIES[saved.difficulty].label} · ${clock(saved.time)}</small></button>` : ''}</div><p class="play-note">설치 없이 플레이 · 15초마다 자동 저장 · 키보드와 터치 지원</p></div>
+        <div class="start-section"><div class="section-heading"><h2>원정 난이도</h2><span>난이도별 적의 공격과 생산 속도가 달라집니다</span></div><div class="difficulty-picker" role="group" aria-label="원정 난이도">${(['easy', 'normal', 'hard'] as Difficulty[]).map((key, i) => `<button id="difficulty-${key}" data-difficulty="${key}" class="difficulty-option${key === selectedDifficulty ? ' selected' : ''}" aria-pressed="${key === selectedDifficulty}"><span>${['I', 'II', 'III'][i]}</span><b>${DIFFICULTIES[key].label}</b><small>${['전략을 배우는 시간', '균형 잡힌 도전', '노련한 지휘관에게'][i]}</small></button>`).join('')}</div><p id="difficulty-description" class="difficulty-description">${DIFFICULTIES[selectedDifficulty].description}</p><button id="start-city" class="button city-launch" aria-label="라스트 시티 시작, 여덟 왕국 도시 생존전"><span class="city-launch-tag">NEW · 도시 전선</span><b>LAST CITY 시작</b><small>직접 뛰고 쏘는 8왕국 생존전 — 사업 매입 · 군대 육성 · 차량 탈취 · 자기장</small></button><button id="start-race" class="button city-launch race-launch" aria-label="스피드 러시 시작, 스포츠카 3랩 레이스"><span class="city-launch-tag">NEW · 질주</span><b>SPEED RUSH 시작</b><small>스포츠카로 달리는 3랩 레이스 — 드리프트 · 니트로 · AI 라이벌 3대</small></button><div class="launch-actions"><button id="start-war" class="button primary launch-button" aria-label="대규모 전쟁 시작, 아군 100명 대 적군 500명">${icon('sword', 21)}대규모 전쟁 시작 <strong>100 VS 500</strong><span>${icon('arrow', 20)}</span></button>${resumable ? `<button id="continue-war" class="button continue-button">${icon('play', 19)}이어하기<small>${DIFFICULTIES[saved.difficulty].label} · ${clock(saved.time)}</small></button>` : ''}</div><p class="play-note">설치 없이 플레이 · 15초마다 자동 저장 · 키보드와 터치 지원</p></div>
       </section>
       <aside class="campaign-note"><span class="note-line"></span><div><span class="kicker">BUILD. COMMAND. CONQUER.</span><p>왕국의 운명은<br>당신의 선택에 달려 있습니다.</p></div><span class="compass-rose" aria-hidden="true">${icon('target', 38)}</span></aside>
       <footer class="landing-footer"><span class="footer-credit">TEAM WALDO <i>/</i> KINGDOMS AT WAR</span><div class="career-inline">${career.matches ? `<span>완료한 원정 <b>${career.matches}</b></span><span>승리 <b>${career.wins}</b></span><span>최다 처치 <b>${career.bestKills}</b></span>` : '<span>당신의 첫 번째 왕국을 기다립니다.</span>'}</div></footer>
@@ -68,6 +68,21 @@ function renderMenu(): void {
     }
   };
   app.querySelector<HTMLButtonElement>('#start-city')!.onclick = () => { void startCity(); };
+  const startRace = async () => {
+    if (launching) return; launching = true;
+    const navigation = ++generation; disposePreview?.(); disposePreview = undefined;
+    app.querySelectorAll<HTMLButtonElement>('button').forEach(b => { b.disabled = true; });
+    try {
+      const { openRace } = await import('./race/game');
+      if (generation !== navigation) return;
+      app.hidden = true;
+      openRace(renderMenu);
+    } catch {
+      renderMenu();
+      showDialog({ title: '레이스를 불러오지 못했어요', body: '<p>네트워크 연결을 확인한 뒤 다시 시작해 주세요.</p>' });
+    }
+  };
+  app.querySelector<HTMLButtonElement>('#start-race')!.onclick = () => { void startRace(); };
   const launchNew = () => {
     if (resumable) showDialog({ eyebrow: 'NEW CAMPAIGN', title: '600명 규모의 새 전쟁을 시작할까요?', body: '<p>새 전쟁이 자동 저장되면 이전 전투의 저장 내용을 덮어씁니다. 이전 전투를 계속하려면 이어하기를 선택하세요.</p>', confirm: '새 전쟁 시작', cancel: '돌아가기', onConfirm: () => { void start(false); } });
     else void start(false);

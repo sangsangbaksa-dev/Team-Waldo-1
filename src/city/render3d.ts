@@ -1,7 +1,7 @@
 // LAST CITY — Three.js 3D 렌더러 (1인칭 / 3인칭 / 차량 추격 카메라)
 import * as THREE from 'three';
 import { ACTORS, BIZ, BLOCK, BLOCKS, CIV, FACTIONS, PITCH, POLICE, ROAD, SIZE, STRUCTS, WEAPONS, type StructKind } from './defs';
-import { solidAt } from './map';
+import { fpCameraSpot, solidAt } from './map';
 import type { Business, Fx, Loot, Structure, Vehicle, World } from './world';
 import type { Ghost } from './render';
 import { ModelLayer } from './modellayer';
@@ -270,7 +270,7 @@ export class Renderer3D {
     const veh = pb && pb.inVeh ? w.vehicles.find(v => v.id === pb.inVeh) : undefined, cy = Math.cos(this.yaw), sy = Math.sin(this.yaw), cp = Math.cos(this.pitch), spt = Math.sin(this.pitch);
     if (pb) { this.focus.set(pb.x, pb.y); this.deadT = 0; } else { this.deadT += dt; this.yaw += dt * 0.25; }
     const fx = this.focus.x, fz = this.focus.y, third = this.mode === 'tp' || !!veh || !pb;
-    if (!third) { const bob = pb ? Math.sin(pb.walk * 0.09) * Math.min(1.6, Math.hypot(pb.vx, pb.vy) / 120) : 0; this.camPos.set(fx, EYE + bob, fz); this.camera.position.copy(this.camPos); this.camera.lookAt(fx + cy * cp * 100, EYE + bob + spt * 100, fz + sy * cp * 100); }
+    if (!third) { const bob = pb ? Math.sin(pb.walk * 0.09) * Math.min(1.6, Math.hypot(pb.vx, pb.vy) / 120) : 0; const cs = fpCameraSpot(w.map, fx, fz); this.camPos.set(cs.x, EYE + bob, cs.y); this.camera.position.copy(this.camPos); this.camera.lookAt(cs.x + cy * cp * 100, EYE + bob + spt * 100, cs.y + sy * cp * 100); }
     else {
       const dist = veh ? (veh.kind === 'tank' ? 250 : 200) : 135, hgt = veh ? 95 : 78, pivotY = veh ? 30 : 50; let k = 1;
       for (let s = 0.15; s <= 1; s += 0.085) { if (solidAt(w.map, fx - cy * dist * s, fz - sy * dist * s)) { k = Math.max(0.3, s - 0.12); break; } }

@@ -146,3 +146,15 @@ describe('분대 편성', () => {
     expect(w.spawnUnit('rifle', 0, 50, 50).sq).toBe(3);
   });
 });
+
+describe('1인칭 카메라 벽 여유', () => {
+  it('벽에 붙어도 눈 위치는 벽에서 충분히 떨어집니다', async () => {
+    const { fpCameraSpot, FP_CAM_CLEARANCE, solidAt } = await import('../../src/city/map');
+    const w = new World({ seed: 5, difficulty: 'd4', klass: 'warlord', tutorial: true });
+    const s = w.map.solids.find(q => q.w > 60 && q.h > 60)!;
+    // 몸 반경(13)으로 벽에 딱 붙은 플레이어
+    const cam = fpCameraSpot(w.map, s.x - 13, s.y + s.h / 2);
+    expect(s.x - cam.x).toBeGreaterThanOrEqual(FP_CAM_CLEARANCE - 0.01);
+    expect(solidAt(w.map, cam.x, cam.y)).toBeNull();
+  });
+});

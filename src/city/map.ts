@@ -57,6 +57,11 @@ export function solidAt(map: CityMap, x: number, y: number): Solid | null {
   for (let k = 0; k < cell.length; k++) { const s = map.solids[cell[k]]; if (x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h) return s; }
   return null;
 }
+/** 1인칭 카메라 전용 여유 거리: 몸(충돌 반경 13)보다 벽에서 더 떨어진 위치로 눈을 밀어냅니다. 벽에 붙어도 시야가 벽면으로만 가득 차지 않게 합니다. */
+export const FP_CAM_CLEARANCE = 24;
+export function fpCameraSpot(map: CityMap, x: number, y: number, r = FP_CAM_CLEARANCE): { x: number; y: number } {
+  const o = { x, y }; resolveCircle(map, o, r); return o;
+}
 /** 원을 고정 지형 밖으로 밀어냅니다. 충돌했으면 true. */
 export function resolveCircle(map: CityMap, o: { x: number; y: number }, r: number): boolean {
   let hit = false;

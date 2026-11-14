@@ -41,7 +41,6 @@ export interface PlayerInput { mx: number; my: number; ax: number; ay: number; f
 export interface WorldOptions { seed: number; difficulty: Difficulty; klass: ClassId; autoPlayer?: boolean; /** 연습 모드: 자기장·라이벌 AI·보급 투하 정지 */ tutorial?: boolean }
 export interface Quest { text: string; reward: number; done: boolean; check: (w: World) => boolean }
 
-const MATCH_LIMIT = 1500;
 const HC = 128, HN = Math.ceil(SIZE / HC);
 export const VEHICLES: Record<string, { hp: number; max: number; accel: number; r: number; len: number; wid: number; colors: string[] }> = {
   sedan: { hp: 320, max: 430, accel: 420, r: 28, len: 85, wid: 36, colors: ['#d9d9d9', '#4b6cb7', '#a33', '#3c7a52', '#c9a227', '#444b59'] },
@@ -586,10 +585,6 @@ export class World {
       this.say(`☠️ ${f.name} 궤멸 — 남은 조직 ${this.aliveCount()}`, f.color); this.fx('announce', 0, 0, 0, `${f.name} 궤멸 · 남은 조직 ${this.aliveCount()}`);
     }
     const alive = this.factions.filter(f => f.alive);
-    if (!this.over && !this.opts.tutorial && this.time >= MATCH_LIMIT && alive.length > 1) {   // 시간 종료: 순자산 1위가 승리
-      const rank = [...alive].sort((x, y) => this.netWorth(y) - this.netWorth(x)); rank.forEach((f, i) => { f.place = i + 1; });
-      this.over = true; this.winner = rank[0].id; this.fx('announce', 0, 0, 0, `시간 종료 — ${rank[0].name} 승리`); return;
-    }
     if (alive.length <= 1 || (!this.factions[0].alive && !this.opts.autoPlayer)) {
       this.over = true; const w = alive.length === 1 ? alive[0] : alive.length === 0 ? [...this.factions].sort((a, b) => b.diedAt - a.diedAt)[0] : null;
       if (w && alive.length <= 1) { w.place = 1; this.winner = w.id; }

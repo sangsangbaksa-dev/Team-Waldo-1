@@ -98,7 +98,7 @@ export const STEPS: TutStep[] = [
     enter: x => { const f = x.w.factions[0]; f.crystal = Math.max(f.crystal, 120); },
     done: x => x.c.sells >= 1 },
   { title: '11. 승리 조건', info: true,
-    body: '적 본부를 부수면 그 보스는 <b>부활하지 못하고</b>, 마지막까지 남은 왕국이 승리합니다. 제한 시간이 끝나면 <b>자산(순자산)</b>이 가장 큰 왕국이 이깁니다. 사업체를 늘리고 병력을 지키며 경제를 굴리세요.',
+    body: '적 본부를 부수면 그 보스는 <b>부활하지 못하고</b>, 마지막까지 남은 왕국이 승리합니다. 시간 제한은 없으니 끝까지 싸워 살아남으세요. 사업체를 늘리고 병력을 지키며 경제를 굴리세요.',
     done: x => x.c.acked },
 ];
 

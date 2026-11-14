@@ -64,4 +64,23 @@ describe('메인 페이지', () => {
     expect(button('#start-race').textContent).toContain('선셋 서킷 최고 랩 1:01.234');
     expect(button('#start-city').textContent).toContain('5판 · 2승');
   });
+
+  it('소리 토글이 설정을 저장하고 다시 켤 수 있다', async () => {
+    await loadMenu();
+    expect(button('#sound-toggle').getAttribute('aria-pressed')).toBe('true');
+    button('#sound-toggle').click();
+    expect(button('#sound-toggle').getAttribute('aria-pressed')).toBe('false');
+    expect(button('#sound-toggle').textContent).toContain('꺼짐');
+    expect(JSON.parse(localStorage.getItem('waldo.preferences.v1')!).sound).toBe(false);
+    button('#sound-toggle').click();
+    expect(JSON.parse(localStorage.getItem('waldo.preferences.v1')!).sound).toBe(true);
+  });
+
+  it('저장된 꺼짐 상태로 시작하고 다른 설정은 유지한다', async () => {
+    localStorage.setItem('waldo.preferences.v1', JSON.stringify({ sound: false, quality: 'low' }));
+    await loadMenu();
+    expect(button('#sound-toggle').getAttribute('aria-pressed')).toBe('false');
+    button('#sound-toggle').click();
+    expect(JSON.parse(localStorage.getItem('waldo.preferences.v1')!)).toMatchObject({ sound: true, quality: 'low' });
+  });
 });

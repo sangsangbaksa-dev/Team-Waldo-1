@@ -1,90 +1,67 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createWar } from '../../src/battle/war';
-import { loadWar, saveWar, WAR_SAVE_KEY } from '../../src/battle/save';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const navigation = vi.hoisted(() => ({
-  openWar: vi.fn<(onExit: () => void, options: { forceNew: boolean; difficulty: string }) => void>(),
-  preview: vi.fn<(mount: HTMLElement) => () => void>(),
-  disposePreview: vi.fn(),
+const games = vi.hoisted(() => ({
+  openCity: vi.fn<(onExit: () => void) => void>(),
+  openRace: vi.fn<(onExit: () => void) => void>(),
 }));
-vi.mock('../../src/battle/view', () => ({ openWar: navigation.openWar }));
-vi.mock('../../src/battle/preview', () => ({ createLandingPreview: navigation.preview }));
+vi.mock('../../src/city/game', () => ({ openCity: games.openCity }));
+vi.mock('../../src/race/game', () => ({ openRace: games.openRace }));
 
-function button(selector: string): HTMLButtonElement {
-  const value = document.querySelector<HTMLButtonElement>(selector);
-  if (!value) throw new Error(`Missing menu button: ${selector}`);
-  return value;
-}
 async function loadMenu(): Promise<void> {
   await import('../../src/main');
   await vi.dynamicImportSettled();
 }
+const button = (selector: string): HTMLButtonElement => {
+  const el = document.querySelector<HTMLButtonElement>(selector);
+  if (!el) throw new Error(`Missing: ${selector}`);
+  return el;
+};
+
 beforeEach(() => {
-  vi.resetModules(); vi.clearAllMocks();
+  vi.resetModules();
+  vi.clearAllMocks();
   document.body.innerHTML = '<div id="game"></div>';
-  localStorage.clear(); navigation.preview.mockReturnValue(navigation.disposePreview);
-});
-afterEach(async () => {
-  await vi.dynamicImportSettled();
-  document.querySelector<HTMLButtonElement>('.dialog-cancel')?.click();
-  document.body.replaceChildren(); localStorage.clear();
+  localStorage.clear();
 });
 
-describe('grand-battle-only navigation', () => {
-  it('exposes a single 100 vs 500 start action and ignores repeat clicks', async () => {
-    await loadMenu(); button('#difficulty-hard').click();
-    expect(document.querySelector('#legacy')).toBeNull();
-    expect(document.querySelector('#start-grand')).toBeNull();
-    expect(button('#start-war').getAttribute('aria-label')).toContain('100명');
-    const start = button('#start-war');
-    start.click(); start.click();
-    await vi.dynamicImportSettled();
-    expect(navigation.openWar).toHaveBeenCalledTimes(1);
-    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), {
-      forceNew: true, difficulty: 'hard',
-    });
-    expect(navigation.disposePreview).toHaveBeenCalledTimes(1);
+describe('메인 페이지', () => {
+  it('LAST CITY와 SPEED RUSH 두 게임만 보여 준다', async () => {
+    await loadMenu();
+    const tiles = [...document.querySelectorAll<HTMLButtonElement>('.tile')];
+    expect(tiles.map(t => t.dataset.game)).toEqual(['city', 'race']);
+    expect(document.body.textContent).not.toMatch(/왕국 전쟁|KINGDOMS|군단전/);
   });
 
-  it('opens settings despite corrupt save, career and preferences', async () => {
-    localStorage.setItem(WAR_SAVE_KEY, '{not valid JSON');
-    localStorage.setItem('waldo.career.v1', '{also broken');
-    localStorage.setItem('waldo.preferences.v1', 'null');
+  it('LAST CITY 버튼이 도시 게임을 연다', async () => {
     await loadMenu();
-    expect(document.querySelector('.landing')).not.toBeNull();
-    expect(document.querySelector('#continue-war')).toBeNull();
-    expect(button('#start-war').disabled).toBe(false);
-    button('#preferences').click();
-    expect(document.querySelector('.game-dialog')).not.toBeNull();
-    expect(document.querySelector<HTMLSelectElement>('#menu-quality')?.value).toMatch(/^(high|standard)$/);
-    button('.dialog-cancel').click();
-    expect(button('#start-war').disabled).toBe(false);
+    button('#start-city').click();
+    await vi.waitFor(() => expect(games.openCity).toHaveBeenCalledTimes(1));
+    expect(games.openRace).not.toHaveBeenCalled();
+    expect(document.querySelector<HTMLElement>('#game')!.hidden).toBe(true);
   });
 
-  it('continues a large saved hard match at its original difficulty', async () => {
-    const saved = createWar({ grandBattle: true, difficulty: 'hard' }); saved.time = 83;
-    expect(saveWar(saved)).toBe(true);
+  it('SPEED RUSH 버튼이 레이싱 게임을 연다', async () => {
     await loadMenu();
-    expect(button('#continue-war').textContent).toContain('1분 23초');
-    expect(button('#continue-war').textContent).toContain('도전');
-    button('#difficulty-easy').click(); button('#continue-war').click();
-    await vi.dynamicImportSettled();
-    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), {
-      forceNew: false, difficulty: 'hard',
-    });
-    expect(loadWar()).toEqual(saved);
+    button('#start-race').click();
+    await vi.waitFor(() => expect(games.openRace).toHaveBeenCalledTimes(1));
+    expect(games.openCity).not.toHaveBeenCalled();
   });
 
-  it('never resumes a deprecated small skirmish, even when the old save exists', async () => {
-    const skirmish = createWar({ difficulty: 'easy' });
-    expect(saveWar(skirmish)).toBe(true);
+  it('게임에서 나오면 메인 페이지가 다시 나타난다', async () => {
     await loadMenu();
-    expect(document.querySelector('#continue-war')).toBeNull();
-    button('#start-war').click();
-    await vi.dynamicImportSettled();
-    expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), {
-      forceNew: true, difficulty: 'normal',
-    });
+    button('#start-race').click();
+    await vi.waitFor(() => expect(games.openRace).toHaveBeenCalled());
+    games.openRace.mock.calls[0]![0]();
+    expect(document.querySelector<HTMLElement>('#game')!.hidden).toBe(false);
+    expect(document.querySelectorAll('.tile')).toHaveLength(2);
+  });
+
+  it('저장된 기록이 있으면 타일에 표시한다', async () => {
+    localStorage.setItem('waldo.race.v1', JSON.stringify({ best: 61.234, bestRace: 200 }));
+    localStorage.setItem('waldo.city.v1', JSON.stringify({ matches: 5, wins: 2, best: 0 }));
+    await loadMenu();
+    expect(button('#start-race').textContent).toContain('1:01.234');
+    expect(button('#start-city').textContent).toContain('5판 · 2승');
   });
 });

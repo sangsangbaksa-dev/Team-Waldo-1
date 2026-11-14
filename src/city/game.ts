@@ -12,14 +12,11 @@ import { ACTORS, BLOCKS, PITCH, ROAD } from './defs';
 import { mapPointerToWorld } from './uiMath';
 import { SHOP, canBuy, itemPrice } from './shop';
 import { missionLog, missionSummary } from './missions';
-import { readPreferences, recordMatch, writePreferences } from '../battle/preferences';
+import { readPreferences, recordMatch, writePreferences } from '../prefs';
+import { CITY_KEY, readCityCareer } from '../records';
 
 const $ = (n: number): string => Math.floor(n).toLocaleString('en-US');
 const clock = (t: number): string => `${Math.floor(Math.max(0, t) / 60)}:${String(Math.floor(Math.max(0, t) % 60)).padStart(2, '0')}`;
-const CITY_KEY = 'waldo.city.v1';
-export function readCityCareer(): { matches: number; wins: number; best: number } {
-  try { const r = JSON.parse(localStorage.getItem(CITY_KEY) ?? '{}') as Record<string, unknown>; const n = (v: unknown): number => typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0; return { matches: n(r.matches), wins: n(r.wins), best: n(r.best) }; } catch { return { matches: 0, wins: 0, best: 0 }; }
-}
 
 function readTutDone(): boolean { try { return localStorage.getItem(TUT_KEY) === '1'; } catch { return false; } }
 export function openCity(onExit: () => void, options: { difficulty?: string } = {}): void {
@@ -58,7 +55,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
   const res = (e: string): void => { if (e && e !== 'shop') toast(e); else if (!e) audio.play('click'); };
 
   function setup(): void {
-    modal.innerHTML = `<section class="c-setup"><div class="c-kicker">WALDO · KINGDOMS AT WAR — 도시 전선</div><h2>LAST CITY <small>최후의 왕국</small></h2>
+    modal.innerHTML = `<section class="c-setup"><div class="c-kicker">WALDO · LAST CITY</div><h2>LAST CITY <small>최후의 왕국</small></h2>
       <p class="c-lead">여덟 왕국이 한 도시에 떨어졌습니다. 직접 총을 들고 뛰고, 차를 빼앗고, 사업체를 사들여 돈을 벌고, 군대를 길러 <b>자기장이 닫히기 전 마지막 왕국</b>이 되세요. <b>J</b>에서 8단계 도시 작전과 보상을 확인할 수 있습니다.</p>
       <button class="c-tutcard${tutDone ? '' : ' rec'}" data-act="tutorial"><span>${tutDone ? '다시 연습' : '처음이라면 추천 · 약 5분'}</span><b>튜토리얼 시작</b><p>이동·사격·사업체·기지 건설·병력 지휘·차량·시장까지 한 단계씩 안전하게 익힙니다. 연습장에서는 자기장과 라이벌이 멈춰 있습니다.</p></button>
       <div class="c-sub">${tutDone ? '바로 시작할 영웅을 고르세요' : '또는 바로 시작할 영웅을 고르세요'}</div>

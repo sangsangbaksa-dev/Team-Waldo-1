@@ -2,20 +2,16 @@
 import './race.css';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { readPreferences } from '../battle/preferences';
+import { readPreferences } from '../prefs';
+import { RACE_KEY, fmtTime, readRaceSave, type RaceSave as Save } from '../records';
 import { RaceAudio } from './audio';
 import { aiInput, boosting, kmh, type CarInput } from './physics';
 import { createRace, currentLap, placeOf, updateRace, type RaceEvent, type RaceState } from './race';
 import { buildTrack } from './track';
 import { RaceView } from './view';
 
-const KEY = 'waldo.race.v1', LAPS = 3, STEP = 1 / 90;
-interface Save { best: number; bestRace: number }
-export function readRaceSave(): Save {
-  try { const r = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Record<string, unknown>; const n = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : Infinity); return { best: n(r.best), bestRace: n(r.bestRace) }; } catch { return { best: Infinity, bestRace: Infinity }; }
-}
-function writeRaceSave(s: Save): void { try { localStorage.setItem(KEY, JSON.stringify({ best: Number.isFinite(s.best) ? s.best : 0, bestRace: Number.isFinite(s.bestRace) ? s.bestRace : 0 })); } catch { /* 저장 불가 환경 */ } }
-export const fmtTime = (s: number): string => { if (!Number.isFinite(s)) return '--:--.---'; const m = Math.floor(s / 60), r = s - m * 60; return `${m}:${r < 10 ? '0' : ''}${r.toFixed(3)}`; };
+const LAPS = 3, STEP = 1 / 90;
+function writeRaceSave(s: Save): void { try { localStorage.setItem(RACE_KEY, JSON.stringify({ best: Number.isFinite(s.best) ? s.best : 0, bestRace: Number.isFinite(s.bestRace) ? s.bestRace : 0 })); } catch { /* 저장 불가 환경 */ } }
 const ORD = ['', '1ST', '2ND', '3RD', '4TH'];
 
 export function openRace(onExit: () => void): void {

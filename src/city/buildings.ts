@@ -4,7 +4,7 @@ import type { World } from './world';
 import { SIZE } from './defs';
 
 export const FACADE_STYLES = ['brick', 'glass', 'deco', 'industrial', 'ribbon'] as const;
-const GF = 100;                      // 1층 높이 (보스 키 약 40 의 2배 이상)
+const GF = 100;                      // 1층 높이 (사람 키 약 40 — scale.ts 의 HUMAN 기준 — 의 2배 이상)
 const DOOR_H = 78, DOOR_W = 22;      // 출입문 높이 · 반폭
 const AWN = [0xb83a3a, 0x2f6b8f, 0x3f7d45, 0xd9a43a, 0x6b4a8f, 0xc9c2b0];
 const hash = (n: number): number => { let h = Math.imul(n ^ 0x9e3779b9, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };

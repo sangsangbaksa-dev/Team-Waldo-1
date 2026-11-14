@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { World } from '../../src/city/world';
 import { findPath, generateCity, makeRng, navBlocked } from '../../src/city/map';
-import { BIZ, FACTION_COUNT, SIZE, STRUCTS, UNITS } from '../../src/city/defs';
+import { BIZ, FACTION_COUNT, SIZE, STRUCTS, SUPPLY_CAP, UNITS } from '../../src/city/defs';
 
 const make = (seed = 7): World => new World({ seed, difficulty: 'd4', klass: 'tycoon' });
 const run = (w: World, seconds: number): void => { for (let i = 0; i < seconds * 30 && !w.over; i++) { w.step(1 / 30); w.events.length = 0; } };
@@ -42,6 +42,16 @@ describe('LAST CITY rules', () => {
     run(w, UNITS.rifle.time + 1); expect(w.actors.some(a => a.alive && a.f === 0 && a.kind === 'rifle')).toBe(true);
     for (let k = 0; k < 40; k++) w.train(0, 'rifle');
     expect(f.supply).toBeLessThanOrEqual(f.supplyMax);
+  });
+  it('caps player army at 100 no matter how many depots are built', () => {
+    const w = make(), f = w.factions[0], hq = w.hq(0)!;
+    for (let k = 0; k < 30; k++) w.addStructure('depot', 0, hq.x + 200 + (k % 6) * 70, hq.y + 200 + Math.floor(k / 6) * 70, true);
+    w.recomputeSupply(f);
+    expect(f.supplyMax).toBe(SUPPLY_CAP); expect(SUPPLY_CAP).toBe(100);
+  });
+  it('charges 1 supply per soldier and 2 per vehicle', () => {
+    for (const id of ['worker', 'rifle', 'heavy', 'medic', 'sniper'] as const) expect(UNITS[id].supply).toBe(1);
+    for (const id of ['buggy', 'tank'] as const) expect(UNITS[id].supply).toBe(2);
   });
   it('trades crystal on a market whose price moves against large orders', () => {
     const w = make(), f = w.factions[0]; f.crystal = 1000; const p = w.price, cash = f.cash;

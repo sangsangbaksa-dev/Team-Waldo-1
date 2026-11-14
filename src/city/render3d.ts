@@ -56,13 +56,15 @@ export class Renderer3D {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(quality === 'high' ? 2 : quality === 'standard' ? 1.5 : 1, window.devicePixelRatio || 1));
     this.renderer.shadowMap.enabled = quality === 'high'; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // 필름 톤매핑: 하이라이트가 하얗게 날아가지 않고 노을빛이 부드럽게 번진다.
+    if (quality !== 'low') { this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.18; }
     const sc = this.scene, w = world;
     sc.fog = new THREE.Fog(0xd8a488, 700, 4300); sc.add(this.camera);
     // 하늘 돔 (노을)
     const skyGeo = new THREE.SphereGeometry(4800, 24, 12), sp = skyGeo.attributes.position, cols = new Float32Array(sp.count * 3), top = new THREE.Color(0x3d5a9e), mid = new THREE.Color(0xf0a878), low = new THREE.Color(0xd8a488);
     for (let i = 0; i < sp.count; i++) { const k = Math.max(0, sp.getY(i) / 4800), c = k < 0.25 ? low.clone().lerp(mid, k / 0.25) : mid.clone().lerp(top, Math.min(1, (k - 0.25) / 0.6)); cols.set([c.r, c.g, c.b], i * 3); }
     skyGeo.setAttribute('color', new THREE.BufferAttribute(cols, 3)); const sky = new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false })); sky.renderOrder = -1; sky.name = 'sky'; sc.add(sky);
-    sc.add(new THREE.HemisphereLight(0xb9c8ff, 0x5a4a40, 1.25));
+    sc.add(new THREE.HemisphereLight(0xaebfff, 0x7a5a48, 1.3));
     this.sun = new THREE.DirectionalLight(0xffd2a0, 2.3); this.sun.position.set(-600, 700, -400); sc.add(this.sun); sc.add(this.sun.target);
     if (quality === 'high') { this.sun.castShadow = true; const s = this.sun.shadow; s.mapSize.set(2048, 2048); s.camera.left = s.camera.bottom = -1100; s.camera.right = s.camera.top = 1100; s.camera.near = 10; s.camera.far = 3000; s.bias = -0.0012; }
     const sunDisc = new THREE.Mesh(new THREE.SphereGeometry(190, 16, 8), new THREE.MeshBasicMaterial({ color: 0xfff0c8, fog: false })); sunDisc.position.set(-3700, 1000, -2400); sky.add(sunDisc);
@@ -88,6 +90,8 @@ export class Renderer3D {
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(SIZE, SIZE), new THREE.MeshLambertMaterial({ map: gt })); ground.rotation.x = -Math.PI / 2; ground.position.set(SIZE / 2, 0, SIZE / 2); ground.receiveShadow = true; sc.add(ground);
     this.buildCity();
     this.glow = canvasTex(64, 64, g => { const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.4, 'rgba(255,255,255,0.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); });
+    // 태양 주변 후광: 지평선 가까운 노을 하늘에 따뜻한 빛 번짐을 더한다.
+    for (const [size, opacity, color] of [[1500, 0.34, 0xffb27a], [3600, 0.2, 0xff9a62]] as const) { const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); halo.scale.set(size, size, 1); halo.position.set(-3700, 1000, -2400).multiplyScalar(0.98); sky.add(halo); }
     this.sparks = new Points(500, 7, true, this.glow, false); this.fire = new Points(400, 46, true, this.glow, false); this.smoke = new Points(300, 70, false, this.glow, true); sc.add(this.sparks.mesh, this.fire.mesh, this.smoke.mesh);
     if (this.models) { try { this.ml = new ModelLayer(sc, w, this.models, this.glow, quality === 'high'); } catch { this.ml = null; } }
     // 인스턴스 메시
@@ -155,7 +159,8 @@ export class Renderer3D {
           for (let k = 0; k < 9; k++) { const a = rnd() * 6.28; this.smoke.add(e.x, 30, e.y, Math.cos(a) * 40, 50 + rnd() * 70, Math.sin(a) * 40, 1.6 + rnd(), 0x3c3c42); }
           for (let k = 0; k < 14; k++) this.sparks.add(e.x, 20, e.y, (rnd() - 0.5) * 500, rnd() * 420, (rnd() - 0.5) * 500, 0.8, 0xffd28a, 500);
           const bm = this.booms.find(q => q.life <= 0); if (bm) { bm.life = 0.32; bm.r = r; bm.m.position.set(e.x, 24, e.y); bm.m.visible = true; }
-          this.light.position.set(e.x, 80, e.y); this.lightT = 0.25; this.ring(e.x, e.y, 10, r * 1.2, 0xffd28a, 0.35); }
+          this.light.position.set(e.x, 80, e.y); this.lightT = 0.25; this.ring(e.x, e.y, 10, r * 1.2, 0xffd28a, 0.35); this.ring(e.x, e.y, 6, r * 2.1, 0xfff0d0, 0.55);
+          for (let k = 0; k < 8; k++) { const a = rnd() * 6.28, s = 30 + rnd() * r * 0.9; this.smoke.add(e.x + Math.cos(a) * s * 0.4, 14, e.y + Math.sin(a) * s * 0.4, Math.cos(a) * s, 18 + rnd() * 30, Math.sin(a) * s, 1.1 + rnd() * 0.8, 0x8a7c70); } }
         if (d < 1000) this.shake = Math.max(this.shake, (1 - d / 1000) * 9);
       } else if (e.t === 'cash' && near) this.floater(e.x, e.y, 60, `${(e.a ?? 0) >= 0 ? '+' : '-'}$${Math.abs(Math.round(e.a ?? 0))}`, (e.a ?? 0) >= 0 ? '#7dffb0' : '#ffd27a');
       else if (e.t === 'crystal' && d < 500) this.floater(e.x, e.y, 40, `+${e.a}`, '#8fe9ff');

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { BIZ, type BizKind } from '../../src/city/defs';
-import { INTERIORS, PLAYER_R, nearCounter, nearDoor, resolveInterior } from '../../src/city/interior';
+import { INTERIORS, PLAYER_R, SEAT_M, nearCounter, nearDoor, resolveInterior, type Solid } from '../../src/city/interior';
+import { EYE_IN } from '../../src/city/interior3d';
+import { CHAR_KINDS } from '../../src/city/models';
+import { EYE_HEIGHT, HUMAN } from '../../src/city/scale';
 import { SHOP, canBuy, itemPrice } from '../../src/city/shop';
 import { World, type Actor } from '../../src/city/world';
 
@@ -39,6 +42,43 @@ describe('사업체 내부 배치', () => {
   it('벽과 가구를 뚫고 나가지 못합니다', () => {
     const lay = INTERIORS.store, p = { x: -50, y: -50 }; resolveInterior(lay, p); expect(p.x).toBeGreaterThanOrEqual(PLAYER_R); expect(p.y).toBeGreaterThanOrEqual(PLAYER_R);
     const c = lay.solids.find(s => s.style === 'counter')!, q = { x: (c.x0 + c.x1) / 2, y: (c.y0 + c.y1) / 2 }; resolveInterior(lay, q); expect(q.x < c.x0 || q.x > c.x1 || q.y < c.y0 || q.y > c.y1).toBe(true);
+  });
+});
+
+describe('사람 눈금 실내', () => {
+  const inside = (s: Solid, p: { x: number; y: number }): boolean => p.x > s.x0 && p.x < s.x1 && p.y > s.y0 && p.y < s.y1;
+  it('눈높이는 서 있는 사람과 같고, 천장·가구는 사람 키 기준입니다', () => {
+    expect(EYE_IN).toBe(EYE_HEIGHT);
+    for (const kind of KINDS) {
+      const lay = INTERIORS[kind], m = (v: number): number => v / HUMAN;
+      expect(m(lay.h), `${kind} 천장`).toBeGreaterThan(2.8); expect(m(lay.h)).toBeLessThan(4);
+      for (const so of lay.solids) { expect(so.h, `${kind} ${so.style} 높이`).toBeLessThanOrEqual(lay.h); if (so.style === 'counter' || so.style === 'glass') { expect(m(so.h)).toBeGreaterThan(0.95); expect(m(so.h)).toBeLessThan(1.3); } if (so.style === 'sofa') expect(so.h).toBeCloseTo(SEAT_M.sofa * HUMAN, 0); if (so.style === 'bench') expect(so.h).toBeCloseTo(SEAT_M.bench * HUMAN, 0); }
+    }
+  });
+  it('모든 업종에 점원이 있고, 앉은 손님이 있으며, 모델은 시민 캐릭터입니다', () => {
+    for (const kind of KINDS) {
+      const lay = INTERIORS[kind]; expect(lay.folk[0]).toMatchObject({ x: lay.clerk.x, y: lay.clerk.y, role: 'clerk' });
+      expect(lay.folk.filter(f => f.pose !== 'stand').length, `${kind} 앉은 사람`).toBeGreaterThanOrEqual(2);
+      for (const f of lay.folk) expect(CHAR_KINDS as readonly string[], `${kind} ${f.model}`).toContain(f.model);
+    }
+  });
+  it('사람은 방 안에서 서로 겹치지 않고 가구를 뚫고 서 있지 않습니다', () => {
+    for (const kind of KINDS) {
+      const lay = INTERIORS[kind];
+      lay.folk.forEach((f, i) => {
+        expect(f.x > 0 && f.x < lay.w && f.y > 0 && f.y < lay.d, `${kind} #${i} 방 밖`).toBe(true);
+        for (let j = 0; j < i; j++) expect(Math.hypot(f.x - lay.folk[j].x, f.y - lay.folk[j].y), `${kind} #${i} 와 #${j} 겹침`).toBeGreaterThan(11);
+        const hit = lay.solids.find(so => so.style !== 'void' && inside(so, f));
+        if (f.seat === 'sofa' || f.seat === 'bench') expect(hit?.style, `${kind} #${i} 앉을 가구 없음`).toBe(f.seat); else expect(hit, `${kind} #${i} 가구 속`).toBeUndefined();
+        expect(f.seat === 'none', `${kind} #${i} 자세와 자리`).toBe(f.pose === 'stand');
+      });
+    }
+  });
+  it('서 있는 사람은 길을 막고, 플레이어는 사람 몸을 뚫지 못합니다', () => {
+    for (const kind of KINDS) {
+      const lay = INTERIORS[kind];
+      for (const f of lay.folk.filter(q => q.pose === 'stand' && !lay.solids.some(so => so.x0 - (so.pad?.w ?? 0) < q.x && q.x < so.x1 + (so.pad?.e ?? 0) && so.y0 - (so.pad?.n ?? 0) < q.y && q.y < so.y1 + (so.pad?.s ?? 0)))) { const p = { x: f.x, y: f.y }; resolveInterior(lay, p); expect(Math.hypot(p.x - f.x, p.y - f.y), `${kind} 사람 속`).toBeGreaterThan(PLAYER_R - 0.5); }
+    }
   });
 });
 

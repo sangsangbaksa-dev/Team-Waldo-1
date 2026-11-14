@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { ACTORS, BLOCK, BLOCKS, CIV, FACTIONS, PITCH, POLICE, ROAD, SIZE, type WeaponId } from './defs';
 import { makeRng } from './map';
-import { AWNING_OUT, CHAR_SCALE, PROPS } from './scale';
+import { AWNING_OUT, CHAR_SCALE, HIP, KNEE, LEG_Z, PROPS } from './scale';
 import { CHAR_KINDS, instantiate, type Baked, type Models } from './models';
 import type { Actor, Structure, Vehicle, World } from './world';
 
@@ -17,7 +17,7 @@ const VEHICLE_MODEL: Record<string, string> = { sedan: 'sedan', sports: 'sports'
 /** 한 부위(몸통·허벅지·정강이·팔)의 인스턴스 메시 묶음. 재질 종류별로 나뉩니다. */
 interface Part { fixed?: THREE.InstancedMesh; team?: THREE.InstancedMesh; skin?: THREE.InstancedMesh; glow?: THREE.InstancedMesh; n: number }
 interface CharSet { body: Part; leg: Part; shin?: Part; armL?: Part; armR?: Part; pl?: THREE.Vector3; pr?: THREE.Vector3 }
-const HIP = 0.9, KNEE = 0.44, LEG_Z = 0.11, AIM = 1.42;
+const AIM = 1.42;
 
 export class ModelLayer {
   private d = new THREE.Object3D(); private base = new THREE.Matrix4(); private local = new THREE.Matrix4(); private q = new THREE.Quaternion(); private qz = new THREE.Quaternion(); private qy = new THREE.Quaternion();

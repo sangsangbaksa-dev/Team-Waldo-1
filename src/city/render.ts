@@ -137,12 +137,11 @@ export class Renderer {
     const { ctx, world: w } = this;
     for (const z of w.businesses) {
       if (!this.visible(z.x, z.y)) continue; const d = BIZ[z.kind], col = z.kind === 'gunshop' ? '#ff5d5d' : z.owner >= 0 ? FACTIONS[z.owner].color : '#e9ecef';
-      ctx.fillStyle = col; ctx.globalAlpha = 0.16 + z.pulse * 0.4 + Math.sin(this.t * 3 + z.id) * 0.04; ctx.beginPath(); ctx.arc(z.x, z.y, 30, 0, 6.29); ctx.fill(); ctx.globalAlpha = 1;
-      ctx.strokeStyle = col; ctx.lineWidth = 2.5; if (z.owner < 0 && z.kind !== 'gunshop') ctx.setLineDash([7, 6]); ctx.beginPath(); ctx.arc(z.x, z.y, 30, 0, 6.29); ctx.stroke(); ctx.setLineDash([]);
-      if (z.cap > 0) { ctx.strokeStyle = FACTIONS[z.capBy]?.color ?? '#fff'; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(z.x, z.y, 37, -1.57, -1.57 + 6.283 * Math.min(1, z.cap / 6)); ctx.stroke(); }
+      const o = w.doorOut(z), px = -o.y, py = o.x; ctx.strokeStyle = col; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(z.x - o.x * 18 + px * 22, z.y - o.y * 18 + py * 22); ctx.lineTo(z.x - o.x * 18 - px * 22, z.y - o.y * 18 - py * 22); ctx.stroke();
+      if (z.cap > 0) { ctx.strokeStyle = FACTIONS[z.capBy]?.color ?? '#fff'; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(z.x, z.y, 30, -1.57, -1.57 + 6.283 * Math.min(1, z.cap / 6)); ctx.stroke(); }
       ctx.font = "800 12px 'Noto Sans KR',sans-serif"; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.75)';
       const label = z.kind === 'gunshop' ? '무기상' : z.owner < 0 ? `${d.name} $${d.price}` : `${d.name} ${'★'.repeat(z.level)}`;
-      ctx.strokeText(label, z.x, z.y + 4); ctx.fillStyle = '#fff'; ctx.fillText(label, z.x, z.y + 4);
+      ctx.strokeText(label, z.x + o.x * 20, z.y + o.y * 20 + 4); ctx.fillStyle = '#fff'; ctx.fillText(label, z.x + o.x * 20, z.y + o.y * 20 + 4);
     }
   }
   lootLayer(): void {

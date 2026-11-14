@@ -92,7 +92,7 @@ export class World {
     for (const c of this.map.cars) this.spawnVehicle(c.kind, c.x, c.y, c.ang);
     for (let i = 0; i < 40; i++) updatePopulation(this, true);
     this.quests = [
-      { text: '편의점 등 사업체 1곳 매입하기 (패드 위에서 E)', reward: 200, done: false, check: w => w.businesses.some(b => b.owner === 0) },
+      { text: '편의점 등 사업체 1곳 매입하기 (출입문으로 들어가 카운터에서 E)', reward: 200, done: false, check: w => w.businesses.some(b => b.owner === 0) },
       { text: '병영 건설하기 (Tab → 건설)', reward: 150, done: false, check: w => w.structures.some(s => s.f === 0 && s.kind === 'barracks' && s.built >= 1) },
       { text: '소총병 4명 훈련하기', reward: 250, done: false, check: w => w.actors.filter(a => a.alive && a.f === 0 && a.kind === 'rifle').length >= 4 },
       { text: '무기 줍기 또는 무기상에서 구매하기', reward: 200, done: false, check: w => w.factions[0].slots.some(x => x.id !== 'pistol' && !(x.id === 'smg' && w.opts.klass === 'warlord')) },
@@ -385,9 +385,27 @@ export class World {
     const lay = INTERIORS[z.kind]; this.inside = { biz: z.id, x: lay.spawn.x, y: lay.spawn.y, ang: lay.spawn.ang, walk: 0 };
     b.vx = b.vy = 0; this.fx('door', b.x, b.y); return '';
   }
+  /** 사업체 출입문의 바깥 방향(건물에서 멀어지는 단위 벡터) */
+  doorOut(z: Business): { x: number; y: number } {
+    const so = this.map.solids[z.solid]; if (!so) return { x: 0, y: 1 };
+    const nx = z.x - Math.max(so.x, Math.min(so.x + so.w, z.x)), ny = z.y - Math.max(so.y, Math.min(so.y + so.h, z.y)), l = Math.hypot(nx, ny);
+    return l > 0.01 ? { x: nx / l, y: ny / l } : { x: 0, y: 1 };
+  }
+  /** 출입문 앞에서 건물 쪽으로 걸어가면 바로 들어갑니다. */
+  autoEnter(dt: number): void {
+    this.doorCd = Math.max(0, this.doorCd - dt); const b = this.boss(0);
+    if (this.inside || this.doorCd > 0 || !b || b.inVeh) return;
+    const m = Math.hypot(this.input.mx, this.input.my); if (m < 0.2) return;
+    for (const z of this.businesses) {
+      if (Math.hypot(z.x - b.x, z.y - b.y) > 22 || (z.owner >= 0 && z.owner !== 0)) continue;
+      const o = this.doorOut(z); if ((this.input.mx * o.x + this.input.my * o.y) / m > -0.35) continue;
+      if (!this.enterBiz(0, z)) { this.enteredByDoor = true; return; }
+    }
+  }
+  enteredByDoor = false; doorCd = 0;
   exitBiz(fi: number): void {
     if (fi !== 0 || !this.inside) return; const z = this.insideBiz(), b = this.boss(fi); this.inside = null;
-    if (b && z) { b.x = z.x; b.y = z.y; b.vx = b.vy = 0; resolveCircle(this.map, b, b.r); this.fx('door', b.x, b.y); }
+    if (b && z) { const o = this.doorOut(z); b.x = z.x + o.x * 18; b.y = z.y + o.y * 18; b.vx = b.vy = 0; this.doorCd = 1; resolveCircle(this.map, b, b.r); this.fx('door', b.x, b.y); }
   }
   /** 내부 공간에서 걷기(보스 입력 mx,my 는 실내 좌표 기준) */
   moveInside(dt: number): void {
@@ -467,7 +485,7 @@ export class World {
       if (b) { if (f.mods.regen || this.time - f.combatT > 6) b.hp = Math.min(b.maxHp, b.hp + (f.mods.regen + (this.time - f.combatT > 6 ? 4 : 0)) * dt); }
       else if (f.respawnT > 0) { f.respawnT -= dt; if (f.respawnT <= 0) this.respawn(f); }
     }
-    this.updateStructures(dt); updateActors(this, dt); updateVehicles(this, dt); updateBullets(this, dt);
+    this.updateStructures(dt); updateActors(this, dt); this.autoEnter(dt); updateVehicles(this, dt); updateBullets(this, dt);
     this.updateBusinesses(dt); this.updateZone(dt); this.updateLoot(dt);
     this.secT += dt; if (this.secT >= 1) { this.secT -= 1; this.everySecond(); }
     this.checkElimination();

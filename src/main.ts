@@ -1,99 +1,121 @@
 import './style.css';
-import './battle/war.css';
-import { loadWar } from './battle/save';
-import { DIFFICULTIES, type Difficulty } from './battle/war';
-import { readPreferences, writePreferences, readCareer } from './battle/preferences';
-import { icon } from './ui/icons';
-import { showDialog } from './ui/dialog';
+import { readCityCareer, readRaceSave, fmtTime } from './records';
+
+type GameId = 'city' | 'race';
+
+interface Entry {
+  id: GameId;
+  name: string;
+  genre: string;
+  summary: string;
+  facts: string[];
+  image: string;
+  imageAlt: string;
+  status: () => string;
+}
+
+const base = import.meta.env.BASE_URL;
+
+const ENTRIES: Entry[] = [
+  {
+    id: 'city',
+    name: 'LAST CITY',
+    genre: '도시 점령 서바이벌',
+    summary: '여덟 세력이 한 도시에 떨어졌습니다. 직접 총을 들고 사업체를 사들이고, 군대를 키워 마지막까지 남으세요.',
+    facts: ['1인 플레이', '1인칭 · 3인칭 · 전술 시점', '키보드 · 마우스 · 터치'],
+    image: `${base}assets/home/last-city.jpg`,
+    imageAlt: '해 질 녘 LAST CITY의 거리 풍경',
+    status: () => {
+      const { matches, wins } = readCityCareer();
+      return matches > 0 ? `${matches}판 · ${wins}승` : '';
+    },
+  },
+  {
+    id: 'race',
+    name: 'SPEED RUSH',
+    genre: '스포츠카 레이싱',
+    summary: '노을이 지는 도심 서킷을 세 바퀴 달립니다. 드리프트로 부스트를 모아 라이벌 세 대를 앞지르세요.',
+    facts: ['1인 플레이', '3랩 · 라이벌 3대', '키보드 · 터치'],
+    image: `${base}assets/home/speed-rush.jpg`,
+    imageAlt: '도심 서킷을 달리는 붉은 스포츠카',
+    status: () => {
+      const { best } = readRaceSave();
+      return Number.isFinite(best) ? `최고 랩 ${fmtTime(best)}` : '';
+    },
+  },
+];
 
 const app = document.querySelector<HTMLDivElement>('#game')!;
-let disposePreview: (() => void) | undefined;
 let generation = 0;
-let selectedDifficulty: Difficulty = 'normal';
-const clock = (time: number) => `${Math.floor(time / 60)}분 ${Math.floor(time % 60)}초`;
+
+function tile(entry: Entry, index: number): string {
+  const status = entry.status();
+  return `
+    <li class="tile-item">
+      <button class="tile" id="start-${entry.id}" type="button" data-game="${entry.id}" aria-describedby="summary-${entry.id}">
+        <span class="tile-media"><img src="${entry.image}" alt="${entry.imageAlt}" width="1280" height="800" ${index === 0 ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async"></span>
+        <span class="tile-body">
+          <span class="tile-genre">${entry.genre}</span>
+          <span class="tile-name">${entry.name}</span>
+          <span class="tile-summary" id="summary-${entry.id}">${entry.summary}</span>
+          <span class="tile-facts">${entry.facts.map(f => `<span>${f}</span>`).join('')}</span>
+          <span class="tile-foot"><span class="tile-status">${status}</span><span class="tile-cta">플레이<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 8h9m-3.5-4L12.5 8 8.5 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span></span>
+        </span>
+      </button>
+    </li>`;
+}
 
 function renderMenu(): void {
-  generation++; const currentGeneration = generation; disposePreview?.(); disposePreview = undefined;
-  const saved = loadWar(), resumable = saved && saved.grandBattle === true && saved.factions[0].alive && !saved.over;
-  const career = readCareer();
-  let launching = false;
+  generation++;
+  document.title = 'WALDO · LAST CITY / SPEED RUSH';
   app.hidden = false;
   app.innerHTML = `
-    <main class="landing" data-release="kingdoms-1.0">
-      <div class="landing-grain" aria-hidden="true"></div>
-      <header class="site-header">
-        <a class="wordmark" href="#" aria-label="Waldo 왕국 전쟁 홈"><span class="brand-seal">${icon('crown', 24)}</span><span>WALDO<small>KINGDOMS AT WAR</small></span></a>
-        <nav class="header-nav" aria-label="메뉴"><span class="offline-status"><i></i>1인 플레이 · AI 대전</span><button id="guide" class="nav-button">플레이 가이드 ${icon('help', 16)}</button><button id="preferences" class="icon-button" aria-label="게임 설정">${icon('settings', 20)}</button></nav>
+    <main class="home">
+      <header class="home-head">
+        <a class="mark" href="${base}" aria-label="WALDO 홈">WALDO</a>
+        <span class="head-note">브라우저 3D 게임</span>
       </header>
-      <div class="landing-art" aria-hidden="true"><img src="${import.meta.env.BASE_URL}kingdom-art.svg" alt="" class="kingdom-illustration"><div class="landing-preview" id="landing-preview"></div><div class="art-vignette"></div><div class="art-coordinates"><span>THE EMERALD KINGDOM</span><i></i><small>북서부 영지 · 당신의 이야기가 시작되는 곳</small></div></div>
-      <section class="hero-content">
-        <div class="edition"><span></span>THE STRATEGY COLLECTION <b>01</b></div>
-        <h1>작은 영지에서,<br><em>마지막 왕국으로.</em></h1>
-        <p class="hero-description">수백 명의 병사를 직접 지휘하는 3D 전쟁. <br>100 대 500 대규모 군단전에서 경제와 군대를 함께 지휘하세요.<br>거점을 점령하고 마지막 왕국이 되세요.</p>
-        <div class="game-facts"><div><b>4</b><span>경쟁하는 왕국</span></div><div><b>9</b><span>전략 거점</span></div><div><b>4</b><span>개성 있는 병종</span></div></div>
-        <div class="start-section"><div class="section-heading"><h2>원정 난이도</h2><span>난이도별 적의 공격과 생산 속도가 달라집니다</span></div><div class="difficulty-picker" role="group" aria-label="원정 난이도">${(['easy', 'normal', 'hard'] as Difficulty[]).map((key, i) => `<button id="difficulty-${key}" data-difficulty="${key}" class="difficulty-option${key === selectedDifficulty ? ' selected' : ''}" aria-pressed="${key === selectedDifficulty}"><span>${['I', 'II', 'III'][i]}</span><b>${DIFFICULTIES[key].label}</b><small>${['전략을 배우는 시간', '균형 잡힌 도전', '노련한 지휘관에게'][i]}</small></button>`).join('')}</div><p id="difficulty-description" class="difficulty-description">${DIFFICULTIES[selectedDifficulty].description}</p><button id="start-city" class="button city-launch" aria-label="라스트 시티 시작, 여덟 왕국 도시 생존전"><span class="city-launch-tag">NEW · 도시 전선</span><b>LAST CITY 시작</b><small>직접 뛰고 쏘는 8왕국 생존전 — 사업 매입 · 군대 육성 · 차량 탈취 · 자기장</small></button><div class="launch-actions"><button id="start-war" class="button primary launch-button" aria-label="대규모 전쟁 시작, 아군 100명 대 적군 500명">${icon('sword', 21)}대규모 전쟁 시작 <strong>100 VS 500</strong><span>${icon('arrow', 20)}</span></button>${resumable ? `<button id="continue-war" class="button continue-button">${icon('play', 19)}이어하기<small>${DIFFICULTIES[saved.difficulty].label} · ${clock(saved.time)}</small></button>` : ''}</div><p class="play-note">설치 없이 플레이 · 15초마다 자동 저장 · 키보드와 터치 지원</p></div>
+      <section class="home-intro">
+        <h1>두 편의 3D 게임.</h1>
+        <p>설치도 가입도 없이, 이 페이지에서 바로 시작합니다.</p>
       </section>
-      <aside class="campaign-note"><span class="note-line"></span><div><span class="kicker">BUILD. COMMAND. CONQUER.</span><p>왕국의 운명은<br>당신의 선택에 달려 있습니다.</p></div><span class="compass-rose" aria-hidden="true">${icon('target', 38)}</span></aside>
-      <footer class="landing-footer"><span class="footer-credit">TEAM WALDO <i>/</i> KINGDOMS AT WAR</span><div class="career-inline">${career.matches ? `<span>완료한 원정 <b>${career.matches}</b></span><span>승리 <b>${career.wins}</b></span><span>최다 처치 <b>${career.bestKills}</b></span>` : '<span>당신의 첫 번째 왕국을 기다립니다.</span>'}</div></footer>
+      <ul class="tiles" aria-label="게임 목록">${ENTRIES.map(tile).join('')}</ul>
+      <p class="home-notice" id="home-notice" role="status" aria-live="polite"></p>
+      <footer class="home-foot">
+        <span>WebGL을 지원하는 최신 브라우저에서 가장 잘 동작합니다.</span>
+        <span>Team Waldo</span>
+      </footer>
     </main>`;
-  document.title = 'WALDO · 왕국 전쟁 | 당신의 왕국을 건설하세요';
-  const start = async (resume: boolean) => {
-    if (launching) return; launching = true;
-    const navigation = ++generation; disposePreview?.(); disposePreview = undefined;
-    const button = app.querySelector<HTMLButtonElement>(resume ? '#continue-war' : '#start-war')!;
-    app.querySelectorAll<HTMLButtonElement>('button').forEach(b => { b.disabled = true; });
-    button.textContent = '전장 준비 중…';
-    try {
-      const { openWar } = await import('./battle/view');
-      if (generation !== navigation) return;
-      app.hidden = true;
-      openWar(renderMenu, { forceNew: !resume, difficulty: resume && saved ? saved.difficulty : selectedDifficulty });
-    } catch {
-      renderMenu();
-      showDialog({ title: '전장을 불러오지 못했어요', body: '<p>네트워크 연결을 확인한 뒤 다시 시작해 주세요. 저장한 전투는 변경되지 않았습니다.</p>' });
-    }
-  };
-  const startCity = async () => {
-    if (launching) return; launching = true;
-    const navigation = ++generation; disposePreview?.(); disposePreview = undefined;
-    app.querySelectorAll<HTMLButtonElement>('button').forEach(b => { b.disabled = true; });
-    try {
+  app.querySelectorAll<HTMLButtonElement>('.tile').forEach(button => {
+    button.onclick = () => { void launch(button.dataset.game as GameId); };
+  });
+}
+
+async function launch(id: GameId): Promise<void> {
+  const navigation = ++generation;
+  const buttons = app.querySelectorAll<HTMLButtonElement>('.tile');
+  const notice = app.querySelector<HTMLElement>('#home-notice');
+  const label = app.querySelector<HTMLElement>(`#start-${id} .tile-cta`);
+  buttons.forEach(b => { b.disabled = true; });
+  if (label) label.textContent = '불러오는 중…';
+  if (notice) notice.textContent = '';
+  try {
+    if (id === 'city') {
       const { openCity } = await import('./city/game');
       if (generation !== navigation) return;
       app.hidden = true;
-      openCity(renderMenu, { difficulty: selectedDifficulty });
-    } catch {
-      renderMenu();
-      showDialog({ title: '도시를 불러오지 못했어요', body: '<p>네트워크 연결을 확인한 뒤 다시 시작해 주세요.</p>' });
+      openCity(renderMenu);
+    } else {
+      const { openRace } = await import('./race/game');
+      if (generation !== navigation) return;
+      app.hidden = true;
+      openRace(renderMenu);
     }
-  };
-  app.querySelector<HTMLButtonElement>('#start-city')!.onclick = () => { void startCity(); };
-  const launchNew = () => {
-    if (resumable) showDialog({ eyebrow: 'NEW CAMPAIGN', title: '600명 규모의 새 전쟁을 시작할까요?', body: '<p>새 전쟁이 자동 저장되면 이전 전투의 저장 내용을 덮어씁니다. 이전 전투를 계속하려면 이어하기를 선택하세요.</p>', confirm: '새 전쟁 시작', cancel: '돌아가기', onConfirm: () => { void start(false); } });
-    else void start(false);
-  };
-  app.querySelector<HTMLButtonElement>('#start-war')!.onclick = launchNew;
-  app.querySelector<HTMLButtonElement>('#continue-war')?.addEventListener('click', () => { void start(true); });
-  app.querySelectorAll<HTMLButtonElement>('[data-difficulty]').forEach(button => {
-    button.onclick = () => {
-      selectedDifficulty = button.dataset.difficulty as Difficulty;
-      app.querySelectorAll<HTMLButtonElement>('[data-difficulty]').forEach(b => { const selected = b === button; b.classList.toggle('selected', selected); b.setAttribute('aria-pressed', String(selected)); });
-      app.querySelector('#difficulty-description')!.textContent = DIFFICULTIES[selectedDifficulty].description;
-    };
-  });
-  app.querySelector<HTMLButtonElement>('#guide')!.onclick = () => showDialog({ eyebrow: 'FIELD GUIDE', title: '대규모 전쟁을 위한 네 가지 조언', body: `<div class="guide-steps"><article><span>01</span><div><b>먼저, 튼튼한 경제를.</b><p>시작부터 Lv.3인 금광·농장을 활용하고 성장 정책으로 자원 생산을 25% 늘리세요.</p></div></article><article><span>02</span><div><b>가까운 거점에 깃발을.</b><p>작전 탭에서 북서부 관문을 선택해 출전하세요. 거점마다 자원 보너스가 다르고, 본부 폭풍 피해도 줄어듭니다.</p></div></article><article><span>03</span><div><b>서로 다른 병종을 조합하세요.</b><p>시작 병영은 Lv.3입니다. 연구와 장군을 활용하고, 주력군·기동대를 나눠 거점을 확보하세요.</p></div></article><article><span>04</span><div><b>폭풍보다 빠르게 정복하세요.</b><p>보통 난이도는 5분 30초, 쉬움은 7분 후부터 안전지대가 줄어듭니다. 모든 적 본부를 함락하고 마지막 생존 왕국이 되세요.</p></div></article></div><p class="dialog-tip">온라인 멀티플레이가 아닌 1명 대 AI 3개 세력의 실시간 전략 게임입니다. 저장 내용은 현재 브라우저와 사이트 주소에만 보관됩니다.</p>`, cancel: '이제 시작해 볼게요' });
-  app.querySelector<HTMLButtonElement>('#preferences')!.onclick = () => {
-    const p = readPreferences();
-    showDialog({ eyebrow: 'PREFERENCES', title: '나에게 맞는 전장', body: '<div class="settings-grid"><label>그래픽 품질<select id="menu-quality"><option value="high">높음 · 그림자와 효과</option><option value="standard">보통 · 성능 우선</option><option value="low">낮음 · 저사양 기기</option></select></label><label>효과음<input id="menu-sound" type="checkbox"></label><label>움직임 줄이기<input id="menu-motion" type="checkbox"></label></div><p class="dialog-tip">게임에는 WebGL을 지원하는 브라우저가 필요합니다. 모바일에서는 가로 화면을 권장합니다.</p>', cancel: '설정 완료' });
-    const quality = document.querySelector<HTMLSelectElement>('#menu-quality')!, sound = document.querySelector<HTMLInputElement>('#menu-sound')!, motion = document.querySelector<HTMLInputElement>('#menu-motion')!;
-    quality.value = p.quality; sound.checked = p.sound; motion.checked = p.reducedMotion;
-    const update = () => { p.quality = quality.value === 'high' ? 'high' : quality.value === 'low' ? 'low' : 'standard'; p.sound = sound.checked; p.reducedMotion = motion.checked; writePreferences(p); };
-    quality.onchange = update; sound.onchange = update; motion.onchange = update;
-  };
-  // The menu is fully useful before the optional decorative 3D chunk loads.
-  void import('./battle/preview').then(({ createLandingPreview }) => {
-    const mount = app.querySelector<HTMLElement>('#landing-preview');
-    if (generation === currentGeneration && mount?.isConnected) disposePreview = createLandingPreview(mount);
-  }).catch(() => undefined);
+  } catch {
+    renderMenu();
+    const retry = document.querySelector<HTMLElement>('#home-notice');
+    if (retry) retry.textContent = '게임을 불러오지 못했습니다. 네트워크 연결을 확인한 뒤 다시 시도해 주세요.';
+  }
 }
+
 renderMenu();

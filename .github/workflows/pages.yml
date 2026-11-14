@@ -1,5 +1,5 @@
 name: Deploy GitHub Pages
-# LAST CITY와 클래식 군단전을 GitHub Pages로 배포합니다.
+# 메인 페이지(LAST CITY, SPEED RUSH)를 GitHub Pages로 배포합니다.
 on:
   push:
     branches:

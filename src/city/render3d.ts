@@ -47,7 +47,7 @@ export class Renderer3D {
   private bodies: THREE.InstancedMesh; private heads: THREE.InstancedMesh; private guns: THREE.InstancedMesh; private hulls: THREE.InstancedMesh; private turrets: THREE.InstancedMesh; private barrels: THREE.InstancedMesh;
   private crystals: THREE.InstancedMesh; private tracers: THREE.InstancedMesh; private rings: THREE.InstancedMesh; private ringList: { x: number; y: number; r0: number; r1: number; life: number; max: number; color: number }[] = [];
   private sparks: Points; private fire: Points; private smoke: Points; private ml: ModelLayer | null = null;
-  private structs = new Map<number, THREE.Group>(); private vehs = new Map<number, THREE.Group>(); private loots = new Map<number, THREE.Group>(); private biz = new Map<number, { g: THREE.Group; sig: string; label: THREE.Sprite; ring: THREE.Mesh; beam: THREE.Mesh; icon: THREE.Object3D | null }>();
+  private structs = new Map<number, THREE.Group>(); private vehs = new Map<number, THREE.Group>(); private loots = new Map<number, THREE.Group>(); private biz = new Map<number, { g: THREE.Group; sig: string; label: THREE.Sprite; icon: THREE.Object3D | null }>();
   private booms: { m: THREE.Mesh; life: number; r: number }[] = []; private light: THREE.PointLight; private lightT = 0;
   private zoneWall: THREE.Mesh; private zoneTex: THREE.Texture; private nextRing: THREE.Mesh; private ghost: THREE.Mesh; private sun: THREE.DirectionalLight; private gun = new THREE.Group(); private muzzle: THREE.Mesh; private planes: THREE.Group[] = [];
   private bossRings: THREE.Mesh[] = []; floaters: { el: HTMLElement; x: number; y: number; h: number; life: number }[] = [];
@@ -233,24 +233,23 @@ export class Renderer3D {
   private syncBiz(z: Business): void {
     let o = this.biz.get(z.id); const w = this.world, d = BIZ[z.kind], col = z.kind === 'gunshop' ? 0xff5d5d : z.owner >= 0 ? fcol(z.owner) : 0xf2f2f2;
     if (!o) {
-      const g = new THREE.Group(), ring = new THREE.Mesh(new THREE.RingGeometry(24, 31, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false })); ring.position.y = 1.2;
-      const beam = new THREE.Mesh(new THREE.CylinderGeometry(28, 28, 110, 20, 1, true), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false })); beam.position.y = 55;
+      const g = new THREE.Group();
       const label = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false })); label.scale.set(100, 37.5, 1);
       // 표식과 이름표가 건물 벽에 파묻히지 않도록 건물 바깥쪽(차도 쪽)으로 밀어 둡니다.
       const so = w.map.solids[z.solid]; let nx = 0, nz = 0;
       if (so) { nx = z.x - Math.max(so.x, Math.min(so.x + so.w, z.x)); nz = z.y - Math.max(so.y, Math.min(so.y + so.h, z.y)); const l = Math.hypot(nx, nz); if (l > 0.01) { nx /= l; nz /= l; } else { nx = 0; nz = 0; } }
-      g.userData.out = [nx, nz]; label.position.set(nx * 34, 112, nz * 34);
-      g.add(ring, beam, label); g.position.set(z.x, 0, z.y); this.scene.add(g); o = { g, sig: '', label, ring, beam, icon: null }; this.biz.set(z.id, o);
+      g.userData.out = [nx, nz]; label.position.set(nx * 14, 126, nz * 14);
+      g.add(label); g.position.set(z.x, 0, z.y); this.scene.add(g); o = { g, sig: '', label, icon: null }; this.biz.set(z.id, o);
     }
     const sig = `${z.owner}:${z.level}`;
     if (sig !== o.sig) {
-      o.sig = sig; (o.ring.material as THREE.MeshBasicMaterial).color.setHex(col);
-      if (this.ml) { if (o.icon) o.g.remove(o.icon); o.icon = this.ml.makeBiz(z.kind, col); if (o.icon) { const out = o.g.userData.out as [number, number]; o.icon.position.set(out[0] * 8, 50, out[1] * 8); o.g.add(o.icon); } } (o.beam.material as THREE.MeshBasicMaterial).color.setHex(col);
+      o.sig = sig;
+      if (this.ml) { if (o.icon) o.g.remove(o.icon); o.icon = this.ml.makeBiz(z.kind, col); if (o.icon) { const out = o.g.userData.out as [number, number]; o.icon.position.set(out[0] * 8, 100, out[1] * 8); o.g.add(o.icon); } }
       const css = z.kind === 'gunshop' ? '#ff5d5d' : z.owner >= 0 ? FACTIONS[z.owner].color : '#ffffff', line2 = z.kind === 'gunshop' ? 'E 구매' : z.owner < 0 ? `$${d.price} · +$${d.income}/s` : `${FACTIONS[z.owner].name} ${'★'.repeat(z.level)}`;
       o.label.material.map?.dispose(); o.label.material.map = canvasTex(320, 120, g => { g.fillStyle = 'rgba(10,16,16,0.82)'; g.beginPath(); g.roundRect(4, 4, 312, 112, 18); g.fill(); g.strokeStyle = css; g.lineWidth = 5; g.stroke(); g.textAlign = 'center'; g.fillStyle = '#fff'; g.font = "900 44px 'Noto Sans KR',sans-serif"; g.fillText(d.name, 160, 54); g.fillStyle = css; g.font = "700 28px 'Noto Sans KR',sans-serif"; g.fillText(line2, 160, 96); }); o.label.material.needsUpdate = true;
     }
-    if (o.icon) { o.icon.position.y = 50 + Math.sin(this.t * 1.6 + z.id) * 2.5; o.icon.rotation.y = this.t * 0.7 + z.id; }
-    (o.beam.material as THREE.MeshBasicMaterial).opacity = 0.14 + z.pulse * 0.4 + (z.cap > 0 ? 0.2 + Math.sin(this.t * 10) * 0.1 : 0); o.g.visible = Math.hypot(z.x - this.camPos.x, z.y - this.camPos.z) < 2600; void w;
+    if (o.icon) { o.icon.position.y = 100 + Math.sin(this.t * 1.6 + z.id) * 2.5; o.icon.rotation.y = this.t * 0.7 + z.id; }
+    o.g.visible = Math.hypot(z.x - this.camPos.x, z.y - this.camPos.z) < 2600; void w;
   }
 
   /** 보스가 사업체 안에 있을 때: 도시 대신 내부 장면만 그립니다. */

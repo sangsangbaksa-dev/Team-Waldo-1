@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 
-// Standalone real-browser regression for Last City's mission UI.
+// Standalone real-browser regression: main page, SPEED RUSH entry, and Last City's mission UI.
 const port = 4187;
 const origin = 'http://127.0.0.1:' + port;
 const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
@@ -42,6 +42,13 @@ try {
     page.on('pageerror', err => errors.push(err.message));
     try {
       await page.goto(origin, { waitUntil: 'domcontentloaded' });
+      await page.locator('.tile').first().waitFor();
+      assert.equal(await page.locator('.tile').count(), 2, 'Main page must list exactly two games');
+      await page.screenshot({ path: 'browser-artifacts/last-city-home-' + size.name + '.png', animations: 'disabled' });
+      await page.locator('#start-race').click();
+      await page.locator('.rc-root').waitFor({ state: 'visible' });
+      await page.locator('.rc-btns [data-act="exit"]').click();
+      await page.locator('.tile').first().waitFor();
       await page.locator('#start-city').click();
       await page.locator('.c-setup').waitFor();
       await page.locator('[data-act="class:warlord"]').click();

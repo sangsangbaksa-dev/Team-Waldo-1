@@ -252,6 +252,14 @@ export class RaceView {
       this.instanced(new THREE.BoxGeometry(0.22, 1.1, 0.22), new THREE.MeshBasicMaterial({ color: 0xffffff }), items);
     }
     const mat = (o: THREE.MeshBasicMaterialParameters): THREE.MeshBasicMaterial => { const m = new THREE.MeshBasicMaterial(o); this.disposables.push(m); return m; };
+    // 도로가 높이 올라간 곳은 비탈로 지면까지 내립니다.
+    const emb = (side: 1 | -1): THREE.Mesh => {
+      const n = t.n, pos = new Float32Array((n + 1) * 6), idx: number[] = [];
+      for (let k = 0; k <= n; k++) { const i = k % n, w = Math.max(6, t.y[i] * 2.4 + 4), a = side * (hw + 1.5), b = side * (hw + 1.5 + w), rx = -t.tz[i], rz = t.tx[i]; pos.set([t.x[i] + rx * a, t.y[i], t.z[i] + rz * a, t.x[i] + rx * b, -0.4, t.z[i] + rz * b], k * 6); if (k < n) { const o = k * 2; idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2); } }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setIndex(idx); this.disposables.push(g);
+      return new THREE.Mesh(g, mat({ color: new THREE.Color(th.ground.base).multiplyScalar(0.85), side: THREE.DoubleSide }));
+    };
+    this.scene.add(emb(1), emb(-1));
     const sceneryKind = th.scenery;
     if (sceneryKind === 'city') {
       const win = canvasTex(64, 128, g => { g.fillStyle = '#0d0a1f'; g.fillRect(0, 0, 64, 128); for (let y = 4; y < 124; y += 10) for (let x = 4; x < 60; x += 9) { if (Math.random() < 0.62) { const h = Math.random(); g.fillStyle = h < 0.5 ? '#ffd9a0' : h < 0.8 ? '#7be9ff' : '#ff7ad9'; g.fillRect(x, y, 5, 6); } } });
@@ -282,14 +290,6 @@ export class RaceView {
       const crane = (x: number, z: number): void => { const g: THREE.BufferGeometry[] = [], col = new THREE.Color(0xe0872a); for (const dx of [-14, 14]) for (const dz of [-6, 6]) g.push(boxGeo(1.6, 46, 1.6, x + dx, 22.6, z + dz, 0, col)); g.push(boxGeo(36, 3, 16, x, 46, z, 0, col), boxGeo(70, 2.4, 3, x, 50, z, 0, col)); const mm = mergeGeometries(g); g.forEach(o => o.dispose()); this.scene.add(new THREE.Mesh(mm, mat({ vertexColors: true }))); this.disposables.push(mm); };
       for (const [x, z] of this.scatter(low ? 2 : 5, 70, 260, 50, 200)) crane(x, z);
     } else if (sceneryKind === 'forest') {
-      // 도로가 높이 올라간 곳은 비탈로 지면까지 내립니다.
-      const emb = (side: 1 | -1): THREE.Mesh => {
-        const n = t.n, pos = new Float32Array((n + 1) * 6), idx: number[] = [];
-        for (let k = 0; k <= n; k++) { const i = k % n, w = Math.max(6, t.y[i] * 2.4 + 4), a = side * (hw + 1.5), b = side * (hw + 1.5 + w), rx = -t.tz[i], rz = t.tx[i]; pos.set([t.x[i] + rx * a, t.y[i], t.z[i] + rz * a, t.x[i] + rx * b, -0.4, t.z[i] + rz * b], k * 6); if (k < n) { const o = k * 2; idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2); } }
-        const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setIndex(idx); this.disposables.push(g);
-        return new THREE.Mesh(g, mat({ color: new THREE.Color(th.ground.base).multiplyScalar(0.85), side: THREE.DoubleSide }));
-      };
-      this.scene.add(emb(1), emb(-1));
       const snow = !!th.snow, trunk = new THREE.CylinderGeometry(0.5, 0.8, 4, 6), spots = this.scatter(low ? 160 : 340, 18, 320, 30, 9);
       // 세 단으로 쌓은 침엽수. 눈 쌓인 코스는 위쪽이 하얗게 칠해집니다.
       const tiers: THREE.BufferGeometry[] = [[3.7, 6, 2.5], [2.9, 5.2, 6], [2.1, 4.6, 9.4]].map(([r, h, y]) => { const g = new THREE.ConeGeometry(r, h, 8, 2).translate(0, y, 0), p = g.attributes.position, c = new Float32Array(p.count * 3); for (let i = 0; i < p.count; i++) { const f = (p.getY(i) - (y - h / 2)) / h, white = snow ? Math.min(1, Math.max(0, (f - 0.25) * 2.2)) : 0, base = snow ? [0.16, 0.3, 0.24] : [1, 1, 1]; c.set([base[0] + (1 - base[0]) * white, base[1] + (1 - base[1]) * white, base[2] + (1 - base[2]) * white], i * 3); } g.setAttribute('color', new THREE.BufferAttribute(c, 3)); return g; });
@@ -326,7 +326,7 @@ export class RaceView {
       this.instanced(cactus, mat({ vertexColors: true }), this.scatter(low ? 70 : 160, 9, 160, 14, 8).map(([x, z]) => { const s = rnd(0.8, 1.6); return { p: [x, -0.4, z] as [number, number, number], s: [s, s, s] as [number, number, number], ry: rnd(0, 6) }; }));
       // 전봇대와 전선(오른쪽 길가)
       const pole = 55, ps: Array<[number, number, number]> = [];
-      for (let i = 0; i < t.n; i += Math.round(pole / t.ds)) { const off = hw + 9; ps.push([t.x[i] - t.tz[i] * off, t.y[i], t.z[i] + t.tx[i] * off]); }
+      for (let i = 0; i < t.n; i += Math.round(pole / t.ds)) { const off = hw + 9; ps.push([t.x[i] - t.tz[i] * off, Math.max(-0.4, t.y[i] - (off - hw - 1.5) / Math.max(6, t.y[i] * 2.4 + 4) * (t.y[i] + 0.4)), t.z[i] + t.tx[i] * off]); }
       this.instanced(new THREE.BoxGeometry(0.45, 11, 0.45), mat({ color: 0x5a4430 }), ps.map(p => ({ p: [p[0], p[1] + 5.5, p[2]] as [number, number, number] })));
       const wires: number[] = []; for (let k = 0; k < ps.length; k++) { const a = ps[k], b = ps[(k + 1) % ps.length]; for (const dy of [10.4, 9.6, 8.8]) wires.push(a[0], a[1] + dy, a[2], b[0], b[1] + dy, b[2]); }
       const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wires, 3)); const wl = new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x2b2420 })); wl.frustumCulled = false; this.scene.add(wl); this.disposables.push(wg, wl.material as THREE.Material);

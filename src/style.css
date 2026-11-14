@@ -28,6 +28,10 @@ a { color: inherit; text-decoration: none; }
 .home { min-height: 100dvh; display: flex; flex-direction: column; padding: 0 var(--gutter); max-width: 1440px; margin: 0 auto; }
 .home-head { display: flex; align-items: center; justify-content: space-between; padding: 28px 0 0; }
 .mark { font-weight: 700; font-size: 15px; letter-spacing: .32em; }
+.head-tools { display: flex; align-items: center; gap: 12px; }
+.sound-toggle { appearance: none; display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; font-size: 13px; color: var(--text); background: transparent; border: 1px solid var(--line); border-radius: 999px; cursor: pointer; transition: border-color .2s ease, color .2s ease; }
+.sound-toggle:hover { border-color: #3a3f46; }
+.sound-toggle[aria-pressed="false"] { color: var(--muted); }
 .head-account { appearance: none; cursor: pointer; font-size: 13px; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; transition: border-color .2s, color .2s; }
 .head-account:hover:not(:disabled) { border-color: #3a3f46; color: var(--text); }
 .head-account:disabled { opacity: .6; }

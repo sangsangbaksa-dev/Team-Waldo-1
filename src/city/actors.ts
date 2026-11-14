@@ -40,7 +40,7 @@ function seek(w: World, a: Actor, tx: number, ty: number, sp: number): void {
 const stop = (a: Actor): void => { a.vx *= 0.6; a.vy *= 0.6; };
 
 function targetPos(w: World, a: Actor): { x: number; y: number; vx: number; vy: number; ok: boolean } | null {
-  if (a.tk === 1) { const t = w.byId.get(a.tid); if (!t || !t.alive || t.inVeh) return null; return { x: t.x, y: t.y, vx: t.vx, vy: t.vy, ok: true }; }
+  if (a.tk === 1) { const t = w.byId.get(a.tid); if (!t || !t.alive || t.inVeh || w.hidden(t)) return null; return { x: t.x, y: t.y, vx: t.vx, vy: t.vy, ok: true }; }
   if (a.tk === 2) { const s = w.structures.find(q => q.id === a.tid); if (!s || !s.alive) return null; return { x: Math.max(s.x - 3, Math.min(a.x, s.x + s.w + 3)), y: Math.max(s.y - 3, Math.min(a.y, s.y + s.h + 3)), vx: 0, vy: 0, ok: true }; }
   if (a.tk === 3) { const v = w.vehicles.find(q => q.id === a.tid); if (!v || !v.alive || !v.driver || !w.hostile(a.f, v.f)) return null; return { x: v.x, y: v.y, vx: v.vx, vy: v.vy, ok: true }; }
   return null;
@@ -55,7 +55,7 @@ function think(w: World, a: Actor, range: number): void {
   const sight = Math.min(range + 130, 800); let bd = sight, bk: 0 | 1 | 2 | 3 = 0, bid = 0, blos = false;
   // 현재 목표 유지 선호
   w.forNear(a.x, a.y, sight, t => {
-    if (!t.alive || !w.hostile(a.f, t.f)) return; let d = Math.hypot(t.x - a.x, t.y - a.y); if (a.tk === 1 && a.tid === t.id) d -= 70; if (t.kind === 'worker') d += 120;
+    if (!t.alive || w.hidden(t) || !w.hostile(a.f, t.f)) return; let d = Math.hypot(t.x - a.x, t.y - a.y); if (a.tk === 1 && a.tid === t.id) d -= 70; if (t.kind === 'worker') d += 120;
     if (d >= bd) return; const los = w.canSee(a.x, a.y, t.x, t.y); if (!los && (d > sight * 0.6 || blos)) return;
     bd = los ? d : Math.min(bd, d + 200); bk = 1; bid = t.id; blos = los;
   });
@@ -89,6 +89,7 @@ export function updateActors(w: World, dt: number): void {
     if (a.kind === 'boss' && fac) {
       sp *= fac.mods.speed;
       if (fac.player && !w.opts.autoPlayer) {
+        if (w.inside) { w.moveInside(dt); a.vx = a.vy = 0; continue; }
         const m = Math.hypot(inp.mx, inp.my), k = m > 1 ? 1 / m : 1;
         if (inp.dash && fac.dashCd <= 0 && m > 0.1) { fac.dashT = 0.2; fac.dashCd = 2.4 * fac.mods.dash; w.fx('dash', a.x, a.y, 0, undefined, 0); }
         const s = sp * (fac.dashT > 0 ? 3.3 : 1); a.vx = inp.mx * k * s; a.vy = inp.my * k * s; a.ang = Math.atan2(inp.ay - a.y, inp.ax - a.x);
@@ -176,7 +177,7 @@ export function updateBullets(w: World, dt: number): void {
         if (d.splash) w.explode(b.x - b.vx * sdt, b.y - b.vy * sdt, d.splash, b.dmg, b.f, d.bdmg); else w.fx('spark', b.x, b.y); dead = true; break;
       }
       w.forNear(b.x, b.y, 34, a => {
-        if (dead || !a.alive || a.inVeh || a.id === b.src) return; if (!(w.hostile(b.f, a.f) || (a.f === CIV && b.boss))) return;
+        if (dead || !a.alive || a.inVeh || a.id === b.src || w.hidden(a)) return; if (!(w.hostile(b.f, a.f) || (a.f === CIV && b.boss))) return;
         const dx = a.x - b.x, dy = a.y - b.y; if (dx * dx + dy * dy > (a.r + 4) * (a.r + 4)) return;
         if (d.pierce) { if (b.hitIds?.includes(a.id)) return; (b.hitIds ??= []).push(a.id); w.hurtActor(a, b.dmg, b.f); w.fx('hit', b.x, b.y); return; }
         if (d.splash) w.explode(b.x, b.y, d.splash, b.dmg, b.f, d.bdmg); else { w.hurtActor(a, b.dmg, b.f); w.fx('hit', b.x, b.y, b.boss && b.f === 0 ? 1 : 0, undefined, a.f); }

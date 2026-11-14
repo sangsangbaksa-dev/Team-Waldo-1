@@ -3,8 +3,8 @@ import { BIZ, type BizKind } from './defs';
 import { clearLine, navBlocked } from './map';
 import type { World } from './world';
 
-export interface Counters { move: number; look: number; orders: number; viewSwitches: number; vehicleDist: number; sells: number; acked: boolean }
-export const newCounters = (): Counters => ({ move: 0, look: 0, orders: 0, viewSwitches: 0, vehicleDist: 0, sells: 0, acked: false });
+export interface Counters { move: number; look: number; orders: number; viewSwitches: number; vehicleDist: number; sells: number; entered: boolean; acked: boolean }
+export const newCounters = (): Counters => ({ move: 0, look: 0, orders: 0, viewSwitches: 0, vehicleDist: 0, sells: 0, entered: false, acked: false });
 export interface TutState { i: number; enemies: number[]; lootId: number; vehId: number; bizId: number }
 export const newTutState = (): TutState => ({ i: 0, enemies: [], lootId: 0, vehId: 0, bizId: 0 });
 export interface TutCtx { w: World; c: Counters; s: TutState; yaw: number }
@@ -57,8 +57,8 @@ export const STEPS: TutStep[] = [
     done: x => x.w.factions[0].slots.some(q => q.id === 'rifle'),
     marker: x => { const l = x.w.loot.find(q => q.id === x.s.lootId && q.alive); return l ? { x: l.x, y: l.y, h: 50, text: '돌격소총' } : null; } },
   { title: '5. 사업체 사기',
-    body: `<b>점선 원</b> 위에 서서 ${k('E')}를 누르면 사업체를 매입합니다. 사업체는 <b>초당 수입</b>을 만들고, 한 번 더 ${k('E')}로 업그레이드하면 <b>경비원</b>이 생깁니다. 적 사업체는 그 위에서 6초 버티면 빼앗을 수 있어요.`,
-    touch: '표시된 원 위에서 <b>E</b> 버튼을 누르세요.',
+    body: `<b>점선 원</b> 위에 서서 ${k('E')}를 누르면 <b>건물 안으로 들어갑니다</b>. 안쪽 <b>카운터 앞</b>에서 ${k('E')}로 거래 창을 열어 사업체를 매입하세요. 사업체는 <b>초당 수입</b>을 만들고, 업그레이드하면 <b>본부에서 경비병이 걸어와</b> 지켜 줍니다. 나갈 때는 초록 EXIT 문 앞에서 ${k('E')}. 적 사업체는 패드 위에서 6초 버티면 빼앗을 수 있어요.`,
+    touch: '표시된 원 위에서 <b>E</b> 버튼으로 들어가 카운터 앞에서 다시 <b>E</b>를 누르세요.',
     enter: x => {
       const b = x.w.boss(0)!; let best: number | null = null, bd = 1e9;
       for (const z of x.w.businesses) if (z.owner < 0 && z.kind !== 'gunshop' && price(z.kind) <= 900) { const d = Math.hypot(z.x - b.x, z.y - b.y); if (d < bd) { bd = d; best = z.id; } }

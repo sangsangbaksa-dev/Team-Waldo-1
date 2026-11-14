@@ -4,9 +4,12 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { readPreferences } from '../prefs';
 import { fmtTime, raceRaceKey, readRaceRecords, readRaceSetupRaw, writeRaceRecords, writeRaceSetupRaw } from '../records';
+import type { PvpSession } from '../net/lobby';
 import { RaceAudio } from './audio';
 import { carById, levelById, mapOf, sanitizeSetup, type RaceSetup } from './config';
 import { aiInput, boosting, kmh, type CarInput } from './physics';
+import { RacePvp } from './pvp';
+import { decideWinner } from './netcar';
 import { createRace, currentLap, placeOf, updateRace, type RaceEvent, type RaceState } from './race';
 import { mountSetup, type SetupHandle } from './setup-ui';
 import { buildMapTrack, type Track } from './track';
@@ -20,7 +23,7 @@ export function openRace(onExit: () => void): void {
   const root = document.createElement('div'); root.className = 'rc-root' + (touch ? ' touch' : ''); root.dataset.phase = 'loading';
   root.innerHTML = `<canvas class="rc-canvas"></canvas><canvas class="rc-fx"></canvas><div class="rc-vignette"></div><div class="rc-boostfx"></div>
   <div class="rc-hud">
-    <div class="rc-tl"><div class="rc-pos"><b id="rc-pos">4</b><span>/4</span></div><div class="rc-lap">LAP <b id="rc-lap">1</b>/<span id="rc-laps">3</span></div></div>
+    <div class="rc-tl"><div class="rc-pos"><b id="rc-pos">4</b><span id="rc-of">/4</span></div><div class="rc-lap">LAP <b id="rc-lap">1</b>/<span id="rc-laps">3</span></div></div>
     <div class="rc-tc"><div class="rc-time" id="rc-time">0:00.000</div><div class="rc-best" id="rc-best"></div></div>
     <div class="rc-tr"><canvas id="rc-map" width="220" height="220" aria-label="미니맵"></canvas><div class="rc-btns"><button data-act="mute" title="소리 (M)">🔊</button><button data-act="pause" title="일시정지 (Esc)">Ⅱ</button><button data-act="exit" title="나가기">✕</button></div></div>
     <div class="rc-msg" id="rc-msg"></div><div class="rc-count" id="rc-count"></div><div class="rc-wrong" id="rc-wrong">역주행!</div>
@@ -35,6 +38,8 @@ export function openRace(onExit: () => void): void {
   const audio = new RaceAudio(); audio.enabled = prefs.sound;
   let setup: RaceSetup = sanitizeSetup(readRaceSetupRaw()), records = readRaceRecords(), track: Track = buildMapTrack(mapOf(setup)), setupUi: SetupHandle | null = null;
   let race: RaceState = createRace(track, setup.laps, Infinity, setup), view: RaceView | null = null, raf = 0, last = 0, acc = 0, paused = false, closed = false, finishedShown = false, lastPlace = 4, msgT = 0, wallHit = 0, fxIntensity = 0, wrongT = 0;
+  /** 1대1 대전 진행 상태. null 이면 혼자 달리는 모드입니다. */
+  let pvp: { s: PvpSession; net: RacePvp; myFin: number | null; oppFin: number | null; done: boolean } | null = null;
   const keys = new Set<string>(), hold = { left: false, right: false, brake: false, drift: false, nitro: false };
   const cache = new Map<string, string>(); const setText = (id: string, v: string): void => { if (cache.get(id) !== v) { cache.set(id, v); $(id).textContent = v; } };
 
@@ -60,7 +65,7 @@ export function openRace(onExit: () => void): void {
       case 'hit': wallHit = e.power; view?.kick(Math.min(1, e.power * 0.05)); audio.sfx('hit', e.power); break;
       case 'bump': view?.kick(Math.min(0.5, e.power * 0.03)); audio.sfx('bump'); break;
       case 'lap': if (e.lap < race.laps) { msg(e.best ? `LAP ${e.lap}  ${fmtTime(e.time)}  ★ BEST` : `LAP ${e.lap}  ${fmtTime(e.time)}`, e.best ? 'gold' : ''); audio.sfx(e.best ? 'best' : 'lap'); } break;
-      case 'finish': audio.sfx('finish'); finishRace(e.place, e.time); break;
+      case 'finish': audio.sfx('finish'); if (pvp) pvpFinish(e.time); else finishRace(e.place, e.time); break;
     }
   }
 
@@ -84,7 +89,7 @@ export function openRace(onExit: () => void): void {
     if (view) { view.dispose(); view = null; }
     track = buildMapTrack(mapOf(setup)); prepareMinimap();
     race = createRace(track, setup.laps, records.bestLap[setup.map] ?? Infinity, setup);
-    finishedShown = false; paused = false; acc = 0; lastPlace = 4; cache.clear(); setText('#rc-laps', String(setup.laps));
+    finishedShown = false; paused = false; acc = 0; lastPlace = 4; cache.clear(); setText('#rc-laps', String(setup.laps)); setText('#rc-of', '/4');
     startView(carTemplate); modal.className = 'rc-modal'; modal.innerHTML = ''; root.dataset.phase = 'countdown'; msg('', '');
     msg('가속 ↑ · 조향 ← → · 드리프트 Space · 니트로 Shift', 'hint'); msgT = 4; last = performance.now();
   }
@@ -95,8 +100,68 @@ export function openRace(onExit: () => void): void {
     setupUi = mountSetup(root, setup, records, {
       onStart: s => { setup = s; writeRaceSetupRaw(s); setupUi?.destroy(); setupUi = null; begin(); },
       onExit: () => exit(),
+      onPvp: s => { setup = s; writeRaceSetupRaw(s); openPvpLobby(); },
     });
   }
+
+
+  // ---------- 1대1 대전 ----------
+  function openPvpLobby(): void {
+    void import('../net/lobby').then(({ openLobby }) => openLobby({ game: 'race', config: () => ({ map: setup.map, laps: setup.laps }), onMatch: startPvp, onClose: () => undefined }))
+      .catch(() => { modal.className = 'rc-modal show'; modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">1대1 대전</span><h2>대전 기능을 불러오지 못했어요</h2><div class="rc-actions"><button data-act="setup">설정으로</button></div></div>'; });
+  }
+  function pvpCard(eyebrow: string, title: string, body = '', actions = '<button data-act="exit">메뉴로</button>'): void {
+    modal.className = 'rc-modal show'; modal.innerHTML = `<div class="rc-card"><span class="rc-eyebrow">${eyebrow}</span><h2>${title}</h2>${body}<div class="rc-actions">${actions}</div></div>`;
+  }
+  function startPvp(s: PvpSession): void {
+    endPvp(); setupUi?.destroy(); setupUi = null; if (view) { view.dispose(); view = null; }
+    const cfg = s.match.config; setup = sanitizeSetup({ ...setup, map: cfg.map, laps: cfg.laps }); paused = false; finishedShown = false; root.dataset.phase = 'setup';
+    pvpCard('1대1 대전', `${s.opponent.nickname} 님과 연결하는 중…`, `<p class="rc-record">${mapOf(setup).name} · ${setup.laps}랩 · ${carById(setup.car).name}</p>`, '<button data-act="exit">나가기</button>');
+    const net: RacePvp = new RacePvp(s, setup.car, {
+      onStart: car => beginPvp(car),
+      onSnap: snap => { const rival = race.racers[1]; if (pvp && rival?.link) rival.link = { snap, at: performance.now() }; },
+      onFinish: time => { if (!pvp || pvp.done) return; pvp.oppFin = time; const r = race.racers[1]; if (r) r.finishTime = time; if (pvp.myFin !== null) decide(); else void conclude(s.opponent.id, '상대가 먼저 결승선을 통과했습니다'); },
+      onGone: reason => { if (pvp && !pvp.done) void conclude(s.me.id, reason === 'never' ? '상대가 접속하지 않았습니다' : '상대와의 연결이 끊어졌습니다'); },
+    });
+    pvp = { s, net, myFin: null, oppFin: null, done: false };
+  }
+  function beginPvp(oppCar: string): void {
+    if (!pvp || closed) return; const s = pvp.s;
+    track = buildMapTrack(mapOf(setup)); prepareMinimap();
+    race = createRace(track, setup.laps, Infinity, { ...setup, pvp: { host: s.host, opponent: s.opponent.nickname, opponentCar: oppCar } });
+    acc = 0; cache.clear(); lastPlace = 2; setText('#rc-laps', String(setup.laps)); setText('#rc-of', '/2'); setText('#rc-best', `VS ${s.opponent.nickname}`);
+    startView(carTemplate); modal.className = 'rc-modal'; modal.innerHTML = ''; root.dataset.phase = 'countdown'; msg(`${s.opponent.nickname} 님과 대전 · 먼저 결승선을 통과하면 승리`, 'hint'); msgT = 4; last = performance.now();
+  }
+  function pvpFinish(time: number): void {
+    if (!pvp || pvp.done) return; pvp.myFin = time; pvp.net.sendFinish(time);
+    if (pvp.oppFin !== null) decide(); else window.setTimeout(() => { if (pvp && !pvp.done) void conclude(pvp.s.me.id, '먼저 결승선을 통과했습니다'); }, 4000);
+  }
+  function decide(): void {
+    if (!pvp || pvp.myFin === null || pvp.oppFin === null) return;
+    const w = decideWinner(pvp.myFin, pvp.oppFin, pvp.s.host); void conclude(w === 'me' ? pvp.s.me.id : pvp.s.opponent.id, '두 선수 모두 결승선을 통과했습니다');
+  }
+  /** 승자를 서버에 보고하고, 확정된 레이팅 변화를 보여 줍니다. 스스로 패배를 보고하면 즉시 확정되고, 승리 보고는 상대의 보고나 15초 대기 뒤에 확정됩니다. */
+  async function conclude(winner: string, why: string): Promise<void> {
+    if (!pvp || pvp.done) return; pvp.done = true; finishedShown = true; const p = pvp, win = winner === p.s.me.id, eyebrow = `${mapOf(setup).name} · ${setup.laps}랩 · vs ${p.s.opponent.nickname}`;
+    const mine = p.myFin !== null ? `<p class="rc-total">${fmtTime(p.myFin)}</p>` : '';
+    const card = (extra: string, actions = '', voided = false, won = win): void => { window.setTimeout(() => { if (!closed && pvp === p) pvpCard(eyebrow, voided ? '무효' : won ? '승리' : '패배', `${mine}<p class="rc-record">${why}</p><p class="rc-record">${extra}</p>`, actions || '<button data-act="exit">메뉴로</button>'); }, p.myFin !== null ? 900 : 0); };
+    card('결과를 기록하는 중…');
+    try {
+      let row = await p.s.backend.report(p.s.match.id, winner);
+      for (let i = 0; i < 8 && row.status === 'playing' && pvp === p && !closed; i++) { await new Promise(r => window.setTimeout(r, 3000)); row = await p.s.backend.settle(p.s.match.id); }
+      if (closed || pvp !== p) return;
+      const d = p.s.host ? row.host_delta : row.guest_delta, after = row.status === 'finished' && d !== null ? `레이팅 ${d >= 0 ? '+' : ''}${d}` : row.status === 'void' ? '두 쪽의 보고가 달라 이 대전은 기록되지 않았습니다.' : '결과가 아직 확정되지 않았습니다.';
+      card(after, '<button class="primary" data-act="rematch">다시 대전</button><button data-act="exit">메뉴로</button>', row.status === 'void', row.status === 'finished' ? row.winner_id === p.s.me.id : win);
+    } catch { card('기록을 저장하지 못했습니다. 네트워크를 확인해 주세요.'); }
+  }
+  /** 나가기: 대전 중이면 기권으로 처리합니다. */
+  function leavePvp(): void {
+    const p = pvp; if (!p) return;
+    if (!p.done && p.net.started) { p.net.bye(); void p.s.backend.report(p.s.match.id, p.s.opponent.id).catch(() => undefined); }
+    else if (!p.done) void p.s.backend.cancelMatch(p.s.match.id).catch(() => undefined);
+    endPvp();
+  }
+  function endPvp(): void { pvp?.net.dispose(); pvp = null; }
 
   function recover(): void {
     const c = race.player.car, i = c.idx; c.x = track.x[i]; c.z = track.z[i]; c.y = track.y[i]; c.h = Math.atan2(track.tz[i], track.tx[i]); c.vx = c.vz = 0; c.vf = c.vl = 0; c.yawRate = 0; c.drifting = false; c.driftT = 0; msg('복귀');
@@ -159,24 +224,25 @@ export function openRace(onExit: () => void): void {
     const dt = Math.min(0.1, (now - last) / 1000 || 0.016); last = now;
     if (!paused && view) {
       acc += dt; let steps = 0; const input = readInput();
-      while (acc >= STEP && steps < 6) { handle(updateRace(race, STEP, input)); acc -= STEP; steps++; }
+      while (acc >= STEP && steps < 6) { handle(updateRace(race, STEP, input, now)); acc -= STEP; steps++; }
       if (steps === 6) acc = 0;
       const c = race.player.car; audio.drive(c.vf, input.throttle, c.slip, boosting(c), c.drifting, wallHit > 0);
       view.update(race, dt, wallHit); wallHit = 0; fxIntensity += (RaceView.intensity(race) - fxIntensity) * Math.min(1, dt * 5); drawFx(fxIntensity);
-      hud(); drawMini();
+      pvp?.net.sendSnap(race.player.car, now); hud(); drawMini();
       if (msgT > 0 && (msgT -= dt) <= 0) $('#rc-msg').className = 'rc-msg';
     }
   }
 
   const setPaused = (on: boolean): void => {
-    if (setupUi || race.phase === 'done' || finishedShown || closed) return; paused = on; modal.className = on ? 'rc-modal show' : 'rc-modal'; if (on) { audio.drive(0, 0, 0, false, false, false); modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">PAUSED</span><h2>일시정지</h2><div class="rc-actions"><button class="primary" data-act="resume">계속하기</button><button data-act="restart">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button></div></div>'; } else modal.innerHTML = '';
+    if (setupUi || pvp || race.phase === 'done' || finishedShown || closed) return; paused = on; modal.className = on ? 'rc-modal show' : 'rc-modal'; if (on) { audio.drive(0, 0, 0, false, false, false); modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">PAUSED</span><h2>일시정지</h2><div class="rc-actions"><button class="primary" data-act="resume">계속하기</button><button data-act="restart">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button></div></div>'; } else modal.innerHTML = '';
   };
   const exit = (): void => {
     if (closed) return; closed = true; cancelAnimationFrame(raf); removeEventListener('keydown', onKey); removeEventListener('keyup', onKeyUp); removeEventListener('resize', resize); removeEventListener('blur', onBlur);
-    audio.dispose(); view?.dispose(); setupUi?.destroy(); root.remove(); onExit();
+    leavePvp(); audio.dispose(); view?.dispose(); setupUi?.destroy(); root.remove(); onExit();
   };
   const act = (a: string | undefined): void => {
     audio.unlock();
+    if (a === 'rematch') { endPvp(); showSetup(); openPvpLobby(); return; }
     if (a === 'pause') setPaused(!paused); else if (a === 'resume') setPaused(false); else if (a === 'restart') restart(); else if (a === 'setup') showSetup(); else if (a === 'exit') exit();
     else if (a === 'mute') { audio.setEnabled(!audio.enabled); (root.querySelector('[data-act="mute"]') as HTMLElement).textContent = audio.enabled ? '🔊' : '🔇'; }
   };
@@ -184,7 +250,7 @@ export function openRace(onExit: () => void): void {
     if (e.repeat && e.code !== 'KeyR') { if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); return; }
     audio.unlock(); if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
     if (e.code === 'Escape' || e.code === 'KeyP') { setPaused(!paused); return; } if (e.code === 'KeyM') { act('mute'); return; } if (e.code === 'KeyR' && !paused && race.phase === 'racing') { recover(); return; }
-    if (e.code === 'Enter' && finishedShown) { restart(); return; } keys.add(e.code);
+    if (e.code === 'Enter' && finishedShown && !pvp) { restart(); return; } keys.add(e.code);
   };
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.code); };
   const onBlur = (): void => { keys.clear(); for (const k of Object.keys(hold) as Array<keyof typeof hold>) hold[k] = false; if (race.phase === 'racing' && !setupUi) setPaused(true); };

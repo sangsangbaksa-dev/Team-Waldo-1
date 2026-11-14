@@ -84,6 +84,7 @@ export function updateActors(w: World, dt: number): void {
   for (const a of w.actors) {
     if (!a.alive) continue; a.flash -= dt; a.runCd -= dt; a.repathT -= dt;
     if (a.inVeh) continue;
+    if (w.opts.duel && a.f === 1) continue; // 결투의 상대는 네트워크가 움직입니다
     const def = ACTORS[a.kind], fac = a.f < 8 ? w.factions[a.f] : null;
     let sp = def.speed;
     if (a.kind === 'boss' && fac) {

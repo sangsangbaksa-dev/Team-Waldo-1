@@ -67,7 +67,7 @@ export type UnitId = 'worker' | 'rifle' | 'heavy' | 'medic' | 'sniper' | 'buggy'
 export type StructKind = 'hq' | 'barracks' | 'depot' | 'factory' | 'lab' | 'turret';
 export interface ActorDef { name: string; hp: number; speed: number; r: number; weapon: WeaponId; armor: number; xp: number; mech?: boolean }
 export const ACTORS: Record<ActorKind, ActorDef> = {
-  boss: { name: '보스', hp: 160, speed: 232, r: 13, weapon: 'pistol', armor: 0, xp: 150 },
+  boss: { name: '보스', hp: 160, speed: 232, r: 10, weapon: 'pistol', armor: 0, xp: 150 },
   worker: { name: '일꾼', hp: 45, speed: 150, r: 9, weapon: 'u_pistol', armor: 0, xp: 6 },
   rifle: { name: '소총병', hp: 70, speed: 172, r: 10, weapon: 'u_rifle', armor: 0, xp: 10 },
   heavy: { name: '중화기병', hp: 110, speed: 150, r: 11, weapon: 'u_rocket', armor: 0.1, xp: 16 },

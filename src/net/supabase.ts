@@ -3,6 +3,9 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './config';
 import type { Account, Backend, Channel, GameKind, MatchRow, NetMsg, RankRow, Rating } from './types';
 
+/** 확인 메일의 링크가 돌아올 주소: 지금 접속한 사이트의 이 페이지(배포 주소마다 달라서 고정하지 않습니다). Supabase 의 Redirect URLs 에 등록된 주소여야 합니다. */
+const homeUrl = (): string => location.origin + location.pathname.replace(/index\.html$/, '');
+
 export function createSupabaseBackend(): Backend {
   const sb: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     auth: { persistSession: true, autoRefreshToken: true, storageKey: 'waldo.pvp.auth' },
@@ -23,7 +26,7 @@ export function createSupabaseBackend(): Backend {
       return u ? accountOf(u.id, u.email ?? '') : null;
     },
     async signUp(email, password, nickname) {
-      const { data, error } = await sb.auth.signUp({ email, password, options: { data: { nickname } } });
+      const { data, error } = await sb.auth.signUp({ email, password, options: { data: { nickname }, emailRedirectTo: homeUrl() } });
       if (error) throw error;
       if (!data.session || !data.user) return 'confirm';
       return accountOf(data.user.id, email);
@@ -33,6 +36,7 @@ export function createSupabaseBackend(): Backend {
       if (error) throw error;
       return accountOf(data.user.id, data.user.email ?? email);
     },
+    async resendConfirmation(email) { const { error } = await sb.auth.resend({ type: 'signup', email, options: { emailRedirectTo: homeUrl() } }); if (error) throw error; },
     async signOut() { await sb.auth.signOut(); },
     async setNickname(nickname) {
       await rpc('pvp_set_nickname', { p_nickname: nickname });

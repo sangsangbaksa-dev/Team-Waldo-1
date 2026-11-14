@@ -133,10 +133,52 @@ async function launch(id: GameId): Promise<void> {
       openRace(renderMenu);
     }
   } catch {
-    renderMenu();
+    /**
+ * 가입 확인 메일의 링크로 돌아왔을 때의 처리. 성공이면 Supabase 가 주소의 토큰으로 로그인 상태를 만들어 주고,
+ * 실패(링크 만료·이미 사용)면 `#error=...` 가 붙어 오므로 알아듣기 쉬운 안내와 재전송 버튼을 보여 줍니다.
+ */
+function handleAuthRedirect(): void {
+  const params = new URLSearchParams(location.hash.replace(/^#/, ''));
+  const failed = params.has('error') || params.has('error_code'), signedIn = params.has('access_token');
+  if (!failed && !signedIn) return;
+  const clean = (): void => { try { history.replaceState(null, '', location.pathname + location.search); } catch { /* 주소 정리는 선택 사항 */ } };
+  const open = (notice: string): void => {
+    void import('./net/lobby').then(({ openLobby }) => { openLobby({ notice, onClose: () => undefined }); }).catch(() => undefined);
+  };
+  if (failed) { clean(); open('인증 링크가 만료되었거나 이미 사용됐습니다. 이메일을 입력하고 "인증 메일 다시 받기"를 눌러 새 링크를 받아 주세요.'); return; }
+  // 성공: 클라이언트가 만들어지면서 주소의 토큰을 읽어 로그인합니다(주소 정리는 그 뒤에).
+  void import('./net/backend').then(async ({ currentAccount, setAccount }) => {
+    const account = await currentAccount(); clean();
+    if (account) { setAccount(account); open('이메일 인증이 끝났습니다. 로그인되었습니다.'); } else open('로그인 상태를 확인하지 못했습니다. 이메일과 비밀번호로 로그인해 주세요.');
+  }).catch(() => clean());
+}
+
+renderMenu();
+handleAuthRedirect();
     const retry = document.querySelector<HTMLElement>('#home-notice');
     if (retry) retry.textContent = '게임을 불러오지 못했습니다. 네트워크 연결을 확인한 뒤 다시 시도해 주세요.';
   }
 }
 
+/**
+ * 가입 확인 메일의 링크로 돌아왔을 때의 처리. 성공이면 Supabase 가 주소의 토큰으로 로그인 상태를 만들어 주고,
+ * 실패(링크 만료·이미 사용)면 `#error=...` 가 붙어 오므로 알아듣기 쉬운 안내와 재전송 버튼을 보여 줍니다.
+ */
+function handleAuthRedirect(): void {
+  const params = new URLSearchParams(location.hash.replace(/^#/, ''));
+  const failed = params.has('error') || params.has('error_code'), signedIn = params.has('access_token');
+  if (!failed && !signedIn) return;
+  const clean = (): void => { try { history.replaceState(null, '', location.pathname + location.search); } catch { /* 주소 정리는 선택 사항 */ } };
+  const open = (notice: string): void => {
+    void import('./net/lobby').then(({ openLobby }) => { openLobby({ notice, onClose: () => undefined }); }).catch(() => undefined);
+  };
+  if (failed) { clean(); open('인증 링크가 만료되었거나 이미 사용됐습니다. 이메일을 입력하고 "인증 메일 다시 받기"를 눌러 새 링크를 받아 주세요.'); return; }
+  // 성공: 클라이언트가 만들어지면서 주소의 토큰을 읽어 로그인합니다(주소 정리는 그 뒤에).
+  void import('./net/backend').then(async ({ currentAccount, setAccount }) => {
+    const account = await currentAccount(); clean();
+    if (account) { setAccount(account); open('이메일 인증이 끝났습니다. 로그인되었습니다.'); } else open('로그인 상태를 확인하지 못했습니다. 이메일과 비밀번호로 로그인해 주세요.');
+  }).catch(() => clean());
+}
+
 renderMenu();
+handleAuthRedirect();

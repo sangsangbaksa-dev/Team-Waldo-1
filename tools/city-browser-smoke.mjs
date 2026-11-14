@@ -47,6 +47,17 @@ try {
       await page.screenshot({ path: 'browser-artifacts/last-city-home-' + size.name + '.png', animations: 'disabled' });
       await page.locator('#start-race').click();
       await page.locator('.rc-root').waitFor({ state: 'visible' });
+      await page.locator('.rc-setup').waitFor();
+      assert.equal(await page.locator('[data-pick^="map:"]').count(), 5, 'Race setup must list five maps');
+      assert.equal(await page.locator('[data-pick^="car:"]').count(), 6, 'Race setup must list six cars');
+      await page.screenshot({ path: 'browser-artifacts/race-setup-' + size.name + '.png', animations: 'disabled' });
+      await page.locator('[data-pick="map:desert"]').click();
+      await page.locator('[data-pick="laps:1"]').click();
+      await page.locator('[data-pick="level:2"]').click();
+      await page.locator('[data-pick="car:velox"]').click();
+      await page.locator('[data-setup="start"]').click();
+      await page.waitForFunction(() => document.querySelector('.rc-root')?.dataset.phase === 'countdown');
+      assert.equal(await page.locator('#rc-laps').innerText(), '1', 'HUD must show the chosen lap count');
       await page.locator('.rc-btns [data-act="exit"]').click();
       await page.locator('.tile').first().waitFor();
       await page.locator('#start-city').click();

@@ -13,6 +13,7 @@
     "city-sim": "node --import tsx tools/city-sim.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.119.0",
     "three": "^0.187.0"
   },
   "devDependencies": {

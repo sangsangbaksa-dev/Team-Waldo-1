@@ -143,12 +143,12 @@ class B:
             for i in range(seg):
                 j = (i + 1) % seg
                 a, b, cc, d = rows[k][i], rows[k][j], rows[k + 1][j], rows[k + 1][i]
-                if k == 0:
-                    self._poly([a, cc, d], material)
+                if k == 0:                      # 면은 바깥에서 볼 때 반시계 방향(법선이 밖을 향함)
+                    self._poly([a, d, cc], material)
                 elif k == rings - 1:
-                    self._poly([a, b, d], material)
+                    self._poly([a, d, b], material)
                 else:
-                    self._poly([a, b, cc, d], material)
+                    self._poly([a, d, cc, b], material)
         return self
 
     def loft(self, st, material: str, n: int = 14, sq: float = 3.2, cap: bool = True, mats=None) -> 'B':
@@ -165,10 +165,10 @@ class B:
         for a in range(len(rings) - 1):
             for k in range(n):
                 j = (k + 1) % n
-                self._poly([rings[a][k], rings[a][j], rings[a + 1][j], rings[a + 1][k]][::-1], material)
+                self._poly([rings[a][k], rings[a][j], rings[a + 1][j], rings[a + 1][k]], material)
         if cap:
-            self._poly(rings[0][:], material)
-            self._poly(rings[-1][::-1], material)
+            self._poly(rings[0][::-1], material)
+            self._poly(rings[-1][:], material)
         return self
 
     def loftz(self, st, material: str, n: int = 14, sq: float = 2.6, cx: float = 0.0) -> 'B':
@@ -190,14 +190,56 @@ class B:
         self._poly(rings[-1][:], material)
         return self
 
+    def stack(self, st, material: str, n: int = 12, sq: float = 2.5, cap: bool = True) -> 'B':
+        """높이(Z) 방향 단면 몸통(단면마다 중심 이동 가능). st: [(z, cx, cy, 반깊이x, 반폭y), ...]"""
+        self._begin()
+        rings = []
+        for z, cx, cy, hx, hy in st:
+            r = []
+            for k in range(n):
+                t = 2 * math.pi * k / n
+                c, sn = math.cos(t), math.sin(t)
+                r.append(Vector((cx + hx * math.copysign(abs(c) ** (2 / sq), c), cy + hy * math.copysign(abs(sn) ** (2 / sq), sn), z)))
+            rings.append(r)
+        for a in range(len(rings) - 1):
+            for k in range(n):
+                j = (k + 1) % n
+                self._poly([rings[a][k], rings[a][j], rings[a + 1][j], rings[a + 1][k]], material)
+        if cap:
+            self._poly(rings[0][::-1], material)
+            self._poly(rings[-1][:], material)
+        return self
+
+    def tube(self, path, material: str, n: int = 8, cap: bool = True) -> 'B':
+        """경로를 따라가는 둥근 관(팔·끈·머리카락). path: [((x, y, z), 반지름) 또는 ((x, y, z), rx, ry), ...]"""
+        self._begin()
+        pts = [Vector(p[0]) for p in path]
+        rad = [(p[1], p[2] if len(p) > 2 else p[1]) for p in path]
+        rings, frame, prev = [], None, None
+        for i, p in enumerate(pts):
+            t = (pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]).normalized()
+            frame = Vector((0, 0, 1)).rotation_difference(t).to_matrix() if frame is None else prev.rotation_difference(t).to_matrix() @ frame
+            prev = t
+            rings.append([frame @ Vector((math.cos(2 * math.pi * k / n) * rad[i][0], math.sin(2 * math.pi * k / n) * rad[i][1], 0)) + p for k in range(n)])
+        for a in range(len(rings) - 1):
+            for k in range(n):
+                j = (k + 1) % n
+                self._poly([rings[a][k], rings[a][j], rings[a + 1][j], rings[a + 1][k]], material)
+        if cap:
+            self._poly(rings[0][::-1], material)
+            self._poly(rings[-1][:], material)
+        return self
+
     def cone(self, c, r: float, h: float, material: str, axis: str = 'z', seg: int = 6) -> 'B':
         return self.cyl(c, r, h, material, axis, seg, r2=0.0)
 
-    def merge(self, other: 'B', at=(0, 0, 0), scale: float = 1.0, mirror_y: bool = False) -> 'B':
+    def merge(self, other: 'B', at=(0, 0, 0), scale: float = 1.0, mirror_y: bool = False, rot: Matrix | None = None) -> 'B':
+        """다른 도형 묶음을 합칩니다. rot(3x3)을 주면 원점 기준으로 돌린 뒤 at 으로 옮깁니다."""
         o = Vector(at)
         base = len(self.v)
         for x, y, z in other.v:
-            p = Vector((x * scale, (-y if mirror_y else y) * scale, z * scale)) + o
+            p = Vector((x * scale, (-y if mirror_y else y) * scale, z * scale))
+            p = (rot @ p if rot is not None else p) + o
             self.v.append((p.x, p.y, p.z))
         for f, m in zip(other.f, other.m):
             idx = tuple(i + base for i in f)
@@ -205,7 +247,7 @@ class B:
             self.m.append(m)
         return self
 
-    def build(self, name: str, loc=(0, 0, 0), bevel: float = 0.012, smooth_angle: float = 38.0) -> bpy.types.Object:
+    def build(self, name: str, loc=(0, 0, 0), bevel: float = 0.012, smooth_angle: float = 38.0, segments: int = 2) -> bpy.types.Object:
         me = bpy.data.meshes.new(name)
         used = list(dict.fromkeys(self.m))
         me.from_pydata(self.v, [], self.f)
@@ -221,7 +263,7 @@ class B:
         if bevel > 0:
             bv = ob.modifiers.new('bevel', 'BEVEL')
             bv.width = bevel
-            bv.segments = 2
+            bv.segments = segments
             bv.limit_method = 'ANGLE'
             bv.angle_limit = math.radians(40)
             bv.harden_normals = False

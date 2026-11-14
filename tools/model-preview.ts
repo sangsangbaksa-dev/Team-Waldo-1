@@ -20,13 +20,16 @@ const sections: Record<string, { c: THREE.Vector3; d: number }> = {};
 const row = (name: string, items: THREE.Object3D[], gap: number, z0: number, dist: number): void => {
   const total = items.length;
   items.forEach((o, i) => { const col = i - (total - 1) / 2; o.position.x = col * gap; o.position.z = z0; scene.add(o); });
-  sections[name] = { c: new THREE.Vector3(0, dist * 0.12, z0), d: Math.max(dist * 0.4, total * gap * 0.6) };
+  sections[name] = { c: new THREE.Vector3(0, dist * 0.12, z0), d: name === 'chars' ? total * gap * 0.44 : Math.max(dist * 0.4, total * gap * 0.6) };
 };
+const team = (i: number): number => [0x3ddc97, 0xff5d5d, 0x4da3ff, 0xffc93c, 0xb77bff, 0xff8f45, 0x35d9e6, 0xff7dbd][i % 8], pose = new URLSearchParams(location.search).get('pose');
 loadModels('/').then(m => {
   const yaw = (o: THREE.Object3D, a: number): THREE.Object3D => { const g = new THREE.Group(); o.rotation.y = a; g.add(o); return g; };
   const chars = CHAR_KINDS.map((k, i) => {
-    const g = new THREE.Group(), body = bakedGroup(m.chars[k].body, [0x3ddc97, 0xff5d5d, 0x4da3ff, 0xffc93c, 0xb77bff, 0xff8f45, 0x35d9e6, 0xff7dbd][i % 8]);
-    g.add(body); for (const s of [-1, 1]) { const l = bakedGroup(m.chars[k].leg); l.position.set(0, 0.9, s * 0.11); g.add(l); }
+    const g = new THREE.Group(), body = bakedGroup(m.chars[k].body, team(i));
+    const cm = m.chars[k]; g.add(body);
+    for (const s of [-1, 1]) { const l = bakedGroup(cm.leg, team(i)); l.position.set(0, 0.9, s * 0.11); g.add(l); if (cm.shin) { const sh = bakedGroup(cm.shin, team(i)); sh.position.set(0, -0.44, 0); l.add(sh); } }
+    for (const arm of [cm.armL, cm.armR]) if (arm) { const ag = bakedGroup(arm.geo, team(i)); ag.position.copy(arm.pivot); if (arm === cm.armR && pose === 'aim' && k === 'boss') ag.rotation.z = 1.42; g.add(ag); }
     return yaw(g, -0.55);
   });
   row('chars', chars, 1.5, -400, 10.5);
@@ -43,6 +46,6 @@ loadModels('/').then(m => {
   ps.forEach((p, i) => { if (i === 5) p.scale.setScalar(0.35); });
   row('props', ps, 4.2, 40, 26);
   (window as unknown as Record<string, unknown>).__view = (name: string): void => { const s = sections[name]; cam.position.set(s.c.x, s.c.y + s.d * 0.22, s.c.z + s.d); cam.lookAt(s.c); renderer.render(scene, cam); };
-  (window as unknown as Record<string, unknown>).__look = (kind: string, ang: number): void => { const i = CHAR_KINDS.indexOf(kind as never), n = CHAR_KINDS.length, x = (i - (n - 1) / 2) * 1.5; cam.position.set(x + Math.sin(ang) * 3.6, 1.5, -400 + Math.cos(ang) * 3.6); cam.lookAt(x, 1.15, -400); renderer.render(scene, cam); };
+  (window as unknown as Record<string, unknown>).__look = (kind: string, ang: number, dist = 3.6): void => { const i = CHAR_KINDS.indexOf(kind as never), n = CHAR_KINDS.length, x = (i - (n - 1) / 2) * 1.5; cam.position.set(x + Math.sin(ang) * dist, 1.35, -400 + Math.cos(ang) * dist); cam.lookAt(x, 0.95, -400); renderer.render(scene, cam); };
   (window as unknown as Record<string, unknown>).__ready = true;
 }).catch(e => { document.title = 'ERR ' + e; (window as unknown as Record<string, unknown>).__err = String(e?.stack ?? e); });

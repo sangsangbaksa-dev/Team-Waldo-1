@@ -2,7 +2,7 @@
 import './race.css';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { readPreferences } from '../prefs';
+import { readPreferences, writePreferences } from '../prefs';
 import { fmtTime, raceRaceKey, readRaceRecords, readRaceSetupRaw, writeRaceRecords, writeRaceSetupRaw } from '../records';
 import { RaceAudio } from './audio';
 import { carById, levelById, mapOf, sanitizeSetup, type RaceSetup } from './config';
@@ -178,7 +178,7 @@ export function openRace(onExit: () => void): void {
   const act = (a: string | undefined): void => {
     audio.unlock();
     if (a === 'pause') setPaused(!paused); else if (a === 'resume') setPaused(false); else if (a === 'restart') restart(); else if (a === 'setup') showSetup(); else if (a === 'exit') exit();
-    else if (a === 'mute') { audio.setEnabled(!audio.enabled); (root.querySelector('[data-act="mute"]') as HTMLElement).textContent = audio.enabled ? '🔊' : '🔇'; }
+    else if (a === 'mute') { audio.setEnabled(!audio.enabled); prefs.sound = audio.enabled; writePreferences(prefs); (root.querySelector('[data-act="mute"]') as HTMLElement).textContent = audio.enabled ? '🔊' : '🔇'; }
   };
   const onKey = (e: KeyboardEvent): void => {
     if (e.repeat && e.code !== 'KeyR') { if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); return; }

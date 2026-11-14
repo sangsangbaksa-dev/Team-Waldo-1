@@ -1,5 +1,6 @@
 const games = [
   ['LAST CITY', () => import('./city/game').then(({ openCity }) => openCity)],
+  ['SPEED RUSH', () => import('./race/game').then(({ openRace }) => openRace)],
 ] as const;
 
 const app = document.querySelector<HTMLDivElement>('#game')!;

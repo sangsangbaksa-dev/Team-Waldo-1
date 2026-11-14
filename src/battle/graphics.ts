@@ -49,11 +49,11 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   const labels:WorldLabel[]=[];
   const effects=createBattleEffects(world);
   const art=createVisualDetails();
-  scene.background=new THREE.Color(0x344248);
-  scene.fog=new THREE.FogExp2(0x344248,.0013);
-  const ambient=new THREE.HemisphereLight(0x97abb6,0x28352f,1.85);
+  scene.background=new THREE.Color(0x4a6068);
+  scene.fog=new THREE.FogExp2(0x4a6068,.0011);
+  const ambient=new THREE.HemisphereLight(0xaac4cf,0x3b4a34,1.75);
   scene.add(ambient);
-  const sun=new THREE.DirectionalLight(0xd2c7b0,2.6);
+  const sun=new THREE.DirectionalLight(0xffdca6,3.1);
   sun.position.set(-130,220,140);
   sun.castShadow=true;
   // A 2048px atlas avoids the 3K shadow allocation stall on repeated 600-unit battles.
@@ -63,17 +63,17 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   sun.shadow.camera.near=10;sun.shadow.camera.far=520;
   sun.shadow.normalBias=.035;sun.shadow.bias=-.0001;
   scene.add(sun,sun.target);
-  const fill=new THREE.DirectionalLight(0x799cac,.6);fill.position.set(35,35,-45);scene.add(fill);
+  const fill=new THREE.DirectionalLight(0x6f9cb8,.75);fill.position.set(35,35,-45);scene.add(fill);
 
   const material=(color:number,metalness=0,roughness=.83,emissive=0)=>
     new THREE.MeshStandardMaterial({color,metalness,roughness,emissive,emissiveIntensity:emissive?.55:0});
-  const stone=material(0x697277),stoneDark=material(0x343e43),
-    mortar=material(0x505e65),roof=material(0x273b46),
+  const stone=material(0x7a7f7b),stoneDark=material(0x3a4448),
+    mortar=material(0x505e65),roof=material(0x2c4a58),
     timber=material(0x51473e),woodDark=material(0x2f3331),
-    cream=material(0x9da49c),gold=material(0xc5a16c,.45,.35),
-    meadow=material(0x46554b),leaves=material(0x374d42),
-    leafLight=material(0x536556),waterMat=new THREE.MeshStandardMaterial({
-      color:0x31525c,roughness:.25,metalness:.1,transparent:true,opacity:.94
+    cream=material(0xb3ac98),gold=material(0xd2ab68,.55,.3),
+    meadow=material(0x50703f),leaves=material(0x3a5d3c),
+    leafLight=material(0x66864f),waterMat=new THREE.MeshStandardMaterial({
+      color:0x2f6d7c,roughness:.16,metalness:.2,transparent:true,opacity:.94
     }),roadMat=material(0x465055),soilMat=material(0x5d554b),
     ember=material(0xffb45a,0,.4,0xff8130);
   const teamMats=FACTION_COLORS.map(color=>material(new THREE.Color(color).lerp(new THREE.Color(0x465450),.35).getHex(),.25,.52));
@@ -116,7 +116,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   terrain.rotateX(-Math.PI/2);
   const position=terrain.getAttribute('position');
   const vertexColors:number[]=[];
-  const greenA=new THREE.Color(0x313c3c),greenB=new THREE.Color(0x57635b);
+  const greenA=new THREE.Color(0x34483a),greenB=new THREE.Color(0x66805a);
   for(let i=0;i<position.count;i++){
     const x=position.getX(i),z=position.getZ(i);
     const edge=Math.max(Math.abs(x),Math.abs(z));

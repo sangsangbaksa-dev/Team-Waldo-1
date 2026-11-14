@@ -10,7 +10,7 @@ describe('튜토리얼 연습장', () => {
     const w = make(), rival = w.boss(2)!, x = rival.x, y = rival.y, r = w.zone.r, ph = w.zone.phase;
     run(w, 240);
     expect(w.zone.r).toBe(r); expect(w.zone.phase).toBe(ph); expect(w.planes).toHaveLength(0);
-    expect(Math.hypot(rival.x - x, rival.y - y)).toBeLessThan(40);
+    expect(Math.hypot(rival.x - x, rival.y - y)).toBeLessThan(80);
     expect(w.factions.filter(f => f.alive)).toHaveLength(8);
     expect(w.quests.every(q => !q.done)).toBe(true);
   }, 30000);

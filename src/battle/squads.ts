@@ -1,7 +1,15 @@
 import { MAP_HALF_SIZE, type War, type Unit } from './war';
 
-export const SQUAD_NAMES = ['주력군', '기동대', '수비대'] as const;
-export type SquadId = 0 | 1 | 2;
+/** Up to five groups: slot 0 is the main army, slots 1–4 are independent squads. */
+export const SQUAD_NAMES = ['주력군', '기동대', '수비대', '돌격대', '정찰대'] as const;
+export const SQUAD_COUNT = 5;
+export const SQUAD_COLORS = ['#5ee3ca', '#f8e09c', '#e0b5fa', '#9fd3ff', '#ffb38a'] as const;
+export type SquadId = 0 | 1 | 2 | 3 | 4;
+export type IndependentSquadId = Exclude<SquadId, 0>;
+/** One slot per squad; a null slot means the squad holds its last position. */
+export type SquadOrders = [SquadCommand | null, SquadCommand | null, SquadCommand | null, SquadCommand | null, SquadCommand | null];
+export const isSquadId = (value: unknown): value is SquadId =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 0 && value < SQUAD_COUNT;
 export type SquadCommand =
   | { kind: 'move'; x: number; z: number }
   | { kind: 'home' }
@@ -9,7 +17,10 @@ export type SquadCommand =
   | { kind: 'faction'; id: number };
 
 export const squadOf = (unit: Pick<Unit, 'squad'>): SquadId =>
-  unit.squad === 1 || unit.squad === 2 ? unit.squad : 0;
+  isSquadId(unit.squad) ? unit.squad : 0;
+
+export const isIndependent = (squad: unknown): squad is IndependentSquadId =>
+  isSquadId(squad) && squad !== 0;
 
 export function squadUnits(w: War, squad: SquadId): Unit[] {
   return w.units.filter(unit => unit.owner === 0 && unit.hp > 0 && squadOf(unit) === squad);
@@ -17,7 +28,7 @@ export function squadUnits(w: War, squad: SquadId): Unit[] {
 
 /** Transfer up to three available troops from the main army to an independent squad. */
 export function assignSquad(w: War, squad: SquadId, amount = 3): number {
-  if ((squad !== 1 && squad !== 2) || w.over || !w.factions[0].alive ||
+  if (!isIndependent(squad) || w.over || !w.factions[0].alive ||
       !Number.isInteger(amount) || amount < 1 || amount > (w.grandBattle ? 100 : 18)) return 0;
   const source = squadUnits(w, 0).sort((a, b) => a.id - b.id);
   const selected = source.slice(0, amount);
@@ -27,7 +38,7 @@ export function assignSquad(w: War, squad: SquadId, amount = 3): number {
 
 /** Rejoin the main army, including troops whose independent orders have not completed. */
 export function dismissSquad(w: War, squad: SquadId): number {
-  if ((squad !== 1 && squad !== 2) || w.over) return 0;
+  if (!isIndependent(squad) || w.over) return 0;
   const units = squadUnits(w, squad);
   for (const unit of units) unit.squad = 0;
   if (w.squadOrders) w.squadOrders[squad] = null;
@@ -36,7 +47,7 @@ export function dismissSquad(w: War, squad: SquadId): number {
 
 /** Validate commands before storing them: map-clicks cannot send troops outside the world. */
 export function commandSquad(w: War, squad: SquadId, command: SquadCommand): boolean {
-  if (w.over || !w.factions[0].alive || ![0, 1, 2].includes(squad) ||
+  if (w.over || !w.factions[0].alive || !isSquadId(squad) ||
       squadUnits(w, squad).length === 0) return false;
   if (command.kind === 'move' &&
       (!Number.isFinite(command.x) || !Number.isFinite(command.z) ||
@@ -45,7 +56,7 @@ export function commandSquad(w: War, squad: SquadId, command: SquadCommand): boo
       (!Number.isInteger(command.id) || !w.outposts[command.id])) return false;
   if (command.kind === 'faction' &&
       (!Number.isInteger(command.id) || command.id === 0 || !w.factions[command.id]?.alive)) return false;
-  w.squadOrders ??= [null, null, null];
+  w.squadOrders ??= [null, null, null, null, null];
   w.squadOrders[squad] = command;
   return true;
 }

@@ -4,7 +4,7 @@ import { createBaseManager } from './baseUI';
 import { createBaseDistrict } from './baseVisuals';
 import { createBattleWorld, FACTION_COLORS } from './graphics';
 import { createAdventure } from './adventure';
-import { SQUAD_NAMES, squadUnits, assignSquad, dismissSquad, commandSquad, squadDestination, squadOrderLabel, type SquadId, type SquadCommand } from './squads';
+import { SQUAD_COLORS, SQUAD_COUNT, SQUAD_NAMES, squadOf, squadUnits, assignSquad, dismissSquad, commandSquad, squadDestination, squadOrderLabel, type SquadId, type SquadCommand } from './squads';
 import { loadWar, saveWar, deleteWarSave } from './save';
 import { worldToMinimap, minimapToWorld, pickMapTarget, type StrategicTarget } from './mapCommands';
 import { BattleAudio } from './audio';
@@ -79,11 +79,13 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
         <section id="pane-army" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-army" hidden><div class="section-heading"><h2>병종 훈련</h2><span>숫자 1–4</span></div><div id="unit-train"></div><button id="open-base-generals" class="base-economy-link">♛ 장군 모집과 부대 배치</button><div class="section-heading"><h2>본부 수비대</h2></div><div id="reserve" class="segmented"></div><p class="panel-note">지정한 병력은 본부를 지킵니다. 나머지 병력이 작전 명령을 수행합니다.</p></section>
         <section id="pane-orders" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-orders" hidden>
           <div class="squad-manager" aria-label="부대 그룹 편성">
-            <div class="section-heading"><h2>부대 편성 및 직접 이동</h2><span>3개 그룹</span></div>
+            <div class="section-heading"><h2>부대 편성 및 직접 이동</h2><span>5개 그룹</span></div>
             <div class="squad-tabs" aria-label="선택할 부대 그룹">
               <button data-squad-select="0" aria-pressed="true">① 주력군 <small>${100}명</small></button>
               <button data-squad-select="1" aria-pressed="false">② 기동대 <small>0명</small></button>
               <button data-squad-select="2" aria-pressed="false">③ 수비대 <small>0명</small></button>
+              <button data-squad-select="3" aria-pressed="false">④ 돌격대 <small>0명</small></button>
+              <button data-squad-select="4" aria-pressed="false">⑤ 정찰대 <small>0명</small></button>
             </div>
             <p class="squad-order-status" id="squad-order-status" role="status">주력군 · 기본 작전</p>
             <div class="squad-actions">
@@ -104,12 +106,14 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     <div class="storm-warning" id="storm-warning" hidden>${icon('bolt', 17)}<span id="storm-warning-text"></span></div>
     <section class="war-minimap" aria-label="전장 지도"><div class="map-heading"><span>${icon('map', 15)}전략 지도</span><button id="map-mode" class="text-button" aria-pressed="false">시점 이동</button></div><canvas id="war-map" width="220" height="220" aria-label="미니맵: 그룹 선택 후 위치 지정 모드에서는 원하는 좌표를 클릭해 출전합니다. 아군 본부 클릭으로 복귀합니다." tabindex="0"></canvas><div class="map-footer"><span id="storm-clock"></span><span id="zone-size"></span></div></section>
     <div class="camera-controls"><button id="zoom-in" class="tool-button" aria-label="확대">+</button><button id="zoom-out" class="tool-button" aria-label="축소">−</button><button id="overview" class="tool-button" aria-label="전장 전체 보기">${icon('expand', 18)}</button><button id="panel-toggle" class="tool-button mobile-only" aria-label="관리 패널 접기" aria-expanded="true">${icon('chevron', 18)}</button></div>
-    <div class="war-help"><span><kbd>WASD</kbd> 시점 이동</span><span>드래그: 회전</span><span><kbd>5–7</kbd> 부대 선택</span><span><kbd>G</kbd> 이동 · <kbd>B</kbd> 본부</span><span><kbd>K</kbd> 기지 관리</span></div>
+    <div class="war-help"><span><kbd>WASD</kbd> 시점 이동</span><span>드래그: 회전</span><span><kbd>5–9</kbd> 부대 선택</span><span><kbd>G</kbd> 이동 · <kbd>B</kbd> 본부</span><span><kbd>K</kbd> 기지 관리</span></div>
     <nav class="squad-quickbar" aria-label="빠른 부대 지휘">
       <span>부대 지휘</span>
       <button data-squad-select="0" aria-pressed="true">① 주력군 <small>${100}명</small></button>
       <button data-squad-select="1" aria-pressed="false">② 기동대 <small>0명</small></button>
       <button data-squad-select="2" aria-pressed="false">③ 수비대 <small>0명</small></button>
+      <button data-squad-select="3" aria-pressed="false">④ 돌격대 <small>0명</small></button>
+      <button data-squad-select="4" aria-pressed="false">⑤ 정찰대 <small>0명</small></button>
       <button id="quick-move" aria-pressed="false">📍 위치 지정</button>
       <button id="quick-home">⌂ 본부</button>
     </nav>
@@ -401,7 +405,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     announce(commandMode ? '선택 부대의 목적지를 미니맵에서 지정하세요. 본부 클릭으로 복귀합니다.' : '미니맵을 클릭해 카메라를 이동하세요.');
   };
   const refreshSquads = (unavailable: boolean) => {
-    const counts = ([0, 1, 2] as SquadId[]).map(group => squadUnits(w, group).length);
+    const counts = Array.from({ length: SQUAD_COUNT }, (_, group) => group as SquadId).map(group => squadUnits(w, group).length);
     overlay.querySelectorAll<HTMLButtonElement>('[data-squad-select]').forEach(button => {
       const group = Number(button.dataset.squadSelect) as SquadId;
       const selected = group === selectedSquad;
@@ -470,7 +474,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     if (key === 'escape' && !event.repeat) { event.preventDefault(); togglePause(); return; }
     if (key === 'h' && !event.repeat) home();
     if (!adventureControl.isActionMode && !event.repeat) {
-      if (key === '5' || key === '6' || key === '7') { selectSquad((Number(key) - 5) as SquadId); event.preventDefault(); }
+      if (/^[5-9]$/.test(key)) { selectSquad((Number(key) - 5) as SquadId); event.preventDefault(); }
       if (key === 'g') { syncCommandMode(true); announce('전장이나 미니맵에서 부대 이동 목적지를 클릭하세요.'); event.preventDefault(); }
       if (key === 'b') { issueHome(); event.preventDefault(); }
     }
@@ -566,16 +570,16 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     for (const f of w.factions) { const p = point(f.x, f.z); ctx.fillStyle = f.alive ? factionColor(f.id) : '#4d5954'; ctx.fillRect(p.x - 5, p.y - 5, 10, 10); if (f.id === 0) { ctx.strokeStyle = '#fff4d1'; ctx.strokeRect(p.x - 7, p.y - 7, 14, 14); } }
     for (const unit of w.units) {
       const p = point(unit.x, unit.z);
-      ctx.fillStyle = unit.owner === 0 && (unit.squad === 1 || unit.squad === 2) ?
-        unit.squad === 1 ? '#f8e09c' : '#e0b5fa' : factionColor(unit.owner);
+      ctx.fillStyle = unit.owner === 0 && squadOf(unit) !== 0 ?
+        SQUAD_COLORS[squadOf(unit)] : factionColor(unit.owner);
       const extent = unit.owner === 0 && (unit.squad ?? 0) === selectedSquad ? 2.6 : 1.4;
       ctx.fillRect(p.x - extent / 2, p.y - extent / 2, extent, extent);
     }
-    ([0, 1, 2] as SquadId[]).forEach(group => {
+    Array.from({ length: SQUAD_COUNT }, (_, group) => group as SquadId).forEach(group => {
       const goal = squadDestination(w, group);
       if (!goal) return;
       const target = point(goal.x, goal.z);
-      ctx.strokeStyle = group === 0 ? '#5ee3ca' : group === 1 ? '#f8e09c' : '#e0b5fa';
+      ctx.strokeStyle = SQUAD_COLORS[group];
       ctx.lineWidth = group === selectedSquad ? 2.5 : 1.3;
       ctx.beginPath(); ctx.arc(target.x, target.y, group === selectedSquad ? 7 : 4.5, 0, Math.PI * 2); ctx.stroke();
     });

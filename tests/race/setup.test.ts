@@ -70,11 +70,11 @@ describe('난이도', () => {
     expect(LEVELS.map(l => l.name)).toEqual(['쉬움', '보통', '어려움', '매우 어려움', '극한']);
     for (let i = 1; i < LEVELS.length; i++) { const a = LEVELS[i - 1], b = LEVELS[i]; expect(b.topMul).toBeGreaterThan(a.topMul); expect(b.gripMul).toBeGreaterThan(a.gripMul); expect(b.bandHi).toBeGreaterThanOrEqual(a.bandHi); expect(b.bandLo).toBeGreaterThanOrEqual(a.bandLo); expect(b.line).toBeGreaterThanOrEqual(a.line); }
   });
-  it('1단계(쉬움)는 이전 버전의 2.5단계 값이다', () => {
+  it('1단계(쉬움)는 처음 버전의 3.5단계 값이다', () => {
     // 플레이어가 마지막 차량이면 첫 라이벌이 균형형(ARC)이라 기준 수치(70.5, 37)에 배율만 곱해진다.
     const r = createRace(buildMapTrack(MAPS[0]), 3, Infinity, { level: 1, car: 'fuse' });
-    expect(r.racers[1].ai.top).toBeCloseTo(70.5 * 1.045, 6); expect(r.racers[1].ai.grip).toBeCloseTo(37 * 1.09, 6); expect(r.racers[1].ai.nitro).toBe(0.7); expect(r.racers[1].ai.line).toBeCloseTo(0.425, 6);
-    expect([LEVELS[0].bandLo, LEVELS[0].bandHi, LEVELS[0].bandK]).toEqual([0.945, 1.085, 0.00025]);
+    expect(r.racers[1].ai.top).toBeCloseTo(70.5 * 1.075, 6); expect(r.racers[1].ai.grip).toBeCloseTo(37 * 1.15, 6); expect(r.racers[1].ai.nitro).toBe(0.5); expect(r.racers[1].ai.line).toBeCloseTo(0.675, 6);
+    expect([LEVELS[0].bandLo, LEVELS[0].bandHi, LEVELS[0].bandK]).toEqual([0.955, 1.095, 0.00028]);
   });
   it('라이벌은 플레이어와 다른 차량을 탄다', () => {
     for (const c of CARS) { const colors = createRace(buildMapTrack(MAPS[0]), 1, Infinity, { car: c.id }).racers.map(k => k.color); expect(new Set(colors).size).toBe(4); }

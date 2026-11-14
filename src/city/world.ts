@@ -4,6 +4,7 @@ import {
   SUPPLY_CAP, SUPPLY_DEPOT, SUPPLY_HQ, UNITS, WEAPONS, ZONE_DPS, ZONE_PHASES, baseMods,
   type ActorKind, type BizKind, type ClassId, type Difficulty, type Mods, type ResearchId, type StructKind, type UnitId, type WeaponId,
 } from './defs';
+import { generateArena } from './arena';
 import { addSolid, clearLine, generateCity, makeRng, navBlocked, rectFree, removeSolid, resolveCircle, type CityMap, type Rng } from './map';
 import { updateActors, updateBullets, updateVehicles, updatePopulation } from './actors';
 import { thinkFaction, type AiState } from './ai';
@@ -41,7 +42,7 @@ export interface Fx { t: string; x: number; y: number; a?: number; b?: number; s
 export interface Crystal { id: number; x: number; y: number; amount: number; max: number }
 export interface PlayerInput { mx: number; my: number; ax: number; ay: number; fire: boolean; dash: boolean; brake: boolean }
 export interface WorldOptions { seed: number; difficulty: Difficulty; klass: ClassId; autoPlayer?: boolean; /** 연습 모드: 자기장·라이벌 AI·보급 투하 정지 */ tutorial?: boolean;
-  /** 1대1 결투: 조직 0(나)과 1(상대)만 남고, 상대는 네트워크로 움직이는 꼭두각시입니다. side 는 두 클라이언트가 서로 다른 본부에서 시작하게 합니다. */ duel?: { side: 0 | 1; name: string } }
+  /** 1대1 결투: 조직 0(나)과 1(상대)만 남고, 상대는 네트워크로 움직이는 꼭두각시입니다. side 는 두 클라이언트가 서로 다른 본부에서 시작하게 합니다. */ duel?: { side: 0 | 1; name: string; /** 1대1 전용 맵 번호(arena.ts). 없으면 큰 도시를 씁니다. 두 클라이언트가 같은 값을 써야 합니다. */ arena?: number } }
 export interface Quest { text: string; reward: number; done: boolean; check: (w: World) => boolean }
 
 const HC = 128, HN = Math.ceil(SIZE / HC);
@@ -67,7 +68,7 @@ export class World {
   planes: { x: number; y: number; vx: number; vy: number; tx: number; ty: number; dropped: boolean }[] = [];
 
   constructor(opts: WorldOptions) {
-    this.opts = opts; this.rng = makeRng(opts.seed); this.map = generateCity(this.rng);
+    this.opts = opts; this.rng = makeRng(opts.seed); this.map = opts.duel?.arena !== undefined ? generateArena(opts.duel.arena) : generateCity(this.rng);
     this.map.crystals.forEach(c => this.crystals.push({ id: this.nextId++, x: c.x, y: c.y, amount: c.amount, max: c.amount }));
     this.map.biz.forEach(b => this.businesses.push({ id: this.nextId++, kind: b.kind, x: b.x, y: b.y, solid: b.solid, owner: -1, level: 1, cap: 0, capBy: -1, guardT: 0, pulse: 0 }));
     const order = this.map.bases.map((_, i) => i); const start = Math.floor(this.rng() * order.length);
@@ -84,7 +85,7 @@ export class World {
       if (klass === 'engineer') f.mods.cost *= 0.8;
       if (klass === 'warlord') { f.mods.hp += 40; f.slots.push({ id: 'smg', mag: 32, ammo: -1 }); f.cur = 1; }
       const hq = this.addStructure('hq', i, base.x - 60, base.y - 60, true); f.hq = hq.id;
-      const boss = this.spawnActor('boss', i, base.x, base.y + 100); f.boss = boss.id; boss.maxHp = this.bossMaxHp(f); boss.hp = boss.maxHp;
+      const boss = this.spawnActor('boss', i, base.x, base.y + 100 * (base.face ?? 1)); f.boss = boss.id; boss.maxHp = this.bossMaxHp(f); boss.hp = boss.maxHp;
       if (!opts.duel) for (let k = 0; k < (klass === 'engineer' ? 6 : 4); k++) this.spawnUnit('worker', i, base.x - 60 + k * 24, base.y - 90);
       if (klass === 'warlord' && !opts.duel) for (let k = 0; k < 2; k++) this.spawnUnit('rifle', i, base.x - 20 + k * 40, base.y + 130);
       if (klass === 'engineer' && !opts.duel) this.addStructure('turret', i, base.x + 90, base.y + 60, true);

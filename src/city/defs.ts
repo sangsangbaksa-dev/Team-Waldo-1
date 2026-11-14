@@ -85,23 +85,23 @@ export interface UnitDef { id: UnitId; crystal: number; cash: number; supply: nu
 export const UNITS: Record<UnitId, UnitDef> = {
   worker: { id: 'worker', crystal: 50, cash: 0, supply: 1, time: 7, from: 'hq', desc: '크리스탈을 채굴해 본부로 운반' },
   rifle: { id: 'rifle', crystal: 60, cash: 0, supply: 1, time: 8, from: 'barracks', desc: '값싼 주력 보병' },
-  heavy: { id: 'heavy', crystal: 110, cash: 0, supply: 2, time: 13, from: 'barracks', desc: '건물·차량에 강한 바주카' },
+  heavy: { id: 'heavy', crystal: 110, cash: 0, supply: 1, time: 13, from: 'barracks', desc: '건물·차량에 강한 바주카' },
   medic: { id: 'medic', crystal: 85, cash: 0, supply: 1, time: 11, from: 'barracks', desc: '주변 아군과 보스를 치료' },
-  sniper: { id: 'sniper', crystal: 120, cash: 0, supply: 2, time: 14, from: 'barracks', needLab: true, desc: '초장거리 저격 (연구소 필요)' },
-  buggy: { id: 'buggy', crystal: 150, cash: 250, supply: 3, time: 16, from: 'factory', desc: '빠른 기관총 장갑차' },
-  tank: { id: 'tank', crystal: 300, cash: 600, supply: 5, time: 26, from: 'factory', needLab: true, desc: '광역 포격 전차 (연구소 필요)' },
+  sniper: { id: 'sniper', crystal: 120, cash: 0, supply: 1, time: 14, from: 'barracks', needLab: true, desc: '초장거리 저격 (연구소 필요)' },
+  buggy: { id: 'buggy', crystal: 150, cash: 250, supply: 2, time: 16, from: 'factory', desc: '빠른 기관총 장갑차' },
+  tank: { id: 'tank', crystal: 300, cash: 600, supply: 2, time: 26, from: 'factory', needLab: true, desc: '광역 포격 전차 (연구소 필요)' },
 };
 export interface StructDef { name: string; w: number; h: number; hp: number; crystal: number; cash: number; time: number; height: number; desc: string }
 export const STRUCTS: Record<StructKind, StructDef> = {
   hq: { name: '본부', w: 120, h: 120, hp: 4200, crystal: 0, cash: 0, time: 0, height: 0.2, desc: '' },
   barracks: { name: '병영', w: 88, h: 72, hp: 1100, crystal: 150, cash: 0, time: 14, height: 0.11, desc: '보병을 훈련합니다' },
-  depot: { name: '보급고', w: 60, h: 60, hp: 600, crystal: 100, cash: 0, time: 9, height: 0.07, desc: '인구 한도 +8' },
+  depot: { name: '보급고', w: 60, h: 60, hp: 600, crystal: 100, cash: 0, time: 9, height: 0.07, desc: '인구 한도 +8 (최대 100)' },
   factory: { name: '군수공장', w: 100, h: 84, hp: 1400, crystal: 250, cash: 300, time: 20, height: 0.13, desc: '장갑차와 전차를 생산합니다' },
   lab: { name: '연구소', w: 76, h: 76, hp: 900, crystal: 200, cash: 200, time: 16, height: 0.15, desc: '업그레이드·저격수·전차 해금' },
   turret: { name: '방어 포탑', w: 44, h: 44, hp: 620, crystal: 125, cash: 0, time: 8, height: 0.09, desc: '주변 적을 자동 사격' },
 };
 export const BUILD_ORDER: StructKind[] = ['barracks', 'depot', 'turret', 'lab', 'factory'];
-export const SUPPLY_HQ = 12, SUPPLY_DEPOT = 8, SUPPLY_CAP = 52;
+export const SUPPLY_HQ = 12, SUPPLY_DEPOT = 8, SUPPLY_CAP = 100;
 
 export type BizKind = 'store' | 'club' | 'plant' | 'casino' | 'bank' | 'gunshop';
 export const BIZ: Record<BizKind, { name: string; price: number; income: number; crystal: number; color: string; sign: string }> = {

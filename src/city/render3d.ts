@@ -8,9 +8,10 @@ import { ModelLayer } from './modellayer';
 import { buildBuildings, buildPerimeter } from './buildings';
 import type { Models } from './models';
 import { Interior3D } from './interior3d';
+import { EYE_HEIGHT } from './scale';
 
 export type ViewMode = 'fp' | 'tp';
-const EYE = 46, STRUCT_H: Record<StructKind, number> = { hq: 150, barracks: 86, depot: 58, factory: 104, lab: 96, turret: 50 };
+const EYE = EYE_HEIGHT, STRUCT_H: Record<StructKind, number> = { hq: 150, barracks: 86, depot: 58, factory: 104, lab: 96, turret: 50 };
 const CLOTH = [0x8d99ae, 0xb08968, 0x6d8a96, 0xa58fb3, 0x9aa37b, 0xc58f8f], SKIN = [0xf1c9a5, 0xd9a47a, 0xa8744f, 0x7a5236];
 const fcol = (f: number): number => f === POLICE ? 0x3f6fe0 : f === CIV ? 0x9aa3ad : new THREE.Color(FACTIONS[f]?.color ?? '#fff').getHex();
 interface P { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; max: number; r: number; g: number; b: number; grav: number }
@@ -296,7 +297,7 @@ export class Renderer3D {
         d.position.y = H + 9; d.scale.set(a.r * 0.6, 10, a.r * 0.6); d.updateMatrix(); this.turrets.setMatrixAt(nm, d.matrix); this.turrets.setColorAt(nm, col.set(c));
         const bl = tank ? a.r * 1.8 : a.r * 1.2; d.position.set(a.x + Math.cos(a.ang) * bl / 2, H + 10, a.y + Math.sin(a.ang) * bl / 2); d.scale.set(bl, 4, 4); d.updateMatrix(); this.barrels.setMatrixAt(nm, d.matrix); nm++; continue;
       }
-      if (nb >= 520) continue; const big = a.kind === 'boss' ? 1.18 : 1, bob = Math.abs(Math.sin(a.walk * 0.09)) * Math.min(2.2, Math.hypot(a.vx, a.vy) / 70), bh = 27 * big;
+      if (nb >= 520) continue; const big = 1, bob = Math.abs(Math.sin(a.walk * 0.09)) * Math.min(2.2, Math.hypot(a.vx, a.vy) / 70), bh = 27 * big;
       d.rotation.set(0, -a.ang, 0); d.position.set(a.x, bob, a.y); d.scale.set(a.r * 0.62, bh, a.r * 0.9); d.updateMatrix(); this.bodies.setMatrixAt(nb, d.matrix); this.bodies.setColorAt(nb, col.set(c)); nb++;
       d.position.y = bh + 5.2 * big + bob; d.scale.setScalar(5.6 * big); d.updateMatrix(); this.heads.setMatrixAt(nh, d.matrix); this.heads.setColorAt(nh, col.set(a.kind === 'cop' || a.kind === 'swat' ? 0x1c2a55 : a.kind === 'medic' ? 0xffffff : SKIN[a.id % SKIN.length])); nh++;
       if (a.f !== CIV && a.kind !== 'worker') { const gl = a.kind === 'sniper' || a.kind === 'heavy' ? 22 : 15; d.position.set(a.x + Math.cos(a.ang) * (gl / 2 + 2) - Math.sin(a.ang) * 5, bh * 0.72 + bob, a.y + Math.sin(a.ang) * (gl / 2 + 2) + Math.cos(a.ang) * 5); d.scale.set(gl, a.kind === 'heavy' ? 5 : 2.6, a.kind === 'heavy' ? 5 : 2.6); d.updateMatrix(); this.guns.setMatrixAt(ng++, d.matrix); }

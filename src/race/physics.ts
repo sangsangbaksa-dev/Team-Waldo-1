@@ -10,9 +10,10 @@ export interface CarState {
   nitro: number; boostT: number; drifting: boolean; driftT: number; padCd: number; wallT: number;
 }
 export interface StepEvents { hit: number; driftBoost: number; pad: boolean }
-export interface CarParams { top: number; accel: number; brake: number; grip: number }
+/** 차량 성능. 기준 차량은 모두 1(top·accel·brake 는 절댓값)이고, turn·drift·nitro 는 배율입니다. */
+export interface CarParams { top: number; accel: number; brake: number; grip: number; turn: number; drift: number; nitro: number }
 
-export const PLAYER_PARAMS: CarParams = { top: 74, accel: 15, brake: 62, grip: 1 };
+export const PLAYER_PARAMS: CarParams = { top: 74, accel: 15, brake: 62, grip: 1, turn: 1, drift: 1, nitro: 1 };
 export const BOOST_TOP = 1.36;
 export const NITRO_SECONDS = 3.2;
 export const kmh = (c: Pick<CarState, 'vf'>): number => Math.abs(c.vf) * 3.6;
@@ -32,8 +33,8 @@ export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: Car
   let vf = c.vx * fx + c.vz * fz, vl = c.vx * rx + c.vz * rz;
 
   // 니트로·부스트 타이머
-  if (inp.nitro && c.nitro > 0 && c.boostT <= 0.05) { c.nitro = Math.max(0, c.nitro - dt / NITRO_SECONDS); c.boostT = Math.max(c.boostT, 0.12); }
-  else { c.boostT = Math.max(0, c.boostT - dt); if (c.boostT < 0.6 && !inp.nitro) c.nitro = Math.min(1, c.nitro + dt * 0.018); }
+  if (inp.nitro && c.nitro > 0 && c.boostT <= 0.05) { c.nitro = Math.max(0, c.nitro - dt / (NITRO_SECONDS * p.nitro)); c.boostT = Math.max(c.boostT, 0.12); }
+  else { c.boostT = Math.max(0, c.boostT - dt); if (c.boostT < 0.6 && !inp.nitro) c.nitro = Math.min(1, c.nitro + dt * 0.018 * p.nitro); }
   const boost = c.boostT > 0, maxV = p.top * (boost ? BOOST_TOP : 1);
 
   // 종방향: 가속 · 브레이크 · 저항
@@ -50,7 +51,7 @@ export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: Car
 
   // 조향: 속도에 따라 최소 회전 반경이 커집니다. 드리프트 중에는 차체가 더 많이 돌아갑니다.
   c.steer += (inp.steer - c.steer) * Math.min(1, dt * (Math.abs(inp.steer) > Math.abs(c.steer) ? 8 : 12));
-  const av = Math.abs(vf), rmin = 7 + (av * av) / 54, yawMax = (av / rmin) * (c.drifting ? 1.38 : 1) * Math.min(1, av / 3);
+  const av = Math.abs(vf), rmin = 7 + (av * av) / 54, yawMax = (av / rmin) * p.turn * (c.drifting ? 1 + 0.38 * p.drift : 1) * Math.min(1, av / 3);
   const yawTarget = c.steer * yawMax * (vf >= 0 ? 1 : -1);
   c.yawRate += (yawTarget - c.yawRate) * Math.min(1, dt * (c.drifting ? 7 : 11));
   c.vx = fx * vf + rx * vl; c.vz = fz * vf + rz * vl;
@@ -65,7 +66,7 @@ export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: Car
   c.slip = Math.atan2(vl, Math.max(Math.abs(vf), 1)); c.vf = vf; c.vl = vl;
 
   // 드리프트 충전 → 해제 시 미니 터보
-  if (c.drifting) c.driftT += dt * (0.5 + Math.min(1.5, Math.abs(c.slip) * 5));
+  if (c.drifting) c.driftT += dt * (0.5 + Math.min(1.5, Math.abs(c.slip) * 5)) * p.drift;
   if (wasDrift && !c.drifting) {
     if (c.driftT > 0.9) { ev.driftBoost = Math.min(c.driftT * 0.5, 2.2); c.boostT = Math.max(c.boostT, ev.driftBoost); c.nitro = Math.min(1, c.nitro + c.driftT * 0.07); }
     c.driftT = 0;
@@ -98,15 +99,17 @@ export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: Car
   return ev;
 }
 
-export interface AiProfile { lane: number; top: number; grip: number; skill: number }
+/** line: 0 이면 고정 차선, 1 이면 코너 안쪽을 파고드는 레이싱 라인. nitro: 이 값을 넘는 니트로 잔량만 쓴다(없으면 안 씀). */
+export interface AiProfile { lane: number; top: number; grip: number; skill: number; line?: number; nitro?: number }
 /** 중심선을 따라가는 단순 AI. 앞쪽 곡률로 목표 속도를 정합니다. */
 export function aiInput(c: CarState, t: Track, ai: AiProfile): CarInput {
   const speed = Math.max(c.vf, 0), la = Math.round((11 + speed * 0.42) / t.ds), ti = (c.idx + la) % t.n;
-  const tx = t.x[ti] - t.tz[ti] * ai.lane, tz = t.z[ti] + t.tx[ti] * ai.lane;
+  const line = ai.line ?? 0, inside = clamp(t.k[(ti + 8) % t.n] * 1400, -1, 1) * (t.halfWidth - 7), lane = ai.lane * (1 - line) + inside * line;
+  const tx = t.x[ti] - t.tz[ti] * lane, tz = t.z[ti] + t.tx[ti] * lane;
   const err = wrapAngle(Math.atan2(tz - c.z, tx - c.x) - c.h), steer = clamp(err * 2.6, -1, 1);
   const look = Math.max(12, Math.round((speed * 1.7) / t.ds)); let kmax = 0;
   for (let o = 0; o <= look; o += 2) kmax = Math.max(kmax, Math.abs(t.k[(c.idx + o) % t.n]));
-  const target = Math.min(ai.top, Math.sqrt(ai.grip / Math.max(kmax, 1e-4)));
-  const over = speed - target;
-  return { throttle: over < 0 ? 1 : 0, brake: over > 4 ? Math.min(1, over / 12) : 0, steer, drift: false, nitro: false };
+  const top = ai.top * (c.boostT > 0 ? BOOST_TOP : 1), target = Math.min(top, Math.sqrt(ai.grip / Math.max(kmax, 1e-4)));
+  const over = speed - target, straight = kmax < 0.005 && speed > 35 && over < 2;
+  return { throttle: over < 0 ? 1 : 0, brake: over > 4 ? Math.min(1, over / 12) : 0, steer, drift: false, nitro: ai.nitro !== undefined && straight && c.nitro > ai.nitro };
 }

@@ -1,9 +1,10 @@
 // SPEED RUSH — 레이스 진행(카운트다운·랩·순위·AI·차량 간 충돌). 화면과 무관한 순수 로직입니다.
-import { aiInput, newCar, stepCar, type AiProfile, type CarInput, type CarState, type StepEvents } from './physics';
+import { CARS, carById, carParams, levelById, type CarDef, type LevelDef } from './config';
+import { aiInput, newCar, stepCar, type AiProfile, type CarInput, type CarParams, type CarState, type StepEvents } from './physics';
 import { type Track } from './track';
 
 export interface Racer {
-  id: number; name: string; color: string; player: boolean; car: CarState; ai: AiProfile;
+  id: number; name: string; color: string; player: boolean; car: CarState; ai: AiProfile; params: CarParams; shape: CarDef['shape'];
   lapTimes: number[]; lapStart: number; finishTime: number | null; lastEv: StepEvents;
 }
 export type RaceEvent =
@@ -12,22 +13,29 @@ export type RaceEvent =
   | { type: 'hit'; power: number } | { type: 'driftBoost'; secs: number } | { type: 'pad' } | { type: 'bump'; power: number };
 export interface RaceState {
   track: Track; laps: number; clock: number; phase: 'countdown' | 'racing' | 'done'; racers: Racer[]; player: Racer;
-  thrDownAt: number | null; thrPrev: boolean; bestLap: number; lastCount: number;
+  thrDownAt: number | null; thrPrev: boolean; bestLap: number; lastCount: number; level: LevelDef;
 }
 export const COUNTDOWN = 3;
-const FIELD: Array<{ name: string; color: string; ai: AiProfile }> = [
-  { name: 'VIPER', color: '#2e7dff', ai: { lane: -5, top: 70.5, grip: 37, skill: 1 } },
-  { name: 'SOLAR', color: '#ffd400', ai: { lane: 5, top: 68, grip: 35, skill: 1 } },
-  { name: 'MINT', color: '#52f59a', ai: { lane: 0, top: 65.5, grip: 33, skill: 1 } },
+/** 라이벌 세 명: 이름, 고정 차선, 자기 차량 최고속 대비 목표 속도 비율, 코너 한계. 1단계 값은 이전 버전과 같습니다. */
+const FIELD = [
+  { name: 'VIPER', lane: -5, frac: 70.5 / 74, grip: 37 },
+  { name: 'SOLAR', lane: 5, frac: 68 / 74, grip: 35 },
+  { name: 'MINT', lane: 0, frac: 65.5 / 74, grip: 33 },
 ];
 const SLOTS: Array<[number, number]> = [[-3, -5], [-3, 5], [-8, -5], [-8, 5]];
+export interface RaceOptions { level?: number; car?: string }
 
-export function createRace(track: Track, laps = 3, bestLap = Infinity): RaceState {
-  const mk = (id: number, name: string, color: string, player: boolean, slot: [number, number], ai: AiProfile): Racer =>
-    ({ id, name, color, player, car: newCar(track, track.n + slot[0], slot[1]), ai, lapTimes: [], lapStart: 0, finishTime: null, lastEv: { hit: 0, driftBoost: 0, pad: false } });
-  const player = mk(0, 'YOU', '#ff2b3d', true, SLOTS[2], { lane: 0, top: 58, grip: 30, skill: 1 });
-  const racers = [player, mk(1, FIELD[0].name, FIELD[0].color, false, SLOTS[0], FIELD[0].ai), mk(2, FIELD[1].name, FIELD[1].color, false, SLOTS[1], FIELD[1].ai), mk(3, FIELD[2].name, FIELD[2].color, false, SLOTS[3], FIELD[2].ai)];
-  return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers, player, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1 };
+export function createRace(track: Track, laps = 3, bestLap = Infinity, opts: RaceOptions = {}): RaceState {
+  const level = levelById(opts.level ?? 1), mine = carById(opts.car ?? CARS[0].id), at = CARS.indexOf(mine);
+  const mk = (id: number, name: string, def: CarDef, player: boolean, slot: [number, number], ai: AiProfile): Racer =>
+    ({ id, name, color: def.color, player, car: newCar(track, track.n + slot[0], slot[1]), ai, params: carParams(def), shape: def.shape, lapTimes: [], lapStart: 0, finishTime: null, lastEv: { hit: 0, driftBoost: 0, pad: false } });
+  const player = mk(0, 'YOU', mine, true, SLOTS[2], { lane: 0, top: 58, grip: 30, skill: 1 });
+  const rivals = FIELD.map((f, i) => {
+    const def = CARS[(at + 1 + i) % CARS.length], p = carParams(def), handling = p.grip * p.turn;
+    const ai: AiProfile = { lane: f.lane, top: p.top * f.frac * level.topMul, grip: f.grip * handling * handling * level.gripMul, skill: 1, line: level.line, nitro: level.nitro };
+    return mk(i + 1, f.name, def, false, [SLOTS[0], SLOTS[1], SLOTS[3]][i], ai);
+  });
+  return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [player, ...rivals], player, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level };
 }
 
 const score = (r: Racer): number => (r.finishTime !== null ? 1e9 - r.finishTime : r.car.total);
@@ -60,11 +68,11 @@ export function updateRace(r: RaceState, dt: number, input: CarInput): RaceEvent
     if (racing) {
       if (k.player && k.finishTime === null) inp = input;
       else {
-        const gap = k.player ? 0 : (k.car.total - r.player.car.total) * t.ds, band = Math.max(0.93, Math.min(1.07, 1 - gap * 0.00022));
+        const gap = k.player ? 0 : (k.car.total - r.player.car.total) * t.ds, band = Math.max(r.level.bandLo, Math.min(r.level.bandHi, 1 - gap * r.level.bandK));
         inp = aiInput(k.car, t, { ...k.ai, top: k.ai.top * band, grip: k.ai.grip * band * band });
       }
     }
-    k.lastEv = stepCar(k.car, inp, dt, t, undefined);
+    k.lastEv = stepCar(k.car, inp, dt, t, k.params);
     if (k.player) {
       if (k.lastEv.hit > 0) ev.push({ type: 'hit', power: k.lastEv.hit });
       if (k.lastEv.driftBoost > 0) ev.push({ type: 'driftBoost', secs: k.lastEv.driftBoost });

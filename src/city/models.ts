@@ -4,8 +4,11 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 export interface Baked { fixed: THREE.BufferGeometry | null; team: THREE.BufferGeometry | null; skin: THREE.BufferGeometry | null; glow: THREE.BufferGeometry | null }
-export interface CharModel { body: Baked; leg: Baked }
-export const CHAR_KINDS = ['boss', 'worker', 'rifle', 'heavy', 'sniper', 'medic', 'civ', 'civ2', 'civ3', 'civ4', 'cop', 'swat', 'guard', 'merc'] as const;
+/** 어깨에서 흔드는 팔: 지오메트리는 어깨 관절 기준이고 pivot 은 몸통 안에서의 어깨 위치입니다. */
+export interface Limb { geo: Baked; pivot: THREE.Vector3 }
+/** leg 는 허벅지(골반 관절 기준), shin 은 정강이와 발(무릎 관절 기준)입니다. shin 이 없으면 leg 가 다리 전체입니다. */
+export interface CharModel { body: Baked; leg: Baked; shin?: Baked; armL?: Limb; armR?: Limb }
+export const CHAR_KINDS = ['boss', 'worker', 'rifle', 'heavy', 'sniper', 'medic', 'civ', 'civ2', 'civ3', 'civ4', 'civ5', 'civ6', 'civ7', 'civ8', 'cop', 'swat', 'guard', 'merc'] as const;
 export type CharKind = typeof CHAR_KINDS[number];
 export const WEAPON_KINDS = ['pistol', 'smg', 'shotgun', 'rifle', 'sniper', 'rocket', 'minigun', 'railgun'] as const;
 
@@ -80,8 +83,8 @@ export function loadModels(base: string): Promise<Models> {
     const loader = new GLTFLoader(), get = async (n: string): Promise<THREE.Object3D> => (await loader.loadAsync(`${base}assets/models/${n}.glb`)).scene;
     const [c, w, v, s, p] = await Promise.all(['characters', 'weapons', 'vehicles', 'structures', 'props'].map(get));
     const cn = nodeMap(c), wn = nodeMap(w), vn = nodeMap(v), sn = nodeMap(s), pn = nodeMap(p);
-    const chars: Record<string, CharModel> = {};
-    for (const k of CHAR_KINDS) { if (!cn[`${k}_Body`] || !cn[`${k}_Leg`]) throw new Error(`missing ${k}`); chars[k] = { body: bake(cn[`${k}_Body`]), leg: bake(cn[`${k}_Leg`]) }; }
+    const chars: Record<string, CharModel> = {}, limb = (n?: THREE.Object3D): Limb | undefined => (n ? { geo: bake(n), pivot: n.position.clone() } : undefined);
+    for (const k of CHAR_KINDS) { if (!cn[`${k}_Body`] || !cn[`${k}_Leg`]) throw new Error(`missing ${k}`); const shin = cn[`${k}_Shin`]; chars[k] = { body: bake(cn[`${k}_Body`]), leg: bake(cn[`${k}_Leg`]), shin: shin ? bake(shin) : undefined, armL: limb(cn[`${k}_ArmL`]), armR: limb(cn[`${k}_ArmR`]) }; }
     const groundGuns: Record<string, THREE.Object3D> = {}, viewGuns: Record<string, THREE.Object3D> = {};
     for (const k of WEAPON_KINDS) { if (!wn[`g_${k}`] || !wn[`vm_${k}`]) throw new Error(`missing weapon ${k}`); groundGuns[k] = wn[`g_${k}`]; viewGuns[k] = wn[`vm_${k}`]; }
     const need = (m: Record<string, THREE.Object3D>, names: string[]): Record<string, THREE.Object3D> => { for (const n of names) if (!m[n]) throw new Error(`missing ${n}`); return m; };

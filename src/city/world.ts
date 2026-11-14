@@ -8,12 +8,14 @@ import { addSolid, clearLine, generateCity, makeRng, navBlocked, rectFree, remov
 import { updateActors, updateBullets, updateVehicles, updatePopulation } from './actors';
 import { thinkFaction, type AiState } from './ai';
 
+export const SQUAD_MAX = 5;
 export interface Order { type: 'follow' | 'move' | 'amove' | 'hold' | 'mine' | 'guard' | 'hunt' | 'wander'; x: number; y: number }
 export interface Actor {
   id: number; kind: ActorKind; f: number; x: number; y: number; vx: number; vy: number; r: number; hp: number; maxHp: number; ang: number;
   weapon: WeaponId; cd: number; order: Order; path: number[] | null; pathI: number; pgx: number; pgy: number; repathT: number; direct: boolean;
   tk: 0 | 1 | 2 | 3; tid: number; thinkT: number; inVeh: number; alive: boolean; sup: number; carry: number; ws: number; mineT: number; crystal: number;
   slot: number; home: number; fleeT: number; hurtT: number; hurtBy: number; runCd: number; walk: number; flash: number; temp: number; stuck: number; los: boolean; gone?: boolean;
+  /** 분대 번호(1~SQUAD_MAX), 0 = 미편성 */ sq: number;
 }
 export interface WeaponSlot { id: WeaponId; mag: number; ammo: number }
 export interface Faction {
@@ -101,7 +103,7 @@ export class World {
   spawnActor(kind: ActorKind, f: number, x: number, y: number): Actor {
     const d = ACTORS[kind];
     const a: Actor = { id: this.nextId++, kind, f, x, y, vx: 0, vy: 0, r: d.r, hp: d.hp, maxHp: d.hp, ang: this.rng() * 6.28, weapon: d.weapon, cd: this.rng(), order: { type: 'hold', x, y }, path: null, pathI: 0, pgx: 0, pgy: 0, repathT: 0, direct: true,
-      tk: 0, tid: 0, thinkT: this.rng() * 0.3, inVeh: 0, alive: true, sup: 0, carry: 0, ws: 0, mineT: 0, crystal: 0, slot: Math.floor(this.rng() * 1000), home: 0, fleeT: 0, hurtT: -99, hurtBy: -1, runCd: 0, walk: this.rng() * 6, flash: 0, temp: 0, stuck: 0, los: false };
+      tk: 0, tid: 0, thinkT: this.rng() * 0.3, inVeh: 0, alive: true, sup: 0, carry: 0, ws: 0, mineT: 0, crystal: 0, slot: Math.floor(this.rng() * 1000), home: 0, fleeT: 0, hurtT: -99, hurtBy: -1, runCd: 0, walk: this.rng() * 6, flash: 0, temp: 0, stuck: 0, los: false, sq: 0 };
     this.actors.push(a); this.byId.set(a.id, a); return a;
   }
   spawnUnit(unit: UnitId | 'merc' | 'guard', f: number, x: number, y: number): Actor {
@@ -109,7 +111,7 @@ export class World {
     a.maxHp = Math.round(a.maxHp * fac.mods.unitHp * (1 + 0.15 * fac.up.armor) * (f === 0 ? 1.9 : 1.4)); a.hp = a.maxHp;
     if (unit === 'worker') a.order = { type: 'mine', x, y };
     else if (unit === 'guard') a.order = { type: 'guard', x, y };
-    else a.order = { type: 'follow', x, y };
+    else { a.order = { type: 'follow', x, y }; if (f === 0) a.sq = this.squadSel; }
     if (unit !== 'merc' && unit !== 'guard') a.sup = UNITS[unit].supply;
     return a;
   }
@@ -330,9 +332,24 @@ export class World {
     const p = this.upgradePrice(b); if (f.cash < p) return `자금 부족 — $${p} 필요`;
     f.cash -= p; b.level++; b.pulse = 1; b.guardT = 0; this.fx('cash', b.x, b.y, -p, undefined, fi); return '';
   }
-  order(fi: number, type: Order['type'], x: number, y: number): void {
+  /** 플레이어가 지금 명령을 내리는 분대(0 = 전체). */
+  squadSel = 0;
+  isSoldier(a: Actor): boolean { return a.alive && a.kind !== 'worker' && a.kind !== 'boss' && a.kind !== 'guard' && a.f < 8; }
+  squadMembers(fi: number, sq: number): Actor[] { return this.actors.filter(a => a.f === fi && this.isSoldier(a) && (sq === 0 || a.sq === sq)); }
+  selectSquad(n: number): void { this.squadSel = Math.max(0, Math.min(SQUAD_MAX, Math.floor(n))); }
+  /** 전 병력을 병과별로 고르게 n개 분대로 나눈다(n<=1 이면 편성 해제). */
+  splitSquads(fi: number, n: number): void {
+    const army = this.squadMembers(fi, 0).sort((a, b) => (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : a.id - b.id)), c = Math.min(SQUAD_MAX, Math.max(0, Math.floor(n)));
+    army.forEach((a, i) => { a.sq = c <= 1 ? 0 : (i % c) + 1; });
+    if (c <= 1) this.squadSel = 0; else if (this.squadSel > c) this.squadSel = 1;
+  }
+  /** 모든 병력을 한 분대로 모은다. */
+  assignAllTo(fi: number, sq: number): void { for (const a of this.squadMembers(fi, 0)) a.sq = sq; }
+  /** 전체(0) 선택 상태에서 미편성 병력을 해당 분대로 옮긴다. */
+  moveUnassigned(fi: number, sq: number): void { for (const a of this.squadMembers(fi, 0)) if (a.sq === 0) a.sq = sq; }
+  order(fi: number, type: Order['type'], x: number, y: number, squad = fi === 0 ? this.squadSel : 0): void {
     let k = 0;
-    for (const a of this.actors) if (a.alive && a.f === fi && a.kind !== 'worker' && a.kind !== 'boss' && a.kind !== 'guard') {
+    for (const a of this.actors) if (a.alive && a.f === fi && a.kind !== 'worker' && a.kind !== 'boss' && a.kind !== 'guard' && (squad === 0 || a.sq === squad)) {
       const ring = Math.floor(Math.sqrt(k)), ang = k * 2.4; k++;
       a.order = type === 'follow' ? { type, x, y } : type === 'hold' ? { type, x: a.x, y: a.y } : { type, x: x + Math.cos(ang) * ring * 26, y: y + Math.sin(ang) * ring * 26 };
       a.path = null; a.tk = 0;

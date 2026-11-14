@@ -114,3 +114,20 @@ describe('LAST CITY full match', () => {
     expect(new Set(w.factions.map(f => f.place)).size).toBe(8);
   }, 120000);
 });
+
+describe('분대 편성', () => {
+  it('5개 분대로 나누고 선택한 분대만 명령을 받는다', () => {
+    const w = make();
+    for (let k = 0; k < 10; k++) w.spawnUnit('rifle', 0, 100 + k * 5, 100);
+    w.splitSquads(0, 5);
+    for (let i = 1; i <= 5; i++) expect(w.squadMembers(0, i).length).toBeGreaterThanOrEqual(2);
+    w.selectSquad(2); w.order(0, 'amove', 900, 900);
+    for (const a of w.squadMembers(0, 0)) expect(a.order.type === 'amove').toBe(a.sq === 2);
+    w.selectSquad(0); w.splitSquads(0, 1);
+    expect(w.squadMembers(0, 0).every(a => a.sq === 0)).toBe(true);
+  });
+  it('새 병력은 선택한 분대에 들어간다', () => {
+    const w = make(); w.selectSquad(3);
+    expect(w.spawnUnit('rifle', 0, 50, 50).sq).toBe(3);
+  });
+});

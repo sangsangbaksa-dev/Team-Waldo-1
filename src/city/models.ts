@@ -7,6 +7,9 @@ export interface Baked { fixed: THREE.BufferGeometry | null; team: THREE.BufferG
 export interface CharModel { body: Baked; leg: Baked }
 export const CHAR_KINDS = ['boss', 'worker', 'rifle', 'heavy', 'sniper', 'medic', 'civ', 'civ2', 'civ3', 'civ4', 'cop', 'swat', 'guard', 'merc'] as const;
 export type CharKind = typeof CHAR_KINDS[number];
+/** 보도에 흩뿌리는 2차 거리 소품(tools/blender/street.py). */
+export const STREET_PROPS = ['bus_stop', 'vending', 'billboard', 'kiosk', 'planter', 'bollards', 'phone_booth', 'street_sign', 'parasol'] as const;
+export const BIZ_KINDS = ['store', 'gas', 'club', 'plant', 'casino', 'bank', 'gunshop'] as const;
 export const WEAPON_KINDS = ['pistol', 'smg', 'shotgun', 'rifle', 'sniper', 'rocket', 'minigun', 'railgun'] as const;
 
 export interface Models {
@@ -14,6 +17,8 @@ export interface Models {
   groundGuns: Record<string, THREE.Object3D>; viewGuns: Record<string, THREE.Object3D>;
   vehicles: Record<string, THREE.Object3D>; structures: Record<string, THREE.Object3D>; props: Record<string, THREE.Object3D>;
   baked: Record<string, Baked>;
+  /** 사업체 표식(biz_<종류>). business.glb 가 없으면 비어 있고 게임은 빛기둥만 표시합니다. */
+  biz: Record<string, THREE.Object3D>;
 }
 
 const white = new THREE.Color(1, 1, 1);
@@ -79,6 +84,8 @@ export function loadModels(base: string): Promise<Models> {
   cache ??= (async () => {
     const loader = new GLTFLoader(), get = async (n: string): Promise<THREE.Object3D> => (await loader.loadAsync(`${base}assets/models/${n}.glb`)).scene;
     const [c, w, v, s, p] = await Promise.all(['characters', 'weapons', 'vehicles', 'structures', 'props'].map(get));
+    const biz: Record<string, THREE.Object3D> = {};
+    try { const bn = nodeMap(await get('business')); for (const k of BIZ_KINDS) if (bn[`biz_${k}`]) biz[k] = bn[`biz_${k}`]; } catch { /* 표식 모델은 선택 사항 */ }
     const cn = nodeMap(c), wn = nodeMap(w), vn = nodeMap(v), sn = nodeMap(s), pn = nodeMap(p);
     const chars: Record<string, CharModel> = {};
     for (const k of CHAR_KINDS) { if (!cn[`${k}_Body`] || !cn[`${k}_Leg`]) throw new Error(`missing ${k}`); chars[k] = { body: bake(cn[`${k}_Body`]), leg: bake(cn[`${k}_Leg`]) }; }
@@ -89,7 +96,8 @@ export function loadModels(base: string): Promise<Models> {
     need(pn, ['tree_round', 'tree_pine', 'lamp', 'crystal', 'crate', 'plane', 'hydrant', 'bench', 'bin', 'cone', 'mailbox', 'dumpster', 'barrier', 'tl_red', 'tl_green']);
     const baked: Record<string, Baked> = {};
     for (const k of ['tree_round', 'tree_pine', 'lamp', 'crystal', 'hydrant', 'bench', 'bin', 'cone', 'mailbox', 'dumpster', 'barrier', 'tl_red', 'tl_green']) baked[k] = bake(pn[k]);
-    return { chars, groundGuns, viewGuns, vehicles: vn, structures: sn, props: pn, baked };
+    for (const k of STREET_PROPS) if (pn[k]) baked[k] = bake(pn[k]);
+    return { chars, groundGuns, viewGuns, vehicles: vn, structures: sn, props: pn, baked, biz };
   })();
   cache.catch(() => { cache = null; });
   return cache;

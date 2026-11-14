@@ -1,7 +1,7 @@
 // LAST CITY — 게임 루프, 입력, HUD
 import './city.css';
 import { BIZ, BUILD_ORDER, CLASSES, DIFFICULTY, DIFFICULTY_ORDER, FACTIONS, PERKS, RESEARCH, STRUCTS, UNITS, WEAPONS, type ClassId, type Difficulty, type ResearchId, type StructKind, type UnitId, type WeaponId } from './defs';
-import { World } from './world';
+import { World, type Actor } from './world';
 import { Renderer, type Ghost } from './render';
 import { Renderer3D } from './render3d';
 import { loadModels, type Models } from './models';
@@ -106,6 +106,10 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
   function act(code: string, ev?: Event): void {
     const [a, arg] = code.split(':'), w = world; audio.unlock();
     if (a === 'diff') { diffSel = arg as Difficulty; try { localStorage.setItem('waldo-city-diff', arg); } catch { /* 무시 */ } setup(); audio.play('click'); return; }
+    if (a === 'sq') { if (w) { w.selectSquad(Number(arg)); put(q('#c-squads'), squadBar(w)); toast(w.squadSel ? `${w.squadSel}분대 선택 — 명령이 이 분대에만 적용됩니다` : '전체 병력 선택', false); if (!panel.hidden) renderPanel(); } return; }
+    if (a === 'squadsplit') { if (w) { w.splitSquads(0, Number(arg)); put(q('#c-squads'), squadBar(w)); toast(Number(arg) > 1 ? `${arg}개 분대로 편성` : '분대 편성 해제', false); renderPanel(); } return; }
+    if (a === 'squadall') { if (w) { w.assignAllTo(0, Number(arg)); w.selectSquad(Number(arg)); put(q('#c-squads'), squadBar(w)); renderPanel(); } return; }
+    if (a === 'squadpull') { if (w) { w.moveUnassigned(0, Number(arg)); renderPanel(); } return; }
     if (a === 'class') { start(arg as ClassId); return; }
     if (a === 'tutorial') { klass = 'warlord'; start('warlord', true); return; }
     if (a === 'tutdone') { tut = null; setup(); return; }
@@ -165,8 +169,12 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
   }
 
   // ---------- HUD ----------
+  function squadBar(w: World): string {
+    const n = (i: number): number => w.squadMembers(0, i).length, tot = n(0);
+    return `<button data-act="sq:0" class="${w.squadSel === 0 ? 'on' : ''}" title="전체 (Shift+0)">전체 <small>${tot}</small></button>` + [1, 2, 3, 4, 5].map(i => `<button data-act="sq:${i}" class="${w.squadSel === i ? 'on' : ''}" title="${i}분대 (Shift+${i})">${i}<small>${n(i)}</small></button>`).join('');
+  }
   function renderCmd(): void {
-    q('#c-cmd').innerHTML = `<button data-act="order:follow"><kbd>Z</kbd>집결</button><button data-act="order:hold"><kbd>X</kbd>사수</button><button data-act="charge"><kbd>우클릭</kbd>돌격</button><button data-act="missions"><kbd>J</kbd>임무</button><button data-act="panel" class="c-cmd-main"><kbd>Tab</kbd>지휘 패널</button>`;
+    q('#c-cmd').innerHTML = `<div class="c-squads" id="c-squads"></div><button data-act="order:follow"><kbd>Z</kbd>집결</button><button data-act="order:hold"><kbd>X</kbd>사수</button><button data-act="charge"><kbd>우클릭</kbd>돌격</button><button data-act="missions"><kbd>J</kbd>임무</button><button data-act="panel" class="c-cmd-main"><kbd>Tab</kbd>지휘 패널</button>`;
   }
   function renderPanel(): void {
     const w = world!, f = w.factions[0]; let body = '';
@@ -194,11 +202,19 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
       const own = w.businesses.filter(b => b.owner === 0);
       body = `<h3>자산 <small>초당 +$${$(f.income)} · 순자산 $${$(w.netWorth(f))}</small></h3>` + (own.length ? own.map(b => `<button class="c-row" data-act="upg:${b.id}" ${b.level < 3 && f.cash >= w.upgradePrice(b) ? '' : 'disabled'}><b>${BIZ[b.kind].name} ${'★'.repeat(b.level)}</b><span>${b.level < 3 ? `업그레이드 → 수입 증가 + 경비원` : '최고 등급'}</span>${b.level < 3 ? `<i class="ca">$${w.upgradePrice(b)}</i>` : ''}</button>`).join('') : '<p class="c-note">아직 보유한 사업체가 없습니다. 흰 점선 원 위에서 E로 매입하세요.</p>')
         + (f.wanted >= 1 ? `<button class="c-row" data-act="bribe"><b>경찰 매수</b><span>수배 즉시 해제</span><i class="ca">$${Math.ceil(f.wanted) * 300}</i></button>` : '');
+    } else if (tab === 'squad') {
+      const KIND = (m: Actor[]): string => { const c: Record<string, number> = {}; for (const a of m) c[a.kind] = (c[a.kind] ?? 0) + 1; return Object.entries(c).map(([k, v]) => `${ACTORS[k as keyof typeof ACTORS]?.name ?? k} ${v}`).join(' · ') || '비어 있음'; };
+      const un = w.squadMembers(0, 0).filter(a => a.sq === 0).length;
+      body = `<h3>분대 편성 <small>최대 5개 · 명령은 선택한 분대에만</small></h3><div class="c-grid">${[2, 3, 4, 5].map(n => `<button data-act="squadsplit:${n}">${n}개로 나누기</button>`).join('')}<button data-act="squadsplit:1">편성 해제</button></div>`
+        + `<button class="c-row ${w.squadSel === 0 ? 'on' : ''}" data-act="sq:0"><b>전체 병력</b><span>미편성 ${un}명 포함 · 총 ${w.squadMembers(0, 0).length}명</span></button>`
+        + [1, 2, 3, 4, 5].map(i => { const m = w.squadMembers(0, i); return `<button class="c-row ${w.squadSel === i ? 'on' : ''}" data-act="sq:${i}"><b>${i}분대 <small>Shift+${i}</small></b><span>${KIND(m)}</span><i class="ca">${m.length}명</i></button>`; }).join('')
+        + (w.squadSel > 0 ? `<div class="c-grid"><button data-act="squadpull:${w.squadSel}">미편성 → ${w.squadSel}분대</button><button data-act="squadall:${w.squadSel}">전원 → ${w.squadSel}분대</button></div>` : '')
+        + '<p class="c-note">분대를 고르고 Z 집결 · X 사수 · C/우클릭 돌격을 하면 그 분대만 움직입니다. 새로 생산한 병력은 선택한 분대에 들어갑니다. Shift+0 은 전체.</p>';
     } else {
       const rows = [...w.factions].sort((a, b) => Number(b.alive) - Number(a.alive) || w.netWorth(b) - w.netWorth(a));
       body = '<h3>왕국 순위</h3><table class="c-rank"><tr><th>왕국</th><th>순자산</th><th>병력</th><th>사업</th><th>Lv</th></tr>' + rows.map(r => `<tr class="${r.alive ? '' : 'dead'}"><td><i style="background:${r.color}"></i>${r.name}${w.hq(r.id) ? '' : r.alive ? ' <small>본부 없음</small>' : ''}</td><td>${r.alive ? '$' + $(w.netWorth(r)) : '궤멸'}</td><td>${w.armyOf(r.id).length}</td><td>${w.businesses.filter(b => b.owner === r.id).length}</td><td>${r.level}</td></tr>`).join('') + '</table>';
     }
-    const tabs: [string, string][] = [['train', '생산'], ['build', '건설'], ['research', '연구'], ['market', '시장'], ['assets', '자산'], ['rank', '순위']];
+    const tabs: [string, string][] = [['train', '생산'], ['build', '건설'], ['research', '연구'], ['market', '시장'], ['assets', '자산'], ['squad', '분대'], ['rank', '순위']];
     const head = `<header>${shopOpen ? '<b>무기상</b>' : tabs.map(([k, n]) => `<button data-act="tab:${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}<button data-act="closepanel" class="c-x" aria-label="닫기">✕</button></header>`;
     const cur = panel.querySelector<HTMLElement>('.c-body');
     if (cur && panel.dataset.head === head) { const top = cur.scrollTop; put(cur, body); cur.scrollTop = top; return; }   // 본문만 갱신: 스크롤 위치·스크롤바 드래그 유지
@@ -249,7 +265,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
     void z; if (tut) put(q('#c-zone'), `<b>튜토리얼</b><span>연습장 · 라이벌 정지</span><span>${Math.min(tut.s.i, STEPS.length - 1) + 1}/${STEPS.length}</span>`); else put(q('#c-zone'), `<b>${clock(w.time)}</b><span>생존 왕국 <b>${w.aliveCount()}</b>/8</span>`);
     put(q('#c-wanted'), f.wanted >= 1 ? `<span class="stars">${'★'.repeat(Math.floor(f.wanted))}${'☆'.repeat(5 - Math.floor(f.wanted))}</span> 수배 중` : '');
     put(q('#c-feed'), w.feed.filter(x => w.time - x.t < 7).slice(-5).map(x => `<div style="border-color:${x.color}">${x.text}</div>`).join(''));
-    const army = w.armyOf(0).length;
+    const army = w.armyOf(0).length; put(q('#c-squads'), squadBar(w));
     if (b) {
       const s = f.slots[f.cur], wd = WEAPONS[s.id];
       put(q('#c-boss'), `<div class="c-bars"><div class="hp"><i style="width:${Math.max(0, b.hp / b.maxHp * 100)}%"></i><span>${Math.ceil(b.hp)} / ${b.maxHp}</span></div><div class="ar"><i style="width:${f.armor}%"></i></div><div class="xp"><i style="width:${f.xp / w.xpNeed(f.level) * 100}%"></i></div></div>
@@ -268,7 +284,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
       else if (v) prompt = `<kbd>F</kbd> ${v.kind === 'tank' ? '전차 탈취' : v.kind === 'police' ? '경찰차 탈취 (수배 ★)' : v.driver ? '차량 강탈' : `${v.kind === 'sports' ? '스포츠카' : v.kind === 'truck' ? '트럭' : '세단'} 탑승`}`;
     } else if (b) prompt = '<kbd>F</kbd> 하차 · <kbd>Space</kbd> 핸드브레이크';
     const pe = q('#c-prompt'); put(pe, prompt); pe.className = 'c-prompt' + (prompt ? ' show' : '');
-    if (!panel.hidden && (tab === 'market' || tab === 'rank' || tab === 'assets' || tab === 'train' || shopOpen)) renderPanel();
+    if (!panel.hidden && (tab === 'market' || tab === 'rank' || tab === 'assets' || tab === 'train' || tab === 'squad' || shopOpen)) renderPanel();
     const head = view !== 'top' && R3 ? R3.yaw : null; R!.minimap(q<HTMLCanvasElement>('#c-mini'), false, head); if (!bigmap.hidden) R!.minimap(q<HTMLCanvasElement>('#c-big'), true, head);
   }
   function showPerks(): void {
@@ -300,6 +316,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
       return;
     }
     if (focusedControl || e.repeat) return;
+    if (e.shiftKey && /^Digit[0-5]$/.test(e.code)) { act('sq:' + e.code.slice(5)); return; }
     keys.add(k);
     if (k === ' ') e.preventDefault();
     if (k === 'e') interact(); else if (k === 'f') w.toggleVehicle(0); else if (k === 'r') reload(w, 0); else if (k === 'q') res(w.useSkill(0)); else if (k === 'h') w.useMedkit(0);

@@ -1,0 +1,40 @@
+/* 1대1 대전 로비. 메인 페이지와 같은 어두운 바탕, 한 가지 서체, 한 가지 강조색만 씁니다. */
+.pvp-root { position: fixed; inset: 0; z-index: 400; display: grid; place-items: center; padding: 16px; background: rgba(8, 9, 10, .82); font-family: 'Pretendard Variable', Pretendard, 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif; color: #f1eee6; }
+.pvp-card { width: min(440px, 100%); max-height: calc(100dvh - 32px); overflow: auto; padding: 22px; background: #15171a; border: 1px solid #262a2f; border-radius: 14px; display: flex; flex-direction: column; gap: 14px; }
+.pvp-card header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.pvp-card h2 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
+.pvp-card button, .pvp-card input { font: inherit; color: inherit; }
+.pvp-card button { cursor: pointer; padding: 10px 14px; background: #1d2024; border: 1px solid #2f343a; border-radius: 10px; }
+.pvp-card button:hover:not(:disabled) { border-color: #4a5058; }
+.pvp-card button:disabled { opacity: .55; cursor: progress; }
+.pvp-card button:focus-visible, .pvp-card input:focus-visible { outline: 2px solid #e8e2d0; outline-offset: 2px; }
+.pvp-card .pvp-primary { background: #e8e2d0; border-color: #e8e2d0; color: #111; font-weight: 700; }
+.pvp-card .pvp-primary:hover:not(:disabled) { background: #f4efe0; }
+.pvp-card .pvp-x { padding: 4px 9px; border: 0; background: transparent; color: #9a9ea5; }
+.pvp-card .pvp-link { padding: 4px 0; border: 0; background: none; color: #9a9ea5; text-align: left; text-decoration: underline; text-underline-offset: 3px; }
+.pvp-card input { width: 100%; padding: 10px 12px; background: #0f1113; border: 1px solid #2f343a; border-radius: 10px; }
+.pvp-form { display: flex; flex-direction: column; gap: 12px; }
+.pvp-form label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #9a9ea5; }
+.pvp-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.pvp-seg button[aria-pressed="true"], .pvp-tabs button[aria-selected="true"] { background: #2a2e34; border-color: #e8e2d0; }
+.pvp-me { display: flex; flex-direction: column; gap: 2px; }
+.pvp-me b { font-size: 18px; }
+.pvp-me span, .pvp-dim { font-size: 13px; color: #9a9ea5; line-height: 1.55; margin: 0; }
+.pvp-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pvp-inline { display: flex; gap: 8px; }
+.pvp-inline input { flex: 1; min-width: 0; text-transform: none; }
+.pvp-inline button { flex: none; }
+.pvp-sub { display: flex; justify-content: space-between; }
+.pvp-wait { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; padding: 8px 0; }
+.pvp-wait p { margin: 0; }
+.pvp-code { font-size: 36px; letter-spacing: .24em; padding-left: .24em; font-variant-numeric: tabular-nums; }
+.pvp-spin { width: 26px; height: 26px; border: 3px solid #2f343a; border-top-color: #e8e2d0; border-radius: 50%; animation: pvp-spin 1s linear infinite; }
+@keyframes pvp-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .pvp-spin { animation-duration: 3s; } }
+.pvp-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.pvp-rank { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+.pvp-rank th { text-align: left; font-weight: 500; font-size: 12px; color: #9a9ea5; padding: 4px 6px; }
+.pvp-rank td { padding: 7px 6px; border-top: 1px solid #22262b; }
+.pvp-rank tr.me td { color: #e8e2d0; font-weight: 700; }
+.pvp-msg { min-height: 1.3em; margin: 0; font-size: 13px; color: #f0b27a; }
+.pvp-result { text-align: center; }

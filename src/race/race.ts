@@ -1,11 +1,14 @@
 // SPEED RUSH — 레이스 진행(카운트다운·랩·순위·AI·차량 간 충돌). 화면과 무관한 순수 로직입니다.
 import { CARS, carById, carParams, levelById, type CarDef, type LevelDef } from './config';
 import { aiInput, newCar, stepCar, type AiProfile, type CarInput, type CarParams, type CarState, type StepEvents } from './physics';
+import { followSnap, type RemoteLink } from './netcar';
 import { type Track } from './track';
 
 export interface Racer {
   id: number; name: string; color: string; player: boolean; car: CarState; ai: AiProfile; params: CarParams; model: CarDef['model']; accent: string;
   lapTimes: number[]; lapStart: number; finishTime: number | null; lastEv: StepEvents;
+  /** 1대1 대전의 상대 차량: 물리 대신 네트워크 스냅샷을 따라갑니다. */
+  link?: RemoteLink;
 }
 export type RaceEvent =
   | { type: 'count'; n: number } | { type: 'go' } | { type: 'launch' }
@@ -23,12 +26,21 @@ const FIELD = [
   { name: 'MINT', lane: 0, frac: 65.5 / 74, grip: 33 },
 ];
 const SLOTS: Array<[number, number]> = [[-3, -5], [-3, 5], [-8, -5], [-8, 5]];
-export interface RaceOptions { level?: number; car?: string }
+/** 1대1 대전 설정: 방장 여부(출발 칸), 상대 닉네임과 차량 */
+export interface PvpOptions { host: boolean; opponent: string; opponentCar: string }
+export interface RaceOptions { level?: number; car?: string; pvp?: PvpOptions }
 
 export function createRace(track: Track, laps = 3, bestLap = Infinity, opts: RaceOptions = {}): RaceState {
   const level = levelById(opts.level ?? 1), mine = carById(opts.car ?? CARS[0].id), at = CARS.indexOf(mine);
   const mk = (id: number, name: string, def: CarDef, player: boolean, slot: [number, number], ai: AiProfile): Racer =>
     ({ id, name, color: def.color, player, car: newCar(track, track.n + slot[0], slot[1]), ai, params: carParams(def), model: def.model, accent: def.accent, lapTimes: [], lapStart: 0, finishTime: null, lastEv: { hit: 0, driftBoost: 0, pad: false } });
+  if (opts.pvp) {
+    // 같은 줄의 왼쪽·오른쪽 칸에서 나란히 출발합니다. 상대는 AI 가 아니라 네트워크 스냅샷으로 움직입니다.
+    const them = carById(opts.pvp.opponentCar), ai: AiProfile = { lane: 0, top: 58, grip: 30, skill: 1 };
+    const me = mk(0, 'YOU', mine, true, SLOTS[opts.pvp.host ? 0 : 1], ai), rival = mk(1, opts.pvp.opponent, them, false, SLOTS[opts.pvp.host ? 1 : 0], ai);
+    rival.link = { snap: null, at: 0 };
+    return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [me, rival], player: me, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level };
+  }
   const player = mk(0, 'YOU', mine, true, SLOTS[2], { lane: 0, top: 58, grip: 30, skill: 1 });
   const rivals = FIELD.map((f, i) => {
     const def = CARS[(at + 1 + i) % CARS.length], p = carParams(def), handling = p.grip * p.turn;
@@ -47,7 +59,7 @@ export const gapMeters = (r: RaceState, who: Racer): number => (who.car.total - 
 
 const IDLE: CarInput = { throttle: 0, brake: 0, steer: 0, drift: false, nitro: false };
 
-export function updateRace(r: RaceState, dt: number, input: CarInput): RaceEvent[] {
+export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): RaceEvent[] {
   const ev: RaceEvent[] = [], t = r.track;
   r.clock += dt;
   const pressed = input.throttle > 0.05;
@@ -64,6 +76,7 @@ export function updateRace(r: RaceState, dt: number, input: CarInput): RaceEvent
   r.thrPrev = pressed;
   const racing = r.phase !== 'countdown';
   for (const k of r.racers) {
+    if (k.link) { followSnap(k.car, k.link, now, dt); continue; }
     let inp: CarInput = IDLE;
     if (racing) {
       if (k.player && k.finishTime === null) inp = input;
@@ -81,6 +94,7 @@ export function updateRace(r: RaceState, dt: number, input: CarInput): RaceEvent
   }
   // 차량 간 충돌(원형 근사)
   for (let i = 0; i < r.racers.length; i++) for (let j = i + 1; j < r.racers.length; j++) {
+    if (r.racers[i].link || r.racers[j].link) continue; // 상대 차량은 겹쳐 달립니다(충돌 동기화 없음)
     const a = r.racers[i].car, b = r.racers[j].car, dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz), min = 3.3;
     if (d < min && d > 1e-3) {
       const nx = dx / d, nz = dz / d, push = (min - d) / 2; a.x -= nx * push; a.z -= nz * push; b.x += nx * push; b.z += nz * push;
@@ -90,7 +104,7 @@ export function updateRace(r: RaceState, dt: number, input: CarInput): RaceEvent
   }
   // 랩·결승
   for (const k of r.racers) {
-    if (k.finishTime !== null) continue;
+    if (k.finishTime !== null || k.link) continue;
     const lapDone = Math.floor(k.car.total / t.n);
     while (k.lapTimes.length < Math.min(lapDone, r.laps)) {
       const lt = r.clock - k.lapStart; k.lapTimes.push(lt); k.lapStart = r.clock;

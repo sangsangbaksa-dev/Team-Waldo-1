@@ -1,6 +1,6 @@
 // LAST CITY — 게임 루프, 입력, HUD
 import './city.css';
-import { BIZ, BUILD_ORDER, CLASSES, DIFFICULTY, DIFFICULTY_ORDER, FACTIONS, PERKS, RESEARCH, STRUCTS, UNITS, WEAPONS, type ClassId, type Difficulty, type ResearchId, type StructKind, type UnitId } from './defs';
+import { BIZ, BUILD_ORDER, CLASSES, DIFFICULTY, DIFFICULTY_ORDER, FACTIONS, PERKS, RESEARCH, STRUCTS, UNITS, WEAPONS, type ClassId, type Difficulty, type ResearchId, type StructKind, type UnitId, type WeaponId } from './defs';
 import { World, type Actor } from './world';
 import { Renderer, type Ghost } from './render';
 import { Renderer3D } from './render3d';
@@ -13,6 +13,8 @@ import { mapPointerToWorld } from './uiMath';
 import { SHOP, canBuy, itemPrice } from './shop';
 import { missionLog, missionSummary } from './missions';
 import { readPreferences, recordMatch, writePreferences } from '../prefs';
+import type { PvpSession } from '../net/lobby';
+import { CityDuel, TARGET_KILLS, TIME_LIMIT, duelOutcome } from './duel';
 import { CITY_KEY, readCityCareer } from '../records';
 
 const $ = (n: number): string => Math.floor(n).toLocaleString('en-US');
@@ -47,6 +49,9 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
   let models: Models | null = null, R3: Renderer3D | null = null, view: View = 'fp', locked = false, lockFail = false, expectUnlock = false, touchFire = false, hurt = 0, lastLook = 0, hitT = 0;
   const tags: HTMLElement[] = [], marks: HTMLElement[] = []; let area = '', areaT = 0, sirenT = 0;
   let world: World | null = null, R: Renderer | null = null, raf = 0, last = 0, acc = 0, paused = false, closed = false, ghost: Ghost | null = null, tab = 'train', hudT = 0, toastT = 0, bannerT = 0, shopOpen = false, resultShown = false, userZoom = 1, combat = 0, klass: ClassId = 'warlord';
+  /** 1대1 결투 진행 상태. null 이면 혼자 하는 게임입니다. */
+  interface Duel { s: PvpSession; net: CityDuel; myDeaths: number; oppDeaths: number; done: boolean; pose: { x: number; y: number; a: number; hp: number; mh: number; w: WeaponId } | null; rx: number; ry: number; seed: number; oppKlass: string; started: boolean; graceAt: number }
+  let duel: Duel | null = null;
   const keys = new Set<string>(), mouse = { x: innerWidth / 2, y: innerHeight / 2, down: false };
   const sticks = { move: { id: -1, ox: 0, oy: 0, x: 0, y: 0 }, aim: { id: -1, ox: 0, oy: 0, x: 0, y: 0 } };
 
@@ -61,15 +66,17 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
       <div class="c-sub">${tutDone ? '바로 시작할 영웅을 고르세요' : '또는 바로 시작할 영웅을 고르세요'}</div>
       <div class="c-classes">${(Object.keys(CLASSES) as ClassId[]).map(k => `<button class="c-class" data-act="class:${k}"><span>${CLASSES[k].tag}</span><b>${CLASSES[k].name}</b><p>${CLASSES[k].desc}</p><em>Q · ${CLASSES[k].skill}</em><small>${CLASSES[k].skillDesc}</small></button>`).join('')}</div>
       <div class="c-keys">${touch ? '<span>왼쪽 드래그 이동</span><span>오른쪽 드래그 시점</span><span>사격 버튼</span><span>버튼으로 상호작용·지휘</span>' : '<span><b>WASD</b> 이동</span><span><b>마우스</b> 시점·사격</span><span><b>V</b> 1인칭/3인칭/전술뷰</span><span><b>E</b> 매입·줍기</span><span><b>F</b> 차량 탑승</span><span><b>Tab</b> 지휘 패널</span><span><b>우클릭</b> 병력 돌격</span><span><b>Z/X</b> 집결·사수</span><span><b>Space</b> 대시</span><span><b>M</b> 지도</span>'}</div>
+      <div class="c-sub">1대1 결투 · 로그인 필요</div><div class="c-diffs">${(Object.keys(CLASSES) as ClassId[]).map(k => `<button class="c-diff" data-act="duel:${k}" title="${CLASSES[k].desc}">${CLASSES[k].name}으로 대전</button>`).join('')}</div><p class="c-lead c-diffdesc">같은 도시에서 둘만 남아 ${TARGET_KILLS}킬을 먼저 채우면 승리합니다. 병력·건설 없이 무기와 사업체 구매, 보스의 총싸움으로 가립니다.</p>
       <div class="c-sub">난이도</div><div class="c-diffs">${DIFFICULTY_ORDER.map(d => `<button class="c-diff${d === diffSel ? ' on' : ''}" data-act="diff:${d}" title="${DIFFICULTY[d].desc}">${DIFFICULTY[d].label}</button>`).join('')}</div><p class="c-lead c-diffdesc">${DIFFICULTY[diffSel].desc}</p>
       <div class="c-setup-foot"><span>난이도 · ${DIFFICULTY[diffSel].label}</span><button data-act="exit" class="c-ghost">메뉴로</button></div></section>`;
   }
-  function start(k: ClassId, tutorial = false): void {
+  function start(k: ClassId, tutorial = false, dl: Duel | null = null): void {
     klass = k; modal.innerHTML = ''; hud.hidden = false; resultShown = false; paused = false; ghost = null; shopOpen = false; panel.hidden = true; bigmap.hidden = true; q('#c-missions').hidden = true;
     // A retry must not inherit held keys, touch gestures, firing or frame debt.
     keys.clear(); mouse.down = false; touchFire = false; acc = 0; looks.clear();
     for (const stick of [sticks.move, sticks.aim]) { stick.id = -1; stick.x = 0; stick.y = 0; }
-    world = new World({ seed: (Math.random() * 2 ** 31) | 0, difficulty: diffSel, klass: k, tutorial });
+    world = new World({ seed: dl ? dl.seed : (Math.random() * 2 ** 31) | 0, difficulty: diffSel, klass: k, tutorial: tutorial || !!dl, duel: dl ? { side: dl.s.host ? 0 : 1, name: dl.s.opponent.nickname } : undefined });
+    if (dl) { const d = dl; world.onShot = (x, y, a, wid, mul) => d.net.sendShot({ x, y, a, w: wid, m: mul }); }
     tut = tutorial ? { s: newTutState(), c: newCounters() } : null;  tutSig = ''; q('#c-tut').hidden = true; tutInfoLock = false;
     R = new Renderer(canvas, world); R.reduced = prefs.reducedMotion; const b = world.boss(0)!; R.cam.x = b.x; R.cam.y = b.y; R.cam.zoom = 0.6;
     R3?.dispose(); R3 = null; layer.innerHTML = ''; tags.length = 0; marks.length = 0;
@@ -78,7 +85,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
     lastYaw = R3 ? R3.yaw : 0; lastPos = { x: b.x, y: b.y };
     setView(R3 ? (view === 'top' ? 'fp' : view) : 'top'); lock();
     if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__city = { world, renderer: R, r3: R3 };
-    audio.unlock(); if (!tutorial) banner('작전 지령 01 · 첫 사업체를 확보하세요 · J 전체 임무');
+    audio.unlock(); if (dl) banner(`${dl.s.opponent.nickname} 님과 1대1 · ${TARGET_KILLS}킬 선취 · 제한 ${Math.round(TIME_LIMIT / 60)}분`); else if (!tutorial) banner('작전 지령 01 · 첫 사업체를 확보하세요 · J 전체 임무');
     renderCmd(); last = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(frame);
   }
   let everLocked = false, lockErrors = 0;
@@ -94,7 +101,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
   const onMouseMove = (e: MouseEvent): void => { if (!R3 || view === 'top' || paused) return; if (locked || (lockFail && mouse.down)) { R3.yaw += e.movementX * 0.0024; R3.pitch = Math.max(-1.2, Math.min(1.0, R3.pitch - e.movementY * 0.0024)); lastLook = performance.now(); } };
   document.addEventListener('pointerlockchange', onLock); document.addEventListener('pointerlockerror', onLockErr); document.addEventListener('mousemove', onMouseMove);
   function exit(): void {
-    if (closed) return; closed = true; cancelAnimationFrame(raf); audio.dispose(); unlock(); R3?.dispose(); root.remove();
+    if (closed) return; closed = true; cancelAnimationFrame(raf); leaveDuel(); audio.dispose(); unlock(); R3?.dispose(); root.remove();
     document.removeEventListener('pointerlockchange', onLock); document.removeEventListener('pointerlockerror', onLockErr); document.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('resize', onResize); window.removeEventListener('blur', onBlur); window.removeEventListener('pointerup', onWindowPointerEnd); window.removeEventListener('pointercancel', onWindowPointerEnd); document.removeEventListener('visibilitychange', onBlur);
     onExit();
@@ -109,6 +116,8 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
     if (a === 'squadall') { if (w) { w.assignAllTo(0, Number(arg)); w.selectSquad(Number(arg)); put(q('#c-squads'), squadBar(w)); renderPanel(); } return; }
     if (a === 'squadpull') { if (w) { w.moveUnassigned(0, Number(arg)); renderPanel(); } return; }
     if (a === 'class') { start(arg as ClassId); return; }
+    if (a === 'duel') { klass = arg as ClassId; openDuelLobby(); return; }
+    if (a === 'rematch') { endDuel(); setup(); openDuelLobby(); return; }
     if (a === 'tutorial') { klass = 'warlord'; start('warlord', true); return; }
     if (a === 'tutdone') { tut = null; setup(); return; }
     if (a === 'exit') { exit(); return; }
@@ -178,7 +187,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
     shopOpen = false; panel.hidden = true; if (view !== preView) setView(preView); if (R3) { R3.yaw = Math.PI / 2; R3.pitch = -0.05; } audio.play('door'); lock();
   }
   function pause(): void {
-    if (!world || world.over) return; paused = true; keys.clear(); mouse.down = false; unlock();
+    if (!world || world.over || duel) return; paused = true; keys.clear(); mouse.down = false; unlock();
     modal.innerHTML = `<section class="c-pause"><div class="c-kicker">PAUSED</div><h2>일시정지</h2>
       <div class="c-help"><div><b>보스 조작</b><p>WASD 이동 · 마우스 시점/사격 · V 시점 전환(1인칭·3인칭·전술뷰) · R 재장전 · 1~3 무기 · Space 대시 · H 회복 키트 · Q 고유 스킬</p></div><div><b>도시</b><p>E 사업체 매입·업그레이드·무기 줍기 · F 차량 탑승/하차 · 적 사업체 패드 위에서 6초 버티면 적대적 인수</p></div><div><b>지휘</b><p>Tab 지휘 패널(생산·건설·연구·시장) · 우클릭/지도 클릭 돌격 · Z 집결 · X 사수</p></div><div><b>승리</b><p>자기장은 점점 줄어듭니다. 적 본부를 부수면 그 보스는 부활하지 못합니다. 마지막까지 살아남는 왕국이 승리합니다.</p></div></div>
       <div class="c-actions"><button data-act="resume" class="c-primary">계속하기</button><button data-act="sound">효과음 ${prefs.sound ? '켜짐' : '꺼짐'}</button><button data-act="retry">새 게임</button><button data-act="exit">메뉴로 나가기</button></div></section>`;
@@ -280,10 +289,10 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
   function renderHud(): void {
     const w = world!, f = w.factions[0], b = w.boss(0), z = w.zone;
     put(q('#c-res'), `<span class="ca" title="자금">$ <b>${$(f.cash)}</b><small>+${$(f.income)}/s</small></span><span class="cr" title="크리스탈">◆ <b>${$(f.crystal)}</b></span><span title="인구">병력 <b>${f.supply}/${f.supplyMax}</b></span>`);
-    const entries = tut ? [] : missionLog(w), summary = missionSummary(entries), current = summary.active;
-    put(q('#c-quest'), tut ? '' : current ? `<div class="c-quest-head"><span>작전 지령 <b>${summary.completed}/${summary.total}</b></span><button data-act="missions" aria-label="전체 작전 지령 보기"><kbd>J</kbd>전체 보기</button></div><strong>${current.title}</strong><p>${current.objective}</p><div class="c-quest-progress" role="progressbar" aria-label="${current.title} 진행률" aria-valuemin="0" aria-valuemax="${current.target}" aria-valuenow="${current.current}"><i style="width:${current.current / current.target * 100}%"></i></div><small>${current.current}/${current.target}${current.reward ? ' · 완료 보상 $' + $(current.reward) : ' · 최종 작전'}</small>` : '<div class="c-quest-head"><span>작전 지령 완료</span><button data-act="missions">전체 보기</button></div><strong>최후의 왕국!</strong>');
+    const entries = tut || duel ? [] : missionLog(w), summary = missionSummary(entries), current = summary.active;
+    put(q('#c-quest'), tut || duel ? '' : current ? `<div class="c-quest-head"><span>작전 지령 <b>${summary.completed}/${summary.total}</b></span><button data-act="missions" aria-label="전체 작전 지령 보기"><kbd>J</kbd>전체 보기</button></div><strong>${current.title}</strong><p>${current.objective}</p><div class="c-quest-progress" role="progressbar" aria-label="${current.title} 진행률" aria-valuemin="0" aria-valuemax="${current.target}" aria-valuenow="${current.current}"><i style="width:${current.current / current.target * 100}%"></i></div><small>${current.current}/${current.target}${current.reward ? ' · 완료 보상 $' + $(current.reward) : ' · 최종 작전'}</small>` : '<div class="c-quest-head"><span>작전 지령 완료</span><button data-act="missions">전체 보기</button></div><strong>최후의 왕국!</strong>');
     if (!q('#c-missions').hidden) renderMissions();
-    void z; if (tut) put(q('#c-zone'), `<b>튜토리얼</b><span>연습장 · 라이벌 정지</span><span>${Math.min(tut.s.i, STEPS.length - 1) + 1}/${STEPS.length}</span>`); else put(q('#c-zone'), `<b>${clock(w.time)}</b><span>생존 왕국 <b>${w.aliveCount()}</b>/8</span>`);
+    void z; if (duel) put(q('#c-zone'), `<b>${clock(Math.max(0, TIME_LIMIT - w.time))}</b><span>나 <b>${duel.oppDeaths}</b> : <b>${duel.myDeaths}</b> ${duel.s.opponent.nickname.replace(/[<>&"]/g, '')}</span><span>${TARGET_KILLS}킬 선취</span>`); else if (tut) put(q('#c-zone'), `<b>튜토리얼</b><span>연습장 · 라이벌 정지</span><span>${Math.min(tut.s.i, STEPS.length - 1) + 1}/${STEPS.length}</span>`); else put(q('#c-zone'), `<b>${clock(w.time)}</b><span>생존 왕국 <b>${w.aliveCount()}</b>/8</span>`);
     put(q('#c-wanted'), f.wanted >= 1 ? `<span class="stars">${'★'.repeat(Math.floor(f.wanted))}${'☆'.repeat(5 - Math.floor(f.wanted))}</span> 수배 중` : '');
     put(q('#c-feed'), w.feed.filter(x => w.time - x.t < 7).slice(-5).map(x => `<div style="border-color:${x.color}">${x.text}</div>`).join(''));
     const army = w.armyOf(0).length; put(q('#c-squads'), squadBar(w));
@@ -316,6 +325,59 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
     unlock();
     modal.innerHTML = `<section class="c-perks"><div class="c-kicker">LEVEL ${f.level}</div><h2>특성을 선택하세요</h2><div class="c-classes">${f.choices.map((c, i) => `<button class="c-class" data-act="perk:${i}"><span>${PERKS[c].icon}</span><b>${PERKS[c].name}</b><p>${PERKS[c].desc}</p><small>${i + 1} 키</small></button>`).join('')}</div></section>`;
   }
+  // ---------- 1대1 결투 ----------
+  const duelCard = (title: string, body: string, actions: string): void => { modal.innerHTML = `<section class="c-pause"><div class="c-kicker">1대1 결투</div><h2>${title}</h2>${body}<div class="c-actions">${actions}</div></section>`; };
+  const esc = (t: string): string => t.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
+  function openDuelLobby(): void {
+    void import('../net/lobby').then(({ openLobby }) => openLobby({ game: 'city', config: () => ({ seed: (Math.random() * 2 ** 31) | 0 }), onMatch: startDuel, onClose: () => undefined }))
+      .catch(() => toast('대전 기능을 불러오지 못했습니다'));
+  }
+  function startDuel(s: PvpSession): void {
+    endDuel(); hud.hidden = true; unlock();
+    const raw = s.match.config.seed; let seed = typeof raw === 'number' && Number.isInteger(raw) && raw >= 0 && raw < 2 ** 31 ? raw : 0;
+    if (!seed) for (const ch of s.match.id) seed = (seed * 31 + ch.charCodeAt(0)) >>> 1;
+    duelCard(`${esc(s.opponent.nickname)} 님과 연결하는 중…`, `<p class="c-lead">${CLASSES[klass].name} · ${TARGET_KILLS}킬 선취</p>`, '<button data-act="exit">나가기</button>');
+    const d = { s, myDeaths: 0, oppDeaths: 0, done: false, pose: null, rx: 0, ry: 0, seed, oppKlass: 'warlord', started: false, graceAt: 0 } as unknown as Duel;
+    duel = d;
+    d.net = new CityDuel(s, klass, {
+      onStart: oppKlass => { if (duel !== d || closed) return; d.oppKlass = oppKlass; d.started = true; start(klass, false, d); },
+      onPose: p => { if (!d.pose) { d.rx = p.x; d.ry = p.y; } d.pose = p; },
+      onShot: sh => { if (d.started && !d.done && world) world.remoteShot(sh.x, sh.y, sh.a, sh.w, sh.m); },
+      onDeaths: n => { d.oppDeaths = Math.max(d.oppDeaths, n); },
+      onGone: reason => { if (!d.done) void concludeDuel(s.me.id, reason === 'never' ? '상대가 접속하지 않았습니다' : reason === 'bye' ? '상대가 나갔습니다' : '상대와의 연결이 끊어졌습니다'); },
+    });
+  }
+  function duelTick(now: number, dt: number): void {
+    const d = duel, w = world; if (!d || !w || d.done) return; const f = w.factions[0], b = w.boss(0);
+    if (d.pose) { const far = Math.hypot(d.pose.x - d.rx, d.pose.y - d.ry) > 400, k = far ? 1 : Math.min(1, dt * 12); d.rx += (d.pose.x - d.rx) * k; d.ry += (d.pose.y - d.ry) * k; w.puppet(d.rx, d.ry, d.pose.a, d.pose.hp, d.pose.mh, d.pose.w); }
+    if (b) d.net.sendPose({ x: b.x, y: b.y, a: b.ang, hp: b.hp, mh: b.maxHp, w: f.slots[f.cur]?.id ?? 'pistol' }, now);
+    if (f.deaths > d.myDeaths) { d.myDeaths = f.deaths; d.net.sendDeaths(d.myDeaths); }
+    const out = duelOutcome(d.myDeaths, d.oppDeaths, w.time);
+    if (!out) { d.graceAt = 0; return; }
+    if (!d.graceAt) d.graceAt = now; else if (now - d.graceAt > 1000) void concludeDuel(out === 'win' ? d.s.me.id : d.s.opponent.id, out === 'win' ? `${d.oppDeaths}킬로 승리` : `${d.myDeaths}번 쓰러졌습니다`);
+  }
+  /** 승자를 서버에 보고하고 확정된 레이팅 변화를 보여 줍니다(보고 규칙은 SPEED RUSH 와 같습니다). */
+  async function concludeDuel(winner: string, why: string): Promise<void> {
+    const d = duel, w = world; if (!d || d.done) return; d.done = true; resultShown = true; if (w) w.over = true; unlock(); hud.hidden = true;
+    const win = winner === d.s.me.id, card = (extra: string, actions: string, won = win, voided = false): void => { if (!closed && duel === d) { audio.play(won && !voided ? 'win' : 'lose'); duelCard(voided ? '무효' : won ? '승리' : '패배', `<p class="c-lead">vs ${esc(d.s.opponent.nickname)} · ${d.oppDeaths} : ${d.myDeaths}</p><p class="c-lead">${esc(why)}</p><p class="c-lead">${esc(extra)}</p>`, actions); } };
+    card('결과를 기록하는 중…', '<button data-act="exit">메뉴로</button>');
+    try {
+      let row = await d.s.backend.report(d.s.match.id, winner);
+      for (let i = 0; i < 8 && row.status === 'playing' && duel === d && !closed; i++) { await new Promise(r => window.setTimeout(r, 3000)); row = await d.s.backend.settle(d.s.match.id); }
+      if (closed || duel !== d) return;
+      const delta = d.s.host ? row.host_delta : row.guest_delta;
+      card(row.status === 'finished' && delta !== null ? `레이팅 ${delta >= 0 ? '+' : ''}${delta}` : row.status === 'void' ? '두 쪽의 보고가 달라 이 대전은 기록되지 않았습니다.' : '결과가 아직 확정되지 않았습니다.',
+        '<button data-act="rematch" class="c-primary">다시 대전</button><button data-act="exit">메뉴로</button>', row.status === 'finished' ? row.winner_id === d.s.me.id : win, row.status === 'void');
+    } catch { card('기록을 저장하지 못했습니다. 네트워크를 확인해 주세요.', '<button data-act="exit">메뉴로</button>'); }
+  }
+  /** 나가기: 결투 중이면 기권으로 처리합니다. */
+  function leaveDuel(): void {
+    const d = duel; if (!d) return;
+    if (!d.done && d.started) { d.net.bye(); void d.s.backend.report(d.s.match.id, d.s.opponent.id).catch(() => undefined); }
+    endDuel();
+  }
+  function endDuel(): void { duel?.net.dispose(); duel = null; if (world) world.onShot = null; }
+
   function showResult(): void {
     const w = world!, f = w.factions[0], win = w.winner === 0, place = win ? 1 : f.place || w.aliveCount() + 1; resultShown = true; unlock(); audio.setEngine(-1); audio.play(win ? 'win' : 'lose');
     recordMatch(win, w.time, f.kills);
@@ -493,6 +555,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
         else if (e.t === 'crash') audio.play('crash', 0.8); else if (e.t === 'reload') audio.play('reload'); else if (e.t === 'dash') audio.play('dash'); else if (e.t === 'door') audio.play('door'); else if ((e.t === 'built' || e.t === 'capture') && e.f === 0) audio.play('build');
         else if (e.t === 'thud') audio.play('boom', vol * 0.5); else if (e.t === 'playerdown') { audio.play('lose'); hurt = 1; }
       }
+      if (duel) duelTick(now, dt);
       w.events.length = 0; combat = Math.max(0, combat - dt * 0.25); audio.intensity = combat;
     }
     audio.setEngine(veh ? Math.min(1, spd / veh.maxSpeed) : -1);

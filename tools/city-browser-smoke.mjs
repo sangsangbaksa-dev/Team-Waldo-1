@@ -48,7 +48,7 @@ try {
       await page.locator('#start-race').click();
       await page.locator('.rc-root').waitFor({ state: 'visible' });
       await page.locator('.rc-setup').waitFor();
-      assert.equal(await page.locator('[data-pick^="map:"]').count(), 4, 'Race setup must list four maps');
+      assert.equal(await page.locator('[data-pick^="map:"]').count(), 5, 'Race setup must list five maps');
       assert.equal(await page.locator('[data-pick^="car:"]').count(), 6, 'Race setup must list six cars');
       await page.screenshot({ path: 'browser-artifacts/race-setup-' + size.name + '.png', animations: 'disabled' });
       await page.locator('[data-pick="map:desert"]').click();

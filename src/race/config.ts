@@ -10,17 +10,17 @@ export const STAT_BUDGET = 15;
 
 export interface CarDef {
   id: string; name: string; role: string; blurb: string; color: string; points: StatPoints;
-  /** 같은 스포츠카 모델을 늘이거나 낮춰 차종 느낌을 냅니다(길이·높이·폭 배율). */
-  shape: { len: number; hgt: number; wid: number };
+  /** race.glb 의 차체 노드 이름과 보조색(스트라이프·윙) */
+  model: 'gt' | 'wide' | 'long'; accent: string;
 }
 
 export const CARS: ReadonlyArray<CarDef> = [
-  { id: 'arc', name: 'ARC', role: '균형형', blurb: '약점이 없는 기본기', color: '#d8323f', points: { accel: 3, top: 3, handling: 3, drift: 3, nitro: 3 }, shape: { len: 1, hgt: 1, wid: 1 } },
-  { id: 'bolt', name: 'BOLT', role: '가속형', blurb: '출발과 코너 탈출이 빠름', color: '#f08a1c', points: { accel: 5, top: 2, handling: 3, drift: 2, nitro: 3 }, shape: { len: 0.97, hgt: 1.02, wid: 1.02 } },
-  { id: 'velox', name: 'VELOX', role: '최고속형', blurb: '직선에서 가장 빠름', color: '#2e7dff', points: { accel: 2, top: 5, handling: 2, drift: 3, nitro: 3 }, shape: { len: 1.05, hgt: 0.94, wid: 1 } },
-  { id: 'orbit', name: 'ORBIT', role: '코너링형', blurb: '코너에서 속도를 덜 잃음', color: '#e5e9ef', points: { accel: 2, top: 3, handling: 5, drift: 2, nitro: 3 }, shape: { len: 0.98, hgt: 0.97, wid: 1.04 } },
-  { id: 'slide', name: 'SLIDE', role: '드리프트형', blurb: '미끄러지며 부스트를 빨리 모음', color: '#8a5cf0', points: { accel: 3, top: 2, handling: 3, drift: 5, nitro: 2 }, shape: { len: 1.02, hgt: 0.98, wid: 1 } },
-  { id: 'fuse', name: 'FUSE', role: '니트로형', blurb: '니트로가 오래가고 빨리 참', color: '#2fbf8a', points: { accel: 2, top: 3, handling: 3, drift: 2, nitro: 5 }, shape: { len: 1, hgt: 1, wid: 1 } },
+  { id: 'arc', name: 'ARC', role: '균형형', blurb: '약점이 없는 기본기', color: '#d8323f', points: { accel: 3, top: 3, handling: 3, drift: 3, nitro: 3 }, model: 'gt', accent: '#f2f2f2' },
+  { id: 'bolt', name: 'BOLT', role: '가속형', blurb: '출발과 코너 탈출이 빠름', color: '#f08a1c', points: { accel: 5, top: 2, handling: 3, drift: 2, nitro: 3 }, model: 'wide', accent: '#1b1d22' },
+  { id: 'velox', name: 'VELOX', role: '최고속형', blurb: '직선에서 가장 빠름', color: '#2e7dff', points: { accel: 2, top: 5, handling: 2, drift: 3, nitro: 3 }, model: 'long', accent: '#f2f2f2' },
+  { id: 'orbit', name: 'ORBIT', role: '코너링형', blurb: '코너에서 속도를 덜 잃음', color: '#e5e9ef', points: { accel: 2, top: 3, handling: 5, drift: 2, nitro: 3 }, model: 'gt', accent: '#d8323f' },
+  { id: 'slide', name: 'SLIDE', role: '드리프트형', blurb: '미끄러지며 부스트를 빨리 모음', color: '#8a5cf0', points: { accel: 3, top: 2, handling: 3, drift: 5, nitro: 2 }, model: 'wide', accent: '#f2c230' },
+  { id: 'fuse', name: 'FUSE', role: '니트로형', blurb: '니트로가 오래가고 빨리 참', color: '#2fbf8a', points: { accel: 2, top: 3, handling: 3, drift: 2, nitro: 5 }, model: 'gt', accent: '#1b1d22' },
 ];
 export const carById = (id: string): CarDef => CARS.find(c => c.id === id) ?? CARS[0];
 

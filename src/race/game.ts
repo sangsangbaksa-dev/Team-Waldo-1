@@ -1,4 +1,4 @@
-// SPEED RUSH — 레이싱 모드 진입점: 입력, HUD, 게임 루프. Last City 의 스포츠카 모델(vehicles.glb)을 그대로 씁니다.
+// SPEED RUSH — 레이싱 모드 진입점: 입력, HUD, 게임 루프. 레이싱카 모델은 race.glb(tools/blender/race.py)입니다.
 import './race.css';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -42,7 +42,7 @@ export function openRace(onExit: () => void): void {
   const bigCount = (text: string, go = false): void => { const el = $('#rc-count'); el.textContent = text; el.className = 'rc-count'; void el.offsetWidth; el.className = `rc-count show${go ? ' go' : ''}`; };
 
   const dbg = { auto: false };
-  if (import.meta.env.DEV) (window as unknown as { __race: unknown }).__race = { get race() { return race; }, dbg };
+  if (import.meta.env.DEV) (window as unknown as { __race: unknown }).__race = { get race() { return race; }, dbg, skip(sec: number) { for (let t = 0; t < sec; t += STEP) handle(updateRace(race, STEP, readInput())); } }; // 개발 중 화면 캡처용: 시뮬레이션을 앞으로 감습니다.
   function readInput(): CarInput {
     if (dbg.auto) { const c = race.player.car, ai = aiInput(c, track, { lane: 0, top: race.player.params.top * 0.97, grip: 38, skill: 1, line: 1 }); return { ...ai, nitro: c.nitro > 0.5 && Math.abs(track.k[c.idx]) < 0.002 }; }
     const k = (n: string): boolean => keys.has(n), left = k('ArrowLeft') || k('KeyA') || hold.left, right = k('ArrowRight') || k('KeyD') || hold.right;
@@ -102,8 +102,8 @@ export function openRace(onExit: () => void): void {
     const c = race.player.car, i = c.idx; c.x = track.x[i]; c.z = track.z[i]; c.y = track.y[i]; c.h = Math.atan2(track.tz[i], track.tx[i]); c.vx = c.vz = 0; c.vf = c.vl = 0; c.yawRate = 0; c.drifting = false; c.driftT = 0; msg('복귀');
   }
 
-  let carTemplate: THREE.Object3D | null = null;
-  function startView(tpl: THREE.Object3D | null): void {
+  let carTemplate: Record<string, THREE.Object3D> | null = null;
+  function startView(tpl: Record<string, THREE.Object3D> | null): void {
     // 해제된 WebGL 컨텍스트는 같은 캔버스에서 다시 열 수 없으므로 캔버스를 새로 만듭니다.
     const fresh = document.createElement('canvas'); fresh.className = 'rc-canvas'; canvas.replaceWith(fresh); canvas = fresh;
     try { view = new RaceView(canvas, track, tpl, prefs.quality, mapOf(setup).theme); view.setRacers(race.racers); resize(); }
@@ -195,9 +195,9 @@ export function openRace(onExit: () => void): void {
     b.addEventListener('pointerdown', on(true)); for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, on(false)); b.addEventListener('contextmenu', e => e.preventDefault());
   });
 
-  // 스포츠카 모델 로드 → 실패해도 단순 차체로 계속
+  // 레이싱카 모델(race.glb) 로드 → 실패해도 단순 차체로 계속
   void (async () => {
-    try { const gltf = await new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}assets/models/vehicles.glb`); gltf.scene.traverse(o => { if (o.name === 'sports') carTemplate = o; }); } catch { carTemplate = null; }
+    try { const gltf = await new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}assets/models/race.glb`), found: Record<string, THREE.Object3D> = {}; gltf.scene.traverse(o => { if (o.name === 'gt' || o.name === 'wide' || o.name === 'long') found[o.name] = o; }); carTemplate = found; } catch { carTemplate = null; }
     if (closed) return; last = performance.now(); raf = requestAnimationFrame(frame); showSetup();
   })();
 }

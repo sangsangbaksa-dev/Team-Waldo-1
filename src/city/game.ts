@@ -300,14 +300,14 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
     // 상호작용 안내
     let prompt = '';
     if (w.inside) {
-      const zi = w.insideBiz(); prompt = w.nearInsideDoor() ? '<kbd>E</kbd> 밖으로 나가기' : w.nearInsideCounter() ? `<kbd>E</kbd> ${zi ? BIZ[zi.kind].name : ''} 카운터 — 거래하기` : '카운터로 가서 <kbd>E</kbd> · 초록 EXIT 문으로 가서 <kbd>E</kbd> 나가기';
+      const zi = w.insideBiz(); prompt = w.nearInsideDoor() ? '<kbd>E</kbd> 밖으로 나가기' : w.nearInsideCounter() ? `<kbd>E</kbd> ${zi ? BIZ[zi.kind].name : ''} 카운터 — 거래하기` : '카운터로 가서 <kbd>E</kbd> · 출입문으로 걸어가 <kbd>E</kbd> 나가기';
       if (shopOpen && !w.nearInsideCounter()) { shopOpen = false; panel.hidden = true; lock(); }
     } else if (b && !b.inVeh) {
       const l = w.loot.find(x => x.alive && x.type === 'weapon' && x.fall <= 0 && Math.hypot(x.x - b.x, x.y - b.y) < 46);
       const zb = w.businesses.find(x => Math.hypot(x.x - b.x, x.y - b.y) < 64);
       const v = w.vehicles.find(x => x.alive && x.burn <= 0 && x.ai !== 'chase' && Math.hypot(x.x - b.x, x.y - b.y) - x.r < 78);
       if (l) prompt = `<kbd>E</kbd> ${WEAPONS[l.weapon!].name} 줍기`;
-      else if (zb) prompt = zb.kind === 'gunshop' ? '<kbd>E</kbd> 무기상 안으로 들어가기' : zb.owner < 0 ? `<kbd>E</kbd> ${BIZ[zb.kind].name} 안으로 들어가기 · 매입 <b>$${w.bizPrice(f, zb)}</b> · 초당 +$${BIZ[zb.kind].income}` : zb.owner === 0 ? `<kbd>E</kbd> ${BIZ[zb.kind].name} 안으로 들어가기 ${'★'.repeat(zb.level)}` : `${FACTIONS[zb.owner].name}의 ${BIZ[zb.kind].name} — 적대적 인수 ${Math.max(0, 6 - zb.cap).toFixed(1)}초${zb.cap <= 0.05 ? ' (경비 제거 필요)' : ''}`;
+      else if (zb) prompt = zb.kind === 'gunshop' ? '무기상 — 문으로 걸어 들어가기' : zb.owner < 0 ? `${BIZ[zb.kind].name} — 문으로 걸어 들어가기 · 매입 <b>$${w.bizPrice(f, zb)}</b> · 초당 +$${BIZ[zb.kind].income}` : zb.owner === 0 ? `${BIZ[zb.kind].name} — 문으로 걸어 들어가기 ${'★'.repeat(zb.level)}` : `${FACTIONS[zb.owner].name}의 ${BIZ[zb.kind].name} — 적대적 인수 ${Math.max(0, 6 - zb.cap).toFixed(1)}초${zb.cap <= 0.05 ? ' (경비 제거 필요)' : ''}`;
       else if (v) prompt = `<kbd>F</kbd> ${v.kind === 'tank' ? '전차 탈취' : v.kind === 'police' ? '경찰차 탈취 (수배 ★)' : v.driver ? '차량 강탈' : `${v.kind === 'sports' ? '스포츠카' : v.kind === 'truck' ? '트럭' : '세단'} 탑승`}`;
     } else if (b) prompt = '<kbd>F</kbd> 하차 · <kbd>Space</kbd> 핸드브레이크';
     const pe = q('#c-prompt'); put(pe, prompt); pe.className = 'c-prompt' + (prompt ? ' show' : '');
@@ -481,7 +481,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
         else if (touch && b) { inp.fire = touchFire; if (Math.hypot(mx, my) > 0.2) { inp.ax = b.x + mx * 300; inp.ay = b.y + my * 300; } }
         else { const p = r.toWorld(mouse.x, mouse.y); inp.ax = p.x; inp.ay = p.y; inp.fire = mouse.down && !ghost; }
       }
-      acc += dt; let n = 0; while (acc >= 1 / 60 && n < 4) { w.step(1 / 60); acc -= 1 / 60; n++; } if (n === 4) acc = 0;
+      acc += dt; let n = 0; while (acc >= 1 / 60 && n < 4) { w.step(1 / 60); acc -= 1 / 60; n++; if (w.enteredByDoor) { w.enteredByDoor = false; enterBuilding(); } } if (n === 4) acc = 0;
       // 이벤트 → 화면·소리
       if (three) R3!.consume(w.events); else r.consume(w.events);
       const lx = b ? b.x : r.cam.x, ly = b ? b.y : r.cam.y;

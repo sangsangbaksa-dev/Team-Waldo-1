@@ -15,6 +15,7 @@ import { SHOP, canBuy, itemPrice } from './shop';
 import { missionLog, missionSummary } from './missions';
 import { readPreferences, recordMatch, writePreferences } from '../prefs';
 import type { PvpSession } from '../net/lobby';
+import { arenaInfo, arenaOf } from './arena';
 import { CityDuel, TARGET_KILLS, TIME_LIMIT, duelOutcome } from './duel';
 import { CITY_KEY, readCityCareer } from '../records';
 
@@ -76,7 +77,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     // A retry must not inherit held keys, touch gestures, firing or frame debt.
     keys.clear(); mouse.down = false; touchFire = false; acc = 0; looks.clear();
     for (const stick of [sticks.move, sticks.aim]) { stick.id = -1; stick.x = 0; stick.y = 0; }
-    world = new World({ seed: dl ? dl.seed : (Math.random() * 2 ** 31) | 0, difficulty: diffSel, klass: k, tutorial: tutorial || !!dl, duel: dl ? { side: dl.s.host ? 0 : 1, name: dl.s.opponent.nickname } : undefined });
+    world = new World({ seed: dl ? dl.seed : (Math.random() * 2 ** 31) | 0, difficulty: diffSel, klass: k, tutorial: tutorial || !!dl, duel: dl ? { side: dl.s.host ? 0 : 1, name: dl.s.opponent.nickname, arena: arenaOf(dl.seed) } : undefined });
     if (dl) { const d = dl; world.onShot = (x, y, a, wid, mul) => d.net.sendShot({ x, y, a, w: wid, m: mul }); }
     tut = tutorial ? { s: newTutState(), c: newCounters() } : null;  tutSig = ''; q('#c-tut').hidden = true; tutInfoLock = false;
     R = new Renderer(canvas, world); R.reduced = prefs.reducedMotion; const b = world.boss(0)!; R.cam.x = b.x; R.cam.y = b.y; R.cam.zoom = 0.6;
@@ -86,7 +87,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     lastYaw = R3 ? R3.yaw : 0; lastPos = { x: b.x, y: b.y };
     setView(R3 ? (view === 'top' ? 'fp' : view) : 'top'); lock();
     if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__city = { world, renderer: R, r3: R3 };
-    audio.unlock(); if (dl) banner(`${dl.s.opponent.nickname} 님과 1대1 · ${TARGET_KILLS}킬 선취 · 제한 ${Math.round(TIME_LIMIT / 60)}분`); else if (!tutorial) banner('작전 지령 01 · 첫 사업체를 확보하세요 · J 전체 임무');
+    audio.unlock(); if (dl) banner(`${dl.s.opponent.nickname} 님과 1대1 · ${arenaInfo(arenaOf(dl.seed)).name} · ${TARGET_KILLS}킬 선취 · 제한 ${Math.round(TIME_LIMIT / 60)}분`); else if (!tutorial) banner('작전 지령 01 · 첫 사업체를 확보하세요 · J 전체 임무');
     renderCmd(); last = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(frame);
   }
   let everLocked = false, lockErrors = 0;
@@ -130,7 +131,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (a === 'perk') { w.pickPerk(Number(arg)); audio.play('levelup'); modal.innerHTML = ''; last = performance.now(); if (f.pending === 0) lock(); return; }
     if (a === 'tutnext') { if (tut) { tut.c.acked = true; lock(); } return; }
     if (a === 'tutskip') { finishTutorial(true); return; }
-    if (a === 'view') { if (world?.inside) return; if (tut) tut.c.viewSwitches++; setView(view === 'fp' ? 'tp' : view === 'tp' ? 'top' : R3 ? 'fp' : 'top'); if (!paused) lock(); audio.play('click'); return; }
+    if (a === 'view') { if (world?.inside) return; if (tut) tut.c.viewSwitches++; setView(view === 'fp' ? 'tp' : view === 'tp' ? (duel ? 'fp' : 'top') : R3 ? 'fp' : 'top'); if (!paused) lock(); audio.play('click'); return; }
     if (paused || w.over) return;
     if (a === 'missions') {
       const board = q('#c-missions');
@@ -502,7 +503,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     for (const l of w.loot) if (l.alive && l.type === 'crate') list.push({ x: l.x, y: l.y, h: 60, text: '보급 상자', color: '#ffe27a', edge: true });
     const z = w.zone; if (b && Math.hypot(b.x - z.nx, b.y - z.ny) > z.nr && z.nr < 3800) list.push({ x: z.nx, y: z.ny, h: 40, text: '안전지대', color: '#c9a2ff', edge: true });
     if (b && !w.businesses.some(q2 => q2.owner === 0)) { let best: { x: number; y: number } | null = null, bd = 1e9; for (const q2 of w.businesses) if (q2.owner < 0 && q2.kind !== 'gunshop') { const d = Math.hypot(q2.x - b.x, q2.y - b.y); if (d < bd) { bd = d; best = q2; } } if (best) list.push({ x: best.x, y: best.y, h: 60, text: '매입 가능', color: '#ffffff', edge: true }); }
-    for (const f of w.factions) { if (f.id === 0) continue; const o = w.boss(f.id); if (!o || !b) continue; const d = Math.hypot(o.x - b.x, o.y - b.y); if (d < 1500) list.push({ x: o.x, y: o.y, h: 62, text: `${f.name} Lv.${f.level} · ${Math.ceil(o.hp)}`, color: f.color, edge: false }); }
+    for (const f of w.factions) { if (f.id === 0) continue; const o = w.boss(f.id); if (!o || !b) continue; const d = Math.hypot(o.x - b.x, o.y - b.y); if (d < 1500 && (!w.opts.duel || w.canSee(b.x, b.y, o.x, o.y))) list.push({ x: o.x, y: o.y, h: 62, text: `${f.name} Lv.${f.level} · ${Math.ceil(o.hp)}`, color: f.color, edge: false }); }
     if (tut) { list.length = 0; const st = STEPS[tut.s.i], mk = st?.marker?.({ w, c: tut.c, s: tut.s, yaw: r3.yaw }); if (mk) list.push({ x: mk.x, y: mk.y, h: mk.h, text: mk.text, color: '#ffe27a', edge: true }); }
     while (marks.length < list.length) { const el = document.createElement('div'); el.className = 'c-mark'; layer.append(el); marks.push(el); }
     marks.forEach((el, i) => {
@@ -576,7 +577,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (b) { // 구역 이름
       const bi = Math.max(0, Math.min(BLOCKS - 1, Math.floor((b.x - ROAD / 2) / PITCH))), bj = Math.max(0, Math.min(BLOCKS - 1, Math.floor((b.y - ROAD / 2) / PITCH))), bl = w.map.blocks[bj * BLOCKS + bi], ring = Math.max(Math.abs(bi - 4), Math.abs(bj - 4));
       const owner = bl.type === 'base' ? w.factions.find(x => { const h = w.hq(x.id); return h && h.x > bl.x && h.x < bl.x + 440 && h.y > bl.y && h.y < bl.y + 440; }) : undefined;
-      const name = bl.type === 'base' ? (owner ? `${owner.name} 영지` : '폐허가 된 영지') : bl.type === 'plaza' ? '센트럴 플라자' : bl.type === 'park' ? '크리스탈 공원' : bl.type === 'police' ? '경찰청' : bl.type === 'military' ? '군 기지' : bl.type === 'lot' ? '공영 주차장' : ring <= 1 ? '카지노 스트립' : ring === 2 ? '다운타운' : ring === 3 ? '미드타운' : '외곽 항만';
+      const name = w.map.arena ? w.map.arena.name : bl.type === 'base' ? (owner ? `${owner.name} 영지` : '폐허가 된 영지') : bl.type === 'plaza' ? '센트럴 플라자' : bl.type === 'park' ? '크리스탈 공원' : bl.type === 'police' ? '경찰청' : bl.type === 'military' ? '군 기지' : bl.type === 'lot' ? '공영 주차장' : ring <= 1 ? '카지노 스트립' : ring === 2 ? '다운타운' : ring === 3 ? '미드타운' : '외곽 항만';
       if (name !== area) { area = name; const el = q('#c-area'); el.textContent = name; el.className = 'c-area show'; areaT = 3; }
     }
     if (areaT > 0) { areaT -= dt; if (areaT <= 0) q('#c-area').className = 'c-area'; }

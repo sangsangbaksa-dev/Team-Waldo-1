@@ -78,7 +78,7 @@ export class Renderer3D {
       g.strokeStyle = 'rgba(232,205,110,0.75)'; g.lineWidth = 3.5; g.setLineDash([24, 26]); g.beginPath();
       for (let i = 0; i <= BLOCKS; i++) { const c = i * PITCH + ROAD / 2; g.moveTo(c, 0); g.lineTo(c, SIZE); g.moveTo(0, c); g.lineTo(SIZE, c); } g.stroke(); g.setLineDash([]);
       for (let j = 0; j <= BLOCKS; j++) for (let i = 0; i <= BLOCKS; i++) { const x = i * PITCH, y = j * PITCH; g.fillStyle = '#3a3d44'; g.fillRect(x, y, ROAD, ROAD); g.fillStyle = 'rgba(240,240,245,0.5)'; for (let q = 0; q < 6; q++) { g.fillRect(x + 12 + q * 17, y - 18, 9, 14); g.fillRect(x + 12 + q * 17, y + ROAD + 4, 9, 14); g.fillRect(x - 18, y + 12 + q * 17, 14, 9); g.fillRect(x + ROAD + 4, y + 12 + q * 17, 14, 9); } }
-      const fill: Record<string, string> = { city: '#6f7178', park: '#4d7a4a', lot: '#4a4d54', police: '#5d6880', military: '#6b7055', plaza: '#8d8a84', base: '#5c6660' };
+      const fill: Record<string, string> = { city: '#6f7178', park: '#4d7a4a', lot: '#4a4d54', police: '#5d6880', military: '#6b7055', plaza: '#8d8a84', base: '#5c6660', void: '#2a2c31' };
       for (const b of w.map.blocks) {
         g.fillStyle = '#1f2125'; g.fillRect(b.x - 3, b.y - 3, BLOCK + 6, BLOCK + 6); g.fillStyle = '#c9cacd'; g.fillRect(b.x, b.y, BLOCK, BLOCK); g.fillStyle = '#a9abaf'; g.fillRect(b.x + 3, b.y + 3, BLOCK - 6, BLOCK - 6);
         g.strokeStyle = 'rgba(70,72,78,0.45)'; g.lineWidth = 1; g.beginPath(); for (let q = 6; q < BLOCK - 4; q += 20) { g.moveTo(b.x + q, b.y + 4); g.lineTo(b.x + q, b.y + BLOCK - 4); g.moveTo(b.x + 4, b.y + q); g.lineTo(b.x + BLOCK - 4, b.y + q); } g.stroke(); g.fillStyle = fill[b.type]; g.fillRect(b.x + 14, b.y + 14, BLOCK - 28, BLOCK - 28);

@@ -7,6 +7,7 @@ import type { Ghost } from './render';
 import { ModelLayer } from './modellayer';
 import { buildBuildings, buildPerimeter } from './buildings';
 import type { Models } from './models';
+import { Interior3D } from './interior3d';
 
 export type ViewMode = 'fp' | 'tp';
 const EYE = 46, STRUCT_H: Record<StructKind, number> = { hq: 150, barracks: 86, depot: 58, factory: 104, lab: 96, turret: 50 };
@@ -50,6 +51,7 @@ export class Renderer3D {
   private booms: { m: THREE.Mesh; life: number; r: number }[] = []; private light: THREE.PointLight; private lightT = 0;
   private zoneWall: THREE.Mesh; private zoneTex: THREE.Texture; private nextRing: THREE.Mesh; private ghost: THREE.Mesh; private sun: THREE.DirectionalLight; private gun = new THREE.Group(); private muzzle: THREE.Mesh; private planes: THREE.Group[] = [];
   private bossRings: THREE.Mesh[] = []; floaters: { el: HTMLElement; x: number; y: number; h: number; life: number }[] = [];
+  private ins: Interior3D | null = null; private insKind = '';
   private mats = new Map<number, THREE.MeshLambertMaterial>(); private box = new THREE.BoxGeometry(1, 1, 1); private glow: THREE.Texture;
 
   constructor(public canvas: HTMLCanvasElement, public world: World, public quality: 'high' | 'standard' | 'low', public layer: HTMLElement, public models: Models | null = null) {
@@ -133,7 +135,7 @@ export class Renderer3D {
     this.scene.add(pole, bulb);
   }
   resize(): void { this.w = this.canvas.clientWidth || window.innerWidth; this.h = this.canvas.clientHeight || window.innerHeight; this.renderer.setSize(this.w, this.h, false); this.camera.aspect = this.w / this.h; this.camera.updateProjectionMatrix(); }
-  dispose(): void { this.renderer.dispose(); this.scene.traverse(o => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); }); for (const f of this.floaters) f.el.remove(); }
+  dispose(): void { this.ins?.dispose(); this.ins = null; this.renderer.dispose(); this.scene.traverse(o => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); }); for (const f of this.floaters) f.el.remove(); }
   /** 조준선이 닿는 지면 좌표 */
   groundPoint(max = 760): { x: number; y: number } {
     const b = this.world.boss(0), ox = b ? b.x : this.camPos.x, oy = b ? b.y : this.camPos.z; let d = this.pitch < -0.03 ? Math.min(max, (this.mode === 'fp' ? EYE : 120) / Math.tan(-this.pitch)) : max * 0.8; d = Math.max(70, d);
@@ -251,7 +253,17 @@ export class Renderer3D {
     (o.beam.material as THREE.MeshBasicMaterial).opacity = 0.14 + z.pulse * 0.4 + (z.cap > 0 ? 0.2 + Math.sin(this.t * 10) * 0.1 : 0); o.g.visible = Math.hypot(z.x - this.camPos.x, z.y - this.camPos.z) < 2600; void w;
   }
 
+  /** 보스가 사업체 안에 있을 때: 도시 대신 내부 장면만 그립니다. */
+  private drawInside(dt: number, kind: string, lay: NonNullable<ReturnType<World['insideLayout']>>, s: NonNullable<World['inside']>): void {
+    if (!this.ins || this.insKind !== kind) { this.ins?.dispose(); this.ins = new Interior3D(lay, this.quality); this.insKind = kind; }
+    this.t += dt; this.ins.update(this.t, s.x, s.y, this.yaw, this.pitch, Math.sin(s.walk * 0.09) * 1.4, this.w / Math.max(1, this.h));
+    this.renderer.render(this.ins.scene, this.ins.camera);
+    for (const f of this.floaters) f.el.remove(); this.floaters = [];
+  }
   draw(dt: number, ghost: Ghost | null): void {
+    const inside = this.world.inside, ib = inside ? this.world.insideBiz() : null;
+    if (inside && ib) { this.drawInside(dt, ib.kind, this.world.insideLayout()!, inside); return; }
+    if (this.ins) { this.ins.dispose(); this.ins = null; this.insKind = ''; this.camera.aspect = this.w / Math.max(1, this.h); this.camera.updateProjectionMatrix(); }
     const w = this.world, d = this.dummy, col = this.color, pb = w.boss(0), f0 = w.factions[0]; this.t += dt;
     this.shake = Math.max(0, this.shake - dt * 30); this.recoil = Math.max(0, this.recoil - dt * 7); this.flashT -= dt;
     // 카메라

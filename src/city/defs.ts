@@ -103,10 +103,9 @@ export const STRUCTS: Record<StructKind, StructDef> = {
 export const BUILD_ORDER: StructKind[] = ['barracks', 'depot', 'turret', 'lab', 'factory'];
 export const SUPPLY_HQ = 12, SUPPLY_DEPOT = 8, SUPPLY_CAP = 52;
 
-export type BizKind = 'store' | 'gas' | 'club' | 'plant' | 'casino' | 'bank' | 'gunshop';
+export type BizKind = 'store' | 'club' | 'plant' | 'casino' | 'bank' | 'gunshop';
 export const BIZ: Record<BizKind, { name: string; price: number; income: number; crystal: number; color: string; sign: string }> = {
   store: { name: '편의점', price: 400, income: 3, crystal: 0, color: '#5fd38a', sign: '24' },
-  gas: { name: '주유소', price: 750, income: 5.5, crystal: 0, color: '#ffb347', sign: 'GAS' },
   club: { name: '나이트클럽', price: 1300, income: 10, crystal: 0, color: '#ff6ad5', sign: 'CLUB' },
   plant: { name: '정제 공장', price: 1500, income: 6, crystal: 1.2, color: '#7fd8ff', sign: 'FAB' },
   casino: { name: '카지노', price: 2600, income: 20, crystal: 0, color: '#ffd84a', sign: '777' },

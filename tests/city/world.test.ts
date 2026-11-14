@@ -116,13 +116,18 @@ describe('LAST CITY rules', () => {
 });
 
 describe('LAST CITY full match', () => {
-  it('always ends with a single winning kingdom by the match time limit', () => {
+  it('runs a long match stably with finite state', () => {
     const w = new World({ seed: 11, difficulty: 'd4', klass: 'warlord', autoPlayer: true });
-    run(w, 1600);
-    expect(w.over).toBe(true); expect(w.winner).toBeGreaterThanOrEqual(0); expect(w.time).toBeGreaterThan(240);
+    run(w, 600);
+    expect(w.time).toBeGreaterThan(240);
     for (const a of w.actors) expect(Number.isFinite(a.x + a.y + a.hp)).toBe(true);
-    expect(new Set(w.factions.map(f => f.place)).size).toBe(8);
+    if (w.over) { expect(w.winner).toBeGreaterThanOrEqual(0); expect(new Set(w.factions.map(f => f.place)).size).toBe(8); }
   }, 120000);
+  it('has no time limit: elapsed time alone never ends the match', () => {
+    const w = new World({ seed: 11, difficulty: 'd4', klass: 'warlord', autoPlayer: true });
+    w.time = 100000; w.checkElimination();
+    expect(w.over).toBe(false);
+  });
 });
 
 describe('분대 편성', () => {

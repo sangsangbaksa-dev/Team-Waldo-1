@@ -20,7 +20,7 @@ describe('로컬 백엔드(두 탭 확인용)', () => {
     expect(errText(new Error('Invalid login credentials'))).toMatch(/비밀번호/);
   });
 
-  it('빠른 매칭 → 결과 보고 → 레이팅과 랭킹', async () => {
+  it('무작위 매칭 → 결과 보고 → 레이팅과 랭킹', async () => {
     const a = tab(), b = tab();
     const A = await a.as(() => a.backend.signUp('a@x.dev', 'secret1', 'Alpha')) as { id: string }, B = await b.as(() => b.backend.signUp('b@x.dev', 'secret1', 'Beta')) as { id: string };
     const wait = await a.as(() => a.backend.quickMatch('race', { map: 'sunset' }));

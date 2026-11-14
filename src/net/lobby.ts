@@ -1,4 +1,4 @@
-// 로그인·가입, 빠른 매칭, 방 코드, 랭킹을 한 곳에서 다루는 오버레이. 게임 화면 위에 올라오고, 매칭이 잡히면 PvpSession 을 넘겨줍니다.
+// 로그인·가입, 무작위 매칭, 방 코드, 랭킹을 한 곳에서 다루는 오버레이. 게임 화면 위에 올라오고, 매칭이 잡히면 PvpSession 을 넘겨줍니다.
 import './net.css';
 import { currentAccount, getBackend, setAccount } from './backend';
 import { GAME_NAMES, errText, type Account, type Backend, type Channel, type GameKind, type MatchRow, type NetMsg, type RankRow } from './types';
@@ -49,7 +49,7 @@ export function openLobby(opts: LobbyOptions): { close(): void } {
     if (closed) return; stopPoll(); closed = true; root.remove();
     opts.onMatch?.({ backend: b, game: m.game, match: m, me: account, host, opponent: { id: oppId, nickname }, open: h => b.open(m.id, h) });
   }
-  // 서버가 대기방을 정리하는 시간(빠른 매칭 2분, 방 10분)에 맞춰 화면도 끝냅니다.
+  // 서버가 대기방을 정리하는 시간(무작위 매칭 2분, 방 10분)에 맞춰 화면도 끝냅니다.
   const waitLimit = (m: MatchRow): number => (m.code ? 600 : 120);
   const waitLeft = (): number => waiting ? Math.max(0, waitLimit(waiting) - Math.floor((Date.now() - waitSince) / 1000)) : 0;
   const clock = (sec: number): string => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
@@ -132,15 +132,15 @@ export function openLobby(opts: LobbyOptions): { close(): void } {
       const room = !!waiting?.code;
       return `<div class="pvp-wait"><div class="pvp-spin" aria-hidden="true"></div>${room
         ? `<p><b>상대를 기다리는 중</b></p><p>상대에게 이 코드를 알려 주세요</p><b class="pvp-code" id="pvp-code">${esc(waiting?.code ?? '')}</b><p class="pvp-dim">상대는 같은 게임의 대전 화면에서 <b>코드로 입장</b>에 이 코드를 입력합니다. 두 사람이 각자 방을 만들면 서로를 찾지 못하니, 한 명만 방을 만들고 다른 한 명은 코드로 입장하세요.</p>`
-        : '<p><b>비슷한 상대를 찾는 중…</b></p><p class="pvp-dim">다른 플레이어가 같은 게임에서 빠른 매칭을 누르면 연결됩니다. 방을 만든 사람과는 연결되지 않습니다.</p>'}
+        : '<p><b>비슷한 상대를 찾는 중…</b></p><p class="pvp-dim">다른 플레이어가 같은 게임에서 무작위 매칭을 누르면 연결됩니다. 방을 만든 사람과는 연결되지 않습니다.</p>'}
         <p class="pvp-dim">남은 시간 <span id="pvp-left">${clock(waitLeft())}</span></p>
-        <div class="pvp-actions"><button type="button" data-act="cancel">취소</button><button type="button" data-act="${room ? 'switch-quick' : 'switch-room'}"${busy ? ' disabled' : ''}>${room ? '빠른 매칭으로 바꾸기' : '방 만들기로 바꾸기'}</button></div></div>`;
+        <div class="pvp-actions"><button type="button" data-act="cancel">취소</button><button type="button" data-act="${room ? 'switch-quick' : 'switch-room'}"${busy ? ' disabled' : ''}>${room ? '무작위 매칭으로 바꾸기' : '방 만들기로 바꾸기'}</button></div></div>`;
     }
     if (screen === 'ranks' || (screen === 'home' && !opts.game)) return `${me ? `<div class="pvp-me"><b>${esc(me.nickname)}</b><span>${esc(me.email)}</span></div>` : ''}${tabs()}${rankTable()}
         ${me ? `<form class="pvp-inline" data-form="rename"><input name="rename" maxlength="16" placeholder="새 닉네임" value="${esc(form.rename ?? '')}"><button type="submit"${busy ? ' disabled' : ''}>닉네임 변경</button></form><button type="button" class="pvp-link" data-act="logout">로그아웃</button>` : ''}`;
     const r = rate ?? { rating: 1000, wins: 0, losses: 0 };
     return `<div class="pvp-me"><b>${esc(me?.nickname ?? '')}</b><span>레이팅 ${r.rating} · ${r.wins}승 ${r.losses}패</span></div>
-      <div class="pvp-actions"><button type="button" class="pvp-primary" data-act="quick"${busy ? ' disabled' : ''}>빠른 매칭</button><button type="button" data-act="room"${busy ? ' disabled' : ''}>방 만들기</button></div>
+      <div class="pvp-actions"><button type="button" class="pvp-primary" data-act="quick"${busy ? ' disabled' : ''}>무작위 매칭</button><button type="button" data-act="room"${busy ? ' disabled' : ''}>방 만들기</button></div>
       <form class="pvp-inline" data-form="join"><input name="code" maxlength="8" placeholder="방 코드" autocapitalize="characters" autocomplete="off" value="${esc(form.code ?? '')}"><button type="submit"${busy ? ' disabled' : ''}>코드로 입장</button></form>
       ${opts.game === 'race' ? '<p class="pvp-dim">코스와 랩 수는 방을 만든 쪽의 선택을 따르고, 차량은 각자 고른 것을 탑니다.</p>' : ''}
       <div class="pvp-sub"><button type="button" class="pvp-link" data-act="ranks">랭킹 보기</button><button type="button" class="pvp-link" data-act="logout">로그아웃</button></div>`;

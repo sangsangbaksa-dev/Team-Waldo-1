@@ -28,7 +28,7 @@ async function open(): Promise<void> {
 const click = (act: string): void => document.querySelector<HTMLButtonElement>(`[data-act="${act}"]`)!.click();
 
 describe('대기 화면', () => {
-  it('방 코드와 입장 방법, 남은 시간, 취소·빠른 매칭 전환을 보여 준다', async () => {
+  it('방 코드와 입장 방법, 남은 시간, 취소·무작위 매칭 전환을 보여 준다', async () => {
     await open(); click('room'); await vi.advanceTimersByTimeAsync(10);
     const t = document.body.textContent ?? '';
     expect(document.querySelector('#pvp-code')?.textContent).toBe('ABC23');
@@ -37,7 +37,7 @@ describe('대기 화면', () => {
     expect(document.querySelector('[data-act="switch-quick"]')).not.toBeNull();
   });
 
-  it('빠른 매칭으로 바꾸면 방을 취소하고 빠른 매칭을 시작한다', async () => {
+  it('무작위 매칭으로 바꾸면 방을 취소하고 무작위 매칭을 시작한다', async () => {
     await open(); click('room'); await vi.advanceTimersByTimeAsync(10);
     click('switch-quick'); await vi.advanceTimersByTimeAsync(10);
     expect(be.backend.cancelMatch).toHaveBeenCalledWith('m1');

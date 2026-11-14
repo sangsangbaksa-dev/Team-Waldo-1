@@ -59,8 +59,8 @@ export function createSupabaseBackend(): Backend {
     open(matchId, onMessage): Channel {
       const ch = sb.channel(`pvp:${matchId}`, { config: { broadcast: { self: false, ack: false } } });
       const ready = new Promise<void>((resolve, reject) => {
-        ch.on('broadcast', { event: 'm' }, ({ payload }) => { if (payload && typeof payload === 'object') onMessage(payload as NetMsg); })
-          .subscribe(status => { if (status === 'SUBSCRIBED') resolve(); else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') reject(new Error('network')); });
+        ch.on('broadcast', { event: 'm' }, ({ payload }: { payload: unknown }) => { if (payload && typeof payload === 'object') onMessage(payload as NetMsg); })
+          .subscribe((status: string) => { if (status === 'SUBSCRIBED') resolve(); else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') reject(new Error('network')); });
       });
       ready.catch(() => { /* 호출한 쪽에서 처리합니다. */ });
       return { ready, send: msg => { void ch.send({ type: 'broadcast', event: 'm', payload: msg }); }, close: () => { void sb.removeChannel(ch); } };

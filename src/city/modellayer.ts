@@ -79,14 +79,41 @@ export class ModelLayer {
       const side = Math.floor(rng() * 4), t = 30 + rng() * (BLOCK - 60);
       return side === 0 ? { x: b.x + t, z: b.y + inset, nx: 0, ny: -1 } : side === 1 ? { x: b.x + BLOCK - inset, z: b.y + t, nx: 1, ny: 0 } : side === 2 ? { x: b.x + t, z: b.y + BLOCK - inset, nx: 0, ny: 1 } : { x: b.x + inset, z: b.y + t, nx: -1, ny: 0 };
     };
-    const plan: [string, number, number][] = [['hydrant', 1, 7], ['bin', 1, 9], ['mailbox', 0.5, 8], ['bench', 0.5, 12], ['dumpster', 0.3, 10], ['cone', 0.8, 8], ['barrier', 0.3, 9],
-      ['bus_stop', 0.35, 13], ['vending', 0.5, 30], ['billboard', 0.2, 31], ['kiosk', 0.25, 26], ['planter', 0.9, 22], ['bollards', 0.6, 5], ['phone_booth', 0.25, 12], ['street_sign', 0.7, 5], ['parasol', 0.35, 24]];
+    const plan: [string, number, number][] = [['hydrant', 1, 7], ['bin', 1, 9], ['mailbox', 0.5, 8], ['bench', 0.5, 12], ['dumpster', 0.3, 10], ['cone', 0.8, 8], ['barrier', 0.3, 9]];
+    const placed: { x: number; z: number; r: number }[] = [];
     for (const [name, per, inset] of plan) {
       const items: { x: number; z: number; ry: number }[] = [];
       for (const b of w.map.blocks) { if (b.type === 'base') continue; let n = Math.floor(per) + (rng() < per % 1 ? 1 : 0); if (name === 'barrier' && b.type !== 'police' && b.type !== 'military') n = rng() < 0.15 ? 1 : 0; while (n-- > 0) { const e = edge(b, inset); items.push({ x: e.x, z: e.z, ry: -Math.atan2(e.ny, e.nx) + (name === 'barrier' ? Math.PI / 2 : 0) }); if (name === 'cone') for (let k = 1; k < 3; k++) items.push({ x: e.x + k * 14 * (e.ny !== 0 ? 1 : 0), z: e.z + k * 14 * (e.nx !== 0 ? 1 : 0), ry: 0 }); } }
-      if (!B[name] || !items.length) continue; // 새 소품은 예전 props.glb 에 없을 수 있습니다
+      for (const it of items) placed.push({ x: it.x, z: it.z, r: 8 });
       const m = this.inst(B[name], this.lam, items.length, false); if (!m) continue; items.forEach((it, k) => put(m, k, it.x, it.z, it.ry, 10)); m.count = items.length; m.instanceMatrix.needsUpdate = true;
-      const gg = B[name].glow; if (gg) { const gm = new THREE.InstancedMesh(gg, this.basic, items.length); gm.frustumCulled = false; items.forEach((it, k) => put(gm, k, it.x, it.z, it.ry, 10)); gm.instanceMatrix.needsUpdate = true; this.scene.add(gm); }
+    }
+    // 2차 거리 소품: 건물(차양 포함)·사업체 패드·나무·다른 소품과 겹치는 자리는 버리고 다시 뽑습니다.
+    // [이름, 블록당 개수, 연석에서의 거리, 깊이 절반, 폭 절반, 배율]
+    const AWNING = 17, street: [string, number, number, number, number, number][] = [
+      ['bus_stop', 0.35, 13, 9, 19, 10], ['vending', 0.5, 13, 5, 6, 10], ['billboard', 0.2, 12, 9, 30, 10], ['kiosk', 0.25, 13, 10, 13, 10], ['planter', 0.9, 11, 5, 12, 10],
+      ['bollards', 0.6, 5, 2, 14, 10], ['phone_booth', 0.25, 11, 6, 6, 10], ['street_sign', 0.7, 5, 5, 11, 10], ['parasol', 0.35, 12, 11, 11, 8]];
+    for (const b of w.map.blocks) for (const [dx, dy] of corners) placed.push({ x: b.x + dx, z: b.y + dy, r: 14 }); // 가로등·신호등 자리
+    const free = (x: number, z: number, hx: number, hz: number): boolean => {
+      for (const s of w.map.solids) if (x + hx > s.x - AWNING && x - hx < s.x + s.w + AWNING && z + hz > s.y - AWNING && z - hz < s.y + s.h + AWNING) return false;
+      const r = Math.max(hx, hz);
+      for (const zb of w.map.biz) if (Math.hypot(zb.x - x, zb.y - z) < 36 + r) return false;
+      for (const t of w.map.trees) if (Math.hypot(t.x - x, t.y - z) < 12 + r) return false;
+      for (const q of placed) if (Math.hypot(q.x - x, q.z - z) < q.r + r + 4) return false;
+      return true;
+    };
+    for (const [name, per, inset, hd, hw, scale] of street) {
+      if (!B[name]) continue; // 예전 props.glb 에는 없을 수 있습니다
+      const items: { x: number; z: number; ry: number }[] = [];
+      for (const b of w.map.blocks) {
+        if (b.type === 'base') continue; let n = Math.floor(per) + (rng() < per % 1 ? 1 : 0);
+        while (n-- > 0) for (let tries = 0; tries < 8; tries++) {
+          const e = edge(b, inset), hx = e.nx !== 0 ? hd : hw, hz = e.nx !== 0 ? hw : hd; if (!free(e.x, e.z, hx, hz)) continue;
+          items.push({ x: e.x, z: e.z, ry: -Math.atan2(e.ny, e.nx) }); placed.push({ x: e.x, z: e.z, r: Math.max(hd, hw) }); break;
+        }
+      }
+      if (!items.length) continue;
+      const m = this.inst(B[name], this.lam, items.length, false); if (!m) continue; items.forEach((it, k) => put(m, k, it.x, it.z, it.ry, scale)); m.count = items.length; m.instanceMatrix.needsUpdate = true;
+      const gg = B[name].glow; if (gg) { const gm = new THREE.InstancedMesh(gg, this.basic, items.length); gm.frustumCulled = false; items.forEach((it, k) => put(gm, k, it.x, it.z, it.ry, scale)); gm.instanceMatrix.needsUpdate = true; this.scene.add(gm); }
     }
     if (lamp) lamp.instanceMatrix.needsUpdate = true;
     if (glowLamp) glowLamp.instanceMatrix.needsUpdate = true;
@@ -100,7 +127,7 @@ export class ModelLayer {
   }
   makeLootGun(id: string): THREE.Object3D | null { const t = this.models.groundGuns[id]; return t ? instantiate(t) : null; }
   /** 사업체 패드 위에 띄우는 표식. team 은 소유 세력 색(중립은 흰색)입니다. */
-  makeBiz(kind: string, team: number): THREE.Object3D | null { const t = this.models.biz[kind]; if (!t) return null; const g = instantiate(t, { team }); g.traverse(o => { o.castShadow = false; }); g.scale.setScalar(13); return g; }
+  makeBiz(kind: string, team: number): THREE.Object3D | null { const t = this.models.biz[kind]; if (!t) return null; const g = instantiate(t, { team }); g.traverse(o => { o.castShadow = false; }); g.scale.setScalar(11); return g; }
   makeCrate(): THREE.Object3D | null { const t = this.models.props.crate; return t ? instantiate(t) : null; }
   makePlane(): THREE.Object3D | null { const t = this.models.props.plane; if (!t) return null; const g = instantiate(t); g.scale.setScalar(10); return g; }
 

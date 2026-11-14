@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { createWar, getIncome, MAP_HALF_SIZE, stepWar, stormStartFor } from '../../src/battle/war';
-import { assignSquad, commandSquad, dismissSquad, squadDestination, squadUnits, SQUAD_NAMES } from '../../src/battle/squads';
+import { assignSquad, commandSquad, dismissSquad, squadDestination, squadUnits, SQUAD_COUNT, SQUAD_NAMES, type SquadId } from '../../src/battle/squads';
 import { encodeWar, decodeWar } from '../../src/battle/save';
 
 describe('independent army groups', () => {
-  it('separates recruits into 3 selectable squads without duplication', () => {
+  it('separates recruits into selectable squads without duplication', () => {
     const war = createWar();
-    expect(SQUAD_NAMES).toHaveLength(3);
+    expect(SQUAD_NAMES).toHaveLength(5);
     expect(assignSquad(war, 1, 3)).toBe(3);
     expect(assignSquad(war, 2, 3)).toBe(1);
     expect(squadUnits(war, 0)).toHaveLength(0);
@@ -54,11 +54,41 @@ describe('independent army groups', () => {
     const war = createWar();
     const before = encodeWar(war);
     expect(assignSquad(war, 0, 2)).toBe(0);
-    expect(assignSquad(war, 3 as never, 2)).toBe(0);
+    expect(assignSquad(war, 5 as never, 2)).toBe(0);
     expect(assignSquad(war, -1 as never, 2)).toBe(0);
-    expect(dismissSquad(war, 3 as never)).toBe(0);
+    expect(dismissSquad(war, 5 as never)).toBe(0);
     expect(dismissSquad(war, -1 as never)).toBe(0);
+    expect(commandSquad(war, 5 as never, { kind: 'home' })).toBe(false);
     expect(encodeWar(war)).toBe(before);
+  });
+
+  it('creates up to five squads and refuses a sixth independent group', () => {
+    const war = createWar();
+    war.units = war.units.filter(unit => unit.owner === 0);
+    for (let i = 0; i < 4; i++) war.units.push({ ...war.units[0], id: 1000 + i, squad: 0 });
+    expect(SQUAD_COUNT).toBe(5);
+    expect(SQUAD_NAMES).toHaveLength(5);
+    expect(assignSquad(war, 1, 1)).toBe(1);
+    expect(assignSquad(war, 2, 1)).toBe(1);
+    expect(assignSquad(war, 3, 1)).toBe(1);
+    expect(assignSquad(war, 4, 1)).toBe(1);
+    expect(assignSquad(war, 5 as never, 1)).toBe(0);
+    expect(squadUnits(war, 0)).toHaveLength(war.units.filter(unit => unit.owner === 0).length - 4);
+    for (let squad: 1 | 2 | 3 | 4 = 1; squad <= 4; squad++) expect(squadUnits(war, squad as SquadId)).toHaveLength(1);
+  });
+
+  it('splits and dismisses each of the five squads independently', () => {
+    const war = createWar();
+    war.units = war.units.filter(unit => unit.owner === 0);
+    for (let i = 0; i < 7; i++) war.units.push({ ...war.units[0], id: 2000 + i, squad: 0 });
+    expect(assignSquad(war, 4, 2)).toBe(2);
+    expect(assignSquad(war, 3, 2)).toBe(2);
+    expect(commandSquad(war, 3, { kind: 'move', x: 40, z: 40 })).toBe(true);
+    expect(squadDestination(war, 4)).toBeNull();
+    expect(squadDestination(war, 3)).toEqual({ x: 40, z: 40 });
+    expect(dismissSquad(war, 3)).toBe(2);
+    expect(squadUnits(war, 4)).toHaveLength(2);
+    expect(squadUnits(war, 3)).toHaveLength(0);
   });
 
   it('keeps old saved matches readable without requiring new squad fields', () => {

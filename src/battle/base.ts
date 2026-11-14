@@ -3,7 +3,8 @@ import type { Upgrade, Unit, War } from './war';
 /** A compact, persistent plan of the player's 5x5 home-base district. */
 export type GeneralId = 'leon' | 'sora' | 'mira' | 'han';
 export type GeneralSpecialty = 'damage' | 'speed' | 'armor' | 'income';
-export type SquadIndex = 0 | 1 | 2;
+export type SquadIndex = 0 | 1 | 2 | 3 | 4;
+const isSquadIndex=(value:unknown):value is SquadIndex=>Number.isInteger(value)&&(value as number)>=0&&(value as number)<=4;
 export interface PlacedStructure { kind: Upgrade; slot: number; }
 export interface RecruitedGeneral {
   id: GeneralId; squad: SquadIndex | null;
@@ -142,7 +143,7 @@ export function recruitGeneral(w:War,id:GeneralId):boolean {
 }
 /** One general may command one squad; assigning a new one benches its predecessor. */
 export function assignGeneral(w:War,id:GeneralId,squad:SquadIndex|null):boolean {
-  if(w.over||!w.factions[0].alive||!(squad===null||squad===0||squad===1||squad===2))return false;
+  if(w.over||!w.factions[0].alive||!(squad===null||isSquadIndex(squad)))return false;
   const base=getBaseState(w),general=base.generals.find(g=>g.id===id);
   if(!general||id==='han'&&squad!==null)return false;
   if(squad!==null)for(const other of base.generals)if(other.squad===squad)other.squad=null;
@@ -169,7 +170,7 @@ export function activateGeneralAbility(w:War,id:GeneralId):boolean {
 }
 export function generalBonus(w:War,unit:Unit,specialty:'damage'|'speed'|'armor'):number {
   if(unit.owner!==0||!w.base)return 0;
-  const group=unit.squad===1||unit.squad===2?unit.squad:0;
+  const group=(unit.squad??0) as SquadIndex;
   const member=w.base.generals.find(g=>g.squad===group);
   const definition=GENERAL_CATALOG.find(g=>g.id===member?.id);
   return definition?.specialty===specialty?definition.bonus+(member?.activeUntil!==undefined&&member.activeUntil>w.time?GENERAL_ABILITIES[definition.id].bonus:0):0;
@@ -208,7 +209,7 @@ export function validBaseState(candidate:unknown,w:War):candidate is BaseState {
     if(!GENERAL_CATALOG.some(def=>def.id===obj.id)||ids.has(obj.id as GeneralId))return false;
     ids.add(obj.id as GeneralId);
     if(obj.squad!==null){
-      if(obj.id==='han'||(obj.squad!==0&&obj.squad!==1&&obj.squad!==2)||
+      if(obj.id==='han'||!isSquadIndex(obj.squad)||
         squads.has(obj.squad as number))return false;
       squads.add(obj.squad as number);
     }

@@ -73,7 +73,7 @@ export function createBaseManager(parent:HTMLElement,w:War,onChange:(message:str
             <label>지휘 부대
               <select data-base-assignment="${g.id}" aria-label="${g.name} 배치">
                 <option value="">대기</option>
-                <option value="0">① 주력군</option><option value="1">② 기동대</option><option value="2">③ 수비대</option>
+                <option value="0">① 주력군</option><option value="1">② 기동대</option><option value="2">③ 수비대</option><option value="3">④ 돌격대</option><option value="4">⑤ 정찰대</option>
               </select>
             </label>
             <div class="base-general-ability">

@@ -1,5 +1,5 @@
 /** Deterministic, renderer-independent economy, territory and combat simulation. */
-import type { SquadCommand } from './squads';
+import type { SquadId, SquadOrders } from './squads';
 import { createBaseState, getBaseState, generalBonus, incomeGeneralBonus, workshopLevel, type BaseState } from './base';
 import { battlefieldCoverAt, resolveBattlefieldStep } from './battlefieldLayout';
 export type Upgrade = 'farm' | 'mine' | 'barracks' | 'fort';
@@ -17,7 +17,7 @@ export interface Faction {
 }
 export interface Unit {
   id: number; owner: number; kind: UnitKind; x: number; z: number;
-  hp: number; cooldown: number; squad?: 0 | 1 | 2;
+  hp: number; cooldown: number; squad?: SquadId;
 }
 export interface Outpost {
   id: number; x: number; z: number; owner: number | null;
@@ -34,7 +34,7 @@ export interface War {
   factions: Faction[]; units: Unit[]; outposts: Outpost[]; events: WarEvent[];
   time: number; zone: number; over: boolean; winner: number | null; nextUnit: number;
   difficulty: Difficulty; stats: WarStats[];
-  squadOrders?: [SquadCommand | null, SquadCommand | null, SquadCommand | null];
+  squadOrders?: SquadOrders;
   /** Grand battle preserves original skirmish rules for existing saves. */
   grandBattle?: boolean;
   /** Player's home-base layout and hired generals; legacy saves initialize on load. */
@@ -100,7 +100,7 @@ export function createWar(options:{difficulty?:Difficulty;grandBattle?:boolean}=
   }));
   const war: War = {
     factions,units:[],outposts,events:[],time:0,zone:MAP_HALF_SIZE-6,over:false,winner:null,nextUnit:1,
-    difficulty,stats:Array.from({length:4},createWarStats),squadOrders:[null,null,null],grandBattle,
+    difficulty,stats:Array.from({length:4},createWarStats),squadOrders:[null,null,null,null,null],grandBattle,
     base:createBaseState(),
   };
   for(let id=0;id<4;id++){
@@ -425,7 +425,7 @@ export function stepWar(w: War,dt: number):void {
     }
     // Independent player squads never inherit the main army's destination.
     // An uncommanded split squad holds near HQ until explicitly moved.
-    const squad = u.owner === 0 ? (u.squad === 1 || u.squad === 2 ? u.squad : 0) : 0;
+    const squad: SquadId = u.owner === 0 && (u.squad ?? 0) > 0 ? (u.squad as SquadId) : 0;
     const independent = u.owner === 0 && (squad !== 0 || Boolean(w.squadOrders?.[0]));
     if (independent) {
       const command = w.squadOrders?.[squad] ?? { kind: 'home' as const };

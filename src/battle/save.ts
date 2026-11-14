@@ -53,7 +53,7 @@ function validUnit(candidate:unknown,maxId:number):candidate is Unit {
  return finite(u.x,-MAP_HALF_SIZE,MAP_HALF_SIZE)&&
   finite(u.z,-MAP_HALF_SIZE,MAP_HALF_SIZE)&&
   finite(u.hp,Number.MIN_VALUE,UNIT_STATS[u.kind].hp)&&finite(u.cooldown,0,10)&&
-  (u.squad===undefined||integer(u.squad,0,2));
+  (u.squad===undefined||integer(u.squad,0,4));
 }
 function validSquadOrder(value: unknown, w: Record<string,unknown>): boolean {
   if(value===null)return true;
@@ -102,7 +102,7 @@ export function decodeWar(raw:string|null):War|null {
   }
   if(!difficulty(w.difficulty)||!Array.isArray(w.stats)||w.stats.length!==4||!w.stats.every(validStats))return null;
   if(w.stats.some((stats:WarStats)=>stats.peakArmy>limit))return null;
-  if(w.squadOrders!==undefined&&(!Array.isArray(w.squadOrders)||w.squadOrders.length!==3||
+  if(w.squadOrders!==undefined&&(!Array.isArray(w.squadOrders)||w.squadOrders.length!==5||
      !w.squadOrders.every(value=>validSquadOrder(value,w))))return null;
   if(!w.factions.every((f,i)=>validFaction(f,initial.factions[i],grand)))return null;
   if(!w.outposts.every((p,i)=>validOutpost(p,initial.outposts[i])))return null;

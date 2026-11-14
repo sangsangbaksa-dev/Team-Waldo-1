@@ -21,6 +21,7 @@
 
 - 시뮬레이션은 `src/city/world.ts`·`actors.ts`·`ai.ts`에 있고 DOM을 쓰지 않습니다. `npm run city-sim -- <seed> <easy|normal|hard>`로 AI끼리의 한 판을 헤드리스로 돌려 밸런스를 볼 수 있고, `tests/city`가 규칙과 완주 여부를 검사합니다.
 - 화면은 `src/city/render3d.ts`(Three.js)와 `src/city/render.ts`(전술 탑뷰·미니맵)가 그립니다. 탄환은 지면 평면에서 계산하므로 상하 조준은 시점 연출이며 명중 판정에 쓰이지 않습니다.
+- 3D 모델은 Blender 스크립트(`tools/blender`)로 만듭니다. `pip install bpy` 후 `python tools/blender/build_all.py public/assets/models`로 다시 내보냅니다. 사업체 패드 위의 표식 7종(`business.glb`, `biz.py`), 버스 정류장·자판기·광고판 같은 거리 소품(`street.py`), 본부·병영 등 건물(`world.py`)이 여기서 나옵니다. 미리보기 이미지는 `docs/images/last-city`에 있습니다.
 - 한 판은 저장되지 않습니다(약 10~14분). 전적만 브라우저에 남습니다.
 
 ## 전장 확장 · 산업 전쟁터

@@ -74,3 +74,16 @@ a { color: inherit; text-decoration: none; }
   .tile:hover:not(:disabled) { transform: none; }
   .tile:hover:not(:disabled) .tile-media img { transform: none; }
 }
+
+/* 로딩 화면 */
+.ld-screen { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px; background: var(--bg); color: var(--text); }
+.ld-box { width: min(420px, 100%); }
+.ld-kicker { font-size: 12px; letter-spacing: .18em; color: var(--muted); }
+.ld-title { margin: 6px 0 22px; font-size: clamp(26px, 6vw, 34px); font-weight: 800; letter-spacing: .02em; }
+.ld-bar { position: relative; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.ld-bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s ease-out; }
+.ld-bar.busy i { width: 35%; animation: ld-slide 1.4s ease-in-out infinite; }
+.ld-row { display: flex; justify-content: space-between; margin-top: 10px; font-size: 13px; color: var(--muted); }
+.ld-note { min-height: 1.4em; margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+@keyframes ld-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
+@media (prefers-reduced-motion: reduce) { .ld-bar i { transition: none; } .ld-bar.busy i { animation: none; width: 100%; opacity: .5; } }

@@ -7,16 +7,20 @@ import type { Actor, Structure, Vehicle, World } from './world';
 
 const CLOTH = [0x8d99ae, 0xb08968, 0x6d8a96, 0xa58fb3, 0x9aa37b, 0xc58f8f, 0xd27d5a, 0x5f9ea0], SKIN = [0xf1c9a5, 0xd9a47a, 0xa8744f, 0x7a5236, 0xf5d6b8];
 export const fcol = (f: number): number => f === POLICE ? 0x3f6fe0 : f === CIV ? 0x9aa3ad : new THREE.Color(FACTIONS[f]?.color ?? '#fff').getHex();
-const CAP: Record<string, number> = { civ: 160, civ2: 120, civ3: 120, civ4: 120, rifle: 260, worker: 160, merc: 120, guard: 80, boss: 12, heavy: 120, sniper: 80, medic: 60, cop: 60, swat: 60 };
+const CAP: Record<string, number> = { civ: 120, civ2: 120, civ3: 120, civ4: 120, civ5: 120, civ6: 120, civ7: 120, civ8: 120, rifle: 260, worker: 160, merc: 120, guard: 80, boss: 12, heavy: 120, sniper: 80, medic: 60, cop: 60, swat: 60 };
 const MUZZLE: Record<string, number> = { pistol: 0.26, smg: 0.5, shotgun: 0.7, rifle: 0.82, sniper: 1.12, rocket: 0.95, minigun: 0.75, railgun: 0.98 };
-const CIV_SKINS = ['civ', 'civ2', 'civ3', 'civ4'];
+const CIV_SKINS = ['civ', 'civ2', 'civ3', 'civ4', 'civ5', 'civ6', 'civ7', 'civ8'];
 const CIV_CARS = ['sedan', 'hatch', 'suv', 'sedan', 'taxi', 'van', 'hatch'];
 const VEHICLE_MODEL: Record<string, string> = { sedan: 'sedan', sports: 'sports', truck: 'truck', police: 'police', tank: 'tank' };
 
-interface CharSet { fixed?: THREE.InstancedMesh; team?: THREE.InstancedMesh; skin?: THREE.InstancedMesh; glow?: THREE.InstancedMesh; leg?: THREE.InstancedMesh; n: number; nl: number }
+/** 한 부위(몸통·허벅지·정강이·팔)의 인스턴스 메시 묶음. 재질 종류별로 나뉩니다. */
+interface Part { fixed?: THREE.InstancedMesh; team?: THREE.InstancedMesh; skin?: THREE.InstancedMesh; glow?: THREE.InstancedMesh; n: number }
+interface CharSet { body: Part; leg: Part; shin?: Part; armL?: Part; armR?: Part; pl?: THREE.Vector3; pr?: THREE.Vector3 }
+const HIP = 0.9, KNEE = 0.44, LEG_Z = 0.11, AIM = 1.42;
 
 export class ModelLayer {
-  private d = new THREE.Object3D(); private base = new THREE.Matrix4(); private local = new THREE.Matrix4(); private q = new THREE.Quaternion(); private qz = new THREE.Quaternion();
+  private d = new THREE.Object3D(); private base = new THREE.Matrix4(); private local = new THREE.Matrix4(); private q = new THREE.Quaternion(); private qz = new THREE.Quaternion(); private qy = new THREE.Quaternion();
+  private torso = new THREE.Matrix4(); private m = new THREE.Matrix4(); private m2 = new THREE.Matrix4(); private down = new THREE.Matrix4().makeTranslation(0, -HIP, 0); private aim = new Map<number, number>();
   private v1 = new THREE.Vector3(); private one = new THREE.Vector3(1, 1, 1); private col = new THREE.Color(); private zAxis = new THREE.Vector3(0, 0, 1); private yAxis = new THREE.Vector3(0, 1, 0);
   private sets: Record<string, CharSet> = {}; private mechs = new Map<number, THREE.Object3D>(); private crystalMesh: THREE.InstancedMesh;
   private lam = new THREE.MeshLambertMaterial({ vertexColors: true }); private basic = new THREE.MeshBasicMaterial({ vertexColors: true });
@@ -28,14 +32,13 @@ export class ModelLayer {
       if (tint) { m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3).fill(1), 3); m.instanceColor.setUsage(THREE.DynamicDrawUsage); }
       scene.add(m); return m;
     };
+    const part = (g: Baked, cap: number): Part => ({
+      n: 0, fixed: g.fixed ? mk(g.fixed, this.lam, cap, false) : undefined, team: g.team ? mk(g.team, this.lam, cap, true) : undefined,
+      skin: g.skin ? mk(g.skin, this.lam, cap, true, false) : undefined, glow: g.glow ? mk(g.glow, this.basic, cap, false, false) : undefined,
+    });
     for (const k of CHAR_KINDS) {
-      const cm = models.chars[k], cap = CAP[k] ?? 80, s: CharSet = { n: 0, nl: 0 };
-      if (cm.body.fixed) s.fixed = mk(cm.body.fixed, this.lam, cap, false);
-      if (cm.body.team) s.team = mk(cm.body.team, this.lam, cap, true);
-      if (cm.body.skin) s.skin = mk(cm.body.skin, this.lam, cap, true, false);
-      if (cm.body.glow) s.glow = mk(cm.body.glow, this.basic, cap, false, false);
-      if (cm.leg.fixed) s.leg = mk(cm.leg.fixed, this.lam, cap * 2, false);
-      this.sets[k] = s;
+      const cm = models.chars[k], cap = CAP[k] ?? 80;
+      this.sets[k] = { body: part(cm.body, cap), leg: part(cm.leg, cap * 2), shin: cm.shin && part(cm.shin, cap * 2), armL: cm.armL && part(cm.armL.geo, cap), armR: cm.armR && part(cm.armR.geo, cap), pl: cm.armL?.pivot, pr: cm.armR?.pivot };
     }
     // 크리스탈 / 나무 / 가로등 / 거리 소품
     this.crystalMesh = mk(models.baked.crystal.fixed!, new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x12465e }), world.crystals.length, false, false);
@@ -131,32 +134,54 @@ export class ModelLayer {
   makeCrate(): THREE.Object3D | null { const t = this.models.props.crate; return t ? instantiate(t) : null; }
   makePlane(): THREE.Object3D | null { const t = this.models.props.plane; if (!t) return null; const g = instantiate(t); g.scale.setScalar(10); return g; }
 
+  private put(p: Part, m: THREE.Matrix4, team: number, skin: number): void {
+    const i = p.n++; p.fixed?.setMatrixAt(i, m); p.glow?.setMatrixAt(i, m);
+    if (p.team) { p.team.setMatrixAt(i, m); p.team.setColorAt(i, this.col.setHex(team)); }
+    if (p.skin) { p.skin.setMatrixAt(i, m); p.skin.setColorAt(i, this.col.setHex(skin)); }
+  }
+  private flush(p?: Part): void { if (!p) return; for (const m of [p.fixed, p.team, p.skin, p.glow]) if (m) { m.count = p.n; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; } }
+  /** out = parent · T(x,y,z) · Rz(rz) · Ry(ry). 관절 하나를 부모 좌표계에 붙입니다. */
+  private joint(out: THREE.Matrix4, parent: THREE.Matrix4, x: number, y: number, z: number, rz: number, ry = 0): void {
+    this.qz.setFromAxisAngle(this.zAxis, rz); if (ry) this.qz.multiply(this.qy.setFromAxisAngle(this.yAxis, ry));
+    this.local.compose(this.v1.set(x, y, z), this.qz, this.one); out.multiplyMatrices(parent, this.local);
+  }
+
   // ---------- 매 프레임 ----------
   update(pb: Actor | null, third: boolean, cam: THREE.Vector3): void {
-    const w = this.world, d = this.d, base = this.base, local = this.local;
-    for (const k of CHAR_KINDS) { const s = this.sets[k]; s.n = 0; s.nl = 0; }
+    const w = this.world, d = this.d, base = this.base, torso = this.torso, m = this.m, now = performance.now() / 1000;
+    for (const k of CHAR_KINDS) { const s = this.sets[k]; for (const p of [s.body, s.leg, s.shin, s.armL, s.armR]) if (p) p.n = 0; }
     const seenMech = new Set<number>();
     for (const a of w.actors) {
       if (!a.alive || a.inVeh) continue; const dx = a.x - cam.x, dz = a.y - cam.z; if (dx * dx + dz * dz > 2600 * 2600) continue;
       const def = ACTORS[a.kind];
       if (def.mech) { seenMech.add(a.id); this.syncMech(a); continue; }
-      if (a === pb && !third) continue; const key = a.kind === 'civ' ? CIV_SKINS[a.id % 4] : a.kind, s = this.sets[key]; if (!s) continue;
-      const cap = CAP[key] ?? 80; if (s.n >= cap) continue;
-      const S = a.kind === 'boss' ? 21 : a.kind === 'heavy' ? 20 : 19, spd = Math.hypot(a.vx, a.vy), bob = Math.abs(Math.sin(a.walk * 0.09)) * Math.min(1, spd / 70) * 0.04 * S;
-      this.q.setFromAxisAngle(this.yAxis, -a.ang); this.v1.set(a.x, bob, a.y); base.compose(this.v1, this.q, d.scale.set(S, S, S));
-      const i = s.n++; const team = a.flash > 0 ? 0xffffff : a.f === CIV ? CLOTH[a.slot % CLOTH.length] : fcol(a.f);
-      s.fixed?.setMatrixAt(i, base); s.glow?.setMatrixAt(i, base);
-      if (s.team) { s.team.setMatrixAt(i, base); s.team.setColorAt(i, this.col.setHex(team)); }
-      if (s.skin) { s.skin.setMatrixAt(i, base); s.skin.setColorAt(i, this.col.setHex(a.flash > 0 ? 0xffffff : SKIN[a.id % SKIN.length])); }
-      if (s.leg) {
-        const swing = Math.sin(a.walk * 0.09) * 0.75 * Math.min(1, spd / 70);
-        for (let side = -1; side <= 1; side += 2) { this.qz.setFromAxisAngle(this.zAxis, swing * side); this.v1.set(0, 0.9, side * 0.11); local.compose(this.v1, this.qz, this.one); this.d.matrix.multiplyMatrices(base, local); s.leg.setMatrixAt(s.nl++, this.d.matrix); }
+      if (a === pb && !third) continue; const key = a.kind === 'civ' ? CIV_SKINS[a.id % CIV_SKINS.length] : a.kind, s = this.sets[key]; if (!s) continue;
+      if (s.body.n >= (CAP[key] ?? 80)) continue;
+      // 걷기: 보폭(amp)과 달리기 정도(run)에 따라 다리·무릎·팔·몸통 기울기가 함께 움직입니다.
+      const S = a.kind === 'boss' ? 21 : a.kind === 'heavy' ? 20 : 19, spd = Math.hypot(a.vx, a.vy), amp = Math.min(1, spd / 70), run = Math.min(1, spd / 220), ph = a.walk * 0.09, sn = Math.sin(ph), cs = Math.cos(ph);
+      const bob = Math.abs(sn) * amp * 0.04 * S, team = a.flash > 0 ? 0xffffff : a.f === CIV ? CLOTH[a.slot % CLOTH.length] : fcol(a.f), skin = a.flash > 0 ? 0xffffff : SKIN[a.id % SKIN.length];
+      this.q.setFromAxisAngle(this.yAxis, -a.ang); base.compose(this.v1.set(a.x, bob, a.y), this.q, d.scale.set(S, S, S));
+      this.joint(m, base, 0, HIP, 0, -(0.04 * amp + 0.1 * run), -sn * 0.07 * amp); torso.multiplyMatrices(m, this.down);
+      this.put(s.body, torso, team, skin);
+      for (let side = -1; side <= 1; side += 2) {
+        if (s.shin) {
+          this.joint(m, base, 0, HIP, side * LEG_Z, sn * side * (0.5 + 0.2 * run) * amp + 0.12 * run); this.put(s.leg, m, team, skin);
+          this.joint(this.m2, m, 0, -KNEE, 0, -amp * (0.12 + (0.6 + 0.5 * run) * Math.max(0, cs * side))); this.put(s.shin, this.m2, team, skin);
+        } else { this.joint(m, base, 0, HIP, side * LEG_Z, sn * side * 0.75 * amp); this.put(s.leg, m, team, skin); }
+      }
+      if (s.armL || s.armR) {
+        const idle = Math.sin(now * 1.6 + a.id) * 0.025 * (1 - amp), swing = sn * (0.42 + 0.3 * run) * amp;
+        if (s.armL && s.pl) { this.joint(m, torso, s.pl.x, s.pl.y, s.pl.z, swing + idle + 0.06 * run); this.put(s.armL, m, team, skin); }
+        if (s.armR && s.pr) {
+          let ang = -swing - idle + 0.06 * run;
+          if (a.kind === 'boss') { // 총을 쏘는 동안에는 오른팔을 들어 겨눕니다
+            let u = this.aim.get(a.id) ?? 0; u += ((a.cd > 0 ? 1 : 0) - u) * (a.cd > 0 ? 0.45 : 0.035); this.aim.set(a.id, u); ang += (AIM - ang) * Math.min(1, u * 1.15);
+          }
+          this.joint(m, torso, s.pr.x, s.pr.y, s.pr.z, ang); this.put(s.armR, m, team, skin);
+        }
       }
     }
-    for (const k of CHAR_KINDS) {
-      const s = this.sets[k]; for (const m of [s.fixed, s.team, s.skin, s.glow]) if (m) { m.count = s.n; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
-      if (s.leg) { s.leg.count = s.nl; s.leg.instanceMatrix.needsUpdate = true; }
-    }
+    for (const k of CHAR_KINDS) { const s = this.sets[k]; this.flush(s.body); this.flush(s.leg); this.flush(s.shin); this.flush(s.armL); this.flush(s.armR); }
     for (const [id, g] of this.mechs) if (!seenMech.has(id)) { this.scene.remove(g); this.mechs.delete(id); }
     // 크리스탈
     let nc = 0; for (const c of w.crystals) { if (c.amount <= 0) continue; const s = 13 + 12 * c.amount / c.max; d.rotation.set(0, c.id * 1.7, 0); d.position.set(c.x, 0, c.y); d.scale.setScalar(s); d.updateMatrix(); this.crystalMesh.setMatrixAt(nc++, d.matrix); }

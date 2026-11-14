@@ -231,9 +231,9 @@ export function generateCity(rng: Rng): CityMap {
         if (gun && bizCount === 0) kind = 'gunshop';
         else if (bizCount === 0 || (bizCount === 1 && rng() < 0.3)) {
           const r = rng();
-          kind = ring <= 1 ? (r < 0.45 ? 'casino' : r < 0.8 ? 'club' : 'gas') : ring === 2 ? (r < 0.3 ? 'club' : r < 0.55 ? 'plant' : r < 0.8 ? 'gas' : 'store') : (r < 0.5 ? 'store' : r < 0.75 ? 'gas' : 'plant');
+          kind = ring <= 1 ? (r < 0.45 ? 'casino' : r < 0.8 ? 'club' : 'store') : ring === 2 ? (r < 0.3 ? 'club' : r < 0.55 ? 'plant' : 'store') : (r < 0.65 ? 'store' : 'plant');
         }
-        const signs: Record<string, [string, string]> = { store: ['24', '#5fd38a'], gas: ['GAS', '#ffb347'], club: ['CLUB', '#ff6ad5'], plant: ['FAB', '#7fd8ff'], casino: ['777', '#ffd84a'], gunshop: ['GUNS', '#ff5d5d'] };
+        const signs: Record<string, [string, string]> = { store: ['24', '#5fd38a'], club: ['CLUB', '#ff6ad5'], plant: ['FAB', '#7fd8ff'], casino: ['777', '#ffd84a'], gunshop: ['GUNS', '#ff5d5d'] };
         const s = building(x0 + b[0], y0 + b[1], b[2], b[3], 0.1 + rng() * (ring <= 2 ? 0.34 : 0.2), kind ? signs[kind][0] : undefined, kind ? signs[kind][1] : undefined);
         if (kind) { const p = padFor(x0, y0, b); map.biz.push({ kind, x: p.x, y: p.y, solid: s }); bizCount++; }
       }

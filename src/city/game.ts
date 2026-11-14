@@ -1,6 +1,6 @@
 // LAST CITY — 게임 루프, 입력, HUD
 import './city.css';
-import { BIZ, BUILD_ORDER, CLASSES, DIFFICULTY, DIFFICULTY_ORDER, FACTIONS, PERKS, RESEARCH, STRUCTS, UNITS, WEAPONS, type ClassId, type Difficulty, type ResearchId, type StructKind, type UnitId, type WeaponId } from './defs';
+import { BIZ, BUILD_ORDER, CLASSES, DIFFICULTY, DIFFICULTY_ORDER, FACTIONS, PERKS, RESEARCH, STRUCTS, UNITS, WEAPONS, type ClassId, type Difficulty, type ResearchId, type StructKind, type UnitId } from './defs';
 import { World, type Actor } from './world';
 import { Renderer, type Ghost } from './render';
 import { Renderer3D } from './render3d';
@@ -10,6 +10,7 @@ import { CityAudio } from './audio';
 import { reload, switchWeapon } from './actors';
 import { ACTORS, BLOCKS, PITCH, ROAD } from './defs';
 import { mapPointerToWorld } from './uiMath';
+import { SHOP, canBuy, itemPrice } from './shop';
 import { missionLog, missionSummary } from './missions';
 import { readPreferences, recordMatch, writePreferences } from '../battle/preferences';
 
@@ -45,7 +46,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
   const canvas = q<HTMLCanvasElement>('.city-canvas'), canvas3 = q<HTMLCanvasElement>('.city-canvas3d'), layer = q('#c-layer'), cross = q('#c-cross'), hurtEl = q('#c-hurt'), hud = q('.city-hud'), modal = q('#c-modal'), panel = q('#c-panel'), bigmap = q('#c-bigmap');
   const audio = new CityAudio(); audio.enabled = prefs.sound;
   type View = 'fp' | 'tp' | 'top';
-  let tut: { s: TutState; c: Counters } | null = null, tutSig = '', tutDone = readTutDone(), lastPos = { x: 0, y: 0 }, lastYaw = 0, tutInfoLock = false;
+  let preView: View = 'fp', tut: { s: TutState; c: Counters } | null = null, tutSig = '', tutDone = readTutDone(), lastPos = { x: 0, y: 0 }, lastYaw = 0, tutInfoLock = false;
   let models: Models | null = null, R3: Renderer3D | null = null, view: View = 'fp', locked = false, lockFail = false, expectUnlock = false, touchFire = false, hurt = 0, lastLook = 0, hitT = 0;
   const tags: HTMLElement[] = [], marks: HTMLElement[] = []; let area = '', areaT = 0, sirenT = 0;
   let world: World | null = null, R: Renderer | null = null, raf = 0, last = 0, acc = 0, paused = false, closed = false, ghost: Ghost | null = null, tab = 'train', hudT = 0, toastT = 0, bannerT = 0, shopOpen = false, resultShown = false, userZoom = 1, combat = 0, klass: ClassId = 'warlord';
@@ -104,7 +105,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
 
   // ---------- 동작 ----------
   function act(code: string, ev?: Event): void {
-    const [a, arg] = code.split(':'), w = world; audio.unlock();
+    const [a, ...rest] = code.split(':'), arg = rest.join(':'), w = world; audio.unlock();
     if (a === 'diff') { diffSel = arg as Difficulty; try { localStorage.setItem('waldo-city-diff', arg); } catch { /* 무시 */ } setup(); audio.play('click'); return; }
     if (a === 'sq') { if (w) { w.selectSquad(Number(arg)); put(q('#c-squads'), squadBar(w)); toast(w.squadSel ? `${w.squadSel}분대 선택 — 명령이 이 분대에만 적용됩니다` : '전체 병력 선택', false); if (!panel.hidden) renderPanel(); } return; }
     if (a === 'squadsplit') { if (w) { w.splitSquads(0, Number(arg)); put(q('#c-squads'), squadBar(w)); toast(Number(arg) > 1 ? `${arg}개 분대로 편성` : '분대 편성 해제', false); renderPanel(); } return; }
@@ -122,7 +123,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
     if (a === 'perk') { w.pickPerk(Number(arg)); audio.play('levelup'); modal.innerHTML = ''; last = performance.now(); if (f.pending === 0) lock(); return; }
     if (a === 'tutnext') { if (tut) { tut.c.acked = true; lock(); } return; }
     if (a === 'tutskip') { finishTutorial(true); return; }
-    if (a === 'view') { if (tut) tut.c.viewSwitches++; setView(view === 'fp' ? 'tp' : view === 'tp' ? 'top' : R3 ? 'fp' : 'top'); if (!paused) lock(); audio.play('click'); return; }
+    if (a === 'view') { if (world?.inside) return; if (tut) tut.c.viewSwitches++; setView(view === 'fp' ? 'tp' : view === 'tp' ? 'top' : R3 ? 'fp' : 'top'); if (!paused) lock(); audio.play('click'); return; }
     if (paused || w.over) return;
     if (a === 'missions') {
       const board = q('#c-missions');
@@ -142,7 +143,8 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
     else if (a === 'sell') { const e = w.market(0, true, arg === 'all' ? f.crystal : Number(arg)); res(e); if (!e && tut) tut.c.sells++; }
     else if (a === 'buy') res(w.market(0, false, Number(arg)));
     else if (a === 'upg') { const z = w.businesses.find(b => b.id === Number(arg)); if (z) { const e = w.upgradeBiz(0, z); if (e) toast(e); else audio.play('cash'); } }
-    else if (a === 'item') { const e = w.buyItem(0, arg as WeaponId | 'armor' | 'medkit'); if (e) toast(e); else audio.play('cash'); }
+    else if (a === 'shop') { const r = w.shop(0, arg); if (r.ok) { audio.play('cash'); toast(r.msg, false); } else toast(r.msg); }
+    else if (a === 'bizbuy') { const e = w.buyHere(0); if (e) toast(e); else audio.play('cash'); }
     else if (a === 'bribe') res(w.bribe(0));
     else if (a === 'mercs') res(w.hireMercs(0));
     else if (a === 'order') { const b = w.boss(0); if (b) { w.order(0, arg as 'follow' | 'hold', b.x, b.y); toast(arg === 'follow' ? '전 병력 집결 — 나를 따르라' : '현 위치 사수', false); } }
@@ -158,8 +160,25 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
     ev?.preventDefault();
   }
   function interact(): void {
-    const w = world!; const e = w.interact(0);
-    if (e === 'shop') { shopOpen = true; panel.hidden = false; renderPanel(); unlock(); audio.play('click'); } else if (e) toast(e, e.includes('부족') || e.includes('없'));
+    const w = world!;
+    if (w.inside) {
+      const r = w.interactInside(0);
+      if (r === 'exit') leaveBuilding(); else if (r === 'shop') { shopOpen = true; panel.hidden = false; renderPanel(); unlock(); audio.play('click'); } else toast('카운터 앞이나 출입문 앞에서 E 를 누르세요', false);
+      return;
+    }
+    const e = w.interact(0);
+    if (e === 'enter') enterBuilding(); else if (e) toast(e, e.includes('부족') || e.includes('없'));
+  }
+  /** 사업체 안으로: 내부는 1인칭으로만 보여 줍니다. */
+  function enterBuilding(): void {
+    const w = world!, z = w.insideBiz(); if (!z) return;
+    if (!R3) { w.exitBiz(0); toast('3D 시점에서만 안에 들어갈 수 있습니다'); return; }
+    preView = view === 'top' ? 'fp' : view; if (view !== 'fp') setView('fp');
+    R3.yaw = w.inside!.ang; R3.pitch = 0; panel.hidden = true; shopOpen = false; touchFire = false; mouse.down = false; audio.play('door'); banner(`${BIZ[z.kind].name} 내부`);
+    if (tut) tut.c.entered = true;
+  }
+  function leaveBuilding(): void {
+    shopOpen = false; panel.hidden = true; if (view !== preView) setView(preView); if (R3) { R3.yaw = Math.PI / 2; R3.pitch = -0.05; } audio.play('door'); lock();
   }
   function pause(): void {
     if (!world || world.over) return; paused = true; keys.clear(); mouse.down = false; unlock();
@@ -180,9 +199,14 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
     const w = world!, f = w.factions[0]; let body = '';
     const cost = (c: number, m: number): string => `${c ? `<i class="cr">◆${w.cost(f, c)}</i>` : ''}${m ? `<i class="ca">$${w.cost(f, m)}</i>` : ''}`;
     if (shopOpen) {
-      const near = w.nearGunshop(0);
-      body = `<h3>무기상 ${near ? '' : '<small>(가게 앞에서만 구매 가능)</small>'}</h3>` + (['smg', 'shotgun', 'rifle', 'sniper', 'rocket'] as WeaponId[]).map(id => `<button class="c-row" data-act="item:${id}" ${near && f.cash >= WEAPONS[id].price ? '' : 'disabled'}><b>${WEAPONS[id].name}</b><span>피해 ${WEAPONS[id].dmg}${WEAPONS[id].pellets > 1 ? '×' + WEAPONS[id].pellets : ''} · 연사 ${WEAPONS[id].rate}/s · 사거리 ${WEAPONS[id].range}</span><i class="ca">$${WEAPONS[id].price}</i></button>`).join('')
-        + `<button class="c-row" data-act="item:armor" ${near && f.cash >= 300 ? '' : 'disabled'}><b>방탄복</b><span>방어도 100 (피해 60% 흡수)</span><i class="ca">$300</i></button><button class="c-row" data-act="item:medkit" ${near && f.cash >= 150 ? '' : 'disabled'}><b>회복 키트</b><span>체력 +70 (H)</span><i class="ca">$150</i></button>`;
+      const z = w.insideBiz(), near = w.nearInsideCounter();
+      if (z) {
+        const d = BIZ[z.kind], rows: string[] = [];
+        if (z.owner < 0 && z.kind !== 'gunshop') rows.push(`<button class="c-row c-hl" data-act="bizbuy" ${near && f.cash >= w.bizPrice(f, z) ? '' : 'disabled'}><b>${d.name} 매입</b><span>초당 +$${d.income}${d.crystal ? ` · 크리스탈 +${d.crystal}/s` : ''} · 업그레이드하면 경비병이 본부에서 출동</span><i class="ca">$${w.bizPrice(f, z)}</i></button>`);
+        else if (z.owner === 0) rows.push(`<button class="c-row c-hl" data-act="bizbuy" ${near && z.level < 3 && f.cash >= w.upgradePrice(z) ? '' : 'disabled'}><b>${d.name} ${'★'.repeat(z.level)}${'☆'.repeat(3 - z.level)}</b><span>${z.level < 3 ? '업그레이드 → 수입 증가 + 경비병 배치' : '최고 등급입니다'}</span>${z.level < 3 ? `<i class="ca">$${w.upgradePrice(z)}</i>` : ''}</button>`);
+        for (const it of SHOP[z.kind]) { const p = itemPrice(w, it); rows.push(`<button class="c-row" data-act="shop:${it.id}" ${near && canBuy(w, 0, it) ? '' : 'disabled'}><b>${it.icon} ${it.name}</b><span>${it.desc}</span><i class="ca">$${$(p)}</i></button>`); }
+        body = `<h3>${d.name} <small>${near ? '카운터에서 거래 중' : '(카운터 앞에서만 거래 가능)'}</small></h3>` + rows.join('');
+      } else body = '<p class="c-note">거래할 수 없습니다.</p>';
     } else if (tab === 'train') {
       const has = (k: StructKind): boolean => w.structures.some(s => s.alive && s.f === 0 && s.kind === k && s.built >= 1);
       body = `<h3>병력 생산 <small>인구 ${f.supply}/${f.supplyMax}</small></h3>` + (Object.keys(UNITS) as UnitId[]).map(id => { const u = UNITS[id], ok = has(u.from) && (!u.needLab || has('lab')); return `<button class="c-row" data-act="train:${id}" ${ok ? '' : 'disabled'}><b>${ACTORS[id].name}</b><span>${ok ? u.desc : `${STRUCTS[u.from].name}${u.needLab ? '·연구소' : ''} 필요`} · 인구 ${u.supply}</span>${cost(u.crystal, u.cash)}</button>`; }).join('')
@@ -215,7 +239,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
       body = '<h3>왕국 순위</h3><table class="c-rank"><tr><th>왕국</th><th>순자산</th><th>병력</th><th>사업</th><th>Lv</th></tr>' + rows.map(r => `<tr class="${r.alive ? '' : 'dead'}"><td><i style="background:${r.color}"></i>${r.name}${w.hq(r.id) ? '' : r.alive ? ' <small>본부 없음</small>' : ''}</td><td>${r.alive ? '$' + $(w.netWorth(r)) : '궤멸'}</td><td>${w.armyOf(r.id).length}</td><td>${w.businesses.filter(b => b.owner === r.id).length}</td><td>${r.level}</td></tr>`).join('') + '</table>';
     }
     const tabs: [string, string][] = [['train', '생산'], ['build', '건설'], ['research', '연구'], ['market', '시장'], ['assets', '자산'], ['squad', '분대'], ['rank', '순위']];
-    const head = `<header>${shopOpen ? '<b>무기상</b>' : tabs.map(([k, n]) => `<button data-act="tab:${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}<button data-act="closepanel" class="c-x" aria-label="닫기">✕</button></header>`;
+    const head = `<header>${shopOpen ? `<b>${w.insideBiz() ? BIZ[w.insideBiz()!.kind].name : '상점'}</b>` : tabs.map(([k, n]) => `<button data-act="tab:${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}<button data-act="closepanel" class="c-x" aria-label="닫기">✕</button></header>`;
     const cur = panel.querySelector<HTMLElement>('.c-body');
     if (cur && panel.dataset.head === head) { const top = cur.scrollTop; put(cur, body); cur.scrollTop = top; return; }   // 본문만 갱신: 스크롤 위치·스크롤바 드래그 유지
     panel.dataset.head = head; panel.innerHTML = `${head}<div class="c-body">${body}</div>`;
@@ -275,12 +299,15 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
     } else put(q('#c-boss'), `<div class="c-down"><b>쓰러짐</b> ${f.respawnT > 0 ? `${Math.ceil(f.respawnT)}초 후 본부에서 부활` : '…'}</div>`);
     // 상호작용 안내
     let prompt = '';
-    if (b && !b.inVeh) {
+    if (w.inside) {
+      const zi = w.insideBiz(); prompt = w.nearInsideDoor() ? '<kbd>E</kbd> 밖으로 나가기' : w.nearInsideCounter() ? `<kbd>E</kbd> ${zi ? BIZ[zi.kind].name : ''} 카운터 — 거래하기` : '카운터로 가서 <kbd>E</kbd> · 초록 EXIT 문으로 가서 <kbd>E</kbd> 나가기';
+      if (shopOpen && !w.nearInsideCounter()) { shopOpen = false; panel.hidden = true; lock(); }
+    } else if (b && !b.inVeh) {
       const l = w.loot.find(x => x.alive && x.type === 'weapon' && x.fall <= 0 && Math.hypot(x.x - b.x, x.y - b.y) < 46);
       const zb = w.businesses.find(x => Math.hypot(x.x - b.x, x.y - b.y) < 64);
       const v = w.vehicles.find(x => x.alive && x.burn <= 0 && x.ai !== 'chase' && Math.hypot(x.x - b.x, x.y - b.y) - x.r < 78);
       if (l) prompt = `<kbd>E</kbd> ${WEAPONS[l.weapon!].name} 줍기`;
-      else if (zb) prompt = zb.kind === 'gunshop' ? '<kbd>E</kbd> 무기상 열기' : zb.owner < 0 ? `<kbd>E</kbd> ${BIZ[zb.kind].name} 매입 <b>$${w.bizPrice(f, zb)}</b> · 초당 +$${BIZ[zb.kind].income}` : zb.owner === 0 ? (zb.level < 3 ? `<kbd>E</kbd> ${BIZ[zb.kind].name} 업그레이드 <b>$${w.upgradePrice(zb)}</b>` : `${BIZ[zb.kind].name} ★★★ 최고 등급`) : `${FACTIONS[zb.owner].name}의 ${BIZ[zb.kind].name} — 적대적 인수 ${Math.max(0, 6 - zb.cap).toFixed(1)}초${zb.cap <= 0.05 ? ' (경비 제거 필요)' : ''}`;
+      else if (zb) prompt = zb.kind === 'gunshop' ? '<kbd>E</kbd> 무기상 안으로 들어가기' : zb.owner < 0 ? `<kbd>E</kbd> ${BIZ[zb.kind].name} 안으로 들어가기 · 매입 <b>$${w.bizPrice(f, zb)}</b> · 초당 +$${BIZ[zb.kind].income}` : zb.owner === 0 ? `<kbd>E</kbd> ${BIZ[zb.kind].name} 안으로 들어가기 ${'★'.repeat(zb.level)}` : `${FACTIONS[zb.owner].name}의 ${BIZ[zb.kind].name} — 적대적 인수 ${Math.max(0, 6 - zb.cap).toFixed(1)}초${zb.cap <= 0.05 ? ' (경비 제거 필요)' : ''}`;
       else if (v) prompt = `<kbd>F</kbd> ${v.kind === 'tank' ? '전차 탈취' : v.kind === 'police' ? '경찰차 탈취 (수배 ★)' : v.driver ? '차량 강탈' : `${v.kind === 'sports' ? '스포츠카' : v.kind === 'truck' ? '트럭' : '세단'} 탑승`}`;
     } else if (b) prompt = '<kbd>F</kbd> 하차 · <kbd>Space</kbd> 핸드브레이크';
     const pe = q('#c-prompt'); put(pe, prompt); pe.className = 'c-prompt' + (prompt ? ' show' : '');
@@ -410,6 +437,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
   // ---------- 3D 화면 표식 ----------
   function overlay(): void {
     const w = world!, r3 = R3!, b = w.boss(0), list: { x: number; y: number; h: number; text: string; color: string; edge: boolean }[] = [];
+    if (w.inside) { for (const el of marks) el.style.display = 'none'; return; }
     const hq = w.hq(0); if (hq && b && (Math.hypot(hq.x + 60 - b.x, hq.y + 60 - b.y) > 420 || w.time - hq.hurtT < 5)) list.push({ x: hq.x + 60, y: hq.y + 60, h: 190, text: w.time - hq.hurtT < 5 ? '본부 피격!' : '본부', color: w.time - hq.hurtT < 5 ? '#ff6b6b' : FACTIONS[0].color, edge: true });
     for (const l of w.loot) if (l.alive && l.type === 'crate') list.push({ x: l.x, y: l.y, h: 60, text: '보급 상자', color: '#ffe27a', edge: true });
     const z = w.zone; if (b && Math.hypot(b.x - z.nx, b.y - z.ny) > z.nr && z.nr < 3800) list.push({ x: z.nx, y: z.ny, h: 40, text: '안전지대', color: '#c9a2ff', edge: true });
@@ -427,7 +455,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
     });
   }
   function crossTarget(): string {
-    const w = world!, b = w.boss(0); if (!b || !R3) return ''; const f = w.factions[0], range = WEAPONS[f.slots[f.cur].id].range, dx = Math.cos(R3.yaw), dy = Math.sin(R3.yaw); let best = range, html = '', hostile = false;
+    const w = world!, b = w.boss(0); if (!b || !R3 || w.inside) return ''; const f = w.factions[0], range = WEAPONS[f.slots[f.cur].id].range, dx = Math.cos(R3.yaw), dy = Math.sin(R3.yaw); let best = range, html = '', hostile = false;
     for (const a of w.actors) { if (!a.alive || a === b || a.inVeh) continue; const rx = a.x - b.x, ry = a.y - b.y, t = rx * dx + ry * dy; if (t < 0 || t > best || Math.abs(rx * dy - ry * dx) > a.r + 7) continue; if (!w.canSee(b.x, b.y, a.x, a.y)) continue; best = t; hostile = w.hostile(0, a.f); html = `<b style="color:${a.f < 8 ? FACTIONS[a.f].color : a.f === 8 ? '#8fb0ff' : '#ccc'}">${a.f < 8 ? FACTIONS[a.f].name + ' ' : ''}${ACTORS[a.kind].name}</b><i><u style="width:${Math.max(0, a.hp / a.maxHp * 100)}%;background:${a.f === 0 ? '#5dfc9b' : '#ff5d5d'}"></u></i>`; }
     for (const s of w.structures) { if (!s.alive) continue; const cx = s.x + s.w / 2 - b.x, cy = s.y + s.h / 2 - b.y, t = cx * dx + cy * dy; if (t < 0 || t > best + 60 || Math.abs(cx * dy - cy * dx) > Math.max(s.w, s.h) / 2) continue; best = t; hostile = s.f !== 0; html = `<b style="color:${FACTIONS[s.f].color}">${FACTIONS[s.f].name} ${STRUCTS[s.kind].name}</b><i><u style="width:${Math.max(0, s.hp / s.maxHp * 100)}%"></u></i>`; }
     cross.classList.toggle('hostile', hostile && !!html); return html;
@@ -446,7 +474,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
       if (three && R3) {
         if (veh && spd > 70 && now - lastLook > 1100) { let d = veh.ang - R3.yaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; R3.yaw += d * Math.min(1, dt * 2.2); R3.pitch += (-0.12 - R3.pitch) * Math.min(1, dt * 2); }
         const c = Math.cos(R3.yaw), s = Math.sin(R3.yaw), fwd = -my; inp.mx = fwd * c - mx * s; inp.my = fwd * s + mx * c;
-        const ox = b ? b.x : 0, oy = b ? b.y : 0; inp.ax = ox + c * 600; inp.ay = oy + s * 600; inp.fire = ((mouse.down && (locked || lockFail)) || touchFire) && !ghost;
+        const ox = b ? b.x : 0, oy = b ? b.y : 0; inp.ax = ox + c * 600; inp.ay = oy + s * 600; inp.fire = ((mouse.down && (locked || lockFail)) || touchFire) && !ghost && !w.inside;
       } else {
         inp.mx = mx; inp.my = my;
         if (sticks.aim.id >= 0 && b) { const m = Math.hypot(sticks.aim.x, sticks.aim.y); if (m > 0.2) { inp.ax = b.x + sticks.aim.x / m * 300; inp.ay = b.y + sticks.aim.y / m * 300; } inp.fire = m > 0.35; }

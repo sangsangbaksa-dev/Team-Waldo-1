@@ -4,9 +4,11 @@ import {
   SUPPLY_CAP, SUPPLY_DEPOT, SUPPLY_HQ, UNITS, WEAPONS, ZONE_DPS, ZONE_PHASES, baseMods,
   type ActorKind, type BizKind, type ClassId, type Difficulty, type Mods, type ResearchId, type StructKind, type UnitId, type WeaponId,
 } from './defs';
-import { addSolid, clearLine, generateCity, makeRng, navBlocked, rectFree, removeSolid, type CityMap, type Rng } from './map';
+import { addSolid, clearLine, generateCity, makeRng, navBlocked, rectFree, removeSolid, resolveCircle, type CityMap, type Rng } from './map';
 import { updateActors, updateBullets, updateVehicles, updatePopulation } from './actors';
 import { thinkFaction, type AiState } from './ai';
+import { INTERIORS, INTERIOR_SPEED, nearCounter, nearDoor, resolveInterior, type InteriorLayout } from './interior';
+import { purchase, type ShopResult } from './shop';
 
 export const SQUAD_MAX = 5;
 export interface Order { type: 'follow' | 'move' | 'amove' | 'hold' | 'mine' | 'guard' | 'hunt' | 'wander'; x: number; y: number }
@@ -58,6 +60,8 @@ export class World {
   zone = { x: SIZE / 2, y: SIZE / 2, r: 3900, sx: SIZE / 2, sy: SIZE / 2, sr: 3900, nx: SIZE / 2, ny: SIZE / 2, nr: 3900, phase: ZONE_PHASES.length, t: ZONE_PHASES[0][0], shrinking: false };
   price = 10; priceHistory: number[] = []; nextId = 1; over = false; winner = -1; secT = 0; dropT = 95; pathBudget = 0; quests: Quest[] = [];
   input: PlayerInput = { mx: 0, my: 0, ax: 0, ay: 0, fire: false, dash: false, brake: false };
+  /** 보스가 사업체 안에 들어가 있는 동안의 상태(없으면 null). 좌표는 내부 공간 기준입니다. */
+  inside: { biz: number; x: number; y: number; ang: number; walk: number } | null = null;
   planes: { x: number; y: number; vx: number; vy: number; tx: number; ty: number; dropped: boolean }[] = [];
 
   constructor(opts: WorldOptions) {
@@ -175,7 +179,7 @@ export class World {
   // ---------- 피해 ----------
   crime(_f: number, _amount: number): void { /* 수배 시스템 없음 */ }
   hurtActor(a: Actor, dmg: number, srcF: number, direct = true): void {
-    if (!a.alive) return;
+    if (!a.alive || this.hidden(a)) return;
     if (a.inVeh) { const v = this.vehicles.find(q => q.id === a.inVeh); if (v) this.hurtVehicle(v, dmg, srcF); return; }
     dmg *= 1 - ACTORS[a.kind].armor; if (a.f === 0) dmg *= 0.75;
     if (srcF < 8 && srcF >= 0 && !this.factions[srcF].player) dmg *= DIFFICULTY[this.opts.difficulty].dmg;
@@ -192,7 +196,7 @@ export class World {
     if (a.hp <= 0) this.killActor(a, srcF);
   }
   killActor(a: Actor, srcF: number): void {
-    if (!a.alive) return; a.alive = false; this.byId.delete(a.id);
+    if (!a.alive) return; a.alive = false; this.byId.delete(a.id); if (a.kind === 'boss' && a.f === 0) this.inside = null;
     this.fx(ACTORS[a.kind].mech ? 'boom' : 'death', a.x, a.y, a.r, undefined, a.f);
     const src = srcF >= 0 && srcF < 8 ? this.factions[srcF] : null;
     if (srcF === 0 && a.f !== 0) this.fx('kill', a.x, a.y, 0, a.f < 8 ? `${FACTIONS[a.f].name} ${ACTORS[a.kind].name}` : ACTORS[a.kind].name, a.f);
@@ -370,13 +374,44 @@ export class World {
     if (b) this.spawnLoot('weapon', b.x + 26, b.y + 10, old.ammo, old.id);
     f.slots[at] = slot; f.cur = at;
   }
-  nearGunshop(fi: number): boolean { const b = this.boss(fi); return !!b && this.businesses.some(z => z.kind === 'gunshop' && Math.hypot(z.x - b.x, z.y - b.y) < 80); }
-  buyItem(fi: number, item: WeaponId | 'armor' | 'medkit'): string {
-    const f = this.factions[fi]; if (!this.nearGunshop(fi)) return '무기상 앞에서만 구매할 수 있습니다';
-    const price = item === 'armor' ? 300 : item === 'medkit' ? 150 : WEAPONS[item].price;
-    if (f.cash < price) return '자금이 부족합니다'; f.cash -= price;
-    if (item === 'armor') f.armor = 100; else if (item === 'medkit') f.medkits++; else this.giveWeapon(f, item);
-    return '';
+  // ---------- 사업체 내부 ----------
+  /** 지금 들어가 있는 사업체(없으면 null) */
+  insideBiz(): Business | null { return this.inside ? this.businesses.find(z => z.id === this.inside!.biz) ?? null : null; }
+  insideLayout(): InteriorLayout | null { const z = this.insideBiz(); return z ? INTERIORS[z.kind] : null; }
+  /** 보스가 안에 있으면 적의 표적·피해에서 제외 */
+  hidden(a: Actor): boolean { return !!this.inside && a.kind === 'boss' && a.f === 0; }
+  enterBiz(fi: number, z: Business): string {
+    const b = this.boss(fi); if (fi !== 0 || !b || b.inVeh) return '들어갈 수 없습니다';
+    if (z.owner >= 0 && z.owner !== fi) return '적 사업체 — 패드 위에서 버티면 인수합니다';
+    const lay = INTERIORS[z.kind]; this.inside = { biz: z.id, x: lay.spawn.x, y: lay.spawn.y, ang: lay.spawn.ang, walk: 0 };
+    b.vx = b.vy = 0; this.fx('door', b.x, b.y); return '';
+  }
+  exitBiz(fi: number): void {
+    if (fi !== 0 || !this.inside) return; const z = this.insideBiz(), b = this.boss(fi); this.inside = null;
+    if (b && z) { b.x = z.x; b.y = z.y; b.vx = b.vy = 0; resolveCircle(this.map, b, b.r); this.fx('door', b.x, b.y); }
+  }
+  /** 내부 공간에서 걷기(보스 입력 mx,my 는 실내 좌표 기준) */
+  moveInside(dt: number): void {
+    const s = this.inside, lay = this.insideLayout(); if (!s || !lay) return; const inp = this.input, m = Math.hypot(inp.mx, inp.my), k = m > 1 ? 1 / m : 1;
+    const p = { x: s.x + inp.mx * k * INTERIOR_SPEED * dt, y: s.y + inp.my * k * INTERIOR_SPEED * dt }; resolveInterior(lay, p);
+    s.walk += Math.hypot(p.x - s.x, p.y - s.y); s.x = p.x; s.y = p.y; s.ang = Math.atan2(inp.ay - s.y, inp.ax - s.x);
+  }
+  nearInsideCounter(): boolean { const s = this.inside, lay = this.insideLayout(); return !!s && !!lay && nearCounter(lay, s.x, s.y); }
+  nearInsideDoor(): boolean { const s = this.inside, lay = this.insideLayout(); return !!s && !!lay && nearDoor(lay, s.x, s.y); }
+  /** 내부 E 키: 카운터 → 'shop', 문 → 'exit' */
+  interactInside(fi: number): 'shop' | 'exit' | '' {
+    if (!this.inside) return ''; if (this.nearInsideDoor()) { this.exitBiz(fi); return 'exit'; }
+    return this.nearInsideCounter() ? 'shop' : '';
+  }
+  /** 카운터 앞에서 사업체 매입·업그레이드 */
+  buyHere(fi: number): string {
+    const z = this.insideBiz(); if (!z || !this.nearInsideCounter()) return '카운터 앞에서만 거래할 수 있습니다';
+    return z.owner < 0 ? this.buyBiz(fi, z) : z.owner === fi ? this.upgradeBiz(fi, z) : '내 사업체가 아닙니다';
+  }
+  /** 카운터 앞에서 물건 구매 */
+  shop(fi: number, id: string): ShopResult {
+    const z = this.insideBiz(); if (!z || !this.nearInsideCounter()) return { ok: false, msg: '카운터 앞에서만 구매할 수 있습니다' };
+    return purchase(this, fi, z, id);
   }
   bribe(fi: number): string {
     const f = this.factions[fi], p = Math.ceil(f.wanted) * 300; if (f.wanted < 1) return '수배 중이 아닙니다';
@@ -405,11 +440,7 @@ export class World {
   interact(fi: number): string {
     const f = this.factions[fi], b = this.boss(fi); if (!b || b.inVeh) return '';
     for (const l of this.loot) if (l.alive && l.type === 'weapon' && l.fall <= 0 && Math.hypot(l.x - b.x, l.y - b.y) < 46) { l.alive = false; this.giveWeapon(f, l.weapon!, l.amount); this.fx('pickup', l.x, l.y); return ''; }
-    for (const z of this.businesses) if (Math.hypot(z.x - b.x, z.y - b.y) < 64) {
-      if (z.kind === 'gunshop') return 'shop';
-      if (z.owner < 0) return this.buyBiz(fi, z); if (z.owner === fi) return this.upgradeBiz(fi, z);
-      return '적 사업체 — 패드 위에서 버티면 인수합니다';
-    }
+    for (const z of this.businesses) if (Math.hypot(z.x - b.x, z.y - b.y) < 64) return this.enterBiz(fi, z) || 'enter';
     return '';
   }
   toggleVehicle(fi: number): void {
@@ -511,7 +542,14 @@ export class World {
       } else { z.cap = Math.max(0, z.cap - dt * 2); }
       if (z.owner >= 0 && z.level > 1) {
         z.guardT -= dt;
-        if (z.guardT <= 0) { z.guardT = 30; const n = this.actors.filter(a => a.alive && a.kind === 'guard' && a.home === z.id).length; if (n < z.level - 1) { const g = this.spawnUnit('guard', z.owner, z.x + (this.rng() - 0.5) * 50, z.y + (this.rng() - 0.5) * 24); g.home = z.id; g.order = { type: 'guard', x: g.x, y: g.y }; z.guardT = 2; } }
+        if (z.guardT <= 0) {
+          z.guardT = 30; const n = this.actors.filter(a => a.alive && a.kind === 'guard' && a.home === z.id).length, hq = this.hq(z.owner);
+          // 경비병은 주인의 본부 문 앞에서 나와 사업체까지 걸어갑니다(본부가 없으면 보내지 못함)
+          if (n < z.level - 1) {
+            if (!hq) z.guardT = 5;
+            else { const g = this.spawnUnit('guard', z.owner, hq.x + hq.w / 2 + (this.rng() - 0.5) * 50, hq.y + hq.h + 16); g.home = z.id; g.order = { type: 'guard', x: z.x + (this.rng() - 0.5) * 50, y: z.y + (this.rng() - 0.5) * 24 }; z.guardT = 2; }
+          }
+        }
       }
     }
   }

@@ -19,7 +19,7 @@ function outline(id: string): { d: string; km: string } {
 
 export interface SetupHandle { read(): RaceSetup; destroy(): void }
 
-export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceRecords, cb: { onStart: (s: RaceSetup) => void; onExit: () => void }): SetupHandle {
+export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceRecords, cb: { onStart: (s: RaceSetup) => void; onExit: () => void; onPvp?: (s: RaceSetup) => void }): SetupHandle {
   let cur = sanitizeSetup(initial);
   const root = document.createElement('div'); root.className = 'rc-setup'; root.setAttribute('role', 'dialog'); root.setAttribute('aria-label', '레이스 설정');
   const mapCard = (m: (typeof MAPS)[number]): string => { const o = outline(m.id); return `<button type="button" class="rc-opt rc-map" data-pick="map:${m.id}"><svg viewBox="0 0 120 64" aria-hidden="true"><path d="${o.d}"/></svg><span class="rc-opt-name">${esc(m.name)}</span><span class="rc-opt-sub">${esc(m.place)} · ${o.km}km</span></button>`; };
@@ -35,7 +35,7 @@ export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceR
         </div>
         <section class="rc-setup-col"><h3>차량</h3><div class="rc-grid cars">${CARS.map(carCard).join('')}</div><p class="rc-note" data-note="car"></p></section>
       </div>
-      <footer><button type="button" class="ghost" data-setup="exit">메뉴로</button><span class="rc-pick" data-note="summary"></span><button type="button" class="primary" data-setup="start">출발</button></footer>
+      <footer><button type="button" class="ghost" data-setup="exit">메뉴로</button><span class="rc-pick" data-note="summary"></span>${cb.onPvp ? '<button type="button" data-setup="pvp">1대1 대전</button>' : ''}<button type="button" class="primary" data-setup="start">출발</button></footer>
     </div>`;
   host.append(root);
   const note = (k: string): HTMLElement => root.querySelector<HTMLElement>(`[data-note="${k}"]`)!;
@@ -52,6 +52,7 @@ export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceR
     const t = e.target as HTMLElement, pick = t.closest<HTMLElement>('[data-pick]'), act = t.closest<HTMLElement>('[data-setup]');
     if (pick) { const [k, v] = pick.dataset.pick!.split(':'); cur = sanitizeSetup({ ...cur, [k]: k === 'laps' || k === 'level' ? Number(v) : v }); paint(); }
     else if (act?.dataset.setup === 'start') cb.onStart(cur);
+    else if (act?.dataset.setup === 'pvp') cb.onPvp?.(cur);
     else if (act?.dataset.setup === 'exit') cb.onExit();
   });
   paint();

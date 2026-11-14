@@ -228,13 +228,17 @@ export class Renderer3D {
     if (!o) {
       const g = new THREE.Group(), ring = new THREE.Mesh(new THREE.RingGeometry(24, 31, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false })); ring.position.y = 1.2;
       const beam = new THREE.Mesh(new THREE.CylinderGeometry(28, 28, 110, 20, 1, true), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false })); beam.position.y = 55;
-      const label = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false })); label.scale.set(118, 44, 1); label.position.y = 112;
+      const label = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false })); label.scale.set(100, 37.5, 1);
+      // 표식과 이름표가 건물 벽에 파묻히지 않도록 건물 바깥쪽(차도 쪽)으로 밀어 둡니다.
+      const so = w.map.solids[z.solid]; let nx = 0, nz = 0;
+      if (so) { nx = z.x - Math.max(so.x, Math.min(so.x + so.w, z.x)); nz = z.y - Math.max(so.y, Math.min(so.y + so.h, z.y)); const l = Math.hypot(nx, nz); if (l > 0.01) { nx /= l; nz /= l; } else { nx = 0; nz = 0; } }
+      g.userData.out = [nx, nz]; label.position.set(nx * 34, 112, nz * 34);
       g.add(ring, beam, label); g.position.set(z.x, 0, z.y); this.scene.add(g); o = { g, sig: '', label, ring, beam, icon: null }; this.biz.set(z.id, o);
     }
     const sig = `${z.owner}:${z.level}`;
     if (sig !== o.sig) {
       o.sig = sig; (o.ring.material as THREE.MeshBasicMaterial).color.setHex(col);
-      if (this.ml) { if (o.icon) o.g.remove(o.icon); o.icon = this.ml.makeBiz(z.kind, col); if (o.icon) o.g.add(o.icon); } (o.beam.material as THREE.MeshBasicMaterial).color.setHex(col);
+      if (this.ml) { if (o.icon) o.g.remove(o.icon); o.icon = this.ml.makeBiz(z.kind, col); if (o.icon) { const out = o.g.userData.out as [number, number]; o.icon.position.set(out[0] * 8, 50, out[1] * 8); o.g.add(o.icon); } } (o.beam.material as THREE.MeshBasicMaterial).color.setHex(col);
       const css = z.kind === 'gunshop' ? '#ff5d5d' : z.owner >= 0 ? FACTIONS[z.owner].color : '#ffffff', line2 = z.kind === 'gunshop' ? 'E 구매' : z.owner < 0 ? `$${d.price} · +$${d.income}/s` : `${FACTIONS[z.owner].name} ${'★'.repeat(z.level)}`;
       o.label.material.map?.dispose(); o.label.material.map = canvasTex(320, 120, g => { g.fillStyle = 'rgba(10,16,16,0.82)'; g.beginPath(); g.roundRect(4, 4, 312, 112, 18); g.fill(); g.strokeStyle = css; g.lineWidth = 5; g.stroke(); g.textAlign = 'center'; g.fillStyle = '#fff'; g.font = "900 44px 'Noto Sans KR',sans-serif"; g.fillText(d.name, 160, 54); g.fillStyle = css; g.font = "700 28px 'Noto Sans KR',sans-serif"; g.fillText(line2, 160, 96); }); o.label.material.needsUpdate = true;
     }

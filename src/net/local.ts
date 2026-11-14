@@ -39,6 +39,7 @@ export function createLocalBackend(): Backend {
       const u = Object.values(load().users).find(x => x.email === email && x.password === password); if (!u) throw new Error('Invalid login credentials');
       sessionStorage.setItem(ME, u.id); return { id: u.id, email: u.email, nickname: u.nickname };
     },
+    async resendConfirmation() { /* 로컬 백엔드는 이메일 확인이 없습니다 */ },
     async signOut() { sessionStorage.removeItem(ME); },
     async setNickname(nickname) { const a = need(), d = load(); d.users[a.id].nickname = nickname; save(d); return { ...a, nickname }; },
     async quickMatch(game, config) {

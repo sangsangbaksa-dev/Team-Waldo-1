@@ -5,6 +5,7 @@ import { World, type Actor } from './world';
 import { Renderer, type Ghost } from './render';
 import { Renderer3D } from './render3d';
 import { loadModels, type Models } from './models';
+import { showLoading, type LoadingScreen } from '../loading';
 import { STEPS, TUT_KEY, advance, newCounters, newTutState, type Counters, type TutState } from './tutorial';
 import { CityAudio } from './audio';
 import { reload, switchWeapon } from './actors';
@@ -21,7 +22,7 @@ const $ = (n: number): string => Math.floor(n).toLocaleString('en-US');
 const clock = (t: number): string => `${Math.floor(Math.max(0, t) / 60)}:${String(Math.floor(Math.max(0, t) % 60)).padStart(2, '0')}`;
 
 function readTutDone(): boolean { try { return localStorage.getItem(TUT_KEY) === '1'; } catch { return false; } }
-export function openCity(onExit: () => void, options: { difficulty?: string } = {}): void {
+export function openCity(onExit: () => void, options: { difficulty?: string; loading?: LoadingScreen } = {}): void {
   let diffSel: Difficulty = 'd4'; try { const sv = localStorage.getItem('waldo-city-diff'); if (sv && sv in DIFFICULTY) diffSel = sv as Difficulty; } catch { /* 저장 불가 환경 */ }
   void options;
   const prefs = readPreferences(), touch = matchMedia('(pointer: coarse)').matches;
@@ -587,6 +588,10 @@ export function openCity(onExit: () => void, options: { difficulty?: string } = 
     if (w.over && !resultShown) showResult();
   }
   if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__tut = () => tut;
-  void loadModels(import.meta.env.BASE_URL).then(m => { models = m; }).catch(() => { models = null; });
-  setup();
+  // 모델을 다 받을 때까지 로딩 화면을 보여 줍니다. 네트워크가 느리거나 끊겨도 포기하지 않고 계속 받습니다.
+  const loading = options.loading ?? showLoading('LAST CITY');
+  loading.progress(0, '도시 자산을 불러오는 중');
+  const finishLoading = (): void => { if (closed) return; loading.close(); setup(); };
+  void loadModels(import.meta.env.BASE_URL, (f, note) => { if (f >= 0) loading.progress(f); loading.note(note); })
+    .then(m => { models = m; }).catch(() => { models = null; }).finally(finishLoading);
 }

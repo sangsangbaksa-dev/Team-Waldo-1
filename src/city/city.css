@@ -197,3 +197,4 @@
 .c-squads button{min-width:34px;padding:6px 8px;border:1px solid rgba(216,188,128,.35);border-radius:8px;background:rgba(10,20,16,.7);color:#e8e0cc;font-size:12px;cursor:pointer}
 .c-squads button small{display:block;font-size:9px;opacity:.7}.c-squads button.on{background:#d8bc80;color:#17251f;border-color:#d8bc80}
 .c-row.on{border-color:#d8bc80;background:rgba(216,188,128,.12)}
+.c-row.c-hl{border-color:#d8bc80;background:rgba(216,188,128,.14)}

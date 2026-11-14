@@ -35,7 +35,8 @@ describe('튜토리얼 연습장', () => {
     b.x = loot.x; b.y = loot.y; w.interact(0); expect(advance(ctx)).toBe(true);
     // 5 사업체 매입
     const biz = w.businesses.find(z => z.id === s.bizId)!; expect(biz.owner).toBe(-1);
-    b.x = biz.x; b.y = biz.y; expect(w.interact(0)).toBe(''); expect(advance(ctx)).toBe(true);
+    b.x = biz.x; b.y = biz.y; expect(w.interact(0)).toBe('enter'); expect(w.inside).not.toBeNull(); expect(advance(ctx)).toBe(false);
+    const lay = w.insideLayout()!; w.inside!.x = lay.counterSpot.x; w.inside!.y = lay.counterSpot.y; expect(w.buyHere(0)).toBe(''); expect(advance(ctx)).toBe(true);
     // 6 병영 건설
     const hq = w.hq(0)!; let ok = false; for (let k = 0; k < 400 && !ok; k++) ok = w.build(0, 'barracks', hq.x + 60 + (w.rng() - 0.5) * 380, hq.y + 60 + (w.rng() - 0.5) * 380) === '';
     expect(ok).toBe(true); expect(advance(ctx)).toBe(true);

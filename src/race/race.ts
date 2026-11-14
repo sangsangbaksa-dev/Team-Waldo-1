@@ -4,7 +4,7 @@ import { aiInput, newCar, stepCar, type AiProfile, type CarInput, type CarParams
 import { type Track } from './track';
 
 export interface Racer {
-  id: number; name: string; color: string; player: boolean; car: CarState; ai: AiProfile; params: CarParams; shape: CarDef['shape'];
+  id: number; name: string; color: string; player: boolean; car: CarState; ai: AiProfile; params: CarParams; model: CarDef['model']; accent: string;
   lapTimes: number[]; lapStart: number; finishTime: number | null; lastEv: StepEvents;
 }
 export type RaceEvent =
@@ -28,7 +28,7 @@ export interface RaceOptions { level?: number; car?: string }
 export function createRace(track: Track, laps = 3, bestLap = Infinity, opts: RaceOptions = {}): RaceState {
   const level = levelById(opts.level ?? 1), mine = carById(opts.car ?? CARS[0].id), at = CARS.indexOf(mine);
   const mk = (id: number, name: string, def: CarDef, player: boolean, slot: [number, number], ai: AiProfile): Racer =>
-    ({ id, name, color: def.color, player, car: newCar(track, track.n + slot[0], slot[1]), ai, params: carParams(def), shape: def.shape, lapTimes: [], lapStart: 0, finishTime: null, lastEv: { hit: 0, driftBoost: 0, pad: false } });
+    ({ id, name, color: def.color, player, car: newCar(track, track.n + slot[0], slot[1]), ai, params: carParams(def), model: def.model, accent: def.accent, lapTimes: [], lapStart: 0, finishTime: null, lastEv: { hit: 0, driftBoost: 0, pad: false } });
   const player = mk(0, 'YOU', mine, true, SLOTS[2], { lane: 0, top: 58, grip: 30, skill: 1 });
   const rivals = FIELD.map((f, i) => {
     const def = CARS[(at + 1 + i) % CARS.length], p = carParams(def), handling = p.grip * p.turn;

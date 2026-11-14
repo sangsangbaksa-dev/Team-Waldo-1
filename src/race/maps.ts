@@ -6,7 +6,7 @@ export type Scenery = 'city' | 'harbor' | 'forest' | 'desert';
 
 export interface Theme {
   scenery: Scenery;
-  sky: { top: RGB; mid: RGB; low: RGB; hor: RGB; sun: RGB; sunColor: RGB; stars: number };
+  sky: { top: RGB; mid: RGB; low: RGB; hor: RGB; sun: RGB; sunColor: RGB; stars: number; clouds: number };
   fog: { color: number; near: number; far: number };
   ground: { base: string; line: string; grid: string; noise: boolean };
   light: { sky: number; ground: number; hemi: number; sun: number; sunPower: number };
@@ -17,6 +17,11 @@ export interface Theme {
   lamp: { kind: 'lamp' | 'pole'; a: number; b: number };
   banner: { bg: string; fg: string; accent: string };
   pad: string;
+  /** 벽 바깥 갓길 색 */
+  shoulder: number;
+  /** 먼 산 바위 색과 눈 덮임 여부(forest 배경) */
+  mountain: number;
+  snow?: boolean;
   /** 건물·컨테이너·나무·바위 등 배경 소품의 색 */
   tint: number;
 }
@@ -32,7 +37,7 @@ export interface MapDef {
 
 const SUNSET: Theme = {
   scenery: 'city',
-  sky: { top: [0.07, 0.04, 0.25], mid: [0.65, 0.14, 0.52], low: [1.0, 0.55, 0.32], hor: [0.85, 0.31, 0.56], sun: [0.25, 0.1, -1], sunColor: [1.0, 0.82, 0.5], stars: 0.9 },
+  sky: { top: [0.07, 0.04, 0.25], mid: [0.65, 0.14, 0.52], low: [1.0, 0.55, 0.32], hor: [0.85, 0.31, 0.56], sun: [0.25, 0.1, -1], sunColor: [1.0, 0.82, 0.5], stars: 0.9, clouds: 0.5 },
   fog: { color: 0xd8508f, near: 140, far: 1500 },
   ground: { base: '#1a0c36', line: '#ff4fd8', grid: 'rgba(80,220,255,.35)', noise: false },
   light: { sky: 0xffd2e8, ground: 0x2a1b52, hemi: 1.15, sun: 0xffb27a, sunPower: 1.5 },
@@ -43,12 +48,14 @@ const SUNSET: Theme = {
   lamp: { kind: 'lamp', a: 0x44f6ff, b: 0xff5ad8 },
   banner: { bg: '#0c0820', fg: '#ffffff', accent: '#ff4fd8' },
   pad: '#7dffe6',
+  shoulder: 0x1d1238,
+  mountain: 0x3a2a60,
   tint: 0xb8a6ff,
 };
 
 const HARBOR: Theme = {
   scenery: 'harbor',
-  sky: { top: [0.01, 0.03, 0.09], mid: [0.04, 0.12, 0.26], low: [0.1, 0.28, 0.42], hor: [0.12, 0.3, 0.4], sun: [-0.4, 0.25, -1], sunColor: [0.75, 0.88, 1.0], stars: 1.4 },
+  sky: { top: [0.01, 0.03, 0.09], mid: [0.04, 0.12, 0.26], low: [0.1, 0.28, 0.42], hor: [0.12, 0.3, 0.4], sun: [-0.4, 0.25, -1], sunColor: [0.75, 0.88, 1.0], stars: 1.4, clouds: 0.25 },
   fog: { color: 0x1d4a66, near: 120, far: 1300 },
   ground: { base: '#06182b', line: '#17476b', grid: 'rgba(120,200,255,.18)', noise: false },
   light: { sky: 0x9cc8ff, ground: 0x0b1d33, hemi: 1.0, sun: 0xaecbff, sunPower: 0.9 },
@@ -59,12 +66,14 @@ const HARBOR: Theme = {
   lamp: { kind: 'lamp', a: 0xffd58a, b: 0xffd58a },
   banner: { bg: '#07121f', fg: '#ffffff', accent: '#ffb23f' },
   pad: '#7fd4ff',
+  shoulder: 0x1b2330,
+  mountain: 0x1c3a55,
   tint: 0xffffff,
 };
 
 const ALPINE: Theme = {
   scenery: 'forest',
-  sky: { top: [0.22, 0.42, 0.78], mid: [0.52, 0.7, 0.9], low: [0.98, 0.84, 0.62], hor: [0.92, 0.82, 0.72], sun: [0.5, 0.28, -1], sunColor: [1.0, 0.92, 0.72], stars: 0 },
+  sky: { top: [0.22, 0.42, 0.78], mid: [0.52, 0.7, 0.9], low: [0.98, 0.84, 0.62], hor: [0.92, 0.82, 0.72], sun: [0.5, 0.28, -1], sunColor: [1.0, 0.92, 0.72], stars: 0, clouds: 0.8 },
   fog: { color: 0xd9cfc0, near: 160, far: 1700 },
   ground: { base: '#33452c', line: '#3b5232', grid: 'rgba(0,0,0,0)', noise: true },
   light: { sky: 0xdfe9ff, ground: 0x4a5a3a, hemi: 1.1, sun: 0xffe2b0, sunPower: 1.6 },
@@ -75,12 +84,14 @@ const ALPINE: Theme = {
   lamp: { kind: 'pole', a: 0x6b4a2f, b: 0x6b4a2f },
   banner: { bg: '#1c2a1b', fg: '#ffffff', accent: '#e8b04a' },
   pad: '#fff2a8',
+  shoulder: 0x5a5a46,
+  mountain: 0x6a7a8c,
   tint: 0x2f5d34,
 };
 
 const DESERT: Theme = {
   scenery: 'desert',
-  sky: { top: [0.16, 0.42, 0.82], mid: [0.5, 0.72, 0.94], low: [0.95, 0.88, 0.74], hor: [0.94, 0.84, 0.7], sun: [0.3, 0.55, -1], sunColor: [1.0, 0.97, 0.88], stars: 0 },
+  sky: { top: [0.16, 0.42, 0.82], mid: [0.5, 0.72, 0.94], low: [0.95, 0.88, 0.74], hor: [0.94, 0.84, 0.7], sun: [0.3, 0.55, -1], sunColor: [1.0, 0.97, 0.88], stars: 0, clouds: 0.4 },
   fog: { color: 0xe6d3b4, near: 260, far: 2600 },
   ground: { base: '#d3a468', line: '#c99858', grid: 'rgba(0,0,0,0)', noise: true },
   light: { sky: 0xfff1da, ground: 0xb98a55, hemi: 1.25, sun: 0xfff0d0, sunPower: 1.6 },
@@ -91,7 +102,27 @@ const DESERT: Theme = {
   lamp: { kind: 'pole', a: 0x4b3a28, b: 0x4b3a28 },
   banner: { bg: '#2a1c10', fg: '#ffffff', accent: '#f2c230' },
   pad: '#fff6c8',
+  shoulder: 0xb88a55,
+  mountain: 0xa8704a,
   tint: 0xc77a3e,
+};
+
+const FROST: Theme = {
+  scenery: 'forest', snow: true,
+  sky: { top: [0.26, 0.4, 0.72], mid: [0.62, 0.74, 0.9], low: [0.98, 0.82, 0.76], hor: [0.9, 0.86, 0.9], sun: [0.6, 0.14, -1], sunColor: [1.0, 0.88, 0.74], stars: 0, clouds: 0.7 },
+  fog: { color: 0xdde6f2, near: 120, far: 1500 },
+  ground: { base: '#e6edf5', line: '#e6edf5', grid: 'rgba(0,0,0,0)', noise: true },
+  light: { sky: 0xeaf2ff, ground: 0xaab7c8, hemi: 1.3, sun: 0xffe0c0, sunPower: 1.5 },
+  road: { base: '#464950', edge: '#f4f6fa', center: '#f4f6fa', lane: 'rgba(255,255,255,.05)', centerDouble: false },
+  curb: [[0.2, 0.4, 0.85], [0.95, 0.95, 0.98]],
+  wall: { inner: [0.28, 0.31, 0.36], a: [0.86, 0.89, 0.93], b: [0.32, 0.52, 0.86] },
+  arch: { big: 0xeaf0f8, a: 0x7fa8e0, b: 0x7fa8e0, count: 7 },
+  lamp: { kind: 'pole', a: 0x6b7a90, b: 0x6b7a90 },
+  banner: { bg: '#14233a', fg: '#ffffff', accent: '#7fb4ff' },
+  pad: '#bfe6ff',
+  shoulder: 0xcdd8e6,
+  mountain: 0x7d8fa6,
+  tint: 0x2f5a46,
 };
 
 /** 첫 점이 출발선입니다. 출발선 직전은 곧게 뻗은 구간이어야 합니다. */
@@ -129,6 +160,14 @@ export const MAPS: ReadonlyArray<MapDef> = [
       [1420, 32, 2], [1508, 120, 3], [1540, 240, 3], [1508, 360, 3], [1420, 448, 2],
       [1300, 480, 2], [1040, 474, 0], [780, 486, -1], [520, 474, 0], [260, 482, 2], [0, 480, 2],
       [-120, 448, 2], [-208, 360, 2], [-240, 240, 1], [-208, 120, 0], [-120, 32, 0],
+    ],
+  },
+  {
+    id: 'frost', name: '프로스트 레이크', place: '설원 · 새벽', blurb: '눈 덮인 호숫가를 따라 길게 휘어지는 고속 와인딩', halfWidth: 13, pads: [0.1, 0.32, 0.55, 0.78], theme: FROST,
+    points: [
+      [0, 0, 0], [300, 0, 0], [560, -30, 2], [760, -110, 4], [880, -260, 6], [900, -420, 8], [820, -560, 9],
+      [660, -650, 8], [480, -640, 7], [380, -570, 5], [330, -480, 4], [250, -420, 3], [150, -440, 3], [70, -520, 4],
+      [-40, -560, 6], [-170, -500, 8], [-230, -380, 8], [-210, -250, 6], [-120, -90, 3], [-60, -20, 1],
     ],
   },
 ];

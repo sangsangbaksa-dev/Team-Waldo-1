@@ -27,4 +27,17 @@ describe('SpatialHash', () => {
       }
     }
   });
+  it('넓은 탐색(64개 초과 셀)에서도 같은 적을 중복 반환하지 않는다', () => {
+    // 용량은 크지만 적은 한 마리: 이전 64칸 방문 기록은 이 검색에서 넘친다.
+    const hash = new SpatialHash(32, 300);
+    const x = new Float32Array([0]);
+    const y = new Float32Array([0]);
+    hash.rebuild(x, y, 1);
+    const out = new Int32Array(300);
+
+    for (let i = 0; i < 3; i++) {
+      const n = hash.query(0, 0, 512, out);
+      expect(Array.from(out.subarray(0, n))).toEqual([0]);
+    }
+  });
 });

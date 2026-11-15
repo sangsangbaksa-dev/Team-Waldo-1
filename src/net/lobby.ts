@@ -116,7 +116,7 @@ export function openLobby(opts: LobbyOptions): { close(): void } {
   const title = opts.game ? `${GAME_NAMES[opts.game]} · 1대1 대전` : '계정 · 랭킹';
   const rankTable = (): string => ranks === null ? '<p class="pvp-dim">불러오는 중…</p>' : ranks.length === 0 ? '<p class="pvp-dim">아직 기록된 대전이 없습니다.</p>'
     : `<table class="pvp-rank"><thead><tr><th>#</th><th>닉네임</th><th>레이팅</th><th>전적</th></tr></thead><tbody>${ranks.map(r => `<tr${r.user_id === me?.id ? ' class="me"' : ''}><td>${r.rank}</td><td>${esc(r.nickname)}</td><td>${r.rating}</td><td>${r.wins}승 ${r.losses}패</td></tr>`).join('')}</tbody></table>`;
-  const tabs = (): string => `<div class="pvp-tabs" role="tablist">${(['race', 'city'] as GameKind[]).map(g => `<button type="button" role="tab" aria-selected="${g === rankGame}" data-act="rank:${g}">${GAME_NAMES[g]}</button>`).join('')}</div>`;
+  const tabs = (): string => `<div class="pvp-tabs" role="tablist">${(['race', 'city', 'shooter'] as GameKind[]).map(g => `<button type="button" role="tab" aria-selected="${g === rankGame}" data-act="rank:${g}">${GAME_NAMES[g]}</button>`).join('')}</div>`;
 
   function body(): string {
     if (screen === 'load') return '<p class="pvp-dim">연결하는 중…</p>';

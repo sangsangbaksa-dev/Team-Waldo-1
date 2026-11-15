@@ -102,7 +102,7 @@ export class World {
       { text: '무기 줍기 또는 무기상에서 구매하기', reward: 200, done: false, check: w => w.factions[0].slots.some(x => x.id !== 'pistol' && !(x.id === 'smg' && w.opts.klass === 'warlord')) },
       { text: '사업체 3곳 보유하기', reward: 500, done: false, check: w => w.businesses.filter(b => b.owner === 0).length >= 3 },
       { text: '적 사업체 적대적 인수 (적 패드 위에서 6초 버티기)', reward: 600, done: false, check: w => w.factions[0].ai.biz === -7 },
-      { text: '라이벌 조직 1곳 궤멸시키기', reward: 1500, done: false, check: w => w.factions[0].bossKills >= 1 && w.factions.filter(f => !f.alive).length >= 1 },
+      { text: '라이벌 조직 1곳 궤멸시키기', reward: 1500, done: false, check: w => w.factions.some(f => f.id !== 0 && !f.alive) },
     ];
   }
 
@@ -132,7 +132,7 @@ export class World {
   }
   spawnUnit(unit: UnitId | 'merc' | 'guard', f: number, x: number, y: number): Actor {
     const a = this.spawnActor(unit, f, x, y), fac = this.factions[f];
-    a.maxHp = Math.round(a.maxHp * fac.mods.unitHp * (1 + 0.15 * fac.up.armor) * (f === 0 ? 1.9 : 1.4)); a.hp = a.maxHp;
+    a.maxHp = this.unitMaxHp(fac, unit); a.hp = a.maxHp;
     if (unit === 'worker') a.order = { type: 'mine', x, y };
     else if (unit === 'guard') a.order = { type: 'guard', x, y };
     else { a.order = { type: 'follow', x, y }; if (f === 0) a.sq = this.squadSel; }
@@ -176,6 +176,15 @@ export class World {
     for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) { const cell = this.hash[cy * HN + cx]; for (let k = 0; k < cell.length; k++) fn(cell[k]); }
   }
   bossMaxHp(f: Faction): number { return Math.round((ACTORS.boss.hp + f.mods.hp + (f.level - 1) * 12) * (f.id === 0 ? 2.2 : 1)); }
+  /** 병력 현재 체력을 연구·특성 배율에 맞춰 다시 계산합니다. 이미 입은 피해는 유지하고, 오른 최대 체력만큼만 더합니다. */
+  unitMaxHp(f: Faction, kind: ActorKind): number { return Math.round(ACTORS[kind].hp * f.mods.unitHp * (1 + 0.15 * f.up.armor) * (f.id === 0 ? 1.9 : 1.4)); }
+  syncArmyHealth(f: Faction): void {
+    for (const a of this.actors) {
+      if (!a.alive || a.f !== f.id || a.kind === 'boss') continue;
+      const m = this.unitMaxHp(f, a.kind); if (m === a.maxHp) continue;
+      a.hp += Math.max(0, m - a.maxHp); a.maxHp = m; if (a.hp > a.maxHp) a.hp = a.maxHp;
+    }
+  }
   xpNeed(level: number): number { return Math.round(55 * Math.pow(level, 1.35)); }
   cost(f: Faction, v: number): number { return Math.round(v * f.mods.cost); }
   armyOf(f: number): Actor[] { return this.actors.filter(a => a.alive && a.f === f && a.kind !== 'worker' && a.kind !== 'boss' && a.kind !== 'guard'); }
@@ -253,7 +262,14 @@ export class World {
     if (s.hp > 0) return;
     s.alive = false; removeSolid(this.map, s.solid); this.fx('boom', s.x + s.w / 2, s.y + s.h / 2, Math.max(s.w, s.h));
     const f = this.factions[s.f], src = srcF >= 0 && srcF < 8 ? this.factions[srcF] : null;
-    for (const q of s.queue) if (q.unit) { f.crystal += UNITS[q.unit].crystal; }
+    const queuedResearch: Record<ResearchId, number> = { dmg: 0, armor: 0, eco: 0 };
+    for (const q of s.queue) {
+      if (q.unit) { f.crystal += this.cost(f, UNITS[q.unit].crystal); f.cash += this.cost(f, UNITS[q.unit].cash); }
+      if (q.research) {
+        const lvl = f.up[q.research] + queuedResearch[q.research]; queuedResearch[q.research]++;
+        f.crystal += RESEARCH[q.research].crystal * (lvl + 1); f.cash += RESEARCH[q.research].cash * (lvl + 1);
+      }
+    }
     if (src && src !== f) this.gainXp(src, s.kind === 'hq' ? 200 : 40);
     if (s.kind === 'hq' && f.alive) { this.say(`${f.name} 본부 붕괴! 더 이상 부활할 수 없습니다`, f.color); this.fx('announce', 0, 0, 0, `${f.name} 본부 붕괴`); }
     this.recomputeSupply(f);
@@ -286,6 +302,7 @@ export class World {
   applyPerk(f: Faction, idx: number): void {
     const p = PERKS[idx]; p.apply(f.mods); f.perks.push(p.id);
     const b = this.boss(f.id); if (b) { const m = this.bossMaxHp(f); b.hp += Math.max(0, m - b.maxHp); b.maxHp = m; }
+    if (p.id === 'unitHp') this.syncArmyHealth(f);
   }
   pickPerk(i: number): void {
     const f = this.factions[0]; if (f.pending <= 0 || f.choices[i] === undefined) return;
@@ -330,9 +347,10 @@ export class World {
   }
   research(fi: number, id: ResearchId): string {
     if (this.opts.duel) return '결투에서는 연구할 수 없습니다';
-    const f = this.factions[fi], lab = this.structures.find(s => s.alive && s.f === fi && s.kind === 'lab' && s.built >= 1);
-    if (!lab) return '연구소가 필요합니다';
-    const queued = lab.queue.filter(q => q.research === id).length, lvl = f.up[id] + queued;
+    const f = this.factions[fi], labs = this.structures.filter(s => s.alive && s.f === fi && s.kind === 'lab' && s.built >= 1);
+    if (!labs.length) return '연구소가 필요합니다';
+    const lab = labs.sort((a, b) => a.queue.length - b.queue.length)[0];
+    const queued = labs.reduce((n, s) => n + s.queue.filter(q => q.research === id).length, 0), lvl = f.up[id] + queued;
     if (lvl >= 3) return '최대 단계입니다'; if (lab.queue.length >= 3) return '연구 대기열이 가득 찼습니다';
     const c = RESEARCH[id].crystal * (lvl + 1), m = RESEARCH[id].cash * (lvl + 1);
     if (f.crystal < c) return '크리스탈이 부족합니다'; if (f.cash < m) return '자금이 부족합니다';
@@ -469,7 +487,7 @@ export class World {
   }
   useMedkit(fi: number): void { const f = this.factions[fi], b = this.boss(fi); if (!b || f.medkits <= 0 || b.hp >= b.maxHp) return; f.medkits--; b.hp = Math.min(b.maxHp, b.hp + 70); this.fx('heal', b.x, b.y); }
   useSkill(fi: number): string {
-    const f = this.factions[fi], b = this.boss(fi); if (!b || b.inVeh) return '지금은 사용할 수 없습니다'; if (f.skillCd > 0) return '재사용 대기 중';
+    const f = this.factions[fi], b = this.boss(fi); if (!b || b.inVeh || (fi === 0 && this.inside)) return '지금은 사용할 수 없습니다'; if (f.skillCd > 0) return '재사용 대기 중';
     if (f.klass === 'warlord') { f.buffT = 8; this.fx('roar', b.x, b.y, 0, undefined, fi); }
     else if (f.klass === 'tycoon') { const e = this.hireMercs(fi); if (e) return e; }
     else {
@@ -487,7 +505,7 @@ export class World {
     return '';
   }
   toggleVehicle(fi: number): void {
-    const b = this.boss(fi); if (!b) return;
+    const b = this.boss(fi); if (!b || (fi === 0 && this.inside)) return;
     if (b.inVeh) { const v = this.vehicles.find(q => q.id === b.inVeh); b.inVeh = 0; if (v) { v.driver = 0; v.f = -1; v.ai = ''; b.x = v.x + Math.cos(v.ang + 1.57) * (v.wid + 8); b.y = v.y + Math.sin(v.ang + 1.57) * (v.wid + 8); } return; }
     let best: Vehicle | null = null, bd = 78;
     for (const v of this.vehicles) if (v.alive && v.burn <= 0 && v.ai !== 'chase') { const d = Math.hypot(v.x - b.x, v.y - b.y) - v.r; if (d < bd) { bd = d; best = v; } }
@@ -533,7 +551,7 @@ export class World {
         q.t -= dt;
         if (q.t <= 0) {
           s.queue.shift();
-          if (q.research) { f.up[q.research]++; if (f.player) this.say(`연구 완료: ${RESEARCH[q.research].name} ${f.up[q.research]}단계`, f.color); }
+          if (q.research) { f.up[q.research]++; if (q.research === 'armor') this.syncArmyHealth(f); if (f.player) this.say(`연구 완료: ${RESEARCH[q.research].name} ${f.up[q.research]}단계`, f.color); }
           else if (q.unit) {
             const cx = s.x + s.w / 2, cy = s.y + s.h / 2; let px = cx, py = s.y + s.h + 22;
             for (let k = 0; k < 12; k++) { const a = k * 0.55 + this.rng(), x = cx + Math.cos(a) * (s.w / 2 + 34), y = cy + Math.sin(a) * (s.h / 2 + 34); if (!navBlocked(this.map, x, y)) { px = x; py = y; break; } }
@@ -647,9 +665,9 @@ export class World {
         if (!l.alive || !a.alive || a.kind !== 'boss' || Math.hypot(a.x - l.x, a.y - l.y) > 32) return; const f = this.factions[a.f], auto = !f.player || this.opts.autoPlayer;
         if (l.type === 'cash') { f.cash += l.amount; f.earned += l.amount; this.fx('cash', l.x, l.y, l.amount, undefined, a.f); }
         else if (l.type === 'armor') { if (f.armor >= 100) return; f.armor = Math.min(100, f.armor + l.amount); }
-        else if (l.type === 'medkit') f.medkits++;
+        else if (l.type === 'medkit') { if (f.medkits >= 5) return; f.medkits++; }
         else if (l.type === 'crate') {
-          const r = this.rng(), w: WeaponId = r < 0.4 ? 'minigun' : r < 0.75 ? 'railgun' : 'rocket'; this.giveWeapon(f, w); f.armor = 100; f.cash += 800; f.medkits++;
+          const r = this.rng(), w: WeaponId = r < 0.4 ? 'minigun' : r < 0.75 ? 'railgun' : 'rocket'; this.giveWeapon(f, w); f.armor = 100; f.cash += 800; f.medkits = Math.min(5, f.medkits + 1);
           if (this.rng() < 0.5) this.hireMercs(a.f, true);
           this.say(`${f.name} ▸ 보급 상자 획득: ${WEAPONS[w].name}`, f.color); this.fx('crate', l.x, l.y);
         } else if (l.type === 'weapon') { if (!auto) return; const d = WEAPONS[l.weapon!]; if (f.slots.some(s => s.id === l.weapon) || f.slots.length < 3 || f.slots.slice(1).some(s => WEAPONS[s.id].tier < d.tier)) { if (f.slots.length >= 3) f.cur = f.slots.slice(1).reduce((m, s, i) => WEAPONS[s.id].tier < WEAPONS[f.slots[m].id].tier ? i + 1 : m, 1); this.giveWeapon(f, l.weapon!, l.amount); } else return; }

@@ -158,3 +158,77 @@ describe('1인칭 카메라 벽 여유', () => {
     expect(solidAt(w.map, cam.x, cam.y)).toBeNull();
   });
 });
+
+
+describe('LAST CITY bugfixes', () => {
+  it('does not let the boss enter a car or use a skill from inside a business', () => {
+    const w = make(), b = w.boss(0)!, shop = w.businesses.find(z => z.kind === 'store' && z.owner < 0)!;
+    const car = w.spawnVehicle('sedan', shop.x + 30, shop.y, 0);
+    b.x = shop.x; b.y = shop.y;
+    expect(w.enterBiz(0, shop)).toBe('');
+    expect(w.inside).not.toBeNull();
+    w.toggleVehicle(0);
+    expect(b.inVeh).toBe(0);
+    expect(car.driver).toBe(0);
+    w.factions[0].skillCd = 0;
+    expect(w.useSkill(0)).toContain('지금은');
+    expect(w.inside).not.toBeNull();
+  });
+
+  it('leaves a medkit on the ground when the boss already holds five', () => {
+    const w = make(), b = w.boss(0)!, f = w.factions[0];
+    f.medkits = 5;
+    const loot = w.spawnLoot('medkit', b.x, b.y, 1);
+    w.step(1 / 30);
+    expect(loot.alive).toBe(true);
+    expect(f.medkits).toBe(5);
+    f.medkits = 4;
+    w.step(1 / 30);
+    expect(loot.alive).toBe(false);
+    expect(f.medkits).toBe(5);
+  });
+
+  it('queues research at a second lab when the first lab is full', () => {
+    const w = make(), f = w.factions[0], hq = w.hq(0)!;
+    f.crystal = 5000; f.cash = 5000;
+    const lab1 = w.addStructure('lab', 0, hq.x + 200, hq.y, true);
+    const lab2 = w.addStructure('lab', 0, hq.x + 320, hq.y, true);
+    lab1.queue.push({ research: 'eco', t: 20, total: 20 }, { research: 'eco', t: 20, total: 20 }, { research: 'eco', t: 20, total: 20 });
+    expect(w.research(0, 'dmg')).toBe('');
+    expect(lab1.queue).toHaveLength(3);
+    expect(lab2.queue.some(q => q.research === 'dmg')).toBe(true);
+  });
+
+  it('applies finished armor research to soldiers that are already in the field', () => {
+    const w = make(), rifle = w.spawnUnit('rifle', 0, 80, 80), before = rifle.maxHp, hp = rifle.hp;
+    w.factions[0].up.armor = 1;
+    w.syncArmyHealth(w.factions[0]);
+    expect(rifle.maxHp).toBeGreaterThan(before);
+    expect(rifle.hp).toBe(hp + (rifle.maxHp - before));
+  });
+
+  it('refunds cash and research costs when a building is destroyed mid-queue', () => {
+    const w = make(), f = w.factions[0], hq = w.hq(0)!;
+    f.crystal = 2000; f.cash = 2000;
+    const lab = w.addStructure('lab', 0, hq.x + 220, hq.y, true);
+    const cash = f.cash, crystal = f.crystal;
+    expect(w.research(0, 'dmg')).toBe('');
+    expect(f.cash).toBeLessThan(cash);
+    expect(f.crystal).toBeLessThan(crystal);
+    w.hurtStruct(lab, 1e6, -1);
+    expect(f.cash).toBe(cash);
+    expect(f.crystal).toBe(crystal);
+    expect(lab.alive).toBe(false);
+  });
+
+  it('completes the rival-elimination quest even if the last hit was not a boss kill credit', () => {
+    const w = make(), enemy = w.factions[3], boss = w.boss(3)!;
+    expect(w.quests[6].check(w)).toBe(false);
+    w.hurtStruct(w.hq(3)!, 1e6, -1);
+    w.killActor(boss, -1);
+    w.checkElimination();
+    expect(enemy.alive).toBe(false);
+    expect(w.factions[0].bossKills).toBe(0);
+    expect(w.quests[6].check(w)).toBe(true);
+  });
+});

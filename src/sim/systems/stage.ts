@@ -32,7 +32,8 @@ export function stage(world: World): void {
 
   st.time += DT;
 
-  if (def.miniboss && !st.minibossSpawned && st.time >= def.miniboss.at) {
+  // Once the stage times out, prioritize its transition or final boss over an overdue miniboss.
+  if (st.time < def.duration && def.miniboss && !st.minibossSpawned && st.time >= def.miniboss.at) {
     const id = spawnAtEdge(world, world.data.enemyIndex[def.miniboss.enemy], def.miniboss.hpScale);
     if (id) {
       st.minibossSpawned = true;

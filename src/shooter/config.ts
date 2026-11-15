@@ -19,8 +19,20 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
 };
 export const WEAPON_IDS = Object.keys(WEAPONS) as WeaponId[];
 
-export const PLAYER = { radius: 0.4, eye: 1.65, height: 1.8, head: 1.45, walk: 4.6, sprint: 7.2, hp: 100, medkit: 55, armor: 50, pickup: 1.6 };
-export const MAP_HALF = { br: 250, duel: 115 } as const;
+export const PLAYER = {
+  radius: 0.4, eye: 1.65, height: 1.8, head: 1.45, walk: 4.6, sprint: 7.2, hp: 100, medkit: 55, armor: 50, pickup: 1.6,
+  /** 앉기: 눈높이·키·머리 높이와 이동 속도 배율 */ crouchEye: 1.08, crouchHeight: 1.2, crouchHead: 0.92, crouchSpeed: 0.55,
+  /** 점프 속도(m/s)와 중력 */ jump: 4.8, gravity: 17,
+  /** 물속(깊이 0.5m 넘음) 이동 속도 배율 */ wade: 0.58,
+  /** 헬멧이 줄이는 머리 피해 비율 */ helmet: 0.4,
+};
+/** 솔로 배틀로열 — 총 참가 인원(사람 1 + 봇 99) */
+export const BR_FILL = 100;
+export const MAP_HALF = { br: 400, duel: 115 } as const;
+/** 수송기: 고도, 속도, 자유 낙하·낙하산 속도(m/s). 낙하산은 땅에서 chuteAt 미터 위에서 저절로 펼칩니다. */
+export const FLIGHT = { alt: 320, speed: 62, fall: 46, dive: 60, glide: 24, chuteAt: 140, chuteFall: 8.5, chuteGlide: 13, lead: 6 };
+/** 배틀로열 자기장은 수송기가 출발하고 이만큼 지난 뒤 첫 단계를 시작합니다. */
+export const ZONE_DELAY = 45;
 export type Mode = 'br' | 'duel';
 
 export type Difficulty = 'easy' | 'normal' | 'hard' | 'expert';
@@ -49,15 +61,22 @@ export interface ZonePhase { wait: number; shrink: number; radius: number; dps: 
 /** 줄어드는 자기장 일정. 마지막 단계가 끝나면 작은 원에 머무르며 피해가 계속 늘어납니다. */
 export const ZONES: Record<Mode, ZonePhase[]> = {
   br: [
-    { wait: 28, shrink: 38, radius: 185, dps: 1.2 }, { wait: 24, shrink: 32, radius: 118, dps: 2.2 }, { wait: 20, shrink: 28, radius: 70, dps: 3.5 },
-    { wait: 16, shrink: 24, radius: 36, dps: 6 }, { wait: 12, shrink: 20, radius: 14, dps: 10 }, { wait: 8, shrink: 16, radius: 5, dps: 16 },
+    { wait: 35, shrink: 48, radius: 296, dps: 1.2 }, { wait: 30, shrink: 40, radius: 189, dps: 2.2 }, { wait: 26, shrink: 36, radius: 112, dps: 3.5 },
+    { wait: 22, shrink: 30, radius: 58, dps: 6 }, { wait: 18, shrink: 26, radius: 22, dps: 10 }, { wait: 14, shrink: 22, radius: 8, dps: 16 },
   ],
   duel: [
     { wait: 20, shrink: 28, radius: 85, dps: 1.5 }, { wait: 16, shrink: 24, radius: 52, dps: 3 }, { wait: 12, shrink: 20, radius: 28, dps: 6 }, { wait: 8, shrink: 16, radius: 10, dps: 12 },
   ],
 };
 
-export const BOT_NAMES = ['Shadow', 'Viper', 'Rook', 'Ember', 'Nova', 'Drift', 'Kestrel', 'Onyx', 'Havoc', 'Lynx', 'Cobalt', 'Raven', 'Slate', 'Pike', 'Zephyr', 'Mako', 'Tundra', 'Flint', 'Saber'];
+const BOT_NAME_ROOTS = ['Shadow', 'Viper', 'Rook', 'Ember', 'Nova', 'Drift', 'Kestrel', 'Onyx', 'Havoc', 'Lynx', 'Cobalt', 'Raven', 'Slate', 'Pike', 'Zephyr', 'Mako', 'Tundra', 'Flint', 'Saber', 'Wraith', 'Cipher', 'Jinx', 'Rogue', 'Helix', 'Cinder', 'Frost', 'Blaze', 'Ghost', 'Hex', 'Nomad', 'Canyon', 'Dusk', 'Echo', 'Rift', 'Striker', 'Vortex', 'Ash', 'Bolt', 'Crux', 'Dagger'] as const;
+/** 99봇 이상을 채울 수 있도록 접미사를 붙여 풀을 만듭니다. */
+export const BOT_NAMES: string[] = (() => {
+  const out: string[] = [...BOT_NAME_ROOTS];
+  for (const root of BOT_NAME_ROOTS) for (let n = 2; n <= 5; n++) out.push(`${root}${n}`);
+  for (let i = 0; i < BOT_NAME_ROOTS.length; i++) out.push(`${BOT_NAME_ROOTS[i]}_${BOT_NAME_ROOTS[(i + 7) % BOT_NAME_ROOTS.length]}`);
+  return out;
+})();
 export const TEAM_COLORS = [0xc0392b, 0x2e86de, 0x27ae60, 0xe1a21a, 0x8e44ad, 0x16a0a0, 0xd35400, 0x7f8c8d, 0xc2185b, 0x4a6572];
 export const SKIN_TONES = [0xf1c9a5, 0xd9a47a, 0xa8744f, 0x7a5236, 0xf5d6b8];
 

@@ -156,10 +156,10 @@ export class World {
     const l: Loot = { id: this.nextId++, type, weapon, amount, x, y, fall, alive: true }; this.loot.push(l); return l;
   }
   spawnLootTier(x: number, y: number, tier: number): void {
-    const r = this.rng();
-    if (tier >= 3) this.spawnLoot('weapon', x, y, 0, r < 0.4 ? 'rocket' : r < 0.7 ? 'sniper' : 'rifle');
-    else if (tier === 2) { if (r < 0.6) this.spawnLoot('weapon', x, y, 0, r < 0.25 ? 'rifle' : r < 0.45 ? 'shotgun' : 'smg'); else this.spawnLoot(r < 0.8 ? 'armor' : 'medkit', x, y, 50); }
-    else { if (r < 0.4) this.spawnLoot('weapon', x, y, 0, r < 0.2 ? 'smg' : 'shotgun'); else if (r < 0.65) this.spawnLoot('cash', x, y, 100 + Math.floor(this.rng() * 250)); else this.spawnLoot(r < 0.85 ? 'medkit' : 'armor', x, y, 35); }
+    const r = this.rng(), gun = (id: WeaponId): void => { this.spawnLoot('weapon', x, y, WEAPONS[id].ammo, id); };
+    if (tier >= 3) gun(r < 0.4 ? 'rocket' : r < 0.7 ? 'sniper' : 'rifle');
+    else if (tier === 2) { if (r < 0.6) gun(r < 0.25 ? 'rifle' : r < 0.45 ? 'shotgun' : 'smg'); else this.spawnLoot(r < 0.8 ? 'armor' : 'medkit', x, y, 50); }
+    else { if (r < 0.4) gun(r < 0.2 ? 'smg' : 'shotgun'); else if (r < 0.65) this.spawnLoot('cash', x, y, 100 + Math.floor(this.rng() * 250)); else this.spawnLoot(r < 0.85 ? 'medkit' : 'armor', x, y, 35); }
   }
 
   // ---------- 조회 ----------
@@ -367,8 +367,9 @@ export class World {
     const f = this.factions[fi], d = STRUCTS[kind]; if (kind === 'hq') return '불가';
     const c = this.cost(f, d.crystal), m = this.cost(f, d.cash);
     if (f.crystal < c) return '크리스탈이 부족합니다'; if (f.cash < m) return '자금이 부족합니다';
-    if (!this.canBuild(fi, kind, cx, cy)) return '여기에는 지을 수 없습니다 (본부·보유 사업체 근처의 빈 땅)';
-    f.crystal -= c; f.cash -= m; const s = this.addStructure(kind, fi, Math.round(cx - d.w / 2), Math.round(cy - d.h / 2));
+    const x = Math.round(cx - d.w / 2), y = Math.round(cy - d.h / 2);
+    if (!this.canBuild(fi, kind, x + d.w / 2, y + d.h / 2)) return '여기에는 지을 수 없습니다 (본부·보유 사업체 근처의 빈 땅)';
+    f.crystal -= c; f.cash -= m; const s = this.addStructure(kind, fi, x, y);
     this.fx('build', cx, cy); this.pushOut(s); return '';
   }
   pushOut(s: Structure): void { // 새 건물 자리에 있던 유닛을 바깥으로
@@ -432,7 +433,7 @@ export class World {
     if (this.factions[fi].player) this.fx('order', x, y, 0, type);
   }
   giveWeapon(f: Faction, id: WeaponId, ammo?: number): void {
-    const d = WEAPONS[id], have = f.slots.find(s => s.id === id), total = ammo && ammo > 0 ? ammo : d.ammo;
+    const d = WEAPONS[id], have = f.slots.find(s => s.id === id), total = ammo == null ? d.ammo : ammo;
     if (have) {
       if (d.ammo > 0) { have.ammo += total; have.mag = Math.min(d.mag, Math.max(0, have.ammo)); }
       else have.mag = d.mag;
@@ -442,7 +443,7 @@ export class World {
     const slot: WeaponSlot = { id, mag: d.ammo > 0 ? Math.min(d.mag, Math.max(0, total)) : d.mag, ammo: total };
     if (f.slots.length < 3) { f.slots.push(slot); f.cur = f.slots.length - 1; return; }
     const at = f.cur === 0 ? (WEAPONS[f.slots[1].id].tier <= WEAPONS[f.slots[2].id].tier ? 1 : 2) : f.cur, old = f.slots[at], b = this.boss(f.id);
-    if (b) this.spawnLoot('weapon', b.x + 26, b.y + 10, old.ammo, old.id);
+    if (b && (old.ammo < 0 || old.ammo > 0)) this.spawnLoot('weapon', b.x + 26, b.y + 10, old.ammo, old.id);
     f.slots[at] = slot; f.cur = at;
   }
   // ---------- 사업체 내부 ----------
@@ -699,7 +700,7 @@ export class World {
           const r = this.rng(), w: WeaponId = r < 0.4 ? 'minigun' : r < 0.75 ? 'railgun' : 'rocket'; this.giveWeapon(f, w); f.armor = 100; f.cash += 800; f.medkits = Math.min(5, f.medkits + 1);
           if (this.rng() < 0.5) this.hireMercs(a.f, true);
           this.say(`${f.name} ▸ 보급 상자 획득: ${WEAPONS[w].name}`, f.color); this.fx('crate', l.x, l.y);
-        } else if (l.type === 'weapon') { if (!auto) return; const d = WEAPONS[l.weapon!]; if (f.slots.some(s => s.id === l.weapon) || f.slots.length < 3 || f.slots.slice(1).some(s => WEAPONS[s.id].tier < d.tier)) { if (f.slots.length >= 3) f.cur = f.slots.slice(1).reduce((m, s, i) => WEAPONS[s.id].tier < WEAPONS[f.slots[m].id].tier ? i + 1 : m, 1); this.giveWeapon(f, l.weapon!, l.amount); } else return; }
+        } else if (l.type === 'weapon') { if (!auto) return; const d = WEAPONS[l.weapon!], owned = f.slots.some(s => s.id === l.weapon); if (owned || f.slots.length < 3 || f.slots.slice(1).some(s => WEAPONS[s.id].tier < d.tier)) { if (!owned && f.slots.length >= 3) f.cur = f.slots.slice(1).reduce((m, s, i) => WEAPONS[s.id].tier < WEAPONS[f.slots[m].id].tier ? i + 1 : m, 1); this.giveWeapon(f, l.weapon!, l.amount); } else return; }
         l.alive = false; this.fx('pickup', l.x, l.y);
       });
     }

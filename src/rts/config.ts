@@ -2,7 +2,7 @@
 
 /** 시뮬레이션은 초당 20틱. 속도·쿨다운은 모두 이 틱 기준입니다. */
 export const TICK = 20;
-export const MAP_SIZE = 96;
+export const MAP_SIZE = 160;
 export const SUPPLY_MAX = 100;
 export const START_MINERALS = 400;
 export const START_WORKERS = 5;

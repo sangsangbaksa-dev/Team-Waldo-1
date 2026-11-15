@@ -117,7 +117,7 @@ function renderMenu(): void {
         <h1>${['', '한', '두', '세', '네', '다섯'][ENTRIES.length] ?? ENTRIES.length} 편의 3D 게임.</h1>
         <p>설치 없이 이 페이지에서 바로 시작합니다. 1대1 대전은 로그인하면 모든 게임에서 할 수 있습니다.</p>
       </section>
-      <ul class="tiles" aria-label="게임 목록">${ENTRIES.map(tile).join('')}</ul>
+      <ul class="tiles" aria-label="게임 목록">${ENTRIES.map((e, i) => tile(e, i)).join('')}</ul>
       <p class="home-notice" id="home-notice" role="status" aria-live="polite"></p>
       <footer class="home-foot">
         <span>WebGL을 지원하는 최신 브라우저에서 가장 잘 동작합니다.</span>

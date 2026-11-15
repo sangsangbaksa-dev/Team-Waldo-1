@@ -1,5 +1,5 @@
 // LAST CITY — 라이벌 조직 AI: 경제 확장, 병력 생산, 사업 인수, 자기장 대응
-import { BIZ, DIFFICULTY, RESEARCH, STRUCTS, UNITS, type ResearchId, type StructKind, type UnitId } from './defs';
+import { BIZ, DIFFICULTY, RESEARCH, STRUCTS, type ResearchId, type StructKind, type UnitId } from './defs';
 import type { Faction, World } from './world';
 
 export interface AiState { goal: string; tx: number; ty: number; biz: number; t: number; attackT: number; stuckT: number }
@@ -56,7 +56,6 @@ export function thinkFaction(w: World, f: Faction): void {
       for (const s of w.structures) if (s.alive && s.kind === 'hq' && s.f !== f.id && army.length >= diff.attackArmy + 3) { const sc = dist(s.x, s.y) * 0.85; if (sc < best) { best = sc; bx = s.x + 60; by = s.y + 150; found = true; } }
       for (const o of w.factions) if (o.alive && o.id !== f.id) { const ob = w.boss(o.id); if (!ob) continue; const d = dist(ob.x, ob.y); if (d < 1100 || final) { const sc = d * (final ? 0.5 : 0.8); if (sc < best) { best = sc; bx = ob.x; by = ob.y; found = true; } } }
       if (found && (best < 2600 || final)) { goal = 'attack'; tx = bx; ty = by; if (ai.goal !== 'attack') ai.stuckT = t; if (t - ai.stuckT > 110 && !final) { ai.attackT = t + 140 + w.rng() * 120; goal = 'idle'; } }
-      if (!final && army.length < 3) { ai.attackT = t + 130; goal = 'idle'; }
     }
     if (goal === 'idle') {
       let best = 1900, target: { x: number; y: number } | null = null;
@@ -67,5 +66,4 @@ export function thinkFaction(w: World, f: Faction): void {
   }
   ai.goal = goal; ai.tx = tx; ai.ty = ty; b.order = { type, x: tx, y: ty };
   if (f.skillCd <= 0 && hostileNear) { if (f.klass !== 'tycoon' || f.cash > 600) w.useSkill(f.id); }
-  void UNITS;
 }

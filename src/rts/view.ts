@@ -14,9 +14,9 @@ const US: Record<string, number> = { worker: 1.4, marine: 1.45, rocket: 1.45, ta
 const seeded = (seed: number): (() => number) => { let s = seed >>> 0; return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }; };
 
 export class RtsView {
-  readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera = new THREE.PerspectiveCamera(36, 1, 0.5, 700);
+  readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera = new THREE.PerspectiveCamera(36, 1, 0.5, 1000);
   /** 카메라가 바라보는 지점(맵 좌표)과 거리. */
-  cam = { x: 48, y: 48, dist: 58 }; readonly yaw: number; private pitch = 0.95;
+  cam = { x: 80, y: 80, dist: 72 }; readonly yaw: number; private pitch = 0.95;
   private units = new Map<number, UVis>(); private builds = new Map<number, BVis>(); private nodes = new Map<number, NVis>();
   private fx: Fx[] = []; private sun = new THREE.DirectionalLight(0xfff0d6, 2.1); private shadows: boolean;
   private ringGeo = new THREE.RingGeometry(0.9, 1.0, 28); private ghost: { kind: BuildKind; obj: THREE.Group; plane: THREE.Mesh } | null = null; private flag: THREE.Group;
@@ -30,14 +30,14 @@ export class RtsView {
     this.shadows = quality !== 'low'; this.renderer.shadowMap.enabled = this.shadows; this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.05;
     this.yaw = viewer === 0 ? 0 : Math.PI; this.fxBudget = quality === 'high' ? 160 : quality === 'standard' ? 90 : 40;
-    const sky = new THREE.Color(0xc7b9a2); this.scene.background = sky; this.scene.fog = new THREE.Fog(sky, 130, 320);
+    const sky = new THREE.Color(0xc7b9a2); this.scene.background = sky; this.scene.fog = new THREE.Fog(sky, 200, 520);
     this.scene.add(new THREE.HemisphereLight(0xdbe8ff, 0x5a4a38, 1.15));
-    this.sun.castShadow = this.shadows; const sc = this.sun.shadow.camera; sc.left = -52; sc.right = 52; sc.top = 52; sc.bottom = -52; sc.near = 1; sc.far = 200;
+    this.sun.castShadow = this.shadows; const sc = this.sun.shadow.camera; sc.left = -88; sc.right = 88; sc.top = 88; sc.bottom = -88; sc.near = 1; sc.far = 320;
     this.sun.shadow.mapSize.set(quality === 'high' ? 2048 : 1024, quality === 'high' ? 2048 : 1024); this.sun.shadow.bias = -0.0006; this.sun.shadow.normalBias = 0.04;
     this.scene.add(this.sun, this.sun.target);
     this.buildTerrain(); this.flag = this.makeFlag(); this.flag.visible = false; this.scene.add(this.flag);
     const start = sim.map.starts[viewer]; this.cam.x = start.x + 2; this.cam.y = start.y + 2;
-    if (window.innerWidth < 900 || matchMedia('(pointer: coarse)').matches) this.cam.dist = 40; // 작은 화면에서는 가깝게
+    if (window.innerWidth < 900 || matchMedia('(pointer: coarse)').matches) this.cam.dist = 52; // 작은 화면에서는 가깝게
     this.resize(canvas.clientWidth || 800, canvas.clientHeight || 600);
   }
 
@@ -104,7 +104,7 @@ export class RtsView {
   pan(dx: number, dy: number): void {
     const s = this.yaw === 0 ? 1 : -1; this.cam.x += dx * s; this.cam.y += dy * s; this.clampCam();
   }
-  zoom(f: number): void { this.cam.dist = Math.min(92, Math.max(26, this.cam.dist * f)); }
+  zoom(f: number): void { this.cam.dist = Math.min(120, Math.max(28, this.cam.dist * f)); }
   lookAt(x: number, y: number): void { this.cam.x = x; this.cam.y = y; this.clampCam(); }
   private clampCam(): void { const n = this.sim.map.size; this.cam.x = Math.min(n - 6, Math.max(6, this.cam.x)); this.cam.y = Math.min(n - 4, Math.max(8, this.cam.y)); }
   private placeCamera(): void {

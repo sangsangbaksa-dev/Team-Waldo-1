@@ -1,9 +1,9 @@
-// ZERO ZONE — 배틀로열 총게임 화면: 출격 설정, 조작(키보드·마우스·터치), HUD, 솔로(AI 19명)와 1대1 온라인 대전의 진행.
+// ZERO ZONE — 배틀로열 총게임 화면: 출격 설정, 조작(키보드·마우스·터치), HUD, 솔로(AI 99명)와 1대1 온라인 대전의 진행.
 import './shooter.css';
 import { readPreferences } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import type { PvpSession } from '../net/lobby';
-import { BOTS, DIFFICULTIES, PLAYER, WEAPONS, type Difficulty } from './config';
+import { BOTS, BR_FILL, DIFFICULTIES, PLAYER, WEAPONS, type Difficulty } from './config';
 import { Match, type MatchEvent, type Player } from './sim';
 import { ShooterView } from './view';
 import { loadShooterAssets, type ShooterAssets } from './assets';
@@ -26,7 +26,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     <canvas class="sz-canvas"></canvas>
     <div class="sz-hud" hidden>
       <div class="sz-vig" id="sz-vig"></div><div class="sz-zonefx" id="sz-zonefx"></div><div class="sz-scope" id="sz-scope"></div>
-      <div class="sz-tl"><div class="sz-stat"><b id="sz-alive">20</b><span>생존</span></div><div class="sz-stat"><b id="sz-kills">0</b><span>처치</span></div></div>
+      <div class="sz-tl"><div class="sz-stat"><b id="sz-alive">${BR_FILL}</b><span>생존</span></div><div class="sz-stat"><b id="sz-kills">0</b><span>처치</span></div></div>
       <div class="sz-tc" id="sz-zone"><b id="sz-ztime">0:00</b><span id="sz-zlabel">자기장</span></div>
       <div class="sz-tr"><canvas id="sz-map" width="300" height="300"></canvas><ul class="sz-feed" id="sz-feed"></ul></div>
       <div class="sz-cross" id="sz-cross"><i></i><i></i><i></i><i></i></div><div class="sz-hitmark" id="sz-hitmark"><i></i><i></i><i></i><i></i></div>
@@ -72,7 +72,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       <div class="sz-setup-inner">
         <header><span class="sz-eyebrow">ZERO ZONE</span><h2>출격 설정</h2><p>줄어드는 자기장 안에서 마지막까지 살아남으세요. 총을 줍고, 엄폐하고, 쏩니다.</p></header>
         <section><h3>모드</h3><div class="sz-seg two">
-          <button type="button" class="sz-opt ${pickMode === 'solo' ? 'on' : ''}" data-mode="solo" aria-pressed="${pickMode === 'solo'}"><b>솔로 배틀로열</b><em>나 + AI 19명 · 마지막 1명이 승리</em></button>
+          <button type="button" class="sz-opt ${pickMode === 'solo' ? 'on' : ''}" data-mode="solo" aria-pressed="${pickMode === 'solo'}"><b>솔로 배틀로열</b><em>나 + AI ${BR_FILL - 1}명 · 마지막 1명이 승리</em></button>
           <button type="button" class="sz-opt ${pickMode === 'pvp' ? 'on' : ''}" data-mode="pvp" aria-pressed="${pickMode === 'pvp'}"><b>1대1 온라인 대전</b><em>2인 PvP · 무작위 매칭 또는 방 코드</em></button></div></section>
         <section class="${pickMode === 'pvp' ? 'dim' : ''}"><h3>AI 난이도</h3><div class="sz-seg four">${DIFFICULTIES.map(d => `<button type="button" class="sz-opt ${d === level ? 'on' : ''}" data-level="${d}" aria-pressed="${d === level}" ${pickMode === 'pvp' ? 'disabled' : ''}><b>${BOTS[d].label}</b></button>`).join('')}</div>
           <p class="sz-note">${pickMode === 'pvp' ? '온라인 대전은 사람끼리 겨루므로 AI가 나오지 않습니다.' : `${b.blurb} (반응 ${b.react.toFixed(2)}초 · 시야 ${b.sight}m)`}</p></section>

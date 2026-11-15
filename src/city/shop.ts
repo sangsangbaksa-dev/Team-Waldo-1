@@ -60,7 +60,7 @@ export function purchase(w: World, fi: number, biz: Business, id: string): ShopR
   const fail = (msg: string): ShopResult => ({ ok: false, msg }), done = (msg: string): ShopResult => ({ ok: true, msg });
   const price = itemPrice(w, item);
   if (id.startsWith('sell:')) {
-    const n = id === 'sell:all' ? Math.floor(f.crystal) : 50; const e = w.market(fi, true, n); return e ? fail(e) : done(`크리스탈 ${n}개 환전`);
+    const have = Math.floor(f.crystal), n = id === 'sell:all' ? have : Math.min(50, have); const e = w.market(fi, true, n); return e ? fail(e) : done(`크리스탈 ${n}개 환전`);
   }
   if (id.startsWith('crystal:')) { const n = Number(id.slice(8)), e = w.market(fi, false, n); return e ? fail(e) : done(`크리스탈 ${n}개 구매`); }
   if (id.startsWith('bet:')) {

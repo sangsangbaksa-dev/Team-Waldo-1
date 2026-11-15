@@ -82,10 +82,8 @@ export function demolishRefund(crystalCost: number, cashCost: number, rate = DEM
 export function demolishReject(
   s: { kind: StructKind; f: number; alive: boolean } | null | undefined,
   fi: number,
-  opts?: { duel?: unknown },
 ): string {
   if (!s || !s.alive) return '철거할 건물이 없습니다';
-  if (opts?.duel) return '결투에서는 철거할 수 없습니다';
   if (s.f !== fi) return '아군 건물만 철거할 수 있습니다';
   if (s.kind === 'hq') return '본부는 철거할 수 없습니다';
   return '';

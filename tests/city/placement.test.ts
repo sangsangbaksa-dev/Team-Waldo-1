@@ -75,12 +75,11 @@ describe('demolish rules', () => {
     expect(demolishRefund(100, 100, 0.5)).toEqual({ crystal: 50, cash: 50 });
   });
 
-  it('rejects HQ, enemy, missing, and duel targets', () => {
+  it('rejects HQ, enemy and missing targets', () => {
     expect(demolishReject(null, 0)).toBe('철거할 건물이 없습니다');
     expect(demolishReject({ kind: 'barracks', f: 0, alive: false }, 0)).toContain('없습니다');
     expect(demolishReject({ kind: 'hq', f: 0, alive: true }, 0)).toContain('본부');
     expect(demolishReject({ kind: 'barracks', f: 2, alive: true }, 0)).toContain('아군');
-    expect(demolishReject({ kind: 'barracks', f: 0, alive: true }, 0, { duel: { side: 0 } })).toContain('결투');
     expect(demolishReject({ kind: 'lab', f: 0, alive: true }, 0)).toBe('');
   });
 });

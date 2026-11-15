@@ -48,6 +48,20 @@ class Builder {
     for (const [x, w, height] of north) this.pair(x, y0 - WALL_T, w, WALL_T, height);
     for (const [y, h, height] of west) this.pair(x0 - WALL_T, y, WALL_T, h, height);
   }
+  /** 일꾼이 캘 크리스탈 무리: 본부 블록 안에서 건물과 겹치지 않는 자리를 골라 두 무리를 놓고, 상대 본부에는 점대칭으로 놓습니다. */
+  private crystals(base: { x: number; y: number }): void {
+    const m = this.m, bx = ROAD + Math.floor((base.x - ROAD) / PITCH) * PITCH, by = ROAD + Math.floor((base.y - ROAD) / PITCH) * PITCH;
+    const free = (x: number, y: number): boolean => m.solids.every(s => s.x - 30 > x || s.x + s.w + 30 < x || s.y - 30 > y || s.y + s.h + 30 < y);
+    let made = 0;
+    for (const [cx, cy] of [[70, 70], [370, 70], [70, 370], [370, 370], [220, 70], [70, 220], [370, 220], [220, 370]]) {
+      if (made >= 2) break;
+      const x = bx + cx, y = by + cy, d = Math.hypot(x - base.x, y - base.y);
+      const pts = Array.from({ length: 6 }, (_, k) => ({ x: x + Math.cos(k * 1.05) * 34 + (k % 2) * 8, y: y + Math.sin(k * 1.05) * 34 }));
+      if (d < 120 || d > 330 || !pts.every(p => free(p.x, p.y))) continue;
+      for (const p of pts) m.crystals.push({ x: p.x, y: p.y, amount: 1400 }, { x: SIZE - p.x, y: SIZE - p.y, amount: 1400 });
+      made++;
+    }
+  }
   /** blocks: 3×3 블록 종류(행 우선, 북서→남동). 나머지 블록은 void. */
   finish(types: BlockType[], bases: { x: number; y: number; face: 1 | -1 }[]): CityMap {
     const m = this.m;
@@ -56,6 +70,7 @@ class Builder {
       m.blocks.push({ i, j, x: ROAD + i * PITCH, y: ROAD + j * PITCH, type: inside ? types[(j - ARENA_LO) * 3 + (i - ARENA_LO)] : 'void' });
     }
     for (const b of bases) { const bi = Math.floor((b.x - ROAD) / PITCH), bj = Math.floor((b.y - ROAD) / PITCH); m.bases.push({ x: b.x, y: b.y, bx: ROAD + bi * PITCH, by: ROAD + bj * PITCH, face: b.face }); }
+    this.crystals(bases[0]);
     m.police = { x: SIZE / 2, y: SIZE / 2 };
     m.arena = { name: this.name, ...ARENA_BOUNDS };
     return m;

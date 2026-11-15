@@ -6,6 +6,7 @@ import type { BizKind } from './defs';
 import { DOOR_HALF, type InteriorLayout } from './interior';
 import { DECOR } from './interiordecor';
 import { addFolk, type FolkLook } from './interiorfolk';
+import { EXTRA } from './interiorextra';
 import { furnish } from './interiorfurn';
 import { Kit, rnd, type Quality } from './interiorkit';
 import type { Models } from './models';
@@ -75,7 +76,7 @@ export class Interior3D {
     this.scene.add(new THREE.AmbientLight(m.amb, m.ambI), this.camera);
     this.shell(m);
     const ctx = { kit, lay, models, stock: kit.stock(2600, 1400) };
-    furnish(ctx); DECOR[lay.kind](ctx, m.look); addFolk(kit, models, quality === 'high' ? lay.folk : lay.folk.slice(0, quality === 'standard' ? 8 : 4), m.look);
+    furnish(ctx); DECOR[lay.kind](ctx, m.look); EXTRA[lay.kind](ctx); addFolk(kit, models, quality === 'high' ? lay.folk : lay.folk.slice(0, quality === 'standard' ? 8 : 4), m.look);
   }
 
   /** 바닥·천장·벽·출입문(바깥 거리의 빛) */

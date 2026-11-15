@@ -32,7 +32,8 @@ describe('SPEED RUSH car physics', () => {
     while (t < 6) { stepCar(c, GAS, DT, track); t += DT; if (!t100 && kmh(c) >= 100) t100 = t; }
     expect(t100).toBeGreaterThan(1); expect(t100).toBeLessThan(3.5);
     const b = newCar(track, 0, 0); b.nitro = 1; let peak = 0;
-    for (let k = 0; k < 90 * 5; k++) { stepCar(b, { ...GAS, nitro: true }, DT, track); peak = Math.max(peak, kmh(b)); }
+    for (let k = 0; k < 90 * 5; k++) stepCar(b, GAS, DT, track); b.boostT = 0; b.nitro = 1; // 최고속 근처에서 니트로를 켭니다
+    for (let k = 0; k < 90 * 3; k++) { stepCar(b, { ...GAS, nitro: true }, DT, track); peak = Math.max(peak, kmh(b)); }
     expect(peak).toBeGreaterThan(PLAYER_PARAMS.top * 3.6); expect(b.nitro).toBeLessThan(1);
   });
   it('steers right when asked and loses less speed than a crash', () => {
@@ -63,6 +64,14 @@ describe('SPEED RUSH car physics', () => {
     expect(emptyAt).toBeGreaterThan(NITRO_SECONDS * 0.9);
     expect(emptyAt).toBeLessThan(NITRO_SECONDS * 1.15);
     expect(gaps).toBe(0);
+  });
+  it('does not turn a held nitro button into endless boost once the tank is empty', () => {
+    const c = newCar(track, 0, 0), flat = { ...track, pads: [] }; c.nitro = 1; let boostFrames = 0, total = 0;
+    for (let k = 0; k < 90 * 30; k++) { stepCar(c, { ...GAS, nitro: true }, DT, flat); if (k >= 90 * 6) { total++; if (c.boostT > 0) boostFrames++; } }
+    expect(boostFrames).toBe(0); expect(total).toBeGreaterThan(0);
+    // 버튼을 떼면 다시 천천히 차오릅니다.
+    for (let k = 0; k < 90 * 10; k++) stepCar(c, GAS, DT, flat);
+    expect(c.nitro).toBeGreaterThan(0.1);
   });
   it('separates cars by their body, not by a circle that is too wide and too short', () => {
     const a = newCar(track, 0, 0), b = newCar(track, 0, 0);

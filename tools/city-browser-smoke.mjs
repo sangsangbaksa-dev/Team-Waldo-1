@@ -28,7 +28,7 @@ try {
   assert.ok(ready, 'Last City Vite server did not start: ' + serverLog);
 
   browser = await chromium.launch({
-    headless: true,
+    headless: true, executablePath: process.env.CHROMIUM_PATH || undefined,
     args: ['--no-sandbox', '--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage'],
   });
   for (const size of sizes) {
@@ -43,7 +43,7 @@ try {
     try {
       await page.goto(origin, { waitUntil: 'domcontentloaded' });
       await page.locator('.tile').first().waitFor();
-      assert.equal(await page.locator('.tile').count(), 2, 'Main page must list exactly two games');
+      assert.equal(await page.locator('.tile').count(), 4, 'Main page must list exactly four games');
       await page.screenshot({ path: 'browser-artifacts/last-city-home-' + size.name + '.png', animations: 'disabled' });
       await page.locator('#start-race').click();
       await page.locator('.rc-root').waitFor({ state: 'visible' });

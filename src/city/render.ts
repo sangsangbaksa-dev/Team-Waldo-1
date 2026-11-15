@@ -1,5 +1,6 @@
 // LAST CITY — 캔버스 렌더러 (유사 3D 건물, 파티클, 자기장, 미니맵)
 import { ACTORS, BIZ, BLOCK, BLOCKS, CIV, FACTIONS, PITCH, POLICE, ROAD, SIZE, STRUCTS, WEAPONS, type StructKind } from './defs';
+import { HQ_BUILD_RANGE, structCenter } from './placement';
 import type { Actor, Fx, Vehicle, World } from './world';
 
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; color: string; kind: 0 | 1 | 2 | 3; text?: string }
@@ -72,7 +73,7 @@ export class Renderer {
     for (const c of w.crystals) if (c.amount > 0 && this.visible(c.x, c.y)) { const s = 8 + 8 * c.amount / c.max; ctx.fillStyle = '#39c6e8'; ctx.beginPath(); ctx.moveTo(c.x, c.y - s); ctx.lineTo(c.x + s * 0.7, c.y); ctx.lineTo(c.x, c.y + s * 0.8); ctx.lineTo(c.x - s * 0.7, c.y); ctx.fill(); ctx.fillStyle = '#b9f3ff'; ctx.beginPath(); ctx.moveTo(c.x, c.y - s); ctx.lineTo(c.x + s * 0.7, c.y); ctx.lineTo(c.x, c.y - s * 0.1); ctx.fill(); }
     this.pads(); this.lootLayer();
     // 건설 고스트
-    if (ghost) { const d = STRUCTS[ghost.kind]; ctx.fillStyle = ghost.ok ? 'rgba(90,255,160,0.35)' : 'rgba(255,80,80,0.35)'; ctx.strokeStyle = ghost.ok ? '#7dffb0' : '#ff6b6b'; ctx.lineWidth = 2; ctx.fillRect(ghost.x - d.w / 2, ghost.y - d.h / 2, d.w, d.h); ctx.strokeRect(ghost.x - d.w / 2, ghost.y - d.h / 2, d.w, d.h); const hq = w.hq(0); if (hq) { ctx.setLineDash([10, 10]); ctx.strokeStyle = 'rgba(125,255,176,0.4)'; ctx.beginPath(); ctx.arc(hq.x + 60, hq.y + 60, 330, 0, 6.29); ctx.stroke(); ctx.setLineDash([]); } }
+    if (ghost) { const d = STRUCTS[ghost.kind]; ctx.fillStyle = ghost.ok ? 'rgba(90,255,160,0.35)' : 'rgba(255,80,80,0.35)'; ctx.strokeStyle = ghost.ok ? '#7dffb0' : '#ff6b6b'; ctx.lineWidth = 2; ctx.fillRect(ghost.x - d.w / 2, ghost.y - d.h / 2, d.w, d.h); ctx.strokeRect(ghost.x - d.w / 2, ghost.y - d.h / 2, d.w, d.h); const hq = w.hq(0); if (hq) { ctx.setLineDash([10, 10]); ctx.strokeStyle = 'rgba(125,255,176,0.4)'; const hc = structCenter(hq); ctx.beginPath(); ctx.arc(hc.x, hc.y, HQ_BUILD_RANGE, 0, 6.29); ctx.stroke(); ctx.setLineDash([]); } }
     for (const r of this.rings) { r.life -= dt; const k = 1 - Math.max(0, r.life) / 0.5; ctx.strokeStyle = r.color; ctx.globalAlpha = Math.max(0, Math.min(1, r.life * 3)); ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(r.x, r.y, r.r + (r.max - r.r) * Math.min(1, k * 1.6), 0, 6.29); ctx.stroke(); }
     ctx.globalAlpha = 1; this.rings = this.rings.filter(r => r.life > 0);
     // 차량·캐릭터

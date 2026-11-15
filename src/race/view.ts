@@ -74,6 +74,7 @@ export class RaceView {
   private cars: CarVis[] = []; private ground!: THREE.Mesh; private pads: Array<{ tex: THREE.CanvasTexture }> = [];
   private sparks = new Particles(260, 0.9, THREE.AdditiveBlending); private smoke = new Particles(220, 2.0, THREE.NormalBlending, 0.4); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
   private camH = 0; private camInit = false; private fov = 64; private shake = 0; private punch = 0; private time = 0; private sun: THREE.DirectionalLight;
+  private chaseLift = 0; private viewH = 1; private startLamps: THREE.Mesh[] = [];
   private disposables: Array<{ dispose(): void }> = [];
 
   constructor(canvas: HTMLCanvasElement, private track: Track, carTemplates: Record<string, THREE.Object3D> | null, quality: 'high' | 'standard' | 'low', private theme: Theme) {
@@ -86,9 +87,11 @@ export class RaceView {
     const n = 130; this.streakPos = new Float32Array(n * 6); this.streakSeed = new Float32Array(n * 3);
     const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(this.streakPos, 3));
     this.streak = new THREE.LineSegments(sg, new THREE.LineBasicMaterial({ color: 0xcfe9ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })); this.streak.frustumCulled = false; this.scene.add(this.streak);
-    this.carTemplates = carTemplates;
+    this.carTemplates = carTemplates; this.viewH = window.innerHeight || 1;
   }
   private carTemplates: Record<string, THREE.Object3D> | null;
+  /** 터치 조작이 화면 아래를 가릴 때 차를 버튼 위로 올립니다. */
+  setChaseLift(on: boolean): void { this.chaseLift = on ? 1 : 0; }
 
   setRacers(racers: Racer[]): void {
     const flameGeo = new THREE.ConeGeometry(0.15, 1, 10, 1, true); flameGeo.rotateZ(Math.PI / 2); flameGeo.translate(-0.5, 0, 0);
@@ -201,6 +204,35 @@ export class RaceView {
     const i0 = 0, check = canvasTex(256, 32, g => { for (let x = 0; x < 16; x++) for (let y = 0; y < 2; y++) { g.fillStyle = (x + y) % 2 ? '#111' : '#fff'; g.fillRect(x * 16, y * 16, 16, 16); } });
     check.repeat.set(1, 1); const line = new THREE.Mesh(new THREE.PlaneGeometry(2.4, hw * 2).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: check, polygonOffset: true, polygonOffsetFactor: -3 }));
     line.rotation.order = 'YXZ'; line.rotation.y = -Math.atan2(t.tz[i0], t.tx[i0]); line.rotation.z = t.pitch[i0]; line.rotation.y += 0; line.position.set(t.x[i0], t.y[i0] + 0.08, t.z[i0]); line.rotateY(Math.PI / 2); this.scene.add(line); this.disposables.push(line.geometry, check);
+    const lampGeo = new THREE.SphereGeometry(0.42, 14, 10), rx0 = -t.tz[0], rz0 = t.tx[0];
+    for (let i = 0; i < 3; i++) {
+      const lat = (i - 1) * 2.4, mat = new THREE.MeshBasicMaterial({ color: 0x2a1016 });
+      const lamp = new THREE.Mesh(lampGeo, mat);
+      lamp.position.set(t.x[0] + rx0 * lat - t.tx[0] * 0.6, t.y[0] + 12.6, t.z[0] + rz0 * lat - t.tz[0] * 0.6);
+      this.scene.add(lamp); this.startLamps.push(lamp); this.disposables.push(mat);
+    }
+    this.disposables.push(lampGeo);
+    const chev = canvasTex(128, 96, g => {
+      g.fillStyle = '#16130c'; g.fillRect(0, 0, 128, 96); g.strokeStyle = '#ffe14a'; g.lineWidth = 14; g.lineJoin = 'round'; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(36, 16); g.lineTo(84, 48); g.lineTo(36, 80); g.moveTo(62, 16); g.lineTo(110, 48); g.lineTo(62, 80); g.stroke();
+    }, false);
+    const boards: Array<{ p: [number, number, number]; ry: number }> = [];
+    for (let i = 16; i < t.n - 16; i += 5) {
+      if (Math.abs(t.k[i]) < 0.009) continue;
+      const side = t.k[i] > 0 ? -1 : 1, off = side * (hw - 2.5);
+      boards.push({ p: [t.x[i] - t.tz[i] * off, t.y[i] + 0.72, t.z[i] + t.tx[i] * off], ry: Math.atan2(-t.tx[i], -t.tz[i]) });
+    }
+    if (boards.length) this.instanced(new THREE.PlaneGeometry(1.7, 1.15), new THREE.MeshBasicMaterial({ map: chev, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }), boards);
+    this.disposables.push(chev);
+  }
+
+  /** 출발 아치의 신호등. 3·2·1에 빨간 불이 하나씩 켜지고, 출발하면 잠깐 초록입니다. */
+  private updateStartLights(race: RaceState): void {
+    if (!this.startLamps.length) return;
+    const count = race.phase === 'countdown' ? Math.max(0, Math.ceil(-race.clock)) : 0;
+    const go = race.phase !== 'countdown' && race.clock >= 0 && race.clock < 1.15;
+    const reds = count > 0 ? 4 - count : 0;
+    this.startLamps.forEach((lamp, i) => { (lamp.material as THREE.MeshBasicMaterial).color.setHex(go ? 0x3dff8a : i < reds ? 0xff2942 : 0x2a1016); });
   }
 
   /** 도로에서 clear 미터 이상 떨어진 무작위 위치(x, z, 도로 고도)를 최대 count 개 찾습니다. */
@@ -333,7 +365,7 @@ export class RaceView {
     }
   }
 
-  resize(w: number, h: number): void { this.renderer.setSize(w, h, false); this.camera.aspect = w / Math.max(1, h); this.camera.updateProjectionMatrix(); }
+  resize(w: number, h: number): void { this.viewH = h; this.renderer.setSize(w, h, false); this.camera.aspect = w / Math.max(1, h); this.camera.updateProjectionMatrix(); }
   kick(power: number): void { this.shake = Math.min(1, this.shake + power); }
   punchFov(v: number): void { this.punch = Math.min(1.2, this.punch + v); }
   worldOf(r: Racer): THREE.Vector3 { return new THREE.Vector3(r.car.x, r.car.y, r.car.z); }
@@ -343,11 +375,11 @@ export class RaceView {
     for (const pad of this.pads) pad.tex.offset.x -= dt * 1.4;
     // 차량 배치
     for (const v of this.cars) {
-      const c = v.racer.car, pitchRoad = t.pitch[c.idx], accel = (c.vf - v.lastV) / Math.max(dt, 1e-4); v.lastV = c.vf;
+      const c = v.racer.car, sample = t.n > 0 ? ((c.idx % t.n) + t.n) % t.n : 0, pitchRoad = t.pitch[sample] || 0, accel = (c.vf - v.lastV) / Math.max(dt, 1e-4); v.lastV = c.vf;
       const roll = Math.max(-0.09, Math.min(0.09, -c.yawRate * c.vf * 0.0028)) + c.slip * -0.08, pitch = pitchRoad - Math.max(-0.04, Math.min(0.04, accel * 0.0012));
       v.group.position.set(c.x, c.y + 0.02, c.z); v.group.rotation.set(roll, -c.h, pitch, 'YXZ'); v.shadow.position.set(c.x, c.y + 0.05, c.z); v.shadow.rotation.y = -c.h;
-      const fl = boosting(c) ? 1 : 0, len = fl ? 1.0 + Math.sin(this.time * 90 + v.racer.id) * 0.25 + Math.min(0.9, speed / 90) : 0.001;
-      for (const f of v.flames) { f.scale.x += (len - f.scale.x) * Math.min(1, dt * 20); (f.material as THREE.MeshBasicMaterial).color.setHex(v.racer.player ? 0x6ec6ff : 0xffa14a); }
+      const fl = boosting(c), len = fl ? 1.0 + Math.sin(this.time * 90 + v.racer.id) * 0.25 + Math.min(0.9, speed / 90) : 0.001;
+      for (const f of v.flames) { f.scale.x += (len - f.scale.x) * Math.min(1, dt * 20); f.visible = fl || f.scale.x > 0.08; (f.material as THREE.MeshBasicMaterial).color.setHex(v.racer.player ? 0x6ec6ff : 0xffa14a); }
       if (fl && Math.random() < 0.9) this.sparks.emit(c.x - Math.cos(c.h) * 2.4, c.y + 0.5, c.z - Math.sin(c.h) * 2.4, -Math.cos(c.h) * 8 + rnd(-2, 2), rnd(0, 2), -Math.sin(c.h) * 8 + rnd(-2, 2), 0.35, 0.4, 0.8, 1);
       if (c.drifting || Math.abs(c.slip) > 0.3) for (const s of [-1, 1]) {
         const bx = c.x - Math.cos(c.h) * 1.4 - Math.sin(c.h) * 0.9 * s * -1, bz = c.z - Math.sin(c.h) * 1.4 + Math.cos(c.h) * 0.9 * s * -1;
@@ -361,19 +393,22 @@ export class RaceView {
     const hd = p.h; if (!this.camInit) { this.camH = hd; this.camInit = true; }
     this.camH += wrapAngle(hd - this.camH) * Math.min(1, dt * (p.drifting ? 3.2 : 7));
     this.punch = Math.max(0, this.punch - dt * 1.8); this.shake = Math.max(0, this.shake - dt * 2.4);
-    const dist = 7 + sf * 1.6 + (bst ? 0.9 : 0), height = 2.5 + sf * 0.3, cx = p.x - Math.cos(this.camH) * dist, cz = p.z - Math.sin(this.camH) * dist, cy = p.y + height;
+    const lift = this.chaseLift, dist = 7.4 + sf * 1.6 + (bst ? 0.9 : 0) + lift * 0.8, height = 2.55 + sf * 0.3 + lift * (this.viewH < 520 ? 1.55 : 1.05);
+    const ahead = 8.2 - lift * 1.5, cx = p.x - Math.cos(this.camH) * dist, cz = p.z - Math.sin(this.camH) * dist, cy = p.y + height;
     const sh = sf * sf * 0.035 + (bst ? 0.05 : 0) + this.shake * 0.5, tt = this.time;
     const k = 1 - Math.exp(-dt * (16 + sf * 10));
     if (this.camera.position.lengthSq() === 0) this.camera.position.set(cx, cy, cz);
     this.camera.position.x += (cx - this.camera.position.x) * k; this.camera.position.y += (cy - this.camera.position.y) * k; this.camera.position.z += (cz - this.camera.position.z) * k;
     this.camera.position.x += Math.sin(tt * 53) * sh; this.camera.position.y += Math.sin(tt * 61 + 1) * sh; this.camera.position.z += Math.sin(tt * 47 + 2) * sh;
-    this.camera.lookAt(p.x + Math.cos(this.camH) * 9, p.y + 1.2 + t.pitch[p.idx] * 8, p.z + Math.sin(this.camH) * 9);
+    const lookI = t.n > 0 ? ((p.idx % t.n) + t.n) % t.n : 0;
+    this.camera.lookAt(p.x + Math.cos(this.camH) * ahead, p.y + 1.15 + lift * 0.35 + (t.pitch[lookI] || 0) * 8, p.z + Math.sin(this.camH) * ahead);
     this.camera.rotateZ(-p.yawRate * 0.035 - p.slip * 0.1 + Math.sin(tt * 38) * sh * 0.25);
     const targetFov = 60 + sf * sf * 18 + (bst ? 10 : 0) + this.punch * 8; this.fov += (targetFov - this.fov) * Math.min(1, dt * 6); this.camera.fov = this.fov; this.camera.updateProjectionMatrix();
     // 지면·태양광이 카메라를 따라감
     this.ground.position.x = Math.round(this.camera.position.x / 60) * 60; this.ground.position.z = Math.round(this.camera.position.z / 60) * 60;
     this.scene.getObjectByName('sky')?.position.copy(this.camera.position);
     this.sun.target.position.set(p.x, p.y, p.z); this.sun.position.set(p.x - 40, p.y + 60, p.z - 90);
+    this.updateStartLights(race);
     this.updateStreaks(dt, p.vx, p.vz, speed, bst);
     this.renderer.render(this.scene, this.camera);
     return { speedFrac: sf };
@@ -401,8 +436,15 @@ export class RaceView {
   static intensity(race: RaceState): number { return Math.min(1.4, kmh(race.player.car) / 270 + (boosting(race.player.car) ? 0.25 : 0)); }
 
   dispose(): void {
-    this.scene.traverse(o => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); });
-    for (const d of this.disposables) d.dispose();
-    this.renderer.dispose(); this.renderer.forceContextLoss();
+    const seen = new Set<object>();
+    const once = (d: { dispose(): void } | null | undefined): void => { if (!d || seen.has(d)) return; seen.add(d); d.dispose(); };
+    this.scene.traverse(o => {
+      const m = o as THREE.Mesh;
+      if (m.geometry) once(m.geometry);
+      const mats = m.material == null ? [] : Array.isArray(m.material) ? m.material : [m.material];
+      for (const mat of mats) { once(mat); const maps = mat as THREE.MeshBasicMaterial; once(maps.map); if (maps.alphaMap) once(maps.alphaMap); }
+    });
+    for (const d of this.disposables) once(d);
+    this.renderer.dispose();
   }
 }

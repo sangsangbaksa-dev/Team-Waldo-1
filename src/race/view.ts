@@ -19,13 +19,14 @@ function canvasTex(w: number, h: number, draw: (g: CanvasRenderingContext2D) => 
 function ribbon(t: Track, latA: number, latB: number, yA: number, yB: number, color?: (i: number, side: 0 | 1) => [number, number, number], vScale = 1 / 40): THREE.BufferGeometry {
   const n = t.n, g = new THREE.BufferGeometry(), at = (i: number, lat: number, y: number): number[] => [t.x[i] - t.tz[i] * lat, t.y[i] + y, t.z[i] + t.tx[i] * lat];
   if (color) {
-    const pos = new Float32Array(n * 12), col = new Float32Array(n * 12), idx: number[] = [];
+    const pos = new Float32Array(n * 12), col = new Float32Array(n * 12), uv = new Float32Array(n * 8), idx: number[] = [];
     for (let k = 0; k < n; k++) {
       const j = (k + 1) % n, a = color(k, 0), b = color(k, 1);
       pos.set([...at(k, latA, yA), ...at(k, latB, yB), ...at(j, latA, yA), ...at(j, latB, yB)], k * 12); col.set([...a, ...b, ...a, ...b], k * 12);
+      const u0 = k * t.ds * vScale, u1 = (k + 1) * t.ds * vScale; uv.set([u0, 0, u0, 1, u1, 0, u1, 1], k * 8);
       const o = k * 4; idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2);
     }
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setIndex(idx); return g;
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setIndex(idx); return g;
   }
   const pos = new Float32Array((n + 1) * 6), uv = new Float32Array((n + 1) * 4), idx: number[] = [];
   for (let k = 0; k <= n; k++) {
@@ -84,8 +85,8 @@ export class RaceView {
     this.scene.add(new THREE.HemisphereLight(theme.light.sky, theme.light.ground, theme.light.hemi)); this.sun.position.set(-40, 60, 90); this.scene.add(this.sun, this.sun.target);
     this.scene.add(this.sparks.points, this.smoke.points);
     const n = 130; this.streakPos = new Float32Array(n * 6); this.streakSeed = new Float32Array(n * 3);
-    const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(this.streakPos, 3));
-    this.streak = new THREE.LineSegments(sg, new THREE.LineBasicMaterial({ color: 0xcfe9ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })); this.streak.frustumCulled = false; this.scene.add(this.streak);
+    const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(this.streakPos, 3)); { const sc = new Float32Array(n * 6); for (let i = 0; i < n; i++) sc.set([0.75, 0.88, 1, 0, 0, 0], i * 6); sg.setAttribute('color', new THREE.BufferAttribute(sc, 3)); }
+    this.streak = new THREE.LineSegments(sg, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })); this.streak.frustumCulled = false; this.scene.add(this.streak);
     this.carTemplates = carTemplates;
   }
   private carTemplates: Record<string, THREE.Object3D> | null;
@@ -123,7 +124,10 @@ export class RaceView {
         float fbm(vec2 p){ float a = 0.5, s = 0.0; for (int k = 0; k < 5; k++) { s += a * vnoise(p); p = p * 2.03 + 11.7; a *= 0.5; } return s; }
         void main(){ float h = clamp(vD.y, -0.2, 1.0);
           vec3 c = mix(hor, low, smoothstep(-0.05, 0.05, h)); c = mix(c, mid, smoothstep(0.02, 0.25, h)); c = mix(c, top, smoothstep(0.2, 0.75, h));
-          float s = dot(normalize(vD), sunDir); c += sunCol * smoothstep(0.9965, 0.9985, s) * 1.4 + sunCol * vec3(1.0,0.6,0.4) * pow(max(s,0.0), 28.0) * 0.45;
+          float s = dot(normalize(vD), sunDir); float disc = smoothstep(0.9968, 0.9979, s);
+          vec3 body = sunCol;
+          if (stars > 1.0) { vec3 d = normalize(vD); vec3 u = normalize(cross(sunDir, vec3(0.0,1.0,0.0))), v = cross(u, sunDir); vec2 m = vec2(dot(d, u), dot(d, v)) * 90.0; float cr = vnoise(m * 2.2 + 3.0) * 0.6 + vnoise(m * 5.0) * 0.4; body = mix(sunCol * 0.78, sunCol, smoothstep(0.35, 0.75, cr)); body *= 0.9 + 0.1 * smoothstep(0.0, 1.0, m.x * 0.5 + 0.5); }
+          c += body * disc * 1.15 + sunCol * (stars > 1.0 ? vec3(0.55,0.7,1.0) : vec3(1.0,0.6,0.4)) * (pow(max(s,0.0), 28.0) * 0.45 + pow(max(s,0.0), 220.0) * 0.5);
           vec2 q = floor(vD.xz / max(vD.y, 0.05) * 18.0); float st = step(0.9965, fract(sin(dot(q, vec2(12.9898,78.233))) * 43758.5453)); c += vec3(st) * smoothstep(0.35, 0.8, h) * stars;
           if (clouds > 0.0 && vD.y > 0.02) { vec2 q = vD.xz / (vD.y + 0.22) * 1.6; float n = fbm(q + vec2(3.0, 1.0)) * 0.75 + fbm(q * 2.6) * 0.35, cov = smoothstep(1.0 - clouds * 0.75, 1.1 - clouds * 0.2, n), lit = clamp(0.55 + 0.6 * fbm(q * 1.4 + 4.0) + 0.5 * max(dot(normalize(vD), sunDir), 0.0), 0.0, 1.3);
             vec3 cc = mix(low * 0.9 + 0.15, vec3(1.0), 0.55) * lit; cc = mix(cc, sunCol, 0.18 * pow(max(dot(normalize(vD), sunDir), 0.0), 3.0));
@@ -169,18 +173,24 @@ export class RaceView {
     const curbMat = new THREE.MeshBasicMaterial({ vertexColors: true });
     const curbL = new THREE.Mesh(ribbon(t, -hw - 1.5, -hw, 0.06, 0.06, i => curbCol(i)), curbMat), curbR = new THREE.Mesh(ribbon(t, hw, hw + 1.5, 0.06, 0.06, i => curbCol(i)), curbMat);
     const wallCol = (i: number, side: 0 | 1): [number, number, number] => { const band = Math.floor(i / 9) % 2, c = side === 0 ? th.wall.inner : band ? th.wall.b : th.wall.a, k = side === 0 ? 1 : 0.92 + 0.08 * ((i % 9) / 9); return [c[0] * k, c[1] * k, c[2] * k]; };
-    const wallMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
-    const wl = hw + 1.5;
-    const wallL = new THREE.Mesh(ribbon(t, -wl, -wl, 0, 1.15, wallCol), wallMat), wallR = new THREE.Mesh(ribbon(t, wl, wl, 0, 1.15, wallCol), wallMat);
+    // 방호벽 패널: 밑단은 어둡게, 윗단은 밝게, 일정 간격마다 이음매·볼트 자국을 넣어 밋밋한 띠로 보이지 않게 합니다.
+    const wallTex = canvasTex(128, 64, g => {
+      const gr = g.createLinearGradient(0, 64, 0, 0); gr.addColorStop(0, '#6f6f78'); gr.addColorStop(0.28, '#b9b9c0'); gr.addColorStop(0.86, '#ffffff'); gr.addColorStop(1, '#d4d4da'); g.fillStyle = gr; g.fillRect(0, 0, 128, 64);
+      g.fillStyle = 'rgba(0,0,0,.38)'; g.fillRect(0, 0, 3, 64); g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(3, 0, 2, 64);
+      g.fillStyle = 'rgba(0,0,0,.22)'; g.fillRect(0, 30, 128, 2); g.fillStyle = 'rgba(0,0,0,.4)'; for (const x of [12, 116]) for (const y of [14, 44]) g.fillRect(x, y, 4, 4);
+    });
+    const wallMat = new THREE.MeshBasicMaterial({ vertexColors: true, map: wallTex, side: THREE.DoubleSide });
+    const wl = hw + 1.5, capMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+    const wallL = new THREE.Mesh(ribbon(t, -wl, -wl, 0, 1.15, wallCol, 1 / 8), wallMat), wallR = new THREE.Mesh(ribbon(t, wl, wl, 0, 1.15, wallCol, 1 / 8), wallMat);
     const capCol = (i: number): [number, number, number] => { const c = th.wall.b; return [c[0] * 0.78, c[1] * 0.78, c[2] * 0.78 + 0.02 + (i % 2) * 0.0]; };
-    const capL = new THREE.Mesh(ribbon(t, -wl - 0.35, -wl + 0.05, 1.15, 1.15, capCol), wallMat), capR = new THREE.Mesh(ribbon(t, wl - 0.05, wl + 0.35, 1.15, 1.15, capCol), wallMat);
+    const capL = new THREE.Mesh(ribbon(t, -wl - 0.35, -wl + 0.05, 1.15, 1.15, capCol), capMat), capR = new THREE.Mesh(ribbon(t, wl - 0.05, wl + 0.35, 1.15, 1.15, capCol), capMat);
     const skirtMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(th.ground.base).multiplyScalar(0.7), side: THREE.DoubleSide });
     const skirt = (a: number, b: number): THREE.Mesh => { const g = ribbon(t, a, b, 0, 0); const p = g.attributes.position as THREE.BufferAttribute; for (let k = 1; k < p.count; k += 2) p.setY(k, -0.4); return new THREE.Mesh(g, skirtMat); };
     // 벽 바깥 갓길(자갈·풀·모래)
     const shMat = new THREE.MeshBasicMaterial({ color: th.shoulder, side: THREE.DoubleSide });
     const shL = new THREE.Mesh(ribbon(t, -wl - 8, -wl, 0.02, 0.02), shMat), shR = new THREE.Mesh(ribbon(t, wl, wl + 8, 0.02, 0.02), shMat);
     this.scene.add(curbL, curbR, wallL, wallR, capL, capR, shL, shR, skirt(-wl, -wl), skirt(wl, wl));
-    this.disposables.push(road.geometry, asphalt, curbL.geometry, curbR.geometry, curbMat, wallL.geometry, wallR.geometry, capL.geometry, capR.geometry, shL.geometry, shR.geometry, shMat, wallMat, skirtMat);
+    this.disposables.push(road.geometry, asphalt, curbL.geometry, curbR.geometry, curbMat, wallL.geometry, wallR.geometry, capL.geometry, capR.geometry, shL.geometry, shR.geometry, shMat, wallMat, wallTex, capMat, skirtMat);
     // 급커브 바깥쪽 타이어 벽
     const tires: Array<{ p: [number, number, number]; ry: number; color: number }> = [];
     for (let i = 0; i < t.n; i += 2) {
@@ -382,7 +392,7 @@ export class RaceView {
   /** 카메라 주변에 흩어진 선이 속도 방향으로 길게 늘어나며 스쳐 지나갑니다. */
   private updateStreaks(dt: number, vx: number, vz: number, speed: number, bst: boolean): void {
     const n = this.streakSeed.length / 3, cam = this.camera.position, mat = this.streak.material as THREE.LineBasicMaterial;
-    const target = Math.max(0, (speed - 30) / 55) * (bst ? 1 : 0.7); mat.opacity += (target * 0.7 - mat.opacity) * Math.min(1, dt * 6);
+    const target = Math.max(0, (speed - 30) / 55) * (bst ? 1 : 0.7); mat.opacity += (target * 0.5 - mat.opacity) * Math.min(1, dt * 6);
     const dx = speed > 1 ? vx / speed : 1, dz = speed > 1 ? vz / speed : 0, len = Math.min(26, 2 + speed * 0.22);
     for (let i = 0; i < n; i++) {
       let x = this.streakSeed[i * 3], y = this.streakSeed[i * 3 + 1], z = this.streakSeed[i * 3 + 2];
@@ -390,6 +400,7 @@ export class RaceView {
       if (ahead < -10 || Math.hypot(x - cam.x, z - cam.z) > 70 || (x === 0 && z === 0)) {
         const a = Math.random() * Math.PI * 2, rr = rnd(3.5, 22), fwd = rnd(20, 70);
         x = cam.x + dx * fwd + Math.cos(a) * rr * -dz + Math.sin(a) * rr * 0; z = cam.z + dz * fwd + Math.cos(a) * rr * dx; y = cam.y + Math.sin(a) * rr * 0.55 - 1.2;
+        if (y > cam.y + 2.5) y = cam.y - rnd(0.5, 3); // 하늘 쪽으로 번지는 선은 지저분해 보여 카메라 높이 근처까지만
         if (y < 0.4) y = 0.4 + Math.random(); this.streakSeed[i * 3] = x; this.streakSeed[i * 3 + 1] = y; this.streakSeed[i * 3 + 2] = z;
       }
       this.streakPos.set([x, y, z, x + dx * len, y, z + dz * len], i * 6);

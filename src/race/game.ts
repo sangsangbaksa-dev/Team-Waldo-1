@@ -91,7 +91,7 @@ export function openRace(onExit: () => void): void {
     race = createRace(track, setup.laps, records.bestLap[setup.map] ?? Infinity, setup);
     finishedShown = false; paused = false; acc = 0; lastPlace = 4; cache.clear(); setText('#rc-laps', String(setup.laps)); setText('#rc-of', '/4');
     startView(carTemplate); modal.className = 'rc-modal'; modal.innerHTML = ''; root.dataset.phase = 'countdown'; msg('', '');
-    msg('가속 ↑ · 조향 ← → · 드리프트 Space · 니트로 Shift', 'hint'); msgT = 4; last = performance.now();
+    if (touch) { msg('화면 버튼으로 조향 · 드리프트 · 니트로', 'hint'); msgT = 4; } // 데스크톱은 상단 키 안내가 이미 있어 중복 문구를 띄우지 않습니다. last = performance.now();
   }
   function restart(): void { begin(); }
   function showSetup(): void {

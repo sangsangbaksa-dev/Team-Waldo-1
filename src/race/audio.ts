@@ -2,6 +2,10 @@
 import { AudioEngine, burst, tone } from '../audio-core';
 
 const GEARS = [0, 20, 36, 51, 65, 79, 120];
+/** 속도(m/s)에 해당하는 기어. 오디오가 아직 켜지지 않아도 HUD 가 같은 단수를 씁니다. */
+export function gearFor(speedMs: number): number {
+  const v = Math.abs(speedMs); let g = 1; while (g < GEARS.length - 1 && v > GEARS[g]) g++; return g;
+}
 
 export class RaceAudio {
   private eng = new AudioEngine();
@@ -57,7 +61,7 @@ export class RaceAudio {
     const c = this.eng.ctx; if (!c || !this.motor || !this.wind || !this.skid || !this.boostG) return;
     const t = c.currentTime, v = this.done ? 0 : Math.abs(speed);
     const thr = this.done ? 0 : throttle, go = this.enabled && !this.done;
-    let g = 1; while (g < GEARS.length - 1 && v > GEARS[g]) g++;
+    const g = gearFor(v);
     if (g !== this.gear) { if (g > this.gear) this.lastShift = t; this.gear = g; }
     const lo = GEARS[g - 1], hi = GEARS[g], rpm = 0.18 + 0.82 * Math.min(1, Math.max(0, (v - lo) / (hi - lo))) - (t - this.lastShift < 0.12 ? 0.18 : 0);
     const f = 48 + rpm * 190 + (boost ? 24 : 0);

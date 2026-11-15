@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { RaceAudio } from '../../src/race/audio';
+import { RaceAudio, gearFor } from '../../src/race/audio';
 import { MASTER_GAIN } from '../../src/audio-core';
 import { installAudioMock, setHidden } from '../helpers/audio-mock';
 
@@ -18,6 +18,16 @@ describe('SPEED RUSH audio', () => {
     audio.dispose();
     mock.restore();
     setHidden(false);
+  });
+
+  it('computes gear from speed the same way the HUD does', () => {
+    expect(gearFor(0)).toBe(1);
+    expect(gearFor(20)).toBe(1);
+    expect(gearFor(20.01)).toBe(2);
+    expect(gearFor(70)).toBe(5);
+    expect(gearFor(79)).toBe(5);
+    expect(gearFor(80)).toBe(6);
+    expect(gearFor(-70)).toBe(gearFor(70));
   });
 
   it('ties engine pitch to speed and keeps master at 0.15', () => {

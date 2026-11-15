@@ -27,5 +27,12 @@
 - **먼저 5킬**을 채우면 승리. 5분이 지나면 킬이 많은 쪽이 이기고, 같으면 다음 킬이 승부를 가릅니다. 쓰러지면 3초 뒤 본부에서 부활합니다.
 - 동기화: 내 위치·체력·무기를 15Hz 로 보내고, 쏜 탄은 발사 이벤트로 보냅니다. **맞았는지는 맞는 사람의 쪽에서 판정**합니다(상대가 쏜 탄을 내 세계에서 날려 내 보스에게 닿으면 내 체력이 깎임). 상대 보스는 내 세계에서 체력이 깎이지 않고 받은 체력만 보여 줍니다. 전리품은 각자 따로 줍습니다.
 
+## FRONTLINE(실시간 전략) 대전 규칙
+- 같은 맵(180도 대칭)에서 사령부 하나와 일꾼 5로 시작합니다. 방을 만든 쪽(무작위 매칭이면 먼저 기다린 쪽)이 아래쪽 파란 진영(0번), 다른 쪽이 위쪽 붉은 진영(1번)이고, 화면은 각자 자기 기지가 아래로 오게 돌려서 보입니다. **상대의 모든 건물을 파괴하면 승리**, 항복·나가기는 기권 패배입니다.
+- **락스텝 동기화**: 유닛 위치를 보내지 않고 *명령만* 주고받습니다. 두 브라우저가 같은 결정적 시뮬레이션(`src/rts/sim.ts`, 초당 20틱)을 돌리고, 명령은 3틱(0.15초) 한 턴마다 묶어 2턴 뒤 실행으로 예약해 보냅니다. 상대의 그 턴 명령이 도착해야 시뮬레이션이 진행됩니다(늦으면 "상대를 기다리는 중"). 메시지에는 아직 확인받지 못한 턴이 같이 실려 유실에 강하고, 3초마다 상태 해시를 교환해 어긋나면 "동기화 오류"로 대전을 끝냅니다(기록하지 않음).
+- 이 방식이 성립하려면 시뮬레이션에서 `Math.random`·`sin`·`cos`·`Date` 를 쓰면 안 됩니다(+ - * / sqrt 만). `tests/rts/sim.test.ts` 의 결정성 테스트와 `tools/rts-browser-smoke.mjs`(두 탭의 해시 비교)가 이를 지킵니다.
+- 결과 보고는 SPEED RUSH 와 같은 방식(`pvp_report_result` → 상대 보고 또는 15초 뒤 확정)입니다. 서버는 40분 넘게 `playing` 인 매치를 무효 처리하므로 그보다 긴 대전은 기록되지 않습니다.
+- 게임 종류를 늘리려면 `supabase/migrations/20261115000000_pvp_more_games.sql` 처럼 체크 제약과 `pvp_quick_match`/`pvp_create_room` 의 허용 목록을 넓히는 마이그레이션이 먼저 적용되어 있어야 합니다(`bad_game` 오류가 납니다).
+
 ## 로컬에서 두 탭으로 확인
-`npm run dev` 후 `http://localhost:5173/?pvp=local` 을 탭 두 개로 열면 네트워크 없이(localStorage·BroadcastChannel) 같은 흐름을 볼 수 있습니다. 이 백엔드는 개발 모드에만 포함됩니다. `node tools/pvp-browser-smoke.mjs`(SPEED RUSH)와 `node tools/duel-browser-smoke.mjs`(LAST CITY)가 이 방식으로 가입→매칭→대전→결과를 자동 확인합니다. 헤드리스 SwiftShader 는 화면이 느려 시뮬레이션이 슬로모션이 되므로 스크립트가 개발용 훅(`__race.skip`, `__city.world`)을 씁니다.
+`npm run dev` 후 `http://localhost:5173/?pvp=local` 을 탭 두 개로 열면 네트워크 없이(localStorage·BroadcastChannel) 같은 흐름을 볼 수 있습니다. 이 백엔드는 개발 모드에만 포함됩니다. `node tools/pvp-browser-smoke.mjs`(SPEED RUSH), `node tools/duel-browser-smoke.mjs`(LAST CITY), `node tools/rts-browser-smoke.mjs`(FRONTLINE)가 이 방식으로 가입→매칭→대전→결과를 자동 확인합니다. 헤드리스 SwiftShader 는 화면이 느려 시뮬레이션이 슬로모션이 되므로 스크립트가 개발용 훅(`__race.skip`, `__city.world`)을 씁니다.

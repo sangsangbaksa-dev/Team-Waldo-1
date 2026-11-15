@@ -55,6 +55,7 @@ export const INTERIORS: Record<BizKind, InteriorLayout> = {
     S('bar', 312, 178, 326, 246, 22, { w: 28 }),
   ], [
     stand('civ4', 58, 38, SO, 'work', 'clerk'), sit('civ2', 'stool', 297, 190, E, 'eat'), sit('civ6', 'stool', 297, 234, E, 'talk'), stand('civ5', 206, 44, N, 'browse'),
+    stand('civ3', 190, 129, N, 'browse'), stand('civ7', 112, 232, N, 'talk'), stand('civ8', 130, 232, E, 'talk'), stand('civ', 250, 60, N, 'browse'),
   ]),
   // 나이트클럽: 안쪽 DJ 부스, 오른쪽 바(스툴), 왼쪽 소파와 낮은 탁자, 가운데 댄스 플로어
   club: base('club', { x: 258, y: 176 }, [
@@ -66,6 +67,7 @@ export const INTERIORS: Record<BizKind, InteriorLayout> = {
     sit('civ3', 'stool', 263, 86, E, 'talk'), sit('civ6', 'stool', 263, 108, E, 'talk'), sit('civ8', 'stool', 263, 130, E, 'idle'),
     sit('civ', 'sofa', 26, 100, E, 'talk'), sit('civ7', 'sofa', 26, 126, E, 'talk'), sit('civ5', 'sofa', 26, 188, E, 'idle'), sit('civ2', 'sofa', 26, 214, E, 'talk'),
     stand('civ4', 150, 126, 0.6, 'dance'), stand('civ8', 182, 150, -2.2, 'dance'), stand('civ6', 206, 118, 2.4, 'dance'),
+    stand('civ2', 130, 160, 1.2, 'dance'), stand('civ5', 196, 98, -0.4, 'dance'), stand('civ7', 164, 176, 3, 'dance'), stand('guard', 112, 236, E, 'idle', 'staff'),
   ]),
   // 정제 공장: 관제 데스크(의자), 정제 탱크, 압축기, 자재 상자, 휴게 벤치
   plant: base('plant', { x: 62, y: 98 }, [
@@ -74,6 +76,7 @@ export const INTERIORS: Record<BizKind, InteriorLayout> = {
     S('crate', 262, 170, 312, 226, 24), S('crate', 18, 174, 56, 214, 20), S('bench', 98, 196, 150, 208, 9.5),
   ], [
     sit('civ', 'chair', 58, 36, SO, 'work', 'clerk'), sit('civ5', 'bench', 114, 202, SO, 'talk'), sit('civ7', 'bench', 134, 202, SO, 'eat'), stand('civ3', 250, 100, SO, 'work', 'staff'),
+    stand('civ6', 120, 150, N, 'talk'), stand('civ8', 138, 150, WE, 'talk', 'staff'), stand('civ4', 200, 122, N, 'work', 'staff'),
   ]),
   // 카지노: 안쪽 환전 창구, 슬롯머신 줄(스툴), 룰렛·포커 테이블(딜러와 손님)
   casino: base('casino', { x: 166, y: 86 }, [
@@ -84,6 +87,7 @@ export const INTERIORS: Record<BizKind, InteriorLayout> = {
     stand('civ8', 166, 22, SO, 'work', 'clerk'), stand('civ3', 117, 138, SO, 'work', 'staff'), stand('civ4', 215, 138, SO, 'work', 'staff'),
     sit('civ', 'stool', 100, 210, N, 'idle'), sit('civ5', 'stool', 134, 210, N, 'talk'), sit('civ7', 'stool', 198, 210, N, 'talk'), sit('civ2', 'stool', 232, 210, N, 'idle'),
     sit('civ6', 'stool', 37, 118, WE, 'work'), sit('civ2', 'stool', 37, 160, WE, 'work'), sit('civ3', 'stool', 293, 97, E, 'work'), sit('civ', 'stool', 293, 139, E, 'work'), sit('civ7', 'stool', 293, 181, E, 'work'),
+    stand('civ5', 166, 120, N, 'browse'),  stand('civ2', 100, 232, N, 'talk'), stand('civ4', 60, 232, E, 'browse'),
   ]),
   // 중앙은행: 긴 창구(좌석 창구원 셋), 대리석 기둥, 대기 벤치, 경비원
   bank: base('bank', { x: 165, y: 112 }, [
@@ -94,6 +98,7 @@ export const INTERIORS: Record<BizKind, InteriorLayout> = {
     stand('civ', 75, 106, N, 'idle'), stand('civ5', 255, 106, N, 'idle'),
     sit('civ2', 'bench', 108, 175, N, 'read'), sit('civ4', 'bench', 134, 175, N, 'idle'), sit('civ7', 'bench', 196, 175, N, 'talk'), sit('civ', 'bench', 220, 175, N, 'talk'),
     stand('guard', 304, 236, WE, 'idle', 'staff'),
+    stand('civ6', 165, 128, N, 'idle'), stand('civ3', 165, 148, N, 'idle'), stand('civ8', 30, 130, E, 'read'),
   ]),
   // 무기상: 긴 유리 진열 카운터, 탄약 선반, 대기 소파, 탄약 상자
   gunshop: base('gunshop', { x: 165, y: 128 }, [
@@ -102,6 +107,7 @@ export const INTERIORS: Record<BizKind, InteriorLayout> = {
   ], [
     stand('civ4', 165, 50, SO, 'work', 'clerk'), stand('civ6', 110, 112, N, 'browse'), stand('civ', 226, 112, N, 'browse'),
     sit('civ5', 'sofa', 25, 180, E, 'read'), sit('civ2', 'sofa', 25, 208, E, 'talk'),
+    stand('civ3', 262, 142, WE, 'talk'), stand('civ8', 238, 142, E, 'talk'), stand('civ7', 215, 188, N, 'browse'),
   ]),
 };
 

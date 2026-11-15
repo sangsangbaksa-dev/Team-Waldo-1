@@ -10,7 +10,7 @@ import { STEPS, TUT_KEY, advance, newCounters, newTutState, type Counters, type 
 import { CityAudio } from './audio';
 import { reload, switchWeapon } from './actors';
 import { ACTORS, BLOCKS, PITCH, ROAD } from './defs';
-import { mapPointerToWorld } from './uiMath';
+import { applyLook, doorFacingYaw, isLookSpike, mapPointerToWorld } from './uiMath';
 import { DEMOLISH_REFUND_RATE, snapBuildCoord } from './placement';
 import { SHOP, canBuy, itemPrice } from './shop';
 import { missionLog, missionSummary } from './missions';
@@ -92,7 +92,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     audio.unlock(); if (dl) banner(`${dl.s.opponent.nickname} 님과 1대1 · ${arenaInfo(arenaOf(dl.seed)).name} · ${TARGET_KILLS}킬 선취 · 제한 ${Math.round(TIME_LIMIT / 60)}분`); else if (!tutorial) banner('작전 지령 01 · 첫 사업체를 확보하세요 · J 전체 임무');
     renderCmd(); last = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(frame);
   }
-  let everLocked = false, lockErrors = 0;
+  let everLocked = false, lockErrors = 0, lookMuteUntil = 0;
   function onLockErr(): void { if (!everLocked && ++lockErrors >= 2) lockFail = true; }
   function lock(): void { if (touch || view === 'top' || lockFail || locked) return; try { const r = canvas3.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(onLockErr); } catch { onLockErr(); } }
   function unlock(): void { if (document.pointerLockElement) { expectUnlock = true; document.exitPointerLock(); } }
@@ -100,9 +100,18 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     view = v; canvas.hidden = v !== 'top'; canvas3.hidden = v === 'top'; cross.hidden = v === 'top'; layer.hidden = v === 'top'; if (R3 && v !== 'top') R3.mode = v; if (v === 'top') unlock(); else { R3?.resize(); }
     R?.resize(); q('#c-view').textContent = v === 'fp' ? '1인칭' : v === 'tp' ? '3인칭' : '전술뷰';
   }
-  const onLock = (): void => { locked = document.pointerLockElement === canvas3; if (locked) { expectUnlock = false; everLocked = true; return; } const was = expectUnlock; expectUnlock = false; if (!was && view !== 'top' && world && !world.over && !paused && panel.hidden && bigmap.hidden && q('#c-missions').hidden && world.factions[0].pending === 0) pause(); };
+  const onLock = (): void => { locked = document.pointerLockElement === canvas3; if (locked) { expectUnlock = false; everLocked = true; lookMuteUntil = performance.now() + 220; return; } const was = expectUnlock; expectUnlock = false; if (!was && view !== 'top' && world && !world.over && !paused && panel.hidden && bigmap.hidden && q('#c-missions').hidden && world.factions[0].pending === 0) pause(); };
 
-  const onMouseMove = (e: MouseEvent): void => { if (!R3 || view === 'top' || paused) return; if (locked || (lockFail && mouse.down)) { R3.yaw += e.movementX * 0.0024; R3.pitch = Math.max(-1.2, Math.min(1.0, R3.pitch - e.movementY * 0.0024)); lastLook = performance.now(); } };
+  const onMouseMove = (e: MouseEvent): void => {
+    if (!R3 || view === 'top' || paused) return;
+    if (!(locked || (lockFail && mouse.down))) return;
+    // A placement click must not also rotate the camera, and pointer-lock
+    // acquisition can inject a huge movementY that buries the view in the ground.
+    if (ghost && (e.buttons & 1)) return;
+    if (performance.now() < lookMuteUntil || isLookSpike(e.movementX, e.movementY)) return;
+    const look = applyLook(R3.yaw, R3.pitch, e.movementX, e.movementY);
+    R3.yaw = look.yaw; R3.pitch = look.pitch; lastLook = performance.now();
+  };
   document.addEventListener('pointerlockchange', onLock); document.addEventListener('pointerlockerror', onLockErr); document.addEventListener('mousemove', onMouseMove);
   function exit(): void {
     if (closed) return; closed = true; cancelAnimationFrame(raf); leaveDuel(); audio.dispose(); unlock(); R3?.dispose(); root.remove();
@@ -173,8 +182,9 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   function interact(): void {
     const w = world!;
     if (w.inside) {
+      const z = w.insideBiz(), out = z && w.nearInsideDoor() ? w.doorOut(z) : null;
       const r = w.interactInside(0);
-      if (r === 'exit') leaveBuilding(); else if (r === 'shop') { shopOpen = true; panel.hidden = false; renderPanel(); unlock(); audio.play('click'); } else toast('카운터 앞이나 출입문 앞에서 E 를 누르세요', false);
+      if (r === 'exit') leaveBuilding(out ?? undefined); else if (r === 'shop') { shopOpen = true; panel.hidden = false; renderPanel(); unlock(); audio.play('click'); } else toast('카운터 앞이나 출입문 앞에서 E 를 누르세요', false);
       return;
     }
     const e = w.interact(0);
@@ -188,8 +198,10 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     R3.yaw = w.inside!.ang; R3.pitch = 0; panel.hidden = true; shopOpen = false; touchFire = false; mouse.down = false; audio.play('door'); banner(`${BIZ[z.kind].name} 내부`);
     if (tut) tut.c.entered = true;
   }
-  function leaveBuilding(): void {
-    shopOpen = false; panel.hidden = true; if (view !== preView) setView(preView); if (R3) { R3.yaw = Math.PI / 2; R3.pitch = -0.05; } audio.play('door'); lock();
+  function leaveBuilding(out?: { x: number; y: number }): void {
+    shopOpen = false; panel.hidden = true; if (view !== preView) setView(preView);
+    if (R3) { if (out) R3.yaw = doorFacingYaw(out.x, out.y); R3.pitch = -0.05; }
+    audio.play('door'); lock();
   }
   function pause(): void {
     if (!world || world.over || duel) return; paused = true; keys.clear(); mouse.down = false; unlock();
@@ -409,7 +421,12 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       if (panel.hidden && bigmap.hidden && q('#c-missions').hidden && !focusedControl) { e.preventDefault(); act('panel'); }
       return;
     }
-    if (focusedControl || e.repeat) return;
+    if (e.repeat) return;
+    if (focusedControl) {
+      // Keep Space/Enter on the button, but do not swallow WASD and other game keys.
+      if (k === ' ' || k === 'Enter') return;
+      if (e.target instanceof HTMLElement) e.target.blur();
+    }
     if (e.shiftKey && /^Digit[0-5]$/.test(e.code)) { act('sq:' + e.code.slice(5)); return; }
     keys.add(k);
     if (k === ' ') e.preventDefault();
@@ -467,7 +484,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     cv.addEventListener('pointermove', e => {
       if (e.pointerType === 'touch') {
         for (const s of [sticks.move, sticks.aim]) if (s.id === e.pointerId) { s.x = Math.max(-1, Math.min(1, (e.clientX - s.ox) / 56)); s.y = Math.max(-1, Math.min(1, (e.clientY - s.oy) / 56)); }
-        const l = looks.get(e.pointerId); if (l && R3) { R3.yaw += (e.clientX - l.x) * 0.0062; R3.pitch = Math.max(-1.2, Math.min(1, R3.pitch - (e.clientY - l.y) * 0.005)); l.x = e.clientX; l.y = e.clientY; lastLook = performance.now(); }
+        const l = looks.get(e.pointerId); if (l && R3) { if (ghost) { l.x = e.clientX; l.y = e.clientY; return; } const look = applyLook(R3.yaw, R3.pitch, e.clientX - l.x, e.clientY - l.y, 0.005); R3.yaw = look.yaw; R3.pitch = look.pitch; l.x = e.clientX; l.y = e.clientY; lastLook = performance.now(); }
         return;
       }
       mouse.x = e.clientX; mouse.y = e.clientY;

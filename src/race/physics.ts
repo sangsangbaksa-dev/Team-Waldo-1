@@ -40,7 +40,8 @@ export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: Car
   if (nitroOn) c.nitro = Math.max(0, c.nitro - dt / (NITRO_SECONDS * p.nitro));
   c.boostT = Math.max(0, c.boostT - dt);
   if (nitroOn) c.boostT = Math.max(c.boostT, dt);
-  else if (c.boostT < 0.6) c.nitro = Math.min(1, c.nitro + dt * 0.018 * p.nitro);
+  // 버튼을 누르고 있는 동안에는 충전하지 않습니다. 충전하면 빈 탱크가 매 프레임 조금씩 차올라 부스트가 한 프레임씩 번갈아 켜져 사실상 무한이 됩니다.
+  else if (!inp.nitro && c.boostT < 0.6) c.nitro = Math.min(1, c.nitro + dt * 0.018 * p.nitro);
   const boost = c.boostT > 0, maxV = p.top * (boost ? BOOST_TOP : 1);
 
   // 종방향: 가속 · 브레이크 · 저항

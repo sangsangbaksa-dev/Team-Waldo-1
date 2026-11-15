@@ -551,11 +551,15 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
         if (e.t === 'shot') { audio.play(e.s!, vol * (e.f === 0 ? 1 : 0.6)); if (vol > 0.3) combat = Math.min(1, combat + 0.08); }
         else if (e.t === 'boom') audio.play('boom', vol); else if (e.t === 'hit') { if (e.a === 1) { hitT = 0.14; cross.classList.add('hit'); audio.play('hit', 0.9); } else audio.play('hit', vol * 0.5); } else if (e.t === 'spark') audio.play('hit', vol * 0.4); else if (e.t === 'death') audio.play('death', vol);
         else if (e.t === 'kill') { hitT = 0.3; cross.classList.add('hit', 'kill'); audio.play('pickup', 0.8); }
-        else if (e.t === 'phurt') hurt = Math.min(1, hurt + (e.a ?? 10) / 45);
+        else if (e.t === 'phurt') { hurt = Math.min(1, hurt + (e.a ?? 10) / 45); audio.play('hurt', 0.7); }
         else if (e.t === 'cash' && e.f === 0) audio.play('cash'); else if (e.t === 'pickup' && d < 60) audio.play('pickup'); else if (e.t === 'levelup' && e.f === 0) audio.play('levelup');
         else if (e.t === 'order') { if (tut) tut.c.orders++; } else if (e.t === 'quest') { audio.play('quest'); banner(`목표 달성 +$${e.a}`); } else if (e.t === 'siren') audio.play('siren'); else if (e.t === 'announce') { audio.play('announce'); banner(e.s!); }
         else if (e.t === 'crash') audio.play('crash', 0.8); else if (e.t === 'reload') audio.play('reload'); else if (e.t === 'dash') audio.play('dash'); else if (e.t === 'door') audio.play('door'); else if ((e.t === 'built' || e.t === 'capture') && e.f === 0) audio.play('build');
         else if (e.t === 'thud') audio.play('boom', vol * 0.5); else if (e.t === 'playerdown') { audio.play('lose'); hurt = 1; }
+        else if (e.t === 'crystal') audio.play('crystal', vol); else if (e.t === 'heal' || e.t === 'healbeam') audio.play('heal', vol);
+        else if (e.t === 'skid') audio.play('skid', vol); else if (e.t === 'splat') audio.play('splat', vol);
+        else if (e.t === 'burn' || e.t === 'wreck') audio.play('burn', vol); else if (e.t === 'spawn' && e.f === 0) audio.play('spawn');
+        else if (e.t === 'roar') audio.play('roar', vol); else if (e.t === 'poof') audio.play('poof', vol); else if (e.t === 'crate' && d < 80) audio.play('crate');
       }
       if (duel) duelTick(now, dt);
       w.events.length = 0; combat = Math.max(0, combat - dt * 0.25); audio.intensity = combat;

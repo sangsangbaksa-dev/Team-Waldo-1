@@ -141,12 +141,55 @@ export function buildBuildings(world: World, scene: THREE.Scene, base: string): 
 
 /** 맵 가장자리를 둘러싼 방파제 벽 + 철조망 기둥 (자기장 대신 자연스러운 경계) */
 export function buildPerimeter(scene: THREE.Scene): void {
-  const m = new Mesh(), conc = new THREE.Color(0x8f9196), cap = new THREE.Color(0xc7c8cc), dark = new THREE.Color(0x4c4e54), H = 130, T = 40, E = 6000;
+  const m = new Mesh(), conc = new THREE.Color(0xa7a9b0), cap = new THREE.Color(0xd2d3d7), dark = new THREE.Color(0x4c4e54), H = 130, T = 40, E = 6000;
   const ring = (x0: number, z0: number, x1: number, z1: number, y0: number, y1: number, c: THREE.Color): void => {
     m.box(x0 - T, y0, z0 - T, x1 + T, y1, z0, c); m.box(x0 - T, y0, z1, x1 + T, y1, z1 + T, c); m.box(x0 - T, y0, z0, x0, y1, z1, c); m.box(x1, y0, z0, x1 + T, y1, z1, c);
   };
   ring(0, 0, SIZE, SIZE, -20, H, conc); ring(-6, -6, SIZE + 6, SIZE + 6, H, H + 10, cap); ring(0, 0, SIZE, SIZE, -20, 14, dark);
-  for (let k = 0; k <= SIZE; k += 120) for (const [x, z] of [[k, -2], [k, SIZE + 2], [-2, k], [SIZE + 2, k]]) m.box(x - 2, H + 10, z - 2, x + 2, H + 56, z + 2, dark);
+  // 안쪽 벽면 장식: 벽기둥 · 노랑/검정 경고 띠 · 아래쪽 받침. 밋밋한 회색 벽이 한 장의 판처럼 보이지 않도록 리듬을 준다.
+  const pil = new THREE.Color(0x777a80), yel = new THREE.Color(0xe0b030), blk = new THREE.Color(0x2a2c30), lamp = new Mesh();
+  const wallBox = (a: number, b: number, y0: number, y1: number, depth: number, side: 0 | 1 | 2 | 3, c: THREE.Color): void => {
+    // side 0: 북(z=0), 1: 남(z=SIZE), 2: 서(x=0), 3: 동(x=SIZE) — a..b 는 벽을 따라가는 좌표, depth 는 도시 쪽으로 튀어나온 양
+    if (side === 0) m.box(a, y0, 0, b, y1, depth, c); else if (side === 1) m.box(a, y0, SIZE - depth, b, y1, SIZE, c);
+    else if (side === 2) m.box(0, y0, a, depth, y1, b, c); else m.box(SIZE - depth, y0, a, SIZE, y1, b, c);
+  };
+  for (const side of [0, 1, 2, 3] as const) {
+    for (let k = 0; k < SIZE; k += 120) wallBox(k - 5, k + 5, 14, H, 7, side, pil);
+    for (let k = 0; k < SIZE; k += 40) wallBox(k, k + 20, 96, 108, 3, side, (k / 40) % 2 ? blk : yel);
+    wallBox(0, SIZE, 108, 114, 4, side, dark); wallBox(0, SIZE, 14, 20, 5, side, dark);
+  }
+  for (let k = 0; k <= SIZE; k += 120) for (const [x, z] of [[k, -2], [k, SIZE + 2], [-2, k], [SIZE + 2, k]]) {
+    m.box(x - 2, H + 10, z - 2, x + 2, H + 56, z + 2, dark);
+    const lc = new THREE.Color(0xffe2a0); lamp.box(x - 5, H + 56, z - 5, x + 5, H + 64, z + 5, lc);
+  }
   for (const [a, b, c2, d] of [[-E, -E, SIZE + E, -T - 1], [-E, SIZE + T + 1, SIZE + E, SIZE + E], [-E, -T - 1, -T - 1, SIZE + T + 1], [SIZE + T + 1, -T - 1, SIZE + E, SIZE + T + 1]]) m.box(a, -40, b, c2, -8, d, new THREE.Color(0x2b5f7a));
   const o = new THREE.Mesh(m.geo(), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })); o.castShadow = false; scene.add(o);
+  scene.add(new THREE.Mesh(lamp.geo(), new THREE.MeshBasicMaterial({ vertexColors: true })));
+  buildSkyline(scene);
+}
+
+/** 성벽 너머 바다 건너편의 도시 실루엣. 안개에 녹아드는 먼 건물들이 벽 위로 보여 세계의 끝이 "검은 판"이 아니라 계속되는 도시처럼 읽힌다. */
+function buildSkyline(scene: THREE.Scene): void {
+  const m = new Mesh(), glow = new Mesh(), base = new THREE.Color(0x5a5072), warm = new THREE.Color(0xffc48a), BASE_Y = -8;
+  let n = 0;
+  for (let side = 0; side < 4; side++) {
+    for (let i = 0; i < 64; i++) {
+      const r = (k: number): number => hash(side * 10007 + i * 31 + k);
+      const along = -2200 + r(1) * (SIZE + 4400), out = 420 + Math.pow(r(2), 1.4) * 2900;
+      const w = 90 + r(3) * 190, d = 90 + r(4) * 170, h = 170 + out * 0.2 + Math.pow(r(5), 2) * 620;
+      const cx = side === 0 ? along : side === 1 ? along : side === 2 ? -out : SIZE + out, cz = side === 0 ? -out : side === 1 ? SIZE + out : along, c = base.clone().offsetHSL((r(6) - 0.5) * 0.05, 0, (r(7) - 0.5) * 0.08);
+      m.box(cx - w / 2, BASE_Y, cz - d / 2, cx + w / 2, BASE_Y + h, cz + d / 2, c);
+      if (r(8) > 0.45) m.box(cx - w * 0.32, BASE_Y + h, cz - d * 0.32, cx + w * 0.32, BASE_Y + h * 1.18, cz + d * 0.32, c.clone().multiplyScalar(0.9));
+      // 도시 쪽을 향한 면에만 불 켜진 창띠를 몇 줄 얹는다.
+      const rows = 3 + Math.floor(r(9) * 5);
+      for (let q = 0; q < rows; q++) {
+        const y = BASE_Y + 30 + r(20 + q) * (h - 50), x0 = cx - w * 0.4, x1 = cx + w * 0.4, z0 = cz - d * 0.4, z1 = cz + d * 0.4;
+        if (side === 0) glow.box(x0, y, cz + d / 2, x1, y + 4, cz + d / 2 + 1, warm, false); else if (side === 1) glow.box(x0, y, cz - d / 2 - 1, x1, y + 4, cz - d / 2, warm, false);
+        else if (side === 2) glow.box(cx + w / 2, y, z0, cx + w / 2 + 1, y + 4, z1, warm, false); else glow.box(cx - w / 2 - 1, y, z0, cx - w / 2, y + 4, z1, warm, false);
+      }
+      n++;
+    }
+  }
+  if (!n) return;
+  scene.add(new THREE.Mesh(m.geo(), new THREE.MeshBasicMaterial({ vertexColors: true })), new THREE.Mesh(glow.geo(), new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide })));
 }

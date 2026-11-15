@@ -71,6 +71,16 @@ export class Renderer3D {
     this.sun = new THREE.DirectionalLight(0xffd2a0, 2.3); this.sun.position.set(-600, 700, -400); sc.add(this.sun); sc.add(this.sun.target);
     if (quality === 'high') { this.sun.castShadow = true; const s = this.sun.shadow; s.mapSize.set(2048, 2048); s.camera.left = s.camera.bottom = -1100; s.camera.right = s.camera.top = 1100; s.camera.near = 10; s.camera.far = 3000; s.bias = -0.0012; }
     const sunDisc = new THREE.Mesh(new THREE.SphereGeometry(190, 16, 8), new THREE.MeshBasicMaterial({ color: 0xfff0c8, fog: false })); sunDisc.position.set(-3700, 1000, -2400); sky.add(sunDisc);
+    // 노을 구름: 단색 그라데이션 하늘이 텅 비어 보이지 않도록 지평선 쪽으로 갈수록 납작해지는 구름 띠를 얹는다.
+    const cloudTex = canvasTex(2048, 512, g => {
+      let seed = 7; const rnd = (): number => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+      for (let layer = 0; layer < 2; layer++) for (let q = 0; q < (layer ? 150 : 230); q++) {
+        const x = rnd() * 2048, y = 512 * (0.38 + Math.pow(rnd(), 0.8) * 0.56), sx = 50 + rnd() * 190, sy = (6 + rnd() * 16) * (0.55 + (y / 512) * 0.9), near = y / 512;
+        const col = layer ? (near > 0.7 ? '255,214,170' : '255,226,206') : (near > 0.7 ? '224,134,120' : '170,150,190'), a = layer ? 0.2 : 0.3 + rnd() * 0.12;
+        for (const ox of [-2048, 0, 2048]) { g.save(); g.translate(x + ox, y - (layer ? 3 : 0)); g.scale(sx, sy); const gr = g.createRadialGradient(0, 0, 0, 0, 0, 1); gr.addColorStop(0, `rgba(${col},${a})`); gr.addColorStop(1, `rgba(${col},0)`); g.fillStyle = gr; g.beginPath(); g.arc(0, 0, 1, 0, 6.2832); g.fill(); g.restore(); }
+      }
+    });
+    const clouds = new THREE.Mesh(new THREE.SphereGeometry(4700, 48, 14, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshBasicMaterial({ map: cloudTex, transparent: true, side: THREE.BackSide, fog: false, depthWrite: false })); clouds.name = 'clouds'; clouds.renderOrder = -0.5; sky.add(clouds);
     // 바다 + 지면
     const sea = new THREE.Mesh(new THREE.PlaneGeometry(30000, 30000), new THREE.MeshLambertMaterial({ color: 0x2b5f7a })); sea.rotation.x = -Math.PI / 2; sea.position.set(SIZE / 2, -6, SIZE / 2); sc.add(sea);
     const T = quality === 'low' ? 2048 : 4096, k = T / SIZE, gt = canvasTex(T, T, g => {
@@ -78,6 +88,22 @@ export class Renderer3D {
       g.strokeStyle = 'rgba(232,205,110,0.75)'; g.lineWidth = 3.5; g.setLineDash([24, 26]); g.beginPath();
       for (let i = 0; i <= BLOCKS; i++) { const c = i * PITCH + ROAD / 2; g.moveTo(c, 0); g.lineTo(c, SIZE); g.moveTo(0, c); g.lineTo(SIZE, c); } g.stroke(); g.setLineDash([]);
       for (let j = 0; j <= BLOCKS; j++) for (let i = 0; i <= BLOCKS; i++) { const x = i * PITCH, y = j * PITCH; g.fillStyle = '#3a3d44'; g.fillRect(x, y, ROAD, ROAD); g.fillStyle = 'rgba(240,240,245,0.5)'; for (let q = 0; q < 6; q++) { g.fillRect(x + 12 + q * 17, y - 18, 9, 14); g.fillRect(x + 12 + q * 17, y + ROAD + 4, 9, 14); g.fillRect(x - 18, y + 12 + q * 17, 14, 9); g.fillRect(x + ROAD + 4, y + 12 + q * 17, 14, 9); } }
+      // 도로 마모: 차선별 타이어 자국 · 보수 패치 · 균열 · 맨홀. 단색 네이비 면으로 보이던 아스팔트에 쓰인 흔적을 준다.
+      { let sd = 99; const r = (): number => { sd = (sd * 1664525 + 1013904223) >>> 0; return sd / 4294967296; };
+        for (let i = 0; i <= BLOCKS; i++) for (let j = 0; j < BLOCKS; j++) {
+          const c = i * PITCH + ROAD / 2, a0 = j * PITCH + ROAD + 8, a1 = (j + 1) * PITCH - 8;
+          for (const off of [-39, -21, 21, 39]) { g.fillStyle = 'rgba(8,9,12,0.16)'; g.fillRect(c + off - 3.5, a0, 7, a1 - a0); g.fillRect(a0, c + off - 3.5, a1 - a0, 7); }
+        }
+        for (let q = 0; q < 520; q++) {
+          const road = Math.floor(r() * (BLOCKS + 1)), c = road * PITCH + ROAD / 2, along = r() * SIZE, lat = c + (r() - 0.5) * (ROAD - 20), horiz = q % 2 === 0, x = horiz ? along : lat, y = horiz ? lat : along;
+          if (r() < 0.55) { g.fillStyle = r() < 0.6 ? 'rgba(14,15,18,0.2)' : 'rgba(255,255,255,0.045)'; g.fillRect(x, y, 14 + r() * 34, 10 + r() * 26); }
+          else { g.strokeStyle = 'rgba(8,9,12,0.4)'; g.lineWidth = 1.1; g.beginPath(); g.moveTo(x, y); for (let z = 0; z < 4; z++) g.lineTo(x + (r() - 0.3) * 26, y + (r() - 0.5) * 26); g.stroke(); }
+        }
+        for (let q = 0; q < 90; q++) {
+          const road = Math.floor(r() * (BLOCKS + 1)), c = road * PITCH + ROAD / 2, along = (Math.floor(r() * BLOCKS) * PITCH) + ROAD + 70 + r() * (BLOCK - 140), lat = c + (r() < 0.5 ? -30 : 30), horiz = q % 2 === 0, x = horiz ? along : lat, y = horiz ? lat : along;
+          g.fillStyle = '#25272c'; g.beginPath(); g.arc(x, y, 7.5, 0, 6.2832); g.fill(); g.strokeStyle = 'rgba(200,205,215,0.3)'; g.lineWidth = 1.4; g.stroke(); g.beginPath(); g.moveTo(x - 4, y); g.lineTo(x + 4, y); g.moveTo(x, y - 4); g.lineTo(x, y + 4); g.stroke();
+        }
+      }
       const fill: Record<string, string> = { city: '#6f7178', park: '#4d7a4a', lot: '#4a4d54', police: '#5d6880', military: '#6b7055', plaza: '#8d8a84', base: '#5c6660', void: '#2a2c31' };
       for (const b of w.map.blocks) {
         g.fillStyle = '#1f2125'; g.fillRect(b.x - 3, b.y - 3, BLOCK + 6, BLOCK + 6); g.fillStyle = '#c9cacd'; g.fillRect(b.x, b.y, BLOCK, BLOCK); g.fillStyle = '#a9abaf'; g.fillRect(b.x + 3, b.y + 3, BLOCK - 6, BLOCK - 6);
@@ -280,7 +306,7 @@ export class Renderer3D {
     { const m = 14, cp2 = this.camera.position; cp2.x = Math.max(m, Math.min(SIZE - m, cp2.x)); cp2.z = Math.max(m, Math.min(SIZE - m, cp2.z)); this.camPos.x = cp2.x; this.camPos.z = cp2.z; }
     if (this.shake > 0 && !this.reduced) { this.camera.position.x += (Math.random() - 0.5) * this.shake; this.camera.position.y += (Math.random() - 0.5) * this.shake; }
     const spd = veh ? Math.hypot(veh.vx, veh.vy) : 0, fov = 74 + Math.min(14, spd / 45); if (Math.abs(fov - this.camera.fov) > 0.2) { this.camera.fov += (fov - this.camera.fov) * 0.1; this.camera.updateProjectionMatrix(); }
-    const sky = this.scene.getObjectByName('sky'); if (sky) sky.position.set(this.camera.position.x, 0, this.camera.position.z);
+    const sky = this.scene.getObjectByName('sky'); if (sky && !this.reduced) { const cl = sky.getObjectByName('clouds'); if (cl) cl.rotation.y += dt * 0.004; } if (sky) sky.position.set(this.camera.position.x, 0, this.camera.position.z);
     this.sun.position.set(fx - 700, 800, fz - 450); this.sun.target.position.set(fx, 0, fz);
     if (this.ml) { this.gun.visible = false; this.ml.viewmodel(!third && !!pb, f0.slots[f0.cur]?.id ?? 'pistol', dt, this.recoil, f0.reloadT > 0, pb ? Math.min(1, Math.hypot(pb.vx, pb.vy) / 160) : 0, this.t, this.flashT > 0); } else { this.gun.visible = !third && !!pb; } if (!this.ml && this.gun.visible) { const tier = WEAPONS[f0.slots[f0.cur]?.id ?? 'pistol'].tier, rl = f0.reloadT > 0 ? 1 : 0; this.gun.scale.setScalar(0.62 + tier * 0.13); this.gun.position.set(5.6, -5.2 - rl * 4, -14 + this.recoil * 2.2); this.gun.rotation.x = this.recoil * 0.12 - rl * 0.7; this.muzzle.visible = this.flashT > 0; this.muzzle.rotation.z = this.t * 40; }
     // 캐릭터

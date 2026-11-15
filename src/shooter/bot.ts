@@ -53,7 +53,7 @@ function thinkAir(m: Match, p: Player, b: BotBrain, dt: number): void {
     // 큰 마을일수록 자주 고릅니다. 일부는 들판·숲에 조용히 내립니다.
     const cs = m.map.compounds, w = cs.map(c => (c.kind === 'city' ? 3 : c.kind === 'military' ? 2.6 : 1.3)), sum = w.reduce((s, v) => s + v, 0);
     let x = 0, z = 0;
-    if (cs.length && rng() < 0.72) { let r = rng() * sum, i = 0; for (; i < cs.length - 1; i++) { r -= w[i]; if (r <= 0) break; } x = cs[i].x + (rng() - 0.5) * cs[i].r * 1.2; z = cs[i].z + (rng() - 0.5) * cs[i].r * 1.2; }
+    if (cs.length && rng() < 0.5) { let r = rng() * sum, i = 0; for (; i < cs.length - 1; i++) { r -= w[i]; if (r <= 0) break; } x = cs[i].x + (rng() - 0.5) * cs[i].r * 1.2; z = cs[i].z + (rng() - 0.5) * cs[i].r * 1.2; }
     else { x = (rng() - 0.5) * m.map.half * 1.6; z = (rng() - 0.5) * m.map.half * 1.6; }
     // 항로에서 너무 먼 곳은 닿을 수 있는 거리로 당깁니다.
     const s = (x - f.ax) * f.dx + (z - f.az) * f.dz, px = f.ax + f.dx * s, pz = f.az + f.dz * s, lx = x - px, lz = z - pz, lat = Math.hypot(lx, lz), reach = 230 + rng() * 60;
@@ -92,6 +92,8 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
       if (!q.alive || q.id === p.id || q.air !== 0) continue;
       const dx = q.x - p.x, dz = q.z - p.z; if (Math.abs(dx) > T.sight || Math.abs(dz) > T.sight) continue; const d = Math.hypot(dx, dz); if (d > T.sight || d >= bestD) continue;
       const retaliate = p.hurt > 0 && p.lastHitBy === q.id;
+      // 권총뿐이라면 먼 적과는 싸우지 않고 총부터 찾습니다.
+      if (!retaliate && d > 22 && !p.guns[1] && p.guns[0]?.id === 'pistol') continue;
       if (!retaliate && d > 9 && Math.abs(angDiff(Math.atan2(dz, dx), p.yaw)) > T.fov) continue;
       // 앉은 적이 먼 덤불·풀숲에 있으면 잘 보이지 않습니다.
       if (q.crouch && d > T.sight * 0.6 && !retaliate) continue;

@@ -101,12 +101,25 @@ export function clearLine(map: CityMap, x0: number, y0: number, x1: number, y1: 
   return true;
 }
 export const onRoad = (v: number): boolean => ((v % PITCH) + PITCH) % PITCH < ROAD;
+/** 건물 발자국끼리 살짝 떼어 두는 간격. 예전 14는 빈 골목까지 막았습니다. */
+export const SOLID_CLEARANCE = 4;
+/** 반열린 구간 [a, b)가 도로 띠와 겹치면 true. 블록 끝 경계선만 닿는 경우는 허용합니다. */
+export function rangeHitsRoad(a: number, b: number): boolean {
+  const len = b - a;
+  if (len <= 0) return false;
+  const startMod = ((a % PITCH) + PITCH) % PITCH;
+  if (startMod < ROAD) return true;
+  return startMod + len > PITCH;
+}
+export function rectHitsRoad(x: number, y: number, w: number, h: number): boolean {
+  return rangeHitsRoad(x, x + w) || rangeHitsRoad(y, y + h);
+}
 export function rectFree(map: CityMap, x: number, y: number, w: number, h: number): boolean {
   if (x < 20 || y < 20 || x + w > SIZE - 20 || y + h > SIZE - 20) return false;
-  for (const s of map.solids) if (s.alive && x < s.x + s.w + 14 && x + w > s.x - 14 && y < s.y + s.h + 14 && y + h > s.y - 14) return false;
-  // 도로 침범 금지 (보도는 허용)
-  for (let px = x; px <= x + w; px += Math.min(w, 20)) if (onRoad(px)) return false;
-  for (let py = y; py <= y + h; py += Math.min(h, 20)) if (onRoad(py)) return false;
+  const pad = SOLID_CLEARANCE;
+  for (const s of map.solids) if (s.alive && x < s.x + s.w + pad && x + w > s.x - pad && y < s.y + s.h + pad && y + h > s.y - pad) return false;
+  // 도로 침범 금지 (블록 안 보도는 허용)
+  if (rectHitsRoad(x, y, w, h)) return false;
   return true;
 }
 

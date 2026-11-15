@@ -6,6 +6,7 @@ import {
 } from './defs';
 import { generateArena } from './arena';
 import { addSolid, clearLine, generateCity, makeRng, navBlocked, rectFree, removeSolid, resolveCircle, type CityMap, type Rng } from './map';
+import { canPlaceAt, demolishRefund, demolishReject } from './placement';
 import { updateActors, updateBullets, updateVehicles, updatePopulation } from './actors';
 import { thinkFaction, type AiState } from './ai';
 import { INTERIORS, INTERIOR_SPEED, nearCounter, nearDoor, resolveInterior, type InteriorLayout } from './interior';
@@ -325,13 +326,41 @@ export class World {
     f.crystal -= c; f.cash -= m; host.queue.push({ unit, t: d.time, total: d.time }); f.supply += d.supply; return '';
   }
   canBuild(fi: number, kind: StructKind, cx: number, cy: number): boolean {
-    const d = STRUCTS[kind], hq = this.hq(fi);
-    let near = hq ? Math.hypot(cx - (hq.x + 60), cy - (hq.y + 60)) < 720 : false;
-    if (!near) near = this.businesses.some(b => b.owner === fi && Math.hypot(b.x - cx, b.y - cy) < 460);
-    if (!near || !rectFree(this.map, cx - d.w / 2, cy - d.h / 2, d.w, d.h)) return false;
-    for (const c of this.crystals) if (c.amount > 0 && Math.abs(c.x - cx) < d.w / 2 + 22 && Math.abs(c.y - cy) < d.h / 2 + 22) return false;
-    for (const b of this.businesses) if (Math.abs(b.x - cx) < d.w / 2 + 30 && Math.abs(b.y - cy) < d.h / 2 + 30) return false;
-    return true;
+    if (kind === 'hq') return false;
+    const d = STRUCTS[kind];
+    return canPlaceAt({
+      cx, cy, w: d.w, h: d.h, map: this.map, hq: this.hq(fi),
+      ownedBiz: this.businesses.filter(b => b.owner === fi),
+      ownedStructs: this.structures.filter(s => s.alive && s.f === fi && s.kind !== 'hq'),
+      crystals: this.crystals, businesses: this.businesses,
+    });
+  }
+  canDemolish(fi: number, id: number): string {
+    return demolishReject(this.structures.find(s => s.id === id), fi, this.opts);
+  }
+  demolishRefundOf(fi: number, kind: StructKind): { crystal: number; cash: number } {
+    const f = this.factions[fi], d = STRUCTS[kind];
+    return demolishRefund(this.cost(f, d.crystal), this.cost(f, d.cash));
+  }
+  demolish(fi: number, id: number): string {
+    const s = this.structures.find(z => z.id === id);
+    const err = demolishReject(s, fi, this.opts);
+    if (err || !s) return err;
+    const ref = this.demolishRefundOf(fi, s.kind), f = this.factions[fi];
+    this.hurtStruct(s, s.hp + 1, fi);
+    f.crystal += ref.crystal; f.cash += ref.cash;
+    return '';
+  }
+  /** 좌표에 겹치거나 가장 가까운 건물. 없으면 null. */
+  structAt(x: number, y: number, reach = 28): Structure | null {
+    let best: Structure | null = null, bestD = reach;
+    for (const s of this.structures) {
+      if (!s.alive) continue;
+      if (x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h) return s;
+      const d = Math.hypot(x - (s.x + s.w / 2), y - (s.y + s.h / 2)) - Math.max(s.w, s.h) / 2;
+      if (d < bestD) { bestD = d; best = s; }
+    }
+    return best;
   }
   build(fi: number, kind: StructKind, cx: number, cy: number): string {
     if (this.opts.duel) return '결투에서는 건설할 수 없습니다';

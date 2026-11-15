@@ -46,13 +46,13 @@ export interface LevelDef {
   /** 니트로를 쓰기 시작하는 잔량. 없으면 쓰지 않음 */
   nitro?: number;
 }
-// 1단계는 이전 버전의 라이벌과 같은 값입니다.
+// 단계가 오를수록 라이벌의 목표 속도·코너 한계·추격 보정이 뚜렷하게 커집니다. 모든 값은 단조 증가(니트로 잔량 기준은 감소=더 많이 씀)합니다.
 export const LEVELS: ReadonlyArray<LevelDef> = [
-  { id: 1, name: '쉬움', blurb: '레이싱 라인을 타고 직선에서 니트로를 자주 씁니다', topMul: 1.075, gripMul: 1.15, bandLo: 0.955, bandHi: 1.095, bandK: 0.00028, line: 0.675, nitro: 0.5 },
-  { id: 2, name: '보통', blurb: '라인이 거의 완벽하고 쉽게 떨어지지 않습니다', topMul: 1.105, gripMul: 1.215, bandLo: 0.965, bandHi: 1.11, bandK: 0.00033, line: 0.9, nitro: 0.28 },
-  { id: 3, name: '어려움', blurb: '완벽한 라인과 니트로로 끝까지 압박합니다', topMul: 1.135, gripMul: 1.285, bandLo: 0.975, bandHi: 1.13, bandK: 0.0004, line: 1, nitro: 0.1 },
-  { id: 4, name: '매우 어려움', blurb: '실수 없이 니트로를 아낌없이 쓰며 거의 따라잡을 수 없습니다', topMul: 1.15, gripMul: 1.33, bandLo: 0.985, bandHi: 1.145, bandK: 0.00046, line: 1, nitro: 0.05 },
-  { id: 5, name: '극한', blurb: '드리프트와 니트로를 완벽하게 써야 겨우 이기는 최강의 라이벌입니다', topMul: 1.18, gripMul: 1.38, bandLo: 0.99, bandHi: 1.155, bandK: 0.0005, line: 1, nitro: 0.03 },
+  { id: 1, name: '쉬움', blurb: '레이싱 라인을 타고 직선에서 니트로를 자주 씁니다. 깔끔하게 달리면 충분히 이깁니다', topMul: 1.09, gripMul: 1.19, bandLo: 0.96, bandHi: 1.1, bandK: 0.0003, line: 0.72, nitro: 0.5 },
+  { id: 2, name: '보통', blurb: '라인이 거의 완벽하고 뒤처지면 니트로로 바싹 따라붙습니다', topMul: 1.125, gripMul: 1.265, bandLo: 0.97, bandHi: 1.115, bandK: 0.00036, line: 0.92, nitro: 0.25 },
+  { id: 3, name: '어려움', blurb: '완벽한 라인과 늦은 브레이킹, 적극적인 니트로로 끝까지 압박합니다', topMul: 1.16, gripMul: 1.34, bandLo: 0.982, bandHi: 1.13, bandK: 0.00043, line: 1, nitro: 0.1 },
+  { id: 4, name: '매우 어려움', blurb: '실수 없이 코너를 깎고 니트로를 아낌없이 쓰며 좀처럼 떨어지지 않습니다', topMul: 1.195, gripMul: 1.41, bandLo: 0.99, bandHi: 1.145, bandK: 0.0005, line: 1, nitro: 0.05 },
+  { id: 5, name: '극한', blurb: '드리프트와 니트로를 완벽하게 써야 겨우 이기는 최강의 라이벌입니다', topMul: 1.23, gripMul: 1.5, bandLo: 0.997, bandHi: 1.165, bandK: 0.00056, line: 1, nitro: 0.02 },
 ];
 export const levelById = (id: number): LevelDef => LEVELS.find(l => l.id === id) ?? LEVELS[0];
 

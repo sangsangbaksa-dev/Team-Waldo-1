@@ -19,7 +19,7 @@ export interface RaceState {
   thrDownAt: number | null; thrPrev: boolean; bestLap: number; lastCount: number; level: LevelDef;
 }
 export const COUNTDOWN = 3;
-/** 라이벌 세 명: 이름, 고정 차선, 자기 차량 최고속 대비 목표 속도 비율, 코너 한계. 1단계 값은 이전 버전과 같습니다. */
+/** 라이벌 세 명: 이름, 고정 차선, 자기 차량 최고속 대비 목표 속도 비율, 코너 한계. 난이도 배율(LEVELS)이 여기에 곱해집니다. */
 const FIELD = [
   { name: 'VIPER', lane: -5, frac: 70.5 / 74, grip: 37 },
   { name: 'SOLAR', lane: 5, frac: 68 / 74, grip: 35 },
@@ -82,7 +82,7 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
       if (k.player && k.finishTime === null) inp = input;
       else {
         const gap = k.player ? 0 : (k.car.total - r.player.car.total) * t.ds, band = Math.max(r.level.bandLo, Math.min(r.level.bandHi, 1 - gap * r.level.bandK));
-        inp = aiInput(k.car, t, { ...k.ai, top: k.ai.top * band, grip: k.ai.grip * band * band });
+        inp = aiInput(k.car, t, { ...k.ai, top: k.ai.top * band, grip: k.ai.grip * band * band, chase: gap < -8 });
       }
     }
     k.lastEv = stepCar(k.car, inp, dt, t, k.params);

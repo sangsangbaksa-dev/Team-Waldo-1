@@ -99,17 +99,24 @@ export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: Car
   return ev;
 }
 
-/** line: 0 이면 고정 차선, 1 이면 코너 안쪽을 파고드는 레이싱 라인. nitro: 이 값을 넘는 니트로 잔량만 쓴다(없으면 안 씀). */
-export interface AiProfile { lane: number; top: number; grip: number; skill: number; line?: number; nitro?: number }
+/** line: 0 이면 고정 차선, 1 이면 코너 안쪽을 파고드는 레이싱 라인. nitro: 이 값을 넘는 니트로 잔량만 쓴다(없으면 안 씀). chase: 플레이어에게 뒤처져 추격 중이면 니트로를 더 공격적으로 씁니다. */
+export interface AiProfile { lane: number; top: number; grip: number; skill: number; line?: number; nitro?: number; chase?: boolean }
 /** 중심선을 따라가는 단순 AI. 앞쪽 곡률로 목표 속도를 정합니다. */
 export function aiInput(c: CarState, t: Track, ai: AiProfile): CarInput {
   const speed = Math.max(c.vf, 0), la = Math.round((11 + speed * 0.42) / t.ds), ti = (c.idx + la) % t.n;
-  const line = ai.line ?? 0, inside = clamp(t.k[(ti + 8) % t.n] * 1400, -1, 1) * (t.halfWidth - 7), lane = ai.lane * (1 - line) + inside * line;
+  // 레이싱 라인을 타더라도 차선 성분을 조금 남겨 라이벌끼리 같은 아펙스에 겹쳐 서지 않게 합니다.
+  const line = ai.line ?? 0, inside = clamp(t.k[(ti + 8) % t.n] * 1400, -1, 1) * (t.halfWidth - 7), lane = ai.lane * (1 - line * 0.85) + inside * line;
   const tx = t.x[ti] - t.tz[ti] * lane, tz = t.z[ti] + t.tx[ti] * lane;
   const err = wrapAngle(Math.atan2(tz - c.z, tx - c.x) - c.h), steer = clamp(err * 2.6, -1, 1);
   const look = Math.max(12, Math.round((speed * 1.7) / t.ds)); let kmax = 0;
   for (let o = 0; o <= look; o += 2) kmax = Math.max(kmax, Math.abs(t.k[(c.idx + o) % t.n]));
   const top = ai.top * (c.boostT > 0 ? BOOST_TOP : 1), target = Math.min(top, Math.sqrt(ai.grip / Math.max(kmax, 1e-4)));
   const over = speed - target, straight = kmax < 0.005 && speed > 35 && over < 2;
-  return { throttle: over < 0 ? 1 : 0, brake: over > 4 ? Math.min(1, over / 12) : 0, steer, drift: false, nitro: ai.nitro !== undefined && straight && c.nitro > ai.nitro };
+  // 니트로: 보통은 직선에서만 씁니다. 추격 중이면 완만한 코너에서도, 더 적은 잔량까지 꺼내 따라붙습니다.
+  let nitro = false;
+  if (ai.nitro !== undefined) {
+    if (straight && c.nitro > ai.nitro) nitro = true;
+    else if (ai.chase && kmax < 0.012 && speed > 40 && over < 1 && c.nitro > ai.nitro * 0.5) nitro = true;
+  }
+  return { throttle: over < 0 ? 1 : 0, brake: over > 4 ? Math.min(1, over / 12) : 0, steer, drift: false, nitro };
 }

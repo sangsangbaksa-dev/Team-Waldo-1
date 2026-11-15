@@ -18,6 +18,7 @@ import { readPreferences, recordMatch, writePreferences } from '../prefs';
 import type { PvpSession } from '../net/lobby';
 import { arenaInfo, arenaOf } from './arena';
 import { CityDuel, TARGET_KILLS, TIME_LIMIT, duelOutcome } from './duel';
+import { DuelArmy, parseArmy } from './duelarmy';
 import { CITY_KEY, readCityCareer } from '../records';
 
 const $ = (n: number): string => Math.floor(n).toLocaleString('en-US');
@@ -54,7 +55,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   let world: World | null = null, R: Renderer | null = null, raf = 0, last = 0, acc = 0, paused = false, closed = false, ghost: Ghost | null = null, tab = 'train', hudT = 0, toastT = 0, bannerT = 0, shopOpen = false, resultShown = false, userZoom = 1, combat = 0, klass: ClassId = 'warlord';
   let demolishArmed: { id: number; at: number } | null = null;
   /** 1대1 결투 진행 상태. null 이면 혼자 하는 게임입니다. */
-  interface Duel { s: PvpSession; net: CityDuel; myDeaths: number; oppDeaths: number; done: boolean; pose: { x: number; y: number; a: number; hp: number; mh: number; w: WeaponId } | null; rx: number; ry: number; seed: number; oppKlass: string; started: boolean; graceAt: number }
+  interface Duel { s: PvpSession; net: CityDuel; army: DuelArmy; oppHqDown: boolean; hqSent: boolean; myDeaths: number; oppDeaths: number; done: boolean; pose: { x: number; y: number; a: number; hp: number; mh: number; w: WeaponId } | null; rx: number; ry: number; seed: number; oppKlass: string; started: boolean; graceAt: number }
   let duel: Duel | null = null;
   const keys = new Set<string>(), mouse = { x: innerWidth / 2, y: innerHeight / 2, down: false };
   const sticks = { move: { id: -1, ox: 0, oy: 0, x: 0, y: 0 }, aim: { id: -1, ox: 0, oy: 0, x: 0, y: 0 } };
@@ -70,7 +71,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       <div class="c-sub">${tutDone ? '바로 시작할 영웅을 고르세요' : '또는 바로 시작할 영웅을 고르세요'}</div>
       <div class="c-classes">${(Object.keys(CLASSES) as ClassId[]).map(k => `<button class="c-class" data-act="class:${k}"><span>${CLASSES[k].tag}</span><b>${CLASSES[k].name}</b><p>${CLASSES[k].desc}</p><em>Q · ${CLASSES[k].skill}</em><small>${CLASSES[k].skillDesc}</small></button>`).join('')}</div>
       <div class="c-keys">${touch ? '<span>왼쪽 드래그 이동</span><span>오른쪽 드래그 시점</span><span>사격 버튼</span><span>버튼으로 상호작용·지휘</span>' : '<span><b>WASD</b> 이동</span><span><b>마우스</b> 시점·사격</span><span><b>V</b> 1인칭/3인칭/전술뷰</span><span><b>E</b> 매입·줍기</span><span><b>F</b> 차량 탑승</span><span><b>Tab</b> 지휘 패널</span><span><b>우클릭</b> 병력 돌격</span><span><b>Z/X</b> 집결·사수</span><span><b>Space</b> 대시</span><span><b>M</b> 지도</span><span><b>Delete</b> 철거</span>'}</div>
-      <div class="c-sub">1대1 결투 · 로그인 필요</div><div class="c-diffs">${(Object.keys(CLASSES) as ClassId[]).map(k => `<button class="c-diff" data-act="duel:${k}" title="${CLASSES[k].desc}">${CLASSES[k].name}으로 대전</button>`).join('')}</div><p class="c-lead c-diffdesc">같은 도시에서 둘만 남아 ${TARGET_KILLS}킬을 먼저 채우면 승리합니다. 병력·건설 없이 무기와 사업체 구매, 보스의 총싸움으로 가립니다.</p>
+      <div class="c-sub">1대1 결투 · 로그인 필요</div><div class="c-diffs">${(Object.keys(CLASSES) as ClassId[]).map(k => `<button class="c-diff" data-act="duel:${k}" title="${CLASSES[k].desc}">${CLASSES[k].name}으로 대전</button>`).join('')}</div><p class="c-lead c-diffdesc">같은 도시에서 둘만 남아 ${TARGET_KILLS}킬을 먼저 채우면 승리합니다. 병력을 뽑고 건물을 지어 싸우세요. 상대 본부를 무너뜨리면 즉시 승리하고, 내 본부가 무너지면 패배합니다. 제한 시간은 ${clock(TIME_LIMIT)}입니다.</p>
       <div class="c-sub">난이도</div><div class="c-diffs">${DIFFICULTY_ORDER.map(d => `<button class="c-diff${d === diffSel ? ' on' : ''}" data-act="diff:${d}" title="${DIFFICULTY[d].desc}">${DIFFICULTY[d].label}</button>`).join('')}</div><p class="c-lead c-diffdesc">${DIFFICULTY[diffSel].desc}</p>
       <div class="c-setup-foot"><span>난이도 · ${DIFFICULTY[diffSel].label}</span><button data-act="exit" class="c-ghost">메뉴로</button></div></section>`;
   }
@@ -252,7 +253,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       const rows = [...w.factions].sort((a, b) => Number(b.alive) - Number(a.alive) || w.netWorth(b) - w.netWorth(a));
       body = '<h3>왕국 순위</h3><table class="c-rank"><tr><th>왕국</th><th>순자산</th><th>병력</th><th>사업</th><th>Lv</th></tr>' + rows.map(r => `<tr class="${r.alive ? '' : 'dead'}"><td><i style="background:${r.color}"></i>${r.name}${w.hq(r.id) ? '' : r.alive ? ' <small>본부 없음</small>' : ''}</td><td>${r.alive ? '$' + $(w.netWorth(r)) : '궤멸'}</td><td>${w.armyOf(r.id).length}</td><td>${w.businesses.filter(b => b.owner === r.id).length}</td><td>${r.level}</td></tr>`).join('') + '</table>';
     }
-    const tabs: [string, string][] = [['train', '생산'], ['build', '건설'], ['research', '연구'], ['market', '시장'], ['assets', '자산'], ['squad', '분대'], ['rank', '순위']];
+    const tabs = ([['train', '생산'], ['build', '건설'], ['research', '연구'], ['market', '시장'], ['assets', '자산'], ['squad', '분대'], ['rank', '순위']] as [string, string][]).filter(([k]) => !(duel && k === 'rank'));
     const head = `<header>${shopOpen ? `<b>${w.insideBiz() ? BIZ[w.insideBiz()!.kind].name : '상점'}</b>` : tabs.map(([k, n]) => `<button data-act="tab:${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}<button data-act="closepanel" class="c-x" aria-label="닫기">✕</button></header>`;
     const cur = panel.querySelector<HTMLElement>('.c-body');
     if (cur && panel.dataset.head === head) { const top = cur.scrollTop; put(cur, body); cur.scrollTop = top; return; }   // 본문만 갱신: 스크롤 위치·스크롤바 드래그 유지
@@ -345,24 +346,29 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     const raw = s.match.config.seed; let seed = typeof raw === 'number' && Number.isInteger(raw) && raw >= 0 && raw < 2 ** 31 ? raw : 0;
     if (!seed) for (const ch of s.match.id) seed = (seed * 31 + ch.charCodeAt(0)) >>> 1;
     duelCard(`${esc(s.opponent.nickname)} 님과 연결하는 중…`, `<p class="c-lead">${CLASSES[klass].name} · ${TARGET_KILLS}킬 선취</p>`, '<button data-act="exit">나가기</button>');
-    const d = { s, myDeaths: 0, oppDeaths: 0, done: false, pose: null, rx: 0, ry: 0, seed, oppKlass: 'warlord', started: false, graceAt: 0 } as unknown as Duel;
+    const d = { s, army: new DuelArmy(), oppHqDown: false, hqSent: false, myDeaths: 0, oppDeaths: 0, done: false, pose: null, rx: 0, ry: 0, seed, oppKlass: 'warlord', started: false, graceAt: 0 } as unknown as Duel;
     duel = d;
     d.net = new CityDuel(s, klass, {
       onStart: oppKlass => { if (duel !== d || closed) return; d.oppKlass = oppKlass; d.started = true; start(klass, false, d); },
       onPose: p => { if (!d.pose) { d.rx = p.x; d.ry = p.y; } d.pose = p; },
       onShot: sh => { if (d.started && !d.done && world) world.remoteShot(sh.x, sh.y, sh.a, sh.w, sh.m); },
       onDeaths: n => { d.oppDeaths = Math.max(d.oppDeaths, n); },
+      onArmy: m => { const a = parseArmy(m); if (a && d.started && !d.done && world) d.army.receive(world, a); },
+      onHqDown: () => { d.oppHqDown = true; },
       onGone: reason => { if (!d.done) void concludeDuel(s.me.id, reason === 'never' ? '상대가 접속하지 않았습니다' : reason === 'bye' ? '상대가 나갔습니다' : '상대와의 연결이 끊어졌습니다'); },
     });
   }
   function duelTick(now: number, dt: number): void {
     const d = duel, w = world; if (!d || !w || d.done) return; const f = w.factions[0], b = w.boss(0);
     if (d.pose) { const far = Math.hypot(d.pose.x - d.rx, d.pose.y - d.ry) > 400, k = far ? 1 : Math.min(1, dt * 12); d.rx += (d.pose.x - d.rx) * k; d.ry += (d.pose.y - d.ry) * k; w.puppet(d.rx, d.ry, d.pose.a, d.pose.hp, d.pose.mh, d.pose.w); }
+    d.army.step(dt); const army = d.army.snapshot(w, now); if (army) d.net.sendArmy(army);
+    if (!w.hq(0) && !d.hqSent) { d.hqSent = true; d.net.sendHqDown(); }
     if (b) d.net.sendPose({ x: b.x, y: b.y, a: b.ang, hp: b.hp, mh: b.maxHp, w: f.slots[f.cur]?.id ?? 'pistol' }, now);
     if (f.deaths > d.myDeaths) { d.myDeaths = f.deaths; d.net.sendDeaths(d.myDeaths); }
-    const out = duelOutcome(d.myDeaths, d.oppDeaths, w.time);
+    const out = d.hqSent ? 'lose' : d.oppHqDown ? 'win' : duelOutcome(d.myDeaths, d.oppDeaths, w.time);
     if (!out) { d.graceAt = 0; return; }
-    if (!d.graceAt) d.graceAt = now; else if (now - d.graceAt > 1000) void concludeDuel(out === 'win' ? d.s.me.id : d.s.opponent.id, out === 'win' ? `${d.oppDeaths}킬로 승리` : `${d.myDeaths}번 쓰러졌습니다`);
+    const why = d.hqSent ? '내 본부가 무너졌습니다' : d.oppHqDown ? '상대 본부를 무너뜨렸습니다' : out === 'win' ? `${d.oppDeaths}킬로 승리` : `${d.myDeaths}번 쓰러졌습니다`;
+    if (!d.graceAt) d.graceAt = now; else if (now - d.graceAt > 1000) void concludeDuel(out === 'win' ? d.s.me.id : d.s.opponent.id, why);
   }
   /** 승자를 서버에 보고하고 확정된 레이팅 변화를 보여 줍니다(보고 규칙은 SPEED RUSH 와 같습니다). */
   async function concludeDuel(winner: string, why: string): Promise<void> {

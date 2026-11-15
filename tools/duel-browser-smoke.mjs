@@ -19,7 +19,7 @@ try {
   const errors = [];
   async function player(name) {
     const page = await context.newPage(); page.setDefaultTimeout(40000);
-    page.on('pageerror', e => errors.push(`${name}: ${e.message}`));
+    page.on('pageerror', e => { errors.push(`${name}: ${e.message}`); console.log('PAGEERROR', name, e.message); });
     await page.goto(origin + '/?pvp=local');
     await page.click('#start-city'); await page.waitForSelector('.c-setup');
     await page.click('[data-act="duel:warlord"]'); await page.waitForSelector('.pvp-card');
@@ -39,6 +39,17 @@ try {
   assert.ok(Math.hypot(pa.foe[0] - pb.me[0], pa.foe[1] - pb.me[1]) < 30, `A sees B at ${pa.foe}, B is at ${pb.me}`);
   assert.ok(Math.hypot(pb.foe[0] - pa.me[0], pb.foe[1] - pa.me[1]) < 30, `B sees A at ${pb.foe}, A is at ${pa.me}`);
   await a.screenshot({ path: 'browser-artifacts/duel-a.png' });
+  // 병력·건설 동기화: A 가 병영을 짓고 병력을 뽑으면 B 의 세계에 꼭두각시 건물·병력이 나타난다
+  await a.evaluate(() => { const w = window.__city.world, f = w.factions[0], hq = w.hq(0); f.cash = 9999; f.crystal = 9999; window.__buildErr = 'x'; for (const [dx, dy] of [[170, 0], [-170, 0], [0, 170], [0, -170], [170, 170], [-170, -170], [170, -170], [-170, 170], [230, 0], [-230, 0]]) { window.__buildErr = w.build(0, 'barracks', hq.x + 60 + dx, hq.y + 60 + dy); if (!window.__buildErr) break; } w.train(0, 'worker'); });
+  assert.equal(await a.evaluate(() => window.__buildErr), '', 'A should be able to build in a duel');
+  // 헤드리스(SwiftShader)는 프레임이 아주 느리니 건설 시간을 기다리지 않고 완공 상태로 만듭니다(동기화만 확인)
+  await a.evaluate(() => { const b = window.__city.world.structures.find(s => s.f === 0 && s.kind === 'barracks'); b.built = 1; b.hp = b.maxHp; });
+  await b.waitForFunction(() => { const w = window.__city.world; return w.structures.some(s => s.f === 1 && s.kind === 'barracks' && s.built >= 1) && w.actors.filter(x => x.alive && x.f === 1 && x.kind !== 'boss').length >= 6; }, null, { timeout: 90000, polling: 500 });
+  await a.waitForFunction(() => { const w = window.__city.world; return w.structures.some(s => s.f === 0 && s.kind === 'barracks' && s.built >= 1); }, null, { timeout: 90000, polling: 500 });
+  const armyA = await a.evaluate(() => window.__city.world.actors.filter(x => x.alive && x.f === 0 && x.kind !== 'boss').length);
+  const armyB = await b.evaluate(() => window.__city.world.actors.filter(x => x.alive && x.f === 1 && x.kind !== 'boss').length);
+  assert.ok(Math.abs(armyA - armyB) <= 2, `B sees ${armyB} of A's ${armyA} units`);
+  await b.screenshot({ path: 'browser-artifacts/duel-army-b.png' });
   // 사격 판정: A 가 B 바로 옆(왼쪽 70)에서 B 쪽으로 쏘면 B 쪽 세계에서 B 의 보스가 맞는다
   // 판정은 맞은 횟수로 봅니다(체력은 자동 회복으로 다시 차오를 수 있습니다)
   await b.evaluate(() => { const w = window.__city.world; w.boss(0).hp = w.boss(0).maxHp; window.__hits = 0; const h = w.hurtActor.bind(w); w.hurtActor = (t, d, f) => { if (t.kind === 'boss' && t.f === 0 && f === 1) window.__hits++; h(t, d, f); }; });
@@ -50,6 +61,9 @@ try {
     return { hits: await b.evaluate(() => window.__hits) };
   })();
   assert.ok(hit.hits >= 3, `A's shots should reach and hurt B: ${JSON.stringify(hit)}`);
+  if (process.env.DUEL_END === 'hq') { // 본부 파괴로 끝내기: B 의 본부를 무너뜨리면 B 가 진다
+    await b.evaluate(() => { const w = window.__city.world; w.hurtStruct(w.hq(0), 1e9, 1); });
+  } else
   // 5킬 승부: B 를 다섯 번 쓰러뜨린다(부활 대기를 줄이려고 respawnT 를 당김)
   for (let k = 0; k < 5; k++) {
     await b.waitForFunction(() => window.__city.world.boss(0), null, { timeout: 60000 });

@@ -9,5 +9,5 @@
 ## 확인 순서
 
 1. `npm run lint && npm run typecheck && npm test && npm run build`
-2. `npm run preview`로 메인 페이지를 열고 LAST CITY와 SPEED RUSH가 각각 시작되는지 확인합니다.
+2. `npm run preview`로 메인 페이지를 열고 LAST CITY, SPEED RUSH, FRONTLINE이 각각 시작되는지 확인합니다.
 3. 모바일 폭에서 두 게임의 조작 화면도 확인합니다.

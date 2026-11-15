@@ -29,7 +29,7 @@ export function missionLog(world: World): MissionItem[] {
   const rifle = world.actors.filter(a => a.alive && a.f === 0 && a.kind === 'rifle').length;
   const armed = f.slots.some(x => x.id !== 'pistol' && !(x.id === 'smg' && world.opts.klass === 'warlord'));
   const captured = f.ai.biz === -7 || !!world.quests[5]?.done;
-  const defeated = f.bossKills >= 1 && world.factions.some(x => !x.alive);
+  const defeated = world.factions.some(x => x.id !== 0 && !x.alive);
   const observed: number[] = [owned, Number(barracks), rifle, Number(armed), owned, Number(captured), Number(defeated)];
   const targets = [1, 1, 4, 1, 3, 1, 1];
   const items: MissionItem[] = world.quests.map((q, i) => {

@@ -64,7 +64,7 @@ export const STEPS: TutStep[] = [
       for (const z of x.w.businesses) if (z.owner < 0 && z.kind !== 'gunshop' && price(z.kind) <= 900) { const d = Math.hypot(z.x - b.x, z.y - b.y); if (d < bd) { bd = d; best = z.id; } }
       x.s.bizId = best ?? 0; x.w.factions[0].cash = Math.max(x.w.factions[0].cash, 1200);
     },
-    done: x => x.w.businesses.some(z => z.owner === 0),
+    done: x => x.w.businesses.some(z => z.owner === 0) && !x.w.inside,
     marker: x => { const z = x.w.businesses.find(q => q.id === x.s.bizId); return z ? { x: z.x, y: z.y, h: 90, text: `${BIZ[z.kind].name} $${BIZ[z.kind].price}` } : null; } },
   { title: '6. 기지 짓기', pulse: ['.c-cmd-main', '#c-touch [data-act="panel"]', '[data-act="tab:build"]', '[data-act="build:barracks"]'],
     body: `${k('Tab')}으로 <b>지휘 패널</b>을 열고 ▸ <b>건설</b> ▸ <b>병영</b>을 고른 뒤, 본부 근처 빈 땅을 <b>클릭</b>해 짓습니다. 초록 윤곽이 뜨면 지을 수 있는 곳입니다. (우클릭으로 취소)`,

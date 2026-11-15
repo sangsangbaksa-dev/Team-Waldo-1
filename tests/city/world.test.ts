@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { World } from '../../src/city/world';
 import { findPath, generateCity, makeRng, navBlocked } from '../../src/city/map';
-import { BIZ, FACTION_COUNT, SIZE, STRUCTS, SUPPLY_CAP, UNITS } from '../../src/city/defs';
+import { BIZ, BLOCK, FACTION_COUNT, ROAD, SIZE, STRUCTS, SUPPLY_CAP, UNITS } from '../../src/city/defs';
 
 const make = (seed = 7): World => new World({ seed, difficulty: 'd4', klass: 'tycoon' });
 const run = (w: World, seconds: number): void => { for (let i = 0; i < seconds * 30 && !w.over; i++) { w.step(1 / 30); w.events.length = 0; } };
@@ -230,5 +230,39 @@ describe('LAST CITY bugfixes', () => {
     expect(enemy.alive).toBe(false);
     expect(w.factions[0].bossKills).toBe(0);
     expect(w.quests[6].check(w)).toBe(true);
+  });
+});
+
+describe('LAST CITY placement and demolish', () => {
+  it('allows a barracks flush with the home-block edge east of the HQ', () => {
+    const w = make(), hq = w.hq(0)!, f = w.factions[0], d = STRUCTS.barracks;
+    f.crystal = 2000;
+    const bx = Math.floor((hq.x + hq.w / 2 - ROAD) / (BLOCK + ROAD)) * (BLOCK + 120) + ROAD;
+    // 블록 동쪽 끝에 발자국을 맞춥니다. 예전에는 도로 닫힌 구간 판정 때문에 거절됐습니다.
+    const cx = bx + BLOCK - d.w / 2, cy = hq.y + hq.h / 2;
+    expect(w.canBuild(0, 'barracks', cx, cy)).toBe(true);
+    expect(w.build(0, 'barracks', cx, cy)).toBe('');
+    expect(w.canBuild(0, 'barracks', cx, cy)).toBe(false);
+    expect(w.canBuild(0, 'barracks', hq.x + hq.w / 2, hq.y + hq.h / 2)).toBe(false);
+  });
+
+  it('refunds half the build cost and queued training when the owner demolishes', () => {
+    const w = make(), f = w.factions[0], hq = w.hq(0)!;
+    f.crystal = 2000; f.cash = 2000;
+    const s = w.addStructure('barracks', 0, hq.x + 200, hq.y, true);
+    expect(w.train(0, 'rifle')).toBe('');
+    const cash = f.cash, crystal = f.crystal;
+    const build = w.demolishRefundOf(0, 'barracks');
+    const trainC = w.cost(f, UNITS.rifle.crystal), trainM = w.cost(f, UNITS.rifle.cash);
+    expect(w.canDemolish(0, hq.id)).toContain('본부');
+    expect(w.demolish(0, hq.id)).toContain('본부');
+    expect(w.hq(0)?.alive).toBe(true);
+    const enemy = w.structures.find(z => z.alive && z.f === 1 && z.kind === 'hq')!;
+    expect(w.demolish(0, enemy.id)).toContain('아군');
+    expect(w.demolish(0, s.id)).toBe('');
+    expect(s.alive).toBe(false);
+    expect(f.crystal).toBe(crystal + trainC + build.crystal);
+    expect(f.cash).toBe(cash + trainM + build.cash);
+    expect(build.crystal).toBe(Math.floor(w.cost(f, STRUCTS.barracks.crystal) * 0.5));
   });
 });

@@ -147,6 +147,6 @@ export function buildPerimeter(scene: THREE.Scene): void {
   };
   ring(0, 0, SIZE, SIZE, -20, H, conc); ring(-6, -6, SIZE + 6, SIZE + 6, H, H + 10, cap); ring(0, 0, SIZE, SIZE, -20, 14, dark);
   for (let k = 0; k <= SIZE; k += 120) for (const [x, z] of [[k, -2], [k, SIZE + 2], [-2, k], [SIZE + 2, k]]) m.box(x - 2, H + 10, z - 2, x + 2, H + 56, z + 2, dark);
-  for (const [a, b, c2, d] of [[-E, -E, SIZE + E, -T - 1], [-E, SIZE + T + 1, SIZE + E, SIZE + E], [-E, -T - 1, -T - 1, SIZE + T + 1], [SIZE + T + 1, -T - 1, SIZE + E, SIZE + T + 1]]) m.box(a, -40, b, c2, -8, d, new THREE.Color(0x2b5f7a));
+  for (const [a, b, c2, d] of [[-E, -E, SIZE + E, -T - 1], [-E, SIZE + T + 1, SIZE + E, SIZE + E], [-E, -T - 1, -T - 1, SIZE + T + 1], [SIZE + T + 1, -T - 1, SIZE + E, SIZE + T + 1]]) m.box(a, -40, b, c2, -8, d, new THREE.Color(0x2a4558));
   const o = new THREE.Mesh(m.geo(), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })); o.castShadow = false; scene.add(o);
 }

@@ -2,8 +2,9 @@ import './style.css';
 import { readPreferences, writePreferences } from './prefs';
 import { showLoading, retry, retryNote } from './loading';
 import { readCityCareer, readRaceRecords, readRtsRecords, fmtTime } from './records';
+import { readShooterCareer } from './shooter/records';
 
-type GameId = 'city' | 'race' | 'rts';
+type GameId = 'city' | 'race' | 'rts' | 'shooter';
 
 interface Entry {
   id: GameId;
@@ -58,6 +59,19 @@ const ENTRIES: Entry[] = [
       return matches > 0 ? `${matches}판 · ${wins}승` : '';
     },
   },
+  {
+    id: 'shooter',
+    name: 'ZERO ZONE',
+    genre: '배틀로열 슈터',
+    summary: '줄어드는 자기장 안에서 총을 줍고 싸웁니다. AI 19명과 겨루거나, 온라인에서 1대1 대전을 할 수 있습니다.',
+    facts: ['AI 19명 · 난이도 4단계', '1대1 온라인 대전', '키보드 · 마우스 · 터치'],
+    image: `${base}assets/home/zero-zone.jpg`,
+    imageAlt: '자기장이 다가오는 들판에서 총을 든 병사',
+    status: () => {
+      const { matches, wins } = readShooterCareer();
+      return matches > 0 ? `${matches}판 · ${wins}승` : '';
+    },
+  },
 ];
 
 const app = document.querySelector<HTMLDivElement>('#game')!;
@@ -83,7 +97,7 @@ function tile(entry: Entry, index: number): string {
 function renderMenu(): void {
   generation++;
   const sound = readPreferences().sound;
-  document.title = 'WALDO · 3D 게임';
+  document.title = 'WALDO · LAST CITY / SPEED RUSH / FRONTLINE / ZERO ZONE';
   app.hidden = false;
   app.innerHTML = `
     <main class="home">
@@ -150,7 +164,7 @@ async function launch(id: GameId): Promise<void> {
   if (label) label.textContent = '불러오는 중…';
   if (notice) notice.textContent = '';
   // 로딩 화면을 띄우고, 코드 묶음(chunk)을 받을 때까지 끊지 않고 다시 시도합니다.
-  const loading = showLoading(id === 'city' ? 'LAST CITY' : id === 'rts' ? 'FRONTLINE' : 'SPEED RUSH');
+  const loading = showLoading(id === 'city' ? 'LAST CITY' : id === 'rts' ? 'FRONTLINE' : id === 'shooter' ? 'ZERO ZONE' : 'SPEED RUSH');
   loading.progress(null, '게임을 불러오는 중');
   const cancelled = (): boolean => generation !== navigation;
   const fetchGame = <T,>(load: () => Promise<T>): Promise<T> => retry(load, { cancelled, onRetry: n => loading.note(retryNote(n)) });
@@ -165,6 +179,11 @@ async function launch(id: GameId): Promise<void> {
       if (cancelled()) { loading.close(); return; }
       app.hidden = true;
       openRts(renderMenu, { loading });
+    } else if (id === 'shooter') {
+      const { openShooter } = await fetchGame(() => import('./shooter/game'));
+      if (cancelled()) { loading.close(); return; }
+      app.hidden = true;
+      openShooter(renderMenu, { loading });
     } else {
       const { openRace } = await fetchGame(() => import('./race/game'));
       if (cancelled()) { loading.close(); return; }

@@ -3,12 +3,13 @@ import * as THREE from 'three';
 import { BUILDINGS, TEAM_COLORS, UNITS, type BuildKind } from './config';
 import { crystalMat, makeBuilding, makeCrystals, makeUnit, matsFor, type BuildRig, type UnitRig } from './models';
 import type { Building, ResNode, RtsSim, SimEvent, Unit } from './sim';
+import { heightAt } from './map';
 
 interface UVis { kind: 'unit'; id: number; rig: UnitRig; ring: THREE.Mesh; px: number; py: number; cx: number; cy: number; yaw: number; moved: number; shake: number }
 interface BVis { kind: 'building'; id: number; rig: BuildRig; frame: THREE.Group; scaff: THREE.Group; done: boolean; wasDone: boolean; rubble: number }
 interface NVis { kind: 'node'; id: number; obj: THREE.Group; base: number }
 type Quality = 'high' | 'standard' | 'low';
-interface Fx { obj: THREE.Object3D; t: number; life: number; tick: (f: Fx, dt: number) => void }
+interface Fx { holder?: THREE.Group; obj: THREE.Object3D; t: number; life: number; tick: (f: Fx, dt: number) => void }
 
 const US: Record<string, number> = { worker: 1.4, marine: 1.45, rocket: 1.45, tank: 1.2 };
 const seeded = (seed: number): (() => number) => { let s = seed >>> 0; return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }; };
@@ -23,6 +24,8 @@ export class RtsView {
   private raycaster = new THREE.Raycaster(); private clock = 0; private w = 1; private h = 1; private fxBudget: number;
   private ringMats = [new THREE.MeshBasicMaterial({ color: 0x5dff9a, transparent: true, opacity: 0.9, depthWrite: false }), new THREE.MeshBasicMaterial({ color: 0xff5a4a, transparent: true, opacity: 0.9, depthWrite: false })];
   private grid: THREE.Mesh | null = null;
+  /** 전장의 안개(보는 쪽 화면에만 적용): vis=지금 보이는 칸, seen=한 번이라도 본 칸 */
+  readonly fogVis: Uint8Array; readonly fogSeen: Uint8Array; readonly fogCanvas: HTMLCanvasElement; private fogTex: THREE.CanvasTexture; private fogT = 0;
 
   constructor(readonly canvas: HTMLCanvasElement, readonly sim: RtsSim, readonly viewer: number, readonly quality: Quality = 'high') {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
@@ -35,6 +38,7 @@ export class RtsView {
     this.sun.castShadow = this.shadows; const sc = this.sun.shadow.camera; sc.left = -88; sc.right = 88; sc.top = 88; sc.bottom = -88; sc.near = 1; sc.far = 320;
     this.sun.shadow.mapSize.set(quality === 'high' ? 2048 : 1024, quality === 'high' ? 2048 : 1024); this.sun.shadow.bias = -0.0006; this.sun.shadow.normalBias = 0.04;
     this.scene.add(this.sun, this.sun.target);
+    const nn = sim.map.size; this.fogVis = new Uint8Array(nn * nn); this.fogSeen = new Uint8Array(nn * nn); this.fogCanvas = document.createElement('canvas'); this.fogCanvas.width = this.fogCanvas.height = nn; this.fogTex = new THREE.CanvasTexture(this.fogCanvas);
     this.buildTerrain(); this.flag = this.makeFlag(); this.flag.visible = false; this.scene.add(this.flag);
     const start = sim.map.starts[viewer]; this.cam.x = start.x + 2; this.cam.y = start.y + 2;
     if (window.innerWidth < 900 || matchMedia('(pointer: coarse)').matches) this.cam.dist = 52; // 작은 화면에서는 가깝게
@@ -52,8 +56,9 @@ export class RtsView {
     for (const e of this.sim.map.expansions) { const grd = g.createRadialGradient((e.x + 2) * k, (e.y + 2) * k, 2 * k, (e.x + 2) * k, (e.y + 2) * k, 9 * k); grd.addColorStop(0, 'rgba(142,124,92,.7)'); grd.addColorStop(1, 'rgba(142,124,92,0)'); g.fillStyle = grd; g.fillRect(0, 0, tex.width, tex.height); }
     g.strokeStyle = 'rgba(30,36,24,.07)'; g.lineWidth = 1; for (let i = 0; i <= n; i += 4) { g.beginPath(); g.moveTo(i * k, 0); g.lineTo(i * k, tex.height); g.moveTo(0, i * k); g.lineTo(tex.width, i * k); g.stroke(); }
     const map = new THREE.CanvasTexture(tex); map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 4;
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(n, n), new THREE.MeshStandardMaterial({ map, roughness: 1, metalness: 0 }));
-    ground.rotation.x = -Math.PI / 2; ground.position.set(n / 2, 0, n / 2); ground.receiveShadow = true; scene.add(ground);
+    const gg0 = new THREE.PlaneGeometry(n, n, n, n); gg0.rotateX(-Math.PI / 2); gg0.translate(n / 2, 0, n / 2); { const ps = gg0.attributes.position; for (let i = 0; i < ps.count; i++) ps.setY(i, heightAt(ps.getX(i), ps.getZ(i))); gg0.computeVertexNormals(); }
+    const ground = new THREE.Mesh(gg0, new THREE.MeshStandardMaterial({ map, roughness: 1, metalness: 0 }));
+    const fogMesh = new THREE.Mesh(gg0, new THREE.MeshBasicMaterial({ map: this.fogTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3, fog: false })); fogMesh.renderOrder = 5; scene.add(fogMesh); ground.receiveShadow = true; scene.add(ground);
     const far = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.MeshStandardMaterial({ color: 0x4c5a3a, roughness: 1 })); far.rotation.x = -Math.PI / 2; far.position.set(n / 2, -0.05, n / 2); scene.add(far);
     // 막힌 칸마다 바위 한 덩어리(한 번의 그리기로 처리).
     const cells: Array<[number, number, number]> = [], t = this.sim.map.terrain;
@@ -65,7 +70,7 @@ export class RtsView {
     rocks.castShadow = this.shadows; rocks.receiveShadow = true; const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), col = new THREE.Color(); let idx = 0;
     for (const [x, y, nb] of cells) for (let r = 0; r < 2; r++) {
       const edge = x === 0 || y === 0 || x === n - 1 || y === n - 1, hgt = (0.5 + nb * 0.14 + rnd() * 0.6) * (edge ? 1.9 : 1) * (r ? 0.7 : 1), sx = 0.75 + rnd() * 0.55;
-      e.set(rnd() * 3, rnd() * 6, rnd() * 3); q.setFromEuler(e); m4.compose(new THREE.Vector3(x + 0.5 + (rnd() - 0.5) * 0.5, hgt * 0.35, y + 0.5 + (rnd() - 0.5) * 0.5), q, new THREE.Vector3(sx, hgt, sx));
+      e.set(rnd() * 3, rnd() * 6, rnd() * 3); q.setFromEuler(e); m4.compose(new THREE.Vector3(x + 0.5 + (rnd() - 0.5) * 0.5, hgt * 0.35 + heightAt(x + 0.5, y + 0.5), y + 0.5 + (rnd() - 0.5) * 0.5), q, new THREE.Vector3(sx, hgt, sx));
       rocks.setMatrixAt(idx, m4); col.setHSL(0.08 + rnd() * 0.04, 0.12 + rnd() * 0.08, 0.3 + rnd() * 0.14 + (nb > 6 ? 0.04 : 0)); rocks.setColorAt(idx++, col);
     }
     rocks.count = idx; rocks.instanceMatrix.needsUpdate = true; if (rocks.instanceColor) rocks.instanceColor.needsUpdate = true; scene.add(rocks);
@@ -109,25 +114,27 @@ export class RtsView {
   private clampCam(): void { const n = this.sim.map.size; this.cam.x = Math.min(n - 6, Math.max(6, this.cam.x)); this.cam.y = Math.min(n - 4, Math.max(8, this.cam.y)); }
   private placeCamera(): void {
     const { x, y, dist } = this.cam, c = Math.cos(this.pitch), s = Math.sin(this.pitch), sign = this.yaw === 0 ? 1 : -1;
-    this.camera.position.set(x, dist * s, y + dist * c * sign * 0.9 + sign * 2); this.camera.lookAt(x, 0, y - sign * 1.5); this.camera.updateMatrixWorld();
-    this.sun.position.set(x - 20, 44, y + 18); this.sun.target.position.set(x, 0, y); this.sun.target.updateMatrixWorld();
+    this.camera.position.set(x, dist * s, y + dist * c * sign * 0.9 + sign * 2); this.camera.lookAt(x, heightAt(x, y), y - sign * 1.5); this.camera.updateMatrixWorld();
+    this.sun.position.set(x - 20, 44, y + 18); this.sun.target.position.set(x, heightAt(x, y), y); this.sun.target.updateMatrixWorld();
   }
 
   /** 화면 좌표(캔버스 안, 픽셀) → 맵 좌표. 하늘을 가리키면 null. */
   ground(sx: number, sy: number): { x: number; y: number } | null {
     this.raycaster.setFromCamera(new THREE.Vector2(sx / this.w * 2 - 1, -(sy / this.h) * 2 + 1), this.camera); const r = this.raycaster.ray;
-    if (r.direction.y > -0.001) return null; const t = -r.origin.y / r.direction.y; return { x: r.origin.x + r.direction.x * t, y: r.origin.z + r.direction.z * t };
+    if (r.direction.y > -0.001) return null; let t = -r.origin.y / r.direction.y, gx = r.origin.x + r.direction.x * t, gy = r.origin.z + r.direction.z * t;
+    for (let i = 0; i < 3; i++) { t = (heightAt(gx, gy) - r.origin.y) / r.direction.y; gx = r.origin.x + r.direction.x * t; gy = r.origin.z + r.direction.z * t; }
+    return { x: gx, y: gy };
   }
   /** 맵 좌표(높이 h)를 화면 픽셀로. 카메라 뒤면 null. */
   project(x: number, y: number, h = 0): { x: number; y: number } | null {
-    const v = new THREE.Vector3(x, h, y).project(this.camera); if (v.z > 1 || v.z < -1) return null; return { x: (v.x + 1) / 2 * this.w, y: (1 - v.y) / 2 * this.h };
+    const v = new THREE.Vector3(x, h + heightAt(x, y), y).project(this.camera); if (v.z > 1 || v.z < -1) return null; return { x: (v.x + 1) / 2 * this.w, y: (1 - v.y) / 2 * this.h };
   }
   /** 화면 좌표 아래의 유닛·건물·광물. 겹치면 카메라에 가까운 것. */
   pick(sx: number, sy: number): number {
     this.raycaster.setFromCamera(new THREE.Vector2(sx / this.w * 2 - 1, -(sy / this.h) * 2 + 1), this.camera); const ray = this.raycaster.ray; let best = 0, bt = Infinity; const v = new THREE.Vector3(), box = new THREE.Box3(), sph = new THREE.Sphere();
-    for (const u of this.sim.units) { sph.set(v.set(u.x, 0.55, u.y).clone(), Math.max(0.55, UNITS[u.kind].radius + 0.2)); if (ray.intersectSphere(sph, v)) { const d = v.distanceTo(ray.origin); if (d < bt) { bt = d; best = u.id; } } }
-    for (const b of this.sim.buildings) { box.min.set(b.x, 0, b.y); box.max.set(b.x + b.size, b.size < 3 ? 1.8 : 2.4, b.y + b.size); if (ray.intersectBox(box, v)) { const d = v.distanceTo(ray.origin) + 0.4; if (d < bt) { bt = d; best = b.id; } } }
-    for (const nd of this.sim.nodes) { sph.set(v.set(nd.x + 0.5, 0.5, nd.y + 0.5).clone(), 0.85); if (ray.intersectSphere(sph, v)) { const d = v.distanceTo(ray.origin) + 0.6; if (d < bt) { bt = d; best = nd.id; } } }
+    for (const u of this.sim.units) { if (!this.canSee(u)) continue; sph.set(v.set(u.x, 0.55 + heightAt(u.x, u.y), u.y).clone(), Math.max(0.55, UNITS[u.kind].radius + 0.2)); if (ray.intersectSphere(sph, v)) { const d = v.distanceTo(ray.origin); if (d < bt) { bt = d; best = u.id; } } }
+    for (const b of this.sim.buildings) { if (!this.canSee(b)) continue; const hb = heightAt(b.x + b.size / 2, b.y + b.size / 2); box.min.set(b.x, hb, b.y); box.max.set(b.x + b.size, hb + (b.size < 3 ? 1.8 : 2.4), b.y + b.size); if (ray.intersectBox(box, v)) { const d = v.distanceTo(ray.origin) + 0.4; if (d < bt) { bt = d; best = b.id; } } }
+    for (const nd of this.sim.nodes) { sph.set(v.set(nd.x + 0.5, 0.5 + heightAt(nd.x + 0.5, nd.y + 0.5), nd.y + 0.5).clone(), 0.85); if (ray.intersectSphere(sph, v)) { const d = v.distanceTo(ray.origin) + 0.6; if (d < bt) { bt = d; best = nd.id; } } }
     return best;
   }
 
@@ -142,14 +149,35 @@ export class RtsView {
       const plane = new THREE.Mesh(new THREE.PlaneGeometry(s, s), new THREE.MeshBasicMaterial({ color: 0x5dff9a, transparent: true, opacity: 0.4, depthWrite: false })); plane.rotation.x = -Math.PI / 2; plane.position.set(0, 0.06, 0);
       obj.add(rig.root, plane); this.scene.add(obj); this.ghost = { kind, obj, plane };
     }
-    const s = BUILDINGS[kind].size; this.ghost.obj.visible = true; this.ghost.obj.position.set(x + s / 2, 0, y + s / 2); (this.ghost.plane.material as THREE.MeshBasicMaterial).color.set(ok ? 0x5dff9a : 0xff4d4d);
+    const s = BUILDINGS[kind].size; this.ghost.obj.visible = true; this.ghost.obj.position.set(x + s / 2, heightAt(x + s / 2, y + s / 2), y + s / 2); (this.ghost.plane.material as THREE.MeshBasicMaterial).color.set(ok ? 0x5dff9a : 0xff4d4d);
   }
   /** 명령을 내린 자리에 잠깐 보이는 표시. */
   ping(x: number, y: number, color: number): void {
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.8, 1, 24), this.glowMat(color, 0.9)); ring.rotation.x = -Math.PI / 2; ring.position.set(x, 0.09, y);
     this.add({ obj: ring, t: 0, life: 0.5, tick: f => { const k = f.t / f.life; ring.scale.setScalar(1.1 - k * 0.7); (ring.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - k); } });
   }
-  setRally(p: { x: number; y: number } | null): void { this.flag.visible = !!p; if (p) this.flag.position.set(p.x, 0, p.y); }
+  setRally(p: { x: number; y: number } | null): void { this.flag.visible = !!p; if (p) this.flag.position.set(p.x, heightAt(p.x, p.y), p.y); }
+
+  // ---------- 전장의 안개 ----------
+  private sight(kind: string, building: boolean): number { return building ? (kind === 'hq' ? 14 : kind === 'tower' ? 13 : 10) : kind === 'tank' ? 11 : kind === 'worker' ? 8.5 : 10; }
+  private updateFog(): void {
+    const s = this.sim, n = s.map.size, vis = this.fogVis, seen = this.fogSeen; vis.fill(0);
+    const mark = (cx: number, cy: number, r: number): void => {
+      const x0 = Math.max(0, Math.floor(cx - r)), x1 = Math.min(n - 1, Math.ceil(cx + r)), y0 = Math.max(0, Math.floor(cy - r)), y1 = Math.min(n - 1, Math.ceil(cy + r)), r2 = r * r;
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if ((x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2 <= r2) vis[y * n + x] = 1;
+    };
+    for (const u of s.units) if (u.owner === this.viewer) mark(u.x, u.y, this.sight(u.kind, false));
+    for (const b of s.buildings) if (b.owner === this.viewer) mark(b.x + b.size / 2, b.y + b.size / 2, this.sight(b.kind, true) + (b.done ? 0 : -4));
+    const g = this.fogCanvas.getContext('2d')!, img = g.createImageData(n, n), d = img.data;
+    for (let i = 0; i < n * n; i++) { if (vis[i]) seen[i] = 1; const a = vis[i] ? 0 : seen[i] ? 105 : 225; d[i * 4] = 8; d[i * 4 + 1] = 12; d[i * 4 + 2] = 10; d[i * 4 + 3] = a; }
+    g.putImageData(img, 0, 0); this.fogTex.needsUpdate = true;
+  }
+  /** 이 개체를 지금 화면에서 볼 수 있는지(내 것·보이는 칸의 적 유닛·한 번 본 적 건물·광물). */
+  canSee(e: Unit | Building | ResNode): boolean {
+    if (e.k === 'node') return true; if (e.owner === this.viewer) return true; const n = this.sim.map.size;
+    if (e.k === 'unit') return this.fogVis[Math.min(n - 1, Math.max(0, Math.floor(e.y))) * n + Math.min(n - 1, Math.max(0, Math.floor(e.x)))] === 1;
+    return this.fogSeen[Math.min(n - 1, Math.max(0, Math.floor(e.y + e.size / 2))) * n + Math.min(n - 1, Math.max(0, Math.floor(e.x + e.size / 2)))] === 1;
+  }
 
   // ---------- 매 틱·매 프레임 ----------
   /** 시뮬레이션이 한 틱 진행될 때마다 부릅니다. 보간을 위해 직전 위치를 기억합니다. */
@@ -172,22 +200,23 @@ export class RtsView {
   private addBuilding(b: Building): void {
     const rig = makeBuilding(b.kind, b.owner), frame = new THREE.Group(), s = b.size;
     for (const [x, z, w, d] of [[0, -s / 2, s, 0.1], [0, s / 2, s, 0.1], [-s / 2, 0, 0.1, s], [s / 2, 0, 0.1, s]] as const) { const bar = new THREE.Mesh(new THREE.BoxGeometry(w, 0.06, d), this.ringMats[b.owner === this.viewer ? 0 : 1]); bar.position.set(x, 0.06, z); frame.add(bar); }
-    frame.position.set(b.x + s / 2, 0, b.y + s / 2); frame.visible = false;
+    const hb = heightAt(b.x + s / 2, b.y + s / 2); frame.position.set(b.x + s / 2, hb, b.y + s / 2); frame.visible = false;
     const scaff = new THREE.Group(), pm = new THREE.MeshStandardMaterial({ color: 0xb8a070, roughness: 0.8, metalness: 0.2 });
     for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.2 + s * 0.25, 5), pm); p.position.set(x * (s / 2 - 0.1), (1.2 + s * 0.25) / 2, z * (s / 2 - 0.1)); scaff.add(p); }
-    scaff.position.set(b.x + s / 2, 0, b.y + s / 2); rig.root.position.set(b.x + s / 2, 0, b.y + s / 2);
+    scaff.position.set(b.x + s / 2, hb, b.y + s / 2); rig.root.position.set(b.x + s / 2, hb, b.y + s / 2);
     this.scene.add(rig.root, frame, scaff); this.builds.set(b.id, { kind: 'building', id: b.id, rig, frame, scaff, done: b.done, wasDone: b.done, rubble: 0 });
   }
-  private addNode(n: ResNode): void { const obj = makeCrystals(n.id); obj.position.set(n.x + 0.5, 0, n.y + 0.5); this.scene.add(obj); this.nodes.set(n.id, { kind: 'node', id: n.id, obj, base: 1 }); }
+  private addNode(n: ResNode): void { const obj = makeCrystals(n.id); obj.position.set(n.x + 0.5, heightAt(n.x + 0.5, n.y + 0.5), n.y + 0.5); this.scene.add(obj); this.nodes.set(n.id, { kind: 'node', id: n.id, obj, base: 1 }); }
 
   /** 선택·표시 상태를 갱신하고 그립니다. alpha 는 틱 사이 보간 비율(0~1). */
   render(dt: number, alpha: number, selected: ReadonlySet<number>): void {
     this.clock += dt; this.syncEntities(); const tick = this.sim.tick, s = this.sim;
+    this.fogT -= dt; if (this.fogT <= 0) { this.fogT = 0.12; this.updateFog(); }
     for (const [id, v] of this.units) {
       const u = s.unit(id); if (!u) continue; const x = v.px + (v.cx - v.px) * alpha, y = v.py + (v.cy - v.py) * alpha, sp = Math.sqrt((v.cx - v.px) ** 2 + (v.cy - v.py) ** 2);
       v.moved += (sp > 0.005 ? 1 : -1) * dt * 6; v.moved = Math.min(1, Math.max(0, v.moved));
       const want = -Math.atan2(u.fy, u.fx); let d = want - v.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); v.yaw += d * Math.min(1, dt * 12);
-      const r = v.rig, root = r.root; root.position.set(x, 0, y); root.rotation.y = v.yaw;
+      const r = v.rig, root = r.root; root.visible = this.canSee(u); root.position.set(x, heightAt(x, y), y); root.rotation.y = v.yaw;
       const bob = Math.sin(this.clock * (u.kind === 'tank' ? 9 : 14) + id) * (u.kind === 'tank' ? 0.015 : 0.05) * v.moved; r.body.position.y = Math.abs(bob); r.body.rotation.z = bob * (u.kind === 'tank' ? 0.2 : 0.5);
       const fired = tick - u.fired; r.flash.visible = fired >= 0 && fired < 2;
       if (r.gun) r.gun.position.x = (u.kind === 'tank' ? 0.3 : 0.2) - (fired >= 0 && fired < 3 ? 0.08 : 0);
@@ -197,14 +226,14 @@ export class RtsView {
       v.ring.visible = selected.has(id);
     }
     for (const [id, v] of this.builds) {
-      const b = s.building(id); if (!b) continue; const p = b.done ? 1 : Math.min(1, 0.12 + 0.88 * b.progress / BUILDINGS[b.kind].time);
+      const b = s.building(id); if (!b) continue; v.rig.root.visible = this.canSee(b); const p = b.done ? 1 : Math.min(1, 0.12 + 0.88 * b.progress / BUILDINGS[b.kind].time);
       v.rig.root.scale.set(1, b.done ? 1 : Math.max(0.05, p), 1); v.scaff.visible = !b.done; v.scaff.scale.y = 1 - p * 0.3;
       if (b.done && !v.wasDone) { v.wasDone = true; this.puff(b.x + b.size / 2, b.y + b.size / 2, b.size * 0.8, 0xd8cfb8); }
       for (const l of v.rig.light) l.visible = b.done && (Math.sin(this.clock * 3 + id) > -0.7);
       if (v.rig.spin && b.kind === 'hq') v.rig.spin.rotation.y += dt * 0.8;
       if (v.rig.spin && b.kind === 'tower') { const want = -Math.atan2(b.fy, b.fx); if (tick - b.fired < 40) v.rig.spin.rotation.y = want; }
       if (v.rig.flash) v.rig.flash.visible = tick - b.fired < 2;
-      v.frame.visible = selected.has(id); const hurt = tick - b.hurt; if (!b.done) v.rig.root.rotation.y = 0; v.rig.root.position.y = hurt >= 0 && hurt < 2 ? 0.02 : 0;
+      v.frame.visible = selected.has(id); const hurt = tick - b.hurt; if (!b.done) v.rig.root.rotation.y = 0; v.rig.root.position.y = heightAt(b.x + b.size / 2, b.y + b.size / 2) + (hurt >= 0 && hurt < 2 ? 0.02 : 0);
     }
     for (const [id, v] of this.nodes) { const n = s.node(id); if (!n) continue; const f = 0.55 + 0.45 * Math.min(1, n.amount / 1500); v.obj.scale.set(f, f, f); }
     crystalMat.emissiveIntensity = 1.0 + Math.sin(this.clock * 2.2) * 0.25;
@@ -212,9 +241,9 @@ export class RtsView {
   }
 
   // ---------- 이펙트 ----------
-  private add(f: Fx): void { if (this.fx.length >= this.fxBudget) { const old = this.fx.shift(); if (old) this.scene.remove(old.obj); } this.fx.push(f); this.scene.add(f.obj); }
+  private add(f: Fx): void { if (this.fx.length >= this.fxBudget) { const old = this.fx.shift(); if (old) this.scene.remove(old.holder ?? old.obj); } const holder = new THREE.Group(); holder.add(f.obj); f.holder = holder; this.fx.push(f); this.scene.add(holder); }
   private updateFx(dt: number): void {
-    for (let i = this.fx.length - 1; i >= 0; i--) { const f = this.fx[i]; f.t += dt; if (f.t >= f.life) { this.scene.remove(f.obj); this.fx.splice(i, 1); continue; } f.tick(f, dt); }
+    for (let i = this.fx.length - 1; i >= 0; i--) { const f = this.fx[i]; f.t += dt; if (f.t >= f.life) { this.scene.remove(f.holder ?? f.obj); this.fx.splice(i, 1); continue; } f.tick(f, dt); if (f.holder) f.holder.position.y = heightAt(f.obj.position.x, f.obj.position.z); }
   }
   private glowMat(color: number, opacity = 1): THREE.MeshBasicMaterial { return new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending }); }
   private puff(x: number, y: number, r: number, color: number): void {

@@ -34,5 +34,11 @@
 - 결과 보고는 SPEED RUSH 와 같은 방식(`pvp_report_result` → 상대 보고 또는 15초 뒤 확정)입니다. 서버는 40분 넘게 `playing` 인 매치를 무효 처리하므로 그보다 긴 대전은 기록되지 않습니다.
 - 게임 종류를 늘리려면 `supabase/migrations/20261115000000_pvp_more_games.sql` 처럼 체크 제약과 `pvp_quick_match`/`pvp_create_room` 의 허용 목록을 넓히는 마이그레이션이 먼저 적용되어 있어야 합니다(`bad_game` 오류가 납니다).
 
+## ZERO ZONE 대전 규칙
+- 작은 결투장(`duel` 지도)에서 둘이 같은 시드로 시작해 **먼저 쓰러뜨리는 쪽이 승리**합니다. 지도·전리품·자기장은 시드로 똑같이 만들어지고, 둘 다 같은 규칙으로 자기장이 줄어듭니다.
+- 동기화: 내 위치·자세를 15Hz 로 보내고 발사는 이벤트로 보냅니다. **맞았는지는 맞는 사람의 쪽에서 판정**하며(상대의 탄을 내 세계에서 날려 내 몸에 닿으면 체력 감소), 쓰러지면 사망 시각을 보내 동시 사망은 먼저 쓰러진 쪽이 집니다(같으면 방장 승).
+- 솔로(나 + AI 19명)는 서버를 쓰지 않으며 전적은 이 브라우저에만 저장됩니다. 게임 종류 `shooter` 는 `matches.game` 검사 제약을 넓히는 마이그레이션이 적용돼야 서버에 기록됩니다.
+- 로컬 확인: `node tools/shooter-browser-smoke.mjs`(솔로 시작 + 두 탭 대전 + 레이팅). 봇 난이도 검증은 `node --import tsx tools/shooter-sim.ts`.
+
 ## 로컬에서 두 탭으로 확인
 `npm run dev` 후 `http://localhost:5173/?pvp=local` 을 탭 두 개로 열면 네트워크 없이(localStorage·BroadcastChannel) 같은 흐름을 볼 수 있습니다. 이 백엔드는 개발 모드에만 포함됩니다. `node tools/pvp-browser-smoke.mjs`(SPEED RUSH), `node tools/duel-browser-smoke.mjs`(LAST CITY), `node tools/rts-browser-smoke.mjs`(FRONTLINE)가 이 방식으로 가입→매칭→대전→결과를 자동 확인합니다. 헤드리스 SwiftShader 는 화면이 느려 시뮬레이션이 슬로모션이 되므로 스크립트가 개발용 훅(`__race.skip`, `__city.world`)을 씁니다.

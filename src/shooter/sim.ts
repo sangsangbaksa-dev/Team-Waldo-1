@@ -1,0 +1,210 @@
+// ZERO ZONE — 경기 시뮬레이션: 이동·사격·피해·전리품·줄어드는 자기장·승패. 화면과 무관해서 테스트와 봇 대 봇 시뮬레이션에서 그대로 돌립니다.
+import { BOTS, BOT_NAMES, DIFFICULTIES, MAP_HALF, PLAYER, SKIN_TONES, TEAM_COLORS, WEAPONS, ZONES, makeRng, type Difficulty, type Mode, type WeaponId } from './config';
+import { generateMap, pushOut, rayWorld, type GameMap, type Loot } from './world';
+import { thinkBot, newBrain, type BotBrain } from './bot';
+
+export interface Input { mx: number; mz: number; yaw: number; pitch: number; fire: boolean; sprint: boolean; reload: boolean; interact: boolean; ads: boolean; slot: number }
+export const blankInput = (): Input => ({ mx: 0, mz: 0, yaw: 0, pitch: 0, fire: false, sprint: false, reload: false, interact: false, ads: false, slot: -1 });
+export interface Gun { id: WeaponId; mag: number; reserve: number }
+export interface Player {
+  id: number; name: string; bot: boolean; remote: boolean; color: number; skin: number;
+  x: number; z: number; yaw: number; pitch: number; vx: number; vz: number; hp: number; armor: number; alive: boolean;
+  guns: (Gun | null)[]; cur: number; reload: number; cd: number; fireHeld: boolean; interactHeld: boolean;
+  kills: number; place: number; diedAt: number; input: Input; brain: BotBrain | null;
+  walk: number; kick: number; muzzle: number; hurt: number; hurtYaw: number; ads: boolean; speed: number; lastHitBy: number; emptyT: number;
+}
+export type MatchEvent =
+  | { t: 'shot'; id: number; weapon: WeaponId; ox: number; oy: number; oz: number; ends: number[]; remote: boolean }
+  | { t: 'hit'; victim: number; attacker: number; dmg: number; head: boolean; x: number; y: number; z: number; wall: boolean }
+  | { t: 'kill'; victim: number; attacker: number; weapon: WeaponId | 'zone' }
+  | { t: 'pickup'; id: number; loot: number; kind: Loot['kind']; weapon: WeaponId | null }
+  | { t: 'reload'; id: number } | { t: 'empty'; id: number } | { t: 'over'; winner: number };
+
+export interface ZoneState { cx: number; cz: number; r: number; nextCx: number; nextCz: number; nextR: number; shrinking: boolean; phase: number; timeLeft: number; dps: number }
+
+export interface MatchOptions { seed: number; mode: Mode; difficulty: Difficulty; /** 사람(또는 원격) 선수 이름들. 나머지는 봇이 채웁니다. */ humans: Array<{ name: string; remote?: boolean }>; fill?: number }
+
+export class Match {
+  map: GameMap; mode: Mode; difficulty: Difficulty; seed: number;
+  players: Player[] = []; loot: Loot[]; t = 0; over = false; winner = -1; events: MatchEvent[] = [];
+  /** 최근 총소리(봇이 듣습니다) */ sounds: Array<{ x: number; z: number; t: number; by: number }> = [];
+  rng: () => number;
+  private centers: Array<{ x: number; z: number; r: number }>; private starts: number[]; private nextLoot: number;
+
+  constructor(o: MatchOptions) {
+    this.seed = o.seed; this.mode = o.mode; this.difficulty = o.difficulty;
+    this.map = generateMap(o.seed, o.mode); this.loot = this.map.loot.map(l => ({ ...l })); this.nextLoot = this.loot.length + 1000;
+    this.rng = makeRng(o.seed ^ 0x9e3779b9);
+    // 자기장 중심은 시드로 정해 두 브라우저가 같은 원을 봅니다.
+    const zr = makeRng(o.seed ^ 0x2545f491), half = MAP_HALF[o.mode], phases = ZONES[o.mode];
+    this.centers = []; this.starts = []; let prev = { x: 0, z: 0, r: half * 1.35 }, at = 0;
+    for (const ph of phases) {
+      let c = { x: prev.x, z: prev.z, r: ph.radius };
+      for (let i = 0; i < 12; i++) {
+        const a = zr() * Math.PI * 2, d = Math.sqrt(zr()) * Math.max(0, prev.r - ph.radius) * 0.85;
+        c = { x: prev.x + Math.cos(a) * d, z: prev.z + Math.sin(a) * d, r: ph.radius }; if (Math.hypot(c.x, c.z) + ph.radius * 0.5 <= half) break;
+      }
+      this.starts.push(at); at += ph.wait + ph.shrink; this.centers.push(c); prev = c;
+    }
+    const total = o.fill ?? (o.mode === 'br' ? 20 : o.humans.length), names = [...BOT_NAMES].sort(() => this.rng() - 0.5);
+    for (let i = 0; i < total; i++) {
+      const h = o.humans[i], sp = this.map.spawns[i % this.map.spawns.length];
+      const p: Player = {
+        id: i, name: h?.name ?? names[(i - o.humans.length) % names.length], bot: !h, remote: !!h?.remote, color: TEAM_COLORS[i % TEAM_COLORS.length], skin: SKIN_TONES[i % SKIN_TONES.length],
+        x: sp.x, z: sp.z, yaw: Math.atan2(-sp.z, -sp.x), pitch: 0, vx: 0, vz: 0, hp: PLAYER.hp, armor: 0, alive: true,
+        guns: [{ id: 'pistol', mag: WEAPONS.pistol.mag, reserve: WEAPONS.pistol.mag * 2 }, null], cur: 0, reload: 0, cd: 0.4, fireHeld: false, interactHeld: false,
+        kills: 0, place: 0, diedAt: 0, input: blankInput(), brain: null, walk: 0, kick: 0, muzzle: 0, hurt: 0, hurtYaw: 0, ads: false, speed: 0, lastHitBy: -1, emptyT: 0,
+      };
+      if (p.bot) p.brain = newBrain(this.rng, BOTS[o.difficulty]);
+      p.input.yaw = p.yaw; this.players.push(p);
+    }
+  }
+
+  /** 시각 t 의 자기장. */
+  zoneAt(t: number): ZoneState {
+    const half = this.map.half, phases = ZONES[this.mode];
+    let prev = { x: 0, z: 0, r: half * 1.35 };
+    for (let i = 0; i < phases.length; i++) {
+      const ph = phases[i], c = this.centers[i], s = this.starts[i];
+      if (t < s + ph.wait) return { cx: prev.x, cz: prev.z, r: prev.r, nextCx: c.x, nextCz: c.z, nextR: c.r, shrinking: false, phase: i, timeLeft: s + ph.wait - t, dps: ph.dps };
+      if (t < s + ph.wait + ph.shrink) { const k = (t - s - ph.wait) / ph.shrink; return { cx: prev.x + (c.x - prev.x) * k, cz: prev.z + (c.z - prev.z) * k, r: prev.r + (c.r - prev.r) * k, nextCx: c.x, nextCz: c.z, nextR: c.r, shrinking: true, phase: i, timeLeft: s + ph.wait + ph.shrink - t, dps: ph.dps }; }
+      prev = c;
+    }
+    const last = phases[phases.length - 1], over = t - (this.starts[phases.length - 1] + last.wait + last.shrink);
+    return { cx: prev.x, cz: prev.z, r: prev.r, nextCx: prev.x, nextCz: prev.z, nextR: prev.r, shrinking: false, phase: phases.length, timeLeft: 0, dps: last.dps * (1 + over / 12) };
+  }
+  get zone(): ZoneState { return this.zoneAt(this.t); }
+
+  aliveCount(): number { let n = 0; for (const p of this.players) if (p.alive) n++; return n; }
+  drain(): MatchEvent[] { const e = this.events; this.events = []; return e; }
+  gun(p: Player): Gun | null { return p.guns[p.cur]; }
+
+  step(dt: number): void {
+    if (this.over) return;
+    this.t += dt;
+    const zone = this.zone;
+    this.sounds = this.sounds.filter(s => this.t - s.t < 2.5);
+    for (const p of this.players) {
+      if (!p.alive) continue;
+      if (p.bot && p.brain) thinkBot(this, p, dt, zone);
+      this.update(p, dt);
+      if (!p.remote && Math.hypot(p.x - zone.cx, p.z - zone.cz) > zone.r) this.damage(p, zone.dps * dt, -1, 'zone', false, p.x, 1, p.z, true);
+    }
+    // 마지막 한 명이 남으면 끝납니다(동시에 모두 쓰러졌다면 마지막에 쓰러진 쪽이 승자).
+    if (!this.over) {
+      const alive = this.players.filter(p => p.alive);
+      if (alive.length <= 1 && this.players.length > 1) this.finish(alive[0]?.id ?? this.lastDead());
+    }
+  }
+  private lastDead(): number { let best = -1, at = -1; for (const p of this.players) if (p.diedAt > at) { at = p.diedAt; best = p.id; } return best; }
+  finish(winner: number): void { if (this.over) return; this.over = true; this.winner = winner; const w = this.players[winner]; if (w && w.alive) w.place = 1; this.events.push({ t: 'over', winner }); }
+
+  private update(p: Player, dt: number): void {
+    const inp = p.input, def = p.guns[p.cur] ? WEAPONS[p.guns[p.cur]!.id] : null;
+    p.cd = Math.max(0, p.cd - dt); p.kick = Math.max(0, p.kick - dt * 7); p.muzzle = Math.max(0, p.muzzle - dt); p.hurt = Math.max(0, p.hurt - dt); p.emptyT = Math.max(0, p.emptyT - dt);
+    if (!p.remote) {
+      p.yaw = inp.yaw; p.pitch = Math.max(-1.45, Math.min(1.45, inp.pitch)); p.ads = inp.ads && p.reload <= 0;
+      const fx = Math.cos(p.yaw), fz = Math.sin(p.yaw), rx = -fz, rz = fx;
+      let wx = fx * inp.mz + rx * inp.mx, wz = fz * inp.mz + rz * inp.mx; const wl = Math.hypot(wx, wz); if (wl > 1) { wx /= wl; wz /= wl; }
+      const run = inp.sprint && inp.mz > 0.2 && !p.ads, top = (run ? PLAYER.sprint : PLAYER.walk) * (p.ads ? 0.6 : 1) * (p.bot ? BOTS[this.difficulty].speed : 1);
+      const k = Math.min(1, dt * 11); p.vx += (wx * top - p.vx) * k; p.vz += (wz * top - p.vz) * k;
+      p.x += p.vx * dt; p.z += p.vz * dt; pushOut(this.map, p, PLAYER.radius);
+      const lim = this.map.half - 1; p.x = Math.max(-lim, Math.min(lim, p.x)); p.z = Math.max(-lim, Math.min(lim, p.z));
+      p.speed = Math.hypot(p.vx, p.vz); p.walk += p.speed * dt;
+    }
+    // 무기 교체
+    if (inp.slot >= 0 && inp.slot < 2 && inp.slot !== p.cur && p.guns[inp.slot]) { p.cur = inp.slot; p.reload = 0; p.cd = Math.max(p.cd, 0.35); inp.slot = -1; }
+    const gun = p.guns[p.cur];
+    if (gun && def) {
+      if (p.reload > 0) { p.reload -= dt; if (p.reload <= 0) { p.reload = 0; const n = Math.min(def.mag - gun.mag, gun.reserve); gun.mag += n; gun.reserve -= n; } }
+      else if ((inp.reload && gun.mag < def.mag && gun.reserve > 0) || (gun.mag === 0 && gun.reserve > 0 && inp.fire)) { p.reload = def.reload; this.events.push({ t: 'reload', id: p.id }); }
+      if (inp.fire && p.cd <= 0 && p.reload <= 0 && (def.auto || !p.fireHeld)) {
+        if (gun.mag > 0) this.shoot(p, gun, def.id); else if (p.emptyT <= 0) { p.emptyT = 0.5; this.events.push({ t: 'empty', id: p.id }); }
+      }
+    }
+    p.fireHeld = inp.fire;
+    // 줍기
+    const wantE = inp.interact && !p.interactHeld; p.interactHeld = inp.interact;
+    if (!p.remote) for (const l of this.loot) {
+      if (l.taken) continue; const dx = l.x - p.x, dz = l.z - p.z; if (dx * dx + dz * dz > PLAYER.pickup * PLAYER.pickup) continue;
+      if (l.kind === 'weapon') { if (wantE) { this.takeWeapon(p, l); break; } continue; }
+      this.takeAuto(p, l);
+    }
+  }
+
+  private take(p: Player, l: Loot): void { l.taken = true; this.events.push({ t: 'pickup', id: p.id, loot: l.id, kind: l.kind, weapon: l.weapon }); }
+  /** 다른 쪽(원격)이 먼저 주운 전리품을 치웁니다. */
+  removeLoot(id: number): void { const l = this.loot.find(x => x.id === id); if (l) l.taken = true; }
+  private takeAuto(p: Player, l: Loot): void {
+    if (l.kind === 'medkit') { if (p.hp >= PLAYER.hp) return; p.hp = Math.min(PLAYER.hp, p.hp + PLAYER.medkit); this.take(p, l); }
+    else if (l.kind === 'armor') { if (p.armor >= 100) return; p.armor = Math.min(100, p.armor + PLAYER.armor); this.take(p, l); }
+    else if (l.kind === 'ammo') {
+      let any = false; for (const g of p.guns) if (g && g.reserve < WEAPONS[g.id].mag * 6) { g.reserve = Math.min(WEAPONS[g.id].mag * 6, g.reserve + Math.ceil(WEAPONS[g.id].mag * 1.5)); any = true; }
+      if (any) this.take(p, l);
+    }
+  }
+  private takeWeapon(p: Player, l: Loot): void {
+    const id = l.weapon!, def = WEAPONS[id], same = p.guns.find(g => g?.id === id);
+    if (same) { same.reserve = Math.min(def.mag * 6, same.reserve + def.mag * 2); this.take(p, l); return; }
+    const free = p.guns.indexOf(null), slot = free >= 0 ? free : p.cur, old = p.guns[slot];
+    if (old) this.loot.push({ id: this.nextLoot++, kind: 'weapon', weapon: old.id, x: p.x + Math.cos(p.yaw) * 0.8, z: p.z + Math.sin(p.yaw) * 0.8, taken: false });
+    p.guns[slot] = { id, mag: def.mag, reserve: def.mag * 2 }; p.cur = slot; p.reload = 0; p.cd = 0.35; this.take(p, l);
+  }
+
+  private shoot(p: Player, gun: Gun, id: WeaponId): void {
+    const def = WEAPONS[id]; gun.mag--; p.cd = def.cd; p.kick = Math.min(1, p.kick + def.recoil * 12); p.muzzle = 0.06;
+    const moving = Math.min(1.6, p.speed / PLAYER.walk), spread = def.spread * (p.ads ? 0.4 : 1) * (1 + moving * 0.5) * (1 + p.kick * 0.5);
+    const ox = p.x, oy = PLAYER.eye, oz = p.z, ends: number[] = [];
+    for (let i = 0; i < def.pellets; i++) {
+      const a = this.rng() * Math.PI * 2, r = spread * Math.sqrt(this.rng()), yaw = p.yaw + Math.cos(a) * r, pitch = p.pitch + Math.sin(a) * r;
+      this.bullet(p.id, id, ox, oy, oz, yaw, pitch, ends, false);
+    }
+    this.events.push({ t: 'shot', id: p.id, weapon: id, ox, oy, oz, ends, remote: false });
+    this.sounds.push({ x: p.x, z: p.z, t: this.t, by: p.id });
+  }
+
+  /** 총알 한 발을 날립니다. 맞은 대상에게 피해를 주고 끝점을 ends 에 넣습니다. localOnly: 원격 선수가 쏜 탄은 내 쪽 선수만 맞힙니다. */
+  bullet(shooter: number, id: WeaponId, ox: number, oy: number, oz: number, yaw: number, pitch: number, ends: number[], fromRemote: boolean): void {
+    const def = WEAPONS[id], cp = Math.cos(pitch), dx = Math.cos(yaw) * cp, dy = Math.sin(pitch), dz = Math.sin(yaw) * cp;
+    const wallT = rayWorld(this.map, ox, oy, oz, dx, dy, dz, def.range);
+    let hitT = Math.min(wallT, def.range), target: Player | null = null, head = false;
+    for (const q of this.players) {
+      if (!q.alive || q.id === shooter) continue;
+      const px = ox - q.x, pz = oz - q.z, a = dx * dx + dz * dz; if (a < 1e-9) continue;
+      const R = fromRemote ? 0.62 : 0.5, b = 2 * (px * dx + pz * dz), c = px * px + pz * pz - R * R, disc = b * b - 4 * a * c; if (disc < 0) continue;
+      let t = (-b - Math.sqrt(disc)) / (2 * a); if (t < 0) { if (c < 0) t = 0; else continue; }
+      if (t >= hitT) continue; const y = oy + dy * t; if (y < 0 || y > PLAYER.height + 0.1) continue;
+      hitT = t; target = q; head = y > PLAYER.head;
+    }
+    const ex = ox + dx * hitT, ey = oy + dy * hitT, ez = oz + dz * hitT; ends.push(ex, ey, ez);
+    if (target) {
+      const fall = hitT <= def.falloff ? 1 : Math.max(0.4, 1 - 0.6 * (hitT - def.falloff) / Math.max(1, def.range - def.falloff));
+      this.damage(target, def.dmg * fall * (head ? def.head : 1), shooter, id, head, ex, ey, ez, false);
+    } else if (hitT < def.range) this.events.push({ t: 'hit', victim: -1, attacker: shooter, dmg: 0, head: false, x: ex, y: ey, z: ez, wall: true });
+  }
+
+  /** 네트워크로 받은 상대의 사격: 내 쪽 선수에게만 피해를 줍니다. */
+  remoteShot(shooter: number, id: WeaponId, ox: number, oy: number, oz: number, aims: Array<[number, number]>): void {
+    const ends: number[] = []; for (const [yaw, pitch] of aims) this.bullet(shooter, id, ox, oy, oz, yaw, pitch, ends, true);
+    this.events.push({ t: 'shot', id: shooter, weapon: id, ox, oy, oz, ends, remote: true });
+  }
+
+  damage(q: Player, dmg: number, by: number, weapon: WeaponId | 'zone', head: boolean, x: number, y: number, z: number, silent: boolean): void {
+    if (!q.alive) return;
+    const real = !q.remote; let hp = dmg;
+    if (real && weapon !== 'zone' && q.armor > 0) { const soak = Math.min(q.armor, dmg * 0.5); q.armor -= soak; hp = dmg - soak; }
+    if (real) { q.hp -= hp; q.lastHitBy = by; if (!silent) { q.hurt = 0.5; const a = this.players[by]; if (a) q.hurtYaw = Math.atan2(a.z - q.z, a.x - q.x); } }
+    if (!silent) this.events.push({ t: 'hit', victim: q.id, attacker: by, dmg: Math.round(dmg), head, x, y, z, wall: false });
+    if (real && q.hp <= 0) this.kill(q, weapon === 'zone' ? -1 : by, weapon);
+  }
+  /** 선수를 쓰러뜨립니다(원격 선수는 네트워크 소식으로 호출). */
+  kill(q: Player, by: number, weapon: WeaponId | 'zone'): void {
+    if (!q.alive) return; q.alive = false; q.hp = 0; q.diedAt = this.t; q.place = this.aliveCount() + 1;
+    const killer = this.players[by]; if (killer && killer.id !== q.id) killer.kills++;
+    for (const g of q.guns) if (g) this.loot.push({ id: this.nextLoot++, kind: 'weapon', weapon: g.id, x: q.x + (this.rng() - 0.5) * 1.6, z: q.z + (this.rng() - 0.5) * 1.6, taken: false });
+    this.events.push({ t: 'kill', victim: q.id, attacker: by, weapon });
+  }
+}
+
+export { DIFFICULTIES };
+export type { Difficulty };

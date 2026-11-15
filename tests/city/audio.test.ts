@@ -68,4 +68,25 @@ describe('LAST CITY audio', () => {
     expect(mock.context()?.state).toBe('closed');
     expect(() => audio.play('pistol')).not.toThrow();
   });
+
+  it('plays demolish poof once and ignores a same-frame retrigger', () => {
+    audio.unlock();
+    const ctx = mock.context()!;
+    const before = ctx.oscillators.filter(o => o.started).length + ctx.sources.filter(s => s.started).length;
+    audio.play('poof');
+    const mid = ctx.oscillators.filter(o => o.started).length + ctx.sources.filter(s => s.started).length;
+    audio.play('poof');
+    const after = ctx.oscillators.filter(o => o.started).length + ctx.sources.filter(s => s.started).length;
+    expect(mid - before).toBe(2); // burst + tone
+    expect(after).toBe(mid);
+  });
+
+  it('updates master gain when enabled is assigned after unlock', () => {
+    audio.unlock();
+    expect(audio.master?.gain.value).toBe(MASTER_GAIN);
+    audio.enabled = false;
+    expect(audio.master?.gain.value).toBe(0);
+    audio.enabled = true;
+    expect(audio.master?.gain.value).toBe(MASTER_GAIN);
+  });
 });

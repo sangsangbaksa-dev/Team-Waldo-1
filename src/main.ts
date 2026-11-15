@@ -1,10 +1,10 @@
 import './style.css';
 import { readPreferences, writePreferences } from './prefs';
 import { showLoading, retry, retryNote } from './loading';
-import { readCityCareer, readRaceRecords, fmtTime } from './records';
+import { readCityCareer, readRaceRecords, readRtsRecords, fmtTime } from './records';
 import { readShooterCareer } from './shooter/records';
 
-type GameId = 'city' | 'race' | 'shooter';
+type GameId = 'city' | 'race' | 'rts' | 'shooter';
 
 interface Entry {
   id: GameId;
@@ -47,6 +47,19 @@ const ENTRIES: Entry[] = [
     },
   },
   {
+    id: 'rts',
+    name: 'FRONTLINE',
+    genre: '실시간 전략',
+    summary: '광물을 캐고 기지를 세워 병력을 키우고, 상대의 모든 건물을 무너뜨리세요. AI는 쉬움부터 매우 어려움까지, 사람과는 1대1로 겨룹니다.',
+    facts: ['AI 4단계 · 온라인 1대1', '일꾼 · 보병 · 로켓병 · 전차', '키보드 · 마우스 · 터치'],
+    image: `${base}assets/home/frontline.jpg`,
+    imageAlt: '두 기지가 마주 선 FRONTLINE의 전장',
+    status: () => {
+      const { matches, wins } = readRtsRecords();
+      return matches > 0 ? `${matches}판 · ${wins}승` : '';
+    },
+  },
+  {
     id: 'shooter',
     name: 'ZERO ZONE',
     genre: '배틀로열 슈터',
@@ -84,7 +97,7 @@ function tile(entry: Entry, index: number): string {
 function renderMenu(): void {
   generation++;
   const sound = readPreferences().sound;
-  document.title = 'WALDO · LAST CITY / SPEED RUSH / ZERO ZONE';
+  document.title = 'WALDO · LAST CITY / SPEED RUSH / FRONTLINE / ZERO ZONE';
   app.hidden = false;
   app.innerHTML = `
     <main class="home">
@@ -101,7 +114,7 @@ function renderMenu(): void {
         </div>
       </header>
       <section class="home-intro">
-        <h1>세 편의 3D 게임.</h1>
+        <h1>${['', '한', '두', '세', '네', '다섯'][ENTRIES.length] ?? ENTRIES.length} 편의 3D 게임.</h1>
         <p>설치 없이 이 페이지에서 바로 시작합니다. 1대1 대전은 로그인하면 모든 게임에서 할 수 있습니다.</p>
       </section>
       <ul class="tiles" aria-label="게임 목록">${ENTRIES.map(tile).join('')}</ul>
@@ -151,7 +164,7 @@ async function launch(id: GameId): Promise<void> {
   if (label) label.textContent = '불러오는 중…';
   if (notice) notice.textContent = '';
   // 로딩 화면을 띄우고, 코드 묶음(chunk)을 받을 때까지 끊지 않고 다시 시도합니다.
-  const loading = showLoading(id === 'city' ? 'LAST CITY' : id === 'shooter' ? 'ZERO ZONE' : 'SPEED RUSH');
+  const loading = showLoading(id === 'city' ? 'LAST CITY' : id === 'rts' ? 'FRONTLINE' : id === 'shooter' ? 'ZERO ZONE' : 'SPEED RUSH');
   loading.progress(null, '게임을 불러오는 중');
   const cancelled = (): boolean => generation !== navigation;
   const fetchGame = <T,>(load: () => Promise<T>): Promise<T> => retry(load, { cancelled, onRetry: n => loading.note(retryNote(n)) });
@@ -161,6 +174,11 @@ async function launch(id: GameId): Promise<void> {
       if (cancelled()) { loading.close(); return; }
       app.hidden = true;
       openCity(renderMenu, { loading });
+    } else if (id === 'rts') {
+      const { openRts } = await fetchGame(() => import('./rts/game'));
+      if (cancelled()) { loading.close(); return; }
+      app.hidden = true;
+      openRts(renderMenu, { loading });
     } else if (id === 'shooter') {
       const { openShooter } = await fetchGame(() => import('./shooter/game'));
       if (cancelled()) { loading.close(); return; }

@@ -1,0 +1,328 @@
+// ZERO ZONE — 3D 장면: 지형·건물·나무·전리품·병사·자기장 벽·1인칭 총과 사격 효과. 경기 상태(Match)를 읽기만 합니다.
+import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { PLAYER, WEAPONS, makeRng } from './config';
+import { bake, instantiate } from '../city/models';
+import type { Match, MatchEvent, Player } from './sim';
+import type { ShooterAssets, Soldier } from './assets';
+import { SOLDIER_KINDS } from './assets';
+import type { Box, Loot } from './world';
+import { concreteTexture, crateTexture, dirtTexture, floorTexture, glowTexture, groundTexture, makeSky, wallTexture } from './textures';
+
+export type Quality = 'high' | 'standard' | 'low';
+const HIP = 0.9, KNEE = 0.44, LEG_Z = 0.11, AIM = 1.42;
+const LOOT_COLOR: Record<string, number> = { weapon: 0xeaf6ff, ammo: 0xffa53a, medkit: 0x52f08a, armor: 0x5aa8ff };
+const MUZZLE: Record<string, number> = { pistol: 0.26, smg: 0.5, shotgun: 0.7, rifle: 0.82, sniper: 1.12 };
+
+const rngOf = (seed: number): (() => number) => makeRng(seed);
+/** 부드러운 2차원 값 잡음(지형 색 변화용) */
+function noise2(seed: number): (x: number, z: number) => number {
+  const r = rngOf(seed), grid = new Float32Array(64 * 64); for (let i = 0; i < grid.length; i++) grid[i] = r();
+  const at = (x: number, z: number): number => grid[((z & 63) << 6) | (x & 63)];
+  return (x, z) => { const xi = Math.floor(x), zi = Math.floor(z), fx = x - xi, fz = z - zi, sx = fx * fx * (3 - 2 * fx), sz = fz * fz * (3 - 2 * fz); return (at(xi, zi) * (1 - sx) + at(xi + 1, zi) * sx) * (1 - sz) + (at(xi, zi + 1) * (1 - sx) + at(xi + 1, zi + 1) * sx) * sz; };
+}
+
+/** 상자(월드 좌표)를 만들고 UV 를 월드 위치 기준(3.2m 당 한 장)으로 계산합니다. 벽 질감이 이어지고 창 높이가 맞습니다. */
+function worldBox(b: Box, tile = 3.2): THREE.BufferGeometry {
+  const g = new THREE.BoxGeometry(b.x1 - b.x0, b.y1 - b.y0, b.z1 - b.z0); g.translate((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, (b.z0 + b.z1) / 2);
+  const pos = g.attributes.position, nor = g.attributes.normal, uv = g.attributes.uv;
+  for (let i = 0; i < pos.count; i++) {
+    const nx = Math.abs(nor.getX(i)), ny = Math.abs(nor.getY(i)), x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    if (ny > 0.5) uv.setXY(i, x / tile, z / tile); else if (nx > 0.5) uv.setXY(i, z / tile, y / tile); else uv.setXY(i, x / tile, y / tile);
+  }
+  return g;
+}
+
+interface Rig { root: THREE.Group; torsoJ: THREE.Group; legs: THREE.Group[]; shins: THREE.Group[]; armL: THREE.Group | null; armR: THREE.Group | null; flash: THREE.Sprite; aim: number }
+interface Fx { mesh: THREE.Mesh; life: number; max: number }
+
+export class ShooterView {
+  renderer: THREE.WebGLRenderer; scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(78, 1, 0.08, 1400);
+  private vmScene = new THREE.Scene(); private vmCam = new THREE.PerspectiveCamera(64, 1, 0.5, 200);
+  private sun: THREE.DirectionalLight; private glow = glowTexture(); private rigs = new Map<number, Rig>(); private lootNodes = new Map<number, THREE.Object3D>();
+  private zoneWall: THREE.Mesh; private zoneNext: THREE.Mesh; private tracers: Fx[] = []; private sparks: THREE.Points; private sparkData: { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; r: number; g: number; b: number }[] = [];
+  private vm: THREE.Object3D | null = null; private vmId = ''; private vmSwap = 0; private vmFlash: THREE.Sprite; private bob = 0; private shake = 0; private time = 0;
+  private mats = new Map<string, THREE.Material>(); private tmpCol = new THREE.Color(); private beams: THREE.InstancedMesh;
+  private camPos = new THREE.Vector3(); fov = 78; frames = 0;
+
+  constructor(readonly canvas: HTMLCanvasElement, readonly match: Match, private assets: ShooterAssets | null, readonly quality: Quality) {
+    const hi = quality === 'high';
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
+    this.renderer.setPixelRatio(Math.min(hi ? 2 : quality === 'standard' ? 1.5 : 1, window.devicePixelRatio || 1));
+    this.renderer.shadowMap.enabled = hi; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.05; this.renderer.autoClear = false;
+    const sc = this.scene, sunDir = new THREE.Vector3(0.55, 0.62, 0.38);
+    sc.fog = new THREE.FogExp2(0xd6cdb8, 0.0034); sc.add(makeSky(sunDir));
+    sc.add(new THREE.HemisphereLight(0xcfe2ff, 0x84764f, 1.15));
+    this.sun = new THREE.DirectionalLight(0xffe0b0, 2.9); this.sun.position.copy(sunDir).multiplyScalar(120); sc.add(this.sun, this.sun.target);
+    if (hi) { this.sun.castShadow = true; const s = this.sun.shadow; s.mapSize.set(2048, 2048); s.camera.left = s.camera.bottom = -62; s.camera.right = s.camera.top = 62; s.camera.near = 20; s.camera.far = 320; s.bias = -0.0004; s.normalBias = 0.05; }
+    this.buildGround(); this.buildBuildings(); this.buildScatter();
+    this.beams = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.09, 0.09, 7, 8, 1, true), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: true }), 400);
+    this.beams.count = 0; this.beams.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(400 * 3), 3); this.beams.frustumCulled = false; sc.add(this.beams);
+    // 자기장 벽: 파란 반투명 원통과 다음 원을 알리는 바닥 고리
+    this.zoneWall = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 90, 128, 1, true), new THREE.ShaderMaterial({
+      transparent: true, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, uniforms: { t: { value: 0 } },
+      vertexShader: 'varying vec3 vP; varying float vH; void main(){ vP = position; vH = position.y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: `varying vec3 vP; varying float vH; uniform float t;
+        void main(){ float a = atan(vP.z, vP.x); float band = 0.5 + 0.5 * sin(a * 90.0 + vH * 0.35 - t * 1.4); float rows = 0.5 + 0.5 * sin(vH * 0.9 - t * 2.2);
+          float fade = smoothstep(45.0, -5.0, vH) * 0.85 + 0.12; vec3 col = mix(vec3(0.08, 0.35, 1.0), vec3(0.45, 0.85, 1.0), band * rows); gl_FragColor = vec4(col, (0.18 + 0.2 * band * rows) * fade); }`,
+    }));
+    this.zoneWall.position.y = 45; this.zoneWall.frustumCulled = false; sc.add(this.zoneWall);
+    this.zoneNext = new THREE.Mesh(new THREE.RingGeometry(0.992, 1, 160), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false, fog: false }));
+    this.zoneNext.rotation.x = -Math.PI / 2; this.zoneNext.position.y = 0.12; this.zoneNext.frustumCulled = false; sc.add(this.zoneNext);
+    // 불꽃 입자
+    const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(240 * 3), 3)); sg.setAttribute('color', new THREE.BufferAttribute(new Float32Array(240 * 3), 3));
+    this.sparks = new THREE.Points(sg, new THREE.PointsMaterial({ size: 0.16, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, map: this.glow, sizeAttenuation: true })); this.sparks.frustumCulled = false; sc.add(this.sparks);
+    // 1인칭 총 장면
+    this.vmScene.add(new THREE.HemisphereLight(0xdbe6ff, 0x6a5a50, 1.9)); const vs = new THREE.DirectionalLight(0xffe2b8, 2.4); vs.position.set(2, 4, 3); this.vmScene.add(vs);
+    this.vmFlash = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, color: 0xffd98a, blending: THREE.AdditiveBlending, depthTest: false, transparent: true })); this.vmFlash.scale.set(0.3, 0.3, 1); this.vmFlash.visible = false; this.vmFlash.renderOrder = 10;
+    for (const p of match.players) this.makeRig(p);
+  }
+
+  private mat(key: string, make: () => THREE.Material): THREE.Material { let m = this.mats.get(key); if (!m) { m = make(); this.mats.set(key, m); } return m; }
+
+  // ---------- 지형 ----------
+  private buildGround(): void {
+    const half = this.match.map.half, size = half * 2 + 900, segs = 120, geo = new THREE.PlaneGeometry(size, size, segs, segs); geo.rotateX(-Math.PI / 2);
+    const n1 = noise2(this.match.seed), n2 = noise2(this.match.seed + 9), pos = geo.attributes.position, col = new Float32Array(pos.count * 3), c = new THREE.Color();
+    const green = new THREE.Color(0.96, 1.02, 0.84), dry = new THREE.Color(1.2, 1.0, 0.7), dark = new THREE.Color(0.72, 0.82, 0.62), sand = new THREE.Color(1.28, 1.12, 0.84);
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), z = pos.getZ(i), a = n1(x / 90 + 32, z / 90 + 32), b = n2(x / 28 + 32, z / 28 + 32);
+      c.copy(green).lerp(dry, Math.max(0, a - 0.4) * 3).lerp(dark, Math.max(0, 0.5 - b) * 2.2).lerp(sand, Math.max(0, Math.hypot(x, z) - half * 1.02) / 120);
+      col.set([c.r, c.g, c.b], i * 3);
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const t = groundTexture(); t.repeat.set(size / 6, size / 6);
+    const ground = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: t, vertexColors: true })); ground.receiveShadow = true; this.scene.add(ground);
+    // 마을을 잇는 흙길
+    const dirt = dirtTexture(), cs = this.match.map.compounds, used = new Set<string>();
+    for (let i = 0; i < cs.length; i++) {
+      const near = cs.map((o, j) => ({ j, d: Math.hypot(o.x - cs[i].x, o.z - cs[i].z) })).filter(o => o.j !== i).sort((a, b) => a.d - b.d).slice(0, 2);
+      for (const { j, d } of near) {
+        const k = i < j ? `${i}-${j}` : `${j}-${i}`; if (used.has(k)) continue; used.add(k);
+        const a = cs[i], b = cs[j], tex = dirt.clone(); tex.repeat.set(d / 4, 1); tex.needsUpdate = true;
+        const road = new THREE.Mesh(new THREE.PlaneGeometry(d, 4.4), new THREE.MeshLambertMaterial({ map: tex, color: 0xd9cdb4 }));
+        road.rotation.order = 'YXZ'; road.rotation.set(-Math.PI / 2, -Math.atan2(b.z - a.z, b.x - a.x), 0); road.position.set((a.x + b.x) / 2, 0.04, (a.z + b.z) / 2); road.receiveShadow = true; this.scene.add(road);
+      }
+    }
+    // 마을 바닥(콘크리트 광장)
+    for (const c0 of cs) { const tex = concreteTexture(); tex.repeat.set((c0.r + 3) / 3, (c0.r + 3) / 3); const m = new THREE.Mesh(new THREE.CircleGeometry(c0.r + 3, 40), new THREE.MeshLambertMaterial({ map: tex })); m.rotation.x = -Math.PI / 2; m.position.set(c0.x, 0.03, c0.z); m.receiveShadow = true; this.scene.add(m); }
+  }
+
+  private buildBuildings(): void {
+    const map = this.match.map, byTex: THREE.BufferGeometry[][] = [[], [], [], []], crates: Box[] = [];
+    for (const b of map.boxes) { if (b.kind === 'wall') byTex[b.tex % 4].push(worldBox(b)); else if (b.kind === 'crate') crates.push(b); }
+    byTex.forEach((list, i) => {
+      if (!list.length) return; const m = new THREE.Mesh(mergeGeometries(list, false), new THREE.MeshLambertMaterial({ map: wallTexture(i) }));
+      m.castShadow = true; m.receiveShadow = true; this.scene.add(m);
+    });
+    const roofMat = new THREE.MeshLambertMaterial({ color: 0x4d5258 }), trimMat = new THREE.MeshLambertMaterial({ color: 0x8b8f93 }), unitMat = new THREE.MeshLambertMaterial({ color: 0xb6babd });
+    const floorTex = floorTexture(), floors: THREE.BufferGeometry[] = [], roofs: THREE.BufferGeometry[] = [], trims: THREE.BufferGeometry[] = [], units: THREE.BufferGeometry[] = [], r = rngOf(this.match.seed + 3);
+    for (const b of map.buildings) {
+      const f = new THREE.PlaneGeometry(b.w, b.d); f.rotateX(-Math.PI / 2); f.translate(b.x, 0.05, b.z); const uv = f.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * b.w / 3, uv.getY(i) * b.d / 3); floors.push(f);
+      const roof = new THREE.BoxGeometry(b.w + 0.7, 0.35, b.d + 0.7); roof.translate(b.x, 3.2 + 0.175, b.z); roofs.push(roof);
+      const t = 0.3; for (const [w, d, ox, oz] of [[b.w + 0.7, t, 0, (b.d + 0.7) / 2], [b.w + 0.7, t, 0, -(b.d + 0.7) / 2], [t, b.d + 0.7, (b.w + 0.7) / 2, 0], [t, b.d + 0.7, -(b.w + 0.7) / 2, 0]] as const) { const g = new THREE.BoxGeometry(w, 0.5, d); g.translate(b.x + ox, 3.55 + 0.25, b.z + oz); trims.push(g); }
+      if (r() < 0.8) { const g = new THREE.BoxGeometry(1.4, 0.9, 1.1); g.translate(b.x + (r() - 0.5) * b.w * 0.5, 4.3, b.z + (r() - 0.5) * b.d * 0.5); units.push(g); }
+    }
+    const add = (list: THREE.BufferGeometry[], material: THREE.Material, shadow = true): void => { if (!list.length) return; const m = new THREE.Mesh(mergeGeometries(list, false), material); m.castShadow = shadow; m.receiveShadow = true; this.scene.add(m); };
+    add(floors, new THREE.MeshLambertMaterial({ map: floorTex }), false); add(roofs, roofMat); add(trims, trimMat); add(units, unitMat);
+    if (crates.length) {
+      const ct = crateTexture(), geos = crates.map(b => worldBox(b, 1.2)); const m = new THREE.Mesh(mergeGeometries(geos, false), new THREE.MeshLambertMaterial({ map: ct })); m.castShadow = true; m.receiveShadow = true; this.scene.add(m);
+    }
+  }
+
+  private buildScatter(): void {
+    const map = this.match.map, r = rngOf(this.match.seed + 5), d = new THREE.Object3D();
+    // 풀 다발: 가는 잎 여러 장을 부채꼴로 세운 작은 덤불을 들판에 뿌립니다
+    {
+      const pos: number[] = [], col: number[] = [], base = new THREE.Color(0x58742c), tip = new THREE.Color(0xc4d47c), rr = rngOf(91);
+      for (let b = 0; b < 9; b++) {
+        const a = rr() * Math.PI * 2, off = 0.05 + rr() * 0.14, ox = Math.cos(a) * off, oz = Math.sin(a) * off, lean = 0.1 + rr() * 0.2, h = 0.24 + rr() * 0.26, w = 0.035 + rr() * 0.025, px = -Math.sin(a), pz = Math.cos(a);
+        for (const [x, y, c, l] of [[-w, 0, 0, 0], [w, 0, 0, 0], [0, h, 1, lean]] as const) { pos.push(ox + px * x + Math.cos(a) * l, y, oz + pz * x + Math.sin(a) * l); const k = new THREE.Color().copy(base).lerp(tip, c); col.push(k.r, k.g, k.b); }
+      }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.computeVertexNormals();
+      const n = this.quality === 'low' ? 3000 : map.mode === 'br' ? 14000 : 5000, mesh = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, emissive: 0x2b3618 }), n); let k = 0;
+      for (let tries = 0; k < n && tries < n * 3; tries++) {
+        const x = (r() * 2 - 1) * (map.half + 20), z = (r() * 2 - 1) * (map.half + 20); if (map.compounds.some(c => Math.hypot(c.x - x, c.z - z) < c.r + 2)) continue;
+        d.position.set(x, 0, z); d.rotation.set(0, r() * 6.28, 0); d.scale.setScalar(0.8 + r() * 0.7); d.updateMatrix(); mesh.setMatrixAt(k++, d.matrix);
+      }
+      mesh.count = k; mesh.receiveShadow = false; this.scene.add(mesh);
+    }
+    // 바위
+    if (map.rocks.length) {
+      const g = new THREE.IcosahedronGeometry(1, 2), p = g.attributes.position, n = noise2(3);
+      for (let i = 0; i < p.count; i++) { const k = 0.78 + 0.4 * n(p.getX(i) * 2 + 20, p.getZ(i) * 2 + p.getY(i) * 2 + 20); p.setXYZ(i, p.getX(i) * k, p.getY(i) * k * 0.9, p.getZ(i) * k); }
+      g.computeVertexNormals();
+      const mesh = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ color: 0x8d8a82, flatShading: true }), map.rocks.length);
+      map.rocks.forEach((k, i) => { d.position.set(k.x, k.sy * 0.28, k.z); d.rotation.set(0, k.ry, 0); d.scale.set(k.sx, k.sy, k.sz); d.updateMatrix(); mesh.setMatrixAt(i, d.matrix); mesh.setColorAt(i, this.tmpCol.setScalar(0.8 + r() * 0.4)); });
+      mesh.castShadow = true; mesh.receiveShadow = true; this.scene.add(mesh);
+    }
+    // 나무: 모델이 있으면 Blender 나무, 없으면 단순한 원뿔
+    for (const pine of [false, true]) {
+      const list = map.trees.filter(t => t.pine === pine); if (!list.length) continue;
+      const tpl = this.assets?.props[pine ? 'tree_pine' : 'tree_round'], baked = tpl ? bake(tpl) : null; let geos: Array<[THREE.BufferGeometry, THREE.Material]> = [];
+      if (baked) {
+        const lam = new THREE.MeshLambertMaterial({ vertexColors: true });
+        for (const part of [baked.fixed, baked.team, baked.skin]) if (part) geos.push([part, lam]);
+      } else {
+        const trunk = new THREE.CylinderGeometry(0.18, 0.28, 3, 6); trunk.translate(0, 1.5, 0); const crown = new THREE.ConeGeometry(1.8, 5, 8); crown.translate(0, 5, 0);
+        geos = [[trunk, new THREE.MeshLambertMaterial({ color: 0x5b4126 })], [crown, new THREE.MeshLambertMaterial({ color: pine ? 0x2c5a35 : 0x4f7a37 })]];
+      }
+      let top = 1; if (baked) { const bb = new THREE.Box3(); for (const [g] of geos) { g.computeBoundingBox(); bb.union(g.boundingBox!); } top = Math.max(0.5, bb.max.y); }
+      for (const [g, m] of geos) {
+        const mesh = new THREE.InstancedMesh(g, m, list.length);
+        list.forEach((t, i) => { const h = (baked ? (pine ? 9 : 7.5) / top : 1) * t.s; d.position.set(t.x, 0, t.z); d.rotation.set(0, r() * 6.28, 0); d.scale.setScalar(h); d.updateMatrix(); mesh.setMatrixAt(i, d.matrix); });
+        mesh.castShadow = true; mesh.receiveShadow = false; this.scene.add(mesh);
+      }
+    }
+  }
+
+  // ---------- 병사 ----------
+  private partGroup(b: Soldier['body'], team: number, skin: number): THREE.Group {
+    const g = new THREE.Group(), add = (geo: THREE.BufferGeometry | null, m: THREE.Material): void => { if (!geo) return; const mesh = new THREE.Mesh(geo, m); mesh.castShadow = true; g.add(mesh); };
+    add(b.fixed, this.mat('fixed', () => new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x23262b }))); add(b.team, this.mat(`team${team}`, () => new THREE.MeshLambertMaterial({ vertexColors: true, color: team })));
+    add(b.skin, this.mat(`skin${skin}`, () => new THREE.MeshLambertMaterial({ vertexColors: true, color: skin }))); add(b.glow, this.mat('glow', () => new THREE.MeshBasicMaterial({ vertexColors: true })));
+    return g;
+  }
+  private makeRig(p: Player): void {
+    const root = new THREE.Group(), torsoJ = new THREE.Group(), torso = new THREE.Group(), legs: THREE.Group[] = [], shins: THREE.Group[] = []; let armL: THREE.Group | null = null, armR: THREE.Group | null = null;
+    const s = this.assets?.soldiers[SOLDIER_KINDS[p.id % SOLDIER_KINDS.length]];
+    if (s) {
+      torsoJ.position.y = HIP; torso.position.y = -HIP; torsoJ.rotation.order = 'ZYX'; torsoJ.add(torso); root.add(torsoJ); torso.add(this.partGroup(s.body, p.color, p.skin));
+      for (const side of [-1, 1]) {
+        const lg = new THREE.Group(); lg.position.set(0, HIP, side * LEG_Z); lg.add(this.partGroup(s.leg, p.color, p.skin)); legs.push(lg);
+        if (s.shin) { const sg = new THREE.Group(); sg.position.y = -KNEE; sg.add(this.partGroup(s.shin, p.color, p.skin)); lg.add(sg); shins.push(sg); } root.add(lg);
+      }
+      if (s.armL) { armL = new THREE.Group(); armL.position.copy(s.armL.pivot); armL.add(this.partGroup(s.armL.geo, p.color, p.skin)); torso.add(armL); }
+      if (s.armR) { armR = new THREE.Group(); armR.position.copy(s.armR.pivot); armR.add(this.partGroup(s.armR.geo, p.color, p.skin)); torso.add(armR); }
+    } else { // 모델을 못 받았을 때의 단순한 병사
+      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 1.0, 4, 8), new THREE.MeshLambertMaterial({ color: p.color })); body.position.y = 1.0; body.castShadow = true; root.add(body);
+    }
+    const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, color: 0xffd98a, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false })); flash.scale.set(0.8, 0.8, 1); flash.visible = false; root.add(flash);
+    root.visible = false; this.scene.add(root); this.rigs.set(p.id, { root, torsoJ, legs, shins, armL, armR, flash, aim: 0 });
+  }
+  private poseRig(p: Player, dt: number): void {
+    const rig = this.rigs.get(p.id)!, amp = Math.min(1, p.speed / 3.2), run = Math.min(1, Math.max(0, (p.speed - 4.6) / 2.6)), ph = p.walk * 1.35, sn = Math.sin(ph), cs = Math.cos(ph);
+    rig.root.position.set(p.x, Math.abs(sn) * amp * 0.04, p.z); rig.root.rotation.set(0, -p.yaw, 0);
+    rig.torsoJ.rotation.z = -(0.04 * amp + 0.1 * run); rig.torsoJ.rotation.y = -sn * 0.07 * amp;
+    rig.legs.forEach((l, i) => { const side = i === 0 ? -1 : 1; l.rotation.z = sn * side * (0.5 + 0.2 * run) * amp + 0.12 * run; const sh = rig.shins[i]; if (sh) sh.rotation.z = -amp * (0.12 + (0.6 + 0.5 * run) * Math.max(0, cs * side)); });
+    rig.aim += (1 - rig.aim) * Math.min(1, dt * 8);
+    if (rig.armR) rig.armR.rotation.z = AIM * rig.aim; if (rig.armL) rig.armL.rotation.z = AIM * 0.82 * rig.aim;
+    rig.flash.position.set(0.95, 1.32, 0.1);
+    rig.flash.visible = p.muzzle > 0;
+  }
+
+  // ---------- 전리품 ----------
+  private lootNode(l: Loot): THREE.Object3D {
+    const g = new THREE.Group(), color = LOOT_COLOR[l.kind];
+    if (l.kind === 'weapon' && l.weapon && this.assets?.groundGuns[l.weapon]) { const m = instantiate(this.assets.groundGuns[l.weapon]); m.scale.setScalar(1.25); m.position.y = 0.9; g.add(m); }
+    else {
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, l.kind === 'armor' ? 0.55 : 0.34, l.kind === 'armor' ? 0.28 : 0.4), new THREE.MeshLambertMaterial({ color: l.kind === 'medkit' ? 0xf4f6f4 : l.kind === 'armor' ? 0x3f7fd8 : 0x6c7a3c, emissive: color, emissiveIntensity: 0.18 })); body.position.y = 0.9; body.castShadow = true; g.add(body);
+      if (l.kind === 'medkit') { const m = new THREE.MeshBasicMaterial({ color: 0xd8232a }); const a = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.08, 0.06), m), b = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.34, 0.06), m); a.position.set(0, 0.9, 0.21); b.position.set(0, 0.9, 0.21); g.add(a, b); }
+    }
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.7, 28), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false })); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.08; g.add(ring);
+    g.position.set(l.x, 0, l.z); this.scene.add(g); return g;
+  }
+  private syncLoot(cam: THREE.Vector3): void {
+    const live = new Set<number>(); let nb = 0; const d = new THREE.Object3D();
+    for (const l of this.match.loot) {
+      if (l.taken) continue; live.add(l.id); let n = this.lootNodes.get(l.id); if (!n) { n = this.lootNode(l); this.lootNodes.set(l.id, n); }
+      const dist = Math.hypot(l.x - cam.x, l.z - cam.z); n.visible = dist < 150; if (!n.visible) continue;
+      n.children[0].rotation.y = this.time * 1.4 + l.id; n.children[0].position.y = (l.kind === 'weapon' ? 0 : 0) + Math.sin(this.time * 2 + l.id) * 0.06;
+      if (nb < 400) { d.position.set(l.x, 3.4, l.z); d.scale.set(1, 1, 1); d.updateMatrix(); this.beams.setMatrixAt(nb, d.matrix); this.beams.setColorAt(nb, this.tmpCol.setHex(LOOT_COLOR[l.kind])); nb++; }
+    }
+    this.beams.count = nb; this.beams.instanceMatrix.needsUpdate = true; if (this.beams.instanceColor) this.beams.instanceColor.needsUpdate = true;
+    for (const [id, n] of this.lootNodes) if (!live.has(id)) { this.scene.remove(n); this.lootNodes.delete(id); }
+  }
+
+  // ---------- 효과 ----------
+  private spark(x: number, y: number, z: number, n: number, rgb: [number, number, number], speed: number): void {
+    for (let i = 0; i < n && this.sparkData.length < 240; i++) {
+      const a = Math.random() * 6.28, up = Math.random() * 0.9 + 0.1, s = speed * (0.4 + Math.random());
+      this.sparkData.push({ x, y, z, vx: Math.cos(a) * s * (1 - up * 0.4), vy: up * s * 1.2, vz: Math.sin(a) * s * (1 - up * 0.4), life: 0.35 + Math.random() * 0.35, r: rgb[0], g: rgb[1], b: rgb[2] });
+    }
+  }
+  private tracer(ax: number, ay: number, az: number, bx: number, by: number, bz: number, color: number): void {
+    const len = Math.hypot(bx - ax, by - ay, bz - az); if (len < 1) return;
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1, 4, 1, true), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    const mid = new THREE.Vector3((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2); mesh.position.copy(mid); mesh.scale.set(1, Math.min(len, 60), 1);
+    // 앞부분만 짧게(총알이 날아가는 느낌): 끝점 쪽 60m 구간
+    const dir = new THREE.Vector3(bx - ax, by - ay, bz - az).normalize(); if (len > 60) mesh.position.set(bx - dir.x * 30, by - dir.y * 30, bz - dir.z * 30);
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir); this.scene.add(mesh); this.tracers.push({ mesh, life: 0.09, max: 0.09 });
+  }
+  handle(events: MatchEvent[], me: Player): void {
+    for (const e of events) {
+      if (e.t === 'shot') {
+        const shooter = this.match.players[e.id]; if (!shooter) continue;
+        const fx = Math.cos(shooter.yaw), fz = Math.sin(shooter.yaw), isMe = e.id === me.id;
+        const mx = e.ox + (isMe ? fx * 0.7 - fz * 0.22 : fx * 0.9), my = isMe ? e.oy - 0.16 : e.oy - 0.25, mz = e.oz + (isMe ? fz * 0.7 + fx * 0.22 : fz * 0.9);
+        for (let i = 0; i + 2 < e.ends.length; i += 3) this.tracer(mx, my, mz, e.ends[i], e.ends[i + 1], e.ends[i + 2], WEAPONS[e.weapon].pellets > 1 ? 0xffd9a0 : 0xfff0b8);
+        if (isMe) this.shake = Math.min(1, this.shake + WEAPONS[e.weapon].recoil * 6);
+      } else if (e.t === 'hit') {
+        if (e.wall || e.victim < 0) this.spark(e.x, e.y, e.z, 7, [1, 0.8, 0.45], 3.5);
+        else this.spark(e.x, e.y, e.z, e.head ? 14 : 9, [1, 0.12, 0.08], 2.8);
+      }
+    }
+  }
+  private updateFx(dt: number): void {
+    for (let i = this.tracers.length - 1; i >= 0; i--) { const f = this.tracers[i]; f.life -= dt; (f.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, f.life / f.max) * 0.9; if (f.life <= 0) { this.scene.remove(f.mesh); f.mesh.geometry.dispose(); (f.mesh.material as THREE.Material).dispose(); this.tracers.splice(i, 1); } }
+    const pos = this.sparks.geometry.attributes.position as THREE.BufferAttribute, col = this.sparks.geometry.attributes.color as THREE.BufferAttribute;
+    for (let i = this.sparkData.length - 1; i >= 0; i--) { const s = this.sparkData[i]; s.life -= dt; s.vy -= 9 * dt; s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt; if (s.y < 0.02) { s.y = 0.02; s.vy *= -0.3; s.vx *= 0.6; s.vz *= 0.6; } if (s.life <= 0) this.sparkData.splice(i, 1); }
+    this.sparkData.forEach((s, i) => { pos.setXYZ(i, s.x, s.y, s.z); const k = Math.min(1, s.life * 2.5); col.setXYZ(i, s.r * k, s.g * k, s.b * k); });
+    this.sparks.geometry.setDrawRange(0, this.sparkData.length); pos.needsUpdate = true; col.needsUpdate = true;
+  }
+
+  // ---------- 1인칭 총 ----------
+  private viewmodel(p: Player, show: boolean, dt: number): void {
+    const gun = p.guns[p.cur], id = gun?.id ?? '';
+    if (id !== this.vmId) {
+      this.vmId = id; if (this.vm) this.vmScene.remove(this.vm); this.vm = null; const tpl = id ? this.assets?.viewGuns[id] : null; this.vmSwap = 0.35;
+      if (tpl) { this.vm = instantiate(tpl); this.vm.traverse(o => { (o as THREE.Mesh).castShadow = false; }); this.vm.add(this.vmFlash); this.vmFlash.position.set(MUZZLE[id] ?? 0.6, 0.05, 0); this.vmScene.add(this.vm); }
+    }
+    if (!this.vm) return; this.vm.visible = show; if (!show) return;
+    this.vmSwap = Math.max(0, this.vmSwap - dt); const sw = this.vmSwap / 0.35, moving = Math.min(1, p.speed / 5), reloading = p.reload > 0, recoil = p.kick, ads = p.ads ? 1 : 0;
+    const bob = Math.sin(this.bob * 1.1) * 0.35 * moving * (1 - ads * 0.8), sway = Math.cos(this.bob * 0.55) * 0.25 * moving * (1 - ads * 0.8), big = id === 'sniper' ? 11 : 12.5;
+    this.vm.scale.setScalar(big); this.vm.rotation.set(recoil * 0.1 - (reloading ? 0.7 : 0) - sw * 0.8, Math.PI / 2 + recoil * 0.02, 0);
+    this.vm.position.set(4.6 * (1 - ads * 0.9) + sway, -4.4 * (1 - ads * 0.25) + bob - (reloading ? 3 : 0) - sw * 5, -9.5 + recoil * 1.4);
+    this.vmFlash.visible = p.muzzle > 0; this.vmFlash.material.rotation = this.time * 40;
+  }
+
+  resize(w: number, h: number): void { this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); }
+
+  /** 매 프레임: 장면을 경기 상태에 맞추고 그립니다. spectate 가 있으면 그 선수 뒤에서 따라갑니다(내가 쓰러진 뒤). */
+  frame(dt: number, me: Player, spectate: Player | null, zoom: number): void {
+    this.time += dt; this.frames++; const m = this.match, z = m.zone, cam = this.camera, view = spectate ?? me;
+    for (const p of m.players) { const rig = this.rigs.get(p.id)!; const hide = (!spectate && p.id === me.id); rig.root.visible = !hide && (p.alive || true); if (hide) continue; this.poseRig(p, dt); if (!p.alive) { rig.root.rotation.set(0, -p.yaw, -Math.PI / 2); rig.root.position.y = 0.28; rig.flash.visible = false; } }
+    // 카메라
+    this.bob += view.speed * dt * 1.7; this.shake = Math.max(0, this.shake - dt * 5);
+    if (spectate) {
+      const back = 3.6, cx = view.x - Math.cos(view.yaw) * back, cz = view.z - Math.sin(view.yaw) * back; cam.position.set(cx, 2.3, cz); cam.rotation.order = 'YXZ'; cam.rotation.set(-0.12, -view.yaw - Math.PI / 2, 0);
+    } else {
+      const bobY = Math.sin(this.bob) * 0.035 * Math.min(1, view.speed / 5); cam.position.set(view.x, PLAYER.eye + bobY, view.z); cam.rotation.order = 'YXZ';
+      cam.rotation.set(view.pitch + view.kick * 0.03 + (Math.random() - 0.5) * this.shake * 0.004, -view.yaw - Math.PI / 2 + (Math.random() - 0.5) * this.shake * 0.004, 0);
+    }
+    const targetFov = 78 / zoom; this.fov += (targetFov - this.fov) * Math.min(1, dt * 14); if (Math.abs(cam.fov - this.fov) > 0.01) { cam.fov = this.fov; cam.updateProjectionMatrix(); }
+    this.camPos.copy(cam.position);
+    // 해와 그림자는 카메라를 따라 이동
+    this.sun.position.set(view.x + 66, 92, view.z + 46); this.sun.target.position.set(view.x, 0, view.z); this.sun.target.updateMatrixWorld();
+    // 자기장
+    this.zoneWall.scale.set(z.r, 1, z.r); this.zoneWall.position.x = z.cx; this.zoneWall.position.z = z.cz; (this.zoneWall.material as THREE.ShaderMaterial).uniforms.t.value = this.time;
+    this.zoneNext.visible = z.nextR < z.r - 0.5; this.zoneNext.scale.set(z.nextR, z.nextR, 1); this.zoneNext.position.x = z.nextCx; this.zoneNext.position.z = z.nextCz;
+    this.syncLoot(cam.position); this.updateFx(dt);
+    this.viewmodel(view, !spectate && me.alive, dt);
+    // 그리기: 월드 → 깊이 지우고 1인칭 총
+    this.renderer.clear(); this.renderer.render(this.scene, cam);
+    if (this.vm && this.vm.visible) { this.vmCam.fov = cam.fov > 60 ? 64 : 64 * (cam.fov / 60); this.vmCam.aspect = cam.aspect; this.vmCam.updateProjectionMatrix(); this.renderer.clearDepth(); this.renderer.render(this.vmScene, this.vmCam); }
+  }
+
+  /** 월드 좌표를 화면 픽셀로. 카메라 뒤면 null. */
+  project(x: number, y: number, z: number): { x: number; y: number; dist: number } | null {
+    const v = new THREE.Vector3(x, y, z).project(this.camera); if (v.z > 1 || v.z < -1) return null;
+    const r = this.canvas.getBoundingClientRect(); return { x: (v.x * 0.5 + 0.5) * r.width, y: (-v.y * 0.5 + 0.5) * r.height, dist: this.camPos.distanceTo(new THREE.Vector3(x, y, z)) };
+  }
+
+  dispose(): void {
+    this.scene.traverse(o => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); const mat = m.material as THREE.Material | THREE.Material[] | undefined; if (Array.isArray(mat)) mat.forEach(x => x.dispose()); else mat?.dispose(); });
+    this.renderer.dispose(); this.renderer.forceContextLoss();
+  }
+}

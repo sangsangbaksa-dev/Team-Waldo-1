@@ -11,6 +11,7 @@ import { CityAudio } from './audio';
 import { reload, switchWeapon } from './actors';
 import { ACTORS, BLOCKS, PITCH, ROAD } from './defs';
 import { mapPointerToWorld } from './uiMath';
+import { DEMOLISH_REFUND_RATE, snapBuildCoord } from './placement';
 import { SHOP, canBuy, itemPrice } from './shop';
 import { missionLog, missionSummary } from './missions';
 import { readPreferences, recordMatch, writePreferences } from '../prefs';
@@ -51,6 +52,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   let models: Models | null = null, R3: Renderer3D | null = null, view: View = 'fp', locked = false, lockFail = false, expectUnlock = false, touchFire = false, hurt = 0, lastLook = 0, hitT = 0;
   const tags: HTMLElement[] = [], marks: HTMLElement[] = []; let area = '', areaT = 0, sirenT = 0;
   let world: World | null = null, R: Renderer | null = null, raf = 0, last = 0, acc = 0, paused = false, closed = false, ghost: Ghost | null = null, tab = 'train', hudT = 0, toastT = 0, bannerT = 0, shopOpen = false, resultShown = false, userZoom = 1, combat = 0, klass: ClassId = 'warlord';
+  let demolishArmed: { id: number; at: number } | null = null;
   /** 1대1 결투 진행 상태. null 이면 혼자 하는 게임입니다. */
   interface Duel { s: PvpSession; net: CityDuel; myDeaths: number; oppDeaths: number; done: boolean; pose: { x: number; y: number; a: number; hp: number; mh: number; w: WeaponId } | null; rx: number; ry: number; seed: number; oppKlass: string; started: boolean; graceAt: number }
   let duel: Duel | null = null;
@@ -67,7 +69,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       <button class="c-tutcard${tutDone ? '' : ' rec'}" data-act="tutorial"><span>${tutDone ? '다시 연습' : '처음이라면 추천 · 약 5분'}</span><b>튜토리얼 시작</b><p>이동·사격·사업체·기지 건설·병력 지휘·차량·시장까지 한 단계씩 안전하게 익힙니다. 연습장에서는 자기장과 라이벌이 멈춰 있습니다.</p></button>
       <div class="c-sub">${tutDone ? '바로 시작할 영웅을 고르세요' : '또는 바로 시작할 영웅을 고르세요'}</div>
       <div class="c-classes">${(Object.keys(CLASSES) as ClassId[]).map(k => `<button class="c-class" data-act="class:${k}"><span>${CLASSES[k].tag}</span><b>${CLASSES[k].name}</b><p>${CLASSES[k].desc}</p><em>Q · ${CLASSES[k].skill}</em><small>${CLASSES[k].skillDesc}</small></button>`).join('')}</div>
-      <div class="c-keys">${touch ? '<span>왼쪽 드래그 이동</span><span>오른쪽 드래그 시점</span><span>사격 버튼</span><span>버튼으로 상호작용·지휘</span>' : '<span><b>WASD</b> 이동</span><span><b>마우스</b> 시점·사격</span><span><b>V</b> 1인칭/3인칭/전술뷰</span><span><b>E</b> 매입·줍기</span><span><b>F</b> 차량 탑승</span><span><b>Tab</b> 지휘 패널</span><span><b>우클릭</b> 병력 돌격</span><span><b>Z/X</b> 집결·사수</span><span><b>Space</b> 대시</span><span><b>M</b> 지도</span>'}</div>
+      <div class="c-keys">${touch ? '<span>왼쪽 드래그 이동</span><span>오른쪽 드래그 시점</span><span>사격 버튼</span><span>버튼으로 상호작용·지휘</span>' : '<span><b>WASD</b> 이동</span><span><b>마우스</b> 시점·사격</span><span><b>V</b> 1인칭/3인칭/전술뷰</span><span><b>E</b> 매입·줍기</span><span><b>F</b> 차량 탑승</span><span><b>Tab</b> 지휘 패널</span><span><b>우클릭</b> 병력 돌격</span><span><b>Z/X</b> 집결·사수</span><span><b>Space</b> 대시</span><span><b>M</b> 지도</span><span><b>Delete</b> 철거</span>'}</div>
       <div class="c-sub">1대1 결투 · 로그인 필요</div><div class="c-diffs">${(Object.keys(CLASSES) as ClassId[]).map(k => `<button class="c-diff" data-act="duel:${k}" title="${CLASSES[k].desc}">${CLASSES[k].name}으로 대전</button>`).join('')}</div><p class="c-lead c-diffdesc">같은 도시에서 둘만 남아 ${TARGET_KILLS}킬을 먼저 채우면 승리합니다. 병력·건설 없이 무기와 사업체 구매, 보스의 총싸움으로 가립니다.</p>
       <div class="c-sub">난이도</div><div class="c-diffs">${DIFFICULTY_ORDER.map(d => `<button class="c-diff${d === diffSel ? ' on' : ''}" data-act="diff:${d}" title="${DIFFICULTY[d].desc}">${DIFFICULTY[d].label}</button>`).join('')}</div><p class="c-lead c-diffdesc">${DIFFICULTY[diffSel].desc}</p>
       <div class="c-setup-foot"><span>난이도 · ${DIFFICULTY[diffSel].label}</span><button data-act="exit" class="c-ghost">메뉴로</button></div></section>`;
@@ -147,6 +149,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     else if (a === 'map') { q('#c-missions').hidden = true; bigmap.hidden = !bigmap.hidden; if (bigmap.hidden) lock(); else unlock(); }
     else if (a === 'train') res(w.train(0, arg as UnitId));
     else if (a === 'build') { ghost = { kind: arg as StructKind, x: 0, y: 0, ok: false }; if (view !== 'top' || innerWidth < 900) { panel.hidden = true; lock(); } toast(view === 'top' ? '배치할 위치를 누르세요 (우클릭·Esc 취소)' : '바닥을 조준하고 클릭해 배치 (우클릭 취소)', false); }
+    else if (a === 'demolish') requestDemolish(Number(arg));
     else if (a === 'research') res(w.research(0, arg as ResearchId));
     else if (a === 'sell') { const e = w.market(0, true, arg === 'all' ? f.crystal : Number(arg)); res(e); if (!e && tut) tut.c.sells++; }
     else if (a === 'buy') res(w.market(0, false, Number(arg)));
@@ -221,7 +224,10 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
         + `<button class="c-row" data-act="mercs" ${f.cash >= 350 ? '' : 'disabled'}><b>용병 3명 즉시 고용</b><span>인구를 차지하지 않는 현금 병력</span><i class="ca">$350</i></button>`
         + `<p class="c-note">대기열: ${w.structures.filter(s => s.f === 0 && s.queue.length).map(s => `${STRUCTS[s.kind].name} ${s.queue.length}`).join(' · ') || '없음'}</p>`;
     } else if (tab === 'build') {
-      body = '<h3>건설 <small>본부 반경·보유 사업체 주변</small></h3>' + BUILD_ORDER.map(k => `<button class="c-row" data-act="build:${k}"><b>${STRUCTS[k].name}</b><span>${STRUCTS[k].desc}</span>${cost(STRUCTS[k].crystal, STRUCTS[k].cash)}</button>`).join('');
+      const mine = w.structures.filter(s => s.alive && s.f === 0 && s.kind !== 'hq' && s.temp <= 0);
+        const rows = BUILD_ORDER.map(k => `<button class="c-row" data-act="build:${k}"><b>${STRUCTS[k].name}</b><span>${STRUCTS[k].desc}</span>${cost(STRUCTS[k].crystal, STRUCTS[k].cash)}</button>`).join('');
+        const demo = mine.length ? `<p class="c-note">아군 건물 철거 · 건설비 ${Math.round(DEMOLISH_REFUND_RATE * 100)}% 환급 · 대기열은 전액 · <kbd>Delete</kbd> 로 조준한 건물</p>` + mine.map(s => { const ref = w.demolishRefundOf(0, s.kind), armed = demolishArmed?.id === s.id; return `<button class="c-row" data-act="demolish:${s.id}"><b>${armed ? '확인: ' : ''}철거 · ${STRUCTS[s.kind].name}</b><span>${armed ? '한 번 더 누르면 철거합니다' : '건설비 절반과 대기 중 훈련·연구 비용을 돌려받습니다'}</span><i class="cr">◆${ref.crystal}</i>${ref.cash ? `<i class="ca">$${ref.cash}</i>` : ''}</button>`; }).join('') : '';
+        body = '<h3>건설 <small>본부 반경·아군 건물·보유 사업체 주변</small></h3>' + rows + demo;
     } else if (tab === 'research') {
       const lab = w.structures.some(s => s.alive && s.f === 0 && s.kind === 'lab' && s.built >= 1);
       body = `<h3>연구 ${lab ? '' : '<small>연구소 필요</small>'}</h3>` + (Object.keys(RESEARCH) as ResearchId[]).map(id => { const lv = f.up[id]; return `<button class="c-row" data-act="research:${id}" ${lab && lv < 3 ? '' : 'disabled'}><b>${RESEARCH[id].name} ${'●'.repeat(lv)}${'○'.repeat(3 - lv)}</b><span>${RESEARCH[id].desc}</span>${lv < 3 ? `<i class="cr">◆${RESEARCH[id].crystal * (lv + 1)}</i><i class="ca">$${RESEARCH[id].cash * (lv + 1)}</i>` : ''}</button>`; }).join('');
@@ -410,6 +416,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (k === 'e') interact(); else if (k === 'f') w.toggleVehicle(0); else if (k === 'r') reload(w, 0); else if (k === 'q') res(w.useSkill(0)); else if (k === 'h') w.useMedkit(0);
     else if (k === 'z') act('order:follow'); else if (k === 'x') act('order:hold'); else if (k === 'c') { const p = aimPoint(); w.order(0, 'amove', p.x, p.y); } else if (k === 'v') act('view');
     else if (k === 'j') act('missions'); else if (k === 'm') act('map'); else if (k === 'b') { tab = 'build'; shopOpen = false; panel.hidden = false; renderPanel(); unlock(); }
+    else if (k === 'Delete' || k === 'Backspace') { const t = w.structAt(aimPoint().x, aimPoint().y); if (t) requestDemolish(t.id); else toast('철거할 아군 건물을 조준하세요'); }
     else if (k >= '1' && k <= '3') switchWeapon(w, 0, Number(k) - 1);
   }
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key); };
@@ -427,13 +434,27 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (t && !(t as HTMLButtonElement).disabled) { e.stopPropagation(); act(t.dataset.act!, e); }
   });
   root.addEventListener('contextmenu', e => e.preventDefault());
-  const place = (sx: number, sy: number): void => { const w = world!, p = view === 'top' || !R3 ? R!.toWorld(sx, sy) : { x: ghost!.x, y: ghost!.y }, e = w.build(0, ghost!.kind, p.x, p.y); if (e) toast(e); else { audio.play('build'); if (!keys.has('Shift')) ghost = null; } };
+  const requestDemolish = (id: number): void => {
+    const w = world; if (!w) return;
+    const s = w.structures.find(z => z.id === id), err = w.canDemolish(0, id);
+    if (err || !s) { toast(err || '철거할 건물이 없습니다'); demolishArmed = null; return; }
+    const ref = w.demolishRefundOf(0, s.kind), now = performance.now();
+    if (demolishArmed && demolishArmed.id === id && now - demolishArmed.at < 4000) {
+      const e = w.demolish(0, id); demolishArmed = null;
+      if (e) toast(e); else { audio.play('poof'); toast(`${STRUCTS[s.kind].name} 철거 · ◆${ref.crystal}${ref.cash ? ` $${ref.cash}` : ''} 환급`, false); if (!panel.hidden) renderPanel(); }
+      return;
+    }
+    demolishArmed = { id, at: now };
+    toast(`${STRUCTS[s.kind].name} 철거를 한 번 더 눌러 확인 (건설비 50% 환급)`, false);
+    if (!panel.hidden) renderPanel();
+  };
+  const place = (sx: number, sy: number): void => { const w = world!, raw = view === 'top' || !R3 ? R!.toWorld(sx, sy) : { x: ghost!.x, y: ghost!.y }, p = { x: snapBuildCoord(raw.x), y: snapBuildCoord(raw.y) }, e = w.build(0, ghost!.kind, p.x, p.y); if (e) toast(e); else { audio.play('build'); if (!keys.has('Shift')) ghost = null; } };
   const looks = new Map<number, { x: number; y: number }>();
   for (const cv of [canvas, canvas3]) {
     cv.addEventListener('pointerdown', e => {
       audio.unlock(); if (!world || paused || world.over) return; mouse.x = e.clientX; mouse.y = e.clientY; const three = cv === canvas3;
       if (e.pointerType === 'touch') {
-        if (ghost) { if (three) { const p = R3!.groundPoint(700); ghost.x = p.x; ghost.y = p.y; } place(e.clientX, e.clientY); return; }
+        if (ghost) { if (three) { const p = R3!.groundPoint(700); ghost.x = snapBuildCoord(p.x); ghost.y = snapBuildCoord(p.y); } place(e.clientX, e.clientY); return; }
         if (e.clientX < innerWidth * 0.45) { const s = sticks.move; if (s.id < 0) { s.id = e.pointerId; s.ox = e.clientX; s.oy = e.clientY; s.x = s.y = 0; } }
         else if (three) looks.set(e.pointerId, { x: e.clientX, y: e.clientY });
         else { const s = sticks.aim; if (s.id < 0) { s.id = e.pointerId; s.ox = e.clientX; s.oy = e.clientY; s.x = s.y = 0; } }
@@ -569,12 +590,12 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     hurt = Math.max(0, hurt - dt * 1.3); const low = b && b.hp < b.maxHp * 0.35 ? 0.35 + Math.sin(now / 160) * 0.12 : 0, outside = !!b && Math.hypot(b.x - w.zone.x, b.y - w.zone.y) > w.zone.r;
     hurtEl.style.opacity = String(Math.max(hurt * 0.85, low)); hurtEl.classList.toggle('storm', outside && hurt < 0.1);if (outside) hurtEl.style.opacity = String(Math.max(0.45, hurt));
     if (three && R3) {
-      if (ghost) { const p = R3.groundPoint(700); ghost.x = Math.round(p.x / 10) * 10; ghost.y = Math.round(p.y / 10) * 10; ghost.ok = w.canBuild(0, ghost.kind, ghost.x, ghost.y); }
+      if (ghost) { const p = R3.groundPoint(700); ghost.x = snapBuildCoord(p.x); ghost.y = snapBuildCoord(p.y); ghost.ok = w.canBuild(0, ghost.kind, ghost.x, ghost.y); }
       R3.draw(paused ? 0 : dt, ghost); overlay(); r.cam.x = b ? b.x : r.cam.x; r.cam.y = b ? b.y : r.cam.y;
     } else {
       if (b) { const look = touch ? { x: 0, y: 0 } : { x: (mouse.x - r.w / 2) * 0.22 / r.cam.zoom, y: (mouse.y - r.h / 2) * 0.22 / r.cam.zoom }; const tx = b.x + look.x + (veh ? veh.vx * 0.35 : 0), ty = b.y + look.y + (veh ? veh.vy * 0.35 : 0); r.cam.x += (tx - r.cam.x) * Math.min(1, dt * 7); r.cam.y += (ty - r.cam.y) * Math.min(1, dt * 7); }
       const base = Math.max(0.55, Math.min(1, Math.min(r.w, r.h * 1.5) / 1100)); r.cam.zoom += (base * userZoom * (1 - Math.min(0.3, spd / 1800)) - r.cam.zoom) * Math.min(1, dt * 3);
-      if (ghost) { const p = r.toWorld(mouse.x, mouse.y); ghost.x = p.x; ghost.y = p.y; ghost.ok = w.canBuild(0, ghost.kind, p.x, p.y); }
+      if (ghost) { const p = r.toWorld(mouse.x, mouse.y); ghost.x = snapBuildCoord(p.x); ghost.y = snapBuildCoord(p.y); ghost.ok = w.canBuild(0, ghost.kind, ghost.x, ghost.y); }
       r.draw(paused ? 0 : dt, ghost, touch || !b ? null : r.toWorld(mouse.x, mouse.y));
     }
     root.classList.toggle('down', !b && !w.over);

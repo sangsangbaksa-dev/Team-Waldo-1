@@ -1,6 +1,6 @@
 // SPEED RUSH — 레이스 진행(카운트다운·랩·순위·AI·차량 간 충돌). 화면과 무관한 순수 로직입니다.
 import { CARS, carById, carParams, levelById, type CarDef, type LevelDef } from './config';
-import { aiInput, newCar, stepCar, type AiProfile, type CarInput, type CarParams, type CarState, type StepEvents } from './physics';
+import { aiInput, newCar, separateCars, stayOnTrack, stepCar, type AiProfile, type CarInput, type CarParams, type CarState, type StepEvents } from './physics';
 import { followSnap, type RemoteLink } from './netcar';
 import { type Track } from './track';
 
@@ -52,6 +52,12 @@ export function createRace(track: Track, laps = 3, bestLap = Infinity, opts: Rac
 
 const score = (r: Racer): number => (r.finishTime !== null ? 1e9 - r.finishTime : r.car.total);
 export function standings(r: RaceState): Racer[] { return [...r.racers].sort((a, b) => score(b) - score(a)); }
+/** 앞선 라이벌은 속도를 깎지 않습니다. 뒤처진 차만 bandHi 까지 따라잡습니다. */
+export function rivalBand(level: LevelDef, gapMeters: number): number {
+  const raw = 1 - gapMeters * level.bandK;
+  const floor = gapMeters > 0 ? Math.max(1, level.bandLo) : level.bandLo;
+  return Math.max(floor, Math.min(level.bandHi, raw));
+}
 export const placeOf = (r: RaceState, who: Racer = r.player): number => standings(r).indexOf(who) + 1;
 export const currentLap = (r: RaceState, who: Racer = r.player): number => Math.min(r.laps, Math.max(1, Math.floor(who.car.total / r.track.n) + 1));
 /** 플레이어와 racer 사이의 거리(m). 양수면 racer 가 앞. */
@@ -61,7 +67,7 @@ const IDLE: CarInput = { throttle: 0, brake: 0, steer: 0, drift: false, nitro: f
 
 export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): RaceEvent[] {
   const ev: RaceEvent[] = [], t = r.track;
-  r.clock += dt;
+  if (r.phase !== 'done') r.clock += dt;
   const pressed = input.throttle > 0.05;
   if (r.phase === 'countdown') {
     const n = Math.ceil(-r.clock); if (n < r.lastCount && n >= 1) { r.lastCount = n; ev.push({ type: 'count', n }); }
@@ -76,12 +82,16 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
   r.thrPrev = pressed;
   const racing = r.phase !== 'countdown';
   for (const k of r.racers) {
-    if (k.link) { followSnap(k.car, k.link, now, dt); continue; }
+    if (k.link) {
+      followSnap(k.car, k.link, now, dt);
+      const n = t.n; k.car.idx = n > 0 ? ((Math.round(k.car.idx) % n) + n) % n : 0;
+      continue;
+    }
     let inp: CarInput = IDLE;
     if (racing) {
       if (k.player && k.finishTime === null) inp = input;
       else {
-        const gap = k.player ? 0 : (k.car.total - r.player.car.total) * t.ds, band = Math.max(r.level.bandLo, Math.min(r.level.bandHi, 1 - gap * r.level.bandK));
+        const gap = k.player ? 0 : (k.car.total - r.player.car.total) * t.ds, band = k.player ? 1 : rivalBand(r.level, gap);
         inp = aiInput(k.car, t, { ...k.ai, top: k.ai.top * band, grip: k.ai.grip * band * band });
       }
     }
@@ -92,16 +102,13 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
       if (k.lastEv.pad) ev.push({ type: 'pad' });
     }
   }
-  // 차량 간 충돌(원형 근사)
+  // 차량 간 충돌(차체 길이에 맞춘 캡슐). 밀린 뒤에는 다시 도로 안으로 붙입니다.
   for (let i = 0; i < r.racers.length; i++) for (let j = i + 1; j < r.racers.length; j++) {
     if (r.racers[i].link || r.racers[j].link) continue; // 상대 차량은 겹쳐 달립니다(충돌 동기화 없음)
-    const a = r.racers[i].car, b = r.racers[j].car, dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz), min = 3.3;
-    if (d < min && d > 1e-3) {
-      const nx = dx / d, nz = dz / d, push = (min - d) / 2; a.x -= nx * push; a.z -= nz * push; b.x += nx * push; b.z += nz * push;
-      const rel = (a.vx - b.vx) * nx + (a.vz - b.vz) * nz;
-      if (rel > 0) { const imp = rel * 0.55; a.vx -= nx * imp; a.vz -= nz * imp; b.vx += nx * imp; b.vz += nz * imp; if ((i === 0 || j === 0) && rel > 3) ev.push({ type: 'bump', power: rel }); }
-    }
+    const rel = separateCars(r.racers[i].car, r.racers[j].car);
+    if ((i === 0 || j === 0) && rel > 3) ev.push({ type: 'bump', power: rel });
   }
+  for (const k of r.racers) if (!k.link) { const hit = stayOnTrack(k.car, t, dt, false); if (k.player && hit > 0) ev.push({ type: 'hit', power: hit }); }
   // 랩·결승
   for (const k of r.racers) {
     if (k.finishTime !== null || k.link) continue;

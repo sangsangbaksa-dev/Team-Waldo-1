@@ -68,3 +68,14 @@ export function buildMap(): RtsMap {
   cachedSize = MAP_SIZE;
   return cached;
 }
+
+/** 보기 좋게 높이만 주는 지형(충돌·길찾기와 무관). 두 진영이 같은 조건이 되도록 180도 회전 대칭입니다. */
+const BUMPS: Array<[number, number, number, number]> = [[56, 120, 22, 0.55], [30, 92, 18, 0.45], [96, 56, 20, 0.5], [60, 28, 16, 0.4], [118, 100, 14, 0.45], [74, 70, 12, 0.35], [14, 50, 14, 0.5]];
+const PLATEAUS: Array<[number, number, number, number]> = [[25, 125, 17, 1.5], [32, 62, 9, 0.9], [78, 32, 9, 0.9], [30, 30, 9, 0.9]];
+const sm = (a: number, b: number, v: number): number => { const t = Math.max(0, Math.min(1, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
+export function heightAt(x: number, y: number): number {
+  const n = MAP_SIZE; let h = 0;
+  for (const [px, py, r, a] of BUMPS) for (const [qx, qy] of [[px, py], [n - px, n - py]] as const) { const d = Math.sqrt((x - qx) ** 2 + (y - qy) ** 2); h = Math.max(h, a * sm(r * 1.2, r * 0.2, d)); }
+  for (const [px, py, r, a] of PLATEAUS) for (const [qx, qy] of [[px, py], [n - px, n - py]] as const) { const d = Math.sqrt((x - qx) ** 2 + (y - qy) ** 2); h = Math.max(h, a * sm(r + 9, r, d)); }
+  const edge = Math.min(x, y, n - x, n - y); return h + (1 - sm(0, 6, edge)) * 1.6;
+}

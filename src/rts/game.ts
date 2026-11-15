@@ -171,9 +171,10 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (sim.map.terrain[y * n + x]) { const [px, py] = mm(x, y); g.fillRect(me === 0 ? px : px - k, me === 0 ? py : py - k, k + 0.5, k + 0.5); }
     }
     mg.drawImage(miniBase, 0, 0);
+    mg.save(); if (me === 1) { mg.translate(mini.width, mini.width); mg.rotate(Math.PI); } mg.drawImage(view.fogCanvas, 0, 0, mini.width, mini.width); mg.restore();
     mg.fillStyle = '#58d6ff'; for (const nd of sim.nodes) { const [x, y] = mm(nd.x + 0.5, nd.y + 0.5); mg.fillRect(x - 2, y - 2, 4, 4); }
-    for (const b of sim.buildings) { const [x, y] = mm(b.x + b.size / 2, b.y + b.size / 2), s = b.size * k; mg.fillStyle = b.owner === 0 ? '#3d8bff' : '#ff5a3c'; mg.fillRect(x - s / 2, y - s / 2, s, s); }
-    for (const u of sim.units) { const [x, y] = mm(u.x, u.y); mg.fillStyle = u.owner === 0 ? '#9fd0ff' : '#ffb09f'; mg.fillRect(x - 1.5, y - 1.5, 3, 3); }
+    for (const b of sim.buildings) { if (!view.canSee(b)) continue; const [x, y] = mm(b.x + b.size / 2, b.y + b.size / 2), s = b.size * k; mg.fillStyle = b.owner === 0 ? '#3d8bff' : '#ff5a3c'; mg.fillRect(x - s / 2, y - s / 2, s, s); }
+    for (const u of sim.units) { if (!view.canSee(u)) continue; const [x, y] = mm(u.x, u.y); mg.fillStyle = u.owner === 0 ? '#9fd0ff' : '#ffb09f'; mg.fillRect(x - 1.5, y - 1.5, 3, 3); }
     const cs = view.corners(over.clientHeight - $('.rt-bottom').offsetHeight);
     if (cs.length > 2) { mg.strokeStyle = '#fff'; mg.lineWidth = 1.5; mg.beginPath(); cs.forEach((c, i) => { const [x, y] = mm(Math.min(n, Math.max(0, c.x)), Math.min(n, Math.max(0, c.y))); if (i) mg.lineTo(x, y); else mg.moveTo(x, y); }); mg.closePath(); mg.stroke(); }
     if (sim.tick - alertAt.t < 100 && Math.floor(performance.now() / 250) % 2) { const [x, y] = mm(alertAt.x, alertAt.y); mg.strokeStyle = '#ff3b30'; mg.lineWidth = 2; mg.beginPath(); mg.arc(x, y, 9, 0, Math.PI * 2); mg.stroke(); }
@@ -194,11 +195,11 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     const bar = (x: number, y: number, bw: number, f: number, c: string): void => { og.fillStyle = 'rgba(0,0,0,.65)'; og.fillRect(x - bw / 2 - 1, y - 1, bw + 2, 5); og.fillStyle = c; og.fillRect(x - bw / 2, y, bw * Math.max(0, Math.min(1, f)), 3); };
     const col = (f: number, foe: boolean): string => foe ? '#ff5a4a' : f > 0.6 ? '#5dff9a' : f > 0.3 ? '#ffd24a' : '#ff5a4a';
     for (const u of sim.units) {
-      const sel = selected.has(u.id), d = UNITS[u.kind]; if (!sel && u.hp >= d.hp) continue; const p = view.project(u.x, u.y, 1.2); if (!p || p.x < -20 || p.y < -20 || p.x > w + 20 || p.y > h + 20) continue;
+      const sel = selected.has(u.id), d = UNITS[u.kind]; if ((!sel && u.hp >= d.hp) || !view.canSee(u)) continue; const p = view.project(u.x, u.y, 1.2); if (!p || p.x < -20 || p.y < -20 || p.x > w + 20 || p.y > h + 20) continue;
       bar(p.x, p.y, 18 + d.radius * 14, u.hp / d.hp, col(u.hp / d.hp, u.owner !== me));
     }
     for (const b of sim.buildings) {
-      const sel = selected.has(b.id); if (!sel && b.hp >= b.maxhp && b.done) continue; const p = view.project(b.x + b.size / 2, b.y + b.size / 2, BUILDINGS[b.kind].size < 3 ? 2 : 3.3); if (!p) continue;
+      const sel = selected.has(b.id); if ((!sel && b.hp >= b.maxhp && b.done) || !view.canSee(b)) continue; const p = view.project(b.x + b.size / 2, b.y + b.size / 2, BUILDINGS[b.kind].size < 3 ? 2 : 3.3); if (!p) continue;
       bar(p.x, p.y, 30 + b.size * 10, b.hp / b.maxhp, col(b.hp / b.maxhp, b.owner !== me));
       if (!b.done) bar(p.x, p.y + 6, 30 + b.size * 10, b.progress / BUILDINGS[b.kind].time, '#6fb7ff');
       else if (b.queue[0] && b.owner === me) bar(p.x, p.y + 6, 30 + b.size * 10, 1 - b.queue[0].left / UNITS[b.queue[0].u].time, '#6fb7ff');

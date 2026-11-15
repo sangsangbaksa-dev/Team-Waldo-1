@@ -15,6 +15,9 @@ export function createStageState(waveCount: number): StageState {
 }
 
 function spawnAtEdge(world: World, kind: number, hpScale: number): number {
+  // Keep the spawn pending when the enemy pool is full instead of consuming RNG
+  // and permanently marking a boss that could not be created.
+  if (world.enemies.count >= world.enemies.capacity) return 0;
   const a = next(world.rng) * Math.PI * 2;
   const r = world.data.balance.spawnRadius;
   return spawnEnemy(world, kind, world.player.x + Math.cos(a) * r, world.player.y + Math.sin(a) * r, hpScale);
@@ -30,9 +33,11 @@ export function stage(world: World): void {
   st.time += DT;
 
   if (def.miniboss && !st.minibossSpawned && st.time >= def.miniboss.at) {
-    st.minibossSpawned = true;
     const id = spawnAtEdge(world, world.data.enemyIndex[def.miniboss.enemy], def.miniboss.hpScale);
-    if (id) world.events.push({ t: 'bossSpawn', id, miniboss: true });
+    if (id) {
+      st.minibossSpawned = true;
+      world.events.push({ t: 'bossSpawn', id, miniboss: true });
+    }
   }
 
   if (st.time < def.duration) return;
@@ -46,8 +51,10 @@ export function stage(world: World): void {
     st.minibossSpawned = false;
     world.events.push({ t: 'stageStart', index: st.index });
   } else {
+    const id = spawnAtEdge(world, world.data.enemyIndex[boss.enemy], boss.hpScale);
+    if (!id) return; // Try again next tick once a slot has been freed.
     st.bossSpawned = true;
-    st.bossId = spawnAtEdge(world, world.data.enemyIndex[boss.enemy], boss.hpScale);
-    world.events.push({ t: 'bossSpawn', id: st.bossId, miniboss: false });
+    st.bossId = id;
+    world.events.push({ t: 'bossSpawn', id, miniboss: false });
   }
 }

@@ -16,6 +16,7 @@ export class RaceAudio {
   private bed: number | null = null;
   private bedStep = 0;
   private done = false;
+  private lastSfx = new Map<string, number>();
   gear = 1; private lastShift = 0;
   get enabled(): boolean { return this.eng.enabled; }
   set enabled(on: boolean) { this.eng.setEnabled(on); }
@@ -64,7 +65,7 @@ export class RaceAudio {
     const g = gearFor(v);
     if (g !== this.gear) { if (g > this.gear) this.lastShift = t; this.gear = g; }
     const lo = GEARS[g - 1], hi = GEARS[g], rpm = 0.18 + 0.82 * Math.min(1, Math.max(0, (v - lo) / (hi - lo))) - (t - this.lastShift < 0.12 ? 0.18 : 0);
-    const f = 48 + rpm * 190 + (boost ? 24 : 0);
+    const f = 48 + rpm * 190 + (go && boost ? 24 : 0);
     this.motor.o1.frequency.setTargetAtTime(f, t, 0.03); this.motor.o2.frequency.setTargetAtTime(f * 1.505, t, 0.03);
     this.motor.filt.frequency.setTargetAtTime(380 + rpm * 1700 + thr * 700, t, 0.05);
     this.motor.gain.gain.setTargetAtTime(go ? 0.16 + thr * 0.16 + rpm * 0.08 : 0, t, 0.05);
@@ -78,6 +79,13 @@ export class RaceAudio {
 
   sfx(name: 'count' | 'go' | 'lap' | 'best' | 'hit' | 'bump' | 'pad' | 'drift' | 'finish' | 'click', power = 1): void {
     if (!this.eng.ctx || !this.enabled) return;
+    // hit/bump can be emitted twice in one frame (wall + car shove) or every step while cars grind.
+    const gap = name === 'hit' || name === 'bump' ? 150 : 0;
+    if (gap) {
+      const now = performance.now();
+      if (now - (this.lastSfx.get(name) ?? 0) < gap) return;
+      this.lastSfx.set(name, now);
+    }
     switch (name) {
       case 'count': tone(this.eng, 520, 0.16, 0.28, 'square'); break;
       case 'go': tone(this.eng, 1040, 0.4, 0.32, 'square'); tone(this.eng, 1560, 0.4, 0.16, 'sawtooth'); this.done = false; break;

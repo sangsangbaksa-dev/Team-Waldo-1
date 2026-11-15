@@ -10,7 +10,7 @@ export class CityAudio {
   step = 0;
   intensity = 0;
   get enabled(): boolean { return this.eng.enabled; }
-  set enabled(on: boolean) { this.eng.enabled = on; }
+  set enabled(on: boolean) { this.eng.setEnabled(on); }
   get ctx(): AudioContext | null { return this.eng.ctx; }
   get master(): GainNode | null { return this.eng.master; }
 

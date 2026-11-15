@@ -49,7 +49,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   type View = 'fp' | 'tp' | 'top';
   let preView: View = 'fp', tut: { s: TutState; c: Counters } | null = null, tutSig = '', tutDone = readTutDone(), lastPos = { x: 0, y: 0 }, lastYaw = 0, tutInfoLock = false;
   let models: Models | null = null, R3: Renderer3D | null = null, view: View = 'fp', locked = false, lockFail = false, expectUnlock = false, touchFire = false, hurt = 0, lastLook = 0, hitT = 0;
-  const tags: HTMLElement[] = [], marks: HTMLElement[] = []; let area = '', areaT = 0, sirenT = 0;
+  const tags: HTMLElement[] = [], marks: HTMLElement[] = []; let area = '', areaT = 0;
   let world: World | null = null, R: Renderer | null = null, raf = 0, last = 0, acc = 0, paused = false, closed = false, ghost: Ghost | null = null, tab = 'train', hudT = 0, toastT = 0, bannerT = 0, shopOpen = false, resultShown = false, userZoom = 1, combat = 0, klass: ClassId = 'warlord';
   /** 1대1 결투 진행 상태. null 이면 혼자 하는 게임입니다. */
   interface Duel { s: PvpSession; net: CityDuel; myDeaths: number; oppDeaths: number; done: boolean; pose: { x: number; y: number; a: number; hp: number; mh: number; w: WeaponId } | null; rx: number; ry: number; seed: number; oppKlass: string; started: boolean; graceAt: number }
@@ -63,8 +63,8 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
 
   function setup(): void {
     modal.innerHTML = `<section class="c-setup"><div class="c-kicker">WALDO · LAST CITY</div><h2>LAST CITY <small>최후의 왕국</small></h2>
-      <p class="c-lead">여덟 왕국이 한 도시에 떨어졌습니다. 직접 총을 들고 뛰고, 차를 빼앗고, 사업체를 사들여 돈을 벌고, 군대를 길러 <b>자기장이 닫히기 전 마지막 왕국</b>이 되세요. <b>J</b>에서 8단계 도시 작전과 보상을 확인할 수 있습니다.</p>
-      <button class="c-tutcard${tutDone ? '' : ' rec'}" data-act="tutorial"><span>${tutDone ? '다시 연습' : '처음이라면 추천 · 약 5분'}</span><b>튜토리얼 시작</b><p>이동·사격·사업체·기지 건설·병력 지휘·차량·시장까지 한 단계씩 안전하게 익힙니다. 연습장에서는 자기장과 라이벌이 멈춰 있습니다.</p></button>
+      <p class="c-lead">여덟 왕국이 한 도시에 떨어졌습니다. 직접 총을 들고 뛰고, 차를 빼앗고, 사업체를 사들여 돈을 벌고, 군대를 길러 <b>최후까지 살아남는 마지막 왕국</b>이 되세요. <b>J</b>에서 8단계 도시 작전과 보상을 확인할 수 있습니다.</p>
+      <button class="c-tutcard${tutDone ? '' : ' rec'}" data-act="tutorial"><span>${tutDone ? '다시 연습' : '처음이라면 추천 · 약 5분'}</span><b>튜토리얼 시작</b><p>이동·사격·사업체·기지 건설·병력 지휘·차량·시장까지 한 단계씩 안전하게 익힙니다. 연습장에서는 라이벌이 멈춰 있습니다.</p></button>
       <div class="c-sub">${tutDone ? '바로 시작할 영웅을 고르세요' : '또는 바로 시작할 영웅을 고르세요'}</div>
       <div class="c-classes">${(Object.keys(CLASSES) as ClassId[]).map(k => `<button class="c-class" data-act="class:${k}"><span>${CLASSES[k].tag}</span><b>${CLASSES[k].name}</b><p>${CLASSES[k].desc}</p><em>Q · ${CLASSES[k].skill}</em><small>${CLASSES[k].skillDesc}</small></button>`).join('')}</div>
       <div class="c-keys">${touch ? '<span>왼쪽 드래그 이동</span><span>오른쪽 드래그 시점</span><span>사격 버튼</span><span>버튼으로 상호작용·지휘</span>' : '<span><b>WASD</b> 이동</span><span><b>마우스</b> 시점·사격</span><span><b>V</b> 1인칭/3인칭/전술뷰</span><span><b>E</b> 매입·줍기</span><span><b>F</b> 차량 탑승</span><span><b>Tab</b> 지휘 패널</span><span><b>우클릭</b> 병력 돌격</span><span><b>Z/X</b> 집결·사수</span><span><b>Space</b> 대시</span><span><b>M</b> 지도</span>'}</div>
@@ -191,7 +191,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   function pause(): void {
     if (!world || world.over || duel) return; paused = true; keys.clear(); mouse.down = false; unlock();
     modal.innerHTML = `<section class="c-pause"><div class="c-kicker">PAUSED</div><h2>일시정지</h2>
-      <div class="c-help"><div><b>보스 조작</b><p>WASD 이동 · 마우스 시점/사격 · V 시점 전환(1인칭·3인칭·전술뷰) · R 재장전 · 1~3 무기 · Space 대시 · H 회복 키트 · Q 고유 스킬</p></div><div><b>도시</b><p>E 사업체 매입·업그레이드·무기 줍기 · F 차량 탑승/하차 · 적 사업체 패드 위에서 6초 버티면 적대적 인수</p></div><div><b>지휘</b><p>Tab 지휘 패널(생산·건설·연구·시장) · 우클릭/지도 클릭 돌격 · Z 집결 · X 사수</p></div><div><b>승리</b><p>자기장은 점점 줄어듭니다. 적 본부를 부수면 그 보스는 부활하지 못합니다. 마지막까지 살아남는 왕국이 승리합니다.</p></div></div>
+      <div class="c-help"><div><b>보스 조작</b><p>WASD 이동 · 마우스 시점/사격 · V 시점 전환(1인칭·3인칭·전술뷰) · R 재장전 · 1~3 무기 · Space 대시 · H 회복 키트 · Q 고유 스킬</p></div><div><b>도시</b><p>E 사업체 매입·업그레이드·무기 줍기 · F 차량 탑승/하차 · 적 사업체 패드 위에서 6초 버티면 적대적 인수</p></div><div><b>지휘</b><p>Tab 지휘 패널(생산·건설·연구·시장) · 우클릭/지도 클릭 돌격 · Z 집결 · X 사수</p></div><div><b>승리</b><p>적 본부를 부수면 그 보스는 부활하지 못합니다. 마지막까지 살아남는 왕국이 승리합니다.</p></div></div>
       <div class="c-actions"><button data-act="resume" class="c-primary">계속하기</button><button data-act="sound">효과음 ${prefs.sound ? '켜짐' : '꺼짐'}</button><button data-act="retry">새 게임</button><button data-act="exit">메뉴로 나가기</button></div></section>`;
   }
 
@@ -562,8 +562,8 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     }
     audio.setEngine(veh ? Math.min(1, spd / veh.maxSpeed) : -1);
     if (hitT > 0) { hitT -= dt; if (hitT <= 0) cross.classList.remove('hit', 'kill'); }
-    hurt = Math.max(0, hurt - dt * 1.3); const low = b && b.hp < b.maxHp * 0.35 ? 0.35 + Math.sin(now / 160) * 0.12 : 0, outside = !!b && Math.hypot(b.x - w.zone.x, b.y - w.zone.y) > w.zone.r;
-    hurtEl.style.opacity = String(Math.max(hurt * 0.85, low)); hurtEl.classList.toggle('storm', outside && hurt < 0.1);if (outside) hurtEl.style.opacity = String(Math.max(0.45, hurt));
+    hurt = Math.max(0, hurt - dt * 1.3); const low = b && b.hp < b.maxHp * 0.35 ? 0.35 + Math.sin(now / 160) * 0.12 : 0;
+    hurtEl.style.opacity = String(Math.max(hurt * 0.85, low));
     if (three && R3) {
       if (ghost) { const p = R3.groundPoint(700); ghost.x = Math.round(p.x / 10) * 10; ghost.y = Math.round(p.y / 10) * 10; ghost.ok = w.canBuild(0, ghost.kind, ghost.x, ghost.y); }
       R3.draw(paused ? 0 : dt, ghost); overlay(); r.cam.x = b ? b.x : r.cam.x; r.cam.y = b ? b.y : r.cam.y;
@@ -581,7 +581,6 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       if (name !== area) { area = name; const el = q('#c-area'); el.textContent = name; el.className = 'c-area show'; areaT = 3; }
     }
     if (areaT > 0) { areaT -= dt; if (areaT <= 0) q('#c-area').className = 'c-area'; }
-    if (f.wanted >= 2 && !paused && now - sirenT > 2400 && w.vehicles.some(v => v.ai === 'chase' && b && Math.hypot(v.x - b.x, v.y - b.y) < 900)) { sirenT = now; audio.play('wail'); }
     if (tut && !paused && b) { if (!b.inVeh) tut.c.move += Math.hypot(b.x - lastPos.x, b.y - lastPos.y) * (Math.hypot(b.x - lastPos.x, b.y - lastPos.y) < 80 ? 1 : 0); else if (veh) tut.c.vehicleDist += spd * dt; lastPos = { x: b.x, y: b.y }; if (R3) { let dy = R3.yaw - lastYaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2; tut.c.look += Math.min(1, Math.abs(dy)); lastYaw = R3.yaw; } }
     hudT -= dt; if (hudT <= 0) { hudT = 0.12; renderHud(); if (tut && !paused) tutTick(); q('#c-target').innerHTML = three ? crossTarget() : ''; }
     if (toastT > 0) { toastT -= dt; if (toastT <= 0) q('#c-toast').className = 'c-toast'; }

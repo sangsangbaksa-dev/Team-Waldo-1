@@ -12,12 +12,14 @@ export const FACTION_COUNT = 8;
 
 export type Difficulty = 'd1' | 'd2' | 'd3' | 'd4' | 'd5';
 export const DIFFICULTY_ORDER: Difficulty[] = ['d1', 'd2', 'd3', 'd4', 'd5'];
-export const DIFFICULTY: Record<Difficulty, { label: string; desc: string; income: number; dmg: number; cap: number; attackArmy: number }> = {
-  d1: { label: '1단계 · 입문', desc: '라이벌이 아주 느리게 크고 약하게 공격합니다.', income: 0.35, dmg: 0.45, cap: 10, attackArmy: 16 },
-  d2: { label: '2단계 · 쉬움', desc: '라이벌 성장이 느리고 공격이 드뭅니다.', income: 0.5, dmg: 0.6, cap: 14, attackArmy: 14 },
-  d3: { label: '3단계 · 보통', desc: '경제와 전투를 함께 굴리면 충분히 이길 수 있습니다.', income: 0.65, dmg: 0.72, cap: 17, attackArmy: 13 },
-  d4: { label: '4단계 · 어려움', desc: '기존 난이도. 라이벌이 꾸준히 확장하고 압박합니다.', income: 0.78, dmg: 0.85, cap: 20, attackArmy: 11 },
-  d5: { label: '5단계 · 극한', desc: '라이벌이 빠르게 확장하고 일찍 쳐들어옵니다. 숙련자용.', income: 1.0, dmg: 1.05, cap: 28, attackArmy: 9 },
+// income: 라이벌 경제 배수 · dmg: 라이벌이 입히는 피해 배수 · ehp: 라이벌 병력/보스 체력 배수(전투 난이도 레버)
+// cap: 라이벌 인구 상한 · attackArmy: 라이벌이 습격을 시작하는 최소 병력 수(낮을수록 더 빨리·자주 쳐들어옴)
+export const DIFFICULTY: Record<Difficulty, { label: string; desc: string; income: number; dmg: number; ehp: number; cap: number; attackArmy: number }> = {
+  d1: { label: '1단계 · 입문', desc: '라이벌이 아주 느리게 크고, 병력도 약하며 큰 군대를 모아야만 가끔 쳐들어옵니다.', income: 0.35, dmg: 0.45, ehp: 0.9, cap: 22, attackArmy: 11 },
+  d2: { label: '2단계 · 쉬움', desc: '라이벌 성장이 느리고 공격이 드뭅니다.', income: 0.5, dmg: 0.6, ehp: 1.0, cap: 24, attackArmy: 10 },
+  d3: { label: '3단계 · 보통', desc: '경제와 전투를 함께 굴리면 충분히 이길 수 있습니다.', income: 0.65, dmg: 0.72, ehp: 1.1, cap: 26, attackArmy: 9 },
+  d4: { label: '4단계 · 어려움', desc: '기존 난이도. 라이벌이 꾸준히 확장하고, 더 단단한 병력으로 압박합니다.', income: 0.78, dmg: 0.85, ehp: 1.25, cap: 28, attackArmy: 8 },
+  d5: { label: '5단계 · 극한', desc: '라이벌이 빠르게 확장하고, 병력이 질기며 적은 수로도 일찍 쳐들어옵니다. 숙련자용.', income: 1.0, dmg: 1.05, ehp: 1.45, cap: 30, attackArmy: 7 },
 };
 
 export const FACTIONS = [

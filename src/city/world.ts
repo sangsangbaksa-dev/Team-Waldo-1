@@ -24,7 +24,7 @@ export interface WeaponSlot { id: WeaponId; mag: number; ammo: number }
 export interface Faction {
   id: number; name: string; color: string; dark: string; player: boolean; alive: boolean; cash: number; crystal: number; supply: number; supplyMax: number;
   boss: number; hq: number; up: Record<ResearchId, number>; mods: Mods; slots: WeaponSlot[]; cur: number; medkits: number; armor: number; xp: number; level: number;
-  pending: number; choices: number[]; perks: string[]; skillCd: number; buffT: number; dashCd: number; dashT: number; reloadT: number; respawnT: number;
+  pending: number; choices: number[]; perks: string[]; skillCd: number; buffT: number; dashCd: number; dashT: number; reloadT: number; respawnT: number; spawnInvuln: number; medkitCd: number;
   wanted: number; crimeT: number; kills: number; bossKills: number; earned: number; place: number; klass: ClassId; ai: AiState; income: number; combatT: number; diedAt: number; deaths: number;
 }
 export interface Structure {
@@ -77,7 +77,7 @@ export class World {
       const f: Faction = {
         id: i, name: FACTIONS[i].name, color: FACTIONS[i].color, dark: FACTIONS[i].dark, player, alive: true, cash: 500, crystal: 150, supply: 0, supplyMax: SUPPLY_HQ, boss: 0, hq: 0,
         up: { dmg: 0, armor: 0, eco: 0 }, mods: baseMods(), slots: [{ id: 'pistol', mag: 12, ammo: -1 }], cur: 0, medkits: 1, armor: 0, xp: 0, level: 1, pending: 0, choices: [], perks: [],
-        skillCd: 8, buffT: 0, dashCd: 0, dashT: 0, reloadT: 0, respawnT: 0, wanted: 0, crimeT: -99, kills: 0, bossKills: 0, earned: 0, place: 0, klass, income: 0, combatT: -99, diedAt: 0, deaths: 0,
+        skillCd: 8, buffT: 0, dashCd: 0, dashT: 0, reloadT: 0, respawnT: 0, spawnInvuln: 0, medkitCd: 0, wanted: 0, crimeT: -99, kills: 0, bossKills: 0, earned: 0, place: 0, klass, income: 0, combatT: -99, diedAt: 0, deaths: 0,
         ai: { goal: 'idle', tx: base.x, ty: base.y, biz: 0, t: this.rng(), attackT: 400 + this.rng() * 200, stuckT: 0 },
       };
       this.factions.push(f);
@@ -132,7 +132,7 @@ export class World {
   }
   spawnUnit(unit: UnitId | 'merc' | 'guard', f: number, x: number, y: number): Actor {
     const a = this.spawnActor(unit, f, x, y), fac = this.factions[f];
-    a.maxHp = Math.round(a.maxHp * fac.mods.unitHp * (1 + 0.15 * fac.up.armor) * (f === 0 ? 1.9 : 1.4)); a.hp = a.maxHp;
+    a.maxHp = Math.round(a.maxHp * fac.mods.unitHp * (1 + 0.15 * fac.up.armor) * (f === 0 ? 1.9 : 1.4 * DIFFICULTY[this.opts.difficulty].ehp)); a.hp = a.maxHp;
     if (unit === 'worker') a.order = { type: 'mine', x, y };
     else if (unit === 'guard') a.order = { type: 'guard', x, y };
     else { a.order = { type: 'follow', x, y }; if (f === 0) a.sq = this.squadSel; }
@@ -175,7 +175,7 @@ export class World {
     const x0 = Math.max(0, Math.floor((x - r) / HC)), x1 = Math.min(HN - 1, Math.floor((x + r) / HC)), y0 = Math.max(0, Math.floor((y - r) / HC)), y1 = Math.min(HN - 1, Math.floor((y + r) / HC));
     for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) { const cell = this.hash[cy * HN + cx]; for (let k = 0; k < cell.length; k++) fn(cell[k]); }
   }
-  bossMaxHp(f: Faction): number { return Math.round((ACTORS.boss.hp + f.mods.hp + (f.level - 1) * 12) * (f.id === 0 ? 2.2 : 1)); }
+  bossMaxHp(f: Faction): number { return Math.round((ACTORS.boss.hp + f.mods.hp + (f.level - 1) * 12) * (f.id === 0 ? 2.2 : DIFFICULTY[this.opts.difficulty].ehp)); }
   xpNeed(level: number): number { return Math.round(55 * Math.pow(level, 1.35)); }
   cost(f: Faction, v: number): number { return Math.round(v * f.mods.cost); }
   armyOf(f: number): Actor[] { return this.actors.filter(a => a.alive && a.f === f && a.kind !== 'worker' && a.kind !== 'boss' && a.kind !== 'guard'); }
@@ -205,7 +205,7 @@ export class World {
     dmg *= 1 - ACTORS[a.kind].armor; if (a.f === 0) dmg *= 0.75;
     if (srcF < 8 && srcF >= 0 && !this.factions[srcF].player && !this.opts.duel) dmg *= DIFFICULTY[this.opts.difficulty].dmg;
     if (a.kind === 'boss') {
-      const f = this.factions[a.f]; dmg *= 1 - Math.min(0.6, f.mods.armor); if (f.dashT > 0) dmg *= 0.3;
+      const f = this.factions[a.f]; dmg *= 1 - Math.min(0.6, f.mods.armor); if (f.dashT > 0 || f.spawnInvuln > 0) dmg *= 0.3;
       if (f.armor > 0) { const ab = Math.min(f.armor, dmg * 0.6); f.armor -= ab; dmg -= ab; }
       f.combatT = this.time;
     }
@@ -506,6 +506,7 @@ export class World {
     for (const f of this.factions) if (f.alive) {
       f.ai.t -= dt; if (f.ai.t <= 0 && (!f.player || this.opts.autoPlayer) && !this.opts.tutorial) { f.ai.t = 0.8 + this.rng() * 0.4; thinkFaction(this, f); }
       f.skillCd = Math.max(0, f.skillCd - dt); f.buffT = Math.max(0, f.buffT - dt); f.dashCd = Math.max(0, f.dashCd - dt); f.dashT = Math.max(0, f.dashT - dt);
+      f.spawnInvuln = Math.max(0, f.spawnInvuln - dt); f.medkitCd = Math.max(0, f.medkitCd - dt);
       if (this.time - f.crimeT > 14) f.wanted = Math.max(0, f.wanted - dt * 0.12);
       const b = this.boss(f.id);
       if (b) { if (f.mods.regen || this.time - f.combatT > 6) b.hp = Math.min(b.maxHp, b.hp + (f.mods.regen + (this.time - f.combatT > 6 ? 4 : 0)) * dt); }
@@ -520,7 +521,8 @@ export class World {
   }
   respawn(f: Faction): void {
     const hq = this.hq(f.id); if (!hq) return;
-    const b = this.spawnActor('boss', f.id, hq.x + 60, hq.y + 150); f.boss = b.id; b.maxHp = this.bossMaxHp(f); b.hp = b.maxHp; f.armor = 0; f.dashT = 2.5;
+    // 부활 직후 잠깐 피해를 줄여 줍니다(이동 속도에는 영향을 주지 않도록 dashT 대신 전용 타이머 사용).
+    const b = this.spawnActor('boss', f.id, hq.x + 60, hq.y + 150); f.boss = b.id; b.maxHp = this.bossMaxHp(f); b.hp = b.maxHp; f.armor = 0; f.spawnInvuln = 2.5;
     this.fx('spawn', b.x, b.y, 0, undefined, f.id); if (f.player) this.say('본부에서 부활했습니다', f.color);
   }
   updateStructures(dt: number): void {

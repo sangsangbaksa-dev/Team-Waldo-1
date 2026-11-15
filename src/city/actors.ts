@@ -104,7 +104,8 @@ export function updateActors(w: World, dt: number): void {
     if (a.kind === 'boss' && fac) {
       let best = 0; for (let i = 1; i < fac.slots.length; i++) if (WEAPONS[fac.slots[i].id].tier > WEAPONS[fac.slots[best].id].tier) best = i;
       if (best !== fac.cur && fac.reloadT <= 0) fac.cur = best; wd = WEAPONS[fac.slots[fac.cur].id];
-      if (a.hp < a.maxHp * 0.4 && fac.medkits > 0) w.useMedkit(a.f);
+      // AI는 체력이 40% 밑으로 떨어졌을 때만, 쿨다운을 두고 키트를 아껴 씁니다(한 번에 다 쏟지 않도록).
+      if (a.hp < a.maxHp * 0.4 && fac.medkits > 0 && fac.medkitCd <= 0) { w.useMedkit(a.f); fac.medkitCd = 4; }
     }
     const range = Math.min(wd.range, a.kind === 'boss' ? 620 : 9999);
     a.thinkT -= dt; if (a.thinkT <= 0) { a.thinkT = 0.22 + w.rng() * 0.12; think(w, a, range); }

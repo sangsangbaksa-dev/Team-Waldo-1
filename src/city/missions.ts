@@ -51,7 +51,7 @@ export function missionLog(world: World): MissionItem[] {
     chapter: '08 · 결전',
     title: '최후의 왕국',
     objective: '나머지 일곱 왕국을 모두 무너뜨리고 최후까지 살아남으세요.',
-    hint: '지도(M)에서 적 본부를 확인하고 지휘 패널(Tab)과 병력 돌격으로 공격하세요. 자기장 밖에 머물지 마세요.',
+    hint: '지도(M)에서 적 본부를 확인하고 지휘 패널(Tab)과 병력 돌격으로 공격하세요. 경제와 병력을 꾸준히 지키며 끝까지 살아남으세요.',
     current: world.winner === 0 ? 7 : Math.max(0, 7 - rivalsLeft),
     target: 7,
     reward: 0,

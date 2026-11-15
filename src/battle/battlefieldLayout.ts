@@ -172,6 +172,31 @@ export function isBattlefieldBlocked(x: number, z: number, unitRadius = .7): boo
     (x - f.x) ** 2 + (z - f.z) ** 2 < (f.radius + unitRadius) ** 2);
 }
 
+/** Solid footprints stop arrows and tower shots. The segment must cross the
+ * footprint, not merely start or end beside it. */
+export function battlefieldBlocksShot(x: number, z: number, tx: number, tz: number): boolean {
+  const dx = tx - x, dz = tz - z;
+  const len2 = dx * dx + dz * dz;
+  if (len2 < 1e-4) return false;
+  const samples = Math.max(1, Math.ceil(Math.sqrt(len2) / 6));
+  const seen = new Set<number>();
+  for (let i = 0; i <= samples; i++) {
+    const t = i / samples;
+    const bucket = collisionGrid.get(cell(x + dx * t, z + dz * t));
+    if (!bucket) continue;
+    for (const feature of bucket) {
+      if (feature.radius <= 0 || seen.has(feature.id)) continue;
+      seen.add(feature.id);
+      const closest = Math.max(0, Math.min(1, ((feature.x - x) * dx + (feature.z - z) * dz) / len2));
+      if (closest <= .02 || closest >= .98) continue;
+      const px = x + dx * closest - feature.x;
+      const pz = z + dz * closest - feature.z;
+      if (px * px + pz * pz < feature.radius * feature.radius) return true;
+    }
+  }
+  return false;
+}
+
 /** Return a deterministic sidestep around physical terrain rather than crossing it. */
 export function resolveBattlefieldStep(
   x: number, z: number, nextX: number, nextZ: number, goalX: number, goalZ: number,

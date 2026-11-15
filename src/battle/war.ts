@@ -1,7 +1,7 @@
 /** Deterministic, renderer-independent economy, territory and combat simulation. */
 import type { SquadCommand } from './squads';
 import { createBaseState, getBaseState, generalBonus, incomeGeneralBonus, workshopLevel, type BaseState } from './base';
-import { battlefieldCoverAt, resolveBattlefieldStep } from './battlefieldLayout';
+import { battlefieldBlocksShot, battlefieldCoverAt, resolveBattlefieldStep } from './battlefieldLayout';
 export type Upgrade = 'farm' | 'mine' | 'barracks' | 'fort';
 export type EconomyPolicy = 'balanced' | 'growth' | 'war';
 export type UnitKind = 'infantry' | 'archer' | 'guardian' | 'cavalry';
@@ -362,7 +362,8 @@ export function stepWar(w: War,dt: number):void {
   for (const f of w.factions) {
     if (!f.alive||f.hp<=0||f.turretCooldown>0) continue;
     const invaders=w.units.filter(u=>u.hp>0&&u.owner!==f.id&&
-      w.factions[u.owner].alive&&w.factions[u.owner].hp>0&&distance(u.x,u.z,f.x,f.z)<13);
+      w.factions[u.owner].alive&&w.factions[u.owner].hp>0&&distance(u.x,u.z,f.x,f.z)<13&&
+      !battlefieldBlocksShot(f.x,f.z,u.x,u.z));
     if (invaders.length) {
       invaders.sort((a,b)=>distance(a.x,a.z,f.x,f.z)-distance(b.x,b.z,f.x,f.z));
       // Mass battles need a limited, fort-scaled salvo against packed invaders.
@@ -412,7 +413,9 @@ export function stepWar(w: War,dt: number):void {
     }
     if (enemy) {
       const nearest=Math.sqrt(nearestSq);
-      if (nearest<=s.range) {
+      // Archers cannot shoot through solid cover; they walk for a clear line.
+      const sightBlocked=s.range>6&&nearest<=s.range&&battlefieldBlocksShot(u.x,u.z,enemy.x,enemy.z);
+      if (nearest<=s.range&&!sightBlocked) {
         if (u.cooldown<=0) {attack(w,u.owner,enemy,(s.damage+f.barracks*1.5)*combatMultiplier);u.cooldown=s.cooldown;}
       } else moveToward(w,u,enemy.x,enemy.z,dt);
       continue;

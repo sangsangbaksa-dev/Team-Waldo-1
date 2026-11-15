@@ -201,7 +201,7 @@ export class World {
     if (!a.alive || this.hidden(a)) return;
     if (this.opts.duel && a.f === 1 && a.kind === 'boss') return; // 상대의 체력은 상대 쪽에서만 줄어듭니다
     if (a.inVeh) { const v = this.vehicles.find(q => q.id === a.inVeh); if (v) this.hurtVehicle(v, dmg, srcF); return; }
-    dmg *= 1 - ACTORS[a.kind].armor; if (a.f === 0) dmg *= 0.75;
+    dmg *= 1 - ACTORS[a.kind].armor; if (a.f === 0) dmg *= DIFFICULTY[this.opts.difficulty].taken;
     if (srcF < 8 && srcF >= 0 && !this.factions[srcF].player && !this.opts.duel) dmg *= DIFFICULTY[this.opts.difficulty].dmg;
     if (a.kind === 'boss') {
       const f = this.factions[a.f]; dmg *= 1 - Math.min(0.6, f.mods.armor); if (f.dashT > 0) dmg *= 0.3;

@@ -12,12 +12,12 @@ export const FACTION_COUNT = 8;
 
 export type Difficulty = 'd1' | 'd2' | 'd3' | 'd4' | 'd5';
 export const DIFFICULTY_ORDER: Difficulty[] = ['d1', 'd2', 'd3', 'd4', 'd5'];
-export const DIFFICULTY: Record<Difficulty, { label: string; desc: string; income: number; dmg: number; cap: number; attackArmy: number }> = {
-  d1: { label: '1단계 · 입문', desc: '라이벌이 아주 느리게 크고 약하게 공격합니다.', income: 0.35, dmg: 0.45, cap: 10, attackArmy: 16 },
-  d2: { label: '2단계 · 쉬움', desc: '라이벌 성장이 느리고 공격이 드뭅니다.', income: 0.5, dmg: 0.6, cap: 14, attackArmy: 14 },
-  d3: { label: '3단계 · 보통', desc: '경제와 전투를 함께 굴리면 충분히 이길 수 있습니다.', income: 0.65, dmg: 0.72, cap: 17, attackArmy: 13 },
-  d4: { label: '4단계 · 어려움', desc: '기존 난이도. 라이벌이 꾸준히 확장하고 압박합니다.', income: 0.78, dmg: 0.85, cap: 20, attackArmy: 11 },
-  d5: { label: '5단계 · 극한', desc: '라이벌이 빠르게 확장하고 일찍 쳐들어옵니다. 숙련자용.', income: 1.0, dmg: 1.05, cap: 28, attackArmy: 9 },
+export const DIFFICULTY: Record<Difficulty, { label: string; desc: string; income: number; dmg: number; cap: number; attackArmy: number; taken: number }> = {
+  d1: { label: '1단계 · 입문', desc: '라이벌이 아주 느리게 크고 약하게 칩니다. 받는 피해도 크게 줄어듭니다.', income: 0.42, dmg: 0.52, cap: 12, attackArmy: 14, taken: 0.62 },
+  d2: { label: '2단계 · 쉬움', desc: '라이벌 성장이 느리고 공격이 드뭅니다.', income: 0.58, dmg: 0.68, cap: 16, attackArmy: 12, taken: 0.74 },
+  d3: { label: '3단계 · 보통', desc: '경제와 전투를 함께 굴려야 버팁니다.', income: 0.74, dmg: 0.84, cap: 20, attackArmy: 10, taken: 0.86 },
+  d4: { label: '4단계 · 어려움', desc: '라이벌이 꾸준히 확장하고, 받는 피해 감소가 거의 없습니다.', income: 0.9, dmg: 1, cap: 24, attackArmy: 8, taken: 0.96 },
+  d5: { label: '5단계 · 극한', desc: '라이벌이 빠르게 확장하고 더 아프게 칩니다. 숙련자용.', income: 1.1, dmg: 1.18, cap: 32, attackArmy: 6, taken: 1.08 },
 };
 
 export const FACTIONS = [

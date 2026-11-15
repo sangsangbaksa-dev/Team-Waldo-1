@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CARS, LAP_OPTIONS, LEVELS, STAT_BUDGET, STAT_KEYS, carParams, sanitizeSetup } from '../../src/race/config';
 import { MAPS } from '../../src/race/maps';
-import { aiInput, newCar, stepCar } from '../../src/race/physics';
+import { PLAYER_PARAMS, aiInput, newCar, stepCar } from '../../src/race/physics';
 import { COUNTDOWN, createRace, currentLap, updateRace } from '../../src/race/race';
 import { buildMapTrack, idxDelta } from '../../src/race/track';
 
@@ -68,13 +68,15 @@ describe('차량', () => {
 describe('난이도', () => {
   it('다섯 단계이고 단계가 오를수록 라이벌이 강해진다', () => {
     expect(LEVELS.map(l => l.name)).toEqual(['쉬움', '보통', '어려움', '매우 어려움', '극한']);
-    for (let i = 1; i < LEVELS.length; i++) { const a = LEVELS[i - 1], b = LEVELS[i]; expect(b.topMul).toBeGreaterThan(a.topMul); expect(b.gripMul).toBeGreaterThan(a.gripMul); expect(b.bandHi).toBeGreaterThanOrEqual(a.bandHi); expect(b.bandLo).toBeGreaterThanOrEqual(a.bandLo); expect(b.line).toBeGreaterThanOrEqual(a.line); }
+    for (let i = 1; i < LEVELS.length; i++) { const a = LEVELS[i - 1], b = LEVELS[i]; expect(b.topMul).toBeGreaterThan(a.topMul); expect(b.gripMul).toBeGreaterThan(a.gripMul); expect(b.bandHi).toBeGreaterThanOrEqual(a.bandHi); expect(b.bandLo).toBeGreaterThanOrEqual(a.bandLo); expect(b.line).toBeGreaterThanOrEqual(a.line); expect(b.nitro!).toBeLessThan(a.nitro!); }
   });
-  it('1단계(쉬움)는 처음 버전의 3.5단계 값이다', () => {
-    // 플레이어가 마지막 차량이면 첫 라이벌이 균형형(ARC)이라 기준 수치(70.5, 37)에 배율만 곱해진다.
+  it('쉬움에서도 앞선 라이벌은 플레이어 최고속보다 빠르게 유지한다', () => {
+    // 플레이어가 마지막 차량이면 첫 라이벌이 균형형(ARC)이라 기준 속도 76에 배율만 곱해진다.
     const r = createRace(buildMapTrack(MAPS[0]), 3, Infinity, { level: 1, car: 'fuse' });
-    expect(r.racers[1].ai.top).toBeCloseTo(70.5 * 1.075, 6); expect(r.racers[1].ai.grip).toBeCloseTo(37 * 1.15, 6); expect(r.racers[1].ai.nitro).toBe(0.5); expect(r.racers[1].ai.line).toBeCloseTo(0.675, 6);
-    expect([LEVELS[0].bandLo, LEVELS[0].bandHi, LEVELS[0].bandK]).toEqual([0.955, 1.095, 0.00028]);
+    expect(r.racers[1].ai.top).toBeCloseTo(76 * 1.14, 6); expect(r.racers[1].ai.grip).toBeCloseTo(40 * 1.22, 6); expect(r.racers[1].ai.nitro).toBe(0.35); expect(r.racers[1].ai.line).toBeCloseTo(0.86, 6);
+    expect([LEVELS[0].bandLo, LEVELS[0].bandHi, LEVELS[0].bandK]).toEqual([1, 1.06, 0.00016]);
+    expect(r.racers[1].ai.top * LEVELS[0].bandLo).toBeGreaterThan(PLAYER_PARAMS.top);
+    expect(LEVELS.every(l => l.bandLo >= 1)).toBe(true);
   });
   it('라이벌은 플레이어와 다른 차량을 탄다', () => {
     for (const c of CARS) { const colors = createRace(buildMapTrack(MAPS[0]), 1, Infinity, { car: c.id }).racers.map(k => k.color); expect(new Set(colors).size).toBe(4); }

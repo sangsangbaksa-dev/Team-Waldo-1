@@ -16,6 +16,9 @@ export interface CarParams { top: number; accel: number; brake: number; grip: nu
 export const PLAYER_PARAMS: CarParams = { top: 74, accel: 15, brake: 62, grip: 1, turn: 1, drift: 1, nitro: 1 };
 export const BOOST_TOP = 1.36;
 export const NITRO_SECONDS = 3.2;
+/** 레이싱카 차체(race.glb)에 맞춘 충돌 반길이·반폭. 원은 옆으로는 너무 넓고 앞뒤로는 너무 짧습니다. */
+export const BODY_HALF_LENGTH = 2.25;
+export const BODY_HALF_WIDTH = 1.02;
 export const kmh = (c: Pick<CarState, 'vf'>): number => Math.abs(c.vf) * 3.6;
 export const boosting = (c: CarState): boolean => c.boostT > 0;
 
@@ -32,9 +35,12 @@ export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: Car
   let fx = Math.cos(c.h), fz = Math.sin(c.h), rx = -fz, rz = fx;
   let vf = c.vx * fx + c.vz * fz, vl = c.vx * rx + c.vz * rz;
 
-  // 니트로·부스트 타이머
-  if (inp.nitro && c.nitro > 0 && c.boostT <= 0.05) { c.nitro = Math.max(0, c.nitro - dt / (NITRO_SECONDS * p.nitro)); c.boostT = Math.max(c.boostT, 0.12); }
-  else { c.boostT = Math.max(0, c.boostT - dt); if (c.boostT < 0.6 && !inp.nitro) c.nitro = Math.min(1, c.nitro + dt * 0.018 * p.nitro); }
+  // 니트로를 누르고 있는 동안 탱크는 NITRO_SECONDS 만에 비고, 그 사이 부스트가 깜빡이지 않습니다.
+  const nitroOn = inp.nitro && c.nitro > 0;
+  if (nitroOn) c.nitro = Math.max(0, c.nitro - dt / (NITRO_SECONDS * p.nitro));
+  c.boostT = Math.max(0, c.boostT - dt);
+  if (nitroOn) c.boostT = Math.max(c.boostT, dt);
+  else if (c.boostT < 0.6) c.nitro = Math.min(1, c.nitro + dt * 0.018 * p.nitro);
   const boost = c.boostT > 0, maxV = p.top * (boost ? BOOST_TOP : 1);
 
   // 종방향: 가속 · 브레이크 · 저항
@@ -74,29 +80,53 @@ export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: Car
   c.vx = fx * vf + rx * vl; c.vz = fz * vf + rz * vl;
   c.x += c.vx * dt; c.z += c.vz * dt;
 
-  // 트랙 경계(벽)
-  const nr = nearest(t, c.x, c.z, c.idx, 40), delta = idxDelta(t, c.idx, nr.i);
-  c.idx = nr.i; c.total += delta; c.lat = nr.lat; c.wallT = Math.max(0, c.wallT - dt);
-  const limit = t.halfWidth - 1.7;
-  if (Math.abs(nr.lat) > limit) {
-    const s = Math.sign(nr.lat), px = -t.tz[nr.i] * s, pz = t.tx[nr.i] * s, over = Math.abs(nr.lat) - limit;
-    c.x -= px * over; c.z -= pz * over;
-    const vn = c.vx * px + c.vz * pz;
-    if (vn > 0) {
-      c.vx -= px * vn * 1.22; c.vz -= pz * vn * 1.22;
-      const k = 1 - Math.min(0.32, vn * 0.011); c.vx *= k; c.vz *= k; c.drifting = false; c.driftT = 0;
-      if (vn > 2.5 && c.wallT <= 0) { ev.hit = vn; c.wallT = 0.18; }
-    }
-    c.vx *= 1 - 0.9 * dt; c.vz *= 1 - 0.9 * dt;
-    const want = Math.atan2(t.tz[nr.i], t.tx[nr.i]); c.h = wrapAngle(c.h + wrapAngle(want - c.h) * Math.min(1, 5 * dt));
-    c.lat = Math.sign(nr.lat) * limit;
-  }
+  ev.hit = stayOnTrack(c, t, dt, true);
   c.y += (t.y[c.idx] - c.y) * Math.min(1, dt * 18);
 
   // 부스트 패드
   c.padCd = Math.max(0, c.padCd - dt);
   if (c.padCd <= 0 && Math.abs(c.lat) < 7) for (const pad of t.pads) if (Math.abs(idxDelta(t, c.idx, pad)) <= 2) { c.boostT = Math.max(c.boostT, 1.5); c.padCd = 1.5; ev.pad = true; break; }
   return ev;
+}
+
+/** 중심선 진행도를 갱신하고 차체가 연석 밖으로 나가지 못하게 되돌립니다. progress 가 아니면 랩 거리는 더하지 않습니다. */
+export function stayOnTrack(c: CarState, t: Track, dt: number, progress: boolean): number {
+  const nr = nearest(t, c.x, c.z, c.idx, 40), delta = idxDelta(t, c.idx, nr.i);
+  if (progress) { c.total += delta; c.idx = nr.i; c.wallT = Math.max(0, c.wallT - dt); }
+  else if (Math.abs(delta) <= 8) c.idx = nr.i;
+  c.lat = nr.lat;
+  const limit = t.halfWidth - BODY_HALF_WIDTH - 0.28;
+  let hit = 0;
+  if (Math.abs(nr.lat) > limit) {
+    const s = Math.sign(nr.lat) || 1, px = -t.tz[nr.i] * s, pz = t.tx[nr.i] * s, over = Math.abs(nr.lat) - limit;
+    c.x -= px * over; c.z -= pz * over;
+    const vn = c.vx * px + c.vz * pz;
+    if (vn > 0) {
+      c.vx -= px * vn * 1.22; c.vz -= pz * vn * 1.22;
+      const k = 1 - Math.min(0.32, vn * 0.011); c.vx *= k; c.vz *= k; c.drifting = false; c.driftT = 0;
+      if (vn > 2.5 && c.wallT <= 0) { hit = vn; c.wallT = 0.18; }
+    }
+    c.vx *= 1 - 0.9 * dt; c.vz *= 1 - 0.9 * dt;
+    const want = Math.atan2(t.tz[nr.i], t.tx[nr.i]); c.h = wrapAngle(c.h + wrapAngle(want - c.h) * Math.min(1, 5 * dt));
+    c.lat = Math.sign(nr.lat) * limit;
+  }
+  return hit;
+}
+
+/** 두 차체를 길이·너비에 맞게 떼어 냅니다. 중심을 잇는 방향으로 밀므로 뒤쪽 충돌이 차를 코스 밖으로 밀어내지 않습니다. */
+export function separateCars(a: CarState, b: CarState): number {
+  const ahx = Math.cos(a.h), ahz = Math.sin(a.h), arx = -ahz, arz = ahx;
+  const bhx = Math.cos(b.h), bhz = Math.sin(b.h), brx = -bhz, brz = bhx;
+  const dx = b.x - a.x, dz = b.z - a.z; let dist = Math.hypot(dx, dz), nx = ahx, nz = ahz;
+  if (dist > 1e-4) { nx = dx / dist; nz = dz / dist; } else dist = 0;
+  const span = (hx: number, hz: number, rx: number, rz: number): number => Math.abs(hx * nx + hz * nz) * BODY_HALF_LENGTH + Math.abs(rx * nx + rz * nz) * BODY_HALF_WIDTH;
+  const need = span(ahx, ahz, arx, arz) + span(bhx, bhz, brx, brz);
+  if (dist >= need) return 0;
+  const push = (need - dist) / 2;
+  a.x -= nx * push; a.z -= nz * push; b.x += nx * push; b.z += nz * push;
+  const rel = (a.vx - b.vx) * nx + (a.vz - b.vz) * nz;
+  if (rel > 0) { const imp = rel * 0.55; a.vx -= nx * imp; a.vz -= nz * imp; b.vx += nx * imp; b.vz += nz * imp; return rel; }
+  return 0;
 }
 
 /** line: 0 이면 고정 차선, 1 이면 코너 안쪽을 파고드는 레이싱 라인. nitro: 이 값을 넘는 니트로 잔량만 쓴다(없으면 안 씀). */

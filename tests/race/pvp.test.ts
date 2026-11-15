@@ -33,6 +33,15 @@ describe('SPEED RUSH 1대1 레이스', () => {
     expect(rival.lapTimes).toEqual([]);
   });
 
+  it('rejects an out-of-range network sample index instead of reading off the track', () => {
+    const race = createRace(track, 1, Infinity, { pvp: { host: true, opponent: 'B', opponentCar: 'arc' } });
+    const src = encodeSnap(race.player.car); src[12] = 999999;
+    race.racers[1].link = { snap: src, at: 1000 };
+    updateRace(race, 1 / 90, idle, 1000);
+    expect(race.racers[1].car.idx).toBeGreaterThanOrEqual(0);
+    expect(race.racers[1].car.idx).toBeLessThan(track.n);
+  });
+
   it('스냅샷은 형식이 맞는 숫자일 때만 받는다', () => {
     expect(parseSnap([1, 2])).toBeNull();
     expect(parseSnap(Array(16).fill('x'))).toBeNull();

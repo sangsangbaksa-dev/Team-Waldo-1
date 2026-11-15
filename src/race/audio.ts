@@ -1,5 +1,9 @@
 // SPEED RUSH — Web Audio 합성 사운드(엔진 기어 변속, 바람, 타이어 스키드, 효과음). 외부 음원 없음.
 const GEARS = [0, 20, 36, 51, 65, 79, 120];
+/** 속도(m/s)에 해당하는 기어. 오디오가 아직 켜지지 않아도 HUD 가 같은 단수를 씁니다. */
+export function gearFor(speedMs: number): number {
+  const v = Math.abs(speedMs); let g = 1; while (g < GEARS.length - 1 && v > GEARS[g]) g++; return g;
+}
 
 export class RaceAudio {
   private ctx: AudioContext | null = null; private master: GainNode | null = null; private noise: AudioBuffer | null = null;
@@ -31,8 +35,7 @@ export class RaceAudio {
 
   /** 매 프레임: 속도(m/s), 가속 입력, 옆미끄러짐(rad), 부스트 여부 */
   drive(speed: number, throttle: number, slip: number, boost: boolean, drifting: boolean, wall: boolean): void {
-    const c = this.ctx; if (!c || !this.eng || !this.wind || !this.skid || !this.boostG) return; const t = c.currentTime, v = Math.abs(speed);
-    let g = 1; while (g < GEARS.length - 1 && v > GEARS[g]) g++;
+    const c = this.ctx; if (!c || !this.eng || !this.wind || !this.skid || !this.boostG) return;     const t = c.currentTime, v = Math.abs(speed), g = gearFor(v);
     if (g !== this.gear) { if (g > this.gear) this.lastShift = t; this.gear = g; }
     const lo = GEARS[g - 1], hi = GEARS[g], rpm = 0.18 + 0.82 * Math.min(1, Math.max(0, (v - lo) / (hi - lo))) - (t - this.lastShift < 0.12 ? 0.18 : 0);
     const f = 48 + rpm * 190 + (boost ? 24 : 0);

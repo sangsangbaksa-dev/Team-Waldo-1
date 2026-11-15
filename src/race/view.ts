@@ -5,6 +5,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { instantiate } from '../city/models';
 import { ghostAt } from './ghost';
 import { type CharacterKit, type CharacterRig } from '../shared/character';
+import { carEuler, chaseFov, chaseRoll, chaseShake, chevronFacing, stepChaseAnchor, type ChaseAnchor } from './camera';
 import { wrapAngle, boosting, kmh } from './physics';
 import { type RaceState, type Racer } from './race';
 import { type Track } from './track';
@@ -83,7 +84,7 @@ export class RaceView {
   post: PostFx | null = null; readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera = new THREE.PerspectiveCamera(64, 1, 0.4, 3200);
   private crew: CharacterRig[] = []; private cars: CarVis[] = []; private ground!: THREE.Mesh; private pads: Array<{ tex: THREE.CanvasTexture }> = [];
   private rainFx = new Particles(1800, 0.32, THREE.NormalBlending, 0.55); private sparks = new Particles(260, 0.9, THREE.AdditiveBlending); private smoke = new Particles(220, 1.5, THREE.NormalBlending, 0.22); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
-  private camH = 0; private camInit = false; private fov = 64; private shake = 0; private punch = 0; private time = 0; private sun: THREE.DirectionalLight;
+  private camH = 0; private camInit = false; private camAnchor: ChaseAnchor = { x: 0, y: 0, z: 0, ready: false }; private fov = 64; private shake = 0; private punch = 0; private time = 0; private sun: THREE.DirectionalLight;
   private chaseLift = 0; private viewH = 1; private startLamps: THREE.Mesh[] = [];
   private disposables: Array<{ dispose(): void }> = [];
 
@@ -271,18 +272,20 @@ export class RaceView {
         ch.root.position.set(dx, t.y[j], dz); ch.root.rotation.y = -Math.atan2(t.tx[j] * side, -t.tz[j] * side) + Math.PI; ch.state.wave = n % 3 === 0 ? 1 : 0; ch.state.time = n; ch.update(0); this.scene.add(ch.root); this.crew.push(ch);
       }
     }
-    const chev = canvasTex(128, 96, g => {
-      g.fillStyle = '#16130c'; g.fillRect(0, 0, 128, 96); g.strokeStyle = '#ffe14a'; g.lineWidth = 14; g.lineJoin = 'round'; g.lineCap = 'round';
-      g.beginPath(); g.moveTo(36, 16); g.lineTo(84, 48); g.lineTo(36, 80); g.moveTo(62, 16); g.lineTo(110, 48); g.lineTo(62, 80); g.stroke();
-    }, false);
-    const boards: Array<{ p: [number, number, number]; ry: number }> = [];
+    const drawChev = (g: CanvasRenderingContext2D, mirror: boolean): void => {
+      g.fillStyle = '#16130c'; g.fillRect(0, 0, 128, 96); g.save(); if (mirror) { g.translate(128, 0); g.scale(-1, 1); }
+      g.strokeStyle = '#ffe14a'; g.lineWidth = 14; g.lineJoin = 'round'; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(36, 16); g.lineTo(84, 48); g.lineTo(36, 80); g.moveTo(62, 16); g.lineTo(110, 48); g.lineTo(62, 80); g.stroke(); g.restore();
+    };
+    const boards: Record<'right' | 'left', Array<{ p: [number, number, number]; ry: number }>> = { right: [], left: [] };
     for (let i = 16; i < t.n - 16; i += 5) {
       if (Math.abs(t.k[i]) < 0.009) continue;
-      const side = t.k[i] > 0 ? -1 : 1, off = side * (hw - 2.5);
-      boards.push({ p: [t.x[i] - t.tz[i] * off, t.y[i] + 0.72, t.z[i] + t.tx[i] * off], ry: Math.atan2(-t.tx[i], -t.tz[i]) });
+      const face = chevronFacing(t.tx[i], t.tz[i], t.k[i]), side = t.k[i] > 0 ? -1 : 1, off = side * (hw - 2.5);
+      boards[face.mirror ? 'left' : 'right'].push({ p: [t.x[i] - t.tz[i] * off, t.y[i] + 0.72, t.z[i] + t.tx[i] * off], ry: face.yaw });
     }
-    if (boards.length) this.instanced(new THREE.PlaneGeometry(1.7, 1.15), new THREE.MeshBasicMaterial({ map: chev, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }), boards);
-    this.disposables.push(chev);
+    const chevMat = (mirror: boolean): THREE.MeshBasicMaterial => { const map = canvasTex(128, 96, g => drawChev(g, mirror), false); this.disposables.push(map); return new THREE.MeshBasicMaterial({ map, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }); };
+    if (boards.right.length) this.instanced(new THREE.PlaneGeometry(1.7, 1.15), chevMat(false), boards.right);
+    if (boards.left.length) this.instanced(new THREE.PlaneGeometry(1.7, 1.15), chevMat(true), boards.left);
   }
 
   /** 출발 아치의 신호등. 3·2·1에 빨간 불이 하나씩 켜지고, 출발하면 잠깐 초록입니다. */
@@ -441,7 +444,8 @@ export class RaceView {
     for (const v of this.cars) {
       const c = v.racer.car, sample = t.n > 0 ? ((c.idx % t.n) + t.n) % t.n : 0, pitchRoad = t.pitch[sample] || 0, accel = (c.vf - v.lastV) / Math.max(dt, 1e-4); v.lastV = c.vf;
       const roll = Math.max(-0.09, Math.min(0.09, -c.yawRate * c.vf * 0.0028)) + c.slip * -0.08, pitch = pitchRoad - Math.max(-0.04, Math.min(0.04, accel * 0.0012));
-      v.group.position.set(c.x, c.y + 0.02, c.z); v.group.rotation.set(roll, -c.h, pitch, 'YXZ'); v.shadow.position.set(c.x, c.y + 0.05, c.z); v.shadow.rotation.y = -c.h;
+      const pose = carEuler(roll, c.h, pitch);
+      v.group.position.set(c.x, c.y + 0.02, c.z); v.group.rotation.set(pose.x, pose.y, pose.z, pose.order); v.shadow.position.set(c.x, c.y + 0.05, c.z); v.shadow.rotation.y = -c.h;
       const fl = boosting(c), len = fl ? 1.0 + Math.sin(this.time * 90 + v.racer.id) * 0.25 + Math.min(0.9, speed / 90) : 0.001;
       for (const f of v.flames) { f.scale.x += (len - f.scale.x) * Math.min(1, dt * 20); f.visible = fl || f.scale.x > 0.08; (f.material as THREE.MeshBasicMaterial).color.setHex(v.racer.player ? 0x6ec6ff : 0xffa14a); }
       if (fl && Math.random() < 0.9) this.sparks.emit(c.x - Math.cos(c.h) * 2.4, c.y + 0.5, c.z - Math.sin(c.h) * 2.4, -Math.cos(c.h) * 8 + rnd(-2, 2), rnd(0, 2), -Math.sin(c.h) * 8 + rnd(-2, 2), 0.35, 0.4, 0.8, 1);
@@ -464,21 +468,19 @@ export class RaceView {
       for (let i = 0; i < n; i++) this.rainFx.emit(cp.x + rnd(-38, 38), cp.y + rnd(-1, 20), cp.z + rnd(-38, 38), rnd(-3, 3), rnd(-44, -36), rnd(-3, 3), 0.45, 0.62, 0.74, 0.88);
       this.rainFx.update(dt, 0);
     }
-    // 카메라: 속도에 비례해 FOV 확대·뒤로 물러남·흔들림
+    // 카메라: 속도에 비례해 시야각만 넓히고, 위치 보간에는 흔들림을 넣지 않습니다.
     const hd = p.h; if (!this.camInit) { this.camH = hd; this.camInit = true; }
     this.camH += wrapAngle(hd - this.camH) * Math.min(1, dt * (p.drifting ? 3.2 : 7));
     this.punch = Math.max(0, this.punch - dt * 1.8); this.shake = Math.max(0, this.shake - dt * 2.4);
     const lift = this.chaseLift, dist = 7.4 + sf * 1.6 + (bst ? 0.9 : 0) + lift * 0.8, height = 2.55 + sf * 0.3 + lift * (this.viewH < 520 ? 1.55 : 1.05);
     const ahead = 8.2 - lift * 1.5, cx = p.x - Math.cos(this.camH) * dist, cz = p.z - Math.sin(this.camH) * dist, cy = p.y + height;
-    const sh = sf * sf * 0.035 + (bst ? 0.05 : 0) + this.shake * 0.5, tt = this.time;
-    const k = 1 - Math.exp(-dt * (16 + sf * 10));
-    if (this.camera.position.lengthSq() === 0) this.camera.position.set(cx, cy, cz);
-    this.camera.position.x += (cx - this.camera.position.x) * k; this.camera.position.y += (cy - this.camera.position.y) * k; this.camera.position.z += (cz - this.camera.position.z) * k;
-    this.camera.position.x += Math.sin(tt * 53) * sh; this.camera.position.y += Math.sin(tt * 61 + 1) * sh; this.camera.position.z += Math.sin(tt * 47 + 2) * sh;
+    stepChaseAnchor(this.camAnchor, cx, cy, cz, dt, sf);
+    const sh = chaseShake(sf, bst, this.shake), tt = this.time;
+    this.camera.position.set(this.camAnchor.x + Math.sin(tt * 53) * sh, this.camAnchor.y + Math.sin(tt * 61 + 1) * sh, this.camAnchor.z + Math.sin(tt * 47 + 2) * sh);
     const lookI = t.n > 0 ? ((p.idx % t.n) + t.n) % t.n : 0;
     this.camera.lookAt(p.x + Math.cos(this.camH) * ahead, p.y + 1.15 + lift * 0.35 + (t.pitch[lookI] || 0) * 8, p.z + Math.sin(this.camH) * ahead);
-    this.camera.rotateZ(-p.yawRate * 0.035 - p.slip * 0.1 + Math.sin(tt * 38) * sh * 0.25);
-    const targetFov = 60 + sf * sf * 18 + (bst ? 10 : 0) + this.punch * 8; this.fov += (targetFov - this.fov) * Math.min(1, dt * 6); this.camera.fov = this.fov; this.camera.updateProjectionMatrix();
+    this.camera.rotateZ(chaseRoll(p.yawRate, p.slip));
+    const targetFov = chaseFov(sf, bst, this.punch); this.fov += (targetFov - this.fov) * Math.min(1, dt * 6); this.camera.fov = this.fov; this.camera.updateProjectionMatrix();
     // 지면·태양광이 카메라를 따라감
     this.ground.position.x = Math.round(this.camera.position.x / 60) * 60; this.ground.position.z = Math.round(this.camera.position.z / 60) * 60;
     this.scene.getObjectByName('sky')?.position.copy(this.camera.position);

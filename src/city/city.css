@@ -99,7 +99,7 @@
 .c-target i{display:block;width:120px;height:5px;background:#0009;border-radius:3px;margin:3px auto 0;overflow:hidden}.c-target u{display:block;height:100%;background:#ff5d5d}
 .c-fire{display:none}
 .touch .c-fire{display:block;right:28px;bottom:196px;width:84px;height:84px;border-radius:50%;background:#c22a2acc;border:2px solid #fff8;font-weight:900;font-size:15px}
-.c-area{right:16px;bottom:16px;font:600 clamp(15px,2vw,22px)/1.15 'Pretendard Variable',Pretendard,'IBM Plex Sans KR',sans-serif;letter-spacing:-.02em;color:#f6f1e6;text-shadow:0 1px 2px #000c,0 0 14px #000a;opacity:0;transition:opacity .6s;text-align:right}
+.c-area{right:16px;bottom:88px;font:600 clamp(15px,2vw,22px)/1.15 'Pretendard Variable',Pretendard,'IBM Plex Sans KR',sans-serif;letter-spacing:-.02em;color:#f6f1e6;text-shadow:0 1px 2px #000c;opacity:0;transition:opacity .6s;text-align:right;background:#0e1618e8;border:1px solid #ffffff24;border-radius:8px;padding:6px 11px;z-index:3;pointer-events:none;max-width:min(280px,46vw);box-shadow:0 6px 18px #0006}
 .c-area.show{opacity:.95}.touch .c-area{bottom:auto;top:200px}
 .city-root.down .city-canvas3d,.city-root.down .city-canvas{filter:grayscale(1) contrast(1.15) brightness(.75);transition:filter .5s}
 .c-down{font-weight:700;color:#ffd0d0;text-align:center;padding:8px}.c-down b{display:block;font:700 32px/1.1 'Pretendard Variable',Pretendard,'IBM Plex Sans KR',sans-serif;letter-spacing:-.03em;color:#ff6a6a;text-shadow:0 2px 0 #0008}

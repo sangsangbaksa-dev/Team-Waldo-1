@@ -2,7 +2,8 @@
 export class BattleAudio {
   private context?: AudioContext;
   private muted = false;
-  private lastNotice = 0;
+  // A new AudioContext starts near t=0; permit the first warning immediately.
+  private lastNotice = -Infinity;
   unlock(): void {
     try { this.context ??= new AudioContext(); void this.context.resume().catch(() => undefined); } catch { /* Audio is optional. */ }
   }

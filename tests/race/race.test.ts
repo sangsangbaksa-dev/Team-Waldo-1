@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { aiInput, kmh, newCar, stepCar, PLAYER_PARAMS, type CarInput } from '../../src/race/physics';
-import { COUNTDOWN, createRace, currentLap, placeOf, updateRace } from '../../src/race/race';
+import { aiInput, kmh, newCar, separateCars, stepCar, BODY_HALF_WIDTH, NITRO_SECONDS, PLAYER_PARAMS, type CarInput } from '../../src/race/physics';
+import { COUNTDOWN, createRace, currentLap, placeOf, rivalBand, updateRace } from '../../src/race/race';
 import { buildTrack, idxDelta, nearest } from '../../src/race/track';
 
 const track = buildTrack(), DT = 1 / 90;
@@ -52,6 +52,32 @@ describe('SPEED RUSH car physics', () => {
     for (let k = 0; k < 90 * 8; k++) { if (stepCar(c, { ...GAS, steer: 1 }, DT, track).hit > 0) hits++; expect(Math.abs(c.lat)).toBeLessThanOrEqual(track.halfWidth); }
     expect(hits).toBeGreaterThan(0);
   });
+  it('empties a nitro tank in one continuous boost instead of sipping it', () => {
+    const c = newCar(track, 0, 0); c.nitro = 1; let emptyAt = 0, gaps = 0;
+    for (let k = 0; k < 90 * 6; k++) {
+      const before = c.nitro;
+      stepCar(c, { ...GAS, nitro: true }, DT, track);
+      if (before > 0 && c.boostT <= 0) gaps++;
+      if (!emptyAt && c.nitro <= 0) emptyAt = (k + 1) * DT;
+    }
+    expect(emptyAt).toBeGreaterThan(NITRO_SECONDS * 0.9);
+    expect(emptyAt).toBeLessThan(NITRO_SECONDS * 1.15);
+    expect(gaps).toBe(0);
+  });
+  it('separates cars by their body, not by a circle that is too wide and too short', () => {
+    const a = newCar(track, 0, 0), b = newCar(track, 0, 0);
+    const rx = -Math.sin(a.h), rz = Math.cos(a.h);
+    b.x = a.x + rx * 0.4; b.z = a.z + rz * 0.4; b.h = a.h;
+    expect(separateCars(a, b)).toBe(0);
+    expect(Math.hypot(b.x - a.x, b.z - a.z)).toBeGreaterThanOrEqual(BODY_HALF_WIDTH * 2 - 0.02);
+    const nose = newCar(track, 0, 0), tail = newCar(track, 0, 0);
+    tail.x = nose.x - Math.cos(nose.h) * 1.2; tail.z = nose.z - Math.sin(nose.h) * 1.2; tail.h = nose.h;
+    separateCars(nose, tail);
+    expect(Math.hypot(nose.x - tail.x, nose.z - tail.z)).toBeGreaterThan(4);
+    const far = newCar(track, 0, 0), other = newCar(track, 0, 0);
+    other.x += Math.cos(far.h) * 30; other.z += Math.sin(far.h) * 30;
+    const x0 = other.x; expect(separateCars(far, other)).toBe(0); expect(other.x).toBe(x0);
+  });
   it('the AI laps the circuit without touching a wall', () => {
     const c = newCar(track, 0, 0), ai = { lane: 0, top: 68, grip: 35, skill: 1 }; let t = 0, hits = 0;
     while (c.total < track.n && t < 120) { if (stepCar(c, aiInput(c, track, ai), DT, track).hit > 0) hits++; t += DT; }
@@ -78,6 +104,24 @@ describe('SPEED RUSH race flow', () => {
       t += DT; if (currentLap(r) > r.laps) safety++;
     }
     expect(r.phase).toBe('done'); expect(laps).toEqual([1, 2]); expect(finish).toBeGreaterThanOrEqual(1); expect(finish).toBeLessThanOrEqual(4); expect(placeOf(r)).toBe(finish); expect(safety).toBe(0);
+  });
+  it('does not slow a rival who is already ahead of the player', () => {
+    const level = createRace(track, 3).level;
+    expect(rivalBand(level, 400)).toBe(1);
+    expect(rivalBand(level, -400)).toBeGreaterThan(1);
+    expect(rivalBand(level, -4000)).toBe(level.bandHi);
+    const race = createRace(track, 3, Infinity, { level: 1, car: 'arc' });
+    race.phase = 'racing'; race.clock = 0;
+    const rival = race.racers[1], base = rival.ai.top;
+    rival.car.total = race.player.car.total + 500 / track.ds;
+    for (let k = 0; k < 90; k++) updateRace(race, DT, GAS);
+    expect(rival.ai.top).toBeCloseTo(base, 6);
+    expect(rivalBand(race.level, (rival.car.total - race.player.car.total) * track.ds)).toBe(1);
+  });
+  it('freezes the clock after the finish', () => {
+    const r = createRace(track, 1); r.phase = 'done'; r.clock = 42; r.player.finishTime = 42;
+    updateRace(r, DT, GAS);
+    expect(r.clock).toBe(42);
   });
   it('starts the player on the grid behind the line at lap 1', () => {
     const r = createRace(track, 3); expect(r.racers).toHaveLength(4); expect(currentLap(r)).toBe(1); expect(r.player.car.total).toBeLessThan(0);

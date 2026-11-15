@@ -60,24 +60,26 @@ export class Renderer3D {
     this.renderer.setPixelRatio(Math.min(quality === 'high' ? 2 : quality === 'standard' ? 1.5 : 1, window.devicePixelRatio || 1));
     this.renderer.shadowMap.enabled = quality === 'high'; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     // 필름 톤매핑: 하이라이트가 하얗게 날아가지 않고 노을빛이 부드럽게 번진다.
-    if (quality !== 'low') { this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.18; }
+    if (quality !== 'low') { this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.06; }
     const sc = this.scene, w = world;
-    sc.fog = new THREE.Fog(0xd8a488, 700, 4300); sc.add(this.camera);
+    sc.fog = new THREE.Fog(0xc48a74, 980, 4700); sc.add(this.camera);
     // 하늘 돔 (노을)
-    const skyGeo = new THREE.SphereGeometry(4800, 24, 12), sp = skyGeo.attributes.position, cols = new Float32Array(sp.count * 3), top = new THREE.Color(0x3d5a9e), mid = new THREE.Color(0xf0a878), low = new THREE.Color(0xd8a488);
+    const skyGeo = new THREE.SphereGeometry(4800, 24, 12), sp = skyGeo.attributes.position, cols = new Float32Array(sp.count * 3), top = new THREE.Color(0x3a548c), mid = new THREE.Color(0xe49670), low = new THREE.Color(0xc4846c);
     for (let i = 0; i < sp.count; i++) { const k = Math.max(0, sp.getY(i) / 4800), c = k < 0.25 ? low.clone().lerp(mid, k / 0.25) : mid.clone().lerp(top, Math.min(1, (k - 0.25) / 0.6)); cols.set([c.r, c.g, c.b], i * 3); }
     skyGeo.setAttribute('color', new THREE.BufferAttribute(cols, 3)); const sky = new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false })); sky.renderOrder = -1; sky.name = 'sky'; sc.add(sky);
-    sc.add(new THREE.HemisphereLight(0xaebfff, 0x7a5a48, 1.3));
-    this.sun = new THREE.DirectionalLight(0xffd2a0, 2.3); this.sun.position.set(-600, 700, -400); sc.add(this.sun); sc.add(this.sun.target);
+    sc.add(new THREE.HemisphereLight(0xb7c6e8, 0x8a6450, 0.95));
+    this.sun = new THREE.DirectionalLight(0xffd4a8, 2.05); this.sun.position.set(-600, 700, -400); sc.add(this.sun); sc.add(this.sun.target);
+    // 반대편 채움광: 그늘진 외벽이 검게 뭉개지지 않게 색을 남긴다.
+    const fill = new THREE.DirectionalLight(0x8aa4c8, 0.48); fill.position.set(520, 280, 620); sc.add(fill);
     if (quality === 'high') { this.sun.castShadow = true; const s = this.sun.shadow; s.mapSize.set(2048, 2048); s.camera.left = s.camera.bottom = -1100; s.camera.right = s.camera.top = 1100; s.camera.near = 10; s.camera.far = 3000; s.bias = -0.0012; }
     const sunDisc = new THREE.Mesh(new THREE.SphereGeometry(190, 16, 8), new THREE.MeshBasicMaterial({ color: 0xfff0c8, fog: false })); sunDisc.position.set(-3700, 1000, -2400); sky.add(sunDisc);
     // 바다 + 지면
-    const sea = new THREE.Mesh(new THREE.PlaneGeometry(30000, 30000), new THREE.MeshLambertMaterial({ color: 0x2b5f7a })); sea.rotation.x = -Math.PI / 2; sea.position.set(SIZE / 2, -6, SIZE / 2); sc.add(sea);
+    const sea = new THREE.Mesh(new THREE.PlaneGeometry(30000, 30000), new THREE.MeshLambertMaterial({ color: 0x2a4558 })); sea.rotation.x = -Math.PI / 2; sea.position.set(SIZE / 2, -6, SIZE / 2); sc.add(sea);
     const T = quality === 'low' ? 2048 : 4096, k = T / SIZE, gt = canvasTex(T, T, g => {
-      g.fillStyle = '#3a3d44'; g.fillRect(0, 0, T, T); g.scale(k, k);
-      g.strokeStyle = 'rgba(232,205,110,0.75)'; g.lineWidth = 3.5; g.setLineDash([24, 26]); g.beginPath();
+      g.fillStyle = '#35343c'; g.fillRect(0, 0, T, T); g.scale(k, k);
+      g.strokeStyle = 'rgba(214,186,110,0.7)'; g.lineWidth = 3.5; g.setLineDash([24, 26]); g.beginPath();
       for (let i = 0; i <= BLOCKS; i++) { const c = i * PITCH + ROAD / 2; g.moveTo(c, 0); g.lineTo(c, SIZE); g.moveTo(0, c); g.lineTo(SIZE, c); } g.stroke(); g.setLineDash([]);
-      for (let j = 0; j <= BLOCKS; j++) for (let i = 0; i <= BLOCKS; i++) { const x = i * PITCH, y = j * PITCH; g.fillStyle = '#3a3d44'; g.fillRect(x, y, ROAD, ROAD); g.fillStyle = 'rgba(240,240,245,0.5)'; for (let q = 0; q < 6; q++) { g.fillRect(x + 12 + q * 17, y - 18, 9, 14); g.fillRect(x + 12 + q * 17, y + ROAD + 4, 9, 14); g.fillRect(x - 18, y + 12 + q * 17, 14, 9); g.fillRect(x + ROAD + 4, y + 12 + q * 17, 14, 9); } }
+      for (let j = 0; j <= BLOCKS; j++) for (let i = 0; i <= BLOCKS; i++) { const x = i * PITCH, y = j * PITCH; g.fillStyle = '#35343c'; g.fillRect(x, y, ROAD, ROAD); g.fillStyle = 'rgba(240,240,245,0.5)'; for (let q = 0; q < 6; q++) { g.fillRect(x + 12 + q * 17, y - 18, 9, 14); g.fillRect(x + 12 + q * 17, y + ROAD + 4, 9, 14); g.fillRect(x - 18, y + 12 + q * 17, 14, 9); g.fillRect(x + ROAD + 4, y + 12 + q * 17, 14, 9); } }
       const fill: Record<string, string> = { city: '#6f7178', park: '#4d7a4a', lot: '#4a4d54', police: '#5d6880', military: '#6b7055', plaza: '#8d8a84', base: '#5c6660', void: '#2a2c31' };
       for (const b of w.map.blocks) {
         g.fillStyle = '#1f2125'; g.fillRect(b.x - 3, b.y - 3, BLOCK + 6, BLOCK + 6); g.fillStyle = '#c9cacd'; g.fillRect(b.x, b.y, BLOCK, BLOCK); g.fillStyle = '#a9abaf'; g.fillRect(b.x + 3, b.y + 3, BLOCK - 6, BLOCK - 6);
@@ -131,7 +133,7 @@ export class Renderer3D {
     const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(3, 4, 40, 6), this.mat(0x5b4030), w.map.trees.length), leaf = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), this.mat(0x3f7d45), w.map.trees.length);
     w.map.trees.forEach((t, i) => { this.dummy.rotation.set(0, i, 0); this.dummy.position.set(t.x, 20, t.y); this.dummy.scale.set(1, 1, 1); this.dummy.updateMatrix(); trunk.setMatrixAt(i, this.dummy.matrix); this.dummy.position.set(t.x, 52 + t.r * 0.5, t.y); this.dummy.scale.set(t.r * 1.15, t.r * 1.3, t.r * 1.15); this.dummy.updateMatrix(); leaf.setMatrixAt(i, this.dummy.matrix); });
     leaf.castShadow = trunk.castShadow = true; this.scene.add(trunk, leaf);
-    const n = w.map.blocks.length * 4, pole = new THREE.InstancedMesh(new THREE.CylinderGeometry(1.5, 2, 95, 5), this.mat(0x30333a), n), bulb = new THREE.InstancedMesh(new THREE.SphereGeometry(5, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfff1c0 }), n); let q = 0;
+    const n = w.map.blocks.length * 4, pole = new THREE.InstancedMesh(new THREE.CylinderGeometry(1.5, 2, 95, 5), this.mat(0x30333a), n), bulb = new THREE.InstancedMesh(new THREE.SphereGeometry(5, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffd9a0 }), n); let q = 0;
     for (const b of w.map.blocks) for (const [dx, dy] of [[8, 8], [BLOCK - 8, 8], [8, BLOCK - 8], [BLOCK - 8, BLOCK - 8]]) { this.dummy.rotation.set(0, 0, 0); this.dummy.scale.set(1, 1, 1); this.dummy.position.set(b.x + dx, 47, b.y + dy); this.dummy.updateMatrix(); pole.setMatrixAt(q, this.dummy.matrix); this.dummy.position.y = 97; this.dummy.updateMatrix(); bulb.setMatrixAt(q++, this.dummy.matrix); }
     this.scene.add(pole, bulb);
   }

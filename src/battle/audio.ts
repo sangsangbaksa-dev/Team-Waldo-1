@@ -2,7 +2,8 @@
 export class BattleAudio {
   private context?: AudioContext;
   private muted = false;
-  private lastNotice = 0;
+  // A new AudioContext starts at time zero; the very first warning must play.
+  private lastNotice = Number.NEGATIVE_INFINITY;
   unlock(): void {
     try { this.context ??= new AudioContext(); void this.context.resume().catch(() => undefined); } catch { /* Audio is optional. */ }
   }
@@ -40,7 +41,7 @@ export interface WarAudio { play(effect: WarSfx): void; getMuted(): boolean; tog
 export function createWarAudio(): WarAudio {
   const bridge = new BattleAudio(); let muted = false;
   return {
-    play(effect) { bridge.unlock(); bridge.play(effect === 'command' || effect === 'train' ? 'click' : effect === 'loss' ? 'defeat' : effect); },
+    play(effect) { if (muted) return; bridge.unlock(); bridge.play(effect === 'command' || effect === 'train' ? 'click' : effect === 'loss' ? 'defeat' : effect); },
     getMuted: () => muted,
     toggle() { muted = !muted; bridge.setMuted(muted); return muted; },
     dispose: () => bridge.dispose(),

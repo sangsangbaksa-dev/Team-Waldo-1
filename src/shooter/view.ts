@@ -6,7 +6,7 @@ import { bake, instantiate } from '../city/models';
 import type { Match, MatchEvent, Player } from './sim';
 import type { ShooterAssets, Soldier } from './assets';
 import { SOLDIER_KINDS } from './assets';
-import { terrainHeight, type Box, type Loot } from './world';
+import { groundAt, terrainHeight, type Box, type Loot } from './world';
 import { concreteTexture, crateTexture, dirtTexture, floorTexture, glowTexture, groundTexture, makeSky, wallTexture } from './textures';
 
 export type Quality = 'high' | 'standard' | 'low';
@@ -43,7 +43,7 @@ export class ShooterView {
   private zoneWall: THREE.Mesh; private zoneNext: THREE.Mesh; private tracers: Fx[] = []; private sparks: THREE.Points; private sparkData: { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; r: number; g: number; b: number }[] = [];
   private vm: THREE.Object3D | null = null; private vmId = ''; private vmSwap = 0; private vmFlash: THREE.Sprite; private bob = 0; private shake = 0; private time = 0;
   private mats = new Map<string, THREE.Material>(); private tmpCol = new THREE.Color(); private beams: THREE.InstancedMesh;
-  private camPos = new THREE.Vector3(); fov = 78; frames = 0;
+  private camPos = new THREE.Vector3(); private water: THREE.Mesh | null = null; private eyeNow = PLAYER.eye; private plane: THREE.Group | null = null; private chutes = new Map<number, THREE.Object3D>(); fov = 78; frames = 0;
 
   constructor(readonly canvas: HTMLCanvasElement, readonly match: Match, private assets: ShooterAssets | null, readonly quality: Quality) {
     const hi = quality === 'high';
@@ -83,55 +83,91 @@ export class ShooterView {
 
   // ---------- 지형 ----------
   private buildGround(): void {
-    const half = this.match.map.half, size = half * 2 + 900, segs = 120, geo = new THREE.PlaneGeometry(size, size, segs, segs); geo.rotateX(-Math.PI / 2);
+    const map = this.match.map, t = map.terrain, half = map.half, ext = half + 140, STEP = 4, segs = Math.ceil((ext * 2) / STEP), size = segs * STEP, geo = new THREE.PlaneGeometry(size, size, segs, segs); geo.rotateX(-Math.PI / 2);
     const n1 = noise2(this.match.seed), n2 = noise2(this.match.seed + 9), pos = geo.attributes.position, col = new Float32Array(pos.count * 3), c = new THREE.Color();
-    const green = new THREE.Color(0.96, 1.02, 0.84), dry = new THREE.Color(1.2, 1.0, 0.7), dark = new THREE.Color(0.72, 0.82, 0.62), sand = new THREE.Color(1.28, 1.12, 0.84);
+    const green = new THREE.Color(0.9, 1.0, 0.78), dry = new THREE.Color(1.15, 0.98, 0.7), dark = new THREE.Color(0.66, 0.8, 0.58), sand = new THREE.Color(1.25, 1.12, 0.84), rock = new THREE.Color(0.92, 0.9, 0.86), snow = new THREE.Color(1.4, 1.42, 1.5), mud = new THREE.Color(0.8, 0.72, 0.56);
+    const W = t.water;
     for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i), z = pos.getZ(i), a = n1(x / 90 + 32, z / 90 + 32), b = n2(x / 28 + 32, z / 28 + 32);
-      c.copy(green).lerp(dry, Math.max(0, a - 0.4) * 3).lerp(dark, Math.max(0, 0.5 - b) * 2.2).lerp(sand, Math.max(0, Math.hypot(x, z) - half * 1.02) / 120);
-      col.set([c.r, c.g, c.b], i * 3);
-      pos.setY(i, terrainHeight(this.match.map, x, z));
+      const x = pos.getX(i), z = pos.getZ(i), y = groundAt(t, x, z), a = n1(x / 90 + 32, z / 90 + 32), b = n2(x / 28 + 32, z / 28 + 32);
+      const slope = Math.abs(groundAt(t, x + 3, z) - groundAt(t, x - 3, z)) + Math.abs(groundAt(t, x, z + 3) - groundAt(t, x, z - 3));
+      c.copy(green).lerp(dry, Math.max(0, a - 0.4) * 3).lerp(dark, Math.max(0, 0.5 - b) * 2.2);
+      c.lerp(sand, 1 - Math.min(1, Math.max(0, (y - W) / 1.1))).lerp(mud, Math.max(0, 1 - Math.abs(y - W - 0.2) * 1.4) * 0.35);
+      c.lerp(rock, Math.min(1, Math.max(0, (slope - 4) / 5))).lerp(snow, Math.min(1, Math.max(0, (y - 38) / 12)) * 0.9);
+      col.set([c.r, c.g, c.b], i * 3); pos.setY(i, y);
     }
-    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    const t = groundTexture(); t.repeat.set(size / 6, size / 6);
-    const ground = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: t, vertexColors: true })); ground.receiveShadow = true; this.scene.add(ground);
-    // 마을을 잇는 흙길
-    const dirt = dirtTexture(), cs = this.match.map.compounds, used = new Set<string>();
-    for (let i = 0; i < cs.length; i++) {
-      const near = cs.map((o, j) => ({ j, d: Math.hypot(o.x - cs[i].x, o.z - cs[i].z) })).filter(o => o.j !== i).sort((a, b) => a.d - b.d).slice(0, 2);
-      for (const { j, d } of near) {
-        const k = i < j ? `${i}-${j}` : `${j}-${i}`; if (used.has(k)) continue; used.add(k);
-        const a = cs[i], b = cs[j], tex = dirt.clone(); tex.repeat.set(d / 4, 1); tex.needsUpdate = true;
-        const road = new THREE.Mesh(new THREE.PlaneGeometry(d, 4.4), new THREE.MeshLambertMaterial({ map: tex, color: 0xd9cdb4 }));
-        const mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
-        road.rotation.order = 'YXZ'; road.rotation.set(-Math.PI / 2, -Math.atan2(b.z - a.z, b.x - a.x), 0); road.position.set(mx, terrainHeight(this.match.map, mx, mz) + 0.04, mz); road.receiveShadow = true; this.scene.add(road);
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3)); geo.computeVertexNormals();
+    const tex = groundTexture(); tex.repeat.set(size / 6, size / 6);
+    const ground = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: tex, vertexColors: true })); ground.receiveShadow = true; this.scene.add(ground);
+    // 물: 강과 호수가 채워지는 높이에 반투명 면 하나
+    const water = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshStandardMaterial({ color: 0x2f6f8f, transparent: true, opacity: 0.72, roughness: 0.18, metalness: 0.15, depthWrite: false }));
+    water.rotation.x = -Math.PI / 2; water.position.y = W; this.water = water; this.scene.add(water);
+    // 마을을 잇는 흙길: 땅 높이를 따라가도록 짧은 조각으로 나눕니다
+    const dirt = dirtTexture(), cs = map.compounds;
+    for (const [ax, az, bx, bz] of map.roads) {
+      const len = Math.hypot(bx - ax, bz - az), pieces = Math.max(1, Math.ceil(len / 24)), ang = -Math.atan2(bz - az, bx - ax);
+      for (let k = 0; k < pieces; k++) {
+        const t0 = k / pieces, t1 = (k + 1) / pieces, mx = ax + (bx - ax) * (t0 + t1) / 2, mz = az + (bz - az) * (t0 + t1) / 2, d = len / pieces, tx = dirt.clone(); tx.repeat.set(d / 4, 1); tx.needsUpdate = true;
+        const road = new THREE.Mesh(new THREE.PlaneGeometry(d + 0.5, 4.6), new THREE.MeshLambertMaterial({ map: tx, color: 0xd9cdb4, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+        const h0 = groundAt(t, ax + (bx - ax) * t0, az + (bz - az) * t0), h1 = groundAt(t, ax + (bx - ax) * t1, az + (bz - az) * t1);
+        road.rotation.order = 'YXZ'; road.rotation.set(-Math.PI / 2 + Math.atan2(h1 - h0, d) * 0, ang, 0); road.position.set(mx, (h0 + h1) / 2 + 0.07, mz); road.receiveShadow = true; this.scene.add(road);
       }
     }
-    // 마을 바닥(콘크리트 광장)
-    for (const c0 of cs) { const tex = concreteTexture(); tex.repeat.set((c0.r + 3) / 3, (c0.r + 3) / 3); const m = new THREE.Mesh(new THREE.CircleGeometry(c0.r + 3, 40), new THREE.MeshLambertMaterial({ map: tex })); m.rotation.x = -Math.PI / 2; m.position.set(c0.x, terrainHeight(this.match.map, c0.x, c0.z) + 0.03, c0.z); m.receiveShadow = true; this.scene.add(m); }
+    // 마을 바닥(콘크리트 광장). 마을은 평평하게 골라져 있습니다.
+    for (const c0 of cs) {
+      const ptex = c0.kind === 'farm' || c0.kind === 'ruins' ? dirtTexture() : concreteTexture(); ptex.repeat.set((c0.r + 3) / 3, (c0.r + 3) / 3);
+      const m = new THREE.Mesh(new THREE.CircleGeometry(c0.r + 3, 40), new THREE.MeshLambertMaterial({ map: ptex, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })); m.rotation.x = -Math.PI / 2; m.position.set(c0.x, c0.g + 0.06, c0.z); m.receiveShadow = true; this.scene.add(m);
+    }
+  }
+
+  /** 맞배지붕: 용마루가 긴 변을 따라가는 삼각기둥 */
+  private prism(w: number, d: number, h: number, alongX: boolean, x: number, y: number, z: number): THREE.BufferGeometry {
+    const hw = w / 2, hd = d / 2, g = new THREE.BufferGeometry(), v: number[] = [];
+    const quad = (a: number[], b: number[], c: number[], e: number[]): void => { v.push(...a, ...b, ...c, ...a, ...c, ...e); }, tri = (a: number[], b: number[], c: number[]): void => { v.push(...a, ...b, ...c); };
+    if (alongX) { const r0 = [-hw, h, 0], r1 = [hw, h, 0]; quad([-hw, 0, -hd], [hw, 0, -hd], r1, r0); quad([hw, 0, hd], [-hw, 0, hd], r0, r1); tri([-hw, 0, hd], [-hw, 0, -hd], r0); tri([hw, 0, -hd], [hw, 0, hd], r1); }
+    else { const r0 = [0, h, -hd], r1 = [0, h, hd]; quad([-hw, 0, hd], [-hw, 0, -hd], r0, r1); quad([hw, 0, -hd], [hw, 0, hd], r1, r0); tri([-hw, 0, -hd], [hw, 0, -hd], r0); tri([hw, 0, hd], [-hw, 0, hd], r1); }
+    g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.computeVertexNormals(); g.translate(x, y, z); return g;
   }
 
   private buildBuildings(): void {
-    const map = this.match.map, byTex: THREE.BufferGeometry[][] = [[], [], [], []], crates: Box[] = [];
-    for (const b of map.boxes) { if (b.kind === 'wall') byTex[b.tex % 4].push(worldBox(b)); else if (b.kind === 'crate') crates.push(b); }
+    const map = this.match.map, byTex: THREE.BufferGeometry[][] = [[], [], [], []], by = new Map<string, THREE.BufferGeometry[]>();
+    const put = (k: string, g: THREE.BufferGeometry): void => { const l = by.get(k); if (l) l.push(g); else by.set(k, [g]); };
+    for (const b of map.boxes) {
+      switch (b.kind) {
+        case 'wall': byTex[b.tex % 4].push(worldBox(b)); break;
+        case 'crate': put('crate', worldBox(b, 1.2)); break;
+        case 'slab': put(b.tex === 0 ? 'floor' : 'concrete', worldBox(b, 3)); break;
+        case 'step': put('concrete', worldBox(b, 2)); break;
+        case 'roof': put('roof', worldBox(b)); break;
+        case 'rail': case 'post': put('rail', worldBox(b)); break;
+        case 'hay': put('hay', worldBox(b, 1.2)); break;
+        case 'sandbag': put('sand', worldBox(b, 1)); break;
+        case 'container': put(`cont${b.tex % 4}`, worldBox(b, 3)); break;
+        default: break;
+      }
+    }
     byTex.forEach((list, i) => {
       if (!list.length) return; const m = new THREE.Mesh(mergeGeometries(list, false), new THREE.MeshLambertMaterial({ map: wallTexture(i) }));
       m.castShadow = true; m.receiveShadow = true; this.scene.add(m);
     });
-    const roofMat = new THREE.MeshLambertMaterial({ color: 0x4d5258 }), trimMat = new THREE.MeshLambertMaterial({ color: 0x8b8f93 }), unitMat = new THREE.MeshLambertMaterial({ color: 0xb6babd });
-    const floorTex = floorTexture(), floors: THREE.BufferGeometry[] = [], roofs: THREE.BufferGeometry[] = [], trims: THREE.BufferGeometry[] = [], units: THREE.BufferGeometry[] = [], r = rngOf(this.match.seed + 3);
+    const mats: Record<string, THREE.Material> = {
+      crate: new THREE.MeshLambertMaterial({ map: crateTexture() }), floor: new THREE.MeshLambertMaterial({ map: floorTexture() }), concrete: new THREE.MeshLambertMaterial({ map: concreteTexture() }),
+      roof: new THREE.MeshLambertMaterial({ color: 0x4d5258 }), rail: new THREE.MeshLambertMaterial({ color: 0x6d5a40 }), hay: new THREE.MeshLambertMaterial({ color: 0xc9a84a }), sand: new THREE.MeshLambertMaterial({ color: 0xa89868 }),
+      cont0: new THREE.MeshLambertMaterial({ color: 0x9c3b2e }), cont1: new THREE.MeshLambertMaterial({ color: 0x2f5f8c }), cont2: new THREE.MeshLambertMaterial({ color: 0x4d7a3a }), cont3: new THREE.MeshLambertMaterial({ color: 0xc58b2a }),
+    };
+    for (const [k, list] of by) { const m = new THREE.Mesh(mergeGeometries(list, false), mats[k]); m.castShadow = true; m.receiveShadow = true; this.scene.add(m); }
+    // 맞배지붕, 창문 유리, 옥상 설비
+    const gables: THREE.BufferGeometry[] = [], glass: THREE.BufferGeometry[] = [], units: THREE.BufferGeometry[] = [], r = rngOf(this.match.seed + 3);
     for (const b of map.buildings) {
-      const f = new THREE.PlaneGeometry(b.w, b.d); f.rotateX(-Math.PI / 2); f.translate(b.x, 0.05, b.z); const uv = f.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * b.w / 3, uv.getY(i) * b.d / 3); floors.push(f);
-      const bh = b.h ?? 3.2;
-      const roof = new THREE.BoxGeometry(b.w + 0.7, 0.35, b.d + 0.7); roof.translate(b.x, bh + 0.175, b.z); roofs.push(roof);
-      const t = 0.3; for (const [w, d, ox, oz] of [[b.w + 0.7, t, 0, (b.d + 0.7) / 2], [b.w + 0.7, t, 0, -(b.d + 0.7) / 2], [t, b.d + 0.7, (b.w + 0.7) / 2, 0], [t, b.d + 0.7, -(b.w + 0.7) / 2, 0]] as const) { const g = new THREE.BoxGeometry(w, 0.5, d); g.translate(b.x + ox, bh + 0.35 + 0.25, b.z + oz); trims.push(g); }
-      if (r() < 0.8) { const g = new THREE.BoxGeometry(1.4, 0.9, 1.1); g.translate(b.x + (r() - 0.5) * b.w * 0.5, bh + 1.1, b.z + (r() - 0.5) * b.d * 0.5); units.push(g); }
+      const top = b.g + b.h + 0.25;
+      if (b.roof === 'gable') gables.push(this.prism(b.w + 0.6, b.d + 0.6, Math.min(b.w, b.d) * 0.32, b.w >= b.d, b.x, top, b.z));
+      else if (b.roof === 'flat' && b.kind !== 'shed' && r() < 0.7) { const g = new THREE.BoxGeometry(1.4, 0.9, 1.1); g.translate(b.x + (r() - 0.5) * b.w * 0.5, top + 0.45, b.z + (r() - 0.5) * b.d * 0.5); units.push(g); }
+      for (let i = 0; i + 5 < b.windows.length; i += 6) {
+        const [x, y, z, axis, w, h] = b.windows.slice(i, i + 6), g = axis === 0 ? new THREE.BoxGeometry(w, h, 0.08) : new THREE.BoxGeometry(0.08, h, w); g.translate(x, y, z); glass.push(g);
+      }
     }
-    const add = (list: THREE.BufferGeometry[], material: THREE.Material, shadow = true): void => { if (!list.length) return; const m = new THREE.Mesh(mergeGeometries(list, false), material); m.castShadow = shadow; m.receiveShadow = true; this.scene.add(m); };
-    add(floors, new THREE.MeshLambertMaterial({ map: floorTex }), false); add(roofs, roofMat); add(trims, trimMat); add(units, unitMat);
-    if (crates.length) {
-      const ct = crateTexture(), geos = crates.map(b => worldBox(b, 1.2)); const m = new THREE.Mesh(mergeGeometries(geos, false), new THREE.MeshLambertMaterial({ map: ct })); m.castShadow = true; m.receiveShadow = true; this.scene.add(m);
-    }
+    if (gables.length) { const m = new THREE.Mesh(mergeGeometries(gables, false), new THREE.MeshLambertMaterial({ color: 0x7a3f2e, side: THREE.DoubleSide })); m.castShadow = true; this.scene.add(m); }
+    if (units.length) { const m = new THREE.Mesh(mergeGeometries(units, false), new THREE.MeshLambertMaterial({ color: 0xb6babd })); m.castShadow = true; this.scene.add(m); }
+    if (glass.length) this.scene.add(new THREE.Mesh(mergeGeometries(glass, false), new THREE.MeshStandardMaterial({ color: 0x8fb4cc, transparent: true, opacity: 0.35, roughness: 0.1, metalness: 0.4, depthWrite: false })));
   }
 
   private buildScatter(): void {
@@ -207,8 +243,9 @@ export class ShooterView {
   }
   private poseRig(p: Player, dt: number): void {
     const rig = this.rigs.get(p.id)!, amp = Math.min(1, p.speed / 3.2), run = Math.min(1, Math.max(0, (p.speed - 4.6) / 2.6)), ph = p.walk * 1.35, sn = Math.sin(ph), cs = Math.cos(ph);
-    const gy = terrainHeight(this.match.map, p.x, p.z);
-    rig.root.position.set(p.x, gy + Math.abs(sn) * amp * 0.04, p.z); rig.root.rotation.set(0, -p.yaw, 0);
+    const gy = p.y;
+    rig.root.position.set(p.x, gy + Math.abs(sn) * amp * 0.04 * (p.grounded ? 1 : 0), p.z); rig.root.rotation.set(0, -p.yaw, 0); rig.root.scale.set(1, p.crouch ? 0.72 : 1, 1);
+    if (p.air === 2) { rig.root.rotation.set(0, -p.yaw, 1.35); rig.root.position.y = gy + 0.9; }
     rig.torsoJ.rotation.z = -(0.04 * amp + 0.1 * run); rig.torsoJ.rotation.y = -sn * 0.07 * amp;
     rig.legs.forEach((l, i) => { const side = i === 0 ? -1 : 1; l.rotation.z = sn * side * (0.5 + 0.2 * run) * amp + 0.12 * run; const sh = rig.shins[i]; if (sh) sh.rotation.z = -amp * (0.12 + (0.6 + 0.5 * run) * Math.max(0, cs * side)); });
     rig.aim += (1 - rig.aim) * Math.min(1, dt * 8);
@@ -226,7 +263,25 @@ export class ShooterView {
       if (l.kind === 'medkit') { const m = new THREE.MeshBasicMaterial({ color: 0xd8232a }); const a = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.08, 0.06), m), b = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.34, 0.06), m); a.position.set(0, 0.9, 0.21); b.position.set(0, 0.9, 0.21); g.add(a, b); }
     }
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.7, 28), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false })); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.08; g.add(ring);
-    g.position.set(l.x, 0, l.z); this.scene.add(g); return g;
+    g.position.set(l.x, l.y, l.z); this.scene.add(g); return g;
+  }
+  /** 수송기와 낙하산 */
+  private syncSky(): void {
+    const m = this.match, pl = m.planeAt(m.t);
+    if (!this.plane) {
+      const g = new THREE.Group(), body = new THREE.MeshLambertMaterial({ color: 0x6b7480 }), wing = new THREE.MeshLambertMaterial({ color: 0x8a929c });
+      const fus = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.2, 38, 10), body); fus.rotation.z = Math.PI / 2; g.add(fus);
+      const nose = new THREE.Mesh(new THREE.ConeGeometry(3.2, 7, 10), body); nose.rotation.z = -Math.PI / 2; nose.position.x = 22; g.add(nose);
+      const w = new THREE.Mesh(new THREE.BoxGeometry(9, 0.7, 62), wing); w.position.set(2, -0.8, 0); g.add(w);
+      const tail = new THREE.Mesh(new THREE.BoxGeometry(6, 0.5, 18), wing); tail.position.set(-17, 0.5, 0); g.add(tail); const fin = new THREE.Mesh(new THREE.BoxGeometry(6, 8, 0.5), wing); fin.position.set(-17, 4.5, 0); g.add(fin);
+      g.visible = false; this.scene.add(g); this.plane = g;
+    }
+    if (pl && m.flight) { this.plane.visible = true; this.plane.position.set(pl.x, 320, pl.z); this.plane.rotation.y = -Math.atan2(m.flight.dz, m.flight.dx); } else this.plane.visible = false;
+    for (const p of m.players) if (p.air === 3 && !this.chutes.has(p.id)) {
+      const cg = new THREE.Group(), dome = new THREE.Mesh(new THREE.SphereGeometry(2.6, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshLambertMaterial({ color: p.color, side: THREE.DoubleSide })); dome.scale.y = 0.75; dome.position.y = 1.4; cg.add(dome);
+      const cord = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints([[-2.4, 1.4, 0], [0, -1.6, 0], [2.4, 1.4, 0], [0, -1.6, 0], [0, 1.4, 2.4], [0, -1.6, 0], [0, 1.4, -2.4], [0, -1.6, 0]].map(([x, y, z]) => new THREE.Vector3(x, y, z))), new THREE.LineBasicMaterial({ color: 0xdddddd }));
+      cg.add(cord); cg.visible = false; this.scene.add(cg); this.chutes.set(p.id, cg);
+    }
   }
   private syncLoot(cam: THREE.Vector3): void {
     const live = new Set<number>(); let nb = 0; const d = new THREE.Object3D();
@@ -234,7 +289,7 @@ export class ShooterView {
       if (l.taken) continue; live.add(l.id); let n = this.lootNodes.get(l.id); if (!n) { n = this.lootNode(l); this.lootNodes.set(l.id, n); }
       const dist = Math.hypot(l.x - cam.x, l.z - cam.z); n.visible = dist < 150; if (!n.visible) continue;
       n.children[0].rotation.y = this.time * 1.4 + l.id; n.children[0].position.y = (l.kind === 'weapon' ? 0 : 0) + Math.sin(this.time * 2 + l.id) * 0.06;
-      if (nb < 400) { d.position.set(l.x, 3.4, l.z); d.scale.set(1, 1, 1); d.updateMatrix(); this.beams.setMatrixAt(nb, d.matrix); this.beams.setColorAt(nb, this.tmpCol.setHex(LOOT_COLOR[l.kind])); nb++; }
+      if (nb < 400) { d.position.set(l.x, l.y + 3.4, l.z); d.scale.set(1, 1, 1); d.updateMatrix(); this.beams.setMatrixAt(nb, d.matrix); this.beams.setColorAt(nb, this.tmpCol.setHex(LOOT_COLOR[l.kind])); nb++; }
     }
     this.beams.count = nb; this.beams.instanceMatrix.needsUpdate = true; if (this.beams.instanceColor) this.beams.instanceColor.needsUpdate = true;
     for (const [id, n] of this.lootNodes) if (!live.has(id)) { this.scene.remove(n); this.lootNodes.delete(id); }
@@ -297,15 +352,15 @@ export class ShooterView {
   /** 매 프레임: 장면을 경기 상태에 맞추고 그립니다. spectate 가 있으면 그 선수 뒤에서 따라갑니다(내가 쓰러진 뒤). */
   frame(dt: number, me: Player, spectate: Player | null, zoom: number): void {
     this.time += dt; this.frames++; const m = this.match, z = m.zone, cam = this.camera, view = spectate ?? me;
-    for (const p of m.players) { const rig = this.rigs.get(p.id)!; const hide = (!spectate && p.id === me.id); rig.root.visible = !hide && (p.alive || true); if (hide) continue; this.poseRig(p, dt); if (!p.alive) { const gy = terrainHeight(this.match.map, p.x, p.z); rig.root.rotation.set(0, -p.yaw, -Math.PI / 2); rig.root.position.y = gy + 0.28; rig.flash.visible = false; } }
+    for (const p of m.players) { const rig = this.rigs.get(p.id)!; const hide = (!spectate && p.id === me.id); rig.root.visible = !hide && p.air !== 1; if (hide) { const ch = this.chutes.get(p.id); if (ch) { ch.visible = p.alive && p.air === 3; ch.position.set(p.x, p.y + 2.6, p.z); } continue; } this.poseRig(p, dt); if (!p.alive) { rig.root.rotation.set(0, -p.yaw, -Math.PI / 2); rig.root.position.y = p.y + 0.28; rig.flash.visible = false; } const ch = this.chutes.get(p.id); if (ch) { ch.visible = p.alive && p.air === 3; ch.position.set(p.x, p.y + 2.6, p.z); } }
     // 카메라
     this.bob += view.speed * dt * 1.7; this.shake = Math.max(0, this.shake - dt * 5);
     if (spectate) {
-      const back = 3.6, cx = view.x - Math.cos(view.yaw) * back, cz = view.z - Math.sin(view.yaw) * back, specY = terrainHeight(this.match.map, cx, cz);
+      const back = 3.6, cx = view.x - Math.cos(view.yaw) * back, cz = view.z - Math.sin(view.yaw) * back, specY = Math.max(view.y, groundAt(this.match.map.terrain, cx, cz));
       cam.position.set(cx, specY + 2.3, cz); cam.rotation.order = 'YXZ'; cam.rotation.set(-0.12, -view.yaw - Math.PI / 2, 0);
     } else {
-      const bobY = Math.sin(this.bob) * 0.035 * Math.min(1, view.speed / 5), groundY = terrainHeight(this.match.map, view.x, view.z);
-      cam.position.set(view.x, groundY + PLAYER.eye + bobY, view.z); cam.rotation.order = 'YXZ';
+      const bobY = Math.sin(this.bob) * 0.035 * Math.min(1, view.speed / 5), groundY = view.y, eyeH = view.crouch ? PLAYER.crouchEye : PLAYER.eye; this.eyeNow += (eyeH - this.eyeNow) * Math.min(1, dt * 12);
+      cam.position.set(view.x, groundY + this.eyeNow + (view.air === 1 ? 0 : bobY), view.z); cam.rotation.order = 'YXZ';
       cam.rotation.set(view.pitch + view.kick * 0.03 + (Math.random() - 0.5) * this.shake * 0.004, -view.yaw - Math.PI / 2 + (Math.random() - 0.5) * this.shake * 0.004, 0);
     }
     const targetFov = 78 / zoom; this.fov += (targetFov - this.fov) * Math.min(1, dt * 14); if (Math.abs(cam.fov - this.fov) > 0.01) { cam.fov = this.fov; cam.updateProjectionMatrix(); }
@@ -315,7 +370,8 @@ export class ShooterView {
     // 자기장
     this.zoneWall.scale.set(z.r, 1, z.r); this.zoneWall.position.x = z.cx; this.zoneWall.position.z = z.cz; (this.zoneWall.material as THREE.ShaderMaterial).uniforms.t.value = this.time;
     this.zoneNext.visible = z.nextR < z.r - 0.5; this.zoneNext.scale.set(z.nextR, z.nextR, 1); this.zoneNext.position.x = z.nextCx; this.zoneNext.position.z = z.nextCz;
-    this.syncLoot(cam.position); this.updateFx(dt);
+    if (this.water) { this.water.position.x = view.x; this.water.position.z = view.z; this.water.position.y = this.match.map.terrain.water + Math.sin(this.time * 0.8) * 0.04; }
+    this.syncSky(); this.syncLoot(cam.position); this.updateFx(dt);
     this.viewmodel(view, !spectate && me.alive, dt);
     // 그리기: 월드 → 깊이 지우고 1인칭 총
     this.renderer.clear(); this.renderer.render(this.scene, cam);

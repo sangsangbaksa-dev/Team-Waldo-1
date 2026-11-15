@@ -320,12 +320,12 @@ export function generateMap(seed: number, mode: Mode): GameMap {
 
   // 1) 마을 자리: 물이 아니고 너무 가파르지 않은 곳, 서로 떨어뜨려서
   const kinds: TownKind[] = duel ? ['village', 'village', 'ruins', 'village'] : ['city', 'city', 'military', 'military', 'farm', 'farm', 'farm', 'ruins', 'ruins', 'ruins', ...Array<TownKind>(12).fill('village')];
-  const towns = kinds.length, minGap = duel ? 58 : 112;
+  const towns = kinds.length, minGap = duel ? 58 : 88;
   const plans: Plan[][] = [];
-  for (let tries = 0; map.compounds.length < towns && tries < 3000; tries++) {
-    const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * half * (duel ? 0.7 : 0.8), x = Math.cos(a) * r, z = Math.sin(a) * r;
+  for (let tries = 0; map.compounds.length < towns && tries < 6000; tries++) {
+    const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * half * (duel ? 0.7 : 0.86), x = Math.cos(a) * r, z = Math.sin(a) * r;
     if (!dry(x, z, 24) || !map.compounds.every(c => Math.hypot(c.x - x, c.z - z) > minGap)) continue;
-    const spread = Math.abs(gAt(x + 25, z) - gAt(x - 25, z)) + Math.abs(gAt(x, z + 25) - gAt(x, z - 25)); if (spread > 14 && tries < 2400) continue;
+    const spread = Math.abs(gAt(x + 25, z) - gAt(x - 25, z)) + Math.abs(gAt(x, z + 25) - gAt(x, z - 25)); if (spread > 14 && tries < 4800) continue;
     const kind = kinds[map.compounds.length], p = planTown(rng, kind, x, z, duel);
     const g = Math.max(W + 1.2, (gAt(x, z) + gAt(x + 15, z) + gAt(x - 15, z) + gAt(x, z + 15) + gAt(x, z - 15)) / 5);
     map.compounds.push({ x, z, r: reachOf(p, x, z) + 6, g, kind, name: TOWN_NAMES[map.compounds.length % TOWN_NAMES.length] }); plans.push(p);

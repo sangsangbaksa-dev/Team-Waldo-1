@@ -32,7 +32,7 @@ export const MAP_HALF = { br: 400, duel: 115 } as const;
 /** 수송기: 고도, 속도, 자유 낙하·낙하산 속도(m/s). 낙하산은 땅에서 chuteAt 미터 위에서 저절로 펼칩니다. */
 export const FLIGHT = { alt: 320, speed: 62, fall: 46, dive: 60, glide: 24, chuteAt: 140, chuteFall: 8.5, chuteGlide: 13, lead: 6 };
 /** 배틀로열 자기장은 수송기가 출발하고 이만큼 지난 뒤 첫 단계를 시작합니다. */
-export const ZONE_DELAY = 45;
+export const ZONE_DELAY = 90;
 export type Mode = 'br' | 'duel';
 
 export type Difficulty = 'easy' | 'normal' | 'hard' | 'expert';

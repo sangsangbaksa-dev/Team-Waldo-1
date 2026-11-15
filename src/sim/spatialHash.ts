@@ -7,13 +7,16 @@ export class SpatialHash {
   private readonly cellStart: Int32Array;
   private readonly entries: Int32Array;
   private readonly bucketOf: Int32Array;
-  private readonly visited: Int32Array = new Int32Array(64);
+  // One stamp per bucket prevents duplicate candidates for arbitrarily large queries.
+  private readonly visited: Uint32Array;
+  private queryStamp = 0;
 
   constructor(
     readonly cellSize: number,
     capacity: number,
   ) {
     this.tableSize = Math.max(64, capacity * 2);
+    this.visited = new Uint32Array(this.tableSize);
     this.cellStart = new Int32Array(this.tableSize + 1);
     this.entries = new Int32Array(capacity);
     this.bucketOf = new Int32Array(capacity);
@@ -47,20 +50,19 @@ export class SpatialHash {
     const y0 = Math.floor((y - r) / cellSize);
     const y1 = Math.floor((y + r) / cellSize);
     let n = 0;
-    let nv = 0;
+    // A wrapping stamp clears its marks so even very long sessions stay correct.
+    this.queryStamp = (this.queryStamp + 1) >>> 0;
+    if (this.queryStamp === 0) {
+      visited.fill(0);
+      this.queryStamp = 1;
+    }
+    const stamp = this.queryStamp;
     for (let cy = y0; cy <= y1; cy++) {
       for (let cx = x0; cx <= x1; cx++) {
         const b = this.bucket(cx, cy);
-        // 서로 다른 셀이 같은 버킷으로 해시되면 중복으로 담지 않는다
-        let seen = false;
-        for (let k = 0; k < nv; k++) {
-          if (visited[k] === b) {
-            seen = true;
-            break;
-          }
-        }
-        if (seen) continue;
-        if (nv < visited.length) visited[nv++] = b;
+        // 여러 셀이 같은 버킷을 가리켜도 후보를 단 한 번만 반환한다.
+        if (visited[b] === stamp) continue;
+        visited[b] = stamp;
         for (let e = cellStart[b]; e < cellStart[b + 1]; e++) {
           if (n >= out.length) return n;
           out[n++] = entries[e];

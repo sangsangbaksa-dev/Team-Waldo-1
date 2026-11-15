@@ -22,13 +22,13 @@ describe('optional battle audio', () => {
 
 describe('battle warning throttling', () => {
   it('plays the initial warning at audio time zero and throttles only repeats', () => {
-    let device: TestAudioContext;
+    const devices: TestAudioContext[] = [];
     class TestAudioContext {
       state = 'running';
       currentTime = 0;
       destination = {};
       oscillators = 0;
-      constructor() { device = this; }
+      constructor() { devices.push(this); }
       resume() { return Promise.resolve(); }
       close() { return Promise.resolve(); }
       createOscillator() {
@@ -51,15 +51,15 @@ describe('battle warning throttling', () => {
     const audio = new BattleAudio();
     audio.unlock();
     audio.play('warning');
-    expect(device!.oscillators).toBe(2);
+    expect(devices[0].oscillators).toBe(2);
     audio.play('warning');
-    expect(device!.oscillators).toBe(2);
-    device!.currentTime = 2.9;
+    expect(devices[0].oscillators).toBe(2);
+    devices[0].currentTime = 2.9;
     audio.play('warning');
-    expect(device!.oscillators).toBe(2);
-    device!.currentTime = 3.1;
+    expect(devices[0].oscillators).toBe(2);
+    devices[0].currentTime = 3.1;
     audio.play('warning');
-    expect(device!.oscillators).toBe(4);
+    expect(devices[0].oscillators).toBe(4);
     audio.dispose();
   });
 });

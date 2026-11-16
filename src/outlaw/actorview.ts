@@ -13,7 +13,7 @@ interface Rig {
   hand: THREE.Group; flash: THREE.Sprite; gun: THREE.Object3D | null; weapon: WeaponId; nextPose: number; flashT: number;
 }
 interface CarView {
-  root: THREE.Group; body: THREE.Object3D; lamps: THREE.Group; brakes: THREE.Mesh[]; sirens: THREE.Sprite[];
+  root: THREE.Group; body: THREE.Object3D; lamps: THREE.Group; brakes: THREE.Mesh[]; reverse: THREE.Mesh[]; sirens: THREE.Sprite[];
   policeNodes: THREE.Object3D[]; wheels: THREE.Object3D[]; last: number[]; vf: number; emit: number; skidX: number; skidZ: number; scorched: boolean;
 }
 interface LootView { root: THREE.Group; prop: THREE.Group; sparkle: THREE.Sprite }
@@ -49,6 +49,7 @@ export class ActorView {
   private readonly capsule: THREE.CapsuleGeometry;
   private readonly cone: THREE.ConeGeometry;
   private readonly cylinder: THREE.CylinderGeometry;
+  private readonly tailLamp: THREE.PlaneGeometry;
   private time = 0;
   private disposed = false;
   private readonly cameraPos = new THREE.Vector3();
@@ -60,6 +61,7 @@ export class ActorView {
     this.box = this.ownGeo(new THREE.BoxGeometry(1, 1, 1)); this.plane = this.ownGeo(new THREE.PlaneGeometry(1, 1));
     this.ring = this.ownGeo(new THREE.RingGeometry(0.88, 1, 48)); this.ball = this.ownGeo(new THREE.SphereGeometry(1, 10, 6));
     this.capsule = this.ownGeo(new THREE.CapsuleGeometry(0.26, 0.75, 3, 8)); this.cone = this.ownGeo(new THREE.ConeGeometry(1, 1, 12, 1, true)); this.cylinder = this.ownGeo(new THREE.CylinderGeometry(1, 1, 1, 12, 1, true));
+    this.tailLamp = this.ownGeo(new THREE.PlaneGeometry(0.26, 0.14));
     const n = 64, data = new Uint8Array(n * n * 4);
     for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
       const a = Math.pow(Math.max(0, 1 - Math.hypot((x + 0.5) / n * 2 - 1, (y + 0.5) / n * 2 - 1)), 1.7), i = (y * n + x) * 4;
@@ -173,20 +175,25 @@ export class ActorView {
       this.mesh(body, this.box, 0x263c4a, -0.25, 1.15, 0, d.halfL * 0.95, 0.65, d.halfW * 1.7);
       for (const x of [-0.65, 0.65]) for (const z of [-1, 1]) this.mesh(body, this.box, 0x15171b, d.halfL * x, 0.35, z * d.halfW, 0.7, 0.7, 0.28);
     }
-    const lamps = new THREE.Group(), brakes: THREE.Mesh[] = [], sirens: THREE.Sprite[] = [], policeNodes: THREE.Object3D[] = [], wheels: THREE.Object3D[] = [];
+    const lamps = new THREE.Group(), brakes: THREE.Mesh[] = [], reverse: THREE.Mesh[] = [], sirens: THREE.Sprite[] = [], policeNodes: THREE.Object3D[] = [], wheels: THREE.Object3D[] = [];
     for (const side of [-1, 1]) {
       const glow = this.sprite(lamps, 0xc6e5ff, 0.85); glow.position.set(d.halfL, 0.7, side * d.halfW * 0.7);
       const cone = new THREE.Mesh(this.cone, this.ownMat(new THREE.ShaderMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.FrontSide,
         vertexShader: 'varying vec2 vUv; void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
         fragmentShader: 'varying vec2 vUv; void main(){float f=smoothstep(0.,.28,vUv.y)*pow(1.-vUv.y,1.8);gl_FragColor=vec4(.65,.8,1.,f*.065);}' })));
       cone.rotation.z = Math.PI / 2; cone.position.set(d.halfL + 6, 0.55, side * d.halfW * 0.7); cone.scale.set(2.1, 12, 1.1); lamps.add(cone);
-      const brake = new THREE.Mesh(this.box, this.ownMat(new THREE.MeshBasicMaterial({ color: 0xff4545, transparent: true, opacity: 0.3 })));
-      brake.position.set(-d.halfL - 0.02, 0.7, side * d.halfW * 0.7); brake.scale.set(0.06, 0.18, 0.36); root.add(brake); brakes.push(brake);
+      const rearY = Math.min(d.height * 0.48, 0.62), rearZ = side * d.halfW * 0.62, rearX = -d.halfL - 0.008;
+      const brake = new THREE.Mesh(this.tailLamp, this.ownMat(new THREE.MeshBasicMaterial({ color: 0xd62828, transparent: true, opacity: 0.22 })));
+      brake.position.set(rearX, rearY, rearZ); brake.rotation.y = Math.PI / 2; root.add(brake); brakes.push(brake);
+      const rev = new THREE.Mesh(this.tailLamp, this.ownMat(new THREE.MeshBasicMaterial({
+        color: 0xf8fbff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false,
+      })));
+      rev.position.set(rearX - 0.004, rearY - 0.1, rearZ * 0.55); rev.rotation.y = Math.PI / 2; rev.scale.set(0.78, 0.82, 1); root.add(rev); reverse.push(rev);
       if (v.kind === 'police') { const s = this.sprite(root, side < 0 ? 0xff4545 : 0x3b82ff, 1.65); s.position.set(0, d.height + 0.15, side * 0.45); sirens.push(s); }
     }
     body.traverse(o => { if (/police_Light[AB]/i.test(o.name)) policeNodes.push(o); if (/wheel|tyre|tire/i.test(o.name) && !(o.parent && /wheel|tyre|tire/i.test(o.parent.name))) wheels.push(o); });
     root.add(lamps); this.root.add(root);
-    const c: CarView = { root, body, lamps, brakes, sirens, policeNodes, wheels, last: [], vf: v.vf, emit: 0, skidX: v.x, skidZ: v.z, scorched: false }; this.cars.set(v.id, c); return c;
+    const c: CarView = { root, body, lamps, brakes, reverse, sirens, policeNodes, wheels, last: [], vf: v.vf, emit: 0, skidX: v.x, skidZ: v.z, scorched: false }; this.cars.set(v.id, c); return c;
   }
   private makeLoot(p: Pickup): LootView {
     const root = new THREE.Group(), prop = new THREE.Group(), color = LOOT[p.kind]; root.add(prop); root.name = `pickup-${p.id}`;
@@ -271,8 +278,18 @@ export class ActorView {
     // +x가 전방이므로 피치는 z축, 롤은 x축입니다.
     if (state.some((n, i) => n !== c.last[i])) { c.root.position.set(v.x, v.y, v.z); c.root.rotation.set(v.roll, -v.h, v.pitch); c.last = state; }
     c.lamps.visible = night && !v.wrecked;
-    const braking = !v.wrecked && (v.input.brake > 0 || Math.abs(v.vf) < Math.abs(c.vf) - dt * 2);
-    c.brakes.forEach(b => { b.visible = !v.wrecked; (b.material as THREE.MeshBasicMaterial).opacity = braking ? 1 : night ? 0.3 : 0.08; });
+    const reversing = !v.wrecked && v.vf < -0.12 && v.input.throttle === 0 && v.input.brake > 0;
+    const braking = !v.wrecked && !reversing && v.vf > 0.35 && (v.input.brake > 0 || (v.vf - c.vf > dt * 1.5));
+    const tailIdle = night ? 0.38 : 0.14;
+    c.brakes.forEach(b => {
+      b.visible = !v.wrecked;
+      const m = b.material as THREE.MeshBasicMaterial;
+      m.opacity = braking ? 0.95 : reversing ? tailIdle * 0.55 : tailIdle;
+    });
+    c.reverse.forEach(r => {
+      r.visible = !v.wrecked;
+      (r.material as THREE.MeshBasicMaterial).opacity = reversing ? (night ? 1 : 0.88) : 0;
+    });
     const pulse = Math.floor(this.time * 9) % 2; c.sirens.forEach((s, i) => { s.visible = v.siren && !v.wrecked && pulse === i; });
     c.policeNodes.forEach((o, i) => { o.visible = !v.wrecked && (!v.siren || pulse === i % 2); });
     for (const w of c.wheels) { if (w.userData.outlawBase === undefined) w.userData.outlawBase = w.rotation.z; w.rotation.z = (w.userData.outlawBase as number) + v.wheel; } c.vf = v.vf;

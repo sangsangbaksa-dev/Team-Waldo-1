@@ -38,7 +38,7 @@ export function rayVsObb(ox: number, oz: number, dx: number, dz: number, cx: num
 }
 
 export class Sim {
-  map: CityMap; seed: number; t = 0; frame = 0; /** 시각(0~24시) */ clock = 16.6; rng: () => number;
+  map: CityMap; seed: number; t = 0; frame = 0; /** 시각(0~24시) */ clock = 14.8; rng: () => number;
   peds: Ped[] = []; vehicles: Vehicle[] = []; pickups: Pickup[] = []; projectiles: Projectile[] = []; events: SimEvent[] = []; crimes: Crime[] = [];
   wanted: Wanted = { heat: 0, stars: 0, unseenT: 99, lastX: 0, lastZ: 0, evadeT: 0, cops: 0 };
   mission: MissionState = blankMissionState();

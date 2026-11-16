@@ -152,7 +152,7 @@ function reward(sim: Sim, amount: number): number {
   const d = sim.activity.data, kind = sim.activity.active, repeat = d.lastKind === kindCode(kind) ? (d.repeat || 0) + 1 : 0;
   d.repeat = repeat; d.lastKind = kindCode(kind); return Math.round(amount * Math.max(0.45, 1 - repeat * 0.15));
 }
-const kindCode = (kind: string): number => ['taxi', 'armored', 'bounty', 'rampage'].indexOf(kind) + 1;
+const kindCode = (kind: string): number => ['taxi', 'armored', 'bounty', 'rampage', 'race', 'export'].indexOf(kind) + 1;
 function finish(sim: Sim, pass: boolean, text: string, cash = 0): void {
   const a = sim.activity, d = a.data;
   if (cash) { const n = reward(sim, cash); sim.addCash(n); text += ` · +$${n}`; }
@@ -160,6 +160,7 @@ function finish(sim: Sim, pass: boolean, text: string, cash = 0): void {
   if (a.active === 'taxi') d.taxiChain = pass ? (d.taxiChain || 0) + 1 : 0;
   for (const [key, id] of Object.entries(a.ids)) {
     if (key.startsWith('ped') || key === 'target' || key === 'customer') { const p = sim.ped(id); if (p) { p.keep = false; sim.removePed(p); } }
+    if (key === 'exportCar') { const v = sim.vehicle(id); if (v) v.keep = false; }
     if (key === 'truck') { const v = sim.vehicle(id); if (v) { v.keep = false; if (sim.player.vehicle !== id) sim.removeVehicle(v); else { v.tag = ''; v.mode = 'none'; } } }
   }
   const pickupIds = new Set(Object.entries(a.ids).filter(([k]) => k.startsWith('cash') || k === 'weapon').map(([, id]) => id));
@@ -168,7 +169,7 @@ function finish(sim: Sim, pass: boolean, text: string, cash = 0): void {
   d.nextEvent = sim.t + 100 + sim.rng() * 70; d.taxiNext = sim.t + (pass ? 12 : 30); d.taxiWait = 0;
   for (const key of ['phase', 'arrestHits', 'bountyKilled', 'kills', 'stopped', 'hintAt', 'fareSpeed', 'looted']) delete d[key];
 }
-function begin(sim: Sim, kind: string, seconds: number): void { const a = sim.activity; a.active = kind; a.timer = seconds; a.data.phase = 0; a.ids = {}; notice(sim, 'start', { taxi: '택시 호출 · 손님 옆에 정차하세요', armored: 'BLUE MONEY · 현금수송차 발견', bounty: 'WANTED · 도주범을 추적하세요', rampage: 'RAMPAGE · R 무기를 주우면 도전 시작' }[kind] ?? kind); }
+function begin(sim: Sim, kind: string, seconds: number): void { const a = sim.activity; a.active = kind; a.timer = seconds; a.data.phase = 0; a.ids = {}; notice(sim, 'start', { taxi: '택시 호출 · 손님 옆에 정차하세요', armored: 'BLUE MONEY · 현금수송차 발견', bounty: 'WANTED · 도주범을 추적하세요', rampage: 'RAMPAGE · R 무기를 주우면 도전 시작', race: 'STREET RACE · 체크포인트를 통과하세요', export: 'CAR EXPORT · 표시된 차를 훔쳐 정비소로' }[kind] ?? kind); }
 function roadPoint(sim: Sim, min: number, max: number): { x: number; z: number; h: number; id: number } | undefined {
   const candidates = sim.map.lanes.filter(p => { const d = distance(p, sim.player); return d >= min && d <= max && p.light === -1 && isOpen(sim.map, p.x, p.z, 3); });
   return candidates[Math.floor(sim.rng() * candidates.length)];
@@ -179,8 +180,41 @@ function startTaxi(sim: Sim, v: Vehicle): boolean {
   begin(sim, 'taxi', 40); const a = sim.activity, p = sim.spawnPed('civ', q.x, q.z, { keep: true, tag: 'activity:taxi', mode: 'scripted', loot: 0 });
   a.ids.customer = p.id; a.ids.taxi = v.id; a.data.goalX = goal.x; a.data.goalZ = goal.z; a.data.taxiHp = v.hp; a.data.fareDistance = distance(v, goal); a.markers = [marker(q.x, q.z, 2, YELLOW, '손님')]; return true;
 }
+function startRace(sim: Sim): boolean {
+  const v = sim.vehicle(sim.player.vehicle); if (!v || v.driver !== PLAYER_ID || v.wrecked || v.hp <= 0) return false;
+  const lanes = sim.map.lanes.filter(p => p.light === -1 && surfaceAt(sim.map, p.x, p.z) === 'road' && isOpen(sim.map, p.x, p.z, 3));
+  const angle = sim.rng() * Math.PI * 2;
+  for (let attempt = 0; attempt < 16; attempt++) {
+    const radius = 110 + sim.rng() * 45, turn = angle + attempt * 0.39, points: typeof lanes = [];
+    for (let i = 0; i < 6; i++) {
+      const theta = turn + i * Math.PI / 3, x = v.x + radius * (Math.cos(theta) - Math.cos(turn)), z = v.z + radius * (Math.sin(theta) - Math.sin(turn));
+      const candidates = lanes.filter(p => (!points.length ? distance(p, v) < 45 : distance(p, points[points.length - 1]) >= 90 && distance(p, points[points.length - 1]) <= 200) && (i !== 5 || (distance(p, points[0]) >= 90 && distance(p, points[0]) <= 200)));
+      candidates.sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z));
+      if (!candidates.length) break; points.push(candidates[0]);
+    }
+    if (points.length !== 6) continue;
+    begin(sim, 'race', 75); const a = sim.activity; a.data.raceOut = 0; a.data.raceIndex = 0;
+    points.forEach((p, i) => { a.data[`raceX${i}`] = p.x; a.data[`raceZ${i}`] = p.z; });
+    a.markers = points.map((p, i) => marker(p.x, p.z, 9, YELLOW, `체크포인트 ${i + 1}`)); return true;
+  }
+  return false;
+}
+function startExport(sim: Sim): boolean {
+  const dock = sim.map.pois.find(p => p.kind === 'chopshop');
+  const cars = sim.vehicles.filter(v => (v.kind === 'sports' || v.kind === 'suv') && v.alive && !v.wrecked && v.hp > 0 && !v.locked && !v.keep && !v.driver && (v.mode === 'parked' || v.mode === 'none') && distance(v, sim.player) < 180 && v.id !== sim.player.vehicle);
+  if (!dock || !cars.length) return false;
+  cars.sort((a, b) => distance(a, sim.player) - distance(b, sim.player)); const v = cars[0];
+  begin(sim, 'export', 120); v.keep = true; sim.activity.ids.exportCar = v.id;
+  sim.activity.data.exportX = dock.x; sim.activity.data.exportZ = dock.z; sim.activity.data.exportR = Math.max(8, dock.r);
+  sim.activity.markers = [marker(v.x, v.z, 3, BLUE, '수출 차량', 'target')]; return true;
+}
 function startEvent(sim: Sim): void {
-  const a = sim.activity, d = a.data, seq = d.eventSeq || 0, kind = ['armored', 'bounty', 'rampage'][seq % 3], q = roadPoint(sim, 55, 140);
+  const a = sim.activity, d = a.data, seq = d.eventSeq || 0, kind = ['armored', 'bounty', 'rampage', 'race', 'export'][seq % 5];
+  if (kind === 'race' || kind === 'export') {
+    if (kind === 'race' ? startRace(sim) : startExport(sim)) d.eventSeq = seq + 1; else d.nextEvent = sim.t + 15;
+    return;
+  }
+  const q = roadPoint(sim, 55, 140);
   if (!q) { d.nextEvent = sim.t + 15; return; } d.eventSeq = seq + 1;
   begin(sim, kind, kind === 'bounty' ? 100 : 150);
   if (kind === 'armored') {
@@ -265,6 +299,31 @@ function rampage(sim: Sim): void {
     if ((d.kills || 0) >= 12) { a.stats.rampages++; sim.giveWeapon(sim.player, 'shotgun'); finish(sim, true, 'RAMPAGE PASSED · 샷건 탄약 보충', 1200); }
   }
 }
+function race(sim: Sim, dt: number): void {
+  const a = sim.activity, d = a.data, v = sim.vehicle(sim.player.vehicle), driving = !!v && v.driver === PLAYER_ID && !v.wrecked && v.hp > 0;
+  d.raceOut = driving ? 0 : (d.raceOut || 0) + dt;
+  if (d.raceOut > 10) { finish(sim, false, '차를 너무 오래 떠나 레이스가 취소되었습니다'); return; }
+  const i = d.raceIndex || 0; a.text = `STREET RACE · 체크포인트 ${i}/6${driving ? '' : ' · 차량으로 돌아가세요'}`;
+  if (driving && Math.hypot(v.x - d[`raceX${i}`], v.z - d[`raceZ${i}`]) < 9) {
+    d.raceIndex = i + 1; a.timer += 8; a.markers.shift();
+    if (d.raceIndex === 6) { a.stats.races = (a.stats.races ?? 0) + 1; finish(sim, true, 'STREET RACE 우승', 1000); }
+    else notice(sim, 'stage', `체크포인트 ${d.raceIndex}/6 · +8초`);
+  }
+}
+function exportCar(sim: Sim): void {
+  const a = sim.activity, d = a.data, v = sim.vehicle(a.ids.exportCar);
+  if (!v || !v.alive || v.wrecked || v.hp <= 0) { finish(sim, false, '수출 차량이 파손되어 의뢰가 실패했습니다'); return; }
+  if (!d.phase && sim.player.vehicle === v.id && v.driver === PLAYER_ID) {
+    d.phase = 1; sim.wanted.heat = Math.max(sim.wanted.heat, 4); sim.wanted.lastX = v.x; sim.wanted.lastZ = v.z; sim.wanted.unseenT = 0; sim.wanted.evadeT = 0;
+    if (sim.wanted.stars < 2) sim.setStars(2);
+    notice(sim, 'stage', '수출 차량 탈취! 경찰이 추격합니다');
+  }
+  if (!d.phase) { a.text = '수출 차량에 탑승하세요'; a.markers = [marker(v.x, v.z, 3, BLUE, '수출 차량', 'target')]; }
+  else {
+    a.text = '장물 정비소로 차량을 인도하세요 · 경찰을 따돌리세요'; a.markers = [marker(d.exportX, d.exportZ, d.exportR, BLUE, '정비소')];
+    if (sim.player.vehicle === v.id && v.driver === PLAYER_ID && Math.hypot(v.x - d.exportX, v.z - d.exportZ) < d.exportR) finish(sim, true, 'CAR EXPORT 완료', 1800);
+  }
+}
 export function stepActivities(sim: Sim, dt: number): void {
   if (!(dt > 0) || !Number.isFinite(dt)) return;
   const a = sim.activity, d = a.data, jumps = stuntJumps(sim);
@@ -273,7 +332,7 @@ export function stepActivities(sim: Sim, dt: number): void {
     a.timer = Math.max(0, a.timer - dt);
     if (!sim.player.alive || sim.downKind || sim.mission.active) { finish(sim, false, sim.mission.active ? '활동 중단 · 미션 시작' : '활동 실패 · 운행 불가'); return; }
     if (a.timer <= 0) { finish(sim, false, '활동 실패 · 제한 시간 초과'); return; }
-    if (a.active === 'taxi') taxi(sim, dt); else if (a.active === 'armored') armored(sim, dt); else if (a.active === 'bounty') bounty(sim); else if (a.active === 'rampage') rampage(sim);
+    if (a.active === 'taxi') taxi(sim, dt); else if (a.active === 'armored') armored(sim, dt); else if (a.active === 'bounty') bounty(sim); else if (a.active === 'rampage') rampage(sim); else if (a.active === 'race') race(sim, dt); else if (a.active === 'export') exportCar(sim);
     return;
   }
   a.markers = []; a.text = ''; a.timer = 0;

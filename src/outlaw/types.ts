@@ -179,6 +179,6 @@ export interface ActivityState {
   /** 성공한 스턴트 점프 번호(0~11) */ stunts: number[];
   /** 지금 진행 중인 사이드 활동 종류('' 이면 없음): 'taxi' | 'armored' | 'bounty' | 'rampage' | 'vigilante' | ... */ active: string;
   /** 활동이 자유롭게 쓰는 메모 */ data: Record<string, number>; ids: Record<string, number>; text: string; markers: Marker[]; timer: number;
-  /** 통계 */ stats: { taxiFares: number; armoredTrucks: number; bounties: number; rampages: number; nearMisses: number; maxAirtime: number; maxDrift: number };
+  /** 통계 */ stats: { taxiFares: number; armoredTrucks: number; bounties: number; rampages: number; races: number; nearMisses: number; maxAirtime: number; maxDrift: number };
 }
-export const blankActivityState = (): ActivityState => ({ style: { combo: 0, mult: 1, timer: 0, total: 0, last: '' }, stunts: [], active: '', data: {}, ids: {}, text: '', markers: [], timer: 0, stats: { taxiFares: 0, armoredTrucks: 0, bounties: 0, rampages: 0, nearMisses: 0, maxAirtime: 0, maxDrift: 0 } });
+export const blankActivityState = (): ActivityState => ({ style: { combo: 0, mult: 1, timer: 0, total: 0, last: '' }, stunts: [], active: '', data: {}, ids: {}, text: '', markers: [], timer: 0, stats: { taxiFares: 0, armoredTrucks: 0, bounties: 0, rampages: 0, races: 0, nearMisses: 0, maxAirtime: 0, maxDrift: 0 } });

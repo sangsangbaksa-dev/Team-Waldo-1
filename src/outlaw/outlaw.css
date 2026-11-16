@@ -158,3 +158,13 @@
 .touch .ol-speedo{display:none}.touch.incar .ol-speedo{display:block;bottom:auto;top:96px}
 @media (max-width:640px){.ol-mission{top:auto;bottom:calc(max(16px,env(safe-area-inset-bottom)) + 232px);max-width:60vw}.ol-banner{top:80px}.ol-toasts{top:max(60px,env(safe-area-inset-top))}.ol-radar{width:112px}.ol-bars{width:104px}.ol-big span{-webkit-text-stroke-width:2px}.ol-prompt{bottom:240px}}
 @media (prefers-reduced-motion:reduce){.ol-logo span,.lowhp .ol-bar.hp{animation:none}}
+
+/* 낮은 가로 화면(폰 가로): 터치 버튼이 현금/수배 표시를 가리지 않도록 */
+@media (max-height:480px){
+  .ol-tfoot{bottom:max(10px,env(safe-area-inset-bottom));grid-template-columns:repeat(2,58px);gap:6px}
+  .ol-touchpad button{height:40px;border-radius:11px;font-size:12px}
+  .touch .ol-br{right:150px;bottom:max(10px,env(safe-area-inset-bottom))}
+  .touch .ol-bl{bottom:max(10px,env(safe-area-inset-bottom))}
+  .ol-tcar{bottom:max(10px,env(safe-area-inset-bottom))}
+  .ol-prompt{bottom:96px}
+}

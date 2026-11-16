@@ -301,6 +301,9 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
         if (e.id === p.id) { audio.play(e.kind === 'medkit' ? 'heal' : e.kind === 'armor' ? 'armor' : 'pickup'); say(e.kind === 'weapon' ? `${WEAPONS[e.weapon!].name} 획득` : e.kind === 'medkit' ? '구급상자 +' : e.kind === 'armor' ? '방탄복 +' : '탄약 +', 1.1); if (pvp && e.loot < m.map.loot.length) pvp.net.sendPickup(e.loot); }
       } else if (e.t === 'reload') { if (e.id === p.id) audio.play('reload'); }
       else if (e.t === 'empty') { if (e.id === p.id) audio.play('empty'); }
+      else if (e.t === 'jump') { if (e.id === p.id) say('자유 낙하 · W 로 앞으로, 마우스를 아래로 + W 로 급강하', 2.6); }
+      else if (e.t === 'chute') { if (e.id === p.id) say('낙하산 펼침 · W 로 활공, A/D 로 방향 조절', 2.8); }
+      else if (e.t === 'land') { if (e.id === p.id) say('착지 · E 로 무기를 줍고 자기장 안으로', 2.4); }
       else if (e.t === 'over') { onOver(e.winner); }
     }
   }

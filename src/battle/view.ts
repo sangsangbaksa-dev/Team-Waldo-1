@@ -98,7 +98,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
           <div class="section-heading"><h2>공격 및 방어 명령</h2></div><div id="targets" class="action-list"></div><div class="section-heading"><h2>거점 점령</h2><span>9개 전략 거점</span></div><div id="outposts" class="outpost-list"></div><p class="panel-note">거점마다 생산 자원이 다릅니다. 점령 거점 1개당 본부 폭풍 피해가 12% 감소합니다 (최대 60%).</p></section>
         <section id="pane-research" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-research" hidden><div class="section-heading"><h2>왕국 연구소</h2><span>병영 Lv.2 해금</span></div><p class="panel-note">연구 효과는 모든 아군 병력에 즉시 적용됩니다. 각 연구는 3단계까지 성장합니다.</p><div id="research" class="action-list"></div><div class="research-summary" id="research-summary"></div></section>
       </div>
-      <footer class="panel-footer"><span id="save-status" role="status">15초마다 자동 저장</span><span class="render-performance" id="render-fps" title="지난 1초 동안 실제로 그린 화면 수" aria-label="화면 렌더링 프레임 속도">— FPS</span><button id="save" class="text-button">${icon('save', 14)}저장</button></footer>
+      <footer class="panel-footer"><span id="save-status" role="status">15초마다 자동 저장</span><span class="render-performance" id="render-fps" title="지난 1초 동안 실제로 그린 화면 수" aria-label="화면 렌더링 프레임 속도">— FPS</span><button id="save" class="text-button">${icon('save', 14)}저장</button><button id="adventure-enter-mobile" class="text-button mobile-direct-button" aria-label="직접 플레이 시작">직접 플레이</button></footer>
     </aside>
     <section class="mission-card" aria-label="현재 목표"><div class="mission-icon">${icon('flag', 21)}</div><div><span class="kicker">NEXT OBJECTIVE</span><h2 id="mission-title"></h2><p id="mission-description"></p></div><button id="mission-action" class="tool-button" aria-label="목표로 이동">${icon('arrow', 18)}</button></section>
     <aside class="war-intel" aria-label="전황"><div class="section-heading"><h2>왕국 현황</h2><span id="alive-count">4 세력</span></div><div id="standings"></div><div class="event-heading">전장 소식<span class="live-dot"></span></div><div id="events" class="war-events" aria-live="polite" aria-relevant="additions"></div></aside>
@@ -155,13 +155,14 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = prefs.quality === 'low' ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.12;
   renderer.shadowMap.enabled = prefs.quality === 'high'; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.setPixelRatio(Math.min(devicePixelRatio, prefs.quality === 'high' ? 1.65 : prefs.quality === 'low' ? .85 : 1));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, prefs.quality === 'high' ? 1.4 : prefs.quality === 'low' ? .85 : 1));
   renderer.setSize(mount.clientWidth, mount.clientHeight); mount.append(renderer.domElement);
   renderer.domElement.setAttribute('aria-label', '3D 왕국 전장. 관리 패널에서도 모든 명령을 내릴 수 있습니다.');
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(43, mount.clientWidth / mount.clientHeight, .1, 1300);
-  const focus = new THREE.Vector3(w.factions[0].x + 24, 0, w.factions[0].z + 24);
-  let angle = Math.PI + .72, zoom = innerWidth < 800 ? 160 : 145;
+  // Showcase the fortified capital and surrounding settlements on first launch.
+  const focus = new THREE.Vector3(w.factions[0].x + 14, 0, w.factions[0].z + 14);
+  let angle = Math.PI + .72, zoom = innerWidth < 800 ? 145 : 170;
   let adventure: ReturnType<typeof createAdventure> | null = null;
   const cameraUpdate = () => { if (adventure?.isActionMode) return; camera.position.set(focus.x + Math.sin(angle) * zoom, zoom * .83, focus.z + Math.cos(angle) * zoom); camera.lookAt(focus); };
   const pan = (dx: number, dz: number) => { focus.x = THREE.MathUtils.clamp(focus.x + dx, -MAP_HALF_SIZE + 12, MAP_HALF_SIZE - 12); focus.z = THREE.MathUtils.clamp(focus.z + dz, -MAP_HALF_SIZE + 12, MAP_HALF_SIZE - 12); cameraUpdate(); };
@@ -171,7 +172,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   const baseDistrict = createBaseDistrict(scene,w);
   world.setQuality(prefs.quality === 'high'); world.setReducedMotion(prefs.reducedMotion);
   baseDistrict.setReducedMotion(prefs.reducedMotion);
-  const adventureControl = createAdventure(scene, camera, w, false); adventure = adventureControl;
+  const adventureControl = createAdventure(scene, camera, w); adventure = adventureControl;
   const controller = new AbortController(); const signal = controller.signal;
   overlay.addEventListener('pointerdown', () => audio.unlock(), { signal, capture: true });
   overlay.addEventListener('keydown', () => audio.unlock(), { signal, capture: true });
@@ -305,7 +306,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   const openSettings = () => openModal('전장 설정', `<div class="settings-grid"><label>그래픽 품질<select id="graphics-setting"><option value="high">높음 · 그림자와 효과</option><option value="standard">보통 · 성능 우선</option><option value="low">낮음 · 저사양 기기</option></select></label><label>효과음<input type="checkbox" id="audio-setting"></label><label>움직임 줄이기<input type="checkbox" id="motion-setting"></label></div><p class="dialog-tip">설정은 이 브라우저에 저장됩니다. 보통은 그림자·효과를 줄이고, 낮음은 해상도와 색 보정도 줄입니다. 관리 패널 아래 FPS로 실제 화면 속도를 확인하세요.</p>`, () => {
     const quality = document.querySelector<HTMLSelectElement>('#graphics-setting')!, sound = document.querySelector<HTMLInputElement>('#audio-setting')!, motion = document.querySelector<HTMLInputElement>('#motion-setting')!;
     quality.value = prefs.quality; sound.checked = prefs.sound; motion.checked = prefs.reducedMotion;
-    quality.onchange = () => { prefs.quality = quality.value === 'high' ? 'high' : quality.value === 'low' ? 'low' : 'standard'; renderer.toneMapping = prefs.quality === 'low' ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping; renderer.shadowMap.enabled = prefs.quality === 'high'; renderer.setPixelRatio(Math.min(devicePixelRatio, prefs.quality === 'high' ? 1.65 : prefs.quality === 'low' ? .85 : 1)); world.setQuality(prefs.quality === 'high'); resize(); writePreferences(prefs); };
+    quality.onchange = () => { prefs.quality = quality.value === 'high' ? 'high' : quality.value === 'low' ? 'low' : 'standard'; renderer.toneMapping = prefs.quality === 'low' ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping; renderer.shadowMap.enabled = prefs.quality === 'high'; renderer.setPixelRatio(Math.min(devicePixelRatio, prefs.quality === 'high' ? 1.4 : prefs.quality === 'low' ? .85 : 1)); world.setQuality(prefs.quality === 'high'); resize(); writePreferences(prefs); };
     sound.onchange = () => { prefs.sound = sound.checked; syncSound(); writePreferences(prefs); };
     motion.onchange = () => { prefs.reducedMotion = motion.checked; world.setReducedMotion(prefs.reducedMotion); baseDistrict.setReducedMotion(prefs.reducedMotion); writePreferences(prefs); };
   });
@@ -322,13 +323,11 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     const active = adventureControl.isActionMode;
     const mode = adventureControl.mode;
     overlay.classList.toggle('adventure-active', active);
-    overlay.classList.toggle('adventure-dropping', mode === 'drop');
     el('#adventure-hud').hidden = !active;
     el('#adventure-enter').hidden = active;
+    el('#adventure-enter-mobile').hidden = active;
     el('#adventure-tower').hidden = !adventureControl.canEnterTower;
     el('#adventure-down').hidden = mode !== 'tower';
-    el<HTMLButtonElement>('#adventure-fire').disabled = mode === 'drop';
-    el<HTMLButtonElement>('#adventure-strategy').disabled = mode === 'drop';
     const detail = adventureControl.hint();
     text('#adventure-title', detail.headline);
     text('#adventure-description', detail.detail);
@@ -341,6 +340,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   el<HTMLButtonElement>('#open-base-generals').onclick = () => openBase('generals');
   const goField = () => { adventureControl.toField(); updateAdventureUI(); };
   el<HTMLButtonElement>('#adventure-enter').onclick = goField;
+  el<HTMLButtonElement>('#adventure-enter-mobile').onclick = goField;
   el<HTMLButtonElement>('#adventure-strategy').onclick = goStrategy;
   el<HTMLButtonElement>('#adventure-tower').onclick = () => { adventureControl.enterTower(); updateAdventureUI(); };
   el<HTMLButtonElement>('#adventure-down').onclick = () => { adventureControl.leaveTower(); updateAdventureUI(); };
@@ -590,7 +590,33 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     const end = el('.war-end'); end.hidden = false;
     [...overlay.children].forEach(child => { if (child instanceof HTMLElement && child !== end) child.inert = true; });
     end.innerHTML = `<section class="result-panel" role="dialog" aria-modal="true" aria-labelledby="result-title"><span class="result-emblem">${icon(victory ? 'crown' : 'shield', 52)}</span><div class="kicker">${victory ? 'VICTORY' : 'THE KINGDOM WILL RISE AGAIN'}</div><h1 id="result-title" tabindex="-1">${victory ? '마지막 왕국의 주인' : '새로운 원정이 기다립니다'}</h1><p>${victory ? '모든 경쟁자를 물리치고 전장을 통일했습니다.' : '영지가 함락되었습니다. 다음 전투에서 다시 도전하세요.'}</p><div class="result-stats"><div><b>${clock(w.time)}</b><span>생존 시간</span></div><div><b>${stats.kills}</b><span>적 병력 처치</span></div><div><b>${stats.captures}</b><span>거점 점령</span></div><div><b>${stats.trained}</b><span>병력 훈련</span></div><div><b>${stats.researches}</b><span>연구 완료</span></div><div><b>${Math.floor(stats.goldEarned).toLocaleString('ko-KR')}</b><span>획득한 금</span></div></div><p class="result-tip">${victory ? '다른 난이도와 병종 조합으로 새로운 전략을 시도해 보세요.' : stats.captures === 0 ? '다음 전략: 가까운 거점을 먼저 점령해 자원 생산과 폭풍 방어를 확보해 보세요.' : '다음 전략: 연구와 병종 조합으로 전투력을 높이고, 본부 수리 자원을 남겨 두세요.'}</p><div class="result-actions"><button id="back" class="button secondary">왕국 메뉴</button><button id="again" class="button primary">같은 난이도로 재도전 ${icon('arrow', 18)}</button></div></section>`;
-    el<HTMLButtonElement>('#again').onclick = () => { const difficulty = w.difficulty; close(false); openWar(onExit, { forceNew: true, difficulty }); };
+    el<HTMLButtonElement>('#again').onclick = () => {
+      const difficulty = w.difficulty;
+      if (import.meta.env.MODE === 'test') {
+        // Vitest uses a deterministic fake clock and tests synchronous rematches.
+        close(false);
+        openWar(onExit, { forceNew: true, difficulty });
+        return;
+      }
+      // Release the old GL context and allow the browser to present a frame
+      // before allocating a second, hundreds-of-troops battlefield.
+      const loading = document.createElement('div');
+      loading.className = 'game-loading';
+      loading.setAttribute('role', 'status');
+      loading.innerHTML = '<span class="game-loading-emblem">♜</span><strong>새 전장을 준비합니다</strong><p>이전 전장의 GPU 자원을 정리하고 있습니다</p><span class="game-loading-progress" aria-hidden="true"></span>';
+      document.body.append(loading);
+      close(false);
+      setTimeout(() => {
+        try {
+          openWar(onExit, { forceNew: true, difficulty });
+          requestAnimationFrame(() => requestAnimationFrame(() => loading.remove()));
+        } catch {
+          loading.remove();
+          document.querySelector('.war-ui')?.remove();
+          onExit();
+        }
+      }, 120);
+    };
     el<HTMLButtonElement>('#back').onclick = () => close();
     end.addEventListener('keydown', event => {
       if (event.key !== 'Tab') return;
@@ -604,7 +630,9 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   let fpsStart = performance.now(), fpsFrames = 0;
   function loop(now: number): void {
     if (dead) return;
-    const elapsed = Math.min((now - last) / 1000, .1); last = now;
+    // A delayed frame can carry a timestamp older than the setup/modal clock.
+    // Never let that create negative simulation debt after a heavy WebGL startup.
+    const elapsed = Math.max(0, Math.min((now - last) / 1000, .1)); last = now;
     if (!paused && !graphicsLost && !baseManager.isOpen()) {
       const amount = elapsed * 100, h = (key: string) => heldKeys.has(key);
       if (!adventureControl.isActionMode && (h('w') || h('arrowup'))) pan(-Math.sin(angle) * amount, -Math.cos(angle) * amount);
@@ -628,7 +656,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     frame = requestAnimationFrame(loop);
   }
   syncSound(); ui(); drawMap(); updateAdventureUI();
-  if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__war = { world: w, renderer, camera, scene, ui, finish, skipDrop: () => { adventureControl.skipDrop(); updateAdventureUI(); }, setPaused: (value: boolean) => { paused = value; } };
+  if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__war = { world: w, renderer, camera, scene, ui, finish, setPaused: (value: boolean) => { paused = value; } };
   frame = requestAnimationFrame(loop);
   el<HTMLButtonElement>('#home').focus({ preventScroll: true });
   if (!wasThreatened) announce(resumed ? '저장한 전투를 이어갑니다. V 키로 직접 탐험할 수 있습니다.' : '군단 지휘를 시작합니다. 작전 탭에서 부대를 편성하고 가까운 거점으로 출전하세요.');

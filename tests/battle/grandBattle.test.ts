@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createWar, GRAND_INITIAL_FORCES, GRAND_MAX_UNITS, maxUnitsFor,
-  GRAND_AI_ARMY_LIMITS, stepWar, train, trainSquad, stormStartFor } from '../../src/battle/war';
+  GRAND_AI_ARMY_LIMITS, MAP_HALF_SIZE, stepWar, train, trainSquad, stormStartFor } from '../../src/battle/war';
 import { decodeWar, encodeWar } from '../../src/battle/save';
 import { assignSquad, commandSquad, squadUnits } from '../../src/battle/squads';
 
@@ -86,6 +86,20 @@ describe('600 soldier grand-battle expedition', () => {
     for (const opponent of war.factions.slice(1)) opponent.aiTimer = 10000;
     stepWar(war, .05);
     expect(war.units.filter(u => u.hp < 52)).toHaveLength(5);
+  });
+
+  it('keeps edge-of-map formations in bounds so the battle still saves', () => {
+    const war = createWar({ grandBattle: true });
+    const flank = war.units.find(unit => unit.id === 95)!;
+    war.units = [flank];
+    flank.x = MAP_HALF_SIZE - 1.05;
+    flank.z = MAP_HALF_SIZE - 10;
+    for (const enemy of war.factions.slice(1)) enemy.aiTimer = 10000;
+    expect(commandSquad(war, 0, { kind: 'move', x: MAP_HALF_SIZE - 5, z: MAP_HALF_SIZE - 5 })).toBe(true);
+    for (let i = 0; i < 120; i++) stepWar(war, .1);
+    expect(flank.x).toBeLessThanOrEqual(MAP_HALF_SIZE);
+    expect(flank.z).toBeLessThanOrEqual(MAP_HALF_SIZE);
+    expect(decodeWar(encodeWar(war))).not.toBeNull();
   });
 
   it('refuses unknown unit kinds without crashing or charging the player', () => {

@@ -3,14 +3,18 @@ import * as THREE from 'three';
 import { createAdventure } from '../../src/battle/adventure';
 import { createWar } from '../../src/battle/war';
 
-describe('hero parachute visibility', () => {
-  it('keeps the canopy folded when entering or resuming strategic command', () => {
+describe('direct exploration without an intro', () => {
+  it('starts at the home kingdom and permits exploration and return immediately', () => {
     const scene = new THREE.Scene();
-    const adventure = createAdventure(scene, new THREE.PerspectiveCamera(), createWar({ grandBattle: true }), false);
-    expect(scene.getObjectByName('hero-parachute')?.visible).toBe(false);
-    adventure.update(0, new Set());
+    const adventure = createAdventure(scene, new THREE.PerspectiveCamera(), createWar({ grandBattle: true }));
     expect(adventure.mode).toBe('strategy');
-    expect(scene.getObjectByName('hero-parachute')?.visible).toBe(false);
+    expect(scene.getObjectByName('hero-parachute')).toBeUndefined();
+    adventure.toField();
+    expect(adventure.isActionMode).toBe(true);
+    expect(adventure.canEnterTower).toBe(true);
+    expect(adventure.enterTower()).toBe(true);
+    adventure.toStrategy();
+    expect(adventure.isActionMode).toBe(false);
     adventure.dispose();
   });
 });

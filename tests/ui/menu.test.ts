@@ -44,7 +44,8 @@ describe('menu navigation and recovery', () => {
     await vi.dynamicImportSettled();
     expect(navigation.openWar).toHaveBeenCalledTimes(1);
     expect(navigation.openWar).toHaveBeenCalledWith(expect.any(Function), { forceNew: true, difficulty: 'hard' });
-    expect(navigation.disposePreview).toHaveBeenCalledTimes(1);
+    expect(navigation.disposePreview).not.toHaveBeenCalled();
+    expect(document.querySelector('#landing-preview canvas')).toBeNull();
     navigation.openWar.mock.calls[0][0]();
     await vi.dynamicImportSettled();
     expect(button('#start-grand').disabled).toBe(false);

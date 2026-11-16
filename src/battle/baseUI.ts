@@ -182,11 +182,19 @@ export function createBaseManager(parent:HTMLElement,w:War,onChange:(message:str
   root.addEventListener('keydown',event=>{
     if(event.key==='Escape'){event.preventDefault();back();}
     if(event.key==='Tab'){
-      const focusable=[...root.querySelectorAll<HTMLElement>('button:not(:disabled), select:not(:disabled), input:not(:disabled), [tabindex="0"]')]
-        .filter(node=>!node.closest('[hidden]'));
-      const first=focusable[0],last=focusable.at(-1);
-      if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}
-      else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
+      // A modal must not let keyboard navigation escape to the live battlefield.
+      // Ignore controls in hidden tabs and interiors as well as disabled actions.
+      const controls=[...root.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), select:not(:disabled), input:not(:disabled), a[href], [tabindex="0"]',
+      )].filter(node=>!node.closest('[hidden]'));
+      const first=controls[0],last=controls.at(-1);
+      if(first&&last){
+        if(event.shiftKey&&(document.activeElement===first||!root.contains(document.activeElement))){
+          event.preventDefault();last.focus({preventScroll:true});
+        }else if(!event.shiftKey&&(document.activeElement===last||!root.contains(document.activeElement))){
+          event.preventDefault();first.focus({preventScroll:true});
+        }
+      }
     }
     // Do not send gameplay hotkeys to the 3D battle while navigating the base.
     event.stopPropagation();

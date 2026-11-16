@@ -7,14 +7,13 @@ import { icon } from './ui/icons';
 import { showDialog } from './ui/dialog';
 
 const app = document.querySelector<HTMLDivElement>('#game')!;
-let disposePreview: (() => void) | undefined;
 let generation = 0;
 let selectedDifficulty: Difficulty = 'normal';
 const stormTime = (difficulty: Difficulty) => clock(stormStartFor({ difficulty, grandBattle: true }));
 const clock = (time: number) => `${Math.floor(time / 60)}분 ${Math.floor(time % 60)}초`;
 
 function renderMenu(): void {
-  generation++; const currentGeneration = generation; disposePreview?.(); disposePreview = undefined;
+  generation++;
   const saved = loadWar();
   const activeSave = saved && saved.factions[0].alive && !saved.over;
   const resumable = activeSave && saved.grandBattle === true;
@@ -43,9 +42,9 @@ function renderMenu(): void {
             <p class="play-note">${icon('save', 13)}15초마다 자동 저장<span>·</span>설치 없이 바로 플레이</p>
           </section>
         </section>
-        <section class="campaign-visual" aria-label="3D 전장 미리보기">
+        <section class="campaign-visual" aria-label="영지 일러스트">
           <div class="visual-heading"><span><i class="live-dot"></i>THE EMERALD KINGDOM</span><span>SECTOR 01 — NW</span></div>
-          <div class="landing-art"><img src="${import.meta.env.BASE_URL}kingdom-art.svg" alt="" class="kingdom-illustration"><div class="landing-preview" id="landing-preview" aria-hidden="true"></div><div class="art-vignette"></div><div class="preview-reticle" aria-hidden="true"></div><div class="art-coordinates"><span>당신의 첫 번째 명령을 기다립니다.</span><small>실제 게임 엔진으로 렌더링한 영지</small></div></div>
+          <div class="landing-art"><img src="${import.meta.env.BASE_URL}kingdom-art.svg" alt="" class="kingdom-illustration"><div class="art-vignette"></div><div class="preview-reticle" aria-hidden="true"></div><div class="art-coordinates"><span>당신의 첫 번째 명령을 기다립니다.</span><small>원정이 시작될 에메랄드 영지</small></div></div>
           <div class="visual-caption"><span>${icon('flag', 15)}북서부 영지 · 에메랄드 왕국</span><span>3D REAL-TIME STRATEGY</span></div>
           <div class="campaign-features"><article><span>01 / BUILD</span><h2>${icon('tower', 18)}영지를 키우다</h2><p>시설 건설과 연구로<br>전쟁의 기반을 만드세요.</p></article><article><span>02 / COMMAND</span><h2>${icon('army', 18)}군단을 지휘하다</h2><p>네 병종, 세 부대.<br>전선을 직접 설계하세요.</p></article><article><span>03 / CONQUER</span><h2>${icon('flag', 18)}전장을 정복하다</h2><p>아홉 거점을 확보하고<br>세 왕국을 넘어서세요.</p></article></div>
         </section>
@@ -55,18 +54,34 @@ function renderMenu(): void {
   document.title = 'WALDO · 군단 전쟁 | 백 명의 군단, 하나의 왕국';
   const start = async (resume: boolean) => {
     if (launching) return; launching = true;
-    const navigation = ++generation; disposePreview?.(); disposePreview = undefined;
+    const navigation = ++generation;
     const button = app.querySelector<HTMLButtonElement>(resume ? '#continue-war' : '#start-grand')!;
     app.querySelectorAll<HTMLButtonElement>('button').forEach(b => { b.disabled = true; });
     button.textContent = '전장 준비 중…';
+    const loading = document.createElement('div');
+    loading.className = 'game-loading';
+    loading.setAttribute('role', 'status');
+    loading.setAttribute('aria-live', 'polite');
+    loading.innerHTML = '<span class="game-loading-emblem">♜</span><strong>왕국을 준비하고 있습니다</strong><p>성벽 · 도시 · 병력 600명 구성 중</p><span class="game-loading-progress" aria-hidden="true"></span>';
+    document.body.append(loading);
     try {
+      // Let the loading screen paint before the synchronous Three.js world setup.
+      if (import.meta.env.MODE !== 'test') {
+        await new Promise<void>(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+      }
       const { openWar } = await import('./battle/view');
       if (generation !== navigation) return;
       app.hidden = true;
       openWar(renderMenu, { forceNew: !resume, difficulty: resume && saved ? saved.difficulty : selectedDifficulty });
+      // Leave the loading overlay until WebGL has had a chance to draw its first frame.
+      requestAnimationFrame(() => requestAnimationFrame(() => loading.remove()));
     } catch {
+      // Do not leave an incomplete full-screen battlefield blocking the retry button.
+      document.querySelector('.war-ui')?.remove();
       renderMenu();
-      showDialog({ title: '전장을 불러오지 못했어요', body: '<p>네트워크 연결을 확인한 뒤 다시 시작해 주세요. 저장한 전투는 변경되지 않았습니다.</p>' });
+      showDialog({ title: '전장을 불러오지 못했어요', body: '<p>전장을 초기화하지 못했습니다. 그래픽 품질을 낮음으로 바꾸거나 브라우저를 새로고침해 다시 시도해 주세요. 저장 내용은 변경되지 않았습니다.</p>' });
+    } finally {
+      if (generation !== navigation || !document.querySelector('.war-ui')) loading.remove();
     }
   };
   const launchNew = () => {
@@ -91,10 +106,7 @@ function renderMenu(): void {
     const update = () => { p.quality = quality.value === 'high' ? 'high' : quality.value === 'low' ? 'low' : 'standard'; p.sound = sound.checked; p.reducedMotion = motion.checked; writePreferences(p); };
     quality.onchange = update; sound.onchange = update; motion.onchange = update;
   };
-  // The menu is fully useful before the optional decorative 3D chunk loads.
-  void import('./battle/preview').then(({ createLandingPreview }) => {
-    const mount = app.querySelector<HTMLElement>('#landing-preview');
-    if (generation === currentGeneration && mount?.isConnected) disposePreview = createLandingPreview(mount);
-  }).catch(() => undefined);
+  // The original menu illustration replaces the expensive decorative 3D preview.
+  // A second WebGL renderer used to compete with the actual battle on slow GPUs.
 }
 renderMenu();

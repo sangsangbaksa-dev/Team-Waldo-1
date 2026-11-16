@@ -65,11 +65,25 @@ async function assertElementFits(page, selector, result, name) {
 async function waitForBattle(page) {
   await page.locator('.war-ui').waitFor({ timeout: 30000 });
   assert.equal(await page.locator('.war-fallback').count(), 0, 'WebGL fallback is not a passing 3D test');
-  await page.waitForFunction(() => window.__war?.renderer.info.render.calls > 0 && window.__war.world.time > 0, null, { timeout: 30000 });
-  // Freeze simulation after a real frame so recruiting and save assertions are deterministic.
+  try {
+    await page.waitForFunction(() => window.__war?.renderer.info.render.calls > 0 && window.__war.world.time >= 0.1, null, { timeout: 30000 });
+  } catch (cause) {
+    const diagnostics = await page.evaluate(() => {
+      const war = window.__war;
+      return {
+        hasBattle: Boolean(document.querySelector('.war-ui')),
+        hasFallback: Boolean(document.querySelector('.war-fallback')),
+        loadingVisible: Boolean(document.querySelector('.game-loading')),
+        renderCalls: war?.renderer?.info?.render?.calls ?? null,
+        worldTime: war?.world?.time ?? null,
+        contextLost: war?.renderer?.getContext()?.isContextLost?.() ?? null,
+      };
+    }).catch(() => ({ pageUnresponsive: true }));
+    throw new Error(`War startup stalled: ${JSON.stringify(diagnostics)}`, { cause });
+  }
+  // Campaigns open immediately in strategy mode: no parachute cinematic.
   await page.evaluate(() => {
-    window.__war.skipDrop();
-    document.querySelector('#adventure-strategy')?.click();
+    if (document.querySelector('.adventure-dropping')) throw new Error('Parachute intro should be gone');
     window.__war.setPaused(true);
   });
   return page.evaluate(() => {
@@ -137,14 +151,14 @@ try {
       await assertElementFits(page, '.game-dialog', result, 'settings');
       for (const quality of ['low', 'high', initialQuality]) {
         await page.locator('#menu-quality').selectOption(quality);
-        await page.waitForFunction(() => document.querySelector('#landing-preview')?.dataset.preview === 'ready');
-        assert.equal(await page.locator('#landing-preview canvas').count(), 1, 'Quality changes must retain exactly one preview canvas');
+        assert.equal(await page.locator('#landing-preview canvas').count(), 0, 'Landing must not allocate a second WebGL context');
         assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('waldo.preferences.v1')).quality), quality);
       }
       await page.locator('#menu-sound').uncheck(); await page.locator('#menu-motion').check(); await page.locator('.dialog-cancel').click();
       await page.locator('#difficulty-easy').click(); assert.equal(await page.locator('#difficulty-easy').getAttribute('aria-pressed'), 'true');
       await capture(page, `${name}-menu`); await page.locator('#start-grand').click();
       await stage('WebGL startup');
+      await page.locator('.game-loading, .war-ui').first().waitFor({ timeout: 10000 });
       result.gpu = await waitForBattle(page);
       assert.ok(result.gpu.calls > 0 && result.gpu.triangles > 0 && !result.gpu.contextLost, '3D frame not rendered');
       assert.equal(result.gpu.difficulty, 'easy');
@@ -162,6 +176,18 @@ try {
       await page.waitForFunction(() => /^\d+ FPS$/.test(document.querySelector('#render-fps')?.textContent ?? ''));
       result.fps = await page.locator('#render-fps').innerText();
       await stage('economy, army and minimap');
+      // Verify the fullscreen base dialog stays reachable on narrow/short screens.
+      await page.locator('#open-base').click();
+      await page.locator('.base-window').waitFor({ state: 'visible' });
+      await assertElementFits(page, '.base-window', result, 'base manager');
+      await page.keyboard.press('Shift+Tab');
+      assert.ok(await page.locator('[data-base-relocate]').evaluate(el => el === document.activeElement),
+        'Shift+Tab must wrap to the last visible base control');
+      await page.keyboard.press('Tab');
+      assert.ok(await page.locator('.base-close').evaluate(el => el === document.activeElement),
+        'Tab must wrap back to the base close button');
+      await page.keyboard.press('Escape');
+      await page.locator('.base-manager').waitFor({ state: 'hidden' });
       await page.locator('#build-mine').click(); assert.equal((await snapshot(page)).mine, 4);
       await page.locator('#policy-growth').click(); assert.equal(await page.locator('#policy-growth').getAttribute('aria-pressed'), 'true');
       await page.locator('#tab-army').click(); assert.equal(await page.locator('#tab-army').getAttribute('aria-selected'), 'true');
@@ -276,6 +302,7 @@ try {
       const career = await page.evaluate(() => JSON.parse(localStorage.getItem('waldo.career.v1')));
       assert.equal(career.matches, 1); assert.equal(career.wins, 1);
       await page.locator('#again').click(); await waitForBattle(page);
+      await page.locator('.game-loading').waitFor({ state: 'hidden', timeout: 15000 });
       assert.equal((await snapshot(page)).difficulty, 'easy'); assert.equal(await page.locator('.result-panel').count(), 0);
       assert.deepEqual(result.pageErrors, [], 'Uncaught browser errors'); assert.deepEqual(result.consoleErrors, [], 'Browser console errors');
       result.status = 'passed';
@@ -295,6 +322,10 @@ try {
   grandPage.on('pageerror', error => { grandResult.error = error.message; });
   try {
     await grandPage.goto(origin, { waitUntil: 'domcontentloaded' });
+    await grandPage.locator('#preferences').click();
+    await grandPage.locator('#menu-quality').selectOption('high');
+    await grandPage.locator('#menu-sound').uncheck();
+    await grandPage.locator('.dialog-cancel').click();
     await grandPage.locator('#start-grand').click();
     const gpu = await waitForBattle(grandPage);
     const armies = await grandPage.evaluate(() => {

@@ -129,6 +129,35 @@ afterEach(() => {
 });
 
 describe('battle UI through real player actions', () => {
+  it('keeps keyboard focus inside base management and restores it after closing', () => {
+    openWar(vi.fn(), true);
+    const opener = button('#open-base');
+    opener.focus();
+    opener.click();
+    const close = button('.base-close');
+    expect(document.activeElement).toBe(close);
+    key(close, 'Tab', { shiftKey: true });
+    expect(document.activeElement).toBe(button('[data-base-relocate]'));
+    key(button('[data-base-relocate]'), 'Tab');
+    expect(document.activeElement).toBe(close);
+    key(close, 'Escape');
+    expect(element('.base-manager').hidden).toBe(true);
+    expect(document.activeElement).toBe(opener);
+
+    opener.click();
+    click('[data-base-slot="6"]');
+    // The interior initially focuses its back button; move to the modal boundary
+    // before checking that Shift+Tab wraps to its final visible action.
+    close.focus();
+    key(close, 'Tab', { shiftKey: true });
+    expect(document.activeElement).toBe(button('.interior-action[data-interior-command="service"]'));
+    key(button('.interior-action[data-interior-command="service"]'), 'Tab');
+    expect(document.activeElement).toBe(close);
+    key(close, 'Escape');
+    key(close, 'Escape');
+    expect(document.activeElement).toBe(opener);
+  });
+
   it('opens the base command center and constructs a real building in a selected plot',()=>{
     openWar(vi.fn(),true);
     const w=game().world;
@@ -452,6 +481,17 @@ describe('battle UI through real player actions', () => {
     completeVictory();
     const stored = loadWar();
     expect(stored === null || stored.over || !stored.factions[0].alive).toBe(true);
+  });
+
+  it('starts simulation when the first animation frame predates the initialization clock', () => {
+    now = 10000;
+    openWar(vi.fn(), { forceNew: true, difficulty: 'hard' });
+    // A queued desktop frame may predate performance.now() during expensive setup.
+    now = 9000;
+    advanceFrames(1, 0);
+    advanceFrames(4);
+    expect(game().world.time).toBeGreaterThan(0);
+    expect(game().world.factions.every(faction => faction.alive)).toBe(true);
   });
 
   it('restarts at the same difficulty without exiting to the menu or duplicating loops', () => {

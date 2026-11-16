@@ -18,6 +18,7 @@ export interface BaseManager {
 export function createBaseManager(parent:HTMLElement,w:War,onChange:(message:string)=>void):BaseManager {
   let tab:'build'|'generals'='build', selected:Upgrade='mine';
   let relocating=false, movingSlot:number|null=null;
+  let returnFocus:HTMLElement|null=null;
   const root=document.createElement('section');
   root.className='base-manager';root.hidden=true;
   root.setAttribute('aria-label','왕국 기지 건설과 장군 모집');
@@ -158,15 +159,36 @@ export function createBaseManager(parent:HTMLElement,w:War,onChange:(message:str
     for(const panel of root.querySelectorAll<HTMLElement>('[data-base-panel]'))panel.hidden=interior.isInside()||panel.dataset.basePanel!==tab;
     interior.refresh();
   };
-  const close=()=>{interior.leave();relocating=false;movingSlot=null;root.hidden=true;};
+  const close=()=>{
+    if(root.hidden)return;
+    interior.leave();relocating=false;movingSlot=null;root.hidden=true;
+    if(returnFocus?.isConnected)returnFocus.focus({preventScroll:true});
+    returnFocus=null;
+  };
   const back=()=>{if(interior.isInside()){interior.leave();refresh();one<HTMLButtonElement>('[data-base-slot="'+lastInteriorSlot+'"]')?.focus({preventScroll:true});}else close();};
   const open=(next:'build'|'generals'='build')=>{
     if(w.over||!w.factions[0].alive)return;
+    if(root.hidden)returnFocus=document.activeElement instanceof HTMLElement?document.activeElement:null;
     tab=next;relocating=false;movingSlot=null;interior.leave();root.hidden=false;refresh();
     one<HTMLButtonElement>('button[data-base-close]').focus({preventScroll:true});
   };
   root.addEventListener('keydown',event=>{
     if(event.key==='Escape'){event.preventDefault();back();}
+    if(event.key==='Tab'){
+      // A modal must not let keyboard navigation escape to the live battlefield.
+      // Ignore controls in hidden tabs and interiors as well as disabled actions.
+      const controls=[...root.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), select:not(:disabled), a[href], [tabindex="0"]',
+      )].filter(node=>!node.closest('[hidden]'));
+      const first=controls[0],last=controls.at(-1);
+      if(first&&last){
+        if(event.shiftKey&&(document.activeElement===first||!root.contains(document.activeElement))){
+          event.preventDefault();last.focus({preventScroll:true});
+        }else if(!event.shiftKey&&(document.activeElement===last||!root.contains(document.activeElement))){
+          event.preventDefault();first.focus({preventScroll:true});
+        }
+      }
+    }
     // Do not send gameplay hotkeys to the 3D battle while navigating the base.
     event.stopPropagation();
   });

@@ -16,7 +16,7 @@
 .panel-footer .render-performance{flex:0 0 auto;white-space:nowrap;font-variant-numeric:tabular-nums;font-size:10px;color:#a4b893}.panel-footer .text-button{flex:0 0 auto}
 
 
-/* Direct-control / parachute / battlement HUD. Deliberately separate from the strategy panels. */
+/* Direct-control / battlement HUD. Strategically separate from the kingdom overview. */
 .war-ui [hidden]{display:none!important}
 .adventure-switch{position:absolute;bottom:74px;left:331px;z-index:6}
 .adventure-switch .button{padding:11px 16px;border-radius:7px;box-shadow:0 9px 28px #07181099;font-size:12px}
@@ -39,7 +39,7 @@
 .adventure-pad [data-move="a"]{grid-column:1;grid-row:2}
 .adventure-pad [data-move="s"]{grid-column:2;grid-row:2}
 .adventure-pad [data-move="d"]{grid-column:3;grid-row:2}
-.adventure-dropping .adventure-pad,.adventure-dropping .adventure-crosshair,.adventure-dropping #adventure-fire{display:none!important}
+
 .adventure-active .war-toast{bottom:104px;z-index:12}
 @media(max-width:1020px){.adventure-switch{left:282px}}
 @media(max-width:760px){
@@ -142,4 +142,19 @@ font-size:11px;font-weight:700;letter-spacing:.025em}
 /* Four-digit balances must not shrink the menu hit target to zero on 320px screens. */
 @media(max-width:360px){
   .war-top{gap:4px}.war-brand{flex:0 0 19px;min-width:19px}.resource-strip{gap:4px;min-width:0}.resource{gap:2px}.resource>svg{width:10px;min-width:10px}.war-ui .base-shortcut{width:26px;min-width:26px;height:28px}.war-tools{gap:3px}
+}
+/* A 320px screen cannot fit all 3 resources, the time and all command buttons in one row. */
+@media(max-width:360px){
+  .war-top .battle-time{display:none}
+  .war-top .resource-strip{min-width:0;flex-shrink:1}
+  .war-top .war-tools{margin-left:auto;flex-shrink:0}
+}
+
+/* Mobile direct-play access belongs inside the bottom panel: the former
+   floating button covered Save and other panel actions on portrait phones. */
+.mobile-direct-button{display:none!important}
+@media(max-width:760px){
+  .war-ui:not(.adventure-active) .adventure-switch{display:none!important}
+  .war-ui .panel-footer .mobile-direct-button{display:inline-flex!important;white-space:nowrap;font-size:10px;color:#e6cf94}
+  .war-ui .panel-footer .render-performance{display:none}
 }

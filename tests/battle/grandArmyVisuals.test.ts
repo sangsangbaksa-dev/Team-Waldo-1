@@ -36,4 +36,20 @@ describe('large-army visual LOD', () => {
     expect(after).toBeLessThan(before);
     expect(war.units).toHaveLength(599);
   });
+
+  it('keeps marching legs at rest when reduced motion is enabled while units still move', () => {
+    const war = createWar({ grandBattle: true }), parent = new THREE.Group();
+    const visual = createGrandArmyVisuals(parent, war);
+    const infantry = war.units.find(u => u.owner === 0 && u.kind === 'infantry')!;
+    const leg = parent.children.find((mesh): mesh is THREE.InstancedMesh => mesh instanceof THREE.InstancedMesh &&
+      mesh.count > 0 && mesh.geometry instanceof THREE.BoxGeometry && mesh.geometry.parameters.width === .49)!;
+    const matrix = new THREE.Matrix4(), position = new THREE.Vector3();
+    visual.setReducedMotion(true);
+    infantry.x += 3; war.time = 2; visual.update(); leg.getMatrixAt(0, matrix); position.setFromMatrixPosition(matrix);
+    expect(position.y).toBeCloseTo(.42);
+    expect(position.x).toBeCloseTo(infantry.x);
+    visual.setReducedMotion(false);
+    infantry.x += 3; war.time = 3; visual.update(); leg.getMatrixAt(0, matrix); position.setFromMatrixPosition(matrix);
+    expect(position.y).toBeGreaterThan(.42);
+  });
 });

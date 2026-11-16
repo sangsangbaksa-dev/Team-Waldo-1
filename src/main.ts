@@ -7,7 +7,6 @@ import { icon } from './ui/icons';
 import { showDialog } from './ui/dialog';
 
 const app = document.querySelector<HTMLDivElement>('#game')!;
-let disposePreview: (() => void) | undefined;
 let generation = 0;
 let selectedDifficulty: Difficulty = 'normal';
 let selectedMode: 'economy' | 'conquest' = 'economy';
@@ -15,9 +14,9 @@ const campaignDescription = (difficulty: Difficulty) => `경영 원정 · AI 생
 const clock = (time: number) => `${Math.floor(time / 60)}분 ${Math.floor(time % 60)}초`;
 
 function renderMenu(): void {
-  generation++; const currentGeneration = generation; disposePreview?.(); disposePreview = undefined;
+  generation++;
   const modeDescription = () => selectedMode === 'economy' ? campaignDescription(selectedDifficulty) : DIFFICULTIES[selectedDifficulty].description;
-  const saved = loadWar(), resumable = saved && saved.factions[0].alive && !saved.over;
+  const saved = loadWar(), resumable = saved && saved.grandBattle === true && saved.factions[0].alive && !saved.over;
   const career = readCareer();
   let launching = false;
   app.hidden = false;
@@ -28,49 +27,63 @@ function renderMenu(): void {
         <a class="wordmark" href="#" aria-label="Waldo 왕국 전쟁 홈"><span class="brand-seal">${icon('crown', 24)}</span><span>WALDO<small>KINGDOMS AT WAR</small></span></a>
         <nav class="header-nav" aria-label="메뉴"><span class="offline-status"><i></i>1인 플레이 · AI 대전</span><button id="guide" class="nav-button">플레이 가이드 ${icon('help', 16)}</button><button id="preferences" class="icon-button" aria-label="게임 설정">${icon('settings', 20)}</button></nav>
       </header>
-      <div class="landing-art" aria-hidden="true"><img src="${import.meta.env.BASE_URL}kingdom-art.svg" alt="" class="kingdom-illustration"><div class="landing-preview" id="landing-preview"></div><div class="art-vignette"></div><div class="art-coordinates"><span>THE EMERALD KINGDOM</span><i></i><small>북서부 영지 · 당신의 이야기가 시작되는 곳</small></div></div>
+      <div class="landing-art" aria-hidden="true"><img src="${import.meta.env.BASE_URL}kingdom-art.svg" alt="" class="kingdom-illustration"><div class="art-vignette"></div><div class="art-coordinates"><span>THE EMERALD KINGDOM</span><i></i><small>북서부 영지 · 당신의 이야기가 시작되는 곳</small></div></div>
       <section class="hero-content">
         <div class="edition"><span></span>THE STRATEGY COLLECTION <b>01</b></div>
         <h1>작은 영지에서,<br><em>번영하는 제국으로.</em></h1>
         <p class="hero-description">금광과 농장에 일꾼을 배치하고 도시를 키우세요.<br>수출과 계약으로 부를 쌓고, 군대로 교역로를 지키세요.<br>경제 패권 또는 정복으로 왕국의 주인이 되세요.</p>
         <div class="game-facts"><div><b>12</b><span>시작 일꾼</span></div><div><b>9</b><span>전략 거점</span></div><div><b>3</b><span>납품 계약</span></div></div>
-        <div class="start-section"><div class="campaign-picker" role="group" aria-label="원정 모드"><button id="mode-economy" data-mode="economy" aria-pressed="${selectedMode === 'economy'}"><b>경영 원정</b><small>도시·교역·경제 승리 · 폭풍 15–18분</small></button><button id="mode-conquest" data-mode="conquest" aria-pressed="${selectedMode === 'conquest'}"><b>단기 정복전</b><small>적 본부 함락 · 폭풍 2분 10초–3분</small></button></div><p id="mode-goal" class="mode-goal"></p><div class="section-heading"><h2>원정 난이도</h2><span>원정별 규칙을 확인하세요</span></div><div class="difficulty-picker" role="group" aria-label="원정 난이도">${(['easy', 'normal', 'hard'] as Difficulty[]).map((key, i) => `<button id="difficulty-${key}" data-difficulty="${key}" class="difficulty-option${key === selectedDifficulty ? ' selected' : ''}" aria-pressed="${key === selectedDifficulty}"><span>${['I', 'II', 'III'][i]}</span><b>${DIFFICULTIES[key].label}</b><small>${['전략을 배우는 시간', '균형 잡힌 도전', '노련한 지휘관에게'][i]}</small></button>`).join('')}</div><p id="difficulty-description" class="difficulty-description">${modeDescription()}</p><div class="launch-actions"><button id="start-war" class="button primary launch-button">${icon('sword', 21)}경영 원정 시작<span>${icon('arrow', 20)}</span></button><button id="start-grand" class="button grand-launch-button" aria-label="대규모 전쟁 시작, 아군 100명 대 적군 500명">⚔ 대규모 전쟁 <strong>100 VS 500</strong><small>병력 600명 동시 등장 · 군단 전투</small></button>${resumable ? `<button id="continue-war" class="button continue-button">${icon('play', 19)}이어하기<small>${DIFFICULTIES[saved.difficulty].label} · ${clock(saved.time)}</small></button>` : ''}</div><p class="play-note">설치 없이 플레이 · 15초마다 자동 저장 · 키보드와 터치 지원</p></div>
+        <div class="start-section"><div class="campaign-picker" role="group" aria-label="원정 모드"><button id="mode-economy" data-mode="economy" aria-pressed="${selectedMode === 'economy'}"><b>경영 원정</b><small>100 대 500 · 경제 승리 · 폭풍 15–18분</small></button><button id="mode-conquest" data-mode="conquest" aria-pressed="${selectedMode === 'conquest'}"><b>정복 원정</b><small>100 대 500 · 정복 승리 · 폭풍 4분 30초–7분</small></button></div><p id="mode-goal" class="mode-goal"></p><div class="section-heading"><h2>원정 난이도</h2><span>원정별 규칙을 확인하세요</span></div><div class="difficulty-picker" role="group" aria-label="원정 난이도">${(['easy', 'normal', 'hard'] as Difficulty[]).map((key, i) => `<button id="difficulty-${key}" data-difficulty="${key}" class="difficulty-option${key === selectedDifficulty ? ' selected' : ''}" aria-pressed="${key === selectedDifficulty}"><span>${['I', 'II', 'III'][i]}</span><b>${DIFFICULTIES[key].label}</b><small>${['전략을 배우는 시간', '균형 잡힌 도전', '노련한 지휘관에게'][i]}</small></button>`).join('')}</div><p id="difficulty-description" class="difficulty-description">${modeDescription()}</p><div class="launch-actions"><button id="start-war" class="button primary launch-button" aria-label="대규모 원정 시작, 아군 100명 대 적군 500명">${icon('sword', 21)}경영 원정 시작<span>${icon('arrow', 20)}</span></button>${resumable ? `<button id="continue-war" class="button continue-button">${icon('play', 19)}이어하기<small>${DIFFICULTIES[saved.difficulty].label} · ${clock(saved.time)}</small></button>` : ''}</div><p class="play-note">설치 없이 플레이 · 15초마다 자동 저장 · 키보드와 터치 지원</p></div>
       </section>
       <aside class="campaign-note"><span class="note-line"></span><div><span class="kicker">BUILD. COMMAND. CONQUER.</span><p>왕국의 운명은<br>당신의 선택에 달려 있습니다.</p></div><span class="compass-rose" aria-hidden="true">${icon('target', 38)}</span></aside>
-      <footer class="landing-footer"><span class="footer-credit">TEAM WALDO <i>/</i> KINGDOMS AT WAR</span><div class="career-inline">${career.matches ? `<span>완료한 원정 <b>${career.matches}</b></span><span>승리 <b>${career.wins}</b></span><span>최다 처치 <b>${career.bestKills}</b></span>` : '<span>당신의 첫 번째 왕국을 기다립니다.</span>'}</div><button id="legacy" class="text-button">별도 미니게임 · 서바이벌 ${icon('arrow', 14)}</button></footer>
+      <footer class="landing-footer"><span class="footer-credit">TEAM WALDO <i>/</i> KINGDOMS AT WAR</span><div class="career-inline">${career.matches ? `<span>완료한 원정 <b>${career.matches}</b></span><span>승리 <b>${career.wins}</b></span><span>최다 처치 <b>${career.bestKills}</b></span>` : '<span>당신의 첫 번째 왕국을 기다립니다.</span>'}</div></footer>
     </main>`;
   document.title = 'WALDO · 왕국 전쟁 | 당신의 왕국을 건설하세요';
-  const start = async (resume: boolean, grandBattle = false) => {
+  const start = async (resume: boolean) => {
     if (launching) return; launching = true;
-    const navigation = ++generation; disposePreview?.(); disposePreview = undefined;
-    const button = app.querySelector<HTMLButtonElement>(resume ? '#continue-war' : grandBattle ? '#start-grand' : '#start-war')!;
+    const navigation = ++generation;
+    const button = app.querySelector<HTMLButtonElement>(resume ? '#continue-war' : '#start-war')!;
     app.querySelectorAll<HTMLButtonElement>('button').forEach(b => { b.disabled = true; });
     button.textContent = '전장 준비 중…';
+    const loading = document.createElement('div');
+    loading.className = 'game-loading';
+    loading.setAttribute('role', 'status');
+    loading.setAttribute('aria-live', 'polite');
+    loading.innerHTML = '<span class="game-loading-emblem">♜</span><strong>왕국을 준비하고 있습니다</strong><p>성벽 · 도시 · 병력 600명 구성 중</p><span class="game-loading-progress" aria-hidden="true"></span>';
+    document.body.append(loading);
     try {
+      // Let the loading screen paint before the synchronous Three.js world setup.
+      if (import.meta.env.MODE !== 'test') {
+        await new Promise<void>(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+      }
       const { openWar } = await import('./battle/view');
       if (generation !== navigation) return;
       app.hidden = true;
-      openWar(renderMenu, { forceNew: !resume, difficulty: resume && saved ? saved.difficulty : selectedDifficulty, ...(grandBattle ? {grandBattle:true} : !resume && selectedMode === 'economy' ? {economyCampaign:true} : {}) });
+      openWar(renderMenu, { forceNew: !resume, difficulty: resume && saved ? saved.difficulty : selectedDifficulty, ...(!resume && selectedMode === 'economy' ? {economyCampaign:true} : {}) });
+      requestAnimationFrame(() => requestAnimationFrame(() => loading.remove()));
     } catch {
+      // Do not leave an incomplete full-screen battlefield blocking the retry button.
+      document.querySelector('.war-ui')?.remove();
       renderMenu();
-      showDialog({ title: '전장을 불러오지 못했어요', body: '<p>네트워크 연결을 확인한 뒤 다시 시작해 주세요. 저장한 전투는 변경되지 않았습니다.</p>' });
+      showDialog({ title: '전장을 불러오지 못했어요', body: '<p>전장을 초기화하지 못했습니다. 그래픽 품질을 낮음으로 바꾸거나 브라우저를 새로고침해 다시 시도해 주세요. 저장 내용은 변경되지 않았습니다.</p>' });
+    } finally {
+      if (generation !== navigation || !document.querySelector('.war-ui')) loading.remove();
     }
   };
-  const launchNew = (grandBattle: boolean) => {
-    if (resumable) showDialog({ eyebrow: 'NEW EXPEDITION', title: grandBattle ? '600명 규모의 전쟁을 시작할까요?' : '새로운 원정을 시작할까요?', body: '<p>새 원정이 자동 저장되면 이전 전투의 저장 내용을 덮어씁니다. 이전 전투를 계속하려면 이어하기를 선택하세요.</p>', confirm: '새 원정 시작', cancel: '돌아가기', onConfirm: () => { void start(false, grandBattle); } });
-    else void start(false, grandBattle);
+  const launchNew = () => {
+    if (resumable) showDialog({ eyebrow: 'NEW EXPEDITION', title: '600명 규모의 원정을 시작할까요?', body: '<p>새 원정이 자동 저장되면 이전 전투의 저장 내용을 덮어씁니다. 이전 전투를 계속하려면 이어하기를 선택하세요.</p>', confirm: '새 원정 시작', cancel: '돌아가기', onConfirm: () => { void start(false); } });
+    else void start(false);
   };
   const updateMode = () => {
     app.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.mode === selectedMode)));
-    app.querySelector('#mode-goal')!.textContent = selectedMode === 'economy' ? '경제 승리: 도시 Lv.4 · 계약 3건 · 평판 80 · 거점 3개. 적 본부를 모두 함락해도 승리합니다.' : '정복 승리: AI 왕국의 본부 3곳을 모두 함락하세요. 짧은 폭풍 제한 시간 안에 병력을 지휘하는 원정입니다.';
+    app.querySelector('#mode-goal')!.textContent = selectedMode === 'economy' ? '경제 승리: 도시 Lv.4 · 계약 3건 · 평판 80 · 거점 3개. 적 본부를 모두 함락해도 승리합니다.' : '정복 승리: AI 왕국의 본부 3곳을 모두 함락하세요. 폭풍이 오기 전에 병력을 지휘하고 영토를 확보하세요.';
     app.querySelector('#difficulty-description')!.textContent = modeDescription();
     const launch = app.querySelector<HTMLButtonElement>('#start-war')!;
-    launch.innerHTML = `${icon(selectedMode === 'economy' ? 'home' : 'sword', 21)}${selectedMode === 'economy' ? '경영 원정 시작' : '정복전 시작'}<span>${icon('arrow', 20)}</span>`;
+    launch.innerHTML = `${icon(selectedMode === 'economy' ? 'home' : 'sword', 21)}${selectedMode === 'economy' ? '경영 원정 시작' : '정복전 시작'} <strong>100 VS 500</strong><span>${icon('arrow', 20)}</span>`;
   };
   app.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(button => { button.onclick = () => { selectedMode = button.dataset.mode as 'economy' | 'conquest'; updateMode(); }; });
   updateMode();
-  app.querySelector<HTMLButtonElement>('#start-war')!.onclick = () => launchNew(false);
-  app.querySelector<HTMLButtonElement>('#start-grand')!.onclick = () => launchNew(true);
+  app.querySelector<HTMLButtonElement>('#start-war')!.onclick = () => launchNew();
   app.querySelector<HTMLButtonElement>('#continue-war')?.addEventListener('click', () => { void start(true); });
   app.querySelectorAll<HTMLButtonElement>('[data-difficulty]').forEach(button => {
     button.onclick = () => {
@@ -79,7 +92,7 @@ function renderMenu(): void {
       app.querySelector('#difficulty-description')!.textContent = modeDescription();
     };
   });
-  app.querySelector<HTMLButtonElement>('#guide')!.onclick = () => showDialog({ eyebrow: 'FIELD GUIDE', title: '첫 원정을 위한 네 가지 조언', body: `<div class="guide-steps"><article><span>01</span><div><b>먼저, 튼튼한 경제를.</b><p>금광·농장 일꾼 6명씩으로 시작합니다. 시민을 모집해 배치하고, 도시를 확장하세요. 감세는 행복도, 중과세는 세수를 늘립니다.</p></div></article><article><span>02</span><div><b>생산에서 교역으로.</b><p>시장 건설 후 상인 1명을 배치하면 수출이 열립니다. 계약은 보증금을 내고 수락한 뒤 기한 안에 직접 납품하세요.</p></div></article><article><span>03</span><div><b>서로 다른 병종을 조합하세요.</b><p>병영 Lv.2에서 궁병과 연구, Lv.3에서 중장병과 기병을 해금합니다. 수비대는 본부를 지킵니다.</p></div></article><article><span>04</span><div><b>경제 패권을 달성하세요.</b><p>경영 원정은 도시 Lv.4·계약 3건·평판 80·거점 3개로 승리합니다. 정복 승리도 가능합니다. 폭풍은 보통 15분, 입문 18분부터 시작합니다.</p></div></article></div><p class="dialog-tip">온라인 멀티플레이가 아닌 1명 대 AI 3개 세력의 실시간 전략 게임입니다. 저장 내용은 현재 브라우저와 사이트 주소에만 보관됩니다.</p>`, cancel: '이제 시작해 볼게요' });
+  app.querySelector<HTMLButtonElement>('#guide')!.onclick = () => showDialog({ eyebrow: 'FIELD GUIDE', title: '첫 원정을 위한 네 가지 조언', body: `<div class="guide-steps"><article><span>01</span><div><b>먼저, 튼튼한 경제를.</b><p>금광·농장 일꾼 6명씩으로 시작합니다. 시민을 모집해 배치하고, 도시를 확장하세요. 감세는 행복도, 중과세는 세수를 늘립니다.</p></div></article><article><span>02</span><div><b>생산에서 교역으로.</b><p>시장 건설 후 상인 1명을 배치하면 수출이 열립니다. 계약은 보증금을 내고 수락한 뒤 기한 안에 직접 납품하세요.</p></div></article><article><span>03</span><div><b>서로 다른 병종을 조합하세요.</b><p>시작 병영 Lv.3에서 모든 병종과 연구를 사용할 수 있습니다. 100명의 병력을 나누고 수비대를 남겨 본부를 지키세요.</p></div></article><article><span>04</span><div><b>경제 패권을 달성하세요.</b><p>경영 원정은 도시 Lv.4·계약 3건·평판 80·거점 3개로 승리합니다. 정복 승리도 가능합니다. 폭풍은 보통 15분, 입문 18분부터 시작합니다.</p></div></article></div><p class="dialog-tip">온라인 멀티플레이가 아닌 1명 대 AI 3개 세력의 실시간 전략 게임입니다. 저장 내용은 현재 브라우저와 사이트 주소에만 보관됩니다.</p>`, cancel: '이제 시작해 볼게요' });
   app.querySelector<HTMLButtonElement>('#preferences')!.onclick = () => {
     const p = readPreferences();
     showDialog({ eyebrow: 'PREFERENCES', title: '나에게 맞는 전장', body: '<div class="settings-grid"><label>그래픽 품질<select id="menu-quality"><option value="high">높음 · 그림자와 효과</option><option value="standard">보통 · 성능 우선</option><option value="low">낮음 · 저사양 기기</option></select></label><label>효과음<input id="menu-sound" type="checkbox"></label><label>움직임 줄이기<input id="menu-motion" type="checkbox"></label></div><p class="dialog-tip">게임에는 WebGL을 지원하는 브라우저가 필요합니다. 모바일에서는 가로 화면을 권장합니다.</p>', cancel: '설정 완료' });
@@ -88,18 +101,7 @@ function renderMenu(): void {
     const update = () => { p.quality = quality.value === 'high' ? 'high' : quality.value === 'low' ? 'low' : 'standard'; p.sound = sound.checked; p.reducedMotion = motion.checked; writePreferences(p); };
     quality.onchange = update; sound.onchange = update; motion.onchange = update;
   };
-  app.querySelector<HTMLButtonElement>('#legacy')!.onclick = async () => {
-    if (launching) return; launching = true;
-    const navigation = ++generation; disposePreview?.(); disposePreview = undefined;
-    app.querySelectorAll<HTMLButtonElement>('button').forEach(button => { button.disabled = true; });
-    app.querySelector<HTMLButtonElement>('#legacy')!.textContent = '클래식 모드 준비 중…';
-    try { const { startLegacy } = await import('./legacy'); if (generation === navigation) startLegacy(app, renderMenu); }
-    catch { renderMenu(); showDialog({ title: '클래식 모드를 불러오지 못했어요', body: '<p>네트워크 연결을 확인하고 다시 시도해 주세요.</p>' }); }
-  };
-  // The menu is fully useful before the optional decorative 3D chunk loads.
-  void import('./battle/preview').then(({ createLandingPreview }) => {
-    const mount = app.querySelector<HTMLElement>('#landing-preview');
-    if (generation === currentGeneration && mount?.isConnected) disposePreview = createLandingPreview(mount);
-  }).catch(() => undefined);
+  // The original menu illustration replaces the expensive decorative 3D preview.
+  // A second WebGL renderer used to compete with the actual battle on slow GPUs.
 }
 renderMenu();

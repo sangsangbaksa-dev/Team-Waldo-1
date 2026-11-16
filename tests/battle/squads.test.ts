@@ -50,6 +50,17 @@ describe('independent army groups', () => {
     expect(squadUnits(war, 0)).toHaveLength(4);
   });
 
+  it('rejects invalid squad IDs without leaving uncommandable troops or corrupting saves', () => {
+    const war = createWar();
+    const before = encodeWar(war);
+    expect(assignSquad(war, 0, 2)).toBe(0);
+    expect(assignSquad(war, 3 as never, 2)).toBe(0);
+    expect(assignSquad(war, -1 as never, 2)).toBe(0);
+    expect(dismissSquad(war, 3 as never)).toBe(0);
+    expect(dismissSquad(war, -1 as never)).toBe(0);
+    expect(encodeWar(war)).toBe(before);
+  });
+
   it('keeps old saved matches readable without requiring new squad fields', () => {
     const war = createWar();
     for (const unit of war.units) delete unit.squad;

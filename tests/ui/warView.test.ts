@@ -52,6 +52,11 @@ vi.mock('../../src/battle/audio', () => ({
     dispose = vi.fn();
   },
 }));
+vi.mock('../../src/battle/renderPipeline', () => ({
+  createRenderPipeline: (renderer: { render: () => void }) => ({
+    setEnabled: vi.fn(), resize: vi.fn(), dispose: vi.fn(), render: () => renderer.render(),
+  }),
+}));
 
 interface GameHandle {
   world: War;
@@ -134,13 +139,13 @@ describe('battle UI through real player actions', () => {
     const w = game().world; w.factions[0].gold = 1000; w.factions[0].food = 1000;
     w.factions.slice(1).forEach(f => { f.aiTimer = 99999; }); game().ui();
     click('#tab-army'); click('#squad-infantry');
-    expect(element('#army-count').textContent).toBe('4 +3 / 18');
-    expect(element('#training-label').textContent).toContain('3명 훈련 중');
+    expect(element('#army-count').textContent).toBe('100 +25 / 400');
+    expect(element('#training-label').textContent).toContain('25명 훈련 중');
     for (let i = 0; i < 40; i++) stepWar(w, .1); game().ui();
-    expect(element('#army-count').textContent).toBe('5 +2 / 18');
+    expect(element('#army-count').textContent).toBe('101 +24 / 400');
     const gold = w.factions[0].gold; click('#cancel-training-0');
-    expect(w.factions[0].gold).toBe(gold + 50);
-    expect(element('#army-count').textContent).toBe('5 / 18');
+    expect(w.factions[0].gold).toBe(gold + 600);
+    expect(element('#army-count').textContent).toBe('101 / 400');
     expect(w.stats[0].trained).toBe(1);
   });
 
@@ -178,7 +183,7 @@ describe('battle UI through real player actions', () => {
     click('#save'); expect(loadWar()?.economy[0]).toEqual(e);
     click('#tab-city'); click('#civil-build-city');
     expect(e.city).toBe(1); advanceEconomy(25);
-    expect(e.city).toBe(2); expect(element('#army-count').textContent).toBe('4 / 24');
+    expect(e.city).toBe(2); expect(element('#army-count').textContent).toBe('100 / 400');
   });
 
   it('announces economic victory accurately and retries the management campaign', () => {
@@ -193,6 +198,35 @@ describe('battle UI through real player actions', () => {
     expect(game().world.economy[0].completed).toBe(0);
   });
 
+  it('keeps keyboard focus inside base management and restores it after closing', () => {
+    openWar(vi.fn(), true);
+    const opener = button('#open-base');
+    opener.focus();
+    opener.click();
+    const close = button('.base-close');
+    expect(document.activeElement).toBe(close);
+    key(close, 'Tab', { shiftKey: true });
+    expect(document.activeElement).toBe(button('[data-base-relocate]'));
+    key(button('[data-base-relocate]'), 'Tab');
+    expect(document.activeElement).toBe(close);
+    key(close, 'Escape');
+    expect(element('.base-manager').hidden).toBe(true);
+    expect(document.activeElement).toBe(opener);
+
+    opener.click();
+    click('[data-base-slot="6"]');
+    // The interior initially focuses its back button; move to the modal boundary
+    // before checking that Shift+Tab wraps to its final visible action.
+    close.focus();
+    key(close, 'Tab', { shiftKey: true });
+    expect(document.activeElement).toBe(button('.interior-action[data-interior-command="service"]'));
+    key(button('.interior-action[data-interior-command="service"]'), 'Tab');
+    expect(document.activeElement).toBe(close);
+    key(close, 'Escape');
+    key(close, 'Escape');
+    expect(document.activeElement).toBe(opener);
+  });
+
   it('opens the base command center and constructs a real building in a selected plot',()=>{
     openWar(vi.fn(),true);
     const w=game().world;
@@ -200,13 +234,13 @@ describe('battle UI through real player actions', () => {
     expect(element('.base-manager').hidden).toBe(false);
     expect(element('[data-base-panel="build"]').hidden).toBe(false);
     click('[data-base-kind="mine"]');
-    click('[data-base-slot="0"]');
-    expect(w.factions[0].mine).toBe(2);
-    expect(w.factions[0].gold).toBe(80);
-    expect(w.factions[0].food).toBe(80);
-    expect(w.base?.structures.some(s=>s.kind==='mine'&&s.slot===0)).toBe(true);
-    expect(element('[data-base-slot="0"]').textContent).toContain('금광');
-    expect(loadWar()?.base?.structures.some(s=>s.slot===0)).toBe(true);
+    click('[data-base-slot="20"]');
+    expect(w.factions[0].mine).toBe(4);
+    expect(w.factions[0].gold).toBe(8820);
+    expect(w.factions[0].food).toBe(7940);
+    expect(w.base?.structures.some(s=>s.kind==='mine'&&s.slot===20)).toBe(true);
+    expect(element('[data-base-slot="20"]').textContent).toContain('금광');
+    expect(loadWar()?.base?.structures.some(s=>s.slot===20)).toBe(true);
     click('.base-close');
     expect(element('.base-manager').hidden).toBe(true);
   });
@@ -226,11 +260,11 @@ describe('battle UI through real player actions', () => {
     expect(w.time).toBe(time);
     const goldBefore = w.factions[0].gold, foodBefore = w.factions[0].food;
     click('[data-interior-command="upgrade"]');
-    expect(w.factions[0].mine).toBe(2);
-    expect(w.factions[0].gold).toBeCloseTo(goldBefore - 60);
-    expect(w.factions[0].food).toBeCloseTo(foodBefore - 20);
-    expect(element('#interior-level').textContent).toBe('Lv.2 / 4');
-    expect(loadWar()?.factions[0].mine).toBe(2);
+    expect(w.factions[0].mine).toBe(4);
+    expect(w.factions[0].gold).toBeCloseTo(goldBefore - 180);
+    expect(w.factions[0].food).toBeCloseTo(foodBefore - 60);
+    expect(element('#interior-level').textContent).toBe('Lv.4 / 4');
+    expect(loadWar()?.factions[0].mine).toBe(4);
     key(button('[data-interior-back]'), 'Escape');
     expect(element('.base-interior').hidden).toBe(true);
     expect(element('[data-base-panel="build"]').hidden).toBe(false);
@@ -247,14 +281,14 @@ describe('battle UI through real player actions', () => {
     click('#open-base');
     click('[data-base-slot="16"]');
     expect(element('#interior-title').textContent).toBe('왕립 병영');
-    expect(button('.interior-action[data-interior-command="special"]').disabled).toBe(true);
+    expect(button('.interior-action[data-interior-command="special"]').disabled).toBe(false);
     click('.interior-action[data-interior-command="upgrade"]');
-    expect(w.factions[0].barracks).toBe(2);
+    expect(w.factions[0].barracks).toBe(4);
     click('.interior-action[data-interior-command="special"]');
     expect(w.factions[0].research.weapons).toBe(1);
     click('.interior-action[data-interior-command="service"]');
-    expect(w.units.filter(u => u.owner === 0)).toHaveLength(7);
-    expect(loadWar()?.stats[0].trained).toBe(3);
+    expect(w.units.filter(u => u.owner === 0)).toHaveLength(125);
+    expect(loadWar()?.stats[0].trained).toBe(25);
     click('[data-interior-back]');
     expect(element('.base-interior').hidden).toBe(true);
     expect(element('[data-base-slot="16"]').textContent).toContain('병영');
@@ -273,7 +307,7 @@ describe('battle UI through real player actions', () => {
     expect(w.factions[0].gold).toBe(oldIncome-75);
     expect(w.factions[0].food).toBe(oldFood-30);
     expect(element('#interior-workshop-level').textContent).toBe('Lv.1 / 3');
-    expect(button('.interior-action[data-interior-command="workshop"]').disabled).toBe(true);
+    expect(button('.interior-action[data-interior-command="workshop"]').disabled).toBe(false);
     expect(loadWar()?.base?.workshopLevels?.mine).toBe(1);
   });
 
@@ -301,10 +335,10 @@ describe('battle UI through real player actions', () => {
     expect(button('[data-base-relocate]').getAttribute('aria-pressed')).toBe('true');
     click('[data-base-slot="6"]');
     expect(element('[data-base-slot="6"]').classList.contains('relocating-from')).toBe(true);
-    click('[data-base-slot="0"]');
-    expect(w.base?.structures.find(s=>s.kind==='mine')?.slot).toBe(0);
+    click('[data-base-slot="20"]');
+    expect(w.base?.structures.find(s=>s.kind==='mine')?.slot).toBe(20);
     expect(w.factions[0].gold).toBe(oldGold);
-    expect(loadWar()?.base?.structures.some(s=>s.kind==='mine'&&s.slot===0)).toBe(true);
+    expect(loadWar()?.base?.structures.some(s=>s.kind==='mine'&&s.slot===20)).toBe(true);
     expect(button('[data-base-relocate]').getAttribute('aria-pressed')).toBe('false');
   });
 
@@ -339,7 +373,7 @@ describe('battle UI through real player actions', () => {
     click('[data-squad-select="1"]');
     expect(button('#squad-assign').disabled).toBe(false);
     click('#squad-assign');
-    expect(game().world.units.filter(u => u.owner === 0 && u.squad === 1)).toHaveLength(3);
+    expect(game().world.units.filter(u => u.owner === 0 && u.squad === 1)).toHaveLength(25);
     click('#outpost-5');
     expect(game().world.squadOrders?.[1]).toEqual({ kind: 'outpost', id: 5 });
     expect(game().world.factions[0].rally).toBeNull();
@@ -370,42 +404,42 @@ describe('battle UI through real player actions', () => {
     world.factions[1].target = null;
     game().ui();
     expect(element('.mission-card').classList.contains('under-attack')).toBe(false);
-    expect(element('#mission-title').textContent).toBe('풍요로운 영지의 시작');
+    expect(element('#mission-title').textContent).toBe('첫 번째 깃발을 세우세요');
   });
 
-  it('trains troops, charges displayed resources, and disables unaffordable or locked training', () => {
+  it('trains 25 soldiers at a time and prevents unaffordable mass recruitment', () => {
     openWar(vi.fn(), true); click('#tab-army');
-    expect(button('#train-archer').disabled).toBe(true);
+    expect(button('#train-archer').disabled).toBe(false);
     click('#train-infantry');
-    expect(element('#army-count').textContent).toBe('5 / 18');
-    expect(element('#gold').textContent).toBe('115');
-    expect(element('#food').textContent).toBe('80');
+    expect(element('#army-count').textContent).toBe('101 / 400');
+    expect(element('#gold').textContent).toBe('8,975');
+    expect(element('#food').textContent).toBe('7,980');
     click('#squad-infantry');
-    expect(element('#army-count').textContent).toBe('8 / 18');
+    expect(element('#army-count').textContent).toBe('126 / 400');
+    expect(element('#gold').textContent).toBe('8,350');
+    expect(element('#food').textContent).toBe('7,480');
+    const world=game().world;
+    world.factions[0].gold=0; world.factions[0].food=0;
+    game().ui();
     expect(button('#squad-infantry').disabled).toBe(true);
-    expect(button('#train-infantry').disabled).toBe(false);
-    click('#train-infantry');
-    expect(element('#gold').textContent).toBe('15');
-    expect(element('#food').textContent).toBe('0');
     expect(button('#train-infantry').disabled).toBe(true);
     click('#train-infantry');
-    expect(game().world.units.filter(unit => unit.owner === 0)).toHaveLength(9);
-    expect(game().world.stats[0].trained).toBe(5);
+    expect(world.units.filter(unit => unit.owner === 0)).toHaveLength(126);
+    expect(world.stats[0].trained).toBe(26);
   });
 
-  it('unlocks research through the barracks and applies the purchased improvement', () => {
+  it('starts with a functional research academy and caps weapons research at level three', () => {
     openWar(vi.fn(), true); click('#tab-research');
-    expect(button('#research-weapons').disabled).toBe(true);
-    expect(button('#research-weapons').textContent).toContain('병영 Lv.2 필요');
-    click('#tab-economy'); click('#build-barracks'); click('#tab-research');
     expect(button('#research-weapons').disabled).toBe(false);
-    click('#research-weapons');
-    expect(game().world.factions[0].research.weapons).toBe(1);
-    expect(game().world.factions[0].gold).toBe(0);
-    expect(game().world.factions[0].food).toBe(30);
-    expect(element('#research-summary').textContent).toContain('공격 +12%');
+    for(let i=1;i<=3;i++){
+      click('#research-weapons');
+      expect(game().world.factions[0].research.weapons).toBe(i);
+    }
+    expect(game().world.factions[0].gold).toBe(8520);
+    expect(game().world.factions[0].food).toBe(7700);
+    expect(element('#research-summary').textContent).toContain('공격 +36%');
     expect(button('#research-weapons').disabled).toBe(true);
-    expect(game().world.stats[0].researches).toBe(1);
+    expect(game().world.stats[0].researches).toBe(3);
   });
 
   it('keeps the same focused control while the live HUD refreshes', () => {
@@ -431,7 +465,7 @@ describe('battle UI through real player actions', () => {
 
   it('saves orders and economy, disposes the old battle, and reopens the exact saved state', () => {
     const onExit = vi.fn(); openWar(onExit, { forceNew: true, difficulty: 'hard' });
-    click('#policy-growth'); click('#tab-army'); click('#train-infantry'); click('#reserve-2');
+    click('#policy-growth'); click('#tab-army'); click('#train-infantry'); click('#reserve-25');
     click('#tab-orders'); click('#outpost-5'); advanceFrames(20); click('#save');
     const saved = loadWar(); expect(saved).not.toBeNull();
     const oldWorld = game().world, oldTime = oldWorld.time;

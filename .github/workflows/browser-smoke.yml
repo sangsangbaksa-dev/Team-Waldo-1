@@ -11,7 +11,7 @@ concurrency:
 jobs:
   browser:
     runs-on: ubuntu-24.04
-    timeout-minutes: 18
+    timeout-minutes: 22
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,7 +22,7 @@ jobs:
       - name: Install headless Chromium
         run: npx playwright install --with-deps chromium --only-shell
       - name: Exercise real WebGL on desktop, portrait and landscape
-        timeout-minutes: 12
+        timeout-minutes: 16
         run: npm run test:browser
       - name: Upload screenshots and runtime evidence
         if: always()
@@ -30,5 +30,28 @@ jobs:
         with:
           name: browser-evidence-${{ github.sha }}
           path: browser-artifacts/
+          if-no-files-found: warn
+          retention-days: 7
+  graphics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install headless Chromium
+        run: npx playwright install --with-deps chromium --only-shell
+      - name: Verify quality switching, labels, mobile resize and 600-soldier rendering
+        timeout-minutes: 8
+        run: npm run test:graphics
+      - name: Upload graphics evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: graphics-evidence-${{ github.sha }}
+          path: browser-artifacts/graphics/
           if-no-files-found: warn
           retention-days: 7

@@ -3,6 +3,7 @@ import './base.css';
 import { createBaseManager } from './baseUI';
 import { createBaseDistrict } from './baseVisuals';
 import { createBattleWorld, FACTION_COLORS } from './graphics';
+import { createRenderPipeline } from './renderPipeline';
 import { createAdventure } from './adventure';
 import { SQUAD_NAMES, squadUnits, assignSquad, dismissSquad, commandSquad, squadDestination, squadOrderLabel, type SquadId, type SquadCommand } from './squads';
 import { loadWar, saveWar, deleteWarSave } from './save';
@@ -34,14 +35,14 @@ const BUILDINGS: { key: Upgrade; label: string; symbol: string; description: str
 const clock = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 const factionColor = (id: number) => '#' + FACTION_COLORS[id].toString(16).padStart(6, '0');
 const price = (gold: number, food: number) => `${Math.ceil(gold)} 금 · ${Math.ceil(food)} 식량`;
-export interface WarViewOptions { forceNew?: boolean; difficulty?: Difficulty; grandBattle?: boolean; economyCampaign?: boolean; }
+export interface WarViewOptions { forceNew?: boolean; difficulty?: Difficulty; economyCampaign?: boolean; }
 
 export function openWar(onExit: () => void, options: boolean | WarViewOptions = false): void {
   if (document.querySelector('.war-ui')) return;
   const settings = typeof options === 'boolean' ? { forceNew: options } : options;
   const saved = settings.forceNew ? null : loadWar();
-  const resumed = Boolean(saved && saved.factions[0].alive && !saved.over);
-  const w = resumed && saved ? saved : createWar({ difficulty: settings.difficulty, grandBattle: settings.grandBattle, economyCampaign: settings.economyCampaign });
+  const resumed = Boolean(saved && saved.grandBattle === true && saved.factions[0].alive && !saved.over);
+  const w = resumed && saved ? saved : createWar({ difficulty: settings.difficulty, grandBattle: true, economyCampaign: settings.economyCampaign });
   let armyLimit = maxUnitsFor(w);
   const recruitBatch = w.grandBattle ? 25 : 3;
   const reserveAmounts = w.grandBattle ? [0, 10, 25, 50] : [0, 2, 4, 6];
@@ -53,9 +54,9 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     <header class="war-top">
       <button class="war-brand" id="exit" aria-label="저장하고 왕국 메뉴로">${icon('crown', 24)}<span>WALDO<small>KINGDOMS AT WAR</small></span></button>
       <div class="resource-strip" aria-label="내 왕국 자원">
-        <div class="resource gold">${icon('coin')}<span><b id="gold">140</b><small id="gold-income"></small></span></div>
-        <div class="resource food">${icon('leaf')}<span><b id="food">100</b><small id="food-income"></small></span></div>
-        <div class="resource army">${icon('army')}<span><b id="army-count">${w.grandBattle ? 100 : 4} / ${armyLimit}</b><small>보유 병력</small></span></div>
+        <div class="resource gold">${icon('coin')}<span><b id="gold">9000</b><small id="gold-income"></small></span></div>
+        <div class="resource food">${icon('leaf')}<span><b id="food">8000</b><small id="food-income"></small></span></div>
+        <div class="resource army">${icon('army')}<span><b id="army-count">${100} / ${armyLimit}</b><small>보유 병력</small></span></div>
         <div class="resource territory">${icon('flag')}<span><b id="territory-count">0 / 9</b><small>점령 거점</small></span></div>
       </div>
       <div class="battle-time"><b id="war-clock">00:00</b><span id="difficulty-badge"></span></div>
@@ -88,13 +89,13 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
           <div class="squad-manager" aria-label="부대 그룹 편성">
             <div class="section-heading"><h2>부대 편성 및 직접 이동</h2><span>3개 그룹</span></div>
             <div class="squad-tabs" aria-label="선택할 부대 그룹">
-              <button data-squad-select="0" aria-pressed="true">① 주력군 <small>${w.grandBattle ? 100 : 4}명</small></button>
+              <button data-squad-select="0" aria-pressed="true">① 주력군 <small>${100}명</small></button>
               <button data-squad-select="1" aria-pressed="false">② 기동대 <small>0명</small></button>
               <button data-squad-select="2" aria-pressed="false">③ 수비대 <small>0명</small></button>
             </div>
             <p class="squad-order-status" id="squad-order-status" role="status">주력군 · 기본 작전</p><div id="squad-combat" class="squad-combat"></div><p id="combat-summary" class="panel-note"></p>
             <div class="squad-actions">
-              <button id="squad-assign">+${w.grandBattle ? 25 : 3}명 편성</button>
+              <button id="squad-assign">+${25}명 편성</button>
               <button id="squad-release">주력군에 합류</button>
               <button id="squad-home">선택 부대 → 본부</button>
               <button id="squad-move-mode">지도에서 이동 지점 지정</button>
@@ -106,7 +107,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
         <section id="pane-city" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-city" hidden></section>
         <section id="pane-trade" class="war-tab-pane" role="tabpanel" aria-labelledby="tab-trade" hidden></section>
       </div>
-      <footer class="panel-footer"><span id="save-status" role="status">15초마다 자동 저장</span><span class="render-performance" id="render-fps" title="지난 1초 동안 실제로 그린 화면 수" aria-label="화면 렌더링 프레임 속도">— FPS</span><button id="save" class="text-button">${icon('save', 14)}저장</button></footer>
+      <footer class="panel-footer"><span id="save-status" role="status">15초마다 자동 저장</span><span class="render-performance" id="render-fps" title="지난 1초 동안 실제로 그린 화면 수" aria-label="화면 렌더링 프레임 속도">— FPS</span><button id="save" class="text-button">${icon('save', 14)}저장</button><button id="adventure-enter-mobile" class="text-button mobile-direct-button" aria-label="직접 플레이 시작">직접 플레이</button></footer>
     </aside>
     <section class="mission-card" aria-label="현재 목표"><div class="mission-icon">${icon('flag', 21)}</div><div><span class="kicker">NEXT OBJECTIVE</span><h2 id="mission-title"></h2><p id="mission-description"></p><div class="tutorial-progress" id="tutorial-progress" aria-label="초반 원정 진행"></div></div><button id="mission-action" class="tool-button" aria-label="목표로 이동">${icon('arrow', 18)}</button></section>
     <aside class="war-intel" aria-label="전황"><div class="section-heading"><h2>왕국 현황</h2><span id="alive-count">4 세력</span></div><div id="standings"></div><div class="event-heading">전장 소식<span class="live-dot"></span></div><div id="events" class="war-events" aria-live="polite" aria-relevant="additions"></div></aside>
@@ -116,14 +117,14 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     <div class="war-help"><span><kbd>WASD</kbd> 시점 이동</span><span>드래그: 회전</span><span><kbd>5–7</kbd> 부대 선택</span><span><kbd>G</kbd> 이동 · <kbd>B</kbd> 본부</span><span><kbd>K</kbd> 기지 관리</span></div>
     <nav class="squad-quickbar" aria-label="빠른 부대 지휘">
       <span>부대 지휘</span>
-      <button data-squad-select="0" aria-pressed="true">① 주력군 <small>${w.grandBattle ? 100 : 4}명</small></button>
+      <button data-squad-select="0" aria-pressed="true">① 주력군 <small>${100}명</small></button>
       <button data-squad-select="1" aria-pressed="false">② 기동대 <small>0명</small></button>
       <button data-squad-select="2" aria-pressed="false">③ 수비대 <small>0명</small></button>
       <button id="quick-move" aria-pressed="false">📍 위치 지정</button>
       <button id="quick-home">⌂ 본부</button>
     </nav>
     <div class="target-card" id="target-card" hidden><button id="target-close" class="target-close tool-button" aria-label="대상 닫기">${icon('close', 16)}</button><span class="kicker" id="target-type"></span><h3 id="target-name"></h3><p id="target-description"></p><button id="target-command" class="button primary">병력 출전 ${icon('arrow', 16)}</button></div>
-    <div class="adventure-switch"><button id="adventure-enter" class="button primary">직접 플레이 (V) · 낙하산/탐험</button></div>
+    <div class="adventure-switch"><button id="adventure-enter" class="button primary">직접 플레이 (V) · 왕국 탐험</button></div>
     <section id="adventure-hud" class="adventure-hud" aria-label="직접 조작" hidden>
       <div class="adventure-head"><span class="kicker">DIRECT CONTROL</span><h2 id="adventure-title"></h2><p id="adventure-description"></p><div class="adventure-progress"><i id="adventure-progress-fill"></i></div></div>
       <span class="adventure-crosshair" aria-hidden="true">+</span>
@@ -164,14 +165,17 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   }
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = prefs.quality === 'low' ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.12;
-  renderer.shadowMap.enabled = prefs.quality === 'high'; renderer.shadowMap.type = THREE.PCFShadowMap;
-  renderer.setPixelRatio(Math.min(devicePixelRatio, prefs.quality === 'high' ? 1.65 : prefs.quality === 'low' ? .85 : 1));
+  renderer.shadowMap.enabled = prefs.quality === 'high'; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.setPixelRatio(Math.min(devicePixelRatio, prefs.quality === 'high' ? 1.4 : prefs.quality === 'low' ? .85 : 1));
   renderer.setSize(mount.clientWidth, mount.clientHeight); mount.append(renderer.domElement);
   renderer.domElement.setAttribute('aria-label', '3D 왕국 전장. 관리 패널에서도 모든 명령을 내릴 수 있습니다.');
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(43, mount.clientWidth / mount.clientHeight, .1, 1300);
-  const focus = new THREE.Vector3(-75, 0, -75);
-  let angle = Math.PI + .72, zoom = innerWidth < 800 ? 155 : 175;
+  const pipeline = createRenderPipeline(renderer, scene, camera);
+  pipeline.setEnabled(prefs.quality !== 'low');
+  // Showcase the fortified capital and surrounding settlements on first launch.
+  const focus = new THREE.Vector3(w.factions[0].x + 14, 0, w.factions[0].z + 14);
+  let angle = Math.PI + .72, zoom = innerWidth < 800 ? 145 : 170;
   let adventure: ReturnType<typeof createAdventure> | null = null;
   const cameraUpdate = () => { if (adventure?.isActionMode) return; camera.position.set(focus.x + Math.sin(angle) * zoom, zoom * .83, focus.z + Math.cos(angle) * zoom); camera.lookAt(focus); };
   const pan = (dx: number, dz: number) => { focus.x = THREE.MathUtils.clamp(focus.x + dx, -MAP_HALF_SIZE + 12, MAP_HALF_SIZE - 12); focus.z = THREE.MathUtils.clamp(focus.z + dz, -MAP_HALF_SIZE + 12, MAP_HALF_SIZE - 12); cameraUpdate(); };
@@ -181,12 +185,12 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   const baseDistrict = createBaseDistrict(scene,w);
   world.setQuality(prefs.quality === 'high'); world.setReducedMotion(prefs.reducedMotion);
   baseDistrict.setReducedMotion(prefs.reducedMotion);
-  const adventureControl = createAdventure(scene, camera, w, !resumed && !w.economyCampaign && import.meta.env.MODE !== 'test'); adventure = adventureControl;
+  const adventureControl = createAdventure(scene, camera, w); adventure = adventureControl;
   const controller = new AbortController(); const signal = controller.signal;
   overlay.addEventListener('pointerdown', () => audio.unlock(), { signal, capture: true });
   overlay.addEventListener('keydown', () => audio.unlock(), { signal, capture: true });
   const heldKeys = new Set<string>();
-  const resize = () => { renderer.setSize(mount.clientWidth, mount.clientHeight); camera.aspect = mount.clientWidth / mount.clientHeight; camera.updateProjectionMatrix(); };
+  const resize = () => { renderer.setSize(mount.clientWidth, mount.clientHeight); pipeline.resize(); camera.aspect = mount.clientWidth / mount.clientHeight; camera.updateProjectionMatrix(); };
   window.addEventListener('resize', resize, { signal });
   const missionObserver = new ResizeObserver(() => {
     overlay.style.setProperty('--mission-bottom', `${Math.ceil(el('.mission-card').getBoundingClientRect().bottom)}px`);
@@ -265,7 +269,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     const clampedZ = THREE.MathUtils.clamp(z, -MAP_HALF_SIZE + 5, MAP_HALF_SIZE - 5);
     if (commandTo({ kind: 'move', x: clampedX, z: clampedZ })) {
       audio.play('click'); announce(SQUAD_NAMES[selectedSquad] + ' 이동! 지정 위치로 출발합니다.'); ui(); drawMap();
-    } else announce('선택 부대에 병력이 없습니다. 주력군에서 3명 편성하세요.');
+    } else announce('선택 부대에 병력이 없습니다. 주력군에서 25명 편성하세요.');
   };
   const issueAt = (x: number, z: number) => {
     if (rallyMode) {
@@ -309,7 +313,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   };
   const close = (returnToMenu = true) => {
     if (dead) return; dead = true; modalClose?.(); modalClose = null;
-    cancelAnimationFrame(frame); controller.abort(); missionObserver.disconnect(); adventureControl.dispose(); baseDistrict.dispose(); world.dispose(); renderer.dispose(); renderer.forceContextLoss(); audio.dispose(); overlay.remove();
+    cancelAnimationFrame(frame); controller.abort(); missionObserver.disconnect(); adventureControl.dispose(); baseDistrict.dispose(); world.dispose(); pipeline.dispose(); renderer.dispose(); renderer.forceContextLoss(); audio.dispose(); overlay.remove();
     if (import.meta.env.DEV) delete (window as unknown as Record<string, unknown>).__war;
     if (returnToMenu) onExit();
   };
@@ -332,12 +336,12 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
       document.querySelector<HTMLButtonElement>('#pause-menu')!.onclick = () => { modalClose?.(); exitWithSave(); };
     });
   };
-  const help = () => openModal('왕국을 지배하는 방법', `<div class="guide-steps"><article><b>00 · 기지 건설과 장군 모집</b><p>K 키 또는 상단 기지 관리 버튼으로 5×5 영지에 들어가세요. 빈 칸은 건설, 완공된 건물은 클릭해 실내로 입장합니다. 실제 3D 전장에 배치된 내 건물을 클릭해도 실내에 들어갈 수 있으며, 내부 설비 확장·자원 교환·병력 훈련·성벽 수리가 가능합니다. 건설과 실내 관리 중에는 전투 시간이 멈춥니다. 장군은 부대에 배치할 수 있습니다.</p></article><article><b>승리 조건 · 경제 패권 또는 정복</b><p>${w.economyCampaign ? '경영 원정: 도시 Lv.4·계약 3건·평판 80·거점 3개로 경제 승리합니다. 도시 단계마다 병력 한도가 6명씩 늘어납니다.' : '이 원정은 정복 승리 규칙을 사용합니다.'} 모든 적 본부를 함락해도 승리합니다.</p></article><article><b>01 · 일꾼과 도시를 관리하세요</b><p>금광·농장에 6명씩 배치된 상태로 시작합니다. −로 대기시킨 뒤 +로 다른 시설에 배치하세요. 시민 모집은 금 20·식량 30입니다. 도시를 확장하면 인구 한도가 늘어납니다. 시민 12명 초과분은 세금을 내고 식량을 소비합니다.</p></article><article><b>02 · 수출하고 계약을 이행하세요</b><p>시장을 건설하고 상인 1명을 배치하면 교역 탭에서 수출할 수 있습니다. 무역항과 서부 항구 또는 남동부 교역소를 확보하면 해상 항로가 열립니다. 계약은 보증금을 내고 수락한 뒤 기한 안에 직접 납품하세요. 성공하면 평판이 오르고, 만료되면 보증금을 잃습니다. 창고가 가득 차면 넘치는 생산·교역 보상은 받지 못합니다.</p></article><article><b>03 · 교역로를 지키세요</b><p>작전 탭에서 기동대를 선택해 병력을 편성하고 지도를 클릭해 이동하세요. 병영 Lv.2에서 연구와 궁병, Lv.3에서 중장병과 기병이 해금됩니다. 상인이나 해상 거점이 없으면 운송이 멈추며, 조건을 되찾으면 재개합니다.</p></article><article><b>04 · 폭풍에 대비하세요</b><p>이 원정의 폭풍은 ${clock(stormStartFor(w))}부터 시작합니다. 밖에 있는 본부·병력이 피해를 받으며, 거점 1개당 본부 폭풍 피해가 12% 줄어듭니다 (최대 60%).</p></article></div><div class="shortcut-grid"><span><kbd>WASD</kbd> 시점 이동</span><span><kbd>H</kbd> 내 영지</span><span><kbd>V/T</kbd> 직접 플레이/전략</span><span><kbd>E</kbd> 성벽 올라가기·내려가기</span><span><kbd>F</kbd> 활 발사</span><span><kbd>1–4</kbd> 병종 훈련</span><span><kbd>5–7</kbd> 부대 그룹 선택</span><span><kbd>G</kbd> 위치 지정 · <kbd>B</kbd> 본부 복귀</span><span><kbd>Esc</kbd> 일시정지</span><span>드래그: 회전 · Shift+드래그: 이동</span><span>휠: 확대 · Shift+클릭: 명령</span><span>터치: 드래그 이동 · 두 손가락 확대</span><span>미니맵: 이동 모드에서 어디든 클릭해 부대 이동</span></div>`);
+  const help = () => openModal('왕국을 지배하는 방법', `<div class="guide-steps"><article><b>00 · 기지 건설과 장군 모집</b><p>K 키 또는 상단 기지 관리 버튼으로 5×5 영지에 들어가세요. 빈 칸은 건설, 완공된 건물은 클릭해 실내로 입장합니다. 실제 3D 전장에 배치된 내 건물을 클릭해도 실내에 들어갈 수 있으며, 내부 설비 확장·자원 교환·병력 훈련·성벽 수리가 가능합니다. 건설과 실내 관리 중에는 전투 시간이 멈춥니다. 장군은 부대에 배치할 수 있습니다.</p></article><article><b>승리 조건 · 경제 패권 또는 정복</b><p>${w.economyCampaign ? '경영 원정: 도시 Lv.4·계약 3건·평판 80·거점 3개로 경제 승리합니다. 병력 한도는 세력당 400명이며 시민 인구와 별개입니다.' : '이 원정은 정복 승리 규칙을 사용합니다.'} 모든 적 본부를 함락해도 승리합니다.</p></article><article><b>01 · 일꾼과 도시를 관리하세요</b><p>금광·농장에 6명씩 배치된 상태로 시작합니다. −로 대기시킨 뒤 +로 다른 시설에 배치하세요. 시민 모집은 금 20·식량 30입니다. 도시를 확장하면 인구 한도가 늘어납니다. 시민 12명 초과분은 세금을 내고 식량을 소비합니다.</p></article><article><b>02 · 수출하고 계약을 이행하세요</b><p>시장을 건설하고 상인 1명을 배치하면 교역 탭에서 수출할 수 있습니다. 무역항과 서부 항구 또는 남동부 교역소를 확보하면 해상 항로가 열립니다. 계약은 보증금을 내고 수락한 뒤 기한 안에 직접 납품하세요. 성공하면 평판이 오르고, 만료되면 보증금을 잃습니다. 창고가 가득 차면 넘치는 생산·교역 보상은 받지 못합니다.</p></article><article><b>03 · 교역로를 지키세요</b><p>작전 탭에서 기동대를 선택해 병력을 편성하고 지도를 클릭해 이동하세요. 병영 Lv.2에서 연구와 궁병, Lv.3에서 중장병과 기병이 해금됩니다. 상인이나 해상 거점이 없으면 운송이 멈추며, 조건을 되찾으면 재개합니다.</p></article><article><b>04 · 폭풍에 대비하세요</b><p>이 원정의 폭풍은 ${clock(stormStartFor(w))}부터 시작합니다. 밖에 있는 본부·병력이 피해를 받으며, 거점 1개당 본부 폭풍 피해가 12% 줄어듭니다 (최대 60%).</p></article></div><div class="shortcut-grid"><span><kbd>WASD</kbd> 시점 이동</span><span><kbd>H</kbd> 내 영지</span><span><kbd>V/T</kbd> 직접 플레이/전략</span><span><kbd>E</kbd> 성벽 올라가기·내려가기</span><span><kbd>F</kbd> 활 발사</span><span><kbd>1–4</kbd> 병종 훈련</span><span><kbd>5–7</kbd> 부대 그룹 선택</span><span><kbd>G</kbd> 위치 지정 · <kbd>B</kbd> 본부 복귀</span><span><kbd>Esc</kbd> 일시정지</span><span>드래그: 회전 · Shift+드래그: 이동</span><span>휠: 확대 · Shift+클릭: 명령</span><span>터치: 드래그 이동 · 두 손가락 확대</span><span>미니맵: 이동 모드에서 어디든 클릭해 부대 이동</span></div>`);
   const syncSound = () => { el('#sound').innerHTML = icon(prefs.sound ? 'sound' : 'muted'); el('#sound').setAttribute('aria-label', prefs.sound ? '효과음 끄기' : '효과음 켜기'); audio.setMuted(!prefs.sound); };
   const openSettings = () => openModal('전장 설정', `<div class="settings-grid"><label>그래픽 품질<select id="graphics-setting"><option value="high">높음 · 그림자와 효과</option><option value="standard">보통 · 성능 우선</option><option value="low">낮음 · 저사양 기기</option></select></label><label>효과음<input type="checkbox" id="audio-setting"></label><label>움직임 줄이기<input type="checkbox" id="motion-setting"></label></div><p class="dialog-tip">설정은 이 브라우저에 저장됩니다. 보통은 그림자·효과를 줄이고, 낮음은 해상도와 색 보정도 줄입니다. 관리 패널 아래 FPS로 실제 화면 속도를 확인하세요.</p>`, () => {
     const quality = document.querySelector<HTMLSelectElement>('#graphics-setting')!, sound = document.querySelector<HTMLInputElement>('#audio-setting')!, motion = document.querySelector<HTMLInputElement>('#motion-setting')!;
     quality.value = prefs.quality; sound.checked = prefs.sound; motion.checked = prefs.reducedMotion;
-    quality.onchange = () => { prefs.quality = quality.value === 'high' ? 'high' : quality.value === 'low' ? 'low' : 'standard'; renderer.toneMapping = prefs.quality === 'low' ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping; renderer.shadowMap.enabled = prefs.quality === 'high'; renderer.setPixelRatio(Math.min(devicePixelRatio, prefs.quality === 'high' ? 1.65 : prefs.quality === 'low' ? .85 : 1)); world.setQuality(prefs.quality === 'high'); resize(); writePreferences(prefs); };
+    quality.onchange = () => { prefs.quality = quality.value === 'high' ? 'high' : quality.value === 'low' ? 'low' : 'standard'; renderer.toneMapping = prefs.quality === 'low' ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping; renderer.shadowMap.enabled = prefs.quality === 'high'; renderer.setPixelRatio(Math.min(devicePixelRatio, prefs.quality === 'high' ? 1.4 : prefs.quality === 'low' ? .85 : 1)); world.setQuality(prefs.quality === 'high'); pipeline.setEnabled(prefs.quality !== 'low'); resize(); writePreferences(prefs); };
     sound.onchange = () => { prefs.sound = sound.checked; syncSound(); writePreferences(prefs); };
     motion.onchange = () => { prefs.reducedMotion = motion.checked; world.setReducedMotion(prefs.reducedMotion); baseDistrict.setReducedMotion(prefs.reducedMotion); writePreferences(prefs); };
   });
@@ -354,13 +358,11 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     const active = adventureControl.isActionMode;
     const mode = adventureControl.mode;
     overlay.classList.toggle('adventure-active', active);
-    overlay.classList.toggle('adventure-dropping', mode === 'drop');
     el('#adventure-hud').hidden = !active;
     el('#adventure-enter').hidden = active;
+    el('#adventure-enter-mobile').hidden = active;
     el('#adventure-tower').hidden = !adventureControl.canEnterTower;
     el('#adventure-down').hidden = mode !== 'tower';
-    el<HTMLButtonElement>('#adventure-fire').disabled = mode === 'drop';
-    el<HTMLButtonElement>('#adventure-strategy').disabled = mode === 'drop';
     const detail = adventureControl.hint();
     text('#adventure-title', detail.headline);
     text('#adventure-description', detail.detail);
@@ -373,6 +375,7 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
   el<HTMLButtonElement>('#open-base-generals').onclick = () => openBase('generals');
   const goField = () => { rallyMode = false; syncCommandMode(false); adventureControl.toField(); updateAdventureUI(); };
   el<HTMLButtonElement>('#adventure-enter').onclick = goField;
+  el<HTMLButtonElement>('#adventure-enter-mobile').onclick = goField;
   el<HTMLButtonElement>('#adventure-strategy').onclick = goStrategy;
   el<HTMLButtonElement>('#adventure-tower').onclick = () => { adventureControl.enterTower(); updateAdventureUI(); };
   el<HTMLButtonElement>('#adventure-down').onclick = () => { adventureControl.leaveTower(); updateAdventureUI(); };
@@ -679,7 +682,33 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     }
     const economicStats = document.createElement('p'); economicStats.className = 'result-economy'; economicStats.textContent = `도시 Lv.${economy.city} · 수출 ${economy.exports}회 · 계약 ${economy.completed}건 · 교역 수입 ${Math.floor(economy.tradeGold)}금`;
     el('.result-stats').after(economicStats);
-    el<HTMLButtonElement>('#again').onclick = () => { const difficulty = w.difficulty, grandBattle = w.grandBattle, economyCampaign = w.economyCampaign; close(false); openWar(onExit, { forceNew: true, difficulty, grandBattle, economyCampaign }); };
+    el<HTMLButtonElement>('#again').onclick = () => {
+      const difficulty = w.difficulty, economyCampaign = w.economyCampaign;
+      if (import.meta.env.MODE === 'test') {
+        // Vitest uses a deterministic fake clock and tests synchronous rematches.
+        close(false);
+        openWar(onExit, { forceNew: true, difficulty, economyCampaign });
+        return;
+      }
+      // Release the old GL context and allow the browser to present a frame
+      // before allocating a second, hundreds-of-troops battlefield.
+      const loading = document.createElement('div');
+      loading.className = 'game-loading';
+      loading.setAttribute('role', 'status');
+      loading.innerHTML = '<span class="game-loading-emblem">♜</span><strong>새 전장을 준비합니다</strong><p>이전 전장의 GPU 자원을 정리하고 있습니다</p><span class="game-loading-progress" aria-hidden="true"></span>';
+      document.body.append(loading);
+      close(false);
+      setTimeout(() => {
+        try {
+          openWar(onExit, { forceNew: true, difficulty, economyCampaign });
+          requestAnimationFrame(() => requestAnimationFrame(() => loading.remove()));
+        } catch {
+          loading.remove();
+          document.querySelector('.war-ui')?.remove();
+          onExit();
+        }
+      }, 120);
+    };
     el<HTMLButtonElement>('#back').onclick = () => close();
     end.addEventListener('keydown', event => {
       if (event.key !== 'Tab') return;
@@ -712,13 +741,13 @@ export function openWar(onExit: () => void, options: boolean | WarViewOptions = 
     if (!done && (w.over || !w.factions[0].alive)) finish();
     if (!done && w.time - lastAutosave >= 15) writeSave();
     if (now > toastUntil) el('#toast').hidden = true;
-    if (!graphicsLost) { renderer.render(scene, camera); fpsFrames++; }
+    if (!graphicsLost) { pipeline.render(); fpsFrames++; }
     if (now - fpsStart >= 1000) { text('#render-fps', `${Math.round(fpsFrames * 1000 / (now - fpsStart))} FPS`); fpsStart = now; fpsFrames = 0; }
     frame = requestAnimationFrame(loop);
   }
   syncSound(); ui(); drawMap(); updateAdventureUI();
-  if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__war = { world: w, renderer, camera, scene, ui, finish, skipDrop: () => { adventureControl.skipDrop(); updateAdventureUI(); }, setPaused: (value: boolean) => { paused = value; } };
+  if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__war = { world: w, renderer, camera, scene, ui, finish, setPaused: (value: boolean) => { paused = value; } };
   frame = requestAnimationFrame(loop);
   el<HTMLButtonElement>('#home').focus({ preventScroll: true });
-  if (!wasThreatened) announce(resumed ? '저장한 전투를 이어갑니다. V 키로 직접 탐험할 수 있습니다.' : w.economyCampaign ? '경영 원정 시작! 일꾼과 도시를 관리하고 교역 탭에서 수출과 계약을 시작하세요.' : '낙하산으로 강하합니다! 착륙 후 거점을 점령하고 성벽 위에서 활을 쏘세요.');
+  if (!wasThreatened) announce(resumed ? '저장한 전투를 이어갑니다. V 키로 직접 탐험할 수 있습니다.' : w.economyCampaign ? '경영 원정 시작! 일꾼과 도시를 관리하고 교역 탭에서 수출과 계약을 시작하세요.' : '왕국에 오신 것을 환영합니다! 병력을 지휘하고 K로 건설하며 V로 직접 탐험할 수 있습니다.');
 }

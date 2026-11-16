@@ -15,6 +15,9 @@ describe('strategic minimap actions',()=>{
   expect(minimapToWorld(-100,400,200,200)).toEqual({x:-MAP_HALF_SIZE,z:MAP_HALF_SIZE});
   expect(minimapToWorld(3,2,0,0)).toEqual({x:0,z:0});
   expect(minimapToWorld(Number.NaN,1,100,100)).toEqual({x:0,z:0});
+  expect(minimapToWorld(3,2,Number.NaN,100)).toEqual({x:0,z:0});
+  expect(minimapToWorld(3,2,Number.POSITIVE_INFINITY,100)).toEqual({x:0,z:0});
+  expect(minimapToWorld(3,2,100,Number.NaN)).toEqual({x:0,z:0});
  });
  it('detects click targets but excludes friendly or eliminated headquarters',()=>{
   const w=createWar();

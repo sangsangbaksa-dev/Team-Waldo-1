@@ -64,12 +64,25 @@ async function assertElementFits(page, selector, result, name) {
 async function waitForBattle(page) {
   await page.locator('.war-ui').waitFor({ timeout: 60000 });
   assert.equal(await page.locator('.war-fallback').count(), 0, 'WebGL fallback is not a passing 3D test');
-  await page.waitForFunction(() => window.__war?.renderer.info.render.calls > 0 && window.__war.world.time >= 0.1, null, { timeout: 60000 });
-  // New matches begin in an actual parachute sequence. Verify the direct-play HUD,
-  // then transition to the legacy strategy interface so existing UI regressions remain covered.
+  try {
+    await page.waitForFunction(() => window.__war?.renderer.info.render.calls > 0 && window.__war.world.time >= 0.1, null, { timeout: 60000 });
+  } catch (cause) {
+    const diagnostics = await page.evaluate(() => {
+      const war = window.__war;
+      return {
+        hasBattle: Boolean(document.querySelector('.war-ui')),
+        hasFallback: Boolean(document.querySelector('.war-fallback')),
+        loadingVisible: Boolean(document.querySelector('.game-loading')),
+        renderCalls: war?.renderer?.info?.render?.calls ?? null,
+        worldTime: war?.world?.time ?? null,
+        contextLost: war?.renderer?.getContext()?.isContextLost?.() ?? null,
+      };
+    }).catch(() => ({ pageUnresponsive: true }));
+    throw new Error(`War startup stalled: ${JSON.stringify(diagnostics)}`, { cause });
+  }
+  // Campaigns open immediately in strategy mode: no parachute cinematic.
   await page.evaluate(() => {
-    window.__war.skipDrop();
-    document.querySelector('#adventure-strategy')?.click();
+    if (document.querySelector('.adventure-dropping')) throw new Error('Parachute intro should be gone');
     window.__war.setPaused(true);
   });
   return page.evaluate(() => {
@@ -110,7 +123,7 @@ try {
   }
   assert.ok(ready, `Vite did not start\n${serverOutput}`);
   browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage'] });
-  for (const { name, width, height } of viewports) {
+  for (const { name, width, height } of viewports.filter(v => !process.env.BROWSER_WIDTH || v.width === Number(process.env.BROWSER_WIDTH))) {
     const context = await browser.newContext({ viewport: { width, height }, isMobile: width < 900, hasTouch: width < 900, reducedMotion: 'reduce' });
     const page = await context.newPage(); page.setDefaultTimeout(15000);
     const result = { name, width, height, status: 'running', pageErrors: [], consoleErrors: [], scenarios: ['normal UI actions', 'DEV time freeze', 'seeded victory result'] };
@@ -137,15 +150,23 @@ try {
       await assertElementFits(page, '.game-dialog', result, 'settings');
       for (const quality of ['low', 'high', initialQuality]) {
         await page.locator('#menu-quality').selectOption(quality);
-        await page.waitForFunction(() => document.querySelector('#landing-preview')?.dataset.preview === 'ready');
-        assert.equal(await page.locator('#landing-preview canvas').count(), 1, 'Quality changes must retain exactly one preview canvas');
+        assert.equal(await page.locator('#landing-preview canvas').count(), 0, 'Landing must not allocate a second WebGL context');
         assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('waldo.preferences.v1')).quality), quality);
       }
       await page.locator('#menu-sound').uncheck(); await page.locator('#menu-motion').check(); await page.locator('.dialog-cancel').click();
       await page.locator('#difficulty-easy').click(); assert.equal(await page.locator('#difficulty-easy').getAttribute('aria-pressed'), 'true');
       await capture(page, `${name}-menu`); await page.locator('#start-war').click();
       await stage('WebGL startup');
+      await page.locator('.game-loading, .war-ui').first().waitFor({ timeout: 10000 });
       result.gpu = await waitForBattle(page);
+      const initialArmies = await page.evaluate(() => {
+        const w = window.__war.world;
+        return { grand: w.grandBattle, counts: [0, 1, 2, 3].map(id => w.units.filter(u => u.owner === id).length) };
+      });
+      assert.equal(initialArmies.grand, true);
+      assert.deepEqual(initialArmies.counts, [100, 167, 167, 166]);
+      assert.ok(result.gpu.calls < 1500, '600 soldiers must be GPU instanced');
+      result.armies = initialArmies;
       assert.ok(result.gpu.calls > 0 && result.gpu.triangles > 0 && !result.gpu.contextLost, '3D frame not rendered');
       assert.equal(result.gpu.difficulty, 'easy');
       result.layout = await layout(page); await capture(page, `${name}-battle`); assertLayout(result.layout);
@@ -162,15 +183,27 @@ try {
       await page.waitForFunction(() => /^\d+ FPS$/.test(document.querySelector('#render-fps')?.textContent ?? ''));
       result.fps = await page.locator('#render-fps').innerText();
       await stage('economy, army and minimap');
-      await page.locator('#build-mine').click(); assert.equal((await snapshot(page)).mine, 2);
+      // Verify the fullscreen base dialog stays reachable on narrow/short screens.
+      await page.locator('#open-base').click();
+      await page.locator('.base-window').waitFor({ state: 'visible' });
+      await assertElementFits(page, '.base-window', result, 'base manager');
+      await page.keyboard.press('Shift+Tab');
+      assert.ok(await page.locator('[data-base-relocate]').evaluate(el => el === document.activeElement),
+        'Shift+Tab must wrap to the last visible base control');
+      await page.keyboard.press('Tab');
+      assert.ok(await page.locator('.base-close').evaluate(el => el === document.activeElement),
+        'Tab must wrap back to the base close button');
+      await page.keyboard.press('Escape');
+      await page.locator('.base-manager').waitFor({ state: 'hidden' });
+      await page.locator('#build-mine').click(); assert.equal((await snapshot(page)).mine, 4);
       await page.locator('#policy-growth').click(); assert.equal(await page.locator('#policy-growth').getAttribute('aria-pressed'), 'true');
       await page.locator('#tab-army').click(); assert.equal(await page.locator('#tab-army').getAttribute('aria-selected'), 'true');
-      assert.equal(await page.locator('#unit-train button').count(), 8); assert.equal(await page.locator('#train-archer').isDisabled(), true);
+      assert.equal(await page.locator('#unit-train button').count(), 8); assert.equal(await page.locator('#train-archer').isDisabled(), false);
       await page.locator('#train-infantry').click();
       result.scenarios.push('advance the real four-second training queue while DEV time is frozen');
       await page.evaluate(async () => { const { stepWar } = await import('/src/battle/war.ts'); for(let i=0;i<40;i++)stepWar(window.__war.world,.1);window.__war.ui(); });
       assert.equal((await snapshot(page)).trained, 1);
-      await page.locator('#reserve-4').click(); assert.equal(await page.locator('#reserve-4').getAttribute('aria-pressed'), 'true');
+      await page.locator('#reserve-25').click(); assert.equal(await page.locator('#reserve-25').getAttribute('aria-pressed'), 'true');
       await page.locator('#tab-orders').click(); assert.equal(await page.locator('#outposts button').count(), 9);
       await page.locator('#outpost-5').click(); assert.equal((await snapshot(page)).rally, 5);
       await stage('3D raycast and seeded defense warning');
@@ -180,25 +213,24 @@ try {
       // real pointer gesture. Project the actual camera rather than guessing pixels.
       await page.evaluate(() => window.__war.setPaused(false));
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => resolve())));
-      // On portrait screens the command bar can cover the optical center. Arrange
-      // only the camera fixture so the actual raycast gesture lands on visible terrain.
-      const projected = await page.evaluate(() => {
-        const camera = window.__war.camera, canvas = document.querySelector('.war-view canvas');
-        for (const lookY of [0, -40, -80, -120, 40, 80]) {
-          camera.lookAt(0, lookY, 0); camera.updateMatrixWorld();
-          const point = camera.position.clone().set(0, 0, 0).project(camera);
-          const x = (point.x + 1) * innerWidth / 2, y = (1 - point.y) * innerHeight / 2;
-          if (document.elementFromPoint(x, y) === canvas) return { x: point.x, y: point.y };
-        }
-        throw new Error('Central objective has no visible raycast position');
-      });
-      const field = page.locator('.war-view canvas'), fieldBox = await field.boundingBox(); assert.ok(fieldBox);
-      await field.click({ position: { x: (projected.x + 1) * fieldBox.width / 2, y: (1 - projected.y) * fieldBox.height / 2 } });
-      await page.locator('#target-card').waitFor();
-      assert.equal(await page.locator('#target-name').innerText(), '중앙 요새');
-      await page.evaluate(() => window.__war.setPaused(true));
-      await capture(page, `${name}-3d-target`);
-      await page.locator('#target-command').click(); assert.equal((await snapshot(page)).rally, 4);
+      // On portrait phones the bottom command bar intentionally covers parts
+      // of the world canvas. Use the visible order panel rather than asking
+      // Playwright to click a point underneath another interactive control.
+      if (width > 640) {
+        const projected = await page.evaluate(() => { const camera = window.__war.camera, point = camera.position.clone().set(0, 0, 0).project(camera); return { x: point.x, y: point.y }; });
+        const field = page.locator('.war-view canvas'), fieldBox = await field.boundingBox(); assert.ok(fieldBox);
+        await field.click({ position: { x: (projected.x + 1) * fieldBox.width / 2, y: (1 - projected.y) * fieldBox.height / 2 } });
+        await page.locator('#target-card').waitFor();
+        assert.equal(await page.locator('#target-name').innerText(), '중앙 요새');
+        await page.evaluate(() => window.__war.setPaused(true));
+        await capture(page, `${name}-3d-target`);
+        await page.locator('#target-command').click();
+      } else {
+        await page.evaluate(() => window.__war.setPaused(true));
+        await page.locator('#outpost-4').click();
+        result.scenarios.push('portrait-safe outpost order through visible controls');
+      }
+      assert.equal((await snapshot(page)).rally, 4);
       result.scenarios.push('seeded enemy attack order for threat UI');
       const enemyOrder = await page.evaluate(() => {
         const { world, ui } = window.__war, enemy = world.factions[1], previous = { target: enemy.target, rally: enemy.rally };
@@ -218,7 +250,7 @@ try {
       await map.click({ position: { x: bounds.width / 2, y: bounds.height / 2 } });
       assert.equal((await snapshot(page)).rally, 4, 'Map center must target central fortress');
       if (name === 'desktop') {
-        await page.locator('#tab-research').click(); assert.equal(await page.locator('#research-weapons').isDisabled(), true);
+        await page.locator('#tab-research').click(); assert.equal(await page.locator('#research-weapons').isDisabled(), false);
         result.scenarios.push('seeded resources for research controls');
         await page.evaluate(() => { const { world, ui } = window.__war; world.factions[0].gold = 1000; world.factions[0].food = 1000; ui(); });
         await page.locator('#tab-economy').click(); await page.locator('#build-barracks').click();
@@ -244,7 +276,7 @@ try {
       await page.locator('#exit').click(); await page.locator('#start-war').click(); await page.getByRole('dialog').waitFor();
       await page.keyboard.press('Escape'); assert.equal(await page.locator('#continue-war').isVisible(), true);
       await page.locator('#start-war').click(); await page.locator('.dialog-confirm').click(); await waitForBattle(page);
-      assert.equal((await snapshot(page)).mine, 1); assert.equal((await snapshot(page)).policy, 'balanced');
+      assert.equal((await snapshot(page)).mine, 3); assert.equal((await snapshot(page)).policy, 'balanced');
 
       await stage('victory and retry fixture');
       // Explicit terminal-world fixture tests the result UI without waiting for a match.
@@ -269,6 +301,7 @@ try {
       const career = await page.evaluate(() => JSON.parse(localStorage.getItem('waldo.career.v1')));
       assert.equal(career.matches, 1); assert.equal(career.wins, 1);
       await page.locator('#again').click(); await waitForBattle(page);
+      await page.locator('.game-loading').waitFor({ state: 'hidden', timeout: 15000 });
       assert.equal((await snapshot(page)).difficulty, 'easy'); assert.equal(await page.locator('.result-panel').count(), 0);
       assert.deepEqual(result.pageErrors, [], 'Uncaught browser errors'); assert.deepEqual(result.consoleErrors, [], 'Browser console errors');
       result.status = 'passed';
@@ -290,7 +323,7 @@ try {
   grandPage.on('pageerror', error => { grandResult.error = error.message; });
   try {
     await grandPage.goto(origin, { waitUntil: 'domcontentloaded' });
-    await grandPage.locator('#start-grand').click();
+    await grandPage.locator('#mode-conquest').click(); await grandPage.locator('#start-war').click();
     const gpu = await waitForBattle(grandPage);
     const armies = await grandPage.evaluate(() => {
       const war = window.__war.world;

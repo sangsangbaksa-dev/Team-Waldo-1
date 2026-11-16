@@ -23,3 +23,18 @@
 .grand-launch-button:hover{filter:brightness(1.13);border-color:#ffdfa4}
 @media(max-width:480px){.launch-actions{gap:8px}.grand-launch-button{flex-basis:180px;min-height:53px}
 .launch-button{flex-basis:150px;min-width:0}.continue-button{flex:1 1 100%}}
+
+
+/* Static-first launch: this screen paints before the expensive 600-unit WebGL scene. */
+.game-loading{position:fixed;inset:0;z-index:2000;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:12px;padding:24px;color:#e9e4d5;background:radial-gradient(ellipse at 50% 36%,#2d5141,#101b19 64%);
+  text-align:center;font-family:'Noto Sans KR',system-ui,sans-serif}
+.game-loading-emblem{font-size:68px;color:#d8bd7e;line-height:1;text-shadow:0 8px 18px #03120b99}
+.game-loading strong{font-family:'Noto Serif KR',serif;font-size:clamp(21px,4vw,30px);font-weight:500}
+.game-loading p{font-size:12px;color:#abc2a9;line-height:1.7}
+.game-loading-progress{display:block;margin-top:12px;width:min(250px,72vw);height:4px;overflow:hidden;
+  border-radius:5px;background:#37513e}
+.game-loading-progress::after{content:'';display:block;height:100%;width:44%;border-radius:5px;background:#d4bd83;
+  animation:kingdom-loading 1.15s ease-in-out infinite alternate}
+@keyframes kingdom-loading{from{transform:translateX(0)}to{transform:translateX(135%)}}
+@media(prefers-reduced-motion:reduce){.game-loading-progress::after{animation:none;width:100%}}

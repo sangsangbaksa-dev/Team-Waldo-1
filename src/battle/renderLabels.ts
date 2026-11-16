@@ -19,6 +19,8 @@ export function createWorldLabel(width: number, height: number): WorldLabel {
   texture.generateMipmaps = false;
   const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: false, fog: false });
   const sprite = new THREE.Sprite(material);
+  // Tactical text is drawn after screen-space AA to keep small labels crisp.
+  sprite.layers.set(1);
   sprite.scale.set(width, height, 1);
   sprite.renderOrder = 20;
   let last = '';

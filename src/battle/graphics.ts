@@ -8,6 +8,8 @@ import { createBattleEffects } from './renderEffects';
 import { batchStaticChildren, type StaticBatch } from './renderBatches';
 import { exportDestination, exportPosition, type Infrastructure } from './economy';
 import { createVisualDetails } from './visualDetails';
+import { createSurfaceTextures } from './surfaceTextures';
+import { createKingdomScenery } from './kingdomScenery';
 
 /** Procedural, self-contained industrial 3D battlefield. No external models or textures. */
 export const FACTION_COLORS = [0x50d9d1, 0xf06a77, 0xf5c45d, 0xaa8eed] as const;
@@ -45,19 +47,21 @@ export function terrainShade(x:number,z:number):number {
 export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   const world=new THREE.Group();world.name='Stylized kingdom';scene.add(world);
   let highQuality=true;
-  let reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let reducedMotion=window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches??false;
   let strategicOverlaysVisible=true;
   const labels:WorldLabel[]=[];
   const effects=createBattleEffects(world);
   const art=createVisualDetails();
-  scene.background=new THREE.Color(0x344248);
-  scene.fog=new THREE.FogExp2(0x344248,.0013);
-  const ambient=new THREE.HemisphereLight(0x97abb6,0x28352f,1.85);
+  const surfaces=createSurfaceTextures();
+  scene.background=new THREE.Color(0xa5b7b4);
+  scene.fog=new THREE.FogExp2(0xa5b7b4,.00085);
+  const ambient=new THREE.HemisphereLight(0xc1d9e5,0x68734a,2.25);
   scene.add(ambient);
-  const sun=new THREE.DirectionalLight(0xd2c7b0,2.6);
+  const sun=new THREE.DirectionalLight(0xffe2af,3.1);
   sun.position.set(-130,220,140);
   sun.castShadow=true;
-  sun.shadow.mapSize.set(3072,3072);
+  // A 2048px atlas avoids the 3K shadow allocation stall on repeated 600-unit battles.
+  sun.shadow.mapSize.set(2048,2048);
   sun.shadow.camera.left=-280;sun.shadow.camera.right=280;
   sun.shadow.camera.top=280;sun.shadow.camera.bottom=-280;
   sun.shadow.camera.near=10;sun.shadow.camera.far=520;
@@ -71,11 +75,13 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     mortar=material(0x505e65),roof=material(0x273b46),
     timber=material(0x51473e),woodDark=material(0x2f3331),
     cream=material(0x9da49c),gold=material(0xc5a16c,.45,.35),
-    meadow=material(0x46554b),leaves=material(0x374d42),
-    leafLight=material(0x536556),waterMat=new THREE.MeshStandardMaterial({
-      color:0x31525c,roughness:.25,metalness:.1,transparent:true,opacity:.94
-    }),roadMat=material(0x465055),soilMat=material(0x5d554b),
+    meadow=material(0x657753),leaves=material(0x466948),
+    leafLight=material(0x76925a),waterMat=new THREE.MeshStandardMaterial({
+      color:0x438d99,roughness:.23,metalness:.24,transparent:true,opacity:.96
+    }),roadMat=material(0x92866e),soilMat=material(0x75634c),
     ember=material(0xffb45a,0,.4,0xff8130);
+  const windowLight=material(0xffd793,0,.4,0xd78835);
+  roadMat.map=surfaces.road;
   const teamMats=FACTION_COLORS.map(color=>material(new THREE.Color(color).lerp(new THREE.Color(0x465450),.35).getHex(),.25,.52));
   const bannerMats=FACTION_COLORS.map(color=>new THREE.MeshStandardMaterial({
     color,side:THREE.DoubleSide,roughness:.65
@@ -110,13 +116,34 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     object.position.set(x,y,z);object.scale.set(sx,sy,sz);
     object.castShadow=true;object.receiveShadow=true;parent.add(object);return object;
   };
+  const sky=new THREE.Mesh(new THREE.SphereGeometry(950,24,12),new THREE.ShaderMaterial({
+    side:THREE.BackSide,depthWrite:false,
+    uniforms:{zenith:{value:new THREE.Color(0x78a6b8)},horizon:{value:new THREE.Color(0xd9d5b8)}},
+    vertexShader:'varying vec3 vSky; void main(){vSky=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+    fragmentShader:'uniform vec3 zenith; uniform vec3 horizon; varying vec3 vSky; void main(){float h=smoothstep(-0.08,0.65,normalize(vSky).y);gl_FragColor=vec4(mix(horizon,zenith,h),1.0);\n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}',
+  }));
+  sky.name='Warm horizon and blue sky';sky.renderOrder=-10;sky.frustumCulled=false;world.add(sky);
+  // Soft contact shading remains available on phones with real-time shadows off.
+  const contactGeometry=new THREE.PlaneGeometry(1,1);contactGeometry.rotateX(-Math.PI/2);
+  const contactMaterial=new THREE.MeshBasicMaterial({map:surfaces.shadow,transparent:true,depthWrite:false,opacity:.8});
+  const staticContact=new THREE.InstancedMesh(contactGeometry,contactMaterial,1000);
+  const armyContact=new THREE.InstancedMesh(contactGeometry,contactMaterial,1600);
+  staticContact.name='Scenery contact shadows';armyContact.name='Army contact shadows';
+  staticContact.count=armyContact.count=0;staticContact.frustumCulled=armyContact.frustumCulled=false;
+  armyContact.instanceMatrix.setUsage(THREE.DynamicDrawUsage);world.add(staticContact,armyContact);
+  const contactStamp=new THREE.Object3D();
+  const groundContact=(x:number,z:number,width:number,depth=width)=>{
+    if(staticContact.count>=1000)return;
+    contactStamp.position.set(x,.06,z);contactStamp.scale.set(width,1,depth);contactStamp.updateMatrix();
+    staticContact.setMatrixAt(staticContact.count++,contactStamp.matrix);staticContact.instanceMatrix.needsUpdate=true;
+  };
   // Low-height sculpted terrain: game-space remains planar and unit movement unchanged.
   add(world,new THREE.PlaneGeometry(700,700),waterMat,0,-1.15,0).rotation.x=-Math.PI/2;
   const terrain=new THREE.PlaneGeometry(MAP_HALF_SIZE*2,MAP_HALF_SIZE*2,150,150);
   terrain.rotateX(-Math.PI/2);
   const position=terrain.getAttribute('position');
   const vertexColors:number[]=[];
-  const greenA=new THREE.Color(0x313c3c),greenB=new THREE.Color(0x57635b);
+  const greenA=new THREE.Color(0x6c8056),greenB=new THREE.Color(0xa4ab78);
   for(let i=0;i<position.count;i++){
     const x=position.getX(i),z=position.getZ(i);
     const edge=Math.max(Math.abs(x),Math.abs(z));
@@ -126,7 +153,9 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   }
   terrain.setAttribute('color',new THREE.Float32BufferAttribute(vertexColors,3));
   terrain.computeVertexNormals();
-  const ground=add(world,terrain,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1}),0,0,0);
+  const groundMaterial=new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,map:surfaces.ground,bumpScale:.11});
+  const ground=add(world,terrain,groundMaterial,0,0,0);
+  ground.name='Textured meadow terrain';
   ground.castShadow=false;ground.receiveShadow=true;
 
   const rng=seeded(738139);
@@ -154,11 +183,13 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
       war.outposts.some(p=>dist(x,z,p.x,p.z)<11)||
       Math.abs(Math.abs(x)-Math.abs(z))<3.6)continue;
     const h=2.6+rng()*2.8;
+    groundContact(x,z,h*1.5,h*1.2);
     dummy.position.set(x,h*.23,z);dummy.scale.set(1,h*.46,1);
     dummy.rotation.set(0,rng()*Math.PI*2,0);dummy.updateMatrix();
     treeTrunks.setMatrixAt(treeCount,dummy.matrix);
     dummy.position.set(x,h*.62,z);dummy.scale.set(h*.7,h*.8,h*.7);
     dummy.updateMatrix();treeCrowns.setMatrixAt(treeCount,dummy.matrix);
+    treeCrowns.setColorAt(treeCount,new THREE.Color().setRGB(.8+rng()*.4,.9+rng()*.25,.75+rng()*.3));
     treeCount++;
   }
   treeTrunks.count=treeCount;treeCrowns.count=treeCount;
@@ -227,17 +258,19 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   // Instanced parts keep the additional geometry affordable in the grand-battle mode.
   createBattlefieldEnvironment(world,BATTLEFIELD_FEATURES);
 
-  // Extra vegetation uses instancing to preserve large-battle frame rates.
+  // Extra vegetation and populated medieval kingdoms use GPU instancing.
   art.landscape(world,war);
+  createKingdomScenery(world,war);
 
   const fortresses:Fortress[]=war.factions.map(f=>{
     const root=new THREE.Group();root.position.set(f.x,0,f.z);world.add(root);
     const territoryRing=add(root,baseRingGeometry,markerMats[f.id],0,.15,0);
     territoryRing.rotation.x=-Math.PI/2;
     territoryRing.castShadow=false;
-    const label=createWorldLabel(34,8.5);
+    const label=createWorldLabel(25,6.25);
     label.sprite.position.set(f.x,25,f.z);
     world.add(label.sprite);labels.push(label);
+    groundContact(f.x,f.z,33,31);
     const slab=add(root,cylinder,stoneDark,0,.28,0,19,1.2,19);
     slab.rotation.y=Math.PI/4;
     // Stone curtain walls with center gate and four individual watchtowers.
@@ -271,7 +304,8 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     cap.rotation.y=Math.PI/4;
     for(const y of [4.2,7.2,10.2]){
       add(root,box,woodDark,0,y,4.22,1.9,1.3,.15);
-      add(root,box,gold,0,y,4.36,1.1,.1,.2);
+      add(root,box,windowLight,0,y,4.36,1.15,.8,.16);
+      for(const side of [-1,1])add(root,box,windowLight,side*4.8,y,-.8,.15,.75,.75);
     }
     keep.castShadow=true;
     add(root,cylinder,woodDark,0,17.5,-.6,.23,4.7,.23);
@@ -308,6 +342,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
       add(house,box,cream,0,1.4,0,4.5,2.8,4);
       add(house,roofShape,farmRoofMaterial,0,3.8,0,6.5,2.8,6);
       add(house,box,woodDark,0,1,2.1,1.2,2,.2);
+      for(const x of [-1.4,1.4])add(house,box,windowLight,x,1.6,2.1,.65,.75,.15);
       batchStaticChildren(house);homes.push(house);
     }
     const warehouse=new THREE.Group();warehouse.position.set(70,0,-15);root.add(warehouse);
@@ -356,6 +391,7 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
 
   const posts:PostVisual[]=war.outposts.map(p=>{
     const root=new THREE.Group();root.position.set(p.x,0,p.z);world.add(root);
+    groundContact(p.x,p.z,16,16);
     const territory=add(root,new THREE.RingGeometry(8.5,9,48),
       new THREE.MeshBasicMaterial({color:0xc8b67b,transparent:true,opacity:.65,depthWrite:false,side:THREE.DoubleSide}),0,.12,0);
     territory.rotation.x=-Math.PI/2;territory.castShadow=false;
@@ -503,6 +539,14 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   }
   function update(dt:number):void {
     const time=war.time;
+    let shadowCount=0;
+    for(const u of war.units){
+      if(u.hp<=0||!war.factions[u.owner].alive||shadowCount>=armyContact.instanceMatrix.count)continue;
+      const size=u.kind==='cavalry'?4.7:u.kind==='guardian'?3.9:3.2;
+      contactStamp.position.set(u.x,.085,u.z);contactStamp.scale.set(size,1,size*.8);contactStamp.updateMatrix();
+      armyContact.setMatrixAt(shadowCount++,contactStamp.matrix);
+    }
+    armyContact.count=shadowCount;armyContact.instanceMatrix.needsUpdate=true;
     ring.scale.set(war.zone,war.zone,war.zone);
     storm.scale.set(war.zone,1,war.zone);
     const ringMat=ring.material as THREE.MeshBasicMaterial;
@@ -637,10 +681,13 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
   }
   const setQuality=(high:boolean):void=>{
     highQuality=high;sun.castShadow=high;
+    const bump=high?surfaces.relief:null;
+    if(groundMaterial.bumpMap!==bump){groundMaterial.bumpMap=bump;groundMaterial.needsUpdate=true;}
+    if(!high&&sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null;}
     configureEffects();
   };
   const setReducedMotion=(enabled:boolean):void=>{
-    reducedMotion=enabled;configureEffects();
+    reducedMotion=enabled;grandVisuals?.setReducedMotion(enabled);configureEffects();
   };
   const setLabelsVisible=(visible:boolean):void=>{
     labels.forEach(label=>{label.sprite.visible=visible;});
@@ -670,7 +717,8 @@ export function createBattleWorld(scene:THREE.Scene,war:War):BattleWorld {
     geos.forEach(g=>g.dispose());mats.add(missileMaterial);
     [stone,stoneDark,mortar,roof,timber,woodDark,cream,gold,meadow,leaves,leafLight,...flowerMats,
       waterMat,roadMat,soilMat,ember,routeMaterial,farmRoofMaterial,...wheatMats,...teamMats,...bannerMats,...markerMats].forEach(m=>mats.add(m));
-    mats.forEach(m=>m.dispose());
+    mats.add(windowLight);mats.forEach(m=>m.dispose());
+    surfaces.dispose();
     art.dispose();
     sun.shadow.map?.dispose();
     models.clear();cooldowns.clear();unitBatches.clear();projectiles.length=0;freeMissiles.length=0;

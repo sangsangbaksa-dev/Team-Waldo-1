@@ -10,7 +10,7 @@ const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 try{
  for(let i=0;i<100;i++){if(server.exitCode!==null)throw new Error(output);if(await fetch(origin).then(r=>r.ok).catch(()=>false))break;await sleep(100);}
  await mkdir(dir,{recursive:true});browser=await chromium.launch({args:['--no-sandbox','--enable-webgl','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-dev-shm-usage']});
- for(const viewport of [{width:1440,height:900},{width:390,height:844},{width:320,height:780},{width:844,height:390}]){
+ for(const viewport of [{width:1440,height:900},{width:390,height:844},{width:320,height:780},{width:844,height:390}].filter(v=>!process.env.MANAGEMENT_WIDTH||v.width===Number(process.env.MANAGEMENT_WIDTH))){
   const context=await browser.newContext({viewport,reducedMotion:'reduce'});await context.addInitScript(()=>localStorage.setItem('waldo.preferences.v1',JSON.stringify({quality:'low',sound:false,reducedMotion:true})));
   const page=await context.newPage();page.setDefaultTimeout(30000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
   const click=selector=>page.locator(selector).click();
@@ -23,13 +23,13 @@ try{
   }
   await click('#start-war');if(await page.locator('.dialog-confirm').isVisible())await click('.dialog-confirm');await page.waitForFunction(()=>!!window.__war);
   await page.evaluate(()=>{const h=window.__war;h.setPaused(true);h.world.factions[0].gold=1000;h.world.factions[0].food=1000;h.world.factions.slice(1).forEach(f=>{f.aiTimer=99999;});h.ui();});
-  await click('#mission-action');assert.equal(await inPanel('#build-mine'),true,'Tutorial must reveal the actual production button');
-  await click('#build-mine');await click('#mission-action');assert.equal(await inPanel('#build-farm'),true);await click('#build-farm');
+  await click('#mission-action');assert.equal(await inPanel('#outpost-5'),true,'Prepared starting armies must be guided to their first outpost');
+  await click('#tab-economy');await click('#build-mine');await click('#build-farm');
   await screenshot('production');
   console.log(`STAGE management ${viewport.width}: queue and rally`);
-  await click('#tab-army');await click('#squad-infantry');assert.match(await page.locator('#army-count').innerText(),/4 \+3 \/ 18/);
-  await advance(4);assert.match(await page.locator('#army-count').innerText(),/5 \+2 \/ 18/);
-  await click('#cancel-training-0');assert.match(await page.locator('#army-count').innerText(),/5 \/ 18/);
+  await click('#tab-army');await click('#squad-infantry');assert.match(await page.locator('#army-count').innerText(),/100 \+25 \/ 400/);
+  await advance(4);assert.match(await page.locator('#army-count').innerText(),/101 \+24 \/ 400/);
+  await click('#cancel-training-0');assert.match(await page.locator('#army-count').innerText(),/101 \/ 400/);
   await click('#rally-set');const map=await page.locator('#war-map').boundingBox();await page.locator('#war-map').click({position:{x:map.width*.35,y:map.height*.35}});
   assert.ok(await page.evaluate(()=>window.__war.world.recruitment[0].rally));assert.equal(await page.locator('#rally-set').getAttribute('aria-pressed'),'false');
   await click('#train-infantry');await advance(4);assert.equal(await page.evaluate(()=>window.__war.world.units.some(u=>u.owner===0&&u.rallyPoint)),true);

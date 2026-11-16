@@ -52,6 +52,7 @@ export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
     const object = new THREE.InstancedMesh(geometry, material, GRAND_MAX_UNITS);
     object.count = 0;
     object.frustumCulled = false;
+    object.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     object.castShadow = geometry === torsoGeo;
     object.receiveShadow = false;
     parent.add(object);
@@ -86,6 +87,7 @@ export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
     });
   }
   const dummy = new THREE.Object3D();
+  let reducedMotion = false;
   const facingById = new Map<number, {x: number; z: number; angle: number}>();
   const set = (target: THREE.InstancedMesh | undefined, index: number,
     x: number, y: number, z: number, sx = 1, sy = 1, sz = 1, angle = 0) => {
@@ -117,7 +119,7 @@ export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
       const height = unit.kind === 'guardian' ? 1.16 : unit.kind === 'archer' ? .94 : 1;
       const base = cavalry ? 1.34 : 0;
       // Individual phase offsets keep hundreds of soldiers from marching in lockstep.
-      const gait = moving ? Math.sin(war.time * (cavalry ? 12.2 : 9.6) + unit.id * .71) : 0;
+      const gait = moving && !reducedMotion ? Math.sin(war.time * (cavalry ? 12.2 : 9.6) + unit.id * .71) : 0;
       const bob = moving ? Math.abs(gait) * .075 : 0;
       const y = base + bob;
       set(group.body, i, x, y + 1.32 * height, z, height, height, height, angle);
@@ -183,5 +185,5 @@ export function createGrandArmyVisuals(parent: THREE.Object3D, war: War) {
     }
   }
   update();
-  return { update };
+  return { update, setReducedMotion(value: boolean) { reducedMotion = value; } };
 }

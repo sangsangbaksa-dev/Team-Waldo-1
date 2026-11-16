@@ -11,7 +11,7 @@ import { concreteTexture, crateTexture, dirtTexture, floorTexture, glowTexture, 
 
 export type Quality = 'high' | 'standard' | 'low';
 const HIP = 0.9, KNEE = 0.44, LEG_Z = 0.11, AIM = 1.42;
-const LOOT_COLOR: Record<string, number> = { weapon: 0xeaf6ff, ammo: 0xffa53a, medkit: 0x52f08a, armor: 0x5aa8ff };
+const LOOT_COLOR: Record<string, number> = { weapon: 0xeaf6ff, ammo: 0xffa53a, medkit: 0x52f08a, armor: 0x5aa8ff, helmet: 0xd9b84a };
 const MUZZLE: Record<string, number> = { pistol: 0.26, smg: 0.5, shotgun: 0.7, rifle: 0.82, sniper: 1.12 };
 
 const rngOf = (seed: number): (() => number) => makeRng(seed);
@@ -44,6 +44,7 @@ export class ShooterView {
   private vm: THREE.Object3D | null = null; private vmId = ''; private vmSwap = 0; private vmFlash: THREE.Sprite; private bob = 0; private shake = 0; private time = 0;
   private mats = new Map<string, THREE.Material>(); private tmpCol = new THREE.Color(); private beams: THREE.InstancedMesh;
   private camPos = new THREE.Vector3(); private water: THREE.Mesh | null = null; private eyeNow = PLAYER.eye; private plane: THREE.Group | null = null; private chutes = new Map<number, THREE.Object3D>(); fov = 78; frames = 0;
+  private chuteGeo: THREE.BufferGeometry | null = null; private chuteLines: THREE.BufferGeometry | null = null; private chuteTopY = 0; private chuteHands = new THREE.Group(); private vmShown = false;
 
   constructor(readonly canvas: HTMLCanvasElement, readonly match: Match, private assets: ShooterAssets | null, readonly quality: Quality) {
     const hi = quality === 'high';
@@ -76,7 +77,42 @@ export class ShooterView {
     // 1인칭 총 장면
     this.vmScene.add(new THREE.HemisphereLight(0xdbe6ff, 0x6a5a50, 1.9)); const vs = new THREE.DirectionalLight(0xffe2b8, 2.4); vs.position.set(2, 4, 3); this.vmScene.add(vs);
     this.vmFlash = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, color: 0xffd98a, blending: THREE.AdditiveBlending, depthTest: false, transparent: true })); this.vmFlash.scale.set(0.3, 0.3, 1); this.vmFlash.visible = false; this.vmFlash.renderOrder = 10;
+    this.buildChuteHands();
     for (const p of match.players) this.makeRig(p);
+  }
+
+  /** 낙하산을 탄 동안 1인칭 화면에 보이는 두 팔: 위로 뻗어 라이저(줄)를 잡고 있습니다. */
+  private buildChuteHands(): void {
+    const sleeve = new THREE.MeshLambertMaterial({ color: 0x4b5a2e }), glove = new THREE.MeshLambertMaterial({ color: 0x24262a }), cord = new THREE.LineBasicMaterial({ color: 0xe8e4d8 });
+    for (const side of [-1, 1]) {
+      const hand = new THREE.Vector3(side * 3.6, 0.6, -10), from = new THREE.Vector3(side * 6.6, -8.5, -9), dir = hand.clone().sub(from), len = dir.length();
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.46, len, 10), sleeve); arm.position.copy(from).addScaledVector(dir, 0.5); arm.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+      const fist = new THREE.Mesh(new THREE.SphereGeometry(0.52, 12, 10), glove); fist.position.copy(hand);
+      const riser = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints([hand.clone().add(new THREE.Vector3(0, 0.5, 0)), new THREE.Vector3(side * 1.6, 9, -12)]), cord);
+      this.chuteHands.add(arm, fist, riser);
+    }
+    this.chuteHands.visible = false; this.vmScene.add(this.chuteHands);
+  }
+
+  /** 줄무늬 캐노피와 12가닥 서스펜션 라인을 가진 낙하산. 원점이 멜빵(어깨) 위치입니다. */
+  private makeChute(color: number): THREE.Group {
+    const R = 3.6, L = 4.7, THETA = Math.PI / 2.15, W = 24, H = 10;
+    if (!this.chuteGeo || !this.chuteLines) {
+      const g = new THREE.SphereGeometry(R, W, H, 0, Math.PI * 2, 0, THETA), n = g.attributes.position.count, col = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { const k = Math.floor((i % (W + 1)) / 2) % 2 === 0 ? 1 : 0.42; col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = k; }
+      g.setAttribute('color', new THREE.BufferAttribute(col, 3)); this.chuteGeo = g;
+      const rr = R * Math.sin(THETA), pts: THREE.Vector3[] = [];
+      for (let i = 0; i < 12; i++) { const phi = (i * 2 / W) * Math.PI * 2; pts.push(new THREE.Vector3(-Math.cos(phi) * rr, L, Math.sin(phi) * rr), new THREE.Vector3(0, 0, 0)); }
+      this.chuteLines = new THREE.BufferGeometry().setFromPoints(pts); this.chuteTopY = L - R * Math.cos(THETA) * 0.62;
+    }
+    const cg = new THREE.Group(), dome = new THREE.Mesh(this.chuteGeo, this.mat(`chute${color}`, () => new THREE.MeshLambertMaterial({ color, vertexColors: true, side: THREE.DoubleSide, emissive: color, emissiveIntensity: 0.12 })));
+    dome.scale.y = 0.62; dome.position.y = this.chuteTopY; dome.castShadow = true; cg.add(dome);
+    cg.add(new THREE.LineSegments(this.chuteLines, this.mat('chuteLine', () => new THREE.LineBasicMaterial({ color: 0xe8e4d8 })))); cg.rotation.order = 'YXZ'; return cg;
+  }
+  /** 낙하산 위치·흔들림. 펼친 동안만 보입니다. */
+  private placeChute(p: Player): void {
+    const ch = this.chutes.get(p.id); if (!ch) return; ch.visible = p.alive && p.air === 3; if (!ch.visible) return;
+    ch.position.set(p.x, p.y + 1.5, p.z); ch.rotation.set(Math.sin(this.time * 1.1 + p.id) * 0.04, -p.yaw, Math.sin(this.time * 0.9 + p.id * 2) * 0.05 - Math.min(0.2, p.speed * 0.01));
   }
 
   private mat(key: string, make: () => THREE.Material): THREE.Material { let m = this.mats.get(key); if (!m) { m = make(); this.mats.set(key, m); } return m; }
@@ -250,6 +286,10 @@ export class ShooterView {
     rig.legs.forEach((l, i) => { const side = i === 0 ? -1 : 1; l.rotation.z = sn * side * (0.5 + 0.2 * run) * amp + 0.12 * run; const sh = rig.shins[i]; if (sh) sh.rotation.z = -amp * (0.12 + (0.6 + 0.5 * run) * Math.max(0, cs * side)); });
     rig.aim += (1 - rig.aim) * Math.min(1, dt * 8);
     if (rig.armR) rig.armR.rotation.z = AIM * rig.aim; if (rig.armL) rig.armL.rotation.z = AIM * 0.82 * rig.aim;
+    if (p.air === 3) { // 낙하산: 두 팔로 줄을 잡고 다리를 늘어뜨립니다
+      if (rig.armR) rig.armR.rotation.z = 2.75; if (rig.armL) rig.armL.rotation.z = 2.75;
+      rig.legs.forEach((l, i) => { l.rotation.z = 0.2; const sh = rig.shins[i]; if (sh) sh.rotation.z = -0.55 + (i ? 0.12 : 0); });
+    }
     rig.flash.position.set(0.95, 1.32, 0.1);
     rig.flash.visible = p.muzzle > 0;
   }
@@ -259,14 +299,14 @@ export class ShooterView {
     const g = new THREE.Group(), color = LOOT_COLOR[l.kind];
     if (l.kind === 'weapon' && l.weapon && this.assets?.groundGuns[l.weapon]) { const m = instantiate(this.assets.groundGuns[l.weapon]); m.scale.setScalar(1.25); m.position.y = 0.9; g.add(m); }
     else {
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, l.kind === 'armor' ? 0.55 : 0.34, l.kind === 'armor' ? 0.28 : 0.4), new THREE.MeshLambertMaterial({ color: l.kind === 'medkit' ? 0xf4f6f4 : l.kind === 'armor' ? 0x3f7fd8 : 0x6c7a3c, emissive: color, emissiveIntensity: 0.18 })); body.position.y = 0.9; body.castShadow = true; g.add(body);
+      const body = new THREE.Mesh(l.kind === 'helmet' ? new THREE.SphereGeometry(0.28, 12, 8, 0, Math.PI * 2, 0, Math.PI / 1.8) : new THREE.BoxGeometry(0.5, l.kind === 'armor' ? 0.55 : 0.34, l.kind === 'armor' ? 0.28 : 0.4), new THREE.MeshLambertMaterial({ color: l.kind === 'medkit' ? 0xf4f6f4 : l.kind === 'armor' ? 0x3f7fd8 : l.kind === 'helmet' ? 0x56603a : 0x6c7a3c, emissive: color, emissiveIntensity: 0.18 })); body.position.y = 0.9; body.castShadow = true; g.add(body);
       if (l.kind === 'medkit') { const m = new THREE.MeshBasicMaterial({ color: 0xd8232a }); const a = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.08, 0.06), m), b = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.34, 0.06), m); a.position.set(0, 0.9, 0.21); b.position.set(0, 0.9, 0.21); g.add(a, b); }
     }
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.7, 28), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false })); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.08; g.add(ring);
     g.position.set(l.x, l.y, l.z); this.scene.add(g); return g;
   }
   /** 수송기와 낙하산 */
-  private syncSky(): void {
+  private syncSky(view: Player): void {
     const m = this.match, pl = m.planeAt(m.t);
     if (!this.plane) {
       const g = new THREE.Group(), body = new THREE.MeshLambertMaterial({ color: 0x6b7480 }), wing = new THREE.MeshLambertMaterial({ color: 0x8a929c });
@@ -276,11 +316,9 @@ export class ShooterView {
       const tail = new THREE.Mesh(new THREE.BoxGeometry(6, 0.5, 18), wing); tail.position.set(-17, 0.5, 0); g.add(tail); const fin = new THREE.Mesh(new THREE.BoxGeometry(6, 8, 0.5), wing); fin.position.set(-17, 4.5, 0); g.add(fin);
       g.visible = false; this.scene.add(g); this.plane = g;
     }
-    if (pl && m.flight) { this.plane.visible = true; this.plane.position.set(pl.x, 320, pl.z); this.plane.rotation.y = -Math.atan2(m.flight.dz, m.flight.dx); } else this.plane.visible = false;
+    if (pl && m.flight) { this.plane.visible = view.air !== 1; this.plane.position.set(pl.x, 320, pl.z); this.plane.rotation.y = -Math.atan2(m.flight.dz, m.flight.dx); } else this.plane.visible = false;
     for (const p of m.players) if (p.air === 3 && !this.chutes.has(p.id)) {
-      const cg = new THREE.Group(), dome = new THREE.Mesh(new THREE.SphereGeometry(2.6, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshLambertMaterial({ color: p.color, side: THREE.DoubleSide })); dome.scale.y = 0.75; dome.position.y = 1.4; cg.add(dome);
-      const cord = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints([[-2.4, 1.4, 0], [0, -1.6, 0], [2.4, 1.4, 0], [0, -1.6, 0], [0, 1.4, 2.4], [0, -1.6, 0], [0, 1.4, -2.4], [0, -1.6, 0]].map(([x, y, z]) => new THREE.Vector3(x, y, z))), new THREE.LineBasicMaterial({ color: 0xdddddd }));
-      cg.add(cord); cg.visible = false; this.scene.add(cg); this.chutes.set(p.id, cg);
+      const cg = this.makeChute(p.color); cg.visible = false; this.scene.add(cg); this.chutes.set(p.id, cg);
     }
   }
   private syncLoot(cam: THREE.Vector3): void {
@@ -335,6 +373,8 @@ export class ShooterView {
   // ---------- 1인칭 총 ----------
   private viewmodel(p: Player, show: boolean, dt: number): void {
     const gun = p.guns[p.cur], id = gun?.id ?? '';
+    if (show && !this.vmShown) this.vmSwap = 0.35; // 착지해서 총을 다시 꺼낼 때
+    this.vmShown = show;
     if (id !== this.vmId) {
       this.vmId = id; if (this.vm) this.vmScene.remove(this.vm); this.vm = null; const tpl = id ? this.assets?.viewGuns[id] : null; this.vmSwap = 0.35;
       if (tpl) { this.vm = instantiate(tpl); this.vm.traverse(o => { (o as THREE.Mesh).castShadow = false; }); this.vm.add(this.vmFlash); this.vmFlash.position.set(MUZZLE[id] ?? 0.6, 0.05, 0); this.vmScene.add(this.vm); }
@@ -352,7 +392,7 @@ export class ShooterView {
   /** 매 프레임: 장면을 경기 상태에 맞추고 그립니다. spectate 가 있으면 그 선수 뒤에서 따라갑니다(내가 쓰러진 뒤). */
   frame(dt: number, me: Player, spectate: Player | null, zoom: number): void {
     this.time += dt; this.frames++; const m = this.match, z = m.zone, cam = this.camera, view = spectate ?? me;
-    for (const p of m.players) { const rig = this.rigs.get(p.id)!; const hide = (!spectate && p.id === me.id); rig.root.visible = !hide && p.air !== 1; if (hide) { const ch = this.chutes.get(p.id); if (ch) { ch.visible = p.alive && p.air === 3; ch.position.set(p.x, p.y + 2.6, p.z); } continue; } this.poseRig(p, dt); if (!p.alive) { rig.root.rotation.set(0, -p.yaw, -Math.PI / 2); rig.root.position.y = p.y + 0.28; rig.flash.visible = false; } const ch = this.chutes.get(p.id); if (ch) { ch.visible = p.alive && p.air === 3; ch.position.set(p.x, p.y + 2.6, p.z); } }
+    for (const p of m.players) { const rig = this.rigs.get(p.id)!; const hide = (!spectate && p.id === me.id); rig.root.visible = !hide && p.air !== 1; this.placeChute(p); if (hide) continue; this.poseRig(p, dt); if (!p.alive) { rig.root.rotation.set(0, -p.yaw, -Math.PI / 2); rig.root.position.y = p.y + 0.28; rig.flash.visible = false; } }
     // 카메라
     this.bob += view.speed * dt * 1.7; this.shake = Math.max(0, this.shake - dt * 5);
     if (spectate) {
@@ -371,11 +411,12 @@ export class ShooterView {
     this.zoneWall.scale.set(z.r, 1, z.r); this.zoneWall.position.x = z.cx; this.zoneWall.position.z = z.cz; (this.zoneWall.material as THREE.ShaderMaterial).uniforms.t.value = this.time;
     this.zoneNext.visible = z.nextR < z.r - 0.5; this.zoneNext.scale.set(z.nextR, z.nextR, 1); this.zoneNext.position.x = z.nextCx; this.zoneNext.position.z = z.nextCz;
     if (this.water) { this.water.position.x = view.x; this.water.position.z = view.z; this.water.position.y = this.match.map.terrain.water + Math.sin(this.time * 0.8) * 0.04; }
-    this.syncSky(); this.syncLoot(cam.position); this.updateFx(dt);
-    this.viewmodel(view, !spectate && me.alive, dt);
+    this.syncSky(view); this.syncLoot(cam.position); this.updateFx(dt);
+    this.chuteHands.visible = !spectate && me.alive && me.air === 3;
+    this.viewmodel(view, !spectate && me.alive && me.air === 0, dt);
     // 그리기: 월드 → 깊이 지우고 1인칭 총
     this.renderer.clear(); this.renderer.render(this.scene, cam);
-    if (this.vm && this.vm.visible) { this.vmCam.fov = cam.fov > 60 ? 64 : 64 * (cam.fov / 60); this.vmCam.aspect = cam.aspect; this.vmCam.updateProjectionMatrix(); this.renderer.clearDepth(); this.renderer.render(this.vmScene, this.vmCam); }
+    if ((this.vm && this.vm.visible) || this.chuteHands.visible) { this.vmCam.fov = cam.fov > 60 ? 64 : 64 * (cam.fov / 60); this.vmCam.aspect = cam.aspect; this.vmCam.updateProjectionMatrix(); this.renderer.clearDepth(); this.renderer.render(this.vmScene, this.vmCam); }
   }
 
   /** 월드 좌표를 화면 픽셀로. 카메라 뒤면 null. */
@@ -386,6 +427,7 @@ export class ShooterView {
 
   dispose(): void {
     this.scene.traverse(o => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); const mat = m.material as THREE.Material | THREE.Material[] | undefined; if (Array.isArray(mat)) mat.forEach(x => x.dispose()); else mat?.dispose(); });
+    this.chuteHands.traverse(o => { (o as THREE.Mesh).geometry?.dispose(); }); // 총 모델은 에셋과 공유하므로 건드리지 않습니다
     this.renderer.dispose(); this.renderer.forceContextLoss();
   }
 }

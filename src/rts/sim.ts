@@ -138,6 +138,17 @@ export class RtsSim {
 
   order(u: Unit, o: Order): void { u.o = o; u.path = []; u.pi = 0; u.repath = 0; }
 
+  /** 이동·전투가 끝난 일꾼은 들고 있던 광물을 넣고, 없으면 가장 가까운 광물을 캡니다. */
+  private workOrder(u: Unit): Order {
+    const hq = u.carry > 0 ? this.nearestHq(u.owner, u.x, u.y) : null;
+    if (u.carry > 0 && !hq) return idle();
+    const x = hq ? hq.x + hq.size / 2 : u.x, y = hq ? hq.y + hq.size / 2 : u.y;
+    const nd = this.nearestNode(x, y, 64, false);
+    return nd ? { t: 'gather', x: 0, y: 0, target: nd.id, phase: u.carry > 0 ? 2 : 0, timer: 0 } : idle();
+  }
+  /** 명령이 끝난 뒤. 일꾼은 채집으로 돌아가고 전투 유닛은 대기합니다. */
+  private rest(u: Unit): void { this.order(u, u.kind === 'worker' ? this.workOrder(u) : idle()); }
+
   /** 명령 하나를 적용합니다. 규칙에 어긋나는 명령은 무시하고 false 를 돌려줍니다. */
   apply(owner: number, c: Cmd): boolean {
     if (this.winner !== -1 || (owner !== 0 && owner !== 1) || typeof c !== 'object' || c === null) return false;
@@ -280,21 +291,25 @@ export class RtsSim {
     const o = u.o;
     switch (o.t) {
       case 'idle': {
-        if (u.kind !== 'worker' && (u.id + this.tick) % 4 === 0) { const t = this.pick(u.owner, u.x, u.y, Math.max(d.range + 1.5, 7)); if (t) { this.order(u, { t: 'attack', x: u.x, y: u.y, target: t.id, phase: 1, timer: 0 }); } }
+        if (u.kind === 'worker') {
+          if ((u.id + this.tick) % 24 === 0) { const n = this.workOrder(u); if (n.t !== 'idle') this.order(u, n); }
+          break;
+        }
+        if ((u.id + this.tick) % 4 === 0) { const t = this.pick(u.owner, u.x, u.y, Math.max(d.range + 1.5, 7)); if (t) { this.order(u, { t: 'attack', x: u.x, y: u.y, target: t.id, phase: 1, timer: 0 }); } }
         break;
       }
-      case 'move': if (this.walk(u, o.x, o.y, d.speed, 0.25)) this.order(u, idle()); break;
+      case 'move': if (this.walk(u, o.x, o.y, d.speed, 0.25)) this.rest(u); break;
       case 'amove': {
         let t = o.target ? this.unit(o.target) ?? this.building(o.target) : undefined;
         if (t && (t.hp <= 0 || this.gap(u, d.radius, t) > d.range + 6)) { t = undefined; o.target = 0; }
         if (!t && d.dmg > 0 && (u.id + this.tick) % 3 === 0) { const f = this.pick(u.owner, u.x, u.y, d.range + 3.5); if (f) { t = f; o.target = f.id; u.path = []; } }
-        if (t) this.engage(u, t); else if (this.walk(u, o.x, o.y, d.speed, 0.6)) this.order(u, idle());
+        if (t) this.engage(u, t); else if (this.walk(u, o.x, o.y, d.speed, 0.6)) this.rest(u);
         break;
       }
       case 'attack': {
         const t = this.unit(o.target) ?? this.building(o.target);
         // 자동으로 잡은 목표(phase 1)는 너무 멀어지면 놓아 줍니다.
-        if (!t || t.hp <= 0 || (o.phase === 1 && this.dist(u.x, u.y, o.x, o.y) > 14)) { this.order(u, idle()); break; }
+        if (!t || t.hp <= 0 || (o.phase === 1 && this.dist(u.x, u.y, o.x, o.y) > 14)) { this.rest(u); break; }
         this.engage(u, t); break;
       }
       case 'gather': this.gather(u); break;

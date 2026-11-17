@@ -3,12 +3,13 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { fetchBuffer, retry } from '../loading';
-import { bake, type Baked } from '../city/models';
+import { bake, type Baked } from '../shared/character/bake';
+import { kitFromScene, type CharacterKit } from '../shared/character';
 
 /** 병사 한 종류: 몸통 + 다리(허벅지·정강이) + 선택적 팔. 모두 모델 원점(발바닥) 기준입니다. */
 export interface Soldier { body: Baked; leg: Baked; shin: Baked | null; armL: { geo: Baked; pivot: THREE.Vector3 } | null; armR: { geo: Baked; pivot: THREE.Vector3 } | null }
 export interface ShooterAssets {
-  soldiers: Record<string, Soldier>;
+  soldiers: Record<string, Soldier>; kit: CharacterKit;
   /** 바닥에 놓인 총, 1인칭 총 */ groundGuns: Record<string, THREE.Object3D>; viewGuns: Record<string, THREE.Object3D>;
   props: Record<string, THREE.Object3D>;
 }
@@ -33,7 +34,7 @@ export function loadShooterAssets(base: string, onProgress?: (fraction: number) 
     for (const k of ['pistol', 'smg', 'rifle', 'shotgun', 'sniper']) { if (!wn[`g_${k}`] || !wn[`vm_${k}`]) throw new Error(`missing weapon ${k}`); groundGuns[k] = wn[`g_${k}`]; viewGuns[k] = wn[`vm_${k}`]; }
     const props: Record<string, THREE.Object3D> = {}; for (const k of ['tree_round', 'tree_pine', 'crate', 'barrier', 'dumpster', 'lamp']) if (pn[k]) props[k] = pn[k];
     onProgress?.(1);
-    return { soldiers, groundGuns, viewGuns, props };
+    return { soldiers, kit: kitFromScene(c), groundGuns, viewGuns, props };
   })();
   cache.catch(() => { cache = null; });
   return cache;

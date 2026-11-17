@@ -10,6 +10,7 @@ import { BUILDINGS, DIFFICULTIES, LEVELS, RESEARCH, RESEARCH_KINDS, SUPPLY_MAX, 
 import { RtsNet } from './pvp';
 import { RtsSim, type Building, type Cmd, type ResNode, type Unit } from './sim';
 import { RtsView } from './view';
+import { PVP_ENABLED } from '../net/config';
 
 const esc = (s: string): string => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
 const clock = (ticks: number): string => { const s = Math.floor(ticks / TICK); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -340,7 +341,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       <p class="rt-lead">광물을 캐고, 기지를 세우고, 병력을 길러 상대의 모든 건물을 무너뜨리면 승리합니다. 모든 건물이 사라지면 패배합니다.</p>
       <div class="rt-diffs" role="group" aria-label="난이도">${DIFFICULTIES.map((d, i) => `<button type="button" data-diff="${d}" aria-pressed="${d === difficulty}"><span>${['I', 'II', 'III', 'IV'][i]}</span><b>${LEVELS[d].label}</b></button>`).join('')}</div>
       <p class="rt-diffnote" id="rt-diffnote">${LEVELS[difficulty].blurb}</p>
-      <div class="rt-actions"><button class="primary" data-act="start" id="rt-start">AI와 1대1 대전</button><button data-act="pvp" id="rt-pvp">온라인 1대1 대전</button></div>
+      <div class="rt-actions"><button class="primary" data-act="start" id="rt-start">AI와 1대1 대전</button>${PVP_ENABLED ? '<button data-act="pvp" id="rt-pvp">온라인 1대1 대전</button>' : ''}</div>
       <div class="rt-actions"><button data-act="moba" id="rt-moba">롤식 라인전 3:3 · 챔피언 조종</button></div>
       <div class="rt-actions sub"><button data-act="help">조작법</button><button data-act="exit">메뉴로</button></div>
       <p class="rt-rec">${rec.matches ? `AI 대전 ${rec.matches}판 ${rec.wins}승${rec.bestWin[difficulty] ? ` · ${LEVELS[difficulty].label} 최단 승리 ${clock(rec.bestWin[difficulty] * TICK)}` : ''}` : '처음이라면 쉬움 난이도로 시작해 보세요.'}</p></div>`);
@@ -392,6 +393,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
 
   // ---------- 온라인 대전 ----------
   function openPvpLobby(): void {
+    if (!PVP_ENABLED) return;
     void import('../net/lobby').then(({ openLobby }) => openLobby({ game: 'rts', config: () => ({}), onMatch: startPvp, onClose: () => undefined }))
       .catch(() => show('<div class="rt-card"><span class="rt-eyebrow">온라인 1대1</span><h2>대전 기능을 불러오지 못했어요</h2><div class="rt-actions"><button class="primary" data-act="setup">돌아가기</button></div></div>'));
   }

@@ -14,6 +14,7 @@ import { createRace, currentLap, placeOf, updateRace, type RaceEvent, type RaceS
 import { mountSetup, type SetupHandle } from './setup-ui';
 import { buildMapTrack, type Track } from './track';
 import { RaceView } from './view';
+import { PVP_ENABLED } from '../net/config';
 
 const STEP = 1 / 90;
 const ORD = ['', '1ST', '2ND', '3RD', '4TH'];
@@ -105,13 +106,14 @@ export function openRace(onExit: () => void): void {
     setupUi = mountSetup(root, setup, records, {
       onStart: s => { setup = s; writeRaceSetupRaw(s); setupUi?.destroy(); setupUi = null; begin(); },
       onExit: () => exit(),
-      onPvp: s => { setup = s; writeRaceSetupRaw(s); openPvpLobby(); },
+      onPvp: PVP_ENABLED ? (s => { setup = s; writeRaceSetupRaw(s); openPvpLobby(); }) : undefined,
     });
   }
 
 
   // ---------- 1대1 대전 ----------
   function openPvpLobby(): void {
+    if (!PVP_ENABLED) return;
     void import('../net/lobby').then(({ openLobby }) => openLobby({ game: 'race', config: () => ({ map: setup.map, laps: setup.laps }), onMatch: startPvp, onClose: () => undefined }))
       .catch(() => { modal.className = 'rc-modal show'; modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">1대1 대전</span><h2>대전 기능을 불러오지 못했어요</h2><div class="rc-actions"><button data-act="setup">설정으로</button></div></div>'; });
   }

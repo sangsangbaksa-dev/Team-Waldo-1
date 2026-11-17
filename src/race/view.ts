@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { instantiate } from '../city/models';
+import { lookFor, type CharacterKit, type CharacterRig } from '../shared/character';
 import { wrapAngle, boosting, kmh } from './physics';
 import { type RaceState, type Racer } from './race';
 import { type Track } from './track';
@@ -68,11 +69,14 @@ class Particles {
   }
 }
 
-interface CarVis { racer: Racer; group: THREE.Group; flames: THREE.Mesh[]; shadow: THREE.Mesh; lastV: number; tails: THREE.Sprite[]; heads: THREE.Sprite[] }
+let driverKit: CharacterKit | null = null;
+/** 공용 캐릭터 키트: 운전석 드라이버와 출발선 피트 크루에 씁니다. 없으면 차만 그립니다. */
+export function setDriverKit(k: CharacterKit | null): void { driverKit = k; }
+interface CarVis { driver?: CharacterRig; racer: Racer; group: THREE.Group; flames: THREE.Mesh[]; shadow: THREE.Mesh; lastV: number; tails: THREE.Sprite[]; heads: THREE.Sprite[] }
 
 export class RaceView {
   readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera = new THREE.PerspectiveCamera(64, 1, 0.4, 3200);
-  private cars: CarVis[] = []; private ground!: THREE.Mesh; private pads: Array<{ tex: THREE.CanvasTexture }> = [];
+  private crew: CharacterRig[] = []; private cars: CarVis[] = []; private ground!: THREE.Mesh; private pads: Array<{ tex: THREE.CanvasTexture }> = [];
   private rainFx = new Particles(1800, 0.32, THREE.NormalBlending, 0.55); private sparks = new Particles(260, 0.9, THREE.AdditiveBlending); private smoke = new Particles(220, 2.0, THREE.NormalBlending, 0.4); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
   private camH = 0; private camInit = false; private fov = 64; private shake = 0; private punch = 0; private time = 0; private sun: THREE.DirectionalLight;
   private chaseLift = 0; private viewH = 1; private startLamps: THREE.Mesh[] = [];
@@ -117,7 +121,9 @@ export class RaceView {
         sp.position.set(x, 0.62, z); sp.scale.setScalar(size); group.add(sp); return sp;
       };
       const tails = [-0.72, 0.72].map(z => mkLamp(-CAR_LEN / 2 + 0.02, z, 0xff2a1a, 0.9)), heads = [-0.7, 0.7].map(z => mkLamp(CAR_LEN / 2 - 0.05, z, 0xfff1c8, 0.8));
-      const shadow = new THREE.Mesh(shGeo, shMat); this.scene.add(group, shadow); this.cars.push({ racer: r, group, flames, shadow, lastV: 0, tails, heads });
+      let driver: CharacterRig | undefined;
+      if (driverKit) { driver = driverKit.create('civ', lookFor(r.model.length * 31 + Math.round(r.color.length * 7)), new THREE.Color(r.accent).getHex()); driver.root.scale.multiplyScalar(0.5); driver.root.position.set(-0.2, -0.1, 0); driver.state.seat = 1; driver.state.drive = 1; driver.update(0); group.add(driver.root); }
+      const shadow = new THREE.Mesh(shGeo, shMat); this.scene.add(group, shadow); this.cars.push({ racer: r, group, flames, shadow, lastV: 0, tails, heads, driver });
     }
     this.disposables.push(flameGeo, shGeo, shTex, shMat);
   }
@@ -219,6 +225,12 @@ export class RaceView {
       this.scene.add(lamp); this.startLamps.push(lamp); this.disposables.push(mat);
     }
     this.disposables.push(lampGeo);
+    if (driverKit) { // 출발선 옆 피트 크루·관중: 코스를 바라보며 손을 흔듭니다
+      for (let n = 0; n < 8; n++) {
+        const side = n % 2 ? 1 : -1, ahead = 1 + Math.floor(n / 2) * 2, j = Math.min(t.n - 1, ahead), ch = driverKit.create(['civ', 'civ3', 'worker', 'civ5', 'guard'][n % 5], 40 + n, [0xe8e6df, 0xd9a23a, 0x2f6fd0, 0xc23b3b][n % 4]), dx = t.x[j] - t.tz[j] * side * (hw + 3.4), dz = t.z[j] + t.tx[j] * side * (hw + 3.4);
+        ch.root.position.set(dx, t.y[j], dz); ch.root.rotation.y = -Math.atan2(t.tx[j] * side, -t.tz[j] * side) + Math.PI; ch.state.wave = n % 3 === 0 ? 1 : 0; ch.state.time = n; ch.update(0); this.scene.add(ch.root); this.crew.push(ch);
+      }
+    }
     const chev = canvasTex(128, 96, g => {
       g.fillStyle = '#16130c'; g.fillRect(0, 0, 128, 96); g.strokeStyle = '#ffe14a'; g.lineWidth = 14; g.lineJoin = 'round'; g.lineCap = 'round';
       g.beginPath(); g.moveTo(36, 16); g.lineTo(84, 48); g.lineTo(36, 80); g.moveTo(62, 16); g.lineTo(110, 48); g.lineTo(62, 80); g.stroke();
@@ -384,11 +396,12 @@ export class RaceView {
   update(race: RaceState, dt: number, wallHit: number): { speedFrac: number } {
     this.time += dt; const p = race.player.car, t = this.track, speed = Math.abs(p.vf), sf = Math.min(1, speed / 74), bst = boosting(p);
     for (const pad of this.pads) pad.tex.offset.x -= dt * 1.4;
+    for (const ch of this.crew) { ch.state.time += dt; ch.update(dt); }
     // 차량 배치
     for (const v of this.cars) {
       const c = v.racer.car, sample = t.n > 0 ? ((c.idx % t.n) + t.n) % t.n : 0, pitchRoad = t.pitch[sample] || 0, accel = (c.vf - v.lastV) / Math.max(dt, 1e-4); v.lastV = c.vf;
       const roll = Math.max(-0.09, Math.min(0.09, -c.yawRate * c.vf * 0.0028)) + c.slip * -0.08, pitch = pitchRoad - Math.max(-0.04, Math.min(0.04, accel * 0.0012));
-      v.group.position.set(c.x, c.y + 0.02, c.z); v.group.rotation.set(roll, -c.h, pitch, 'YXZ'); v.shadow.position.set(c.x, c.y + 0.05, c.z); v.shadow.rotation.y = -c.h;
+      v.group.position.set(c.x, c.y + 0.02, c.z); v.group.rotation.set(roll, -c.h, pitch, 'YXZ'); v.shadow.position.set(c.x, c.y + 0.05, c.z); v.shadow.rotation.y = -c.h; if (v.driver) { v.driver.state.time += dt; v.driver.root.rotation.x = Math.max(-0.12, Math.min(0.12, -c.yawRate * 0.06)); v.driver.update(dt); }
       const fl = boosting(c), len = fl ? 1.0 + Math.sin(this.time * 90 + v.racer.id) * 0.25 + Math.min(0.9, speed / 90) : 0.001;
       for (const f of v.flames) { f.scale.x += (len - f.scale.x) * Math.min(1, dt * 20); f.visible = fl || f.scale.x > 0.08; (f.material as THREE.MeshBasicMaterial).color.setHex(v.racer.player ? 0x6ec6ff : 0xffa14a); }
       if (fl && Math.random() < 0.9) this.sparks.emit(c.x - Math.cos(c.h) * 2.4, c.y + 0.5, c.z - Math.sin(c.h) * 2.4, -Math.cos(c.h) * 8 + rnd(-2, 2), rnd(0, 2), -Math.sin(c.h) * 8 + rnd(-2, 2), 0.35, 0.4, 0.8, 1);

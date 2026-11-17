@@ -4,7 +4,8 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { AIR, WEAPONS, makeRng } from './config';
 import { bake, instantiate } from '../city/models';
 import { eyeOf, type Match, type MatchEvent, type Player } from './sim';
-import type { ShooterAssets, Soldier } from './assets';
+import type { ShooterAssets } from './assets';
+import type { CharacterRig } from '../shared/character';
 import { SOLDIER_KINDS } from './assets';
 import type { Box, Loot } from './world';
 import { buildProps, buildRoofs, makeDropCrate, makePlane, partMesh } from './props';
@@ -15,7 +16,6 @@ import { waterDepth } from './terrain';
 import { crateTexture, floorTexture, glowTexture, groundTexture, makeSky, wallTexture } from './textures';
 
 export type Quality = 'high' | 'standard' | 'low';
-const HIP = 0.9, KNEE = 0.44, LEG_Z = 0.11, AIM = 1.42;
 const LOOT_COLOR: Record<string, number> = { weapon: 0xeaf6ff, ammo: 0xffa53a, medkit: 0x52f08a, armor: 0x5aa8ff, attach: 0xc59bff, helmet: 0xffd34d, boost: 0x39e6ff };
 const MUZZLE: Record<string, number> = { pistol: 0.26, smg: 0.5, shotgun: 0.7, rifle: 0.82, sniper: 1.12 };
 
@@ -38,7 +38,7 @@ function worldBox(b: Box, tile = 3.2): THREE.BufferGeometry {
   return g;
 }
 
-interface Rig { chute: THREE.Group; root: THREE.Group; torsoJ: THREE.Group; legs: THREE.Group[]; shins: THREE.Group[]; armL: THREE.Group | null; armR: THREE.Group | null; flash: THREE.Sprite; aim: number }
+interface Rig { chute: THREE.Group; root: THREE.Group; ch: CharacterRig | null; flash: THREE.Sprite; aim: number; lastHurt: number; lastMuzzle: number }
 interface Fx { mesh: THREE.Mesh; life: number; max: number }
 
 export class ShooterView {
@@ -176,25 +176,12 @@ export class ShooterView {
     }
   }
 
-  // ---------- 병사 ----------
-  private partGroup(b: Soldier['body'], team: number, skin: number): THREE.Group {
-    const g = new THREE.Group(), add = (geo: THREE.BufferGeometry | null, m: THREE.Material): void => { if (!geo) return; const mesh = new THREE.Mesh(geo, m); mesh.castShadow = true; g.add(mesh); };
-    add(b.fixed, this.mat('fixed', () => new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x23262b }))); add(b.team, this.mat(`team${team}`, () => new THREE.MeshLambertMaterial({ vertexColors: true, color: team })));
-    add(b.skin, this.mat(`skin${skin}`, () => new THREE.MeshLambertMaterial({ vertexColors: true, color: skin }))); add(b.glow, this.mat('glow', () => new THREE.MeshBasicMaterial({ vertexColors: true })));
-    return g;
-  }
+  // ---------- 병사 ---------- (공용 캐릭터 리그: src/shared/character)
   private makeRig(p: Player): void {
-    const root = new THREE.Group(), torsoJ = new THREE.Group(), torso = new THREE.Group(), legs: THREE.Group[] = [], shins: THREE.Group[] = []; let armL: THREE.Group | null = null, armR: THREE.Group | null = null;
-    const s = this.assets?.soldiers[SOLDIER_KINDS[p.id % SOLDIER_KINDS.length]];
-    if (s) {
-      torsoJ.position.y = HIP; torso.position.y = -HIP; torsoJ.rotation.order = 'ZYX'; torsoJ.add(torso); root.add(torsoJ); torso.add(this.partGroup(s.body, p.color, p.skin));
-      for (const side of [-1, 1]) {
-        const lg = new THREE.Group(); lg.position.set(0, HIP, side * LEG_Z); lg.add(this.partGroup(s.leg, p.color, p.skin)); legs.push(lg);
-        if (s.shin) { const sg = new THREE.Group(); sg.position.y = -KNEE; sg.add(this.partGroup(s.shin, p.color, p.skin)); lg.add(sg); shins.push(sg); } root.add(lg);
-      }
-      if (s.armL) { armL = new THREE.Group(); armL.position.copy(s.armL.pivot); armL.add(this.partGroup(s.armL.geo, p.color, p.skin)); torso.add(armL); }
-      if (s.armR) { armR = new THREE.Group(); armR.position.copy(s.armR.pivot); armR.add(this.partGroup(s.armR.geo, p.color, p.skin)); torso.add(armR); }
-    } else { // 모델을 못 받았을 때의 단순한 병사
+    const root = new THREE.Group(); let ch: CharacterRig | null = null;
+    const s = this.assets?.kit;
+    if (s) { ch = s.create(SOLDIER_KINDS[p.id % SOLDIER_KINDS.length], { team: p.color, skin: p.skin, height: 0.97 + (p.id % 5) * 0.015, width: 1 }); root.add(ch.root); }
+    else { // 모델을 못 받았을 때의 단순한 병사
       const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 1.0, 4, 8), new THREE.MeshLambertMaterial({ color: p.color })); body.position.y = 1.0; body.castShadow = true; root.add(body);
     }
     const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, color: 0xffd98a, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false })); flash.scale.set(0.8, 0.8, 1); flash.visible = false; root.add(flash);
@@ -203,21 +190,24 @@ export class ShooterView {
     const lm = this.mat('chuteline', () => new THREE.LineBasicMaterial({ color: 0xd9d4c4 })), pts: THREE.Vector3[] = [];
     for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; pts.push(new THREE.Vector3(Math.cos(a) * 2.9, 5.1, Math.sin(a) * 2.9), new THREE.Vector3(0, 1.6, 0)); }
     chute.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), lm)); chute.visible = false; root.add(chute);
-    root.visible = false; this.scene.add(root); this.rigs.set(p.id, { chute, root, torsoJ, legs, shins, armL, armR, flash, aim: 0 });
+    root.visible = false; this.scene.add(root); this.rigs.set(p.id, { chute, root, ch, flash, aim: 0, lastHurt: 0, lastMuzzle: 0 });
   }
-  private poseRig(p: Player, dt: number): void {
-    const rig = this.rigs.get(p.id)!, amp = Math.min(1, p.speed / 3.2), run = Math.min(1, Math.max(0, (p.speed - 4.6) / 2.6)), ph = p.walk * 1.35, sn = Math.sin(ph), cs = Math.cos(ph);
-    rig.root.position.set(p.x, Math.abs(sn) * amp * 0.04, p.z); rig.root.rotation.set(0, -p.yaw, 0); rig.root.scale.set(1, 1 - 0.3 * p.crouch, 1);
-    rig.torsoJ.rotation.z = -(0.04 * amp + 0.1 * run); rig.torsoJ.rotation.y = -sn * 0.07 * amp;
-    rig.legs.forEach((l, i) => { const side = i === 0 ? -1 : 1; l.rotation.z = sn * side * (0.5 + 0.2 * run) * amp + 0.12 * run; const sh = rig.shins[i]; if (sh) sh.rotation.z = -amp * (0.12 + (0.6 + 0.5 * run) * Math.max(0, cs * side)); });
-    rig.aim += (1 - rig.aim) * Math.min(1, dt * 8);
-    if (rig.armR) rig.armR.rotation.z = AIM * rig.aim; if (rig.armL) rig.armL.rotation.z = AIM * 0.82 * rig.aim;
-    rig.flash.position.set(0.95, 1.32, 0.1);
-    rig.flash.visible = p.muzzle > 0;
-    // 낙하: 자유낙하는 배를 아래로 펴고, 낙하산은 똑바로 매달려 다리를 늘어뜨립니다
+  private poseRig(p: Player, dt: number, dist: number): void {
+    const rig = this.rigs.get(p.id)!, ch = rig.ch; rig.aim += (1 - rig.aim) * Math.min(1, dt * 8);
+    rig.root.position.set(p.x, 0, p.z); rig.root.rotation.set(0, -p.yaw, 0);
+    if (ch) {
+      const st = ch.state; st.speed = p.speed; st.walk = p.walk; st.time += dt; st.aim = rig.aim; st.crouch = p.crouch; st.dead = p.alive ? 0 : 1;
+      if (p.muzzle > 0 && rig.lastMuzzle <= 0) ch.fire(); rig.lastMuzzle = p.muzzle; st.recoil = Math.max(0, st.recoil - dt * 8);
+      if (p.hurt > rig.lastHurt) ch.hurt(); rig.lastHurt = p.hurt; st.hit = Math.max(0, st.hit - dt * 2.5);
+      ch.setDetail(dist > 90 ? 2 : dist > 45 ? 1 : 0);
+      // 낙하: 자유낙하는 배를 아래로 펴고, 낙하산은 똑바로 매달려 다리를 늘어뜨립니다
+      if (p.air === 2) { st.aim = 0; ch.root.rotation.z = -1.25; ch.update(dt); ch.root.rotation.z = -1.25; ch.state.wave = 0; }
+      else { ch.root.rotation.z = 0; ch.update(dt); }
+    }
+    rig.flash.position.set(0.95, 1.32, 0.1); rig.flash.visible = p.muzzle > 0;
     rig.chute.visible = p.air === 3;
-    if (p.air === 2) { rig.root.position.set(p.x, p.alt + 0.6, p.z); rig.root.rotation.set(0, -p.yaw, -1.25); rig.legs.forEach((l, i) => { l.rotation.z = (i ? 0.35 : -0.1); }); if (rig.armR) rig.armR.rotation.z = 2.4; if (rig.armL) rig.armL.rotation.z = 2.4; }
-    else if (p.air === 3) { rig.root.position.set(p.x, p.alt, p.z); rig.root.rotation.set(0, -p.yaw, 0); rig.legs.forEach((l, i) => { l.rotation.z = i ? 0.18 : 0.05; }); if (rig.armR) rig.armR.rotation.z = 2.8; if (rig.armL) rig.armL.rotation.z = 2.8; }
+    if (p.air === 2) { rig.root.position.set(p.x, p.alt + 0.6, p.z); rig.root.rotation.set(0, -p.yaw, 0); }
+    else if (p.air === 3) { rig.root.position.set(p.x, p.alt, p.z); rig.root.rotation.set(0, -p.yaw, 0); }
   }
 
   // ---------- 보급 투하 ----------
@@ -372,7 +362,7 @@ export class ShooterView {
   frame(dt: number, me: Player, spectate: Player | null, zoom: number): void {
     this.time += dt; this.frames++; const m = this.match, z = m.zone, cam = this.camera, view = spectate ?? me;
     const vx = view.x, vz = view.z;
-    for (const p of m.players) { const rig = this.rigs.get(p.id)!; const hide = (!spectate && p.id === me.id) || p.air === 1 || Math.abs(p.x - vx) + Math.abs(p.z - vz) > (p.air ? 520 : 190); rig.root.visible = !hide; if (hide) continue; this.poseRig(p, dt); if (!p.alive) { rig.root.rotation.set(0, -p.yaw, -Math.PI / 2); rig.root.position.y = 0.28; rig.flash.visible = false; } }
+    for (const p of m.players) { const rig = this.rigs.get(p.id)!; const hide = (!spectate && p.id === me.id) || p.air === 1 || Math.abs(p.x - vx) + Math.abs(p.z - vz) > (p.air ? 520 : 190); rig.root.visible = !hide; if (hide) continue; this.poseRig(p, dt, Math.abs(p.x - vx) + Math.abs(p.z - vz)); if (!p.alive) rig.flash.visible = false; }
     // 카메라
     this.bob += view.speed * dt * 1.7; this.shake = Math.max(0, this.shake - dt * 6);
     if (spectate) {

@@ -342,7 +342,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       <div class="rt-diffs" role="group" aria-label="난이도">${DIFFICULTIES.map((d, i) => `<button type="button" data-diff="${d}" aria-pressed="${d === difficulty}"><span>${['I', 'II', 'III', 'IV'][i]}</span><b>${LEVELS[d].label}</b></button>`).join('')}</div>
       <p class="rt-diffnote" id="rt-diffnote">${LEVELS[difficulty].blurb}</p>
       <div class="rt-actions"><button class="primary" data-act="start" id="rt-start">AI와 1대1 대전</button>${PVP_ENABLED ? '<button data-act="pvp" id="rt-pvp">온라인 1대1 대전</button>' : ''}</div>
-      <div class="rt-actions"><button data-act="moba" id="rt-moba">롤식 라인전 3:3 · 챔피언 조종</button></div>
+      <div class="rt-actions"><button data-act="moba" id="rt-moba">롤식 라인전 4:4 · 챔피언 조종</button></div>
       <div class="rt-actions sub"><button data-act="help">조작법</button><button data-act="exit">메뉴로</button></div>
       <p class="rt-rec">${rec.matches ? `AI 대전 ${rec.matches}판 ${rec.wins}승${rec.bestWin[difficulty] ? ` · ${LEVELS[difficulty].label} 최단 승리 ${clock(rec.bestWin[difficulty] * TICK)}` : ''}` : '처음이라면 쉬움 난이도로 시작해 보세요.'}</p></div>`);
     modal.querySelector<HTMLElement>('#rt-start')?.focus();

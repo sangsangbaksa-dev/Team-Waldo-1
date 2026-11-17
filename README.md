@@ -7,7 +7,7 @@
 | **LAST CITY** | 도시 점령 서바이벌 | `src/city` |
 | **SPEED RUSH** | 스포츠카 레이싱(코스 5곳·차량 6종·난이도 5단계) | `src/race` |
 | **FRONTLINE** | 실시간 전략(AI 4단계·온라인 1대1) | `src/rts` |
-| **ZERO ZONE** | 줄어드는 자기장 속 총격전. 솔로(나 + AI 19명, 난이도 4단계)와 1대1 온라인 대전 | `src/shooter` |
+| **ZERO ZONE** | 줄어드는 자기장 속 총격전. 솔로(나 + AI 99명, 비행기 낙하산 강하, 난이도 4단계)와 1대1 온라인 대전 | `src/shooter` |
 
 ## LAST CITY
 

@@ -30,7 +30,11 @@ try {
   await solo.click('[data-level="easy"]'); await solo.click('[data-act="start"]');
   await solo.waitForFunction(() => window.__zz?.phase === 'play', null, { timeout: 60000 }).catch(async () => { await solo.evaluate(() => window.__zz?.go()); await solo.waitForFunction(() => window.__zz?.phase === 'play'); });
   const n = await solo.evaluate(() => window.__zz.match.players.length);
-  assert.equal(n, 20, 'solo has 20 players');
+  assert.equal(n, 100, 'solo has 100 players (나 + AI 99명)');
+  assert.equal(await solo.evaluate(() => window.__zz.me().air), 1, '솔로는 비행기에서 시작');
+  await solo.keyboard.down('Space'); await solo.waitForFunction(() => window.__zz.me().air >= 2, null, { timeout: 20000 }); await solo.keyboard.up('Space');
+  await solo.evaluate(() => { const m = window.__zz.match; for (let i = 0; i < 90 * 30 && window.__zz.me().air; i++) { m.step(1 / 30); m.drain(); } }); // 소프트웨어 렌더링은 느려서 시뮬레이션을 앞당깁니다
+  assert.equal(await solo.evaluate(() => window.__zz.me().air), 0, '낙하산으로 착지');
   await solo.screenshot({ path: 'browser-artifacts/shooter-solo.png' });
   await solo.close();
 

@@ -312,7 +312,7 @@ export function generateMap(seed: number, mode: Mode): GameMap {
     }
   }
   // 지형: 강·호수·늪·구릉·절벽·숲. 구릉과 절벽은 충돌 상자가 되고, 물은 걸음을 늦춥니다.
-  map.terrain = planTerrain(seed, mode, half, map.compounds, map.sites, map.roads.map(([i, j]) => [cs[i], cs[j]] as [Compound, Compound]));
+  map.terrain = planTerrain(seed, mode, half, map.compounds, map.sites, map.roads.map(([i, j]) => [cs[i], cs[j]] as [Compound, Compound]), map.boxes);
   buildTerrain(map, rng);
   const clear = (x: number, z: number, pad: number): boolean => farFromTown(x, z, pad) && waterDepth(map.terrain, x, z) === 0;
   // 길가의 전봇대, 버려진 차량
@@ -410,10 +410,34 @@ export function blockedAt(map: GameMap, x: number, z: number, r: number): boolea
   return false;
 }
 
+/** 원(반지름 r)이 막히는 상자와 실제로 겹치는지(둥근 모서리 기준). */
+export function circleHits(map: GameMap, x: number, z: number, r: number): boolean {
+  for (let cx = cellOf(x - r); cx <= cellOf(x + r); cx++) for (let cz = cellOf(z - r); cz <= cellOf(z + r); cz++) {
+    const l = map.grid.get(key(cx, cz)); if (!l) continue;
+    for (const i of l) {
+      const b = map.boxes[i]; if (b.y0 >= PLAYER.height - 0.3) continue;
+      const dx = x - Math.max(b.x0, Math.min(x, b.x1)), dz = z - Math.max(b.z0, Math.min(z, b.z1)); if (dx * dx + dz * dz < r * r - 1e-6) return true;
+    }
+  }
+  return false;
+}
+
+/** 원을 (dx,dz) 만큼 옮기되 막히는 상자 속으로는 절대 들어가지 않습니다(작은 걸음으로 쪼개 벽을 따라 미끄러짐).
+ *  좁은 틈이나 겹친 상자 사이에서 밀어내기만 하면 벽 반대편으로 튕겨 나가 벽을 뚫는 버그가 있어 이동은 이 함수를 씁니다. */
+export function slideMove(map: GameMap, p: { x: number; z: number }, dx: number, dz: number, r: number): boolean {
+  if (circleHits(map, p.x, p.z, r)) pushOut(map, p, r); // 이미 겹쳐 있으면(착지·출발) 먼저 빼냅니다
+  const n = Math.max(1, Math.ceil(Math.hypot(dx, dz) / (r * 0.5))), sx = dx / n, sz = dz / n; let hit = false;
+  for (let i = 0; i < n; i++) {
+    if (!circleHits(map, p.x + sx, p.z, r)) p.x += sx; else if (sx !== 0) hit = true;
+    if (!circleHits(map, p.x, p.z + sz, r)) p.z += sz; else if (sz !== 0) hit = true;
+  }
+  return hit;
+}
+
 /** 원을 상자 밖으로 밀어냅니다. 결과는 out 에 돌려주고 벽에 닿았는지 반환합니다. */
 export function pushOut(map: GameMap, p: { x: number; z: number }, r: number): boolean {
   let hit = false;
-  for (let iter = 0; iter < 2; iter++) for (let cx = cellOf(p.x - r); cx <= cellOf(p.x + r); cx++) for (let cz = cellOf(p.z - r); cz <= cellOf(p.z + r); cz++) {
+  for (let iter = 0; iter < 6; iter++) for (let cx = cellOf(p.x - r); cx <= cellOf(p.x + r); cx++) for (let cz = cellOf(p.z - r); cz <= cellOf(p.z + r); cz++) {
     const l = map.grid.get(key(cx, cz)); if (!l) continue;
     for (const i of l) {
       const b = map.boxes[i]; if (b.y0 >= PLAYER.height - 0.3) continue;

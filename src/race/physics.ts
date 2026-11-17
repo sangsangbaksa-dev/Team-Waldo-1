@@ -8,6 +8,8 @@ export interface CarState {
   vf: number; vl: number; slip: number; steer: number; yawRate: number;
   idx: number; lat: number; total: number;
   nitro: number; boostT: number; drifting: boolean; driftT: number; padCd: number; wallT: number;
+  /** 슬립스트림(앞차 뒤꽁무니) 충전도 0~1. 높을수록 가속·최고속이 늘어납니다. */
+  draft: number;
 }
 export interface StepEvents { hit: number; driftBoost: number; pad: boolean }
 /** 차량 성능. 기준 차량은 모두 1(top·accel·brake 는 절댓값)이고, turn·drift·nitro 는 배율입니다. */
@@ -15,6 +17,9 @@ export interface CarParams { top: number; accel: number; brake: number; grip: nu
 
 export const PLAYER_PARAMS: CarParams = { top: 74, accel: 15, brake: 62, grip: 1, turn: 1, drift: 1, nitro: 1 };
 export const BOOST_TOP = 1.36;
+/** 슬립스트림 최대 효과: 최고속 +6%, 가속 +55% */
+export const DRAFT_TOP = 0.06;
+export const DRAFT_ACCEL = 0.55;
 export const NITRO_SECONDS = 6.5;
 /** 레이싱카 차체(race.glb)에 맞춘 충돌 반길이·반폭. 원은 옆으로는 너무 넓고 앞뒤로는 너무 짧습니다. */
 export const BODY_HALF_LENGTH = 2.25;
@@ -24,7 +29,7 @@ export const boosting = (c: CarState): boolean => c.boostT > 0;
 
 export function newCar(t: Track, idx: number, lat: number): CarState {
   const i = ((idx % t.n) + t.n) % t.n, h = Math.atan2(t.tz[i], t.tx[i]);
-  return { x: t.x[i] - t.tz[i] * lat, z: t.z[i] + t.tx[i] * lat, y: t.y[i], h, vx: 0, vz: 0, vf: 0, vl: 0, slip: 0, steer: 0, yawRate: 0, idx: i, lat, total: idxDelta(t, 0, i), nitro: 0.35, boostT: 0, drifting: false, driftT: 0, padCd: 0, wallT: 0 };
+  return { x: t.x[i] - t.tz[i] * lat, z: t.z[i] + t.tx[i] * lat, y: t.y[i], h, vx: 0, vz: 0, vf: 0, vl: 0, slip: 0, steer: 0, yawRate: 0, idx: i, lat, total: idxDelta(t, 0, i), nitro: 0.35, boostT: 0, drifting: false, driftT: 0, padCd: 0, wallT: 0, draft: 0 };
 }
 
 const clamp = (v: number, a: number, b: number): number => Math.max(a, Math.min(b, v));
@@ -42,10 +47,10 @@ export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: Car
   if (nitroOn) c.boostT = Math.max(c.boostT, dt);
   // 버튼을 누르고 있는 동안에는 충전하지 않습니다. 충전하면 빈 탱크가 매 프레임 조금씩 차올라 부스트가 한 프레임씩 번갈아 켜져 사실상 무한이 됩니다.
   else if (!inp.nitro && c.boostT < 0.6) c.nitro = Math.min(1, c.nitro + dt * 0.018 * p.nitro);
-  const boost = c.boostT > 0, maxV = p.top * (boost ? BOOST_TOP : 1);
+  const boost = c.boostT > 0, dr = c.draft ?? 0, maxV = p.top * (boost ? BOOST_TOP : 1) * (1 + DRAFT_TOP * dr);
 
   // 종방향: 가속 · 브레이크 · 저항
-  if (inp.throttle > 0) vf += p.accel * (boost ? 1.7 : 1) * inp.throttle * Math.max(0, 1 - Math.pow(Math.max(0, vf) / maxV, 2.6)) * dt;
+  if (inp.throttle > 0) vf += p.accel * (boost ? 1.7 : 1) * (1 + DRAFT_ACCEL * dr) * inp.throttle * Math.max(0, 1 - Math.pow(Math.max(0, vf) / maxV, 2.6)) * dt;
   if (inp.brake > 0) { if (vf > 1) vf = Math.max(0, vf - p.brake * inp.brake * dt); else vf = Math.max(-13, vf - 16 * inp.brake * dt); }
   if (inp.throttle <= 0 && inp.brake <= 0) vf -= Math.sign(vf) * Math.min(Math.abs(vf), (1.6 + 0.0016 * vf * vf) * dt);
   if (vf > maxV) vf = Math.max(maxV, vf - 26 * dt);

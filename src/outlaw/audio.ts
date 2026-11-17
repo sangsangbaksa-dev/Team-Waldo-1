@@ -107,6 +107,7 @@ export class OutlawAudio {
       case 'shotgun': n(.25,.7,800); t(100,.2,.4,'sawtooth',-65); break;
       case 'sniper': n(.34,.6,650); t(340,.26,.3,'sawtooth',-300); n(.7,.13,280,'lowpass'); break;
       case 'rocket': n(.5,.45,400,'lowpass'); t(130,.45,.3,'sawtooth',-80); break;
+      case 'thunder': n(2.8,.9,160,'lowpass'); t(46,2.4,.55,'sine',-14); n(1.2,.4,420,'lowpass'); break;
       case 'explosion': n(1.4,.7,250,'lowpass'); t(90,1.1,.5,'sine',-65); break;
       case 'crash': n(.5,.55,1100); t(210,.4,.25,'square',-145); t(540,.25,.13,'triangle',-240); break;
       case 'glass': n(.35,.4,5000,'highpass'); t(2100,.24,.12,'sine',-700); break;

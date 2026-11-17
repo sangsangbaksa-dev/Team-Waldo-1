@@ -484,7 +484,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
       renderer.setPixelRatio(Math.min(prefs.quality === 'high' ? 2 : prefs.quality === 'standard' ? 1.5 : 1, devicePixelRatio || 1));
       if (prefs.quality !== 'low') { composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera)); bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), .3, .6, .82); composer.addPass(bloom); composer.addPass(new OutputPass()); }
       sim = new Sim(SEED); sim.clock = TITLE_CLOCK;
-      cityView = new CityView(scene, renderer, sim.map, assets, prefs.quality); actorView = new ActorView(scene, sim, assets, prefs.quality);
+      cityView = new CityView(scene, renderer, sim.map, assets, prefs.quality); cityView.onLightning = delay => { setTimeout(() => { if (sim) audio.play('thunder'); }, delay * 1000); }; actorView = new ActorView(scene, sim, assets, prefs.quality);
       chase = new ChaseCamera(camera, sim.map); minimap = new Minimap(sim.map); resize();
       for (let i = 0; i < 90; i++) sim.step(STEP, blankPedInput(), blankCarInput()); sim.drain();
     } catch (err) { console.error(err); opts.loading?.close(); toast('그래픽을 시작하지 못했습니다'); exit(); return; }

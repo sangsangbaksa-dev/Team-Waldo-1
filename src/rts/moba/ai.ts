@@ -65,7 +65,7 @@ export class MobaAi {
       const back = this.backPoint(s, e, path); s.apply(e.id, { k: 'move', x: back.x, y: back.y }); if (hpr < 0.3) this.escape(s, e, heroesNear); return;
     }
     this.spells(s, e, heroesNear.filter(t => !t.hero!.dead), hpr, threat);
-    if (this.level !== 'easy') this.ward(s, e);
+    if (this.level !== 'easy') { this.ward(s, e); this.sweep(s, e); }
     // 오브젝트 원정: 몬스터를 직접 공격
     const sq = this.squad;
     if (sq && sq.ids.includes(e.id) && threat === 0) { const mon = s.index.get(sq.target); if (mon && mon.hp > 0) { if (s.dist(e, mon) > e.range + 0.5 || h.o.t !== 'attack') s.apply(e.id, { k: 'attack', target: mon.id }); return; } }
@@ -94,6 +94,11 @@ export class MobaAi {
     i = idx('flash'); if (i >= 0 && hpr < 0.28 && foe && s.dist(e, foe) < 6) { const n = NEXUS[e.team]; s.apply(e.id, { k: 'spell', i, x: n.x, y: n.y }); return; }
     i = idx('ghost'); if (i >= 0 && ((hpr < 0.3 && foe) || (foe && foe.hero && foe.hp < foe.maxhp * 0.3 && s.dist(e, foe) < 14))) { s.apply(e.id, { k: 'spell', i, x: e.x, y: e.y }); return; }
     i = idx('ignite'); if (i >= 0 && foe && s.dist(e, foe) < 6.5 && (foe.hp < foe.maxhp * 0.28 || (this.level === 'hard' && foe.hp < foe.maxhp * 0.45 && hpr > 0.5))) { s.apply(e.id, { k: 'spell', i, x: foe.x, y: foe.y }); }
+  }
+  /** 가까이 보이는 적 와드가 있으면 부숩니다(싸우는 중에는 건너뜁니다). */
+  private sweep(s: MobaSim, e: Ent): void {
+    if (s.tick % 6 !== e.id % 6 || e.hero!.o.t === 'attack') return;
+    const w = s.wards.find(o => o.team !== e.team && s.dist(e, o) < 4 && s.seenPt(e.team, o.x, o.y)); if (w) s.apply(e.id, { k: 'unward', id: w.id });
   }
   /** 와드: 앞쪽 시야가 비어 있으면 적진 쪽으로 8칸 앞에 놓습니다. */
   private ward(s: MobaSim, e: Ent): void {
@@ -124,7 +129,7 @@ export class MobaAi {
     }
     if (threat >= 2) return false;
     const mine = (m: Ent): boolean => s.dist(m, NEXUS[e.team]) < s.dist(m, NEXUS[1 - e.team]);
-    const mon = s.ents.filter(m => m.kind === 'monster' && m.hp > 0 && (m.sub === 'wolf' || m.sub === 'golem') && (mine(m) || h.level >= 8)).sort((a, b) => (a.sub === 'golem' ? 0 : 1) - (b.sub === 'golem' ? 0 : 1) || s.dist(e, a) - s.dist(e, b))[0];
+    const mon = s.ents.filter(m => m.kind === 'monster' && m.hp > 0 && (m.sub === 'wolf' || m.sub === 'golem' || m.sub === 'raptor' || m.sub === 'krug' || (m.sub === 'crab' && h.level >= 3)) && (mine(m) || h.level >= 8 || m.sub === 'crab')).sort((a, b) => (a.sub === 'golem' ? 0 : 1) - (b.sub === 'golem' ? 0 : 1) || s.dist(e, a) - s.dist(e, b))[0];
     if (!mon) return false;
     if (s.dist(e, mon) > 9) { if (h.o.t !== 'move' || Math.hypot(h.o.x - mon.x, h.o.y - mon.y) > 3) s.apply(e.id, { k: 'move', x: mon.x, y: mon.y }); return true; }
     if (h.mp > h.maxmp * 0.45 && s.dist(e, mon) < 8) for (let i = 0; i < 4; i++) { const k = s.skill(e, i); if ((k.kind === 'aoe' || k.kind === 'shot') && this.can(s, e, i) && (k.radius ?? 0) <= 4.5 && k.range > 0) { s.apply(e.id, { k: 'cast', i, x: mon.x, y: mon.y }); break; } }

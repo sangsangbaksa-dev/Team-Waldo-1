@@ -39,11 +39,14 @@ export function inhibSpot(lane: Lane, team: number): Pt { return team === 0 ? { 
 export const INHIB_RESPAWN = 300;
 export const RIVER: Pt[] = [{ x: 2, y: 2 }, { x: 30, y: 30 }, { x: 50, y: 50 }, { x: 70, y: 70 }, { x: 98, y: 98 }];
 
-export type MonsterKind = 'wolf' | 'golem' | 'drake' | 'baron';
+export type MonsterKind = 'wolf' | 'golem' | 'raptor' | 'krug' | 'crab' | 'drake' | 'baron';
 export interface MonsterDef { name: string; hp: number; dmg: number; range: number; cd: number; speed: number; radius: number; gold: number; xp: number; respawn: number; first: number }
 export const MONSTERS: Record<MonsterKind, MonsterDef> = {
   wolf: { name: '늑대', hp: 520, dmg: 26, range: 1.6, cd: 22, speed: 3.3, radius: 0.55, gold: 40, xp: 70, respawn: 60, first: 20 },
   golem: { name: '바위 골렘', hp: 1250, dmg: 52, range: 1.8, cd: 26, speed: 2.8, radius: 0.9, gold: 110, xp: 160, respawn: 100, first: 30 },
+  raptor: { name: '칼날 부리', hp: 360, dmg: 22, range: 3.4, cd: 20, speed: 3.6, radius: 0.5, gold: 32, xp: 55, respawn: 55, first: 24 },
+  krug: { name: '돌거북', hp: 980, dmg: 40, range: 1.7, cd: 28, speed: 2.4, radius: 0.85, gold: 85, xp: 120, respawn: 85, first: 28 },
+  crab: { name: '강 게', hp: 640, dmg: 0, range: 1.2, cd: 30, speed: 3.8, radius: 0.6, gold: 70, xp: 95, respawn: 120, first: 30 },
   drake: { name: '화염 드래곤', hp: 3300, dmg: 90, range: 3.2, cd: 28, speed: 3, radius: 1.5, gold: 150, xp: 260, respawn: 240, first: 150 },
   baron: { name: '심연의 군주', hp: 6800, dmg: 150, range: 3.6, cd: 28, speed: 2.8, radius: 1.9, gold: 300, xp: 500, respawn: 330, first: 600 },
 };
@@ -54,11 +57,23 @@ export const CAMPS_HALF: Camp[] = [
   { id: 'golem-a', at: { x: 22, y: 31 }, mobs: [{ k: 'golem', dx: 0, dy: 0 }] },
   { id: 'wolves-b', at: { x: 36, y: 77 }, mobs: [{ k: 'wolf', dx: 0, dy: 0 }, { k: 'wolf', dx: 1.3, dy: -0.8 }, { k: 'wolf', dx: -1.1, dy: -1 }] },
   { id: 'golem-b', at: { x: 46, y: 70 }, mobs: [{ k: 'golem', dx: 0, dy: 0 }] },
+  { id: 'raptors-a', at: { x: 25, y: 59 }, mobs: [{ k: 'raptor', dx: 0, dy: 0 }, { k: 'raptor', dx: 1.2, dy: 0.6 }, { k: 'raptor', dx: -1, dy: 1 }, { k: 'raptor', dx: 0.4, dy: -1.2 }] },
+  { id: 'krugs-b', at: { x: 29, y: 80 }, mobs: [{ k: 'krug', dx: 0, dy: 0 }, { k: 'krug', dx: 1.6, dy: -0.4 }] },
 ];
 export const RIVER_CAMPS: Camp[] = [
+  { id: 'crab-a', at: { x: 40, y: 40 }, mobs: [{ k: 'crab', dx: 0, dy: 0 }] },
+  { id: 'crab-x', at: { x: 60, y: 60 }, mobs: [{ k: 'crab', dx: 0, dy: 0 }] },
   { id: 'baron', at: { x: 30, y: 30 }, mobs: [{ k: 'baron', dx: 0, dy: 0 }] },
   { id: 'drake', at: { x: 70, y: 70 }, mobs: [{ k: 'drake', dx: 0, dy: 0 }] },
 ];
+
+/** 수풀: 안에 있는 유닛은 같은 수풀 안에 적이 들어오거나 공격하기 전에는 적에게 보이지 않습니다. 청 쪽 절반만 적고 반대쪽은 점대칭입니다. */
+export interface Bush { x: number; y: number; r: number }
+const BUSH_HALF: Bush[] = [
+  { x: 15.5, y: 40, r: 2.8 }, { x: 6.5, y: 64, r: 2.6 }, { x: 33, y: 11, r: 2.8 }, { x: 18, y: 15, r: 2.4 },
+  { x: 43, y: 54.5, r: 2.9 }, { x: 27, y: 74, r: 2.6 }, { x: 36, y: 90, r: 2.6 }, { x: 45, y: 46, r: 2.6 },
+];
+export const BUSHES: Bush[] = [...BUSH_HALF, ...BUSH_HALF.map(b => ({ ...flip(b), r: b.r }))];
 
 export type ChampId = 'blade' | 'arcana' | 'ranger' | 'shade' | 'priest' | 'titan' | 'ember' | 'lancer' | 'seer';
 export type SkillKind = 'shot' | 'aoe' | 'dash' | 'buff';

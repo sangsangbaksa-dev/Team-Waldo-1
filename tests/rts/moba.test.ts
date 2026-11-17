@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { TICK } from '../../src/rts/config';
 import { MobaAi } from '../../src/rts/moba/ai';
-import { CHAMPS, CHAMP_IDS, ITEMS, ITEM_IDS, LANES, LANE_PTS, NEXUS, SIZE, SPELLS, WAVE_FIRST, inhibSpot, lanePath, turretSpots } from '../../src/rts/moba/config';
+import { BUSHES, CHAMPS, CHAMP_IDS, ITEMS, ITEM_IDS, LANES, LANE_PTS, NEXUS, SIZE, SPELLS, WAVE_FIRST, inhibSpot, lanePath, turretSpots } from '../../src/rts/moba/config';
 import { buildMobaMap } from '../../src/rts/moba/map';
 import { MobaSim } from '../../src/rts/moba/sim';
 import { Pather } from '../../src/rts/path';
@@ -187,4 +187,33 @@ describe('정글러와 버프', () => {
     for (const h of s.heroes()) h.hero!.bot = true; const ais = [new MobaAi(0, 'hard'), new MobaAi(1, 'hard')];
     while (s.winner === -1 && s.tick < 40 * 60 * TICK) { s.step(); for (const a of ais) a.think(s); } expect(s.winner).not.toBe(-1);
   }, 90000);
+});
+
+describe('수풀·와드 제거·새 정글 몬스터', () => {
+  it('모든 수풀 중심은 걸어갈 수 있고 점대칭이다', () => {
+    const s = fresh(); expect(BUSHES.length % 2).toBe(0);
+    for (const b of BUSHES) { expect(s.pather.freeAt(b.x, b.y), `${b.x},${b.y}`).toBe(true); expect(BUSHES.some(o => Math.abs(o.x - (SIZE - b.x)) < 1e-6 && Math.abs(o.y - (SIZE - b.y)) < 1e-6)).toBe(true); }
+  });
+  it('수풀 안 적은 가까이 있어도 안 보이고, 같은 수풀에 들어가거나 공격하면 드러난다', () => {
+    const s = fresh(), me = s.me(), foe = s.ents.find(e => e.hero && e.team === 1)!, b = BUSHES[0];
+    me.x = b.x + 6; me.y = b.y; foe.x = b.x; foe.y = b.y; s.step(); s.step(); s.step(); s.step();
+    for (const e of s.ents) if (e !== me && e !== foe && e.hero) { e.x = 50; e.y = 50; }
+    for (let i = 0; i < 4; i++) s.step(); expect(s.canSee(0, foe)).toBe(false);
+    me.x = b.x + 1; me.y = b.y; for (let i = 0; i < 4; i++) s.step(); expect(s.canSee(0, foe)).toBe(true);
+    me.x = b.x + 6; me.y = b.y; for (let i = 0; i < 4; i++) s.step(); expect(s.canSee(0, foe)).toBe(false);
+    s.hurt(foe, me, 1); expect(s.canSee(0, foe)).toBe(true);
+  });
+  it('보이는 적 와드를 가까이에서 부수면 골드를 얻고 멀면 실패한다', () => {
+    const s = fresh(), me = s.me(), foe = s.ents.find(e => e.hero && e.team === 1)!; foe.hero!.wards = 2; foe.x = 40; foe.y = 40; me.x = 41; me.y = 41;
+    expect(s.apply(foe.id, { k: 'ward', x: 40, y: 40 })).toBe(true); const w = s.wards[s.wards.length - 1]; for (let i = 0; i < 4; i++) s.step();
+    const g = me.hero!.gold; me.x = w.x + 9; me.y = w.y; expect(s.apply(me.id, { k: 'unward', id: w.id })).toBe(false);
+    me.x = w.x + 2; me.y = w.y; expect(s.apply(me.id, { k: 'unward', id: w.id })).toBe(true); expect(s.wards.includes(w)).toBe(false); expect(me.hero!.gold).toBe(g + 30);
+    expect(s.apply(me.id, { k: 'unward', id: w.id })).toBe(false);
+  });
+  it('칼날 부리·돌거북·강 게가 나오고, 강 게를 잡으면 이동 속도와 시야를 얻는다', () => {
+    const s = fresh(); run(s, TICK * 31);
+    for (const k of ['raptor', 'krug', 'crab']) expect(s.ents.some(e => e.kind === 'monster' && e.sub === k), k).toBe(true);
+    const me = s.me(), crab = s.ents.find(e => e.sub === 'crab')!, g = me.hero!.gold; s.hurt(me, crab, 99999); run(s, 2);
+    expect(me.hero!.gold).toBeGreaterThanOrEqual(g + 70); expect(me.hero!.speedUntil).toBeGreaterThan(s.tick); expect(s.wards.some(w => w.team === 0 && w.owner === 0)).toBe(true);
+  });
 });

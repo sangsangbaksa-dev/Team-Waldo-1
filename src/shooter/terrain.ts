@@ -49,13 +49,20 @@ function smooth(pts: Array<[number, number]>, rounds: number): Array<[number, nu
 }
 
 interface Zone { x: number; z: number; r: number }
-export function planTerrain(seed: number, mode: Mode, half: number, towns: Zone[], sites: Zone[], roads: Array<[Zone, Zone]>): Terrain {
+export interface Rect { x0: number; z0: number; x1: number; z1: number }
+/** 원(x,z,rad)과 직사각형 사이 빈 거리가 gap 보다 작은지. */
+const nearRect = (blocks: Rect[], x: number, z: number, rad: number, gap: number): boolean => {
+  for (const b of blocks) { const dx = Math.max(b.x0 - x, 0, x - b.x1), dz = Math.max(b.z0 - z, 0, z - b.z1); if (dx * dx + dz * dz < (rad + gap) * (rad + gap)) return true; }
+  return false;
+};
+/** blocks: 마을·시설에서 이미 세워진 모든 충돌 상자. 지형은 이 상자들과 절대 겹치지 않게(여유 gap 이상) 자리를 잡습니다. */
+export function planTerrain(seed: number, mode: Mode, half: number, towns: Zone[], sites: Zone[], roads: Array<[Zone, Zone]>, blocks: Rect[] = []): Terrain {
   const rng = makeRng((seed ^ 0x51f15e) >>> 0), t = emptyTerrain(), br = mode === 'br', feats: Zone[] = [];
   /** 이 둥근 자리가 마을·시설·길·다른 지형과 겹치지 않는지 */
   const free = (x: number, z: number, rad: number, pad = 6): boolean =>
     Math.abs(x) < half - rad - 4 && Math.abs(z) < half - rad - 4 &&
     towns.every(c => Math.hypot(c.x - x, c.z - z) > c.r + rad + pad) && sites.every(s => Math.hypot(s.x - x, s.z - z) > s.r + rad + pad - 2) &&
-    feats.every(f => Math.hypot(f.x - x, f.z - z) > f.r + rad + 4) && roads.every(([a, b]) => segDist(x, z, a.x, a.z, b.x, b.z) > rad * 0.7 + 5) && riverEdge(t.rivers, x, z) > rad + 4;
+    feats.every(f => Math.hypot(f.x - x, f.z - z) > f.r + rad + 4) && roads.every(([a, b]) => segDist(x, z, a.x, a.z, b.x, b.z) > rad * 0.7 + 5) && riverEdge(t.rivers, x, z) > rad + 4 && !nearRect(blocks, x, z, rad, 5);
   // 강: 지도를 가로질러 굽이칩니다. 마을과 시설 곁을 피해 갈 때까지 다시 시도합니다.
   for (let k = 0; k < (br ? 2 : 0); k++) for (let tries = 0; tries < 500; tries++) {
     const horiz = rng() < 0.5, a0 = (rng() - 0.5) * half * 1.3, a1 = a0 + (rng() - 0.5) * half * 0.9, n = 10, w = 7 + rng() * 4, ph = rng() * 6, amp = 16 + rng() * 22, raw: Array<[number, number]> = [];
@@ -66,6 +73,7 @@ export function planTerrain(seed: number, mode: Mode, half: number, towns: Zone[
       for (let s = 0; s < m && ok; s++) {
         const x = pts[i][0] + (pts[i + 1][0] - pts[i][0]) * (s / m), z = pts[i][1] + (pts[i + 1][1] - pts[i][1]) * (s / m), pad = w / 2 + 3;
         if (towns.some(c => Math.hypot(c.x - x, c.z - z) < c.r + pad) || sites.some(c => Math.hypot(c.x - x, c.z - z) < c.r + pad - 2)) ok = false;
+        else if (nearRect(blocks, x, z, pad, 2)) ok = false;
         else if (riverEdge(t.rivers, x, z) < 50) ok = false;
       }
     }

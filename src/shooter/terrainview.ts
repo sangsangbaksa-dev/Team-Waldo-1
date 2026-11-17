@@ -116,7 +116,7 @@ export class TerrainView {
   private buildHills(): void {
     const n = valueNoise(this.map.seed + 41), top = new THREE.Color(0.5, 0.64, 0.3), rock = new THREE.Color(0.52, 0.49, 0.43), foot = new THREE.Color(0.6, 0.58, 0.46), c = new THREE.Color();
     for (const h of this.map.terrain.hills) {
-      const prof = [[1.1, 0.0], [1.0, h.h * 0.22], [0.9, h.h * 0.62], [0.76, h.h * 0.93], [0.5, h.h * 0.995], [0.001, h.h]].map(([r, y]) => new THREE.Vector2(r * h.r, y)), g = new THREE.LatheGeometry(prof, 26, 0, Math.PI * 2), p = g.attributes.position, col = new Float32Array(p.count * 3);
+      const prof = [[1.0, 0.0], [0.94, h.h * 0.22], [0.86, h.h * 0.62], [0.74, h.h * 0.93], [0.5, h.h * 0.995], [0.001, h.h]].map(([r, y]) => new THREE.Vector2(r * h.r, y)), g = new THREE.LatheGeometry(prof, 26, 0, Math.PI * 2), p = g.attributes.position, col = new Float32Array(p.count * 3);
       for (let i = 0; i < p.count; i++) {
         const x = p.getX(i), y = p.getY(i), z = p.getZ(i), r = Math.hypot(x, z), k = 1 + (n((x + h.x) / 6, (z + h.z) / 6) - 0.5) * 0.16 * Math.min(1, r / h.r); p.setXYZ(i, x * k, y * (1 + (n((x + h.x) / 5 + 9, (z + h.z) / 5) - 0.5) * 0.12), z * k);
         const t = y / h.h; c.copy(foot).lerp(rock, smooth(t * 3)).lerp(top, smooth((t - 0.6) * 4)).multiplyScalar(0.7 + n(x / 2.5 + 40, z / 2.5) * 0.14); col.set([c.r, c.g, c.b], i * 3);

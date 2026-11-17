@@ -10,6 +10,7 @@ import type { Box, Loot } from './world';
 import { buildProps, buildRoofs, makeDropCrate, makePlane, partMesh } from './props';
 import type { PartId } from './config';
 import { TerrainView, tintGround } from './terrainview';
+import { WeatherFx } from './weatherfx';
 import { waterDepth } from './terrain';
 import { crateTexture, floorTexture, glowTexture, groundTexture, makeSky, wallTexture } from './textures';
 
@@ -49,7 +50,7 @@ export class ShooterView {
   private mats = new Map<string, THREE.Material>(); private tmpCol = new THREE.Color(); private beams: THREE.InstancedMesh;
   private camPos = new THREE.Vector3(); fov = 78; frames = 0;
   /** 폭풍우 하늘: 번개(flash)가 가끔 하늘과 안개를 밝힙니다 */
-  private sky: THREE.Mesh; private hemi: THREE.HemisphereLight; private flash = 0; private nextBolt = 6; private carrier: THREE.Group | null = null; private fogBase = new THREE.Color(0x76828a);
+  private wfx: WeatherFx | null = null; private sky: THREE.Mesh; private hemi: THREE.HemisphereLight; private flash = 0; private nextBolt = 6; private carrier: THREE.Group | null = null; private fogBase = new THREE.Color(0x76828a);
 
   constructor(readonly canvas: HTMLCanvasElement, readonly match: Match, private assets: ShooterAssets | null, readonly quality: Quality) {
     const hi = quality === 'high';
@@ -102,6 +103,7 @@ export class ShooterView {
     const ground = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: t, vertexColors: true })); ground.receiveShadow = true; this.scene.add(ground);
     // 마을 바닥·흙길·물·구릉·절벽·다리
     this.terrainView = new TerrainView(this.match.map, this.quality === 'low'); this.scene.add(this.terrainView.group);
+    this.wfx = new WeatherFx(this.match.map, this.glow, this.quality); this.scene.add(this.wfx.group);
   }
 
   private buildBuildings(): void {
@@ -381,7 +383,7 @@ export class ShooterView {
       const lat = view.vx * -Math.sin(view.yaw) + view.vz * Math.cos(view.yaw); this.roll += ((view.air === 0 ? -lat * 0.0022 : 0) - this.roll) * Math.min(1, dt * 9);
       cam.rotation.set(view.pitch + view.kick * 0.03 + (Math.random() - 0.5) * this.shake * 0.012, -view.yaw - Math.PI / 2 + (Math.random() - 0.5) * this.shake * 0.012, this.roll + (Math.random() - 0.5) * this.shake * 0.006);
     }
-    this.terrainView?.update(dt); this.fovPunch = Math.max(0, this.fovPunch - dt * 6); const targetFov = 78 / zoom - this.fovPunch * (zoom > 1.6 ? 0.6 : 2.2); this.fov += (targetFov - this.fov) * Math.min(1, dt * 14); if (Math.abs(cam.fov - this.fov) > 0.01) { cam.fov = this.fov; cam.updateProjectionMatrix(); }
+    this.terrainView?.update(dt); this.wfx?.update(dt, this.time, cam.position, view.alt > 40 ? 0.35 : 1); this.fovPunch = Math.max(0, this.fovPunch - dt * 6); const targetFov = 78 / zoom - this.fovPunch * (zoom > 1.6 ? 0.6 : 2.2); this.fov += (targetFov - this.fov) * Math.min(1, dt * 14); if (Math.abs(cam.fov - this.fov) > 0.01) { cam.fov = this.fov; cam.updateProjectionMatrix(); }
     this.camPos.copy(cam.position);
     // 해와 그림자는 카메라를 따라 이동
     (this.scene.fog as THREE.FogExp2).density = 0.0042 / (1 + view.alt / 110);

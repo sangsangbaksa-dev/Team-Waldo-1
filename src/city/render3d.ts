@@ -9,6 +9,7 @@ import { buildBuildings, buildPerimeter } from './buildings';
 import type { Models } from './models';
 import { Interior3D } from './interior3d';
 import { EYE_HEIGHT } from './scale';
+import { clampLabelScreenPos, clampLookPitch, labelSpriteCenter } from './uiMath';
 
 export type ViewMode = 'fp' | 'tp';
 const EYE = EYE_HEIGHT, STRUCT_H: Record<StructKind, number> = { hq: 150, barracks: 86, depot: 58, factory: 104, lab: 96, turret: 50 };
@@ -58,7 +59,7 @@ export class Renderer3D {
   constructor(public canvas: HTMLCanvasElement, public world: World, public quality: 'high' | 'standard' | 'low', public layer: HTMLElement, public models: Models | null = null) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(quality === 'high' ? 2 : quality === 'standard' ? 1.5 : 1, window.devicePixelRatio || 1));
-    this.renderer.shadowMap.enabled = quality === 'high'; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.enabled = quality === 'high'; this.renderer.shadowMap.type = THREE.PCFShadowMap;
     // 필름 톤매핑: 하이라이트가 하얗게 날아가지 않고 노을빛이 부드럽게 번진다.
     if (quality !== 'low') { this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.06; }
     const sc = this.scene, w = world;
@@ -253,6 +254,22 @@ export class Renderer3D {
     }
     if (o.icon) { o.icon.position.y = 100 + Math.sin(this.t * 1.6 + z.id) * 2.5; o.icon.rotation.y = this.t * 0.7 + z.id; }
     o.g.visible = Math.hypot(z.x - this.camPos.x, z.y - this.camPos.z) < 2600; void w;
+    const out = (o.g.userData.out as [number, number] | undefined) ?? [0, 0];
+    this.pinLabel(o.label, z.x + out[0] * 14, 126, z.y + out[1] * 14);
+  }
+
+  /** Keep a business nameplate inside the viewport so it is not clipped at the edge. */
+  private pinLabel(label: THREE.Sprite, x: number, y: number, z: number): void {
+    if (this.w < 8 || this.h < 8) return;
+    const p = this.project(x, z, y);
+    if (p.behind) { label.visible = false; return; }
+    label.visible = true;
+    const dist = Math.max(24, this.camPos.distanceTo(new THREE.Vector3(x, y, z)));
+    const px = this.h / (2 * Math.tan((this.camera.fov * Math.PI) / 180 / 2) * dist);
+    const lw = Math.max(24, label.scale.x * px), lh = Math.max(16, label.scale.y * px);
+    const c = clampLabelScreenPos(p.x, p.y, this.w, this.h, lw, lh, 10);
+    const center = labelSpriteCenter(p.x, p.y, c.x, c.y, lw, lh);
+    label.center.set(center.x, center.y);
   }
 
   /** 보스가 사업체 안에 있을 때: 도시 대신 내부 장면만 그립니다. */
@@ -269,6 +286,7 @@ export class Renderer3D {
     const w = this.world, d = this.dummy, col = this.color, pb = w.boss(0), f0 = w.factions[0]; this.t += dt;
     this.shake = Math.max(0, this.shake - dt * 30); this.recoil = Math.max(0, this.recoil - dt * 7); this.flashT -= dt;
     // 카메라
+    this.pitch = clampLookPitch(this.pitch);
     const veh = pb && pb.inVeh ? w.vehicles.find(v => v.id === pb.inVeh) : undefined, cy = Math.cos(this.yaw), sy = Math.sin(this.yaw), cp = Math.cos(this.pitch), spt = Math.sin(this.pitch);
     if (pb) { this.focus.set(pb.x, pb.y); this.deadT = 0; } else { this.deadT += dt; this.yaw += dt * 0.25; }
     const fx = this.focus.x, fz = this.focus.y, third = this.mode === 'tp' || !!veh || !pb;

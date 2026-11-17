@@ -3,7 +3,8 @@ import './shooter.css';
 import { readPreferences } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import type { PvpSession } from '../net/lobby';
-import { AIR, BOTS, BR_PLAYERS, DIFFICULTIES, HELMET_NAMES, PARTS, PLAYER, WEAPONS, partHandling, type Difficulty } from './config';
+import { AIR, BOTS, FEEL, BR_PLAYERS, DIFFICULTIES, HELMET_NAMES, PARTS, PLAYER, WEAPONS, partHandling, type Difficulty } from './config';
+import { waterDepth } from './terrain';
 import { Match, type MatchEvent, type Player } from './sim';
 import { ShooterView } from './view';
 import { loadShooterAssets, type ShooterAssets } from './assets';
@@ -29,7 +30,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       <div class="sz-tl"><div class="sz-stat"><b id="sz-alive">100</b><span>생존</span></div><div class="sz-stat"><b id="sz-kills">0</b><span>처치</span></div></div>
       <div class="sz-tc" id="sz-zone"><b id="sz-ztime">0:00</b><span id="sz-zlabel">자기장</span></div>
       <div class="sz-tr"><canvas id="sz-map" width="300" height="300"></canvas><ul class="sz-feed" id="sz-feed"></ul></div>
-      <div class="sz-cross" id="sz-cross"><i></i><i></i><i></i><i></i></div><div class="sz-hitmark" id="sz-hitmark"><i></i><i></i><i></i><i></i></div>
+      <div class="sz-cross" id="sz-cross"><i></i><i></i><i></i><i></i></div><div class="sz-hitmark" id="sz-hitmark"><i></i><i></i><i></i><i></i></div><div class="sz-nums" id="sz-nums"></div>
       <div class="sz-dmgs" id="sz-dmgs"></div>
       <div class="sz-air" id="sz-air"></div><div class="sz-banner" id="sz-banner"></div><div class="sz-count" id="sz-count"></div><div class="sz-prompt" id="sz-prompt"></div>
       <div class="sz-bl"><div class="sz-bar hp"><i id="sz-hp"></i><b id="sz-hpn">100</b></div><div class="sz-bar ar"><i id="sz-ar"></i><b id="sz-arn">0</b></div></div>
@@ -37,7 +38,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       <div class="sz-keys" id="sz-keys"></div>
       <div class="sz-tbtn"><button id="sz-pause" type="button" aria-label="일시정지">Ⅱ</button></div>
       <div class="sz-touchpad"><div class="sz-stick" id="sz-stick"><i></i></div><div class="sz-tbuttons">
-        <button data-act="fire" class="fire" type="button">사격</button><button data-act="ads" type="button">조준</button><button data-act="reload" type="button">장전</button><button data-act="interact" type="button">줍기</button><button data-act="swap" type="button">교체</button></div></div>
+        <button data-act="fire" class="fire" type="button">사격</button><button data-act="ads" type="button">조준</button><button data-act="crouch" type="button">웅크림</button><button data-act="reload" type="button">장전</button><button data-act="interact" type="button">줍기</button><button data-act="swap" type="button">교체</button></div></div>
     </div>
     <div class="sz-setup" id="sz-setup"></div>
     <div class="sz-modal" id="sz-modal"></div>`;
@@ -51,8 +52,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   let phase: Phase = 'setup', closed = false, paused = false, match: Match | null = null, view: ShooterView | null = null, meIdx = 0, pvp: Pvp | null = null, raf = 0, last = performance.now();
   let assets: ShooterAssets | null = null, assetState: 'loading' | 'ready' | 'failed' = 'loading', assetPct = 0;
   let countdown = 0, over = false, deadTimer = 0, resultShown = false, spectateId = -1;
-  let yaw = 0, pitch = 0, locked = false, lockFail = false, hitT = 0, hitHead = false, bannerT = 0, mapBase: HTMLCanvasElement | null = null;
-  const keys = new Set<string>(), mouse = { fire: false, ads: false }, tc = { fire: false, ads: false, move: { x: 0, y: 0, id: -1, ox: 0, oy: 0 }, look: { id: -1, x: 0, y: 0 } };
+  let yaw = 0, pitch = 0, locked = false, lockFail = false, hitT = 0, hitHead = false, hitKill = false, combo = 0, comboT = 0, rcP = 0, rcY = 0, rcIdle = 9, shotN = 0, stepAcc = 0, bannerT = 0, mapBase: HTMLCanvasElement | null = null;
+  const keys = new Set<string>(), mouse = { fire: false, ads: false }, tc = { fire: false, ads: false, crouch: false, move: { x: 0, y: 0, id: -1, ox: 0, oy: 0 }, look: { id: -1, x: 0, y: 0 } };
   let reloadReq = false, slotReq = -1, swapReq = false, interactHeld = false;
   const feed: Array<{ text: string; at: number; mine: boolean }> = [], told = new Set<number>();
   const cache = new Map<string, string>();
@@ -207,8 +208,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   root.addEventListener('pointerdown', tStart); root.addEventListener('pointermove', tMove); root.addEventListener('pointerup', tEnd); root.addEventListener('pointercancel', tEnd);
   root.querySelectorAll<HTMLButtonElement>('.sz-tbuttons button').forEach(b => {
     const act = b.dataset.act!;
-    b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); audio.unlock(); if (act === 'fire') tc.fire = true; else if (act === 'ads') tc.ads = !tc.ads; else if (act === 'reload') reloadReq = true; else if (act === 'interact') interactHeld = true; else if (act === 'swap') swapReq = true; b.classList.add('down'); });
-    for (const n of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(n, () => { if (act === 'fire') tc.fire = false; else if (act === 'interact') interactHeld = false; if (act !== 'ads') b.classList.remove('down'); });
+    b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); audio.unlock(); if (act === 'fire') tc.fire = true; else if (act === 'ads') tc.ads = !tc.ads; else if (act === 'crouch') tc.crouch = !tc.crouch; else if (act === 'reload') reloadReq = true; else if (act === 'interact') interactHeld = true; else if (act === 'swap') swapReq = true; if (act === 'crouch') b.classList.toggle('down', tc.crouch); else b.classList.add('down'); });
+    for (const n of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(n, () => { if (act === 'fire') tc.fire = false; else if (act === 'interact') interactHeld = false; if (act !== 'ads' && act !== 'crouch') b.classList.remove('down'); });
   });
 
   function applyInput(): void {
@@ -216,7 +217,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     const sx = tc.move.x, sy = -tc.move.y, active = phase === 'play';
     i.yaw = yaw; i.pitch = pitch; i.mx = active ? clamp(kx + sx, -1, 1) : 0; i.mz = active ? clamp(kz + sy, -1, 1) : 0;
     i.fire = active && (mouse.fire || tc.fire); i.ads = active && (mouse.ads || tc.ads); i.sprint = active && (keys.has('ShiftLeft') || keys.has('ShiftRight') || Math.hypot(sx, sy) > 0.92);
-    i.reload = active && reloadReq; i.interact = active && interactHeld; i.jump = active && (keys.has('Space') || (p.air > 0 && interactHeld)); reloadReq = false;
+    i.crouch = active && (keys.has('KeyC') || tc.crouch); i.reload = active && reloadReq; i.interact = active && interactHeld; i.jump = active && (keys.has('Space') || (p.air > 0 && interactHeld)); reloadReq = false;
     if (swapReq) { slotReq = p.guns[1 - p.cur] ? 1 - p.cur : -1; swapReq = false; } i.slot = active ? slotReq : -1; slotReq = -1;
   }
 
@@ -231,6 +232,13 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (!mapBase) {
       mapBase = document.createElement('canvas'); mapBase.width = mapBase.height = S; const b = mapBase.getContext('2d')!;
       b.fillStyle = '#26301f'; b.fillRect(0, 0, S, S); b.fillStyle = 'rgba(255,255,255,.05)'; for (let i = 1; i < 8; i++) { b.fillRect((S / 8) * i, 0, 1, S); b.fillRect(0, (S / 8) * i, S, 1); }
+      { // 지형: 숲·구릉·절벽·물
+        const t = m.map.terrain; b.fillStyle = 'rgba(40,75,35,.75)'; for (const f of t.forests) { b.beginPath(); b.arc(px(f.x), pz(f.z), f.r * k, 0, Math.PI * 2); b.fill(); }
+        b.fillStyle = '#6d6a60'; for (const h of t.hills) { b.beginPath(); b.arc(px(h.x), pz(h.z), h.r * k, 0, Math.PI * 2); b.fill(); } for (const c of t.cliffs) b.fillRect(px(c.x0), pz(c.z0), Math.max(2, (c.x1 - c.x0) * k), Math.max(2, (c.z1 - c.z0) * k));
+        for (const p of t.ponds) { b.fillStyle = p.swamp ? '#59693a' : '#3a78a0'; b.beginPath(); b.ellipse(px(p.x), pz(p.z), p.rx * k, p.rz * k, p.ry, 0, Math.PI * 2); b.fill(); }
+        b.strokeStyle = '#3a78a0'; b.lineWidth = Math.max(2, 9 * k); b.lineJoin = 'round'; for (const r of t.rivers) { b.beginPath(); r.pts.forEach(([x, z], i) => (i ? b.lineTo(px(x), pz(z)) : b.moveTo(px(x), pz(z)))); b.stroke(); }
+        b.strokeStyle = '#a07a45'; b.lineWidth = 2; for (const br of t.bridges) { b.beginPath(); b.moveTo(px(br.x - Math.cos(br.ry) * br.len / 2), pz(br.z - Math.sin(br.ry) * br.len / 2)); b.lineTo(px(br.x + Math.cos(br.ry) * br.len / 2), pz(br.z + Math.sin(br.ry) * br.len / 2)); b.stroke(); }
+      }
       b.fillStyle = '#8f8c80'; for (const bd of m.map.buildings) b.fillRect(px(bd.x - bd.w / 2), pz(bd.z - bd.d / 2), Math.max(3, bd.w * k), Math.max(3, bd.d * k));
       const tint = { urban: '#a9a69b', industrial: '#7b8085', military: '#8a8466', farm: '#a08f6c', village: '#9a9588' } as const;
       for (const c of m.map.compounds) { b.fillStyle = 'rgba(255,255,255,.07)'; b.beginPath(); b.arc(px(c.x), pz(c.z), c.r * k, 0, Math.PI * 2); b.fill(); }
@@ -287,13 +295,13 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     q('#sz-vig').style.opacity = String(clamp(p.hurt * 1.4 + (p.hp < 30 && p.alive ? 0.35 + Math.sin(now / 160) * 0.12 : 0), 0, 0.9));
     q('#sz-scope').classList.toggle('on', p.ads && g?.id === 'sniper' && p.alive);
     // 명중 표시와 배너
-    hitT = Math.max(0, hitT - dt); const hm = q('#sz-hitmark'); hm.style.opacity = String(hitT > 0 ? Math.min(1, hitT * 6) : 0); hm.classList.toggle('head', hitHead);
+    hitT = Math.max(0, hitT - dt); const hm = q('#sz-hitmark'); hm.style.opacity = String(hitT > 0 ? Math.min(1, hitT * 6) : 0); hm.classList.toggle('head', hitHead); hm.classList.toggle('kill', hitKill && hitT > 0);
     if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) q('#sz-banner').classList.remove('show'); }
     // 처치 알림
     while (feed.length && now - feed[0].at > 6000) feed.shift();
     html(q('#sz-feed'), 'feed', feed.map(f => `<li class="${f.mine ? 'mine' : ''}">${esc(f.text)}</li>`).join(''));
     q('#sz-keys').classList.toggle('hide', phase !== 'countdown' || touch);
-    html(q('#sz-keys'), 'keys', phase === 'countdown' && !touch ? '<span><b>WASD</b> 이동</span><span><b>좌클릭</b> 사격</span><span><b>우클릭</b> 조준</span><span><b>E</b> 줍기</span>' : '');
+    html(q('#sz-keys'), 'keys', phase === 'countdown' && !touch ? '<span><b>WASD</b> 이동</span><span><b>좌클릭</b> 사격</span><span><b>우클릭</b> 조준</span><span><b>C</b> 웅크리기</span><span><b>E</b> 줍기</span>' : '');
     drawMap(m, p);
   }
 
@@ -303,10 +311,19 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     for (const e of events) {
       if (e.t === 'shot') {
         const s = m.players[e.id]; if (!s) continue; const dist = Math.hypot(s.x - p.x, s.z - p.z); audio.play(e.weapon, (e.id === p.id ? 0 : dist) + (e.sup ? 85 : 0));
+        if (e.id === p.id && !e.remote) {
+          const g = p.guns[p.cur], h = partHandling(g?.att), kk = WEAPONS[e.weapon].recoil * h.kick * (p.ads ? FEEL.adsKick : 1) * (1 + Math.min(1, p.speed / PLAYER.walk) * 0.25);
+          const kp = kk * FEEL.kickPitch, ky = (Math.sin(shotN * 1.9) * 0.6 + (Math.random() - 0.5) * 0.8) * kk * FEEL.kickYaw; shotN++;
+          pitch = clamp(pitch + kp, -1.4, 1.4); yaw += ky; rcP += kp; rcY += ky; rcIdle = 0;
+        }
         if (e.id === p.id && pvp?.net.started && !e.remote) pvp.net.sendShot({ w: e.weapon, ox: e.ox, oy: e.oy, oz: e.oz, ends: e.ends });
       } else if (e.t === 'hit') {
         if (e.wall) continue;
-        if (e.attacker === p.id && e.victim >= 0) { hitT = 0.28; hitHead = e.head; audio.play(e.head ? 'headshot' : 'hitmark'); }
+        if (e.attacker === p.id && e.victim >= 0) {
+          hitT = 0.3; hitHead = e.head; hitKill = false; combo = Math.min(6, combo + 1); comboT = 1.1; audio.play(e.head ? 'headshot' : 'hitmark', 0, combo);
+          const hm = q('#sz-hitmark'); hm.classList.remove('pop'); void hm.offsetWidth; hm.classList.add('pop');
+          const n = document.createElement('b'); n.textContent = String(e.dmg); n.className = e.head ? 'head' : ''; n.style.left = `${(Math.random() - 0.5) * 70}px`; q('#sz-nums').append(n); window.setTimeout(() => n.remove(), 700);
+        }
         if (e.victim === p.id) {
           audio.play('hurt'); const rel = (m.players[e.attacker] ? Math.atan2(m.players[e.attacker].z - p.z, m.players[e.attacker].x - p.x) : p.hurtYaw) - yaw, d = document.createElement('i');
           d.style.transform = `rotate(${(rel * 180) / Math.PI + 90}deg)`; q('#sz-dmgs').append(d); window.setTimeout(() => d.remove(), 900);
@@ -316,7 +333,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
         if (!pvp && !m.over) { const left = m.aliveCount(); for (const n of [50, 25, 10, 5, 3]) if (left <= n && !told.has(n)) { told.add(n); if (left === n || n >= 25) say(`${left}명 생존`, 1.6); } }
         const mine = e.attacker === p.id, text = e.attacker < 0 ? `${nameOf(e.victim)} 자기장에 쓰러짐` : e.victim === e.attacker ? `${nameOf(e.victim)} 쓰러짐` : `${nameOf(e.attacker)} → ${nameOf(e.victim)}${e.weapon !== 'zone' ? ` [${WEAPONS[e.weapon].name}]` : ''}`;
         addFeed(text, mine || e.victim === p.id);
-        if (mine) { audio.play('kill'); say(`처치 · ${nameOf(e.victim)}`, 1.4) }
+        if (mine) { audio.play('kill'); hitKill = true; hitT = 0.55; const hm = q('#sz-hitmark'); hm.classList.remove('pop'); void hm.offsetWidth; hm.classList.add('pop'); say(`처치 · ${nameOf(e.victim)}`, 1.4) }
         if (e.victim === p.id) onMyDeath(e.attacker);
       } else if (e.t === 'pickup') {
         if (e.id === p.id) { audio.play(e.kind === 'medkit' ? 'heal' : e.kind === 'armor' ? 'armor' : 'pickup'); say(e.kind === 'attach' && e.part ? `${PARTS[e.part].name} 장착` : e.kind === 'helmet' ? `${HELMET_NAMES[e.level ?? 1]} 착용` : e.kind === 'boost' ? '에너지 드링크 · 부스트' : e.kind === 'weapon' ? `${WEAPONS[e.weapon!].name} 획득` : e.kind === 'medkit' ? '구급상자 +' : e.kind === 'armor' ? '방탄복 +' : '탄약 +', 1.1); if (pvp && e.loot < m.map.loot.length) pvp.net.sendPickup(e.loot); }
@@ -380,10 +397,16 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       p.input.yaw = yaw; p.input.pitch = pitch;
     }
     if ((phase === 'play' || phase === 'dead' || phase === 'over') && !paused) {
-      if (phase === 'play') applyInput();
+      if (phase === 'play') {
+        // 반동 복귀: 사격을 멈추면 튄 시점이 일부 되돌아옵니다(손으로 눌러 내린 만큼은 그대로)
+        rcIdle += dt; if (rcIdle > 0.07 && (rcP !== 0 || rcY !== 0)) { const f = Math.min(1, dt * FEEL.recover), bp = rcP * f, by = rcY * f; rcP -= bp; rcY -= by; pitch = clamp(pitch - bp * FEEL.recoverShare, -1.4, 1.4); yaw -= by * FEEL.recoverShare; if (Math.abs(rcP) < 1e-4 && Math.abs(rcY) < 1e-4) rcP = rcY = 0; }
+        comboT -= dt; if (comboT <= 0) combo = 0;
+        if (p.alive && !p.air && p.speed > 2.2 && p.crouch < 0.4) { stepAcc += p.speed * dt; const stride = p.speed > 6 ? 2.3 : 1.85; if (stepAcc >= stride) { stepAcc -= stride; audio.play(waterDepth(m.map.terrain, p.x, p.z) ? 'splash' : p.speed > 6 ? 'stepRun' : 'step'); } } else stepAcc = Math.min(stepAcc, 1);
+        applyInput();
+      }
       // 고정 간격(1/60)으로 진행: 프레임이 느려도 시뮬레이션 속도는 같습니다
       let left = dt; while (left > 1e-6) { const s = Math.min(1 / 60, left); left -= s; if (pvp && pvp.opp) syncRemote(s); m.step(s); }
-      if (pvp?.net.started && phase === 'play') pvp.net.sendPose({ x: p.x, z: p.z, yaw: p.yaw, pitch: p.pitch, hp: p.hp, armor: p.armor, w: p.guns[p.cur]?.id ?? 'pistol', speed: p.speed, ads: p.ads, reloading: p.reload > 0 }, now);
+      if (pvp?.net.started && phase === 'play') pvp.net.sendPose({ x: p.x, z: p.z, yaw: p.yaw, pitch: p.pitch, hp: p.hp, armor: p.armor, w: p.guns[p.cur]?.id ?? 'pistol', speed: p.speed, ads: p.ads, reloading: p.reload > 0, crouch: p.crouch > 0.5 }, now);
       const ev = m.drain(); if (ev.length) { view.handle(ev, p); onEvents(ev); }
     }
     if (phase === 'dead') {
@@ -393,13 +416,13 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     }
     const spectate = phase === 'dead' || (phase === 'over' && !p.alive) ? m.players[spectateId] ?? null : null;
     const gun = p.guns[p.cur], zoom = p.ads && p.alive ? Math.max(gun?.id === 'sniper' ? 3.4 : gun?.id === 'rifle' ? 1.5 : 1.3, gun?.att.sight ? PARTS[gun.att.sight].zoom : 1) : 1;
-    view.frame(dt, p, spectate && spectate.alive ? spectate : null, zoom); updateHud(dt); if (phase === 'dead' && !spectate) q('#sz-prompt').classList.remove('show');
+    view.frame(dt, p, spectate && spectate.alive ? spectate : null, zoom / (p.speed > 6.1 && !p.ads && p.alive && p.air === 0 ? FEEL.sprintFov : 1)); updateHud(dt); if (phase === 'dead' && !spectate) q('#sz-prompt').classList.remove('show');
   }
   /** 상대(원격) 선수를 마지막으로 받은 위치로 부드럽게 따라가게 합니다. */
   function syncRemote(dt: number): void {
     const o = pvp!.opp!, t = pvp!.target; if (!t || !o.alive) return; const k = Math.min(1, dt * 14);
     o.x += (t.x - o.x) * k; o.z += (t.z - o.z) * k; let dy = t.yaw - o.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); o.yaw += dy * k; o.pitch += (t.pitch - o.pitch) * k;
-    o.hp = t.hp; o.armor = t.armor; o.speed = t.speed; o.walk += t.speed * dt; o.ads = t.ads; o.reload = t.reloading ? 1 : 0;
+    o.hp = t.hp; o.armor = t.armor; o.speed = t.speed; o.walk += t.speed * dt; o.ads = t.ads; o.crouch += ((t.crouch ? 1 : 0) - o.crouch) * Math.min(1, dt * 12); o.reload = t.reloading ? 1 : 0;
     if (o.guns[0]?.id !== t.w) o.guns[0] = { id: t.w, mag: 1, reserve: 0, att: {} }; o.cur = 0;
   }
 

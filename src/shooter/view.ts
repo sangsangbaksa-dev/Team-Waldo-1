@@ -1,15 +1,17 @@
 // ZERO ZONE — 3D 장면: 지형·건물·나무·전리품·병사·자기장 벽·1인칭 총과 사격 효과. 경기 상태(Match)를 읽기만 합니다.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { AIR, PLAYER, WEAPONS, makeRng } from './config';
+import { AIR, WEAPONS, makeRng } from './config';
 import { bake, instantiate } from '../city/models';
-import type { Match, MatchEvent, Player } from './sim';
+import { eyeOf, type Match, type MatchEvent, type Player } from './sim';
 import type { ShooterAssets, Soldier } from './assets';
 import { SOLDIER_KINDS } from './assets';
 import type { Box, Loot } from './world';
 import { buildProps, buildRoofs, makeDropCrate, makePlane, partMesh } from './props';
 import type { PartId } from './config';
-import { concreteTexture, crateTexture, dirtTexture, floorTexture, glowTexture, groundTexture, makeSky, wallTexture } from './textures';
+import { TerrainView, tintGround } from './terrainview';
+import { waterDepth } from './terrain';
+import { crateTexture, floorTexture, glowTexture, groundTexture, makeSky, wallTexture } from './textures';
 
 export type Quality = 'high' | 'standard' | 'low';
 const HIP = 0.9, KNEE = 0.44, LEG_Z = 0.11, AIM = 1.42;
@@ -43,7 +45,7 @@ export class ShooterView {
   private vmScene = new THREE.Scene(); private vmCam = new THREE.PerspectiveCamera(64, 1, 0.5, 200);
   private sun: THREE.DirectionalLight; private glow = glowTexture(); private rigs = new Map<number, Rig>(); private lootNodes = new Map<number, THREE.Object3D>();
   private zoneWall: THREE.Mesh; private zoneNext: THREE.Mesh; private tracers: Fx[] = []; private sparks: THREE.Points; private sparkData: { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; r: number; g: number; b: number }[] = [];
-  private vm: THREE.Object3D | null = null; private vmId = ''; private vmParts = ''; private partsNode: THREE.Group | null = null; private vmSwap = 0; private vmFlash: THREE.Sprite; private bob = 0; private shake = 0; private time = 0;
+  private vm: THREE.Object3D | null = null; private vmId = ''; private vmParts = ''; private partsNode: THREE.Group | null = null; private vmSwap = 0; private vmFlash: THREE.Sprite; private bob = 0; private shake = 0; private terrainView: TerrainView | null = null; private fovPunch = 0; private flashKick = 0; private roll = 0; private sprintT = 0; private time = 0;
   private mats = new Map<string, THREE.Material>(); private tmpCol = new THREE.Color(); private beams: THREE.InstancedMesh;
   private camPos = new THREE.Vector3(); fov = 78; frames = 0;
   /** 폭풍우 하늘: 번개(flash)가 가끔 하늘과 안개를 밝힙니다 */
@@ -92,25 +94,14 @@ export class ShooterView {
     const green = new THREE.Color(0.96, 1.02, 0.84), dry = new THREE.Color(1.2, 1.0, 0.7), dark = new THREE.Color(0.72, 0.82, 0.62), sand = new THREE.Color(1.28, 1.12, 0.84);
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), z = pos.getZ(i), a = n1(x / 90 + 32, z / 90 + 32), b = n2(x / 28 + 32, z / 28 + 32);
-      c.copy(green).lerp(dry, Math.max(0, a - 0.4) * 3).lerp(dark, Math.max(0, 0.5 - b) * 2.2).lerp(sand, Math.max(0, Math.hypot(x, z) - half * 1.02) / 120);
+      c.copy(green).lerp(dry, Math.max(0, a - 0.4) * 3).lerp(dark, Math.max(0, 0.5 - b) * 2.2).lerp(sand, Math.max(0, Math.hypot(x, z) - half * 1.02) / 120); tintGround(this.match.map, x, z, c);
       col.set([c.r, c.g, c.b], i * 3);
     }
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     const t = groundTexture(); t.repeat.set(size / 6, size / 6);
     const ground = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: t, vertexColors: true })); ground.receiveShadow = true; this.scene.add(ground);
-    // 마을을 잇는 흙길
-    const dirt = dirtTexture(), cs = this.match.map.compounds, used = new Set<string>();
-    for (let i = 0; i < cs.length; i++) {
-      const near = cs.map((o, j) => ({ j, d: Math.hypot(o.x - cs[i].x, o.z - cs[i].z) })).filter(o => o.j !== i).sort((a, b) => a.d - b.d).slice(0, 2);
-      for (const { j, d } of near) {
-        const k = i < j ? `${i}-${j}` : `${j}-${i}`; if (used.has(k)) continue; used.add(k);
-        const a = cs[i], b = cs[j], tex = dirt.clone(); tex.repeat.set(d / 4, 1); tex.needsUpdate = true;
-        const road = new THREE.Mesh(new THREE.PlaneGeometry(d, 4.4), new THREE.MeshLambertMaterial({ map: tex, color: 0xd9cdb4 }));
-        road.rotation.order = 'YXZ'; road.rotation.set(-Math.PI / 2, -Math.atan2(b.z - a.z, b.x - a.x), 0); road.position.set((a.x + b.x) / 2, 0.04, (a.z + b.z) / 2); road.receiveShadow = true; this.scene.add(road);
-      }
-    }
-    // 마을 바닥(콘크리트 광장)
-    for (const c0 of cs) { const tex = concreteTexture(); tex.repeat.set((c0.r + 3) / 3, (c0.r + 3) / 3); const tint = { urban: 0xffffff, industrial: 0x8c9096, military: 0xb9ad8a, farm: 0xa89878, village: 0xd8d2c2 }[c0.theme]; const m = new THREE.Mesh(new THREE.CircleGeometry(c0.r + 3, 40), new THREE.MeshLambertMaterial({ map: tex, color: tint })); m.rotation.x = -Math.PI / 2; m.position.set(c0.x, 0.03, c0.z); m.receiveShadow = true; this.scene.add(m); }
+    // 마을 바닥·흙길·물·구릉·절벽·다리
+    this.terrainView = new TerrainView(this.match.map, this.quality === 'low'); this.scene.add(this.terrainView.group);
   }
 
   private buildBuildings(): void {
@@ -141,7 +132,7 @@ export class ShooterView {
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.computeVertexNormals();
       const n = this.quality === 'low' ? 3000 : map.mode === 'br' ? 14000 : 5000, mesh = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, emissive: 0x2b3618 }), n); let k = 0;
       for (let tries = 0; k < n && tries < n * 3; tries++) {
-        const x = (r() * 2 - 1) * (map.half + 20), z = (r() * 2 - 1) * (map.half + 20); if (map.compounds.some(c => Math.hypot(c.x - x, c.z - z) < c.r + 2) || map.sites.some(c => Math.hypot(c.x - x, c.z - z) < c.r + 1)) continue;
+        const x = (r() * 2 - 1) * (map.half + 20), z = (r() * 2 - 1) * (map.half + 20); if (map.compounds.some(c => Math.hypot(c.x - x, c.z - z) < c.r - 5) || map.sites.some(c => Math.hypot(c.x - x, c.z - z) < c.r + 1) || waterDepth(map.terrain, x, z) || map.terrain.hills.some(h => Math.hypot(h.x - x, h.z - z) < h.r * 1.05)) continue;
         d.position.set(x, 0, z); d.rotation.set(0, r() * 6.28, 0); d.scale.setScalar(0.8 + r() * 0.7); d.updateMatrix(); mesh.setMatrixAt(k++, d.matrix);
       }
       mesh.count = k; mesh.receiveShadow = false; this.scene.add(mesh);
@@ -214,7 +205,7 @@ export class ShooterView {
   }
   private poseRig(p: Player, dt: number): void {
     const rig = this.rigs.get(p.id)!, amp = Math.min(1, p.speed / 3.2), run = Math.min(1, Math.max(0, (p.speed - 4.6) / 2.6)), ph = p.walk * 1.35, sn = Math.sin(ph), cs = Math.cos(ph);
-    rig.root.position.set(p.x, Math.abs(sn) * amp * 0.04, p.z); rig.root.rotation.set(0, -p.yaw, 0);
+    rig.root.position.set(p.x, Math.abs(sn) * amp * 0.04, p.z); rig.root.rotation.set(0, -p.yaw, 0); rig.root.scale.set(1, 1 - 0.3 * p.crouch, 1);
     rig.torsoJ.rotation.z = -(0.04 * amp + 0.1 * run); rig.torsoJ.rotation.y = -sn * 0.07 * amp;
     rig.legs.forEach((l, i) => { const side = i === 0 ? -1 : 1; l.rotation.z = sn * side * (0.5 + 0.2 * run) * amp + 0.12 * run; const sh = rig.shins[i]; if (sh) sh.rotation.z = -amp * (0.12 + (0.6 + 0.5 * run) * Math.max(0, cs * side)); });
     rig.aim += (1 - rig.aim) * Math.min(1, dt * 8);
@@ -322,8 +313,9 @@ export class ShooterView {
         const fx = Math.cos(shooter.yaw), fz = Math.sin(shooter.yaw), isMe = e.id === me.id;
         const mx = e.ox + (isMe ? fx * 0.7 - fz * 0.22 : fx * 0.9), my = isMe ? e.oy - 0.16 : e.oy - 0.25, mz = e.oz + (isMe ? fz * 0.7 + fx * 0.22 : fz * 0.9);
         for (let i = 0; i + 2 < e.ends.length; i += 3) this.tracer(mx, my, mz, e.ends[i], e.ends[i + 1], e.ends[i + 2], e.sup ? 0x8a8f96 : WEAPONS[e.weapon].pellets > 1 ? 0xffd9a0 : 0xfff0b8);
-        if (isMe) this.shake = Math.min(1, this.shake + WEAPONS[e.weapon].recoil * 6);
+        if (isMe) { this.shake = Math.min(1, this.shake + WEAPONS[e.weapon].recoil * 9); this.fovPunch = Math.min(1, this.fovPunch + WEAPONS[e.weapon].recoil * 7); this.flashKick = 1; }
       } else if (e.t === 'hit') {
+        if (e.victim === me.id && !e.wall) this.shake = Math.min(1, this.shake + 0.35 + Math.min(0.5, e.dmg / 120));
         if (e.wall || e.victim < 0) this.spark(e.x, e.y, e.z, 7, [1, 0.8, 0.45], 3.5);
         else this.spark(e.x, e.y, e.z, e.head ? 14 : 9, [1, 0.12, 0.08], 2.8);
       }
@@ -349,9 +341,10 @@ export class ShooterView {
     this.vm.visible = show; if (!show) return;
     this.vmSwap = Math.max(0, this.vmSwap - dt); const sw = this.vmSwap / 0.35, moving = Math.min(1, p.speed / 5), reloading = p.reload > 0, recoil = p.kick, ads = p.ads ? 1 : 0;
     const bob = Math.sin(this.bob * 1.1) * 0.35 * moving * (1 - ads * 0.8), sway = Math.cos(this.bob * 0.55) * 0.25 * moving * (1 - ads * 0.8), big = id === 'sniper' ? 11 : 12.5;
-    this.vm.scale.setScalar(big); this.vm.rotation.set(recoil * 0.1 - (reloading ? 0.7 : 0) - sw * 0.8, Math.PI / 2 + recoil * 0.02, 0);
-    this.vm.position.set(4.6 * (1 - ads * 0.9) + sway, -4.4 * (1 - ads * 0.25) + bob - (reloading ? 3 : 0) - sw * 5, -9.5 + recoil * 1.4);
-    this.vmFlash.visible = p.muzzle > 0; this.vmFlash.material.rotation = this.time * 40;
+    const sprint = !ads && !reloading && p.speed > 6.1 ? 1 : 0; this.sprintT += (sprint - this.sprintT) * Math.min(1, dt * 10);
+    this.vm.scale.setScalar(big); this.vm.rotation.set(recoil * 0.2 - (reloading ? 0.7 : 0) - sw * 0.8 - this.sprintT * 0.35, Math.PI / 2 + recoil * 0.05 + this.sprintT * 0.5, this.sprintT * 0.12);
+    this.vm.position.set(4.6 * (1 - ads * 0.9) + sway, -4.4 * (1 - ads * 0.25) + bob - (reloading ? 3 : 0) - sw * 5 - this.sprintT * 1.2, -9.5 + recoil * 2.4 + this.sprintT * 0.8);
+    this.vmFlash.visible = p.muzzle > 0; this.vmFlash.material.rotation = this.time * 40; this.flashKick = Math.max(0, this.flashKick - dt * 14); const fs = 0.3 + this.flashKick * 0.45 * (0.7 + Math.random() * 0.6); this.vmFlash.scale.set(fs, fs, 1);
   }
 
   resize(w: number, h: number): void { this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); }
@@ -362,15 +355,16 @@ export class ShooterView {
     const vx = view.x, vz = view.z;
     for (const p of m.players) { const rig = this.rigs.get(p.id)!; const hide = (!spectate && p.id === me.id) || p.air === 1 || Math.abs(p.x - vx) + Math.abs(p.z - vz) > (p.air ? 520 : 190); rig.root.visible = !hide; if (hide) continue; this.poseRig(p, dt); if (!p.alive) { rig.root.rotation.set(0, -p.yaw, -Math.PI / 2); rig.root.position.y = 0.28; rig.flash.visible = false; } }
     // 카메라
-    this.bob += view.speed * dt * 1.7; this.shake = Math.max(0, this.shake - dt * 5);
+    this.bob += view.speed * dt * 1.7; this.shake = Math.max(0, this.shake - dt * 6);
     if (spectate) {
       const back = 3.6, cx = view.x - Math.cos(view.yaw) * back, cz = view.z - Math.sin(view.yaw) * back; cam.position.set(cx, 2.3 + view.alt, cz); cam.rotation.order = 'YXZ'; cam.rotation.set(-0.12, -view.yaw - Math.PI / 2, 0);
     } else {
-      const bobY = Math.sin(this.bob) * 0.035 * Math.min(1, view.speed / 5); cam.position.set(view.x, PLAYER.eye + view.alt + bobY, view.z); cam.rotation.order = 'YXZ';
+      const bobY = Math.sin(this.bob) * 0.035 * Math.min(1, view.speed / 5); cam.position.set(view.x, eyeOf(view) + view.alt + bobY, view.z); cam.rotation.order = 'YXZ';
       if (view.air === 1 && m.plane) { const pl = m.plane; cam.position.set(view.x - pl.dx * 58, AIR.alt + 15, view.z - pl.dz * 58); } // 수송기 뒤 위에서 항로를 내려다봅니다
-      cam.rotation.set(view.pitch + view.kick * 0.03 + (Math.random() - 0.5) * this.shake * 0.004, -view.yaw - Math.PI / 2 + (Math.random() - 0.5) * this.shake * 0.004, 0);
+      const lat = view.vx * -Math.sin(view.yaw) + view.vz * Math.cos(view.yaw); this.roll += ((view.air === 0 ? -lat * 0.0022 : 0) - this.roll) * Math.min(1, dt * 9);
+      cam.rotation.set(view.pitch + view.kick * 0.03 + (Math.random() - 0.5) * this.shake * 0.012, -view.yaw - Math.PI / 2 + (Math.random() - 0.5) * this.shake * 0.012, this.roll + (Math.random() - 0.5) * this.shake * 0.006);
     }
-    const targetFov = 78 / zoom; this.fov += (targetFov - this.fov) * Math.min(1, dt * 14); if (Math.abs(cam.fov - this.fov) > 0.01) { cam.fov = this.fov; cam.updateProjectionMatrix(); }
+    this.terrainView?.update(dt); this.fovPunch = Math.max(0, this.fovPunch - dt * 6); const targetFov = 78 / zoom - this.fovPunch * (zoom > 1.6 ? 0.6 : 2.2); this.fov += (targetFov - this.fov) * Math.min(1, dt * 14); if (Math.abs(cam.fov - this.fov) > 0.01) { cam.fov = this.fov; cam.updateProjectionMatrix(); }
     this.camPos.copy(cam.position);
     // 해와 그림자는 카메라를 따라 이동
     (this.scene.fog as THREE.FogExp2).density = 0.0042 / (1 + view.alt / 110);

@@ -93,3 +93,31 @@ export function makeSky(sunDir: THREE.Vector3): THREE.Mesh {
   });
   const m = new THREE.Mesh(new THREE.SphereGeometry(900, 32, 16), mat); m.renderOrder = -10; m.frustumCulled = false; return m;
 }
+
+/** 가장자리가 울퉁불퉁하게 번져 사라지는 알파 맵(마을 바닥·흙 얼룩용). 초록 채널이 불투명도입니다. inner 안쪽은 완전 불투명. */
+export function fadeDiscTexture(seed: number, inner = 0.72): THREE.CanvasTexture {
+  const n = 128, c = document.createElement('canvas'); c.width = c.height = n; const g = c.getContext('2d')!, img = g.createImageData(n, n), rng = makeRng(seed), ph = [rng() * 6, rng() * 6, rng() * 6];
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const dx = (x + 0.5) / n * 2 - 1, dy = (y + 0.5) / n * 2 - 1, r = Math.hypot(dx, dy), a = Math.atan2(dy, dx);
+    const edge = 0.9 + 0.045 * Math.sin(a * 3 + ph[0]) + 0.035 * Math.sin(a * 7 + ph[1]) + 0.025 * Math.sin(a * 13 + ph[2]);
+    const t = Math.max(0, Math.min(1, (edge - r) / (edge - inner * edge))), v = Math.round(t * t * (3 - 2 * t) * 255), i = (y * n + x) * 4;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0); const t = new THREE.CanvasTexture(c); t.anisotropy = 2; return t;
+}
+/** 길 알파 맵: 가운데는 진하고 양 가장자리는 흐려집니다(가로 방향 = 길의 폭). */
+export function fadeRoadTexture(): THREE.CanvasTexture {
+  const w = 128, h = 64, c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d')!, img = g.createImageData(w, h), rng = makeRng(77), wob = Array.from({ length: w }, () => rng());
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const v = (y + 0.5) / h, d = Math.abs(v - 0.5) * 2, edge = 0.78 + wob[x] * 0.12 + Math.sin(x * 0.21) * 0.05, t = Math.max(0, Math.min(1, (edge - d) / 0.45)), k = Math.round(t * t * (3 - 2 * t) * 255), i = (y * w + x) * 4;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = k; img.data[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0); const t = new THREE.CanvasTexture(c); t.wrapS = THREE.RepeatWrapping; return t;
+}
+/** 물결 질감: 푸른 바탕에 옅은 가로 줄무늬(UV 를 흘려 보내 흐르는 느낌을 냅니다). */
+export function waterTexture(): THREE.CanvasTexture {
+  return canvasTex(256, (g, s) => {
+    const rng = makeRng(61); const grad = g.createLinearGradient(0, 0, s, s); grad.addColorStop(0, '#4d8fae'); grad.addColorStop(1, '#3a7794'); g.fillStyle = grad; g.fillRect(0, 0, s, s);
+    for (let i = 0; i < 70; i++) { g.strokeStyle = rng() < 0.6 ? 'rgba(220,240,250,.32)' : 'rgba(20,50,70,.25)'; g.lineWidth = 1 + rng() * 1.6; g.beginPath(); const x = rng() * s, y = rng() * s, l = 14 + rng() * 34; g.moveTo(x, y); g.quadraticCurveTo(x + l / 2, y + (rng() - 0.5) * 5, x + l, y); g.stroke(); if (x + l > s) { g.beginPath(); g.moveTo(x - s, y); g.quadraticCurveTo(x - s + l / 2, y, x - s + l, y); g.stroke(); } }
+  });
+}

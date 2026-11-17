@@ -94,6 +94,7 @@ export interface Vehicle {
   /** 교통 AI 작업 메모 */ lane: number; nextLane: number; path: number[]; timer: number; stuck: number; target: number; aux: number;
   siren: boolean; hornT: number; /** 최근 충돌 세기(소리·연출) */ crashT: number; /** 시각 효과용 */ pitch: number; roll: number; wheel: number;
   /** 플레이어가 훔쳤는지 */ stolen: boolean; keep: boolean; tag: string; /** 잠김(도난 불가) */ locked: boolean;
+  /** 스파이크 스트립에 타이어가 터졌는지(도색·정비소에서 복구) */ flat?: boolean;
 }
 
 // ---------- 줍기·탄 ----------

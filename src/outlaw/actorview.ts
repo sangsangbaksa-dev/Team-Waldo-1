@@ -56,6 +56,8 @@ export class ActorView {
   private readonly cameraPos = new THREE.Vector3();
   private fxCursor = 0;
   private skidCursor = 0;
+  /** 사이렌 차량 주변 벽·노면에 번지는 적청 점멸광(가장 가까운 한 대) */
+  private readonly sirenLight = new THREE.PointLight(0xff4545, 0, 34, 1.6);
   private readonly skidStart: number;
 
   constructor(readonly scene: THREE.Scene, readonly sim: Sim, readonly assets: OutlawAssets | null, readonly quality: Quality) {
@@ -69,7 +71,7 @@ export class ActorView {
       data[i] = data[i + 1] = data[i + 2] = 255; data[i + 3] = Math.round(a * 255);
     }
     this.glow = new THREE.DataTexture(data, n, n); this.glow.needsUpdate = true; this.glow.magFilter = this.glow.minFilter = THREE.LinearFilter;
-    this.root.name = 'outlaw-actors'; scene.add(this.root); this.cameraPos.set(sim.player.x, sim.player.y, sim.player.z);
+    this.root.name = 'outlaw-actors'; this.root.add(this.sirenLight); scene.add(this.root); this.cameraPos.set(sim.player.x, sim.player.y, sim.player.z);
     this.skidStart = quality === 'low' ? 128 : quality === 'standard' ? 224 : 320;
     // 이벤트 폭주와 장시간 드리프트도 GPU 자원 수를 늘리지 않도록 처음에만 할당합니다.
     for (let i = 0; i < this.skidStart + (quality === 'low' ? 48 : 96); i++) {
@@ -356,8 +358,21 @@ export class ActorView {
       }
     }
   }
+  private spikeMeshes: THREE.Mesh[] = [];
+  private spikeStrips(): void {
+    const ks = this.sim.spikes;
+    while (this.spikeMeshes.length < ks.length) { const m = new THREE.Mesh(this.box, this.ownMat(new THREE.MeshBasicMaterial({ color: 0xb8bcc4 }))); m.scale.set(0.5, 0.06, 7); this.root.add(m); this.spikeMeshes.push(m); }
+    this.spikeMeshes.forEach((m, i) => { const k = ks[i]; m.visible = !!k; if (k) { m.position.set(k.x, groundHeight(this.sim.map, k.x, k.z) + 0.05, k.z); m.rotation.y = -k.h; } });
+  }
+  private sirenWash(): void {
+    let best: Vehicle | undefined, bd = 70;
+    for (const v of this.sim.vehicles) if (v.siren && !v.wrecked) { const d = Math.hypot(v.x - this.cameraPos.x, v.z - this.cameraPos.z); if (d < bd) { bd = d; best = v; } }
+    const l = this.sirenLight; if (!best) { l.intensity = 0; return; }
+    const red = Math.floor(this.time * 9) % 2 === 0; l.color.setHex(red ? 0xff3b3b : 0x3b7bff); l.position.set(best.x, best.y + 2.6, best.z);
+    l.intensity = (this.quality === 'low' ? 0 : 38) * clamp(1.15 - bd / 70, 0, 1);
+  }
   update(dt: number, camera: THREE.PerspectiveCamera, clock: number): void {
-    if (this.disposed) return; dt = Math.max(0, Number.isFinite(dt) ? dt : 0); this.time += dt; camera.getWorldPosition(this.cameraPos);
+    if (this.disposed) return; dt = Math.max(0, Number.isFinite(dt) ? dt : 0); this.time += dt; camera.getWorldPosition(this.cameraPos); this.sirenWash(); this.spikeStrips();
     const hour = ((clock % 24) + 24) % 24, night = hour >= 20 || hour < 6, livePeds = new Set<number>();
     for (const p of this.sim.peds) {
       livePeds.add(p.id); const dist = Math.hypot(p.x - this.cameraPos.x, p.z - this.cameraPos.z), player = p.id === this.sim.player.id;

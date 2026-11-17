@@ -387,7 +387,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
       }
       if (shakeFov > 0.01) { camera.fov += shakeFov; camera.updateProjectionMatrix(); shakeFov *= 0.86; }
     }
-    cityView.update(dt, camera, sim.clock, sim.t); actorView.update(dt, camera, sim.clock);
+    cityView.update(dt, camera, sim.clock, sim.t, sim.rain); actorView.update(dt, camera, sim.clock);
     renderer.render(scene, camera);
     if (playing) hud(dt, car);
     if (phase !== 'menu') { saveT += dt; if (saveT > 30) { saveT = 0; if (p.alive) save(); } }
@@ -451,7 +451,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     let best = Infinity, pan = 0; const r = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
     for (const v of s.vehicles) if (v.siren && v.alive) { const dx = v.x - camera.position.x, dz = v.z - camera.position.z, d = Math.hypot(dx, dz); if (d < best) { best = d; pan = d > 1 ? clamp((dx * r.x + dz * r.z) / d, -1, 1) : 0; } }
     audio.setSiren(best < 160 ? 1 - best / 160 : 0, pan);
-    const h = s.clock; audio.setAmbience(clamp(1 - Math.abs(h - 14) / 12, 0.1, 1), h > 20 || h < 5.5);
+    audio.setRain(s.rain); const h = s.clock; audio.setAmbience(clamp(1 - Math.abs(h - 14) / 12, 0.1, 1), h > 20 || h < 5.5);
   }
 
   function frame(now: number): void {

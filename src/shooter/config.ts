@@ -62,7 +62,7 @@ export const HELMET_NAMES = ['', '1레벨 헬멧', '2레벨 헬멧', '3레벨 �
 /** 에너지 드링크: 부스트 시간(초) 동안 체력이 서서히 차오르고 이동이 조금 빨라집니다 */
 export const BOOST = { time: 22, heal: 2.6, speed: 1.08, cap: 100 };
 
-export const PLAYER = { radius: 0.4, eye: 1.65, height: 1.8, head: 1.45, walk: 4.6, sprint: 7.2, hp: 100, medkit: 55, armor: 50, pickup: 1.6 };
+export const PLAYER = { radius: 0.4, eye: 1.65, height: 1.8, head: 1.45, walk: 4.6, sprint: 7.2, hp: 100, crouchEye: 1.05, crouchHeight: 1.2, crouchHead: 0.92, crouchSpeed: 0.55, medkit: 55, armor: 50, pickup: 1.6 };
 export const MAP_HALF = { br: 290, duel: 115 } as const;
 /** 솔로 배틀로열은 100명(나 + AI 99명)이 같은 비행기에서 뛰어내립니다. */
 export const BR_PLAYERS = 100;

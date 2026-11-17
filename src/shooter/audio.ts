@@ -19,7 +19,7 @@ export class ShooterAudio {
   play(name: string, dist = 0, combo = 0): void {
     if (!this.eng.ctx || !this.enabled) return;
     const v = Math.max(0, Math.min(1, 1.1 - dist / 170)); if (v < 0.06) return;
-    const now = performance.now(), gap = name === 'smg' || name === 'rifle' ? 45 : name === 'hurt' ? 120 : name === 'step' || name === 'stepRun' ? 90 : 40; if (now - (this.last.get(name) ?? 0) < gap) return; this.last.set(name, now);
+    const now = performance.now(), gap = name === 'smg' || name === 'rifle' ? 45 : name === 'hurt' ? 120 : name === 'step' || name === 'stepRun' || name === 'splash' ? 90 : 40; if (now - (this.last.get(name) ?? 0) < gap) return; this.last.set(name, now);
     const t = (f: number, d: number, g: number, typ: OscillatorType = 'sine', slide = 0, delay = 0): void => tone(this.eng, f, d, g * v, typ, slide, delay);
     const n = (d: number, g: number, f: number, q = 1, typ: BiquadFilterType = 'bandpass'): void => burst(this.eng, d, g * v, f, q, typ);
     switch (name) {
@@ -33,6 +33,7 @@ export class ShooterAudio {
       case 'empty': t(900, 0.03, 0.12, 'square'); break;
       case 'hitmark': n(0.04, 0.26, 3200, 2); t(1500 * (1 + combo * 0.05), 0.05, 0.14, 'triangle'); t(190, 0.06, 0.2, 'sine', -60); break;
       case 'headshot': n(0.06, 0.32, 3600, 2); t(2100, 0.09, 0.18, 'triangle'); t(2800, 0.12, 0.12, 'sine', 0, 0.03); t(140, 0.08, 0.26, 'sine', -50); break;
+      case 'splash': n(0.12, 0.2, 900, 0.7); n(0.2, 0.12, 400, 0.6, 'lowpass'); break;
       case 'step': n(0.045, 0.1, 260, 0.8, 'lowpass'); break;
       case 'stepRun': n(0.05, 0.14, 300, 0.8, 'lowpass'); t(70, 0.05, 0.08, 'sine', -20); break;
       case 'hurt': n(0.09, 0.26, 700, 0.8, 'lowpass'); t(170, 0.12, 0.18, 'triangle', -80); break;

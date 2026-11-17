@@ -74,17 +74,21 @@ export function glowTexture(): THREE.CanvasTexture {
   return canvasTex(64, (g, s) => { const r = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2); r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(0.35, 'rgba(255,255,255,0.45)'); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, s, s); }, false);
 }
 
-/** 하늘 돔: 위는 짙은 파랑, 지평선 쪽은 따뜻한 옅은 색, 해 방향에 빛번짐. */
+/** 하늘 돔: 흐린 폭풍우 하늘(어두운 철회색 구름), 지평선은 안개빛. 번개가 칠 때 flash(0~1)가 한쪽 하늘을 밝힙니다. */
 export function makeSky(sunDir: THREE.Vector3): THREE.Mesh {
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
-    uniforms: { sun: { value: sunDir.clone().normalize() } },
+    uniforms: { sun: { value: sunDir.clone().normalize() }, flash: { value: 0 }, bolt: { value: new THREE.Vector3(0.6, 0.35, -0.7).normalize() }, t: { value: 0 } },
     vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position.z = gl_Position.w; }',
-    fragmentShader: `varying vec3 vDir; uniform vec3 sun;
-      void main(){ float h = clamp(vDir.y, -0.1, 1.0); vec3 top = vec3(0.16, 0.36, 0.72), mid = vec3(0.52, 0.72, 0.92), hor = vec3(0.93, 0.86, 0.74);
-        vec3 c = mix(hor, mid, smoothstep(0.0, 0.22, h)); c = mix(c, top, smoothstep(0.18, 0.85, h));
-        float s = max(dot(normalize(vDir), sun), 0.0); c += vec3(1.0, 0.82, 0.55) * (pow(s, 28.0) * 0.55 + pow(s, 600.0) * 2.5);
-        c = mix(c, vec3(0.62, 0.6, 0.52), smoothstep(0.0, -0.1, vDir.y));
+    fragmentShader: `varying vec3 vDir; uniform vec3 sun; uniform vec3 bolt; uniform float flash; uniform float t;
+      float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(hash(i), hash(i + vec2(1,0)), f.x), mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), f.x), f.y); }
+      void main(){ float h = clamp(vDir.y, -0.1, 1.0); vec3 top = vec3(0.07, 0.09, 0.13), mid = vec3(0.2, 0.25, 0.3), hor = vec3(0.47, 0.53, 0.55);
+        vec3 c = mix(hor, mid, smoothstep(0.0, 0.2, h)); c = mix(c, top, smoothstep(0.15, 0.8, h));
+        vec2 uv = vDir.xz / (vDir.y + 0.35) * 1.6 + vec2(t * 0.012, 0.0); float cl = vn(uv * 2.0) * 0.55 + vn(uv * 4.3) * 0.3 + vn(uv * 9.0) * 0.15; c *= 0.72 + cl * 0.55;
+        float s = max(dot(normalize(vDir), sun), 0.0); c += vec3(0.9, 0.78, 0.6) * pow(s, 18.0) * 0.18;
+        float b = max(dot(normalize(vDir), bolt), 0.0); c += vec3(0.55, 0.62, 1.0) * flash * (pow(b, 6.0) * 1.6 + 0.25);
+        c = mix(c, vec3(0.4, 0.44, 0.44), smoothstep(0.0, -0.1, vDir.y));
         gl_FragColor = vec4(c, 1.0); }`,
   });
   const m = new THREE.Mesh(new THREE.SphereGeometry(900, 32, 16), mat); m.renderOrder = -10; m.frustumCulled = false; return m;

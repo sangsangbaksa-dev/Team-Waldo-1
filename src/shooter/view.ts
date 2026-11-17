@@ -1,7 +1,7 @@
 // ZERO ZONE — 3D 장면: 지형·건물·나무·전리품·병사·자기장 벽·1인칭 총과 사격 효과. 경기 상태(Match)를 읽기만 합니다.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { PLAYER, WEAPONS, makeRng } from './config';
+import { AIR, PLAYER, WEAPONS, makeRng } from './config';
 import { bake, instantiate } from '../city/models';
 import type { Match, MatchEvent, Player } from './sim';
 import type { ShooterAssets, Soldier } from './assets';
@@ -35,7 +35,7 @@ function worldBox(b: Box, tile = 3.2): THREE.BufferGeometry {
   return g;
 }
 
-interface Rig { root: THREE.Group; torsoJ: THREE.Group; legs: THREE.Group[]; shins: THREE.Group[]; armL: THREE.Group | null; armR: THREE.Group | null; flash: THREE.Sprite; aim: number }
+interface Rig { chute: THREE.Group; root: THREE.Group; torsoJ: THREE.Group; legs: THREE.Group[]; shins: THREE.Group[]; armL: THREE.Group | null; armR: THREE.Group | null; flash: THREE.Sprite; aim: number }
 interface Fx { mesh: THREE.Mesh; life: number; max: number }
 
 export class ShooterView {
@@ -46,6 +46,8 @@ export class ShooterView {
   private vm: THREE.Object3D | null = null; private vmId = ''; private vmParts = ''; private partsNode: THREE.Group | null = null; private vmSwap = 0; private vmFlash: THREE.Sprite; private bob = 0; private shake = 0; private time = 0;
   private mats = new Map<string, THREE.Material>(); private tmpCol = new THREE.Color(); private beams: THREE.InstancedMesh;
   private camPos = new THREE.Vector3(); fov = 78; frames = 0;
+  /** 폭풍우 하늘: 번개(flash)가 가끔 하늘과 안개를 밝힙니다 */
+  private sky: THREE.Mesh; private hemi: THREE.HemisphereLight; private flash = 0; private nextBolt = 6; private carrier: THREE.Group | null = null; private fogBase = new THREE.Color(0x76828a);
 
   constructor(readonly canvas: HTMLCanvasElement, readonly match: Match, private assets: ShooterAssets | null, readonly quality: Quality) {
     const hi = quality === 'high';
@@ -54,9 +56,9 @@ export class ShooterView {
     this.renderer.shadowMap.enabled = hi; this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.05; this.renderer.autoClear = false;
     const sc = this.scene, sunDir = new THREE.Vector3(0.55, 0.62, 0.38);
-    sc.fog = new THREE.FogExp2(0xd6cdb8, 0.0034); sc.add(makeSky(sunDir));
-    sc.add(new THREE.HemisphereLight(0xcfe2ff, 0x84764f, 1.15));
-    this.sun = new THREE.DirectionalLight(0xffe0b0, 2.9); this.sun.position.copy(sunDir).multiplyScalar(120); sc.add(this.sun, this.sun.target);
+    sc.fog = new THREE.FogExp2(0x76828a, 0.0042); this.sky = makeSky(sunDir); sc.add(this.sky);
+    this.hemi = new THREE.HemisphereLight(0xa9bccf, 0x5d5a48, 0.82); sc.add(this.hemi);
+    this.sun = new THREE.DirectionalLight(0xdbe4ee, 1.8); this.sun.position.copy(sunDir).multiplyScalar(120); sc.add(this.sun, this.sun.target);
     if (hi) { this.sun.castShadow = true; const s = this.sun.shadow; s.mapSize.set(2048, 2048); s.camera.left = s.camera.bottom = -62; s.camera.right = s.camera.top = 62; s.camera.near = 20; s.camera.far = 320; s.bias = -0.0004; s.normalBias = 0.05; }
     this.buildGround(); this.buildBuildings(); this.buildScatter();
     this.beams = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.09, 0.09, 7, 8, 1, true), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: true }), 400);
@@ -203,7 +205,12 @@ export class ShooterView {
       const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 1.0, 4, 8), new THREE.MeshLambertMaterial({ color: p.color })); body.position.y = 1.0; body.castShadow = true; root.add(body);
     }
     const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, color: 0xffd98a, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false })); flash.scale.set(0.8, 0.8, 1); flash.visible = false; root.add(flash);
-    root.visible = false; this.scene.add(root); this.rigs.set(p.id, { root, torsoJ, legs, shins, armL, armR, flash, aim: 0 });
+    const chute = new THREE.Group(), cm = this.mat(`chute${p.color}`, () => new THREE.MeshLambertMaterial({ color: p.color, side: THREE.DoubleSide, emissive: 0x111111 })), canopy = new THREE.Mesh(new THREE.SphereGeometry(3.1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2.15), cm);
+    canopy.scale.set(1, 0.62, 1); canopy.position.y = 5.2; chute.add(canopy);
+    const lm = this.mat('chuteline', () => new THREE.LineBasicMaterial({ color: 0xd9d4c4 })), pts: THREE.Vector3[] = [];
+    for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; pts.push(new THREE.Vector3(Math.cos(a) * 2.9, 5.1, Math.sin(a) * 2.9), new THREE.Vector3(0, 1.6, 0)); }
+    chute.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), lm)); chute.visible = false; root.add(chute);
+    root.visible = false; this.scene.add(root); this.rigs.set(p.id, { chute, root, torsoJ, legs, shins, armL, armR, flash, aim: 0 });
   }
   private poseRig(p: Player, dt: number): void {
     const rig = this.rigs.get(p.id)!, amp = Math.min(1, p.speed / 3.2), run = Math.min(1, Math.max(0, (p.speed - 4.6) / 2.6)), ph = p.walk * 1.35, sn = Math.sin(ph), cs = Math.cos(ph);
@@ -214,6 +221,10 @@ export class ShooterView {
     if (rig.armR) rig.armR.rotation.z = AIM * rig.aim; if (rig.armL) rig.armL.rotation.z = AIM * 0.82 * rig.aim;
     rig.flash.position.set(0.95, 1.32, 0.1);
     rig.flash.visible = p.muzzle > 0;
+    // 낙하: 자유낙하는 배를 아래로 펴고, 낙하산은 똑바로 매달려 다리를 늘어뜨립니다
+    rig.chute.visible = p.air === 3;
+    if (p.air === 2) { rig.root.position.set(p.x, p.alt + 0.6, p.z); rig.root.rotation.set(0, -p.yaw, -1.25); rig.legs.forEach((l, i) => { l.rotation.z = (i ? 0.35 : -0.1); }); if (rig.armR) rig.armR.rotation.z = 2.4; if (rig.armL) rig.armL.rotation.z = 2.4; }
+    else if (p.air === 3) { rig.root.position.set(p.x, p.alt, p.z); rig.root.rotation.set(0, -p.yaw, 0); rig.legs.forEach((l, i) => { l.rotation.z = i ? 0.18 : 0.05; }); if (rig.armR) rig.armR.rotation.z = 2.8; if (rig.armL) rig.armL.rotation.z = 2.8; }
   }
 
   // ---------- 보급 투하 ----------
@@ -239,6 +250,21 @@ export class ShooterView {
       } else if (this.plane && dt > 11 && i === m.drops.length - 1) this.plane.visible = false;
     });
     if (this.plane && !m.drops.some(d => d.called && !d.landed && Math.abs(t - (d.at - d.fall)) < 11)) this.plane.visible = false;
+  }
+
+  /** 100명을 태우고 지도를 가로지르는 수송기 */
+  private syncCarrier(): void {
+    const m = this.match, pl = m.plane; if (!pl) return;
+    if (m.t > pl.end + 8) { if (this.carrier) this.carrier.visible = false; return; }
+    if (!this.carrier) { this.carrier = makePlane(); this.carrier.scale.setScalar(1.8); this.scene.add(this.carrier); }
+    const at = m.planeAt(m.t); this.carrier.visible = true; this.carrier.position.set(at.x, AIR.alt + 1.5, at.z); this.carrier.rotation.y = -Math.atan2(pl.dz, pl.dx);
+  }
+  /** 흐린 하늘과 가끔 치는 번개 */
+  private weather(dt: number): void {
+    this.nextBolt -= dt; if (this.nextBolt <= 0) { this.flash = 1; this.nextBolt = 7 + Math.random() * 14; (this.sky.material as THREE.ShaderMaterial).uniforms.bolt.value.set(Math.random() - 0.5, 0.25 + Math.random() * 0.3, Math.random() - 0.5).normalize(); }
+    const f = Math.max(0, this.flash), tw = f > 0.55 ? 1 : f > 0.3 ? 0.35 : f; this.flash = Math.max(0, this.flash - dt * 2.2);
+    const u = (this.sky.material as THREE.ShaderMaterial).uniforms; u.flash.value = tw; u.t.value = this.time; this.hemi.intensity = 0.82 + tw * 1.6;
+    (this.scene.fog as THREE.FogExp2).color.copy(this.fogBase).lerp(this.tmpCol.setHex(0xc4cee8), tw * 0.5);
   }
 
   // ---------- 전리품 ----------
@@ -333,24 +359,28 @@ export class ShooterView {
   /** 매 프레임: 장면을 경기 상태에 맞추고 그립니다. spectate 가 있으면 그 선수 뒤에서 따라갑니다(내가 쓰러진 뒤). */
   frame(dt: number, me: Player, spectate: Player | null, zoom: number): void {
     this.time += dt; this.frames++; const m = this.match, z = m.zone, cam = this.camera, view = spectate ?? me;
-    for (const p of m.players) { const rig = this.rigs.get(p.id)!; const hide = (!spectate && p.id === me.id); rig.root.visible = !hide && (p.alive || true); if (hide) continue; this.poseRig(p, dt); if (!p.alive) { rig.root.rotation.set(0, -p.yaw, -Math.PI / 2); rig.root.position.y = 0.28; rig.flash.visible = false; } }
+    const vx = view.x, vz = view.z;
+    for (const p of m.players) { const rig = this.rigs.get(p.id)!; const hide = (!spectate && p.id === me.id) || p.air === 1 || Math.abs(p.x - vx) + Math.abs(p.z - vz) > (p.air ? 520 : 190); rig.root.visible = !hide; if (hide) continue; this.poseRig(p, dt); if (!p.alive) { rig.root.rotation.set(0, -p.yaw, -Math.PI / 2); rig.root.position.y = 0.28; rig.flash.visible = false; } }
     // 카메라
     this.bob += view.speed * dt * 1.7; this.shake = Math.max(0, this.shake - dt * 5);
     if (spectate) {
-      const back = 3.6, cx = view.x - Math.cos(view.yaw) * back, cz = view.z - Math.sin(view.yaw) * back; cam.position.set(cx, 2.3, cz); cam.rotation.order = 'YXZ'; cam.rotation.set(-0.12, -view.yaw - Math.PI / 2, 0);
+      const back = 3.6, cx = view.x - Math.cos(view.yaw) * back, cz = view.z - Math.sin(view.yaw) * back; cam.position.set(cx, 2.3 + view.alt, cz); cam.rotation.order = 'YXZ'; cam.rotation.set(-0.12, -view.yaw - Math.PI / 2, 0);
     } else {
-      const bobY = Math.sin(this.bob) * 0.035 * Math.min(1, view.speed / 5); cam.position.set(view.x, PLAYER.eye + bobY, view.z); cam.rotation.order = 'YXZ';
+      const bobY = Math.sin(this.bob) * 0.035 * Math.min(1, view.speed / 5); cam.position.set(view.x, PLAYER.eye + view.alt + bobY, view.z); cam.rotation.order = 'YXZ';
+      if (view.air === 1 && m.plane) { const pl = m.plane; cam.position.set(view.x - pl.dx * 58, AIR.alt + 15, view.z - pl.dz * 58); } // 수송기 뒤 위에서 항로를 내려다봅니다
       cam.rotation.set(view.pitch + view.kick * 0.03 + (Math.random() - 0.5) * this.shake * 0.004, -view.yaw - Math.PI / 2 + (Math.random() - 0.5) * this.shake * 0.004, 0);
     }
     const targetFov = 78 / zoom; this.fov += (targetFov - this.fov) * Math.min(1, dt * 14); if (Math.abs(cam.fov - this.fov) > 0.01) { cam.fov = this.fov; cam.updateProjectionMatrix(); }
     this.camPos.copy(cam.position);
     // 해와 그림자는 카메라를 따라 이동
+    (this.scene.fog as THREE.FogExp2).density = 0.0042 / (1 + view.alt / 110);
     this.sun.position.set(view.x + 66, 92, view.z + 46); this.sun.target.position.set(view.x, 0, view.z); this.sun.target.updateMatrixWorld();
     // 자기장
     this.zoneWall.scale.set(z.r, 1, z.r); this.zoneWall.position.x = z.cx; this.zoneWall.position.z = z.cz; (this.zoneWall.material as THREE.ShaderMaterial).uniforms.t.value = this.time;
     this.zoneNext.visible = z.nextR < z.r - 0.5; this.zoneNext.scale.set(z.nextR, z.nextR, 1); this.zoneNext.position.x = z.nextCx; this.zoneNext.position.z = z.nextCz;
     this.syncLoot(cam.position); this.syncDrops(); this.updateFx(dt);
-    this.viewmodel(view, !spectate && me.alive, dt);
+    this.syncCarrier(); this.weather(dt);
+    this.viewmodel(view, !spectate && me.alive && !me.air, dt);
     // 그리기: 월드 → 깊이 지우고 1인칭 총
     this.renderer.clear(); this.renderer.render(this.scene, cam);
     if (this.vm && this.vm.visible) { this.vmCam.fov = cam.fov > 60 ? 64 : 64 * (cam.fov / 60); this.vmCam.aspect = cam.aspect; this.vmCam.updateProjectionMatrix(); this.renderer.clearDepth(); this.renderer.render(this.vmScene, this.vmCam); }

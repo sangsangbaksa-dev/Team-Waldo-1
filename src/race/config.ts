@@ -46,13 +46,13 @@ export interface LevelDef {
   /** 니트로를 쓰기 시작하는 잔량. 없으면 쓰지 않음 */
   nitro?: number;
 }
-// 1단계는 이전 버전의 라이벌과 같은 값입니다.
+// 이전 버전보다 라이벌이 전반적으로 빨라지고 더 끈질기게 따라붙습니다.
 export const LEVELS: ReadonlyArray<LevelDef> = [
-  { id: 1, name: '쉬움', blurb: '레이싱 라인을 타고 직선에서 니트로를 자주 씁니다', topMul: 1.075, gripMul: 1.15, bandLo: 0.955, bandHi: 1.095, bandK: 0.00028, line: 0.675, nitro: 0.5 },
-  { id: 2, name: '보통', blurb: '라인이 거의 완벽하고 쉽게 떨어지지 않습니다', topMul: 1.105, gripMul: 1.215, bandLo: 0.965, bandHi: 1.11, bandK: 0.00033, line: 0.9, nitro: 0.28 },
-  { id: 3, name: '어려움', blurb: '완벽한 라인과 니트로로 끝까지 압박합니다', topMul: 1.135, gripMul: 1.285, bandLo: 0.975, bandHi: 1.13, bandK: 0.0004, line: 1, nitro: 0.1 },
-  { id: 4, name: '매우 어려움', blurb: '실수 없이 니트로를 아낌없이 쓰며 거의 따라잡을 수 없습니다', topMul: 1.15, gripMul: 1.33, bandLo: 0.985, bandHi: 1.145, bandK: 0.00046, line: 1, nitro: 0.05 },
-  { id: 5, name: '극한', blurb: '드리프트와 니트로를 완벽하게 써야 겨우 이기는 최강의 라이벌입니다', topMul: 1.18, gripMul: 1.38, bandLo: 0.99, bandHi: 1.155, bandK: 0.0005, line: 1, nitro: 0.03 },
+  { id: 1, name: '쉬움', blurb: '레이싱 라인을 타고 직선에서 니트로를 자주 씁니다', topMul: 1.1, gripMul: 1.2, bandLo: 0.97, bandHi: 1.115, bandK: 0.00034, line: 0.78, nitro: 0.4 },
+  { id: 2, name: '보통', blurb: '라인이 거의 완벽하고 쉽게 떨어지지 않습니다', topMul: 1.135, gripMul: 1.265, bandLo: 0.98, bandHi: 1.13, bandK: 0.0004, line: 0.95, nitro: 0.2 },
+  { id: 3, name: '어려움', blurb: '완벽한 라인과 니트로로 끝까지 압박합니다', topMul: 1.165, gripMul: 1.335, bandLo: 0.988, bandHi: 1.15, bandK: 0.00048, line: 1, nitro: 0.07 },
+  { id: 4, name: '매우 어려움', blurb: '실수 없이 니트로를 아낌없이 쓰며 거의 따라잡을 수 없습니다', topMul: 1.185, gripMul: 1.385, bandLo: 0.995, bandHi: 1.165, bandK: 0.00055, line: 1, nitro: 0.03 },
+  { id: 5, name: '극한', blurb: '드리프트와 니트로를 완벽하게 써야 겨우 이기는 최강의 라이벌입니다', topMul: 1.215, gripMul: 1.44, bandLo: 1, bandHi: 1.18, bandK: 0.0006, line: 1, nitro: 0.02 },
 ];
 export const levelById = (id: number): LevelDef => LEVELS.find(l => l.id === id) ?? LEVELS[0];
 

@@ -28,7 +28,7 @@ export interface Ent {
   lane: Lane | ''; wp: number; home: Pt; target: number; path: number[]; pi: number; repath: number; fx: number; fy: number; hurt: number; fired: number; sub: string; spawnAt: number;
   slowUntil: number; slow: number; stunUntil: number; hero: Hero | null; tier: number; camp: string; lastHit: Map<number, number>; threat: number;
 }
-export interface Team { kills: number; towers: number; drakes: number; baronUntil: number; gold: number }
+export interface Team { kills: number; towers: number; drakes: number; baronUntil: number; gold: number; inhibs: number; barons: number }
 export type Cmd =
   | { k: 'move'; x: number; y: number } | { k: 'amove'; x: number; y: number } | { k: 'attack'; target: number } | { k: 'stop' }
   | { k: 'cast'; i: number; x: number; y: number } | { k: 'learn'; i: number } | { k: 'buy'; item: ItemId } | { k: 'recall' } | { k: 'surrender' }
@@ -56,7 +56,7 @@ const BASE_RADIUS = 8;
 
 export class MobaSim {
   tick = 0; winner = -1; nextId = 1; readonly map: MobaMap; readonly grid: Uint8Array; readonly pather: Pather;
-  ents: Ent[] = []; index = new Map<number, Ent>(); teams: Team[] = [0, 1].map(() => ({ kills: 0, towers: 0, drakes: 0, baronUntil: 0, gold: 0 }));
+  ents: Ent[] = []; index = new Map<number, Ent>(); teams: Team[] = [0, 1].map(() => ({ kills: 0, towers: 0, drakes: 0, baronUntil: 0, gold: 0, inhibs: 0, barons: 0 }));
   events: SimEvent[] = []; record = true; private wave = 0; private camps = new Map<string, { at: Pt; due: number; ids: number[]; defs: Array<{ k: MonsterKind; dx: number; dy: number }> }>();
   readonly heroIds: number[] = [];
   wards: Ward[] = []; pings: Ping[] = []; private seen: [Set<number>, Set<number>] = [new Set(), new Set()];
@@ -135,6 +135,10 @@ export class MobaSim {
   /** 이 팀이 지금 그 유닛을 볼 수 있는가(건물은 한 번 보이면 계속 보입니다). */
   canSee(team: number, t: Ent): boolean { return t.team === team || isStructure(t.kind) || this.seen[team]?.has(t.id) === true; }
   seenPt(team: number, x: number, y: number, r = 0): boolean { return this.sightList(team).some(o => Math.hypot(o.x - x, o.y - y) <= o.r + r); }
+  /** 팀의 시야 원 목록(화면의 안개와 미니맵이 씁니다). */
+  sightOf(team: number): Array<{ x: number; y: number; r: number }> { return this.sightList(team); }
+  /** 드래곤·군주 상태: 지금 살아 있는지, 아니면 몇 초 뒤에 나오는지. */
+  objective(sub: 'drake' | 'baron'): { alive: boolean; secs: number } { const c = this.camps.get(sub); if (!c) return { alive: false, secs: 0 }; return c.ids.length ? { alive: true, secs: 0 } : { alive: this.tick >= c.due, secs: Math.max(0, Math.ceil((c.due - this.tick) / TICK)) }; }
   private sightList(team: number): Array<{ x: number; y: number; r: number }> {
     const out: Array<{ x: number; y: number; r: number }> = [];
     for (const e of this.ents) { if (e.team !== team || e.hp <= 0 || e.hero?.dead) continue; const r = e.hero ? SIGHT.hero : isMinion(e.kind) ? SIGHT.minion : e.kind === 'turret' ? SIGHT.turret : e.kind === 'inhib' ? SIGHT.inhib : e.kind === 'nexus' ? SIGHT.nexus : 0; if (r) out.push({ x: e.x, y: e.y, r }); }
@@ -297,7 +301,7 @@ export class MobaSim {
       return;
     }
     if (t.kind === 'inhib') {
-      t.spawnAt = this.tick + INHIB_RESPAWN * TICK; for (const a of near(60, foe)) a.hero!.gold += 60;
+      t.spawnAt = this.tick + INHIB_RESPAWN * TICK; this.teams[foe].inhibs++; for (const a of near(60, foe)) a.hero!.gold += 60;
       this.emit({ t: 'announce', text: `${foe === 0 ? '청군' : '적군'}이 억제기를 파괴했습니다 — 슈퍼 미니언 등장`, team: foe }); return;
     }
     if (t.kind === 'turret') {
@@ -310,7 +314,7 @@ export class MobaSim {
       const who = finisher;
       if (who?.hero) { who.hero.gold += d.gold; this.addXp(who, d.xp); who.hero.cs++; }
       if (t.sub === 'drake' && who) { this.teams[who.team].drakes++; this.emit({ t: 'announce', text: `${who.team === 0 ? '청군' : '적군'}이 화염 드래곤을 처치했습니다 (공격력 +8%)`, team: who.team }); }
-      if (t.sub === 'baron' && who) { this.teams[who.team].baronUntil = this.tick + 120 * TICK; this.emit({ t: 'announce', text: `${who.team === 0 ? '청군' : '적군'}이 심연의 군주를 처치했습니다 (2분간 강화)`, team: who.team }); }
+      if (t.sub === 'baron' && who) { this.teams[who.team].barons++; this.teams[who.team].baronUntil = this.tick + 120 * TICK; this.emit({ t: 'announce', text: `${who.team === 0 ? '청군' : '적군'}이 심연의 군주를 처치했습니다 (2분간 강화)`, team: who.team }); }
       const c = this.camps.get(t.camp); if (c) c.ids = c.ids.filter(i => i !== t.id); if (c && !c.ids.length) c.due = this.tick + Math.round(Math.max(...c.defs.map(m => MONSTERS[m.k].respawn)) * TICK);
       if (who?.hero) { if (t.sub === 'golem') { who.hero.blueUntil = this.tick + BUFF_TIME * TICK; this.emit({ t: 'buff', id: who.id, team: who.team }); } else if (t.sub === 'wolf' && c && !c.ids.length) { who.hero.redUntil = this.tick + BUFF_TIME * TICK; this.emit({ t: 'buff', id: who.id, team: who.team }); } }
       return;

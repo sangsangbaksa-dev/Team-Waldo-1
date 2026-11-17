@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { makeBuilding, makeUnit, matsFor, type BuildRig, type UnitRig } from '../models';
 import { CHAMPS, LANE_PTS, LANES, NEXUS, RIVER, SIZE, type ChampId, type MonsterKind } from './config';
-import type { Ent, MobaSim, SimEvent } from './sim';
+import { isMinion, type Ent, type MobaSim, type SimEvent } from './sim';
 
 type Quality = 'high' | 'standard' | 'low';
 interface Vis { id: number; root: THREE.Group; rig: UnitRig | null; brig: BuildRig | null; ring: THREE.Mesh | null; x: number; y: number; yaw: number; moved: number; hit: number; seen: boolean; mon: THREE.Group | null }
@@ -16,6 +16,7 @@ export class MobaView {
   private vis = new Map<number, Vis>(); private fx: Fx[] = []; private raycaster = new THREE.Raycaster(); private sun = new THREE.DirectionalLight(0xfff0d6, 2.2);
   private shadows: boolean; private aim: THREE.Mesh; private aimRange: THREE.Mesh; private fxBudget: number;
   private glow = new Map<number, THREE.MeshBasicMaterial>();
+  private fog!: THREE.Mesh; private fogCtx!: CanvasRenderingContext2D; private fogTex!: THREE.CanvasTexture; private fogT = 0; private wardVis = new Map<number, THREE.Group>();
 
   constructor(readonly canvas: HTMLCanvasElement, readonly sim: MobaSim, readonly quality: Quality = 'high') {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
@@ -26,7 +27,7 @@ export class MobaView {
     this.scene.add(new THREE.HemisphereLight(0xdbe8ff, 0x4a4a38, 1.2));
     this.sun.castShadow = this.shadows; const sc = this.sun.shadow.camera; sc.left = -34; sc.right = 34; sc.top = 34; sc.bottom = -34; sc.near = 1; sc.far = 160; this.sun.shadow.mapSize.set(1024, 1024); this.sun.shadow.bias = -0.0006; this.sun.shadow.normalBias = 0.04;
     this.scene.add(this.sun, this.sun.target);
-    this.buildTerrain();
+    this.buildTerrain(); this.buildFog();
     this.aim = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 40), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, depthWrite: false, side: THREE.DoubleSide })); this.aim.rotation.x = -Math.PI / 2; this.aim.position.y = 0.08; this.aim.visible = false; this.scene.add(this.aim);
     this.aimRange = new THREE.Mesh(new THREE.RingGeometry(0.985, 1, 64), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, depthWrite: false, side: THREE.DoubleSide })); this.aimRange.rotation.x = -Math.PI / 2; this.aimRange.position.y = 0.07; this.aimRange.visible = false; this.scene.add(this.aimRange);
     const me = sim.me(); this.cam.x = me.x; this.cam.y = me.y; if (window.innerWidth < 900 || matchMedia('(pointer: coarse)').matches) this.cam.dist = 24;
@@ -63,6 +64,27 @@ export class MobaView {
     this.scene.add(edge);
   }
 
+  // ---------- 시야 안개 ----------
+  /** 아군이 보지 못하는 땅을 어둡게 덮는 판. 시야 원을 지워 가며 그립니다. */
+  private buildFog(): void {
+    const c = document.createElement('canvas'); c.width = c.height = 256; this.fogCtx = c.getContext('2d')!; this.fogTex = new THREE.CanvasTexture(c); this.fogTex.colorSpace = THREE.SRGBColorSpace;
+    this.fog = new THREE.Mesh(new THREE.PlaneGeometry(SIZE, SIZE), new THREE.MeshBasicMaterial({ map: this.fogTex, transparent: true, depthWrite: false })); this.fog.rotation.x = -Math.PI / 2; this.fog.position.set(SIZE / 2, 0.22, SIZE / 2); this.fog.renderOrder = 4; this.scene.add(this.fog); this.paintFog();
+  }
+  private paintFog(): void {
+    const g = this.fogCtx, k = 256 / SIZE; g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, 256, 256); g.fillStyle = 'rgba(10,16,26,0.5)'; g.fillRect(0, 0, 256, 256); g.globalCompositeOperation = 'destination-out';
+    for (const o of this.sim.sightOf(0)) { const gr = g.createRadialGradient(o.x * k, o.y * k, o.r * k * 0.55, o.x * k, o.y * k, o.r * k); gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.beginPath(); g.arc(o.x * k, o.y * k, o.r * k, 0, Math.PI * 2); g.fill(); }
+    g.globalCompositeOperation = 'source-over'; this.fogTex.needsUpdate = true;
+  }
+  private syncWards(): void {
+    const live = new Set<number>();
+    for (const w of this.sim.wards) {
+      live.add(w.id); let g = this.wardVis.get(w.id);
+      if (!g) { g = new THREE.Group(); const c = w.team === 0 ? 0x5dc8ff : 0xff6a4a, post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, 0.9, 6), new THREE.MeshStandardMaterial({ color: 0x4a4038, roughness: 0.9 })), eye = new THREE.Mesh(new THREE.OctahedronGeometry(0.28), new THREE.MeshBasicMaterial({ color: c })), ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.58, 24), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false })); post.position.y = 0.45; eye.position.y = 1.15; ring.rotation.x = -Math.PI / 2; ring.position.y = 0.1; g.add(post, eye, ring); g.position.set(w.x, 0, w.y); g.userData.eye = eye; this.scene.add(g); this.wardVis.set(w.id, g); }
+      g.visible = w.team === 0 || this.sim.seenPt(0, w.x, w.y); (g.userData.eye as THREE.Object3D).rotation.y = this.clock * 2; g.position.y = Math.sin(this.clock * 2 + w.id) * 0.04;
+    }
+    for (const [id, g] of this.wardVis) if (!live.has(id)) { this.scene.remove(g); this.wardVis.delete(id); }
+  }
+
   // ---------- 카메라 ----------
   resize(w: number, h: number, pad = 0): void {
     this.w = Math.max(1, w); this.h = Math.max(1, h); this.renderer.setSize(this.w, this.h, false); this.camera.aspect = this.w / this.h;
@@ -86,7 +108,7 @@ export class MobaView {
   pick(sx: number, sy: number, me: number): number {
     this.raycaster.setFromCamera(new THREE.Vector2(sx / this.w * 2 - 1, -(sy / this.h) * 2 + 1), this.camera); const ray = this.raycaster.ray, sph = new THREE.Sphere(), v = new THREE.Vector3(); let best = 0, bt = Infinity;
     for (const e of this.sim.ents) {
-      if (e.hp <= 0 || e.hero?.dead || e.id === me) continue; const rad = Math.max(0.9, e.radius + 0.35) * (e.kind === 'nexus' ? 1.3 : e.kind === 'turret' ? 1.2 : 1);
+      if (e.hp <= 0 || e.hero?.dead || e.id === me || !this.sim.canSee(0, e)) continue; const rad = Math.max(0.9, e.radius + 0.35) * (e.kind === 'nexus' ? 1.3 : e.kind === 'turret' ? 1.2 : 1);
       sph.set(v.set(e.x, e.kind === 'nexus' ? 2 : e.kind === 'turret' ? 1.5 : 0.8, e.y).clone(), rad); if (ray.intersectSphere(sph, v)) { const d = v.distanceTo(ray.origin); if (d < bt) { bt = d; best = e.id; } }
     }
     return best;
@@ -108,10 +130,18 @@ export class MobaView {
     else { add(new THREE.SphereGeometry(1.5, 12, 8), m(0x5a2d8f, { emissive: 0x2a0f55, emissiveIntensity: 0.6 }), 0, 1.8, 0, 1, 1.1, 1); add(new THREE.SphereGeometry(0.55, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff7ad9 }), 1.2, 2.2, 0); for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; add(new THREE.ConeGeometry(0.22, 2.2, 5), m(0x7a3fbf), Math.cos(a) * 1.5, 0.9, Math.sin(a) * 1.5).rotation.set(Math.sin(a) * 0.5, 0, -Math.cos(a) * 0.5); } add(new THREE.ConeGeometry(0.2, 0.9, 5), m(0xffd2a0), 1.5, 3.1, 0.5); add(new THREE.ConeGeometry(0.2, 0.9, 5), m(0xffd2a0), 1.5, 3.1, -0.5); }
     void team; return g;
   }
+  /** 억제기: 받침 위에 떠서 도는 수정. */
+  private crystal(team: number): THREE.Group {
+    const g = new THREE.Group(), c = team === 0 ? 0x4aa8ff : 0xff5a3a, base = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.5, 0.6, 8), new THREE.MeshStandardMaterial({ color: 0x4d4a46, roughness: 0.85, flatShading: true })), gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.95), new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 1.1, roughness: 0.3, flatShading: true })); base.position.y = 0.3; gem.position.y = 1.9; gem.scale.y = 1.5; gem.userData.keep = true; gem.userData.spin = true; base.castShadow = gem.castShadow = this.shadows;
+    for (let i = 0; i < 4; i++) { const a = i / 4 * Math.PI * 2, pillar = new THREE.Mesh(new THREE.BoxGeometry(0.25, 1.5, 0.25), new THREE.MeshStandardMaterial({ color: 0x6a655c, roughness: 0.9, flatShading: true })); pillar.position.set(Math.cos(a) * 1.05, 0.9, Math.sin(a) * 1.05); g.add(pillar); }
+    g.add(base, gem); return g;
+  }
   private make(e: Ent): Vis {
     const root = new THREE.Group(); let rig: UnitRig | null = null, brig: BuildRig | null = null, mon: THREE.Group | null = null, ring: THREE.Mesh | null = null;
     if (e.kind === 'hero') { const d = CHAMPS[e.sub as ChampId]; rig = makeUnit(d.model, e.team); rig.root.scale.setScalar(d.scale); root.add(rig.root); }
     else if (e.kind === 'melee' || e.kind === 'caster' || e.kind === 'siege') { rig = makeUnit(e.kind === 'melee' ? 'marine' : e.kind === 'caster' ? 'worker' : 'tank', e.team); rig.root.scale.setScalar(e.kind === 'siege' ? 0.95 : 1.05); root.add(rig.root); }
+    else if (e.kind === 'super') { rig = makeUnit('marine', e.team); rig.root.scale.setScalar(1.75); root.add(rig.root); }
+    else if (e.kind === 'inhib') { mon = this.crystal(e.team); root.add(mon); }
     else if (e.kind === 'turret') { brig = makeBuilding('tower', e.team); brig.root.scale.setScalar(1.55); root.add(brig.root); }
     else if (e.kind === 'nexus') { brig = makeBuilding('hq', e.team); brig.root.scale.setScalar(1.35); root.add(brig.root); }
     else { mon = this.monster(e.sub as MonsterKind, e.team); mon.scale.setScalar(1); root.add(mon); }
@@ -122,7 +152,7 @@ export class MobaView {
     const alive = new Set<number>();
     for (const e of this.sim.ents) {
       let v = this.vis.get(e.id); if (!v) { v = this.make(e); this.vis.set(e.id, v); } alive.add(e.id);
-      const dead = e.hp <= 0 || !!e.hero?.dead; v.root.visible = !dead;
+      const dead = e.hp <= 0 || !!e.hero?.dead; v.root.visible = !dead && this.sim.canSee(viewerTeam, e);
       if (dead) { v.x = e.x; v.y = e.y; continue; }
       const k = Math.min(1, dt * 14), px = v.x, py = v.y; v.x += (e.x - v.x) * k; v.y += (e.y - v.y) * k; const mv = Math.hypot(v.x - px, v.y - py) / Math.max(dt, 0.001); v.moved += (Math.min(1, mv / 3) - v.moved) * Math.min(1, dt * 8);
       v.root.position.set(v.x, 0, v.y);
@@ -130,11 +160,12 @@ export class MobaView {
       if (v.rig) {
         v.rig.root.rotation.y = v.yaw; const bob = Math.sin(this.clock * 13 + e.id) * 0.05 * v.moved; v.rig.body.position.y = Math.abs(bob); v.rig.body.rotation.z = bob * 0.5;
         const fired = this.sim.tick - e.fired; v.rig.flash.visible = fired >= 0 && fired < 2 && e.range > 2.5; if (v.rig.gun) v.rig.gun.position.x = (v.rig.gun.position.x * 0 + 0.2) - (fired >= 0 && fired < 3 ? 0.08 : 0);
-        if (e.kind === 'siege' || e.kind === 'melee' || e.kind === 'caster') { const lunge = fired >= 0 && fired < 4 && e.range < 2.5 ? Math.sin(fired / 4 * Math.PI) * 0.35 : 0; v.rig.body.position.x = lunge; }
+        if (isMinion(e.kind)) { const lunge = fired >= 0 && fired < 4 && e.range < 2.5 ? Math.sin(fired / 4 * Math.PI) * 0.35 : 0; v.rig.body.position.x = lunge; }
         if (v.rig.carry) v.rig.carry.visible = false;
         if (e.hero) { const sk = this.sim.tick - e.hero.castAt; v.rig.body.scale.setScalar(sk >= 0 && sk < 6 ? 1.12 : 1); }
       }
-      if (v.mon) { v.mon.rotation.y = v.yaw; const f = this.sim.tick - e.fired; v.mon.position.x = f >= 0 && f < 5 ? Math.sin(f / 5 * Math.PI) * 0.4 * Math.cos(v.yaw) : 0; v.mon.position.y = Math.abs(Math.sin(this.clock * 6 + e.id) * 0.06 * v.moved); }
+      if (v.mon && e.kind === 'inhib') { const gem = v.mon.children.find(c => c.userData.spin); if (gem) { gem.rotation.y += dt * 1.4; gem.position.y = 1.9 + Math.sin(this.clock * 2) * 0.12; } }
+      else if (v.mon) { v.mon.rotation.y = v.yaw; const f = this.sim.tick - e.fired; v.mon.position.x = f >= 0 && f < 5 ? Math.sin(f / 5 * Math.PI) * 0.4 * Math.cos(v.yaw) : 0; v.mon.position.y = Math.abs(Math.sin(this.clock * 6 + e.id) * 0.06 * v.moved); }
       if (v.brig) { const sp = v.brig.spin; if (sp) { if (e.kind === 'turret') { if (this.sim.tick - e.fired < 20) sp.rotation.y = -Math.atan2(e.fy, e.fx); else sp.rotation.y += dt * 1.2; if (v.brig.flash) v.brig.flash.visible = this.sim.tick - e.fired < 3; } else sp.rotation.y += dt * 0.7; } }
       if (v.ring) { const m = v.ring.material as THREE.MeshBasicMaterial; m.color.setHex(e.id === meId ? 0xffd24a : e.team === viewerTeam ? 0x5dff9a : 0xff5a4a); }
       // 맞으면 깜빡
@@ -156,6 +187,9 @@ export class MobaView {
     const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy) || 0.1, m = new THREE.Mesh(new THREE.BoxGeometry(len, w, w), this.mat(c, 0.95)); m.position.set((x0 + x1) / 2, (h0 + h1) / 2, (y0 + y1) / 2); m.rotation.y = -Math.atan2(dy, dx); m.rotation.z = Math.atan2(h1 - h0, len);
     this.add({ obj: m, t: 0, life, tick: f => { (m.material as THREE.MeshBasicMaterial).opacity = 0.95 * (1 - f.t / f.life); m.scale.y = m.scale.z = 1 - f.t / f.life * 0.7; } });
   }
+  private pillar(x: number, y: number, c: number, life: number): void {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 6, 8, 1, true), this.mat(c, 0.8)); m.position.set(x, 3, y); this.add({ obj: m, t: 0, life, tick: f => { const k = f.t / f.life; (m.material as THREE.MeshBasicMaterial).opacity = 0.8 * (1 - k) * (0.6 + 0.4 * Math.sin(f.t * 18)); m.scale.set(1 - k * 0.5, 1, 1 - k * 0.5); } });
+  }
   private bolt(x0: number, y0: number, x1: number, y1: number, c: number, life: number, size: number): void {
     const m = new THREE.Mesh(new THREE.SphereGeometry(size, 8, 6), this.mat(c, 1)); this.add({ obj: m, t: 0, life, tick: f => { const k = f.t / f.life; m.position.set(x0 + (x1 - x0) * k, 1.2 - 0.4 * k, y0 + (y1 - y0) * k); } });
   }
@@ -169,13 +203,16 @@ export class MobaView {
       else if (e.t === 'buff') { const v = this.vis.get(e.id); if (v) this.ring(v.x, v.y, 1.6, 0x9dff9a, 0.6, 0.15); }
       else if (e.t === 'die') { const big = e.kind === 'turret' || e.kind === 'nexus' || e.kind === 'monster'; this.flash(e.x, e.y, big ? (e.kind === 'nexus' ? 5 : 2.2) : 0.8, big ? 0xffb050 : e.team === 0 ? 0x7fb4ff : e.team === 1 ? 0xff8f6a : 0xd9c5a0, big ? 0.7 : 0.3); if (big) this.ring(e.x, e.y, 4, 0xffd27a, 0.7); }
       else if (e.t === 'level') { const v = this.vis.get(e.id); if (v) this.ring(v.x, v.y, 2.2, 0xffe27a, 0.8, 0.12); }
+      else if (e.t === 'ping') { if (e.team === viewer) { const pc = e.kind === 'danger' ? 0xff4a3a : e.kind === 'assist' ? 0xffe05a : 0x6aff9a; this.ring(e.x, e.y, 3.4, pc, 1.1, 0.3); this.ring(e.x, e.y, 2, pc, 1.4, 0.3); this.pillar(e.x, e.y, pc, 1.4); } }
+      else if (e.t === 'ward') { if (e.team === viewer) this.ring(e.x, e.y, 2.2, 0x5dc8ff, 0.9, 0.2); }
+      else if (e.t === 'spell') { const v = this.vis.get(e.id); if (v) this.ring(v.x, v.y, e.spell === 'flash' ? 1.2 : 2, e.spell === 'ignite' ? 0xff7a3a : 0xfff1a0, 0.6, 0.15); }
       else if (e.t === 'recall') { const v = this.vis.get(e.id); if (v) this.ring(v.x, v.y, 1.8, 0x9fd8ff, 1.2, 0.12); }
     }
     void viewer;
   }
 
   render(dt: number): void {
-    this.clock += dt; const me = this.sim.me(); this.updateVis(dt, 0, me.id);
+    this.clock += dt; const me = this.sim.me(); this.updateVis(dt, 0, me.id); this.syncWards(); if ((this.fogT -= dt) <= 0) { this.fogT = 0.12; this.paintFog(); }
     for (let i = this.fx.length - 1; i >= 0; i--) { const f = this.fx[i]; f.t += dt; if (f.t >= f.life) { this.scene.remove(f.obj); this.fx.splice(i, 1); } else f.tick(f, dt); }
     this.placeCamera(); this.renderer.render(this.scene, this.camera);
   }

@@ -19,6 +19,47 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
 };
 export const WEAPON_IDS = Object.keys(WEAPONS) as WeaponId[];
 
+/** 총기 파츠: 슬롯마다 하나씩 달 수 있고, 무기마다 달 수 있는 슬롯이 정해져 있습니다. */
+export type PartSlot = 'sight' | 'muzzle' | 'grip' | 'mag';
+export type PartId = 'reddot' | 'scope2' | 'scope4' | 'suppressor' | 'comp' | 'grip' | 'extmag';
+export interface PartDef { id: PartId; name: string; slot: PartSlot; /** 조준 시 배율(조준경만) */ zoom: number }
+export const PARTS: Record<PartId, PartDef> = {
+  reddot:     { id: 'reddot',     name: '레드닷 사이트', slot: 'sight',  zoom: 1.0 },
+  scope2:     { id: 'scope2',     name: '2배율 조준경', slot: 'sight',  zoom: 2.0 },
+  scope4:     { id: 'scope4',     name: '4배율 조준경', slot: 'sight',  zoom: 4.0 },
+  suppressor: { id: 'suppressor', name: '소음기',       slot: 'muzzle', zoom: 1 },
+  comp:       { id: 'comp',       name: '보정기',       slot: 'muzzle', zoom: 1 },
+  grip:       { id: 'grip',       name: '수직 손잡이',  slot: 'grip',   zoom: 1 },
+  extmag:     { id: 'extmag',     name: '확장 탄창',    slot: 'mag',    zoom: 1 },
+};
+export const PART_IDS = Object.keys(PARTS) as PartId[];
+export const PART_FITS: Record<WeaponId, PartSlot[]> = {
+  pistol: ['muzzle', 'mag'], smg: ['sight', 'muzzle', 'grip', 'mag'], rifle: ['sight', 'muzzle', 'grip', 'mag'], shotgun: ['sight', 'muzzle', 'mag'], sniper: ['sight', 'muzzle', 'mag'],
+};
+export type Attachments = Partial<Record<PartSlot, PartId>>;
+const PART_TIER: Partial<Record<PartId, number>> = { reddot: 1, scope2: 2, scope4: 3 };
+/** 이 파츠를 달면 어떻게 되는지: 빈 칸이면 new, 더 좋은 조준경이면 upgrade(자동), 같은 슬롯의 다른 파츠면 swap(E 로 교체), 이미 같은 파츠면 same */
+export function partFit(att: Attachments, part: PartId): 'new' | 'upgrade' | 'swap' | 'same' {
+  const slot = PARTS[part].slot, old = att[slot]; if (!old) return 'new'; if (old === part) return 'same';
+  return (PART_TIER[part] ?? 0) > (PART_TIER[old] ?? 0) ? 'upgrade' : 'swap';
+}
+/** 확장 탄창이 늘려 주는 비율 */
+export const EXT_MAG = 1.4;
+export function magOf(id: WeaponId, att: Attachments | undefined): number { return Math.round(WEAPONS[id].mag * (att?.mag === 'extmag' ? EXT_MAG : 1)); }
+/** 파츠가 바꾸는 사격 특성: 탄퍼짐·반동 배율 */
+export function partHandling(att: Attachments | undefined): { spread: number; kick: number } {
+  let spread = 1, kick = 1;
+  if (att?.grip === 'grip') { spread *= 0.86; kick *= 0.78; }
+  if (att?.muzzle === 'comp') { spread *= 0.94; kick *= 0.62; }
+  if (att?.muzzle === 'suppressor') { kick *= 0.9; }
+  return { spread, kick };
+}
+/** 헬멧 등급(1~3)이 머리 피해를 줄이는 비율 */
+export const HELMET_CUT = [0, 0.3, 0.5, 0.65];
+export const HELMET_NAMES = ['', '1레벨 헬멧', '2레벨 헬멧', '3레벨 헬멧'];
+/** 에너지 드링크: 부스트 시간(초) 동안 체력이 서서히 차오르고 이동이 조금 빨라집니다 */
+export const BOOST = { time: 22, heal: 2.6, speed: 1.08, cap: 100 };
+
 export const PLAYER = { radius: 0.4, eye: 1.65, height: 1.8, head: 1.45, walk: 4.6, sprint: 7.2, hp: 100, medkit: 55, armor: 50, pickup: 1.6 };
 export const MAP_HALF = { br: 250, duel: 115 } as const;
 export type Mode = 'br' | 'duel';

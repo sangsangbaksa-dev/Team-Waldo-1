@@ -1,6 +1,6 @@
 // ZERO ZONE — 봇 AI. 난이도(config.BOTS)에 따라 반응 속도·조준 오차·회전 속도·시야·자기장 대응이 달라집니다.
 // 봇은 사람과 같은 입력(Input)만 만들어 내고, 체력이나 탄을 속이지 않습니다.
-import { PLAYER, WEAPONS, type BotTuning } from './config';
+import { PART_FITS, magOf, partFit, PARTS, PLAYER, WEAPONS, type BotTuning, type PartId } from './config';
 import { lineClear } from './world';
 import { findPath, navFor, walkable } from './nav';
 import type { Match, Player, ZoneState } from './sim';
@@ -28,9 +28,12 @@ const gauss = (rng: () => number): number => (rng() + rng() + rng() - 1.5) / 0.7
 /** 무기별로 싸우기 좋은 거리 */
 const IDEAL: Record<string, number> = { shotgun: 8, smg: 16, pistol: 18, rifle: 32, sniper: 70 };
 
-function wantLoot(p: Player, kind: string, weapon: string | null): number {
+function wantLoot(p: Player, kind: string, weapon: string | null, part: PartId | null): number {
   if (kind === 'medkit') return p.hp < 85 ? 3 + (100 - p.hp) / 20 : 0;
   if (kind === 'armor') return p.armor < 50 ? 2.6 : 0;
+  if (kind === 'helmet') return p.helmet < 3 ? 2.2 : 0;
+  if (kind === 'boost') return p.boost <= 0 && p.hp < 95 ? 1.6 : 0;
+  if (kind === 'attach') return part && p.guns.some(g => { if (!g || !PART_FITS[g.id].includes(PARTS[part].slot)) return false; const f = partFit(g.att, part); return f === 'new' || f === 'upgrade'; }) ? 1.4 : 0;
   if (kind === 'ammo') return p.guns.some(g => g && g.reserve < WEAPONS[g.id].mag * 2) ? 2 : 0;
   if (kind === 'weapon' && weapon) {
     const rank = WEAPONS[weapon as keyof typeof WEAPONS].rank;
@@ -63,7 +66,7 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
       b.seen = 0; b.lastX = best.x; b.lastZ = best.z;
     } else { b.seen += 0.16; if (b.target >= 0 && b.seen > 7 + T.react * 3) b.target = -1; }
     if (b.target < 0 && b.investT <= 0) {
-      for (const s of m.sounds) if (s.by !== p.id && m.t - s.t < 1.2 && Math.hypot(s.x - p.x, s.z - p.z) < 38 + T.sight * 0.35) { b.investX = s.x; b.investZ = s.z; b.investT = 6; break; }
+      for (const s of m.sounds) if (s.by !== p.id && m.t - s.t < 1.2 && Math.hypot(s.x - p.x, s.z - p.z) < (38 + T.sight * 0.35) * (s.quiet ? 0.3 : 1)) { b.investX = s.x; b.investZ = s.z; b.investT = 6; break; }
       if (p.hurt > 0 && b.investT <= 0) { b.investX = p.x + Math.cos(p.hurtYaw) * 14; b.investZ = p.z + Math.sin(p.hurtYaw) * 14; b.investT = 5; }
     }
   }
@@ -73,7 +76,7 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
   // ---- 무기 고르기·장전 ----
   if (gun && def) {
     if (gun.mag === 0 && gun.reserve > 0) inp.reload = true;
-    else if (!visible && gun.mag < def.mag * 0.4 && gun.reserve > 0) inp.reload = true;
+    else if (!visible && gun.mag < magOf(def.id, gun.att) * 0.4 && gun.reserve > 0) inp.reload = true;
     const o = 1 - p.cur, og = p.guns[o];
     if (gun.mag === 0 && gun.reserve === 0 && og && (og.mag > 0 || og.reserve > 0)) inp.slot = o;
     if (visible && q && og && og.mag > 0) {
@@ -125,7 +128,7 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
         let bl = -1, bs = 0;
         for (const l of m.loot) {
           if (l.taken || b.skip.has(l.id)) continue; const d = Math.hypot(l.x - p.x, l.z - p.z); if (d > T.lootRadius) continue;
-          const w = wantLoot(p, l.kind, l.weapon); if (w <= 0) continue; const s = w / (1 + d / 28); if (s > bs) { bs = s; bl = l.id; }
+          const w = wantLoot(p, l.kind, l.weapon, l.part ?? null); if (w <= 0) continue; const s = w / (1 + d / 28); if (s > bs) { bs = s; bl = l.id; }
         }
         if (bl >= 0) { b.lootId = bl; b.lootT = 18; }
       }

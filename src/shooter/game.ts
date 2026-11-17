@@ -3,7 +3,7 @@ import './shooter.css';
 import { readPreferences } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import type { PvpSession } from '../net/lobby';
-import { BOTS, DIFFICULTIES, PLAYER, WEAPONS, type Difficulty } from './config';
+import { BOTS, DIFFICULTIES, HELMET_NAMES, PARTS, PLAYER, WEAPONS, partHandling, type Difficulty } from './config';
 import { Match, type MatchEvent, type Player } from './sim';
 import { ShooterView } from './view';
 import { loadShooterAssets, type ShooterAssets } from './assets';
@@ -232,13 +232,19 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       mapBase = document.createElement('canvas'); mapBase.width = mapBase.height = S; const b = mapBase.getContext('2d')!;
       b.fillStyle = '#26301f'; b.fillRect(0, 0, S, S); b.fillStyle = 'rgba(255,255,255,.05)'; for (let i = 1; i < 8; i++) { b.fillRect((S / 8) * i, 0, 1, S); b.fillRect(0, (S / 8) * i, S, 1); }
       b.fillStyle = '#8f8c80'; for (const bd of m.map.buildings) b.fillRect(px(bd.x - bd.w / 2), pz(bd.z - bd.d / 2), Math.max(3, bd.w * k), Math.max(3, bd.d * k));
+      const tint = { urban: '#a9a69b', industrial: '#7b8085', military: '#8a8466', farm: '#a08f6c', village: '#9a9588' } as const;
+      for (const c of m.map.compounds) { b.fillStyle = 'rgba(255,255,255,.07)'; b.beginPath(); b.arc(px(c.x), pz(c.z), c.r * k, 0, Math.PI * 2); b.fill(); }
+      for (const bd of m.map.buildings) { const c = m.map.compounds.find(o => Math.hypot(o.x - bd.x, o.z - bd.z) < o.r); b.fillStyle = c ? tint[c.theme] : '#8f8c80'; b.fillRect(px(bd.x - bd.w / 2), pz(bd.z - bd.d / 2), Math.max(3, bd.w * k), Math.max(3, bd.d * k)); }
+      b.fillStyle = '#5b5f66'; for (const pr of m.map.props) if (pr.kind === 'container') b.fillRect(px(pr.x) - 1.5, pz(pr.z) - 1, 3, 2);
+      b.font = '10px sans-serif'; b.textAlign = 'center'; b.fillStyle = 'rgba(255,255,255,.55)'; for (const c of m.map.compounds) b.fillText(c.name, px(c.x), pz(c.z) - c.r * k - 3);
       b.fillStyle = '#3d5a2c'; for (const t of m.map.trees) b.fillRect(px(t.x) - 1, pz(t.z) - 1, 2, 2);
     }
     const z = m.zone; g.clearRect(0, 0, S, S); g.drawImage(mapBase, 0, 0);
     g.save(); g.beginPath(); g.rect(0, 0, S, S); g.arc(px(z.cx), pz(z.cz), z.r * k, 0, Math.PI * 2, true); g.fillStyle = 'rgba(40,110,255,.30)'; g.fill('evenodd'); g.restore();
     g.strokeStyle = '#6fb2ff'; g.lineWidth = 2; g.beginPath(); g.arc(px(z.cx), pz(z.cz), z.r * k, 0, Math.PI * 2); g.stroke();
     if (z.nextR < z.r - 0.5) { g.strokeStyle = '#ffffff'; g.lineWidth = 1.5; g.beginPath(); g.arc(px(z.nextCx), pz(z.nextCz), z.nextR * k, 0, Math.PI * 2); g.stroke(); }
-    for (const s of m.sounds) { if (s.by === p.id || m.t - s.t > 1.6) continue; const d = Math.hypot(s.x - p.x, s.z - p.z); if (d > 110) continue; g.fillStyle = `rgba(255,70,60,${1 - (m.t - s.t) / 1.6})`; g.beginPath(); g.arc(px(s.x), pz(s.z), 5, 0, Math.PI * 2); g.fill(); }
+    for (const d of m.drops) if (d.called && m.t < d.at + 150) { const x = px(d.x), y = pz(d.z), pulse = 6 + Math.sin(m.t * 5) * 1.5; g.fillStyle = '#ffd34d'; g.strokeStyle = '#000'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x, y - pulse); g.lineTo(x + pulse, y); g.lineTo(x, y + pulse); g.lineTo(x - pulse, y); g.closePath(); g.fill(); g.stroke(); }
+    for (const s of m.sounds) { if (s.quiet || s.by === p.id || m.t - s.t > 1.6) continue; const d = Math.hypot(s.x - p.x, s.z - p.z); if (d > 110) continue; g.fillStyle = `rgba(255,70,60,${1 - (m.t - s.t) / 1.6})`; g.beginPath(); g.arc(px(s.x), pz(s.z), 5, 0, Math.PI * 2); g.fill(); }
     if (pvp?.opp?.alive && m.mode === 'duel') { /* 상대 위치는 알려 주지 않습니다 */ }
     g.save(); g.translate(px(p.x), pz(p.z)); g.rotate(p.yaw); g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 2; g.beginPath(); g.moveTo(10, 0); g.lineTo(-7, -6); g.lineTo(-4, 0); g.lineTo(-7, 6); g.closePath(); g.stroke(); g.fill(); g.restore();
   }
@@ -251,12 +257,13 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     q('#sz-hp').style.width = `${clamp(p.hp, 0, 100)}%`; set(q('#sz-hpn'), 'hpn', String(Math.ceil(Math.max(0, p.hp)))); q('#sz-ar').style.width = `${clamp(p.armor, 0, 100)}%`; set(q('#sz-arn'), 'arn', String(Math.ceil(p.armor)));
     q('.sz-bl').classList.toggle('low', p.hp < 30);
     set(q('#sz-wname'), 'wn', def ? def.name + (p.reload > 0 ? ' · 장전 중' : '') : '맨손'); set(q('#sz-mag'), 'mag', g ? String(g.mag) : '-'); set(q('#sz-res'), 'res', g ? `/ ${g.reserve}` : '');
-    html(q('#sz-slots'), 'slots', p.guns.map((x, i) => `<span class="${i === p.cur ? 'on' : ''}">${i + 1} ${x ? WEAPONS[x.id].name : '비어 있음'}</span>`).join(''));
+    const gear = [p.helmet > 0 ? `<span class="gear">${HELMET_NAMES[p.helmet]}</span>` : '', p.boost > 0 ? `<span class="gear boost">부스트 ${Math.ceil(p.boost)}초</span>` : ''].join('');
+    html(q('#sz-slots'), 'slots', gear + p.guns.map((x, i) => `<span class="${i === p.cur ? 'on' : ''}">${i + 1} ${x ? WEAPONS[x.id].name : '비어 있음'}${x && Object.keys(x.att).length ? `<small>${Object.values(x.att).map(a => PARTS[a].name.replace(' 조준경', '').replace(' 사이트', '')).join(' · ')}</small>` : ''}</span>`).join(''));
     // 조준선: 탄퍼짐에 맞춰 벌어집니다
-    if (def && view) { const spread = def.spread * (p.ads ? 0.4 : 1) * (1 + Math.min(1.6, p.speed / PLAYER.walk) * 0.5) * (1 + p.kick * 0.5), px = Math.tan(spread * (def.pellets > 1 ? 2 : 1)) / Math.tan((view.fov * Math.PI) / 360) * (canvas.clientHeight / 2); q('#sz-cross').style.setProperty('--gap', `${clamp(px, 4, 90).toFixed(1)}px`); }
+    if (def && view) { const spread = def.spread * partHandling(g!.att).spread * (p.ads ? (g!.att.sight ? 0.34 : 0.4) : 1) * (1 + Math.min(1.6, p.speed / PLAYER.walk) * 0.5) * (1 + p.kick * 0.5), px = Math.tan(spread * (def.pellets > 1 ? 2 : 1)) / Math.tan((view.fov * Math.PI) / 360) * (canvas.clientHeight / 2); q('#sz-cross').style.setProperty('--gap', `${clamp(px, 4, 90).toFixed(1)}px`); }
     q('#sz-cross').classList.toggle('hide', p.ads && g?.id === 'sniper' || !p.alive);
     // 줍기 안내
-    let near: string | null = null; if (p.alive) for (const l of m.loot) { if (l.taken || l.kind !== 'weapon') continue; if (Math.hypot(l.x - p.x, l.z - p.z) < PLAYER.pickup) { near = WEAPONS[l.weapon!].name; break; } }
+    let near: string | null = null; if (p.alive) for (const l of m.loot) { if (l.taken || (l.kind !== 'weapon' && l.kind !== 'attach')) continue; if (Math.hypot(l.x - p.x, l.z - p.z) < PLAYER.pickup) { if (l.kind === 'weapon') { near = WEAPONS[l.weapon!].name; break; } const t = m.partTarget(p, l.part!); if (t && t.fit === 'swap') { near = `${PARTS[l.part!].name} 교체`; break; } } }
     q('#sz-prompt').classList.toggle('show', !!near); set(q('#sz-prompt'), 'prompt', near ? `${touch ? '줍기 버튼' : 'E'} · ${near}` : '');
     // 자기장 밖
     const out = Math.hypot(p.x - z.cx, p.z - z.cz) > z.r && p.alive; q('#sz-zonefx').classList.toggle('on', out); audio.danger(out ? 1 : 0);
@@ -280,7 +287,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     const m = match!, p = me();
     for (const e of events) {
       if (e.t === 'shot') {
-        const s = m.players[e.id]; if (!s) continue; const dist = Math.hypot(s.x - p.x, s.z - p.z); audio.play(e.weapon, e.id === p.id ? 0 : dist);
+        const s = m.players[e.id]; if (!s) continue; const dist = Math.hypot(s.x - p.x, s.z - p.z); audio.play(e.weapon, (e.id === p.id ? 0 : dist) + (e.sup ? 85 : 0));
         if (e.id === p.id && pvp?.net.started && !e.remote) pvp.net.sendShot({ w: e.weapon, ox: e.ox, oy: e.oy, oz: e.oz, ends: e.ends });
       } else if (e.t === 'hit') {
         if (e.wall) continue;
@@ -296,8 +303,9 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
         if (mine) { audio.play('kill'); say(`처치 · ${nameOf(e.victim)}`, 1.4) }
         if (e.victim === p.id) onMyDeath(e.attacker);
       } else if (e.t === 'pickup') {
-        if (e.id === p.id) { audio.play(e.kind === 'medkit' ? 'heal' : e.kind === 'armor' ? 'armor' : 'pickup'); say(e.kind === 'weapon' ? `${WEAPONS[e.weapon!].name} 획득` : e.kind === 'medkit' ? '구급상자 +' : e.kind === 'armor' ? '방탄복 +' : '탄약 +', 1.1); if (pvp && e.loot < m.map.loot.length) pvp.net.sendPickup(e.loot); }
-      } else if (e.t === 'reload') { if (e.id === p.id) audio.play('reload'); }
+        if (e.id === p.id) { audio.play(e.kind === 'medkit' ? 'heal' : e.kind === 'armor' ? 'armor' : 'pickup'); say(e.kind === 'attach' && e.part ? `${PARTS[e.part].name} 장착` : e.kind === 'helmet' ? `${HELMET_NAMES[e.level ?? 1]} 착용` : e.kind === 'boost' ? '에너지 드링크 · 부스트' : e.kind === 'weapon' ? `${WEAPONS[e.weapon!].name} 획득` : e.kind === 'medkit' ? '구급상자 +' : e.kind === 'armor' ? '방탄복 +' : '탄약 +', 1.1); if (pvp && e.loot < m.map.loot.length) pvp.net.sendPickup(e.loot); }
+      } else if (e.t === 'drop') { if (e.stage === 'call') { say('보급 투하! 지도의 노란 표시를 확인하세요', 3); audio.play('armor'); } else say('보급 상자 착륙 · 최상급 전리품', 3); }
+      else if (e.t === 'reload') { if (e.id === p.id) audio.play('reload'); }
       else if (e.t === 'empty') { if (e.id === p.id) audio.play('empty'); }
       else if (e.t === 'over') { onOver(e.winner); }
     }
@@ -365,7 +373,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       if (!pvp && !resultShown && !over && deadTimer > 1.8) { resultShown = true; showResult(false); }
     }
     const spectate = phase === 'dead' || (phase === 'over' && !p.alive) ? m.players[spectateId] ?? null : null;
-    const gun = p.guns[p.cur], zoom = p.ads && p.alive ? (gun?.id === 'sniper' ? 3.4 : gun?.id === 'rifle' ? 1.5 : 1.3) : 1;
+    const gun = p.guns[p.cur], zoom = p.ads && p.alive ? Math.max(gun?.id === 'sniper' ? 3.4 : gun?.id === 'rifle' ? 1.5 : 1.3, gun?.att.sight ? PARTS[gun.att.sight].zoom : 1) : 1;
     view.frame(dt, p, spectate && spectate.alive ? spectate : null, zoom); updateHud(dt); if (phase === 'dead' && !spectate) q('#sz-prompt').classList.remove('show');
   }
   /** 상대(원격) 선수를 마지막으로 받은 위치로 부드럽게 따라가게 합니다. */
@@ -373,7 +381,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     const o = pvp!.opp!, t = pvp!.target; if (!t || !o.alive) return; const k = Math.min(1, dt * 14);
     o.x += (t.x - o.x) * k; o.z += (t.z - o.z) * k; let dy = t.yaw - o.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); o.yaw += dy * k; o.pitch += (t.pitch - o.pitch) * k;
     o.hp = t.hp; o.armor = t.armor; o.speed = t.speed; o.walk += t.speed * dt; o.ads = t.ads; o.reload = t.reloading ? 1 : 0;
-    if (o.guns[0]?.id !== t.w) o.guns[0] = { id: t.w, mag: 1, reserve: 0 }; o.cur = 0;
+    if (o.guns[0]?.id !== t.w) o.guns[0] = { id: t.w, mag: 1, reserve: 0, att: {} }; o.cur = 0;
   }
 
   function resize(): void { view?.resize(canvas.clientWidth || innerWidth, canvas.clientHeight || innerHeight); }

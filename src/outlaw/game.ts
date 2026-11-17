@@ -11,12 +11,16 @@ import { Minimap, districtName } from './minimap';
 import { OutlawAudio } from './audio';
 import { loadOutlawAssets, type OutlawAssets } from './assets';
 import { MISSION_LIST, canStart, startMission } from './missions';
+import { OutlawUi } from './ui';
+import { pickpocket, pickpocketTarget, startJob } from './jobs';
+import { treat, buySnack, nearVending } from './services';
 import { OUTLAW_KEY } from './records';
 import { WEAPONS, WEAPON_ORDER, PLAYER_ID, VEHICLES, blankPedInput, blankCarInput, clamp, wrapAngle, type PedInput, type SimEvent, type Vehicle } from './types';
 
 interface OpenOptions { loading?: LoadingScreen }
 const SEED = 20260101, STEP = 1 / 60, TITLE_CLOCK = 17.2;
-const WHEEL_NAMES = ['주먹', '권총', '기관단총', '샷건', '돌격소총', '저격총', '로켓포'];
+const WHEEL_NAMES = ['주먹', '권총', '기관단총', '샷건', '돌격소총', '저격총', '로켓포', '방망이', '수류탄', '미니건', '레일건'];
+const NW = WEAPON_ORDER.length;
 const esc = (s: string): string => s.replace(/[&<>]/g, c => c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;');
 const money = (n: number): string => '$' + Math.floor(n).toLocaleString('en-US');
 
@@ -39,7 +43,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
       <div class="ol-prompt" id="ol-prompt"></div>
       <ul class="ol-toasts" id="ol-toasts"></ul><div class="ol-floaters" id="ol-floaters"></div>
       <div class="ol-big" id="ol-big"></div>
-      <div class="ol-tbtn"><button id="ol-pause" type="button" aria-label="일시정지">Ⅱ</button><button id="ol-mapbtn" type="button" aria-label="지도">M</button></div>
+      <div class="ol-tbtn"><button id="ol-pause" type="button" aria-label="일시정지">Ⅱ</button><button id="ol-mapbtn" type="button" aria-label="지도">M</button><button id="ol-phonebtn" type="button" aria-label="휴대폰">📱</button></div>
       <div class="ol-touchpad"><div class="ol-stick" id="ol-stick"><i></i></div>
         <div class="ol-tfoot"><button data-act="fire" class="fire" type="button">사격</button><button data-act="aim" type="button">조준</button><button data-act="jump" type="button">점프</button><button data-act="use" type="button">타기</button><button data-act="reload" type="button">장전</button><button data-act="weapon" type="button">무기</button><button data-act="sprint" type="button">달리기</button></div>
         <div class="ol-tcar"><button data-act="left" type="button">◀</button><button data-act="right" type="button">▶</button><button data-act="gas" class="fire" type="button">가속</button><button data-act="brake" type="button">브레이크</button><button data-act="hand" type="button">드리프트</button></div></div>
@@ -56,6 +60,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   const html = (id: string, h: string): void => { if (cache.get(id) !== h) { cache.set(id, h); q(`#ol-${id}`).innerHTML = h; } };
   const style = (id: string, prop: string, v: string): void => { const k = id + prop; if (cache.get(k) !== v) { cache.set(k, v); (q(`#ol-${id}`).style as unknown as Record<string, string>)[prop] = v; } };
 
+  const ui = new OutlawUi(() => sim);
   const audio = new OutlawAudio(); audio.enabled = prefs.sound;
   let closed = false, raf = 0, last = performance.now();
   let phase: 'load' | 'menu' | 'trans' | 'play' = 'load';
@@ -105,10 +110,10 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   document.addEventListener('pointerlockchange', onLock);
 
   function controlsHtml(): string {
-    return `<h2>조작법</h2><div class="ol-keys"><div><b>이동</b>WASD · Shift 달리기 · Space 점프 · C 앉기</div><div><b>전투</b>좌클릭 사격 · 우클릭 조준 · R 재장전 · 1~7/휠 무기 · Q 무기 휠</div><div><b>상호작용</b>E / F 차량 · 상점 · 의뢰 · 안전가옥</div><div><b>차량</b>W 가속 · S 브레이크/후진 · A D 조향 · Space 핸드브레이크 · H 경적 · R 라디오 · C 뒤돌아보기</div><div><b>기타</b>M / Tab 전체 지도 · Esc 일시정지</div></div><p class="hint">아슬아슬한 통과·점프·드리프트·헤드샷은 스타일 보너스가 됩니다. 시민을 해치면 수배 별이 올라갑니다.</p><div class="ol-btns"><button data-k="back" type="button">돌아가기</button></div>`;
+    return `<h2>조작법</h2><div class="ol-keys"><div><b>이동</b>WASD · Shift 달리기 · Space 점프 · C 앉기</div><div><b>전투</b>좌클릭 사격 · 우클릭 조준 · R 재장전 · 1~9·0·-/휠 무기 · Q 무기 휠 · 수류탄은 사격 키로 투척</div><div><b>상호작용</b>E / F 차량 · 상점 · 의뢰 · 안전가옥</div><div><b>차량</b>W 가속 · S 브레이크/후진 · A D 조향 · Space 핸드브레이크 · H 경적 · R 라디오 · C 뒤돌아보기</div><div><b>휴대폰</b>P 휴대폰: 일거리·차고·부동산·업적 · 격투장/체육관/카지노/자동차 매장은 E</div><div><b>기타</b>M / Tab 전체 지도 · Esc 일시정지</div></div><p class="hint">아슬아슬한 통과·점프·드리프트·헤드샷은 스타일 보너스가 됩니다. 시민을 해치면 수배 별이 올라갑니다.</p><div class="ol-btns"><button data-k="back" type="button">돌아가기</button></div>`;
   }
   function openPause(): void {
-    openModal('pause', `<h2>일시정지</h2><div class="ol-btns v"><button data-k="resume" type="button">계속하기</button><button data-k="map" type="button">전체 지도</button><button data-k="help" type="button">조작법</button><button data-k="sound" type="button">소리: ${audio.enabled ? '켜짐' : '꺼짐'}</button><button data-k="quality" type="button">품질: ${prefs.quality === 'high' ? '높음' : prefs.quality === 'standard' ? '보통' : '낮음'} (다음 실행부터)</button><button data-k="quit" type="button" class="danger">저장하고 나가기</button></div>`);
+    openModal('pause', `<h2>일시정지</h2><div class="ol-btns v"><button data-k="resume" type="button">계속하기</button><button data-k="phone" type="button">휴대폰</button><button data-k="map" type="button">전체 지도</button><button data-k="help" type="button">조작법</button><button data-k="sound" type="button">소리: ${audio.enabled ? '켜짐' : '꺼짐'}</button><button data-k="quality" type="button">품질: ${prefs.quality === 'high' ? '높음' : prefs.quality === 'standard' ? '보통' : '낮음'} (다음 실행부터)</button><button data-k="quit" type="button" class="danger">저장하고 나가기</button></div>`);
   }
   function openMap(): void {
     openModal('map', `<canvas id="ol-bigmap" width="900" height="780"></canvas><div class="ol-btns"><button data-k="resume" type="button">닫기 (M)</button></div>`);
@@ -116,22 +121,32 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   }
   function openShop(): void {
     if (!sim) return; const p = sim.player;
-    const rows = WEAPON_ORDER.slice(1).map((id, i) => { const d = WEAPONS[id], have = !!p.guns[i + 1]; return `<button class="row" data-buy="${id}" type="button"><b>${d.name}</b><span>피해 ${d.dmg}${d.pellets > 1 ? '×' + d.pellets : ''} · 탄창 ${d.mag}</span><em>${have ? '탄약 보충 ' + money(Math.ceil(d.price * 0.2)) : money(d.price)}</em></button>`; }).join('');
-    openModal('shop', `<h2>총기점</h2><p class="cash">보유 ${money(sim.cash)}</p><div class="ol-list">${rows}<button class="row" data-armor="1" type="button"><b>방탄복</b><span>방탄 100</span><em>$300</em></button></div><div class="ol-btns"><button data-k="resume" type="button">나가기</button></div>`);
+    const rows = WEAPON_ORDER.slice(1).map((id, i) => { const d = WEAPONS[id], have = !!p.guns[i + 1]; return `<button class="row" data-buy="${id}" type="button"><b>${d.name}</b><span>피해 ${d.dmg}${d.pellets > 1 ? '×' + d.pellets : ''} · 탄창 ${d.mag}</span><em>${have ? '탄약 보충 ' + money(sim!.price(Math.ceil(d.price * 0.2))) : money(sim!.price(d.price))}</em></button>`; }).join('');
+    openModal('shop', `<h2>총기점</h2><p class="cash">보유 ${money(sim.cash)}</p><div class="ol-list">${rows}<button class="row" data-armor="1" type="button"><b>방탄복</b><span>방탄 100</span><em>${money(sim.price(300))}</em></button></div><div class="ol-btns"><button data-k="resume" type="button">나가기</button></div>`);
   }
   function openBrief(id: string): void {
     const m = MISSION_LIST.find(x => x.id === id); if (!m) return;
     openModal('brief', `<span class="tag">의뢰</span><h2>${esc(m.title)}</h2><p class="giver">${esc(m.giver)}</p><p class="brief">${esc(m.brief).replace(/\n/g, '<br>')}</p><p class="reward">보상 ${money(m.reward)}</p><div class="ol-btns"><button data-start="${id}" type="button">수락</button><button data-k="resume" type="button">취소</button></div>`);
   }
+  function openUi(kind: string): void { if (!sim) return; openModal(kind, ui.render(kind)); }
+  function uiClick(ds: DOMStringMap): void {
+    if (!sim) return; const r = ui.click(ds);
+    if (r.toast) toast(r.toast); if (r.sound) audio.play(r.sound);
+    if (r.begin) { closeModal(); begin(false); return; }
+    if (r.close) { closeModal(); return; }
+    if (r.kind) { const top = modalEl.querySelector('.ol-card'); const sy = top?.scrollTop ?? 0; openUi(r.kind); const nt = modalEl.querySelector('.ol-card'); if (nt) nt.scrollTop = sy; }
+  }
   modalEl.addEventListener('click', e => {
     const b = (e.target as HTMLElement).closest('button'); if (!b || !sim) return;
     audio.unlock(); audio.play('menu_click');
     const k = b.dataset.k;
+    if (b.dataset.ui) { uiClick(b.dataset); return; }
     if (b.dataset.buy) { toast(sim.buyWeapon(b.dataset.buy as never)); openShop(); }
     else if (b.dataset.armor) { toast(sim.buyArmor()); openShop(); }
     else if (b.dataset.start) { const id = b.dataset.start; closeModal(); if (startMission(sim, id)) { audio.play('mission_start'); } }
     else if (k === 'resume') closeModal();
     else if (k === 'map') openMap();
+    else if (k === 'phone') openUi('phone');
     else if (k === 'help') openModal('help', controlsHtml());
     else if (k === 'back') openPause();
     else if (k === 'sound') { audio.enabled = !audio.enabled; prefs.sound = audio.enabled; writePreferences(prefs); openPause(); }
@@ -151,7 +166,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     const t = b.dataset.t;
     if (t === 'exit') exit();
     else if (t === 'help') openModal('help', controlsHtml().replace('data-k="back"', 'data-k="resume"'));
-    else if (t === 'new') { if (hasSave() && !confirmNew) { confirmNew = true; b.textContent = '저장 덮어쓰기? 다시 누르면 시작'; return; } try { localStorage.removeItem(OUTLAW_KEY); } catch { /* */ } begin(false); }
+    else if (t === 'new') { if (hasSave() && !confirmNew) { confirmNew = true; b.textContent = '저장 덮어쓰기? 다시 누르면 시작'; return; } try { localStorage.removeItem(OUTLAW_KEY); } catch { /* */ } confirmNew = false; ui.heroSel = 'h0'; openUi('hero'); }
     else if (t === 'cont') begin(true);
   });
   let confirmNew = false;
@@ -178,7 +193,9 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (e.code === 'KeyE' || e.code === 'KeyF') useAction();
     else if (e.code === 'KeyR') { if (sim?.player.vehicle) cycleRadio(); else reloadReq = true; }
     else if (e.code === 'KeyQ') openWheel();
-    else if (e.code.startsWith('Digit')) { const n = Number(e.code.slice(5)) - 1; if (n >= 0 && n < 7) slotReq = n; }
+    else if (e.code.startsWith('Digit')) { const n = (Number(e.code.slice(5)) + 9) % 10; if (n >= 0 && n < NW) slotReq = n; }
+    else if (e.code === 'Minus') slotReq = 10;
+    else if (e.code === 'KeyP') { if (modalKind === 'phone') closeModal(); else if (!modalKind) openUi('phone'); return; }
   };
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.code); if (e.code === 'KeyQ') closeWheel(); };
   const onMouseMove = (e: MouseEvent): void => {
@@ -192,7 +209,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (e.button === 0) mouse.fire = true; else if (e.button === 2) mouse.aim = true;
   };
   const onMouseUp = (e: MouseEvent): void => { if (e.button === 0) mouse.fire = false; else if (e.button === 2) mouse.aim = false; };
-  const onWheel = (e: WheelEvent): void => { if (phase !== 'play' || modalKind || !sim) return; const dir = e.deltaY > 0 ? 1 : -1; let i = sim.player.cur; for (let n = 0; n < 7; n++) { i = (i + dir + 7) % 7; if (sim.player.guns[i]) { slotReq = i; break; } } };
+  const onWheel = (e: WheelEvent): void => { if (phase !== 'play' || modalKind || !sim) return; const dir = e.deltaY > 0 ? 1 : -1; let i = sim.player.cur; for (let n = 0; n < NW; n++) { i = (i + dir + NW) % NW; if (sim.player.guns[i]) { slotReq = i; break; } } };
   const onCtx = (e: Event): void => e.preventDefault();
   const onBlur = (): void => { keys.clear(); mouse.fire = mouse.aim = false; };
   window.addEventListener('keydown', onKeyDown); window.addEventListener('keyup', onKeyUp); window.addEventListener('mousemove', onMouseMove);
@@ -203,7 +220,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   const pad = q('.ol-touchpad');
   pad.addEventListener('pointerdown', e => {
     audio.unlock(); const b = (e.target as HTMLElement).closest('button');
-    if (b && b.dataset.act) { const a = b.dataset.act; b.setPointerCapture(e.pointerId); if (a === 'use') useAction(); else if (a === 'reload') reloadReq = true; else if (a === 'weapon') { const p = sim!.player; let i = p.cur; for (let n = 0; n < 7; n++) { i = (i + 1) % 7; if (p.guns[i]) { slotReq = i; break; } } } else (tc as unknown as Record<string, boolean>)[a === 'hand' ? 'hand' : a] = true; e.preventDefault(); }
+    if (b && b.dataset.act) { const a = b.dataset.act; b.setPointerCapture(e.pointerId); if (a === 'use') useAction(); else if (a === 'reload') reloadReq = true; else if (a === 'weapon') { const p = sim!.player; let i = p.cur; for (let n = 0; n < NW; n++) { i = (i + 1) % NW; if (p.guns[i]) { slotReq = i; break; } } } else (tc as unknown as Record<string, boolean>)[a === 'hand' ? 'hand' : a] = true; e.preventDefault(); }
   });
   const upTouch = (e: PointerEvent): void => { const b = (e.target as HTMLElement).closest('button'); const a = b?.dataset.act; if (a && a in tc) (tc as unknown as Record<string, boolean>)[a] = false; };
   pad.addEventListener('pointerup', upTouch); pad.addEventListener('pointercancel', upTouch);
@@ -220,16 +237,24 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   window.addEventListener('pointerup', endPtr); window.addEventListener('pointercancel', endPtr);
   q('#ol-pause').onclick = () => { if (phase === 'play' && !modalKind) openPause(); };
   q('#ol-mapbtn').onclick = () => { if (phase === 'play' && !modalKind) openMap(); };
+  q('#ol-phonebtn').onclick = () => { if (phase === 'play' && !modalKind) openUi('phone'); };
 
   // ---------- 상호작용 ----------
   function interaction(): { text: string; run?: () => void } | null {
     if (!sim) return null; const p = sim.player; if (!p.alive || sim.downKind) return null;
     const poi = sim.nearPoi(p.x, p.z);
-    if (p.vehicle) { if (poi?.kind === 'paynspray') return { text: 'E · 도색 & 수배 해제 ($150)', run: () => { toast(sim!.paynspray()); audio.play('pickup'); } }; return null; }
+    if (p.vehicle) { if (poi?.kind === 'paynspray') return { text: `E · 도색 & 수배 해제 (${money(sim.price(150))})`, run: () => { toast(sim!.paynspray()); audio.play('pickup'); } }; return null; }
     if (poi?.kind === 'gunshop') return { text: 'E · 총기점', run: openShop };
+    if (poi?.kind === 'dealer') return { text: 'E · 자동차 매장', run: () => openUi('dealer') };
+    if (poi?.kind === 'gym') return { text: 'E · 체육관 훈련', run: () => openUi('gym') };
+    if (poi?.kind === 'casino') return { text: 'E · 카지노', run: () => openUi('casino') };
+    if (poi?.kind === 'hospital') { if (p.hp < p.maxHp || p.armor < 40) return { text: `E · 치료 (${money(sim.price(120))})`, run: () => { toast(treat(sim!)); audio.play('pickup'); } }; }
+    if (poi?.kind === 'arena') return sim.job.active ? null : { text: `E · 지하 격투 참가 (${money(sim.price(200))})`, run: () => { const r = startJob(sim!, 'fight'); if (r) toast(r); } };
     if (poi?.kind === 'safehouse') return { text: 'E · 쉬기 · 저장', run: () => { const r = sim!.sleep(); toast(r); save(); audio.play('save'); } };
     if (poi?.kind === 'start') { const m = MISSION_LIST.find(x => x.startPoi === poi.id); if (m && canStart(sim, m.id)) return { text: `E · 의뢰: ${m.title}`, run: () => openBrief(m.id) }; }
     if (sim.nearestVehicle(p)) return { text: 'E · 차량 탑승' };
+    if (nearVending(sim)) return { text: `E · 음료 (${money(sim.price(8))})`, run: () => { toast(buySnack(sim!)); audio.play('pickup'); } };
+    if (pickpocketTarget(sim)) return { text: 'E · 소매치기', run: () => { toast(pickpocket(sim!)); audio.play('pickup'); } };
     return null;
   }
   function useAction(): void { const it = interaction(); if (it?.run) { it.run(); audio.play('door'); } else { enterReq = true; } }
@@ -238,12 +263,12 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 무기 휠 ----------
   function openWheel(): void {
     if (wheelOpen || !sim) return; wheelOpen = true; wheelX = wheelY = 0; wheelSel = -1; wheelEl.hidden = false; if (document.pointerLockElement) { /* 잠금 유지 */ }
-    wheelEl.innerHTML = WEAPON_ORDER.map((_id, i) => { const a = (i / 7) * Math.PI * 2 - Math.PI / 2; return `<div class="ws" data-i="${i}" style="left:calc(50% + ${Math.cos(a) * 150}px);top:calc(50% + ${Math.sin(a) * 150}px)"><b>${WHEEL_NAMES[i]}</b><span></span></div>`; }).join('') + '<div class="wc"><b id="ol-wsel"></b></div>';
+    wheelEl.innerHTML = WEAPON_ORDER.map((_id, i) => { const a = (i / NW) * Math.PI * 2 - Math.PI / 2; return `<div class="ws" data-i="${i}" style="left:calc(50% + ${Math.cos(a) * 165}px);top:calc(50% + ${Math.sin(a) * 165}px)"><b>${WHEEL_NAMES[i]}</b><span></span></div>`; }).join('') + '<div class="wc"><b id="ol-wsel"></b></div>';
     updateWheel();
   }
   function updateWheel(): void {
     if (!sim) return; const mag = Math.hypot(wheelX, wheelY);
-    wheelSel = mag > 40 ? Math.round(((Math.atan2(wheelY, wheelX) + Math.PI / 2 + Math.PI * 2) % (Math.PI * 2)) / (Math.PI * 2) * 7) % 7 : -1;
+    wheelSel = mag > 40 ? Math.round(((Math.atan2(wheelY, wheelX) + Math.PI / 2 + Math.PI * 2) % (Math.PI * 2)) / (Math.PI * 2) * NW) % NW : -1;
     wheelEl.querySelectorAll<HTMLElement>('.ws').forEach(el => { const i = Number(el.dataset.i), g = sim!.player.guns[i]; el.classList.toggle('sel', i === wheelSel); el.classList.toggle('none', !g); el.querySelector('span')!.textContent = g ? (WEAPONS[g.id].melee ? '' : `${g.mag}/${g.reserve}`) : '미보유'; });
     const c = wheelEl.querySelector('#ol-wsel'); if (c) c.textContent = wheelSel >= 0 ? WHEEL_NAMES[wheelSel] : '';
   }
@@ -389,6 +414,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     const mi = s.mission.active ? MISSION_LIST.find(m => m.id === s.mission.active) : null;
     const act = s.activity;
     if (mi) { q('#ol-mission').hidden = false; set('mtag', '의뢰'); set('mtitle', mi.title); set('mtext', s.mission.text); const t = s.mission.timer; set('mtimer', t > 0 ? `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}` : ''); }
+    else if (s.job.active) { q('#ol-mission').hidden = false; set('mtag', '일거리'); set('mtitle', s.job.title); set('mtext', s.job.text); const t = s.job.timer; set('mtimer', t > 0 && s.job.active !== 'fight' ? `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}` : ''); }
     else if (act.active && act.text) { q('#ol-mission').hidden = false; set('mtag', '사이드'); set('mtitle', ({ taxi: '택시', armored: '현금수송차', bounty: '현상금', rampage: '렘페이지', vigilante: '소탕', race: '스트리트 레이스', export: '차량 수출' } as Record<string, string>)[act.active] ?? '활동'); set('mtext', act.text); const t = act.timer; set('mtimer', t > 0 ? `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}` : ''); }
     else q('#ol-mission').hidden = true;
     bannerT = s.mission.bannerT; set('banner', s.mission.banner && bannerT > 0 ? s.mission.banner : ''); q('#ol-banner').classList.toggle('on', !!s.mission.banner && bannerT > 0);

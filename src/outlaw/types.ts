@@ -7,7 +7,7 @@ export const GRAVITY = 24;
 export const PLAYER_ID = 1;
 
 // ---------- 무기 ----------
-export type WeaponId = 'fist' | 'pistol' | 'smg' | 'shotgun' | 'rifle' | 'sniper' | 'rocket';
+export type WeaponId = 'fist' | 'pistol' | 'smg' | 'shotgun' | 'rifle' | 'sniper' | 'rocket' | 'bat' | 'grenade' | 'minigun' | 'railgun';
 export interface WeaponDef {
   id: WeaponId; name: string;
   /** 한 발(펠릿) 피해 */ dmg: number; pellets: number;
@@ -23,12 +23,16 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   rifle:   { id: 'rifle',   name: '돌격소총', dmg: 28, pellets: 1, cd: 0.11, mag: 30, reserve: 150, reload: 2.0, auto: true,  spread: 0.016, range: 220, head: 1.8, recoil: 0.02,  noise: 100, price: 2800, melee: false },
   sniper:  { id: 'sniper',  name: '저격총',   dmg: 95, pellets: 1, cd: 1.3,  mag: 5,  reserve: 30,  reload: 2.7, auto: false, spread: 0.0015, range: 500, head: 2.2, recoil: 0.1,  noise: 130, price: 4200, melee: false },
   rocket:  { id: 'rocket',  name: '로켓포',   dmg: 260, pellets: 1, cd: 1.8, mag: 1,  reserve: 6,   reload: 2.8, auto: false, spread: 0,     range: 300, head: 1,   recoil: 0.12,  noise: 150, price: 7000, melee: false },
+  bat:     { id: 'bat',     name: '야구방망이', dmg: 38, pellets: 1, cd: 0.55, mag: 0, reserve: 0,   reload: 0,   auto: false, spread: 0,     range: 2.4, head: 1,   recoil: 0,     noise: 10,  price: 120,  melee: true },
+  grenade: { id: 'grenade', name: '수류탄',   dmg: 220, pellets: 1, cd: 0.9, mag: 1,  reserve: 8,   reload: 0.9, auto: false, spread: 0,     range: 40,  head: 1,   recoil: 0.03,  noise: 90,  price: 1200, melee: false },
+  minigun: { id: 'minigun', name: '미니건',   dmg: 15, pellets: 1, cd: 0.045, mag: 200, reserve: 600, reload: 4.2, auto: true, spread: 0.055, range: 150, head: 1.3, recoil: 0.008, noise: 130, price: 14000, melee: false },
+  railgun: { id: 'railgun', name: '레일건',   dmg: 420, pellets: 1, cd: 1.5, mag: 4,  reserve: 16,  reload: 3.2, auto: false, spread: 0,     range: 600, head: 1.5, recoil: 0.1,   noise: 60,  price: 18000, melee: false },
 };
-export const WEAPON_ORDER: WeaponId[] = ['fist', 'pistol', 'smg', 'shotgun', 'rifle', 'sniper', 'rocket'];
+export const WEAPON_ORDER: WeaponId[] = ['fist', 'pistol', 'smg', 'shotgun', 'rifle', 'sniper', 'rocket', 'bat', 'grenade', 'minigun', 'railgun'];
 export interface Gun { id: WeaponId; mag: number; reserve: number }
 
 // ---------- 차량 ----------
-export type VehicleKind = 'sedan' | 'sports' | 'suv' | 'taxi' | 'truck' | 'van' | 'hatch' | 'police' | 'buggy' | 'tank';
+export type VehicleKind = 'sedan' | 'sports' | 'suv' | 'taxi' | 'truck' | 'van' | 'hatch' | 'police' | 'buggy' | 'tank' | 'gt' | 'muscle' | 'hyper' | 'ambulance';
 export interface VehicleDef {
   kind: VehicleKind; name: string;
   /** vehicles.glb 안의 노드 이름 */ model: string;
@@ -47,6 +51,10 @@ export const VEHICLES: Record<VehicleKind, VehicleDef> = {
   hatch:  { kind: 'hatch',  name: '해치백',   model: 'hatch',  hp: 200, mass: 0.8, top: 40, accel: 14, brake: 38, grip: 8.0, turn: 1.1,  halfL: 2.1,  halfW: 0.95, height: 1.45, seats: 4 },
   police: { kind: 'police', name: '경찰차',   model: 'police', hp: 340, mass: 1.2, top: 54, accel: 16, brake: 46, grip: 8.0, turn: 1.05, halfL: 2.4,  halfW: 1.0,  height: 1.5, seats: 4 },
   buggy:  { kind: 'buggy',  name: '버기',     model: 'buggy',  hp: 180, mass: 0.7, top: 46, accel: 17, brake: 36, grip: 6.5, turn: 1.15, halfL: 1.9,  halfW: 1.0,  height: 1.4, seats: 2 },
+  gt:     { kind: 'gt',     name: 'GT 쿠페',  model: 'gt',     hp: 240, mass: 1.0, top: 70, accel: 21, brake: 52, grip: 9.0, turn: 1.12, halfL: 2.3,  halfW: 1.0,  height: 1.2, seats: 2 },
+  muscle: { kind: 'muscle', name: '머슬카',   model: 'long',   hp: 300, mass: 1.3, top: 66, accel: 20, brake: 46, grip: 7.8, turn: 1.0,  halfL: 2.5,  halfW: 1.05, height: 1.3, seats: 2 },
+  hyper:  { kind: 'hyper',  name: '하이퍼카', model: 'wide',   hp: 200, mass: 0.9, top: 84, accel: 26, brake: 58, grip: 10,  turn: 1.15, halfL: 2.3,  halfW: 1.1,  height: 1.1, seats: 2 },
+  ambulance: { kind: 'ambulance', name: '구급차', model: 'van', hp: 380, mass: 1.9, top: 40, accel: 11, brake: 36, grip: 6.8, turn: 0.85, halfL: 2.8, halfW: 1.1, height: 2.1, seats: 3 },
   tank:   { kind: 'tank',   name: '전차',     model: 'tank',   hp: 2200, mass: 9.0, top: 16, accel: 5,  brake: 20, grip: 12,  turn: 0.5,  halfL: 3.4,  halfW: 1.6,  height: 2.4, seats: 1 },
 };
 export const CIVILIAN_CARS: VehicleKind[] = ['sedan', 'sedan', 'hatch', 'hatch', 'suv', 'taxi', 'van', 'truck', 'sports'];
@@ -91,7 +99,7 @@ export interface Vehicle {
 // ---------- 줍기·탄 ----------
 export type PickupKind = 'cash' | 'health' | 'armor' | 'weapon' | 'package' | 'ammo';
 export interface Pickup { id: number; kind: PickupKind; x: number; y: number; z: number; amount: number; weapon: WeaponId | null; taken: boolean; /** 다시 생기기까지(0 이면 영구 소멸) */ respawn: number; /** 일회성 수집품 번호(-1 이면 아님) */ collect: number }
-export interface Projectile { id: number; kind: 'rocket'; x: number; y: number; z: number; vx: number; vy: number; vz: number; owner: number; life: number }
+export interface Projectile { id: number; kind: 'rocket' | 'grenade'; x: number; y: number; z: number; vx: number; vy: number; vz: number; owner: number; life: number }
 
 // ---------- 이벤트(화면·소리·HUD 가 읽음) ----------
 export type SimEvent =
@@ -141,7 +149,7 @@ export interface LaneNode {
   /** 교차로 정지선이면 신호 그룹(0 또는 1), 아니면 -1 */ light: number; /** 도로 번호(같은 도로 구간끼리 같음) */ road: number;
 }
 export interface RoadSeg { id: number; ax: number; az: number; bx: number; bz: number; width: number; major: boolean }
-export type PoiKind = 'safehouse' | 'gunshop' | 'paynspray' | 'hospital' | 'police' | 'bank' | 'casino' | 'garage' | 'chopshop' | 'club' | 'dock' | 'park' | 'start';
+export type PoiKind = 'dealer' | 'gym' | 'arena' | 'safehouse' | 'gunshop' | 'paynspray' | 'hospital' | 'police' | 'bank' | 'casino' | 'garage' | 'chopshop' | 'club' | 'dock' | 'park' | 'start';
 export interface Poi { id: string; kind: PoiKind; name: string; x: number; z: number; /** 상호작용 반경 */ r: number; /** 건물 id(없으면 -1) */ building: number }
 export interface Ramp { x: number; z: number; h: number; w: number; len: number }
 export interface CityMap {
@@ -182,3 +190,10 @@ export interface ActivityState {
   /** 통계 */ stats: { taxiFares: number; armoredTrucks: number; bounties: number; rampages: number; races: number; nearMisses: number; maxAirtime: number; maxDrift: number };
 }
 export const blankActivityState = (): ActivityState => ({ style: { combo: 0, mult: 1, timer: 0, total: 0, last: '' }, stunts: [], active: '', data: {}, ids: {}, text: '', markers: [], timer: 0, stats: { taxiFares: 0, armoredTrucks: 0, bounties: 0, rampages: 0, races: 0, nearMisses: 0, maxAirtime: 0, maxDrift: 0 } });
+
+// ---------- 일거리(배달·응급 이송·자경단·현상 의뢰·차량 회수·격투장) ----------
+export interface JobState {
+  /** 진행 중인 일 id(없으면 '') */ active: string; title: string; stage: number; timer: number; text: string; markers: Marker[];
+  data: Record<string, number>; ids: Record<string, number>;
+}
+export const blankJobState = (): JobState => ({ active: '', title: '', stage: 0, timer: 0, text: '', markers: [], data: {}, ids: {} });

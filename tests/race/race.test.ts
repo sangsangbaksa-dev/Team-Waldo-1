@@ -55,7 +55,7 @@ describe('SPEED RUSH car physics', () => {
   });
   it('empties a nitro tank in one continuous boost instead of sipping it', () => {
     const c = newCar(track, 0, 0); c.nitro = 1; let emptyAt = 0, gaps = 0;
-    for (let k = 0; k < 90 * 6; k++) {
+    for (let k = 0; k < 90 * (NITRO_SECONDS + 2); k++) {
       const before = c.nitro;
       stepCar(c, { ...GAS, nitro: true }, DT, track);
       if (before > 0 && c.boostT <= 0) gaps++;
@@ -67,7 +67,7 @@ describe('SPEED RUSH car physics', () => {
   });
   it('does not turn a held nitro button into endless boost once the tank is empty', () => {
     const c = newCar(track, 0, 0), flat = { ...track, pads: [] }; c.nitro = 1; let boostFrames = 0, total = 0;
-    for (let k = 0; k < 90 * 30; k++) { stepCar(c, { ...GAS, nitro: true }, DT, flat); if (k >= 90 * 6) { total++; if (c.boostT > 0) boostFrames++; } }
+    for (let k = 0; k < 90 * 30; k++) { stepCar(c, { ...GAS, nitro: true }, DT, flat); if (k >= 90 * (NITRO_SECONDS + 2)) { total++; if (c.boostT > 0) boostFrames++; } }
     expect(boostFrames).toBe(0); expect(total).toBeGreaterThan(0);
     // 버튼을 떼면 다시 천천히 차오릅니다.
     for (let k = 0; k < 90 * 10; k++) stepCar(c, GAS, DT, flat);

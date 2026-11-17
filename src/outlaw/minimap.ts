@@ -10,6 +10,7 @@ const POI_STYLE: Record<PoiKind, { icon: string; color: string }> = {
   casino: { icon: '◆', color: '#ff3d81' }, garage: { icon: '⚙', color: '#c7d0d3' },
   chopshop: { icon: '⚒', color: '#ff805e' }, club: { icon: '♫', color: '#df70ff' },
   dock: { icon: '⚓', color: '#3df2ff' }, park: { icon: '♣', color: '#78d78c' }, start: { icon: 'M', color: '#ffd23f' },
+  dealer: { icon: '🚗', color: '#ffd23f' }, gym: { icon: 'H', color: '#ff8a5e' }, arena: { icon: 'F', color: '#ff4545' },
 };
 const DISTRICT_KO: Record<string, string> = { downtown: '다운타운', commercial: '상업 지구', residential: '주거 지구', industrial: '공업 지구', park: '공원 지구' };
 
@@ -75,7 +76,7 @@ export class Minimap {
     g.save(); g.beginPath(); g.arc(cx, cy, size * .47, 0, Math.PI * 2); g.clip();
     const r = this.range;
     for (const poi of this.map.pois) if (Math.abs(poi.x - p.x) < r && Math.abs(poi.z - p.z) < r) this.poi(g, point(poi.x, poi.z), poi, size * .046);
-    for (const marker of [...sim.mission.markers, ...sim.activity.markers]) if (marker.blip) {
+    for (const marker of [...sim.mission.markers, ...sim.activity.markers, ...sim.job.markers]) if (marker.blip) {
       const [x, y] = point(marker.x, marker.z), dx = x - cx, dy = y - cy, d = Math.hypot(dx, dy), edge = size * .405;
       if (d > edge) { const a = Math.atan2(dy, dx); g.save(); g.translate(cx + Math.cos(a) * edge, cy + Math.sin(a) * edge); g.rotate(a); g.fillStyle = markerColor(marker.color, marker.kind); g.beginPath(); g.moveTo(8, 0); g.lineTo(-5, -4); g.lineTo(-3, 0); g.lineTo(-5, 4); g.closePath(); g.fill(); g.restore(); }
       else { g.save(); g.translate(x, y); g.rotate(Math.PI / 4); g.fillStyle = markerColor(marker.color, marker.kind); g.fillRect(-4, -4, 8, 8); g.restore(); }
@@ -118,7 +119,7 @@ export class Minimap {
       const x = px(poi.x), y = pz(poi.z); this.poi(g, [x, y], poi, font * 1.7);
       g.font = `600 ${font}px sans-serif`; g.lineWidth = 3; g.strokeStyle = 'rgba(12,17,20,.9)'; g.strokeText(poi.name, x, y + font * 1.8); g.fillStyle = '#f1f3ef'; g.fillText(poi.name, x, y + font * 1.8);
     }
-    for (const marker of [...sim.mission.markers, ...sim.activity.markers]) if (marker.blip) { g.save(); g.translate(px(marker.x), pz(marker.z)); g.rotate(Math.PI / 4); g.fillStyle = markerColor(marker.color, marker.kind); g.fillRect(-font * .65, -font * .65, font * 1.3, font * 1.3); g.restore(); }
+    for (const marker of [...sim.mission.markers, ...sim.activity.markers, ...sim.job.markers]) if (marker.blip) { g.save(); g.translate(px(marker.x), pz(marker.z)); g.rotate(Math.PI / 4); g.fillStyle = markerColor(marker.color, marker.kind); g.fillRect(-font * .65, -font * .65, font * 1.3, font * 1.3); g.restore(); }
     if (sim.wanted.stars > 0) {
       const color = Math.floor(sim.t * 4) % 2 ? '#3b82ff' : '#ff4545';
       for (const cop of sim.peds) if (cop.alive && cop.team === 'cop') this.dot(g, px(cop.x), pz(cop.z), color, font * .48);

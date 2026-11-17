@@ -1,5 +1,6 @@
 // OUTLAW CITY의 공용 도시 모델을 로드하고 캐릭터·차량 접근을 제공합니다.
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { loadModels, type CharModel, type Models } from '../city/models';
 import type { PedKind, VehicleKind } from './types';
 
@@ -16,9 +17,15 @@ export function loadOutlawAssets(
   onNote?: (note: string) => void,
 ): Promise<OutlawAssets | null> {
   if (!cache) {
-    cache = loadModels(base, onProgress).then(models => {
+    cache = loadModels(base, onProgress).then(async models => {
+      // 레이싱카 모델(race.glb)을 차량 목록에 합칩니다. 못 받아도 기존 차량으로 대체합니다.
+      const raceCars: Record<string, THREE.Object3D> = {};
+      try { const gltf = await new GLTFLoader().loadAsync(`${base}assets/models/race.glb`); gltf.scene.traverse(o => { if (o.name === 'gt' || o.name === 'wide' || o.name === 'long') raceCars[o.name] = o; }); } catch { /* 선택 사항 */ }
+      return { models, raceCars };
+    }).then(({ models, raceCars }) => {
       const required = (key: string, fallback: string): CharModel => models.chars[key] ?? models.chars[fallback]!;
       const civilians = ['civ', 'civ2', 'civ3', 'civ4', 'civ5', 'civ6', 'civ7', 'civ8'];
+      const heroKeys = ['civ', 'civ2', 'civ3', 'civ4', 'civ5', 'civ6', 'civ7', 'civ8'];
       const gangKinds = ['rifle', 'merc', 'guard'];
       const assets: OutlawAssets = {
         ...models,
@@ -31,11 +38,13 @@ export function loadOutlawAssets(
             }
             return required('civ', 'worker');
           }
+          if (kind === 'player') { const hk = heroKeys[n % heroKeys.length]!; if (models.chars[hk]) return models.chars[hk]!; }
           const key = kind === 'cop' ? 'cop' : kind === 'swat' ? 'swat' : kind === 'soldier' ? 'heavy' : kind === 'gang' ? gangKinds[n % gangKinds.length]! : kind === 'boss' ? 'boss' : 'worker';
           return required(key, kind === 'player' ? 'boss' : 'worker');
         },
         vehicleTemplate(kind) {
-          const model = models.vehicles[kind];
+          const alias: Record<string, string> = { gt: 'gt', muscle: 'long', hyper: 'wide', ambulance: 'van' };
+          const model = raceCars[alias[kind] ?? ''] ?? models.vehicles[alias[kind] && !raceCars[alias[kind]!] ? (kind === 'ambulance' ? 'van' : 'sports') : kind];
           if (!model) throw new Error(`Missing vehicle model: ${kind}`);
           return model;
         },

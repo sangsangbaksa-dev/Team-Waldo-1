@@ -52,7 +52,7 @@ export class OutlawAudio {
   private target(p: AudioParam, v: number, time = 0.06): void { const c = this.eng.ctx; if (c) p.setTargetAtTime(v, c.currentTime, time); }
   setEngine(on: boolean, kind: VehicleKind, speed: number, throttle: number): void {
     const m = this.motor; if (!m) return;
-    const profiles: Record<VehicleKind, number> = { sedan: 1, sports: 1.35, suv: 0.82, taxi: 0.96, truck: 0.63, van: 0.76, hatch: 1.14, police: 1.12, buggy: 1.22, tank: 0.48 };
+    const profiles: Record<VehicleKind, number> = { sedan: 1, sports: 1.35, suv: 0.82, taxi: 0.96, truck: 0.63, van: 0.76, hatch: 1.14, police: 1.12, buggy: 1.22, tank: 0.48, gt: 1.4, muscle: 0.7, hyper: 1.6, ambulance: 0.8 };
     const v = Math.abs(Number.isFinite(speed) ? speed : 0), thr = clamp(throttle), gearWidth = kind === 'tank' ? 5 : kind === 'truck' ? 8 : 12;
     const rpm = Math.min(v / gearWidth, 4.999) % 1, base = (55 + rpm * 135 + thr * 15) * (profiles[kind] || 1);
     this.target(m.a.frequency, base); this.target(m.b.frequency, base * (kind === 'tank' ? 1.03 : 1.51));
@@ -111,6 +111,10 @@ export class OutlawAudio {
       case 'glass': n(.35,.4,5000,'highpass'); t(2100,.24,.12,'sine',-700); break;
       case 'scream': { const f = [390, 490, 580][this.screamIndex++ % 3]; t(f,.65,.22,'sawtooth',150); t(f*2,.55,.09,'triangle',180); t(f*3,.4,.04,'sine',200); break; }
       case 'honk': t(390,.45,.22,'sawtooth'); t(490,.45,.17,'square'); break;
+      case 'minigun': n(.07,.45,1200); t(160,.06,.2,'square',-90); break;
+      case 'railgun': n(.3,.4,3000,'highpass'); t(900,.35,.3,'sawtooth',-800); break;
+      case 'grenade': t(500,.06,.2,'square',-300); break;
+      case 'bat': n(.1,.4,500,'lowpass'); t(95,.14,.25,'triangle',-50); break;
       case 'punch': case 'hit': n(.12,.35,400,'lowpass'); t(130,.12,.22,'triangle',-70); break;
       case 'bullet_wall': n(.08,.3,3300); t(1600,.06,.1,'triangle',-800); break;
       case 'hurt': n(.15,.28,500,'lowpass'); t(180,.18,.25,'triangle',-100); break;

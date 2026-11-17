@@ -40,6 +40,7 @@ export function generateCity(seed: number): CityMap {
     ['hosp0', 'hospital', '시립 병원', 7, 8], ['police0', 'police', '중앙 경찰서', 8, 3],
     ['bank0', 'bank', '유니언 은행', 3, 5], ['casino0', 'casino', '미라지 카지노', 5, 5],
     ['chop0', 'chopshop', '항만 해체장', 1, 1], ['garage0', 'garage', '모터 웍스', 9, 9], ['club0', 'club', '블루 아워', 6, 4],
+    ['dealer0', 'dealer', '프레스티지 모터스', 4, 9], ['gym0', 'gym', '스틸 짐', 7, 1], ['arena0', 'arena', '지하 격투장', 0, 8],
     ['m_delivery', 'start', '배달 의뢰', 2, 10], ['m_theft', 'start', '차량 절도', 10, 3], ['m_debt', 'start', '빚 수금', 3, 7],
     ['m_chase', 'start', '추격 의뢰', 8, 10], ['m_heist', 'start', '은행 작업', 4, 3], ['m_race', 'start', '스트리트 레이스', 10, 6], ['m_boss', 'start', '최후의 거래', 2, 0],
   ];
@@ -89,7 +90,7 @@ export function generateCity(seed: number): CityMap {
     if (!start) {
       b.kind = kind === 'safehouse' ? 'house' : pay || kind === 'garage' || kind === 'chopshop' ? 'garage' : kind === 'hospital' || kind === 'police' || kind === 'bank' ? 'office' : 'shop';
       b.tex = kind === 'bank' || kind === 'hospital' ? 2 : kind === 'casino' || kind === 'club' ? 5 : pay || kind === 'chopshop' ? 3 : 1;
-      b.neon = kind === 'casino' || kind === 'club' || kind === 'gunshop' || pay;
+      b.neon = kind === 'casino' || kind === 'club' || kind === 'gunshop' || pay || kind === 'dealer' || kind === 'arena';
       if (kind === 'safehouse') { b.h = 7; b.roof = 'gable'; }
     }
     // 도색소는 북쪽 도로와 연결된 넓은 앞마당을 확보합니다.

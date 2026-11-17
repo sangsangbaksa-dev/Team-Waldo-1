@@ -15,7 +15,7 @@ export interface CarParams { top: number; accel: number; brake: number; grip: nu
 
 export const PLAYER_PARAMS: CarParams = { top: 74, accel: 15, brake: 62, grip: 1, turn: 1, drift: 1, nitro: 1 };
 export const BOOST_TOP = 1.36;
-export const NITRO_SECONDS = 4.2;
+export const NITRO_SECONDS = 6.5;
 /** 레이싱카 차체(race.glb)에 맞춘 충돌 반길이·반폭. 원은 옆으로는 너무 넓고 앞뒤로는 너무 짧습니다. */
 export const BODY_HALF_LENGTH = 2.25;
 export const BODY_HALF_WIDTH = 1.02;

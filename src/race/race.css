@@ -76,22 +76,22 @@
 .rc-seg.lv{flex-wrap:nowrap;gap:6px}.rc-seg.lv .rc-opt{min-width:0;padding:8px 4px;font-size:12px;line-height:1.25;text-align:center;white-space:normal;overflow:visible}
 
 /* 설정 화면 SPEED RUSH 톤. 글자 크기·하단 여백·난이도 줄바꿈은 위 규칙을 유지합니다. */
-.rc-setup{background:radial-gradient(120% 80% at 50% -10%,#2a1458 0%,#140b2e 45%,#0d0820 100%);color:#efeaff}
+.rc-setup{background:#000;color:#efeaff}
 .rc-setup header .rc-eyebrow{color:#ff7be4;letter-spacing:.3em}
 .rc-setup h2{font-weight:800;font-style:italic;letter-spacing:-.02em;line-height:1.2}
 .rc-setup h3,.rc-note,.rc-opt-sub,.rc-car-head em,.rc-stat{color:#a99fc8}
-.rc-opt{background:#1a1238cc;border-color:#33285a}
+.rc-opt{background:#000;border-color:#33285a}
 .rc-opt:hover{border-color:#6a58a8}
-.rc-opt.on{border-color:#ff7be4;background:#241650;box-shadow:inset 0 0 0 1px #ff7be4,0 0 18px #ff4fd833}
+.rc-opt.on{border-color:#ff7be4;background:#000;box-shadow:inset 0 0 0 1px #ff7be4,0 0 18px #ff4fd833}
 .rc-map svg{background:#000;box-shadow:inset 0 0 0 1px #ffffff14}
 .rc-map path{stroke:#ffffffb3;stroke-width:2.6;filter:drop-shadow(0 1px 1.5px #0009)}
 .rc-map.on path{stroke:var(--m-line,#fff);stroke-width:3;filter:drop-shadow(0 0 3px var(--m-line,#fff))}
 .rc-car.on{border-color:var(--car,#ff7be4);box-shadow:inset 0 0 0 1px var(--car,#ff7be4),0 0 18px color-mix(in srgb,var(--car,#ff7be4) 30%,transparent)}
 .rc-stat .bar{background:#2c2350}.rc-stat .bar span{background:var(--car,#cfd5df)}
 .rc-car-head i{box-shadow:0 0 8px var(--car,#fff)}
-.rc-setup footer{background:#0b0719ee;border-top-color:#2c2350;backdrop-filter:blur(12px)}
-.rc-setup footer button{background:#1a1238;border-color:#3d3070;color:#efeaff}
-.rc-setup footer .primary{background:linear-gradient(135deg,#ff4fd8,#ff9a5a);border-color:transparent;color:#1a0628;box-shadow:0 6px 20px #ff4fd855}
+.rc-setup footer{background:#000;border-top-color:#2c2350;backdrop-filter:blur(12px)}
+.rc-setup footer button{background:#000;border-color:#3d3070;color:#efeaff}
+.rc-setup footer .primary{background:#ff6fb0;border-color:transparent;color:#1a0628;box-shadow:0 6px 20px #ff4fd855}
 .rc-setup footer .rc-pick{color:#cfc6ec}
 .rc-opt:focus-visible,.rc-setup footer button:focus-visible{outline-color:#7dffe6}
 /* 한글은 단어 단위로 줄바꿈합니다(좁은 화면에서 "어려/움"처럼 낱말이 쪼개지지 않게). */

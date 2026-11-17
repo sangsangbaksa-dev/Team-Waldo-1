@@ -21,7 +21,7 @@ export class OutlawAudio {
   private eng = new AudioEngine();
   private last = new Map<string, number>();
   private motor: Motor | null = null;
-  private skid: Loop | null = null; private wind: Loop | null = null; private crowd: Loop | null = null;
+  private skid: Loop | null = null; private wind: Loop | null = null; private crowd: Loop | null = null; private rainLoop: Loop | null = null;
   private cricket: { osc: OscillatorNode; gain: GainNode; lfo: OscillatorNode; modulation: GainNode } | null = null;
   private siren: { osc: OscillatorNode; gain: GainNode; pan: StereoPannerNode; lfo: OscillatorNode } | null = null;
   private radioBus: GainNode | null = null; private radioTimer: ReturnType<typeof setInterval> | null = null;
@@ -42,7 +42,7 @@ export class OutlawAudio {
       src.buffer = this.eng.noise; src.loop = true; filter.type = type; filter.frequency.value = f; filter.Q.value = q; gain.gain.value = 0;
       src.connect(filter); filter.connect(gain); gain.connect(dest); src.start(); this.eng.track(src); return { src, filter, gain };
     };
-    this.skid = loop('bandpass', 1900, 3); this.wind = loop('lowpass', 700, 0.5); this.crowd = loop('lowpass', 450, 0.35);
+    this.skid = loop('bandpass', 1900, 3); this.wind = loop('lowpass', 700, 0.5); this.crowd = loop('lowpass', 450, 0.35); this.rainLoop = loop('highpass', 2800, 0.4);
     const osc = c.createOscillator(), cg = c.createGain(), lfo = c.createOscillator(), modulation = c.createGain();
     osc.type = 'sine'; osc.frequency.value = 4800; cg.gain.value = 0; lfo.frequency.value = 8; modulation.gain.value = 0;
     lfo.connect(modulation); modulation.connect(cg.gain); osc.connect(cg); cg.connect(dest); osc.start(); lfo.start(); this.eng.track(osc); this.eng.track(lfo); this.cricket = { osc, gain: cg, lfo, modulation };
@@ -60,6 +60,7 @@ export class OutlawAudio {
   }
   setSkid(level: number): void { if (this.skid) this.target(this.skid.gain.gain, clamp(level) * 0.16); }
   setWind(level: number): void { if (this.wind) { const v = clamp(level); this.target(this.wind.gain.gain, v * 0.15); this.target(this.wind.filter.frequency, 450 + v * 1800); } }
+  setRain(level: number): void { if (this.rainLoop) this.target(this.rainLoop.gain.gain, clamp(level) * 0.07); }
   setAmbience(crowd: number, night: boolean): void {
     if (this.crowd) this.target(this.crowd.gain.gain, clamp(crowd) * 0.06, 0.3);
     if (this.cricket) { this.target(this.cricket.gain.gain, night ? 0.006 : 0, 0.3); this.target(this.cricket.modulation.gain, night ? 0.004 : 0, 0.3); }
@@ -175,6 +176,6 @@ export class OutlawAudio {
   dispose(): void {
     if (this.disposed) return; this.disposed = true;
     if (this.radioTimer !== null) clearInterval(this.radioTimer); this.radioTimer = null; this.radioBus?.disconnect();
-    this.eng.dispose(); this.motor = null; this.skid = this.wind = this.crowd = null; this.siren = null; this.cricket = null; this.radioBus = null;
+    this.eng.dispose(); this.motor = null; this.skid = this.wind = this.crowd = this.rainLoop = null; this.siren = null; this.cricket = null; this.radioBus = null;
   }
 }

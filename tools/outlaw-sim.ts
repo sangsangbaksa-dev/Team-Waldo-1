@@ -1,6 +1,6 @@
 // OUTLAW CITY 헤드리스 점검: 시민 주인공·무기·일거리·카지노·부동산·차고·업적을 시뮬레이션만으로 확인합니다.
 // 실행: npx tsx tools/outlaw-sim.ts
-import { Sim } from '../src/outlaw/sim';
+import { Sim, rainTarget } from '../src/outlaw/sim';
 import { HEROES, PROPERTIES, CAR_SHOP, ACHIEVEMENTS } from '../src/outlaw/life';
 import { blankCarInput, blankPedInput, WEAPONS, WEAPON_ORDER, PLAYER_ID } from '../src/outlaw/types';
 import { startJob, stepJobs, pickpocket, JOB_LIST } from '../src/outlaw/jobs';
@@ -89,5 +89,7 @@ for (const info of JOB_LIST) {
 }
 ok(ACHIEVEMENTS.length >= 20 && CAR_SHOP.length >= 10, '업적·차량 목록');
 { const s = new Sim(1); s.cash = 20000; buyProperty(s, 'store'); run(s, 2); ok(s.life.ach.includes('landlord') && s.life.ach.includes('rich_10k'), '업적 자동 지급'); }
+{ let lo = 1, hi = 0; for (let t = 0; t < 7200; t += 5) { const r = rainTarget(t); lo = Math.min(lo, r); hi = Math.max(hi, r); } ok(lo === 0 && hi > 0.8, `날씨가 맑음~폭우로 변함 (${lo.toFixed(2)}~${hi.toFixed(2)})`);
+  const s = new Sim(1); s.t = 0; let rainy = 0; for (let i = 0; i < 4000; i++) { s.step(0.5, blankPedInput(), blankCarInput()); if (s.rain > 0.3) rainy++; } ok(s.rain >= 0 && s.rain <= 1 && rainy > 100 && rainy < 3900, `비 세기 갱신 (${rainy}/4000 틱 비)`); }
 
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과'); process.exit(failed ? 1 : 0);

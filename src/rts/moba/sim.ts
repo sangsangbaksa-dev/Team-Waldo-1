@@ -11,7 +11,7 @@ export type EntKind = 'hero' | 'melee' | 'caster' | 'siege' | 'turret' | 'nexus'
 export type OrderT = 'idle' | 'move' | 'attack' | 'amove';
 export interface Hero {
   champ: ChampId; level: number; xp: number; gold: number; mp: number; maxmp: number; ready: number[]; items: ItemId[];
-  kills: number; deaths: number; assists: number; cs: number; dead: boolean; respawnAt: number; recall: number; bot: boolean; lane: Lane;
+  points: number; rank: number[]; kills: number; deaths: number; assists: number; cs: number; dead: boolean; respawnAt: number; recall: number; bot: boolean; lane: Lane;
   o: { t: OrderT; x: number; y: number; target: number }; steal: number; haste: number; castAt: number; castIdx: number;
   slowUntil: number; slow: number; stunUntil: number; shield: number; shieldUntil: number; aspdUntil: number; aspd: number; speedUntil: number; speedUp: number; name: string;
 }
@@ -23,7 +23,7 @@ export interface Ent {
 export interface Team { kills: number; towers: number; drakes: number; baronUntil: number; gold: number }
 export type Cmd =
   | { k: 'move'; x: number; y: number } | { k: 'amove'; x: number; y: number } | { k: 'attack'; target: number } | { k: 'stop' }
-  | { k: 'cast'; i: number; x: number; y: number } | { k: 'buy'; item: ItemId } | { k: 'recall' } | { k: 'surrender' };
+  | { k: 'cast'; i: number; x: number; y: number } | { k: 'learn'; i: number } | { k: 'buy'; item: ItemId } | { k: 'recall' } | { k: 'surrender' };
 export type SimEvent =
   | { t: 'shot'; from: number; x0: number; y0: number; x1: number; y1: number; team: number; ranged: boolean }
   | { t: 'bolt'; x0: number; y0: number; x1: number; y1: number; team: number; wide: number }
@@ -84,8 +84,8 @@ export class MobaSim {
   private addHero(team: number, champ: ChampId, lane: Lane, bot: boolean, slot: number): Ent {
     const d = CHAMPS[champ], n = NEXUS[team], e = this.add('hero', team, n.x + (team === 0 ? 3 : -3) + slot * 0.6, n.y + (team === 0 ? -3 : 3));
     e.sub = champ; e.lane = lane;
-    e.hero = { champ, level: 1, xp: 0, gold: 500, mp: d.mp, maxmp: d.mp, ready: [0, 0, 0, 0], items: [], kills: 0, deaths: 0, assists: 0, cs: 0, dead: false, respawnAt: 0, recall: 0, bot, lane, o: idleOrder(), steal: 0, haste: 0, castAt: -99, castIdx: -1, slowUntil: 0, slow: 0, stunUntil: 0, shield: 0, shieldUntil: 0, aspdUntil: 0, aspd: 0, speedUntil: 0, speedUp: 0, name: d.name };
-    this.heroIds.push(e.id); this.recalc(e, true); return e;
+    e.hero = { champ, level: 1, xp: 0, gold: 500, mp: d.mp, maxmp: d.mp, ready: [0, 0, 0, 0], items: [], points: 1, rank: [0, 0, 0, 0], kills: 0, deaths: 0, assists: 0, cs: 0, dead: false, respawnAt: 0, recall: 0, bot, lane, o: idleOrder(), steal: 0, haste: 0, castAt: -99, castIdx: -1, slowUntil: 0, slow: 0, stunUntil: 0, shield: 0, shieldUntil: 0, aspdUntil: 0, aspd: 0, speedUntil: 0, speedUp: 0, name: d.name };
+    this.heroIds.push(e.id); this.recalc(e, true); if (bot) this.autoLearn(e); else this.learn(e, 0); return e;
   }
   /** 레벨·아이템에 따른 능력치를 다시 계산합니다. */
   recalc(e: Ent, fill = false): void {
@@ -128,6 +128,7 @@ export class MobaSim {
       case 'attack': { const t = this.get(c.target); if (!t || !this.foe(e, t)) return false; this.cancelRecall(e); h.o = { t: 'attack', x: 0, y: 0, target: t.id }; e.path = []; return true; }
       case 'stop': h.o = idleOrder(); e.path = []; return true;
       case 'cast': return this.cast(e, c.i, c.x, c.y);
+      case 'learn': return this.learn(e, c.i);
       case 'buy': return this.buy(e, c.item);
       case 'recall': if (h.recall > 0) { this.cancelRecall(e); return true; } if (this.inBase(e)) return false; h.recall = TICK * 4; h.o = idleOrder(); e.path = []; this.emit({ t: 'recall', id: e.id }); return true;
     }
@@ -140,12 +141,19 @@ export class MobaSim {
   }
 
   // ---------- 스킬 ----------
+  canLearn(e: Ent, i: number): boolean {
+    const h = e.hero; if (!h || h.points < 1 || !Number.isInteger(i) || i < 0 || i > 3) return false; const r = h.rank[i];
+    return i === 3 ? r < 3 && h.level >= this.skill(e, 3).level * (r + 1) : r < 5 && r < Math.ceil(h.level / 2);
+  }
+  learn(e: Ent, i: number): boolean { if (!this.canLearn(e, i)) return false; e.hero!.rank[i]++; e.hero!.points--; return true; }
+  /** 봇은 궁극기를 우선하고 나머지는 고르게 올립니다. */
+  autoLearn(e: Ent): void { for (let n = 0; n < 8 && e.hero!.points > 0; n++) { if (this.learn(e, 3)) continue; const order = [0, 1, 2].sort((a, b) => e.hero!.rank[a] - e.hero!.rank[b]); if (!order.some(i => this.learn(e, i))) break; } }
   private cast(e: Ent, i: number, tx: number, ty: number): boolean {
     const h = e.hero!; if (!Number.isInteger(i) || i < 0 || i > 3 || !Number.isFinite(tx) || !Number.isFinite(ty) || this.stunned(e)) return false;
-    const k = this.skill(e, i); if (h.level < k.level || this.tick < h.ready[i] || h.mp < k.mana) return false;
+    const k = this.skill(e, i), rank = h.rank[i]; if (rank < 1 || this.tick < h.ready[i] || h.mp < k.mana) return false;
     let dx = tx - e.x, dy = ty - e.y; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
-    h.mp -= k.mana; h.ready[i] = this.tick + k.cd; h.castAt = this.tick; h.castIdx = i; this.cancelRecall(e); e.fx = dx; e.fy = dy;
-    const power = (k.dmg ?? 0) + (k.ratio ?? 0) * e.dmg + h.level * 4;
+    h.mp -= k.mana; h.ready[i] = this.tick + Math.round(k.cd * (1 - 0.04 * (rank - 1))); h.castAt = this.tick; h.castIdx = i; this.cancelRecall(e); e.fx = dx; e.fy = dy;
+    const power = ((k.dmg ?? 0) * (1 + 0.3 * (rank - 1)) + (k.ratio ?? 0) * e.dmg + h.level * 4);
     const mult = this.baron(e.team) ? 1.2 : 1 + 0.08 * Math.min(4, this.teams[e.team].drakes);
     const strike = (cx: number, cy: number, r: number): void => {
       for (const t of this.ents) {
@@ -173,6 +181,7 @@ export class MobaSim {
       const nx = e.x + dx * d, ny = e.y + dy * d; this.emit({ t: 'dash', x0: e.x, y0: e.y, x1: nx, y1: ny, team: e.team }); e.x = nx; e.y = ny; e.path = []; h.o = idleOrder();
       if (k.radius) { this.emit({ t: 'blast', x: nx, y: ny, r: k.radius, team: e.team }); strike(nx, ny, k.radius); }
     } else {
+      if (k.heal) { for (const a of this.ents) if (a.hero && !a.hero.dead && a.team === e.team && this.dist(a, e) <= (k.radius ?? 5)) { a.hp = Math.min(a.maxhp, a.hp + (k.heal * (1 + 0.3 * (rank - 1)) + (k.ratio ?? 0) * e.dmg)); this.emit({ t: 'buff', id: a.id, team: a.team }); } }
       if (k.shield) { h.shield = k.shield + (k.ratio ?? 0) * e.dmg; h.shieldUntil = this.tick + (k.dur ?? TICK * 3); }
       if (k.aspd) { h.aspd = k.aspd; h.aspdUntil = this.tick + (k.dur ?? TICK * 3); }
       if (k.speed) { h.speedUp = k.speed; h.speedUntil = this.tick + (k.dur ?? TICK * 3); }
@@ -230,7 +239,7 @@ export class MobaSim {
   }
   addXp(e: Ent, amt: number): void {
     const h = e.hero; if (!h || h.level >= MAX_LEVEL) return; h.xp += amt;
-    while (h.level < MAX_LEVEL && h.xp >= xpNeed(h.level)) { h.xp -= xpNeed(h.level); h.level++; this.recalc(e); e.hp = Math.min(e.maxhp, e.hp + CHAMPS[h.champ].hpUp); this.emit({ t: 'level', id: e.id }); }
+    while (h.level < MAX_LEVEL && h.xp >= xpNeed(h.level)) { h.xp -= xpNeed(h.level); h.level++; h.points++; this.recalc(e); if (h.bot) this.autoLearn(e); e.hp = Math.min(e.maxhp, e.hp + CHAMPS[h.champ].hpUp); this.emit({ t: 'level', id: e.id }); }
   }
   private finish(w: number): void { this.winner = w; }
 

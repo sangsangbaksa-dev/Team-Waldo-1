@@ -12,7 +12,6 @@ const esc = (s: string): string => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '
 const clock = (ticks: number): string => { const s = Math.floor(ticks / TICK); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const LANE_NAME: Record<Lane, string> = { top: '탑', mid: '미드', bot: '바텀' };
 const KEYS = ['Q', 'W', 'E', 'R'];
-const FOES: ChampId[] = ['blade', 'arcana', 'ranger'];
 
 export function openMoba(onBack: () => void, onExit: () => void): void {
   const prefs = readPreferences(), touch = matchMedia('(pointer: coarse)').matches;
@@ -59,14 +58,16 @@ export function openMoba(onBack: () => void, onExit: () => void): void {
   }
   function cast(idx: number, at?: { x: number; y: number }): void {
     if (!sim || ended) return; const m = me(); if (!m || m.hero!.dead) return; const p = at ?? aimPoint(idx), h = m.hero!, k = sim.skill(m, idx);
-    if (h.level < k.level) { say(`${k.name}은(는) ${k.level}레벨부터 쓸 수 있습니다`, true); return; }
+    if (!h.rank[idx]) { say(sim.canLearn(m, idx) ? `${k.name}: 스킬 포인트로 먼저 배우세요 (Ctrl+${KEYS[idx]} 또는 + 버튼)` : `${k.name}은(는) 아직 배울 수 없습니다 (궁극기는 3·6·9레벨에 배웁니다)`, true); return; }
     if (sim.tick < h.ready[idx]) { say('아직 쓸 수 없습니다 (재사용 대기)', true); return; }
     if (h.mp < k.mana) { say('마나가 부족합니다', true); return; }
     if (cmd({ k: 'cast', i: idx, x: p.x, y: p.y })) audio.sfx(k.kind === 'shot' ? 'rocket' : k.kind === 'buff' ? 'built' : 'cannon', 0.7);
   }
+  function learn(idx: number): void { if (!sim || ended) return; const m = me(); if (m && cmd({ k: 'learn', i: idx })) { audio.sfx('built', 0.5); say(`${sim.skill(m, idx).name} 강화! (${m.hero!.rank[idx]}단계)`); } }
   const hot = (idx: number): void => { if (touch) cast(idx); else { aimIdx = idx; } };
   function onKey(e: KeyboardEvent): void {
     const k = e.key.toUpperCase();
+    if (e.type === 'keydown' && (e.ctrlKey || e.metaKey) && KEYS.includes(k)) { e.preventDefault(); learn(KEYS.indexOf(k)); return; }
     if (e.type === 'keyup') { keys.delete(e.code); const i = KEYS.indexOf(k); if (i >= 0 && aimIdx === i) { aimIdx = -1; view?.setAim(null); cast(i); } return; }
     keys.add(e.code); audio.unlock();
     if (e.key === 'Escape') { e.preventDefault(); if (root.dataset.phase === 'paused') resume(); else if (modal.classList.contains('show') && root.dataset.phase === 'play') hide(); else if (aimIdx >= 0) { aimIdx = -1; view?.setAim(null); } else if (amove) { amove = false; hint(''); } else openMenu(); return; }
@@ -99,7 +100,7 @@ export function openMoba(onBack: () => void, onExit: () => void): void {
   over.addEventListener('wheel', e => { e.preventDefault(); view?.zoom(e.deltaY > 0 ? 1.08 : 0.92); }, { passive: false });
   mini.addEventListener('pointerdown', e => { e.preventDefault(); if (!sim || !view) return; const r = mini.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * SIZE, y = (e.clientY - r.top) / r.height * SIZE; if (e.button === 2) { cmd({ k: 'move', x, y }); return; } view.lookAt(x, y); free = true; });
   mini.addEventListener('contextmenu', e => e.preventDefault());
-  $('#mb-skills').addEventListener('pointerdown', e => { const b = (e.target as HTMLElement).closest<HTMLElement>('[data-sk]'); if (!b) return; e.preventDefault(); cast(Number(b.dataset.sk)); });
+  $('#mb-skills').addEventListener('pointerdown', e => { const l = (e.target as HTMLElement).closest<HTMLElement>('[data-learn]'); if (l) { e.preventDefault(); e.stopPropagation(); learn(Number(l.dataset.learn)); return; } const b = (e.target as HTMLElement).closest<HTMLElement>('[data-sk]'); if (!b) return; e.preventDefault(); cast(Number(b.dataset.sk)); });
   $('#mb-items').addEventListener('click', e => { const b = (e.target as HTMLElement).closest<HTMLElement>('[data-sell]'); void b; shop(); });
 
   // ---------- 화면 조각 ----------
@@ -109,7 +110,7 @@ export function openMoba(onBack: () => void, onExit: () => void): void {
     $('#mb-gold').textContent = String(Math.floor(h.gold)); $('#mb-kb').textContent = String(sim.teams[0].kills); $('#mb-kr').textContent = String(sim.teams[1].kills); $('#mb-time').textContent = clock(sim.tick);
     $('#mb-lv').textContent = String(h.level); $('#mb-hp').style.width = bar(m.hp, m.maxhp); $('#mb-hpt').textContent = `${Math.ceil(m.hp)} / ${m.maxhp}${h.shield > 0 && sim.tick < h.shieldUntil ? ` (+${Math.ceil(h.shield)})` : ''}`;
     $('#mb-mp').style.width = bar(h.mp, h.maxmp); $('#mb-mpt').textContent = `${Math.ceil(h.mp)} / ${h.maxmp}`; $('#mb-xp').style.width = h.level >= 15 ? '100%' : bar(h.xp, xpNeed(h.level));
-    const d = CHAMPS[h.champ], sk = d.skills.map((k, i) => { const cd = Math.max(0, h.ready[i] - sim!.tick), lock = h.level < k.level, no = h.mp < k.mana; return `<button type="button" data-sk="${i}" class="${lock ? 'lock' : ''}${no && !cd ? ' nomp' : ''}${aimIdx === i ? ' on' : ''}" title="${esc(k.name)} — ${esc(k.desc)}"><b>${esc(k.name)}</b><kbd>${KEYS[i]}</kbd><small>${lock ? `Lv${k.level}` : `마나 ${k.mana}`}</small>${cd ? `<span class="cd" style="--p:${cd / k.cd}">${(cd / TICK).toFixed(cd > 60 ? 0 : 1)}</span>` : ''}</button>`; }).join('');
+    const d = CHAMPS[h.champ], sk = d.skills.map((k, i) => { const cd = Math.max(0, h.ready[i] - sim!.tick), lock = !h.rank[i], no = h.mp < k.mana, up = h.points > 0 && sim!.canLearn(me()!, i), pips = '●'.repeat(h.rank[i]) + '○'.repeat(Math.max(0, (i === 3 ? 3 : 5) - h.rank[i])); return `<button type="button" data-sk="${i}" class="${lock ? 'lock' : ''}${no && !cd ? ' nomp' : ''}${aimIdx === i ? ' on' : ''}" title="${esc(k.name)} — ${esc(k.desc)}"><b>${esc(k.name)}</b><kbd>${KEYS[i]}</kbd><small>${lock ? (up ? '배우기' : '잠김') : `마나 ${k.mana}`}</small><u class="pips">${pips}</u>${up ? `<i class="plus" data-learn="${i}" title="스킬 강화 (Ctrl+${KEYS[i]})">+</i>` : ''}${cd ? `<span class="cd" style="--p:${cd / k.cd}">${(cd / TICK).toFixed(cd > 60 ? 0 : 1)}</span>` : ''}</button>`; }).join('');
     if (sk !== skillKey) { skillKey = sk; $('#mb-skills').innerHTML = sk; }
     const it = Array.from({ length: MAX_ITEMS }, (_, i) => { const id = h.items[i]; return id ? `<span class="it" title="${esc(ITEMS[id].name)} — ${esc(ITEMS[id].role)}">${esc(ITEMS[id].name.slice(0, 2))}</span>` : '<span class="it empty"></span>'; }).join('');
     if (it !== itemKey) { itemKey = it; $('#mb-items').innerHTML = it; }
@@ -189,7 +190,7 @@ export function openMoba(onBack: () => void, onExit: () => void): void {
     modal.querySelector<HTMLElement>('#mb-start')?.focus();
   }
   function begin(): void {
-    const others = LANES.filter(l => l !== lane), allies = others.map((l, i) => ({ champ: FOES[(CHAMP_IDS.indexOf(champ) + 1 + i) % 3], lane: l })), foes = LANES.map((l, i) => ({ champ: FOES[(i + CHAMP_IDS.indexOf(champ)) % 3], lane: l }));
+    const others = LANES.filter(l => l !== lane), allies = others.map((l, i) => ({ champ: CHAMP_IDS[(CHAMP_IDS.indexOf(champ) + 1 + i) % CHAMP_IDS.length], lane: l })), foes = LANES.map((l, i) => ({ champ: CHAMP_IDS[(i + CHAMP_IDS.indexOf(champ) + 2) % CHAMP_IDS.length], lane: l }));
     if (view) { view.dispose(); view = null; }
     sim = new MobaSim({ player: champ, lane, allies, foes }); ais = [new MobaAi(0, level), new MobaAi(1, level)];
     for (const hh of sim.heroes(1)) hh.hero!.gold = Math.round(hh.hero!.gold * LEVELS[level].goldMul);
@@ -198,7 +199,7 @@ export function openMoba(onBack: () => void, onExit: () => void): void {
     ended = false; paused = false; acc = 0; free = false; aimIdx = -1; amove = false; skillKey = itemKey = ''; floats.length = 0; feed.length = 0; hide(); root.dataset.phase = 'play'; resize(); last = performance.now();
     say(`${LANE_NAME[lane]}에서 시작합니다. 우클릭으로 이동, QWER 로 스킬!`); const m = sim.me(); view.lookAt(m.x, m.y);
     // 처음에는 상점에서 장비를 사도록 안내
-    window.setTimeout(() => { if (sim && !ended && sim.tick < 400) hint('기지에서 P 로 상점을 열어 아이템을 사고, 미니언 웨이브(12초)를 따라 라인으로 가세요'); window.setTimeout(() => hint(''), 9000); }, 600);
+    window.setTimeout(() => { if (sim && !ended && sim.tick < 400) hint('기지에서 P 로 상점을 열어 아이템을 사고, 미니언 웨이브를 따라 라인으로 가세요. 레벨업마다 스킬 포인트가 생겨요 (Ctrl+Q/W/E/R)'); window.setTimeout(() => hint(''), 9000); }, 600);
   }
   function finish(): void {
     if (!sim || ended) return; ended = true; root.dataset.phase = 'over'; const win = sim.winner === 0; audio.sfx(win ? 'victory' : 'defeat');

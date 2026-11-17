@@ -20,6 +20,8 @@ import { stepJobs } from './jobs';
 export interface SaveData { v: 1; stunts?: number[]; styleTotal?: number; cash: number; completed: string[]; guns: Array<[WeaponId, number, number]>; armor: number; collected: number[]; clock: number; kills: number; playSec: number; life?: LifeState }
 export const STREAM_RADIUS = 190;
 export const DAY_SECONDS = 1200;
+/** 시간에 따른 날씨(0 맑음 ~ 1 폭우). 결정적이라 같은 시각엔 같은 날씨입니다. */
+export const rainTarget = (t: number): number => { const w = Math.sin(t / 173) + 0.7 * Math.sin(t / 61 + 1.3) + 0.4 * Math.sin(t / 311 + 4); return Math.min(1, Math.max(0, (w - 0.35) / 0.9)); };
 
 const PED_STATS: Record<PedKind, { hp: number; armor: number; team: Team }> = {
   player: { hp: 100, armor: 0, team: 'player' }, civ: { hp: 60, armor: 0, team: 'civ' }, cop: { hp: 100, armor: 0, team: 'cop' },
@@ -41,7 +43,7 @@ export function rayVsObb(ox: number, oz: number, dx: number, dz: number, cx: num
 }
 
 export class Sim {
-  map: CityMap; seed: number; t = 0; frame = 0; /** 시각(0~24시) */ clock = 14.8; rng: () => number;
+  map: CityMap; seed: number; t = 0; frame = 0; /** 시각(0~24시) */ clock = 14.8; /** 비 세기(0~1) */ rain = 0; rng: () => number;
   peds: Ped[] = []; vehicles: Vehicle[] = []; pickups: Pickup[] = []; projectiles: Projectile[] = []; events: SimEvent[] = []; crimes: Crime[] = [];
   wanted: Wanted = { heat: 0, stars: 0, unseenT: 99, lastX: 0, lastZ: 0, evadeT: 0, cops: 0 };
   mission: MissionState = blankMissionState();
@@ -390,7 +392,7 @@ export class Sim {
   // ---------- 매 틱 ----------
   /** pin: 플레이어 보행 입력, cin: 차량 입력. pin.enter 는 눌린 프레임에만 true 여야 합니다. */
   step(dt: number, pin: PedInput, cin: CarInput): void {
-    this.t += dt; this.frame++; this.playSec += dt; this.clock = (this.clock + dt * 24 / DAY_SECONDS) % 24;
+    this.t += dt; this.frame++; this.playSec += dt; this.clock = (this.clock + dt * 24 / DAY_SECONDS) % 24; this.rain += (rainTarget(this.t) - this.rain) * Math.min(1, dt * 0.25);
     const p = this.player;
     if (p.alive) {
       p.input = { ...pin };

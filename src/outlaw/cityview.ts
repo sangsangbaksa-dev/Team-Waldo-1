@@ -107,7 +107,7 @@ export class CityView {
     this.buildGround(); this.buildBuildings(); this.buildRamps(); this.buildProps(); this.buildSignals(); this.buildHorizon();
     for (const c of this.chunks) this.flush(c.batch, c.root);
     // 처음 렌더하기 전에도 황혼 조명이 준비됩니다.
-    this.lighting(16.6, new THREE.Vector3());
+    this.lighting(16.6, new THREE.Vector3(), 0);
   }
   private texture(source: THREE.Texture): THREE.Texture {
     // textures.ts의 캐시는 다른 뷰도 사용하므로 소유권을 분리합니다.
@@ -289,11 +289,29 @@ export class CityView {
     }
     const batch: Batch = new Map([[this.mat({ color: 0x4b5963, flatShading: true }), hills], [this.mat({ color: 0x48515e }), skyline]]); this.flush(batch, this.root);
   }
-  private lighting(clock: number, position: THREE.Vector3): void {
+  private rainLines: THREE.LineSegments | null = null;
+  private rainFx(dt: number, pos: THREE.Vector3, rain: number): void {
+    if (!this.rainLines) {
+      const n = this.quality === 'low' ? 700 : 1800, g = new THREE.BufferGeometry(), a = new Float32Array(n * 6), r = makeRng(77);
+      for (let i = 0; i < n; i++) { a[i * 6] = (r() - .5) * 70; a[i * 6 + 1] = r() * 36; a[i * 6 + 2] = (r() - .5) * 70; }
+      g.setAttribute('position', new THREE.BufferAttribute(a, 3));
+      this.rainLines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0xaec4d6, transparent: true, opacity: 0, depthWrite: false })); this.rainLines.frustumCulled = false; this.root.add(this.rainLines); this.materials.add(this.rainLines.material as THREE.Material);
+    }
+    const l = this.rainLines; l.visible = rain > .02; if (!l.visible) return; (l.material as THREE.LineBasicMaterial).opacity = .1 + rain * .35;
+    const a = (l.geometry.getAttribute('position') as THREE.BufferAttribute).array as Float32Array, n = a.length / 6, fall = 34 * dt;
+    const wrap = (v: number, c: number): number => v - 70 * Math.round((v - c) / 70);
+    for (let i = 0; i < n; i++) {
+      const y0 = a[i * 6 + 1]! - fall, y = y0 < 0 ? y0 + 36 : y0, x = wrap(a[i * 6]!, pos.x), z = wrap(a[i * 6 + 2]!, pos.z);
+      a[i * 6] = x; a[i * 6 + 1] = y; a[i * 6 + 2] = z; a[i * 6 + 3] = x - .1; a[i * 6 + 4] = y + .9; a[i * 6 + 5] = z;
+    }
+    l.position.set(0, Math.max(0, pos.y - 18), 0);
+    (l.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+  }
+  private lighting(clock: number, position: THREE.Vector3, rain: number): void {
     const c = tex.skyColors(clock); this.night = c.night; this.sky.update(c); this.sky.mesh.position.copy(position);
-    this.fog.color.copy(c.fog); this.fog.density = .00165 + c.night * .00055; this.scene.background = c.fog;
-    this.hemi.color.copy(c.hemiSky).lerp(new THREE.Color(0x9aaccb), c.night * .4); this.hemi.groundColor.copy(c.hemiGround); this.hemi.intensity = c.hemiIntensity * 1.35 + c.night * .5;
-    this.sun.color.copy(c.sun); this.sun.intensity = c.sunIntensity * 2.2;
+    this.fog.color.copy(c.fog).lerp(new THREE.Color(0x56606a), rain * .75); this.fog.density = .00165 + c.night * .00055 + rain * .0042; this.scene.background = this.fog.color;
+    this.hemi.color.copy(c.hemiSky).lerp(new THREE.Color(0x9aaccb), c.night * .4); this.hemi.groundColor.copy(c.hemiGround); this.hemi.intensity = (c.hemiIntensity * 1.35 + c.night * .5) * (1 - rain * .3);
+    this.sun.color.copy(c.sun); this.sun.intensity = c.sunIntensity * 2.2 * (1 - rain * .78);
     this.moon.intensity = c.night * .48; this.moon.position.copy(position).addScaledVector(c.moonDir, 280); this.moon.target.position.copy(position);
     // 광원 좌표계의 그림자 텍셀에 맞춰 카메라 이동 시 떨림을 줄입니다.
     const dir = this.scratch.copy(c.sunDir); if (dir.y < .045) dir.y = .045; dir.normalize();
@@ -306,10 +324,10 @@ export class CityView {
     if (this.lampHeads) this.lampHeads.visible = c.night > .4;
     if (this.lampPools) this.lampPools.visible = c.night > .4;
     this.glow.opacity = .16 + c.night * .24;
-    for (const m of this.reflections) m.opacity = c.night * .3;
+    for (const m of this.reflections) m.opacity = Math.min(.55, c.night * .3 + rain * .3);
   }
-  update(_dt: number, camera: THREE.PerspectiveCamera, clock: number, t: number): void {
-    if (this.disposed) return; this.lighting(clock, camera.position);
+  update(dt: number, camera: THREE.PerspectiveCamera, clock: number, t: number, rain = 0): void {
+    if (this.disposed) return; this.lighting(clock, camera.position, rain); this.rainFx(dt, camera.position, rain);
     const radius = this.quality === 'low' ? 610 : 810, halfChunk = this.map.half / 4;
     for (const c of this.chunks) { const dx = Math.max(0, Math.abs(camera.position.x - c.x) - halfChunk), dz = Math.max(0, Math.abs(camera.position.z - c.z) - halfChunk); c.root.visible = dx * dx + dz * dz < radius * radius; }
     if (this.signals && (Math.abs(t - this.signalTick) >= .25 || this.signalTick === -Infinity)) {

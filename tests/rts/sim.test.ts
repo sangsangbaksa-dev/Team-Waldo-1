@@ -116,3 +116,43 @@ describe('결정성(1대1 동기화의 전제)', () => {
   });
   it('시간이 지나도 시뮬레이션이 같은 길이로 끝난다(AI 두 쪽)', () => { expect(TICK).toBe(20); });
 });
+
+describe('건설 현장과 강화', () => {
+  const site = (s: RtsSim) => { const hq = hqOf(s, 0), w = s.units.filter(u => u.owner === 0 && u.kind === 'worker'); s.apply(0, { k: 'build', id: w[0].id, b: 'depot', x: hq.x + 6, y: hq.y - 5 }); return { b: s.buildings.find(x => x.kind === 'depot')!, w }; };
+  it('일꾼이 다른 명령을 받아 떠나도 짓다 만 건물을 다른 일꾼이 이어서 짓는다', () => {
+    const s = fresh(), { b, w } = site(s); run(s, 60);
+    s.apply(0, { k: 'move', ids: [w[0].id], x: 40, y: 80 });
+    run(s, BUILDINGS.depot.time + 600);
+    expect(s.building(b.id)?.done).toBe(true);
+  });
+  it('건설 중 일꾼이 죽어도 건물이 이어서 지어진다', () => {
+    const s = fresh(), { b, w } = site(s); run(s, 40); s.unit(w[0].id)!.hp = 0;
+    run(s, BUILDINGS.depot.time + 600);
+    expect(s.building(b.id)?.done).toBe(true);
+  });
+  it('Shift 연속 건설은 먼저 짓던 건물을 버리지 않고 두 건물을 모두 완성한다', () => {
+    const s = fresh(), hq = hqOf(s, 0), w = s.units.find(u => u.owner === 0 && u.kind === 'worker')!;
+    s.apply(0, { k: 'build', id: w.id, b: 'depot', x: hq.x + 6, y: hq.y - 5 });
+    s.apply(0, { k: 'build', id: w.id, b: 'depot', x: hq.x + 9, y: hq.y - 5, q: true });
+    run(s, BUILDINGS.depot.time * 2 + 900);
+    expect(s.buildings.filter(x => x.kind === 'depot' && x.done)).toHaveLength(2);
+  });
+  it('병영에서 강화를 연구하면 피해량이 늘고 한 번만 살 수 있다', () => {
+    const s = fresh(), hq = hqOf(s, 0); s.players[0].minerals = 999;
+    s.addBuilding(0, 'barracks', hq.x + 7, hq.y - 4, true); const bar = s.buildings.find(b => b.kind === 'barracks')!;
+    expect(s.apply(0, { k: 'research', b: bar.id, r: 'atk' })).toBe(true);
+    expect(s.apply(0, { k: 'research', b: bar.id, r: 'arm' })).toBe(false); // 한 건물은 하나씩
+    run(s, 45 * TICK + 5); expect(s.players[0].up.atk).toBe(true);
+    expect(s.apply(0, { k: 'research', b: bar.id, r: 'atk' })).toBe(false);
+    expect(s.apply(0, { k: 'research', b: bar.id, r: 'cannon' })).toBe(false); // 공장에서만
+  });
+  it('연구를 취소하면 광물을 돌려받는다', () => {
+    const s = fresh(), hq = hqOf(s, 0); s.players[0].minerals = 500; s.addBuilding(0, 'barracks', hq.x + 7, hq.y - 4, true); const bar = s.buildings.find(b => b.kind === 'barracks')!;
+    s.apply(0, { k: 'research', b: bar.id, r: 'arm' }); expect(s.players[0].minerals).toBe(350); s.apply(0, { k: 'cancel', b: bar.id, i: -2 }); expect(s.players[0].minerals).toBe(500);
+  });
+  it('가운데 중립 기지에도 사령부를 지을 수 있고 길이 이어져 있다', () => {
+    const s = fresh(), e = s.map.expansions; expect(e).toHaveLength(4);
+    for (const p of e) expect(s.canPlace('hq', p.x, p.y)).toBe(true);
+    const pf = new Pather(s.map.size, s.grid), hq = hqOf(s, 0), path = pf.find(hq.x - 1, hq.y + 2, e[2].x - 1, e[2].y + 2); expect(path).not.toBeNull();
+  });
+});

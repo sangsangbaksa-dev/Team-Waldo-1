@@ -22,6 +22,8 @@ const flip = (p: Pt): Pt => ({ x: MAP_SIZE - 1 - p.x, y: MAP_SIZE - 1 - p.y });
 const CIRCLES: Array<[number, number, number]> = [[48, 48, 5.2], [30, 62, 4], [27, 40, 3.5], [41, 24, 3], [60, 70, 2.6]];
 const RECTS: Array<[number, number, number, number]> = [[33, 50, 2, 12], [38, 66, 8, 2]];
 const START_NODES: Pt[] = [{ x: 10, y: 72 }, { x: 10, y: 75 }, { x: 10, y: 78 }, { x: 12, y: 81 }, { x: 15, y: 82 }, { x: 18, y: 82 }, { x: 21, y: 81 }];
+// 가운데 아래쪽(내 쪽)과 반대편 위쪽의 중립 기지. 먼저 차지하는 쪽이 광물을 더 얻습니다.
+const SIDE_NODES: Pt[] = [{ x: 40, y: 86 }, { x: 43, y: 87 }, { x: 46, y: 87 }, { x: 49, y: 86 }, { x: 52, y: 85 }];
 const EXPAND_NODES: Pt[] = [{ x: 14, y: 16 }, { x: 14, y: 19 }, { x: 14, y: 22 }, { x: 16, y: 25 }, { x: 19, y: 26 }, { x: 22, y: 26 }];
 
 let cached: RtsMap | null = null;
@@ -44,8 +46,9 @@ export function buildMap(): RtsMap {
   const nodes: RtsMap['nodes'] = [];
   START_NODES.forEach(p => { nodes.push({ ...p, base: 0 }); const q = flip(p); nodes.push({ ...q, base: 1 }); });
   EXPAND_NODES.forEach(p => { nodes.push({ ...p, base: 2 }); const q = flip(p); nodes.push({ ...q, base: 3 }); });
+  SIDE_NODES.forEach(p => { nodes.push({ ...p, base: 4 }); const q = flip(p); nodes.push({ ...q, base: 5 }); });
   const starts: [Pt, Pt] = [{ x: 14, y: 74 }, { x: n - 14 - 4, y: n - 74 - 4 }];
-  const expansions: Pt[] = [{ x: 18, y: 18 }, { x: n - 18 - 4, y: n - 18 - 4 }];
+  const expansions: Pt[] = [{ x: 18, y: 18 }, { x: n - 18 - 4, y: n - 18 - 4 }, { x: 44, y: 79 }, { x: n - 44 - 4, y: n - 79 - 4 }];
   cached = { size: n, terrain, starts, nodes, expansions, rocks };
   return cached;
 }

@@ -1,6 +1,6 @@
 // FRONTLINE — 결정적(deterministic) 실시간 전략 시뮬레이션. 화면·입력과 무관하게 순수 데이터만 다룹니다.
 // 1대1 온라인은 명령만 주고받는 락스텝이므로 Math.random·sin·cos·Date 를 쓰지 않습니다(+ - * / sqrt 만 사용).
-import { BUILDINGS, CARRY, MINE_TICKS, MULT, NODE_AMOUNT, START_MINERALS, START_WORKERS, SUPPLY_MAX, UNITS, type BuildKind, type UnitKind } from './config';
+import { BUILDINGS, CARRY, MINE_TICKS, MULT, NODE_AMOUNT, RESEARCH, START_MINERALS, START_WORKERS, SUPPLY_MAX, UNITS, type BuildKind, type ResearchKind, type UnitKind } from './config';
 import { buildMap, type RtsMap } from './map';
 import { Pather } from './path';
 
@@ -14,10 +14,12 @@ export interface Building {
   k: 'building'; id: number; owner: number; kind: BuildKind; x: number; y: number; size: number; hp: number; maxhp: number;
   /** 건설이 끝났으면 true. 아니면 progress 틱 만큼 지어진 상태. */ done: boolean; progress: number;
   queue: Array<{ u: UnitKind; left: number }>; rx: number; ry: number; rnode: number; cd: number; fired: number; hurt: number; fx: number; fy: number;
+  /** 연구 중인 강화. */ research: { r: ResearchKind; left: number } | null;
+  /** 건설 중인데 일꾼이 없었던 시간(틱). */ idle: number;
 }
 export interface ResNode { k: 'node'; id: number; x: number; y: number; amount: number; busyUntil: number }
 export type Entity = Unit | Building | ResNode;
-export interface Player { minerals: number; used: number; cap: number; mined: number; kills: number; lost: number; made: number; defeated: boolean; income: number }
+export interface Player { minerals: number; used: number; cap: number; mined: number; kills: number; lost: number; made: number; defeated: boolean; income: number; up: Record<ResearchKind, boolean> }
 
 export type Cmd =
   | { k: 'move'; ids: number[]; x: number; y: number }
@@ -25,7 +27,8 @@ export type Cmd =
   | { k: 'attack'; ids: number[]; target: number }
   | { k: 'gather'; ids: number[]; node: number }
   | { k: 'stop'; ids: number[] }
-  | { k: 'build'; id: number; b: BuildKind; x: number; y: number }
+  | { k: 'build'; id: number; b: BuildKind; x: number; y: number; q?: boolean }
+  | { k: 'research'; b: number; r: ResearchKind }
   | { k: 'resume'; ids: number[]; b: number }
   | { k: 'train'; b: number; u: UnitKind }
   | { k: 'cancel'; b: number; i: number }
@@ -40,7 +43,10 @@ export type SimEvent =
   | { t: 'alert'; owner: number; x: number; y: number }
   | { t: 'deposit'; owner: number; x: number; y: number }
   | { t: 'mined'; x: number; y: number }
-  | { t: 'placed'; owner: number; x: number; y: number };
+  | { t: 'placed'; owner: number; x: number; y: number }
+  | { t: 'researched'; owner: number; r: ResearchKind }
+  | { t: 'rescued'; owner: number; kind: BuildKind; x: number; y: number }
+  | { t: 'orphan'; owner: number; kind: BuildKind; x: number; y: number };
 
 const idle = (): Order => ({ t: 'idle', x: 0, y: 0, target: 0, phase: 0, timer: 0 });
 const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -61,7 +67,7 @@ export class RtsSim {
     this.map = buildMap(); const n = this.map.size;
     this.grid = new Uint8Array(this.map.terrain); this.pather = new Pather(n, this.grid);
     this.incomeMult = opts.income ?? [1, 1]; this.head = new Int32Array(Math.ceil(n / 2) ** 2);
-    this.players = [0, 1].map(() => ({ minerals: START_MINERALS, used: 0, cap: 0, mined: 0, kills: 0, lost: 0, made: 0, defeated: false, income: 0 }));
+    this.players = [0, 1].map(() => ({ minerals: START_MINERALS, used: 0, cap: 0, mined: 0, kills: 0, lost: 0, made: 0, defeated: false, income: 0, up: { atk: false, arm: false, cannon: false } }));
     for (const nd of this.map.nodes) if (nd.base < 2) this.addNode(nd.x, nd.y);
     for (const nd of this.map.nodes) if (nd.base >= 2) this.addNode(nd.x, nd.y);
     for (let p = 0; p < 2; p++) {
@@ -96,7 +102,7 @@ export class RtsSim {
     this.nodes.push(nd); this.index.set(nd.id, nd); this.grid[y * this.map.size + x] = 3; return nd;
   }
   addBuilding(owner: number, kind: BuildKind, x: number, y: number, done: boolean): Building {
-    const d = BUILDINGS[kind], b: Building = { k: 'building', id: this.nextId++, owner, kind, x, y, size: d.size, hp: done ? d.hp : Math.round(d.hp * 0.1), maxhp: d.hp, done, progress: done ? d.time : 0, queue: [], rx: 0, ry: 0, rnode: 0, cd: 0, fired: -99, hurt: -99, fx: 0, fy: 1 };
+    const d = BUILDINGS[kind], b: Building = { k: 'building', id: this.nextId++, owner, kind, x, y, size: d.size, hp: done ? d.hp : Math.round(d.hp * 0.1), maxhp: d.hp, done, progress: done ? d.time : 0, queue: [], rx: 0, ry: 0, rnode: 0, cd: 0, fired: -99, hurt: -99, fx: 0, fy: 1, research: null, idle: 0 };
     this.buildings.push(b); this.index.set(b.id, b); this.mark(b, 2); return b;
   }
   private mark(b: Building, v: number): void { for (let j = 0; j < b.size; j++) for (let i = 0; i < b.size; i++) this.grid[(b.y + j) * this.map.size + b.x + i] = v; }
@@ -122,6 +128,20 @@ export class RtsSim {
   canPlace(kind: BuildKind, x: number, y: number): boolean {
     const s = BUILDINGS[kind].size; if (!Number.isInteger(x) || !Number.isInteger(y)) return false;
     for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) if (!this.pather.free(x + i, y + j)) return false;
+    return true;
+  }
+  /** (ax,ay) 가까이에서 둘레가 비어 있고 광물과 떨어진 첫 자리. minD2 보다 가까운 자리는 건너뜁니다. */
+  findSite(kind: BuildKind, ax: number, ay: number, minD2 = 0, range = 22): { x: number; y: number } | null {
+    const size = BUILDINGS[kind].size; let best: { x: number; y: number } | null = null, bd = Infinity;
+    for (let y = Math.floor(ay) - range; y <= Math.floor(ay) + range; y++) for (let x = Math.floor(ax) - range; x <= Math.floor(ax) + range; x++) {
+      const d = (x + size / 2 - ax) ** 2 + (y + size / 2 - ay) ** 2; if (d >= bd || d < minD2) continue;
+      if (!this.roomy(x, y, size)) continue; best = { x, y }; bd = d;
+    }
+    return best;
+  }
+  private roomy(x: number, y: number, size: number): boolean {
+    for (let j = -1; j <= size; j++) for (let i = -1; i <= size; i++) if (!this.pather.free(x + i, y + j)) return false;
+    for (const nd of this.nodes) if (nd.x > x - 4 && nd.x < x + size + 3 && nd.y > y - 4 && nd.y < y + size + 3) return false;
     return true;
   }
   canTrain(owner: number, kind: UnitKind): boolean { const r = UNITS[kind].req; return !r || this.has(owner, r); }
@@ -172,7 +192,9 @@ export class RtsSim {
         if (!w || w.owner !== owner || w.kind !== 'worker' || !d || !num(c.x) || !num(c.y)) return false;
         const p = this.players[owner]; if (p.minerals < d.cost || (d.req && !this.has(owner, d.req)) || !this.canPlace(c.b, c.x, c.y)) return false;
         p.minerals -= d.cost; const b = this.addBuilding(owner, c.b, c.x, c.y, false); this.emit({ t: 'placed', owner, x: b.x + b.size / 2, y: b.y + b.size / 2 });
-        this.order(w, { t: 'build', x: 0, y: 0, target: b.id, phase: 0, timer: 0 }); return true;
+        // q: 이미 짓고 있는 건물이 있으면 그것부터 마치고(afterBuild), 새 건물은 그다음에 맡습니다.
+        const busy = w.o.t === 'build' && this.building(w.o.target)?.done === false;
+        if (!(c.q === true && busy)) this.order(w, { t: 'build', x: 0, y: 0, target: b.id, phase: 0, timer: 0 }); return true;
       }
       case 'resume': {
         const b = num(c.b) ? this.building(c.b) : undefined; if (!b || b.owner !== owner || b.done) return false;
@@ -186,8 +208,14 @@ export class RtsSim {
       case 'cancel': {
         const b = num(c.b) ? this.building(c.b) : undefined; if (!b || b.owner !== owner || !num(c.i)) return false;
         const p = this.players[owner];
+        if (c.i === -2) { if (!b.research) return false; p.minerals += RESEARCH[b.research.r].cost; b.research = null; return true; }
         if (c.i < 0) { if (b.done || b.kind === 'hq' && this.buildings.filter(x => x.owner === owner && x.kind === 'hq').length < 2) return false; p.minerals += Math.floor(BUILDINGS[b.kind].cost * 0.75); this.remove(b); return true; }
         const q = b.queue[c.i]; if (!q) return false; p.minerals += UNITS[q.u].cost; b.queue.splice(c.i, 1); this.recount(); return true;
+      }
+      case 'research': {
+        const b = num(c.b) ? this.building(c.b) : undefined, d = RESEARCH[c.r]; if (!b || !d || b.owner !== owner || !b.done || d.from !== b.kind || b.research) return false;
+        const p = this.players[owner]; if (p.up[c.r] || p.minerals < d.cost || this.buildings.some(x => x.owner === owner && x.research?.r === c.r)) return false;
+        p.minerals -= d.cost; b.research = { r: c.r, left: d.time }; return true;
       }
       case 'rally': {
         const b = num(c.b) ? this.building(c.b) : undefined; if (!b || b.owner !== owner || !num(c.x) || !num(c.y) || !BUILDINGS[b.kind].trains.length) return false;
@@ -203,6 +231,7 @@ export class RtsSim {
     if (this.winner !== -1) return;
     this.tick++;
     for (const b of this.buildings) this.updateBuilding(b);
+    if (this.tick % 10 === 0) this.tendSites();
     for (const u of this.units) if (u.hp > 0) this.updateUnit(u);
     this.separate();
     this.reap();
@@ -218,6 +247,7 @@ export class RtsSim {
   private updateBuilding(b: Building): void {
     if (b.hp <= 0) return;
     if (!b.done) return;
+    if (b.research && --b.research.left <= 0) { this.players[b.owner].up[b.research.r] = true; this.emit({ t: 'researched', owner: b.owner, r: b.research.r }); b.research = null; }
     if (b.kind === 'tower') {
       if (b.cd > 0) b.cd--; else {
         const d = BUILDINGS.tower, t = this.pick(b.owner, b.x + b.size / 2, b.y + b.size / 2, d.range!, false);
@@ -260,9 +290,10 @@ export class RtsSim {
   }
 
   private damage(owner: number, t: Unit | Building, dmg: number, w: 'bullet' | 'rocket' | 'cannon', splash: number, fromX: number, fromY: number): void {
+    const up = this.players[owner].up; if (w === 'cannon' ? up.cannon : up.atk) { dmg *= 1.25; if (w === 'cannon') splash += 0.4; }
     const tc = this.center(t); this.emit({ t: 'shot', w, owner, x0: fromX, y0: fromY, x1: tc.x, y1: tc.y, splash });
     const hit = (e: Unit | Building, mult: number): void => {
-      const armor = e.k === 'unit' ? UNITS[e.kind].armor : 'structure', amt = Math.max(1, Math.round(dmg * MULT[w][armor] * mult));
+      const armor = e.k === 'unit' ? UNITS[e.kind].armor : 'structure', amt = Math.max(1, Math.round(dmg * MULT[w][armor] * mult * (this.players[e.owner].up.arm ? 0.8 : 1)));
       e.hp -= amt; e.hurt = this.tick;
       if (this.tick - this.lastAlert[e.owner] > 120) { this.lastAlert[e.owner] = this.tick; this.emit({ t: 'alert', owner: e.owner, x: this.center(e).x, y: this.center(e).y }); }
       if (e.hp <= 0) this.players[owner].kills++;
@@ -401,7 +432,32 @@ export class RtsSim {
     const total = BUILDINGS[b.kind].time; b.progress++; b.hp = Math.min(b.maxhp, Math.max(b.hp, Math.round(b.maxhp * (0.1 + 0.9 * b.progress / total))));
     if (b.progress >= total) { b.done = true; b.hp = Math.max(b.hp, 1); this.emit({ t: 'built', kind: b.kind, owner: b.owner, x: b.x + b.size / 2, y: b.y + b.size / 2 }); this.afterBuild(u); }
   }
+  /** 이 건물을 짓고 있는(또는 지으러 가는) 일꾼이 있는가. */
+  private hasBuilder(b: Building): boolean { return this.units.some(u => u.hp > 0 && u.o.t === 'build' && u.o.target === b.id); }
+  /** 일꾼이 없는 건설 현장을 3초 뒤에 가까운 일꾼에게 넘깁니다(일꾼이 죽거나 다른 명령을 받아도 건물이 버려지지 않게). */
+  private tendSites(): void {
+    for (const b of this.buildings) {
+      if (b.done || b.hp <= 0) { b.idle = 0; continue; }
+      if (this.hasBuilder(b)) { b.idle = 0; continue; }
+      b.idle += 10; if (b.idle < 60) continue;
+      const w = this.spareWorker(b);
+      if (w) { this.order(w, { t: 'build', x: 0, y: 0, target: b.id, phase: 0, timer: 0 }); b.idle = 0; this.emit({ t: 'rescued', owner: b.owner, kind: b.kind, x: b.x + b.size / 2, y: b.y + b.size / 2 }); }
+      else if (b.idle === 60) this.emit({ t: 'orphan', owner: b.owner, kind: b.kind, x: b.x + b.size / 2, y: b.y + b.size / 2 });
+    }
+  }
+  /** b 에서 가장 가까운, 채취 중이거나 쉬는 일꾼. */
+  spareWorker(b: Building): Unit | null {
+    let best: Unit | null = null, bd = sq(60); const c = this.center(b);
+    for (const u of this.units) {
+      if (u.hp <= 0 || u.owner !== b.owner || u.kind !== 'worker' || (u.o.t !== 'gather' && u.o.t !== 'idle')) continue;
+      const d = sq(u.x - c.x) + sq(u.y - c.y) + (u.carry > 0 ? 100 : 0); if (d < bd) { bd = d; best = u; }
+    }
+    return best;
+  }
   private afterBuild(u: Unit): void {
+    let site: Building | null = null, sd = sq(30);
+    for (const b of this.buildings) { if (b.owner !== u.owner || b.done || b.hp <= 0 || this.hasBuilder(b)) continue; const d = sq(b.x + b.size / 2 - u.x) + sq(b.y + b.size / 2 - u.y); if (d < sd) { sd = d; site = b; } }
+    if (site) { this.order(u, { t: 'build', x: 0, y: 0, target: site.id, phase: 0, timer: 0 }); return; }
     const nd = this.nearestNode(u.x, u.y, 24, false);
     if (nd) this.order(u, { t: 'gather', target: nd.id, x: 0, y: 0, phase: 0, timer: 0 }); else this.order(u, idle());
   }
@@ -451,8 +507,8 @@ export class RtsSim {
     let h = this.tick | 0;
     const mix = (v: number): void => { h = (Math.imul(h ^ (Math.round(v * 64) | 0), 0x9e3779b1) + 0x7f4a7c15) | 0; h ^= h >>> 15; };
     for (const u of this.units) { mix(u.id); mix(u.x); mix(u.y); mix(u.hp); }
-    for (const b of this.buildings) { mix(b.id); mix(b.hp); mix(b.progress); mix(b.queue.length); }
-    for (const p of this.players) { mix(p.minerals); mix(p.mined); }
+    for (const b of this.buildings) { mix(b.id); mix(b.hp); mix(b.progress); mix(b.queue.length); mix(b.research?.left ?? -1); }
+    for (const p of this.players) { mix(p.minerals); mix(p.mined); mix(+p.up.atk + 2 * +p.up.arm + 4 * +p.up.cannon); }
     return h >>> 0;
   }
 }

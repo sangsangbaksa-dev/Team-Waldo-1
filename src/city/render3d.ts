@@ -44,6 +44,7 @@ class Points {
 
 export class Renderer3D {
   renderer: THREE.WebGLRenderer; scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(74, 1, 3, 5200);
+  private rain: THREE.LineSegments | null = null; private rainPos = new Float32Array(0); private rainSeed = new Float32Array(0);
   yaw = 0; pitch = -0.05; mode: ViewMode = 'fp'; w = 0; h = 0; shake = 0; t = 0; reduced = false; recoil = 0; flashT = 0; camPos = new THREE.Vector3(); chaseYaw = 0; private focus = new THREE.Vector2(SIZE / 2, SIZE / 2); private deadT = 0;
   private dummy = new THREE.Object3D(); private color = new THREE.Color();
   private bodies: THREE.InstancedMesh; private heads: THREE.InstancedMesh; private guns: THREE.InstancedMesh; private hulls: THREE.InstancedMesh; private turrets: THREE.InstancedMesh; private barrels: THREE.InstancedMesh;
@@ -279,6 +280,27 @@ export class Renderer3D {
     this.renderer.render(this.ins.scene, this.ins.camera);
     for (const f of this.floaters) f.el.remove(); this.floaters = [];
   }
+  /** 카메라 주변에 흩뿌려진 빗줄기. 빗방울 수는 화질에 맞추고, 모션 감소 설정에서는 끕니다. */
+  private updateRain(dt: number): void {
+    if (this.reduced) { if (this.rain) this.rain.visible = false; return; }
+    const R = EYE_HEIGHT * 14, H = EYE_HEIGHT * 9, n = 1200;
+    if (!this.rain) {
+      this.rainPos = new Float32Array(n * 6); this.rainSeed = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) this.rainSeed.set([(Math.random() - 0.5) * 2 * R, Math.random() * H, (Math.random() - 0.5) * 2 * R], i * 3);
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(this.rainPos, 3));
+      this.rain = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0xcfe2ff, transparent: true, opacity: 0.6, depthWrite: false, fog: false }));
+      this.rain.frustumCulled = false; this.scene.add(this.rain);
+    }
+    this.rain.visible = true;
+    const cp = this.camera.position, fall = EYE_HEIGHT * 26 * dt, len = EYE_HEIGHT * 0.7;
+    for (let i = 0; i < n; i++) {
+      let y = this.rainSeed[i * 3 + 1] - fall; if (y < 0) y += H; this.rainSeed[i * 3 + 1] = y;
+      const x = cp.x + ((this.rainSeed[i * 3] - cp.x + R * 3) % (2 * R)) - R, z = cp.z + ((this.rainSeed[i * 3 + 2] - cp.z + R * 3) % (2 * R)) - R;
+      this.rainPos.set([x, y, z, x - len * 0.12, y + len, z], i * 6);
+    }
+    (this.rain.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+  }
+
   draw(dt: number, ghost: Ghost | null): void {
     const inside = this.world.inside, ib = inside ? this.world.insideBiz() : null;
     if (inside && ib) { this.drawInside(dt, ib.kind, this.world.insideLayout()!, inside); return; }
@@ -301,6 +323,7 @@ export class Renderer3D {
     if (this.shake > 0 && !this.reduced) { this.camera.position.x += (Math.random() - 0.5) * this.shake; this.camera.position.y += (Math.random() - 0.5) * this.shake; }
     const spd = veh ? Math.hypot(veh.vx, veh.vy) : 0, fov = 74 + Math.min(14, spd / 45); if (Math.abs(fov - this.camera.fov) > 0.2) { this.camera.fov += (fov - this.camera.fov) * 0.1; this.camera.updateProjectionMatrix(); }
     const sky = this.scene.getObjectByName('sky'); if (sky) sky.position.set(this.camera.position.x, 0, this.camera.position.z);
+    this.updateRain(dt);
     this.sun.position.set(fx - 700, 800, fz - 450); this.sun.target.position.set(fx, 0, fz);
     if (this.ml) { this.gun.visible = false; this.ml.viewmodel(!third && !!pb, f0.slots[f0.cur]?.id ?? 'pistol', dt, this.recoil, f0.reloadT > 0, pb ? Math.min(1, Math.hypot(pb.vx, pb.vy) / 160) : 0, this.t, this.flashT > 0); } else { this.gun.visible = !third && !!pb; } if (!this.ml && this.gun.visible) { const tier = WEAPONS[f0.slots[f0.cur]?.id ?? 'pistol'].tier, rl = f0.reloadT > 0 ? 1 : 0; this.gun.scale.setScalar(0.62 + tier * 0.13); this.gun.position.set(5.6, -5.2 - rl * 4, -14 + this.recoil * 2.2); this.gun.rotation.x = this.recoil * 0.12 - rl * 0.7; this.muzzle.visible = this.flashT > 0; this.muzzle.rotation.z = this.t * 40; }
     // 캐릭터

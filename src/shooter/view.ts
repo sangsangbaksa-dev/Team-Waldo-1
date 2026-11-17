@@ -16,7 +16,7 @@ import { crateTexture, floorTexture, glowTexture, groundTexture, makeSky, wallTe
 
 export type Quality = 'high' | 'standard' | 'low';
 const HIP = 0.9, KNEE = 0.44, LEG_Z = 0.11, AIM = 1.42;
-const LOOT_COLOR: Record<string, number> = { weapon: 0xeaf6ff, ammo: 0xffa53a, medkit: 0x52f08a, armor: 0x5aa8ff, attach: 0xc59bff, helmet: 0xffd34d, boost: 0x39e6ff };
+const LOOT_COLOR: Record<string, number> = { weapon: 0xeaf6ff, ammo: 0xffa53a, medkit: 0x52f08a, armor: 0x5aa8ff, bandage: 0xf2f2f2, attach: 0xc59bff, helmet: 0xffd34d, boost: 0x39e6ff };
 const MUZZLE: Record<string, number> = { pistol: 0.26, smg: 0.5, shotgun: 0.7, rifle: 0.82, sniper: 1.12 };
 
 const rngOf = (seed: number): (() => number) => makeRng(seed);

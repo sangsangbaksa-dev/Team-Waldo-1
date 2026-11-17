@@ -124,3 +124,9 @@
 
 .sz-compass{position:absolute;left:50%;top:calc(max(14px,env(safe-area-inset-top)) + 112px);transform:translateX(-50%);width:min(420px,56vw);height:auto;border-radius:8px;border:1px solid rgba(255,255,255,.12);-webkit-mask-image:linear-gradient(90deg,transparent,#000 14%,#000 86%,transparent);mask-image:linear-gradient(90deg,transparent,#000 14%,#000 86%,transparent)}
 @media (max-width:700px){.sz-compass{top:calc(max(14px,env(safe-area-inset-top)) + 96px);width:62vw}}
+.sz-cast{position:absolute;left:50%;bottom:34%;transform:translateX(-50%);width:min(280px,60vw);text-align:center;font-size:14px;font-weight:700;opacity:0;transition:opacity .12s;pointer-events:none;text-shadow:0 1px 3px #000}
+.sz-cast.show{opacity:1}
+.sz-cast i{display:block;height:7px;margin-top:5px;border-radius:5px;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.3);overflow:hidden}
+.sz-cast b{display:block;height:100%;width:0;background:linear-gradient(90deg,#3fe27a,#c8ff9a)}
+.sz-killer{margin:8px 0 0;font-size:15px;color:#ffb3a8;text-align:center}
+.gear.heal small{opacity:.6;margin-left:3px}

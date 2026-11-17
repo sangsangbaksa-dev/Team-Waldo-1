@@ -60,6 +60,10 @@ export function partHandling(att: Attachments | undefined): { spread: number; ki
 export const HELMET_CUT = [0, 0.3, 0.5, 0.65];
 export const HELMET_NAMES = ['', '1레벨 헬멧', '2레벨 헬멧', '3레벨 헬멧'];
 /** 에너지 드링크: 부스트 시간(초) 동안 체력이 서서히 차오르고 이동이 조금 빨라집니다 */
+/** 치료 도구: 붕대(짧게, 80%까지)·구급상자(오래, 100%까지). 시전 중에는 느리게 걷고, 사격·피격 시 중단됩니다. */
+export const HEAL = { bandage: { time: 3.2, amount: 25, cap: 80, max: 6, pick: 2, name: '붕대' }, kit: { time: 6, amount: 100, cap: 100, max: 2, pick: 1, name: '구급상자' }, walk: 0.7 };
+/** 방탄복 등급(1~3): 내구도(점)와 피해를 막아 주는 비율 */
+export const ARMOR_PTS = [0, 50, 80, 100], ARMOR_ABS = [0, 0.35, 0.5, 0.62], ARMOR_NAMES = ['', '방탄복 Lv1', '방탄복 Lv2', '방탄복 Lv3'];
 export const BOOST = { time: 22, heal: 2.6, speed: 1.08, cap: 100 };
 
 export const PLAYER = { radius: 0.4, eye: 1.65, height: 1.8, head: 1.45, walk: 4.6, sprint: 7.2, hp: 100, crouchEye: 1.05, crouchHeight: 1.2, crouchHead: 0.92, crouchSpeed: 0.55, medkit: 55, armor: 50, pickup: 1.6 };

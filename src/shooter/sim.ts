@@ -1,6 +1,6 @@
 // ZERO ZONE — 경기 시뮬레이션: 이동·사격·피해·전리품·줄어드는 자기장·승패. 화면과 무관해서 테스트와 봇 대 봇 시뮬레이션에서 그대로 돌립니다.
 import { AIR, BOOST, BOTS, BOT_NAMES, DIFFICULTIES, HELMET_CUT, MAP_HALF, PART_FITS, PARTS, partFit, PLAYER, SKIN_TONES, TEAM_COLORS, WEAPONS, ZONES, magOf, makeRng, partHandling, type Attachments, type Difficulty, type Mode, type PartId, type WeaponId } from './config';
-import { blockedAt, generateMap, lineClear, pushOut, rayWorld, type GameMap, type Loot } from './world';
+import { blockedAt, generateMap, lineClear, pushOut, rayWorld, slideMove, type GameMap, type Loot } from './world';
 import { WATER_SLOW, waterDepth } from './terrain';
 import { thinkBot, thinkAir, newBrain, type BotBrain } from './bot';
 
@@ -203,7 +203,7 @@ export class Match {
       p.crouch += ((inp.crouch && p.air === 0 ? 1 : 0) - p.crouch) * Math.min(1, dt * 12);
       const wet = waterDepth(this.map.terrain, p.x, p.z), run = inp.sprint && inp.mz > 0.2 && !p.ads && wet < 2 && p.crouch < 0.3, top = (run ? PLAYER.sprint : PLAYER.walk) * WATER_SLOW[wet] * (1 - (1 - PLAYER.crouchSpeed) * p.crouch) * (p.ads ? 0.6 : 1) * (p.bot ? BOTS[this.difficulty].speed : 1) * (p.boost > 0 ? BOOST.speed : 1);
       const k = Math.min(1, dt * (wl > 0.05 ? 15 : 22)); p.vx += (wx * top - p.vx) * k; p.vz += (wz * top - p.vz) * k;
-      p.x += p.vx * dt; p.z += p.vz * dt; pushOut(this.map, p, PLAYER.radius);
+      if (slideMove(this.map, p, p.vx * dt, p.vz * dt, PLAYER.radius)) { /* 벽에 닿은 쪽 속도는 죽입니다 */ if (blockedAt(this.map, p.x + Math.sign(p.vx) * 0.05, p.z, PLAYER.radius)) p.vx = 0; if (blockedAt(this.map, p.x, p.z + Math.sign(p.vz) * 0.05, PLAYER.radius)) p.vz = 0; }
       const lim = this.map.half - 1; p.x = Math.max(-lim, Math.min(lim, p.x)); p.z = Math.max(-lim, Math.min(lim, p.z));
       p.speed = Math.hypot(p.vx, p.vz); p.walk += p.speed * dt;
     }

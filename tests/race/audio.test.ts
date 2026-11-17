@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RaceAudio, gearFor } from '../../src/race/audio';
 import { MASTER_GAIN } from '../../src/audio-core';
-import { installAudioMock, setHidden } from '../helpers/audio-mock';
+import { installAudioMock, loopGain, setHidden } from '../helpers/audio-mock';
 
 const RACE_SFX = ['count', 'go', 'lap', 'best', 'hit', 'bump', 'pad', 'drift', 'finish', 'click'] as const;
 
@@ -63,5 +63,66 @@ describe('SPEED RUSH audio', () => {
     audio.dispose();
     expect(mock.context()?.state).toBe('closed');
     expect(sources.every(s => s.stopped)).toBe(true);
+  });
+
+  it('holds a boost loop across nitro frames and fades it when boost ends', () => {
+    audio.unlock();
+    const ctx = mock.context()!;
+    const loopsAtUnlock = ctx.sources.length;
+    expect(loopsAtUnlock).toBe(3); // wind, skid, boost
+    const boost = ctx.sources[2];
+    for (let i = 0; i < 60; i++) {
+      ctx.currentTime = i * 0.016;
+      audio.drive(50, 1, 0, true, false, false);
+    }
+    expect(loopGain(boost)).toBeGreaterThan(0);
+    expect(ctx.sources.length).toBe(loopsAtUnlock); // no per-frame retrigger
+    for (let i = 0; i < 30; i++) {
+      ctx.currentTime = 1 + i * 0.016;
+      audio.drive(50, 1, 0, false, false, false);
+    }
+    expect(loopGain(boost)).toBe(0);
+    expect(ctx.sources.length).toBe(loopsAtUnlock);
+  });
+
+  it('uses the same skid gain for left and right slip of equal size', () => {
+    audio.unlock();
+    const ctx = mock.context()!;
+    const skid = ctx.sources[1];
+    audio.drive(40, 1, 0.4, false, true, false);
+    const left = loopGain(skid);
+    audio.drive(40, 1, -0.4, false, true, false);
+    const right = loopGain(skid);
+    expect(left).toBeGreaterThan(0);
+    expect(right).toBe(left);
+    audio.drive(40, 1, 0, false, false, false);
+    expect(loopGain(skid)).toBe(0);
+  });
+
+  it('does not stack crash one-shots when hit and bump retrigger every frame', () => {
+    audio.unlock();
+    const ctx = mock.context()!;
+    const before = ctx.oscillators.length + ctx.sources.length;
+    for (let i = 0; i < 40; i++) {
+      audio.sfx('hit', 8);
+      audio.sfx('bump');
+    }
+    const after = ctx.oscillators.length + ctx.sources.length;
+    // one hit (burst+tone) and one bump (burst+tone) = 4 new voices, not 160
+    expect(after - before).toBe(4);
+  });
+
+  it('silences motor, boost and skid on finish and keeps them quiet afterwards', () => {
+    audio.unlock();
+    const ctx = mock.context()!;
+    audio.drive(60, 1, 0.3, true, true, false);
+    expect(loopGain(ctx.sources[2])).toBeGreaterThan(0);
+    audio.sfx('finish');
+    expect(loopGain(ctx.sources[1])).toBe(0);
+    expect(loopGain(ctx.sources[2])).toBe(0);
+    audio.drive(60, 1, 0.3, true, true, true);
+    expect(loopGain(ctx.sources[0])).toBe(0); // wind
+    expect(loopGain(ctx.sources[1])).toBe(0);
+    expect(loopGain(ctx.sources[2])).toBe(0);
   });
 });

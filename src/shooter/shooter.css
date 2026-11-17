@@ -107,3 +107,6 @@
 @media (prefers-reduced-motion:reduce){.sz-zonefx{animation:none}.sz-dmgs i{animation-duration:.01s}}
 /* 가로로 눕힌 휴대폰(낮은 화면): 버튼이 미니맵을 가리지 않도록 줄입니다. */
 @media (max-height:480px){.sz-tbuttons{bottom:max(66px,calc(env(safe-area-inset-bottom) + 60px));grid-template-columns:repeat(2,52px);gap:8px}.sz-tbuttons button{width:52px;height:52px;font-size:11px}.sz-tbuttons button.fire{width:72px;height:72px;font-size:14px}.touch .sz-tr canvas{width:72px;height:72px}.touch .sz-ammo b{font-size:26px}}
+/* 한글은 단어 단위로 줄바꿈합니다. */
+.sz-root{word-break:keep-all;overflow-wrap:break-word}
+@media (max-height:500px){.sz-banner{top:33%}}

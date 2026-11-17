@@ -190,7 +190,7 @@ export class Match {
       const fx = Math.cos(p.yaw), fz = Math.sin(p.yaw), rx = -fz, rz = fx;
       let wx = fx * inp.mz + rx * inp.mx, wz = fz * inp.mz + rz * inp.mx; const wl = Math.hypot(wx, wz); if (wl > 1) { wx /= wl; wz /= wl; }
       const run = inp.sprint && inp.mz > 0.2 && !p.ads, top = (run ? PLAYER.sprint : PLAYER.walk) * (p.ads ? 0.6 : 1) * (p.bot ? BOTS[this.difficulty].speed : 1) * (p.boost > 0 ? BOOST.speed : 1);
-      const k = Math.min(1, dt * 11); p.vx += (wx * top - p.vx) * k; p.vz += (wz * top - p.vz) * k;
+      const k = Math.min(1, dt * (wl > 0.05 ? 15 : 22)); p.vx += (wx * top - p.vx) * k; p.vz += (wz * top - p.vz) * k;
       p.x += p.vx * dt; p.z += p.vz * dt; pushOut(this.map, p, PLAYER.radius);
       const lim = this.map.half - 1; p.x = Math.max(-lim, Math.min(lim, p.x)); p.z = Math.max(-lim, Math.min(lim, p.z));
       p.speed = Math.hypot(p.vx, p.vz); p.walk += p.speed * dt;

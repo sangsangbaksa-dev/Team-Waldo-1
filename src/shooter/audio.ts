@@ -29,6 +29,7 @@ export class ShooterAudio {
       case 'rifle': n(0.09, 0.46, 1400, 0.7); t(150, 0.07, 0.26, 'sawtooth', -90); t(70, 0.12, 0.34, 'sine', -35); n(0.3, 0.09, 400, 0.5, 'lowpass'); break;
       case 'shotgun': n(0.2, 0.66, 900, 0.5); t(110, 0.14, 0.34, 'sawtooth', -70); t(55, 0.22, 0.45, 'sine', -25); n(0.4, 0.14, 300, 0.5, 'lowpass'); break;
       case 'sniper': n(0.05, 0.6, 3000, 0.7); n(0.26, 0.58, 700, 0.4); t(300, 0.22, 0.28, 'sawtooth', -250); t(60, 0.3, 0.5, 'sine', -22); n(0.9, 0.2, 260, 0.5, 'lowpass'); break;
+      case 'boom': n(0.5, 0.9, 500, 0.4); t(70, 0.5, 0.6, 'sawtooth', -50); t(38, 0.7, 0.7, 'sine', -15); n(1.2, 0.3, 180, 0.5, 'lowpass'); break;
       case 'reload': t(500, 0.03, 0.12, 'square'); t(700, 0.03, 0.12, 'square', 0, 0.14); t(420, 0.04, 0.12, 'square', 0, 0.9); break;
       case 'empty': t(900, 0.03, 0.12, 'square'); break;
       case 'hitmark': n(0.04, 0.26, 3200, 2); t(1500 * (1 + combo * 0.05), 0.05, 0.14, 'triangle'); t(190, 0.06, 0.2, 'sine', -60); break;

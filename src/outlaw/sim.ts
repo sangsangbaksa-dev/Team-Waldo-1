@@ -45,6 +45,7 @@ export function rayVsObb(ox: number, oz: number, dx: number, dz: number, cx: num
 export class Sim {
   map: CityMap; seed: number; t = 0; frame = 0; /** 시각(0~24시) */ clock = 14.8; /** 비 세기(0~1) */ rain = 0; rng: () => number;
   peds: Ped[] = []; vehicles: Vehicle[] = []; pickups: Pickup[] = []; projectiles: Projectile[] = []; events: SimEvent[] = []; crimes: Crime[] = [];
+  /** 경찰이 도로에 깐 스파이크 스트립 */ spikes: Array<{ x: number; z: number; h: number }> = [];
   wanted: Wanted = { heat: 0, stars: 0, unseenT: 99, lastX: 0, lastZ: 0, evadeT: 0, cops: 0 };
   mission: MissionState = blankMissionState();
   /** 휴대폰으로 받는 일거리 */ job: JobState = blankJobState();
@@ -376,7 +377,7 @@ export class Sim {
   paynspray(): string {
     const p = this.player, v = this.vehMap.get(p.vehicle), poi = this.nearPoi(p.x, p.z); if (!v || !poi || poi.kind !== 'paynspray') return '도색 가게 안에서 차를 타고 있어야 합니다';
     if (this.wanted.unseenT < 2 && this.wanted.stars > 0) return '경찰이 보고 있어서 지금은 안 됩니다'; const pp = this.price(150); if (this.cash < pp) return '돈이 부족합니다';
-    this.addCash(-pp); v.color = Math.floor(this.rng() * 0xffffff); v.hp = v.maxHp; this.wanted.heat = 0; this.wanted.evadeT = 0; this.setStars(0); return '새 차가 되었습니다. 수배가 풀렸습니다';
+    this.addCash(-pp); v.color = Math.floor(this.rng() * 0xffffff); v.hp = v.maxHp; v.flat = false; this.wanted.heat = 0; this.wanted.evadeT = 0; this.setStars(0); return '새 차가 되었습니다. 수배가 풀렸습니다';
   }
   respawnPlayer(kind: 'wasted' | 'busted'): void {
     const p = this.player, spot = this.map.pois.find(q => q.kind === (kind === 'wasted' ? 'hospital' : 'police')) ?? this.map.pois.find(q => q.kind === 'safehouse') ?? this.map.pois[0];

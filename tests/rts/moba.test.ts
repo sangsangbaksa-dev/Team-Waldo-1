@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { TICK } from '../../src/rts/config';
 import { MobaAi } from '../../src/rts/moba/ai';
-import { CHAMPS, LANES, LANE_PTS, NEXUS, SIZE, WAVE_FIRST, lanePath, turretSpots } from '../../src/rts/moba/config';
+import { CHAMPS, CHAMP_IDS, ITEMS, ITEM_IDS, LANES, LANE_PTS, NEXUS, SIZE, SPELLS, WAVE_FIRST, inhibSpot, lanePath, turretSpots } from '../../src/rts/moba/config';
 import { buildMobaMap } from '../../src/rts/moba/map';
 import { MobaSim } from '../../src/rts/moba/sim';
 import { Pather } from '../../src/rts/path';
@@ -32,6 +32,9 @@ describe('롤식 라인전 맵', () => {
     const s = fresh(); expect(s.teams.map(t => t.towers)).toEqual([9, 9]);
     for (const l of LANES) for (const t of [0, 1]) expect(turrets(s, t, l).map(x => x.tier)).toEqual([0, 1, 2]);
   });
+  it('억제기도 길 위에 있고 길마다 하나씩 있다', () => {
+    const s = fresh(); for (const l of LANES) for (const t of [0, 1]) { const p = inhibSpot(l, t); expect(s.pather.freeAt(p.x, p.y), `${l}${t}`).toBe(true); expect(s.ents.filter(e => e.kind === 'inhib' && e.team === t && e.lane === l)).toHaveLength(1); }
+  });
 });
 
 describe('웨이브와 포탑', () => {
@@ -46,7 +49,8 @@ describe('웨이브와 포탑', () => {
     s.hurt(null, t1, 9999); expect(t1.hp).toBe(t1.maxhp);
     s.hurt(null, t0, 99999); run(s, 2); expect(s.vulnerable(t1)).toBe(true); expect(s.vulnerable(t2)).toBe(false);
     s.hurt(null, t1, 99999); run(s, 2); expect(s.vulnerable(t2)).toBe(true); expect(s.vulnerable(nx)).toBe(false);
-    s.hurt(null, t2, 99999); run(s, 2); expect(s.vulnerable(nx)).toBe(true);
+    const ib = s.ents.find(e => e.kind === 'inhib' && e.team === 1 && e.lane === 'mid')!; expect(s.vulnerable(ib)).toBe(false); expect(s.vulnerable(nx)).toBe(false);
+    s.hurt(null, t2, 99999); run(s, 2); expect(s.vulnerable(ib)).toBe(true); expect(s.vulnerable(nx)).toBe(false); s.hurt(null, ib, 99999); run(s, 2); expect(s.vulnerable(nx)).toBe(true);
     s.hurt(null, nx, 99999); expect(s.winner).toBe(0);
   });
   it('포탑은 챔피언보다 미니언을 먼저 쏜다', () => {
@@ -115,4 +119,72 @@ describe('봇', () => {
     while (s.winner === -1 && s.tick < 40 * 60 * TICK) { s.step(); for (const a of ais) a.think(s); }
     expect(s.winner).not.toBe(-1); expect(s.teams[0].kills + s.teams[1].kills).toBeGreaterThan(0); expect(s.heroes().every(h => h.hero!.level >= 8)).toBe(true);
   }, 60000);
+});
+
+describe('억제기와 슈퍼 미니언', () => {
+  const open = (s: MobaSim, lane: string): void => { for (const t of turrets(s, 1, lane)) s.hurt(null, t, 99999); run(s, 2); };
+  it('억제기를 부수면 그 길로 슈퍼 미니언이 나오고, 5분 뒤 되살아난다', () => {
+    const s = fresh(); open(s, 'top'); const ib = s.ents.find(e => e.kind === 'inhib' && e.team === 1 && e.lane === 'top')!; s.hurt(null, ib, 99999); expect(ib.hp).toBe(0);
+    run(s, WAVE_FIRST + 5); expect(s.ents.filter(e => e.kind === 'super' && e.team === 0 && e.lane === 'top')).toHaveLength(1); expect(s.ents.filter(e => e.kind === 'super' && e.lane === 'mid')).toHaveLength(0);
+    expect(s.vulnerable(s.ents.find(e => e.kind === 'nexus' && e.team === 1)!)).toBe(true);
+    run(s, TICK * 301); expect(ib.hp).toBe(ib.maxhp);
+  });
+});
+
+describe('새 챔피언·아이템·룬·소환사 주문', () => {
+  it('챔피언 9종, 아이템 17종이 모두 정의돼 있다', () => { expect(CHAMP_IDS).toHaveLength(9); expect(ITEM_IDS).toHaveLength(17); expect(Object.keys(SPELLS)).toHaveLength(5); for (const c of CHAMP_IDS) { expect(CHAMPS[c].skills.map(k => k.key)).toEqual(['Q', 'W', 'E', 'R']); } expect(ITEMS.tome.cdr).toBeGreaterThan(0); });
+  it('모든 챔피언이 모든 스킬을 오류 없이 쓸 수 있다', () => {
+    for (const id of CHAMP_IDS) {
+      const s = new MobaSim({ player: id, lane: 'mid', allies: [], foes: [{ champ: 'blade', lane: 'mid' }] }); s.record = false; const me = s.me(), foe = s.heroes(1)[0]; me.x = 50; me.y = 50; foe.x = 54; foe.y = 50; me.hero!.level = 9; me.hero!.points = 20; me.hero!.mp = me.hero!.maxmp = 9999;
+      for (let i = 0; i < 4; i++) s.learn(me, i);
+      for (let i = 0; i < 4; i++) { me.x = 50; me.y = 50; expect(s.apply(me.id, { k: 'cast', i, x: 54, y: 50 }), `${id}${i}`).toBe(true); }
+      expect(foe.hp, id).toBeLessThan(foe.maxhp);
+    }
+  });
+  it('랜서의 창 찌르기는 일직선의 적을 모두 꿰뚫고, 세이어의 구슬은 기절시킨다', () => {
+    const s = new MobaSim({ player: 'lancer', lane: 'mid', allies: [], foes: [{ champ: 'blade', lane: 'mid' }, { champ: 'blade', lane: 'top' }] }); s.record = false;
+    const me = s.me(), [a, b] = s.heroes(1); me.x = 50; me.y = 50; a.x = 53; a.y = 50; b.x = 55; b.y = 50; s.apply(me.id, { k: 'cast', i: 0, x: 60, y: 50 }); expect(a.hp).toBeLessThan(a.maxhp); expect(b.hp).toBeLessThan(b.maxhp);
+    const t = new MobaSim({ player: 'seer', lane: 'mid', allies: [], foes: [{ champ: 'blade', lane: 'mid' }] }); t.record = false; const m2 = t.me(), f2 = t.heroes(1)[0]; m2.x = 50; m2.y = 50; f2.x = 55; f2.y = 50; t.apply(m2.id, { k: 'learn', i: 0 }); t.apply(m2.id, { k: 'cast', i: 0, x: 55, y: 50 });
+    expect(f2.hero!.stunUntil).toBeGreaterThan(t.tick);
+  });
+  it('점멸은 앞으로 이동하고, 회복은 체력을 채우며, 재사용 대기를 지킨다', () => {
+    const s = new MobaSim({ player: 'blade', lane: 'mid', allies: [], foes: [{ champ: 'blade', lane: 'mid' }], kit: { spells: ['flash', 'heal'], rune: 'swift' } }); s.record = false; const me = s.me(); me.x = 50; me.y = 50;
+    expect(s.apply(me.id, { k: 'spell', i: 0, x: 60, y: 50 })).toBe(true); expect(me.x).toBeGreaterThan(53); expect(s.apply(me.id, { k: 'spell', i: 0, x: 60, y: 50 })).toBe(false);
+    me.hp = 100; expect(s.apply(me.id, { k: 'spell', i: 1, x: 0, y: 0 })).toBe(true); expect(me.hp).toBeGreaterThan(180);
+  });
+  it('룬은 능력치를 바꾸고, 감전은 같은 챔피언을 세 번 맞히면 터진다', () => {
+    const a = new MobaSim({ player: 'blade', lane: 'mid', allies: [], foes: [{ champ: 'blade', lane: 'mid' }], kit: { rune: 'fortitude' } }), b = new MobaSim({ player: 'blade', lane: 'mid', allies: [], foes: [{ champ: 'blade', lane: 'mid' }], kit: { rune: 'electro' } });
+    expect(a.me().maxhp).toBeGreaterThan(b.me().maxhp + 150);
+    b.record = false; const me = b.me(), foe = b.heroes(1)[0]; foe.def = 0; const base = foe.hp; b.hurt(me, foe, 10); b.hurt(me, foe, 10); const two = base - foe.hp; b.hurt(me, foe, 10); expect(base - foe.hp - two).toBeGreaterThan(40);
+  });
+});
+
+describe('와드와 시야', () => {
+  it('멀리 있는 적은 보이지 않고, 와드를 놓으면 보인다. 와드는 90초 뒤 사라진다', () => {
+    const s = fresh(), me = s.me(), foe = s.heroes(1)[0]; me.x = 50; me.y = 50; foe.x = 58; foe.y = 50; run(s, 4); expect(s.canSee(0, foe)).toBe(true); foe.x = 66; foe.y = 50; run(s, 4); expect(s.canSee(0, foe)).toBe(false);
+    expect(s.apply(me.id, { k: 'attack', target: foe.id })).toBe(false); expect(s.apply(me.id, { k: 'ward', x: 70, y: 50 })).toBe(true); run(s, 4); expect(s.canSee(0, foe)).toBe(true);
+    expect(s.canSee(1, me)).toBe(false); expect(s.wards).toHaveLength(1); run(s, TICK * 91); expect(s.wards).toHaveLength(0);
+  });
+  it('와드는 두 개까지만 들고 있으며, 시간이 지나면 채워진다', () => {
+    const s = fresh(), me = s.me(); me.x = 50; me.y = 50; expect(s.apply(me.id, { k: 'ward', x: 52, y: 50 })).toBe(true); expect(s.apply(me.id, { k: 'ward', x: 54, y: 50 })).toBe(true); expect(s.apply(me.id, { k: 'ward', x: 56, y: 50 })).toBe(false);
+    run(s, TICK * 40); expect(me.hero!.wards).toBeGreaterThan(0);
+  });
+  it('핑은 팀에게 기록된다', () => { const s = fresh(); expect(s.apply(s.me().id, { k: 'ping', x: 40, y: 40, kind: 'assist' })).toBe(true); expect(s.pings).toHaveLength(1); expect(s.apply(s.me().id, { k: 'ping', x: NaN, y: 0, kind: 'assist' })).toBe(false); });
+});
+
+describe('정글러와 버프', () => {
+  it('골렘을 잡으면 파랑 버프, 늑대 무리를 정리하면 빨강 버프를 받는다', () => {
+    const s = fresh(); run(s, TICK * 31); const me = s.me(); for (const m of s.ents.filter(e => e.kind === 'monster' && e.sub === 'golem').slice(0, 1)) s.hurt(me, m, 99999); run(s, 2); expect(me.hero!.blueUntil).toBeGreaterThan(s.tick);
+    const camp = s.ents.filter(e => e.kind === 'monster' && e.sub === 'wolf' && e.camp === 'wolves-a'); for (const w of camp) s.hurt(me, w, 99999); run(s, 2); expect(me.hero!.redUntil).toBeGreaterThan(s.tick);
+  });
+  it('봇 정글러가 정글 몬스터를 사냥한다(4 대 4)', () => {
+    const roles = ['top', 'mid', 'bot', 'jungle'] as const; const s = new MobaSim({ player: 'blade', lane: 'jungle', allies: roles.slice(0, 3).map((l, i) => ({ champ: CHAMP_IDS[i + 1], lane: l })), foes: roles.map((l, i) => ({ champ: CHAMP_IDS[i + 4], lane: l })) }); s.record = false;
+    for (const h of s.heroes()) h.hero!.bot = true; const ais = [new MobaAi(0, 'normal'), new MobaAi(1, 'normal')]; let cs = 0;
+    for (let i = 0; i < TICK * 150; i++) { s.step(); for (const a of ais) a.think(s); } for (const h of s.heroes()) if (h.hero!.lane === 'jungle') cs += h.hero!.cs; expect(cs).toBeGreaterThan(3);
+  }, 60000);
+  it('새 챔피언·4 대 4 봇 전투도 판이 끝난다', () => {
+    const roles = ['top', 'mid', 'bot', 'jungle'] as const; const s = new MobaSim({ player: 'titan', lane: 'top', allies: roles.slice(1).map((l, i) => ({ champ: (['ember', 'lancer', 'seer'] as const)[i], lane: l })), foes: roles.map((l, i) => ({ champ: CHAMP_IDS[i], lane: l })) }); s.record = false;
+    for (const h of s.heroes()) h.hero!.bot = true; const ais = [new MobaAi(0, 'hard'), new MobaAi(1, 'hard')];
+    while (s.winner === -1 && s.tick < 40 * 60 * TICK) { s.step(); for (const a of ais) a.think(s); } expect(s.winner).not.toBe(-1);
+  }, 90000);
 });

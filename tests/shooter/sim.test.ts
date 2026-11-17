@@ -197,3 +197,18 @@ describe('ZERO ZONE 건물·엄폐물·파츠·보급', () => {
     }, 60000);
   });
 });
+
+describe('수류탄', () => {
+  it('던지면 개수가 줄고, 퓨즈가 끝나면 터져 범위 안 선수에게 피해를 준다', () => {
+    const m = field('normal', 2), [a, b] = m.players; a.nades = 2; a.x = 0; a.z = 0; a.yaw = 0; a.pitch = 0.1; b.x = 12; b.z = 0;
+    a.input = { ...blankInput(), nade: true }; m.step(1 / 60); m.drain();
+    expect(a.nades).toBe(1); expect(m.nades).toHaveLength(1); a.input = blankInput();
+    const hp = b.hp; run(m, 4);
+    expect(m.nades).toHaveLength(0); expect(b.hp < hp || !b.alive).toBe(true);
+  });
+  it('수류탄이 없으면 던지지 못하고, 줍기는 최대 5개', () => {
+    const m = field('normal', 2), a = m.players[0]; a.input = { ...blankInput(), nade: true }; m.step(1 / 60); expect(m.nades).toHaveLength(0);
+    a.input = blankInput(); a.nades = 4; m.loot.push({ id: 9999, kind: 'grenade', weapon: null, x: a.x, z: a.z, taken: false }); m.step(1 / 60);
+    expect(a.nades).toBe(5);
+  });
+});

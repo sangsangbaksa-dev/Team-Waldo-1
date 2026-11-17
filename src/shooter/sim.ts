@@ -1,10 +1,10 @@
 // ZERO ZONE — 경기 시뮬레이션: 이동·사격·피해·전리품·줄어드는 자기장·승패. 화면과 무관해서 테스트와 봇 대 봇 시뮬레이션에서 그대로 돌립니다.
 import { AIR, BOOST, BOTS, BOT_NAMES, DIFFICULTIES, HELMET_CUT, MAP_HALF, PART_FITS, PARTS, partFit, PLAYER, SKIN_TONES, TEAM_COLORS, WEAPONS, ZONES, magOf, makeRng, partHandling, type Attachments, type Difficulty, type Mode, type PartId, type WeaponId } from './config';
-import { blockedAt, generateMap, pushOut, rayWorld, type GameMap, type Loot } from './world';
+import { blockedAt, generateMap, lineClear, pushOut, rayWorld, type GameMap, type Loot } from './world';
 import { WATER_SLOW, waterDepth } from './terrain';
 import { thinkBot, thinkAir, newBrain, type BotBrain } from './bot';
 
-export interface Input { mx: number; mz: number; yaw: number; pitch: number; fire: boolean; sprint: boolean; reload: boolean; interact: boolean; ads: boolean; slot: number; /** 웅크리기(누르고 있는 동안) */ crouch?: boolean; /** 점프(비행기에서 뛰어내리기) · 낙하산 펴기 */ jump?: boolean }
+export interface Input { mx: number; mz: number; yaw: number; pitch: number; fire: boolean; sprint: boolean; reload: boolean; interact: boolean; ads: boolean; slot: number; /** 수류탄 던지기(눌린 프레임) */ nade?: boolean; /** 웅크리기(누르고 있는 동안) */ crouch?: boolean; /** 점프(비행기에서 뛰어내리기) · 낙하산 펴기 */ jump?: boolean }
 export const blankInput = (): Input => ({ mx: 0, mz: 0, yaw: 0, pitch: 0, fire: false, sprint: false, reload: false, interact: false, ads: false, slot: -1 });
 /** 비행기 항로: 시작점에서 방향(dx,dz)으로 plane m/s 로 날아 len 미터 뒤에 지도를 벗어납니다. */
 export interface Plane { x0: number; z0: number; dx: number; dz: number; speed: number; len: number; end: number }
@@ -16,6 +16,9 @@ export interface Gun { id: WeaponId; mag: number; reserve: number; att: Attachme
 export const eyeOf = (p: { crouch: number }): number => PLAYER.eye - (PLAYER.eye - PLAYER.crouchEye) * p.crouch;
 export const heightOf = (cr: number): number => PLAYER.height - (PLAYER.height - PLAYER.crouchHeight) * cr;
 export const headOf = (cr: number): number => PLAYER.head - (PLAYER.head - PLAYER.crouchHead) * cr;
+/** 던져진 수류탄 */
+export interface Nade { id: number; owner: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; fuse: number }
+export const NADE = { max: 5, pick: 2, fuse: 2.7, speed: 17, radius: 7, dmg: 150, cd: 1.2 };
 export interface Drop { x: number; z: number; at: number; fall: number; called: boolean; landed: boolean }
 export interface Player {
   id: number; name: string; bot: boolean; remote: boolean; color: number; skin: number;
@@ -24,14 +27,16 @@ export interface Player {
   kills: number; place: number; diedAt: number; input: Input; brain: BotBrain | null;
   /** 낙하 상태와 지면으로부터의 높이(m) */ air: AirState; alt: number; jumpHeld: boolean; landedAt: number;
   /** 웅크린 정도 0(서 있음)~1(완전히 웅크림) */ crouch: number; walk: number; kick: number; muzzle: number; hurt: number; hurtYaw: number; ads: boolean; speed: number; lastHitBy: number; emptyT: number;
+  /** 수류탄 개수·재사용 대기 */ nades: number; nadeCd: number; nadeHeld: boolean;
 }
 export type MatchEvent =
   | { t: 'shot'; id: number; weapon: WeaponId; ox: number; oy: number; oz: number; ends: number[]; remote: boolean; sup?: boolean }
   | { t: 'hit'; victim: number; attacker: number; dmg: number; head: boolean; x: number; y: number; z: number; wall: boolean }
-  | { t: 'kill'; victim: number; attacker: number; weapon: WeaponId | 'zone' }
+  | { t: 'kill'; victim: number; attacker: number; weapon: WeaponId | 'zone' | 'grenade' }
   | { t: 'pickup'; id: number; loot: number; kind: Loot['kind']; weapon: WeaponId | null; part?: PartId | null; level?: number }
   | { t: 'drop'; stage: 'call' | 'land'; x: number; z: number }
   | { t: 'jump'; id: number } | { t: 'chute'; id: number } | { t: 'land'; id: number }
+  | { t: 'nade'; stage: 'throw' | 'boom'; id: number; x: number; y: number; z: number }
   | { t: 'reload'; id: number } | { t: 'empty'; id: number } | { t: 'over'; winner: number };
 
 export interface ZoneState { cx: number; cz: number; r: number; nextCx: number; nextCz: number; nextR: number; shrinking: boolean; phase: number; timeLeft: number; dps: number }
@@ -43,6 +48,7 @@ export class Match {
   players: Player[] = []; loot: Loot[]; t = 0; over = false; winner = -1; events: MatchEvent[] = [];
   /** 최근 총소리(봇이 듣습니다) */ sounds: Array<{ x: number; z: number; t: number; by: number; quiet?: boolean }> = [];
   /** 보급 투하(솔로 배틀로열만) */ drops: Drop[] = [];
+  /** 날아다니는 수류탄 */ nades: Nade[] = []; private nadeId = 1;
   /** 비행기 항로(낙하 시작일 때만) */ plane: Plane | null = null;
   /** 자기장 시간이 흐르기 시작하는 때(낙하하는 동안은 기다립니다) */ zoneDelay = 0;
   rng: () => number;
@@ -81,7 +87,7 @@ export class Match {
         id: i, name: h?.name ?? names[bi % names.length] + (cyc > 0 ? String(cyc + 1) : ''), bot: !h, remote: !!h?.remote, color: TEAM_COLORS[i % TEAM_COLORS.length], skin: SKIN_TONES[i % SKIN_TONES.length],
         x: sp.x, z: sp.z, yaw: air ? Math.atan2(this.plane!.dz, this.plane!.dx) : Math.atan2(-sp.z, -sp.x), pitch: 0, vx: 0, vz: 0, hp: PLAYER.hp, armor: 0, helmet: 0, boost: 0, alive: true,
         guns: [{ id: 'pistol', mag: WEAPONS.pistol.mag, reserve: WEAPONS.pistol.mag * 2, att: {} }, null], cur: 0, reload: 0, cd: 0.4, fireHeld: false, interactHeld: false,
-        kills: 0, place: 0, diedAt: 0, input: blankInput(), brain: null, air: air ? 1 : 0, alt: air ? AIR.alt : 0, jumpHeld: false, landedAt: 0, crouch: 0, walk: 0, kick: 0, muzzle: 0, hurt: 0, hurtYaw: 0, ads: false, speed: 0, lastHitBy: -1, emptyT: 0,
+        kills: 0, place: 0, diedAt: 0, input: blankInput(), brain: null, air: air ? 1 : 0, alt: air ? AIR.alt : 0, jumpHeld: false, landedAt: 0, crouch: 0, walk: 0, kick: 0, muzzle: 0, hurt: 0, hurtYaw: 0, ads: false, speed: 0, lastHitBy: -1, emptyT: 0, nades: 0, nadeCd: 0, nadeHeld: false,
       };
       if (p.bot) { p.brain = newBrain(this.rng, BOTS[o.difficulty]); if (air) this.planDrop(p); }
       p.input.yaw = p.yaw; this.players.push(p);
@@ -112,7 +118,7 @@ export class Match {
     this.t += dt;
     const zone = this.zone;
     this.sounds = this.sounds.filter(s => this.t - s.t < 2.5);
-    this.stepDrops();
+    this.stepDrops(); this.stepNades(dt);
     // 멀리 있는 AI(사람 시야 밖)는 생각을 0.2초에 한 번만 해서 100명이 뛰어도 가볍게 돕니다.
     const humans: Player[] = []; for (const q of this.players) if (!q.bot && q.alive) humans.push(q);
     for (const p of this.players) {
@@ -201,6 +207,8 @@ export class Match {
       const lim = this.map.half - 1; p.x = Math.max(-lim, Math.min(lim, p.x)); p.z = Math.max(-lim, Math.min(lim, p.z));
       p.speed = Math.hypot(p.vx, p.vz); p.walk += p.speed * dt;
     }
+    // 수류탄
+    p.nadeCd -= dt; if (inp.nade && !p.nadeHeld && p.nades > 0 && p.nadeCd <= 0 && p.air === 0 && !p.remote) this.throwNade(p); p.nadeHeld = !!inp.nade;
     // 무기 교체
     if (inp.slot >= 0 && inp.slot < 2 && inp.slot !== p.cur && p.guns[inp.slot]) { p.cur = inp.slot; p.reload = 0; p.cd = Math.max(p.cd, 0.35); inp.slot = -1; }
     const gun = p.guns[p.cur]; if (gun && !gun.att) gun.att = {};
@@ -222,11 +230,34 @@ export class Match {
     }
   }
 
+  private throwNade(p: Player): void {
+    p.nades--; p.nadeCd = NADE.cd; const cp = Math.cos(p.pitch), eye = eyeOf(p), fx = Math.cos(p.yaw) * cp, fz = Math.sin(p.yaw) * cp;
+    const n: Nade = { id: this.nadeId++, owner: p.id, x: p.x + fx * 0.6, y: eye - 0.1, z: p.z + fz * 0.6, vx: fx * NADE.speed + p.vx * 0.5, vy: Math.sin(p.pitch) * NADE.speed + 4.5, vz: fz * NADE.speed + p.vz * 0.5, fuse: NADE.fuse };
+    this.nades.push(n); this.sounds.push({ x: p.x, z: p.z, t: this.t, by: p.id, quiet: true }); this.events.push({ t: 'nade', stage: 'throw', id: p.id, x: n.x, y: n.y, z: n.z });
+  }
+  private stepNades(dt: number): void {
+    for (let i = this.nades.length - 1; i >= 0; i--) {
+      const n = this.nades[i]; n.fuse -= dt; n.vy -= 18 * dt;
+      const nx = n.x + n.vx * dt, nz = n.z + n.vz * dt;
+      if (blockedAt(this.map, nx, n.z, 0.15)) n.vx *= -0.45; else n.x = nx;
+      if (blockedAt(this.map, n.x, nz, 0.15)) n.vz *= -0.45; else n.z = nz;
+      n.y += n.vy * dt; if (n.y < 0.12) { n.y = 0.12; n.vy = Math.abs(n.vy) > 2 ? -n.vy * 0.38 : 0; n.vx *= 0.7; n.vz *= 0.7; }
+      if (n.fuse > 0) continue;
+      this.nades.splice(i, 1); this.events.push({ t: 'nade', stage: 'boom', id: n.owner, x: n.x, y: n.y, z: n.z });
+      this.sounds.push({ x: n.x, z: n.z, t: this.t, by: n.owner });
+      for (const q of this.players) {
+        if (!q.alive || q.air) continue; const d = Math.hypot(q.x - n.x, q.z - n.z, (1 - n.y) * 0.5); if (d > NADE.radius) continue;
+        let dmg = NADE.dmg * (1 - d / NADE.radius) ** 1.2; if (!lineClear(this.map, n.x, Math.max(0.3, n.y), n.z, q.x, 1.0, q.z)) dmg *= 0.3; if (dmg < 3) continue;
+        this.damage(q, dmg, n.owner, 'grenade', false, q.x, 1.2, q.z, false);
+      }
+    }
+  }
   private take(p: Player, l: Loot): void { l.taken = true; this.events.push({ t: 'pickup', id: p.id, loot: l.id, kind: l.kind, weapon: l.weapon, part: l.part ?? null, level: l.level ?? 0 }); }
   /** 다른 쪽(원격)이 먼저 주운 전리품을 치웁니다. */
   removeLoot(id: number): void { const l = this.loot.find(x => x.id === id); if (l) l.taken = true; }
   private takeAuto(p: Player, l: Loot): void {
-    if (l.kind === 'medkit') { if (p.hp >= PLAYER.hp) return; p.hp = Math.min(PLAYER.hp, p.hp + PLAYER.medkit); this.take(p, l); }
+    if (l.kind === 'grenade') { if (p.nades >= NADE.max) return; p.nades = Math.min(NADE.max, p.nades + NADE.pick); this.take(p, l); }
+    else if (l.kind === 'medkit') { if (p.hp >= PLAYER.hp) return; p.hp = Math.min(PLAYER.hp, p.hp + PLAYER.medkit); this.take(p, l); }
     else if (l.kind === 'armor') { if (p.armor >= 100) return; p.armor = Math.min(100, p.armor + PLAYER.armor); this.take(p, l); }
     else if (l.kind === 'helmet') { if (p.helmet >= (l.level ?? 1)) return; p.helmet = l.level ?? 1; this.take(p, l); }
     else if (l.kind === 'boost') { if (p.boost > BOOST.time * 0.6) return; p.boost = BOOST.time; this.take(p, l); }
@@ -299,7 +330,7 @@ export class Match {
     this.events.push({ t: 'shot', id: shooter, weapon: id, ox, oy, oz, ends, remote: true });
   }
 
-  damage(q: Player, dmg: number, by: number, weapon: WeaponId | 'zone', head: boolean, x: number, y: number, z: number, silent: boolean): void {
+  damage(q: Player, dmg: number, by: number, weapon: WeaponId | 'zone' | 'grenade', head: boolean, x: number, y: number, z: number, silent: boolean): void {
     if (!q.alive) return;
     const real = !q.remote; if (real && head && q.helmet > 0) dmg *= 1 - HELMET_CUT[q.helmet]; let hp = dmg;
     if (real && weapon !== 'zone' && q.armor > 0) { const soak = Math.min(q.armor, dmg * 0.5); q.armor -= soak; hp = dmg - soak; }
@@ -308,7 +339,7 @@ export class Match {
     if (real && q.hp <= 0) this.kill(q, weapon === 'zone' ? -1 : by, weapon);
   }
   /** 선수를 쓰러뜨립니다(원격 선수는 네트워크 소식으로 호출). */
-  kill(q: Player, by: number, weapon: WeaponId | 'zone'): void {
+  kill(q: Player, by: number, weapon: WeaponId | 'zone' | 'grenade'): void {
     if (!q.alive) return; q.alive = false; q.hp = 0; q.diedAt = this.t; q.place = this.aliveCount() + 1;
     const killer = this.players[by]; if (killer && killer.id !== q.id) killer.kills++;
     for (const g of q.guns) if (g) this.loot.push({ id: this.nextLoot++, kind: 'weapon', weapon: g.id, att: { ...g.att }, x: q.x + (this.rng() - 0.5) * 1.6, z: q.z + (this.rng() - 0.5) * 1.6, taken: false });

@@ -8,7 +8,7 @@ export interface Box { x0: number; z0: number; x1: number; z1: number; y0: numbe
 export type BuildingType = 'house' | 'cabin' | 'apartment' | 'warehouse' | 'garage' | 'shop' | 'tower' | 'barn' | 'bunker' | 'station' | 'church' | 'clinic' | 'diner' | 'silo' | 'hangar';
 export type RoofKind = 'flat' | 'gable' | 'shed';
 export interface Building { x: number; z: number; w: number; d: number; tex: number; door: 'x' | 'z'; floor: number; type: BuildingType; /** 벽 높이 */ h: number; roof: RoofKind }
-export type LootKind = 'weapon' | 'ammo' | 'medkit' | 'armor' | 'attach' | 'helmet' | 'boost';
+export type LootKind = 'weapon' | 'ammo' | 'medkit' | 'armor' | 'attach' | 'helmet' | 'boost' | 'grenade';
 export interface Loot { id: number; kind: LootKind; weapon: WeaponId | null; x: number; z: number; taken: boolean; /** 총기 파츠 */ part?: PartId | null; /** 헬멧 등급 */ level?: number; /** 떨어진 총에 달려 있던 파츠 */ att?: Attachments }
 export interface Tree { x: number; z: number; s: number; pine: boolean }
 export interface Rock { x: number; z: number; sx: number; sy: number; sz: number; ry: number }
@@ -110,7 +110,7 @@ const LOOT_TABLE: LootRow[] = [
   { k: 'attach', p: 'reddot', wt: 3.5 }, { k: 'attach', p: 'scope2', wt: 2.6 }, { k: 'attach', p: 'scope4', wt: 1.4, hi: 2.4 }, { k: 'attach', p: 'suppressor', wt: 3 }, { k: 'attach', p: 'comp', wt: 3 },
   { k: 'attach', p: 'grip', wt: 3.4 }, { k: 'attach', p: 'extmag', wt: 3.4, hi: 1.5 },
   { k: 'helmet', l: 1, wt: 5 }, { k: 'helmet', l: 2, wt: 3, hi: 1.6 }, { k: 'helmet', l: 3, wt: 1.2, hi: 3 },
-  { k: 'boost', wt: 5 },
+  { k: 'boost', wt: 5 }, { k: 'grenade', wt: 6 },
 ];
 function rollLoot(rng: () => number, tier: 0 | 1): LootSpec {
   const wt = (r: LootRow): number => r.wt * (tier ? r.hi ?? 1 : 1); let total = 0; for (const r of LOOT_TABLE) total += wt(r);

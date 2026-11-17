@@ -94,3 +94,5 @@
   .rt-stats { grid-template-columns: repeat(2, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) { .rt-toast, .rt-hint { transition: none; } }
+/* 한글은 단어 단위로 줄바꿈합니다. */
+.rt-root { word-break: keep-all; overflow-wrap: break-word; }

@@ -1,5 +1,6 @@
 // FRONTLINE — 3D 화면: 지형, 유닛·건물 표시, 이펙트, 카메라와 화면 좌표 변환. 시뮬레이션은 읽기만 합니다.
 import * as THREE from 'three';
+import { makePost, type PostFx } from '../postfx';
 import { BUILDINGS, TEAM_COLORS, UNITS, type BuildKind } from './config';
 import { crystalMat, makeBuilding, makeCrystals, makeUnit, matsFor, type BuildRig, type UnitRig } from './models';
 import { Scenery, buildLanes, bushSpots, paintGround } from './scenery';
@@ -15,7 +16,7 @@ const US: Record<string, number> = { worker: 1.4, marine: 1.45, rocket: 1.45, ta
 const seeded = (seed: number): (() => number) => { let s = seed >>> 0; return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }; };
 
 export class RtsView {
-  readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera = new THREE.PerspectiveCamera(36, 1, 0.5, 700);
+  post: PostFx | null = null; readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera = new THREE.PerspectiveCamera(36, 1, 0.5, 700);
   /** 카메라가 바라보는 지점(맵 좌표)과 거리. */
   cam = { x: 48, y: 48, dist: 58 }; readonly yaw: number; private pitch = 0.95;
   private units = new Map<number, UVis>(); private builds = new Map<number, BVis>(); private nodes = new Map<number, NVis>();
@@ -40,6 +41,7 @@ export class RtsView {
     const start = sim.map.starts[viewer]; this.cam.x = start.x + 2; this.cam.y = start.y + 2;
     if (window.innerWidth < 900 || matchMedia('(pointer: coarse)').matches) this.cam.dist = 40; // 작은 화면에서는 가깝게
     this.resize(canvas.clientWidth || 800, canvas.clientHeight || 600);
+    this.post = makePost(quality, this.renderer, this.scene, this.camera, { strength: 0.4, radius: 0.5, threshold: 0.9, vignette: 0.24, saturation: 1.1 });
   }
 
   // ---------- 지형 ----------
@@ -211,7 +213,7 @@ export class RtsView {
     }
     for (const [id, v] of this.nodes) { const n = s.node(id); if (!n) continue; const f = 0.55 + 0.45 * Math.min(1, n.amount / 1500); v.obj.scale.set(f, f, f); }
     crystalMat.emissiveIntensity = 1.0 + Math.sin(this.clock * 2.2) * 0.25;
-    this.updateFx(dt); this.placeCamera(); this.renderer.render(this.scene, this.camera);
+    this.updateFx(dt); this.placeCamera(); if (this.post) this.post.render(dt); else this.renderer.render(this.scene, this.camera);
   }
 
   // ---------- 이펙트 ----------
@@ -259,7 +261,7 @@ export class RtsView {
 
   dispose(): void {
     this.scene.traverse(o => { if (o instanceof THREE.Mesh || o instanceof THREE.InstancedMesh) { o.geometry.dispose(); const m = o.material; (Array.isArray(m) ? m : [m]).forEach(x => x.dispose()); } });
-    this.renderer.dispose(); this.renderer.forceContextLoss();
+    this.post?.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss();
   }
 }
 void TEAM_COLORS; void matsFor;

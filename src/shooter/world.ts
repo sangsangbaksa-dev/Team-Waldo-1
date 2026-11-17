@@ -8,7 +8,7 @@ export interface Box { x0: number; z0: number; x1: number; z1: number; y0: numbe
 export type BuildingType = 'house' | 'cabin' | 'apartment' | 'warehouse' | 'garage' | 'shop' | 'tower' | 'barn' | 'bunker' | 'station' | 'church' | 'clinic' | 'diner' | 'silo' | 'hangar';
 export type RoofKind = 'flat' | 'gable' | 'shed';
 export interface Building { x: number; z: number; w: number; d: number; tex: number; door: 'x' | 'z'; floor: number; type: BuildingType; /** 벽 높이 */ h: number; roof: RoofKind }
-export type LootKind = 'weapon' | 'ammo' | 'medkit' | 'armor' | 'attach' | 'helmet' | 'boost' | 'grenade';
+export type LootKind = 'weapon' | 'ammo' | 'medkit' | 'bandage' | 'armor' | 'attach' | 'helmet' | 'boost' | 'grenade';
 export interface Loot { id: number; kind: LootKind; weapon: WeaponId | null; x: number; z: number; taken: boolean; /** 총기 파츠 */ part?: PartId | null; /** 헬멧 등급 */ level?: number; /** 떨어진 총에 달려 있던 파츠 */ att?: Attachments }
 export interface Tree { x: number; z: number; s: number; pine: boolean }
 export interface Rock { x: number; z: number; sx: number; sy: number; sz: number; ry: number }
@@ -106,7 +106,7 @@ type LootSpec = Omit<Loot, 'id' | 'x' | 'z' | 'taken'>;
 interface LootRow { k: LootKind; w?: WeaponId; p?: PartId; l?: number; wt: number; hi?: number }
 const LOOT_TABLE: LootRow[] = [
   { k: 'weapon', w: 'smg', wt: 12 }, { k: 'weapon', w: 'rifle', wt: 13, hi: 2 }, { k: 'weapon', w: 'shotgun', wt: 10 }, { k: 'weapon', w: 'sniper', wt: 5, hi: 2.4 }, { k: 'weapon', w: 'pistol', wt: 4, hi: 0.3 },
-  { k: 'ammo', wt: 20 }, { k: 'medkit', wt: 15 }, { k: 'armor', wt: 11, hi: 1.6 },
+  { k: 'ammo', wt: 20 }, { k: 'bandage', wt: 16 }, { k: 'medkit', wt: 6, hi: 1.4 }, { k: 'armor', l: 1, wt: 7 }, { k: 'armor', l: 2, wt: 4, hi: 1.5 }, { k: 'armor', l: 3, wt: 1.2, hi: 3 },
   { k: 'attach', p: 'reddot', wt: 3.5 }, { k: 'attach', p: 'scope2', wt: 2.6 }, { k: 'attach', p: 'scope4', wt: 1.4, hi: 2.4 }, { k: 'attach', p: 'suppressor', wt: 3 }, { k: 'attach', p: 'comp', wt: 3 },
   { k: 'attach', p: 'grip', wt: 3.4 }, { k: 'attach', p: 'extmag', wt: 3.4, hi: 1.5 },
   { k: 'helmet', l: 1, wt: 5 }, { k: 'helmet', l: 2, wt: 3, hi: 1.6 }, { k: 'helmet', l: 3, wt: 1.2, hi: 3 },

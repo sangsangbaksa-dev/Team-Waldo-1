@@ -1,6 +1,7 @@
 // OUTLAW CITY의 관절형 시민·차량·수집품과 네온 표식, 풀링된 전투 이펙트를 그립니다.
 import { OUTFITS } from './life';
 import * as THREE from 'three';
+import { blankPose, calmState, computePose } from '../shared/character/pose';
 import { instantiate, type Baked, type CharModel } from '../city/models';
 import { VEHICLES, clamp, type Ped, type Pickup, type SimEvent, type Vehicle, type VehicleDef, type WeaponId } from './types';
 import { MISSION_LIST, canStart } from './missions';
@@ -191,10 +192,13 @@ export class ActorView {
     this.mesh(g, this.box, 0x272d35, long ? 0.32 : 0.15, 0, 0, long ? 0.8 : 0.32, id === 'rocket' ? 0.2 : 0.09, 0.09);
     this.mesh(g, this.box, 0x504b48, 0.08, -0.1, 0, 0.09, 0.22, 0.08); return g;
   }
+  private cs = calmState(); private cp = blankPose();
   private pose(p: Ped, r: Rig): void {
-    const amp = clamp(p.speed / 3.2, 0, 1), run = clamp((p.speed - 4.6) / 2.6, 0, 1), phase = p.walk * 1.35, sn = Math.sin(phase);
-    r.hip.rotation.set(0, -sn * 0.07 * amp, -0.06 * amp - 0.12 * run + Math.sin(p.hurt * 30) * p.hurt * 0.55);
-    r.legs.forEach((leg, i) => { const side = i ? 1 : -1; leg.rotation.z = sn * side * (0.5 + 0.2 * run) * amp + (p.crouch ? 0.35 : 0); if (r.shins[i]) r.shins[i].rotation.z = -amp * (0.12 + 0.65 * Math.max(0, Math.cos(phase) * side)) - (p.crouch ? 0.7 : 0); });
+    // 걷기·달리기·웅크리기·피격 다리/몸통 각도는 공용 캐릭터 모듈(src/shared/character)이 계산합니다.
+    const st = this.cs; st.speed = p.speed; st.walk = p.walk; st.time = this.sim.t; st.crouch = p.crouch ? 1 : 0; st.hit = 0;
+    const P = computePose(st, this.cp), amp = clamp(p.speed / 3.2, 0, 1), sn = Math.sin(p.walk * 1.35);
+    r.hip.rotation.set(0, P.torsoTwist, P.torsoLean + Math.sin(p.hurt * 30) * p.hurt * 0.55);
+    r.legs[0].rotation.z = P.thighL; r.legs[1].rotation.z = P.thighR; if (r.shins[0]) r.shins[0].rotation.z = P.shinL; if (r.shins[1]) r.shins[1].rotation.z = P.shinR;
     const armed = r.weapon !== 'fist', aiming = armed && (p.aiming || p.muzzle > 0 || p.fireHeld), punch = Math.sin(clamp(p.punchT / 0.3, 0, 1) * Math.PI);
     r.arms.forEach((arm, i) => { arm.rotation.set(0, aiming ? -p.pitch * 0.3 : 0, aiming ? 1.42 + p.pitch - p.kick * 0.17 : armed && i ? 0.25 : -sn * (i ? -1 : 1) * amp * 0.55); });
     if (p.punchT > 0) { r.arms[1].rotation.z = punch * 1.9; r.hip.rotation.y -= punch * 0.45; }

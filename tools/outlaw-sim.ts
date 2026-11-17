@@ -55,6 +55,10 @@ for (const info of JOB_LIST) {
 { // 자경단 완주
   const s = new Sim(11); startJob(s, 'vigilante'); for (let i = 0; i < 4; i++) s.ped(s.job.ids[`e${i}`]!)!.hp = 0, s.killPed(s.ped(s.job.ids[`e${i}`]!)!, PLAYER_ID, 'pistol'); const c0 = s.cash; stepJobs(s, 0.1); ok(!s.job.active && s.cash >= c0 + 700, '자경단 완료 보상');
 }
+{ // 차량 파괴 · 민감 화물
+  const s = new Sim(11); startJob(s, 'demolish'); const c0 = s.cash; for (let i = 0; i < 3; i++) { const v = s.vehicle(s.job.ids[`c${i}`]!)!; v.wrecked = true; v.alive = false; } stepJobs(s, 0.1); ok(!s.job.active && s.cash >= c0 + 1500, '차량 파괴 완료 보상');
+  const s2 = new Sim(11); startJob(s2, 'cargo'); const car = s2.vehicle(s2.job.ids.car)!; s2.enterVehicle(s2.player, car); stepJobs(s2, 0.1); ok(s2.job.stage === 1, '화물 적재'); const d0 = s2.cash; car.x = s2.job.data.x!; car.z = s2.job.data.z!; stepJobs(s2, 0.1); ok(!s2.job.active && s2.cash >= d0 + 1300, '화물 인도 보상');
+}
 { // 응급 이송 완주
   const s = new Sim(11); startJob(s, 'paramedic'); const car = s.vehicle(s.job.ids.car)!, pt = s.ped(s.job.ids.patient)!; s.enterVehicle(s.player, car); car.x = pt.x + 2; car.z = pt.z; car.vf = 0; car.vx = car.vz = 0; stepJobs(s, 0.1); ok(s.job.stage === 1, '환자 탑승');
   const h = s.map.pois.find(q => q.kind === 'hospital')!; car.x = h.x; car.z = h.z; const c0 = s.cash; stepJobs(s, 0.1); ok(!s.job.active && s.cash > c0, '응급 이송 보상');

@@ -1,5 +1,9 @@
 // OUTLAW CITY — 게임 조립: 타이틀(도시 선회)·입력·HUD·상점/지도/일시정지·고정 간격 루프.
 import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import './outlaw.css';
 import { readPreferences, writePreferences } from '../prefs';
 import type { LoadingScreen } from '../loading';
@@ -68,7 +72,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   let sim: Sim | null = null, cityView: CityView | null = null, actorView: ActorView | null = null, chase: ChaseCamera | null = null, minimap: Minimap | null = null;
   let assets: OutlawAssets | null = null;
   const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(70, 1, 0.1, 1200);
-  let renderer: THREE.WebGLRenderer | null = null;
+  let renderer: THREE.WebGLRenderer | null = null; let composer: EffectComposer | null = null; let bloom: UnrealBloomPass | null = null;
   let yaw = 0, pitch = 0, acc = 0, saveT = 0, shakeFov = 0, hitT = 0, hurtVig = 0, bannerT = 0, radioToast = 0;
   const keys = new Set<string>(), mouse = { fire: false, aim: false };
   const tc = { fire: false, aim: false, jump: false, sprint: false, gas: false, brake: false, hand: false, left: false, right: false, moveId: -1, mx: 0, my: 0, ox: 0, oy: 0, lookId: -1, lx: 0, ly: 0 };
@@ -355,7 +359,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
 
   // ---------- 루프 ----------
   function resize(): void {
-    if (!renderer) return; const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+    if (!renderer) return; const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); composer?.setSize(w, h); bloom?.resolution.set(w / 2, h / 2); camera.aspect = w / h; camera.updateProjectionMatrix();
   }
   window.addEventListener('resize', resize);
 
@@ -388,7 +392,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
       if (shakeFov > 0.01) { camera.fov += shakeFov; camera.updateProjectionMatrix(); shakeFov *= 0.86; }
     }
     cityView.update(dt, camera, sim.clock, sim.t, sim.rain); actorView.update(dt, camera, sim.clock);
-    renderer.render(scene, camera);
+    if (composer && bloom && prefs.quality !== 'low') { const n = cityView?.night ?? 0, r = sim?.rain ?? 0; bloom.strength = .18 + n * .55 + r * .14; composer.render(dt); } else renderer.render(scene, camera);
     if (playing) hud(dt, car);
     if (phase !== 'menu') { saveT += dt; if (saveT > 30) { saveT = 0; if (p.alive) save(); } }
   }
@@ -464,7 +468,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     for (const [t, f] of [['keydown', onKeyDown], ['keyup', onKeyUp], ['mousemove', onMouseMove], ['mouseup', onMouseUp], ['wheel', onWheel], ['blur', onBlur], ['resize', resize]] as Array<[string, EventListener]>) window.removeEventListener(t, f);
     document.removeEventListener('pointerlockchange', onLock); if (document.pointerLockElement) document.exitPointerLock();
     try { actorView?.dispose(); cityView?.dispose(); } catch { /* 정리 실패는 무시 */ }
-    audio.dispose(); renderer?.dispose(); renderer?.forceContextLoss(); root.remove(); onExit();
+    audio.dispose(); composer?.dispose(); renderer?.dispose(); renderer?.forceContextLoss(); root.remove(); onExit();
   }
 
   // ---------- 부팅 ----------
@@ -478,6 +482,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     try {
       renderer = new THREE.WebGLRenderer({ canvas, antialias: prefs.quality !== 'low', powerPreference: 'high-performance' });
       renderer.setPixelRatio(Math.min(prefs.quality === 'high' ? 2 : prefs.quality === 'standard' ? 1.5 : 1, devicePixelRatio || 1));
+      if (prefs.quality !== 'low') { composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera)); bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), .3, .6, .82); composer.addPass(bloom); composer.addPass(new OutputPass()); }
       sim = new Sim(SEED); sim.clock = TITLE_CLOCK;
       cityView = new CityView(scene, renderer, sim.map, assets, prefs.quality); actorView = new ActorView(scene, sim, assets, prefs.quality);
       chase = new ChaseCamera(camera, sim.map); minimap = new Minimap(sim.map); resize();

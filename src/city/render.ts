@@ -1,6 +1,7 @@
 // LAST CITY — 캔버스 렌더러 (유사 3D 건물, 파티클, 자기장, 미니맵)
 import { ACTORS, BIZ, BLOCK, BLOCKS, CIV, FACTIONS, PITCH, POLICE, ROAD, SIZE, STRUCTS, WEAPONS, type StructKind } from './defs';
 import { HQ_BUILD_RANGE, structCenter } from './placement';
+import { declutterFromAreaChip } from './uiMath';
 import type { Actor, Fx, Vehicle, World } from './world';
 
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; color: string; kind: 0 | 1 | 2 | 3; text?: string }
@@ -23,6 +24,11 @@ export class Renderer {
   }
   toWorld(sx: number, sy: number): { x: number; y: number } { return { x: (sx - this.w / 2) / this.cam.zoom + this.cam.x, y: (sy - this.h / 2) / this.cam.zoom + this.cam.y }; }
   toScreen(x: number, y: number): { x: number; y: number } { return { x: (x - this.cam.x) * this.cam.zoom + this.w / 2, y: (y - this.cam.y) * this.cam.zoom + this.h / 2 }; }
+  /** Keep a world-space label from sitting under the region-name chip. */
+  declutterWorld(x: number, y: number): { x: number; y: number } {
+    const s = this.toScreen(x, y), d = declutterFromAreaChip(s.x, s.y, this.w, this.h);
+    return d.x === s.x && d.y === s.y ? { x, y } : this.toWorld(d.x, d.y);
+  }
   visible(x: number, y: number, m = 80): boolean { const hw = this.w / 2 / this.cam.zoom + m, hh = this.h / 2 / this.cam.zoom + m; return Math.abs(x - this.cam.x) < hw && Math.abs(y - this.cam.y) < hh; }
   part(x: number, y: number, vx: number, vy: number, life: number, size: number, color: string, kind: Particle['kind'] = 0, text?: string): void { if (this.parts.length < 700) this.parts.push({ x, y, vx, vy, life, max: life, size, color, kind, text }); }
   floater(x: number, y: number, text: string, color: string): void { this.part(x, y, 0, -34, 1.3, 15, color, 3, text); }
@@ -144,7 +150,8 @@ export class Renderer {
       if (z.cap > 0) { ctx.strokeStyle = FACTIONS[z.capBy]?.color ?? '#fff'; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(z.x, z.y, 30, -1.57, -1.57 + 6.283 * Math.min(1, z.cap / 6)); ctx.stroke(); }
       ctx.font = "800 12px 'Noto Sans KR',sans-serif"; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.75)';
       const label = z.kind === 'gunshop' ? '무기상' : z.owner < 0 ? `${d.name} $${d.price}` : `${d.name} ${'★'.repeat(z.level)}`;
-      ctx.strokeText(label, z.x + o.x * 20, z.y + o.y * 20 + 4); ctx.fillStyle = '#fff'; ctx.fillText(label, z.x + o.x * 20, z.y + o.y * 20 + 4);
+      const pad = this.declutterWorld(z.x + o.x * 20, z.y + o.y * 20 + 4);
+      ctx.strokeText(label, pad.x, pad.y); ctx.fillStyle = '#fff'; ctx.fillText(label, pad.x, pad.y);
     }
   }
   lootLayer(): void {
@@ -232,7 +239,7 @@ export class Renderer {
       if (!st) {
         ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.strokeRect(rx0 + 9, ry0 + 9, rw - 18, rh - 18);
         ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fillRect(rx0 + 16 + (i * 37) % Math.max(1, rw - 60), ry0 + 16 + (i * 53) % Math.max(1, rh - 50), 26, 18); ctx.fillStyle = 'rgba(255,255,255,0.14)'; ctx.fillRect(rx0 + 20 + (i * 71) % Math.max(1, rw - 54), ry0 + 22 + (i * 29) % Math.max(1, rh - 50), 14, 14);
-        if (s.sign) { ctx.font = `900 ${Math.min(34, rw / 4.2)}px 'Noto Sans KR',sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillText(s.sign, mx + 2, my + 2); ctx.fillStyle = s.signColor!; ctx.fillText(s.sign, mx, my); ctx.textBaseline = 'alphabetic'; }
+        if (s.sign) { const sign = this.declutterWorld(mx, my); ctx.font = `900 ${Math.min(34, rw / 4.2)}px 'Noto Sans KR',sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillText(s.sign, sign.x + 2, sign.y + 2); ctx.fillStyle = s.signColor!; ctx.fillText(s.sign, sign.x, sign.y); ctx.textBaseline = 'alphabetic'; }
       } else {
         const f = w.factions[st.f]; ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.fillRect(rx0 + 6, ry0 + 6, rw - 12, rh - 12);
         ctx.font = "800 11px 'Noto Sans KR',sans-serif"; ctx.textAlign = 'center'; ctx.fillStyle = '#fff';

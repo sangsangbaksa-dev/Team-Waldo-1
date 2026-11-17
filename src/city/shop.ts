@@ -1,6 +1,6 @@
 // LAST CITY — 사업체 내부 상점 품목과 구매 규칙. DOM 비의존.
 import { WEAPONS, type BizKind, type WeaponId } from './defs';
-import type { Business, World } from './world';
+import type { Business, WeaponSlot, World } from './world';
 
 export interface ShopItem { id: string; name: string; desc: string; price: number; icon: string }
 export interface ShopResult { ok: boolean; msg: string }
@@ -10,6 +10,10 @@ const BETS = [100, 500, 1000] as const;
 export const WIN_CHANCE = 0.46;
 
 const GUN_IDS: WeaponId[] = ['smg', 'shotgun', 'rifle', 'sniper', 'rocket'];
+const needsAmmo = (slot: WeaponSlot): boolean => {
+  const def = WEAPONS[slot.id];
+  return slot.mag < def.mag || (def.ammo > 0 && slot.ammo < def.ammo);
+};
 const wpn = (id: WeaponId): ShopItem => { const d = WEAPONS[id]; return { id: `gun:${id}`, name: d.name, desc: `피해 ${d.dmg}${d.pellets > 1 ? '×' + d.pellets : ''} · 연사 ${d.rate}/s · 사거리 ${d.range}`, price: d.price, icon: '🔫' }; };
 
 /** 사업체 종류별로 파는 물건. 매입·업그레이드는 별도(buyBiz/upgradeBiz)입니다. */
@@ -50,6 +54,9 @@ export function canBuy(w: World, fi: number, item: ShopItem): boolean {
   if (item.id.startsWith('sell:')) return f.crystal >= 1;
   if (item.id === 'medkit') return f.medkits < MAX_MEDKITS && f.cash >= item.price;
   if (item.id === 'energy') return b.hp < b.maxHp && f.cash >= item.price;
+  if (item.id === 'ammo') return f.cash >= item.price && f.slots.some(needsAmmo);
+  if (item.id === 'armor') return f.cash >= item.price && f.armor < 100;
+  if (item.id === 'mercs') return !w.opts.duel && f.cash >= item.price && w.actors.filter(a => a.alive && a.f === fi && a.kind === 'merc').length <= 6;
   return f.cash >= itemPrice(w, item);
 }
 
@@ -60,7 +67,8 @@ export function purchase(w: World, fi: number, biz: Business, id: string): ShopR
   const fail = (msg: string): ShopResult => ({ ok: false, msg }), done = (msg: string): ShopResult => ({ ok: true, msg });
   const price = itemPrice(w, item);
   if (id.startsWith('sell:')) {
-    const n = id === 'sell:all' ? Math.floor(f.crystal) : 50; const e = w.market(fi, true, n); return e ? fail(e) : done(`크리스탈 ${n}개 환전`);
+    const n = id === 'sell:all' ? Math.floor(f.crystal) : Math.min(50, Math.floor(f.crystal));
+    const e = w.market(fi, true, n); return e ? fail(e) : done(`크리스탈 ${n}개 환전`);
   }
   if (id.startsWith('crystal:')) { const n = Number(id.slice(8)), e = w.market(fi, false, n); return e ? fail(e) : done(`크리스탈 ${n}개 구매`); }
   if (id.startsWith('bet:')) {
@@ -73,7 +81,13 @@ export function purchase(w: World, fi: number, biz: Business, id: string): ShopR
   if (id === 'energy') { if (b.hp >= b.maxHp) return fail('이미 체력이 가득합니다'); f.cash -= price; b.hp = Math.min(b.maxHp, b.hp + 35); w.fx('heal', b.x, b.y); return done('체력 회복'); }
   if (id === 'ammo') {
     let changed = false;
-    for (const s of f.slots) { const d = WEAPONS[s.id]; if (d.ammo > 0 ? s.ammo < d.ammo : s.mag < d.mag) { changed = true; s.ammo = d.ammo > 0 ? d.ammo : s.ammo; s.mag = d.ammo > 0 ? Math.min(d.mag, s.ammo) : d.mag; } }
+    for (const s of f.slots) {
+      if (!needsAmmo(s)) continue;
+      const d = WEAPONS[s.id];
+      changed = true;
+      if (d.ammo > 0) s.ammo = d.ammo;
+      s.mag = d.ammo > 0 ? Math.min(d.mag, s.ammo) : d.mag;
+    }
     if (!changed) return fail('탄약이 이미 가득합니다'); f.cash -= price; return done('탄약 보충 완료');
   }
   if (id === 'mercs') { const e = w.hireMercs(fi); return e ? fail(e) : done('용병 3명 고용'); }

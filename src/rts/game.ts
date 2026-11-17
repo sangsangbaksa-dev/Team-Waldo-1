@@ -6,7 +6,7 @@ import type { LoadingScreen } from '../loading';
 import type { PvpSession } from '../net/lobby';
 import { RtsAi } from './ai';
 import { RtsAudio } from './audio';
-import { BUILDINGS, DIFFICULTIES, LEVELS, SUPPLY_MAX, TICK, UNITS, isDifficulty, type BuildKind, type Difficulty, type UnitKind } from './config';
+import { BUILDINGS, DIFFICULTIES, LEVELS, RESEARCH, RESEARCH_KINDS, SUPPLY_MAX, TICK, UNITS, isDifficulty, type BuildKind, type Difficulty, type UnitKind } from './config';
 import { RtsNet } from './pvp';
 import { RtsSim, type Building, type Cmd, type ResNode, type Unit } from './sim';
 import { RtsView } from './view';
@@ -24,7 +24,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   root.innerHTML = `<canvas class="rt-canvas"></canvas><canvas class="rt-over"></canvas>
     <div class="rt-top"><div class="rt-res"><span class="rt-min" title="광물"><i></i><b id="rt-min">0</b><small id="rt-rate"></small></span><span class="rt-sup" title="인구"><b id="rt-sup">0/0</b></span><span class="rt-time" id="rt-time">0:00</span></div>
       <div class="rt-vs" id="rt-vs"></div>
-      <div class="rt-btns"><button data-act="speed" title="속도" hidden>×1</button><button data-act="mute" title="소리" aria-pressed="${prefs.sound}">${prefs.sound ? '🔊' : '🔇'}</button><button data-act="menu" title="메뉴 (Esc)">☰</button></div></div>
+      <div class="rt-btns"><button data-act="speed" title="속도" hidden>×1</button><button data-act="pause" class="rt-pause" title="일시정지 (P)">⏸ 일시정지</button><button data-act="mute" title="소리" aria-pressed="${prefs.sound}">${prefs.sound ? '🔊' : '🔇'}</button><button data-act="menu" title="메뉴 (Esc)">☰</button></div></div>
     <div class="rt-toast" id="rt-toast" role="status" aria-live="polite"></div><div class="rt-hint" id="rt-hint"></div>
     <div class="rt-bottom"><div class="rt-mini"><canvas id="rt-mini" width="220" height="220" aria-label="미니맵"></canvas></div><div class="rt-sel" id="rt-sel"></div><div class="rt-cmd" id="rt-cmd"></div></div>
     <div class="rt-modal" id="rt-modal"></div>`;
@@ -87,13 +87,28 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   }
   function ghostAt(x: number, y: number, kind: BuildKind): { x: number; y: number } { const s = BUILDINGS[kind].size; return { x: Math.round(x - s / 2), y: Math.round(y - s / 2) }; }
   function tryPlace(gx: number, gy: number): void {
-    if (!sim || mode?.t !== 'build') return; const kind = mode.kind, d = BUILDINGS[kind], at = ghostAt(gx, gy, kind), { us } = own(), ws = us.filter(u => u.kind === 'worker');
-    if (!ws.length) { mode = null; return; }
-    if (!sim.canPlace(kind, at.x, at.y)) { toast('여기에는 지을 수 없습니다', true); return; }
-    if (sim.players[me].minerals < d.cost) { toast('광물이 부족합니다', true); return; }
-    let w = ws[0], bd = Infinity; for (const u of ws) { const dd = sim.dist(u.x, u.y, at.x, at.y); if (dd < bd) { bd = dd; w = u; } }
-    issue({ k: 'build', id: w.id, b: kind, x: at.x, y: at.y }); audio.sfx('place'); ping(at.x + d.size / 2, at.y + d.size / 2, 0x5dff9a);
+    if (!sim || mode?.t !== 'build') return; const kind = mode.kind, at = ghostAt(gx, gy, kind);
+    if (!placeAt(kind, at.x, at.y)) return;
     if (!keys.has('Shift')) { mode = null; setHint(''); }
+  }
+  /** 선택한 일꾼(없으면 가장 알맞은 일꾼)에게 건설을 맡깁니다. 지으면 true. */
+  function placeAt(kind: BuildKind, x: number, y: number): boolean {
+    if (!sim) return false; const d = BUILDINGS[kind], at = { x, y }, { us } = own(); let ws = us.filter(u => u.kind === 'worker');
+    if (!ws.length) ws = sim.units.filter(u => u.owner === me && u.kind === 'worker');
+    if (!ws.length) { toast('일꾼이 없습니다', true); mode = null; return false; }
+    if (!sim.canPlace(kind, at.x, at.y)) { toast('여기에는 지을 수 없습니다 (붉은 자리는 막힌 곳)', true); return false; }
+    if (sim.players[me].minerals < d.cost) { toast('광물이 부족합니다', true); return false; }
+    // 쉬거나 캐는 일꾼을 우선하고, 건설 중이거나 광물을 든 일꾼은 뒤로 미룹니다.
+    let w = ws[0], bd = Infinity; for (const u of ws) { const dd = sim.dist(u.x, u.y, at.x, at.y) + (u.o.t === 'build' ? 1000 : 0) + (u.carry > 0 ? 12 : 0); if (dd < bd) { bd = dd; w = u; } }
+    issue({ k: 'build', id: w.id, b: kind, x: at.x, y: at.y, q: keys.has('Shift') }); audio.sfx('place'); ping(at.x + d.size / 2, at.y + d.size / 2, 0x5dff9a);
+    return true;
+  }
+  /** 카메라가 보는 곳 가까이에 알아서 자리를 잡아 짓습니다. */
+  function autoPlace(kind: BuildKind): void {
+    if (!sim || !view) return; const cx = view.cam.x, cy = view.cam.y, hq = sim.buildings.find(b => b.owner === me && b.kind === 'hq' && b.done);
+    const far = !!hq && Math.hypot(hq.x - cx, hq.y - cy) > 40, ax = far ? hq!.x + 2 : cx, ay = far ? hq!.y + 2 : cy;
+    const site = sim.findSite(kind, ax, ay, kind === 'hq' ? 0 : 9); if (!site) { toast('근처에 지을 자리가 없습니다', true); return; }
+    if (placeAt(kind, site.x, site.y) && !keys.has('Shift')) { mode = null; setHint(''); }
   }
 
   // ---------- 명령 카드 ----------
@@ -101,24 +116,38 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     if (!sim || ended) return [];
     const { us, bs } = own(), p = sim.players[me], out: Btn[] = [];
     const startMode = (m: NonNullable<Mode>, hint: string): void => { mode = m; setHint(hint); submenu = false; };
+    const hasWorker = sim.units.some(u => u.owner === me && u.kind === 'worker');
+    const buildBtn: Btn = { label: '건설', key: 'B', on: () => { submenu = true; mode = null; setHint(''); } };
+    const buildMenu = (): Btn[] => {
+      const o: Btn[] = [];
+      for (const k of BUILD_MENU) { const d = BUILDINGS[k], lack = d.req && !sim!.has(me, d.req) ? `${BUILDINGS[d.req].name} 필요` : p.minerals < d.cost ? '광물 부족' : ''; o.push({ label: d.name, sub: `◆${d.cost}`, key: d.key, enabled: !lack, hint: lack || d.role, on: () => startMode({ t: 'build', kind: k }, `${d.name}: 지을 곳을 클릭 · Enter 자동 배치 · Shift 연속 건설 · 우클릭 취소`) }); }
+      o.push({ label: '뒤로', key: 'ESCAPE', on: () => { submenu = false; } }); return o;
+    };
+    if (mode?.t === 'build') { const k = mode.kind; return [{ label: '자동 배치', sub: '알아서 지음', key: 'ENTER', on: () => autoPlace(k) }, { label: '취소', key: 'ESCAPE', on: () => { mode = null; setHint(''); } }]; }
+    if (submenu && hasWorker) return buildMenu();
+    if (!us.length && !bs.length) { if (hasWorker) out.push(buildBtn); return out; }
     if (us.length) {
-      if (submenu && us.some(u => u.kind === 'worker')) {
-        for (const k of BUILD_MENU) { const d = BUILDINGS[k], lack = d.req && !sim.has(me, d.req) ? `${BUILDINGS[d.req].name} 필요` : p.minerals < d.cost ? '광물 부족' : ''; out.push({ label: d.name, sub: `◆${d.cost}`, key: d.key, enabled: !lack, hint: lack || d.role, on: () => startMode({ t: 'build', kind: k }, `${d.name} 위치를 클릭하세요 · Shift 로 연속 건설 · 우클릭 취소`) }); }
-        out.push({ label: '뒤로', key: 'ESCAPE', on: () => { submenu = false; } }); return out;
-      }
       out.push({ label: '이동', key: 'M', on: () => startMode({ t: 'move' }, '이동할 곳을 클릭하세요'), active: mode?.t === 'move' });
       out.push({ label: '정지', key: 'S', on: () => { issue({ k: 'stop', ids: us.map(u => u.id) }); audio.sfx('order'); } });
       out.push({ label: '공격 이동', key: 'A', on: () => startMode({ t: 'attack' }, '공격 이동할 곳을 클릭하세요'), active: mode?.t === 'attack' });
-      if (us.some(u => u.kind === 'worker')) out.push({ label: '건설', key: 'B', on: () => { submenu = true; mode = null; setHint(''); } });
+      if (us.some(u => u.kind === 'worker')) out.push(buildBtn);
       return out;
     }
     if (bs.length) {
       const b = bs[0];
-      if (!b.done) { out.push({ label: '건설 취소', sub: `◆${Math.floor(BUILDINGS[b.kind].cost * 0.75)} 환급`, key: 'X', on: () => issue({ k: 'cancel', b: b.id, i: -1 }) }); return out; }
+      if (!b.done) {
+        out.push({ label: '건설 이어서', sub: '일꾼 보내기', key: 'C', on: () => { const w = sim!.spareWorker(b); if (!w) { toast('보낼 일꾼이 없습니다', true); return; } issue({ k: 'resume', ids: [w.id], b: b.id }); audio.sfx('order'); toast('일꾼을 보냈습니다'); } });
+        out.push({ label: '건설 취소', sub: `◆${Math.floor(BUILDINGS[b.kind].cost * 0.75)} 환급`, key: 'X', on: () => issue({ k: 'cancel', b: b.id, i: -1 }) }); return out;
+      }
       for (const u of (Object.keys(UNITS) as UnitKind[]).filter(k => UNITS[k].from === b.kind)) {
         const d = UNITS[u], lack = !sim.canTrain(me, u) ? `${BUILDINGS[d.req!].name} 필요` : p.minerals < d.cost ? '광물 부족' : p.cap - p.used < d.supply ? '보급소 필요' : b.queue.length >= 5 ? '대기열 가득' : '';
         out.push({ label: d.name, sub: `◆${d.cost} · 인구 ${d.supply}`, key: d.key, enabled: !lack, hint: lack || d.role, on: () => { for (const x of bs.filter(y => y.kind === b.kind && y.done)) { if (sim && sim.players[me].minerals >= d.cost && x.queue.length < 5) { issue({ k: 'train', b: x.id, u }); if (!keys.has('Shift')) break; } } audio.sfx('click'); } });
       }
+      for (const r of RESEARCH_KINDS.filter(k => RESEARCH[k].from === b.kind)) {
+        const d = RESEARCH[r], busy = sim.buildings.some(x => x.owner === me && x.research?.r === r), lack = p.up[r] ? '연구 완료' : busy ? '연구 중' : b.research ? '이 건물은 연구 중' : p.minerals < d.cost ? '광물 부족' : '';
+        out.push({ label: d.name, sub: p.up[r] ? '완료' : `◆${d.cost}`, key: d.key, enabled: !lack, hint: lack || d.role, on: () => issue({ k: 'research', b: b.id, r }) });
+      }
+      if (hasWorker && b.kind === 'hq') out.push(buildBtn);
       if (BUILDINGS[b.kind].trains.length) out.push({ label: '집결지', key: 'R', on: () => startMode({ t: 'rally' }, '집결지를 클릭하세요(광물을 누르면 일꾼이 바로 캡니다)'), active: mode?.t === 'rally' });
     }
     return out;
@@ -138,7 +167,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   // ---------- 선택 패널 ----------
   function paintSelection(force = false): void {
     if (!sim) return; const el = $('#rt-sel'), ents = [...selected].map(id => sim!.index.get(id)).filter((e): e is Unit | Building | ResNode => !!e);
-    const key = ents.map(e => e.k === 'unit' ? `${e.id}:${e.hp}` : e.k === 'building' ? `${e.id}:${e.hp}:${e.queue.length}:${e.queue[0]?.left ?? 0}:${e.done}:${e.progress >> 4}` : `${e.id}:${e.amount}`).join(',');
+    const key = ents.map(e => e.k === 'unit' ? `${e.id}:${e.hp}` : e.k === 'building' ? `${e.id}:${e.hp}:${e.queue.length}:${e.queue[0]?.left ?? 0}:${e.done}:${e.progress >> 4}:${e.research ? e.research.left >> 3 : -1}` : `${e.id}:${e.amount}`).join(',');
     if (!force && key === selKey) return; selKey = key;
     if (!ents.length) { el.innerHTML = '<p class="rt-tip">유닛이나 건물을 선택하세요.<br>드래그로 여러 유닛을 한꺼번에 선택할 수 있습니다.</p>'; return; }
     const bar = (v: number, max: number, c = ''): string => `<span class="rt-bar ${c}"><i style="width:${Math.max(0, Math.min(100, v / max * 100)).toFixed(0)}%"></i></span>`;
@@ -146,7 +175,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       const e = ents[0];
       if (e.k === 'unit') { const d = UNITS[e.kind]; el.innerHTML = `<div class="rt-one"><h3>${d.name}<small>${e.owner === me ? '' : ' · 적'}</small></h3><p>${d.role}</p>${bar(e.hp, d.hp, e.owner === me ? '' : 'foe')}<p class="rt-num">체력 ${Math.ceil(e.hp)} / ${d.hp}</p><p class="rt-num">공격 ${d.dmg} · 사거리 ${d.range} · 이동 ${d.speed}</p></div>`; }
       else if (e.k === 'building') {
-        const d = BUILDINGS[e.kind], q = e.queue.map((x, i) => `<button type="button" class="rt-q" data-q="${i}" title="취소하고 환급"><b>${UNITS[x.u].name}</b>${i === 0 ? bar(UNITS[x.u].time - x.left, UNITS[x.u].time, 'prog') : ''}</button>`).join('');
+        const d = BUILDINGS[e.kind], rs = e.research ? `<button type="button" class="rt-q" data-r="1" title="연구 취소하고 환급"><b>${RESEARCH[e.research.r].name}</b>${bar(RESEARCH[e.research.r].time - e.research.left, RESEARCH[e.research.r].time, 'prog')}</button>` : '', q = rs + e.queue.map((x, i) => `<button type="button" class="rt-q" data-q="${i}" title="취소하고 환급"><b>${UNITS[x.u].name}</b>${i === 0 ? bar(UNITS[x.u].time - x.left, UNITS[x.u].time, 'prog') : ''}</button>`).join('');
         el.innerHTML = `<div class="rt-one"><h3>${d.name}<small>${e.owner === me ? '' : ' · 적'}</small></h3><p>${e.done ? d.role : `건설 중 ${Math.floor(e.progress / d.time * 100)}%`}</p>${bar(e.hp, e.maxhp, e.owner === me ? '' : 'foe')}<p class="rt-num">체력 ${Math.ceil(e.hp)} / ${e.maxhp}${e.kind === 'tower' ? ` · 공격 ${d.dmg} · 사거리 ${d.range}` : ''}</p>${q ? `<div class="rt-queue">${q}</div>` : ''}</div>`;
       } else el.innerHTML = `<div class="rt-one"><h3>광물</h3><p>일꾼으로 채취하세요</p><p class="rt-num">남은 양 ${e.amount}</p></div>`;
       return;
@@ -155,8 +184,8 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     el.innerHTML = `<div class="rt-multi">${shown.map(u => `<button type="button" data-id="${u.id}" title="${UNITS[u.kind].name}" class="${u.owner === me ? '' : 'foe'}"><b>${UNITS[u.kind].name.slice(0, 2)}</b>${bar(u.hp, UNITS[u.kind].hp)}</button>`).join('')}${units.length > shown.length ? `<span class="rt-more">+${units.length - shown.length}</span>` : ''}</div>`;
   }
   $('#rt-sel').addEventListener('click', e => {
-    const t = e.target as HTMLElement, q = t.closest<HTMLElement>('[data-q]'), c = t.closest<HTMLElement>('[data-id]');
-    if (q) { const { bs } = own(); if (bs[0]) issue({ k: 'cancel', b: bs[0].id, i: Number(q.dataset.q) }); } else if (c) { setSel([Number(c.dataset.id)]); selKey = ''; cmdKey = ''; }
+    const t = e.target as HTMLElement, rq = t.closest<HTMLElement>('[data-r]'), q = t.closest<HTMLElement>('[data-q]'), c = t.closest<HTMLElement>('[data-id]');
+    if (rq) { const { bs } = own(); if (bs[0]) issue({ k: 'cancel', b: bs[0].id, i: -2 }); } else if (q) { const { bs } = own(); if (bs[0]) issue({ k: 'cancel', b: bs[0].id, i: Number(q.dataset.q) }); } else if (c) { setSel([Number(c.dataset.id)]); selKey = ''; cmdKey = ''; }
   });
 
   // ---------- 미니맵 ----------
@@ -274,10 +303,12 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
 
   const hot = new Map<string, number>();
   function onKey(e: KeyboardEvent): void {
-    if (modal.classList.contains('show') && e.key !== 'Escape') return;
+    if (modal.classList.contains('show') && e.key !== 'Escape' && !(root.dataset.phase === 'paused' && e.key.toLowerCase() === 'p')) return;
     if (e.type === 'keyup') { keys.delete(e.key === 'Shift' ? 'Shift' : e.code); return; }
     keys.add(e.key === 'Shift' ? 'Shift' : e.code); audio.unlock();
     const k = e.key.toUpperCase();
+    if (root.dataset.phase === 'paused' && (e.key === 'Escape' || e.key.toLowerCase() === 'p')) { e.preventDefault(); hide(); paused = false; root.dataset.phase = 'play'; last = performance.now(); return; }
+    if (e.key.toLowerCase() === 'p' && !e.ctrlKey && !e.metaKey && !e.altKey && sim && !ended) { e.preventDefault(); if (net) toast('온라인 대전은 일시정지할 수 없습니다', true); else openMenu(); return; }
     if (e.key === 'Escape') { if (mode || submenu) { mode = null; submenu = false; setHint(''); cmdKey = ''; } else if (selected.size) setSel([]); else openMenu(); e.preventDefault(); return; }
     if (!sim || ended) return;
     if (/^[1-9]$/.test(e.key)) {
@@ -310,6 +341,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       <div class="rt-diffs" role="group" aria-label="난이도">${DIFFICULTIES.map((d, i) => `<button type="button" data-diff="${d}" aria-pressed="${d === difficulty}"><span>${['I', 'II', 'III', 'IV'][i]}</span><b>${LEVELS[d].label}</b></button>`).join('')}</div>
       <p class="rt-diffnote" id="rt-diffnote">${LEVELS[difficulty].blurb}</p>
       <div class="rt-actions"><button class="primary" data-act="start" id="rt-start">AI와 1대1 대전</button><button data-act="pvp" id="rt-pvp">온라인 1대1 대전</button></div>
+      <div class="rt-actions"><button data-act="moba" id="rt-moba">롤식 라인전 3:3 · 챔피언 조종</button></div>
       <div class="rt-actions sub"><button data-act="help">조작법</button><button data-act="exit">메뉴로</button></div>
       <p class="rt-rec">${rec.matches ? `AI 대전 ${rec.matches}판 ${rec.wins}승${rec.bestWin[difficulty] ? ` · ${LEVELS[difficulty].label} 최단 승리 ${clock(rec.bestWin[difficulty] * TICK)}` : ''}` : '처음이라면 쉬움 난이도로 시작해 보세요.'}</p></div>`);
     modal.querySelector<HTMLElement>('#rt-start')?.focus();
@@ -318,14 +350,16 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     <li><b>목표</b>일꾼으로 광물을 캐서 병영·공장을 짓고 병력을 모아 적 건물을 모두 파괴하세요.</li>
     <li><b>선택</b>왼쪽 클릭 / 드래그 · 더블 클릭은 같은 종류 · Shift 로 추가 · Ctrl+숫자로 부대 지정</li>
     <li><b>명령</b>오른쪽 클릭: 이동·공격·채취 · A 공격 이동 · S 정지 · M 이동</li>
-    <li><b>건설</b>일꾼 선택 → B → 건물 선택 → 클릭. 병영 위에는 보급소(인구)가 필요합니다.</li>
+    <li><b>건설</b>B → 건물 선택 → 클릭(Enter 는 자동 배치, Shift 는 연속 건설). 일꾼을 고르지 않아도 가까운 일꾼이 지으며, 일꾼이 죽거나 떠나도 짓다 만 건물은 다른 일꾼이 이어받습니다. 직접 보내려면 건물 선택 → C.</li>
+    <li><b>강화</b>병영·공장을 선택해 E·T 로 연구하면 그 판 내내 공격력·방어력이 오릅니다. 가운데 아래쪽 중립 기지도 노려 보세요.</li>
+    <li><b>일시정지</b>상단 ⏸ 버튼, P 또는 Esc (AI 대전에서만). 항복도 같은 메뉴에 있습니다.</li>
     <li><b>생산</b>건물 선택 → Q·W. 집결지는 R, 일꾼은 광물에 집결하면 바로 캡니다.</li>
     <li><b>카메라</b>화살표 · 화면 가장자리 · 휠 확대 · 미니맵 클릭 · Space 최근 공격 위치 · . 놀고 있는 일꾼</li>
     <li><b>터치</b>한 손가락 드래그는 화면 이동, 탭은 선택/명령, 두 손가락은 확대. 범위 선택 버튼으로 드래그 선택.</li></ul>
     <div class="rt-actions"><button class="primary" data-act="back">닫기</button></div></div>`;
   function openMenu(): void {
     if (root.dataset.phase === 'setup' || ended || !sim) return; paused = !net; root.dataset.phase = 'paused';
-    show(`<div class="rt-card"><span class="rt-eyebrow">${net ? '대전 중 · 계속 진행됩니다' : '일시정지'}</span><h2>메뉴</h2><div class="rt-actions col"><button class="primary" data-act="resume">계속하기</button><button data-act="help2">조작법</button><button data-act="surrender">항복</button><button data-act="exit">나가기</button></div></div>`);
+    show(`<div class="rt-card"><span class="rt-eyebrow">${net ? '대전 중 · 계속 진행됩니다' : '게임이 멈춰 있습니다'}</span><h2>${net ? '메뉴' : '일시정지'}</h2>${net ? '' : '<p class="rt-lead">P 또는 Esc 를 누르면 계속합니다.</p>'}<div class="rt-actions col"><button class="primary" data-act="resume">계속하기</button><button data-act="help2">조작법</button><button data-act="surrender">항복</button><button data-act="exit">나가기</button></div></div>`);
   }
   function resultCard(win: boolean | null, why: string, extra = ''): void {
     if (!sim) return; const p = sim.players[me], o = sim.players[1 - me];
@@ -344,7 +378,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   // ---------- 시작 ----------
   function begin(): void {
     if (view) { view.dispose(); view = null; } sim = new RtsSim({ income: [1, LEVELS[difficulty].income] });
-    me = 0; ai = new RtsAi(1, difficulty); startRound(); $('#rt-vs').textContent = `AI · ${LEVELS[difficulty].label}`; $<HTMLButtonElement>('[data-act="speed"]').hidden = false; speed = 1; $<HTMLButtonElement>('[data-act="speed"]').textContent = '×1';
+    me = 0; ai = new RtsAi(1, difficulty); startRound(); $('#rt-vs').textContent = `AI · ${LEVELS[difficulty].label}`; $<HTMLButtonElement>('[data-act="speed"]').hidden = false; $<HTMLButtonElement>('[data-act="pause"]').hidden = false; speed = 1; $<HTMLButtonElement>('[data-act="speed"]').textContent = '×1';
   }
   function startRound(): void {
     if (!sim) return; if (view) { view.dispose(); view = null; }
@@ -362,7 +396,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       .catch(() => show('<div class="rt-card"><span class="rt-eyebrow">온라인 1대1</span><h2>대전 기능을 불러오지 못했어요</h2><div class="rt-actions"><button class="primary" data-act="setup">돌아가기</button></div></div>'));
   }
   function startPvp(s: PvpSession): void {
-    endPvp(); pvp = { s, done: false }; ai = null; $<HTMLButtonElement>('[data-act="speed"]').hidden = true;
+    endPvp(); pvp = { s, done: false }; ai = null; $<HTMLButtonElement>('[data-act="speed"]').hidden = true; $<HTMLButtonElement>('[data-act="pause"]').hidden = true;
     sim = new RtsSim(); me = s.host ? 0 : 1; $('#rt-vs').textContent = `vs ${s.opponent.nickname}`;
     show(`<div class="rt-card"><span class="rt-eyebrow">온라인 1대1</span><h2>${esc(s.opponent.nickname)} 님과 연결하는 중…</h2><p class="rt-lead">두 사람의 준비가 끝나면 시작합니다.</p><div class="rt-actions"><button data-act="exit">나가기</button></div></div>`);
     net = new RtsNet(s, {
@@ -402,6 +436,9 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       if (e.t === 'shot') audio.sfx(e.w, near(e.x0, e.y0) * (e.w === 'bullet' ? 0.7 : 1)); else if (e.t === 'die') audio.sfx(e.building ? 'bigboom' : 'boom', near(e.x, e.y));
       else if (e.t === 'alert' && e.owner === me) { alertAt = { x: e.x, y: e.y, t: sim.tick }; audio.sfx('alert'); toast('공격받고 있습니다!', false); }
       else if (e.t === 'built' && e.owner === me) { audio.sfx('built'); toast(`${BUILDINGS[e.kind].name} 건설 완료`); }
+      else if (e.t === 'researched' && e.owner === me) { audio.sfx('built'); toast(`${RESEARCH[e.r].name} 연구 완료`); }
+      else if (e.t === 'rescued' && e.owner === me) toast(`일꾼이 짓다 만 ${BUILDINGS[e.kind].name} 건설을 이어받았습니다`);
+      else if (e.t === 'orphan' && e.owner === me) { toast(`짓다 만 ${BUILDINGS[e.kind].name}이 있습니다 — 선택해서 '건설 이어서'를 누르세요`, true); }
       else if (e.t === 'trained' && e.owner === me) audio.sfx('trained', 0.6); else if (e.t === 'deposit' && e.owner === me) audio.sfx('deposit', near(e.x, e.y) * 0.6);
     }
   }
@@ -444,6 +481,11 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     switch (t.dataset.act) {
       case 'start': case 'again': leavePvp(); begin(); break;
       case 'pvp': openPvpLobby(); break;
+      case 'moba': {
+        root.style.display = 'none';
+        void import('./moba/game').then(({ openMoba }) => openMoba(() => { root.style.display = ''; setupScreen(); }, exit)).catch(() => { root.style.display = ''; toast('라인전 모드를 불러오지 못했어요', true); });
+        break;
+      }
       case 'help': show(helpHtml().replace('data-act="back"', 'data-act="setup"')); break;
       case 'help2': show(helpHtml().replace('data-act="back"', 'data-act="resume"')); break;
       case 'back': case 'setup': leavePvp(); if (view) { view.dispose(); view = null; } sim = null; ai = null; setupScreen(); break;
@@ -452,6 +494,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       case 'exit': exit(); break;
       case 'mute': { const s = !audio.enabled; audio.enabled = s; writePreferences({ ...readPreferences(), sound: s }); onPrefs(); break; }
       case 'menu': openMenu(); break;
+      case 'pause': if (net) toast('온라인 대전은 일시정지할 수 없습니다', true); else openMenu(); break;
       case 'speed': speed = speed === 1 ? 2 : speed === 2 ? 3 : 1; t.textContent = `×${speed}`; break;
     }
   });

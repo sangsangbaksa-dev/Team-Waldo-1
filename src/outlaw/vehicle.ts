@@ -96,7 +96,7 @@ export function stepVehicle(sim: Sim, v: Vehicle, dt: number): void {
     v.yawRate += ((m.air ? 0 : yaw) - v.yawRate) * blend(m.air ? 1 : drifting ? 5 : 10, ds);
     v.vx = c * v.vf - s * v.vl; v.vz = s * v.vf + c * v.vl;
     v.h = wrapAngle(v.h + v.yawRate * ds); local(v);
-    if (!m.air) v.vl *= Math.exp(-d.grip * (drifting ? 0.16 : hold ? 2 : 1) * ds);
+    if (!m.air) v.vl *= Math.exp(-d.grip * (1 - sim.rain * 0.32) * (drifting ? 0.16 : hold ? 2 : 1) * ds);
     const nc = Math.cos(v.h), ns = Math.sin(v.h); v.vx = nc * v.vf - ns * v.vl; v.vz = ns * v.vf + nc * v.vl;
     const gy0 = groundHeight(sim.map, v.x, v.z); v.x += v.vx * ds; v.z += v.vz * ds;
     for (let pass = 0; pass < 3; pass++) {

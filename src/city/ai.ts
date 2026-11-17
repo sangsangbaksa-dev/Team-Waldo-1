@@ -1,4 +1,4 @@
-// LAST CITY — 라이벌 조직 AI: 경제 확장, 병력 생산, 사업 인수, 자기장 대응
+// LAST CITY — 라이벌 조직 AI: 경제 확장, 병력 생산, 사업 인수, 총력전
 import { BIZ, DIFFICULTY, RESEARCH, STRUCTS, UNITS, type ResearchId, type StructKind, type UnitId } from './defs';
 import type { Faction, World } from './world';
 
@@ -17,17 +17,19 @@ export function thinkFaction(w: World, f: Faction): void {
   const army = w.armyOf(f.id);
   if (hq) {
     const workers = w.actors.filter(a => a.alive && a.f === f.id && a.kind === 'worker').length + hq.queue.length;
-    if (workers < Math.min(9, 5 + Math.floor(t / 80))) w.train(f.id, 'worker');
+    if (!w.endgame && workers < Math.min(9, 5 + Math.floor(t / 80))) w.train(f.id, 'worker');
     w.recomputeSupply(f);
     if (!count('barracks')) tryBuild(w, f, 'barracks');
-    else if (f.supplyMax - f.supply <= 2 && f.supplyMax < diff.cap && !mine.some(s => s.kind === 'depot' && s.built < 1)) tryBuild(w, f, 'depot');
+    else if (f.supplyMax - f.supply <= 2 && f.supplyMax < w.aiCap() && !mine.some(s => s.kind === 'depot' && s.built < 1)) tryBuild(w, f, 'depot');
     else if (t > 110 && count('turret') < (t > 320 ? 2 : 1)) tryBuild(w, f, 'turret');
     else if (t > 160 && !count('lab')) tryBuild(w, f, 'lab');
     else if (t > 270 && !count('factory') && f.cash > 500) tryBuild(w, f, 'factory');
     else if (t > 340 && count('barracks') < 2 && f.crystal > 400) tryBuild(w, f, 'barracks');
+    else if (t > 520 && count('barracks') < 3 && f.cash > 1800 && f.crystal > 700) tryBuild(w, f, 'barracks');
+    else if (t > 520 && count('turret') < 4 && f.cash > 2500) tryBuild(w, f, 'turret');
     if (built('barracks')) {
       const queued = mine.reduce((n, s) => n + (s.kind === 'barracks' ? s.queue.length : 0), 0);
-      if (queued < 2) { const r = w.rng(), medics = army.filter(a => a.kind === 'medic').length; const u: UnitId = r < 0.2 ? 'heavy' : r < 0.32 && medics < 3 ? 'medic' : r < 0.45 && built('lab') ? 'sniper' : 'rifle'; if (w.train(f.id, u) !== '' && u !== 'rifle') w.train(f.id, 'rifle'); }
+      if (queued < (f.cash > 2000 ? 4 : 2)) { const r = w.rng(), medics = army.filter(a => a.kind === 'medic').length; const u: UnitId = r < 0.2 ? 'heavy' : r < 0.32 && medics < 3 ? 'medic' : r < 0.45 && built('lab') ? 'sniper' : 'rifle'; if (w.train(f.id, u) !== '' && u !== 'rifle') w.train(f.id, 'rifle'); }
     }
     if (built('factory') && f.crystal > 250) { if (built('lab') && f.cash > 900 && w.rng() < 0.5) w.train(f.id, 'tank'); else if (f.cash > 400) w.train(f.id, 'buggy'); }
     if (built('lab') && f.crystal > 420 && f.cash > 900 && w.rng() < 0.3) w.research(f.id, (Object.keys(RESEARCH) as ResearchId[])[Math.floor(w.rng() * 3)]);
@@ -37,7 +39,7 @@ export function thinkFaction(w: World, f: Faction): void {
   for (const a of army) if (a.order.type !== 'follow') a.order = { type: 'follow', x: a.x, y: a.y };
   if (!b) return;
   const dist = (x: number, y: number): number => Math.hypot(x - b.x, y - b.y), inNext = (x: number, y: number, m = 80): boolean => Math.hypot(x - z.nx, y - z.ny) < z.nr - m;
-  const final = z.nr < 500 || !hq || w.aliveCount() <= 3;
+  const final = z.nr < 500 || !hq || w.aliveCount() <= 3 || w.endgame;
   let goal = 'idle', tx = hq ? hq.x + 60 : z.nx, ty = hq ? hq.y + 170 : z.ny, type: 'amove' | 'move' = 'amove';
   const hostileNear = b.tk !== 0;
   if (!inNext(b.x, b.y, 40) && (z.shrinking || z.t < 45 || Math.hypot(b.x - z.x, b.y - z.y) > z.r - 60)) {
@@ -53,7 +55,7 @@ export function thinkFaction(w: World, f: Faction): void {
       // 공격 목표 선정
       let best = 1e9, bx = 0, by = 0, found = false;
       for (const q of w.businesses) if (q.owner >= 0 && q.owner !== f.id && inNext(q.x, q.y, 0)) { const s = dist(q.x, q.y) * (q.kind === 'bank' || q.kind === 'casino' ? 0.75 : 1); if (s < best) { best = s; bx = q.x; by = q.y; found = true; } }
-      for (const s of w.structures) if (s.alive && s.kind === 'hq' && s.f !== f.id && army.length >= diff.attackArmy + 3) { const sc = dist(s.x, s.y) * 0.85; if (sc < best) { best = sc; bx = s.x + 60; by = s.y + 150; found = true; } }
+      for (const s of w.structures) if (s.alive && s.kind === 'hq' && s.f !== f.id && (final || army.length >= diff.attackArmy + 3)) { const sc = dist(s.x, s.y) * 0.85; if (sc < best) { best = sc; bx = s.x + 60; by = s.y + 150; found = true; } }
       for (const o of w.factions) if (o.alive && o.id !== f.id) { const ob = w.boss(o.id); if (!ob) continue; const d = dist(ob.x, ob.y); if (d < 1100 || final) { const sc = d * (final ? 0.5 : 0.8); if (sc < best) { best = sc; bx = ob.x; by = ob.y; found = true; } } }
       if (found && (best < 2600 || final)) { goal = 'attack'; tx = bx; ty = by; if (ai.goal !== 'attack') ai.stuckT = t; if (t - ai.stuckT > 110 && !final) { ai.attackT = t + 140 + w.rng() * 120; goal = 'idle'; } }
       if (!final && army.length < 3) { ai.attackT = t + 130; goal = 'idle'; }

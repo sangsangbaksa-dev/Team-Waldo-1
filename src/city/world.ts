@@ -60,7 +60,7 @@ export class World {
   structures: Structure[] = []; businesses: Business[] = []; vehicles: Vehicle[] = []; loot: Loot[] = []; bullets: Bullet[] = []; crystals: Crystal[] = [];
   events: Fx[] = []; feed: { text: string; t: number; color: string }[] = []; hash: Actor[][] = Array.from({ length: HN * HN }, () => []);
   zone = { x: SIZE / 2, y: SIZE / 2, r: 3900, sx: SIZE / 2, sy: SIZE / 2, sr: 3900, nx: SIZE / 2, ny: SIZE / 2, nr: 3900, phase: ZONE_PHASES.length, t: ZONE_PHASES[0][0], shrinking: false };
-  price = 10; priceHistory: number[] = []; nextId = 1; over = false; winner = -1; secT = 0; dropT = 95; pathBudget = 0; quests: Quest[] = [];
+  price = 10; priceHistory: number[] = []; nextId = 1; over = false; winner = -1; secT = 0; dropT = 95; endgame = false; pathBudget = 0; quests: Quest[] = [];
   input: PlayerInput = { mx: 0, my: 0, ax: 0, ay: 0, fire: false, dash: false, brake: false };
   /** 보스가 사업체 안에 들어가 있는 동안의 상태(없으면 null). 좌표는 내부 공간 기준입니다. */
   inside: { biz: number; x: number; y: number; ang: number; walk: number } | null = null;
@@ -211,7 +211,7 @@ export class World {
     for (const s of this.structures) if (s.alive && s.f === f.id && s.built >= 1) max += s.kind === 'hq' ? SUPPLY_HQ : s.kind === 'depot' ? SUPPLY_DEPOT : 0;
     for (const a of this.actors) if (a.alive && a.f === f.id) used += a.sup;
     for (const s of this.structures) if (s.alive && s.f === f.id) for (const q of s.queue) if (q.unit) used += UNITS[q.unit].supply;
-    f.supplyMax = Math.min(f.player ? SUPPLY_CAP : DIFFICULTY[this.opts.difficulty].cap, max); f.supply = used;
+    f.supplyMax = Math.min(f.player ? SUPPLY_CAP : this.aiCap(), max); f.supply = used;
   }
   netWorth(f: Faction): number {
     let v = f.cash + f.crystal * 8;
@@ -656,6 +656,8 @@ export class World {
       }
     }
   }
+  /** 라이벌의 인구 한도. 총력전에 들어가면 일꾼을 늘리는 대신 병력을 더 뽑을 수 있게 한도가 열립니다. */
+  aiCap(): number { return DIFFICULTY[this.opts.difficulty].cap + (this.endgame ? 12 : 0); }
   everySecond(): void {
     const diff = DIFFICULTY[this.opts.difficulty];
     for (const f of this.factions) {
@@ -668,6 +670,8 @@ export class World {
     this.price += (this.rng() - 0.5) * 0.8 + (10 - this.price) * 0.03;
     if (this.rng() < 0.012) { const up = this.rng() < 0.5; this.price *= up ? 1.5 : 0.62; this.say(up ? '📈 크리스탈 시세 급등! 지금 팔면 이득' : '📉 크리스탈 시세 폭락! 사재기 기회', up ? '#7dffb0' : '#ff9d9d'); }
     this.price = Math.max(4, Math.min(26, this.price)); this.priceHistory.push(this.price); if (this.priceHistory.length > 80) this.priceHistory.shift();
+    // 총력전: 자기장이 없으므로, 오래 끌린 판은 라이벌이 병력을 모두 내어 서로·플레이어를 공격하게 합니다
+    if (!this.endgame && !this.opts.tutorial && !this.opts.duel && this.time >= DIFFICULTY[this.opts.difficulty].endgame) { this.endgame = true; this.say('⚔️ 총력전 — 라이벌이 병력을 모두 내어 공격합니다', '#ff9d9d'); this.fx('announce', 0, 0, 0, '총력전 개시'); }
     // 자기장 피해 (1초 단위)
     const dps = ZONE_DPS[Math.min(ZONE_DPS.length - 1, this.zone.phase)], z = this.zone;
     for (const a of this.actors) if (a.alive && Math.hypot(a.x - z.x, a.y - z.y) > z.r) { if (a.f >= 8) { a.alive = false; a.gone = true; this.byId.delete(a.id); } else if (!a.inVeh) this.hurtActor(a, dps * (a.kind === 'boss' ? 1 : 1.6), -1, false); else { const v = this.vehicles.find(q => q.id === a.inVeh); if (v) this.hurtVehicle(v, dps * 4, -1); a.hp -= dps * 0.5; if (a.hp <= 0) { a.inVeh = 0; if (v) { v.driver = 0; v.f = -1; } this.killActor(a, -1); } } }

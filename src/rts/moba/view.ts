@@ -2,6 +2,8 @@
 import * as THREE from 'three';
 import { makeBuilding, makeUnit, matsFor, type BuildRig, type UnitRig } from '../models';
 import { CHAMPS, LANE_PTS, LANES, NEXUS, RIVER, SIZE, type ChampId, type MonsterKind } from './config';
+import { animateChamp, decorateChamp } from './champs3d';
+import { buildScenery, type Scenery } from './scenery3d';
 import { isMinion, type Ent, type MobaSim, type SimEvent } from './sim';
 
 type Quality = 'high' | 'standard' | 'low';
@@ -13,21 +15,21 @@ const TEAM_HEX = ['#3d8bff', '#ff5a3c'];
 export class MobaView {
   readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera = new THREE.PerspectiveCamera(34, 1, 0.5, 600);
   cam = { x: 14, y: 84, dist: 30 }; private pitch = 0.98; private w = 1; private h = 1; private clock = 0;
-  private vis = new Map<number, Vis>(); private fx: Fx[] = []; private raycaster = new THREE.Raycaster(); private sun = new THREE.DirectionalLight(0xfff0d6, 2.2);
+  private vis = new Map<number, Vis>(); private fx: Fx[] = []; private raycaster = new THREE.Raycaster(); private sun = new THREE.DirectionalLight(0xffe2b4, 2.4);
   private shadows: boolean; private aim: THREE.Mesh; private aimRange: THREE.Mesh; private fxBudget: number;
   private glow = new Map<number, THREE.MeshBasicMaterial>();
-  private fog!: THREE.Mesh; private fogCtx!: CanvasRenderingContext2D; private fogTex!: THREE.CanvasTexture; private fogT = 0; private wardVis = new Map<number, THREE.Group>();
+  private scenery!: Scenery; private fog!: THREE.Mesh; private fogCtx!: CanvasRenderingContext2D; private fogTex!: THREE.CanvasTexture; private fogT = 0; private wardVis = new Map<number, THREE.Group>();
 
   constructor(readonly canvas: HTMLCanvasElement, readonly sim: MobaSim, readonly quality: Quality = 'high') {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality === 'high' ? 2 : 1.5)); this.shadows = quality !== 'low';
     this.renderer.shadowMap.enabled = this.shadows; this.renderer.shadowMap.type = THREE.PCFShadowMap; this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.05;
     this.fxBudget = quality === 'high' ? 140 : quality === 'standard' ? 80 : 36;
-    const sky = new THREE.Color(0x9fb59a); this.scene.background = sky; this.scene.fog = new THREE.Fog(sky, 90, 240);
-    this.scene.add(new THREE.HemisphereLight(0xdbe8ff, 0x4a4a38, 1.2));
+    const sky = new THREE.Color(0xc4cfb0); this.scene.background = sky; this.scene.fog = new THREE.Fog(sky, 100, 250);
+    this.scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x5a5a3c, 1.25));
     this.sun.castShadow = this.shadows; const sc = this.sun.shadow.camera; sc.left = -34; sc.right = 34; sc.top = 34; sc.bottom = -34; sc.near = 1; sc.far = 160; this.sun.shadow.mapSize.set(1024, 1024); this.sun.shadow.bias = -0.0006; this.sun.shadow.normalBias = 0.04;
     this.scene.add(this.sun, this.sun.target);
-    this.buildTerrain(); this.buildFog();
+    this.buildTerrain(); this.scenery = buildScenery(this.scene, sim.map, this.shadows, quality === 'low'); this.buildFog();
     this.aim = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 40), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, depthWrite: false, side: THREE.DoubleSide })); this.aim.rotation.x = -Math.PI / 2; this.aim.position.y = 0.08; this.aim.visible = false; this.scene.add(this.aim);
     this.aimRange = new THREE.Mesh(new THREE.RingGeometry(0.985, 1, 64), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, depthWrite: false, side: THREE.DoubleSide })); this.aimRange.rotation.x = -Math.PI / 2; this.aimRange.position.y = 0.07; this.aimRange.visible = false; this.scene.add(this.aimRange);
     const me = sim.me(); this.cam.x = me.x; this.cam.y = me.y; if (window.innerWidth < 900 || matchMedia('(pointer: coarse)').matches) this.cam.dist = 24;
@@ -138,7 +140,7 @@ export class MobaView {
   }
   private make(e: Ent): Vis {
     const root = new THREE.Group(); let rig: UnitRig | null = null, brig: BuildRig | null = null, mon: THREE.Group | null = null, ring: THREE.Mesh | null = null;
-    if (e.kind === 'hero') { const d = CHAMPS[e.sub as ChampId]; rig = makeUnit(d.model, e.team); rig.root.scale.setScalar(d.scale); root.add(rig.root); }
+    if (e.kind === 'hero') { const d = CHAMPS[e.sub as ChampId]; rig = makeUnit(d.model, e.team); decorateChamp(rig, e.sub as ChampId, e.team); rig.root.scale.setScalar(d.scale); root.add(rig.root); }
     else if (e.kind === 'melee' || e.kind === 'caster' || e.kind === 'siege') { rig = makeUnit(e.kind === 'melee' ? 'marine' : e.kind === 'caster' ? 'worker' : 'tank', e.team); rig.root.scale.setScalar(e.kind === 'siege' ? 0.95 : 1.05); root.add(rig.root); }
     else if (e.kind === 'super') { rig = makeUnit('marine', e.team); rig.root.scale.setScalar(1.75); root.add(rig.root); }
     else if (e.kind === 'inhib') { mon = this.crystal(e.team); root.add(mon); }
@@ -161,7 +163,7 @@ export class MobaView {
         v.rig.root.rotation.y = v.yaw; const bob = Math.sin(this.clock * 13 + e.id) * 0.05 * v.moved; v.rig.body.position.y = Math.abs(bob); v.rig.body.rotation.z = bob * 0.5;
         const fired = this.sim.tick - e.fired; v.rig.flash.visible = fired >= 0 && fired < 2 && e.range > 2.5; if (v.rig.gun) v.rig.gun.position.x = (v.rig.gun.position.x * 0 + 0.2) - (fired >= 0 && fired < 3 ? 0.08 : 0);
         if (isMinion(e.kind)) { const lunge = fired >= 0 && fired < 4 && e.range < 2.5 ? Math.sin(fired / 4 * Math.PI) * 0.35 : 0; v.rig.body.position.x = lunge; }
-        if (v.rig.carry) v.rig.carry.visible = false;
+        if (v.rig.carry) v.rig.carry.visible = false; if (e.hero) animateChamp(v.rig, this.clock);
         if (e.hero) { const sk = this.sim.tick - e.hero.castAt; v.rig.body.scale.setScalar(sk >= 0 && sk < 6 ? 1.12 : 1); }
       }
       if (v.mon && e.kind === 'inhib') { const gem = v.mon.children.find(c => c.userData.spin); if (gem) { gem.rotation.y += dt * 1.4; gem.position.y = 1.9 + Math.sin(this.clock * 2) * 0.12; } }
@@ -212,7 +214,7 @@ export class MobaView {
   }
 
   render(dt: number): void {
-    this.clock += dt; const me = this.sim.me(); this.updateVis(dt, 0, me.id); this.syncWards(); if ((this.fogT -= dt) <= 0) { this.fogT = 0.12; this.paintFog(); }
+    this.clock += dt; const me = this.sim.me(); this.updateVis(dt, 0, me.id); this.syncWards(); this.scenery.update(dt, this.clock); if ((this.fogT -= dt) <= 0) { this.fogT = 0.12; this.paintFog(); }
     for (let i = this.fx.length - 1; i >= 0; i--) { const f = this.fx[i]; f.t += dt; if (f.t >= f.life) { this.scene.remove(f.obj); this.fx.splice(i, 1); } else f.tick(f, dt); }
     this.placeCamera(); this.renderer.render(this.scene, this.camera);
   }

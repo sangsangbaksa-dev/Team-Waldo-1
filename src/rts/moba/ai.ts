@@ -6,6 +6,8 @@ import type { Ent, MobaSim } from './sim';
 
 const BUILD: Record<string, ItemId[]> = {
   blade: ['ruby', 'boots', 'plate', 'heart', 'sword', 'heart'],
+  shade: ['sword', 'boots', 'scythe', 'cloak', 'sword', 'plate'],
+  priest: ['crystal', 'boots', 'wand', 'ruby', 'plate', 'aegis'],
   arcana: ['crystal', 'boots', 'sword', 'bow', 'ruby', 'sword'],
   ranger: ['bow', 'boots', 'scythe', 'sword', 'ruby', 'plate'],
 };
@@ -16,7 +18,31 @@ export class MobaAi {
   constructor(readonly team: number, readonly level: Level) {}
   get interval(): number { return LEVELS[this.level].react; }
 
-  think(s: MobaSim): void { for (const e of s.heroes(this.team)) if (e.hero!.bot && !e.hero!.dead && (s.tick + e.id) % this.interval === 0) this.hero(s, e); }
+  /** 드래곤·바론을 치러 가는 원정대(최대 2명). 쉬움 난이도는 하지 않습니다. */
+  private squad: { target: number; ids: number[]; until: number } | null = null;
+  private nextPlan = 0;
+
+  think(s: MobaSim): void {
+    if (this.level !== 'easy') this.plan(s);
+    for (const e of s.heroes(this.team)) if (e.hero!.bot && !e.hero!.dead && (s.tick + e.id) % this.interval === 0) this.hero(s, e);
+  }
+
+  private plan(s: MobaSim): void {
+    const sq = this.squad, target = sq ? s.index.get(sq.target) : undefined;
+    if (sq && (!target || target.hp <= 0 || s.tick > sq.until)) { this.squad = null; this.nextPlan = s.tick + 20 * TICK; return; }
+    if (sq) { // 적이 둘 이상 나타나거나 체력이 바닥나면 포기
+      const foes = s.ents.filter(t => t.team !== this.team && t.hero && t.hp > 0 && !t.hero.dead && target && s.dist(t, target) < 12);
+      if (foes.length >= 2 || sq.ids.some(id => { const m = s.index.get(id); return !m || m.hero!.dead || m.hp < m.maxhp * 0.4; })) { this.squad = null; this.nextPlan = s.tick + 25 * TICK; }
+      return;
+    }
+    if (s.tick < Math.max(this.nextPlan, 4 * 60 * TICK) || s.tick % 20 !== 0) return;
+    const able = s.heroes(this.team).filter(e => e.hero!.bot && !e.hero!.dead && e.hero!.level >= 5 && e.hp > e.maxhp * 0.65 && !s.inBase(e) && e.hero!.recall <= 0);
+    if (able.length < 2) return;
+    const pick = s.ents.filter(m => m.kind === 'monster' && m.hp > 0 && (m.sub === 'drake' || (m.sub === 'baron' && able.every(a => a.hero!.level >= 9)))).sort((a, b) => (a.sub === 'baron' ? 0 : 1) - (b.sub === 'baron' ? 0 : 1))[0];
+    if (!pick) return;
+    const squad = able.sort((a, b) => s.dist(a, pick) - s.dist(b, pick)).slice(0, 2).map(e => e.id);
+    this.squad = { target: pick.id, ids: squad, until: s.tick + 40 * TICK };
+  }
 
   private hero(s: MobaSim, e: Ent): void {
     const h = e.hero!, L = LEVELS[this.level], foeTeam = 1 - e.team, lane = h.lane as Lane, path = lanePath(lane, e.team);
@@ -34,10 +60,16 @@ export class MobaAi {
       if (heroesNear.length === 0 && near(8).length === 0) { s.apply(e.id, { k: 'recall' }); return; }
       const back = this.backPoint(s, e, path); s.apply(e.id, { k: 'move', x: back.x, y: back.y }); if (hpr < 0.3) this.escape(s, e, heroesNear); return;
     }
+    // 오브젝트 원정: 몬스터를 직접 공격
+    const sq = this.squad;
+    if (sq && sq.ids.includes(e.id) && threat === 0) { const mon = s.index.get(sq.target); if (mon && mon.hp > 0) { if (s.dist(e, mon) > e.range + 0.5 || h.o.t !== 'attack') s.apply(e.id, { k: 'attack', target: mon.id }); return; } }
     // 스킬
     const enemyHero = heroesNear.filter(t => !t.hero!.dead).sort((a, b) => s.dist(e, a) - s.dist(e, b))[0];
     if (enemyHero && roll(s.tick, e.id) < L.aim) this.skills(s, e, enemyHero, near(10));
     else if (!enemyHero) { const wave = near(7).filter(t => t.kind === 'melee' || t.kind === 'caster' || t.kind === 'siege' || t.kind === 'monster'); if (wave.length >= 3) for (let i = 0; i < 4; i++) { const k = s.skill(e, i); if (k.kind === 'aoe' && (k.radius ?? 0) >= 3 && k.range <= 10 && h.mp > h.maxmp * 0.6 && this.can(s, e, i)) { const t = wave[0]; s.apply(e.id, { k: 'cast', i, x: t.x, y: t.y }); break; } } }
+    // 마무리: 적 넥서스가 열려 있으면 곧장 파괴하러 갑니다(포탑이 남아 있어도 열린 길로).
+    const nx = foes.find(t => t.kind === 'nexus' && s.vulnerable(t));
+    if (nx && hpr > 0.45 && threat < 3) { if (s.dist(e, nx) > e.range + nx.range * 0 + 1.5) s.apply(e.id, { k: 'amove', x: nx.x, y: nx.y }); else if (h.o.t !== 'attack') s.apply(e.id, { k: 'attack', target: nx.id }); return; }
     // 포탑 사거리: 아군 미니언이 충분히 덮어 줄 때만 들어갑니다.
     const tur = foes.find(t => t.kind === 'turret' && s.dist(e, t) < t.range + 1.2 && s.vulnerable(t));
     const cover = s.ents.filter(m => m.team === e.team && (m.kind === 'melee' || m.kind === 'caster' || m.kind === 'siege') && tur && s.dist(m, tur) < 8).length;
@@ -45,7 +77,7 @@ export class MobaAi {
     if (threat >= 2 && hpr < 0.6) { this.escape(s, e, heroesNear); return; }
     this.goLane(s, e, path);
   }
-  private can(s: MobaSim, e: Ent, i: number): boolean { const h = e.hero!, k = s.skill(e, i); return h.level >= k.level && s.tick >= h.ready[i] && h.mp >= k.mana; }
+  private can(s: MobaSim, e: Ent, i: number): boolean { const h = e.hero!, k = s.skill(e, i); return h.rank[i] >= 1 && s.tick >= h.ready[i] && h.mp >= k.mana; }
   private skills(s: MobaSim, e: Ent, t: Ent, around: Ent[]): void {
     const h = e.hero!, d = s.dist(e, t), hpr = e.hp / e.maxhp;
     for (let i = 3; i >= 0; i--) {

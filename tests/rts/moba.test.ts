@@ -59,6 +59,8 @@ describe('웨이브와 포탑', () => {
 describe('챔피언', () => {
   it('3레벨 전에는 궁극기를 쓸 수 없고, 마나·재사용 대기를 지킨다', () => {
     const s = fresh(), me = s.me(); expect(s.apply(me.id, { k: 'cast', i: 3, x: me.x + 3, y: me.y })).toBe(false);
+    expect(s.apply(me.id, { k: 'cast', i: 1, x: me.x, y: me.y })).toBe(false); // 아직 배우지 않음
+    me.hero!.points = 2; expect(s.apply(me.id, { k: 'learn', i: 1 })).toBe(true); expect(s.apply(me.id, { k: 'learn', i: 2 })).toBe(true);
     expect(s.apply(me.id, { k: 'cast', i: 1, x: me.x, y: me.y })).toBe(true); expect(s.apply(me.id, { k: 'cast', i: 1, x: me.x, y: me.y })).toBe(false); // 재사용 대기
     me.hero!.mp = 0; expect(s.apply(me.id, { k: 'cast', i: 2, x: me.x, y: me.y })).toBe(false);
   });
@@ -95,6 +97,15 @@ describe('정글과 보상', () => {
   it('미니언을 처치하면 골드를 얻고 레벨이 오른다', () => {
     const s = fresh(); run(s, WAVE_FIRST + 5); const me = s.me(), m = s.ents.find(e => e.team === 1 && e.kind === 'melee')!; m.x = me.x + 1; m.y = me.y; const g = me.hero!.gold;
     s.hurt(me, m, 9999); expect(me.hero!.gold).toBeGreaterThan(g + 15); for (let i = 0; i < 30; i++) s.addXp(me, 400); expect(me.hero!.level).toBe(15);
+  });
+});
+
+describe('스킬 포인트', () => {
+  it('레벨업마다 1점, 궁극기는 3·6·9레벨에, 단계는 레벨의 절반을 넘지 못한다', () => {
+    const s = fresh(), me = s.me(), h = me.hero!; expect(h.rank).toEqual([1, 0, 0, 0]); expect(h.points).toBe(0);
+    expect(s.apply(me.id, { k: 'learn', i: 0 })).toBe(false); // 포인트 없음
+    h.points = 9; h.level = 3; expect(s.apply(me.id, { k: 'learn', i: 0 })).toBe(true); expect(s.apply(me.id, { k: 'learn', i: 0 })).toBe(false); // 3레벨 → 최대 2단계
+    h.level = 2; expect(s.apply(me.id, { k: 'learn', i: 3 })).toBe(false); h.level = 3; expect(s.apply(me.id, { k: 'learn', i: 3 })).toBe(true); expect(s.apply(me.id, { k: 'learn', i: 3 })).toBe(false); h.level = 6; expect(s.apply(me.id, { k: 'learn', i: 3 })).toBe(true);
   });
 });
 

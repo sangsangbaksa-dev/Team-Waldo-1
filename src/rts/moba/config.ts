@@ -53,11 +53,11 @@ export const RIVER_CAMPS: Camp[] = [
   { id: 'drake', at: { x: 70, y: 70 }, mobs: [{ k: 'drake', dx: 0, dy: 0 }] },
 ];
 
-export type ChampId = 'blade' | 'arcana' | 'ranger';
+export type ChampId = 'blade' | 'arcana' | 'ranger' | 'shade' | 'priest';
 export type SkillKind = 'shot' | 'aoe' | 'dash' | 'buff';
 export interface SkillDef {
   key: 'Q' | 'W' | 'E' | 'R'; name: string; desc: string; kind: SkillKind; cd: number; mana: number; range: number; level: number;
-  radius?: number; dmg?: number; ratio?: number; slow?: number; stun?: number; shield?: number; aspd?: number; speed?: number; dur?: number; width?: number;
+  radius?: number; heal?: number; dmg?: number; ratio?: number; slow?: number; stun?: number; shield?: number; aspd?: number; speed?: number; dur?: number; width?: number;
 }
 export interface ChampDef {
   name: string; role: string; blurb: string; color: number; model: 'marine' | 'worker' | 'rocket'; scale: number;
@@ -65,7 +65,8 @@ export interface ChampDef {
   hpUp: number; mpUp: number; adUp: number; defUp: number; skills: SkillDef[];
 }
 const s = (n: number): number => Math.round(n * TICK);
-export const CHAMPS: Record<ChampId, ChampDef> = {
+export const CHAMPS = {} as Record<ChampId, ChampDef>;
+Object.assign(CHAMPS, {
   blade: {
     name: '블레이드', role: '전사 · 근접', blurb: '돌진하고 베고 방벽을 두르는 전방 전사. 궁극기로 적진 한가운데를 내리찍습니다.', color: 0x59a8ff, model: 'marine', scale: 1.7,
     hp: 640, mp: 280, ad: 58, def: 30, speed: 3.9, range: 1.8, cd: 22, hpUp: 98, mpUp: 34, adUp: 4.2, defUp: 3.6,
@@ -96,10 +97,30 @@ export const CHAMPS: Record<ChampId, ChampDef> = {
       { key: 'R', name: '저격', desc: '아주 먼 곳까지 날아가 처음 맞은 적에게 치명타를 입힙니다.', kind: 'shot', cd: s(50), mana: 100, range: 26, level: 3, width: 1.2, dmg: 260, ratio: 1.6 },
     ],
   },
+});
+CHAMPS.shade = {
+  name: '섀이드', role: '암살자 · 근접', blurb: '빠르게 파고들어 한 명을 삭제하는 암살자. 처형으로 약해진 적을 끝냅니다.', color: 0x8a5bff, model: 'marine', scale: 1.45,
+  hp: 560, mp: 300, ad: 62, def: 26, speed: 4.2, range: 1.7, cd: 18, hpUp: 88, mpUp: 30, adUp: 4.6, defUp: 3.2,
+  skills: [
+    { key: 'Q', name: '그림자 베기', desc: '주변의 적을 빠르게 베어 피해를 줍니다.', kind: 'aoe', cd: s(5), mana: 35, range: 0, level: 1, radius: 2.7, dmg: 55, ratio: 0.9 },
+    { key: 'W', name: '암영 질주', desc: '3초간 이동·공격 속도가 오릅니다.', kind: 'buff', cd: s(11), mana: 40, range: 0, level: 1, speed: 0.5, aspd: 0.3, dur: s(3) },
+    { key: 'E', name: '그림자 도약', desc: '지정한 곳으로 도약해 도착 지점의 적을 벱니다.', kind: 'dash', cd: s(9), mana: 45, range: 6.5, level: 1, radius: 2, dmg: 60, ratio: 0.8 },
+    { key: 'R', name: '처형', desc: '먼 적에게 순식간에 달려들어 큰 피해를 주고 잠시 기절시킵니다.', kind: 'dash', cd: s(55), mana: 100, range: 10, level: 3, radius: 3, dmg: 230, ratio: 1.5, stun: s(0.8) },
+  ],
+};
+CHAMPS.priest = {
+  name: '프리스트', role: '지원가 · 원거리', blurb: '아군을 치유하고 방벽을 씌우는 지원가. 천벌로 교전을 뒤집습니다.', color: 0xffe27a, model: 'worker', scale: 1.8,
+  hp: 520, mp: 440, ad: 46, def: 24, speed: 3.7, range: 5.8, cd: 24, hpUp: 82, mpUp: 50, adUp: 3.1, defUp: 3,
+  skills: [
+    { key: 'Q', name: '성광탄', desc: '앞으로 빛의 탄을 쏴 처음 맞은 적에게 피해를 줍니다.', kind: 'shot', cd: s(5), mana: 45, range: 11, level: 1, width: 1, dmg: 70, ratio: 1 },
+    { key: 'W', name: '치유의 빛', desc: '주변 아군(나 포함)의 체력을 회복합니다.', kind: 'buff', cd: s(12), mana: 60, range: 0, level: 1, radius: 5.5, heal: 110, ratio: 0.8 },
+    { key: 'E', name: '신성한 방벽', desc: '3초간 피해를 막는 방벽을 두르고 빨라집니다.', kind: 'buff', cd: s(14), mana: 55, range: 0, level: 1, shield: 120, ratio: 1, speed: 0.2, dur: s(3) },
+    { key: 'R', name: '천벌', desc: '넓은 범위의 적에게 큰 피해를 주고 기절시킵니다.', kind: 'aoe', cd: s(55), mana: 120, range: 11, level: 3, radius: 4.5, dmg: 220, ratio: 1.4, stun: s(1) },
+  ],
 };
 export const CHAMP_IDS = Object.keys(CHAMPS) as ChampId[];
 
-export type ItemId = 'sword' | 'plate' | 'ruby' | 'boots' | 'crystal' | 'scythe' | 'bow' | 'heart';
+export type ItemId = 'sword' | 'plate' | 'ruby' | 'boots' | 'crystal' | 'scythe' | 'bow' | 'heart' | 'cloak' | 'wand' | 'aegis';
 export interface ItemDef { name: string; role: string; cost: number; ad?: number; def?: number; hp?: number; mp?: number; speed?: number; steal?: number; haste?: number }
 export const ITEMS: Record<ItemId, ItemDef> = {
   sword: { name: '장검', role: '공격력 +14', cost: 350, ad: 14 },
@@ -110,6 +131,9 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   scythe: { name: '흡혈의 낫', role: '공격력 +16 · 흡혈 10%', cost: 800, ad: 16, steal: 0.1 },
   bow: { name: '질풍의 활', role: '공격력 +10 · 공격 속도 +25%', cost: 700, ad: 10, haste: 0.25 },
   heart: { name: '거인의 심장', role: '체력 +420 · 방어력 +20', cost: 1000, hp: 420, def: 20 },
+  cloak: { name: '질주의 망토', role: '이동 속도 +0.35 · 방어력 +12', cost: 450, speed: 0.35, def: 12 },
+  wand: { name: '마도서', role: '공격력 +18 · 마나 +200', cost: 800, ad: 18, mp: 200 },
+  aegis: { name: '수호의 방패', role: '방어력 +32 · 체력 +200', cost: 900, def: 32, hp: 200 },
 };
 export const ITEM_IDS = Object.keys(ITEMS) as ItemId[];
 export const MAX_ITEMS = 6;

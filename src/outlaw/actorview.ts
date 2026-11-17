@@ -1,7 +1,7 @@
 // OUTLAW CITY의 관절형 시민·차량·수집품과 네온 표식, 풀링된 전투 이펙트를 그립니다.
 import * as THREE from 'three';
 import { instantiate, type Baked, type CharModel } from '../city/models';
-import { VEHICLES, clamp, type Ped, type Pickup, type SimEvent, type Vehicle, type WeaponId } from './types';
+import { VEHICLES, clamp, type Ped, type Pickup, type SimEvent, type Vehicle, type VehicleDef, type WeaponId } from './types';
 import { MISSION_LIST, canStart } from './missions';
 import { groundHeight } from './world';
 import type { Sim } from './sim';
@@ -79,6 +79,35 @@ export class ActorView {
     if (quality !== 'low') for (let i = 0; i < 2; i++) { const light = new THREE.PointLight(0xffa34b, 0, 24, 2); this.root.add(light); this.lights.push(light); }
   }
   private ownGeo<T extends THREE.BufferGeometry>(g: T): T { this.geometries.add(g); return g; }
+  /** GLB 차체 로컬 AABB. 시뮬 halfL과 모델 축/스케일이 어긋날 때 후미등 뜨는 문제를 막습니다. */
+  private vehicleBounds(body: THREE.Object3D, d: VehicleDef): { box: THREE.Box3; xForward: boolean } {
+    const box = new THREE.Box3().setFromObject(body);
+    if (!Number.isFinite(box.min.x) || box.isEmpty()) box.set(new THREE.Vector3(-d.halfL, 0, -d.halfW), new THREE.Vector3(d.halfL, d.height, d.halfW));
+    const size = box.getSize(new THREE.Vector3());
+    return { box, xForward: size.x >= size.z };
+  }
+  private attachRearLamps(body: THREE.Object3D, d: VehicleDef, brakes: THREE.Mesh[], reverse: THREE.Mesh[]): void {
+    const { box, xForward } = this.vehicleBounds(body, d);
+    const size = box.getSize(new THREE.Vector3());
+    const cx = (box.min.x + box.max.x) * 0.5, cz = (box.min.z + box.max.z) * 0.5;
+    const y = box.min.y + size.y * 0.36, lateral = Math.max(0.18, (xForward ? size.z : size.x) * 0.27);
+    const mount = new THREE.Group(); mount.name = 'rear-lamps'; body.add(mount);
+    for (const side of [-1, 1]) {
+      const brake = new THREE.Mesh(this.tailLamp, this.ownMat(new THREE.MeshBasicMaterial({ color: 0xd62828, transparent: true, opacity: 0.22 })));
+      const rev = new THREE.Mesh(this.tailLamp, this.ownMat(new THREE.MeshBasicMaterial({ color: 0xf8fbff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })));
+      rev.scale.set(0.78, 0.82, 1);
+      if (xForward) {
+        brake.position.set(box.min.x + 0.014, y, cz + side * lateral);
+        rev.position.set(box.min.x + 0.014, y - size.y * 0.07, cz + side * lateral * 0.9);
+        brake.rotation.y = rev.rotation.y = Math.PI / 2;
+      } else {
+        brake.position.set(cx + side * lateral, y, box.min.z + 0.014);
+        rev.position.set(cx + side * lateral * 0.9, y - size.y * 0.07, box.min.z + 0.014);
+        brake.rotation.y = rev.rotation.y = Math.PI;
+      }
+      mount.add(brake, rev); brakes.push(brake); reverse.push(rev);
+    }
+  }
   private ownMat<T extends THREE.Material>(m: T): T { this.materials.add(m); return m; }
   private material(color: number, baked = false, glow = false): THREE.Material {
     const key = `${color}:${baked}:${glow}`; let m = this.palette.get(key);
@@ -175,21 +204,28 @@ export class ActorView {
       this.mesh(body, this.box, 0x263c4a, -0.25, 1.15, 0, d.halfL * 0.95, 0.65, d.halfW * 1.7);
       for (const x of [-0.65, 0.65]) for (const z of [-1, 1]) this.mesh(body, this.box, 0x15171b, d.halfL * x, 0.35, z * d.halfW, 0.7, 0.7, 0.28);
     }
+    const { box, xForward } = this.vehicleBounds(body, d);
+    const size = box.getSize(new THREE.Vector3());
+    const cx = (box.min.x + box.max.x) * 0.5, cz = (box.min.z + box.max.z) * 0.5;
+    const headY = box.min.y + size.y * 0.45, headLat = Math.max(0.2, (xForward ? size.z : size.x) * 0.28);
     const lamps = new THREE.Group(), brakes: THREE.Mesh[] = [], reverse: THREE.Mesh[] = [], sirens: THREE.Sprite[] = [], policeNodes: THREE.Object3D[] = [], wheels: THREE.Object3D[] = [];
+    this.attachRearLamps(body, d, brakes, reverse);
     for (const side of [-1, 1]) {
-      const glow = this.sprite(lamps, 0xc6e5ff, 0.85); glow.position.set(d.halfL, 0.7, side * d.halfW * 0.7);
+      const lat = side * headLat;
+      const glow = this.sprite(lamps, 0xc6e5ff, 0.85);
       const cone = new THREE.Mesh(this.cone, this.ownMat(new THREE.ShaderMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.FrontSide,
         vertexShader: 'varying vec2 vUv; void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
         fragmentShader: 'varying vec2 vUv; void main(){float f=smoothstep(0.,.28,vUv.y)*pow(1.-vUv.y,1.8);gl_FragColor=vec4(.65,.8,1.,f*.065);}' })));
-      cone.rotation.z = Math.PI / 2; cone.position.set(d.halfL + 6, 0.55, side * d.halfW * 0.7); cone.scale.set(2.1, 12, 1.1); lamps.add(cone);
-      const rearY = Math.min(d.height * 0.48, 0.62), rearZ = side * d.halfW * 0.62, rearX = -d.halfL - 0.008;
-      const brake = new THREE.Mesh(this.tailLamp, this.ownMat(new THREE.MeshBasicMaterial({ color: 0xd62828, transparent: true, opacity: 0.22 })));
-      brake.position.set(rearX, rearY, rearZ); brake.rotation.y = Math.PI / 2; root.add(brake); brakes.push(brake);
-      const rev = new THREE.Mesh(this.tailLamp, this.ownMat(new THREE.MeshBasicMaterial({
-        color: 0xf8fbff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false,
-      })));
-      rev.position.set(rearX - 0.004, rearY - 0.1, rearZ * 0.55); rev.rotation.y = Math.PI / 2; rev.scale.set(0.78, 0.82, 1); root.add(rev); reverse.push(rev);
-      if (v.kind === 'police') { const s = this.sprite(root, side < 0 ? 0xff4545 : 0x3b82ff, 1.65); s.position.set(0, d.height + 0.15, side * 0.45); sirens.push(s); }
+      cone.rotation.z = Math.PI / 2; cone.scale.set(2.1, 12, 1.1);
+      if (xForward) {
+        glow.position.set(box.max.x + 0.02, headY, cz + lat);
+        cone.position.set(box.max.x + 5.8, headY - 0.12, cz + lat);
+      } else {
+        glow.position.set(cx + lat, headY, box.max.z + 0.02);
+        cone.position.set(cx + lat, headY - 0.12, box.max.z + 5.8); cone.rotation.y = Math.PI / 2;
+      }
+      lamps.add(glow, cone);
+      if (v.kind === 'police') { const s = this.sprite(root, side < 0 ? 0xff4545 : 0x3b82ff, 1.65); s.position.set(0, box.max.y + 0.12, side * 0.45); sirens.push(s); }
     }
     body.traverse(o => { if (/police_Light[AB]/i.test(o.name)) policeNodes.push(o); if (/wheel|tyre|tire/i.test(o.name) && !(o.parent && /wheel|tyre|tire/i.test(o.parent.name))) wheels.push(o); });
     root.add(lamps); this.root.add(root);

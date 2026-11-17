@@ -3,6 +3,7 @@ import { CARS, carById, carParams, levelById, type CarDef, type LevelDef } from 
 import { aiInput, newCar, separateCars, stayOnTrack, stepCar, type AiProfile, type CarInput, type CarParams, type CarState, type StepEvents } from './physics';
 import { followSnap, type RemoteLink } from './netcar';
 import { type Track } from './track';
+import { mapById } from './maps';
 
 export interface Racer {
   id: number; name: string; color: string; player: boolean; car: CarState; ai: AiProfile; params: CarParams; model: CarDef['model']; accent: string;
@@ -28,12 +29,14 @@ const FIELD = [
 const SLOTS: Array<[number, number]> = [[-3, -5], [-3, 5], [-8, -5], [-8, 5]];
 /** 1대1 대전 설정: 방장 여부(출발 칸), 상대 닉네임과 차량 */
 export interface PvpOptions { host: boolean; opponent: string; opponentCar: string }
-export interface RaceOptions { level?: number; car?: string; pvp?: PvpOptions }
+export interface RaceOptions { level?: number; car?: string; pvp?: PvpOptions; /** 코스 번호(날씨에 따른 그립 보정) */ map?: string }
+/** 빗길에서 줄어드는 그립 배율 */
+export const wetGrip = (rain: number | undefined): number => 1 - 0.22 * (rain ?? 0);
 
 export function createRace(track: Track, laps = 3, bestLap = Infinity, opts: RaceOptions = {}): RaceState {
-  const level = levelById(opts.level ?? 1), mine = carById(opts.car ?? CARS[0].id), at = CARS.indexOf(mine);
+  const wet = wetGrip(mapById(opts.map ?? '').theme.rain), level = levelById(opts.level ?? 1), mine = carById(opts.car ?? CARS[0].id), at = CARS.indexOf(mine);
   const mk = (id: number, name: string, def: CarDef, player: boolean, slot: [number, number], ai: AiProfile): Racer =>
-    ({ id, name, color: def.color, player, car: newCar(track, track.n + slot[0], slot[1]), ai, params: carParams(def), model: def.model, accent: def.accent, lapTimes: [], lapStart: 0, finishTime: null, lastEv: { hit: 0, driftBoost: 0, pad: false } });
+    ({ id, name, color: def.color, player, car: newCar(track, track.n + slot[0], slot[1]), ai: { ...ai, grip: ai.grip * wet }, params: { ...carParams(def), grip: carParams(def).grip * wet }, model: def.model, accent: def.accent, lapTimes: [], lapStart: 0, finishTime: null, lastEv: { hit: 0, driftBoost: 0, pad: false } });
   if (opts.pvp) {
     // 같은 줄의 왼쪽·오른쪽 칸에서 나란히 출발합니다. 상대는 AI 가 아니라 네트워크 스냅샷으로 움직입니다.
     const them = carById(opts.pvp.opponentCar), ai: AiProfile = { lane: 0, top: 58, grip: 30, skill: 1 };

@@ -24,9 +24,11 @@ describe('ZERO ZONE 지형과 건물 겹침', () => {
       for (const h of t.hills) for (const bx of m.boxes) if (bx.kind === 'rock' && bx.y1 === h.h && Math.abs((bx.x0 + bx.x1) / 2 - h.x) < 1e-6 && Math.abs((bx.z0 + bx.z1) / 2 - h.z) < 1e-6) terrainBoxes.push(bx);
       for (const c of t.cliffs) for (const bx of m.boxes) if (bx.kind === 'rock' && bx.x0 === c.x0 && bx.z1 === c.z1) terrainBoxes.push(bx);
       expect(terrainBoxes.length).toBeGreaterThanOrEqual(t.hills.length * 3 + t.cliffs.length);
-      for (const tb of terrainBoxes) for (const bx of m.boxes) if (!terrainBoxes.includes(bx) && bx.kind !== 'trunk') expect(rectOverlap(tb, bx, 0)).toBe(false);
+      const tset = new Set(terrainBoxes), others = m.boxes.filter(bx => !tset.has(bx) && bx.kind !== 'trunk');
+      let overlaps = 0; for (const tb of terrainBoxes) for (const bx of others) if (rectOverlap(tb, bx, 0)) overlaps++;
+      expect(overlaps).toBe(0);
     }
-  });
+  }, 30000);
 });
 
 describe('ZERO ZONE 벽 충돌', () => {

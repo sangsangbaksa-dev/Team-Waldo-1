@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { World } from '../../src/city/world';
 import { findPath, generateCity, makeRng, navBlocked } from '../../src/city/map';
-import { BIZ, BLOCK, FACTION_COUNT, ROAD, SIZE, STRUCTS, SUPPLY_CAP, UNITS } from '../../src/city/defs';
+import { BIZ, DIFFICULTY, BLOCK, FACTION_COUNT, ROAD, SIZE, STRUCTS, SUPPLY_CAP, UNITS } from '../../src/city/defs';
 
 const make = (seed = 7): World => new World({ seed, difficulty: 'd4', klass: 'tycoon' });
 const run = (w: World, seconds: number): void => { for (let i = 0; i < seconds * 30 && !w.over; i++) { w.step(1 / 30); w.events.length = 0; } };
@@ -264,5 +264,29 @@ describe('LAST CITY placement and demolish', () => {
     expect(f.crystal).toBe(crystal + trainC + build.crystal);
     expect(f.cash).toBe(cash + trainM + build.cash);
     expect(build.crystal).toBe(Math.floor(w.cost(f, STRUCTS.barracks.crystal) * 0.5));
+  });
+});
+
+describe('LAST CITY 총력전', () => {
+
+  it('난이도가 높을수록 총력전이 일찍 시작한다', () => {
+    const at = (['d1', 'd2', 'd3', 'd4', 'd5'] as const).map(d => DIFFICULTY[d].endgame);
+    for (let i = 1; i < at.length; i++) expect(at[i]).toBeLessThan(at[i - 1]);
+  });
+
+  it('시작 시각이 되면 한 번만 알리고 라이벌 인구 한도가 열린다', () => {
+    const w = new World({ seed: 5, difficulty: 'd5', klass: 'warlord' }), before = w.aiCap();
+    expect(w.endgame).toBe(false);
+    w.time = DIFFICULTY.d5.endgame; w.everySecond();
+    expect(w.endgame).toBe(true);
+    expect(w.aiCap()).toBeGreaterThan(before);
+    const n = w.feed.length; w.everySecond();
+    expect(w.feed.length).toBe(n);
+  });
+
+  it('연습 모드에서는 시작하지 않는다', () => {
+    const w = new World({ seed: 5, difficulty: 'd5', klass: 'warlord', tutorial: true });
+    w.time = 99999; w.everySecond();
+    expect(w.endgame).toBe(false);
   });
 });

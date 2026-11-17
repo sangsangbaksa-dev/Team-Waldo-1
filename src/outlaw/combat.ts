@@ -10,7 +10,7 @@ interface Brain {
   coverX: number; coverZ: number; coverT: number; coverDir: number; detour: number; detourT: number;
 }
 const brains = new WeakMap<Ped, Brain>();
-const ranges: Record<WeaponId, [number, number]> = { fist: [0, 1.5], shotgun: [6, 12], pistol: [12, 25], smg: [12, 25], rifle: [25, 50], sniper: [60, 90], rocket: [30, 65] };
+const ranges: Record<WeaponId, [number, number]> = { fist: [0, 1.5], shotgun: [6, 12], pistol: [12, 25], smg: [12, 25], rifle: [25, 50], sniper: [60, 90], rocket: [30, 65], bat: [0, 1.6], grenade: [10, 30], minigun: [25, 55], railgun: [60, 100] };
 const turn: Record<Ped['kind'], number> = { player: 4, civ: 4, cop: 4, swat: 6, soldier: 7, gang: 4.5, boss: 6 };
 const accuracy: Record<Ped['kind'], number> = { player: 1, civ: 1, cop: 0.85, swat: 0.6, soldier: 0.5, gang: 1, boss: 0.65 };
 function brain(p: Ped, sim: Sim): Brain {

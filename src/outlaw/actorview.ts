@@ -182,6 +182,8 @@ export class ActorView {
   }
   private gun(id: WeaponId): THREE.Object3D {
     const template = this.assets?.groundGuns[id]; if (template) return instantiate(template);
+    if (id === 'bat') { const b = new THREE.Group(); this.mesh(b, this.box, 0xb58a56, 0.45, 0.05, 0, 0.9, 0.07, 0.07); this.mesh(b, this.box, 0x2a2a2a, 0.02, 0.05, 0, 0.18, 0.05, 0.05); return b; }
+    if (id === 'grenade') { const b = new THREE.Group(); this.mesh(b, this.ball, 0x3d4a35, 0.06, 0, 0, 0.1, 0.13, 0.1); return b; }
     const g = new THREE.Group(), long = id === 'rifle' || id === 'sniper' || id === 'shotgun' || id === 'rocket';
     this.mesh(g, this.box, 0x272d35, long ? 0.32 : 0.15, 0, 0, long ? 0.8 : 0.32, id === 'rocket' ? 0.2 : 0.09, 0.09);
     this.mesh(g, this.box, 0x504b48, 0.08, -0.1, 0, 0.09, 0.22, 0.08); return g;
@@ -397,7 +399,7 @@ export class ActorView {
       b.ring.material.opacity = (mission ? 0.7 : close ? 0.6 : 0.28) * pulse; b.beam.material.opacity = (mission ? 0.075 : close ? 0.045 : 0.02) * pulse;
       b.beam.scale.set(Math.max(0.5, r * 0.8), height, Math.max(0.5, r * 0.8)); b.beam.position.y = height / 2; index++;
     };
-    for (const m of [...this.sim.mission.markers, ...this.sim.activity.markers]) add(m.x, m.z, m.r, m.color, true);
+    for (const m of [...this.sim.mission.markers, ...this.sim.activity.markers, ...this.sim.job.markers]) add(m.x, m.z, m.r, m.color, true);
     for (const m of MISSION_LIST) if (canStart(this.sim, m.id)) { const p = this.sim.map.pois.find(p => p.id === m.startPoi); if (p) add(p.x, p.z, p.r, 0xffd23f, true); }
     const nearby = this.sim.map.pois.filter(p => POI[p.kind] !== undefined && Math.hypot(p.x - this.cameraPos.x, p.z - this.cameraPos.z) < 100).sort((a, b) => Math.hypot(a.x - this.cameraPos.x, a.z - this.cameraPos.z) - Math.hypot(b.x - this.cameraPos.x, b.z - this.cameraPos.z));
     for (const p of nearby) add(p.x, p.z, Math.min(2.2, p.r), POI[p.kind], false);
@@ -407,11 +409,12 @@ export class ActorView {
     const live = new Set<number>();
     for (const p of this.sim.projectiles) {
       live.add(p.id); let g = this.rockets.get(p.id); const visible = Math.hypot(p.x - this.cameraPos.x, p.z - this.cameraPos.z) < 320; if (!g && !visible) continue;
+      if (!g && p.kind === 'grenade') { g = new THREE.Group(); this.mesh(g, this.ball, 0x3d4a35, 0, 0, 0, 0.11, 0.14, 0.11); this.mesh(g, this.box, 0x8a8f86, 0, 0.14, 0, 0.05, 0.05, 0.05); this.root.add(g); this.rockets.set(p.id, g); g.userData.trail = 0; }
       if (!g) {
         g = new THREE.Group(); this.mesh(g, this.cylinder, 0x7b836a, 0, 0, 0, 0.075, 0.65, 0.075); this.mesh(g, this.cone, 0x3e4546, 0, 0.45, 0, 0.075, 0.25, 0.075);
         const fire = this.sprite(g, 0xffb750, 0.9); fire.position.y = -0.45; this.root.add(g); this.rockets.set(p.id, g); g.userData.trail = 0;
       }
-      g.visible = visible; if (!visible) continue; g.position.set(p.x, p.y, p.z); this.v.set(p.vx, p.vy, p.vz); if (this.v.lengthSq() > 0) g.quaternion.setFromUnitVectors(UP, this.v.normalize());
+      g.visible = visible; if (!visible) continue; g.position.set(p.x, p.y, p.z); if (p.kind === 'grenade') { g.rotation.x += dt * 9; continue; } this.v.set(p.vx, p.vy, p.vz); if (this.v.lengthSq() > 0) g.quaternion.setFromUnitVectors(UP, this.v.normalize());
       g.userData.trail = (g.userData.trail as number) + dt;
       if (g.userData.trail >= 0.035) {
         const steps = Math.min(8, Math.floor((g.userData.trail as number) / 0.035)); g.userData.trail = 0;

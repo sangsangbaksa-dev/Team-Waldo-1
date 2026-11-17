@@ -96,3 +96,5 @@
 .rc-opt:focus-visible,.rc-setup footer button:focus-visible{outline-color:#7dffe6}
 /* 한글은 단어 단위로 줄바꿈합니다(좁은 화면에서 "어려/움"처럼 낱말이 쪼개지지 않게). */
 .rc-root{word-break:keep-all;overflow-wrap:break-word}
+
+.rc-draft{position:absolute;left:50%;top:60%;transform:translateX(-50%);padding:3px 14px;border-radius:14px;font:800 13px/1 system-ui;letter-spacing:.3em;color:#bfe6ff;background:#0b2a4a99;border:1px solid #7dd3ff88;box-shadow:0 0 18px #4db8ff88;opacity:0;pointer-events:none;transition:opacity .15s}

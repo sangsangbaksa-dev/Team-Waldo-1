@@ -3,6 +3,7 @@ import { readPreferences, writePreferences } from './prefs';
 import { showLoading, retry, retryNote } from './loading';
 import { readCityCareer, readRaceRecords, readRtsRecords, fmtTime } from './records';
 import { readShooterCareer } from './shooter/records';
+import { PVP_ENABLED } from './net/config';
 
 type GameId = 'city' | 'race' | 'rts' | 'shooter';
 
@@ -50,8 +51,8 @@ const ENTRIES: Entry[] = [
     id: 'rts',
     name: 'FRONTLINE',
     genre: '실시간 전략',
-    summary: '광물을 캐고 기지를 세워 병력을 키우고, 상대의 모든 건물을 무너뜨리세요. AI는 쉬움부터 매우 어려움까지, 사람과는 1대1로 겨룹니다.',
-    facts: ['AI 4단계 · 온라인 1대1', '일꾼 · 보병 · 로켓병 · 전차', '키보드 · 마우스 · 터치'],
+    summary: '광물을 캐고 기지를 세워 병력을 키우고, 상대의 모든 건물을 무너뜨리세요. AI는 쉬움부터 매우 어려움까지.',
+    facts: ['AI 4단계', '일꾼 · 보병 · 로켓병 · 전차', '키보드 · 마우스 · 터치'],
     image: `${base}assets/home/frontline.jpg`,
     imageAlt: '두 기지가 마주 선 FRONTLINE의 전장',
     status: () => {
@@ -63,8 +64,8 @@ const ENTRIES: Entry[] = [
     id: 'shooter',
     name: 'ZERO ZONE',
     genre: '배틀로열 슈터',
-    summary: '줄어드는 자기장 안에서 총을 줍고 싸웁니다. 비행기에서 낙하산으로 뛰어내려 AI 99명과 겨루거나, 온라인에서 1대1 대전을 할 수 있습니다.',
-    facts: ['AI 99명 · 비행기 낙하산 강하 · 난이도 4단계', '1대1 온라인 대전', '키보드 · 마우스 · 터치'],
+    summary: '줄어드는 자기장 안에서 총을 줍고 싸웁니다. 비행기에서 낙하산으로 뛰어내려 AI 99명과 겨룹니다.',
+    facts: ['AI 99명 · 비행기 낙하산 강하 · 난이도 4단계', '키보드 · 마우스 · 터치'],
     image: `${base}assets/home/zero-zone.jpg`,
     imageAlt: '자기장이 다가오는 들판에서 총을 든 병사',
     status: () => {
@@ -110,12 +111,12 @@ function renderMenu(): void {
               : '<path d="M13.2 7.8l4.6 4.4m0-4.4l-4.6 4.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'}</svg>
             <span id="sound-label">소리 ${sound ? '켜짐' : '꺼짐'}</span>
           </button>
-          <button class="head-account" id="head-account" type="button" aria-label="로그인과 랭킹">로그인 · 랭킹</button>
+          ${PVP_ENABLED ? '<button class="head-account" id="head-account" type="button" aria-label="로그인과 랭킹">로그인 · 랭킹</button>' : ''}
         </div>
       </header>
       <section class="home-intro">
         <h1>${['', '한', '두', '세', '네', '다섯'][ENTRIES.length] ?? ENTRIES.length} 편의 3D 게임.</h1>
-        <p>설치 없이 이 페이지에서 바로 시작합니다. 1대1 대전은 로그인하면 모든 게임에서 할 수 있습니다.</p>
+        <p>설치 없이 이 페이지에서 바로 시작합니다.</p>
       </section>
       <ul class="tiles" aria-label="게임 목록">${ENTRIES.map(tile).join('')}</ul>
       <p class="home-notice" id="home-notice" role="status" aria-live="polite"></p>

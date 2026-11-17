@@ -1,5 +1,6 @@
 // FRONTLINE 롤식 라인전 — 3D 화면: 지형, 챔피언·미니언·포탑·몬스터, 스킬 이펙트, 카메라. 시뮬레이션은 읽기만 합니다.
 import * as THREE from 'three';
+import { makePost, type PostFx } from '../../postfx';
 import { makeBuilding, makeUnit, matsFor, type BuildRig, type UnitRig } from '../models';
 import { CHAMPS, LANE_PTS, LANES, NEXUS, RIVER, SIZE, type ChampId, type MonsterKind } from './config';
 import { animateChamp, decorateChamp } from './champs3d';
@@ -13,7 +14,7 @@ const rng = (seed: number): (() => number) => { let s = seed >>> 0; return () =>
 const TEAM_HEX = ['#3d8bff', '#ff5a3c'];
 
 export class MobaView {
-  readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera = new THREE.PerspectiveCamera(34, 1, 0.5, 600);
+  post: PostFx | null = null; readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera = new THREE.PerspectiveCamera(34, 1, 0.5, 600);
   cam = { x: 14, y: 84, dist: 30 }; private pitch = 0.98; private w = 1; private h = 1; private clock = 0;
   private vis = new Map<number, Vis>(); private fx: Fx[] = []; private raycaster = new THREE.Raycaster(); private sun = new THREE.DirectionalLight(0xffe2b4, 2.4);
   private shadows: boolean; private aim: THREE.Mesh; private aimRange: THREE.Mesh; private fxBudget: number;
@@ -34,6 +35,7 @@ export class MobaView {
     this.aimRange = new THREE.Mesh(new THREE.RingGeometry(0.985, 1, 64), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, depthWrite: false, side: THREE.DoubleSide })); this.aimRange.rotation.x = -Math.PI / 2; this.aimRange.position.y = 0.07; this.aimRange.visible = false; this.scene.add(this.aimRange);
     const me = sim.me(); this.cam.x = me.x; this.cam.y = me.y; if (window.innerWidth < 900 || matchMedia('(pointer: coarse)').matches) this.cam.dist = 24;
     this.resize(canvas.clientWidth || 800, canvas.clientHeight || 600);
+    this.post = makePost(quality, this.renderer, this.scene, this.camera, { strength: 0.4, radius: 0.5, threshold: 0.9, vignette: 0.24, saturation: 1.1 });
   }
 
   // ---------- 지형 ----------
@@ -220,10 +222,10 @@ export class MobaView {
   render(dt: number): void {
     this.clock += dt; const me = this.sim.me(); this.updateVis(dt, 0, me.id); this.syncWards(); this.scenery.update(dt, this.clock); if ((this.fogT -= dt) <= 0) { this.fogT = 0.12; this.paintFog(); }
     for (let i = this.fx.length - 1; i >= 0; i--) { const f = this.fx[i]; f.t += dt; if (f.t >= f.life) { this.scene.remove(f.obj); this.fx.splice(i, 1); } else f.tick(f, dt); }
-    this.placeCamera(); this.renderer.render(this.scene, this.camera);
+    this.placeCamera(); if (this.post) this.post.render(dt); else this.renderer.render(this.scene, this.camera);
   }
   dispose(): void {
     this.scene.traverse(o => { if (o instanceof THREE.Mesh || o instanceof THREE.InstancedMesh) { o.geometry.dispose(); const m = o.material; (Array.isArray(m) ? m : [m]).forEach(x => x.dispose()); } });
-    this.renderer.dispose(); this.renderer.forceContextLoss(); void TEAM_HEX; void this.glow;
+    this.post?.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss(); void TEAM_HEX; void this.glow;
   }
 }

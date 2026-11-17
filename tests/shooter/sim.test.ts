@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Match, blankInput } from '../../src/shooter/sim';
-import { AIR, BOTS, BR_PLAYERS, DIFFICULTIES, MAP_HALF, PLAYER, WEAPONS, ZONES } from '../../src/shooter/config';
+import { AIR, ARMOR_PTS, HEAL, BOTS, BR_PLAYERS, DIFFICULTIES, MAP_HALF, PLAYER, WEAPONS, ZONES } from '../../src/shooter/config';
 import { generateMap, lineClear, pushOut, rayWorld } from '../../src/shooter/world';
 import { findPath, navFor, walkable } from '../../src/shooter/nav';
 
@@ -74,8 +74,8 @@ describe('ZERO ZONE 사격', () => {
     let head = 0, body = 0; for (let i = 0; i < 40; i++) { head += dmg(1.62); body += dmg(1.0); }
     expect(head).toBeGreaterThan(body * 1.3);
   });
-  it('방탄복이 피해의 절반을 흡수한다', () => {
-    const m = field(); const [, b] = m.players; b.armor = 100; m.damage(b, 40, 0, 'rifle', false, 0, 1, 0, false); expect(b.hp).toBe(80); expect(b.armor).toBe(80);
+  it('방탄복은 등급만큼 피해를 흡수한다', () => {
+    const m = field(); const [, b] = m.players; b.armor = 100; b.armorLv = 2; m.damage(b, 40, 0, 'rifle', false, 0, 1, 0, false); expect(b.hp).toBe(80); expect(b.armor).toBe(80);
     m.damage(b, 40, 0, 'zone', false, 0, 1, 0, true); expect(b.hp).toBe(40);
   });
   it('장전하면 예비 탄에서 탄창을 채운다', () => {
@@ -87,15 +87,31 @@ describe('ZERO ZONE 사격', () => {
   });
 });
 
+describe('ZERO ZONE 치료·기록', () => {
+  it('붕대는 시간이 지나야 80까지 회복하고, 사격하면 중단된다', () => {
+    const m = field(); const p = m.players[0]; p.hp = 40; p.bandages = 2; p.input.heal = 1; run(m, 0.1); expect(p.healT).toBeGreaterThan(0); expect(p.bandages).toBe(1); expect(p.hp).toBe(40);
+    run(m, HEAL.bandage.time + 0.3); expect(p.hp).toBe(65);
+    p.hp = 70; p.input.heal = 1; run(m, 0.1); p.input.fire = true; run(m, 0.1); expect(p.healT).toBe(0); expect(p.hp).toBe(70);
+  });
+  it('구급상자는 100까지, 맞으면 치료가 끊긴다', () => {
+    const m = field(); const [p, q] = m.players; p.hp = 10; p.kits = 1; p.input.heal = 2; run(m, 0.1); m.damage(p, 5, q.id, 'rifle', false, 0, 1, 0, false); expect(p.healT).toBe(0);
+    p.kits = 1; p.input.heal = 2; run(m, HEAL.kit.time + 0.3); expect(p.hp).toBe(100);
+  });
+  it('준 피해·머리 명중과 나를 쓰러뜨린 선수를 기록한다', () => {
+    const m = field(); const [a, b] = m.players; m.damage(b, 30, a.id, 'rifle', true, 0, 1, 0, false); expect(a.dmgDealt).toBeGreaterThan(0); expect(a.heads).toBe(1);
+    m.damage(b, 500, a.id, 'sniper', false, 0, 1, 0, false); expect(b.killedBy).toBe(a.id); expect(b.killedWeapon).toBe('sniper');
+  });
+});
+
 describe('ZERO ZONE 전리품', () => {
   it('구급상자·방탄복·탄약은 닿으면 자동으로, 무기는 줍기 키로 줍는다', () => {
     const m = field(); const p = m.players[0]; p.hp = 30; p.x = 0; p.z = 0;
-    m.loot.push({ id: 900, kind: 'medkit', weapon: null, x: 0.5, z: 0, taken: false }, { id: 901, kind: 'armor', weapon: null, x: -0.5, z: 0, taken: false }, { id: 902, kind: 'weapon', weapon: 'sniper', x: 0, z: 0.5, taken: false });
-    run(m, 0.2); expect(p.hp).toBe(30 + PLAYER.medkit); expect(p.armor).toBe(PLAYER.armor); expect(p.guns[1]).toBeNull();
+    m.loot.push({ id: 900, kind: 'bandage', weapon: null, x: 0.5, z: 0, taken: false }, { id: 901, kind: 'armor', weapon: null, level: 1, x: -0.5, z: 0, taken: false }, { id: 902, kind: 'weapon', weapon: 'sniper', x: 0, z: 0.5, taken: false });
+    run(m, 0.2); expect(p.hp).toBe(30); expect(p.bandages).toBe(HEAL.bandage.pick); expect(p.armorLv).toBe(1); expect(p.armor).toBe(ARMOR_PTS[1]); expect(p.guns[1]).toBeNull();
     p.input.interact = true; run(m, 0.2); expect(p.guns[1]?.id).toBe('sniper'); expect(p.cur).toBe(1);
   });
   it('가득 찼을 땐 구급상자를 줍지 않고 남겨 둔다', () => {
-    const m = field(); const p = m.players[0]; m.loot.push({ id: 903, kind: 'medkit', weapon: null, x: 0.3, z: 0, taken: false }); p.x = 0; p.z = 0; run(m, 0.2);
+    const m = field(); const p = m.players[0]; p.kits = HEAL.kit.max; m.loot.push({ id: 903, kind: 'medkit', weapon: null, x: 0.3, z: 0, taken: false }); p.x = 0; p.z = 0; run(m, 0.2);
     expect(m.loot.find(l => l.id === 903)!.taken).toBe(false);
   });
   it('쓰러진 선수는 들고 있던 총을 떨어뜨린다', () => {

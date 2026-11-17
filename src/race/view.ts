@@ -1,5 +1,6 @@
 // SPEED RUSH — Three.js 장면: 석양 사이버 서킷, 스포츠카(Last City 의 vehicles.glb), 속도감 연출(FOV·카메라 흔들림·스트릭·불꽃·연기).
 import * as THREE from 'three';
+import { makePost, type PostFx } from '../postfx';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { instantiate } from '../city/models';
 import { lookFor, type CharacterKit, type CharacterRig } from '../shared/character';
@@ -75,7 +76,7 @@ export function setDriverKit(k: CharacterKit | null): void { driverKit = k; }
 interface CarVis { driver?: CharacterRig; racer: Racer; group: THREE.Group; flames: THREE.Mesh[]; shadow: THREE.Mesh; lastV: number; tails: THREE.Sprite[]; heads: THREE.Sprite[] }
 
 export class RaceView {
-  readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera = new THREE.PerspectiveCamera(64, 1, 0.4, 3200);
+  post: PostFx | null = null; readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera = new THREE.PerspectiveCamera(64, 1, 0.4, 3200);
   private crew: CharacterRig[] = []; private cars: CarVis[] = []; private ground!: THREE.Mesh; private pads: Array<{ tex: THREE.CanvasTexture }> = [];
   private rainFx = new Particles(1800, 0.32, THREE.NormalBlending, 0.55); private sparks = new Particles(260, 0.9, THREE.AdditiveBlending); private smoke = new Particles(220, 2.0, THREE.NormalBlending, 0.4); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
   private camH = 0; private camInit = false; private fov = 64; private shake = 0; private punch = 0; private time = 0; private sun: THREE.DirectionalLight;
@@ -93,6 +94,7 @@ export class RaceView {
     const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(this.streakPos, 3));
     this.streak = new THREE.LineSegments(sg, new THREE.LineBasicMaterial({ color: 0xcfe9ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })); this.streak.frustumCulled = false; this.scene.add(this.streak);
     this.carTemplates = carTemplates; this.viewH = window.innerHeight || 1;
+    this.post = makePost(quality, this.renderer, this.scene, this.camera, { strength: 0.3, radius: 0.5, threshold: 0.96, vignette: 0.3, saturation: 1.1, contrast: 1.06 });
   }
   private carTemplates: Record<string, THREE.Object3D> | null;
   /** 터치 조작이 화면 아래를 가릴 때 차를 버튼 위로 올립니다. */
@@ -452,7 +454,7 @@ export class RaceView {
     this.sun.target.position.set(p.x, p.y, p.z); this.sun.position.set(p.x - 40, p.y + 60, p.z - 90);
     this.updateStartLights(race);
     this.updateStreaks(dt, p.vx, p.vz, speed, bst);
-    this.renderer.render(this.scene, this.camera);
+    if (this.post) this.post.render(dt); else this.renderer.render(this.scene, this.camera);
     return { speedFrac: sf };
   }
 
@@ -487,6 +489,6 @@ export class RaceView {
       for (const mat of mats) { once(mat); const maps = mat as THREE.MeshBasicMaterial; once(maps.map); if (maps.alphaMap) once(maps.alphaMap); }
     });
     for (const d of this.disposables) once(d);
-    this.renderer.dispose();
+    this.post?.dispose(); this.renderer.dispose();
   }
 }

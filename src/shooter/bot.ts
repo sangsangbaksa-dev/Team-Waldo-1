@@ -30,9 +30,10 @@ const gauss = (rng: () => number): number => (rng() + rng() + rng() - 1.5) / 0.7
 /** 무기별로 싸우기 좋은 거리 */
 const IDEAL: Record<string, number> = { shotgun: 8, smg: 16, pistol: 18, rifle: 32, sniper: 70 };
 
-function wantLoot(p: Player, kind: string, weapon: string | null, part: PartId | null): number {
-  if (kind === 'medkit') return p.hp < 85 ? 3 + (100 - p.hp) / 20 : 0;
-  if (kind === 'armor') return p.armor < 50 ? 2.6 : 0;
+function wantLoot(p: Player, kind: string, weapon: string | null, part: PartId | null, lv = 0): number {
+  if (kind === 'bandage') return p.bandages < 4 ? 2.2 + (100 - p.hp) / 40 : 0;
+  if (kind === 'medkit') return p.kits < 1 ? 2.6 : 0;
+  if (kind === 'armor') return lv > p.armorLv || p.armor < 25 ? 2.4 + lv * 0.3 : 0;
   if (kind === 'helmet') return p.helmet < 3 ? 2.2 : 0;
   if (kind === 'grenade') return p.nades < 3 ? 1.3 : 0;
   if (kind === 'boost') return p.boost <= 0 && p.hp < 95 ? 1.6 : 0;
@@ -50,7 +51,7 @@ function wantLoot(p: Player, kind: string, weapon: string | null, part: PartId |
 
 export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void {
   const b = p.brain!, T = b.t, inp = p.input, rng = m.rng, eye = PLAYER.eye;
-  inp.nade = false; inp.fire = false; inp.reload = false; inp.interact = false; inp.sprint = false; inp.ads = false; inp.slot = -1; inp.mx = 0; inp.mz = 0;
+  inp.heal = 0; inp.nade = false; inp.fire = false; inp.reload = false; inp.interact = false; inp.sprint = false; inp.ads = false; inp.slot = -1; inp.mx = 0; inp.mz = 0;
   b.goalT -= dt; b.investT -= dt; b.strafeT -= dt; b.errT -= dt; b.detourT -= dt; b.lootT -= dt; b.think -= dt; b.lootScan -= dt;
 
   // ---- 주변 살피기 (0.12~0.2초마다) ----
@@ -96,6 +97,8 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
   // ---- 시선과 조준 ----
   let yawTarget = p.yaw, pitchTarget = 0, turn = T.turn * 0.55;
   const engaged = !!q && (visible || b.seen < 1.2);
+  // 싸움이 잠잠하면 다친 몸을 치료합니다(위급하면 구급상자, 가벼우면 붕대).
+  if (p.healT <= 0 && !engaged && b.seen > 2.5) { if (p.hp < 50 && p.kits > 0) inp.heal = 2; else if (p.hp < 72 && p.bandages > 0) inp.heal = 1; }
   if (q && engaged) {
     const tx = visible ? q.x : b.lastX, tz = visible ? q.z : b.lastZ, dx = tx - p.x, dz = tz - p.z, d = Math.hypot(dx, dz) + 1e-6, ty = b.head ? 1.62 : 1.15;
     if (b.errT <= 0) { b.errT = 0.22 + rng() * 0.15; const k = Math.max(def?.id === 'sniper' ? 0.016 : 0, T.aimErr * (1 + d / 55)) * (q.bot && m.plane ? 2.2 : 1); /* 100명 판: AI끼리는 덜 정확해 초반에 다 쓰러지지 않습니다 */ b.errYaw = gauss(rng) * k; b.errPitch = gauss(rng) * k * 0.7; }
@@ -136,7 +139,7 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
         b.lootScan = 0.35 + rng() * 0.3; let bl = -1, bs = 0;
         for (const l of m.loot) {
           if (l.taken || b.skip.has(l.id)) continue; const d = Math.hypot(l.x - p.x, l.z - p.z); if (d > T.lootRadius) continue;
-          const w = wantLoot(p, l.kind, l.weapon, l.part ?? null); if (w <= 0) continue; const s = w / (1 + d / 28); if (s > bs) { bs = s; bl = l.id; }
+          const w = wantLoot(p, l.kind, l.weapon, l.part ?? null, l.level ?? 0); if (w <= 0) continue; const s = w / (1 + d / 28); if (s > bs) { bs = s; bl = l.id; }
         }
         if (bl >= 0) { b.lootId = bl; b.lootT = 18; }
       }

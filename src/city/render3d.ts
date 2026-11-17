@@ -1,5 +1,6 @@
 // LAST CITY — Three.js 3D 렌더러 (1인칭 / 3인칭 / 차량 추격 카메라)
 import * as THREE from 'three';
+import { makePost, type PostFx } from '../postfx';
 import { ACTORS, BIZ, BLOCK, BLOCKS, CIV, FACTIONS, PITCH, POLICE, ROAD, SIZE, STRUCTS, WEAPONS, type StructKind } from './defs';
 import { fpCameraSpot, solidAt } from './map';
 import type { Business, Fx, Loot, Structure, Vehicle, World } from './world';
@@ -43,7 +44,7 @@ class Points {
 }
 
 export class Renderer3D {
-  renderer: THREE.WebGLRenderer; scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(74, 1, 3, 5200);
+  post: PostFx | null = null; renderer: THREE.WebGLRenderer; scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(74, 1, 3, 5200);
   private rain: THREE.LineSegments | null = null; private rainPos = new Float32Array(0); private rainSeed = new Float32Array(0);
   yaw = 0; pitch = -0.05; mode: ViewMode = 'fp'; w = 0; h = 0; shake = 0; t = 0; reduced = false; recoil = 0; flashT = 0; camPos = new THREE.Vector3(); chaseYaw = 0; private focus = new THREE.Vector2(SIZE / 2, SIZE / 2); private deadT = 0;
   private dummy = new THREE.Object3D(); private color = new THREE.Color();
@@ -125,6 +126,7 @@ export class Renderer3D {
     this.muzzle = new THREE.Mesh(new THREE.PlaneGeometry(11, 11), new THREE.MeshBasicMaterial({ map: this.glow, color: 0xffd98a, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, fog: false })); this.muzzle.position.set(0, 0.3, -14);
     this.gun.add(g1, g2, g3, this.muzzle); this.gun.position.set(6.5, -6.2, -15); this.camera.add(this.gun);
     this.resize();
+    this.post = makePost(quality, this.renderer, this.scene, this.camera, { strength: 0.45, radius: 0.6, threshold: 0.88, vignette: 0.3, saturation: 1.05, contrast: 1.06 });
   }
   private blink: ((t: number) => void) | null = null;
   private mat(c: number): THREE.MeshLambertMaterial { let m = this.mats.get(c); if (!m) { m = new THREE.MeshLambertMaterial({ color: c }); this.mats.set(c, m); } return m; }
@@ -141,7 +143,7 @@ export class Renderer3D {
     this.scene.add(pole, bulb);
   }
   resize(): void { this.w = this.canvas.clientWidth || window.innerWidth; this.h = this.canvas.clientHeight || window.innerHeight; this.renderer.setSize(this.w, this.h, false); this.camera.aspect = this.w / this.h; this.camera.updateProjectionMatrix(); }
-  dispose(): void { this.ins?.dispose(); this.ins = null; this.renderer.dispose(); this.scene.traverse(o => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); }); for (const f of this.floaters) f.el.remove(); }
+  dispose(): void { this.post?.dispose(); this.ins?.dispose(); this.ins = null; this.renderer.dispose(); this.scene.traverse(o => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); }); for (const f of this.floaters) f.el.remove(); }
   /** 조준선이 닿는 지면 좌표 */
   groundPoint(max = 760): { x: number; y: number } {
     const b = this.world.boss(0), ox = b ? b.x : this.camPos.x, oy = b ? b.y : this.camPos.z; let d = this.pitch < -0.03 ? Math.min(max, (this.mode === 'fp' ? EYE : 120) / Math.tan(-this.pitch)) : max * 0.8; d = Math.max(70, d);
@@ -370,7 +372,7 @@ export class Renderer3D {
     this.nextRing.position.set(z.nx, 3, z.ny); this.nextRing.scale.set(Math.max(2, z.nr), 1, Math.max(2, z.nr));
     // 건설 고스트
     this.ghost.visible = !!ghost; if (ghost) { const sd = STRUCTS[ghost.kind], H = STRUCT_H[ghost.kind]; this.ghost.position.set(ghost.x, H / 2, ghost.y); this.ghost.scale.set(sd.w, H, sd.h); (this.ghost.material as THREE.MeshBasicMaterial).color.setHex(ghost.ok ? 0x66ff9c : 0xff5a5a); }
-    this.renderer.render(this.scene, this.camera);
+    if (this.post) this.post.render(dt); else this.renderer.render(this.scene, this.camera);
     if (this.ml && !third && pb) { this.ml.syncViewCam(this.camera); this.renderer.autoClear = false; this.renderer.clearDepth(); this.renderer.render(this.ml.vmScene, this.ml.vmCam); this.renderer.autoClear = true; }
     // 떠오르는 글자
     for (const f of this.floaters) { f.life -= dt; f.h += dt * 26; const p = this.project(f.x, f.y, f.h); f.el.style.transform = `translate(${p.x}px,${p.y}px) translate(-50%,-50%)`; f.el.style.opacity = p.behind ? '0' : String(Math.min(1, f.life * 2)); if (f.life <= 0) f.el.remove(); }

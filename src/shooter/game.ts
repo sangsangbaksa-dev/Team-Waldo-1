@@ -3,7 +3,7 @@ import './shooter.css';
 import { readPreferences } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import type { PvpSession } from '../net/lobby';
-import { AIR, BOTS, FEEL, BR_PLAYERS, DIFFICULTIES, HELMET_NAMES, PARTS, PLAYER, WEAPONS, partHandling, type Difficulty } from './config';
+import { AIR, BOTS, FEEL, BR_PLAYERS, DIFFICULTIES, HELMET_NAMES, ARMOR_NAMES, HEAL, PARTS, PLAYER, WEAPONS, partHandling, type Difficulty } from './config';
 import { waterDepth } from './terrain';
 import { Match, type MatchEvent, type Player } from './sim';
 import { ShooterView } from './view';
@@ -33,13 +33,13 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       <div class="sz-tr"><canvas id="sz-map" width="300" height="300"></canvas><ul class="sz-feed" id="sz-feed"></ul></div>
       <div class="sz-cross" id="sz-cross"><i></i><i></i><i></i><i></i></div><div class="sz-hitmark" id="sz-hitmark"><i></i><i></i><i></i><i></i></div><div class="sz-nums" id="sz-nums"></div>
       <div class="sz-dmgs" id="sz-dmgs"></div>
-      <div class="sz-air" id="sz-air"></div><div class="sz-banner" id="sz-banner"></div><div class="sz-count" id="sz-count"></div><div class="sz-prompt" id="sz-prompt"></div>
+      <div class="sz-air" id="sz-air"></div><div class="sz-banner" id="sz-banner"></div><div class="sz-count" id="sz-count"></div><div class="sz-prompt" id="sz-prompt"></div><div class="sz-cast" id="sz-cast"><span id="sz-castl"></span><i><b id="sz-castb"></b></i></div>
       <div class="sz-bl"><div class="sz-bar hp"><i id="sz-hp"></i><b id="sz-hpn">100</b></div><div class="sz-bar ar"><i id="sz-ar"></i><b id="sz-arn">0</b></div></div>
       <div class="sz-br"><div class="sz-wname" id="sz-wname"></div><div class="sz-ammo"><b id="sz-mag">0</b><span id="sz-res">/ 0</span></div><div class="sz-slots" id="sz-slots"></div></div>
       <div class="sz-keys" id="sz-keys"></div>
       <div class="sz-tbtn"><button id="sz-pause" type="button" aria-label="일시정지">Ⅱ</button></div>
       <div class="sz-touchpad"><div class="sz-stick" id="sz-stick"><i></i></div><div class="sz-tbuttons">
-        <button data-act="fire" class="fire" type="button">사격</button><button data-act="ads" type="button">조준</button><button data-act="crouch" type="button">웅크림</button><button data-act="reload" type="button">장전</button><button data-act="interact" type="button">줍기</button><button data-act="swap" type="button">교체</button><button data-act="nade" type="button">수류탄</button></div></div>
+        <button data-act="fire" class="fire" type="button">사격</button><button data-act="ads" type="button">조준</button><button data-act="crouch" type="button">웅크림</button><button data-act="reload" type="button">장전</button><button data-act="interact" type="button">줍기</button><button data-act="swap" type="button">교체</button><button data-act="nade" type="button">수류탄</button><button data-act="heal1" type="button">붕대</button><button data-act="heal2" type="button">구급</button></div></div>
     </div>
     <div class="sz-setup" id="sz-setup"></div>
     <div class="sz-modal" id="sz-modal"></div>`;
@@ -55,7 +55,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   let countdown = 0, over = false, deadTimer = 0, resultShown = false, spectateId = -1;
   let yaw = 0, pitch = 0, locked = false, lockFail = false, hitT = 0, hitHead = false, hitKill = false, combo = 0, comboT = 0, rcP = 0, rcY = 0, rcIdle = 9, shotN = 0, stepAcc = 0, bannerT = 0, mapBase: HTMLCanvasElement | null = null;
   const keys = new Set<string>(), mouse = { fire: false, ads: false }, tc = { fire: false, ads: false, crouch: false, move: { x: 0, y: 0, id: -1, ox: 0, oy: 0 }, look: { id: -1, x: 0, y: 0 } };
-  let nadeReq = false, reloadReq = false, slotReq = -1, swapReq = false, interactHeld = false;
+  let healReq = 0, nadeReq = false, reloadReq = false, slotReq = -1, swapReq = false, interactHeld = false;
   const feed: Array<{ text: string; at: number; mine: boolean }> = [], told = new Set<number>();
   const cache = new Map<string, string>();
   const set = (el: HTMLElement, key: string, text: string): void => { if (cache.get(key) !== text) { cache.set(key, text); el.textContent = text; } };
@@ -187,7 +187,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (closed || e.repeat && e.type === 'keydown' && ['KeyR', 'KeyE'].includes(e.code)) return;
     if (e.type === 'keyup') { keys.delete(e.code); if (e.code === 'KeyE') interactHeld = false; return; }
     keys.add(e.code);
-    if (e.code === 'KeyR') reloadReq = true; else if (e.code === 'KeyE') interactHeld = true; else if (e.code === 'Digit1') slotReq = 0; else if (e.code === 'Digit2') slotReq = 1; else if (e.code === 'KeyQ') swapReq = true; else if (e.code === 'KeyG') nadeReq = true;
+    if (e.code === 'KeyR') reloadReq = true; else if (e.code === 'KeyE') interactHeld = true; else if (e.code === 'Digit1') slotReq = 0; else if (e.code === 'Digit2') slotReq = 1; else if (e.code === 'KeyQ') swapReq = true; else if (e.code === 'KeyG') nadeReq = true; else if (e.code === 'KeyH') healReq = 1; else if (e.code === 'KeyJ') healReq = 2;
     else if (e.code === 'Escape' && phase === 'countdown') setPause(true);
     if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code) && match) e.preventDefault();
   };
@@ -210,7 +210,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   root.addEventListener('pointerdown', tStart); root.addEventListener('pointermove', tMove); root.addEventListener('pointerup', tEnd); root.addEventListener('pointercancel', tEnd);
   root.querySelectorAll<HTMLButtonElement>('.sz-tbuttons button').forEach(b => {
     const act = b.dataset.act!;
-    b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); audio.unlock(); if (act === 'fire') tc.fire = true; else if (act === 'ads') tc.ads = !tc.ads; else if (act === 'crouch') tc.crouch = !tc.crouch; else if (act === 'reload') reloadReq = true; else if (act === 'interact') interactHeld = true; else if (act === 'swap') swapReq = true; else if (act === 'nade') nadeReq = true; if (act === 'crouch') b.classList.toggle('down', tc.crouch); else b.classList.add('down'); });
+    b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); audio.unlock(); if (act === 'fire') tc.fire = true; else if (act === 'ads') tc.ads = !tc.ads; else if (act === 'crouch') tc.crouch = !tc.crouch; else if (act === 'reload') reloadReq = true; else if (act === 'interact') interactHeld = true; else if (act === 'swap') swapReq = true; else if (act === 'nade') nadeReq = true; else if (act === 'heal1') healReq = 1; else if (act === 'heal2') healReq = 2; if (act === 'crouch') b.classList.toggle('down', tc.crouch); else b.classList.add('down'); });
     for (const n of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(n, () => { if (act === 'fire') tc.fire = false; else if (act === 'interact') interactHeld = false; if (act !== 'ads' && act !== 'crouch') b.classList.remove('down'); });
   });
 
@@ -219,7 +219,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     const sx = tc.move.x, sy = -tc.move.y, active = phase === 'play';
     i.yaw = yaw; i.pitch = pitch; i.mx = active ? clamp(kx + sx, -1, 1) : 0; i.mz = active ? clamp(kz + sy, -1, 1) : 0;
     i.fire = active && (mouse.fire || tc.fire); i.ads = active && (mouse.ads || tc.ads); i.sprint = active && (keys.has('ShiftLeft') || keys.has('ShiftRight') || Math.hypot(sx, sy) > 0.92);
-    i.crouch = active && (keys.has('KeyC') || tc.crouch); i.nade = active && nadeReq; nadeReq = false; i.reload = active && reloadReq; i.interact = active && interactHeld; i.jump = active && (keys.has('Space') || (p.air > 0 && interactHeld)); reloadReq = false;
+    i.crouch = active && (keys.has('KeyC') || tc.crouch); i.nade = active && nadeReq; nadeReq = false; i.heal = active ? healReq : 0; healReq = 0; i.reload = active && reloadReq; i.interact = active && interactHeld; i.jump = active && (keys.has('Space') || (p.air > 0 && interactHeld)); reloadReq = false;
     if (swapReq) { slotReq = p.guns[1 - p.cur] ? 1 - p.cur : -1; swapReq = false; } i.slot = active ? slotReq : -1; slotReq = -1;
   }
 
@@ -288,8 +288,9 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     set(q('#sz-ztime'), 'zt', delay ? clock(m.zoneDelay - m.t) : z.timeLeft > 0 ? clock(z.timeLeft) : '--'); set(q('#sz-zlabel'), 'zl', zl); q('#sz-zone').classList.toggle('shrink', z.shrinking);
     q('#sz-hp').style.width = `${clamp(p.hp, 0, 100)}%`; set(q('#sz-hpn'), 'hpn', String(Math.ceil(Math.max(0, p.hp)))); q('#sz-ar').style.width = `${clamp(p.armor, 0, 100)}%`; set(q('#sz-arn'), 'arn', String(Math.ceil(p.armor)));
     q('.sz-bl').classList.toggle('low', p.hp < 30);
+    { const H = p.healKind === 'kit' ? HEAL.kit : HEAL.bandage, on = p.healT > 0; q('#sz-cast').classList.toggle('show', on); if (on) { set(q('#sz-castl'), 'castl', `${H.name} 사용 중`); q('#sz-castb').style.width = `${clamp((1 - p.healT / H.time) * 100, 0, 100)}%`; } }
     set(q('#sz-wname'), 'wn', def ? def.name + (p.reload > 0 ? ' · 장전 중' : '') : '맨손'); set(q('#sz-mag'), 'mag', g ? String(g.mag) : '-'); set(q('#sz-res'), 'res', g ? `/ ${g.reserve}` : '');
-    const gear = [p.nades > 0 ? `<span class="gear">수류탄 ${p.nades}</span>` : '', p.helmet > 0 ? `<span class="gear">${HELMET_NAMES[p.helmet]}</span>` : '', p.boost > 0 ? `<span class="gear boost">부스트 ${Math.ceil(p.boost)}초</span>` : ''].join('');
+    const gear = [p.bandages > 0 ? `<span class="gear heal">붕대 ${p.bandages} <small>H</small></span>` : '', p.kits > 0 ? `<span class="gear heal">구급상자 ${p.kits} <small>J</small></span>` : '', p.armorLv > 0 ? `<span class="gear">${ARMOR_NAMES[p.armorLv]}</span>` : '', p.nades > 0 ? `<span class="gear">수류탄 ${p.nades}</span>` : '', p.helmet > 0 ? `<span class="gear">${HELMET_NAMES[p.helmet]}</span>` : '', p.boost > 0 ? `<span class="gear boost">부스트 ${Math.ceil(p.boost)}초</span>` : ''].join('');
     html(q('#sz-slots'), 'slots', gear + p.guns.map((x, i) => `<span class="${i === p.cur ? 'on' : ''}">${i + 1} ${x ? WEAPONS[x.id].name : '비어 있음'}${x && Object.keys(x.att).length ? `<small>${Object.values(x.att).map(a => PARTS[a].name.replace(' 조준경', '').replace(' 사이트', '')).join(' · ')}</small>` : ''}</span>`).join(''));
     // 조준선: 탄퍼짐에 맞춰 벌어집니다
     if (def && view) { const spread = def.spread * partHandling(g!.att).spread * (p.ads ? (g!.att.sight ? 0.34 : 0.4) : 1) * (1 + Math.min(1.6, p.speed / PLAYER.walk) * 0.5) * (1 + p.kick * 0.5), px = Math.tan(spread * (def.pellets > 1 ? 2 : 1)) / Math.tan((view.fov * Math.PI) / 360) * (canvas.clientHeight / 2); q('#sz-cross').style.setProperty('--gap', `${clamp(px, 4, 90).toFixed(1)}px`); }
@@ -355,8 +356,9 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
         if (mine) { audio.play('kill'); hitKill = true; hitT = 0.55; const hm = q('#sz-hitmark'); hm.classList.remove('pop'); void hm.offsetWidth; hm.classList.add('pop'); say(`처치 · ${nameOf(e.victim)}`, 1.4) }
         if (e.victim === p.id) onMyDeath(e.attacker);
       } else if (e.t === 'pickup') {
-        if (e.id === p.id) { audio.play(e.kind === 'medkit' ? 'heal' : e.kind === 'armor' ? 'armor' : 'pickup'); say(e.kind === 'attach' && e.part ? `${PARTS[e.part].name} 장착` : e.kind === 'helmet' ? `${HELMET_NAMES[e.level ?? 1]} 착용` : e.kind === 'boost' ? '에너지 드링크 · 부스트' : e.kind === 'grenade' ? '수류탄 +2' : e.kind === 'weapon' ? `${WEAPONS[e.weapon!].name} 획득` : e.kind === 'medkit' ? '구급상자 +' : e.kind === 'armor' ? '방탄복 +' : '탄약 +', 1.1); if (pvp && e.loot < m.map.loot.length) pvp.net.sendPickup(e.loot); }
-      } else if (e.t === 'drop') { if (e.stage === 'call') { say('보급 투하! 지도의 노란 표시를 확인하세요', 3); audio.play('armor'); } else say('보급 상자 착륙 · 최상급 전리품', 3); }
+        if (e.id === p.id) { audio.play(e.kind === 'medkit' || e.kind === 'bandage' ? 'heal' : e.kind === 'armor' ? 'armor' : 'pickup'); say(e.kind === 'attach' && e.part ? `${PARTS[e.part].name} 장착` : e.kind === 'helmet' ? `${HELMET_NAMES[e.level ?? 1]} 착용` : e.kind === 'boost' ? '에너지 드링크 · 부스트' : e.kind === 'grenade' ? '수류탄 +2' : e.kind === 'weapon' ? `${WEAPONS[e.weapon!].name} 획득` : e.kind === 'bandage' ? `붕대 +${HEAL.bandage.pick}` : e.kind === 'medkit' ? '구급상자 +1' : e.kind === 'armor' ? `${ARMOR_NAMES[Math.max(1, Math.min(3, e.level || 2))]} 장착` : '탄약 +', 1.1); if (pvp && e.loot < m.map.loot.length) pvp.net.sendPickup(e.loot); }
+      } else if (e.t === 'heal') { if (e.id === p.id) { if (e.stage === 'done') { audio.play('heal'); say(`${e.kind === 'kit' ? '구급상자' : '붕대'} 사용 완료`, 1.2); } else if (e.stage === 'cancel') say('치료 중단', 1); } }
+      else if (e.t === 'drop') { if (e.stage === 'call') { say('보급 투하! 지도의 노란 표시를 확인하세요', 3); audio.play('armor'); } else say('보급 상자 착륙 · 최상급 전리품', 3); }
       else if (e.t === 'jump') { if (e.id === p.id) { audio.play('go'); say('강하 시작', 1.4); } }
       else if (e.t === 'chute') { if (e.id === p.id) { audio.play('pickup'); say('낙하산 펼침', 1.4); } }
       else if (e.t === 'land') { if (e.id === p.id) { audio.play('armor'); say('착지 · 총을 찾으세요', 2.4); } }
@@ -375,10 +377,16 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     const p = me(); if (phase !== 'dead') phase = 'over'; const win = winner === p.id; if (win) audio.play('win');
     if (!resultShown) { resultShown = true; window.setTimeout(() => showResult(win), win ? 1400 : 300); }
   }
+  function killerLine(p: Player, win: boolean): string {
+    if (win || p.killedBy < 0 && p.killedWeapon !== 'zone') return win ? '<p class="sz-killer">마지막까지 살아남았습니다</p>' : '';
+    if (p.killedWeapon === 'zone') return '<p class="sz-killer">자기장 밖에서 쓰러졌습니다</p>';
+    const k = match!.players[p.killedBy], w = p.killedWeapon === 'grenade' ? '수류탄' : p.killedWeapon ? WEAPONS[p.killedWeapon].name : '';
+    return k ? `<p class="sz-killer">${k.name}에게 쓰러짐 · ${w}${k.alive ? ` · 상대 체력 ${Math.ceil(k.hp)}` : ''}</p>` : '';
+  }
   function showResult(win: boolean): void {
     if (closed || !match) return; const p = me(), t = match.t, rank = win ? 1 : p.place; if (document.pointerLockElement) document.exitPointerLock();
     recordShooterMatch(win, p.kills);
-    card('ZERO ZONE', win ? '최후의 1인' : `#${rank}`, `<p class="sz-big">${win ? '승리' : `${match.players.length}명 중 ${rank}위`}</p><div class="sz-stats"><div><b>${p.kills}</b><span>처치</span></div><div><b>${clock(win ? t : p.diedAt)}</b><span>생존 시간</span></div><div><b>${BOTS[level].label}</b><span>난이도</span></div></div>`,
+    card('ZERO ZONE', win ? '최후의 1인' : `#${rank}`, `<p class="sz-big">${win ? '승리' : `${match.players.length}명 중 ${rank}위`}</p><div class="sz-stats"><div><b>${p.kills}</b><span>처치</span></div><div><b>${clock(win ? t : p.diedAt)}</b><span>생존 시간</span></div><div><b>${Math.round(p.dmgDealt)}</b><span>준 피해</span></div><div><b>${p.heads}</b><span>머리 명중</span></div><div><b>${BOTS[level].label}</b><span>난이도</span></div></div>${killerLine(p, win)}`,
       `<button class="primary" data-act="again">다시 출격</button>${!win && !match.over ? '<button data-act="spectate">관전 계속</button><button data-act="skip">결과까지 건너뛰기</button>' : ''}<button data-act="setup">설정으로</button><button data-act="exit">메뉴로</button>`, win ? 'win' : '');
   }
 

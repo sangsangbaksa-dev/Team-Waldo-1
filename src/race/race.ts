@@ -66,6 +66,23 @@ export const currentLap = (r: RaceState, who: Racer = r.player): number => Math.
 /** 플레이어와 racer 사이의 거리(m). 양수면 racer 가 앞. */
 export const gapMeters = (r: RaceState, who: Racer): number => (who.car.total - r.player.car.total) * r.track.ds;
 
+/** 슬립스트림: 앞차 뒤 3~32m, 옆으로 2.6m 이내에서 빠르게 달리면 충전되고 벗어나면 식습니다. */
+export const DRAFT_NEAR = 3, DRAFT_FAR = 32, DRAFT_SIDE = 2.6, DRAFT_MIN_SPEED = 24;
+export function inSlipstream(me: CarState, others: ReadonlyArray<CarState>): boolean {
+  if (me.vf < DRAFT_MIN_SPEED) return false;
+  const fx = Math.cos(me.h), fz = Math.sin(me.h);
+  for (const o of others) {
+    if (o === me || o.vf < DRAFT_MIN_SPEED * 0.8) continue;
+    const dx = o.x - me.x, dz = o.z - me.z, ahead = dx * fx + dz * fz, side = Math.abs(-dx * fz + dz * fx);
+    if (ahead > DRAFT_NEAR && ahead < DRAFT_FAR && side < DRAFT_SIDE + ahead * 0.03) return true;
+  }
+  return false;
+}
+function updateDraft(r: RaceState, dt: number): void {
+  const cars = r.racers.map(k => k.car);
+  for (const k of r.racers) if (!k.link) k.car.draft = Math.max(0, Math.min(1, k.car.draft + (inSlipstream(k.car, cars) ? dt * 0.55 : -dt * 1.4)));
+}
+
 const IDLE: CarInput = { throttle: 0, brake: 0, steer: 0, drift: false, nitro: false };
 
 export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): RaceEvent[] {
@@ -84,6 +101,7 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
   }
   r.thrPrev = pressed;
   const racing = r.phase !== 'countdown';
+  if (racing) updateDraft(r, dt);
   for (const k of r.racers) {
     if (k.link) {
       followSnap(k.car, k.link, now, dt);

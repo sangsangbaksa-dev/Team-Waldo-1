@@ -272,6 +272,10 @@ export class ShooterView {
       const top = new THREE.Mesh(new THREE.CylinderGeometry(0.092, 0.092, 0.04, 12), new THREE.MeshLambertMaterial({ color: 0xcfd6da })); top.position.y = 1.07; g.add(top);
       const bolt = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.095), new THREE.MeshBasicMaterial({ color: 0xffe14a })); bolt.position.set(0, 0.9, 0); g.add(bolt);
     }
+    else if (l.kind === 'grenade') {
+      const sph = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), new THREE.MeshLambertMaterial({ color: 0x3b4a2a, emissive: 0x2a3a10 })); sph.position.y = 0.9; sph.castShadow = true; g.add(sph);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.06, 8), new THREE.MeshLambertMaterial({ color: 0xb0b6ba })); cap.position.y = 1.06; g.add(cap);
+    }
     else {
       const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, l.kind === 'armor' ? 0.55 : 0.34, l.kind === 'armor' ? 0.28 : 0.4), new THREE.MeshLambertMaterial({ color: l.kind === 'medkit' ? 0xf4f6f4 : l.kind === 'armor' ? 0x3f7fd8 : 0x6c7a3c, emissive: color, emissiveIntensity: 0.18 })); body.position.y = 0.9; body.castShadow = true; g.add(body);
       if (l.kind === 'medkit') { const m = new THREE.MeshBasicMaterial({ color: 0xd8232a }); const a = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.08, 0.06), m), b = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.34, 0.06), m); a.position.set(0, 0.9, 0.21); b.position.set(0, 0.9, 0.21); g.add(a, b); }
@@ -314,6 +318,8 @@ export class ShooterView {
         const mx = e.ox + (isMe ? fx * 0.7 - fz * 0.22 : fx * 0.9), my = isMe ? e.oy - 0.16 : e.oy - 0.25, mz = e.oz + (isMe ? fz * 0.7 + fx * 0.22 : fz * 0.9);
         for (let i = 0; i + 2 < e.ends.length; i += 3) this.tracer(mx, my, mz, e.ends[i], e.ends[i + 1], e.ends[i + 2], e.sup ? 0x8a8f96 : WEAPONS[e.weapon].pellets > 1 ? 0xffd9a0 : 0xfff0b8);
         if (isMe) { this.shake = Math.min(1, this.shake + WEAPONS[e.weapon].recoil * 9); this.fovPunch = Math.min(1, this.fovPunch + WEAPONS[e.weapon].recoil * 7); this.flashKick = 1; }
+      } else if (e.t === 'nade') {
+        if (e.stage === 'boom') { this.boom(e.x, e.y, e.z); const dd = Math.hypot(e.x - me.x, e.z - me.z); if (dd < 25) this.shake = Math.min(1, this.shake + (1 - dd / 25) * 0.9); }
       } else if (e.t === 'hit') {
         if (e.victim === me.id && !e.wall) this.shake = Math.min(1, this.shake + 0.35 + Math.min(0.5, e.dmg / 120));
         if (e.wall || e.victim < 0) this.spark(e.x, e.y, e.z, 7, [1, 0.8, 0.45], 3.5);
@@ -321,7 +327,18 @@ export class ShooterView {
       }
     }
   }
+  private nadeMeshes = new Map<number, THREE.Mesh>(); private booms: Array<{ s: THREE.Sprite; t: number }> = [];
+  private boom(x: number, y: number, z: number): void {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, color: 0xffb060, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })); s.position.set(x, Math.max(1, y + 0.6), z); s.scale.setScalar(2); this.scene.add(s); this.booms.push({ s, t: 0 });
+    this.spark(x, y + 0.4, z, 36, [1, 0.62, 0.22], 9); this.flash = Math.max(this.flash, 0.25);
+  }
+  private updateNades(dt: number): void {
+    const live = new Set<number>(); for (const n of this.match.nades) { live.add(n.id); let m = this.nadeMeshes.get(n.id); if (!m) { m = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), new THREE.MeshLambertMaterial({ color: 0x3b4a2a, emissive: 0xff3010, emissiveIntensity: 0.2 })); this.scene.add(m); this.nadeMeshes.set(n.id, m); } m.position.set(n.x, n.y, n.z); (m.material as THREE.MeshLambertMaterial).emissiveIntensity = n.fuse < 1 ? 0.2 + Math.abs(Math.sin(this.time * 24)) * 1.2 : 0.2; }
+    for (const [id, m] of this.nadeMeshes) if (!live.has(id)) { this.scene.remove(m); m.geometry.dispose(); (m.material as THREE.Material).dispose(); this.nadeMeshes.delete(id); }
+    for (let i = this.booms.length - 1; i >= 0; i--) { const b = this.booms[i]; b.t += dt; b.s.scale.setScalar(2 + b.t * 16); (b.s.material as THREE.SpriteMaterial).opacity = Math.max(0, 1 - b.t * 3); if (b.t > 0.35) { this.scene.remove(b.s); (b.s.material as THREE.Material).dispose(); this.booms.splice(i, 1); } }
+  }
   private updateFx(dt: number): void {
+    this.updateNades(dt);
     for (let i = this.tracers.length - 1; i >= 0; i--) { const f = this.tracers[i]; f.life -= dt; (f.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, f.life / f.max) * 0.9; if (f.life <= 0) { this.scene.remove(f.mesh); f.mesh.geometry.dispose(); (f.mesh.material as THREE.Material).dispose(); this.tracers.splice(i, 1); } }
     const pos = this.sparks.geometry.attributes.position as THREE.BufferAttribute, col = this.sparks.geometry.attributes.color as THREE.BufferAttribute;
     for (let i = this.sparkData.length - 1; i >= 0; i--) { const s = this.sparkData[i]; s.life -= dt; s.vy -= 9 * dt; s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt; if (s.y < 0.02) { s.y = 0.02; s.vy *= -0.3; s.vx *= 0.6; s.vz *= 0.6; } if (s.life <= 0) this.sparkData.splice(i, 1); }

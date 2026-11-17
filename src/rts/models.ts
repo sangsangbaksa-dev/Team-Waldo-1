@@ -89,7 +89,8 @@ export function makeBuilding(kind: BuildKind, owner: number): BuildRig {
     spin = new THREE.Group(); spin.position.set(0, 3.0, 0); root.add(spin); const dish = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2.3), m.steel); dish.rotation.x = Math.PI; dish.position.y = 0.1; spin.add(dish); cyl(spin, 0.03, 0.03, 0.55, m.dark, 0, 0.1, 0);
     box(root, 0.9, 1.0, 0.1, m.dark, 0, 0.28, (s - 0.9) / 2 + 0.45); lamp(0, 1.45, (s - 0.9) / 2 + 0.52, 0.8, 0.08, 0.04);
     for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) { cyl(root, 0.18, 0.22, 1.5, m.armor, x * (s / 2 - 0.5), 0.28, z * (s / 2 - 0.5), 8); lamp(x * (s / 2 - 0.5), 1.8, z * (s / 2 - 0.5), 0.18, 0.1, 0.18); }
-    top = 3.4;
+    const nexus = new THREE.Mesh(new THREE.OctahedronGeometry(0.4, 0), m.glow); nexus.scale.y = 1.6; nexus.position.y = 1.15; nexus.castShadow = true; spin.add(nexus); light.push(nexus);
+    top = 4.4;
   } else if (kind === 'depot') {
     box(root, s - 0.2, 0.2, s - 0.2, m.dark, 0, 0, 0); box(root, 1.1, 0.8, 0.8, m.concrete, -0.1, 0.2, 0.45); box(root, 1.1, 0.14, 0.82, m.team, -0.1, 0.62, 0.45);
     cyl(root, 0.38, 0.38, 1.05, m.steel, -0.45, 0.2, -0.45, 12); cyl(root, 0.38, 0.38, 1.05, m.steel, 0.4, 0.2, -0.45, 12); cyl(root, 0.4, 0.4, 0.12, m.team, -0.45, 0.78, -0.45, 12); cyl(root, 0.4, 0.4, 0.12, m.team, 0.4, 0.78, -0.45, 12);
@@ -106,10 +107,15 @@ export function makeBuilding(kind: BuildKind, owner: number): BuildRig {
     box(root, 1.4, 0.95, 0.12, m.dark, 0.2, 0.2, (s - 0.7) / 2 + 0.15); lamp(0.2, 1.1, (s - 0.7) / 2 + 0.22, 1.3, 0.07, 0.04);
     box(root, 0.16, 1.3, 0.16, m.steel, 1.15, 1.5, 0.6); box(root, 1.0, 0.1, 0.12, m.steel, 0.75, 2.7, 0.6); box(root, 0.5, 0.18, 0.5, m.team, 0.0, 1.35, 1.2); top = 3.2;
   } else {
-    box(root, s - 0.2, 0.3, s - 0.2, m.dark, 0, 0, 0); cyl(root, 0.42, 0.55, 1.5, m.concrete, 0, 0.3, 0, 8); cyl(root, 0.5, 0.42, 0.18, m.team, 0, 1.6, 0, 8);
-    spin = new THREE.Group(); spin.position.set(0, 1.95, 0); root.add(spin); box(spin, 0.7, 0.4, 0.6, m.hull, 0, -0.2, 0); barrel = new THREE.Group(); barrel.position.set(0.3, 0, 0); spin.add(barrel);
-    const b = cyl(barrel, 0.07, 0.09, 1.1, m.steel, 0.5, -0.07, 0, 8); b.rotation.z = Math.PI / 2; b.position.set(0.5, 0, 0); box(spin, 0.14, 0.14, 0.14, m.glow, -0.2, 0.2, 0); lamp(0, 1.5, 0.45, 0.2, 0.06, 0.04);
-    flash = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe9a0 })); flash.position.set(1.15, 0, 0); flash.visible = false; spin.add(flash); top = 2.3;
+    // 롤식 방어탑: 층층이 좁아지는 돌탑, 팀색 띠, 꼭대기에 떠서 회전하며 쏘는 팀색 수정구.
+    box(root, s - 0.2, 0.3, s - 0.2, m.dark, 0, 0, 0); cyl(root, 0.72, 0.88, 0.9, m.concrete, 0, 0.3, 0, 8); cyl(root, 0.8, 0.74, 0.12, m.team, 0, 1.2, 0, 8);
+    cyl(root, 0.5, 0.68, 1.25, m.concrete, 0, 1.32, 0, 8); cyl(root, 0.56, 0.52, 0.12, m.team, 0, 2.5, 0, 8);
+    for (const [x, z] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) { const b = box(root, 0.18, 1.0, 0.18, m.armor, x * 0.78, 0.3, z * 0.78); b.rotation.set(z * 0.2, 0, -x * 0.2); lamp(x * 0.62, 1.85, z * 0.62, 0.1, 0.34, 0.1); }
+    cyl(root, 0.22, 0.34, 0.5, m.steel, 0, 2.62, 0, 8);
+    spin = new THREE.Group(); spin.position.set(0, 3.45, 0); root.add(spin);
+    const orb = new THREE.Mesh(new THREE.OctahedronGeometry(0.34, 0), m.glow); orb.scale.y = 1.5; orb.castShadow = true; spin.add(orb); light.push(orb);
+    barrel = new THREE.Group(); barrel.position.set(0.3, 0, 0); spin.add(barrel); const nozzle = cyl(barrel, 0.0, 0.14, 0.5, m.steel, 0.2, -0.25, 0, 6); nozzle.rotation.z = -Math.PI / 2; nozzle.position.set(0.2, 0, 0);
+    flash = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe9a0 })); flash.position.set(0.95, 0, 0); flash.visible = false; spin.add(flash); top = 4.0;
   }
   return { root, light, spin, barrel, flash, top };
 }

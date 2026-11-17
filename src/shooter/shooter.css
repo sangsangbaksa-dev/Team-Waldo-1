@@ -44,6 +44,8 @@
 .sz-dmgs i{position:absolute;left:-60px;top:-120px;width:120px;height:120px;transform-origin:60px 120px;border-radius:50% 50% 0 0;background:radial-gradient(ellipse at 50% 0,rgba(255,40,30,.85),transparent 70%);clip-path:polygon(0 0,100% 0,100% 28%,0 28%);animation:szdmg .9s ease-out forwards}
 @keyframes szdmg{from{opacity:1}to{opacity:0}}
 .sz-banner{position:absolute;left:50%;top:21%;transform:translate(-50%,-6px);font-size:21px;font-weight:700;letter-spacing:-.01em;text-shadow:0 2px 12px #000,0 0 3px #000;opacity:0;transition:opacity .2s,transform .2s;white-space:nowrap}
+.sz-air{position:absolute;left:50%;bottom:23%;transform:translateX(-50%);text-align:center;font-size:20px;font-weight:700;text-shadow:0 2px 12px #000,0 0 3px #000;opacity:0;transition:opacity .2s;pointer-events:none;max-width:92vw}
+.sz-air.show{opacity:1}.sz-air small{display:block;margin-top:6px;font-size:13px;font-weight:500;opacity:.85}.sz-air b{background:rgba(255,211,77,.92);color:#111;padding:1px 7px;border-radius:4px;text-shadow:none}
 .sz-banner.show{opacity:1;transform:translate(-50%,0)}
 .sz-count{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);font-size:clamp(72px,16vh,150px);font-weight:800;letter-spacing:-.04em;text-shadow:0 6px 30px #000a;opacity:0}
 .sz-count.show{opacity:1}

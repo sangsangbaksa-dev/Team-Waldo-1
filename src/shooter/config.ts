@@ -61,7 +61,11 @@ export const HELMET_NAMES = ['', '1레벨 헬멧', '2레벨 헬멧', '3레벨 �
 export const BOOST = { time: 22, heal: 2.6, speed: 1.08, cap: 100 };
 
 export const PLAYER = { radius: 0.4, eye: 1.65, height: 1.8, head: 1.45, walk: 4.6, sprint: 7.2, hp: 100, medkit: 55, armor: 50, pickup: 1.6 };
-export const MAP_HALF = { br: 250, duel: 115 } as const;
+export const MAP_HALF = { br: 290, duel: 115 } as const;
+/** 솔로 배틀로열은 100명(나 + AI 99명)이 같은 비행기에서 뛰어내립니다. */
+export const BR_PLAYERS = 100;
+/** 낙하: 비행기 고도·속도, 자유낙하와 낙하산의 하강·수평 속도(m/s). 낙하산은 open 미터 아래에서 자동으로 펴집니다. */
+export const AIR = { alt: 320, plane: 34, fall: 48, dive: 62, fallH: 8, fallFast: 24, diveH: 17, open: 105, manualOpen: 260, chute: 7, chuteFast: 10.5, chuteH: 6, chuteGo: 12, chuteRun: 17, delay: 52 };
 export type Mode = 'br' | 'duel';
 
 export type Difficulty = 'easy' | 'normal' | 'hard' | 'expert';
@@ -90,7 +94,7 @@ export interface ZonePhase { wait: number; shrink: number; radius: number; dps: 
 /** 줄어드는 자기장 일정. 마지막 단계가 끝나면 작은 원에 머무르며 피해가 계속 늘어납니다. */
 export const ZONES: Record<Mode, ZonePhase[]> = {
   br: [
-    { wait: 28, shrink: 38, radius: 185, dps: 1.2 }, { wait: 24, shrink: 32, radius: 118, dps: 2.2 }, { wait: 20, shrink: 28, radius: 70, dps: 3.5 },
+    { wait: 28, shrink: 38, radius: 225, dps: 1.2 }, { wait: 24, shrink: 32, radius: 140, dps: 2.2 }, { wait: 20, shrink: 28, radius: 70, dps: 3.5 },
     { wait: 16, shrink: 24, radius: 36, dps: 6 }, { wait: 12, shrink: 20, radius: 14, dps: 10 }, { wait: 8, shrink: 16, radius: 5, dps: 16 },
   ],
   duel: [

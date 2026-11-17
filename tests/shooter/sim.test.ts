@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Match, blankInput } from '../../src/shooter/sim';
-import { BOTS, DIFFICULTIES, MAP_HALF, PLAYER, WEAPONS, ZONES } from '../../src/shooter/config';
+import { AIR, BOTS, BR_PLAYERS, DIFFICULTIES, MAP_HALF, PLAYER, WEAPONS, ZONES } from '../../src/shooter/config';
 import { generateMap, lineClear, pushOut, rayWorld } from '../../src/shooter/world';
 import { findPath, navFor, walkable } from '../../src/shooter/nav';
 
@@ -165,5 +165,35 @@ describe('ZERO ZONE 건물·엄폐물·파츠·보급', () => {
     const m = solo(9); expect(m.drops.length).toBe(2); const before = m.loot.length, d = m.drops[0];
     m.t = d.at - 0.05; m.step(0.1); const ev = m.drain(); expect(ev.some(e => e.t === 'drop' && e.stage === 'land')).toBe(true);
     expect(m.loot.length).toBe(before + 8); expect(m.loot.some(l => l.kind === 'helmet' && l.level === 3)).toBe(true);
+  });
+
+  describe('100명 배틀로열과 낙하산', () => {
+    const royale = (seed = 11): Match => new Match({ seed, mode: 'br', difficulty: 'normal', humans: [{ name: '나' }], fill: BR_PLAYERS, air: true });
+    const runCoarse = (m: Match, sec: number): void => { for (let i = 0; i < sec * 30 && !m.over; i++) { m.step(1 / 30); m.drain(); } };
+    it('나와 AI 99명이 이름이 겹치지 않게 비행기에서 시작한다', () => {
+      const m = royale(); expect(m.players.length).toBe(100); expect(m.players.filter(p => p.bot).length).toBe(99);
+      expect(m.players.every(p => p.air === 1 && p.alt === AIR.alt)).toBe(true); expect(new Set(m.players.map(p => p.name)).size).toBe(100); expect(m.plane).not.toBeNull();
+    });
+    it('땅 시작 모드(air 끔)는 예전처럼 땅에서 시작한다', () => { const m = solo(5); expect(m.players.every(p => p.air === 0 && p.alt === 0)).toBe(true); expect(m.plane).toBeNull(); });
+    it('뛰어내려 낙하산이 자동으로 펴지고 착지하면 땅 선수로 돌아온다', () => {
+      const m = royale(); const me = m.players[0]; runCoarse(m, 2); me.input = { ...blankInput(), jump: true, yaw: me.yaw }; runCoarse(m, 0.2); expect(me.air).toBe(2);
+      me.input = { ...blankInput(), mz: 1, yaw: me.yaw }; let chute = false, minAlt = 999; for (let i = 0; i < 60 * 60 && me.air; i++) { m.step(1 / 60); for (const e of m.drain()) if (e.t === 'chute' && e.id === 0) chute = true; if (me.air === 3) minAlt = Math.min(minAlt, me.alt); }
+      expect(chute).toBe(true); expect(me.air).toBe(0); expect(me.alt).toBe(0); expect(Math.abs(me.x)).toBeLessThanOrEqual(m.map.half);
+    });
+    it('날고 있는 선수는 총에 맞지 않고, 비행기가 끝에 닿으면 모두 자동으로 뛴다', () => {
+      const m = royale(); const me = m.players[0], b = m.players[1]; runCoarse(m, 1); me.input = { ...blankInput(), jump: true }; runCoarse(m, 0.1);
+      const hp = me.hp; m.bullet(1, 'rifle', me.x - 5, me.alt, me.z, 0, 0, [], false); expect(me.hp).toBe(hp); expect(b.air).toBeGreaterThanOrEqual(1);
+      runCoarse(m, m.plane!.end + 1); expect(m.players.every(p => p.air !== 1)).toBe(true);
+    });
+    it('낙하 중에는 사격도 줍기도 안 되고, 자기장 시간은 낙하가 끝난 뒤부터 흐른다', () => {
+      const m = royale(); expect(m.zone.phase).toBe(0); expect(m.zone.timeLeft).toBeCloseTo(ZONES.br[0].wait, 0); runCoarse(m, 10); expect(m.zone.timeLeft).toBeCloseTo(ZONES.br[0].wait, 0);
+    });
+    it('AI 99명은 모두 착지하고 판은 한 명이 남을 때까지 제때 끝난다', () => {
+      const m = royale(3); let landed = 0; for (let i = 0; i < 700 * 30 && !m.over; i++) { m.step(1 / 30); for (const e of m.drain()) if (e.t === 'land') landed++; }
+      expect(landed).toBeGreaterThanOrEqual(95); expect(m.over).toBe(true); expect(m.t).toBeLessThan(650);
+    }, 60000);
+    it('모든 전리품에 길이 있다(문 앞을 소품이 막지 않는다)', () => {
+      for (const seed of [4, 5]) { const m = generateMap(seed, 'br'), nav = navFor(m), c = m.compounds[0]; for (const l of m.loot.filter((_, i) => i % 3 === 0)) expect(findPath(nav, c.x, c.z, l.x, l.z, 300000)).not.toBeNull(); }
+    }, 60000);
   });
 });

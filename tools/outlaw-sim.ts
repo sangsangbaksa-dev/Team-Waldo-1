@@ -4,7 +4,7 @@ import { Sim } from '../src/outlaw/sim';
 import { HEROES, PROPERTIES, CAR_SHOP, ACHIEVEMENTS } from '../src/outlaw/life';
 import { blankCarInput, blankPedInput, WEAPONS, WEAPON_ORDER, PLAYER_ID } from '../src/outlaw/types';
 import { startJob, stepJobs, pickpocket, JOB_LIST } from '../src/outlaw/jobs';
-import { buyProperty, collectProperties, buyCar, callCar, train, bribe, treat } from '../src/outlaw/services';
+import { setOutfit, nearVending, buySnack, buyProperty, collectProperties, buyCar, callCar, train, bribe, treat } from '../src/outlaw/services';
 import { slotSpin, rouletteSpin, coinFlip, Blackjack, handValue } from '../src/outlaw/casino';
 import { makeRng } from '../src/outlaw/types';
 
@@ -61,6 +61,24 @@ for (const info of JOB_LIST) {
 }
 { // 소매치기
   const s = new Sim(2); const p = s.player; const c = s.spawnPed('civ', p.x + 1, p.z, { keep: true }); c.yaw = 0; p.x = c.x - 1.0; const c0 = s.cash; const r = pickpocket(s); ok(r.includes('+$') && s.cash > c0, '소매치기 성공'); void c;
+}
+
+{ // 타임 트라이얼 완주
+  const s = new Sim(11); startJob(s, 'trial'); const car = s.spawnVehicle('gt', s.player.x, s.player.z, 0, { keep: true }); s.enterVehicle(s.player, car); const c0 = s.cash;
+  for (let i = 0; i < 5; i++) { car.x = s.job.data[`x${i}`]!; car.z = s.job.data[`z${i}`]!; stepJobs(s, 0.1); } ok(!s.job.active && s.cash > c0 + 900, '타임 트라이얼 완주 보상');
+}
+{ // 도주 운전
+  const s = new Sim(11); startJob(s, 'getaway'); const car = s.spawnVehicle('sedan', 0, 0, 0, { keep: true }); s.enterVehicle(s.player, car); const b = s.map.pois.find(q => q.id === 'bank0')!; car.x = b.x; car.z = b.z; car.vf = 0;
+  for (let i = 0; i < 150; i++) stepJobs(s, 0.02); ok(s.job.stage === 1 && s.wanted.stars === 3, '일행 탑승 시 수배 3★');
+  const homes = s.map.pois.filter(q => q.kind === 'safehouse').sort((a, c) => Math.hypot(a.x - s.player.x, a.z - s.player.z) - Math.hypot(c.x - s.player.x, c.z - s.player.z)); const h = homes[1] ?? homes[0]!; car.x = h.x; car.z = h.z; s.setStars(0); const c0 = s.cash; stepJobs(s, 0.1); ok(!s.job.active && s.cash >= c0 + 2200, '도주 운전 보상');
+}
+{ // 밀수
+  const s = new Sim(11); startJob(s, 'smuggle'); const car = s.vehicle(s.job.ids.car)!; s.enterVehicle(s.player, car); stepJobs(s, 0.1); ok(s.job.stage === 1 && s.wanted.stars >= 2, '밀수 상자 적재 시 수배');
+  car.x = s.job.data.x!; car.z = s.job.data.z!; s.setStars(1); const c0 = s.cash; stepJobs(s, 0.1); ok(!s.job.active && s.cash >= c0 + 1800, '밀수 보상');
+}
+{ // 옷장·자판기
+  const s = new Sim(4); s.cash = 500; ok(setOutfit(s, 3).includes('새 옷') && s.life.outfit === 3, '옷 갈아입기');
+  const v = s.map.props.find(q => q.kind === 'vending' || q.kind === 'kiosk'); if (v) { s.player.x = v.x + 1; s.player.z = v.z; s.player.hp = 40; ok(nearVending(s) && buySnack(s).includes('음료') && s.player.hp > 40, '자판기 음료'); } else console.log('· 자판기 소품 없음(건너뜀)');
 }
 
 // 5) 카지노

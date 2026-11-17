@@ -10,6 +10,9 @@ export const JOB_LIST: JobInfo[] = [
   { id: 'vigilante', name: '자경단', giver: '동네 주민', desc: '동네를 어지럽히는 갱 네 명을 제압합니다. 시민을 해치면 실패합니다.', pay: '$700', cooldown: 45 },
   { id: 'contract', name: '현상 의뢰', giver: '브로커', desc: '경호원을 거느린 우두머리를 쓰러뜨립니다. 무장이 단단합니다.', pay: '$2,500', cooldown: 90 },
   { id: 'repo', name: '차량 회수', giver: '정비공 준', desc: '표시된 차량을 가져와 해체장에 넘깁니다. 훔치는 순간 경찰이 붙습니다.', pay: '$1,100', cooldown: 60 },
+  { id: 'trial', name: '타임 트라이얼', giver: '레이서 나래', desc: '아무 차나 타고 표시된 관문 다섯 곳을 제한 시간 안에 통과합니다. 남은 시간이 보너스가 됩니다.', pay: '$900 + 시간 보너스', cooldown: 20 },
+  { id: 'getaway', name: '도주 운전', giver: '익명의 의뢰인', desc: '은행 앞에서 일행을 태우는 순간 경찰이 붙습니다. 추격을 따돌리고 은신처까지 달리세요.', pay: '$2,200', cooldown: 90 },
+  { id: 'smuggle', name: '밀수', giver: '항만 브로커', desc: '해체장의 밴을 훔쳐 먼 곳의 인수 지점에 넘깁니다. 상자를 실은 순간 경찰이 눈치챕니다.', pay: '$1,800', cooldown: 60 },
   { id: 'fight', name: '지하 격투', giver: '격투장 주인', desc: '격투장 앞에서 3연전. 총은 쓰지 않습니다. 이길수록 상금이 커집니다.', pay: '$400 · $800 · $1,600', cooldown: 0 },
 ];
 export const jobInfo = (id: string): JobInfo | undefined => JOB_LIST.find(j => j.id === id);
@@ -56,6 +59,16 @@ export function startJob(sim: Sim, id: string): string {
   } else if (id === 'repo') {
     const q = spotNear(sim, 200, 380), lane = sim.map.lanes[nearestLane(sim.map, q.x, q.z)];
     const v = sim.spawnVehicle(sim.rng() < 0.5 ? 'suv' : 'sedan', lane?.x ?? q.x, lane?.z ?? q.z, lane?.h ?? 0, { keep: true, tag: 'job', locked: false, color: 0x8a3fa0 }); v.mode = 'parked'; v.input.brake = 1; j.ids.car = v.id; j.timer = 280;
+  } else if (id === 'trial') {
+    const pts: Array<{ x: number; z: number }> = []; let from: { x: number; z: number } = p;
+    for (let i = 0; i < 5; i++) { let best = sim.map.lanes[0]!, bs = Infinity; for (let k = 0; k < 80; k++) { const l = sim.map.lanes[Math.floor(sim.rng() * sim.map.lanes.length)]!, d = dist(l, from), sc = Math.abs(d - 190); if (sc < bs) { bs = sc; best = l; } } pts.push(best); from = best; }
+    pts.forEach((q, i) => { j.data[`x${i}`] = q.x; j.data[`z${i}`] = q.z; }); j.timer = 55 + 5 * 38; j.data.total = 5;
+  } else if (id === 'getaway') {
+    const b = poi(sim, 'bank0'); j.data.x = b.x; j.data.z = b.z; j.timer = 300; j.data.wait = 0;
+  } else if (id === 'smuggle') {
+    const c = poi(sim, 'chop0'), lane = sim.map.lanes[nearestLane(sim.map, c.x, c.z)];
+    const v = sim.spawnVehicle('van', lane?.x ?? c.x, lane?.z ?? c.z, lane?.h ?? 0, { keep: true, tag: 'job', locked: false, color: 0x44505c }); v.mode = 'parked'; v.input.brake = 1; j.ids.car = v.id;
+    const t = spotNear(sim, 320, 520, c); j.data.x = t.x; j.data.z = t.z; j.timer = 330;
   } else if (id === 'fight') {
     const arena = sim.nearPoi(p.x, p.z) ?? poi(sim, 'arena0'); const fee = sim.price(200); if (sim.cash < fee) { sim.job = blankJobState(); return '참가비가 부족합니다'; }
     sim.addCash(-fee); j.data.x = arena.x; j.data.z = arena.z; j.data.round = 0; j.stage = 0; p.cur = 0; p.hp = Math.max(p.hp, p.maxHp * 0.7); j.data.civ0 = sim.civKills;
@@ -107,6 +120,25 @@ export function stepJobs(sim: Sim, dt: number): void {
     const car = sim.vehicle(j.ids.car); if (!car || car.wrecked || !car.alive) { end(sim, false, '회수 차량이 파괴되었습니다'); return; }
     if (!j.stage) { j.markers = [mark(car.x, car.z, 5, '회수 차량', 'item')]; j.text = `표시된 차량을 훔치세요 · ${clock(j.timer)}`; if (p.vehicle === car.id) { j.stage = 1; sim.setStars(Math.max(1, wantedUp)); sim.wanted.lastX = p.x; sim.wanted.lastZ = p.z; sim.wanted.unseenT = 0; sim.say('경찰이 눈치챘다! 해체장으로!', 3); } }
     else { const t = poi(sim, 'chop0'); j.markers = [mark(t.x, t.z, 8, '해체장')]; j.text = `해체장으로 가져가세요 · ${clock(j.timer)}`; if (p.vehicle === car.id && dist(car, t) < 9) end(sim, true, '차량 인도', 1100); }
+  } else if (id === 'trial') {
+    const i = j.stage, x = j.data[`x${i}`]!, z = j.data[`z${i}`]!, car = sim.vehicle(p.vehicle); j.markers = [mark(x, z, 11, `관문 ${i + 1}/5`)];
+    j.text = car ? `관문 ${i + 1}/5 · ${clock(j.timer)}` : `차를 타세요 · 관문 ${i + 1}/5 · ${clock(j.timer)}`;
+    if (car && Math.hypot(car.x - x, car.z - z) < 12) { j.stage++; sim.say(`관문 통과 ${j.stage}/5`, 1.5); if (j.stage >= 5) end(sim, true, '타임 트라이얼 완주', 900 + Math.floor(j.timer * 12)); }
+  } else if (id === 'getaway') {
+    const car = sim.vehicle(p.vehicle);
+    if (!j.stage) {
+      const b = poi(sim, 'bank0'); j.markers = [mark(b.x, b.z, 8, '일행 합류')]; j.text = car ? `은행 앞에 차를 세우세요 · ${clock(j.timer)}` : `차를 타고 은행으로 가세요 · ${clock(j.timer)}`;
+      j.data.wait = car && dist(car, b) < 9 && Math.abs(car.vf) < 2 ? j.data.wait! + dt : 0;
+      if (j.data.wait >= 2) { j.stage = 1; sim.setStars(3); sim.wanted.lastX = p.x; sim.wanted.lastZ = p.z; sim.wanted.unseenT = 0; sim.say('일행 탑승! 경찰이 몰려온다!', 3); }
+    } else {
+      const homes = sim.map.pois.filter(q => q.kind === 'safehouse').sort((a, b) => dist(a, p) - dist(b, p)), h = homes[1] ?? homes[0]!; j.markers = [mark(h.x, h.z, 8, '은신처')]; j.text = `경찰을 따돌리고 은신처로 · 수배 ${sim.wanted.stars}★ · ${clock(j.timer)}`;
+      if (!car) { j.data.out = (j.data.out ?? 0) + dt; if (j.data.out > 12) end(sim, false, '차를 버려 일행이 떠났습니다'); } else j.data.out = 0;
+      if (car && dist(car, h) < 9 && (sim.wanted.stars === 0 || sim.wanted.unseenT > 4)) end(sim, true, '도주 성공', 2200);
+    }
+  } else if (id === 'smuggle') {
+    const car = sim.vehicle(j.ids.car); if (!car || car.wrecked || !car.alive) { end(sim, false, '밴이 파괴되었습니다'); return; }
+    if (!j.stage) { j.markers = [mark(car.x, car.z, 5, '밴', 'item')]; j.text = `해체장의 밴을 훔치세요 · ${clock(j.timer)}`; if (p.vehicle === car.id) { j.stage = 1; sim.setStars(Math.max(2, wantedUp)); sim.wanted.lastX = p.x; sim.wanted.lastZ = p.z; sim.wanted.unseenT = 0; sim.say('상자를 실었다! 경찰이 눈치챘다', 3); } }
+    else { const t = { x: j.data.x!, z: j.data.z! }; j.markers = [mark(t.x, t.z, 9, '인수 지점')]; j.text = `인수 지점까지 ${Math.floor(dist(car, t))}m · ${clock(j.timer)}`; if (p.vehicle === car.id && dist(car, t) < 10 && sim.wanted.stars <= 2) end(sim, true, '밀수 성공', 1800); }
   } else if (id === 'fight') {
     const x = j.data.x!, z = j.data.z!, round = j.data.round!;
     if (dist(p, { x, z }) > 45) { end(sim, false, '링을 벗어났습니다'); return; }

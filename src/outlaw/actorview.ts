@@ -1,4 +1,5 @@
 // OUTLAW CITY의 관절형 시민·차량·수집품과 네온 표식, 풀링된 전투 이펙트를 그립니다.
+import { OUTFITS } from './life';
 import * as THREE from 'three';
 import { instantiate, type Baked, type CharModel } from '../city/models';
 import { VEHICLES, clamp, type Ped, type Pickup, type SimEvent, type Vehicle, type VehicleDef, type WeaponId } from './types';
@@ -158,7 +159,7 @@ export class ActorView {
   }
   private makeRig(p: Ped): Rig {
     const root = new THREE.Group(), hip = new THREE.Group(), torso = new THREE.Group(), legs: THREE.Group[] = [], shins: THREE.Group[] = [], arms: THREE.Group[] = [];
-    const variant = Math.abs(Math.trunc(p.variant)), team = p.kind === 'cop' ? 0x244d88 : p.kind === 'swat' || p.kind === 'soldier' ? 0x262f3b : p.team === 'gang' ? [0x803a62, 0x42685d, 0x775386][variant % 3] : p.kind === 'player' ? 0x503d52 : CLOTH[variant % CLOTH.length];
+    const variant = Math.abs(Math.trunc(p.variant)), team = p.kind === 'cop' ? 0x244d88 : p.kind === 'swat' || p.kind === 'soldier' ? 0x262f3b : p.team === 'gang' ? [0x803a62, 0x42685d, 0x775386][variant % 3] : p.kind === 'player' ? (this.sim.life.outfit >= 0 ? OUTFITS[this.sim.life.outfit % OUTFITS.length]! : CLOTH[variant % CLOTH.length]!) : CLOTH[variant % CLOTH.length];
     const skin = SKIN[variant % SKIN.length], source = this.assets?.pedModel(p.kind, p.variant), model = source ? this.articulate(source) : undefined;
     hip.position.y = 0.9; torso.position.y = -0.9; hip.rotation.order = 'ZYX'; hip.add(torso); root.add(hip);
     if (model) {

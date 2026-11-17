@@ -1,7 +1,7 @@
 // OUTLAW CITY — 상점·부동산·차고·체육관·병원·보석금 같은 돈 쓰는 서비스와 수입·업적 갱신. Sim 위에서 돌아가는 순수 로직입니다.
 import type { Sim } from './sim';
 import { PLAYER_ID, VEHICLES, type VehicleKind } from './types';
-import { ACHIEVEMENTS, CAR_SHOP, PROPERTIES, PROP_CAP_MIN, SKILLS, SKILL_MAX, propertyRate, skillCost, type SkillId } from './life';
+import { ACHIEVEMENTS, CAR_SHOP, OUTFIT_PRICE, PROPERTIES, PROP_CAP_MIN, SKILLS, SKILL_MAX, propertyRate, skillCost, type SkillId } from './life';
 import { nearestLane } from './world';
 
 const money = (n: number): string => '$' + Math.floor(n).toLocaleString('en-US');
@@ -62,6 +62,19 @@ export function train(sim: Sim, id: SkillId): string {
   if (lv >= SKILL_MAX) return '이미 최대 단계입니다'; const price = sim.price(skillCost(lv)); if (sim.cash < price) return '돈이 부족합니다';
   sim.addCash(-price); sim.life.skills[id] = lv + 1; sim.refreshPerks(); const p = sim.player; p.maxHp = sim.perk.hp; p.hp = Math.min(p.maxHp, p.hp + 8); sim.clock = (sim.clock + 1.5) % 24;
   return `${sk.name} ${lv + 1}단계`;
+}
+
+// ---------- 자판기·옷장 ----------
+export function nearVending(sim: Sim): boolean {
+  const p = sim.player; if (p.vehicle || p.hp >= p.maxHp) return false;
+  for (const q of sim.map.props) if ((q.kind === 'vending' || q.kind === 'kiosk') && Math.abs(q.x - p.x) < 2.4 && Math.abs(q.z - p.z) < 2.4) return true; return false;
+}
+export function buySnack(sim: Sim): string {
+  if (!nearVending(sim)) return '자판기가 없습니다'; const fee = sim.price(8); if (sim.cash < fee) return '돈이 부족합니다';
+  sim.addCash(-fee); const p = sim.player; p.hp = Math.min(p.maxHp, p.hp + 25 * sim.perk.heal); return `음료 구입 · 체력 회복 · ${money(fee)}`;
+}
+export function setOutfit(sim: Sim, i: number): string {
+  const fee = sim.price(OUTFIT_PRICE); if (sim.life.outfit === i) return '이미 입고 있습니다'; if (sim.cash < fee) return '돈이 부족합니다'; sim.addCash(-fee); sim.life.outfit = i; return `새 옷 · ${money(fee)}`;
 }
 
 // ---------- 병원·보석금 ----------

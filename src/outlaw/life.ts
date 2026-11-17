@@ -54,9 +54,11 @@ export const CAR_SHOP: CarOffer[] = [
 export interface OwnedCar { kind: VehicleKind; color: number }
 export interface LifeState {
   hero: string; props: string[]; propBank: number; propAt: number; cars: OwnedCar[];
-  skills: Record<SkillId, number>; counters: Record<string, number>; ach: string[];
+  skills: Record<SkillId, number>; counters: Record<string, number>; ach: string[]; /** 옷 색 번호(-1 이면 기본 복장) */ outfit: number;
 }
-export const blankLife = (): LifeState => ({ hero: 'h0', props: [], propBank: 0, propAt: 0, cars: [], skills: { stamina: 0, strength: 0, shooting: 0 }, counters: {}, ach: [] });
+export const OUTFITS = [0xb23a32, 0x2c5f9e, 0x222428, 0xe8e8e8, 0x3f7f4b, 0xd9b13c, 0x8a3fa0, 0xe06d1f];
+export const OUTFIT_PRICE = 60;
+export const blankLife = (): LifeState => ({ hero: 'h0', props: [], propBank: 0, propAt: 0, cars: [], skills: { stamina: 0, strength: 0, shooting: 0 }, counters: {}, ach: [], outfit: -1 });
 
 /** 주인공 + 능력치 → 최종 특전 */
 export function computePerks(life: LifeState): Perks {

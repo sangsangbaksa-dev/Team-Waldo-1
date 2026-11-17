@@ -1,9 +1,9 @@
 // OUTLAW CITY — 주인공 선택·휴대폰·자동차 매장·체육관·카지노 화면. HTML 문자열을 만들고 버튼 동작을 시뮬레이션에 연결합니다.
 import type { Sim } from './sim';
-import { ACHIEVEMENTS, CAR_SHOP, HEROES, PROPERTIES, SKILLS, SKILL_MAX, heroById, skillCost } from './life';
+import { OUTFITS, ACHIEVEMENTS, CAR_SHOP, HEROES, PROPERTIES, SKILLS, SKILL_MAX, heroById, skillCost } from './life';
 import { VEHICLES } from './types';
 import { JOB_LIST, cancelJob, jobBlock, startJob } from './jobs';
-import { bribe, buyCar, buyProperty, callCar, collectProperties, train, vehicleName } from './services';
+import { bribe, setOutfit, buyCar, buyProperty, callCar, collectProperties, train, vehicleName } from './services';
 import { Blackjack, SLOT_SYMBOLS, cardLabel, coinFlip, handValue, rouletteColor, rouletteSpin, slotSpin, type RouletteBet } from './casino';
 import { MISSION_LIST } from './missions';
 
@@ -74,6 +74,7 @@ export class OutlawUi {
     return `<div class="herobox"><i class="sw" style="background:${hex(CLOTH[h.variant]!)}">${esc(h.name.slice(-2, -1))}</i><div><b>${esc(h.name)}</b> · ${esc(h.job)}<small>${esc(h.perkText)}</small></div></div>
       <h3>능력치</h3><div class="skills">${skills}</div><p class="empty">체육관 STEEL GYM 에서 훈련할 수 있습니다.</p>
       <h3>기록</h3><div class="stats">${st.map(([a, b]) => `<div><span>${a}</span><b>${b}</b></div>`).join('')}</div>
+      <h3>옷장 (${money(s.price(60))})</h3><div class="outfits">${OUTFITS.map((c, i) => `<button class="sw-b${s.life.outfit === i ? ' on' : ''}" data-ui="outfit" data-id="${i}" type="button" style="background:${hex(c)}" aria-label="옷 ${i + 1}"></button>`).join('')}</div>
       <h3>서비스</h3><div class="row2"><div><b>경찰 매수</b><small>${s.wanted.stars ? `수배 ${s.wanted.stars}★ · ${money(fee)} (경찰 시야 밖에서)` : '수배 중일 때 사용'}</small></div><button data-ui="bribe" type="button"${s.wanted.stars ? '' : ' disabled'}>뇌물</button></div>`;
   }
   private medals(s: Sim): string {
@@ -126,6 +127,7 @@ export class OutlawUi {
       case 'call': { const r = callCar(s, Number(id)); return r.includes('도착') ? { close: true, toast: r } : me('phone', r); }
       case 'buyprop': return me('phone', buyProperty(s, id));
       case 'collect': return me('phone', collectProperties(s));
+      case 'outfit': return me('phone', setOutfit(s, Number(id)));
       case 'bribe': return me('phone', bribe(s));
       case 'buycar': return me('dealer', buyCar(s, Number(id)));
       case 'train': return me('gym', train(s, id as never));

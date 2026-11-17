@@ -292,10 +292,10 @@ export class Renderer3D {
     const fx = this.focus.x, fz = this.focus.y, third = this.mode === 'tp' || !!veh || !pb;
     if (!third) { const bob = pb ? Math.sin(pb.walk * 0.09) * Math.min(1.6, Math.hypot(pb.vx, pb.vy) / 120) : 0; const cs = fpCameraSpot(w.map, fx, fz); this.camPos.set(cs.x, EYE + bob, cs.y); this.camera.position.copy(this.camPos); this.camera.lookAt(cs.x + cy * cp * 100, EYE + bob + spt * 100, cs.y + sy * cp * 100); }
     else {
-      const dist = veh ? (veh.kind === 'tank' ? 250 : 200) : 135, hgt = veh ? 95 : 78, pivotY = veh ? 30 : 50; let k = 1;
+      const dist = veh ? (veh.kind === 'tank' ? 250 : 200) : 150, hgt = veh ? 95 : 56, pivotY = veh ? 30 : 50; let k = 1;
       for (let s = 0.15; s <= 1; s += 0.085) { if (solidAt(w.map, fx - cy * dist * s, fz - sy * dist * s)) { k = Math.max(0.3, s - 0.12); break; } }
       const tx = fx - cy * dist * k * cp, ty = pivotY + hgt * k + (1 - k) * 130 - spt * dist * k * 0.9, tz = fz - sy * dist * k * cp;
-      this.camPos.lerp(new THREE.Vector3(tx, Math.max(12, ty), tz), Math.min(1, dt * 14)); this.camera.position.copy(this.camPos); this.camera.lookAt(fx + cy * 140, pivotY + 12 + spt * 140, fz + sy * 140);
+      this.camPos.lerp(new THREE.Vector3(tx, Math.max(12, ty), tz), Math.min(1, dt * 14)); this.camera.position.copy(this.camPos); this.camera.lookAt(fx + cy * 70, pivotY + 4 + spt * 140, fz + sy * 70);
     }
     { const m = 14, cp2 = this.camera.position; cp2.x = Math.max(m, Math.min(SIZE - m, cp2.x)); cp2.z = Math.max(m, Math.min(SIZE - m, cp2.z)); this.camPos.x = cp2.x; this.camPos.z = cp2.z; }
     if (this.shake > 0 && !this.reduced) { this.camera.position.x += (Math.random() - 0.5) * this.shake; this.camera.position.y += (Math.random() - 0.5) * this.shake; }

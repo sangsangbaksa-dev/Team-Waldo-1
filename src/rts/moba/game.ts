@@ -48,6 +48,7 @@ export function openMoba(onBack: () => void, onExit: () => void): void {
     if (!sim || !view) return; const m = me(); if (!m || m.hero!.dead) return;
     const id = forceMove ? 0 : view.pick(sx, sy, m.id), t = id ? sim.get(id) : undefined, g = view.ground(sx, sy);
     if (t && t.team !== m.team && sim.vulnerable(t)) { cmd({ k: 'attack', target: t.id }); audio.sfx('select'); return; }
+    if (g && !forceMove) { const w = sim.wards.filter(o => o.team !== m.team && sim!.seenPt(m.team, o.x, o.y) && Math.hypot(o.x - g.x, o.y - g.y) < 1.6).sort((a, b) => Math.hypot(a.x - g.x, a.y - g.y) - Math.hypot(b.x - g.x, b.y - g.y))[0]; if (w) { if (cmd({ k: 'unward', id: w.id })) { audio.sfx('select'); say('적 와드를 제거했습니다 (+30 골드)'); } else { cmd({ k: 'move', x: w.x, y: w.y }); say('적 와드: 가까이(4.5)에서 우클릭하면 부술 수 있습니다', true); } return; } }
     if (g) { if (amove) { cmd({ k: 'amove', x: g.x, y: g.y }); amove = false; hint(''); } else cmd({ k: 'move', x: g.x, y: g.y }); view.consume([{ t: 'blast', x: g.x, y: g.y, r: 0.7, team: 0 }], 0); audio.sfx('order'); }
   }
   /** 스킬을 눌렀을 때의 조준점: 커서가 가리키는 땅(터치는 가장 가까운 적). */
@@ -160,7 +161,7 @@ export function openMoba(onBack: () => void, onExit: () => void): void {
       if (e.hp <= 0 || e.hero?.dead || !sim.canSee(0, e)) continue; const x = e.x * k, y = e.y * k; mg.fillStyle = e.team === 0 ? '#5aa0ff' : e.team === 1 ? '#ff6a4a' : '#d6c070';
       if (e.kind === 'nexus') mg.fillRect(x - 5, y - 5, 10, 10); else if (e.kind === 'turret') mg.fillRect(x - 2.5, y - 2.5, 5, 5); else if (e.kind === 'inhib') { mg.beginPath(); mg.moveTo(x, y - 4); mg.lineTo(x + 3.5, y); mg.lineTo(x, y + 4); mg.lineTo(x - 3.5, y); mg.fill(); }
       else if (e.hero) { mg.beginPath(); mg.arc(x, y, 4, 0, 6.3); mg.fill(); if (e.id === sim.heroIds[0]) { mg.strokeStyle = '#ffd24a'; mg.lineWidth = 2; mg.stroke(); } }
-      else if (e.kind === 'monster') { const big = e.sub === 'drake' || e.sub === 'baron'; mg.fillStyle = e.sub === 'drake' ? '#ff8a3a' : e.sub === 'baron' ? '#c06aff' : '#d6c070'; mg.fillRect(x - (big ? 3 : 1.5), y - (big ? 3 : 1.5), big ? 6 : 3, big ? 6 : 3); }
+      else if (e.kind === 'monster') { const big = e.sub === 'drake' || e.sub === 'baron'; mg.fillStyle = e.sub === 'drake' ? '#ff8a3a' : e.sub === 'baron' ? '#c06aff' : e.sub === 'crab' ? '#3fe0c8' : '#d6c070'; mg.fillRect(x - (big ? 3 : 1.5), y - (big ? 3 : 1.5), big ? 6 : 3, big ? 6 : 3); }
       else if (e.kind === 'super') mg.fillRect(x - 2, y - 2, 4, 4); else mg.fillRect(x - 1, y - 1, 2, 2);
     }
     for (const p of sim.pings) { const age = (sim.tick - p.at) / TICK; if (p.team !== 0 || age > 5) continue; mg.strokeStyle = p.kind === 'danger' ? '#ff4a3a' : p.kind === 'assist' ? '#ffe05a' : '#6aff9a'; mg.lineWidth = 2; mg.globalAlpha = 1 - age / 5; mg.beginPath(); mg.arc(p.x * k, p.y * k, 4 + (age * 9) % 11, 0, 6.3); mg.stroke(); mg.globalAlpha = 1; }

@@ -2,7 +2,7 @@
 import { TICK } from '../config';
 import { Pather } from '../path';
 import {
-  BUFF_TIME, CHAMPS, INHIB_RESPAWN, ITEMS, LANES, MAX_ITEMS, MAX_LEVEL, MONSTERS, NEXUS, RUNES, SIZE, SPELLS, WAVE_EVERY, WAVE_FIRST, inhibSpot, lanePath, turretSpots, xpNeed,
+  BUFF_TIME, BUSHES, CHAMPS, INHIB_RESPAWN, ITEMS, LANES, MAX_ITEMS, MAX_LEVEL, MONSTERS, NEXUS, RUNES, SIZE, SPELLS, WAVE_EVERY, WAVE_FIRST, inhibSpot, lanePath, turretSpots, xpNeed,
   type ChampId, type ItemId, type Lane, type MonsterKind, type Pt, type Role, type RuneId, type SkillDef, type SpellId,
 } from './config';
 import { buildMobaMap, type MobaMap } from './map';
@@ -14,7 +14,7 @@ export type PingKind = 'danger' | 'assist' | 'retreat';
 export interface Ward { id: number; team: number; x: number; y: number; until: number; owner: number }
 export interface Ping { team: number; x: number; y: number; kind: PingKind; at: number; by: number }
 export interface HeroSetup { champ: ChampId; lane: Role; spells?: [SpellId, SpellId]; rune?: RuneId }
-const WARD_LIFE = 90, WARD_RANGE = 9, WARD_MAX = 2, WARD_RECHARGE = 35, SIGHT = { hero: 11, minion: 7, turret: 11, inhib: 8, nexus: 12, ward: 9 };
+const SWEEP_RANGE = 4.5, SWEEP_GOLD = 30, BUSH_REVEAL = 1.6, WARD_LIFE = 90, WARD_RANGE = 9, WARD_MAX = 2, WARD_RECHARGE = 35, SIGHT = { hero: 11, minion: 7, turret: 11, inhib: 8, nexus: 12, ward: 9 };
 export type OrderT = 'idle' | 'move' | 'attack' | 'amove';
 export interface Hero {
   champ: ChampId; level: number; xp: number; gold: number; mp: number; maxmp: number; ready: number[]; items: ItemId[];
@@ -25,14 +25,14 @@ export interface Hero {
 }
 export interface Ent {
   id: number; kind: EntKind; team: number; x: number; y: number; hp: number; maxhp: number; dmg: number; range: number; cd: number; cdMax: number; speed: number; def: number; radius: number;
-  lane: Lane | ''; wp: number; home: Pt; target: number; path: number[]; pi: number; repath: number; fx: number; fy: number; hurt: number; fired: number; sub: string; spawnAt: number;
+  lane: Lane | ''; wp: number; home: Pt; target: number; path: number[]; pi: number; repath: number; fx: number; fy: number; hurt: number; fired: number; reveal: number; sub: string; spawnAt: number;
   slowUntil: number; slow: number; stunUntil: number; hero: Hero | null; tier: number; camp: string; lastHit: Map<number, number>; threat: number;
 }
 export interface Team { kills: number; towers: number; drakes: number; baronUntil: number; gold: number; inhibs: number; barons: number }
 export type Cmd =
   | { k: 'move'; x: number; y: number } | { k: 'amove'; x: number; y: number } | { k: 'attack'; target: number } | { k: 'stop' }
   | { k: 'cast'; i: number; x: number; y: number } | { k: 'learn'; i: number } | { k: 'buy'; item: ItemId } | { k: 'recall' } | { k: 'surrender' }
-  | { k: 'spell'; i: number; x: number; y: number } | { k: 'ward'; x: number; y: number } | { k: 'ping'; x: number; y: number; kind: PingKind };
+  | { k: 'spell'; i: number; x: number; y: number } | { k: 'ward'; x: number; y: number } | { k: 'ping'; x: number; y: number; kind: PingKind } | { k: 'unward'; id: number };
 export type SimEvent =
   | { t: 'shot'; from: number; x0: number; y0: number; x1: number; y1: number; team: number; ranged: boolean }
   | { t: 'bolt'; x0: number; y0: number; x1: number; y1: number; team: number; wide: number }
@@ -45,6 +45,7 @@ export type SimEvent =
   | { t: 'level'; id: number }
   | { t: 'recall'; id: number }
   | { t: 'ward'; x: number; y: number; team: number }
+  | { t: 'unward'; x: number; y: number; team: number }
   | { t: 'spell'; id: number; spell: SpellId }
   | { t: 'ping'; x: number; y: number; team: number; kind: PingKind }
   | { t: 'announce'; text: string; team: number };
@@ -92,7 +93,7 @@ export class MobaSim {
       siege: { maxhp: 880, dmg: 40, range: 6.2, cdMax: 34, speed: 2.6, radius: 0.6, def: 10 }, hero: { radius: 0.6 }, monster: { radius: 0.6 },
     };
     const b = S[kind] ?? {};
-    const e: Ent = { id: this.nextId++, kind, team, x, y, hp: b.maxhp ?? 1, maxhp: b.maxhp ?? 1, dmg: b.dmg ?? 0, range: b.range ?? 0, cd: 0, cdMax: b.cdMax ?? 20, speed: b.speed ?? 0, def: b.def ?? 0, radius: b.radius ?? 0.5, lane: '', wp: 0, home: { x, y }, target: 0, path: [], pi: 0, repath: 0, fx: team === 0 ? 1 : -1, fy: 0, hurt: -99, fired: -99, sub: '', spawnAt: 0, slowUntil: 0, slow: 0, stunUntil: 0, hero: null, tier: 0, camp: '', lastHit: new Map(), threat: 0 };
+    const e: Ent = { id: this.nextId++, kind, team, x, y, hp: b.maxhp ?? 1, maxhp: b.maxhp ?? 1, dmg: b.dmg ?? 0, range: b.range ?? 0, cd: 0, cdMax: b.cdMax ?? 20, speed: b.speed ?? 0, def: b.def ?? 0, radius: b.radius ?? 0.5, lane: '', wp: 0, home: { x, y }, target: 0, path: [], pi: 0, repath: 0, fx: team === 0 ? 1 : -1, fy: 0, hurt: -99, fired: -99, reveal: -99, sub: '', spawnAt: 0, slowUntil: 0, slow: 0, stunUntil: 0, hero: null, tier: 0, camp: '', lastHit: new Map(), threat: 0 };
     this.ents.push(e); this.index.set(e.id, e); return e;
   }
   private addHero(team: number, r: HeroSetup, bot: boolean, slot: number): Ent {
@@ -145,8 +146,17 @@ export class MobaSim {
     for (const w of this.wards) if (w.team === team) out.push({ x: w.x, y: w.y, r: SIGHT.ward });
     return out;
   }
+  /** (x,y) 가 있는 수풀 번호. 없으면 -1. */
+  bushAt(x: number, y: number): number { for (let i = 0; i < BUSHES.length; i++) if (Math.hypot(BUSHES[i].x - x, BUSHES[i].y - y) <= BUSHES[i].r) return i; return -1; }
+  /** 수풀 안에 숨은 유닛인지: 같은 수풀에 보는 쪽 유닛·와드가 없고 막 공격하지도 않았다면 숨습니다. */
+  private hiddenInBush(e: Ent, team: number): boolean {
+    if (e.team === 2 || isStructure(e.kind)) return false; const b = this.bushAt(e.x, e.y); if (b < 0 || this.tick - e.reveal < BUSH_REVEAL * TICK) return false;
+    for (const o of this.ents) if (o.team === team && o.hp > 0 && !o.hero?.dead && this.bushAt(o.x, o.y) === b) return false;
+    for (const w of this.wards) if (w.team === team && this.bushAt(w.x, w.y) === b) return false;
+    return true;
+  }
   private updateVision(): void {
-    for (let team = 0; team < 2; team++) { const set = new Set<number>(), obs = this.sightList(team); for (const e of this.ents) { if (e.team === team || e.hp <= 0) continue; if (obs.some(o => Math.hypot(o.x - e.x, o.y - e.y) <= o.r + e.radius)) set.add(e.id); } this.seen[team] = set; }
+    for (let team = 0; team < 2; team++) { const set = new Set<number>(), obs = this.sightList(team); for (const e of this.ents) { if (e.team === team || e.hp <= 0) continue; if (obs.some(o => Math.hypot(o.x - e.x, o.y - e.y) <= o.r + e.radius) && !this.hiddenInBush(e, team)) set.add(e.id); } this.seen[team] = set; }
   }
   private baron(team: number): boolean { return this.tick < this.teams[team].baronUntil; }
 
@@ -164,6 +174,7 @@ export class MobaSim {
       case 'cast': return this.cast(e, c.i, c.x, c.y);
       case 'spell': return this.spell(e, c.i, c.x, c.y);
       case 'ward': return this.placeWard(e, c.x, c.y);
+      case 'unward': return this.sweepWard(e, c.id);
       case 'learn': return this.learn(e, c.i);
       case 'buy': return this.buy(e, c.item);
       case 'recall': if (h.recall > 0) { this.cancelRecall(e); return true; } if (this.inBase(e)) return false; h.recall = TICK * 4; h.o = idleOrder(); e.path = []; this.emit({ t: 'recall', id: e.id }); return true;
@@ -183,6 +194,11 @@ export class MobaSim {
     this.pings = this.pings.filter(o => this.tick - o.at < 8 * TICK).slice(-5); this.pings.push(p); this.emit({ t: 'ping', x: p.x, y: p.y, team: p.team, kind }); return true;
   }
   /** 와드: 사거리 안에 놓으면 90초 동안 주변을 밝힙니다. 한 번에 2개까지 들고 35초마다 하나씩 채워집니다. */
+  /** 와드 제거: 가까이(4.5) 있는 보이는 적 와드를 부수면 골드 30. */
+  private sweepWard(e: Ent, id: number): boolean {
+    const w = this.wards.find(o => o.id === id); if (!w || w.team === e.team || this.dist(e, w) > SWEEP_RANGE || !this.seenPt(e.team, w.x, w.y)) return false;
+    this.wards = this.wards.filter(o => o !== w); e.hero!.gold += SWEEP_GOLD; this.emit({ t: 'unward', x: w.x, y: w.y, team: e.team }); this.updateVision(); return true;
+  }
   private placeWard(e: Ent, tx: number, ty: number): boolean {
     const h = e.hero!; if (!Number.isFinite(tx) || !Number.isFinite(ty) || h.wards < 1) return false;
     let dx = tx - e.x, dy = ty - e.y; const dl = Math.hypot(dx, dy) || 1, d = Math.min(dl, WARD_RANGE); dx /= dl; dy /= dl;
@@ -269,6 +285,7 @@ export class MobaSim {
   // ---------- 피해·보상 ----------
   hurt(src: Ent | null, t: Ent, raw: number): void {
     if (t.hp <= 0 || !this.vulnerable(t)) return;
+    if (src && src.team < 2 && t.team !== src.team) { if (this.tick - src.reveal >= BUSH_REVEAL * TICK && this.bushAt(src.x, src.y) >= 0) { src.reveal = this.tick; this.updateVision(); } else src.reveal = this.tick; }
     const sh = src?.hero; if (sh && t.hero && sh.rune === 'conqueror') raw *= 1.08;
     let amt = raw * 100 / (100 + t.def); const h = t.hero;
     if (h && h.shield > 0 && this.tick < h.shieldUntil) { const take = Math.min(h.shield, amt); h.shield -= take; amt -= take; }
@@ -316,6 +333,7 @@ export class MobaSim {
       if (t.sub === 'drake' && who) { this.teams[who.team].drakes++; this.emit({ t: 'announce', text: `${who.team === 0 ? '청군' : '적군'}이 화염 드래곤을 처치했습니다 (공격력 +8%)`, team: who.team }); }
       if (t.sub === 'baron' && who) { this.teams[who.team].barons++; this.teams[who.team].baronUntil = this.tick + 120 * TICK; this.emit({ t: 'announce', text: `${who.team === 0 ? '청군' : '적군'}이 심연의 군주를 처치했습니다 (2분간 강화)`, team: who.team }); }
       const c = this.camps.get(t.camp); if (c) c.ids = c.ids.filter(i => i !== t.id); if (c && !c.ids.length) c.due = this.tick + Math.round(Math.max(...c.defs.map(m => MONSTERS[m.k].respawn)) * TICK);
+      if (t.sub === 'crab' && who?.hero) { who.hero.speedUp = 0.3; who.hero.speedUntil = this.tick + 12 * TICK; this.wards.push({ id: this.nextId++, team: who.team, x: t.x, y: t.y, until: this.tick + 25 * TICK, owner: 0 }); this.emit({ t: 'buff', id: who.id, team: who.team }); this.updateVision(); }
       if (who?.hero) { if (t.sub === 'golem') { who.hero.blueUntil = this.tick + BUFF_TIME * TICK; this.emit({ t: 'buff', id: who.id, team: who.team }); } else if (t.sub === 'wolf' && c && !c.ids.length) { who.hero.redUntil = this.tick + BUFF_TIME * TICK; this.emit({ t: 'buff', id: who.id, team: who.team }); } }
       return;
     }
@@ -465,7 +483,7 @@ export class MobaSim {
       return;
     }
     const o = h.o; let t: Ent | null = null;
-    if (o.t === 'attack') { t = this.get(o.target) ?? null; if (!t || t.hp <= 0 || t.hero?.dead || !this.vulnerable(t) || this.dist(e, t) > 22) { h.o = idleOrder(); t = null; } }
+    if (o.t === 'attack') { t = this.get(o.target) ?? null; if (!t || t.hp <= 0 || t.hero?.dead || !this.vulnerable(t) || this.dist(e, t) > 22 || !this.canSee(e.team, t)) { h.o = idleOrder(); t = null; } }
     else if (o.t === 'amove' || (o.t === 'idle' && !h.bot)) t = this.pick(e, o.t === 'amove' ? e.range + 3 : e.range, o.t === 'amove' ? 'any' : 'minion');
     if (t) {
       const gap = this.dist(e, t) - t.radius;

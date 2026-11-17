@@ -1,6 +1,6 @@
 // FRONTLINE 롤식 라인전 — 맵 장식: 하늘, 기지 단상, 길 가장자리 돌, 수풀, 드래곤·군주 구덩이, 정글 둥지 표식, 흐르는 강, 떠다니는 빛 알갱이.
 import * as THREE from 'three';
-import { LANE_PTS, LANES, NEXUS, RIVER, RIVER_CAMPS, SIZE, type Pt } from './config';
+import { BUSHES, LANE_PTS, LANES, NEXUS, RIVER, RIVER_CAMPS, SIZE, type Pt } from './config';
 import type { MobaMap } from './map';
 
 const rng = (seed: number): (() => number) => { let s = seed >>> 0; return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }; };
@@ -48,6 +48,14 @@ export function buildScenery(scene: THREE.Scene, map: MobaMap, shadows: boolean,
     for (let n = 0; n < 3 && bi < bushCount; n++) { const k = 0.5 + r() * 0.45; m4.compose(new THREE.Vector3(bx + (r() - 0.5) * 2, k * 0.5, by + (r() - 0.5) * 2), new THREE.Quaternion(), new THREE.Vector3(k * 1.2, k * 0.8, k * 1.2)); bush.setMatrixAt(bi, m4); col.setHSL(0.27 + r() * 0.07, 0.5, 0.26 + r() * 0.1); bush.setColorAt(bi++, col); }
   }
   bush.count = bi; bush.instanceMatrix.needsUpdate = true; if (bush.instanceColor) bush.instanceColor.needsUpdate = true; group.add(bush);
+
+  // 게임에 쓰이는 수풀: 안에 숨을 수 있는 높은 풀 무더기와 바닥 표시
+  const hb = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), std(0x2f8a3a, { roughness: 1 }), BUSHES.length * 9); let hi = 0;
+  for (const b of BUSHES) {
+    const pad = new THREE.Mesh(new THREE.CircleGeometry(b.r * 1.05, 20), new THREE.MeshBasicMaterial({ color: 0x1f5a2a, transparent: true, opacity: 0.4, depthWrite: false })); pad.rotation.x = -Math.PI / 2; pad.position.set(b.x, 0.05, b.y); group.add(pad);
+    for (let n = 0; n < 9; n++) { const a = n / 9 * Math.PI * 2 + r(), d = b.r * (0.25 + r() * 0.65), k = 0.7 + r() * 0.5; m4.compose(new THREE.Vector3(b.x + Math.cos(a) * d, k * 0.65, b.y + Math.sin(a) * d), new THREE.Quaternion(), new THREE.Vector3(k, k * 0.95, k)); hb.setMatrixAt(hi, m4); hb.setColorAt(hi, new THREE.Color().setHSL(0.3 + r() * 0.05, 0.5, 0.22 + r() * 0.12)); hi++; }
+  }
+  hb.count = hi; hb.instanceMatrix.needsUpdate = true; if (hb.instanceColor) hb.instanceColor.needsUpdate = true; group.add(hb);
 
   // 드래곤·군주 구덩이: 돌 고리, 기둥, 불꽃
   const flames: THREE.Mesh[] = [];

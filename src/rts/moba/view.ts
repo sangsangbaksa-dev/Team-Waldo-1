@@ -164,7 +164,7 @@ export class MobaView {
       const want = -Math.atan2(e.fy, e.fx); let dy = want - v.yaw; while (dy > Math.PI) dy -= 6.283; while (dy < -Math.PI) dy += 6.283; v.yaw += dy * Math.min(1, dt * 12);
       if (v.rig) {
         v.rig.root.rotation.y = v.yaw; const bob = Math.sin(this.clock * 13 + e.id) * 0.05 * v.moved; v.rig.body.position.y = Math.abs(bob); v.rig.body.rotation.z = bob * 0.5;
-        const fired = this.sim.tick - e.fired; v.rig.flash.visible = fired >= 0 && fired < 2 && e.range > 2.5; if (v.rig.gun) v.rig.gun.position.x = (v.rig.gun.position.x * 0 + 0.2) - (fired >= 0 && fired < 3 ? 0.08 : 0);
+        const fired = this.sim.tick - e.fired; if (v.rig.ch) { const st = v.rig.ch.state; st.speed = v.moved * 3; st.walk += dt * v.moved * 4.8; st.time += dt; st.recoil = fired >= 0 && fired < 3 ? 1 : 0; v.rig.ch.update(dt); } v.rig.flash.visible = fired >= 0 && fired < 2 && e.range > 2.5; if (v.rig.gun) v.rig.gun.position.x = (v.rig.gun.position.x * 0 + 0.2) - (fired >= 0 && fired < 3 ? 0.08 : 0);
         if (isMinion(e.kind)) { const lunge = fired >= 0 && fired < 4 && e.range < 2.5 ? Math.sin(fired / 4 * Math.PI) * 0.35 : 0; v.rig.body.position.x = lunge; }
         if (v.rig.carry) v.rig.carry.visible = false; if (e.hero) animateChamp(v.rig, this.clock);
         if (e.hero) { const sk = this.sim.tick - e.hero.castAt; v.rig.body.scale.setScalar(sk >= 0 && sk < 6 ? 1.12 : 1); }

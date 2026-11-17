@@ -7,6 +7,7 @@ import { MobaAi } from './ai';
 import { CHAMP_IDS, CHAMPS, ITEMS, ITEM_IDS, LANE_PTS, LANES, LEVELS, MAX_ITEMS, NEXUS, RIVER, ROLES, RUNES, RUNE_IDS, SIZE, SPELLS, SPELL_IDS, xpNeed, type ChampId, type ItemId, type Level, type Role, type RuneId, type SpellId } from './config';
 import { MobaSim, type Ent, type PingKind } from './sim';
 import { MobaView } from './view';
+import { preloadUnitKit } from '../models';
 
 const esc = (s: string): string => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
 const clock = (ticks: number): string => { const s = Math.floor(ticks / TICK); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -234,6 +235,7 @@ export function openMoba(onBack: () => void, onExit: () => void): void {
       <div class="mb-actions"><button class="primary" data-act="start" id="mb-start">시작</button><button data-act="help">조작법</button><button data-act="back">RTS 로 돌아가기</button></div></div>`, 'setup');
     modal.querySelector<HTMLElement>('#mb-start')?.focus();
   }
+  preloadUnitKit();
   function begin(): void {
     const n = CHAMP_IDS.length, at = CHAMP_IDS.indexOf(champ), others = ROLES.filter(l => l !== lane), allies = others.map((l, i) => ({ champ: CHAMP_IDS[(at + 1 + i * 2) % n], lane: l })), foes = ROLES.map((l, i) => ({ champ: CHAMP_IDS[(at + 2 + i * 2) % n], lane: l }));
     if (view) { view.dispose(); view = null; }

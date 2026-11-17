@@ -7,11 +7,13 @@ import type { Match, MatchEvent, Player } from './sim';
 import type { ShooterAssets, Soldier } from './assets';
 import { SOLDIER_KINDS } from './assets';
 import type { Box, Loot } from './world';
+import { buildProps, buildRoofs, makeDropCrate, makePlane, partMesh } from './props';
+import type { PartId } from './config';
 import { concreteTexture, crateTexture, dirtTexture, floorTexture, glowTexture, groundTexture, makeSky, wallTexture } from './textures';
 
 export type Quality = 'high' | 'standard' | 'low';
 const HIP = 0.9, KNEE = 0.44, LEG_Z = 0.11, AIM = 1.42;
-const LOOT_COLOR: Record<string, number> = { weapon: 0xeaf6ff, ammo: 0xffa53a, medkit: 0x52f08a, armor: 0x5aa8ff };
+const LOOT_COLOR: Record<string, number> = { weapon: 0xeaf6ff, ammo: 0xffa53a, medkit: 0x52f08a, armor: 0x5aa8ff, attach: 0xc59bff, helmet: 0xffd34d, boost: 0x39e6ff };
 const MUZZLE: Record<string, number> = { pistol: 0.26, smg: 0.5, shotgun: 0.7, rifle: 0.82, sniper: 1.12 };
 
 const rngOf = (seed: number): (() => number) => makeRng(seed);
@@ -41,7 +43,7 @@ export class ShooterView {
   private vmScene = new THREE.Scene(); private vmCam = new THREE.PerspectiveCamera(64, 1, 0.5, 200);
   private sun: THREE.DirectionalLight; private glow = glowTexture(); private rigs = new Map<number, Rig>(); private lootNodes = new Map<number, THREE.Object3D>();
   private zoneWall: THREE.Mesh; private zoneNext: THREE.Mesh; private tracers: Fx[] = []; private sparks: THREE.Points; private sparkData: { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; r: number; g: number; b: number }[] = [];
-  private vm: THREE.Object3D | null = null; private vmId = ''; private vmSwap = 0; private vmFlash: THREE.Sprite; private bob = 0; private shake = 0; private time = 0;
+  private vm: THREE.Object3D | null = null; private vmId = ''; private vmParts = ''; private partsNode: THREE.Group | null = null; private vmSwap = 0; private vmFlash: THREE.Sprite; private bob = 0; private shake = 0; private time = 0;
   private mats = new Map<string, THREE.Material>(); private tmpCol = new THREE.Color(); private beams: THREE.InstancedMesh;
   private camPos = new THREE.Vector3(); fov = 78; frames = 0;
 
@@ -106,7 +108,7 @@ export class ShooterView {
       }
     }
     // 마을 바닥(콘크리트 광장)
-    for (const c0 of cs) { const tex = concreteTexture(); tex.repeat.set((c0.r + 3) / 3, (c0.r + 3) / 3); const m = new THREE.Mesh(new THREE.CircleGeometry(c0.r + 3, 40), new THREE.MeshLambertMaterial({ map: tex })); m.rotation.x = -Math.PI / 2; m.position.set(c0.x, 0.03, c0.z); m.receiveShadow = true; this.scene.add(m); }
+    for (const c0 of cs) { const tex = concreteTexture(); tex.repeat.set((c0.r + 3) / 3, (c0.r + 3) / 3); const tint = { urban: 0xffffff, industrial: 0x8c9096, military: 0xb9ad8a, farm: 0xa89878, village: 0xd8d2c2 }[c0.theme]; const m = new THREE.Mesh(new THREE.CircleGeometry(c0.r + 3, 40), new THREE.MeshLambertMaterial({ map: tex, color: tint })); m.rotation.x = -Math.PI / 2; m.position.set(c0.x, 0.03, c0.z); m.receiveShadow = true; this.scene.add(m); }
   }
 
   private buildBuildings(): void {
@@ -116,16 +118,10 @@ export class ShooterView {
       if (!list.length) return; const m = new THREE.Mesh(mergeGeometries(list, false), new THREE.MeshLambertMaterial({ map: wallTexture(i) }));
       m.castShadow = true; m.receiveShadow = true; this.scene.add(m);
     });
-    const roofMat = new THREE.MeshLambertMaterial({ color: 0x4d5258 }), trimMat = new THREE.MeshLambertMaterial({ color: 0x8b8f93 }), unitMat = new THREE.MeshLambertMaterial({ color: 0xb6babd });
-    const floorTex = floorTexture(), floors: THREE.BufferGeometry[] = [], roofs: THREE.BufferGeometry[] = [], trims: THREE.BufferGeometry[] = [], units: THREE.BufferGeometry[] = [], r = rngOf(this.match.seed + 3);
-    for (const b of map.buildings) {
-      const f = new THREE.PlaneGeometry(b.w, b.d); f.rotateX(-Math.PI / 2); f.translate(b.x, 0.05, b.z); const uv = f.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * b.w / 3, uv.getY(i) * b.d / 3); floors.push(f);
-      const roof = new THREE.BoxGeometry(b.w + 0.7, 0.35, b.d + 0.7); roof.translate(b.x, 3.2 + 0.175, b.z); roofs.push(roof);
-      const t = 0.3; for (const [w, d, ox, oz] of [[b.w + 0.7, t, 0, (b.d + 0.7) / 2], [b.w + 0.7, t, 0, -(b.d + 0.7) / 2], [t, b.d + 0.7, (b.w + 0.7) / 2, 0], [t, b.d + 0.7, -(b.w + 0.7) / 2, 0]] as const) { const g = new THREE.BoxGeometry(w, 0.5, d); g.translate(b.x + ox, 3.55 + 0.25, b.z + oz); trims.push(g); }
-      if (r() < 0.8) { const g = new THREE.BoxGeometry(1.4, 0.9, 1.1); g.translate(b.x + (r() - 0.5) * b.w * 0.5, 4.3, b.z + (r() - 0.5) * b.d * 0.5); units.push(g); }
-    }
-    const add = (list: THREE.BufferGeometry[], material: THREE.Material, shadow = true): void => { if (!list.length) return; const m = new THREE.Mesh(mergeGeometries(list, false), material); m.castShadow = shadow; m.receiveShadow = true; this.scene.add(m); };
-    add(floors, new THREE.MeshLambertMaterial({ map: floorTex }), false); add(roofs, roofMat); add(trims, trimMat); add(units, unitMat);
+    const floorTex = floorTexture(), floors: THREE.BufferGeometry[] = [];
+    for (const b of map.buildings) { const f = new THREE.PlaneGeometry(b.w, b.d); f.rotateX(-Math.PI / 2); f.translate(b.x, 0.05, b.z); const uv = f.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * b.w / 3, uv.getY(i) * b.d / 3); floors.push(f); }
+    if (floors.length) { const m = new THREE.Mesh(mergeGeometries(floors, false), new THREE.MeshLambertMaterial({ map: floorTex })); m.receiveShadow = true; this.scene.add(m); }
+    this.scene.add(buildRoofs(map, rngOf(this.match.seed + 3)), buildProps(map));
     if (crates.length) {
       const ct = crateTexture(), geos = crates.map(b => worldBox(b, 1.2)); const m = new THREE.Mesh(mergeGeometries(geos, false), new THREE.MeshLambertMaterial({ map: ct })); m.castShadow = true; m.receiveShadow = true; this.scene.add(m);
     }
@@ -143,11 +139,19 @@ export class ShooterView {
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.computeVertexNormals();
       const n = this.quality === 'low' ? 3000 : map.mode === 'br' ? 14000 : 5000, mesh = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, emissive: 0x2b3618 }), n); let k = 0;
       for (let tries = 0; k < n && tries < n * 3; tries++) {
-        const x = (r() * 2 - 1) * (map.half + 20), z = (r() * 2 - 1) * (map.half + 20); if (map.compounds.some(c => Math.hypot(c.x - x, c.z - z) < c.r + 2)) continue;
+        const x = (r() * 2 - 1) * (map.half + 20), z = (r() * 2 - 1) * (map.half + 20); if (map.compounds.some(c => Math.hypot(c.x - x, c.z - z) < c.r + 2) || map.sites.some(c => Math.hypot(c.x - x, c.z - z) < c.r + 1)) continue;
         d.position.set(x, 0, z); d.rotation.set(0, r() * 6.28, 0); d.scale.setScalar(0.8 + r() * 0.7); d.updateMatrix(); mesh.setMatrixAt(k++, d.matrix);
       }
       mesh.count = k; mesh.receiveShadow = false; this.scene.add(mesh);
     }
+    // 덤불
+    { const bushes = map.props.filter(q => q.kind === 'bush');
+      if (bushes.length) {
+        const g = new THREE.IcosahedronGeometry(1, 1), p = g.attributes.position; for (let i = 0; i < p.count; i++) { const k = 0.82 + 0.3 * Math.sin(i * 12.9898) ** 2; p.setXYZ(i, p.getX(i) * k, p.getY(i) * k, p.getZ(i) * k); } g.computeVertexNormals();
+        const mesh = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ flatShading: true }), bushes.length);
+        bushes.forEach((q, i) => { d.position.set(q.x, q.h * 0.35, q.z); d.rotation.set(0, q.ry, 0); d.scale.set(q.w * 0.5, q.h * 0.55, q.w * 0.5); d.updateMatrix(); mesh.setMatrixAt(i, d.matrix); mesh.setColorAt(i, this.tmpCol.setHex(q.c)); });
+        mesh.castShadow = true; this.scene.add(mesh);
+      } }
     // 바위
     if (map.rocks.length) {
       const g = new THREE.IcosahedronGeometry(1, 2), p = g.attributes.position, n = noise2(3);
@@ -212,10 +216,45 @@ export class ShooterView {
     rig.flash.visible = p.muzzle > 0;
   }
 
+  // ---------- 보급 투하 ----------
+  private dropNodes = new Map<number, { g: THREE.Group; smoke: THREE.Sprite[] }>(); private plane: THREE.Group | null = null;
+  private syncDrops(): void {
+    const m = this.match, t = m.t; if (!m.drops.length) return;
+    m.drops.forEach((d, i) => {
+      const call = d.at - d.fall; let n = this.dropNodes.get(i);
+      if (!n && d.called) {
+        const g = makeDropCrate(); g.position.set(d.x, 130, d.z); this.scene.add(g);
+        const smoke: THREE.Sprite[] = []; for (let k = 0; k < 14; k++) { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, color: 0xff3a2a, transparent: true, depthWrite: false, opacity: 0.5, fog: false })); sp.visible = false; this.scene.add(sp); smoke.push(sp); }
+        n = { g, smoke }; this.dropNodes.set(i, n);
+      }
+      if (!n) return;
+      const k = Math.min(1, Math.max(0, (t - call) / d.fall)); n.g.position.y = 130 * (1 - k) + 0.0; n.g.rotation.y = Math.sin(t * 0.8 + i) * 0.2 * (1 - k);
+      const chute = n.g.getObjectByName('chute'); if (chute) { chute.visible = !d.landed; chute.scale.setScalar(1 + Math.sin(t * 2.4) * 0.03); }
+      const live = t < d.at + 150;
+      n.smoke.forEach((sp, j) => { sp.visible = live; if (!live) return; const ph = ((t * 0.28 + j / n!.smoke.length) % 1), y = n!.g.position.y + 1.2 + ph * 70; sp.position.set(d.x + Math.sin(ph * 5 + j) * 2 * ph, y, d.z + Math.cos(ph * 4 + j) * 2 * ph); sp.scale.setScalar(2.2 + ph * 9); (sp.material as THREE.SpriteMaterial).opacity = 0.55 * (1 - ph); });
+      // 비행기: 호출 시각에 상자 위를 지나갑니다
+      const dt = t - call; if (Math.abs(dt) < 11 && !d.landed) {
+        if (!this.plane) { this.plane = makePlane(); this.scene.add(this.plane); }
+        const ang = i * 1.9 + 0.6, dx = Math.cos(ang), dz = Math.sin(ang); this.plane.visible = true; this.plane.position.set(d.x + dx * dt * 85, 134, d.z + dz * dt * 85); this.plane.rotation.y = -ang;
+      } else if (this.plane && dt > 11 && i === m.drops.length - 1) this.plane.visible = false;
+    });
+    if (this.plane && !m.drops.some(d => d.called && !d.landed && Math.abs(t - (d.at - d.fall)) < 11)) this.plane.visible = false;
+  }
+
   // ---------- 전리품 ----------
   private lootNode(l: Loot): THREE.Object3D {
     const g = new THREE.Group(), color = LOOT_COLOR[l.kind];
     if (l.kind === 'weapon' && l.weapon && this.assets?.groundGuns[l.weapon]) { const m = instantiate(this.assets.groundGuns[l.weapon]); m.scale.setScalar(1.25); m.position.y = 0.9; g.add(m); }
+    else if (l.kind === 'attach' && l.part) { const m = partMesh(l.part, 0.5); m.scale.setScalar(1.9); m.position.set(-0.5, 0.95 + (l.part === 'extmag' ? 0.3 : l.part === 'grip' ? 0.08 : -0.12), 0); g.add(m); }
+    else if (l.kind === 'helmet') {
+      const col = [0, 0x7a8a5a, 0x3a3d44, 0xd9b24a][l.level ?? 1], m = new THREE.MeshLambertMaterial({ color: col, emissive: col, emissiveIntensity: 0.12 }), dome = new THREE.Mesh(new THREE.SphereGeometry(0.27, 14, 9, 0, Math.PI * 2, 0, Math.PI / 2), m); dome.position.y = 0.82; dome.castShadow = true; g.add(dome);
+      const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.05, 14), new THREE.MeshLambertMaterial({ color: 0x222428 })); rim.position.y = 0.82; g.add(rim);
+    }
+    else if (l.kind === 'boost') {
+      const can = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.32, 12), new THREE.MeshLambertMaterial({ color: 0x28c8ff, emissive: 0x0a5a7a })); can.position.y = 0.9; can.castShadow = true; g.add(can);
+      const top = new THREE.Mesh(new THREE.CylinderGeometry(0.092, 0.092, 0.04, 12), new THREE.MeshLambertMaterial({ color: 0xcfd6da })); top.position.y = 1.07; g.add(top);
+      const bolt = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.095), new THREE.MeshBasicMaterial({ color: 0xffe14a })); bolt.position.set(0, 0.9, 0); g.add(bolt);
+    }
     else {
       const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, l.kind === 'armor' ? 0.55 : 0.34, l.kind === 'armor' ? 0.28 : 0.4), new THREE.MeshLambertMaterial({ color: l.kind === 'medkit' ? 0xf4f6f4 : l.kind === 'armor' ? 0x3f7fd8 : 0x6c7a3c, emissive: color, emissiveIntensity: 0.18 })); body.position.y = 0.9; body.castShadow = true; g.add(body);
       if (l.kind === 'medkit') { const m = new THREE.MeshBasicMaterial({ color: 0xd8232a }); const a = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.08, 0.06), m), b = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.34, 0.06), m); a.position.set(0, 0.9, 0.21); b.position.set(0, 0.9, 0.21); g.add(a, b); }
@@ -256,7 +295,7 @@ export class ShooterView {
         const shooter = this.match.players[e.id]; if (!shooter) continue;
         const fx = Math.cos(shooter.yaw), fz = Math.sin(shooter.yaw), isMe = e.id === me.id;
         const mx = e.ox + (isMe ? fx * 0.7 - fz * 0.22 : fx * 0.9), my = isMe ? e.oy - 0.16 : e.oy - 0.25, mz = e.oz + (isMe ? fz * 0.7 + fx * 0.22 : fz * 0.9);
-        for (let i = 0; i + 2 < e.ends.length; i += 3) this.tracer(mx, my, mz, e.ends[i], e.ends[i + 1], e.ends[i + 2], WEAPONS[e.weapon].pellets > 1 ? 0xffd9a0 : 0xfff0b8);
+        for (let i = 0; i + 2 < e.ends.length; i += 3) this.tracer(mx, my, mz, e.ends[i], e.ends[i + 1], e.ends[i + 2], e.sup ? 0x8a8f96 : WEAPONS[e.weapon].pellets > 1 ? 0xffd9a0 : 0xfff0b8);
         if (isMe) this.shake = Math.min(1, this.shake + WEAPONS[e.weapon].recoil * 6);
       } else if (e.t === 'hit') {
         if (e.wall || e.victim < 0) this.spark(e.x, e.y, e.z, 7, [1, 0.8, 0.45], 3.5);
@@ -279,7 +318,9 @@ export class ShooterView {
       this.vmId = id; if (this.vm) this.vmScene.remove(this.vm); this.vm = null; const tpl = id ? this.assets?.viewGuns[id] : null; this.vmSwap = 0.35;
       if (tpl) { this.vm = instantiate(tpl); this.vm.traverse(o => { (o as THREE.Mesh).castShadow = false; }); this.vm.add(this.vmFlash); this.vmFlash.position.set(MUZZLE[id] ?? 0.6, 0.05, 0); this.vmScene.add(this.vm); }
     }
-    if (!this.vm) return; this.vm.visible = show; if (!show) return;
+    if (!this.vm) return;
+    const pk = id + JSON.stringify(gun?.att ?? {}); if (pk !== this.vmParts) { this.vmParts = pk; if (this.partsNode) this.vm.remove(this.partsNode); this.partsNode = new THREE.Group(); this.vm.add(this.partsNode); const mz = MUZZLE[id] ?? 0.6; if (gun) for (const part of Object.values(gun.att) as PartId[]) { if (id === 'sniper' && part.startsWith('scope')) continue; this.partsNode.add(partMesh(part, mz)); } }
+    this.vm.visible = show; if (!show) return;
     this.vmSwap = Math.max(0, this.vmSwap - dt); const sw = this.vmSwap / 0.35, moving = Math.min(1, p.speed / 5), reloading = p.reload > 0, recoil = p.kick, ads = p.ads ? 1 : 0;
     const bob = Math.sin(this.bob * 1.1) * 0.35 * moving * (1 - ads * 0.8), sway = Math.cos(this.bob * 0.55) * 0.25 * moving * (1 - ads * 0.8), big = id === 'sniper' ? 11 : 12.5;
     this.vm.scale.setScalar(big); this.vm.rotation.set(recoil * 0.1 - (reloading ? 0.7 : 0) - sw * 0.8, Math.PI / 2 + recoil * 0.02, 0);
@@ -308,7 +349,7 @@ export class ShooterView {
     // 자기장
     this.zoneWall.scale.set(z.r, 1, z.r); this.zoneWall.position.x = z.cx; this.zoneWall.position.z = z.cz; (this.zoneWall.material as THREE.ShaderMaterial).uniforms.t.value = this.time;
     this.zoneNext.visible = z.nextR < z.r - 0.5; this.zoneNext.scale.set(z.nextR, z.nextR, 1); this.zoneNext.position.x = z.nextCx; this.zoneNext.position.z = z.nextCz;
-    this.syncLoot(cam.position); this.updateFx(dt);
+    this.syncLoot(cam.position); this.syncDrops(); this.updateFx(dt);
     this.viewmodel(view, !spectate && me.alive, dt);
     // 그리기: 월드 → 깊이 지우고 1인칭 총
     this.renderer.clear(); this.renderer.render(this.scene, cam);

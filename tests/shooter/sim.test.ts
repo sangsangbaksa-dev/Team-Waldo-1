@@ -59,17 +59,17 @@ describe('ZERO ZONE 자기장', () => {
 
 describe('ZERO ZONE 사격', () => {
   it('정면의 적에게 맞으면 체력이 깎이고 탄이 줄어든다', () => {
-    const m = field(); const [a, b] = m.players; a.x = 0; a.z = 0; b.x = 15; b.z = 0; a.yaw = 0; a.pitch = Math.atan2(1.2 - PLAYER.eye, 15); a.guns[0] = { id: 'rifle', mag: 30, reserve: 60 };
+    const m = field(); const [a, b] = m.players; a.x = 0; a.z = 0; b.x = 15; b.z = 0; a.yaw = 0; a.pitch = Math.atan2(1.2 - PLAYER.eye, 15); a.guns[0] = { id: 'rifle', mag: 30, reserve: 60, att: {} };
     a.input = { ...blankInput(), yaw: 0, pitch: a.pitch, fire: true }; run(m, 0.5);
     expect(a.guns[0]!.mag).toBeLessThan(30); expect(b.hp).toBeLessThan(100);
   });
   it('벽 뒤의 적은 맞지 않는다', () => {
     const m = field(); m.map.boxes.push({ x0: 7, x1: 7.4, z0: -5, z1: 5, y0: 0, y1: 3, kind: 'wall', tex: 0 }); m.map.grid.set(((Math.floor(7 / 16) + 512) * 1024) + 512, [0]);
-    const [a, b] = m.players; a.x = 0; a.z = 0; b.x = 15; b.z = 0; a.pitch = Math.atan2(1.2 - PLAYER.eye, 15); a.guns[0] = { id: 'rifle', mag: 30, reserve: 60 };
+    const [a, b] = m.players; a.x = 0; a.z = 0; b.x = 15; b.z = 0; a.pitch = Math.atan2(1.2 - PLAYER.eye, 15); a.guns[0] = { id: 'rifle', mag: 30, reserve: 60, att: {} };
     a.input = { ...blankInput(), yaw: 0, pitch: a.pitch, fire: true }; run(m, 1); expect(b.hp).toBe(100);
   });
   it('머리는 몸통보다 더 아프다', () => {
-    const dmg = (aimY: number): number => { const m = field(); const [a, b] = m.players; a.x = 0; a.z = 0; b.x = 10; b.z = 0; b.hp = 1000; a.guns[0] = { id: 'rifle', mag: 30, reserve: 60 }; a.input = { ...blankInput(), pitch: Math.atan2(aimY - PLAYER.eye, 10), fire: true }; a.cd = 0; m.step(1 / 60); return 1000 - b.hp; };
+    const dmg = (aimY: number): number => { const m = field(); const [a, b] = m.players; a.x = 0; a.z = 0; b.x = 10; b.z = 0; b.hp = 1000; a.guns[0] = { id: 'rifle', mag: 30, reserve: 60, att: {} }; a.input = { ...blankInput(), pitch: Math.atan2(aimY - PLAYER.eye, 10), fire: true }; a.cd = 0; m.step(1 / 60); return 1000 - b.hp; };
     // 탄퍼짐이 있어 정확히 한 발로 비교하려면 여러 번 재서 평균을 냅니다
     let head = 0, body = 0; for (let i = 0; i < 40; i++) { head += dmg(1.62); body += dmg(1.0); }
     expect(head).toBeGreaterThan(body * 1.3);
@@ -79,7 +79,7 @@ describe('ZERO ZONE 사격', () => {
     m.damage(b, 40, 0, 'zone', false, 0, 1, 0, true); expect(b.hp).toBe(40);
   });
   it('장전하면 예비 탄에서 탄창을 채운다', () => {
-    const m = field(); const a = m.players[0]; a.guns[0] = { id: 'smg', mag: 3, reserve: 40 }; a.input = { ...blankInput(), reload: true }; run(m, 0.1); a.input.reload = false; run(m, WEAPONS.smg.reload + 0.2);
+    const m = field(); const a = m.players[0]; a.guns[0] = { id: 'smg', mag: 3, reserve: 40, att: {} }; a.input = { ...blankInput(), reload: true }; run(m, 0.1); a.input.reload = false; run(m, WEAPONS.smg.reload + 0.2);
     expect(a.guns[0]).toMatchObject({ mag: 30, reserve: 13 });
   });
   it('샷건은 한 번에 여러 발을 쏘고, 저격총은 머리 한 방에 쓰러뜨린다', () => {
@@ -99,7 +99,7 @@ describe('ZERO ZONE 전리품', () => {
     expect(m.loot.find(l => l.id === 903)!.taken).toBe(false);
   });
   it('쓰러진 선수는 들고 있던 총을 떨어뜨린다', () => {
-    const m = field(); const b = m.players[1]; const n = m.loot.length; b.guns[1] = { id: 'rifle', mag: 10, reserve: 10 }; m.damage(b, 500, 0, 'pistol', false, 0, 1, 0, false);
+    const m = field(); const b = m.players[1]; const n = m.loot.length; b.guns[1] = { id: 'rifle', mag: 10, reserve: 10, att: {} }; m.damage(b, 500, 0, 'pistol', false, 0, 1, 0, false);
     expect(b.alive).toBe(false); expect(m.loot.length).toBe(n + 2); expect(m.players[0].kills).toBe(1);
   });
 });
@@ -125,7 +125,7 @@ describe('ZERO ZONE 봇 AI', () => {
     for (let i = 0; i < n; i++) {
       const m = new Match({ seed: 900 + i, mode: 'duel', difficulty: 'easy', humans: [], fill: 2 }); m.map.boxes = []; m.map.grid.clear(); m.loot.forEach(l => { l.taken = true; });
       const [a, b] = m.players; a.brain!.t = BOTS.expert; b.brain!.t = BOTS.easy; a.x = -12; a.z = 0; a.yaw = 0; b.x = 12; b.z = 0; b.yaw = Math.PI;
-      for (const p of m.players) p.guns[0] = { id: 'rifle', mag: 30, reserve: 90 };
+      for (const p of m.players) p.guns[0] = { id: 'rifle', mag: 30, reserve: 90, att: {} };
       for (let t = 0; t < 40 && !m.over; t += 1 / 30) { m.step(1 / 30); m.drain(); } if (m.winner === a.id) wins++;
     }
     expect(wins).toBeGreaterThanOrEqual(n - 2);

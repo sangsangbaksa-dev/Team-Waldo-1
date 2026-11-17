@@ -34,6 +34,7 @@ function wantLoot(p: Player, kind: string, weapon: string | null, part: PartId |
   if (kind === 'medkit') return p.hp < 85 ? 3 + (100 - p.hp) / 20 : 0;
   if (kind === 'armor') return p.armor < 50 ? 2.6 : 0;
   if (kind === 'helmet') return p.helmet < 3 ? 2.2 : 0;
+  if (kind === 'grenade') return p.nades < 3 ? 1.3 : 0;
   if (kind === 'boost') return p.boost <= 0 && p.hp < 95 ? 1.6 : 0;
   if (kind === 'attach') return part && p.guns.some(g => { if (!g || !PART_FITS[g.id].includes(PARTS[part].slot)) return false; const f = partFit(g.att, part); return f === 'new' || f === 'upgrade'; }) ? 1.4 : 0;
   if (kind === 'ammo') return p.guns.some(g => g && g.reserve < WEAPONS[g.id].mag * 2) ? 2 : 0;
@@ -49,7 +50,7 @@ function wantLoot(p: Player, kind: string, weapon: string | null, part: PartId |
 
 export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void {
   const b = p.brain!, T = b.t, inp = p.input, rng = m.rng, eye = PLAYER.eye;
-  inp.fire = false; inp.reload = false; inp.interact = false; inp.sprint = false; inp.ads = false; inp.slot = -1; inp.mx = 0; inp.mz = 0;
+  inp.nade = false; inp.fire = false; inp.reload = false; inp.interact = false; inp.sprint = false; inp.ads = false; inp.slot = -1; inp.mx = 0; inp.mz = 0;
   b.goalT -= dt; b.investT -= dt; b.strafeT -= dt; b.errT -= dt; b.detourT -= dt; b.lootT -= dt; b.think -= dt; b.lootScan -= dt;
 
   // ---- 주변 살피기 (0.12~0.2초마다) ----
@@ -89,6 +90,8 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
       if (fit(og.id) + 12 < fit(gun.id)) inp.slot = o;
     }
   }
+
+  if (visible && q && p.nades > 0 && p.nadeCd <= 0) { const nd = Math.hypot(q.x - p.x, q.z - p.z); if (nd > 9 && nd < 22 && rng() < 0.06) inp.nade = true; }
 
   // ---- 시선과 조준 ----
   let yawTarget = p.yaw, pitchTarget = 0, turn = T.turn * 0.55;

@@ -39,7 +39,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       <div class="sz-keys" id="sz-keys"></div>
       <div class="sz-tbtn"><button id="sz-pause" type="button" aria-label="일시정지">Ⅱ</button></div>
       <div class="sz-touchpad"><div class="sz-stick" id="sz-stick"><i></i></div><div class="sz-tbuttons">
-        <button data-act="fire" class="fire" type="button">사격</button><button data-act="ads" type="button">조준</button><button data-act="crouch" type="button">웅크림</button><button data-act="reload" type="button">장전</button><button data-act="interact" type="button">줍기</button><button data-act="swap" type="button">교체</button></div></div>
+        <button data-act="fire" class="fire" type="button">사격</button><button data-act="ads" type="button">조준</button><button data-act="crouch" type="button">웅크림</button><button data-act="reload" type="button">장전</button><button data-act="interact" type="button">줍기</button><button data-act="swap" type="button">교체</button><button data-act="nade" type="button">수류탄</button></div></div>
     </div>
     <div class="sz-setup" id="sz-setup"></div>
     <div class="sz-modal" id="sz-modal"></div>`;
@@ -55,7 +55,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   let countdown = 0, over = false, deadTimer = 0, resultShown = false, spectateId = -1;
   let yaw = 0, pitch = 0, locked = false, lockFail = false, hitT = 0, hitHead = false, hitKill = false, combo = 0, comboT = 0, rcP = 0, rcY = 0, rcIdle = 9, shotN = 0, stepAcc = 0, bannerT = 0, mapBase: HTMLCanvasElement | null = null;
   const keys = new Set<string>(), mouse = { fire: false, ads: false }, tc = { fire: false, ads: false, crouch: false, move: { x: 0, y: 0, id: -1, ox: 0, oy: 0 }, look: { id: -1, x: 0, y: 0 } };
-  let reloadReq = false, slotReq = -1, swapReq = false, interactHeld = false;
+  let nadeReq = false, reloadReq = false, slotReq = -1, swapReq = false, interactHeld = false;
   const feed: Array<{ text: string; at: number; mine: boolean }> = [], told = new Set<number>();
   const cache = new Map<string, string>();
   const set = (el: HTMLElement, key: string, text: string): void => { if (cache.get(key) !== text) { cache.set(key, text); el.textContent = text; } };
@@ -78,7 +78,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
           ${PVP_ENABLED ? `<button type="button" class="sz-opt ${pickMode === 'pvp' ? 'on' : ''}" data-mode="pvp" aria-pressed="${pickMode === 'pvp'}"><b>1대1 온라인 대전</b><em>2인 PvP · 무작위 매칭 또는 방 코드</em></button>` : ''}</div></section>
         <section class="${pickMode === 'pvp' ? 'dim' : ''}"><h3>AI 난이도</h3><div class="sz-seg four">${DIFFICULTIES.map(d => `<button type="button" class="sz-opt ${d === level ? 'on' : ''}" data-level="${d}" aria-pressed="${d === level}" ${pickMode === 'pvp' ? 'disabled' : ''}><b>${BOTS[d].label}</b></button>`).join('')}</div>
           <p class="sz-note">${pickMode === 'pvp' ? '온라인 대전은 사람끼리 겨루므로 AI가 나오지 않습니다.' : `${b.blurb} (반응 ${b.react.toFixed(2)}초 · 시야 ${b.sight}m)`}</p></section>
-        <section><h3>조작</h3><ul class="sz-help">${touch ? '<li>왼쪽 스틱 이동 · 오른쪽 드래그 시점</li><li>사격 · 조준 · 장전 · 줍기 · 교체 버튼 (비행기에서는 <b>줍기</b> 버튼이 점프·낙하산)</li>' : '<li><b>WASD</b> 이동 · <b>Shift</b> 달리기 · 마우스 시점</li><li><b>좌클릭</b> 사격 · <b>우클릭</b> 조준 · <b>R</b> 장전</li><li><b>Space</b> 비행기에서 뛰기 · 낙하산 펴기(자동 105m) · <b>W</b> 활강 방향</li><li><b>E</b> 무기 줍기 · <b>1 / 2 / 휠</b> 무기 교체 · <b>Esc</b> 일시정지</li>'}<li>탄약·구급상자·방탄복은 닿으면 자동으로 줍습니다.</li></ul></section>
+        <section><h3>조작</h3><ul class="sz-help">${touch ? '<li>왼쪽 스틱 이동 · 오른쪽 드래그 시점</li><li>사격 · 조준 · 장전 · 줍기 · 교체 버튼 (비행기에서는 <b>줍기</b> 버튼이 점프·낙하산)</li>' : '<li><b>WASD</b> 이동 · <b>Shift</b> 달리기 · 마우스 시점</li><li><b>좌클릭</b> 사격 · <b>우클릭</b> 조준 · <b>R</b> 장전</li><li><b>Space</b> 비행기에서 뛰기 · 낙하산 펴기(자동 105m) · <b>W</b> 활강 방향</li><li><b>G</b> 수류탄 · <b>E</b> 무기 줍기 · <b>1 / 2 / 휠</b> 무기 교체 · <b>Esc</b> 일시정지</li>'}<li>탄약·구급상자·방탄복은 닿으면 자동으로 줍습니다.</li></ul></section>
         <footer><button type="button" class="ghost" data-act="exit">메뉴로</button><span class="sz-sum">${career.matches ? `전적 ${career.matches}판 ${career.wins}승 · 최다 처치 ${career.bestKills}` : '첫 출격'}</span>
           <button type="button" class="primary" data-act="start" ${wait ? 'disabled' : ''}>${assetState === 'failed' ? '도형 모드로 출격' : wait ? `불러오는 중 ${Math.floor(assetPct * 100)}%` : pickMode === 'solo' ? '출격' : '상대 찾기'}</button></footer>
       </div>`;
@@ -187,7 +187,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (closed || e.repeat && e.type === 'keydown' && ['KeyR', 'KeyE'].includes(e.code)) return;
     if (e.type === 'keyup') { keys.delete(e.code); if (e.code === 'KeyE') interactHeld = false; return; }
     keys.add(e.code);
-    if (e.code === 'KeyR') reloadReq = true; else if (e.code === 'KeyE') interactHeld = true; else if (e.code === 'Digit1') slotReq = 0; else if (e.code === 'Digit2') slotReq = 1; else if (e.code === 'KeyQ') swapReq = true;
+    if (e.code === 'KeyR') reloadReq = true; else if (e.code === 'KeyE') interactHeld = true; else if (e.code === 'Digit1') slotReq = 0; else if (e.code === 'Digit2') slotReq = 1; else if (e.code === 'KeyQ') swapReq = true; else if (e.code === 'KeyG') nadeReq = true;
     else if (e.code === 'Escape' && phase === 'countdown') setPause(true);
     if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code) && match) e.preventDefault();
   };
@@ -210,7 +210,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   root.addEventListener('pointerdown', tStart); root.addEventListener('pointermove', tMove); root.addEventListener('pointerup', tEnd); root.addEventListener('pointercancel', tEnd);
   root.querySelectorAll<HTMLButtonElement>('.sz-tbuttons button').forEach(b => {
     const act = b.dataset.act!;
-    b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); audio.unlock(); if (act === 'fire') tc.fire = true; else if (act === 'ads') tc.ads = !tc.ads; else if (act === 'crouch') tc.crouch = !tc.crouch; else if (act === 'reload') reloadReq = true; else if (act === 'interact') interactHeld = true; else if (act === 'swap') swapReq = true; if (act === 'crouch') b.classList.toggle('down', tc.crouch); else b.classList.add('down'); });
+    b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); audio.unlock(); if (act === 'fire') tc.fire = true; else if (act === 'ads') tc.ads = !tc.ads; else if (act === 'crouch') tc.crouch = !tc.crouch; else if (act === 'reload') reloadReq = true; else if (act === 'interact') interactHeld = true; else if (act === 'swap') swapReq = true; else if (act === 'nade') nadeReq = true; if (act === 'crouch') b.classList.toggle('down', tc.crouch); else b.classList.add('down'); });
     for (const n of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(n, () => { if (act === 'fire') tc.fire = false; else if (act === 'interact') interactHeld = false; if (act !== 'ads' && act !== 'crouch') b.classList.remove('down'); });
   });
 
@@ -219,7 +219,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     const sx = tc.move.x, sy = -tc.move.y, active = phase === 'play';
     i.yaw = yaw; i.pitch = pitch; i.mx = active ? clamp(kx + sx, -1, 1) : 0; i.mz = active ? clamp(kz + sy, -1, 1) : 0;
     i.fire = active && (mouse.fire || tc.fire); i.ads = active && (mouse.ads || tc.ads); i.sprint = active && (keys.has('ShiftLeft') || keys.has('ShiftRight') || Math.hypot(sx, sy) > 0.92);
-    i.crouch = active && (keys.has('KeyC') || tc.crouch); i.reload = active && reloadReq; i.interact = active && interactHeld; i.jump = active && (keys.has('Space') || (p.air > 0 && interactHeld)); reloadReq = false;
+    i.crouch = active && (keys.has('KeyC') || tc.crouch); i.nade = active && nadeReq; nadeReq = false; i.reload = active && reloadReq; i.interact = active && interactHeld; i.jump = active && (keys.has('Space') || (p.air > 0 && interactHeld)); reloadReq = false;
     if (swapReq) { slotReq = p.guns[1 - p.cur] ? 1 - p.cur : -1; swapReq = false; } i.slot = active ? slotReq : -1; slotReq = -1;
   }
 
@@ -272,7 +272,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     q('#sz-hp').style.width = `${clamp(p.hp, 0, 100)}%`; set(q('#sz-hpn'), 'hpn', String(Math.ceil(Math.max(0, p.hp)))); q('#sz-ar').style.width = `${clamp(p.armor, 0, 100)}%`; set(q('#sz-arn'), 'arn', String(Math.ceil(p.armor)));
     q('.sz-bl').classList.toggle('low', p.hp < 30);
     set(q('#sz-wname'), 'wn', def ? def.name + (p.reload > 0 ? ' · 장전 중' : '') : '맨손'); set(q('#sz-mag'), 'mag', g ? String(g.mag) : '-'); set(q('#sz-res'), 'res', g ? `/ ${g.reserve}` : '');
-    const gear = [p.helmet > 0 ? `<span class="gear">${HELMET_NAMES[p.helmet]}</span>` : '', p.boost > 0 ? `<span class="gear boost">부스트 ${Math.ceil(p.boost)}초</span>` : ''].join('');
+    const gear = [p.nades > 0 ? `<span class="gear">수류탄 ${p.nades}</span>` : '', p.helmet > 0 ? `<span class="gear">${HELMET_NAMES[p.helmet]}</span>` : '', p.boost > 0 ? `<span class="gear boost">부스트 ${Math.ceil(p.boost)}초</span>` : ''].join('');
     html(q('#sz-slots'), 'slots', gear + p.guns.map((x, i) => `<span class="${i === p.cur ? 'on' : ''}">${i + 1} ${x ? WEAPONS[x.id].name : '비어 있음'}${x && Object.keys(x.att).length ? `<small>${Object.values(x.att).map(a => PARTS[a].name.replace(' 조준경', '').replace(' 사이트', '')).join(' · ')}</small>` : ''}</span>`).join(''));
     // 조준선: 탄퍼짐에 맞춰 벌어집니다
     if (def && view) { const spread = def.spread * partHandling(g!.att).spread * (p.ads ? (g!.att.sight ? 0.34 : 0.4) : 1) * (1 + Math.min(1.6, p.speed / PLAYER.walk) * 0.5) * (1 + p.kick * 0.5), px = Math.tan(spread * (def.pellets > 1 ? 2 : 1)) / Math.tan((view.fov * Math.PI) / 360) * (canvas.clientHeight / 2); q('#sz-cross').style.setProperty('--gap', `${clamp(px, 4, 90).toFixed(1)}px`); }
@@ -333,16 +333,17 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
         }
       } else if (e.t === 'kill') {
         if (!pvp && !m.over) { const left = m.aliveCount(); for (const n of [50, 25, 10, 5, 3]) if (left <= n && !told.has(n)) { told.add(n); if (left === n || n >= 25) say(`${left}명 생존`, 1.6); } }
-        const mine = e.attacker === p.id, text = e.attacker < 0 ? `${nameOf(e.victim)} 자기장에 쓰러짐` : e.victim === e.attacker ? `${nameOf(e.victim)} 쓰러짐` : `${nameOf(e.attacker)} → ${nameOf(e.victim)}${e.weapon !== 'zone' ? ` [${WEAPONS[e.weapon].name}]` : ''}`;
+        const mine = e.attacker === p.id, text = e.attacker < 0 ? `${nameOf(e.victim)} 자기장에 쓰러짐` : e.victim === e.attacker ? `${nameOf(e.victim)} 쓰러짐` : `${nameOf(e.attacker)} → ${nameOf(e.victim)}${e.weapon !== 'zone' ? ` [${e.weapon === 'grenade' ? '수류탄' : WEAPONS[e.weapon].name}]` : ''}`;
         addFeed(text, mine || e.victim === p.id);
         if (mine) { audio.play('kill'); hitKill = true; hitT = 0.55; const hm = q('#sz-hitmark'); hm.classList.remove('pop'); void hm.offsetWidth; hm.classList.add('pop'); say(`처치 · ${nameOf(e.victim)}`, 1.4) }
         if (e.victim === p.id) onMyDeath(e.attacker);
       } else if (e.t === 'pickup') {
-        if (e.id === p.id) { audio.play(e.kind === 'medkit' ? 'heal' : e.kind === 'armor' ? 'armor' : 'pickup'); say(e.kind === 'attach' && e.part ? `${PARTS[e.part].name} 장착` : e.kind === 'helmet' ? `${HELMET_NAMES[e.level ?? 1]} 착용` : e.kind === 'boost' ? '에너지 드링크 · 부스트' : e.kind === 'weapon' ? `${WEAPONS[e.weapon!].name} 획득` : e.kind === 'medkit' ? '구급상자 +' : e.kind === 'armor' ? '방탄복 +' : '탄약 +', 1.1); if (pvp && e.loot < m.map.loot.length) pvp.net.sendPickup(e.loot); }
+        if (e.id === p.id) { audio.play(e.kind === 'medkit' ? 'heal' : e.kind === 'armor' ? 'armor' : 'pickup'); say(e.kind === 'attach' && e.part ? `${PARTS[e.part].name} 장착` : e.kind === 'helmet' ? `${HELMET_NAMES[e.level ?? 1]} 착용` : e.kind === 'boost' ? '에너지 드링크 · 부스트' : e.kind === 'grenade' ? '수류탄 +2' : e.kind === 'weapon' ? `${WEAPONS[e.weapon!].name} 획득` : e.kind === 'medkit' ? '구급상자 +' : e.kind === 'armor' ? '방탄복 +' : '탄약 +', 1.1); if (pvp && e.loot < m.map.loot.length) pvp.net.sendPickup(e.loot); }
       } else if (e.t === 'drop') { if (e.stage === 'call') { say('보급 투하! 지도의 노란 표시를 확인하세요', 3); audio.play('armor'); } else say('보급 상자 착륙 · 최상급 전리품', 3); }
       else if (e.t === 'jump') { if (e.id === p.id) { audio.play('go'); say('강하 시작', 1.4); } }
       else if (e.t === 'chute') { if (e.id === p.id) { audio.play('pickup'); say('낙하산 펼침', 1.4); } }
       else if (e.t === 'land') { if (e.id === p.id) { audio.play('armor'); say('착지 · 총을 찾으세요', 2.4); } }
+      else if (e.t === 'nade') { const dd = Math.hypot(e.x - p.x, e.z - p.z); audio.play(e.stage === 'boom' ? 'boom' : 'pistol', e.stage === 'boom' ? dd * 0.6 : dd + 30); }
       else if (e.t === 'reload') { if (e.id === p.id) audio.play('reload'); }
       else if (e.t === 'empty') { if (e.id === p.id) audio.play('empty'); }
       else if (e.t === 'over') { onOver(e.winner); }

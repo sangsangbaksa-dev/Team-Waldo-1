@@ -1,6 +1,6 @@
 // FRONTLINE — 컴퓨터 상대. 사람과 같은 명령(Cmd)만 내리고, 난이도는 판단 속도·건설 규모·공격 시점으로 가릅니다.
 // (가장 높은 단계만 채취량 보너스를 받으며 화면에도 그렇게 적습니다.)
-import { BUILDINGS, LEVELS, UNITS, type BuildKind, type Difficulty, type UnitKind } from './config';
+import { BUILDINGS, LEVELS, RESEARCH, RESEARCH_KINDS, UNITS, type BuildKind, type Difficulty, type UnitKind } from './config';
 import type { Building, Cmd, RtsSim, Unit } from './sim';
 
 const ARMY: Array<'marine' | 'rocket' | 'tank'> = ['marine', 'rocket', 'tank'];
@@ -39,6 +39,9 @@ export class RtsAi {
     else if (s.has(me, 'barracks') && nf < L.factory && nw >= 10 && building('factory') === 0) this.build(s, 'factory', workers, hx, hy);
     else if (s.has(me, 'barracks') && nt < L.tower && nw >= 11 && nf >= Math.min(1, L.factory) && building('tower') === 0) this.build(s, 'tower', workers, hx, hy);
     else if (L.expand && own('hq').length < 2 && nw >= 14 && nb >= 2 && p.minerals >= 400 && building('hq') === 0) this.expand(s, workers);
+
+    // 강화 연구: 병영·공장이 쉬는 동안 광물이 남으면 연구합니다.
+    if (L.research && p.minerals >= 200) for (const b of s.buildings) if (b.owner === me && b.done && !b.research) for (const r of RESEARCH_KINDS) if (RESEARCH[r].from === b.kind && s.apply(me, { k: 'research', b: b.id, r })) break;
 
     // 병력 생산
     const counts: Record<string, number> = { marine: 0, rocket: 0, tank: 0 }; for (const u of army) counts[u.kind]++;
@@ -104,22 +107,12 @@ export class RtsAi {
 
   private build(s: RtsSim, kind: BuildKind, workers: Unit[], hx: number, hy: number): void {
     if (s.players[this.me].minerals < BUILDINGS[kind].cost) return;
-    const size = BUILDINGS[kind].size, mid = s.map.size / 2, towardX = mid - hx, towardY = mid - hy, tl = Math.sqrt(towardX * towardX + towardY * towardY) || 1;
+    const mid = s.map.size / 2, towardX = mid - hx, towardY = mid - hy, tl = Math.sqrt(towardX * towardX + towardY * towardY) || 1;
     // 방어탑은 적이 오는 쪽에, 나머지는 사령부 가까이에 놓습니다.
     const ax = kind === 'tower' ? hx + towardX / tl * 12 : hx, ay = kind === 'tower' ? hy + towardY / tl * 12 : hy;
-    let best: { x: number; y: number } | null = null, bd = Infinity;
-    for (let y = Math.floor(ay) - 22; y <= Math.floor(ay) + 22; y++) for (let x = Math.floor(ax) - 22; x <= Math.floor(ax) + 22; x++) {
-      const d = (x + size / 2 - ax) ** 2 + (y + size / 2 - ay) ** 2; if (d >= bd || (kind !== 'tower' && d < 36)) continue;
-      if (!this.roomy(s, x, y, size)) continue; best = { x, y }; bd = d;
-    }
+    const best = s.findSite(kind, ax, ay, kind === 'tower' ? 0 : 36);
     if (!best) return;
     const w = this.pickWorker(s, workers, best.x, best.y); if (w) s.apply(this.me, { k: 'build', id: w.id, b: kind, x: best.x, y: best.y });
-  }
-  /** 둘레 한 칸을 비워 두고, 광물 근처를 피합니다. */
-  private roomy(s: RtsSim, x: number, y: number, size: number): boolean {
-    for (let j = -1; j <= size; j++) for (let i = -1; i <= size; i++) if (!s.pather.free(x + i, y + j)) return false;
-    for (const nd of s.nodes) if (nd.x > x - 4 && nd.x < x + size + 3 && nd.y > y - 4 && nd.y < y + size + 3) return false;
-    return true;
   }
   private expand(s: RtsSim, workers: Unit[]): void {
     const hq = s.buildings.find(b => b.owner === this.me && b.kind === 'hq'); if (!hq) return;

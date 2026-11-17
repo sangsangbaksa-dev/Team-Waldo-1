@@ -13,7 +13,7 @@ import { loadOutlawAssets, type OutlawAssets } from './assets';
 import { MISSION_LIST, canStart, startMission } from './missions';
 import { OutlawUi } from './ui';
 import { pickpocket, pickpocketTarget, startJob } from './jobs';
-import { treat } from './services';
+import { treat, buySnack, nearVending } from './services';
 import { OUTLAW_KEY } from './records';
 import { WEAPONS, WEAPON_ORDER, PLAYER_ID, VEHICLES, blankPedInput, blankCarInput, clamp, wrapAngle, type PedInput, type SimEvent, type Vehicle } from './types';
 
@@ -253,6 +253,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (poi?.kind === 'safehouse') return { text: 'E · 쉬기 · 저장', run: () => { const r = sim!.sleep(); toast(r); save(); audio.play('save'); } };
     if (poi?.kind === 'start') { const m = MISSION_LIST.find(x => x.startPoi === poi.id); if (m && canStart(sim, m.id)) return { text: `E · 의뢰: ${m.title}`, run: () => openBrief(m.id) }; }
     if (sim.nearestVehicle(p)) return { text: 'E · 차량 탑승' };
+    if (nearVending(sim)) return { text: `E · 음료 (${money(sim.price(8))})`, run: () => { toast(buySnack(sim!)); audio.play('pickup'); } };
     if (pickpocketTarget(sim)) return { text: 'E · 소매치기', run: () => { toast(pickpocket(sim!)); audio.play('pickup'); } };
     return null;
   }

@@ -146,14 +146,21 @@ function roof(p: Pieces, bd: Building, rng: () => number): void {
     }
     if (tall) { p.add(CYL(0.08, 3, 6), 0x5a5a5e, base.clone().multiply(xf(w * 0.25, h + 2, d * 0.25))); p.box(1.6, 0.5, 0.5, 0x3b3f44, base, -w * 0.15, h + 0.65, 0); }
     if (bd.type === 'bunker') p.box(w - 1, 0.4, d - 1, 0x58705a, base, 0, h + 0.5, 0);
+    if (bd.type === 'clinic') { p.box(2.6, 0.12, 0.8, 0xc9302c, base, 0, h + 0.42, 0); p.box(0.8, 0.12, 2.6, 0xc9302c, base, 0, h + 0.42, 0); p.box(1.4, 0.9, 1.1, 0xb6babd, base, w * 0.3, h + 0.8, d * 0.25); }
+    if (bd.type === 'silo') { for (const y of [0.25, 0.5, 0.75]) p.box(w + 0.3, 0.18, d + 0.3, 0x9aa0a4, base, 0, h * y, 0); p.box(w * 0.7, 1.1, d * 0.7, 0xb8bcc0, base, 0, h + 0.85, 0); p.box(w * 0.4, 0.8, d * 0.4, 0x9aa0a4, base, 0, h + 1.8, 0); }
   } else {
-    const shed = bd.roof === 'shed', span = (alongX ? d : w) + 0.9, long = sizeLong + 0.9, ph = shed ? 0.9 : Math.min(2.6, span * (bd.type === 'warehouse' ? 0.16 : 0.3));
-    const col = bd.type === 'warehouse' ? 0x7d8b95 : bd.type === 'barn' ? 0x4a4a4e : shed ? 0x6a6e72 : ROOF_COLORS[bd.tex % ROOF_COLORS.length];
+    const shed = bd.roof === 'shed', span = (alongX ? d : w) + 0.9, long = sizeLong + 0.9, ph = shed ? 0.9 : Math.min(2.6, span * (bd.type === 'warehouse' || bd.type === 'hangar' ? 0.16 : bd.type === 'church' ? 0.5 : 0.3));
+    const col = bd.type === 'warehouse' || bd.type === 'hangar' ? 0x7d8b95 : bd.type === 'barn' ? 0x4a4a4e : shed ? 0x6a6e72 : ROOF_COLORS[bd.tex % ROOF_COLORS.length];
     // 압출은 z 방향이 길이 방향: 긴 변이 x 면 90도 돌립니다
     p.add(prism(span, ph, long, shed), col, base.clone().multiply(xf(0, h, 0, 0, alongX ? Math.PI / 2 : 0, 0)));
     if (!shed) p.box(alongX ? long : 0.3, 0.12, alongX ? 0.3 : long, shade(col, 0.7), base, 0, h + ph + 0.04, 0);
     if (bd.type === 'house' && rng() < 0.5) p.box(0.7, 1.6, 0.7, 0x7a5a48, base, w * 0.2, h + ph * 0.6 + 0.6, d * (rng() < 0.5 ? 0.15 : -0.15));
-    if (bd.type === 'warehouse') for (let i = -2; i <= 2; i++) p.box(alongX ? 0.25 : span, 0.08, alongX ? span : 0.25, shade(col, 0.82), base, alongX ? i * long * 0.2 : 0, h + ph * 0.5 + 0.1, alongX ? 0 : i * long * 0.2);
+    if (bd.type === 'church') { // 종탑과 십자가
+      const col2 = 0xd8d2c0, tz = (alongX ? 0 : d * 0.32), tx = alongX ? w * 0.32 : 0;
+      p.box(2.6, 4.6, 2.6, col2, base, tx, h + 2.3, tz); p.box(3.1, 0.3, 3.1, 0x4d5560, base, tx, h + 4.75, tz); p.box(0.18, 1.6, 0.18, 0xe8dcc6, base, tx, h + 5.7, tz); p.box(0.9, 0.18, 0.18, 0xe8dcc6, base, tx, h + 5.9, tz);
+    }
+    if (bd.type === 'diner') p.box(Math.min(4.5, w * 0.5), 0.9, 0.2, [0xc9302c, 0x2f6aa0][bd.tex % 2], base, 0, h + 1.2, d / 2 + 0.2);
+    if (bd.type === 'warehouse' || bd.type === 'hangar') for (let i = -2; i <= 2; i++) p.box(alongX ? 0.25 : span, 0.08, alongX ? span : 0.25, shade(col, 0.82), base, alongX ? i * long * 0.2 : 0, h + ph * 0.5 + 0.1, alongX ? 0 : i * long * 0.2);
   }
 }
 /** 건물 지붕과 장식: 한 번에 합쳐서 돌려줍니다. */

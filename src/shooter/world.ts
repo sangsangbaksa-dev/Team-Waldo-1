@@ -1,10 +1,11 @@
 // ZERO ZONE — 지도 생성(마을·건물·차량·컨테이너·바위·나무·전리품)과 충돌·광선 검사. 화면과 무관한 순수 로직이라 시드가 같으면 어디서나 같은 지도가 나옵니다.
+import { emptyTerrain, planTerrain, waterDepth, type Terrain } from './terrain';
 import { MAP_HALF, PLAYER, WEAPON_IDS, makeRng, type Attachments, type Mode, type PartId, type WeaponId } from './config';
 
 /** 위에서 본 직사각형 + 높이 범위. 벽·바위·상자·나무 기둥·차량 모두 이 모양입니다. */
 export type BoxKind = 'wall' | 'rock' | 'crate' | 'trunk' | 'fence' | 'vehicle' | 'container' | 'prop';
 export interface Box { x0: number; z0: number; x1: number; z1: number; y0: number; y1: number; kind: BoxKind; tex: number }
-export type BuildingType = 'house' | 'cabin' | 'apartment' | 'warehouse' | 'garage' | 'shop' | 'tower' | 'barn' | 'bunker' | 'station';
+export type BuildingType = 'house' | 'cabin' | 'apartment' | 'warehouse' | 'garage' | 'shop' | 'tower' | 'barn' | 'bunker' | 'station' | 'church' | 'clinic' | 'diner' | 'silo' | 'hangar';
 export type RoofKind = 'flat' | 'gable' | 'shed';
 export interface Building { x: number; z: number; w: number; d: number; tex: number; door: 'x' | 'z'; floor: number; type: BuildingType; /** 벽 높이 */ h: number; roof: RoofKind }
 export type LootKind = 'weapon' | 'ammo' | 'medkit' | 'armor' | 'attach' | 'helmet' | 'boost';
@@ -20,7 +21,7 @@ export interface Site { x: number; z: number; r: number }
 
 export interface GameMap {
   seed: number; mode: Mode; half: number;
-  boxes: Box[]; buildings: Building[]; trees: Tree[]; rocks: Rock[]; props: Prop[]; compounds: Compound[]; sites: Site[]; roads: Array<[number, number]>;
+  terrain: Terrain; boxes: Box[]; buildings: Building[]; trees: Tree[]; rocks: Rock[]; props: Prop[]; compounds: Compound[]; sites: Site[]; roads: Array<[number, number]>;
   loot: Loot[]; spawns: { x: number; z: number }[];
   /** 충돌·광선 검사용 격자. 칸 크기 CELL 미터. */
   grid: Map<number, number[]>;
@@ -58,6 +59,11 @@ const SPEC: Record<BuildingType, Spec> = {
   tower:     { w: [4.6, 5.4], d: [4.6, 5.4], h: 8.8, roof: 'flat',  tex: [0],          doorW: 2.5, doorH: 2.45, loot: [1, 2], crates: [0, 0], tier: 1 },
   barn:      { w: [13, 16],   d: [9, 11],    h: 4,   roof: 'gable', tex: [1],          doorW: 4,   doorH: 3.2,  loot: [2, 3], crates: [1, 2], tier: 0 },
   bunker:    { w: [8, 10],    d: [6, 8],     h: 2.5, roof: 'flat',  tex: [0],          doorW: 2.5, doorH: 2.2,  loot: [2, 4], crates: [1, 2], tier: 1 },
+  church:    { w: [7, 8.4],   d: [11.5, 13], h: 4.4, roof: 'gable', tex: [2],        doorW: 3,   doorH: 3.1,  loot: [2, 3], crates: [0, 0], tier: 0 },
+  clinic:    { w: [10, 12],   d: [8, 9],    h: 3.4, roof: 'flat',  tex: [3],          doorW: 2.6, doorH: 2.5,  loot: [3, 5], crates: [0, 1], tier: 0 },
+  diner:     { w: [9, 11],    d: [6, 7],    h: 3,   roof: 'shed',  tex: [1, 2],       doorW: 2.6, doorH: 2.45, loot: [2, 3], crates: [0, 0], tier: 0 },
+  silo:      { w: [4.6, 5.2], d: [4.6, 5.2], h: 12, roof: 'flat',  tex: [0],          doorW: 2.4, doorH: 2.4,  loot: [1, 2], crates: [0, 0], tier: 1 },
+  hangar:    { w: [19, 21],   d: [12.5, 14], h: 6.5, roof: 'gable', tex: [0],         doorW: 6.4, doorH: 4.8,  loot: [4, 6], crates: [3, 5], tier: 1 },
   station:   { w: [7, 8.5],   d: [5, 6],     h: 3.2, roof: 'flat',  tex: [2],          doorW: 2.5, doorH: 2.45, loot: [2, 3], crates: [0, 0], tier: 0 },
 };
 const between = (rng: () => number, [a, b]: [number, number]): number => a + rng() * (b - a);
@@ -199,10 +205,10 @@ function coverCluster(map: GameMap, rng: () => number, x: number, z: number, kin
 // ---------- 마을 ----------
 interface ThemeDef { cols: [number, number]; rows: number; lot: { w: number; d: number }; first: BuildingType; kinds: Array<[BuildingType, number]>; names: string[] }
 const THEMES: Record<Theme, ThemeDef> = {
-  village:    { cols: [3, 2], rows: 2, lot: { w: 17, d: 15 }, first: 'house',     kinds: [['house', 5], ['cabin', 2], ['garage', 1.4], ['shop', 1]],                 names: ['안개촌', '돌고개', '새벽마을', '버드나무골'] },
-  urban:      { cols: [3, 2], rows: 2, lot: { w: 18, d: 16 }, first: 'apartment', kinds: [['apartment', 4], ['shop', 3], ['house', 1.5], ['garage', 1.5]],             names: ['중앙시가', '붉은거리', '서쪽 항구'] },
-  industrial: { cols: [2, 2], rows: 2, lot: { w: 23, d: 17 }, first: 'warehouse', kinds: [['warehouse', 4], ['garage', 2], ['tower', 1.2], ['shop', 1]],               names: ['철강단지', '용암공장', '회색 부두'] },
-  farm:       { cols: [2, 2], rows: 2, lot: { w: 21, d: 16 }, first: 'barn',      kinds: [['barn', 2], ['house', 3], ['cabin', 3], ['garage', 1]],                     names: ['붉은농장', '밀밭', '풍차언덕'] },
+  village:    { cols: [3, 2], rows: 2, lot: { w: 17, d: 15 }, first: 'house',     kinds: [['house', 5], ['cabin', 2], ['garage', 1.4], ['shop', 1], ['church', 0.8]],                 names: ['안개촌', '돌고개', '새벽마을', '버드나무골'] },
+  urban:      { cols: [3, 2], rows: 2, lot: { w: 18, d: 16 }, first: 'apartment', kinds: [['apartment', 4], ['shop', 3], ['house', 1.5], ['garage', 1.5], ['clinic', 1.2], ['diner', 1.4]],             names: ['중앙시가', '붉은거리', '서쪽 항구'] },
+  industrial: { cols: [2, 2], rows: 2, lot: { w: 23, d: 17 }, first: 'warehouse', kinds: [['warehouse', 3.4], ['hangar', 1.4], ['garage', 2], ['tower', 1.2], ['silo', 1.2], ['shop', 1]],               names: ['철강단지', '용암공장', '회색 부두'] },
+  farm:       { cols: [2, 2], rows: 2, lot: { w: 21, d: 16 }, first: 'barn',      kinds: [['barn', 2], ['house', 3], ['cabin', 3], ['garage', 1], ['silo', 1.4]],                     names: ['붉은농장', '밀밭', '풍차언덕'] },
   military:   { cols: [3, 2], rows: 2, lot: { w: 17, d: 14 }, first: 'bunker',    kinds: [['bunker', 4], ['tower', 2], ['garage', 1.5], ['cabin', 1.5]],               names: ['북부기지', '검은 요새', '레이더 고지'] },
 };
 const THEME_LIST = Object.keys(THEMES) as Theme[];
@@ -255,7 +261,7 @@ function lootCount(rng: () => number, mode: Mode, range: [number, number]): numb
 
 export function generateMap(seed: number, mode: Mode): GameMap {
   const rng = makeRng(seed), half = MAP_HALF[mode];
-  const map: GameMap = { seed, mode, half, boxes: [], buildings: [], trees: [], rocks: [], props: [], compounds: [], sites: [], roads: [], loot: [], spawns: [], grid: new Map() };
+  const map: GameMap = { seed, mode, half, boxes: [], buildings: [], trees: [], rocks: [], props: [], compounds: [], sites: [], roads: [], loot: [], spawns: [], grid: new Map(), terrain: emptyTerrain() };
   // 마을: 서로 충분히 떨어뜨려 배치
   const towns = mode === 'br' ? 14 : 4, minGap = mode === 'br' ? 74 : 58;
   for (let tries = 0; map.compounds.length < towns && tries < 800; tries++) {
@@ -291,7 +297,7 @@ export function generateMap(seed: number, mode: Mode): GameMap {
     for (const { j } of near) { const k = i < j ? `${i}-${j}` : `${j}-${i}`; if (!used2.has(k)) { used2.add(k); map.roads.push(i < j ? [i, j] : [j, i]); } }
   }
   // 들판의 외딴 시설: 주유소·오두막·창고·초소·벙커
-  const lone: BuildingType[] = mode === 'br' ? ['station', 'station', 'station', 'station', 'cabin', 'cabin', 'cabin', 'cabin', 'cabin', 'cabin', 'garage', 'garage', 'garage', 'tower', 'tower', 'tower', 'bunker', 'bunker', 'bunker', 'barn', 'barn', 'cabin', 'cabin', 'garage'] : ['station', 'cabin', 'cabin', 'tower', 'bunker'];
+  const lone: BuildingType[] = mode === 'br' ? ['station', 'station', 'station', 'station', 'cabin', 'cabin', 'cabin', 'cabin', 'cabin', 'cabin', 'garage', 'garage', 'garage', 'tower', 'tower', 'tower', 'bunker', 'bunker', 'bunker', 'barn', 'barn', 'cabin', 'cabin', 'garage', 'church', 'church', 'diner', 'diner', 'diner', 'silo', 'silo', 'silo', 'hangar', 'hangar', 'clinic'] : ['station', 'cabin', 'cabin', 'tower', 'bunker', 'diner'];
   const farFromTown = (x: number, z: number, pad: number): boolean => map.compounds.every(c => Math.hypot(c.x - x, c.z - z) > c.r + pad) && map.sites.every(s => Math.hypot(s.x - x, s.z - z) > s.r + pad);
   for (const type of lone) {
     for (let tries = 0; tries < 60; tries++) {
@@ -305,7 +311,10 @@ export function generateMap(seed: number, mode: Mode): GameMap {
       break;
     }
   }
-  const clear = (x: number, z: number, pad: number): boolean => farFromTown(x, z, pad);
+  // 지형: 강·호수·늪·구릉·절벽·숲. 구릉과 절벽은 충돌 상자가 되고, 물은 걸음을 늦춥니다.
+  map.terrain = planTerrain(seed, mode, half, map.compounds, map.sites, map.roads.map(([i, j]) => [cs[i], cs[j]] as [Compound, Compound]));
+  buildTerrain(map, rng);
+  const clear = (x: number, z: number, pad: number): boolean => farFromTown(x, z, pad) && waterDepth(map.terrain, x, z) === 0;
   // 길가의 전봇대, 버려진 차량
   const dir = (a: Compound, b: Compound): number => Math.atan2(b.z - a.z, b.x - a.x);
   for (const [i, j] of map.roads) {
@@ -360,11 +369,33 @@ export function generateMap(seed: number, mode: Mode): GameMap {
   return map;
 }
 
+/** 구릉·절벽을 충돌 상자로 만들고 숲에 나무와 쓰러진 통나무를 심습니다. */
+function buildTerrain(map: GameMap, rng: () => number): void {
+  const t = map.terrain;
+  for (const h of t.hills) { // 둥근 언덕을 십자 모양 상자 세 개로 근사합니다
+    const c = h.r * 0.7, a = h.r * 0.94, b = h.r * 0.4;
+    for (const [sx, sz] of [[c, c], [a, b], [b, a]] as const) addBox(map, { x0: h.x - sx, x1: h.x + sx, z0: h.z - sz, z1: h.z + sz, y0: 0, y1: h.h, kind: 'rock', tex: 0 });
+  }
+  for (const c of t.cliffs) addBox(map, { x0: c.x0, x1: c.x1, z0: c.z0, z1: c.z1, y0: 0, y1: c.h, kind: 'rock', tex: 0 });
+  for (const f of t.forests) {
+    const pine = rng() < 0.6, want = Math.floor((f.r * f.r) / (map.mode === 'br' ? 26 : 40));
+    for (let i = 0, tries = 0; i < want && tries < want * 4; tries++) {
+      const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * f.r, x = f.x + Math.cos(a) * r, z = f.z + Math.sin(a) * r;
+      if (Math.abs(x) > map.half - 2 || Math.abs(z) > map.half - 2 || waterDepth(t, x, z) || blockedAt(map, x, z, 1.5)) continue;
+      map.trees.push({ x, z, s: 0.85 + rng() * 0.7, pine: rng() < 0.85 ? pine : !pine }); addBox(map, { x0: x - 0.3, x1: x + 0.3, z0: z - 0.3, z1: z + 0.3, y0: 0, y1: 7, kind: 'trunk', tex: 0 }); i++;
+    }
+    for (let i = 0, tries = 0; i < 3 && tries < 20; tries++) { const a = rng() * Math.PI * 2, r = rng() * f.r * 0.7; if (coverPiece(map, rng, f.x + Math.cos(a) * r, f.z + Math.sin(a) * r, ['log', 'stump', 'log'])) i++; }
+  }
+  for (const p of t.ponds) if (p.swamp) for (let i = 0, tries = 0; i < 3 && tries < 30; tries++) { // 늪가의 통나무와 그루터기
+    const a = rng() * Math.PI * 2, r = p.rx * (1.02 + rng() * 0.25); if (coverPiece(map, rng, p.x + Math.cos(a) * r, p.z + Math.sin(a) * r * (p.rz / p.rx), ['log', 'stump'])) i++;
+  }
+}
+
 function pushLoot(map: GameMap, spec: LootSpec, x: number, z: number): void { map.loot.push({ ...spec, id: map.loot.length, x, z, taken: false }); }
 function spawnNear(map: GameMap, rng: () => number, x: number, z: number): void {
   for (let i = 0; i < 40; i++) {
     const px = x + (rng() - 0.5) * 14 * (1 + i / 10), pz = z + (rng() - 0.5) * 14 * (1 + i / 10);
-    if (Math.abs(px) < map.half && Math.abs(pz) < map.half && !blockedAt(map, px, pz, 1.2)) { map.spawns.push({ x: px, z: pz }); return; }
+    if (Math.abs(px) < map.half && Math.abs(pz) < map.half && !blockedAt(map, px, pz, 1.2) && waterDepth(map.terrain, px, pz) === 0) { map.spawns.push({ x: px, z: pz }); return; }
   }
   map.spawns.push({ x, z });
 }

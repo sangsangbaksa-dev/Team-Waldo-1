@@ -139,3 +139,31 @@ describe('ZERO ZONE 봇 AI', () => {
     const m = solo(5, 'expert'); run(m, 20); for (const p of m.players) { expect(p.hp).toBeLessThanOrEqual(PLAYER.hp); for (const g of p.guns) if (g) expect(g.mag).toBeLessThanOrEqual(WEAPONS[g.id].mag); }
   });
 });
+
+describe('ZERO ZONE 건물·엄폐물·파츠·보급', () => {
+  it('건물 종류가 여러 가지이고 엄폐물과 차량이 충돌·총알 차단이 된다', () => {
+    const m = generateMap(4, 'br'), types = new Set(m.buildings.map(b => b.type));
+    expect(types.size).toBeGreaterThanOrEqual(7);
+    const covers = m.props.filter(p => ['barrier', 'sandbag', 'ruin', 'stonewall', 'stump', 'log', 'rubble', 'pallet'].includes(p.kind)); expect(covers.length).toBeGreaterThan(150);
+    const c = covers.find(p => p.kind === 'barrier')!; // 가슴 높이로 쏘면 막히고(네 방향 중 하나는 장벽을 정면으로 맞힌다), 머리 높이로 쏘면 넘어간다
+    const chest = [[6, 0], [-6, 0], [0, 6], [0, -6]].some(([dx, dz]) => rayWorld(m, c.x + dx, 0.6, c.z + dz, -Math.sign(dx), 0, -Math.sign(dz), 12) < 12);
+    expect(chest).toBe(true); expect(rayWorld(m, c.x - 6, 1.6, c.z, 1, 0, 0, 12)).toBeGreaterThan(5.9);
+  });
+  it('확장 탄창은 탄창을 키우고, 같은 슬롯의 낮은 등급 파츠는 자동으로 바꾸지 않는다', () => {
+    const m = field('normal', 2), p = m.players[0]; p.guns[0] = { id: 'rifle', mag: 30, reserve: 90, att: {} };
+    m.loot.push({ id: 900, kind: 'attach', weapon: null, part: 'extmag', x: p.x, z: p.z, taken: false }, { id: 901, kind: 'attach', weapon: null, part: 'scope2', x: p.x, z: p.z, taken: false });
+    run(m, 0.1); expect(p.guns[0]!.att).toEqual({ mag: 'extmag', sight: 'scope2' });
+    p.guns[0]!.mag = 0; p.input.reload = true; run(m, 3); expect(p.guns[0]!.mag).toBe(42);
+    m.loot.push({ id: 902, kind: 'attach', weapon: null, part: 'reddot', x: p.x, z: p.z, taken: false }); run(m, 0.2); expect(p.guns[0]!.att.sight).toBe('scope2');
+    m.loot.push({ id: 903, kind: 'attach', weapon: null, part: 'scope4', x: p.x, z: p.z, taken: false }); run(m, 0.2); expect(p.guns[0]!.att.sight).toBe('scope4');
+  });
+  it('헬멧은 머리 피해를 줄이고 부스트는 체력을 채운다', () => {
+    const m = field('normal', 2), p = m.players[1]; p.helmet = 3; m.damage(p, 100, 0, 'rifle', true, p.x, 1.6, p.z, true); expect(p.hp).toBeCloseTo(100 - 35, 0);
+    p.hp = 50; p.boost = 10; run(m, 4); expect(p.hp).toBeGreaterThan(55);
+  });
+  it('보급 투하는 정해진 시각에 상자가 열리고 좋은 전리품이 나온다', () => {
+    const m = solo(9); expect(m.drops.length).toBe(2); const before = m.loot.length, d = m.drops[0];
+    m.t = d.at - 0.05; m.step(0.1); const ev = m.drain(); expect(ev.some(e => e.t === 'drop' && e.stage === 'land')).toBe(true);
+    expect(m.loot.length).toBe(before + 8); expect(m.loot.some(l => l.kind === 'helmet' && l.level === 3)).toBe(true);
+  });
+});

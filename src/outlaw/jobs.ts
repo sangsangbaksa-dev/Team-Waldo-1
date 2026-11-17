@@ -2,6 +2,7 @@
 import type { Sim } from './sim';
 import { PLAYER_ID, blankJobState, VEHICLES, wrapAngle, type Marker, type Ped, type Vehicle } from './types';
 import { nearestLane } from './world';
+import { autoDrive } from './vehicle';
 
 export interface JobInfo { id: string; name: string; giver: string; desc: string; pay: string; cooldown: number }
 export const JOB_LIST: JobInfo[] = [
@@ -13,6 +14,9 @@ export const JOB_LIST: JobInfo[] = [
   { id: 'trial', name: '타임 트라이얼', giver: '레이서 나래', desc: '아무 차나 타고 표시된 관문 다섯 곳을 제한 시간 안에 통과합니다. 남은 시간이 보너스가 됩니다.', pay: '$900 + 시간 보너스', cooldown: 20 },
   { id: 'getaway', name: '도주 운전', giver: '익명의 의뢰인', desc: '은행 앞에서 일행을 태우는 순간 경찰이 붙습니다. 추격을 따돌리고 은신처까지 달리세요.', pay: '$2,200', cooldown: 90 },
   { id: 'smuggle', name: '밀수', giver: '항만 브로커', desc: '해체장의 밴을 훔쳐 먼 곳의 인수 지점에 넘깁니다. 상자를 실은 순간 경찰이 눈치챕니다.', pay: '$1,800', cooldown: 60 },
+  { id: 'cargo', name: '민감 화물', giver: '야간 운송사', desc: '깨지기 쉬운 화물을 밴에 실어 먼 하역장까지 옮깁니다. 충돌하면 화물이 상하고, 비 오는 밤엔 웃돈이 붙습니다.', pay: '$1,300 + 상태·우천 보너스', cooldown: 45 },
+  { id: 'demolish', name: '차량 파괴', giver: '보험 사기꾼', desc: '표시된 주차 차량 세 대를 부숴 흔적 없이 처리합니다. 소란이 커지면 경찰이 옵니다.', pay: '$1,500', cooldown: 60 },
+  { id: 'tail', name: '미행', giver: '사설 탐정', desc: '표적 세단을 들키지 않게 따라갑니다. 너무 가까우면 들키고 너무 멀면 놓칩니다.', pay: '$1,600', cooldown: 60 },
   { id: 'fight', name: '지하 격투', giver: '격투장 주인', desc: '격투장 앞에서 3연전. 총은 쓰지 않습니다. 이길수록 상금이 커집니다.', pay: '$400 · $800 · $1,600', cooldown: 0 },
 ];
 export const jobInfo = (id: string): JobInfo | undefined => JOB_LIST.find(j => j.id === id);
@@ -69,6 +73,18 @@ export function startJob(sim: Sim, id: string): string {
     const c = poi(sim, 'chop0'), lane = sim.map.lanes[nearestLane(sim.map, c.x, c.z)];
     const v = sim.spawnVehicle('van', lane?.x ?? c.x, lane?.z ?? c.z, lane?.h ?? 0, { keep: true, tag: 'job', locked: false, color: 0x44505c }); v.mode = 'parked'; v.input.brake = 1; j.ids.car = v.id;
     const t = spotNear(sim, 320, 520, c); j.data.x = t.x; j.data.z = t.z; j.timer = 330;
+  } else if (id === 'cargo') {
+    const c = poi(sim, 'garage0'), lane = sim.map.lanes[nearestLane(sim.map, c.x, c.z)];
+    const v = sim.spawnVehicle('van', lane?.x ?? c.x, lane?.z ?? c.z, lane?.h ?? 0, { keep: true, tag: 'job', locked: false, color: 0xe8e8ea }); v.mode = 'parked'; v.input.brake = 1; j.ids.car = v.id;
+    const t = spotNear(sim, 380, 620, c); j.data.x = t.x; j.data.z = t.z; j.data.hp = 100; j.data.rain = 0; j.timer = 330;
+  } else if (id === 'demolish') {
+    const pts: Array<{ x: number; z: number }> = []; let from: { x: number; z: number } = p;
+    for (let i = 0; i < 3; i++) { const q = spotNear(sim, 110, 260, from), lane = sim.map.lanes[nearestLane(sim.map, q.x, q.z)]; pts.push(q); from = q; const v = sim.spawnVehicle(sim.rng() < 0.5 ? 'sedan' : 'suv', lane?.x ?? q.x, lane?.z ?? q.z, lane?.h ?? 0, { keep: true, tag: 'job', locked: true, color: 0x2f7d6a }); v.mode = 'parked'; v.input.brake = 1; j.ids[`c${i}`] = v.id; }
+    j.data.total = 3; j.timer = 240;
+  } else if (id === 'tail') {
+    const q = spotNear(sim, 70, 130), lane = sim.map.lanes[nearestLane(sim.map, q.x, q.z)];
+    const v = sim.spawnVehicle('sedan', lane?.x ?? q.x, lane?.z ?? q.z, lane?.h ?? 0, { keep: true, tag: 'job', locked: false, color: 0x30343b }); v.mode = 'scripted';
+    const d = sim.spawnPed('civ', v.x, v.z, { keep: true, tag: 'job', mode: 'scripted', vehicle: v.id, loot: 0 }); v.driver = d.id; j.ids.car = v.id; j.ids.driver = d.id; j.data.node = lane?.id ?? -1; j.data.prog = 0; j.data.seen = 0; j.data.far = 0; j.timer = 260;
   } else if (id === 'fight') {
     const arena = sim.nearPoi(p.x, p.z) ?? poi(sim, 'arena0'); const fee = sim.price(200); if (sim.cash < fee) { sim.job = blankJobState(); return '참가비가 부족합니다'; }
     sim.addCash(-fee); j.data.x = arena.x; j.data.z = arena.z; j.data.round = 0; j.stage = 0; p.cur = 0; p.hp = Math.max(p.hp, p.maxHp * 0.7); j.data.civ0 = sim.civKills;
@@ -139,6 +155,28 @@ export function stepJobs(sim: Sim, dt: number): void {
     const car = sim.vehicle(j.ids.car); if (!car || car.wrecked || !car.alive) { end(sim, false, '밴이 파괴되었습니다'); return; }
     if (!j.stage) { j.markers = [mark(car.x, car.z, 5, '밴', 'item')]; j.text = `해체장의 밴을 훔치세요 · ${clock(j.timer)}`; if (p.vehicle === car.id) { j.stage = 1; sim.setStars(Math.max(2, wantedUp)); sim.wanted.lastX = p.x; sim.wanted.lastZ = p.z; sim.wanted.unseenT = 0; sim.say('상자를 실었다! 경찰이 눈치챘다', 3); } }
     else { const t = { x: j.data.x!, z: j.data.z! }; j.markers = [mark(t.x, t.z, 9, '인수 지점')]; j.text = `인수 지점까지 ${Math.floor(dist(car, t))}m · ${clock(j.timer)}`; if (p.vehicle === car.id && dist(car, t) < 10 && sim.wanted.stars <= 2) end(sim, true, '밀수 성공', 1800); }
+  } else if (id === 'cargo') {
+    const car = sim.vehicle(j.ids.car); if (!car || car.wrecked || !car.alive) { end(sim, false, '밴이 파괴되었습니다'); return; }
+    if (!j.stage) { j.markers = [mark(car.x, car.z, 5, '화물 밴', 'item')]; j.text = `화물 밴에 타세요 · ${clock(j.timer)}`; if (p.vehicle === car.id) { j.stage = 1; sim.say('화물 적재 완료 · 살살 모세요', 3); } }
+    else {
+      const t = { x: j.data.x!, z: j.data.z! }; j.markers = [mark(t.x, t.z, 9, '하역장')]; if (p.vehicle === car.id) { j.data.hp -= (car.crashT > 0.05 ? 4.5 : 0) + (Math.hypot(car.vx, car.vz) > 38 ? dt * 1.2 : 0); if (sim.rain > 0.3) j.data.rain += dt; } else j.text = '밴에 다시 타세요 · 화물이 기다립니다';
+      if (p.vehicle === car.id) j.text = `화물 상태 ${Math.max(0, Math.floor(j.data.hp))}% · 하역장까지 ${Math.floor(dist(car, t))}m · ${clock(j.timer)}`;
+      if (j.data.hp <= 0) { end(sim, false, '화물이 모두 망가졌습니다'); return; }
+      if (p.vehicle === car.id && dist(car, t) < 10) { const wet = j.data.rain > 20 ? 400 : 0; end(sim, true, wet ? '화물 인도 · 우천 보너스' : '화물 인도', 1300 + Math.round(j.data.hp * 4) + wet); }
+    }
+  } else if (id === 'demolish') {
+    const cars = Array.from({ length: j.data.total! }, (_, i) => sim.vehicle(j.ids[`c${i}`])), left = cars.filter(v => v && v.alive && !v.wrecked);
+    j.markers = left.map(v => mark(v!.x, v!.z, 5, '표적', 'target')); j.text = `표적 차량 ${left.length}대 남음 · ${clock(j.timer)}`; if (!left.length) end(sim, true, '흔적 없이 처리했다', 1500);
+  } else if (id === 'tail') {
+    const car = sim.vehicle(j.ids.car), d = sim.ped(j.ids.driver); if (!car || !car.alive || car.wrecked || !d?.alive) { end(sim, false, '표적을 잃었습니다'); return; }
+    let node = sim.map.lanes[j.data.node!]; if (!node || dist(car, node) < 12) { const next = node?.next[0]; j.data.node = next ?? nearestLane(sim.map, car.x, car.z, car.h); node = sim.map.lanes[j.data.node!]; } if (node) autoDrive(sim, car, node.x, node.z, 14, dt);
+    const gap = dist(p, car); j.markers = [mark(car.x, car.z, 5, '표적', 'target')];
+    if (gap < 16) j.data.seen += dt * 1.4; else j.data.seen = Math.max(0, j.data.seen - dt * 0.6);
+    if (gap > 95) j.data.far += dt; else j.data.far = Math.max(0, j.data.far - dt);
+    if (gap >= 16 && gap <= 90) j.data.prog += dt;
+    if (j.data.seen >= 6) { end(sim, false, '들켰습니다 · 표적이 가속했다'); return; } if (j.data.far >= 10) { end(sim, false, '표적을 놓쳤습니다'); return; }
+    j.text = gap < 16 ? `너무 가깝습니다! 들킬 위험 ${Math.round(j.data.seen / 6 * 100)}%` : gap > 90 ? `너무 멉니다 · 놓칠 위험 ${Math.round(j.data.far / 10 * 100)}%` : `거리 유지 · 미행 ${Math.floor(j.data.prog)}/70초`;
+    if (j.data.prog >= 70) end(sim, true, '미행 성공', 1600);
   } else if (id === 'fight') {
     const x = j.data.x!, z = j.data.z!, round = j.data.round!;
     if (dist(p, { x, z }) > 45) { end(sim, false, '링을 벗어났습니다'); return; }

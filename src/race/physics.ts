@@ -15,7 +15,7 @@ export interface CarParams { top: number; accel: number; brake: number; grip: nu
 
 export const PLAYER_PARAMS: CarParams = { top: 74, accel: 15, brake: 62, grip: 1, turn: 1, drift: 1, nitro: 1 };
 export const BOOST_TOP = 1.36;
-export const NITRO_SECONDS = 3.2;
+export const NITRO_SECONDS = 4.2;
 /** 레이싱카 차체(race.glb)에 맞춘 충돌 반길이·반폭. 원은 옆으로는 너무 넓고 앞뒤로는 너무 짧습니다. */
 export const BODY_HALF_LENGTH = 2.25;
 export const BODY_HALF_WIDTH = 1.02;
@@ -86,7 +86,7 @@ export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: Car
 
   // 부스트 패드
   c.padCd = Math.max(0, c.padCd - dt);
-  if (c.padCd <= 0 && Math.abs(c.lat) < 7) for (const pad of t.pads) if (Math.abs(idxDelta(t, c.idx, pad)) <= 2) { c.boostT = Math.max(c.boostT, 1.5); c.padCd = 1.5; ev.pad = true; break; }
+  if (c.padCd <= 0 && Math.abs(c.lat) < 7) for (const pad of t.pads) if (Math.abs(idxDelta(t, c.idx, pad)) <= 2) { c.boostT = Math.max(c.boostT, 2); c.padCd = 2; ev.pad = true; break; }
   return ev;
 }
 

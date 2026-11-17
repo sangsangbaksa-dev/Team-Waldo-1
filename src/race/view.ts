@@ -242,7 +242,8 @@ export class RaceView {
       const r = radius ? radius() : 0, i = Math.floor(Math.random() * t.n), side = both ? (Math.random() < 0.5 ? -1 : 1) : 1, off = side * (hw + r + rnd(minOff, maxOff)), x = t.x[i] - t.tz[i] * off, z = t.z[i] + t.tx[i] * off;
       // 중심선 표본 사이 간격(ds)만큼 거리가 과대평가되므로 모든 표본을 확인하고 그만큼 여유를 둡니다.
       const need = hw + clear + r - t.ds * 0.5;
-      let ok = true; for (let j = 0; j < t.n; j++) { if (Math.hypot(t.x[j] - x, t.z[j] - z) < need) { ok = false; break; } }
+      // 높이 올라간 도로는 비탈이 옆으로 넓게 퍼지므로, 그 폭만큼 더 떨어뜨려 비탈에 소품이 파묻히지 않게 합니다.
+      let ok = true; for (let j = 0; j < t.n; j++) { if (Math.hypot(t.x[j] - x, t.z[j] - z) < need + Math.max(0, t.y[j] * 2.4 - 2)) { ok = false; break; } }
       if (ok && gap > 0 && out.some(p => Math.hypot(p[0] - x, p[1] - z) < gap)) ok = false;
       if (ok) out.push([x, z, t.y[i], r]);
     }
@@ -334,9 +335,10 @@ export class RaceView {
       this.instanced(crown, mat({ vertexColors: true }), spots.map(([x, z], k) => ({ p: [x, 2 * sizes[k] - 0.4, z] as [number, number, number], s: [sizes[k], sizes[k], sizes[k]] as [number, number, number], ry: rnd(0, 6), color: shade() })));
       // 먼 산: 높이에 따라 색이 변하고 꼭대기에 눈이 덮인 울퉁불퉁한 봉우리
       let cx = 0, cz = 0; for (let i = 0; i < t.n; i++) { cx += t.x[i]; cz += t.z[i]; } cx /= t.n; cz /= t.n;
+      let trackR = 0; for (let i = 0; i < t.n; i++) trackR = Math.max(trackR, Math.hypot(t.x[i] - cx, t.z[i] - cz)); // 봉우리 밑동이 코스에 닿지 않도록 코스 반경 바깥에 세웁니다.
       const rock = new THREE.Color(th.mountain), snowC = new THREE.Color(0xf4f7fb), pk: THREE.BufferGeometry[] = [];
       for (let k = 0; k < 18; k++) {
-        const a = (k / 18) * Math.PI * 2 + rnd(-0.12, 0.12), r = rnd(1000, 1500), h = rnd(240, 460), w = rnd(240, 380), g = new THREE.ConeGeometry(1, 1, 9, 4).toNonIndexed(), p = g.attributes.position, c = new Float32Array(p.count * 3), seed = rnd(0, 100);
+        const a = (k / 18) * Math.PI * 2 + rnd(-0.12, 0.12), h = rnd(240, 460), w = rnd(240, 380), r = Math.max(rnd(1000, 1500), trackR + w * 1.55 + 60), g = new THREE.ConeGeometry(1, 1, 9, 4).toNonIndexed(), p = g.attributes.position, c = new Float32Array(p.count * 3), seed = rnd(0, 100);
         for (let i = 0; i < p.count; i++) {
           const y = p.getY(i) + 0.5, rad = Math.hypot(p.getX(i), p.getZ(i)), ang = Math.atan2(p.getZ(i), p.getX(i)), j = 1 + 0.32 * Math.sin(ang * 3 + seed) + 0.18 * Math.sin(ang * 7 + seed * 2) + (y > 0.05 && y < 0.95 ? 0.12 * Math.sin(y * 13 + ang * 5 + seed) : 0);
           const px = p.getX(i) * j, pz = p.getZ(i) * j, py = y + 0.1 * Math.sin(ang * 4 + seed) * (1 - y); p.setXYZ(i, px * w, py * h, pz * w);

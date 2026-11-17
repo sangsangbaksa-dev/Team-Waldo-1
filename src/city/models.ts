@@ -2,9 +2,10 @@
 import * as THREE from 'three';
 import { retry, fetchBuffer, retryNote } from '../loading';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { bake, type Baked } from '../shared/character/bake';
 
-export interface Baked { fixed: THREE.BufferGeometry | null; team: THREE.BufferGeometry | null; skin: THREE.BufferGeometry | null; glow: THREE.BufferGeometry | null }
+export { bake, type Baked };
+
 /** 어깨에서 흔드는 팔: 지오메트리는 어깨 관절 기준이고 pivot 은 몸통 안에서의 어깨 위치입니다. */
 export interface Limb { geo: Baked; pivot: THREE.Vector3 }
 /** leg 는 허벅지(골반 관절 기준), shin 은 정강이와 발(무릎 관절 기준)입니다. shin 이 없으면 leg 가 다리 전체입니다. */
@@ -25,38 +26,7 @@ export interface Models {
   biz: Record<string, THREE.Object3D>;
 }
 
-const white = new THREE.Color(1, 1, 1);
 const isGlow = (n: string): boolean => n.startsWith('Glow');
-
-/** 노드 안의 모든 메시를 노드 로컬 좌표로 합쳐 재질 이름별(고정색/팀/피부/발광) 지오메트리로 굽습니다. */
-export function bake(root: THREE.Object3D): Baked {
-  root.updateWorldMatrix(true, true);
-  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
-  const lists: Record<keyof Baked, THREE.BufferGeometry[]> = { fixed: [], team: [], skin: [], glow: [] };
-  root.traverse(o => {
-    const mesh = o as THREE.Mesh; if (!mesh.isMesh) return;
-    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material], src = mesh.geometry;
-    const m = new THREE.Matrix4().multiplyMatrices(inv, mesh.matrixWorld);
-    const groups = src.groups.length ? src.groups : [{ start: 0, count: src.index ? src.index.count : src.attributes.position.count, materialIndex: 0 }];
-    const flat = src.index ? src.toNonIndexed() : src.clone(); const nonIndexedGroups = src.index ? groups.map(g => ({ ...g })) : groups;
-    // toNonIndexed 는 그룹 범위를 유지(인덱스 순서가 그대로 펼쳐짐)
-    for (const g of nonIndexedGroups) {
-      const mat = mats[g.materialIndex ?? 0] as THREE.MeshStandardMaterial, name = mat.name;
-      const part = new THREE.BufferGeometry(), pos = flat.attributes.position, nor = flat.attributes.normal;
-      const n = g.count, p = new Float32Array(n * 3), nn = new Float32Array(n * 3), c = new Float32Array(n * 3);
-      const col = name === 'Team' || name === 'Skin' ? white : (isGlow(name) && mat.emissive ? mat.emissive : mat.color);
-      for (let i = 0; i < n; i++) {
-        const v = new THREE.Vector3().fromBufferAttribute(pos, g.start + i).applyMatrix4(m), nv = new THREE.Vector3().fromBufferAttribute(nor, g.start + i).transformDirection(m);
-        p.set([v.x, v.y, v.z], i * 3); nn.set([nv.x, nv.y, nv.z], i * 3); c.set([col.r, col.g, col.b], i * 3);
-      }
-      part.setAttribute('position', new THREE.BufferAttribute(p, 3)); part.setAttribute('normal', new THREE.BufferAttribute(nn, 3)); part.setAttribute('color', new THREE.BufferAttribute(c, 3));
-      lists[name === 'Team' ? 'team' : name === 'Skin' ? 'skin' : isGlow(name) ? 'glow' : 'fixed'].push(part);
-    }
-    flat.dispose();
-  });
-  const join = (l: THREE.BufferGeometry[]): THREE.BufferGeometry | null => (l.length ? mergeGeometries(l, false) : null);
-  return { fixed: join(lists.fixed), team: join(lists.team), skin: join(lists.skin), glow: join(lists.glow) };
-}
 
 const matCache = new Map<string, THREE.Material>();
 /** 모델 복제: Team/Paint 재질은 색으로 치환하고 나머지는 가벼운 Lambert로 통일합니다. */

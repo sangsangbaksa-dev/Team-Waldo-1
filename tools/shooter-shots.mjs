@@ -20,6 +20,7 @@ try {
   await page.click('[data-level="easy"]'); await page.click('[data-act="start"]');
   await page.waitForFunction(() => window.__zz?.phase === 'countdown' || window.__zz?.phase === 'play');
   await page.evaluate(() => window.__zz.go()); await page.waitForFunction(() => window.__zz.phase === 'play');
+  await page.evaluate(() => { for (const p of window.__zz.match.players) { p.air = 0; p.alt = 0; } }); // 장면 촬영은 땅에서 시작
   // 각 장면: [이름, 목표 위치 기준(마을 번호/절대), 거리, 시선 방향, 고개 각도]
   const shots = [
     ['town0', { town: 0, dx: -30, dz: 4 }, 0, 0.02], ['town1', { town: 1, dx: 0, dz: -32 }, Math.PI / 2, 0.02], ['town2', { town: 2, dx: 30, dz: 6 }, Math.PI, 0.03], ['town3', { town: 3, dx: -4, dz: 32 }, -Math.PI / 2, 0.02],

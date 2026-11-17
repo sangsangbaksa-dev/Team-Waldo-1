@@ -127,9 +127,20 @@ function freeRect(map: GameMap, x0: number, z0: number, x1: number, z1: number, 
   for (const bd of map.buildings) if (x1 + pad > bd.x - bd.w / 2 && x0 - pad < bd.x + bd.w / 2 && z1 + pad > bd.z - bd.d / 2 && z0 - pad < bd.z + bd.d / 2) return false;
   return true;
 }
+/** 단단한 물건이 건물 출입구 앞(문이 난 두 변 바깥 4.5m)을 막는지. 문이 막히면 안의 전리품을 못 줍습니다. */
+function blocksDoor(map: GameMap, x0: number, z0: number, x1: number, z1: number): boolean {
+  for (const b of map.buildings) {
+    const hx = b.w / 2, hz = b.d / 2; if (x1 < b.x - hx - 6 || x0 > b.x + hx + 6 || z1 < b.z - hz - 6 || z0 > b.z + hz + 6) continue;
+    const A = 4.5; // 출입구 앞 빈 띠
+    if (b.door === 'z') { if (x1 > b.x - hx && x0 < b.x + hx && ((z1 > b.z + hz && z0 < b.z + hz + A) || (z0 < b.z - hz && z1 > b.z - hz - A))) return true; }
+    else if (z1 > b.z - hz && z0 < b.z + hz && ((x1 > b.x + hx && x0 < b.x + hx + A) || (x0 < b.x - hx && x1 > b.x - hx - A))) return true;
+  }
+  return false;
+}
 function addProp(map: GameMap, p: Omit<Prop, 'jit' | 'wreck' | 'v' | 'c'> & Partial<Pick<Prop, 'jit' | 'wreck' | 'v' | 'c'>>, solid: { kind: BoxKind; h?: number } | null, pad = 0.4): Prop | null {
   const full: Prop = { jit: 0, wreck: false, v: 0, c: 0x888888, ...p }, along = Math.abs(Math.sin(full.ry)) < 0.5, hx = (along ? full.w : full.d) / 2, hz = (along ? full.d : full.w) / 2;
   if (!freeRect(map, full.x - hx, full.z - hz, full.x + hx, full.z + hz, pad)) return null;
+  if (solid && blocksDoor(map, full.x - hx, full.z - hz, full.x + hx, full.z + hz)) return null;
   map.props.push(full);
   if (solid) { const y0 = full.kind === 'container' ? full.v * 2.6 : 0; addBox(map, { x0: full.x - hx, x1: full.x + hx, z0: full.z - hz, z1: full.z + hz, y0, y1: y0 + (solid.h ?? full.h), kind: solid.kind, tex: 0 }); }
   return full;
@@ -239,11 +250,14 @@ function furnish(map: GameMap, rng: () => number, c: Compound, layoutHalf: { x: 
   }
 }
 
+/** 건물 안 전리품 수. 100명이 겨루는 솔로 지도는 1.6배로 늘립니다. */
+function lootCount(rng: () => number, mode: Mode, range: [number, number]): number { const n = pickInt(rng, range); return mode === 'br' ? Math.floor(n * 1.6 + rng()) : n; }
+
 export function generateMap(seed: number, mode: Mode): GameMap {
   const rng = makeRng(seed), half = MAP_HALF[mode];
   const map: GameMap = { seed, mode, half, boxes: [], buildings: [], trees: [], rocks: [], props: [], compounds: [], sites: [], roads: [], loot: [], spawns: [], grid: new Map() };
   // 마을: 서로 충분히 떨어뜨려 배치
-  const towns = mode === 'br' ? 10 : 4, minGap = mode === 'br' ? 84 : 58;
+  const towns = mode === 'br' ? 14 : 4, minGap = mode === 'br' ? 74 : 58;
   for (let tries = 0; map.compounds.length < towns && tries < 800; tries++) {
     const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * half * 0.78, x = Math.cos(a) * r, z = Math.sin(a) * r;
     if (map.compounds.every(c => Math.hypot(c.x - x, c.z - z) > minGap)) { map.compounds.push({ x, z, r: 0, theme: 'village', name: '' }); }
@@ -252,7 +266,7 @@ export function generateMap(seed: number, mode: Mode): GameMap {
   const bag = [...THEME_LIST].sort(() => rng() - 0.5); const used: Record<string, number> = {};
   map.compounds.forEach((c, i) => { c.theme = i < bag.length ? bag[i] : THEME_LIST[Math.floor(rng() * THEME_LIST.length)]; const def = THEMES[c.theme]; const n = used[c.theme] ?? 0; used[c.theme] = n + 1; c.name = def.names[n % def.names.length] });
   for (const c of map.compounds) {
-    const def = THEMES[c.theme], cols = mode === 'br' ? def.cols[0] : 2, rows = def.rows, lot = def.lot, n = (mode === 'br' ? 3 : 2) + Math.floor(rng() * 3);
+    const def = THEMES[c.theme], cols = mode === 'br' ? def.cols[0] : 2, rows = def.rows, lot = def.lot, n = (mode === 'br' ? 4 : 2) + Math.floor(rng() * 3);
     const slots: Array<[number, number]> = []; for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) slots.push([i, j]);
     for (let i = slots.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [slots[i], slots[j]] = [slots[j], slots[i]]; }
     let reach = 8; const built: Building[] = [];
@@ -262,7 +276,7 @@ export function generateMap(seed: number, mode: Mode): GameMap {
       const b = build(map, rng, type, bx, bz); built.push(b);
       reach = Math.max(reach, Math.hypot(bx - c.x, bz - c.z) + Math.max(b.w, b.d) / 2);
       // 건물 안 전리품
-      const loots = pickInt(rng, sp.loot);
+      const loots = lootCount(rng, mode, sp.loot);
       for (let k = 0; k < loots; k++) pushLoot(map, rollLoot(rng, sp.tier), b.x + (rng() - 0.5) * (b.w - 2.4), b.z + (rng() - 0.5) * (b.d - 2.4));
       // 문밖 상자
       if (rng() < 0.55) { const s = 0.6 + rng() * 0.4, ox = b.x + (b.w / 2 + 1.6) * (rng() < 0.5 ? -1 : 1), oz = b.z + (rng() - 0.5) * b.d; if (freeRect(map, ox - s, oz - s, ox + s, oz + s, 0.3)) addBox(map, { x0: ox - s, x1: ox + s, z0: oz - s, z1: oz + s, y0: 0, y1: 1.1, kind: 'crate', tex: 0 }); }
@@ -277,7 +291,7 @@ export function generateMap(seed: number, mode: Mode): GameMap {
     for (const { j } of near) { const k = i < j ? `${i}-${j}` : `${j}-${i}`; if (!used2.has(k)) { used2.add(k); map.roads.push(i < j ? [i, j] : [j, i]); } }
   }
   // 들판의 외딴 시설: 주유소·오두막·창고·초소·벙커
-  const lone: BuildingType[] = mode === 'br' ? ['station', 'station', 'station', 'cabin', 'cabin', 'cabin', 'cabin', 'garage', 'garage', 'tower', 'tower', 'bunker', 'bunker', 'barn'] : ['station', 'cabin', 'cabin', 'tower', 'bunker'];
+  const lone: BuildingType[] = mode === 'br' ? ['station', 'station', 'station', 'station', 'cabin', 'cabin', 'cabin', 'cabin', 'cabin', 'cabin', 'garage', 'garage', 'garage', 'tower', 'tower', 'tower', 'bunker', 'bunker', 'bunker', 'barn', 'barn', 'cabin', 'cabin', 'garage'] : ['station', 'cabin', 'cabin', 'tower', 'bunker'];
   const farFromTown = (x: number, z: number, pad: number): boolean => map.compounds.every(c => Math.hypot(c.x - x, c.z - z) > c.r + pad) && map.sites.every(s => Math.hypot(s.x - x, s.z - z) > s.r + pad);
   for (const type of lone) {
     for (let tries = 0; tries < 60; tries++) {
@@ -285,7 +299,7 @@ export function generateMap(seed: number, mode: Mode): GameMap {
       const before = map.buildings.length;
       if (type === 'station') { if (!station(map, rng, x, z)) continue; map.sites.push({ x, z: z + 5, r: 18 }); }
       else { if (!freeRect(map, x - 12, z - 10, x + 12, z + 10, 0)) continue; const b = build(map, rng, type, x, z); map.sites.push({ x, z, r: Math.max(b.w, b.d) / 2 + 6 }); }
-      const b = map.buildings[before], sp = SPEC[b.type]; for (let k = 0, n = pickInt(rng, sp.loot); k < n; k++) pushLoot(map, rollLoot(rng, sp.tier), b.x + (rng() - 0.5) * (b.w - 2.4), b.z + (rng() - 0.5) * (b.d - 2.4));
+      const b = map.buildings[before], sp = SPEC[b.type]; for (let k = 0, n = lootCount(rng, mode, sp.loot); k < n; k++) pushLoot(map, rollLoot(rng, sp.tier), b.x + (rng() - 0.5) * (b.w - 2.4), b.z + (rng() - 0.5) * (b.d - 2.4));
       if (type === 'bunker' || type === 'tower') for (let k = 0; k < 3; k++) addProp(map, { kind: 'sandbag', x: b.x + (k - 1) * 2.4, z: b.z + b.d / 2 + 3.2, ry: 0, w: 2.2, d: 0.7, h: 1.1, c: 0xa89b72 }, { kind: 'prop' }, 0.2);
       if (type === 'barn') for (let k = 0; k < 3; k++) addProp(map, { kind: 'hay', x: b.x + b.w / 2 + 3 + k * 1.8, z: b.z + (rng() - 0.5) * 4, ry: 0, w: 1.5, d: 1.4, h: 1.4, c: 0xc9b25a }, { kind: 'prop' }, 0.4);
       break;
@@ -299,7 +313,7 @@ export function generateMap(seed: number, mode: Mode): GameMap {
     for (let d = a.r + 8; d < len - b.r - 6; d += 30) addProp(map, { kind: 'pole', x: a.x + Math.cos(ang) * d + nx * 3.6, z: a.z + Math.sin(ang) * d + nz * 3.6, ry: ang, w: 0.3, d: 0.3, h: 9, c: 0x6b5a45 }, { kind: 'prop' }, 0.2);
     if (rng() < (mode === 'br' ? 0.8 : 0.5)) { const t = 0.3 + rng() * 0.4; vehicleAt(map, rng, a.x + (b.x - a.x) * t + nx * (rng() - 0.5) * 2, a.z + (b.z - a.z) * t + nz * (rng() - 0.5) * 2, ang); }
   }
-  for (let k = 0, tries = 0, want = mode === 'br' ? 9 : 3; k < want && tries < 80; tries++) { const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * half * 0.88; if (clear(Math.cos(a) * r, Math.sin(a) * r, 2) && vehicleAt(map, rng, Math.cos(a) * r, Math.sin(a) * r)) k++; }
+  for (let k = 0, tries = 0, want = mode === 'br' ? 14 : 3; k < want && tries < 80; tries++) { const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * half * 0.88; if (clear(Math.cos(a) * r, Math.sin(a) * r, 2) && vehicleAt(map, rng, Math.cos(a) * r, Math.sin(a) * r)) k++; }
   // 들판: 바위
   const rocks = mode === 'br' ? 60 : 22;
   for (let i = 0, tries = 0; i < rocks && tries < 800; tries++) {

@@ -12,13 +12,15 @@ export interface BotBrain {
   strafe: number; strafeT: number; errYaw: number; errPitch: number; errT: number; burstT: number; pauseT: number; head: boolean;
   investX: number; investZ: number; investT: number;
   path: number[] | null; pathIdx: number; pathGx: number; pathGz: number; planT: number;
+  /** 생각하지 않고 쌓인 시간 · 낙하 계획(목표 지점, 뛰는 거리, 낙하산 펴는 고도, 지난 거리) · 전리품 탐색 쿨다운 */
+  acc: number; dropX: number; dropZ: number; jumpDist: number; openAlt: number; lastD: number; lootScan: number;
 }
 export function newBrain(rng: () => number, t: BotTuning): BotBrain {
   const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * 0.6;
   return {
     t, think: rng() * 0.2, target: -1, seen: 99, react: 0, lastX: 0, lastZ: 0, goalX: 0, goalZ: 0, goalT: 0, lootId: -1, lootT: 0, skip: new Set(), offX: Math.cos(a) * r, offZ: Math.sin(a) * r,
     stuck: 0, detourT: 0, detourDir: 1, probeT: 0, probeX: 0, probeZ: 0, strafe: 1, strafeT: 0, errYaw: 0, errPitch: 0, errT: 0, burstT: 0, pauseT: 0, head: false, investX: 0, investZ: 0, investT: 0,
-    path: null, pathIdx: 0, pathGx: 0, pathGz: 0, planT: 0,
+    path: null, pathIdx: 0, pathGx: 0, pathGz: 0, planT: 0, acc: 0, dropX: 0, dropZ: 0, jumpDist: 200, openAlt: 130, lastD: Infinity, lootScan: 0,
   };
 }
 
@@ -48,16 +50,19 @@ function wantLoot(p: Player, kind: string, weapon: string | null, part: PartId |
 export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void {
   const b = p.brain!, T = b.t, inp = p.input, rng = m.rng, eye = PLAYER.eye;
   inp.fire = false; inp.reload = false; inp.interact = false; inp.sprint = false; inp.ads = false; inp.slot = -1; inp.mx = 0; inp.mz = 0;
-  b.goalT -= dt; b.investT -= dt; b.strafeT -= dt; b.errT -= dt; b.detourT -= dt; b.lootT -= dt; b.think -= dt;
+  b.goalT -= dt; b.investT -= dt; b.strafeT -= dt; b.errT -= dt; b.detourT -= dt; b.lootT -= dt; b.think -= dt; b.lootScan -= dt;
 
   // ---- 주변 살피기 (0.12~0.2초마다) ----
   if (b.think <= 0) {
     b.think = 0.12 + rng() * 0.08;
     let best: Player | null = null, bestD = Infinity;
+    // 낙하 직후 권총뿐일 때는 먼저 무기부터 찾습니다: 가까이 오거나 맞기 전에는 먼 적과 싸우지 않습니다.
+    const cautious = m.plane !== null && !p.guns.some(g => g && g.id !== 'pistol') && m.t - p.landedAt < 45;
     for (const q of m.players) {
-      if (!q.alive || q.id === p.id) continue;
+      if (!q.alive || q.id === p.id || q.air) continue;
       const dx = q.x - p.x, dz = q.z - p.z, d = Math.hypot(dx, dz); if (d > T.sight) continue;
       const retaliate = p.hurt > 0 && p.lastHitBy === q.id;
+      if (cautious && !retaliate && d > 9) continue;
       if (!retaliate && d > 9 && Math.abs(angDiff(Math.atan2(dz, dx), p.yaw)) > T.fov) continue;
       if (d < bestD && lineClear(m.map, p.x, eye, p.z, q.x, 1.2, q.z)) { best = q; bestD = d; }
     }
@@ -65,7 +70,7 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
       if (b.target !== best.id) { b.target = best.id; b.react = T.react * (0.7 + rng() * 0.6); b.head = rng() < T.headAim; }
       b.seen = 0; b.lastX = best.x; b.lastZ = best.z;
     } else { b.seen += 0.16; if (b.target >= 0 && b.seen > 7 + T.react * 3) b.target = -1; }
-    if (b.target < 0 && b.investT <= 0) {
+    if (b.target < 0 && b.investT <= 0 && !cautious) {
       for (const s of m.sounds) if (s.by !== p.id && m.t - s.t < 1.2 && Math.hypot(s.x - p.x, s.z - p.z) < (38 + T.sight * 0.35) * (s.quiet ? 0.3 : 1)) { b.investX = s.x; b.investZ = s.z; b.investT = 6; break; }
       if (p.hurt > 0 && b.investT <= 0) { b.investX = p.x + Math.cos(p.hurtYaw) * 14; b.investZ = p.z + Math.sin(p.hurtYaw) * 14; b.investT = 5; }
     }
@@ -90,7 +95,7 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
   const engaged = !!q && (visible || b.seen < 1.2);
   if (q && engaged) {
     const tx = visible ? q.x : b.lastX, tz = visible ? q.z : b.lastZ, dx = tx - p.x, dz = tz - p.z, d = Math.hypot(dx, dz) + 1e-6, ty = b.head ? 1.62 : 1.15;
-    if (b.errT <= 0) { b.errT = 0.22 + rng() * 0.15; const k = T.aimErr * (1 + d / 55); b.errYaw = gauss(rng) * k; b.errPitch = gauss(rng) * k * 0.7; }
+    if (b.errT <= 0) { b.errT = 0.22 + rng() * 0.15; const k = T.aimErr * (1 + d / 55) * (q.bot && m.plane ? 2.2 : 1); /* 100명 판: AI끼리는 덜 정확해 초반에 다 쓰러지지 않습니다 */ b.errYaw = gauss(rng) * k; b.errPitch = gauss(rng) * k * 0.7; }
     yawTarget = Math.atan2(dz, dx) + b.errYaw; pitchTarget = Math.atan2(ty - eye, d) + b.errPitch; turn = T.turn;
     if (visible && def && gun) {
       b.react -= dt;
@@ -124,8 +129,8 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
       b.goalX = b.lastX; b.goalZ = b.lastZ; b.goalT = 0.3; b.lootId = -1; if (Math.hypot(b.lastX - p.x, b.lastZ - p.z) < 3) b.target = -1;
     } else {
       if (b.lootId >= 0) { const l = m.loot.find(x => x.id === b.lootId); if (!l || l.taken || b.lootT <= 0) { if (l && !l.taken) b.skip.add(l.id); b.lootId = -1; } }
-      if (b.lootId < 0) {
-        let bl = -1, bs = 0;
+      if (b.lootId < 0 && b.lootScan <= 0) {
+        b.lootScan = 0.35 + rng() * 0.3; let bl = -1, bs = 0;
         for (const l of m.loot) {
           if (l.taken || b.skip.has(l.id)) continue; const d = Math.hypot(l.x - p.x, l.z - p.z); if (d > T.lootRadius) continue;
           const w = wantLoot(p, l.kind, l.weapon, l.part ?? null); if (w <= 0) continue; const s = w / (1 + d / 28); if (s > bs) { bs = s; bl = l.id; }
@@ -181,4 +186,17 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
     const rel = angDiff(moveYaw, p.yaw); inp.mz = Math.cos(rel); inp.mx = Math.sin(rel);
     inp.sprint = run && Math.abs(rel) < 0.6 && !visible;
   }
+}
+
+/** 비행기 안·낙하 중인 봇: 목표 지점에 가까워지면 뛰고, 목표를 향해 활강하다가 낙하산을 펴고 내립니다. */
+export function thinkAir(m: Match, p: Player): void {
+  const b = p.brain!, inp = p.input, dx = b.dropX - p.x, dz = b.dropZ - p.z, d = Math.hypot(dx, dz);
+  inp.jump = false; inp.sprint = false; inp.mx = 0; inp.mz = 0; inp.fire = false;
+  if (p.air === 1) {
+    // 가장 가까이 지나가는 순간(거리가 다시 늘기 시작할 때)에는 반드시 뜁니다
+    if (d < b.jumpDist || d > b.lastD + 0.5) inp.jump = true; b.lastD = d; p.yaw = Math.atan2(m.plane!.dz, m.plane!.dx); inp.yaw = p.yaw; return;
+  }
+  const want = Math.atan2(dz, dx), step = 2.2 * (1 / 60); p.yaw += clamp(angDiff(want, p.yaw), -step * 3, step * 3); inp.yaw = p.yaw; inp.pitch = p.pitch = 0;
+  if (p.air === 2) { inp.mz = 1; if (p.alt < b.openAlt) inp.jump = true; return; }
+  if (d > 70) inp.mz = 1; else if (d > 12) inp.mz = Math.min(1, d / 60 + 0.25); // 가까워지면 속도를 줄여 목표 위에서 내립니다
 }

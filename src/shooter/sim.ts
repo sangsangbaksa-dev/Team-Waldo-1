@@ -1,10 +1,14 @@
 // ZERO ZONE — 경기 시뮬레이션: 이동·사격·피해·전리품·줄어드는 자기장·승패. 화면과 무관해서 테스트와 봇 대 봇 시뮬레이션에서 그대로 돌립니다.
-import { BOOST, BOTS, BOT_NAMES, DIFFICULTIES, HELMET_CUT, MAP_HALF, PART_FITS, PARTS, partFit, PLAYER, SKIN_TONES, TEAM_COLORS, WEAPONS, ZONES, magOf, makeRng, partHandling, type Attachments, type Difficulty, type Mode, type PartId, type WeaponId } from './config';
+import { AIR, BOOST, BOTS, BOT_NAMES, DIFFICULTIES, HELMET_CUT, MAP_HALF, PART_FITS, PARTS, partFit, PLAYER, SKIN_TONES, TEAM_COLORS, WEAPONS, ZONES, magOf, makeRng, partHandling, type Attachments, type Difficulty, type Mode, type PartId, type WeaponId } from './config';
 import { blockedAt, generateMap, pushOut, rayWorld, type GameMap, type Loot } from './world';
-import { thinkBot, newBrain, type BotBrain } from './bot';
+import { thinkBot, thinkAir, newBrain, type BotBrain } from './bot';
 
-export interface Input { mx: number; mz: number; yaw: number; pitch: number; fire: boolean; sprint: boolean; reload: boolean; interact: boolean; ads: boolean; slot: number }
+export interface Input { mx: number; mz: number; yaw: number; pitch: number; fire: boolean; sprint: boolean; reload: boolean; interact: boolean; ads: boolean; slot: number; /** 점프(비행기에서 뛰어내리기) · 낙하산 펴기 */ jump?: boolean }
 export const blankInput = (): Input => ({ mx: 0, mz: 0, yaw: 0, pitch: 0, fire: false, sprint: false, reload: false, interact: false, ads: false, slot: -1 });
+/** 비행기 항로: 시작점에서 방향(dx,dz)으로 plane m/s 로 날아 len 미터 뒤에 지도를 벗어납니다. */
+export interface Plane { x0: number; z0: number; dx: number; dz: number; speed: number; len: number; end: number }
+/** 0 땅 · 1 비행기 안 · 2 자유낙하 · 3 낙하산 */
+export type AirState = 0 | 1 | 2 | 3;
 export interface Gun { id: WeaponId; mag: number; reserve: number; att: Attachments }
 /** 보급 투하: call 시각에 비행기가 지나며 상자를 떨어뜨리고, at 시각에 착지해 전리품이 열립니다. */
 export interface Drop { x: number; z: number; at: number; fall: number; called: boolean; landed: boolean }
@@ -13,6 +17,7 @@ export interface Player {
   x: number; z: number; yaw: number; pitch: number; vx: number; vz: number; hp: number; armor: number; helmet: number; boost: number; alive: boolean;
   guns: (Gun | null)[]; cur: number; reload: number; cd: number; fireHeld: boolean; interactHeld: boolean;
   kills: number; place: number; diedAt: number; input: Input; brain: BotBrain | null;
+  /** 낙하 상태와 지면으로부터의 높이(m) */ air: AirState; alt: number; jumpHeld: boolean; landedAt: number;
   walk: number; kick: number; muzzle: number; hurt: number; hurtYaw: number; ads: boolean; speed: number; lastHitBy: number; emptyT: number;
 }
 export type MatchEvent =
@@ -21,17 +26,20 @@ export type MatchEvent =
   | { t: 'kill'; victim: number; attacker: number; weapon: WeaponId | 'zone' }
   | { t: 'pickup'; id: number; loot: number; kind: Loot['kind']; weapon: WeaponId | null; part?: PartId | null; level?: number }
   | { t: 'drop'; stage: 'call' | 'land'; x: number; z: number }
+  | { t: 'jump'; id: number } | { t: 'chute'; id: number } | { t: 'land'; id: number }
   | { t: 'reload'; id: number } | { t: 'empty'; id: number } | { t: 'over'; winner: number };
 
 export interface ZoneState { cx: number; cz: number; r: number; nextCx: number; nextCz: number; nextR: number; shrinking: boolean; phase: number; timeLeft: number; dps: number }
 
-export interface MatchOptions { seed: number; mode: Mode; difficulty: Difficulty; /** 사람(또는 원격) 선수 이름들. 나머지는 봇이 채웁니다. */ humans: Array<{ name: string; remote?: boolean }>; fill?: number }
+export interface MatchOptions { seed: number; mode: Mode; difficulty: Difficulty; /** 사람(또는 원격) 선수 이름들. 나머지는 봇이 채웁니다. */ humans: Array<{ name: string; remote?: boolean }>; fill?: number; /** 비행기에서 낙하산으로 시작(솔로 배틀로열). 꺼 두면 땅에서 시작합니다. */ air?: boolean }
 
 export class Match {
   map: GameMap; mode: Mode; difficulty: Difficulty; seed: number;
   players: Player[] = []; loot: Loot[]; t = 0; over = false; winner = -1; events: MatchEvent[] = [];
   /** 최근 총소리(봇이 듣습니다) */ sounds: Array<{ x: number; z: number; t: number; by: number; quiet?: boolean }> = [];
   /** 보급 투하(솔로 배틀로열만) */ drops: Drop[] = [];
+  /** 비행기 항로(낙하 시작일 때만) */ plane: Plane | null = null;
+  /** 자기장 시간이 흐르기 시작하는 때(낙하하는 동안은 기다립니다) */ zoneDelay = 0;
   rng: () => number;
   private centers: Array<{ x: number; z: number; r: number }>; private starts: number[]; private nextLoot: number;
 
@@ -39,6 +47,10 @@ export class Match {
     this.seed = o.seed; this.mode = o.mode; this.difficulty = o.difficulty;
     this.map = generateMap(o.seed, o.mode); this.loot = this.map.loot.map(l => ({ ...l })); this.nextLoot = this.loot.length + 1000;
     this.rng = makeRng(o.seed ^ 0x9e3779b9);
+    if (o.air && o.mode === 'br') {
+      const pr = makeRng(o.seed ^ 0x3c6ef372), a = pr() * Math.PI * 2, half0 = MAP_HALF.br, off = (pr() - 0.5) * half0 * 0.9, len = half0 * 2.7, dx = Math.cos(a), dz = Math.sin(a);
+      this.plane = { x0: -dx * len / 2 - dz * off, z0: -dz * len / 2 + dx * off, dx, dz, speed: AIR.plane, len, end: len / AIR.plane }; this.zoneDelay = AIR.delay;
+    }
     // 자기장 중심은 시드로 정해 두 브라우저가 같은 원을 봅니다.
     const zr = makeRng(o.seed ^ 0x2545f491), half = MAP_HALF[o.mode], phases = ZONES[o.mode];
     this.centers = []; this.starts = []; let prev = { x: 0, z: 0, r: half * 1.35 }, at = 0;
@@ -52,28 +64,28 @@ export class Match {
     }
     if (o.mode === 'br') {
       const dr = makeRng(o.seed ^ 0x51ed270b);
-      for (const at of [105, 218]) for (let i = 0; i < 30; i++) {
+      for (const at of [105 + this.zoneDelay, 218 + this.zoneDelay]) for (let i = 0; i < 30; i++) {
         const a = dr() * Math.PI * 2, r = Math.sqrt(dr()) * half * 0.62, x = Math.cos(a) * r, z = Math.sin(a) * r;
         if (!blockedAt(this.map, x, z, 3.2) || i === 29) { this.drops.push({ x, z, at, fall: 16, called: false, landed: false }); break; }
       }
     }
-    const total = o.fill ?? (o.mode === 'br' ? 20 : o.humans.length), names = [...BOT_NAMES].sort(() => this.rng() - 0.5);
+    const total = o.fill ?? (o.mode === 'br' ? 20 : o.humans.length), names = [...BOT_NAMES].sort(() => this.rng() - 0.5), air = !!this.plane;
     for (let i = 0; i < total; i++) {
-      const h = o.humans[i], sp = this.map.spawns[i % this.map.spawns.length];
+      const h = o.humans[i], sp = air ? this.planeAt(0) : this.map.spawns[i % this.map.spawns.length], bi = i - o.humans.length, cyc = Math.floor(bi / names.length);
       const p: Player = {
-        id: i, name: h?.name ?? names[(i - o.humans.length) % names.length], bot: !h, remote: !!h?.remote, color: TEAM_COLORS[i % TEAM_COLORS.length], skin: SKIN_TONES[i % SKIN_TONES.length],
-        x: sp.x, z: sp.z, yaw: Math.atan2(-sp.z, -sp.x), pitch: 0, vx: 0, vz: 0, hp: PLAYER.hp, armor: 0, helmet: 0, boost: 0, alive: true,
+        id: i, name: h?.name ?? names[bi % names.length] + (cyc > 0 ? String(cyc + 1) : ''), bot: !h, remote: !!h?.remote, color: TEAM_COLORS[i % TEAM_COLORS.length], skin: SKIN_TONES[i % SKIN_TONES.length],
+        x: sp.x, z: sp.z, yaw: air ? Math.atan2(this.plane!.dz, this.plane!.dx) : Math.atan2(-sp.z, -sp.x), pitch: 0, vx: 0, vz: 0, hp: PLAYER.hp, armor: 0, helmet: 0, boost: 0, alive: true,
         guns: [{ id: 'pistol', mag: WEAPONS.pistol.mag, reserve: WEAPONS.pistol.mag * 2, att: {} }, null], cur: 0, reload: 0, cd: 0.4, fireHeld: false, interactHeld: false,
-        kills: 0, place: 0, diedAt: 0, input: blankInput(), brain: null, walk: 0, kick: 0, muzzle: 0, hurt: 0, hurtYaw: 0, ads: false, speed: 0, lastHitBy: -1, emptyT: 0,
+        kills: 0, place: 0, diedAt: 0, input: blankInput(), brain: null, air: air ? 1 : 0, alt: air ? AIR.alt : 0, jumpHeld: false, landedAt: 0, walk: 0, kick: 0, muzzle: 0, hurt: 0, hurtYaw: 0, ads: false, speed: 0, lastHitBy: -1, emptyT: 0,
       };
-      if (p.bot) p.brain = newBrain(this.rng, BOTS[o.difficulty]);
+      if (p.bot) { p.brain = newBrain(this.rng, BOTS[o.difficulty]); if (air) this.planDrop(p); }
       p.input.yaw = p.yaw; this.players.push(p);
     }
   }
 
   /** 시각 t 의 자기장. */
-  zoneAt(t: number): ZoneState {
-    const half = this.map.half, phases = ZONES[this.mode];
+  zoneAt(time: number): ZoneState {
+    const t = Math.max(0, time - this.zoneDelay), half = this.map.half, phases = ZONES[this.mode];
     let prev = { x: 0, z: 0, r: half * 1.35 };
     for (let i = 0; i < phases.length; i++) {
       const ph = phases[i], c = this.centers[i], s = this.starts[i];
@@ -96,9 +108,15 @@ export class Match {
     const zone = this.zone;
     this.sounds = this.sounds.filter(s => this.t - s.t < 2.5);
     this.stepDrops();
+    // 멀리 있는 AI(사람 시야 밖)는 생각을 0.2초에 한 번만 해서 100명이 뛰어도 가볍게 돕니다.
+    const humans: Player[] = []; for (const q of this.players) if (!q.bot && q.alive) humans.push(q);
     for (const p of this.players) {
       if (!p.alive) continue;
-      if (p.bot && p.brain) thinkBot(this, p, dt, zone);
+      if (p.air) { this.stepAir(p, dt); continue; }
+      if (p.bot && p.brain) {
+        const b = p.brain; b.acc += dt; let far = true; for (const h of humans) if (Math.abs(h.x - p.x) < 150 && Math.abs(h.z - p.z) < 150) { far = false; break; }
+        if (!far || b.acc >= 0.2) { thinkBot(this, p, b.acc, zone); b.acc = 0; }
+      }
       this.update(p, dt);
       if (!p.remote && Math.hypot(p.x - zone.cx, p.z - zone.cz) > zone.r) this.damage(p, zone.dps * dt, -1, 'zone', false, p.x, 1, p.z, true);
     }
@@ -107,6 +125,44 @@ export class Match {
       const alive = this.players.filter(p => p.alive);
       if (alive.length <= 1 && this.players.length > 1) this.finish(alive[0]?.id ?? this.lastDead());
     }
+  }
+  /** 비행기의 위치(시각 t). 항로를 벗어난 뒤에도 같은 방향으로 계속 날아갑니다. */
+  planeAt(t: number): { x: number; z: number } { const pl = this.plane!, d = pl.speed * t; return { x: pl.x0 + pl.dx * d, z: pl.z0 + pl.dz * d }; }
+  /** 이 봇이 어디로 내릴지, 비행기가 목표에 얼마나 가까워지면 뛸지 정합니다. */
+  private planDrop(p: Player): void {
+    const b = p.brain!, rng = this.rng, cs = this.map.compounds, half = this.map.half; let best = -1;
+    // 후보 여덟 곳 중 먼저 정해진 봇들의 목표와 가장 멀리 떨어진 곳을 고릅니다(한 곳에 몰려 내리지 않게).
+    for (let k = 0; k < 8; k++) {
+      const a = rng() * Math.PI * 2; let x: number, z: number;
+      if (cs.length && rng() < 0.45) { const c = cs[Math.floor(rng() * cs.length)], r = Math.sqrt(rng()) * c.r * 0.8; x = c.x + Math.cos(a) * r; z = c.z + Math.sin(a) * r; }
+      else { const r = Math.sqrt(rng()) * half * 0.9; x = Math.cos(a) * r; z = Math.sin(a) * r; }
+      let near = Infinity; for (const q of this.players) if (q !== p && q.brain && q.id < p.id) near = Math.min(near, Math.hypot(q.brain.dropX - x, q.brain.dropZ - z));
+      if (near > best) { best = near; b.dropX = x; b.dropZ = z; }
+    }
+    b.jumpDist = 140 + rng() * 110; b.openAlt = AIR.open + 15 + rng() * 85;
+  }
+  /** 비행기 안·자유낙하·낙하산 중인 선수 한 명을 진행합니다. 착지하면 air 가 0 이 되어 보통 선수로 돌아갑니다. */
+  private stepAir(p: Player, dt: number): void {
+    const inp = p.input, pl = this.plane!; if (p.bot && p.brain) thinkAir(this, p);
+    const wantJump = !!inp.jump && !p.jumpHeld; p.jumpHeld = !!inp.jump;
+    if (!p.bot) { p.yaw = inp.yaw; p.pitch = Math.max(-1.45, Math.min(1.45, inp.pitch)); }
+    p.speed = 0; p.vx *= 0; p.hurt = 0;
+    if (p.air === 1) {
+      const at = this.planeAt(Math.min(this.t, pl.end)); p.x = at.x; p.z = at.z; p.alt = AIR.alt;
+      if (wantJump || this.t >= pl.end) { p.air = 2; p.vx = 0; p.vz = 0; this.events.push({ t: 'jump', id: p.id }); }
+      return;
+    }
+    const fx = Math.cos(p.yaw), fz = Math.sin(p.yaw), mz = Math.max(-1, Math.min(1, inp.mz)), mx = Math.max(-1, Math.min(1, inp.mx)), fwd = mz > 0.2;
+    let wx = fx * mz - fz * mx, wz = fz * mz + fx * mx; const wl = Math.hypot(wx, wz); if (wl > 1) { wx /= wl; wz /= wl; }
+    let top: number, fall: number;
+    if (p.air === 2) {
+      const dive = inp.sprint && fwd; top = dive ? AIR.diveH : fwd ? AIR.fallFast : AIR.fallH; fall = dive ? AIR.dive : AIR.fall;
+      if ((wantJump && p.alt <= AIR.manualOpen) || p.alt <= AIR.open) { p.air = 3; this.events.push({ t: 'chute', id: p.id }); }
+    } else { const run = inp.sprint && fwd; top = run ? AIR.chuteRun : fwd ? AIR.chuteGo : AIR.chuteH; fall = run ? AIR.chuteFast : AIR.chute; }
+    const k = Math.min(1, dt * 3); p.vx += (wx * top - p.vx) * k; p.vz += (wz * top - p.vz) * k;
+    p.x += p.vx * dt; p.z += p.vz * dt; p.alt -= (p.air === 3 && p.alt < 4 ? Math.max(3, fall * 0.5) : fall) * dt;
+    const lim = this.map.half - 1; p.x = Math.max(-lim, Math.min(lim, p.x)); p.z = Math.max(-lim, Math.min(lim, p.z));
+    if (p.alt <= 0) { p.alt = 0; p.air = 0; p.vx = 0; p.vz = 0; pushOut(this.map, p, PLAYER.radius); p.landedAt = this.t; p.cd = Math.max(p.cd, 0.5); this.events.push({ t: 'land', id: p.id }); }
   }
   private stepDrops(): void {
     for (const d of this.drops) {
@@ -217,7 +273,7 @@ export class Match {
     const wallT = rayWorld(this.map, ox, oy, oz, dx, dy, dz, def.range);
     let hitT = Math.min(wallT, def.range), target: Player | null = null, head = false;
     for (const q of this.players) {
-      if (!q.alive || q.id === shooter) continue;
+      if (!q.alive || q.id === shooter || q.air) continue;
       const px = ox - q.x, pz = oz - q.z, a = dx * dx + dz * dz; if (a < 1e-9) continue;
       const R = fromRemote ? 0.62 : 0.5, b = 2 * (px * dx + pz * dz), c = px * px + pz * pz - R * R, disc = b * b - 4 * a * c; if (disc < 0) continue;
       let t = (-b - Math.sqrt(disc)) / (2 * a); if (t < 0) { if (c < 0) t = 0; else continue; }

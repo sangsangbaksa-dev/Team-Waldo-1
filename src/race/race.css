@@ -83,7 +83,7 @@
 .rc-opt{background:#1a1238cc;border-color:#33285a}
 .rc-opt:hover{border-color:#6a58a8}
 .rc-opt.on{border-color:#ff7be4;background:#241650;box-shadow:inset 0 0 0 1px #ff7be4,0 0 18px #ff4fd833}
-.rc-map svg{background:linear-gradient(180deg,var(--m-sky,#2a1b52) 0%,var(--m-fog,#1a1238) 62%,var(--m-ground,#120a28) 100%);box-shadow:inset 0 0 0 1px #ffffff14}
+.rc-map svg{background:#000;box-shadow:inset 0 0 0 1px #ffffff14}
 .rc-map path{stroke:#ffffffb3;stroke-width:2.6;filter:drop-shadow(0 1px 1.5px #0009)}
 .rc-map.on path{stroke:var(--m-line,#fff);stroke-width:3;filter:drop-shadow(0 0 3px var(--m-line,#fff))}
 .rc-car.on{border-color:var(--car,#ff7be4);box-shadow:inset 0 0 0 1px var(--car,#ff7be4),0 0 18px color-mix(in srgb,var(--car,#ff7be4) 30%,transparent)}

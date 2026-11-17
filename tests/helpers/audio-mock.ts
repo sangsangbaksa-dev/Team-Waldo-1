@@ -9,7 +9,7 @@ class FakeParam {
   cancelScheduledValues(_t?: number): void { /* no-op */ }
 }
 
-class FakeNode {
+export class FakeNode {
   connections: FakeNode[] = [];
   connect(node: FakeNode): FakeNode { this.connections.push(node); return node; }
   disconnect(): void { this.connections = []; }
@@ -41,7 +41,7 @@ class FakeBufferSource extends FakeSource {
   loop = false;
 }
 
-class FakeGain extends FakeNode { gain = new FakeParam(); }
+export class FakeGain extends FakeNode { gain = new FakeParam(); }
 class FakeFilter extends FakeNode {
   type: BiquadFilterType = 'lowpass';
   frequency = new FakeParam();
@@ -103,4 +103,13 @@ export function installAudioMock(): { context: () => FakeAudioContext | undefine
 export function setHidden(hidden: boolean): void {
   Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
   document.dispatchEvent(new Event('visibilitychange'));
+}
+
+/** Gain node sitting after a buffer source → filter → gain chain (wind/skid/boost/rumble). */
+export function loopGain(source: FakeNode): number {
+  const filter = source.connections[0];
+  const gainNode = filter?.connections[0] as FakeGain | undefined;
+  const value = gainNode?.gain?.value;
+  if (value === undefined) throw new Error('expected source → filter → gain');
+  return value;
 }

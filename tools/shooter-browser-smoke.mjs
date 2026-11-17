@@ -52,11 +52,12 @@ try {
   // B 를 A 의 정면 8m 앞으로 옮겨 놓고, A 가 쏩니다(맞았는지는 B 쪽 판정이 결정).
   const pa = await a.evaluate(() => { const m = window.__zz.me(); return { x: m.x, z: m.z, yaw: m.yaw }; });
   await b.evaluate(({ x, z, yaw }) => { const m = window.__zz.me(); m.x = x + Math.cos(yaw) * 8; m.z = z + Math.sin(yaw) * 8; }, pa);
-  await sleep(1500);
+  // 소프트웨어 렌더링에서는 프레임이 느려 상대 자세 보간이 늦을 수 있어, 가까워질 때까지 기다립니다.
+  await a.waitForFunction(() => { const g = window.__zz.match, me = window.__zz.me(), o = g.players.find(p => p.id !== me.id); return Math.hypot(o.x - me.x, o.z - me.z) < 25; }, null, { timeout: 30000 }).catch(() => undefined);
   const seen = await a.evaluate(() => { const g = window.__zz.match, me = window.__zz.me(), o = g.players.find(p => p.id !== me.id); return { d: Math.hypot(o.x - me.x, o.z - me.z) }; });
   assert.ok(seen.d > 2 && seen.d < 25, 'opponent pose arrived: ' + seen.d);
   await a.screenshot({ path: 'browser-artifacts/shooter-pvp-a.png' });
-  await a.evaluate(() => { const g = window.__zz.match, me = window.__zz.me(), o = g.players.find(p => p.id !== me.id); me.guns[me.cur] = { id: 'rifle', mag: 30, reserve: 300 }; window.__zz.look(Math.atan2(o.z - me.z, o.x - me.x), Math.atan2(1.2 - 1.65, Math.hypot(o.x - me.x, o.z - me.z))); window.__zz.fire(true); });
+  await a.evaluate(() => { const g = window.__zz.match, me = window.__zz.me(), o = g.players.find(p => p.id !== me.id); me.guns[me.cur] = { id: 'rifle', mag: 30, reserve: 300, att: {} }; window.__zz.look(Math.atan2(o.z - me.z, o.x - me.x), Math.atan2(1.2 - 1.65, Math.hypot(o.x - me.x, o.z - me.z))); window.__zz.fire(true); });
   let flip = false; const front = setInterval(() => { flip = !flip; (flip ? a : b).bringToFront().catch(() => undefined); }, 1500);
   const pump = setInterval(() => { for (const p of [a, b]) p.evaluate(() => { const g = window.__zz.match, me = window.__zz.me(), o = g.players.find(q => q.id !== me.id); if (me.id === g.players[0].id) { window.__zz.fire(true); window.__zz.look(Math.atan2(o.z - me.z, o.x - me.x), Math.atan2(1.2 - 1.65, Math.hypot(o.x - me.x, o.z - me.z))); } }).catch(() => undefined); }, 400);
   if (process.env.SMOKE_PROBE) for (let i = 0; i < 4; i++) { await sleep(4000); for (const [n2, q] of [['a', a], ['b', b]]) console.log('probe', i, n2, JSON.stringify(await q.evaluate(() => { const m = window.__zz.me(); return { vis: document.visibilityState, frames: window.__zz.view.frames, t: +window.__zz.match.t.toFixed(2), hp: window.__zz.match.players.map(x => Math.round(x.hp)), mag: m.guns[m.cur]?.mag, hits: window.__zz.match.players.map(x => x.kills) }; }))); }

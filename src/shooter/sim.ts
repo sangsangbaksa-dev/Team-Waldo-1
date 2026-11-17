@@ -141,7 +141,7 @@ export class Match {
     }
     // 무기 교체
     if (inp.slot >= 0 && inp.slot < 2 && inp.slot !== p.cur && p.guns[inp.slot]) { p.cur = inp.slot; p.reload = 0; p.cd = Math.max(p.cd, 0.35); inp.slot = -1; }
-    const gun = p.guns[p.cur];
+    const gun = p.guns[p.cur]; if (gun && !gun.att) gun.att = {};
     if (gun && def) {
       if (p.reload > 0) { p.reload -= dt; if (p.reload <= 0) { p.reload = 0; const n = Math.min(magOf(def.id, gun.att) - gun.mag, gun.reserve); gun.mag += n; gun.reserve -= n; } }
       else if ((inp.reload && gun.mag < magOf(def.id, gun.att) && gun.reserve > 0) || (gun.mag === 0 && gun.reserve > 0 && inp.fire)) { p.reload = def.reload; this.events.push({ t: 'reload', id: p.id }); }

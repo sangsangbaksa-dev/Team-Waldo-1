@@ -42,7 +42,7 @@ function bonus(sim: Sim, text: string, base: number, category: string, cooldown:
   const fatigue = d[`fatigue:${category}`] ?? 0, since = sim.t - (d[`last:${category}`] ?? -Infinity);
   const repeat = since < 30 ? Math.min(12, fatigue + 1) : Math.max(0, fatigue - Math.floor(since / 30));
   d[`fatigue:${category}`] = repeat; d[`last:${category}`] = sim.t;
-  const amount = Math.max(5, Math.round(base * s.mult / ((1 + repeat * 0.22) * (1 + (d.stylePressure || 0) / 240))));
+  const amount = Math.max(5, Math.round(base * s.mult * sim.perk.style / ((1 + repeat * 0.22) * (1 + (d.stylePressure || 0) / 240))));
   d.stylePressure = (d.stylePressure || 0) + amount;
   s.total += amount; s.last = text; sim.addCash(amount); sim.emit({ t: 'style', text, amount, combo: s.mult }); return true;
 }
@@ -150,7 +150,7 @@ function readEvents(sim: Sim): void {
 }
 function reward(sim: Sim, amount: number): number {
   const d = sim.activity.data, kind = sim.activity.active, repeat = d.lastKind === kindCode(kind) ? (d.repeat || 0) + 1 : 0;
-  d.repeat = repeat; d.lastKind = kindCode(kind); return Math.round(amount * Math.max(0.45, 1 - repeat * 0.15));
+  d.repeat = repeat; d.lastKind = kindCode(kind); return Math.round(amount * sim.perk.pay * Math.max(0.45, 1 - repeat * 0.15));
 }
 const kindCode = (kind: string): number => ['taxi', 'armored', 'bounty', 'rampage', 'race', 'export'].indexOf(kind) + 1;
 function finish(sim: Sim, pass: boolean, text: string, cash = 0): void {
@@ -251,7 +251,7 @@ function taxi(sim: Sim, dt: number): void {
     if (Math.hypot(v.x - d.goalX, v.z - d.goalZ) < 6 && speed < 2) {
       const safety = clamp(1 - Math.max(0, d.taxiHp - v.hp) / 65, 0, 1), time = clamp(a.timer / d.fareLimit, 0, 1);
       const tip = Math.round((60 * time + 20 * Math.min(1, (d.fareSpeed || 0) / d.fareDistance)) * safety);
-      a.stats.taxiFares++; finish(sim, true, `운행 완료 · 안전 팁 $${tip}`, Math.round((110 + d.fareDistance * 0.35 + tip) * Math.min(1.6, 1 + (d.taxiChain || 0) * 0.1)));
+      a.stats.taxiFares++; sim.count('taxi'); finish(sim, true, `운행 완료 · 안전 팁 $${tip}`, Math.round((110 + d.fareDistance * 0.35 + tip) * Math.min(1.6, 1 + (d.taxiChain || 0) * 0.1)));
     }
   }
 }
@@ -338,7 +338,7 @@ export function stepActivities(sim: Sim, dt: number): void {
   a.markers = []; a.text = ''; a.timer = 0;
   jumps.forEach((q, i) => { if (!a.stunts.includes(i) && Number.isFinite(q.tx) && distance(sim.player, q) < 110) a.markers.push(marker(q.x - 4, q.z, 2, YELLOW, `STUNT ${i + 1}`, 'item')); });
   const v = sim.vehicle(sim.player.vehicle);
-  if (sim.mission.active || sim.wanted.stars > 0 || sim.wanted.heat > 0 || !sim.player.alive || sim.downKind) { d.taxiWait = 0; return; }
+  if (sim.mission.active || sim.job.active || sim.wanted.stars > 0 || sim.wanted.heat > 0 || !sim.player.alive || sim.downKind) { d.taxiWait = 0; return; }
   if (v?.kind === 'taxi' && !v.wrecked && (d.taxiNext || 0) <= sim.t) {
     if (d.taxiCar !== v.id) { d.taxiCar = v.id; d.taxiWait = 0; }
     d.taxiWait = (d.taxiWait || 0) + dt;

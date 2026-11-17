@@ -176,7 +176,7 @@ export class CityView {
     const equipment = this.mat({ color: 0x8c9598, roughness: .73, metalness: .24, vertexColors: true });
     const signMats = new Map<string, THREE.MeshStandardMaterial>(); const signBatch: Batch = new Map(), poolBatch: Batch = new Map();
     const pools = new Map<string, THREE.MeshBasicMaterial>();
-    const names: Record<string, string> = { gunshop: 'GUN SHOP', bank: 'BANK', casino: 'CASINO', club: 'BLUE HOUR', paynspray: 'PAY N SPRAY', hospital: 'HOSPITAL', police: 'POLICE', safehouse: 'OAK ST.', garage: 'MOTOR WORKS', chopshop: 'IRON YARD' };
+    const names: Record<string, string> = { gunshop: 'GUN SHOP', bank: 'BANK', casino: 'CASINO', club: 'BLUE HOUR', paynspray: 'PAY N SPRAY', hospital: 'HOSPITAL', police: 'POLICE', safehouse: 'OAK ST.', garage: 'MOTOR WORKS', chopshop: 'IRON YARD', dealer: 'PRESTIGE MOTORS', gym: 'STEEL GYM', arena: 'THE PIT' };
     for (const b of this.map.buildings) {
       this.put(b.x, b.z, this.facades[b.tex % 6], box(b.x, b.h / 2 + .15, b.z, b.w, b.h, b.d, 4, new THREE.Color(b.color).lerp(new THREE.Color(0xffffff), .65).getHex(), true));
       this.put(b.x, b.z, roof, box(b.x, b.h + .2, b.z, b.w + .45, .3, b.d + .45));

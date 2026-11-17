@@ -4,13 +4,13 @@ import { readPreferences, writePreferences } from '../../prefs';
 import { RtsAudio } from '../audio';
 import { TICK } from '../config';
 import { MobaAi } from './ai';
-import { CHAMP_IDS, CHAMPS, ITEMS, ITEM_IDS, LANES, LANE_PTS, LEVELS, MAX_ITEMS, NEXUS, SIZE, xpNeed, type ChampId, type ItemId, type Lane, type Level } from './config';
+import { CHAMP_IDS, CHAMPS, ITEMS, ITEM_IDS, LANES, LANE_PTS, LEVELS, MAX_ITEMS, NEXUS, SIZE, xpNeed, type ChampId, type ItemId, type Lane, type Level, type Role } from './config';
 import { MobaSim, type Ent } from './sim';
 import { MobaView } from './view';
 
 const esc = (s: string): string => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
 const clock = (ticks: number): string => { const s = Math.floor(ticks / TICK); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
-const LANE_NAME: Record<Lane, string> = { top: '탑', mid: '미드', bot: '바텀' };
+const LANE_NAME: Record<Role, string> = { top: '탑', mid: '미드', bot: '바텀', jungle: '정글' };
 const KEYS = ['Q', 'W', 'E', 'R'];
 
 export function openMoba(onBack: () => void, onExit: () => void): void {

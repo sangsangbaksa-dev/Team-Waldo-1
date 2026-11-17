@@ -186,7 +186,7 @@ export class RtsSim {
         const us = mine(c.ids).filter(u => u.kind === 'worker'); if (!us.length) return false;
         for (const u of us) this.order(u, { t: 'gather', x: 0, y: 0, target: nd.id, phase: u.carry > 0 ? 2 : 0, timer: 0 }); return true;
       }
-      case 'stop': { const us = mine(c.ids); for (const u of us) this.order(u, idle()); return us.length > 0; }
+      case 'stop': { const us = mine(c.ids); for (const u of us) { this.order(u, idle()); u.o.phase = 9; /* 일부러 세운 일꾼은 자동 복귀하지 않음 */ } return us.length > 0; }
       case 'build': {
         const w = num(c.id) ? this.unit(c.id) : undefined, d = BUILDINGS[c.b];
         if (!w || w.owner !== owner || w.kind !== 'worker' || !d || !num(c.x) || !num(c.y)) return false;
@@ -311,7 +311,8 @@ export class RtsSim {
     const o = u.o;
     switch (o.t) {
       case 'idle': {
-        if (u.kind !== 'worker' && (u.id + this.tick) % 4 === 0) { const t = this.pick(u.owner, u.x, u.y, Math.max(d.range + 1.5, 7)); if (t) { this.order(u, { t: 'attack', x: u.x, y: u.y, target: t.id, phase: 1, timer: 0 }); } }
+        if (u.kind === 'worker') this.idleWorker(u);
+        else if ((u.id + this.tick) % 4 === 0) { const t = this.pick(u.owner, u.x, u.y, Math.max(d.range + 1.5, 7)); if (t) { this.order(u, { t: 'attack', x: u.x, y: u.y, target: t.id, phase: 1, timer: 0 }); } }
         break;
       }
       case 'move': if (this.walk(u, o.x, o.y, d.speed, 0.25)) this.order(u, idle()); break;
@@ -433,6 +434,16 @@ export class RtsSim {
     if (b.progress >= total) { b.done = true; b.hp = Math.max(b.hp, 1); this.emit({ t: 'built', kind: b.kind, owner: b.owner, x: b.x + b.size / 2, y: b.y + b.size / 2 }); this.afterBuild(u); }
   }
   /** 이 건물을 짓고 있는(또는 지으러 가는) 일꾼이 있는가. */
+  /** 이동 명령 뒤 4초 이상 쉬는 일꾼은 가까운 미완성 건물을 이어 짓거나, 없으면 가까운 광물 채취로 복귀합니다('정지'로 세운 일꾼은 제외). */
+  private idleWorker(u: Unit): void {
+    const o = u.o; if (o.phase === 9) return;
+    if (++o.timer < 80) return;
+    let site: Building | null = null, sd = sq(30);
+    for (const b of this.buildings) { if (b.owner !== u.owner || b.done || b.hp <= 0 || this.hasBuilder(b)) continue; const d = sq(b.x + b.size / 2 - u.x) + sq(b.y + b.size / 2 - u.y); if (d < sd) { sd = d; site = b; } }
+    if (site) { this.order(u, { t: 'build', x: 0, y: 0, target: site.id, phase: 0, timer: 0 }); this.emit({ t: 'rescued', owner: u.owner, kind: site.kind, x: site.x + site.size / 2, y: site.y + site.size / 2 }); return; }
+    const nd = this.nearestNode(u.x, u.y, 18, false);
+    if (nd) this.order(u, { t: 'gather', target: nd.id, x: 0, y: 0, phase: u.carry > 0 ? 2 : 0, timer: 0 }); else o.phase = 9;
+  }
   private hasBuilder(b: Building): boolean { return this.units.some(u => u.hp > 0 && u.o.t === 'build' && u.o.target === b.id); }
   /** 일꾼이 없는 건설 현장을 3초 뒤에 가까운 일꾼에게 넘깁니다(일꾼이 죽거나 다른 명령을 받아도 건물이 버려지지 않게). */
   private tendSites(): void {

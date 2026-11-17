@@ -52,10 +52,12 @@ function shopTexture(variant: number): THREE.CanvasTexture {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.RepeatWrapping; t.anisotropy = 8; return t;
 }
 
-export function buildBuildings(world: World, scene: THREE.Scene, base: string): void {
+/** 높은 건물 옥상의 붉은 항공장애등을 두 박자로 번갈아 깜박이게 하는 갱신 함수를 돌려준다. */
+export function buildBuildings(world: World, scene: THREE.Scene, base: string): (t: number) => void {
   const loader = new THREE.TextureLoader(), tex = (n: string): THREE.Texture => { const t = loader.load(`${base}assets/tex/${n}.png`); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; return t; };
   const facades = FACADE_STYLES.map(() => new Mesh()), shops = [new Mesh(), new Mesh()], trim = new Mesh(), c = new THREE.Color(), wall = new THREE.Color();
   const tint = (s: { wall: string }): THREE.Color => wall.set(s.wall).lerp(new THREE.Color(0xe2ddd4), 0.5).clone();
+  const beacons: [number, number, number][] = [];
   const doors = new Map<number, { x: number; y: number }>(); for (const z of world.businesses) doors.set(z.solid, z);
   world.map.solids.forEach((s, i) => {
     if (s.struct || !s.alive) return;
@@ -113,6 +115,7 @@ export function buildBuildings(world: World, scene: THREE.Scene, base: string): 
       if (t.y1 - t.y0 > 300) { const my = t.y0 + (t.y1 - t.y0) * 0.5; trim.box(t.x0 - 2, my, t.z0 - 2, t.x1 + 2, my + 5, t.z1 + 2, light, false); }
       // 옥상 설비
       if (ti === tiers.length - 1) {
+        if (tall) { beacons.push([t.x0 + 5, t.y1 + 9, t.z0 + 5], [t.x1 - 5, t.y1 + 9, t.z1 - 5]); }
         const w = t.x1 - t.x0, d = t.z1 - t.z0, n = 2 + Math.floor(r(8) * 4);
         for (let k = 0; k < n; k++) {
           const px = t.x0 + 12 + r(20 + k) * (w - 36), pz = t.z0 + 12 + r(40 + k) * (d - 36), kind = Math.floor(r(60 + k) * 4);
@@ -137,6 +140,16 @@ export function buildBuildings(world: World, scene: THREE.Scene, base: string): 
   FACADE_STYLES.forEach((n, k) => add(facades[k], new THREE.MeshLambertMaterial({ map: tex(`facade_${n}`), emissiveMap: tex(`facade_${n}_e`), emissive: 0xffffff, emissiveIntensity: 0.5, vertexColors: true, side: THREE.DoubleSide })));
   shops.forEach((m, k) => add(m, new THREE.MeshLambertMaterial({ map: shopTexture(k * 2), vertexColors: true, side: THREE.DoubleSide })));
   add(trim, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+  // 붉은 항공장애등: 흐린 비 오는 하늘 아래에서도 도시 스카이라인이 읽히도록 번쩍이는 점
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64; const g = cv.getContext('2d');
+  if (g) { const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.25, 'rgba(255,255,255,0.7)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); }
+  const glow = new THREE.CanvasTexture(cv), groups = [new THREE.Group(), new THREE.Group()];
+  beacons.forEach(([x, y, z], k) => {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: 0xff2a1c, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+    sp.scale.setScalar(46); sp.position.set(x, y, z); groups[k % 2].add(sp);
+  });
+  scene.add(groups[0], groups[1]);
+  return (t: number): void => { const ph = (t % 2.4) / 2.4; groups[0].visible = ph < 0.4; groups[1].visible = ph >= 0.5 && ph < 0.9; };
 }
 
 /** 맵 가장자리를 둘러싼 방파제 벽 + 철조망 기둥 (자기장 대신 자연스러운 경계) */

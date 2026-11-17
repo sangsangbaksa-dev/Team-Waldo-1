@@ -12,7 +12,7 @@ beforeEach(() => { document.body.innerHTML = ''; localStorage.clear(); });
 describe('SPEED RUSH 선택 화면', () => {
   it('코스 5곳, 랩 3종, 난이도 5단계, 차량 6종을 보여 준다', () => {
     mountSetup(document.body, DEFAULT_SETUP, records, { onStart: vi.fn(), onExit: vi.fn() });
-    expect(document.querySelectorAll('[data-pick^="map:"]')).toHaveLength(5);
+    expect(document.querySelectorAll('[data-pick^="map:"]')).toHaveLength(6);
     expect(document.querySelectorAll('[data-pick^="laps:"]')).toHaveLength(3);
     expect(document.querySelectorAll('[data-pick^="level:"]')).toHaveLength(5);
     expect(document.querySelectorAll('[data-pick^="car:"]')).toHaveLength(6);

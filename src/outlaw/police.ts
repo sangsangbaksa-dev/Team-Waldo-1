@@ -81,6 +81,7 @@ function spawn(sim: Sim, s: State, role: Role, n: LaneNode): void {
   for (let i = 0; i < count; i++) {
     const p = sim.spawnPed(role === 'swat' ? 'swat' : role === 'tank' ? 'soldier' : 'cop', v.x, v.z, { tag: TAG, mode: 'idle', vehicle: v.id, seat: i });
     u.crew.push(p.id); if (!i) v.driver = p.id; else v.passengers.push(p.id);
+    if (role === 'block' && !i && sim.spikes.length < 4) sim.spikes.push({ x: n.x + Math.cos(n.h) * 14, z: n.z + Math.sin(n.h) * 14, h: n.h });
     if (role === 'block') { sim.exitVehicle(p); p.x -= Math.cos(n.h) * 3; p.z -= Math.sin(n.h) * 3; p.mode = 'guard'; p.tx = p.x; p.tz = p.z; p.target = PLAYER_ID; }
   }
   if (role === 'tank' && available > count) {
@@ -199,6 +200,12 @@ export function stepPolice(sim: Sim, dt: number): void {
     if (!w.stars && live < 5) { const q = sim.map.walkPoints.find(q => { const d = Math.hypot(q.x - px, q.z - pz); return d > 55 && d < 100 && !sim.peds.some(p => p.team === 'cop' && Math.hypot(p.x - q.x, p.z - q.z) < 20); }); if (q) sim.spawnPed('cop', q.x, q.z, { tag: TAG }); }
   }
   for (const q of cops) if (q.tag === TAG && !q.vehicle && (Math.hypot(q.x - px, q.z - pz) > 260 || (!w.stars && s.quiet > 25 && Math.hypot(q.x - px, q.z - pz) > 100))) sim.removePed(q);
+  // 스파이크 스트립: 시야 밖 오래된 것은 걷어가고, 고속으로 밟은 차는 타이어가 터져 감속·휘청입니다.
+  sim.spikes = sim.spikes.filter(k => w.stars > 0 ? Math.hypot(k.x - px, k.z - pz) < 260 : s.quiet < 12 && Math.hypot(k.x - px, k.z - pz) < 260);
+  if (pv && pv.driver === PLAYER_ID) {
+    if (!pv.flat) for (const k of sim.spikes) if (Math.hypot(k.x - pv.x, k.z - pv.z) < 4.2 && Math.abs(pv.vf) > 4) { pv.flat = true; sim.say('타이어 펑크! 스파이크 스트립', 3); sim.emit({ t: 'crash', id: pv.id, power: 0.5, x: pv.x, z: pv.z }); break; }
+    if (pv.flat) { const f = Math.exp(-dt * 0.55); pv.vx *= f; pv.vz *= f; pv.vf *= f; pv.yawRate += Math.sin(sim.t * 17) * dt * 0.9; }
+  }
   w.cops = sim.peds.filter(q => q.alive && q.team === 'cop').length;
   // 같은 경찰과의 연속 접촉만 인정하고 벽·층 차이·공격 입력은 즉시 해제합니다.
   let nearest: Ped | undefined, close = 0;

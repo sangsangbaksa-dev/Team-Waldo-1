@@ -289,6 +289,14 @@ export class CityView {
     }
     const batch: Batch = new Map([[this.mat({ color: 0x4b5963, flatShading: true }), hills], [this.mat({ color: 0x48515e }), skyline]]); this.flush(batch, this.root);
   }
+  /** 폭풍우 번개: 섬광 세기(0~1)와 다음 낙뢰까지 시간. 천둥 소리는 game 쪽이 지연시켜 재생합니다. */
+  private bolt = 0; private nextBolt = 9; onLightning: ((thunderDelay: number) => void) | null = null;
+  private lightning(dt: number, rain: number): void {
+    this.bolt = Math.max(0, this.bolt - dt * 4.2);
+    if (rain < .55) { this.nextBolt = Math.max(this.nextBolt, 6); return; }
+    this.nextBolt -= dt;
+    if (this.nextBolt <= 0) { this.nextBolt = 6 + Math.random() * 15; this.bolt = 1; setTimeout(() => { if (!this.disposed) this.bolt = Math.max(this.bolt, .8); }, 110); this.onLightning?.(.5 + Math.random() * 2.6); }
+  }
   private rainLines: THREE.LineSegments | null = null;
   private rainFx(dt: number, pos: THREE.Vector3, rain: number): void {
     if (!this.rainLines) {
@@ -309,8 +317,8 @@ export class CityView {
   }
   private lighting(clock: number, position: THREE.Vector3, rain: number): void {
     const c = tex.skyColors(clock); this.night = c.night; this.sky.update(c); this.sky.mesh.position.copy(position);
-    this.fog.color.copy(c.fog).lerp(new THREE.Color(0x56606a), rain * .75); this.fog.density = .00165 + c.night * .00055 + rain * .0042; this.scene.background = this.fog.color;
-    this.hemi.color.copy(c.hemiSky).lerp(new THREE.Color(0x9aaccb), c.night * .4); this.hemi.groundColor.copy(c.hemiGround); this.hemi.intensity = (c.hemiIntensity * 1.35 + c.night * .5) * (1 - rain * .3);
+    this.fog.color.copy(c.fog).lerp(new THREE.Color(0x56606a), rain * .75).lerp(new THREE.Color(0xdce6ff), this.bolt * .55); this.fog.density = .00165 + c.night * .00055 + rain * .0042; this.scene.background = this.fog.color;
+    this.hemi.color.copy(c.hemiSky).lerp(new THREE.Color(0x9aaccb), c.night * .4); this.hemi.groundColor.copy(c.hemiGround); this.hemi.intensity = (c.hemiIntensity * 1.35 + c.night * .5) * (1 - rain * .3) + this.bolt * 4;
     this.sun.color.copy(c.sun); this.sun.intensity = c.sunIntensity * 2.2 * (1 - rain * .78);
     this.moon.intensity = c.night * .48; this.moon.position.copy(position).addScaledVector(c.moonDir, 280); this.moon.target.position.copy(position);
     // 광원 좌표계의 그림자 텍셀에 맞춰 카메라 이동 시 떨림을 줄입니다.
@@ -327,7 +335,7 @@ export class CityView {
     for (const m of this.reflections) m.opacity = Math.min(.55, c.night * .3 + rain * .3);
   }
   update(dt: number, camera: THREE.PerspectiveCamera, clock: number, t: number, rain = 0): void {
-    if (this.disposed) return; this.lighting(clock, camera.position, rain); this.rainFx(dt, camera.position, rain);
+    if (this.disposed) return; this.lightning(dt, rain); this.lighting(clock, camera.position, rain); this.rainFx(dt, camera.position, rain);
     const radius = this.quality === 'low' ? 610 : 810, halfChunk = this.map.half / 4;
     for (const c of this.chunks) { const dx = Math.max(0, Math.abs(camera.position.x - c.x) - halfChunk), dz = Math.max(0, Math.abs(camera.position.z - c.z) - halfChunk); c.root.visible = dx * dx + dz * dz < radius * radius; }
     if (this.signals && (Math.abs(t - this.signalTick) >= .25 || this.signalTick === -Infinity)) {

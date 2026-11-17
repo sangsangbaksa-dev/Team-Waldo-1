@@ -15,8 +15,10 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   smg:     { id: 'smg',     name: '기관단총', dmg: 14, pellets: 1, cd: 0.075, mag: 30, reload: 1.6, auto: true,  spread: 0.032, falloff: 22,  range: 100, head: 1.6, recoil: 0.014, rank: 2 },
   shotgun: { id: 'shotgun', name: '샷건',   dmg: 11, pellets: 9, cd: 0.8,  mag: 6,  reload: 2.3, auto: false, spread: 0.075, falloff: 12,  range: 45,  head: 1.4, recoil: 0.09,  rank: 3 },
   rifle:   { id: 'rifle',   name: '돌격소총', dmg: 26, pellets: 1, cd: 0.105, mag: 30, reload: 2.0, auto: true,  spread: 0.016, falloff: 60,  range: 220, head: 1.7, recoil: 0.02,  rank: 4 },
-  sniper:  { id: 'sniper',  name: '저격총', dmg: 92, pellets: 1, cd: 1.25, mag: 5,  reload: 2.6, auto: false, spread: 0.0015, falloff: 400, range: 500, head: 1.6, recoil: 0.1,   rank: 5 },
+  sniper:  { id: 'sniper',  name: '저격총', dmg: 80, pellets: 1, cd: 1.05, mag: 5,  reload: 2.3, auto: false, spread: 0.0015, falloff: 400, range: 500, head: 1.9, recoil: 0.1,   rank: 5 },
 };
+/** 사격 손맛: 한 발마다 시점이 실제로 튀는 정도(라디안 = 반동 × kickPitch), 손을 떼면 되돌아오는 비율과 속도 */
+export const FEEL = { kickPitch: 0.5, kickYaw: 0.32, adsKick: 0.7, recover: 7, recoverShare: 0.65, sprintFov: 1.07, strafeRoll: 0.012 };
 export const WEAPON_IDS = Object.keys(WEAPONS) as WeaponId[];
 
 /** 총기 파츠: 슬롯마다 하나씩 달 수 있고, 무기마다 달 수 있는 슬롯이 정해져 있습니다. */
@@ -60,7 +62,7 @@ export const HELMET_NAMES = ['', '1레벨 헬멧', '2레벨 헬멧', '3레벨 �
 /** 에너지 드링크: 부스트 시간(초) 동안 체력이 서서히 차오르고 이동이 조금 빨라집니다 */
 export const BOOST = { time: 22, heal: 2.6, speed: 1.08, cap: 100 };
 
-export const PLAYER = { radius: 0.4, eye: 1.65, height: 1.8, head: 1.45, walk: 4.6, sprint: 7.2, hp: 100, medkit: 55, armor: 50, pickup: 1.6 };
+export const PLAYER = { radius: 0.4, eye: 1.65, height: 1.8, head: 1.45, walk: 4.6, sprint: 7.2, hp: 100, crouchEye: 1.05, crouchHeight: 1.2, crouchHead: 0.92, crouchSpeed: 0.55, medkit: 55, armor: 50, pickup: 1.6 };
 export const MAP_HALF = { br: 290, duel: 115 } as const;
 /** 솔로 배틀로열은 100명(나 + AI 99명)이 같은 비행기에서 뛰어내립니다. */
 export const BR_PLAYERS = 100;

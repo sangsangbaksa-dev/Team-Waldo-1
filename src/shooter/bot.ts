@@ -67,7 +67,7 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
       if (d < bestD && lineClear(m.map, p.x, eye, p.z, q.x, 1.2, q.z)) { best = q; bestD = d; }
     }
     if (best) {
-      if (b.target !== best.id) { b.target = best.id; b.react = T.react * (0.7 + rng() * 0.6); b.head = rng() < T.headAim; }
+      if (b.target !== best.id) { b.target = best.id; b.react = T.react * (0.7 + rng() * 0.6) + (p.guns[p.cur]?.id === 'sniper' ? 0.45 : 0); b.head = rng() < T.headAim; }
       b.seen = 0; b.lastX = best.x; b.lastZ = best.z;
     } else { b.seen += 0.16; if (b.target >= 0 && b.seen > 7 + T.react * 3) b.target = -1; }
     if (b.target < 0 && b.investT <= 0 && !cautious) {
@@ -95,7 +95,7 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
   const engaged = !!q && (visible || b.seen < 1.2);
   if (q && engaged) {
     const tx = visible ? q.x : b.lastX, tz = visible ? q.z : b.lastZ, dx = tx - p.x, dz = tz - p.z, d = Math.hypot(dx, dz) + 1e-6, ty = b.head ? 1.62 : 1.15;
-    if (b.errT <= 0) { b.errT = 0.22 + rng() * 0.15; const k = T.aimErr * (1 + d / 55) * (q.bot && m.plane ? 2.2 : 1); /* 100명 판: AI끼리는 덜 정확해 초반에 다 쓰러지지 않습니다 */ b.errYaw = gauss(rng) * k; b.errPitch = gauss(rng) * k * 0.7; }
+    if (b.errT <= 0) { b.errT = 0.22 + rng() * 0.15; const k = Math.max(def?.id === 'sniper' ? 0.016 : 0, T.aimErr * (1 + d / 55)) * (q.bot && m.plane ? 2.2 : 1); /* 100명 판: AI끼리는 덜 정확해 초반에 다 쓰러지지 않습니다 */ b.errYaw = gauss(rng) * k; b.errPitch = gauss(rng) * k * 0.7; }
     yawTarget = Math.atan2(dz, dx) + b.errYaw; pitchTarget = Math.atan2(ty - eye, d) + b.errPitch; turn = T.turn;
     if (visible && def && gun) {
       b.react -= dt;

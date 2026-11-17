@@ -16,24 +16,28 @@ export class ShooterAudio {
   dispose(): void { try { this.wind?.src.stop(); } catch { /* 이미 멈춤 */ } this.wind = null; this.eng.dispose(); }
 
   /** dist: 소리가 난 곳까지의 미터 거리(0이면 내 총소리) */
-  play(name: string, dist = 0): void {
+  play(name: string, dist = 0, combo = 0): void {
     if (!this.eng.ctx || !this.enabled) return;
     const v = Math.max(0, Math.min(1, 1.1 - dist / 170)); if (v < 0.06) return;
-    const now = performance.now(), gap = name === 'smg' || name === 'rifle' ? 45 : name === 'hurt' ? 120 : 40; if (now - (this.last.get(name) ?? 0) < gap) return; this.last.set(name, now);
+    const now = performance.now(), gap = name === 'smg' || name === 'rifle' ? 45 : name === 'hurt' ? 120 : name === 'step' || name === 'stepRun' || name === 'splash' ? 90 : 40; if (now - (this.last.get(name) ?? 0) < gap) return; this.last.set(name, now);
     const t = (f: number, d: number, g: number, typ: OscillatorType = 'sine', slide = 0, delay = 0): void => tone(this.eng, f, d, g * v, typ, slide, delay);
     const n = (d: number, g: number, f: number, q = 1, typ: BiquadFilterType = 'bandpass'): void => burst(this.eng, d, g * v, f, q, typ);
     switch (name) {
-      case 'pistol': n(0.08, 0.42, 1800, 0.8); t(220, 0.06, 0.2, 'square', -120); break;
-      case 'smg': n(0.05, 0.32, 2400, 0.9); t(180, 0.04, 0.14, 'square', -80); break;
-      case 'rifle': n(0.09, 0.42, 1400, 0.7); t(150, 0.07, 0.24, 'sawtooth', -90); break;
-      case 'shotgun': n(0.2, 0.62, 900, 0.5); t(110, 0.14, 0.32, 'sawtooth', -70); break;
-      case 'sniper': n(0.26, 0.55, 700, 0.4); t(300, 0.22, 0.28, 'sawtooth', -250); n(0.5, 0.15, 300, 0.5, 'lowpass'); break;
+      // 총소리: 날카로운 '탁' + 묵직한 저음 + 꼬리(울림)를 겹쳐 손맛을 줍니다
+      case 'pistol': n(0.08, 0.46, 1800, 0.8); t(220, 0.06, 0.22, 'square', -120); t(95, 0.09, 0.3, 'sine', -50); n(0.22, 0.08, 500, 0.5, 'lowpass'); break;
+      case 'smg': n(0.05, 0.34, 2400, 0.9); t(180, 0.04, 0.15, 'square', -80); t(85, 0.06, 0.24, 'sine', -40); break;
+      case 'rifle': n(0.09, 0.46, 1400, 0.7); t(150, 0.07, 0.26, 'sawtooth', -90); t(70, 0.12, 0.34, 'sine', -35); n(0.3, 0.09, 400, 0.5, 'lowpass'); break;
+      case 'shotgun': n(0.2, 0.66, 900, 0.5); t(110, 0.14, 0.34, 'sawtooth', -70); t(55, 0.22, 0.45, 'sine', -25); n(0.4, 0.14, 300, 0.5, 'lowpass'); break;
+      case 'sniper': n(0.05, 0.6, 3000, 0.7); n(0.26, 0.58, 700, 0.4); t(300, 0.22, 0.28, 'sawtooth', -250); t(60, 0.3, 0.5, 'sine', -22); n(0.9, 0.2, 260, 0.5, 'lowpass'); break;
       case 'reload': t(500, 0.03, 0.12, 'square'); t(700, 0.03, 0.12, 'square', 0, 0.14); t(420, 0.04, 0.12, 'square', 0, 0.9); break;
       case 'empty': t(900, 0.03, 0.12, 'square'); break;
-      case 'hitmark': n(0.04, 0.2, 3200, 2); t(1500, 0.04, 0.1, 'triangle'); break;
-      case 'headshot': n(0.05, 0.25, 3600, 2); t(2100, 0.07, 0.14, 'triangle'); break;
+      case 'hitmark': n(0.04, 0.26, 3200, 2); t(1500 * (1 + combo * 0.05), 0.05, 0.14, 'triangle'); t(190, 0.06, 0.2, 'sine', -60); break;
+      case 'headshot': n(0.06, 0.32, 3600, 2); t(2100, 0.09, 0.18, 'triangle'); t(2800, 0.12, 0.12, 'sine', 0, 0.03); t(140, 0.08, 0.26, 'sine', -50); break;
+      case 'splash': n(0.12, 0.2, 900, 0.7); n(0.2, 0.12, 400, 0.6, 'lowpass'); break;
+      case 'step': n(0.045, 0.1, 260, 0.8, 'lowpass'); break;
+      case 'stepRun': n(0.05, 0.14, 300, 0.8, 'lowpass'); t(70, 0.05, 0.08, 'sine', -20); break;
       case 'hurt': n(0.09, 0.26, 700, 0.8, 'lowpass'); t(170, 0.12, 0.18, 'triangle', -80); break;
-      case 'kill': t(880, 0.08, 0.16, 'triangle'); t(1320, 0.14, 0.16, 'triangle', 0, 0.07); break;
+      case 'kill': t(880, 0.08, 0.2, 'triangle'); t(1320, 0.14, 0.2, 'triangle', 0, 0.07); t(1760, 0.2, 0.14, 'triangle', 0, 0.15); n(0.08, 0.2, 2600, 2); break;
       case 'pickup': t(660, 0.07, 0.2, 'triangle', 300); break;
       case 'heal': t(392, 0.12, 0.16, 'sine', 80); t(523, 0.18, 0.16, 'sine', 40, 0.08); break;
       case 'armor': n(0.1, 0.25, 600, 1); t(330, 0.1, 0.16, 'triangle', 110); break;

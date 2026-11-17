@@ -6,7 +6,7 @@ import { WEAPONS, type WeaponId } from './config';
 
 const SILENT_MS = 8000, NEVER_MS = 25000;
 
-export interface Pose { x: number; z: number; yaw: number; pitch: number; hp: number; armor: number; w: WeaponId; speed: number; ads: boolean; reloading: boolean }
+export interface Pose { x: number; z: number; yaw: number; pitch: number; hp: number; armor: number; w: WeaponId; speed: number; ads: boolean; reloading: boolean; crouch?: boolean }
 export interface NetShot { w: WeaponId; ox: number; oy: number; oz: number; ends: number[] }
 export interface NetHooks {
   onStart(): void; onPose(p: Pose): void; onShot(s: NetShot): void;
@@ -20,7 +20,7 @@ const num = (v: unknown, lo = -1e6, hi = 1e6): v is number => typeof v === 'numb
 const weapon = (v: unknown): v is WeaponId => typeof v === 'string' && Object.prototype.hasOwnProperty.call(WEAPONS, v);
 export function parsePose(m: NetMsg): Pose | null {
   return num(m.x) && num(m.z) && num(m.yaw, -50, 50) && num(m.pitch, -3, 3) && num(m.hp, 0, 1000) && num(m.ar, 0, 1000) && weapon(m.w) && num(m.sp, 0, 50)
-    ? { x: m.x, z: m.z, yaw: m.yaw, pitch: m.pitch, hp: m.hp, armor: m.ar, w: m.w, speed: m.sp, ads: m.ad === 1, reloading: m.rl === 1 } : null;
+    ? { x: m.x, z: m.z, yaw: m.yaw, pitch: m.pitch, hp: m.hp, armor: m.ar, w: m.w, speed: m.sp, ads: m.ad === 1, reloading: m.rl === 1, crouch: m.cr === 1 } : null;
 }
 export function parseShot(m: NetMsg): NetShot | null {
   if (!weapon(m.w) || !num(m.ox) || !num(m.oy, -50, 50) || !num(m.oz) || !Array.isArray(m.e) || m.e.length < 3 || m.e.length > 27 || m.e.length % 3 !== 0 || !m.e.every(v => num(v))) return null;
@@ -67,7 +67,7 @@ export class ShooterNet {
   sendPose(p: Pose, now: number): void {
     if (!this.started || now - this.lastPose < 66) return; this.lastPose = now;
     const r = (v: number): number => Math.round(v * 100) / 100;
-    this.ch.send({ t: 'p', x: r(p.x), z: r(p.z), yaw: r(p.yaw), pitch: r(p.pitch), hp: Math.round(p.hp), ar: Math.round(p.armor), w: p.w, sp: r(p.speed), ad: p.ads ? 1 : 0, rl: p.reloading ? 1 : 0 });
+    this.ch.send({ t: 'p', x: r(p.x), z: r(p.z), yaw: r(p.yaw), pitch: r(p.pitch), hp: Math.round(p.hp), ar: Math.round(p.armor), w: p.w, sp: r(p.speed), ad: p.ads ? 1 : 0, rl: p.reloading ? 1 : 0, cr: p.crouch ? 1 : 0 });
   }
   sendShot(s: NetShot): void { if (this.started) this.ch.send({ t: 'sh', w: s.w, ox: Math.round(s.ox * 100) / 100, oy: Math.round(s.oy * 100) / 100, oz: Math.round(s.oz * 100) / 100, e: s.ends.map(v => Math.round(v * 10) / 10) }); }
   sendAck(dmg: number, head: boolean): void { this.ch.send({ t: 'ack', d: Math.round(dmg), h: head ? 1 : 0 }); }

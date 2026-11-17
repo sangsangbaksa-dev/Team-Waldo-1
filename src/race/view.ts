@@ -72,7 +72,7 @@ interface CarVis { racer: Racer; group: THREE.Group; flames: THREE.Mesh[]; shado
 export class RaceView {
   readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera = new THREE.PerspectiveCamera(64, 1, 0.4, 3200);
   private cars: CarVis[] = []; private ground!: THREE.Mesh; private pads: Array<{ tex: THREE.CanvasTexture }> = [];
-  private sparks = new Particles(260, 0.9, THREE.AdditiveBlending); private smoke = new Particles(220, 2.0, THREE.NormalBlending, 0.4); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
+  private rainFx = new Particles(1800, 0.32, THREE.NormalBlending, 0.55); private sparks = new Particles(260, 0.9, THREE.AdditiveBlending); private smoke = new Particles(220, 2.0, THREE.NormalBlending, 0.4); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
   private camH = 0; private camInit = false; private fov = 64; private shake = 0; private punch = 0; private time = 0; private sun: THREE.DirectionalLight;
   private chaseLift = 0; private viewH = 1; private startLamps: THREE.Mesh[] = [];
   private disposables: Array<{ dispose(): void }> = [];
@@ -83,7 +83,7 @@ export class RaceView {
     this.scene.fog = new THREE.Fog(theme.fog.color, theme.fog.near, theme.fog.far); this.sun = new THREE.DirectionalLight(theme.light.sun, theme.light.sunPower);
     this.buildSky(); this.buildGround(); this.buildRoad(); this.buildProps(quality);
     this.scene.add(new THREE.HemisphereLight(theme.light.sky, theme.light.ground, theme.light.hemi)); this.sun.position.set(-40, 60, 90); this.scene.add(this.sun, this.sun.target);
-    this.scene.add(this.sparks.points, this.smoke.points);
+    this.scene.add(this.sparks.points, this.smoke.points); if (theme.rain) this.scene.add(this.rainFx.points);
     const n = 130; this.streakPos = new Float32Array(n * 6); this.streakSeed = new Float32Array(n * 3);
     const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(this.streakPos, 3));
     this.streak = new THREE.LineSegments(sg, new THREE.LineBasicMaterial({ color: 0xcfe9ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })); this.streak.frustumCulled = false; this.scene.add(this.streak);
@@ -393,6 +393,11 @@ export class RaceView {
       if (v.racer.player && wallHit > 0) for (let k = 0; k < 18; k++) this.sparks.emit(c.x, c.y + 0.5, c.z, rnd(-9, 9), rnd(1, 7), rnd(-9, 9), 0.5, 1, 0.8, 0.35);
     }
     this.sparks.update(dt, 14); this.smoke.update(dt, -1.5);
+    if (this.theme.rain) {
+      const cp = this.camera.position, n = Math.round(34 * this.theme.rain * Math.min(2, dt * 60));
+      for (let i = 0; i < n; i++) this.rainFx.emit(cp.x + rnd(-38, 38), cp.y + rnd(-1, 20), cp.z + rnd(-38, 38), rnd(-3, 3), rnd(-44, -36), rnd(-3, 3), 0.45, 0.62, 0.74, 0.88);
+      this.rainFx.update(dt, 0);
+    }
     // 카메라: 속도에 비례해 FOV 확대·뒤로 물러남·흔들림
     const hd = p.h; if (!this.camInit) { this.camH = hd; this.camInit = true; }
     this.camH += wrapAngle(hd - this.camH) * Math.min(1, dt * (p.drifting ? 3.2 : 7));

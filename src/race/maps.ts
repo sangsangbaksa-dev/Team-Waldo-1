@@ -22,6 +22,8 @@ export interface Theme {
   /** 먼 산 바위 색과 눈 덮임 여부(forest 배경) */
   mountain: number;
   snow?: boolean;
+  /** 비 세기(0~1): 빗줄기 표시와 노면 그립 감소 */
+  rain?: number;
   /** 건물·컨테이너·나무·바위 등 배경 소품의 색 */
   tint: number;
 }
@@ -69,6 +71,21 @@ const HARBOR: Theme = {
   shoulder: 0x1b2330,
   mountain: 0x1c3a55,
   tint: 0xffffff,
+};
+
+const STORM: Theme = {
+  ...HARBOR, rain: 1,
+  sky: { top: [0.02, 0.03, 0.06], mid: [0.07, 0.1, 0.15], low: [0.16, 0.2, 0.26], hor: [0.2, 0.25, 0.3], sun: [-0.4, 0.25, -1], sunColor: [0.55, 0.62, 0.72], stars: 0, clouds: 1 },
+  fog: { color: 0x2a3640, near: 60, far: 760 },
+  ground: { base: '#0b1218', line: '#1c2b38', grid: 'rgba(120,170,210,.1)', noise: false },
+  light: { sky: 0x7d93ad, ground: 0x0a1118, hemi: 0.85, sun: 0x9fb4cf, sunPower: 0.6 },
+  road: { base: '#1b1f27', edge: '#e8ecef', center: '#ffe27a', lane: 'rgba(255,255,255,.1)', centerDouble: false },
+  wall: { inner: [0.08, 0.1, 0.14], a: [0.9, 0.25, 0.2], b: [0.8, 0.83, 0.86] },
+  arch: { big: 0xdfe6ee, a: 0xff5a4a, b: 0x8fd4ff, count: 10 },
+  banner: { bg: '#0a1118', fg: '#ffffff', accent: '#ff5a4a' },
+  pad: '#9fe0ff',
+  shoulder: 0x141b22,
+  mountain: 0x1a2733,
 };
 
 const ALPINE: Theme = {
@@ -168,6 +185,14 @@ export const MAPS: ReadonlyArray<MapDef> = [
       [0, 0, 0], [300, 0, 1], [560, -30, 5], [760, -110, 9], [880, -260, 14], [900, -420, 18], [820, -560, 20],
       [660, -650, 18], [480, -640, 16], [380, -570, 11], [330, -480, 8], [250, -420, 6], [150, -440, 6], [70, -520, 10],
       [-40, -560, 14], [-170, -500, 19], [-230, -380, 18], [-210, -250, 14], [-120, -90, 6], [-60, -20, 2],
+    ],
+  },
+  {
+    id: 'storm', name: '스톰 코스트', place: '해안 · 폭우', blurb: '비에 젖은 해안 도로. 그립이 줄어 드리프트가 길어지고 시야가 좁습니다', halfWidth: 13, pads: [0.1, 0.36, 0.62, 0.88], theme: STORM,
+    points: [
+      [-60, 0, 0], [200, 0, 1], [430, -15, 3], [610, -75, 6], [715, -190, 9], [720, -330, 11], [650, -440, 12], [530, -495, 10],
+      [425, -450, 8], [390, -350, 6], [315, -295, 4], [215, -325, 4], [160, -425, 6], [70, -480, 8],
+      [-50, -450, 9], [-125, -350, 7], [-185, -235, 5], [-170, -115, 3], [-130, -35, 1],
     ],
   },
 ];

@@ -29,7 +29,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     <div class="sz-hud" hidden>
       <div class="sz-vig" id="sz-vig"></div><div class="sz-zonefx" id="sz-zonefx"></div><div class="sz-scope" id="sz-scope"></div>
       <div class="sz-tl"><div class="sz-stat"><b id="sz-alive">100</b><span>생존</span></div><div class="sz-stat"><b id="sz-kills">0</b><span>처치</span></div></div>
-      <div class="sz-tc" id="sz-zone"><b id="sz-ztime">0:00</b><span id="sz-zlabel">자기장</span></div>
+      <canvas class="sz-compass" id="sz-compass" width="420" height="34"></canvas><div class="sz-tc" id="sz-zone"><b id="sz-ztime">0:00</b><span id="sz-zlabel">자기장</span></div>
       <div class="sz-tr"><canvas id="sz-map" width="300" height="300"></canvas><ul class="sz-feed" id="sz-feed"></ul></div>
       <div class="sz-cross" id="sz-cross"><i></i><i></i><i></i><i></i></div><div class="sz-hitmark" id="sz-hitmark"><i></i><i></i><i></i><i></i></div><div class="sz-nums" id="sz-nums"></div>
       <div class="sz-dmgs" id="sz-dmgs"></div>
@@ -264,6 +264,23 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     g.save(); g.translate(px(p.x), pz(p.z)); g.rotate(p.yaw); g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 2; g.beginPath(); g.moveTo(10, 0); g.lineTo(-7, -6); g.lineTo(-4, 0); g.lineTo(-7, 6); g.closePath(); g.stroke(); g.fill(); g.restore();
   }
 
+  /** 위쪽 나침반: 방위(N·E·S·W)와 자기장 중심·보급 상자 방향을 띄웁니다. 시야 앞뒤 ±65° 를 보여 줍니다. */
+  const compassCv = q<HTMLCanvasElement>('#sz-compass'), compassCtx = compassCv.getContext('2d')!;
+  function drawCompass(m: Match, p: Player): void {
+    const g = compassCtx, W = compassCv.width, Hh = compassCv.height, span = 65, per = W / (span * 2), D = 180 / Math.PI;
+    const bearing = (dx: number, dz: number): number => Math.atan2(dx, -dz) * D, head = bearing(Math.cos(p.yaw), Math.sin(p.yaw)), at = (b: number): number => { let d = b - head; d = ((d + 540) % 360) - 180; return W / 2 + d * per; };
+    g.clearRect(0, 0, W, Hh); g.fillStyle = 'rgba(10,12,14,.5)'; g.fillRect(0, 0, W, Hh); g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '700 13px sans-serif';
+    for (let b = 0; b < 360; b += 15) {
+      const x = at(b); if (x < 0 || x > W) continue; const card = b % 90 === 0; g.fillStyle = card ? '#fff' : 'rgba(255,255,255,.55)';
+      if (card) g.fillText(({ 0: 'N', 90: 'E', 180: 'S', 270: 'W' } as Record<number, string>)[b], x, 12); else g.fillRect(x - 0.5, b % 45 === 0 ? 4 : 8, 1, b % 45 === 0 ? 14 : 8);
+      if (b % 45 === 0 && !card) { g.font = '10px sans-serif'; g.fillText(String(b), x, 12); g.font = '700 13px sans-serif'; }
+    }
+    const z = m.zone, mark = (x: number, zz: number, color: string): void => { const b = bearing(x - p.x, zz - p.z), px = Math.max(8, Math.min(W - 8, at(b))); g.fillStyle = color; g.strokeStyle = '#000'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(px, 20); g.lineTo(px + 6, 27); g.lineTo(px, 33); g.lineTo(px - 6, 27); g.closePath(); g.fill(); g.stroke(); };
+    mark(z.nextR < z.r - 0.5 ? z.nextCx : z.cx, z.nextR < z.r - 0.5 ? z.nextCz : z.cz, '#6fb2ff');
+    for (const d of m.drops) if (d.called && !d.landed) mark(d.x, d.z, '#ffd34d');
+    g.fillStyle = '#ff5a3c'; g.beginPath(); g.moveTo(W / 2, 20); g.lineTo(W / 2 + 5, 14); g.lineTo(W / 2 - 5, 14); g.closePath(); g.fill();
+  }
+
   function updateHud(dt: number): void {
     const m = match!, p = me(), z = m.zone, g = p.guns[p.cur], def = g ? WEAPONS[g.id] : null, now = performance.now();
     set(q('#sz-alive'), 'alive', String(m.aliveCount())); set(q('#sz-kills'), 'kills', String(p.kills));
@@ -304,7 +321,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     html(q('#sz-feed'), 'feed', feed.map(f => `<li class="${f.mine ? 'mine' : ''}">${esc(f.text)}</li>`).join(''));
     q('#sz-keys').classList.toggle('hide', phase !== 'countdown' || touch);
     html(q('#sz-keys'), 'keys', phase === 'countdown' && !touch ? '<span><b>WASD</b> 이동</span><span><b>좌클릭</b> 사격</span><span><b>우클릭</b> 조준</span><span><b>C</b> 웅크리기</span><span><b>E</b> 줍기</span>' : '');
-    drawMap(m, p);
+    drawMap(m, p); drawCompass(m, p);
   }
 
   // ---------- 이벤트 처리 ----------

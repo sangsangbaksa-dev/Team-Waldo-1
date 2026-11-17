@@ -121,3 +121,6 @@
 /* 한글은 단어 단위로 줄바꿈합니다. */
 .sz-root{word-break:keep-all;overflow-wrap:break-word}
 @media (max-height:500px){.sz-banner{top:33%}}
+
+.sz-compass{position:absolute;left:50%;top:calc(max(14px,env(safe-area-inset-top)) + 112px);transform:translateX(-50%);width:min(420px,56vw);height:auto;border-radius:8px;border:1px solid rgba(255,255,255,.12);-webkit-mask-image:linear-gradient(90deg,transparent,#000 14%,#000 86%,transparent);mask-image:linear-gradient(90deg,transparent,#000 14%,#000 86%,transparent)}
+@media (max-width:700px){.sz-compass{top:calc(max(14px,env(safe-area-inset-top)) + 96px);width:62vw}}

@@ -10,6 +10,7 @@ import { BUILDINGS, DIFFICULTIES, LEVELS, RESEARCH, RESEARCH_KINDS, SUPPLY_MAX, 
 import { RtsNet } from './pvp';
 import { RtsSim, type Building, type Cmd, type ResNode, type Unit } from './sim';
 import { RtsView } from './view';
+import { preloadUnitKit } from './models';
 import { PVP_ENABLED } from '../net/config';
 
 const esc = (s: string): string => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
@@ -377,6 +378,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   }
 
   // ---------- 시작 ----------
+  preloadUnitKit();
   function begin(): void {
     if (view) { view.dispose(); view = null; } sim = new RtsSim({ income: [1, LEVELS[difficulty].income] });
     me = 0; ai = new RtsAi(1, difficulty); startRound(); $('#rt-vs').textContent = `AI · ${LEVELS[difficulty].label}`; $<HTMLButtonElement>('[data-act="speed"]').hidden = false; $<HTMLButtonElement>('[data-act="pause"]').hidden = false; speed = 1; $<HTMLButtonElement>('[data-act="speed"]').textContent = '×1';

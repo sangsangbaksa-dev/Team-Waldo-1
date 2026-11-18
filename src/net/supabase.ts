@@ -60,6 +60,7 @@ export function createSupabaseBackend(): Backend {
     roomJoin: code => rpc<RoomRow>('pvp_room_join', { p_code: code }),
     async roomLeave(id) { await rpc('pvp_room_leave', { p_id: id }); },
     async roomReady(id, ready) { await rpc('pvp_room_ready', { p_id: id, p_ready: ready }); },
+    async roomPing(id) { await rpc('pvp_room_ping', { p_id: id }); },
     roomStart: id => rpc<RoomRow>('pvp_room_start', { p_id: id }),
     async roomState(id): Promise<RoomInfo> {
       const room = ok(await sb.from('pvp_rooms').select('*').eq('id', id).single()) as RoomRow;

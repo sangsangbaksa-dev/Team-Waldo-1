@@ -84,7 +84,7 @@ export function createLocalBackend(): Backend {
     async nickname(userId) { return load().users[userId]?.nickname ?? '상대'; },
     async roomCreate(game, max, isPublic, config) {
       const a = need(), d = load(); exitRooms(d, a.id);
-      const r = { id: uid(), code: Math.random().toString(36).slice(2, 7).toUpperCase(), game, host_id: a.id, max_players: game === 'race' ? Math.min(6, Math.max(2, max)) : 2, is_public: isPublic, status: 'waiting' as const, config, match_id: null, members: [{ user_id: a.id, ready: true }], created: Date.now() };
+      const r = { id: uid(), code: Math.random().toString(36).slice(2, 7).toUpperCase(), game, host_id: a.id, max_players: (game === 'race' || game === 'outlaw') ? Math.min(6, Math.max(2, max)) : 2, is_public: isPublic, status: 'waiting' as const, config, match_id: null, members: [{ user_id: a.id, ready: true }], created: Date.now() };
       roomsOf(d)[r.id] = r; save(d); return pubRoom(r);
     },
     async roomJoin(code) {

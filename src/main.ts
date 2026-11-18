@@ -3,9 +3,10 @@ import { readPreferences, writePreferences } from './prefs';
 import { showLoading, retry, retryNote } from './loading';
 import { readCityCareer, readRaceRecords, readRtsRecords, fmtTime } from './records';
 import { readShooterCareer } from './shooter/records';
+import { readOutlawSummary } from './outlaw/records';
 import { PVP_ENABLED } from './net/config';
 
-type GameId = 'city' | 'race' | 'rts' | 'shooter';
+type GameId = 'city' | 'race' | 'rts' | 'shooter' | 'outlaw';
 
 interface Entry {
   id: GameId;
@@ -73,6 +74,19 @@ const ENTRIES: Entry[] = [
       return matches > 0 ? `${matches}판 · ${wins}승` : '';
     },
   },
+  {
+    id: 'outlaw',
+    name: 'OUTLAW CITY',
+    genre: '오픈월드 범죄 액션',
+    summary: '시민 8명 중 한 명으로 시작해 의뢰를 받고, 차를 몰고, 경찰을 따돌리세요. 배달·응급 이송·지하 격투·카지노·부동산·차고 수집까지 — 도시는 네 놀이터입니다.',
+    facts: ['3인칭 오픈월드 · 차량 14종 · 무기 11종', '의뢰 7개 · 일거리 6종 · 카지노', '키보드 · 마우스 · 터치'],
+    image: `${base}assets/home/outlaw-city.jpg`,
+    imageAlt: '네온이 켜지는 황혼의 도시 거리와 추격전',
+    status: () => {
+      const r = readOutlawSummary();
+      return r.has ? `의뢰 ${r.missions}/7 · 스턴트 ${r.stunts}/12` : '';
+    },
+  },
 ];
 
 const app = document.querySelector<HTMLDivElement>('#game')!;
@@ -98,7 +112,7 @@ function tile(entry: Entry, index: number): string {
 function renderMenu(): void {
   generation++;
   const sound = readPreferences().sound;
-  document.title = 'WALDO · LAST CITY / SPEED RUSH / FRONTLINE / ZERO ZONE';
+  document.title = 'WALDO · 다섯 편의 3D 게임';
   app.hidden = false;
   app.innerHTML = `
     <main class="home">
@@ -165,7 +179,7 @@ async function launch(id: GameId): Promise<void> {
   if (label) label.textContent = '불러오는 중…';
   if (notice) notice.textContent = '';
   // 로딩 화면을 띄우고, 코드 묶음(chunk)을 받을 때까지 끊지 않고 다시 시도합니다.
-  const loading = showLoading(id === 'city' ? 'LAST CITY' : id === 'rts' ? 'FRONTLINE' : id === 'shooter' ? 'ZERO ZONE' : 'SPEED RUSH');
+  const loading = showLoading(id === 'city' ? 'LAST CITY' : id === 'rts' ? 'FRONTLINE' : id === 'shooter' ? 'ZERO ZONE' : id === 'outlaw' ? 'OUTLAW CITY' : 'SPEED RUSH');
   loading.progress(null, '게임을 불러오는 중');
   const cancelled = (): boolean => generation !== navigation;
   const fetchGame = <T,>(load: () => Promise<T>): Promise<T> => retry(load, { cancelled, onRetry: n => loading.note(retryNote(n)) });
@@ -185,6 +199,11 @@ async function launch(id: GameId): Promise<void> {
       if (cancelled()) { loading.close(); return; }
       app.hidden = true;
       openShooter(renderMenu, { loading });
+    } else if (id === 'outlaw') {
+      const { openOutlaw } = await fetchGame(() => import('./outlaw/game'));
+      if (cancelled()) { loading.close(); return; }
+      app.hidden = true;
+      openOutlaw(renderMenu, { loading });
     } else {
       const { openRace } = await fetchGame(() => import('./race/game'));
       if (cancelled()) { loading.close(); return; }

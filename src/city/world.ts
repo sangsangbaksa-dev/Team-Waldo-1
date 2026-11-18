@@ -43,7 +43,7 @@ export interface Fx { t: string; x: number; y: number; a?: number; b?: number; s
 export interface Crystal { id: number; x: number; y: number; amount: number; max: number }
 export interface PlayerInput { mx: number; my: number; ax: number; ay: number; fire: boolean; dash: boolean; brake: boolean }
 export interface WorldOptions { seed: number; difficulty: Difficulty; klass: ClassId; autoPlayer?: boolean; /** 연습 모드: 자기장·라이벌 AI·보급 투하 정지 */ tutorial?: boolean;
-  /** 1대1 결투: 조직 0(나)과 1(상대)만 남고, 상대는 네트워크로 움직이는 꼭두각시입니다. side 는 두 클라이언트가 서로 다른 본부에서 시작하게 합니다. */ duel?: { side: 0 | 1; name: string; /** 1대1 전용 맵 번호(arena.ts). 없으면 큰 도시를 씁니다. 두 클라이언트가 같은 값을 써야 합니다. */ arena?: number } }
+  /** 1대1 결투: 조직 0(나)과 1(상대)만 남고, 상대는 네트워크로 움직이는 꼭두각시입니다. side 는 두 클라이언트가 서로 다른 본부에서 시작하게 합니다. */ duel?: { side: 0 | 1; name: string; /** 1대1 전용 맵 번호(arena.ts). 없으면 큰 도시를 씁니다. 두 클라이언트가 같은 값을 써야 합니다. */ arena?: number; /** 3인 이상 방: seats[i] 는 조직 i 가 쓰는 본부 번호, names[i] 는 이름. 병력 없이 영웅끼리 싸웁니다. */ room?: { seats: number[]; names: string[] } } }
 export interface Quest { text: string; reward: number; done: boolean; check: (w: World) => boolean }
 
 const HC = 128, HN = Math.ceil(SIZE / HC);
@@ -74,7 +74,7 @@ export class World {
     this.map.biz.forEach(b => this.businesses.push({ id: this.nextId++, kind: b.kind, x: b.x, y: b.y, solid: b.solid, owner: -1, level: 1, cap: 0, capBy: -1, guardT: 0, pulse: 0 }));
     const order = this.map.bases.map((_, i) => i); const start = Math.floor(this.rng() * order.length);
     for (let i = 0; i < FACTION_COUNT; i++) {
-      const base = this.map.bases[order[(start + (opts.duel && i < 2 ? i ^ opts.duel.side : i)) % order.length]], player = i === 0, klass: ClassId = player ? opts.klass : (['warlord', 'tycoon', 'engineer'] as ClassId[])[Math.floor(this.rng() * 3)];
+      const base = this.map.bases[order[(start + (opts.duel?.room ? (opts.duel.room.seats[i] ?? i) : opts.duel && i < 2 ? i ^ opts.duel.side : i)) % order.length]], player = i === 0, klass: ClassId = player ? opts.klass : (['warlord', 'tycoon', 'engineer'] as ClassId[])[Math.floor(this.rng() * 3)];
       const f: Faction = {
         id: i, name: FACTIONS[i].name, color: FACTIONS[i].color, dark: FACTIONS[i].dark, player, alive: true, cash: 500, crystal: 150, supply: 0, supplyMax: SUPPLY_HQ, boss: 0, hq: 0,
         up: { dmg: 0, armor: 0, eco: 0 }, mods: baseMods(), slots: [{ id: 'pistol', mag: 12, ammo: -1 }], cur: 0, medkits: 1, armor: 0, xp: 0, level: 1, pending: 0, choices: [], perks: [],
@@ -107,12 +107,13 @@ export class World {
 
   /** 결투: 조직 2~7 을 없애고 상대 이름을 붙입니다. 본부·보스는 남겨 두어 부활 규칙을 그대로 씁니다. */
   setupDuel(opponent: string): void {
-    this.factions[1].name = opponent;
+    const room = this.opts.duel?.room, n = room ? room.names.length : 2;
+    if (room) room.names.forEach((nm, i) => { if (i > 0 && this.factions[i]) this.factions[i].name = nm; }); else this.factions[1].name = opponent;
     // 병력은 내 쪽(조직 0)만 만듭니다. 상대의 병력·건물은 상대가 보내는 상태로 꼭두각시가 생깁니다.
     // (전리품을 뽑는 난수가 두 클라이언트에서 같도록, 초기 전리품을 만든 뒤에 호출됩니다.)
     const mine = this.map.bases.find(b => { const hq = this.hq(0); return hq && b.x === hq.x + 60 && b.y === hq.y + 60; });
-    if (mine) this.startForces(0, mine);
-    for (let i = 2; i < this.factions.length; i++) {
+    if (mine && !room) this.startForces(0, mine);
+    for (let i = n; i < this.factions.length; i++) {
       const f = this.factions[i]; f.alive = false; f.respawnT = 0;
       for (const a of this.actors) if (a.f === i) { a.alive = false; this.byId.delete(a.id); }
       for (const s of this.structures) if (s.f === i) { s.alive = false; removeSolid(this.map, s.solid); }
@@ -128,15 +129,15 @@ export class World {
     this.recomputeSupply(this.factions[i]);
   }
   /** 상대 보스를 받은 상태로 맞춥니다(체력은 상대 쪽 값이 정답입니다). */
-  puppet(x: number, y: number, ang: number, hp: number, maxHp: number, weapon: WeaponId): void {
-    const b = this.boss(1); if (!b) return; b.x = x; b.y = y; b.ang = ang; b.maxHp = maxHp; b.hp = Math.max(1, hp); b.weapon = weapon; b.vx = b.vy = 0;
+  puppet(x: number, y: number, ang: number, hp: number, maxHp: number, weapon: WeaponId, fi = 1): void {
+    const b = this.boss(fi); if (!b) return; b.x = x; b.y = y; b.ang = ang; b.maxHp = maxHp; b.hp = Math.max(1, hp); b.weapon = weapon; b.vx = b.vy = 0;
   }
   /** 이번 틱까지 내 병력·포탑이 쏜 탄(상대에게 보내면 비웁니다). */
   armyShots: { x: number; y: number; a: number; w: WeaponId; m: number }[] = [];
   /** 상대 병력·포탑이 쏜 탄: 내 보스·병력·건물에 맞는지는 내 세계에서 판정합니다. */
   remoteArmyShot(x: number, y: number, ang: number, wid: WeaponId, mul: number): void { this.shoot(x, y, ang, wid, 1, 0, mul, false); }
   /** 상대가 쏜 탄을 내 세계에 만들어, 내 보스에게 맞는지는 내 쪽에서 판정합니다. */
-  remoteShot(x: number, y: number, ang: number, wid: WeaponId, mul: number): void { const b = this.boss(1); this.shoot(x, y, ang, wid, 1, b ? b.id : 0, mul, true); }
+  remoteShot(x: number, y: number, ang: number, wid: WeaponId, mul: number, fi = 1): void { const b = this.boss(fi); this.shoot(x, y, ang, wid, fi, b ? b.id : 0, mul, true); }
 
   // ---------- 생성 ----------
   spawnActor(kind: ActorKind, f: number, x: number, y: number): Actor {
@@ -224,7 +225,7 @@ export class World {
   crime(_f: number, _amount: number): void { /* 수배 시스템 없음 */ }
   hurtActor(a: Actor, dmg: number, srcF: number, direct = true): void {
     if (!a.alive || this.hidden(a)) return;
-    if (this.opts.duel && a.f === 1) return; // 상대 보스·병력의 체력은 상대 쪽에서만 줄어듭니다
+    if (this.opts.duel && a.f >= 1) return; // 상대 보스·병력의 체력은 상대 쪽에서만 줄어듭니다
     if (a.inVeh) { const v = this.vehicles.find(q => q.id === a.inVeh); if (v) this.hurtVehicle(v, dmg, srcF); return; }
     dmg *= 1 - ACTORS[a.kind].armor; if (a.f === 0) dmg *= 0.75;
     if (srcF < 8 && srcF >= 0 && !this.factions[srcF].player && !this.opts.duel) dmg *= DIFFICULTY[this.opts.difficulty].dmg;
@@ -273,7 +274,7 @@ export class World {
     if (v.hp <= 0 && v.burn <= 0) { v.burn = 1.6; this.fx('burn', v.x, v.y); }
   }
   hurtStruct(s: Structure, dmg: number, srcF: number): void {
-    if (!s.alive || (this.opts.duel && s.f === 1)) return; /* 상대 건물의 체력도 상대 쪽에서만 줄어듭니다 */ s.hp -= dmg; s.hurtT = this.time;
+    if (!s.alive || (this.opts.duel && s.f >= 1)) return; /* 상대 건물의 체력도 상대 쪽에서만 줄어듭니다 */ s.hp -= dmg; s.hurtT = this.time;
     if (s.hp > 0) return;
     s.alive = false; removeSolid(this.map, s.solid); this.fx('boom', s.x + s.w / 2, s.y + s.h / 2, Math.max(s.w, s.h));
     const f = this.factions[s.f], src = srcF >= 0 && srcF < 8 ? this.factions[srcF] : null;
@@ -583,7 +584,7 @@ export class World {
   updateStructures(dt: number): void {
     for (const s of this.structures) {
       if (!s.alive) continue; const d = STRUCTS[s.kind], f = this.factions[s.f];
-      if (this.opts.duel && s.f === 1) continue; // 상대 건물은 상대의 세계에서만 돌아갑니다(건설·생산·포탑)
+      if (this.opts.duel && s.f >= 1) continue; // 상대 건물은 상대의 세계에서만 돌아갑니다(건설·생산·포탑)
       if (s.temp > 0) { s.temp -= dt; if (s.temp <= 0) { s.alive = false; removeSolid(this.map, s.solid); this.fx('poof', s.x + s.w / 2, s.y + s.h / 2); continue; } }
       if (s.built < 1) { s.built = Math.min(1, s.built + dt / d.time); s.hp = Math.min(s.maxHp, s.hp + s.maxHp * 0.9 * dt / d.time); if (s.built >= 1) { this.recomputeSupply(f); this.fx('built', s.x + s.w / 2, s.y + s.h / 2, 0, d.name, s.f); } continue; }
       const q = s.queue[0];

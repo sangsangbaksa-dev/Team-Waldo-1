@@ -1,7 +1,7 @@
 // Supabase 백엔드: 계정(Auth), 매칭·전적(RPC), 실시간 동기화(Realtime Broadcast).
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './config';
-import type { Account, Backend, Channel, GameKind, MatchRow, NetMsg, RankRow, Rating } from './types';
+import type { Account, Backend, Channel, GameKind, MatchRow, NetMsg, RankRow, Rating, RoomInfo, RoomListItem, RoomRow } from './types';
 
 /** 확인 메일의 링크가 돌아올 주소: 지금 접속한 사이트의 이 페이지(배포 주소마다 달라서 고정하지 않습니다). Supabase 의 Redirect URLs 에 등록된 주소여야 합니다. */
 const homeUrl = (): string => location.origin + location.pathname.replace(/index\.html$/, '');
@@ -56,6 +56,20 @@ export function createSupabaseBackend(): Backend {
       return (data as Rating | null) ?? { rating: 1000, wins: 0, losses: 0 };
     },
     async nickname(userId) { const { data } = await sb.from('pvp_profiles').select('nickname').eq('id', userId).maybeSingle(); return (data as { nickname: string } | null)?.nickname ?? '상대'; },
+    roomCreate: (game, max, isPublic, config) => rpc<RoomRow>('pvp_room_create', { p_game: game, p_max: max, p_public: isPublic, p_config: config }),
+    roomJoin: code => rpc<RoomRow>('pvp_room_join', { p_code: code }),
+    async roomLeave(id) { await rpc('pvp_room_leave', { p_id: id }); },
+    async roomReady(id, ready) { await rpc('pvp_room_ready', { p_id: id, p_ready: ready }); },
+    roomStart: id => rpc<RoomRow>('pvp_room_start', { p_id: id }),
+    async roomState(id): Promise<RoomInfo> {
+      const room = ok(await sb.from('pvp_rooms').select('*').eq('id', id).single()) as RoomRow;
+      const rows = ok(await sb.from('pvp_room_members').select('user_id,ready,joined_at,pvp_profiles(nickname)').eq('room_id', id).order('joined_at').order('user_id')) as unknown as Array<{ user_id: string; ready: boolean; pvp_profiles: { nickname: string } | null }>;
+      return { room, members: rows.map(r => ({ user_id: r.user_id, ready: r.ready, nickname: r.pvp_profiles?.nickname ?? '플레이어' })) };
+    },
+    async roomList(game): Promise<RoomListItem[]> {
+      const rows = ok(await sb.from('pvp_rooms').select('*,pvp_room_members(user_id),pvp_profiles(nickname)').eq('game', game).eq('status', 'waiting').eq('is_public', true).order('created_at', { ascending: false }).limit(20)) as unknown as Array<RoomRow & { pvp_room_members: unknown[]; pvp_profiles: { nickname: string } | null }>;
+      return rows.map(({ pvp_room_members, pvp_profiles, ...room }) => ({ room, host: pvp_profiles?.nickname ?? '플레이어', count: pvp_room_members.length }));
+    },
     open(matchId, onMessage): Channel {
       const ch = sb.channel(`pvp:${matchId}`, { config: { broadcast: { self: false, ack: false } } });
       const ready = new Promise<void>((resolve, reject) => {

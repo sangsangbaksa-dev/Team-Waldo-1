@@ -1,4 +1,4 @@
--- OUTLAW CITY('outlaw')를 대전 게임 목록에 추가하고, 3인 이상 방을 열 수 있는 게임에 포함합니다(SPEED RUSH 와 OUTLAW CITY).
+-- OUTLAW CITY('outlaw')를 대전 게임 목록에 추가하고, 모든 게임이 방을 최대 6인까지 열 수 있게 합니다(몇 명까지 쓸지는 각 게임이 openLobby 의 maxPlayers 로 정합니다).
 alter table public.pvp_ratings drop constraint if exists pvp_ratings_game_check;
 alter table public.pvp_ratings add constraint pvp_ratings_game_check check (game in ('city', 'race', 'rts', 'shooter', 'outlaw'));
 alter table public.pvp_matches drop constraint if exists pvp_matches_game_check;
@@ -28,7 +28,7 @@ declare me uuid := auth.uid(); r public.pvp_rooms; c text; tries int := 0; mx in
 begin
   if me is null then raise exception 'login_required'; end if;
   if p_game not in ('city', 'race', 'rts', 'shooter', 'outlaw') then raise exception 'bad_game'; end if;
-  mx := case when p_game in ('race', 'outlaw') then least(greatest(coalesce(p_max, 2), 2), 6) else 2 end;
+  mx := least(greatest(coalesce(p_max, 2), 2), 6);
   perform public.pvp_room_tidy(); perform public.pvp_room_exit(me);
   loop
     c := '';

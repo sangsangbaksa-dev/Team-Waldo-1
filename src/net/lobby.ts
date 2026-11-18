@@ -42,7 +42,7 @@ export function openLobby(opts: LobbyOptions): { close(): void } {
   let backend: Backend | null = null, me: Account | null = null, screen: 'load' | 'auth' | 'home' | 'wait' | 'ranks' | 'create' | 'room' = 'load', authMode: 'in' | 'up' = 'in', closed = false;
   let firstEnter = true, msg = opts.notice ?? '', busy = false, waiting: MatchRow | null = null, poll = 0, waitSince = 0, tick = 0, rankGame: GameKind = opts.game ?? 'race', ranks: RankRow[] | null = null, rate: { rating: number; wins: number; losses: number } | null = null;
   const form: Record<string, string> = {};
-  let rooms: RoomListItem[] | null = null, roomInfo: RoomInfo | null = null, roomId = '', roomPoll = 0, listPoll = 0, lastJson = '', launching = false, createMax = 2, createPublic = true;
+  let rooms: RoomListItem[] | null = null, roomInfo: RoomInfo | null = null, roomId = '', roomPoll = 0, pingTimer = 0, listPoll = 0, lastJson = '', launching = false, createMax = 2, createPublic = true;
   const maxP = opts.maxPlayers ?? 2;
 
   const set = (patch: () => void): void => { patch(); if (!closed) paint(); };
@@ -100,7 +100,7 @@ export function openLobby(opts: LobbyOptions): { close(): void } {
     } catch (e) { failure(e); }
   }
   // ---- 방: 목록, 만들기, 코드 입장, 준비, 시작 ----
-  function stopRoomTimers(): void { window.clearInterval(roomPoll); window.clearInterval(listPoll); roomPoll = 0; listPoll = 0; }
+  function stopRoomTimers(): void { window.clearInterval(roomPoll); window.clearInterval(listPoll); window.clearInterval(pingTimer); roomPoll = 0; listPoll = 0; pingTimer = 0; }
   async function loadRooms(): Promise<void> {
     if (!backend || !opts.game || closed || screen !== 'home') return;
     try { const r = await backend.roomList(opts.game); const j = JSON.stringify(r); if (!closed && screen === 'home' && j !== lastJson) { lastJson = j; rooms = r; paint(); } } catch { /* 다음 주기에 다시 봅니다. */ }
@@ -109,6 +109,7 @@ export function openLobby(opts: LobbyOptions): { close(): void } {
   function enterRoom(room: RoomRow): void {
     stopRoomTimers(); roomId = room.id; roomInfo = null; lastJson = ''; launching = false; set(() => { screen = 'room'; msg = ''; });
     roomPoll = window.setInterval(() => void refreshRoom(), 1000); void refreshRoom();
+    const ping = (): void => { if (backend && roomId) void backend.roomPing(roomId).catch(() => undefined); }; ping(); pingTimer = window.setInterval(ping, 5000);
   }
   function leftRoom(note: string): void { stopRoomTimers(); roomId = ''; roomInfo = null; set(() => { screen = 'home'; msg = note; }); watchList(); }
   async function refreshRoom(): Promise<void> {

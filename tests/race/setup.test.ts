@@ -9,7 +9,7 @@ const DT = 1 / 90;
 
 describe('코스', () => {
   it('다섯 곳이고 사막 고속도로가 포함된다', () => {
-    expect(MAPS.map(m => m.id)).toEqual(['sunset', 'harbor', 'alpine', 'desert', 'frost', 'storm']);
+    expect(MAPS.map(m => m.id)).toEqual(['sunset', 'harbor', 'alpine', 'desert', 'frost', 'storm', 'dusk']);
   });
   for (const m of MAPS) {
     const t = buildMapTrack(m);

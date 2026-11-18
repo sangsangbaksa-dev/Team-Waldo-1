@@ -2,6 +2,7 @@
 import { CARS, LAP_OPTIONS, LEVELS, STAT_KEYS, STAT_LABELS, carById, levelById, sanitizeSetup, type RaceSetup } from './config';
 import { MAPS, mapById } from './maps';
 import { buildMapTrack } from './track';
+import { UPGRADE_MAX, buyUpgrade, nextCost, upgradesOf, writeGarage, type Garage } from './garage';
 import { fmtTime, raceRaceKey, type RaceRecords } from '../records';
 
 const esc = (s: string): string => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c);
@@ -19,7 +20,7 @@ function outline(id: string): { d: string; km: string } {
 
 export interface SetupHandle { read(): RaceSetup; destroy(): void }
 
-export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceRecords, cb: { onStart: (s: RaceSetup) => void; onExit: () => void; onPvp?: (s: RaceSetup) => void }): SetupHandle {
+export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceRecords, garage: { value: Garage }, cb: { onStart: (s: RaceSetup) => void; onExit: () => void; onPvp?: (s: RaceSetup) => void }): SetupHandle {
   let cur = sanitizeSetup(initial);
   const root = document.createElement('div'); root.className = 'rc-setup'; root.setAttribute('role', 'dialog'); root.setAttribute('aria-label', '레이스 설정');
   const hex = (n: number): string => `#${n.toString(16).padStart(6, '0')}`;
@@ -34,14 +35,23 @@ export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceR
           <section><h3>종목</h3><div class="rc-seg" data-seg="laps">${LAP_OPTIONS.map(n => `<button type="button" class="rc-opt" data-pick="laps:${n}">${n}랩</button>`).join('')}</div><p class="rc-note" data-note="record"></p></section>
           <section><h3>난이도</h3><div class="rc-seg lv" data-seg="level">${LEVELS.map(l => `<button type="button" class="rc-opt" data-pick="level:${l.id}"><b>${l.id}</b>${l.name}</button>`).join('')}</div><p class="rc-note" data-note="level"></p></section>
         </div>
-        <section class="rc-setup-col"><h3>차량</h3><div class="rc-grid cars">${CARS.map(carCard).join('')}</div><p class="rc-note" data-note="car"></p></section>
+        <section class="rc-setup-col"><h3>차량</h3><div class="rc-grid cars">${CARS.map(carCard).join('')}</div><p class="rc-note" data-note="car"></p><div class="rc-garage" data-garage></div></section>
       </div>
       <footer><button type="button" class="ghost" data-setup="exit">메뉴로</button><span class="rc-pick" data-note="summary"></span>${cb.onPvp ? '<button type="button" data-setup="pvp">온라인 대전 · 방</button>' : ''}<button type="button" class="primary" data-setup="start">출발</button></footer>
     </div>`;
   host.append(root);
   const note = (k: string): HTMLElement => root.querySelector<HTMLElement>(`[data-note="${k}"]`)!;
 
+  const STAT_NOTE: Record<(typeof STAT_KEYS)[number], string> = { accel: '출발·코너 탈출 가속', top: '직선 최고 속도', handling: '코너 그립과 회전', drift: '드리프트 부스트 충전', nitro: '니트로 지속·충전' };
+  function paintGarage(): void {
+    const car = carById(cur.car), up = upgradesOf(garage.value, car.id), box = root.querySelector<HTMLElement>('[data-garage]')!;
+    box.innerHTML = `<div class="rc-garage-head"><h3>${car.name} 튜닝</h3><span class="rc-coins" aria-label="보유 코인">${garage.value.coins.toLocaleString('ko-KR')} 코인</span></div>` + STAT_KEYS.map(k => {
+      const cost = nextCost(garage.value, car.id, k), can = cost !== null && garage.value.coins >= cost;
+      return `<div class="rc-up"><span class="rc-up-name">${STAT_LABELS[k]}<small>${STAT_NOTE[k]}</small></span><span class="rc-pips" role="img" aria-label="${up[k]} / ${UPGRADE_MAX} 단계">${Array.from({ length: UPGRADE_MAX }, (_, i) => `<i${i < up[k] ? ' class="on"' : ''}></i>`).join('')}</span><button type="button" class="rc-buy" data-buy="${k}"${can ? '' : ' disabled'}>${cost === null ? 'MAX' : `${cost}`}</button></div>`;
+    }).join('') + '<p class="rc-note">레이스 보상으로 코인을 모아 솔로 레이스 성능을 올립니다. 온라인 대전에서는 적용되지 않습니다.</p>';
+  }
   function paint(): void {
+    paintGarage();
     const map = mapById(cur.map), car = carById(cur.car), lv = levelById(cur.level);
     root.querySelectorAll<HTMLElement>('[data-pick]').forEach(b => { const [k, v] = b.dataset.pick!.split(':'); const on = String(cur[k as keyof RaceSetup]) === v; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
     note('map').textContent = map.blurb; note('level').textContent = lv.blurb; note('car').textContent = `${car.name} · ${car.role} — ${car.blurb}`;
@@ -51,6 +61,8 @@ export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceR
   }
   root.addEventListener('click', e => {
     const t = e.target as HTMLElement, pick = t.closest<HTMLElement>('[data-pick]'), act = t.closest<HTMLElement>('[data-setup]');
+    const buy = t.closest<HTMLElement>('[data-buy]');
+    if (buy) { const next = buyUpgrade(garage.value, cur.car, buy.dataset.buy as (typeof STAT_KEYS)[number]); if (next) { garage.value = next; writeGarage(next); paintGarage(); } return; }
     if (pick) { const [k, v] = pick.dataset.pick!.split(':'); cur = sanitizeSetup({ ...cur, [k]: k === 'laps' || k === 'level' ? Number(v) : v }); paint(); }
     else if (act?.dataset.setup === 'start') cb.onStart(cur);
     else if (act?.dataset.setup === 'pvp') cb.onPvp?.(cur);

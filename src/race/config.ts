@@ -26,8 +26,9 @@ export const carById = (id: string): CarDef => CARS.find(c => c.id === id) ?? CA
 
 // 한 점당 성능 변화량. 기준(3점)에서 ±2점이 곧 가장 낮은/높은 값입니다.
 const STEP = { accel: 0.09, top: 0.03, grip: 0.025, turn: 0.03, drift: 0.2, nitro: 0.14 };
-export function carParams(car: CarDef): CarParams {
-  const p = car.points, d = (v: number): number => v - 3, b = PLAYER_PARAMS;
+/** bonus: 차고에서 산 능력치 업그레이드(점수에 더해집니다). 온라인 대전에서는 쓰지 않습니다. */
+export function carParams(car: CarDef, bonus: Partial<StatPoints> = {}): CarParams {
+  const p = { accel: car.points.accel + (bonus.accel ?? 0), top: car.points.top + (bonus.top ?? 0), handling: car.points.handling + (bonus.handling ?? 0), drift: car.points.drift + (bonus.drift ?? 0), nitro: car.points.nitro + (bonus.nitro ?? 0) }, d = (v: number): number => v - 3, b = PLAYER_PARAMS;
   return {
     top: b.top * (1 + d(p.top) * STEP.top), accel: b.accel * (1 + d(p.accel) * STEP.accel), brake: b.brake,
     grip: 1 + d(p.handling) * STEP.grip, turn: 1 + d(p.handling) * STEP.turn,

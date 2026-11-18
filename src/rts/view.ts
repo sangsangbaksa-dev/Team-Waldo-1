@@ -52,6 +52,12 @@ export class RtsView {
     const blot = (c: string, count: number, r0: number, r1: number, a: number): void => { for (let i = 0; i < count; i++) { g.globalAlpha = a * (0.4 + rnd() * 0.6); g.fillStyle = c; g.beginPath(); g.arc(rnd() * tex.width, rnd() * tex.height, (r0 + rnd() * (r1 - r0)) * k, 0, Math.PI * 2); g.fill(); } g.globalAlpha = 1; };
     blot('#5d6c44', 260, 1.2, 4.5, 0.35); blot('#7e8858', 220, 0.8, 3.2, 0.3); blot('#8b7a5a', 90, 0.8, 2.6, 0.28); blot('#4f5d3b', 160, 0.3, 1.2, 0.35);
     for (const s of this.sim.map.starts) { const grd = g.createRadialGradient((s.x + 2) * k, (s.y + 2) * k, 2 * k, (s.x + 2) * k, (s.y + 2) * k, 11 * k); grd.addColorStop(0, 'rgba(142,124,92,.95)'); grd.addColorStop(1, 'rgba(142,124,92,0)'); g.fillStyle = grd; g.fillRect(0, 0, tex.width, tex.height); }
+    // 군사 기지 바닥: 본부 아래 육각 콘크리트 패드와 경고 줄무늬 테두리.
+    for (const s of this.sim.map.starts) {
+      const cx = (s.x + 2) * k, cy = (s.y + 2) * k, hex = (r: number): void => { g.beginPath(); for (let q = 0; q < 6; q++) { const a = Math.PI / 6 + (q * Math.PI) / 3; g[q ? 'lineTo' : 'moveTo'](cx + Math.cos(a) * r * k, cy + Math.sin(a) * r * k); } g.closePath(); };
+      g.save(); hex(8.2); g.fillStyle = 'rgba(70,72,74,.55)'; g.fill(); g.lineWidth = 0.5 * k; g.setLineDash([1.4 * k, 1.4 * k]); g.strokeStyle = 'rgba(232,190,50,.8)'; g.stroke(); g.setLineDash([]);
+      hex(6.9); g.fillStyle = 'rgba(120,122,124,.5)'; g.fill(); g.lineWidth = 0.16 * k; g.strokeStyle = 'rgba(40,42,44,.5)'; g.stroke(); g.restore();
+    }
     for (const e of this.sim.map.expansions) { const grd = g.createRadialGradient((e.x + 2) * k, (e.y + 2) * k, 2 * k, (e.x + 2) * k, (e.y + 2) * k, 9 * k); grd.addColorStop(0, 'rgba(142,124,92,.7)'); grd.addColorStop(1, 'rgba(142,124,92,0)'); g.fillStyle = grd; g.fillRect(0, 0, tex.width, tex.height); }
     const lanes = buildLanes(this.sim.map), bushes = bushSpots(this.sim.map, lanes); paintGround(g, k, this.sim.map, lanes, bushes);
     g.strokeStyle = 'rgba(30,36,24,.07)'; g.lineWidth = 1; for (let i = 0; i <= n; i += 4) { g.beginPath(); g.moveTo(i * k, 0); g.lineTo(i * k, tex.height); g.moveTo(0, i * k); g.lineTo(tex.width, i * k); g.stroke(); }

@@ -6,3 +6,4 @@ browser-artifacts/
 qa/
 .vercel/
 __pycache__/
+/.browser-check/

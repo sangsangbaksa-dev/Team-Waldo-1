@@ -82,6 +82,21 @@ export class RtsView {
       m4.compose(new THREE.Vector3(x, 0.4 * s, y), new THREE.Quaternion(), new THREE.Vector3(s, s, s)); trunk.setMatrixAt(i, m4);
     }
     scene.add(cone, trunk);
+    // 전장 장식: 바위 가장자리의 소나무·관목과 빈 땅의 풀숲. 시뮬레이션과 무관하고 길·광물·기지 근처는 비워 둡니다.
+    {
+      const at = (x: number, y: number): number => t[Math.min(n - 1, Math.max(0, Math.floor(y))) * n + Math.min(n - 1, Math.max(0, Math.floor(x)))];
+      const keepOut = (x: number, y: number): boolean => this.sim.map.nodes.some(nd => Math.abs(nd.x - x) < 4 && Math.abs(nd.y - y) < 4) || this.sim.map.starts.some(st => Math.hypot(st.x + 2 - x, st.y + 2 - y) < 15) || this.sim.map.expansions.some(ex => Math.hypot(ex.x + 2 - x, ex.y + 2 - y) < 8);
+      const nearRock = (x: number, y: number): boolean => { for (let j = -3; j <= 3; j++) for (let i = -3; i <= 3; i++) if (at(x + i, y + j)) return true; return false; };
+      const pines: Array<[number, number, number]> = [], bushes: Array<[number, number, number]> = [], want = this.quality === 'low' ? 60 : 170;
+      for (let tries = 0; tries < 6000 && pines.length < want; tries++) { const x = 3 + rnd() * (n - 6), y = 3 + rnd() * (n - 6); if (at(x, y) || keepOut(x, y) || !nearRock(x, y)) continue; pines.push([x, y, 0.55 + rnd() * 0.6]); }
+      for (let tries = 0; tries < 8000 && bushes.length < want * 1.6; tries++) { const x = 3 + rnd() * (n - 6), y = 3 + rnd() * (n - 6); if (at(x, y) || keepOut(x, y)) continue; bushes.push([x, y, 0.35 + rnd() * 0.4]); }
+      const pc = new THREE.InstancedMesh(new THREE.ConeGeometry(0.7, 2.2, 6), new THREE.MeshStandardMaterial({ roughness: 0.9, flatShading: true }), Math.max(1, pines.length)), pt = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.1, 0.14, 0.7, 5), new THREE.MeshStandardMaterial({ color: 0x4a3524, roughness: 1 }), Math.max(1, pines.length));
+      pines.forEach(([x, y, sc], i) => { const h = heightAt(x, y); m4.compose(new THREE.Vector3(x, h + 0.35 * sc + 1.1 * sc, y), new THREE.Quaternion(), new THREE.Vector3(sc, sc, sc)); pc.setMatrixAt(i, m4); col.setHSL(0.28 + rnd() * 0.05, 0.38, 0.2 + rnd() * 0.08); pc.setColorAt(i, col); m4.compose(new THREE.Vector3(x, h + 0.35 * sc, y), new THREE.Quaternion(), new THREE.Vector3(sc, sc, sc)); pt.setMatrixAt(i, m4); });
+      pc.count = pt.count = pines.length; pc.castShadow = this.shadows; scene.add(pc, pt);
+      const bm = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.6, 0), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true }), Math.max(1, bushes.length));
+      bushes.forEach(([x, y, sc], i) => { m4.compose(new THREE.Vector3(x, heightAt(x, y) + 0.18 * sc, y), new THREE.Quaternion().setFromEuler(e.set(0, rnd() * 6, 0)), new THREE.Vector3(sc * 1.3, sc * 0.7, sc)); bm.setMatrixAt(i, m4); col.setHSL(0.22 + rnd() * 0.09, 0.35, 0.24 + rnd() * 0.1); bm.setColorAt(i, col); });
+      bm.count = bushes.length; scene.add(bm);
+    }
     // 건물 배치용 격자(평소엔 숨김).
     const gc = document.createElement('canvas'); gc.width = gc.height = 64; const gg = gc.getContext('2d')!; gg.strokeStyle = 'rgba(255,255,255,.55)'; gg.lineWidth = 3; gg.strokeRect(0, 0, 64, 64);
     const gt = new THREE.CanvasTexture(gc); gt.wrapS = gt.wrapT = THREE.RepeatWrapping; gt.repeat.set(n, n);

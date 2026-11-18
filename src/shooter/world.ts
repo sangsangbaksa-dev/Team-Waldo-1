@@ -1,6 +1,7 @@
 // ZERO ZONE — 지도 생성(지형·강·호수·마을·건물·숲·바위·전리품)과 충돌·광선 검사. 화면과 무관한 순수 로직이라 시드가 같으면 어디서나 같은 지도가 나옵니다.
 // 지형 높이는 + - * / 와 난수 격자만으로 계산합니다(1대1 두 브라우저가 같은 땅을 보도록 삼각함수를 쓰지 않습니다).
 import { BR_FILL, MAP_HALF, PLAYER, WEAPON_IDS, makeRng, type Mode, type WeaponId } from './config';
+import { PART_IDS, type PartId, type Loadout } from './attachments';
 
 /** 위에서 본 직사각형 + 높이 범위(절대 높이). 벽·바닥판·계단·바위·상자·나무 기둥 모두 이 모양입니다. */
 export type BoxKind = 'wall' | 'rock' | 'crate' | 'trunk' | 'step' | 'slab' | 'roof' | 'rail' | 'post' | 'container' | 'hay' | 'sandbag';
@@ -14,8 +15,9 @@ export interface Building {
   tex: number; door: 'x' | 'z'; roof: 'flat' | 'gable' | 'none'; stairs: Stair | null;
   /** 창틀 장식(화면용): [x, y, z, 축(0=x,1=z), 너비, 높이] */ windows: number[];
 }
-export type LootKind = 'weapon' | 'ammo' | 'medkit' | 'armor' | 'helmet';
-export interface Loot { id: number; kind: LootKind; weapon: WeaponId | null; x: number; z: number; y: number; taken: boolean; b: number }
+export type LootKind = 'weapon' | 'ammo' | 'medkit' | 'armor' | 'helmet' | 'attachment';
+/** mag·reserve: 떨어뜨린 무기가 남은 탄을 그대로 간직합니다(없으면 새 총). */
+export interface Loot { id: number; kind: LootKind; weapon: WeaponId | null; x: number; z: number; y: number; taken: boolean; b: number; mag?: number; reserve?: number; part?: PartId; parts?: Loadout }
 export interface Tree { x: number; z: number; y: number; s: number; pine: boolean }
 export interface Rock { x: number; z: number; y: number; sx: number; sy: number; sz: number; ry: number }
 export interface Bush { x: number; z: number; y: number; s: number }
@@ -388,11 +390,27 @@ export function generateMap(seed: number, mode: Mode): GameMap {
     const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * half * 0.9, x = Math.cos(a) * r, z = Math.sin(a) * r, y = gAt(x, z); if (y < W || !clear(x, z, 1) || blockedAt(map, x, z, 0.6, y)) continue;
     const [kind, weapon] = rollLoot(rng, LOOT_TOWN); push(map, kind, weapon, x, z, y, -1); i++;
   }
+  // 들판의 응급 보급소: 낮은 모래주머니 엄폐와 회복·탄약을 함께 제공합니다.
+  for (let i = 0; i < (duel ? 2 : 8); i++) {
+    const angle = i * Math.PI * 2 / (duel ? 2 : 8), radius = half * 0.48;
+    const x = Math.cos(angle) * radius, z = Math.sin(angle) * radius, y = gAt(x, z);
+    if (y < W + 0.5 || !clear(x, z, 6) || blockedAt(map, x, z, 6, y)) continue;
+    // 울퉁불퉁한 지형에서는 시설이 뜨거나 묻히지 않도록 생성을 생략합니다.
+    if (Math.max(...[-3, 3].flatMap(dx => [-3, 3].map(dz => Math.abs(gAt(x + dx, z + dz) - y)))) > 0.45) continue;
+    for (const side of [-1, 1]) crate(map, x + side * 2.5, z, gAt(x + side * 2.5, z), 0.55, 'sandbag', 0.8);
+    push(map, 'medkit', null, x, z - 1, y, -1); push(map, 'ammo', null, x, z + 1, y, -1);
+  }
   // 6) 지상 출발 자리. 대전은 서로 정반대, 배틀로열은 수송기 없이 시작할 때(시험·시뮬레이션)만 씁니다.
   if (duel) {
     const a = rng() * Math.PI * 2;
     for (const k of [0, 1]) spawnNear(map, rng, Math.cos(a + k * Math.PI) * half * 0.72, Math.sin(a + k * Math.PI) * half * 0.72);
   } else for (let i = 0; i < BR_FILL; i++) { const a = (i / BR_FILL) * Math.PI * 2 + (rng() - 0.5) * 0.05, r = half * (0.3 + rng() * 0.55); spawnNear(map, rng, Math.cos(a) * r, Math.sin(a) * r); }
+  const anchors = map.loot.filter(l => l.kind === 'weapon' || l.kind === 'ammo');
+  for (let i = 0; i < anchors.length; i += 2) {
+    const at = anchors[i], x = at.x + 0.65, z = at.z;
+    if (blockedAt(map, x, z, 0.25, at.y)) continue;
+    map.loot.push({ id: map.loot.length, kind: 'attachment', part: PART_IDS[((i / 2 + seed) >>> 0) % PART_IDS.length], weapon: null, x, z, y: at.y, taken: false, b: at.b });
+  }
   return map;
 }
 

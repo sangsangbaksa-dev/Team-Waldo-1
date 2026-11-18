@@ -66,6 +66,7 @@ export const gapMeters = (r: RaceState, who: Racer): number => (who.car.total - 
 const IDLE: CarInput = { throttle: 0, brake: 0, steer: 0, drift: false, nitro: false };
 
 export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): RaceEvent[] {
+  if (!Number.isFinite(dt) || dt <= 0) return [];
   const ev: RaceEvent[] = [], t = r.track;
   if (r.phase !== 'done') r.clock += dt;
   const pressed = input.throttle > 0.05;
@@ -96,6 +97,13 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
       }
     }
     k.lastEv = stepCar(k.car, inp, dt, t, k.params);
+    // 앞차 뒤 6~26m, 같은 차선에서 따라가면 니트로가 충전됩니다.
+    if (r.phase === 'racing' && k.finishTime === null && k.car.vf > 20 && r.racers.some(other => {
+      if (other === k || other.finishTime !== null) return false;
+      const dx = other.car.x - k.car.x, dz = other.car.z - k.car.z;
+      const ahead = dx * Math.cos(k.car.h) + dz * Math.sin(k.car.h), side = Math.abs(-dx * Math.sin(k.car.h) + dz * Math.cos(k.car.h));
+      return ahead > 6 && ahead < 26 && side < 2.5 && Math.cos(other.car.h - k.car.h) > 0.9;
+    })) k.car.nitro = Math.min(1, k.car.nitro + dt * 0.085);
     if (k.player) {
       if (k.lastEv.hit > 0) ev.push({ type: 'hit', power: k.lastEv.hit });
       if (k.lastEv.driftBoost > 0) ev.push({ type: 'driftBoost', secs: k.lastEv.driftBoost });

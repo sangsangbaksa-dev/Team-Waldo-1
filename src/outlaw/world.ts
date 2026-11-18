@@ -78,7 +78,7 @@ export function generateCity(seed: number): CityMap {
       for (const u of [-30, 0, 30]) { const [px, pz] = at(u, 42); prop('lamp', px, pz, 0.25, side * Math.PI / 2); }
       for (const u of [-17, 17]) { const [px, pz] = at(u, 42); prop('tree_round', px, pz, 0.35, 0, 0.8 + rng() * 0.3); }
       for (const u of [-37, 37]) {
-        const [px, pz] = at(u, 41.5), kind = pick(['hydrant', 'bench', 'mailbox', 'bus_stop', 'vending', 'kiosk', 'phone_booth', 'street_sign', 'bollards', 'bin', 'cone', 'barrier', 'billboard'] as const);
+        const [px, pz] = at(u, 41.5), kind = pick(['hydrant', 'bench', 'mailbox', 'bus_stop', 'vending', 'kiosk', 'phone_booth', 'street_sign', 'bollards', 'bin', 'cone', 'barrier', 'billboard', 'food_cart', 'bike_rack', 'newsstand'] as const);
         prop(kind, px, pz, kind === 'bench' ? 0 : kind === 'kiosk' ? 0.7 : kind === 'barrier' ? 0.6 : 0.25, side * Math.PI / 2);
       }
     }

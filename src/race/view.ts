@@ -74,7 +74,7 @@ export class RaceView {
   private cars: CarVis[] = []; private ground!: THREE.Mesh; private pads: Array<{ tex: THREE.CanvasTexture }> = [];
   private sparks = new Particles(260, 0.9, THREE.AdditiveBlending); private smoke = new Particles(220, 2.0, THREE.NormalBlending, 0.4); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
   private camH = 0; private camInit = false; private fov = 64; private shake = 0; private punch = 0; private time = 0; private sun: THREE.DirectionalLight;
-  private chaseLift = 0; private viewH = 1; private startLamps: THREE.Mesh[] = [];
+  private chaseLift = 0; private camMode = 0; private viewH = 1; private startLamps: THREE.Mesh[] = [];
   private disposables: Array<{ dispose(): void }> = [];
 
   constructor(canvas: HTMLCanvasElement, private track: Track, carTemplates: Record<string, THREE.Object3D> | null, quality: 'high' | 'standard' | 'low', private theme: Theme) {
@@ -92,6 +92,8 @@ export class RaceView {
   private carTemplates: Record<string, THREE.Object3D> | null;
   /** 터치 조작이 화면 아래를 가릴 때 차를 버튼 위로 올립니다. */
   setChaseLift(on: boolean): void { this.chaseLift = on ? 1 : 0; }
+  /** 시점을 추적 → 멀리 → 보닛 순으로 바꿉니다. 바뀐 이름을 돌려줍니다. */
+  cycleCamera(): string { this.camMode = (this.camMode + 1) % 3; return ['추적 시점', '먼 시점', '보닛 시점'][this.camMode]; }
 
   setRacers(racers: Racer[]): void {
     const flameGeo = new THREE.ConeGeometry(0.15, 1, 10, 1, true); flameGeo.rotateZ(Math.PI / 2); flameGeo.translate(-0.5, 0, 0);
@@ -197,6 +199,10 @@ export class RaceView {
       for (let k = 0; k < 3; k++) { g.beginPath(); g.moveTo(30 + k * 78, 14); g.lineTo(78 + k * 78, 64); g.lineTo(30 + k * 78, 114); g.stroke(); }
     });
     for (const i of t.pads) {
+      // 보급 패드 양옆에 낮은 안내등을 배치합니다. 주행 폭은 비워 둡니다.
+      const lightGeo = new THREE.BoxGeometry(0.55, 1.4, 0.55), lightMat = new THREE.MeshBasicMaterial({ color: th.pad });
+      for (const side of [-1, 1]) { const light = new THREE.Mesh(lightGeo, lightMat); light.position.set(t.x[i] - t.tz[i] * 8.8 * side, t.y[i] + 0.7, t.z[i] + t.tx[i] * 8.8 * side); this.scene.add(light); }
+      this.disposables.push(lightGeo, lightMat);
       const tex = padTexBase(), m = new THREE.Mesh(new THREE.PlaneGeometry(16, 12).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
       m.rotation.order = 'YXZ'; m.rotation.y = -Math.atan2(t.tz[i], t.tx[i]); m.rotation.z = t.pitch[i]; m.position.set(t.x[i], t.y[i] + 0.1, t.z[i]); this.scene.add(m); this.pads.push({ tex }); this.disposables.push(m.geometry, tex);
     }
@@ -294,6 +300,7 @@ export class RaceView {
       return new THREE.Mesh(g, mat({ color: new THREE.Color(th.ground.base).multiplyScalar(0.85), side: THREE.DoubleSide }));
     };
     this.scene.add(emb(1), emb(-1));
+    this.buildCornerProps(mat, low);
     const sceneryKind = th.scenery;
     if (sceneryKind === 'city') {
       const win = canvasTex(64, 128, g => { g.fillStyle = '#0d0a1f'; g.fillRect(0, 0, 64, 128); for (let y = 4; y < 124; y += 10) for (let x = 4; x < 60; x += 9) { if (Math.random() < 0.62) { const h = Math.random(); g.fillStyle = h < 0.5 ? '#ffd9a0' : h < 0.8 ? '#7be9ff' : '#ff7ad9'; g.fillRect(x, y, 5, 6); } } });
@@ -367,6 +374,20 @@ export class RaceView {
     }
   }
 
+  /** 급커브 바깥쪽에 타이어 더미와 라바콘을 세워 코너 진입 지점을 눈에 띄게 합니다. */
+  private buildCornerProps(mat: (o: THREE.MeshBasicMaterialParameters) => THREE.MeshBasicMaterial, low: boolean): void {
+    const t = this.track, hw = t.halfWidth, tires: Array<{ p: [number, number, number]; color: number }> = [], cones: Array<{ p: [number, number, number]; color: number }> = [];
+    const step = low ? 4 : 2;
+    for (let i = 0; i < t.n; i += step) {
+      const k = t.k[i]; if (Math.abs(k) < 0.0065) continue;
+      const side = k > 0 ? -1 : 1, off = side * (hw + 3.1), x = t.x[i] - t.tz[i] * off, z = t.z[i] + t.tx[i] * off, y = t.y[i];
+      if ((i / step) % 3 === 0) for (let h = 0; h < 3; h++) tires.push({ p: [x, y + 0.22 + h * 0.42, z], color: (i / step) % 6 === 0 ? 0xd8323f : 0xf4f4ee });
+      else if ((i / step) % 3 === 1) cones.push({ p: [x + t.tz[i] * side * 1.1, y + 0.4, z - t.tx[i] * side * 1.1], color: 0xff7a1a });
+    }
+    if (tires.length) this.instanced(new THREE.CylinderGeometry(0.62, 0.62, 0.4, 10), mat({ color: 0xffffff }), tires);
+    if (cones.length) this.instanced(new THREE.ConeGeometry(0.32, 0.8, 8), mat({ color: 0xffffff }), cones);
+  }
+
   resize(w: number, h: number): void { this.viewH = h; this.renderer.setSize(w, h, false); this.camera.aspect = w / Math.max(1, h); this.camera.updateProjectionMatrix(); }
   kick(power: number): void { this.shake = Math.min(1, this.shake + power); }
   punchFov(v: number): void { this.punch = Math.min(1.2, this.punch + v); }
@@ -395,10 +416,12 @@ export class RaceView {
     const hd = p.h; if (!this.camInit) { this.camH = hd; this.camInit = true; }
     this.camH += wrapAngle(hd - this.camH) * Math.min(1, dt * (p.drifting ? 3.2 : 7));
     this.punch = Math.max(0, this.punch - dt * 1.8); this.shake = Math.max(0, this.shake - dt * 2.4);
-    const lift = this.chaseLift, dist = 7.4 + sf * 1.6 + (bst ? 0.9 : 0) + lift * 0.8, height = 2.55 + sf * 0.3 + lift * (this.viewH < 520 ? 1.55 : 1.05);
-    const ahead = 8.2 - lift * 1.5, cx = p.x - Math.cos(this.camH) * dist, cz = p.z - Math.sin(this.camH) * dist, cy = p.y + height;
+    const lift = this.chaseLift, cm = this.camMode, hood = cm === 2;
+    const dist = hood ? -0.5 : 7.4 + sf * 1.6 + (bst ? 0.9 : 0) + lift * 0.8 + (cm === 1 ? 5 : 0), height = hood ? 1.2 : 2.55 + sf * 0.3 + lift * (this.viewH < 520 ? 1.55 : 1.05) + (cm === 1 ? 2.2 : 0);
+    for (const v of this.cars) if (v.racer.player) v.group.visible = !hood;
+    const ahead = hood ? 22 : 8.2 - lift * 1.5, cx = p.x - Math.cos(this.camH) * dist, cz = p.z - Math.sin(this.camH) * dist, cy = p.y + height;
     const sh = sf * sf * 0.035 + (bst ? 0.05 : 0) + this.shake * 0.5, tt = this.time;
-    const k = 1 - Math.exp(-dt * (16 + sf * 10));
+    const k = hood ? 1 : 1 - Math.exp(-dt * (16 + sf * 10));
     if (this.camera.position.lengthSq() === 0) this.camera.position.set(cx, cy, cz);
     this.camera.position.x += (cx - this.camera.position.x) * k; this.camera.position.y += (cy - this.camera.position.y) * k; this.camera.position.z += (cz - this.camera.position.z) * k;
     this.camera.position.x += Math.sin(tt * 53) * sh; this.camera.position.y += Math.sin(tt * 61 + 1) * sh; this.camera.position.z += Math.sin(tt * 47 + 2) * sh;

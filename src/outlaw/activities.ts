@@ -321,7 +321,11 @@ function exportCar(sim: Sim): void {
   if (!d.phase) { a.text = '수출 차량에 탑승하세요'; a.markers = [marker(v.x, v.z, 3, BLUE, '수출 차량', 'target')]; }
   else {
     a.text = '장물 정비소로 차량을 인도하세요 · 경찰을 따돌리세요'; a.markers = [marker(d.exportX, d.exportZ, d.exportR, BLUE, '정비소')];
-    if (sim.player.vehicle === v.id && v.driver === PLAYER_ID && Math.hypot(v.x - d.exportX, v.z - d.exportZ) < d.exportR) finish(sim, true, 'CAR EXPORT 완료', 1800);
+    if (sim.player.vehicle === v.id && v.driver === PLAYER_ID && Math.hypot(v.x - d.exportX, v.z - d.exportZ) < d.exportR) {
+      if (Math.hypot(v.vx, v.vz) >= 2) { a.text = '정비소에 정차하세요 · 차량 상태가 좋을수록 보너스'; return; }
+      const condition = Math.round(600 * clamp(v.hp / v.maxHp, 0, 1));
+      finish(sim, true, `CAR EXPORT 완료 · 차량 상태 보너스 $${condition}`, 1800 + condition);
+    }
   }
 }
 export function stepActivities(sim: Sim, dt: number): void {

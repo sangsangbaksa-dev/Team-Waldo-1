@@ -104,7 +104,7 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
       b.seen = 0; b.lastX = best.x; b.lastZ = best.z; b.lastY = best.y;
     } else { b.seen += 0.16; if (b.target >= 0 && b.seen > 7 + T.react * 3) b.target = -1; }
     if (b.target < 0 && b.investT <= 0) {
-      for (const s of m.sounds) if (s.by !== p.id && m.t - s.t < 1.2 && Math.hypot(s.x - p.x, s.z - p.z) < 38 + T.sight * 0.35) { b.investX = s.x; b.investZ = s.z; b.investT = 6; break; }
+      for (const s of m.sounds) if (s.by !== p.id && m.t - s.t < 1.2 && Math.hypot(s.x - p.x, s.z - p.z) < Math.min(s.range, 38 + T.sight * 0.35)) { b.investX = s.x; b.investZ = s.z; b.investT = 6; break; }
       if (p.hurt > 0 && b.investT <= 0) { b.investX = p.x + Math.cos(p.hurtYaw) * 14; b.investZ = p.z + Math.sin(p.hurtYaw) * 14; b.investT = 5; }
     }
   }

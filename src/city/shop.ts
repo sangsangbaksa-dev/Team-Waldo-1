@@ -17,10 +17,12 @@ export const SHOP: Record<BizKind, ShopItem[]> = {
   store: [
     { id: 'medkit', name: '구급 키트', desc: `체력 +70 (H) · 최대 ${MAX_MEDKITS}개`, price: 120, icon: '🩹' },
     { id: 'ammo', name: '탄약 세트', desc: '들고 있는 모든 무기의 탄약을 가득 채움', price: 90, icon: '📦' },
+    { id: 'medpack', name: '구급 키트 묶음', desc: `구급 키트 3개를 한꺼번에 (최대 ${MAX_MEDKITS}개)`, price: 300, icon: '🧰' },
     { id: 'energy', name: '에너지 드링크', desc: '체력 +35 즉시 회복', price: 50, icon: '🥤' },
   ],
   club: [
     { id: 'mercs', name: '경호 용병 3명', desc: '인구를 차지하지 않는 현금 병력 (최대 9명)', price: 350, icon: '🕶️' },
+    { id: 'vip', name: 'VIP 라운지', desc: '체력을 가득 채우고 방탄복 +50', price: 450, icon: '🛋️' },
     { id: 'champagne', name: 'VIP 샴페인', desc: '8초간 보스와 주변 부하의 연사 속도 +60%', price: 200, icon: '🍾' },
   ],
   plant: [
@@ -50,6 +52,8 @@ export function canBuy(w: World, fi: number, item: ShopItem): boolean {
   if (item.id.startsWith('sell:')) return f.crystal >= 1;
   if (item.id === 'medkit') return f.medkits < MAX_MEDKITS && f.cash >= item.price;
   if (item.id === 'energy') return b.hp < b.maxHp && f.cash >= item.price;
+  if (item.id === 'medpack') return f.medkits < MAX_MEDKITS && f.cash >= item.price;
+  if (item.id === 'vip') return (b.hp < b.maxHp || f.armor < 100) && f.cash >= item.price;
   return f.cash >= itemPrice(w, item);
 }
 
@@ -70,6 +74,8 @@ export function purchase(w: World, fi: number, biz: Business, id: string): ShopR
   }
   if (f.cash < price) return fail('자금이 부족합니다');
   if (id === 'medkit') { if (f.medkits >= MAX_MEDKITS) return fail(`키트는 최대 ${MAX_MEDKITS}개입니다`); f.cash -= price; f.medkits++; return done('구급 키트 구매'); }
+  if (id === 'medpack') { if (f.medkits >= MAX_MEDKITS) return fail(`키트는 최대 ${MAX_MEDKITS}개입니다`); const n = Math.min(3, MAX_MEDKITS - f.medkits); f.cash -= price; f.medkits += n; return done(`구급 키트 ${n}개 구매`); }
+  if (id === 'vip') { if (b.hp >= b.maxHp && f.armor >= 100) return fail('이미 컨디션이 최고입니다'); f.cash -= price; b.hp = b.maxHp; f.armor = Math.min(100, f.armor + 50); w.fx('heal', b.x, b.y); return done('VIP 라운지 이용 · 체력 회복'); }
   if (id === 'energy') { if (b.hp >= b.maxHp) return fail('이미 체력이 가득합니다'); f.cash -= price; b.hp = Math.min(b.maxHp, b.hp + 35); w.fx('heal', b.x, b.y); return done('체력 회복'); }
   if (id === 'ammo') {
     let changed = false;

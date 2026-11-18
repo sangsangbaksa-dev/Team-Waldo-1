@@ -16,12 +16,12 @@ export class ShooterAudio {
   dispose(): void { try { this.wind?.src.stop(); } catch { /* 이미 멈춤 */ } this.wind = null; this.eng.dispose(); }
 
   /** dist: 소리가 난 곳까지의 미터 거리(0이면 내 총소리) */
-  play(name: string, dist = 0): void {
+  play(name: string, dist = 0, suppressed = false): void {
     if (!this.eng.ctx || !this.enabled) return;
-    const v = Math.max(0, Math.min(1, 1.1 - dist / 170)); if (v < 0.06) return;
+    const v = Math.max(0, Math.min(1, 1.1 - dist / (suppressed ? 65 : 170))) * (suppressed ? 0.3 : 1); if (v < 0.06) return;
     const now = performance.now(), gap = name === 'smg' || name === 'rifle' ? 45 : name === 'hurt' ? 120 : 40; if (now - (this.last.get(name) ?? 0) < gap) return; this.last.set(name, now);
     const t = (f: number, d: number, g: number, typ: OscillatorType = 'sine', slide = 0, delay = 0): void => tone(this.eng, f, d, g * v, typ, slide, delay);
-    const n = (d: number, g: number, f: number, q = 1, typ: BiquadFilterType = 'bandpass'): void => burst(this.eng, d, g * v, f, q, typ);
+    const n = (d: number, g: number, f: number, q = 1, typ: BiquadFilterType = 'bandpass'): void => burst(this.eng, suppressed ? d * 0.6 : d, g * v, suppressed ? f * 0.45 : f, q, typ);
     switch (name) {
       case 'pistol': n(0.08, 0.42, 1800, 0.8); t(220, 0.06, 0.2, 'square', -120); break;
       case 'smg': n(0.05, 0.32, 2400, 0.9); t(180, 0.04, 0.14, 'square', -80); break;

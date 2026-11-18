@@ -1,4 +1,4 @@
-// OUTLAW CITY — 카지노 게임(슬롯·블랙잭·룰렛·동전 던지기) 순수 로직. 난수는 호출자가 넘겨 재현 가능하게 합니다.
+// OUTLAW CITY — 카지노 게임(슬롯·블랙잭·룰렛·동전 던지기·하이로) 순수 로직. 난수는 호출자가 넘겨 재현 가능하게 합니다.
 export type Rng = () => number;
 
 // ---------- 슬롯 ----------
@@ -65,3 +65,16 @@ export class Blackjack {
   get payout(): number { return this.state === 'blackjack' ? Math.floor(this.bet * 2.5) : this.state === 'win' ? this.bet * 2 : this.state === 'push' ? this.bet : 0; }
   get over(): boolean { return this.state !== 'play'; }
 }
+
+// ---------- 하이로 ----------
+/** 현재 카드보다 다음 카드가 높을지 낮을지 맞히며 연승합니다. A 가 가장 낮고 K 가 가장 높으며, 같은 숫자는 틀린 것으로 칩니다. */
+export interface HiLo { card: Card; streak: number; bet: number; state: 'play' | 'lose' | 'cashed' }
+export const HILO_STEP = 1.3;
+export function hiloDeal(rng: Rng, bet: number): HiLo { return { card: { rank: Math.floor(rng() * 13), suit: Math.floor(rng() * 4) }, streak: 0, bet, state: 'play' }; }
+export function hiloGuess(g: HiLo, rng: Rng, call: 'hi' | 'lo'): void {
+  if (g.state !== 'play') return;
+  const next: Card = { rank: Math.floor(rng() * 13), suit: Math.floor(rng() * 4) }, ok = call === 'hi' ? next.rank > g.card.rank : next.rank < g.card.rank;
+  g.card = next; if (ok) g.streak++; else g.state = 'lose';
+}
+/** 지금 그만두면 받는 금액(판돈 포함). 한 번도 못 맞혔으면 0. */
+export const hiloValue = (g: HiLo): number => (g.streak > 0 && g.state !== 'lose' ? Math.floor(g.bet * Math.pow(HILO_STEP, g.streak)) : 0);

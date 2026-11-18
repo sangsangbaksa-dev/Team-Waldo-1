@@ -193,6 +193,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     keys.add(e.code);
     if (e.code === 'KeyM' || e.code === 'Tab') { if (modalKind === 'map') closeModal(); else if (!modalKind) openMap(); return; }
     if (e.code === 'Escape' && modalKind && modalKind !== 'pause') { closeModal(); return; }
+    if (e.code === 'KeyP') { if (modalKind === 'phone') closeModal(); else if (!modalKind) openUi('phone'); return; }
     if (modalKind) return;
     if (e.code === 'KeyE' || e.code === 'KeyF') useAction();
     else if (e.code === 'KeyR') { if (sim?.player.vehicle) cycleRadio(); else reloadReq = true; }
@@ -215,7 +216,12 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   const onMouseUp = (e: MouseEvent): void => { if (e.button === 0) mouse.fire = false; else if (e.button === 2) mouse.aim = false; };
   const onWheel = (e: WheelEvent): void => { if (phase !== 'play' || modalKind || !sim) return; const dir = e.deltaY > 0 ? 1 : -1; let i = sim.player.cur; for (let n = 0; n < NW; n++) { i = (i + dir + NW) % NW; if (sim.player.guns[i]) { slotReq = i; break; } } };
   const onCtx = (e: Event): void => e.preventDefault();
-  const onBlur = (): void => { keys.clear(); mouse.fire = mouse.aim = false; };
+  const onBlur = (): void => {
+    keys.clear(); mouse.fire = mouse.aim = false; reloadReq = false; slotReq = -1;
+    tc.fire = tc.aim = tc.jump = tc.sprint = tc.gas = tc.brake = tc.hand = tc.left = tc.right = false;
+    tc.moveId = tc.lookId = -1; tc.mx = tc.my = 0;
+    q('#ol-stick').style.opacity = '0'; if (wheelOpen) closeWheel();
+  };
   window.addEventListener('keydown', onKeyDown); window.addEventListener('keyup', onKeyUp); window.addEventListener('mousemove', onMouseMove);
   canvas.addEventListener('mousedown', onMouseDown); window.addEventListener('mouseup', onMouseUp); window.addEventListener('wheel', onWheel, { passive: true }); canvas.addEventListener('contextmenu', onCtx); window.addEventListener('blur', onBlur);
 
@@ -233,10 +239,12 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (e.clientX < innerWidth * 0.4 && tc.moveId < 0) { tc.moveId = e.pointerId; tc.ox = e.clientX; tc.oy = e.clientY; stickEl.style.cssText = `left:${e.clientX - 60}px;top:${e.clientY - 60}px;opacity:1`; }
     else if (e.clientX >= innerWidth * 0.4 && tc.lookId < 0) { tc.lookId = e.pointerId; tc.lx = e.clientX; tc.ly = e.clientY; }
   });
-  window.addEventListener('pointermove', e => {
+  const movePtr = (e: PointerEvent): void => {
     if (e.pointerId === tc.moveId) { const dx = clamp((e.clientX - tc.ox) / 55, -1, 1), dy = clamp((e.clientY - tc.oy) / 55, -1, 1); tc.mx = dx; tc.my = dy; const k = stickEl.firstElementChild as HTMLElement; k.style.transform = `translate(${dx * 38}px,${dy * 38}px)`; }
     else if (e.pointerId === tc.lookId) { yaw += (e.clientX - tc.lx) * 0.0055; pitch = clamp(pitch - (e.clientY - tc.ly) * 0.0045, -1.2, 1.2); tc.lx = e.clientX; tc.ly = e.clientY; }
-  });
+  };
+  window.addEventListener('pointermove', movePtr);
+  document.addEventListener('visibilitychange', onBlur);
   const endPtr = (e: PointerEvent): void => { if (e.pointerId === tc.moveId) { tc.moveId = -1; tc.mx = tc.my = 0; stickEl.style.opacity = '0'; (stickEl.firstElementChild as HTMLElement).style.transform = ''; } if (e.pointerId === tc.lookId) tc.lookId = -1; };
   window.addEventListener('pointerup', endPtr); window.addEventListener('pointercancel', endPtr);
   q('#ol-pause').onclick = () => { if (phase === 'play' && !modalKind) openPause(); };
@@ -465,6 +473,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
 
   function exit(): void {
     if (closed) return; closed = true; cancelAnimationFrame(raf);
+    window.removeEventListener('pointermove', movePtr); window.removeEventListener('pointerup', endPtr); window.removeEventListener('pointercancel', endPtr); document.removeEventListener('visibilitychange', onBlur);
     for (const [t, f] of [['keydown', onKeyDown], ['keyup', onKeyUp], ['mousemove', onMouseMove], ['mouseup', onMouseUp], ['wheel', onWheel], ['blur', onBlur], ['resize', resize]] as Array<[string, EventListener]>) window.removeEventListener(t, f);
     document.removeEventListener('pointerlockchange', onLock); if (document.pointerLockElement) document.exitPointerLock();
     try { actorView?.dispose(); cityView?.dispose(); } catch { /* 정리 실패는 무시 */ }

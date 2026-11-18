@@ -197,6 +197,12 @@ export class Renderer3D {
       if (s.kind === 'lab') { const d = new THREE.Mesh(new THREE.SphereGeometry(24, 12, 8, 0, 6.29, 0, 1.57), new THREE.MeshLambertMaterial({ color: 0x9fe8ff, emissive: 0x2a6a80 })); d.position.y = H; g.add(d); }
       g.position.set(s.x + s.w / 2, 0, s.y + s.h / 2); this.scene.add(g); this.structs.set(s.id, g);
     }
+    if (s.kind === 'depot' && !g.userData.medicalSign) {
+      const size = this.ml ? 0.1 : 1, kit = new THREE.Group(); kit.scale.setScalar(size);
+      for (const [w, d] of [[28, 8], [8, 28]]) { const sign = new THREE.Mesh(this.box, this.mat(0xa9edcf)); sign.scale.set(w, 3, d); sign.position.y = H + 2; kit.add(sign); }
+      const locker = new THREE.Mesh(this.box, this.mat(0x40594f)); locker.scale.set(18, 24, 18); locker.position.set(19, 12, 20); kit.add(locker);
+      g.add(kit); g.userData.medicalSign = true;
+    }
     if (this.ml) { g.scale.set(10, 10 * (0.15 + 0.85 * s.built), 10); const th = g.getObjectByName('turret_Head'); if (th) th.rotation.y = -s.ang; } else { g.scale.y = 0.15 + 0.85 * s.built; const head = g.getObjectByName('head'); if (head) head.rotation.y = -s.ang; }
   }
   private syncVehicle(v: Vehicle): void {

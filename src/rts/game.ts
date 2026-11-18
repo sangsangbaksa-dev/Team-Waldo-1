@@ -275,8 +275,9 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
 
   const hot = new Map<string, number>();
   function onKey(e: KeyboardEvent): void {
-    if (modal.classList.contains('show') && e.key !== 'Escape') return;
     if (e.type === 'keyup') { keys.delete(e.key === 'Shift' ? 'Shift' : e.code); return; }
+    if (modal.classList.contains('show') && e.key !== 'Escape') return;
+    if (e.repeat) return;
     keys.add(e.key === 'Shift' ? 'Shift' : e.code); audio.unlock();
     const k = e.key.toUpperCase();
     if (e.key === 'Escape') { if (mode || submenu) { mode = null; submenu = false; setHint(''); cmdKey = ''; } else if (selected.size) setSel([]); else openMenu(); e.preventDefault(); return; }
@@ -287,12 +288,16 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       return;
     }
     if (e.key === '.') { const w = sim.units.filter(u => u.owner === me && u.kind === 'worker' && u.o.t === 'idle'); if (w.length) { const i = Math.max(0, w.findIndex(u => selected.has(u.id)) + 1) % w.length; setSel([w[i].id]); view?.lookAt(w[i].x, w[i].y); } else toast('놀고 있는 일꾼이 없습니다'); return; }
+    if (e.key === ',') { const army = sim.units.filter(u => u.owner === me && u.kind !== 'worker'); if (army.length) { setSel(army.map(u => u.id)); audio.sfx('select'); toast(`전투 유닛 ${army.length}기 선택`); } else toast('선택할 전투 유닛이 없습니다'); return; }
     if (e.code === 'Space') { e.preventDefault(); if (sim.tick - alertAt.t < 600) view?.lookAt(alertAt.x, alertAt.y); else { const h = sim.buildings.find(b => b.owner === me && b.kind === 'hq'); if (h) view?.lookAt(h.x + 2, h.y + 2); } return; }
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); return; }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const b = buttons.find(x => x.key === k); if (b) { e.preventDefault(); if (b.enabled === false) toast(b.hint ?? '지금은 할 수 없습니다', true); else { b.on(); refresh(); } }
   }
   window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKey);
+  const resetInput = (): void => { keys.clear(); touches.clear(); pointer.down = pointer.drag = pointer.pan = pointer.in = false; pinch = 0; };
+  window.addEventListener('blur', resetInput);
+  document.addEventListener('visibilitychange', resetInput);
 
   // ---------- HUD ----------
   function paintHud(): void {
@@ -321,7 +326,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     <li><b>명령</b>오른쪽 클릭: 이동·공격·채취 · A 공격 이동 · S 정지 · M 이동</li>
     <li><b>건설</b>일꾼 선택 → B → 건물 선택 → 클릭. 병영 위에는 보급소(인구)가 필요합니다.</li>
     <li><b>생산</b>건물 선택 → Q·W. 집결지는 R, 일꾼은 광물에 집결하면 바로 캡니다.</li>
-    <li><b>카메라</b>화살표 · 화면 가장자리 · 휠 확대 · 미니맵 클릭 · Space 최근 공격 위치 · . 놀고 있는 일꾼</li>
+    <li><b>카메라</b>화살표 · 화면 가장자리 · 휠 확대 · 미니맵 클릭 · Space 최근 공격 위치 · . 놀고 있는 일꾼 · , 전투 유닛 전체 선택</li>
     <li><b>터치</b>한 손가락 드래그는 화면 이동, 탭은 선택/명령, 두 손가락은 확대. 범위 선택 버튼으로 드래그 선택.</li></ul>
     <div class="rt-actions"><button class="primary" data-act="back">닫기</button></div></div>`;
   function openMenu(): void {
@@ -434,6 +439,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
 
   // ---------- 버튼 ----------
   function exit(): void {
+    window.removeEventListener('blur', resetInput); document.removeEventListener('visibilitychange', resetInput);
     if (closed) return; closed = true; leavePvp(); cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('waldo:preferences', onPrefs);
     view?.dispose(); audio.dispose(); root.remove(); onExit();
   }

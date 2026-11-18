@@ -141,7 +141,7 @@ export interface Building {
   /** 외벽 질감 번호 0~5 */ tex: number; color: number; roof: 'flat' | 'gable' | 'tank'; neon: boolean;
   /** 이 건물이 막는지(false 면 장식 지붕 등) */ solid: boolean;
 }
-export type PropKind = 'lamp' | 'tree_round' | 'tree_pine' | 'bench' | 'bin' | 'hydrant' | 'mailbox' | 'bus_stop' | 'kiosk' | 'vending' | 'phone_booth' | 'street_sign' | 'bollards' | 'billboard' | 'cone' | 'barrier' | 'dumpster' | 'planter' | 'parasol';
+export type PropKind = 'lamp' | 'tree_round' | 'tree_pine' | 'bench' | 'bin' | 'hydrant' | 'mailbox' | 'bus_stop' | 'kiosk' | 'vending' | 'phone_booth' | 'street_sign' | 'bollards' | 'billboard' | 'cone' | 'barrier' | 'dumpster' | 'planter' | 'parasol' | 'food_cart' | 'bike_rack' | 'newsstand';
 export interface Prop { kind: PropKind; x: number; z: number; ry: number; /** 충돌 반경(0 이면 통과) */ r: number; scale: number }
 /** 차선 그래프의 한 노드. next 로 따라가면 같은 방향 차선이 이어집니다. */
 export interface LaneNode {

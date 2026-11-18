@@ -26,7 +26,7 @@
 .rc-speed em{position:absolute;right:-26px;top:6px;font-style:normal;font-size:22px;font-weight:900;color:#ff9be8}
 .rc-rev{grid-column:1/4;grid-row:2;height:8px;border-radius:6px;background:#ffffff22;overflow:hidden;margin-top:6px}.rc-rev i{display:block;height:100%;width:0;background:linear-gradient(90deg,#46e4ff,#ffe45e 70%,#ff3b6a)}
 .rc-nitro{grid-column:1;grid-row:1;display:grid;gap:4px;font-size:11px;font-weight:700;letter-spacing:.16em}.rc-nitro div{height:12px;border-radius:7px;background:#ffffff22;overflow:hidden;border:1px solid #ffffff33}.rc-nitro i{display:block;height:100%;width:0;background:linear-gradient(90deg,#2d8cff,#7dffe6)}.rc-nitro.on i{background:linear-gradient(90deg,#fff,#7dffe6);box-shadow:0 0 14px #7dffe6}
-.rc-keys{position:absolute;left:max(18px,env(safe-area-inset-left));top:148px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;line-height:1.4;font-size:12px;font-weight:600;opacity:1;color:#f4f1ea;text-shadow:none;background:#0c0818d0;border:1px solid #ffffff2a;border-radius:16px;padding:8px 12px;backdrop-filter:blur(10px)}.rc-keys kbd{background:#ffffff1a;border:1px solid #ffffff44;border-radius:5px;padding:1px 6px;margin-right:2px;font:600 11px/1.4 'IBM Plex Sans KR',ui-monospace,monospace}
+.rc-keys{position:absolute;left:max(18px,env(safe-area-inset-left));top:262px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;line-height:1.4;font-size:12px;font-weight:600;opacity:1;color:#f4f1ea;text-shadow:none;background:#0c0818d0;border:1px solid #ffffff2a;border-radius:16px;padding:8px 12px;backdrop-filter:blur(10px)}.rc-keys kbd{background:#ffffff1a;border:1px solid #ffffff44;border-radius:5px;padding:1px 6px;margin-right:2px;font:600 11px/1.4 'IBM Plex Sans KR',ui-monospace,monospace}
 .touch .rc-keys{display:none}.rc-touchpad{display:none}
 .touch .rc-touchpad{display:flex;position:absolute;left:0;right:0;bottom:max(14px,env(safe-area-inset-bottom));justify-content:space-between;align-items:flex-end;padding:0 max(14px,env(safe-area-inset-right)) 0 max(14px,env(safe-area-inset-left));gap:12px}
 .touch .rc-bottom{left:max(12px,env(safe-area-inset-left));right:auto;bottom:auto;top:max(112px,calc(env(safe-area-inset-top) + 100px));transform:none;width:auto;max-width:148px;grid-template-columns:auto;justify-items:start;background:rgba(8,4,20,.62);border:1px solid rgba(255,255,255,.16);border-radius:16px;padding:6px 10px 8px}
@@ -94,3 +94,21 @@
 .rc-setup footer .primary{background:linear-gradient(135deg,#ff4fd8,#ff9a5a);border-color:transparent;color:#1a0628;box-shadow:0 6px 20px #ff4fd855}
 .rc-setup footer .rc-pick{color:#cfc6ec}
 .rc-opt:focus-visible,.rc-setup footer button:focus-visible{outline-color:#7dffe6}
+
+.rc-board{position:absolute;left:16px;top:118px;pointer-events:none}
+.rc-board ol{list-style:none;margin:0;padding:6px 8px;background:rgba(14,6,34,.55);border:1px solid rgba(255,255,255,.1);border-radius:10px;backdrop-filter:blur(4px)}
+.rc-board li{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;line-height:1.7;color:rgba(255,255,255,.75)}
+.rc-board li i{width:8px;height:8px;border-radius:2px}
+.rc-board li b{width:12px;text-align:right;font-variant-numeric:tabular-nums}
+.rc-board li.me{color:#fff}
+.rc-stats{display:flex;flex-wrap:wrap;gap:6px 16px;justify-content:center;margin:6px 0 2px;font-size:13px;color:rgba(255,255,255,.72)}
+.rc-stats b{color:#fff;font-variant-numeric:tabular-nums}
+@media (max-width:760px){.rc-board{top:96px;left:10px}}
+
+/* Gameplay panel refinements. */
+.rc-root .rc-tl,.rc-root .rc-tc,.rc-root .rc-speed{background:#10141eeb;border-color:#b5c6df36;border-radius:5px;box-shadow:0 6px 20px #0003}
+.rc-root .rc-lap{border-top:1px solid #ffffff26;padding-top:8px;margin-top:9px;letter-spacing:.1em}
+.rc-root .rc-best{color:#bac8da;opacity:1;letter-spacing:.06em}
+.rc-root .rc-btns button{border-radius:5px;min-width:40px;min-height:40px;background:#10141eeb}
+.rc-root button:focus-visible{outline:2px solid #a6dfef;outline-offset:3px}
+@media(prefers-reduced-motion:reduce){.rc-root .rc-wrong{animation:none}.rc-root .rc-msg{transition:none}}

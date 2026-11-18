@@ -3,7 +3,9 @@ import './shooter.css';
 import { readPreferences } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import type { PvpSession } from '../net/lobby';
-import { BOTS, BR_FILL, DIFFICULTIES, PLAYER, WEAPONS, type Difficulty } from './config';
+import { BOTS, BR_FILL, DIFFICULTIES, PLAYER, WEAPONS, WEAPON_IDS, type Difficulty } from './config';
+import { PARTS, PART_IDS, fitPart, gunStats } from './attachments';
+import { WeaponBench } from './workbench';
 import { Match, type MatchEvent, type Player } from './sim';
 import { ShooterView } from './view';
 import { loadShooterAssets, type ShooterAssets } from './assets';
@@ -35,7 +37,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       <div class="sz-bl"><div class="sz-bar hp"><i id="sz-hp"></i><b id="sz-hpn">100</b></div><div class="sz-bar ar"><i id="sz-ar"></i><b id="sz-arn">0</b></div></div>
       <div class="sz-br"><div class="sz-wname" id="sz-wname"></div><div class="sz-ammo"><b id="sz-mag">0</b><span id="sz-res">/ 0</span></div><div class="sz-slots" id="sz-slots"></div></div>
       <div class="sz-keys" id="sz-keys"></div>
-      <div class="sz-tbtn"><button id="sz-pause" type="button" aria-label="일시정지">Ⅱ</button></div>
+      <div class="sz-tbtn"><button id="sz-workbench" type="button" aria-label="총기 조립 작업대 (Tab)">총기 조립 <kbd>Tab</kbd></button><button id="sz-pause" type="button" aria-label="일시정지">Ⅱ</button></div>
       <div class="sz-touchpad"><div class="sz-stick" id="sz-stick"><i></i></div><div class="sz-tbuttons">
         <button data-act="fire" class="fire" type="button">사격</button><button data-act="ads" type="button">조준</button><button data-act="reload" type="button">장전</button><button data-act="interact" type="button">줍기</button><button data-act="swap" type="button">교체</button><button data-act="jump" type="button">점프</button><button data-act="crouch" type="button">앉기</button></div></div>
     </div>
@@ -54,6 +56,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   let yaw = 0, pitch = 0, locked = false, lockFail = false, hitT = 0, hitHead = false, bannerT = 0, mapBase: HTMLCanvasElement | null = null;
   const keys = new Set<string>(), mouse = { fire: false, ads: false }, tc = { fire: false, ads: false, jump: false, crouch: false, move: { x: 0, y: 0, id: -1, ox: 0, oy: 0 }, look: { id: -1, x: 0, y: 0 } };
   let reloadReq = false, slotReq = -1, swapReq = false, interactHeld = false;
+  let bench: WeaponBench | null = null;
   const feed: Array<{ text: string; at: number; mine: boolean }> = [];
   const cache = new Map<string, string>();
   const set = (el: HTMLElement, key: string, text: string): void => { if (cache.get(key) !== text) { cache.set(key, text); el.textContent = text; } };
@@ -70,20 +73,21 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     setupEl.hidden = false; setupEl.setAttribute('role', 'dialog'); setupEl.setAttribute('aria-label', 'ZERO ZONE 출격 설정');
     setupEl.innerHTML = `
       <div class="sz-setup-inner">
-        <header><span class="sz-eyebrow">ZERO ZONE</span><h2>출격 설정</h2><p>줄어드는 자기장 안에서 마지막까지 살아남으세요. 총을 줍고, 엄폐하고, 쏩니다.</p></header>
+        <header><span class="sz-eyebrow">ZERO ZONE</span><h2>출격 설정</h2><p>줄어드는 자기장 안에서 마지막까지 살아남으세요. 들판의 모래주머니 보급소에서 구급상자와 탄약을 확보할 수 있습니다.</p></header>
         <section><h3>모드</h3><div class="sz-seg two">
           <button type="button" class="sz-opt ${pickMode === 'solo' ? 'on' : ''}" data-mode="solo" aria-pressed="${pickMode === 'solo'}"><b>솔로 배틀로열</b><em>나 + AI ${BR_FILL - 1}명 · 마지막 1명이 승리</em></button>
           <button type="button" class="sz-opt ${pickMode === 'pvp' ? 'on' : ''}" data-mode="pvp" aria-pressed="${pickMode === 'pvp'}"><b>1대1 온라인 대전</b><em>2인 PvP · 무작위 매칭 또는 방 코드</em></button></div></section>
         <section class="${pickMode === 'pvp' ? 'dim' : ''}"><h3>AI 난이도</h3><div class="sz-seg four">${DIFFICULTIES.map(d => `<button type="button" class="sz-opt ${d === level ? 'on' : ''}" data-level="${d}" aria-pressed="${d === level}" ${pickMode === 'pvp' ? 'disabled' : ''}><b>${BOTS[d].label}</b></button>`).join('')}</div>
           <p class="sz-note">${pickMode === 'pvp' ? '온라인 대전은 사람끼리 겨루므로 AI가 나오지 않습니다.' : `${b.blurb} (반응 ${b.react.toFixed(2)}초 · 시야 ${b.sight}m)`}</p></section>
         <section><h3>조작</h3><ul class="sz-help">${touch ? '<li>왼쪽 스틱 이동 · 오른쪽 드래그 시점</li><li>사격 · 조준 · 장전 · 줍기 · 교체 버튼</li>' : '<li><b>WASD</b> 이동 · <b>Shift</b> 달리기 · 마우스 시점</li><li><b>좌클릭</b> 사격 · <b>우클릭</b> 조준 · <b>R</b> 장전</li><li><b>Space</b> 점프(수송기에서는 뛰어내리기) · <b>C</b> 앉기 · <b>E</b> 무기 줍기 · <b>1 / 2 / 휠</b> 무기 교체 · <b>Esc</b> 일시정지</li><li>낙하 중 <b>W</b> 앞으로 · 마우스를 아래로 + <b>W</b> 급강하 · 땅이 가까워지면 낙하산이 저절로 펴집니다.</li>'}<li>탄약·구급상자·방탄복은 닿으면 자동으로 줍습니다.</li></ul></section>
-        <footer><button type="button" class="ghost" data-act="exit">메뉴로</button><span class="sz-sum">${career.matches ? `전적 ${career.matches}판 ${career.wins}승 · 최다 처치 ${career.bestKills}` : '첫 출격'}</span>
+        <footer><button type="button" class="ghost" data-act="exit">메뉴로</button><button type="button" class="ghost" data-act="armory">3D 총기 자유 조립</button><span class="sz-sum">${career.matches ? `전적 ${career.matches}판 ${career.wins}승 · 최다 처치 ${career.bestKills}` : '첫 출격'}</span>
           <button type="button" class="primary" data-act="start" ${wait ? 'disabled' : ''}>${assetState === 'failed' ? '도형 모드로 출격' : wait ? `불러오는 중 ${Math.floor(assetPct * 100)}%` : pickMode === 'solo' ? '출격' : '상대 찾기'}</button></footer>
       </div>`;
   }
   setupEl.addEventListener('click', e => {
     const t = e.target as HTMLElement, mode = t.closest<HTMLElement>('[data-mode]'), lv = t.closest<HTMLElement>('[data-level]'), act = t.closest<HTMLElement>('[data-act]');
     if (mode) { pickMode = mode.dataset.mode as 'solo' | 'pvp'; paintSetup(); } else if (lv) { level = lv.dataset.level as Difficulty; writeShooterCareer({ ...readShooterCareer(), level }); paintSetup(); }
+    else if (act?.dataset.act === 'armory') openBench(true);
     else if (act?.dataset.act === 'exit') exit(); else if (act?.dataset.act === 'start') { if (pickMode === 'solo') startSolo(); else openPvpLobby(); }
   });
   paintSetup();
@@ -160,7 +164,26 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     endPvp();
   }
   function endPvp(): void { pvp?.net.dispose(); pvp = null; }
-  function endMatch(): void { view?.dispose(); view = null; match = null; }
+  function endMatch(): void { bench?.dispose(); bench = null; view?.dispose(); view = null; match = null; }
+  function openBench(demo = false): void {
+    if (bench || closed) return;
+    if (!demo && (!match || phase !== 'play' || !me().alive)) return;
+    if (!demo && me().reload > 0) { say('장전이 끝난 뒤 작업대를 여세요', 1.6); return; }
+    const guns = demo ? WEAPON_IDS.map(id => ({ id, mag: WEAPONS[id].mag, reserve: WEAPONS[id].mag * 2, parts: {} })) : me().guns;
+    const bag = demo ? [...PART_IDS] : me().parts;
+    blur(); if (!demo && !pvpRunning()) paused = true;
+    try {
+      bench = new WeaponBench({ guns, bag, current: demo ? guns.findIndex(g => g?.id === 'rifle') : me().cur, demo, live: !demo && pvpRunning(),
+        equip: (index, slot, part) => {
+          if (demo) return fitPart(guns[index]!, bag, slot, part);
+          if (!match || !me().alive) return false;
+          const ok = match.equip(me(), slot, part, index); if (ok) audio.play('reload'); return ok;
+        },
+        close: () => { bench = null; blur(); if (!demo && match && phase === 'play') { paused = false; lock(); } },
+      });
+      if (document.pointerLockElement) document.exitPointerLock();
+    } catch { paused = false; say('3D 작업대를 열지 못했습니다. 브라우저의 그래픽 가속을 확인하세요.', 3); }
+  }
 
   // ---------- 조작 ----------
   const sens = (): number => 0.0023 / (view && me().ads ? Math.max(1, 78 / view.fov) * 0.9 : 1);
@@ -168,6 +191,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   document.addEventListener('pointerlockchange', onLock);
   function onLock(): void {
     locked = document.pointerLockElement === canvas;
+    if (bench) return;
     if (!locked && (phase === 'play' || phase === 'countdown') && !pvpRunning() && !closed) setPause(true);
     else if (!locked && pvpRunning() && !closed) say('클릭하면 조작이 돌아옵니다', 2);
   }
@@ -183,22 +207,34 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   const onKey = (e: KeyboardEvent): void => {
     if (closed || e.repeat && e.type === 'keydown' && ['KeyR', 'KeyE'].includes(e.code)) return;
     if (e.type === 'keyup') { keys.delete(e.code); if (e.code === 'KeyE') interactHeld = false; return; }
+    if (bench) return;
+    if (e.code === 'Escape' && (phase === 'play' || phase === 'countdown')) { e.preventDefault(); if (!e.repeat) setPause(!paused); return; }
+    if (paused) return;
+    if ((e.code === 'Tab' || e.code === 'KeyI') && phase === 'play') { e.preventDefault(); if (!e.repeat) openBench(); return; }
     keys.add(e.code);
     if (e.code === 'KeyR') reloadReq = true; else if (e.code === 'KeyE') interactHeld = true; else if (e.code === 'Digit1') slotReq = 0; else if (e.code === 'Digit2') slotReq = 1; else if (e.code === 'KeyQ') swapReq = true;
     else if (e.code === 'Escape' && phase === 'countdown') setPause(true);
     if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code) && match) e.preventDefault();
   };
-  const onWheel = (e: WheelEvent): void => { if (match && !paused && Math.abs(e.deltaY) > 4) swapReq = true; };
+  const onWheel = (e: WheelEvent): void => { if (match && !paused && !bench && e.target === canvas && phase === 'play' && Math.abs(e.deltaY) > 4) swapReq = true; };
   const noMenu = (e: Event): void => e.preventDefault();
   window.addEventListener('mousemove', onMove); window.addEventListener('mousedown', onDown); window.addEventListener('mouseup', onUp);
   window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKey); window.addEventListener('wheel', onWheel, { passive: true }); canvas.addEventListener('contextmenu', noMenu);
-  const blur = (): void => { keys.clear(); mouse.fire = mouse.ads = false; }; window.addEventListener('blur', blur);
+  const blur = (): void => {
+    keys.clear(); mouse.fire = mouse.ads = false;
+    interactHeld = reloadReq = swapReq = false; slotReq = -1;
+    tc.fire = tc.ads = tc.jump = tc.crouch = false;
+    tc.move.id = tc.look.id = -1; tc.move.x = tc.move.y = 0;
+    stickEl.style.opacity = '0';
+    root.querySelectorAll('.sz-tbuttons .down').forEach(b => b.classList.remove('down'));
+  }; window.addEventListener('blur', blur); document.addEventListener('visibilitychange', blur);
 
   // 터치: 왼쪽 절반은 이동 스틱, 오른쪽 절반 드래그는 시점
   const stickEl = q('#sz-stick');
   function stickFrom(x: number, y: number): void { const m = tc.move, dx = x - m.ox, dy = y - m.oy, r = 56, d = Math.hypot(dx, dy), k = d > r ? r / d : 1; m.x = (dx * k) / r; m.y = (dy * k) / r; stickEl.firstElementChild!.setAttribute('style', `transform:translate(${dx * k}px,${dy * k}px)`); }
   const tStart = (e: PointerEvent): void => {
     if (!touch || e.pointerType !== 'touch' || !match || (e.target as HTMLElement).closest('button')) return; audio.unlock();
+    root.setPointerCapture(e.pointerId);
     if (e.clientX < innerWidth * 0.45 && tc.move.id < 0) { tc.move.id = e.pointerId; tc.move.ox = e.clientX; tc.move.oy = e.clientY; stickEl.style.cssText = `left:${e.clientX - 60}px;top:${e.clientY - 60}px;opacity:1`; stickFrom(e.clientX, e.clientY); }
     else if (e.clientX >= innerWidth * 0.45 && tc.look.id < 0) { tc.look.id = e.pointerId; tc.look.x = e.clientX; tc.look.y = e.clientY; }
   };
@@ -213,7 +249,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
 
   function applyInput(): void {
     const p = me(), i = p.input, kx = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0), kz = (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
-    const sx = tc.move.x, sy = -tc.move.y, active = phase === 'play';
+    const sx = tc.move.x, sy = -tc.move.y, active = phase === 'play' && !bench;
     i.yaw = yaw; i.pitch = pitch; i.mx = active ? clamp(kx + sx, -1, 1) : 0; i.mz = active ? clamp(kz + sy, -1, 1) : 0;
     i.fire = active && (mouse.fire || tc.fire); i.ads = active && (mouse.ads || tc.ads); i.sprint = active && (keys.has('ShiftLeft') || keys.has('ShiftRight') || Math.hypot(sx, sy) > 0.92);
     i.reload = active && reloadReq; i.interact = active && interactHeld; reloadReq = false;
@@ -222,6 +258,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   }
 
   // ---------- HUD ----------
+  /** 연속 처치: 마지막 처치 후 12초 안에 또 처치하면 이어집니다. */
+  let streak = 0, streakAt = -99;
   const say = (text: string, sec = 1.8): void => { const b = q('#sz-banner'); b.textContent = text; b.classList.add('show'); bannerT = sec; };
   function buildSlots(): void { html(q('#sz-slots'), 'slots-init', ''); }
   function addFeed(text: string, mine: boolean): void { feed.push({ text, at: performance.now(), mine }); if (feed.length > 5) feed.shift(); }
@@ -239,24 +277,24 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     g.save(); g.beginPath(); g.rect(0, 0, S, S); g.arc(px(z.cx), pz(z.cz), z.r * k, 0, Math.PI * 2, true); g.fillStyle = 'rgba(40,110,255,.30)'; g.fill('evenodd'); g.restore();
     g.strokeStyle = '#6fb2ff'; g.lineWidth = 2; g.beginPath(); g.arc(px(z.cx), pz(z.cz), z.r * k, 0, Math.PI * 2); g.stroke();
     if (z.nextR < z.r - 0.5) { g.strokeStyle = '#ffffff'; g.lineWidth = 1.5; g.beginPath(); g.arc(px(z.nextCx), pz(z.nextCz), z.nextR * k, 0, Math.PI * 2); g.stroke(); }
-    for (const s of m.sounds) { if (s.by === p.id || m.t - s.t > 1.6) continue; const d = Math.hypot(s.x - p.x, s.z - p.z); if (d > 110) continue; g.fillStyle = `rgba(255,70,60,${1 - (m.t - s.t) / 1.6})`; g.beginPath(); g.arc(px(s.x), pz(s.z), 5, 0, Math.PI * 2); g.fill(); }
+    for (const s of m.sounds) { if (s.by === p.id || m.t - s.t > 1.6) continue; const d = Math.hypot(s.x - p.x, s.z - p.z); if (d > s.range) continue; g.fillStyle = `rgba(255,70,60,${1 - (m.t - s.t) / 1.6})`; g.beginPath(); g.arc(px(s.x), pz(s.z), 5, 0, Math.PI * 2); g.fill(); }
     if (pvp?.opp?.alive && m.mode === 'duel') { /* 상대 위치는 알려 주지 않습니다 */ }
     if (m.flight) { const f = m.flight, pl = m.planeAt(m.t); g.strokeStyle = 'rgba(255,255,255,.45)'; g.setLineDash([6, 5]); g.lineWidth = 1.5; g.beginPath(); g.moveTo(px(f.ax), pz(f.az)); g.lineTo(px(f.bx), pz(f.bz)); g.stroke(); g.setLineDash([]); if (pl) { g.fillStyle = '#ffd24a'; g.beginPath(); g.arc(px(pl.x), pz(pl.z), 5, 0, Math.PI * 2); g.fill(); } }
     g.save(); g.translate(px(p.x), pz(p.z)); g.rotate(p.yaw); g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 2; g.beginPath(); g.moveTo(10, 0); g.lineTo(-7, -6); g.lineTo(-4, 0); g.lineTo(-7, 6); g.closePath(); g.stroke(); g.fill(); g.restore();
   }
 
   function updateHud(dt: number): void {
-    const m = match!, p = me(), z = m.zone, g = p.guns[p.cur], def = g ? WEAPONS[g.id] : null, now = performance.now();
+    const m = match!, p = me(), z = m.zone, g = p.guns[p.cur], def = g ? gunStats(g) : null, now = performance.now();
     set(q('#sz-alive'), 'alive', String(m.aliveCount())); set(q('#sz-kills'), 'kills', String(p.kills));
     const zl = m.t < m.zoneStart ? '수송기 비행 · 자기장 대기' : z.phase >= 6 ? '마지막 자기장' : z.shrinking ? `자기장 수축 중 · ${z.phase + 1}단계` : `자기장 수축까지 · ${z.phase + 1}단계`;
     set(q('#sz-ztime'), 'zt', z.timeLeft > 0 ? clock(z.timeLeft) : '--'); set(q('#sz-zlabel'), 'zl', zl); q('#sz-zone').classList.toggle('shrink', z.shrinking);
     q('#sz-hp').style.width = `${clamp(p.hp, 0, 100)}%`; set(q('#sz-hpn'), 'hpn', String(Math.ceil(Math.max(0, p.hp)))); q('#sz-ar').style.width = `${clamp(p.armor, 0, 100)}%`; set(q('#sz-arn'), 'arn', String(Math.ceil(p.armor)));
     q('.sz-bl').classList.toggle('low', p.hp < 30);
-    set(q('#sz-wname'), 'wn', def ? def.name + (p.reload > 0 ? ' · 장전 중' : '') : '맨손'); set(q('#sz-mag'), 'mag', g ? String(g.mag) : '-'); set(q('#sz-res'), 'res', g ? `/ ${g.reserve}` : '');
+    set(q('#sz-wname'), 'wn', def ? def.name + (p.reload > 0 ? ' · 장전 중' : '') : '맨손'); set(q('#sz-mag'), 'mag', g ? String(g.mag) : '—'); set(q('#sz-res'), 'res', g ? `/ ${g.reserve} · ${def!.mag}발` : '');
     html(q('#sz-slots'), 'slots', p.guns.map((x, i) => `<span class="${i === p.cur ? 'on' : ''}">${i + 1} ${x ? WEAPONS[x.id].name : '비어 있음'}</span>`).join(''));
     // 조준선: 탄퍼짐에 맞춰 벌어집니다
-    if (def && view) { const spread = def.spread * (p.ads ? 0.4 : 1) * (1 + Math.min(1.6, p.speed / PLAYER.walk) * 0.5) * (1 + p.kick * 0.5), px = Math.tan(spread * (def.pellets > 1 ? 2 : 1)) / Math.tan((view.fov * Math.PI) / 360) * (canvas.clientHeight / 2); q('#sz-cross').style.setProperty('--gap', `${clamp(px, 4, 90).toFixed(1)}px`); }
-    q('#sz-cross').classList.toggle('hide', p.ads && g?.id === 'sniper' || !p.alive || p.air !== 0);
+    if (def && view) { const spread = def.spread * (p.ads ? 0.4 * def.adsSpread : 1) * (1 + Math.min(1.6, p.speed / PLAYER.walk) * 0.5) * (1 + p.kick * 0.5) * (p.crouch ? 0.75 : 1) * (p.grounded ? 1 : 2.2), px = Math.tan(spread * (def.pellets > 1 ? 2 : 1)) / Math.tan((view.fov * Math.PI) / 360) * (canvas.clientHeight / 2); q('#sz-cross').style.setProperty('--gap', `${clamp(px, 4, 90).toFixed(1)}px`); }
+    q('#sz-cross').classList.toggle('hide', p.ads && !!g && (g.parts?.optic === 'scope4' || g.id === 'sniper' && !g.parts?.optic) || !p.alive || p.air !== 0);
     // 줍기 안내
     let near: string | null = null; if (p.alive) for (const l of m.loot) { if (l.taken || l.kind !== 'weapon') continue; if (Math.hypot(l.x - p.x, l.z - p.z) < PLAYER.pickup && Math.abs(l.y - p.y) < 1.3) { near = WEAPONS[l.weapon!].name; break; } }
     q('#sz-prompt').classList.toggle('show', !!near); set(q('#sz-prompt'), 'prompt', near ? `${touch ? '줍기 버튼' : 'E'} · ${near}` : '');
@@ -265,7 +303,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (out) say(`자기장 밖 · 초당 -${z.dps.toFixed(1)}`, 0.4);
     // 데미지 비네트
     q('#sz-vig').style.opacity = String(clamp(p.hurt * 1.4 + (p.hp < 30 && p.alive ? 0.35 + Math.sin(now / 160) * 0.12 : 0), 0, 0.9));
-    q('#sz-scope').classList.toggle('on', p.ads && g?.id === 'sniper' && p.alive);
+    q('#sz-scope').classList.toggle('on', p.ads && !!g && (g.parts?.optic === 'scope4' || g.id === 'sniper' && !g.parts?.optic) && p.alive);
     // 명중 표시와 배너
     hitT = Math.max(0, hitT - dt); const hm = q('#sz-hitmark'); hm.style.opacity = String(hitT > 0 ? Math.min(1, hitT * 6) : 0); hm.classList.toggle('head', hitHead);
     if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) q('#sz-banner').classList.remove('show'); }
@@ -282,7 +320,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     const m = match!, p = me();
     for (const e of events) {
       if (e.t === 'shot') {
-        const s = m.players[e.id]; if (!s) continue; const dist = Math.hypot(s.x - p.x, s.z - p.z); audio.play(e.weapon, e.id === p.id ? 0 : dist);
+        const s = m.players[e.id]; if (!s) continue; const dist = Math.hypot(s.x - p.x, s.z - p.z); audio.play(e.weapon, e.id === p.id ? 0 : dist, m.gun(s)?.parts?.muzzle === 'suppressor');
         if (e.id === p.id && pvp?.net.started && !e.remote) pvp.net.sendShot({ w: e.weapon, ox: e.ox, oy: e.oy, oz: e.oz, ends: e.ends });
       } else if (e.t === 'hit') {
         if (e.wall) continue;
@@ -295,10 +333,10 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       } else if (e.t === 'kill') {
         const mine = e.attacker === p.id, text = e.attacker < 0 ? `${nameOf(e.victim)} 자기장에 쓰러짐` : e.victim === e.attacker ? `${nameOf(e.victim)} 쓰러짐` : `${nameOf(e.attacker)} → ${nameOf(e.victim)}${e.weapon !== 'zone' ? ` [${WEAPONS[e.weapon].name}]` : ''}`;
         addFeed(text, mine || e.victim === p.id);
-        if (mine) { audio.play('kill'); say(`처치 · ${nameOf(e.victim)}`, 1.4) }
+        if (mine) { audio.play('kill'); streak = m.t >= streakAt && m.t - streakAt < 12 ? streak + 1 : 1; streakAt = m.t; say(streak >= 2 ? `${['', '', '더블 킬', '트리플 킬', '쿼드라 킬'][Math.min(streak, 4)]}${streak > 4 ? ` ×${streak}` : ''} · ${nameOf(e.victim)}` : `처치 · ${nameOf(e.victim)}`, streak >= 2 ? 2 : 1.4); }
         if (e.victim === p.id) onMyDeath(e.attacker);
       } else if (e.t === 'pickup') {
-        if (e.id === p.id) { audio.play(e.kind === 'medkit' ? 'heal' : e.kind === 'armor' ? 'armor' : 'pickup'); say(e.kind === 'weapon' ? `${WEAPONS[e.weapon!].name} 획득` : e.kind === 'medkit' ? '구급상자 +' : e.kind === 'armor' ? '방탄복 +' : '탄약 +', 1.1); if (pvp && e.loot < m.map.loot.length) pvp.net.sendPickup(e.loot); }
+        if (e.id === p.id) { const part = m.lootOf(e.loot)?.part; audio.play(e.kind === 'medkit' ? 'heal' : e.kind === 'armor' ? 'armor' : 'pickup'); say(e.kind === 'attachment' && part ? `${PARTS[part].name} 획득 · Tab으로 조립` : e.kind === 'weapon' ? `${WEAPONS[e.weapon!].name} 획득` : e.kind === 'medkit' ? '구급상자 +' : e.kind === 'armor' ? '방탄복 +' : e.kind === 'helmet' ? '헬멧 획득' : '탄약 +', 1.8); if (pvp && e.loot < m.map.loot.length) pvp.net.sendPickup(e.loot); }
       } else if (e.t === 'reload') { if (e.id === p.id) audio.play('reload'); }
       else if (e.t === 'empty') { if (e.id === p.id) audio.play('empty'); }
       else if (e.t === 'jump') { if (e.id === p.id) say('자유 낙하 · W 로 앞으로, 마우스를 아래로 + W 로 급강하', 2.6); }
@@ -329,10 +367,11 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 일시정지·메뉴 ----------
   function setPause(on: boolean): void {
     if (pvpRunning() || (phase !== 'play' && phase !== 'countdown') || closed) return; paused = on;
-    if (on) { mouse.fire = mouse.ads = false; card('PAUSED', '일시정지', '', '<button class="primary" data-act="resume">계속하기</button><button data-act="again">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button>'); }
+    if (on) { blur(); card('PAUSED', '일시정지', '', '<button class="primary" data-act="resume">계속하기</button><button data-act="again">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button>'); }
     else { modal.className = 'sz-modal'; modal.innerHTML = ''; if (!touch) lock(); }
   }
   q('#sz-pause').addEventListener('click', () => { if (pvpRunning()) { say('대전 중에는 멈출 수 없습니다', 1.4); return; } setPause(true); });
+  q('#sz-workbench').addEventListener('click', () => openBench());
   modal.addEventListener('click', e => {
     const a = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act; if (!a) return; audio.unlock();
     if (a === 'resume') setPause(false);
@@ -351,6 +390,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
     if (!match || !view) return;
     const m = match, p = me();
+    if (bench && (!p.alive || phase === 'over' || phase === 'dead')) { bench.dispose(); bench = null; paused = false; }
     if (phase === 'countdown' && !paused) {
       countdown -= dt; const c = Math.ceil(countdown - 0.4), el = q('#sz-count');
       if (c > 0) { set(el, 'cd', String(c)); el.classList.add('show'); } else { set(el, 'cd', '출격'); }
@@ -361,7 +401,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       if (phase === 'play') applyInput();
       // 고정 간격(1/60)으로 진행: 프레임이 느려도 시뮬레이션 속도는 같습니다
       let left = dt; while (left > 1e-6) { const s = Math.min(1 / 60, left); left -= s; if (pvp && pvp.opp) syncRemote(s); m.step(s); }
-      if (pvp?.net.started && phase === 'play') pvp.net.sendPose({ x: p.x, z: p.z, y: p.y, crouch: p.crouch, yaw: p.yaw, pitch: p.pitch, hp: p.hp, armor: p.armor, w: p.guns[p.cur]?.id ?? 'pistol', speed: p.speed, ads: p.ads, reloading: p.reload > 0 }, now);
+      if (pvp?.net.started && phase === 'play') pvp.net.sendPose({ x: p.x, z: p.z, y: p.y, crouch: p.crouch, yaw: p.yaw, pitch: p.pitch, hp: p.hp, armor: p.armor, w: p.guns[p.cur]?.id ?? 'pistol', speed: p.speed, ads: p.ads, reloading: p.reload > 0, parts: p.guns[p.cur]?.parts }, now);
       const ev = m.drain(); if (ev.length) { view.handle(ev, p); onEvents(ev); }
     }
     if (phase === 'dead') {
@@ -370,7 +410,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       if (!pvp && !resultShown && !over && deadTimer > 1.8) { resultShown = true; showResult(false); }
     }
     const spectate = phase === 'dead' || (phase === 'over' && !p.alive) ? m.players[spectateId] ?? null : null;
-    const gun = p.guns[p.cur], zoom = p.ads && p.alive ? (gun?.id === 'sniper' ? 3.4 : gun?.id === 'rifle' ? 1.5 : 1.3) : 1;
+    const gun = p.guns[p.cur], zoom = p.ads && p.alive && gun ? gunStats(gun).zoom : 1;
     view.frame(dt, p, spectate && spectate.alive ? spectate : null, zoom); updateHud(dt); if (phase === 'dead' && !spectate) q('#sz-prompt').classList.remove('show');
   }
   /** 상대(원격) 선수를 마지막으로 받은 위치로 부드럽게 따라가게 합니다. */
@@ -379,6 +419,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     o.x += (t.x - o.x) * k; o.z += (t.z - o.z) * k; o.y += (t.y - o.y) * k; o.crouch = t.crouch; let dy = t.yaw - o.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); o.yaw += dy * k; o.pitch += (t.pitch - o.pitch) * k;
     o.hp = t.hp; o.armor = t.armor; o.speed = t.speed; o.walk += t.speed * dt; o.ads = t.ads; o.reload = t.reloading ? 1 : 0;
     if (o.guns[0]?.id !== t.w) o.guns[0] = { id: t.w, mag: 1, reserve: 0 }; o.cur = 0;
+    o.guns[0]!.parts = t.parts;
   }
 
   function resize(): void { view?.resize(canvas.clientWidth || innerWidth, canvas.clientHeight || innerHeight); }
@@ -387,6 +428,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   function exit(): void {
     if (closed) return; closed = true; cancelAnimationFrame(raf); leavePvp(); if (document.pointerLockElement) document.exitPointerLock(); loading?.close();
     for (const [t, f] of [['mousemove', onMove], ['mousedown', onDown], ['mouseup', onUp], ['keydown', onKey], ['keyup', onKey], ['wheel', onWheel], ['resize', resize], ['blur', blur]] as const) window.removeEventListener(t, f as EventListener);
+    document.removeEventListener('visibilitychange', blur);
     document.removeEventListener('pointerlockchange', onLock); endMatch(); audio.dispose(); root.remove(); onExit();
   }
   raf = requestAnimationFrame(frame);

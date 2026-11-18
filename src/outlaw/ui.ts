@@ -4,7 +4,7 @@ import { OUTFITS, ACHIEVEMENTS, CAR_SHOP, HEROES, PROPERTIES, SKILLS, SKILL_MAX,
 import { VEHICLES } from './types';
 import { JOB_LIST, cancelJob, jobBlock, startJob } from './jobs';
 import { bribe, setOutfit, buyCar, buyProperty, callCar, collectProperties, train, vehicleName } from './services';
-import { Blackjack, SLOT_SYMBOLS, cardLabel, coinFlip, handValue, rouletteColor, rouletteSpin, slotSpin, type RouletteBet } from './casino';
+import { Blackjack, HILO_STEP, SLOT_SYMBOLS, cardLabel, coinFlip, handValue, hiloDeal, hiloGuess, hiloValue, rouletteColor, rouletteSpin, slotSpin, type HiLo, type RouletteBet } from './casino';
 import { MISSION_LIST } from './missions';
 
 const CLOTH = [0x616b78, 0x8a7066, 0x585e57, 0x857b69, 0x595569, 0x6b7b7b, 0x805d60, 0x414651];
@@ -18,7 +18,7 @@ const TABS: Array<[PhoneTab, string]> = [['jobs', '일거리'], ['garage', '차�
 const BETS = [10, 50, 100, 500, 1000, 5000];
 
 export class OutlawUi {
-  tab: PhoneTab = 'jobs'; casinoTab: 'slots' | 'bj' | 'roulette' | 'coin' = 'slots'; bet = 50; bj: Blackjack | null = null; bjSettled = false; note = '';
+  tab: PhoneTab = 'jobs'; casinoTab: 'slots' | 'bj' | 'roulette' | 'coin' | 'hilo' = 'slots'; hilo: HiLo | null = null; bet = 50; bj: Blackjack | null = null; bjSettled = false; note = '';
   reels: string[] = ['7', '7', '7']; rbet: RouletteBet['type'] = 'red'; rnum = 7; heroSel = 'h0';
   constructor(private getSim: () => Sim | null) {}
   private get sim(): Sim { return this.getSim()!; }
@@ -93,11 +93,17 @@ export class OutlawUi {
 
   // ---------- 카지노 ----------
   private casino(): string {
-    const s = this.sim, tabs = ([['slots', '슬롯'], ['bj', '블랙잭'], ['roulette', '룰렛'], ['coin', '동전']] as const).map(([id, n]) => `<button class="tab${id === this.casinoTab ? ' on' : ''}" data-ui="ctab" data-id="${id}" type="button">${n}</button>`).join('');
+    const s = this.sim, tabs = ([['slots', '슬롯'], ['bj', '블랙잭'], ['roulette', '룰렛'], ['coin', '동전'], ['hilo', '하이로']] as const).map(([id, n]) => `<button class="tab${id === this.casinoTab ? ' on' : ''}" data-ui="ctab" data-id="${id}" type="button">${n}</button>`).join('');
     const chips = BETS.map(b => `<button class="chip-b${b === this.bet ? ' on' : ''}" data-ui="bet" data-id="${b}" type="button">${money(b)}</button>`).join('');
     let body = '';
     if (this.casinoTab === 'slots') body = `<div class="reels">${this.reels.map(r => `<i>${r}</i>`).join('')}</div><div class="ol-btns"><button data-ui="spin" type="button">돌리기 ${money(this.bet)}</button></div>`;
     else if (this.casinoTab === 'coin') body = `<div class="ol-btns"><button data-ui="coin" data-id="heads" type="button">앞면</button><button data-ui="coin" data-id="tails" type="button">뒷면</button></div><p class="empty">맞히면 1.9배</p>`;
+    else if (this.casinoTab === 'hilo') {
+      const g = this.hilo, live = !!g && g.state === 'play';
+      if (!g) body = `<div class="ol-btns"><button data-ui="hdeal" type="button">카드 받기 ${money(this.bet)}</button></div><p class="empty">다음 카드가 높을지 낮을지 맞히세요 · 연속 적중마다 ×${HILO_STEP} · 같은 숫자는 틀림 · A 가 가장 낮음</p>`;
+      else body = `<div class="hand"><small>연속 ${g.streak} · 지금 받을 금액 ${money(hiloValue(g))}</small><i class="card ${g.card.suit === 1 || g.card.suit === 2 ? 'red' : ''}">${cardLabel(g.card)}</i></div>
+        <div class="ol-btns">${live ? `<button data-ui="hhi" type="button">더 높음</button><button data-ui="hlo" type="button">더 낮음</button>${g.streak > 0 ? `<button data-ui="hcash" type="button" class="ghost">그만 ${money(hiloValue(g))}</button>` : ''}` : `<button data-ui="hdeal" type="button">다시 ${money(this.bet)}</button>`}</div>`;
+    }
     else if (this.casinoTab === 'roulette') {
       const types: Array<[RouletteBet['type'], string]> = [['red', '빨강 ×2'], ['black', '검정 ×2'], ['odd', '홀 ×2'], ['even', '짝 ×2'], ['low', '1-18 ×2'], ['high', '19-36 ×2'], ['number', `숫자 ${this.rnum} ×36`]];
       body = `<div class="ol-btns">${types.map(([id, n]) => `<button class="tab${this.rbet === id ? ' on' : ''}" data-ui="rbet" data-id="${id}" type="button">${n}</button>`).join('')}</div>
@@ -135,6 +141,12 @@ export class OutlawUi {
       case 'bet': this.bet = Number(id); return me('casino');
       case 'spin': { if (!this.take()) return me('casino'); const r = slotSpin(s.rng, this.bet); this.reels = r.reels; if (r.payout) s.addCash(r.payout); if (r.jackpot) s.count('jackpot'); this.note = r.payout ? `${r.note} · +${money(r.payout)}` : r.note; return { kind: 'casino', sound: r.payout ? 'cash' : undefined }; }
       case 'coin': { if (!this.take()) return me('casino'); const r = coinFlip(s.rng, this.bet, id as never); if (r.payout) s.addCash(r.payout); this.note = `${r.side === 'heads' ? '앞면' : '뒷면'} · ${r.payout ? '+' + money(r.payout) : '꽝'}`; return me('casino'); }
+      case 'hdeal': { if (!this.take()) return me('casino'); this.hilo = hiloDeal(s.rng, this.bet); this.note = ''; return me('casino'); }
+      case 'hhi': case 'hlo': {
+        const g = this.hilo; if (!g) return me('casino'); hiloGuess(g, s.rng, k === 'hhi' ? 'hi' : 'lo');
+        this.note = g.state === 'lose' ? `틀렸습니다 -${money(g.bet)}` : `적중! 연속 ${g.streak}`; return me('casino');
+      }
+      case 'hcash': { const g = this.hilo; if (!g || g.state !== 'play' || g.streak < 1) return me('casino'); const pay = hiloValue(g); g.state = 'cashed'; s.addCash(pay); this.note = `정산 +${money(pay - g.bet)}`; return me('casino'); }
       case 'rbet': this.rbet = id as never; return me('casino');
       case 'rnum': this.rnum = (this.rnum + Number(id) + 37) % 37; this.rbet = 'number'; return me('casino');
       case 'rspin': { if (!this.take()) return me('casino'); const on: RouletteBet = this.rbet === 'number' ? { type: 'number', n: this.rnum } : { type: this.rbet }; const r = rouletteSpin(s.rng, this.bet, on); if (r.payout) s.addCash(r.payout); this.note = `${r.n} ${rouletteColor(r.n) === 'red' ? '빨강' : rouletteColor(r.n) === 'black' ? '검정' : '초록'} · ${r.payout ? '+' + money(r.payout) : '꽝'}`; return me('casino'); }

@@ -3,10 +3,11 @@
 import { BOTS, BOT_NAMES, BR_FILL, DIFFICULTIES, FLIGHT, MAP_HALF, PLAYER, SKIN_TONES, TEAM_COLORS, WEAPONS, ZONES, ZONE_DELAY, makeRng, type Difficulty, type Mode, type WeaponId } from './config';
 import { STEP_UP, ceilingAt, generateMap, groundAt, pushOut, rayWorld, supportAt, type GameMap, type Loot } from './world';
 import { thinkBot, newBrain, type BotBrain } from './bot';
+import { PART_IDS, fitPart, gunStats, cleanLoadout, type Loadout, type PartId, type PartSlot } from './attachments';
 
 export interface Input { mx: number; mz: number; yaw: number; pitch: number; fire: boolean; sprint: boolean; reload: boolean; interact: boolean; ads: boolean; slot: number; jump: boolean; crouch: boolean }
 export const blankInput = (): Input => ({ mx: 0, mz: 0, yaw: 0, pitch: 0, fire: false, sprint: false, reload: false, interact: false, ads: false, slot: -1, jump: false, crouch: false });
-export interface Gun { id: WeaponId; mag: number; reserve: number }
+export interface Gun { id: WeaponId; mag: number; reserve: number; parts?: Loadout }
 /** 0 땅 위 · 1 수송기 안 · 2 자유 낙하 · 3 낙하산 */
 export type Air = 0 | 1 | 2 | 3;
 export interface Player {
@@ -14,6 +15,7 @@ export interface Player {
   x: number; z: number; y: number; vy: number; grounded: boolean; crouch: boolean; air: Air;
   yaw: number; pitch: number; vx: number; vz: number; hp: number; armor: number; helmet: boolean; alive: boolean;
   guns: (Gun | null)[]; cur: number; reload: number; cd: number; fireHeld: boolean; interactHeld: boolean; jumpHeld: boolean;
+  parts: PartId[];
   kills: number; place: number; diedAt: number; input: Input; brain: BotBrain | null;
   walk: number; kick: number; muzzle: number; hurt: number; hurtYaw: number; ads: boolean; speed: number; lastHitBy: number; emptyT: number; wet: number;
 }
@@ -40,7 +42,7 @@ export const eyeOf = (p: Player): number => p.y + (p.crouch ? PLAYER.crouchEye :
 export class Match {
   map: GameMap; mode: Mode; difficulty: Difficulty; seed: number;
   players: Player[] = []; loot: Loot[]; t = 0; over = false; winner = -1; events: MatchEvent[] = [];
-  /** 최근 총소리(봇이 듣습니다) */ sounds: Array<{ x: number; z: number; t: number; by: number }> = [];
+  /** 최근 총소리(봇이 듣습니다) */ sounds: Array<{ x: number; z: number; t: number; by: number; range: number }> = [];
   rng: () => number; flight: Flight | null = null; readonly zoneStart: number;
   private centers: Array<{ x: number; z: number; r: number }>; private starts: number[]; private nextLoot: number; private frame = 0; private lootById = new Map<number, Loot>();
 
@@ -78,6 +80,7 @@ export class Match {
         x, z, y, vy: 0, grounded: !f, crouch: false, air: f ? 1 : 0,
         yaw: f ? Math.atan2(f.dz, f.dx) : Math.atan2(-sp.z, -sp.x), pitch: 0, vx: 0, vz: 0, hp: PLAYER.hp, armor: 0, helmet: false, alive: true,
         guns: [{ id: 'pistol', mag: WEAPONS.pistol.mag, reserve: WEAPONS.pistol.mag * 2 }, null], cur: 0, reload: 0, cd: 0.4, fireHeld: false, interactHeld: false, jumpHeld: false,
+        parts: h ? ['redDot', 'quickMag'] : [],
         kills: 0, place: 0, diedAt: 0, input: blankInput(), brain: null, walk: 0, kick: 0, muzzle: 0, hurt: 0, hurtYaw: 0, ads: false, speed: 0, lastHitBy: -1, emptyT: 0, wet: 0,
       };
       if (p.bot) p.brain = newBrain(this.rng, BOTS[o.difficulty]);
@@ -111,9 +114,14 @@ export class Match {
   aliveCount(): number { let n = 0; for (const p of this.players) if (p.alive) n++; return n; }
   drain(): MatchEvent[] { const e = this.events; this.events = []; return e; }
   gun(p: Player): Gun | null { return p.guns[p.cur]; }
+  equip(p: Player, slot: PartSlot, part: PartId | null, index = p.cur): boolean {
+    const gun = Number.isInteger(index) ? p.guns[index] : null; if (!gun || !p.alive || p.remote || p.reload > 0 || this.over) return false;
+    const ok = fitPart(gun, p.parts, slot, part); if (ok) { p.cur = index; p.cd = Math.max(p.cd, 0.3); p.ads = false; } return ok;
+  }
   lootOf(id: number): Loot | undefined { return this.lootById.get(id); }
 
   step(dt: number): void {
+    if (!Number.isFinite(dt) || dt <= 0) return;
     if (this.over) return;
     this.t += dt; this.frame++;
     const zone = this.zone;
@@ -165,7 +173,7 @@ export class Match {
 
   // ---------- 땅 ----------
   private update(p: Player, dt: number): void {
-    const inp = p.input, def = p.guns[p.cur] ? WEAPONS[p.guns[p.cur]!.id] : null;
+    const inp = p.input;
     p.cd = Math.max(0, p.cd - dt); p.kick = Math.max(0, p.kick - dt * 7); p.muzzle = Math.max(0, p.muzzle - dt); p.hurt = Math.max(0, p.hurt - dt); p.emptyT = Math.max(0, p.emptyT - dt);
     if (p.air !== 0) { if (!p.remote) this.updateAir(p, dt); p.fireHeld = inp.fire; return; }
     if (!p.remote) {
@@ -198,6 +206,7 @@ export class Match {
     // 무기 교체
     if (inp.slot >= 0 && inp.slot < 2 && inp.slot !== p.cur && p.guns[inp.slot]) { p.cur = inp.slot; p.reload = 0; p.cd = Math.max(p.cd, 0.35); inp.slot = -1; }
     const gun = p.guns[p.cur];
+    const def = gun ? gunStats(gun) : null;
     if (gun && def) {
       if (p.reload > 0) { p.reload -= dt; if (p.reload <= 0) { p.reload = 0; const n = Math.min(def.mag - gun.mag, gun.reserve); gun.mag += n; gun.reserve -= n; } }
       else if ((inp.reload && gun.mag < def.mag && gun.reserve > 0) || (gun.mag === 0 && gun.reserve > 0 && inp.fire)) { p.reload = def.reload; this.events.push({ t: 'reload', id: p.id }); }
@@ -220,6 +229,10 @@ export class Match {
   /** 다른 쪽(원격)이 먼저 주운 전리품을 치웁니다. */
   removeLoot(id: number): void { const l = this.lootById.get(id); if (l) l.taken = true; }
   private takeAuto(p: Player, l: Loot): void {
+    if (l.kind === 'attachment' && l.part) {
+      if (p.parts.length >= 16 || p.parts.filter(part => part === l.part).length >= 2) return;
+      p.parts.push(l.part); this.take(p, l); return;
+    }
     if (l.kind === 'medkit') { if (p.hp >= PLAYER.hp) return; p.hp = Math.min(PLAYER.hp, p.hp + PLAYER.medkit); this.take(p, l); }
     else if (l.kind === 'armor') { if (p.armor >= 100) return; p.armor = Math.min(100, p.armor + PLAYER.armor); this.take(p, l); }
     else if (l.kind === 'helmet') { if (p.helmet) return; p.helmet = true; this.take(p, l); }
@@ -230,22 +243,32 @@ export class Match {
   }
   private takeWeapon(p: Player, l: Loot): void {
     const id = l.weapon!, def = WEAPONS[id], same = p.guns.find(g => g?.id === id);
-    if (same) { same.reserve = Math.min(def.mag * 6, same.reserve + def.mag * 2); this.take(p, l); return; }
+    if (same) {
+      // 땅에 떨어진 총은 실제 남은 탄만 회수합니다. 빈 총을 반복해 주워 탄을 복제하지 않습니다.
+      const ammo = (l.mag ?? def.mag) + (l.reserve ?? def.mag * 2);
+      const n = Math.min(Math.max(0, def.mag * 6 - same.reserve), ammo);
+      if (n > 0) { same.reserve += n; l.mag = 0; l.reserve = ammo - n; }
+      const remaining = cleanLoadout(id, l.parts);
+      for (const slot of Object.keys(remaining) as PartSlot[]) { if (p.parts.length < 16) { p.parts.push(remaining[slot]!); delete remaining[slot]; } }
+      l.parts = remaining;
+      if ((l.mag ?? def.mag) + (l.reserve ?? def.mag * 2) <= 0 && !Object.keys(remaining).length) this.take(p, l);
+      return;
+    }
     const free = p.guns.indexOf(null), slot = free >= 0 ? free : p.cur, old = p.guns[slot];
-    if (old) this.drop({ kind: 'weapon', weapon: old.id, x: p.x + Math.cos(p.yaw) * 0.8, z: p.z + Math.sin(p.yaw) * 0.8, y: p.y, taken: false, b: l.b });
-    p.guns[slot] = { id, mag: def.mag, reserve: def.mag * 2 }; p.cur = slot; p.reload = 0; p.cd = 0.35; this.take(p, l);
+    if (old) this.drop({ kind: 'weapon', weapon: old.id, x: p.x + Math.cos(p.yaw) * 0.8, z: p.z + Math.sin(p.yaw) * 0.8, y: p.y, taken: false, b: l.b, mag: old.mag, reserve: old.reserve, parts: { ...old.parts } });
+    p.guns[slot] = { id, mag: l.mag ?? def.mag, reserve: l.reserve ?? def.mag * 2, parts: cleanLoadout(id, l.parts) }; p.cur = slot; p.reload = 0; p.cd = 0.35; this.take(p, l);
   }
 
   private shoot(p: Player, gun: Gun, id: WeaponId): void {
-    const def = WEAPONS[id]; gun.mag--; p.cd = def.cd; p.kick = Math.min(1, p.kick + def.recoil * 12 * (p.crouch ? 0.7 : 1)); p.muzzle = 0.06;
-    const moving = Math.min(1.6, p.speed / PLAYER.walk), spread = def.spread * (p.ads ? 0.4 : 1) * (1 + moving * 0.5) * (1 + p.kick * 0.5) * (p.crouch ? 0.75 : 1) * (p.grounded ? 1 : 2.2);
+    const def = gunStats(gun); gun.mag--; p.cd = def.cd; p.kick = Math.min(1, p.kick + def.recoil * 12 * (p.crouch ? 0.7 : 1)); p.muzzle = 0.06;
+    const moving = Math.min(1.6, p.speed / PLAYER.walk), spread = def.spread * (p.ads ? 0.4 * def.adsSpread : 1) * (1 + moving * 0.5) * (1 + p.kick * 0.5) * (p.crouch ? 0.75 : 1) * (p.grounded ? 1 : 2.2);
     const ox = p.x, oy = eyeOf(p), oz = p.z, ends: number[] = [];
     for (let i = 0; i < def.pellets; i++) {
       const a = this.rng() * Math.PI * 2, r = spread * Math.sqrt(this.rng()), yaw = p.yaw + Math.cos(a) * r, pitch = p.pitch + Math.sin(a) * r;
       this.bullet(p.id, id, ox, oy, oz, yaw, pitch, ends, false);
     }
     this.events.push({ t: 'shot', id: p.id, weapon: id, ox, oy, oz, ends, remote: false });
-    this.sounds.push({ x: p.x, z: p.z, t: this.t, by: p.id });
+    this.sounds.push({ x: p.x, z: p.z, t: this.t, by: p.id, range: 110 * def.noise });
   }
 
   /** 총알 한 발을 날립니다. 맞은 대상에게 피해를 주고 끝점을 ends 에 넣습니다. fromRemote: 원격 선수가 쏜 탄(판정 반경을 조금 넓힙니다). */
@@ -288,7 +311,10 @@ export class Match {
   kill(q: Player, by: number, weapon: WeaponId | 'zone'): void {
     if (!q.alive) return; q.alive = false; q.hp = 0; q.diedAt = this.t; q.place = this.aliveCount() + 1;
     const killer = this.players[by]; if (killer && killer.id !== q.id) killer.kills++;
-    if (q.air === 0) for (const g of q.guns) if (g) this.drop({ kind: 'weapon', weapon: g.id, x: q.x + (this.rng() - 0.5) * 1.6, z: q.z + (this.rng() - 0.5) * 1.6, y: q.y, taken: false, b: -1 });
+    if (q.air === 0) {
+      for (const g of q.guns) if (g) this.drop({ kind: 'weapon', weapon: g.id, x: q.x + (this.rng() - 0.5) * 1.6, z: q.z + (this.rng() - 0.5) * 1.6, y: q.y, taken: false, b: -1, mag: g.mag, reserve: g.reserve, parts: { ...g.parts } });
+      for (const part of q.parts) if (PART_IDS.includes(part)) this.drop({ kind: 'attachment', part, weapon: null, x: q.x + (this.rng() - 0.5) * 2, z: q.z + (this.rng() - 0.5) * 2, y: q.y, taken: false, b: -1 });
+    }
     this.events.push({ t: 'kill', victim: q.id, attacker: by, weapon });
   }
 }

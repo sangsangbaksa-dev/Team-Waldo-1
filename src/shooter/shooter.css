@@ -107,3 +107,15 @@
 @media (prefers-reduced-motion:reduce){.sz-zonefx{animation:none}.sz-dmgs i{animation-duration:.01s}}
 /* 가로로 눕힌 휴대폰(낮은 화면): 버튼이 미니맵을 가리지 않도록 줄입니다. */
 @media (max-height:480px){.sz-tbuttons{bottom:max(66px,calc(env(safe-area-inset-bottom) + 60px));grid-template-columns:repeat(2,52px);gap:8px}.sz-tbuttons button{width:52px;height:52px;font-size:11px}.sz-tbuttons button.fire{width:72px;height:72px;font-size:14px}.touch .sz-tr canvas{width:72px;height:72px}.touch .sz-ammo b{font-size:26px}}
+
+/* Gameplay panel refinements. */
+.sz-root{font-variant-numeric:tabular-nums}
+.sz-root .sz-tbtn{display:flex;gap:8px;align-items:center}
+.sz-root #sz-workbench{width:auto;padding:0 13px;font-size:12px;border-color:#bbc8a153;color:#d5dec1;white-space:nowrap}
+.sz-root #sz-workbench kbd{font:9px ui-monospace,monospace;color:#9baa88;margin-left:8px}
+.sz-root .sz-card{border-radius:6px;background:#161d1c;border-color:#43514c;text-align:left;padding:26px}
+.sz-root .sz-card h2{letter-spacing:-.035em;font-size:36px}
+.sz-root .sz-stats{border-top:1px solid #43514c;padding-top:14px;gap:6px}
+.sz-root .sz-stats div{background:#202b27;border-radius:3px}
+.sz-root .sz-note,.sz-root .sz-stats span{color:#bcc9c2}
+.sz-root button:focus-visible{outline:2px solid #d5dfb5;outline-offset:3px}

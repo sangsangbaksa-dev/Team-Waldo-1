@@ -32,6 +32,7 @@ export const wrapAngle = (a: number): number => { while (a > Math.PI) a -= Math.
 
 export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: CarParams = PLAYER_PARAMS): StepEvents {
   const ev: StepEvents = { hit: 0, driftBoost: 0, pad: false };
+  if (!Number.isFinite(dt) || dt <= 0) return ev;
   let fx = Math.cos(c.h), fz = Math.sin(c.h), rx = -fz, rz = fx;
   let vf = c.vx * fx + c.vz * fz, vl = c.vx * rx + c.vz * rz;
 
@@ -86,7 +87,7 @@ export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: Car
 
   // 부스트 패드
   c.padCd = Math.max(0, c.padCd - dt);
-  if (c.padCd <= 0 && Math.abs(c.lat) < 7) for (const pad of t.pads) if (Math.abs(idxDelta(t, c.idx, pad)) <= 2) { c.boostT = Math.max(c.boostT, 1.5); c.padCd = 1.5; ev.pad = true; break; }
+  if (c.padCd <= 0 && c.vf > 5 && Math.abs(c.lat) < 7) for (const pad of t.pads) if (Math.abs(idxDelta(t, c.idx, pad)) <= 2) { c.boostT = Math.max(c.boostT, 1.5); c.nitro = Math.min(1, c.nitro + 0.18); c.padCd = 1.5; ev.pad = true; break; }
   return ev;
 }
 

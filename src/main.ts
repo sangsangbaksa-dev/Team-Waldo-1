@@ -111,7 +111,7 @@ function tile(entry: Entry, index: number): string {
 function renderMenu(): void {
   generation++;
   const sound = readPreferences().sound;
-  document.title = 'WALDO · LAST CITY / SPEED RUSH / FRONTLINE / ZERO ZONE';
+  document.title = 'WALDO · 다섯 편의 3D 게임';
   app.hidden = false;
   app.innerHTML = `
     <main class="home">
@@ -212,7 +212,9 @@ async function launch(id: GameId): Promise<void> {
     }
   } catch {
     loading.close();
-    const failed = cancelled() ? null : document.querySelector<HTMLElement>('#home-notice');
+    if (cancelled()) return;
+    renderMenu();
+    const failed = document.querySelector<HTMLElement>('#home-notice');
     if (failed) failed.textContent = '게임을 불러오지 못했습니다. 네트워크 연결을 확인한 뒤 다시 시도해 주세요.';
   }
 }

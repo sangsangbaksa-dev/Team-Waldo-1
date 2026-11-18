@@ -95,7 +95,7 @@ export interface StructDef { name: string; w: number; h: number; hp: number; cry
 export const STRUCTS: Record<StructKind, StructDef> = {
   hq: { name: '본부', w: 120, h: 120, hp: 4200, crystal: 0, cash: 0, time: 0, height: 0.2, desc: '' },
   barracks: { name: '병영', w: 88, h: 72, hp: 1100, crystal: 150, cash: 0, time: 14, height: 0.11, desc: '보병을 훈련합니다' },
-  depot: { name: '보급고', w: 60, h: 60, hp: 600, crystal: 100, cash: 0, time: 9, height: 0.07, desc: '인구 한도 +8 (최대 100)' },
+  depot: { name: '보급고', w: 60, h: 60, hp: 600, crystal: 100, cash: 0, time: 9, height: 0.07, desc: '인구 +8 · 주변 아군은 피격 6초 후 초당 체력 5 회복' },
   factory: { name: '군수공장', w: 100, h: 84, hp: 1400, crystal: 250, cash: 300, time: 20, height: 0.13, desc: '장갑차와 전차를 생산합니다' },
   lab: { name: '연구소', w: 76, h: 76, hp: 900, crystal: 200, cash: 200, time: 16, height: 0.15, desc: '업그레이드·저격수·전차 해금' },
   turret: { name: '방어 포탑', w: 44, h: 44, hp: 620, crystal: 125, cash: 0, time: 8, height: 0.09, desc: '주변 적을 자동 사격' },

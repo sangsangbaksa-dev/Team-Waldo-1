@@ -246,6 +246,16 @@ export class CityView {
           if (kind === 'bus_stop') { add(new THREE.BoxGeometry(3.5, .15, 1.7).translate(0, 2.7, 0), 0x46545a); for (const s of [-1, 1]) add(new THREE.BoxGeometry(.1, 2.7, .1).translate(s * 1.6, 1.35, -.7), 0x46545a); }
         } else if (kind === 'billboard') {
           add(new THREE.BoxGeometry(.35, 5, .35).translate(0, 2.5, 0), 0x454c51); add(new THREE.BoxGeometry(7, 3.5, .2).translate(0, 5, 0), 0x272c33);
+        } else if (kind === 'food_cart') {
+          add(new THREE.BoxGeometry(2.1, .9, 1.1).translate(0, .85, 0), 0xc9522f); add(new THREE.BoxGeometry(2.2, .12, 1.2).translate(0, 1.35, 0), 0xe8e2d2);
+          add(new THREE.BoxGeometry(2.5, .1, 1.7).translate(0, 2.35, 0), 0xd8b23a); for (const sx of [-1, 1]) add(new THREE.BoxGeometry(.08, 1.2, .08).translate(sx * 1.1, 1.8, .5), 0x3c454b);
+          for (const sx of [-.8, .8]) add(new THREE.CylinderGeometry(.32, .32, .12, 8).rotateX(Math.PI / 2).translate(sx, .32, .6), 0x25292c);
+        } else if (kind === 'bike_rack') {
+          for (let i = -2; i <= 2; i++) add(new THREE.TorusGeometry(.3, .035, 4, 8, Math.PI).translate(i * .5, .3, 0), 0x8d979c);
+          add(new THREE.BoxGeometry(2.6, .05, .08).translate(0, .06, 0), 0x3c454b);
+        } else if (kind === 'newsstand') {
+          add(new THREE.BoxGeometry(1.8, 2.2, 1.1).translate(0, 1.1, 0), 0x3f6b5a); add(new THREE.BoxGeometry(2.1, .12, 1.4).translate(0, 2.3, 0), 0xb34b45);
+          add(new THREE.BoxGeometry(1.5, .9, .08).translate(0, 1.3, .58), 0xe3d7b0);
         } else if (kind === 'cone') add(new THREE.ConeGeometry(.3, .8, 6).translate(0, .4, 0), 0xd68543);
         else {
           const wide = ['kiosk', 'dumpster', 'barrier'].includes(kind), tall = ['phone_booth', 'kiosk', 'vending'].includes(kind), color = kind === 'hydrant' ? 0xa45d46 : kind === 'mailbox' ? 0x45637d : 0x65716c;

@@ -1,6 +1,6 @@
 // FRONTLINE — 결정적(deterministic) 실시간 전략 시뮬레이션. 화면·입력과 무관하게 순수 데이터만 다룹니다.
 // 1대1 온라인은 명령만 주고받는 락스텝이므로 Math.random·sin·cos·Date 를 쓰지 않습니다(+ - * / sqrt 만 사용).
-import { BUILDINGS, CARRY, MINE_TICKS, MULT, NODE_AMOUNT, START_MINERALS, START_WORKERS, SUPPLY_MAX, UNITS, type BuildKind, type UnitKind } from './config';
+import { BUILDINGS, CARRY, MINE_TICKS, MULT, NODE_AMOUNT, START_MINERALS, START_WORKERS, SUPPLY_MAX, TICK, UNITS, type BuildKind, type UnitKind } from './config';
 import { buildMap, type RtsMap } from './map';
 import { Pather } from './path';
 
@@ -215,6 +215,11 @@ export class RtsSim {
     this.tick++;
     for (const b of this.buildings) this.updateBuilding(b);
     for (const u of this.units) if (u.hp > 0) this.updateUnit(u);
+    // 후방 보급소: 전투를 벗어난 아군을 초당 3 회복. 여러 보급소도 중첩하지 않습니다.
+    if (this.tick % TICK === 0) for (const u of this.units) {
+      if (u.hp <= 0 || this.tick - u.hurt < 6 * TICK || u.hp >= UNITS[u.kind].hp) continue;
+      if (this.buildings.some(b => b.hp > 0 && b.done && b.owner === u.owner && b.kind === 'depot' && this.rectDist(u.x, u.y, b) <= 5)) u.hp = Math.min(UNITS[u.kind].hp, u.hp + 3);
+    }
     this.separate();
     this.reap();
     this.recount();

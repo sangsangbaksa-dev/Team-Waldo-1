@@ -199,3 +199,12 @@
 .c-squads button small{display:block;font-size:9px;opacity:.7}.c-squads button.on{background:#d8bc80;color:#17251f;border-color:#d8bc80}
 .c-row.on{border-color:#d8bc80;background:rgba(216,188,128,.12)}
 .c-row.c-hl{border-color:#d8bc80;background:rgba(216,188,128,.14)}
+
+.c-keys+.c-sub,.c-diffdesc+.c-sub{margin-top:18px}
+
+/* Gameplay panel refinements. */
+.city-root .c-res span{border-radius:5px;border-color:#b7cec02b;background:#101c1af0;box-shadow:0 4px 12px #0003}
+.city-root .c-quest{padding:9px 12px;line-height:1.6;background:#10201ded;border-radius:0 4px 4px 0}
+.city-root .c-tc{border-radius:5px;letter-spacing:.025em;background:#101c1af0}
+.city-root .c-topbtns button{min-height:38px;border-radius:5px}
+@media(max-width:600px){.city-root .c-res span{padding:5px 8px}.city-root .c-quest{max-width:55vw;font-size:11px}}

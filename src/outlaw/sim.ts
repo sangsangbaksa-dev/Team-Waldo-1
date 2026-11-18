@@ -154,6 +154,11 @@ export class Sim {
     const guns: WeaponId[] = ['pistol', 'smg', 'shotgun', 'rifle', 'pistol', 'smg'];
     for (let i = 0; i < guns.length && pts.length; i++) { const q = pts[Math.floor(r() * pts.length)]; this.spawnPickup('weapon', q.x, q.z, { weapon: guns[i], amount: 1, respawn: 120 }); }
     for (const poi of this.map.pois) { if (poi.kind === 'hospital') this.spawnPickup('health', poi.x + 3, poi.z + 3, { amount: 60, respawn: 60 }); if (poi.kind === 'safehouse') this.spawnPickup('armor', poi.x + 3, poi.z - 3, { amount: 50, respawn: 180 }); }
+    // 무기상 주변 보급 꾸러미. 보행 가능한 지점에만 놓습니다.
+    for (const poi of this.map.pois.filter(p => p.kind === 'gunshop')) {
+      const q = pts.filter(p => Math.hypot(p.x - poi.x, p.z - poi.z) < 18).sort((a, b) => Math.hypot(a.x - poi.x, a.z - poi.z) - Math.hypot(b.x - poi.x, b.z - poi.z))[0];
+      if (q) this.spawnPickup('ammo', q.x, q.z, { amount: 45, respawn: 120 });
+    }
   }
 
   // ---------- 피해 ----------
@@ -321,11 +326,11 @@ export class Sim {
   private stepPickups(dt: number): void {
     const p = this.player;
     for (const pk of this.pickups) {
-      if (pk.taken) { if (pk.respawn > 0) { pk.respawn -= dt; if (pk.respawn <= 0) { pk.taken = false; pk.respawn = pk.kind === 'weapon' ? 120 : pk.kind === 'armor' ? 180 : 60; } } continue; }
+      if (pk.taken) { if (pk.respawn > 0) { pk.respawn -= dt; if (pk.respawn <= 0) { pk.taken = false; pk.respawn = pk.kind === 'weapon' ? 120 : pk.kind === 'armor' ? 180 : pk.kind === 'ammo' ? 120 : 60; } } continue; }
       if (!p.alive || p.vehicle) continue; if (Math.abs(pk.x - p.x) > 1.8 || Math.abs(pk.z - p.z) > 1.8 || Math.abs(pk.y - p.y) > 2.2) continue;
       if (pk.kind === 'health' && p.hp >= p.maxHp) continue; if (pk.kind === 'armor' && p.armor >= 100) continue;
       if (pk.kind === 'cash') this.addCash(pk.amount); else if (pk.kind === 'health') p.hp = Math.min(p.maxHp, p.hp + pk.amount * this.perk.heal); else if (pk.kind === 'armor') p.armor = Math.min(100, p.armor + pk.amount);
-      else if (pk.kind === 'weapon' && pk.weapon) this.giveWeapon(p, pk.weapon); else if (pk.kind === 'ammo') { const g = this.curGun(p); if (g) g.reserve = Math.min(WEAPONS[g.id].reserve, g.reserve + pk.amount); }
+      else if (pk.kind === 'weapon' && pk.weapon) this.giveWeapon(p, pk.weapon); else if (pk.kind === 'ammo') { const g = this.curGun(p); if (!g || WEAPONS[g.id].reserve <= 0 || g.reserve >= WEAPONS[g.id].reserve) continue; g.reserve = Math.min(WEAPONS[g.id].reserve, g.reserve + pk.amount); }
       else if (pk.kind === 'package') { this.collected.add(pk.collect); this.addCash(pk.amount); this.say(`숨겨진 꾸러미 ${this.collected.size}/30`, 3); }
       pk.taken = true; this.emit({ t: 'pickup', ped: p.id, kind: pk.kind, amount: pk.amount });
     }
@@ -393,6 +398,7 @@ export class Sim {
   // ---------- 매 틱 ----------
   /** pin: 플레이어 보행 입력, cin: 차량 입력. pin.enter 는 눌린 프레임에만 true 여야 합니다. */
   step(dt: number, pin: PedInput, cin: CarInput): void {
+    if (!Number.isFinite(dt) || dt <= 0) return;
     this.t += dt; this.frame++; this.playSec += dt; this.clock = (this.clock + dt * 24 / DAY_SECONDS) % 24; this.rain += (rainTarget(this.t) - this.rain) * Math.min(1, dt * 0.25);
     const p = this.player;
     if (p.alive) {

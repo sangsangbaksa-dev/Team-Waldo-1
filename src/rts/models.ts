@@ -91,6 +91,10 @@ export function makeBuilding(kind: BuildKind, owner: number): BuildRig {
     for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) { cyl(root, 0.18, 0.22, 1.5, m.armor, x * (s / 2 - 0.5), 0.28, z * (s / 2 - 0.5), 8); lamp(x * (s / 2 - 0.5), 1.8, z * (s / 2 - 0.5), 0.18, 0.1, 0.18); }
     top = 3.4;
   } else if (kind === 'depot') {
+    // 정비용 보급함과 밝은 십자 표식으로 회복 시설을 식별합니다.
+    box(root, 0.65, 0.4, 0.5, m.hull, 0.5, 0.95, 0.35);
+    box(root, 0.42, 0.035, 0.1, m.glow, 0.5, 1.36, 0.35);
+    box(root, 0.1, 0.035, 0.35, m.glow, 0.5, 1.36, 0.35);
     box(root, s - 0.2, 0.2, s - 0.2, m.dark, 0, 0, 0); box(root, 1.1, 0.8, 0.8, m.concrete, -0.1, 0.2, 0.45); box(root, 1.1, 0.14, 0.82, m.team, -0.1, 0.62, 0.45);
     cyl(root, 0.38, 0.38, 1.05, m.steel, -0.45, 0.2, -0.45, 12); cyl(root, 0.38, 0.38, 1.05, m.steel, 0.4, 0.2, -0.45, 12); cyl(root, 0.4, 0.4, 0.12, m.team, -0.45, 0.78, -0.45, 12); cyl(root, 0.4, 0.4, 0.12, m.team, 0.4, 0.78, -0.45, 12);
     box(root, 0.5, 0.5, 0.5, m.hull, 0.65, 0.2, 0.45); lamp(0.65, 0.72, 0.45, 0.22, 0.08, 0.22); top = 1.4;

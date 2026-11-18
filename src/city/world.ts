@@ -547,6 +547,7 @@ export class World {
 
   // ---------- 시뮬레이션 ----------
   step(dt: number): void {
+    if (!Number.isFinite(dt) || dt <= 0) return;
     if (this.over) return; const pf = this.factions[0]; if (pf.pending > 0) return;
     this.time += dt; this.pathBudget = 10;
     for (const c of this.hash) c.length = 0;
@@ -576,6 +577,13 @@ export class World {
       if (!s.alive) continue; const d = STRUCTS[s.kind], f = this.factions[s.f];
       if (s.temp > 0) { s.temp -= dt; if (s.temp <= 0) { s.alive = false; removeSolid(this.map, s.solid); this.fx('poof', s.x + s.w / 2, s.y + s.h / 2); continue; } }
       if (s.built < 1) { s.built = Math.min(1, s.built + dt / d.time); s.hp = Math.min(s.maxHp, s.hp + s.maxHp * 0.9 * dt / d.time); if (s.built >= 1) { this.recomputeSupply(f); this.fx('built', s.x + s.w / 2, s.y + s.h / 2, 0, d.name, s.f); } continue; }
+      // 보급고를 후방 회복 거점으로 사용합니다. 같은 보급고 여러 개의 효과는 중첩하지 않습니다.
+      if (s.kind === 'depot') this.forNear(s.x + s.w / 2, s.y + s.h / 2, 140, a => {
+        if (!a.alive || a.f !== s.f || a.hp >= a.maxHp || this.time - a.hurtT < 6 || a.inVeh) return;
+        if (Math.hypot(a.x - s.x - s.w / 2, a.y - s.y - s.h / 2) > 140) return;
+        const first = this.structures.find(b => b.alive && b.built >= 1 && b.kind === 'depot' && b.f === a.f && Math.hypot(a.x - b.x - b.w / 2, a.y - b.y - b.h / 2) <= 140);
+        if (first === s) a.hp = Math.min(a.maxHp, a.hp + 5 * dt);
+      });
       const q = s.queue[0];
       if (q) {
         q.t -= dt;

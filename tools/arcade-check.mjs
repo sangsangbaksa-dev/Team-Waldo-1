@@ -1,0 +1,88 @@
+import assert from 'node:assert/strict';
+import { createServer } from 'vite';
+const server = await createServer({ server: { middlewareMode: true, watch: { ignored: ['**/.browser-check/**'] } }, appType: 'custom' });
+let checks = 0;
+const check = (name, fn) => { fn(); checks++; console.log(`PASS ${name}`); };
+try {
+  const { RtsSim } = await server.ssrLoadModule('/src/rts/sim.ts');
+  const { TICK, UNITS } = await server.ssrLoadModule('/src/rts/config.ts');
+  const rts = new RtsSim();
+  const u = rts.units.find(u => u.owner === 0);
+  rts.order(u, { t:'idle', x:0, y:0, target:0, phase:0, timer:0 });
+  const depot = rts.addBuilding(0, 'depot', u.x + 1, u.y + 1, true);
+  const reset = () => { u.x = depot.x - 1; u.y = depot.y; u.hp = 20; u.hurt = -999; rts.tick = TICK - 1; };
+  reset(); rts.step(); check('RTS depot restores three HP', () => assert.equal(u.hp,23));
+  reset(); u.hurt = rts.tick; rts.step(); check('RTS recent damage blocks recovery', () => assert.equal(u.hp,20));
+  const second = rts.addBuilding(0,'depot',depot.x + 3,depot.y,true);
+  reset(); rts.step(); check('RTS depot recovery does not stack', () => assert.equal(u.hp,23));
+  reset(); u.hp = UNITS[u.kind].hp - 1; rts.step(); check('RTS recovery respects maximum HP', () => assert.equal(u.hp,UNITS[u.kind].hp));
+  reset(); depot.hp = 0; second.hp = 0; rts.step(); check('RTS destroyed depots cannot heal', () => assert.equal(u.hp,20));
+  const { buildTrack } = await server.ssrLoadModule('/src/race/track.ts');
+  const { newCar, stepCar } = await server.ssrLoadModule('/src/race/physics.ts');
+  const { createRace, updateRace } = await server.ssrLoadModule('/src/race/race.ts');
+  const track = buildTrack(), drive = {throttle:0,brake:0,steer:0,drift:false,nitro:false};
+  let car = newCar(track, track.pads[0], 0);
+  const before = JSON.stringify(car);
+  for (const dt of [NaN,Infinity,-1,0]) stepCar(car,drive,dt,track);
+  check('Race invalid time leaves car unchanged', () => assert.equal(JSON.stringify(car),before));
+  stepCar(car,drive,1/60,track); check('Race parked cars cannot farm supply pads', () => assert.equal(car.nitro,0.35 + 0.018/60));
+  car = newCar(track,track.pads[0],0); car.vx=Math.cos(car.h)*25;car.vz=Math.sin(car.h)*25;
+  stepCar(car,drive,1/60,track);check('Race passing supply pad grants nitro',()=>assert.ok(car.nitro > 0.52));
+  const fuel=car.nitro; stepCar(car,drive,1/60,track);check('Race supply pad cooldown prevents repeat payout',()=>assert.ok(car.nitro-fuel<0.01));
+  const race=createRace(track); const clock=race.clock;updateRace(race,NaN,drive);check('Race invalid time cannot corrupt clock',()=>assert.equal(race.clock,clock));
+  const { World }=await server.ssrLoadModule('/src/city/world.ts');
+  const city=new World({seed:17,difficulty:'d1',klass:'engineer',tutorial:true});
+  const boss=city.boss(0), station=city.addStructure('depot',0,boss.x+40,boss.y,true);
+  const home=city.hq(0);city.addStructure('depot',0,station.x+3,station.y,true);
+  city.time=20;city.factions[0].combatT=20;boss.hp=40;boss.hurtT=0;
+  for (const bucket of city.hash) bucket.length=0;
+  const n=Math.ceil(5160/128);city.hash[Math.floor(boss.y/128)*n+Math.floor(boss.x/128)].push(boss);
+  city.updateStructures(1);check('City overlapping depots heal only once',()=>assert.equal(boss.hp,45));
+  boss.hurtT=city.time;city.updateStructures(1);check('City cannot heal immediately after damage',()=>assert.equal(boss.hp,45));
+  const cityTime=city.time;city.step(NaN);check('City invalid time cannot corrupt world',()=>assert.equal(city.time,cityTime));
+  const { Match }=await server.ssrLoadModule('/src/shooter/sim.ts');
+  const match=new Match({seed:23,mode:'br',difficulty:'easy',humans:[{name:'Test'}],fill:2,drop:false});
+  match.step(NaN);check('Shooter invalid time cannot corrupt match',()=>assert.equal(match.t,0));
+  for(let i=0;i<120;i++)match.step(1/60);
+  check('Shooter simulation remains finite',()=>assert.ok(match.players.every(p=>[p.x,p.y,p.z,p.hp].every(Number.isFinite))));
+  const {generateMap}=await server.ssrLoadModule('/src/shooter/world.ts');
+  let camps=0;
+  for(const seed of [1,17,23]){
+    const map=generateMap(seed,'br');
+    const sandbags=map.boxes.filter(b=>b.kind==='sandbag');camps+=sandbags.length;
+    check(`Shooter map ${seed} has finite loot positions`,()=>assert.ok(map.loot.every(l=>[l.x,l.y,l.z].every(Number.isFinite))));
+  }
+  check('Shooter field supply camps generate',()=>assert.ok(camps>0));
+  const { Sim }=await server.ssrLoadModule('/src/outlaw/sim.ts');
+  const {blankPedInput,blankCarInput,WEAPONS}=await server.ssrLoadModule('/src/outlaw/types.ts');
+  const outlaw=new Sim(17); const p=outlaw.player;
+  outlaw.step(NaN,blankPedInput(),blankCarInput());check('Outlaw invalid time cannot corrupt simulation',()=>assert.equal(outlaw.t,0));
+  const ammo=outlaw.spawnPickup('ammo',p.x,p.z,{amount:45,respawn:120});
+  p.vehicle=0;p.alive=true;p.cur=p.guns.findIndex(g=>g?.id==='fist');outlaw.stepPickups(0);check('Outlaw melee cannot consume ammunition',()=>assert.equal(ammo.taken,false));
+  outlaw.giveWeapon(p,'pistol');p.cur=p.guns.findIndex(g=>g?.id==='pistol');
+  const gun=outlaw.curGun(p);gun.reserve=WEAPONS.pistol.reserve;
+  outlaw.stepPickups(0);check('Outlaw full reserves preserve supply',()=>assert.equal(ammo.taken,false));
+  gun.reserve=0;outlaw.stepPickups(0);check('Outlaw supply refills depleted gun',()=>assert.ok(ammo.taken&&gun.reserve===45));
+  outlaw.stepPickups(121);check('Outlaw ammunition supply respawns',()=>assert.equal(ammo.taken,false));
+  const {stepActivities}=await server.ssrLoadModule('/src/outlaw/activities.ts');
+  const {PLAYER_ID}=await server.ssrLoadModule('/src/outlaw/types.ts');
+  const v=outlaw.spawnVehicle('sports',p.x,p.z,0);v.driver=PLAYER_ID;p.vehicle=v.id;
+  outlaw.activity.active='export';outlaw.activity.timer=120;outlaw.activity.ids={exportCar:v.id};
+  Object.assign(outlaw.activity.data,{phase:1,exportX:v.x,exportZ:v.z,exportR:8});
+  v.vx=10;const cash=outlaw.cash;stepActivities(outlaw,1/60);
+  check('Outlaw moving export car cannot complete delivery',()=>assert.equal(outlaw.cash,cash));
+  v.vx=v.vz=0;stepActivities(outlaw,1/60);
+  check('Outlaw stopped export pays condition bonus',()=>assert.ok(outlaw.cash>=cash+2400));
+  const draftRace=(side)=>{
+    const r=createRace({...track,pads:[]});r.phase='racing';r.clock=1;r.racers=r.racers.slice(0,2);
+    const a=r.player.car,b=r.racers[1].car;
+    Object.assign(a,newCar(track,60,0));a.nitro=0.3;a.vx=Math.cos(a.h)*40;a.vz=Math.sin(a.h)*40;
+    Object.assign(b,a);b.x+=Math.cos(a.h)*14-Math.sin(a.h)*side;b.z+=Math.sin(a.h)*14+Math.cos(a.h)*side;
+    updateRace(r,1/60,drive);return a.nitro;
+  };
+  const draft=draftRace(0),alone=draftRace(8);
+  check('Race following rival grants slipstream charge',()=>assert.ok(draft>alone+0.001));
+  console.log(`${checks} gameplay checks passed`);
+} finally { await server.close(); }
+
+

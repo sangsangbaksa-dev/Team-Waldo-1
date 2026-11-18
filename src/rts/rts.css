@@ -94,3 +94,11 @@
   .rt-stats { grid-template-columns: repeat(2, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) { .rt-toast, .rt-hint { transition: none; } }
+
+/* Gameplay panel refinements. */
+.rt-root{--panel:rgba(17,23,25,.96);--line:#394445;--dim:#b0b9b8;font-variant-numeric:tabular-nums}
+.rt-root .rt-res>span,.rt-root .rt-btns button,.rt-root .rt-vs{border-radius:4px;box-shadow:0 3px 12px #0003}
+.rt-root .rt-res b{font-size:19px;letter-spacing:-.025em}
+.rt-root .rt-btns button{min-height:40px;min-width:40px}
+.rt-root .rt-sel{border-top:2px solid #8aa6a5}
+@media(max-width:600px){.rt-root .rt-top{gap:6px}.rt-root .rt-res>span{gap:4px;padding:6px 8px}.rt-root .rt-vs{max-width:23vw;font-size:11px;padding:6px}}

@@ -14,6 +14,7 @@ import { applyLook, doorFacingYaw, isLookSpike, mapPointerToWorld } from './uiMa
 import { DEMOLISH_REFUND_RATE, snapBuildCoord } from './placement';
 import { SHOP, canBuy, itemPrice } from './shop';
 import { missionLog, missionSummary } from './missions';
+import { EVENT_INFO } from './events';
 import { readPreferences, recordMatch, writePreferences } from '../prefs';
 import type { PvpSession, RoomSession } from '../net/lobby';
 import { arenaInfo, arenaOf } from './arena';
@@ -596,6 +597,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     const w = world!, r3 = R3!, b = w.boss(0), list: { x: number; y: number; h: number; text: string; color: string; edge: boolean }[] = [];
     if (w.inside) { for (const el of marks) el.style.display = 'none'; return; }
     const hq = w.hq(0); if (hq && b && (Math.hypot(hq.x + 60 - b.x, hq.y + 60 - b.y) > 420 || w.time - hq.hurtT < 5)) list.push({ x: hq.x + 60, y: hq.y + 60, h: 190, text: w.time - hq.hurtT < 5 ? '본부 피격!' : '본부', color: w.time - hq.hurtT < 5 ? '#ff6b6b' : FACTIONS[0].color, edge: true });
+    if (w.event) list.push({ x: w.event.x, y: w.event.y, h: 70, text: `${EVENT_INFO[w.event.kind].name} ${w.event.t}s`, color: EVENT_INFO[w.event.kind].color, edge: true });
     for (const l of w.loot) if (l.alive && l.type === 'crate') list.push({ x: l.x, y: l.y, h: 60, text: '보급 상자', color: '#ffe27a', edge: true });
     const z = w.zone; if (b && Math.hypot(b.x - z.nx, b.y - z.ny) > z.nr && z.nr < 3800) list.push({ x: z.nx, y: z.ny, h: 40, text: '안전지대', color: '#c9a2ff', edge: true });
     if (b && !w.businesses.some(q2 => q2.owner === 0)) { let best: { x: number; y: number } | null = null, bd = 1e9; for (const q2 of w.businesses) if (q2.owner < 0 && q2.kind !== 'gunshop') { const d = Math.hypot(q2.x - b.x, q2.y - b.y); if (d < bd) { bd = d; best = q2; } } if (best) list.push({ x: best.x, y: best.y, h: 60, text: '매입 가능', color: '#ffffff', edge: true }); }

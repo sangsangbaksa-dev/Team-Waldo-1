@@ -48,6 +48,8 @@ export interface Backend {
   roomJoin(code: string): Promise<RoomRow>;
   roomLeave(id: string): Promise<void>;
   roomReady(id: string, ready: boolean): Promise<void>;
+  /** 대기방에 아직 있다는 신호(5초마다). 오래 끊긴 사람은 서버가 방에서 뺍니다. */
+  roomPing(id: string): Promise<void>;
   roomStart(id: string): Promise<RoomRow>;
   roomState(id: string): Promise<RoomInfo>;
   roomList(game: GameKind): Promise<RoomListItem[]>;

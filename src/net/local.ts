@@ -95,6 +95,7 @@ export function createLocalBackend(): Backend {
     },
     async roomLeave(id) { const a = need(), d = load(); exitRooms(d, a.id, id); save(d); },
     async roomReady(id, ready) { const a = need(), d = load(), r = roomsOf(d)[id], m = r?.members.find(x => x.user_id === a.id); if (r && m && r.status === 'waiting' && r.host_id !== a.id) { m.ready = ready; save(d); } },
+    async roomPing() { /* 로컬 백엔드는 끊김을 따로 처리하지 않습니다. */ },
     async roomStart(id) {
       const a = need(), d = load(), r = roomsOf(d)[id]; if (!r || r.host_id !== a.id) throw new Error('not_host'); if (r.status !== 'waiting') return pubRoom(r);
       if (r.members.length < 2) throw new Error('need_players'); if (r.members.some(m => !m.ready)) throw new Error('not_ready');

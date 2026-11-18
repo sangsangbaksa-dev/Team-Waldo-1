@@ -10,6 +10,8 @@ export interface Racer {
   lapTimes: number[]; lapStart: number; finishTime: number | null; lastEv: StepEvents;
   /** 1대1 대전의 상대 차량: 물리 대신 네트워크 스냅샷을 따라갑니다. */
   link?: RemoteLink;
+  /** 멀티플레이 방에서 이 차량을 모는 사람의 계정 id */
+  peer?: string;
 }
 export type RaceEvent =
   | { type: 'count'; n: number } | { type: 'go' } | { type: 'launch' }
@@ -26,10 +28,12 @@ const FIELD = [
   { name: 'SOLAR', lane: 5, frac: 68 / 74, grip: 35 },
   { name: 'MINT', lane: 0, frac: 65.5 / 74, grip: 33 },
 ];
-const SLOTS: Array<[number, number]> = [[-3, -5], [-3, 5], [-8, -5], [-8, 5]];
+const SLOTS: Array<[number, number]> = [[-3, -5], [-3, 5], [-8, -5], [-8, 5], [-13, -5], [-13, 5]];
 /** 1대1 대전 설정: 방장 여부(출발 칸), 상대 닉네임과 차량 */
 export interface PvpOptions { host: boolean; opponent: string; opponentCar: string }
-export interface RaceOptions { level?: number; car?: string; pvp?: PvpOptions; /** 코스 번호(날씨에 따른 그립 보정) */ map?: string }
+/** 멀티플레이 방 설정: 내 출발 칸(0~5)과 나를 뺀 참가자(입장 순서). 모두 네트워크 스냅샷으로 움직입니다. */
+export interface MultiOptions { slot: number; players: Array<{ id: string; nickname: string; car: string }> }
+export interface RaceOptions { level?: number; car?: string; pvp?: PvpOptions; multi?: MultiOptions; /** 코스 번호(날씨에 따른 그립 보정) */ map?: string }
 /** 빗길에서 줄어드는 그립 배율 */
 export const wetGrip = (rain: number | undefined): number => 1 - 0.22 * (rain ?? 0);
 
@@ -43,6 +47,12 @@ export function createRace(track: Track, laps = 3, bestLap = Infinity, opts: Rac
     const me = mk(0, 'YOU', mine, true, SLOTS[opts.pvp.host ? 0 : 1], ai), rival = mk(1, opts.pvp.opponent, them, false, SLOTS[opts.pvp.host ? 1 : 0], ai);
     rival.link = { snap: null, at: 0 };
     return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [me, rival], player: me, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level };
+  }
+  if (opts.multi) {
+    const ai: AiProfile = { lane: 0, top: 58, grip: 30, skill: 1 }, me = mk(0, 'YOU', mine, true, SLOTS[opts.multi.slot] ?? SLOTS[0], ai);
+    const free = SLOTS.map((_, i) => i).filter(i => i !== opts.multi!.slot);
+    const others = opts.multi.players.map((pl, i) => { const r = mk(i + 1, pl.nickname, carById(pl.car), false, SLOTS[free[i]] ?? SLOTS[0], ai); r.link = { snap: null, at: 0 }; r.peer = pl.id; return r; });
+    return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [me, ...others], player: me, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level };
   }
   const player = mk(0, 'YOU', mine, true, SLOTS[2], { lane: 0, top: 58, grip: 30, skill: 1 });
   const rivals = FIELD.map((f, i) => {

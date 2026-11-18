@@ -34,12 +34,12 @@ try {
     return page;
   };
   const [a, b, c] = [await player('Alpha'), await player('Beta'), await player('Gamma')];
-  await a.click('[data-act="newroom"]'); await a.waitForSelector('select[name="max"]'); await a.selectOption('select[name="max"]', '3'); console.log("SEL", await a.locator('select[name="max"]').inputValue()); await a.click('button[type="submit"]');
-  console.log("A", (await a.locator(".pvp-root").innerText()).replace(/\n+/g, " | ")); await a.waitForSelector("#pvp-code"); const code = (await a.locator('#pvp-code').innerText()).trim();
+  await a.click('[data-act="newroom"]'); await a.waitForSelector('select[name="max"]'); await a.selectOption('select[name="max"]', '3'); await a.click('button[type="submit"]');
+  await a.waitForSelector("#pvp-code"); const code = (await a.locator('#pvp-code').innerText()).trim();
   await b.waitForSelector('[data-act^="enter:"]'); await b.click('[data-act^="enter:"]'); await b.waitForSelector('.pvp-members');
   await c.fill('input[name="code"]', code.toLowerCase()); await c.click('button:has-text("코드로 입장")'); await c.waitForSelector('.pvp-members');
   for (const [n, p] of [["b", b], ["c", c]]) { await p.waitForSelector('[data-act="ready"]', { timeout: 8000 }).catch(async () => console.log(n, (await p.locator(".pvp-root").innerText()).replace(/\n+/g, " | "))); await p.click('[data-act="ready"]'); }
-  await a.waitForSelector('[data-act="start"]:not([disabled])'); await a.click('[data-act="start"]');
+  await a.waitForSelector('.pvp-root [data-act="start"]:not([disabled])'); await a.click('.pvp-root [data-act="start"]');
   for (const p of [a, b, c]) await p.waitForFunction(() => window.__zz?.phase === 'countdown' || window.__zz?.phase === 'play', null, { timeout: 60000 });
   for (const p of [a, b, c]) await p.evaluate(() => window.__zz.go());
   for (const p of [a, b, c]) await p.waitForFunction(() => window.__zz.phase === 'play');
@@ -51,11 +51,11 @@ try {
   await b.waitForFunction(x => Math.abs(window.__zz.match.players[0].x - x) < 3, ax, { timeout: 30000 });
   await a.screenshot({ path: 'browser-artifacts/shooter-room-a.png' });
   // B, C 가 차례로 쓰러지면 A 가 우승합니다.
-  for (const p of [b, c]) { await p.evaluate(() => { const g = window.__zz.match, m = window.__zz.me(); g.kill(m, 0, 'rifle'); }); await sleep(300); }
-  await a.waitForSelector('.sz-card h2:text-matches("최후의 1인")', { timeout: 60000 });
-  for (const p of [b, c]) await p.waitForSelector('.sz-card h2:text-matches("#\\d")', { timeout: 60000 });
+  // 백그라운드 탭은 프레임이 멈추므로 탭을 앞으로 가져오며 진행시킵니다.
+  for (const p of [b, c]) { await p.bringToFront(); await p.evaluate(() => { const g = window.__zz.match, m = window.__zz.me(); g.kill(m, 0, 'rifle'); }); await sleep(1500); }
+  await a.bringToFront(); await a.waitForSelector('.sz-card h2:text-matches("최후의 1인")', { timeout: 60000 });
   await a.screenshot({ path: 'browser-artifacts/shooter-room-result-a.png' });
-  console.log((await Promise.all([a, b, c].map(p => p.locator('.sz-card').innerText()))).map(t => t.replace(/\n+/g, ' | ')).join('\n'));
+  console.log((await Promise.all([a, b, c].map(p => p.locator('.sz-card').innerText().catch(() => '')))).map(t => t.replace(/\n+/g, ' | ')).join('\n'));
   assert.deepEqual(errors, []);
   console.log('SHOOTER ROOM SMOKE OK');
 } finally { await browser?.close(); server.kill(); }

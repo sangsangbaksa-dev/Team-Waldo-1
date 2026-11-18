@@ -98,3 +98,7 @@
 .rc-root{word-break:keep-all;overflow-wrap:break-word}
 
 .rc-draft{position:absolute;left:50%;top:60%;transform:translateX(-50%);padding:3px 14px;border-radius:14px;font:800 13px/1 system-ui;letter-spacing:.3em;color:#bfe6ff;background:#0b2a4a99;border:1px solid #7dd3ff88;box-shadow:0 0 18px #4db8ff88;opacity:0;pointer-events:none;transition:opacity .15s}
+.rc-board{list-style:none;margin:10px 0;padding:0;display:flex;flex-direction:column;gap:4px;text-align:left}
+.rc-board li{display:grid;grid-template-columns:44px 1fr auto;gap:8px;align-items:center;padding:6px 10px;border-radius:8px;background:rgba(255,255,255,.06);font-size:14px}
+.rc-board li.me{background:rgba(255,255,255,.16);font-weight:700}
+.rc-board em{font-style:normal;font-variant-numeric:tabular-nums;opacity:.85}

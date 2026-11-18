@@ -4,7 +4,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { readPreferences, writePreferences } from '../prefs';
 import { fmtTime, raceRaceKey, readRaceRecords, readRaceSetupRaw, writeRaceRecords, writeRaceSetupRaw } from '../records';
-import type { PvpSession } from '../net/lobby';
+import type { PvpSession, RoomSession } from '../net/lobby';
+import { RaceMulti } from './multi';
 import { RaceAudio, gearFor } from './audio';
 import { carById, levelById, mapOf, sanitizeSetup, type RaceSetup } from './config';
 import { aiInput, boosting, kmh, type CarInput } from './physics';
@@ -18,7 +19,7 @@ import { loadCharacterKit } from '../shared/character';
 import { PVP_ENABLED } from '../net/config';
 
 const STEP = 1 / 90;
-const ORD = ['', '1ST', '2ND', '3RD', '4TH'];
+const ORD = ['', '1ST', '2ND', '3RD', '4TH', '5TH', '6TH'];
 
 export function openRace(onExit: () => void): void {
   const prefs = readPreferences(), touch = matchMedia('(pointer: coarse)').matches;
@@ -41,6 +42,7 @@ export function openRace(onExit: () => void): void {
   let setup: RaceSetup = sanitizeSetup(readRaceSetupRaw()), records = readRaceRecords(), track: Track = buildMapTrack(mapOf(setup)), setupUi: SetupHandle | null = null;
   let race: RaceState = createRace(track, setup.laps, Infinity, setup), view: RaceView | null = null, raf = 0, last = 0, acc = 0, paused = false, closed = false, finishedShown = false, lastPlace = 4, msgT = 0, wallHit = 0, fxIntensity = 0, wrongT = 0, raceGen = 0;
   /** 1대1 대전 진행 상태. null 이면 혼자 달리는 모드입니다. */
+  let multi: { s: RoomSession; net: RaceMulti; myFin: number | null; gone: Set<string>; done: boolean } | null = null;
   let pvp: { s: PvpSession; net: RacePvp; myFin: number | null; oppFin: number | null; done: boolean } | null = null;
   const keys = new Set<string>(), hold = { left: false, right: false, brake: false, drift: false, nitro: false, gas: false };
   const cache = new Map<string, string>(); const setText = (id: string, v: string): void => { if (cache.get(id) !== v) { cache.set(id, v); $(id).textContent = v; } };
@@ -69,7 +71,7 @@ export function openRace(onExit: () => void): void {
       case 'hit': wallHit = e.power; view?.kick(Math.min(1, e.power * 0.05)); audio.sfx('hit', e.power); break;
       case 'bump': view?.kick(Math.min(0.5, e.power * 0.03)); audio.sfx('bump'); break;
       case 'lap': if (e.lap < race.laps) { msg(e.best ? `LAP ${e.lap}  ${fmtTime(e.time)}  ★ BEST` : `LAP ${e.lap}  ${fmtTime(e.time)}`, e.best ? 'gold' : ''); audio.sfx(e.best ? 'best' : 'lap'); } break;
-      case 'finish': audio.sfx('finish'); if (pvp) pvpFinish(e.time); else finishRace(e.place, e.time); break;
+      case 'finish': audio.sfx('finish'); if (pvp) pvpFinish(e.time); else if (multi) multiFinish(e.time); else finishRace(e.place, e.time); break;
     }
   }
 
@@ -115,7 +117,7 @@ export function openRace(onExit: () => void): void {
   // ---------- 1대1 대전 ----------
   function openPvpLobby(): void {
     if (!PVP_ENABLED) return;
-    void import('../net/lobby').then(({ openLobby }) => openLobby({ game: 'race', config: () => ({ map: setup.map, laps: setup.laps }), onMatch: startPvp, onClose: () => undefined }))
+    void import('../net/lobby').then(({ openLobby }) => openLobby({ game: 'race', maxPlayers: 6, config: () => ({ map: setup.map, laps: setup.laps }), onMatch: startPvp, onRoom: startMulti, onClose: () => undefined }))
       .catch(() => { modal.className = 'rc-modal show'; modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">1대1 대전</span><h2>대전 기능을 불러오지 못했어요</h2><div class="rc-actions"><button data-act="setup">설정으로</button></div></div>'; });
   }
   function pvpCard(eyebrow: string, title: string, body = '', actions = '<button data-act="exit">메뉴로</button>'): void {
@@ -169,7 +171,46 @@ export function openRace(onExit: () => void): void {
     else if (!p.done) void p.s.backend.cancelMatch(p.s.match.id).catch(() => undefined);
     endPvp();
   }
-  function endPvp(): void { pvp?.net.dispose(); pvp = null; }
+  function endPvp(): void { pvp?.net.dispose(); pvp = null; endMulti(); }
+
+  // ---------- 멀티플레이 방(3~6인) ----------
+  function endMulti(): void { multi?.net.dispose(); multi = null; }
+  function racerOf(id: string): ReturnType<typeof createRace>['racers'][number] | undefined { return race.racers.find(r => r.peer === id); }
+  function startMulti(s: RoomSession): void {
+    endPvp(); setupUi?.destroy(); setupUi = null; if (view) { view.dispose(); view = null; }
+    const cfg = s.room.config; setup = sanitizeSetup({ ...setup, map: cfg.map, laps: cfg.laps }); paused = false; finishedShown = false; root.dataset.phase = 'setup';
+    pvpCard('멀티플레이', `${s.players.length}명과 연결하는 중…`, `<p class="rc-record">${mapOf(setup).name} · ${setup.laps}랩 · ${carById(setup.car).name}</p>`, '<button data-act="exit">나가기</button>');
+    const net: RaceMulti = new RaceMulti(s, setup.car, {
+      onStart: list => beginMulti(list),
+      onSnap: (id, snap) => { const r = racerOf(id); if (multi && r?.link) r.link = { snap, at: performance.now() }; },
+      onFinish: (id, time) => { const r = racerOf(id); if (!multi || multi.done || !r) return; r.finishTime = time; multiCheck(); },
+      onGone: id => { if (!multi || multi.done) return; multi.gone.add(id); const r = racerOf(id); if (r) { msg(`${r.name} 님이 나갔습니다`, 'hint'); msgT = 3; } multiCheck(); },
+      onAbort: () => { if (multi && !multi.done) pvpCard('멀티플레이', '연결하지 못했어요', '<p class="rc-record">방 사람들과 연결되지 않았습니다. 네트워크를 확인해 다시 시도해 주세요.</p>', '<button data-act="rematch">다시 시도</button><button data-act="exit">메뉴로</button>'); },
+    });
+    multi = { s, net, myFin: null, gone: new Set(), done: false };
+  }
+  function beginMulti(list: Array<{ id: string; car: string }>): void {
+    if (!multi || closed) return; const s = multi.s, meIdx = Math.max(0, list.findIndex(p => p.id === s.me.id));
+    const players = list.filter(p => p.id !== s.me.id).map(p => ({ id: p.id, car: p.car, nickname: s.players.find(x => x.id === p.id)?.nickname ?? '플레이어' }));
+    track = buildMapTrack(mapOf(setup)); prepareMinimap();
+    race = createRace(track, setup.laps, Infinity, { ...setup, multi: { slot: meIdx, players } });
+    acc = 0; cache.clear(); lastPlace = list.length; setText('#rc-laps', String(setup.laps)); setText('#rc-of', `/ ${list.length}`); setText('#rc-best', `${list.length}인 레이스`);
+    startView(carTemplate); modal.className = 'rc-modal'; modal.innerHTML = ''; root.dataset.phase = 'countdown'; msg(`${list.length}명 레이스 · 먼저 결승선을 통과하세요`, 'hint'); msgT = 4; last = performance.now();
+  }
+  function multiFinish(time: number): void {
+    if (!multi || multi.done) return; multi.myFin = time; multi.net.sendFinish(time); const m = multi;
+    window.setTimeout(() => { if (multi === m && !m.done) showMulti(); }, 30000); multiCheck();
+  }
+  function multiCheck(): void {
+    if (!multi || multi.done || multi.myFin === null) return;
+    if (race.racers.every(r => r.player || r.finishTime !== null || (r.peer && multi?.gone.has(r.peer)))) window.setTimeout(() => { if (multi && !multi.done) showMulti(); }, 600);
+  }
+  function showMulti(): void {
+    const m = multi; if (!m || m.done) return; m.done = true; finishedShown = true;
+    const rows = [...race.racers].map(r => ({ r, t: r.player ? m.myFin : r.finishTime })).sort((a, b) => (a.t ?? Infinity) - (b.t ?? Infinity));
+    const place = rows.findIndex(x => x.r.player) + 1, body = `<ol class="rc-board">${rows.map((x, i) => `<li class="${x.r.player ? 'me' : ''}"><b>${ORD[i + 1] ?? (i + 1) + 'TH'}</b><span>${x.r.player ? '나' : x.r.name}</span><em>${x.t === null ? (x.r.peer && m.gone.has(x.r.peer) ? '나감' : '기록 없음') : fmtTime(x.t)}</em></li>`).join('')}</ol><p class="rc-record">3명 이상의 방은 순위만 표시하고 레이팅에는 반영되지 않습니다.</p>`;
+    window.setTimeout(() => { if (!closed && multi === m) pvpCard(`${mapOf(setup).name} · ${setup.laps}랩 · ${rows.length}명`, `${ORD[place] ?? place + 'TH'} <small>/ ${rows.length}</small>`, body, '<button class="primary" data-act="rematch">다시 대전</button><button data-act="exit">메뉴로</button>'); }, 700);
+  }
 
   function recover(): void {
     const c = race.player.car, i = c.idx; c.x = track.x[i]; c.z = track.z[i]; c.y = track.y[i]; c.h = Math.atan2(track.tz[i], track.tx[i]); c.vx = c.vz = 0; c.vf = c.vl = 0; c.yawRate = 0; c.drifting = false; c.driftT = 0; msg('복귀');
@@ -237,17 +278,17 @@ export function openRace(onExit: () => void): void {
       if (steps === 6) acc = 0;
       const c = race.player.car; audio.drive(c.vf, input.throttle, c.slip, boosting(c), c.drifting, wallHit > 0);
       view.update(race, dt, wallHit); wallHit = 0; fxIntensity += (RaceView.intensity(race) - fxIntensity) * Math.min(1, dt * 5); drawFx(fxIntensity);
-      pvp?.net.sendSnap(race.player.car, now); hud(); drawMini();
+      pvp?.net.sendSnap(race.player.car, now); multi?.net.sendSnap(race.player.car, now); hud(); drawMini();
       if (msgT > 0 && (msgT -= dt) <= 0) $('#rc-msg').className = 'rc-msg';
     }
   }
 
   const setPaused = (on: boolean): void => {
-    if (setupUi || pvp || race.phase === 'done' || finishedShown || closed) return; paused = on; modal.className = on ? 'rc-modal show' : 'rc-modal'; if (on) { audio.drive(0, 0, 0, false, false, false); modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">PAUSED</span><h2>일시정지</h2><div class="rc-actions"><button class="primary" data-act="resume">계속하기</button><button data-act="restart">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button></div></div>'; } else modal.innerHTML = '';
+    if (setupUi || pvp || multi || race.phase === 'done' || finishedShown || closed) return; paused = on; modal.className = on ? 'rc-modal show' : 'rc-modal'; if (on) { audio.drive(0, 0, 0, false, false, false); modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">PAUSED</span><h2>일시정지</h2><div class="rc-actions"><button class="primary" data-act="resume">계속하기</button><button data-act="restart">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button></div></div>'; } else modal.innerHTML = '';
   };
   const exit = (): void => {
     if (closed) return; closed = true; cancelAnimationFrame(raf); removeEventListener('keydown', onKey); removeEventListener('keyup', onKeyUp); removeEventListener('resize', resize); removeEventListener('blur', onBlur);
-    leavePvp(); audio.dispose(); view?.dispose(); setupUi?.destroy(); root.remove(); onExit();
+    leavePvp(); if (multi) { if (!multi.done) multi.net.bye(); endMulti(); } audio.dispose(); view?.dispose(); setupUi?.destroy(); root.remove(); onExit();
   };
   const act = (a: string | undefined): void => {
     audio.unlock();
@@ -263,7 +304,7 @@ export function openRace(onExit: () => void): void {
     if (e.repeat && e.code !== 'KeyR') { if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); return; }
     audio.unlock(); if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
     if (e.code === 'Escape' || e.code === 'KeyP') { setPaused(!paused); return; } if (e.code === 'KeyM') { act('mute'); return; } if (e.code === 'KeyR' && !paused && race.phase === 'racing') { recover(); return; }
-    if (e.code === 'Enter' && finishedShown && !pvp) { restart(); return; } keys.add(e.code);
+    if (e.code === 'Enter' && finishedShown && !pvp && !multi) { restart(); return; } keys.add(e.code);
   };
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.code); };
   const onBlur = (): void => { keys.clear(); for (const k of Object.keys(hold) as Array<keyof typeof hold>) hold[k] = false; if (race.phase === 'racing' && !setupUi) setPaused(true); };

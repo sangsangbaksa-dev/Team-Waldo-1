@@ -13,7 +13,7 @@ export const isStructure = (k: EntKind): boolean => k === 'turret' || k === 'inh
 export type PingKind = 'danger' | 'assist' | 'retreat';
 export interface Ward { id: number; team: number; x: number; y: number; until: number; owner: number }
 export interface Ping { team: number; x: number; y: number; kind: PingKind; at: number; by: number }
-export interface HeroSetup { champ: ChampId; lane: Role; spells?: [SpellId, SpellId]; rune?: RuneId }
+export interface HeroSetup { champ: ChampId; lane: Role; spells?: [SpellId, SpellId]; rune?: RuneId; /** 멀티플레이 방에서 사람이 조종하는 자리(봇이 아님) */ human?: boolean }
 const SWEEP_RANGE = 4.5, SWEEP_GOLD = 30, BUSH_REVEAL = 1.6, WARD_LIFE = 90, WARD_RANGE = 9, WARD_MAX = 2, WARD_RECHARGE = 35, SIGHT = { hero: 11, minion: 7, turret: 11, inhib: 8, nexus: 12, ward: 9 };
 export type OrderT = 'idle' | 'move' | 'attack' | 'amove';
 export interface Hero {
@@ -59,7 +59,7 @@ export class MobaSim {
   tick = 0; winner = -1; nextId = 1; readonly map: MobaMap; readonly grid: Uint8Array; readonly pather: Pather;
   ents: Ent[] = []; index = new Map<number, Ent>(); teams: Team[] = [0, 1].map(() => ({ kills: 0, towers: 0, drakes: 0, baronUntil: 0, gold: 0, inhibs: 0, barons: 0 }));
   events: SimEvent[] = []; record = true; private wave = 0; private camps = new Map<string, { at: Pt; due: number; ids: number[]; defs: Array<{ k: MonsterKind; dx: number; dy: number }> }>();
-  readonly heroIds: number[] = [];
+  readonly heroIds: number[] = []; /** 이 화면의 주인 영웅(멀티플레이에서는 사람마다 다릅니다) */ meId = 0;
   wards: Ward[] = []; pings: Ping[] = []; private seen: [Set<number>, Set<number>] = [new Set(), new Set()];
 
   constructor(readonly setup: { player: ChampId; lane: Role; allies: HeroSetup[]; foes: HeroSetup[]; goldMul?: number; kit?: { spells?: [SpellId, SpellId]; rune?: RuneId } } = { player: 'blade', lane: 'mid', allies: [{ champ: 'arcana', lane: 'top' }, { champ: 'ranger', lane: 'bot' }], foes: [{ champ: 'blade', lane: 'top' }, { champ: 'arcana', lane: 'mid' }, { champ: 'ranger', lane: 'bot' }] }) {
@@ -70,7 +70,7 @@ export class MobaSim {
     }
     // 첫 번째 영웅(heroIds[0])이 내가 조종하는 챔피언이고 나머지는 봇입니다.
     this.addHero(0, { champ: this.setup.player, lane: this.setup.lane, ...this.setup.kit }, false, 0);
-    this.setup.allies.forEach((r, i) => this.addHero(0, r, true, i + 1)); this.setup.foes.forEach((r, i) => this.addHero(1, r, true, i));
+    this.setup.allies.forEach((r, i) => this.addHero(0, r, !r.human, i + 1)); this.meId = this.heroIds[0]; this.setup.foes.forEach((r, i) => this.addHero(1, r, true, i));
     for (const c of this.map.camps) this.camps.set(c.id, { at: c.at, due: this.tick, ids: [], defs: c.mobs });
     for (const [id, c] of this.camps) { const first = Math.min(...c.defs.map(d => MONSTERS[d.k].first)); c.due = Math.round(first * TICK); void id; }
     this.recount(); this.updateVision();
@@ -78,7 +78,7 @@ export class MobaSim {
 
   // ---------- 조회 ----------
   get(id: number): Ent | undefined { return this.index.get(id); }
-  me(): Ent { return this.ents.find(e => e.id === this.heroIds[0])!; }
+  me(): Ent { return this.index.get(this.meId)!; }
   dist(a: { x: number; y: number }, b: { x: number; y: number }): number { return Math.hypot(a.x - b.x, a.y - b.y); }
   emit(e: SimEvent): void { if (this.record) { this.events.push(e); if (this.events.length > 1200) this.events.splice(0, 400); } }
   drain(): SimEvent[] { const e = this.events; this.events = []; return e; }

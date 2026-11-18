@@ -95,7 +95,7 @@
 .sz-setup header p{margin:0 0 26px;color:#9aa3b2;font-size:15px;line-height:1.6;word-break:keep-all}
 .sz-setup h3{margin:0 0 10px;font-size:13px;font-weight:600;color:#9aa3b2;letter-spacing:.04em}
 .sz-setup section{margin-bottom:26px}.sz-setup section.dim{opacity:.5}
-.sz-seg{display:grid;gap:10px}.sz-seg.two{grid-template-columns:1fr 1fr}.sz-seg.four{grid-template-columns:repeat(4,1fr)}
+.sz-seg{display:grid;gap:10px}.sz-seg.two{grid-template-columns:1fr 1fr}.sz-seg.three{grid-template-columns:repeat(3,1fr)}.sz-seg.four{grid-template-columns:repeat(4,1fr)}
 .sz-opt{appearance:none;cursor:pointer;text-align:left;padding:15px 16px;border-radius:12px;border:1px solid #2a2f36;background:#171a1f;color:#e9ecf1;font:inherit;transition:border-color .15s,background .15s}
 .sz-opt b{display:block;font-size:16px;font-weight:700}.sz-opt em{display:block;margin-top:5px;font-style:normal;font-size:13px;color:#9aa3b2;line-height:1.45;word-break:keep-all}
 .sz-opt:hover:not(:disabled){border-color:#4a515b}.sz-opt.on{border-color:#e8e2d0;background:#1d2127}.sz-opt:disabled{cursor:not-allowed}
@@ -114,7 +114,7 @@
 .sz-sub{margin:6px 0;color:#aab0b8;font-size:14px;line-height:1.5}.sz-big{margin:0 0 14px;font-size:20px;font-weight:600}
 .sz-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:10px 0 6px}.sz-stats div{padding:10px 4px;border-radius:10px;background:#1c2025}.sz-stats b{display:block;font-size:22px}.sz-stats span{font-size:11px;color:#9aa3b2}
 .sz-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:16px}
-@media (max-width:700px){.sz-seg.four{grid-template-columns:1fr 1fr}.sz-seg.two{grid-template-columns:1fr}.sz-setup footer{gap:8px}.sz-sum{display:none}.sz-setup footer button{padding:12px 18px}.sz-tl{gap:6px}.sz-banner{font-size:17px}}
+@media (max-width:700px){.sz-seg.four{grid-template-columns:1fr 1fr}.sz-seg.two,.sz-seg.three{grid-template-columns:1fr}.sz-setup footer{gap:8px}.sz-sum{display:none}.sz-setup footer button{padding:12px 18px}.sz-tl{gap:6px}.sz-banner{font-size:17px}}
 @media (prefers-reduced-motion:reduce){.sz-zonefx{animation:none}.sz-dmgs i{animation-duration:.01s}}
 /* 가로로 눕힌 휴대폰(낮은 화면): 버튼이 미니맵을 가리지 않도록 줄입니다. */
 @media (max-height:480px){.sz-tbuttons{bottom:max(66px,calc(env(safe-area-inset-bottom) + 60px));grid-template-columns:repeat(2,52px);gap:8px}.sz-tbuttons button{width:52px;height:52px;font-size:11px}.sz-tbuttons button.fire{width:72px;height:72px;font-size:14px}.touch .sz-tr canvas{width:72px;height:72px}.touch .sz-ammo b{font-size:26px}}

@@ -91,11 +91,13 @@ export class Renderer3D {
         if (b.type === 'lot') { g.strokeStyle = 'rgba(255,255,255,0.6)'; g.lineWidth = 2.5; g.beginPath(); for (let q = 0; q < 6; q++) { g.moveTo(b.x + 56 + q * 68, b.y + 290); g.lineTo(b.x + 56 + q * 68, b.y + 372); } g.stroke(); }
         if (b.type === 'park') for (let q = 0; q < 60; q++) { g.fillStyle = q % 2 ? 'rgba(90,140,80,0.5)' : 'rgba(60,100,60,0.5)'; g.beginPath(); g.arc(b.x + 20 + (q * 97) % 400, b.y + 20 + (q * 61) % 400, 10 + q % 9, 0, 6.29); g.fill(); }
       }
+      // 젖은 아스팔트: 도로 위 물웅덩이가 노을빛 하늘을 비춘다.
+      for (let q = 0; q < 900; q++) { const gx = Math.floor((q * 37) % (BLOCKS + 1)), gy = Math.floor((q * 53) % (BLOCKS + 1)), px = gx * PITCH + ((q * 7919) % ROAD), py = gy * PITCH + ((q * 104729) % ROAD), rx = 5 + (q % 7) * 2.2, ry = 2.5 + (q % 5) * 1.2; const gr = g.createLinearGradient(px, py - ry, px, py + ry); gr.addColorStop(0, 'rgba(228,150,112,0.34)'); gr.addColorStop(1, 'rgba(70,92,140,0.3)'); g.fillStyle = gr; g.beginPath(); g.ellipse(px, py, rx, ry, 0, 0, 6.29); g.fill(); }
       for (let q = 0; q < 9000; q++) { g.fillStyle = q % 3 ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.06)'; g.fillRect((q * 7561) % SIZE, (q * 6029) % SIZE, 2 + q % 6, 2 + q % 4); }
       for (let q = 0; q < 2600; q++) { g.fillStyle = q % 2 ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.035)'; g.fillRect((q * 7919) % SIZE, (q * 104729) % SIZE, 14 + q % 30, 3 + q % 5); }
     });
     gt.anisotropy = this.renderer.capabilities.getMaxAnisotropy(); gt.minFilter = THREE.LinearMipmapLinearFilter;
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(SIZE, SIZE), new THREE.MeshLambertMaterial({ map: gt })); ground.rotation.x = -Math.PI / 2; ground.position.set(SIZE / 2, 0, SIZE / 2); ground.receiveShadow = true; sc.add(ground);
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(SIZE, SIZE), new THREE.MeshPhongMaterial({ map: gt, specular: 0x7a6a66, shininess: 55 })); ground.rotation.x = -Math.PI / 2; ground.position.set(SIZE / 2, 0, SIZE / 2); ground.receiveShadow = true; sc.add(ground);
     this.buildCity();
     this.glow = canvasTex(64, 64, g => { const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.4, 'rgba(255,255,255,0.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); });
     // 태양 주변 후광: 지평선 가까운 노을 하늘에 따뜻한 빛 번짐을 더한다.

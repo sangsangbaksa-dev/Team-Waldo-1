@@ -1,6 +1,6 @@
 // 1대1 PvP 공통 타입. 백엔드(Supabase)와 개발용 로컬 백엔드가 같은 인터페이스를 구현합니다.
-export type GameKind = 'city' | 'race' | 'rts' | 'shooter';
-export const GAME_NAMES: Record<GameKind, string> = { city: 'LAST CITY', race: 'SPEED RUSH', rts: 'FRONTLINE', shooter: 'ZERO ZONE' };
+export type GameKind = 'city' | 'race' | 'rts' | 'shooter' | 'outlaw';
+export const GAME_NAMES: Record<GameKind, string> = { city: 'LAST CITY', race: 'SPEED RUSH', rts: 'FRONTLINE', shooter: 'ZERO ZONE', outlaw: 'OUTLAW CITY' };
 
 export interface Account { id: string; email: string; nickname: string }
 export interface MatchRow {
@@ -8,6 +8,15 @@ export interface MatchRow {
   status: 'waiting' | 'playing' | 'finished' | 'cancelled' | 'void'; config: Record<string, unknown>;
   winner_id: string | null; host_delta: number | null; guest_delta: number | null;
 }
+/** 멀티플레이 방. 2인 방은 시작할 때 1대1 매치(match_id)가 함께 만들어지고, 3인 이상(SPEED RUSH)은 match_id 가 없습니다. */
+export interface RoomRow {
+  id: string; code: string; game: GameKind; host_id: string; max_players: number; is_public: boolean;
+  status: 'waiting' | 'playing' | 'closed'; config: Record<string, unknown>; match_id: string | null;
+}
+export interface RoomMember { user_id: string; nickname: string; ready: boolean }
+/** 입장 순서대로 정렬된 참가자 */
+export interface RoomInfo { room: RoomRow; members: RoomMember[] }
+export interface RoomListItem { room: RoomRow; host: string; count: number }
 export interface RankRow { rank: number; user_id: string; nickname: string; rating: number; wins: number; losses: number }
 export interface Rating { rating: number; wins: number; losses: number }
 
@@ -35,11 +44,19 @@ export interface Backend {
   leaderboard(game: GameKind, limit: number): Promise<RankRow[]>;
   rating(game: GameKind): Promise<Rating | null>;
   nickname(userId: string): Promise<string>;
+  roomCreate(game: GameKind, max: number, isPublic: boolean, config: Record<string, unknown>): Promise<RoomRow>;
+  roomJoin(code: string): Promise<RoomRow>;
+  roomLeave(id: string): Promise<void>;
+  roomReady(id: string, ready: boolean): Promise<void>;
+  roomStart(id: string): Promise<RoomRow>;
+  roomState(id: string): Promise<RoomInfo>;
+  roomList(game: GameKind): Promise<RoomListItem[]>;
   open(matchId: string, onMessage: (msg: NetMsg) => void): Channel;
 }
 
 /** 서버가 던지는 오류 코드를 사람이 읽을 문장으로 바꿉니다. */
 const ERRORS: Array<[RegExp, string]> = [
+  [/room_full/, '방이 가득 찼습니다.'], [/not_ready/, '아직 준비하지 않은 사람이 있습니다.'], [/need_players/, '두 명 이상 모여야 시작할 수 있습니다.'], [/not_host/, '방장만 시작할 수 있습니다.'],
   [/login_required/, '로그인이 필요합니다.'], [/room_not_found/, '대기 중인 방을 찾지 못했습니다. 코드를 다시 확인해 주세요.'], [/own_room/, '내가 만든 방에는 들어갈 수 없습니다.'],
   [/nickname_taken|duplicate key/i, '이미 사용 중인 닉네임입니다.'], [/bad_nickname/, '닉네임은 2~16자로 입력해 주세요.'],
   [/Invalid login credentials/i, '이메일 또는 비밀번호가 맞지 않습니다.'], [/already registered|already been registered/i, '이미 가입된 이메일입니다.'],

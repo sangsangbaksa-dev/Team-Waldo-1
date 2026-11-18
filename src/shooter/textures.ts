@@ -88,6 +88,12 @@ export function makeSky(sunDir: THREE.Vector3): THREE.Mesh {
         vec2 uv = vDir.xz / (vDir.y + 0.35) * 1.6 + vec2(t * 0.012, 0.0); float cl = vn(uv * 2.0) * 0.55 + vn(uv * 4.3) * 0.3 + vn(uv * 9.0) * 0.15; c *= 0.72 + cl * 0.55;
         float s = max(dot(normalize(vDir), sun), 0.0); c += vec3(0.9, 0.78, 0.6) * pow(s, 18.0) * 0.18;
         float b = max(dot(normalize(vDir), bolt), 0.0); c += vec3(0.55, 0.62, 1.0) * flash * (pow(b, 6.0) * 1.6 + 0.25);
+        float az = atan(vDir.z, vDir.x), y = vDir.y;
+        float far = 0.11 + 0.16 * vn(vec2(az * 2.6, 3.1)) + 0.05 * vn(vec2(az * 7.0, 8.3));
+        float near = 0.04 + 0.09 * vn(vec2(az * 3.4, 11.7)) + 0.04 * vn(vec2(az * 10.0, 5.9));
+        vec3 hz = vec3(0.4, 0.44, 0.44), rf = mix(hz, vec3(0.2, 0.25, 0.3), 0.55), rn = mix(hz, vec3(0.1, 0.14, 0.16), 0.7);
+        c = mix(c, rf, smoothstep(far + 0.004, far - 0.004, y) * step(-0.02, y));
+        c = mix(c, rn, smoothstep(near + 0.004, near - 0.004, y) * step(-0.02, y));
         c = mix(c, vec3(0.4, 0.44, 0.44), smoothstep(0.0, -0.1, vDir.y));
         gl_FragColor = vec4(c, 1.0); }`,
   });

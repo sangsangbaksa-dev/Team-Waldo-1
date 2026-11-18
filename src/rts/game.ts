@@ -12,6 +12,7 @@ import { RtsSim, type Building, type Cmd, type ResNode, type Unit } from './sim'
 import { RtsView } from './view';
 import { preloadUnitKit } from './models';
 import { PVP_ENABLED } from '../net/config';
+import type { RoomLink } from './moba/net';
 
 const esc = (s: string): string => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
 const clock = (ticks: number): string => { const s = Math.floor(ticks / TICK); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -343,7 +344,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       <div class="rt-diffs" role="group" aria-label="난이도">${DIFFICULTIES.map((d, i) => `<button type="button" data-diff="${d}" aria-pressed="${d === difficulty}"><span>${['I', 'II', 'III', 'IV'][i]}</span><b>${LEVELS[d].label}</b></button>`).join('')}</div>
       <p class="rt-diffnote" id="rt-diffnote">${LEVELS[difficulty].blurb}</p>
       <div class="rt-actions"><button class="primary" data-act="start" id="rt-start">AI와 1대1 대전</button>${PVP_ENABLED ? '<button data-act="pvp" id="rt-pvp">온라인 1대1 대전</button>' : ''}</div>
-      <div class="rt-actions"><button data-act="moba" id="rt-moba">롤식 라인전 4:4 · 챔피언 조종</button></div>
+      <div class="rt-actions"><button data-act="moba" id="rt-moba">롤식 라인전 4:4 · 챔피언 조종</button>${PVP_ENABLED ? '<button data-act="mobaroom" id="rt-mobaroom">온라인 방 · 라인전 협동 (최대 4명)</button>' : ''}</div>
       <div class="rt-actions sub"><button data-act="help">조작법</button><button data-act="exit">메뉴로</button></div>
       <p class="rt-rec">${rec.matches ? `AI 대전 ${rec.matches}판 ${rec.wins}승${rec.bestWin[difficulty] ? ` · ${LEVELS[difficulty].label} 최단 승리 ${clock(rec.bestWin[difficulty] * TICK)}` : ''}` : '처음이라면 쉬움 난이도로 시작해 보세요.'}</p></div>`);
     modal.querySelector<HTMLElement>('#rt-start')?.focus();
@@ -396,8 +397,22 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   // ---------- 온라인 대전 ----------
   function openPvpLobby(): void {
     if (!PVP_ENABLED) return;
-    void import('../net/lobby').then(({ openLobby }) => openLobby({ game: 'rts', config: () => ({}), onMatch: startPvp, onClose: () => undefined }))
+    void import('../net/lobby').then(({ openLobby }) => openLobby({ game: 'rts', config: () => ({ mode: 'duel' }), onMatch: routeMatch, onClose: () => undefined }))
       .catch(() => show('<div class="rt-card"><span class="rt-eyebrow">온라인 1대1</span><h2>대전 기능을 불러오지 못했어요</h2><div class="rt-actions"><button class="primary" data-act="setup">돌아가기</button></div></div>'));
+  }
+  /** 온라인 방(2~4인) 라인전 협동. 3인 이상은 onRoom, 2인(무작위 매칭 포함)은 onMatch 로 들어옵니다. */
+  function openMobaLobby(): void {
+    if (!PVP_ENABLED) return;
+    void import('../net/lobby').then(({ openLobby }) => openLobby({ game: 'rts', maxPlayers: 4, config: () => ({ mode: 'moba' }), onMatch: routeMatch, onRoom: s => startMoba({ players: s.players, meId: s.me.id, host: s.host, open: h => s.open(h) }), onClose: () => undefined }))
+      .catch(() => show('<div class="rt-card"><span class="rt-eyebrow">온라인 방</span><h2>대전 기능을 불러오지 못했어요</h2><div class="rt-actions"><button class="primary" data-act="setup">돌아가기</button></div></div>'));
+  }
+  /** 같은 'rts' 로비에서 1대1 RTS 와 라인전 방이 섞이지 않도록 방장이 정한 mode 로 갈라 줍니다. */
+  function routeMatch(s: PvpSession): void {
+    if (s.match.config?.mode === 'moba') startMoba({ players: s.host ? [s.me, s.opponent] : [s.opponent, s.me], meId: s.me.id, host: s.host, open: h => s.open(h) }); else startPvp(s);
+  }
+  function startMoba(link: RoomLink): void {
+    leavePvp(); root.style.display = 'none';
+    void import('./moba/game').then(({ openMoba }) => openMoba(() => { root.style.display = ''; setupScreen(); }, exit, link)).catch(() => { root.style.display = ''; toast('라인전 모드를 불러오지 못했어요', true); });
   }
   function startPvp(s: PvpSession): void {
     endPvp(); pvp = { s, done: false }; ai = null; $<HTMLButtonElement>('[data-act="speed"]').hidden = true; $<HTMLButtonElement>('[data-act="pause"]').hidden = true;
@@ -485,6 +500,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     switch (t.dataset.act) {
       case 'start': case 'again': leavePvp(); begin(); break;
       case 'pvp': openPvpLobby(); break;
+      case 'mobaroom': openMobaLobby(); break;
       case 'moba': {
         root.style.display = 'none';
         void import('./moba/game').then(({ openMoba }) => openMoba(() => { root.style.display = ''; setupScreen(); }, exit)).catch(() => { root.style.display = ''; toast('라인전 모드를 불러오지 못했어요', true); });

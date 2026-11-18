@@ -36,7 +36,7 @@ export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceR
         </div>
         <section class="rc-setup-col"><h3>차량</h3><div class="rc-grid cars">${CARS.map(carCard).join('')}</div><p class="rc-note" data-note="car"></p></section>
       </div>
-      <footer><button type="button" class="ghost" data-setup="exit">메뉴로</button><span class="rc-pick" data-note="summary"></span>${cb.onPvp ? '<button type="button" data-setup="pvp">1대1 대전</button>' : ''}<button type="button" class="primary" data-setup="start">출발</button></footer>
+      <footer><button type="button" class="ghost" data-setup="exit">메뉴로</button><span class="rc-pick" data-note="summary"></span>${cb.onPvp ? '<button type="button" data-setup="pvp">온라인 대전 · 방</button>' : ''}<button type="button" class="primary" data-setup="start">출발</button></footer>
     </div>`;
   host.append(root);
   const note = (k: string): HTMLElement => root.querySelector<HTMLElement>(`[data-note="${k}"]`)!;

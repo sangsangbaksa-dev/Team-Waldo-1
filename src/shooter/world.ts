@@ -362,7 +362,8 @@ export function generateMap(seed: number, mode: Mode): GameMap {
   // 출발 지점: 가장자리 쪽에 흩어 놓습니다. 대전은 서로 정반대에서 시작합니다.
   if (mode === 'duel') {
     const a = rng() * Math.PI * 2;
-    for (const k of [0, 1]) spawnNear(map, rng, Math.cos(a + k * Math.PI) * half * 0.72, Math.sin(a + k * Math.PI) * half * 0.72);
+    // 처음 두 곳은 정반대(1대1), 나머지는 사이사이에 놓아 최대 8명이 서로 떨어져 시작합니다.
+    for (const k of [0, 4, 2, 6, 1, 5, 3, 7]) spawnNear(map, rng, Math.cos(a + k * Math.PI / 4) * half * 0.72, Math.sin(a + k * Math.PI / 4) * half * 0.72);
   } else {
     for (let i = 0; i < 20; i++) { const a = (i / 20) * Math.PI * 2 + (rng() - 0.5) * 0.25, r = half * (0.42 + rng() * 0.45); spawnNear(map, rng, Math.cos(a) * r, Math.sin(a) * r); }
   }

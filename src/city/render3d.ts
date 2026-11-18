@@ -45,6 +45,7 @@ class Points {
 
 export class Renderer3D {
   post: PostFx | null = null; renderer: THREE.WebGLRenderer; scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(74, 1, 3, 5200);
+  private hemi: THREE.HemisphereLight; private bolt = 0; private nextBolt = 9 + Math.random() * 10;
   private rain: THREE.LineSegments | null = null; private rainPos = new Float32Array(0); private rainSeed = new Float32Array(0);
   yaw = 0; pitch = -0.05; mode: ViewMode = 'fp'; w = 0; h = 0; shake = 0; t = 0; reduced = false; recoil = 0; flashT = 0; camPos = new THREE.Vector3(); chaseYaw = 0; private focus = new THREE.Vector2(SIZE / 2, SIZE / 2); private deadT = 0;
   private dummy = new THREE.Object3D(); private color = new THREE.Color();
@@ -70,7 +71,7 @@ export class Renderer3D {
     const skyGeo = new THREE.SphereGeometry(4800, 24, 12), sp = skyGeo.attributes.position, cols = new Float32Array(sp.count * 3), top = new THREE.Color(0x3a548c), mid = new THREE.Color(0xe49670), low = new THREE.Color(0xc4846c);
     for (let i = 0; i < sp.count; i++) { const k = Math.max(0, sp.getY(i) / 4800), c = k < 0.25 ? low.clone().lerp(mid, k / 0.25) : mid.clone().lerp(top, Math.min(1, (k - 0.25) / 0.6)); cols.set([c.r, c.g, c.b], i * 3); }
     skyGeo.setAttribute('color', new THREE.BufferAttribute(cols, 3)); const sky = new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false })); sky.renderOrder = -1; sky.name = 'sky'; sc.add(sky);
-    sc.add(new THREE.HemisphereLight(0xb7c6e8, 0x8a6450, 0.95));
+    this.hemi = new THREE.HemisphereLight(0xb7c6e8, 0x8a6450, 0.95); sc.add(this.hemi);
     this.sun = new THREE.DirectionalLight(0xffd4a8, 2.05); this.sun.position.set(-600, 700, -400); sc.add(this.sun); sc.add(this.sun.target);
     // 반대편 채움광: 그늘진 외벽이 검게 뭉개지지 않게 색을 남긴다.
     const fill = new THREE.DirectionalLight(0x8aa4c8, 0.48); fill.position.set(520, 280, 620); sc.add(fill);
@@ -286,6 +287,13 @@ export class Renderer3D {
     for (const f of this.floaters) f.el.remove(); this.floaters = [];
   }
   /** 카메라 주변에 흩뿌려진 빗줄기. 빗방울 수는 화질에 맞추고, 모션 감소 설정에서는 끕니다. */
+  /** 먼 번개: 하늘과 도시를 푸르게 번쩍이게 해 폭풍 전선의 분위기를 만든다. 동작 줄이기 설정에서는 쓰지 않는다. */
+  private updateBolt(dt: number): void {
+    if (this.reduced) { this.hemi.intensity = 0.95; return; }
+    this.nextBolt -= dt; if (this.nextBolt <= 0) { this.bolt = 1; this.nextBolt = 11 + Math.random() * 16; }
+    this.bolt = Math.max(0, this.bolt - dt * 2.6); const f = this.bolt > 0.6 ? 1 : this.bolt > 0.35 ? 0.3 : this.bolt * 0.5;
+    this.hemi.intensity = 0.95 + f * 1.5;
+  }
   private updateRain(dt: number): void {
     if (this.reduced) { if (this.rain) this.rain.visible = false; return; }
     const R = EYE_HEIGHT * 14, H = EYE_HEIGHT * 9, n = 1200;
@@ -328,7 +336,7 @@ export class Renderer3D {
     if (this.shake > 0 && !this.reduced) { this.camera.position.x += (Math.random() - 0.5) * this.shake; this.camera.position.y += (Math.random() - 0.5) * this.shake; }
     const spd = veh ? Math.hypot(veh.vx, veh.vy) : 0, fov = 74 + Math.min(14, spd / 45); if (Math.abs(fov - this.camera.fov) > 0.2) { this.camera.fov += (fov - this.camera.fov) * 0.1; this.camera.updateProjectionMatrix(); }
     const sky = this.scene.getObjectByName('sky'); if (sky) sky.position.set(this.camera.position.x, 0, this.camera.position.z);
-    this.updateRain(dt); this.blink?.(this.t);
+    this.updateRain(dt); this.updateBolt(dt); this.blink?.(this.t);
     this.sun.position.set(fx - 700, 800, fz - 450); this.sun.target.position.set(fx, 0, fz);
     if (this.ml) { this.gun.visible = false; this.ml.viewmodel(!third && !!pb, f0.slots[f0.cur]?.id ?? 'pistol', dt, this.recoil, f0.reloadT > 0, pb ? Math.min(1, Math.hypot(pb.vx, pb.vy) / 160) : 0, this.t, this.flashT > 0); } else { this.gun.visible = !third && !!pb; } if (!this.ml && this.gun.visible) { const tier = WEAPONS[f0.slots[f0.cur]?.id ?? 'pistol'].tier, rl = f0.reloadT > 0 ? 1 : 0; this.gun.scale.setScalar(0.62 + tier * 0.13); this.gun.position.set(5.6, -5.2 - rl * 4, -14 + this.recoil * 2.2); this.gun.rotation.x = this.recoil * 0.12 - rl * 0.7; this.muzzle.visible = this.flashT > 0; this.muzzle.rotation.z = this.t * 40; }
     // 캐릭터

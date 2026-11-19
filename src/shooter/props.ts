@@ -1,85 +1,12 @@
 // ZERO ZONE — 소품 모델: 건물 지붕, 차량, 컨테이너, 울타리, 전봇대, 주유소 같은 지도 위 물건과 보급 상자·총기 파츠 모양을 코드로 만듭니다.
 // 같은 색끼리 하나의 메시로 합쳐서(Pieces) 소품이 수백 개여도 그리기 호출은 수십 번에 머뭅니다.
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { PartId } from './config';
 import type { Building, GameMap, Prop } from './world';
 
-const Q = new THREE.Quaternion(), E = new THREE.Euler(), V = new THREE.Vector3(), ONE = new THREE.Vector3(1, 1, 1);
-/** 이동·회전(라디안, XYZ 순서)으로 행렬을 만듭니다. */
-export function xf(x: number, y: number, z: number, rx = 0, ry = 0, rz = 0): THREE.Matrix4 { return new THREE.Matrix4().compose(V.set(x, y, z), Q.setFromEuler(E.set(rx, ry, rz)), ONE); }
-
-/** 같은 색(과 투명 여부)끼리 모으는 상자. 새 지오메트리를 복사해 두므로 원본 프리미티브는 그대로 재사용합니다. */
-export class Pieces {
-  private buckets = new Map<string, { color: number; tr: boolean; geos: THREE.BufferGeometry[] }>();
-  add(geo: THREE.BufferGeometry, color: number, m: THREE.Matrix4 | null, tr = false): void {
-    const g = geo.index ? geo.toNonIndexed() : geo.clone(); for (const n of Object.keys(g.attributes)) if (n !== 'position' && n !== 'normal' && n !== 'uv') g.deleteAttribute(n);
-    if (m) g.applyMatrix4(m);
-    const k = `${color}${tr ? 't' : ''}`; let b = this.buckets.get(k); if (!b) { b = { color, tr, geos: [] }; this.buckets.set(k, b); } b.geos.push(g);
-  }
-  /** 직육면체: 중심 (x,y,z), 크기 (w,h,d). base 행렬을 먼저 곱합니다. */
-  box(w: number, h: number, d: number, color: number, base: THREE.Matrix4, x = 0, y = 0, z = 0, tr = false): void { this.add(new THREE.BoxGeometry(w, h, d), color, base.clone().multiply(xf(x, y, z)), tr); }
-  mesh(shadow = true): THREE.Group {
-    const out = new THREE.Group();
-    for (const b of this.buckets.values()) {
-      if (!b.geos.length) continue;
-      const mat = b.tr ? new THREE.MeshLambertMaterial({ color: b.color, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false }) : new THREE.MeshLambertMaterial({ color: b.color });
-      const m = new THREE.Mesh(mergeGeometries(b.geos, false), mat); m.castShadow = shadow && !b.tr; m.receiveShadow = true; out.add(m);
-    }
-    return out;
-  }
-}
-
-const shade = (c: number, k: number): number => { const col = new THREE.Color(c); col.multiplyScalar(k); return col.getHex(); };
-const CYL = (r: number, h: number, seg = 10): THREE.CylinderGeometry => new THREE.CylinderGeometry(r, r, h, seg);
-const GLASS = 0x1c2a38, BLACK = 0x1a1b1e, STEEL = 0x8b9096, LIGHT = 0xffe9a8, RED = 0xb02a24;
-
-// ---------- 차량 ----------
-function wheel(p: Pieces, base: THREE.Matrix4, x: number, z: number, r: number, wid: number): void {
-  p.add(CYL(r, wid, 12), BLACK, base.clone().multiply(xf(x, r, z, Math.PI / 2)));
-  p.add(CYL(r * 0.5, wid + 0.02, 8), STEEL, base.clone().multiply(xf(x, r, z, Math.PI / 2)));
-}
-function vehicle(p: Pieces, pr: Prop, base: THREE.Matrix4): void {
-  const { w, d, h } = pr, c = pr.wreck ? shade(pr.c, 0.42) : pr.c, dark = pr.wreck ? 0x201f1d : BLACK, hw = d / 2;
-  const b = (sx: number, sy: number, sz: number, col: number, x: number, y: number, z: number, tr = false): void => p.box(sx, sy, sz, col, base, x, y, z, tr);
-  switch (pr.kind) {
-    case 'car': {
-      b(w, 0.62, d, c, 0, 0.55, 0); b(w * 0.52, 0.5, d * 0.9, GLASS, -0.25, 1.1, 0); b(w * 0.46, 0.1, d * 0.86, c, -0.25, 1.4, 0);
-      b(0.06, 0.16, 0.34, LIGHT, w / 2, 0.62, hw * 0.6); b(0.06, 0.16, 0.34, LIGHT, w / 2, 0.62, -hw * 0.6); b(0.06, 0.14, 0.34, RED, -w / 2, 0.62, hw * 0.6); b(0.06, 0.14, 0.34, RED, -w / 2, 0.62, -hw * 0.6);
-      for (const sx of [-1, 1]) for (const sz of [-1, 1]) wheel(p, base, sx * w * 0.32, sz * (hw - 0.05), 0.36, 0.26);
-      break;
-    }
-    case 'jeep': {
-      b(w, 0.78, d, c, 0, 0.78, 0); b(w * 0.56, 0.72, d * 0.96, GLASS, -0.3, 1.52, 0); b(w * 0.56, 0.08, d, c, -0.3, 1.92, 0);
-      b(0.06, 0.2, 0.4, LIGHT, w / 2, 0.9, hw * 0.6); b(0.06, 0.2, 0.4, LIGHT, w / 2, 0.9, -hw * 0.6); b(0.5, 0.06, d, dark, w / 2 - 0.1, 0.42, 0);
-      p.add(CYL(0.42, 0.22, 12), dark, base.clone().multiply(xf(-w / 2 - 0.1, 1.05, 0, 0, 0, Math.PI / 2)));
-      for (const sx of [-1, 1]) for (const sz of [-1, 1]) wheel(p, base, sx * w * 0.31, sz * (hw - 0.02), 0.44, 0.3);
-      break;
-    }
-    case 'truck': { // 픽업트럭: 앞은 운전석, 뒤는 짐칸
-      const cab = w * 0.38; b(cab, 1.0, d, c, w / 2 - cab / 2, 1.0, 0); b(cab * 0.8, 0.5, d * 0.92, GLASS, w / 2 - cab * 0.55, 1.35, 0);
-      b(w - cab, 0.16, d, dark, -cab / 2, 0.68, 0); b(w - cab, 0.55, 0.1, c, -cab / 2, 1.0, hw - 0.05); b(w - cab, 0.55, 0.1, c, -cab / 2, 1.0, -hw + 0.05); b(0.1, 0.55, d, c, -w / 2 + 0.05, 1.0, 0);
-      if (pr.v === 1) b(w - cab - 0.3, 0.9, d - 0.3, 0x5c6b4a, -cab / 2, 1.2, 0);
-      b(0.06, 0.2, 0.4, LIGHT, w / 2, 0.8, hw * 0.6); b(0.06, 0.2, 0.4, LIGHT, w / 2, 0.8, -hw * 0.6);
-      for (const sx of [-1, 1]) for (const sz of [-1, 1]) wheel(p, base, sx * w * 0.32, sz * (hw - 0.02), 0.42, 0.3);
-      break;
-    }
-    case 'van': {
-      b(w, 1.55, d, c, 0, 1.2, 0); b(0.1, 0.65, d * 0.9, GLASS, w / 2 - 0.02, 1.62, 0); b(w * 0.5, 0.5, d + 0.02, GLASS, -0.3, 1.62, 0); b(w, 0.1, d, shade(c, 0.85), 0, 2.0, 0);
-      b(0.06, 0.2, 0.4, LIGHT, w / 2, 0.9, hw * 0.6); b(0.06, 0.2, 0.4, LIGHT, w / 2, 0.9, -hw * 0.6);
-      for (const sx of [-1, 1]) for (const sz of [-1, 1]) wheel(p, base, sx * w * 0.32, sz * (hw - 0.02), 0.4, 0.28);
-      break;
-    }
-    case 'bus': {
-      b(w, 2.3, d, c, 0, 1.55, 0); b(w * 0.9, 0.78, d + 0.04, GLASS, 0, 2.2, 0); b(w, 0.1, d, shade(c, 0.8), 0, 2.74, 0); b(0.1, 1.0, d * 0.9, GLASS, w / 2, 2.1, 0);
-      b(w, 0.18, d + 0.04, shade(c, 0.6), 0, 0.7, 0);
-      for (const sx of [-1, 1, 0]) for (const sz of [-1, 1]) wheel(p, base, sx * w * 0.34, sz * (hw - 0.05), 0.5, 0.34);
-      break;
-    }
-    default: break;
-  }
-  void h;
-}
+import { CYL, GLASS, BLACK, STEEL, RED, Pieces, shade, xf } from '../shared/pieces';
+import { vehicle, makeVehicleMesh } from '../shared/vehicle';
+export { Pieces, xf, makeVehicleMesh };
 
 // ---------- 소품 한 개 ----------
 function prop(p: Pieces, pr: Prop): void {
@@ -167,10 +94,7 @@ function roof(p: Pieces, bd: Building, rng: () => number): void {
 export function buildRoofs(map: GameMap, rng: () => number): THREE.Group { const p = new Pieces(); for (const b of map.buildings) roof(p, b, rng); return p.mesh(); }
 /** 지도의 소품(차량·컨테이너·울타리 등)을 합쳐서 돌려줍니다. */
 export function buildProps(map: GameMap, skipBoxes?: Set<number>): THREE.Group { const p = new Pieces(); for (const pr of map.props) if (pr.kind !== 'bush' && !(skipBoxes && pr.box !== undefined && skipBoxes.has(pr.box))) prop(p, pr); return p.mesh(); }
-/** 운전하는 차량 한 대의 모델(원점 기준, 앞이 +x). 부서지면 같은 모양을 어둡게 다시 만듭니다. */
-export function makeVehicleMesh(v: { kind: Prop['kind']; w: number; d: number; h: number; c: number; v: number; wreck: boolean }): THREE.Group {
-  const p = new Pieces(); vehicle(p, { kind: v.kind, x: 0, z: 0, ry: 0, jit: 0, w: v.w, d: v.d, h: v.h, c: v.c, v: v.v, wreck: v.wreck }, new THREE.Matrix4()); return p.mesh();
-}
+
 
 // ---------- 보급 상자와 비행기 ----------
 export function makeDropCrate(): THREE.Group {

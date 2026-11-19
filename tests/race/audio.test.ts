@@ -71,18 +71,20 @@ describe('SPEED RUSH audio', () => {
     const loopsAtUnlock = ctx.sources.length;
     expect(loopsAtUnlock).toBe(3); // wind, skid, boost
     const boost = ctx.sources[2];
+    ctx.currentTime = 0; audio.drive(50, 1, 0, true, false, false); // 처음 기어가 바뀔 때 한 번 나는 변속음은 제외
+    const afterShift = ctx.sources.length;
     for (let i = 0; i < 60; i++) {
       ctx.currentTime = i * 0.016;
       audio.drive(50, 1, 0, true, false, false);
     }
     expect(loopGain(boost)).toBeGreaterThan(0);
-    expect(ctx.sources.length).toBe(loopsAtUnlock); // no per-frame retrigger
+    expect(ctx.sources.length).toBe(afterShift); // no per-frame retrigger
     for (let i = 0; i < 30; i++) {
       ctx.currentTime = 1 + i * 0.016;
       audio.drive(50, 1, 0, false, false, false);
     }
     expect(loopGain(boost)).toBe(0);
-    expect(ctx.sources.length).toBe(loopsAtUnlock);
+    expect(ctx.sources.length).toBe(afterShift);
   });
 
   it('uses the same skid gain for left and right slip of equal size', () => {

@@ -11,6 +11,8 @@ import { loadShooterAssets, type ShooterAssets } from './assets';
 import { ShooterAudio } from './audio';
 import { ShooterNet, decideDeath, seedOf, type Pose } from './net';
 import { ShooterRoomNet, ROOM_MAX } from './room';
+import { PERK_IDS, PERK_INFO, readPerks, rewardCoins, writePerks } from './perks';
+import { PERK_MAX, buyPerk, perkCost } from '../shared/perks';
 import { readShooterCareer, recordShooterMatch, writeShooterCareer } from './records';
 import { PVP_ENABLED } from '../net/config';
 
@@ -53,7 +55,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   const q = <T extends HTMLElement>(sel: string): T => root.querySelector<T>(sel)!;
   const canvas = q<HTMLCanvasElement>('.sz-canvas'), hud = q('.sz-hud'), setupEl = q('#sz-setup'), modal = q('#sz-modal'), mapCv = q<HTMLCanvasElement>('#sz-map'), mapCtx = mapCv.getContext('2d')!;
   const audio = new ShooterAudio(); audio.enabled = prefs.sound;
-  const career = readShooterCareer();
+  const career = readShooterCareer(); let wallet = readPerks();
   let level: Difficulty = (DIFFICULTIES as string[]).includes(career.level) ? (career.level as Difficulty) : 'normal', pickMode: 'solo' | 'pvp' | 'room' = 'solo';
 
   let phase: Phase = 'setup', closed = false, paused = false, match: Match | null = null, view: ShooterView | null = null, meIdx = 0, pvp: Pvp | null = null, room: Room | null = null, raf = 0, last = performance.now();
@@ -85,13 +87,16 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
           ${PVP_ENABLED ? `<button type="button" class="sz-opt ${pickMode === 'room' ? 'on' : ''}" data-mode="room" aria-pressed="${pickMode === 'room'}"><b>멀티플레이 방</b><em>3~${ROOM_MAX}인 서바이벌 · 방 코드 또는 공개 방 · 마지막 1명이 승리</em></button>` : ''}</div></section>
         <section class="${pickMode !== 'solo' ? 'dim' : ''}"><h3>AI 난이도</h3><div class="sz-seg four">${DIFFICULTIES.map(d => `<button type="button" class="sz-opt ${d === level ? 'on' : ''}" data-level="${d}" aria-pressed="${d === level}" ${pickMode !== 'solo' ? 'disabled' : ''}><b>${BOTS[d].label}</b></button>`).join('')}</div>
           <p class="sz-note">${pickMode !== 'solo' ? '온라인 대전과 방은 사람끼리 겨루므로 AI가 나오지 않습니다.' : `${b.blurb} (반응 ${b.react.toFixed(2)}초 · 시야 ${b.sight}m)`}</p></section>
+        <section class="${pickMode !== 'solo' ? 'dim' : ''}"><h3>병사 강화 <em class="sz-coin">${wallet.coins.toLocaleString('ko-KR')} 코인</em></h3><div class="sz-perks">${PERK_IDS.map(id => { const lv = wallet.levels[id], cost = perkCost(wallet, id); return `<button type="button" class="sz-perk" data-perk="${id}" ${pickMode !== 'solo' || cost === null || wallet.coins < cost ? 'disabled' : ''}><b>${PERK_INFO[id].name} <i>${'●'.repeat(lv)}${'○'.repeat(PERK_MAX - lv)}</i></b><em>${PERK_INFO[id].blurb}</em><span>${cost === null ? '최대' : `${cost} 코인`}</span></button>`; }).join('')}</div>
+          <p class="sz-note">${pickMode !== 'solo' ? '강화는 솔로 배틀로열에서만 적용됩니다(온라인 대전은 공정하게).' : '솔로 경기가 끝나면 순위와 처치에 따라 코인을 받습니다.'}</p></section>
         <section><h3>조작</h3><ul class="sz-help">${touch ? '<li>왼쪽 스틱 이동 · 오른쪽 드래그 시점</li><li>사격 · 조준 · 장전 · 줍기 · 교체 버튼 (비행기에서는 <b>줍기</b> 버튼이 점프·낙하산, 차 옆에서는 탑승·하차, 운전 중 <b>웅크림</b> 버튼은 핸드브레이크)</li>' : '<li><b>WASD</b> 이동 · <b>Shift</b> 달리기 · 마우스 시점</li><li><b>좌클릭</b> 사격 · <b>우클릭</b> 조준 · <b>R</b> 장전</li><li><b>Space</b> 비행기에서 뛰기 · 낙하산 펴기(자동 105m) · <b>W</b> 활강 방향</li><li><b>G</b> 수류탄 · <b>E</b> 무기 줍기 · <b>1 / 2 / 휠</b> 무기 교체 · <b>Esc</b> 일시정지</li><li><b>E</b> 차량 타기·내리기 · <b>WASD</b> 운전 · <b>Space</b> 핸드브레이크 · 폭격 구역(붉은 원)에서는 벗어나세요</li>'}<li>탄약·구급상자·방탄복은 닿으면 자동으로 줍습니다.</li></ul></section>
         <footer><button type="button" class="ghost" data-act="exit">메뉴로</button><span class="sz-sum">${career.matches ? `전적 ${career.matches}판 ${career.wins}승 · 최다 처치 ${career.bestKills}` : '첫 출격'}</span>
           <button type="button" class="primary" data-act="start" ${wait ? 'disabled' : ''}>${assetState === 'failed' ? '도형 모드로 출격' : wait ? `불러오는 중 ${Math.floor(assetPct * 100)}%` : pickMode === 'solo' ? '출격' : pickMode === 'room' ? '방 찾기' : '상대 찾기'}</button></footer>
       </div>`;
   }
   setupEl.addEventListener('click', e => {
-    const t = e.target as HTMLElement, mode = t.closest<HTMLElement>('[data-mode]'), lv = t.closest<HTMLElement>('[data-level]'), act = t.closest<HTMLElement>('[data-act]');
+    const t = e.target as HTMLElement, perk = t.closest<HTMLElement>('[data-perk]'), mode = t.closest<HTMLElement>('[data-mode]'), lv = t.closest<HTMLElement>('[data-level]'), act = t.closest<HTMLElement>('[data-act]');
+    if (perk) { const nw = buyPerk(wallet, perk.dataset.perk as (typeof PERK_IDS)[number]); if (nw) { wallet = nw; writePerks(wallet); paintSetup(); } return; }
     if (mode) { pickMode = mode.dataset.mode as 'solo' | 'pvp' | 'room'; paintSetup(); } else if (lv) { level = lv.dataset.level as Difficulty; writeShooterCareer({ ...readShooterCareer(), level }); paintSetup(); }
     else if (act?.dataset.act === 'exit') exit(); else if (act?.dataset.act === 'start') { if (pickMode === 'solo') startSolo(); else openPvpLobby(pickMode === 'room'); }
   });
@@ -107,7 +112,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   }
   function startSolo(): void {
     audio.unlock(); pvp = null; const seed = (Math.random() * 2 ** 31) >>> 0;
-    begin(new Match({ seed, mode: 'br', difficulty: level, humans: [{ name: '나' }], fill: BR_PLAYERS, air: true, vehicles: true, bombs: true }), 0);
+    begin(new Match({ seed, mode: 'br', difficulty: level, humans: [{ name: '나' }], fill: BR_PLAYERS, air: true, vehicles: true, bombs: true, perks: { ...wallet.levels } }), 0);
   }
 
   // ---------- 1대1 대전 ----------
@@ -459,8 +464,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   }
   function showResult(win: boolean): void {
     if (closed || !match) return; const p = me(), t = match.t, rank = win ? 1 : p.place; if (document.pointerLockElement) document.exitPointerLock();
-    recordShooterMatch(win, p.kills);
-    card('ZERO ZONE', win ? '최후의 1인' : `#${rank}`, `<p class="sz-big">${win ? '승리' : `${match.players.length}명 중 ${rank}위`}</p><div class="sz-stats"><div><b>${p.kills}</b><span>처치</span></div><div><b>${clock(win ? t : p.diedAt)}</b><span>생존 시간</span></div><div><b>${Math.round(p.dmgDealt)}</b><span>준 피해</span></div><div><b>${p.heads}</b><span>머리 명중</span></div><div><b>${BOTS[level].label}</b><span>난이도</span></div></div>${killerLine(p, win)}`,
+    recordShooterMatch(win, p.kills); const coins = rewardCoins(rank, match.players.length, p.kills, win); wallet = { ...wallet, coins: wallet.coins + coins }; writePerks(wallet);
+    card('ZERO ZONE', win ? '최후의 1인' : `#${rank}`, `<p class="sz-big">${win ? '승리' : `${match.players.length}명 중 ${rank}위`}</p><p class="sz-reward">+${coins} 코인 <small>(보유 ${wallet.coins.toLocaleString('ko-KR')} · 설정 화면에서 병사 강화)</small></p><div class="sz-stats"><div><b>${p.kills}</b><span>처치</span></div><div><b>${clock(win ? t : p.diedAt)}</b><span>생존 시간</span></div><div><b>${Math.round(p.dmgDealt)}</b><span>준 피해</span></div><div><b>${p.heads}</b><span>머리 명중</span></div><div><b>${BOTS[level].label}</b><span>난이도</span></div></div>${killerLine(p, win)}`,
       `<button class="primary" data-act="again">다시 출격</button>${!win && !match.over ? '<button data-act="spectate">관전 계속</button><button data-act="skip">결과까지 건너뛰기</button>' : ''}<button data-act="setup">설정으로</button><button data-act="exit">메뉴로</button>`, win ? 'win' : '');
   }
 

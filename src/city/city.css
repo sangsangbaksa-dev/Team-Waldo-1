@@ -208,3 +208,9 @@
 .c-chatin{pointer-events:auto;left:12px;bottom:176px;width:min(360px,70vw);z-index:4;margin:0}
 .c-chatin input{width:100%;box-sizing:border-box;background:#0b1214f2;color:#fff;border:1px solid #6fd3ff;border-radius:8px;padding:7px 10px;font:inherit;font-size:13px}
 .touch .c-chat{bottom:170px}.touch .c-chatin{bottom:136px}
+/* 건설 위치 지정 바: 건물 이름·설치 가능 여부·설치/취소 버튼(터치에서도 누를 수 있게) */
+.c-place{position:absolute;left:50%;bottom:92px;transform:translateX(-50%);display:flex;align-items:center;gap:12px;background:#0c1a16ee;border:1px solid #5dffa066;border-radius:12px;padding:8px 10px 8px 14px;max-width:calc(100vw - 24px);z-index:6;pointer-events:auto}
+.c-place[hidden]{display:none}
+.c-place-info{display:flex;flex-direction:column;gap:2px;min-width:0}.c-place-info b{font-size:14px}.c-place-info span{font-size:13px;font-weight:700}.c-place-info span.ok{color:#7dffb0}.c-place-info span.bad{color:#ff9a9a}.c-place-info small{font-size:11px;opacity:.65}
+.c-place-btns{display:flex;gap:8px}.c-place-btns button{min-width:64px;min-height:44px;border-radius:9px;font-weight:800;border:1px solid #fff4;background:#26332f;color:#fff}.c-place-btns .ok{background:#2f8f5b;border-color:#7dffb0aa}.c-place-btns button:disabled{opacity:.4}
+.touch .c-place{bottom:18px}.touch .c-place-info small{display:none}

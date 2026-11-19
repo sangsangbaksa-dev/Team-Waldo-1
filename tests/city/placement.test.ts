@@ -85,15 +85,19 @@ describe('demolish rules', () => {
 });
 
 describe('건설 고스트 거리와 실패 이유', () => {
-  it('시선 각도에 따라 거리가 고르게 변하고 모든 구간에 닿는다', async () => {
-    const { buildReach, BUILD_REACH_MIN } = await import('../../src/city/uiMath');
-    expect(buildReach(0)).toBe(700); expect(buildReach(-1.2)).toBe(BUILD_REACH_MIN);
-    let prev = Infinity; const reach: number[] = [];
-    for (let deg = 0; deg <= 50; deg++) { const d = buildReach(-deg * Math.PI / 180); expect(d).toBeLessThanOrEqual(prev); prev = d; reach.push(d); }
-    // 인접한 1° 사이에 움직이는 거리가 크지 않다 (예전 지면 교점 방식은 먼 곳에서 수백 칸씩 뛰었다)
-    for (let i = 1; i < reach.length; i++) expect(reach[i - 1] - reach[i]).toBeLessThan(60);
-    // 100~600 사이 어느 거리도 1° 간격 이하로 맞출 수 있다
-    for (const target of [100, 200, 300, 400, 500, 600]) expect(reach.some(d => Math.abs(d - target) < 35)).toBe(true);
+  it('십자선이 바닥에 닿는 지점에 놓이고, 보스를 덮을 만큼 가까워지지 않는다', async () => {
+    const { buildDistance, buildMinDistance, BUILD_REACH_MAX } = await import('../../src/city/uiMath');
+    const EYE = 37, min = buildMinDistance(STRUCTS.hq.w, STRUCTS.hq.h);
+    // 지평선 쪽(또는 잘못된 값)은 최대 거리
+    expect(buildDistance(0, EYE, min)).toBe(BUILD_REACH_MAX); expect(buildDistance(Number.NaN, EYE, min)).toBe(BUILD_REACH_MAX);
+    // 발밑을 봐도 최소 거리(건물 바닥면 대각선의 절반 이상)에서 멈춘다 → 본부 같은 큰 건물이 눈앞을 덮지 않는다
+    for (const k of Object.keys(STRUCTS) as (keyof typeof STRUCTS)[]) {
+      const m = buildMinDistance(STRUCTS[k].w, STRUCTS[k].h);
+      expect(buildDistance(-1.4, EYE, m)).toBe(m); expect(m).toBeGreaterThan(Math.hypot(STRUCTS[k].w, STRUCTS[k].h) / 2);
+    }
+    // 중간 각도는 눈높이 / tan 으로 바닥 교점과 일치하고, 아래로 숙일수록 단조롭게 가까워진다
+    expect(buildDistance(-Math.atan(EYE / 300), EYE, 0)).toBeCloseTo(300, 5);
+    let prev = Infinity; for (let deg = 0; deg <= 60; deg++) { const d = buildDistance(-deg * Math.PI / 180, EYE, min); expect(d).toBeLessThanOrEqual(prev); prev = d; }
   });
   it('지을 수 없는 이유를 구분해서 알려 준다', async () => {
     const { placeProblem } = await import('../../src/city/placement');

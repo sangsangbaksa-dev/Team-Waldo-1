@@ -78,11 +78,13 @@ export function declutterFromAreaChip(x: number, y: number, screenW: number, scr
   return { x, y: r.y - 12 };
 }
 
-/** 건설 고스트까지의 거리: 시선 각도에 비례해 근접(40)~최대(max)를 고르게 오갑니다. 지평선 근처가 최대, 아래로 약 45° 숙이면 가장 가깝습니다.
- *  (지면 교점 방식은 먼 거리에서 각도 1°에 수십 칸이 움직여 중간 거리에 둘 수 없었습니다.) */
-export const BUILD_REACH_MIN = 40;
-export function buildReach(pitch: number, max = 700): number {
-  if (!Number.isFinite(pitch)) return max * 0.8;
-  const t = Math.max(0, Math.min(1, (-pitch - 0.04) / 0.75));
-  return BUILD_REACH_MIN + (max - BUILD_REACH_MIN) * (1 - t);
+/** 건설 고스트 최대 거리(본부 설치 반경 720 안쪽). 지평선 쪽을 보면 이 거리에 둡니다. */
+export const BUILD_REACH_MAX = 600;
+/** 건물이 보스와 겹치지 않도록 하는 최소 중심 거리: 바닥면 대각선의 절반 + 여유. */
+export function buildMinDistance(w: number, h: number): number { return Math.hypot(w, h) / 2 + 14; }
+/** 건설 고스트까지의 거리: 십자선이 바닥에 닿는 지점(눈높이 / tan(숙인 각도)). 지평선 위를 보면 최대, 발밑을 보면 최소 거리에서 멈춥니다.
+ *  고스트는 항상 바닥에 놓이고 보스를 덮지 않으므로, 아래를 볼수록 눈앞에 큰 덩어리가 생기지 않습니다. */
+export function buildDistance(pitch: number, eye: number, minDist: number, maxDist = BUILD_REACH_MAX): number {
+  if (!Number.isFinite(pitch) || !(eye > 0) || pitch > -0.02) return maxDist;
+  return Math.max(minDist, Math.min(maxDist, eye / Math.tan(-pitch)));
 }

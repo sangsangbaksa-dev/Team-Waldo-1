@@ -56,7 +56,24 @@ export class ModelLayer {
     if (!b.fixed) return null; const m = new THREE.InstancedMesh(b.fixed, mat, n); m.frustumCulled = false; m.castShadow = shadow; this.scene.add(m); return m;
   }
 
+  /** 도시 전체에 흩어진 고정 소품(나무·가로등·신호등·보도 소품)을 가로세로 CELL 칸 구역별로 쪼개 각자 시야 판정(frustum culling)을 받게 합니다.
+   *  하나의 큰 InstancedMesh 는 보이지 않는 곳의 수십만 삼각형까지 매 프레임(그림자 패스 포함) 그려서 렉의 주원인이었습니다. */
+  private chunkStatics(before: Set<THREE.Object3D>): void {
+    const CELL = 800, mat = new THREE.Matrix4(), p = new THREE.Vector3();
+    for (const m of [...this.scene.children]) {
+      if (before.has(m) || !(m instanceof THREE.InstancedMesh) || m.count === 0) continue;
+      const cells = new Map<string, number[]>();
+      for (let i = 0; i < m.count; i++) { m.getMatrixAt(i, mat); p.setFromMatrixPosition(mat); const key = Math.floor(p.x / CELL) + ',' + Math.floor(p.z / CELL), a = cells.get(key); if (a) a.push(i); else cells.set(key, [i]); }
+      for (const ids of cells.values()) {
+        const c = new THREE.InstancedMesh(m.geometry, m.material, ids.length); c.castShadow = m.castShadow; c.receiveShadow = m.receiveShadow; c.renderOrder = m.renderOrder;
+        ids.forEach((src, k) => { m.getMatrixAt(src, mat); c.setMatrixAt(k, mat); }); c.instanceMatrix.needsUpdate = true; c.computeBoundingSphere(); this.scene.add(c);
+      }
+      this.scene.remove(m); m.dispose();
+    }
+  }
+
   private scatter(): void {
+    const before = new Set(this.scene.children);
     const w = this.world, rng = makeRng(20261113), d = this.d, B = this.models.baked, put = (m: THREE.InstancedMesh, i: number, x: number, z: number, ry: number, s: number, sy = s): void => { d.position.set(x, 0, z); d.rotation.set(0, ry, 0); d.scale.set(s, sy, s); d.updateMatrix(); m.setMatrixAt(i, d.matrix); };
     // 나무
     const rounds = w.map.trees.filter((_, i) => i % 3 !== 0), pines = w.map.trees.filter((_, i) => i % 3 === 0);
@@ -126,6 +143,7 @@ export class ModelLayer {
     }
     if (lamp) lamp.instanceMatrix.needsUpdate = true;
     if (glowLamp) glowLamp.instanceMatrix.needsUpdate = true;
+    this.chunkStatics(before);
   }
 
   // ---------- 개별 모델 ----------

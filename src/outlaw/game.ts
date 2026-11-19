@@ -102,6 +102,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
 
   // ---------- 모달 ----------
   function openModal(kind: string, h: string): void {
+    resetInput();
     modalKind = kind; paused = true; modalEl.hidden = false; modalEl.innerHTML = `<div class="ol-card ${kind}">${h}</div>`;
     if (document.pointerLockElement) document.exitPointerLock();
   }
@@ -136,7 +137,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   function uiClick(ds: DOMStringMap): void {
     if (!sim) return; const r = ui.click(ds);
     if (r.toast) toast(r.toast); if (r.sound) audio.play(r.sound);
-    if (r.begin) { closeModal(); begin(false); return; }
+    if (r.begin) { closeModal(); begin(false); save(); return; }
     if (r.close) { closeModal(); return; }
     if (r.kind) { const top = modalEl.querySelector('.ol-card'); const sy = top?.scrollTop ?? 0; openUi(r.kind); const nt = modalEl.querySelector('.ol-card'); if (nt) nt.scrollTop = sy; }
   }
@@ -170,7 +171,10 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     const t = b.dataset.t;
     if (t === 'exit') exit();
     else if (t === 'help') openModal('help', controlsHtml().replace('data-k="back"', 'data-k="resume"'));
-    else if (t === 'new') { if (hasSave() && !confirmNew) { confirmNew = true; b.textContent = '저장 덮어쓰기? 다시 누르면 시작'; return; } try { localStorage.removeItem(OUTLAW_KEY); } catch { /* */ } confirmNew = false; ui.heroSel = 'h0'; openUi('hero'); }
+    else if (t === 'new') {
+      if (hasSave() && !confirmNew) { confirmNew = true; b.textContent = '저장 덮어쓰기? 다시 누르면 시작'; return; }
+      confirmNew = false; b.textContent = '새 게임'; ui.heroSel = 'h0'; openUi('hero');
+    }
     else if (t === 'cont') begin(true);
   });
   let confirmNew = false;
@@ -187,20 +191,22 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 입력 ----------
   const onKeyDown = (e: KeyboardEvent): void => {
     if (closed) return; audio.unlock();
-    if (e.code === 'Tab') e.preventDefault();
     if (e.repeat) { return; }
+    if (e.code === 'Escape') {
+      if (modalKind) closeModal();
+      else if (phase === 'play' && !locked) openPause();
+      return;
+    }
     if (phase !== 'play') return;
-    keys.add(e.code);
-    if (e.code === 'KeyM' || e.code === 'Tab') { if (modalKind === 'map') closeModal(); else if (!modalKind) openMap(); return; }
-    if (e.code === 'Escape' && modalKind && modalKind !== 'pause') { closeModal(); return; }
+    if ((e.code === 'KeyM' || e.code === 'Tab') && (!modalKind || modalKind === 'map')) { e.preventDefault(); if (modalKind) closeModal(); else openMap(); return; }
     if (e.code === 'KeyP') { if (modalKind === 'phone') closeModal(); else if (!modalKind) openUi('phone'); return; }
     if (modalKind) return;
+    keys.add(e.code);
     if (e.code === 'KeyE' || e.code === 'KeyF') useAction();
     else if (e.code === 'KeyR') { if (sim?.player.vehicle) cycleRadio(); else reloadReq = true; }
     else if (e.code === 'KeyQ') openWheel();
     else if (e.code.startsWith('Digit')) { const n = (Number(e.code.slice(5)) + 9) % 10; if (n >= 0 && n < NW) slotReq = n; }
     else if (e.code === 'Minus') slotReq = 10;
-    else if (e.code === 'KeyP') { if (modalKind === 'phone') closeModal(); else if (!modalKind) openUi('phone'); return; }
   };
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.code); if (e.code === 'KeyQ') closeWheel(); };
   const onMouseMove = (e: MouseEvent): void => {
@@ -216,14 +222,15 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   const onMouseUp = (e: MouseEvent): void => { if (e.button === 0) mouse.fire = false; else if (e.button === 2) mouse.aim = false; };
   const onWheel = (e: WheelEvent): void => { if (phase !== 'play' || modalKind || !sim) return; const dir = e.deltaY > 0 ? 1 : -1; let i = sim.player.cur; for (let n = 0; n < NW; n++) { i = (i + dir + NW) % NW; if (sim.player.guns[i]) { slotReq = i; break; } } };
   const onCtx = (e: Event): void => e.preventDefault();
-  const onBlur = (): void => {
-    keys.clear(); mouse.fire = mouse.aim = false; reloadReq = false; slotReq = -1;
+  function resetInput(): void {
+    keys.clear(); mouse.fire = mouse.aim = false; enterReq = reloadReq = false; slotReq = -1;
     tc.fire = tc.aim = tc.jump = tc.sprint = tc.gas = tc.brake = tc.hand = tc.left = tc.right = false;
     tc.moveId = tc.lookId = -1; tc.mx = tc.my = 0;
-    q('#ol-stick').style.opacity = '0'; if (wheelOpen) closeWheel();
-  };
+    stickEl.style.opacity = '0'; (stickEl.firstElementChild as HTMLElement).style.transform = '';
+    wheelSel = -1; closeWheel();
+  }
   window.addEventListener('keydown', onKeyDown); window.addEventListener('keyup', onKeyUp); window.addEventListener('mousemove', onMouseMove);
-  canvas.addEventListener('mousedown', onMouseDown); window.addEventListener('mouseup', onMouseUp); window.addEventListener('wheel', onWheel, { passive: true }); canvas.addEventListener('contextmenu', onCtx); window.addEventListener('blur', onBlur);
+  canvas.addEventListener('mousedown', onMouseDown); window.addEventListener('mouseup', onMouseUp); window.addEventListener('wheel', onWheel, { passive: true }); canvas.addEventListener('contextmenu', onCtx); window.addEventListener('blur', resetInput);
 
   // 터치
   const stickEl = q('#ol-stick');
@@ -244,7 +251,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     else if (e.pointerId === tc.lookId) { yaw += (e.clientX - tc.lx) * 0.0055; pitch = clamp(pitch - (e.clientY - tc.ly) * 0.0045, -1.2, 1.2); tc.lx = e.clientX; tc.ly = e.clientY; }
   };
   window.addEventListener('pointermove', movePtr);
-  document.addEventListener('visibilitychange', onBlur);
+  document.addEventListener('visibilitychange', resetInput);
   const endPtr = (e: PointerEvent): void => { if (e.pointerId === tc.moveId) { tc.moveId = -1; tc.mx = tc.my = 0; stickEl.style.opacity = '0'; (stickEl.firstElementChild as HTMLElement).style.transform = ''; } if (e.pointerId === tc.lookId) tc.lookId = -1; };
   window.addEventListener('pointerup', endPtr); window.addEventListener('pointercancel', endPtr);
   q('#ol-pause').onclick = () => { if (phase === 'play' && !modalKind) openPause(); };
@@ -473,8 +480,8 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
 
   function exit(): void {
     if (closed) return; closed = true; cancelAnimationFrame(raf);
-    window.removeEventListener('pointermove', movePtr); window.removeEventListener('pointerup', endPtr); window.removeEventListener('pointercancel', endPtr); document.removeEventListener('visibilitychange', onBlur);
-    for (const [t, f] of [['keydown', onKeyDown], ['keyup', onKeyUp], ['mousemove', onMouseMove], ['mouseup', onMouseUp], ['wheel', onWheel], ['blur', onBlur], ['resize', resize]] as Array<[string, EventListener]>) window.removeEventListener(t, f);
+    window.removeEventListener('pointermove', movePtr); window.removeEventListener('pointerup', endPtr); window.removeEventListener('pointercancel', endPtr); document.removeEventListener('visibilitychange', resetInput);
+    for (const [t, f] of [['keydown', onKeyDown], ['keyup', onKeyUp], ['mousemove', onMouseMove], ['mouseup', onMouseUp], ['wheel', onWheel], ['blur', resetInput], ['resize', resize]] as Array<[string, EventListener]>) window.removeEventListener(t, f);
     document.removeEventListener('pointerlockchange', onLock); if (document.pointerLockElement) document.exitPointerLock();
     try { actorView?.dispose(); cityView?.dispose(); } catch { /* 정리 실패는 무시 */ }
     audio.dispose(); composer?.dispose(); renderer?.dispose(); renderer?.forceContextLoss(); root.remove(); onExit();

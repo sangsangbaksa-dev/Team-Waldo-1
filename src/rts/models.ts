@@ -38,8 +38,22 @@ function ball(g: THREE.Object3D, r: number, m: THREE.Material, x = 0, y = 0, z =
 let unitKit: CharacterKit | null = null;
 /** 공용 캐릭터 키트를 미리 받아 둡니다. 준비되기 전에 만든 유닛은 도형 모델로 남습니다. */
 export function preloadUnitKit(): void { if (!unitKit) void loadCharacterKit(import.meta.env.BASE_URL).then(k => { unitKit = k; }).catch(() => undefined); }
-const KIT_OF: Partial<Record<UnitKind, string>> = { worker: 'worker', marine: 'rifle', rocket: 'heavy' };
+const KIT_OF: Partial<Record<UnitKind, string>> = { worker: 'worker', marine: 'rifle', rocket: 'heavy', medic: 'medic' };
 export interface UnitRig { ch?: CharacterRig; root: THREE.Group; body: THREE.Object3D; gun: THREE.Object3D | null; flash: THREE.Mesh; carry: THREE.Object3D | null; arm: THREE.Object3D | null; scale: number }
+
+/** 의무병 등 — 등의 구급 배낭(흰 바탕에 팀색 십자). */
+function medicPack(body: THREE.Object3D, m: Mats): void {
+  const white = std(0xf1efe8, { roughness: 0.6, metalness: 0.05 });
+  box(body, 0.16, 0.36, 0.34, white, -0.22, 0.34, 0); box(body, 0.04, 0.22, 0.07, m.team, -0.31, 0.43, 0); box(body, 0.04, 0.07, 0.22, m.team, -0.31, 0.5, 0);
+}
+/** 정찰 지프: 낮은 차체·바퀴 네 개·롤바. 팀색 줄무늬와 사막 위장 도색. */
+function jeepBody(body: THREE.Object3D, m: Mats): void {
+  const sand = std(0xb99a62, { roughness: 0.75, metalness: 0.15 });
+  box(body, 1.5, 0.22, 0.78, m.dark, 0, 0.22, 0); box(body, 1.4, 0.26, 0.74, sand, 0, 0.4, 0); box(body, 0.5, 0.2, 0.7, sand, 0.55, 0.62, 0); box(body, 1.3, 0.06, 0.3, m.team, -0.02, 0.66, 0);
+  box(body, 0.05, 0.3, 0.6, m.glow, 0.78, 0.46, 0); box(body, 0.1, 0.34, 0.74, m.steel, -0.2, 0.66, 0); // 앞유리 틀·롤바
+  for (const [x, z] of [[-0.5, -0.46], [0.5, -0.46], [-0.5, 0.46], [0.5, 0.46]] as const) { const w = cyl(body, 0.22, 0.22, 0.16, m.dark, x, 0.0, z, 10); w.rotation.x = Math.PI / 2; w.position.y = 0.22; }
+  box(body, 0.08, 0.28, 0.5, m.armor, -0.74, 0.4, 0); box(body, 0.34, 0.3, 0.3, m.hull, -0.6, 0.66, 0); // 뒤 예비 타이어 보관함
+}
 
 /** 모델은 +X 방향을 봅니다. */
 export function makeUnit(kind: UnitKind, owner: number): UnitRig {
@@ -49,8 +63,9 @@ export function makeUnit(kind: UnitKind, owner: number): UnitRig {
   const kitKind = KIT_OF[kind];
   if (kitKind && unitKit?.has(kitKind)) { // 공용 캐릭터(손 모델·팀색·피부색 포함)
     const ch = unitKit.create(kitKind, { team: TEAM_COLORS[owner] ?? 0xcccccc, skin: 0xd6b28f, height: 1, width: 1 }); ch.root.scale.multiplyScalar(0.5); body.add(ch.root);
-    ch.state.aim = kind === 'worker' ? 0 : 1;
+    ch.state.aim = kind === 'worker' || kind === 'medic' ? 0 : 1;
     if (kind === 'worker') { carry = new THREE.Group(); carry.position.set(-0.3, 0.45, 0); body.add(carry); const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.14), crystalMat); c.position.y = 0.1; c.scale.y = 1.4; carry.add(c); carry.visible = false; mh = 0.8; muzzle = 0.4; }
+    else if (kind === 'medic') { medicPack(body, m); mh = 0.9; muzzle = 0.4; }
     else { gun = new THREE.Group(); gun.position.set(0.2, 0.52, 0.17); body.add(gun); mh = kind === 'rocket' ? 1.15 : 1; muzzle = kind === 'rocket' ? 0.95 : 0.88; }
     flash.position.set(muzzle, mh * 0.7, kind === 'rocket' ? 0.3 : 0.17); root.add(flash);
     return { ch, root, body, gun, flash, carry, arm, scale: 1 };
@@ -63,6 +78,14 @@ export function makeUnit(kind: UnitKind, owner: number): UnitRig {
     carry = new THREE.Group(); carry.position.set(-0.3, 0.45, 0); body.add(carry);
     const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.14), crystalMat); c.position.y = 0.1; c.scale.y = 1.4; carry.add(c); carry.visible = false;
     mh = 0.8; muzzle = 0.4;
+  } else if (kind === 'medic') {
+    box(body, 0.1, 0.24, 0.12, m.dark, 0, 0, 0.1); box(body, 0.1, 0.24, 0.12, m.dark, 0, 0, -0.1);
+    cyl(body, 0.2, 0.22, 0.42, m.armor, 0, 0.22, 0); ball(body, 0.16, m.armor, 0.02, 0.68, 0); box(body, 0.1, 0.08, 0.2, m.glow, 0.14, 0.74, 0);
+    medicPack(body, m); mh = 0.9; muzzle = 0.4;
+  } else if (kind === 'jeep') {
+    jeepBody(body, m); gun = new THREE.Group(); gun.position.set(-0.1, 0.9, 0); body.add(gun);
+    box(gun, 0.8, 0.09, 0.09, m.dark, 0.34, -0.05, 0.06); box(gun, 0.8, 0.09, 0.09, m.dark, 0.34, -0.05, -0.06); box(gun, 0.2, 0.18, 0.28, m.steel, 0, -0.1, 0);
+    mh = 1.0; muzzle = 0.95; gun.userData.m = muzzle;
   } else if (kind === 'marine') {
     box(body, 0.1, 0.24, 0.12, m.dark, 0, 0, 0.1); box(body, 0.1, 0.24, 0.12, m.dark, 0, 0, -0.1);
     cyl(body, 0.2, 0.22, 0.42, m.armor, 0, 0.22, 0); box(body, 0.1, 0.18, 0.38, m.team, 0.02, 0.5, 0); // 어깨 보호대
@@ -85,7 +108,7 @@ export function makeUnit(kind: UnitKind, owner: number): UnitRig {
     box(tur, 0.18, 0.18, 0.2, m.glow, -0.28, 0.32, 0.22);
     mh = 1.0; muzzle = 1.5; gun.userData.m = muzzle;
   }
-  flash.position.set(muzzle, mh * 0.7, kind === 'marine' ? 0.17 : kind === 'rocket' ? 0.3 : 0); if (kind === 'tank') flash.position.set(1.8, 0.85, 0);
+  flash.position.set(muzzle, mh * 0.7, kind === 'marine' ? 0.17 : kind === 'rocket' ? 0.3 : 0); if (kind === 'tank') flash.position.set(1.8, 0.85, 0); if (kind === 'jeep') flash.position.set(1.2, 1.0, 0);
   root.add(flash);
   return { root, body, gun, flash, carry, arm, scale: 1 };
 }

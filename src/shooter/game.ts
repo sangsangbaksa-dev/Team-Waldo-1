@@ -13,8 +13,6 @@ import { loadShooterAssets, type ShooterAssets } from './assets';
 import { ShooterAudio } from './audio';
 import { ShooterNet, decideDeath, nadeMsg, parseNade, seedOf, type Pose } from './net';
 import { ShooterRoomNet, ROOM_MAX } from './room';
-import { PERK_IDS, PERK_INFO, readPerks, rewardCoins, writePerks } from './perks';
-import { PERK_MAX, buyPerk, perkCost } from '../shared/perks';
 import { readShooterCareer, recordShooterMatch, writeShooterCareer } from './records';
 import { readLoadout, writeLoadout, type SavedLoadout } from './loadout';
 import { openGunsmith, loadoutSummary } from './gunsmith';
@@ -61,7 +59,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   const q = <T extends HTMLElement>(sel: string): T => root.querySelector<T>(sel)!;
   const canvas = q<HTMLCanvasElement>('.sz-canvas'), hud = q('.sz-hud'), setupEl = q('#sz-setup'), modal = q('#sz-modal'), mapCv = q<HTMLCanvasElement>('#sz-map'), mapCtx = mapCv.getContext('2d')!;
   const audio = new ShooterAudio(); audio.enabled = prefs.sound;
-  let career = readShooterCareer(), wallet = readPerks();
+  let career = readShooterCareer();
   let level: Difficulty = (DIFFICULTIES as string[]).includes(career.level) ? (career.level as Difficulty) : 'normal', pickMode: 'solo' | 'pvp' | 'room' = 'solo';
 
   let roomFill = 60;
@@ -69,7 +67,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   let phase: Phase = 'setup', closed = false, paused = false, match: Match | null = null, view: ShooterView | null = null, meIdx = 0, pvp: Pvp | null = null, room: Room | null = null, raf = 0, last = performance.now();
   let assets: ShooterAssets | null = null, assetState: 'loading' | 'ready' | 'failed' = 'loading', assetPct = 0;
   let countdown = 0, over = false, deadTimer = 0, resultShown = false, spectateId = -1;
-  let soloReward: number | null = null;
+  let soloRecorded = false;
   let lastLook = 0, yaw = 0, pitch = 0, locked = false, lockFail = false, hitT = 0, hitHead = false, hitKill = false, combo = 0, comboT = 0, rcP = 0, rcY = 0, rcIdle = 9, shotN = 0, stepAcc = 0, bannerT = 0, mapBase: HTMLCanvasElement | null = null;
   const keys = new Set<string>(), mouse = { fire: false, ads: false }, tc = { fire: false, ads: false, crouch: false, move: { x: 0, y: 0, id: -1, ox: 0, oy: 0 }, look: { id: -1, x: 0, y: 0 } };
   let healReq = 0, nadeReq = false, reloadReq = false, slotReq = -1, swapReq = false, interactHeld = false;
@@ -98,8 +96,6 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
           <p class="sz-note">${roomFill ? `빈자리를 AI로 채워 ${roomFill}명이 비행기에서 강하합니다. 차량·폭격·보급까지 모두에게 똑같이 보입니다(방장이 AI를 계산해 보냅니다).` : '사람끼리만 작은 지도에서 겨룹니다.'} 두 명만 모이면 1대1 랭크전으로 진행됩니다.</p></section>` : ''}
         <section class="${pickMode === 'pvp' || (pickMode === 'room' && !roomFill) ? 'dim' : ''}"><h3>AI 난이도</h3><div class="sz-seg four">${DIFFICULTIES.map(d => `<button type="button" class="sz-opt ${d === level ? 'on' : ''}" data-level="${d}" aria-pressed="${d === level}" ${pickMode === 'pvp' || (pickMode === 'room' && !roomFill) ? 'disabled' : ''}><b>${BOTS[d].label}</b></button>`).join('')}</div>
           <p class="sz-note">${pickMode === 'pvp' ? '1대1 대전은 사람끼리 겨루므로 AI가 나오지 않습니다.' : pickMode === 'room' && !roomFill ? '사람만 모이는 방에는 AI가 나오지 않습니다.' : `${b.blurb} (반응 ${b.react.toFixed(2)}초 · 시야 ${b.sight}m)${pickMode === 'room' ? ' · 방을 만든 사람의 난이도로 진행됩니다' : ''}`}</p></section>
-        <section class="${pickMode !== 'solo' ? 'dim' : ''}"><h3>병사 강화 <em class="sz-coin">${wallet.coins.toLocaleString('ko-KR')} 코인</em></h3><div class="sz-perks">${PERK_IDS.map(id => { const lv = wallet.levels[id], cost = perkCost(wallet, id); return `<button type="button" class="sz-perk" data-perk="${id}" ${pickMode !== 'solo' || cost === null || wallet.coins < cost ? 'disabled' : ''}><b>${PERK_INFO[id].name} <i>${'●'.repeat(lv)}${'○'.repeat(PERK_MAX - lv)}</i></b><em>${PERK_INFO[id].blurb}</em><span>${cost === null ? '최대' : `${cost} 코인`}</span></button>`; }).join('')}</div>
-          <p class="sz-note">${pickMode !== 'solo' ? '강화는 솔로 배틀로열에서만 적용됩니다(온라인 대전은 공정하게).' : '솔로 경기가 끝나면 순위와 처치에 따라 코인을 받습니다.'}</p></section>
         <section class="${pickMode !== 'solo' ? 'dim' : ''}"><h3>총기 조립</h3><div class="sz-smith"><div><b>부품을 골라 출격 구성을 만드세요</b><em>${esc(loadoutSummary(loadout))}${pickMode !== 'solo' ? ' · 솔로 배틀로열에서만 적용됩니다' : ''}</em></div><button type="button" data-act="smith" ${assetState === 'loading' ? 'disabled' : ''}>${assetState === 'loading' ? `불러오는 중 ${Math.floor(assetPct * 100)}%` : '총기 조립 열기'}</button></div></section>
         <section><h3>조작</h3><ul class="sz-help">${touch ? '<li>왼쪽 스틱 이동 · 오른쪽 드래그 시점</li><li>사격 · 조준 · 장전 · 줍기 · 교체 버튼 (비행기에서는 <b>줍기</b> 버튼이 점프·낙하산, 차 옆에서는 탑승·하차, 운전 중 <b>웅크림</b> 버튼은 핸드브레이크)</li>' : '<li><b>WASD</b> 이동 · <b>Shift</b> 달리기 · 마우스 시점</li><li><b>좌클릭</b> 사격 · <b>우클릭</b> 조준 · <b>R</b> 장전</li><li><b>Space</b> 비행기에서 뛰기 · 낙하산 펴기(자동 105m) · <b>W</b> 활강 방향</li><li><b>G</b> 수류탄 · <b>E</b> 무기 줍기 · <b>1 / 2 / 휠</b> 무기 교체 · <b>Esc</b> 일시정지</li><li><b>E</b> 차량 타기·내리기 · <b>WASD</b> 운전 · <b>Space</b> 핸드브레이크 · 폭격 구역(붉은 원)에서는 벗어나세요</li>'}<li>탄약·구급상자·방탄복은 닿으면 자동으로 줍습니다.</li></ul></section>
         <footer><button type="button" class="ghost" data-act="exit">메뉴로</button><span class="sz-sum">${career.matches ? `전적 ${career.matches}판 ${career.wins}승 · 최다 처치 ${career.bestKills}` : '첫 출격'}</span>
@@ -107,8 +103,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       </div>`;
   }
   setupEl.addEventListener('click', e => {
-    const t = e.target as HTMLElement, perk = t.closest<HTMLElement>('[data-perk]'), mode = t.closest<HTMLElement>('[data-mode]'), lv = t.closest<HTMLElement>('[data-level]'), act = t.closest<HTMLElement>('[data-act]');
-    if (perk) { const nw = buyPerk(wallet, perk.dataset.perk as (typeof PERK_IDS)[number]); if (nw) { wallet = nw; writePerks(wallet); paintSetup(); } return; }
+    const t = e.target as HTMLElement, mode = t.closest<HTMLElement>('[data-mode]'), lv = t.closest<HTMLElement>('[data-level]'), act = t.closest<HTMLElement>('[data-act]');
     const fillBtn = t.closest<HTMLElement>('[data-fill]'); if (fillBtn) { roomFill = Number(fillBtn.dataset.fill) || 0; paintSetup(); return; }
     if (mode) { pickMode = mode.dataset.mode as 'solo' | 'pvp' | 'room'; paintSetup(); } else if (lv) { level = lv.dataset.level as Difficulty; writeShooterCareer({ ...readShooterCareer(), level }); paintSetup(); }
     else if (act?.dataset.act === 'smith') openSmith();
@@ -122,7 +117,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
 
   // ---------- 경기 시작 ----------
   function begin(m: Match, my: number): void {
-    endMatch(); match = m; meIdx = my; over = false; resultShown = false; soloReward = null; spectateId = -1; deadTimer = 0; cache.clear(); feed.length = 0; told.clear(); paused = false; modal.className = 'sz-modal'; modal.innerHTML = '';
+    endMatch(); match = m; meIdx = my; over = false; resultShown = false; soloRecorded = false; spectateId = -1; deadTimer = 0; cache.clear(); feed.length = 0; told.clear(); paused = false; modal.className = 'sz-modal'; modal.innerHTML = '';
     const p = m.players[my]; yaw = p.yaw; pitch = 0; countdown = 3.4; phase = 'countdown'; mapBase = null;
     view = new ShooterView(canvas, m, assets, prefs.quality); resize(); setupEl.hidden = true; hud.hidden = false; buildSlots(); say(touch ? '왼쪽 스틱으로 이동' : '화면을 클릭해 조작 시작', 2.4);
     if (!touch) lock(); audio.unlock();
@@ -130,7 +125,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   }
   function startSolo(): void {
     audio.unlock(); pvp = null; const seed = (Math.random() * 2 ** 31) >>> 0;
-    begin(new Match({ seed, mode: 'br', difficulty: level, humans: [{ name: '나' }], fill: BR_PLAYERS, air: true, vehicles: true, bombs: true, perks: { ...wallet.levels }, loadout: loadout.on ? loadout.guns : undefined }), 0);
+    begin(new Match({ seed, mode: 'br', difficulty: level, humans: [{ name: '나' }], fill: BR_PLAYERS, air: true, vehicles: true, bombs: true, loadout: loadout.on ? loadout.guns : undefined }), 0);
   }
 
   // ---------- 1대1 대전 ----------
@@ -303,7 +298,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   /** 내가 쓰러진 뒤 상대 소식을 잠깐 기다려 동시 사망을 가립니다. */
   function settleTie(): void {
     if (!pvp || pvp.done || pvp.deadAt === null) return;
-    if (pvp.oppDeadMt === null) { window.setTimeout(() => { if (pvp && !pvp.done && pvp.oppDeadMt === null) void conclude(pvp.s.opponent.id, '상대의 탄에 쓰러졌습니다'); }, 1100); return; }
+    if (pvp.oppDeadMt === null) { const p = pvp; window.setTimeout(() => { if (!closed && pvp === p && !p.done && p.oppDeadMt === null) void conclude(p.s.opponent.id, '상대의 탄에 쓰러졌습니다'); }, 1100); return; }
     const w = decideDeath(pvp.deadAt, pvp.oppDeadMt, pvp.s.host); void conclude(w === 'me' ? pvp.s.me.id : pvp.s.opponent.id, '두 선수가 거의 동시에 쓰러졌습니다');
   }
   /** 승자를 서버에 보고하고 확정된 레이팅 변화를 보여 줍니다(승리 보고는 상대의 보고나 15초 뒤에 확정). */
@@ -551,11 +546,11 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   function onMyDeath(by: number): void {
     phase = 'dead'; deadTimer = 0; spectateId = by >= 0 && match!.players[by]?.alive ? by : -1; mouse.fire = mouse.ads = false; tc.fire = false; audio.play('lose');
     if (pvp) { pvp.deadAt = match!.t; pvp.net.sendDead(match!.t); settleTie(); }
-    else if (room) { room.net.sendDead(match!.t, by, Math.max(0, CAUSES.indexOf(me().killedWeapon ?? 'zone'))); window.setTimeout(() => { if (room && !room.shown && !match?.over) { room.shown = true; roomResult(); } }, 1600); }
+    else if (room) { const r = room, m = match; r.net.sendDead(m!.t, by, Math.max(0, CAUSES.indexOf(me().killedWeapon ?? 'zone'))); window.setTimeout(() => { if (!closed && room === r && match === m && !r.shown && !m?.over) { r.shown = true; roomResult(); } }, 1600); }
   }
   function onOver(winner: number): void {
     over = true; if (pvp) return;
-    if (room) { window.setTimeout(roomResult, me().alive ? 1400 : 500); return; }
+    if (room) { const r = room, m = match; window.setTimeout(() => { if (!closed && room === r && match === m) roomResult(); }, me().alive ? 1400 : 500); return; }
     const p = me(); if (phase !== 'dead') phase = 'over'; const win = winner === p.id; if (win) audio.play('win');
     if (!resultShown) {
       resultShown = true;
@@ -572,14 +567,12 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   }
   function showResult(win: boolean): void {
     if (closed || !match) return; const p = me(), t = match.t, rank = win ? 1 : p.place; if (document.pointerLockElement) document.exitPointerLock();
-    if (soloReward === null) {
+    if (!soloRecorded) {
       recordShooterMatch(win, p.kills);
       career = readShooterCareer();
-      soloReward = rewardCoins(rank, match.players.length, p.kills, win);
-      wallet = { ...wallet, coins: wallet.coins + soloReward };
-      writePerks(wallet);
+      soloRecorded = true;
     }
-    card('ZERO ZONE', win ? '최후의 1인' : `#${rank}`, `<p class="sz-big">${win ? '승리' : `${match.players.length}명 중 ${rank}위`}</p><p class="sz-reward">+${soloReward} 코인 <small>(보유 ${wallet.coins.toLocaleString('ko-KR')} · 설정 화면에서 병사 강화)</small></p><div class="sz-stats"><div><b>${p.kills}</b><span>처치</span></div><div><b>${clock(win ? t : p.diedAt)}</b><span>생존 시간</span></div><div><b>${Math.round(p.dmgDealt)}</b><span>준 피해</span></div><div><b>${p.heads}</b><span>머리 명중</span></div><div><b>${BOTS[level].label}</b><span>난이도</span></div></div>${killerLine(p, win)}`,
+    card('ZERO ZONE', win ? '최후의 1인' : `#${rank}`, `<p class="sz-big">${win ? '승리' : `${match.players.length}명 중 ${rank}위`}</p><div class="sz-stats"><div><b>${p.kills}</b><span>처치</span></div><div><b>${clock(win ? t : p.diedAt)}</b><span>생존 시간</span></div><div><b>${Math.round(p.dmgDealt)}</b><span>준 피해</span></div><div><b>${p.heads}</b><span>머리 명중</span></div><div><b>${BOTS[level].label}</b><span>난이도</span></div></div>${killerLine(p, win)}`,
       `<button class="primary" data-act="again">다시 출격</button>${!win && !match.over ? '<button data-act="spectate">관전 계속</button><button data-act="skip">결과까지 건너뛰기</button>' : ''}<button data-act="setup">설정으로</button><button data-act="exit">메뉴로</button>`, win ? 'win' : '');
   }
 
@@ -639,7 +632,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (phase === 'dead') {
       deadTimer += dt;
       if (spectateId < 0 || !m.players[spectateId]?.alive) { const alive = m.players.filter(x => x.alive && x.id !== p.id); spectateId = alive.length ? alive[Math.floor(m.t) % alive.length].id : -1; }
-      if (!pvp && !room && soloReward === null && !over && deadTimer > 1.8) { resultShown = true; showResult(false); }
+      if (!pvp && !room && !soloRecorded && !over && deadTimer > 1.8) { resultShown = true; showResult(false); }
     }
     const spectate = phase === 'dead' || (phase === 'over' && !p.alive) ? m.players[spectateId] ?? null : null;
     const gun = p.guns[p.cur], zoom = p.ads && p.alive ? Math.max(gun?.id === 'sniper' ? 3.4 : gun?.id === 'rifle' ? 1.5 : 1.3, gun?.att.sight ? PARTS[gun.att.sight].zoom : 1) : 1;

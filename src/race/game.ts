@@ -13,7 +13,7 @@ import { RacePvp } from './pvp';
 import { decideWinner } from './netcar';
 import { createRace, currentLap, placeOf, updateRace, type RaceEvent, type RaceState } from './race';
 import { ghostDelta, readGhost, writeGhost } from './ghost';
-import { ownsSkin, readGarage, rewardFor, upgradesOf, writeGarage } from './garage';
+import { ownsSkin, readGarage, rewardFor, writeGarage } from './garage';
 import { mountSetup, type SetupHandle } from './setup-ui';
 import { buildMapTrack, type Track } from './track';
 import { RaceView, setDriverKit } from './view';
@@ -104,7 +104,7 @@ export function openRace(onExit: () => void): void {
     if (view) { view.dispose(); view = null; }
     track = buildMapTrack(mapOf(setup)); prepareMinimap(); audio.setCar(setup.car);
     const trial = setup.mode === 'trial', ghost = trial ? readGhost(setup.map, setup.laps, setup.car) : null;
-    race = createRace(track, setup.laps, records.bestLap[setup.map] ?? Infinity, { ...setup, upgrades: upgradesOf(garage.value, setup.car), skin: ownsSkin(garage.value, setup.skin) ? setup.skin : 'stock', trial, ghost });
+    race = createRace(track, setup.laps, records.bestLap[setup.map] ?? Infinity, { ...setup, skin: ownsSkin(garage.value, setup.skin) ? setup.skin : 'stock', trial, ghost });
     finishedShown = false; paused = false; acc = 0; lastPlace = trial ? 1 : 4; cache.clear(); setText('#rc-laps', String(setup.laps)); setText('#rc-of', trial ? 'TIME ATTACK' : '/ 4');
     if (!startView(carTemplate)) return;
     modal.className = 'rc-modal'; modal.innerHTML = ''; root.dataset.phase = 'countdown'; msg('', '');
@@ -154,7 +154,8 @@ export function openRace(onExit: () => void): void {
   }
   function pvpFinish(time: number): void {
     if (!pvp || pvp.done) return; pvp.myFin = time; pvp.net.sendFinish(time);
-    if (pvp.oppFin !== null) decide(); else window.setTimeout(() => { if (pvp && !pvp.done) void conclude(pvp.s.me.id, '먼저 결승선을 통과했습니다'); }, 4000);
+    const p = pvp;
+    if (p.oppFin !== null) decide(); else window.setTimeout(() => { if (!closed && pvp === p && !p.done) void conclude(p.s.me.id, '먼저 결승선을 통과했습니다'); }, 4000);
   }
   function decide(): void {
     if (!pvp || pvp.myFin === null || pvp.oppFin === null) return;
@@ -214,7 +215,8 @@ export function openRace(onExit: () => void): void {
   }
   function multiCheck(): void {
     if (!multi || multi.done || multi.myFin === null) return;
-    if (race.racers.every(r => r.player || r.finishTime !== null || (r.peer && multi?.gone.has(r.peer)))) window.setTimeout(() => { if (multi && !multi.done) showMulti(); }, 600);
+    const m = multi;
+    if (race.racers.every(r => r.player || r.finishTime !== null || (r.peer && m.gone.has(r.peer)))) window.setTimeout(() => { if (!closed && multi === m && !m.done) showMulti(); }, 600);
   }
   function showMulti(): void {
     const m = multi; if (!m || m.done) return; m.done = true; finishedShown = true;

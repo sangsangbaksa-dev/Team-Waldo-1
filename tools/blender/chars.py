@@ -5,13 +5,16 @@ import zlib
 import bpy  # noqa: F401  (mathutils보다 먼저)
 from mathutils import Matrix, Vector
 from lib import B, export, mat, reset
+import guns
 
 HIP = 0.9
 KNEE = 0.44   # 골반에서 무릎까지
 
 
 def gun(kind: str) -> B:
-    """손잡이가 원점인 총. 총구는 +X."""
+    """손잡이가 원점인 총. 총구는 +X. 소총류는 guns.py 의 새 모델, 나머지(로켓·미니건·레일건)는 여기."""
+    if kind in guns.MOUNTS:
+        return guns.gun(kind)
     g = B()
     if kind == 'pistol':
         g.box((0.09, 0, 0.04), (0.24, 0.04, 0.055), 'Gunmetal')
@@ -694,12 +697,12 @@ def build_characters(path: str) -> int:
 
 
 def _viewmodel(kind: str) -> B:
-    """1인칭 총 + 양팔. 카메라 앞 아래쪽에서 보이도록 손잡이가 원점."""
+    """1인칭 총 + 양팔(로켓·미니건·레일건). 카메라 앞 아래쪽에서 보이도록 손잡이가 원점."""
     v = B()
     v.merge(gun(kind))
     v.limb((-0.55, -0.2, -0.35), (-0.04, -0.02, -0.04), 0.11, 'Olive')
     v.sphere((-0.0, -0.01, -0.02), 0.06, 'Skin', seg=6, rings=4)
-    fx = 0.5 if kind in ('rifle', 'sniper', 'rocket', 'railgun', 'minigun', 'shotgun') else 0.22
+    fx = 0.5 if kind in ('rocket', 'railgun') else 0.22
     v.limb((-0.4, 0.28, -0.4), (fx, 0.03, -0.01), 0.1, 'Olive')
     v.sphere((fx, 0.03, -0.01), 0.058, 'Skin', seg=6, rings=4)
     return v
@@ -707,8 +710,26 @@ def _viewmodel(kind: str) -> B:
 
 def build_weapons(path: str) -> int:
     reset()
+    guns.palette()
     objs = []
-    for kind in ('pistol', 'smg', 'shotgun', 'rifle', 'sniper', 'rocket', 'minigun', 'railgun'):
+    for kind in ('pistol', 'smg', 'shotgun', 'rifle', 'sniper'):
+        objs.append(gun(kind).build(f'g_{kind}', segments=1))
+        objs.append(guns.nude(kind).build(f'n_{kind}', segments=1))
+        objs.append(guns.arms(kind).build(f'arms_{kind}', segments=1))
+    for kind in ('rocket', 'minigun', 'railgun'):
         objs.append(gun(kind).build(f'g_{kind}'))
         objs.append(_viewmodel(kind).build(f'vm_{kind}'))
+    for k in guns.SIGHTS:
+        objs.append(guns.sight_part(k).build(f'p_sight_{k}', segments=1))
+    for k in guns.MUZZLES:
+        objs.append(guns.muzzle_part(k).build(f'p_muzzle_{k}', segments=1))
+    for k in guns.GRIPS:
+        objs.append(guns.grip_part(k).build(f'p_grip_{k}', segments=1))
+    for w in guns.MOUNTS:
+        for k in guns.MAG_KINDS:
+            objs.append(guns.mag_part(w, k).build(f'p_mag_{w}_{k}', segments=1))
+        for k in guns.STOCK_FOR.get(w, ()):
+            objs.append(guns.stock_part(w, k).build(f'p_stock_{w}_{k}', segments=1))
+    with open('src/shooter/gunmounts.json', 'w') as f:
+        f.write(guns.mounts_json() + '\n')
     return export(path, objs)

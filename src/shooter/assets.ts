@@ -12,11 +12,12 @@ export interface ShooterAssets {
   soldiers: Record<string, Soldier>; kit: CharacterKit;
   /** 바닥에 놓인 총, 1인칭 총 */ groundGuns: Record<string, THREE.Object3D>; viewGuns: Record<string, THREE.Object3D>;
   props: Record<string, THREE.Object3D>;
+  /** weapons.glb 의 모든 노드(n_ 맨 총, arms_ 팔, p_ 교체 부품). 조립 화면과 1인칭 총이 부품을 얹는 데 씁니다. */ weaponNodes: Record<string, THREE.Object3D>;
 }
 export const SOLDIER_KINDS = ['rifle', 'merc', 'swat', 'guard', 'heavy'] as const;
 
 const nodeMap = (root: THREE.Object3D): Record<string, THREE.Object3D> => { const r: Record<string, THREE.Object3D> = {}; root.traverse(o => { if (o.name) r[o.name] = o; }); return r; };
-const FILES: Record<string, number> = { characters: 2_400_000, weapons: 660_000, props: 860_000 };
+const FILES: Record<string, number> = { characters: 2_870_000, weapons: 1_400_000, props: 860_000 };
 
 let cache: Promise<ShooterAssets> | null = null;
 export function loadShooterAssets(base: string, onProgress?: (fraction: number) => void, onNote?: (note: string) => void): Promise<ShooterAssets> {
@@ -31,10 +32,10 @@ export function loadShooterAssets(base: string, onProgress?: (fraction: number) 
     const limb = (n?: THREE.Object3D): { geo: Baked; pivot: THREE.Vector3 } | null => (n ? { geo: bake(n), pivot: n.position.clone() } : null);
     for (const k of SOLDIER_KINDS) { if (!cn[`${k}_Body`] || !cn[`${k}_Leg`]) throw new Error(`missing ${k}`); soldiers[k] = { body: bake(cn[`${k}_Body`]), leg: bake(cn[`${k}_Leg`]), shin: cn[`${k}_Shin`] ? bake(cn[`${k}_Shin`]) : null, armL: limb(cn[`${k}_ArmL`]), armR: limb(cn[`${k}_ArmR`]) }; }
     const groundGuns: Record<string, THREE.Object3D> = {}, viewGuns: Record<string, THREE.Object3D> = {};
-    for (const k of ['pistol', 'smg', 'rifle', 'shotgun', 'sniper']) { if (!wn[`g_${k}`] || !wn[`vm_${k}`]) throw new Error(`missing weapon ${k}`); groundGuns[k] = wn[`g_${k}`]; viewGuns[k] = wn[`vm_${k}`]; }
+    for (const k of ['pistol', 'smg', 'rifle', 'shotgun', 'sniper']) { if (!wn[`g_${k}`] || !wn[`n_${k}`] || !wn[`arms_${k}`]) throw new Error(`missing weapon ${k}`); groundGuns[k] = wn[`g_${k}`]; viewGuns[k] = wn[`n_${k}`]; }
     const props: Record<string, THREE.Object3D> = {}; for (const k of ['tree_round', 'tree_pine', 'crate', 'barrier', 'dumpster', 'lamp']) if (pn[k]) props[k] = pn[k];
     onProgress?.(1);
-    return { soldiers, kit: kitFromScene(c), groundGuns, viewGuns, props };
+    return { soldiers, kit: kitFromScene(c), groundGuns, viewGuns, props, weaponNodes: wn };
   })();
   cache.catch(() => { cache = null; });
   return cache;

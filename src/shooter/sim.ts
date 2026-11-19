@@ -1,5 +1,5 @@
 // ZERO ZONE — 경기 시뮬레이션: 이동·사격·피해·전리품·줄어드는 자기장·승패. 화면과 무관해서 테스트와 봇 대 봇 시뮬레이션에서 그대로 돌립니다.
-import { AIR, BOOST, BOTS, BOT_NAMES, DIFFICULTIES, HELMET_CUT, HEAL, ARMOR_PTS, ARMOR_ABS, MAP_HALF, PART_FITS, PARTS, partFit, PLAYER, SKIN_TONES, TEAM_COLORS, WEAPONS, ZONES, magOf, makeRng, partHandling, type Attachments, type Difficulty, type Mode, type PartId, type WeaponId } from './config';
+import { AIR, BOOST, BOTS, BOT_NAMES, DIFFICULTIES, HELMET_CUT, HEAL, ARMOR_PTS, ARMOR_ABS, MAP_HALF, PARTS, adsSpread, canFit, partFit, PLAYER, SKIN_TONES, TEAM_COLORS, WEAPONS, ZONES, magOf, makeRng, partHandling, type Attachments, type Loadout, type Difficulty, type Mode, type PartId, type WeaponId } from './config';
 import { blockedAt, generateMap, lineClear, pushOut, rayWorld, slideMove, type GameMap, type Loot } from './world';
 import { WATER_SLOW, waterDepth } from './terrain';
 import { thinkBot, thinkAir, newBrain, type BotBrain } from './bot';
@@ -44,7 +44,7 @@ export type MatchEvent =
 
 export interface ZoneState { cx: number; cz: number; r: number; nextCx: number; nextCz: number; nextR: number; shrinking: boolean; phase: number; timeLeft: number; dps: number }
 
-export interface MatchOptions { seed: number; mode: Mode; difficulty: Difficulty; /** 사람(또는 원격) 선수 이름들. 나머지는 봇이 채웁니다. */ humans: Array<{ name: string; remote?: boolean }>; fill?: number; /** 비행기에서 낙하산으로 시작(솔로 배틀로열). 꺼 두면 땅에서 시작합니다. */ air?: boolean }
+export interface MatchOptions { seed: number; mode: Mode; difficulty: Difficulty; /** 사람(또는 원격) 선수 이름들. 나머지는 봇이 채웁니다. */ humans: Array<{ name: string; remote?: boolean }>; fill?: number; /** 비행기에서 낙하산으로 시작(솔로 배틀로열). 꺼 두면 땅에서 시작합니다. */ air?: boolean; /** 조립 화면에서 만든 총기 구성. 내 쪽 선수가 총을 주울 때마다 이 파츠가 달립니다(AI와 원격 선수는 해당 없음). */ loadout?: Loadout }
 
 export class Match {
   map: GameMap; mode: Mode; difficulty: Difficulty; seed: number;
@@ -54,11 +54,11 @@ export class Match {
   /** 날아다니는 수류탄 */ nades: Nade[] = []; private nadeId = 1;
   /** 비행기 항로(낙하 시작일 때만) */ plane: Plane | null = null;
   /** 자기장 시간이 흐르기 시작하는 때(낙하하는 동안은 기다립니다) */ zoneDelay = 0;
-  rng: () => number;
+  rng: () => number; private loadout: Loadout;
   private centers: Array<{ x: number; z: number; r: number }>; private starts: number[]; private nextLoot: number;
 
   constructor(o: MatchOptions) {
-    this.seed = o.seed; this.mode = o.mode; this.difficulty = o.difficulty;
+    this.loadout = o.loadout ?? {}; this.seed = o.seed; this.mode = o.mode; this.difficulty = o.difficulty;
     this.map = generateMap(o.seed, o.mode); this.loot = this.map.loot.map(l => ({ ...l })); this.nextLoot = this.loot.length + 1000;
     this.rng = makeRng(o.seed ^ 0x9e3779b9);
     if (o.air && o.mode === 'br') {
@@ -85,11 +85,11 @@ export class Match {
     }
     const total = o.fill ?? (o.mode === 'br' ? 20 : o.humans.length), names = [...BOT_NAMES].sort(() => this.rng() - 0.5), air = !!this.plane;
     for (let i = 0; i < total; i++) {
-      const h = o.humans[i], sp = air ? this.planeAt(0) : this.map.spawns[i % this.map.spawns.length], bi = i - o.humans.length, cyc = Math.floor(bi / names.length);
+      const h = o.humans[i], pistolAtt = h && !h.remote ? o.loadout?.pistol ?? {} : {}, sp = air ? this.planeAt(0) : this.map.spawns[i % this.map.spawns.length], bi = i - o.humans.length, cyc = Math.floor(bi / names.length);
       const p: Player = {
         id: i, name: h?.name ?? names[bi % names.length] + (cyc > 0 ? String(cyc + 1) : ''), bot: !h, remote: !!h?.remote, color: TEAM_COLORS[i % TEAM_COLORS.length], skin: SKIN_TONES[i % SKIN_TONES.length],
         x: sp.x, z: sp.z, yaw: air ? Math.atan2(this.plane!.dz, this.plane!.dx) : Math.atan2(-sp.z, -sp.x), pitch: 0, vx: 0, vz: 0, hp: PLAYER.hp, armor: 0, helmet: 0, boost: 0, alive: true,
-        guns: [{ id: 'pistol', mag: WEAPONS.pistol.mag, reserve: WEAPONS.pistol.mag * 2, att: {} }, null], cur: 0, reload: 0, cd: 0.4, fireHeld: false, interactHeld: false,
+        guns: [{ id: 'pistol', mag: magOf('pistol', pistolAtt), reserve: WEAPONS.pistol.mag * 2, att: { ...pistolAtt } }, null], cur: 0, reload: 0, cd: 0.4, fireHeld: false, interactHeld: false,
         kills: 0, place: 0, diedAt: 0, input: blankInput(), brain: null, air: air ? 1 : 0, alt: air ? AIR.alt : 0, jumpHeld: false, landedAt: 0, crouch: 0, walk: 0, kick: 0, muzzle: 0, hurt: 0, hurtYaw: 0, ads: false, speed: 0, lastHitBy: -1, emptyT: 0, nades: 0, nadeCd: 0, nadeHeld: false,
         bandages: 0, kits: 0, healT: 0, healKind: 'bandage', armorLv: 0, dmgDealt: 0, heads: 0, killedBy: -1, killedWeapon: null,
       };
@@ -230,7 +230,7 @@ export class Match {
     const gun = p.guns[p.cur]; if (gun && !gun.att) gun.att = {};
     if (gun && def) {
       if (p.reload > 0) { p.reload -= dt; if (p.reload <= 0) { p.reload = 0; const n = Math.min(magOf(def.id, gun.att) - gun.mag, gun.reserve); gun.mag += n; gun.reserve -= n; } }
-      else if ((inp.reload && gun.mag < magOf(def.id, gun.att) && gun.reserve > 0) || (gun.mag === 0 && gun.reserve > 0 && inp.fire)) { p.reload = def.reload; this.events.push({ t: 'reload', id: p.id }); }
+      else if ((inp.reload && gun.mag < magOf(def.id, gun.att) && gun.reserve > 0) || (gun.mag === 0 && gun.reserve > 0 && inp.fire)) { p.reload = def.reload * partHandling(gun.att).reload; this.events.push({ t: 'reload', id: p.id }); }
       if (inp.fire && p.cd <= 0 && p.reload <= 0 && (def.auto || !p.fireHeld)) {
         if (gun.mag > 0) this.shoot(p, gun, def.id); else if (p.emptyT <= 0) { p.emptyT = 0.5; this.events.push({ t: 'empty', id: p.id }); }
       }
@@ -289,9 +289,8 @@ export class Match {
   }
   /** 파츠를 달 총: 들고 있는 총이 맞으면 그 총, 아니면 다른 칸의 총. 이미 같은 파츠면 null. */
   partTarget(p: Player, part: PartId): { gun: Gun; fit: 'new' | 'upgrade' | 'swap' } | null {
-    const slot = PARTS[part].slot;
     for (const g of [p.guns[p.cur], p.guns[1 - p.cur]]) {
-      if (!g || !PART_FITS[g.id].includes(slot)) continue;
+      if (!g || !canFit(g.id, part)) continue;
       const fit = partFit(g.att, part); if (fit === 'same') continue; return { gun: g, fit };
     }
     return null;
@@ -305,7 +304,7 @@ export class Match {
   private takeWeapon(p: Player, l: Loot): void {
     const id = l.weapon!, def = WEAPONS[id], same = p.guns.find(g => g?.id === id);
     if (same) { same.reserve = Math.min(def.mag * 6, same.reserve + def.mag * 2); this.take(p, l); return; }
-    const att: Attachments = { ...(l.att ?? {}) };
+    const att: Attachments = { ...(!p.bot && !p.remote ? this.loadout[id] ?? {} : {}), ...(l.att ?? {}) };
     const free = p.guns.indexOf(null), slot = free >= 0 ? free : p.cur, old = p.guns[slot];
     if (old) this.loot.push({ id: this.nextLoot++, kind: 'weapon', weapon: old.id, att: { ...old.att }, x: p.x + Math.cos(p.yaw) * 0.8, z: p.z + Math.sin(p.yaw) * 0.8, taken: false });
     p.guns[slot] = { id, mag: magOf(id, att), reserve: def.mag * 2, att }; p.cur = slot; p.reload = 0; p.cd = 0.35; this.take(p, l);
@@ -313,9 +312,9 @@ export class Match {
 
   private shoot(p: Player, gun: Gun, id: WeaponId): void {
     const def = WEAPONS[id]; gun.mag--; p.cd = def.cd; p.kick = Math.min(1, p.kick + def.recoil * 12); p.muzzle = 0.06;
-    const h = partHandling(gun.att), sight = gun.att.sight, quiet = gun.att.muzzle === 'suppressor';
+    const h = partHandling(gun.att), quiet = gun.att.muzzle === 'suppressor';
     p.kick = Math.max(0, p.kick - def.recoil * 12 * (1 - h.kick));
-    const moving = Math.min(1.6, p.speed / PLAYER.walk), spread = def.spread * h.spread * (p.ads ? (sight ? 0.34 : 0.4) : 1) * (1 + moving * 0.5) * (1 + p.kick * 0.5) * (1 - 0.22 * p.crouch);
+    const moving = Math.min(1.6, p.speed / PLAYER.walk), spread = def.spread * h.spread * (p.ads ? adsSpread(gun.att) : 1) * (1 + moving * 0.5) * (1 + p.kick * 0.5) * (1 - 0.22 * p.crouch);
     const ox = p.x, oy = eyeOf(p), oz = p.z, ends: number[] = [];
     for (let i = 0; i < def.pellets; i++) {
       const a = this.rng() * Math.PI * 2, r = spread * Math.sqrt(this.rng()), yaw = p.yaw + Math.cos(a) * r, pitch = p.pitch + Math.sin(a) * r;

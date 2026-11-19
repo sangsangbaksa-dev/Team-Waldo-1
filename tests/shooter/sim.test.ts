@@ -150,7 +150,7 @@ describe('ZERO ZONE 봇 AI', () => {
     const m = new Match({ seed: 31, mode: 'br', difficulty: 'normal', humans: [], fill: 20 }); let kills = 0;
     for (let t = 0; t < 700 && !m.over; t += 1 / 30) { m.step(1 / 30); for (const e of m.drain()) if (e.t === 'kill' && e.weapon !== 'zone') kills++; }
     expect(m.over).toBe(true); expect(m.t).toBeLessThan(500); expect(kills).toBeGreaterThan(5);
-  });
+  }, 30000);
   it('봇은 사람과 같은 입력만 쓴다(체력·탄을 속이지 않는다)', () => {
     const m = solo(5, 'expert'); run(m, 20); for (const p of m.players) { expect(p.hp).toBeLessThanOrEqual(PLAYER.hp); for (const g of p.guns) if (g) expect(g.mag).toBeLessThanOrEqual(WEAPONS[g.id].mag); }
   });

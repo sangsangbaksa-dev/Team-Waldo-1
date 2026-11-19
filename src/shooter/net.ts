@@ -6,12 +6,15 @@ import { WEAPONS, type WeaponId } from './config';
 
 const SILENT_MS = 8000, NEVER_MS = 25000;
 
-export interface Pose { x: number; z: number; yaw: number; pitch: number; hp: number; armor: number; w: WeaponId; speed: number; ads: boolean; reloading: boolean; crouch?: boolean }
+export interface Pose {
+  x: number; z: number; yaw: number; pitch: number; hp: number; armor: number; w: WeaponId; speed: number; ads: boolean; reloading: boolean; crouch?: boolean;
+  /** 낙하 상태(0 땅 · 1 비행기 · 2 자유낙하 · 3 낙하산)와 고도 · 타고 있는 차(-1 없음) · 내가 모는 차의 [x, z, yaw, 속도] */ air?: number; alt?: number; veh?: number; vs?: [number, number, number, number];
+}
 export interface NetShot { w: WeaponId; ox: number; oy: number; oz: number; ends: number[] }
 export interface NetHooks {
   onStart(): void; onPose(p: Pose): void; onShot(s: NetShot): void;
   /** 상대가 맞았다고 알림(내 탄이 명중) */ onHitAck(dmg: number, head: boolean): void;
-  onPickup(id: number): void;
+  onPickup(id: number): void; /** 상대가 던진 수류탄 */ onNade?(n: NetNade): void;
   /** 상대가 쓰러졌다고 알림. mt 는 상대 경기 시계 */ onDead(mt: number): void;
   onGone(reason: 'bye' | 'silent' | 'never'): void;
 }
@@ -19,9 +22,26 @@ export interface NetHooks {
 const num = (v: unknown, lo = -1e6, hi = 1e6): v is number => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
 const weapon = (v: unknown): v is WeaponId => typeof v === 'string' && Object.prototype.hasOwnProperty.call(WEAPONS, v);
 export function parsePose(m: NetMsg): Pose | null {
-  return num(m.x) && num(m.z) && num(m.yaw, -50, 50) && num(m.pitch, -3, 3) && num(m.hp, 0, 1000) && num(m.ar, 0, 1000) && weapon(m.w) && num(m.sp, 0, 50)
-    ? { x: m.x, z: m.z, yaw: m.yaw, pitch: m.pitch, hp: m.hp, armor: m.ar, w: m.w, speed: m.sp, ads: m.ad === 1, reloading: m.rl === 1, crouch: m.cr === 1 } : null;
+  if (!(num(m.x) && num(m.z) && num(m.yaw, -50, 50) && num(m.pitch, -3, 3) && num(m.hp, 0, 1000) && num(m.ar, 0, 1000) && weapon(m.w) && num(m.sp, 0, 50))) return null;
+  const p: Pose = { x: m.x, z: m.z, yaw: m.yaw, pitch: m.pitch, hp: m.hp, armor: m.ar, w: m.w, speed: m.sp, ads: m.ad === 1, reloading: m.rl === 1, crouch: m.cr === 1 };
+  if (num(m.a, 0, 3) && Number.isInteger(m.a)) p.air = m.a; if (num(m.al, 0, 1000)) p.alt = m.al; if (num(m.v, -1, 10000) && Number.isInteger(m.v)) p.veh = m.v;
+  if (Array.isArray(m.vs) && m.vs.length === 4 && m.vs.every(v => num(v))) p.vs = m.vs as [number, number, number, number];
+  return p;
 }
+/** 위치 메시지(1대1과 방 공용). 소수 둘째 자리까지 줄여 보냅니다. */
+export function poseMsg(p: Pose): NetMsg {
+  const r = (v: number): number => Math.round(v * 100) / 100;
+  const m: NetMsg = { t: 'p', x: r(p.x), z: r(p.z), yaw: r(p.yaw), pitch: r(p.pitch), hp: Math.round(p.hp), ar: Math.round(p.armor), w: p.w, sp: r(Math.min(50, p.speed)), ad: p.ads ? 1 : 0, rl: p.reloading ? 1 : 0, cr: p.crouch ? 1 : 0 };
+  if (p.air) { m.a = p.air; m.al = Math.round(p.alt ?? 0); }
+  if (p.veh !== undefined && p.veh >= 0) m.v = p.veh;
+  if (p.vs) m.vs = p.vs.map(r);
+  return m;
+}
+export interface NetNade { x: number; y: number; z: number; vx: number; vy: number; vz: number }
+export function parseNade(m: NetMsg): NetNade | null {
+  return num(m.x, -1000, 1000) && num(m.y, -5, 60) && num(m.z, -1000, 1000) && num(m.vx, -80, 80) && num(m.vy, -80, 80) && num(m.vz, -80, 80) ? { x: m.x, y: m.y, z: m.z, vx: m.vx, vy: m.vy, vz: m.vz } : null;
+}
+export function nadeMsg(n: NetNade, owner: number): NetMsg { const r = (v: number): number => Math.round(v * 100) / 100; return { t: 'nd', o: owner, x: r(n.x), y: r(n.y), z: r(n.z), vx: r(n.vx), vy: r(n.vy), vz: r(n.vz) }; }
 export function parseShot(m: NetMsg): NetShot | null {
   if (!weapon(m.w) || !num(m.ox) || !num(m.oy, -50, 50) || !num(m.oz) || !Array.isArray(m.e) || m.e.length < 3 || m.e.length > 27 || m.e.length % 3 !== 0 || !m.e.every(v => num(v))) return null;
   return { w: m.w, ox: m.ox, oy: m.oy, oz: m.oz, ends: m.e as number[] };
@@ -59,16 +79,17 @@ export class ShooterNet {
     else if (m.t === 'p') { const p = parsePose(m); if (p) this.hooks.onPose(p); }
     else if (m.t === 'sh') { const s = parseShot(m); if (s) this.hooks.onShot(s); }
     else if (m.t === 'ack') { if (num(m.d, 0, 1000)) this.hooks.onHitAck(m.d, m.h === 1); }
-    else if (m.t === 'pk') { if (num(m.i, 0, 100000)) this.hooks.onPickup(m.i); }
+    else if (m.t === 'pk') { if (num(m.i, 0, 1e8)) this.hooks.onPickup(m.i); }
+    else if (m.t === 'nd') { const n = parseNade(m); if (n) this.hooks.onNade?.(n); }
     else if (m.t === 'dead') { if (num(m.mt, 0, 100000)) this.hooks.onDead(m.mt); }
     else if (m.t === 'bye') this.gone('bye');
   }
   /** 15Hz 로 내 위치·체력을 보냅니다. */
   sendPose(p: Pose, now: number): void {
     if (!this.started || now - this.lastPose < 66) return; this.lastPose = now;
-    const r = (v: number): number => Math.round(v * 100) / 100;
-    this.ch.send({ t: 'p', x: r(p.x), z: r(p.z), yaw: r(p.yaw), pitch: r(p.pitch), hp: Math.round(p.hp), ar: Math.round(p.armor), w: p.w, sp: r(p.speed), ad: p.ads ? 1 : 0, rl: p.reloading ? 1 : 0, cr: p.crouch ? 1 : 0 });
+    this.ch.send(poseMsg(p));
   }
+  sendNade(n: NetNade): void { if (this.started) this.ch.send(nadeMsg(n, 0)); }
   sendShot(s: NetShot): void { if (this.started) this.ch.send({ t: 'sh', w: s.w, ox: Math.round(s.ox * 100) / 100, oy: Math.round(s.oy * 100) / 100, oz: Math.round(s.oz * 100) / 100, e: s.ends.map(v => Math.round(v * 10) / 10) }); }
   sendAck(dmg: number, head: boolean): void { this.ch.send({ t: 'ack', d: Math.round(dmg), h: head ? 1 : 0 }); }
   sendPickup(id: number): void { this.ch.send({ t: 'pk', i: id }); }

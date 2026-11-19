@@ -5,11 +5,13 @@ import type { LoadingScreen } from '../loading';
 import type { PvpSession, RoomSession } from '../net/lobby';
 import { AIR, BOTS, FEEL, BR_PLAYERS, DIFFICULTIES, HELMET_NAMES, ARMOR_NAMES, HEAL, PARTS, PLAYER, VEHICLES, WEAPONS, adsSpread, partHandling, type Difficulty } from './config';
 import { waterDepth } from './terrain';
-import { Match, type Cause, type MatchEvent, type Player } from './sim';
+import { Match, type Cause, type MatchEvent, type Player, type Vehicle } from './sim';
+import { CAUSES, WorldSync, easePuppet, encodeLoot, parseLoot } from './sync';
+import type { NetMsg } from '../net/types';
 import { ShooterView } from './view';
 import { loadShooterAssets, type ShooterAssets } from './assets';
 import { ShooterAudio } from './audio';
-import { ShooterNet, decideDeath, seedOf, type Pose } from './net';
+import { ShooterNet, decideDeath, nadeMsg, parseNade, seedOf, type Pose } from './net';
 import { ShooterRoomNet, ROOM_MAX } from './room';
 import { PERK_IDS, PERK_INFO, readPerks, rewardCoins, writePerks } from './perks';
 import { PERK_MAX, buyPerk, perkCost } from '../shared/perks';
@@ -24,8 +26,10 @@ const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.m
 const CAUSE_NAME = { zone: '자기장', grenade: '수류탄', vehicle: '차량', bomb: '폭격' } as const;
 /** 처치 알림·결과 화면에 쓰는 이름: 무기 이름 또는 자기장·수류탄·차량·폭격 */
 const causeName = (w: Cause): string => (w in CAUSE_NAME ? CAUSE_NAME[w as keyof typeof CAUSE_NAME] : WEAPONS[w as keyof typeof WEAPONS].name);
+/** 멀티플레이 방의 AI 채우기 선택지(0 = 사람만) */
+const ROOM_FILLS = [0, 30, 60, 100] as const;
 type Phase = 'setup' | 'loading' | 'countdown' | 'play' | 'dead' | 'over';
-interface Room { s: RoomSession; net: ShooterRoomNet; remotes: Map<number, { p: Player; target: Pose | null }>; done: boolean; seed: number; mine: number; shown: boolean }
+interface Room { s: RoomSession; net: ShooterRoomNet; remotes: Map<number, { p: Player; target: Pose | null }>; done: boolean; seed: number; mine: number; shown: boolean; sync: WorldSync }
 interface Pvp { s: PvpSession; net: ShooterNet; opp: Player | null; target: Pose | null; done: boolean; deadAt: number | null; oppDeadMt: number | null; seed: number; begun: boolean }
 
 export interface OpenOptions { loading?: LoadingScreen }
@@ -60,6 +64,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   let career = readShooterCareer(), wallet = readPerks();
   let level: Difficulty = (DIFFICULTIES as string[]).includes(career.level) ? (career.level as Difficulty) : 'normal', pickMode: 'solo' | 'pvp' | 'room' = 'solo';
 
+  let roomFill = 60;
   let loadout: SavedLoadout = readLoadout(), closeSmith: (() => void) | null = null;
   let phase: Phase = 'setup', closed = false, paused = false, match: Match | null = null, view: ShooterView | null = null, meIdx = 0, pvp: Pvp | null = null, room: Room | null = null, raf = 0, last = performance.now();
   let assets: ShooterAssets | null = null, assetState: 'loading' | 'ready' | 'failed' = 'loading', assetPct = 0;
@@ -88,9 +93,11 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
         <section><h3>모드</h3><div class="sz-seg three">
           <button type="button" class="sz-opt ${pickMode === 'solo' ? 'on' : ''}" data-mode="solo" aria-pressed="${pickMode === 'solo'}"><b>솔로 배틀로열</b><em>나 + AI 99명 · 비행기에서 낙하산 강하 · 마지막 1명이 승리</em></button>
           ${PVP_ENABLED ? `<button type="button" class="sz-opt ${pickMode === 'pvp' ? 'on' : ''}" data-mode="pvp" aria-pressed="${pickMode === 'pvp'}"><b>1대1 온라인 대전</b><em>2인 PvP · 무작위 매칭 또는 방 코드</em></button>` : ''}
-          ${PVP_ENABLED ? `<button type="button" class="sz-opt ${pickMode === 'room' ? 'on' : ''}" data-mode="room" aria-pressed="${pickMode === 'room'}"><b>멀티플레이 방</b><em>3~${ROOM_MAX}인 서바이벌 · 방 코드 또는 공개 방 · 마지막 1명이 승리</em></button>` : ''}</div></section>
-        <section class="${pickMode !== 'solo' ? 'dim' : ''}"><h3>AI 난이도</h3><div class="sz-seg four">${DIFFICULTIES.map(d => `<button type="button" class="sz-opt ${d === level ? 'on' : ''}" data-level="${d}" aria-pressed="${d === level}" ${pickMode !== 'solo' ? 'disabled' : ''}><b>${BOTS[d].label}</b></button>`).join('')}</div>
-          <p class="sz-note">${pickMode !== 'solo' ? '온라인 대전과 방은 사람끼리 겨루므로 AI가 나오지 않습니다.' : `${b.blurb} (반응 ${b.react.toFixed(2)}초 · 시야 ${b.sight}m)`}</p></section>
+          ${PVP_ENABLED ? `<button type="button" class="sz-opt ${pickMode === 'room' ? 'on' : ''}" data-mode="room" aria-pressed="${pickMode === 'room'}"><b>멀티플레이 방</b><em>3~${ROOM_MAX}인 + AI · 방 코드 또는 공개 방 · 차량·폭격까지 함께</em></button>` : ''}</div></section>
+        ${pickMode === 'room' ? `<section><h3>AI 채우기 <em class="sz-coin">방을 만들 때 적용</em></h3><div class="sz-seg four">${ROOM_FILLS.map(f => `<button type="button" class="sz-opt ${f === roomFill ? 'on' : ''}" data-fill="${f}" aria-pressed="${f === roomFill}"><b>${f ? `${f}명까지` : '사람만'}</b></button>`).join('')}</div>
+          <p class="sz-note">${roomFill ? `빈자리를 AI로 채워 ${roomFill}명이 비행기에서 강하합니다. 차량·폭격·보급까지 모두에게 똑같이 보입니다(방장이 AI를 계산해 보냅니다).` : '사람끼리만 작은 지도에서 겨룹니다.'} 두 명만 모이면 1대1 랭크전으로 진행됩니다.</p></section>` : ''}
+        <section class="${pickMode === 'pvp' || (pickMode === 'room' && !roomFill) ? 'dim' : ''}"><h3>AI 난이도</h3><div class="sz-seg four">${DIFFICULTIES.map(d => `<button type="button" class="sz-opt ${d === level ? 'on' : ''}" data-level="${d}" aria-pressed="${d === level}" ${pickMode === 'pvp' || (pickMode === 'room' && !roomFill) ? 'disabled' : ''}><b>${BOTS[d].label}</b></button>`).join('')}</div>
+          <p class="sz-note">${pickMode === 'pvp' ? '1대1 대전은 사람끼리 겨루므로 AI가 나오지 않습니다.' : pickMode === 'room' && !roomFill ? '사람만 모이는 방에는 AI가 나오지 않습니다.' : `${b.blurb} (반응 ${b.react.toFixed(2)}초 · 시야 ${b.sight}m)${pickMode === 'room' ? ' · 방을 만든 사람의 난이도로 진행됩니다' : ''}`}</p></section>
         <section class="${pickMode !== 'solo' ? 'dim' : ''}"><h3>병사 강화 <em class="sz-coin">${wallet.coins.toLocaleString('ko-KR')} 코인</em></h3><div class="sz-perks">${PERK_IDS.map(id => { const lv = wallet.levels[id], cost = perkCost(wallet, id); return `<button type="button" class="sz-perk" data-perk="${id}" ${pickMode !== 'solo' || cost === null || wallet.coins < cost ? 'disabled' : ''}><b>${PERK_INFO[id].name} <i>${'●'.repeat(lv)}${'○'.repeat(PERK_MAX - lv)}</i></b><em>${PERK_INFO[id].blurb}</em><span>${cost === null ? '최대' : `${cost} 코인`}</span></button>`; }).join('')}</div>
           <p class="sz-note">${pickMode !== 'solo' ? '강화는 솔로 배틀로열에서만 적용됩니다(온라인 대전은 공정하게).' : '솔로 경기가 끝나면 순위와 처치에 따라 코인을 받습니다.'}</p></section>
         <section class="${pickMode !== 'solo' ? 'dim' : ''}"><h3>총기 조립</h3><div class="sz-smith"><div><b>부품을 골라 출격 구성을 만드세요</b><em>${esc(loadoutSummary(loadout))}${pickMode !== 'solo' ? ' · 솔로 배틀로열에서만 적용됩니다' : ''}</em></div><button type="button" data-act="smith" ${assetState === 'loading' ? 'disabled' : ''}>${assetState === 'loading' ? `불러오는 중 ${Math.floor(assetPct * 100)}%` : '총기 조립 열기'}</button></div></section>
@@ -102,6 +109,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   setupEl.addEventListener('click', e => {
     const t = e.target as HTMLElement, perk = t.closest<HTMLElement>('[data-perk]'), mode = t.closest<HTMLElement>('[data-mode]'), lv = t.closest<HTMLElement>('[data-level]'), act = t.closest<HTMLElement>('[data-act]');
     if (perk) { const nw = buyPerk(wallet, perk.dataset.perk as (typeof PERK_IDS)[number]); if (nw) { wallet = nw; writePerks(wallet); paintSetup(); } return; }
+    const fillBtn = t.closest<HTMLElement>('[data-fill]'); if (fillBtn) { roomFill = Number(fillBtn.dataset.fill) || 0; paintSetup(); return; }
     if (mode) { pickMode = mode.dataset.mode as 'solo' | 'pvp' | 'room'; paintSetup(); } else if (lv) { level = lv.dataset.level as Difficulty; writeShooterCareer({ ...readShooterCareer(), level }); paintSetup(); }
     else if (act?.dataset.act === 'smith') openSmith();
     else if (act?.dataset.act === 'exit') exit(); else if (act?.dataset.act === 'start') { if (pickMode === 'solo') startSolo(); else openPvpLobby(pickMode === 'room'); }
@@ -118,7 +126,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     const p = m.players[my]; yaw = p.yaw; pitch = 0; countdown = 3.4; phase = 'countdown'; mapBase = null;
     view = new ShooterView(canvas, m, assets, prefs.quality); resize(); setupEl.hidden = true; hud.hidden = false; buildSlots(); say(touch ? '왼쪽 스틱으로 이동' : '화면을 클릭해 조작 시작', 2.4);
     if (!touch) lock(); audio.unlock();
-    if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__zz = { get match() { return match; }, get phase() { return phase; }, me, skip, view, go: () => { countdown = Math.min(countdown, 0.45); }, fire: (on: boolean) => { mouse.fire = on; }, ads: (on: boolean) => { mouse.ads = on; }, look: (y: number, p: number) => { yaw = y; pitch = p; } };
+    if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__zz = { get match() { return match; }, get phase() { return phase; }, me, skip, view, go: () => { countdown = Math.min(countdown, 0.45); }, advance: (sec: number) => { const m = match; if (!m) return; let now = performance.now(); for (let t = 0; t < sec && !m.over; t += 1 / 30) { if (room) syncRoom(1 / 30); m.step(1 / 30); now += 1000 / 30; const ev = m.drain(); onEvents(ev); if (room) roomTick(ev, now); } }, fire: (on: boolean) => { mouse.fire = on; }, ads: (on: boolean) => { mouse.ads = on; }, look: (y: number, p: number) => { yaw = y; pitch = p; } };
   }
   function startSolo(): void {
     audio.unlock(); pvp = null; const seed = (Math.random() * 2 ** 31) >>> 0;
@@ -128,7 +136,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 1대1 대전 ----------
   function openPvpLobby(rooms = false): void {
     if (!PVP_ENABLED) return;
-    void import('../net/lobby').then(({ openLobby }) => openLobby({ game: 'shooter', maxPlayers: rooms ? ROOM_MAX : 2, config: () => ({ seed: (Math.random() * 2 ** 31) >>> 0, mode: 'duel' }), onMatch: startPvp, onRoom: startRoom, onClose: () => undefined }))
+    void import('../net/lobby').then(({ openLobby }) => openLobby({ game: 'shooter', maxPlayers: rooms ? ROOM_MAX : 2, config: () => (rooms && roomFill ? { seed: (Math.random() * 2 ** 31) >>> 0, mode: 'br', fill: roomFill, level } : { seed: (Math.random() * 2 ** 31) >>> 0, mode: 'duel' }), onMatch: startPvp, onRoom: startRoom, onClose: () => undefined }))
       .catch(() => { setupEl.querySelector('.sz-note')!.textContent = '대전 화면을 불러오지 못했습니다. 네트워크를 확인해 주세요.'; });
   }
   function card(eyebrow: string, title: string, body = '', actions = '<button data-act="exit">메뉴로</button>', cls = ''): void {
@@ -147,6 +155,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
         pvp.opp.muzzle = 0.06; pvp.opp.kick = Math.min(1, pvp.opp.kick + 0.3); match.remoteShot(pvp.opp.id, sh.w, sh.ox, sh.oy, sh.oz, aims);
       },
       onHitAck: () => { /* 명중 표시는 내 쪽 판정으로 이미 보여 줬습니다 */ },
+      onNade: n => { if (match && pvp?.opp) match.addNade(pvp.opp.id, n.x, n.y, n.z, n.vx, n.vy, n.vz); },
       onPickup: id => { match?.removeLoot(id); },
       onDead: mt => { if (!pvp || !match || !pvp.opp) return; pvp.oppDeadMt = mt; if (pvp.opp.alive) match.kill(pvp.opp, me().id, 'rifle'); if (pvp.deadAt !== null) settleTie(); else void conclude(pvp.s.me.id, '상대를 쓰러뜨렸습니다'); },
       onGone: reason => { if (pvp && !pvp.done) void conclude(pvp.s.me.id, reason === 'never' ? '상대가 접속하지 않았습니다' : '상대와의 연결이 끊어졌습니다'); },
@@ -160,41 +169,126 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     pvp.opp = m.players[host ? 1 : 0]; begin(m, host ? 0 : 1);
   }
   // ---------- 멀티플레이 방(3인 이상) ----------
+  // AI 를 채운 방은 배틀로열 지도에서 비행기로 시작하고, 방장(명단의 첫 사람)이 AI·차량·차 내구도를 계산해 보냅니다(sync.ts).
   function startRoom(s: RoomSession): void {
     endPvp(); endRoom(); endMatch(); setupEl.hidden = true; hud.hidden = true; phase = 'loading';
     card('멀티플레이 방', `${s.players.length}명이 모이는 중…`, '<p class="sz-sub">모두 연결되면 바로 시작합니다.</p>', '<button data-act="exit">나가기</button>');
     const net: ShooterRoomNet = new ShooterRoomNet(s, {
       onStart: ids => beginRoom(ids),
-      onPose: (id, p) => { const r = roomRemote(id); if (r) r.target = p; },
+      onPose: (id, p) => { const r = roomRemote(id); if (r) { r.target = p; if (p.vs && match && p.veh !== undefined && p.veh >= 0) { const v = match.vehicles[p.veh]; if (v) room!.sync.vehicleState(v, p.vs[0], p.vs[1], p.vs[2], p.vs[3], r.p.id, true, performance.now()); } } },
       onShot: (id, sh) => {
         const r = roomRemote(id); if (!r || !match) return; const aims: Array<[number, number]> = [];
         for (let i = 0; i + 2 < sh.ends.length; i += 3) { const dx = sh.ends[i] - sh.ox, dy = sh.ends[i + 1] - sh.oy, dz = sh.ends[i + 2] - sh.oz; aims.push([Math.atan2(dz, dx), Math.atan2(dy, Math.hypot(dx, dz))]); }
         r.p.muzzle = 0.06; r.p.kick = Math.min(1, r.p.kick + 0.3); match.remoteShot(r.p.id, sh.w, sh.ox, sh.oy, sh.oz, aims);
       },
       onPickup: id => { match?.removeLoot(id); },
-      onDead: (id, _mt, killer) => { const r = roomRemote(id); if (r && match && r.p.alive) match.kill(r.p, killer, 'rifle'); },
-      onGone: id => { const r = roomRemote(id); if (r && match && r.p.alive) { match.kill(r.p, -1, 'rifle'); say(`${r.p.name} 님의 연결이 끊어졌습니다`, 2); } },
+      onDead: (id, _mt, killer, cause) => { const r = roomRemote(id); if (r && match && r.p.alive) { if (r.target) { r.p.x = r.target.x; r.p.z = r.target.z; } match.kill(r.p, killer, CAUSES[cause] ?? 'rifle'); } },
+      onGone: id => {
+        const r = roomRemote(id); if (!r || !match || !room) return;
+        if (r.p.alive) { match.kill(r.p, -1, 'zone'); say(`${r.p.name} 님의 연결이 끊어졌습니다`, 2); }
+        // 방장이 나가면 남은 사람 중 명단의 첫 사람이 AI 와 차량을 넘겨받습니다.
+        if (!match.authority && room.net.authority() === room.s.me.id) { match.takeAuthority(v => humanDriver(v)); say('방장이 나가 이제 내 브라우저가 AI를 계산합니다', 3); }
+        if (match.authority) for (const v of match.vehicles) if (v.remote && v.driver === r.p.id) reclaim(v);
+      },
       onAbort: () => { if (room && !room.done) { room.done = true; card('멀티플레이 방', '시작하지 못했습니다', '<p class="sz-sub">다른 참가자와 연결하지 못했습니다.</p>', '<button data-act="exit">메뉴로</button>'); } },
+      onData: (id, msg) => roomData(id, msg),
     });
-    room = { s, net, remotes: new Map(), done: false, seed: seedOf(s.room.config, s.room.id), mine: 0, shown: false };
+    room = { s, net, remotes: new Map(), done: false, seed: seedOf(s.room.config, s.room.id), mine: 0, shown: false, sync: null as unknown as WorldSync };
   }
   function roomRemote(id: string): { p: Player; target: Pose | null } | undefined { const i = room?.net.list.indexOf(id) ?? -1; return room?.remotes.get(i); }
+  /** 사람(다른 참가자)이 몰고 있는 차인지 */
+  function humanDriver(v: Vehicle): boolean { const d = match?.players[v.driver]; return !!d && !d.bot && d.remote && d.alive; }
+  /** 손님이 몰다 사라진 차를 방장이 넘겨받아 세웁니다. */
+  function reclaim(v: Vehicle): void { const m = match; if (!m || v.wreck) return; const d = m.players[v.driver]; if (d && d.veh === v.id) d.veh = -1; v.driver = -1; v.remote = false; v.moving = true; }
+  /** 방 설정에서 AI 채우기를 읽습니다: 0 이면 예전처럼 사람끼리 작은 지도. */
+  function roomFillOf(config: Record<string, unknown>, humans: number): number { const f = config.fill; return typeof f === 'number' && Number.isFinite(f) && f > 0 ? Math.max(humans, Math.min(BR_PLAYERS, Math.floor(f))) : 0; }
   function beginRoom(ids: string[]): void {
     if (!room || closed || match) return; const r = room, me0 = r.s.me.id, idx = ids.indexOf(me0); if (idx < 0) return;
-    const nick = new Map(r.s.players.map(p => [p.id, p.nickname] as const));
-    const m = new Match({ seed: r.seed, mode: 'duel', difficulty: 'normal', humans: ids.map(id => ({ name: nick.get(id) ?? '참가자', remote: id !== me0 })) });
+    const nick = new Map(r.s.players.map(p => [p.id, p.nickname] as const)), cfg = r.s.room.config, fill = roomFillOf(cfg, ids.length);
+    const diff = (DIFFICULTIES as string[]).includes(cfg.level as string) ? (cfg.level as Difficulty) : 'normal', authority = ids[0] === me0;
+    const humans = ids.map(id => ({ name: nick.get(id) ?? '참가자', remote: id !== me0 }));
+    const m = fill ? new Match({ seed: r.seed, mode: 'br', difficulty: diff, humans, fill, air: true, vehicles: true, bombs: true, authority, lootBase: (idx + 1) * 1_000_000 })
+      : new Match({ seed: r.seed, mode: 'duel', difficulty: 'normal', humans, lootBase: (idx + 1) * 1_000_000 });
     ids.forEach((id, i) => { if (id !== me0) r.remotes.set(i, { p: m.players[i], target: null }); });
-    r.mine = idx; begin(m, idx);
+    r.mine = idx; r.sync = new WorldSync(m); begin(m, idx);
   }
+  /** 동기화 메시지(sync.ts 형식) */
+  function roomData(id: string, msg: NetMsg): void {
+    const r = room, m = match; if (!r || !m) return; const from = roomRemote(id), host = id === r.net.authority(), now = performance.now(), my = me();
+    if (msg.t === 'w') { if (host && !m.authority) r.sync.apply(msg, now); }
+    else if (msg.t === 'bd') { if (host && !m.authority) r.sync.botDead(msg.i, msg.k, msg.c); }
+    else if (msg.t === 'la') { const l = parseLoot(msg); if (l) m.addLoot(l); }
+    else if (msg.t === 'nd') { const n = parseNade(msg), o = typeof msg.o === 'number' && Number.isInteger(msg.o) ? m.players[msg.o] : undefined; if (n && o?.remote) m.addNade(o.id, n.x, n.y, n.z, n.vx, n.vy, n.vz); }
+    else if (msg.t === 've') {
+      // 손님이 차에 타려고 함: 방장만 판정합니다.
+      const v = typeof msg.i === 'number' ? m.vehicles[msg.i] : undefined; if (!m.authority || !from || !v) return; const p = from.p;
+      const ok = !v.wreck && v.driver < 0 && p.alive && !p.air && Math.hypot(p.x - v.x, p.z - v.z) < 9;
+      if (ok) { m.enterVehicle(p, v); v.remote = true; r.sync.vehs.set(v.id, { x: v.x, z: v.z, yaw: v.yaw, speed: 0, at: now }); }
+      r.net.send({ t: ok ? 'vg' : 'vn', i: v.id, d: p.id });
+    }
+    else if (msg.t === 'vg' || msg.t === 'vn') {
+      const v = typeof msg.i === 'number' ? m.vehicles[msg.i] : undefined, d = typeof msg.d === 'number' ? m.players[msg.d] : undefined; if (!host || !v || !d || v.wreck) return;
+      if (msg.t === 'vn') { if (d === my) say('다른 사람이 먼저 탔습니다', 1.4); return; }
+      if (d === my) {
+        if (!my.alive || my.air || my.veh >= 0) { r.net.send({ t: 'vx', i: v.id, x: v.x, z: v.z, y: v.yaw, s: 0 }); return; }
+        r.sync.vehs.delete(v.id); v.remote = false; m.enterVehicle(my, v); // 이제 이 차는 내 브라우저가 굴립니다(탑승 소리·안내는 다음 프레임의 사건으로)
+      } else if (d.remote && !m.authority) { v.driver = d.id; d.veh = v.id; if (!v.moving) { v.moving = true; m.parkBox(v, false); } }
+    }
+    else if (msg.t === 'vx') {
+      // 손님이 내린(또는 쓰러진) 차: 방장이 받아 굴리고, 나머지는 운전자만 비웁니다.
+      const v = typeof msg.i === 'number' ? m.vehicles[msg.i] : undefined; if (!v || v.wreck || !from) return;
+      const x = Number(msg.x), z = Number(msg.z), y = Number(msg.y), sp = Number(msg.s); if (![x, z, y, sp].every(Number.isFinite) || Math.abs(x) > 1000 || Math.abs(z) > 1000) return;
+      if (m.authority) { if (v.remote) { r.sync.vehs.delete(v.id); v.x = x; v.z = z; v.yaw = y; v.speed = Math.max(-40, Math.min(40, sp)); reclaim(v); } }
+      else if (v.remote) { if (v.driver === from.p.id) { from.p.veh = -1; v.driver = -1; } r.sync.vehicleState(v, x, z, y, sp, -1, true, now); }
+    }
+    else if (msg.t === 'vd') { const v = typeof msg.i === 'number' ? m.vehicles[msg.i] : undefined, d = Number(msg.d); if (m.authority && v && from && Number.isFinite(d) && d > 0) m.hurtVehicle(v, Math.min(400, d), -1); }
+  }
+  /** 매 시뮬레이션 단계 전에: 다른 사람·AI·차를 받은 상태로 옮깁니다. */
   function syncRoom(dt: number): void {
-    if (!room) return; const k = Math.min(1, dt * 14);
+    if (!room || !match) return; const m = match;
     for (const { p: o, target: t } of room.remotes.values()) {
       if (!t || !o.alive) continue;
-      o.x += (t.x - o.x) * k; o.z += (t.z - o.z) * k; let dy = t.yaw - o.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); o.yaw += dy * k; o.pitch += (t.pitch - o.pitch) * k;
-      o.hp = t.hp; o.armor = t.armor; o.speed = t.speed; o.walk += t.speed * dt; o.ads = t.ads; o.crouch += ((t.crouch ? 1 : 0) - o.crouch) * Math.min(1, dt * 12); o.reload = t.reloading ? 1 : 0;
-      if (o.guns[0]?.id !== t.w) o.guns[0] = { id: t.w, mag: 1, reserve: 0, att: {} }; o.cur = 0;
+      const veh = t.veh ?? -1;
+      if (veh !== o.veh) {
+        const old = m.vehicles[o.veh]; if (old && old.driver === o.id) old.driver = -1;
+        const nu = m.vehicles[veh]; if (nu && !nu.wreck && (nu.driver < 0 || nu.driver === o.id) && nu.remote) { o.veh = veh; nu.driver = o.id; if (!nu.moving) { nu.moving = true; m.parkBox(nu, false); } } else o.veh = -1;
+      }
+      easePuppet(o, { x: t.x, z: t.z, yaw: t.yaw, pitch: t.pitch, speed: t.speed, air: t.air ?? 0, alt: t.alt ?? 0, hp: t.hp, w: t.w, ads: t.ads, crouch: !!t.crouch, reload: t.reloading }, dt);
+      o.armor = t.armor;
+    }
+    room.sync.step(dt);
+  }
+  /** 프레임마다 한 번: 방장은 세계 상태를 보내고, 손님은 놓친 차를 정리합니다. */
+  function roomTick(events: MatchEvent[], now: number): void {
+    const r = room, m = match; if (!r || !m || !r.net.started) return; const my = me();
+    const interest: Array<{ x: number; z: number }> = []; for (const { p } of r.remotes.values()) if (!r.net.isGone(r.net.list[p.id])) interest.push(p);
+    for (const e of events) {
+      if (e.t === 'loot') r.net.send(encodeLoot(e.loot));
+      else if (e.t === 'pickup') { const who = m.players[e.id]; if (who && who !== my && who.bot && m.authority) r.net.send({ t: 'pk', i: e.loot }); }
+      else if (e.t === 'nade' && e.stage === 'throw' && !e.remote && e.vx !== undefined) { const o = m.players[e.id]; if (o && !o.remote) r.net.send(nadeMsg({ x: e.x, y: e.y, z: e.z, vx: e.vx, vy: e.vy ?? 0, vz: e.vz ?? 0 }, o.id)); }
+      else if (e.t === 'kill') { const v = m.players[e.victim]; if (v?.bot && m.authority) r.net.send({ t: 'bd', i: v.id, k: e.attacker, c: Math.max(0, CAUSES.indexOf(e.weapon)) }); }
+      else if (e.t === 'vreq') r.net.send({ t: 've', i: e.id });
+      else if (e.t === 'vhurt') r.net.send({ t: 'vd', i: e.id, d: Math.round(e.dmg) });
+      else if (e.t === 'veh' && e.stage === 'exit' && !m.authority) {
+        // 내가 몰던 차에서 내림(또는 쓰러짐): 남은 움직임은 방장에게 넘깁니다.
+        const v = m.vehicles[e.id]; if (v && !v.remote && !v.wreck && v.driver < 0) { v.remote = true; r.net.send({ t: 'vx', i: v.id, x: Math.round(v.x * 100) / 100, z: Math.round(v.z * 100) / 100, y: Math.round(v.yaw * 100) / 100, s: Math.round(v.speed * 10) / 10 }); r.sync.vehs.set(v.id, { x: v.x, z: v.z, yaw: v.yaw, speed: v.speed, at: now }); }
+      }
+    }
+    if (m.authority) {
+      r.sync.collect(events, interest);
+      const w = r.sync.world(now, interest); if (w) r.net.send(w);
+      // 운전자가 3초 넘게 소식이 없으면 그 차는 방장이 넘겨받습니다.
+      for (const v of r.sync.staleVehicles(now, 3000)) if (v.remote) { r.sync.vehs.delete(v.id); reclaim(v); }
     }
   }
+  /** 방장 탭이 백그라운드로 가면 화면 프레임이 멈추므로 타이머로 경기를 계속 돌립니다(AI 가 멈추지 않게). */
+  let bgLast = 0;
+  const bgTimer = window.setInterval(() => {
+    const m = match; if (!document.hidden || !room || !m || !m.authority || closed || (phase !== 'play' && phase !== 'dead' && phase !== 'over')) { bgLast = performance.now(); return; }
+    const now = performance.now(), dt = Math.min(1.5, (now - (bgLast || now)) / 1000); bgLast = now; if (dt <= 0) return;
+    let left = dt; while (left > 1e-6) { const s = Math.min(1 / 30, left); left -= s; syncRoom(s); m.step(s); }
+    const ev = m.drain(); if (ev.length) onEvents(ev); roomTick(ev, now);
+  }, 250);
   function roomResult(): void {
     const r = room, m = match; if (!r || !m || closed) return; const p = me(), win = m.over && m.winner === p.id; if (document.pointerLockElement) document.exitPointerLock();
     if (m.over) r.done = true;
@@ -435,7 +529,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
         if (mine) { audio.play('kill'); hitKill = true; hitT = 0.55; const hm = q('#sz-hitmark'); hm.classList.remove('pop'); void hm.offsetWidth; hm.classList.add('pop'); say(`처치 · ${nameOf(e.victim)}`, 1.4) }
         if (e.victim === p.id) onMyDeath(e.attacker);
       } else if (e.t === 'pickup') {
-        if (e.id === p.id) { audio.play(e.kind === 'medkit' || e.kind === 'bandage' ? 'heal' : e.kind === 'armor' ? 'armor' : 'pickup'); say(e.kind === 'attach' && e.part ? `${PARTS[e.part].name} 장착` : e.kind === 'helmet' ? `${HELMET_NAMES[e.level ?? 1]} 착용` : e.kind === 'boost' ? '에너지 드링크 · 부스트' : e.kind === 'grenade' ? '수류탄 +2' : e.kind === 'weapon' ? `${WEAPONS[e.weapon!].name} 획득` : e.kind === 'bandage' ? `붕대 +${HEAL.bandage.pick}` : e.kind === 'medkit' ? '구급상자 +1' : e.kind === 'armor' ? `${ARMOR_NAMES[Math.max(1, Math.min(3, e.level || 2))]} 장착` : '탄약 +', 1.1); if (pvp && e.loot < m.map.loot.length) pvp.net.sendPickup(e.loot); else if (room && e.loot < m.map.loot.length) room.net.sendPickup(e.loot); }
+        if (e.id === p.id) { audio.play(e.kind === 'medkit' || e.kind === 'bandage' ? 'heal' : e.kind === 'armor' ? 'armor' : 'pickup'); say(e.kind === 'attach' && e.part ? `${PARTS[e.part].name} 장착` : e.kind === 'helmet' ? `${HELMET_NAMES[e.level ?? 1]} 착용` : e.kind === 'boost' ? '에너지 드링크 · 부스트' : e.kind === 'grenade' ? '수류탄 +2' : e.kind === 'weapon' ? `${WEAPONS[e.weapon!].name} 획득` : e.kind === 'bandage' ? `붕대 +${HEAL.bandage.pick}` : e.kind === 'medkit' ? '구급상자 +1' : e.kind === 'armor' ? `${ARMOR_NAMES[Math.max(1, Math.min(3, e.level || 2))]} 장착` : '탄약 +', 1.1); if (pvp && e.loot < m.map.loot.length) pvp.net.sendPickup(e.loot); else if (room) room.net.sendPickup(e.loot); }
       } else if (e.t === 'heal') { if (e.id === p.id) { if (e.stage === 'done') { audio.play('heal'); say(`${e.kind === 'kit' ? '구급상자' : '붕대'} 사용 완료`, 1.2); } else if (e.stage === 'cancel') say('치료 중단', 1); } }
       else if (e.t === 'drop') { if (e.stage === 'call') { say('보급 투하! 지도의 노란 표시를 확인하세요', 3); audio.play('armor'); } else say('보급 상자 착륙 · 최상급 전리품', 3); }
       else if (e.t === 'jump') { if (e.id === p.id) { audio.play('go'); say('강하 시작', 1.4); } }
@@ -457,7 +551,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   function onMyDeath(by: number): void {
     phase = 'dead'; deadTimer = 0; spectateId = by >= 0 && match!.players[by]?.alive ? by : -1; mouse.fire = mouse.ads = false; tc.fire = false; audio.play('lose');
     if (pvp) { pvp.deadAt = match!.t; pvp.net.sendDead(match!.t); settleTie(); }
-    else if (room) { room.net.sendDead(match!.t, by); window.setTimeout(() => { if (room && !room.shown && !match?.over) { room.shown = true; roomResult(); } }, 1600); }
+    else if (room) { room.net.sendDead(match!.t, by, Math.max(0, CAUSES.indexOf(me().killedWeapon ?? 'zone'))); window.setTimeout(() => { if (room && !room.shown && !match?.over) { room.shown = true; roomResult(); } }, 1600); }
   }
   function onOver(winner: number): void {
     over = true; if (pvp) return;
@@ -537,8 +631,10 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       // 고정 간격(1/60)으로 진행: 프레임이 느려도 시뮬레이션 속도는 같습니다
       let left = dt; while (left > 1e-6) { const s = Math.min(1 / 60, left); left -= s; if (pvp && pvp.opp) syncRemote(s); else if (room) syncRoom(s); m.step(s); }
       if (pvp?.net.started && phase === 'play') pvp.net.sendPose({ x: p.x, z: p.z, yaw: p.yaw, pitch: p.pitch, hp: p.hp, armor: p.armor, w: p.guns[p.cur]?.id ?? 'pistol', speed: p.speed, ads: p.ads, reloading: p.reload > 0, crouch: p.crouch > 0.5 }, now);
-      if (room?.net.started && phase === 'play') room.net.sendPose({ x: p.x, z: p.z, yaw: p.yaw, pitch: p.pitch, hp: p.hp, armor: p.armor, w: p.guns[p.cur]?.id ?? 'pistol', speed: p.speed, ads: p.ads, reloading: p.reload > 0, crouch: p.crouch > 0.5 }, now);
+      if (room?.net.started && phase === 'play') { const v = p.veh >= 0 ? m.vehicles[p.veh] : undefined; room.net.sendPose({ x: p.x, z: p.z, yaw: p.yaw, pitch: p.pitch, hp: p.hp, armor: p.armor, w: p.guns[p.cur]?.id ?? 'pistol', speed: p.speed, ads: p.ads, reloading: p.reload > 0, crouch: p.crouch > 0.5, air: p.air, alt: p.alt, veh: p.veh, vs: v && !v.remote ? [v.x, v.z, v.yaw, v.speed] : undefined }, now); }
       const ev = m.drain(); if (ev.length) { view.handle(ev, p); onEvents(ev); }
+      if (room) roomTick(ev, now);
+      if (pvp?.net.started) for (const e of ev) if (e.t === 'nade' && e.stage === 'throw' && e.id === p.id && !e.remote && e.vx !== undefined) pvp.net.sendNade({ x: e.x, y: e.y, z: e.z, vx: e.vx, vy: e.vy ?? 0, vz: e.vz ?? 0 });
     }
     if (phase === 'dead') {
       deadTimer += dt;
@@ -561,7 +657,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   window.addEventListener('resize', resize);
 
   function exit(): void {
-    if (closed) return; closed = true; closeSmith?.(); cancelAnimationFrame(raf); leavePvp(); leaveRoom(); if (document.pointerLockElement) document.exitPointerLock(); loading?.close();
+    if (closed) return; closed = true; closeSmith?.(); window.clearInterval(bgTimer); cancelAnimationFrame(raf); leavePvp(); leaveRoom(); if (document.pointerLockElement) document.exitPointerLock(); loading?.close();
     for (const [t, f] of [['mousemove', onMove], ['mousedown', onDown], ['mouseup', onUp], ['keydown', onKey], ['keyup', onKey], ['wheel', onWheel], ['resize', resize], ['blur', blur]] as const) window.removeEventListener(t, f as EventListener);
     document.removeEventListener('pointerlockchange', onLock); endMatch(); audio.dispose(); root.remove(); onExit();
   }

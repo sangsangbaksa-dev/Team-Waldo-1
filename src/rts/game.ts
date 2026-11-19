@@ -160,11 +160,16 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     buttons = buildButtons(); const el = $('#rt-cmd');
     const key = buttons.map(b => `${b.label}|${b.sub}|${b.enabled}|${b.active}`).join(';') + (touch ? `|${boxMode}` : ''); if (key === cmdKey) return; cmdKey = key;
     el.innerHTML = buttons.map((b, i) => `<button type="button" data-i="${i}" class="${b.active ? 'on' : ''}" ${b.enabled === false ? 'aria-disabled="true"' : ''} title="${esc(b.hint ?? '')}"><b>${esc(b.label)}</b>${b.sub ? `<small>${esc(b.sub)}</small>` : ''}<kbd>${b.key === 'ESCAPE' ? 'Esc' : esc(b.key)}</kbd></button>`).join('') +
-      (touch ? `<button type="button" data-box class="${boxMode ? 'on' : ''}"><b>범위 선택</b><small>${boxMode ? '켜짐' : '꺼짐'}</small></button>` : '');
+      (touch ? `<button type="button" data-box class="${boxMode ? 'on' : ''}"><b>범위 선택</b><small>${boxMode ? '켜짐' : '꺼짐'}</small></button><button type="button" data-quick="army"><b>전체 병력</b><small>일꾼 제외</small></button><button type="button" data-quick="idle"><b>놀고 있는 일꾼</b></button>` : '');
   }
   $('#rt-cmd').addEventListener('click', e => {
     const t = (e.target as HTMLElement).closest<HTMLElement>('button'); if (!t) return;
     if (t.dataset.box !== undefined) { boxMode = !boxMode; cmdKey = ''; return; }
+    if (t.dataset.quick && sim) {
+      if (t.dataset.quick === 'army') { const a = sim.units.filter(u => u.owner === me && u.kind !== 'worker' && u.hp > 0); if (a.length) { setSel(a.map(u => u.id)); view?.lookAt(a[0].x, a[0].y); } else toast('병력이 없습니다'); }
+      else { const w = sim.units.filter(u => u.owner === me && u.kind === 'worker' && u.o.t === 'idle'); if (w.length) { const i = Math.max(0, w.findIndex(u => selected.has(u.id)) + 1) % w.length; setSel([w[i].id]); view?.lookAt(w[i].x, w[i].y); } else toast('놀고 있는 일꾼이 없습니다'); }
+      cmdKey = ''; return;
+    }
     const b = buttons[Number(t.dataset.i)]; if (!b) return; if (b.enabled === false) { toast(b.hint ?? '지금은 할 수 없습니다', true); return; } b.on(); cmdKey = ''; selKey = '';
   });
 

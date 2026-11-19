@@ -5,6 +5,8 @@ import { followSnap, type RemoteLink } from './netcar';
 import { type Track } from './track';
 import { mapById } from './maps';
 import { GhostRecorder, type Ghost } from './ghost';
+import { createDrift, flushDrift, nitroForChain, stepDrift, type DriftScore } from './driftscore';
+import { CELL_AMOUNT, OIL_SLOW, OIL_STUN, SHIELD_SECONDS, SURGE_SECONDS, collectCrate, createItems, dropOil, tickItems, touchOil, type ItemKind, type ItemState } from './items';
 
 export interface Racer {
   id: number; name: string; color: string; player: boolean; car: CarState; ai: AiProfile; params: CarParams; model: CarDef['model']; accent: string;
@@ -13,16 +15,26 @@ export interface Racer {
   link?: RemoteLink;
   /** 멀티플레이 방에서 이 차량을 모는 사람의 계정 id */
   peer?: string;
+  /** 오일을 밟아 휘청거리는 남은 시간(초). 이 동안 최고속이 줄어듭니다. */
+  stun?: number;
 }
 export type RaceEvent =
   | { type: 'count'; n: number } | { type: 'go' } | { type: 'launch' }
   | { type: 'lap'; lap: number; time: number; best: boolean } | { type: 'finish'; place: number; time: number }
-  | { type: 'hit'; power: number } | { type: 'driftBoost'; secs: number } | { type: 'pad' } | { type: 'bump'; power: number };
+  | { type: 'hit'; power: number } | { type: 'driftBoost'; secs: number } | { type: 'pad' } | { type: 'bump'; power: number }
+  | { type: 'driftBank'; points: number; mult: number } | { type: 'driftLost'; points: number }
+  | { type: 'pickup'; item: ItemKind } | { type: 'item'; item: ItemKind } | { type: 'oilHit'; name: string } | { type: 'shieldBlock' };
 export interface RaceState {
   track: Track; laps: number; clock: number; phase: 'countdown' | 'racing' | 'done'; racers: Racer[]; player: Racer;
   thrDownAt: number | null; thrPrev: boolean; bestLap: number; lastCount: number; level: LevelDef;
   /** 타임어택: 혼자 달리며 ghost(내 최고 기록)와 겨룹니다. rec 는 이번 주행 기록 */
   trial?: boolean; ghost?: Ghost | null; rec?: GhostRecorder;
+  /** 드리프트 점수(모든 모드) */
+  drift: DriftScore;
+  /** 코스 위 아이템(솔로 레이스만) */
+  items?: ItemState;
+  /** 아이템 버튼을 이전 스텝에도 누르고 있었는지(눌렀을 때 한 번만 쓰도록) */
+  itemPrev?: boolean;
 }
 export const COUNTDOWN = 3;
 /** 라이벌 세 명: 이름, 고정 차선, 자기 차량 최고속 대비 목표 속도 비율, 코너 한계. 1단계 값은 이전 버전과 같습니다. */
@@ -36,7 +48,7 @@ const SLOTS: Array<[number, number]> = [[-3, -5], [-3, 5], [-8, -5], [-8, 5], [-
 export interface PvpOptions { host: boolean; opponent: string; opponentCar: string }
 /** 멀티플레이 방 설정: 내 출발 칸(0~5)과 나를 뺀 참가자(입장 순서). 모두 네트워크 스냅샷으로 움직입니다. */
 export interface MultiOptions { slot: number; players: Array<{ id: string; nickname: string; car: string }> }
-export interface RaceOptions { level?: number; car?: string; pvp?: PvpOptions; multi?: MultiOptions; /** 코스 번호(날씨에 따른 그립 보정) */ map?: string; /** 차고 업그레이드(솔로 레이스의 내 차량에만 적용) */ upgrades?: Partial<StatPoints>; /** 도장(스킨) id — 내 차량의 색만 바꿉니다 */ skin?: string; /** 타임어택(혼자 달리기) */ trial?: boolean; ghost?: Ghost | null }
+export interface RaceOptions { level?: number; car?: string; pvp?: PvpOptions; multi?: MultiOptions; /** 코스 번호(날씨에 따른 그립 보정) */ map?: string; /** 차고 업그레이드(솔로 레이스의 내 차량에만 적용) */ upgrades?: Partial<StatPoints>; /** 도장(스킨) id — 내 차량의 색만 바꿉니다 */ skin?: string; /** 타임어택(혼자 달리기) */ trial?: boolean; ghost?: Ghost | null; /** 아이템 상자(솔로 레이스만) */ items?: boolean; /** 아이템 뽑기 시드 */ seed?: number }
 /** 빗길에서 줄어드는 그립 배율 */
 export const wetGrip = (rain: number | undefined): number => 1 - 0.22 * (rain ?? 0);
 
@@ -49,23 +61,23 @@ export function createRace(track: Track, laps = 3, bestLap = Infinity, opts: Rac
     const them = carById(opts.pvp.opponentCar), ai: AiProfile = { lane: 0, top: 58, grip: 30, skill: 1 };
     const me = mk(0, 'YOU', mine, true, SLOTS[opts.pvp.host ? 0 : 1], ai), rival = mk(1, opts.pvp.opponent, them, false, SLOTS[opts.pvp.host ? 1 : 0], ai);
     rival.link = { snap: null, at: 0 };
-    return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [me, rival], player: me, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level };
+    return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [me, rival], player: me, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift() };
   }
   if (opts.multi) {
     const ai: AiProfile = { lane: 0, top: 58, grip: 30, skill: 1 }, me = mk(0, 'YOU', mine, true, SLOTS[opts.multi.slot] ?? SLOTS[0], ai);
     const free = SLOTS.map((_, i) => i).filter(i => i !== opts.multi!.slot);
     const others = opts.multi.players.map((pl, i) => { const r = mk(i + 1, pl.nickname, carById(pl.car), false, SLOTS[free[i]] ?? SLOTS[0], ai); r.link = { snap: null, at: 0 }; r.peer = pl.id; return r; });
-    return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [me, ...others], player: me, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level };
+    return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [me, ...others], player: me, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift() };
   }
   const player = mk(0, 'YOU', mine, true, SLOTS[2], { lane: 0, top: 58, grip: 30, skill: 1 }, opts.upgrades);
   if (opts.skin) Object.assign(player, paintOf(mine, opts.skin));
-  if (opts.trial) return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [player], player, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, trial: true, ghost: opts.ghost ?? null, rec: new GhostRecorder() };
+  if (opts.trial) return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [player], player, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift(), trial: true, ghost: opts.ghost ?? null, rec: new GhostRecorder() };
   const rivals = FIELD.map((f, i) => {
     const def = CARS[(at + 1 + i) % CARS.length], p = carParams(def), handling = p.grip * p.turn;
     const ai: AiProfile = { lane: f.lane, top: p.top * f.frac * level.topMul, grip: f.grip * handling * handling * level.gripMul, skill: 1, line: level.line, nitro: level.nitro };
     return mk(i + 1, f.name, def, false, [SLOTS[0], SLOTS[1], SLOTS[3]][i], ai);
   });
-  return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [player, ...rivals], player, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level };
+  return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [player, ...rivals], player, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift(), items: opts.items ? createItems(track, opts.seed ?? 1) : undefined };
 }
 
 const score = (r: Racer): number => (r.finishTime !== null ? 1e9 - r.finishTime : r.car.total);
@@ -100,6 +112,15 @@ function updateDraft(r: RaceState, dt: number): void {
 
 const IDLE: CarInput = { throttle: 0, brake: 0, steer: 0, drift: false, nitro: false };
 
+/** 들고 있는 아이템을 씁니다. */
+function useItem(r: RaceState, it: ItemState, ev: RaceEvent[]): void {
+  const item = it.held, c = r.player.car; if (!item) return; it.held = null; ev.push({ type: 'item', item });
+  if (item === 'cell') c.nitro = Math.min(1, c.nitro + CELL_AMOUNT);
+  else if (item === 'surge') c.boostT = Math.max(c.boostT, SURGE_SECONDS);
+  else if (item === 'shield') it.shield = SHIELD_SECONDS;
+  else dropOil(it, c);
+}
+
 export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): RaceEvent[] {
   const ev: RaceEvent[] = [], t = r.track;
   if (r.phase !== 'done') r.clock += dt;
@@ -115,8 +136,14 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
     }
   }
   r.thrPrev = pressed;
-  const racing = r.phase !== 'countdown';
+  const racing = r.phase !== 'countdown', items = r.items;
   if (racing) updateDraft(r, dt);
+  if (items && racing) {
+    tickItems(items, dt);
+    if (input.item && !r.itemPrev && r.player.finishTime === null) useItem(r, items, ev);
+    const got = collectCrate(items, r.player.car, placeOf(r), r.racers.length); if (got) ev.push({ type: 'pickup', item: got });
+  }
+  r.itemPrev = !!input.item;
   for (const k of r.racers) {
     if (k.link) {
       followSnap(k.car, k.link, now, dt);
@@ -127,13 +154,25 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
     if (racing) {
       if (k.player && k.finishTime === null) inp = input;
       else {
-        const gap = k.player ? 0 : (k.car.total - r.player.car.total) * t.ds, band = k.player ? 1 : rivalBand(r.level, gap);
+        const gap = k.player ? 0 : (k.car.total - r.player.car.total) * t.ds, band = k.player ? 1 : rivalBand(r.level, gap) * ((k.stun ?? 0) > 0 ? OIL_SLOW : 1);
         inp = aiInput(k.car, t, { ...k.ai, top: k.ai.top * band, grip: k.ai.grip * band * band });
       }
     }
+    if (items && !k.player && touchOil(items, k.id, k.car)) {
+      k.stun = OIL_STUN; for (const key of ['vx', 'vz', 'vf', 'vl'] as const) k.car[key] *= 0.6;
+      ev.push({ type: 'oilHit', name: k.name });
+    }
+    const wasDrifting = k.car.drifting, wasDriftT = k.car.driftT, shielded = k.player && !!items && items.shield > 0;
     k.lastEv = stepCar(k.car, inp, dt, t, k.params);
+    if (!k.player && k.stun) k.stun = Math.max(0, k.stun - dt);
     if (k.player) {
-      if (k.lastEv.hit > 0) ev.push({ type: 'hit', power: k.lastEv.hit });
+      if (k.lastEv.hit > 0 && shielded) { k.car.drifting = wasDrifting; k.car.driftT = wasDriftT; ev.push({ type: 'shieldBlock' }); }
+      else if (k.lastEv.hit > 0) ev.push({ type: 'hit', power: k.lastEv.hit });
+      if (racing) {
+        const de = stepDrift(r.drift, k.car, dt, k.lastEv.hit > 0 && !shielded);
+        if (de?.type === 'bank') { k.car.nitro = Math.min(1, k.car.nitro + nitroForChain(de.points)); ev.push({ type: 'driftBank', points: de.points, mult: de.mult }); }
+        else if (de?.type === 'lost') ev.push({ type: 'driftLost', points: de.points });
+      }
       if (k.lastEv.driftBoost > 0) ev.push({ type: 'driftBoost', secs: k.lastEv.driftBoost });
       if (k.lastEv.pad) ev.push({ type: 'pad' });
     }
@@ -141,10 +180,12 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
   // 차량 간 충돌(차체 길이에 맞춘 캡슐). 밀린 뒤에는 다시 도로 안으로 붙입니다.
   for (let i = 0; i < r.racers.length; i++) for (let j = i + 1; j < r.racers.length; j++) {
     if (r.racers[i].link || r.racers[j].link) continue; // 상대 차량은 겹쳐 달립니다(충돌 동기화 없음)
+    const mine = i === 0 || j === 0, me = r.racers[0].car, other = r.racers[i === 0 ? j : i], shield = mine && !!items && items.shield > 0, keep = shield ? { vx: me.vx, vz: me.vz, vf: me.vf, vl: me.vl } : null;
     const rel = separateCars(r.racers[i].car, r.racers[j].car);
-    if ((i === 0 || j === 0) && rel > 3) ev.push({ type: 'bump', power: rel });
+    if (keep) { Object.assign(me, keep); if (rel > 1) other.stun = Math.max(other.stun ?? 0, 0.8); }
+    if (mine && rel > 3) ev.push(shield ? { type: 'shieldBlock' } : { type: 'bump', power: rel });
   }
-  for (const k of r.racers) if (!k.link) { const hit = stayOnTrack(k.car, t, dt, false); if (k.player && hit > 0) ev.push({ type: 'hit', power: hit }); }
+  for (const k of r.racers) if (!k.link) { const hit = stayOnTrack(k.car, t, dt, false); if (k.player && hit > 0 && !(items && items.shield > 0)) ev.push({ type: 'hit', power: hit }); }
   // 랩·결승
   if (r.rec && r.phase === 'racing') r.rec.tick(r.clock, r.player.car);
   for (const k of r.racers) {
@@ -156,7 +197,7 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
     }
     if (k.lapTimes.length >= r.laps) {
       k.finishTime = r.clock;
-      if (k.player) { r.phase = 'done'; ev.push({ type: 'finish', place: standings(r).indexOf(k) + 1, time: r.clock }); }
+      if (k.player) { const fl = flushDrift(r.drift); if (fl?.type === 'bank') ev.push({ type: 'driftBank', points: fl.points, mult: fl.mult }); r.phase = 'done'; ev.push({ type: 'finish', place: standings(r).indexOf(k) + 1, time: r.clock }); }
     }
   }
   return ev;

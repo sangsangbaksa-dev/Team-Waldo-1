@@ -1,8 +1,9 @@
 // 개발·테스트 전용 로컬 백엔드(`?pvp=local`). 같은 브라우저의 탭끼리 localStorage/BroadcastChannel 로 매칭·동기화해서
 // 네트워크 없이 두 탭으로 대전 흐름을 확인할 수 있습니다. 배포 빌드에는 포함되지 않습니다.
+import { CHAT_REPORT, CHAT_RULES, cleanChat, isChatKey, judgeChat, type ChatMessage } from './chat';
 import type { Account, Backend, Channel, GameKind, MatchRow, NetMsg, RankRow, Rating, RoomInfo, RoomListItem, RoomRow } from './types';
 
-interface Db { users: Record<string, { id: string; email: string; password: string; nickname: string }>; matches: Record<string, MatchRow & { claims: Record<string, string>; claimAt: Record<string, number>; created: number }>; ratings: Record<string, Rating & { user: string; game: GameKind }>; rooms?: Record<string, RoomRow & { members: Array<{ user_id: string; ready: boolean }>; created: number }> }
+interface Db { users: Record<string, { id: string; email: string; password: string; nickname: string }>; matches: Record<string, MatchRow & { claims: Record<string, string>; claimAt: Record<string, number>; created: number }>; ratings: Record<string, Rating & { user: string; game: GameKind }>; rooms?: Record<string, RoomRow & { members: Array<{ user_id: string; ready: boolean }>; created: number }>; chat?: { seq: number; msgs: ChatMessage[]; mutes: Record<string, number>; reports: Array<{ id: number; reporter: string; target: string; at: number }> } }
 const KEY = 'waldo.local.pvp', ME = 'waldo.local.pvp.me';
 const load = (): Db => { try { return JSON.parse(localStorage.getItem(KEY) ?? '') as Db; } catch { return { users: {}, matches: {}, ratings: {} }; } };
 const save = (d: Db): void => localStorage.setItem(KEY, JSON.stringify(d));
@@ -35,6 +36,15 @@ export function createLocalBackend(): Backend {
       r.members = r.members.filter(m => m.user_id !== user);
       if (r.host_id === user) { const nxt = r.members[0]; if (!nxt) r.status = 'closed'; else { r.host_id = nxt.user_id; nxt.ready = true; } }
     }
+  };
+
+  const chatOf = (d: Db): NonNullable<Db['chat']> => (d.chat ??= { seq: 0, msgs: [], mutes: {}, reports: [] });
+  /** 서버의 pvp_chat_can_read 와 같은 규칙: 전체·게임 로비는 누구나, 방·매치는 그 사람들만 */
+  const canRead = (d: Db, channel: string): boolean => {
+    if (channel === 'lobby' || channel.startsWith('g:')) return true;
+    const a = me(); if (!a) return false; const id = channel.slice(2);
+    if (channel.startsWith('r:')) return !!roomsOf(d)[id]?.members.some(m => m.user_id === a.id);
+    const m = d.matches[id]; return !!m && (m.host_id === a.id || m.guest_id === a.id);
   };
 
   return {
@@ -116,6 +126,33 @@ export function createLocalBackend(): Backend {
     open(matchId, onMessage): Channel {
       const bc = new BroadcastChannel(`waldo-pvp-${matchId}`); bc.onmessage = e => onMessage(e.data as NetMsg);
       return { ready: Promise.resolve(), send: msg => bc.postMessage(msg), close: () => bc.close() };
+    },
+    async chatHistory(channel, limit) { return chatOf(load()).msgs.filter(m => m.channel === channel && canRead(load(), channel)).slice(-limit); },
+    async chatSend(channel, raw) {
+      const a = need(), d = load(), c = chatOf(d);
+      if (!isChatKey(channel) || !canRead(d, channel)) throw new Error('chat_denied');
+      const body = cleanChat(raw), now = Date.now();
+      const mine = c.msgs.filter(m => m.user_id === a.id).slice(-CHAT_RULES.windowMax).map(m => ({ body: m.body, at: Date.parse(m.created_at) }));
+      const verdict = judgeChat(body, mine, now, c.mutes[a.id] ?? 0);
+      if (verdict === 'mute') { c.mutes[a.id] = now + CHAT_RULES.muteMs; save(d); throw new Error('chat_muted'); }
+      if (verdict) throw new Error(verdict);
+      const m: ChatMessage = { id: ++c.seq, channel, user_id: a.id, nickname: a.nickname, body, created_at: new Date(now).toISOString() };
+      c.msgs.push(m); c.msgs = c.msgs.slice(-500); save(d);
+      if (typeof BroadcastChannel !== 'undefined') { const bc = new BroadcastChannel('waldo-chat'); bc.postMessage(m); bc.close(); }
+      return m;
+    },
+    async chatReport(id) {
+      const a = need(), d = load(), c = chatOf(d), m = c.msgs.find(x => x.id === id);
+      if (!m || !canRead(d, m.channel)) throw new Error('chat_denied'); if (m.user_id === a.id) throw new Error('chat_own');
+      const now = Date.now(); if (!c.reports.some(r => r.id === id && r.reporter === a.id)) c.reports.push({ id, reporter: a.id, target: m.user_id, at: now });
+      const who = new Set(c.reports.filter(r => r.target === m.user_id && now - r.at < CHAT_REPORT.windowMin * 60000).map(r => r.reporter));
+      if (who.size >= CHAT_REPORT.reporters) c.mutes[m.user_id] = Math.max(c.mutes[m.user_id] ?? 0, now + CHAT_REPORT.muteMin * 60000);
+      save(d);
+    },
+    chatWatch(channel, onMessage) {
+      if (typeof BroadcastChannel === 'undefined') return { ready: Promise.resolve(), close: () => undefined };
+      const bc = new BroadcastChannel('waldo-chat'); bc.onmessage = e => { const m = e.data as ChatMessage; if (m.channel === channel && canRead(load(), channel)) onMessage(m); };
+      return { ready: Promise.resolve(), close: () => bc.close() };
     },
   };
 }

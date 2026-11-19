@@ -68,7 +68,7 @@ export class CityView {
   private wetU = { value: 0 };
   private signMats = new Map<string, THREE.MeshBasicMaterial>();
   private beacons = new Map<string, { group: THREE.Group; ring: THREE.Mesh; beam: THREE.Mesh; lot: Lot; open: boolean }>();
-  private stage = -1; private time = 0; private spotViews = new Map<string, SpotView>();
+  private stage = -1; private time = 0; private targetId: string | null = null; private spotViews = new Map<string, SpotView>();
   private lampMesh!: THREE.InstancedMesh; private lampGlow!: THREE.InstancedMesh; private poolMesh!: THREE.InstancedMesh;
   private trunkMesh!: THREE.InstancedMesh; private crownMesh!: THREE.InstancedMesh;
   private tmp = new THREE.Object3D();
@@ -198,11 +198,11 @@ export class CityView {
     // 먼 도심 고층 군(단계가 오르면 높아짐)
     const data: Array<{ x: number; z: number; w: number; d: number; h: number; k: number }> = [];
     for (let k = 0; k < 140; k++) {
-      const a = hash01(k, 11) * Math.PI * 2, r = WORLD_HALF + 60 + hash01(k, 12) * 360; data.push({ x: Math.cos(a) * r, z: Math.sin(a) * r, w: 18 + hash01(k, 13) * 30, d: 18 + hash01(k, 14) * 30, h: 40 + hash01(k, 15) * 150 * (1 - (r - WORLD_HALF) / 520), k });
+      const a = hash01(k, 11) * Math.PI * 2, r = WORLD_HALF + 60 + hash01(k, 12) * 360; data.push({ x: Math.cos(a) * r, z: Math.sin(a) * r, w: 14 + hash01(k, 13) * 22, d: 14 + hash01(k, 14) * 22, h: 40 + hash01(k, 15) * 150 * (1 - (r - WORLD_HALF) / 520), k });
     }
     this.skylineData = data;
-    const t = this.facade.office.map!.clone(); t.repeat.set(2, 5); t.needsUpdate = true;
-    const em = this.facade.office.emissiveMap!.clone(); em.repeat.set(2, 5); em.needsUpdate = true;
+    const t = this.facade.office.map!.clone(); t.repeat.set(5, 9); t.needsUpdate = true;
+    const em = this.facade.office.emissiveMap!.clone(); em.repeat.set(5, 9); em.needsUpdate = true;
     const mat = new THREE.MeshStandardMaterial({ map: t, emissiveMap: em, emissive: 0xffffff, emissiveIntensity: 0.05, roughness: 0.8, color: 0xb8c4d2 }); this.skylineMat = mat;
     this.skyline = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), mat, data.length); this.group.add(this.skyline);
   }
@@ -237,17 +237,20 @@ export class CityView {
     for (const [id, b] of this.beacons) {
       const view = this.spotViews.get(id), unlocked = blockUnlocked(b.lot.block, this.stage);
       b.open = !!view && !view.locked; b.group.visible = unlocked && (view ? !OPEN_HIDE.has(view.kind) || true : true);
-      const col = view ? spotColor(view) : '#7a8088';
+      const col = id === this.targetId ? '#ffffff' : view ? spotColor(view) : '#7a8088';
       for (const m of [b.ring, b.beam]) (m.material as THREE.MeshBasicMaterial).color.set(col);
     }
   }
+  /** 배달 목적지 같은 강조 표지(흰색, 더 밝게). */
+  setTarget(id: string | null): void { if (id !== this.targetId) { this.targetId = id; this.recolorBeacons(); } }
+  blockOpen(i: number, j: number): boolean { const b = this.layout.blocks.find(x => x.i === i && x.j === j); return !!b && blockUnlocked(b, this.stage); }
   spotView(id: string): SpotView | undefined { return this.spotViews.get(id); }
   /** 문 앞 표지 위치(없으면 null). */
   doorOf(id: string): { x: number; z: number; fx: number; fz: number } | null { const l = this.layout.spotLots.get(id); return l ? { x: l.doorX, z: l.doorZ, fx: l.fx, fz: l.fz } : null; }
   setNight(n: number): void {
-    const e = 0.04 + n * 1.5;
+    const e = 0.04 + n * 0.85;
     for (const m of Object.values(this.facade)) m.emissiveIntensity = e;
-    this.skylineMat.emissiveIntensity = 0.04 + n * 1.2;
+    this.skylineMat.emissiveIntensity = 0.04 + n * 0.8;
     (this.lampGlow.material as THREE.MeshBasicMaterial).color.setScalar(0.25 + n * 1.2);
     (this.poolMesh.material as THREE.MeshBasicMaterial).opacity = n * 0.85;
     (this.hills.material as THREE.MeshBasicMaterial).color.setHSL(0.6, 0.3, lerp(0.14, 0.05, n));
@@ -268,7 +271,7 @@ export class CityView {
       if (!b.group.visible) continue;
       const d = Math.hypot(player.x - b.lot.doorX, player.z - b.lot.doorZ), near = THREE.MathUtils.clamp(1 - (d - 4) / 40, 0.25, 1), pulse = 0.85 + Math.sin(this.time * 3 + b.lot.id) * 0.15;
       (b.ring.material as THREE.MeshBasicMaterial).opacity = (b.open ? 0.95 : 0.45) * pulse; b.ring.scale.setScalar(1 + Math.sin(this.time * 2 + b.lot.id) * 0.06);
-      (b.beam.material as THREE.MeshBasicMaterial).opacity = (b.open ? 0.5 : 0.2) * near * (d < 5 ? 0.45 : 1);
+      (b.beam.material as THREE.MeshBasicMaterial).opacity = (b.open ? 0.5 : 0.2) * near * (d < 5 ? 0.45 : 1) * (b.lot.spot!.id === this.targetId ? 1.8 : 1); { const sc = b.lot.spot!.id === this.targetId ? 2.6 : 1; b.beam.scale.y = sc; b.beam.position.y = 5.5 * sc; }
     }
     if (this.globe) { this.globe.rotation.y += dt * 0.5; this.globe.children[1].rotation.x += dt * 0.7; }
   }

@@ -1,0 +1,167 @@
+/* TYCOON (HUSTLE) — HUD·패널·제목 화면. 어두운 유리 질감 + 금색 강조. */
+.ty-root { --gold: #ffcf5a; --ink: #e9eef6; --mute: #9aa6b6; --bg: rgba(14, 18, 26, .78); --line: rgba(255, 255, 255, .12); --good: #5be3a0; --bad: #ff7468;
+  position: fixed; inset: 0; z-index: 30; background: #0b0f16; color: var(--ink); font: 500 14px/1.45 "Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif; user-select: none; -webkit-user-select: none; touch-action: none; overflow: hidden; }
+.ty-root * { box-sizing: border-box; }
+.ty-root button { font: inherit; color: inherit; cursor: pointer; }
+.ty-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.ty-fx { position: absolute; inset: 0; pointer-events: none; }
+.ty-vig { position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, .35) 100%); }
+.ty-hud { position: absolute; inset: 0; pointer-events: none; }
+.ty-hud > * { pointer-events: none; }
+.ty-hud button, .ty-hud .ty-mini { pointer-events: auto; }
+.ty-bar { height: 7px; border-radius: 4px; background: rgba(255, 255, 255, .14); overflow: hidden; }
+.ty-bar > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #4da3ff, #7ad0ff); border-radius: inherit; transition: width .25s; }
+.ty-bar.gold > i { background: linear-gradient(90deg, #f2a93b, #ffd86a); }
+
+/* 상단 */
+.ty-top { position: absolute; left: 12px; right: 12px; top: 10px; display: flex; gap: 10px; align-items: stretch; }
+.ty-top > div { background: var(--bg); border: 1px solid var(--line); border-radius: 14px; padding: 8px 14px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.ty-cash { min-width: 140px; display: flex; flex-direction: column; }
+.ty-cash .lbl { font-size: 11px; color: var(--mute); letter-spacing: .08em; }
+.ty-cash b { font-size: 26px; line-height: 1.1; color: var(--gold); font-variant-numeric: tabular-nums; letter-spacing: -.01em; text-shadow: 0 0 18px rgba(255, 207, 90, .25); }
+.ty-cash small { color: var(--bad); font-size: 12px; }
+.ty-cash small:empty { display: none; }
+.ty-stagebox { display: flex; flex-direction: column; justify-content: center; gap: 5px; }
+.ty-stagebox b { font-size: 15px; }
+.ty-ladder { display: flex; gap: 4px; list-style: none; margin: 0; padding: 0; }
+.ty-ladder li i { display: block; width: 22px; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .16); }
+.ty-ladder li.done i { background: #7a8cff; }
+.ty-ladder li.now i { background: var(--gold); box-shadow: 0 0 8px rgba(255, 207, 90, .7); }
+.ty-clock { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.ty-clock #ty-sun { font-size: 20px; }
+.ty-clock b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.ty-clock em { font-style: normal; color: var(--mute); font-size: 13px; }
+.ty-speed { display: flex; gap: 3px; margin-left: 6px; }
+.ty-speed button, .ty-tools button { background: rgba(255, 255, 255, .08); border: 1px solid var(--line); border-radius: 8px; padding: 4px 9px; font-size: 12px; font-weight: 700; }
+.ty-speed button.on { background: var(--gold); color: #1b1405; border-color: transparent; }
+.ty-tools { display: flex; align-items: center; gap: 6px; }
+.ty-tools button { padding: 7px 12px; font-size: 13px; }
+.ty-tools button:hover, .ty-speed button:hover { background: rgba(255, 255, 255, .18); }
+
+/* 좌측 */
+.ty-left { position: absolute; left: 12px; top: 84px; width: 250px; display: flex; flex-direction: column; gap: 8px; }
+.ty-left > div { background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.ty-energy { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; }
+.ty-energy label { font-size: 12px; color: var(--mute); }
+.ty-energy b { font-size: 13px; font-variant-numeric: tabular-nums; }
+.ty-energy.low .ty-bar > i { background: linear-gradient(90deg, #ff5d4d, #ff9a6a); }
+.ty-carry { display: flex; gap: 6px; flex-wrap: wrap; font-size: 12px; }
+.ty-carry:empty { display: none; }
+.ty-carry span { background: rgba(255, 255, 255, .08); border-radius: 8px; padding: 2px 8px; }
+.ty-goal { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.ty-goal small { color: var(--mute); font-size: 12px; }
+
+/* 과제·활동·프롬프트 */
+.ty-task { position: absolute; top: 84px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; background: var(--bg); border: 1px solid rgba(255, 255, 255, .3); border-radius: 14px; padding: 8px 16px; backdrop-filter: blur(10px); }
+.ty-task[hidden], .ty-activity[hidden], .ty-prompt[hidden] { display: none; }
+.ty-task i { font-style: normal; font-size: 26px; color: #fff; display: inline-block; text-shadow: 0 0 12px #fff; }
+.ty-task b { display: block; font-size: 14px; } .ty-task span { color: var(--gold); font-size: 12px; }
+.ty-activity { position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%); width: min(360px, 86vw); background: var(--bg); border: 1px solid var(--line); border-radius: 14px; padding: 10px 16px; text-align: center; backdrop-filter: blur(10px); display: flex; flex-direction: column; gap: 7px; }
+.ty-activity small { color: var(--mute); font-size: 11px; }
+.ty-prompt { position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; background: rgba(12, 16, 24, .86); border: 1px solid rgba(255, 255, 255, .28); border-radius: 999px; padding: 9px 20px 9px 12px; font-size: 15px; box-shadow: 0 8px 30px rgba(0, 0, 0, .45); animation: ty-pop .25s ease-out; backdrop-filter: blur(10px); }
+.ty-prompt kbd { background: var(--gold); color: #1b1405; border-radius: 7px; padding: 2px 9px; font-weight: 800; font-family: inherit; }
+.ty-prompt .ico { font-size: 22px; }
+.ty-prompt em { font-style: normal; color: #ffb36a; font-size: 12px; margin-left: 4px; }
+@keyframes ty-pop { from { transform: translate(-50%, 10px) scale(.94); opacity: 0; } to { transform: translate(-50%, 0) scale(1); opacity: 1; } }
+
+/* 토스트·배너 */
+.ty-toasts { position: absolute; right: 14px; top: 84px; width: min(320px, 70vw); margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+.ty-toasts li { background: var(--bg); border: 1px solid var(--line); border-left: 3px solid #7aa7ff; border-radius: 10px; padding: 7px 12px; font-size: 13px; animation: ty-in .25s ease-out; backdrop-filter: blur(8px); }
+.ty-toasts li.good { border-left-color: var(--good); } .ty-toasts li.bad { border-left-color: var(--bad); }
+@keyframes ty-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.ty-banner { position: absolute; left: 0; right: 0; top: 22%; text-align: center; opacity: 0; pointer-events: none; text-shadow: 0 4px 30px rgba(0, 0, 0, .7); }
+.ty-banner.show { animation: ty-banner 3.2s ease-out forwards; }
+.ty-banner h2 { margin: 0; font-size: clamp(30px, 6vw, 64px); letter-spacing: .04em; color: var(--gold); font-weight: 900; }
+.ty-banner p { margin: 6px 0 0; font-size: clamp(14px, 2vw, 19px); color: #fff; padding: 0 16px; }
+@keyframes ty-banner { 0% { opacity: 0; transform: scale(.9); } 10% { opacity: 1; transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-10px); } }
+
+/* 미니맵 */
+.ty-mini { position: absolute; left: 12px; bottom: 12px; width: 168px; height: 168px; border-radius: 16px; overflow: hidden; border: 1px solid rgba(255, 255, 255, .25); box-shadow: 0 6px 24px rgba(0, 0, 0, .5); cursor: pointer; }
+.ty-mini canvas { width: 100%; height: 100%; display: block; }
+
+/* 모달 */
+.ty-modal { position: absolute; inset: 0; background: rgba(5, 8, 14, .55); display: flex; align-items: center; justify-content: center; padding: 16px; backdrop-filter: blur(3px); }
+.ty-modal[hidden] { display: none; }
+.ty-panel { width: min(460px, 100%); max-height: min(86vh, 760px); overflow: auto; background: linear-gradient(180deg, rgba(26, 32, 44, .96), rgba(14, 18, 26, .97)); border: 1px solid rgba(255, 255, 255, .16); border-radius: 18px; padding: 16px 18px 12px; box-shadow: 0 24px 80px rgba(0, 0, 0, .6); animation: ty-panel .18s ease-out; touch-action: pan-y; -webkit-overflow-scrolling: touch; }
+.ty-panel.wide { width: min(640px, 100%); } .ty-panel.narrow { width: min(360px, 100%); }
+@keyframes ty-panel { from { transform: translateY(10px) scale(.97); opacity: 0; } to { transform: none; opacity: 1; } }
+.ty-panel header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.ty-panel header .ico { font-size: 34px; width: 52px; height: 52px; display: grid; place-items: center; background: rgba(255, 255, 255, .07); border-radius: 14px; }
+.ty-panel header h2 { margin: 0; font-size: 19px; } .ty-panel header p { margin: 2px 0 0; color: var(--mute); font-size: 12.5px; }
+.ty-panel header > div { flex: 1; min-width: 0; }
+.ty-x { background: rgba(255, 255, 255, .08); border: 0; border-radius: 10px; width: 34px; height: 34px; }
+.ty-panel h3 { margin: 14px 0 6px; font-size: 13px; color: var(--gold); letter-spacing: .03em; }
+.ty-locked { background: rgba(255, 179, 106, .12); border: 1px solid rgba(255, 179, 106, .35); border-radius: 10px; padding: 8px 12px; margin: 6px 0 10px; }
+.ty-none { color: var(--mute); margin: 8px 0; }
+.ty-acts { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.ty-act { width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; background: rgba(255, 255, 255, .06); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; transition: background .12s, transform .06s; }
+.ty-act:hover:not(:disabled) { background: rgba(255, 207, 90, .14); border-color: rgba(255, 207, 90, .5); }
+.ty-act:active:not(:disabled) { transform: scale(.985); }
+.ty-act:disabled { opacity: .5; cursor: not-allowed; }
+.ty-act .no { width: 22px; height: 22px; border-radius: 6px; background: rgba(255, 255, 255, .1); display: grid; place-items: center; font-size: 12px; font-weight: 800; flex: none; }
+.ty-act .no:empty { display: none; }
+.ty-act .body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ty-act b { font-size: 15px; } .ty-act small { color: var(--mute); font-size: 12px; } .ty-act em { font-style: normal; color: #ffb36a; font-size: 12px; }
+.ty-act .chips { display: flex; flex-direction: column; gap: 3px; align-items: flex-end; font-size: 12px; font-variant-numeric: tabular-nums; flex: none; }
+.ty-act.danger:hover:not(:disabled) { background: rgba(255, 116, 104, .16); border-color: rgba(255, 116, 104, .5); }
+.cost { color: var(--bad); } .gain { color: var(--good); }
+.ty-panel footer { margin-top: 10px; color: var(--mute); font-size: 11px; text-align: center; }
+.ty-chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0; }
+.ty-chips span { background: rgba(255, 255, 255, .08); border-radius: 8px; padding: 2px 9px; font-size: 12px; }
+.ty-shop { background: rgba(255, 255, 255, .05); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 8px 0; }
+.ty-shop-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; } .ty-shop-head span { color: var(--mute); font-size: 12px; }
+.ty-shop-head em { font-style: normal; margin-left: auto; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 6px; } .ty-shop-head em.on { background: rgba(91, 227, 160, .18); color: var(--good); } .ty-shop-head em.off { background: rgba(255, 116, 104, .16); color: var(--bad); }
+.ty-kv { display: grid; grid-template-columns: 40px 64px 1fr; gap: 8px; align-items: center; font-size: 12px; margin: 4px 0; } .ty-kv span { color: var(--mute); }
+.ty-rivalbox { border-left: 4px solid var(--c); background: rgba(255, 255, 255, .05); border-radius: 8px; padding: 8px 12px; display: flex; justify-content: space-between; }
+.ty-steps, .ty-list { list-style: none; padding: 0; margin: 6px 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.ty-steps li.done { color: var(--good); }
+.ty-list li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .ty-list li span { color: var(--mute); font-size: 12px; margin-left: auto; }
+.ty-list li > i { width: 10px; height: 10px; border-radius: 50%; background: var(--c); }
+.ty-list li .ty-bar { flex-basis: 100%; }
+.ty-report { background: rgba(255, 255, 255, .05); border-radius: 12px; padding: 8px 12px; } .ty-report h3 { margin-top: 0; }
+.ty-bigmap { position: relative; width: min(92vmin, 760px); } .ty-bigmap canvas { width: 100%; border-radius: 16px; border: 1px solid rgba(255, 255, 255, .25); display: block; }
+.ty-bigmap .ty-x { position: absolute; right: 10px; top: 10px; background: rgba(0, 0, 0, .5); }
+
+/* 제목 */
+.ty-title { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at 30% 50%, rgba(8, 12, 20, .15), rgba(5, 8, 14, .72)); padding: 20px; }
+.ty-title[hidden] { display: none; }
+.ty-titlebox { text-align: center; max-width: 760px; animation: ty-panel .5s ease-out; }
+.ty-titlebox .kick { margin: 0; letter-spacing: .5em; font-size: 12px; color: var(--mute); }
+.ty-titlebox h1 { margin: 4px 0 6px; font-size: clamp(54px, 12vw, 120px); line-height: 1; letter-spacing: .06em; font-weight: 900; background: linear-gradient(180deg, #fff, #ffcf5a 70%, #e8932a); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 6px 30px rgba(255, 170, 40, .35)); }
+.ty-titlebox .sub { margin: 0 0 18px; font-size: clamp(14px, 2vw, 19px); color: #dfe6f1; }
+.ty-ladder-lg { display: flex; flex-wrap: wrap; gap: 6px 8px; justify-content: center; align-items: center; margin-bottom: 26px; font-size: 13px; color: var(--mute); }
+.ty-ladder-lg span { padding: 3px 11px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255, 255, 255, .05); } .ty-ladder-lg i { font-style: normal; opacity: .5; }
+.ty-title-btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.ty-title-btns button { min-width: 150px; padding: 13px 24px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, .25); background: rgba(255, 255, 255, .09); font-size: 16px; font-weight: 700; backdrop-filter: blur(6px); }
+.ty-title-btns button:hover { background: rgba(255, 255, 255, .18); }
+.ty-title-btns button.primary { background: linear-gradient(180deg, #ffd96a, #f0a82e); color: #1b1405; border-color: transparent; box-shadow: 0 8px 30px rgba(240, 168, 46, .35); }
+.ty-title-btns button small { display: block; font-size: 11px; font-weight: 600; opacity: .75; }
+.ty-titlebox .keys { margin-top: 22px; color: var(--mute); font-size: 12px; }
+.ty-titlebox.win { padding: 28px; background: rgba(10, 14, 22, .9); border: 1px solid var(--line); border-radius: 24px; }
+
+/* 터치 */
+.ty-touchpad { display: none; }
+.ty-root.touch .ty-touchpad { display: block; position: absolute; inset: 0; pointer-events: none; }
+.ty-stick { position: absolute; width: 120px; height: 120px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .35); background: rgba(255, 255, 255, .08); opacity: 0; transition: opacity .15s; }
+.ty-stick i { position: absolute; left: 36px; top: 36px; width: 48px; height: 48px; border-radius: 50%; background: rgba(255, 255, 255, .5); }
+.ty-tfoot { position: absolute; right: 14px; bottom: 16px; display: flex; flex-direction: column; gap: 10px; align-items: flex-end; pointer-events: auto; }
+.ty-tfoot button { min-width: 84px; padding: 12px 14px; border-radius: 16px; border: 1px solid rgba(255, 255, 255, .3); background: rgba(14, 18, 26, .7); font-weight: 700; }
+.ty-tfoot button.big { min-width: 104px; padding: 20px 18px; background: linear-gradient(180deg, #ffd96a, #f0a82e); color: #1b1405; font-size: 17px; border: 0; }
+.ty-tfoot button.on { background: var(--gold); color: #1b1405; }
+.ty-root.touch .ty-prompt { bottom: 214px; }
+.ty-root.touch .ty-activity { bottom: 214px; }
+.ty-root.touch .ty-mini { left: auto; right: 12px; bottom: auto; top: 146px; width: 108px; height: 108px; border-radius: 12px; }
+
+@media (max-width: 860px) {
+  .ty-top { flex-wrap: wrap; gap: 6px; left: 8px; right: 8px; top: 8px; }
+  .ty-top > div { padding: 5px 10px; border-radius: 12px; }
+  .ty-cash { min-width: 0; } .ty-cash b { font-size: 20px; } .ty-stagebox b { font-size: 13px; } .ty-ladder li i { width: 14px; }
+  .ty-clock { margin-left: 0; gap: 5px; } .ty-clock b { font-size: 17px; } .ty-clock em { display: none; } .ty-speed { display: none; }
+  .ty-left { top: 90px; left: 8px; width: 190px; } .ty-left > div { padding: 6px 10px; } .ty-goal small { display: none; }
+  .ty-task { top: 90px; left: auto; right: 8px; transform: none; padding: 6px 10px; max-width: 54vw; } .ty-task i { font-size: 20px; }
+  .ty-toasts { top: 150px; right: 8px; width: 60vw; }
+  .ty-mini { width: 120px; height: 120px; bottom: 10px; left: 10px; }
+  .ty-root.touch .ty-mini { top: 190px; width: 96px; height: 96px; }
+  .ty-prompt { bottom: 84px; font-size: 14px; }
+}
+@media (prefers-reduced-motion: reduce) { .ty-root * { animation: none !important; transition: none !important; } }

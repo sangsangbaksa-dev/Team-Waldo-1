@@ -10,6 +10,8 @@ export interface CarState {
   nitro: number; boostT: number; drifting: boolean; driftT: number; padCd: number; wallT: number;
   /** 슬립스트림(앞차 뒤꽁무니) 충전도 0~1. 높을수록 가속·최고속이 늘어납니다. */
   draft: number;
+  /** 지난 스텝에 니트로가 켜져 있었는지(점화 순간을 찾는 용도) */
+  nitroLit?: boolean;
 }
 export interface StepEvents { hit: number; driftBoost: number; pad: boolean }
 /** 차량 성능. 기준 차량은 모두 1(top·accel·brake 는 절댓값)이고, turn·drift·nitro 는 배율입니다. */
@@ -21,6 +23,8 @@ export const BOOST_TOP = 1.36;
 export const DRAFT_TOP = 0.06;
 export const DRAFT_ACCEL = 0.55;
 export const NITRO_SECONDS = 6.5;
+/** 니트로를 켜는 순간 앞으로 튀어 나가는 속도(m/s). */
+export const NITRO_KICK = 3;
 /** 레이싱카 차체(race.glb)에 맞춘 충돌 반길이·반폭. 원은 옆으로는 너무 넓고 앞뒤로는 너무 짧습니다. */
 export const BODY_HALF_LENGTH = 2.25;
 export const BODY_HALF_WIDTH = 1.02;
@@ -45,6 +49,9 @@ export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: Car
   // 니트로를 누르고 있는 동안 탱크는 NITRO_SECONDS 만에 비고, 그 사이 부스트가 깜빡이지 않습니다.
   const nitroOn = inp.nitro && c.nitro > 0;
   if (nitroOn) c.nitro = Math.max(0, c.nitro - dt / (NITRO_SECONDS * p.nitro));
+  // 니트로 점화: 꺼져 있다가 켜지는 순간 한 번 등을 떠미는 킥(m/s)을 줍니다. 계속 누르고 있거나 이미 부스트 중이면 주지 않습니다.
+  if (nitroOn && !c.nitroLit && c.boostT <= 0 && vf > 8 && inp.throttle > 0) vf += NITRO_KICK;
+  c.nitroLit = nitroOn;
   c.boostT = Math.max(0, c.boostT - dt);
   if (nitroOn) c.boostT = Math.max(c.boostT, dt);
   // 버튼을 누르고 있는 동안에는 충전하지 않습니다. 충전하면 빈 탱크가 매 프레임 조금씩 차올라 부스트가 한 프레임씩 번갈아 켜져 사실상 무한이 됩니다.

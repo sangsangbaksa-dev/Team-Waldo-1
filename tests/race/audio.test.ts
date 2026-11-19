@@ -4,7 +4,7 @@ import { RaceAudio, gearFor } from '../../src/race/audio';
 import { MASTER_GAIN } from '../../src/audio-core';
 import { installAudioMock, loopGain, setHidden } from '../helpers/audio-mock';
 
-const RACE_SFX = ['count', 'go', 'lap', 'best', 'hit', 'bump', 'pad', 'drift', 'finish', 'click'] as const;
+const RACE_SFX = ['count', 'go', 'lap', 'best', 'hit', 'bump', 'pad', 'drift', 'nitro', 'chirp', 'finish', 'click'] as const;
 
 describe('SPEED RUSH audio', () => {
   let mock: ReturnType<typeof installAudioMock>;

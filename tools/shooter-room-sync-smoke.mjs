@@ -82,6 +82,14 @@ try {
   // 방장이 AI 를 쓰러뜨리면 손님 화면에서도 쓰러집니다.
   const victim = await a.evaluate(() => { const m = window.__zz.match, q = m.players.find(x => x.bot && x.alive && x.air === 0); m.kill(q, 0, 'rifle'); return q.id; });
   await b.waitForFunction(id => !window.__zz.match.players[id].alive, victim, { timeout: 10000 });
+  // 온라인 총기 조립(L): 경기는 계속 흐르고, 조립한 파츠는 내 총에만 달리며, 그동안 내 선수는 움직이지 않습니다.
+  await b.bringToFront(); await b.evaluate(() => { const me = window.__zz.me(); me.guns[0] = { id: 'rifle', mag: 30, reserve: 90, att: {} }; me.cur = 0; me.parts.push('scope2', 'grip'); });
+  const t0 = await b.evaluate(() => window.__zz.match.t); await b.keyboard.press('KeyL'); await b.waitForSelector('.gs-root.live');
+  await b.click('.gs-slots button[data-slot="sight"]'); await b.click('.gs-opt[data-part="scope2"]');
+  await b.keyboard.down('KeyW'); const p0 = await b.evaluate(() => [window.__zz.me().x, window.__zz.me().z]); await sleep(1500); await b.keyboard.up('KeyW');
+  const [t1, p1, att] = await b.evaluate(() => [window.__zz.match.t, [window.__zz.me().x, window.__zz.me().z], window.__zz.me().guns[0].att]);
+  assert.ok(t1 > t0, 'online match keeps running while assembling'); assert.ok(Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) < 0.5, 'player stands still while assembling'); assert.equal(att.sight, 'scope2');
+  await b.screenshot({ path: `${out}/room-assembly-live.png` }); await b.keyboard.press('KeyL'); await b.waitForFunction(() => !document.querySelector('.gs-root'));
   assert.deepEqual(errors, []);
   console.log('SHOOTER ROOM SYNC SMOKE OK');
 } finally { await browser?.close(); server.kill(); }

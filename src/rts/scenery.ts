@@ -51,14 +51,15 @@ export function paintGround(g: CanvasRenderingContext2D, k: number, map: RtsMap,
   };
   const rnd = seeded(99);
   for (const l of [lanes.top, lanes.bot, lanes.mid]) {
-    stroke(l, 4.6, '#5f5a3e', 0.35); stroke(l, 3.6, '#a2916c', 0.9); stroke(l, 2.4, '#b8a77e', 0.55);
-    for (let i = 0; i < l.length; i += 1) { const p = l[i]; for (let j = 0; j < 3; j++) { g.globalAlpha = 0.45; g.fillStyle = rnd() < 0.5 ? '#7a6d52' : '#cdbd93'; g.beginPath(); g.arc((p.x + (rnd() - 0.5) * 3.4) * k, (p.y + (rnd() - 0.5) * 3.4) * k, (0.08 + rnd() * 0.14) * k, 0, Math.PI * 2); g.fill(); } }
+    stroke(l, 5.0, '#6a5636', 0.3); stroke(l, 3.7, '#6b665e', 0.92); stroke(l, 3.1, '#7a746a', 0.55);
+    for (let i = 0; i < l.length; i += 1) { const p = l[i]; for (let j = 0; j < 3; j++) { g.globalAlpha = 0.45; g.fillStyle = rnd() < 0.5 ? '#4f4c47' : '#948c7c'; g.beginPath(); g.arc((p.x + (rnd() - 0.5) * 3.4) * k, (p.y + (rnd() - 0.5) * 3.4) * k, (0.08 + rnd() * 0.14) * k, 0, Math.PI * 2); g.fill(); } }
   }
   g.globalAlpha = 1;
+  for (const l of [lanes.top, lanes.bot, lanes.mid]) { g.save(); g.setLineDash([1.6 * k, 2.2 * k]); stroke(l, 0.16, '#e5c14a', 0.55); g.restore(); }
   // 강둑: 젖은 흙색 띠. 물 자체는 3D 리본이 그립니다.
-  stroke(lanes.river, 8.5, '#6d6446', 0.55); stroke(lanes.river, 6.4, '#8a7e5a', 0.5);
+  stroke(lanes.river, 9.0, '#9a7d4e', 0.55); stroke(lanes.river, 6.6, '#7e6a45', 0.5);
   // 부쉬 자리는 짙은 풀색 바닥.
-  for (const b of bushes) { const gr = g.createRadialGradient(b.x * k, b.y * k, 0.4 * k, b.x * k, b.y * k, 3.3 * k); gr.addColorStop(0, 'rgba(34,64,30,.75)'); gr.addColorStop(1, 'rgba(34,64,30,0)'); g.fillStyle = gr; g.beginPath(); g.arc(b.x * k, b.y * k, 3.3 * k, 0, Math.PI * 2); g.fill(); }
+  for (const b of bushes) { const gr = g.createRadialGradient(b.x * k, b.y * k, 0.4 * k, b.x * k, b.y * k, 3.3 * k); gr.addColorStop(0, 'rgba(104,92,50,.7)'); gr.addColorStop(1, 'rgba(104,92,50,0)'); g.fillStyle = gr; g.beginPath(); g.arc(b.x * k, b.y * k, 3.3 * k, 0, Math.PI * 2); g.fill(); }
   // 샘(본부 뒤 광장): 돌바닥 원 두 겹.
   for (const f of fountains(map)) { const gr = g.createRadialGradient(f.x * k, f.y * k, 1 * k, f.x * k, f.y * k, 6 * k); gr.addColorStop(0, 'rgba(176,182,190,.95)'); gr.addColorStop(0.7, 'rgba(140,146,152,.8)'); gr.addColorStop(1, 'rgba(140,146,152,0)'); g.fillStyle = gr; g.beginPath(); g.arc(f.x * k, f.y * k, 6 * k, 0, Math.PI * 2); g.fill(); }
 }
@@ -68,7 +69,6 @@ const blockedNear = (map: RtsMap, x: number, y: number, r: number): boolean => {
   return false;
 };
 const nearNode = (map: RtsMap, x: number, y: number, r: number): boolean => map.nodes.some(p => Math.hypot(p.x + 0.5 - x, p.y + 0.5 - y) < r);
-const nearPath = (pts: Pt[], x: number, y: number, r: number): boolean => pts.some(p => Math.hypot(p.x - x, p.y - y) < r);
 
 /** 본부 뒤쪽 구석에서 광물·바위와 떨어진 자리를 찾아 샘 위치로 씁니다(두 진영이 대칭). */
 export function fountains(map: RtsMap): [Pt, Pt] {
@@ -98,23 +98,11 @@ export function bushSpots(map: RtsMap, lanes: Lanes): Pt[] {
   void all; return [...half, ...half.map(p => mirror(n - 1, p))];
 }
 
-/** 정글 캠프 자리: 길·강·광물·바위에서 떨어진 빈터(한쪽 절반에서 고르고 회전). */
-function campSpots(map: RtsMap, lanes: Lanes, want: number): Pt[] {
-  const n = map.size, rnd = seeded(5), found: Pt[] = [], cand: Pt[] = [], all = [...lanes.top, ...lanes.mid, ...lanes.bot];
-  for (let y = 6; y < n - 6; y += 2) for (let x = 6; x < n - 6; x += 2) {
-    if (x + y > n - 6) continue; // 한쪽 절반(대각선 아래쪽 제외)만
-    if (blockedNear(map, x, y, 2.6) || nearNode(map, x, y, 9) || nearPath(all, x, y, 6.5) || nearPath(lanes.river, x, y, 8) || map.starts.some(s => Math.hypot(s.x + 2 - x, s.y + 2 - y) < 16) || map.expansions.some(e => Math.hypot(e.x + 2 - x, e.y + 2 - y) < 12)) continue;
-    cand.push({ x, y });
-  }
-  while (cand.length && found.length < want) { const i = Math.floor(rnd() * cand.length), p = cand.splice(i, 1)[0]; if (found.every(q => Math.hypot(q.x - p.x, q.y - p.y) > 13) && Math.hypot(p.x - (n - p.x), p.y - (n - p.y)) > 16) found.push(p); }
-  return [...found, ...found.map(p => mirror(n - 1, p))];
-}
-
 export class Scenery {
   private tick: Array<(t: number) => void> = []; private flameMat: THREE.MeshStandardMaterial;
   constructor(private scene: THREE.Scene, private map: RtsMap, private lanes: Lanes, private bushes: Pt[], private quality: Quality, private shadows: boolean) {
     this.flameMat = new THREE.MeshStandardMaterial({ color: 0xffb347, emissive: 0xff7a1c, emissiveIntensity: 2.2, roughness: 0.4, flatShading: true });
-    this.river(); this.pits(); this.camps(); this.brush(); this.torches(); this.bases();
+    this.river(); this.pits(); this.brush(); this.torches(); this.bases();
   }
   update(t: number): void { for (const f of this.tick) f(t); }
 
@@ -129,11 +117,11 @@ export class Scenery {
     });
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setIndex(idx); geo.computeVertexNormals();
     const c = document.createElement('canvas'); c.width = 128; c.height = 256; const g = c.getContext('2d')!, rnd = seeded(8);
-    const grd = g.createLinearGradient(0, 0, 128, 0); grd.addColorStop(0, 'rgba(60,150,190,0)'); grd.addColorStop(0.18, 'rgba(70,165,205,.85)'); grd.addColorStop(0.5, 'rgba(46,128,176,.95)'); grd.addColorStop(0.82, 'rgba(70,165,205,.85)'); grd.addColorStop(1, 'rgba(60,150,190,0)');
+    const grd = g.createLinearGradient(0, 0, 128, 0); grd.addColorStop(0, 'rgba(96,140,120,0)'); grd.addColorStop(0.18, 'rgba(104,152,128,.8)'); grd.addColorStop(0.5, 'rgba(72,118,112,.92)'); grd.addColorStop(0.82, 'rgba(104,152,128,.8)'); grd.addColorStop(1, 'rgba(96,140,120,0)');
     g.fillStyle = grd; g.fillRect(0, 0, 128, 256);
     g.strokeStyle = 'rgba(220,245,255,.55)'; g.lineWidth = 2; for (let i = 0; i < 26; i++) { const x = 24 + rnd() * 80, y = rnd() * 256, l = 10 + rnd() * 22; g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + 6, y + l / 2, x - 2, y + l); g.stroke(); }
     const tex = new THREE.CanvasTexture(c); tex.wrapT = THREE.RepeatWrapping; tex.colorSpace = THREE.SRGBColorSpace;
-    const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.15, metalness: 0.1, emissive: 0x0c3a5a, emissiveIntensity: 0.5, depthWrite: false, side: THREE.DoubleSide });
+    const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.15, metalness: 0.1, emissive: 0x153c36, emissiveIntensity: 0.5, depthWrite: false, side: THREE.DoubleSide });
     const mesh = new THREE.Mesh(geo, mat); mesh.renderOrder = 1; this.scene.add(mesh); this.tick.push(t => { tex.offset.y = -t * 0.06; });
     // 강가 돌멩이와 갈대
     const rnd2 = seeded(21), stones = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.45, 0), new THREE.MeshStandardMaterial({ color: 0x8d8d86, roughness: 0.9, flatShading: true }), 90); const m4 = new THREE.Matrix4(); let n = 0;
@@ -151,7 +139,7 @@ export class Scenery {
     const spots = [{ x: mid.x - ux * 11, y: mid.y - uy * 11, color: 0xff7a3a, name: 'drake' }, { x: mid.x + ux * 11, y: mid.y + uy * 11, color: 0xb36bff, name: 'baron' }];
     void n;
     for (const s of spots) {
-      const g = new THREE.Group(), stone = new THREE.MeshStandardMaterial({ color: 0x77736b, roughness: 0.95, flatShading: true }), dark = new THREE.MeshStandardMaterial({ color: 0x1b1814, roughness: 1 });
+      const g = new THREE.Group(), stone = new THREE.MeshStandardMaterial({ color: 0xa08c6a, roughness: 0.95, flatShading: true }), dark = new THREE.MeshStandardMaterial({ color: 0x1b1814, roughness: 1 });
       const ring = new THREE.Mesh(new THREE.TorusGeometry(2.7, 0.55, 6, 18), stone); ring.rotation.x = Math.PI / 2; ring.position.y = 0.45; ring.castShadow = this.shadows; ring.receiveShadow = true; g.add(ring);
       const pit = new THREE.Mesh(new THREE.CircleGeometry(2.6, 20), dark); pit.rotation.x = -Math.PI / 2; pit.position.y = 0.09; g.add(pit);
       for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2 + 0.3, st = new THREE.Mesh(new THREE.BoxGeometry(0.7, 2.6 + (i % 2) * 0.9, 0.7), stone); st.position.set(Math.cos(a) * 3.6, 1.3 + (i % 2) * 0.45, Math.sin(a) * 3.6); st.rotation.set(0, a, (i % 3 - 1) * 0.12); st.castShadow = this.shadows; g.add(st); }
@@ -163,29 +151,6 @@ export class Scenery {
     }
   }
 
-  // ---------- 정글 캠프 ----------
-  private camps(): void {
-    const spots = campSpots(this.map, this.lanes, this.quality === 'low' ? 3 : 5), n = this.map.size - 1;
-    const stone = new THREE.MeshStandardMaterial({ color: 0x84807a, roughness: 0.95, flatShading: true }), moss = new THREE.MeshStandardMaterial({ color: 0x5e7a45, roughness: 1, flatShading: true });
-    const eye = new THREE.MeshStandardMaterial({ color: 0xffd36b, emissive: 0xffa21f, emissiveIntensity: 2, roughness: 0.3 }), egg = new THREE.MeshStandardMaterial({ color: 0xe9ddc2, roughness: 0.6 });
-    spots.forEach((p, i) => {
-      const g = new THREE.Group(), kind = (i % (spots.length / 2)) % 2, rnd = seeded(i * 13 + 3);
-      for (let j = 0; j < 7; j++) { const a = (j / 7) * Math.PI * 2, s = 0.45 + rnd() * 0.35, st = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), j % 3 ? stone : moss); st.position.set(Math.cos(a) * 2.2, s * 0.5, Math.sin(a) * 2.2); st.scale.y = 0.75; st.castShadow = this.shadows; g.add(st); }
-      if (kind === 0) { // 돌 골렘
-        const body = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.5, 1.0), stone); body.position.y = 1.1; body.castShadow = this.shadows; g.add(body);
-        const head = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 0.7), stone); head.position.y = 2.1; head.castShadow = this.shadows; g.add(head);
-        for (const sx of [-0.2, 0.2]) { const e = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 0.05), eye); e.position.set(sx, 2.15, 0.36); g.add(e); }
-        for (const sx of [-1, 1]) { const arm = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.2, 0.5), stone); arm.position.set(sx * 0.95, 0.95, 0); arm.rotation.z = sx * 0.2; g.add(arm); }
-        const moss2 = new THREE.Mesh(new THREE.IcosahedronGeometry(0.55, 0), moss); moss2.position.set(0.2, 1.95, -0.1); moss2.scale.y = 0.5; g.add(moss2);
-      } else { // 알 둥지
-        const nest = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.28, 5, 12), new THREE.MeshStandardMaterial({ color: 0x6b4d2e, roughness: 1, flatShading: true })); nest.rotation.x = Math.PI / 2; nest.position.y = 0.3; g.add(nest);
-        for (let j = 0; j < 3; j++) { const a = j * 2.1, e = new THREE.Mesh(new THREE.SphereGeometry(0.36, 8, 6), egg); e.scale.y = 1.3; e.position.set(Math.cos(a) * 0.4, 0.55, Math.sin(a) * 0.4); e.castShadow = this.shadows; g.add(e); }
-        const crest = new THREE.Mesh(new THREE.ConeGeometry(0.35, 1.7, 5), eye); crest.position.y = 1.7; g.add(crest);
-      }
-      g.rotation.y = rnd() * 6.28; g.position.set(p.x, 0, p.y); this.scene.add(g); void n;
-    });
-  }
-
   // ---------- 부쉬 ----------
   private brush(): void {
     const per = this.quality === 'low' ? 5 : 9, leaf = new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true }), inst = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.75, 0), leaf, this.bushes.length * per);
@@ -193,7 +158,7 @@ export class Scenery {
     for (const b of this.bushes) for (let i = 0; i < per; i++) {
       const a = rnd() * 6.28, d = Math.sqrt(rnd()) * 2.1, x = b.x + Math.cos(a) * d, y = b.y + Math.sin(a) * d; if (blockedNear(this.map, x, y, 0.2)) continue;
       const s = 0.7 + rnd() * 0.5; m4.compose(new THREE.Vector3(x, 0.38 * s, y), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, rnd() * 6, 0)), new THREE.Vector3(s * 1.15, s * 0.8, s * 1.15));
-      inst.setMatrixAt(n, m4); col.setHSL(0.27 + rnd() * 0.07, 0.45, 0.11 + rnd() * 0.08); inst.setColorAt(n++, col);
+      inst.setMatrixAt(n, m4); col.setHSL(0.13 + rnd() * 0.05, 0.34, 0.2 + rnd() * 0.1); inst.setColorAt(n++, col);
     }
     inst.count = n; inst.castShadow = false; inst.receiveShadow = true; this.scene.add(inst);
   }

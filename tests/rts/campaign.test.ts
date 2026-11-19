@@ -115,6 +115,15 @@ describe('캠페인 미션', () => {
     expect(c.flag.called).toBe(1); expect(s.units.filter(u => u.owner === 0).length).toBe(before + 12); expect(c.objectives.find(o => o.id === 'relay')!.done).toBe(true);
     for (const b of s.buildings.filter(x => x.owner === 1)) b.hp = 0; run(s, 10, c); expect(c.result).toBe('win');
   });
+  it('6: 창고를 하나 부술 때마다 적 증원이 나오고, 네 곳을 모두 부수면 승리하며, 시간이 지나면 패배한다', () => {
+    const { s, c } = mission(6); expect(c.targetsTotal()).toBe(4); const foes = (): number => s.units.filter(u => u.owner === 1 && u.kind !== 'worker').length, f0 = foes();
+    const ids = c.markerList().filter(m => m.kind === 'target');
+    const burn = (n: number): void => { let k = 0; for (const b of s.buildings.filter(x => x.owner === 1 && x.kind === 'depot')) if (k++ < n) b.hp = 0; };
+    burn(1); run(s, 10, c); expect(c.targetsLeft()).toBe(3); expect(foes()).toBeGreaterThan(f0); expect(c.events.some(e => e.t === 'wave')).toBe(true);
+    const f1 = foes(); run(s, 10, c); expect(foes()).toBe(f1); // 같은 창고로 두 번 나오지 않음
+    burn(4); run(s, 10, c); expect(ids).toHaveLength(4); expect(c.targetsLeft()).toBe(0); expect(c.result).toBe('win'); expect(c.objectives.find(o => o.id === 'lean')!.done).toBe(true);
+    const t = mission(6); run(t.s, 10 * 60 * TICK + 20, t.c); expect(t.c.result).toBe('lose');
+  });
   it('항복하거나 모든 건물을 잃으면 패배한다', () => {
     const a = mission(1); a.s.apply(0, { k: 'surrender' }); run(a.s, 10, a.c); expect(a.c.result).toBe('lose'); expect(a.c.stars()).toBe(0);
     const b = mission(1); for (const x of b.s.buildings.filter(y => y.owner === 0)) x.hp = 0; run(b.s, 10, b.c); expect(b.c.result).toBe('lose');

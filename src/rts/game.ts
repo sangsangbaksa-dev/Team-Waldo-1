@@ -431,7 +431,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     root.dataset.phase = 'setup'; paused = false; ended = false; const rec = readRtsRecords();
     show(`<div class="rt-card rt-setup" role="dialog" aria-label="FRONTLINE 시작"><span class="rt-eyebrow">FRONTLINE</span><h2>전선을 지휘하세요</h2>
       <p class="rt-lead">광물을 캐고, 기지를 세우고, 병력을 길러 상대의 모든 건물을 무너뜨리면 승리합니다. 모든 건물이 사라지면 패배합니다.</p>
-      <div class="rt-actions"><button class="primary" data-act="campaign" id="rt-campaign">캠페인 · 작전 ${MISSIONS.length}개 — 점령 · 방어 · 호송 · 급습</button></div>
+      <div class="rt-actions"><button class="primary" data-act="campaign" id="rt-campaign">캠페인 · 작전 ${MISSIONS.length}개 — 점령 · 방어 · 호송 · 급습 · 기습</button></div>
       <div class="rt-diffs" role="group" aria-label="난이도">${DIFFICULTIES.map((d, i) => `<button type="button" data-diff="${d}" aria-pressed="${d === difficulty}"><span>${['I', 'II', 'III', 'IV'][i]}</span><b>${LEVELS[d].label}</b></button>`).join('')}</div>
       <p class="rt-diffnote" id="rt-diffnote">${LEVELS[difficulty].blurb}</p>
       ${armoryHtml()}
@@ -450,7 +450,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     <li><b>병력</b>보병은 만능, 로켓병은 장갑에 강하고, 전차는 광역 피해, 정찰 지프(공장 W)는 빨라서 일꾼 사냥에 좋습니다. 의무병(병영 D)은 다친 보병·일꾼을 치료하니 부대 뒤에 두세요. 상대가 전차를 모으면 로켓병으로 맞서세요.</li>
     <li><b>능력</b>유닛을 선택하면 명령 칸에 특수 능력이 나옵니다(X·Z·V). 보병 자극제, 로켓병 일제 사격, 전차 포격 태세, 지프 질주, 의무병 응급 처치 — 영구 강화가 아니라 쿨다운마다 쓰는 순간 능력입니다.</li>
     <li><b>시야</b>전장의 안개가 켜져 있으면 아군 유닛·건물 주변만 보입니다. 정찰 지프로 먼저 길을 보세요. 설정 화면에서 끌 수 있습니다.</li>
-    <li><b>캠페인</b>점령·방어·호송·급습·총공세 다섯 작전. 목표를 모두 이루면 승리하고, 목표 시간·보너스 목표마다 별을 받습니다.</li>
+    <li><b>캠페인</b>점령·방어·호송·급습·총공세·기습 여섯 작전. 목표를 모두 이루면 승리하고, 목표 시간·보너스 목표마다 별을 받습니다.</li>
     <li><b>일시정지</b>상단 ⏸ 버튼, P 또는 Esc (AI 대전에서만). 항복도 같은 메뉴에 있습니다.</li>
     <li><b>생산</b>건물 선택 → Q·W. 집결지는 R, 일꾼은 광물에 집결하면 바로 캡니다.</li>
     <li><b>카메라</b>화살표 · 화면 가장자리 · 휠 확대 · 미니맵 클릭 · Space 최근 공격 위치 · . 놀고 있는 일꾼</li>

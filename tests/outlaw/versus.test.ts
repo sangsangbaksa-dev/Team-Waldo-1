@@ -125,4 +125,18 @@ describe('OUTLAW CITY online', () => {
       expect(client.report).not.toHaveBeenCalled();
     }
   });
+
+  it('awards no forfeit when the other client never reaches the match', async () => {
+    const { clients: [alpha, bravo] } = match(true);
+    await Promise.resolve();
+    // The channel subscribes locally, but the other client never delivers a handshake.
+    for (let second = 1; second <= 21; second++) {
+      clock = second * 1000;
+      vi.advanceTimersByTime(1000);
+    }
+    for (const client of [alpha, bravo]) {
+      expect(client.onEnd).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ reason: 'connection', winner: '' }));
+      expect(client.report).not.toHaveBeenCalled();
+    }
+  });
 });

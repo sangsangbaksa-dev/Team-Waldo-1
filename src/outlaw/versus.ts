@@ -48,6 +48,7 @@ export class Versus {
   private lastSend = -Infinity;
   private lastWatch = performance.now();
   private fired = false;
+  private heardFromPeer = false;
 
   constructor(private sim: Sim, private session: VsSession, private hooks: VsHooks) {
     const mode = session.duel ? 'duel' : 'room';
@@ -111,13 +112,17 @@ export class Versus {
     this.peers.delete(id);
     const participant = this.scores.find(p => p.id === id);
     if (participant) this.hooks.onGone(participant.name);
-    if (!this.peers.size) this.finish('left', this.session.meId);
+    if (!this.peers.size) {
+      if (this.heardFromPeer) this.finish('left', this.session.meId);
+      else this.finish('connection');
+    }
   }
 
   private onMessage(message: NetMsg): void {
     const from = typeof message.f === 'string' ? message.f : '';
     const peer = this.peers.get(from);
     if (!peer || this.ended) return;
+    this.heardFromPeer = true;
     peer.heard = performance.now();
     const ped = peer.ped;
 

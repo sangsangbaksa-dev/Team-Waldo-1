@@ -7,7 +7,22 @@ export function gearFor(speedMs: number): number {
   const v = Math.abs(speedMs); let g = 1; while (g < GEARS.length - 1 && v > GEARS[g]) g++; return g;
 }
 
+/** 차량별 엔진 성격: pitch 는 음높이 배율, grit 는 거친 정도(셀수록 사각파가 커짐), turbo 는 터보 휘파람 세기, sub 는 저음 울림. */
+export interface EngineProfile { pitch: number; grit: number; turbo: number; sub: number }
+const PROFILES: Record<string, EngineProfile> = {
+  arc: { pitch: 1, grit: 0.5, turbo: 0.5, sub: 0.5 }, bolt: { pitch: 1.12, grit: 0.7, turbo: 0.4, sub: 0.4 }, velox: { pitch: 0.92, grit: 0.4, turbo: 0.9, sub: 0.6 },
+  orbit: { pitch: 1.05, grit: 0.35, turbo: 0.3, sub: 0.4 }, slide: { pitch: 0.88, grit: 0.85, turbo: 0.35, sub: 0.8 }, fuse: { pitch: 1.0, grit: 0.55, turbo: 1, sub: 0.5 },
+  nova: { pitch: 1.22, grit: 0.3, turbo: 0.25, sub: 0.3 }, rally: { pitch: 0.96, grit: 0.75, turbo: 0.85, sub: 0.55 },
+};
+export const engineProfile = (id: string): EngineProfile => PROFILES[id] ?? PROFILES.arc;
+
 export class RaceAudio {
+  private prof: EngineProfile = PROFILES.arc;
+  private subOsc: { o: OscillatorNode; gain: GainNode } | null = null;
+  private whistle: { o: OscillatorNode; gain: GainNode } | null = null;
+  private lastThr = 0; private lastPop = 0;
+  /** 차량을 바꾸면 엔진 소리 성격이 달라집니다. */
+  setCar(id: string): void { this.prof = engineProfile(id); }
   private eng = new AudioEngine();
   private motor: { o1: OscillatorNode; o2: OscillatorNode; filt: BiquadFilterNode; gain: GainNode } | null = null;
   private wind: { src: AudioBufferSourceNode; filt: BiquadFilterNode; gain: GainNode } | null = null;
@@ -35,6 +50,8 @@ export class RaceAudio {
     o1.connect(mix); o2.connect(mix); mix.connect(shaper); shaper.connect(filt); filt.connect(gain); gain.connect(dest);
     this.eng.track(o1); this.eng.track(o2); o1.start(); o2.start();
     this.motor = { o1, o2, filt, gain };
+    const so = c.createOscillator(), sg = c.createGain(); so.type = 'sine'; sg.gain.value = 0; so.connect(sg); sg.connect(dest); this.eng.track(so); so.start(); this.subOsc = { o: so, gain: sg };
+    const wo = c.createOscillator(), wg = c.createGain(); wo.type = 'sine'; wg.gain.value = 0; wo.connect(wg); wg.connect(dest); this.eng.track(wo); wo.start(); this.whistle = { o: wo, gain: wg };
     const loop = (type: BiquadFilterType, f: number, q: number): { src: AudioBufferSourceNode; filt: BiquadFilterNode; gain: GainNode } => {
       const s = c.createBufferSource(), filt2 = c.createBiquadFilter(), g = c.createGain();
       s.buffer = this.eng.noise; s.loop = true; filt2.type = type; filt2.frequency.value = f; filt2.Q.value = q; g.gain.value = 0;
@@ -50,10 +67,10 @@ export class RaceAudio {
   setEnabled(on: boolean): void { this.enabled = on; this.eng.setEnabled(on); }
   dispose(): void {
     if (this.bed !== null) { clearInterval(this.bed); this.bed = null; }
-    for (const src of [this.motor?.o1, this.motor?.o2, this.wind?.src, this.skid?.src, this.boostG?.src]) {
+    for (const src of [this.motor?.o1, this.motor?.o2, this.subOsc?.o, this.whistle?.o, this.wind?.src, this.skid?.src, this.boostG?.src]) {
       try { src?.stop(); } catch { /* already stopped */ }
     }
-    this.motor = this.wind = this.skid = this.boostG = null;
+    this.motor = this.wind = this.skid = this.boostG = this.subOsc = this.whistle = null;
     this.eng.dispose();
   }
 
@@ -63,11 +80,16 @@ export class RaceAudio {
     const t = c.currentTime, v = this.done ? 0 : Math.abs(speed);
     const thr = this.done ? 0 : throttle, go = this.enabled && !this.done;
     const g = gearFor(v);
-    if (g !== this.gear) { if (g > this.gear) this.lastShift = t; this.gear = g; }
+    if (g !== this.gear) { if (g > this.gear && go) { this.lastShift = t; burst(this.eng, 0.09, 0.07, 2200, 0.8, 'highpass'); } this.gear = g; }
     const lo = GEARS[g - 1], hi = GEARS[g], rpm = 0.18 + 0.82 * Math.min(1, Math.max(0, (v - lo) / (hi - lo))) - (t - this.lastShift < 0.12 ? 0.18 : 0);
-    const f = 48 + rpm * 190 + (go && boost ? 24 : 0);
+    const pr = this.prof, f = (48 + rpm * 190 + (go && boost ? 24 : 0)) * pr.pitch;
     this.motor.o1.frequency.setTargetAtTime(f, t, 0.03); this.motor.o2.frequency.setTargetAtTime(f * 1.505, t, 0.03);
-    this.motor.filt.frequency.setTargetAtTime(380 + rpm * 1700 + thr * 700, t, 0.05);
+    if (this.subOsc) { this.subOsc.o.frequency.setTargetAtTime(f * 0.5, t, 0.05); this.subOsc.gain.gain.setTargetAtTime(go ? (0.05 + thr * 0.07) * pr.sub : 0, t, 0.06); }
+    // 터보: 가속 중 rpm 에 따라 높은 휘파람이 따라 올라가고, 가속을 떼면 한 번 '푸쉭' 하고 빠집니다.
+    if (this.whistle) { this.whistle.o.frequency.setTargetAtTime(1500 + rpm * 2600 + thr * 500, t, 0.08); this.whistle.gain.gain.setTargetAtTime(go ? pr.turbo * 0.018 * thr * (0.3 + rpm) : 0, t, 0.08); }
+    if (go && this.lastThr > 0.6 && thr < 0.2 && v > 25 && t - this.lastPop > 0.5) { this.lastPop = t; burst(this.eng, 0.22, 0.12 * Math.max(0.4, pr.turbo), 3200, 0.7, 'highpass'); }
+    this.lastThr = thr;
+    this.motor.filt.frequency.setTargetAtTime(380 + rpm * 1700 + thr * 700 + pr.grit * 260, t, 0.05);
     this.motor.gain.gain.setTargetAtTime(go ? 0.16 + thr * 0.16 + rpm * 0.08 : 0, t, 0.05);
     this.wind.gain.gain.setTargetAtTime(go ? Math.pow(Math.min(1, v / 90), 2) * 0.28 : 0, t, 0.1);
     this.wind.filt.frequency.setTargetAtTime(500 + v * 14, t, 0.1);
@@ -109,5 +131,8 @@ export class RaceAudio {
     const notes = [196, 0, 246.94, 0, 220, 0, 293.66, 0];
     const f = notes[s];
     if (f) tone(this.eng, f, 0.28, 0.045, 'triangle', 4);
+    // 낮은 베이스 펄스와 하이햇으로 달리는 박자를 만듭니다(엔진 소리에 묻히지 않게 작게).
+    if (s % 4 === 0) tone(this.eng, 55, 0.22, 0.07, 'sine', -12);
+    if (s % 2 === 1) burst(this.eng, 0.05, 0.03, 7000, 0.8, 'highpass');
   }
 }

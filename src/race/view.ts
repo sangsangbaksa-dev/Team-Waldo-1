@@ -3,7 +3,8 @@ import * as THREE from 'three';
 import { makePost, type PostFx } from '../postfx';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { instantiate } from '../city/models';
-import { lookFor, type CharacterKit, type CharacterRig } from '../shared/character';
+import { ghostAt } from './ghost';
+import { type CharacterKit, type CharacterRig } from '../shared/character';
 import { wrapAngle, boosting, kmh } from './physics';
 import { type RaceState, type Racer } from './race';
 import { type Track } from './track';
@@ -73,12 +74,15 @@ class Particles {
 let driverKit: CharacterKit | null = null;
 /** 공용 캐릭터 키트: 운전석 드라이버와 출발선 피트 크루에 씁니다. 없으면 차만 그립니다. */
 export function setDriverKit(k: CharacterKit | null): void { driverKit = k; }
-interface CarVis { driver?: CharacterRig; racer: Racer; group: THREE.Group; flames: THREE.Mesh[]; shadow: THREE.Mesh; lastV: number; tails: THREE.Sprite[]; heads: THREE.Sprite[] }
+interface CarVis { racer: Racer; group: THREE.Group; flames: THREE.Mesh[]; shadow: THREE.Mesh; lastV: number; trail: Trail }
+const TRAIL_N = 14;
+/** 후미등 빛줄기: 양쪽 후미등이 지나간 자리를 이은 붉은 띠(어두워지며 사라짐). */
+interface Trail { mesh: THREE.Mesh; pos: Float32Array; col: Float32Array; hist: Float32Array[][]; seeded: boolean }
 
 export class RaceView {
   post: PostFx | null = null; readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera = new THREE.PerspectiveCamera(64, 1, 0.4, 3200);
   private crew: CharacterRig[] = []; private cars: CarVis[] = []; private ground!: THREE.Mesh; private pads: Array<{ tex: THREE.CanvasTexture }> = [];
-  private rainFx = new Particles(1800, 0.32, THREE.NormalBlending, 0.55); private sparks = new Particles(260, 0.9, THREE.AdditiveBlending); private smoke = new Particles(220, 2.0, THREE.NormalBlending, 0.4); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
+  private rainFx = new Particles(1800, 0.32, THREE.NormalBlending, 0.55); private sparks = new Particles(260, 0.9, THREE.AdditiveBlending); private smoke = new Particles(220, 1.5, THREE.NormalBlending, 0.22); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
   private camH = 0; private camInit = false; private fov = 64; private shake = 0; private punch = 0; private time = 0; private sun: THREE.DirectionalLight;
   private chaseLift = 0; private viewH = 1; private startLamps: THREE.Mesh[] = [];
   private disposables: Array<{ dispose(): void }> = [];
@@ -117,17 +121,51 @@ export class RaceView {
         const f = new THREE.Mesh(flameGeo, new THREE.MeshBasicMaterial({ color: 0x66b8ff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
         f.position.set(-CAR_LEN / 2 - 0.05, 0.32, s * 0.34); f.scale.set(0.001, 1, 1); group.add(f); flames.push(f);
       }
-      // 빛나는 후미등(브레이크 때 더 밝게)과 전조등 번짐 — 석양 속 붉은 테일라이트 연출
-      const mkLamp = (x: number, z: number, hex: number, size: number): THREE.Sprite => {
-        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotTex(), color: hex, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
-        sp.position.set(x, 0.62, z); sp.scale.setScalar(size); group.add(sp); return sp;
-      };
-      const tails = [-0.72, 0.72].map(z => mkLamp(-CAR_LEN / 2 + 0.02, z, 0xff2a1a, 0.9)), heads = [-0.7, 0.7].map(z => mkLamp(CAR_LEN / 2 - 0.05, z, 0xfff1c8, 0.8));
-      let driver: CharacterRig | undefined;
-      if (driverKit) { driver = driverKit.create('civ', lookFor(r.model.length * 31 + Math.round(r.color.length * 7)), new THREE.Color(r.accent).getHex()); driver.root.scale.multiplyScalar(0.5); driver.root.position.set(-0.2, -0.1, 0); driver.state.seat = 1; driver.state.drive = 1; driver.update(0); group.add(driver.root); }
-      const shadow = new THREE.Mesh(shGeo, shMat); this.scene.add(group, shadow); this.cars.push({ racer: r, group, flames, shadow, lastV: 0, tails, heads, driver });
+      const shadow = new THREE.Mesh(shGeo, shMat), trail = this.makeTrail(); this.scene.add(group, shadow, trail.mesh); this.cars.push({ racer: r, group, flames, shadow, lastV: 0, trail });
     }
     this.disposables.push(flameGeo, shGeo, shTex, shMat);
+  }
+
+  private makeTrail(): Trail {
+    const verts = 2 * TRAIL_N * 2, pos = new Float32Array(verts * 3), col = new Float32Array(verts * 3), idx: number[] = [];
+    for (let side = 0; side < 2; side++) for (let k = 0; k < TRAIL_N - 1; k++) { const a = (side * TRAIL_N + k) * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setIndex(idx);
+    const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false })); mesh.frustumCulled = false;
+    this.disposables.push(g);
+    return { mesh, pos, col, hist: [[], []], seeded: false };
+  }
+  private updateTrail(v: CarVis, strength: number): void {
+    const tr = v.trail, local = [new THREE.Vector3(-CAR_LEN / 2 + 0.02, 0.62, -0.72), new THREE.Vector3(-CAR_LEN / 2 + 0.02, 0.62, 0.72)];
+    v.group.updateMatrixWorld(true);
+    for (let s = 0; s < 2; s++) {
+      const w = v.group.localToWorld(local[s].clone()), h = tr.hist[s], head = h[0];
+      if (!head || Math.hypot(head[0] - w.x, head[2] - w.z) > 9) { h.length = 0; for (let k = 0; k < TRAIL_N; k++) h.push(Float32Array.of(w.x, w.y, w.z)); }
+      else { const last = h.pop()!; last[0] = w.x; last[1] = w.y; last[2] = w.z; h.unshift(last); }
+      for (let k = 0; k < TRAIL_N; k++) {
+        const p = h[k], f = 1 - k / (TRAIL_N - 1), half = 0.1 * (0.35 + 0.65 * f), i = (s * TRAIL_N + k) * 2 * 3, a = strength * f * f;
+        tr.pos.set([p[0], p[1] + half, p[2], p[0], p[1] - half, p[2]], i); tr.col.set([a, a * 0.1, a * 0.07, a, a * 0.1, a * 0.07], i);
+      }
+    }
+    (tr.mesh.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true; (tr.mesh.geometry.attributes.color as THREE.BufferAttribute).needsUpdate = true;
+  }
+
+  /** 타임어택 고스트: 반투명 하늘색 차 한 대(없으면 null 로 끕니다). */
+  private ghostCar: THREE.Group | null = null;
+  setGhost(model: string, on: boolean): void {
+    if (this.ghostCar) { this.scene.remove(this.ghostCar); this.ghostCar = null; }
+    if (!on) return;
+    const g = new THREE.Group(), tpl = this.carTemplates?.[model];
+    const body = tpl ? instantiate(tpl, { paint: 0x7fe7ff, team: 0xffffff }) : new THREE.Mesh(new THREE.BoxGeometry(CAR_LEN, 1.1, 2));
+    const mat = new THREE.MeshBasicMaterial({ color: 0x7fe7ff, transparent: true, opacity: 0.3, depthWrite: false, fog: false }); this.disposables.push(mat);
+    body.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) m.material = mat; });
+    g.add(body); g.visible = false; g.rotation.order = 'YXZ'; this.scene.add(g); this.ghostCar = g;
+  }
+  private updateGhost(race: RaceState): void {
+    const g = this.ghostCar; if (!g || !race.ghost) return;
+    const pose = ghostAt(race.ghost, Math.max(0, race.clock)), t = this.track;
+    if (!pose) { g.visible = false; return; }
+    const i = ((Math.round(pose.total) % t.n) + t.n) % t.n;
+    g.visible = true; g.position.set(pose.x, t.y[i] + 0.02, pose.z); g.rotation.set(0, -pose.h, t.pitch[i] || 0, 'YXZ');
   }
 
   private buildSky(): void {
@@ -403,7 +441,7 @@ export class RaceView {
     for (const v of this.cars) {
       const c = v.racer.car, sample = t.n > 0 ? ((c.idx % t.n) + t.n) % t.n : 0, pitchRoad = t.pitch[sample] || 0, accel = (c.vf - v.lastV) / Math.max(dt, 1e-4); v.lastV = c.vf;
       const roll = Math.max(-0.09, Math.min(0.09, -c.yawRate * c.vf * 0.0028)) + c.slip * -0.08, pitch = pitchRoad - Math.max(-0.04, Math.min(0.04, accel * 0.0012));
-      v.group.position.set(c.x, c.y + 0.02, c.z); v.group.rotation.set(roll, -c.h, pitch, 'YXZ'); v.shadow.position.set(c.x, c.y + 0.05, c.z); v.shadow.rotation.y = -c.h; if (v.driver) { v.driver.state.time += dt; v.driver.root.rotation.x = Math.max(-0.12, Math.min(0.12, -c.yawRate * 0.06)); v.driver.update(dt); }
+      v.group.position.set(c.x, c.y + 0.02, c.z); v.group.rotation.set(roll, -c.h, pitch, 'YXZ'); v.shadow.position.set(c.x, c.y + 0.05, c.z); v.shadow.rotation.y = -c.h;
       const fl = boosting(c), len = fl ? 1.0 + Math.sin(this.time * 90 + v.racer.id) * 0.25 + Math.min(0.9, speed / 90) : 0.001;
       for (const f of v.flames) { f.scale.x += (len - f.scale.x) * Math.min(1, dt * 20); f.visible = fl || f.scale.x > 0.08; (f.material as THREE.MeshBasicMaterial).color.setHex(v.racer.player ? 0x6ec6ff : 0xffa14a); }
       if (fl && Math.random() < 0.9) this.sparks.emit(c.x - Math.cos(c.h) * 2.4, c.y + 0.5, c.z - Math.sin(c.h) * 2.4, -Math.cos(c.h) * 8 + rnd(-2, 2), rnd(0, 2), -Math.sin(c.h) * 8 + rnd(-2, 2), 0.35, 0.4, 0.8, 1);
@@ -412,14 +450,7 @@ export class RaceView {
         this.smoke.emit(bx, c.y + 0.9, bz, rnd(-1.5, 1.5), rnd(0.5, 2), rnd(-1.5, 1.5), 0.9, 0.55, 0.52, 0.62);
         if (c.drifting && Math.random() < 0.5) this.sparks.emit(bx, c.y + 0.2, bz, rnd(-4, 4) - c.vx * 0.1, rnd(1, 4), rnd(-4, 4) - c.vz * 0.1, 0.4, 1, 0.75, 0.3);
       }
-      // 후미등: 평소 은은하게, 브레이크·감속 때 크게 번짐. 고속에서는 붉은 빛줄기가 뒤로 길게 남습니다.
-      const braking = accel < -9 || (v.racer.player && c.vf < 1), glow = braking ? 1.9 : 1 + Math.min(0.5, speedOf(c) / 120), tl = v.tails;
-      for (const l of tl) { l.scale.setScalar(0.9 * glow); (l.material as THREE.SpriteMaterial).opacity = braking ? 1 : 0.72; }
-      for (const l of v.heads) (l.material as THREE.SpriteMaterial).opacity = this.theme.sky.stars > 0.8 || this.theme.rain ? 0.95 : 0.45;
-      if (speedOf(c) > 38 && Math.random() < 0.7) for (const s of [-1, 1]) {
-        const bx = c.x - Math.cos(c.h) * 2.3 - Math.sin(c.h) * 0.72 * s * -1, bz = c.z - Math.sin(c.h) * 2.3 + Math.cos(c.h) * 0.72 * s * -1;
-        this.sparks.emit(bx, c.y + 0.62, bz, -c.vx * 0.12, 0, -c.vz * 0.12, 0.55, 1, 0.12, 0.08);
-      }
+      this.updateTrail(v, Math.min(1, Math.max(0, (speedOf(c) - 14) / 40)) * 0.45);
       // 슬립스트림: 앞차 뒤에 붙으면 하늘색 바람 줄기가 차 옆으로 빨려 들어갑니다.
       if (c.draft > 0.35 && Math.random() < c.draft) for (const s of [-1, 1]) {
         const bx = c.x + Math.cos(c.h) * 3 - Math.sin(c.h) * 1.5 * s * -1, bz = c.z + Math.sin(c.h) * 3 + Math.cos(c.h) * 1.5 * s * -1;
@@ -452,6 +483,7 @@ export class RaceView {
     this.ground.position.x = Math.round(this.camera.position.x / 60) * 60; this.ground.position.z = Math.round(this.camera.position.z / 60) * 60;
     this.scene.getObjectByName('sky')?.position.copy(this.camera.position);
     this.sun.target.position.set(p.x, p.y, p.z); this.sun.position.set(p.x - 40, p.y + 60, p.z - 90);
+    this.updateGhost(race); this.post?.setSpeedBlur(Math.max(0, (sf - 0.5) * 0.07 + (bst ? 0.022 : 0)));
     this.updateStartLights(race);
     this.updateStreaks(dt, p.vx, p.vz, speed, bst);
     if (this.post) this.post.render(dt); else this.renderer.render(this.scene, this.camera);

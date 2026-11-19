@@ -52,6 +52,8 @@ export const PART_IDS = Object.keys(PARTS) as PartId[];
 export const PART_FITS: Record<WeaponId, PartSlot[]> = {
   pistol: ['muzzle', 'mag'], smg: ['sight', 'muzzle', 'grip', 'mag', 'stock'], rifle: ['sight', 'muzzle', 'grip', 'mag', 'stock'], shotgun: ['sight', 'muzzle', 'mag'], sniper: ['sight', 'muzzle', 'mag', 'stock'],
 };
+/** 가방에 넣어 둘 수 있는 파츠 수(줍는 즉시 가방에 들어가고, L 로 조립합니다) */
+export const BAG_MAX = 30;
 export const PART_SLOTS: PartSlot[] = ['sight', 'muzzle', 'grip', 'mag', 'stock'];
 export const SLOT_NAMES: Record<PartSlot, string> = { sight: '조준경', muzzle: '총구', grip: '손잡이', mag: '탄창', stock: '개머리판' };
 /** 이 무기에 이 파츠를 달 수 있는가(슬롯과 전용 무기 둘 다 맞아야 함). 샷건의 탄창 칸은 확장 튜브(확장 탄창)만 받습니다. */
@@ -121,7 +123,7 @@ export const DRIVE = {
   /** 총알이 차체에 주는 비율, 탑승자에게 새는 비율 */ shotCut: 0.55, driverCut: 0.22,
 };
 /** 폭격(레드존): 안전지대 안의 한 곳에 경고 후 포탄이 쏟아집니다. 시각은 자기장 시작 기준 초. */
-export const RED = { r: 48, warn: 8, dur: 30, every: 0.22, fall: 1.7, blast: 8.5, dmg: 85, calls: [80, 170, 255, 335] };
+export const RED = { r: 48, warn: 8, dur: 30, every: 0.22, fall: 1.7, blast: 8.5, dmg: 85, calls: [100, 210, 320, 420, 515, 600, 670] };
 export type Mode = 'br' | 'duel';
 
 export type Difficulty = 'easy' | 'normal' | 'hard' | 'expert';
@@ -149,15 +151,21 @@ export const BOTS: Record<Difficulty, BotTuning> = {
 export interface ZonePhase { wait: number; shrink: number; radius: number; dps: number }
 /** 줄어드는 자기장 일정. 마지막 단계가 끝나면 작은 원에 머무르며 피해가 계속 늘어납니다. */
 export const ZONES: Record<Mode, ZonePhase[]> = {
+  // 배틀로열: 낙하(52초) 뒤부터 8단계, 합쳐서 약 12분. 마지막 원이 닫힌 뒤에는 피해가 커져 그 안에 끝납니다.
   br: [
-    { wait: 28, shrink: 38, radius: 225, dps: 1.2 }, { wait: 24, shrink: 32, radius: 140, dps: 2.2 }, { wait: 20, shrink: 28, radius: 70, dps: 3.5 },
-    { wait: 16, shrink: 24, radius: 36, dps: 6 }, { wait: 12, shrink: 20, radius: 14, dps: 10 }, { wait: 8, shrink: 16, radius: 5, dps: 16 },
+    { wait: 73, shrink: 67, radius: 230, dps: 1.0 }, { wait: 56, shrink: 62, radius: 170, dps: 1.5 }, { wait: 50, shrink: 56, radius: 120, dps: 2.2 }, { wait: 45, shrink: 50, radius: 80, dps: 3.2 },
+    { wait: 39, shrink: 45, radius: 48, dps: 4.5 }, { wait: 34, shrink: 39, radius: 26, dps: 6.5 }, { wait: 27, shrink: 34, radius: 12, dps: 10 }, { wait: 20, shrink: 27, radius: 5, dps: 16 },
   ],
   duel: [
     { wait: 20, shrink: 28, radius: 85, dps: 1.5 }, { wait: 16, shrink: 24, radius: 52, dps: 3 }, { wait: 12, shrink: 20, radius: 28, dps: 6 }, { wait: 8, shrink: 16, radius: 10, dps: 12 },
   ],
 };
-
+/** 솔로·방 배틀로열이 끝나는 목표 시간(초): 약 12분. 시험과 안내 문구가 이 값을 씁니다. */
+export const BR_MATCH_SECONDS = 720;
+/** 비행기로 시작하는 배틀로열에서 AI 가 AI 를 쏠 때 피해 배율, 그리고 무기 없이 내린 AI 가 먼저 싸우지 않고 무기를 찾는 시간(초). 100명이 초반에 다 쓰러지지 않게 12분을 이끕니다. */
+export const PACE = { botVsBot: 0.2, cautious: 90 };
+/** 보급 투하가 땅에 닿는 시각(자기장 시작 기준 초) */
+export const SUPPLY_AT = [130, 280, 430, 580];
 export const BOT_NAMES = ['Shadow', 'Viper', 'Rook', 'Ember', 'Nova', 'Drift', 'Kestrel', 'Onyx', 'Havoc', 'Lynx', 'Cobalt', 'Raven', 'Slate', 'Pike', 'Zephyr', 'Mako', 'Tundra', 'Flint', 'Saber'];
 export const TEAM_COLORS = [0xc0392b, 0x2e86de, 0x27ae60, 0xe1a21a, 0x8e44ad, 0x16a0a0, 0xd35400, 0x7f8c8d, 0xc2185b, 0x4a6572];
 export const SKIN_TONES = [0xf1c9a5, 0xd9a47a, 0xa8744f, 0x7a5236, 0xf5d6b8];

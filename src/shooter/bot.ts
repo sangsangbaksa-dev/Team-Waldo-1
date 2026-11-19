@@ -118,7 +118,16 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
 
   // ---- 이동 목표 ----
   let moveYaw: number | null = null, run = false;
-  if (q && visible && def) {
+  // 폭격 구역 안이면 무엇보다 먼저 빠져나갑니다. 달려오는 차도 비켜 갑니다.
+  const red = m.reds.length ? m.redAt(p.x, p.z, 6) : null; let dodge: number | null = null;
+  if (!red && m.vehicles.length) for (const v of m.vehicles) {
+    if (v.wreck || Math.abs(v.speed) < 6) continue; const dx = p.x - v.x, dz = p.z - v.z; if (Math.abs(dx) > 24 || Math.abs(dz) > 24) continue;
+    const fx = Math.cos(v.yaw), fz = Math.sin(v.yaw), sg = Math.sign(v.speed), along = (dx * fx + dz * fz) * sg, lat = -dx * fz + dz * fx;
+    if (along > 0 && along < 22 && Math.abs(lat) < v.d / 2 + 2.4) { dodge = Math.atan2(fz, fx) + (lat >= 0 ? 1 : -1) * Math.PI / 2; break; }
+  }
+  if (red) { moveYaw = Math.atan2(p.z - red.z, p.x - red.x); run = true; b.goalT = 0; b.lootId = -1; }
+  else if (dodge !== null) { moveYaw = dodge; run = true; }
+  else if (q && visible && def) {
     const dx = q.x - p.x, dz = q.z - p.z, d = Math.hypot(dx, dz), ideal = IDEAL[def.id] ?? 20, toward = Math.atan2(dz, dx);
     if (b.strafeT <= 0) { b.strafeT = 0.5 + rng() * 1.2; b.strafe = rng() < 0.5 ? 1 : -1; }
     if (d > ideal * 1.35) { moveYaw = toward + (T.strafe > 0.6 ? b.strafe * 0.35 : 0); run = d > 45; }
@@ -169,7 +178,7 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
     }
   }
 
-  if (inp.fire) moveYaw = null; // 쏘는 동안에는 멈춰서 맞힙니다(움직이는 건 쉬는 사이)
+  if (inp.fire && !red && dodge === null) moveYaw = null; // 쏘는 동안에는 멈춰서 맞힙니다(움직이는 건 쉬는 사이)
 
   // ---- 막힘 감지: 0.5초마다 위치를 재서 거의 안 움직였으면 옆으로 돌아갑니다 ----
   b.probeT -= dt;
@@ -190,7 +199,7 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
   inp.yaw = p.yaw; inp.pitch = p.pitch;
   if (moveYaw !== null) {
     const rel = angDiff(moveYaw, p.yaw); inp.mz = Math.cos(rel); inp.mx = Math.sin(rel);
-    inp.sprint = run && Math.abs(rel) < 0.6 && !visible;
+    inp.sprint = run && Math.abs(rel) < 0.6 && (!visible || !!red || dodge !== null);
   }
 }
 

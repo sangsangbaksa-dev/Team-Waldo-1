@@ -1,15 +1,32 @@
 // ZERO ZONE — 경기 시뮬레이션: 이동·사격·피해·전리품·줄어드는 자기장·승패. 화면과 무관해서 테스트와 봇 대 봇 시뮬레이션에서 그대로 돌립니다.
-import { AIR, BOOST, BOTS, BOT_NAMES, DIFFICULTIES, HELMET_CUT, HEAL, ARMOR_PTS, ARMOR_ABS, MAP_HALF, PART_FITS, PARTS, partFit, PLAYER, SKIN_TONES, TEAM_COLORS, WEAPONS, ZONES, magOf, makeRng, partHandling, type Attachments, type Difficulty, type Mode, type PartId, type WeaponId } from './config';
-import { blockedAt, generateMap, lineClear, pushOut, rayWorld, slideMove, type GameMap, type Loot } from './world';
+import { AIR, BOOST, BOTS, BOT_NAMES, DIFFICULTIES, DRIVE, HELMET_CUT, HEAL, ARMOR_PTS, ARMOR_ABS, MAP_HALF, PART_FITS, PARTS, partFit, PLAYER, RED, SKIN_TONES, TEAM_COLORS, VEHICLES, WEAPONS, ZONES, magOf, makeRng, partHandling, type Attachments, type Difficulty, type DriveKind, type Mode, type PartId, type WeaponId } from './config';
+import { blockedAt, circleHits, generateMap, lineClear, moveBox, pushOut, rayWorld, slideMove, type GameMap, type Loot } from './world';
 import { WATER_SLOW, waterDepth } from './terrain';
 import { thinkBot, thinkAir, newBrain, type BotBrain } from './bot';
 
 export interface Input { mx: number; mz: number; yaw: number; pitch: number; fire: boolean; sprint: boolean; reload: boolean; interact: boolean; ads: boolean; slot: number; /** 수류탄 던지기(눌린 프레임) */ nade?: boolean; /** 웅크리기(누르고 있는 동안) */ crouch?: boolean; /** 점프(비행기에서 뛰어내리기) · 낙하산 펴기 */ jump?: boolean; /** 치료 시작: 1 붕대 · 2 구급상자 */ heal?: number }
 export const blankInput = (): Input => ({ mx: 0, mz: 0, yaw: 0, pitch: 0, fire: false, sprint: false, reload: false, interact: false, ads: false, slot: -1 });
+/** 광선과 차체(옆에서 본 직사각형 × 높이)의 첫 교차 거리(없으면 Infinity). */
+export function rayVehicle(v: Vehicle, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
+  const c = Math.cos(v.yaw), s = Math.sin(v.yaw), px = ox - v.x, pz = oz - v.z, lo = { x: px * c + pz * s, y: oy, z: -px * s + pz * c }, ld = { x: dx * c + dz * s, y: dy, z: -dx * s + dz * c };
+  let t0 = 0, t1 = maxT;
+  const slab = (o: number, d: number, a: number, b: number): boolean => { if (Math.abs(d) < 1e-9) return o >= a && o <= b; let u = (a - o) / d, w = (b - o) / d; if (u > w) { const k = u; u = w; w = k; } if (u > t0) t0 = u; if (w < t1) t1 = w; return t0 <= t1; };
+  return slab(lo.x, ld.x, -v.w / 2, v.w / 2) && slab(lo.y, ld.y, 0.15, v.h) && slab(lo.z, ld.z, -v.d / 2, v.d / 2) ? t0 : Infinity;
+}
 /** 비행기 항로: 시작점에서 방향(dx,dz)으로 plane m/s 로 날아 len 미터 뒤에 지도를 벗어납니다. */
 export interface Plane { x0: number; z0: number; dx: number; dz: number; speed: number; len: number; end: number }
 /** 0 땅 · 1 비행기 안 · 2 자유낙하 · 3 낙하산 */
 export type AirState = 0 | 1 | 2 | 3;
+/** 쓰러진 이유: 무기 · 자기장 · 수류탄 · 차량(치임·사고·폭발) · 폭격 */
+export type Cause = WeaponId | 'zone' | 'grenade' | 'vehicle' | 'bomb';
+/** 운전할 수 있는 차량. 서 있을 때는 지도의 충돌 상자(box)로 길을 막고, 움직이는 동안에는 상자를 끄고 직접 충돌을 셉니다. */
+export interface Vehicle {
+  id: number; kind: DriveKind; x: number; z: number; /** 차가 향한 방향(라디안, 선수의 yaw 와 같은 약속) */ yaw: number; speed: number; hp: number; max: number;
+  /** 운전자 선수 번호(-1 없음) */ driver: number; wreck: boolean; moving: boolean; w: number; d: number; h: number; c: number; v: number; box: number; lastBy: number; soundT: number; hits: Map<number, number>;
+}
+/** 폭격 구역: call 에 경고, start~end 사이에 포탄이 떨어집니다. */
+export interface RedZone { x: number; z: number; r: number; call: number; start: number; end: number; next: number; called: boolean; ended: boolean }
+export interface Shell { id: number; x: number; z: number; t0: number; land: number }
 export interface Gun { id: WeaponId; mag: number; reserve: number; att: Attachments }
 /** 보급 투하: call 시각에 비행기가 지나며 상자를 떨어뜨리고, at 시각에 착지해 전리품이 열립니다. */
 /** 웅크림 정도(0~1)에 따른 눈높이·키·머리 높이 */
@@ -29,14 +46,16 @@ export interface Player {
   /** 웅크린 정도 0(서 있음)~1(완전히 웅크림) */ crouch: number; walk: number; kick: number; muzzle: number; hurt: number; hurtYaw: number; ads: boolean; speed: number; lastHitBy: number; emptyT: number;
   /** 수류탄 개수·재사용 대기 */ nades: number; nadeCd: number; nadeHeld: boolean;
   /** 치료 도구 개수 · 시전 남은 시간(0이면 안 하는 중)과 종류 · 방탄복 등급 */ bandages: number; kits: number; healT: number; healKind: 'bandage' | 'kit'; armorLv: number;
-  /** 경기 기록: 준 피해 · 머리 명중 수 · 나를 쓰러뜨린 선수와 무기 */ dmgDealt: number; heads: number; killedBy: number; killedWeapon: WeaponId | 'zone' | 'grenade' | null;
+  /** 경기 기록: 준 피해 · 머리 명중 수 · 나를 쓰러뜨린 선수와 무기 */ dmgDealt: number; heads: number; killedBy: number; killedWeapon: Cause | null; /** 타고 있는 차량 번호(-1 없음) */ veh: number;
 }
 export type MatchEvent =
   | { t: 'shot'; id: number; weapon: WeaponId; ox: number; oy: number; oz: number; ends: number[]; remote: boolean; sup?: boolean }
   | { t: 'hit'; victim: number; attacker: number; dmg: number; head: boolean; x: number; y: number; z: number; wall: boolean }
-  | { t: 'kill'; victim: number; attacker: number; weapon: WeaponId | 'zone' | 'grenade' }
+  | { t: 'kill'; victim: number; attacker: number; weapon: Cause }
   | { t: 'pickup'; id: number; loot: number; kind: Loot['kind']; weapon: WeaponId | null; part?: PartId | null; level?: number }
   | { t: 'drop'; stage: 'call' | 'land'; x: number; z: number }
+  | { t: 'veh'; stage: 'enter' | 'exit' | 'crash' | 'boom'; id: number; x: number; z: number }
+  | { t: 'red'; stage: 'call' | 'start' | 'end'; x: number; z: number; r: number }
   | { t: 'jump'; id: number } | { t: 'chute'; id: number } | { t: 'land'; id: number }
   | { t: 'nade'; stage: 'throw' | 'boom'; id: number; x: number; y: number; z: number }
   | { t: 'heal'; id: number; stage: 'start' | 'done' | 'cancel'; kind: 'bandage' | 'kit' }
@@ -44,7 +63,7 @@ export type MatchEvent =
 
 export interface ZoneState { cx: number; cz: number; r: number; nextCx: number; nextCz: number; nextR: number; shrinking: boolean; phase: number; timeLeft: number; dps: number }
 
-export interface MatchOptions { seed: number; mode: Mode; difficulty: Difficulty; /** 사람(또는 원격) 선수 이름들. 나머지는 봇이 채웁니다. */ humans: Array<{ name: string; remote?: boolean }>; fill?: number; /** 비행기에서 낙하산으로 시작(솔로 배틀로열). 꺼 두면 땅에서 시작합니다. */ air?: boolean }
+export interface MatchOptions { seed: number; mode: Mode; difficulty: Difficulty; /** 사람(또는 원격) 선수 이름들. 나머지는 봇이 채웁니다. */ humans: Array<{ name: string; remote?: boolean }>; fill?: number; /** 비행기에서 낙하산으로 시작(솔로 배틀로열). 꺼 두면 땅에서 시작합니다. */ air?: boolean; /** 운전할 수 있는 차량(솔로 전용: 온라인 대전에는 동기화가 없어 꺼 둡니다) */ vehicles?: boolean; /** 폭격 구역(솔로 배틀로열) */ bombs?: boolean }
 
 export class Match {
   map: GameMap; mode: Mode; difficulty: Difficulty; seed: number;
@@ -52,6 +71,7 @@ export class Match {
   /** 최근 총소리(봇이 듣습니다) */ sounds: Array<{ x: number; z: number; t: number; by: number; quiet?: boolean }> = [];
   /** 보급 투하(솔로 배틀로열만) */ drops: Drop[] = [];
   /** 날아다니는 수류탄 */ nades: Nade[] = []; private nadeId = 1;
+  /** 운전할 수 있는 차량 · 폭격 구역과 떨어지는 포탄 */ vehicles: Vehicle[] = []; reds: RedZone[] = []; shells: Shell[] = []; private shellId = 1;
   /** 비행기 항로(낙하 시작일 때만) */ plane: Plane | null = null;
   /** 자기장 시간이 흐르기 시작하는 때(낙하하는 동안은 기다립니다) */ zoneDelay = 0;
   rng: () => number;
@@ -83,6 +103,15 @@ export class Match {
         if (!blockedAt(this.map, x, z, 3.2) || i === 29) { this.drops.push({ x, z, at, fall: 16, called: false, landed: false }); break; }
       }
     }
+    if (o.mode === 'br' && o.bombs) {
+      const rr = makeRng(o.seed ^ 0x7f4a7c15);
+      for (const at of RED.calls) {
+        const call = at + this.zoneDelay, z = this.zoneAt(call + RED.warn), cs = this.map.compounds.filter(c => Math.hypot(c.x - z.cx, c.z - z.cz) < z.r * 0.85); let x: number, zz: number;
+        if (cs.length && rr() < 0.7) { const c = cs[Math.floor(rr() * cs.length)]; x = c.x; zz = c.z; } else { const a = rr() * Math.PI * 2, d = Math.sqrt(rr()) * z.r * 0.7; x = z.cx + Math.cos(a) * d; zz = z.cz + Math.sin(a) * d; }
+        this.reds.push({ x, z: zz, r: RED.r, call, start: call + RED.warn, end: call + RED.warn + RED.dur, next: 0, called: false, ended: false });
+      }
+    }
+    if (o.vehicles && o.mode === 'br') this.initVehicles();
     const total = o.fill ?? (o.mode === 'br' ? 20 : o.humans.length), names = [...BOT_NAMES].sort(() => this.rng() - 0.5), air = !!this.plane;
     for (let i = 0; i < total; i++) {
       const h = o.humans[i], sp = air ? this.planeAt(0) : this.map.spawns[i % this.map.spawns.length], bi = i - o.humans.length, cyc = Math.floor(bi / names.length);
@@ -91,7 +120,7 @@ export class Match {
         x: sp.x, z: sp.z, yaw: air ? Math.atan2(this.plane!.dz, this.plane!.dx) : Math.atan2(-sp.z, -sp.x), pitch: 0, vx: 0, vz: 0, hp: PLAYER.hp, armor: 0, helmet: 0, boost: 0, alive: true,
         guns: [{ id: 'pistol', mag: WEAPONS.pistol.mag, reserve: WEAPONS.pistol.mag * 2, att: {} }, null], cur: 0, reload: 0, cd: 0.4, fireHeld: false, interactHeld: false,
         kills: 0, place: 0, diedAt: 0, input: blankInput(), brain: null, air: air ? 1 : 0, alt: air ? AIR.alt : 0, jumpHeld: false, landedAt: 0, crouch: 0, walk: 0, kick: 0, muzzle: 0, hurt: 0, hurtYaw: 0, ads: false, speed: 0, lastHitBy: -1, emptyT: 0, nades: 0, nadeCd: 0, nadeHeld: false,
-        bandages: 0, kits: 0, healT: 0, healKind: 'bandage', armorLv: 0, dmgDealt: 0, heads: 0, killedBy: -1, killedWeapon: null,
+        bandages: 0, kits: 0, healT: 0, healKind: 'bandage', armorLv: 0, dmgDealt: 0, heads: 0, killedBy: -1, killedWeapon: null, veh: -1,
       };
       if (p.bot) { p.brain = newBrain(this.rng, BOTS[o.difficulty]); if (air) this.planDrop(p); }
       p.input.yaw = p.yaw; this.players.push(p);
@@ -122,17 +151,20 @@ export class Match {
     this.t += dt;
     const zone = this.zone;
     this.sounds = this.sounds.filter(s => this.t - s.t < 2.5);
-    this.stepDrops(); this.stepNades(dt);
+    this.stepDrops(); this.stepNades(dt); this.stepVehicles(dt); this.stepReds(dt);
     // 멀리 있는 AI(사람 시야 밖)는 생각을 0.2초에 한 번만 해서 100명이 뛰어도 가볍게 돕니다.
     const humans: Player[] = []; for (const q of this.players) if (!q.bot && q.alive) humans.push(q);
     for (const p of this.players) {
       if (!p.alive) continue;
       if (p.air) { this.stepAir(p, dt); continue; }
-      if (p.bot && p.brain) {
-        const b = p.brain; b.acc += dt; let far = true; for (const h of humans) if (Math.abs(h.x - p.x) < 150 && Math.abs(h.z - p.z) < 150) { far = false; break; }
-        if (!far || b.acc >= 0.2) { thinkBot(this, p, b.acc, zone); b.acc = 0; }
+      if (p.veh >= 0) this.stepDriver(p, dt);
+      else {
+        if (p.bot && p.brain) {
+          const b = p.brain; b.acc += dt; let far = true; for (const h of humans) if (Math.abs(h.x - p.x) < 150 && Math.abs(h.z - p.z) < 150) { far = false; break; }
+          if (!far || b.acc >= 0.2) { thinkBot(this, p, b.acc, zone); b.acc = 0; }
+        }
+        this.update(p, dt);
       }
-      this.update(p, dt);
       if (!p.remote && Math.hypot(p.x - zone.cx, p.z - zone.cz) > zone.r) this.damage(p, zone.dps * dt, -1, 'zone', false, p.x, 1, p.z, true);
     }
     // 마지막 한 명이 남으면 끝납니다(동시에 모두 쓰러졌다면 마지막에 쓰러진 쪽이 승자).
@@ -193,6 +225,135 @@ export class Match {
       }
     }
   }
+
+  // ---------- 차량 ----------
+  private initVehicles(): void {
+    for (const pr of this.map.props) {
+      if (pr.wreck || pr.box === undefined || !(pr.kind in VEHICLES)) continue; const kind = pr.kind as DriveKind, S = VEHICLES[kind];
+      this.vehicles.push({ id: this.vehicles.length, kind, x: pr.x, z: pr.z, yaw: -(pr.ry + pr.jit), speed: 0, hp: S.hp, max: S.hp, driver: -1, wreck: false, moving: false, w: pr.w, d: pr.d, h: pr.h, c: pr.c, v: pr.v, box: pr.box, lastBy: -1, soundT: 0, hits: new Map() });
+    }
+  }
+  /** 서 있는 차는 길을 막는 상자, 움직이는 차는 상자를 끕니다. */
+  private parkBox(v: Vehicle, on: boolean): void {
+    if (!on) { moveBox(this.map, v.box, { y0: 999, y1: 1000 }); return; }
+    const c = Math.abs(Math.cos(v.yaw)), s = Math.abs(Math.sin(v.yaw)), hx = c * v.w / 2 + s * v.d / 2, hz = s * v.w / 2 + c * v.d / 2;
+    moveBox(this.map, v.box, { x0: v.x - hx, x1: v.x + hx, z0: v.z - hz, z1: v.z + hz, y0: 0, y1: v.h });
+  }
+  /** 타기 좋은 차: 차체 가장자리까지 DRIVE.board 이내의 가장 가까운 빈 차(없으면 null). */
+  vehicleNear(p: { x: number; z: number }): Vehicle | null {
+    let best: Vehicle | null = null, bd = DRIVE.board;
+    for (const v of this.vehicles) {
+      if (v.wreck || v.driver >= 0) continue; const dx = p.x - v.x, dz = p.z - v.z; if (Math.abs(dx) > 8 || Math.abs(dz) > 8) continue;
+      const c = Math.cos(v.yaw), s = Math.sin(v.yaw), lx = dx * c + dz * s, lz = -dx * s + dz * c, d = Math.hypot(Math.max(0, Math.abs(lx) - v.w / 2), Math.max(0, Math.abs(lz) - v.d / 2));
+      if (d < bd) { bd = d; best = v; }
+    }
+    return best;
+  }
+  private enterVehicle(p: Player, v: Vehicle): void {
+    p.veh = v.id; v.driver = p.id; v.moving = true; this.parkBox(v, false); p.healT = 0; p.reload = 0; p.ads = false; p.crouch = 0; p.vx = p.vz = 0; p.x = v.x; p.z = v.z; p.hurt = 0;
+    this.events.push({ t: 'veh', stage: 'enter', id: v.id, x: v.x, z: v.z });
+  }
+  /** 내릴 자리: 차 옆(오른쪽·왼쪽)·뒤·앞 중 서 있을 수 있는 첫 곳. */
+  private exitSpot(v: Vehicle): { x: number; z: number } {
+    const c = Math.cos(v.yaw), s = Math.sin(v.yaw), side = v.d / 2 + 0.95, end = v.w / 2 + 0.95;
+    for (const [a, b] of [[-s * side, c * side], [s * side, -c * side], [-c * end, -s * end], [c * end, s * end]]) { const x = v.x + a, z = v.z + b; if (!circleHits(this.map, x, z, PLAYER.radius) && Math.abs(x) < this.map.half - 1 && Math.abs(z) < this.map.half - 1) return { x, z }; }
+    return { x: v.x, z: v.z };
+  }
+  private leaveVehicle(p: Player, hurt = true): void {
+    const v = this.vehicles[p.veh]; p.veh = -1; if (!v) return; v.driver = -1; const spot = this.exitSpot(v); p.x = spot.x; p.z = spot.z; p.vx = p.vz = 0; p.cd = Math.max(p.cd, 0.45); pushOut(this.map, p, PLAYER.radius);
+    this.events.push({ t: 'veh', stage: 'exit', id: v.id, x: v.x, z: v.z });
+    if (hurt && Math.abs(v.speed) > 14) this.damage(p, (Math.abs(v.speed) - 14) * 2.2, -1, 'vehicle', false, p.x, 1, p.z, false);
+  }
+  /** 운전 중인 선수: 위치는 차를 따라가고, E 로 내립니다(발사·치료는 못 합니다). */
+  private stepDriver(p: Player, dt: number): void {
+    const v = this.vehicles[p.veh], inp = p.input; if (!v) { p.veh = -1; return; }
+    p.cd = Math.max(0, p.cd - dt); p.kick = Math.max(0, p.kick - dt * 7); p.muzzle = Math.max(0, p.muzzle - dt); p.hurt = Math.max(0, p.hurt - dt); p.emptyT = Math.max(0, p.emptyT - dt);
+    p.yaw = inp.yaw; p.pitch = Math.max(-1.45, Math.min(1.45, inp.pitch)); p.ads = false; p.crouch = 0; p.x = v.x; p.z = v.z; p.speed = Math.abs(v.speed); p.vx = Math.cos(v.yaw) * v.speed; p.vz = Math.sin(v.yaw) * v.speed; p.walk += p.speed * dt;
+    const wantE = inp.interact && !p.interactHeld; p.interactHeld = inp.interact; p.fireHeld = !!inp.fire;
+    if (wantE) this.leaveVehicle(p);
+  }
+  private vBlocked(v: Vehicle, x: number, z: number, yaw: number): boolean {
+    const lim = this.map.half - 2; if (Math.abs(x) > lim || Math.abs(z) > lim) return true;
+    const r = v.d * 0.46, off = Math.max(0, v.w / 2 - r), c = Math.cos(yaw), s = Math.sin(yaw);
+    for (const k of [-off, 0, off]) { const px = x + c * k, pz = z + s * k; if (circleHits(this.map, px, pz, r) || waterDepth(this.map.terrain, px, pz) >= 2) return true; }
+    for (const o of this.vehicles) if (o !== v && !o.wreck && o.moving && Math.hypot(o.x - x, o.z - z) < (v.w + o.w) * 0.28) return true;
+    return false;
+  }
+  hurtVehicle(v: Vehicle, dmg: number, by: number): void {
+    if (v.wreck || dmg <= 0) return; if (by >= 0) v.lastBy = by; v.hp -= dmg; if (v.hp <= 0) this.explodeVehicle(v, v.lastBy);
+  }
+  private explodeVehicle(v: Vehicle, by: number): void {
+    if (v.wreck) return; const drv = v.driver >= 0 ? this.players[v.driver] : null; v.wreck = true; v.hp = 0; v.speed = 0; v.moving = false;
+    if (drv) this.leaveVehicle(drv, false); v.driver = -1; this.parkBox(v, true);
+    this.events.push({ t: 'veh', stage: 'boom', id: v.id, x: v.x, z: v.z }); this.events.push({ t: 'nade', stage: 'boom', id: by, x: v.x, y: 1, z: v.z }); this.sounds.push({ x: v.x, z: v.z, t: this.t, by });
+    for (const q of this.players) {
+      if (!q.alive || q.air || q.veh >= 0) continue; const d = Math.hypot(q.x - v.x, q.z - v.z); if (d > DRIVE.boomR) continue;
+      let dmg = DRIVE.boomDmg * (1 - d / DRIVE.boomR); if (q === drv) dmg = Math.max(dmg, 55); this.damage(q, dmg, by, 'vehicle', false, q.x, 1.2, q.z, false);
+    }
+    for (const o of this.vehicles) { if (o === v || o.wreck) continue; const d = Math.hypot(o.x - v.x, o.z - v.z); if (d < DRIVE.boomR + 2) this.hurtVehicle(o, 160 * (1 - d / (DRIVE.boomR + 2)), by); }
+  }
+  private stepVehicles(dt: number): void {
+    for (const v of this.vehicles) {
+      if (v.wreck || (!v.moving && v.driver < 0)) continue;
+      const S = VEHICLES[v.kind], drv = v.driver >= 0 ? this.players[v.driver] : null, inp = drv?.input, wet = waterDepth(this.map.terrain, v.x, v.z), top = S.top * (wet ? 0.45 : 1);
+      const thr = inp ? Math.max(-1, Math.min(1, inp.mz)) : 0, st = inp ? Math.max(-1, Math.min(1, inp.mx)) : 0, hb = !!inp?.jump && !!drv;
+      if (thr > 0) v.speed += (v.speed < 0 ? S.accel * DRIVE.brake : S.accel * Math.max(0.05, 1 - Math.max(0, v.speed) / top)) * thr * dt;
+      else if (thr < 0) { if (v.speed > 0.4) v.speed -= S.accel * DRIVE.brake * dt; else v.speed = Math.max(-top * DRIVE.reverse, v.speed - S.accel * 0.7 * dt); }
+      else v.speed -= Math.sign(v.speed) * Math.min(Math.abs(v.speed), DRIVE.drag * dt);
+      if (hb || !drv) v.speed -= Math.sign(v.speed) * Math.min(Math.abs(v.speed), (hb ? DRIVE.handbrake : 9) * dt);
+      v.speed = Math.max(-top * DRIVE.reverse, Math.min(top, v.speed));
+      const sp = Math.abs(v.speed), newYaw = v.yaw + st * S.turn * Math.min(1, sp / 7) * (1 - 0.45 * Math.min(1, sp / S.top)) * (hb ? 1.5 : 1) * Math.sign(v.speed || 1) * dt;
+      if (!this.vBlocked(v, v.x, v.z, newYaw)) v.yaw = newYaw;
+      const mx = Math.cos(v.yaw) * v.speed * dt, mz = Math.sin(v.yaw) * v.speed * dt;
+      if (!this.vBlocked(v, v.x + mx, v.z + mz, v.yaw)) { v.x += mx; v.z += mz; }
+      else if (!this.vBlocked(v, v.x + mx, v.z, v.yaw)) { v.x += mx; v.speed *= 0.97; }
+      else if (!this.vBlocked(v, v.x, v.z + mz, v.yaw)) { v.z += mz; v.speed *= 0.97; }
+      else if (sp > 1) {
+        // 정면 충돌: 튕겨 나오고 속도에 따라 차체와 운전자가 다칩니다
+        v.speed = -v.speed * 0.25; this.events.push({ t: 'veh', stage: 'crash', id: v.id, x: v.x, z: v.z }); this.sounds.push({ x: v.x, z: v.z, t: this.t, by: v.driver });
+        if (sp > DRIVE.crashMin) { if (drv && sp > 9) this.damage(drv, (sp - 9) * DRIVE.crashDriver, -1, 'vehicle', false, v.x, 1, v.z, false); this.hurtVehicle(v, (sp - DRIVE.crashMin) * DRIVE.crashBody, -1); if (v.wreck) continue; }
+      }
+      if (drv) { drv.x = v.x; drv.z = v.z; if (sp > 8 && this.t - v.soundT > 0.7) { v.soundT = this.t; this.sounds.push({ x: v.x, z: v.z, t: this.t, by: drv.id }); } }
+      // 치기
+      if (sp > DRIVE.runMin) {
+        const c = Math.cos(v.yaw), s = Math.sin(v.yaw);
+        for (const q of this.players) {
+          if (!q.alive || q.air || q.veh >= 0 || q.id === v.driver) continue; const dx = q.x - v.x, dz = q.z - v.z; if (Math.abs(dx) > 7 || Math.abs(dz) > 7) continue;
+          const lx = dx * c + dz * s, lz = -dx * s + dz * c; if (Math.abs(lx) > v.w / 2 + 0.3 || Math.abs(lz) > v.d / 2 + 0.3 || (v.hits.get(q.id) ?? -9) > this.t - DRIVE.runCd) continue;
+          v.hits.set(q.id, this.t); this.damage(q, sp * DRIVE.runDmg, v.driver, 'vehicle', false, q.x, 1, q.z, false); v.speed *= 0.94;
+        }
+      }
+      if (!drv && Math.abs(v.speed) < 0.15) { v.speed = 0; v.moving = false; this.parkBox(v, true); }
+    }
+  }
+
+  // ---------- 폭격 ----------
+  /** (x,z) 를 덮고 있는 폭격 구역(경고가 켜진 뒤 마지막 포탄이 떨어질 때까지). margin 만큼 넓게 봅니다. */
+  redAt(x: number, z: number, margin = 0): RedZone | null {
+    for (const r of this.reds) if (r.called && this.t < r.end + RED.fall && Math.hypot(x - r.x, z - r.z) < r.r + margin) return r;
+    return null;
+  }
+  private stepReds(dt: number): void {
+    for (const r of this.reds) {
+      if (!r.called && this.t >= r.call) { r.called = true; this.events.push({ t: 'red', stage: 'call', x: r.x, z: r.z, r: r.r }); }
+      if (!r.called) continue;
+      if (this.t >= r.start && this.t < r.end) {
+        r.next -= dt;
+        while (r.next <= 0) { r.next += RED.every * (0.6 + this.rng() * 0.8); const a = this.rng() * Math.PI * 2, d = Math.sqrt(this.rng()) * r.r; this.shells.push({ id: this.shellId++, x: r.x + Math.cos(a) * d, z: r.z + Math.sin(a) * d, t0: this.t, land: this.t + RED.fall }); }
+      }
+      if (!r.ended && this.t >= r.end) { r.ended = true; this.events.push({ t: 'red', stage: 'end', x: r.x, z: r.z, r: r.r }); }
+    }
+    for (let i = this.shells.length - 1; i >= 0; i--) {
+      const sh = this.shells[i]; if (this.t < sh.land) continue; this.shells.splice(i, 1);
+      this.events.push({ t: 'nade', stage: 'boom', id: -1, x: sh.x, y: 0.4, z: sh.z });
+      for (const q of this.players) {
+        if (!q.alive || q.air) continue; const d = Math.hypot(q.x - sh.x, q.z - sh.z); if (d > RED.blast) continue;
+        let dmg = RED.dmg * (1 - d / RED.blast); if (this.map.buildings.some(b => Math.abs(q.x - b.x) < b.w / 2 && Math.abs(q.z - b.z) < b.d / 2)) dmg *= 0.5; if (dmg >= 1) this.damage(q, dmg, -1, 'bomb', false, q.x, 1.2, q.z, false);
+      }
+      for (const v of this.vehicles) { if (v.wreck) continue; const d = Math.hypot(v.x - sh.x, v.z - sh.z); if (d < RED.blast) this.hurtVehicle(v, 170 * (1 - d / RED.blast), -1); }
+    }
+  }
+
   private lastDead(): number { let best = -1, at = -1; for (const p of this.players) if (p.diedAt > at) { at = p.diedAt; best = p.id; } return best; }
   finish(winner: number): void { if (this.over) return; this.over = true; this.winner = winner; const w = this.players[winner]; if (w && w.alive) w.place = 1; this.events.push({ t: 'over', winner }); }
 
@@ -238,12 +399,15 @@ export class Match {
     p.fireHeld = inp.fire;
     // 줍기
     const wantE = inp.interact && !p.interactHeld; p.interactHeld = inp.interact;
+    let took = false;
     if (!p.remote) for (const l of this.loot) {
       if (l.taken) continue; const dx = l.x - p.x, dz = l.z - p.z; if (dx * dx + dz * dz > PLAYER.pickup * PLAYER.pickup) continue;
-      if (l.kind === 'weapon') { if (wantE) { this.takeWeapon(p, l); break; } continue; }
-      if (l.kind === 'attach') { if (this.takePart(p, l, wantE)) break; continue; }
+      if (l.kind === 'weapon') { if (wantE) { this.takeWeapon(p, l); took = true; break; } continue; }
+      if (l.kind === 'attach') { if (this.takePart(p, l, wantE)) { took = true; break; } continue; }
       this.takeAuto(p, l);
     }
+    // 주울 무기가 없을 때 E 는 가까운 차량에 탑니다
+    if (wantE && !took && !p.bot && !p.remote && p.air === 0 && this.vehicles.length) { const v = this.vehicleNear(p); if (v) this.enterVehicle(p, v); }
   }
 
   private throwNade(p: Player): void {
@@ -261,8 +425,9 @@ export class Match {
       if (n.fuse > 0) continue;
       this.nades.splice(i, 1); this.events.push({ t: 'nade', stage: 'boom', id: n.owner, x: n.x, y: n.y, z: n.z });
       this.sounds.push({ x: n.x, z: n.z, t: this.t, by: n.owner });
+      for (const v of this.vehicles) { if (v.wreck) continue; const d = Math.hypot(v.x - n.x, v.z - n.z); if (d < NADE.radius + 1.5) this.hurtVehicle(v, NADE.dmg * 1.4 * (1 - d / (NADE.radius + 1.5)), n.owner); }
       for (const q of this.players) {
-        if (!q.alive || q.air) continue; const d = Math.hypot(q.x - n.x, q.z - n.z, (1 - n.y) * 0.5); if (d > NADE.radius) continue;
+        if (!q.alive || q.air || q.veh >= 0) continue; const d = Math.hypot(q.x - n.x, q.z - n.z, (1 - n.y) * 0.5); if (d > NADE.radius) continue;
         let dmg = NADE.dmg * (1 - d / NADE.radius) ** 1.2; if (!lineClear(this.map, n.x, Math.max(0.3, n.y), n.z, q.x, 1.0, q.z)) dmg *= 0.3; if (dmg < 3) continue;
         this.damage(q, dmg, n.owner, 'grenade', false, q.x, 1.2, q.z, false);
       }
@@ -329,9 +494,12 @@ export class Match {
   bullet(shooter: number, id: WeaponId, ox: number, oy: number, oz: number, yaw: number, pitch: number, ends: number[], fromRemote: boolean): void {
     const def = WEAPONS[id], cp = Math.cos(pitch), dx = Math.cos(yaw) * cp, dy = Math.sin(pitch), dz = Math.sin(yaw) * cp;
     const wallT = rayWorld(this.map, ox, oy, oz, dx, dy, dz, def.range);
-    let hitT = Math.min(wallT, def.range), target: Player | null = null, head = false;
+    let hitT = Math.min(wallT, def.range), target: Player | null = null, head = false, vcand: Vehicle | null = null, vt = Infinity;
+    // 차체: 서 있는 차는 지도 상자가 먼저 막고, 움직이는 차는 여기서 막습니다(상자와 거의 같은 거리면 차가 맞은 것).
+    for (const v of this.vehicles) { if (v.wreck) continue; const t = rayVehicle(v, ox, oy, oz, dx, dy, dz, def.range); if (t < vt) { vt = t; vcand = v; } }
+    if (vcand && vt <= hitT + 0.9) hitT = Math.min(hitT, vt); else vcand = null;
     for (const q of this.players) {
-      if (!q.alive || q.id === shooter || q.air) continue;
+      if (!q.alive || q.id === shooter || q.air || q.veh >= 0) continue;
       const px = ox - q.x, pz = oz - q.z, a = dx * dx + dz * dz; if (a < 1e-9) continue;
       const R = fromRemote ? 0.62 : 0.5, b = 2 * (px * dx + pz * dz), c = px * px + pz * pz - R * R, disc = b * b - 4 * a * c; if (disc < 0) continue;
       let t = (-b - Math.sqrt(disc)) / (2 * a); if (t < 0) { if (c < 0) t = 0; else continue; }
@@ -342,7 +510,14 @@ export class Match {
     if (target) {
       const fall = hitT <= def.falloff ? 1 : Math.max(0.4, 1 - 0.6 * (hitT - def.falloff) / Math.max(1, def.range - def.falloff));
       this.damage(target, def.dmg * fall * (head ? def.head : 1), shooter, id, head, ex, ey, ez, false);
-    } else if (hitT < def.range) this.events.push({ t: 'hit', victim: -1, attacker: shooter, dmg: 0, head: false, x: ex, y: ey, z: ez, wall: true });
+    } else {
+      if (hitT < def.range) this.events.push({ t: 'hit', victim: -1, attacker: shooter, dmg: 0, head: false, x: ex, y: ey, z: ez, wall: true });
+      if (vcand) {
+        const fall = hitT <= def.falloff ? 1 : Math.max(0.4, 1 - 0.6 * (hitT - def.falloff) / Math.max(1, def.range - def.falloff)), dmg = def.dmg * def.pellets * fall;
+        const drv = vcand.driver >= 0 ? this.players[vcand.driver] : null; if (drv && drv.id !== shooter) this.damage(drv, dmg * DRIVE.driverCut, shooter, id, false, drv.x, 1.2, drv.z, false);
+        this.hurtVehicle(vcand, dmg * DRIVE.shotCut, shooter);
+      }
+    }
   }
 
   /** 네트워크로 받은 상대의 사격: 내 쪽 선수에게만 피해를 줍니다. */
@@ -351,7 +526,7 @@ export class Match {
     this.events.push({ t: 'shot', id: shooter, weapon: id, ox, oy, oz, ends, remote: true });
   }
 
-  damage(q: Player, dmg: number, by: number, weapon: WeaponId | 'zone' | 'grenade', head: boolean, x: number, y: number, z: number, silent: boolean): void {
+  damage(q: Player, dmg: number, by: number, weapon: Cause, head: boolean, x: number, y: number, z: number, silent: boolean): void {
     if (!q.alive) return;
     const real = !q.remote; if (real && head && q.helmet > 0) dmg *= 1 - HELMET_CUT[q.helmet]; let hp = dmg;
     if (real && weapon !== 'zone' && q.armor > 0) { const soak = Math.min(q.armor, dmg * ARMOR_ABS[q.armorLv || 2]); q.armor -= soak; hp = dmg - soak; if (q.armor <= 0) { q.armor = 0; q.armorLv = 0; } }
@@ -362,8 +537,8 @@ export class Match {
     if (real && q.hp <= 0) this.kill(q, weapon === 'zone' ? -1 : by, weapon);
   }
   /** 선수를 쓰러뜨립니다(원격 선수는 네트워크 소식으로 호출). */
-  kill(q: Player, by: number, weapon: WeaponId | 'zone' | 'grenade'): void {
-    if (!q.alive) return; q.alive = false; q.hp = 0; q.diedAt = this.t; q.healT = 0; q.killedBy = by; q.killedWeapon = weapon; q.place = this.aliveCount() + 1;
+  kill(q: Player, by: number, weapon: Cause): void {
+    if (!q.alive) return; if (q.veh >= 0) this.leaveVehicle(q, false); q.alive = false; q.hp = 0; q.diedAt = this.t; q.healT = 0; q.killedBy = by; q.killedWeapon = weapon; q.place = this.aliveCount() + 1;
     const killer = this.players[by]; if (killer && killer.id !== q.id) killer.kills++;
     for (const g of q.guns) if (g) this.loot.push({ id: this.nextLoot++, kind: 'weapon', weapon: g.id, att: { ...g.att }, x: q.x + (this.rng() - 0.5) * 1.6, z: q.z + (this.rng() - 0.5) * 1.6, taken: false });
     if (q.helmet > 0) this.loot.push({ id: this.nextLoot++, kind: 'helmet', weapon: null, part: null, level: q.helmet, x: q.x + (this.rng() - 0.5) * 1.6, z: q.z + (this.rng() - 0.5) * 1.6, taken: false });

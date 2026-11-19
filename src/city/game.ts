@@ -320,7 +320,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   }
   function sideBoard(): string {
     const sj = sideJobs(world!);
-    return `<h3 class="c-side-h">도시 부업 <small>사건 ${sj.done}건 완료${sj.streak > 1 ? ` · 연속 ${sj.streak}회 보너스 ×${(1 + Math.min(5, sj.streak - 1) * 0.1).toFixed(1)}` : ''}</small></h3>` + sj.items.map(it => `<article class="c-mission-card${it.done ? ' complete' : ''}"><div class="c-mission-top"><span>부업 이정표</span><b>${it.done ? '완료' : '진행 중'}</b></div><h3>${it.title}</h3><p>${it.objective}</p><div class="c-mission-bar"><i style="width:${it.current / it.target * 100}%"></i></div><div class="c-mission-meta"><span>${it.current} / ${it.target}</span><span>보상 $${$(it.reward)}</span></div></article>`).join('');
+    return `<h3 class="c-side-h">도시 부업 <small>사건 ${sj.done}건 완료${sj.streak > 1 ? ` · 연속 ${sj.streak}회 보너스 ×${(1 + Math.min(5, sj.streak - 1) * 0.1).toFixed(1)}` : ''}</small></h3>` + sj.items.map(it => `<article class="c-side-card${it.done ? ' complete' : ''}"><div class="c-mission-top"><span>부업 이정표</span><b>${it.done ? '완료' : '진행 중'}</b></div><h3>${it.title}</h3><p>${it.objective}</p><div class="c-mission-bar"><i style="width:${it.current / it.target * 100}%"></i></div><div class="c-mission-meta"><span>${it.current} / ${it.target}</span><span>보상 $${$(it.reward)}</span></div></article>`).join('');
   }
 
   function renderHud(): void {

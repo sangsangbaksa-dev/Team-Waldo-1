@@ -11,6 +11,7 @@ import { ARMORY, ARMORY_KEYS, UPGRADE_MAX, buyArmory, edgeOf, nextCost, readArmo
 import { RtsNet } from './pvp';
 import { NO_EDGE, RtsSim, type Building, type Cmd, type ResNode, type Unit } from './sim';
 import { RtsView } from './view';
+import { buildLanes } from './scenery';
 import { preloadUnitKit } from './models';
 import { PVP_ENABLED } from '../net/config';
 import type { RoomLink } from './moba/net';
@@ -205,11 +206,15 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     if (!sim || !view) return; const n = sim.map.size, k = mini.width / n;
     if (!miniBase) {
       miniBase = document.createElement('canvas'); miniBase.width = miniBase.height = mini.width; const g = miniBase.getContext('2d')!;
-      g.fillStyle = '#4a5836'; g.fillRect(0, 0, mini.width, mini.width); g.fillStyle = '#2b2f2a';
-      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (sim.map.terrain[y * n + x]) { const [px, py] = mm(x, y); g.fillRect(me === 0 ? px : px - k, me === 0 ? py : py - k, k + 0.5, k + 0.5); }
+      g.fillStyle = '#c9a76d'; g.fillRect(0, 0, mini.width, mini.width);
+      // 길·강을 먼저 깔고, 막힌 칸(협곡 바위)을 그 위에 얹습니다.
+      const lanes = buildLanes(sim.map), line = (pts: Array<{ x: number; y: number }>, w: number, c: string): void => { g.strokeStyle = c; g.lineWidth = w; g.lineJoin = g.lineCap = 'round'; g.beginPath(); pts.forEach((p, i) => { const [px, py] = mm(p.x, p.y); if (i) g.lineTo(px, py); else g.moveTo(px, py); }); g.stroke(); };
+      line(lanes.river, 5, '#4f9fb8'); for (const l of [lanes.top, lanes.mid, lanes.bot]) { line(l, 4, '#55565a'); line(l, 1, '#e8b81c'); }
+      g.fillStyle = '#8a5a36'; for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (sim.map.terrain[y * n + x]) { const [px, py] = mm(x, y); g.fillRect(me === 0 ? px : px - k, me === 0 ? py : py - k, k + 0.5, k + 0.5); }
+      for (const st of sim.map.starts) { const [px, py] = mm(st.x + 2, st.y + 2); g.fillStyle = 'rgba(70,72,74,.55)'; g.beginPath(); g.arc(px, py, 8 * k, 0, 6.3); g.fill(); }
     }
     mg.drawImage(miniBase, 0, 0);
-    mg.fillStyle = '#58d6ff'; for (const nd of sim.nodes) { const [x, y] = mm(nd.x + 0.5, nd.y + 0.5); mg.fillRect(x - 2, y - 2, 4, 4); }
+    mg.fillStyle = '#2fc4ff'; for (const nd of sim.nodes) { const [x, y] = mm(nd.x + 0.5, nd.y + 0.5); mg.fillRect(x - 2, y - 2, 4, 4); }
     for (const b of sim.buildings) { const [x, y] = mm(b.x + b.size / 2, b.y + b.size / 2), s = b.size * k; mg.fillStyle = b.owner === 0 ? '#3d8bff' : '#ff5a3c'; mg.fillRect(x - s / 2, y - s / 2, s, s); }
     for (const u of sim.units) { const [x, y] = mm(u.x, u.y); mg.fillStyle = u.owner === 0 ? '#9fd0ff' : '#ffb09f'; mg.fillRect(x - 1.5, y - 1.5, 3, 3); }
     const cs = view.corners(over.clientHeight - $('.rt-bottom').offsetHeight);

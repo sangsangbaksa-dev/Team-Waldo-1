@@ -1,9 +1,10 @@
 // SPEED RUSH — 레이스 진행(카운트다운·랩·순위·AI·차량 간 충돌). 화면과 무관한 순수 로직입니다.
-import { CARS, carById, carParams, levelById, type CarDef, type LevelDef, type StatPoints } from './config';
+import { CARS, carById, carParams, levelById, paintOf, type CarDef, type LevelDef, type StatPoints } from './config';
 import { aiInput, newCar, separateCars, stayOnTrack, stepCar, type AiProfile, type CarInput, type CarParams, type CarState, type StepEvents } from './physics';
 import { followSnap, type RemoteLink } from './netcar';
 import { type Track } from './track';
 import { mapById } from './maps';
+import { GhostRecorder, type Ghost } from './ghost';
 
 export interface Racer {
   id: number; name: string; color: string; player: boolean; car: CarState; ai: AiProfile; params: CarParams; model: CarDef['model']; accent: string;
@@ -20,6 +21,8 @@ export type RaceEvent =
 export interface RaceState {
   track: Track; laps: number; clock: number; phase: 'countdown' | 'racing' | 'done'; racers: Racer[]; player: Racer;
   thrDownAt: number | null; thrPrev: boolean; bestLap: number; lastCount: number; level: LevelDef;
+  /** 타임어택: 혼자 달리며 ghost(내 최고 기록)와 겨룹니다. rec 는 이번 주행 기록 */
+  trial?: boolean; ghost?: Ghost | null; rec?: GhostRecorder;
 }
 export const COUNTDOWN = 3;
 /** 라이벌 세 명: 이름, 고정 차선, 자기 차량 최고속 대비 목표 속도 비율, 코너 한계. 1단계 값은 이전 버전과 같습니다. */
@@ -33,7 +36,7 @@ const SLOTS: Array<[number, number]> = [[-3, -5], [-3, 5], [-8, -5], [-8, 5], [-
 export interface PvpOptions { host: boolean; opponent: string; opponentCar: string }
 /** 멀티플레이 방 설정: 내 출발 칸(0~5)과 나를 뺀 참가자(입장 순서). 모두 네트워크 스냅샷으로 움직입니다. */
 export interface MultiOptions { slot: number; players: Array<{ id: string; nickname: string; car: string }> }
-export interface RaceOptions { level?: number; car?: string; pvp?: PvpOptions; multi?: MultiOptions; /** 코스 번호(날씨에 따른 그립 보정) */ map?: string; /** 차고 업그레이드(솔로 레이스의 내 차량에만 적용) */ upgrades?: Partial<StatPoints> }
+export interface RaceOptions { level?: number; car?: string; pvp?: PvpOptions; multi?: MultiOptions; /** 코스 번호(날씨에 따른 그립 보정) */ map?: string; /** 차고 업그레이드(솔로 레이스의 내 차량에만 적용) */ upgrades?: Partial<StatPoints>; /** 도장(스킨) id — 내 차량의 색만 바꿉니다 */ skin?: string; /** 타임어택(혼자 달리기) */ trial?: boolean; ghost?: Ghost | null }
 /** 빗길에서 줄어드는 그립 배율 */
 export const wetGrip = (rain: number | undefined): number => 1 - 0.22 * (rain ?? 0);
 
@@ -55,6 +58,8 @@ export function createRace(track: Track, laps = 3, bestLap = Infinity, opts: Rac
     return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [me, ...others], player: me, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level };
   }
   const player = mk(0, 'YOU', mine, true, SLOTS[2], { lane: 0, top: 58, grip: 30, skill: 1 }, opts.upgrades);
+  if (opts.skin) Object.assign(player, paintOf(mine, opts.skin));
+  if (opts.trial) return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [player], player, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, trial: true, ghost: opts.ghost ?? null, rec: new GhostRecorder() };
   const rivals = FIELD.map((f, i) => {
     const def = CARS[(at + 1 + i) % CARS.length], p = carParams(def), handling = p.grip * p.turn;
     const ai: AiProfile = { lane: f.lane, top: p.top * f.frac * level.topMul, grip: f.grip * handling * handling * level.gripMul, skill: 1, line: level.line, nitro: level.nitro };
@@ -141,6 +146,7 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
   }
   for (const k of r.racers) if (!k.link) { const hit = stayOnTrack(k.car, t, dt, false); if (k.player && hit > 0) ev.push({ type: 'hit', power: hit }); }
   // 랩·결승
+  if (r.rec && r.phase === 'racing') r.rec.tick(r.clock, r.player.car);
   for (const k of r.racers) {
     if (k.finishTime !== null || k.link) continue;
     const lapDone = Math.floor(k.car.total / t.n);

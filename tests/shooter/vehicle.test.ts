@@ -62,3 +62,22 @@ describe('ZERO ZONE 폭격', () => {
   });
   it('끄면 폭격이 없다', () => { expect(new Match({ seed: 5, mode: 'br', difficulty: 'normal', humans: [{ name: '나' }] }).reds).toHaveLength(0); });
 });
+
+import { PERK_MAX, buyPerk, emptyWallet, sanitizeWallet } from '../../src/shared/perks';
+import { PERK_IDS, perkMul, rewardCoins, type PerkId } from '../../src/shooter/perks';
+import { makeVehicleMesh } from '../../src/shared/vehicle';
+
+describe('ZERO ZONE 병사 강화(공용 강화 규칙)', () => {
+  it('코인이 모자라면 못 사고, 단계는 최대에서 멈추며, 깨진 저장값은 복구된다', () => {
+    let w = emptyWallet(PERK_IDS); expect(buyPerk<PerkId>(w, 'speed')).toBeNull(); w = { ...w, coins: 5000 };
+    for (let i = 0; i < PERK_MAX; i++) w = buyPerk<PerkId>(w, 'speed')!; expect(w.levels.speed).toBe(PERK_MAX); expect(buyPerk<PerkId>(w, 'speed')).toBeNull(); expect(w.coins).toBe(5000 - 150 - 320 - 560);
+    expect(sanitizeWallet({ coins: -4, levels: { speed: 99, reload: 'x' } }, PERK_IDS)).toEqual({ coins: 0, levels: { speed: PERK_MAX, reload: 0, steady: 0, tough: 0 } });
+  });
+  it('강화한 병사는 빠르고 재장전이 짧고 덜 다친다. 봇은 영향받지 않는다', () => {
+    const mk = (perks?: { speed: number; reload: number; steady: number; tough: number }): Match => new Match({ seed: 3, mode: 'duel', difficulty: 'normal', humans: [{ name: '나' }], fill: 2, perks });
+    const a = mk({ speed: 3, reload: 3, steady: 3, tough: 3 }), p = a.players[0]; expect(perkMul.speed(p.perks)).toBeCloseTo(1.09); expect(perkMul.reload(p.perks)).toBeCloseTo(0.76);
+    expect(a.players[1].perks.speed).toBe(0); const hp = p.hp; a.damage(p, 20, 1, 'rifle', false, 0, 1, 0, true); expect(hp - p.hp).toBeCloseTo(20 * 0.91, 5);
+    expect(rewardCoins(1, 100, 5, true)).toBeGreaterThan(rewardCoins(60, 100, 0, false));
+  });
+});
+describe('공용 차량 모델', () => { it('종류마다 메시를 만들고 부서진 모양도 만든다', () => { for (const kind of ['car', 'jeep', 'truck', 'van', 'bus']) { const g = makeVehicleMesh({ kind, w: 4.4, d: 1.9, h: 1.5, c: 0xb83a32, v: 0, wreck: false }); expect(g.children.length).toBeGreaterThan(2); } }); });

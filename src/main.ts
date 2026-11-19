@@ -3,9 +3,10 @@ import { readPreferences, writePreferences } from './prefs';
 import { showLoading, retry, retryNote } from './loading';
 import { readCityCareer, readRaceRecords, readRtsRecords, fmtTime } from './records';
 import { readShooterCareer } from './shooter/records';
+import { readOutlawSummary } from './outlaw/records';
 import { PVP_ENABLED } from './net/config';
 
-type GameId = 'city' | 'race' | 'rts' | 'shooter';
+type GameId = 'city' | 'race' | 'rts' | 'shooter' | 'outlaw';
 
 interface Entry {
   id: GameId;
@@ -38,8 +39,8 @@ const ENTRIES: Entry[] = [
     id: 'race',
     name: 'SPEED RUSH',
     genre: '스포츠카 레이싱',
-    summary: '코스 다섯 곳 가운데 하나를 골라 달립니다. 차량과 난이도, 1~3랩을 정하고 드리프트로 부스트를 모아 라이벌 세 대를 앞지르세요.',
-    facts: ['코스 5곳 · 차량 6종', '난이도 5단계 · 1~3랩', '키보드 · 터치'],
+    summary: '라이벌과 순위를 겨루거나 타임어택에서 자신의 최고 기록에 도전하세요. 드리프트로 부스트를 모아 코너를 빠르게 탈출할 수 있습니다.',
+    facts: ['코스 7곳 · 차량 8종', 'AI 레이스 · 타임어택', '키보드 · 터치'],
     image: `${base}assets/home/speed-rush.jpg`,
     imageAlt: '도심 서킷을 달리는 붉은 스포츠카',
     status: () => {
@@ -52,7 +53,7 @@ const ENTRIES: Entry[] = [
     name: 'FRONTLINE',
     genre: '실시간 전략',
     summary: '광물을 캐고 기지를 세워 병력을 키우고, 상대의 모든 건물을 무너뜨리세요. AI는 쉬움부터 매우 어려움까지.',
-    facts: ['AI 4단계', '일꾼 · 보병 · 로켓병 · 전차', '키보드 · 마우스 · 터치'],
+    facts: ['AI 4단계 · 라인전', '일꾼 · 보병 · 전차 · 의무병', '키보드 · 마우스 · 터치'],
     image: `${base}assets/home/frontline.jpg`,
     imageAlt: '두 기지가 마주 선 FRONTLINE의 전장',
     status: () => {
@@ -73,13 +74,26 @@ const ENTRIES: Entry[] = [
       return matches > 0 ? `${matches}판 · ${wins}승` : '';
     },
   },
+  {
+    id: 'outlaw',
+    name: 'OUTLAW CITY',
+    genre: '오픈월드 범죄 액션',
+    summary: '시민 8명 중 한 명으로 시작해 의뢰를 받고, 차를 몰고, 경찰을 따돌리세요. 배달·응급 이송·지하 격투·카지노·부동산·차고 수집까지 — 도시는 네 놀이터입니다.',
+    facts: ['3인칭 오픈월드 · 차량 14종 · 무기 11종', '의뢰 7개 · 일거리 6종 · 카지노', '키보드 · 마우스 · 터치'],
+    image: `${base}assets/home/outlaw-city.jpg`,
+    imageAlt: '네온이 켜지는 황혼의 도시 거리와 추격전',
+    status: () => {
+      const r = readOutlawSummary();
+      return r.has ? `의뢰 ${r.missions}/7 · 스턴트 ${r.stunts}/12` : '';
+    },
+  },
 ];
 
 const app = document.querySelector<HTMLDivElement>('#game')!;
 let generation = 0;
+let unsubscribeAccount: (() => void) | undefined;
 
 function tile(entry: Entry, index: number): string {
-  const status = entry.status();
   return `
     <li class="tile-item">
       <button class="tile" id="start-${entry.id}" type="button" data-game="${entry.id}" aria-describedby="summary-${entry.id}">
@@ -89,7 +103,7 @@ function tile(entry: Entry, index: number): string {
           <span class="tile-name">${entry.name}</span>
           <span class="tile-summary" id="summary-${entry.id}">${entry.summary}</span>
           <span class="tile-facts">${entry.facts.map(f => `<span>${f}</span>`).join('')}</span>
-          <span class="tile-foot"><span class="tile-status">${status}</span><span class="tile-cta">플레이<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 8h9m-3.5-4L12.5 8 8.5 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span></span>
+          <span class="tile-foot"><span class="tile-status"></span><span class="tile-cta">플레이<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 8h9m-3.5-4L12.5 8 8.5 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span></span>
         </span>
       </button>
     </li>`;
@@ -97,8 +111,10 @@ function tile(entry: Entry, index: number): string {
 
 function renderMenu(): void {
   generation++;
+  unsubscribeAccount?.();
+  unsubscribeAccount = undefined;
   const sound = readPreferences().sound;
-  document.title = 'WALDO · LAST CITY / SPEED RUSH / FRONTLINE / ZERO ZONE';
+  document.title = 'WALDO · 다섯 편의 3D 게임';
   app.hidden = false;
   app.innerHTML = `
     <main class="home">
@@ -131,7 +147,10 @@ function renderMenu(): void {
     document.querySelector<HTMLButtonElement>('#sound-toggle')?.focus();
   };
   app.querySelectorAll<HTMLButtonElement>('.tile').forEach(button => {
-    button.onclick = () => { void launch(button.dataset.game as GameId); };
+    const game = ENTRIES.find(entry => entry.id === button.dataset.game);
+    if (!game) return;
+    button.querySelector('.tile-status')!.textContent = game.status();
+    button.onclick = () => { void launch(game.id); };
   });
   wireAccount();
 }
@@ -150,8 +169,10 @@ function wireAccount(): void {
   window.setTimeout(() => {
     if (gen !== generation) return;
     void import('./net/backend').then(async ({ currentAccount, onAccount }) => {
-      label((await currentAccount())?.nickname ?? null);
-      onAccount(a => { if (button.isConnected) label(a?.nickname ?? null); });
+      const account = await currentAccount();
+      if (gen !== generation || !button.isConnected) return;
+      label(account?.nickname ?? null);
+      unsubscribeAccount = onAccount(a => { if (button.isConnected) label(a?.nickname ?? null); });
     }).catch(() => undefined);
   }, 1200);
 }
@@ -164,11 +185,11 @@ async function launch(id: GameId): Promise<void> {
   buttons.forEach(b => { b.disabled = true; });
   if (label) label.textContent = '불러오는 중…';
   if (notice) notice.textContent = '';
-  // 로딩 화면을 띄우고, 코드 묶음(chunk)을 받을 때까지 끊지 않고 다시 시도합니다.
-  const loading = showLoading(id === 'city' ? 'LAST CITY' : id === 'rts' ? 'FRONTLINE' : id === 'shooter' ? 'ZERO ZONE' : 'SPEED RUSH');
+  // 일시적인 다운로드 오류에는 재시도하고, 계속 실패하면 메뉴로 복귀합니다.
+  const loading = showLoading(id === 'city' ? 'LAST CITY' : id === 'rts' ? 'FRONTLINE' : id === 'shooter' ? 'ZERO ZONE' : id === 'outlaw' ? 'OUTLAW CITY' : 'SPEED RUSH');
   loading.progress(null, '게임을 불러오는 중');
   const cancelled = (): boolean => generation !== navigation;
-  const fetchGame = <T,>(load: () => Promise<T>): Promise<T> => retry(load, { cancelled, onRetry: n => loading.note(retryNote(n)) });
+  const fetchGame = <T,>(load: () => Promise<T>): Promise<T> => retry(load, { cancelled, maxAttempts: 4, onRetry: n => loading.note(retryNote(n)) });
   try {
     if (id === 'city') {
       const { openCity } = await fetchGame(() => import('./city/game'));
@@ -185,6 +206,11 @@ async function launch(id: GameId): Promise<void> {
       if (cancelled()) { loading.close(); return; }
       app.hidden = true;
       openShooter(renderMenu, { loading });
+    } else if (id === 'outlaw') {
+      const { openOutlaw } = await fetchGame(() => import('./outlaw/game'));
+      if (cancelled()) { loading.close(); return; }
+      app.hidden = true;
+      openOutlaw(renderMenu, { loading });
     } else {
       const { openRace } = await fetchGame(() => import('./race/game'));
       if (cancelled()) { loading.close(); return; }
@@ -194,8 +220,10 @@ async function launch(id: GameId): Promise<void> {
     }
   } catch {
     loading.close();
-    const failed = cancelled() ? null : document.querySelector<HTMLElement>('#home-notice');
-    if (failed) failed.textContent = '게임을 불러오지 못했습니다. 네트워크 연결을 확인한 뒤 다시 시도해 주세요.';
+    if (cancelled()) return;
+    renderMenu();
+    app.querySelector<HTMLElement>('#home-notice')!.textContent = '게임을 불러오지 못했습니다. 연결을 확인한 뒤 다시 선택해 주세요.';
+    app.querySelector<HTMLButtonElement>(`#start-${id}`)?.focus();
   }
 }
 

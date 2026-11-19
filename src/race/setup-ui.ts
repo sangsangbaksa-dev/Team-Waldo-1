@@ -1,8 +1,9 @@
 // SPEED RUSH — 출발 전 선택 화면(코스·랩 수·난이도·차량). DOM 만 쓰며 THREE 에 의존하지 않습니다.
-import { CARS, LAP_OPTIONS, LEVELS, STAT_KEYS, STAT_LABELS, carById, levelById, sanitizeSetup, type RaceSetup } from './config';
+import { CARS, LAP_OPTIONS, LEVELS, SKINS, STAT_KEYS, STAT_LABELS, carById, levelById, paintOf, sanitizeSetup, type RaceSetup } from './config';
 import { MAPS, mapById } from './maps';
 import { buildMapTrack } from './track';
-import { UPGRADE_MAX, buyUpgrade, nextCost, upgradesOf, writeGarage, type Garage } from './garage';
+import { UPGRADE_MAX, buySkin, buyUpgrade, ownsSkin, nextCost, upgradesOf, writeGarage, type Garage } from './garage';
+import { readGhost } from './ghost';
 import { fmtTime, raceRaceKey, type RaceRecords } from '../records';
 
 const esc = (s: string): string => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c);
@@ -32,6 +33,7 @@ export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceR
       <div class="rc-setup-cols">
         <div class="rc-setup-col">
           <section><h3>코스</h3><div class="rc-grid maps">${MAPS.map(mapCard).join('')}</div><p class="rc-note" data-note="map"></p></section>
+          <section><h3>모드</h3><div class="rc-seg" data-seg="mode"><button type="button" class="rc-opt" data-pick="mode:race">레이스</button><button type="button" class="rc-opt" data-pick="mode:trial">타임어택</button></div><p class="rc-note" data-note="mode"></p></section>
           <section><h3>종목</h3><div class="rc-seg" data-seg="laps">${LAP_OPTIONS.map(n => `<button type="button" class="rc-opt" data-pick="laps:${n}">${n}랩</button>`).join('')}</div><p class="rc-note" data-note="record"></p></section>
           <section><h3>난이도</h3><div class="rc-seg lv" data-seg="level">${LEVELS.map(l => `<button type="button" class="rc-opt" data-pick="level:${l.id}"><b>${l.id}</b>${l.name}</button>`).join('')}</div><p class="rc-note" data-note="level"></p></section>
         </div>
@@ -45,7 +47,9 @@ export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceR
   const STAT_NOTE: Record<(typeof STAT_KEYS)[number], string> = { accel: '출발·코너 탈출 가속', top: '직선 최고 속도', handling: '코너 그립과 회전', drift: '드리프트 부스트 충전', nitro: '니트로 지속·충전' };
   function paintGarage(): void {
     const car = carById(cur.car), up = upgradesOf(garage.value, car.id), box = root.querySelector<HTMLElement>('[data-garage]')!;
-    box.innerHTML = `<div class="rc-garage-head"><h3>${car.name} 튜닝</h3><span class="rc-coins" aria-label="보유 코인">${garage.value.coins.toLocaleString('ko-KR')} 코인</span></div>` + STAT_KEYS.map(k => {
+    const paintRow = SKINS.map(k => { const pt = paintOf(car, k.id), own = ownsSkin(garage.value, k.id), can = garage.value.coins >= k.cost;
+      return own ? `<button type="button" class="rc-skin" data-pick="skin:${k.id}" title="${esc(k.name)}" style="--c:${pt.color};--a:${pt.accent}"><i></i><span>${esc(k.name)}</span></button>` : `<button type="button" class="rc-skin locked" data-buyskin="${k.id}" title="${esc(k.name)} ${k.cost}코인" style="--c:${pt.color};--a:${pt.accent}"${can ? '' : ' disabled'}><i></i><span>${esc(k.name)} · ${k.cost}</span></button>`; }).join('');
+    box.innerHTML = `<div class="rc-skins" role="group" aria-label="도장">${paintRow}</div><div class="rc-garage-head"><h3>${car.name} 튜닝</h3><span class="rc-coins" aria-label="보유 코인">${garage.value.coins.toLocaleString('ko-KR')} 코인</span></div>` + STAT_KEYS.map(k => {
       const cost = nextCost(garage.value, car.id, k), can = cost !== null && garage.value.coins >= cost;
       return `<div class="rc-up"><span class="rc-up-name">${STAT_LABELS[k]}<small>${STAT_NOTE[k]}</small></span><span class="rc-pips" role="img" aria-label="${up[k]} / ${UPGRADE_MAX} 단계">${Array.from({ length: UPGRADE_MAX }, (_, i) => `<i${i < up[k] ? ' class="on"' : ''}></i>`).join('')}</span><button type="button" class="rc-buy" data-buy="${k}"${can ? '' : ' disabled'}>${cost === null ? 'MAX' : `${cost}`}</button></div>`;
     }).join('') + '<p class="rc-note">레이스 보상으로 코인을 모아 솔로 레이스 성능을 올립니다. 온라인 대전에서는 적용되지 않습니다.</p>';
@@ -56,14 +60,40 @@ export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceR
     root.querySelectorAll<HTMLElement>('[data-pick]').forEach(b => { const [k, v] = b.dataset.pick!.split(':'); const on = String(cur[k as keyof RaceSetup]) === v; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
     note('map').textContent = map.blurb; note('level').textContent = lv.blurb; note('car').textContent = `${car.name} · ${car.role} — ${car.blurb}`;
     const lap = records.bestLap[map.id], race = records.bestRace[raceRaceKey(map.id, cur.laps)];
+    const ghost = cur.mode === 'trial' ? readGhost(map.id, cur.laps, car.id) : null;
+    note('mode').textContent = cur.mode === 'trial' ? `혼자 달리며 내 최고 주행(고스트)과 겨룹니다.${ghost ? ` 저장된 고스트 ${fmtTime(ghost.time)}` : ' 아직 고스트가 없습니다 — 첫 주행이 고스트가 됩니다.'}` : '라이벌 3대와 순위를 겨룹니다.';
+    root.querySelector<HTMLElement>('[data-seg="level"]')?.closest('section')?.toggleAttribute('hidden', cur.mode === 'trial');
     note('record').textContent = lap !== undefined || race !== undefined ? `${map.name} 최고 랩 ${lap !== undefined ? fmtTime(lap) : '--'} · ${cur.laps}랩 최고 ${race !== undefined ? fmtTime(race) : '--'}` : '기록 없음';
-    note('summary').textContent = `${map.name} · ${cur.laps}랩 · ${lv.name} · ${car.name}`;
+    note('summary').textContent = `${map.name} · ${cur.laps}랩 · ${cur.mode === 'trial' ? '타임어택' : lv.name} · ${car.name}`;
   }
   root.addEventListener('click', e => {
     const t = e.target as HTMLElement, pick = t.closest<HTMLElement>('[data-pick]'), act = t.closest<HTMLElement>('[data-setup]');
-    const buy = t.closest<HTMLElement>('[data-buy]');
-    if (buy) { const next = buyUpgrade(garage.value, cur.car, buy.dataset.buy as (typeof STAT_KEYS)[number]); if (next) { garage.value = next; writeGarage(next); paintGarage(); } return; }
-    if (pick) { const [k, v] = pick.dataset.pick!.split(':'); cur = sanitizeSetup({ ...cur, [k]: k === 'laps' || k === 'level' ? Number(v) : v }); paint(); }
+    const buy = t.closest<HTMLElement>('[data-buy]'), skin = t.closest<HTMLElement>('[data-buyskin]');
+    const focusSkin = (): void => root.querySelector<HTMLButtonElement>(`[data-pick="skin:${cur.skin}"]`)?.focus();
+    if (skin) {
+      const next = buySkin(garage.value, skin.dataset.buyskin!);
+      if (next) {
+        garage.value = next; writeGarage(next);
+        cur = sanitizeSetup({ ...cur, skin: skin.dataset.buyskin });
+        paint(); focusSkin();
+      }
+      return;
+    }
+    if (buy) {
+      const next = buyUpgrade(garage.value, cur.car, buy.dataset.buy as (typeof STAT_KEYS)[number]);
+      if (next) {
+        garage.value = next; writeGarage(next); paint();
+        const nextButton = root.querySelector<HTMLButtonElement>(`[data-buy="${buy.dataset.buy}"]:not(:disabled)`);
+        (nextButton ?? root.querySelector<HTMLButtonElement>('[data-setup="start"]'))?.focus();
+      }
+      return;
+    }
+    if (pick) {
+      const [k, v] = pick.dataset.pick!.split(':');
+      cur = sanitizeSetup({ ...cur, [k]: k === 'laps' || k === 'level' ? Number(v) : v });
+      paint();
+      if (k === 'skin') focusSkin();
+    }
     else if (act?.dataset.setup === 'start') cb.onStart(cur);
     else if (act?.dataset.setup === 'pvp') cb.onPvp?.(cur);
     else if (act?.dataset.setup === 'exit') cb.onExit();

@@ -6,10 +6,12 @@ import type { LoadingScreen } from '../loading';
 import type { PvpSession } from '../net/lobby';
 import { RtsAi } from './ai';
 import { RtsAudio } from './audio';
-import { BUILDINGS, DIFFICULTIES, LEVELS, RESEARCH, RESEARCH_KINDS, SUPPLY_MAX, TICK, UNITS, isDifficulty, type BuildKind, type Difficulty, type UnitKind } from './config';
+import { BUILDINGS, DIFFICULTIES, LEVELS, RESEARCH, RESEARCH_KINDS, SUPPLY_MAX, TICK, UNITS, isDifficulty, type BuildKind, type Difficulty } from './config';
+import { ARMORY, ARMORY_KEYS, UPGRADE_MAX, buyArmory, edgeOf, nextCost, readArmory, rewardFor, writeArmory, type ArmoryStat } from './armory';
 import { RtsNet } from './pvp';
-import { RtsSim, type Building, type Cmd, type ResNode, type Unit } from './sim';
+import { NO_EDGE, RtsSim, type Building, type Cmd, type ResNode, type Unit } from './sim';
 import { RtsView } from './view';
+import { buildLanes } from './scenery';
 import { preloadUnitKit } from './models';
 import { PVP_ENABLED } from '../net/config';
 import type { RoomLink } from './moba/net';
@@ -142,7 +144,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
         out.push({ label: '건설 이어서', sub: '일꾼 보내기', key: 'C', on: () => { const w = sim!.spareWorker(b); if (!w) { toast('보낼 일꾼이 없습니다', true); return; } issue({ k: 'resume', ids: [w.id], b: b.id }); audio.sfx('order'); toast('일꾼을 보냈습니다'); } });
         out.push({ label: '건설 취소', sub: `◆${Math.floor(BUILDINGS[b.kind].cost * 0.75)} 환급`, key: 'X', on: () => issue({ k: 'cancel', b: b.id, i: -1 }) }); return out;
       }
-      for (const u of (Object.keys(UNITS) as UnitKind[]).filter(k => UNITS[k].from === b.kind)) {
+      for (const u of BUILDINGS[b.kind].trains) {
         const d = UNITS[u], lack = !sim.canTrain(me, u) ? `${BUILDINGS[d.req!].name} 필요` : p.minerals < d.cost ? '광물 부족' : p.cap - p.used < d.supply ? '보급소 필요' : b.queue.length >= 5 ? '대기열 가득' : '';
         out.push({ label: d.name, sub: `◆${d.cost} · 인구 ${d.supply}`, key: d.key, enabled: !lack, hint: lack || d.role, on: () => { for (const x of bs.filter(y => y.kind === b.kind && y.done)) { if (sim && sim.players[me].minerals >= d.cost && x.queue.length < 5) { issue({ k: 'train', b: x.id, u }); if (!keys.has('Shift')) break; } } audio.sfx('click'); } });
       }
@@ -159,11 +161,16 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     buttons = buildButtons(); const el = $('#rt-cmd');
     const key = buttons.map(b => `${b.label}|${b.sub}|${b.enabled}|${b.active}`).join(';') + (touch ? `|${boxMode}` : ''); if (key === cmdKey) return; cmdKey = key;
     el.innerHTML = buttons.map((b, i) => `<button type="button" data-i="${i}" class="${b.active ? 'on' : ''}" ${b.enabled === false ? 'aria-disabled="true"' : ''} title="${esc(b.hint ?? '')}"><b>${esc(b.label)}</b>${b.sub ? `<small>${esc(b.sub)}</small>` : ''}<kbd>${b.key === 'ESCAPE' ? 'Esc' : esc(b.key)}</kbd></button>`).join('') +
-      (touch ? `<button type="button" data-box class="${boxMode ? 'on' : ''}"><b>범위 선택</b><small>${boxMode ? '켜짐' : '꺼짐'}</small></button>` : '');
+      (touch ? `<button type="button" data-box class="${boxMode ? 'on' : ''}"><b>범위 선택</b><small>${boxMode ? '켜짐' : '꺼짐'}</small></button><button type="button" data-quick="army"><b>전체 병력</b><small>일꾼 제외</small></button><button type="button" data-quick="idle"><b>놀고 있는 일꾼</b></button>` : '');
   }
   $('#rt-cmd').addEventListener('click', e => {
     const t = (e.target as HTMLElement).closest<HTMLElement>('button'); if (!t) return;
     if (t.dataset.box !== undefined) { boxMode = !boxMode; cmdKey = ''; return; }
+    if (t.dataset.quick && sim) {
+      if (t.dataset.quick === 'army') { const a = sim.units.filter(u => u.owner === me && u.kind !== 'worker' && u.hp > 0); if (a.length) { setSel(a.map(u => u.id)); view?.lookAt(a[0].x, a[0].y); } else toast('병력이 없습니다'); }
+      else { const w = sim.units.filter(u => u.owner === me && u.kind === 'worker' && u.o.t === 'idle'); if (w.length) { const i = Math.max(0, w.findIndex(u => selected.has(u.id)) + 1) % w.length; setSel([w[i].id]); view?.lookAt(w[i].x, w[i].y); } else toast('놀고 있는 일꾼이 없습니다'); }
+      cmdKey = ''; return;
+    }
     const b = buttons[Number(t.dataset.i)]; if (!b) return; if (b.enabled === false) { toast(b.hint ?? '지금은 할 수 없습니다', true); return; } b.on(); cmdKey = ''; selKey = '';
   });
 
@@ -176,7 +183,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     const bar = (v: number, max: number, c = ''): string => `<span class="rt-bar ${c}"><i style="width:${Math.max(0, Math.min(100, v / max * 100)).toFixed(0)}%"></i></span>`;
     if (ents.length === 1) {
       const e = ents[0];
-      if (e.k === 'unit') { const d = UNITS[e.kind]; el.innerHTML = `<div class="rt-one"><h3>${d.name}<small>${e.owner === me ? '' : ' · 적'}</small></h3><p>${d.role}</p>${bar(e.hp, d.hp, e.owner === me ? '' : 'foe')}<p class="rt-num">체력 ${Math.ceil(e.hp)} / ${d.hp}</p><p class="rt-num">공격 ${d.dmg} · 사거리 ${d.range} · 이동 ${d.speed}</p></div>`; }
+      if (e.k === 'unit') { const d = UNITS[e.kind], action = d.heal ? `치료 ${d.heal}/초` : `공격 ${d.dmg}`; el.innerHTML = `<div class="rt-one"><h3>${d.name}<small>${e.owner === me ? '' : ' · 적'}</small></h3><p>${d.role}</p>${bar(e.hp, d.hp, e.owner === me ? '' : 'foe')}<p class="rt-num">체력 ${Math.ceil(e.hp)} / ${d.hp}</p><p class="rt-num">${action} · 사거리 ${d.range} · 이동 ${d.speed}</p></div>`; }
       else if (e.k === 'building') {
         const d = BUILDINGS[e.kind], rs = e.research ? `<button type="button" class="rt-q" data-r="1" title="연구 취소하고 환급"><b>${RESEARCH[e.research.r].name}</b>${bar(RESEARCH[e.research.r].time - e.research.left, RESEARCH[e.research.r].time, 'prog')}</button>` : '', q = rs + e.queue.map((x, i) => `<button type="button" class="rt-q" data-q="${i}" title="취소하고 환급"><b>${UNITS[x.u].name}</b>${i === 0 ? bar(UNITS[x.u].time - x.left, UNITS[x.u].time, 'prog') : ''}</button>`).join('');
         el.innerHTML = `<div class="rt-one"><h3>${d.name}<small>${e.owner === me ? '' : ' · 적'}</small></h3><p>${e.done ? d.role : `건설 중 ${Math.floor(e.progress / d.time * 100)}%`}</p>${bar(e.hp, e.maxhp, e.owner === me ? '' : 'foe')}<p class="rt-num">체력 ${Math.ceil(e.hp)} / ${e.maxhp}${e.kind === 'tower' ? ` · 공격 ${d.dmg} · 사거리 ${d.range}` : ''}</p>${q ? `<div class="rt-queue">${q}</div>` : ''}</div>`;
@@ -199,11 +206,15 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     if (!sim || !view) return; const n = sim.map.size, k = mini.width / n;
     if (!miniBase) {
       miniBase = document.createElement('canvas'); miniBase.width = miniBase.height = mini.width; const g = miniBase.getContext('2d')!;
-      g.fillStyle = '#4a5836'; g.fillRect(0, 0, mini.width, mini.width); g.fillStyle = '#2b2f2a';
-      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (sim.map.terrain[y * n + x]) { const [px, py] = mm(x, y); g.fillRect(me === 0 ? px : px - k, me === 0 ? py : py - k, k + 0.5, k + 0.5); }
+      g.fillStyle = '#c9a76d'; g.fillRect(0, 0, mini.width, mini.width);
+      // 길·강을 먼저 깔고, 막힌 칸(협곡 바위)을 그 위에 얹습니다.
+      const lanes = buildLanes(sim.map), line = (pts: Array<{ x: number; y: number }>, w: number, c: string): void => { g.strokeStyle = c; g.lineWidth = w; g.lineJoin = g.lineCap = 'round'; g.beginPath(); pts.forEach((p, i) => { const [px, py] = mm(p.x, p.y); if (i) g.lineTo(px, py); else g.moveTo(px, py); }); g.stroke(); };
+      line(lanes.river, 5, '#4f9fb8'); for (const l of [lanes.top, lanes.mid, lanes.bot]) { line(l, 4, '#55565a'); line(l, 1, '#e8b81c'); }
+      g.fillStyle = '#8a5a36'; for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (sim.map.terrain[y * n + x]) { const [px, py] = mm(x, y); g.fillRect(me === 0 ? px : px - k, me === 0 ? py : py - k, k + 0.5, k + 0.5); }
+      for (const st of sim.map.starts) { const [px, py] = mm(st.x + 2, st.y + 2); g.fillStyle = 'rgba(70,72,74,.55)'; g.beginPath(); g.arc(px, py, 8 * k, 0, 6.3); g.fill(); }
     }
     mg.drawImage(miniBase, 0, 0);
-    mg.fillStyle = '#58d6ff'; for (const nd of sim.nodes) { const [x, y] = mm(nd.x + 0.5, nd.y + 0.5); mg.fillRect(x - 2, y - 2, 4, 4); }
+    mg.fillStyle = '#2fc4ff'; for (const nd of sim.nodes) { const [x, y] = mm(nd.x + 0.5, nd.y + 0.5); mg.fillRect(x - 2, y - 2, 4, 4); }
     for (const b of sim.buildings) { const [x, y] = mm(b.x + b.size / 2, b.y + b.size / 2), s = b.size * k; mg.fillStyle = b.owner === 0 ? '#3d8bff' : '#ff5a3c'; mg.fillRect(x - s / 2, y - s / 2, s, s); }
     for (const u of sim.units) { const [x, y] = mm(u.x, u.y); mg.fillStyle = u.owner === 0 ? '#9fd0ff' : '#ffb09f'; mg.fillRect(x - 1.5, y - 1.5, 3, 3); }
     const cs = view.corners(over.clientHeight - $('.rt-bottom').offsetHeight);
@@ -337,12 +348,20 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   // ---------- 메뉴·결과 ----------
   const show = (html: string): void => { modal.className = 'rt-modal show'; modal.innerHTML = html; };
   const hide = (): void => { modal.className = 'rt-modal'; modal.innerHTML = ''; };
+  /** 무기고: AI 대전 보상 코인으로 군 전체 능력을 올립니다. */
+  function armoryHtml(): string {
+    const a = readArmory();
+    return `<div class="rt-armory" role="group" aria-label="무기고"><div class="rt-armory-head"><b>무기고</b><span class="rt-coins" id="rt-coins">⛃ ${a.coins}</span><small>AI 대전 보상 코인으로 군 전체를 강화합니다 (온라인 대전 제외)</small></div>
+      <div class="rt-armory-grid">${ARMORY_KEYS.map(k => { const d = ARMORY[k], lv = a.levels[k], cost = nextCost(a, k), ok = cost !== null && a.coins >= cost;
+        return `<button type="button" data-arm="${k}" ${ok ? '' : 'aria-disabled="true"'} title="${d.role} ${d.per}씩"><span class="n">${d.name}</span><span class="pips">${'●'.repeat(lv)}${'○'.repeat(UPGRADE_MAX - lv)}</span><span class="c">${cost === null ? '최대' : `⛃ ${cost}`}</span><em>${d.role} ${d.per}</em></button>`; }).join('')}</div></div>`;
+  }
   function setupScreen(): void {
     root.dataset.phase = 'setup'; paused = false; ended = false; const rec = readRtsRecords();
     show(`<div class="rt-card rt-setup" role="dialog" aria-label="FRONTLINE 시작"><span class="rt-eyebrow">FRONTLINE</span><h2>전선을 지휘하세요</h2>
       <p class="rt-lead">광물을 캐고, 기지를 세우고, 병력을 길러 상대의 모든 건물을 무너뜨리면 승리합니다. 모든 건물이 사라지면 패배합니다.</p>
       <div class="rt-diffs" role="group" aria-label="난이도">${DIFFICULTIES.map((d, i) => `<button type="button" data-diff="${d}" aria-pressed="${d === difficulty}"><span>${['I', 'II', 'III', 'IV'][i]}</span><b>${LEVELS[d].label}</b></button>`).join('')}</div>
       <p class="rt-diffnote" id="rt-diffnote">${LEVELS[difficulty].blurb}</p>
+      ${armoryHtml()}
       <div class="rt-actions"><button class="primary" data-act="start" id="rt-start">AI와 1대1 대전</button>${PVP_ENABLED ? '<button data-act="pvp" id="rt-pvp">온라인 1대1 대전</button>' : ''}</div>
       <div class="rt-actions"><button data-act="moba" id="rt-moba">롤식 라인전 4:4 · 챔피언 조종</button>${PVP_ENABLED ? '<button data-act="mobaroom" id="rt-mobaroom">온라인 방 · 라인전 협동 (최대 4명)</button>' : ''}</div>
       <div class="rt-actions sub"><button data-act="help">조작법</button><button data-act="exit">메뉴로</button></div>
@@ -376,13 +395,15 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     const win = sim.winner === me, draw = sim.winner === 2; audio.sfx(win ? 'victory' : 'defeat');
     if (pvp) { void conclude(draw ? '' : win ? pvp.s.me.id : pvp.s.opponent.id, draw ? '두 쪽이 동시에 무너졌습니다' : win ? '상대의 모든 건물을 파괴했습니다' : '모든 건물을 잃었습니다'); return; }
     const rec = readRtsRecords(); rec.matches++; if (win) { rec.wins++; const t = Math.floor(sim.tick / TICK); if (!rec.bestWin[difficulty] || t < rec.bestWin[difficulty]) rec.bestWin[difficulty] = t; } rec.difficulty = difficulty; writeRtsRecords(rec);
-    window.setTimeout(() => { if (!closed && ended) resultCard(draw ? null : win, draw ? '무승부입니다' : win ? '적의 모든 건물을 파괴했습니다.' : '모든 건물을 잃었습니다.'); }, 1400);
+    const earned = draw ? 0 : rewardFor(win, difficulty, sim.tick / TICK, sim.players[me].kills), arm = readArmory(); if (earned) writeArmory({ ...arm, coins: arm.coins + earned });
+    const bank = `<p class="rt-rec">${earned ? `보상 ⛃ +${earned} · 보유 ⛃ ${arm.coins + earned} — 설정 화면의 무기고에서 업그레이드하세요` : ''}</p>`;
+    window.setTimeout(() => { if (!closed && ended) resultCard(draw ? null : win, draw ? '무승부입니다' : win ? '적의 모든 건물을 파괴했습니다.' : '모든 건물을 잃었습니다.', bank); }, 1400);
   }
 
   // ---------- 시작 ----------
   preloadUnitKit();
   function begin(): void {
-    if (view) { view.dispose(); view = null; } sim = new RtsSim({ income: [1, LEVELS[difficulty].income] });
+    if (view) { view.dispose(); view = null; } sim = new RtsSim({ income: [1, LEVELS[difficulty].income], edge: [edgeOf(readArmory()), NO_EDGE] });
     me = 0; ai = new RtsAi(1, difficulty); startRound(); $('#rt-vs').textContent = `AI · ${LEVELS[difficulty].label}`; $<HTMLButtonElement>('[data-act="speed"]').hidden = false; $<HTMLButtonElement>('[data-act="pause"]').hidden = false; speed = 1; $<HTMLButtonElement>('[data-act="speed"]').textContent = '×1';
   }
   function startRound(): void {
@@ -496,7 +517,8 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   const onPrefs = (): void => { const s = readPreferences().sound; audio.enabled = s; const m = root.querySelector<HTMLElement>('[data-act="mute"]'); if (m) { m.textContent = s ? '🔊' : '🔇'; m.setAttribute('aria-pressed', String(s)); } };
   window.addEventListener('waldo:preferences', onPrefs);
   root.addEventListener('click', e => {
-    const t = (e.target as HTMLElement).closest<HTMLElement>('[data-act],[data-diff]'); if (!t) return; audio.unlock();
+    const t = (e.target as HTMLElement).closest<HTMLElement>('[data-act],[data-diff],[data-arm]'); if (!t) return; audio.unlock();
+    if (t.dataset.arm) { const next = buyArmory(readArmory(), t.dataset.arm as ArmoryStat); if (next) { writeArmory(next); audio.sfx('built'); setupScreen(); } else audio.sfx('click'); return; }
     if (t.dataset.diff) { difficulty = t.dataset.diff as Difficulty; modal.querySelectorAll<HTMLElement>('[data-diff]').forEach(b => b.setAttribute('aria-pressed', String(b === t))); $('#rt-diffnote').textContent = LEVELS[difficulty].blurb; audio.sfx('click'); return; }
     switch (t.dataset.act) {
       case 'start': case 'again': leavePvp(); begin(); break;

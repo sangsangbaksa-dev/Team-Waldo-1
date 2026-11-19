@@ -54,7 +54,7 @@ function nodeMap(root: THREE.Object3D): Record<string, THREE.Object3D> {
 }
 
 /** 파일마다 대략의 크기(바이트). 서버가 content-length 를 주지 않을 때 진행률 계산에 씁니다. */
-const MODEL_FILES: Record<string, number> = { characters: 2_400_000, weapons: 660_000, vehicles: 1_720_000, structures: 1_190_000, props: 860_000, business: 830_000 };
+const MODEL_FILES: Record<string, number> = { characters: 2_870_000, weapons: 1_400_000, vehicles: 1_720_000, structures: 1_190_000, props: 860_000, business: 830_000 };
 const TEXTURES = ['brick', 'glass', 'deco', 'industrial', 'ribbon'].flatMap(n => [`facade_${n}`, `facade_${n}_e`]);
 const TEXTURE_EST = 200_000;
 const OPTIONAL = new Set(['business']);
@@ -119,7 +119,11 @@ async function build(c: THREE.Object3D, w: THREE.Object3D, v: THREE.Object3D, s:
     const chars: Record<string, CharModel> = {}, limb = (n?: THREE.Object3D): Limb | undefined => (n ? { geo: bake(n), pivot: n.position.clone() } : undefined);
     for (const k of CHAR_KINDS) { if (!cn[`${k}_Body`] || !cn[`${k}_Leg`]) throw new Error(`missing ${k}`); const shin = cn[`${k}_Shin`]; chars[k] = { body: bake(cn[`${k}_Body`]), leg: bake(cn[`${k}_Leg`]), shin: shin ? bake(shin) : undefined, armL: limb(cn[`${k}_ArmL`]), armR: limb(cn[`${k}_ArmR`]) }; }
     const groundGuns: Record<string, THREE.Object3D> = {}, viewGuns: Record<string, THREE.Object3D> = {};
-    for (const k of WEAPON_KINDS) { if (!wn[`g_${k}`] || !wn[`vm_${k}`]) throw new Error(`missing weapon ${k}`); groundGuns[k] = wn[`g_${k}`]; viewGuns[k] = wn[`vm_${k}`]; }
+    for (const k of WEAPON_KINDS) {
+      if (!wn[`g_${k}`] || !(wn[`vm_${k}`] || wn[`arms_${k}`])) throw new Error(`missing weapon ${k}`); groundGuns[k] = wn[`g_${k}`];
+      // 소총류는 완성품 총(g_) + 팔(arms_)을 합쳐 1인칭 총으로 씁니다. 로켓·미니건·레일건은 vm_ 하나입니다.
+      if (wn[`arms_${k}`]) { const vm = new THREE.Group(); vm.add(wn[`g_${k}`].clone(true), wn[`arms_${k}`].clone(true)); viewGuns[k] = vm; } else viewGuns[k] = wn[`vm_${k}`];
+    }
     const need = (m: Record<string, THREE.Object3D>, names: string[]): Record<string, THREE.Object3D> => { for (const n of names) if (!m[n]) throw new Error(`missing ${n}`); return m; };
     need(vn, ['sedan', 'hatch', 'suv', 'taxi', 'van', 'sports', 'police', 'truck', 'tank', 'buggy']); need(sn, ['hq', 'barracks', 'depot', 'factory', 'lab', 'turret']);
     need(pn, ['tree_round', 'tree_pine', 'lamp', 'crystal', 'crate', 'plane', 'hydrant', 'bench', 'bin', 'cone', 'mailbox', 'dumpster', 'barrier', 'tl_red', 'tl_green']);

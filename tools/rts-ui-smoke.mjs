@@ -36,7 +36,7 @@ try {
   const wid = await page.evaluate(() => { const r = window.__rts, w = r.sim.units.find(u => u.owner === 0); return w.id; });
   await page.evaluate(id => window.__rts.select([id]), wid); await sleep(300);
   await page.keyboard.press('b'); await sleep(200); await page.keyboard.press('d'); await sleep(200);
-  assert.match(await page.textContent('#rt-hint'), /보급소 위치/);
+  assert.match(await page.textContent('#rt-hint'), /보급소: 지을 곳/);
   const hp = await at(hqId, 0); await page.mouse.move(hp.x + 260, hp.y - 90); await sleep(300);
   await page.screenshot({ path: 'browser-artifacts/rts-place.png' });
   await page.mouse.click(hp.x + 260, hp.y - 90); await sleep(400);

@@ -211,3 +211,6 @@
 .ol-root .ol-clock{color:#d0cbc1;font-variant-numeric:tabular-nums}
 .ol-root button:focus-visible{outline:2px solid #e3bf91;outline-offset:3px}
 @media(prefers-reduced-motion:reduce){.ol-root .ol-prompt{transition:none}.ol-root .ol-stars{animation:none}}
+
+.ol-vs{position:absolute;top:56px;left:50%;transform:translateX(-50%);text-align:center;font:700 13px system-ui;color:#fff;background:rgba(10,12,18,.62);border:1px solid #ffffff30;padding:6px 14px;letter-spacing:.06em;pointer-events:none;z-index:3}
+.ol-vs[hidden]{display:none}.ol-vs b{color:#ff4fa0;font-size:16px}.ol-vs span{margin:0 6px}

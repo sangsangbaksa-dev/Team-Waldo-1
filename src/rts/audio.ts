@@ -1,7 +1,7 @@
 // FRONTLINE — Web Audio 합성 효과음. 외부 음원 없이 audio-core 의 톤·노이즈로만 만듭니다.
 import { AudioEngine, burst, tone } from '../audio-core';
 
-export type RtsSfx = 'select' | 'order' | 'error' | 'bullet' | 'rocket' | 'cannon' | 'boom' | 'bigboom' | 'place' | 'built' | 'trained' | 'alert' | 'deposit' | 'victory' | 'defeat' | 'click';
+export type RtsSfx = 'select' | 'order' | 'error' | 'bullet' | 'rocket' | 'cannon' | 'boom' | 'bigboom' | 'place' | 'built' | 'trained' | 'alert' | 'deposit' | 'victory' | 'defeat' | 'click' | 'ability' | 'heal' | 'objective' | 'horn' | 'capture' | 'lost' | 'tick';
 
 export class RtsAudio {
   private eng = new AudioEngine(); private last = new Map<string, number>();
@@ -12,7 +12,7 @@ export class RtsAudio {
   /** 같은 소리가 한꺼번에 쏟아지지 않도록 종류별 최소 간격을 둡니다. */
   sfx(k: RtsSfx, vol = 1): void {
     const c = this.eng.ctx; if (!c || !this.eng.enabled) return;
-    const gap: Partial<Record<RtsSfx, number>> = { bullet: 0.07, rocket: 0.12, cannon: 0.18, boom: 0.08, bigboom: 0.2, deposit: 0.1, alert: 3, select: 0.05, order: 0.05 };
+    const gap: Partial<Record<RtsSfx, number>> = { bullet: 0.07, rocket: 0.12, cannon: 0.18, boom: 0.08, bigboom: 0.2, deposit: 0.1, alert: 3, select: 0.05, order: 0.05, ability: 0.12, heal: 0.2, horn: 4, capture: 0.5, lost: 0.5, tick: 0.5 };
     const now = c.currentTime, prev = this.last.get(k) ?? -9; if (now - prev < (gap[k] ?? 0)) return; this.last.set(k, now);
     const e = this.eng, v = vol;
     switch (k) {
@@ -30,6 +30,13 @@ export class RtsAudio {
       case 'trained': tone(e, 740, 0.1, 0.16 * v, 'triangle'); tone(e, 988, 0.16, 0.16 * v, 'triangle', 0, 0.09); break;
       case 'alert': tone(e, 360, 0.16, 0.24 * v, 'sawtooth'); tone(e, 360, 0.16, 0.24 * v, 'sawtooth', 0, 0.22); break;
       case 'deposit': tone(e, 1200, 0.05, 0.06 * v, 'sine', 400); break;
+      case 'ability': tone(e, 260, 0.22, 0.2 * v, 'sawtooth', 520); burst(e, 0.18, 0.12 * v, 1800, 1.4); tone(e, 880, 0.1, 0.1 * v, 'triangle', 0, 0.1); break;
+      case 'heal': tone(e, 880, 0.12, 0.08 * v, 'sine', 300); tone(e, 1175, 0.16, 0.07 * v, 'sine', 0, 0.08); break;
+      case 'objective': [587, 740, 880, 1175].forEach((f, i) => tone(e, f, 0.2, 0.16 * v, 'triangle', 0, i * 0.09)); break;
+      case 'horn': tone(e, 196, 0.7, 0.2 * v, 'sawtooth', -30); tone(e, 247, 0.7, 0.14 * v, 'sawtooth', -30); tone(e, 196, 0.7, 0.2 * v, 'sawtooth', -30, 0.85); tone(e, 247, 0.7, 0.14 * v, 'sawtooth', -30, 0.85); break;
+      case 'capture': tone(e, 523, 0.12, 0.16 * v, 'square'); tone(e, 784, 0.2, 0.16 * v, 'square', 0, 0.1); break;
+      case 'lost': tone(e, 392, 0.14, 0.16 * v, 'square'); tone(e, 262, 0.26, 0.16 * v, 'square', 0, 0.12); break;
+      case 'tick': tone(e, 1000, 0.04, 0.07 * v, 'sine'); break;
       case 'victory': [523, 659, 784, 1046].forEach((f, i) => tone(e, f, 0.3, 0.2 * v, 'triangle', 0, i * 0.16)); break;
       case 'defeat': [392, 330, 262, 196].forEach((f, i) => tone(e, f, 0.4, 0.2 * v, 'sawtooth', -20, i * 0.22)); break;
     }

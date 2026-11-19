@@ -1,6 +1,6 @@
 // FRONTLINE — 결정적(deterministic) 실시간 전략 시뮬레이션. 화면·입력과 무관하게 순수 데이터만 다룹니다.
 // 1대1 온라인은 명령만 주고받는 락스텝이므로 Math.random·sin·cos·Date 를 쓰지 않습니다(+ - * / sqrt 만 사용).
-import { BUILDINGS, CARRY, MINE_TICKS, MULT, NODE_AMOUNT, RESEARCH, START_MINERALS, START_WORKERS, SUPPLY_MAX, UNITS, type BuildKind, type ResearchKind, type UnitKind } from './config';
+import { ABILITIES, BUILDINGS, CARRY, MINE_TICKS, MULT, NODE_AMOUNT, RESEARCH, START_MINERALS, START_WORKERS, STIM_COST, SUPPLY_MAX, TANK_SIEGE, UNITS, type BuildKind, type ResearchKind, type UnitKind } from './config';
 import { buildMap, type RtsMap } from './map';
 import { Pather } from './path';
 
@@ -9,6 +9,7 @@ export interface Order { t: OrderType; x: number; y: number; target: number; pha
 export interface Unit {
   k: 'unit'; id: number; owner: number; kind: UnitKind; x: number; y: number; hp: number; cd: number; o: Order;
   path: number[]; pi: number; repath: number; carry: number; fx: number; fy: number; fired: number; hurt: number; mine: number;
+  /** 특수 능력이 이 틱까지 켜져 있음. */ ab: number; /** 이 틱부터 특수 능력을 다시 쓸 수 있음. */ abcd: number;
 }
 export interface Building {
   k: 'building'; id: number; owner: number; kind: BuildKind; x: number; y: number; size: number; hp: number; maxhp: number;
@@ -28,6 +29,7 @@ export type Cmd =
   | { k: 'gather'; ids: number[]; node: number }
   | { k: 'stop'; ids: number[] }
   | { k: 'build'; id: number; b: BuildKind; x: number; y: number; q?: boolean }
+  | { k: 'ability'; ids: number[] }
   | { k: 'research'; b: number; r: ResearchKind }
   | { k: 'resume'; ids: number[]; b: number }
   | { k: 'train'; b: number; u: UnitKind }
@@ -40,6 +42,7 @@ export type SimEvent =
   | { t: 'die'; kind: UnitKind | BuildKind; building: boolean; owner: number; x: number; y: number; size: number }
   | { t: 'built'; kind: BuildKind; owner: number; x: number; y: number }
   | { t: 'trained'; kind: UnitKind; owner: number; x: number; y: number }
+  | { t: 'ability'; kind: UnitKind; owner: number; x: number; y: number }
   | { t: 'heal'; owner: number; x0: number; y0: number; x1: number; y1: number }
   | { t: 'alert'; owner: number; x: number; y: number }
   | { t: 'deposit'; owner: number; x: number; y: number }
@@ -56,7 +59,8 @@ const sq = (v: number): number => v * v;
 /** 무기고 업그레이드로 얻는 진영별 배율(1 = 없음). 훈련장·AI 대전에서만 쓰며 온라인 대전에서는 쓰지 않습니다. */
 export interface Edge { dmg: number; def: number; speed: number; minerals: number }
 export const NO_EDGE: Edge = { dmg: 1, def: 1, speed: 1, minerals: 0 };
-export interface SimOptions { income?: [number, number]; edge?: [Edge, Edge] }
+/** scripted: 승패를 시뮬레이션이 아니라 캠페인 미션이 정합니다(건물이 모두 사라져도 끝나지 않음). */
+export interface SimOptions { income?: [number, number]; edge?: [Edge, Edge]; scripted?: boolean }
 
 export class RtsSim {
   tick = 0; winner = -1; nextId = 1;
@@ -64,13 +68,13 @@ export class RtsSim {
   units: Unit[] = []; buildings: Building[] = []; nodes: ResNode[] = [];
   players: Player[]; readonly index = new Map<number, Entity>();
   events: SimEvent[] = []; record = true;
-  private incomeMult: [number, number]; private edge: [Edge, Edge];
+  private incomeMult: [number, number]; private edge: [Edge, Edge]; readonly scripted: boolean;
   private head: Int32Array; private nextU = new Int32Array(0); private lastAlert = [-999, -999];
 
   constructor(opts: SimOptions = {}) {
     this.map = buildMap(); const n = this.map.size;
     this.grid = new Uint8Array(this.map.terrain); this.pather = new Pather(n, this.grid);
-    this.incomeMult = opts.income ?? [1, 1]; this.edge = opts.edge ?? [NO_EDGE, NO_EDGE]; this.head = new Int32Array(Math.ceil(n / 2) ** 2);
+    this.scripted = opts.scripted === true; this.incomeMult = opts.income ?? [1, 1]; this.edge = opts.edge ?? [NO_EDGE, NO_EDGE]; this.head = new Int32Array(Math.ceil(n / 2) ** 2);
     this.players = [0, 1].map(i => ({ minerals: START_MINERALS + this.edge[i].minerals, used: 0, cap: 0, mined: 0, kills: 0, lost: 0, made: 0, defeated: false, income: 0, up: { atk: false, arm: false, cannon: false, speed: false } }));
     for (const nd of this.map.nodes) if (nd.base < 2) this.addNode(nd.x, nd.y);
     for (const nd of this.map.nodes) if (nd.base >= 2) this.addNode(nd.x, nd.y);
@@ -110,9 +114,11 @@ export class RtsSim {
     this.buildings.push(b); this.index.set(b.id, b); this.mark(b, 2); return b;
   }
   private mark(b: Building, v: number): void { for (let j = 0; j < b.size; j++) for (let i = 0; i < b.size; i++) this.grid[(b.y + j) * this.map.size + b.x + i] = v; }
-  spawn(owner: number, kind: UnitKind, from: Building): Unit {
-    const at = this.spawnPoint(from), d = UNITS[kind];
-    const u: Unit = { k: 'unit', id: this.nextId++, owner, kind, x: at.x, y: at.y, hp: d.hp, cd: 0, o: idle(), path: [], pi: 0, repath: 0, carry: 0, fx: owner === 0 ? 1 : -1, fy: 0, fired: -99, hurt: -99, mine: 0 };
+  spawn(owner: number, kind: UnitKind, from: Building): Unit { const at = this.spawnPoint(from); return this.spawnAt(owner, kind, at.x, at.y); }
+  /** 정해진 자리에 유닛을 만듭니다(캠페인 증원·시작 병력용). 자리가 막혀 있으면 가까운 빈 칸으로 옮깁니다. */
+  spawnAt(owner: number, kind: UnitKind, x: number, y: number): Unit {
+    const at = this.pather.freeAt(x, y) ? { x, y } : this.pather.nearestFree(x, y) ?? { x, y }, d = UNITS[kind];
+    const u: Unit = { k: 'unit', id: this.nextId++, owner, kind, x: at.x, y: at.y, hp: d.hp, cd: 0, o: idle(), path: [], pi: 0, repath: 0, carry: 0, fx: owner === 0 ? 1 : -1, fy: 0, fired: -99, hurt: -99, mine: 0, ab: 0, abcd: 0 };
     this.units.push(u); this.index.set(u.id, u); return u;
   }
   /** 건물 둘레의 빈 칸 중 집결지에 가장 가까운 곳. */
@@ -216,6 +222,17 @@ export class RtsSim {
         if (c.i < 0) { if (b.done || b.kind === 'hq' && this.buildings.filter(x => x.owner === owner && x.kind === 'hq').length < 2) return false; p.minerals += Math.floor(BUILDINGS[b.kind].cost * 0.75); this.remove(b); return true; }
         const q = b.queue[c.i]; if (!q) return false; p.minerals += UNITS[q.u].cost; b.queue.splice(c.i, 1); this.recount(); return true;
       }
+      case 'ability': {
+        let n = 0;
+        for (const u of mine(c.ids)) {
+          const a = ABILITIES[u.kind]; if (!a || u.hp <= 0 || u.abcd > this.tick) continue;
+          if (u.kind === 'marine') { if (u.hp <= STIM_COST + 1) continue; u.hp -= STIM_COST; u.hurt = this.tick; }
+          u.ab = this.tick + (a.dur || 12); u.abcd = this.tick + a.cd; n++;
+          if (u.kind === 'medic') this.burstHeal(u);
+          this.emit({ t: 'ability', kind: u.kind, owner, x: u.x, y: u.y });
+        }
+        return n > 0;
+      }
       case 'research': {
         const b = num(c.b) ? this.building(c.b) : undefined, d = RESEARCH[c.r]; if (!b || !d || b.owner !== owner || !b.done || d.from !== b.kind || b.research) return false;
         const p = this.players[owner]; if (p.up[c.r] || p.minerals < d.cost || this.buildings.some(x => x.owner === owner && x.research?.r === c.r)) return false;
@@ -244,6 +261,7 @@ export class RtsSim {
     this.judge();
   }
   private judge(): void {
+    if (this.scripted) return;
     const alive = [0, 1].map(p => !this.players[p].defeated && this.buildings.some(b => b.owner === p));
     if (!alive[0] && !alive[1]) this.winner = 2; else if (!alive[0]) this.winner = 1; else if (!alive[1]) this.winner = 0;
   }
@@ -339,8 +357,28 @@ export class RtsSim {
     }
   }
 
-  /** 강화(기동 훈련)를 반영한 이동 속도. 일꾼은 영향을 받지 않습니다. */
-  private speedOf(u: Unit): number { const s = UNITS[u.kind].speed * this.edge[u.owner].speed; return u.kind !== 'worker' && this.players[u.owner].up.speed ? s * 1.12 : s; }
+  /** 강화(기동 훈련)와 특수 능력을 반영한 이동 속도. 일꾼은 강화의 영향을 받지 않습니다. */
+  private speedOf(u: Unit): number {
+    let s = UNITS[u.kind].speed * this.edge[u.owner].speed; if (u.kind !== 'worker' && this.players[u.owner].up.speed) s *= 1.12;
+    if (u.ab > this.tick) { if (u.kind === 'marine') s *= 1.35; else if (u.kind === 'jeep') s *= 1.8; else if (u.kind === 'tank') s = 0; }
+    return s;
+  }
+  /** 이 유닛의 포격 태세(전차 능력)가 켜져 있는가. */
+  private sieged(u: Unit): boolean { return u.kind === 'tank' && u.ab > this.tick; }
+  /** 능력으로 줄어드는 쿨다운(틱). */
+  private cooldownOf(u: Unit): number {
+    const d = UNITS[u.kind]; if (u.ab <= this.tick) return d.cd;
+    return Math.max(1, Math.round(d.cd * (u.kind === 'marine' ? 0.6 : u.kind === 'rocket' ? 0.5 : 1)));
+  }
+  /** 응급 처치: 주변 아군 보병·일꾼·의무병을 한 번에 고칩니다. */
+  private burstHeal(m: Unit): void {
+    let shown = 0;
+    for (const e of this.units) {
+      if (e.owner !== m.owner || e.hp <= 0 || e.kind === 'tank' || e.kind === 'jeep' || this.dist(m.x, m.y, e.x, e.y) > 5.5) continue;
+      const max = UNITS[e.kind].hp; if (e.hp >= max) continue; e.hp = Math.min(max, e.hp + max * 0.4);
+      if (shown++ < 8) this.emit({ t: 'heal', owner: m.owner, x0: m.x, y0: m.y, x1: e.x, y1: e.y });
+    }
+  }
 
   /** 의무병: 가까이에서 가장 많이 다친 아군을 고칩니다. 가만히 있으면 다친 아군 쪽으로 다가갑니다. */
   private medic(u: Unit): void {
@@ -372,10 +410,10 @@ export class RtsSim {
 
   /** 사정거리 안이면 쏘고, 아니면 다가갑니다. */
   private engage(u: Unit, t: Unit | Building): void {
-    const d = UNITS[u.kind], gap = this.gap(u, d.radius, t), tc = this.center(t);
-    if (gap <= d.range) {
+    const d = UNITS[u.kind], gap = this.gap(u, d.radius, t), tc = this.center(t), siege = this.sieged(u);
+    if (gap <= d.range + (siege ? TANK_SIEGE.range : 0)) {
       u.path = []; const dx = tc.x - u.x, dy = tc.y - u.y, l = Math.sqrt(dx * dx + dy * dy) || 1; u.fx = dx / l; u.fy = dy / l;
-      if (u.cd <= 0) { u.cd = d.cd; u.fired = this.tick; this.damage(u.owner, t, d.dmg, d.weapon, d.splash, u.x, u.y); }
+      if (u.cd <= 0) { u.cd = this.cooldownOf(u); u.fired = this.tick; this.damage(u.owner, t, d.dmg * (siege ? TANK_SIEGE.dmg : 1), d.weapon, d.splash + (siege ? TANK_SIEGE.splash : 0), u.x, u.y); }
       return;
     }
     if (u.path.length === 0 || u.repath <= 0) {
@@ -553,7 +591,7 @@ export class RtsSim {
   hash(): number {
     let h = this.tick | 0;
     const mix = (v: number): void => { h = (Math.imul(h ^ (Math.round(v * 64) | 0), 0x9e3779b1) + 0x7f4a7c15) | 0; h ^= h >>> 15; };
-    for (const u of this.units) { mix(u.id); mix(u.x); mix(u.y); mix(u.hp); }
+    for (const u of this.units) { mix(u.id); mix(u.x); mix(u.y); mix(u.hp); mix(u.ab); mix(u.abcd); }
     for (const b of this.buildings) { mix(b.id); mix(b.hp); mix(b.progress); mix(b.queue.length); mix(b.research?.left ?? -1); }
     for (const p of this.players) { mix(p.minerals); mix(p.mined); mix(+p.up.atk + 2 * +p.up.arm + 4 * +p.up.cannon + 8 * +p.up.speed); }
     return h >>> 0;

@@ -44,6 +44,25 @@ export const BUILDINGS: Record<BuildKind, BuildDef> = {
   tower: { name: '방어탑', role: '자동 사격', size: 2, hp: 500, cost: 125, time: 400, supply: 0, req: 'barracks', key: 'T', trains: [], dmg: 12, range: 7.5, cd: 14 },
 };
 
+/** 유닛 특수 능력. 영구 강화가 아니라 쿨다운마다 쓰는 순간 능력입니다(X·Z·V 키). */
+export interface AbilityDef { name: string; desc: string; /** 지속(틱). 0 이면 즉시 효과. */ dur: number; /** 다시 쓸 수 있을 때까지(틱). */ cd: number }
+export const ABILITY_KEYS = ['X', 'Z', 'V'] as const;
+export const STIM_COST = 10;
+export const ABILITIES: Partial<Record<UnitKind, AbilityDef>> = {
+  marine: { name: '자극제', desc: `8초간 공격·이동 속도 대폭 상승 (체력 -${STIM_COST})`, dur: 8 * TICK, cd: 35 * TICK },
+  rocket: { name: '일제 사격', desc: '7초간 발사 속도 2배', dur: 7 * TICK, cd: 40 * TICK },
+  tank: { name: '포격 태세', desc: '10초간 사거리 +2.5 · 화력 +50% · 이동 불가', dur: 10 * TICK, cd: 40 * TICK },
+  jeep: { name: '질주', desc: '5초간 이동 속도 +80%', dur: 5 * TICK, cd: 30 * TICK },
+  medic: { name: '응급 처치', desc: '주변 아군 보병·일꾼을 최대 체력의 40%만큼 즉시 치료', dur: 0, cd: 45 * TICK },
+};
+export const TANK_SIEGE = { range: 2.5, dmg: 1.5, splash: 0.5 } as const;
+
+/** 시야 반경(칸). 전장의 안개 계산에 씁니다. */
+export const VISION: Record<UnitKind | BuildKind, number> = {
+  worker: 8, marine: 10, rocket: 10, tank: 11, jeep: 13, medic: 9,
+  hq: 14, depot: 8, barracks: 10, factory: 10, tower: 13,
+};
+
 export type ResearchKind = 'atk' | 'arm' | 'cannon' | 'speed';
 export interface ResearchDef { name: string; role: string; cost: number; time: number; from: BuildKind; key: string }
 /** 병영·공장에서 연구하는 강화. 한 번 끝내면 그 판 내내 적용됩니다. */

@@ -6,13 +6,19 @@ import { crystalMat, makeBuilding, makeCrystals, makeUnit, matsFor, type BuildRi
 import { DesertProps } from './desert';
 import { Scenery, buildLanes, bushSpots, paintGround } from './scenery';
 import type { Building, ResNode, RtsSim, SimEvent, Unit } from './sim';
+import type { Marker } from './campaign';
+import { FOG_HIDDEN, FOG_SEEN, type Vision } from './vision';
 
-interface UVis { kind: 'unit'; id: number; rig: UnitRig; ring: THREE.Mesh; px: number; py: number; cx: number; cy: number; yaw: number; moved: number; shake: number }
+interface UVis { kind: 'unit'; id: number; rig: UnitRig; ring: THREE.Mesh; px: number; py: number; cx: number; cy: number; yaw: number; moved: number; shake: number; aura: THREE.Mesh | null }
 interface BVis { kind: 'building'; id: number; rig: BuildRig; frame: THREE.Group; scaff: THREE.Group; done: boolean; wasDone: boolean; rubble: number }
 interface NVis { kind: 'node'; id: number; obj: THREE.Group; base: number }
 type Quality = 'high' | 'standard' | 'low';
 interface Fx { obj: THREE.Object3D; t: number; life: number; tick: (f: Fx, dt: number) => void }
 
+const FOG_A_HIDDEN = 226, FOG_A_SEEN = 118, FOG_Y = 4;
+const ABILITY_COLOR: Record<string, number> = { marine: 0xffa53d, rocket: 0xff5a3c, tank: 0xffe066, jeep: 0x5de1ff, medic: 0x7dff9e };
+const MARK_COLOR = [0xff5a3c, 0x5db4ff, 0xffe27a] as const;
+interface MarkVis { group: THREE.Group; spin: THREE.Group; fill: THREE.Mesh; beam: THREE.Mesh; r: number; kind: Marker['kind']; side: number }
 const US: Record<string, number> = { worker: 1.4, marine: 1.45, rocket: 1.45, tank: 1.2, jeep: 1.15, medic: 1.45 };
 const seeded = (seed: number): (() => number) => { let s = seed >>> 0; return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }; };
 
@@ -25,6 +31,8 @@ export class RtsView {
   private ringGeo = new THREE.RingGeometry(0.9, 1.0, 28); private ghost: { kind: BuildKind; obj: THREE.Group; plane: THREE.Mesh } | null = null; private flag: THREE.Group;
   private raycaster = new THREE.Raycaster(); private clock = 0; private w = 1; private h = 1; private fxBudget: number;
   private ringMats = [new THREE.MeshBasicMaterial({ color: 0x5dff9a, transparent: true, opacity: 0.9, depthWrite: false }), new THREE.MeshBasicMaterial({ color: 0xff5a4a, transparent: true, opacity: 0.9, depthWrite: false })];
+  /** 전장의 안개: 있으면 보이지 않는 적을 숨기고 어둡게 덮습니다. */ vision: Vision | null = null;
+  private fog: { mesh: THREE.Mesh; tex: THREE.DataTexture; data: Uint8Array; cur: Float32Array } | null = null; private marks = new Map<string, MarkVis>();
   private grid: THREE.Mesh | null = null; private scenery: Scenery | null = null; private desert: DesertProps | null = null;
 
   constructor(readonly canvas: HTMLCanvasElement, readonly sim: RtsSim, readonly viewer: number, readonly quality: Quality = 'high') {
@@ -144,10 +152,64 @@ export class RtsView {
   /** 화면 좌표 아래의 유닛·건물·광물. 겹치면 카메라에 가까운 것. */
   pick(sx: number, sy: number): number {
     this.raycaster.setFromCamera(new THREE.Vector2(sx / this.w * 2 - 1, -(sy / this.h) * 2 + 1), this.camera); const ray = this.raycaster.ray; let best = 0, bt = Infinity; const v = new THREE.Vector3(), box = new THREE.Box3(), sph = new THREE.Sphere();
-    for (const u of this.sim.units) { sph.set(v.set(u.x, 0.55, u.y).clone(), Math.max(0.55, UNITS[u.kind].radius + 0.2)); if (ray.intersectSphere(sph, v)) { const d = v.distanceTo(ray.origin); if (d < bt) { bt = d; best = u.id; } } }
-    for (const b of this.sim.buildings) { box.min.set(b.x, 0, b.y); box.max.set(b.x + b.size, b.size < 3 ? 1.8 : 2.4, b.y + b.size); if (ray.intersectBox(box, v)) { const d = v.distanceTo(ray.origin) + 0.4; if (d < bt) { bt = d; best = b.id; } } }
-    for (const nd of this.sim.nodes) { sph.set(v.set(nd.x + 0.5, 0.5, nd.y + 0.5).clone(), 0.85); if (ray.intersectSphere(sph, v)) { const d = v.distanceTo(ray.origin) + 0.6; if (d < bt) { bt = d; best = nd.id; } } }
+    for (const u of this.sim.units) { if (this.hiddenUnit(u)) continue; sph.set(v.set(u.x, 0.55, u.y).clone(), Math.max(0.55, UNITS[u.kind].radius + 0.2)); if (ray.intersectSphere(sph, v)) { const d = v.distanceTo(ray.origin); if (d < bt) { bt = d; best = u.id; } } }
+    for (const b of this.sim.buildings) { if (this.hiddenBuilding(b)) continue; box.min.set(b.x, 0, b.y); box.max.set(b.x + b.size, b.size < 3 ? 1.8 : 2.4, b.y + b.size); if (ray.intersectBox(box, v)) { const d = v.distanceTo(ray.origin) + 0.4; if (d < bt) { bt = d; best = b.id; } } }
+    for (const nd of this.sim.nodes) { if (this.hiddenNode(nd)) continue; sph.set(v.set(nd.x + 0.5, 0.5, nd.y + 0.5).clone(), 0.85); if (ray.intersectSphere(sph, v)) { const d = v.distanceTo(ray.origin) + 0.6; if (d < bt) { bt = d; best = nd.id; } } }
     return best;
+  }
+
+  // ---------- 전장의 안개 ----------
+  setVision(v: Vision | null): void {
+    this.vision = v;
+    if (this.fog) { this.scene.remove(this.fog.mesh); this.fog.tex.dispose(); this.fog = null; }
+    if (!v) return;
+    const n = this.sim.map.size, data = new Uint8Array(n * n * 4), cur = new Float32Array(n * n).fill(FOG_A_HIDDEN);
+    for (let i = 0; i < n * n; i++) { data[i * 4] = 6; data[i * 4 + 1] = 10; data[i * 4 + 2] = 18; data[i * 4 + 3] = FOG_A_HIDDEN; }
+    const tex = new THREE.DataTexture(data, n, n, THREE.RGBAFormat); tex.magFilter = tex.minFilter = THREE.LinearFilter; tex.needsUpdate = true;
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(n, n), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false }));
+    mesh.rotation.x = -Math.PI / 2; mesh.renderOrder = 20; mesh.frustumCulled = false; this.scene.add(mesh); this.fog = { mesh, tex, data, cur };
+  }
+  /** 안개가 서서히 걷히고 덮이도록 칸마다 투명도를 목표값으로 이동합니다. */
+  private updateFog(dt: number): void {
+    const f = this.fog, v = this.vision; if (!f || !v) return;
+    const n = this.sim.map.size, st = v.state, k = Math.min(1, dt * 6);
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      const i = y * n + x, s = st[i], target = s === FOG_HIDDEN ? FOG_A_HIDDEN : s === FOG_SEEN ? FOG_A_SEEN : 0; let c = f.cur[i]; c += (target - c) * k; f.cur[i] = c; f.data[((n - 1 - y) * n + x) * 4 + 3] = Math.round(c);
+    }
+    f.tex.needsUpdate = true;
+  }
+  /** 카메라에서 본 땅과 같은 자리에 겹쳐 보이도록, 높이 FOG_Y 의 안개 판을 카메라 쪽으로 줄여 붙입니다. */
+  private placeFog(): void {
+    const f = this.fog; if (!f) return; const c = this.camera.position, n = this.sim.map.size, k = Math.max(0.2, (c.y - FOG_Y) / c.y);
+    f.mesh.scale.set(k, k, 1); f.mesh.position.set(c.x + (n / 2 - c.x) * k, FOG_Y, c.z + (n / 2 - c.z) * k);
+  }
+  /** 안개 때문에 이 유닛이 보이지 않는가(내 편은 항상 보임). */
+  hiddenUnit(u: { owner: number; x: number; y: number }): boolean { return !!this.vision && u.owner !== this.viewer && !this.vision.visible(u.x, u.y); }
+  /** 한 번도 본 적 없는 곳의 적 건물은 숨깁니다(본 적 있으면 마지막 모습 그대로 보임). */
+  hiddenBuilding(b: Building): boolean { return !!this.vision && b.owner !== this.viewer && !this.vision.explored(b.x + b.size / 2, b.y + b.size / 2); }
+  private hiddenNode(n: ResNode): boolean { return !!this.vision && !this.vision.explored(n.x + 0.5, n.y + 0.5); }
+
+  // ---------- 목표 표시(점령 지점·도착지·파괴 대상) ----------
+  setMarkers(list: Marker[]): void {
+    const keep = new Set<string>();
+    for (const m of list) {
+      keep.add(m.id); let o = this.marks.get(m.id);
+      if (o && (o.r !== m.r || o.kind !== m.kind)) { this.scene.remove(o.group); this.marks.delete(m.id); o = undefined; }
+      if (!o) {
+        const group = new THREE.Group(), spin = new THREE.Group(), mat = (op: number): THREE.MeshBasicMaterial => new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: op, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending });
+        const ring = new THREE.Mesh(new THREE.RingGeometry(m.r - 0.2, m.r, 48), mat(0.85)), fill = new THREE.Mesh(new THREE.CircleGeometry(1, 40), mat(0.3)), beam = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, m.kind === 'target' ? 9 : 7, 8, 1, true), mat(0.4));
+        ring.rotation.x = fill.rotation.x = -Math.PI / 2; ring.position.y = 0.12; fill.position.y = 0.1; beam.position.y = m.kind === 'target' ? 4.5 : 3.5;
+        for (const t of [0, 1, 2, 3]) { const tick = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.05, 0.9), mat(0.9)); const a = t * Math.PI / 2; tick.position.set(Math.cos(a) * (m.r - 0.1), 0.14, Math.sin(a) * (m.r - 0.1)); tick.rotation.y = -a; spin.add(tick); }
+        spin.add(ring); group.add(spin, fill, beam); group.traverse(x => { x.renderOrder = 30; }); this.scene.add(group);
+        o = { group, spin, fill, beam, r: m.r, kind: m.kind, side: -1 }; this.marks.set(m.id, o);
+      }
+      o.group.position.set(m.x, 0, m.y); o.fill.scale.setScalar(Math.max(0.001, m.progress * m.r));
+      if (o.side !== m.side) { o.side = m.side; const col = m.kind === 'goal' ? 0x7dff9e : MARK_COLOR[m.side]; o.group.traverse(x => { if (x instanceof THREE.Mesh) (x.material as THREE.MeshBasicMaterial).color.setHex(col); }); }
+    }
+    for (const [id, o] of this.marks) if (!keep.has(id)) { this.scene.remove(o.group); this.marks.delete(id); }
+  }
+  private updateMarks(dt: number): void {
+    for (const o of this.marks.values()) { o.spin.rotation.y += dt * 0.5; (o.beam.material as THREE.MeshBasicMaterial).opacity = 0.3 + 0.15 * Math.sin(this.clock * 3); }
   }
 
   // ---------- 배치 미리보기 ----------
@@ -185,7 +247,7 @@ export class RtsView {
   }
   private addUnit(u: Unit): void {
     const rig = makeUnit(u.kind, u.owner), r = UNITS[u.kind].radius, ring = new THREE.Mesh(this.ringGeo, this.ringMats[u.owner === this.viewer ? 0 : 1]); ring.rotation.x = -Math.PI / 2; ring.scale.setScalar(r * 1.5 + 0.2); ring.position.y = 0.05; ring.visible = false;
-    rig.root.add(ring); this.scene.add(rig.root); this.units.set(u.id, { kind: 'unit', id: u.id, rig, ring, px: u.x, py: u.y, cx: u.x, cy: u.y, yaw: -Math.atan2(u.fy, u.fx), moved: 0, shake: 0 });
+    rig.root.add(ring); this.scene.add(rig.root); this.units.set(u.id, { kind: 'unit', id: u.id, rig, ring, px: u.x, py: u.y, cx: u.x, cy: u.y, yaw: -Math.atan2(u.fy, u.fx), moved: 0, shake: 0, aura: null });
     rig.root.scale.setScalar(US[u.kind]);
   }
   private addBuilding(b: Building): void {
@@ -203,7 +265,7 @@ export class RtsView {
   render(dt: number, alpha: number, selected: ReadonlySet<number>): void {
     this.clock += dt; this.scenery?.update(this.clock); this.desert?.update(this.clock); this.syncEntities(); const tick = this.sim.tick, s = this.sim;
     for (const [id, v] of this.units) {
-      const u = s.unit(id); if (!u) continue; const x = v.px + (v.cx - v.px) * alpha, y = v.py + (v.cy - v.py) * alpha, sp = Math.sqrt((v.cx - v.px) ** 2 + (v.cy - v.py) ** 2);
+      const u = s.unit(id); if (!u) continue; const hid = this.hiddenUnit(u); v.rig.root.visible = !hid; if (hid) { v.ring.visible = false; continue; } const x = v.px + (v.cx - v.px) * alpha, y = v.py + (v.cy - v.py) * alpha, sp = Math.sqrt((v.cx - v.px) ** 2 + (v.cy - v.py) ** 2);
       v.moved += (sp > 0.005 ? 1 : -1) * dt * 6; v.moved = Math.min(1, Math.max(0, v.moved));
       const want = -Math.atan2(u.fy, u.fx); let d = want - v.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); v.yaw += d * Math.min(1, dt * 12);
       const r = v.rig, root = r.root; root.position.set(x, 0, y); root.rotation.y = v.yaw;
@@ -215,20 +277,24 @@ export class RtsView {
       if (r.arm) { const work = tick - u.mine < 3 || (u.o.t === 'gather' && u.o.phase === 1); r.arm.rotation.z = work ? Math.sin(this.clock * 16) * 0.7 - 0.4 : -0.3; }
       const hurt = tick - u.hurt; root.scale.setScalar(US[u.kind] * (hurt >= 0 && hurt < 2 ? 1.1 : 1));
       v.ring.visible = selected.has(id);
+      if (u.ab > tick && u.kind !== 'medic') {
+        if (!v.aura) { v.aura = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.62, 28), this.glowMat(ABILITY_COLOR[u.kind] ?? 0xffffff, 0.75)); v.aura.rotation.x = -Math.PI / 2; v.aura.position.y = 0.08; r.root.add(v.aura); }
+        v.aura.visible = true; v.aura.scale.setScalar(1.25 + Math.sin(this.clock * 9 + id) * 0.12);
+      } else if (v.aura) v.aura.visible = false;
     }
     for (const [id, v] of this.builds) {
-      const b = s.building(id); if (!b) continue; const p = b.done ? 1 : Math.min(1, 0.12 + 0.88 * b.progress / BUILDINGS[b.kind].time);
-      v.rig.root.scale.set(1, b.done ? 1 : Math.max(0.05, p), 1); v.scaff.visible = !b.done; v.scaff.scale.y = 1 - p * 0.3;
+      const b = s.building(id); if (!b) continue; const hidB = this.hiddenBuilding(b); v.rig.root.visible = !hidB; const p = b.done ? 1 : Math.min(1, 0.12 + 0.88 * b.progress / BUILDINGS[b.kind].time);
+      v.rig.root.scale.set(1, b.done ? 1 : Math.max(0.05, p), 1); v.scaff.visible = !b.done && !hidB; v.scaff.scale.y = 1 - p * 0.3;
       if (b.done && !v.wasDone) { v.wasDone = true; this.puff(b.x + b.size / 2, b.y + b.size / 2, b.size * 0.8, 0xd8cfb8); }
       for (const l of v.rig.light) l.visible = b.done && (Math.sin(this.clock * 3 + id) > -0.7);
       if (v.rig.spin && b.kind === 'hq') v.rig.spin.rotation.y += dt * 0.8;
       if (v.rig.spin && b.kind === 'tower') { const want = -Math.atan2(b.fy, b.fx); if (tick - b.fired < 40) v.rig.spin.rotation.y = want; }
       if (v.rig.flash) v.rig.flash.visible = tick - b.fired < 2;
-      v.frame.visible = selected.has(id); const hurt = tick - b.hurt; if (!b.done) v.rig.root.rotation.y = 0; v.rig.root.position.y = hurt >= 0 && hurt < 2 ? 0.02 : 0;
+      v.frame.visible = selected.has(id) && !hidB; const hurt = tick - b.hurt; if (!b.done) v.rig.root.rotation.y = 0; v.rig.root.position.y = hurt >= 0 && hurt < 2 ? 0.02 : 0;
     }
-    for (const [id, v] of this.nodes) { const n = s.node(id); if (!n) continue; const f = 0.55 + 0.45 * Math.min(1, n.amount / 1500); v.obj.scale.set(f, f, f); }
+    for (const [id, v] of this.nodes) { const n = s.node(id); if (!n) continue; v.obj.visible = !this.hiddenNode(n); const f = 0.55 + 0.45 * Math.min(1, n.amount / 1500); v.obj.scale.set(f, f, f); }
     crystalMat.emissiveIntensity = 1.0 + Math.sin(this.clock * 2.2) * 0.25;
-    this.updateFx(dt); this.placeCamera(); if (this.post) this.post.render(dt); else this.renderer.render(this.scene, this.camera);
+    this.updateFx(dt); this.updateMarks(dt); this.updateFog(dt); this.placeCamera(); this.placeFog(); if (this.post) this.post.render(dt); else this.renderer.render(this.scene, this.camera);
   }
 
   // ---------- 이펙트 ----------
@@ -260,7 +326,11 @@ export class RtsView {
   }
   /** 시뮬레이션 이벤트를 눈에 보이는 효과로 바꿉니다. 소리는 호출한 쪽에서 처리합니다. */
   consume(events: SimEvent[]): void {
+    const vis = this.vision, seen = (x: number, y: number): boolean => !vis || vis.visible(x, y);
     for (const e of events) {
+      if (e.t === 'shot' && !seen(e.x0, e.y0) && !seen(e.x1, e.y1)) continue;
+      if ((e.t === 'die' || e.t === 'mined' || e.t === 'deposit' || e.t === 'heal' && e.owner !== this.viewer) && !seen(e.t === 'heal' ? e.x1 : e.x, e.t === 'heal' ? e.y1 : e.y)) continue;
+      if ((e.t === 'placed' || e.t === 'ability') && e.owner !== this.viewer && !seen(e.x, e.y)) continue;
       if (e.t === 'shot') {
         const col = e.owner === 0 ? 0x9fe6ff : 0xffb27a;
         if (e.w === 'bullet') { this.tracer(e.x0, e.y0, e.x1, e.y1, 0.9, 0.6, col, 0.08, 0.05, 0.9); const s = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 4), this.glowMat(0xffffff, 0.9)); s.position.set(e.x1, 0.6, e.y1); this.add({ obj: s, t: 0, life: 0.12, tick: f => { s.scale.setScalar(1 + f.t * 10); (s.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - f.t / f.life); } }); }
@@ -272,6 +342,11 @@ export class RtsView {
         const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.1), this.glowMat(0xb6ffc8, 0.9)); c.position.set(e.x1, 0.7, e.y1);
         this.add({ obj: c, t: 0, life: 0.5, tick: (f, dt) => { c.position.y += dt * 1.4; c.rotation.y += dt * 6; (c.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - f.t / f.life); } });
       }
+      else if (e.t === 'ability') {
+        const col = ABILITY_COLOR[e.kind] ?? 0xffffff, rad = e.kind === 'medic' ? 5.5 : 2.4, ring = new THREE.Mesh(new THREE.RingGeometry(0.88, 1, 40), this.glowMat(col, 0.85)); ring.rotation.x = -Math.PI / 2; ring.position.set(e.x, 0.1, e.y);
+        this.add({ obj: ring, t: 0, life: 0.6, tick: f => { const k = f.t / f.life; ring.scale.setScalar(rad * (0.25 + k * 0.75)); (ring.material as THREE.MeshBasicMaterial).opacity = 0.85 * (1 - k); } });
+        for (let i = 0; i < 6; i++) { const sp = new THREE.Mesh(new THREE.OctahedronGeometry(0.09), this.glowMat(col, 0.9)), a = i * 1.047; sp.position.set(e.x, 0.6, e.y); this.add({ obj: sp, t: 0, life: 0.55, tick: (f, dt) => { sp.position.x += Math.cos(a) * 2.2 * dt; sp.position.z += Math.sin(a) * 2.2 * dt; sp.position.y += dt * 2.4; (sp.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - f.t / f.life); } }); }
+      }
       else if (e.t === 'placed') this.puff(e.x, e.y, 1.2, 0xd8cfb8);
       else if (e.t === 'mined') { const s = new THREE.Mesh(new THREE.OctahedronGeometry(0.07), this.glowMat(0x9fe9ff, 1)); s.position.set(e.x, 0.9, e.y); this.add({ obj: s, t: 0, life: 0.35, tick: (f, dt) => { s.position.y += dt * 1.8; s.rotation.y += dt * 8; (s.material as THREE.MeshBasicMaterial).opacity = 1 - f.t / f.life; } }); }
       else if (e.t === 'deposit') { const s = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 4), this.glowMat(0x8fe6ff, 0.9)); s.position.set(e.x, 1.1, e.y); this.add({ obj: s, t: 0, life: 0.5, tick: (f, dt) => { s.position.y += dt * 1.4; (s.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - f.t / f.life); } }); }
@@ -281,7 +356,7 @@ export class RtsView {
 
   dispose(): void {
     this.scene.traverse(o => { if (o instanceof THREE.Mesh || o instanceof THREE.InstancedMesh) { o.geometry.dispose(); const m = o.material; (Array.isArray(m) ? m : [m]).forEach(x => x.dispose()); } });
-    this.post?.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss();
+    this.post?.dispose(); this.fog?.tex.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss();
   }
 }
 void TEAM_COLORS; void matsFor;

@@ -3,7 +3,7 @@ import './shooter.css';
 import { readPreferences } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import type { PvpSession, RoomSession } from '../net/lobby';
-import { AIR, BOTS, FEEL, BR_PLAYERS, DIFFICULTIES, HELMET_NAMES, ARMOR_NAMES, HEAL, PARTS, PLAYER, VEHICLES, WEAPONS, partHandling, type Difficulty } from './config';
+import { AIR, BOTS, FEEL, BR_PLAYERS, DIFFICULTIES, HELMET_NAMES, ARMOR_NAMES, HEAL, PARTS, PLAYER, VEHICLES, WEAPONS, adsSpread, partHandling, type Difficulty } from './config';
 import { waterDepth } from './terrain';
 import { Match, type Cause, type MatchEvent, type Player } from './sim';
 import { ShooterView } from './view';
@@ -14,6 +14,8 @@ import { ShooterRoomNet, ROOM_MAX } from './room';
 import { PERK_IDS, PERK_INFO, readPerks, rewardCoins, writePerks } from './perks';
 import { PERK_MAX, buyPerk, perkCost } from '../shared/perks';
 import { readShooterCareer, recordShooterMatch, writeShooterCareer } from './records';
+import { readLoadout, writeLoadout, type SavedLoadout } from './loadout';
+import { openGunsmith, loadoutSummary } from './gunsmith';
 import { PVP_ENABLED } from '../net/config';
 
 const esc = (s: string): string => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
@@ -58,6 +60,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   const career = readShooterCareer(); let wallet = readPerks();
   let level: Difficulty = (DIFFICULTIES as string[]).includes(career.level) ? (career.level as Difficulty) : 'normal', pickMode: 'solo' | 'pvp' | 'room' = 'solo';
 
+  let loadout: SavedLoadout = readLoadout(), closeSmith: (() => void) | null = null;
   let phase: Phase = 'setup', closed = false, paused = false, match: Match | null = null, view: ShooterView | null = null, meIdx = 0, pvp: Pvp | null = null, room: Room | null = null, raf = 0, last = performance.now();
   let assets: ShooterAssets | null = null, assetState: 'loading' | 'ready' | 'failed' = 'loading', assetPct = 0;
   let countdown = 0, over = false, deadTimer = 0, resultShown = false, spectateId = -1;
@@ -89,6 +92,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
           <p class="sz-note">${pickMode !== 'solo' ? '온라인 대전과 방은 사람끼리 겨루므로 AI가 나오지 않습니다.' : `${b.blurb} (반응 ${b.react.toFixed(2)}초 · 시야 ${b.sight}m)`}</p></section>
         <section class="${pickMode !== 'solo' ? 'dim' : ''}"><h3>병사 강화 <em class="sz-coin">${wallet.coins.toLocaleString('ko-KR')} 코인</em></h3><div class="sz-perks">${PERK_IDS.map(id => { const lv = wallet.levels[id], cost = perkCost(wallet, id); return `<button type="button" class="sz-perk" data-perk="${id}" ${pickMode !== 'solo' || cost === null || wallet.coins < cost ? 'disabled' : ''}><b>${PERK_INFO[id].name} <i>${'●'.repeat(lv)}${'○'.repeat(PERK_MAX - lv)}</i></b><em>${PERK_INFO[id].blurb}</em><span>${cost === null ? '최대' : `${cost} 코인`}</span></button>`; }).join('')}</div>
           <p class="sz-note">${pickMode !== 'solo' ? '강화는 솔로 배틀로열에서만 적용됩니다(온라인 대전은 공정하게).' : '솔로 경기가 끝나면 순위와 처치에 따라 코인을 받습니다.'}</p></section>
+        <section class="${pickMode !== 'solo' ? 'dim' : ''}"><h3>총기 조립</h3><div class="sz-smith"><div><b>부품을 골라 출격 구성을 만드세요</b><em>${esc(loadoutSummary(loadout))}${pickMode !== 'solo' ? ' · 솔로 배틀로열에서만 적용됩니다' : ''}</em></div><button type="button" data-act="smith" ${assetState === 'loading' ? 'disabled' : ''}>${assetState === 'loading' ? `불러오는 중 ${Math.floor(assetPct * 100)}%` : '총기 조립 열기'}</button></div></section>
         <section><h3>조작</h3><ul class="sz-help">${touch ? '<li>왼쪽 스틱 이동 · 오른쪽 드래그 시점</li><li>사격 · 조준 · 장전 · 줍기 · 교체 버튼 (비행기에서는 <b>줍기</b> 버튼이 점프·낙하산, 차 옆에서는 탑승·하차, 운전 중 <b>웅크림</b> 버튼은 핸드브레이크)</li>' : '<li><b>WASD</b> 이동 · <b>Shift</b> 달리기 · 마우스 시점</li><li><b>좌클릭</b> 사격 · <b>우클릭</b> 조준 · <b>R</b> 장전</li><li><b>Space</b> 비행기에서 뛰기 · 낙하산 펴기(자동 105m) · <b>W</b> 활강 방향</li><li><b>G</b> 수류탄 · <b>E</b> 무기 줍기 · <b>1 / 2 / 휠</b> 무기 교체 · <b>Esc</b> 일시정지</li><li><b>E</b> 차량 타기·내리기 · <b>WASD</b> 운전 · <b>Space</b> 핸드브레이크 · 폭격 구역(붉은 원)에서는 벗어나세요</li>'}<li>탄약·구급상자·방탄복은 닿으면 자동으로 줍습니다.</li></ul></section>
         <footer><button type="button" class="ghost" data-act="exit">메뉴로</button><span class="sz-sum">${career.matches ? `전적 ${career.matches}판 ${career.wins}승 · 최다 처치 ${career.bestKills}` : '첫 출격'}</span>
           <button type="button" class="primary" data-act="start" ${wait ? 'disabled' : ''}>${assetState === 'failed' ? '도형 모드로 출격' : wait ? `불러오는 중 ${Math.floor(assetPct * 100)}%` : pickMode === 'solo' ? '출격' : pickMode === 'room' ? '방 찾기' : '상대 찾기'}</button></footer>
@@ -98,8 +102,13 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     const t = e.target as HTMLElement, perk = t.closest<HTMLElement>('[data-perk]'), mode = t.closest<HTMLElement>('[data-mode]'), lv = t.closest<HTMLElement>('[data-level]'), act = t.closest<HTMLElement>('[data-act]');
     if (perk) { const nw = buyPerk(wallet, perk.dataset.perk as (typeof PERK_IDS)[number]); if (nw) { wallet = nw; writePerks(wallet); paintSetup(); } return; }
     if (mode) { pickMode = mode.dataset.mode as 'solo' | 'pvp' | 'room'; paintSetup(); } else if (lv) { level = lv.dataset.level as Difficulty; writeShooterCareer({ ...readShooterCareer(), level }); paintSetup(); }
+    else if (act?.dataset.act === 'smith') openSmith();
     else if (act?.dataset.act === 'exit') exit(); else if (act?.dataset.act === 'start') { if (pickMode === 'solo') startSolo(); else openPvpLobby(pickMode === 'room'); }
   });
+  function openSmith(): void {
+    if (closeSmith) return;
+    closeSmith = openGunsmith(root, { assets, saved: loadout, touch, onChange: l => { loadout = l; writeLoadout(l); }, onClose: () => { closeSmith = null; if (phase === 'setup') paintSetup(); } });
+  }
   paintSetup();
 
   // ---------- 경기 시작 ----------
@@ -112,7 +121,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   }
   function startSolo(): void {
     audio.unlock(); pvp = null; const seed = (Math.random() * 2 ** 31) >>> 0;
-    begin(new Match({ seed, mode: 'br', difficulty: level, humans: [{ name: '나' }], fill: BR_PLAYERS, air: true, vehicles: true, bombs: true, perks: { ...wallet.levels } }), 0);
+    begin(new Match({ seed, mode: 'br', difficulty: level, humans: [{ name: '나' }], fill: BR_PLAYERS, air: true, vehicles: true, bombs: true, perks: { ...wallet.levels }, loadout: loadout.on ? loadout.guns : undefined }), 0);
   }
 
   // ---------- 1대1 대전 ----------
@@ -355,7 +364,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     const gear = [p.bandages > 0 ? `<span class="gear heal">붕대 ${p.bandages} <small>H</small></span>` : '', p.kits > 0 ? `<span class="gear heal">구급상자 ${p.kits} <small>J</small></span>` : '', p.armorLv > 0 ? `<span class="gear">${ARMOR_NAMES[p.armorLv]}</span>` : '', p.nades > 0 ? `<span class="gear">수류탄 ${p.nades}</span>` : '', p.helmet > 0 ? `<span class="gear">${HELMET_NAMES[p.helmet]}</span>` : '', p.boost > 0 ? `<span class="gear boost">부스트 ${Math.ceil(p.boost)}초</span>` : ''].join('');
     html(q('#sz-slots'), 'slots', gear + p.guns.map((x, i) => `<span class="${i === p.cur ? 'on' : ''}">${i + 1} ${x ? WEAPONS[x.id].name : '비어 있음'}${x && Object.keys(x.att).length ? `<small>${Object.values(x.att).map(a => PARTS[a].name.replace(' 조준경', '').replace(' 사이트', '')).join(' · ')}</small>` : ''}</span>`).join(''));
     // 조준선: 탄퍼짐에 맞춰 벌어집니다
-    if (def && view) { const spread = def.spread * partHandling(g!.att).spread * (p.ads ? (g!.att.sight ? 0.34 : 0.4) : 1) * (1 + Math.min(1.6, p.speed / PLAYER.walk) * 0.5) * (1 + p.kick * 0.5), px = Math.tan(spread * (def.pellets > 1 ? 2 : 1)) / Math.tan((view.fov * Math.PI) / 360) * (canvas.clientHeight / 2); q('#sz-cross').style.setProperty('--gap', `${clamp(px, 4, 90).toFixed(1)}px`); }
+    if (def && view) { const spread = def.spread * partHandling(g!.att).spread * (p.ads ? adsSpread(g!.att) : 1) * (1 + Math.min(1.6, p.speed / PLAYER.walk) * 0.5) * (1 + p.kick * 0.5), px = Math.tan(spread * (def.pellets > 1 ? 2 : 1)) / Math.tan((view.fov * Math.PI) / 360) * (canvas.clientHeight / 2); q('#sz-cross').style.setProperty('--gap', `${clamp(px, 4, 90).toFixed(1)}px`); }
     q('#sz-cross').classList.toggle('hide', p.ads && g?.id === 'sniper' || !p.alive);
     // 낙하 안내: 비행기 안·자유낙하·낙하산
     { const air = q('#sz-air'); let txt = '';
@@ -541,7 +550,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   window.addEventListener('resize', resize);
 
   function exit(): void {
-    if (closed) return; closed = true; cancelAnimationFrame(raf); leavePvp(); leaveRoom(); if (document.pointerLockElement) document.exitPointerLock(); loading?.close();
+    if (closed) return; closed = true; closeSmith?.(); cancelAnimationFrame(raf); leavePvp(); leaveRoom(); if (document.pointerLockElement) document.exitPointerLock(); loading?.close();
     for (const [t, f] of [['mousemove', onMove], ['mousedown', onDown], ['mouseup', onUp], ['keydown', onKey], ['keyup', onKey], ['wheel', onWheel], ['resize', resize], ['blur', blur]] as const) window.removeEventListener(t, f as EventListener);
     document.removeEventListener('pointerlockchange', onLock); endMatch(); audio.dispose(); root.remove(); onExit();
   }

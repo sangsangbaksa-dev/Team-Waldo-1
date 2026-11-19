@@ -2,7 +2,8 @@
 import * as THREE from 'three';
 import { makePost, type PostFx } from '../postfx';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { AIR, RED, WEAPONS, makeRng } from './config';
+import { AIR, PARTS, RED, WEAPONS, makeRng, type WeaponId } from './config';
+import { buildGun, lootPart, muzzleTip } from './gunbuild';
 import { bake, instantiate } from '../city/models';
 import { eyeOf, type Match, type MatchEvent, type Player } from './sim';
 import type { ShooterAssets } from './assets';
@@ -10,7 +11,6 @@ import type { CharacterRig } from '../shared/character';
 import { SOLDIER_KINDS } from './assets';
 import type { Box, Loot } from './world';
 import { buildProps, buildRoofs, makeDropCrate, makePlane, makeVehicleMesh, partMesh } from './props';
-import type { PartId } from './config';
 import { TerrainView, tintGround } from './terrainview';
 import { WeatherFx } from './weatherfx';
 import { waterDepth } from './terrain';
@@ -18,7 +18,6 @@ import { crateTexture, floorTexture, glowTexture, groundTexture, makeSky, wallTe
 
 export type Quality = 'high' | 'standard' | 'low';
 const LOOT_COLOR: Record<string, number> = { weapon: 0xeaf6ff, ammo: 0xffa53a, medkit: 0x52f08a, armor: 0x5aa8ff, bandage: 0xf2f2f2, attach: 0xc59bff, helmet: 0xffd34d, boost: 0x39e6ff };
-const MUZZLE: Record<string, number> = { pistol: 0.26, smg: 0.5, shotgun: 0.7, rifle: 0.82, sniper: 1.12 };
 
 const rngOf = (seed: number): (() => number) => makeRng(seed);
 /** 부드러운 2차원 값 잡음(지형 색 변화용) */
@@ -47,7 +46,7 @@ export class ShooterView {
   private vmScene = new THREE.Scene(); private vmCam = new THREE.PerspectiveCamera(64, 1, 0.5, 200);
   private sun: THREE.DirectionalLight; private glow = glowTexture(); private rigs = new Map<number, Rig>(); private lootNodes = new Map<number, THREE.Object3D>();
   private zoneWall: THREE.Mesh; private zoneNext: THREE.Mesh; private tracers: Fx[] = []; private sparks: THREE.Points; private sparkData: { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; r: number; g: number; b: number }[] = [];
-  private vm: THREE.Object3D | null = null; private vmId = ''; private vmParts = ''; private partsNode: THREE.Group | null = null; private vmSwap = 0; private vmFlash: THREE.Sprite; private bob = 0; private shake = 0; private terrainView: TerrainView | null = null; private fovPunch = 0; private flashKick = 0; private roll = 0; private sprintT = 0; private time = 0;
+  private vm: THREE.Object3D | null = null; private vmId = ''; private vmParts = ''; private vmSwap = 0; private vmFlash: THREE.Sprite; private bob = 0; private shake = 0; private terrainView: TerrainView | null = null; private fovPunch = 0; private flashKick = 0; private roll = 0; private sprintT = 0; private time = 0;
   private mats = new Map<string, THREE.Material>(); private tmpCol = new THREE.Color(); private beams: THREE.InstancedMesh;
   private camPos = new THREE.Vector3(); fov = 78; frames = 0;
   /** 폭풍우 하늘: 번개(flash)가 가끔 하늘과 안개를 밝힙니다 */
@@ -256,6 +255,7 @@ export class ShooterView {
   private lootNode(l: Loot): THREE.Object3D {
     const g = new THREE.Group(), color = LOOT_COLOR[l.kind];
     if (l.kind === 'weapon' && l.weapon && this.assets?.groundGuns[l.weapon]) { const m = instantiate(this.assets.groundGuns[l.weapon]); m.scale.setScalar(1.25); m.position.y = 0.9; g.add(m); }
+    else if (l.kind === 'attach' && l.part && this.assets?.weaponNodes && lootPart(this.assets.weaponNodes, l.part, PARTS[l.part].slot)) { const m = lootPart(this.assets.weaponNodes, l.part, PARTS[l.part].slot)!; m.scale.setScalar(PARTS[l.part].slot === 'mag' || PARTS[l.part].slot === 'stock' ? 1.7 : 2.4); m.position.y = 0.95; g.add(m); }
     else if (l.kind === 'attach' && l.part) { const m = partMesh(l.part, 0.5); m.scale.setScalar(1.9); m.position.set(-0.5, 0.95 + (l.part === 'extmag' ? 0.3 : l.part === 'grip' ? 0.08 : -0.12), 0); g.add(m); }
     else if (l.kind === 'helmet') {
       const col = [0, 0x7a8a5a, 0x3a3d44, 0xd9b24a][l.level ?? 1], m = new THREE.MeshLambertMaterial({ color: col, emissive: col, emissiveIntensity: 0.12 }), dome = new THREE.Mesh(new THREE.SphereGeometry(0.27, 14, 9, 0, Math.PI * 2, 0, Math.PI / 2), m); dome.position.y = 0.82; dome.castShadow = true; g.add(dome);
@@ -405,19 +405,23 @@ export class ShooterView {
   // ---------- 1인칭 총 ----------
   private viewmodel(p: Player, show: boolean, dt: number): void {
     const gun = p.guns[p.cur], id = gun?.id ?? '';
-    if (id !== this.vmId) {
-      this.vmId = id; if (this.vm) this.vmScene.remove(this.vm); this.vm = null; const tpl = id ? this.assets?.viewGuns[id] : null; this.vmSwap = 0.35;
-      if (tpl) { this.vm = instantiate(tpl); this.vm.traverse(o => { (o as THREE.Mesh).castShadow = false; }); this.vm.add(this.vmFlash); this.vmFlash.position.set(MUZZLE[id] ?? 0.6, 0.05, 0); this.vmScene.add(this.vm); }
+    const pk = id + JSON.stringify(gun?.att ?? {});
+    if (pk !== this.vmParts) {
+      const swapped = id !== this.vmId; this.vmId = id; this.vmParts = pk; if (this.vm) this.vmScene.remove(this.vm); this.vm = null; if (swapped) this.vmSwap = 0.35;
+      const nodes = this.assets?.weaponNodes;
+      if (id && nodes?.[`n_${id}`]) {
+        this.vm = buildGun(nodes, id as WeaponId, gun?.att, true); this.vm.traverse(o => { (o as THREE.Mesh).castShadow = false; });
+        const tip = muzzleTip(id as WeaponId, gun?.att); this.vm.add(this.vmFlash); this.vmFlash.position.set(tip.x, tip.y, 0); this.vmScene.add(this.vm);
+      }
     }
     if (!this.vm) return;
-    const pk = id + JSON.stringify(gun?.att ?? {}); if (pk !== this.vmParts) { this.vmParts = pk; if (this.partsNode) this.vm.remove(this.partsNode); this.partsNode = new THREE.Group(); this.vm.add(this.partsNode); const mz = MUZZLE[id] ?? 0.6; if (gun) for (const part of Object.values(gun.att) as PartId[]) { if (id === 'sniper' && part.startsWith('scope')) continue; this.partsNode.add(partMesh(part, mz)); } }
     this.vm.visible = show; if (!show) return;
     this.vmSwap = Math.max(0, this.vmSwap - dt); const sw = this.vmSwap / 0.35, moving = Math.min(1, p.speed / 5), reloading = p.reload > 0, recoil = p.kick, ads = p.ads ? 1 : 0;
     const bob = Math.sin(this.bob * 1.1) * 0.35 * moving * (1 - ads * 0.8), sway = Math.cos(this.bob * 0.55) * 0.25 * moving * (1 - ads * 0.8), big = id === 'sniper' ? 11 : 12.5;
     const sprint = !ads && !reloading && p.speed > 6.1 ? 1 : 0; this.sprintT += (sprint - this.sprintT) * Math.min(1, dt * 10);
     this.vm.scale.setScalar(big); this.vm.rotation.set(recoil * 0.2 - (reloading ? 0.7 : 0) - sw * 0.8 - this.sprintT * 0.35, Math.PI / 2 + recoil * 0.05 + this.sprintT * 0.5, this.sprintT * 0.12);
     this.vm.position.set(4.6 * (1 - ads * 0.9) + sway, -4.4 * (1 - ads * 0.25) + bob - (reloading ? 3 : 0) - sw * 5 - this.sprintT * 1.2, -9.5 + recoil * 2.4 + this.sprintT * 0.8);
-    this.vmFlash.visible = p.muzzle > 0; this.vmFlash.material.rotation = this.time * 40; this.flashKick = Math.max(0, this.flashKick - dt * 14); const fs = 0.3 + this.flashKick * 0.45 * (0.7 + Math.random() * 0.6); this.vmFlash.scale.set(fs, fs, 1);
+    this.vmFlash.visible = p.muzzle > 0 && gun?.att.muzzle !== 'suppressor'; this.vmFlash.material.rotation = this.time * 40; this.flashKick = Math.max(0, this.flashKick - dt * 14); const fs = 0.3 + this.flashKick * 0.45 * (0.7 + Math.random() * 0.6); this.vmFlash.scale.set(fs, fs, 1);
   }
 
   resize(w: number, h: number): void { this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); }

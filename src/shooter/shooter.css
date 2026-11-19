@@ -219,3 +219,12 @@
   .gs-hint{display:none}.gs-presets{bottom:6px}.gs-hot span{font-size:11.5px;padding:3px 7px}
   .gs-foot{gap:10px}.gs-switch em{display:none}.gs-foot>button{padding:9px 14px;font-size:13px}}
 @media (max-width:900px) and (max-height:560px){.gs-root{grid-template-rows:auto auto minmax(120px,40%) auto minmax(0,1fr) auto}.gs-head h2{font-size:18px}}
+
+/* 방 채팅 */
+.sz-chatlog{position:absolute;left:16px;bottom:118px;width:min(380px,60vw);display:flex;flex-direction:column;gap:2px;pointer-events:none;font-size:14px;line-height:1.35;text-shadow:0 1px 4px #000,0 0 2px #000}
+.sz-chatlog.open{background:#0007;border-radius:8px;padding:6px 8px}
+.sz-chatline{overflow-wrap:anywhere;color:#e8eef5}.sz-chatline b{color:#ffd166;font-weight:700}.sz-chatline.mine b{color:#7ee0a3}.sz-chatline.sys{color:#9fb0c3;font-style:italic}
+.sz-chatform{position:absolute;left:16px;bottom:84px;width:min(380px,60vw)}
+.sz-chatin{width:100%;box-sizing:border-box;padding:8px 10px;font:inherit;font-size:14px;color:#fff;background:#0b1118e6;border:1px solid #ffd16688;border-radius:8px;outline:none}
+.sz-chatin:focus{border-color:#ffd166}
+@media (max-width:700px){.sz-chatlog{bottom:150px;font-size:13px}.sz-chatform{bottom:116px}}

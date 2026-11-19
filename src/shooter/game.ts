@@ -13,6 +13,7 @@ import { loadShooterAssets, type ShooterAssets } from './assets';
 import { ShooterAudio } from './audio';
 import { ShooterNet, decideDeath, nadeMsg, parseNade, seedOf, type Pose } from './net';
 import { ShooterRoomNet, ROOM_MAX } from './room';
+import { ChatBox } from './chat';
 import { PERK_IDS, PERK_INFO, readPerks, rewardCoins, writePerks } from './perks';
 import { PERK_MAX, buyPerk, perkCost } from '../shared/perks';
 import { readShooterCareer, recordShooterMatch, writeShooterCareer } from './records';
@@ -29,7 +30,7 @@ const causeName = (w: Cause): string => (w in CAUSE_NAME ? CAUSE_NAME[w as keyof
 /** 멀티플레이 방의 AI 채우기 선택지(0 = 사람만) */
 const ROOM_FILLS = [0, 30, 60, 100] as const;
 type Phase = 'setup' | 'loading' | 'countdown' | 'play' | 'dead' | 'over';
-interface Room { s: RoomSession; net: ShooterRoomNet; remotes: Map<number, { p: Player; target: Pose | null }>; done: boolean; seed: number; mine: number; shown: boolean; sync: WorldSync }
+interface Room { s: RoomSession; net: ShooterRoomNet; remotes: Map<number, { p: Player; target: Pose | null }>; chat: ChatBox | null; done: boolean; seed: number; mine: number; shown: boolean; sync: WorldSync }
 interface Pvp { s: PvpSession; net: ShooterNet; opp: Player | null; target: Pose | null; done: boolean; deadAt: number | null; oppDeadMt: number | null; seed: number; begun: boolean }
 
 export interface OpenOptions { loading?: LoadingScreen }
@@ -193,7 +194,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       onAbort: () => { if (room && !room.done) { room.done = true; card('멀티플레이 방', '시작하지 못했습니다', '<p class="sz-sub">다른 참가자와 연결하지 못했습니다.</p>', '<button data-act="exit">메뉴로</button>'); } },
       onData: (id, msg) => roomData(id, msg),
     });
-    room = { s, net, remotes: new Map(), done: false, seed: seedOf(s.room.config, s.room.id), mine: 0, shown: false, sync: null as unknown as WorldSync };
+    room = { s, net, remotes: new Map(), chat: null, done: false, seed: seedOf(s.room.config, s.room.id), mine: 0, shown: false, sync: null as unknown as WorldSync };
   }
   function roomRemote(id: string): { p: Player; target: Pose | null } | undefined { const i = room?.net.list.indexOf(id) ?? -1; return room?.remotes.get(i); }
   /** 사람(다른 참가자)이 몰고 있는 차인지 */
@@ -211,11 +212,13 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       : new Match({ seed: r.seed, mode: 'duel', difficulty: 'normal', humans, lootBase: (idx + 1) * 1_000_000 });
     ids.forEach((id, i) => { if (id !== me0) r.remotes.set(i, { p: m.players[i], target: null }); });
     r.mine = idx; r.sync = new WorldSync(m); begin(m, idx);
+    r.chat = new ChatBox(hud, text => { r.chat?.add('나', me0, text, true, performance.now()); r.net.send({ t: 'ch', x: text }); }, () => { if (!touch && !locked && phase === 'play') lock(); });
   }
   /** 동기화 메시지(sync.ts 형식) */
   function roomData(id: string, msg: NetMsg): void {
     const r = room, m = match; if (!r || !m) return; const from = roomRemote(id), host = id === r.net.authority(), now = performance.now(), my = me();
-    if (msg.t === 'w') { if (host && !m.authority) r.sync.apply(msg, now); }
+    if (msg.t === 'ch') r.chat?.add(r.s.players.find(x => x.id === id)?.nickname ?? '참가자', id, msg.x, false, now);
+    else if (msg.t === 'w') { if (host && !m.authority) r.sync.apply(msg, now); }
     else if (msg.t === 'bd') { if (host && !m.authority) r.sync.botDead(msg.i, msg.k, msg.c); }
     else if (msg.t === 'la') { const l = parseLoot(msg); if (l) m.addLoot(l); }
     else if (msg.t === 'nd') { const n = parseNade(msg), o = typeof msg.o === 'number' && Number.isInteger(msg.o) ? m.players[msg.o] : undefined; if (n && o?.remote) m.addNade(o.id, n.x, n.y, n.z, n.vx, n.vy, n.vz); }
@@ -298,7 +301,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       `${!m.over ? '<button data-act="spectate">관전 계속</button>' : '<button class="primary" data-act="roomagain">다시 방 찾기</button>'}<button data-act="exit">메뉴로</button>`, win ? 'win' : '');
   }
   function leaveRoom(): void { const r = room; if (!r) return; if (r.net.started && !r.done) r.net.bye(); endRoom(); }
-  function endRoom(): void { room?.net.dispose(); room = null; }
+  function endRoom(): void { room?.chat?.dispose(); room?.net.dispose(); room = null; }
 
   /** 내가 쓰러진 뒤 상대 소식을 잠깐 기다려 동시 사망을 가립니다. */
   function settleTie(): void {
@@ -347,9 +350,10 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   };
   const onUp = (e: MouseEvent): void => { if (e.button === 0) mouse.fire = false; else if (e.button === 2) mouse.ads = false; };
   const onKey = (e: KeyboardEvent): void => {
-    if (closed || e.repeat && e.type === 'keydown' && ['KeyR', 'KeyE'].includes(e.code)) return;
+    if (closed || room?.chat?.typing || e.repeat && e.type === 'keydown' && ['KeyR', 'KeyE'].includes(e.code)) return;
     if (e.type === 'keyup') { keys.delete(e.code); if (e.code === 'KeyE') interactHeld = false; return; }
     keys.add(e.code);
+    if (e.code === 'Enter' && room?.chat && !room.done && match && !paused) { keys.clear(); mouse.fire = mouse.ads = false; interactHeld = false; if (document.pointerLockElement) document.exitPointerLock(); room.chat.open(); e.preventDefault(); return; }
     if (e.code === 'KeyR') reloadReq = true; else if (e.code === 'KeyE') interactHeld = true; else if (e.code === 'Digit1') slotReq = 0; else if (e.code === 'Digit2') slotReq = 1; else if (e.code === 'KeyQ') swapReq = true; else if (e.code === 'KeyG') nadeReq = true; else if (e.code === 'KeyH') healReq = 1; else if (e.code === 'KeyJ') healReq = 2;
     else if (e.code === 'Escape' && phase === 'countdown') setPause(true);
     if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code) && match) e.preventDefault();
@@ -489,6 +493,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     q('#sz-scope').classList.toggle('on', p.ads && g?.id === 'sniper' && p.alive);
     // 명중 표시와 배너
     hitT = Math.max(0, hitT - dt); const hm = q('#sz-hitmark'); hm.style.opacity = String(hitT > 0 ? Math.min(1, hitT * 6) : 0); hm.classList.toggle('head', hitHead); hm.classList.toggle('kill', hitKill && hitT > 0);
+    room?.chat?.tick(performance.now());
     if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) q('#sz-banner').classList.remove('show'); }
     // 처치 알림
     while (feed.length && now - feed[0].at > 6000) feed.shift();

@@ -3,9 +3,9 @@ import './shooter.css';
 import { readPreferences } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import type { PvpSession, RoomSession } from '../net/lobby';
-import { AIR, BOTS, FEEL, BR_PLAYERS, DIFFICULTIES, HELMET_NAMES, ARMOR_NAMES, HEAL, PARTS, PLAYER, WEAPONS, partHandling, type Difficulty } from './config';
+import { AIR, BOTS, FEEL, BR_PLAYERS, DIFFICULTIES, HELMET_NAMES, ARMOR_NAMES, HEAL, PARTS, PLAYER, VEHICLES, WEAPONS, partHandling, type Difficulty } from './config';
 import { waterDepth } from './terrain';
-import { Match, type MatchEvent, type Player } from './sim';
+import { Match, type Cause, type MatchEvent, type Player } from './sim';
 import { ShooterView } from './view';
 import { loadShooterAssets, type ShooterAssets } from './assets';
 import { ShooterAudio } from './audio';
@@ -17,6 +17,9 @@ import { PVP_ENABLED } from '../net/config';
 const esc = (s: string): string => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
 const clock = (s: number): string => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
+const CAUSE_NAME = { zone: '자기장', grenade: '수류탄', vehicle: '차량', bomb: '폭격' } as const;
+/** 처치 알림·결과 화면에 쓰는 이름: 무기 이름 또는 자기장·수류탄·차량·폭격 */
+const causeName = (w: Cause): string => (w in CAUSE_NAME ? CAUSE_NAME[w as keyof typeof CAUSE_NAME] : WEAPONS[w as keyof typeof WEAPONS].name);
 type Phase = 'setup' | 'loading' | 'countdown' | 'play' | 'dead' | 'over';
 interface Room { s: RoomSession; net: ShooterRoomNet; remotes: Map<number, { p: Player; target: Pose | null }>; done: boolean; seed: number; mine: number; shown: boolean }
 interface Pvp { s: PvpSession; net: ShooterNet; opp: Player | null; target: Pose | null; done: boolean; deadAt: number | null; oppDeadMt: number | null; seed: number; begun: boolean }
@@ -29,7 +32,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   root.innerHTML = `
     <canvas class="sz-canvas"></canvas>
     <div class="sz-hud" hidden>
-      <div class="sz-vig" id="sz-vig"></div><div class="sz-zonefx" id="sz-zonefx"></div><div class="sz-scope" id="sz-scope"></div>
+      <div class="sz-vig" id="sz-vig"></div><div class="sz-zonefx" id="sz-zonefx"></div><div class="sz-redfx" id="sz-redfx"></div><div class="sz-scope" id="sz-scope"></div>
       <div class="sz-tl"><div class="sz-stat"><b id="sz-alive">100</b><span>생존</span></div><div class="sz-stat"><b id="sz-kills">0</b><span>처치</span></div></div>
       <canvas class="sz-compass" id="sz-compass" width="420" height="34"></canvas><div class="sz-tc" id="sz-zone"><b id="sz-ztime">0:00</b><span id="sz-zlabel">자기장</span></div>
       <div class="sz-tr"><canvas id="sz-map" width="300" height="300"></canvas><ul class="sz-feed" id="sz-feed"></ul></div>
@@ -38,6 +41,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       <div class="sz-air" id="sz-air"></div><div class="sz-banner" id="sz-banner"></div><div class="sz-count" id="sz-count"></div><div class="sz-prompt" id="sz-prompt"></div><div class="sz-cast" id="sz-cast"><span id="sz-castl"></span><i><b id="sz-castb"></b></i></div>
       <div class="sz-bl"><div class="sz-bar hp"><i id="sz-hp"></i><b id="sz-hpn">100</b></div><div class="sz-bar ar"><i id="sz-ar"></i><b id="sz-arn">0</b></div></div>
       <div class="sz-br"><div class="sz-wname" id="sz-wname"></div><div class="sz-ammo"><b id="sz-mag">0</b><span id="sz-res">/ 0</span></div><div class="sz-slots" id="sz-slots"></div></div>
+      <div class="sz-veh" id="sz-veh"><div class="nm" id="sz-vname"></div><div class="spd"><span id="sz-vspd">0</span><small>km/h</small></div><div class="bar" id="sz-vbar"><i id="sz-vhp"></i></div><small class="keys" id="sz-vkeys"></small></div>
       <div class="sz-keys" id="sz-keys"></div>
       <div class="sz-tbtn"><button id="sz-pause" type="button" aria-label="일시정지">Ⅱ</button></div>
       <div class="sz-touchpad"><div class="sz-stick" id="sz-stick"><i></i></div><div class="sz-tbuttons">
@@ -55,7 +59,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   let phase: Phase = 'setup', closed = false, paused = false, match: Match | null = null, view: ShooterView | null = null, meIdx = 0, pvp: Pvp | null = null, room: Room | null = null, raf = 0, last = performance.now();
   let assets: ShooterAssets | null = null, assetState: 'loading' | 'ready' | 'failed' = 'loading', assetPct = 0;
   let countdown = 0, over = false, deadTimer = 0, resultShown = false, spectateId = -1;
-  let yaw = 0, pitch = 0, locked = false, lockFail = false, hitT = 0, hitHead = false, hitKill = false, combo = 0, comboT = 0, rcP = 0, rcY = 0, rcIdle = 9, shotN = 0, stepAcc = 0, bannerT = 0, mapBase: HTMLCanvasElement | null = null;
+  let lastLook = 0, yaw = 0, pitch = 0, locked = false, lockFail = false, hitT = 0, hitHead = false, hitKill = false, combo = 0, comboT = 0, rcP = 0, rcY = 0, rcIdle = 9, shotN = 0, stepAcc = 0, bannerT = 0, mapBase: HTMLCanvasElement | null = null;
   const keys = new Set<string>(), mouse = { fire: false, ads: false }, tc = { fire: false, ads: false, crouch: false, move: { x: 0, y: 0, id: -1, ox: 0, oy: 0 }, look: { id: -1, x: 0, y: 0 } };
   let healReq = 0, nadeReq = false, reloadReq = false, slotReq = -1, swapReq = false, interactHeld = false;
   const feed: Array<{ text: string; at: number; mine: boolean }> = [], told = new Set<number>();
@@ -81,7 +85,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
           ${PVP_ENABLED ? `<button type="button" class="sz-opt ${pickMode === 'room' ? 'on' : ''}" data-mode="room" aria-pressed="${pickMode === 'room'}"><b>멀티플레이 방</b><em>3~${ROOM_MAX}인 서바이벌 · 방 코드 또는 공개 방 · 마지막 1명이 승리</em></button>` : ''}</div></section>
         <section class="${pickMode !== 'solo' ? 'dim' : ''}"><h3>AI 난이도</h3><div class="sz-seg four">${DIFFICULTIES.map(d => `<button type="button" class="sz-opt ${d === level ? 'on' : ''}" data-level="${d}" aria-pressed="${d === level}" ${pickMode !== 'solo' ? 'disabled' : ''}><b>${BOTS[d].label}</b></button>`).join('')}</div>
           <p class="sz-note">${pickMode !== 'solo' ? '온라인 대전과 방은 사람끼리 겨루므로 AI가 나오지 않습니다.' : `${b.blurb} (반응 ${b.react.toFixed(2)}초 · 시야 ${b.sight}m)`}</p></section>
-        <section><h3>조작</h3><ul class="sz-help">${touch ? '<li>왼쪽 스틱 이동 · 오른쪽 드래그 시점</li><li>사격 · 조준 · 장전 · 줍기 · 교체 버튼 (비행기에서는 <b>줍기</b> 버튼이 점프·낙하산)</li>' : '<li><b>WASD</b> 이동 · <b>Shift</b> 달리기 · 마우스 시점</li><li><b>좌클릭</b> 사격 · <b>우클릭</b> 조준 · <b>R</b> 장전</li><li><b>Space</b> 비행기에서 뛰기 · 낙하산 펴기(자동 105m) · <b>W</b> 활강 방향</li><li><b>G</b> 수류탄 · <b>E</b> 무기 줍기 · <b>1 / 2 / 휠</b> 무기 교체 · <b>Esc</b> 일시정지</li>'}<li>탄약·구급상자·방탄복은 닿으면 자동으로 줍습니다.</li></ul></section>
+        <section><h3>조작</h3><ul class="sz-help">${touch ? '<li>왼쪽 스틱 이동 · 오른쪽 드래그 시점</li><li>사격 · 조준 · 장전 · 줍기 · 교체 버튼 (비행기에서는 <b>줍기</b> 버튼이 점프·낙하산, 차 옆에서는 탑승·하차, 운전 중 <b>웅크림</b> 버튼은 핸드브레이크)</li>' : '<li><b>WASD</b> 이동 · <b>Shift</b> 달리기 · 마우스 시점</li><li><b>좌클릭</b> 사격 · <b>우클릭</b> 조준 · <b>R</b> 장전</li><li><b>Space</b> 비행기에서 뛰기 · 낙하산 펴기(자동 105m) · <b>W</b> 활강 방향</li><li><b>G</b> 수류탄 · <b>E</b> 무기 줍기 · <b>1 / 2 / 휠</b> 무기 교체 · <b>Esc</b> 일시정지</li><li><b>E</b> 차량 타기·내리기 · <b>WASD</b> 운전 · <b>Space</b> 핸드브레이크 · 폭격 구역(붉은 원)에서는 벗어나세요</li>'}<li>탄약·구급상자·방탄복은 닿으면 자동으로 줍습니다.</li></ul></section>
         <footer><button type="button" class="ghost" data-act="exit">메뉴로</button><span class="sz-sum">${career.matches ? `전적 ${career.matches}판 ${career.wins}승 · 최다 처치 ${career.bestKills}` : '첫 출격'}</span>
           <button type="button" class="primary" data-act="start" ${wait ? 'disabled' : ''}>${assetState === 'failed' ? '도형 모드로 출격' : wait ? `불러오는 중 ${Math.floor(assetPct * 100)}%` : pickMode === 'solo' ? '출격' : pickMode === 'room' ? '방 찾기' : '상대 찾기'}</button></footer>
       </div>`;
@@ -103,7 +107,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   }
   function startSolo(): void {
     audio.unlock(); pvp = null; const seed = (Math.random() * 2 ** 31) >>> 0;
-    begin(new Match({ seed, mode: 'br', difficulty: level, humans: [{ name: '나' }], fill: BR_PLAYERS, air: true }), 0);
+    begin(new Match({ seed, mode: 'br', difficulty: level, humans: [{ name: '나' }], fill: BR_PLAYERS, air: true, vehicles: true, bombs: true }), 0);
   }
 
   // ---------- 1대1 대전 ----------
@@ -225,7 +229,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     else if (!locked && pvpRunning() && !closed) say('클릭하면 조작이 돌아옵니다', 2);
   }
   const pvpRunning = (): boolean => ((!!pvp && !pvp.done) || (!!room && !room.done)) && !!match;
-  function look(dx: number, dy: number): void { const k = sens(); yaw += dx * k; pitch = clamp(pitch - dy * k, -1.4, 1.4); }
+  function look(dx: number, dy: number): void { lastLook = performance.now(); const k = sens(); yaw += dx * k; pitch = clamp(pitch - dy * k, -1.4, 1.4); }
   const onMove = (e: MouseEvent): void => { if (!match || closed || paused) return; if (locked) look(e.movementX, e.movementY); else if (lockFail && (e.buttons & 2)) look(e.movementX, e.movementY); };
   const onDown = (e: MouseEvent): void => {
     if (closed || !match || e.target !== canvas) return; audio.unlock();
@@ -269,7 +273,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     const sx = tc.move.x, sy = -tc.move.y, active = phase === 'play';
     i.yaw = yaw; i.pitch = pitch; i.mx = active ? clamp(kx + sx, -1, 1) : 0; i.mz = active ? clamp(kz + sy, -1, 1) : 0;
     i.fire = active && (mouse.fire || tc.fire); i.ads = active && (mouse.ads || tc.ads); i.sprint = active && (keys.has('ShiftLeft') || keys.has('ShiftRight') || Math.hypot(sx, sy) > 0.92);
-    i.crouch = active && (keys.has('KeyC') || tc.crouch); i.nade = active && nadeReq; nadeReq = false; i.heal = active ? healReq : 0; healReq = 0; i.reload = active && reloadReq; i.interact = active && interactHeld; i.jump = active && (keys.has('Space') || (p.air > 0 && interactHeld)); reloadReq = false;
+    i.crouch = active && (keys.has('KeyC') || tc.crouch); i.nade = active && nadeReq; nadeReq = false; i.heal = active ? healReq : 0; healReq = 0; i.reload = active && reloadReq; i.interact = active && interactHeld; i.jump = active && (keys.has('Space') || (p.air > 0 && interactHeld) || (p.veh >= 0 && tc.crouch)); reloadReq = false;
     if (swapReq) { slotReq = p.guns[1 - p.cur] ? 1 - p.cur : -1; swapReq = false; } i.slot = active ? slotReq : -1; slotReq = -1;
   }
 
@@ -303,6 +307,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     g.save(); g.beginPath(); g.rect(0, 0, S, S); g.arc(px(z.cx), pz(z.cz), z.r * k, 0, Math.PI * 2, true); g.fillStyle = 'rgba(40,110,255,.30)'; g.fill('evenodd'); g.restore();
     g.strokeStyle = '#6fb2ff'; g.lineWidth = 2; g.beginPath(); g.arc(px(z.cx), pz(z.cz), z.r * k, 0, Math.PI * 2); g.stroke();
     if (z.nextR < z.r - 0.5) { g.strokeStyle = '#ffffff'; g.lineWidth = 1.5; g.beginPath(); g.arc(px(z.nextCx), pz(z.nextCz), z.nextR * k, 0, Math.PI * 2); g.stroke(); }
+    for (const r of m.reds) if (r.called && m.t < r.end + 2) { g.fillStyle = 'rgba(255,40,30,.3)'; g.beginPath(); g.arc(px(r.x), pz(r.z), r.r * k, 0, Math.PI * 2); g.fill(); g.strokeStyle = '#ff4a3a'; g.lineWidth = 2; g.stroke(); }
+    for (const v of m.vehicles) if (!v.wreck && v.driver < 0 && Math.hypot(v.x - p.x, v.z - p.z) < 140) { g.fillStyle = '#7ee0ff'; g.strokeStyle = '#000'; g.lineWidth = 1; g.fillRect(px(v.x) - 2.5, pz(v.z) - 2.5, 5, 5); g.strokeRect(px(v.x) - 2.5, pz(v.z) - 2.5, 5, 5); }
     if (m.plane && m.t < m.plane.end + 10) {
       const pl = m.plane, a = { x: pl.x0, z: pl.z0 }, b = { x: pl.x0 + pl.dx * pl.len, z: pl.z0 + pl.dz * pl.len }, at = m.planeAt(m.t);
       g.save(); g.strokeStyle = 'rgba(255,211,77,.85)'; g.lineWidth = 2; g.setLineDash([7, 5]); g.beginPath(); g.moveTo(px(a.x), pz(a.z)); g.lineTo(px(b.x), pz(b.z)); g.stroke(); g.setLineDash([]);
@@ -333,6 +339,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
 
   function updateHud(dt: number): void {
     const m = match!, p = me(), z = m.zone, g = p.guns[p.cur], def = g ? WEAPONS[g.id] : null, now = performance.now();
+    if (!p.alive) audio.engine(false, 0);
     set(q('#sz-alive'), 'alive', String(m.aliveCount())); set(q('#sz-kills'), 'kills', String(p.kills));
     const delay = m.zoneDelay > 0 && m.t < m.zoneDelay, zl = delay ? '자기장 활성화까지' : z.phase >= 6 ? '마지막 자기장' : z.shrinking ? `자기장 수축 중 · ${z.phase + 1}단계` : `자기장 수축까지 · ${z.phase + 1}단계`;
     set(q('#sz-ztime'), 'zt', delay ? clock(m.zoneDelay - m.t) : z.timeLeft > 0 ? clock(z.timeLeft) : '--'); set(q('#sz-zlabel'), 'zl', zl); q('#sz-zone').classList.toggle('shrink', z.shrinking);
@@ -357,10 +364,17 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       air.classList.toggle('show', !!txt); html(air, 'air', txt); }
     // 줍기 안내
     let near: string | null = null; if (p.alive) for (const l of m.loot) { if (l.taken || (l.kind !== 'weapon' && l.kind !== 'attach')) continue; if (Math.hypot(l.x - p.x, l.z - p.z) < PLAYER.pickup) { if (l.kind === 'weapon') { near = WEAPONS[l.weapon!].name; break; } const t = m.partTarget(p, l.part!); if (t && t.fit === 'swap') { near = `${PARTS[l.part!].name} 교체`; break; } } }
+    if (!near && p.alive && p.air === 0 && p.veh < 0) { const v = m.vehicleNear(p); if (v) near = `${VEHICLES[v.kind].name} 탑승`; }
     q('#sz-prompt').classList.toggle('show', !!near); set(q('#sz-prompt'), 'prompt', near ? `${touch ? '줍기 버튼' : 'E'} · ${near}` : '');
     // 자기장 밖
     const out = Math.hypot(p.x - z.cx, p.z - z.cz) > z.r && p.alive && !p.air && m.t >= m.zoneDelay; q('#sz-zonefx').classList.toggle('on', out); audio.danger(out ? 1 : 0);
     if (out) say(`자기장 밖 · 초당 -${z.dps.toFixed(1)}`, 0.4);
+    // 차량 계기판 · 폭격 경고
+    { const v = p.veh >= 0 ? m.vehicles[p.veh] : null; q('#sz-veh').classList.toggle('show', !!v && p.alive);
+      if (v) { set(q('#sz-vname'), 'vname', VEHICLES[v.kind].name); set(q('#sz-vspd'), 'vspd', String(Math.round(Math.abs(v.speed) * 3.6))); q('#sz-vhp').style.width = `${clamp((v.hp / v.max) * 100, 0, 100)}%`; q('#sz-vbar').classList.toggle('low', v.hp < v.max * 0.35); set(q('#sz-vkeys'), 'vkeys', touch ? '줍기 버튼: 하차 · 웅크림 버튼: 핸드브레이크' : 'WASD 운전 · Space 핸드브레이크 · E 하차'); }
+      q('.sz-br').classList.toggle('hide', !!v);
+      audio.engine(!!v && p.alive, v ? Math.abs(v.speed) / VEHICLES[v.kind].top : 0);
+      const red = p.alive && !p.air ? m.redAt(p.x, p.z) : null, hot = !!red && m.t >= red.call; q('#sz-redfx').classList.toggle('on', hot); if (hot) say(m.t >= red!.start ? '폭격 구역 · 지금 벗어나세요!' : '폭격 구역 · 곧 폭격이 시작됩니다', 0.4); }
     // 데미지 비네트
     q('#sz-vig').style.opacity = String(clamp(p.hurt * 1.4 + (p.hp < 30 && p.alive ? 0.35 + Math.sin(now / 160) * 0.12 : 0), 0, 0.9));
     q('#sz-scope').classList.toggle('on', p.ads && g?.id === 'sniper' && p.alive);
@@ -401,7 +415,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
         }
       } else if (e.t === 'kill') {
         if (!pvp && !m.over) { const left = m.aliveCount(); for (const n of [50, 25, 10, 5, 3]) if (left <= n && !told.has(n)) { told.add(n); if (left === n || n >= 25) say(`${left}명 생존`, 1.6); } }
-        const mine = e.attacker === p.id, text = e.attacker < 0 ? `${nameOf(e.victim)} 자기장에 쓰러짐` : e.victim === e.attacker ? `${nameOf(e.victim)} 쓰러짐` : `${nameOf(e.attacker)} → ${nameOf(e.victim)}${e.weapon !== 'zone' ? ` [${e.weapon === 'grenade' ? '수류탄' : WEAPONS[e.weapon].name}]` : ''}`;
+        const mine = e.attacker === p.id, text = e.attacker < 0 ? `${nameOf(e.victim)} ${e.weapon === 'zone' ? '자기장에' : e.weapon === 'bomb' ? '폭격에' : '차량 사고로'} 쓰러짐` : e.victim === e.attacker ? `${nameOf(e.victim)} 쓰러짐` : `${nameOf(e.attacker)} → ${nameOf(e.victim)}${e.weapon !== 'zone' ? ` [${causeName(e.weapon)}]` : ''}`;
         addFeed(text, mine || e.victim === p.id);
         if (mine) { audio.play('kill'); hitKill = true; hitT = 0.55; const hm = q('#sz-hitmark'); hm.classList.remove('pop'); void hm.offsetWidth; hm.classList.add('pop'); say(`처치 · ${nameOf(e.victim)}`, 1.4) }
         if (e.victim === p.id) onMyDeath(e.attacker);
@@ -413,6 +427,13 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       else if (e.t === 'chute') { if (e.id === p.id) { audio.play('pickup'); say('낙하산 펼침', 1.4); } }
       else if (e.t === 'land') { if (e.id === p.id) { audio.play('armor'); say('착지 · 총을 찾으세요', 2.4); } }
       else if (e.t === 'nade') { const dd = Math.hypot(e.x - p.x, e.z - p.z); audio.play(e.stage === 'boom' ? 'boom' : 'pistol', e.stage === 'boom' ? dd * 0.6 : dd + 30); }
+      else if (e.t === 'veh') {
+        const dd = Math.hypot(e.x - p.x, e.z - p.z), v = m.vehicles[e.id];
+        if (e.stage === 'enter' && v?.driver === p.id) { audio.play('go'); say(`${VEHICLES[v.kind].name} 탑승 · WASD 운전 · E 하차`, 2.2); yaw = v.yaw; pitch = 0; }
+        else if (e.stage === 'exit' && v && p.veh < 0 && !p.air) { if (dd < 5) audio.play('pickup'); }
+        else if (e.stage === 'crash') audio.play('crash', dd);
+      }
+      else if (e.t === 'red') { if (e.stage === 'call') { say('폭격 경고! 지도의 붉은 구역에서 벗어나세요', 3.4); audio.play('siren'); } }
       else if (e.t === 'reload') { if (e.id === p.id) audio.play('reload'); }
       else if (e.t === 'empty') { if (e.id === p.id) audio.play('empty'); }
       else if (e.t === 'over') { onOver(e.winner); }
@@ -430,9 +451,10 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (!resultShown) { resultShown = true; window.setTimeout(() => showResult(win), win ? 1400 : 300); }
   }
   function killerLine(p: Player, win: boolean): string {
-    if (win || p.killedBy < 0 && p.killedWeapon !== 'zone') return win ? '<p class="sz-killer">마지막까지 살아남았습니다</p>' : '';
+    if (win) return '<p class="sz-killer">마지막까지 살아남았습니다</p>';
     if (p.killedWeapon === 'zone') return '<p class="sz-killer">자기장 밖에서 쓰러졌습니다</p>';
-    const k = match!.players[p.killedBy], w = p.killedWeapon === 'grenade' ? '수류탄' : p.killedWeapon ? WEAPONS[p.killedWeapon].name : '';
+    if (p.killedBy < 0) return p.killedWeapon === 'bomb' ? '<p class="sz-killer">폭격에 쓰러졌습니다</p>' : p.killedWeapon === 'vehicle' ? '<p class="sz-killer">차량 사고로 쓰러졌습니다</p>' : '';
+    const k = match!.players[p.killedBy], w = p.killedWeapon ? causeName(p.killedWeapon) : '';
     return k ? `<p class="sz-killer">${k.name}에게 쓰러짐 · ${w}${k.alive ? ` · 상대 체력 ${Math.ceil(k.hp)}` : ''}</p>` : '';
   }
   function showResult(win: boolean): void {
@@ -484,6 +506,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
         comboT -= dt; if (comboT <= 0) combo = 0;
         if (p.alive && !p.air && p.speed > 2.2 && p.crouch < 0.4) { stepAcc += p.speed * dt; const stride = p.speed > 6 ? 2.3 : 1.85; if (stepAcc >= stride) { stepAcc -= stride; audio.play(waterDepth(m.map.terrain, p.x, p.z) ? 'splash' : p.speed > 6 ? 'stepRun' : 'step'); } } else stepAcc = Math.min(stepAcc, 1);
         applyInput();
+        // 운전 중에는 마우스를 놓고 달리면 시점이 차의 정면으로 천천히 돌아옵니다
+        if (p.veh >= 0) { const v = m.vehicles[p.veh]; if (v && Math.abs(v.speed) > 4 && performance.now() - lastLook > 900) { const d = Math.atan2(Math.sin(v.yaw - yaw), Math.cos(v.yaw - yaw)); yaw += d * Math.min(1, dt * 1.6); pitch += (0 - pitch) * Math.min(1, dt * 1.2); } }
       }
       // 고정 간격(1/60)으로 진행: 프레임이 느려도 시뮬레이션 속도는 같습니다
       let left = dt; while (left > 1e-6) { const s = Math.min(1 / 60, left); left -= s; if (pvp && pvp.opp) syncRemote(s); else if (room) syncRoom(s); m.step(s); }
@@ -498,7 +522,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     }
     const spectate = phase === 'dead' || (phase === 'over' && !p.alive) ? m.players[spectateId] ?? null : null;
     const gun = p.guns[p.cur], zoom = p.ads && p.alive ? Math.max(gun?.id === 'sniper' ? 3.4 : gun?.id === 'rifle' ? 1.5 : 1.3, gun?.att.sight ? PARTS[gun.att.sight].zoom : 1) : 1;
-    view.frame(dt, p, spectate && spectate.alive ? spectate : null, zoom / (p.speed > 6.1 && !p.ads && p.alive && p.air === 0 ? FEEL.sprintFov : 1)); updateHud(dt); if (phase === 'dead' && !spectate) q('#sz-prompt').classList.remove('show');
+    view.frame(dt, p, spectate && spectate.alive ? spectate : null, zoom / (p.veh >= 0 ? 1 + Math.min(0.14, p.speed * 0.004) : p.speed > 6.1 && !p.ads && p.alive && p.air === 0 ? FEEL.sprintFov : 1)); updateHud(dt); if (phase === 'dead' && !spectate) q('#sz-prompt').classList.remove('show');
   }
   /** 상대(원격) 선수를 마지막으로 받은 위치로 부드럽게 따라가게 합니다. */
   function syncRemote(dt: number): void {

@@ -33,6 +33,15 @@ describe('LAST CITY rules', () => {
     w.everySecond(); expect(f.income).toBeGreaterThan(BIZ.store.income);
     const cash = f.cash; expect(w.upgradeBiz(0, shop)).toBe(''); expect(shop.level).toBe(2); expect(f.cash).toBeLessThan(cash);
   });
+  it('buildError mirrors build: reports resource and position problems without spending anything', () => {
+    const w = make(), f = w.factions[0], hq = w.hq(0)!; f.crystal = 0; f.cash = 0;
+    expect(w.buildError(0, 'barracks', hq.x + 60, hq.y + 60)).toBe('크리스탈이 부족합니다'); expect(w.build(0, 'barracks', hq.x + 60, hq.y + 60)).toBe('크리스탈이 부족합니다');
+    f.crystal = 2000; f.cash = 2000;
+    expect(w.buildError(0, 'barracks', SIZE / 2, SIZE / 2)).toContain('여기에는 지을 수 없습니다'); expect(w.buildError(0, 'hq', hq.x + 60, hq.y + 60)).not.toBe('');
+    let at: { x: number; y: number } | null = null;
+    for (let k = 0; k < 400 && !at; k++) { const x = hq.x + 60 + (w.rng() - 0.5) * 380, y = hq.y + 60 + (w.rng() - 0.5) * 380; if (w.buildError(0, 'barracks', x, y) === '') at = { x, y }; }
+    expect(at).not.toBeNull(); const before = f.crystal; expect(w.build(0, 'barracks', at!.x, at!.y)).toBe(''); expect(f.crystal).toBeLessThan(before);
+  });
   it('builds a barracks near the HQ and trains riflemen within the supply cap', () => {
     const w = make(), f = w.factions[0], hq = w.hq(0)!; f.crystal = 2000;
     expect(w.train(0, 'rifle')).toContain('병영');

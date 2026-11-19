@@ -1,39 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { World } from '../../src/city/world';
 import { SIDE_MILESTONES, startEvent, streakMult, updateCityEvents, type CityEventKind } from '../../src/city/events';
-import { UPGRADE_COST, UPGRADE_MAX, buyCareer, creditsFor, emptyCareer, nextCost, sanitizeCareer, zeroLevels } from '../../src/city/career';
 
-describe('블랙마켓 보급 (영구 강화)', () => {
-  it('크레딧이 모자라면 살 수 없고 충분하면 차감된다', () => {
-    expect(buyCareer(emptyCareer(), 'hp')).toBeNull();
-    const c = buyCareer({ credits: 200, levels: zeroLevels() }, 'hp')!;
-    expect(c.credits).toBe(200 - UPGRADE_COST[0]); expect(c.levels.hp).toBe(1); expect(c.levels.dmg).toBe(0);
-  });
-  it('최대 단계 이후에는 살 수 없다', () => {
-    let c = { credits: 99999, levels: zeroLevels() };
-    for (let i = 0; i < UPGRADE_MAX; i++) c = buyCareer(c, 'dmg')!;
-    expect(nextCost(c, 'dmg')).toBeNull(); expect(buyCareer(c, 'dmg')).toBeNull();
-  });
-  it('보상은 순위·난이도·부업 실적에 따라 늘어난다', () => {
-    const base = { place: 4, win: false, kills: 5, eventsDone: 0, earned: 1000, difficulty: 'd3' as const };
-    expect(creditsFor({ ...base, place: 1, win: true })).toBeGreaterThan(creditsFor(base));
-    expect(creditsFor({ ...base, difficulty: 'd5' })).toBeGreaterThan(creditsFor(base));
-    expect(creditsFor({ ...base, eventsDone: 6 })).toBeGreaterThan(creditsFor(base));
-  });
-  it('깨진 저장값은 안전한 상태로 되돌린다', () => {
-    expect(sanitizeCareer('x')).toEqual(emptyCareer());
-    const c = sanitizeCareer({ credits: -3, levels: { hp: 99, dmg: 'a' } });
-    expect(c.credits).toBe(0); expect(c.levels.hp).toBe(UPGRADE_MAX); expect(c.levels.dmg).toBe(0);
-  });
-  it('강화는 솔로 서바이벌 보스에만 적용된다', () => {
-    const lv = { ...zeroLevels(), hp: 3, cash: 2, dmg: 1 };
-    const base = new World({ seed: 7, difficulty: 'd3', klass: 'warlord' }), up = new World({ seed: 7, difficulty: 'd3', klass: 'warlord', career: lv });
-    expect(up.boss(0)!.maxHp).toBeGreaterThan(base.boss(0)!.maxHp);
-    expect(up.factions[0].cash).toBe(base.factions[0].cash + 300); expect(up.factions[0].mods.dmg).toBeCloseTo(base.factions[0].mods.dmg + 0.05);
-    expect(up.factions[1].mods.hp).toBe(base.factions[1].mods.hp);
-    const tut = new World({ seed: 7, difficulty: 'd3', klass: 'warlord', career: lv, tutorial: true });
-    expect(tut.factions[0].cash).toBe(base.factions[0].cash);
-  });
+it('이전 영구 강화 옵션을 전달해도 시작 능력치와 자금은 동일하다', () => {
+  const opts = { seed: 7, difficulty: 'd3', klass: 'warlord' } as const;
+  const base = new World(opts), legacy = new World({ ...opts, career: { hp: 3, dmg: 3, speed: 3, income: 3, cash: 3, armor: 3 } } as never);
+  expect(legacy.factions[0].mods).toEqual(base.factions[0].mods);
+  expect(legacy.factions[0].cash).toBe(base.factions[0].cash);
+  expect(legacy.boss(0)!.maxHp).toBe(base.boss(0)!.maxHp);
 });
 
 const tick = (w: World, n: number): void => { for (let i = 0; i < n; i++) { w.step(1 / 30); w.events.length = 0; } };

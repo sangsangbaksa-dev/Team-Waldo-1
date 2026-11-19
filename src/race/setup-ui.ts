@@ -2,7 +2,7 @@
 import { CARS, LAP_OPTIONS, LEVELS, SKINS, STAT_KEYS, STAT_LABELS, carById, levelById, paintOf, sanitizeSetup, type RaceSetup } from './config';
 import { MAPS, mapById } from './maps';
 import { buildMapTrack } from './track';
-import { UPGRADE_MAX, buySkin, buyUpgrade, ownsSkin, nextCost, upgradesOf, writeGarage, type Garage } from './garage';
+import { buySkin, ownsSkin, writeGarage, type Garage } from './garage';
 import { readGhost } from './ghost';
 import { fmtTime, raceRaceKey, type RaceRecords } from '../records';
 
@@ -44,15 +44,11 @@ export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceR
   host.append(root);
   const note = (k: string): HTMLElement => root.querySelector<HTMLElement>(`[data-note="${k}"]`)!;
 
-  const STAT_NOTE: Record<(typeof STAT_KEYS)[number], string> = { accel: '출발·코너 탈출 가속', top: '직선 최고 속도', handling: '코너 그립과 회전', drift: '드리프트 부스트 충전', nitro: '니트로 지속·충전' };
   function paintGarage(): void {
-    const car = carById(cur.car), up = upgradesOf(garage.value, car.id), box = root.querySelector<HTMLElement>('[data-garage]')!;
+    const car = carById(cur.car), box = root.querySelector<HTMLElement>('[data-garage]')!;
     const paintRow = SKINS.map(k => { const pt = paintOf(car, k.id), own = ownsSkin(garage.value, k.id), can = garage.value.coins >= k.cost;
       return own ? `<button type="button" class="rc-skin" data-pick="skin:${k.id}" title="${esc(k.name)}" style="--c:${pt.color};--a:${pt.accent}"><i></i><span>${esc(k.name)}</span></button>` : `<button type="button" class="rc-skin locked" data-buyskin="${k.id}" title="${esc(k.name)} ${k.cost}코인" style="--c:${pt.color};--a:${pt.accent}"${can ? '' : ' disabled'}><i></i><span>${esc(k.name)} · ${k.cost}</span></button>`; }).join('');
-    box.innerHTML = `<div class="rc-skins" role="group" aria-label="도장">${paintRow}</div><div class="rc-garage-head"><h3>${car.name} 튜닝</h3><span class="rc-coins" aria-label="보유 코인">${garage.value.coins.toLocaleString('ko-KR')} 코인</span></div>` + STAT_KEYS.map(k => {
-      const cost = nextCost(garage.value, car.id, k), can = cost !== null && garage.value.coins >= cost;
-      return `<div class="rc-up"><span class="rc-up-name">${STAT_LABELS[k]}<small>${STAT_NOTE[k]}</small></span><span class="rc-pips" role="img" aria-label="${up[k]} / ${UPGRADE_MAX} 단계">${Array.from({ length: UPGRADE_MAX }, (_, i) => `<i${i < up[k] ? ' class="on"' : ''}></i>`).join('')}</span><button type="button" class="rc-buy" data-buy="${k}"${can ? '' : ' disabled'}>${cost === null ? 'MAX' : `${cost}`}</button></div>`;
-    }).join('') + '<p class="rc-note">레이스 보상으로 코인을 모아 솔로 레이스 성능을 올립니다. 온라인 대전에서는 적용되지 않습니다.</p>';
+    box.innerHTML = `<div class="rc-garage-head"><h3>차량 도장</h3><span class="rc-coins" aria-label="보유 코인">${garage.value.coins.toLocaleString('ko-KR')} 코인</span></div><div class="rc-skins" role="group" aria-label="도장">${paintRow}</div><p class="rc-note">코인은 도장 구매에만 사용됩니다. 차량 성능에는 영향을 주지 않습니다.</p>`;
   }
   function paint(): void {
     paintGarage();
@@ -68,7 +64,7 @@ export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceR
   }
   root.addEventListener('click', e => {
     const t = e.target as HTMLElement, pick = t.closest<HTMLElement>('[data-pick]'), act = t.closest<HTMLElement>('[data-setup]');
-    const buy = t.closest<HTMLElement>('[data-buy]'), skin = t.closest<HTMLElement>('[data-buyskin]');
+    const skin = t.closest<HTMLElement>('[data-buyskin]');
     const focusSkin = (): void => root.querySelector<HTMLButtonElement>(`[data-pick="skin:${cur.skin}"]`)?.focus();
     if (skin) {
       const next = buySkin(garage.value, skin.dataset.buyskin!);
@@ -76,15 +72,6 @@ export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceR
         garage.value = next; writeGarage(next);
         cur = sanitizeSetup({ ...cur, skin: skin.dataset.buyskin });
         paint(); focusSkin();
-      }
-      return;
-    }
-    if (buy) {
-      const next = buyUpgrade(garage.value, cur.car, buy.dataset.buy as (typeof STAT_KEYS)[number]);
-      if (next) {
-        garage.value = next; writeGarage(next); paint();
-        const nextButton = root.querySelector<HTMLButtonElement>(`[data-buy="${buy.dataset.buy}"]:not(:disabled)`);
-        (nextButton ?? root.querySelector<HTMLButtonElement>('[data-setup="start"]'))?.focus();
       }
       return;
     }

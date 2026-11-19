@@ -45,6 +45,11 @@ try {
   for (const p of [a, b, c]) await p.waitForFunction(() => window.__zz.phase === 'play');
   const names = await b.evaluate(() => window.__zz.match.players.map(x => x.name));
   assert.deepEqual(names, ['Alpha', 'Beta', 'Gamma']);
+  // 채팅: A 가 Enter 로 입력창을 열어 보내면 B·C 의 채팅 로그에 닉네임과 함께 나타납니다.
+  await a.keyboard.press('Enter'); await a.waitForSelector('.sz-chatin', { state: 'visible' });
+  await a.keyboard.type('hello <b>team</b>'); await a.keyboard.press('Enter');
+  for (const p of [b, c]) await p.waitForFunction(() => /Alpha\s+hello <b>team<\/b>/.test(document.querySelector('.sz-chatlog')?.textContent ?? ''), null, { timeout: 15000 });
+  assert.equal(await b.locator('.sz-chatlog b').count(), 1, 'chat text must not be parsed as HTML');
   // 내 위치를 옮기면 다른 탭에서 그 선수가 따라옵니다.
   await a.evaluate(() => { const m = window.__zz.me(); m.x += 6; });
   const ax = await a.evaluate(() => window.__zz.me().x);

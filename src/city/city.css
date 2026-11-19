@@ -209,3 +209,9 @@
 .c-upg button{font:inherit;font-size:12px;font-weight:700;padding:6px 0;border-radius:7px;border:1px solid #d8bc80;background:#000;color:#ffd24a;cursor:pointer}.c-upg button:disabled{color:#7a7258;border-color:#3a3426;cursor:default}
 .c-reward{font-weight:800;color:#ffd24a}.c-reward small{font-weight:500;opacity:.75}
 .c-side-h{margin:14px 0 6px;font-size:14px}.c-side-h small{font-weight:400;opacity:.7;margin-left:6px}
+.c-chat{left:12px;bottom:210px;display:grid;gap:3px;max-width:min(360px,70vw);pointer-events:none}
+.c-chat div{background:#0e1a19cc;border-left:3px solid #6fd3ff;border-radius:0 6px 6px 0;padding:3px 9px;font-size:12px;overflow-wrap:anywhere}
+.c-chat div.me{border-left-color:#ffd166}.c-chat b{color:#9be7ff;margin-right:4px}.c-chat .me b{color:#ffd166}
+.c-chatin{pointer-events:auto;left:12px;bottom:176px;width:min(360px,70vw);z-index:4;margin:0}
+.c-chatin input{width:100%;box-sizing:border-box;background:#0b1214f2;color:#fff;border:1px solid #6fd3ff;border-radius:8px;padding:7px 10px;font:inherit;font-size:13px}
+.touch .c-chat{bottom:170px}.touch .c-chatin{bottom:136px}

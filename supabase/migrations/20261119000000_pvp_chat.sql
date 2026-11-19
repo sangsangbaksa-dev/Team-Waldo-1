@@ -68,7 +68,7 @@ $$;
 -- 공백·제어 문자 정리, 같은 글자 8번 넘게 반복 줄이기, 140자 자르기, 욕설 가리기
 create function public.pvp_chat_clean(p_body text) returns text language sql immutable set search_path = '' as $$
   select public.pvp_chat_mask(left(
-    regexp_replace(btrim(regexp_replace(regexp_replace(coalesce(p_body, ''), '[[:cntrl:]​-‏ -‮⁠-⁯﻿]', ' ', 'g'), '[[:space:]]+', ' ', 'g')),
+    regexp_replace(btrim(regexp_replace(regexp_replace(coalesce(p_body, ''), '[[:cntrl:]\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]', ' ', 'g'), '[[:space:]]+', ' ', 'g')),
       '(.)\1{8,}', '\1\1\1\1\1\1\1\1', 'g'), 140))
 $$;
 

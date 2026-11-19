@@ -114,6 +114,12 @@ export class RaceView {
     if (!this.carEnv) return;
     body.traverse(o => {
       const mesh = o as THREE.Mesh; if (!mesh.isMesh || Array.isArray(mesh.material)) return;
+      const lamp = mesh.material as THREE.MeshBasicMaterial;
+      if (lamp.type === 'MeshBasicMaterial' && lamp.name.startsWith('Glow')) { // 헤드·테일램프: 밝기를 키워 후처리 블룸으로 실제처럼 번지게(스프라이트 없음)
+        const key = `lamp:${lamp.name}`; let g = this.carMats.get(key);
+        if (!g) { g = new THREE.MeshBasicMaterial({ color: lamp.color.clone().multiplyScalar(lamp.name === 'GlowRed' ? 3.4 : 2.2), toneMapped: false }); g.name = lamp.name; this.carMats.set(key, g); this.disposables.push(g); }
+        mesh.material = g; return;
+      }
       const src = mesh.material as THREE.MeshLambertMaterial; if (!(src as THREE.Material).type.startsWith('MeshLambert')) return;
       const key = `${src.name}:${src.color.getHexString()}`; let m = this.carMats.get(key);
       if (!m) {
@@ -122,7 +128,7 @@ export class RaceView {
         m = n === 'Paint' ? new THREE.MeshPhysicalMaterial({ ...base, metalness: 0.5, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.06, envMapIntensity: 0.85 })
           : n === 'Team' ? new THREE.MeshPhysicalMaterial({ ...base, metalness: 0.3, roughness: 0.4, clearcoat: 0.6, clearcoatRoughness: 0.15, envMapIntensity: 0.9 })
           : n === 'Glass' ? new THREE.MeshStandardMaterial({ ...base, metalness: 0.85, roughness: 0.06, envMapIntensity: 1.5 })
-          : n === 'Steel' || n === 'Gunmetal' || n === 'White' || n === 'Red' ? new THREE.MeshStandardMaterial({ ...base, metalness: 0.85, roughness: 0.38, envMapIntensity: 0.9 })
+          : n === 'Steel' || n === 'Gunmetal' || n === 'White' || n === 'Red' || n === 'Chrome' ? new THREE.MeshStandardMaterial({ ...base, metalness: 0.85, roughness: n === 'Chrome' ? 0.2 : 0.38, envMapIntensity: 0.9 })
           : new THREE.MeshStandardMaterial({ ...base, metalness: 0.1, roughness: 0.85, envMapIntensity: 0.25 });
         m.name = n; this.carMats.set(key, m); this.disposables.push(m);
       }

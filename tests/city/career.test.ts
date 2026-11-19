@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { World } from '../../src/city/world';
-import { SIDE_MILESTONES, startEvent, streakMult, type CityEventKind } from '../../src/city/events';
+import { SIDE_MILESTONES, startEvent, streakMult, updateCityEvents, type CityEventKind } from '../../src/city/events';
 import { UPGRADE_COST, UPGRADE_MAX, buyCareer, creditsFor, emptyCareer, nextCost, sanitizeCareer, zeroLevels } from '../../src/city/career';
 
 describe('블랙마켓 보급 (영구 강화)', () => {
@@ -50,9 +50,50 @@ describe('새 도시 사건', () => {
   it('현상금: 우두머리를 쓰러뜨리면 보수를 받고 경호는 사라진다', () => {
     const w = fresh('bounty'), ids = [...w.event!.ids], cash0 = w.factions[0].cash;
     expect(ids).toHaveLength(3);
-    w.killActor(w.byId.get(ids[0])!, 0); tick(w, 40);
-    expect(w.eventsDone).toBe(1); expect(w.factions[0].cash).toBeGreaterThanOrEqual(cash0 + 500);
+    const target = w.byId.get(ids[0])!;
+    target.x += 30;
+    w.hurtActor(target, 1000, 0);
+    updateCityEvents(w);
+    expect(w.eventsDone).toBe(1); expect(w.factions[0].cash).toBe(cash0 + 500);
+    expect(w.loot.some(l => l.x === target.x && l.y === target.y && (l.type === 'armor' || l.type === 'medkit'))).toBe(true);
     for (const id of ids.slice(1)) expect(w.byId.get(id)).toBeUndefined();
+  });
+  it.each(['rival', 'zone'])('다른 조직이나 자기장이 현상금 목표를 처치하면 보상이 없다 (%s)', source => {
+    const w = fresh('bounty'), [targetId, ...guards] = w.event!.ids, cash = w.factions[0].cash;
+    const target = w.byId.get(targetId)!;
+    const rival = w.factions.find(f => f.id !== 0 && f.id !== target.f)!;
+    w.eventStreak = 2;
+    w.hurtActor(target, 1000, source === 'rival' ? rival.id : -1);
+    updateCityEvents(w);
+    expect(w.event).toBeNull();
+    expect(w.eventsDone).toBe(0);
+    expect(w.eventStreak).toBe(0);
+    expect(w.factions[0].cash).toBe(cash);
+    for (const id of guards) expect(w.byId.has(id)).toBe(false);
+  });
+  it('실내에 있으면 구조가 진행되지 않고 밖에 나오면 진행된다', () => {
+    const w = fresh('rescue'), b = w.boss(0)!, ev = w.event!;
+    b.x = ev.x; b.y = ev.y;
+    updateCityEvents(w);
+    expect(ev.prog).toBe(1);
+    expect(w.enterBiz(0, w.businesses.find(z => z.owner < 0)!)).toBe('');
+    for (let i = 0; i < 3; i++) updateCityEvents(w);
+    expect(ev.prog).toBe(0);
+    expect(w.eventsDone).toBe(0);
+    w.exitBiz(0);
+    b.x = ev.x; b.y = ev.y;
+    for (let i = 0; i < 3; i++) updateCityEvents(w);
+    expect(w.eventsDone).toBe(1);
+  });
+  it('구조할 생존자가 없으면 사건이 실패한다', () => {
+    const w = fresh('rescue'), b = w.boss(0)!, ev = w.event!;
+    b.x = ev.x; b.y = ev.y;
+    updateCityEvents(w);
+    updateCityEvents(w);
+    for (const id of ev.ids) w.killActor(w.byId.get(id)!, -1);
+    updateCityEvents(w);
+    expect(w.event).toBeNull();
+    expect(w.eventsDone).toBe(0);
   });
   it('시간을 넘기면 연속 보너스가 초기화된다', () => {
     const w = fresh('rescue'); w.eventStreak = 3; tick(w, 30 * 95);

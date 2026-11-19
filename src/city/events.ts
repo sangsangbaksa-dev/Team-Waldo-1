@@ -1,7 +1,7 @@
 // LAST CITY — 도시 사건: 사업·전투 사이에 끼어드는 시간제 부업(현금 수송차 습격, 조난자 구조, 불법 배달, 현상금 사냥)
 import { CIV, FACTION_COUNT, SIZE } from './defs';
 import { lanePoint, navBlocked } from './map';
-import type { World } from './world';
+import type { Actor, World } from './world';
 
 export type CityEventKind = 'convoy' | 'rescue' | 'delivery' | 'bounty';
 export interface CityEvent {
@@ -39,7 +39,7 @@ export function updateCityEvents(w: World): void {
     else { finish(w, true); return; }
   } else if (ev.kind === 'bounty') {
     const t = w.byId.get(ev.ids[0]);
-    if (!t || !t.alive) { finish(w, true); return; }
+    if (!t || !t.alive) { finish(w, false); return; }
     ev.x = t.x; ev.y = t.y;
   } else if (ev.kind === 'delivery') {
     if (pb && !w.inside && Math.hypot(pb.x - ev.x, pb.y - ev.y) < 70) {
@@ -49,11 +49,22 @@ export function updateCityEvents(w: World): void {
       }
       finish(w, true); return;
     }
-  } else if (pb) {
-    if (Math.hypot(pb.x - ev.x, pb.y - ev.y) < 90) ev.prog += 1; else ev.prog = Math.max(0, ev.prog - 1);
+  } else {
+    const survivorPresent = ev.ids.some(id => w.byId.get(id)?.alive);
+    if (!survivorPresent) { finish(w, false); return; }
+    if (pb && !w.inside && Math.hypot(pb.x - ev.x, pb.y - ev.y) < 90) ev.prog += 1;
+    else ev.prog = Math.max(0, ev.prog - 1);
     if (ev.prog >= RESCUE_TIME) { finish(w, true); return; }
   }
   if (ev.t <= 0) finish(w, false);
+}
+
+/** 마지막 타격의 조직과 처치 위치로 현상금을 정산합니다. */
+export function resolveBountyKill(w: World, target: Actor, killer: number): void {
+  const ev = w.event;
+  if (ev?.kind !== 'bounty' || ev.ids[0] !== target.id) return;
+  ev.x = target.x; ev.y = target.y;
+  finish(w, killer === 0);
 }
 
 /** 배달 목적지: 물건 수령 지점에서 400~1300 떨어진 도로 위의 점 */

@@ -23,15 +23,6 @@ export const HEROES: HeroDef[] = [
 ];
 export const heroById = (id: string): HeroDef => HEROES.find(h => h.id === id) ?? HEROES[0]!;
 
-export type SkillId = 'stamina' | 'strength' | 'shooting';
-export const SKILLS: Array<{ id: SkillId; name: string; desc: string }> = [
-  { id: 'stamina', name: '체력 단련', desc: '레벨마다 체력 +8 · 달리기 +3%' },
-  { id: 'strength', name: '근력 단련', desc: '레벨마다 근접 피해 +15%' },
-  { id: 'shooting', name: '사격 훈련', desc: '레벨마다 탄퍼짐 -5% · 장전 -3%' },
-];
-export const SKILL_MAX = 5;
-export const skillCost = (level: number): number => 400 * (level + 1);
-
 export interface Property { id: string; name: string; price: number; /** 분당 수입 */ income: number; desc: string }
 export const PROPERTIES: Property[] = [
   { id: 'store', name: '24시 편의점', price: 6000, income: 30, desc: '밤에도 손님이 끊기지 않는다.' },
@@ -54,17 +45,15 @@ export const CAR_SHOP: CarOffer[] = [
 export interface OwnedCar { kind: VehicleKind; color: number }
 export interface LifeState {
   hero: string; props: string[]; propBank: number; propAt: number; cars: OwnedCar[];
-  skills: Record<SkillId, number>; counters: Record<string, number>; ach: string[]; /** 옷 색 번호(-1 이면 기본 복장) */ outfit: number;
+  counters: Record<string, number>; ach: string[]; /** 옷 색 번호(-1 이면 기본 복장) */ outfit: number;
 }
 export const OUTFITS = [0xb23a32, 0x2c5f9e, 0x222428, 0xe8e8e8, 0x3f7f4b, 0xd9b13c, 0x8a3fa0, 0xe06d1f];
 export const OUTFIT_PRICE = 60;
-export const blankLife = (): LifeState => ({ hero: 'h0', props: [], propBank: 0, propAt: 0, cars: [], skills: { stamina: 0, strength: 0, shooting: 0 }, counters: {}, ach: [], outfit: -1 });
+export const blankLife = (): LifeState => ({ hero: 'h0', props: [], propBank: 0, propAt: 0, cars: [], counters: {}, ach: [], outfit: -1 });
 
-/** 주인공 + 능력치 → 최종 특전 */
+/** 주인공 고유 특전만 적용합니다. */
 export function computePerks(life: LifeState): Perks {
-  const p = { ...BASE_PERKS, ...heroById(life.hero).perks }, s = life.skills;
-  p.hp += s.stamina * 8; p.sprint *= 1 + s.stamina * 0.03; p.melee *= 1 + s.strength * 0.15; p.spread *= 1 - s.shooting * 0.05; p.reload *= 1 - s.shooting * 0.03;
-  return p;
+  return { ...BASE_PERKS, ...heroById(life.hero).perks };
 }
 
 /** 모은 수입(분당 → 초 단위로 환산). 소유 부동산 전부 합산. */
@@ -84,7 +73,6 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'landlord', name: '사장님', desc: '부동산 하나 사기', reward: 500, test: (_c, l) => l.props.length >= 1 },
   { id: 'tycoon', name: '재벌', desc: '부동산 전부 사기', reward: 10000, test: (_c, l) => l.props.length >= PROPERTIES.length },
   { id: 'collector', name: '차 수집가', desc: '차량 3대 보유', reward: 800, test: (_c, l) => l.cars.length >= 3 },
-  { id: 'trained', name: '단련됨', desc: '능력치 하나를 최대로', reward: 1500, test: (_c, l) => Object.values(l.skills).some(v => v >= SKILL_MAX) },
   { id: 'gambler', name: '도박꾼', desc: '카지노 판돈으로 누적 $5,000 걸기', reward: 400, test: c => (c.wagered ?? 0) >= 5000 },
   { id: 'jackpot', name: '잭팟', desc: '슬롯 잭팟 맞히기', reward: 1500, test: c => (c.jackpot ?? 0) >= 1 },
   { id: 'fighter', name: '지하 챔피언', desc: '격투장 5승', reward: 1200, test: c => (c.fights ?? 0) >= 5 },

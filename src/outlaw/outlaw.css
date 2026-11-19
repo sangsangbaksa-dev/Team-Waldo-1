@@ -170,7 +170,7 @@
 }
 
 /* ---- 주인공 선택·휴대폰·상점·카지노 ---- */
-.ol-card.hero,.ol-card.phone,.ol-card.casino,.ol-card.dealer,.ol-card.gym{width:min(760px,96vw);max-height:92vh;overflow:auto}
+.ol-card.hero,.ol-card.phone,.ol-card.casino,.ol-card.dealer{width:min(760px,96vw);max-height:92vh;overflow:auto}
 .ol-card .sub{opacity:.75;margin:0 0 10px;font-size:14px}
 .hero-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:10px 0}
 .hero-card{cursor:pointer;text-align:left;color:#fff;background:rgba(20,22,30,.9);border:1px solid #ffffff30;border-bottom:4px solid #556;padding:10px;display:flex;flex-direction:column;gap:3px;transition:.12s;font-family:inherit}
@@ -194,7 +194,7 @@
 .chip{display:inline-block;width:14px;height:14px;border-radius:50%;border:1px solid #fff;margin-left:6px;vertical-align:middle}
 .herobox{display:flex;align-items:center;gap:12px;padding:6px 0}.herobox small{display:block;opacity:.7;font-size:12px}
 .phone-body h3{margin:12px 0 4px;font:italic 800 15px system-ui;letter-spacing:.12em;color:var(--cy)}
-.skills>div,.stats>div{padding:5px 0;border-bottom:1px solid #ffffff14;font-size:14px}.skills small{display:block;opacity:.65;font-size:12px}
+.stats>div{padding:5px 0;border-bottom:1px solid #ffffff14;font-size:14px}
 .stats{display:grid;grid-template-columns:1fr 1fr;gap:0 18px}.stats>div{display:flex;justify-content:space-between}.stats span{opacity:.7}
 .bets{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
 .reels{display:flex;gap:10px;justify-content:center;margin:14px 0}.reels i{width:84px;height:84px;display:grid;place-items:center;font:900 44px system-ui;font-style:normal;background:#05070b;border:2px solid var(--yel);border-radius:8px;box-shadow:inset 0 0 18px #000}

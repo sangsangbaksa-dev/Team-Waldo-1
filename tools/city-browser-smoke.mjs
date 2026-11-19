@@ -36,6 +36,9 @@ try {
       viewport: { width: size.width, height: size.height },
       isMobile: size.name === 'mobile', hasTouch: size.name === 'mobile', reducedMotion: 'reduce',
     });
+    await context.addInitScript(() => {
+      localStorage.setItem('waldo.preferences.v1', JSON.stringify({ sound: false, quality: 'low', reducedMotion: true }));
+    });
     const page = await context.newPage();
     page.setDefaultTimeout(30000);
     const errors = [];
@@ -43,13 +46,14 @@ try {
     try {
       await page.goto(origin, { waitUntil: 'domcontentloaded' });
       await page.locator('.tile').first().waitFor();
-      assert.equal(await page.locator('.tile').count(), 4, 'Main page must list exactly four games');
+      const entries = await page.locator('.tile').evaluateAll(tiles => tiles.map(tile => tile.dataset.game));
+      assert.deepEqual([...entries].sort(), ['city', 'outlaw', 'race', 'rts', 'shooter'], 'The arcade lists all five games');
       await page.screenshot({ path: 'browser-artifacts/last-city-home-' + size.name + '.png', animations: 'disabled' });
       await page.locator('#start-race').click();
       await page.locator('.rc-root').waitFor({ state: 'visible' });
       await page.locator('.rc-setup').waitFor();
       assert.equal(await page.locator('[data-pick^="map:"]').count(), 7, 'Race setup must list seven maps');
-      assert.equal(await page.locator('[data-pick^="car:"]').count(), 6, 'Race setup must list six cars');
+      assert.equal(await page.locator('[data-pick^="car:"]').count(), 8, 'Race setup must list eight cars');
       await page.screenshot({ path: 'browser-artifacts/race-setup-' + size.name + '.png', animations: 'disabled' });
       await page.locator('[data-pick="map:desert"]').click();
       await page.locator('[data-pick="laps:1"]').click();

@@ -1,6 +1,6 @@
 // ZERO ZONE — 봇 AI. 난이도(config.BOTS)에 따라 반응 속도·조준 오차·회전 속도·시야·자기장 대응이 달라집니다.
 // 봇은 사람과 같은 입력(Input)만 만들어 내고, 체력이나 탄을 속이지 않습니다.
-import { PART_FITS, magOf, partFit, PARTS, PLAYER, WEAPONS, type BotTuning, type PartId } from './config';
+import { canFit, magOf, partFit, PLAYER, WEAPONS, type BotTuning, type PartId } from './config';
 import { lineClear } from './world';
 import { findPath, navFor, walkable } from './nav';
 import type { Match, Player, ZoneState } from './sim';
@@ -37,7 +37,7 @@ function wantLoot(p: Player, kind: string, weapon: string | null, part: PartId |
   if (kind === 'helmet') return p.helmet < 3 ? 2.2 : 0;
   if (kind === 'grenade') return p.nades < 3 ? 1.3 : 0;
   if (kind === 'boost') return p.boost <= 0 && p.hp < 95 ? 1.6 : 0;
-  if (kind === 'attach') return part && p.guns.some(g => { if (!g || !PART_FITS[g.id].includes(PARTS[part].slot)) return false; const f = partFit(g.att, part); return f === 'new' || f === 'upgrade'; }) ? 1.4 : 0;
+  if (kind === 'attach') return part && p.guns.some(g => { if (!g || !canFit(g.id, part)) return false; const f = partFit(g.att, part); return f === 'new' || f === 'upgrade'; }) ? 1.4 : 0;
   if (kind === 'ammo') return p.guns.some(g => g && g.reserve < WEAPONS[g.id].mag * 2) ? 2 : 0;
   if (kind === 'weapon' && weapon) {
     const rank = WEAPONS[weapon as keyof typeof WEAPONS].rank;

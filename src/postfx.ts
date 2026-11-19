@@ -18,12 +18,23 @@ const Grade = {
       gl_FragColor = vec4(max(c.rgb, 0.0), c.a); }`,
 };
 
+/** 속도감 방사형 블러: 화면 중심에서 멀수록 바깥으로 번집니다(중심 근처의 차는 선명하게 남음). */
+const SpeedBlur = {
+  uniforms: { tDiffuse: { value: null as THREE.Texture | null }, amt: { value: 0 }, center: { value: new THREE.Vector2(0.5, 0.42) } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float amt; uniform vec2 center; varying vec2 vUv;
+    void main(){ vec2 d = vUv - center; float r = smoothstep(0.12, 0.7, length(d * vec2(1.0, 0.8)));
+      vec4 sum = texture2D(tDiffuse, vUv); float w = 1.0;
+      for (int i = 1; i <= 7; i++) { float f = float(i) / 7.0; sum += texture2D(tDiffuse, vUv - d * amt * r * f); w += 1.0; }
+      gl_FragColor = sum / w; }`,
+};
+
 const _v = new THREE.Vector2();
 /** 고화질일 때만 후처리를 만듭니다. */
 export const makePost = (quality: string, renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera, o?: PostOptions): PostFx | null => quality === 'high' ? new PostFx(renderer, scene, camera, o) : null;
 
 export class PostFx {
-  private composer: EffectComposer; private bloom: UnrealBloomPass; private grade: ShaderPass;
+  private composer: EffectComposer; private bloom: UnrealBloomPass; private grade: ShaderPass; private blur: ShaderPass;
   private sw = 0; private sh = 0;
   constructor(private renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera, o: PostOptions = {}) {
     const sz = renderer.getSize(new THREE.Vector2()), w = Math.max(1, sz.x), h = Math.max(1, sz.y); this.sw = w; this.sh = h;
@@ -31,10 +42,13 @@ export class PostFx {
     this.composer = new EffectComposer(renderer, target); this.composer.setPixelRatio(pr); this.composer.setSize(w, h);
     this.composer.addPass(new RenderPass(scene, camera));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), o.strength ?? 0.5, o.radius ?? 0.6, o.threshold ?? 0.85); this.composer.addPass(this.bloom);
+    this.blur = new ShaderPass(SpeedBlur); this.blur.enabled = false; this.composer.addPass(this.blur);
     this.grade = new ShaderPass(Grade); this.grade.uniforms.vig.value = o.vignette ?? 0.28; this.grade.uniforms.sat.value = o.saturation ?? 1.08; this.grade.uniforms.con.value = o.contrast ?? 1.06; this.composer.addPass(this.grade);
     this.composer.addPass(new OutputPass());
   }
   setSize(w: number, h: number): void { this.composer.setPixelRatio(this.renderer.getPixelRatio()); this.composer.setSize(w, h); }
+  /** 속도 블러 세기(0 이면 패스를 끕니다). 0.02~0.06 이 적당합니다. */
+  setSpeedBlur(v: number): void { this.blur.enabled = v > 0.004; this.blur.uniforms.amt.value = v; }
   setCamera(camera: THREE.Camera): void { (this.composer.passes[0] as RenderPass).camera = camera; }
   setScene(scene: THREE.Scene): void { (this.composer.passes[0] as RenderPass).scene = scene; }
   set(o: PostOptions): void { if (o.strength !== undefined) this.bloom.strength = o.strength; if (o.threshold !== undefined) this.bloom.threshold = o.threshold; if (o.vignette !== undefined) this.grade.uniforms.vig.value = o.vignette; }

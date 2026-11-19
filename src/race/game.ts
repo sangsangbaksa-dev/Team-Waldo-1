@@ -12,7 +12,8 @@ import { aiInput, boosting, kmh, type CarInput } from './physics';
 import { RacePvp } from './pvp';
 import { decideWinner } from './netcar';
 import { createRace, currentLap, placeOf, updateRace, type RaceEvent, type RaceState } from './race';
-import { readGarage, rewardFor, upgradesOf, writeGarage } from './garage';
+import { ghostDelta, readGhost, writeGhost } from './ghost';
+import { ownsSkin, readGarage, rewardFor, upgradesOf, writeGarage } from './garage';
 import { mountSetup, type SetupHandle } from './setup-ui';
 import { buildMapTrack, type Track } from './track';
 import { RaceView, setDriverKit } from './view';
@@ -83,13 +84,15 @@ export function openRace(onExit: () => void): void {
     const map = mapOf(setup), car = carById(setup.car), level = levelById(setup.level), key = raceRaceKey(map.id, setup.laps);
     const bestLap = Math.min(...race.player.lapTimes), prevLap = records.bestLap[map.id] ?? Infinity, prevRace = records.bestRace[key] ?? Infinity, newBest = bestLap < prevLap || time < prevRace;
     records = { bestLap: { ...records.bestLap, [map.id]: Math.min(prevLap, bestLap) }, bestRace: { ...records.bestRace, [key]: Math.min(prevRace, time) }, last: { map: map.id, label: map.name } }; writeRaceRecords(records);
-    const coins = rewardFor(place, level.id, setup.laps, newBest); garage.value = { ...garage.value, coins: garage.value.coins + coins }; writeGarage(garage.value);
+    const trial = !!race.trial, ghostNew = trial && race.rec !== undefined && time < (race.ghost?.time ?? Infinity);
+    if (ghostNew && race.rec) writeGhost(map.id, setup.laps, setup.car, race.rec.finish(time, setup.laps, race.player.car));
+    const coins = trial ? Math.round(rewardFor(4, 1, setup.laps, newBest) / 10) * 5 : rewardFor(place, level.id, setup.laps, newBest); garage.value = { ...garage.value, coins: garage.value.coins + coins }; writeGarage(garage.value);
     window.setTimeout(() => {
       if (closed || gen !== raceGen) return;
       modal.className = 'rc-modal show'; root.dataset.phase = 'done';
-      modal.innerHTML = `<div class="rc-card result p${place}"><span class="rc-eyebrow">${map.name} · ${setup.laps}랩 · ${level.name} · ${car.name}</span><h2>${ORD[place] ?? place + 'TH'} <small>/ 4</small></h2><p class="rc-total">${fmtTime(time)}</p>
+      modal.innerHTML = `<div class="rc-card result p${place}"><span class="rc-eyebrow">${map.name} · ${setup.laps}랩 · ${trial ? '타임어택' : level.name} · ${car.name}</span><h2>${trial ? (ghostNew ? 'NEW GHOST' : 'FINISH') : `${ORD[place] ?? place + 'TH'} <small>/ 4</small>`}</h2><p class="rc-total">${fmtTime(time)}</p>
         <ol class="rc-laps">${race.player.lapTimes.map((l, i) => `<li${l === bestLap ? ' class="best"' : ''}><span>LAP ${i + 1}</span><b>${fmtTime(l)}</b></li>`).join('')}</ol>
-        <p class="rc-record">${newBest ? '개인 최고 기록 갱신' : `${map.name} 최고 랩 ${fmtTime(records.bestLap[map.id] ?? Infinity)}`}</p>
+        <p class="rc-record">${trial ? (ghostNew ? '고스트를 갱신했습니다 — 다음 도전에서 이 주행과 겨룹니다' : race.ghost ? `고스트 ${fmtTime(race.ghost.time)} · ${time - race.ghost.time >= 0 ? '+' : '-'}${Math.abs(time - race.ghost.time).toFixed(2)}초` : '') : ''}${trial ? '' : newBest ? '개인 최고 기록 갱신' : `${map.name} 최고 랩 ${fmtTime(records.bestLap[map.id] ?? Infinity)}`}</p>
         <p class="rc-reward">+${coins} 코인 <small>(보유 ${garage.value.coins.toLocaleString('ko-KR')})</small></p>
         <div class="rc-actions"><button class="primary" data-act="restart">다시 달리기</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button></div></div>`;
     }, 1600);
@@ -99,10 +102,12 @@ export function openRace(onExit: () => void): void {
   function begin(): void {
     raceGen++;
     if (view) { view.dispose(); view = null; }
-    track = buildMapTrack(mapOf(setup)); prepareMinimap();
-    race = createRace(track, setup.laps, records.bestLap[setup.map] ?? Infinity, { ...setup, upgrades: upgradesOf(garage.value, setup.car) });
-    finishedShown = false; paused = false; acc = 0; lastPlace = 4; cache.clear(); setText('#rc-laps', String(setup.laps)); setText('#rc-of', '/ 4');
-    startView(carTemplate); modal.className = 'rc-modal'; modal.innerHTML = ''; root.dataset.phase = 'countdown'; msg('', '');
+    track = buildMapTrack(mapOf(setup)); prepareMinimap(); audio.setCar(setup.car);
+    const trial = setup.mode === 'trial', ghost = trial ? readGhost(setup.map, setup.laps, setup.car) : null;
+    race = createRace(track, setup.laps, records.bestLap[setup.map] ?? Infinity, { ...setup, upgrades: upgradesOf(garage.value, setup.car), skin: ownsSkin(garage.value, setup.skin) ? setup.skin : 'stock', trial, ghost });
+    finishedShown = false; paused = false; acc = 0; lastPlace = trial ? 1 : 4; cache.clear(); setText('#rc-laps', String(setup.laps)); setText('#rc-of', trial ? 'TIME ATTACK' : '/ 4');
+    if (!startView(carTemplate)) return;
+    modal.className = 'rc-modal'; modal.innerHTML = ''; root.dataset.phase = 'countdown'; msg('', '');
     msg(touch ? '가속 버튼으로 출발 부스트 · 좌우 조향 · 드리프트 · 니트로' : '가속 ↑ · 조향 ← → · 드리프트 Space · 니트로 Shift', 'hint'); msgT = 4; last = performance.now();
   }
   function restart(): void { begin(); }
@@ -144,7 +149,8 @@ export function openRace(onExit: () => void): void {
     track = buildMapTrack(mapOf(setup)); prepareMinimap();
     race = createRace(track, setup.laps, Infinity, { ...setup, pvp: { host: s.host, opponent: s.opponent.nickname, opponentCar: oppCar } });
     acc = 0; cache.clear(); lastPlace = 2; setText('#rc-laps', String(setup.laps)); setText('#rc-of', '/ 2'); setText('#rc-best', `VS ${s.opponent.nickname}`);
-    startView(carTemplate); modal.className = 'rc-modal'; modal.innerHTML = ''; root.dataset.phase = 'countdown'; msg(`${s.opponent.nickname} 님과 대전 · 먼저 결승선을 통과하면 승리`, 'hint'); msgT = 4; last = performance.now();
+    if (!startView(carTemplate)) return;
+    modal.className = 'rc-modal'; modal.innerHTML = ''; root.dataset.phase = 'countdown'; msg(`${s.opponent.nickname} 님과 대전 · 먼저 결승선을 통과하면 승리`, 'hint'); msgT = 4; last = performance.now();
   }
   function pvpFinish(time: number): void {
     if (!pvp || pvp.done) return; pvp.myFin = time; pvp.net.sendFinish(time);
@@ -199,7 +205,8 @@ export function openRace(onExit: () => void): void {
     track = buildMapTrack(mapOf(setup)); prepareMinimap();
     race = createRace(track, setup.laps, Infinity, { ...setup, multi: { slot: meIdx, players } });
     acc = 0; cache.clear(); lastPlace = list.length; setText('#rc-laps', String(setup.laps)); setText('#rc-of', `/ ${list.length}`); setText('#rc-best', `${list.length}인 레이스`);
-    startView(carTemplate); modal.className = 'rc-modal'; modal.innerHTML = ''; root.dataset.phase = 'countdown'; msg(`${list.length}명 레이스 · 먼저 결승선을 통과하세요`, 'hint'); msgT = 4; last = performance.now();
+    if (!startView(carTemplate)) return;
+    modal.className = 'rc-modal'; modal.innerHTML = ''; root.dataset.phase = 'countdown'; msg(`${list.length}명 레이스 · 먼저 결승선을 통과하세요`, 'hint'); msgT = 4; last = performance.now();
   }
   function multiFinish(time: number): void {
     if (!multi || multi.done) return; multi.myFin = time; multi.net.sendFinish(time); const m = multi;
@@ -221,11 +228,20 @@ export function openRace(onExit: () => void): void {
   }
 
   let carTemplate: Record<string, THREE.Object3D> | null = null;
-  function startView(tpl: Record<string, THREE.Object3D> | null): void {
+  function startView(tpl: Record<string, THREE.Object3D> | null): boolean {
     // 해제된 WebGL 컨텍스트는 같은 캔버스에서 다시 열 수 없으므로 캔버스를 새로 만듭니다.
     const fresh = document.createElement('canvas'); fresh.className = 'rc-canvas'; canvas.replaceWith(fresh); canvas = fresh;
-    try { view = new RaceView(canvas, track, tpl, prefs.quality, mapOf(setup).theme); view.setChaseLift(touch); view.setRacers(race.racers); resize(); }
-    catch { modal.className = 'rc-modal show'; modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">SPEED RUSH</span><h2>그래픽을 시작하지 못했어요</h2><p>WebGL 을 지원하는 브라우저에서 다시 시도해 주세요.</p><div class="rc-actions"><button data-act="exit">메뉴로</button></div></div>'; }
+    try {
+      view = new RaceView(canvas, track, tpl, prefs.quality, mapOf(setup).theme);
+      view.setChaseLift(touch); view.setRacers(race.racers); view.setGhost(carById(setup.car).model, !!race.ghost); resize();
+      return true;
+    } catch {
+      view?.dispose(); view = null;
+      root.dataset.phase = 'error';
+      modal.className = 'rc-modal show';
+      modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">SPEED RUSH</span><h2>그래픽을 시작하지 못했어요</h2><p>WebGL 을 지원하는 브라우저에서 다시 시도해 주세요.</p><div class="rc-actions"><button data-act="exit">메뉴로</button></div></div>';
+      return false;
+    }
   }
   function resize(): void {
     const w = innerWidth, h = innerHeight; view?.resize(w, h); fx.width = Math.floor(w / 2); fx.height = Math.floor(h / 2);
@@ -260,8 +276,10 @@ export function openRace(onExit: () => void): void {
 
   function hud(): void {
     const p = race.player, c = p.car, place = placeOf(race), sp = kmh(c);
-    setText('#rc-pos', String(place)); setText('#rc-lap', String(currentLap(race))); setText('#rc-kmh', String(Math.round(sp)));
-    setText('#rc-time', fmtTime(Math.max(0, race.clock))); setText('#rc-best', Number.isFinite(race.bestLap) ? `BEST ${fmtTime(race.bestLap)}` : '');
+    setText('#rc-pos', race.trial ? '' : String(place)); setText('#rc-lap', String(currentLap(race))); setText('#rc-kmh', String(Math.round(sp)));
+    setText('#rc-time', fmtTime(Math.max(0, race.clock))); const gd = race.ghost && race.phase === 'racing' ? ghostDelta(race.ghost, c.total, race.clock) : null;
+    setText('#rc-best', race.trial ? (race.ghost ? (gd === null ? `GHOST ${fmtTime(race.ghost.time)}` : `GHOST ${gd >= 0 ? '+' : '-'}${Math.abs(gd).toFixed(2)}`) : '첫 기록 — 이 주행이 고스트가 됩니다') : Number.isFinite(race.bestLap) ? `BEST ${fmtTime(race.bestLap)}` : '');
+    $('#rc-best').classList.toggle('ahead', gd !== null && gd < 0);
     setText('#rc-gear', race.phase === 'countdown' || Math.abs(c.vf) < 1 ? 'N' : c.vf < -0.5 ? 'R' : String(gearFor(c.vf)));
     $<HTMLElement>('#rc-nitro').style.width = `${(c.nitro * 100).toFixed(0)}%`; $('#rc-nitro').parentElement!.classList.toggle('on', boosting(c));
     $<HTMLElement>('#rc-draft').style.opacity = String(c.draft > 0.15 ? Math.min(1, c.draft * 1.3) : 0);
@@ -269,7 +287,7 @@ export function openRace(onExit: () => void): void {
     root.dataset.kmh = String(Math.round(sp)); root.dataset.place = String(place); root.dataset.lap = String(currentLap(race)); root.dataset.phase = finishedShown ? 'done' : race.phase;
     const tx = track.tx[c.idx], tz = track.tz[c.idx], dir = c.vx * tx + c.vz * tz; $('#rc-wrong').classList.toggle('show', race.phase === 'racing' && dir < -6 && (wrongT += 1) > 20); if (dir >= -6) wrongT = 0;
     const speedy = Math.min(1.4, sp / 270 + (boosting(c) ? 0.25 : 0)); $<HTMLElement>('.rc-boostfx').style.opacity = boosting(c) ? '1' : '0'; $<HTMLElement>('.rc-vignette').style.opacity = String(Math.min(1, 0.15 + speedy * 0.7));
-    if (place < lastPlace && race.phase === 'racing') { msg(`추월!  ${ORD[place]}`, 'gold'); view?.punchFov(0.4); }
+    if (!race.trial && place < lastPlace && race.phase === 'racing') { msg(`추월!  ${ORD[place]}`, 'gold'); view?.punchFov(0.4); }
     lastPlace = place;
   }
 
@@ -288,7 +306,7 @@ export function openRace(onExit: () => void): void {
   }
 
   const setPaused = (on: boolean): void => {
-    if (setupUi || pvp || multi || race.phase === 'done' || finishedShown || closed) return; paused = on; modal.className = on ? 'rc-modal show' : 'rc-modal'; if (on) { audio.drive(0, 0, 0, false, false, false); modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">PAUSED</span><h2>일시정지</h2><div class="rc-actions"><button class="primary" data-act="resume">계속하기</button><button data-act="restart">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button></div></div>'; } else modal.innerHTML = '';
+    if (!view || setupUi || pvp || multi || race.phase === 'done' || finishedShown || closed) return; paused = on; modal.className = on ? 'rc-modal show' : 'rc-modal'; if (on) { audio.drive(0, 0, 0, false, false, false); modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">PAUSED</span><h2>일시정지</h2><div class="rc-actions"><button class="primary" data-act="resume">계속하기</button><button data-act="restart">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button></div></div>'; } else modal.innerHTML = '';
   };
   const exit = (): void => {
     if (closed) return; closed = true; cancelAnimationFrame(raf); removeEventListener('keydown', onKey); removeEventListener('keyup', onKeyUp); removeEventListener('resize', resize); removeEventListener('blur', onBlur);
@@ -305,6 +323,8 @@ export function openRace(onExit: () => void): void {
     }
   };
   const onKey = (e: KeyboardEvent): void => {
+    if (setupUi && e.code !== 'KeyM') return;
+    if (e.target instanceof HTMLElement && e.target.closest('.rc-modal.show button') && (e.code === 'Enter' || e.code === 'Space')) return;
     if (e.repeat && e.code !== 'KeyR') { if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); return; }
     audio.unlock(); if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
     if (e.code === 'Escape' || e.code === 'KeyP') { setPaused(!paused); return; } if (e.code === 'KeyM') { act('mute'); return; } if (e.code === 'KeyR' && !paused && race.phase === 'racing') { recover(); return; }

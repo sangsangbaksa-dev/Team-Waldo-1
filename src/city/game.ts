@@ -13,7 +13,8 @@ import { ACTORS, BLOCKS, PITCH, ROAD } from './defs';
 import { applyLook, doorFacingYaw, isLookSpike, mapPointerToWorld } from './uiMath';
 import { DEMOLISH_REFUND_RATE, snapBuildCoord } from './placement';
 import { SHOP, canBuy, itemPrice } from './shop';
-import { missionLog, missionSummary } from './missions';
+import { missionLog, missionSummary, sideJobs } from './missions';
+import { CAREER_INFO, CAREER_STATS, UPGRADE_MAX, buyCareer, creditsFor, nextCost, readCareer, writeCareer, type Career, type CareerStat } from './career';
 import { EVENT_INFO } from './events';
 import { readPreferences, recordMatch, writePreferences } from '../prefs';
 import type { PvpSession, RoomSession } from '../net/lobby';
@@ -56,6 +57,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   let models: Models | null = null, R3: Renderer3D | null = null, view: View = 'fp', locked = false, lockFail = false, expectUnlock = false, touchFire = false, hurt = 0, lastLook = 0, hitT = 0;
   const tags: HTMLElement[] = [], marks: HTMLElement[] = []; let area = '', areaT = 0, sirenT = 0;
   let world: World | null = null, R: Renderer | null = null, raf = 0, last = 0, acc = 0, paused = false, closed = false, ghost: Ghost | null = null, tab = 'train', hudT = 0, toastT = 0, bannerT = 0, shopOpen = false, resultShown = false, userZoom = 1, combat = 0, klass: ClassId = 'warlord';
+  let career: Career = readCareer(), lastReward = 0;
   let demolishArmed: { id: number; at: number } | null = null;
   /** 1대1 결투 진행 상태. null 이면 혼자 하는 게임입니다. */
   interface Duel { s: PvpSession; net: CityDuel; army: DuelArmy; oppHqDown: boolean; hqSent: boolean; myDeaths: number; oppDeaths: number; done: boolean; pose: { x: number; y: number; a: number; hp: number; mh: number; w: WeaponId } | null; rx: number; ry: number; seed: number; oppKlass: string; started: boolean; graceAt: number }
@@ -78,6 +80,8 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       <div class="c-classes">${(Object.keys(CLASSES) as ClassId[]).map(k => `<button class="c-class" data-act="class:${k}"><span>${CLASSES[k].tag}</span><b>${CLASSES[k].name}</b><p>${CLASSES[k].desc}</p><em>Q · ${CLASSES[k].skill}</em><small>${CLASSES[k].skillDesc}</small></button>`).join('')}</div>
       <div class="c-keys">${touch ? '<span>왼쪽 드래그 이동</span><span>오른쪽 드래그 시점</span><span>사격 버튼</span><span>버튼으로 상호작용·지휘</span>' : '<span><b>WASD</b> 이동</span><span><b>마우스</b> 시점·사격</span><span><b>V</b> 1인칭/3인칭/전술뷰</span><span><b>E</b> 매입·줍기</span><span><b>F</b> 차량 탑승</span><span><b>Tab</b> 지휘 패널</span><span><b>우클릭</b> 병력 돌격</span><span><b>Z/X</b> 집결·사수</span><span><b>Space</b> 대시</span><span><b>M</b> 지도</span><span><b>Delete</b> 철거</span>'}</div>
       ${PVP_ENABLED ? `<div class="c-sub">1대1 결투 · 멀티 방(3~6인) · 로그인 필요</div><div class="c-diffs">${(Object.keys(CLASSES) as ClassId[]).map(k => `<button class="c-diff" data-act="duel:${k}" title="${CLASSES[k].desc}">${CLASSES[k].name}으로 대전·방 만들기</button>`).join('')}</div><p class="c-lead c-diffdesc">같은 도시에서 둘만 남아 ${TARGET_KILLS}킬을 먼저 채우면 승리합니다. 병력을 뽑고 건물을 지어 싸우세요. 상대 본부를 무너뜨리면 즉시 승리하고, 내 본부가 무너지면 패배합니다. 제한 시간은 ${clock(TIME_LIMIT)}입니다. 방 만들기로 3~6명이 모이면 병력 없이 영웅끼리 싸우는 난투전(목숨 ${ROOM_LIVES}개, 마지막 생존자 우승)이 열립니다.</p>` : ''}
+      <div class="c-sub">블랙마켓 보급 <span class="c-credits">크레딧 <b>${$(career.credits)}</b></span></div><p class="c-lead c-diffdesc">판이 끝날 때 순위·처치·부업 실적만큼 크레딧을 받고, 여기서 보스를 영구 강화합니다. 연습·1대1·멀티 방에는 적용되지 않습니다.</p>
+      <div class="c-upgs">${CAREER_STATS.map(st => { const lv = career.levels[st], cost = nextCost(career, st); return `<div class="c-upg"><div><b>${CAREER_INFO[st].name}</b><small>${CAREER_INFO[st].desc}</small></div><span class="c-pips" aria-label="${lv}/${UPGRADE_MAX}단계">${Array.from({ length: UPGRADE_MAX }, (_, i) => `<i class="${i < lv ? 'on' : ''}"></i>`).join('')}</span><button data-act="cup:${st}" ${cost === null || career.credits < cost ? 'disabled' : ''}>${cost === null ? '최대' : $(cost)}</button></div>`; }).join('')}</div>
       <div class="c-sub">난이도</div><div class="c-diffs">${DIFFICULTY_ORDER.map(d => `<button class="c-diff${d === diffSel ? ' on' : ''}" data-act="diff:${d}" title="${DIFFICULTY[d].desc}">${DIFFICULTY[d].label}</button>`).join('')}</div><p class="c-lead c-diffdesc">${DIFFICULTY[diffSel].desc}</p>
       <div class="c-setup-foot"><span>난이도 · ${DIFFICULTY[diffSel].label}</span><button data-act="exit" class="c-ghost">메뉴로</button></div></section>`;
   }
@@ -86,7 +90,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     // A retry must not inherit held keys, touch gestures, firing or frame debt.
     keys.clear(); mouse.down = false; touchFire = false; acc = 0; looks.clear();
     for (const stick of [sticks.move, sticks.aim]) { stick.id = -1; stick.x = 0; stick.y = 0; }
-    world = new World({ seed: dl ? dl.seed : rm ? rm.seed : (Math.random() * 2 ** 31) | 0, difficulty: diffSel, klass: k, tutorial: tutorial || !!dl || !!rm, duel: dl ? { side: dl.s.host ? 0 : 1, name: dl.s.opponent.nickname, arena: arenaOf(dl.seed) } : rm ? { side: 0, name: '', room: { seats: roomSeats(rm), names: roomNames(rm) } } : undefined });
+    world = new World({ seed: dl ? dl.seed : rm ? rm.seed : (Math.random() * 2 ** 31) | 0, difficulty: diffSel, klass: k, career: dl || rm || tutorial ? undefined : career.levels, tutorial: tutorial || !!dl || !!rm, duel: dl ? { side: dl.s.host ? 0 : 1, name: dl.s.opponent.nickname, arena: arenaOf(dl.seed) } : rm ? { side: 0, name: '', room: { seats: roomSeats(rm), names: roomNames(rm) } } : undefined });
     if (rm) { const r = rm; world.onShot = (x, y, a, wid, mul) => r.net.sendShot({ x, y, a, w: wid, m: mul }); }
     if (dl) { const d = dl; world.onShot = (x, y, a, wid, mul) => d.net.sendShot({ x, y, a, w: wid, m: mul }); }
     tut = tutorial ? { s: newTutState(), c: newCounters() } : null;  tutSig = ''; q('#c-tut').hidden = true; tutInfoLock = false;
@@ -131,6 +135,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   // ---------- 동작 ----------
   function act(code: string, ev?: Event): void {
     const [a, ...rest] = code.split(':'), arg = rest.join(':'), w = world; audio.unlock();
+    if (a === 'cup') { const n = buyCareer(career, arg as CareerStat); if (n) { career = n; writeCareer(career); audio.play('cash'); setup(); } return; }
     if (a === 'diff') { diffSel = arg as Difficulty; try { localStorage.setItem('waldo-city-diff', arg); } catch { /* 무시 */ } setup(); audio.play('click'); return; }
     if (a === 'sq') { if (w) { w.selectSquad(Number(arg)); put(q('#c-squads'), squadBar(w)); toast(w.squadSel ? `${w.squadSel}분대 선택 — 명령이 이 분대에만 적용됩니다` : '전체 병력 선택', false); if (!panel.hidden) renderPanel(); } return; }
     if (a === 'squadsplit') { if (w) { w.splitSquads(0, Number(arg)); put(q('#c-squads'), squadBar(w)); toast(Number(arg) > 1 ? `${arg}개 분대로 편성` : '분대 편성 해제', false); renderPanel(); } return; }
@@ -311,7 +316,11 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
         <div class="c-mission-meta"><span>${entry.done ? '완료됨' : entry.current + ' / ' + entry.target}</span><span>${entry.reward ? '보상 $' + $(entry.reward) : '최종 승리'}</span></div>
         ${current ? '<div class="c-mission-hint"><b>전술 안내</b> ' + entry.hint + '</div>' : ''}
       </article>`;
-    }).join(''));
+    }).join('') + sideBoard());
+  }
+  function sideBoard(): string {
+    const sj = sideJobs(world!);
+    return `<h3 class="c-side-h">도시 부업 <small>사건 ${sj.done}건 완료${sj.streak > 1 ? ` · 연속 ${sj.streak}회 보너스 ×${(1 + Math.min(5, sj.streak - 1) * 0.1).toFixed(1)}` : ''}</small></h3>` + sj.items.map(it => `<article class="c-side-card${it.done ? ' complete' : ''}"><div class="c-mission-top"><span>부업 이정표</span><b>${it.done ? '완료' : '진행 중'}</b></div><h3>${it.title}</h3><p>${it.objective}</p><div class="c-mission-bar"><i style="width:${it.current / it.target * 100}%"></i></div><div class="c-mission-meta"><span>${it.current} / ${it.target}</span><span>보상 $${$(it.reward)}</span></div></article>`).join('');
   }
 
   function renderHud(): void {
@@ -460,9 +469,11 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   function showResult(): void {
     const w = world!, f = w.factions[0], win = w.winner === 0, place = win ? 1 : f.place || w.aliveCount() + 1; resultShown = true; unlock(); audio.setEngine(-1); audio.play(win ? 'win' : 'lose');
     recordMatch(win, w.time, f.kills);
+    lastReward = tut ? 0 : creditsFor({ place, win, kills: f.kills, eventsDone: w.eventsDone, earned: f.earned, difficulty: diffSel }); if (lastReward) { career = { ...career, credits: career.credits + lastReward }; writeCareer(career); }
     try { const c = readCityCareer(); localStorage.setItem(CITY_KEY, JSON.stringify({ matches: c.matches + 1, wins: c.wins + Number(win), best: c.best ? Math.min(c.best, place) : place })); } catch { /* 기록은 선택 사항 */ }
     modal.innerHTML = `<section class="c-result ${win ? 'win' : ''}"><div class="c-kicker">${win ? 'LAST KINGDOM STANDING' : 'KINGDOM FALLEN'}</div><h2>${win ? '최후의 왕국!' : `#${place} <small>/ 8 왕국</small>`}</h2><p class="c-lead">${win ? '도시의 모든 것이 이제 당신의 것입니다.' : place <= 3 ? '거의 다 왔습니다. 한 판 더!' : '경제를 먼저 굴리고, 병력과 함께 움직여 보세요.'}</p>
-      <div class="c-stats"><div><b>${clock(w.time)}</b><span>생존 시간</span></div><div><b>${f.kills}</b><span>처치</span></div><div><b>${f.bossKills}</b><span>보스 처치</span></div><div><b>$${$(f.earned)}</b><span>총 수익</span></div><div><b>${f.level}</b><span>보스 레벨</span></div></div>
+      <div class="c-stats"><div><b>${clock(w.time)}</b><span>생존 시간</span></div><div><b>${f.kills}</b><span>처치</span></div><div><b>${f.bossKills}</b><span>보스 처치</span></div><div><b>$${$(f.earned)}</b><span>총 수익</span></div><div><b>${f.level}</b><span>보스 레벨</span></div><div><b>${w.eventsDone}</b><span>부업 완료</span></div></div>
+      ${lastReward ? `<p class="c-lead c-reward">+${$(lastReward)} 크레딧 <small>(보유 ${$(career.credits)}) · 시작 화면의 블랙마켓에서 강화</small></p>` : ''}
       <div class="c-actions"><button data-act="retry" class="c-primary">다시 도전</button><button data-act="exit">메뉴로</button></div></section>`;
   }
 
@@ -597,7 +608,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     const w = world!, r3 = R3!, b = w.boss(0), list: { x: number; y: number; h: number; text: string; color: string; edge: boolean }[] = [];
     if (w.inside) { for (const el of marks) el.style.display = 'none'; return; }
     const hq = w.hq(0); if (hq && b && (Math.hypot(hq.x + 60 - b.x, hq.y + 60 - b.y) > 420 || w.time - hq.hurtT < 5)) list.push({ x: hq.x + 60, y: hq.y + 60, h: 190, text: w.time - hq.hurtT < 5 ? '본부 피격!' : '본부', color: w.time - hq.hurtT < 5 ? '#ff6b6b' : FACTIONS[0].color, edge: true });
-    if (w.event) list.push({ x: w.event.x, y: w.event.y, h: 70, text: `${EVENT_INFO[w.event.kind].name} ${w.event.t}s`, color: EVENT_INFO[w.event.kind].color, edge: true });
+    if (w.event) list.push({ x: w.event.x, y: w.event.y, h: 70, text: `${EVENT_INFO[w.event.kind].name}${w.event.kind === 'delivery' ? (w.event.stage ? ' · 목적지' : ' · 수령지') : ''} ${w.event.t}s`, color: EVENT_INFO[w.event.kind].color, edge: true });
     for (const l of w.loot) if (l.alive && l.type === 'crate') list.push({ x: l.x, y: l.y, h: 60, text: '보급 상자', color: '#ffe27a', edge: true });
     const z = w.zone; if (b && Math.hypot(b.x - z.nx, b.y - z.ny) > z.nr && z.nr < 3800) list.push({ x: z.nx, y: z.ny, h: 40, text: '안전지대', color: '#c9a2ff', edge: true });
     if (b && !w.businesses.some(q2 => q2.owner === 0)) { let best: { x: number; y: number } | null = null, bd = 1e9; for (const q2 of w.businesses) if (q2.owner < 0 && q2.kind !== 'gunshop') { const d = Math.hypot(q2.x - b.x, q2.y - b.y); if (d < bd) { bd = d; best = q2; } } if (best) list.push({ x: best.x, y: best.y, h: 60, text: '매입 가능', color: '#ffffff', edge: true }); }

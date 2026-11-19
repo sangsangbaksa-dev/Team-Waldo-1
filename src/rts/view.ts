@@ -40,7 +40,7 @@ export class RtsView {
     this.scene.add(this.sun, this.sun.target);
     this.buildTerrain(); this.flag = this.makeFlag(); this.flag.visible = false; this.scene.add(this.flag);
     const start = sim.map.starts[viewer]; this.cam.x = start.x + 2; this.cam.y = start.y + 2;
-    if (window.innerWidth < 900 || matchMedia('(pointer: coarse)').matches) this.cam.dist = 40; // 작은 화면에서는 가깝게
+    if (window.innerWidth < 900 || matchMedia('(pointer: coarse)').matches) this.cam.dist = 50; // 작은 화면에서는 가깝게
     this.resize(canvas.clientWidth || 800, canvas.clientHeight || 600);
     this.post = makePost(quality, this.renderer, this.scene, this.camera, { strength: 0.4, radius: 0.5, threshold: 0.9, vignette: 0.24, saturation: 1.1 });
   }

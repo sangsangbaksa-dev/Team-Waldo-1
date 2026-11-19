@@ -116,6 +116,8 @@ const LOOT_TABLE: LootRow[] = [
   { k: 'ammo', wt: 20 }, { k: 'bandage', wt: 16 }, { k: 'medkit', wt: 6, hi: 1.4 }, { k: 'armor', l: 1, wt: 7 }, { k: 'armor', l: 2, wt: 4, hi: 1.5 }, { k: 'armor', l: 3, wt: 1.2, hi: 3 },
   { k: 'attach', p: 'reddot', wt: 3.5 }, { k: 'attach', p: 'scope2', wt: 2.6 }, { k: 'attach', p: 'scope4', wt: 1.4, hi: 2.4 }, { k: 'attach', p: 'suppressor', wt: 3 }, { k: 'attach', p: 'comp', wt: 3 },
   { k: 'attach', p: 'grip', wt: 3.4 }, { k: 'attach', p: 'extmag', wt: 3.4, hi: 1.5 },
+  { k: 'attach', p: 'holo', wt: 2.4 }, { k: 'attach', p: 'scope8', wt: 0.7, hi: 2.6 }, { k: 'attach', p: 'flash', wt: 2.6 }, { k: 'attach', p: 'angled', wt: 2.6 }, { k: 'attach', p: 'quickmag', wt: 2.6 }, { k: 'attach', p: 'extquick', wt: 1.2, hi: 2.2 },
+  { k: 'attach', p: 'tactical', wt: 2 }, { k: 'attach', p: 'cheek', wt: 1.6 },
   { k: 'helmet', l: 1, wt: 5 }, { k: 'helmet', l: 2, wt: 3, hi: 1.6 }, { k: 'helmet', l: 3, wt: 1.2, hi: 3 },
   { k: 'boost', wt: 5 }, { k: 'grenade', wt: 6 },
 ];

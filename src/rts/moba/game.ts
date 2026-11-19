@@ -28,14 +28,14 @@ export function openMoba(onBack: () => void, onExit: () => void, room?: RoomLink
       <div class="mb-hud"><div class="mb-hero"><b class="mb-lv" id="mb-lv">1</b><div class="mb-bars"><div class="mb-bar hp"><i id="mb-hp"></i><span id="mb-hpt"></span></div><div class="mb-bar mp"><i id="mb-mp"></i><span id="mb-mpt"></span></div><div class="mb-bar xp"><i id="mb-xp"></i></div></div></div>
         <div class="mb-skills" id="mb-skills"></div><div class="mb-extras"><div class="mb-spells" id="mb-spells"></div><div class="mb-items" id="mb-items"></div><div class="mb-buffs" id="mb-buffs"></div></div></div>
       <div class="mb-side"><button data-act="shop" id="mb-shopbtn"><b>상점</b><kbd>P</kbd></button><button data-act="recall" id="mb-recall"><b>귀환</b><kbd>B</kbd></button><button data-act="ward" id="mb-ward"><b>와드</b><kbd>T</kbd></button><button data-act="ping" id="mb-ping"><b>핑</b><kbd>G</kbd></button><button data-act="center"><b>시점</b><kbd>Space</kbd></button></div></div>
-    <div class="mb-modal" id="mb-modal"></div>`;
+    <div class="mb-joy" id="mb-joy" aria-label="이동 조이스틱"><i></i></div><div class="mb-modal" id="mb-modal"></div>`;
   document.body.append(root);
   const $ = <T extends HTMLElement>(s: string): T => root.querySelector<T>(s)!;
   let canvas = $<HTMLCanvasElement>('.mb-canvas'); const over = $<HTMLCanvasElement>('.mb-over'), og = over.getContext('2d')!, mini = $<HTMLCanvasElement>('#mb-mini'), mg = mini.getContext('2d')!, modal = $('#mb-modal');
   const audio = new RtsAudio(); audio.enabled = prefs.sound;
 
   let sim: MobaSim | null = null, view: MobaView | null = null; let ais: MobaAi[] = []; let net: MobaRoomNet | null = null, netEnded = '';
-  const spells: [SpellId, SpellId] = ['flash', 'heal']; let champ: ChampId = 'blade', lane: Role = 'mid', level: Level = 'normal', rune: RuneId = 'conqueror', pingMode: PingKind | null = null;
+  const spells: [SpellId, SpellId] = ['flash', 'heal']; let champ: ChampId = 'blade', lane: Role = 'mid', level: Level = 'normal', rune: RuneId = 'conqueror', pingMode: PingKind | null = null, roomTeam = 0; let roomHero: number[] = [];
   let raf = 0, last = 0, acc = 0, paused = false, ended = false, closed = false, free = false, amove = false, aimIdx = -1, annT = 0, uiT = 0, skillKey = '', itemKey = '', spellKey = '', buffKey = '', objKey = '';
   const keys = new Set<string>(); const pointer = { x: 0, y: 0, in: false, right: false, lastCmd: 0 }; const floats: Array<{ x: number; y: number; amt: number; t: number; team: number; id: number }> = [];
   const feed: Array<{ text: string; t: number }> = []; const touches = new Map<number, { x: number; y: number }>(); let pinch = 0;
@@ -51,7 +51,7 @@ export function openMoba(onBack: () => void, onExit: () => void, room?: RoomLink
     const id = forceMove ? 0 : view.pick(sx, sy, m.id), t = id ? sim.get(id) : undefined, g = view.ground(sx, sy);
     if (t && t.team !== m.team && sim.vulnerable(t)) { cmd({ k: 'attack', target: t.id }); audio.sfx('select'); return; }
     if (g && !forceMove) { const w = sim.wards.filter(o => o.team !== m.team && sim!.seenPt(m.team, o.x, o.y) && Math.hypot(o.x - g.x, o.y - g.y) < 1.6).sort((a, b) => Math.hypot(a.x - g.x, a.y - g.y) - Math.hypot(b.x - g.x, b.y - g.y))[0]; if (w) { if (cmd({ k: 'unward', id: w.id })) { audio.sfx('select'); say('적 와드를 제거했습니다 (+30 골드)'); } else { cmd({ k: 'move', x: w.x, y: w.y }); say('적 와드: 가까이(4.5)에서 우클릭하면 부술 수 있습니다', true); } return; } }
-    if (g) { if (amove) { cmd({ k: 'amove', x: g.x, y: g.y }); amove = false; hint(''); } else cmd({ k: 'move', x: g.x, y: g.y }); view.consume([{ t: 'blast', x: g.x, y: g.y, r: 0.7, team: 0 }], 0); audio.sfx('order'); }
+    if (g) { if (amove) { cmd({ k: 'amove', x: g.x, y: g.y }); amove = false; hint(''); } else cmd({ k: 'move', x: g.x, y: g.y }); view.consume([{ t: 'blast', x: g.x, y: g.y, r: 0.7, team: m.team }], m.team); audio.sfx('order'); }
   }
   /** 스킬을 눌렀을 때의 조준점: 커서가 가리키는 땅(터치는 가장 가까운 적). */
   function aimPoint(idx: number): { x: number; y: number } {
@@ -119,6 +119,14 @@ export function openMoba(onBack: () => void, onExit: () => void, room?: RoomLink
   over.addEventListener('wheel', e => { e.preventDefault(); view?.zoom(e.deltaY > 0 ? 1.08 : 0.92); }, { passive: false });
   mini.addEventListener('pointerdown', e => { e.preventDefault(); if (!sim || !view) return; const r = mini.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * SIZE, y = (e.clientY - r.top) / r.height * SIZE; const pk = pingMode ?? (e.altKey ? 'assist' : [...keys].map(c => PING_KEY[c]).find(Boolean)); if (pk) { pingAt(x, y, pk); if (pingMode) { pingMode = null; $('#mb-ping').classList.remove('on'); } return; } if (e.button === 2) { cmd({ k: 'move', x, y }); return; } view.lookAt(x, y); free = true; });
   mini.addEventListener('contextmenu', e => e.preventDefault());
+  // 터치 조이스틱: 누른 채 밀면 그 방향으로 계속 이동하고, 떼면 멈춥니다.
+  const joy = $('#mb-joy'), knob = joy.querySelector<HTMLElement>('i')!; let joyId = -1, joyV = { x: 0, y: 0 }, joyAt = 0;
+  const joyDrive = (): void => { const m = me(); if (!sim || !view || !m || m.hero!.dead || (!joyV.x && !joyV.y)) return; const hp = view.project(m.x, m.y, 0); if (!hp) return; const g = view.ground(hp.x + joyV.x * 90, hp.y + joyV.y * 90); if (g) { free = false; cmd({ k: 'move', x: g.x, y: g.y }); } };
+  const joyMove = (e: PointerEvent): void => { const r = joy.getBoundingClientRect(), dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2), l = Math.hypot(dx, dy), cap = r.width / 2, k = l > cap ? cap / l : 1; knob.style.transform = `translate(${dx * k}px, ${dy * k}px)`; joyV = l > 12 ? { x: dx / l, y: dy / l } : { x: 0, y: 0 }; if (performance.now() - joyAt > 160) { joyAt = performance.now(); joyDrive(); } };
+  joy.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); audio.unlock(); joyId = e.pointerId; joy.setPointerCapture(e.pointerId); joy.classList.add('on'); joyMove(e); });
+  joy.addEventListener('pointermove', e => { if (e.pointerId === joyId) joyMove(e); });
+  const joyEnd = (e: PointerEvent): void => { if (e.pointerId !== joyId) return; joyId = -1; joyV = { x: 0, y: 0 }; knob.style.transform = ''; joy.classList.remove('on'); cmd({ k: 'stop' }); };
+  joy.addEventListener('pointerup', joyEnd); joy.addEventListener('pointercancel', joyEnd);
   $('#mb-skills').addEventListener('pointerdown', e => { const l = (e.target as HTMLElement).closest<HTMLElement>('[data-learn]'); if (l) { e.preventDefault(); e.stopPropagation(); learn(Number(l.dataset.learn)); return; } const b = (e.target as HTMLElement).closest<HTMLElement>('[data-sk]'); if (!b) return; e.preventDefault(); cast(Number(b.dataset.sk)); });
   $('#mb-spells').addEventListener('pointerdown', e => { const b = (e.target as HTMLElement).closest<HTMLElement>('[data-sp]'); if (!b) return; e.preventDefault(); castSpell(Number(b.dataset.sp)); });
   $('#mb-items').addEventListener('click', e => { const b = (e.target as HTMLElement).closest<HTMLElement>('[data-sell]'); void b; shop(); });
@@ -137,7 +145,7 @@ export function openMoba(onBack: () => void, onExit: () => void, room?: RoomLink
     const sp = h.spells.map((id, i) => { const cd = Math.max(0, h.spellReady[i] - sim!.tick), d = SPELLS[id]; return `<button type="button" data-sp="${i}" title="${esc(d.name)} — ${esc(d.desc)}"><kbd>${i ? 'F' : 'D'}</kbd><b>${esc(d.name)}</b>${cd ? `<span class="cd" style="--p:${cd / (d.cd * TICK)}">${Math.ceil(cd / TICK)}</span>` : ''}</button>`; }).join('');
     if (sp !== spellKey) { spellKey = sp; $('#mb-spells').innerHTML = sp; }
     const bf: string[] = [`<span class="bf rune" title="${esc(RUNES[h.rune].desc)}">${esc(RUNES[h.rune].name)}</span>`]; if (sim.tick < h.blueUntil) bf.push(`<span class="bf blue" title="파랑 버프: 마나 회복 증가, 스킬 가속 +10%">파랑 ${Math.ceil((h.blueUntil - sim.tick) / TICK)}</span>`); if (sim.tick < h.redUntil) bf.push(`<span class="bf red" title="빨강 버프: 주는 피해 +10%">빨강 ${Math.ceil((h.redUntil - sim.tick) / TICK)}</span>`);
-    if (sim.tick < sim.teams[0].baronUntil) bf.push(`<span class="bf baron" title="군주 강화">군주 ${Math.ceil((sim.teams[0].baronUntil - sim.tick) / TICK)}</span>`); if (sim.teams[0].drakes) bf.push(`<span class="bf drake" title="드래곤 처치: 공격 +8%씩">드래곤 ${sim.teams[0].drakes}</span>`);
+    if (sim.tick < sim.teams[sim.myTeam].baronUntil) bf.push(`<span class="bf baron" title="군주 강화">군주 ${Math.ceil((sim.teams[sim.myTeam].baronUntil - sim.tick) / TICK)}</span>`); if (sim.teams[sim.myTeam].drakes) bf.push(`<span class="bf drake" title="드래곤 처치: 공격 +8%씩">드래곤 ${sim.teams[sim.myTeam].drakes}</span>`);
     const bk = bf.join(''); if (bk !== buffKey) { buffKey = bk; $('#mb-buffs').innerHTML = bk; }
     const dr = sim.objective('drake'), ba = sim.objective('baron'), ok = `${sim.teams[0].towers}|${sim.teams[1].towers}|${sim.teams[0].drakes}|${sim.teams[1].drakes}|${dr.alive}${dr.secs}|${ba.alive}${ba.secs}|${sim.teams[0].inhibs}|${sim.teams[1].inhibs}`;
     if (ok !== objKey) { objKey = ok; $('#mb-obj').innerHTML = `<span class="o" title="부순 포탑 / 억제기 (청 · 적)"><i class="ic tw"></i>${9 - sim.teams[1].towers}·${9 - sim.teams[0].towers} <i class="ic ib"></i>${sim.teams[0].inhibs}·${sim.teams[1].inhibs}</span><span class="o ${dr.alive ? 'up' : ''}" title="화염 드래곤 (처치 수 청 · 적)"><i class="ic dr"></i>${sim.teams[0].drakes}·${sim.teams[1].drakes} ${dr.alive ? '출현' : `${dr.secs}초`}</span><span class="o ${ba.alive ? 'up' : ''}" title="심연의 군주"><i class="ic bn"></i>${ba.alive ? '출현' : `${ba.secs}초`}</span>`; }
@@ -157,23 +165,23 @@ export function openMoba(onBack: () => void, onExit: () => void, room?: RoomLink
     mg.drawImage(miniBase, 0, 0);
     // 안개: 아군이 보지 못하는 곳을 어둡게
     const fg = miniFog!.getContext('2d')!; fg.globalCompositeOperation = 'source-over'; fg.clearRect(0, 0, 200, 200); fg.fillStyle = 'rgba(6,10,16,.55)'; fg.fillRect(0, 0, 200, 200); fg.globalCompositeOperation = 'destination-out'; fg.fillStyle = '#000';
-    for (const o of sim.sightOf(0)) { fg.beginPath(); fg.arc(o.x * k, o.y * k, o.r * k, 0, 6.3); fg.fill(); } mg.drawImage(miniFog!, 0, 0);
-    for (const w of sim.wards) if (w.team === 0 || sim.seenPt(0, w.x, w.y)) { mg.fillStyle = w.team === 0 ? '#7fe6ff' : '#ff9a7a'; mg.beginPath(); mg.moveTo(w.x * k, w.y * k - 3.5); mg.lineTo(w.x * k + 3, w.y * k); mg.lineTo(w.x * k, w.y * k + 3.5); mg.lineTo(w.x * k - 3, w.y * k); mg.fill(); }
+    for (const o of sim.sightOf(sim.myTeam)) { fg.beginPath(); fg.arc(o.x * k, o.y * k, o.r * k, 0, 6.3); fg.fill(); } mg.drawImage(miniFog!, 0, 0);
+    for (const w of sim.wards) if (w.team === sim.myTeam || sim.seenPt(sim.myTeam, w.x, w.y)) { mg.fillStyle = w.team === sim.myTeam ? '#7fe6ff' : '#ff9a7a'; mg.beginPath(); mg.moveTo(w.x * k, w.y * k - 3.5); mg.lineTo(w.x * k + 3, w.y * k); mg.lineTo(w.x * k, w.y * k + 3.5); mg.lineTo(w.x * k - 3, w.y * k); mg.fill(); }
     for (const e of sim.ents) {
-      if (e.hp <= 0 || e.hero?.dead || !sim.canSee(0, e)) continue; const x = e.x * k, y = e.y * k; mg.fillStyle = e.team === 0 ? '#5aa0ff' : e.team === 1 ? '#ff6a4a' : '#d6c070';
+      if (e.hp <= 0 || e.hero?.dead || !sim.canSee(sim.myTeam, e)) continue; const x = e.x * k, y = e.y * k; mg.fillStyle = e.team === 0 ? '#5aa0ff' : e.team === 1 ? '#ff6a4a' : '#d6c070';
       if (e.kind === 'nexus') mg.fillRect(x - 5, y - 5, 10, 10); else if (e.kind === 'turret') mg.fillRect(x - 2.5, y - 2.5, 5, 5); else if (e.kind === 'inhib') { mg.beginPath(); mg.moveTo(x, y - 4); mg.lineTo(x + 3.5, y); mg.lineTo(x, y + 4); mg.lineTo(x - 3.5, y); mg.fill(); }
       else if (e.hero) { mg.beginPath(); mg.arc(x, y, 4, 0, 6.3); mg.fill(); if (e.id === sim.meId) { mg.strokeStyle = '#ffd24a'; mg.lineWidth = 2; mg.stroke(); } }
       else if (e.kind === 'monster') { const big = e.sub === 'drake' || e.sub === 'baron'; mg.fillStyle = e.sub === 'drake' ? '#ff8a3a' : e.sub === 'baron' ? '#c06aff' : e.sub === 'crab' ? '#3fe0c8' : '#d6c070'; mg.fillRect(x - (big ? 3 : 1.5), y - (big ? 3 : 1.5), big ? 6 : 3, big ? 6 : 3); }
       else if (e.kind === 'super') mg.fillRect(x - 2, y - 2, 4, 4); else mg.fillRect(x - 1, y - 1, 2, 2);
     }
-    for (const p of sim.pings) { const age = (sim.tick - p.at) / TICK; if (p.team !== 0 || age > 5) continue; mg.strokeStyle = p.kind === 'danger' ? '#ff4a3a' : p.kind === 'assist' ? '#ffe05a' : '#6aff9a'; mg.lineWidth = 2; mg.globalAlpha = 1 - age / 5; mg.beginPath(); mg.arc(p.x * k, p.y * k, 4 + (age * 9) % 11, 0, 6.3); mg.stroke(); mg.globalAlpha = 1; }
+    for (const p of sim.pings) { const age = (sim.tick - p.at) / TICK; if (p.team !== sim.myTeam || age > 5) continue; mg.strokeStyle = p.kind === 'danger' ? '#ff4a3a' : p.kind === 'assist' ? '#ffe05a' : '#6aff9a'; mg.lineWidth = 2; mg.globalAlpha = 1 - age / 5; mg.beginPath(); mg.arc(p.x * k, p.y * k, 4 + (age * 9) % 11, 0, 6.3); mg.stroke(); mg.globalAlpha = 1; }
     const cs = view.corners(over.clientHeight - $('.mb-bottom').offsetHeight); if (cs.length > 2) { mg.strokeStyle = '#fff'; mg.lineWidth = 1.2; mg.beginPath(); cs.forEach((c, i) => { const x = Math.min(SIZE, Math.max(0, c.x)) * k, y = Math.min(SIZE, Math.max(0, c.y)) * k; if (i) mg.lineTo(x, y); else mg.moveTo(x, y); }); mg.closePath(); mg.stroke(); }
   }
   function drawOverlay(dt: number): void {
     if (!sim || !view) return; const w = over.clientWidth, h = over.clientHeight; og.clearRect(0, 0, over.width, over.height); const dpr = over.width / Math.max(1, w); og.setTransform(dpr, 0, 0, dpr, 0, 0);
     const m = me(); og.textAlign = 'center';
     for (const e of sim.ents) {
-      if (e.hp <= 0 || e.hero?.dead || !sim.canSee(0, e)) continue; const lift = e.kind === 'hero' ? 2.6 : e.kind === 'nexus' ? 5.4 : e.kind === 'turret' ? 4.6 : e.kind === 'monster' ? 2.6 + e.radius : 1.5; const p = view.project(e.x, e.y, lift); if (!p || p.x < -40 || p.y < -40 || p.x > w + 40 || p.y > h + 40) continue;
+      if (e.hp <= 0 || e.hero?.dead || !sim.canSee(sim.myTeam, e)) continue; const lift = e.kind === 'hero' ? 2.6 : e.kind === 'nexus' ? 5.4 : e.kind === 'turret' ? 4.6 : e.kind === 'monster' ? 2.6 + e.radius : 1.5; const p = view.project(e.x, e.y, lift); if (!p || p.x < -40 || p.y < -40 || p.x > w + 40 || p.y > h + 40) continue;
       if (e.kind === 'hero' || e.kind === 'turret' || e.kind === 'nexus' || e.kind === 'monster' || e.hp < e.maxhp) {
         const bw = e.kind === 'nexus' ? 90 : e.kind === 'turret' ? 56 : e.kind === 'hero' ? 62 : e.kind === 'monster' ? 40 + e.radius * 14 : 26, f = Math.max(0, e.hp / e.maxhp), mine = e.team === m?.team;
         og.fillStyle = 'rgba(0,0,0,.7)'; og.fillRect(p.x - bw / 2 - 1, p.y - 1, bw + 2, e.hero ? 9 : 6); og.fillStyle = e.team === 2 ? '#e0b84a' : mine ? (e.id === m?.id ? '#7cf0a8' : '#4aa0ff') : '#ff5a4a'; og.fillRect(p.x - bw / 2, p.y, bw * f, e.hero ? 7 : 4);
@@ -200,7 +208,7 @@ export function openMoba(onBack: () => void, onExit: () => void, room?: RoomLink
   }
   const gear = (e: Ent): number => e.hero!.items.reduce((a, id) => a + ITEMS[id].cost, 0) + Math.floor(e.hero!.gold);
   const mvpOf = (team: number): number => { let best = 0, bs = -Infinity; for (const e of sim!.heroes(team)) { const h = e.hero!, sc = h.kills * 3 + h.assists * 1.4 - h.deaths * 1.2 + h.dealt / 1500 + h.cs / 40; if (sc > bs) { bs = sc; best = e.id; } } return best; };
-  const teamTable = (team: number, mvp = 0): string => `<table class="mb-table ${team === 0 ? 'tb' : 'tr'}"><thead><tr><th>${team === 0 ? '청 팀' : '적 팀'}</th><th>자리</th><th>Lv</th><th>K/D/A</th><th>CS</th><th>피해량</th><th>골드</th><th>아이템</th></tr></thead><tbody>${sim!.heroes(team).map(e => { const h = e.hero!; return `<tr class="${e.id === sim!.heroIds[0] ? 'me' : ''}"><td>${esc(h.name)}${e.id === sim!.heroIds[0] ? ' (나)' : ''}${e.id === mvp ? ' <em class="mvp">MVP</em>' : ''}</td><td>${LANE_NAME[h.lane]}</td><td>${h.level}</td><td>${h.kills}/${h.deaths}/${h.assists}</td><td>${h.cs}</td><td>${Math.round(h.dealt)}</td><td>${gear(e)}</td><td>${h.items.map(i => esc(ITEMS[i].name.slice(0, 2))).join(' ')}</td></tr>`; }).join('')}</tbody></table>`;
+  const teamTable = (team: number, mvp = 0): string => `<table class="mb-table ${team === 0 ? 'tb' : 'tr'}"><thead><tr><th>${team === 0 ? '청 팀' : '적 팀'}</th><th>자리</th><th>Lv</th><th>K/D/A</th><th>CS</th><th>피해량</th><th>골드</th><th>아이템</th></tr></thead><tbody>${sim!.heroes(team).map(e => { const h = e.hero!; return `<tr class="${e.id === sim!.meId ? 'me' : ''}"><td>${esc(h.name)}${e.id === sim!.meId ? ' (나)' : ''}${e.id === mvp ? ' <em class="mvp">MVP</em>' : ''}</td><td>${LANE_NAME[h.lane]}</td><td>${h.level}</td><td>${h.kills}/${h.deaths}/${h.assists}</td><td>${h.cs}</td><td>${Math.round(h.dealt)}</td><td>${gear(e)}</td><td>${h.items.map(i => esc(ITEMS[i].name.slice(0, 2))).join(' ')}</td></tr>`; }).join('')}</tbody></table>`;
   const objLine = (): string => { const t = sim!.teams; return `<p class="mb-lead">부순 포탑 청 ${9 - t[1].towers} · 적 ${9 - t[0].towers} / 억제기 청 ${t[0].inhibs} · 적 ${t[1].inhibs} / 드래곤 청 ${t[0].drakes} · 적 ${t[1].drakes} / 군주 청 ${t[0].barons} · 적 ${t[1].barons}</p>`; };
   function board(): void {
     if (!sim) return; show(`<div class="mb-card mb-wide"><span class="mb-eyebrow">점수판 · ${clock(sim.tick)}</span><div class="mb-tables">${teamTable(0)}${teamTable(1)}</div>${objLine()}<div class="mb-actions"><button class="primary" data-act="closeModal">닫기</button></div></div>`, 'board');
@@ -229,10 +237,10 @@ export function openMoba(onBack: () => void, onExit: () => void, room?: RoomLink
     show(`<div class="mb-card mb-setup" role="dialog" aria-label="라인전 시작"><span class="mb-eyebrow">FRONTLINE · 라인전</span><h2>소환사의 협곡 4 대 4</h2>
       <p class="mb-lead">챔피언 하나를 직접 조종해 라인을 밀고, 포탑과 억제기를 부수고, 적 넥서스를 무너뜨리세요. 미니언 웨이브·정글·와드 시야·드래곤·군주·상점이 모두 있습니다.</p>
       <div class="mb-champs" role="group" aria-label="챔피언">${CHAMP_IDS.map(cd).join('')}</div>
-      <div class="mb-pick"><span>자리</span><div role="group" aria-label="자리">${ROLES.map(l => `<button type="button" data-lane="${l}" aria-pressed="${l === lane}">${LANE_NAME[l]}</button>`).join('')}</div><span>난이도</span><div role="group" aria-label="난이도">${(Object.keys(LEVELS) as Level[]).map(l => `<button type="button" data-level="${l}" aria-pressed="${l === level}">${LEVELS[l].label}</button>`).join('')}</div></div>
+      <div class="mb-pick">${room ? `<span>팀</span><div role="group" aria-label="팀"><button type="button" data-team="0" aria-pressed="${roomTeam === 0}">청 팀</button><button type="button" data-team="1" aria-pressed="${roomTeam === 1}">적 팀</button></div>` : `<span>자리</span><div role="group" aria-label="자리">${ROLES.map(l => `<button type="button" data-lane="${l}" aria-pressed="${l === lane}">${LANE_NAME[l]}</button>`).join('')}</div>`}<span>난이도</span><div role="group" aria-label="난이도">${(Object.keys(LEVELS) as Level[]).map(l => `<button type="button" data-level="${l}" aria-pressed="${l === level}">${LEVELS[l].label}</button>`).join('')}</div></div>
       <div class="mb-pick"><span>주문 D</span>${spellRow(0)}</div><div class="mb-pick"><span>주문 F</span>${spellRow(1)}</div>
       <div class="mb-pick"><span>룬</span><div role="group" aria-label="룬">${RUNE_IDS.map(id => `<button type="button" data-rune="${id}" aria-pressed="${id === rune}">${RUNES[id].name}</button>`).join('')}</div></div>
-      <p class="mb-lead" id="mb-runenote">${RUNES[rune].desc}</p><p class="mb-lead" id="mb-levelnote">${LEVELS[level].blurb}</p>
+      <p class="mb-lead" id="mb-runenote">${RUNES[rune].desc}</p><p class="mb-lead" id="mb-levelnote">${LEVELS[level].blurb}</p>${room ? '<p class="mb-lead">같은 팀을 고르면 함께 AI와 싸우고, 청·적으로 갈리면 사람끼리 팀 대전입니다. 빈 자리는 AI가 맡아요.</p>' : ''}
       <div class="mb-actions"><button class="primary" data-act="start" id="mb-start">${room ? '준비 완료' : '시작'}</button><button data-act="help">조작법</button><button data-act="back">${room ? '방에서 나가기' : 'RTS 로 돌아가기'}</button></div></div>`, 'setup');
     modal.querySelector<HTMLElement>('#mb-start')?.focus();
   }
@@ -240,8 +248,8 @@ export function openMoba(onBack: () => void, onExit: () => void, room?: RoomLink
   /** 방 모드: 내 선택을 방에 알리고, 방장이 시작 신호를 보내면 같은 시뮬레이션을 만듭니다. */
   function joinRoom(): void {
     if (!room) return; net?.dispose(); netEnded = '';
-    show(`<div class="mb-card"><span class="mb-eyebrow">멀티플레이 방 · 협동 4 대 4</span><h2>다른 플레이어를 기다리는 중…</h2><p class="mb-lead">방 인원(최대 4명)은 청 팀으로 함께 싸우고, 남는 자리와 적 팀은 AI가 맡습니다.</p><div class="mb-actions"><button data-act="back">나가기</button></div></div>`, 'wait');
-    net = new MobaRoomNet(room, { champ, spells: [spells[0], spells[1]], rune }, level, {
+    show(`<div class="mb-card"><span class="mb-eyebrow">멀티플레이 방 · 4 대 4</span><h2>다른 플레이어를 기다리는 중…</h2><p class="mb-lead">방 인원(최대 4명)이 팀을 골라 함께 AI와 싸우거나 청·적으로 나뉘어 사람끼리 대결합니다. 남는 자리는 AI가 맡습니다.</p><div class="mb-actions"><button data-act="back">나가기</button></div></div>`, 'wait');
+    net = new MobaRoomNet(room, { champ, spells: [spells[0], spells[1]], rune, team: roomTeam }, level, {
       onStart: (list, lv) => beginRoom(list, (lv in LEVELS ? lv : 'normal') as Level),
       onGone: id => { const nm = room.players.find(p => p.id === id)?.nickname ?? '플레이어'; if (!ended) { netEnded = `${nm} 님이 나갔습니다`; ended = true; root.dataset.phase = 'over'; show(`<div class="mb-card"><span class="mb-eyebrow">멀티플레이 방</span><h2>대전 종료</h2><p class="mb-lead">${esc(netEnded)}. 락스텝 동기화라 한 명이라도 빠지면 이 판은 끝납니다.</p><div class="mb-actions"><button class="primary" data-act="back">나가기</button></div></div>`, 'result'); } },
       onAbort: () => { show('<div class="mb-card"><span class="mb-eyebrow">멀티플레이 방</span><h2>연결하지 못했어요</h2><p class="mb-lead">방 참가자와 연결되지 않았습니다.</p><div class="mb-actions"><button class="primary" data-act="back">나가기</button></div></div>', 'result'); },
@@ -249,12 +257,16 @@ export function openMoba(onBack: () => void, onExit: () => void, room?: RoomLink
   }
   function beginRoom(list: StartEntry[], lv: Level): void {
     if (!room) return; level = lv; const n = CHAMP_IDS.length, ok = (c: string): ChampId => (CHAMP_IDS as string[]).includes(c) ? c as ChampId : CHAMP_IDS[0], sp = (a: string, b: string): [SpellId, SpellId] => [(SPELL_IDS as string[]).includes(a) ? a as SpellId : 'flash', (SPELL_IDS as string[]).includes(b) ? b as SpellId : 'heal'], ru = (r: string): RuneId => (RUNE_IDS as string[]).includes(r) ? r as RuneId : 'conqueror';
-    const humans = list.map((e, i) => ({ champ: ok(e.champ), lane: ROLES[i], spells: sp(e.spells[0], e.spells[1]), rune: ru(e.rune), human: true }));
-    const bots = ROLES.slice(humans.length).map((l, i) => ({ champ: CHAMP_IDS[(i * 2 + 1) % n], lane: l })), foes = ROLES.map((l, i) => ({ champ: CHAMP_IDS[(i * 2 + 2) % n], lane: l }));
-    const h0 = humans[0]; if (view) { view.dispose(); view = null; }
-    sim = new MobaSim({ player: h0.champ, lane: h0.lane, allies: [...humans.slice(1), ...bots], foes, kit: { spells: h0.spells, rune: h0.rune } }); ais = [new MobaAi(0, level), new MobaAi(1, level)];
-    const mi = Math.max(0, list.findIndex(e => e.id === room.meId)); sim.meId = sim.heroIds[mi]; lane = ROLES[mi]; champ = humans[mi].champ;
-    for (const hh of sim.heroes(1)) hh.hero!.gold = Math.round(hh.hero!.gold * LEVELS[level].goldMul);
+    // 청 팀에 사람이 아무도 없으면 모두를 청 팀으로 모아 협동 판으로 만듭니다(시뮬레이션은 청 팀 사람이 먼저 있어야 합니다).
+    const teamOf = list.some(e => e.team === 0) ? list.map(e => e.team) : list.map(() => 0), side: Array<{ champ: ChampId; lane: Role; spells: [SpellId, SpellId]; rune: RuneId; human: boolean; idx: number }[]> = [[], []];
+    list.forEach((e, i) => { const t = teamOf[i], mine = side[t]; if (mine.length < ROLES.length) mine.push({ champ: ok(e.champ), lane: ROLES[mine.length], spells: sp(e.spells[0], e.spells[1]), rune: ru(e.rune), human: true, idx: i }); });
+    const bots = (t: number): Array<{ champ: ChampId; lane: Role }> => ROLES.slice(side[t].length).map((l, i) => ({ champ: CHAMP_IDS[(i * 2 + 1 + t) % n], lane: l }));
+    const h0 = side[0][0], rest0 = [...side[0].slice(1), ...bots(0)], foes = [...side[1], ...bots(1)]; const pvp = side[1].length > 0;
+    if (view) { view.dispose(); view = null; }
+    sim = new MobaSim({ player: h0.champ, lane: h0.lane, allies: rest0, foes, kit: { spells: h0.spells, rune: h0.rune } }); ais = [new MobaAi(0, level), new MobaAi(1, level)];
+    roomHero = []; side[0].forEach((p, k) => { roomHero[p.idx] = sim!.heroIds[k]; }); side[1].forEach((p, k) => { roomHero[p.idx] = sim!.heroIds[ROLES.length + k]; });
+    const mi = Math.max(0, list.findIndex(e => e.id === room.meId)); sim.meId = roomHero[mi]; const mine = side[teamOf[mi]].find(p => p.idx === mi); lane = mine?.lane ?? ROLES[0]; champ = mine?.champ ?? champ;
+    for (const hh of sim.heroes(1)) if (hh.hero!.bot) hh.hero!.gold = Math.round(hh.hero!.gold * (pvp ? 1 : LEVELS[level].goldMul));
     startView();
   }
   function begin(): void {
@@ -269,16 +281,16 @@ export function openMoba(onBack: () => void, onExit: () => void, room?: RoomLink
     if (!sim) return; const fresh = document.createElement('canvas'); fresh.className = 'mb-canvas'; canvas.replaceWith(fresh); canvas = fresh;
     try { view = new MobaView(canvas, sim, prefs.quality); } catch { show('<div class="mb-card"><h2>그래픽을 시작하지 못했어요</h2><p class="mb-lead">WebGL 을 사용할 수 없습니다. 새로고침하거나 그래픽 가속을 켠 뒤 다시 시도해 주세요.</p><div class="mb-actions"><button class="primary" data-act="back">돌아가기</button></div></div>'); return; }
     ended = false; paused = false; acc = 0; free = false; aimIdx = -1; amove = false; skillKey = itemKey = spellKey = buffKey = objKey = ''; pingMode = null; $('#mb-ping').classList.remove('on'); floats.length = 0; feed.length = 0; hide(); root.dataset.phase = 'play'; resize(); last = performance.now();
-    say(`${LANE_NAME[lane]}에서 시작합니다. 우클릭으로 이동, QWER 로 스킬, D·F 주문, T 와드!`); const m = sim.me(); view.lookAt(m.x, m.y);
+    say(touch ? `${LANE_NAME[lane]}에서 시작합니다. 왼쪽 조이스틱으로 이동, 땅을 누르면 그쪽으로, 스킬 버튼을 눌러 시전하세요!` : `${LANE_NAME[lane]}에서 시작합니다. 우클릭으로 이동, QWER 로 스킬, D·F 주문, T 와드!`); const m = sim.me(); view.lookAt(m.x, m.y);
     // 처음에는 상점에서 장비를 사도록 안내
-    window.setTimeout(() => { if (sim && !ended && sim.tick < 400) hint('기지에서 P 로 상점을 열어 아이템을 사고, 미니언 웨이브를 따라 라인으로 가세요. 레벨업마다 스킬 포인트가 생겨요 (Ctrl+Q/W/E/R)'); window.setTimeout(() => hint(''), 9000); }, 600);
+    window.setTimeout(() => { if (sim && !ended && sim.tick < 400) hint(touch ? '기지에서 상점 버튼으로 아이템을 사고, 미니언 웨이브를 따라 라인으로 가세요. 레벨업하면 스킬 아래 ＋ 로 강화해요' : '기지에서 P 로 상점을 열어 아이템을 사고, 미니언 웨이브를 따라 라인으로 가세요. 레벨업마다 스킬 포인트가 생겨요 (Ctrl+Q/W/E/R)'); window.setTimeout(() => hint(''), 9000); }, 600);
   }
   function finish(): void {
-    if (!sim || ended) return; ended = true; root.dataset.phase = 'over'; const win = sim.winner === 0; audio.sfx(win ? 'victory' : 'defeat');
-    window.setTimeout(() => { if (closed || !sim) return; const h = sim.me().hero!, t = sim.teams, mvp = mvpOf(win ? 0 : 1);
+    if (!sim || ended) return; ended = true; root.dataset.phase = 'over'; const win = sim.winner === sim.myTeam; audio.sfx(win ? 'victory' : 'defeat');
+    window.setTimeout(() => { if (closed || !sim) return; const h = sim.me().hero!, t = sim.teams, mvp = mvpOf(win ? sim.myTeam : 1 - sim.myTeam);
       show(`<div class="mb-card mb-result mb-wide ${win ? 'win' : 'lose'}"><span class="mb-eyebrow">${LEVELS[level].label} · ${clock(sim.tick)}</span><h2>${win ? '승리' : '패배'}</h2><p class="mb-lead">${win ? '적 넥서스를 파괴했습니다.' : '우리 넥서스가 무너졌습니다.'}</p>
         <dl class="mb-stats"><div><dt>K/D/A</dt><dd>${h.kills}/${h.deaths}/${h.assists}</dd></div><div><dt>미니언</dt><dd>${h.cs}</dd></div><div><dt>가한 피해</dt><dd>${Math.round(h.dealt)}</dd></div><div><dt>레벨</dt><dd>${h.level}</dd></div><div><dt>팀 킬</dt><dd>${t[0].kills}:${t[1].kills}</dd></div></dl>
-        <div class="mb-tables">${teamTable(0, win ? mvp : 0)}${teamTable(1, win ? 0 : mvp)}</div>${objLine()}
+        <div class="mb-tables">${teamTable(0, win === (sim.myTeam === 0) ? mvp : 0)}${teamTable(1, win === (sim.myTeam === 1) ? mvp : 0)}</div>${objLine()}
         <div class="mb-actions">${net ? '' : '<button class="primary" data-act="again">다시 하기</button><button data-act="setup">챔피언 선택</button>'}<button ${net ? 'class="primary" ' : ''}data-act="back">${net ? '나가기' : 'RTS 로'}</button></div></div>`, 'result'); }, 1500);
   }
 
@@ -290,14 +302,14 @@ export function openMoba(onBack: () => void, onExit: () => void, room?: RoomLink
     if (!sim || !view || root.dataset.phase === 'setup') return;
     if (annT > 0 && (annT -= dt) <= 0) $('#mb-ann').classList.remove('show');
     if (!ended && !paused) {
-      if (net) { const s = sim; net.pump(dt, () => s.tick, () => { s.step(); for (const a of ais) a.think(s); }, (i, c) => { const id = s.heroIds[i]; if (id !== undefined) s.apply(id, c); }, () => s.winner !== -1); }
+      if (net) { const s = sim; net.pump(dt, () => s.tick, () => { s.step(); for (const a of ais) a.think(s); }, (i, c) => { const id = roomHero[i]; if (id !== undefined) s.apply(id, c); }, () => s.winner !== -1); }
       else { acc += dt; let n = 0; while (acc >= 1 / TICK && n < 6 && sim.winner === -1) { sim.step(); for (const a of ais) a.think(sim); acc -= 1 / TICK; n++; } if (acc > 0.5) acc = 0; }
       if (sim.winner !== -1) finish();
     }
-    const m = sim.me(); const ev = sim.drain(); view.consume(ev, 0);
+    const m = sim.me(); const ev = sim.drain(); view.consume(ev, m.team);
     for (const e of ev) {
       if (e.t === 'dmg') { if (floats.length < 40) floats.push({ x: e.x, y: e.y, amt: e.amt, t: 0, team: e.team, id: e.id }); }
-      else if (e.t === 'announce') { say(e.text, e.team === 1); feed.push({ text: e.text, t: performance.now() }); if (e.team === 1) audio.sfx('alert'); }
+      else if (e.t === 'announce') { say(e.text, e.team !== m.team); feed.push({ text: e.text, t: performance.now() }); if (e.team !== m.team) audio.sfx('alert'); }
       else if (e.t === 'kill') { const k = sim.get(e.killer), v = sim.get(e.victim); feed.push({ text: `${k?.hero?.name ?? (k?.kind === 'turret' ? '포탑' : '미니언')} → ${v?.hero?.name ?? '챔피언'}`, t: performance.now() }); if (e.victim === m.id) say('쓰러졌습니다. 잠시 후 부활합니다', true); else if (e.killer === m.id) { say('처치!'); audio.sfx('built'); } }
       else if (e.t === 'die') audio.sfx(e.kind === 'turret' || e.kind === 'nexus' ? 'bigboom' : 'boom', Math.max(0.1, 1 - Math.hypot(e.x - m.x, e.y - m.y) / 40) * 0.6);
       else if (e.t === 'shot' && e.from === m.id) audio.sfx(e.ranged ? 'bullet' : 'click', 0.5);
@@ -312,13 +324,15 @@ export function openMoba(onBack: () => void, onExit: () => void, room?: RoomLink
     if (aimIdx >= 0 && !m.hero!.dead) { const k = sim.skill(m, aimIdx), g = pointer.in ? view.ground(pointer.x, pointer.y) : null, tgt = g ?? { x: m.x + m.fx * 5, y: m.y + m.fy * 5 }; let ax = tgt.x, ay = tgt.y; const d = Math.hypot(ax - m.x, ay - m.y) || 1;
       if (k.kind === 'shot') { const len = Math.min(k.range, d); ax = m.x + (ax - m.x) / d * len; ay = m.y + (ay - m.y) / d * len; } else if (k.range > 0 && d > k.range) { ax = m.x + (ax - m.x) / d * k.range; ay = m.y + (ay - m.y) / d * k.range; }
       view.setAim({ x: k.range === 0 ? m.x : ax, y: k.range === 0 ? m.y : ay, r: k.radius ?? (k.kind === 'shot' ? 0.6 : 0.9), range: k.range, from: m, color: 0xffe9a0 }); over.style.cursor = 'crosshair'; } else { view.setAim(null); over.style.cursor = amove ? 'crosshair' : 'default'; }
+    if (joyId >= 0 && performance.now() - joyAt > 200) { joyAt = performance.now(); joyDrive(); }
     view.render(dt); uiT += dt; if (uiT > 0.1) { uiT = 0; paintHud(); drawMini(); } drawOverlay(dt);
   }
 
   // ---------- 버튼 ----------
   function exitAll(): void { if (closed) return; closed = true; if (net) { net.bye(); net.dispose(); net = null; } cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); view?.dispose(); audio.dispose(); root.remove(); }
   root.addEventListener('click', e => {
-    const t = (e.target as HTMLElement).closest<HTMLElement>('[data-act],[data-champ],[data-lane],[data-level],[data-buy],[data-spell],[data-rune]'); if (!t) return; audio.unlock();
+    const t = (e.target as HTMLElement).closest<HTMLElement>('[data-act],[data-champ],[data-lane],[data-level],[data-buy],[data-spell],[data-rune],[data-team]'); if (!t) return; audio.unlock();
+    if (t.dataset.team) { roomTeam = t.dataset.team === '1' ? 1 : 0; modal.querySelectorAll<HTMLElement>('[data-team]').forEach(b => b.setAttribute('aria-pressed', String(b === t))); audio.sfx('click'); return; }
     if (t.dataset.champ) { champ = t.dataset.champ as ChampId; modal.querySelectorAll<HTMLElement>('[data-champ]').forEach(b => b.setAttribute('aria-pressed', String(b === t))); audio.sfx('select'); return; }
     if (t.dataset.spell) { const [slot, id] = t.dataset.spell.split(':') as [string, SpellId]; const i = Number(slot), o = 1 - i; if (spells[o] === id) spells[o] = spells[i]; spells[i] = id; setupScreen(); return; }
     if (t.dataset.rune) { rune = t.dataset.rune as RuneId; modal.querySelectorAll<HTMLElement>('[data-rune]').forEach(b => b.setAttribute('aria-pressed', String(b === t))); $('#mb-runenote').textContent = RUNES[rune].desc; audio.sfx('click'); return; }

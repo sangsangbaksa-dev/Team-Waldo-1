@@ -83,7 +83,7 @@ interface Trail { mesh: THREE.Mesh; pos: Float32Array; col: Float32Array; hist: 
 export class RaceView {
   post: PostFx | null = null; readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera = new THREE.PerspectiveCamera(64, 1, 0.4, 3200);
   private crew: CharacterRig[] = []; private cars: CarVis[] = []; private ground!: THREE.Mesh; private pads: Array<{ tex: THREE.CanvasTexture }> = [];
-  private rainFx = new Particles(1800, 0.32, THREE.NormalBlending, 0.55); private sparks = new Particles(260, 0.9, THREE.AdditiveBlending); private smoke = new Particles(220, 1.5, THREE.NormalBlending, 0.22); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
+  private rainFx = new Particles(1800, 0.32, THREE.NormalBlending, 0.55); private sparks = new Particles(260, 0.9, THREE.AdditiveBlending); private smoke = new Particles(220, 1.1, THREE.NormalBlending, 0.18); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
   private camH = 0; private camInit = false; private camAnchor: ChaseAnchor = { x: 0, y: 0, z: 0, ready: false }; private fov = 64; private shake = 0; private punch = 0; private time = 0; private sun: THREE.DirectionalLight;
   private chaseLift = 0; private viewH = 1; private startLamps: THREE.Mesh[] = [];
   private disposables: Array<{ dispose(): void }> = [];
@@ -92,7 +92,7 @@ export class RaceView {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, quality === 'high' ? 2 : quality === 'standard' ? 1.5 : 1));
     this.scene.fog = new THREE.Fog(theme.fog.color, theme.fog.near, theme.fog.far); this.sun = new THREE.DirectionalLight(theme.light.sun, theme.light.sunPower);
-    this.buildSky(); this.buildGround(); this.buildRoad(); this.buildProps(quality);
+    this.buildSky(); if (quality !== 'low') this.buildCarEnv(); this.buildGround(); this.buildRoad(); this.buildProps(quality);
     this.scene.add(new THREE.HemisphereLight(theme.light.sky, theme.light.ground, theme.light.hemi)); this.sun.position.set(-40, 60, 90); this.scene.add(this.sun, this.sun.target);
     this.scene.add(this.sparks.points, this.smoke.points); if (theme.rain) this.scene.add(this.rainFx.points);
     const n = 130; this.streakPos = new Float32Array(n * 6); this.streakSeed = new Float32Array(n * 3);
@@ -102,6 +102,33 @@ export class RaceView {
     this.post = makePost(quality, this.renderer, this.scene, this.camera, { strength: 0.3, radius: 0.5, threshold: 0.96, vignette: 0.3, saturation: 1.1, contrast: 1.06 });
   }
   private carTemplates: Record<string, THREE.Object3D> | null;
+  private carEnv: THREE.Texture | null = null; private carMats = new Map<string, THREE.Material>();
+  /** 하늘을 반사 맵으로 구워 차체 도장·유리에 노을과 하늘이 비치게 합니다. */
+  private buildCarEnv(): void {
+    const sky = this.scene.getObjectByName('sky') as THREE.Mesh | undefined; if (!sky) return;
+    const tmp = new THREE.Scene(), pm = new THREE.PMREMGenerator(this.renderer), m = sky.clone(); m.position.set(0, 0, 0); tmp.add(m);
+    this.carEnv = pm.fromScene(tmp, 0, 1, 4000).texture; pm.dispose();
+  }
+  /** 차체 재질을 광택 도장(클리어코트)·반사 유리·금속으로 바꿉니다. 발광 재질은 그대로 둡니다. */
+  private polishCar(body: THREE.Object3D): void {
+    if (!this.carEnv) return;
+    body.traverse(o => {
+      const mesh = o as THREE.Mesh; if (!mesh.isMesh || Array.isArray(mesh.material)) return;
+      const src = mesh.material as THREE.MeshLambertMaterial; if (!(src as THREE.Material).type.startsWith('MeshLambert')) return;
+      const key = `${src.name}:${src.color.getHexString()}`; let m = this.carMats.get(key);
+      if (!m) {
+        const base = { color: src.color.clone(), envMap: this.carEnv };
+        const n = src.name;
+        m = n === 'Paint' ? new THREE.MeshPhysicalMaterial({ ...base, metalness: 0.5, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.06, envMapIntensity: 0.85 })
+          : n === 'Team' ? new THREE.MeshPhysicalMaterial({ ...base, metalness: 0.3, roughness: 0.4, clearcoat: 0.6, clearcoatRoughness: 0.15, envMapIntensity: 0.9 })
+          : n === 'Glass' ? new THREE.MeshStandardMaterial({ ...base, metalness: 0.85, roughness: 0.06, envMapIntensity: 1.5 })
+          : n === 'Steel' || n === 'Gunmetal' || n === 'White' || n === 'Red' ? new THREE.MeshStandardMaterial({ ...base, metalness: 0.85, roughness: 0.38, envMapIntensity: 0.9 })
+          : new THREE.MeshStandardMaterial({ ...base, metalness: 0.1, roughness: 0.85, envMapIntensity: 0.25 });
+        m.name = n; this.carMats.set(key, m); this.disposables.push(m);
+      }
+      mesh.material = m;
+    });
+  }
   /** 터치 조작이 화면 아래를 가릴 때 차를 버튼 위로 올립니다. */
   setChaseLift(on: boolean): void { this.chaseLift = on ? 1 : 0; }
 
@@ -114,7 +141,7 @@ export class RaceView {
       const group = new THREE.Group(); group.rotation.order = 'YXZ';
       let body: THREE.Object3D;
       const tpl = this.carTemplates?.[r.model];
-      if (tpl) { body = instantiate(tpl, { paint: new THREE.Color(r.color).getHex(), team: new THREE.Color(r.accent).getHex() }); }
+      if (tpl) { body = instantiate(tpl, { paint: new THREE.Color(r.color).getHex(), team: new THREE.Color(r.accent).getHex() }); this.polishCar(body); }
       else { const m = new THREE.Mesh(new THREE.BoxGeometry(CAR_LEN, 1.1, 2), new THREE.MeshLambertMaterial({ color: r.color })); m.position.y = 0.6; body = m; }
       group.add(body);
       const flames: THREE.Mesh[] = [];
@@ -449,7 +476,7 @@ export class RaceView {
       const fl = boosting(c), len = fl ? 1.0 + Math.sin(this.time * 90 + v.racer.id) * 0.25 + Math.min(0.9, speed / 90) : 0.001;
       for (const f of v.flames) { f.scale.x += (len - f.scale.x) * Math.min(1, dt * 20); f.visible = fl || f.scale.x > 0.08; (f.material as THREE.MeshBasicMaterial).color.setHex(v.racer.player ? 0x6ec6ff : 0xffa14a); }
       if (fl && Math.random() < 0.9) this.sparks.emit(c.x - Math.cos(c.h) * 2.4, c.y + 0.5, c.z - Math.sin(c.h) * 2.4, -Math.cos(c.h) * 8 + rnd(-2, 2), rnd(0, 2), -Math.sin(c.h) * 8 + rnd(-2, 2), 0.35, 0.4, 0.8, 1);
-      if (c.drifting || Math.abs(c.slip) > 0.3) for (const s of [-1, 1]) {
+      if (c.drifting) for (const s of [-1, 1]) {
         const bx = c.x - Math.cos(c.h) * 1.4 - Math.sin(c.h) * 0.9 * s * -1, bz = c.z - Math.sin(c.h) * 1.4 + Math.cos(c.h) * 0.9 * s * -1;
         this.smoke.emit(bx, c.y + 0.9, bz, rnd(-1.5, 1.5), rnd(0.5, 2), rnd(-1.5, 1.5), 0.9, 0.55, 0.52, 0.62);
         if (c.drifting && Math.random() < 0.5) this.sparks.emit(bx, c.y + 0.2, bz, rnd(-4, 4) - c.vx * 0.1, rnd(1, 4), rnd(-4, 4) - c.vz * 0.1, 0.4, 1, 0.75, 0.3);
@@ -523,6 +550,6 @@ export class RaceView {
       for (const mat of mats) { once(mat); const maps = mat as THREE.MeshBasicMaterial; once(maps.map); if (maps.alphaMap) once(maps.alphaMap); }
     });
     for (const d of this.disposables) once(d);
-    this.post?.dispose(); this.renderer.dispose();
+    this.carEnv?.dispose(); this.post?.dispose(); this.renderer.dispose();
   }
 }

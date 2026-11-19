@@ -298,4 +298,30 @@ export const MISSIONS: MissionDef[] = [
       });
     },
   },
+  {
+    id: 6, title: '야간 기습', tag: '기습', ai: null, par: 7 * 60, bonus: '병력 손실 8기 이하',
+    blurb: '10분 안에 적 보급 창고 네 곳을 불태워라. 하나를 부술 때마다 적이 증원을 보낸다.',
+    brief: ['소수의 기동 부대로 적 보급 창고(파괴 대상 표시) 네 곳을 부숴야 합니다. 제한 시간은 10분입니다.', '창고 하나가 무너질 때마다 적 본진이 증원을 보내 아군 기지로 몰려옵니다. 한 곳을 부수고 곧장 기지로 돌아가 막을지, 다음 창고를 칠지 정하세요.', '적은 새로 병력을 뽑지 않습니다. 증원은 창고를 부술 때만 오고, 갈수록 강해집니다. 지프 질주(X)로 빠르게 빠지고, 의무병 응급 처치(X)로 버티세요.'],
+    setup(c) {
+      c.base({ minerals: 350, buildings: ['barracks', 'depot', 'depot', 'tower'], army: [['jeep', 4], ['marine', 6], ['rocket', 2], ['medic', 2]] });
+      c.enemy({ minerals: 0, buildings: ['barracks'] });
+      const sites: Array<[number, number]> = [[46, 80], [20, 22], [74, 72], [72, 24]];
+      for (const [x, y] of sites) { c.place(1, 'tower', x + 3, y - 1); c.mark(c.place(1, 'depot', x, y)); }
+      c.objective('burn', '적 보급 창고 4곳을 파괴한다'); c.objective('lean', '병력 손실 8기 이하로 승리', true);
+      const reinforce: Array<[UnitKind, number][]> = [[['marine', 4]], [['marine', 4], ['jeep', 2]], [['tank', 1], ['rocket', 2], ['marine', 3]], [['tank', 2], ['rocket', 3], ['marine', 4]]];
+      const WARN = ['적 증원이 창고 피습에 반응해 출동했습니다', '기동대가 섞인 증원이 몰려옵니다', '전차가 포함된 증원이 출동했습니다', '적 주력이 본진에서 출동했습니다'];
+      c.flag.burned = 0;
+      c.hook(() => {
+        const left = c.targetsLeft(), total = c.targetsTotal(), done = total - left;
+        while (c.flag.burned < done) {
+          const i = c.flag.burned++, hq = c.sim.buildings.find(b => b.owner === 1 && b.kind === 'hq');
+          if (hq && left > 0) { const at = { x: hq.x + 2, y: hq.y + 2 }; c.squad(1, reinforce[Math.min(i, reinforce.length - 1)], at, c.rally); c.events.push({ t: 'wave', text: WARN[Math.min(i, WARN.length - 1)], x: at.x, y: at.y }); }
+        }
+        const rest = Math.max(0, 10 * 60 - Math.floor(c.secs()));
+        c.note('burn', `${done}/${total} 파괴 · 남은 시간 ${Math.floor(rest / 60)}:${String(rest % 60).padStart(2, '0')}`);
+        if (left === 0 && total > 0) { if (c.lostUnits() <= 8) c.complete('lean'); c.complete('burn'); c.win('적 보급 창고를 모두 불태웠습니다.'); }
+        else if (rest === 0) c.lose('제한 시간이 지났습니다');
+      });
+    },
+  },
 ];

@@ -96,7 +96,8 @@ describe('새 도시 사건', () => {
     expect(w.eventsDone).toBe(0);
   });
   it('시간을 넘기면 연속 보너스가 초기화된다', () => {
-    const w = fresh('rescue'); w.eventStreak = 3; tick(w, 30 * 95);
+    const w = fresh('rescue'); w.eventStreak = 3; w.event!.t = 1;
+    updateCityEvents(w);
     expect(w.event).toBeNull(); expect(w.eventStreak).toBe(0); expect(w.eventsDone).toBe(0);
   });
   it('연속 보너스 배율과 이정표 보너스가 지급된다', () => {

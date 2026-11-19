@@ -8,7 +8,8 @@ import { type CharacterKit, type CharacterRig } from '../shared/character';
 import { carEuler, chaseFov, chaseRoll, chaseShake, chevronFacing, stepChaseAnchor, type ChaseAnchor } from './camera';
 import { wrapAngle, boosting, kmh } from './physics';
 import { type RaceState, type Racer } from './race';
-import { type Track } from './track';
+import { nearest, type Track } from './track';
+import { type ItemState } from './items';
 import { type Theme } from './maps';
 import { buildOutposts, type Outpost } from './outpost';
 
@@ -182,6 +183,38 @@ export class RaceView {
       }
     }
     (tr.mesh.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true; (tr.mesh.geometry.attributes.color as THREE.BufferAttribute).needsUpdate = true;
+  }
+
+  /** 코스 위 아이템 상자·오일 얼룩·내 차 실드. 모두 실제 메시이며(글로우 스프라이트 없음) 솔로 레이스에서만 만듭니다. */
+  private itemFx: { crates: THREE.Group[]; oils: THREE.Mesh[]; shield: THREE.Group } | null = null;
+  setItems(it: ItemState | null): void {
+    if (this.itemFx) { for (const o of [...this.itemFx.crates, ...this.itemFx.oils, this.itemFx.shield]) this.scene.remove(o); this.itemFx = null; }
+    if (!it) return;
+    const color = new THREE.Color(this.theme.pad), box = new THREE.BoxGeometry(1.5, 1.5, 1.5), edges = new THREE.EdgesGeometry(box), core = new THREE.OctahedronGeometry(0.46);
+    const shell = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.55, roughness: 0.2, metalness: 0.1, transparent: true, opacity: 0.42, depthWrite: false });
+    const line = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, fog: false }), nucleus = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false });
+    const crates = it.crates.map(c => { const g = new THREE.Group(); g.add(new THREE.Mesh(box, shell), new THREE.LineSegments(edges, line), new THREE.Mesh(core, nucleus)); g.position.set(c.x, c.y + 1.5, c.z); this.scene.add(g); return g; });
+    const slickGeo = new THREE.CircleGeometry(3.1, 28); slickGeo.rotateX(-Math.PI / 2);
+    const slick = new THREE.MeshStandardMaterial({ color: 0x0d0818, emissive: 0x3a1f80, emissiveIntensity: 0.5, roughness: 0.05, metalness: 0.6, transparent: true, opacity: 0.94, polygonOffset: true, polygonOffsetFactor: -3, depthWrite: false });
+    const oils = Array.from({ length: 6 }, () => { const m = new THREE.Mesh(slickGeo, slick); m.visible = false; this.scene.add(m); return m; });
+    const sGeo = new THREE.SphereGeometry(1, 32, 16), shield = new THREE.Group();
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(1, 0.025, 8, 48), new THREE.MeshBasicMaterial({ color: 0xc8ffe0, transparent: true, opacity: 0.55, depthWrite: false, fog: false })); ring.rotation.x = Math.PI / 2;
+    shield.add(new THREE.Mesh(sGeo, new THREE.MeshBasicMaterial({ color: 0x7dffb0, transparent: true, opacity: 0.09, depthWrite: false, fog: false })), ring);
+    shield.scale.set(3.0, 1.25, 1.7); shield.visible = false; this.scene.add(shield);
+    this.itemFx = { crates, oils, shield };
+  }
+  private updateItems(race: RaceState): void {
+    const it = race.items, fx = this.itemFx; if (!it || !fx) return;
+    it.crates.forEach((c, i) => { const g = fx.crates[i]; if (!g) return; g.visible = c.wait <= 0; g.rotation.y = this.time * 1.6 + i; g.rotation.x = Math.sin(this.time * 1.1 + i) * 0.25; g.position.y = c.y + 1.5 + Math.sin(this.time * 2.2 + i) * 0.18; });
+    const road = this.track;
+    fx.oils.forEach((m, i) => {
+      const o = it.oils[i]; m.visible = !!o; if (!o) return;
+      const near = nearest(road, o.x, o.z, o.idx, 8), k = Math.min(1, o.life / 1.5); o.idx = near.i; // 오일이 놓인 자리의 노면 높이·경사를 따라갑니다
+      m.rotation.order = 'YXZ'; m.rotation.y = -Math.atan2(road.tz[near.i], road.tx[near.i]); m.rotation.z = road.pitch[near.i];
+      m.position.set(o.x, road.y[near.i] + 0.1, o.z); m.scale.set(k, 1, k);
+    });
+    const p = race.player.car, on = it.shield > 0; fx.shield.visible = on;
+    if (on) { fx.shield.position.set(p.x, p.y + 0.7, p.z); fx.shield.rotation.y = -p.h; fx.shield.visible = it.shield > 1.5 || Math.sin(this.time * 30) > 0; }
   }
 
   /** 타임어택 고스트: 반투명 하늘색 차 한 대(없으면 null 로 끕니다). */
@@ -499,7 +532,7 @@ export class RaceView {
       }
       if (v.racer.player && wallHit > 0) for (let k = 0; k < 18; k++) this.sparks.emit(c.x, c.y + 0.5, c.z, rnd(-9, 9), rnd(1, 7), rnd(-9, 9), 0.5, 1, 0.8, 0.35);
     }
-    this.sparks.update(dt, 14); this.smoke.update(dt, -1.5);
+    this.sparks.update(dt, 14); this.smoke.update(dt, -1.5); this.updateItems(race);
     if (this.theme.rain) {
       const cp = this.camera.position, n = Math.round(34 * this.theme.rain * Math.min(2, dt * 60));
       for (let i = 0; i < n; i++) this.rainFx.emit(cp.x + rnd(-38, 38), cp.y + rnd(-1, 20), cp.z + rnd(-38, 38), rnd(-3, 3), rnd(-44, -36), rnd(-3, 3), 0.45, 0.62, 0.74, 0.88);

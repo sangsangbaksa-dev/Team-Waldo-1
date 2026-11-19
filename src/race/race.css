@@ -102,3 +102,14 @@
 .rc-board li{display:grid;grid-template-columns:44px 1fr auto;gap:8px;align-items:center;padding:6px 10px;border-radius:8px;background:rgba(255,255,255,.06);font-size:14px}
 .rc-board li.me{background:rgba(255,255,255,.16);font-weight:700}
 .rc-board em{font-style:normal;font-variant-numeric:tabular-nums;opacity:.85}
+
+/* 차고(튜닝) */
+.rc-garage{margin-top:14px;padding:12px;border:1px solid #2c2350;border-radius:12px;background:#08050f}
+.rc-garage-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px}.rc-garage-head h3{margin:0}
+.rc-coins{font-weight:800;color:#ffe45e;font-size:14px}
+.rc-up{display:grid;grid-template-columns:1fr auto 64px;align-items:center;gap:10px;padding:6px 0;border-top:1px solid #1c1636}.rc-up:first-of-type{border-top:0}
+.rc-up-name{font-size:13px;font-weight:600}.rc-up-name small{display:block;font-size:11px;font-weight:400;color:#a99fc8}
+.rc-pips{display:flex;gap:4px}.rc-pips i{width:14px;height:6px;border-radius:2px;background:#2c2350}.rc-pips i.on{background:#7dffe6;box-shadow:0 0 6px #7dffe688}
+.rc-buy{font:inherit;font-size:12px;font-weight:700;padding:7px 0;border-radius:8px;border:1px solid #3d3070;background:#000;color:#ffe45e;cursor:pointer}.rc-buy:disabled{color:#6b6390;cursor:default}.rc-buy:not(:disabled):hover{border-color:#ffe45e}
+.rc-buy:focus-visible{outline:2px solid #7dffe6;outline-offset:2px}
+.rc-reward{margin:0 0 12px;font-weight:800;color:#ffe45e}.rc-reward small{font-weight:500;color:#a99fc8}

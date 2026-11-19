@@ -12,7 +12,6 @@ import { updateActors, updateBullets, updateVehicles, updatePopulation } from '.
 import { thinkFaction, type AiState } from './ai';
 import { INTERIORS, INTERIOR_SPEED, nearCounter, nearDoor, resolveInterior, type InteriorLayout } from './interior';
 import { purchase, type ShopResult } from './shop';
-import { applyCareer, type CareerLevels } from './career';
 
 export const SQUAD_MAX = 5;
 export interface Order { type: 'follow' | 'move' | 'amove' | 'hold' | 'mine' | 'guard' | 'hunt' | 'wander'; x: number; y: number }
@@ -44,7 +43,7 @@ export interface Bullet { x: number; y: number; vx: number; vy: number; life: nu
 export interface Fx { t: string; x: number; y: number; a?: number; b?: number; s?: string; f?: number }
 export interface Crystal { id: number; x: number; y: number; amount: number; max: number }
 export interface PlayerInput { mx: number; my: number; ax: number; ay: number; fire: boolean; dash: boolean; brake: boolean }
-export interface WorldOptions { seed: number; difficulty: Difficulty; klass: ClassId; /** 블랙마켓 보급 단계(솔로 서바이벌에서만 적용) */ career?: CareerLevels; autoPlayer?: boolean; /** 연습 모드: 자기장·라이벌 AI·보급 투하 정지 */ tutorial?: boolean;
+export interface WorldOptions { seed: number; difficulty: Difficulty; klass: ClassId; autoPlayer?: boolean; /** 연습 모드: 자기장·라이벌 AI·보급 투하 정지 */ tutorial?: boolean;
   /** 1대1 결투: 조직 0(나)과 1(상대)만 남고, 상대는 네트워크로 움직이는 꼭두각시입니다. side 는 두 클라이언트가 서로 다른 본부에서 시작하게 합니다. */ duel?: { side: 0 | 1; name: string; /** 1대1 전용 맵 번호(arena.ts). 없으면 큰 도시를 씁니다. 두 클라이언트가 같은 값을 써야 합니다. */ arena?: number; /** 3인 이상 방: seats[i] 는 조직 i 가 쓰는 본부 번호, names[i] 는 이름. 병력 없이 영웅끼리 싸웁니다. */ room?: { seats: number[]; names: string[] } } }
 export interface Quest { text: string; reward: number; done: boolean; check: (w: World) => boolean }
 
@@ -87,7 +86,6 @@ export class World {
       this.factions.push(f);
       if (klass === 'tycoon') { f.cash = 1600; f.mods.income += 0.3; }
       if (klass === 'engineer') f.mods.cost *= 0.8;
-      if (player && opts.career && !opts.tutorial && !opts.duel) f.cash += applyCareer(f.mods, opts.career);
       if (klass === 'warlord') { f.mods.hp += 40; f.slots.push({ id: 'smg', mag: 32, ammo: -1 }); f.cur = 1; }
       const hq = this.addStructure('hq', i, base.x - 60, base.y - 60, true); f.hq = hq.id;
       const boss = this.spawnActor('boss', i, base.x, base.y + 100 * (base.face ?? 1)); f.boss = boss.id; boss.maxHp = this.bossMaxHp(f); boss.hp = boss.maxHp;

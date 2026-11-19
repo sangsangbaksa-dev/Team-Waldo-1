@@ -67,13 +67,6 @@
 .rt-diffs button span { font-size: 11px; color: var(--dim); }
 .rt-diffs button b { font-size: 14px; }
 .rt-diffs button[aria-pressed="true"] { border-color: var(--acc); background: #2a2e34; }
-.rt-armory { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; background: #181b1f; border: 1px solid #2f343a; border-radius: 10px; }
-.rt-armory-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; } .rt-armory-head small { flex-basis: 100%; font-size: 12px; color: var(--dim); }
-.rt-coins { color: #ffd24a; font-weight: 800; }
-.rt-armory-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-.rt-armory-grid button { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 9px 10px; background: #1d2024; border: 1px solid #2f343a; border-radius: 9px; text-align: left; }
-.rt-armory-grid .n { font-weight: 700; font-size: 13px; } .rt-armory-grid .pips { font-size: 11px; letter-spacing: 2px; color: #ffd24a; } .rt-armory-grid .c { font-size: 12px; color: #ffd24a; font-weight: 700; } .rt-armory-grid em { font-style: normal; font-size: 11px; color: var(--dim); line-height: 1.4; }
-.rt-armory-grid button[aria-disabled="true"] { opacity: .5; }
 .rt-diffnote { margin: -4px 0 0; min-height: 40px; font-size: 13px; line-height: 1.55; color: var(--dim); }
 .rt-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .rt-actions.sub button { flex: 0 0 auto; background: transparent; }
@@ -98,7 +91,7 @@
   .rt-cmd { padding: 5px; gap: 4px; } .rt-cmd button b { font-size: 11px; } .rt-cmd button small { font-size: 9px; } .rt-cmd button kbd { display: none; }
   .rt-multi { grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); gap: 4px; } .rt-multi button { font-size: 10px; }
   .rt-res > span { padding: 5px 9px; } .rt-res b { font-size: 14px; } .rt-vs { display: none; }
-  .rt-card { padding: 18px; } .rt-card h2 { font-size: 21px; } .rt-diffs { grid-template-columns: repeat(2, 1fr); } .rt-armory-grid { grid-template-columns: repeat(2, 1fr); }
+  .rt-card { padding: 18px; } .rt-card h2 { font-size: 21px; } .rt-diffs { grid-template-columns: repeat(2, 1fr); }
   .rt-stats { grid-template-columns: repeat(2, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) { .rt-toast, .rt-hint { transition: none; } }

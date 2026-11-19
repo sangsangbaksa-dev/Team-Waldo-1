@@ -386,7 +386,8 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     const win = sim.winner === me, draw = sim.winner === 2; audio.sfx(win ? 'victory' : 'defeat');
     if (pvp) { void conclude(draw ? '' : win ? pvp.s.me.id : pvp.s.opponent.id, draw ? '두 쪽이 동시에 무너졌습니다' : win ? '상대의 모든 건물을 파괴했습니다' : '모든 건물을 잃었습니다'); return; }
     const rec = readRtsRecords(); rec.matches++; if (win) { rec.wins++; const t = Math.floor(sim.tick / TICK); if (!rec.bestWin[difficulty] || t < rec.bestWin[difficulty]) rec.bestWin[difficulty] = t; } rec.difficulty = difficulty; writeRtsRecords(rec);
-    window.setTimeout(() => { if (!closed && ended) resultCard(draw ? null : win, draw ? '무승부입니다' : win ? '적의 모든 건물을 파괴했습니다.' : '모든 건물을 잃었습니다.'); }, 1400);
+    const finished = sim;
+    window.setTimeout(() => { if (!closed && ended && sim === finished) resultCard(draw ? null : win, draw ? '무승부입니다' : win ? '적의 모든 건물을 파괴했습니다.' : '모든 건물을 잃었습니다.'); }, 1400);
   }
 
   // ---------- 시작 ----------

@@ -195,7 +195,12 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
         onMatch: s => {
           const players = s.host ? [s.me, s.opponent] : [s.opponent, s.me];
           startVersus({ meId: s.me.id, players, duel: true, open: s.open, report: winner => {
-            void s.backend.report(s.match.id, winner).catch(() => undefined);
+            void s.backend.report(s.match.id, winner).then(async result => {
+              if (result.status !== 'playing') return;
+              // The backend can settle a claim after 15 seconds without a second report.
+              await new Promise<void>(resolve => window.setTimeout(resolve, 16000));
+              await s.backend.settle(s.match.id);
+            }).catch(() => undefined);
           } });
         },
         onRoom: s => startVersus({ meId: s.me.id, players: s.players, duel: false, open: s.open }),
@@ -217,6 +222,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     });
     begin(false, false);
     sim.clock = TITLE_CLOCK;
+    root.classList.add('ol-online');
     q('#ol-vs').hidden = false;
   }
   function openVsEnd(r: VsResult): void {
@@ -447,7 +453,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
       const seconds = Math.ceil(versus.left);
       const time = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
       const scores = versus.board().map(b => `<span>${esc(b.name)} ${b.kills}</span>`).join(' ');
-      html('vs', `<b>${time}</b> · 목표 ${versus.killLimit}킬<br>${scores}`);
+      html('vs', `<b>${time}</b> · 목표 ${versus.killLimit}킬<div class="ol-vs-scores">${scores}</div>`);
     }
     actorView.handle(events); if (playing) handleEvents(events);
     // 카메라

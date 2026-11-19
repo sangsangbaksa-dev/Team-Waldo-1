@@ -1,7 +1,7 @@
 /* OUTLAW CITY — 네온 누아르 HUD. 마젠타·시안·노랑 포인트, 굵은 이탤릭 대문자, 어두운 유리 패널. */
-.ol-root{--mag:#ff3d81;--cy:#3df2ff;--yel:#ffd23f;--red:#ff4545;--blue:#3b82ff;--grn:#5dff8f;position:fixed;inset:0;z-index:50;background:#06080b;color:#f4f1ea;font-family:'Pretendard Variable',Pretendard,'IBM Plex Sans KR','Noto Sans KR',system-ui,sans-serif;-webkit-user-select:none;user-select:none;overflow:hidden;touch-action:none}
+.ol-root{--mag:#ff3d81;--cy:#3df2ff;--yel:#ffd23f;--red:#ff4545;--blue:#3b82ff;--grn:#5dff8f;position:fixed;inset:0;z-index:50;background:#06080b;color:#f4f1ea;font-family:'Pretendard Variable',Pretendard,'IBM Plex Sans KR','Noto Sans KR',system-ui,sans-serif;-webkit-user-select:none;user-select:none;overflow:hidden}
 .ol-root [hidden]{display:none!important}
-.ol-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.ol-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
 .ol-fx,.ol-hud{position:absolute;inset:0;pointer-events:none}
 .ol-hud button,.ol-modal,.ol-title{pointer-events:auto}
 .ol-vig{position:absolute;inset:0;opacity:0;background:radial-gradient(ellipse at 50% 50%,transparent 40%,rgba(210,20,30,.8) 100%)}
@@ -117,7 +117,7 @@
 .ol-wheel .wc{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font:italic 900 28px system-ui;letter-spacing:.14em;text-shadow:0 2px 8px #000}
 
 /* 타이틀 */
-.ol-title{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:14px;background:radial-gradient(ellipse at 50% 55%,transparent 30%,rgba(5,6,10,.72) 100%),linear-gradient(180deg,rgba(5,6,10,.45),transparent 40%,rgba(5,6,10,.6))}
+.ol-title{position:absolute;inset:0;display:grid;align-content:safe center;justify-content:center;justify-items:center;gap:14px;overflow:auto;padding:12px max(12px,env(safe-area-inset-right)) 12px max(12px,env(safe-area-inset-left));background:radial-gradient(ellipse at 50% 55%,transparent 30%,rgba(5,6,10,.72) 100%),linear-gradient(180deg,rgba(5,6,10,.45),transparent 40%,rgba(5,6,10,.6))}
 .ol-logo{display:grid;justify-items:center;line-height:.9;transform:skewX(-9deg)}
 .ol-logo span{font:italic 900 clamp(54px,12vw,140px)/.95 system-ui;letter-spacing:.06em;color:#fff;-webkit-text-stroke:3px #000;paint-order:stroke fill;text-shadow:0 0 28px #ff3d81aa,4px 4px 0 var(--mag),-3px -2px 0 var(--cy);animation:olglitch 6s infinite}
 .ol-logo .b{color:var(--yel);letter-spacing:.32em;font-size:clamp(34px,8vw,92px)}
@@ -130,7 +130,7 @@
 .ol-btns button,.ol-list .row{cursor:pointer;font:italic 800 17px system-ui;letter-spacing:.1em;text-transform:uppercase;color:#fff;background:rgba(14,16,22,.82);border:1px solid #ffffff40;border-left:5px solid var(--mag);padding:12px 20px;transition:.12s;clip-path:polygon(0 0,100% 0,calc(100% - 10px) 100%,0 100%);text-align:left}
 .ol-btns button:hover,.ol-btns button:focus-visible,.ol-list .row:hover{background:var(--mag);transform:translateX(6px);outline:none}
 .ol-btns .ghost{border-left-color:#889;opacity:.85}.ol-btns .danger{border-left-color:var(--red)}
-.ol-modal{position:absolute;inset:0;z-index:10;display:grid;place-items:center;background:rgba(3,4,8,.62);backdrop-filter:blur(4px);padding:12px;overflow:auto}
+.ol-modal{position:absolute;inset:0;z-index:10;display:grid;place-items:center;background:rgba(3,4,8,.62);backdrop-filter:blur(4px);padding:12px;overflow:auto;overscroll-behavior:contain}
 .ol-card{width:min(560px,94vw);padding:22px 24px;background:linear-gradient(180deg,rgba(18,20,28,.96),rgba(10,12,16,.96));border:1px solid #ffffff22;border-top:4px solid var(--mag);border-radius:4px 4px 16px 16px;box-shadow:0 20px 60px #000c}
 .ol-card.map{width:min(940px,96vw)}.ol-card.map canvas{width:100%;height:auto;max-height:76vh;object-fit:contain;border-radius:8px}
 .ol-card h2{font:italic 900 clamp(26px,5vw,36px) system-ui;letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px}
@@ -212,5 +212,23 @@
 .ol-root button:focus-visible{outline:2px solid #e3bf91;outline-offset:3px}
 @media(prefers-reduced-motion:reduce){.ol-root .ol-prompt{transition:none}.ol-root .ol-stars{animation:none}}
 
-.ol-vs{position:absolute;top:56px;left:50%;transform:translateX(-50%);text-align:center;font:700 13px system-ui;color:#fff;background:rgba(10,12,18,.62);border:1px solid #ffffff30;padding:6px 14px;letter-spacing:.06em;pointer-events:none;z-index:3}
-.ol-vs[hidden]{display:none}.ol-vs b{color:#ff4fa0;font-size:16px}.ol-vs span{margin:0 6px}
+.ol-vs{position:absolute;top:max(14px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);width:max-content;max-width:min(65vw,560px);text-align:center;font:700 13px system-ui;color:#fff;background:rgba(10,12,18,.62);border:1px solid #ffffff30;padding:6px 14px;letter-spacing:.06em;pointer-events:none;z-index:3}
+.ol-vs b{color:#ff4fa0;font-size:16px}
+.ol-vs-scores{display:flex;justify-content:center;flex-wrap:wrap;gap:3px 12px}
+.ol-vs-scores span{max-width:100%;overflow-wrap:anywhere}
+.ol-card.vsend{max-height:calc(100dvh - 24px);overflow-y:auto}
+.ol-title-status{font-size:13px;color:var(--yel)}
+.ol-title .ol-btns button{min-height:44px}
+@media (max-width:640px){
+  .ol-vs{left:max(12px,env(safe-area-inset-left));transform:none;max-width:calc(100vw - 136px);text-align:left;padding:5px 8px}
+  .ol-vs-scores{justify-content:flex-start;gap:3px 8px}
+  .ol-online .ol-toasts{top:max(110px,env(safe-area-inset-top))}
+}
+@media (max-height:560px){
+  .ol-title{gap:8px}
+  .ol-title .ol-logo span{font-size:clamp(38px,14svh,76px)}
+  .ol-title .ol-logo .b{font-size:clamp(26px,10svh,52px)}
+  .ol-title .ol-tag{font-size:13px;letter-spacing:.1em;text-align:center}
+  .ol-title > .ol-btns.v{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;width:min(420px,100%);min-width:0;margin-top:4px}
+  .ol-title .ol-btns button{padding:8px 10px;font-size:14px;letter-spacing:0}
+}

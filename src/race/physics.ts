@@ -24,6 +24,8 @@ export const NITRO_SECONDS = 6.5;
 /** 레이싱카 차체(race.glb)에 맞춘 충돌 반길이·반폭. 원은 옆으로는 너무 넓고 앞뒤로는 너무 짧습니다. */
 export const BODY_HALF_LENGTH = 2.25;
 export const BODY_HALF_WIDTH = 1.02;
+/** 벽에 닿았을 때 차체 방향을 도로 쪽으로 되돌리는 속도(1/s). 크면 코너 벽에 붙습니다. */
+export const WALL_HEADING_RATE = 1.2;
 export const kmh = (c: Pick<CarState, 'vf'>): number => Math.abs(c.vf) * 3.6;
 export const boosting = (c: CarState): boolean => c.boostT > 0;
 
@@ -87,6 +89,11 @@ export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: Car
   c.x += c.vx * dt; c.z += c.vz * dt;
 
   ev.hit = stayOnTrack(c, t, dt, true);
+  // 벽에 붙은 채 미끄러지면 횡그립이 속도를 계속 보탭니다. 최고속은 넘기지 않되, 그 아래의 진행 속도는 깎지 않습니다.
+  if (Math.abs(c.lat) >= t.halfWidth - BODY_HALF_WIDTH - 0.4) {
+    const sp = Math.hypot(c.vx, c.vz);
+    if (sp > maxV) { const s = maxV / sp; c.vx *= s; c.vz *= s; c.vf *= s; c.vl *= s; }
+  }
   c.y += (t.y[c.idx] - c.y) * Math.min(1, dt * 18);
 
   // 부스트 패드
@@ -106,14 +113,13 @@ export function stayOnTrack(c: CarState, t: Track, dt: number, progress: boolean
   if (Math.abs(nr.lat) > limit) {
     const s = Math.sign(nr.lat) || 1, px = -t.tz[nr.i] * s, pz = t.tx[nr.i] * s, over = Math.abs(nr.lat) - limit;
     c.x -= px * over; c.z -= pz * over;
+    // 바깥으로 나가는 성분만 없앱니다. 진행 속도까지 깎거나 차체를 급히 도로 방향으로 돌리면 벽에 붙은 채 속도가 죽습니다.
     const vn = c.vx * px + c.vz * pz;
     if (vn > 0) {
-      c.vx -= px * vn * 1.22; c.vz -= pz * vn * 1.22;
-      const k = 1 - Math.min(0.32, vn * 0.011); c.vx *= k; c.vz *= k; c.drifting = false; c.driftT = 0;
+      c.vx -= px * vn; c.vz -= pz * vn; c.drifting = false; c.driftT = 0;
       if (vn > 2.5 && c.wallT <= 0) { hit = vn; c.wallT = 0.18; }
     }
-    c.vx *= 1 - 0.9 * dt; c.vz *= 1 - 0.9 * dt;
-    const want = Math.atan2(t.tz[nr.i], t.tx[nr.i]); c.h = wrapAngle(c.h + wrapAngle(want - c.h) * Math.min(1, 5 * dt));
+    const want = Math.atan2(t.tz[nr.i], t.tx[nr.i]); c.h = wrapAngle(c.h + wrapAngle(want - c.h) * Math.min(1, WALL_HEADING_RATE * dt));
     c.lat = Math.sign(nr.lat) * limit;
   }
   return hit;

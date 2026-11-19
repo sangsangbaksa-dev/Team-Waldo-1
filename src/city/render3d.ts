@@ -10,6 +10,7 @@ import { buildBuildings, buildPerimeter } from './buildings';
 import type { Models } from './models';
 import { Interior3D } from './interior3d';
 import { EYE_HEIGHT } from './scale';
+import { RAIN_DENSITY, lightLevel } from './clock';
 import { buildReach, clampLabelScreenPos, clampLookPitch, labelSpriteCenter } from './uiMath';
 
 export type ViewMode = 'fp' | 'tp';
@@ -294,10 +295,10 @@ export class Renderer3D {
   /** 카메라 주변에 흩뿌려진 빗줄기. 빗방울 수는 화질에 맞추고, 모션 감소 설정에서는 끕니다. */
   /** 먼 번개: 하늘과 도시를 푸르게 번쩍이게 해 폭풍 전선의 분위기를 만든다. 동작 줄이기 설정에서는 쓰지 않는다. */
   private updateBolt(dt: number): void {
-    if (this.reduced) { this.hemi.intensity = 0.95; return; }
-    this.nextBolt -= dt; if (this.nextBolt <= 0) { this.bolt = 1; this.nextBolt = 11 + Math.random() * 16; }
+    if (this.reduced) { this.hemi.intensity = 0.95 * lightLevel(this.world.phase); return; }
+    this.nextBolt -= dt; if (this.nextBolt <= 0) { this.bolt = 1; this.nextBolt = (this.world.weather === 'storm' ? 4 + Math.random() * 6 : 11 + Math.random() * 16); }
     this.bolt = Math.max(0, this.bolt - dt * 2.6); const f = this.bolt > 0.6 ? 1 : this.bolt > 0.35 ? 0.3 : this.bolt * 0.5;
-    this.hemi.intensity = 0.95 + f * 1.5;
+    this.hemi.intensity = (0.95 + f * 1.5) * lightLevel(this.world.phase);
   }
   private updateRain(dt: number): void {
     if (this.reduced) { if (this.rain) this.rain.visible = false; return; }
@@ -309,7 +310,7 @@ export class Renderer3D {
       this.rain = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0xcfe2ff, transparent: true, opacity: 0.6, depthWrite: false, fog: false }));
       this.rain.frustumCulled = false; this.scene.add(this.rain);
     }
-    this.rain.visible = true;
+    this.rain.visible = true; this.rain.geometry.setDrawRange(0, Math.round(n * 2 * RAIN_DENSITY[this.world.weather]));
     const cp = this.camera.position, fall = EYE_HEIGHT * 26 * dt, len = EYE_HEIGHT * 0.7;
     for (let i = 0; i < n; i++) {
       let y = this.rainSeed[i * 3 + 1] - fall; if (y < 0) y += H; this.rainSeed[i * 3 + 1] = y;

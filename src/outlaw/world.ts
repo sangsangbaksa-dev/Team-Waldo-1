@@ -40,7 +40,7 @@ export function generateCity(seed: number): CityMap {
     ['hosp0', 'hospital', '시립 병원', 7, 8], ['police0', 'police', '중앙 경찰서', 8, 3],
     ['bank0', 'bank', '유니언 은행', 3, 5], ['casino0', 'casino', '미라지 카지노', 5, 5],
     ['chop0', 'chopshop', '항만 해체장', 1, 1], ['garage0', 'garage', '모터 웍스', 9, 9], ['club0', 'club', '블루 아워', 6, 4],
-    ['dealer0', 'dealer', '프레스티지 모터스', 4, 9], ['gym0', 'gym', '스틸 짐', 7, 1], ['arena0', 'arena', '지하 격투장', 0, 8],
+    ['dealer0', 'dealer', '프레스티지 모터스', 4, 9], ['arena0', 'arena', '지하 격투장', 0, 8],
     ['m_delivery', 'start', '배달 의뢰', 2, 10], ['m_theft', 'start', '차량 절도', 10, 3], ['m_debt', 'start', '빚 수금', 3, 7],
     ['m_chase', 'start', '추격 의뢰', 8, 10], ['m_heist', 'start', '은행 작업', 4, 3], ['m_race', 'start', '스트리트 레이스', 10, 6], ['m_boss', 'start', '최후의 거래', 2, 0],
   ];

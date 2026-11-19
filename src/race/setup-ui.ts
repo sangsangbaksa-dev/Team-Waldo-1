@@ -23,6 +23,7 @@ export interface SetupHandle { read(): RaceSetup; destroy(): void }
 
 export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceRecords, garage: { value: Garage }, cb: { onStart: (s: RaceSetup) => void; onExit: () => void; onPvp?: (s: RaceSetup) => void }): SetupHandle {
   let cur = sanitizeSetup(initial);
+  if (!ownsSkin(garage.value, cur.skin)) cur = { ...cur, skin: 'stock' };
   const root = document.createElement('div'); root.className = 'rc-setup'; root.setAttribute('role', 'dialog'); root.setAttribute('aria-label', '레이스 설정');
   const hex = (n: number): string => `#${n.toString(16).padStart(6, '0')}`;
   const mapCard = (m: (typeof MAPS)[number]): string => { const o = outline(m.id); return `<button type="button" class="rc-opt rc-map" data-pick="map:${m.id}" style="--m-sky:${hex(m.theme.light.sky)};--m-fog:${hex(m.theme.fog.color)};--m-ground:${hex(m.theme.light.ground)};--m-line:${hex(m.theme.arch.a)}"><svg viewBox="0 0 120 64" aria-hidden="true"><path d="${o.d}"/></svg><span class="rc-opt-name">${esc(m.name)}</span><span class="rc-opt-sub">${esc(m.place)} · ${o.km}km</span></button>`; };

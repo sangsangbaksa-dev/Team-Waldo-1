@@ -14,6 +14,9 @@
 // 로그인·가입, 무작위 매칭, 방 코드, 랭킹을 한 곳에서 다루는 오버레이. 게임 화면 위에 올라오고, 매칭이 잡히면 PvpSession 을 넘겨줍니다.
 import './net.css';
 import { currentAccount, getBackend, setAccount } from './backend';
+import { openChat, type ChatHandle, type ChatTab } from './chat-dock';
+import type { ChatKey } from './chat';
+import { CHAT_ENABLED } from './config';
 import { GAME_NAMES, errText, type Account, type Backend, type Channel, type GameKind, type MatchRow, type NetMsg, type RankRow, type RoomInfo, type RoomListItem, type RoomRow } from './types';
 
 export interface PvpSession {
@@ -32,6 +35,8 @@ export interface LobbyOptions {
   /** 지정하면 그 게임의 매칭 화면, 없으면 계정·랭킹 화면 */
   game?: GameKind; config?: () => Record<string, unknown>; onMatch?: (s: PvpSession) => void; onClose: () => void;
   /** 처음 보여 줄 안내(예: 인증 링크가 만료됨) */ notice?: string;
+  /** 게임 중 공통 채팅 창을 띄울지(기본 true). 게임이 자체 채팅을 가지고 있으면 false — 로비·방 채팅은 그대로 씁니다. */
+  inGameChat?: boolean;
 }
 
 const esc = (s: string): string => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
@@ -44,6 +49,19 @@ export function openLobby(opts: LobbyOptions): { close(): void } {
   const form: Record<string, string> = {};
   let rooms: RoomListItem[] | null = null, roomInfo: RoomInfo | null = null, roomId = '', roomPoll = 0, pingTimer = 0, listPoll = 0, lastJson = '', launching = false, createMax = 2, createPublic = true;
   const maxP = opts.maxPlayers ?? 2;
+  // 채팅: 게임 로비(게임·전체), 방(방·게임·전체). 게임이 시작되면 로비 층은 치우고 게임 중 채팅으로 넘깁니다.
+  let chat: ChatHandle | null = null;
+  const lobbyTabs = (room?: string): ChatTab[] => opts.game ? [...(room ? [{ key: `r:${room}` as ChatKey, label: '방' }] : []), { key: `g:${opts.game}`, label: `${GAME_NAMES[opts.game]} 로비` }, { key: 'lobby', label: '전체' }] : [];
+  function chatTabs(tabs: ChatTab[]): void {
+    if (!CHAT_ENABLED || !tabs.length) { chat?.close(); chat = null; return; }
+    if (chat) chat.set({ mode: 'lobby', tabs }); else chat = openChat({ mode: 'lobby', tabs });
+  }
+  /** 게임이 매치 채널을 여는 동안 그 매치(방)의 채팅을 띄우고, 채널을 닫으면 함께 치웁니다. */
+  const withChat = (key: ChatKey, label: string, open: (h: (m: NetMsg) => void) => Channel) => (h: (m: NetMsg) => void): Channel => {
+    const ch = open(h); if (!CHAT_ENABLED || opts.inGameChat === false) return ch;
+    const c = openChat({ mode: 'game', tabs: [{ key, label }] });
+    return { ready: ch.ready, send: m => ch.send(m), close: () => { c.close(); ch.close(); } };
+  };
 
   const set = (patch: () => void): void => { patch(); if (!closed) paint(); };
   function failure(e: unknown): void { msg = errText(e); busy = false; if (!closed) paint(); }
@@ -57,19 +75,20 @@ export function openLobby(opts: LobbyOptions): { close(): void } {
     if (!me) { set(() => { screen = 'auth'; }); return; }
     if (opts.game) { try { rate = await backend.rating(opts.game); } catch { rate = null; } }
     set(() => { screen = 'home'; msg = firstEnter ? (opts.notice ?? '') : ''; firstEnter = false; });
-    if (!opts.game) void loadRanks(); else watchList();
+    if (!opts.game) void loadRanks(); else { watchList(); chatTabs(lobbyTabs()); }
   }
   async function loadRanks(): Promise<void> {
     if (!backend) return; ranks = null; paint();
     try { const rows = await backend.leaderboard(rankGame, 20); if (!closed) { ranks = rows; paint(); } } catch (e) { failure(e); }
   }
 
-  async function start(m: MatchRow): Promise<void> {
+  async function start(m: MatchRow, roomId?: string): Promise<void> {
     if (!backend || !me || closed) return;
     const host = m.host_id === me.id, oppId = host ? m.guest_id : m.host_id; if (!oppId) return;
     const b = backend, account = me, nickname = await b.nickname(oppId).catch(() => '상대');
-    if (closed) return; stopPoll(); closed = true; root.remove();
-    opts.onMatch?.({ backend: b, game: m.game, match: m, me: account, host, opponent: { id: oppId, nickname }, open: h => b.open(m.id, h) });
+    if (closed) return; stopPoll(); closed = true; root.remove(); chatTabs([]);
+    const open = withChat(roomId ? `r:${roomId}` : `m:${m.id}`, `${nickname} 님과 대화`, h => b.open(m.id, h));
+    opts.onMatch?.({ backend: b, game: m.game, match: m, me: account, host, opponent: { id: oppId, nickname }, open });
   }
   // 서버가 대기방을 정리하는 시간(무작위 매칭 2분, 방 10분)에 맞춰 화면도 끝냅니다.
   const waitLimit = (m: MatchRow): number => (m.code ? 600 : 120);
@@ -108,10 +127,10 @@ export function openLobby(opts: LobbyOptions): { close(): void } {
   function watchList(): void { stopRoomTimers(); lastJson = ''; rooms = null; void loadRooms(); listPoll = window.setInterval(() => void loadRooms(), 3000); }
   function enterRoom(room: RoomRow): void {
     stopRoomTimers(); roomId = room.id; roomInfo = null; lastJson = ''; launching = false; set(() => { screen = 'room'; msg = ''; });
-    roomPoll = window.setInterval(() => void refreshRoom(), 1000); void refreshRoom();
+    roomPoll = window.setInterval(() => void refreshRoom(), 1000); void refreshRoom(); chatTabs(lobbyTabs(room.id));
     const ping = (): void => { if (backend && roomId) void backend.roomPing(roomId).catch(() => undefined); }; ping(); pingTimer = window.setInterval(ping, 5000);
   }
-  function leftRoom(note: string): void { stopRoomTimers(); roomId = ''; roomInfo = null; set(() => { screen = 'home'; msg = note; }); watchList(); }
+  function leftRoom(note: string): void { stopRoomTimers(); roomId = ''; roomInfo = null; set(() => { screen = 'home'; msg = note; }); watchList(); chatTabs(lobbyTabs()); }
   async function refreshRoom(): Promise<void> {
     const id = roomId; if (!id || !backend || closed || launching) return;
     try {
@@ -125,10 +144,10 @@ export function openLobby(opts: LobbyOptions): { close(): void } {
     if (launching || !backend || !me) return; launching = true; stopRoomTimers(); roomId = '';
     const b = backend, account = me;
     try {
-      if (info.room.match_id) { await start(await b.getMatch(info.room.match_id)); return; }
+      if (info.room.match_id) { await start(await b.getMatch(info.room.match_id), info.room.id); return; }
       if (!opts.onRoom) throw new Error('unsupported');
-      closed = true; root.remove();
-      opts.onRoom({ backend: b, game: info.room.game, room: info.room, me: account, host: info.room.host_id === account.id, players: info.members.map(m => ({ id: m.user_id, nickname: m.nickname })), open: h => b.open(info.room.id, h) });
+      closed = true; root.remove(); chatTabs([]);
+      opts.onRoom({ backend: b, game: info.room.game, room: info.room, me: account, host: info.room.host_id === account.id, players: info.members.map(m => ({ id: m.user_id, nickname: m.nickname })), open: withChat(`r:${info.room.id}`, `방 채팅 · ${info.members.length}명`, h => b.open(info.room.id, h)) });
     } catch (e) { launching = false; failure(e); }
   }
   async function makeRoom(): Promise<void> {
@@ -178,7 +197,7 @@ export function openLobby(opts: LobbyOptions): { close(): void } {
   async function logout(): Promise<void> {
     if (!backend) return; await backend.signOut().catch(() => undefined); me = null; setAccount(null); set(() => { screen = 'auth'; msg = ''; });
   }
-  function close(): void { if (closed) return; closed = true; const rid = launching ? '' : roomId; stopPoll(); if (rid && backend) void backend.roomLeave(rid).catch(() => undefined); if (waiting && backend) void backend.cancelMatch(waiting.id).catch(() => undefined); root.remove(); opts.onClose(); }
+  function close(): void { if (closed) return; closed = true; const rid = launching ? '' : roomId; stopPoll(); if (rid && backend) void backend.roomLeave(rid).catch(() => undefined); if (waiting && backend) void backend.cancelMatch(waiting.id).catch(() => undefined); root.remove(); chatTabs([]); opts.onClose(); }
 
   const title = opts.game ? `${GAME_NAMES[opts.game]} · 온라인 대전` : '계정 · 랭킹';
   const rankTable = (): string => ranks === null ? '<p class="pvp-dim">불러오는 중…</p>' : ranks.length === 0 ? '<p class="pvp-dim">아직 기록된 대전이 없습니다.</p>'

@@ -132,7 +132,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 1대1 대전 ----------
   function openPvpLobby(rooms = false): void {
     if (!PVP_ENABLED) return;
-    void import('../net/lobby').then(({ openLobby }) => openLobby({ game: 'shooter', maxPlayers: rooms ? ROOM_MAX : 2, config: () => (rooms && roomFill ? { seed: (Math.random() * 2 ** 31) >>> 0, mode: 'br', fill: roomFill, level } : { seed: (Math.random() * 2 ** 31) >>> 0, mode: 'duel' }), onMatch: startPvp, onRoom: startRoom, onClose: () => undefined }))
+    void import('../net/lobby').then(({ openLobby }) => openLobby({ game: 'shooter', maxPlayers: rooms ? ROOM_MAX : 2, config: () => (rooms && roomFill ? { seed: (Math.random() * 2 ** 31) >>> 0, mode: 'br', fill: roomFill, level } : { seed: (Math.random() * 2 ** 31) >>> 0, mode: 'duel' }), onMatch: startPvp, onRoom: startRoom, inGameChat: false, onClose: () => undefined }))
       .catch(() => { setupEl.querySelector('.sz-note')!.textContent = '대전 화면을 불러오지 못했습니다. 네트워크를 확인해 주세요.'; });
   }
   function card(eyebrow: string, title: string, body = '', actions = '<button data-act="exit">메뉴로</button>', cls = ''): void {

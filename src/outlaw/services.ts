@@ -1,7 +1,7 @@
 // OUTLAW CITY — 상점·부동산·차고·체육관·병원·보석금 같은 돈 쓰는 서비스와 수입·업적 갱신. Sim 위에서 돌아가는 순수 로직입니다.
 import type { Sim } from './sim';
 import { PLAYER_ID, VEHICLES, type VehicleKind } from './types';
-import { ACHIEVEMENTS, CAR_SHOP, OUTFIT_PRICE, PROPERTIES, PROP_CAP_MIN, SKILLS, SKILL_MAX, propertyRate, skillCost, type SkillId } from './life';
+import { ACHIEVEMENTS, CAR_SHOP, OUTFIT_PRICE, PROPERTIES, PROP_CAP_MIN, propertyRate } from './life';
 import { nearestLane } from './world';
 
 const money = (n: number): string => '$' + Math.floor(n).toLocaleString('en-US');
@@ -54,15 +54,6 @@ export function callCar(sim: Sim, index: number): string {
   sim.addCash(-fee); spawnOwned(sim, index); return `${VEHICLES[car.kind].name} 도착 · 호출비 ${money(fee)}`;
 }
 export const vehicleName = (k: VehicleKind): string => VEHICLES[k].name;
-
-// ---------- 체육관 ----------
-export function train(sim: Sim, id: SkillId): string {
-  const poi = sim.nearPoi(sim.player.x, sim.player.z); if (!poi || poi.kind !== 'gym') return '체육관이 아닙니다';
-  const sk = SKILLS.find(s => s.id === id); if (!sk) return '없는 훈련입니다'; const lv = sim.life.skills[id];
-  if (lv >= SKILL_MAX) return '이미 최대 단계입니다'; const price = sim.price(skillCost(lv)); if (sim.cash < price) return '돈이 부족합니다';
-  sim.addCash(-price); sim.life.skills[id] = lv + 1; sim.refreshPerks(); const p = sim.player; p.maxHp = sim.perk.hp; p.hp = Math.min(p.maxHp, p.hp + 8); sim.clock = (sim.clock + 1.5) % 24;
-  return `${sk.name} ${lv + 1}단계`;
-}
 
 // ---------- 자판기·옷장 ----------
 export function nearVending(sim: Sim): boolean {

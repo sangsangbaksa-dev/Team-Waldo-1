@@ -1,4 +1,5 @@
 import './style.css';
+import { retireUpgradeSaves } from './shared/retire-upgrades';
 import { readPreferences, writePreferences } from './prefs';
 import { showLoading, retry, retryNote } from './loading';
 import { readCityCareer, readRaceRecords, readRtsRecords, fmtTime } from './records';
@@ -89,6 +90,7 @@ const ENTRIES: Entry[] = [
   },
 ];
 
+retireUpgradeSaves();
 const app = document.querySelector<HTMLDivElement>('#game')!;
 let generation = 0;
 let unsubscribeAccount: (() => void) | undefined;

@@ -10,7 +10,7 @@ const POI_STYLE: Record<PoiKind, { icon: string; color: string }> = {
   casino: { icon: '◆', color: '#ff3d81' }, garage: { icon: '⚙', color: '#c7d0d3' },
   chopshop: { icon: '⚒', color: '#ff805e' }, club: { icon: '♫', color: '#df70ff' },
   dock: { icon: '⚓', color: '#3df2ff' }, park: { icon: '♣', color: '#78d78c' }, start: { icon: 'M', color: '#ffd23f' },
-  dealer: { icon: '🚗', color: '#ffd23f' }, gym: { icon: 'H', color: '#ff8a5e' }, arena: { icon: 'F', color: '#ff4545' },
+  dealer: { icon: '🚗', color: '#ffd23f' }, arena: { icon: 'F', color: '#ff4545' },
 };
 const DISTRICT_KO: Record<string, string> = { downtown: '다운타운', commercial: '상업 지구', residential: '주거 지구', industrial: '공업 지구', park: '공원 지구' };
 

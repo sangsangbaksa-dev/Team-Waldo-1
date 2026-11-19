@@ -19,6 +19,9 @@ describe('SPEED RUSH 선택 화면', () => {
     expect(document.querySelectorAll('[data-pick^="car:"]')).toHaveLength(8);
     expect(document.querySelectorAll('[data-pick].on')).toHaveLength(6);
     expect(document.body.textContent).toContain('데저트 하이웨이');
+    expect(document.querySelector('[data-buy]')).toBeNull();
+    expect(document.body.textContent).not.toContain('튜닝');
+    expect(document.querySelector('[data-buyskin]')).not.toBeNull();
   });
 
   it('고른 값으로 출발한다', () => {

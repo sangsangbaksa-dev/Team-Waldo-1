@@ -1,9 +1,9 @@
-// OUTLAW CITY — 주인공 선택·휴대폰·자동차 매장·체육관·카지노 화면. HTML 문자열을 만들고 버튼 동작을 시뮬레이션에 연결합니다.
+// OUTLAW CITY — 주인공 선택·휴대폰·자동차 매장·카지노 화면. HTML 문자열을 만들고 버튼 동작을 시뮬레이션에 연결합니다.
 import type { Sim } from './sim';
-import { OUTFITS, ACHIEVEMENTS, CAR_SHOP, HEROES, PROPERTIES, SKILLS, SKILL_MAX, heroById, skillCost } from './life';
+import { OUTFITS, ACHIEVEMENTS, CAR_SHOP, HEROES, PROPERTIES, heroById } from './life';
 import { VEHICLES } from './types';
 import { JOB_LIST, cancelJob, jobBlock, startJob } from './jobs';
-import { bribe, setOutfit, buyCar, buyProperty, callCar, collectProperties, train, vehicleName } from './services';
+import { bribe, setOutfit, buyCar, buyProperty, callCar, collectProperties, vehicleName } from './services';
 import { Blackjack, HILO_STEP, SLOT_SYMBOLS, cardLabel, coinFlip, handValue, hiloDeal, hiloGuess, hiloValue, rouletteColor, rouletteSpin, slotSpin, type HiLo, type RouletteBet } from './casino';
 import { MISSION_LIST } from './missions';
 
@@ -24,7 +24,7 @@ export class OutlawUi {
   private get sim(): Sim { return this.getSim()!; }
 
   render(kind: string): string {
-    if (kind === 'hero') return this.hero(); if (kind === 'phone') return this.phone(); if (kind === 'dealer') return this.dealer(); if (kind === 'gym') return this.gym(); if (kind === 'casino') return this.casino();
+    if (kind === 'hero') return this.hero(); if (kind === 'phone') return this.phone(); if (kind === 'dealer') return this.dealer(); if (kind === 'casino') return this.casino();
     return '';
   }
 
@@ -66,13 +66,11 @@ export class OutlawUi {
   }
   private me(s: Sim): string {
     const h = heroById(s.life.hero), c = s.life.counters;
-    const skills = SKILLS.map(k => `<div><b>${k.name}</b> ${'★'.repeat(s.life.skills[k.id])}${'☆'.repeat(SKILL_MAX - s.life.skills[k.id])}<small>${k.desc}</small></div>`).join('');
     const st: Array<[string, string]> = [['보유 현금', money(s.cash)], ['쓰러뜨린 수', String(s.kills)], ['완료한 의뢰', `${s.mission.completed.length}/${MISSION_LIST.length}`], ['스턴트 점프', `${s.activity.stunts.length}/12`],
       ['숨겨진 꾸러미', `${s.collected.size}/30`], ['스타일 누적', money(s.activity.style.total)], ['택시 손님', String(c.taxi ?? 0)], ['배달', String(c.courier ?? 0)], ['응급 이송', String(c.paramedic ?? 0)], ['자경단', String(c.vigilante ?? 0)],
       ['현상 의뢰', String(c.contracts ?? 0)], ['격투 승리', String(c.fights ?? 0)], ['소매치기', String(c.pickpocket ?? 0)], ['카지노 총 판돈', money(c.wagered ?? 0)], ['플레이 시간', `${Math.floor(s.playSec / 60)}분`]];
     const fee = s.price(900 * Math.max(1, s.wanted.stars));
     return `<div class="herobox"><i class="sw" style="background:${hex(CLOTH[h.variant]!)}">${esc(h.name.slice(-2, -1))}</i><div><b>${esc(h.name)}</b> · ${esc(h.job)}<small>${esc(h.perkText)}</small></div></div>
-      <h3>능력치</h3><div class="skills">${skills}</div><p class="empty">체육관 STEEL GYM 에서 훈련할 수 있습니다.</p>
       <h3>기록</h3><div class="stats">${st.map(([a, b]) => `<div><span>${a}</span><b>${b}</b></div>`).join('')}</div>
       <h3>옷장 (${money(s.price(60))})</h3><div class="outfits">${OUTFITS.map((c, i) => `<button class="sw-b${s.life.outfit === i ? ' on' : ''}" data-ui="outfit" data-id="${i}" type="button" style="background:${hex(c)}" aria-label="옷 ${i + 1}"></button>`).join('')}</div>
       <h3>서비스</h3><div class="row2"><div><b>경찰 매수</b><small>${s.wanted.stars ? `수배 ${s.wanted.stars}★ · ${money(fee)} (경찰 시야 밖에서)` : '수배 중일 때 사용'}</small></div><button data-ui="bribe" type="button"${s.wanted.stars ? '' : ' disabled'}>뇌물</button></div>`;
@@ -86,11 +84,6 @@ export class OutlawUi {
     const s = this.sim, rows = CAR_SHOP.map((o, i) => { const own = s.life.cars.some(c => c.kind === o.kind), d = VEHICLES[o.kind]; return `<button class="row" data-ui="buycar" data-id="${i}" type="button"${own ? ' disabled' : ''}><b>${esc(d.name)}</b><span>최고 ${Math.round(d.top * 3.6)} km/h · 내구 ${d.hp}</span><em>${own ? '보유 중' : money(s.price(o.price))}</em></button>`; }).join('');
     return `<h2>PRESTIGE MOTORS</h2><p class="cash">보유 ${money(s.cash)}</p><div class="ol-list">${rows}</div><div class="ol-btns"><button data-k="resume" type="button">나가기</button></div>`;
   }
-  private gym(): string {
-    const s = this.sim, rows = SKILLS.map(k => { const lv = s.life.skills[k.id], max = lv >= SKILL_MAX; return `<button class="row" data-ui="train" data-id="${k.id}" type="button"${max ? ' disabled' : ''}><b>${k.name} ${lv}/${SKILL_MAX}</b><span>${k.desc}</span><em>${max ? '최대' : money(s.price(skillCost(lv)))}</em></button>`; }).join('');
-    return `<h2>STEEL GYM</h2><p class="cash">보유 ${money(s.cash)}</p><div class="ol-list">${rows}</div><div class="ol-btns"><button data-k="resume" type="button">나가기</button></div>`;
-  }
-
   // ---------- 카지노 ----------
   private casino(): string {
     const s = this.sim, tabs = ([['slots', '슬롯'], ['bj', '블랙잭'], ['roulette', '룰렛'], ['coin', '동전'], ['hilo', '하이로']] as const).map(([id, n]) => `<button class="tab${id === this.casinoTab ? ' on' : ''}" data-ui="ctab" data-id="${id}" type="button">${n}</button>`).join('');
@@ -136,7 +129,6 @@ export class OutlawUi {
       case 'outfit': return me('phone', setOutfit(s, Number(id)));
       case 'bribe': return me('phone', bribe(s));
       case 'buycar': return me('dealer', buyCar(s, Number(id)));
-      case 'train': return me('gym', train(s, id as never));
       case 'ctab': this.casinoTab = id as never; this.note = ''; return me('casino');
       case 'bet': this.bet = Number(id); return me('casino');
       case 'spin': { if (!this.take()) return me('casino'); const r = slotSpin(s.rng, this.bet); this.reels = r.reels; if (r.payout) s.addCash(r.payout); if (r.jackpot) s.count('jackpot'); this.note = r.payout ? `${r.note} · +${money(r.payout)}` : r.note; return { kind: 'casino', sound: r.payout ? 'cash' : undefined }; }

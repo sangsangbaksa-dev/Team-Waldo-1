@@ -3,7 +3,6 @@ import { AIR, BOOST, BOTS, BOT_NAMES, DIFFICULTIES, DRIVE, HELMET_CUT, HEAL, ARM
 import { blockedAt, circleHits, generateMap, lineClear, moveBox, pushOut, rayWorld, slideMove, type GameMap, type Loot } from './world';
 import { WATER_SLOW, waterDepth } from './terrain';
 import { thinkBot, thinkAir, newBrain, type BotBrain } from './bot';
-import { noPerks, perkMul, type Perks } from './perks';
 
 export interface Input { mx: number; mz: number; yaw: number; pitch: number; fire: boolean; sprint: boolean; reload: boolean; interact: boolean; ads: boolean; slot: number; /** 수류탄 던지기(눌린 프레임) */ nade?: boolean; /** 웅크리기(누르고 있는 동안) */ crouch?: boolean; /** 점프(비행기에서 뛰어내리기) · 낙하산 펴기 */ jump?: boolean; /** 치료 시작: 1 붕대 · 2 구급상자 */ heal?: number }
 export const blankInput = (): Input => ({ mx: 0, mz: 0, yaw: 0, pitch: 0, fire: false, sprint: false, reload: false, interact: false, ads: false, slot: -1 });
@@ -48,7 +47,7 @@ export interface Player {
   /** 웅크린 정도 0(서 있음)~1(완전히 웅크림) */ crouch: number; walk: number; kick: number; muzzle: number; hurt: number; hurtYaw: number; ads: boolean; speed: number; lastHitBy: number; emptyT: number;
   /** 수류탄 개수·재사용 대기 */ nades: number; nadeCd: number; nadeHeld: boolean;
   /** 치료 도구 개수 · 시전 남은 시간(0이면 안 하는 중)과 종류 · 방탄복 등급 */ bandages: number; kits: number; healT: number; healKind: 'bandage' | 'kit'; armorLv: number;
-  /** 경기 기록: 준 피해 · 머리 명중 수 · 나를 쓰러뜨린 선수와 무기 */ dmgDealt: number; heads: number; killedBy: number; killedWeapon: Cause | null; /** 강화 단계(사람 선수만) */ perks: Perks; /** 타고 있는 차량 번호(-1 없음) */ veh: number;
+  /** 경기 기록: 준 피해 · 머리 명중 수 · 나를 쓰러뜨린 선수와 무기 */ dmgDealt: number; heads: number; killedBy: number; killedWeapon: Cause | null; /** 타고 있는 차량 번호(-1 없음) */ veh: number;
 }
 export type MatchEvent =
   | { t: 'shot'; id: number; weapon: WeaponId; ox: number; oy: number; oz: number; ends: number[]; remote: boolean; sup?: boolean }
@@ -69,7 +68,7 @@ export type MatchEvent =
 
 export interface ZoneState { cx: number; cz: number; r: number; nextCx: number; nextCz: number; nextR: number; shrinking: boolean; phase: number; timeLeft: number; dps: number }
 
-export interface MatchOptions { seed: number; mode: Mode; difficulty: Difficulty; /** 사람(또는 원격) 선수 이름들. 나머지는 봇이 채웁니다. */ humans: Array<{ name: string; remote?: boolean }>; fill?: number; /** 비행기에서 낙하산으로 시작(배틀로열). 꺼 두면 땅에서 시작합니다. */ air?: boolean; /** 운전할 수 있는 차량(배틀로열) */ vehicles?: boolean; /** 폭격 구역(배틀로열) */ bombs?: boolean; /** 첫 번째 사람 선수의 강화 단계(솔로 전용) */ perks?: Perks; /** 솔로 총기 구성 */ loadout?: Loadout;
+export interface MatchOptions { seed: number; mode: Mode; difficulty: Difficulty; /** 사람(또는 원격) 선수 이름들. 나머지는 봇이 채웁니다. */ humans: Array<{ name: string; remote?: boolean }>; fill?: number; /** 비행기에서 낙하산으로 시작(배틀로열). 꺼 두면 땅에서 시작합니다. */ air?: boolean; /** 운전할 수 있는 차량(배틀로열) */ vehicles?: boolean; /** 폭격 구역(배틀로열) */ bombs?: boolean; /** 솔로 총기 구성 */ loadout?: Loadout;
   /** 온라인 방에서 AI·차량·차 내구도를 이 브라우저가 계산하는지(방장). false 면 AI 는 받은 위치를 따라가는 꼭두각시입니다. 기본 true. */ authority?: boolean;
   /** 이 브라우저가 새로 만드는 전리품 번호의 시작(온라인에서 참가자마다 겹치지 않게). 기본 0. */ lootBase?: number }
 
@@ -129,7 +128,7 @@ export class Match {
         x: sp.x, z: sp.z, yaw: air ? Math.atan2(this.plane!.dz, this.plane!.dx) : Math.atan2(-sp.z, -sp.x), pitch: 0, vx: 0, vz: 0, hp: PLAYER.hp, armor: 0, helmet: 0, boost: 0, alive: true,
         guns: [{ id: 'pistol', mag: magOf('pistol', pistolAtt), reserve: WEAPONS.pistol.mag * 2, att: { ...pistolAtt } }, null], cur: 0, reload: 0, cd: 0.4, fireHeld: false, interactHeld: false,
         kills: 0, place: 0, diedAt: 0, input: blankInput(), brain: null, air: air ? 1 : 0, alt: air ? AIR.alt : 0, jumpHeld: false, landedAt: 0, crouch: 0, walk: 0, kick: 0, muzzle: 0, hurt: 0, hurtYaw: 0, ads: false, speed: 0, lastHitBy: -1, emptyT: 0, nades: 0, nadeCd: 0, nadeHeld: false,
-        bandages: 0, kits: 0, healT: 0, healKind: 'bandage', armorLv: 0, dmgDealt: 0, heads: 0, killedBy: -1, killedWeapon: null, perks: !h || i > 0 || !o.perks ? noPerks() : { ...o.perks }, veh: -1,
+        bandages: 0, kits: 0, healT: 0, healKind: 'bandage', armorLv: 0, dmgDealt: 0, heads: 0, killedBy: -1, killedWeapon: null, veh: -1,
       };
       if (p.bot) { p.brain = newBrain(this.rng, BOTS[o.difficulty]); if (air) this.planDrop(p); }
       p.input.yaw = p.yaw; this.players.push(p);
@@ -400,7 +399,7 @@ export class Match {
       const fx = Math.cos(p.yaw), fz = Math.sin(p.yaw), rx = -fz, rz = fx;
       let wx = fx * inp.mz + rx * inp.mx, wz = fz * inp.mz + rz * inp.mx; const wl = Math.hypot(wx, wz); if (wl > 1) { wx /= wl; wz /= wl; }
       p.crouch += ((inp.crouch && p.air === 0 ? 1 : 0) - p.crouch) * Math.min(1, dt * 12);
-      const wet = waterDepth(this.map.terrain, p.x, p.z), run = inp.sprint && inp.mz > 0.2 && !p.ads && wet < 2 && p.crouch < 0.3 && p.healT <= 0, top = (run ? PLAYER.sprint : PLAYER.walk) * WATER_SLOW[wet] * (1 - (1 - PLAYER.crouchSpeed) * p.crouch) * (p.ads ? 0.6 : 1) * (p.healT > 0 ? HEAL.walk : 1) * (p.bot ? BOTS[this.difficulty].speed : 1) * (p.boost > 0 ? BOOST.speed : 1) * perkMul.speed(p.perks);
+      const wet = waterDepth(this.map.terrain, p.x, p.z), run = inp.sprint && inp.mz > 0.2 && !p.ads && wet < 2 && p.crouch < 0.3 && p.healT <= 0, top = (run ? PLAYER.sprint : PLAYER.walk) * WATER_SLOW[wet] * (1 - (1 - PLAYER.crouchSpeed) * p.crouch) * (p.ads ? 0.6 : 1) * (p.healT > 0 ? HEAL.walk : 1) * (p.bot ? BOTS[this.difficulty].speed : 1) * (p.boost > 0 ? BOOST.speed : 1);
       const k = Math.min(1, dt * (wl > 0.05 ? 15 : 22)); p.vx += (wx * top - p.vx) * k; p.vz += (wz * top - p.vz) * k;
       if (slideMove(this.map, p, p.vx * dt, p.vz * dt, PLAYER.radius)) { /* 벽에 닿은 쪽 속도는 죽입니다 */ if (blockedAt(this.map, p.x + Math.sign(p.vx) * 0.05, p.z, PLAYER.radius)) p.vx = 0; if (blockedAt(this.map, p.x, p.z + Math.sign(p.vz) * 0.05, PLAYER.radius)) p.vz = 0; }
       const lim = this.map.half - 1; p.x = Math.max(-lim, Math.min(lim, p.x)); p.z = Math.max(-lim, Math.min(lim, p.z));
@@ -425,7 +424,7 @@ export class Match {
     const gun = p.guns[p.cur]; if (gun && !gun.att) gun.att = {};
     if (gun && def) {
       if (p.reload > 0) { p.reload -= dt; if (p.reload <= 0) { p.reload = 0; const n = Math.min(magOf(def.id, gun.att) - gun.mag, gun.reserve); gun.mag += n; gun.reserve -= n; } }
-      else if ((inp.reload && gun.mag < magOf(def.id, gun.att) && gun.reserve > 0) || (gun.mag === 0 && gun.reserve > 0 && inp.fire)) { p.reload = def.reload * partHandling(gun.att).reload * perkMul.reload(p.perks); this.events.push({ t: 'reload', id: p.id }); }
+      else if ((inp.reload && gun.mag < magOf(def.id, gun.att) && gun.reserve > 0) || (gun.mag === 0 && gun.reserve > 0 && inp.fire)) { p.reload = def.reload * partHandling(gun.att).reload; this.events.push({ t: 'reload', id: p.id }); }
       if (inp.fire && p.cd <= 0 && p.reload <= 0 && (def.auto || !p.fireHeld)) {
         if (gun.mag > 0) this.shoot(p, gun, def.id); else if (p.emptyT <= 0) { p.emptyT = 0.5; this.events.push({ t: 'empty', id: p.id }); }
       }
@@ -520,7 +519,7 @@ export class Match {
 
   private shoot(p: Player, gun: Gun, id: WeaponId): void {
     const def = WEAPONS[id]; gun.mag--; p.cd = def.cd; p.kick = Math.min(1, p.kick + def.recoil * 12); p.muzzle = 0.06;
-    const h0 = partHandling(gun.att), st = perkMul.steady(p.perks), h = { spread: h0.spread * st, kick: h0.kick * st }, quiet = gun.att.muzzle === 'suppressor';
+    const h = partHandling(gun.att), quiet = gun.att.muzzle === 'suppressor';
     p.kick = Math.max(0, p.kick - def.recoil * 12 * (1 - h.kick));
     const moving = Math.min(1.6, p.speed / PLAYER.walk), spread = def.spread * h.spread * (p.ads ? adsSpread(gun.att) : 1) * (1 + moving * 0.5) * (1 + p.kick * 0.5) * (1 - 0.22 * p.crouch);
     const ox = p.x, oy = eyeOf(p), oz = p.z, ends: number[] = [];
@@ -570,7 +569,7 @@ export class Match {
 
   damage(q: Player, dmg: number, by: number, weapon: Cause, head: boolean, x: number, y: number, z: number, silent: boolean): void {
     if (!q.alive) return;
-    const real = !q.remote; if (real && weapon !== 'zone') dmg *= perkMul.tough(q.perks); if (real && head && q.helmet > 0) dmg *= 1 - HELMET_CUT[q.helmet]; let hp = dmg;
+    const real = !q.remote; if (real && head && q.helmet > 0) dmg *= 1 - HELMET_CUT[q.helmet]; let hp = dmg;
     if (real && weapon !== 'zone' && q.armor > 0) { const soak = Math.min(q.armor, dmg * ARMOR_ABS[q.armorLv || 2]); q.armor -= soak; hp = dmg - soak; if (q.armor <= 0) { q.armor = 0; q.armorLv = 0; } }
     if (weapon !== 'zone' && by >= 0 && by !== q.id) { const a = this.players[by]; if (a) { a.dmgDealt += Math.min(dmg, Math.max(0, q.hp + 40)); if (head) a.heads++; } }
     if (real && weapon !== 'zone' && q.healT > 0) { q.healT = 0; this.events.push({ t: 'heal', id: q.id, stage: 'cancel', kind: q.healKind }); }

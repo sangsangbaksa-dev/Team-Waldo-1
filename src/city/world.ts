@@ -7,6 +7,7 @@ import {
 import { generateArena } from './arena';
 import { addSolid, clearLine, generateCity, makeRng, navBlocked, rectFree, removeSolid, resolveCircle, type CityMap, type Rng } from './map';
 import { canPlaceAt, demolishRefund, demolishReject } from './placement';
+import { updateCityEvents, type CityEvent } from './events';
 import { updateActors, updateBullets, updateVehicles, updatePopulation } from './actors';
 import { thinkFaction, type AiState } from './ai';
 import { INTERIORS, INTERIOR_SPEED, nearCounter, nearDoor, resolveInterior, type InteriorLayout } from './interior';
@@ -66,6 +67,7 @@ export class World {
   inside: { biz: number; x: number; y: number; ang: number; walk: number } | null = null;
   /** 결투 중 내 보스가 쏜 탄을 상대에게 알립니다. */
   onShot: ((x: number, y: number, ang: number, w: WeaponId, mul: number) => void) | null = null;
+  /** 진행 중인 도시 사건과 다음 사건까지의 대기(초) */ event: CityEvent | null = null; eventT = 20; eventsDone = 0;
   planes: { x: number; y: number; vx: number; vy: number; tx: number; ty: number; dropped: boolean }[] = [];
 
   constructor(opts: WorldOptions) {
@@ -686,6 +688,7 @@ export class World {
     }
     if (!this.opts.tutorial) for (const q of this.quests) if (!q.done && q.check(this)) { q.done = true; this.factions[0].cash += q.reward; this.fx('quest', 0, 0, q.reward, q.text); }
     if (!this.opts.duel) updatePopulation(this, false);
+    updateCityEvents(this);
   }
   updateZone(dt: number): void {
     if (this.opts.tutorial) return;

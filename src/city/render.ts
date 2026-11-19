@@ -1,5 +1,6 @@
 // LAST CITY — 캔버스 렌더러 (유사 3D 건물, 파티클, 자기장, 미니맵)
 import { ACTORS, BIZ, BLOCK, BLOCKS, CIV, FACTIONS, PITCH, POLICE, ROAD, SIZE, STRUCTS, WEAPONS, type StructKind } from './defs';
+import { EVENT_INFO } from './events';
 import { HQ_BUILD_RANGE, structCenter } from './placement';
 import { declutterFromAreaChip } from './uiMath';
 import type { Actor, Fx, Vehicle, World } from './world';
@@ -112,6 +113,7 @@ export class Renderer {
     if (pb) { // 화면 밖 지시 화살표
       const zn = w.zone; if (Math.hypot(pb.x - zn.nx, pb.y - zn.ny) > zn.nr && zn.nr < 3800) this.arrow(zn.nx, zn.ny, '#c9a2ff', '안전지대');
       for (const l of w.loot) if (l.alive && l.type === 'crate') this.arrow(l.x, l.y, '#ffe27a', '보급');
+      if (w.event) this.arrow(w.event.x, w.event.y, EVENT_INFO[w.event.kind].color, EVENT_INFO[w.event.kind].name);
       const hq = w.hq(0); if (hq && w.time - hq.hurtT < 4) this.arrow(hq.x + 60, hq.y + 60, '#ff6b6b', '본부 피격!');
     }
   }
@@ -280,6 +282,7 @@ export class Renderer {
     for (const a of w.actors) { if (!a.alive || a.f === CIV) continue; if (a.kind === 'boss') continue; if (a.f !== 0 && !(pb && Math.hypot(a.x - pb.x, a.y - pb.y) < 1000)) continue; g.fillStyle = fcolor(a.f); g.fillRect(a.x * k - 1, a.y * k - 1, big ? 3 : 2, big ? 3 : 2); }
     for (const l of w.loot) if (l.alive && l.type === 'crate') { g.fillStyle = '#ffe27a'; g.beginPath(); g.arc(l.x * k, l.y * k, (big ? 7 : 4) + Math.sin(this.t * 6) * 1.5, 0, 6.29); g.fill(); }
     for (const f of w.factions) { const b = w.boss(f.id); if (!b) continue; if (w.opts.duel && f.id !== 0 && pb && !(Math.hypot(b.x - pb.x, b.y - pb.y) < DUEL_RADAR || w.canSee(pb.x, pb.y, b.x, b.y))) continue; g.fillStyle = f.color; g.strokeStyle = f.id === 0 ? '#fff' : '#000'; g.lineWidth = f.id === 0 ? 2 : 1; g.beginPath(); g.arc(b.x * k, b.y * k, f.id === 0 ? (big ? 7 : 5) : (big ? 6 : 4), 0, 6.29); g.fill(); g.stroke(); }
+    if (w.event) { g.fillStyle = EVENT_INFO[w.event.kind].color; g.beginPath(); g.arc(w.event.x * k, w.event.y * k, (big ? 8 : 5) + Math.sin(this.t * 7) * 1.5, 0, 6.29); g.fill(); g.strokeStyle = '#000'; g.lineWidth = 1; g.stroke(); }
     const z = w.zone; g.fillStyle = 'rgba(128,64,220,0.35)'; g.beginPath(); g.rect(ox * k, oy * k, S, S); g.arc(z.x * k, z.y * k, Math.max(0, z.r * k), 0, 6.29, true); g.fill('evenodd');
     g.strokeStyle = '#c59bff'; g.lineWidth = 2; g.beginPath(); g.arc(z.x * k, z.y * k, Math.max(0, z.r * k), 0, 6.29); g.stroke();
     if (z.nr < z.r) { g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.setLineDash([4, 4]); g.beginPath(); g.arc(z.nx * k, z.ny * k, Math.max(1, z.nr * k), 0, 6.29); g.stroke(); g.setLineDash([]); }

@@ -64,13 +64,13 @@ describe('ZERO ZONE 폭격', () => {
 });
 
 import { PERK_MAX, buyPerk, emptyWallet, sanitizeWallet } from '../../src/shared/perks';
-import { PERK_IDS, perkMul, rewardCoins } from '../../src/shooter/perks';
+import { PERK_IDS, perkMul, rewardCoins, type PerkId } from '../../src/shooter/perks';
 import { makeVehicleMesh } from '../../src/shared/vehicle';
 
 describe('ZERO ZONE 병사 강화(공용 강화 규칙)', () => {
   it('코인이 모자라면 못 사고, 단계는 최대에서 멈추며, 깨진 저장값은 복구된다', () => {
-    let w = emptyWallet(PERK_IDS); expect(buyPerk(w, 'speed')).toBeNull(); w = { ...w, coins: 5000 };
-    for (let i = 0; i < PERK_MAX; i++) w = buyPerk(w, 'speed')!; expect(w.levels.speed).toBe(PERK_MAX); expect(buyPerk(w, 'speed')).toBeNull(); expect(w.coins).toBe(5000 - 150 - 320 - 560);
+    let w = emptyWallet(PERK_IDS); expect(buyPerk<PerkId>(w, 'speed')).toBeNull(); w = { ...w, coins: 5000 };
+    for (let i = 0; i < PERK_MAX; i++) w = buyPerk<PerkId>(w, 'speed')!; expect(w.levels.speed).toBe(PERK_MAX); expect(buyPerk<PerkId>(w, 'speed')).toBeNull(); expect(w.coins).toBe(5000 - 150 - 320 - 560);
     expect(sanitizeWallet({ coins: -4, levels: { speed: 99, reload: 'x' } }, PERK_IDS)).toEqual({ coins: 0, levels: { speed: PERK_MAX, reload: 0, steady: 0, tough: 0 } });
   });
   it('강화한 병사는 빠르고 재장전이 짧고 덜 다친다. 봇은 영향받지 않는다', () => {

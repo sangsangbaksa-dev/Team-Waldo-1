@@ -53,6 +53,7 @@ export class Sim {
   /** 주인공·부동산·차고·업적 */ life: LifeState = blankLife(); perk: Perks = { ...BASE_PERKS };
   civKills = 0; cash = 400; collected = new Set<number>(); kills = 0; playSec = 0;
   player!: Ped; /** 쓰러짐/체포 연출 타이머와 종류 */ deadT = 0; downKind: '' | 'wasted' | 'busted' = '';
+  readonly remoteDamage = new Map<Ped, (damage: number, attacker: number) => void>();
   private pedMap = new Map<number, Ped>(); private vehMap = new Map<number, Vehicle>(); private nextId = 100; private lastAssault = new Map<number, number>();
 
   constructor(seed: number, save?: SaveData | null) {
@@ -136,7 +137,7 @@ export class Sim {
   }
   removePed(p: Ped): void {
     if (p.id === PLAYER_ID) return; if (p.vehicle) { const v = this.vehMap.get(p.vehicle); if (v) { if (v.driver === p.id) v.driver = 0; v.passengers = v.passengers.filter(i => i !== p.id); } }
-    this.pedMap.delete(p.id); const i = this.peds.indexOf(p); if (i >= 0) this.peds.splice(i, 1);
+    this.remoteDamage.delete(p); this.pedMap.delete(p.id); const i = this.peds.indexOf(p); if (i >= 0) this.peds.splice(i, 1);
   }
   removeVehicle(v: Vehicle): void {
     for (const id of [v.driver, ...v.passengers]) { const p = this.pedMap.get(id); if (p) { p.vehicle = 0; if (p.id !== PLAYER_ID) this.removePed(p); else { p.x = v.x; p.z = v.z; } } }
@@ -164,6 +165,8 @@ export class Sim {
   // ---------- 피해 ----------
   damagePed(q: Ped, dmg: number, by: number, weapon: WeaponId | 'vehicle' | 'explosion' | 'fall' | 'fire', _head = false): void {
     if (!q.alive || dmg <= 0) return;
+    const remote = this.remoteDamage.get(q);
+    if (remote) { remote(dmg, by); return; }
     if (q.armor > 0 && weapon !== 'fall' && weapon !== 'fire') { const soak = Math.min(q.armor, dmg * 0.6); q.armor -= soak; dmg -= soak; }
     q.hp -= dmg; q.hurt = 0.45; q.lastHitBy = by; const a = this.pedMap.get(by); if (a) q.hurtYaw = Math.atan2(a.z - q.z, a.x - q.x);
     if (by === PLAYER_ID && q.id !== PLAYER_ID && (q.team === 'civ' || q.team === 'cop') && weapon !== 'explosion') {
@@ -407,7 +410,11 @@ export class Sim {
       else if (pin.enter) { const v = this.nearestVehicle(p); if (v) this.enterVehicle(p, v); }
     } else if (this.downKind) { this.deadT += dt; if (this.deadT > (this.downKind === 'wasted' ? 4 : 3)) this.respawnPlayer(this.downKind); }
     stepPeds(this, dt); stepCombat(this, dt); stepTraffic(this, dt); stepPolice(this, dt);
-    for (const q of this.peds) { if (q.alive && !q.vehicle) this.updateGun(q, dt); this.movePed(q, dt); }
+    for (const q of this.peds) {
+      if (this.remoteDamage.has(q)) continue;
+      if (q.alive && !q.vehicle) this.updateGun(q, dt);
+      this.movePed(q, dt);
+    }
     for (const v of this.vehicles) stepVehicle(this, v, dt);
     this.stepProjectiles(dt); this.stepPickups(dt); this.stepFire(dt); stepMissions(this, dt); stepActivities(this, dt); stepLife(this, dt); stepJobs(this, dt);
     for (const q of this.peds.slice()) if (!q.alive && !q.keep && q.id !== PLAYER_ID && this.t - q.diedAt > 25) this.removePed(q);

@@ -7,6 +7,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import './outlaw.css';
 import { readPreferences, writePreferences } from '../prefs';
 import type { LoadingScreen } from '../loading';
+import { PVP_ENABLED } from '../net/config';
 import { Sim } from './sim';
 import { CityView } from './cityview';
 import { ActorView } from './actorview';
@@ -19,6 +20,7 @@ import { OutlawUi } from './ui';
 import { pickpocket, pickpocketTarget, startJob } from './jobs';
 import { treat, buySnack, nearVending } from './services';
 import { OUTLAW_KEY } from './records';
+import { Versus, type VsSession, type VsResult } from './versus';
 import { WEAPONS, WEAPON_ORDER, PLAYER_ID, VEHICLES, blankPedInput, blankCarInput, clamp, wrapAngle, type PedInput, type SimEvent, type Vehicle } from './types';
 
 interface OpenOptions { loading?: LoadingScreen }
@@ -41,7 +43,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
       <div class="ol-br"><div class="ol-wname" id="ol-wname"></div><div class="ol-ammo"><b id="ol-mag">0</b><span id="ol-res"></span></div><div class="ol-slots" id="ol-slots"></div></div>
       <div class="ol-speedo" id="ol-speedo"><b id="ol-kmh">0</b><span>km/h</span><div class="ol-dmg"><i id="ol-dmg"></i></div><em id="ol-radio"></em></div>
       <div class="ol-mission" id="ol-mission" hidden><span class="tag" id="ol-mtag"></span><b id="ol-mtitle"></b><p id="ol-mtext"></p><em id="ol-mtimer"></em></div>
-      <div class="ol-banner" id="ol-banner"></div>
+      <div class="ol-banner" id="ol-banner"></div><div class="ol-vs" id="ol-vs" hidden></div>
       <div class="ol-style" id="ol-style"></div><div class="ol-sgauge" id="ol-sgauge"><i id="ol-sg"></i><b id="ol-sgm"></b></div>
       <div class="ol-cross" id="ol-cross"><i></i><i></i><i></i><i></i></div><div class="ol-hit" id="ol-hit"><i></i><i></i><i></i><i></i></div>
       <div class="ol-prompt" id="ol-prompt"></div>
@@ -70,7 +72,8 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   let phase: 'load' | 'menu' | 'trans' | 'play' = 'load';
   let paused = false, modalKind = '', locked = false, lockFail = false, transT = 0;
   let sim: Sim | null = null, cityView: CityView | null = null, actorView: ActorView | null = null, chase: ChaseCamera | null = null, minimap: Minimap | null = null;
-  let assets: OutlawAssets | null = null;
+  let assets: OutlawAssets | null = null, versus: Versus | null = null;
+  let lobby: { close(): void } | undefined, openingLobby = false;
   const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(70, 1, 0.1, 1200);
   let renderer: THREE.WebGLRenderer | null = null; let composer: EffectComposer | null = null; let bloom: UnrealBloomPass | null = null;
   let yaw = 0, pitch = 0, acc = 0, saveT = 0, shakeFov = 0, hitT = 0, hurtVig = 0, bannerT = 0, radioToast = 0;
@@ -82,7 +85,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   const hasSave = (): boolean => { try { return !!localStorage.getItem(OUTLAW_KEY); } catch { return false; } };
 
   // ---------- 저장 ----------
-  function save(): void { if (!sim) return; try { localStorage.setItem(OUTLAW_KEY, JSON.stringify(sim.exportSave())); } catch { /* 저장은 선택 사항입니다. */ } }
+  function save(): void { if (!sim || versus) return; try { localStorage.setItem(OUTLAW_KEY, JSON.stringify(sim.exportSave())); } catch { /* 저장은 선택 사항입니다. */ } }
 
   // ---------- 알림 도구 ----------
   function toast(text: string, sec = 3.2): void {
@@ -118,7 +121,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     return `<h2>조작법</h2><div class="ol-keys"><div><b>이동</b>WASD · Shift 달리기 · Space 점프 · C 앉기</div><div><b>전투</b>좌클릭 사격 · 우클릭 조준 · R 재장전 · 1~9·0·-/휠 무기 · Q 무기 휠 · 수류탄은 사격 키로 투척</div><div><b>상호작용</b>E / F 차량 · 상점 · 의뢰 · 안전가옥</div><div><b>차량</b>W 가속 · S 브레이크/후진 · A D 조향 · Space 핸드브레이크 · H 경적 · R 라디오 · C 뒤돌아보기</div><div><b>휴대폰</b>P 휴대폰: 일거리·차고·부동산·업적 · 격투장/체육관/카지노/자동차 매장은 E</div><div><b>기타</b>M / Tab 전체 지도 · Esc 일시정지</div></div><p class="hint">아슬아슬한 통과·점프·드리프트·헤드샷은 스타일 보너스가 됩니다. 시민을 해치면 수배 별이 올라갑니다.</p><div class="ol-btns"><button data-k="back" type="button">돌아가기</button></div>`;
   }
   function openPause(): void {
-    openModal('pause', `<h2>일시정지</h2><div class="ol-btns v"><button data-k="resume" type="button">계속하기</button><button data-k="phone" type="button">휴대폰</button><button data-k="map" type="button">전체 지도</button><button data-k="help" type="button">조작법</button><button data-k="sound" type="button">소리: ${audio.enabled ? '켜짐' : '꺼짐'}</button><button data-k="quality" type="button">품질: ${prefs.quality === 'high' ? '높음' : prefs.quality === 'standard' ? '보통' : '낮음'} (다음 실행부터)</button><button data-k="quit" type="button" class="danger">저장하고 나가기</button></div>`);
+    openModal('pause', `<h2>${versus ? '대전 메뉴' : '일시정지'}</h2><div class="ol-btns v"><button data-k="resume" type="button">계속하기</button><button data-k="phone" type="button">휴대폰</button><button data-k="map" type="button">전체 지도</button><button data-k="help" type="button">조작법</button><button data-k="sound" type="button">소리: ${audio.enabled ? '켜짐' : '꺼짐'}</button><button data-k="quality" type="button">품질: ${prefs.quality === 'high' ? '높음' : prefs.quality === 'standard' ? '보통' : '낮음'} (다음 실행부터)</button><button data-k="quit" type="button" class="danger">${versus ? '대전 나가기' : '저장하고 나가기'}</button></div>`);
   }
   function openMap(): void {
     openModal('map', `<canvas id="ol-bigmap" width="900" height="780"></canvas><div class="ol-btns"><button data-k="resume" type="button">닫기 (M)</button></div>`);
@@ -156,17 +159,17 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     else if (k === 'back') openPause();
     else if (k === 'sound') { audio.enabled = !audio.enabled; prefs.sound = audio.enabled; writePreferences(prefs); openPause(); }
     else if (k === 'quality') { prefs.quality = prefs.quality === 'high' ? 'standard' : prefs.quality === 'standard' ? 'low' : 'high'; writePreferences(prefs); openPause(); }
-    else if (k === 'quit') { save(); exit(); }
+    else if (k === 'quit' || k === 'vsexit') { save(); exit(); }
   });
 
   // ---------- 타이틀 ----------
   function showTitle(): void {
     titleEl.hidden = false; const sv = hasSave();
     titleEl.innerHTML = `<div class="ol-logo"><span>OUTLAW</span><span class="b">CITY</span></div><p class="ol-tag">도시는 네 것이다. 대가는 네가 치른다.</p>
-      <div class="ol-btns v"><button data-t="new" type="button">새 게임</button>${sv ? '<button data-t="cont" type="button">이어하기</button>' : ''}<button data-t="help" type="button">조작법</button><button data-t="exit" type="button" class="ghost">메뉴로</button></div>`;
+      <div class="ol-btns v"><button data-t="new" type="button">새 게임</button>${sv ? '<button data-t="cont" type="button">이어하기</button>' : ''}${PVP_ENABLED ? '<button data-t="duel" type="button">온라인 1대1</button><button data-t="room" type="button">온라인 룸 (2~6인)</button>' : ''}<button data-t="help" type="button">조작법</button><button data-t="exit" type="button" class="ghost">메뉴로</button></div><p class="ol-title-status" role="status"></p>`;
   }
   titleEl.addEventListener('click', e => {
-    const b = (e.target as HTMLElement).closest('button'); if (!b || !sim || phase !== 'menu') return;
+    const b = (e.target as HTMLElement).closest('button'); if (!b || !sim || phase !== 'menu' || lobby || openingLobby) return;
     audio.unlock(); audio.play('menu_click');
     const t = b.dataset.t;
     if (t === 'exit') exit();
@@ -176,21 +179,68 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
       confirmNew = false; b.textContent = '새 게임'; ui.heroSel = 'h0'; openUi('hero');
     }
     else if (t === 'cont') begin(true);
+    else if (t === 'duel' || t === 'room') openVersusLobby(t === 'duel');
   });
+  async function openVersusLobby(duel: boolean): Promise<void> {
+    if (!PVP_ENABLED || openingLobby || lobby) return;
+    openingLobby = true;
+    const status = q('.ol-title-status');
+    status.textContent = '';
+    try {
+      const { openLobby } = await import('../net/lobby');
+      if (closed || phase !== 'menu') return;
+      lobby = openLobby({
+        game: 'outlaw', maxPlayers: duel ? 2 : 6,
+        onClose: () => { lobby = undefined; },
+        onMatch: s => {
+          const players = s.host ? [s.me, s.opponent] : [s.opponent, s.me];
+          startVersus({ meId: s.me.id, players, duel: true, open: s.open, report: winner => {
+            void s.backend.report(s.match.id, winner).catch(() => undefined);
+          } });
+        },
+        onRoom: s => startVersus({ meId: s.me.id, players: s.players, duel: false, open: s.open }),
+      });
+    } catch {
+      status.textContent = '온라인 로비를 열지 못했습니다';
+    } finally {
+      openingLobby = false;
+    }
+  }
+  function startVersus(vs: VsSession): void {
+    lobby = undefined;
+    if (!sim || closed || phase !== 'menu') return;
+    sim.applyHero(sim.life.hero);
+    versus = new Versus(sim, vs, {
+      onFeed: text => toast(text, 3),
+      onGone: name => toast(`${name} 님이 나갔습니다`, 3.5),
+      onEnd: openVsEnd,
+    });
+    begin(false, false);
+    sim.clock = TITLE_CLOCK;
+    q('#ol-vs').hidden = false;
+  }
+  function openVsEnd(r: VsResult): void {
+    const rows = r.board.map((b, i) => `<div class="row"><b>${i + 1}. ${esc(b.name)}</b><span>처치 ${b.kills} · 쓰러짐 ${b.deaths}</span></div>`).join('');
+    const labels = { score: '목표 처치 달성', time: r.winner ? '시간 종료' : '시간 종료 · 무승부', left: '상대가 나갔습니다', connection: '대전에 연결하지 못했습니다' };
+    const winner = r.board.find(b => b.id === r.winner);
+    openModal('vsend', `<h2>대전 종료</h2><p class="sub">${labels[r.reason]}${winner ? ' · 승자 ' + esc(winner.name) : ''}</p><div class="ol-list">${rows}</div><div class="ol-btns"><button data-k="vsexit" type="button">메뉴로</button></div>`);
+    q('[data-k="vsexit"]').focus();
+  }
   let confirmNew = false;
 
-  function begin(cont: boolean): void {
+  function begin(cont: boolean, acquirePointer = true): void {
     if (!sim) return;
     if (cont) { try { const s = JSON.parse(localStorage.getItem(OUTLAW_KEY) ?? 'null'); if (s) sim.applySave(s); } catch { /* 새 게임으로 진행 */ } }
     else { sim.clock = 16.6; sim.playSec = 0; }
     titleEl.hidden = true; hudEl.hidden = false; phase = 'trans'; transT = 0; yaw = sim.player.yaw; pitch = 0;
     orbitPos.copy(camera.position); orbitQuat.copy(camera.quaternion); chase?.reset({ x: sim.player.x, y: sim.player.y, z: sim.player.z, yaw: sim.player.yaw, speed: 0 }, { yaw, pitch });
-    audio.play('mission_start'); lock();
+    audio.play('mission_start');
+    if (acquirePointer) lock();
   }
 
   // ---------- 입력 ----------
   const onKeyDown = (e: KeyboardEvent): void => {
-    if (closed) return; audio.unlock();
+    if (closed || lobby || openingLobby || modalKind === 'vsend') return; audio.unlock();
     if (e.repeat) { return; }
     if (e.code === 'Escape') {
       if (modalKind) closeModal();
@@ -384,14 +434,22 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     // 시뮬레이션
     let scale = 1; if (wheelOpen) scale = 0.2; else if (sim.downKind === 'wasted') scale = 0.45;
     const playing = phase === 'play' || phase === 'trans';
-    if (!paused) {
+    if (!paused || (versus && !versus.ended)) {
       acc += Math.min(dt, 0.1) * scale; let n = 0;
-      const inp = playing && p.alive && !sim.downKind ? gather() : { p: blankPedInput(), c: blankCarInput() };
+      const inp = playing && !paused && p.alive && !sim.downKind ? gather() : { p: blankPedInput(), c: blankCarInput() };
       while (acc >= STEP && n < 6) { inp.p.enter = n === 0 && enterReq; sim.step(STEP, inp.p, inp.c); acc -= STEP; n++; if (n === 1) { enterReq = false; slotReq = -1; reloadReq = false; inp.p.slot = -1; inp.p.reload = false; } }
       if (n === 6) acc = 0;
       if (phase === 'menu') sim.clock = (sim.clock < TITLE_CLOCK - 0.02 || sim.clock > TITLE_CLOCK + 0.5) ? TITLE_CLOCK : sim.clock;
     }
-    const events = sim.drain(); actorView.handle(events); if (playing) handleEvents(events);
+    const events = sim.drain();
+    if (versus) {
+      versus.update(dt, events);
+      const seconds = Math.ceil(versus.left);
+      const time = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+      const scores = versus.board().map(b => `<span>${esc(b.name)} ${b.kills}</span>`).join(' ');
+      html('vs', `<b>${time}</b> · 목표 ${versus.killLimit}킬<br>${scores}`);
+    }
+    actorView.handle(events); if (playing) handleEvents(events);
     // 카메라
     const target = car ? { x: car.x, y: car.y, z: car.z, yaw: car.h, speed: car.vf } : { x: p.x, y: p.y, z: p.z, yaw: p.yaw, speed: p.speed };
     if (phase === 'menu') {
@@ -482,7 +540,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (closed) return; closed = true; cancelAnimationFrame(raf);
     window.removeEventListener('pointermove', movePtr); window.removeEventListener('pointerup', endPtr); window.removeEventListener('pointercancel', endPtr); document.removeEventListener('visibilitychange', resetInput);
     for (const [t, f] of [['keydown', onKeyDown], ['keyup', onKeyUp], ['mousemove', onMouseMove], ['mouseup', onMouseUp], ['wheel', onWheel], ['blur', resetInput], ['resize', resize]] as Array<[string, EventListener]>) window.removeEventListener(t, f);
-    document.removeEventListener('pointerlockchange', onLock); if (document.pointerLockElement) document.exitPointerLock();
+    lobby?.close(); versus?.dispose(); document.removeEventListener('pointerlockchange', onLock); if (document.pointerLockElement) document.exitPointerLock();
     try { actorView?.dispose(); cityView?.dispose(); } catch { /* 정리 실패는 무시 */ }
     audio.dispose(); composer?.dispose(); renderer?.dispose(); renderer?.forceContextLoss(); root.remove(); onExit();
   }

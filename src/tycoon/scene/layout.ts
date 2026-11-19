@@ -53,7 +53,7 @@ export function blockTier(b: Block, stage: Stage | number): number {
   return Math.max(0, Math.min(4, ZONE_BASE[b.zone] + Math.floor(Math.max(0, s - open) * 0.55)));
 }
 
-export function buildLayout(spots: SpotDef[]): Layout {
+export function buildLayout(spots: readonly SpotDef[]): Layout {
   const blocks: Block[] = [], lots: Lot[] = [];
   for (let i = -HALF; i <= HALF; i++) for (let j = -HALF; j <= HALF; j++) {
     const b: Block = { i, j, cx: blockCenter(i), cz: blockCenter(j), ring: ringOf(i, j), zone: zoneOf(i, j), lots: [] };

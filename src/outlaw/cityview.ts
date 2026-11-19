@@ -366,9 +366,3 @@ export class CityView {
     this.chunks.length = 0; this.materials.clear(); this.textures.clear();
   }
 }
-
-
-
-
-
-

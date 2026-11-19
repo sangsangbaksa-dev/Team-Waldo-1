@@ -30,4 +30,3 @@ export class Pieces {
 export const shade = (c: number, k: number): number => { const col = new THREE.Color(c); col.multiplyScalar(k); return col.getHex(); };
 export const CYL = (r: number, h: number, seg = 10): THREE.CylinderGeometry => new THREE.CylinderGeometry(r, r, h, seg);
 export const GLASS = 0x1c2a38, BLACK = 0x1a1b1e, STEEL = 0x8b9096, LIGHT = 0xffe9a8, RED = 0xb02a24;
-

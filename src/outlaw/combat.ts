@@ -99,5 +99,3 @@ export function stepCombat(sim: Sim, dt: number): void {
     if (b.detourT > 0 && Math.hypot(input.mx, input.mz) > 0.2) { const mx = input.mx, mz = input.mz; input.mx = mz * b.detour; input.mz = -mx * b.detour; }
   }
 }
-
-

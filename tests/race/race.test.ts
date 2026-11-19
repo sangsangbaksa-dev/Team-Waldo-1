@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aiInput, kmh, newCar, separateCars, stepCar, BODY_HALF_WIDTH, NITRO_SECONDS, PLAYER_PARAMS, type CarInput } from '../../src/race/physics';
+import { aiInput, kmh, newCar, separateCars, stayOnTrack, stepCar, BODY_HALF_WIDTH, NITRO_SECONDS, PLAYER_PARAMS, WALL_HEADING_RATE, wrapAngle, type CarInput } from '../../src/race/physics';
 import { COUNTDOWN, createRace, currentLap, placeOf, rivalBand, updateRace } from '../../src/race/race';
 import { buildTrack, idxDelta, nearest } from '../../src/race/track';
 
@@ -47,6 +47,28 @@ describe('SPEED RUSH car physics', () => {
     expect(c.drifting).toBe(true);
     for (let k = 0; k < 20; k++) boost += stepCar(c, { ...GAS, steer: 0, drift: false }, DT, track).driftBoost;
     expect(boost).toBeGreaterThan(0.3); expect(c.boostT).toBeGreaterThan(0);
+  });
+  it('slides along a wall without dumping speed or snapping its nose', () => {
+    const hold = (steer: number) => {
+      const c = newCar(track, 40, 0), h = Math.atan2(track.tz[40], track.tx[40]);
+      c.h = h; c.vx = Math.cos(h) * 78; c.vz = Math.sin(h) * 78; c.vf = 78; c.nitro = 1; c.boostT = 3;
+      let min = kmh(c);
+      for (let k = 0; k < 90 * 2; k++) { stepCar(c, { ...GAS, steer, nitro: true }, DT, track); min = Math.min(min, kmh(c)); expect(Math.abs(c.lat)).toBeLessThanOrEqual(track.halfWidth); }
+      return { kmh: kmh(c), min, lat: c.lat };
+    };
+    const left = hold(-1), right = hold(1);
+    expect(left.min).toBeGreaterThan(240); expect(right.min).toBeGreaterThan(240);
+    expect(left.lat).toBeLessThan(-10); expect(right.lat).toBeGreaterThan(10);
+    expect(Math.abs(left.kmh - right.kmh)).toBeLessThan(40);
+    const c = newCar(track, 40, 0), i = 40, limit = track.halfWidth - BODY_HALF_WIDTH - 0.28, trackH = Math.atan2(track.tz[i], track.tx[i]);
+    c.idx = i; c.x = track.x[i] - track.tz[i] * (limit + 1.5); c.z = track.z[i] + track.tx[i] * (limit + 1.5);
+    c.h = trackH - 1; c.vx = Math.cos(trackH) * 40; c.vz = Math.sin(trackH) * 40; c.vf = 40;
+    const h0 = c.h, sp0 = Math.hypot(c.vx, c.vz);
+    stayOnTrack(c, track, DT, true);
+    const dh = Math.abs(wrapAngle(c.h - h0));
+    expect(dh).toBeGreaterThan(WALL_HEADING_RATE * DT * 0.5);
+    expect(dh).toBeLessThan(0.03);
+    expect(Math.hypot(c.vx, c.vz)).toBeGreaterThan(sp0 * 0.85);
   });
   it('keeps a car that drives into the wall on the road', () => {
     const c = newCar(track, 0, 0); let hits = 0;

@@ -36,6 +36,9 @@ try {
       viewport: { width: size.width, height: size.height },
       isMobile: size.name === 'mobile', hasTouch: size.name === 'mobile', reducedMotion: 'reduce',
     });
+    await context.addInitScript(() => {
+      localStorage.setItem('waldo.preferences.v1', JSON.stringify({ sound: false, quality: 'low', reducedMotion: true }));
+    });
     const page = await context.newPage();
     page.setDefaultTimeout(30000);
     const errors = [];

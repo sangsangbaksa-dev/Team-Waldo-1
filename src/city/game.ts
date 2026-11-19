@@ -180,7 +180,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     else if (a === 'interact') interact();
     else if (a === 'vehicle') { w.toggleVehicle(0); }
     else if (a === 'skill') res(w.useSkill(0));
-    else if (a === 'dash') { w.input.dash = true; setTimeout(() => { if (world) world.input.dash = false; }, 80); }
+    else if (a === 'dash') { w.input.dash = true; setTimeout(() => { if (world === w) w.input.dash = false; }, 80); }
     else if (a === 'weapon') switchWeapon(w, 0, (f.cur + 1) % f.slots.length);
     else if (a === 'slot') switchWeapon(w, 0, Number(arg));
     else if (a === 'medkit') w.useMedkit(0);

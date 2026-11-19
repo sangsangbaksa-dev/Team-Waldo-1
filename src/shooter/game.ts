@@ -204,7 +204,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   /** 내가 쓰러진 뒤 상대 소식을 잠깐 기다려 동시 사망을 가립니다. */
   function settleTie(): void {
     if (!pvp || pvp.done || pvp.deadAt === null) return;
-    if (pvp.oppDeadMt === null) { window.setTimeout(() => { if (pvp && !pvp.done && pvp.oppDeadMt === null) void conclude(pvp.s.opponent.id, '상대의 탄에 쓰러졌습니다'); }, 1100); return; }
+    if (pvp.oppDeadMt === null) { const p = pvp; window.setTimeout(() => { if (!closed && pvp === p && !p.done && p.oppDeadMt === null) void conclude(p.s.opponent.id, '상대의 탄에 쓰러졌습니다'); }, 1100); return; }
     const w = decideDeath(pvp.deadAt, pvp.oppDeadMt, pvp.s.host); void conclude(w === 'me' ? pvp.s.me.id : pvp.s.opponent.id, '두 선수가 거의 동시에 쓰러졌습니다');
   }
   /** 승자를 서버에 보고하고 확정된 레이팅 변화를 보여 줍니다(승리 보고는 상대의 보고나 15초 뒤에 확정). */
@@ -452,11 +452,11 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   function onMyDeath(by: number): void {
     phase = 'dead'; deadTimer = 0; spectateId = by >= 0 && match!.players[by]?.alive ? by : -1; mouse.fire = mouse.ads = false; tc.fire = false; audio.play('lose');
     if (pvp) { pvp.deadAt = match!.t; pvp.net.sendDead(match!.t); settleTie(); }
-    else if (room) { room.net.sendDead(match!.t, by); window.setTimeout(() => { if (room && !room.shown && !match?.over) { room.shown = true; roomResult(); } }, 1600); }
+    else if (room) { const r = room, m = match; r.net.sendDead(match!.t, by); window.setTimeout(() => { if (!closed && room === r && match === m && !r.shown && !m?.over) { r.shown = true; roomResult(); } }, 1600); }
   }
   function onOver(winner: number): void {
     over = true; if (pvp) return;
-    if (room) { window.setTimeout(roomResult, me().alive ? 1400 : 500); return; }
+    if (room) { const r = room, m = match; window.setTimeout(() => { if (!closed && room === r && match === m) roomResult(); }, me().alive ? 1400 : 500); return; }
     const p = me(); if (phase !== 'dead') phase = 'over'; const win = winner === p.id; if (win) audio.play('win');
     if (!resultShown) {
       resultShown = true;

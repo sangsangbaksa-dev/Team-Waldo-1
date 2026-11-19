@@ -154,7 +154,8 @@ export function openRace(onExit: () => void): void {
   }
   function pvpFinish(time: number): void {
     if (!pvp || pvp.done) return; pvp.myFin = time; pvp.net.sendFinish(time);
-    if (pvp.oppFin !== null) decide(); else window.setTimeout(() => { if (pvp && !pvp.done) void conclude(pvp.s.me.id, '먼저 결승선을 통과했습니다'); }, 4000);
+    const p = pvp;
+    if (p.oppFin !== null) decide(); else window.setTimeout(() => { if (!closed && pvp === p && !p.done) void conclude(p.s.me.id, '먼저 결승선을 통과했습니다'); }, 4000);
   }
   function decide(): void {
     if (!pvp || pvp.myFin === null || pvp.oppFin === null) return;
@@ -214,7 +215,8 @@ export function openRace(onExit: () => void): void {
   }
   function multiCheck(): void {
     if (!multi || multi.done || multi.myFin === null) return;
-    if (race.racers.every(r => r.player || r.finishTime !== null || (r.peer && multi?.gone.has(r.peer)))) window.setTimeout(() => { if (multi && !multi.done) showMulti(); }, 600);
+    const m = multi;
+    if (race.racers.every(r => r.player || r.finishTime !== null || (r.peer && m.gone.has(r.peer)))) window.setTimeout(() => { if (!closed && multi === m && !m.done) showMulti(); }, 600);
   }
   function showMulti(): void {
     const m = multi; if (!m || m.done) return; m.done = true; finishedShown = true;

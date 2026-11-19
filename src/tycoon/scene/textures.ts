@@ -49,8 +49,8 @@ export function facadeMaps(style: FacadeStyle): FacadeMaps {
 
 export function asphaltTexture(): THREE.CanvasTexture {
   const S = 512, [c, g] = canvas(S, S), r = rng(99);
-  g.fillStyle = '#34373c'; g.fillRect(0, 0, S, S);
-  for (let k = 0; k < 9000; k++) { const v = Math.floor(30 + r() * 50); g.fillStyle = `rgba(${v},${v},${v + 4},${0.25 + r() * 0.4})`; g.fillRect(r() * S, r() * S, 1 + r() * 2.4, 1 + r() * 2.4); }
+  g.fillStyle = '#4b4e54'; g.fillRect(0, 0, S, S);
+  for (let k = 0; k < 9000; k++) { const v = Math.floor(50 + r() * 60); g.fillStyle = `rgba(${v},${v},${v + 4},${0.25 + r() * 0.4})`; g.fillRect(r() * S, r() * S, 1 + r() * 2.4, 1 + r() * 2.4); }
   g.strokeStyle = 'rgba(10,10,12,.55)'; g.lineWidth = 1.2;
   for (let k = 0; k < 7; k++) { g.beginPath(); let x = r() * S, y = r() * S; g.moveTo(x, y); for (let n = 0; n < 12; n++) { x += (r() - 0.4) * 40; y += (r() - 0.5) * 40; g.lineTo(x, y); } g.stroke(); }
   for (let k = 0; k < 5; k++) { const x = r() * S, y = r() * S, rad = 30 + r() * 60, gr = g.createRadialGradient(x, y, 2, x, y, rad); gr.addColorStop(0, 'rgba(8,8,10,.35)'); gr.addColorStop(1, 'rgba(8,8,10,0)'); g.fillStyle = gr; g.fillRect(x - rad, y - rad, rad * 2, rad * 2); }

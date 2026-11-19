@@ -56,7 +56,7 @@ export function decideDeath(mine: number, theirs: number, iAmHost: boolean): 'me
 
 export class ShooterNet {
   started = false;
-  private ch: Channel; private timer: number; private born = performance.now(); private heard = performance.now(); private lastTick = performance.now(); private lastPose = 0; private dead = false;
+  private ch: Channel; private timer: number; private born = performance.now(); private heard = performance.now(); private lastTick = performance.now(); private lastPose = 0; private lastAlive = 0; private dead = false;
   constructor(readonly session: PvpSession, private hooks: NetHooks) {
     this.ch = session.open(m => this.onMsg(m));
     void this.ch.ready.then(() => this.hello(), () => this.gone('never'));
@@ -68,7 +68,10 @@ export class ShooterNet {
     if (this.dead) return; const now = performance.now();
     if (now - this.lastTick > 2000) this.heard = now; // 내 탭이 멈췄던 시간은 상대의 침묵으로 세지 않습니다
     this.lastTick = now;
-    if (!this.started) { this.hello(); if (now - this.born > NEVER_MS) this.gone('never'); } else if (now - this.heard > SILENT_MS) this.gone('silent');
+    if (!this.started) { this.hello(); if (now - this.born > NEVER_MS) this.gone('never'); return; }
+    // 프레임이 멈추거나 느려도(백그라운드 탭, 장면 만드는 중) 2초마다 살아 있다고 알립니다.
+    if (now - this.lastAlive > 2000) { this.lastAlive = now; this.ch.send({ t: 'ka' }); }
+    if (now - this.heard > SILENT_MS) this.gone('silent');
   }
   private begin(): void { if (this.started) return; this.started = true; this.hooks.onStart(); }
   private onMsg(m: NetMsg): void {

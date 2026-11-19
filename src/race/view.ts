@@ -10,6 +10,7 @@ import { wrapAngle, boosting, kmh } from './physics';
 import { type RaceState, type Racer } from './race';
 import { type Track } from './track';
 import { type Theme } from './maps';
+import { buildOutposts, type Outpost } from './outpost';
 
 const CAR_LEN = 4.7;
 const speedOf = (c: { vf: number }): number => Math.abs(c.vf);
@@ -86,7 +87,7 @@ export class RaceView {
   private rainFx = new Particles(1800, 0.32, THREE.NormalBlending, 0.55); private sparks = new Particles(260, 0.9, THREE.AdditiveBlending); private smoke = new Particles(220, 1.1, THREE.NormalBlending, 0.18); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
   private camH = 0; private camInit = false; private camAnchor: ChaseAnchor = { x: 0, y: 0, z: 0, ready: false }; private fov = 64; private shake = 0; private punch = 0; private time = 0; private sun: THREE.DirectionalLight;
   private chaseLift = 0; private viewH = 1; private startLamps: THREE.Mesh[] = [];
-  private disposables: Array<{ dispose(): void }> = [];
+  private disposables: Array<{ dispose(): void }> = []; private outposts: Outpost | null = null;
 
   constructor(canvas: HTMLCanvasElement, private track: Track, carTemplates: Record<string, THREE.Object3D> | null, quality: 'high' | 'standard' | 'low', private theme: Theme) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
@@ -449,6 +450,8 @@ export class RaceView {
       cg.push(boxGeo(0.9, 5, 0.9, 0, 2.5, 0, 0, green), boxGeo(2.2, 0.7, 0.7, 1.4, 2.4, 0, 0, green), boxGeo(0.7, 1.8, 0.7, 2.4, 3.2, 0, 0, green), boxGeo(2, 0.7, 0.7, -1.3, 3.2, 0, 0, green), boxGeo(0.7, 1.6, 0.7, -2.2, 3.9, 0, 0, green));
       const cactus = mergeGeometries(cg); cg.forEach(o => o.dispose());
       this.instanced(cactus, mat({ vertexColors: true }), this.scatter(low ? 70 : 160, 9, 160, 14, 8).map(([x, z]) => { const s = rnd(0.8, 1.6); return { p: [x, -0.4, z] as [number, number, number], s: [s, s, s] as [number, number, number], ry: rnd(0, 6) }; }));
+      // 길가 군사 초소(FRONTLINE 사막 기지와 같은 공용 소품)
+      this.outposts = buildOutposts(this.scene, t, low); this.disposables.push(this.outposts);
       // 전봇대와 전선(오른쪽 길가)
       const pole = 55, ps: Array<[number, number, number]> = [];
       for (let i = 0; i < t.n; i += Math.round(pole / t.ds)) { const off = hw + 9; ps.push([t.x[i] - t.tz[i] * off, Math.max(-0.4, t.y[i] - (off - hw - 1.5) / Math.max(6, t.y[i] * 2.4 + 4) * (t.y[i] + 0.4)), t.z[i] + t.tx[i] * off]); }
@@ -466,6 +469,7 @@ export class RaceView {
   update(race: RaceState, dt: number, wallHit: number): { speedFrac: number } {
     this.time += dt; const p = race.player.car, t = this.track, speed = Math.abs(p.vf), sf = Math.min(1, speed / 74), bst = boosting(p);
     for (const pad of this.pads) pad.tex.offset.x -= dt * 1.4;
+    this.outposts?.update(this.time);
     for (const ch of this.crew) { ch.state.time += dt; ch.update(dt); }
     // 차량 배치
     for (const v of this.cars) {

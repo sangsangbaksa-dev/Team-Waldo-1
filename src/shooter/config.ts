@@ -28,25 +28,25 @@ export type PartId = 'reddot' | 'holo' | 'scope2' | 'scope4' | 'scope8' | 'suppr
 export interface PartMod { spread?: number; kick?: number; reload?: number; mag?: number; ads?: number }
 export interface PartDef {
   id: PartId; name: string; slot: PartSlot; /** 조준 시 배율(조준경만) */ zoom: number;
-  /** 조립 화면의 점수(무기마다 LOADOUT_BUDGET 안에서 고릅니다) */ cost: number; mod: PartMod; blurb: string;
+  mod: PartMod; blurb: string;
   /** 이 무기에만 달 수 있습니다(없으면 슬롯이 있는 모든 무기) */ only?: WeaponId[];
 }
 export const PARTS: Record<PartId, PartDef> = {
-  reddot:     { id: 'reddot',     name: '레드닷 사이트',   slot: 'sight',  zoom: 1.0,  cost: 1, mod: { ads: 0.85 }, blurb: '가볍고 빠른 근거리 조준' },
-  holo:       { id: 'holo',       name: '홀로그램 사이트', slot: 'sight',  zoom: 1.25, cost: 1, mod: { ads: 0.82 }, blurb: '넓은 시야로 빠르게 겨눕니다' },
-  scope2:     { id: 'scope2',     name: '2배율 조준경',    slot: 'sight',  zoom: 2.0,  cost: 2, mod: { ads: 0.8 }, blurb: '중거리 교전에 알맞습니다' },
-  scope4:     { id: 'scope4',     name: '4배율 조준경',    slot: 'sight',  zoom: 4.0,  cost: 3, mod: { ads: 0.75 }, blurb: '멀리 있는 적도 또렷하게' },
-  scope8:     { id: 'scope8',     name: '8배율 조준경',    slot: 'sight',  zoom: 8.0,  cost: 4, mod: { ads: 0.7 }, blurb: '초장거리 저격용', only: ['rifle', 'sniper'] },
-  suppressor: { id: 'suppressor', name: '소음기',          slot: 'muzzle', zoom: 1,    cost: 2, mod: { kick: 0.9 }, blurb: '총소리와 발사 불빛을 숨깁니다 · 반동 소폭 감소' },
-  comp:       { id: 'comp',       name: '보정기',          slot: 'muzzle', zoom: 1,    cost: 2, mod: { spread: 0.94, kick: 0.62 }, blurb: '반동을 크게 잡아 줍니다' },
-  flash:      { id: 'flash',      name: '소염기',          slot: 'muzzle', zoom: 1,    cost: 1, mod: { spread: 0.97, kick: 0.85 }, blurb: '발사 불빛을 줄이고 반동을 조금 낮춥니다' },
-  grip:       { id: 'grip',       name: '수직 손잡이',     slot: 'grip',   zoom: 1,    cost: 2, mod: { spread: 0.86, kick: 0.78 }, blurb: '연사할 때 총구 흔들림을 잡습니다' },
-  angled:     { id: 'angled',     name: '앵글 손잡이',     slot: 'grip',   zoom: 1,    cost: 1, mod: { spread: 0.93, kick: 0.92, ads: 0.9 }, blurb: '조준 자세가 안정됩니다' },
-  extmag:     { id: 'extmag',     name: '확장 탄창',       slot: 'mag',    zoom: 1,    cost: 2, mod: { mag: 1.4 }, blurb: '탄창 용량 +40%' },
-  quickmag:   { id: 'quickmag',   name: '퀵드로우 탄창',   slot: 'mag',    zoom: 1,    cost: 2, mod: { reload: 0.7 }, blurb: '장전 시간 -30%' },
-  extquick:   { id: 'extquick',   name: '확장 퀵드로우 탄창', slot: 'mag', zoom: 1,    cost: 3, mod: { mag: 1.25, reload: 0.82 }, blurb: '탄창 +25% · 장전 -18%' },
-  tactical:   { id: 'tactical',   name: '전술 개머리판',   slot: 'stock',  zoom: 1,    cost: 2, mod: { spread: 0.92, kick: 0.9 }, blurb: '어깨에 단단히 붙어 반동을 줄입니다', only: ['smg', 'rifle'] },
-  cheek:      { id: 'cheek',      name: '볼받침',          slot: 'stock',  zoom: 1,    cost: 2, mod: { spread: 0.9, ads: 0.92 }, blurb: '조준 때 총이 흔들리지 않습니다', only: ['sniper'] },
+  reddot:     { id: 'reddot',     name: '레드닷 사이트',   slot: 'sight',  zoom: 1.0,  mod: { ads: 0.85 }, blurb: '가볍고 빠른 근거리 조준' },
+  holo:       { id: 'holo',       name: '홀로그램 사이트', slot: 'sight',  zoom: 1.25, mod: { ads: 0.82 }, blurb: '넓은 시야로 빠르게 겨눕니다' },
+  scope2:     { id: 'scope2',     name: '2배율 조준경',    slot: 'sight',  zoom: 2.0,  mod: { ads: 0.8 }, blurb: '중거리 교전에 알맞습니다' },
+  scope4:     { id: 'scope4',     name: '4배율 조준경',    slot: 'sight',  zoom: 4.0,  mod: { ads: 0.75 }, blurb: '멀리 있는 적도 또렷하게' },
+  scope8:     { id: 'scope8',     name: '8배율 조준경',    slot: 'sight',  zoom: 8.0,  mod: { ads: 0.7 }, blurb: '초장거리 저격용', only: ['rifle', 'sniper'] },
+  suppressor: { id: 'suppressor', name: '소음기',          slot: 'muzzle', zoom: 1,    mod: { kick: 0.9 }, blurb: '총소리와 발사 불빛을 숨깁니다 · 반동 소폭 감소' },
+  comp:       { id: 'comp',       name: '보정기',          slot: 'muzzle', zoom: 1,    mod: { spread: 0.94, kick: 0.62 }, blurb: '반동을 크게 잡아 줍니다' },
+  flash:      { id: 'flash',      name: '소염기',          slot: 'muzzle', zoom: 1,    mod: { spread: 0.97, kick: 0.85 }, blurb: '발사 불빛을 줄이고 반동을 조금 낮춥니다' },
+  grip:       { id: 'grip',       name: '수직 손잡이',     slot: 'grip',   zoom: 1,    mod: { spread: 0.86, kick: 0.78 }, blurb: '연사할 때 총구 흔들림을 잡습니다' },
+  angled:     { id: 'angled',     name: '앵글 손잡이',     slot: 'grip',   zoom: 1,    mod: { spread: 0.93, kick: 0.92, ads: 0.9 }, blurb: '조준 자세가 안정됩니다' },
+  extmag:     { id: 'extmag',     name: '확장 탄창',       slot: 'mag',    zoom: 1,    mod: { mag: 1.4 }, blurb: '탄창 용량 +40%' },
+  quickmag:   { id: 'quickmag',   name: '퀵드로우 탄창',   slot: 'mag',    zoom: 1,    mod: { reload: 0.7 }, blurb: '장전 시간 -30%' },
+  extquick:   { id: 'extquick',   name: '확장 퀵드로우 탄창', slot: 'mag', zoom: 1,    mod: { mag: 1.25, reload: 0.82 }, blurb: '탄창 +25% · 장전 -18%' },
+  tactical:   { id: 'tactical',   name: '전술 개머리판',   slot: 'stock',  zoom: 1,    mod: { spread: 0.92, kick: 0.9 }, blurb: '어깨에 단단히 붙어 반동을 줄입니다', only: ['smg', 'rifle'] },
+  cheek:      { id: 'cheek',      name: '볼받침',          slot: 'stock',  zoom: 1,    mod: { spread: 0.9, ads: 0.92 }, blurb: '조준 때 총이 흔들리지 않습니다', only: ['sniper'] },
 };
 export const PART_IDS = Object.keys(PARTS) as PartId[];
 export const PART_FITS: Record<WeaponId, PartSlot[]> = {
@@ -87,21 +87,6 @@ export interface GunStats { dmg: number; rpm: number; range: number; mag: number
 export function gunStats(id: WeaponId, att: Attachments | undefined): GunStats {
   const d = WEAPONS[id], h = partHandling(att), zoom = att?.sight ? PARTS[att.sight].zoom : 1;
   return { dmg: d.dmg * d.pellets, rpm: 60 / d.cd, range: d.range, mag: magOf(id, att), reload: d.reload * h.reload, kick: d.recoil * h.kick, spread: d.spread * h.spread, ads: d.spread * h.spread * adsSpread(att), zoom };
-}
-/** 조립 화면의 파츠 점수(무기 한 자루당 쓸 수 있는 점수) */
-export const LOADOUT_BUDGET = 8;
-export const attCost = (att: Attachments | undefined): number => (att ? Object.values(att).reduce((s, p) => s + (PARTS[p]?.cost ?? 0), 0) : 0);
-export type Loadout = Partial<Record<WeaponId, Attachments>>;
-/** 저장된 값을 믿지 않고 걸러 냅니다: 없는 파츠·안 맞는 파츠·예산을 넘는 파츠는 버립니다. */
-export function cleanLoadout(raw: unknown): Loadout {
-  const out: Loadout = {}; if (typeof raw !== 'object' || raw === null) return out;
-  for (const id of WEAPON_IDS) {
-    const r = (raw as Record<string, unknown>)[id]; if (typeof r !== 'object' || r === null) continue;
-    const att: Attachments = {}; let cost = 0;
-    for (const slot of PART_SLOTS) { const p = (r as Record<string, unknown>)[slot]; if (typeof p !== 'string' || !(p in PARTS)) continue; const part = p as PartId; if (PARTS[part].slot !== slot || !canFit(id, part) || cost + PARTS[part].cost > LOADOUT_BUDGET) continue; att[slot] = part; cost += PARTS[part].cost; }
-    if (Object.keys(att).length) out[id] = att;
-  }
-  return out;
 }
 /** 헬멧 등급(1~3)이 머리 피해를 줄이는 비율 */
 export const HELMET_CUT = [0, 0.3, 0.5, 0.65];

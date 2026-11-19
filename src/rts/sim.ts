@@ -56,11 +56,8 @@ const idle = (): Order => ({ t: 'idle', x: 0, y: 0, target: 0, phase: 0, timer: 
 const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const sq = (v: number): number => v * v;
 
-/** 무기고 업그레이드로 얻는 진영별 배율(1 = 없음). 훈련장·AI 대전에서만 쓰며 온라인 대전에서는 쓰지 않습니다. */
-export interface Edge { dmg: number; def: number; speed: number; minerals: number }
-export const NO_EDGE: Edge = { dmg: 1, def: 1, speed: 1, minerals: 0 };
 /** scripted: 승패를 시뮬레이션이 아니라 캠페인 미션이 정합니다(건물이 모두 사라져도 끝나지 않음). */
-export interface SimOptions { income?: [number, number]; edge?: [Edge, Edge]; scripted?: boolean }
+export interface SimOptions { income?: [number, number]; scripted?: boolean }
 
 export class RtsSim {
   tick = 0; winner = -1; nextId = 1;
@@ -68,14 +65,14 @@ export class RtsSim {
   units: Unit[] = []; buildings: Building[] = []; nodes: ResNode[] = [];
   players: Player[]; readonly index = new Map<number, Entity>();
   events: SimEvent[] = []; record = true;
-  private incomeMult: [number, number]; private edge: [Edge, Edge]; readonly scripted: boolean;
+  private incomeMult: [number, number]; readonly scripted: boolean;
   private head: Int32Array; private nextU = new Int32Array(0); private lastAlert = [-999, -999];
 
   constructor(opts: SimOptions = {}) {
     this.map = buildMap(); const n = this.map.size;
     this.grid = new Uint8Array(this.map.terrain); this.pather = new Pather(n, this.grid);
-    this.scripted = opts.scripted === true; this.incomeMult = opts.income ?? [1, 1]; this.edge = opts.edge ?? [NO_EDGE, NO_EDGE]; this.head = new Int32Array(Math.ceil(n / 2) ** 2);
-    this.players = [0, 1].map(i => ({ minerals: START_MINERALS + this.edge[i].minerals, used: 0, cap: 0, mined: 0, kills: 0, lost: 0, made: 0, defeated: false, income: 0, up: { atk: false, arm: false, cannon: false, speed: false } }));
+    this.scripted = opts.scripted === true; this.incomeMult = opts.income ?? [1, 1]; this.head = new Int32Array(Math.ceil(n / 2) ** 2);
+    this.players = [0, 1].map(() => ({ minerals: START_MINERALS, used: 0, cap: 0, mined: 0, kills: 0, lost: 0, made: 0, defeated: false, income: 0, up: { atk: false, arm: false, cannon: false, speed: false } }));
     for (const nd of this.map.nodes) if (nd.base < 2) this.addNode(nd.x, nd.y);
     for (const nd of this.map.nodes) if (nd.base >= 2) this.addNode(nd.x, nd.y);
     for (let p = 0; p < 2; p++) {
@@ -313,10 +310,9 @@ export class RtsSim {
 
   private damage(owner: number, t: Unit | Building, dmg: number, w: 'bullet' | 'rocket' | 'cannon', splash: number, fromX: number, fromY: number): void {
     const up = this.players[owner].up; if (w === 'cannon' ? up.cannon : up.atk) { dmg *= 1.25; if (w === 'cannon') splash += 0.4; }
-    dmg *= this.edge[owner].dmg;
     const tc = this.center(t); this.emit({ t: 'shot', w, owner, x0: fromX, y0: fromY, x1: tc.x, y1: tc.y, splash });
     const hit = (e: Unit | Building, mult: number): void => {
-      const armor = e.k === 'unit' ? UNITS[e.kind].armor : 'structure', amt = Math.max(1, Math.round(dmg * MULT[w][armor] * mult * (this.players[e.owner].up.arm ? 0.8 : 1) * this.edge[e.owner].def));
+      const armor = e.k === 'unit' ? UNITS[e.kind].armor : 'structure', amt = Math.max(1, Math.round(dmg * MULT[w][armor] * mult * (this.players[e.owner].up.arm ? 0.8 : 1)));
       e.hp -= amt; e.hurt = this.tick;
       if (this.tick - this.lastAlert[e.owner] > 120) { this.lastAlert[e.owner] = this.tick; this.emit({ t: 'alert', owner: e.owner, x: this.center(e).x, y: this.center(e).y }); }
       if (e.hp <= 0) this.players[owner].kills++;
@@ -359,7 +355,7 @@ export class RtsSim {
 
   /** 강화(기동 훈련)와 특수 능력을 반영한 이동 속도. 일꾼은 강화의 영향을 받지 않습니다. */
   private speedOf(u: Unit): number {
-    let s = UNITS[u.kind].speed * this.edge[u.owner].speed; if (u.kind !== 'worker' && this.players[u.owner].up.speed) s *= 1.12;
+    let s = UNITS[u.kind].speed; if (u.kind !== 'worker' && this.players[u.owner].up.speed) s *= 1.12;
     if (u.ab > this.tick) { if (u.kind === 'marine') s *= 1.35; else if (u.kind === 'jeep') s *= 1.8; else if (u.kind === 'tank') s = 0; }
     return s;
   }

@@ -1,5 +1,5 @@
 // SPEED RUSH — 레이스 진행(카운트다운·랩·순위·AI·차량 간 충돌). 화면과 무관한 순수 로직입니다.
-import { CARS, carById, carParams, levelById, paintOf, type CarDef, type LevelDef, type StatPoints } from './config';
+import { CARS, carById, carParams, levelById, paintOf, type CarDef, type LevelDef } from './config';
 import { aiInput, newCar, separateCars, stayOnTrack, stepCar, type AiProfile, type CarInput, type CarParams, type CarState, type StepEvents } from './physics';
 import { followSnap, type RemoteLink } from './netcar';
 import { type Track } from './track';
@@ -36,14 +36,14 @@ const SLOTS: Array<[number, number]> = [[-3, -5], [-3, 5], [-8, -5], [-8, 5], [-
 export interface PvpOptions { host: boolean; opponent: string; opponentCar: string }
 /** 멀티플레이 방 설정: 내 출발 칸(0~5)과 나를 뺀 참가자(입장 순서). 모두 네트워크 스냅샷으로 움직입니다. */
 export interface MultiOptions { slot: number; players: Array<{ id: string; nickname: string; car: string }> }
-export interface RaceOptions { level?: number; car?: string; pvp?: PvpOptions; multi?: MultiOptions; /** 코스 번호(날씨에 따른 그립 보정) */ map?: string; /** 차고 업그레이드(솔로 레이스의 내 차량에만 적용) */ upgrades?: Partial<StatPoints>; /** 도장(스킨) id — 내 차량의 색만 바꿉니다 */ skin?: string; /** 타임어택(혼자 달리기) */ trial?: boolean; ghost?: Ghost | null }
+export interface RaceOptions { level?: number; car?: string; pvp?: PvpOptions; multi?: MultiOptions; /** 코스 번호(날씨에 따른 그립 보정) */ map?: string; /** 도장(스킨) id — 내 차량의 색만 바꿉니다 */ skin?: string; /** 타임어택(혼자 달리기) */ trial?: boolean; ghost?: Ghost | null }
 /** 빗길에서 줄어드는 그립 배율 */
 export const wetGrip = (rain: number | undefined): number => 1 - 0.22 * (rain ?? 0);
 
 export function createRace(track: Track, laps = 3, bestLap = Infinity, opts: RaceOptions = {}): RaceState {
   const wet = wetGrip(mapById(opts.map ?? '').theme.rain), level = levelById(opts.level ?? 1), mine = carById(opts.car ?? CARS[0].id), at = CARS.indexOf(mine);
-  const mk = (id: number, name: string, def: CarDef, player: boolean, slot: [number, number], ai: AiProfile, bonus?: Partial<StatPoints>): Racer =>
-    ({ id, name, color: def.color, player, car: newCar(track, track.n + slot[0], slot[1]), ai: { ...ai, grip: ai.grip * wet }, params: { ...carParams(def, bonus), grip: carParams(def, bonus).grip * wet }, model: def.model, accent: def.accent, lapTimes: [], lapStart: 0, finishTime: null, lastEv: { hit: 0, driftBoost: 0, pad: false } });
+  const mk = (id: number, name: string, def: CarDef, player: boolean, slot: [number, number], ai: AiProfile): Racer =>
+    ({ id, name, color: def.color, player, car: newCar(track, track.n + slot[0], slot[1]), ai: { ...ai, grip: ai.grip * wet }, params: { ...carParams(def), grip: carParams(def).grip * wet }, model: def.model, accent: def.accent, lapTimes: [], lapStart: 0, finishTime: null, lastEv: { hit: 0, driftBoost: 0, pad: false } });
   if (opts.pvp) {
     // 같은 줄의 왼쪽·오른쪽 칸에서 나란히 출발합니다. 상대는 AI 가 아니라 네트워크 스냅샷으로 움직입니다.
     const them = carById(opts.pvp.opponentCar), ai: AiProfile = { lane: 0, top: 58, grip: 30, skill: 1 };
@@ -57,7 +57,7 @@ export function createRace(track: Track, laps = 3, bestLap = Infinity, opts: Rac
     const others = opts.multi.players.map((pl, i) => { const r = mk(i + 1, pl.nickname, carById(pl.car), false, SLOTS[free[i]] ?? SLOTS[0], ai); r.link = { snap: null, at: 0 }; r.peer = pl.id; return r; });
     return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [me, ...others], player: me, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level };
   }
-  const player = mk(0, 'YOU', mine, true, SLOTS[2], { lane: 0, top: 58, grip: 30, skill: 1 }, opts.upgrades);
+  const player = mk(0, 'YOU', mine, true, SLOTS[2], { lane: 0, top: 58, grip: 30, skill: 1 });
   if (opts.skin) Object.assign(player, paintOf(mine, opts.skin));
   if (opts.trial) return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [player], player, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, trial: true, ghost: opts.ghost ?? null, rec: new GhostRecorder() };
   const rivals = FIELD.map((f, i) => {

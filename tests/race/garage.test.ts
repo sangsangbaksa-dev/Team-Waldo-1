@@ -8,15 +8,15 @@ import { MAPS } from '../../src/race/maps';
 describe('차고', () => {
   it('코인이 모자라면 살 수 없고 충분하면 차감된다', () => {
     expect(buyUpgrade(emptyGarage(), 'arc', 'top')).toBeNull();
-    const g = buyUpgrade({ coins: 200, cars: {} }, 'arc', 'top')!;
+    const g = buyUpgrade({ coins: 200, cars: {}, skins: [] }, 'arc', 'top')!;
     expect(g.coins).toBe(200 - UPGRADE_COST[0]); expect(upgradesOf(g, 'arc').top).toBe(1); expect(upgradesOf(g, 'bolt').top).toBe(0);
   });
   it('최대 단계 이후에는 살 수 없다', () => {
-    let g = { coins: 99999, cars: {} } as ReturnType<typeof emptyGarage>;
+    let g = { coins: 99999, cars: {}, skins: [] } as ReturnType<typeof emptyGarage>;
     for (let i = 0; i < UPGRADE_MAX; i++) g = buyUpgrade(g, 'arc', 'accel')!;
     expect(nextCost(g, 'arc', 'accel')).toBeNull(); expect(buyUpgrade(g, 'arc', 'accel')).toBeNull();
   });
-  it('알 수 없는 차량은 살 수 없다', () => { expect(buyUpgrade({ coins: 999, cars: {} }, 'nope', 'top')).toBeNull(); });
+  it('알 수 없는 차량은 살 수 없다', () => { expect(buyUpgrade({ coins: 999, cars: {}, skins: [] }, 'nope', 'top')).toBeNull(); });
   it('보상은 순위·난이도·랩 수에 따라 늘어난다', () => {
     expect(rewardFor(1, 1, 3, false)).toBeGreaterThan(rewardFor(4, 1, 3, false));
     expect(rewardFor(1, 5, 3, false)).toBeGreaterThan(rewardFor(1, 1, 3, false));

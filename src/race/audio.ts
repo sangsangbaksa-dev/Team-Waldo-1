@@ -80,7 +80,7 @@ export class RaceAudio {
     const t = c.currentTime, v = this.done ? 0 : Math.abs(speed);
     const thr = this.done ? 0 : throttle, go = this.enabled && !this.done;
     const g = gearFor(v);
-    if (g !== this.gear) { if (g > this.gear && go) { this.lastShift = t; burst(this.eng, 0.09, 0.07, 2200, 0.8, 'highpass'); } this.gear = g; }
+    if (g !== this.gear) { if (g > this.gear && go) { this.lastShift = t; burst(this.eng, 0.09, 0.07, 2200, 0.8, 'highpass'); tone(this.eng, 85, 0.1, 0.18, 'sine', -35); if (boost) burst(this.eng, 0.14, 0.12, 1400, 1.2, 'bandpass'); } this.gear = g; }
     const lo = GEARS[g - 1], hi = GEARS[g], rpm = 0.18 + 0.82 * Math.min(1, Math.max(0, (v - lo) / (hi - lo))) - (t - this.lastShift < 0.12 ? 0.18 : 0);
     const pr = this.prof, f = (48 + rpm * 190 + (go && boost ? 24 : 0)) * pr.pitch;
     this.motor.o1.frequency.setTargetAtTime(f, t, 0.03); this.motor.o2.frequency.setTargetAtTime(f * 1.505, t, 0.03);
@@ -90,16 +90,17 @@ export class RaceAudio {
     if (go && this.lastThr > 0.6 && thr < 0.2 && v > 25 && t - this.lastPop > 0.5) { this.lastPop = t; burst(this.eng, 0.22, 0.12 * Math.max(0.4, pr.turbo), 3200, 0.7, 'highpass'); }
     this.lastThr = thr;
     this.motor.filt.frequency.setTargetAtTime(380 + rpm * 1700 + thr * 700 + pr.grit * 260, t, 0.05);
-    this.motor.gain.gain.setTargetAtTime(go ? 0.16 + thr * 0.16 + rpm * 0.08 : 0, t, 0.05);
-    this.wind.gain.gain.setTargetAtTime(go ? Math.pow(Math.min(1, v / 90), 2) * 0.28 : 0, t, 0.1);
+    this.motor.gain.gain.setTargetAtTime(go ? 0.17 + thr * 0.17 + rpm * 0.09 + (boost ? 0.05 : 0) : 0, t, 0.05);
+    this.wind.gain.gain.setTargetAtTime(go ? Math.pow(Math.min(1, v / 90), 2) * 0.4 : 0, t, 0.1);
     this.wind.filt.frequency.setTargetAtTime(500 + v * 14, t, 0.1);
     const sk = (drifting ? 0.2 : 0) + Math.max(0, Math.abs(slip) - 0.14) * 1.1 + (wall ? 0.15 : 0);
-    this.skid.gain.gain.setTargetAtTime(go ? Math.min(0.28, sk) * (v > 8 ? 1 : 0) : 0, t, 0.05);
+    this.skid.gain.gain.setTargetAtTime(go ? Math.min(0.34, sk * 1.15) * (v > 8 ? 1 : 0) : 0, t, 0.05);
     this.skid.filt.frequency.setTargetAtTime(1300 + Math.abs(slip) * 1800, t, 0.1);
-    this.boostG.gain.gain.setTargetAtTime(go && boost ? 0.24 : 0, t, boost ? 0.04 : 0.2);
+    this.boostG.gain.gain.setTargetAtTime(go && boost ? 0.32 : 0, t, boost ? 0.04 : 0.2);
+    this.boostG.filt.frequency.setTargetAtTime(500 + v * 11, t, 0.1);
   }
 
-  sfx(name: 'count' | 'go' | 'lap' | 'best' | 'hit' | 'bump' | 'pad' | 'drift' | 'finish' | 'click', power = 1): void {
+  sfx(name: 'count' | 'go' | 'lap' | 'best' | 'hit' | 'bump' | 'pad' | 'drift' | 'nitro' | 'chirp' | 'finish' | 'click', power = 1): void {
     if (!this.eng.ctx || !this.enabled) return;
     // hit/bump can be emitted twice in one frame (wall + car shove) or every step while cars grind.
     const gap = name === 'hit' || name === 'bump' ? 150 : 0;
@@ -117,6 +118,8 @@ export class RaceAudio {
       case 'bump': burst(this.eng, 0.13, 0.32, 900, 0.8, 'lowpass'); tone(this.eng, 130, 0.1, 0.22, 'square', -60); break;
       case 'pad': tone(this.eng, 300, 0.45, 0.24, 'sawtooth', 1400); burst(this.eng, 0.45, 0.28, 3000, 0.7, 'highpass'); break;
       case 'drift': tone(this.eng, 500, 0.26, 0.24, 'sawtooth', 1200); burst(this.eng, 0.35, 0.24, 2500, 0.7, 'highpass'); break;
+      case 'nitro': tone(this.eng, 90, 0.5, 0.42, 'sine', -40); tone(this.eng, 160, 0.7, 0.3, 'sawtooth', 1500); burst(this.eng, 0.8, 0.34, 1800, 0.7, 'highpass'); burst(this.eng, 0.25, 0.3, 500, 0.9, 'lowpass'); break;
+      case 'chirp': burst(this.eng, 0.22, 0.26, 2600, 5, 'bandpass'); tone(this.eng, 900, 0.18, 0.1, 'sawtooth', -400); break;
       case 'finish': this.done = true; this.drive(0, 0, 0, false, false, false);
         for (let i = 0; i < 4; i++) tone(this.eng, 523 * [1, 1.25, 1.5, 2][i], 0.32, 0.24, 'triangle', 0, i * 0.12);
         break;

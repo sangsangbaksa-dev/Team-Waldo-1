@@ -2,7 +2,7 @@ import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 
-// ZERO ZONE 총기 스크린샷: 1인칭 총(무기·파츠별)과 조립 화면(데스크톱·모바일). `node tools/gun-shots.mjs <출력 폴더>`
+// ZERO ZONE 총기 스크린샷: 1인칭 총(무기·파츠별). `node tools/gun-shots.mjs <출력 폴더>`
 const out = process.argv[2] || 'browser-artifacts/gun-shots', port = 4191, origin = 'http://127.0.0.1:' + port;
 const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'] });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -34,25 +34,6 @@ try {
     }
     await page.evaluate(() => { const me = window.__zz.me(); me.guns[0] = { id: 'rifle', mag: 30, reserve: 90, att: { sight: 'reddot', muzzle: 'comp' } }; me.cur = 0; window.__zz.ads(true); });
     await sleep(1000); await page.screenshot({ path: `${out}/fp-ads-rifle.png` });
-  }
-  if (only === 'all' || only === 'smith') {
-    await page.evaluate(() => localStorage.removeItem('waldo.shooter.loadout.v1'));
-    await page.click('[data-act="smith"]'); await page.waitForSelector('.gs-root'); await sleep(1500);
-    await page.screenshot({ path: `${out}/smith-0-rifle.png` });
-    await page.click('.gs-presets [data-preset="0"]'); await sleep(1800); await page.screenshot({ path: `${out}/smith-1-rifle-preset.png` });
-    await page.click('.gs-parts [data-slot="muzzle"]'); await page.click('.gs-opt[data-part="suppressor"]'); await page.click('.gs-hot.muzzle'); await sleep(2000); await page.screenshot({ path: `${out}/smith-2-rifle-muzzle.png` });
-    await page.click('.gs-weapons [data-w="sniper"]'); await page.click('.gs-parts [data-slot="sight"]'); await page.click('.gs-opt[data-part="scope8"]'); await sleep(1800); await page.screenshot({ path: `${out}/smith-3-sniper.png` });
-    await page.click('.gs-weapons [data-w="smg"]'); await sleep(1200); await page.screenshot({ path: `${out}/smith-4-smg.png` });
-    await page.click('.gs-weapons [data-w="pistol"]'); await sleep(1200); await page.screenshot({ path: `${out}/smith-5-pistol.png` });
-    await page.click('.gs-weapons [data-w="shotgun"]'); await sleep(1200); await page.screenshot({ path: `${out}/smith-6-shotgun.png` });
-    await page.click('.gs-done'); await page.waitForSelector('.gs-root', { state: 'detached' });
-    // 모바일
-    await page.setViewportSize({ width: 390, height: 780 }); await sleep(400);
-    await page.click('[data-act="smith"]'); await page.waitForSelector('.gs-root'); await sleep(1500);
-    await page.screenshot({ path: `${out}/smith-m0.png` });
-    await page.click('.gs-tabs [data-tab="stats"]'); await sleep(300); await page.screenshot({ path: `${out}/smith-m1-stats.png` });
-    await page.click('.gs-tabs [data-tab="parts"]'); await page.click('.gs-presets [data-preset="0"]'); await sleep(1500); await page.screenshot({ path: `${out}/smith-m2.png` });
-    const saved = await page.evaluate(() => localStorage.getItem('waldo.shooter.loadout.v1')); console.log('saved', saved);
   }
   console.log('errors', errors);
 } finally { await browser?.close(); server.kill(); }

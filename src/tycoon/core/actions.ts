@@ -323,7 +323,7 @@ function airportActions(ctx: ActionCtx): ActionSpec[] {
 export function newShop(g: GameData, spot: SpotDef, kind: ShopKind, level: number, invested: number): ShopData {
   g.shopsOpened++;
   return {
-    kind, name: shopName(g, spot, kind), level, priceMult: 1, stock: kind === 'factory' ? 0 : Math.round(SHOP_KINDS[kind].stock * 0.25), rating: 50, staff: [], invested,
+    kind, name: shopName(g, spot, kind), level, priceMult: 1, stock: kind === 'factory' ? 0 : Math.round(SHOP_KINDS[kind].stock * 0.5), rating: 50, staff: [], invested,
     today: { revenue: 0, customers: 0, lost: 0, cost: 0 }, lastProfit: 0, busy: 0,
   };
 }

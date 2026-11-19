@@ -7,7 +7,7 @@ import { readShooterCareer } from './shooter/records';
 import { readOutlawSummary } from './outlaw/records';
 import { readTycoonSummary } from './tycoon/core/save';
 import { STAGE_NAMES } from './tycoon/core/data';
-import { PVP_ENABLED } from './net/config';
+import { CHAT_ENABLED, PVP_ENABLED } from './net/config';
 
 type GameId = 'city' | 'race' | 'rts' | 'shooter' | 'outlaw' | 'tycoon';
 
@@ -109,6 +109,8 @@ retireUpgradeSaves();
 const app = document.querySelector<HTMLDivElement>('#game')!;
 let generation = 0;
 let unsubscribeAccount: (() => void) | undefined;
+/** 허브의 '전체' 채팅 창. 게임을 시작하면 치웁니다. */
+let hubChat: { close(): void } | undefined;
 
 function tile(entry: Entry, index: number): string {
   return `
@@ -170,7 +172,22 @@ function renderMenu(): void {
     button.onclick = () => { void launch(game.id); };
   });
   wireAccount();
+  wireChat();
 }
+
+/** 허브 오른쪽 아래의 전체 채팅. 첫 화면을 가볍게 두려고 한가할 때 불러옵니다. */
+function wireChat(): void {
+  if (!PVP_ENABLED || !CHAT_ENABLED || hubChat) return;
+  const gen = generation;
+  window.setTimeout(() => {
+    if (gen !== generation || hubChat) return;
+    void import('./net/chat-dock').then(({ openChat }) => {
+      if (gen !== generation || hubChat || app.hidden) return;
+      hubChat = openChat({ mode: 'hub', tabs: [{ key: 'lobby', label: '전체 채팅' }] });
+    }).catch(() => undefined);
+  }, 1500);
+}
+function closeHubChat(): void { hubChat?.close(); hubChat = undefined; }
 
 /** 헤더의 계정 버튼. 네트워크 모듈은 누를 때나 한가한 때에만 불러와서 첫 화면을 가볍게 둡니다. */
 function wireAccount(): void {
@@ -200,6 +217,7 @@ async function launch(id: GameId): Promise<void> {
   const notice = app.querySelector<HTMLElement>('#home-notice');
   const label = app.querySelector<HTMLElement>(`#start-${id} .tile-cta`);
   buttons.forEach(b => { b.disabled = true; });
+  closeHubChat();
   if (label) label.textContent = '불러오는 중…';
   if (notice) notice.textContent = '';
   // 일시적인 다운로드 오류에는 재시도하고, 계속 실패하면 메뉴로 복귀합니다.

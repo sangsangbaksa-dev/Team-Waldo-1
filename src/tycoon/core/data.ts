@@ -88,7 +88,7 @@ export interface ShopKindDef {
 
 export const SHOP_KINDS: Record<ShopKind, ShopKindDef> = {
   stall: { kind: 'stall', name: '포장마차', icon: '🍢', minStage: 'parttime', buildCost: 300, price: 5, unitCost: 2, demand: 30, maxLevel: 2, stock: 80, curve: 'meal' },
-  cafe: { kind: 'cafe', name: '카페', icon: '☕', minStage: 'smallshop', buildCost: 2500, price: 6, unitCost: 1.5, demand: 40, maxLevel: 3, stock: 120, curve: 'coffee' },
+  cafe: { kind: 'cafe', name: '카페', icon: '☕', minStage: 'smallshop', buildCost: 2000, price: 6, unitCost: 1.5, demand: 40, maxLevel: 3, stock: 120, curve: 'coffee' },
   mart: { kind: 'mart', name: '편의점', icon: '🏪', minStage: 'smallshop', buildCost: 6000, price: 9, unitCost: 5, demand: 50, maxLevel: 3, stock: 160, curve: 'flat' },
   restaurant: { kind: 'restaurant', name: '식당', icon: '🍜', minStage: 'bigshop', buildCost: 15000, price: 20, unitCost: 8, demand: 32, maxLevel: 3, stock: 120, curve: 'meal' },
   boutique: { kind: 'boutique', name: '편집숍', icon: '👗', minStage: 'business', buildCost: 40000, price: 60, unitCost: 24, demand: 16, maxLevel: 3, stock: 80, curve: 'retail' },
@@ -99,7 +99,7 @@ export const SHOP_KINDS: Record<ShopKind, ShopKindDef> = {
 /** 레벨별 손님·재고·응대 배수 */
 export const LEVEL_MULT = [0, 1, 1.8, 3];
 /** 레벨 N 으로 키우는 비용 = buildCost × EXPAND_COST[N] */
-export const EXPAND_COST = [0, 0, 1.2, 2.5];
+export const EXPAND_COST = [0, 0, 1.0, 2.0];
 /** 레벨당 점원 정원 */
 export const CLERKS_PER_LEVEL = 2;
 /** 하루 유지비 = 건물 가치 × */
@@ -214,8 +214,8 @@ export const LOAN_MIN_LIMIT = 1000;
 // ── 법인 ───────────────────────────────────────────────
 export const INCORPORATE_COST = 25000;
 /** 상장 조건 순자산 */
-export const IPO_NET_WORTH = 800000;
-export const IPO_MIN_SHOPS = 8;
+export const IPO_NET_WORTH = 400000;
+export const IPO_MIN_SHOPS = 7;
 export const IPO_MIN_DISTRICTS = 3;
 /** 상장 시 유입 현금 = 순자산 × */
 export const IPO_RAISE = 0.25;
@@ -225,19 +225,19 @@ export const CORP_TAX = 0.12;
 // ── 해외 ───────────────────────────────────────────────
 export interface RegionDef { id: string; name: string; size: number }
 export const REGIONS: readonly RegionDef[] = [
-  { id: 'asia', name: '아시아', size: 3_000_000 },
-  { id: 'europe', name: '유럽', size: 4_000_000 },
-  { id: 'namerica', name: '북미', size: 5_000_000 },
-  { id: 'samerica', name: '남미', size: 2_000_000 },
-  { id: 'africa', name: '아프리카', size: 1_500_000 },
-  { id: 'oceania', name: '오세아니아', size: 1_200_000 },
+  { id: 'asia', name: '아시아', size: 1_500_000 },
+  { id: 'europe', name: '유럽', size: 2_000_000 },
+  { id: 'namerica', name: '북미', size: 2_500_000 },
+  { id: 'samerica', name: '남미', size: 1_000_000 },
+  { id: 'africa', name: '아프리카', size: 800_000 },
+  { id: 'oceania', name: '오세아니아', size: 600_000 },
 ];
 export const CONQUER_SHARE = 0.6;
 export const REGION_STEP = 0.1;
 /** +10%p 투자 비용 = size × REGION_STEP_COST × (1 + share) */
-export const REGION_STEP_COST = 0.12;
+export const REGION_STEP_COST = 0.05;
 /** 하루 수입 = size × share × */
-export const REGION_YIELD = 0.03;
+export const REGION_YIELD = 0.05;
 /** 정복 전 점유율이 매일 깎이는 양(현지 경쟁) */
 export const REGION_DECAY = 0.01;
 

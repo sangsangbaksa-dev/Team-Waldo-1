@@ -7,7 +7,7 @@ import {
 import { generateArena } from './arena';
 import { addSolid, clearLine, generateCity, makeRng, navBlocked, rectFree, removeSolid, resolveCircle, type CityMap, type Rng } from './map';
 import { canPlaceAt, demolishRefund, demolishReject } from './placement';
-import { updateCityEvents, type CityEvent } from './events';
+import { resolveBountyKill, updateCityEvents, type CityEvent } from './events';
 import { updateActors, updateBullets, updateVehicles, updatePopulation } from './actors';
 import { thinkFaction, type AiState } from './ai';
 import { INTERIORS, INTERIOR_SPEED, nearCounter, nearDoor, resolveInterior, type InteriorLayout } from './interior';
@@ -271,6 +271,7 @@ export class World {
       if (f.player) this.fx('playerdown', a.x, a.y);
     }
     if (a.sup) f.supply -= a.sup;
+    resolveBountyKill(this, a, srcF);
   }
   hurtVehicle(v: Vehicle, dmg: number, srcF: number): void {
     if (!v.alive) return; v.hp -= dmg;

@@ -49,6 +49,9 @@ export class ModelLayer {
     this.flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: 0xffd98a, blending: THREE.AdditiveBlending, depthTest: false, transparent: true })); this.flash.scale.set(0.55, 0.55, 1); this.flash.visible = false; this.flash.renderOrder = 10;
   }
 
+  /** 스스로 빛나는 부품(가로등·신호등·눈·차 불빛)의 밝기: 낮엔 은은하게, 밤엔 눈부시게. */
+  setGlow(k: number): void { this.basic.color.setScalar(k); }
+
   private inst(b: Baked, mat: THREE.Material, n: number, shadow = false): THREE.InstancedMesh | null {
     if (!b.fixed) return null; const m = new THREE.InstancedMesh(b.fixed, mat, n); m.frustumCulled = false; m.castShadow = shadow; this.scene.add(m); return m;
   }

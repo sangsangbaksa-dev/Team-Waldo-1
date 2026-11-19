@@ -5,6 +5,7 @@ import { makeRng } from './map';
 import { AWNING_OUT, CHAR_SCALE, HIP, KNEE, LEG_Z, PROPS } from './scale';
 import { CHAR_KINDS, instantiate, type Baked, type Models } from './models';
 import type { Actor, Structure, Vehicle, World } from './world';
+import { chunkInstances, cullChunks, type ChunkRef } from './chunks';
 import { blankPose, calmState, computePose } from '../shared/character/pose';
 
 const CLOTH = [0x8d99ae, 0xb08968, 0x6d8a96, 0xa58fb3, 0x9aa37b, 0xc58f8f, 0xd27d5a, 0x5f9ea0], SKIN = [0xf1c9a5, 0xd9a47a, 0xa8744f, 0x7a5236, 0xf5d6b8];
@@ -23,6 +24,8 @@ export class ModelLayer {
   private d = new THREE.Object3D(); private base = new THREE.Matrix4(); private local = new THREE.Matrix4(); private q = new THREE.Quaternion(); private qz = new THREE.Quaternion(); private qy = new THREE.Quaternion();
   private st = calmState(); private pose = blankPose(); private torso = new THREE.Matrix4(); private m = new THREE.Matrix4(); private m2 = new THREE.Matrix4(); private down = new THREE.Matrix4().makeTranslation(0, -HIP, 0); private aim = new Map<number, number>();
   private v1 = new THREE.Vector3(); private one = new THREE.Vector3(1, 1, 1); private col = new THREE.Color(); private zAxis = new THREE.Vector3(0, 0, 1); private yAxis = new THREE.Vector3(0, 1, 0);
+  /** 정적 소품 칸들과, 이 거리(보통 안개 끝)보다 먼 칸은 그리지 않는 컬링 거리 */
+  readonly statics: ChunkRef[] = []; reach = 4700;
   private sets: Record<string, CharSet> = {}; private mechs = new Map<number, THREE.Object3D>(); private crystalMesh: THREE.InstancedMesh;
   private lam = new THREE.MeshLambertMaterial({ vertexColors: true }); private basic = new THREE.MeshBasicMaterial({ vertexColors: true });
   vmScene = new THREE.Scene(); vmCam = new THREE.PerspectiveCamera(64, 1, 0.5, 200); private vm: THREE.Object3D | null = null; private vmId = ''; private vmSwap = 0; private flash: THREE.Sprite;
@@ -43,7 +46,9 @@ export class ModelLayer {
     }
     // 크리스탈 / 나무 / 가로등 / 거리 소품
     this.crystalMesh = mk(models.baked.crystal.fixed!, new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x12465e }), world.crystals.length, false, false);
-    this.scatter();
+    const before = scene.children.length; this.scatter();
+    // 정적 소품은 격자 칸으로 쪼개 화면 밖·안개 너머는 그리지 않는다.
+    for (const o of scene.children.slice(before)) if ((o as THREE.InstancedMesh).isInstancedMesh) chunkInstances(o as THREE.InstancedMesh, scene, this.statics);
     // 1인칭 총 장면 (별도 패스: 벽을 뚫고 나오지 않게 깊이를 지우고 그립니다)
     this.vmScene.add(new THREE.HemisphereLight(0xdbe6ff, 0x6a5a50, 1.9)); const sun = new THREE.DirectionalLight(0xffe2b8, 2.4); sun.position.set(2, 4, 3); this.vmScene.add(sun);
     this.flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: 0xffd98a, blending: THREE.AdditiveBlending, depthTest: false, transparent: true })); this.flash.scale.set(0.55, 0.55, 1); this.flash.visible = false; this.flash.renderOrder = 10;
@@ -155,6 +160,7 @@ export class ModelLayer {
   // ---------- 매 프레임 ----------
   update(pb: Actor | null, third: boolean, cam: THREE.Vector3): void {
     const w = this.world, d = this.d, base = this.base, torso = this.torso, m = this.m, now = performance.now() / 1000;
+    cullChunks(this.statics, cam, this.reach);
     for (const k of CHAR_KINDS) { const s = this.sets[k]; for (const p of [s.body, s.leg, s.shin, s.armL, s.armR]) if (p) p.n = 0; }
     const seenMech = new Set<number>();
     for (const a of w.actors) {

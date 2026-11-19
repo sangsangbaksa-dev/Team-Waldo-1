@@ -26,14 +26,17 @@ function puddleMask(n: number): THREE.CanvasTexture {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.NoColorSpace; t.anisotropy = 4; return t;
 }
 
+/** 반사 프로브가 그리는 층: 하늘·스카이라인·건물·조명만 올린다(소품·사람·입자는 96픽셀 큐브맵에서 보이지도 않는다). */
+export const PROBE_LAYER = 1;
+
 export class WetStreet {
-  readonly mesh: THREE.Mesh; private mat: THREE.MeshStandardMaterial | THREE.MeshBasicMaterial; private rt: THREE.WebGLCubeRenderTarget | null = null; private cube: THREE.CubeCamera | null = null; private since = 99;
+  readonly mesh: THREE.Mesh; private mat: THREE.MeshStandardMaterial | THREE.MeshBasicMaterial; private rt: THREE.WebGLCubeRenderTarget | null = null; private cube: THREE.CubeCamera | null = null; private since = 99; /** 적응형 화질이 반사를 끄면 false */ probe = true; private rendered = false;
 
   constructor(quality: 'high' | 'standard' | 'low') {
     const tex = puddleMask(quality === 'low' ? 1024 : 2048);
     if (quality === 'high') {
       this.rt = new THREE.WebGLCubeRenderTarget(96, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
-      this.cube = new THREE.CubeCamera(4, 5200, this.rt);
+      this.cube = new THREE.CubeCamera(4, 5200, this.rt); this.cube.layers.set(PROBE_LAYER);
       this.mat = new THREE.MeshStandardMaterial({ color: 0x07090d, roughness: 0.05, metalness: 0.0, alphaMap: tex, transparent: true, opacity: 0.9, envMap: this.rt.texture, envMapIntensity: 1.6, depthWrite: false });
     } else {
       // 가벼운 화질: 하늘색으로 반짝이는 어두운 막(실제 반사 없음)
@@ -47,10 +50,12 @@ export class WetStreet {
     const wet = atm.wet; this.mesh.visible = wet > 0.04;
     if (this.mat instanceof THREE.MeshStandardMaterial) { this.mat.opacity = 0.35 + wet * 0.6; this.mat.envMapIntensity = 0.9 + wet * 1.4; this.mat.color.setRGB(...atm.fog).multiplyScalar(0.05); }
     else { this.mat.opacity = wet * 0.55; this.mat.color.setRGB(...atm.fog).multiplyScalar(0.35); }
-    if (!this.cube || !this.mesh.visible) return;
+    if (!this.cube || (!this.probe && this.rendered) || !this.mesh.visible) return;
     this.since += dt; if (this.since < 1.3) return; this.since = 0;
-    const vis = hide.map(o => o.visible); this.mesh.visible = false; hide.forEach(o => { o.visible = false; });
+    // 프로브는 그림자 패스를 6번 더 돌리지 않는다(그림자 맵은 본 패스 것을 그대로 쓴다).
+    const vis = hide.map(o => o.visible), sa = renderer.shadowMap.autoUpdate, sn = renderer.shadowMap.needsUpdate; this.mesh.visible = false; renderer.shadowMap.needsUpdate = false; // 프로브 카메라는 층이 달라 그림자 맵을 잘못 채우므로 갱신 요청을 잠시 미룬다
+    hide.forEach(o => { o.visible = false; }); renderer.shadowMap.autoUpdate = false;
     this.cube.position.set(cam.x, Math.max(14, cam.y * 0.6), cam.z); this.cube.update(renderer, scene);
-    hide.forEach((o, i) => { o.visible = vis[i]; }); this.mesh.visible = true;
+    renderer.shadowMap.autoUpdate = sa; renderer.shadowMap.needsUpdate = sn; this.rendered = true; hide.forEach((o, i) => { o.visible = vis[i]; }); this.mesh.visible = true;
   }
 }

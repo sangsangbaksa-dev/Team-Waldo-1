@@ -77,3 +77,12 @@ export function declutterFromAreaChip(x: number, y: number, screenW: number, scr
   if (!pointInRect(x, y, r, 10)) return { x, y };
   return { x, y: r.y - 12 };
 }
+
+/** 건설 고스트까지의 거리: 시선 각도에 비례해 근접(40)~최대(max)를 고르게 오갑니다. 지평선 근처가 최대, 아래로 약 45° 숙이면 가장 가깝습니다.
+ *  (지면 교점 방식은 먼 거리에서 각도 1°에 수십 칸이 움직여 중간 거리에 둘 수 없었습니다.) */
+export const BUILD_REACH_MIN = 40;
+export function buildReach(pitch: number, max = 700): number {
+  if (!Number.isFinite(pitch)) return max * 0.8;
+  const t = Math.max(0, Math.min(1, (-pitch - 0.04) / 0.75));
+  return BUILD_REACH_MIN + (max - BUILD_REACH_MIN) * (1 - t);
+}

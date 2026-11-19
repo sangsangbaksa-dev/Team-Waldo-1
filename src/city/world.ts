@@ -6,7 +6,7 @@ import {
 } from './defs';
 import { generateArena } from './arena';
 import { addSolid, clearLine, generateCity, makeRng, navBlocked, rectFree, removeSolid, resolveCircle, type CityMap, type Rng } from './map';
-import { canPlaceAt, demolishRefund, demolishReject } from './placement';
+import { PLACE_PROBLEM_TEXT, canPlaceAt, demolishRefund, demolishReject, placeProblem } from './placement';
 import { resolveBountyKill, updateCityEvents, type CityEvent } from './events';
 import { updateActors, updateBullets, updateVehicles, updatePopulation } from './actors';
 import { thinkFaction, type AiState } from './ai';
@@ -344,15 +344,21 @@ export class World {
     if (f.crystal < c) return '크리스탈이 부족합니다'; if (f.cash < m) return '자금이 부족합니다';
     f.crystal -= c; f.cash -= m; host.queue.push({ unit, t: d.time, total: d.time }); f.supply += d.supply; return '';
   }
-  canBuild(fi: number, kind: StructKind, cx: number, cy: number): boolean {
-    if (kind === 'hq') return false;
+  private placeOpts(fi: number, kind: StructKind, cx: number, cy: number): Parameters<typeof placeProblem>[0] {
     const d = STRUCTS[kind];
-    return canPlaceAt({
+    return {
       cx, cy, w: d.w, h: d.h, map: this.map, hq: this.hq(fi),
       ownedBiz: this.businesses.filter(b => b.owner === fi),
       ownedStructs: this.structures.filter(s => s.alive && s.f === fi && s.kind !== 'hq'),
       crystals: this.crystals, businesses: this.businesses,
-    });
+    };
+  }
+  canBuild(fi: number, kind: StructKind, cx: number, cy: number): boolean {
+    return kind !== 'hq' && canPlaceAt(this.placeOpts(fi, kind, cx, cy));
+  }
+  /** 지을 수 없을 때 이유 문구(지을 수 있으면 빈 문자열) */
+  buildProblem(fi: number, kind: StructKind, cx: number, cy: number): string {
+    const p = placeProblem(this.placeOpts(fi, kind, cx, cy)); return p ? PLACE_PROBLEM_TEXT[p] : '';
   }
   canDemolish(fi: number, id: number): string {
     return demolishReject(this.structures.find(s => s.id === id), fi);
@@ -385,7 +391,7 @@ export class World {
     const f = this.factions[fi], d = STRUCTS[kind]; if (kind === 'hq') return '불가';
     const c = this.cost(f, d.crystal), m = this.cost(f, d.cash);
     if (f.crystal < c) return '크리스탈이 부족합니다'; if (f.cash < m) return '자금이 부족합니다';
-    if (!this.canBuild(fi, kind, cx, cy)) return '여기에는 지을 수 없습니다 (본부·보유 사업체 근처의 빈 땅)';
+    const why = this.buildProblem(fi, kind, cx, cy); if (why) return '여기에는 지을 수 없습니다 — ' + why;
     f.crystal -= c; f.cash -= m; const s = this.addStructure(kind, fi, Math.round(cx - d.w / 2), Math.round(cy - d.h / 2));
     this.fx('build', cx, cy); this.pushOut(s); return '';
   }

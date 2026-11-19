@@ -8,7 +8,7 @@ export const TURN_TICKS = 3, DELAY = 2;
 const SILENT_MS = 9000, GATHER_MS = 15000, NEVER_MS = 30000, BEAT_MS = 250;
 
 export interface RoomLink { players: Array<{ id: string; nickname: string }>; meId: string; host: boolean; open(onMessage: (m: NetMsg) => void): Channel }
-export interface Pick { champ: string; spells: [string, string]; rune: string }
+export interface Pick { champ: string; spells: [string, string]; rune: string; /** 0 = 청 팀, 1 = 적 팀. 서로 다른 팀을 고르면 사람끼리 대전입니다. */ team: number }
 export interface StartEntry extends Pick { id: string }
 export interface RoomHooks {
   /** 방장이 정한 참가자 목록(입장 순서)과 난이도로 시작합니다. */
@@ -17,6 +17,7 @@ export interface RoomHooks {
   onAbort(): void;
 }
 
+const teamOf = (v: unknown): number => (v === 1 ? 1 : 0);
 function cleanCmds(v: unknown): Cmd[] {
   if (!Array.isArray(v)) return [];
   return v.slice(0, 12).filter((c): c is Cmd => {
@@ -77,13 +78,13 @@ export class MobaRoomNet {
     if (this.dead) return; const f = str(m.f, 64); if (!f || f === this.link.meId || !this.link.players.some(p => p.id === f)) return;
     if (this.started) { if (!this.heard.has(f) && !this.ids.includes(f)) return; this.heard.set(f, performance.now()); }
     if (m.t === 'hello') {
-      const p = m.pick as Record<string, unknown> | undefined; if (!this.started && p && typeof p === 'object') this.picks.set(f, { champ: str(p.champ), spells: [str((p.spells as unknown[])?.[0]), str((p.spells as unknown[])?.[1])], rune: str(p.rune) });
+      const p = m.pick as Record<string, unknown> | undefined; if (!this.started && p && typeof p === 'object') this.picks.set(f, { champ: str(p.champ), spells: [str((p.spells as unknown[])?.[0]), str((p.spells as unknown[])?.[1])], rune: str(p.rune), team: teamOf(p.team) });
       else if (this.started && this.startMsg) this.ch.send(this.startMsg);
       return;
     }
     if (m.t === 'start') {
       if (this.started || f !== this.link.players[0]?.id || !Array.isArray(m.list)) return;
-      const list: StartEntry[] = []; for (const e of m.list.slice(0, 4) as Array<Record<string, unknown>>) { const id = str(e.id, 64); if (this.link.players.some(p => p.id === id)) list.push({ id, champ: str(e.champ), spells: [str((e.spells as unknown[])?.[0]), str((e.spells as unknown[])?.[1])], rune: str(e.rune) }); }
+      const list: StartEntry[] = []; for (const e of m.list.slice(0, 4) as Array<Record<string, unknown>>) { const id = str(e.id, 64); if (this.link.players.some(p => p.id === id)) list.push({ id, champ: str(e.champ), spells: [str((e.spells as unknown[])?.[0]), str((e.spells as unknown[])?.[1])], rune: str(e.rune), team: teamOf(e.team) }); }
       if (list.some(e => e.id === this.link.meId)) { this.startMsg = null; this.begin(list, str(m.level, 12)); }
       return;
     }

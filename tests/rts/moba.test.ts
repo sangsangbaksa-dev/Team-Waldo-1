@@ -217,3 +217,19 @@ describe('수풀·와드 제거·새 정글 몬스터', () => {
     expect(me.hero!.gold).toBeGreaterThanOrEqual(g + 70); expect(me.hero!.speedUntil).toBeGreaterThan(s.tick); expect(s.wards.some(w => w.team === 0 && w.owner === 0)).toBe(true);
   });
 });
+
+describe('사람끼리 팀 대전(방)', () => {
+  const pvp = (): MobaSim => { const s = new MobaSim({ player: 'blade', lane: 'top', allies: [{ champ: 'arcana', lane: 'mid', human: true }, { champ: 'ranger', lane: 'bot' }, { champ: 'blade', lane: 'jungle' }], foes: [{ champ: 'arcana', lane: 'top', human: true }, { champ: 'ranger', lane: 'mid' }, { champ: 'blade', lane: 'bot' }, { champ: 'arcana', lane: 'jungle' }] }); s.record = false; return s; };
+  it('적 팀 사람 영웅은 봇이 아니고 AI 가 조종하지 않는다', () => {
+    const s = pvp(), ais = [new MobaAi(0, 'normal'), new MobaAi(1, 'normal')], foe = s.get(s.heroIds[4])!;
+    expect(foe.team).toBe(1); expect(foe.hero!.bot).toBe(false); expect(s.get(s.heroIds[1])!.hero!.bot).toBe(false);
+    for (let i = 0; i < 60; i++) { s.step(); for (const a of ais) a.think(s); } // 겹쳐 태어난 영웅이 밀려나 자리를 잡을 시간
+    const x = foe.x, y = foe.y; for (let i = 0; i < 160; i++) { s.step(); for (const a of ais) a.think(s); }
+    expect(Math.hypot(foe.x - x, foe.y - y)).toBeLessThan(0.01);
+  });
+  it('적 팀 사람의 명령이 적용되고 myTeam 이 따라간다', () => {
+    const s = pvp(), id = s.heroIds[4]; s.meId = id; expect(s.myTeam).toBe(1);
+    expect(s.apply(id, { k: 'move', x: s.get(id)!.x - 6, y: s.get(id)!.y + 6 })).toBe(true); const x0 = s.get(id)!.x; run(s, 60);
+    expect(s.get(id)!.x).toBeLessThan(x0 - 1);
+  });
+});

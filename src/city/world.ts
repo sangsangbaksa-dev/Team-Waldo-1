@@ -386,12 +386,17 @@ export class World {
     }
     return best;
   }
-  build(fi: number, kind: StructKind, cx: number, cy: number): string {
+  /** 지금 이 자리에 지을 수 없는 이유(자원 부족 또는 위치 문제). 지을 수 있으면 빈 문자열. */
+  buildError(fi: number, kind: StructKind, cx: number, cy: number): string {
     const f = this.factions[fi], d = STRUCTS[kind]; if (kind === 'hq') return '불가';
-    const c = this.cost(f, d.crystal), m = this.cost(f, d.cash);
-    if (f.crystal < c) return '크리스탈이 부족합니다'; if (f.cash < m) return '자금이 부족합니다';
-    const why = this.buildProblem(fi, kind, cx, cy); if (why) return '여기에는 지을 수 없습니다 — ' + why;
-    f.crystal -= c; f.cash -= m; const s = this.addStructure(kind, fi, Math.round(cx - d.w / 2), Math.round(cy - d.h / 2));
+    if (f.crystal < this.cost(f, d.crystal)) return '크리스탈이 부족합니다';
+    if (f.cash < this.cost(f, d.cash)) return '자금이 부족합니다';
+    const why = this.buildProblem(fi, kind, cx, cy); return why ? '여기에는 지을 수 없습니다 — ' + why : '';
+  }
+  build(fi: number, kind: StructKind, cx: number, cy: number): string {
+    const f = this.factions[fi], d = STRUCTS[kind];
+    const err = this.buildError(fi, kind, cx, cy); if (err) return err;
+    f.crystal -= this.cost(f, d.crystal); f.cash -= this.cost(f, d.cash); const s = this.addStructure(kind, fi, Math.round(cx - d.w / 2), Math.round(cy - d.h / 2));
     this.fx('build', cx, cy); this.pushOut(s); return '';
   }
   pushOut(s: Structure): void { // 새 건물 자리에 있던 유닛을 바깥으로

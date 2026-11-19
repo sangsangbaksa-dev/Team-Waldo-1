@@ -78,6 +78,7 @@ export function restoreGame(raw: unknown): GameData | null {
     ? { id: String(t.id), jobId: String(t.jobId), from: String(t.from), target: String(t.target), reward: num(t.reward, 0, 0, 1000), deadline: num(t.deadline, 0) }
     : null;
   g.lastReport = isObj(raw.lastReport) ? raw.lastReport as unknown as GameData['lastReport'] : null;
+  if (isObj(raw.ledger)) for (const k of Object.keys(g.ledger) as Array<keyof GameData['ledger']>) g.ledger[k] = num(raw.ledger[k], 0);
   g.nextId = Math.floor(num(raw.nextId, 1, 1));
   g.shopsOpened = Math.floor(num(raw.shopsOpened, 0, 0));
   return g;

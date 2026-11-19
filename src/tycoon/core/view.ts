@@ -1,5 +1,5 @@
 // 내부 상태 → 씬/HUD 가 읽는 스냅샷.
-import { CLOSE_HOUR, CONQUER_SHARE, EVENTS, NIGHT_FROM, NIGHT_TO, OPEN_HOUR, REGIONS, REGION_YIELD, RIVALS, SHOP_KINDS, STAGE_NAMES, stageIndex } from './data';
+import { CLOSE_HOUR, CONQUER_SHARE, EVENTS, NIGHT_FROM, NIGHT_TO, OPEN_HOUR, REGIONS, REGION_YIELD, RIVALS, SHOP_KINDS, STAGE_NAMES, WAGES, stageIndex } from './data';
 import { regionInvestCost, rivalValue, takeoverCost } from './actions';
 import { SPOT_BY_ID, absMinute, clock, lotPrice, netWorth, playerShops, serveCapacity, shopValue, stockCap, type ActivityData, type GameData, type ShopData } from './model';
 import { goal } from './sim';
@@ -20,7 +20,7 @@ export function shopView(g: GameData, spotId: string, shop: ShopData, presence: 
     stock: Math.floor(shop.stock),
     stockCap: stockCap(shop),
     rating: Math.round(shop.rating),
-    staff: shop.staff.map(s => ({ ...s, wage: s.role === 'clerk' ? 50 : 160 })),
+    staff: shop.staff.map(s => ({ ...s, wage: WAGES[s.role] })),
     serving: shop.kind !== 'factory' && open && shop.stock >= 1 && serveCapacity(shop, presence === spotId && g.energy > 0) > 0,
     todayRevenue: Math.round(shop.today.revenue),
     todayCustomers: Math.floor(shop.today.customers),

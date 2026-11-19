@@ -8,6 +8,7 @@ vi.mock('../../src/net/backend', () => ({
   getBackend: async () => be.backend as unknown as Backend,
   currentAccount: async () => ({ id: 'u1', email: 'a@x.dev', nickname: 'Alpha' }),
   setAccount: vi.fn(),
+  onAccount: () => () => undefined,
 }));
 
 const room: RoomRow = { id: 'r1', code: 'ABC23', game: 'city', host_id: 'u1', max_players: 2, is_public: true, status: 'waiting', config: {}, match_id: null };
@@ -20,6 +21,7 @@ beforeEach(() => {
     quickMatch: vi.fn(async () => row({ id: 'm2' })), getMatch: vi.fn(async () => row({ id: 'm2' })), nickname: vi.fn(async () => '상대'),
     roomList: vi.fn(async () => []), roomCreate: vi.fn(async () => room), roomState: vi.fn(async () => info), roomStart: vi.fn(async () => ({ ...room, status: 'playing' as const })),
     roomLeave: vi.fn(async () => undefined), roomReady: vi.fn(async () => undefined), roomJoin: vi.fn(async () => room),
+    chatHistory: vi.fn(async () => []), chatWatch: vi.fn(() => ({ ready: Promise.resolve(), close: vi.fn() })), chatSend: vi.fn(), chatReport: vi.fn(),
   };
 });
 afterEach(() => { vi.useRealTimers(); });
@@ -66,5 +68,46 @@ describe('방 화면', () => {
     await open(); click('newroom'); document.querySelector<HTMLFormElement>('form[data-form="create"]')!.requestSubmit(); await vi.advanceTimersByTimeAsync(1100);
     click('leave'); await vi.advanceTimersByTimeAsync(10);
     expect(be.backend.roomLeave).toHaveBeenCalledWith('r1'); expect(document.querySelector('[data-act="newroom"]')).not.toBeNull();
+  });
+});
+
+describe('로비 채팅', () => {
+  beforeEach(() => { vi.resetModules(); });
+  it('게임 로비 → 방 → 게임 시작 → 채널을 닫으면 채팅도 닫힌다', async () => {
+    const { openLobby } = await import('../../src/net/lobby');
+    const dock = await import('../../src/net/chat-dock');
+    let session: { open(h: () => void): { close(): void } } | null = null;
+    be.backend.open = vi.fn(() => ({ ready: Promise.resolve(), send: vi.fn(), close: vi.fn() }));
+    openLobby({ game: 'city', maxPlayers: 4, onRoom: s => { session = s; }, onClose: () => undefined });
+    await vi.advanceTimersByTimeAsync(10);
+    expect(dock.chatLayerForTest()?.tabs.map(t => t.key)).toEqual(['g:city', 'lobby']);
+    click('newroom'); document.querySelector<HTMLFormElement>('form[data-form="create"]')!.requestSubmit(); await vi.advanceTimersByTimeAsync(1100);
+    expect(dock.chatLayerForTest()?.tabs.map(t => t.key)).toEqual(['r:r1', 'g:city', 'lobby']);
+    info = { room: { ...room, max_players: 4 }, members: [{ user_id: 'u1', nickname: 'Alpha', ready: true }, { user_id: 'u2', nickname: 'Beta', ready: true }, { user_id: 'u3', nickname: 'Gamma', ready: true }] };
+    await vi.advanceTimersByTimeAsync(1100);
+    info = { ...info, room: { ...info.room, status: 'playing' } };
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(session).not.toBeNull(); expect(dock.chatLayerForTest()).toBeNull();
+    const ch = session!.open(() => undefined);
+    expect(dock.chatLayerForTest()).toMatchObject({ mode: 'game', tabs: [{ key: 'r:r1' }] });
+    ch.close(); expect(dock.chatLayerForTest()).toBeNull();
+  });
+});
+
+describe('자체 게임 채팅이 있는 게임', () => {
+  beforeEach(() => { vi.resetModules(); });
+  it('inGameChat: false 이면 게임 중 공통 채팅 창을 띄우지 않는다', async () => {
+    const { openLobby } = await import('../../src/net/lobby');
+    const dock = await import('../../src/net/chat-dock');
+    let session: { open(h: () => void): { close(): void } } | null = null;
+    be.backend.open = vi.fn(() => ({ ready: Promise.resolve(), send: vi.fn(), close: vi.fn() }));
+    openLobby({ game: 'shooter', maxPlayers: 4, inGameChat: false, onRoom: s => { session = s; }, onClose: () => undefined });
+    await vi.advanceTimersByTimeAsync(10);
+    click('newroom'); document.querySelector<HTMLFormElement>('form[data-form="create"]')!.requestSubmit(); await vi.advanceTimersByTimeAsync(1100);
+    expect(dock.chatLayerForTest()?.tabs[0]?.key).toBe('r:r1');
+    info = { room: { ...room, max_players: 4, status: 'playing' }, members: [{ user_id: 'u1', nickname: 'Alpha', ready: true }, { user_id: 'u2', nickname: 'Beta', ready: true }, { user_id: 'u3', nickname: 'Gamma', ready: true }] };
+    await vi.advanceTimersByTimeAsync(1100);
+    session!.open(() => undefined);
+    expect(dock.chatLayerForTest()).toBeNull();
   });
 });

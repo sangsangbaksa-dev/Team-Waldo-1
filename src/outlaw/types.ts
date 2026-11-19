@@ -150,7 +150,7 @@ export interface LaneNode {
   /** 교차로 정지선이면 신호 그룹(0 또는 1), 아니면 -1 */ light: number; /** 도로 번호(같은 도로 구간끼리 같음) */ road: number;
 }
 export interface RoadSeg { id: number; ax: number; az: number; bx: number; bz: number; width: number; major: boolean }
-export type PoiKind = 'dealer' | 'gym' | 'arena' | 'safehouse' | 'gunshop' | 'paynspray' | 'hospital' | 'police' | 'bank' | 'casino' | 'garage' | 'chopshop' | 'club' | 'dock' | 'park' | 'start';
+export type PoiKind = 'dealer' | 'arena' | 'safehouse' | 'gunshop' | 'paynspray' | 'hospital' | 'police' | 'bank' | 'casino' | 'garage' | 'chopshop' | 'club' | 'dock' | 'park' | 'start';
 export interface Poi { id: string; kind: PoiKind; name: string; x: number; z: number; /** 상호작용 반경 */ r: number; /** 건물 id(없으면 -1) */ building: number }
 export interface Ramp { x: number; z: number; h: number; w: number; len: number }
 export interface CityMap {

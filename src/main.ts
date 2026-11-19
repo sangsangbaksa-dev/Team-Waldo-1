@@ -5,9 +5,11 @@ import { showLoading, retry, retryNote } from './loading';
 import { readCityCareer, readRaceRecords, readRtsRecords, fmtTime } from './records';
 import { readShooterCareer } from './shooter/records';
 import { readOutlawSummary } from './outlaw/records';
+import { readTycoonSummary } from './tycoon/core/save';
+import { STAGE_NAMES } from './tycoon/core/data';
 import { CHAT_ENABLED, PVP_ENABLED } from './net/config';
 
-type GameId = 'city' | 'race' | 'rts' | 'shooter' | 'outlaw';
+type GameId = 'city' | 'race' | 'rts' | 'shooter' | 'outlaw' | 'tycoon';
 
 interface Entry {
   id: GameId;
@@ -88,6 +90,19 @@ const ENTRIES: Entry[] = [
       return r.has ? `의뢰 ${r.missions}/7 · 스턴트 ${r.stunts}/12` : '';
     },
   },
+  {
+    id: 'tycoon',
+    name: 'HUSTLE',
+    genre: '발로 뛰는 도시 타이쿤',
+    summary: '벤치에서 눈을 뜬 빈털터리가 빈 병을 줍고, 알바를 뛰고, 작은 가게를 열어 사업·대기업을 거쳐 세계를 정복합니다. 도시는 당신의 걸음과 함께 자랍니다.',
+    facts: ['3D 도시 · 낮밤 · 비', '빈털터리 → 세계 정복 7단계', '키보드 · 마우스 · 터치'],
+    image: `${base}assets/home/hustle.jpg`,
+    imageAlt: '해 질 녘 번화한 도시 거리와 간판 불빛',
+    status: () => {
+      const r = readTycoonSummary();
+      return r.has ? (r.won ? `세계 정복 · ${r.day}일` : `${STAGE_NAMES[r.stage]} · ${r.day}일차`) : '';
+    },
+  },
 ];
 
 retireUpgradeSaves();
@@ -118,7 +133,7 @@ function renderMenu(): void {
   unsubscribeAccount?.();
   unsubscribeAccount = undefined;
   const sound = readPreferences().sound;
-  document.title = 'WALDO · 다섯 편의 3D 게임';
+  document.title = 'WALDO · 여섯 편의 3D 게임';
   app.hidden = false;
   app.innerHTML = `
     <main class="home">
@@ -135,7 +150,7 @@ function renderMenu(): void {
         </div>
       </header>
       <section class="home-intro">
-        <h1>${['', '한', '두', '세', '네', '다섯'][ENTRIES.length] ?? ENTRIES.length} 편의 3D 게임.</h1>
+        <h1>${['', '한', '두', '세', '네', '다섯', '여섯'][ENTRIES.length] ?? ENTRIES.length} 편의 3D 게임.</h1>
         <p>설치 없이 이 페이지에서 바로 시작합니다.</p>
       </section>
       <ul class="tiles" aria-label="게임 목록">${ENTRIES.map(tile).join('')}</ul>
@@ -206,7 +221,7 @@ async function launch(id: GameId): Promise<void> {
   if (label) label.textContent = '불러오는 중…';
   if (notice) notice.textContent = '';
   // 일시적인 다운로드 오류에는 재시도하고, 계속 실패하면 메뉴로 복귀합니다.
-  const loading = showLoading(id === 'city' ? 'LAST CITY' : id === 'rts' ? 'FRONTLINE' : id === 'shooter' ? 'ZERO ZONE' : id === 'outlaw' ? 'OUTLAW CITY' : 'SPEED RUSH');
+  const loading = showLoading(id === 'city' ? 'LAST CITY' : id === 'rts' ? 'FRONTLINE' : id === 'shooter' ? 'ZERO ZONE' : id === 'outlaw' ? 'OUTLAW CITY' : id === 'tycoon' ? 'HUSTLE' : 'SPEED RUSH');
   loading.progress(null, '게임을 불러오는 중');
   const cancelled = (): boolean => generation !== navigation;
   const fetchGame = <T,>(load: () => Promise<T>): Promise<T> => retry(load, { cancelled, maxAttempts: 4, onRetry: n => loading.note(retryNote(n)) });
@@ -231,6 +246,11 @@ async function launch(id: GameId): Promise<void> {
       if (cancelled()) { loading.close(); return; }
       app.hidden = true;
       openOutlaw(renderMenu, { loading });
+    } else if (id === 'tycoon') {
+      const { openTycoon } = await fetchGame(() => import('./tycoon/game'));
+      if (cancelled()) { loading.close(); return; }
+      app.hidden = true;
+      openTycoon(renderMenu, { loading });
     } else {
       const { openRace } = await fetchGame(() => import('./race/game'));
       if (cancelled()) { loading.close(); return; }

@@ -15,7 +15,8 @@ import { SkyDome } from './skydome';
 import { Skyline } from './skyline';
 import { StreetFx } from './streetfx';
 import { WetStreet, PROBE_LAYER } from './wetstreet';
-import { buildReach, clampLabelScreenPos, clampLookPitch, labelSpriteCenter } from './uiMath';
+import { BuildGhost } from './buildghost';
+import { BUILD_REACH_MAX, buildDistance, buildMinDistance, clampLabelScreenPos, clampLookPitch, labelSpriteCenter } from './uiMath';
 
 export type ViewMode = 'fp' | 'tp';
 /** 이 탭에서 이미 느리다고 판정된 적응형 화질 단계: 다음 판도 같은 단계로 시작해 첫 몇 초 끊김을 반복하지 않는다. */
@@ -63,7 +64,7 @@ export class Renderer3D {
   private sparks: Points; private fire: Points; private smoke: Points; private ml: ModelLayer | null = null;
   private structs = new Map<number, THREE.Group>(); private vehs = new Map<number, THREE.Group>(); private loots = new Map<number, THREE.Group>(); private biz = new Map<number, { g: THREE.Group; sig: string; label: THREE.Sprite; icon: THREE.Object3D | null }>();
   private booms: { m: THREE.Mesh; life: number; r: number }[] = []; private light: THREE.PointLight; private lightT = 0;
-  private zoneWall: THREE.Mesh; private zoneTex: THREE.Texture; private nextRing: THREE.Mesh; private ghost: THREE.Mesh; private sun: THREE.DirectionalLight; private gun = new THREE.Group(); private muzzle: THREE.Mesh; private planes: THREE.Group[] = [];
+  private zoneWall: THREE.Mesh; private zoneTex: THREE.Texture; private nextRing: THREE.Mesh; private ghost = new BuildGhost(); private sun: THREE.DirectionalLight; private gun = new THREE.Group(); private muzzle: THREE.Mesh; private planes: THREE.Group[] = [];
   private bossRings: THREE.Mesh[] = []; floaters: { el: HTMLElement; x: number; y: number; h: number; life: number }[] = [];
   private rainTint = new THREE.Color(); private ins: Interior3D | null = null; private insKind = '';
   /** 적응형 화질(0=원본 → 3=가장 가볍게): 프레임 시간 중앙값이 길면 해상도·반사·그림자·후처리를 차례로 줄입니다. */
@@ -72,7 +73,7 @@ export class Renderer3D {
 
   constructor(public canvas: HTMLCanvasElement, public world: World, public quality: 'high' | 'standard' | 'low', public layer: HTMLElement, public models: Models | null = null) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(quality === 'high' ? 2 : quality === 'standard' ? 1.5 : 1, window.devicePixelRatio || 1));
+    this.prMax = Math.min(quality === 'high' ? 2 : quality === 'standard' ? 1.5 : 1, window.devicePixelRatio || 1); this.pr = this.prCeil = this.prMax; this.renderer.setPixelRatio(this.pr);
     this.renderer.shadowMap.enabled = quality === 'high'; this.renderer.shadowMap.type = THREE.PCFShadowMap; this.renderer.shadowMap.autoUpdate = false; this.renderer.shadowMap.needsUpdate = true; // 그림자 맵은 2~3프레임에 한 번만 다시 그린다
     // 필름 톤매핑: 하이라이트가 하얗게 날아가지 않고 노을빛이 부드럽게 번진다.
     if (quality !== 'low') { this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.06; }
@@ -83,7 +84,7 @@ export class Renderer3D {
     this.hemi.layers.enable(PROBE_LAYER); this.sun.layers.enable(PROBE_LAYER);
     // 반대편 채움광: 그늘진 외벽이 검게 뭉개지지 않게 색을 남긴다.
     const fill = this.fill = new THREE.DirectionalLight(0x8aa4c8, 0.48); fill.position.set(520, 280, 620); fill.layers.enable(PROBE_LAYER); sc.add(fill);
-    if (quality === 'high') { this.sun.castShadow = true; const s = this.sun.shadow; s.mapSize.set(2048, 2048); s.camera.left = s.camera.bottom = -1100; s.camera.right = s.camera.top = 1100; s.camera.near = 10; s.camera.far = 3000; s.bias = -0.0012; }
+    if (quality === 'high') { this.sun.castShadow = true; const s = this.sun.shadow; s.mapSize.set(2048, 2048); s.camera.left = s.camera.bottom = -800; s.camera.right = s.camera.top = 800; s.camera.near = 10; s.camera.far = 3000; s.bias = -0.0012; }
     // 바다 + 지면
     const sea = this.sea = new THREE.Mesh(new THREE.PlaneGeometry(30000, 30000), new THREE.MeshLambertMaterial({ color: 0x2a4558 })); sea.rotation.x = -Math.PI / 2; sea.position.set(SIZE / 2, -6, SIZE / 2); sc.add(sea);
     const T = quality === 'low' ? 2048 : 4096, k = T / SIZE, gt = canvasTex(T, T, g => {
@@ -132,7 +133,7 @@ export class Renderer3D {
     this.zoneTex.wrapS = this.zoneTex.wrapT = THREE.RepeatWrapping;
     this.zoneWall = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 96, 1, true), new THREE.MeshBasicMaterial({ map: this.zoneTex, transparent: true, opacity: 0.42, side: THREE.DoubleSide, depthWrite: false, fog: false })); this.zoneWall.renderOrder = 5; sc.add(this.zoneWall);
     this.nextRing = new THREE.Mesh(new THREE.RingGeometry(0.992, 1, 128).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.9, depthWrite: false, fog: false })); sc.add(this.nextRing);
-    this.ghost = new THREE.Mesh(this.box, new THREE.MeshBasicMaterial({ color: 0x66ff9c, transparent: true, opacity: 0.45, depthWrite: false })); this.ghost.visible = false; sc.add(this.ghost);
+    sc.add(this.ghost.group);
     // 1인칭 무기 모델
     const gm = new THREE.MeshLambertMaterial({ color: 0x24272c }), g1 = new THREE.Mesh(this.box, gm), g2 = new THREE.Mesh(this.box, gm), g3 = new THREE.Mesh(this.box, new THREE.MeshLambertMaterial({ color: 0xd9a47a }));
     g1.scale.set(1.5, 2, 13); g1.position.set(0, 0, -6); g2.scale.set(1.4, 4.2, 2.2); g2.position.set(0, -2.6, -0.5); g3.scale.set(2.6, 2.8, 7); g3.position.set(0.3, -4, 3.5);
@@ -157,15 +158,14 @@ export class Renderer3D {
     this.scene.add(pole, bulb);
   }
   private setPerfLevel(l: number): void {
-    this.perfLevel = l; const q = this.quality, cap = q === 'high' ? 2 : q === 'standard' ? 1.5 : 1, pr = l >= 2 ? 1 : l === 1 ? Math.min(cap, 1.25) : cap;
-    this.renderer.setPixelRatio(Math.min(pr, window.devicePixelRatio || 1)); this.resize(); this.post?.setSize(this.w, this.h);
-    this.wetStreet.probe = l < 2; this.postOn = l < 3; if (l >= 3) this.sun.castShadow = false; this.settle = 60; this.gaps.length = 0;
+    this.perfLevel = l; this.wetStreet.probe = l < 1; this.postOn = l < 3; if (l >= 2) this.sun.castShadow = false; this.settle = 60; this.gaps.length = 0;
   }
-  /** 프레임 간격의 중앙값(60프레임)이 28ms 를 넘으면 한 단계 낮춘다. 탭 전환·일시정지(250ms 초과)와 시작 직후는 세지 않는다. */
+  /** 해상도(adaptResolution)가 이미 바닥인데도 프레임 간격 중앙값(60프레임)이 28ms 를 넘으면 반사 프로브 → 그림자 → 후처리 순으로 끈다. 탭 전환·일시정지(250ms 초과)와 시작 직후는 세지 않는다. */
   private govern(): void {
     const now = performance.now(), gap = this.lastT ? now - this.lastT : 0; this.lastT = now;
     if (!this.adaptive || gap <= 0 || gap > 250) return;
     if (this.settle > 0) { this.settle--; return; }
+    if (this.pr > Math.min(0.75, this.prMax) + 0.001) { this.gaps.length = 0; return; }
     this.gaps.push(gap); if (this.gaps.length < 60) return;
     const med = this.gaps.slice().sort((a, b) => a - b)[30]; this.gaps.length = 0;
     if (med > 28 && this.perfLevel < 3) { learnedLevel = this.perfLevel + 1; this.setPerfLevel(learnedLevel); }
@@ -177,9 +177,10 @@ export class Renderer3D {
     const b = this.world.boss(0), ox = b ? b.x : this.camPos.x, oy = b ? b.y : this.camPos.z; let d = this.pitch < -0.03 ? Math.min(max, (this.mode === 'fp' ? EYE : 120) / Math.tan(-this.pitch)) : max * 0.8; d = Math.max(70, d);
     return { x: ox + Math.cos(this.yaw) * d, y: oy + Math.sin(this.yaw) * d };
   }
-  /** 건설 고스트 위치: 바라보는 방향으로, 거리는 시선 각도에 비례(uiMath.buildReach). */
-  buildPoint(max = 700): { x: number; y: number } {
-    const b = this.world.boss(0), ox = b ? b.x : this.camPos.x, oy = b ? b.y : this.camPos.z, d = buildReach(this.pitch, max);
+  /** 건설 고스트 위치: 십자선이 바닥에 닿는 지점(uiMath.buildDistance). 건물이 보스를 덮지 않게 최소 거리를 둡니다. */
+  buildPoint(kind: StructKind, max = BUILD_REACH_MAX): { x: number; y: number } {
+    const b = this.world.boss(0), ox = b ? b.x : this.camPos.x, oy = b ? b.y : this.camPos.z, sd = STRUCTS[kind];
+    const d = buildDistance(this.pitch, this.mode === 'fp' ? EYE : 120, buildMinDistance(sd.w, sd.h), max);
     return { x: ox + Math.cos(this.yaw) * d, y: oy + Math.sin(this.yaw) * d };
   }
   project(x: number, y: number, h: number): { x: number; y: number; behind: boolean } { const v = new THREE.Vector3(x, h, y).project(this.camera); return { x: (v.x + 1) / 2 * this.w, y: (1 - v.y) / 2 * this.h, behind: v.z > 1 }; }
@@ -362,7 +363,20 @@ export class Renderer3D {
     (this.rain.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
   }
 
+  // 동적 해상도: 프레임이 길어지면 픽셀 배율을 단계적으로 낮추고(최소 0.75), 여유가 생기면 되돌립니다. 느린 기기에서도 렉이 쌓이지 않게 합니다.
+  private prMax = 1; private pr = 1; private prCeil = 1; private prLast = 0; private frameMs = 16; private prCool = 3; private sinceRaise = 99;
+  private adaptResolution(dt: number): void {
+    const now = performance.now(), real = this.prLast ? now - this.prLast : 16; this.prLast = now; // 실제 경과 시간으로 잽니다(dt 는 0.1초로 잘려 있음)
+    if (dt <= 0.001 || real > 3000) return; this.frameMs += (real - this.frameMs) * 0.08; this.prCool -= real / 1000; this.sinceRaise += real / 1000;
+    if (this.prCool > 0) return;
+    const cap = Math.min(this.prCeil, this.prMax), floor = Math.min(0.75, this.prMax); let next = this.pr;
+    if (this.frameMs > 24 && this.pr > floor) { next = Math.max(floor, this.pr - 0.25); if (this.sinceRaise < 10) this.prCeil = next; }
+    else if (this.frameMs < 17.5 && this.pr < cap) { next = Math.min(cap, this.pr + 0.25); this.sinceRaise = 0; }
+    if (next === this.pr) return;
+    this.pr = next; this.renderer.setPixelRatio(next); this.renderer.setSize(this.w, this.h, false); this.post?.setSize(this.w, this.h); this.prCool = 4; this.frameMs = 16;
+  }
   draw(dt: number, ghost: Ghost | null): void {
+    this.adaptResolution(dt);
     const inside = this.world.inside, ib = inside ? this.world.insideBiz() : null;
     if (inside && ib) { this.drawInside(dt, ib.kind, this.world.insideLayout()!, inside); return; }
     if (this.ins) { this.ins.dispose(); this.ins = null; this.insKind = ''; this.camera.aspect = this.w / Math.max(1, this.h); this.camera.updateProjectionMatrix(); }
@@ -428,7 +442,7 @@ export class Renderer3D {
     const z = w.zone; this.zoneWall.visible = false; this.nextRing.visible = false; this.zoneWall.position.set(z.x, 450, z.y); this.zoneWall.scale.set(Math.max(1, z.r), 900, Math.max(1, z.r)); this.zoneTex.repeat.set(Math.max(8, z.r / 30), 14); this.zoneTex.offset.y = -this.t * 0.25;
     this.nextRing.position.set(z.nx, 3, z.ny); this.nextRing.scale.set(Math.max(2, z.nr), 1, Math.max(2, z.nr));
     // 건설 고스트
-    this.ghost.visible = !!ghost; if (ghost) { const sd = STRUCTS[ghost.kind], H = STRUCT_H[ghost.kind]; this.ghost.position.set(ghost.x, H / 2, ghost.y); this.ghost.scale.set(sd.w, H, sd.h); (this.ghost.material as THREE.MeshBasicMaterial).color.setHex(ghost.ok ? 0x66ff9c : 0xff5a5a); }
+    if (ghost) { const sd = STRUCTS[ghost.kind]; this.ghost.update({ x: ghost.x, y: ghost.y, w: sd.w, d: sd.h, height: STRUCT_H[ghost.kind], ok: ghost.ok }, this.t); } else this.ghost.update(null, this.t);
     if (this.post && this.postOn) this.post.render(dt); else this.renderer.render(this.scene, this.camera);
     if (this.ml && !third && pb) { this.ml.syncViewCam(this.camera); this.renderer.autoClear = false; this.renderer.clearDepth(); this.renderer.render(this.ml.vmScene, this.ml.vmCam); this.renderer.autoClear = true; }
     // 떠오르는 글자

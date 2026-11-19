@@ -28,30 +28,32 @@ export type PartId = 'reddot' | 'holo' | 'scope2' | 'scope4' | 'scope8' | 'suppr
 export interface PartMod { spread?: number; kick?: number; reload?: number; mag?: number; ads?: number }
 export interface PartDef {
   id: PartId; name: string; slot: PartSlot; /** 조준 시 배율(조준경만) */ zoom: number;
-  /** 조립 화면의 점수(무기마다 LOADOUT_BUDGET 안에서 고릅니다) */ cost: number; mod: PartMod; blurb: string;
+  mod: PartMod; blurb: string;
   /** 이 무기에만 달 수 있습니다(없으면 슬롯이 있는 모든 무기) */ only?: WeaponId[];
 }
 export const PARTS: Record<PartId, PartDef> = {
-  reddot:     { id: 'reddot',     name: '레드닷 사이트',   slot: 'sight',  zoom: 1.0,  cost: 1, mod: { ads: 0.85 }, blurb: '가볍고 빠른 근거리 조준' },
-  holo:       { id: 'holo',       name: '홀로그램 사이트', slot: 'sight',  zoom: 1.25, cost: 1, mod: { ads: 0.82 }, blurb: '넓은 시야로 빠르게 겨눕니다' },
-  scope2:     { id: 'scope2',     name: '2배율 조준경',    slot: 'sight',  zoom: 2.0,  cost: 2, mod: { ads: 0.8 }, blurb: '중거리 교전에 알맞습니다' },
-  scope4:     { id: 'scope4',     name: '4배율 조준경',    slot: 'sight',  zoom: 4.0,  cost: 3, mod: { ads: 0.75 }, blurb: '멀리 있는 적도 또렷하게' },
-  scope8:     { id: 'scope8',     name: '8배율 조준경',    slot: 'sight',  zoom: 8.0,  cost: 4, mod: { ads: 0.7 }, blurb: '초장거리 저격용', only: ['rifle', 'sniper'] },
-  suppressor: { id: 'suppressor', name: '소음기',          slot: 'muzzle', zoom: 1,    cost: 2, mod: { kick: 0.9 }, blurb: '총소리와 발사 불빛을 숨깁니다 · 반동 소폭 감소' },
-  comp:       { id: 'comp',       name: '보정기',          slot: 'muzzle', zoom: 1,    cost: 2, mod: { spread: 0.94, kick: 0.62 }, blurb: '반동을 크게 잡아 줍니다' },
-  flash:      { id: 'flash',      name: '소염기',          slot: 'muzzle', zoom: 1,    cost: 1, mod: { spread: 0.97, kick: 0.85 }, blurb: '발사 불빛을 줄이고 반동을 조금 낮춥니다' },
-  grip:       { id: 'grip',       name: '수직 손잡이',     slot: 'grip',   zoom: 1,    cost: 2, mod: { spread: 0.86, kick: 0.78 }, blurb: '연사할 때 총구 흔들림을 잡습니다' },
-  angled:     { id: 'angled',     name: '앵글 손잡이',     slot: 'grip',   zoom: 1,    cost: 1, mod: { spread: 0.93, kick: 0.92, ads: 0.9 }, blurb: '조준 자세가 안정됩니다' },
-  extmag:     { id: 'extmag',     name: '확장 탄창',       slot: 'mag',    zoom: 1,    cost: 2, mod: { mag: 1.4 }, blurb: '탄창 용량 +40%' },
-  quickmag:   { id: 'quickmag',   name: '퀵드로우 탄창',   slot: 'mag',    zoom: 1,    cost: 2, mod: { reload: 0.7 }, blurb: '장전 시간 -30%' },
-  extquick:   { id: 'extquick',   name: '확장 퀵드로우 탄창', slot: 'mag', zoom: 1,    cost: 3, mod: { mag: 1.25, reload: 0.82 }, blurb: '탄창 +25% · 장전 -18%' },
-  tactical:   { id: 'tactical',   name: '전술 개머리판',   slot: 'stock',  zoom: 1,    cost: 2, mod: { spread: 0.92, kick: 0.9 }, blurb: '어깨에 단단히 붙어 반동을 줄입니다', only: ['smg', 'rifle'] },
-  cheek:      { id: 'cheek',      name: '볼받침',          slot: 'stock',  zoom: 1,    cost: 2, mod: { spread: 0.9, ads: 0.92 }, blurb: '조준 때 총이 흔들리지 않습니다', only: ['sniper'] },
+  reddot:     { id: 'reddot',     name: '레드닷 사이트',   slot: 'sight',  zoom: 1.0,  mod: { ads: 0.85 }, blurb: '가볍고 빠른 근거리 조준' },
+  holo:       { id: 'holo',       name: '홀로그램 사이트', slot: 'sight',  zoom: 1.25, mod: { ads: 0.82 }, blurb: '넓은 시야로 빠르게 겨눕니다' },
+  scope2:     { id: 'scope2',     name: '2배율 조준경',    slot: 'sight',  zoom: 2.0,  mod: { ads: 0.8 }, blurb: '중거리 교전에 알맞습니다' },
+  scope4:     { id: 'scope4',     name: '4배율 조준경',    slot: 'sight',  zoom: 4.0,  mod: { ads: 0.75 }, blurb: '멀리 있는 적도 또렷하게' },
+  scope8:     { id: 'scope8',     name: '8배율 조준경',    slot: 'sight',  zoom: 8.0,  mod: { ads: 0.7 }, blurb: '초장거리 저격용', only: ['rifle', 'sniper'] },
+  suppressor: { id: 'suppressor', name: '소음기',          slot: 'muzzle', zoom: 1,    mod: { kick: 0.9 }, blurb: '총소리와 발사 불빛을 숨깁니다 · 반동 소폭 감소' },
+  comp:       { id: 'comp',       name: '보정기',          slot: 'muzzle', zoom: 1,    mod: { spread: 0.94, kick: 0.62 }, blurb: '반동을 크게 잡아 줍니다' },
+  flash:      { id: 'flash',      name: '소염기',          slot: 'muzzle', zoom: 1,    mod: { spread: 0.97, kick: 0.85 }, blurb: '발사 불빛을 줄이고 반동을 조금 낮춥니다' },
+  grip:       { id: 'grip',       name: '수직 손잡이',     slot: 'grip',   zoom: 1,    mod: { spread: 0.86, kick: 0.78 }, blurb: '연사할 때 총구 흔들림을 잡습니다' },
+  angled:     { id: 'angled',     name: '앵글 손잡이',     slot: 'grip',   zoom: 1,    mod: { spread: 0.93, kick: 0.92, ads: 0.9 }, blurb: '조준 자세가 안정됩니다' },
+  extmag:     { id: 'extmag',     name: '확장 탄창',       slot: 'mag',    zoom: 1,    mod: { mag: 1.4 }, blurb: '탄창 용량 +40%' },
+  quickmag:   { id: 'quickmag',   name: '퀵드로우 탄창',   slot: 'mag',    zoom: 1,    mod: { reload: 0.7 }, blurb: '장전 시간 -30%' },
+  extquick:   { id: 'extquick',   name: '확장 퀵드로우 탄창', slot: 'mag', zoom: 1,    mod: { mag: 1.25, reload: 0.82 }, blurb: '탄창 +25% · 장전 -18%' },
+  tactical:   { id: 'tactical',   name: '전술 개머리판',   slot: 'stock',  zoom: 1,    mod: { spread: 0.92, kick: 0.9 }, blurb: '어깨에 단단히 붙어 반동을 줄입니다', only: ['smg', 'rifle'] },
+  cheek:      { id: 'cheek',      name: '볼받침',          slot: 'stock',  zoom: 1,    mod: { spread: 0.9, ads: 0.92 }, blurb: '조준 때 총이 흔들리지 않습니다', only: ['sniper'] },
 };
 export const PART_IDS = Object.keys(PARTS) as PartId[];
 export const PART_FITS: Record<WeaponId, PartSlot[]> = {
   pistol: ['muzzle', 'mag'], smg: ['sight', 'muzzle', 'grip', 'mag', 'stock'], rifle: ['sight', 'muzzle', 'grip', 'mag', 'stock'], shotgun: ['sight', 'muzzle', 'mag'], sniper: ['sight', 'muzzle', 'mag', 'stock'],
 };
+/** 가방에 넣어 둘 수 있는 파츠 수(줍는 즉시 가방에 들어가고, L 로 조립합니다) */
+export const BAG_MAX = 30;
 export const PART_SLOTS: PartSlot[] = ['sight', 'muzzle', 'grip', 'mag', 'stock'];
 export const SLOT_NAMES: Record<PartSlot, string> = { sight: '조준경', muzzle: '총구', grip: '손잡이', mag: '탄창', stock: '개머리판' };
 /** 이 무기에 이 파츠를 달 수 있는가(슬롯과 전용 무기 둘 다 맞아야 함). 샷건의 탄창 칸은 확장 튜브(확장 탄창)만 받습니다. */
@@ -88,21 +90,6 @@ export function gunStats(id: WeaponId, att: Attachments | undefined): GunStats {
   const d = WEAPONS[id], h = partHandling(att), zoom = att?.sight ? PARTS[att.sight].zoom : 1;
   return { dmg: d.dmg * d.pellets, rpm: 60 / d.cd, range: d.range, mag: magOf(id, att), reload: d.reload * h.reload, kick: d.recoil * h.kick, spread: d.spread * h.spread, ads: d.spread * h.spread * adsSpread(att), zoom };
 }
-/** 조립 화면의 파츠 점수(무기 한 자루당 쓸 수 있는 점수) */
-export const LOADOUT_BUDGET = 8;
-export const attCost = (att: Attachments | undefined): number => (att ? Object.values(att).reduce((s, p) => s + (PARTS[p]?.cost ?? 0), 0) : 0);
-export type Loadout = Partial<Record<WeaponId, Attachments>>;
-/** 저장된 값을 믿지 않고 걸러 냅니다: 없는 파츠·안 맞는 파츠·예산을 넘는 파츠는 버립니다. */
-export function cleanLoadout(raw: unknown): Loadout {
-  const out: Loadout = {}; if (typeof raw !== 'object' || raw === null) return out;
-  for (const id of WEAPON_IDS) {
-    const r = (raw as Record<string, unknown>)[id]; if (typeof r !== 'object' || r === null) continue;
-    const att: Attachments = {}; let cost = 0;
-    for (const slot of PART_SLOTS) { const p = (r as Record<string, unknown>)[slot]; if (typeof p !== 'string' || !(p in PARTS)) continue; const part = p as PartId; if (PARTS[part].slot !== slot || !canFit(id, part) || cost + PARTS[part].cost > LOADOUT_BUDGET) continue; att[slot] = part; cost += PARTS[part].cost; }
-    if (Object.keys(att).length) out[id] = att;
-  }
-  return out;
-}
 /** 헬멧 등급(1~3)이 머리 피해를 줄이는 비율 */
 export const HELMET_CUT = [0, 0.3, 0.5, 0.65];
 export const HELMET_NAMES = ['', '1레벨 헬멧', '2레벨 헬멧', '3레벨 헬멧'];
@@ -136,7 +123,7 @@ export const DRIVE = {
   /** 총알이 차체에 주는 비율, 탑승자에게 새는 비율 */ shotCut: 0.55, driverCut: 0.22,
 };
 /** 폭격(레드존): 안전지대 안의 한 곳에 경고 후 포탄이 쏟아집니다. 시각은 자기장 시작 기준 초. */
-export const RED = { r: 48, warn: 8, dur: 30, every: 0.22, fall: 1.7, blast: 8.5, dmg: 85, calls: [80, 170, 255, 335] };
+export const RED = { r: 48, warn: 8, dur: 30, every: 0.22, fall: 1.7, blast: 8.5, dmg: 85, calls: [100, 210, 320, 420, 515, 600, 670] };
 export type Mode = 'br' | 'duel';
 
 export type Difficulty = 'easy' | 'normal' | 'hard' | 'expert';
@@ -164,15 +151,21 @@ export const BOTS: Record<Difficulty, BotTuning> = {
 export interface ZonePhase { wait: number; shrink: number; radius: number; dps: number }
 /** 줄어드는 자기장 일정. 마지막 단계가 끝나면 작은 원에 머무르며 피해가 계속 늘어납니다. */
 export const ZONES: Record<Mode, ZonePhase[]> = {
+  // 배틀로열: 낙하(52초) 뒤부터 8단계, 합쳐서 약 12분. 마지막 원이 닫힌 뒤에는 피해가 커져 그 안에 끝납니다.
   br: [
-    { wait: 28, shrink: 38, radius: 225, dps: 1.2 }, { wait: 24, shrink: 32, radius: 140, dps: 2.2 }, { wait: 20, shrink: 28, radius: 70, dps: 3.5 },
-    { wait: 16, shrink: 24, radius: 36, dps: 6 }, { wait: 12, shrink: 20, radius: 14, dps: 10 }, { wait: 8, shrink: 16, radius: 5, dps: 16 },
+    { wait: 73, shrink: 67, radius: 230, dps: 1.0 }, { wait: 56, shrink: 62, radius: 170, dps: 1.5 }, { wait: 50, shrink: 56, radius: 120, dps: 2.2 }, { wait: 45, shrink: 50, radius: 80, dps: 3.2 },
+    { wait: 39, shrink: 45, radius: 48, dps: 4.5 }, { wait: 34, shrink: 39, radius: 26, dps: 6.5 }, { wait: 27, shrink: 34, radius: 12, dps: 10 }, { wait: 20, shrink: 27, radius: 5, dps: 16 },
   ],
   duel: [
     { wait: 20, shrink: 28, radius: 85, dps: 1.5 }, { wait: 16, shrink: 24, radius: 52, dps: 3 }, { wait: 12, shrink: 20, radius: 28, dps: 6 }, { wait: 8, shrink: 16, radius: 10, dps: 12 },
   ],
 };
-
+/** 솔로·방 배틀로열이 끝나는 목표 시간(초): 약 12분. 시험과 안내 문구가 이 값을 씁니다. */
+export const BR_MATCH_SECONDS = 720;
+/** 비행기로 시작하는 배틀로열에서 AI 가 AI 를 쏠 때 피해 배율, 그리고 무기 없이 내린 AI 가 먼저 싸우지 않고 무기를 찾는 시간(초). 100명이 초반에 다 쓰러지지 않게 12분을 이끕니다. */
+export const PACE = { botVsBot: 0.2, cautious: 90 };
+/** 보급 투하가 땅에 닿는 시각(자기장 시작 기준 초) */
+export const SUPPLY_AT = [130, 280, 430, 580];
 export const BOT_NAMES = ['Shadow', 'Viper', 'Rook', 'Ember', 'Nova', 'Drift', 'Kestrel', 'Onyx', 'Havoc', 'Lynx', 'Cobalt', 'Raven', 'Slate', 'Pike', 'Zephyr', 'Mako', 'Tundra', 'Flint', 'Saber'];
 export const TEAM_COLORS = [0xc0392b, 0x2e86de, 0x27ae60, 0xe1a21a, 0x8e44ad, 0x16a0a0, 0xd35400, 0x7f8c8d, 0xc2185b, 0x4a6572];
 export const SKIN_TONES = [0xf1c9a5, 0xd9a47a, 0xa8744f, 0x7a5236, 0xf5d6b8];

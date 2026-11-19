@@ -43,6 +43,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     <div class="c-target" id="c-target"></div><aside class="c-tut" id="c-tut" hidden></aside><div class="c-area" id="c-area"></div><div class="c-feed" id="c-feed"></div><div class="c-chat" id="c-chat" aria-live="polite"></div><form class="c-chatin" id="c-chatin" hidden><input id="c-chatbox" maxlength="80" autocomplete="off" placeholder="메시지 입력 후 Enter · Esc 취소" aria-label="채팅 입력"></form><div class="c-banner" id="c-banner"></div><div class="c-prompt" id="c-prompt"></div><div class="c-toast" id="c-toast"></div>
     <div class="c-bl" id="c-boss"></div>
     <div class="c-bc" id="c-cmd"></div>
+    <div class="c-place" id="c-place" hidden><div class="c-place-info"><b id="c-place-name"></b><span id="c-place-msg"></span><small>시선을 돌려 위치 조절 · 우클릭/Esc 취소 · Shift 연속 설치</small></div><div class="c-place-btns"><button data-act="placeok" class="ok">설치</button><button data-act="placecancel">취소</button></div></div>
     <aside class="c-panel" id="c-panel" hidden></aside>
     <aside class="c-missions" id="c-missions" hidden aria-label="작전 지령 목록"><header><div><span>OPERATIONS / LAST CITY</span><h2>도시 작전 지령</h2></div><button data-act="closemissions" aria-label="작전 지령 닫기">닫기 ✕</button></header><div class="c-mission-summary" id="c-mission-summary"></div><div class="c-mission-list" id="c-mission-list"></div><footer>임무를 완료하면 보상이 자동 지급됩니다 · <kbd>J</kbd> 닫기</footer></aside>
     <div class="c-bigmap" id="c-bigmap" hidden><div><canvas id="c-big" width="620" height="620"></canvas><p>지도를 누르면 전 병력이 그 지점으로 <b>돌격</b>합니다 · M 닫기</p></div></div>
@@ -186,7 +187,9 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     else if (a === 'closepanel') { panel.hidden = true; shopOpen = false; lock(); }
     else if (a === 'map') { q('#c-missions').hidden = true; bigmap.hidden = !bigmap.hidden; if (bigmap.hidden) lock(); else unlock(); }
     else if (a === 'train') res(w.train(0, arg as UnitId));
-    else if (a === 'build') { ghost = { kind: arg as StructKind, x: 0, y: 0, ok: false }; if (view !== 'top' || innerWidth < 900) { panel.hidden = true; lock(); } toast(view === 'top' ? '배치할 위치를 누르세요 (우클릭·Esc 취소)' : '바닥을 조준하고 클릭해 배치 (우클릭 취소)', false); }
+    else if (a === 'build') { ghost = { kind: arg as StructKind, x: 0, y: 0, ok: false }; if (view !== 'top' || innerWidth < 900) { panel.hidden = true; lock(); } }
+    else if (a === 'placeok') place();
+    else if (a === 'placecancel') ghost = null;
     else if (a === 'demolish') requestDemolish(Number(arg));
     else if (a === 'research') res(w.research(0, arg as ResearchId));
     else if (a === 'sell') { const e = w.market(0, true, arg === 'all' ? f.crystal : Number(arg)); res(e); if (!e && tut) tut.c.sells++; }
@@ -557,13 +560,23 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     toast(`${STRUCTS[s.kind].name} 철거를 한 번 더 눌러 확인 (건설비 50% 환급)`, false);
     if (!panel.hidden) renderPanel();
   };
-  const place = (sx: number, sy: number): void => { const w = world!, raw = view === 'top' || !R3 ? R!.toWorld(sx, sy) : { x: ghost!.x, y: ghost!.y }, p = { x: snapBuildCoord(raw.x), y: snapBuildCoord(raw.y) }, e = w.build(0, ghost!.kind, p.x, p.y); if (e) toast(e); else { audio.play('build'); if (!keys.has('Shift')) ghost = null; } };
+  /** 보이는 고스트 자리에 짓습니다(보는 대로 지어지도록 고스트 좌표를 씁니다). */
+  const place = (): void => { if (!world || !ghost) return; const e = world.build(0, ghost.kind, ghost.x, ghost.y); if (e) toast(e); else { audio.play('build'); if (!keys.has('Shift')) ghost = null; } };
+  let placeKey = '';
+  const syncPlaceBar = (): void => {
+    const el = q('#c-place'); if (!ghost || !world) { if (!el.hidden) { el.hidden = true; placeKey = ''; } return; }
+    const err = world.buildError(0, ghost.kind, ghost.x, ghost.y), key = ghost.kind + '|' + err;
+    if (el.hidden) el.hidden = false;
+    if (key === placeKey) return; placeKey = key;
+    q('#c-place-name').textContent = STRUCTS[ghost.kind].name; const m = q('#c-place-msg'); m.textContent = err || (touch ? '설치할 수 있습니다 — 설치를 누르세요' : '설치할 수 있습니다 — 클릭'); m.className = err ? 'bad' : 'ok';
+    (el.querySelector('[data-act="placeok"]') as HTMLButtonElement).disabled = !!err;
+  };
   const looks = new Map<number, { x: number; y: number }>();
   for (const cv of [canvas, canvas3]) {
     cv.addEventListener('pointerdown', e => {
       audio.unlock(); if (!world || paused || world.over) return; mouse.x = e.clientX; mouse.y = e.clientY; const three = cv === canvas3;
       if (e.pointerType === 'touch') {
-        if (ghost) { if (three) { const p = R3!.buildPoint(700); ghost.x = snapBuildCoord(p.x); ghost.y = snapBuildCoord(p.y); } place(e.clientX, e.clientY); return; }
+        if (ghost && !three) return; // 탑뷰: 누른 곳으로 고스트가 따라옵니다. 설치는 아래 '설치' 버튼
         if (e.clientX < innerWidth * 0.45) { const s = sticks.move; if (s.id < 0) { s.id = e.pointerId; s.ox = e.clientX; s.oy = e.clientY; s.x = s.y = 0; } }
         else if (three) looks.set(e.pointerId, { x: e.clientX, y: e.clientY });
         else { const s = sticks.aim; if (s.id < 0) { s.id = e.pointerId; s.ox = e.clientX; s.oy = e.clientY; s.x = s.y = 0; } }
@@ -571,12 +584,13 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       }
       if (three && !locked && !lockFail) { lock(); return; }
       if (e.button === 2) { if (ghost) ghost = null; else { const p = three ? R3!.groundPoint(900) : R!.toWorld(e.clientX, e.clientY); world.order(0, 'amove', p.x, p.y); } return; }
-      if (e.button === 0) { if (ghost) place(e.clientX, e.clientY); else mouse.down = true; }
+      if (e.button === 0) { if (ghost) place(); else mouse.down = true; }
     });
     cv.addEventListener('pointermove', e => {
       if (e.pointerType === 'touch') {
+        if (ghost && cv === canvas) { mouse.x = e.clientX; mouse.y = e.clientY; return; }
         for (const s of [sticks.move, sticks.aim]) if (s.id === e.pointerId) { s.x = Math.max(-1, Math.min(1, (e.clientX - s.ox) / 56)); s.y = Math.max(-1, Math.min(1, (e.clientY - s.oy) / 56)); }
-        const l = looks.get(e.pointerId); if (l && R3) { if (ghost) { l.x = e.clientX; l.y = e.clientY; return; } const look = applyLook(R3.yaw, R3.pitch, e.clientX - l.x, e.clientY - l.y, 0.005); R3.yaw = look.yaw; R3.pitch = look.pitch; l.x = e.clientX; l.y = e.clientY; lastLook = performance.now(); }
+        const l = looks.get(e.pointerId); if (l && R3) { const look = applyLook(R3.yaw, R3.pitch, e.clientX - l.x, e.clientY - l.y, 0.005); R3.yaw = look.yaw; R3.pitch = look.pitch; l.x = e.clientX; l.y = e.clientY; lastLook = performance.now(); }
         return;
       }
       mouse.x = e.clientX; mouse.y = e.clientY;
@@ -700,14 +714,15 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     hurt = Math.max(0, hurt - dt * 1.3); const low = b && b.hp < b.maxHp * 0.35 ? 0.35 + Math.sin(now / 160) * 0.12 : 0, outside = !!b && Math.hypot(b.x - w.zone.x, b.y - w.zone.y) > w.zone.r;
     hurtEl.style.opacity = String(Math.max(hurt * 0.85, low)); hurtEl.classList.toggle('storm', outside && hurt < 0.1);if (outside) hurtEl.style.opacity = String(Math.max(0.45, hurt));
     if (three && R3) {
-      if (ghost) { const p = R3.buildPoint(700); ghost.x = snapBuildCoord(p.x); ghost.y = snapBuildCoord(p.y); ghost.ok = w.canBuild(0, ghost.kind, ghost.x, ghost.y); }
+      if (ghost) { const p = R3.buildPoint(ghost.kind); ghost.x = snapBuildCoord(p.x); ghost.y = snapBuildCoord(p.y); ghost.ok = !w.buildError(0, ghost.kind, ghost.x, ghost.y); }
       R3.draw(paused ? 0 : dt, ghost); overlay(); r.cam.x = b ? b.x : r.cam.x; r.cam.y = b ? b.y : r.cam.y;
     } else {
       if (b) { const look = touch ? { x: 0, y: 0 } : { x: (mouse.x - r.w / 2) * 0.22 / r.cam.zoom, y: (mouse.y - r.h / 2) * 0.22 / r.cam.zoom }; const tx = b.x + look.x + (veh ? veh.vx * 0.35 : 0), ty = b.y + look.y + (veh ? veh.vy * 0.35 : 0); r.cam.x += (tx - r.cam.x) * Math.min(1, dt * 7); r.cam.y += (ty - r.cam.y) * Math.min(1, dt * 7); }
       const base = Math.max(0.55, Math.min(1, Math.min(r.w, r.h * 1.5) / 1100)); r.cam.zoom += (base * userZoom * (1 - Math.min(0.3, spd / 1800)) - r.cam.zoom) * Math.min(1, dt * 3);
-      if (ghost) { const p = r.toWorld(mouse.x, mouse.y); ghost.x = snapBuildCoord(p.x); ghost.y = snapBuildCoord(p.y); ghost.ok = w.canBuild(0, ghost.kind, ghost.x, ghost.y); }
+      if (ghost) { const p = r.toWorld(mouse.x, mouse.y); ghost.x = snapBuildCoord(p.x); ghost.y = snapBuildCoord(p.y); ghost.ok = !w.buildError(0, ghost.kind, ghost.x, ghost.y); }
       r.draw(paused ? 0 : dt, ghost, touch || !b ? null : r.toWorld(mouse.x, mouse.y));
     }
+    syncPlaceBar();
     root.classList.toggle('down', !b && !w.over);
     if (b) { // 구역 이름
       const bi = Math.max(0, Math.min(BLOCKS - 1, Math.floor((b.x - ROAD / 2) / PITCH))), bj = Math.max(0, Math.min(BLOCKS - 1, Math.floor((b.y - ROAD / 2) / PITCH))), bl = w.map.blocks[bj * BLOCKS + bi], ring = Math.max(Math.abs(bi - 4), Math.abs(bj - 4));

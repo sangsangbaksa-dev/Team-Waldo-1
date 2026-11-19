@@ -5,7 +5,7 @@ import { makeRng } from './map';
 import { AWNING_OUT, CHAR_SCALE, HIP, KNEE, LEG_Z, PROPS } from './scale';
 import { CHAR_KINDS, instantiate, type Baked, type Models } from './models';
 import type { Actor, Structure, Vehicle, World } from './world';
-import { chunkInstances, cullChunks, type ChunkRef } from './chunks';
+import { cullChunks, type ChunkRef } from './chunks';
 import { blankPose, calmState, computePose } from '../shared/character/pose';
 
 const CLOTH = [0x8d99ae, 0xb08968, 0x6d8a96, 0xa58fb3, 0x9aa37b, 0xc58f8f, 0xd27d5a, 0x5f9ea0], SKIN = [0xf1c9a5, 0xd9a47a, 0xa8744f, 0x7a5236, 0xf5d6b8];
@@ -46,9 +46,7 @@ export class ModelLayer {
     }
     // 크리스탈 / 나무 / 가로등 / 거리 소품
     this.crystalMesh = mk(models.baked.crystal.fixed!, new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x12465e }), world.crystals.length, false, false);
-    const before = scene.children.length; this.scatter();
-    // 정적 소품은 격자 칸으로 쪼개 화면 밖·안개 너머는 그리지 않는다.
-    for (const o of scene.children.slice(before)) if ((o as THREE.InstancedMesh).isInstancedMesh) chunkInstances(o as THREE.InstancedMesh, scene, this.statics);
+    this.scatter();
     // 1인칭 총 장면 (별도 패스: 벽을 뚫고 나오지 않게 깊이를 지우고 그립니다)
     this.vmScene.add(new THREE.HemisphereLight(0xdbe6ff, 0x6a5a50, 1.9)); const sun = new THREE.DirectionalLight(0xffe2b8, 2.4); sun.position.set(2, 4, 3); this.vmScene.add(sun);
     this.flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: 0xffd98a, blending: THREE.AdditiveBlending, depthTest: false, transparent: true })); this.flash.scale.set(0.55, 0.55, 1); this.flash.visible = false; this.flash.renderOrder = 10;
@@ -61,7 +59,25 @@ export class ModelLayer {
     if (!b.fixed) return null; const m = new THREE.InstancedMesh(b.fixed, mat, n); m.frustumCulled = false; m.castShadow = shadow; this.scene.add(m); return m;
   }
 
+  /** 도시 전체에 흩어진 고정 소품(나무·가로등·신호등·보도 소품)을 가로세로 CELL 칸 구역별로 쪼개 각자 시야 판정(frustum culling)을 받게 합니다.
+   *  하나의 큰 InstancedMesh 는 보이지 않는 곳의 수십만 삼각형까지 매 프레임(그림자 패스 포함) 그려서 렉의 주원인이었습니다. */
+  private chunkStatics(before: Set<THREE.Object3D>): void {
+    const CELL = 800, mat = new THREE.Matrix4(), p = new THREE.Vector3();
+    for (const m of [...this.scene.children]) {
+      if (before.has(m) || !(m instanceof THREE.InstancedMesh) || m.count === 0) continue;
+      const cells = new Map<string, number[]>();
+      for (let i = 0; i < m.count; i++) { m.getMatrixAt(i, mat); p.setFromMatrixPosition(mat); const key = Math.floor(p.x / CELL) + ',' + Math.floor(p.z / CELL), a = cells.get(key); if (a) a.push(i); else cells.set(key, [i]); }
+      for (const ids of cells.values()) {
+        const c = new THREE.InstancedMesh(m.geometry, m.material, ids.length); c.castShadow = m.castShadow; c.receiveShadow = m.receiveShadow; c.renderOrder = m.renderOrder;
+        ids.forEach((src, k) => { m.getMatrixAt(src, mat); c.setMatrixAt(k, mat); }); c.instanceMatrix.needsUpdate = true; c.computeBoundingSphere(); this.scene.add(c);
+        const bs = c.boundingSphere!; this.statics.push({ mesh: c, x: bs.center.x, z: bs.center.z, r: bs.radius }); // 안개 너머 칸을 끄기 위해 기억
+      }
+      this.scene.remove(m); m.dispose();
+    }
+  }
+
   private scatter(): void {
+    const before = new Set(this.scene.children);
     const w = this.world, rng = makeRng(20261113), d = this.d, B = this.models.baked, put = (m: THREE.InstancedMesh, i: number, x: number, z: number, ry: number, s: number, sy = s): void => { d.position.set(x, 0, z); d.rotation.set(0, ry, 0); d.scale.set(s, sy, s); d.updateMatrix(); m.setMatrixAt(i, d.matrix); };
     // 나무
     const rounds = w.map.trees.filter((_, i) => i % 3 !== 0), pines = w.map.trees.filter((_, i) => i % 3 === 0);
@@ -131,6 +147,7 @@ export class ModelLayer {
     }
     if (lamp) lamp.instanceMatrix.needsUpdate = true;
     if (glowLamp) glowLamp.instanceMatrix.needsUpdate = true;
+    this.chunkStatics(before);
   }
 
   // ---------- 개별 모델 ----------

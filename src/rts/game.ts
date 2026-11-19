@@ -5,8 +5,10 @@ import { readRtsRecords, writeRtsRecords } from '../records';
 import type { LoadingScreen } from '../loading';
 import type { PvpSession } from '../net/lobby';
 import { RtsAi } from './ai';
+import { Campaign, MISSIONS, readCampaign, recordResult, unlocked, writeCampaign, type CampaignSave } from './campaign';
+import { Vision, FOG_HIDDEN, FOG_VISIBLE } from './vision';
 import { RtsAudio } from './audio';
-import { BUILDINGS, DIFFICULTIES, LEVELS, RESEARCH, RESEARCH_KINDS, SUPPLY_MAX, TICK, UNITS, isDifficulty, type BuildKind, type Difficulty } from './config';
+import { ABILITIES, ABILITY_KEYS, BUILDINGS, DIFFICULTIES, LEVELS, RESEARCH, RESEARCH_KINDS, STIM_COST, SUPPLY_MAX, TICK, UNITS, isDifficulty, type BuildKind, type Difficulty, type UnitKind } from './config';
 import { ARMORY, ARMORY_KEYS, UPGRADE_MAX, buyArmory, edgeOf, nextCost, readArmory, rewardFor, writeArmory, type ArmoryStat } from './armory';
 import { RtsNet } from './pvp';
 import { NO_EDGE, RtsSim, type Building, type Cmd, type ResNode, type Unit } from './sim';
@@ -19,6 +21,10 @@ import type { RoomLink } from './moba/net';
 const esc = (s: string): string => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
 const clock = (ticks: number): string => { const s = Math.floor(ticks / TICK); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const BUILD_MENU: BuildKind[] = ['depot', 'barracks', 'factory', 'tower', 'hq'];
+const ABILITY_ORDER = (['marine', 'rocket', 'tank', 'jeep', 'medic'] as UnitKind[]).filter(k => ABILITIES[k]);
+const FOG_KEY = 'waldo.rts.fog';
+const readFog = (): boolean => { try { return localStorage.getItem(FOG_KEY) !== '0'; } catch { return true; } };
+const writeFog = (on: boolean): void => { try { localStorage.setItem(FOG_KEY, on ? '1' : '0'); } catch { /* 저장 불가 환경 */ } };
 
 interface Btn { label: string; sub?: string; key: string; on: () => void; enabled?: boolean; hint?: string; active?: boolean }
 type Mode = null | { t: 'attack' } | { t: 'move' } | { t: 'rally' } | { t: 'build'; kind: BuildKind };
@@ -30,6 +36,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     <div class="rt-top"><div class="rt-res"><span class="rt-min" title="광물"><i></i><b id="rt-min">0</b><small id="rt-rate"></small></span><span class="rt-sup" title="인구"><b id="rt-sup">0/0</b></span><span class="rt-time" id="rt-time">0:00</span></div>
       <div class="rt-vs" id="rt-vs"></div>
       <div class="rt-btns"><button data-act="speed" title="속도" hidden>×1</button><button data-act="pause" class="rt-pause" title="일시정지 (P)">⏸ 일시정지</button><button data-act="mute" title="소리" aria-pressed="${prefs.sound}">${prefs.sound ? '🔊' : '🔇'}</button><button data-act="menu" title="메뉴 (Esc)">☰</button></div></div>
+    <div class="rt-obj" id="rt-obj" aria-live="polite"></div><div class="rt-banner" id="rt-banner" role="status" aria-live="assertive"></div>
     <div class="rt-toast" id="rt-toast" role="status" aria-live="polite"></div><div class="rt-hint" id="rt-hint"></div>
     <div class="rt-bottom"><div class="rt-mini"><canvas id="rt-mini" width="220" height="220" aria-label="미니맵"></canvas></div><div class="rt-sel" id="rt-sel"></div><div class="rt-cmd" id="rt-cmd"></div></div>
     <div class="rt-modal" id="rt-modal"></div>`;
@@ -41,6 +48,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   let sim: RtsSim | null = null, view: RtsView | null = null, ai: RtsAi | null = null, net: RtsNet | null = null, pvp: { s: PvpSession; done: boolean } | null = null;
   let me = 0, difficulty: Difficulty = (() => { const d = readRtsRecords().difficulty; return isDifficulty(d) ? d : 'normal'; })();
   let raf = 0, last = 0, acc = 0, paused = false, closed = false, ended = false, speed = 1, uiT = 0, miniT = 0, hudKey = '', cmdKey = '', selKey = '', alertAt = { x: 0, y: 0, t: -999 };
+  let camp: Campaign | null = null, vision: Vision | null = null, fogOn = readFog(), campSave: CampaignSave = readCampaign(), objKey = '', fogVer = -1, bannerT = 0;
   const selected = new Set<number>(), groups = new Map<number, number[]>(); let mode: Mode = null, submenu = false, buttons: Btn[] = [];
   const pointer = { x: 0, y: 0, in: false, down: false, sx: 0, sy: 0, drag: false, button: 0, pan: false, lastTap: 0, lastTapId: 0 };
   const touches = new Map<number, { x: number; y: number }>(); let pinch = 0, boxMode = false; const keys = new Set<string>();
@@ -49,6 +57,8 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   // ---------- 알림 ----------
   let toastT = 0; const toast = (text: string, bad = false): void => { const el = $('#rt-toast'); el.textContent = text; el.className = `rt-toast show${bad ? ' bad' : ''}`; toastT = 2.2; if (bad) audio.sfx('error'); };
   const setHint = (t: string): void => { $('#rt-hint').textContent = t; $('#rt-hint').classList.toggle('show', !!t); };
+  /** 화면 가운데 위에 크게 잠깐 보이는 안내(목표 달성·적 공세 경고). */
+  const banner = (text: string, kind: 'ok' | 'warn' | 'bonus' | 'info' = 'info'): void => { const el = $('#rt-banner'); el.textContent = text; el.className = `rt-banner show ${kind}`; bannerT = 3.4; };
 
   // ---------- 선택 보조 ----------
   const own = (): { us: Unit[]; bs: Building[] } => {
@@ -135,6 +145,12 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       out.push({ label: '이동', key: 'M', on: () => startMode({ t: 'move' }, '이동할 곳을 클릭하세요'), active: mode?.t === 'move' });
       out.push({ label: '정지', key: 'S', on: () => { issue({ k: 'stop', ids: us.map(u => u.id) }); audio.sfx('order'); } });
       out.push({ label: '공격 이동', key: 'A', on: () => startMode({ t: 'attack' }, '공격 이동할 곳을 클릭하세요'), active: mode?.t === 'attack' });
+      ABILITY_ORDER.filter(k => us.some(u => u.kind === k)).slice(0, ABILITY_KEYS.length).forEach((k, i) => {
+        const a = ABILITIES[k]!, group = us.filter(u => u.kind === k), ready = group.filter(u => u.abcd <= sim!.tick && (k !== 'marine' || u.hp > STIM_COST + 1)), wait = Math.min(...group.map(u => Math.max(0, u.abcd - sim!.tick)));
+        const on = group.some(u => u.ab > sim!.tick && k !== 'medic');
+        out.push({ label: a.name, sub: on ? '발동 중' : ready.length ? (group.length > 1 ? `${ready.length}기 준비` : '준비') : wait > 0 ? `${Math.ceil(wait / TICK)}초` : '체력 부족', key: ABILITY_KEYS[i], enabled: ready.length > 0, active: on,
+          hint: ready.length ? a.desc : wait > 0 ? `재사용 대기 중 (${Math.ceil(wait / TICK)}초)` : '체력이 너무 낮아 쓸 수 없습니다', on: () => { issue({ k: 'ability', ids: ready.map(u => u.id) }); } });
+      });
       if (us.some(u => u.kind === 'worker')) out.push(buildBtn);
       return out;
     }
@@ -177,13 +193,17 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   // ---------- 선택 패널 ----------
   function paintSelection(force = false): void {
     if (!sim) return; const el = $('#rt-sel'), ents = [...selected].map(id => sim!.index.get(id)).filter((e): e is Unit | Building | ResNode => !!e);
-    const key = ents.map(e => e.k === 'unit' ? `${e.id}:${e.hp}` : e.k === 'building' ? `${e.id}:${e.hp}:${e.queue.length}:${e.queue[0]?.left ?? 0}:${e.done}:${e.progress >> 4}:${e.research ? e.research.left >> 3 : -1}` : `${e.id}:${e.amount}`).join(',');
+    const key = ents.map(e => e.k === 'unit' ? `${e.id}:${e.hp}:${e.ab > sim!.tick ? 1 : 0}:${Math.ceil(Math.max(0, e.abcd - sim!.tick) / TICK)}` : e.k === 'building' ? `${e.id}:${e.hp}:${e.queue.length}:${e.queue[0]?.left ?? 0}:${e.done}:${e.progress >> 4}:${e.research ? e.research.left >> 3 : -1}` : `${e.id}:${e.amount}`).join(',');
     if (!force && key === selKey) return; selKey = key;
     if (!ents.length) { el.innerHTML = '<p class="rt-tip">유닛이나 건물을 선택하세요.<br>드래그로 여러 유닛을 한꺼번에 선택할 수 있습니다.</p>'; return; }
     const bar = (v: number, max: number, c = ''): string => `<span class="rt-bar ${c}"><i style="width:${Math.max(0, Math.min(100, v / max * 100)).toFixed(0)}%"></i></span>`;
     if (ents.length === 1) {
       const e = ents[0];
-      if (e.k === 'unit') { const d = UNITS[e.kind], action = d.heal ? `치료 ${d.heal}/초` : `공격 ${d.dmg}`; el.innerHTML = `<div class="rt-one"><h3>${d.name}<small>${e.owner === me ? '' : ' · 적'}</small></h3><p>${d.role}</p>${bar(e.hp, d.hp, e.owner === me ? '' : 'foe')}<p class="rt-num">체력 ${Math.ceil(e.hp)} / ${d.hp}</p><p class="rt-num">${action} · 사거리 ${d.range} · 이동 ${d.speed}</p></div>`; }
+      if (e.k === 'unit') {
+        const d = UNITS[e.kind], action = d.heal ? `치료 ${d.heal}/초` : `공격 ${d.dmg}`, max = camp?.maxHp(e) ?? d.hp, ab = ABILITIES[e.kind], vip = camp?.isVip(e.id);
+        const abLine = ab && e.owner === me ? `<p class="rt-num">${ab.name} · ${e.ab > sim.tick && e.kind !== 'medic' ? '발동 중' : e.abcd <= sim.tick ? '준비 완료' : `${Math.ceil((e.abcd - sim.tick) / TICK)}초 뒤`}</p>` : '';
+        el.innerHTML = `<div class="rt-one"><h3>${vip ? '호송 전차' : d.name}<small>${e.owner === me ? '' : ' · 적'}</small></h3><p>${vip ? '목적지까지 호위하세요' : d.role}</p>${bar(e.hp, max, e.owner === me ? '' : 'foe')}<p class="rt-num">체력 ${Math.ceil(e.hp)} / ${max}</p><p class="rt-num">${action} · 사거리 ${d.range} · 이동 ${d.speed}</p>${abLine}</div>`;
+      }
       else if (e.k === 'building') {
         const d = BUILDINGS[e.kind], rs = e.research ? `<button type="button" class="rt-q" data-r="1" title="연구 취소하고 환급"><b>${RESEARCH[e.research.r].name}</b>${bar(RESEARCH[e.research.r].time - e.research.left, RESEARCH[e.research.r].time, 'prog')}</button>` : '', q = rs + e.queue.map((x, i) => `<button type="button" class="rt-q" data-q="${i}" title="취소하고 환급"><b>${UNITS[x.u].name}</b>${i === 0 ? bar(UNITS[x.u].time - x.left, UNITS[x.u].time, 'prog') : ''}</button>`).join('');
         el.innerHTML = `<div class="rt-one"><h3>${d.name}<small>${e.owner === me ? '' : ' · 적'}</small></h3><p>${e.done ? d.role : `건설 중 ${Math.floor(e.progress / d.time * 100)}%`}</p>${bar(e.hp, e.maxhp, e.owner === me ? '' : 'foe')}<p class="rt-num">체력 ${Math.ceil(e.hp)} / ${e.maxhp}${e.kind === 'tower' ? ` · 공격 ${d.dmg} · 사거리 ${d.range}` : ''}</p>${q ? `<div class="rt-queue">${q}</div>` : ''}</div>`;
@@ -214,12 +234,29 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       for (const st of sim.map.starts) { const [px, py] = mm(st.x + 2, st.y + 2); g.fillStyle = 'rgba(70,72,74,.55)'; g.beginPath(); g.arc(px, py, 8 * k, 0, 6.3); g.fill(); }
     }
     mg.drawImage(miniBase, 0, 0);
-    mg.fillStyle = '#2fc4ff'; for (const nd of sim.nodes) { const [x, y] = mm(nd.x + 0.5, nd.y + 0.5); mg.fillRect(x - 2, y - 2, 4, 4); }
-    for (const b of sim.buildings) { const [x, y] = mm(b.x + b.size / 2, b.y + b.size / 2), s = b.size * k; mg.fillStyle = b.owner === 0 ? '#3d8bff' : '#ff5a3c'; mg.fillRect(x - s / 2, y - s / 2, s, s); }
-    for (const u of sim.units) { const [x, y] = mm(u.x, u.y); mg.fillStyle = u.owner === 0 ? '#9fd0ff' : '#ffb09f'; mg.fillRect(x - 1.5, y - 1.5, 3, 3); }
+    const vis = vision, seenNode = (x: number, y: number): boolean => !vis || vis.explored(x, y);
+    mg.fillStyle = '#2fc4ff'; for (const nd of sim.nodes) { if (!seenNode(nd.x + 0.5, nd.y + 0.5)) continue; const [x, y] = mm(nd.x + 0.5, nd.y + 0.5); mg.fillRect(x - 2, y - 2, 4, 4); }
+    for (const b of sim.buildings) { if (b.owner !== me && !seenNode(b.x + b.size / 2, b.y + b.size / 2)) continue; const [x, y] = mm(b.x + b.size / 2, b.y + b.size / 2), s = b.size * k; mg.fillStyle = b.owner === 0 ? '#3d8bff' : '#ff5a3c'; mg.fillRect(x - s / 2, y - s / 2, s, s); }
+    for (const u of sim.units) { if (u.owner !== me && vis && !vis.visible(u.x, u.y)) continue; const [x, y] = mm(u.x, u.y); mg.fillStyle = camp?.isVip(u.id) ? '#ffe066' : u.owner === 0 ? '#9fd0ff' : '#ffb09f'; const r = camp?.isVip(u.id) ? 3.5 : 1.5; mg.fillRect(x - r, y - r, r * 2, r * 2); }
+    if (vis) drawMiniFog(vis);
+    if (camp) for (const m of camp.markerList()) {
+      const [x, y] = mm(m.x, m.y), col = m.kind === 'goal' ? '#7dff9e' : m.side === 1 ? '#5db4ff' : m.side === 0 ? '#ff5a3c' : '#ffe27a'; mg.strokeStyle = col; mg.lineWidth = 2;
+      if (m.kind === 'target') { mg.strokeRect(x - 5, y - 5, 10, 10); } else { mg.beginPath(); mg.arc(x, y, Math.max(4, m.r * k), 0, Math.PI * 2); mg.stroke(); if (m.progress > 0) { mg.fillStyle = col; mg.globalAlpha = 0.35; mg.beginPath(); mg.arc(x, y, Math.max(3, m.r * k * m.progress), 0, Math.PI * 2); mg.fill(); mg.globalAlpha = 1; } }
+    }
     const cs = view.corners(over.clientHeight - $('.rt-bottom').offsetHeight);
     if (cs.length > 2) { mg.strokeStyle = '#fff'; mg.lineWidth = 1.5; mg.beginPath(); cs.forEach((c, i) => { const [x, y] = mm(Math.min(n, Math.max(0, c.x)), Math.min(n, Math.max(0, c.y))); if (i) mg.lineTo(x, y); else mg.moveTo(x, y); }); mg.closePath(); mg.stroke(); }
     if (sim.tick - alertAt.t < 100 && Math.floor(performance.now() / 250) % 2) { const [x, y] = mm(alertAt.x, alertAt.y); mg.strokeStyle = '#ff3b30'; mg.lineWidth = 2; mg.beginPath(); mg.arc(x, y, 9, 0, Math.PI * 2); mg.stroke(); }
+  }
+  /** 미니맵 안개: 칸마다 투명도를 정해 한 장의 작은 그림으로 그린 뒤 늘려 덮습니다. */
+  let fogMini: HTMLCanvasElement | null = null;
+  function drawMiniFog(v: Vision): void {
+    const n = v.n; if (!fogMini) { fogMini = document.createElement('canvas'); fogMini.width = fogMini.height = n; fogVer = -1; }
+    if (fogVer !== v.version) {
+      fogVer = v.version; const g = fogMini.getContext('2d')!, img = g.createImageData(n, n);
+      for (let i = 0; i < n * n; i++) { const s = v.state[i]; img.data[i * 4] = 6; img.data[i * 4 + 1] = 10; img.data[i * 4 + 2] = 18; img.data[i * 4 + 3] = s === FOG_HIDDEN ? 215 : s === FOG_VISIBLE ? 0 : 105; }
+      g.putImageData(img, 0, 0);
+    }
+    mg.save(); mg.imageSmoothingEnabled = true; if (me === 1) { mg.translate(mini.width, mini.width); mg.rotate(Math.PI); } mg.drawImage(fogMini, 0, 0, mini.width, mini.width); mg.restore();
   }
   let miniDown = false;
   const miniMove = (e: PointerEvent): void => { if (!view || !sim) return; const r = mini.getBoundingClientRect(), p = mmInv((e.clientX - r.left) / r.width * mini.width, (e.clientY - r.top) / r.height * mini.height); view.lookAt(p.x, p.y); };
@@ -237,16 +274,34 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     const bar = (x: number, y: number, bw: number, f: number, c: string): void => { og.fillStyle = 'rgba(0,0,0,.65)'; og.fillRect(x - bw / 2 - 1, y - 1, bw + 2, 5); og.fillStyle = c; og.fillRect(x - bw / 2, y, bw * Math.max(0, Math.min(1, f)), 3); };
     const col = (f: number, foe: boolean): string => foe ? '#ff5a4a' : f > 0.6 ? '#5dff9a' : f > 0.3 ? '#ffd24a' : '#ff5a4a';
     for (const u of sim.units) {
-      const sel = selected.has(u.id), d = UNITS[u.kind]; if (!sel && u.hp >= d.hp) continue; const p = view.project(u.x, u.y, 1.2); if (!p || p.x < -20 || p.y < -20 || p.x > w + 20 || p.y > h + 20) continue;
-      bar(p.x, p.y, 18 + d.radius * 14, u.hp / d.hp, col(u.hp / d.hp, u.owner !== me));
+      const sel = selected.has(u.id), d = UNITS[u.kind], max = camp?.maxHp(u) ?? d.hp, vip = !!camp?.isVip(u.id); if (!sel && !vip && u.hp >= max) continue; if (view.hiddenUnit(u)) continue; const p = view.project(u.x, u.y, 1.2); if (!p || p.x < -20 || p.y < -20 || p.x > w + 20 || p.y > h + 20) continue;
+      bar(p.x, p.y, 18 + d.radius * 14 + (vip ? 14 : 0), u.hp / max, col(u.hp / max, u.owner !== me));
+      if (vip) { og.fillStyle = '#ffe066'; og.beginPath(); og.moveTo(p.x, p.y - 8); og.lineTo(p.x - 6, p.y - 16); og.lineTo(p.x + 6, p.y - 16); og.closePath(); og.fill(); }
     }
     for (const b of sim.buildings) {
+      if (view.hiddenBuilding(b)) continue;
       const sel = selected.has(b.id); if (!sel && b.hp >= b.maxhp && b.done) continue; const p = view.project(b.x + b.size / 2, b.y + b.size / 2, BUILDINGS[b.kind].size < 3 ? 2 : 3.3); if (!p) continue;
       bar(p.x, p.y, 30 + b.size * 10, b.hp / b.maxhp, col(b.hp / b.maxhp, b.owner !== me));
       if (!b.done) bar(p.x, p.y + 6, 30 + b.size * 10, b.progress / BUILDINGS[b.kind].time, '#6fb7ff');
       else if (b.queue[0] && b.owner === me) bar(p.x, p.y + 6, 30 + b.size * 10, 1 - b.queue[0].left / UNITS[b.queue[0].u].time, '#6fb7ff');
     }
+    if (camp) drawMarkers(w, h);
     if (pointer.down && pointer.drag && pointer.button === 0 && !pointer.pan) { const x = Math.min(pointer.sx, pointer.x), y = Math.min(pointer.sy, pointer.y), bw = Math.abs(pointer.x - pointer.sx), bh = Math.abs(pointer.y - pointer.sy); og.strokeStyle = '#5dff9a'; og.fillStyle = 'rgba(93,255,154,.12)'; og.lineWidth = 1.5; og.fillRect(x, y, bw, bh); og.strokeRect(x, y, bw, bh); }
+  }
+
+  /** 목표 표시 이름표. 화면 밖이면 가장자리에 화살표로 방향을 알려 줍니다. */
+  function drawMarkers(w: number, h: number): void {
+    if (!view || !camp) return; const bottom = $('.rt-bottom').offsetHeight, top = 52, usable = h - bottom, cx = w / 2, cy = top + (usable - top) / 2, pad = 30;
+    og.font = '700 12px system-ui, sans-serif'; og.textAlign = 'center'; og.lineJoin = 'round';
+    const txt = (t: string, x: number, y: number, c: string): void => { og.lineWidth = 3.5; og.strokeStyle = 'rgba(8,10,12,.85)'; og.strokeText(t, x, y); og.fillStyle = c; og.fillText(t, x, y); };
+    for (const m of camp.markerList()) {
+      const col = m.kind === 'goal' ? '#7dff9e' : m.side === 1 ? '#7cc4ff' : m.side === 0 ? '#ff7a62' : '#ffe27a', p = view.project(m.x, m.y, m.kind === 'target' ? 3.4 : 2.4); if (!p) continue;
+      const label = m.kind === 'point' ? `${m.label}${m.side === 1 ? ' ✓' : m.progress > 0 ? ` ${Math.round(m.progress * 100)}%` : ''}` : m.label;
+      if (p.x > pad && p.x < w - pad && p.y > top && p.y < usable - 8) { txt(label, p.x, p.y - 6, col); continue; }
+      const dx = p.x - cx, dy = p.y - cy, sc = Math.min((cx - pad) / Math.abs(dx || 1e-6), (usable - top) / 2 / Math.abs(dy || 1e-6) * 0.92, 1e6), ax = cx + dx * Math.min(sc, 1), ay = cy + dy * Math.min(sc, 1), ang = Math.atan2(dy, dx);
+      og.save(); og.translate(ax, ay); og.rotate(ang); og.fillStyle = col; og.globalAlpha = 0.9; og.beginPath(); og.moveTo(10, 0); og.lineTo(-7, -8); og.lineTo(-7, 8); og.closePath(); og.fill(); og.restore();
+      txt(label, Math.min(w - 40, Math.max(40, ax)), ay + (ay < cy ? 22 : -14), col);
+    }
   }
 
   // ---------- 입력 ----------
@@ -345,6 +400,23 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     $('#rt-rate').textContent = sim.tick > 200 ? `+${Math.round(p.mined / (sim.tick / TICK / 60))}/분` : '';
   }
 
+  // ---------- 캠페인 목표 ----------
+  function paintObjectives(): void {
+    const el = $('#rt-obj'); if (!camp) { if (objKey) { objKey = ''; el.innerHTML = ''; } el.classList.remove('show'); return; }
+    const html = `<h4>${esc(camp.def.title)}</h4><ul>${camp.objectives.map(o => `<li class="${o.done ? 'done' : o.failed ? 'fail' : ''}${o.bonus ? ' bonus' : ''}"><i>${o.done ? '✓' : o.failed ? '✗' : o.bonus ? '★' : '◆'}</i><span>${esc(o.text)}${o.note ? `<small>${esc(o.note)}</small>` : ''}</span></li>`).join('')}</ul>`;
+    el.classList.add('show'); if (html !== objKey) { objKey = html; el.innerHTML = html; }
+  }
+  function applyCampEvents(): void {
+    if (!camp || !sim) return; const evs = camp.events; if (!evs.length) return; camp.events = [];
+    for (const e of evs) {
+      if (e.t === 'start') { audio.sfx('horn', 0.7); banner(`작전 ${camp.def.id} · ${camp.def.title}`, 'info'); toast(camp.def.blurb); }
+      else if (e.t === 'objective') { audio.sfx('objective'); banner(`${e.bonus ? '★ 보너스 달성' : '✔ 목표 달성'} · ${e.text}`, e.bonus ? 'bonus' : 'ok'); }
+      else if (e.t === 'wave') { audio.sfx('horn'); banner(e.text, 'warn'); alertAt = { x: e.x, y: e.y, t: sim.tick }; view?.ping(e.x, e.y, 0xff3b30); }
+      else if (e.t === 'capture') { audio.sfx(e.mine ? 'capture' : 'lost'); toast(e.mine ? `${e.label} 점령!` : `${e.label}을(를) 빼앗겼습니다`, !e.mine); }
+      else if (e.t === 'hint') toast(e.text);
+    }
+  }
+
   // ---------- 메뉴·결과 ----------
   const show = (html: string): void => { modal.className = 'rt-modal show'; modal.innerHTML = html; };
   const hide = (): void => { modal.className = 'rt-modal'; modal.innerHTML = ''; };
@@ -359,14 +431,15 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     root.dataset.phase = 'setup'; paused = false; ended = false; const rec = readRtsRecords();
     show(`<div class="rt-card rt-setup" role="dialog" aria-label="FRONTLINE 시작"><span class="rt-eyebrow">FRONTLINE</span><h2>전선을 지휘하세요</h2>
       <p class="rt-lead">광물을 캐고, 기지를 세우고, 병력을 길러 상대의 모든 건물을 무너뜨리면 승리합니다. 모든 건물이 사라지면 패배합니다.</p>
+      <div class="rt-actions"><button class="primary" data-act="campaign" id="rt-campaign">캠페인 · 작전 ${MISSIONS.length}개 — 점령 · 방어 · 호송 · 급습</button></div>
       <div class="rt-diffs" role="group" aria-label="난이도">${DIFFICULTIES.map((d, i) => `<button type="button" data-diff="${d}" aria-pressed="${d === difficulty}"><span>${['I', 'II', 'III', 'IV'][i]}</span><b>${LEVELS[d].label}</b></button>`).join('')}</div>
       <p class="rt-diffnote" id="rt-diffnote">${LEVELS[difficulty].blurb}</p>
       ${armoryHtml()}
-      <div class="rt-actions"><button class="primary" data-act="start" id="rt-start">AI와 1대1 대전</button>${PVP_ENABLED ? '<button data-act="pvp" id="rt-pvp">온라인 1대1 대전</button>' : ''}</div>
+      <div class="rt-actions"><button data-act="start" id="rt-start">AI와 1대1 대전</button>${PVP_ENABLED ? '<button data-act="pvp" id="rt-pvp">온라인 1대1 대전</button>' : ''}</div>
       <div class="rt-actions"><button data-act="moba" id="rt-moba">롤식 라인전 4:4 · 챔피언 조종</button>${PVP_ENABLED ? '<button data-act="mobaroom" id="rt-mobaroom">온라인 방 · 라인전 협동 (최대 4명)</button>' : ''}</div>
-      <div class="rt-actions sub"><button data-act="help">조작법</button><button data-act="exit">메뉴로</button></div>
+      <div class="rt-actions sub"><button data-act="fog" id="rt-fog" aria-pressed="${fogOn}" title="적이 보이는 범위를 시야 안으로 제한합니다">전장의 안개 ${fogOn ? '켜짐' : '꺼짐'}</button><button data-act="help">조작법</button><button data-act="exit">메뉴로</button></div>
       <p class="rt-rec">${rec.matches ? `AI 대전 ${rec.matches}판 ${rec.wins}승${rec.bestWin[difficulty] ? ` · ${LEVELS[difficulty].label} 최단 승리 ${clock(rec.bestWin[difficulty] * TICK)}` : ''}` : '처음이라면 쉬움 난이도로 시작해 보세요.'}</p></div>`);
-    modal.querySelector<HTMLElement>('#rt-start')?.focus();
+    modal.querySelector<HTMLElement>('#rt-campaign')?.focus();
   }
   const helpHtml = (): string => `<div class="rt-card"><span class="rt-eyebrow">조작법</span><h2>빠르게 익히기</h2><ul class="rt-help">
     <li><b>목표</b>일꾼으로 광물을 캐서 병영·공장을 짓고 병력을 모아 적 건물을 모두 파괴하세요.</li>
@@ -375,6 +448,9 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     <li><b>건설</b>B → 건물 선택 → 클릭(Enter 는 자동 배치, Shift 는 연속 건설). 일꾼을 고르지 않아도 가까운 일꾼이 지으며, 일꾼이 죽거나 떠나도 짓다 만 건물은 다른 일꾼이 이어받습니다. 직접 보내려면 건물 선택 → C.</li>
     <li><b>강화</b>병영·공장을 선택해 E·T 로 연구하면 그 판 내내 공격력·방어력·전차 화력·이동 속도가 오릅니다. 가운데 아래쪽 중립 기지도 노려 보세요.</li>
     <li><b>병력</b>보병은 만능, 로켓병은 장갑에 강하고, 전차는 광역 피해, 정찰 지프(공장 W)는 빨라서 일꾼 사냥에 좋습니다. 의무병(병영 D)은 다친 보병·일꾼을 치료하니 부대 뒤에 두세요. 상대가 전차를 모으면 로켓병으로 맞서세요.</li>
+    <li><b>능력</b>유닛을 선택하면 명령 칸에 특수 능력이 나옵니다(X·Z·V). 보병 자극제, 로켓병 일제 사격, 전차 포격 태세, 지프 질주, 의무병 응급 처치 — 영구 강화가 아니라 쿨다운마다 쓰는 순간 능력입니다.</li>
+    <li><b>시야</b>전장의 안개가 켜져 있으면 아군 유닛·건물 주변만 보입니다. 정찰 지프로 먼저 길을 보세요. 설정 화면에서 끌 수 있습니다.</li>
+    <li><b>캠페인</b>점령·방어·호송·급습·총공세 다섯 작전. 목표를 모두 이루면 승리하고, 목표 시간·보너스 목표마다 별을 받습니다.</li>
     <li><b>일시정지</b>상단 ⏸ 버튼, P 또는 Esc (AI 대전에서만). 항복도 같은 메뉴에 있습니다.</li>
     <li><b>생산</b>건물 선택 → Q·W. 집결지는 R, 일꾼은 광물에 집결하면 바로 캡니다.</li>
     <li><b>카메라</b>화살표 · 화면 가장자리 · 휠 확대 · 미니맵 클릭 · Space 최근 공격 위치 · . 놀고 있는 일꾼</li>
@@ -393,6 +469,10 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   function finish(): void {
     if (!sim || ended) return; ended = true; root.dataset.phase = 'over'; selected.clear(); setHint(''); mode = null;
     const win = sim.winner === me, draw = sim.winner === 2; audio.sfx(win ? 'victory' : 'defeat');
+    if (camp) {
+      const c = camp; if (win) { campSave = recordResult(readCampaign(), c.def.id, c.stars(), c.secs()); writeCampaign(campSave); }
+      window.setTimeout(() => { if (!closed && ended && camp === c) campResult(win); }, 1400); return;
+    }
     if (pvp) { void conclude(draw ? '' : win ? pvp.s.me.id : pvp.s.opponent.id, draw ? '두 쪽이 동시에 무너졌습니다' : win ? '상대의 모든 건물을 파괴했습니다' : '모든 건물을 잃었습니다'); return; }
     const rec = readRtsRecords(); rec.matches++; if (win) { rec.wins++; const t = Math.floor(sim.tick / TICK); if (!rec.bestWin[difficulty] || t < rec.bestWin[difficulty]) rec.bestWin[difficulty] = t; } rec.difficulty = difficulty; writeRtsRecords(rec);
     const earned = draw ? 0 : rewardFor(win, difficulty, sim.tick / TICK, sim.players[me].kills), arm = readArmory(); if (earned) writeArmory({ ...arm, coins: arm.coins + earned });
@@ -400,10 +480,44 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     window.setTimeout(() => { if (!closed && ended) resultCard(draw ? null : win, draw ? '무승부입니다' : win ? '적의 모든 건물을 파괴했습니다.' : '모든 건물을 잃었습니다.', bank); }, 1400);
   }
 
+  // ---------- 캠페인 ----------
+  const starsOf = (n: number): string => '★'.repeat(n) + '☆'.repeat(3 - n);
+  function campaignScreen(): void {
+    root.dataset.phase = 'setup'; paused = false; ended = false; campSave = readCampaign();
+    show(`<div class="rt-card rt-camp" role="dialog" aria-label="캠페인"><span class="rt-eyebrow">FRONTLINE 캠페인</span><h2>작전 선택</h2><p class="rt-lead">앞 작전을 완수하면 다음 작전이 열립니다. 별은 완수 · 목표 시간 · 보너스 목표마다 하나씩 받습니다. 영구 강화는 없고, 매 작전은 같은 조건에서 시작합니다.</p>
+      <div class="rt-missions">${MISSIONS.map(m => { const ok = unlocked(campSave, m.id), st = campSave.stars[m.id] ?? 0, best = campSave.best[m.id];
+        return `<button type="button" data-mission="${m.id}" ${ok ? '' : 'aria-disabled="true"'}><span class="n">${ok ? m.id : '🔒'}</span><span class="t"><b>${m.title}<em>${m.tag}</em></b><small>${m.blurb}</small></span><span class="s"><i>${starsOf(st)}</i>${best ? `<small>최단 ${clock(best * TICK)}</small>` : ''}</span></button>`; }).join('')}</div>
+      <div class="rt-actions sub"><button data-act="setup">뒤로</button></div></div>`);
+    modal.querySelector<HTMLElement>('[data-mission]:not([aria-disabled])')?.focus();
+  }
+  function briefScreen(id: number): void {
+    const m = MISSIONS.find(x => x.id === id); if (!m) return; const par = `${Math.floor(m.par / 60)}:${String(m.par % 60).padStart(2, '0')}`;
+    show(`<div class="rt-card rt-brief" role="dialog" aria-label="${m.title}"><span class="rt-eyebrow">작전 ${m.id} · ${m.tag}</span><h2>${m.title}</h2><p class="rt-lead">${m.blurb}</p>
+      <ul class="rt-help">${m.brief.map(t => `<li>${t}</li>`).join('')}</ul>
+      <dl class="rt-starlist"><div><dt>★</dt><dd>작전 완수</dd></div><div><dt>★</dt><dd>${par} 안에 완수</dd></div><div><dt>★</dt><dd>${m.bonus}</dd></div></dl>
+      <div class="rt-actions"><button class="primary" data-act="launch" data-id="${m.id}" id="rt-launch">작전 개시</button><button data-act="camp">작전 목록</button></div></div>`);
+    modal.querySelector<HTMLElement>('#rt-launch')?.focus();
+  }
+  function beginCampaign(id: number): void {
+    const def = MISSIONS.find(m => m.id === id); if (!def) return; leavePvp(); if (view) { view.dispose(); view = null; }
+    sim = new RtsSim({ scripted: true, income: [1, def.income ?? 1] }); me = 0; ai = null; camp = new Campaign(def, sim); objKey = '';
+    startRound(); $('#rt-vs').textContent = `작전 ${def.id} · ${def.title}`; $<HTMLButtonElement>('[data-act="speed"]').hidden = false; $<HTMLButtonElement>('[data-act="pause"]').hidden = false; speed = 1; $<HTMLButtonElement>('[data-act="speed"]').textContent = '×1';
+  }
+  function campResult(win: boolean): void {
+    if (!sim || !camp) return; const c = camp, p = sim.players[0], o = sim.players[1], next = MISSIONS.find(m => m.id === c.def.id + 1), stars = c.stars();
+    show(`<div class="rt-card rt-result ${win ? 'win' : 'lose'}"><span class="rt-eyebrow">작전 ${c.def.id} · ${esc(c.def.title)} · ${clock(sim.tick)}</span><h2>${win ? '작전 성공' : '작전 실패'}</h2><p>${esc(c.reason)}</p>
+      ${win ? `<div class="rt-starsrow" aria-label="별 ${stars}개">${starsOf(stars)}</div>` : ''}
+      <ul class="rt-objs">${c.objectives.map(ob => `<li class="${ob.done ? 'done' : ''}"><i>${ob.done ? '✓' : ob.bonus ? '★' : '✗'}</i>${esc(ob.text)}</li>`).join('')}</ul>
+      <dl class="rt-stats"><div><dt>처치</dt><dd>${p.kills}</dd></div><div><dt>손실</dt><dd>${p.lost}</dd></div><div><dt>적 처치</dt><dd>${o.kills}</dd></div><div><dt>시간</dt><dd>${clock(sim.tick)}</dd></div></dl>
+      <div class="rt-actions">${win && next ? '<button class="primary" data-act="next">다음 작전</button>' : ''}<button ${win && next ? '' : 'class="primary"'} data-act="again">다시 하기</button><button data-act="camp">작전 목록</button></div></div>`);
+  }
+  /** 캠페인 화면을 떠날 때 상태를 정리합니다. */
+  function dropRound(): void { if (view) { view.dispose(); view = null; } sim = null; ai = null; camp = null; vision = null; paintObjectives(); $('#rt-banner').className = 'rt-banner'; }
+
   // ---------- 시작 ----------
   preloadUnitKit();
   function begin(): void {
-    if (view) { view.dispose(); view = null; } sim = new RtsSim({ income: [1, LEVELS[difficulty].income], edge: [edgeOf(readArmory()), NO_EDGE] });
+    if (view) { view.dispose(); view = null; } camp = null; objKey = ''; sim = new RtsSim({ income: [1, LEVELS[difficulty].income], edge: [edgeOf(readArmory()), NO_EDGE] });
     me = 0; ai = new RtsAi(1, difficulty); startRound(); $('#rt-vs').textContent = `AI · ${LEVELS[difficulty].label}`; $<HTMLButtonElement>('[data-act="speed"]').hidden = false; $<HTMLButtonElement>('[data-act="pause"]').hidden = false; speed = 1; $<HTMLButtonElement>('[data-act="speed"]').textContent = '×1';
   }
   function startRound(): void {
@@ -411,9 +525,11 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     // 해제한 WebGL 컨텍스트는 다시 쓸 수 없으니 캔버스를 새로 만듭니다.
     const fresh = document.createElement('canvas'); fresh.className = 'rt-canvas'; canvas.replaceWith(fresh); canvas = fresh; const q = prefs.quality;
     try { view = new RtsView(canvas, sim, me, q); } catch { show('<div class="rt-card"><span class="rt-eyebrow">FRONTLINE</span><h2>그래픽을 시작하지 못했어요</h2><p class="rt-lead">WebGL 을 사용할 수 없습니다. 브라우저를 새로고침하거나 그래픽 가속을 켠 뒤 다시 시도해 주세요.</p><div class="rt-actions"><button class="primary" data-act="exit">메뉴로</button></div></div>'); return; }
+    vision = fogOn && !net ? new Vision(sim.map.size, me) : null; vision?.update(sim, true); view.setVision(vision); fogMini = null; fogVer = -1;
     miniBase = null; selected.clear(); mode = null; submenu = false; ended = false; paused = false; acc = 0; hudKey = cmdKey = selKey = ''; groups.clear(); hide(); root.dataset.phase = 'play'; stats.start = performance.now(); resize();
     const h = sim.buildings.find(b => b.owner === me && b.kind === 'hq'); if (h) setSel([h.id]);
-    toast(net ? '대전 시작! 상대의 모든 건물을 파괴하세요' : '일꾼으로 광물을 캐고, 병영을 지어 병력을 모으세요', false); last = performance.now();
+    if (camp && h) view.lookAt((h.x + 2 + camp.rally.x) / 2, (h.y + 2 + camp.rally.y) / 2);
+    if (!camp) toast(net ? '대전 시작! 상대의 모든 건물을 파괴하세요' : '일꾼으로 광물을 캐고, 병영을 지어 병력을 모으세요', false); last = performance.now();
   }
 
   // ---------- 온라인 대전 ----------
@@ -480,6 +596,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       else if (e.t === 'researched' && e.owner === me) { audio.sfx('built'); toast(`${RESEARCH[e.r].name} 연구 완료`); }
       else if (e.t === 'rescued' && e.owner === me) toast(`일꾼이 짓다 만 ${BUILDINGS[e.kind].name} 건설을 이어받았습니다`);
       else if (e.t === 'orphan' && e.owner === me) { toast(`짓다 만 ${BUILDINGS[e.kind].name}이 있습니다 — 선택해서 '건설 이어서'를 누르세요`, true); }
+      else if (e.t === 'ability' && (e.owner === me || !view.hiddenUnit({ owner: e.owner, x: e.x, y: e.y }))) audio.sfx(e.kind === 'medic' ? 'heal' : 'ability', e.owner === me ? 1 : near(e.x, e.y));
       else if (e.t === 'trained' && e.owner === me) audio.sfx('trained', 0.6); else if (e.t === 'deposit' && e.owner === me) audio.sfx('deposit', near(e.x, e.y) * 0.6);
     }
   }
@@ -489,10 +606,10 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     if (toastT > 0 && (toastT -= dt) <= 0) $('#rt-toast').classList.remove('show');
     if (!ended && !paused) {
       if (net) { const boost = import.meta.env.DEV ? (window as unknown as { __rtsBoost?: number }).__rtsBoost ?? 1 : 1; net.pump(sim, dt * boost, () => { view!.onTick(); if (import.meta.env.DEV && sim!.tick % 20 === 0) { const l = ((window as unknown as { __rtsLog?: Array<[number, number]> }).__rtsLog ??= []); l.push([sim!.tick, sim!.hash()]); } }, 0.6 * boost); if (net.stalled) $('#rt-vs').textContent = `상대를 기다리는 중… · vs ${pvp?.s.opponent.nickname ?? ''}`; else if (pvp) $('#rt-vs').textContent = `vs ${pvp.s.opponent.nickname}`; }
-      else { acc += dt * speed; let n = 0; while (acc >= 1 / TICK && n < 6 && sim.winner === -1) { sim.step(); view.onTick(); if (ai && sim.tick % ai.interval === 3) ai.think(sim); acc -= 1 / TICK; n++; } if (acc > 0.5) acc = 0; }
+      else { acc += dt * speed; let n = 0; while (acc >= 1 / TICK && n < 6 && sim.winner === -1) { sim.step(); camp?.tick(); view.onTick(); if (ai && sim.tick % ai.interval === 3) ai.think(sim); acc -= 1 / TICK; n++; } if (acc > 0.5) acc = 0; }
       if (sim.winner !== -1) finish();
     }
-    applyEvents();
+    vision?.update(sim); applyEvents(); applyCampEvents(); if (bannerT > 0 && (bannerT -= dt) <= 0) $('#rt-banner').classList.remove('show');
     for (const id of [...selected]) { const e = sim.index.get(id); if (!e) selected.delete(id); }
     // 카메라 이동: 화살표 키와 화면 가장자리
     if (!paused) {
@@ -506,7 +623,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     const { bs } = own(); const rb = bs.find(b => b.done && BUILDINGS[b.kind].trains.length && (b.rx || b.ry)); view.setRally(rb && bs.length === 1 ? { x: rb.rx, y: rb.ry } : null);
     view.render(dt, Math.min(1, acc * TICK), selected);
     over.style.cursor = mode?.t === 'attack' ? 'crosshair' : mode ? 'cell' : 'default';
-    uiT += dt; miniT += dt; if (uiT > 0.12) { uiT = 0; paintHud(); paintCommands(); paintSelection(); } if (miniT > 0.1) { miniT = 0; drawMini(); } drawOverlay();
+    uiT += dt; miniT += dt; if (uiT > 0.12) { uiT = 0; paintHud(); paintCommands(); paintSelection(); paintObjectives(); view.setMarkers(camp ? camp.markerList() : []); } if (miniT > 0.1) { miniT = 0; drawMini(); } drawOverlay();
   }
 
   // ---------- 버튼 ----------
@@ -517,11 +634,18 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   const onPrefs = (): void => { const s = readPreferences().sound; audio.enabled = s; const m = root.querySelector<HTMLElement>('[data-act="mute"]'); if (m) { m.textContent = s ? '🔊' : '🔇'; m.setAttribute('aria-pressed', String(s)); } };
   window.addEventListener('waldo:preferences', onPrefs);
   root.addEventListener('click', e => {
-    const t = (e.target as HTMLElement).closest<HTMLElement>('[data-act],[data-diff],[data-arm]'); if (!t) return; audio.unlock();
+    const t = (e.target as HTMLElement).closest<HTMLElement>('[data-act],[data-diff],[data-arm],[data-mission]'); if (!t) return; audio.unlock();
+    if (t.dataset.mission) { const id = Number(t.dataset.mission); if (unlocked(campSave, id)) { audio.sfx('click'); briefScreen(id); } else { audio.sfx('error'); toast('앞 작전을 먼저 완수하세요', true); } return; }
     if (t.dataset.arm) { const next = buyArmory(readArmory(), t.dataset.arm as ArmoryStat); if (next) { writeArmory(next); audio.sfx('built'); setupScreen(); } else audio.sfx('click'); return; }
     if (t.dataset.diff) { difficulty = t.dataset.diff as Difficulty; modal.querySelectorAll<HTMLElement>('[data-diff]').forEach(b => b.setAttribute('aria-pressed', String(b === t))); $('#rt-diffnote').textContent = LEVELS[difficulty].blurb; audio.sfx('click'); return; }
     switch (t.dataset.act) {
-      case 'start': case 'again': leavePvp(); begin(); break;
+      case 'start': leavePvp(); begin(); break;
+      case 'again': if (camp) beginCampaign(camp.def.id); else { leavePvp(); begin(); } break;
+      case 'campaign': campaignScreen(); break;
+      case 'camp': dropRound(); campaignScreen(); break;
+      case 'launch': beginCampaign(Number(t.dataset.id)); break;
+      case 'next': if (camp) { const id = camp.def.id + 1; dropRound(); briefScreen(id); } break;
+      case 'fog': fogOn = !fogOn; writeFog(fogOn); audio.sfx('click'); setupScreen(); break;
       case 'pvp': openPvpLobby(); break;
       case 'mobaroom': openMobaLobby(); break;
       case 'moba': {
@@ -531,7 +655,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       }
       case 'help': show(helpHtml().replace('data-act="back"', 'data-act="setup"')); break;
       case 'help2': show(helpHtml().replace('data-act="back"', 'data-act="resume"')); break;
-      case 'back': case 'setup': leavePvp(); if (view) { view.dispose(); view = null; } sim = null; ai = null; setupScreen(); break;
+      case 'back': case 'setup': leavePvp(); dropRound(); setupScreen(); break;
       case 'resume': hide(); paused = false; root.dataset.phase = 'play'; last = performance.now(); break;
       case 'surrender': hide(); paused = false; root.dataset.phase = 'play'; issue({ k: 'surrender' }); break;
       case 'exit': exit(); break;
@@ -541,7 +665,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       case 'speed': speed = speed === 1 ? 2 : speed === 2 ? 3 : 1; t.textContent = `×${speed}`; break;
     }
   });
-  if (import.meta.env.DEV) (window as unknown as { __rts: unknown }).__rts = { get sim() { return sim; }, get view() { return view; }, get ai() { return ai; }, select: (ids: number[]) => setSel(ids), begin, step: (n: number) => { for (let i = 0; i < n && sim; i++) { sim.step(); view?.onTick(); if (ai && sim.tick % ai.interval === 3) ai.think(sim); } }, issue, me: () => me, setDifficulty: (d: Difficulty) => { difficulty = d; } };
+  if (import.meta.env.DEV) (window as unknown as { __rts: unknown }).__rts = { get sim() { return sim; }, get view() { return view; }, get ai() { return ai; }, get camp() { return camp; }, get vision() { return vision; }, beginCampaign, select: (ids: number[]) => setSel(ids), begin, step: (n: number) => { for (let i = 0; i < n && sim; i++) { sim.step(); camp?.tick(); view?.onTick(); if (ai && sim.tick % ai.interval === 3) ai.think(sim); } }, issue, me: () => me, setDifficulty: (d: Difficulty) => { difficulty = d; } };
 
   raf = requestAnimationFrame(frame); resize(); options.loading?.close(); setupScreen();
 }

@@ -321,7 +321,6 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (p.vehicle) { if (poi?.kind === 'paynspray') return { text: `E · 도색 & 수배 해제 (${money(sim.price(150))})`, run: () => { toast(sim!.paynspray()); audio.play('pickup'); } }; return null; }
     if (poi?.kind === 'gunshop') return { text: 'E · 총기점', run: openShop };
     if (poi?.kind === 'dealer') return { text: 'E · 자동차 매장', run: () => openUi('dealer') };
-    if (poi?.kind === 'gym') return { text: 'E · 체육관 훈련', run: () => openUi('gym') };
     if (poi?.kind === 'casino') return { text: 'E · 카지노', run: () => openUi('casino') };
     if (poi?.kind === 'hospital') { if (p.hp < p.maxHp || p.armor < 40) return { text: `E · 치료 (${money(sim.price(120))})`, run: () => { toast(treat(sim!)); audio.play('pickup'); } }; }
     if (poi?.kind === 'arena') return sim.job.active ? null : { text: `E · 지하 격투 참가 (${money(sim.price(200))})`, run: () => { const r = startJob(sim!, 'fight'); if (r) toast(r); } };

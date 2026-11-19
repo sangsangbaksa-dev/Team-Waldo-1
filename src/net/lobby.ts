@@ -35,6 +35,8 @@ export interface LobbyOptions {
   /** 지정하면 그 게임의 매칭 화면, 없으면 계정·랭킹 화면 */
   game?: GameKind; config?: () => Record<string, unknown>; onMatch?: (s: PvpSession) => void; onClose: () => void;
   /** 처음 보여 줄 안내(예: 인증 링크가 만료됨) */ notice?: string;
+  /** 게임 중 공통 채팅 창을 띄울지(기본 true). 게임이 자체 채팅을 가지고 있으면 false — 로비·방 채팅은 그대로 씁니다. */
+  inGameChat?: boolean;
 }
 
 const esc = (s: string): string => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
@@ -56,7 +58,7 @@ export function openLobby(opts: LobbyOptions): { close(): void } {
   }
   /** 게임이 매치 채널을 여는 동안 그 매치(방)의 채팅을 띄우고, 채널을 닫으면 함께 치웁니다. */
   const withChat = (key: ChatKey, label: string, open: (h: (m: NetMsg) => void) => Channel) => (h: (m: NetMsg) => void): Channel => {
-    const ch = open(h); if (!CHAT_ENABLED) return ch;
+    const ch = open(h); if (!CHAT_ENABLED || opts.inGameChat === false) return ch;
     const c = openChat({ mode: 'game', tabs: [{ key, label }] });
     return { ready: ch.ready, send: m => ch.send(m), close: () => { c.close(); ch.close(); } };
   };

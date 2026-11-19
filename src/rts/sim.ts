@@ -40,6 +40,7 @@ export type SimEvent =
   | { t: 'die'; kind: UnitKind | BuildKind; building: boolean; owner: number; x: number; y: number; size: number }
   | { t: 'built'; kind: BuildKind; owner: number; x: number; y: number }
   | { t: 'trained'; kind: UnitKind; owner: number; x: number; y: number }
+  | { t: 'heal'; owner: number; x0: number; y0: number; x1: number; y1: number }
   | { t: 'alert'; owner: number; x: number; y: number }
   | { t: 'deposit'; owner: number; x: number; y: number }
   | { t: 'mined'; x: number; y: number }
@@ -67,7 +68,7 @@ export class RtsSim {
     this.map = buildMap(); const n = this.map.size;
     this.grid = new Uint8Array(this.map.terrain); this.pather = new Pather(n, this.grid);
     this.incomeMult = opts.income ?? [1, 1]; this.head = new Int32Array(Math.ceil(n / 2) ** 2);
-    this.players = [0, 1].map(() => ({ minerals: START_MINERALS, used: 0, cap: 0, mined: 0, kills: 0, lost: 0, made: 0, defeated: false, income: 0, up: { atk: false, arm: false, cannon: false } }));
+    this.players = [0, 1].map(() => ({ minerals: START_MINERALS, used: 0, cap: 0, mined: 0, kills: 0, lost: 0, made: 0, defeated: false, income: 0, up: { atk: false, arm: false, cannon: false, speed: false } }));
     for (const nd of this.map.nodes) if (nd.base < 2) this.addNode(nd.x, nd.y);
     for (const nd of this.map.nodes) if (nd.base >= 2) this.addNode(nd.x, nd.y);
     for (let p = 0; p < 2; p++) {
@@ -308,19 +309,19 @@ export class RtsSim {
   // ---------- 유닛 ----------
   private updateUnit(u: Unit): void {
     const d = UNITS[u.kind]; if (u.cd > 0) u.cd--; if (u.repath > 0) u.repath--;
-    const o = u.o;
+    const o = u.o; if (d.heal) this.medic(u);
     switch (o.t) {
       case 'idle': {
         if (u.kind === 'worker') this.idleWorker(u);
-        else if ((u.id + this.tick) % 4 === 0) { const t = this.pick(u.owner, u.x, u.y, Math.max(d.range + 1.5, 7)); if (t) { this.order(u, { t: 'attack', x: u.x, y: u.y, target: t.id, phase: 1, timer: 0 }); } }
+        else if (d.dmg > 0 && (u.id + this.tick) % 4 === 0) { const t = this.pick(u.owner, u.x, u.y, Math.max(d.range + 1.5, 7)); if (t) { this.order(u, { t: 'attack', x: u.x, y: u.y, target: t.id, phase: 1, timer: 0 }); } }
         break;
       }
-      case 'move': if (this.walk(u, o.x, o.y, d.speed, 0.25)) this.order(u, idle()); break;
+      case 'move': if (this.walk(u, o.x, o.y, this.speedOf(u), 0.25)) this.order(u, idle()); break;
       case 'amove': {
         let t = o.target ? this.unit(o.target) ?? this.building(o.target) : undefined;
         if (t && (t.hp <= 0 || this.gap(u, d.radius, t) > d.range + 6)) { t = undefined; o.target = 0; }
         if (!t && d.dmg > 0 && (u.id + this.tick) % 3 === 0) { const f = this.pick(u.owner, u.x, u.y, d.range + 3.5); if (f) { t = f; o.target = f.id; u.path = []; } }
-        if (t) this.engage(u, t); else if (this.walk(u, o.x, o.y, d.speed, 0.6)) this.order(u, idle());
+        if (t) this.engage(u, t); else if (this.walk(u, o.x, o.y, this.speedOf(u), 0.6)) this.order(u, idle());
         break;
       }
       case 'attack': {
@@ -332,6 +333,24 @@ export class RtsSim {
       case 'gather': this.gather(u); break;
       case 'build': this.construct(u); break;
     }
+  }
+
+  /** 강화(기동 훈련)를 반영한 이동 속도. 일꾼은 영향을 받지 않습니다. */
+  private speedOf(u: Unit): number { const s = UNITS[u.kind].speed; return u.kind !== 'worker' && this.players[u.owner].up.speed ? s * 1.12 : s; }
+
+  /** 의무병: 가까이에서 가장 많이 다친 아군을 고칩니다. 가만히 있으면 다친 아군 쪽으로 다가갑니다. */
+  private medic(u: Unit): void {
+    const d = UNITS[u.kind], heal = d.heal ?? 0; let best: Unit | null = null, bs = Infinity, far: Unit | null = null, fd = 9;
+    for (const e of this.units) {
+      if (e.owner !== u.owner || e === u || e.hp <= 0 || e.kind === 'tank' || e.kind === 'jeep') continue;
+      const m = UNITS[e.kind].hp; if (e.hp >= m) continue;
+      const dd = this.dist(u.x, u.y, e.x, e.y);
+      if (dd <= d.range) { const r = e.hp / m; if (r < bs) { bs = r; best = e; } } else if (dd < fd) { fd = dd; far = e; }
+    }
+    if (best) {
+      if (u.cd <= 0) { u.cd = 5; best.hp = Math.min(UNITS[best.kind].hp, best.hp + heal / 4); u.fired = this.tick; this.emit({ t: 'heal', owner: u.owner, x0: u.x, y0: u.y, x1: best.x, y1: best.y }); }
+      u.fx = best.x - u.x; const l = Math.sqrt(sq(best.x - u.x) + sq(best.y - u.y)) || 1; u.fx /= l; u.fy = (best.y - u.y) / l;
+    } else if (far && u.o.t === 'idle' && u.o.phase !== 9) { this.order(u, { t: 'move', x: far.x, y: far.y, target: 0, phase: 0, timer: 0 }); }
   }
 
   /** 사정거리 안이면 쏘고, 아니면 다가갑니다. */
@@ -346,7 +365,7 @@ export class RtsSim {
       const goal = t.k === 'unit' ? { x: t.x, y: t.y } : this.approach(t, u.x, u.y);
       u.path = this.pather.find(u.x, u.y, goal.x, goal.y) ?? [goal.x, goal.y]; u.pi = 0; u.repath = 14;
     }
-    this.follow(u, d.speed);
+    this.follow(u, this.speedOf(u));
   }
   /** 건물 둘레에서 u 와 가장 가까운 빈 칸. */
   approach(b: Building, ux: number, uy: number): { x: number; y: number } {
@@ -519,7 +538,7 @@ export class RtsSim {
     const mix = (v: number): void => { h = (Math.imul(h ^ (Math.round(v * 64) | 0), 0x9e3779b1) + 0x7f4a7c15) | 0; h ^= h >>> 15; };
     for (const u of this.units) { mix(u.id); mix(u.x); mix(u.y); mix(u.hp); }
     for (const b of this.buildings) { mix(b.id); mix(b.hp); mix(b.progress); mix(b.queue.length); mix(b.research?.left ?? -1); }
-    for (const p of this.players) { mix(p.minerals); mix(p.mined); mix(+p.up.atk + 2 * +p.up.arm + 4 * +p.up.cannon); }
+    for (const p of this.players) { mix(p.minerals); mix(p.mined); mix(+p.up.atk + 2 * +p.up.arm + 4 * +p.up.cannon + 8 * +p.up.speed); }
     return h >>> 0;
   }
 }

@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { makePost, type PostFx } from '../postfx';
 import { BUILDINGS, TEAM_COLORS, UNITS, type BuildKind } from './config';
 import { crystalMat, makeBuilding, makeCrystals, makeUnit, matsFor, type BuildRig, type UnitRig } from './models';
+import { DesertProps } from './desert';
 import { Scenery, buildLanes, bushSpots, paintGround } from './scenery';
 import type { Building, ResNode, RtsSim, SimEvent, Unit } from './sim';
 
@@ -12,7 +13,7 @@ interface NVis { kind: 'node'; id: number; obj: THREE.Group; base: number }
 type Quality = 'high' | 'standard' | 'low';
 interface Fx { obj: THREE.Object3D; t: number; life: number; tick: (f: Fx, dt: number) => void }
 
-const US: Record<string, number> = { worker: 1.4, marine: 1.45, rocket: 1.45, tank: 1.2 };
+const US: Record<string, number> = { worker: 1.4, marine: 1.45, rocket: 1.45, tank: 1.2, jeep: 1.15, medic: 1.45 };
 const seeded = (seed: number): (() => number) => { let s = seed >>> 0; return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }; };
 
 export class RtsView {
@@ -20,11 +21,11 @@ export class RtsView {
   /** 카메라가 바라보는 지점(맵 좌표)과 거리. */
   cam = { x: 48, y: 48, dist: 58 }; readonly yaw: number; private pitch = 0.95;
   private units = new Map<number, UVis>(); private builds = new Map<number, BVis>(); private nodes = new Map<number, NVis>();
-  private fx: Fx[] = []; private sun = new THREE.DirectionalLight(0xfff0d6, 2.1); private shadows: boolean;
+  private fx: Fx[] = []; private sun = new THREE.DirectionalLight(0xffe2b4, 2.5); private shadows: boolean;
   private ringGeo = new THREE.RingGeometry(0.9, 1.0, 28); private ghost: { kind: BuildKind; obj: THREE.Group; plane: THREE.Mesh } | null = null; private flag: THREE.Group;
   private raycaster = new THREE.Raycaster(); private clock = 0; private w = 1; private h = 1; private fxBudget: number;
   private ringMats = [new THREE.MeshBasicMaterial({ color: 0x5dff9a, transparent: true, opacity: 0.9, depthWrite: false }), new THREE.MeshBasicMaterial({ color: 0xff5a4a, transparent: true, opacity: 0.9, depthWrite: false })];
-  private grid: THREE.Mesh | null = null; private scenery: Scenery | null = null;
+  private grid: THREE.Mesh | null = null; private scenery: Scenery | null = null; private desert: DesertProps | null = null;
 
   constructor(readonly canvas: HTMLCanvasElement, readonly sim: RtsSim, readonly viewer: number, readonly quality: Quality = 'high') {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
@@ -32,8 +33,8 @@ export class RtsView {
     this.shadows = quality !== 'low'; this.renderer.shadowMap.enabled = this.shadows; this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.05;
     this.yaw = viewer === 0 ? 0 : Math.PI; this.fxBudget = quality === 'high' ? 160 : quality === 'standard' ? 90 : 40;
-    const sky = new THREE.Color(0xc7b9a2); this.scene.background = sky; this.scene.fog = new THREE.Fog(sky, 130, 320);
-    this.scene.add(new THREE.HemisphereLight(0xdbe8ff, 0x5a4a38, 1.15));
+    const sky = new THREE.Color(0xe3c898); this.scene.background = sky; this.scene.fog = new THREE.Fog(sky, 105, 290);
+    this.scene.add(new THREE.HemisphereLight(0xfff0d4, 0x9a7a52, 1.2));
     this.sun.castShadow = this.shadows; const sc = this.sun.shadow.camera; sc.left = -52; sc.right = 52; sc.top = 52; sc.bottom = -52; sc.near = 1; sc.far = 200;
     this.sun.shadow.mapSize.set(quality === 'high' ? 2048 : 1024, quality === 'high' ? 2048 : 1024); this.sun.shadow.bias = -0.0006; this.sun.shadow.normalBias = 0.04;
     this.scene.add(this.sun, this.sun.target);
@@ -48,24 +49,27 @@ export class RtsView {
   private buildTerrain(): void {
     const n = this.sim.map.size, rnd = seeded(7), scene = this.scene;
     const tex = document.createElement('canvas'); tex.width = tex.height = 1536; const g = tex.getContext('2d')!, k = tex.width / n;
-    g.fillStyle = '#6d7a4f'; g.fillRect(0, 0, tex.width, tex.height);
+    g.fillStyle = '#c3a672'; g.fillRect(0, 0, tex.width, tex.height);
     const blot = (c: string, count: number, r0: number, r1: number, a: number): void => { for (let i = 0; i < count; i++) { g.globalAlpha = a * (0.4 + rnd() * 0.6); g.fillStyle = c; g.beginPath(); g.arc(rnd() * tex.width, rnd() * tex.height, (r0 + rnd() * (r1 - r0)) * k, 0, Math.PI * 2); g.fill(); } g.globalAlpha = 1; };
-    blot('#5d6c44', 260, 1.2, 4.5, 0.35); blot('#7e8858', 220, 0.8, 3.2, 0.3); blot('#8b7a5a', 90, 0.8, 2.6, 0.28); blot('#4f5d3b', 160, 0.3, 1.2, 0.35);
-    for (const s of this.sim.map.starts) { const grd = g.createRadialGradient((s.x + 2) * k, (s.y + 2) * k, 2 * k, (s.x + 2) * k, (s.y + 2) * k, 11 * k); grd.addColorStop(0, 'rgba(142,124,92,.95)'); grd.addColorStop(1, 'rgba(142,124,92,0)'); g.fillStyle = grd; g.fillRect(0, 0, tex.width, tex.height); }
+    blot('#b49560', 260, 1.2, 4.8, 0.35); blot('#d4ba86', 240, 0.8, 3.4, 0.32); blot('#a98259', 100, 0.8, 2.8, 0.3); blot('#8f7a58', 190, 0.25, 1.0, 0.4);
+    // 바람이 만든 모래 물결
+    g.strokeStyle = 'rgba(120,92,56,.22)'; g.lineWidth = 0.09 * k; for (let i = 0; i < 380; i++) { const x = rnd() * tex.width, y = rnd() * tex.height, l = (2 + rnd() * 5) * k; g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + l * 0.5, y - l * 0.18, x + l, y + l * 0.05); g.stroke(); }
+    g.strokeStyle = 'rgba(255,240,205,.16)'; for (let i = 0; i < 260; i++) { const x = rnd() * tex.width, y = rnd() * tex.height, l = (2 + rnd() * 4) * k; g.beginPath(); g.moveTo(x, y + 0.14 * k); g.quadraticCurveTo(x + l * 0.5, y - l * 0.14, x + l, y + 0.2 * k); g.stroke(); }
+    for (const s of this.sim.map.starts) { const grd = g.createRadialGradient((s.x + 2) * k, (s.y + 2) * k, 2 * k, (s.x + 2) * k, (s.y + 2) * k, 11 * k); grd.addColorStop(0, 'rgba(150,134,106,.95)'); grd.addColorStop(1, 'rgba(150,134,106,0)'); g.fillStyle = grd; g.fillRect(0, 0, tex.width, tex.height); }
     // 군사 기지 바닥: 본부 아래 육각 콘크리트 패드와 경고 줄무늬 테두리.
     for (const s of this.sim.map.starts) {
       const cx = (s.x + 2) * k, cy = (s.y + 2) * k, hex = (r: number): void => { g.beginPath(); for (let q = 0; q < 6; q++) { const a = Math.PI / 6 + (q * Math.PI) / 3; g[q ? 'lineTo' : 'moveTo'](cx + Math.cos(a) * r * k, cy + Math.sin(a) * r * k); } g.closePath(); };
-      g.save(); hex(8.2); g.fillStyle = 'rgba(70,72,74,.55)'; g.fill(); g.lineWidth = 0.5 * k; g.setLineDash([1.4 * k, 1.4 * k]); g.strokeStyle = 'rgba(232,190,50,.8)'; g.stroke(); g.setLineDash([]);
-      hex(6.9); g.fillStyle = 'rgba(120,122,124,.5)'; g.fill(); g.lineWidth = 0.16 * k; g.strokeStyle = 'rgba(40,42,44,.5)'; g.stroke(); g.restore();
+      g.save(); hex(8.2); g.fillStyle = 'rgba(64,66,68,.85)'; g.fill(); g.lineWidth = 0.5 * k; g.setLineDash([1.4 * k, 1.4 * k]); g.strokeStyle = 'rgba(232,190,50,.8)'; g.stroke(); g.setLineDash([]);
+      hex(6.9); g.fillStyle = 'rgba(118,120,122,.78)'; g.fill(); g.lineWidth = 0.16 * k; g.strokeStyle = 'rgba(40,42,44,.5)'; g.stroke(); g.restore();
     }
     for (const e of this.sim.map.expansions) { const grd = g.createRadialGradient((e.x + 2) * k, (e.y + 2) * k, 2 * k, (e.x + 2) * k, (e.y + 2) * k, 9 * k); grd.addColorStop(0, 'rgba(142,124,92,.7)'); grd.addColorStop(1, 'rgba(142,124,92,0)'); g.fillStyle = grd; g.fillRect(0, 0, tex.width, tex.height); }
     const lanes = buildLanes(this.sim.map), bushes = bushSpots(this.sim.map, lanes); paintGround(g, k, this.sim.map, lanes, bushes);
-    g.strokeStyle = 'rgba(30,36,24,.07)'; g.lineWidth = 1; for (let i = 0; i <= n; i += 4) { g.beginPath(); g.moveTo(i * k, 0); g.lineTo(i * k, tex.height); g.moveTo(0, i * k); g.lineTo(tex.width, i * k); g.stroke(); }
+    g.strokeStyle = 'rgba(70,52,28,.06)'; g.lineWidth = 1; for (let i = 0; i <= n; i += 4) { g.beginPath(); g.moveTo(i * k, 0); g.lineTo(i * k, tex.height); g.moveTo(0, i * k); g.lineTo(tex.width, i * k); g.stroke(); }
     const map = new THREE.CanvasTexture(tex); map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 4;
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(n, n), new THREE.MeshStandardMaterial({ map, roughness: 1, metalness: 0 }));
     ground.rotation.x = -Math.PI / 2; ground.position.set(n / 2, 0, n / 2); ground.receiveShadow = true; scene.add(ground);
-    this.scenery = new Scenery(scene, this.sim.map, lanes, bushes, this.quality, this.shadows);
-    const far = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.MeshStandardMaterial({ color: 0x4c5a3a, roughness: 1 })); far.rotation.x = -Math.PI / 2; far.position.set(n / 2, -0.05, n / 2); scene.add(far);
+    this.scenery = new Scenery(scene, this.sim.map, lanes, bushes, this.quality, this.shadows); this.desert = new DesertProps(scene, this.sim.map, lanes, this.quality, this.shadows);
+    const far = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.MeshStandardMaterial({ color: 0xb89a66, roughness: 1 })); far.rotation.x = -Math.PI / 2; far.position.set(n / 2, -0.05, n / 2); scene.add(far);
     // 막힌 칸마다 바위 한 덩어리(한 번의 그리기로 처리).
     const cells: Array<[number, number, number]> = [], t = this.sim.map.terrain;
     for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (t[y * n + x]) {
@@ -75,19 +79,23 @@ export class RtsView {
     const rockGeo = new THREE.IcosahedronGeometry(0.9, 0), rocks = new THREE.InstancedMesh(rockGeo, new THREE.MeshStandardMaterial({ roughness: 0.95, metalness: 0.05, flatShading: true }), cells.length * 2);
     rocks.castShadow = this.shadows; rocks.receiveShadow = true; const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), col = new THREE.Color(); let idx = 0;
     for (const [x, y, nb] of cells) for (let r = 0; r < 2; r++) {
-      const edge = x === 0 || y === 0 || x === n - 1 || y === n - 1, hgt = (0.5 + nb * 0.14 + rnd() * 0.6) * (edge ? 1.9 : 1) * (r ? 0.7 : 1), sx = 0.75 + rnd() * 0.55;
+      const edge = x === 0 || y === 0 || x === n - 1 || y === n - 1, hgt = (0.5 + nb * 0.14 + rnd() * 0.6) * (edge ? 2.6 : 1) * (r ? 0.7 : 1), sx = 0.75 + rnd() * 0.55;
       e.set(rnd() * 3, rnd() * 6, rnd() * 3); q.setFromEuler(e); m4.compose(new THREE.Vector3(x + 0.5 + (rnd() - 0.5) * 0.5, hgt * 0.35, y + 0.5 + (rnd() - 0.5) * 0.5), q, new THREE.Vector3(sx, hgt, sx));
-      rocks.setMatrixAt(idx, m4); col.setHSL(0.08 + rnd() * 0.04, 0.12 + rnd() * 0.08, 0.3 + rnd() * 0.14 + (nb > 6 ? 0.04 : 0)); rocks.setColorAt(idx++, col);
+      rocks.setMatrixAt(idx, m4); col.setHSL(0.07 + rnd() * 0.035, 0.36 + rnd() * 0.12, 0.36 + rnd() * 0.14 + (nb > 6 ? 0.05 : 0)); rocks.setColorAt(idx++, col);
     }
     rocks.count = idx; rocks.instanceMatrix.needsUpdate = true; if (rocks.instanceColor) rocks.instanceColor.needsUpdate = true; scene.add(rocks);
-    // 맵 바깥 숲(그림자 없이 두 번의 그리기).
-    const trees = this.quality === 'low' ? 140 : 420, cone = new THREE.InstancedMesh(new THREE.ConeGeometry(0.9, 2.8, 6), new THREE.MeshStandardMaterial({ roughness: 0.9, flatShading: true }), trees), trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.12, 0.16, 0.8, 5), new THREE.MeshStandardMaterial({ color: 0x4a3626, roughness: 1 }), trees);
-    cone.castShadow = false; for (let i = 0; i < trees; i++) {
-      const side = Math.floor(rnd() * 4), a = rnd() * (n + 24) - 12, d = -2.5 - rnd() * 14, x = side === 0 ? a : side === 1 ? a : side === 2 ? d : n - d, y = side === 0 ? d : side === 1 ? n - d : a, s = 0.8 + rnd() * 1.1;
-      m4.compose(new THREE.Vector3(x, 0.4 + 1.4 * s, y), new THREE.Quaternion(), new THREE.Vector3(s, s, s)); cone.setMatrixAt(i, m4); col.setHSL(0.27 + rnd() * 0.06, 0.4, 0.17 + rnd() * 0.08); cone.setColorAt(i, col);
-      m4.compose(new THREE.Vector3(x, 0.4 * s, y), new THREE.Quaternion(), new THREE.Vector3(s, s, s)); trunk.setMatrixAt(i, m4);
+    // 맵 바깥 협곡 암벽: 층층이 쌓인 붉은 사암 메사(그림자 없이 한 번의 그리기).
+    const mesas = this.quality === 'low' ? 46 : 96, strata = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true }), mesas * 3); let sc = 0;
+    for (let i = 0; i < mesas; i++) {
+      const side = i % 4, a = rnd() * (n + 40) - 20, d = 5 + rnd() * 20, x = side === 0 ? a : side === 1 ? a : side === 2 ? -d : n + d, y = side === 0 ? -d : side === 1 ? n + d : a;
+      const w = 6 + rnd() * 9, dp = 5 + rnd() * 8, h = 5 + rnd() * 13 * (1 + d / 30), hue = 0.04 + rnd() * 0.04;
+      for (let t = 0; t < 3; t++) {
+        const f = 1 - t * 0.22, th = h * (t === 0 ? 0.5 : t === 1 ? 0.32 : 0.2), yy = t === 0 ? 0 : t === 1 ? h * 0.5 : h * 0.82;
+        m4.compose(new THREE.Vector3(x, yy + th / 2 - 0.6, y), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, rnd() * 0.5, 0)), new THREE.Vector3(w * f, th, dp * f));
+        strata.setMatrixAt(sc, m4); col.setHSL(hue + t * 0.006, 0.42 - t * 0.04, 0.32 + t * 0.07 + rnd() * 0.05); strata.setColorAt(sc++, col);
+      }
     }
-    scene.add(cone, trunk);
+    strata.count = sc; strata.instanceMatrix.needsUpdate = true; if (strata.instanceColor) strata.instanceColor.needsUpdate = true; scene.add(strata);
     // 건물 배치용 격자(평소엔 숨김).
     const gc = document.createElement('canvas'); gc.width = gc.height = 64; const gg = gc.getContext('2d')!; gg.strokeStyle = 'rgba(255,255,255,.55)'; gg.lineWidth = 3; gg.strokeRect(0, 0, 64, 64);
     const gt = new THREE.CanvasTexture(gc); gt.wrapS = gt.wrapT = THREE.RepeatWrapping; gt.repeat.set(n, n);
@@ -193,14 +201,14 @@ export class RtsView {
 
   /** 선택·표시 상태를 갱신하고 그립니다. alpha 는 틱 사이 보간 비율(0~1). */
   render(dt: number, alpha: number, selected: ReadonlySet<number>): void {
-    this.clock += dt; this.scenery?.update(this.clock); this.syncEntities(); const tick = this.sim.tick, s = this.sim;
+    this.clock += dt; this.scenery?.update(this.clock); this.desert?.update(this.clock); this.syncEntities(); const tick = this.sim.tick, s = this.sim;
     for (const [id, v] of this.units) {
       const u = s.unit(id); if (!u) continue; const x = v.px + (v.cx - v.px) * alpha, y = v.py + (v.cy - v.py) * alpha, sp = Math.sqrt((v.cx - v.px) ** 2 + (v.cy - v.py) ** 2);
       v.moved += (sp > 0.005 ? 1 : -1) * dt * 6; v.moved = Math.min(1, Math.max(0, v.moved));
       const want = -Math.atan2(u.fy, u.fx); let d = want - v.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); v.yaw += d * Math.min(1, dt * 12);
       const r = v.rig, root = r.root; root.position.set(x, 0, y); root.rotation.y = v.yaw;
-      const bob = Math.sin(this.clock * (u.kind === 'tank' ? 9 : 14) + id) * (u.kind === 'tank' ? 0.015 : 0.05) * v.moved; r.body.position.y = Math.abs(bob); r.body.rotation.z = bob * (u.kind === 'tank' ? 0.2 : 0.5);
-      const fired = tick - u.fired; r.flash.visible = fired >= 0 && fired < 2;
+      const bob = Math.sin(this.clock * (u.kind === 'tank' || u.kind === 'jeep' ? 9 : 14) + id) * (u.kind === 'tank' || u.kind === 'jeep' ? 0.015 : 0.05) * v.moved; r.body.position.y = Math.abs(bob); r.body.rotation.z = bob * (u.kind === 'tank' || u.kind === 'jeep' ? 0.2 : 0.5);
+      const fired = tick - u.fired; r.flash.visible = u.kind !== 'medic' && fired >= 0 && fired < 2;
       if (r.gun) r.gun.position.x = (u.kind === 'tank' ? 0.3 : 0.2) - (fired >= 0 && fired < 3 ? 0.08 : 0);
       if (r.carry) r.carry.visible = u.carry > 0;
       if (r.ch) { const st = r.ch.state; st.speed = v.moved * 3; st.walk += dt * v.moved * 4.8; st.time += dt; st.wave = u.kind === 'worker' && (tick - u.mine < 3 || (u.o.t === 'gather' && u.o.phase === 1)) ? 0.5 : 0; st.recoil = fired >= 0 && fired < 3 ? 1 : 0; st.hit = (tick - u.hurt) >= 0 && (tick - u.hurt) < 3 ? 0.4 : 0; r.ch.update(dt); }
@@ -259,6 +267,11 @@ export class RtsView {
         else if (e.w === 'rocket') { this.tracer(e.x0, e.y0, e.x1, e.y1, 1.2, 0.5, 0xffd27a, 0.3, 0.12, 0.5, 1.6); this.delay(0.3, () => this.explode(e.x1, e.y1, 0.9, false)); }
         else { this.tracer(e.x0, e.y0, e.x1, e.y1, 0.9, 0.4, 0xffe9b0, 0.22, 0.16, 0.7, 1.2); this.delay(0.22, () => this.explode(e.x1, e.y1, Math.max(1.1, e.splash), false)); }
       } else if (e.t === 'die') { if (e.building) { this.explode(e.x, e.y, e.size * 0.9, true); this.delay(0.18, () => this.explode(e.x + 0.7, e.y - 0.5, e.size * 0.6, true)); this.delay(0.34, () => this.explode(e.x - 0.6, e.y + 0.6, e.size * 0.7, true)); } else this.explode(e.x, e.y, e.kind === 'tank' ? 1.3 : 0.6, e.kind === 'tank'); }
+      else if (e.t === 'heal') {
+        this.tracer(e.x0, e.y0, e.x1, e.y1, 1.0, 1.0, 0x7dff9e, 0.3, 0.04, 0.5);
+        const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.1), this.glowMat(0xb6ffc8, 0.9)); c.position.set(e.x1, 0.7, e.y1);
+        this.add({ obj: c, t: 0, life: 0.5, tick: (f, dt) => { c.position.y += dt * 1.4; c.rotation.y += dt * 6; (c.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - f.t / f.life); } });
+      }
       else if (e.t === 'placed') this.puff(e.x, e.y, 1.2, 0xd8cfb8);
       else if (e.t === 'mined') { const s = new THREE.Mesh(new THREE.OctahedronGeometry(0.07), this.glowMat(0x9fe9ff, 1)); s.position.set(e.x, 0.9, e.y); this.add({ obj: s, t: 0, life: 0.35, tick: (f, dt) => { s.position.y += dt * 1.8; s.rotation.y += dt * 8; (s.material as THREE.MeshBasicMaterial).opacity = 1 - f.t / f.life; } }); }
       else if (e.t === 'deposit') { const s = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 4), this.glowMat(0x8fe6ff, 0.9)); s.position.set(e.x, 1.1, e.y); this.add({ obj: s, t: 0, life: 0.5, tick: (f, dt) => { s.position.y += dt * 1.4; (s.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - f.t / f.life); } }); }

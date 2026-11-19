@@ -10,7 +10,7 @@ import { buildBuildings, buildPerimeter } from './buildings';
 import type { Models } from './models';
 import { Interior3D } from './interior3d';
 import { EYE_HEIGHT } from './scale';
-import { clampLabelScreenPos, clampLookPitch, labelSpriteCenter } from './uiMath';
+import { buildReach, clampLabelScreenPos, clampLookPitch, labelSpriteCenter } from './uiMath';
 
 export type ViewMode = 'fp' | 'tp';
 const EYE = EYE_HEIGHT, STRUCT_H: Record<StructKind, number> = { hq: 150, barracks: 86, depot: 58, factory: 104, lab: 96, turret: 50 };
@@ -150,6 +150,11 @@ export class Renderer3D {
   /** 조준선이 닿는 지면 좌표 */
   groundPoint(max = 760): { x: number; y: number } {
     const b = this.world.boss(0), ox = b ? b.x : this.camPos.x, oy = b ? b.y : this.camPos.z; let d = this.pitch < -0.03 ? Math.min(max, (this.mode === 'fp' ? EYE : 120) / Math.tan(-this.pitch)) : max * 0.8; d = Math.max(70, d);
+    return { x: ox + Math.cos(this.yaw) * d, y: oy + Math.sin(this.yaw) * d };
+  }
+  /** 건설 고스트 위치: 바라보는 방향으로, 거리는 시선 각도에 비례(uiMath.buildReach). */
+  buildPoint(max = 700): { x: number; y: number } {
+    const b = this.world.boss(0), ox = b ? b.x : this.camPos.x, oy = b ? b.y : this.camPos.z, d = buildReach(this.pitch, max);
     return { x: ox + Math.cos(this.yaw) * d, y: oy + Math.sin(this.yaw) * d };
   }
   project(x: number, y: number, h: number): { x: number; y: number; behind: boolean } { const v = new THREE.Vector3(x, h, y).project(this.camera); return { x: (v.x + 1) / 2 * this.w, y: (1 - v.y) / 2 * this.h, behind: v.z > 1 }; }

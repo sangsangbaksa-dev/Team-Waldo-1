@@ -1,6 +1,6 @@
 // LAST CITY — 건물 설치·철거 규칙 (순수 함수, DOM 비의존)
 import { STRUCTS, type StructKind } from './defs';
-import { rectFree, type CityMap } from './map';
+import { rectFree, rectHitsRoad, type CityMap } from './map';
 
 /** 본부 중심에서 설치 가능한 반경. */
 export const HQ_BUILD_RANGE = 720;
@@ -59,20 +59,34 @@ export function blockedByBizPad(
   return false;
 }
 
-export function canPlaceAt(opts: {
+export type PlaceProblem = '' | 'range' | 'blocked' | 'road' | 'crystal' | 'pad';
+export const PLACE_PROBLEM_TEXT: Record<Exclude<PlaceProblem, ''>, string> = {
+  range: '본부·보유 사업체·내 건물에서 너무 멉니다',
+  blocked: '다른 건물과 겹칩니다 (사이를 조금 띄우세요)',
+  road: '도로에는 지을 수 없습니다 (블록 안 빈 땅에 지으세요)',
+  crystal: '크리스탈 채굴 지점 위에는 지을 수 없습니다',
+  pad: '사업체 출입구 앞은 비워 두어야 합니다',
+};
+
+export function placeProblem(opts: {
   cx: number; cy: number; w: number; h: number; map: CityMap;
   hq: { x: number; y: number; w: number; h: number } | null;
   ownedBiz: { x: number; y: number }[];
   ownedStructs: { x: number; y: number; w: number; h: number }[];
   crystals: { x: number; y: number; amount: number }[];
   businesses: { x: number; y: number }[];
-}): boolean {
+}): PlaceProblem {
   const { cx, cy, w, h } = opts;
-  if (!inBuildRange(cx, cy, opts.hq, opts.ownedBiz, opts.ownedStructs)) return false;
-  if (!rectFree(opts.map, cx - w / 2, cy - h / 2, w, h)) return false;
-  if (blockedByCrystal(cx, cy, w, h, opts.crystals)) return false;
-  if (blockedByBizPad(cx, cy, w, h, opts.businesses)) return false;
-  return true;
+  if (!inBuildRange(cx, cy, opts.hq, opts.ownedBiz, opts.ownedStructs)) return 'range';
+  if (rectHitsRoad(cx - w / 2, cy - h / 2, w, h)) return 'road';
+  if (!rectFree(opts.map, cx - w / 2, cy - h / 2, w, h)) return 'blocked';
+  if (blockedByCrystal(cx, cy, w, h, opts.crystals)) return 'crystal';
+  if (blockedByBizPad(cx, cy, w, h, opts.businesses)) return 'pad';
+  return '';
+}
+
+export function canPlaceAt(opts: Parameters<typeof placeProblem>[0]): boolean {
+  return placeProblem(opts) === '';
 }
 
 export function demolishRefund(crystalCost: number, cashCost: number, rate = DEMOLISH_REFUND_RATE): { crystal: number; cash: number } {

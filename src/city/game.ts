@@ -541,7 +541,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     cv.addEventListener('pointerdown', e => {
       audio.unlock(); if (!world || paused || world.over) return; mouse.x = e.clientX; mouse.y = e.clientY; const three = cv === canvas3;
       if (e.pointerType === 'touch') {
-        if (ghost) { if (three) { const p = R3!.groundPoint(700); ghost.x = snapBuildCoord(p.x); ghost.y = snapBuildCoord(p.y); } place(e.clientX, e.clientY); return; }
+        if (ghost) { if (three) { const p = R3!.buildPoint(700); ghost.x = snapBuildCoord(p.x); ghost.y = snapBuildCoord(p.y); } place(e.clientX, e.clientY); return; }
         if (e.clientX < innerWidth * 0.45) { const s = sticks.move; if (s.id < 0) { s.id = e.pointerId; s.ox = e.clientX; s.oy = e.clientY; s.x = s.y = 0; } }
         else if (three) looks.set(e.pointerId, { x: e.clientX, y: e.clientY });
         else { const s = sticks.aim; if (s.id < 0) { s.id = e.pointerId; s.ox = e.clientX; s.oy = e.clientY; s.x = s.y = 0; } }
@@ -678,7 +678,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     hurt = Math.max(0, hurt - dt * 1.3); const low = b && b.hp < b.maxHp * 0.35 ? 0.35 + Math.sin(now / 160) * 0.12 : 0, outside = !!b && Math.hypot(b.x - w.zone.x, b.y - w.zone.y) > w.zone.r;
     hurtEl.style.opacity = String(Math.max(hurt * 0.85, low)); hurtEl.classList.toggle('storm', outside && hurt < 0.1);if (outside) hurtEl.style.opacity = String(Math.max(0.45, hurt));
     if (three && R3) {
-      if (ghost) { const p = R3.groundPoint(700); ghost.x = snapBuildCoord(p.x); ghost.y = snapBuildCoord(p.y); ghost.ok = w.canBuild(0, ghost.kind, ghost.x, ghost.y); }
+      if (ghost) { const p = R3.buildPoint(700); ghost.x = snapBuildCoord(p.x); ghost.y = snapBuildCoord(p.y); ghost.ok = w.canBuild(0, ghost.kind, ghost.x, ghost.y); }
       R3.draw(paused ? 0 : dt, ghost); overlay(); r.cam.x = b ? b.x : r.cam.x; r.cam.y = b ? b.y : r.cam.y;
     } else {
       if (b) { const look = touch ? { x: 0, y: 0 } : { x: (mouse.x - r.w / 2) * 0.22 / r.cam.zoom, y: (mouse.y - r.h / 2) * 0.22 / r.cam.zoom }; const tx = b.x + look.x + (veh ? veh.vx * 0.35 : 0), ty = b.y + look.y + (veh ? veh.vy * 0.35 : 0); r.cam.x += (tx - r.cam.x) * Math.min(1, dt * 7); r.cam.y += (ty - r.cam.y) * Math.min(1, dt * 7); }

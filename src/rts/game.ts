@@ -6,7 +6,7 @@ import type { LoadingScreen } from '../loading';
 import type { PvpSession } from '../net/lobby';
 import { RtsAi } from './ai';
 import { RtsAudio } from './audio';
-import { BUILDINGS, DIFFICULTIES, LEVELS, RESEARCH, RESEARCH_KINDS, SUPPLY_MAX, TICK, UNITS, isDifficulty, type BuildKind, type Difficulty, type UnitKind } from './config';
+import { BUILDINGS, DIFFICULTIES, LEVELS, RESEARCH, RESEARCH_KINDS, SUPPLY_MAX, TICK, UNITS, isDifficulty, type BuildKind, type Difficulty } from './config';
 import { RtsNet } from './pvp';
 import { RtsSim, type Building, type Cmd, type ResNode, type Unit } from './sim';
 import { RtsView } from './view';
@@ -142,7 +142,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
         out.push({ label: '건설 이어서', sub: '일꾼 보내기', key: 'C', on: () => { const w = sim!.spareWorker(b); if (!w) { toast('보낼 일꾼이 없습니다', true); return; } issue({ k: 'resume', ids: [w.id], b: b.id }); audio.sfx('order'); toast('일꾼을 보냈습니다'); } });
         out.push({ label: '건설 취소', sub: `◆${Math.floor(BUILDINGS[b.kind].cost * 0.75)} 환급`, key: 'X', on: () => issue({ k: 'cancel', b: b.id, i: -1 }) }); return out;
       }
-      for (const u of (Object.keys(UNITS) as UnitKind[]).filter(k => UNITS[k].from === b.kind)) {
+      for (const u of BUILDINGS[b.kind].trains) {
         const d = UNITS[u], lack = !sim.canTrain(me, u) ? `${BUILDINGS[d.req!].name} 필요` : p.minerals < d.cost ? '광물 부족' : p.cap - p.used < d.supply ? '보급소 필요' : b.queue.length >= 5 ? '대기열 가득' : '';
         out.push({ label: d.name, sub: `◆${d.cost} · 인구 ${d.supply}`, key: d.key, enabled: !lack, hint: lack || d.role, on: () => { for (const x of bs.filter(y => y.kind === b.kind && y.done)) { if (sim && sim.players[me].minerals >= d.cost && x.queue.length < 5) { issue({ k: 'train', b: x.id, u }); if (!keys.has('Shift')) break; } } audio.sfx('click'); } });
       }
@@ -176,7 +176,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     const bar = (v: number, max: number, c = ''): string => `<span class="rt-bar ${c}"><i style="width:${Math.max(0, Math.min(100, v / max * 100)).toFixed(0)}%"></i></span>`;
     if (ents.length === 1) {
       const e = ents[0];
-      if (e.k === 'unit') { const d = UNITS[e.kind]; el.innerHTML = `<div class="rt-one"><h3>${d.name}<small>${e.owner === me ? '' : ' · 적'}</small></h3><p>${d.role}</p>${bar(e.hp, d.hp, e.owner === me ? '' : 'foe')}<p class="rt-num">체력 ${Math.ceil(e.hp)} / ${d.hp}</p><p class="rt-num">공격 ${d.dmg} · 사거리 ${d.range} · 이동 ${d.speed}</p></div>`; }
+      if (e.k === 'unit') { const d = UNITS[e.kind], action = d.heal ? `치료 ${d.heal}/초` : `공격 ${d.dmg}`; el.innerHTML = `<div class="rt-one"><h3>${d.name}<small>${e.owner === me ? '' : ' · 적'}</small></h3><p>${d.role}</p>${bar(e.hp, d.hp, e.owner === me ? '' : 'foe')}<p class="rt-num">체력 ${Math.ceil(e.hp)} / ${d.hp}</p><p class="rt-num">${action} · 사거리 ${d.range} · 이동 ${d.speed}</p></div>`; }
       else if (e.k === 'building') {
         const d = BUILDINGS[e.kind], rs = e.research ? `<button type="button" class="rt-q" data-r="1" title="연구 취소하고 환급"><b>${RESEARCH[e.research.r].name}</b>${bar(RESEARCH[e.research.r].time - e.research.left, RESEARCH[e.research.r].time, 'prog')}</button>` : '', q = rs + e.queue.map((x, i) => `<button type="button" class="rt-q" data-q="${i}" title="취소하고 환급"><b>${UNITS[x.u].name}</b>${i === 0 ? bar(UNITS[x.u].time - x.left, UNITS[x.u].time, 'prog') : ''}</button>`).join('');
         el.innerHTML = `<div class="rt-one"><h3>${d.name}<small>${e.owner === me ? '' : ' · 적'}</small></h3><p>${e.done ? d.role : `건설 중 ${Math.floor(e.progress / d.time * 100)}%`}</p>${bar(e.hp, e.maxhp, e.owner === me ? '' : 'foe')}<p class="rt-num">체력 ${Math.ceil(e.hp)} / ${e.maxhp}${e.kind === 'tower' ? ` · 공격 ${d.dmg} · 사거리 ${d.range}` : ''}</p>${q ? `<div class="rt-queue">${q}</div>` : ''}</div>`;

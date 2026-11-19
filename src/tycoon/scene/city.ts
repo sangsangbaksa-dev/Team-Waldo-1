@@ -1,11 +1,14 @@
 // TYCOON — 도시 렌더링. 구획 단위로 건물을 합쳐 그리고, 단계가 오르면 해당 구획만 다시 지어 솟아오르게 합니다.
 import * as THREE from 'three';
-import { stageIndex, type SpotDef, type StageId } from '../bridge';
+import type { LotView, ShopKind, SpotDef, Stage } from '../core/types';
+import { stageIndex } from '../core/data';
 import { GeoBuilder } from './geo';
-import { Colliders, GRID, HALF, LOT, PITCH, ROAD, BLOCK, WALK_EDGE, WORLD_HALF, blockTier, blockUnlocked, hash01, type Block, type Box, type Layout, type Lot } from './layout';
-import { FACADE_W, asphaltTexture, dirtTexture, facadeMaps, grassTexture, kindColor, puddleTexture, ringTexture, sidewalkTexture, signTexture, type FacadeStyle } from './textures';
+import { Colliders, GRID, HALF, PITCH, ROAD, BLOCK, WORLD_HALF, blockTier, blockUnlocked, hash01, type Block, type Box, type Layout, type Lot } from './layout';
+import { asphaltTexture, dirtTexture, facadeMaps, grassTexture, kindColor, puddleTexture, ringTexture, sidewalkTexture, signTexture, type FacadeStyle } from './textures';
 
 export type Quality = 'high' | 'standard' | 'low';
+/** 코어가 알려 주는 장소 정보(잠김 여부 포함). */
+export type SpotView = (SpotDef | LotView) & { locked: boolean };
 const FLOOR = 3.2;
 const lerp = (a: number, b: number, k: number): number => a + (b - a) * k;
 const pick = <T,>(arr: readonly T[], r: number): T => arr[Math.min(arr.length - 1, Math.floor(r * arr.length))];
@@ -18,21 +21,36 @@ const WALL_TINTS: Record<number, number[]> = {
 };
 const ROOF_COLORS = [0x4a4d52, 0x55585d, 0x6b6e72, 0x3d3f43];
 
-interface KindSpec { floors: number; style?: FacadeStyle; w: number; d: number; awning?: boolean; extra?: 'chimney' | 'tower' | 'containers' | 'tank' | 'sign' }
-const KIND_SPEC: Record<string, KindSpec> = {
-  home: { floors: 3, style: 'slum', w: 12, d: 9, extra: 'tank' },
-  job: { floors: 2, w: 12, d: 9, awning: true },
+interface BSpec { floors: number | [number, number, number]; style?: FacadeStyle; w: number; d: number; awning?: boolean; extra?: 'chimney' | 'tower' | 'containers' | 'tank' | 'columns' | 'terminal' | 'warehouse' }
+/** 건물이 되는 일반 장소. 잠자리·골목·고물상은 열린 터(OPEN)로 그립니다. */
+const KIND_SPEC: Record<string, BSpec> = {
   food: { floors: 2, style: 'shop', w: 9, d: 9, awning: true },
-  shop: { floors: 3, style: 'shop', w: 12, d: 9, awning: true },
-  market: { floors: 2, style: 'shop', w: 12, d: 12, awning: true },
-  bank: { floors: 5, style: 'office', w: 12, d: 12 },
-  office: { floors: 10, style: 'glass', w: 12, d: 12, extra: 'tower' },
-  factory: { floors: 3, style: 'office', w: 12, d: 12, extra: 'chimney' },
-  hq: { floors: 26, style: 'glass', w: 12, d: 12, extra: 'tower' },
-  port: { floors: 2, style: 'office', w: 12, d: 12, extra: 'containers' },
+  job: { floors: 2, style: 'shop', w: 12, d: 9, awning: true },
+  market: { floors: 2, style: 'shop', w: 12, d: 12, awning: true, extra: 'warehouse' },
+  bank: { floors: 5, style: 'office', w: 12, d: 12, extra: 'columns' },
+  office: { floors: 14, style: 'glass', w: 12, d: 12, extra: 'tower' },
+  airport: { floors: 3, style: 'glass', w: 12, d: 12, extra: 'terminal' },
 };
-const DEFAULT_SPEC: KindSpec = { floors: 3, style: 'shop', w: 12, d: 9, awning: true };
+const SHOP_SPEC: Record<ShopKind, BSpec> = {
+  stall: { floors: [1, 1, 2], style: 'shop', w: 6, d: 6, awning: true },
+  cafe: { floors: [2, 3, 3], style: 'shop', w: 9, d: 9, awning: true },
+  mart: { floors: [2, 3, 4], style: 'shop', w: 12, d: 9, awning: true },
+  restaurant: { floors: [3, 4, 5], style: 'shop', w: 12, d: 12, awning: true },
+  boutique: { floors: [4, 6, 8], style: 'office', w: 12, d: 9 },
+  tech: { floors: [6, 9, 12], style: 'glass', w: 12, d: 12, extra: 'tower' },
+  factory: { floors: [2, 3, 4], style: 'office', w: 12, d: 12, extra: 'chimney' },
+};
+const OPEN_KINDS = new Set(['home', 'scrap', 'recycle']);
+const OPEN_HIDE = new Set<string>();
+const isLot = (v: SpotView | undefined): v is LotView & { locked: boolean } => v?.kind === 'lot';
+const spotSig = (v: SpotView | undefined): string => !v ? '-' : isLot(v) ? `L${v.locked ? 1 : 0}${v.owner}${v.shop ? `${v.shop.kind}${v.shop.level}${v.shop.name}` : ''}${v.rival ? `${v.rival.rivalId}${v.rival.kind}${v.rival.level}` : ''}` : `${v.kind}${v.locked ? 1 : 0}`;
+export const spotColor = (v: SpotView): string => {
+  if (v.locked) return '#7a8088';
+  if (isLot(v)) return v.owner === 'player' ? '#35c48a' : v.owner === 'rival' ? (v.rival?.color ?? '#d9534f') : '#f2c94c';
+  return kindColor(v.kind);
+};
 
+interface LotGeo { walls: Record<FacadeStyle, GeoBuilder>; roofs: GeoBuilder; detail: GeoBuilder; glow: GeoBuilder; grass: GeoBuilder; dirt: GeoBuilder; boxes: Box[] }
 class BlockView {
   group = new THREE.Group(); bld = new THREE.Group(); disposables: THREE.BufferGeometry[] = [];
   key = ''; rise = 1; riseDelay = 0; crane: THREE.Object3D | null = null;
@@ -50,7 +68,7 @@ export class CityView {
   private wetU = { value: 0 };
   private signMats = new Map<string, THREE.MeshBasicMaterial>();
   private beacons = new Map<string, { group: THREE.Group; ring: THREE.Mesh; beam: THREE.Mesh; lot: Lot; open: boolean }>();
-  private stage = -1; private night = 0; private time = 0;
+  private stage = -1; private time = 0; private spotViews = new Map<string, SpotView>();
   private lampMesh!: THREE.InstancedMesh; private lampGlow!: THREE.InstancedMesh; private poolMesh!: THREE.InstancedMesh;
   private trunkMesh!: THREE.InstancedMesh; private crownMesh!: THREE.InstancedMesh;
   private tmp = new THREE.Object3D();
@@ -196,32 +214,37 @@ export class CityView {
   }
 
   // ---------- 상태 갱신 ----------
-  /** 단계가 바뀌면 달라진 구획만 다시 짓습니다. animate=false 면 솟아오르지 않고 바로 완성. */
-  setStage(stage: StageId, animate: boolean, openSpots: Set<string>): void {
+  /** 단계·장소 상태가 바뀌면 달라진 구획만 다시 짓습니다. animate=true 면 새로 열리거나 자란 구획이 솟아오릅니다. */
+  sync(stage: Stage, views: SpotView[], animate: boolean): void {
     const si = stageIndex(stage), changed = this.stage !== si; this.stage = si;
+    this.spotViews.clear(); for (const v of views) this.spotViews.set(v.id, v);
     let order = 0;
     const sorted = [...this.layout.blocks].sort((a, b) => a.ring - b.ring || Math.abs(a.i) + Math.abs(a.j) - Math.abs(b.i) - Math.abs(b.j));
     for (const b of sorted) {
-      const key = `${blockUnlocked(b, si) ? 1 : 0}${blockTier(b, si)}`;
+      const key = `${blockUnlocked(b, si) ? 1 : 0}${blockTier(b, si)}|${b.lots.map(l => spotSig(l.spot ? this.spotViews.get(l.spot.id) : undefined)).join(',')}`;
       let v = this.views.get(b);
       if (v && v.key === key) continue;
+      const fresh = !v || v.key.slice(0, 2) !== key.slice(0, 2);
       if (!v) { v = new BlockView(); this.views.set(b, v); this.group.add(v.group); } else this.clearBlock(v);
       v.key = key; this.buildBlock(b, v, si);
-      if (animate && changed && blockUnlocked(b, si)) { v.rise = 0.02; v.riseDelay = order++ * 0.06; v.bld.scale.y = 0.02; }
+      if (animate && fresh && blockUnlocked(b, si) && (changed || true)) { v.rise = 0.02; v.riseDelay = order++ * 0.05; v.bld.scale.y = 0.02; }
     }
-    this.refillTrees(); this.refillSkyline(); this.setOpenSpots(openSpots);
-    this.globe && (this.globe.visible = si >= 6);
+    this.refillTrees(); this.refillSkyline(); this.recolorBeacons();
+    if (this.globeAnchor && !this.globe) this.addGlobe(this.globeAnchor.x, this.globeAnchor.y, this.globeAnchor.z);
+    if (this.globe) this.globe.visible = si >= 6;
   }
-  setOpenSpots(open: Set<string>): void {
+  private recolorBeacons(): void {
     for (const [id, b] of this.beacons) {
-      const isOpen = open.has(id), unlocked = blockUnlocked(b.lot.block, this.stage);
-      b.open = isOpen; b.group.visible = unlocked;
-      for (const m of [b.ring, b.beam]) (m.material as THREE.MeshBasicMaterial).color.set(isOpen ? kindColor(b.lot.spot!.kind) : '#7a8088');
-      const sm = this.signMats.get(id); if (sm) sm.color.setScalar(isOpen ? 1 : 0.4);
+      const view = this.spotViews.get(id), unlocked = blockUnlocked(b.lot.block, this.stage);
+      b.open = !!view && !view.locked; b.group.visible = unlocked && (view ? !OPEN_HIDE.has(view.kind) || true : true);
+      const col = view ? spotColor(view) : '#7a8088';
+      for (const m of [b.ring, b.beam]) (m.material as THREE.MeshBasicMaterial).color.set(col);
     }
   }
+  spotView(id: string): SpotView | undefined { return this.spotViews.get(id); }
+  /** 문 앞 표지 위치(없으면 null). */
+  doorOf(id: string): { x: number; z: number; fx: number; fz: number } | null { const l = this.layout.spotLots.get(id); return l ? { x: l.doorX, z: l.doorZ, fx: l.fx, fz: l.fz } : null; }
   setNight(n: number): void {
-    this.night = n;
     const e = 0.04 + n * 1.5;
     for (const m of Object.values(this.facade)) m.emissiveIntensity = e;
     this.skylineMat.emissiveIntensity = 0.04 + n * 1.2;
@@ -250,11 +273,11 @@ export class CityView {
     if (this.globe) { this.globe.rotation.y += dt * 0.5; this.globe.children[1].rotation.x += dt * 0.7; }
   }
   /** 문 앞 표지와 가장 가까운 열린 장소(range 이내). */
-  nearestSpot(x: number, z: number, range: number): { id: string; spot: SpotDef; dist: number } | null {
-    let best: { id: string; spot: SpotDef; dist: number } | null = null;
+  nearestSpot(x: number, z: number, range: number): { id: string; spot: SpotView; dist: number } | null {
+    let best: { id: string; spot: SpotView; dist: number } | null = null;
     for (const [id, b] of this.beacons) {
       if (!b.group.visible) continue; const d = Math.hypot(x - b.lot.doorX, z - b.lot.doorZ);
-      if (d < range && (!best || d < best.dist)) best = { id, spot: b.lot.spot!, dist: d };
+      const sv = this.spotViews.get(id); if (sv && d < range && (!best || d < best.dist)) best = { id, spot: sv, dist: d };
     }
     return best;
   }
@@ -279,30 +302,100 @@ export class CityView {
     slab.panel(b.cx, 0.09, b.cz + h, BLOCK, 0.18, 0, 1, curb); slab.panel(b.cx, 0.09, b.cz - h, BLOCK, 0.18, 0, -1, curb); slab.panel(b.cx + h, 0.09, b.cz, BLOCK, 0.18, 1, 0, curb); slab.panel(b.cx - h, 0.09, b.cz, BLOCK, 0.18, -1, 0, curb);
     this.addMesh(v, v.group, slab, slabMat, false);
     if (!unlocked) { this.buildConstruction(b, v); return; }
-    const walls: Record<FacadeStyle, GeoBuilder> = { slum: new GeoBuilder(), shop: new GeoBuilder(), office: new GeoBuilder(), glass: new GeoBuilder() };
-    const roofs = new GeoBuilder(), detail = new GeoBuilder(), glow = new GeoBuilder(), grass = new GeoBuilder(), boxes: Box[] = [];
-    for (const lot of b.lots) {
-      if (lot.kind === 'park') { this.buildPark(lot, grass, detail, boxes); continue; }
-      this.buildLotBuilding(lot, tier, { walls, roofs, detail, glow, boxes }, v);
+    const g: LotGeo = { walls: { slum: new GeoBuilder(), shop: new GeoBuilder(), office: new GeoBuilder(), glass: new GeoBuilder() }, roofs: new GeoBuilder(), detail: new GeoBuilder(), glow: new GeoBuilder(), grass: new GeoBuilder(), dirt: new GeoBuilder(), boxes: [] };
+    for (const lot of b.lots) this.buildLot(lot, tier, g, v);
+    for (const s of ['slum', 'shop', 'office', 'glass'] as FacadeStyle[]) this.addMesh(v, v.bld, g.walls[s], this.facade[s]);
+    this.addMesh(v, v.bld, g.roofs, this.roofMat); this.addMesh(v, v.bld, g.detail, this.detailMat); this.addMesh(v, v.bld, g.glow, this.glowMat, false);
+    this.addMesh(v, v.group, g.grass, this.grassMat, false); this.addMesh(v, v.group, g.dirt, this.dirtMat, false);
+    this.colliders.set(b, g.boxes);
+  }
+  private signMat(text: string, color: string, sub: string, dim: boolean): THREE.MeshBasicMaterial {
+    const key = `${text}|${color}|${sub}|${dim ? 1 : 0}`; let m = this.signMats.get(key);
+    if (!m) { m = new THREE.MeshBasicMaterial({ map: signTexture(text, color, sub), toneMapped: false }); if (dim) m.color.setScalar(0.4); this.signMats.set(key, m); }
+    return m;
+  }
+  private signPlane(v: BlockView, w: number, hgt: number, x: number, y: number, z: number, nx: number, nz: number, mat: THREE.Material): void {
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(w, hgt), mat); sign.position.set(x, y, z); sign.rotation.y = Math.atan2(nx, nz); v.bld.add(sign); v.disposables.push(sign.geometry);
+  }
+  /** 필지 하나를 종류에 맞게 짓습니다. */
+  private buildLot(lot: Lot, tier: number, g: LotGeo, v: BlockView): void {
+    const view = lot.spot ? this.spotViews.get(lot.spot.id) : undefined, spot = lot.spot;
+    if (!spot) { if (lot.kind === 'park') this.buildPark(lot, g); else this.buildBuilding(lot, tier, g, v, null); return; }
+    if (isLot(view) || (spot.kind === 'lot' && !view)) {
+      const lv = view as (LotView & { locked: boolean }) | undefined;
+      if (lv?.locked) { this.buildPlot(lot, g, v, '공사 중', '#e07a2c', `${spot.name}`, true); return; }
+      if (!lv || lv.owner === 'none') { this.buildPlot(lot, g, v, '분양 중', '#d6a02e', `${spot.name} · ${lv?.size ?? 'S'}`, false); return; }
+      const sk = (lv.owner === 'player' ? lv.shop?.kind : lv.rival?.kind) ?? 'stall', lvl = Math.max(1, Math.min(3, (lv.owner === 'player' ? lv.shop?.level : lv.rival?.level) ?? 1));
+      const text = lv.owner === 'player' ? (lv.shop?.name ?? spot.name) : (lv.rival?.rivalName ?? '라이벌'), sub = lv.owner === 'player' ? `${lv.shop?.kindName ?? ''} Lv${lvl}` : `${lv.rival?.kindName ?? ''} Lv${lvl}`;
+      this.buildBuilding(lot, tier, g, v, { spec: SHOP_SPEC[sk], level: lvl, text, sub, color: spotColor(lv), dim: false });
+      return;
     }
-    for (const s of ['slum', 'shop', 'office', 'glass'] as FacadeStyle[]) this.addMesh(v, v.bld, walls[s], this.facade[s]);
-    this.addMesh(v, v.bld, roofs, this.roofMat); this.addMesh(v, v.bld, detail, this.detailMat); this.addMesh(v, v.bld, glow, this.glowMat, false); this.addMesh(v, v.group, grass, this.grassMat, false);
-    this.colliders.set(b, boxes);
+    if (OPEN_KINDS.has(spot.kind)) { this.buildOpen(lot, spot, g, v); return; }
+    this.buildBuilding(lot, tier, g, v, { spec: KIND_SPEC[spot.kind] ?? KIND_SPEC.job, level: 1, text: spot.name, sub: '', color: kindColor(spot.kind), dim: !!view?.locked });
   }
-  private buildPark(lot: Lot, grass: GeoBuilder, detail: GeoBuilder, boxes: Box[]): void {
-    grass.floor(lot.cx - 7, lot.cz - 7, lot.cx + 7, lot.cz + 7, 0.22, 0xffffff, 1 / 3);
-    detail.solid(lot.cx, 0.22, lot.cz, 1.6, 0.4, 5, 0x8d8a82); // 산책로 화단 느낌의 벤치
-    boxes.push({ x0: lot.cx - 0.9, x1: lot.cx + 0.9, z0: lot.cz - 2.6, z1: lot.cz + 2.6 });
+  private buildPark(lot: Lot, g: LotGeo): void {
+    g.grass.floor(lot.cx - 7, lot.cz - 7, lot.cx + 7, lot.cz + 7, 0.22, 0xffffff, 1 / 3);
+    g.detail.solid(lot.cx, 0.22, lot.cz, 1.6, 0.4, 5, 0x8d8a82);
+    g.boxes.push({ x0: lot.cx - 0.9, x1: lot.cx + 0.9, z0: lot.cz - 2.6, z1: lot.cz + 2.6 });
   }
-  private buildLotBuilding(lot: Lot, tier: number, g: { walls: Record<FacadeStyle, GeoBuilder>; roofs: GeoBuilder; detail: GeoBuilder; glow: GeoBuilder; boxes: Box[] }, v: BlockView): void {
-    const spec = lot.spot ? (KIND_SPEC[lot.spot.kind] ?? DEFAULT_SPEC) : null, r = (k: number): number => hash01(lot.id * 13 + k, tier);
-    let floors: number, style: FacadeStyle, w: number, d: number;
+  /** 울타리 둘러친 땅(분양 중/공사 중). */
+  private buildPlot(lot: Lot, g: LotGeo, v: BlockView, text: string, color: string, sub: string, building: boolean): void {
+    const x0 = lot.cx - 7, x1 = lot.cx + 7, z0 = lot.cz - 7, z1 = lot.cz + 7, fc = building ? 0xe07a2c : 0xc7b27a;
+    g.dirt.floor(x0, z0, x1, z1, 0.2, 0xffffff, 1 / 4);
+    for (const [nx, nz] of [[0, 1], [0, -1], [1, 0], [-1, 0]] as const) { const px = lot.cx + nx * 6.8, pz = lot.cz + nz * 6.8; g.detail.panel(px, 0.8, pz, 13.6, 1.6, nx, nz, fc); g.detail.panel(px, 0.8, pz, 13.6, 1.6, -nx, -nz, fc); }
+    for (let k = 0; k < 3; k++) g.detail.solid(lot.cx - 3 + k * 3, 0.2, lot.cz - 2 + hash01(lot.id, k) * 4, 2 + hash01(k, lot.id) * 1.5, 1.2 + k * 0.4, 2, [0x777f88, 0xb04a3a, 0x3f6fa0][k]);
+    if (building) { g.detail.solid(lot.cx, 0.2, lot.cz + 3, 4, 3, 4, 0x8c8f93); g.glow.solid(lot.cx, 3.2, lot.cz + 3, 0.5, 0.5, 0.5, 0xff8a3a); }
+    g.boxes.push({ x0: x0 + 0.3, x1: x1 - 0.3, z0: z0 + 0.3, z1: z1 - 0.3 });
+    g.detail.solid(lot.cx + lot.fx * 6.6, 0.2, lot.cz + lot.fz * 6.6, lot.fx ? 0.3 : 0.3, 3.6, 0.3, 0x55595e);
+    this.signPlane(v, 5.6, 1.4, lot.cx + lot.fx * 6.8, 3.4, lot.cz + lot.fz * 6.8, lot.fx, lot.fz, this.signMat(text, color, sub, false));
+  }
+  /** 열린 터: 쉼터 벤치, 쓰레기 골목/공원, 고물상. */
+  private buildOpen(lot: Lot, spot: SpotDef, g: LotGeo, v: BlockView): void {
+    const cx = lot.cx, cz = lot.cz, ax = lot.fz ? 1 : 0, az = lot.fx ? 1 : 0; // 정면에 평행한 방향
+    const at = (a: number, d: number): [number, number] => [cx + ax * a + lot.fx * d, cz + az * a + lot.fz * d];
+    const sx = (w: number, d: number): [number, number] => [ax ? w : d, az ? w : d];
+    const box = (a: number, d: number, w: number, hh: number, dd: number, col: number, y = 0.18, collide = true): void => { const [x, z] = at(a, d), [bw, bd] = sx(w, dd); g.detail.solid(x, y, z, bw, hh, bd, col); if (collide) g.boxes.push({ x0: x - bw / 2, x1: x + bw / 2, z0: z - bd / 2, z1: z + bd / 2 }); };
+    const label = (text: string, color: string, sub: string): void => this.signPlane(v, 5.6, 1.4, ...(([x, z]) => [x, 3.3, z] as [number, number, number])(at(0, 6.7)), lot.fx, lot.fz, this.signMat(text, color, sub, false));
+    if (spot.kind === 'home') {
+      g.grass.floor(cx - 7, cz - 7, cx + 7, cz + 7, 0.2, 0xffffff, 1 / 3);
+      for (const a of [-3.5, 3.5]) { box(a, 2, 2.6, 0.12, 0.8, 0x7a5c3a, 0.65, false); box(a, 1.5, 2.6, 0.5, 0.12, 0x6a4c2c, 0.9, false); box(a - 1.1, 2, 0.15, 0.5, 0.6, 0x333, 0.18, false); box(a + 1.1, 2, 0.15, 0.5, 0.6, 0x333, 0.18, false); }
+      box(-3.5, -2.4, 3, 1.6, 2.2, 0xa88458); box(-3.5, -2.4, 3.1, 0.15, 2.3, 0x8f6d44, 1.7, false); box(2.2, -3.5, 1.1, 1.0, 1.1, 0x5f7a5c);
+      g.glow.solid(...(([x, z]) => [x, 0.22, z] as [number, number, number])(at(-3.5, -1.2)), 0.5, 0.08, 0.5, 0xffd9a0);
+      label(spot.name, kindColor('home'), '오늘 밤은 여기서');
+    } else if (spot.kind === 'scrap') {
+      const alley = spot.name.includes('골목');
+      if (alley) {
+        g.dirt.floor(cx - 7, cz - 7, cx + 7, cz + 7, 0.2, 0xcfc4b0, 1 / 3);
+        for (const [a, d, c] of [[-4, -3, 0x3d6a4a], [-1, -3.4, 0x34557a], [3, -3.1, 0x6a4a3a]] as Array<[number, number, number]>) { box(a, d, 2.4, 1.5, 1.2, c); box(a, d, 2.5, 0.12, 1.3, 0x222, 1.68, false); }
+        for (let k = 0; k < 7; k++) box(-5 + k * 1.6, 0.5 + hash01(lot.id, k) * 3, 0.7, 0.6, 0.7, 0x16181a, 0.2, false);
+        box(0, -6.3, 13.4, 5, 0.6, 0x7a6858); // 골목 뒤 담
+      } else {
+        g.grass.floor(cx - 7, cz - 7, cx + 7, cz + 7, 0.22, 0xffffff, 1 / 3);
+        box(-3, -2, 0.18, 2.6, 0.18, 0xc0392b, 0.2); box(-1.4, -2, 0.18, 2.6, 0.18, 0xc0392b, 0.2); box(-2.2, -2, 1.9, 0.16, 0.16, 0xc0392b, 2.6, false);
+        box(3.5, -1.5, 1.2, 1.6, 4, 0x3a7ac8, 0.2); box(3.5, -4.2, 3, 0.3, 3, 0xd9c28a, 0.2, false);
+        box(0, 2.5, 2.4, 0.5, 0.6, 0x7a5c3a, 0.2, false);
+      }
+      label(spot.name, kindColor('scrap'), '빈 병이 굴러다닌다');
+    } else { // recycle
+      g.dirt.floor(cx - 7, cz - 7, cx + 7, cz + 7, 0.2, 0xb9ad98, 1 / 3);
+      for (const [nx, nz] of [[0, 1], [0, -1], [1, 0], [-1, 0]] as const) { const px = cx + nx * 6.8, pz = cz + nz * 6.8; g.detail.panel(px, 1.5, pz, 13.6, 3, nx, nz, 0x6d747c); g.detail.panel(px, 1.5, pz, 13.6, 3, -nx, -nz, 0x585e65); }
+      g.boxes.push({ x0: cx - 6.9, x1: cx + 6.9, z0: cz - 6.9, z1: cz - 6.4 }, { x0: cx - 6.9, x1: cx - 6.4, z0: cz - 6.9, z1: cz + 6.9 }, { x0: cx + 6.4, x1: cx + 6.9, z0: cz - 6.9, z1: cz + 6.9 });
+      const wallBack = lot.fz ? [{ x0: cx - 6.9, x1: cx + 6.9, z0: lot.fz > 0 ? cz + 6.4 : cz - 6.9, z1: lot.fz > 0 ? cz + 6.9 : cz - 6.4 }] : [{ x0: lot.fx > 0 ? cx + 6.4 : cx - 6.9, x1: lot.fx > 0 ? cx + 6.9 : cx - 6.4, z0: cz - 6.9, z1: cz + 6.9 }]; void wallBack;
+      for (let k = 0; k < 9; k++) { const c = [0x8a4b2a, 0x5f6b74, 0x9a8b3a, 0x3f6f8a, 0x777][k % 5]; box(-4.5 + (k % 3) * 2.2, -4 + Math.floor(k / 3) * 1.8, 2 + hash01(k, lot.id) * 1.2, 0.8 + hash01(lot.id, k) * 1.8, 1.6, c, 0.2, false); }
+      box(2.5, -3, 4.5, 3.2, 3.4, 0x6d6f73); g.glow.solid(...(([x, z]) => [x, 3.4, z] as [number, number, number])(at(2.5, -3)), 0.5, 0.3, 0.5, 0xff8a3a);
+      box(-2, 1, 1.6, 0.6, 1.6, 0x7a4a2a);
+      label(spot.name, kindColor('recycle'), '병·캔 매입');
+    }
+  }
+  private buildBuilding(lot: Lot, tier: number, g: LotGeo, v: BlockView, d: { spec: BSpec; level: number; text: string; sub: string; color: string; dim: boolean } | null): void {
+    const spec = d?.spec ?? null, r = (k: number): number => hash01(lot.id * 13 + k, tier);
+    let floors: number, style: FacadeStyle, w: number, dep: number;
     if (spec) {
-      floors = spec.floors; style = spec.style ?? 'shop'; w = spec.w; d = spec.d;
-      if (spec.style !== 'slum' && style === 'shop' && tier >= 2) style = 'office';
-      if (lot.spot!.kind === 'hq' || lot.spot!.kind === 'office') floors += Math.floor(tier * 0.8);
+      const fl = Array.isArray(spec.floors) ? spec.floors[(d?.level ?? 1) - 1] : spec.floors + Math.floor(tier * (spec.extra === 'tower' ? 1.2 : 0.35));
+      floors = fl; style = spec.style ?? 'shop'; w = spec.w; dep = spec.d;
+      if (style === 'shop' && tier >= 3) style = 'office';
     } else {
-      w = pick([9, 12, 12, 9, 6], r(1)); d = pick([9, 12, 12, 9], r(2));
+      w = pick([9, 12, 12, 9, 6], r(1)); dep = pick([9, 12, 12, 9], r(2));
       switch (tier) {
         case 0: floors = 2 + Math.floor(r(3) * 2); style = 'slum'; break;
         case 1: floors = 3 + Math.floor(r(3) * 3); style = r(4) < 0.6 ? 'shop' : 'slum'; break;
@@ -312,47 +405,46 @@ export class CityView {
       }
     }
     // 정면(fx,fz) 쪽으로 붙여 배치: 정면 면이 필지 가장자리에서 0.6 안쪽
-    const fw = lot.fx ? d : w, fd = lot.fx ? w : d; // x 폭, z 폭
+    const fw = lot.fx ? dep : w, fd = lot.fx ? w : dep;
     const front = 7 - 0.6, depth = lot.fx ? fw : fd, along = lot.fx ? fd : fw;
     const offAlong = spec ? 0 : (r(5) - 0.5) * Math.max(0, 14 - along - 1);
     const cx = lot.cx + lot.fx * (front - depth / 2) + (lot.fz ? offAlong : 0), cz = lot.cz + lot.fz * (front - depth / 2) + (lot.fx ? offAlong : 0);
     const H = floors * FLOOR, tints = WALL_TINTS[Math.min(4, style === 'glass' ? 4 : style === 'office' ? Math.max(2, tier) : style === 'shop' ? 1 : 0)], tint = pick(tints, r(6)), roofCol = pick(ROOF_COLORS, r(7));
     const wallB = g.walls[style], setback = floors >= 14 && !spec?.extra;
+    if (spec?.extra === 'warehouse') { g.dirt.floor(lot.cx - 7, lot.cz - 7, lot.cx + 7, lot.cz + 7, 0.2, 0xb9ad98, 1 / 3); }
     if (setback) {
       const h1 = Math.floor(floors * 0.62) * FLOOR;
       wallB.box(cx, 0, cz, fw, h1, fd, tint, g.roofs, roofCol); wallB.box(cx, h1, cz, fw - 3, H - h1, fd - 3, tint, g.roofs, roofCol);
-      g.detail.solid(cx, H, cz, 1, 3 + r(8) * 6, 1, 0x888e96); g.glow.solid(cx, H + 3 + r(8) * 6, cz, 0.5, 0.5, 0.5, 0xff3030); // 항공 장애등
+      g.detail.solid(cx, H, cz, 1, 3 + r(8) * 6, 1, 0x888e96); g.glow.solid(cx, H + 3 + r(8) * 6, cz, 0.5, 0.5, 0.5, 0xff3030);
     } else wallB.box(cx, 0, cz, fw, H, fd, tint, g.roofs, roofCol);
     g.boxes.push({ x0: cx - fw / 2 - 0.1, x1: cx + fw / 2 + 0.1, z0: cz - fd / 2 - 0.1, z1: cz + fd / 2 + 0.1 });
-    // 옥상 설비
     if (!setback) {
       if (r(9) < 0.6) g.detail.solid(cx + (r(10) - 0.5) * (fw - 3), H, cz + (r(11) - 0.5) * (fd - 3), 1.8, 1.0, 1.4, 0x8a8f94);
       if (tier <= 1 && r(12) < 0.5) { g.detail.solid(cx - fw / 4, H, cz, 1.7, 1.8, 1.7, 0x6d5a48); g.detail.solid(cx - fw / 4, H + 1.8, cz, 2, 0.3, 2, 0x45392d); }
     }
-    // 정면 장식: 문, 차양, 상점가 유리, 간판
     const nx = lot.fx, nz = lot.fz, fxp = cx + nx * (depth / 2 + 0.04), fzp = cz + nz * (depth / 2 + 0.04);
-    const doorOn = spec ? true : r(13) < 0.6;
-    if (doorOn) g.glow.panel(fxp + nx * 0.02, 1.35, fzp + nz * 0.02, 2.2, 2.5, nx, nz, spec ? 0xffd99a : 0xcaa56a);
-    if (tier >= 1 && !spec && r(14) < 0.5) g.glow.panel(fxp + nx * 0.03 - nz * 0 + (nz ? 0 : 0), 1.7, fzp + nz * 0.03, Math.min(along - 2, 7), 2.2, nx, nz, pick([0xffc27a, 0x9fd9ff, 0xff9ec1, 0xd5ffb0], r(15)));
+    if (spec ? true : r(13) < 0.6) g.glow.panel(fxp + nx * 0.02, 1.35, fzp + nz * 0.02, 2.2, 2.5, nx, nz, spec ? 0xffd99a : 0xcaa56a);
+    if (tier >= 1 && !spec && r(14) < 0.5) g.glow.panel(fxp + nx * 0.03, 1.7, fzp + nz * 0.03, Math.min(along - 2, 7), 2.2, nx, nz, pick([0xffc27a, 0x9fd9ff, 0xff9ec1, 0xd5ffb0], r(15)));
     if (spec?.awning || (!spec && tier <= 2 && r(16) < 0.4)) {
-      const ac = spec ? parseInt(kindColor(lot.spot!.kind).slice(1), 16) : pick([0xc0443c, 0x3c76c0, 0x3fa56a, 0xd09a2e], r(17));
-      g.detail.solid(cx + nx * (depth / 2 + 0.8), 3.0, cz + nz * (depth / 2 + 0.8), nx ? 1.6 : Math.min(along - 1, 8), 0.22, nz ? 1.6 : Math.min(along - 1, 8), ac);
+      const ac = d ? parseInt(d.color.slice(1), 16) : pick([0xc0443c, 0x3c76c0, 0x3fa56a, 0xd09a2e], r(17));
+      const aw = Math.min(along - 1, 8);
+      g.detail.solid(cx + nx * (depth / 2 + 0.8), 3.0, cz + nz * (depth / 2 + 0.8), nx ? 1.6 : aw, 0.22, nz ? 1.6 : aw, ac);
     }
-    if (spec) {
-      const kind = lot.spot!.kind;
-      // 간판: 문 위 건물 정면에 붙는 판
-      const text = lot.spot!.name, col = kindColor(kind), key = lot.spot!.id;
-      let mat = this.signMats.get(key); if (!mat) { mat = new THREE.MeshBasicMaterial({ map: signTexture(text, col), toneMapped: false }); this.signMats.set(key, mat); }
-      const sign = new THREE.Mesh(new THREE.PlaneGeometry(7.6, 1.9), mat); sign.position.set(cx + nx * (depth / 2 + 0.1), Math.min(H - 1.2, 4.6), cz + nz * (depth / 2 + 0.1));
-      sign.rotation.y = Math.atan2(nx, nz); v.bld.add(sign); v.disposables.push(sign.geometry);
-      // 종류별 꾸밈
-      if (spec.extra === 'chimney') { g.detail.solid(cx - fw / 4, H, cz - fd / 4, 1.6, 10, 1.6, 0x6b5f57); g.glow.solid(cx - fw / 4, H + 10, cz - fd / 4, 1.0, 0.3, 1.0, 0xff8a3a); }
-      if (spec.extra === 'containers') for (let k = 0; k < 6; k++) { const cc = [0xc0443c, 0x2f6fb0, 0xd0a030, 0x3f8a5a][k % 4]; g.detail.solid(cx - nx * 2 + (nz ? (k - 3) * 2.4 : 0), H + (k % 2) * 2.2 * 0, cz - nz * 2 + (nx ? (k - 3) * 2.4 : 0), nx ? 2.2 : 2.4, 2.2, nz ? 2.2 : 2.4, cc); }
-      if (spec.extra === 'tower') { g.detail.solid(cx, H, cz, 3, 6, 3, 0x9aa4b0); g.glow.solid(cx, H + 6, cz, 0.4, 0.4, 0.4, 0xff3030); }
-      if (kind === 'hq') this.addGlobe(cx, H + 12, cz);
-      if (kind === 'bank') for (let k = -2; k <= 2; k++) g.detail.solid(cx + (nz ? k * 2.2 : 0) + nx * (depth / 2 + 0.5), 0.2, cz + (nx ? k * 2.2 : 0) + nz * (depth / 2 + 0.5), 0.5, 4.2, 0.5, 0xe5e1d6);
+    if (!d || !spec) return;
+    const sw = Math.min(7.6, Math.max(4, along - 0.8));
+    this.signPlane(v, sw, sw / 4, cx + nx * (depth / 2 + 0.1), Math.min(H - 1.2, 4.7), cz + nz * (depth / 2 + 0.1), nx, nz, this.signMat(d.text, d.color, d.sub, d.dim));
+    const ex = spec.extra;
+    if (ex === 'chimney') { g.detail.solid(cx - fw / 4, H, cz - fd / 4, 1.6, 10, 1.6, 0x6b5f57); g.glow.solid(cx - fw / 4, H + 10, cz - fd / 4, 1.0, 0.3, 1.0, 0xff8a3a); }
+    if (ex === 'tower') { g.detail.solid(cx, H, cz, 3, 6, 3, 0x9aa4b0); g.glow.solid(cx, H + 6, cz, 0.4, 0.4, 0.4, 0xff3030); if (d.level >= 3 || spec.floors === 14) g.glow.solid(cx, H + 0.5, cz + nz * (depth / 2 - 0.2), nx ? 0.4 : fw - 1, 0.5, nz ? 0.4 : fd - 1, 0x59b9ff); }
+    if (ex === 'columns') for (let k = -2; k <= 2; k++) g.detail.solid(cx + (nz ? k * 2.2 : 0) + nx * (depth / 2 + 0.5), 0.2, cz + (nx ? k * 2.2 : 0) + nz * (depth / 2 + 0.5), 0.5, 4.2, 0.5, 0xe5e1d6);
+    if (ex === 'warehouse') for (let k = 0; k < 4; k++) g.detail.solid(cx - nx * 0 + (nz ? (k - 1.5) * 2.4 : 0) + nx * (depth / 2 + 1.5), 0.2, cz + (nx ? (k - 1.5) * 2.4 : 0) + nz * (depth / 2 + 1.5), 1.6, 1.2 + (k % 2) * 0.6, 1.6, [0xb07a3a, 0x8a6a3a, 0xc29a4a, 0x9a7a4a][k]);
+    if (ex === 'terminal') {
+      g.detail.solid(cx - nz * 3, H, cz + nx * 3, 3, 8, 3, 0xb9c0c8); g.glow.solid(cx - nz * 3, H + 8, cz + nx * 3, 3.4, 0.8, 3.4, 0x59d0ff);
+      for (let k = 0; k < 2; k++) { const px = cx - nx * (depth / 2 + 2.5) * 0 + (nz ? (k ? 3 : -3) : 0), pz = cz + (nx ? (k ? 3 : -3) : 0); g.detail.solid(px, H + 0.1, pz, 5, 0.7, 0.7, 0xe8eaee); g.detail.solid(px, H + 0.1, pz, 0.7, 0.4, 3.6, 0xe8eaee); }
     }
+    if (spec.style === 'glass' && spec.extra === 'tower' && spec.floors === 14) this.globeAnchor = { x: cx, y: H + 12, z: cz };
   }
+  private globeAnchor: { x: number; y: number; z: number } | null = null;
   private addGlobe(x: number, y: number, z: number): void {
     if (this.globe) return;
     const g = new THREE.Group(); g.position.set(x, y, z);
@@ -410,4 +502,3 @@ function beamTexture(): THREE.CanvasTexture {
   const c = document.createElement('canvas'); c.width = 4; c.height = 64; const g = c.getContext('2d')!, gr = g.createLinearGradient(0, 0, 0, 64);
   gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.7, 'rgba(255,255,255,.25)'); gr.addColorStop(1, 'rgba(255,255,255,.9)'); g.fillStyle = gr; g.fillRect(0, 0, 4, 64); return new THREE.CanvasTexture(c);
 }
-void FACADE_W; void LOT; void WALK_EDGE;

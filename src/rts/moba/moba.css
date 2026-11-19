@@ -61,3 +61,10 @@
 @media (max-width: 820px) { .mb-setup .mb-champs { grid-template-columns: repeat(2, 1fr); } .mb-extras { flex-wrap: wrap; } .mb-buffs { max-width: none; justify-content: flex-start; } .mb-spells button { width: 46px; } .mb-obj { font-size: 10px; } .mb-obj .o { padding: 2px 6px; } .mb-stats { grid-template-columns: repeat(2, 1fr); } .mb-side button { padding: 6px 2px; } }
 .mb-table.tb, .mb-table.tr { table-layout: fixed; min-width: 680px; } .mb-table.tb th:nth-child(1), .mb-table.tr th:nth-child(1) { width: 20%; } .mb-table.tb th:nth-child(2), .mb-table.tr th:nth-child(2), .mb-table.tb th:nth-child(5), .mb-table.tr th:nth-child(5) { width: 8%; } .mb-table.tb th:nth-child(3), .mb-table.tr th:nth-child(3) { width: 6%; } .mb-table.tb th:nth-child(4), .mb-table.tr th:nth-child(4), .mb-table.tb th:nth-child(6), .mb-table.tr th:nth-child(6), .mb-table.tb th:nth-child(7), .mb-table.tr th:nth-child(7) { width: 11%; }
 .mb-table td:last-child { white-space: normal; }
+
+/* 터치 이동 조이스틱(터치 기기에서만 보임) */
+.mb-joy { display: none; }
+.mb-root.touch .mb-joy { display: block; position: absolute; left: max(14px, env(safe-area-inset-left)); bottom: 158px; width: 112px; height: 112px; border-radius: 50%; background: rgba(20, 24, 30, .45); border: 2px solid rgba(232, 226, 208, .35); touch-action: none; z-index: 6; }
+.mb-root.touch .mb-joy i { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; background: rgba(232, 226, 208, .55); border: 2px solid rgba(255, 255, 255, .6); transition: transform .06s linear; pointer-events: none; }
+.mb-root.touch .mb-joy.on { background: rgba(40, 48, 60, .6); }
+.mb-root:not([data-phase="play"]) .mb-joy { display: none !important; }

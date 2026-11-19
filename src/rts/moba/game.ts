@@ -28,7 +28,7 @@ export function openMoba(onBack: () => void, onExit: () => void, room?: RoomLink
       <div class="mb-hud"><div class="mb-hero"><b class="mb-lv" id="mb-lv">1</b><div class="mb-bars"><div class="mb-bar hp"><i id="mb-hp"></i><span id="mb-hpt"></span></div><div class="mb-bar mp"><i id="mb-mp"></i><span id="mb-mpt"></span></div><div class="mb-bar xp"><i id="mb-xp"></i></div></div></div>
         <div class="mb-skills" id="mb-skills"></div><div class="mb-extras"><div class="mb-spells" id="mb-spells"></div><div class="mb-items" id="mb-items"></div><div class="mb-buffs" id="mb-buffs"></div></div></div>
       <div class="mb-side"><button data-act="shop" id="mb-shopbtn"><b>상점</b><kbd>P</kbd></button><button data-act="recall" id="mb-recall"><b>귀환</b><kbd>B</kbd></button><button data-act="ward" id="mb-ward"><b>와드</b><kbd>T</kbd></button><button data-act="ping" id="mb-ping"><b>핑</b><kbd>G</kbd></button><button data-act="center"><b>시점</b><kbd>Space</kbd></button></div></div>
-    <div class="mb-modal" id="mb-modal"></div>`;
+    <div class="mb-joy" id="mb-joy" aria-label="이동 조이스틱"><i></i></div><div class="mb-modal" id="mb-modal"></div>`;
   document.body.append(root);
   const $ = <T extends HTMLElement>(s: string): T => root.querySelector<T>(s)!;
   let canvas = $<HTMLCanvasElement>('.mb-canvas'); const over = $<HTMLCanvasElement>('.mb-over'), og = over.getContext('2d')!, mini = $<HTMLCanvasElement>('#mb-mini'), mg = mini.getContext('2d')!, modal = $('#mb-modal');
@@ -119,6 +119,14 @@ export function openMoba(onBack: () => void, onExit: () => void, room?: RoomLink
   over.addEventListener('wheel', e => { e.preventDefault(); view?.zoom(e.deltaY > 0 ? 1.08 : 0.92); }, { passive: false });
   mini.addEventListener('pointerdown', e => { e.preventDefault(); if (!sim || !view) return; const r = mini.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * SIZE, y = (e.clientY - r.top) / r.height * SIZE; const pk = pingMode ?? (e.altKey ? 'assist' : [...keys].map(c => PING_KEY[c]).find(Boolean)); if (pk) { pingAt(x, y, pk); if (pingMode) { pingMode = null; $('#mb-ping').classList.remove('on'); } return; } if (e.button === 2) { cmd({ k: 'move', x, y }); return; } view.lookAt(x, y); free = true; });
   mini.addEventListener('contextmenu', e => e.preventDefault());
+  // 터치 조이스틱: 누른 채 밀면 그 방향으로 계속 이동하고, 떼면 멈춥니다.
+  const joy = $('#mb-joy'), knob = joy.querySelector<HTMLElement>('i')!; let joyId = -1, joyV = { x: 0, y: 0 }, joyAt = 0;
+  const joyDrive = (): void => { const m = me(); if (!sim || !view || !m || m.hero!.dead || (!joyV.x && !joyV.y)) return; const hp = view.project(m.x, m.y, 0); if (!hp) return; const g = view.ground(hp.x + joyV.x * 90, hp.y + joyV.y * 90); if (g) { free = false; cmd({ k: 'move', x: g.x, y: g.y }); } };
+  const joyMove = (e: PointerEvent): void => { const r = joy.getBoundingClientRect(), dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2), l = Math.hypot(dx, dy), cap = r.width / 2, k = l > cap ? cap / l : 1; knob.style.transform = `translate(${dx * k}px, ${dy * k}px)`; joyV = l > 12 ? { x: dx / l, y: dy / l } : { x: 0, y: 0 }; if (performance.now() - joyAt > 160) { joyAt = performance.now(); joyDrive(); } };
+  joy.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); audio.unlock(); joyId = e.pointerId; joy.setPointerCapture(e.pointerId); joy.classList.add('on'); joyMove(e); });
+  joy.addEventListener('pointermove', e => { if (e.pointerId === joyId) joyMove(e); });
+  const joyEnd = (e: PointerEvent): void => { if (e.pointerId !== joyId) return; joyId = -1; joyV = { x: 0, y: 0 }; knob.style.transform = ''; joy.classList.remove('on'); cmd({ k: 'stop' }); };
+  joy.addEventListener('pointerup', joyEnd); joy.addEventListener('pointercancel', joyEnd);
   $('#mb-skills').addEventListener('pointerdown', e => { const l = (e.target as HTMLElement).closest<HTMLElement>('[data-learn]'); if (l) { e.preventDefault(); e.stopPropagation(); learn(Number(l.dataset.learn)); return; } const b = (e.target as HTMLElement).closest<HTMLElement>('[data-sk]'); if (!b) return; e.preventDefault(); cast(Number(b.dataset.sk)); });
   $('#mb-spells').addEventListener('pointerdown', e => { const b = (e.target as HTMLElement).closest<HTMLElement>('[data-sp]'); if (!b) return; e.preventDefault(); castSpell(Number(b.dataset.sp)); });
   $('#mb-items').addEventListener('click', e => { const b = (e.target as HTMLElement).closest<HTMLElement>('[data-sell]'); void b; shop(); });
@@ -273,9 +281,9 @@ export function openMoba(onBack: () => void, onExit: () => void, room?: RoomLink
     if (!sim) return; const fresh = document.createElement('canvas'); fresh.className = 'mb-canvas'; canvas.replaceWith(fresh); canvas = fresh;
     try { view = new MobaView(canvas, sim, prefs.quality); } catch { show('<div class="mb-card"><h2>그래픽을 시작하지 못했어요</h2><p class="mb-lead">WebGL 을 사용할 수 없습니다. 새로고침하거나 그래픽 가속을 켠 뒤 다시 시도해 주세요.</p><div class="mb-actions"><button class="primary" data-act="back">돌아가기</button></div></div>'); return; }
     ended = false; paused = false; acc = 0; free = false; aimIdx = -1; amove = false; skillKey = itemKey = spellKey = buffKey = objKey = ''; pingMode = null; $('#mb-ping').classList.remove('on'); floats.length = 0; feed.length = 0; hide(); root.dataset.phase = 'play'; resize(); last = performance.now();
-    say(`${LANE_NAME[lane]}에서 시작합니다. 우클릭으로 이동, QWER 로 스킬, D·F 주문, T 와드!`); const m = sim.me(); view.lookAt(m.x, m.y);
+    say(touch ? `${LANE_NAME[lane]}에서 시작합니다. 왼쪽 조이스틱으로 이동, 땅을 누르면 그쪽으로, 스킬 버튼을 눌러 시전하세요!` : `${LANE_NAME[lane]}에서 시작합니다. 우클릭으로 이동, QWER 로 스킬, D·F 주문, T 와드!`); const m = sim.me(); view.lookAt(m.x, m.y);
     // 처음에는 상점에서 장비를 사도록 안내
-    window.setTimeout(() => { if (sim && !ended && sim.tick < 400) hint('기지에서 P 로 상점을 열어 아이템을 사고, 미니언 웨이브를 따라 라인으로 가세요. 레벨업마다 스킬 포인트가 생겨요 (Ctrl+Q/W/E/R)'); window.setTimeout(() => hint(''), 9000); }, 600);
+    window.setTimeout(() => { if (sim && !ended && sim.tick < 400) hint(touch ? '기지에서 상점 버튼으로 아이템을 사고, 미니언 웨이브를 따라 라인으로 가세요. 레벨업하면 스킬 아래 ＋ 로 강화해요' : '기지에서 P 로 상점을 열어 아이템을 사고, 미니언 웨이브를 따라 라인으로 가세요. 레벨업마다 스킬 포인트가 생겨요 (Ctrl+Q/W/E/R)'); window.setTimeout(() => hint(''), 9000); }, 600);
   }
   function finish(): void {
     if (!sim || ended) return; ended = true; root.dataset.phase = 'over'; const win = sim.winner === sim.myTeam; audio.sfx(win ? 'victory' : 'defeat');
@@ -316,6 +324,7 @@ export function openMoba(onBack: () => void, onExit: () => void, room?: RoomLink
     if (aimIdx >= 0 && !m.hero!.dead) { const k = sim.skill(m, aimIdx), g = pointer.in ? view.ground(pointer.x, pointer.y) : null, tgt = g ?? { x: m.x + m.fx * 5, y: m.y + m.fy * 5 }; let ax = tgt.x, ay = tgt.y; const d = Math.hypot(ax - m.x, ay - m.y) || 1;
       if (k.kind === 'shot') { const len = Math.min(k.range, d); ax = m.x + (ax - m.x) / d * len; ay = m.y + (ay - m.y) / d * len; } else if (k.range > 0 && d > k.range) { ax = m.x + (ax - m.x) / d * k.range; ay = m.y + (ay - m.y) / d * k.range; }
       view.setAim({ x: k.range === 0 ? m.x : ax, y: k.range === 0 ? m.y : ay, r: k.radius ?? (k.kind === 'shot' ? 0.6 : 0.9), range: k.range, from: m, color: 0xffe9a0 }); over.style.cursor = 'crosshair'; } else { view.setAim(null); over.style.cursor = amove ? 'crosshair' : 'default'; }
+    if (joyId >= 0 && performance.now() - joyAt > 200) { joyAt = performance.now(); joyDrive(); }
     view.render(dt); uiT += dt; if (uiT > 0.1) { uiT = 0; paintHud(); drawMini(); } drawOverlay(dt);
   }
 

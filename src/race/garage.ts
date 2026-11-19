@@ -1,10 +1,8 @@
 // SPEED RUSH — 차고: 레이스 보상 코인으로 차량 능력치를 올립니다. 화면·저장과 무관한 순수 로직입니다.
+import { UPGRADE_COST, UPGRADE_MAX, clampInt as int, tierCost } from '../shared/upgrades';
 import { CARS, STAT_KEYS, type StatPoints } from './config';
 
-/** 능력치 하나당 올릴 수 있는 최대 단계 */
-export const UPGRADE_MAX = 3;
-/** 다음 단계(1→3단계)로 올리는 비용 */
-export const UPGRADE_COST: ReadonlyArray<number> = [150, 320, 560];
+export { UPGRADE_COST, UPGRADE_MAX };
 export type Upgrades = StatPoints;
 export interface Garage { coins: number; cars: Record<string, Upgrades> }
 
@@ -14,8 +12,7 @@ export const upgradesOf = (g: Garage, carId: string): Upgrades => ({ ...zeroUpgr
 export const totalLevels = (u: Upgrades): number => STAT_KEYS.reduce((n, k) => n + u[k], 0);
 
 export function nextCost(g: Garage, carId: string, stat: keyof StatPoints): number | null {
-  const lv = upgradesOf(g, carId)[stat];
-  return lv >= UPGRADE_MAX ? null : UPGRADE_COST[lv];
+  return tierCost(upgradesOf(g, carId)[stat]);
 }
 /** 업그레이드를 사고 새 차고를 돌려줍니다. 코인이 모자라거나 최대 단계면 null. */
 export function buyUpgrade(g: Garage, carId: string, stat: keyof StatPoints): Garage | null {
@@ -32,7 +29,6 @@ export function rewardFor(place: number, level: number, laps: number, newBest: b
   return Math.round((base * (1 + 0.2 * (level - 1)) * (0.6 + 0.2 * laps) + (newBest ? 60 : 0)) / 5) * 5;
 }
 
-const int = (v: unknown, max: number): number => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.min(max, Math.floor(v)) : 0);
 /** 저장된 값이 깨져 있어도 항상 쓸 수 있는 차고로 되돌립니다. */
 export function sanitizeGarage(raw: unknown): Garage {
   const r = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>, g = emptyGarage();

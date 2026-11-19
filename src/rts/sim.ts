@@ -53,7 +53,10 @@ const idle = (): Order => ({ t: 'idle', x: 0, y: 0, target: 0, phase: 0, timer: 
 const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const sq = (v: number): number => v * v;
 
-export interface SimOptions { income?: [number, number] }
+/** 무기고 업그레이드로 얻는 진영별 배율(1 = 없음). 훈련장·AI 대전에서만 쓰며 온라인 대전에서는 쓰지 않습니다. */
+export interface Edge { dmg: number; def: number; speed: number; minerals: number }
+export const NO_EDGE: Edge = { dmg: 1, def: 1, speed: 1, minerals: 0 };
+export interface SimOptions { income?: [number, number]; edge?: [Edge, Edge] }
 
 export class RtsSim {
   tick = 0; winner = -1; nextId = 1;
@@ -61,14 +64,14 @@ export class RtsSim {
   units: Unit[] = []; buildings: Building[] = []; nodes: ResNode[] = [];
   players: Player[]; readonly index = new Map<number, Entity>();
   events: SimEvent[] = []; record = true;
-  private incomeMult: [number, number];
+  private incomeMult: [number, number]; private edge: [Edge, Edge];
   private head: Int32Array; private nextU = new Int32Array(0); private lastAlert = [-999, -999];
 
   constructor(opts: SimOptions = {}) {
     this.map = buildMap(); const n = this.map.size;
     this.grid = new Uint8Array(this.map.terrain); this.pather = new Pather(n, this.grid);
-    this.incomeMult = opts.income ?? [1, 1]; this.head = new Int32Array(Math.ceil(n / 2) ** 2);
-    this.players = [0, 1].map(() => ({ minerals: START_MINERALS, used: 0, cap: 0, mined: 0, kills: 0, lost: 0, made: 0, defeated: false, income: 0, up: { atk: false, arm: false, cannon: false, speed: false } }));
+    this.incomeMult = opts.income ?? [1, 1]; this.edge = opts.edge ?? [NO_EDGE, NO_EDGE]; this.head = new Int32Array(Math.ceil(n / 2) ** 2);
+    this.players = [0, 1].map(i => ({ minerals: START_MINERALS + this.edge[i].minerals, used: 0, cap: 0, mined: 0, kills: 0, lost: 0, made: 0, defeated: false, income: 0, up: { atk: false, arm: false, cannon: false, speed: false } }));
     for (const nd of this.map.nodes) if (nd.base < 2) this.addNode(nd.x, nd.y);
     for (const nd of this.map.nodes) if (nd.base >= 2) this.addNode(nd.x, nd.y);
     for (let p = 0; p < 2; p++) {
@@ -292,9 +295,10 @@ export class RtsSim {
 
   private damage(owner: number, t: Unit | Building, dmg: number, w: 'bullet' | 'rocket' | 'cannon', splash: number, fromX: number, fromY: number): void {
     const up = this.players[owner].up; if (w === 'cannon' ? up.cannon : up.atk) { dmg *= 1.25; if (w === 'cannon') splash += 0.4; }
+    dmg *= this.edge[owner].dmg;
     const tc = this.center(t); this.emit({ t: 'shot', w, owner, x0: fromX, y0: fromY, x1: tc.x, y1: tc.y, splash });
     const hit = (e: Unit | Building, mult: number): void => {
-      const armor = e.k === 'unit' ? UNITS[e.kind].armor : 'structure', amt = Math.max(1, Math.round(dmg * MULT[w][armor] * mult * (this.players[e.owner].up.arm ? 0.8 : 1)));
+      const armor = e.k === 'unit' ? UNITS[e.kind].armor : 'structure', amt = Math.max(1, Math.round(dmg * MULT[w][armor] * mult * (this.players[e.owner].up.arm ? 0.8 : 1) * this.edge[e.owner].def));
       e.hp -= amt; e.hurt = this.tick;
       if (this.tick - this.lastAlert[e.owner] > 120) { this.lastAlert[e.owner] = this.tick; this.emit({ t: 'alert', owner: e.owner, x: this.center(e).x, y: this.center(e).y }); }
       if (e.hp <= 0) this.players[owner].kills++;
@@ -336,7 +340,7 @@ export class RtsSim {
   }
 
   /** 강화(기동 훈련)를 반영한 이동 속도. 일꾼은 영향을 받지 않습니다. */
-  private speedOf(u: Unit): number { const s = UNITS[u.kind].speed; return u.kind !== 'worker' && this.players[u.owner].up.speed ? s * 1.12 : s; }
+  private speedOf(u: Unit): number { const s = UNITS[u.kind].speed * this.edge[u.owner].speed; return u.kind !== 'worker' && this.players[u.owner].up.speed ? s * 1.12 : s; }
 
   /** 의무병: 가까이에서 가장 많이 다친 아군을 고칩니다. 가만히 있으면 다친 아군 쪽으로 다가갑니다. */
   private medic(u: Unit): void {
@@ -422,7 +426,7 @@ export class RtsSim {
           } else { nd.busyUntil = this.tick + MINE_TICKS; o.phase = 1; o.timer = MINE_TICKS; u.path = []; }
         } else {
           if (u.path.length === 0 || u.repath <= 0) { const g = this.approachNode(nd, u.x, u.y); u.path = this.pather.find(u.x, u.y, g.x, g.y) ?? [g.x, g.y]; u.pi = 0; u.repath = 40; }
-          this.follow(u, UNITS.worker.speed);
+          this.follow(u, UNITS.worker.speed * this.edge[u.owner].speed);
         }
       } else if (--o.timer <= 0) {
         const take = Math.min(CARRY, nd.amount); nd.amount -= take; u.carry = take; this.emit({ t: 'mined', x: nd.x + 0.5, y: nd.y + 0.5 });
@@ -438,7 +442,7 @@ export class RtsSim {
       o.phase = 0; u.path = []; return;
     }
     if (u.path.length === 0 || u.repath <= 0) { const g = this.approach(hq, u.x, u.y); u.path = this.pather.find(u.x, u.y, g.x, g.y) ?? [g.x, g.y]; u.pi = 0; u.repath = 40; }
-    this.follow(u, UNITS.worker.speed);
+    this.follow(u, UNITS.worker.speed * this.edge[u.owner].speed);
   }
 
   private construct(u: Unit): void {
@@ -446,7 +450,7 @@ export class RtsSim {
     if (!b || b.done || u.kind !== 'worker') { this.afterBuild(u); return; }
     if (this.rectDist(u.x, u.y, b) > 1.35) {
       if (u.path.length === 0 || u.repath <= 0) { const g = this.approach(b, u.x, u.y); u.path = this.pather.find(u.x, u.y, g.x, g.y) ?? [g.x, g.y]; u.pi = 0; u.repath = 30; }
-      this.follow(u, UNITS.worker.speed); return;
+      this.follow(u, UNITS.worker.speed * this.edge[u.owner].speed); return;
     }
     u.path = []; u.fx = b.x + b.size / 2 - u.x; u.fy = b.y + b.size / 2 - u.y; u.mine = this.tick;
     const total = BUILDINGS[b.kind].time; b.progress++; b.hp = Math.min(b.maxhp, Math.max(b.hp, Math.round(b.maxhp * (0.1 + 0.9 * b.progress / total))));

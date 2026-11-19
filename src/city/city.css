@@ -201,13 +201,6 @@
 .c-row.c-hl{border-color:#d8bc80;background:rgba(216,188,128,.14)}
 
 /* 블랙마켓 보급(영구 강화) · 도시 부업 */
-.c-credits{margin-left:8px;color:#ffd24a;font-weight:800}
-.c-upgs{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:6px;margin:6px 0 10px}
-.c-upg{display:grid;grid-template-columns:1fr auto 64px;align-items:center;gap:8px;padding:7px 9px;border:1px solid rgba(216,188,128,.25);border-radius:8px;background:rgba(255,255,255,.03)}
-.c-upg b{font-size:13px}.c-upg small{display:block;font-size:11px;opacity:.7}
-.c-pips{display:flex;gap:3px}.c-pips i{width:12px;height:6px;border-radius:2px;background:#3a3426}.c-pips i.on{background:#ffd24a;box-shadow:0 0 6px #ffd24a88}
-.c-upg button{font:inherit;font-size:12px;font-weight:700;padding:6px 0;border-radius:7px;border:1px solid #d8bc80;background:#000;color:#ffd24a;cursor:pointer}.c-upg button:disabled{color:#7a7258;border-color:#3a3426;cursor:default}
-.c-reward{font-weight:800;color:#ffd24a}.c-reward small{font-weight:500;opacity:.75}
 .c-side-h{margin:14px 0 6px;font-size:14px}.c-side-h small{font-weight:400;opacity:.7;margin-left:6px}
 .c-chat{left:12px;bottom:210px;display:grid;gap:3px;max-width:min(360px,70vw);pointer-events:none}
 .c-chat div{background:#0e1a19cc;border-left:3px solid #6fd3ff;border-radius:0 6px 6px 0;padding:3px 9px;font-size:12px;overflow-wrap:anywhere}

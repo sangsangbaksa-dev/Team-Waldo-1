@@ -321,7 +321,6 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (p.vehicle) { if (poi?.kind === 'paynspray') return { text: `E · 도색 & 수배 해제 (${money(sim.price(150))})`, run: () => { toast(sim!.paynspray()); audio.play('pickup'); } }; return null; }
     if (poi?.kind === 'gunshop') return { text: 'E · 총기점', run: openShop };
     if (poi?.kind === 'dealer') return { text: 'E · 자동차 매장', run: () => openUi('dealer') };
-    if (poi?.kind === 'gym') return { text: 'E · 체육관 훈련', run: () => openUi('gym') };
     if (poi?.kind === 'casino') return { text: 'E · 카지노', run: () => openUi('casino') };
     if (poi?.kind === 'hospital') { if (p.hp < p.maxHp || p.armor < 40) return { text: `E · 치료 (${money(sim.price(120))})`, run: () => { toast(treat(sim!)); audio.play('pickup'); } }; }
     if (poi?.kind === 'arena') return sim.job.active ? null : { text: `E · 지하 격투 참가 (${money(sim.price(200))})`, run: () => { const r = startJob(sim!, 'fight'); if (r) toast(r); } };
@@ -559,12 +558,13 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (closed) { opts.loading?.close(); return; }
     opts.loading?.progress(0.92, '도시를 짓는 중');
     await new Promise(r => setTimeout(r, 30));
+    if (closed) { opts.loading?.close(); return; }
     try {
       renderer = new THREE.WebGLRenderer({ canvas, antialias: prefs.quality !== 'low', powerPreference: 'high-performance' });
       renderer.setPixelRatio(Math.min(prefs.quality === 'high' ? 2 : prefs.quality === 'standard' ? 1.5 : 1, devicePixelRatio || 1));
       if (prefs.quality !== 'low') { composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera)); bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), .3, .6, .82); composer.addPass(bloom); composer.addPass(new OutputPass()); }
       sim = new Sim(SEED); sim.clock = TITLE_CLOCK;
-      cityView = new CityView(scene, renderer, sim.map, assets, prefs.quality); cityView.onLightning = delay => { setTimeout(() => { if (sim) audio.play('thunder'); }, delay * 1000); }; actorView = new ActorView(scene, sim, assets, prefs.quality);
+      cityView = new CityView(scene, renderer, sim.map, assets, prefs.quality); cityView.onLightning = delay => { const active = sim; setTimeout(() => { if (!closed && sim === active) audio.play('thunder'); }, delay * 1000); }; actorView = new ActorView(scene, sim, assets, prefs.quality);
       chase = new ChaseCamera(camera, sim.map); minimap = new Minimap(sim.map); resize();
       for (let i = 0; i < 90; i++) sim.step(STEP, blankPedInput(), blankCarInput()); sim.drain();
     } catch (err) { console.error(err); opts.loading?.close(); toast('그래픽을 시작하지 못했습니다'); exit(); return; }

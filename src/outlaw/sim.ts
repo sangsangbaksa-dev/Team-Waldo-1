@@ -75,7 +75,11 @@ export class Sim {
     this.activity.stunts = [...(s.stunts ?? [])]; this.activity.style.total = s.styleTotal ?? 0; this.cash = s.cash; this.mission.completed = [...s.completed]; this.collected = new Set(s.collected); this.clock = s.clock; this.kills = s.kills; this.playSec = s.playSec; this.player.armor = s.armor;
     for (const [id, mag, reserve] of s.guns) { const i = WEAPON_ORDER.indexOf(id); if (i > 0) this.player.guns[i] = { id, mag, reserve }; }
     for (const pk of this.pickups) if (pk.collect >= 0 && this.collected.has(pk.collect)) pk.taken = true;
-    if (s.life) { this.life = { ...blankLife(), ...s.life, skills: { ...blankLife().skills, ...s.life.skills } }; this.applyHero(this.life.hero, false); this.player.armor = s.armor; }
+    if (s.life) {
+      const saved = { ...s.life } as LifeState & { skills?: unknown }; delete saved.skills;
+      this.life = { ...blankLife(), ...saved, ach: (saved.ach ?? []).filter(id => id !== 'trained') };
+      this.applyHero(this.life.hero, false); this.player.armor = s.armor;
+    }
   }
   /** 주인공 시민을 정하고 능력치를 반영합니다. fresh 면 체력·방탄을 새로 채웁니다. */
   applyHero(id: string, fresh = true): void {

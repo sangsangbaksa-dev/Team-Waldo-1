@@ -9,9 +9,8 @@ import { Campaign, MISSIONS, readCampaign, recordResult, unlocked, writeCampaign
 import { Vision, FOG_HIDDEN, FOG_VISIBLE } from './vision';
 import { RtsAudio } from './audio';
 import { ABILITIES, ABILITY_KEYS, BUILDINGS, DIFFICULTIES, LEVELS, RESEARCH, RESEARCH_KINDS, STIM_COST, SUPPLY_MAX, TICK, UNITS, isDifficulty, type BuildKind, type Difficulty, type UnitKind } from './config';
-import { ARMORY, ARMORY_KEYS, UPGRADE_MAX, buyArmory, edgeOf, nextCost, readArmory, rewardFor, writeArmory, type ArmoryStat } from './armory';
 import { RtsNet } from './pvp';
-import { NO_EDGE, RtsSim, type Building, type Cmd, type ResNode, type Unit } from './sim';
+import { RtsSim, type Building, type Cmd, type ResNode, type Unit } from './sim';
 import { RtsView } from './view';
 import { buildLanes } from './scenery';
 import { preloadUnitKit } from './models';
@@ -420,13 +419,6 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   // ---------- 메뉴·결과 ----------
   const show = (html: string): void => { modal.className = 'rt-modal show'; modal.innerHTML = html; };
   const hide = (): void => { modal.className = 'rt-modal'; modal.innerHTML = ''; };
-  /** 무기고: AI 대전 보상 코인으로 군 전체 능력을 올립니다. */
-  function armoryHtml(): string {
-    const a = readArmory();
-    return `<div class="rt-armory" role="group" aria-label="무기고"><div class="rt-armory-head"><b>무기고</b><span class="rt-coins" id="rt-coins">⛃ ${a.coins}</span><small>AI 대전 보상 코인으로 군 전체를 강화합니다 (온라인 대전 제외)</small></div>
-      <div class="rt-armory-grid">${ARMORY_KEYS.map(k => { const d = ARMORY[k], lv = a.levels[k], cost = nextCost(a, k), ok = cost !== null && a.coins >= cost;
-        return `<button type="button" data-arm="${k}" ${ok ? '' : 'aria-disabled="true"'} title="${d.role} ${d.per}씩"><span class="n">${d.name}</span><span class="pips">${'●'.repeat(lv)}${'○'.repeat(UPGRADE_MAX - lv)}</span><span class="c">${cost === null ? '최대' : `⛃ ${cost}`}</span><em>${d.role} ${d.per}</em></button>`; }).join('')}</div></div>`;
-  }
   function setupScreen(): void {
     root.dataset.phase = 'setup'; paused = false; ended = false; const rec = readRtsRecords();
     show(`<div class="rt-card rt-setup" role="dialog" aria-label="FRONTLINE 시작"><span class="rt-eyebrow">FRONTLINE</span><h2>전선을 지휘하세요</h2>
@@ -434,7 +426,6 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       <div class="rt-actions"><button class="primary" data-act="campaign" id="rt-campaign">캠페인 · 작전 ${MISSIONS.length}개 — 점령 · 방어 · 호송 · 급습 · 기습</button></div>
       <div class="rt-diffs" role="group" aria-label="난이도">${DIFFICULTIES.map((d, i) => `<button type="button" data-diff="${d}" aria-pressed="${d === difficulty}"><span>${['I', 'II', 'III', 'IV'][i]}</span><b>${LEVELS[d].label}</b></button>`).join('')}</div>
       <p class="rt-diffnote" id="rt-diffnote">${LEVELS[difficulty].blurb}</p>
-      ${armoryHtml()}
       <div class="rt-actions"><button data-act="start" id="rt-start">AI와 1대1 대전</button>${PVP_ENABLED ? '<button data-act="pvp" id="rt-pvp">온라인 1대1 대전</button>' : ''}</div>
       <div class="rt-actions"><button data-act="moba" id="rt-moba">롤식 라인전 4:4 · 챔피언 조종</button>${PVP_ENABLED ? '<button data-act="mobaroom" id="rt-mobaroom">온라인 방 · 라인전 협동 (최대 4명)</button>' : ''}</div>
       <div class="rt-actions sub"><button data-act="fog" id="rt-fog" aria-pressed="${fogOn}" title="적이 보이는 범위를 시야 안으로 제한합니다">전장의 안개 ${fogOn ? '켜짐' : '꺼짐'}</button><button data-act="help">조작법</button><button data-act="exit">메뉴로</button></div>
@@ -475,9 +466,8 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     }
     if (pvp) { void conclude(draw ? '' : win ? pvp.s.me.id : pvp.s.opponent.id, draw ? '두 쪽이 동시에 무너졌습니다' : win ? '상대의 모든 건물을 파괴했습니다' : '모든 건물을 잃었습니다'); return; }
     const rec = readRtsRecords(); rec.matches++; if (win) { rec.wins++; const t = Math.floor(sim.tick / TICK); if (!rec.bestWin[difficulty] || t < rec.bestWin[difficulty]) rec.bestWin[difficulty] = t; } rec.difficulty = difficulty; writeRtsRecords(rec);
-    const earned = draw ? 0 : rewardFor(win, difficulty, sim.tick / TICK, sim.players[me].kills), arm = readArmory(); if (earned) writeArmory({ ...arm, coins: arm.coins + earned });
-    const bank = `<p class="rt-rec">${earned ? `보상 ⛃ +${earned} · 보유 ⛃ ${arm.coins + earned} — 설정 화면의 무기고에서 업그레이드하세요` : ''}</p>`;
-    window.setTimeout(() => { if (!closed && ended) resultCard(draw ? null : win, draw ? '무승부입니다' : win ? '적의 모든 건물을 파괴했습니다.' : '모든 건물을 잃었습니다.', bank); }, 1400);
+    const finished = sim;
+    window.setTimeout(() => { if (!closed && ended && sim === finished) resultCard(draw ? null : win, draw ? '무승부입니다' : win ? '적의 모든 건물을 파괴했습니다.' : '모든 건물을 잃었습니다.'); }, 1400);
   }
 
   // ---------- 캠페인 ----------
@@ -517,7 +507,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   // ---------- 시작 ----------
   preloadUnitKit();
   function begin(): void {
-    if (view) { view.dispose(); view = null; } camp = null; objKey = ''; sim = new RtsSim({ income: [1, LEVELS[difficulty].income], edge: [edgeOf(readArmory()), NO_EDGE] });
+    if (view) { view.dispose(); view = null; } camp = null; objKey = ''; sim = new RtsSim({ income: [1, LEVELS[difficulty].income] });
     me = 0; ai = new RtsAi(1, difficulty); startRound(); $('#rt-vs').textContent = `AI · ${LEVELS[difficulty].label}`; $<HTMLButtonElement>('[data-act="speed"]').hidden = false; $<HTMLButtonElement>('[data-act="pause"]').hidden = false; speed = 1; $<HTMLButtonElement>('[data-act="speed"]').textContent = '×1';
   }
   function startRound(): void {
@@ -634,9 +624,8 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   const onPrefs = (): void => { const s = readPreferences().sound; audio.enabled = s; const m = root.querySelector<HTMLElement>('[data-act="mute"]'); if (m) { m.textContent = s ? '🔊' : '🔇'; m.setAttribute('aria-pressed', String(s)); } };
   window.addEventListener('waldo:preferences', onPrefs);
   root.addEventListener('click', e => {
-    const t = (e.target as HTMLElement).closest<HTMLElement>('[data-act],[data-diff],[data-arm],[data-mission]'); if (!t) return; audio.unlock();
+    const t = (e.target as HTMLElement).closest<HTMLElement>('[data-act],[data-diff],[data-mission]'); if (!t) return; audio.unlock();
     if (t.dataset.mission) { const id = Number(t.dataset.mission); if (unlocked(campSave, id)) { audio.sfx('click'); briefScreen(id); } else { audio.sfx('error'); toast('앞 작전을 먼저 완수하세요', true); } return; }
-    if (t.dataset.arm) { const next = buyArmory(readArmory(), t.dataset.arm as ArmoryStat); if (next) { writeArmory(next); audio.sfx('built'); setupScreen(); } else audio.sfx('click'); return; }
     if (t.dataset.diff) { difficulty = t.dataset.diff as Difficulty; modal.querySelectorAll<HTMLElement>('[data-diff]').forEach(b => b.setAttribute('aria-pressed', String(b === t))); $('#rt-diffnote').textContent = LEVELS[difficulty].blurb; audio.sfx('click'); return; }
     switch (t.dataset.act) {
       case 'start': leavePvp(); begin(); break;

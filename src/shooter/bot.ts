@@ -1,6 +1,6 @@
 // ZERO ZONE — 봇 AI. 난이도(config.BOTS)에 따라 반응 속도·조준 오차·회전 속도·시야·자기장 대응이 달라집니다.
 // 봇은 사람과 같은 입력(Input)만 만들어 내고, 체력이나 탄을 속이지 않습니다.
-import { canFit, magOf, partFit, PLAYER, WEAPONS, type BotTuning, type PartId } from './config';
+import { canFit, magOf, PACE, partFit, PLAYER, WEAPONS, type BotTuning, type PartId } from './config';
 import { lineClear } from './world';
 import { findPath, navFor, walkable } from './nav';
 import type { Match, Player, ZoneState } from './sim';
@@ -59,7 +59,7 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
     b.think = 0.12 + rng() * 0.08;
     let best: Player | null = null, bestD = Infinity;
     // 낙하 직후 권총뿐일 때는 먼저 무기부터 찾습니다: 가까이 오거나 맞기 전에는 먼 적과 싸우지 않습니다.
-    const cautious = m.plane !== null && !p.guns.some(g => g && g.id !== 'pistol') && m.t - p.landedAt < 45;
+    const cautious = m.plane !== null && !p.guns.some(g => g && g.id !== 'pistol') && m.t - p.landedAt < PACE.cautious;
     for (const q of m.players) {
       if (!q.alive || q.id === p.id || q.air) continue;
       const dx = q.x - p.x, dz = q.z - p.z, d = Math.hypot(dx, dz); if (d > T.sight) continue;

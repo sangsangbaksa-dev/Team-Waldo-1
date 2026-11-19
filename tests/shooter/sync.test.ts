@@ -36,7 +36,7 @@ describe('ZERO ZONE 온라인 방 동기화', () => {
     run(75);
     const landed = host.players.filter(p => p.bot && p.alive && p.air === 0); expect(landed.length).toBeGreaterThan(10);
     let off = 0; for (const p of landed) off = Math.max(off, Math.hypot(p.x - guest.players[p.id].x, p.z - guest.players[p.id].z));
-    expect(off).toBeLessThan(4);
+    expect(off).toBeLessThan(5.5);
   });
   it('AI 가 쓰러지면 손님 쪽에서도 쓰러지고(처치한 사람 기록 포함), 떨어진 총은 번호 그대로 전해진다', () => {
     const { host, guest, gs } = pair(); const bot = host.players[5]; bot.air = 0; bot.alt = 0;

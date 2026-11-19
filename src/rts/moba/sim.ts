@@ -70,7 +70,7 @@ export class MobaSim {
     }
     // 첫 번째 영웅(heroIds[0])이 내가 조종하는 챔피언이고 나머지는 봇입니다.
     this.addHero(0, { champ: this.setup.player, lane: this.setup.lane, ...this.setup.kit }, false, 0);
-    this.setup.allies.forEach((r, i) => this.addHero(0, r, !r.human, i + 1)); this.meId = this.heroIds[0]; this.setup.foes.forEach((r, i) => this.addHero(1, r, true, i));
+    this.setup.allies.forEach((r, i) => this.addHero(0, r, !r.human, i + 1)); this.meId = this.heroIds[0]; this.setup.foes.forEach((r, i) => this.addHero(1, r, !r.human, i));
     for (const c of this.map.camps) this.camps.set(c.id, { at: c.at, due: this.tick, ids: [], defs: c.mobs });
     for (const [id, c] of this.camps) { const first = Math.min(...c.defs.map(d => MONSTERS[d.k].first)); c.due = Math.round(first * TICK); void id; }
     this.recount(); this.updateVision();
@@ -79,6 +79,8 @@ export class MobaSim {
   // ---------- 조회 ----------
   get(id: number): Ent | undefined { return this.index.get(id); }
   me(): Ent { return this.index.get(this.meId)!; }
+  /** 이 화면의 주인이 속한 팀(방 대전에서는 적 팀일 수도 있습니다) */
+  get myTeam(): number { return this.index.get(this.meId)?.team ?? 0; }
   dist(a: { x: number; y: number }, b: { x: number; y: number }): number { return Math.hypot(a.x - b.x, a.y - b.y); }
   emit(e: SimEvent): void { if (this.record) { this.events.push(e); if (this.events.length > 1200) this.events.splice(0, 400); } }
   drain(): SimEvent[] { const e = this.events; this.events = []; return e; }

@@ -33,7 +33,7 @@ export class MobaView {
     this.buildTerrain(); this.scenery = buildScenery(this.scene, sim.map, this.shadows, quality === 'low'); this.buildFog();
     this.aim = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 40), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, depthWrite: false, side: THREE.DoubleSide })); this.aim.rotation.x = -Math.PI / 2; this.aim.position.y = 0.08; this.aim.visible = false; this.scene.add(this.aim);
     this.aimRange = new THREE.Mesh(new THREE.RingGeometry(0.985, 1, 64), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, depthWrite: false, side: THREE.DoubleSide })); this.aimRange.rotation.x = -Math.PI / 2; this.aimRange.position.y = 0.07; this.aimRange.visible = false; this.scene.add(this.aimRange);
-    const me = sim.me(); this.cam.x = me.x; this.cam.y = me.y; if (window.innerWidth < 900 || matchMedia('(pointer: coarse)').matches) this.cam.dist = 24;
+    const me = sim.me(); this.cam.x = me.x; this.cam.y = me.y; if (window.innerWidth < 900 || matchMedia('(pointer: coarse)').matches) this.cam.dist = 32;
     this.resize(canvas.clientWidth || 800, canvas.clientHeight || 600);
     this.post = makePost(quality, this.renderer, this.scene, this.camera, { strength: 0.4, radius: 0.5, threshold: 0.9, vignette: 0.24, saturation: 1.1 });
   }
@@ -76,7 +76,7 @@ export class MobaView {
   }
   private paintFog(): void {
     const g = this.fogCtx, k = 256 / SIZE; g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, 256, 256); g.fillStyle = 'rgba(10,16,26,0.5)'; g.fillRect(0, 0, 256, 256); g.globalCompositeOperation = 'destination-out';
-    for (const o of this.sim.sightOf(0)) { const gr = g.createRadialGradient(o.x * k, o.y * k, o.r * k * 0.55, o.x * k, o.y * k, o.r * k); gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.beginPath(); g.arc(o.x * k, o.y * k, o.r * k, 0, Math.PI * 2); g.fill(); }
+    for (const o of this.sim.sightOf(this.sim.myTeam)) { const gr = g.createRadialGradient(o.x * k, o.y * k, o.r * k * 0.55, o.x * k, o.y * k, o.r * k); gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.beginPath(); g.arc(o.x * k, o.y * k, o.r * k, 0, Math.PI * 2); g.fill(); }
     g.globalCompositeOperation = 'source-over'; this.fogTex.needsUpdate = true;
   }
   private syncWards(): void {
@@ -84,7 +84,7 @@ export class MobaView {
     for (const w of this.sim.wards) {
       live.add(w.id); let g = this.wardVis.get(w.id);
       if (!g) { g = new THREE.Group(); const c = w.team === 0 ? 0x5dc8ff : 0xff6a4a, post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, 0.9, 6), new THREE.MeshStandardMaterial({ color: 0x4a4038, roughness: 0.9 })), eye = new THREE.Mesh(new THREE.OctahedronGeometry(0.28), new THREE.MeshBasicMaterial({ color: c })), ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.58, 24), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false })); post.position.y = 0.45; eye.position.y = 1.15; ring.rotation.x = -Math.PI / 2; ring.position.y = 0.1; g.add(post, eye, ring); g.position.set(w.x, 0, w.y); g.userData.eye = eye; this.scene.add(g); this.wardVis.set(w.id, g); }
-      g.visible = w.team === 0 || this.sim.seenPt(0, w.x, w.y); (g.userData.eye as THREE.Object3D).rotation.y = this.clock * 2; g.position.y = Math.sin(this.clock * 2 + w.id) * 0.04;
+      g.visible = w.team === this.sim.myTeam || this.sim.seenPt(this.sim.myTeam, w.x, w.y); (g.userData.eye as THREE.Object3D).rotation.y = this.clock * 2; g.position.y = Math.sin(this.clock * 2 + w.id) * 0.04;
     }
     for (const [id, g] of this.wardVis) if (!live.has(id)) { this.scene.remove(g); this.wardVis.delete(id); }
   }
@@ -112,7 +112,7 @@ export class MobaView {
   pick(sx: number, sy: number, me: number): number {
     this.raycaster.setFromCamera(new THREE.Vector2(sx / this.w * 2 - 1, -(sy / this.h) * 2 + 1), this.camera); const ray = this.raycaster.ray, sph = new THREE.Sphere(), v = new THREE.Vector3(); let best = 0, bt = Infinity;
     for (const e of this.sim.ents) {
-      if (e.hp <= 0 || e.hero?.dead || e.id === me || !this.sim.canSee(0, e)) continue; const rad = Math.max(0.9, e.radius + 0.35) * (e.kind === 'nexus' ? 1.3 : e.kind === 'turret' ? 1.2 : 1);
+      if (e.hp <= 0 || e.hero?.dead || e.id === me || !this.sim.canSee(this.sim.myTeam, e)) continue; const rad = Math.max(0.9, e.radius + 0.35) * (e.kind === 'nexus' ? 1.3 : e.kind === 'turret' ? 1.2 : 1);
       sph.set(v.set(e.x, e.kind === 'nexus' ? 2 : e.kind === 'turret' ? 1.5 : 0.8, e.y).clone(), rad); if (ray.intersectSphere(sph, v)) { const d = v.distanceTo(ray.origin); if (d < bt) { bt = d; best = e.id; } }
     }
     return best;
@@ -220,7 +220,7 @@ export class MobaView {
   }
 
   render(dt: number): void {
-    this.clock += dt; const me = this.sim.me(); this.updateVis(dt, 0, me.id); this.syncWards(); this.scenery.update(dt, this.clock); if ((this.fogT -= dt) <= 0) { this.fogT = 0.12; this.paintFog(); }
+    this.clock += dt; const me = this.sim.me(); this.updateVis(dt, this.sim.myTeam, me.id); this.syncWards(); this.scenery.update(dt, this.clock); if ((this.fogT -= dt) <= 0) { this.fogT = 0.12; this.paintFog(); }
     for (let i = this.fx.length - 1; i >= 0; i--) { const f = this.fx[i]; f.t += dt; if (f.t >= f.life) { this.scene.remove(f.obj); this.fx.splice(i, 1); } else f.tick(f, dt); }
     this.placeCamera(); if (this.post) this.post.render(dt); else this.renderer.render(this.scene, this.camera);
   }

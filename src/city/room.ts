@@ -2,6 +2,7 @@
 // 1대1(CityDuel)과 같은 방식이지만 메시지마다 보낸 사람(f)을 붙여 여러 명을 구분합니다. 병력은 없고 영웅끼리 싸웁니다.
 import type { RoomSession } from '../net/lobby';
 import type { Channel, NetMsg } from '../net/types';
+import { cleanChat } from './chat';
 import { parsePose, parseShot, type DuelPose, type DuelShot } from './duel';
 
 export const ROOM_LIVES = 5, ROOM_TIME = 480;
@@ -16,6 +17,8 @@ export interface RoomHooks {
   onDeaths(id: string, n: number): void;
   /** 그 참가자의 본부가 무너졌습니다(탈락) */
   onHqDown(id: string): void;
+  /** 그 참가자의 채팅 */
+  onChat(id: string, text: string): void;
   onGone(id: string): void;
   onAbort(): void;
 }
@@ -82,6 +85,7 @@ export class CityRoom {
     else if (m.t === 'sh') { const s = parseShot(m); if (s) this.hooks.onShot(f, s); }
     else if (m.t === 'dead') { if (typeof m.n === 'number' && Number.isFinite(m.n) && m.n >= 0 && m.n <= 1000) this.hooks.onDeaths(f, m.n); }
     else if (m.t === 'hq') this.hooks.onHqDown(f);
+    else if (m.t === 'c') { const text = cleanChat(m.text); if (text) this.hooks.onChat(f, text); }
     else if (m.t === 'bye') this.leave(f);
   }
   sendPose(p: DuelPose, now: number): void {
@@ -91,6 +95,7 @@ export class CityRoom {
   }
   sendShot(s: DuelShot): void { if (this.started) this.ch.send({ t: 'sh', f: this.me(), x: Math.round(s.x), y: Math.round(s.y), a: Math.round(s.a * 1000) / 1000, w: s.w, m: Math.round(s.m * 100) / 100 }); }
   sendHqDown(): void { this.ch.send({ t: 'hq', f: this.me() }); }
+  sendChat(text: string): void { const t = cleanChat(text); if (this.started && t) this.ch.send({ t: 'c', f: this.me(), text: t }); }
   sendDeaths(n: number): void { this.ch.send({ t: 'dead', f: this.me(), n }); }
   bye(): void { this.ch.send({ t: 'bye', f: this.me() }); }
   dispose(): void { this.dead = true; window.clearInterval(this.timer); this.ch.close(); }

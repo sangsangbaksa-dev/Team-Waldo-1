@@ -1,7 +1,7 @@
 // SPEED RUSH — 아케이드 차량 물리. 조향은 요 속도로, 미끄러짐은 횡방향 그립으로 다루고 드리프트·니트로·벽 충돌을 포함합니다. (THREE 의존 없음)
 import { idxDelta, nearest, type Track } from './track';
 
-export interface CarInput { throttle: number; brake: number; steer: number; drift: boolean; nitro: boolean }
+export interface CarInput { throttle: number; brake: number; steer: number; drift: boolean; nitro: boolean; /** 들고 있는 아이템 사용(솔로 레이스) */ item?: boolean }
 export interface CarState {
   x: number; z: number; y: number; h: number; vx: number; vz: number;
   /** 진행 방향 속도(m/s, 후진은 음수)와 옆으로 미끄러지는 속도 */

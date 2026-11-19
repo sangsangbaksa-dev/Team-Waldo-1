@@ -118,3 +118,13 @@
 .rc-skin:disabled { opacity: .4; cursor: not-allowed; }
 .rc-best.ahead { color: #7dffa8; }
 .rc-setup [hidden] { display: none; }
+
+/* 드리프트 점수와 아이템 슬롯 */
+.rc-drift{position:absolute;left:50%;top:34%;transform:translateX(-50%);font:800 22px/1 system-ui;font-style:italic;letter-spacing:.04em;color:#ffe9a8;text-shadow:0 0 14px #000,0 2px 0 #0008;white-space:nowrap;pointer-events:none;opacity:.8;transition:opacity .15s}
+.rc-drift:empty{opacity:0}.rc-drift.live{opacity:1;color:#fff3c2}
+.rc-item{position:absolute;left:50%;bottom:calc(max(16px,env(safe-area-inset-bottom)) + 124px);transform:translateX(-50%);padding:7px 16px;border-radius:14px;font:800 14px/1 system-ui;letter-spacing:.12em;color:#fff;background:#0c0818dd;border:2px solid var(--item,#7dffe6);box-shadow:0 0 0 1px #0008;pointer-events:none;white-space:nowrap}
+.rc-item[hidden]{display:none}.rc-item:not(.active){animation:rc-item-ready 1.1s ease-in-out infinite alternate}.rc-item.active{opacity:.9}
+@keyframes rc-item-ready{from{transform:translateX(-50%) scale(1)}to{transform:translateX(-50%) scale(1.06)}}
+.touch .rc-item{left:auto;right:max(14px,env(safe-area-inset-right));bottom:auto;top:max(214px,calc(env(safe-area-inset-top) + 200px));transform:none;animation:none}
+.rc-pedals button.item{opacity:.45}.rc-pedals button.item.ready{opacity:1;border-color:#7dffe6}.rc-pedals button.item[hidden]{display:none}
+@media (prefers-reduced-motion:reduce){.rc-item:not(.active){animation:none}}

@@ -39,8 +39,8 @@ export const UNITS: Record<UnitKind, UnitDef> = {
 export const BUILDINGS: Record<BuildKind, BuildDef> = {
   hq: { name: '사령부', role: '일꾼 생산 · 자원 반납', size: 4, hp: 1500, cost: 400, time: 1200, supply: 10, key: 'H', trains: ['worker'] },
   depot: { name: '보급소', role: '인구수 +8', size: 2, hp: 400, cost: 100, time: 280, supply: 8, key: 'D', trains: [] },
-  barracks: { name: '병영', role: '보병 · 로켓병', size: 3, hp: 900, cost: 150, time: 560, supply: 0, req: 'hq', key: 'B', trains: ['marine', 'rocket'] },
-  factory: { name: '공장', role: '전차', size: 3, hp: 1000, cost: 200, time: 720, supply: 0, req: 'barracks', key: 'F', trains: ['tank'] },
+  barracks: { name: '병영', role: '보병 · 로켓병 · 의무병', size: 3, hp: 900, cost: 150, time: 560, supply: 0, req: 'hq', key: 'B', trains: ['marine', 'rocket', 'medic'] },
+  factory: { name: '공장', role: '전차 · 정찰 지프', size: 3, hp: 1000, cost: 200, time: 720, supply: 0, req: 'barracks', key: 'F', trains: ['tank', 'jeep'] },
   tower: { name: '방어탑', role: '자동 사격', size: 2, hp: 500, cost: 125, time: 400, supply: 0, req: 'barracks', key: 'T', trains: [], dmg: 12, range: 7.5, cd: 14 },
 };
 

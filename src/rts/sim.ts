@@ -350,7 +350,20 @@ export class RtsSim {
     if (best) {
       if (u.cd <= 0) { u.cd = 5; best.hp = Math.min(UNITS[best.kind].hp, best.hp + heal / 4); u.fired = this.tick; this.emit({ t: 'heal', owner: u.owner, x0: u.x, y0: u.y, x1: best.x, y1: best.y }); }
       u.fx = best.x - u.x; const l = Math.sqrt(sq(best.x - u.x) + sq(best.y - u.y)) || 1; u.fx /= l; u.fy = (best.y - u.y) / l;
-    } else if (far && u.o.t === 'idle' && u.o.phase !== 9) { this.order(u, { t: 'move', x: far.x, y: far.y, target: 0, phase: 0, timer: 0 }); }
+    }
+    if (u.o.t !== 'idle' || u.o.phase === 9) return;
+    if (best || !far) {
+      u.o.target = 0;
+      u.path = [];
+      return;
+    }
+    if (u.o.target !== far.id || u.repath <= 0) {
+      u.o.target = far.id;
+      u.path = this.pather.find(u.x, u.y, far.x, far.y) ?? [];
+      u.pi = 0;
+      u.repath = 5;
+    }
+    this.follow(u, this.speedOf(u));
   }
 
   /** 사정거리 안이면 쏘고, 아니면 다가갑니다. */

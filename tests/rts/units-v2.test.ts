@@ -35,6 +35,33 @@ describe('FRONTLINE 새 유닛: 정찰 지프와 의무병', () => {
     run(s, 8 * TICK); expect(Math.hypot(medic.x - marine.x, medic.y - marine.y)).toBeLessThan(UNITS.medic.range + 0.1);
     expect(marine.hp).toBeGreaterThan(10);
   });
+  it('쉬는 의무병은 움직이는 아군을 추적하다 치료 범위에서 멈춘다', () => {
+    const s = fresh(), bar = give(s, 0, 'barracks'), medic = s.spawn(0, 'medic', bar), marine = s.spawn(0, 'marine', bar);
+    medic.x = 30; medic.y = 30; marine.x = 36; marine.y = 30; marine.hp = 10;
+    s.step();
+    s.apply(0, { k: 'move', ids: [marine.id], x: 36, y: 35 });
+    run(s, TICK);
+    expect(medic.y).toBeGreaterThan(30.5);
+    run(s, 3 * TICK);
+    const at = [medic.x, medic.y];
+    expect(marine.hp).toBeGreaterThan(10);
+    run(s, TICK);
+    expect([medic.x, medic.y]).toEqual(at);
+  });
+  it('정지 명령을 받은 의무병은 치료를 계속하지만 아군을 따라가지 않는다', () => {
+    const s = fresh(), bar = give(s, 0, 'barracks'), medic = s.spawn(0, 'medic', bar), marine = s.spawn(0, 'marine', bar);
+    medic.x = 30; medic.y = 30; marine.x = 36; marine.y = 30; marine.hp = 10;
+    s.step();
+    s.apply(0, { k: 'stop', ids: [medic.id] });
+    const at = [medic.x, medic.y];
+    run(s, TICK);
+    expect([medic.x, medic.y]).toEqual(at);
+    expect(marine.hp).toBe(10);
+    s.apply(0, { k: 'move', ids: [marine.id], x: 33, y: 30 });
+    run(s, 2 * TICK);
+    expect([medic.x, medic.y]).toEqual(at);
+    expect(marine.hp).toBeGreaterThan(10);
+  });
   it('의무병은 적에게 피해를 주지 못한다', () => {
     const s = fresh(), bar = give(s, 0, 'barracks'), medic = s.spawn(0, 'medic', bar), foe = s.spawn(1, 'marine', bar);
     medic.x = 30; medic.y = 30; foe.x = 31.5; foe.y = 30; foe.o.t = 'idle'; medic.o.t = 'idle'; const hp = foe.hp;

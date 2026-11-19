@@ -83,3 +83,25 @@ describe('demolish rules', () => {
     expect(demolishReject({ kind: 'lab', f: 0, alive: true }, 0)).toBe('');
   });
 });
+
+describe('건설 고스트 거리와 실패 이유', () => {
+  it('시선 각도에 따라 거리가 고르게 변하고 모든 구간에 닿는다', async () => {
+    const { buildReach, BUILD_REACH_MIN } = await import('../../src/city/uiMath');
+    expect(buildReach(0)).toBe(700); expect(buildReach(-1.2)).toBe(BUILD_REACH_MIN);
+    let prev = Infinity; const reach: number[] = [];
+    for (let deg = 0; deg <= 50; deg++) { const d = buildReach(-deg * Math.PI / 180); expect(d).toBeLessThanOrEqual(prev); prev = d; reach.push(d); }
+    // 인접한 1° 사이에 움직이는 거리가 크지 않다 (예전 지면 교점 방식은 먼 곳에서 수백 칸씩 뛰었다)
+    for (let i = 1; i < reach.length; i++) expect(reach[i - 1] - reach[i]).toBeLessThan(60);
+    // 100~600 사이 어느 거리도 1° 간격 이하로 맞출 수 있다
+    for (const target of [100, 200, 300, 400, 500, 600]) expect(reach.some(d => Math.abs(d - target) < 35)).toBe(true);
+  });
+  it('지을 수 없는 이유를 구분해서 알려 준다', async () => {
+    const { placeProblem } = await import('../../src/city/placement');
+    const base = { w: 60, h: 60, map: emptyMap(), hq: { x: 800, y: 800, w: 120, h: 120 }, ownedBiz: [], ownedStructs: [], crystals: [], businesses: [] };
+    expect(placeProblem({ ...base, cx: 3000, cy: 3000 })).toBe('range');
+    expect(placeProblem({ ...base, cx: 700, cy: 700 })).toBe('road');
+    expect(placeProblem({ ...base, cx: 900, cy: 900, crystals: [{ x: 905, y: 905, amount: 100 }] })).toBe('crystal');
+    expect(placeProblem({ ...base, cx: 900, cy: 900, businesses: [{ x: 910, y: 900 }] })).toBe('pad');
+    expect(placeProblem({ ...base, cx: 900, cy: 900 })).toBe('');
+  });
+});

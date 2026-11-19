@@ -18,6 +18,7 @@ import { MISSION_LIST, canStart, startMission } from './missions';
 import { OutlawUi } from './ui';
 import { pickpocket, pickpocketTarget, startJob } from './jobs';
 import { treat, buySnack, nearVending } from './services';
+import { holdupOffer, holdupText, startHoldup } from './robbery';
 import { OUTLAW_KEY } from './records';
 import { WEAPONS, WEAPON_ORDER, PLAYER_ID, VEHICLES, blankPedInput, blankCarInput, clamp, wrapAngle, type PedInput, type SimEvent, type Vehicle } from './types';
 
@@ -262,8 +263,10 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (poi?.kind === 'casino') return { text: 'E · 카지노', run: () => openUi('casino') };
     if (poi?.kind === 'hospital') { if (p.hp < p.maxHp || p.armor < 40) return { text: `E · 치료 (${money(sim.price(120))})`, run: () => { toast(treat(sim!)); audio.play('pickup'); } }; }
     if (poi?.kind === 'arena') return sim.job.active ? null : { text: `E · 지하 격투 참가 (${money(sim.price(200))})`, run: () => { const r = startJob(sim!, 'fight'); if (r) toast(r); } };
+    if (poi?.kind === 'chopshop' || poi?.kind === 'garage') return { text: 'E · 정비소 튜닝', run: () => openUi('tuner') };
     if (poi?.kind === 'safehouse') return { text: 'E · 쉬기 · 저장', run: () => { const r = sim!.sleep(); toast(r); save(); audio.play('save'); } };
     if (poi?.kind === 'start') { const m = MISSION_LIST.find(x => x.startPoi === poi.id); if (m && canStart(sim, m.id)) return { text: `E · 의뢰: ${m.title}`, run: () => openBrief(m.id) }; }
+    const ho = holdupOffer(sim); if (ho?.ok) return { text: `E · ${ho.store.name} 털기 (경보 주의)`, run: () => { const r = startHoldup(sim!, ho.index); if (r) toast(r); } };
     if (sim.nearestVehicle(p)) return { text: 'E · 차량 탑승' };
     if (nearVending(sim)) return { text: `E · 음료 (${money(sim.price(8))})`, run: () => { toast(buySnack(sim!)); audio.play('pickup'); } };
     if (pickpocketTarget(sim)) return { text: 'E · 소매치기', run: () => { toast(pickpocket(sim!)); audio.play('pickup'); } };
@@ -428,6 +431,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (mi) { q('#ol-mission').hidden = false; set('mtag', '의뢰'); set('mtitle', mi.title); set('mtext', s.mission.text); const t = s.mission.timer; set('mtimer', t > 0 ? `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}` : ''); }
     else if (s.job.active) { q('#ol-mission').hidden = false; set('mtag', '일거리'); set('mtitle', s.job.title); set('mtext', s.job.text); const t = s.job.timer; set('mtimer', t > 0 && s.job.active !== 'fight' ? `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}` : ''); }
     else if (act.active && act.text) { q('#ol-mission').hidden = false; set('mtag', '사이드'); set('mtitle', ({ taxi: '택시', armored: '현금수송차', bounty: '현상금', rampage: '렘페이지', vigilante: '소탕', race: '스트리트 레이스', export: '차량 수출' } as Record<string, string>)[act.active] ?? '활동'); set('mtext', act.text); const t = act.timer; set('mtimer', t > 0 ? `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}` : ''); }
+    else if (holdupText(s)) { q('#ol-mission').hidden = false; set('mtag', '강도'); set('mtitle', '매장 털기'); set('mtext', holdupText(s)); set('mtimer', ''); }
     else q('#ol-mission').hidden = true;
     bannerT = s.mission.bannerT; set('banner', s.mission.banner && bannerT > 0 ? s.mission.banner : ''); q('#ol-banner').classList.toggle('on', !!s.mission.banner && bannerT > 0);
     // 스타일 게이지

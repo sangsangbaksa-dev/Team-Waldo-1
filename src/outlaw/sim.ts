@@ -16,6 +16,8 @@ import { stepActivities } from './activities';
 import { blankLife, computePerks, heroById, BASE_PERKS, type LifeState, type Perks } from './life';
 import { stepLife } from './services';
 import { stepJobs } from './jobs';
+import { stepRobbery } from './robbery';
+import { stepTurfSentries } from './turf';
 
 export interface SaveData { v: 1; stunts?: number[]; styleTotal?: number; cash: number; completed: string[]; guns: Array<[WeaponId, number, number]>; armor: number; collected: number[]; clock: number; kills: number; playSec: number; life?: LifeState }
 export const STREAM_RADIUS = 190;
@@ -409,7 +411,7 @@ export class Sim {
     stepPeds(this, dt); stepCombat(this, dt); stepTraffic(this, dt); stepPolice(this, dt);
     for (const q of this.peds) { if (q.alive && !q.vehicle) this.updateGun(q, dt); this.movePed(q, dt); }
     for (const v of this.vehicles) stepVehicle(this, v, dt);
-    this.stepProjectiles(dt); this.stepPickups(dt); this.stepFire(dt); stepMissions(this, dt); stepActivities(this, dt); stepLife(this, dt); stepJobs(this, dt);
+    this.stepProjectiles(dt); this.stepPickups(dt); this.stepFire(dt); stepMissions(this, dt); stepActivities(this, dt); stepLife(this, dt); stepJobs(this, dt); stepRobbery(this, dt); stepTurfSentries(this);
     for (const q of this.peds.slice()) if (!q.alive && !q.keep && q.id !== PLAYER_ID && this.t - q.diedAt > 25) this.removePed(q);
   }
 }

@@ -3,6 +3,7 @@ import type { Sim } from './sim';
 import { PLAYER_ID, VEHICLES, type VehicleKind } from './types';
 import { ACHIEVEMENTS, CAR_SHOP, OUTFIT_PRICE, PROPERTIES, PROP_CAP_MIN, SKILLS, SKILL_MAX, propertyRate, skillCost, type SkillId } from './life';
 import { nearestLane } from './world';
+import { maxHpFor } from './tuning';
 
 const money = (n: number): string => '$' + Math.floor(n).toLocaleString('en-US');
 
@@ -46,7 +47,9 @@ export function spawnOwned(sim: Sim, index: number, x?: number, z?: number): boo
     const id = nearestLane(sim.map, sim.player.x + Math.cos(sim.player.yaw) * 14, sim.player.z + Math.sin(sim.player.yaw) * 14), lane = sim.map.lanes[id];
     if (lane) { px = lane.x; pz = lane.z; h = lane.h; }
   }
-  const v = sim.spawnVehicle(car.kind, px, pz, h, { keep: true, tag: 'owned', aux: 100 + index, color: car.color, locked: false }); v.mode = 'parked'; v.input.brake = 1; return true;
+  const v = sim.spawnVehicle(car.kind, px, pz, h, { keep: true, tag: 'owned', aux: 100 + index, color: car.color, locked: false }); v.mode = 'parked'; v.input.brake = 1;
+  if (car.tune) { v.hp = v.maxHp = maxHpFor(car.kind, car.tune); v.tune = { ...car.tune }; }
+  return true;
 }
 export function callCar(sim: Sim, index: number): string {
   const car = sim.life.cars[index]; if (!car) return '차량이 없습니다'; if (sim.player.vehicle) return '차에서 내린 뒤 호출하세요';

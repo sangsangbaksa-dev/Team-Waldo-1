@@ -3,6 +3,7 @@ import type { Sim } from './sim';
 import { PLAYER_ID, blankJobState, VEHICLES, wrapAngle, type Marker, type Ped, type Vehicle } from './types';
 import { nearestLane } from './world';
 import { autoDrive } from './vehicle';
+import { allOwned, startTurf, stepTurf } from './turf';
 
 export interface JobInfo { id: string; name: string; giver: string; desc: string; pay: string; cooldown: number }
 export const JOB_LIST: JobInfo[] = [
@@ -17,6 +18,7 @@ export const JOB_LIST: JobInfo[] = [
   { id: 'cargo', name: '민감 화물', giver: '야간 운송사', desc: '깨지기 쉬운 화물을 밴에 실어 먼 하역장까지 옮깁니다. 충돌하면 화물이 상하고, 비 오는 밤엔 웃돈이 붙습니다.', pay: '$1,300 + 상태·우천 보너스', cooldown: 45 },
   { id: 'demolish', name: '차량 파괴', giver: '보험 사기꾼', desc: '표시된 주차 차량 세 대를 부숴 흔적 없이 처리합니다. 소란이 커지면 경찰이 옵니다.', pay: '$1,500', cooldown: 60 },
   { id: 'tail', name: '미행', giver: '사설 탐정', desc: '표적 세단을 들키지 않게 따라갑니다. 너무 가까우면 들키고 너무 멀면 놓칩니다.', pay: '$1,600', cooldown: 60 },
+  { id: 'turfwar', name: '구역 점령', giver: '마담 리', desc: '가장 가까운 갱 구역에 들어가 세 파의 갱을 쓰러뜨립니다. 점령하면 분당 수입이 생기고 그 구역의 보초가 사라집니다.', pay: '$2,250부터 + 분당 수입', cooldown: 30 },
   { id: 'fight', name: '지하 격투', giver: '격투장 주인', desc: '격투장 앞에서 3연전. 총은 쓰지 않습니다. 이길수록 상금이 커집니다.', pay: '$400 · $800 · $1,600', cooldown: 0 },
 ];
 export const jobInfo = (id: string): JobInfo | undefined => JOB_LIST.find(j => j.id === id);
@@ -41,6 +43,7 @@ export function jobBlock(sim: Sim, id: string): string {
   if (!p.alive || sim.downKind) return '지금은 일할 수 없습니다'; if (sim.job.active) return '이미 다른 일을 하고 있습니다';
   if (sim.mission.active || sim.activity.active) return '진행 중인 의뢰·활동을 먼저 끝내세요'; if (sim.wanted.stars > 0) return '수배 중에는 일을 받을 수 없습니다';
   const cd = cooldowns.get(sim)?.[id] ?? 0; if (cd > sim.t) return `${Math.ceil(cd - sim.t)}초 뒤에 다시 받을 수 있습니다`;
+  if (id === 'turfwar' && allOwned(sim)) return '모든 갱 구역을 점령했습니다';
   if (id === 'fight' && sim.nearPoi(p.x, p.z)?.kind !== 'arena') return '격투장 입구에서만 시작할 수 있습니다';
   return '';
 }
@@ -85,6 +88,8 @@ export function startJob(sim: Sim, id: string): string {
     const q = spotNear(sim, 70, 130), lane = sim.map.lanes[nearestLane(sim.map, q.x, q.z)];
     const v = sim.spawnVehicle('sedan', lane?.x ?? q.x, lane?.z ?? q.z, lane?.h ?? 0, { keep: true, tag: 'job', locked: false, color: 0x30343b }); v.mode = 'scripted';
     const d = sim.spawnPed('civ', v.x, v.z, { keep: true, tag: 'job', mode: 'scripted', vehicle: v.id, loot: 0 }); v.driver = d.id; j.ids.car = v.id; j.ids.driver = d.id; j.data.node = lane?.id ?? -1; j.data.prog = 0; j.data.seen = 0; j.data.far = 0; j.timer = 260;
+  } else if (id === 'turfwar') {
+    startTurf(sim, j);
   } else if (id === 'fight') {
     const arena = sim.nearPoi(p.x, p.z) ?? poi(sim, 'arena0'); const fee = sim.price(200); if (sim.cash < fee) { sim.job = blankJobState(); return '참가비가 부족합니다'; }
     sim.addCash(-fee); j.data.x = arena.x; j.data.z = arena.z; j.data.round = 0; j.stage = 0; p.cur = 0; p.hp = Math.max(p.hp, p.maxHp * 0.7); j.data.civ0 = sim.civKills;
@@ -177,6 +182,8 @@ export function stepJobs(sim: Sim, dt: number): void {
     if (j.data.seen >= 6) { end(sim, false, '들켰습니다 · 표적이 가속했다'); return; } if (j.data.far >= 10) { end(sim, false, '표적을 놓쳤습니다'); return; }
     j.text = gap < 16 ? `너무 가깝습니다! 들킬 위험 ${Math.round(j.data.seen / 6 * 100)}%` : gap > 90 ? `너무 멉니다 · 놓칠 위험 ${Math.round(j.data.far / 10 * 100)}%` : `거리 유지 · 미행 ${Math.floor(j.data.prog)}/70초`;
     if (j.data.prog >= 70) end(sim, true, '미행 성공', 1600);
+  } else if (id === 'turfwar') {
+    const r = stepTurf(sim, dt); if (r) end(sim, r.result === 'pass', r.text, r.cash);
   } else if (id === 'fight') {
     const x = j.data.x!, z = j.data.z!, round = j.data.round!;
     if (dist(p, { x, z }) > 45) { end(sim, false, '링을 벗어났습니다'); return; }

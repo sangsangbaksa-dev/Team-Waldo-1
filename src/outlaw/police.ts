@@ -25,7 +25,7 @@ function crimes(sim: Sim, s: State, dt: number): void {
   }
   for (const c of sim.crimes.splice(0)) {
     if (c.by !== PLAYER_ID || !sim.player.alive) continue;
-    if (c.kind === 'copAssault' || c.kind === 'copMurder' || c.kind === 'bank') { admit(sim, c); continue; }
+    if (c.kind === 'copAssault' || c.kind === 'copMurder' || c.kind === 'bank' || c.kind === 'robbery') { admit(sim, c); continue; }
     let cop = false; const witnesses: number[] = [];
     for (const p of sim.peds) {
       if (!p.alive || (p.team !== 'cop' && p.team !== 'civ')) continue;
@@ -203,7 +203,7 @@ export function stepPolice(sim: Sim, dt: number): void {
   // 스파이크 스트립: 시야 밖 오래된 것은 걷어가고, 고속으로 밟은 차는 타이어가 터져 감속·휘청입니다.
   sim.spikes = sim.spikes.filter(k => w.stars > 0 ? Math.hypot(k.x - px, k.z - pz) < 260 : s.quiet < 12 && Math.hypot(k.x - px, k.z - pz) < 260);
   if (pv && pv.driver === PLAYER_ID) {
-    if (!pv.flat) for (const k of sim.spikes) if (Math.hypot(k.x - pv.x, k.z - pv.z) < 4.2 && Math.abs(pv.vf) > 4) { pv.flat = true; sim.say('타이어 펑크! 스파이크 스트립', 3); sim.emit({ t: 'crash', id: pv.id, power: 0.5, x: pv.x, z: pv.z }); break; }
+    if (!pv.flat && !(pv.tune && pv.tune.tire >= 2)) for (const k of sim.spikes) if (Math.hypot(k.x - pv.x, k.z - pv.z) < 4.2 && Math.abs(pv.vf) > 4) { pv.flat = true; sim.say('타이어 펑크! 스파이크 스트립', 3); sim.emit({ t: 'crash', id: pv.id, power: 0.5, x: pv.x, z: pv.z }); break; }
     if (pv.flat) { const f = Math.exp(-dt * 0.55); pv.vx *= f; pv.vz *= f; pv.vf *= f; pv.yawRate += Math.sin(sim.t * 17) * dt * 0.9; }
   }
   w.cops = sim.peds.filter(q => q.alive && q.team === 'cop').length;

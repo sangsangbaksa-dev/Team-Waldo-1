@@ -95,6 +95,7 @@ export interface Vehicle {
   siren: boolean; hornT: number; /** 최근 충돌 세기(소리·연출) */ crashT: number; /** 시각 효과용 */ pitch: number; roll: number; wheel: number;
   /** 플레이어가 훔쳤는지 */ stolen: boolean; keep: boolean; tag: string; /** 잠김(도난 불가) */ locked: boolean;
   /** 스파이크 스트립에 타이어가 터졌는지(도색·정비소에서 복구) */ flat?: boolean;
+  /** 튜닝 단계(내 차 전용): 엔진·타이어·차체 */ tune?: { eng: number; tire: number; arm: number };
 }
 
 // ---------- 줍기·탄 ----------
@@ -124,7 +125,7 @@ export type SimEvent =
   | { t: 'busted' } | { t: 'wasted' } | { t: 'respawn' } | { t: 'save' };
 
 // ---------- 범죄·수배 ----------
-export type CrimeKind = 'assault' | 'murder' | 'copAssault' | 'copMurder' | 'carTheft' | 'shooting' | 'explosion' | 'roadkill' | 'bank';
+export type CrimeKind = 'assault' | 'murder' | 'copAssault' | 'copMurder' | 'carTheft' | 'shooting' | 'explosion' | 'roadkill' | 'bank' | 'robbery';
 export interface Crime { kind: CrimeKind; x: number; z: number; by: number; victim: number; /** 얼마나 심각한가(수배 점수에 더해짐) */ weight: number; t: number }
 export interface Wanted {
   /** 체포 진행도(0~1). 접촉이 끊기거나 공격하면 즉시 0 */ bustT?: number;

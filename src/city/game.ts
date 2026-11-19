@@ -407,7 +407,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   const roomNames = (r: Room): string[] => roomOrder(r).map(id => r.names.get(id) ?? '참가자');
   function openRoomLobby(): void {
     if (!PVP_ENABLED) { toast('멀티플레이는 잠시 꺼 두었습니다'); return; }
-    void import('../net/lobby').then(({ openLobby }) => openLobby({ game: 'city', maxPlayers: 6, config: () => ({ seed: (Math.random() * 2 ** 31) | 0 }), onMatch: startDuel, onRoom: startRoom, onClose: () => undefined }))
+    void import('../net/lobby').then(({ openLobby }) => openLobby({ game: 'city', maxPlayers: 6, config: () => ({ seed: (Math.random() * 2 ** 31) | 0 }), onMatch: startDuel, onRoom: startRoom, inGameChat: false, onClose: () => undefined }))
       .catch(() => toast('대전 기능을 불러오지 못했습니다'));
   }
   const roomCard = (title: string, body: string, actions: string): void => { modal.innerHTML = `<section class="c-pause"><div class="c-kicker">멀티 방 · 영웅 난투전</div><h2>${title}</h2>${body}<div class="c-actions">${actions}</div></section>`; };

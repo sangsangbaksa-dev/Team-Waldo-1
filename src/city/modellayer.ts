@@ -5,6 +5,7 @@ import { makeRng } from './map';
 import { AWNING_OUT, CHAR_SCALE, HIP, KNEE, LEG_Z, PROPS } from './scale';
 import { CHAR_KINDS, instantiate, type Baked, type Models } from './models';
 import type { Actor, Structure, Vehicle, World } from './world';
+import { cullChunks, type ChunkRef } from './chunks';
 import { blankPose, calmState, computePose } from '../shared/character/pose';
 
 const CLOTH = [0x8d99ae, 0xb08968, 0x6d8a96, 0xa58fb3, 0x9aa37b, 0xc58f8f, 0xd27d5a, 0x5f9ea0], SKIN = [0xf1c9a5, 0xd9a47a, 0xa8744f, 0x7a5236, 0xf5d6b8];
@@ -23,6 +24,8 @@ export class ModelLayer {
   private d = new THREE.Object3D(); private base = new THREE.Matrix4(); private local = new THREE.Matrix4(); private q = new THREE.Quaternion(); private qz = new THREE.Quaternion(); private qy = new THREE.Quaternion();
   private st = calmState(); private pose = blankPose(); private torso = new THREE.Matrix4(); private m = new THREE.Matrix4(); private m2 = new THREE.Matrix4(); private down = new THREE.Matrix4().makeTranslation(0, -HIP, 0); private aim = new Map<number, number>();
   private v1 = new THREE.Vector3(); private one = new THREE.Vector3(1, 1, 1); private col = new THREE.Color(); private zAxis = new THREE.Vector3(0, 0, 1); private yAxis = new THREE.Vector3(0, 1, 0);
+  /** 정적 소품 칸들과, 이 거리(보통 안개 끝)보다 먼 칸은 그리지 않는 컬링 거리 */
+  readonly statics: ChunkRef[] = []; reach = 4700;
   private sets: Record<string, CharSet> = {}; private mechs = new Map<number, THREE.Object3D>(); private crystalMesh: THREE.InstancedMesh;
   private lam = new THREE.MeshLambertMaterial({ vertexColors: true }); private basic = new THREE.MeshBasicMaterial({ vertexColors: true });
   vmScene = new THREE.Scene(); vmCam = new THREE.PerspectiveCamera(64, 1, 0.5, 200); private vm: THREE.Object3D | null = null; private vmId = ''; private vmSwap = 0; private flash: THREE.Sprite;
@@ -67,6 +70,7 @@ export class ModelLayer {
       for (const ids of cells.values()) {
         const c = new THREE.InstancedMesh(m.geometry, m.material, ids.length); c.castShadow = m.castShadow; c.receiveShadow = m.receiveShadow; c.renderOrder = m.renderOrder;
         ids.forEach((src, k) => { m.getMatrixAt(src, mat); c.setMatrixAt(k, mat); }); c.instanceMatrix.needsUpdate = true; c.computeBoundingSphere(); this.scene.add(c);
+        const bs = c.boundingSphere!; this.statics.push({ mesh: c, x: bs.center.x, z: bs.center.z, r: bs.radius }); // 안개 너머 칸을 끄기 위해 기억
       }
       this.scene.remove(m); m.dispose();
     }
@@ -173,6 +177,7 @@ export class ModelLayer {
   // ---------- 매 프레임 ----------
   update(pb: Actor | null, third: boolean, cam: THREE.Vector3): void {
     const w = this.world, d = this.d, base = this.base, torso = this.torso, m = this.m, now = performance.now() / 1000;
+    cullChunks(this.statics, cam, this.reach);
     for (const k of CHAR_KINDS) { const s = this.sets[k]; for (const p of [s.body, s.leg, s.shin, s.armL, s.armR]) if (p) p.n = 0; }
     const seenMech = new Set<number>();
     for (const a of w.actors) {

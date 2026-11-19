@@ -25,6 +25,7 @@ import { CityDuel, TARGET_KILLS, TIME_LIMIT, duelOutcome } from './duel';
 import { DuelArmy, parseArmy } from './duelarmy';
 import { CITY_KEY, readCityCareer } from '../records';
 import { PVP_ENABLED } from '../net/config';
+import { ChatLimiter, cleanChat, pushChat, visibleChat, type ChatLine } from './chat';
 
 const $ = (n: number): string => Math.floor(n).toLocaleString('en-US');
 const clock = (t: number): string => `${Math.floor(Math.max(0, t) / 60)}:${String(Math.floor(Math.max(0, t) % 60)).padStart(2, '0')}`;
@@ -39,8 +40,8 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   <div class="city-hud" hidden>
     <div class="c-tl"><div class="c-res" id="c-res"></div><div class="c-quest" id="c-quest"></div></div>
     <div class="c-tc" id="c-zone"></div>
-    <div class="c-tr"><canvas id="c-mini" width="200" height="200" aria-label="미니맵"></canvas><div id="c-wanted"></div><div class="c-topbtns"><button data-act="view" id="c-view" title="시점 전환 (V)">1인칭</button><button data-act="missions" title="작전 지령 (J)">임무</button><button data-act="map" title="전술 지도 (M)">지도</button><button data-act="pause" title="일시정지 (Esc)">Ⅱ</button></div></div>
-    <div class="c-target" id="c-target"></div><aside class="c-tut" id="c-tut" hidden></aside><div class="c-area" id="c-area"></div><div class="c-feed" id="c-feed"></div><div class="c-banner" id="c-banner"></div><div class="c-prompt" id="c-prompt"></div><div class="c-toast" id="c-toast"></div>
+    <div class="c-tr"><canvas id="c-mini" width="200" height="200" aria-label="미니맵"></canvas><div id="c-wanted"></div><div class="c-topbtns"><button data-act="view" id="c-view" title="시점 전환 (V)">1인칭</button><button data-act="missions" title="작전 지령 (J)">임무</button><button data-act="map" title="전술 지도 (M)">지도</button><button data-act="chat" id="c-chatbtn" title="채팅 (Enter)" hidden>채팅</button><button data-act="pause" title="일시정지 (Esc)">Ⅱ</button></div></div>
+    <div class="c-target" id="c-target"></div><aside class="c-tut" id="c-tut" hidden></aside><div class="c-area" id="c-area"></div><div class="c-feed" id="c-feed"></div><div class="c-chat" id="c-chat" aria-live="polite"></div><form class="c-chatin" id="c-chatin" hidden><input id="c-chatbox" maxlength="80" autocomplete="off" placeholder="메시지 입력 후 Enter · Esc 취소" aria-label="채팅 입력"></form><div class="c-banner" id="c-banner"></div><div class="c-prompt" id="c-prompt"></div><div class="c-toast" id="c-toast"></div>
     <div class="c-bl" id="c-boss"></div>
     <div class="c-bc" id="c-cmd"></div>
     <aside class="c-panel" id="c-panel" hidden></aside>
@@ -63,6 +64,24 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   /** 1대1 결투 진행 상태. null 이면 혼자 하는 게임입니다. */
   interface Duel { s: PvpSession; net: CityDuel; army: DuelArmy; oppHqDown: boolean; hqSent: boolean; myDeaths: number; oppDeaths: number; done: boolean; pose: { x: number; y: number; a: number; hp: number; mh: number; w: WeaponId } | null; rx: number; ry: number; seed: number; oppKlass: string; started: boolean; graceAt: number }
   let duel: Duel | null = null;
+  // ---------- 채팅(결투·멀티 방) ----------
+  const chatLog: ChatLine[] = [], chatLim = new ChatLimiter(); let chatOpen = false, chatSent = -1e9;
+  const chatForm = (): HTMLFormElement => q('#c-chatin') as HTMLFormElement, chatBox = (): HTMLInputElement => q('#c-chatbox') as HTMLInputElement;
+  const chatLive = (): boolean => !!((duel && duel.started && !duel.done) || (room && room.started && !room.done));
+  const chatNow = (): number => performance.now() / 1000;
+  function addChat(name: string, text: string, mine: boolean): void { pushChat(chatLog, { name, text, t: chatNow(), mine }); if (!mine) audio.play('click'); }
+  function openChat(): void {
+    if (!chatLive() || chatOpen || !world || world.over) return;
+    chatOpen = true; keys.clear(); mouse.down = false; touchFire = false; unlock(); chatForm().hidden = false; chatBox().value = ''; chatBox().focus();
+  }
+  function closeChat(send: boolean): void {
+    if (!chatOpen) return; chatOpen = false; const text = cleanChat(chatBox().value); chatBox().value = ''; chatForm().hidden = true; chatBox().blur();
+    if (send && text) {
+      const now = performance.now();
+      if (now - chatSent < 1200) toast('너무 빨리 보냈습니다. 잠시 후 다시 보내세요'); else if (chatLive()) { chatSent = now; if (room) room.net.sendChat(text); else if (duel) duel.net.sendChat(text); addChat('나', text, true); }
+    }
+    if (!paused && !(world && world.over) && panel.hidden && bigmap.hidden) lock();
+  }
   /** 3인 이상 방(영웅 난투전) 진행 상태. */
   interface Room { s: RoomSession; net: CityRoom; ids: string[]; names: Map<string, string>; fac: Map<string, number>; poses: Map<string, { p: { x: number; y: number; a: number; hp: number; mh: number; w: WeaponId }; rx: number; ry: number }>; deaths: Map<string, number>; out: Set<string>; hqSent: boolean; myDeaths: number; done: boolean; seed: number; started: boolean; graceAt: number }
   let room: Room | null = null;
@@ -89,7 +108,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   function start(k: ClassId, tutorial = false, dl: Duel | null = null, rm: Room | null = null): void {
     klass = k; modal.innerHTML = ''; hud.hidden = false; resultShown = false; paused = false; ghost = null; shopOpen = false; panel.hidden = true; bigmap.hidden = true; q('#c-missions').hidden = true;
     // A retry must not inherit held keys, touch gestures, firing or frame debt.
-    keys.clear(); mouse.down = false; touchFire = false; acc = 0; looks.clear();
+    keys.clear(); mouse.down = false; touchFire = false; acc = 0; looks.clear(); chatLog.length = 0; chatOpen = false; chatForm().hidden = true;
     for (const stick of [sticks.move, sticks.aim]) { stick.id = -1; stick.x = 0; stick.y = 0; }
     world = new World({ seed: dl ? dl.seed : rm ? rm.seed : (Math.random() * 2 ** 31) | 0, difficulty: diffSel, klass: k, career: dl || rm || tutorial ? undefined : career.levels, tutorial: tutorial || !!dl || !!rm, duel: dl ? { side: dl.s.host ? 0 : 1, name: dl.s.opponent.nickname, arena: arenaOf(dl.seed) } : rm ? { side: 0, name: '', room: { seats: roomSeats(rm), names: roomNames(rm) } } : undefined });
     if (rm) { const r = rm; world.onShot = (x, y, a, wid, mul) => r.net.sendShot({ x, y, a, w: wid, m: mul }); }
@@ -138,6 +157,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     const [a, ...rest] = code.split(':'), arg = rest.join(':'), w = world; audio.unlock();
     if (a === 'cup') { const n = buyCareer(career, arg as CareerStat); if (n) { career = n; writeCareer(career); audio.play('cash'); setup(); } return; }
     if (a === 'diff') { diffSel = arg as Difficulty; try { localStorage.setItem('waldo-city-diff', arg); } catch { /* 무시 */ } setup(); audio.play('click'); return; }
+    if (a === 'chat') { openChat(); return; }
     if (a === 'sq') { if (w) { w.selectSquad(Number(arg)); put(q('#c-squads'), squadBar(w)); toast(w.squadSel ? `${w.squadSel}분대 선택 — 명령이 이 분대에만 적용됩니다` : '전체 병력 선택', false); if (!panel.hidden) renderPanel(); } return; }
     if (a === 'squadsplit') { if (w) { w.splitSquads(0, Number(arg)); put(q('#c-squads'), squadBar(w)); toast(Number(arg) > 1 ? `${arg}개 분대로 편성` : '분대 편성 해제', false); renderPanel(); } return; }
     if (a === 'squadall') { if (w) { w.assignAllTo(0, Number(arg)); w.selectSquad(Number(arg)); put(q('#c-squads'), squadBar(w)); renderPanel(); } return; }
@@ -332,6 +352,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (!q('#c-missions').hidden) renderMissions();
     void z; if (room) { const alive = room.ids.filter(id => !room!.out.has(id) && (room!.deaths.get(id) ?? 0) < ROOM_LIVES).length; put(q('#c-zone'), `<b>${clock(Math.max(0, ROOM_TIME - w.time))}</b><span>남은 목숨 <b>${Math.max(0, ROOM_LIVES - room.myDeaths)}</b>/${ROOM_LIVES}</span><span>생존 <b>${alive}</b>/${room.ids.length}명</span>`); } else if (duel) put(q('#c-zone'), `<b>${clock(Math.max(0, TIME_LIMIT - w.time))}</b><span>나 <b>${duel.oppDeaths}</b> : <b>${duel.myDeaths}</b> ${duel.s.opponent.nickname.replace(/[<>&"]/g, '')}</span><span>${TARGET_KILLS}킬 선취</span>`); else if (tut) put(q('#c-zone'), `<b>튜토리얼</b><span>연습장 · 라이벌 정지</span><span>${Math.min(tut.s.i, STEPS.length - 1) + 1}/${STEPS.length}</span>`); else put(q('#c-zone'), `<b>${clock(w.time)}</b><span>생존 왕국 <b>${w.aliveCount()}</b>/8</span><span class="c-citytime" title="밤에는 클럽·카지노, 낮에는 편의점·공장 수입이 늘고 폭풍우에는 줄어듭니다">${WEATHER_ICON[w.weather]} ${clockLabel(w.hour)} · ${PHASE_LABEL[w.phase]} · ${WEATHER_LABEL[w.weather]}</span>`);
     put(q('#c-wanted'), f.wanted >= 1 ? `<span class="stars">${'★'.repeat(Math.floor(f.wanted))}${'☆'.repeat(5 - Math.floor(f.wanted))}</span> 수배 중` : '');
+    { const live = chatLive(); (q('#c-chatbtn') as HTMLElement).hidden = !live; put(q('#c-chat'), live ? visibleChat(chatLog, chatNow(), chatOpen).map(l => `<div class="${l.mine ? 'me' : ''}"><b>${esc(l.name)}</b> ${esc(l.text)}</div>`).join('') : ''); }
     put(q('#c-feed'), w.feed.filter(x => w.time - x.t < 7).slice(-5).map(x => `<div style="border-color:${x.color}">${x.text}</div>`).join(''));
     const army = w.armyOf(0).length; put(q('#c-squads'), squadBar(w));
     if (b) {
@@ -380,6 +401,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       onDeaths: n => { d.oppDeaths = Math.max(d.oppDeaths, n); },
       onArmy: m => { const a = parseArmy(m); if (a && d.started && !d.done && world) d.army.receive(world, a); },
       onHqDown: () => { d.oppHqDown = true; },
+      onChat: text => { if (duel === d && d.started && !d.done && chatLim.allow('opp', performance.now())) addChat(s.opponent.nickname, text, false); },
       onGone: reason => { if (!d.done) void concludeDuel(s.me.id, reason === 'never' ? '상대가 접속하지 않았습니다' : reason === 'bye' ? '상대가 나갔습니다' : '상대와의 연결이 끊어졌습니다'); },
     });
   }
@@ -407,6 +429,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       onShot: (id, sh) => { const fi = r.fac.get(id); if (r.started && !r.done && world && fi !== undefined && !r.out.has(id)) world.remoteShot(sh.x, sh.y, sh.a, sh.w, sh.m, fi); },
       onDeaths: (id, n) => { r.deaths.set(id, Math.max(r.deaths.get(id) ?? 0, n)); },
       onHqDown: id => { r.out.add(id); },
+      onChat: (id, text) => { if (room === r && r.started && !r.done && chatLim.allow(id, performance.now())) addChat(r.names.get(id) ?? '참가자', text, false); },
       onGone: id => { r.out.add(id); },
       onAbort: () => { if (!r.done) { r.done = true; roomCard('시작하지 못했습니다', '<p class="c-lead">참가자가 모이지 않았거나 방장이 연결을 잃었습니다.</p>', '<button data-act="exit">메뉴로</button>'); } },
     });
@@ -482,6 +505,8 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   function onKey(e: KeyboardEvent): void {
     if (closed) return; const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, w = world;
     if (!w) return; const f = w.factions[0];
+    if (chatOpen) return; // 입력 칸이 자체 키를 처리합니다
+    if (k === 'Enter' && chatLive() && !paused && !w.over && f.pending === 0 && !(e.target instanceof Element && e.target.closest('button,a,select,textarea'))) { e.preventDefault(); openChat(); return; }
     if (f.pending > 0) { if (!e.repeat && k >= '1' && k <= '3') act(`perk:${Number(k) - 1}`); return; }
     if (k === 'Escape') { if (ghost) ghost = null; else if (!bigmap.hidden) { bigmap.hidden = true; lock(); } else if (!q('#c-missions').hidden) { q('#c-missions').hidden = true; lock(); } else if (!panel.hidden) { panel.hidden = true; shopOpen = false; lock(); } else if (paused) act('resume'); else pause(); return; }
     if (tut && k === 'Enter' && STEPS[tut.s.i]?.info && !paused) { act('tutnext'); return; }
@@ -515,6 +540,9 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     for (const stick of [sticks.move, sticks.aim]) { stick.id = -1; stick.x = 0; stick.y = 0; }
     if (world && !world.over && !paused && world.factions[0].pending === 0 && document.hidden) pause();
   };
+  chatBox().addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); closeChat(true); } else if (e.key === 'Escape') { e.preventDefault(); closeChat(false); } });
+  chatBox().addEventListener('keyup', e => e.stopPropagation());
+  chatForm().addEventListener('submit', e => { e.preventDefault(); closeChat(true); });
   window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKeyUp); window.addEventListener('resize', onResize); window.addEventListener('blur', onBlur); document.addEventListener('visibilitychange', onBlur);
   // Click fires for mouse, touch and keyboard activation; pointerdown excluded keyboard users.
   root.addEventListener('click', e => {

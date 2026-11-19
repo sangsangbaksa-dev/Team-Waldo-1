@@ -2,6 +2,7 @@
 import type { PvpSession } from '../net/lobby';
 import type { Channel, NetMsg } from '../net/types';
 import { WEAPONS, type WeaponId } from './defs';
+import { cleanChat } from './chat';
 
 export const TARGET_KILLS = 5, TIME_LIMIT = 600;
 const SILENT_MS = 8000, NEVER_MS = 25000;
@@ -18,6 +19,8 @@ export interface DuelHooks {
   onArmy(m: NetMsg): void;
   /** 상대 본부가 무너졌습니다(내 승리) */
   onHqDown(): void;
+  /** 상대의 채팅 */
+  onChat(text: string): void;
   onGone(reason: 'bye' | 'silent' | 'never'): void;
 }
 
@@ -61,6 +64,7 @@ export class CityDuel {
     else if (m.t === 'sh') { const s = parseShot(m); if (s) this.hooks.onShot(s); }
     else if (m.t === 'a') this.hooks.onArmy(m);
     else if (m.t === 'hq') this.hooks.onHqDown();
+    else if (m.t === 'c') { const text = cleanChat(m.text); if (text) this.hooks.onChat(text); }
     else if (m.t === 'dead') { if (num(m.n, 0, 1000)) this.hooks.onDeaths(m.n); }
     else if (m.t === 'bye') this.gone('bye');
   }
@@ -73,6 +77,7 @@ export class CityDuel {
   sendShot(s: DuelShot): void { if (this.started) this.ch.send({ t: 'sh', x: Math.round(s.x), y: Math.round(s.y), a: Math.round(s.a * 1000) / 1000, w: s.w, m: Math.round(s.m * 100) / 100 }); }
   sendArmy(m: NetMsg): void { if (this.started) this.ch.send(m); }
   sendHqDown(): void { this.ch.send({ t: 'hq' }); }
+  sendChat(text: string): void { const t = cleanChat(text); if (this.started && t) this.ch.send({ t: 'c', text: t }); }
   sendDeaths(n: number): void { this.ch.send({ t: 'dead', n }); }
   bye(): void { this.ch.send({ t: 'bye' }); }
   dispose(): void { this.dead = true; window.clearInterval(this.timer); this.ch.close(); }

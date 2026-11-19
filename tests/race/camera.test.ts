@@ -1,14 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { BOOST_FOV, carEuler, chaseFov, chaseRoll, chaseShake, chevronFacing, stepChaseAnchor } from '../../src/race/camera';
+import { BOOST_FOV, BOOST_LAG, carEuler, chaseFov, chaseRoll, chaseRumble, chaseShake, chevronFacing, fovRate, stepChaseAnchor } from '../../src/race/camera';
 
 describe('SPEED RUSH camera', () => {
-  it('does not shake the view for nitro and only widens FOV a little', () => {
-    expect(chaseShake(1, true, 0)).toBeLessThanOrEqual(0.008);
-    expect(chaseShake(1, true, 0)).toBe(chaseShake(1, false, 0));
+  it('keeps positional shake tiny while nitro and speed still widen the FOV a lot', () => {
+    expect(chaseShake(1, true, 0)).toBeLessThanOrEqual(0.03);
+    expect(chaseShake(0, true, 0)).toBeLessThan(0.02); // 정지해서 니트로를 눌러도 화면이 떨리지 않음
     expect(chaseFov(1, true, 0) - chaseFov(1, false, 0)).toBe(BOOST_FOV);
-    expect(BOOST_FOV).toBeLessThanOrEqual(4);
-    expect(BOOST_FOV).toBeGreaterThan(0);
+    expect(BOOST_FOV).toBeGreaterThanOrEqual(8);
+    expect(chaseFov(1, false, 0)).toBeGreaterThan(chaseFov(0.4, false, 0) + 10);
+    expect(chaseFov(0, false, 1) - chaseFov(0, false, 0)).toBeGreaterThan(5);
+  });
+  it('rumbles only a few thousandths of a radian and not at all when parked', () => {
+    expect(chaseRumble(0, false, 0)).toBe(0);
+    expect(chaseRumble(1, true, 0)).toBeGreaterThan(chaseRumble(1, false, 0));
+    expect(chaseRumble(1, true, 1)).toBeLessThan(0.012);
+    expect(fovRate(80, 70)).toBeGreaterThan(fovRate(70, 80)); // 확 터지고 천천히 풀림
+  });
+  it('lags the chase camera behind a nitro car without overshooting', () => {
+    const fast = { x: 0, y: 2, z: 0, ready: false }, slow = { x: 0, y: 2, z: 0, ready: false };
+    for (let i = 0; i < 120; i++) { const target = (i + 1) * (100 / 60); stepChaseAnchor(fast, target, 2, 0, 1 / 60, 1); stepChaseAnchor(slow, target, 2, 0, 1 / 60, 1, BOOST_LAG); expect(slow.x).toBeLessThanOrEqual(target + 1e-6); }
+    expect(slow.x).toBeLessThan(fast.x - 0.8);
   });
   it('rolls the chase camera gently and mirrors left and right', () => {
     expect(chaseRoll(1, 0)).toBeCloseTo(-0.012);

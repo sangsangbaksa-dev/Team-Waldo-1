@@ -1,13 +1,16 @@
 // SPEED RUSH — 추적 카메라와 차체 자세의 순수 계산. THREE 에 의존하지 않습니다.
 // 흔들림은 따라가기 위치에 섞지 않습니다. 섞으면 고속에서 다음 프레임의 보간이 흔들림을 되먹여 화면이 떨립니다.
+// 속도감은 시야각 확장, 니트로 킥(순간 FOV), 카메라 지연(차가 멀어졌다 따라붙음), 미세한 회전 떨림, 속도선으로 냅니다.
 
 export interface ChaseAnchor { x: number; y: number; z: number; ready: boolean }
 
-/** 니트로는 위치를 흔들지 않습니다. 속도감은 아주 작은 오프셋과 시야각·속도선으로만 냅니다. */
-export const NITRO_SHAKE = 0;
+/** 니트로 중 위치 흔들림(m). 한 프레임용 오프셋이라 되먹임이 없고, 아주 작게 둡니다. */
+export const NITRO_SHAKE = 0.012;
 /** 최고속에서 니트로가 더하는 시야각(도). */
-export const BOOST_FOV = 3;
-const SPEED_SHAKE = 0.008;
+export const BOOST_FOV = 9;
+/** 니트로가 켜진 동안 카메라가 차를 따라붙는 속도 배율(1 미만이면 차가 앞으로 쏠려 나갑니다). */
+export const BOOST_LAG = 0.75;
+const SPEED_SHAKE = 0.012;
 const IMPACT_SHAKE = 0.5;
 /** 코너에서 카메라를 기울이는 양. 크면 왼쪽 코너가 고개 숙이듯 보입니다. */
 export const CHASE_YAW_LEAN = 0.012;
@@ -18,9 +21,17 @@ export function chaseShake(speedFrac: number, boosting: boolean, kick: number): 
   return speedFrac * speedFrac * SPEED_SHAKE + (boosting ? NITRO_SHAKE : 0) + Math.max(0, kick) * IMPACT_SHAKE;
 }
 
-/** 추적 시야각(도). 니트로는 약 3도만 넓힙니다. */
+/** 추적 시야각(도). 속도에 따라 최대 +22도, 니트로는 +9도, punch 는 순간적인 킥입니다. */
 export function chaseFov(speedFrac: number, boosting: boolean, punch: number): number {
-  return 60 + speedFrac * speedFrac * 18 + (boosting ? BOOST_FOV : 0) + punch * 8;
+  return 60 + speedFrac * speedFrac * 22 + (boosting ? BOOST_FOV : 0) + punch * 9;
+}
+
+/** FOV 보간 속도(1/s). 넓어질 때는 확 터지고, 줄어들 때는 천천히 풀립니다. */
+export const fovRate = (target: number, current: number): number => (target > current ? 9 : 3.2);
+
+/** 카메라 회전 떨림(라디안, 한 프레임용). 엔진 진동처럼 속도와 니트로에서 커지고 가만히 서면 0입니다. */
+export function chaseRumble(speedFrac: number, boosting: boolean, grind: number): number {
+  return speedFrac * speedFrac * 0.0016 + (boosting ? 0.0028 * Math.max(0.3, speedFrac) : 0) + Math.max(0, grind) * 0.004;
 }
 
 /** 카메라 롤(라디안). 오른쪽 회전(yawRate>0)이 음수입니다. */
@@ -32,9 +43,9 @@ export function chaseRoll(yawRate: number, slip: number): number {
  * 따라가기 위치만 지수 보간합니다. 반환 위치에 흔들림을 더해 다시 넣으면 고속에서 떨립니다.
  * 직선으로 멀어지는 목표를 지나치지 않습니다.
  */
-export function stepChaseAnchor(anchor: ChaseAnchor, x: number, y: number, z: number, dt: number, speedFrac: number): void {
+export function stepChaseAnchor(anchor: ChaseAnchor, x: number, y: number, z: number, dt: number, speedFrac: number, lag = 1): void {
   if (!anchor.ready) { anchor.x = x; anchor.y = y; anchor.z = z; anchor.ready = true; return; }
-  const k = 1 - Math.exp(-Math.max(0, dt) * (16 + Math.max(0, speedFrac) * 10));
+  const k = 1 - Math.exp(-Math.max(0, dt) * (16 + Math.max(0, speedFrac) * 10) * Math.max(0.1, Math.min(1, lag)));
   anchor.x += (x - anchor.x) * k; anchor.y += (y - anchor.y) * k; anchor.z += (z - anchor.z) * k;
 }
 

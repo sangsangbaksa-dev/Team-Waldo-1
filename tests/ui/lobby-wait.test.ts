@@ -93,3 +93,21 @@ describe('로비 채팅', () => {
     ch.close(); expect(dock.chatLayerForTest()).toBeNull();
   });
 });
+
+describe('자체 게임 채팅이 있는 게임', () => {
+  beforeEach(() => { vi.resetModules(); });
+  it('inGameChat: false 이면 게임 중 공통 채팅 창을 띄우지 않는다', async () => {
+    const { openLobby } = await import('../../src/net/lobby');
+    const dock = await import('../../src/net/chat-dock');
+    let session: { open(h: () => void): { close(): void } } | null = null;
+    be.backend.open = vi.fn(() => ({ ready: Promise.resolve(), send: vi.fn(), close: vi.fn() }));
+    openLobby({ game: 'shooter', maxPlayers: 4, inGameChat: false, onRoom: s => { session = s; }, onClose: () => undefined });
+    await vi.advanceTimersByTimeAsync(10);
+    click('newroom'); document.querySelector<HTMLFormElement>('form[data-form="create"]')!.requestSubmit(); await vi.advanceTimersByTimeAsync(1100);
+    expect(dock.chatLayerForTest()?.tabs[0]?.key).toBe('r:r1');
+    info = { room: { ...room, max_players: 4, status: 'playing' }, members: [{ user_id: 'u1', nickname: 'Alpha', ready: true }, { user_id: 'u2', nickname: 'Beta', ready: true }, { user_id: 'u3', nickname: 'Gamma', ready: true }] };
+    await vi.advanceTimersByTimeAsync(1100);
+    session!.open(() => undefined);
+    expect(dock.chatLayerForTest()).toBeNull();
+  });
+});

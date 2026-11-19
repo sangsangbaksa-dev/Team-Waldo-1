@@ -96,4 +96,3 @@ export function makeSkyDome(): { mesh: THREE.Mesh; update: (colors: ReturnType<t
   const start = typeof performance !== 'undefined' ? performance.now() : 0;
   return { mesh, update: (c) => { uniforms.top.value.copy(c.top); uniforms.horizon.value.copy(c.horizon); uniforms.sunColor.value.copy(c.sun); uniforms.sunDir.value.copy(c.sunDir); uniforms.moonDir.value.copy(c.moonDir); uniforms.night.value = c.night; uniforms.stars.value = c.stars; uniforms.time.value = typeof performance !== 'undefined' ? (performance.now() - start) / 1000 : 0; } };
 }
-

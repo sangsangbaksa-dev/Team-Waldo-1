@@ -60,7 +60,8 @@ export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceR
     root.querySelectorAll<HTMLElement>('[data-pick]').forEach(b => { const [k, v] = b.dataset.pick!.split(':'); const on = String(cur[k as keyof RaceSetup]) === v; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
     note('map').textContent = map.blurb; note('level').textContent = lv.blurb; note('car').textContent = `${car.name} · ${car.role} — ${car.blurb}`;
     const lap = records.bestLap[map.id], race = records.bestRace[raceRaceKey(map.id, cur.laps)];
-    note('mode').textContent = cur.mode === 'trial' ? `혼자 달리며 내 최고 주행(고스트)과 겨룹니다.${readGhost(map.id, cur.laps, car.id) ? ` 저장된 고스트 ${fmtTime(readGhost(map.id, cur.laps, car.id)!.time)}` : ' 아직 고스트가 없습니다 — 첫 주행이 고스트가 됩니다.'}` : '라이벌 3대와 순위를 겨룹니다.';
+    const ghost = cur.mode === 'trial' ? readGhost(map.id, cur.laps, car.id) : null;
+    note('mode').textContent = cur.mode === 'trial' ? `혼자 달리며 내 최고 주행(고스트)과 겨룹니다.${ghost ? ` 저장된 고스트 ${fmtTime(ghost.time)}` : ' 아직 고스트가 없습니다 — 첫 주행이 고스트가 됩니다.'}` : '라이벌 3대와 순위를 겨룹니다.';
     root.querySelector<HTMLElement>('[data-seg="level"]')?.closest('section')?.toggleAttribute('hidden', cur.mode === 'trial');
     note('record').textContent = lap !== undefined || race !== undefined ? `${map.name} 최고 랩 ${lap !== undefined ? fmtTime(lap) : '--'} · ${cur.laps}랩 최고 ${race !== undefined ? fmtTime(race) : '--'}` : '기록 없음';
     note('summary').textContent = `${map.name} · ${cur.laps}랩 · ${cur.mode === 'trial' ? '타임어택' : lv.name} · ${car.name}`;
@@ -68,9 +69,31 @@ export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceR
   root.addEventListener('click', e => {
     const t = e.target as HTMLElement, pick = t.closest<HTMLElement>('[data-pick]'), act = t.closest<HTMLElement>('[data-setup]');
     const buy = t.closest<HTMLElement>('[data-buy]'), skin = t.closest<HTMLElement>('[data-buyskin]');
-    if (skin) { const next = buySkin(garage.value, skin.dataset.buyskin!); if (next) { garage.value = next; writeGarage(next); cur = sanitizeSetup({ ...cur, skin: skin.dataset.buyskin }); paint(); } return; }
-    if (buy) { const next = buyUpgrade(garage.value, cur.car, buy.dataset.buy as (typeof STAT_KEYS)[number]); if (next) { garage.value = next; writeGarage(next); paintGarage(); } return; }
-    if (pick) { const [k, v] = pick.dataset.pick!.split(':'); cur = sanitizeSetup({ ...cur, [k]: k === 'laps' || k === 'level' ? Number(v) : v }); paint(); }
+    const focusSkin = (): void => root.querySelector<HTMLButtonElement>(`[data-pick="skin:${cur.skin}"]`)?.focus();
+    if (skin) {
+      const next = buySkin(garage.value, skin.dataset.buyskin!);
+      if (next) {
+        garage.value = next; writeGarage(next);
+        cur = sanitizeSetup({ ...cur, skin: skin.dataset.buyskin });
+        paint(); focusSkin();
+      }
+      return;
+    }
+    if (buy) {
+      const next = buyUpgrade(garage.value, cur.car, buy.dataset.buy as (typeof STAT_KEYS)[number]);
+      if (next) {
+        garage.value = next; writeGarage(next); paint();
+        const nextButton = root.querySelector<HTMLButtonElement>(`[data-buy="${buy.dataset.buy}"]:not(:disabled)`);
+        (nextButton ?? root.querySelector<HTMLButtonElement>('[data-setup="start"]'))?.focus();
+      }
+      return;
+    }
+    if (pick) {
+      const [k, v] = pick.dataset.pick!.split(':');
+      cur = sanitizeSetup({ ...cur, [k]: k === 'laps' || k === 'level' ? Number(v) : v });
+      paint();
+      if (k === 'skin') focusSkin();
+    }
     else if (act?.dataset.setup === 'start') cb.onStart(cur);
     else if (act?.dataset.setup === 'pvp') cb.onPvp?.(cur);
     else if (act?.dataset.setup === 'exit') cb.onExit();

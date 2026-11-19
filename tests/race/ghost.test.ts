@@ -19,6 +19,25 @@ describe('고스트', () => {
   it('진행 거리에서 시각을, 내 기록과의 차이를 구한다', () => {
     const g = line(); expect(ghostTimeAt(g, 20)).toBeCloseTo(1, 1); expect(ghostDelta(g, 20, 1.5)).toBeCloseTo(0.5, 1); expect(ghostTimeAt(g, 1e6)).toBeNull();
   });
+  it('고스트는 마지막 부분 표본을 재생하고 결승선을 통과하면 사라진다', () => {
+    const recorder = new GhostRecorder();
+    recorder.tick(0, { x: 0, z: 0, h: 0, total: 0 });
+    recorder.tick(0.1, { x: 10, z: 0, h: 0, total: 10 });
+    const ghost = sanitizeGhost(recorder.finish(0.15, 1, { x: 15, z: 0, h: 0, total: 15 }))!;
+    expect(ghostAt(ghost, 0.125)?.x).toBeCloseTo(12.5);
+    expect(ghostAt(ghost, 0.15)?.x).toBe(15);
+    expect(ghostAt(ghost, 0.16)).toBeNull();
+    expect(ghostTimeAt(ghost, 15)).toBeCloseTo(0.15);
+  });
+  it('두 번 지나간 진행 지점은 처음 도착한 시각을 사용한다', () => {
+    const recorder = new GhostRecorder();
+    [0, 10, 7, 6, 8, 12].forEach((total, i) =>
+      recorder.tick(i * GHOST_DT, { x: total, z: 0, h: 0, total }),
+    );
+    const ghost = recorder.finish(0.5, 1);
+    expect(ghostTimeAt(ghost, 8)).toBeCloseTo(0.08);
+    expect(ghostTimeAt(ghost, 11)).toBeCloseTo(0.475);
+  });
   it('깨진 저장값은 버린다', () => {
     expect(sanitizeGhost(null)).toBeNull(); expect(sanitizeGhost({ time: 5, laps: 1, data: [1, 2, 3] })).toBeNull(); expect(sanitizeGhost(line())).not.toBeNull();
   });

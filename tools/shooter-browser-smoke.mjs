@@ -50,14 +50,14 @@ try {
   const a = await player('Alpha'), b = await player('Beta');
   await a.click('[data-act="quick"]'); await a.waitForSelector('.pvp-wait');
   await b.click('[data-act="quick"]');
-  for (const p of [a, b]) await p.waitForFunction(() => window.__zz?.phase === 'countdown' || window.__zz?.phase === 'play', null, { timeout: 60000 });
+  for (const p of [a, b]) await p.waitForFunction(() => window.__zz?.phase === 'countdown' || window.__zz?.phase === 'play', null, { timeout: 60000, polling: 500 });
   for (const p of [a, b]) await p.evaluate(() => window.__zz.go());
-  for (const p of [a, b]) await p.waitForFunction(() => window.__zz.phase === 'play');
+  for (const p of [a, b]) await p.waitForFunction(() => window.__zz.phase === 'play', null, { polling: 500 });
   // B 를 A 의 정면 8m 앞으로 옮겨 놓고, A 가 쏩니다(맞았는지는 B 쪽 판정이 결정).
   const pa = await a.evaluate(() => { const m = window.__zz.me(); return { x: m.x, z: m.z, yaw: m.yaw }; });
   await b.evaluate(({ x, z, yaw }) => { const m = window.__zz.me(); m.x = x + Math.cos(yaw) * 8; m.z = z + Math.sin(yaw) * 8; }, pa);
   // 소프트웨어 렌더링에서는 프레임이 느려 상대 자세 보간이 늦을 수 있어, 가까워질 때까지 기다립니다.
-  await a.waitForFunction(() => { const g = window.__zz.match, me = window.__zz.me(), o = g.players.find(p => p.id !== me.id); return Math.hypot(o.x - me.x, o.z - me.z) < 25; }, null, { timeout: 30000 }).catch(() => undefined);
+  await a.waitForFunction(() => { const g = window.__zz.match, me = window.__zz.me(), o = g.players.find(p => p.id !== me.id); return Math.hypot(o.x - me.x, o.z - me.z) < 25; }, null, { timeout: 30000, polling: 500 }).catch(() => undefined);
   const seen = await a.evaluate(() => { const g = window.__zz.match, me = window.__zz.me(), o = g.players.find(p => p.id !== me.id); return { d: Math.hypot(o.x - me.x, o.z - me.z) }; });
   assert.ok(seen.d > 2 && seen.d < 25, 'opponent pose arrived: ' + seen.d);
   await a.screenshot({ path: 'browser-artifacts/shooter-pvp-a.png' });
@@ -70,8 +70,8 @@ try {
     try { await p.waitForSelector('.sz-card h2:text-matches("승리|패배")', { timeout: Number(process.env.SMOKE_WAIT || 120000) }); }
     catch (e) { for (const [n2, q] of [['a', a], ['b', b]]) console.log('state', n2, JSON.stringify(await q.evaluate(() => { const m = window.__zz.me(); return { phase: window.__zz.phase, t: window.__zz.match.t, me: [m.name, m.x, m.z, m.yaw, m.hp, m.guns[m.cur]], players: window.__zz.match.players.map(x => [x.name, Math.round(x.hp), x.x.toFixed(1), x.z.toFixed(1), x.alive]) }; }))); throw e; }
   }
-  await a.waitForFunction(() => /레이팅 [+-]\d+/.test(document.body.textContent || ''), null, { timeout: 40000 });
-  await b.waitForFunction(() => /레이팅 [+-]\d+/.test(document.body.textContent || ''), null, { timeout: 40000 });
+  await a.waitForFunction(() => /레이팅 [+-]\d+/.test(document.body.textContent || ''), null, { timeout: 40000, polling: 500 });
+  await b.waitForFunction(() => /레이팅 [+-]\d+/.test(document.body.textContent || ''), null, { timeout: 40000, polling: 500 });
   for (const p of [a, b]) labels.push(await p.locator('.sz-card h2').innerText());
   await a.screenshot({ path: 'browser-artifacts/shooter-pvp-result-a.png' });
   const why = await Promise.all([a, b].map(p => p.locator('.sz-card').innerText())); console.log(why.map(t => t.replace(/\n+/g, ' | ')).join('\n'));

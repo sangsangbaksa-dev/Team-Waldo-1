@@ -27,13 +27,13 @@ try {
 
   const player = async name => {
     const page = await open(name);
-    await page.click('[data-mode="room"]'); await page.click('[data-act="start"]'); await page.waitForSelector('.pvp-card');
+    await page.click('[data-mode="room"]'); await page.click('[data-fill="0"]'); await page.click('[data-act="start"]'); await page.waitForSelector('.pvp-card');
     await page.click('[data-act="mode:up"]');
     await page.fill('input[name="nick"]', name); await page.fill('input[name="email"]', `${name}@example.dev`); await page.fill('input[name="password"]', 'secret12');
     await page.click('button[type="submit"]'); await page.waitForSelector('[data-act="newroom"]');
     return page;
   };
-  const [a, b, c] = [await player('Alpha'), await player('Beta'), await player('Gamma')];
+  const [a, b, c] = [await player("Alpha"), await player("Beta"), await player("Gamma")];
   await a.click('[data-act="newroom"]'); await a.waitForSelector('select[name="max"]'); await a.selectOption('select[name="max"]', '3'); await a.click('button[type="submit"]');
   await a.waitForSelector("#pvp-code"); const code = (await a.locator('#pvp-code').innerText()).trim();
   await b.waitForSelector('[data-act^="enter:"]'); await b.click('[data-act^="enter:"]'); await b.waitForSelector('.pvp-members');

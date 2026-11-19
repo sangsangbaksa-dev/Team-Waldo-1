@@ -12,6 +12,7 @@ import { updateActors, updateBullets, updateVehicles, updatePopulation } from '.
 import { thinkFaction, type AiState } from './ai';
 import { INTERIORS, INTERIOR_SPEED, nearCounter, nearDoor, resolveInterior, type InteriorLayout } from './interior';
 import { purchase, type ShopResult } from './shop';
+import { cityHour, incomeMood, phaseOf, weatherAt, type DayPhase, type Weather } from './clock';
 import { applyCareer, type CareerLevels } from './career';
 
 export const SQUAD_MAX = 5;
@@ -68,7 +69,7 @@ export class World {
   inside: { biz: number; x: number; y: number; ang: number; walk: number } | null = null;
   /** 결투 중 내 보스가 쏜 탄을 상대에게 알립니다. */
   onShot: ((x: number, y: number, ang: number, w: WeaponId, mul: number) => void) | null = null;
-  /** 진행 중인 도시 사건과 다음 사건까지의 대기(초) */ event: CityEvent | null = null; eventT = 20; eventsDone = 0; /** 연속 성공 횟수(보상 배율) */ eventStreak = 0; /** 이미 받은 부업 이정표 수 */ sideClaimed = 0; lastEvent = '';
+  /** 진행 중인 도시 사건과 다음 사건까지의 대기(초) */ event: CityEvent | null = null; eventT = 20; eventsDone = 0; /** 연속 성공 횟수(보상 배율) */ eventStreak = 0; /** 도시 시각(0~24)·시간대·날씨: everySecond 에서 갱신 */ hour = 8; phase: DayPhase = 'day'; weather: Weather = 'rain'; /** 이미 받은 부업 이정표 수 */ sideClaimed = 0; lastEvent = '';
   planes: { x: number; y: number; vx: number; vy: number; tx: number; ty: number; dropped: boolean }[] = [];
 
   constructor(opts: WorldOptions) {
@@ -672,9 +673,11 @@ export class World {
   aiCap(): number { return DIFFICULTY[this.opts.difficulty].cap + (this.endgame ? 12 : 0); }
   everySecond(): void {
     const diff = DIFFICULTY[this.opts.difficulty];
+    this.hour = cityHour(this.time); this.phase = phaseOf(this.hour); this.weather = weatherAt(this.opts.seed, this.time);
+    const mood = !this.opts.duel && !this.opts.tutorial;
     for (const f of this.factions) {
       if (!f.alive) continue; let inc = 0, cr = 0;
-      for (const z of this.businesses) if (z.owner === f.id) { inc += BIZ[z.kind].income * BIZ_LEVEL_MULT[z.level]; cr += BIZ[z.kind].crystal * z.level; }
+      for (const z of this.businesses) if (z.owner === f.id) { inc += BIZ[z.kind].income * BIZ_LEVEL_MULT[z.level] * (mood ? incomeMood(z.kind, this.phase, this.weather) : 1); cr += BIZ[z.kind].crystal * z.level; }
       inc *= f.mods.income * (1 + 0.12 * f.up.eco) * (f.player ? 1 : diff.income); inc += 2;
       f.cash += inc; f.earned += inc; f.crystal += cr * (f.player ? 1 : diff.income); f.income = inc;
     }

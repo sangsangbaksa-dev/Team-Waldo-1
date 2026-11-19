@@ -14,7 +14,7 @@ export interface Tree { x: number; z: number; s: number; pine: boolean }
 export interface Rock { x: number; z: number; sx: number; sy: number; sz: number; ry: number }
 export type PropKind = 'car' | 'jeep' | 'truck' | 'van' | 'bus' | 'container' | 'barrel' | 'hay' | 'pole' | 'tank' | 'tent' | 'sandbag' | 'dumpster' | 'canopy' | 'pump' | 'fence' | 'bush' | 'sign' | 'barrier' | 'ruin' | 'stump' | 'log' | 'stonewall' | 'rubble' | 'pallet';
 /** 눈에 보이는 소품. w·d·h 는 ry=0 일 때의 가로(x)·세로(z)·높이이고, 충돌 상자는 world.ts 가 따로 만듭니다. */
-export interface Prop { kind: PropKind; x: number; z: number; ry: number; /** 보기만 하는 작은 기울기 */ jit: number; w: number; d: number; h: number; c: number; /** 컨테이너 층, 차량·울타리 변형 */ v: number; wreck: boolean }
+export interface Prop { kind: PropKind; x: number; z: number; ry: number; /** 보기만 하는 작은 기울기 */ jit: number; w: number; d: number; h: number; c: number; /** 컨테이너 층, 차량·울타리 변형 */ v: number; wreck: boolean; /** 솔로 배틀로열에서 이 차량의 충돌 상자 번호(운전하면 옮겨 다닙니다) */ box?: number }
 export type Theme = 'village' | 'urban' | 'industrial' | 'farm' | 'military';
 export interface Compound { x: number; z: number; r: number; theme: Theme; name: string }
 export interface Site { x: number; z: number; r: number }
@@ -33,6 +33,13 @@ const cellOf = (v: number): number => Math.floor(v / CELL);
 export function addBox(map: GameMap, b: Box): void {
   const i = map.boxes.length; map.boxes.push(b);
   for (let cx = cellOf(b.x0); cx <= cellOf(b.x1); cx++) for (let cz = cellOf(b.z0); cz <= cellOf(b.z1); cz++) { const k = key(cx, cz); const l = map.grid.get(k); if (l) l.push(i); else map.grid.set(k, [i]); }
+}
+
+/** 이미 만든 상자를 옮기거나 켜고 끕니다(운전하는 차량). 옛 칸에 남은 번호는 좌표 비교에서 걸러져 해가 없습니다. */
+export function moveBox(map: GameMap, i: number, b: Partial<Box>): void {
+  const o = map.boxes[i]; Object.assign(o, b);
+  if (o.y0 > 100) return;
+  for (let cx = cellOf(o.x0); cx <= cellOf(o.x1); cx++) for (let cz = cellOf(o.z0); cz <= cellOf(o.z1); cz++) { const k = key(cx, cz), l = map.grid.get(k); if (!l) map.grid.set(k, [i]); else if (!l.includes(i)) l.push(i); }
 }
 
 const WALL_T = 0.35;
@@ -148,7 +155,7 @@ function addProp(map: GameMap, p: Omit<Prop, 'jit' | 'wreck' | 'v' | 'c'> & Part
   if (!freeRect(map, full.x - hx, full.z - hz, full.x + hx, full.z + hz, pad)) return null;
   if (solid && blocksDoor(map, full.x - hx, full.z - hz, full.x + hx, full.z + hz)) return null;
   map.props.push(full);
-  if (solid) { const y0 = full.kind === 'container' ? full.v * 2.6 : 0; addBox(map, { x0: full.x - hx, x1: full.x + hx, z0: full.z - hz, z1: full.z + hz, y0, y1: y0 + (solid.h ?? full.h), kind: solid.kind, tex: 0 }); }
+  if (solid) { full.box = map.boxes.length; const y0 = full.kind === 'container' ? full.v * 2.6 : 0; addBox(map, { x0: full.x - hx, x1: full.x + hx, z0: full.z - hz, z1: full.z + hz, y0, y1: y0 + (solid.h ?? full.h), kind: solid.kind, tex: 0 }); }
   return full;
 }
 function vehicleAt(map: GameMap, rng: () => number, x: number, z: number, ryHint?: number): boolean {

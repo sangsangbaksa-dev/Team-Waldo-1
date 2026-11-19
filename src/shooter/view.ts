@@ -2,14 +2,14 @@
 import * as THREE from 'three';
 import { makePost, type PostFx } from '../postfx';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { AIR, WEAPONS, makeRng } from './config';
+import { AIR, RED, WEAPONS, makeRng } from './config';
 import { bake, instantiate } from '../city/models';
 import { eyeOf, type Match, type MatchEvent, type Player } from './sim';
 import type { ShooterAssets } from './assets';
 import type { CharacterRig } from '../shared/character';
 import { SOLDIER_KINDS } from './assets';
 import type { Box, Loot } from './world';
-import { buildProps, buildRoofs, makeDropCrate, makePlane, partMesh } from './props';
+import { buildProps, buildRoofs, makeDropCrate, makePlane, makeVehicleMesh, partMesh } from './props';
 import type { PartId } from './config';
 import { TerrainView, tintGround } from './terrainview';
 import { WeatherFx } from './weatherfx';
@@ -118,7 +118,7 @@ export class ShooterView {
     const floorTex = floorTexture(), floors: THREE.BufferGeometry[] = [];
     for (const b of map.buildings) { const f = new THREE.PlaneGeometry(b.w, b.d); f.rotateX(-Math.PI / 2); f.translate(b.x, 0.05, b.z); const uv = f.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * b.w / 3, uv.getY(i) * b.d / 3); floors.push(f); }
     if (floors.length) { const m = new THREE.Mesh(mergeGeometries(floors, false), new THREE.MeshLambertMaterial({ map: floorTex })); m.receiveShadow = true; this.scene.add(m); }
-    this.scene.add(buildRoofs(map, rngOf(this.match.seed + 3)), buildProps(map));
+    this.scene.add(buildRoofs(map, rngOf(this.match.seed + 3)), buildProps(map, new Set(this.match.vehicles.map(v => v.box))));
     if (crates.length) {
       const ct = crateTexture(), geos = crates.map(b => worldBox(b, 1.2)); const m = new THREE.Mesh(mergeGeometries(geos, false), new THREE.MeshLambertMaterial({ map: ct })); m.castShadow = true; m.receiveShadow = true; this.scene.add(m);
     }
@@ -314,6 +314,9 @@ export class ShooterView {
         if (isMe) { this.shake = Math.min(1, this.shake + WEAPONS[e.weapon].recoil * 9); this.fovPunch = Math.min(1, this.fovPunch + WEAPONS[e.weapon].recoil * 7); this.flashKick = 1; }
       } else if (e.t === 'nade') {
         if (e.stage === 'boom') { this.boom(e.x, e.y, e.z); const dd = Math.hypot(e.x - me.x, e.z - me.z); if (dd < 25) this.shake = Math.min(1, this.shake + (1 - dd / 25) * 0.9); }
+      } else if (e.t === 'veh') {
+        if (e.stage === 'crash') { const dd = Math.hypot(e.x - me.x, e.z - me.z); this.spark(e.x, 1, e.z, 12, [1, 0.8, 0.45], 4); if (dd < 30) this.shake = Math.min(1, this.shake + (1 - dd / 30) * 0.5); }
+        else if (e.stage === 'boom') { for (let k = 0; k < 6; k++) this.puff(e.x + (Math.random() - 0.5) * 3, 1.5 + Math.random() * 2, e.z + (Math.random() - 0.5) * 3, 0x2a2a2a, 3, 3.4, 3, 3.2, 0.65); }
       } else if (e.t === 'hit') {
         if (e.victim === me.id && !e.wall) this.shake = Math.min(1, this.shake + 0.35 + Math.min(0.5, e.dmg / 120));
         if (e.wall || e.victim < 0) this.spark(e.x, e.y, e.z, 7, [1, 0.8, 0.45], 3.5);
@@ -331,7 +334,66 @@ export class ShooterView {
     for (const [id, m] of this.nadeMeshes) if (!live.has(id)) { this.scene.remove(m); m.geometry.dispose(); (m.material as THREE.Material).dispose(); this.nadeMeshes.delete(id); }
     for (let i = this.booms.length - 1; i >= 0; i--) { const b = this.booms[i]; b.t += dt; b.s.scale.setScalar(2 + b.t * 16); (b.s.material as THREE.SpriteMaterial).opacity = Math.max(0, 1 - b.t * 3); if (b.t > 0.35) { this.scene.remove(b.s); (b.s.material as THREE.Material).dispose(); this.booms.splice(i, 1); } }
   }
+  // ---------- 차량 · 폭격 ----------
+  private vehNodes = new Map<number, { g: THREE.Group; wreck: boolean; puffT: number; fire: THREE.Sprite | null }>();
+  private redNodes = new Map<number, THREE.Group>(); private shellNodes = new Map<number, THREE.Group>();
+  private puffs: Array<{ s: THREE.Sprite; t: number; life: number; vy: number; grow: number; a: number }> = [];
+  private puff(x: number, y: number, z: number, color: number, size: number, life: number, vy: number, grow: number, a = 0.5, add = false): void {
+    if (this.puffs.length > 140) return;
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, color, transparent: true, opacity: a, depthWrite: false, blending: add ? THREE.AdditiveBlending : THREE.NormalBlending, fog: !add }));
+    s.position.set(x, y, z); s.scale.setScalar(size); this.scene.add(s); this.puffs.push({ s, t: 0, life, vy, grow, a });
+  }
+  private freeNode(o: THREE.Object3D): void { this.scene.remove(o); o.traverse(c => { const m = c as THREE.Mesh; m.geometry?.dispose(); const mat = m.material as THREE.Material | THREE.Material[] | undefined; if (Array.isArray(mat)) mat.forEach(x => x.dispose()); else mat?.dispose(); }); }
+  private syncVehicles(dt: number, vx: number, vz: number): void {
+    for (const v of this.match.vehicles) {
+      let n = this.vehNodes.get(v.id);
+      if (!n || n.wreck !== v.wreck) {
+        if (n) { this.freeNode(n.g); if (n.fire) { this.scene.remove(n.fire); n.fire.material.dispose(); } }
+        const g = makeVehicleMesh({ kind: v.kind, w: v.w, d: v.d, h: v.h, c: v.c, v: v.v, wreck: v.wreck }); this.scene.add(g);
+        let fire: THREE.Sprite | null = null; if (v.wreck) { fire = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, color: 0xff8a3a, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })); fire.scale.setScalar(3); this.scene.add(fire); g.rotation.z = 0.04; }
+        n = { g, wreck: v.wreck, puffT: 0, fire }; this.vehNodes.set(v.id, n);
+      }
+      const dist = Math.abs(v.x - vx) + Math.abs(v.z - vz); n.g.visible = dist < 420; if (n.fire) n.fire.visible = n.g.visible; if (!n.g.visible) continue;
+      n.g.position.set(v.x, 0, v.z); n.g.rotation.y = -v.yaw;
+      if (!v.wreck) { // 달릴 때 차체가 살짝 기웃: 가속하면 뒤로, 핸들 꺾으면 바깥으로 기웁니다
+        const sp = Math.abs(v.speed), top = 36, pitch = -Math.sign(v.speed) * Math.min(1, sp / top) * 0.012; n.g.rotation.z += (pitch - n.g.rotation.z) * Math.min(1, dt * 6);
+      }
+      n.puffT -= dt;
+      if (n.puffT <= 0 && dist < 160) {
+        const sp = Math.abs(v.speed);
+        if (sp > 9 && !v.wreck) { n.puffT = 0.07; this.puff(v.x - Math.cos(v.yaw) * v.w * 0.45 * Math.sign(v.speed), 0.35, v.z - Math.sin(v.yaw) * v.w * 0.45 * Math.sign(v.speed), 0x8a8270, 1.4 + sp * 0.03, 0.9, 0.5, 2.2, 0.28); }
+        else if (v.wreck || v.hp < v.max * 0.35) { n.puffT = v.wreck ? 0.16 : 0.25; this.puff(v.x + (Math.random() - 0.5) * 0.8, v.h + 0.2, v.z + (Math.random() - 0.5) * 0.8, v.wreck ? 0x202020 : 0x4a4a4a, 1.6, 2.2, 2.4, 2.6, v.wreck ? 0.6 : 0.4); }
+      }
+      if (n.fire) { n.fire.position.set(v.x, v.h * 0.8, v.z); const k = 2.2 + Math.sin(this.time * 17 + v.id) * 0.5 + Math.random() * 0.3; n.fire.scale.set(k, k * 1.3, 1); (n.fire.material as THREE.SpriteMaterial).opacity = 0.5 + Math.random() * 0.25; }
+    }
+  }
+  private syncReds(): void {
+    const m = this.match;
+    m.reds.forEach((r, i) => {
+      const active = r.called && m.t < r.end + RED.fall; let n = this.redNodes.get(i);
+      if (!active) { if (n) { this.freeNode(n); this.redNodes.delete(i); } return; }
+      if (!n) {
+        n = new THREE.Group(); const wall = new THREE.Mesh(new THREE.CylinderGeometry(r.r, r.r, 150, 64, 1, true), new THREE.MeshBasicMaterial({ color: 0xff2a18, transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })); wall.position.y = 75;
+        const disc = new THREE.Mesh(new THREE.CircleGeometry(r.r, 64), new THREE.MeshBasicMaterial({ color: 0xff2a18, transparent: true, opacity: 0.12, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })); disc.rotation.x = -Math.PI / 2; disc.position.y = 0.25;
+        n.add(wall, disc); n.position.set(r.x, 0, r.z); this.scene.add(n); this.redNodes.set(i, n);
+      }
+      const warn = m.t < r.start, pulse = 0.5 + 0.5 * Math.sin(this.time * (warn ? 9 : 4)); ((n.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.05 + pulse * (warn ? 0.13 : 0.07); ((n.children[1] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.06 + pulse * 0.08;
+    });
+    const live = new Set<number>();
+    for (const sh of m.shells) {
+      live.add(sh.id); let g = this.shellNodes.get(sh.id); const frac = Math.min(1, (m.t - sh.t0) / (sh.land - sh.t0));
+      if (!g) {
+        g = new THREE.Group(); const streak = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.24, 18, 6, 1, true), new THREE.MeshBasicMaterial({ color: 0xffc060, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+        const ring = new THREE.Mesh(new THREE.RingGeometry(1.6, 2.1, 24), new THREE.MeshBasicMaterial({ color: 0xff3a22, transparent: true, opacity: 0.6, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.3;
+        const head = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, color: 0xffb050, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })); head.scale.setScalar(5);
+        g.add(streak, ring, head); g.position.set(sh.x, 0, sh.z); this.scene.add(g); this.shellNodes.set(sh.id, g);
+      }
+      g.children[0].position.y = 9 + 190 * (1 - frac); g.children[2].position.y = 190 * (1 - frac); g.children[1].scale.setScalar(1 + (1 - frac) * 2.2);
+    }
+    for (const [id, g] of this.shellNodes) if (!live.has(id)) { this.freeNode(g); this.shellNodes.delete(id); }
+  }
   private updateFx(dt: number): void {
+    for (let i = this.puffs.length - 1; i >= 0; i--) { const f = this.puffs[i]; f.t += dt; f.s.position.y += f.vy * dt; f.s.scale.addScalar(f.grow * dt); (f.s.material as THREE.SpriteMaterial).opacity = Math.max(0, f.a * (1 - f.t / f.life)); if (f.t >= f.life) { this.scene.remove(f.s); (f.s.material as THREE.Material).dispose(); this.puffs.splice(i, 1); } }
     this.updateNades(dt);
     for (let i = this.tracers.length - 1; i >= 0; i--) { const f = this.tracers[i]; f.life -= dt; (f.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, f.life / f.max) * 0.9; if (f.life <= 0) { this.scene.remove(f.mesh); f.mesh.geometry.dispose(); (f.mesh.material as THREE.Material).dispose(); this.tracers.splice(i, 1); } }
     const pos = this.sparks.geometry.attributes.position as THREE.BufferAttribute, col = this.sparks.geometry.attributes.color as THREE.BufferAttribute;
@@ -364,10 +426,17 @@ export class ShooterView {
   frame(dt: number, me: Player, spectate: Player | null, zoom: number): void {
     this.time += dt; this.frames++; const m = this.match, z = m.zone, cam = this.camera, view = spectate ?? me;
     const vx = view.x, vz = view.z;
-    for (const p of m.players) { const rig = this.rigs.get(p.id)!; const hide = (!spectate && p.id === me.id) || p.air === 1 || Math.abs(p.x - vx) + Math.abs(p.z - vz) > (p.air ? 520 : 190); rig.root.visible = !hide; if (hide) continue; this.poseRig(p, dt, Math.abs(p.x - vx) + Math.abs(p.z - vz)); if (!p.alive) rig.flash.visible = false; }
+    for (const p of m.players) { const rig = this.rigs.get(p.id)!; const hide = (!spectate && p.id === me.id) || p.air === 1 || p.veh >= 0 || Math.abs(p.x - vx) + Math.abs(p.z - vz) > (p.air ? 520 : 190); rig.root.visible = !hide; if (hide) continue; this.poseRig(p, dt, Math.abs(p.x - vx) + Math.abs(p.z - vz)); if (!p.alive) rig.flash.visible = false; }
     // 카메라
     this.bob += view.speed * dt * 1.7; this.shake = Math.max(0, this.shake - dt * 6);
-    if (spectate) {
+    const drv = view.veh >= 0 ? m.vehicles[view.veh] ?? null : null;
+    if (drv) {
+      // 운전 중: 차 뒤 위에서 따라가는 시점(마우스로 둘러보고, 달리면 천천히 정면으로 돌아옵니다)
+      const yc = spectate ? drv.yaw : view.yaw, dist = 6.4 + drv.w * 0.42, cp = Math.max(-0.5, Math.min(0.7, view.pitch)), sp = Math.abs(drv.speed);
+      cam.position.set(drv.x - Math.cos(yc) * dist, Math.max(0.7, drv.h + 1.35 + dist * 0.17 - Math.sin(cp) * 3.2), drv.z - Math.sin(yc) * dist); cam.rotation.order = 'YXZ';
+      this.roll += (0 - this.roll) * Math.min(1, dt * 9);
+      cam.rotation.set(-0.13 + cp * 0.55 + (Math.random() - 0.5) * sp * 0.0007, -yc - Math.PI / 2 + (Math.random() - 0.5) * sp * 0.0007, this.roll);
+    } else if (spectate) {
       const back = 3.6, cx = view.x - Math.cos(view.yaw) * back, cz = view.z - Math.sin(view.yaw) * back; cam.position.set(cx, 2.3 + view.alt, cz); cam.rotation.order = 'YXZ'; cam.rotation.set(-0.12, -view.yaw - Math.PI / 2, 0);
     } else {
       const bobY = Math.sin(this.bob) * 0.035 * Math.min(1, view.speed / 5); cam.position.set(view.x, eyeOf(view) + view.alt + bobY, view.z); cam.rotation.order = 'YXZ';
@@ -383,9 +452,9 @@ export class ShooterView {
     // 자기장
     this.zoneWall.scale.set(z.r, 1, z.r); this.zoneWall.position.x = z.cx; this.zoneWall.position.z = z.cz; (this.zoneWall.material as THREE.ShaderMaterial).uniforms.t.value = this.time;
     this.zoneNext.visible = z.nextR < z.r - 0.5; this.zoneNext.scale.set(z.nextR, z.nextR, 1); this.zoneNext.position.x = z.nextCx; this.zoneNext.position.z = z.nextCz;
-    this.syncLoot(cam.position); this.syncDrops(); this.updateFx(dt);
+    this.syncLoot(cam.position); this.syncDrops(); this.syncVehicles(dt, vx, vz); this.syncReds(); this.updateFx(dt);
     this.syncCarrier(); this.weather(dt);
-    this.viewmodel(view, !spectate && me.alive && !me.air, dt);
+    this.viewmodel(view, !spectate && me.alive && !me.air && me.veh < 0, dt);
     // 그리기: 월드 → 깊이 지우고 1인칭 총
     if (this.post) { this.post.setCamera(cam); this.post.render(dt); } else { this.renderer.clear(); this.renderer.render(this.scene, cam); }
     if (this.vm && this.vm.visible) { this.vmCam.fov = cam.fov > 60 ? 64 : 64 * (cam.fov / 60); this.vmCam.aspect = cam.aspect; this.vmCam.updateProjectionMatrix(); this.renderer.clearDepth(); this.renderer.render(this.vmScene, this.vmCam); }

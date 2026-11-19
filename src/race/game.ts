@@ -13,7 +13,7 @@ import { RacePvp } from './pvp';
 import { decideWinner } from './netcar';
 import { createRace, currentLap, placeOf, updateRace, type RaceEvent, type RaceState } from './race';
 import { ghostDelta, readGhost, writeGhost } from './ghost';
-import { ownsSkin, readGarage, rewardFor, upgradesOf, writeGarage } from './garage';
+import { ownsSkin, readGarage, rewardFor, writeGarage } from './garage';
 import { mountSetup, type SetupHandle } from './setup-ui';
 import { buildMapTrack, type Track } from './track';
 import { RaceView, setDriverKit } from './view';
@@ -104,7 +104,7 @@ export function openRace(onExit: () => void): void {
     if (view) { view.dispose(); view = null; }
     track = buildMapTrack(mapOf(setup)); prepareMinimap(); audio.setCar(setup.car);
     const trial = setup.mode === 'trial', ghost = trial ? readGhost(setup.map, setup.laps, setup.car) : null;
-    race = createRace(track, setup.laps, records.bestLap[setup.map] ?? Infinity, { ...setup, upgrades: upgradesOf(garage.value, setup.car), skin: ownsSkin(garage.value, setup.skin) ? setup.skin : 'stock', trial, ghost });
+    race = createRace(track, setup.laps, records.bestLap[setup.map] ?? Infinity, { ...setup, skin: ownsSkin(garage.value, setup.skin) ? setup.skin : 'stock', trial, ghost });
     finishedShown = false; paused = false; acc = 0; lastPlace = trial ? 1 : 4; cache.clear(); setText('#rc-laps', String(setup.laps)); setText('#rc-of', trial ? 'TIME ATTACK' : '/ 4');
     if (!startView(carTemplate)) return;
     modal.className = 'rc-modal'; modal.innerHTML = ''; root.dataset.phase = 'countdown'; msg('', '');

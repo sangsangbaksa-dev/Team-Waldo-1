@@ -143,12 +143,6 @@
 .sz-br.hide{display:none}
 
 /* 병사 강화 */
-.sz-coin{font-style:normal;font-size:13px;font-weight:700;color:#ffd34d;margin-left:8px}
-.sz-perks{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
-.sz-perk{display:grid;gap:2px;text-align:left;padding:9px 11px;border-radius:10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);color:inherit;font:inherit;cursor:pointer}
-.sz-perk b{font-size:14px}.sz-perk b i{font-style:normal;color:#ffd34d;letter-spacing:2px;margin-left:4px}.sz-perk em{font-style:normal;font-size:12px;opacity:.7}.sz-perk span{font-size:12px;font-weight:700;color:#ffd34d}
-.sz-perk:disabled{opacity:.45;cursor:default}.sz-perk:not(:disabled):hover{background:rgba(255,211,77,.14);border-color:#ffd34d}
-.sz-reward{margin:4px 0 8px;font-size:18px;font-weight:800;color:#ffd34d}.sz-reward small{font-size:12px;font-weight:500;opacity:.8;color:#fff}
 
 /* ---------- 총기 조립 화면 ---------- */
 .sz-smith{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 16px;border-radius:14px;background:#171b22;border:1px solid #262c36}

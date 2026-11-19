@@ -125,9 +125,16 @@ describe('억제기와 슈퍼 미니언', () => {
   const open = (s: MobaSim, lane: string): void => { for (const t of turrets(s, 1, lane)) s.hurt(null, t, 99999); run(s, 2); };
   it('억제기를 부수면 그 길로 슈퍼 미니언이 나오고, 5분 뒤 되살아난다', () => {
     const s = fresh(); open(s, 'top'); const ib = s.ents.find(e => e.kind === 'inhib' && e.team === 1 && e.lane === 'top')!; s.hurt(null, ib, 99999); expect(ib.hp).toBe(0);
+    const respawnTick = s.tick + 5 * 60 * TICK;
     run(s, WAVE_FIRST + 5); expect(s.ents.filter(e => e.kind === 'super' && e.team === 0 && e.lane === 'top')).toHaveLength(1); expect(s.ents.filter(e => e.kind === 'super' && e.lane === 'mid')).toHaveLength(0);
-    expect(s.vulnerable(s.ents.find(e => e.kind === 'nexus' && e.team === 1)!)).toBe(true);
-    run(s, TICK * 301); expect(ib.hp).toBe(ib.maxhp);
+    const nexus = s.ents.find(e => e.kind === 'nexus' && e.team === 1)!;
+    expect(s.vulnerable(nexus)).toBe(true);
+    s.tick = respawnTick - 2;
+    s.step();
+    expect(ib.hp).toBe(0);
+    s.step();
+    expect(ib.hp).toBe(ib.maxhp);
+    expect(s.vulnerable(nexus)).toBe(false);
   });
 });
 

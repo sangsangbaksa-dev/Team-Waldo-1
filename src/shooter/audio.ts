@@ -13,7 +13,17 @@ export class ShooterAudio {
   }
   /** 자기장 밖에 있을 때 바람 소리를 키워 위험을 알립니다. 0~1 */
   danger(level: number): void { const c = this.eng.ctx; if (this.wind && c) { this.wind.gain.gain.setTargetAtTime(0.035 + level * 0.06, c.currentTime, 0.3); this.wind.filt.frequency.setTargetAtTime(420 + level * 500, c.currentTime, 0.3); } }
-  dispose(): void { try { this.wind?.src.stop(); } catch { /* 이미 멈춤 */ } this.wind = null; this.eng.dispose(); }
+  private motor: { osc: OscillatorNode; gain: GainNode; filt: BiquadFilterNode } | null = null;
+  /** 운전 중 엔진 소리: on 이 꺼지면 조용해지고, speed01(0~1)이 오를수록 높고 커집니다. */
+  engine(on: boolean, speed01: number): void {
+    const c = this.eng.ctx, bus = this.eng.bus; if (!c || !bus) return;
+    if (!this.motor) {
+      if (!on) return; const osc = c.createOscillator(), filt = c.createBiquadFilter(), gain = c.createGain(); osc.type = 'sawtooth'; osc.frequency.value = 46; filt.type = 'lowpass'; filt.frequency.value = 320; gain.gain.value = 0;
+      osc.connect(filt); filt.connect(gain); gain.connect(bus); this.eng.track(osc); osc.start(); this.motor = { osc, gain, filt };
+    }
+    const m = this.motor, k = Math.max(0, Math.min(1, speed01)); m.gain.gain.setTargetAtTime(on && this.enabled ? 0.05 + k * 0.07 : 0, c.currentTime, 0.12); m.osc.frequency.setTargetAtTime(46 + k * 118, c.currentTime, 0.1); m.filt.frequency.setTargetAtTime(300 + k * 800, c.currentTime, 0.1);
+  }
+  dispose(): void { try { this.wind?.src.stop(); } catch { /* 이미 멈춤 */ } try { this.motor?.osc.stop(); } catch { /* 이미 멈춤 */ } this.wind = null; this.motor = null; this.eng.dispose(); }
 
   /** dist: 소리가 난 곳까지의 미터 거리(0이면 내 총소리) */
   play(name: string, dist = 0, combo = 0): void {
@@ -42,6 +52,8 @@ export class ShooterAudio {
       case 'pickup': t(660, 0.07, 0.2, 'triangle', 300); break;
       case 'heal': t(392, 0.12, 0.16, 'sine', 80); t(523, 0.18, 0.16, 'sine', 40, 0.08); break;
       case 'armor': n(0.1, 0.25, 600, 1); t(330, 0.1, 0.16, 'triangle', 110); break;
+      case 'crash': n(0.18, 0.6, 700, 0.6); t(90, 0.18, 0.4, 'sawtooth', -40); n(0.1, 0.4, 2200, 1); break;
+      case 'siren': [620, 880, 620, 880].forEach((f, i) => t(f, 0.2, 0.18, 'square', 0, i * 0.22)); break;
       case 'zone': [392, 330, 392].forEach((f, i) => t(f, 0.22, 0.16, 'sawtooth', 0, i * 0.24)); break;
       case 'count': t(660, 0.1, 0.2, 'square'); break;
       case 'go': t(990, 0.28, 0.22, 'square'); break;

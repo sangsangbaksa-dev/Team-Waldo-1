@@ -72,6 +72,24 @@ export const MAP_HALF = { br: 290, duel: 115 } as const;
 export const BR_PLAYERS = 100;
 /** 낙하: 비행기 고도·속도, 자유낙하와 낙하산의 하강·수평 속도(m/s). 낙하산은 open 미터 아래에서 자동으로 펴집니다. */
 export const AIR = { alt: 320, plane: 34, fall: 48, dive: 62, fallH: 8, fallFast: 24, diveH: 17, open: 105, manualOpen: 260, chute: 7, chuteFast: 10.5, chuteH: 6, chuteGo: 12, chuteRun: 17, delay: 52 };
+/** 운전할 수 있는 차량(솔로 배틀로열). 속도 m/s · 가속 · 내구도 · 조향(rad/s). */
+export type DriveKind = 'car' | 'jeep' | 'truck' | 'van';
+export const VEHICLES: Record<DriveKind, { name: string; top: number; accel: number; hp: number; turn: number }> = {
+  car:   { name: '세단',     top: 38, accel: 14, hp: 300, turn: 2.0 },
+  jeep:  { name: '지프',     top: 31, accel: 12, hp: 420, turn: 1.9 },
+  truck: { name: '픽업트럭', top: 27, accel: 10, hp: 480, turn: 1.6 },
+  van:   { name: '밴',       top: 26, accel: 9,  hp: 380, turn: 1.55 },
+};
+export const DRIVE = {
+  /** 후진 최고 속도 비율 · 브레이크/가속 배율 · 놔뒀을 때 감속 · 핸드브레이크 감속(m/s²) */ reverse: 0.35, brake: 2.4, drag: 3.2, handbrake: 26,
+  /** 탑승 가능 거리(차체 가장자리까지) */ board: 2.6,
+  /** 치기: 이 속도 이상이면 속도×dmg 만큼 피해, 같은 대상에게는 cd 초마다 */ runMin: 4.5, runDmg: 4.4, runCd: 0.55,
+  /** 충돌: 이 속도부터 차체 피해(초과분×body), 운전자는 driver 만큼 다침 */ crashMin: 6, crashBody: 7, crashDriver: 2.2,
+  /** 폭발: 반경·최대 피해 */ boomR: 7, boomDmg: 130,
+  /** 총알이 차체에 주는 비율, 탑승자에게 새는 비율 */ shotCut: 0.55, driverCut: 0.22,
+};
+/** 폭격(레드존): 안전지대 안의 한 곳에 경고 후 포탄이 쏟아집니다. 시각은 자기장 시작 기준 초. */
+export const RED = { r: 48, warn: 8, dur: 30, every: 0.22, fall: 1.7, blast: 8.5, dmg: 85, calls: [80, 170, 255, 335] };
 export type Mode = 'br' | 'duel';
 
 export type Difficulty = 'easy' | 'normal' | 'hard' | 'expert';

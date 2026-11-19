@@ -166,7 +166,11 @@ function roof(p: Pieces, bd: Building, rng: () => number): void {
 /** 건물 지붕과 장식: 한 번에 합쳐서 돌려줍니다. */
 export function buildRoofs(map: GameMap, rng: () => number): THREE.Group { const p = new Pieces(); for (const b of map.buildings) roof(p, b, rng); return p.mesh(); }
 /** 지도의 소품(차량·컨테이너·울타리 등)을 합쳐서 돌려줍니다. */
-export function buildProps(map: GameMap): THREE.Group { const p = new Pieces(); for (const pr of map.props) if (pr.kind !== 'bush') prop(p, pr); return p.mesh(); }
+export function buildProps(map: GameMap, skipBoxes?: Set<number>): THREE.Group { const p = new Pieces(); for (const pr of map.props) if (pr.kind !== 'bush' && !(skipBoxes && pr.box !== undefined && skipBoxes.has(pr.box))) prop(p, pr); return p.mesh(); }
+/** 운전하는 차량 한 대의 모델(원점 기준, 앞이 +x). 부서지면 같은 모양을 어둡게 다시 만듭니다. */
+export function makeVehicleMesh(v: { kind: Prop['kind']; w: number; d: number; h: number; c: number; v: number; wreck: boolean }): THREE.Group {
+  const p = new Pieces(); vehicle(p, { kind: v.kind, x: 0, z: 0, ry: 0, jit: 0, w: v.w, d: v.d, h: v.h, c: v.c, v: v.v, wreck: v.wreck }, new THREE.Matrix4()); return p.mesh();
+}
 
 // ---------- 보급 상자와 비행기 ----------
 export function makeDropCrate(): THREE.Group {

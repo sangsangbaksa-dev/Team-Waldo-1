@@ -3,7 +3,7 @@
 import { BUILDINGS, LEVELS, RESEARCH, RESEARCH_KINDS, UNITS, type BuildKind, type Difficulty, type UnitKind } from './config';
 import type { Building, Cmd, RtsSim, Unit } from './sim';
 
-const ARMY: Array<'marine' | 'rocket' | 'tank'> = ['marine', 'rocket', 'tank'];
+const ARMY: Array<'marine' | 'rocket' | 'tank' | 'jeep' | 'medic'> = ['marine', 'rocket', 'tank', 'jeep', 'medic'];
 
 export class RtsAi {
   private wave = false; private phase = 0; private stagedAt = 0; private waveSupply = 0; private lastWave = 0;
@@ -33,27 +33,62 @@ export class RtsAi {
     let wq = 0; for (const b of hqs) wq += b.queue.length;
     for (const b of hqs) if (b.queue.length < 2 && workers.length + wq < want && s.apply(me, { k: 'train', b: b.id, u: 'worker' })) wq++;
 
-    // 건물: 병영 → 공장 → 방어탑 → 확장 순.
-    const nw = workers.length, nb = own('barracks').length, nf = own('factory').length, nt = own('tower').length;
-    if (nb < (nw >= 8 ? L.barracks : 1) && building('barracks') < 1 + (L.barracks > 2 ? 1 : 0)) this.build(s, 'barracks', workers, hx, hy);
-    else if (s.has(me, 'barracks') && nf < L.factory && nw >= 10 && building('factory') === 0) this.build(s, 'factory', workers, hx, hy);
-    else if (s.has(me, 'barracks') && nt < L.tower && nw >= 11 && nf >= Math.min(1, L.factory) && building('tower') === 0) this.build(s, 'tower', workers, hx, hy);
-    else if (L.expand && own('hq').length < 2 && nw >= 14 && nb >= 2 && p.minerals >= 400 && building('hq') === 0) this.expand(s, workers);
+    // 건물: 병영 한 채 → 공장 → 병영 늘리기 → 방어탑 → 공장 늘리기 → 확장 순으로 하나씩 정합니다.
+    // 다음에 지을 건물 값이 모일 때까지는 병력 생산을 잠깐 미뤄, 병영만 계속 짓다가 기술이 막히는 일이 없게 합니다.
+    const nw = workers.length, nb = own('barracks').length, nf = own('factory').length, nt = own('tower').length, hasB = s.has(me, 'barracks');
+    let next: BuildKind | null = null;
+    if (nb < 1) next = 'barracks';
+    else if (hasB && L.factory > 0 && nf < 1 && nw >= 10) next = 'factory';
+    else if (nb < (nw >= 8 ? L.barracks : 1)) next = 'barracks';
+    else if (hasB && nt < L.tower && nw >= 11 && nf >= Math.min(1, L.factory)) next = 'tower';
+    else if (hasB && nf < L.factory && nw >= 12) next = 'factory';
+    else if (L.expand && own('hq').length < 2 && nw >= 14 && nb >= 2 && p.minerals >= 400) next = 'hq';
+    let saving = false;
+    if (next && building(next) < (next === 'barracks' && L.barracks > 2 ? 2 : 1)) {
+      if (next === 'hq') this.expand(s, workers); else this.build(s, next, workers, hx, hy);
+      saving = next !== 'hq' && p.minerals < BUILDINGS[next].cost && army.reduce((n, u) => n + UNITS[u.kind].supply, 0) >= 6;
+    }
 
     // 강화 연구: 병영·공장이 쉬는 동안 광물이 남으면 연구합니다.
     if (L.research && p.minerals >= 200) for (const b of s.buildings) if (b.owner === me && b.done && !b.research) for (const r of RESEARCH_KINDS) if (RESEARCH[r].from === b.kind && s.apply(me, { k: 'research', b: b.id, r })) break;
 
     // 병력 생산
-    const counts: Record<string, number> = { marine: 0, rocket: 0, tank: 0 }; for (const u of army) counts[u.kind]++;
+    const counts: Record<string, number> = { marine: 0, rocket: 0, tank: 0, jeep: 0, medic: 0 }; for (const u of army) counts[u.kind]++;
     for (const b of s.buildings) if (b.owner === me) for (const q of b.queue) if (q.u !== 'worker') counts[q.u]++;
-    for (const b of s.buildings) {
+    // 상대 병력 구성을 보고 섞는 비율을 조정합니다: 장갑이 많으면 로켓병, 가벼운 병력이 많으면 전차·보병.
+    let foeSup = 0, foeArmored = 0; for (const e of s.units) if (e.owner !== me && e.kind !== 'worker') { const d = UNITS[e.kind]; foeSup += d.supply; if (d.armor === 'armored') foeArmored += d.supply; }
+    const antiArmor = foeSup >= 8 && foeArmored / foeSup > 0.35, antiLight = foeSup >= 8 && foeArmored / foeSup < 0.12;
+    const weight = (k: (typeof ARMY)[number]): number => {
+      let w = L.mix[k];
+      if (k === 'rocket' && antiArmor) w *= 2; else if (k === 'marine' && antiArmor) w *= 0.6; else if ((k === 'tank' || k === 'jeep') && antiLight) w *= 1.4;
+      if (k === 'medic' && counts.marine + counts.rocket < 5 * (counts.medic + 1)) w = 0; // 치료할 보병이 충분할 때만
+      return w;
+    };
+    // 비싼 병력을 뽑는 공장이 먼저 광물을 받게 합니다(병영이 먼저면 전차 값이 영영 모이지 않습니다).
+    let hold = 0;
+    const rank = (k: BuildKind): number => (k === 'factory' ? 0 : 1);
+    for (const b of [...s.buildings].sort((a, c) => rank(a.kind) - rank(c.kind) || a.id - c.id)) {
       if (b.owner !== me || !b.done || !BUILDINGS[b.kind].trains.length || b.kind === 'hq') continue;
       if (!b.rx) s.apply(me, { k: 'rally', b: b.id, x: this.rally(s, home).x, y: this.rally(s, home).y, node: 0 });
-      if (b.queue.length >= 2) continue;
-      const opts = ARMY.filter(k => L.mix[k] > 0 && UNITS[k].from === b.kind && s.canTrain(me, k)).sort((a, c) => counts[a] / L.mix[a] - counts[c] / L.mix[c]);
-      const k = opts[0]; if (k && s.apply(me, { k: 'train', b: b.id, u: k as UnitKind })) counts[k]++;
+      if (saving || b.queue.length >= 2) continue;
+      if (hold > 0 && b.kind !== 'factory' && p.minerals < hold + 50) continue;
+      const opts = ARMY.filter(k => weight(k) > 0 && UNITS[k].from === b.kind && s.canTrain(me, k)).sort((a, c) => counts[a] / weight(a) - counts[c] / weight(c));
+      const k = opts[0];
+      if (k && s.apply(me, { k: 'train', b: b.id, u: k as UnitKind })) counts[k]++;
+      else if (k && b.kind === 'factory' && b.queue.length === 0 && s.supplyLeft(me) >= UNITS[k].supply) hold = UNITS[k].cost; // 값이 모일 때까지 병영은 아껴 씁니다
     }
-    this.control(s, army, home);
+    const fighters = army.filter(u => u.kind !== 'medic');
+    this.control(s, fighters, home);
+    this.escort(s, army.filter(u => u.kind === 'medic'), fighters, home);
+  }
+
+  /** 의무병은 싸우는 병력의 중심에서 조금 뒤(우리 기지 쪽)에 따라다니며 치료합니다. */
+  private escort(s: RtsSim, medics: Unit[], fighters: Unit[], home: Building): void {
+    if (!medics.length) return;
+    const hx = home.x + 2, hy = home.y + 2; let cx = hx, cy = hy;
+    if (fighters.length) { cx = 0; cy = 0; for (const u of fighters) { cx += u.x; cy += u.y; } cx /= fighters.length; cy /= fighters.length; const dx = hx - cx, dy = hy - cy, l = Math.sqrt(dx * dx + dy * dy) || 1; cx += dx / l * 2.5; cy += dy / l * 2.5; }
+    const ids = medics.filter(u => u.o.t === 'idle' || s.dist(u.x, u.y, cx, cy) > 6).map(u => u.id);
+    if (ids.length) { const p = s.pather.nearestFree(cx, cy) ?? { x: cx, y: cy }; s.apply(this.me, { k: 'move', ids, x: p.x, y: p.y }); }
   }
 
   private rally(s: RtsSim, home: Building): { x: number; y: number } {

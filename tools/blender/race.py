@@ -204,12 +204,12 @@ def racer(kind: str) -> list:
         pitch = math.atan2(lerp_tab(body, lx - 0.1, 2) - lerp_tab(body, lx + 0.1, 2), 0.2)
         R = rot_z(s * 0.42) @ rot_y(pitch)
         c0 = Vector((lx, s * ly, lz + 0.012))
-        d.box(c0 + Vector((0, 0, 0.004)), (0.5, 0.36, 0.035), 'Black', taper=(0.85, 0.8), rot=R)
-        d.box(c0 + R @ Vector((0.02, 0, 0.022)), (0.4, 0.28, 0.02), 'Glow', taper=(0.8, 0.85), rot=R)
-        for o in (-0.07, 0.07):
-            d.cyl(c0 + R @ Vector((0.05, o * s, 0.034)), 0.05, 0.014, 'Black', axis='z', seg=12, rotm=R)
-            d.cyl(c0 + R @ Vector((0.05, o * s, 0.04)), 0.034, 0.012, 'White', axis='z', seg=12, rotm=R)
-        d.box(c0 + R @ Vector((-0.17, 0, 0.026)), (0.05, 0.3, 0.012), 'Glow', rot=R)
+        d.box(c0 + Vector((0, 0, 0.004)), (0.52, 0.3, 0.03), 'Black', taper=(0.7, 0.62), rot=R)                       # 끝이 뾰족한 하우징
+        d.box(c0 + R @ Vector((0.03, -0.012 * s, 0.02)), (0.4, 0.17, 0.016), 'Glow', taper=(0.55, 0.7), rot=R)         # 얇은 렌즈
+        d.cyl(c0 + R @ Vector((0.06, 0.03 * s, 0.03)), 0.058, 0.012, 'Black', axis='z', seg=14, rotm=R)                  # 프로젝터 링
+        d.cyl(c0 + R @ Vector((0.06, 0.03 * s, 0.036)), 0.04, 0.01, 'White', axis='z', seg=14, rotm=R)
+        d.box(c0 + R @ Vector((-0.03, 0.11 * s, 0.026)), (0.46, 0.026, 0.012), 'Glow', rot=R @ rot_z(-s * 0.1))        # 바깥 모서리 DRL 띠
+        d.box(c0 + R @ Vector((-0.2, 0, 0.022)), (0.04, 0.26, 0.01), 'Black', rot=R)                                    # 뒤쪽 눈썹
         # 후드 벤트와 사이드 흡기(앞 펜더 뒤쪽)
         d.box((1.55, s * 0.36, lerp_tab(body, 1.55, 2) + 0.004), (0.5, 0.22, 0.014), 'Black')
         for i in range(3):
@@ -249,11 +249,16 @@ def racer(kind: str) -> list:
     # 리어 윙: 스완넥 지지대 + 메인 플레인 + 엔드플레이트
     wh, wk, wc = sp['wing']
     wing_x = -L / 2 + 0.28
-    d.box((wing_x, 0, wh), (wc, W * 0.86 * wk, 0.045), 'Black', taper=(0.9, 1.0))
-    d.box((wing_x + wc * 0.05, 0, wh + 0.03), (wc * 0.55, W * 0.86 * wk, 0.02), 'Team')
+    ww2 = W * 0.86 * wk
+    d.box((wing_x, 0, wh), (wc, ww2, 0.04), 'Black', taper=(0.85, 1.0), rot=rot_y(0.06))                                     # 메인 플레인(앞쪽이 살짝 낮은 받음각)
+    d.box((wing_x + wc * 0.06, 0, wh + 0.026), (wc * 0.6, ww2, 0.016), 'Team', rot=rot_y(0.06))                               # 도장 윗면 띠
+    d.box((wing_x - wc * 0.62, 0, wh + 0.075), (wc * 0.5, ww2 * 0.98, 0.026), 'Black', taper=(0.7, 1.0), rot=rot_y(-0.3))    # 상단 플랩(두 번째 날개)
+    d.box((wing_x - wc * 0.86, 0, wh + 0.1), (0.022, ww2 * 0.98, 0.05), 'Team')                                               # 거니 립
     for s in (-1, 1):
-        d.box((wing_x, s * W * 0.43 * wk, wh + 0.01), (wc * 0.95, 0.025, 0.14), 'Team', taper=(0.8, 1.0))
-        d.limb((wing_x + 0.02, s * 0.45, 0.82), (wing_x, s * 0.45, wh - 0.03), 0.07, 'Black', seg=6, round_end=False)
+        d.box((wing_x - wc * 0.2, s * ww2 / 2, wh + 0.06), (wc * 1.25, 0.022, 0.22), 'Team', taper=(0.7, 1.0))              # 엔드플레이트
+        d.box((wing_x - wc * 0.2, s * (ww2 / 2 + 0.012), wh + 0.06), (wc * 1.0, 0.01, 0.12), 'Black', taper=(0.7, 1.0))
+        d.limb((wing_x + 0.16, s * 0.34, 0.92), (wing_x + 0.02, s * 0.34, wh - 0.03), 0.055, 'Black', t2=0.04, seg=6, round_end=False)  # 스완넥 지지대
+        d.limb((wing_x + 0.18, s * 0.34, 0.9), (wing_x + 0.3, s * 0.38, 0.84), 0.045, 'Black', seg=6, round_end=False)
     # 와이퍼
     for s in (-1, 1):
         d.box((1.0 - 0.02, s * 0.35 - 0.1 * s, 0.79), (0.35, 0.012, 0.012), 'Black', rot=rot_z(s * 0.2))

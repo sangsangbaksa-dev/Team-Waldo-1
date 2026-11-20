@@ -4,7 +4,7 @@ export const RACE_KEY = 'waldo.race.v1';
 const RACE_KEY_V2 = 'waldo.race.v2';
 
 export function readCityCareer(): { matches: number; wins: number; best: number } {
-  try { const r = JSON.parse(localStorage.getItem(CITY_KEY) ?? '{}') as Record<string, unknown>; const n = (v: unknown): number => typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0; const matches = n(r.matches); return { matches, wins: Math.min(matches, n(r.wins)), best: n(r.best) }; } catch { return { matches: 0, wins: 0, best: 0 }; }
+  try { const r = JSON.parse(localStorage.getItem(CITY_KEY) ?? '{}') as Record<string, unknown>; const n = (v: unknown): number => typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.min(1e9, Math.floor(v)) : 0; const matches = n(r.matches); return { matches, wins: Math.min(matches, n(r.wins)), best: n(r.best) }; } catch { return { matches: 0, wins: 0, best: 0 }; }
 }
 
 export const RACE_SETUP_KEY = 'waldo.race.setup.v1';
@@ -25,10 +25,15 @@ export function readRaceRecords(): RaceRecords {
   try {
     const raw = localStorage.getItem(RACE_KEY_V2);
     if (raw) {
-      const r = JSON.parse(raw) as Record<string, unknown>, last = r.last as Record<string, unknown> | null | undefined;
-      rec.bestLap = timeTable(r.bestLap); rec.bestRace = timeTable(r.bestRace);
-      if (last && typeof last.map === 'string' && typeof last.label === 'string') rec.last = { map: last.map, label: last.label };
-      return rec;
+      try {
+        const r: unknown = JSON.parse(raw);
+        if (r && typeof r === 'object' && !Array.isArray(r) && ('bestLap' in r || 'bestRace' in r)) {
+          const data = r as Record<string, unknown>, last = data.last as Record<string, unknown> | null | undefined;
+          rec.bestLap = timeTable(data.bestLap); rec.bestRace = timeTable(data.bestRace);
+          if (last && typeof last.map === 'string' && typeof last.label === 'string') rec.last = { map: last.map, label: last.label };
+          return rec;
+        }
+      } catch { /* A corrupt v2 record must not hide a valid legacy record. */ }
     }
     // 이전 버전(코스가 하나, 3랩 고정)의 기록은 선셋 서킷 기록으로 옮겨 읽습니다.
     const old = JSON.parse(localStorage.getItem(RACE_KEY) ?? '{}') as Record<string, unknown>;
@@ -59,7 +64,7 @@ export interface RtsRecords { difficulty: string; matches: number; wins: number;
 export function readRtsRecords(): RtsRecords {
   const rec: RtsRecords = { difficulty: 'normal', matches: 0, wins: 0, bestWin: {} };
   try {
-    const r = JSON.parse(localStorage.getItem(RTS_KEY) ?? '{}') as Record<string, unknown>, n = (v: unknown): number => typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0;
+    const r = JSON.parse(localStorage.getItem(RTS_KEY) ?? '{}') as Record<string, unknown>, n = (v: unknown): number => typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.min(1e9, Math.floor(v)) : 0;
     if (typeof r.difficulty === 'string') rec.difficulty = r.difficulty;
     rec.matches = n(r.matches); rec.wins = Math.min(rec.matches, n(r.wins)); rec.bestWin = timeTable(r.bestWin);
   } catch { /* 기록 없이도 플레이할 수 있습니다. */ }

@@ -24,8 +24,9 @@ function shop(v: unknown): ShopData | null {
   const level = Math.round(num(v.level, 1, 1, def.maxLevel));
   const t = isObj(v.today) ? v.today : {};
   const list = Array.isArray(v.staff) ? v.staff.slice(0, 100).map(staff).filter((s): s is StaffData => !!s) : [];
-  const clerks = list.filter(s => s.role === 'clerk').slice(0, level * CLERKS_PER_LEVEL);
-  const manager = list.filter(s => s.role === 'manager').slice(0, 1);
+  const unique = list.filter((s, i) => list.findIndex(other => other.id === s.id) === i);
+  const clerks = unique.filter(s => s.role === 'clerk').slice(0, level * CLERKS_PER_LEVEL);
+  const manager = unique.filter(s => s.role === 'manager').slice(0, 1);
   return {
     kind: v.kind, name: str(v.name, def.name, 30), level,
     priceMult: num(v.priceMult, 1, 0.5, 2), stock: num(v.stock, 0, 0, Math.round(def.stock * LEVEL_MULT[level])), rating: num(v.rating, 50, 0, 100),
@@ -92,7 +93,11 @@ export function restoreGame(raw: unknown): GameData | null {
     g.lastReport = { day: Math.floor(num(r.day, 1, 1, g.day)), revenue: num(r.revenue, 0, 0), costOfGoods: num(r.costOfGoods, 0, 0), wages: num(r.wages, 0, 0), upkeep: num(r.upkeep, 0, 0), interest: num(r.interest, 0, 0), tax: num(r.tax, 0, 0), worldIncome: num(r.worldIncome, 0, 0), jobIncome: num(r.jobIncome, 0, 0), profit: num(r.profit, 0), customers: num(r.customers, 0, 0), lost: num(r.lost, 0, 0) };
   }
   if (isObj(raw.ledger)) for (const k of Object.keys(g.ledger) as Array<keyof GameData['ledger']>) g.ledger[k] = num(raw.ledger[k], 0);
-  g.nextId = Math.floor(num(raw.nextId, 1, 1));
+  let usedId = 0;
+  for (const id of LOT_IDS) for (const s of g.lots[id].shop?.staff ?? []) { const n = /^st(\d+)$/.exec(s.id); if (n && Number.isSafeInteger(Number(n[1])) && Number(n[1]) < Number.MAX_SAFE_INTEGER - 1) usedId = Math.max(usedId, Number(n[1])); }
+  const taskId = /^task(\d+)$/.exec(g.task?.id ?? '');
+  if (taskId && Number.isSafeInteger(Number(taskId[1])) && Number(taskId[1]) < Number.MAX_SAFE_INTEGER - 1) usedId = Math.max(usedId, Number(taskId[1]));
+  g.nextId = Math.max(usedId + 1, Math.floor(num(raw.nextId, 1, 1, Number.MAX_SAFE_INTEGER - 1)));
   g.shopsOpened = Math.floor(num(raw.shopsOpened, 0, 0));
   return g;
 }

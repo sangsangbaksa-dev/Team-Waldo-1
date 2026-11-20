@@ -2,7 +2,9 @@
 
 /** 기록 간격(초) */
 export const GHOST_DT = 0.1;
-const STRIDE = 4; // x, z, 방향, 누적 진행(샘플 단위)
+const STRIDE = 4;
+const MAX_DATA = 200_000;
+const EPS = 1e-8; // x, z, 방향, 누적 진행(샘플 단위)
 export interface Ghost { time: number; laps: number; data: number[]; finalSample?: true }
 export interface GhostPose { x: number; z: number; h: number; total: number }
 
@@ -13,16 +15,18 @@ export class GhostRecorder {
   data: number[] = [];
 
   tick(clock: number, c: GhostPose): void {
-    if (!Number.isFinite(clock) || clock < count(this) * GHOST_DT || !Number.isFinite(c.x) || !Number.isFinite(c.z) || !Number.isFinite(c.h) || !Number.isFinite(c.total)) return;
+    if (this.data.length >= MAX_DATA - STRIDE || !Number.isFinite(clock) || clock + EPS < count(this) * GHOST_DT || !Number.isFinite(c.x) || !Number.isFinite(c.z) || !Number.isFinite(c.h) || !Number.isFinite(c.total)) return;
     this.data.push(r2(c.x), r2(c.z), r2(c.h), r2(c.total));
   }
 
   finish(time: number, laps: number, c?: GhostPose): Ghost {
     const data = this.data.slice();
     if (!c) return { time, laps, data };
+    if (![c.x, c.z, c.h, c.total].every(Number.isFinite) || !Number.isFinite(time) || time <= 0 || time > count(this) * GHOST_DT + EPS) return { time, laps, data: [] };
     const sample = [r2(c.x), r2(c.z), r2(c.h), r2(c.total)];
-    if (time === (count(this) - 1) * GHOST_DT) data.splice(-STRIDE, STRIDE, ...sample);
-    else data.push(...sample);
+    if (data.length >= STRIDE && Math.abs(time - (count(this) - 1) * GHOST_DT) <= EPS) data.splice(-STRIDE, STRIDE, ...sample);
+    else if (data.length < MAX_DATA) data.push(...sample);
+    else return { time, laps, data };
     return { time, laps, data, finalSample: true };
   }
 }
@@ -79,12 +83,12 @@ export function sanitizeGhost(raw: unknown): Ghost | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const r = raw as Record<string, unknown>;
   if (typeof r.time !== 'number' || !Number.isFinite(r.time) || r.time <= 0 || typeof r.laps !== 'number' || !Array.isArray(r.data)) return null;
-  if (r.data.length < STRIDE * 2 || r.data.length % STRIDE !== 0 || r.data.length > 200_000 || !r.data.every(v => typeof v === 'number' && Number.isFinite(v))) return null;
+  if (r.data.length < STRIDE * 2 || r.data.length % STRIDE !== 0 || r.data.length > MAX_DATA || !Array.from(r.data).every(v => typeof v === 'number' && Number.isFinite(v))) return null;
   if (!Number.isInteger(r.laps) || r.laps <= 0) return null;
   const result: Ghost = { time: r.time, laps: r.laps, data: r.data as number[] };
   if (r.finalSample === true) {
     const samples = count(result);
-    if (r.time <= (samples - 2) * GHOST_DT || r.time > (samples - 1) * GHOST_DT) return null;
+    if (r.time <= (samples - 2) * GHOST_DT || r.time > (samples - 1) * GHOST_DT + EPS) return null;
     result.finalSample = true;
   }
   return result;
@@ -96,5 +100,7 @@ export function readGhost(map: string, laps: number, car: string): Ghost | null 
   } catch { return null; }
 }
 export function writeGhost(map: string, laps: number, car: string, g: Ghost): void {
-  try { localStorage.setItem(ghostKey(map, laps, car), JSON.stringify(g)); } catch { /* 저장 불가 환경 */ }
+  const valid = sanitizeGhost(g);
+  if (!valid || valid.laps !== laps) return;
+  try { localStorage.setItem(ghostKey(map, laps, car), JSON.stringify(valid)); } catch { /* 저장 불가 환경 */ }
 }

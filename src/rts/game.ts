@@ -412,7 +412,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
 
   // ---------- HUD ----------
   function paintHud(): void {
-    if (!sim) return; const p = sim.players[me], key = `${p.minerals}|${p.used}|${p.cap}|${Math.floor(sim.tick / TICK)}`; if (key === hudKey) return; hudKey = key;
+    if (!sim) return; const p = sim.players[me], key = `${p.minerals}|${p.used}|${p.cap}|${p.mined}|${Math.floor(sim.tick / TICK)}`; if (key === hudKey) return; hudKey = key;
     $('#rt-min').textContent = String(p.minerals); const s = $('#rt-sup'); s.textContent = `${p.used}/${p.cap}`; s.classList.toggle('full', p.used >= p.cap && p.cap > 0); $('#rt-time').textContent = clock(sim.tick);
     $('#rt-rate').textContent = sim.tick > 200 ? `+${Math.round(p.mined / (sim.tick / TICK / 60))}/분` : '';
   }
@@ -483,7 +483,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       window.setTimeout(() => { if (!closed && ended && camp === c) campResult(win); }, 1400); return;
     }
     if (pvp) { void conclude(draw ? '' : win ? pvp.s.me.id : pvp.s.opponent.id, draw ? '두 쪽이 동시에 무너졌습니다' : win ? '상대의 모든 건물을 파괴했습니다' : '모든 건물을 잃었습니다'); return; }
-    const rec = readRtsRecords(); rec.matches++; if (win) { rec.wins++; const t = Math.floor(sim.tick / TICK); if (!rec.bestWin[difficulty] || t < rec.bestWin[difficulty]) rec.bestWin[difficulty] = t; } rec.difficulty = difficulty; writeRtsRecords(rec);
+    const rec = readRtsRecords(); rec.matches = Math.min(1e9, rec.matches + 1); if (win) { rec.wins = Math.min(rec.matches, rec.wins + 1); const t = Math.max(1, Math.ceil(sim.tick / TICK)); if (!rec.bestWin[difficulty] || t < rec.bestWin[difficulty]) rec.bestWin[difficulty] = t; } rec.difficulty = difficulty; writeRtsRecords(rec);
     const finished = sim;
     window.setTimeout(() => { if (!closed && ended && sim === finished) resultCard(draw ? null : win, draw ? '무승부입니다' : win ? '적의 모든 건물을 파괴했습니다.' : '모든 건물을 잃었습니다.'); }, 1400);
   }
@@ -627,7 +627,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       if (dx || dy) view.pan(dx * sp, dy * sp);
     }
     if (mode?.t === 'build' && pointer.in && !touch) { const g = view.ground(pointer.x, pointer.y); if (g) { const at = ghostAt(g.x, g.y, mode.kind); view.setGhost(mode.kind, at.x, at.y, sim.canPlace(mode.kind, at.x, at.y) && sim.players[me].minerals >= BUILDINGS[mode.kind].cost); } }
-    else if (mode?.t === 'build' && touch) { const g = view.ground(over.clientWidth / 2, over.clientHeight / 2.2); if (g) { const at = ghostAt(g.x, g.y, mode.kind); view.setGhost(mode.kind, at.x, at.y, sim.canPlace(mode.kind, at.x, at.y)); } } else view.setGhost(null);
+    else if (mode?.t === 'build' && touch) { const g = view.ground(over.clientWidth / 2, over.clientHeight / 2.2); if (g) { const at = ghostAt(g.x, g.y, mode.kind); view.setGhost(mode.kind, at.x, at.y, sim.canPlace(mode.kind, at.x, at.y) && sim.players[me].minerals >= BUILDINGS[mode.kind].cost); } } else view.setGhost(null);
     const { bs } = own(); const rb = bs.find(b => b.done && BUILDINGS[b.kind].trains.length && (b.rx || b.ry)); view.setRally(rb && bs.length === 1 ? { x: rb.rx, y: rb.ry } : null);
     view.render(dt, Math.min(1, acc * TICK), selected);
     over.style.cursor = mode?.t === 'attack' ? 'crosshair' : mode ? 'cell' : 'default';

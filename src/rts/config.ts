@@ -99,7 +99,7 @@ export const LEVELS: Record<Difficulty, AiLevel> = {
   brutal: { label: '매우 어려움', blurb: '숙련자용. 확장과 압박이 빠르고, 채취량 보너스 +25%를 받습니다.', think: 14, research: true, workers: 24, barracks: 4, factory: 3, tower: 2, expand: true, attackAfter: 4 * 60 * TICK + 20 * TICK, wave: 44, delay: 0, income: 1.25, mix: { marine: 3, rocket: 2, tank: 3, jeep: 2, medic: 2 }, retreat: true },
 };
 export const DIFFICULTIES = Object.keys(LEVELS) as Difficulty[];
-export const isDifficulty = (v: unknown): v is Difficulty => typeof v === 'string' && v in LEVELS;
+export const isDifficulty = (v: unknown): v is Difficulty => typeof v === 'string' && Object.hasOwn(LEVELS, v);
 
 export const TEAM_COLORS = [0x3d8bff, 0xff5a3c] as const;
 export const TEAM_NAMES = ['청군', '적군'] as const;

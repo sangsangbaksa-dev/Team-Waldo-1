@@ -1,7 +1,9 @@
 /** Convert DOM wheel units to pixels, rejecting invalid device input. */
 export function wheelPixels(delta: number, mode: number, page = 120): number {
   if (!Number.isFinite(delta)) return 0;
-  return delta * (mode === 1 ? 16 : mode === 2 ? Math.max(1, page) : 1);
+  const pageSize = Number.isFinite(page) && page > 0 ? page : 120;
+  const pixels = delta * (mode === 1 ? 16 : mode === 2 ? pageSize : 1);
+  return Number.isFinite(pixels) ? pixels : 0;
 }
 
 /**
@@ -45,5 +47,8 @@ export function dragSteer(offset: number, range = 100, deadzone = 5): number {
 }
 
 export function editableTarget(target: EventTarget | null): boolean {
-  return target instanceof Element && !!target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])');
+  if (typeof Element === 'undefined' || !(target instanceof Element)) return false;
+  if (target.closest('input,textarea,select')) return true;
+  const editing = target.closest('[contenteditable]');
+  return !!editing && editing.getAttribute('contenteditable')?.toLowerCase() !== 'false';
 }

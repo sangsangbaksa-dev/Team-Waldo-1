@@ -200,7 +200,7 @@ export class RtsSim {
       case 'stop': { const us = mine(c.ids); for (const u of us) { this.order(u, idle()); u.o.phase = 9; /* 일부러 세운 일꾼은 자동 복귀하지 않음 */ } return us.length > 0; }
       case 'build': {
         const w = num(c.id) ? this.unit(c.id) : undefined, d = BUILDINGS[c.b];
-        if (!w || w.hp <= 0 || w.owner !== owner || w.kind !== 'worker' || !d || !num(c.x) || !num(c.y)) return false;
+        if (!Object.prototype.hasOwnProperty.call(BUILDINGS, c.b) || !w || w.hp <= 0 || w.owner !== owner || w.kind !== 'worker' || !d || !num(c.x) || !num(c.y)) return false;
         const p = this.players[owner]; if (p.minerals < d.cost || (d.req && !this.has(owner, d.req)) || !this.canPlace(c.b, c.x, c.y)) return false;
         p.minerals -= d.cost; const b = this.addBuilding(owner, c.b, c.x, c.y, false); this.emit({ t: 'placed', owner, x: b.x + b.size / 2, y: b.y + b.size / 2 });
         // q: 이미 짓고 있는 건물이 있으면 그것부터 마치고(afterBuild), 새 건물은 그다음에 맡습니다.
@@ -212,7 +212,7 @@ export class RtsSim {
         const us = mine(c.ids).filter(u => u.kind === 'worker'); for (const u of us) this.order(u, { t: 'build', x: 0, y: 0, target: b.id, phase: 0, timer: 0 }); return us.length > 0;
       }
       case 'train': {
-        const b = num(c.b) ? this.building(c.b) : undefined, d = UNITS[c.u]; if (!b || !d || b.owner !== owner || !b.done || d.from !== b.kind || !this.canTrain(owner, c.u)) return false;
+        const b = num(c.b) ? this.building(c.b) : undefined, d = UNITS[c.u]; if (!Object.prototype.hasOwnProperty.call(UNITS, c.u) || !b || b.hp <= 0 || !d || b.owner !== owner || !b.done || d.from !== b.kind || !this.canTrain(owner, c.u)) return false;
         const p = this.players[owner]; if (b.queue.length >= 5 || p.minerals < d.cost || p.cap - p.used < d.supply) return false;
         p.minerals -= d.cost; p.used += d.supply; b.queue.push({ u: c.u, left: d.time }); return true;
       }
@@ -235,7 +235,7 @@ export class RtsSim {
         return n > 0;
       }
       case 'research': {
-        const b = num(c.b) ? this.building(c.b) : undefined, d = RESEARCH[c.r]; if (!b || !d || b.owner !== owner || !b.done || d.from !== b.kind || b.research) return false;
+        const b = num(c.b) ? this.building(c.b) : undefined, d = RESEARCH[c.r]; if (!Object.prototype.hasOwnProperty.call(RESEARCH, c.r) || !b || b.hp <= 0 || !d || b.owner !== owner || !b.done || d.from !== b.kind || b.research) return false;
         const p = this.players[owner]; if (p.up[c.r] || p.minerals < d.cost || this.buildings.some(x => x.owner === owner && x.research?.r === c.r)) return false;
         p.minerals -= d.cost; b.research = { r: c.r, left: d.time }; return true;
       }
@@ -544,7 +544,7 @@ export class RtsSim {
   spareWorker(b: Building): Unit | null {
     let best: Unit | null = null, bd = sq(60); const c = this.center(b);
     for (const u of this.units) {
-      if (u.hp <= 0 || u.owner !== b.owner || u.kind !== 'worker' || (u.o.t !== 'gather' && u.o.t !== 'idle')) continue;
+      if (u.hp <= 0 || u.owner !== b.owner || u.kind !== 'worker' || (u.o.t !== 'gather' && u.o.t !== 'idle') || (u.o.t === 'idle' && u.o.phase === 9)) continue;
       const d = sq(u.x - c.x) + sq(u.y - c.y) + (u.carry > 0 ? 100 : 0); if (d < bd) { bd = d; best = u; }
     }
     return best;
@@ -554,7 +554,7 @@ export class RtsSim {
     for (const b of this.buildings) { if (b.owner !== u.owner || b.done || b.hp <= 0 || this.hasBuilder(b)) continue; const d = sq(b.x + b.size / 2 - u.x) + sq(b.y + b.size / 2 - u.y); if (d < sd) { sd = d; site = b; } }
     if (site) { this.order(u, { t: 'build', x: 0, y: 0, target: site.id, phase: 0, timer: 0 }); return; }
     const nd = this.nearestNode(u.x, u.y, 24, false);
-    if (nd) this.order(u, { t: 'gather', target: nd.id, x: 0, y: 0, phase: 0, timer: 0 }); else this.order(u, idle());
+    if (nd || u.carry > 0 && this.nearestHq(u.owner, u.x, u.y)) this.order(u, { t: 'gather', target: nd?.id ?? 0, x: 0, y: 0, phase: u.carry > 0 ? 2 : 0, timer: 0 }); else this.order(u, idle());
   }
 
   /** 겹친 유닛을 밀어냅니다. 움직이는 쪽은 덜, 서 있는 쪽은 더 밀립니다. 채취 중인 일꾼끼리는 통과합니다. */

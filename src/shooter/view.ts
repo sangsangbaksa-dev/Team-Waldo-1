@@ -1,3 +1,4 @@
+import { renderPixelRatio } from '../shared/render-budget';
 // ZERO ZONE — 3D 장면: 지형·건물·나무·전리품·병사·자기장 벽·1인칭 총과 사격 효과. 경기 상태(Match)를 읽기만 합니다.
 import * as THREE from 'three';
 import { makePost, type PostFx } from '../postfx';
@@ -48,14 +49,14 @@ export class ShooterView {
   private zoneWall: THREE.Mesh; private zoneNext: THREE.Mesh; private tracers: Fx[] = []; private sparks: THREE.Points; private sparkData: { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; r: number; g: number; b: number }[] = [];
   private vm: THREE.Object3D | null = null; private vmId = ''; private vmParts = ''; private vmSwap = 0; private vmFlash: THREE.Sprite; private bob = 0; private shake = 0; private terrainView: TerrainView | null = null; private fovPunch = 0; private flashKick = 0; private roll = 0; private sprintT = 0; private time = 0;
   private mats = new Map<string, THREE.Material>(); private tmpCol = new THREE.Color(); private beams: THREE.InstancedMesh;
-  private camPos = new THREE.Vector3(); fov = 78; frames = 0;
+  private projected = new THREE.Vector3(); private viewportW = 1; private viewportH = 1; private camPos = new THREE.Vector3(); fov = 78; frames = 0;
   /** 폭풍우 하늘: 번개(flash)가 가끔 하늘과 안개를 밝힙니다 */
   private wfx: WeatherFx | null = null; private sky: THREE.Mesh; private hemi: THREE.HemisphereLight; private flash = 0; private nextBolt = 6; private carrier: THREE.Group | null = null; private fogBase = new THREE.Color(0x76828a);
 
   constructor(readonly canvas: HTMLCanvasElement, readonly match: Match, private assets: ShooterAssets | null, readonly quality: Quality) {
     const hi = quality === 'high';
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(hi ? 2 : quality === 'standard' ? 1.5 : 1, window.devicePixelRatio || 1));
+    this.renderer.setPixelRatio(renderPixelRatio(canvas.clientWidth || innerWidth, canvas.clientHeight || innerHeight, devicePixelRatio, quality));
     this.renderer.shadowMap.enabled = hi; this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.05; this.renderer.autoClear = false;
     const sc = this.scene, sunDir = new THREE.Vector3(0.55, 0.62, 0.38);
@@ -424,7 +425,7 @@ export class ShooterView {
     this.vmFlash.visible = p.muzzle > 0 && gun?.att.muzzle !== 'suppressor'; this.vmFlash.material.rotation = this.time * 40; this.flashKick = Math.max(0, this.flashKick - dt * 14); const fs = 0.3 + this.flashKick * 0.45 * (0.7 + Math.random() * 0.6); this.vmFlash.scale.set(fs, fs, 1);
   }
 
-  resize(w: number, h: number): void { this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); }
+  resize(w: number, h: number): void { w = Math.max(1, w); h = Math.max(1, h); this.viewportW = w; this.viewportH = h; const ratio = renderPixelRatio(w, h, devicePixelRatio, this.quality); if (ratio !== this.renderer.getPixelRatio()) this.renderer.setPixelRatio(ratio); this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); }
 
   /** 매 프레임: 장면을 경기 상태에 맞추고 그립니다. spectate 가 있으면 그 선수 뒤에서 따라갑니다(내가 쓰러진 뒤). */
   frame(dt: number, me: Player, spectate: Player | null, zoom: number): void {
@@ -466,8 +467,8 @@ export class ShooterView {
 
   /** 월드 좌표를 화면 픽셀로. 카메라 뒤면 null. */
   project(x: number, y: number, z: number): { x: number; y: number; dist: number } | null {
-    const v = new THREE.Vector3(x, y, z).project(this.camera); if (v.z > 1 || v.z < -1) return null;
-    const r = this.canvas.getBoundingClientRect(); return { x: (v.x * 0.5 + 0.5) * r.width, y: (-v.y * 0.5 + 0.5) * r.height, dist: this.camPos.distanceTo(new THREE.Vector3(x, y, z)) };
+    const v = this.projected.set(x, y, z).project(this.camera); if (v.z > 1 || v.z < -1) return null;
+    return { x: (v.x * 0.5 + 0.5) * this.viewportW, y: (-v.y * 0.5 + 0.5) * this.viewportH, dist: Math.hypot(x - this.camPos.x, y - this.camPos.y, z - this.camPos.z) };
   }
 
   dispose(): void {

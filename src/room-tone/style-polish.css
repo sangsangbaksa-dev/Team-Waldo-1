@@ -21,3 +21,62 @@
 @media (pointer:coarse) {
   #game .hudright button, #game .gear button { min-height:44px; }
 }
+
+/* Recording-console HUD: visibility without sacrificing the dark environment. */
+#game .hud { padding-top:max(clamp(.8rem,2.2vw,2rem),env(safe-area-inset-top)); }
+#game .hudright { flex-shrink:0; }
+#game .hudright button,#game .gear button,.touchactions button { border-radius:4px; transition:background-color .16s,border-color .16s; }
+#game .hudright button:hover,#game .gear button:hover { background:#263b32; border-color:#b3c995; }
+#game .reticle { transform:translate(-50%,-50%); box-shadow:0 0 0 1px #08100e90; }
+#game .statusfoot { padding:.55rem .75rem; background:#0c1714d9; border:1px solid #74827955; border-radius:4px; }
+#game .stambar { height:5px; border-radius:2px; overflow:hidden; }
+#game #prompt { border-radius:4px; box-shadow:0 5px 24px #0008; }
+#game .panel { border-top:2px solid #c99467; }
+#game .dials button { min-width:0; min-height:62px; }
+#game .choiceRow button:disabled,#game #act:disabled { opacity:.48; }
+#game .panelActions button { min-height:44px; }
+@media(max-width:480px) {
+  #game .hud { gap:.4rem; padding-inline:max(8px,env(safe-area-inset-left)); }
+  #game .hudright { gap:.25rem; }
+  #game #gsound span { font-size:.72rem; }
+  #game .statusfoot { gap:.35rem; padding:.4rem; font-size:.7rem; }
+  #game .gear { gap:.25rem; }
+  #game .gear button { min-height:36px; }
+  #game #prompt { top:54%; }
+}
+@media(prefers-reduced-motion:reduce) { #game .hudright button,#game .gear button,.touchactions button { transition:none; } }
+
+/* Legible recording status and explicit danger levels, not color alone. */
+#game #strain { color:#c2d7b8; }
+#game #strain[data-threat="alert"] { color:#efc58a; }
+#game #strain[data-threat="near"] { color:#ffab92; }
+#game .statusfoot { font-variant-numeric:tabular-nums; }
+#game #guide { width:fit-content; max-width:100%; padding:.2rem .45rem; border-left:2px solid #9fac77; background:#0b1714bb; }
+#game #guide[hidden] { display:none; }
+#game #guideArrow { flex:none; }
+#game .map { border:1px solid #74827988; }
+
+/* Navigation back to the arcade and fatigue feedback. */
+#home .mast-actions { display:flex; align-items:center; gap:clamp(.25rem,2vw,1.25rem); }
+#home .hub-link { color:#e5c6a8; text-decoration:none; font-size:.86rem; font-weight:650; padding:.65rem .2rem; }
+#home .hub-link:hover { text-decoration:underline; }
+#home .hub-link:focus-visible { outline:2px solid #eca16d; outline-offset:3px; }
+#game #stamina.winded { background:#e99879; }
+@media(max-width:480px) { #home .mast { padding-inline:.75rem; } #home .wordmark { font-size:1rem; letter-spacing:.05em; gap:.35rem; } #home .hub-link { font-size:.76rem; } #home #sound { font-size:.76rem; padding-inline:.2rem; } }
+
+#game .mapkey[data-solved="false"] i:nth-child(4) { color:#f38e75; }
+#game .mapkey[data-solved="true"] i:nth-child(4) { color:#9ad991; }
+#game .dials button strong { font-variant-numeric:tabular-nums; }
+
+/* Slow tension, no strobe. */
+#game #viewWrap::after {content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 45%,transparent 31%,#030406bd 100%);opacity:.35;transition:opacity .8s ease,background-color .8s ease;}
+#game #viewWrap[data-incident="drop"]::after {opacity:.83;}
+#game #viewWrap[data-incident="tape"]::after {background-color:#35263a28;opacity:.63;}
+#game #viewWrap[data-incident="breath"]::after {opacity:.56;}
+#game .record-archive {display:grid;gap:.4rem;max-height:42vh;overflow:auto;padding:.2rem;}
+#game .record-archive section {border-left:2px solid #7d6b8f;padding:.5rem .7rem;background:#171c20;}
+#game .record-archive section[data-found="false"] {border-color:#444b49;color:#a0aaa5;}
+#game .record-archive strong {color:#d5b6ed;font-size:.84rem;letter-spacing:.05em;}
+#game .record-archive p {margin:.35rem 0 0;font-size:.88rem;line-height:1.55;}
+#game .mapkey i:last-child {color:#c9a5df;}
+@media(prefers-reduced-motion:reduce){#game #viewWrap::after{transition:none;opacity:.35!important;background-color:transparent!important;}}

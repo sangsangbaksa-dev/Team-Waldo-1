@@ -22,6 +22,7 @@ let fallback = false,
   transition = null,
   rotation = false,
   last = 0;
+let dirty = true;
 const presets = { face: { y: 1.774, d: 0.86 }, body: { y: 1.0, d: 3.55 } };
 const up = new THREE.Vector3(0, 1, 0);
 function updateButtons() {
@@ -45,6 +46,7 @@ function showFallback() {
   updateButtons();
 }
 function selectMode(next, instant = false) {
+  dirty = true;
   mode = next;
   updateButtons();
   image.src = $(
@@ -87,6 +89,7 @@ play.onclick = () => {
 };
 const fmt = (t) => t.toFixed(2).padStart(5, "0");
 function seek(t) {
+  dirty = true;
   if (mixer && action) {
     action.time = t === duration ? t - 0.0001 : t;
     mixer.update(0);
@@ -102,9 +105,11 @@ function responsive() {
   if (!renderer) return;
   const w = stage.clientWidth,
     h = stage.clientHeight;
+  if (!camera || w <= 0 || h <= 0) return;
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h, false);
+  dirty = true;
 }
 async function run() {
   try {
@@ -133,6 +138,7 @@ async function run() {
     controls.maxDistance = 6.2;
     controls.maxPolarAngle = Math.PI * 0.86;
     controls.autoRotateSpeed = 0.7;
+    controls.addEventListener("change", () => { dirty = true; });
     controls.addEventListener("start", () => {
       transition = null;
     });
@@ -220,10 +226,12 @@ async function run() {
       if (document.hidden || document.getElementById("viewer").hidden) return;
       if (playing && action) {
         mixer.update(dt);
+        dirty = true;
         $("scrub").value = Math.round((action.time / duration) * 1000);
         $("time").value = fmt(action.time);
       }
       if (transition) {
+        dirty = true;
         transition.t = Math.min(1, transition.t + dt * 2.65);
         const t = transition.t,
           e = t * t * (3 - 2 * t);
@@ -232,7 +240,10 @@ async function run() {
         if (t === 1) transition = null;
       }
       controls.update(dt);
-      renderer.render(scene, camera);
+      if (dirty || rotation) {
+        renderer.render(scene, camera);
+        dirty = false;
+      }
     }
     requestAnimationFrame(frame);
   } catch (err) {

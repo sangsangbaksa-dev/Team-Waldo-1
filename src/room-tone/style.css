@@ -362,6 +362,10 @@ input[type="range"] {
   background: radial-gradient(ellipse, transparent 25%, #713a28 100%);
   opacity: 0;
 }
+#danger[data-pursuit="chase"],
+#danger[data-pursuit="caught"] {
+  background: radial-gradient(ellipse, transparent 34%, #30100f66 64%, #210707 100%);
+}
 .reticle {
   width: 5px;
   height: 5px;
@@ -446,8 +450,15 @@ kbd {
   height: 13px;
   background: #b3bca4;
 }
+.stamina-status {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 8ch;
+  text-align: center;
+  white-space: nowrap;
+  color: #f3d4a7;
+}
 .stambar {
-  width: 60px;
   height: 3px;
   background: #3d4944;
 }
@@ -725,9 +736,6 @@ dialog h2 {
   }
   .statusfoot {
     font-size: 0.75rem;
-  }
-  .statusfoot .stambar {
-    width: 32px;
   }
   .gear button {
     padding: 0.45rem;

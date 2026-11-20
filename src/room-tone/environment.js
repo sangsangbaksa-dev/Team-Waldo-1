@@ -9,8 +9,8 @@ const WINGS = [
     ink: "#31433e",
     accent: "#b9dfcc",
     lamp: "#c6ecda",
-    stencil: "접수 · 녹음 준비",
-    english: "RECORDING DEPARTMENT",
+    stencil: "전원 정비 · 배전",
+    english: "POWER MAINTENANCE",
   },
   {
     id: "B",
@@ -21,8 +21,8 @@ const WINGS = [
     ink: "#493e30",
     accent: "#efbf78",
     lamp: "#ffce90",
-    stencil: "방음 · 스튜디오",
-    english: "ACOUSTIC STUDIO",
+    stencil: "송신 · 수신 제어",
+    english: "TRANSMISSION CONTROL",
   },
   {
     id: "C",
@@ -33,8 +33,8 @@ const WINGS = [
     ink: "#323e45",
     accent: "#f1947d",
     lamp: "#f7b19a",
-    stencil: "중계 · 신호 분배",
-    english: "SIGNAL DISTRIBUTION",
+    stencil: "자기 테이프 · 보관",
+    english: "MAGNETIC TAPE ARCHIVE",
   },
   {
     id: "D",
@@ -401,7 +401,14 @@ function equipmentArt(type, p, chapter) {
       box2d(c, 0, 0, 16, h, p.trim);
       text2d(c, p.id, 33, 273, 253, p.ink, "700", "sans-serif");
       text2d(c, "녹음동", 302, 87, 33, p.ink, "700");
-      text2d(c, "STUDIO WING", 302, 113, 17, p.ink, "700", "monospace");
+      c.save();
+      c.beginPath();
+      c.rect(302, 95, 200, 29);
+      c.clip();
+      c.font = "700 14px monospace";
+      c.fillStyle = p.ink;
+      c.fillText(p.english, 302, 113, 195);
+      c.restore();
       for (let i = 0; i < 5; i++)
         box2d(c, 305, 145 + i * 15, 140 - i * 17, 5, p.ink);
       box2d(c, 38, 299, 433, 3, p.ink);
@@ -544,6 +551,7 @@ export function buildEnvironment(THREE, scene, map, tile, chapter) {
     roughness: 0.45,
   });
   const inactive = standard({ color: 0x8e9487, roughness: 0.73 });
+  const junctionPaint = standard({color:p.accent, roughness:.85, emissive:p.accent, emissiveIntensity:.09});
   const badgeMats = {};
   for (const type of [
     "panel",
@@ -637,6 +645,13 @@ export function buildEnvironment(THREE, scene, map, tile, chapter) {
         0,
         Math.PI / 2,
       );
+      // Subtle worn floor markings distinguish intersections without revealing puzzle paths.
+      if (Number(north) + Number(south) + Number(east) + Number(west) >= 3) {
+        for (const side of [-1, 1]) {
+          add("box", junctionPaint, x + side * tile * .36, .006, z, .055, .012, tile * .55);
+          add("box", junctionPaint, x, .006, z + side * tile * .36, tile * .55, .012, .055);
+        }
+      }
       // Only shallow or overhead objects enter navigable cells.
       if ((row * 3 + col) % 4 === 0) {
         add("box", seam, x, H - 0.033, z, 1.5, 0.066, 0.31, orient);

@@ -3,13 +3,15 @@ import './style-polish.css';
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { modelBytes } from "./assets.js";
-import { chapters, makeLevel, route, neighbors } from "./levels.mjs";
+import { chapters, makeLevel, route, neighbors, paths, routeFrom, lineOpen, normalizeSave, walkable, puzzleOptions, puzzleCorrect } from "./levels.mjs";
 import { buildEnvironment } from "./environment.js";
 import { Sound } from "./sound.js";
+import { archiveCells, cleanArchive, createDread, recordings } from "./dread.mjs";
 import { openViewer } from "./viewer.js";
 
 const $ = (id) => document.getElementById(id),
   C = 2.7,
+  EYE_HEIGHT = 1.58,
   SAVE = "waldo.rt03.campaign.v1",
   LAST = "waldo.rt03.complete.v1";
 const sound = new Sound(),
@@ -23,6 +25,8 @@ let state = "home",
   found = [false, false, false],
   seen = new Set(),
   elapsed = 0;
+let archive = [], dread = createDread(), enemyStepDistance = 0;
+let enemyRevealed = false, pursuitPose = 0, dangerOpacity = 0, catchTime = 0;
 let renderer,
   scene,
   camera,
@@ -32,6 +36,7 @@ let renderer,
   mixer,
   gait = [],
   stride = 0,
+  gaitWeight = 0,
   entity,
   environment,
   props,
@@ -47,13 +52,13 @@ let moved = 0,
   enemyPhase = 0,
   stamina = 1,
   winded = false,
-  crouched = false,
-  eyeHeight = 1.58,
   lightOn = true,
   muted = false;
 let now = 0,
   last = 0,
   frameStarted = false,
+  sceneDirty = true,
+  contextLost = false,
   nearest = null,
   moveId = -1,
   lookId = -1,
@@ -71,6 +76,10 @@ let guidePath = [];
 let returnFromMap = resume;
 const touch =
   matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+let lastPointerType = matchMedia("(pointer:coarse)").matches ? "touch" : "mouse";
+let draggingLook = false;
+let lookTravel = 0;
 const px = (t) => String(t).padStart(2, "0");
 const clock = (t) => px(Math.floor(t / 60)) + ":" + px(Math.floor(t % 60));
 const pad = (i) => String(i + 1).padStart(2, "0");
@@ -83,22 +92,14 @@ function read(k) {
   }
 }
 function saved() {
-  const s = read(SAVE);
-  if (s?.v !== 1 || !Number.isInteger(s.ch) || s.ch < 0 || s.ch >= chapters.length ||
-      !Array.isArray(s.found) || s.found.length !== 3) return null;
-  return {
-    ...s,
-    found: s.found.map(v => v === true),
-    solved: s.solved === true,
-    seen: Array.isArray(s.seen) ? s.seen.filter(v => Number.isSafeInteger(v) && v >= 0) : [],
-    elapsed: Number.isFinite(s.elapsed) && s.elapsed >= 0 ? s.elapsed : 0,
-  };
+  const raw = read(SAVE), normalized = normalizeSave(raw);
+  return normalized ? { ...normalized, archive: cleanArchive(raw.archive) } : null;
 }
 function save() {
   try {
     localStorage.setItem(
       SAVE,
-      JSON.stringify({ v: 1, ch, found, solved, seen: [...seen], elapsed }),
+      JSON.stringify({ v: 1, ch, found, solved, seen: [...seen], elapsed, archive }),
     );
   } catch { /* Browser storage or pointer lock is optional. */ }
 }
@@ -124,7 +125,7 @@ function homepage() {
   leaveLook();
   sound.pause(true);
   screens("home");
-  $("dialog").hidden = true;
+  setGameModal(false);
   const s = saved();
   $("continue").hidden = !s;
   $("new").textContent = s ? "처음부터" : "게임 시작";
@@ -145,15 +146,21 @@ function clearInputs() {
   keys.clear();
   pointer.x = pointer.y = 0;
   moveId = lookId = -1;
+  moveStart = lookLast = null;
+  draggingLook = false;
+  lookTravel = 0;
   mobileRun = false;
   $("stickknob").style.transform = "";
 }
 function leaveLook() {
   clearInputs();
-  if (document.pointerLockElement) document.exitPointerLock();
+  if (document.pointerLockElement === renderer?.domElement) {
+    hadPointerLock = false;
+    document.exitPointerLock();
+  }
 }
 function lockLook() {
-  if (touch || !renderer) return;
+  if (lastPointerType === "touch" || !renderer || document.pointerLockElement) return;
   try {
     const p = renderer.domElement.requestPointerLock?.();
     p?.catch(() => {});
@@ -163,11 +170,17 @@ function message(msg, sec = 3.2) {
   $("toast").textContent = msg;
   noticeUntil = now + sec;
 }
+function setGameModal(open) {
+  $("dialog").hidden = !open;
+  for (const child of $("game").children) {
+    if (child.id !== "dialog") child.inert = open;
+  }
+}
 function modal(title, description, body, actions, type = "panel") {
   state = type;
   leaveLook();
-  sound.pause(true);
-  $("dialog").hidden = false;
+  sound.pause(true, type === "lost" || type === "won" ? 0.85 : 0);
+  setGameModal(true);
   $("panelTitle").textContent = title;
   $("panelText").textContent = description;
   $("panelBody").replaceChildren();
@@ -184,7 +197,7 @@ function modal(title, description, body, actions, type = "panel") {
 }
 function resume() {
   state = "play";
-  $("dialog").hidden = true;
+  setGameModal(false);
   sound.pause(false);
   lockLook();
   last = performance.now();
@@ -197,7 +210,7 @@ function guide(fromHome = false) {
   }
   modal(
     "조작 안내",
-    "숙이면 발소리가 줄어듭니다. 모퉁이를 돌아 시야를 끊고, 추격이 멈출 때까지 기다리세요.",
+    "모퉁이를 돌아 시야를 끊고, 추격이 멈출 때까지 기다리세요.",
     (el) => {
       el.innerHTML = $("guideText").innerHTML;
     },
@@ -227,6 +240,7 @@ function pauseGame() {
     null,
     [
       ["계속하기", resume],
+      ["녹음 기록 " + archive.length + " / 8", archivePanel],
       ["조작 안내", () => guide()],
       ["타이틀로", homepage, true],
     ],
@@ -245,12 +259,15 @@ async function setup() {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.08;
     $("viewWrap").prepend(renderer.domElement);
-    renderer.domElement.addEventListener("click", () => {
-      if (state === "play") lockLook();
+    $("viewWrap").addEventListener("click", () => {
+      if (state === "play" && !draggingLook) lockLook();
+      draggingLook = false;
     });
     renderer.domElement.addEventListener("webglcontextlost", (e) => {
       e.preventDefault();
-      save();
+      contextLost = true;
+      if (state === "home" || state === "won") return;
+      if (level && state !== "load") save();
       modal(
         "그래픽 연결이 끊겼습니다",
         "브라우저를 새로고침하면 저장한 구역에서 이어갈 수 있습니다.",
@@ -259,7 +276,12 @@ async function setup() {
         "error",
       );
     });
+    renderer.domElement.addEventListener("webglcontextrestored", () => {
+      contextLost = false;
+      sceneDirty = true;
+    });
   }
+  if (contextLost) throw new Error("WebGL context is unavailable");
   if (!model) {
     const gltf = await new GLTFLoader().parseAsync(await modelBytes(), "");
     model = gltf.scene;
@@ -279,7 +301,8 @@ async function setup() {
           bone.getWorldQuaternion(new THREE.Quaternion()).invert()
         );
         gait.push({bone, rest: bone.quaternion.clone(), axis, amplitude,
-          offset: offset + (side === "L" ? 0 : Math.PI), knee: name === "Shin"});
+          offset: offset + (side === "L" ? 0 : Math.PI), knee: name === "Shin",
+          reach: name === "UpperArm" ? (side === "L" ? -0.56 : -0.29) : 0});
       }
     }
     mixer = new THREE.AnimationMixer(model);
@@ -302,16 +325,10 @@ function pass(x, z) {
   return level.map[row]?.[col] === ".";
 }
 function clearLine(a, b) {
-  const len = Math.hypot(a.x - b.x, a.z - b.z),
-    steps = Math.ceil(len / 0.42);
-  for (let i = 1; i < steps; i++) {
-    const t = i / steps;
-    if (!pass(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t)) return false;
-  }
-  return true;
+  return lineOpen(level.map, a, b, C);
 }
 function shift(dx, dz) {
-  const r = 0.225;
+  const r = 0.285; // Clearance from shallow wall equipment and corner trim.
   function space(x, z) {
     return (
       pass(x - r, z - r) &&
@@ -324,19 +341,28 @@ function shift(dx, dz) {
   if (space(player.x, player.z + dz)) player.z += dz;
 }
 function pointPlayer() {
+  dread = createDread();
+  enemyStepDistance = 0;
+  enemyRevealed = false;
+  pursuitPose = dangerOpacity = 0;
+  $("viewWrap").removeAttribute("data-incident");
+  lamp.intensity = 28;
   const p = xy(level.start);
   const next = xy(neighbors(level.map, level.start)[0]);
-  player.set(p.x + (next.x - p.x) * 0.38, 1.58, p.z + (next.z - p.z) * 0.38);
+  player.set(p.x + (next.x - p.x) * 0.38, EYE_HEIGHT, p.z + (next.z - p.z) * 0.38);
   yaw = Math.atan2(-(next.x - p.x), -(next.z - p.z));
   pitch = 0;
   camera.rotation.set(0, yaw, 0, "YXZ");
+  camera.position.copy(player);
+  sceneDirty = true;
   stamina = 1;
   winded = false;
-  crouched = false;
-  eyeHeight = 1.58;
   lightOn = true;
   const far = xy(level.nest);
   entity.position.set(far.x, 0, far.z);
+  entity.rotation.set(0, 0, 0);
+  model.position.y = 0;
+  model.rotation.set(0, 0, 0);
   path = [];
   nextPath = 0;
   lastKnown = -1;
@@ -344,6 +370,16 @@ function pointPlayer() {
   enemyPhase = 0;
   lastCell = -1;
   nearest = null;
+  stepAt = moved = stride = gaitWeight = 0;
+  noticeUntil = 0;
+  $("toast").textContent = "";
+  $("danger").style.opacity = "0";
+  $("danger").removeAttribute("data-pursuit");
+  $("strain").textContent = "안정";
+  $("strain").dataset.threat = "safe";
+  renderStamina();
+  $("timer").textContent = clock(elapsed);
+  sound.threat(0);
   $("prompt").hidden = true;
   $("act").disabled = true;
   clearInputs();
@@ -358,6 +394,7 @@ function resize() {
   const ratio = renderPixelRatio(w, h, Math.min(devicePixelRatio || 1, touch ? 1.35 : 1.65), touch ? 'standard' : 'high');
   if (ratio !== renderer.getPixelRatio()) renderer.setPixelRatio(ratio);
   renderer.setSize(w, h, false);
+  sceneDirty = true;
 }
 window.addEventListener("resize", resize);
 function disposeGroup(root) {
@@ -421,7 +458,7 @@ function prop(cell, type, i = 0) {
   root.position.set(pos.x, 0, pos.z);
   props.add(root);
   const col =
-      type === "exit" ? 0x91d6a8 : type === "station" ? 0x9ce1db : 0xf1ab63,
+      type === "exit" ? 0x91d6a8 : type === "station" ? 0x9ce1db : type === "record" ? 0xc9a5df : 0xf1ab63,
     bright = paint(col, col, 0.72),
     dark = paint(0x26332f),
     steel = paint(0x718078);
@@ -478,6 +515,12 @@ function prop(cell, type, i = 0) {
           0.026,
         );
     }
+  } else if (type === "record") {
+    mesh(new THREE.BoxGeometry(.48,.64,.38),dark,root,0,.32,0);
+    mesh(new THREE.BoxGeometry(.42,.065,.28),steel,root,0,.66,0);
+    mesh(new THREE.BoxGeometry(.31,.12,.21),dark,root,0,.75,0);
+    mesh(new THREE.BoxGeometry(.20,.026,.11),bright,root,0,.823,0);
+    for(const x of [-.10,.10]) mesh(new THREE.CylinderGeometry(.058,.058,.018,12),steel,root,x,.827,.064);
   } else if (type === "station") {
     mesh(new THREE.BoxGeometry(0.8, 0.94, 0.48), dark, root, 0, 0.47, 0);
     const top = mesh(
@@ -505,17 +548,23 @@ function prop(cell, type, i = 0) {
     mesh(new THREE.BoxGeometry(0.52, 0.31, 0.32), steel, root, 0, 0.97, 0);
     mesh(new THREE.BoxGeometry(0.33, 0.1, 0.34), bright, root, 0, 1.02, 0);
   }
+  // Thin floor markings make interactive equipment identifiable in low light.
+  const footprint = type === "station" ? 0.58 : 0.48;
+  for (const side of [-1, 1]) {
+    mesh(new THREE.BoxGeometry(footprint * 2, .012, .025), bright, root, 0, .008, side * footprint);
+    mesh(new THREE.BoxGeometry(.025, .012, footprint * 2), bright, root, side * footprint, .008, 0);
+  }
   const sign = label(
     type === "item"
       ? chapters[ch].item + " " + pad(i)
       : type === "exit"
         ? "EXIT  /  출구"
-        : chapters[ch].station,
-    type === "exit" ? "#a7dcb7" : type === "station" ? "#a2ddd5" : "#edba81",
+        : type === "record" ? "REC / " + pad(ch * 2 + i) : chapters[ch].station,
+    type === "exit" ? "#a7dcb7" : type === "station" ? "#a2ddd5" : type === "record" ? "#d5b6ed" : "#edba81",
   );
-  sign.position.y = type === "item" ? 1.39 : 1.64;
+  sign.position.y = type === "record" ? 1.10 : type === "item" ? 1.39 : 1.64;
   root.add(sign);
-  return { cell, type, i, root };
+  return { cell, type, i, root, bright };
 }
 function loadScene() {
   model.removeFromParent();
@@ -524,13 +573,13 @@ function loadScene() {
   disposeGroup(props);
   scene = new THREE.Scene();
   scene.background = new THREE.Color(
-    [0x111b1b, 0x141d23, 0x211b19, 0x101b18][ch],
+    [0x0b1311, 0x0b1119, 0x1b1110, 0x090f12][ch],
   );
-  scene.fog = new THREE.FogExp2(scene.background, 0.05);
+  scene.fog = new THREE.FogExp2(scene.background, 0.067);
   camera = new THREE.PerspectiveCamera(68, 1, 0.045, 65);
   scene.add(camera);
-  scene.add(new THREE.HemisphereLight(0xc0d4cf, 0x44413c, 0.86));
-  const fill = new THREE.DirectionalLight(0xc6d2cd, 0.36);
+  scene.add(new THREE.HemisphereLight(0xc0d4cf, 0x44413c, 0.63));
+  const fill = new THREE.DirectionalLight(0xc6d2cd, 0.24);
   fill.position.set(4, 6, 2);
   scene.add(fill);
   lamp = new THREE.SpotLight(0xffeccc, 28, 24, 0.49, 0.57, 1.05);
@@ -546,6 +595,11 @@ function loadScene() {
   items = level.items.map((cell, i) => prop(cell, "item", i));
   items.forEach((o) => (o.root.visible = !found[o.i]));
   items.push(prop(level.start, "station"), prop(level.exit, "exit"));
+  archiveCells(level).forEach((cell,i)=>{
+    const record=prop(cell,"record",i);
+    record.root.visible=!archive.includes(ch*2+i);
+    items.push(record);
+  });
   entity = new THREE.Group();
   entity.add(model);
   scene.add(entity);
@@ -561,7 +615,7 @@ async function start(cont) {
   opening = true;
   screens("game");
   state = "load";
-  $("dialog").hidden = false;
+  setGameModal(true);
   $("panelTitle").textContent = "녹음실 연결 중";
   $("panelText").textContent = "공간과 캐릭터를 불러오고 있습니다.";
   $("panelBody").replaceChildren();
@@ -575,8 +629,9 @@ async function start(cont) {
     found = s?.found ?? [false, false, false];
     solved = s?.solved ?? false;
     elapsed = s?.elapsed ?? 0;
-    seen = new Set(s?.seen || []);
+    archive = s?.archive ?? [];
     level = makeLevel(ch);
+    seen = new Set((s?.seen || []).filter(id => walkable(level.map, id)));
     loadScene();
     save();
     brief();
@@ -601,7 +656,7 @@ function brief() {
       el.innerHTML =
         '<p class="taskline">' +
         chapters[ch].goal +
-        '</p><p class="hint">도면에서 장비와 출구 방향을 확인하세요. 진행 상황은 자동으로 저장됩니다.</p>';
+        '</p><p class="hint">도면에서 장비와 출구 방향을 확인하세요. 구역마다 숨은 녹음 기록 2개가 있습니다. 진행 상황은 자동 저장됩니다.</p>';
     },
     [
       ["구역 진입", resume],
@@ -619,8 +674,26 @@ function renderHUD() {
       ? c.station + "으로 돌아가세요."
       : c.item + " 회수  " + total() + " / 3";
   $("lightState").textContent = lightOn ? "켜짐" : "꺼짐";
-  $("crouch").setAttribute("aria-pressed", String(crouched));
+  $("torch").setAttribute("aria-label", lightOn ? "손전등 끄기" : "손전등 켜기");
+  for (const item of items) {
+    if (item.type !== "exit") continue;
+    const color = solved ? 0x91d6a8 : 0xe1a06c;
+    item.bright.color.setHex(color);
+    item.bright.emissive.setHex(color);
+    item.bright.emissiveIntensity = solved ? 1.3 : 0.45;
+  }
+  $("torch").setAttribute("aria-pressed", String(lightOn));
   refreshGuide();
+}
+function renderStamina() {
+  const fill = $("stamina"), meter = fill.parentElement;
+  const percent = String(Math.round(stamina * 100));
+  fill.style.transform = "scaleX(" + stamina.toFixed(3) + ")";
+  fill.classList.toggle("winded", winded);
+  if (meter.getAttribute("aria-valuenow") !== percent) {
+    meter.setAttribute("aria-valuenow", percent);
+    $("staminaText").textContent = percent + "%";
+  }
 }
 function toggleLamp() {
   if (state !== "play") return;
@@ -629,12 +702,6 @@ function toggleLamp() {
   message("손전등 " + (lightOn ? "켜짐" : "꺼짐"), 1);
 }
 $("torch").onclick = toggleLamp;
-function toggleCrouch() {
-  if (state !== "play") return;
-  crouched = !crouched;
-  $("crouch").setAttribute("aria-pressed", String(crouched));
-}
-$("crouch").onclick = toggleCrouch;
 
 function refreshGuide() {
   $("guide").hidden = !guidance;
@@ -646,10 +713,12 @@ function refreshGuide() {
       ? [level.start]
       : level.items.filter((_, i) => !found[i]);
   // Compare distances along the corridors so walls don't make a distant target look close.
-  for (const [i, target] of targets.entries()) {
-    const candidate = route(level.map, cell, target);
-    if (i === 0 || candidate.length < guidePath.length) guidePath = candidate;
+  const tree = paths(level.map, cell);
+  let best = -1;
+  for (const target of targets) {
+    if (tree.dist[target] >= 0 && (best < 0 || tree.dist[target] < tree.dist[best])) best = target;
   }
+  guidePath = best < 0 ? [] : routeFrom(tree, cell, best);
   const guideLabel = solved ? "출구" : total() === 3 ? chapters[ch].station : chapters[ch].item;
   $("guideTextLabel").textContent = guideLabel + (guidePath.length ? " 방향" : " 주변");
   drawGuide();
@@ -711,8 +780,9 @@ function drawMap(canvas) {
   level.items.forEach((id, i) => {
     if (!found[i]) dot(id, "#e4a36d", "square");
   });
+  for(const record of items) if(record.type==="record" && record.root.visible && seen.has(record.cell)) dot(record.cell,"#c9a5df","circle");
   dot(level.start, "#75c3ce", "square");
-  dot(level.exit, "#9ad991", "square");
+  dot(level.exit, solved ? "#9ad991" : "#f38e75", "square");
   const pos = cellOf(player),
     px = ((pos % w) + 0.5) * S,
     pz = (Math.floor(pos / w) + 0.5) * S;
@@ -743,7 +813,9 @@ function mapPanel(fromBrief = false) {
       const p = document.createElement("p");
       p.className = "mapkey";
       p.innerHTML =
-        "<i>▲ 현재 위치</i><i>■ 회수 장비</i><i>■ 제어 장치</i><i>■ 출구</i>";
+        "<i>▲ 현재 위치</i><i>■ 회수 장비</i><i>■ 제어 장치</i><i>" + (solved ? "■ 출구 열림" : "■ 출구 잠김") + "</i>";
+      p.innerHTML += "<i>● 발견된 녹음 기록</i>";
+      p.dataset.solved = String(solved);
       el.append(p);
       const button = document.createElement("button");
       button.className = "map-guide";
@@ -764,6 +836,20 @@ function mapPanel(fromBrief = false) {
   );
 }
 $("mapBtn").onclick = () => mapPanel();
+function archivePanel() {
+  modal("회수한 녹음 기록","보조 기록 "+archive.length+" / 8 · 탈출에 필수는 아닙니다.",el=>{
+    const list=document.createElement("div");
+    list.className="record-archive";
+    recordings.flat().forEach((entry,id)=>{
+      const row=document.createElement("section"), heading=document.createElement("strong"), detail=document.createElement("p");
+      heading.textContent=archive.includes(id)?entry.title:String(id+1).padStart(2,"0")+" / 미회수";
+      detail.textContent=archive.includes(id)?entry.text:"신호 없음";
+      row.dataset.found=String(archive.includes(id));
+      row.append(heading,detail);list.append(row);
+    });
+    el.append(list);
+  },[["돌아가기",resume]],"archive");
+}
 function notes(el) {
   const dl = document.createElement("dl");
   dl.className = "notes";
@@ -775,20 +861,6 @@ function notes(el) {
     dl.append(dt, dd);
   }
   el.append(dl);
-}
-const circuitOptions = ["5 A", "10 A", "15 A"],
-  tuneOptions = [
-    ["71.2", "72.4", "73.6", "74.8"],
-    ["80.0", "81.2", "82.4", "83.6"],
-    ["90.6", "91.8", "93.0", "94.2"],
-  ];
-function expected() {
-  return [
-    [0, 1, 2],
-    [1, 3, 1],
-    [1, 2, 0],
-    [2, 1, 0],
-  ][ch];
 }
 function puzzle(reset = true) {
   if (reset) {
@@ -818,6 +890,8 @@ function puzzle(reset = true) {
             choices.push(i);
             sound.tone(i);
             puzzle(false);
+            const next = $("panelBody").querySelector(".choiceRow button:not(:disabled)") ?? $("panelActions").querySelector("button");
+            next?.focus({ preventScroll: true });
           };
           row.append(b);
         }
@@ -833,12 +907,7 @@ function puzzle(reset = true) {
         box.className = "dials";
         for (let i = 0; i < 3; i++) {
           const b = document.createElement("button");
-          const opts =
-            ch === 0
-              ? circuitOptions
-              : ch === 1
-                ? tuneOptions[i]
-                : ["0°", "90°", "180°", "270°"];
+          const opts = puzzleOptions(ch, i);
           b.innerHTML =
             "<small>" +
             c.names[i] +
@@ -849,6 +918,7 @@ function puzzle(reset = true) {
             choices[i] = (choices[i] + 1) % opts.length;
             sound.tone(choices[i]);
             puzzle(false);
+            $("panelBody").querySelectorAll(".dials button")[i]?.focus({ preventScroll: true });
           };
           box.append(b);
         }
@@ -869,7 +939,7 @@ function puzzle(reset = true) {
       [
         "신호 확인",
         () => {
-          if (expected().every((v, i) => choices[i] === v)) {
+          if (puzzleCorrect(ch, choices)) {
             solved = true;
             sound.success();
             save();
@@ -895,7 +965,17 @@ function interact() {
   if (state !== "play" || !nearest) return;
   const o = nearest,
     c = chapters[ch];
-  if (o.type === "item") {
+  if (!o.root.visible || Math.hypot(o.root.position.x - player.x, o.root.position.z - player.z) >= 2.16 ||
+      !clearLine(player, o.root.position)) return;
+  if(o.type==="record"){
+    const id=ch*2+o.i;
+    if(!archive.includes(id)) archive.push(id);
+    o.root.visible=false;
+    nearest=null;
+    sound.recording();
+    save();
+    message(recordings[ch][o.i].title+" · 녹음함에 저장됨 ("+archive.length+"/8)",5);
+  } else if (o.type === "item") {
     found[o.i] = true;
     // The equipment makes a noise at the pickup location. The creature investigates it.
     lastKnown = o.cell;
@@ -959,7 +1039,7 @@ function interact() {
         el.innerHTML =
           '<div class="endstat"><span>복원 구역</span><strong>04 / 04</strong><span>탈출 기록</span><strong>' +
           clock(elapsed) +
-          "</strong></div>";
+          "</strong><span>회수 기록</span><strong>" + archive.length + " / 8</strong></div>";
       },
       [["타이틀로", homepage]],
       "won",
@@ -968,11 +1048,20 @@ function interact() {
 }
 $("act").onclick = interact;
 function caught() {
+  // Preserve progress at contact, before the brief final encounter begins.
   save();
   sound.caught();
+  clearInputs();
+  state = "catching";
+  catchTime = 0;
+  $("danger").dataset.pursuit = "caught";
+  $("danger").style.opacity = "0.94";
+  if (reducedMotion.matches) finishCaught();
+}
+function finishCaught() {
   modal(
     "신호가 끊겼습니다",
-    "회수한 장비와 복원 기록은 보존됩니다. 모퉁이를 돌고 자세를 낮추면 추격을 피하기 쉽습니다.",
+    "회수한 장비와 복원 기록은 보존됩니다. 모퉁이를 돌아 시야를 끊으면 추격을 피하기 쉽습니다.",
     null,
     [
       [
@@ -994,7 +1083,7 @@ function enemyUpdate(dt, running) {
   grace = Math.max(0, grace - dt);
   const visible = dist <= 14 && clearLine(player, e);
   const inSight = visible && dist <= (lightOn ? 10.7 : 6.1);
-  const hearRange = running ? 14 : crouched ? 1.6 : 4.7;
+  const hearRange = running ? 14 : 4.7;
   const hear = moved > dt * 0.15 && dist < hearRange * (visible ? 1 : 0.55);
   const tracking = !grace && (inSight || hear);
   const playerCell = cellOf(player);
@@ -1007,7 +1096,12 @@ function enemyUpdate(dt, running) {
 
   nextPath -= dt;
   const ec = cellOf(e);
-  if (nextPath <= 0) {
+  const directChase = tracking && inSight && ec === playerCell;
+  if (directChase) {
+    // A direct pursuit changes the actual position; discard stale corridor waypoints.
+    path = [];
+    nextPath = 0;
+  } else if (nextPath <= 0) {
     nextPath = enemyPhase ? 0.65 : 2.5;
     // Replan from the next corridor center. This keeps sharp turns out of walls.
     const anchor = path[0] ?? ec;
@@ -1033,13 +1127,13 @@ function enemyUpdate(dt, running) {
   }
   const startX = e.x;
   const startZ = e.z;
-  const destination = tracking && inSight && ec === playerCell ? player
+  const destination = directChase ? player
     : path.length ? xy(path[0]) : null;
   if (destination) {
     const x = destination.x - e.x;
     const z = destination.z - e.z;
     const d = Math.hypot(x, z);
-    const v = (enemyPhase ? 1.8 + ch * 0.09 : 0.92 + ch * 0.05) * dt;
+    const v = (enemyPhase ? 2.05 + ch * 0.07 : 0.92 + ch * 0.05) * dt;
     if (d <= v) {
       e.x = destination.x;
       e.z = destination.z;
@@ -1048,28 +1142,58 @@ function enemyUpdate(dt, running) {
       e.x += (x / d) * v;
       e.z += (z / d) * v;
     }
-    if (d > 0.03) entity.rotation.y = Math.atan2(x, z);
+    if (d > 0.03) {
+      const angle = Math.atan2(x, z) - entity.rotation.y;
+      const delta = Math.atan2(Math.sin(angle), Math.cos(angle));
+      entity.rotation.y += delta * (1 - Math.exp(-10 * dt));
+    }
   }
   const travel = Math.hypot(e.x - startX, e.z - startZ);
+  const dx = e.x - player.x, dz = e.z - player.z;
+  const proximity = Math.hypot(dx, dz);
+  const exposed = proximity < 17 && clearLine(player, e);
+  const pan = (dx * Math.cos(yaw) - dz * Math.sin(yaw)) / Math.max(proximity, 0.1);
+  const pursuing = enemyPhase > 0;
+  if (!pursuing) enemyRevealed = false;
+  if (!enemyRevealed && tracking && exposed && proximity < 10.7) {
+    enemyRevealed = true;
+    sound.enemyReveal(pan, proximity);
+  }
+  enemyStepDistance += travel;
+  const stepLength = pursuing ? 0.68 : 0.82;
+  if (enemyStepDistance >= stepLength) {
+    enemyStepDistance -= stepLength;
+    if (proximity < 17 && !grace) sound.enemyStep(proximity, pan, exposed, pursuing);
+  }
   stride += travel * 5.5;
-  model.position.y = 0.009 + 0.009 * Math.abs(Math.sin(stride));
-  model.rotation.z = 0.025 * Math.sin(now * 2.1);
-  mixer.update(dt * (enemyPhase ? 1.25 : 0.75));
+  gaitWeight = THREE.MathUtils.damp(gaitWeight, Math.min(1, travel / Math.max(dt, 0.001)), 9, dt);
+  pursuitPose = THREE.MathUtils.damp(pursuitPose, pursuing ? 1 : 0, 7, dt);
+  const lurch = reducedMotion.matches ? 0 : Math.sin(stride) * gaitWeight;
+  model.position.y = 0.01 - pursuitPose * 0.11 + 0.035 * Math.abs(lurch);
+  model.rotation.x = pursuitPose * (0.23 + 0.055 * lurch);
+  model.rotation.z = 0.035 + lurch * (0.024 + pursuitPose * 0.055);
+  mixer.update(dt * (pursuing ? 1.25 : 0.75));
   for (const joint of gait) {
     const swing = Math.sin(stride + joint.offset);
     joint.bone.quaternion.copy(joint.rest);
-    joint.bone.rotateOnAxis(joint.axis, joint.amplitude * (joint.knee ? Math.max(0, swing) : swing));
+    const walk = joint.amplitude * gaitWeight * (joint.knee ? Math.max(0, swing) : swing);
+    joint.bone.rotateOnAxis(joint.axis, walk * (1 + pursuitPose * 0.25) + joint.reach * pursuitPose);
   }
   const threat = grace
     ? 0
-    : Math.max(0, 1 - dist / 12) * (inSight ? 0.96 : 0.57);
+    : Math.max(0, 1 - proximity / 12) * (exposed ? 0.96 : 0.57);
   sound.threat(threat);
-  $("danger").style.opacity = String(threat * 0.53);
-  $("strain").textContent =
-    threat > 0.68 ? "바로 근처" : threat > 0.28 ? "접근 중" : "안정";
-  if (!grace && Math.hypot(player.x - e.x, player.z - e.z) < 0.73 && clearLine(player, e)) {
-    caught();
-  }
+  const closingIn = pursuing && exposed && proximity < 8;
+  const danger = $("danger");
+  const dangerMode = closingIn ? "chase" : "quiet";
+  if (danger.dataset.pursuit !== dangerMode) danger.dataset.pursuit = dangerMode;
+  dangerOpacity = THREE.MathUtils.damp(dangerOpacity, threat * (closingIn ? 0.92 : 0.68), 6, dt);
+  danger.style.opacity = dangerOpacity.toFixed(3);
+  const strain = $("strain");
+  const status = threat > 0.68 ? "바로 근처" : closingIn ? "추격 중" : threat > 0.28 ? "기척 감지" : "안정";
+  if (strain.textContent !== status) strain.textContent = status;
+  strain.dataset.threat = threat > 0.68 || closingIn ? "near" : threat > 0.28 ? "alert" : "safe";
+  if (!grace && proximity < 0.73 && exposed) caught();
 }
 function pathsDistXZ(a, b) {
   return (
@@ -1094,13 +1218,8 @@ function update(dt) {
   const sprintHeld = keys.has("ShiftLeft") || keys.has("ShiftRight") || mobileRun;
   if (stamina <= 0.045) winded = true;
   else if (!sprintHeld || stamina >= 0.3) winded = false;
-  const running = sprintHeld && !crouched && !winded && length > 0.1;
-  stamina = THREE.MathUtils.clamp(
-    stamina + (running ? -0.14 : 0.11) * dt,
-    0,
-    1,
-  );
-  const scale = (running ? 3.22 : crouched ? 1.05 : 1.88) * dt,
+  const running = sprintHeld && !winded && length > 0.1;
+  const scale = (running ? 3.22 : 1.88) * dt,
     oldX = player.x,
     oldZ = player.z;
   shift(
@@ -1108,22 +1227,34 @@ function update(dt) {
     (-Math.cos(yaw) * f - Math.sin(yaw) * r) * scale,
   );
   moved = Math.hypot(player.x - oldX, player.z - oldZ);
+  const exerting = running && moved > dt * 0.15;
+  stamina = THREE.MathUtils.clamp(stamina + (exerting ? -0.14 : 0.11) * dt, 0, 1);
+  renderStamina();
   stepAt += moved;
   if (stepAt > (running ? 1.02 : 0.86)) {
-    sound.step(running, crouched);
+    sound.step(running);
     stepAt = 0;
   }
-  eyeHeight = THREE.MathUtils.damp(eyeHeight, crouched ? 1.12 : 1.58, 12, dt);
   camera.position.set(
     player.x,
-    eyeHeight +
-      Math.sin(elapsed * (running ? 12 : 8.3)) * Math.min(moved, 0.05) * 0.38,
+    EYE_HEIGHT + (reducedMotion.matches ? 0 :
+      Math.sin(elapsed * (running ? 12 : 8.3)) * Math.min(moved, 0.05) * 0.38),
     player.z,
   );
   camera.rotation.set(pitch, yaw, 0, "YXZ");
   lamp.visible = lightOn;
+  beam.intensity = THREE.MathUtils.damp(beam.intensity, lightOn ? 2 : 0.45, 8, dt);
   enemyUpdate(dt, running);
   if (state !== "play") return;
+  const event=dread.tick(dt,!grace && !enemyPhase && moved>dt*.3 && !solved && now>noticeUntil);
+  if(event?.started){
+    sound.incident(event.kind,Math.random()<.5?-.83:.83);
+    message(event.caption,event.duration);
+  }
+  const dim=event?.kind==="drop" && !reducedMotion.matches?Math.sin(Math.PI*event.age/event.duration):0;
+  lamp.intensity=28*(1-.68*dim);
+  const atmosphere=event?.kind??"none";
+  if($("viewWrap").dataset.incident!==atmosphere) $("viewWrap").dataset.incident=atmosphere;
   const cell = cellOf(player);
   if (cell !== lastCell) {
     seen.add(cell);
@@ -1152,15 +1283,13 @@ function update(dt) {
     ? nearest.type === "item"
       ? chapters[ch].item + " 회수"
       : nearest.type === "exit"
-        ? "출구 작동"
-        : chapters[ch].station + " 확인"
+        ? (solved ? "출구 작동" : "잠긴 출구 확인")
+        : nearest.type === "record" ? "녹음 기록 회수" : chapters[ch].station + " 확인"
     : "";
   const prompt = $("prompt"), promptText = $("promptText"), act = $("act");
   if (prompt.hidden !== !caption) prompt.hidden = !caption;
   if (promptText.textContent !== caption) promptText.textContent = caption;
   if (act.disabled !== !nearest) act.disabled = !nearest;
-  const bar = $("stamina"), transform = "scaleX(" + stamina.toFixed(3) + ")";
-  if (bar.style.transform !== transform) bar.style.transform = transform;
   const timer = $("timer"), timeText = clock(elapsed);
   if (timer.textContent !== timeText) timer.textContent = timeText;
   if (now > noticeUntil && $("toast").textContent) $("toast").textContent = "";
@@ -1174,16 +1303,39 @@ function frame(ts) {
   const dt = Math.min(0.075, Math.max(0, (ts - last) / 1000));
   last = ts;
   now = ts / 1000;
-  if (document.hidden || !scene || $("game").hidden) return;
+  if (document.hidden || contextLost || !scene || $("game").hidden) return;
   if (state === "play") {
     update(dt);
     renderer.render(scene, camera);
-  } else if (["brief", "loading"].includes(state)) {
-    camera.position.copy(player);
+    sceneDirty = false;
+  } else if (state === "catching") {
+    // Hold the encounter in the world long enough to see what reached you.
+    catchTime += dt;
+    const targetYaw = Math.atan2(-(entity.position.x - player.x), -(entity.position.z - player.z));
+    const turn = Math.atan2(Math.sin(targetYaw - yaw), Math.cos(targetYaw - yaw));
+    yaw += turn * (1 - Math.exp(-9 * dt));
+    camera.rotation.set(THREE.MathUtils.damp(camera.rotation.x, -0.08, 7, dt), yaw, 0, "YXZ");
+    model.rotation.x = THREE.MathUtils.damp(model.rotation.x, 0.48, 8, dt);
+    mixer.update(dt * 0.55);
     renderer.render(scene, camera);
+    if (catchTime >= 0.8) finishCaught();
+  } else if (sceneDirty && !["load", "error"].includes(state)) {
+    // Static modal backgrounds only need a new frame after a scene/size change.
+    renderer.render(scene, camera);
+    sceneDirty = false;
   }
 }
 document.addEventListener("keydown", (e) => {
+  if (e.code === "Tab" && !$("game").hidden && !$("dialog").hidden) {
+    const focusable = [...$("dialog").querySelectorAll("button:not(:disabled), input:not(:disabled), a[href]")];
+    if (!focusable.length) { e.preventDefault(); return; }
+    const index = focusable.indexOf(document.activeElement);
+    if (index < 0 || (e.shiftKey ? index === 0 : index === focusable.length - 1)) {
+      e.preventDefault();
+      focusable[e.shiftKey ? focusable.length - 1 : 0].focus();
+    }
+    return;
+  }
   if (
     e.target instanceof HTMLInputElement ||
     e.target instanceof HTMLSelectElement ||
@@ -1205,7 +1357,6 @@ document.addEventListener("keydown", (e) => {
     if (!e.repeat) {
       if (e.code === "KeyE") interact();
       else if (e.code === "KeyF") toggleLamp();
-      else if (e.code === "KeyC") toggleCrouch();
       else if (e.code === "KeyG") toggleGuide();
       else if (e.code === "KeyM") mapPanel();
       else if (e.code === "Escape" || e.code === "KeyP") pauseGame();
@@ -1221,6 +1372,19 @@ document.addEventListener("keydown", (e) => {
   }
 });
 document.addEventListener("keyup", (e) => keys.delete(e.code));
+// Escape may be consumed by the browser while releasing pointer lock.
+let hadPointerLock = false;
+document.addEventListener("pointerlockchange", () => {
+  const locked = document.pointerLockElement === renderer?.domElement;
+  if (hadPointerLock && !locked && state === "play") pauseGame();
+  hadPointerLock = locked;
+});
+window.addEventListener("pagehide", () => {
+  if (state === "play") save();
+});
+document.addEventListener("pointerdown", (e) => {
+  lastPointerType = e.pointerType || "mouse";
+}, true);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && state === "play") pauseGame();
 });
@@ -1247,6 +1411,8 @@ wrap.addEventListener("pointerdown", (e) => {
   )
     return;
   lookId = e.pointerId;
+  draggingLook = false;
+  lookTravel = 0;
   lookLast = [e.clientX, e.clientY];
   wrap.setPointerCapture(e.pointerId);
 });
@@ -1257,7 +1423,10 @@ wrap.addEventListener("pointermove", (e) => {
     lookLast &&
     !document.pointerLockElement
   ) {
-    look(e.clientX - lookLast[0], e.clientY - lookLast[1]);
+    const dx = e.clientX - lookLast[0], dy = e.clientY - lookLast[1];
+    lookTravel += Math.hypot(dx, dy);
+    if (lookTravel > 4) draggingLook = true;
+    look(dx, dy);
     lookLast = [e.clientX, e.clientY];
   }
 });

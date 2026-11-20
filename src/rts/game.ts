@@ -68,7 +68,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   };
   const setSel = (ids: number[]): void => { selected.clear(); ids.forEach(i => selected.add(i)); submenu = false; if (mode?.t !== 'build') mode = null; refresh(); };
   const refresh = (): void => { cmdKey = ''; selKey = ''; paintCommands(); paintSelection(true); };
-  const issue = (c: Cmd): void => { if (!sim || ended) return; if (net) net.send(c); else sim.apply(me, c); };
+  const issue = (c: Cmd): void => { if (!sim || ended || paused || root.dataset.phase !== 'play') return; if (net) net.send(c); else sim.apply(me, c); };
 
   // ---------- 명령 ----------
   const ping = (x: number, y: number, c: number): void => view?.ping(x, y, c);
@@ -524,7 +524,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     const fresh = document.createElement('canvas'); fresh.className = 'rt-canvas'; canvas.replaceWith(fresh); canvas = fresh; const q = prefs.quality;
     try { view = new RtsView(canvas, sim, me, q); } catch { show('<div class="rt-card"><span class="rt-eyebrow">FRONTLINE</span><h2>그래픽을 시작하지 못했어요</h2><p class="rt-lead">WebGL 을 사용할 수 없습니다. 브라우저를 새로고침하거나 그래픽 가속을 켠 뒤 다시 시도해 주세요.</p><div class="rt-actions"><button class="primary" data-act="exit">메뉴로</button></div></div>'); return; }
     vision = fogOn && !net ? new Vision(sim.map.size, me) : null; vision?.update(sim, true); view.setVision(vision); fogMini = null; fogVer = -1;
-    resetControls(); hot.clear(); pointer.lastTap = 0; pointer.lastTapId = 0; miniBase = null; selected.clear(); mode = null; submenu = false; ended = false; paused = false; acc = 0; hudKey = cmdKey = selKey = ''; groups.clear(); hide(); root.dataset.phase = 'play'; stats.start = performance.now(); resize();
+    resetControls(); alertAt = { x: 0, y: 0, t: -999 }; bannerT = toastT = uiT = miniT = 0; $('#rt-banner').className = 'rt-banner'; $('#rt-toast').classList.remove('show'); hot.clear(); pointer.lastTap = 0; pointer.lastTapId = 0; miniBase = null; selected.clear(); mode = null; submenu = false; ended = false; paused = false; acc = 0; hudKey = cmdKey = selKey = ''; groups.clear(); hide(); root.dataset.phase = 'play'; stats.start = performance.now(); resize();
     const h = sim.buildings.find(b => b.owner === me && b.kind === 'hq'); if (h) setSel([h.id]);
     if (camp && h) view.lookAt((h.x + 2 + camp.rally.x) / 2, (h.y + 2 + camp.rally.y) / 2);
     if (!camp) toast(net ? '대전 시작! 상대의 모든 건물을 파괴하세요' : '일꾼으로 광물을 캐고, 병영을 지어 병력을 모으세요', false); last = performance.now();
@@ -588,7 +588,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     if (!sim || !view) return; const ev = sim.drain(); if (!ev.length) return; view.consume(ev);
     for (const e of ev) {
       const near = (x: number, y: number): number => { const d = Math.hypot(x - view!.cam.x, y - view!.cam.y); return d < 30 ? 1 - d / 40 : 0.15; };
-      if (e.t === 'shot') audio.sfx(e.w, near(e.x0, e.y0) * (e.w === 'bullet' ? 0.7 : 1)); else if (e.t === 'die') audio.sfx(e.building ? 'bigboom' : 'boom', near(e.x, e.y));
+      if (e.t === 'shot' && (!vision || vision.visible(e.x0, e.y0) || vision.visible(e.x1, e.y1))) audio.sfx(e.w, near(e.x0, e.y0) * (e.w === 'bullet' ? 0.7 : 1)); else if (e.t === 'die' && (!vision || e.owner === me || vision.visible(e.x, e.y))) audio.sfx(e.building ? 'bigboom' : 'boom', near(e.x, e.y));
       else if (e.t === 'alert' && e.owner === me) { alertAt = { x: e.x, y: e.y, t: sim.tick }; audio.sfx('alert'); toast('공격받고 있습니다!', false); }
       else if (e.t === 'built' && e.owner === me) { audio.sfx('built'); toast(`${BUILDINGS[e.kind].name} 건설 완료`); }
       else if (e.t === 'researched' && e.owner === me) { audio.sfx('built'); toast(`${RESEARCH[e.r].name} 연구 완료`); }
@@ -617,7 +617,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       if (dx || dy) { const len = Math.max(1, Math.hypot(dx, dy)); view.pan(dx * sp / len, dy * sp / len); }
     }
     if (mode?.t === 'build' && pointer.in && !touch) { const g = view.ground(pointer.x, pointer.y); if (g) { const at = ghostAt(g.x, g.y, mode.kind); view.setGhost(mode.kind, at.x, at.y, sim.canPlace(mode.kind, at.x, at.y) && sim.players[me].minerals >= BUILDINGS[mode.kind].cost); } }
-    else if (mode?.t === 'build' && touch) { const g = view.ground(over.clientWidth / 2, over.clientHeight / 2.2); if (g) { const at = ghostAt(g.x, g.y, mode.kind); view.setGhost(mode.kind, at.x, at.y, sim.canPlace(mode.kind, at.x, at.y)); } } else view.setGhost(null);
+    else if (mode?.t === 'build' && touch) { const g = view.ground(over.clientWidth / 2, over.clientHeight / 2.2); if (g) { const at = ghostAt(g.x, g.y, mode.kind); view.setGhost(mode.kind, at.x, at.y, sim.canPlace(mode.kind, at.x, at.y) && sim.players[me].minerals >= BUILDINGS[mode.kind].cost); } } else view.setGhost(null);
     const { bs } = own(); const rb = bs.find(b => b.done && BUILDINGS[b.kind].trains.length && (b.rx || b.ry)); view.setRally(rb && bs.length === 1 ? { x: rb.rx, y: rb.ry } : null);
     view.render(dt, Math.min(1, acc * TICK), selected);
     over.style.cursor = mode?.t === 'attack' ? 'crosshair' : mode ? 'cell' : 'default';

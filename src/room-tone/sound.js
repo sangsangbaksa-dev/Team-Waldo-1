@@ -89,6 +89,7 @@ export class Sound {
         await this.waking;
       }
       this.applyLevel();
+      if(this.puzzleActive && this.bed)ease(this.bed.gain,.22,this.ctx.currentTime,.2);
       if (!this.paused && !this.puzzleActive) this.startClock();
     } catch {
       // Sound is optional on devices with a locked or unavailable audio output.
@@ -162,7 +163,7 @@ export class Sound {
   }
 
   applyLevel() {
-    if (!this.level) return;
+    if (!this.level || !this.ctx) return;
     ease(
       this.level.gain,
       this.muted || this.paused ? 0 : 0.67,

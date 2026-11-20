@@ -187,9 +187,9 @@ function clearInputs() {
 }
 function leaveLook() {
   clearInputs();
-  if (document.pointerLockElement === renderer?.domElement) {
+  if (renderer && document.pointerLockElement === renderer.domElement) {
     hadPointerLock = false;
-    document.exitPointerLock();
+    document.exitPointerLock?.();
   }
 }
 function lockLook(explicit=false) {
@@ -349,7 +349,7 @@ async function setup() {
       e.preventDefault();
       contextLost = true;
       if (state === "home" || state === "won") return;
-      if (level && state !== "load") save();
+      if (level && canSaveState(state)) save();
       cancelExitSequence();
       modal(
         "그래픽 연결이 끊겼습니다",
@@ -714,6 +714,7 @@ async function start(cont) {
     await setup();
     if(contextLost || state!=="load")throw new Error("Scene loading interrupted");
     const s = cont ? saved() : null;
+    if(cont && !s)throw new Error("Saved campaign unavailable");
     ch = s?.ch ?? 0;
     found = s?.found ?? [false, false, false];
     solved = s?.solved ?? false;
@@ -1364,9 +1365,10 @@ function enemyUpdate(dt, running) {
     joint.bone.quaternion.copy(joint.rest);
     joint.bone.rotateOnAxis(joint.axis, joint.amplitude * amplitude * (joint.knee ? Math.max(0, swing) : swing));
   }
+  const currentDistance=Math.hypot(player.x-e.x,player.z-e.z);
   const threat = grace
     ? 0
-    : Math.max(0, 1 - dist / 12) * (inSight ? 0.96 : 0.57);
+    : Math.max(0, 1 - currentDistance / 12) * (inSight ? 0.96 : 0.57);
   sound.threat(threat);
   $("danger").style.opacity = String(threat * 0.72);
   const strain = threat > 0.68 ? "바로 근처" : threat > 0.28 ? "접근 중" : "안정";
@@ -1410,7 +1412,7 @@ function update(dt) {
   const meter = $("stamina").parentElement;
   if (meter.getAttribute("aria-valuenow") !== staminaPercent) meter.setAttribute("aria-valuenow", staminaPercent);
   stepAt += moved;
-  if (stepAt > (running ? 1.02 : 0.86)) {
+  if (stepAt >= (running ? 1.02 : 0.86)) {
     sound.step(running, crouched);
     stepAt = stepRemainder(stepAt,running?1.02:.86);
   }
@@ -1553,7 +1555,7 @@ document.addEventListener("keyup", (e) => keys.delete(e.code));
 // Escape may be consumed by the browser while releasing pointer lock.
 let hadPointerLock = false;
 document.addEventListener("pointerlockchange", () => {
-  const locked = document.pointerLockElement === renderer?.domElement;
+  const locked = Boolean(renderer && document.pointerLockElement === renderer.domElement);
   if (locked && (state !== "play" || touch)) {
     // An asynchronous lock request may complete after a pause or screen change.
     hadPointerLock = false;
@@ -1567,7 +1569,7 @@ window.addEventListener("pagehide", () => {
   if (level && canSaveState(state)) save();
 });
 document.addEventListener("pointerdown", (e) => {
-  lastPointerType = e.pointerType || "mouse";
+  if(e.pointerType)lastPointerType=e.pointerType;
 }, true);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
@@ -1645,6 +1647,7 @@ function stickMove(e) {
   let x = (e.clientX - moveStart[0]) / 36,
     y = (e.clientY - moveStart[1]) / 36;
   const distance = Math.hypot(x, y);
+  if(!Number.isFinite(distance))return;
   // Radial dead zone avoids drift while a thumb rests near the center.
   const strength = Math.max(0, Math.min(1, (distance - 0.12) / 0.88));
   pointer.x = distance ? (x / distance) * strength : 0;

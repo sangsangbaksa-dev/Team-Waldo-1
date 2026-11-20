@@ -20,3 +20,21 @@ test("successful writes persist and malformed records fail safely",()=>{
   assert.equal(store.remove("save"),true);
   assert.equal(createRoomStorage(getStorage).read("save"),null);
 });
+
+test("storage becoming inaccessible preserves the last successful save",()=>{
+  let blocked=false;
+  const backing=new Map<string,string>();
+  const store=createRoomStorage(()=>{if(blocked)throw Error("denied");return {getItem:(k:string)=>backing.get(k)??null,setItem:(k:string,v:string)=>{backing.set(k,v)},removeItem:(k:string)=>{backing.delete(k)}}});
+  assert.ok(store.write("save",{ch:1}));
+  backing.set("save",'{"ch":2}');
+  assert.deepEqual(store.read("save"),{ch:2});
+  blocked=true;
+  assert.deepEqual(store.read("save"),{ch:2});
+  assert.equal(store.write("save",{ch:3}),false);
+  blocked=false;
+  assert.deepEqual(store.read("save"),{ch:3});
+  blocked=true;
+  assert.equal(store.remove("save"),false);
+  blocked=false;
+  assert.equal(store.read("save"),null);
+});

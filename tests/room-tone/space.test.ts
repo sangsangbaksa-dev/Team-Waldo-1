@@ -52,3 +52,8 @@ test("door motion is monotonic with a delayed fade and bounded progress",()=>{
   }
   assert.deepEqual(doorMotion(3),{progress:1,fade:1,done:true});
 });
+
+test("wide rotated obstacles are not skipped by a fixed broad-phase limit",()=>{
+ const o={x:0,z:0,ry:0,halfWidth:2,halfDepth:.25,visible:true};
+ assert.equal(clearanceAllows(1.5,0,2.4,0,.285,[o]),false);
+});

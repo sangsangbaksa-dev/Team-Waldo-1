@@ -153,7 +153,7 @@ export class Renderer3D {
     this.scene.add(pole, bulb);
   }
   resize(): void { this.w = this.canvas.clientWidth || window.innerWidth; this.h = this.canvas.clientHeight || window.innerHeight; const ratio = renderPixelRatio(this.w, this.h, devicePixelRatio, this.quality); if (ratio !== this.renderer.getPixelRatio()) this.renderer.setPixelRatio(ratio); this.renderer.setSize(this.w, this.h, false); this.camera.aspect = this.w / this.h; this.camera.updateProjectionMatrix(); }
-  dispose(): void { this.post?.dispose(); this.ins?.dispose(); this.ins = null; this.renderer.dispose(); this.renderer.forceContextLoss(); this.scene.clear(); this.glow.dispose(); this.zoneTex.dispose(); for (const x of this.mats.values()) x.dispose(); for (const o of this.biz.values()) { o.label.material.map?.dispose(); o.label.material.dispose(); } this.box.dispose(); for (const f of this.floaters) f.el.remove(); }
+  dispose(): void { this.post?.dispose(); this.ins?.dispose(); this.ins = null; this.wetStreet.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss(); this.scene.clear(); this.glow.dispose(); this.zoneTex.dispose(); for (const x of this.mats.values()) x.dispose(); for (const o of this.biz.values()) { o.label.material.map?.dispose(); o.label.material.dispose(); } this.box.dispose(); for (const f of this.floaters) f.el.remove(); }
   /** 조준선이 닿는 지면 좌표 */
   groundPoint(max = 760): { x: number; y: number } {
     const b = this.world.boss(0), ox = b ? b.x : this.camPos.x, oy = b ? b.y : this.camPos.z; let d = this.pitch < -0.03 ? Math.min(max, (this.mode === 'fp' ? EYE : 120) / Math.tan(-this.pitch)) : max * 0.8; d = Math.max(70, d);
@@ -324,21 +324,22 @@ export class Renderer3D {
   snapAtmosphere(): void { this.applyAtmosphere(0, true); }
   private updateRain(dt: number): void {
     if (this.reduced) { if (this.rain) this.rain.visible = false; return; }
-    const R = EYE_HEIGHT * 14, H = EYE_HEIGHT * 9, n = 1600, a = this.atm;
+    const R = EYE_HEIGHT * 14, H = EYE_HEIGHT * 9, n = this.quality === 'high' ? 1600 : this.quality === 'standard' ? 1000 : 500, a = this.atm;
+    if (a.rain <= 0.05) { if (this.rain) this.rain.visible = false; return; }
     if (!this.rain) {
       this.rainPos = new Float32Array(n * 6); this.rainSeed = new Float32Array(n * 3);
       for (let i = 0; i < n; i++) this.rainSeed.set([(Math.random() - 0.5) * 2 * R, Math.random() * H, (Math.random() - 0.5) * 2 * R], i * 3);
-      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(this.rainPos, 3));
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(this.rainPos, 3).setUsage(THREE.DynamicDrawUsage));
       this.rain = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0xcfe2ff, transparent: true, opacity: 0.6, depthWrite: false, fog: false }));
       this.rain.frustumCulled = false; this.scene.add(this.rain);
     }
     // 빗줄기: 폭풍우에는 굵고 비스듬하며, 밤에는 가로등·네온에 비쳐 희미한 안개색으로 보인다.
     const mat = this.rain.material as THREE.LineBasicMaterial; mat.color.setRGB(...a.fog).lerp(this.rainTint.set(0.8, 0.88, 1), 0.55 + 0.25 * (1 - a.night)); mat.opacity = 0.28 + a.rain * 0.4;
-    this.rain.visible = a.rain > 0.05; this.rain.geometry.setDrawRange(0, Math.round(n * 2 * a.rain));
+    this.rain.visible = true; this.rain.geometry.setDrawRange(0, Math.round(n * a.rain) * 2);
     const cp = this.camera.position, fall = EYE_HEIGHT * (24 + a.wind * 10) * dt, len = EYE_HEIGHT * (0.7 + a.wind * 0.5), slant = 0.12 + a.wind * 0.3;
+    const wrap = (v: number): number => ((v % (2 * R)) + 2 * R) % (2 * R) - R;
     for (let i = 0; i < n; i++) {
       let y = this.rainSeed[i * 3 + 1] - fall; if (y < 0) y += H; this.rainSeed[i * 3 + 1] = y;
-      const wrap = (v: number): number => ((v % (2 * R)) + 2 * R) % (2 * R) - R;
       const x = cp.x + wrap(this.rainSeed[i * 3] - cp.x), z = cp.z + wrap(this.rainSeed[i * 3 + 2] - cp.z);
       const j = i * 6; this.rainPos[j] = x; this.rainPos[j + 1] = y; this.rainPos[j + 2] = z; this.rainPos[j + 3] = x - len * slant; this.rainPos[j + 4] = y + len; this.rainPos[j + 5] = z - len * slant * 0.4;
     }
@@ -356,7 +357,7 @@ export class Renderer3D {
     const veh = pb && pb.inVeh ? w.vehicles.find(v => v.id === pb.inVeh) : undefined, cy = Math.cos(this.yaw), sy = Math.sin(this.yaw), cp = Math.cos(this.pitch), spt = Math.sin(this.pitch);
     if (pb) { this.focus.set(pb.x, pb.y); this.deadT = 0; } else { this.deadT += dt; this.yaw += dt * 0.25; }
     const fx = this.focus.x, fz = this.focus.y, third = this.mode === 'tp' || !!veh || !pb;
-    if (!third) { const bob = pb ? Math.sin(pb.walk * 0.09) * Math.min(1.6, Math.hypot(pb.vx, pb.vy) / 120) : 0; const cs = fpCameraSpot(w.map, fx, fz); this.camPos.set(cs.x, EYE + bob, cs.y); this.camera.position.copy(this.camPos); this.camera.lookAt(cs.x + cy * cp * 100, EYE + bob + spt * 100, cs.y + sy * cp * 100); }
+    if (!third) { const bob = pb && !this.reduced ? Math.sin(pb.walk * 0.09) * Math.min(1.6, Math.hypot(pb.vx, pb.vy) / 120) : 0; const cs = fpCameraSpot(w.map, fx, fz); this.camPos.set(cs.x, EYE + bob, cs.y); this.camera.position.copy(this.camPos); this.camera.lookAt(cs.x + cy * cp * 100, EYE + bob + spt * 100, cs.y + sy * cp * 100); }
     else {
       const dist = veh ? (veh.kind === 'tank' ? 250 : 200) : 150, hgt = veh ? 95 : 56, pivotY = veh ? 30 : 50; let k = 1;
       for (let s = 0.15; s <= 1; s += 0.085) { if (solidAt(w.map, fx - cy * dist * s, fz - sy * dist * s)) { k = Math.max(0.3, s - 0.12); break; } }

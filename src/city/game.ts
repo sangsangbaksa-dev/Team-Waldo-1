@@ -100,7 +100,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     audio.unlock(); if (rm) banner(`멀티 방 ${rm.ids.length}명 · 영웅 난투전 · 목숨 ${ROOM_LIVES}개 · 마지막까지 살아남으세요`); else if (dl) banner(`${dl.s.opponent.nickname} 님과 1대1 · ${arenaInfo(arenaOf(dl.seed)).name} · ${TARGET_KILLS}킬 선취 · 제한 ${Math.round(TIME_LIMIT / 60)}분`); else if (!tutorial) banner('작전 지령 01 · 첫 사업체를 확보하세요 · J 전체 임무');
     renderCmd(); last = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(frame);
   }
-  let everLocked = false, lockErrors = 0, lookMuteUntil = 0;
+  let everLocked = false, lockErrors = 0, lookMuteUntil = 0, wheelAt = -Infinity;
   function onLockErr(): void { if (!everLocked && ++lockErrors >= 2) lockFail = true; }
   function lock(): void { if (touch || view === 'top' || lockFail || locked) return; try { const r = canvas3.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(onLockErr); } catch { onLockErr(); } }
   function unlock(): void { if (document.pointerLockElement) { expectUnlock = true; document.exitPointerLock(); } }
@@ -108,11 +108,11 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     view = v; canvas.hidden = v !== 'top'; canvas3.hidden = v === 'top'; cross.hidden = v === 'top'; layer.hidden = v === 'top'; if (R3 && v !== 'top') R3.mode = v; if (v === 'top') unlock(); else { R3?.resize(); }
     R?.resize(); q('#c-view').textContent = v === 'fp' ? '1인칭' : v === 'tp' ? '3인칭' : '전술뷰';
   }
-  const onLock = (): void => { locked = document.pointerLockElement === canvas3; if (locked) { expectUnlock = false; everLocked = true; lookMuteUntil = performance.now() + 220; return; } const was = expectUnlock; expectUnlock = false; if (!was && view !== 'top' && world && !world.over && !paused && panel.hidden && bigmap.hidden && q('#c-missions').hidden && world.factions[0].pending === 0) pause(); };
+  const onLock = (): void => { locked = document.pointerLockElement === canvas3; if (locked) { expectUnlock = false; everLocked = true; lookMuteUntil = performance.now() + 220; return; } mouse.down = false; keys.clear(); const was = expectUnlock; expectUnlock = false; if (!was && view !== 'top' && world && !world.over && !paused && panel.hidden && bigmap.hidden && q('#c-missions').hidden && world.factions[0].pending === 0) pause(); };
 
   const onMouseMove = (e: MouseEvent): void => {
     if (!R3 || view === 'top' || paused) return;
-    if (!(locked || (lockFail && mouse.down))) return;
+    if (!(locked || (lockFail && e.target === canvas3))) return;
     // A placement click must not also rotate the camera, and pointer-lock
     // acquisition can inject a huge movementY that buries the view in the ground.
     if (ghost && (e.buttons & 1)) return;
@@ -214,7 +214,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   function pause(): void {
     if (!world || world.over || duel || room) return; paused = true; keys.clear(); mouse.down = false; unlock();
     modal.innerHTML = `<section class="c-pause"><div class="c-kicker">PAUSED</div><h2>일시정지</h2>
-      <div class="c-help"><div><b>보스 조작</b><p>WASD 이동 · 마우스 시점/사격 · V 시점 전환(1인칭·3인칭·전술뷰) · R 재장전 · 1~3 무기 · Space 대시 · H 회복 키트 · Q 고유 스킬</p></div><div><b>도시</b><p>E 사업체 매입·업그레이드·무기 줍기 · F 차량 탑승/하차 · 적 사업체 패드 위에서 6초 버티면 적대적 인수</p></div><div><b>지휘</b><p>Tab 지휘 패널(생산·건설·연구·시장) · 우클릭/지도 클릭 돌격 · Z 집결 · X 사수</p></div><div><b>승리</b><p>자기장은 점점 줄어듭니다. 적 본부를 부수면 그 보스는 부활하지 못합니다. 마지막까지 살아남는 왕국이 승리합니다.</p></div></div>
+      <div class="c-help"><div><b>보스 조작</b><p>WASD 이동 · 마우스/터치패드 시점 · 좌클릭 또는 G 사격 · V 시점 전환(1인칭·3인칭·전술뷰) · R 재장전 · 1~3 무기 · Space 대시 · H 회복 키트 · Q 고유 스킬</p></div><div><b>도시</b><p>E 사업체 매입·업그레이드·무기 줍기 · F 차량 탑승/하차 · 적 사업체 패드 위에서 6초 버티면 적대적 인수</p></div><div><b>지휘</b><p>Tab 지휘 패널(생산·건설·연구·시장) · 우클릭/지도 클릭 돌격 · Z 집결 · X 사수</p></div><div><b>승리</b><p>자기장은 점점 줄어듭니다. 적 본부를 부수면 그 보스는 부활하지 못합니다. 마지막까지 살아남는 왕국이 승리합니다.</p></div></div>
       <div class="c-actions"><button data-act="resume" class="c-primary">계속하기</button><button data-act="sound">효과음 ${prefs.sound ? '켜짐' : '꺼짐'}</button><button data-act="retry">새 게임</button><button data-act="exit">메뉴로 나가기</button></div></section>`;
   }
 
@@ -554,7 +554,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     });
     const up = (e: PointerEvent): void => { looks.delete(e.pointerId); for (const s of [sticks.move, sticks.aim]) if (s.id === e.pointerId) { s.id = -1; s.x = s.y = 0; } if (e.pointerType !== 'touch' && e.button === 0) mouse.down = false; };
     cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
-    cv.addEventListener('wheel', e => { e.preventDefault(); if (cv === canvas) userZoom = Math.max(0.6, Math.min(1.5, userZoom * (e.deltaY > 0 ? 0.92 : 1.08))); else if (world) { const f = world.factions[0]; switchWeapon(world, 0, (f.cur + (e.deltaY > 0 ? 1 : f.slots.length - 1)) % f.slots.length); } }, { passive: false });
+    cv.addEventListener('wheel', e => { if (!world || paused || world.over || !panel.hidden || !bigmap.hidden) return; e.preventDefault(); const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 120 : 1); if (!Number.isFinite(dy) || dy === 0) return; if (cv === canvas) userZoom = Math.max(0.6, Math.min(1.5, userZoom * Math.exp(-Math.max(-120, Math.min(120, dy)) * 0.0015))); else if (!e.ctrlKey && Math.abs(dy) >= 8 && performance.now() - wheelAt >= 240) { wheelAt = performance.now(); const f = world.factions[0]; if (f.slots.length) switchWeapon(world, 0, (f.cur + (dy > 0 ? 1 : f.slots.length - 1)) % f.slots.length); } }, { passive: false });
   }
   const onWindowPointerEnd = (e: PointerEvent): void => {
     looks.delete(e.pointerId);
@@ -637,12 +637,12 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       if (three && R3) {
         if (veh && spd > 70 && now - lastLook > 1100) { let d = veh.ang - R3.yaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; R3.yaw += d * Math.min(1, dt * 2.2); R3.pitch += (-0.12 - R3.pitch) * Math.min(1, dt * 2); }
         const c = Math.cos(R3.yaw), s = Math.sin(R3.yaw), fwd = -my; inp.mx = fwd * c - mx * s; inp.my = fwd * s + mx * c;
-        const ox = b ? b.x : 0, oy = b ? b.y : 0; inp.ax = ox + c * 600; inp.ay = oy + s * 600; inp.fire = ((mouse.down && (locked || lockFail)) || touchFire) && !ghost && !w.inside;
+        const ox = b ? b.x : 0, oy = b ? b.y : 0; inp.ax = ox + c * 600; inp.ay = oy + s * 600; inp.fire = ((mouse.down && (locked || lockFail)) || touchFire || keys.has('g')) && !ghost && !w.inside;
       } else {
         inp.mx = mx; inp.my = my;
         if (sticks.aim.id >= 0 && b) { const m = Math.hypot(sticks.aim.x, sticks.aim.y); if (m > 0.2) { inp.ax = b.x + sticks.aim.x / m * 300; inp.ay = b.y + sticks.aim.y / m * 300; } inp.fire = m > 0.35; }
         else if (touch && b) { inp.fire = touchFire; if (Math.hypot(mx, my) > 0.2) { inp.ax = b.x + mx * 300; inp.ay = b.y + my * 300; } }
-        else { const p = r.toWorld(mouse.x, mouse.y); inp.ax = p.x; inp.ay = p.y; inp.fire = mouse.down && !ghost; }
+        else { const p = r.toWorld(mouse.x, mouse.y); inp.ax = p.x; inp.ay = p.y; inp.fire = (mouse.down || keys.has('g')) && !ghost; }
       }
       acc += dt; let n = 0; while (acc >= 1 / 60 && n < 4) { w.step(1 / 60); acc -= 1 / 60; n++; if (w.enteredByDoor) { w.enteredByDoor = false; enterBuilding(); } } if (n === 4) acc = 0;
       // 이벤트 → 화면·소리

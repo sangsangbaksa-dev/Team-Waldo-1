@@ -64,7 +64,7 @@ export class ModelLayer {
       const m = this.inst(B[name], this.lam, list.length, true); if (!m) continue; list.forEach((t, i) => put(m, i, t.x, t.y, t.x * 0.37, (t.r / rad) * 1.05, (t.r / rad) * (0.9 + (i % 3) * 0.12))); m.count = list.length; m.instanceMatrix.needsUpdate = true;
     }
     // 가로등
-    const corners: [number, number][] = [[8, 8], [BLOCK - 8, 8], [8, BLOCK - 8], [BLOCK - 8, BLOCK - 8]], lampN = w.map.blocks.length * 4;
+    const corners: [number, number][] = [[8, 8], [BLOCK - 8, 8], [8, BLOCK - 8], [BLOCK - 8, BLOCK - 8]], lampN = w.map.blocks.filter(b=>b.type!=='void').length * 4;
     const lamp = this.inst(B.lamp, this.lam, lampN, true); let glowLamp: THREE.InstancedMesh | null = null;
     if (B.lamp.glow) { glowLamp = new THREE.InstancedMesh(B.lamp.glow, this.basic, lampN); glowLamp.frustumCulled = false; this.scene.add(glowLamp); }
     let i = 0;
@@ -72,6 +72,7 @@ export class ModelLayer {
       const ang = Math.atan2(dy - BLOCK / 2, dx - BLOCK / 2); d.position.set(b.x + dx, 0, b.y + dy); d.rotation.set(0, -ang, 0); d.scale.setScalar(PROPS.lamp.scale); d.updateMatrix();
       lamp?.setMatrixAt(i, d.matrix); glowLamp?.setMatrixAt(i, d.matrix); i++;
     }
+    if(lamp)lamp.count=i;if(glowLamp)glowLamp.count=i;
     // 신호등: 교차로 모서리마다
     const tlR = this.inst(B.tl_red, this.lam, 220), tlG = this.inst(B.tl_green, this.lam, 220), tlRg = B.tl_red.glow ? new THREE.InstancedMesh(B.tl_red.glow, this.basic, 220) : null, tlGg = B.tl_green.glow ? new THREE.InstancedMesh(B.tl_green.glow, this.basic, 220) : null;
     if (tlRg) { tlRg.frustumCulled = false; this.scene.add(tlRg); } if (tlGg) { tlGg.frustumCulled = false; this.scene.add(tlGg); }

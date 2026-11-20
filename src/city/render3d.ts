@@ -255,7 +255,7 @@ export class Renderer3D {
       for(const v of near){
         if(lights.remaining<2)break;
         const fx=Math.cos(v.ang),fz=Math.sin(v.ang),front=v.len/2;
-        const range=lightRange(150, d=>solidAt(w.map,v.x+fx*(front+d),v.y+fz*(front+d)));
+        const range=lightRange(150, d=>!!solidAt(w.map,v.x+fx*(front+d),v.y+fz*(front+d)));
         const power=Math.min(0.52,0.12+night*0.4+wet*0.08);
         if(range>12)lights.add(v.x+fx*(front+range/2),0.16,v.y+fz*(front+range/2),v.ang,range,v.wid*1.55,0xffe3aa,power);
         if(wet>0.25)lights.add(v.x-fx*(front+18),0.18,v.y-fz*(front+18),v.ang,36,v.wid*1.45,0xff323e,(v.brake?0.7:0.22)*wet);

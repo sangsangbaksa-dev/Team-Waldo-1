@@ -16,3 +16,9 @@ export function facadeStyle(kind: string | undefined, sign: string | undefined, 
   if (sign === 'POLICE') return 4;
   return Math.min(4, Math.max(0, Math.floor(random * 5)));
 }
+
+/** Three-by-three block chunks for culling; low quality uses larger batches. */
+export function architectureChunk(x:number,z:number,pitch:number,quality:'low'|'standard'|'high'):string{
+  const span=pitch*(quality==='low'?5:3);
+  return `${Math.floor(x/span)}:${Math.floor(z/span)}`;
+}

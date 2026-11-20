@@ -13,7 +13,7 @@ let serverLog = '';
 for (const stream of [server.stdout, server.stderr]) stream.on('data', data => { serverLog += data; });
 server.on('error', error => { serverLog += '\n' + error.message; });
 
-const sizes = [{ name: 'desktop', width: 1280, height: 800 }, { name: 'mobile', width: 390, height: 844 }];
+const sizes = [{ name: 'desktop', width: 1280, height: 800, quality: 'standard', map: 'storm' }, { name: 'mobile', width: 390, height: 844, quality: 'low', map: 'desert' }];
 const results = [];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 let browser;
@@ -36,9 +36,9 @@ try {
       viewport: { width: size.width, height: size.height },
       isMobile: size.name === 'mobile', hasTouch: size.name === 'mobile', reducedMotion: 'reduce',
     });
-    await context.addInitScript(() => {
-      localStorage.setItem('waldo.preferences.v1', JSON.stringify({ sound: false, quality: 'low', reducedMotion: true }));
-    });
+    await context.addInitScript(quality => {
+      localStorage.setItem('waldo.preferences.v1', JSON.stringify({ sound: false, quality, reducedMotion: true }));
+    },size.quality);
     const page = await context.newPage();
     page.setDefaultTimeout(30000);
     const errors = [];
@@ -59,13 +59,14 @@ try {
       assert.equal(await page.locator('[data-pick^="map:"]').count(), 7, 'Race setup must list seven maps');
       assert.equal(await page.locator('[data-pick^="car:"]').count(), 8, 'Race setup must list eight cars');
       await page.screenshot({ path: 'browser-artifacts/race-setup-' + size.name + '.png', animations: 'disabled' });
-      await page.locator('[data-pick="map:desert"]').click();
+      await page.locator('[data-pick="map:' + size.map + '"]').click();
       await page.locator('[data-pick="laps:1"]').click();
       await page.locator('[data-pick="level:2"]').click();
       await page.locator('[data-pick="car:velox"]').click();
       await page.locator('[data-setup="start"]').click();
       await page.waitForFunction(() => document.querySelector('.rc-root')?.dataset.phase === 'countdown');
       assert.equal(await page.locator('#rc-laps').innerText(), '1', 'HUD must show the chosen lap count');
+      await page.screenshot({path:'browser-artifacts/last-city-race-'+size.name+'.png',animations:'disabled'});
       await page.locator('.rc-btns [data-act="exit"]').click();
       await page.locator('.tile').first().waitFor();
       await page.locator('#start-city').click();
@@ -73,6 +74,11 @@ try {
       await page.locator('[data-act="class:warlord"]').click();
       await page.locator('.city-hud').waitFor({ state: 'visible' });
       await page.waitForFunction(() => !!window.__city?.world);
+      if(size.name==='desktop'){
+        // Exercise the standard-quality nighttime / wet-road render path.
+        await page.evaluate(()=>{const {world,r3}=window.__city;world.hour=23;world.weather='rain';r3?.snapAtmosphere();});
+        await page.screenshot({path:'browser-artifacts/last-city-night-'+size.name+'.png',animations:'disabled'});
+      }
       if (size.name === 'desktop') await page.keyboard.press('j');
       else await page.locator('.c-topbtns [data-act="missions"]').click();
       await page.locator('.c-missions').waitFor({ state: 'visible' });

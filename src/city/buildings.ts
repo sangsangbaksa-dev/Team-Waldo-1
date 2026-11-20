@@ -1,8 +1,8 @@
 // LAST CITY — 건물 생성기: Blender 로 구운 외벽 타일 + 1층 상점가 + 돌림띠·벽기둥·셋백·옥상 설비.
 import * as THREE from 'three';
 import type { World } from './world';
-import { BIZ, BLOCK, SIZE } from './defs';
-import { facadeFins, facadeStyle } from './architecture-detail';
+import { BIZ, BLOCK, PITCH, SIZE } from './defs';
+import { facadeFins, facadeStyle, architectureChunk } from './architecture-detail';
 import type { Atmosphere } from './atmosphere';
 import type { Emitter } from './streetfx';
 
@@ -88,12 +88,21 @@ export interface BuildingFx { blink: (t: number) => void; setMood: (atm: Atmosph
 /** 높은 건물 옥상의 붉은 항공장애등을 두 박자로 번갈아 깜박이게 하는 갱신 함수를 돌려준다. */
 export function buildBuildings(world: World, scene: THREE.Scene, base: string, quality: 'low' | 'standard' | 'high' = 'standard'): BuildingFx {
   const loader = new THREE.TextureLoader(), tex = (n: string): THREE.Texture => { const t = loader.load(`${base}assets/tex/${n}.png`); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; return t; };
-  const facades = FACADE_STYLES.map(() => new Mesh()), shops = [new Mesh(), new Mesh()], trim = new Mesh(), lamps = new Mesh(), c = new THREE.Color(), wall = new THREE.Color();
+  // OUTLAW CITY's neighborhood batching approach: shared materials, local geometry bounds.
+  const chunks = new Map<string,{facades:Mesh[];shops:Mesh[];trim:Mesh;lamps:Mesh}>();
+  const chunk = (x:number,z:number) => {
+    const key=architectureChunk(x,z,PITCH,quality);
+    let bin=chunks.get(key);
+    if(!bin){bin={facades:FACADE_STYLES.map(()=>new Mesh()),shops:[new Mesh(),new Mesh()],trim:new Mesh(),lamps:new Mesh()};chunks.set(key,bin);}
+    return bin;
+  };
+  const c = new THREE.Color(), wall = new THREE.Color();
   const tint = (s: { wall: string }): THREE.Color => wall.set(s.wall).lerp(new THREE.Color(0xe2ddd4), 0.5).clone();
   const beacons: [number, number, number][] = [], blades = BLADES.map(() => new Mesh()), streaks = new Mesh(), stacks: Emitter[] = [], white = new THREE.Color(1, 1, 1), signMats: THREE.MeshBasicMaterial[] = [];
   const doors = new Map<number, World['businesses'][number]>(); for (const z of world.businesses) doors.set(z.solid, z);
   world.map.solids.forEach((s, i) => {
     if (s.struct || !s.alive) return;
+    const {facades,shops,trim,lamps}=chunk(s.x+s.w/2,s.y+s.h/2);
     const r = (k: number): number => hash(i * 31 + k), style = facadeStyle(doors.get(i)?.kind, s.sign, s.height, r(1)), F = facades[style], H = 150 + s.height * 1250 + r(2) * 60, tall = H > 520 && r(3) < 0.7;
     const tintC = tint(s), light = tintC.clone().lerp(new THREE.Color(0xf1ede4), 0.55), dark = tintC.clone().multiplyScalar(0.55);
     // 층(티어): 높은 건물은 위로 갈수록 좁아지는 셋백
@@ -238,7 +247,7 @@ export function buildBuildings(world: World, scene: THREE.Scene, base: string, q
   // Shallow curb geometry follows existing block boundaries; it changes no collision.
   if (quality !== 'low') for (const b of world.map.blocks) {
     if (b.type === 'void') continue;
-    const x = b.x, z = b.y, e = BLOCK, c = new THREE.Color(0x94989b);
+    const x = b.x, z = b.y, e = BLOCK, c = new THREE.Color(0x94989b), {trim}=chunk(x+e/2,z+e/2);
     trim.box(x, 0.05, z, x + e, 2.5, z + 4, c);
     trim.box(x, 0.05, z + e - 4, x + e, 2.5, z + e, c);
     trim.box(x, 0.05, z + 4, x + 4, 2.5, z + e - 4, c);
@@ -246,11 +255,14 @@ export function buildBuildings(world: World, scene: THREE.Scene, base: string, q
   }
   const add = (m: Mesh, mat: THREE.Material, shadow = true): void => { if (!m.idx.length) return; const o = new THREE.Mesh(m.geo(), mat); o.castShadow = shadow; o.receiveShadow = shadow; scene.add(o); };
   const facadeMats = FACADE_STYLES.map(n => new THREE.MeshLambertMaterial({ map: tex(`facade_${n}`), emissiveMap: tex(`facade_${n}_e`), emissive: 0xffd9a8, emissiveIntensity: 0.5, vertexColors: true, side: THREE.DoubleSide }));
-  FACADE_STYLES.forEach((_, k) => add(facades[k], facadeMats[k]));
-  const shopMats = shops.map((_, k) => new THREE.MeshLambertMaterial({ map: shopTexture(k * 2), emissiveMap: shopEmissive(k * 2), emissive: 0xffffff, emissiveIntensity: 0.2, vertexColors: true, side: THREE.DoubleSide }));
-  shops.forEach((m, k) => add(m, shopMats[k]));
-  add(trim, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
-  const entryMat = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }); add(lamps, entryMat, false);
+  const shopMats = [0,1].map(k => new THREE.MeshLambertMaterial({ map: shopTexture(k * 2), emissiveMap: shopEmissive(k * 2), emissive: 0xffffff, emissiveIntensity: 0.2, vertexColors: true, side: THREE.DoubleSide }));
+  const trimMat = new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide});
+  const entryMat = new THREE.MeshBasicMaterial({vertexColors:true,toneMapped:false});
+  for(const bin of chunks.values()){
+    bin.facades.forEach((m,k)=>add(m,facadeMats[k]));
+    bin.shops.forEach((m,k)=>add(m,shopMats[k]));
+    add(bin.trim,trimMat); add(bin.lamps,entryMat,false);
+  }
   // 네온 돌출 간판(스스로 빛나는 재질)과 반사 줄기(가산 혼합)
   const bladeMats = BLADES.map(([text, color]) => new THREE.MeshBasicMaterial({ map: bladeTexture(text, color), side: THREE.DoubleSide }));
   blades.forEach((m, k) => { if (!m.idx.length) return; const o = new THREE.Mesh(m.geo(), bladeMats[k]); scene.add(o); });

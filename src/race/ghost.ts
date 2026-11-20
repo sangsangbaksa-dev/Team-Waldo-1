@@ -21,7 +21,8 @@ export class GhostRecorder {
 
   finish(time: number, laps: number, c?: GhostPose): Ghost {
     const data = this.data.slice();
-    if (!c || ![c.x, c.z, c.h, c.total].every(Number.isFinite) || !Number.isFinite(time) || time <= 0) return { time, laps, data };
+    if (!c) return { time, laps, data };
+    if (![c.x, c.z, c.h, c.total].every(Number.isFinite) || !Number.isFinite(time) || time <= 0 || time > count(this) * GHOST_DT + EPS) return { time, laps, data: [] };
     const sample = [r2(c.x), r2(c.z), r2(c.h), r2(c.total)];
     if (data.length >= STRIDE && Math.abs(time - (count(this) - 1) * GHOST_DT) <= EPS) data.splice(-STRIDE, STRIDE, ...sample);
     else if (data.length < MAX_DATA) data.push(...sample);

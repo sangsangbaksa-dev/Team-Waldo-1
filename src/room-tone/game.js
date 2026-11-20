@@ -1,3 +1,4 @@
+import { renderPixelRatio } from '../shared/render-budget.ts';
 import './style-polish.css';
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
@@ -237,7 +238,7 @@ async function setup() {
       antialias: true,
       powerPreference: "high-performance",
     });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, touch ? 1.35 : 1.65));
+    renderer.setPixelRatio(renderPixelRatio(innerWidth, innerHeight, Math.min(devicePixelRatio || 1, touch ? 1.35 : 1.65), touch ? 'standard' : 'high'));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.08;
@@ -352,6 +353,8 @@ function resize() {
   if (!w || !h) return;
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  const ratio = renderPixelRatio(w, h, Math.min(devicePixelRatio || 1, touch ? 1.35 : 1.65), touch ? 'standard' : 'high');
+  if (ratio !== renderer.getPixelRatio()) renderer.setPixelRatio(ratio);
   renderer.setSize(w, h, false);
 }
 window.addEventListener("resize", resize);

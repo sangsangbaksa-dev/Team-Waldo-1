@@ -1,3 +1,4 @@
+import { renderPixelRatio } from '../shared/render-budget';
 // FRONTLINE — 3D 화면: 지형, 유닛·건물 표시, 이펙트, 카메라와 화면 좌표 변환. 시뮬레이션은 읽기만 합니다.
 import * as THREE from 'three';
 import { makePost, type PostFx } from '../postfx';
@@ -29,7 +30,7 @@ export class RtsView {
   private units = new Map<number, UVis>(); private builds = new Map<number, BVis>(); private nodes = new Map<number, NVis>();
   private fx: Fx[] = []; private sun = new THREE.DirectionalLight(0xffe2b4, 2.5); private shadows: boolean;
   private ringGeo = new THREE.RingGeometry(0.9, 1.0, 28); private ghost: { kind: BuildKind; obj: THREE.Group; plane: THREE.Mesh } | null = null; private flag: THREE.Group;
-  private raycaster = new THREE.Raycaster(); private clock = 0; private w = 1; private h = 1; private fxBudget: number;
+  private projected = new THREE.Vector3(); private raycaster = new THREE.Raycaster(); private clock = 0; private w = 1; private h = 1; private fxBudget: number;
   private ringMats = [new THREE.MeshBasicMaterial({ color: 0x5dff9a, transparent: true, opacity: 0.9, depthWrite: false }), new THREE.MeshBasicMaterial({ color: 0xff5a4a, transparent: true, opacity: 0.9, depthWrite: false })];
   /** 전장의 안개: 있으면 보이지 않는 적을 숨기고 어둡게 덮습니다. */ vision: Vision | null = null;
   private fog: { mesh: THREE.Mesh; tex: THREE.DataTexture; data: Uint8Array; cur: Float32Array } | null = null; private marks = new Map<string, MarkVis>();
@@ -37,7 +38,7 @@ export class RtsView {
 
   constructor(readonly canvas: HTMLCanvasElement, readonly sim: RtsSim, readonly viewer: number, readonly quality: Quality = 'high') {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality === 'high' ? 2 : 1.5));
+    this.renderer.setPixelRatio(renderPixelRatio(canvas.clientWidth || innerWidth, canvas.clientHeight || innerHeight, devicePixelRatio, quality));
     this.shadows = quality !== 'low'; this.renderer.shadowMap.enabled = this.shadows; this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.05;
     this.yaw = viewer === 0 ? 0 : Math.PI; this.fxBudget = quality === 'high' ? 160 : quality === 'standard' ? 90 : 40;
@@ -117,7 +118,7 @@ export class RtsView {
   // ---------- 카메라 ----------
   /** pad: 아래쪽 패널이 가리는 높이(px). 장면의 중심을 그만큼 위로 올려 패널에 가리지 않게 합니다. */
   resize(w: number, h: number, pad = 0): void {
-    this.w = Math.max(1, w); this.h = Math.max(1, h); this.renderer.setSize(this.w, this.h, false); this.camera.aspect = this.w / this.h;
+    this.w = Math.max(1, w); this.h = Math.max(1, h); const ratio = renderPixelRatio(this.w, this.h, devicePixelRatio, this.quality); if (ratio !== this.renderer.getPixelRatio()) this.renderer.setPixelRatio(ratio); this.renderer.setSize(this.w, this.h, false); this.camera.aspect = this.w / this.h;
     if (pad > 0) this.camera.setViewOffset(this.w, this.h + pad, 0, pad, this.w, this.h); else this.camera.clearViewOffset();
     this.camera.updateProjectionMatrix();
   }
@@ -147,7 +148,7 @@ export class RtsView {
   }
   /** 맵 좌표(높이 h)를 화면 픽셀로. 카메라 뒤면 null. */
   project(x: number, y: number, h = 0): { x: number; y: number } | null {
-    const v = new THREE.Vector3(x, h, y).project(this.camera); if (v.z > 1 || v.z < -1) return null; return { x: (v.x + 1) / 2 * this.w, y: (1 - v.y) / 2 * this.h };
+    const v = this.projected.set(x, h, y).project(this.camera); if (v.z > 1 || v.z < -1) return null; return { x: (v.x + 1) / 2 * this.w, y: (1 - v.y) / 2 * this.h };
   }
   /** 화면 좌표 아래의 유닛·건물·광물. 겹치면 카메라에 가까운 것. */
   pick(sx: number, sy: number): number {

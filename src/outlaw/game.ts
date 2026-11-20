@@ -1,3 +1,4 @@
+import '../shared/game-polish.css';
 // OUTLAW CITY — 게임 조립: 타이틀(도시 선회)·입력·HUD·상점/지도/일시정지·고정 간격 루프.
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -266,17 +267,17 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   };
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.code); if (e.code === 'KeyQ') closeWheel(); };
   const onMouseMove = (e: MouseEvent): void => {
-    if (!locked || phase !== 'play') return;
+    if (phase !== 'play' || modalKind || (!locked && !(lockFail && (e.buttons & 2)))) return;
     if (wheelOpen) { wheelX = clamp(wheelX + e.movementX, -140, 140); wheelY = clamp(wheelY + e.movementY, -140, 140); updateWheel(); return; }
     const s = (mouse.aim ? 0.0014 : 0.0023); yaw += e.movementX * s; pitch = clamp(pitch - e.movementY * s, -1.2, 1.2);
   };
   const onMouseDown = (e: MouseEvent): void => {
     audio.unlock(); if (phase !== 'play' || modalKind) return;
-    if (!locked) { lock(); return; }
+    if (!locked && !lockFail && !touch) { lock(); return; }
     if (e.button === 0) mouse.fire = true; else if (e.button === 2) mouse.aim = true;
   };
   const onMouseUp = (e: MouseEvent): void => { if (e.button === 0) mouse.fire = false; else if (e.button === 2) mouse.aim = false; };
-  const onWheel = (e: WheelEvent): void => { if (phase !== 'play' || modalKind || !sim) return; const dir = e.deltaY > 0 ? 1 : -1; let i = sim.player.cur; for (let n = 0; n < NW; n++) { i = (i + dir + NW) % NW; if (sim.player.guns[i]) { slotReq = i; break; } } };
+  const onWheel = (e: WheelEvent): void => { if (phase !== 'play' || modalKind || !sim || Math.abs(e.deltaY) < 4) return; const dir = e.deltaY > 0 ? 1 : -1; let i = sim.player.cur; for (let n = 0; n < NW; n++) { i = (i + dir + NW) % NW; if (sim.player.guns[i]) { slotReq = i; break; } } };
   const onCtx = (e: Event): void => e.preventDefault();
   function resetInput(): void {
     keys.clear(); mouse.fire = mouse.aim = false; enterReq = reloadReq = false; slotReq = -1;
@@ -296,7 +297,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (b && b.dataset.act) { const a = b.dataset.act; b.setPointerCapture(e.pointerId); if (a === 'use') useAction(); else if (a === 'reload') reloadReq = true; else if (a === 'weapon') { const p = sim!.player; let i = p.cur; for (let n = 0; n < NW; n++) { i = (i + 1) % NW; if (p.guns[i]) { slotReq = i; break; } } } else (tc as unknown as Record<string, boolean>)[a === 'hand' ? 'hand' : a] = true; e.preventDefault(); }
   });
   const upTouch = (e: PointerEvent): void => { const b = (e.target as HTMLElement).closest('button'); const a = b?.dataset.act; if (a && a in tc) (tc as unknown as Record<string, boolean>)[a] = false; };
-  pad.addEventListener('pointerup', upTouch); pad.addEventListener('pointercancel', upTouch);
+  pad.addEventListener('pointerup', upTouch); pad.addEventListener('pointercancel', upTouch); pad.addEventListener('lostpointercapture', upTouch);
   canvas.addEventListener('pointerdown', e => {
     if (!touch || phase !== 'play') return; audio.unlock();
     if (e.clientX < innerWidth * 0.4 && tc.moveId < 0) { tc.moveId = e.pointerId; tc.ox = e.clientX; tc.oy = e.clientY; stickEl.style.cssText = `left:${e.clientX - 60}px;top:${e.clientY - 60}px;opacity:1`; }

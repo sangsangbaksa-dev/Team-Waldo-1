@@ -90,19 +90,7 @@ export function makeUnit(kind: UnitKind, owner: number, detailed = true): UnitRi
     if (gun) gun.userData.restX = gun.position.x;
     return { ch, root, body, gun, flash, carry, arm, scale: 1 };
   }
-  if (kind === 'worker') {
-    cyl(body, 0.17, 0.2, 0.34, m.team, 0, 0.12, 0); ball(body, 0.17, m.team, 0, 0.4, 0, 1.1);
-    ball(body, 0.12, m.skin, 0.03, 0.66, 0); box(body, 0.1, 0.07, 0.22, m.glow, 0.13, 0.7, 0);
-    box(body, 0.14, 0.3, 0.26, m.armor, -0.17, 0.3, 0);
-    arm = new THREE.Group(); arm.position.set(0.12, 0.5, 0.16); body.add(arm); box(arm, 0.4, 0.07, 0.07, m.steel, 0.14, -0.03, 0); box(arm, 0.08, 0.2, 0.08, m.dark, 0.34, -0.14, 0);
-    carry = new THREE.Group(); carry.position.set(-0.3, 0.45, 0); body.add(carry);
-    const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.14), crystalMat); c.position.y = 0.1; c.scale.y = 1.4; carry.add(c); carry.visible = false;
-    mh = 0.8; muzzle = 0.4;
-  } else if (kind === 'medic') {
-    box(body, 0.1, 0.24, 0.12, m.dark, 0, 0, 0.1); box(body, 0.1, 0.24, 0.12, m.dark, 0, 0, -0.1);
-    cyl(body, 0.2, 0.22, 0.42, m.armor, 0, 0.22, 0); ball(body, 0.16, m.armor, 0.02, 0.68, 0); box(body, 0.1, 0.08, 0.2, m.glow, 0.14, 0.74, 0);
-    medicPack(body, m); mh = 0.9; muzzle = 0.4;
-  } else if (kind === 'jeep') {
+  if (kind === 'jeep') {
     jeepBody(body, m);
     if (detailed) detail(body, g => {
       for (const z of [-0.48, 0.48]) for (const x of [-0.5, 0.5]) {
@@ -116,20 +104,6 @@ export function makeUnit(kind: UnitKind, owner: number, detailed = true): UnitRi
     gun = new THREE.Group(); gun.position.set(-0.1, 0.9, 0); body.add(gun);
     box(gun, 0.8, 0.09, 0.09, m.dark, 0.34, -0.05, 0.06); box(gun, 0.8, 0.09, 0.09, m.dark, 0.34, -0.05, -0.06); box(gun, 0.2, 0.18, 0.28, m.steel, 0, -0.1, 0);
     mh = 1.0; muzzle = 0.95; gun.userData.m = muzzle;
-  } else if (kind === 'marine') {
-    box(body, 0.1, 0.24, 0.12, m.dark, 0, 0, 0.1); box(body, 0.1, 0.24, 0.12, m.dark, 0, 0, -0.1);
-    cyl(body, 0.2, 0.22, 0.42, m.armor, 0, 0.22, 0); box(body, 0.1, 0.18, 0.38, m.team, 0.02, 0.5, 0); // 어깨 보호대
-    ball(body, 0.17, m.armor, 0.02, 0.68, 0); box(body, 0.1, 0.09, 0.22, m.glow, 0.15, 0.76, 0); // 헬멧 바이저
-    gun = new THREE.Group(); gun.position.set(0.2, 0.52, 0.17); body.add(gun); box(gun, 0.7, 0.1, 0.09, m.dark, 0.18, -0.05, 0); box(gun, 0.22, 0.14, 0.1, m.steel, 0, -0.07, 0);
-    box(body, 0.12, 0.34, 0.2, m.steel, -0.2, 0.35, 0);
-    mh = 1; muzzle = 0.88;
-  } else if (kind === 'rocket') {
-    box(body, 0.13, 0.28, 0.15, m.dark, 0, 0, 0.12); box(body, 0.13, 0.28, 0.15, m.dark, 0, 0, -0.12);
-    cyl(body, 0.26, 0.28, 0.5, m.hull, 0, 0.26, 0); box(body, 0.3, 0.1, 0.5, m.team, 0, 0.62, 0);
-    ball(body, 0.2, m.hull, 0.02, 0.74, 0); box(body, 0.1, 0.1, 0.26, m.glow, 0.17, 0.86, 0);
-    gun = new THREE.Group(); gun.position.set(0.0, 0.84, 0.3); body.add(gun); const t = cyl(gun, 0.1, 0.12, 0.95, m.steel, 0.2, -0.06, 0); t.rotation.z = Math.PI / 2; t.position.set(0.3, 0, 0); cyl(gun, 0.13, 0.13, 0.1, m.teamDark, 0.76, -0.06, 0).rotation.z = Math.PI / 2;
-    box(body, 0.2, 0.4, 0.3, m.armor, -0.26, 0.4, 0);
-    mh = 1.15; muzzle = 0.95;
   } else {
     box(body, 1.5, 0.3, 0.32, m.dark, 0, 0, 0.5); box(body, 1.5, 0.3, 0.32, m.dark, 0, 0, -0.5); // 무한궤도
     box(body, 1.25, 0.34, 0.8, m.hull, 0, 0.26, 0); box(body, 0.9, 0.12, 0.7, m.team, -0.08, 0.6, 0);

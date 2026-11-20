@@ -287,3 +287,13 @@ describe('연막탄', () => {
     a.smokes = 1; m.step(1 / 60); expect(a.smokes).toBe(2);
   });
 });
+
+describe('마지막 원 교착', () => {
+  it('탄이 떨어진 두 선수가 마지막 원 안에 마주 서 있어도 판이 끝난다', () => {
+    const m = new Match({ seed: 5, mode: 'duel', difficulty: 'normal', humans: [{ name: 'a' }, { name: 'b' }] }), [a, b] = m.players;
+    for (const p of [a, b]) { p.guns = [{ id: 'pistol', mag: 0, reserve: 0, att: {} }, null]; p.hp = 100; }
+    let steps = 0; const total = Math.ceil(240 * 30);
+    for (; steps < total && !m.over; steps++) { const z = m.zone; a.x = z.cx + 1; a.z = z.cz; b.x = z.cx - 1; b.z = z.cz; m.step(1 / 30); m.drain(); }
+    expect(m.over).toBe(true); expect(steps / 30).toBeLessThan(200);
+  });
+});

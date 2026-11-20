@@ -38,13 +38,20 @@ function ball(g: THREE.Object3D, r: number, m: THREE.Material, x = 0, y = 0, z =
 let unitKit: CharacterKit | null = null;
 /** 공용 캐릭터 키트를 미리 받아 둡니다. 준비되기 전에 만든 유닛은 도형 모델로 남습니다. */
 export function preloadUnitKit(): void { if (!unitKit) void loadCharacterKit(import.meta.env.BASE_URL).then(k => { unitKit = k; }).catch(() => undefined); }
-const KIT_OF: Partial<Record<UnitKind, string>> = { worker: 'worker', marine: 'rifle', rocket: 'heavy', medic: 'medic' };
+const KIT_OF: Partial<Record<UnitKind, string>> = { worker: 'worker', marine: 'rifle', rocket: 'heavy', medic: 'medic', engineer: 'worker' };
 export interface UnitRig { ch?: CharacterRig; root: THREE.Group; body: THREE.Object3D; gun: THREE.Object3D | null; flash: THREE.Mesh; carry: THREE.Object3D | null; arm: THREE.Object3D | null; scale: number }
 
 /** 의무병 등 — 등의 구급 배낭(흰 바탕에 팀색 십자). */
 function medicPack(body: THREE.Object3D, m: Mats): void {
   const white = std(0xf1efe8, { roughness: 0.6, metalness: 0.05 });
   box(body, 0.16, 0.36, 0.34, white, -0.22, 0.34, 0); box(body, 0.04, 0.22, 0.07, m.team, -0.31, 0.43, 0); box(body, 0.04, 0.07, 0.22, m.team, -0.31, 0.5, 0);
+}
+/** 공병 — 노란 안전모, 등의 주황 공구함과 용접 토치. */
+function engineerGear(body: THREE.Object3D, m: Mats): void {
+  const orange = std(0xe8742a, { roughness: 0.55, metalness: 0.2 }), yellow = std(0xf2c230, { roughness: 0.5, metalness: 0.05 });
+  box(body, 0.2, 0.3, 0.4, orange, -0.24, 0.34, 0); box(body, 0.22, 0.05, 0.42, m.dark, -0.24, 0.5, 0); box(body, 0.04, 0.05, 0.3, yellow, -0.35, 0.36, 0);
+  const hat = ball(body, 0.19, yellow, 0.02, 0.76, 0, 0.7); void hat; box(body, 0.34, 0.03, 0.34, yellow, 0.02, 0.7, 0);
+  const torch = cyl(body, 0.03, 0.03, 0.3, m.steel, 0.2, 0.42, 0.16); torch.rotation.z = Math.PI / 2; torch.position.x = 0.3;
 }
 /** 정찰 지프: 낮은 차체·바퀴 네 개·롤바. 팀색 줄무늬와 사막 위장 도색. */
 function jeepBody(body: THREE.Object3D, m: Mats): void {
@@ -63,9 +70,10 @@ export function makeUnit(kind: UnitKind, owner: number): UnitRig {
   const kitKind = KIT_OF[kind];
   if (kitKind && unitKit?.has(kitKind)) { // 공용 캐릭터(손 모델·팀색·피부색 포함)
     const ch = unitKit.create(kitKind, { team: TEAM_COLORS[owner] ?? 0xcccccc, skin: 0xd6b28f, height: 1, width: 1 }); ch.root.scale.multiplyScalar(0.5); body.add(ch.root);
-    ch.state.aim = kind === 'worker' || kind === 'medic' ? 0 : 1;
+    ch.state.aim = kind === 'worker' || kind === 'medic' || kind === 'engineer' ? 0 : 1;
     if (kind === 'worker') { carry = new THREE.Group(); carry.position.set(-0.3, 0.45, 0); body.add(carry); const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.14), crystalMat); c.position.y = 0.1; c.scale.y = 1.4; carry.add(c); carry.visible = false; mh = 0.8; muzzle = 0.4; }
     else if (kind === 'medic') { medicPack(body, m); mh = 0.9; muzzle = 0.4; }
+    else if (kind === 'engineer') { engineerGear(body, m); mh = 0.9; muzzle = 0.4; }
     else { gun = new THREE.Group(); gun.position.set(0.2, 0.52, 0.17); body.add(gun); mh = kind === 'rocket' ? 1.15 : 1; muzzle = kind === 'rocket' ? 0.95 : 0.88; }
     flash.position.set(muzzle, mh * 0.7, kind === 'rocket' ? 0.3 : 0.17); root.add(flash);
     return { ch, root, body, gun, flash, carry, arm, scale: 1 };
@@ -82,6 +90,10 @@ export function makeUnit(kind: UnitKind, owner: number): UnitRig {
     box(body, 0.1, 0.24, 0.12, m.dark, 0, 0, 0.1); box(body, 0.1, 0.24, 0.12, m.dark, 0, 0, -0.1);
     cyl(body, 0.2, 0.22, 0.42, m.armor, 0, 0.22, 0); ball(body, 0.16, m.armor, 0.02, 0.68, 0); box(body, 0.1, 0.08, 0.2, m.glow, 0.14, 0.74, 0);
     medicPack(body, m); mh = 0.9; muzzle = 0.4;
+  } else if (kind === 'engineer') {
+    box(body, 0.1, 0.24, 0.12, m.dark, 0, 0, 0.1); box(body, 0.1, 0.24, 0.12, m.dark, 0, 0, -0.1);
+    cyl(body, 0.2, 0.22, 0.42, m.armor, 0, 0.22, 0); ball(body, 0.15, m.skin, 0.02, 0.64, 0);
+    engineerGear(body, m); mh = 0.9; muzzle = 0.4;
   } else if (kind === 'jeep') {
     jeepBody(body, m); gun = new THREE.Group(); gun.position.set(-0.1, 0.9, 0); body.add(gun);
     box(gun, 0.8, 0.09, 0.09, m.dark, 0.34, -0.05, 0.06); box(gun, 0.8, 0.09, 0.09, m.dark, 0.34, -0.05, -0.06); box(gun, 0.2, 0.18, 0.28, m.steel, 0, -0.1, 0);

@@ -57,7 +57,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     <div class="sz-modal" id="sz-modal"></div>`;
   document.body.append(root);
   const q = <T extends HTMLElement>(sel: string): T => root.querySelector<T>(sel)!;
-  const canvas = q<HTMLCanvasElement>('.sz-canvas'), hud = q('.sz-hud'), setupEl = q('#sz-setup'), modal = q('#sz-modal'), mapCv = q<HTMLCanvasElement>('#sz-map'), mapCtx = mapCv.getContext('2d')!;
+  let canvas = q<HTMLCanvasElement>('.sz-canvas'); const hud = q('.sz-hud'), setupEl = q('#sz-setup'), modal = q('#sz-modal'), mapCv = q<HTMLCanvasElement>('#sz-map'), mapCtx = mapCv.getContext('2d')!;
   const audio = new ShooterAudio(); audio.enabled = prefs.sound;
   let career = readShooterCareer();
   let level: Difficulty = (DIFFICULTIES as string[]).includes(career.level) ? (career.level as Difficulty) : 'normal', pickMode: 'solo' | 'pvp' | 'room' = 'solo';
@@ -113,6 +113,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   function begin(m: Match, my: number): void {
     endMatch(); match = m; meIdx = my; over = false; resultShown = false; soloRecorded = false; spectateId = -1; deadTimer = 0; cache.clear(); feed.length = 0; told.clear(); paused = false; modal.className = 'sz-modal'; modal.innerHTML = '';
     const p = m.players[my]; yaw = p.yaw; pitch = 0; countdown = 3.4; phase = 'countdown'; mapBase = null;
+    // 지난 경기의 WebGL 컨텍스트는 dispose 에서 끝났으므로, 같은 캔버스를 다시 쓰면 렌더러가 죽은 컨텍스트를 받습니다(다시 시작이 안 됨). 경기마다 새 캔버스를 씁니다.
+    const fresh = document.createElement('canvas'); fresh.className = 'sz-canvas'; fresh.addEventListener('contextmenu', noMenu); canvas.replaceWith(fresh); canvas = fresh;
     view = new ShooterView(canvas, m, assets, prefs.quality); resize(); setupEl.hidden = true; hud.hidden = false; buildSlots(); say(touch ? '왼쪽 스틱으로 이동' : '화면을 클릭해 조작 시작', 2.4);
     if (!touch) lock(); audio.unlock();
     if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__zz = { get match() { return match; }, get phase() { return phase; }, me, skip, view, go: () => { countdown = Math.min(countdown, 0.45); }, advance: (sec: number) => { const m = match; if (!m) return; let now = performance.now(); for (let t = 0; t < sec && !m.over; t += 1 / 30) { if (room) syncRoom(1 / 30); m.step(1 / 30); now += 1000 / 30; const ev = m.drain(); onEvents(ev); if (room) roomTick(ev, now); } }, fire: (on: boolean) => { mouse.fire = on; }, ads: (on: boolean) => { mouse.ads = on; }, look: (y: number, p: number) => { yaw = y; pitch = p; } };

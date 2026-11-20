@@ -199,7 +199,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     if (ents.length === 1) {
       const e = ents[0];
       if (e.k === 'unit') {
-        const d = UNITS[e.kind], action = d.heal ? `치료 ${d.heal}/초` : `공격 ${d.dmg}`, max = camp?.maxHp(e) ?? d.hp, ab = ABILITIES[e.kind], vip = camp?.isVip(e.id);
+        const d = UNITS[e.kind], action = d.heal ? `치료 ${d.heal}/초` : d.repair ? `수리 ${d.repair}/초` : `공격 ${d.dmg}`, max = camp?.maxHp(e) ?? d.hp, ab = ABILITIES[e.kind], vip = camp?.isVip(e.id);
         const abLine = ab && e.owner === me ? `<p class="rt-num">${ab.name} · ${e.ab > sim.tick && e.kind !== 'medic' ? '발동 중' : e.abcd <= sim.tick ? '준비 완료' : `${Math.ceil((e.abcd - sim.tick) / TICK)}초 뒤`}</p>` : '';
         el.innerHTML = `<div class="rt-one"><h3>${vip ? '호송 전차' : d.name}<small>${e.owner === me ? '' : ' · 적'}</small></h3><p>${vip ? '목적지까지 호위하세요' : d.role}</p>${bar(e.hp, max, e.owner === me ? '' : 'foe')}<p class="rt-num">체력 ${Math.ceil(e.hp)} / ${max}</p><p class="rt-num">${action} · 사거리 ${d.range} · 이동 ${d.speed}</p>${abLine}</div>`;
       }

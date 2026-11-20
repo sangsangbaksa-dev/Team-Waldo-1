@@ -101,19 +101,19 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     audio.unlock(); if (rm) banner(`멀티 방 ${rm.ids.length}명 · 영웅 난투전 · 목숨 ${ROOM_LIVES}개 · 마지막까지 살아남으세요`); else if (dl) banner(`${dl.s.opponent.nickname} 님과 1대1 · ${arenaInfo(arenaOf(dl.seed)).name} · ${TARGET_KILLS}킬 선취 · 제한 ${Math.round(TIME_LIMIT / 60)}분`); else if (!tutorial) banner('작전 지령 01 · 첫 사업체를 확보하세요 · J 전체 임무');
     renderCmd(); last = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(frame);
   }
-  let everLocked = false, lockErrors = 0, lookMuteUntil = 0;
+  let everLocked = false, lookMuteUntil = 0;
   const weaponWheel = new WheelGesture();
-  function onLockErr(): void { if (!everLocked && ++lockErrors >= 2) lockFail = true; }
+  function onLockErr(): void { if (!locked) lockFail = true; }
   function lock(): void { if (touch || view === 'top' || lockFail || locked) return; try { const r = canvas3.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(onLockErr); } catch { onLockErr(); } }
   function unlock(): void { if (document.pointerLockElement) { expectUnlock = true; document.exitPointerLock(); } }
   function setView(v: View): void {
     view = v; canvas.hidden = v !== 'top'; canvas3.hidden = v === 'top'; cross.hidden = v === 'top'; layer.hidden = v === 'top'; if (R3 && v !== 'top') R3.mode = v; if (v === 'top') unlock(); else { R3?.resize(); }
     R?.resize(); q('#c-view').textContent = v === 'fp' ? '1인칭' : v === 'tp' ? '3인칭' : '전술뷰';
   }
-  const onLock = (): void => { locked = document.pointerLockElement === canvas3; if (locked) { expectUnlock = false; everLocked = true; lookMuteUntil = performance.now() + 220; return; } mouse.down = false; keys.clear(); const was = expectUnlock; expectUnlock = false; if (!was && view !== 'top' && world && !world.over && !paused && panel.hidden && bigmap.hidden && q('#c-missions').hidden && world.factions[0].pending === 0) pause(); };
+  const onLock = (): void => { locked = document.pointerLockElement === canvas3; if (locked) { expectUnlock = false; everLocked = true; lookMuteUntil = performance.now() + 220; return; } mouse.down = false; keys.clear(); const was = expectUnlock; expectUnlock = false; if (everLocked && !was && view !== 'top' && world && !world.over && !paused && panel.hidden && bigmap.hidden && q('#c-missions').hidden && world.factions[0].pending === 0) pause(); };
 
   const onMouseMove = (e: MouseEvent): void => {
-    if (!R3 || view === 'top' || paused) return;
+    if (!R3 || view === 'top' || paused || !panel.hidden || !bigmap.hidden || !q('#c-missions').hidden) return;
     if (!(locked || (lockFail && e.target === canvas3))) return;
     // A placement click must not also rotate the camera, and pointer-lock
     // acquisition can inject a huge movementY that buries the view in the ground.

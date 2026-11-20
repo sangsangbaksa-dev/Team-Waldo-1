@@ -53,7 +53,7 @@ export class RtsAi {
     if (L.research && p.minerals >= 200) for (const b of s.buildings) if (b.owner === me && b.done && !b.research) for (const r of RESEARCH_KINDS) if (RESEARCH[r].from === b.kind && s.apply(me, { k: 'research', b: b.id, r })) break;
 
     // 병력 생산
-    const counts: Record<string, number> = { marine: 0, rocket: 0, tank: 0, jeep: 0, medic: 0 }; for (const u of army) counts[u.kind]++;
+    const counts: Record<string, number> = { marine: 0, rocket: 0, tank: 0, jeep: 0, medic: 0, engineer: 0 }; for (const u of army) counts[u.kind]++;
     for (const b of s.buildings) if (b.owner === me) for (const q of b.queue) if (q.u !== 'worker') counts[q.u]++;
     // 상대 병력 구성을 보고 섞는 비율을 조정합니다: 장갑이 많으면 로켓병, 가벼운 병력이 많으면 전차·보병.
     let foeSup = 0, foeArmored = 0; for (const e of s.units) if (e.owner !== me && e.kind !== 'worker') { const d = UNITS[e.kind]; foeSup += d.supply; if (d.armor === 'armored') foeArmored += d.supply; }
@@ -74,15 +74,18 @@ export class RtsAi {
       if (hold > 0 && b.kind !== 'factory' && p.minerals < hold + 50) continue;
       const opts = ARMY.filter(k => weight(k) > 0 && UNITS[k].from === b.kind && s.canTrain(me, k)).sort((a, c) => counts[a] / weight(a) - counts[c] / weight(c));
       const k = opts[0];
+      // 공병: 전차·지프가 어느 정도 모이면 한두 명을 뽑아 전선 뒤에서 수리하게 합니다.
+      const wantEng = L.factory >= 2 ? 2 : L.factory >= 1 ? 1 : 0;
+      if (b.kind === 'factory' && wantEng > counts.engineer && counts.tank + counts.jeep >= 2 * (counts.engineer + 1) && s.canTrain(me, 'engineer') && s.apply(me, { k: 'train', b: b.id, u: 'engineer' })) { counts.engineer++; continue; }
       if (k && s.apply(me, { k: 'train', b: b.id, u: k as UnitKind })) counts[k]++;
       else if (k && b.kind === 'factory' && b.queue.length === 0 && s.supplyLeft(me) >= UNITS[k].supply) hold = UNITS[k].cost; // 값이 모일 때까지 병영은 아껴 씁니다
     }
-    const fighters = army.filter(u => u.kind !== 'medic');
+    const fighters = army.filter(u => u.kind !== 'medic' && u.kind !== 'engineer');
     this.control(s, fighters, home);
-    this.escort(s, army.filter(u => u.kind === 'medic'), fighters, home);
+    this.escort(s, army.filter(u => u.kind === 'medic' || u.kind === 'engineer'), fighters, home);
   }
 
-  /** 의무병은 싸우는 병력의 중심에서 조금 뒤(우리 기지 쪽)에 따라다니며 치료합니다. */
+  /** 의무병·공병은 싸우는 병력의 중심에서 조금 뒤(우리 기지 쪽)에 따라다니며 치료합니다. */
   private escort(s: RtsSim, medics: Unit[], fighters: Unit[], home: Building): void {
     if (!medics.length) return;
     const hx = home.x + 2, hy = home.y + 2; let cx = hx, cy = hy;

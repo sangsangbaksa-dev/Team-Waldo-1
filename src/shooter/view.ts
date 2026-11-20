@@ -49,6 +49,10 @@ export class ShooterView {
   private zoneWall: THREE.Mesh; private zoneNext: THREE.Mesh; private tracers: Fx[] = []; private sparks: THREE.Points; private sparkData: { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; r: number; g: number; b: number }[] = [];
   private vm: THREE.Object3D | null = null; private vmId = ''; private vmParts = ''; private vmSwap = 0; private vmFlash: THREE.Sprite; private bob = 0; private shake = 0; private terrainView: TerrainView | null = null; private fovPunch = 0; private flashKick = 0; private roll = 0; private sprintT = 0; private time = 0;
   private mats = new Map<string, THREE.Material>(); private tmpCol = new THREE.Color(); private beams: THREE.InstancedMesh;
+  private tracerGeometry = new THREE.CylinderGeometry(0.012, 0.012, 1, 4, 1, true);
+  private tracerPool: Fx[] = [];
+  private tracerDirection = new THREE.Vector3(); private tracerUp = new THREE.Vector3(0, 1, 0);
+  private lootDummy = new THREE.Object3D(); private liveLootIds = new Set<number>();
   private projected = new THREE.Vector3(); private viewportW = 1; private viewportH = 1; private camPos = new THREE.Vector3(); fov = 78; frames = 0;
   /** 폭풍우 하늘: 번개(flash)가 가끔 하늘과 안개를 밝힙니다 */
   private wfx: WeatherFx | null = null; private sky: THREE.Mesh; private hemi: THREE.HemisphereLight; private flash = 0; private nextBolt = 6; private carrier: THREE.Group | null = null; private fogBase = new THREE.Color(0x76828a);
@@ -279,10 +283,13 @@ export class ShooterView {
     g.position.set(l.x, 0, l.z); this.scene.add(g); return g;
   }
   private syncLoot(cam: THREE.Vector3): void {
-    const live = new Set<number>(); let nb = 0; const d = new THREE.Object3D();
+    const live = this.liveLootIds; live.clear(); let nb = 0; const d = this.lootDummy;
     for (const l of this.match.loot) {
-      if (l.taken) continue; live.add(l.id); let n = this.lootNodes.get(l.id); if (!n) { n = this.lootNode(l); this.lootNodes.set(l.id, n); }
-      const dist = Math.hypot(l.x - cam.x, l.z - cam.z); n.visible = dist < 150; if (!n.visible) continue;
+      if (l.taken) continue; live.add(l.id); let n = this.lootNodes.get(l.id);
+      const dist = Math.hypot(l.x - cam.x, l.z - cam.z);
+      if (!n && dist >= 150) continue;
+      if (!n) { n = this.lootNode(l); this.lootNodes.set(l.id, n); }
+      n.visible = dist < 150; if (!n.visible) continue;
       n.children[0].rotation.y = this.time * 1.4 + l.id; n.children[0].position.y = (l.kind === 'weapon' ? 0 : 0) + Math.sin(this.time * 2 + l.id) * 0.06;
       if (nb < 400) { d.position.set(l.x, 3.4, l.z); d.scale.set(1, 1, 1); d.updateMatrix(); this.beams.setMatrixAt(nb, d.matrix); this.beams.setColorAt(nb, this.tmpCol.setHex(LOOT_COLOR[l.kind])); nb++; }
     }
@@ -299,11 +306,13 @@ export class ShooterView {
   }
   private tracer(ax: number, ay: number, az: number, bx: number, by: number, bz: number, color: number): void {
     const len = Math.hypot(bx - ax, by - ay, bz - az); if (len < 1) return;
-    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1, 4, 1, true), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
-    const mid = new THREE.Vector3((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2); mesh.position.copy(mid); mesh.scale.set(1, Math.min(len, 60), 1);
+    const f = this.tracerPool.pop() ?? { mesh: new THREE.Mesh(this.tracerGeometry, new THREE.MeshBasicMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })), life: 0.09, max: 0.09 };
+    const mesh = f.mesh, material = mesh.material as THREE.MeshBasicMaterial;
+    material.color.setHex(color); material.opacity = 0.9; f.life = f.max = 0.09;
+    mesh.position.set((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2); mesh.scale.set(1, Math.min(len, 60), 1);
     // 앞부분만 짧게(총알이 날아가는 느낌): 끝점 쪽 60m 구간
-    const dir = new THREE.Vector3(bx - ax, by - ay, bz - az).normalize(); if (len > 60) mesh.position.set(bx - dir.x * 30, by - dir.y * 30, bz - dir.z * 30);
-    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir); this.scene.add(mesh); this.tracers.push({ mesh, life: 0.09, max: 0.09 });
+    const dir = this.tracerDirection.set(bx - ax, by - ay, bz - az).normalize(); if (len > 60) mesh.position.set(bx - dir.x * 30, by - dir.y * 30, bz - dir.z * 30);
+    mesh.quaternion.setFromUnitVectors(this.tracerUp, dir); this.scene.add(mesh); this.tracers.push(f);
   }
   handle(events: MatchEvent[], me: Player): void {
     for (const e of events) {
@@ -396,7 +405,7 @@ export class ShooterView {
   private updateFx(dt: number): void {
     for (let i = this.puffs.length - 1; i >= 0; i--) { const f = this.puffs[i]; f.t += dt; f.s.position.y += f.vy * dt; f.s.scale.addScalar(f.grow * dt); (f.s.material as THREE.SpriteMaterial).opacity = Math.max(0, f.a * (1 - f.t / f.life)); if (f.t >= f.life) { this.scene.remove(f.s); (f.s.material as THREE.Material).dispose(); this.puffs.splice(i, 1); } }
     this.updateNades(dt);
-    for (let i = this.tracers.length - 1; i >= 0; i--) { const f = this.tracers[i]; f.life -= dt; (f.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, f.life / f.max) * 0.9; if (f.life <= 0) { this.scene.remove(f.mesh); f.mesh.geometry.dispose(); (f.mesh.material as THREE.Material).dispose(); this.tracers.splice(i, 1); } }
+    for (let i = this.tracers.length - 1; i >= 0; i--) { const f = this.tracers[i]; f.life -= dt; (f.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, f.life / f.max) * 0.9; if (f.life <= 0) { this.scene.remove(f.mesh); if (this.tracerPool.length < 128) this.tracerPool.push(f); else (f.mesh.material as THREE.Material).dispose(); this.tracers.splice(i, 1); } }
     const pos = this.sparks.geometry.attributes.position as THREE.BufferAttribute, col = this.sparks.geometry.attributes.color as THREE.BufferAttribute;
     for (let i = this.sparkData.length - 1; i >= 0; i--) { const s = this.sparkData[i]; s.life -= dt; s.vy -= 9 * dt; s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt; if (s.y < 0.02) { s.y = 0.02; s.vy *= -0.3; s.vx *= 0.6; s.vz *= 0.6; } if (s.life <= 0) this.sparkData.splice(i, 1); }
     this.sparkData.forEach((s, i) => { pos.setXYZ(i, s.x, s.y, s.z); const k = Math.min(1, s.life * 2.5); col.setXYZ(i, s.r * k, s.g * k, s.b * k); });
@@ -472,6 +481,8 @@ export class ShooterView {
   }
 
   dispose(): void {
+    for (const f of [...this.tracers, ...this.tracerPool]) { f.mesh.removeFromParent(); (f.mesh.material as THREE.Material).dispose(); }
+    this.tracers.length = 0; this.tracerPool.length = 0; this.tracerGeometry.dispose();
     this.scene.traverse(o => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); const mat = m.material as THREE.Material | THREE.Material[] | undefined; if (Array.isArray(mat)) mat.forEach(x => x.dispose()); else mat?.dispose(); });
     this.post?.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss();
   }

@@ -652,6 +652,27 @@ export function buildEnvironment(THREE, scene, map, tile, chapter) {
           add("box", junctionPaint, x, .006, z + side * tile * .36, tile * .55, .012, .055);
         }
       }
+      // Distinct overhead gantries give each passage a physical rhythm.
+      // All added pieces stay above the player's collision envelope.
+      if ((col + row * 2) % 5 === 0) {
+        const cross = alongZ ? 0 : Math.PI / 2;
+        add("box", seam, x, H - .13, z, tile - .035, .25, .15, cross);
+        add("box", metal, x, H - .265, z, tile - .08, .032, .19, cross);
+        for (const sign of [-1, 1]) {
+          const u = sign * (tile * .5 - .21);
+          add("box", metal, x + Math.cos(cross) * u, H - .19,
+            z - Math.sin(cross) * u, .16, .28, .25, cross);
+        }
+      }
+      // Cable bundles and vent trunks are chapter-specific, not additional dynamic lights.
+      if (chapter >= 1 && hash(col, row, 92) > .78) {
+        for (let cable = 0; cable < (chapter === 2 ? 3 : 2); cable++) {
+          const offset = .65 + cable * .12;
+          add("box", cable === 0 ? paint : seam,
+            x + Math.sin(orient) * offset, H - .21,
+            z + Math.cos(orient) * offset, tile - .06, .065, .07, orient);
+        }
+      }
       // Only shallow or overhead objects enter navigable cells.
       if ((row * 3 + col) % 4 === 0) {
         add("box", seam, x, H - 0.033, z, 1.5, 0.066, 0.31, orient);
@@ -766,6 +787,15 @@ export function buildEnvironment(THREE, scene, map, tile, chapter) {
           for (const u of [-0.55, 0.04, 0.63]) {
             local("box", seam, u, 1.91, 0.041, 0.54, 0.97, 0.082);
             local("plane", badgeMats.panel, u, 1.91, 0.084, 0.503, 0.927);
+          }
+        } else if (pick < .68 && chapter >= 2) {
+          // Storage-wing patch panels and master-room signal buses, kept flush to walls.
+          local("box", seam, 0, 1.65, .041, 1.08, .46, .082);
+          for (let k = 0; k < 6; k++) {
+            const u = -.42 + k * .168;
+            local("box", metal, u, 1.66, .086, .105, .30, .036);
+            local("box", k === (row + col) % 6 ? alarm : practical, u, 1.74, .108, .043, .025, .013);
+            local("box", paint, u, 1.48, .038, .026, .14, .044);
           }
         } else if (pick > 0.955) {
           local("box", metal, -0.47, 1.96, 0.052, 0.046, 1.46, 0.046);

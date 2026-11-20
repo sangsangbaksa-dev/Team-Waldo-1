@@ -191,7 +191,9 @@ export class Sound {
   }
 
   puzzleMode() {
-    this.pause(false);
+    // Keep puzzle tones audible without restarting the ambience clock on every dial.
+    this.paused = false;
+    this.applyLevel();
     if (this.clock !== null) globalThis.clearInterval(this.clock);
     this.clock = null;
     if (this.bed) ease(this.bed.gain, 0.22, this.ctx.currentTime, 0.2);

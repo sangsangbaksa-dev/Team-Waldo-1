@@ -86,3 +86,13 @@
 #game #viewWrap[data-incident="echo"]::after {opacity:.48;}
 #game #viewWrap[data-incident="relay"]::after {background-color:#40322224;opacity:.57;}
 @media(prefers-reduced-motion:reduce){#game #viewWrap[data-incident]::after{opacity:.35!important;background-color:transparent!important;}}
+
+/* Restoration console: tactile bidirectional dials and undo. */
+#game .dial-cell { flex:1; min-width:0; display:grid; gap:.35rem; }
+#game .dial-cell .dial-value { width:100%; min-height:78px; padding:.65rem .3rem; background:linear-gradient(#26372f,#17231e); border-color:#657566; }
+#game .dial-value small { font-size:.75rem; overflow-wrap:anywhere; }
+#game .dial-value strong { font-size:clamp(.95rem,3.1vw,1.25rem); letter-spacing:.025em; }
+#game .dial-cell .dial-prev { min-height:44px; color:#bdc9b8; font-size:.75rem; background:#18241e; }
+#game .puzzle-undo { min-height:44px; }
+#game .puzzle-undo:disabled,#game .panelActions button:disabled { opacity:.42; cursor:not-allowed; }
+@media(max-width:390px){#game .dials{gap:.25rem}#game .dial-cell .dial-value{padding-inline:.15rem}}

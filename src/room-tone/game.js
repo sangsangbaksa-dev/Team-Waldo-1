@@ -653,8 +653,10 @@ function loadScene() {
   scene.fog = new THREE.FogExp2(scene.background, 0.067);
   camera = new THREE.PerspectiveCamera(68, 1, 0.045, 65);
   scene.add(camera);
-  scene.add(new THREE.HemisphereLight(0xc0d4cf, 0x44413c, 0.63));
-  const fill = new THREE.DirectionalLight(0xc6d2cd, 0.24);
+  scene.add(new THREE.HemisphereLight(
+    [0xc0d4cf, 0xd2c3a5, 0xb5c2d3, 0xc9c8ab][ch],
+    [0x44413c, 0x494033, 0x403b43, 0x3b453b][ch], 0.63));
+  const fill = new THREE.DirectionalLight([0xc6d2cd, 0xc7b9a1, 0xa8b7ce, 0xc2cbb0][ch], 0.24);
   fill.position.set(4, 6, 2);
   scene.add(fill);
   lamp = new THREE.SpotLight(0xffeccc, 28, 24, 0.49, 0.57, 1.05);
@@ -959,6 +961,7 @@ function puzzle(reset = true) {
           b.disabled = choices.includes(i);
           b.onclick = () => {
             choices.push(i);
+            response = "";
             sound.tone(i);
             puzzle(false);
             const next = $("panelBody").querySelector(".choiceRow button:not(:disabled)") ?? $("panelActions").querySelector("button");
@@ -972,7 +975,21 @@ function puzzle(reset = true) {
         seq.textContent =
           choices.map((i) => c.names[i]).join("  •  ") ||
           "릴 세 개를 순서대로 선택하세요.";
+        seq.setAttribute("aria-live", "polite");
         el.append(seq);
+        const undo = document.createElement("button");
+        undo.className = "secondary puzzle-undo";
+        undo.textContent = "마지막 선택 취소";
+        undo.disabled = choices.length === 0;
+        undo.onclick = () => {
+          choices.pop();
+          response = "";
+          puzzle(false);
+          const target = $("panelBody").querySelector(".puzzle-undo:not(:disabled)") ??
+            $("panelBody").querySelector(".choiceRow button:not(:disabled)");
+          target?.focus({ preventScroll: true });
+        };
+        el.append(undo);
       } else {
         const box = document.createElement("div");
         box.className = "dials";
@@ -985,23 +1002,43 @@ function puzzle(reset = true) {
             "</small><strong>" +
             opts[choices[i]] +
             "</strong>";
-          b.onclick = () => {
-            choices[i] = (choices[i] + 1) % opts.length;
+          b.type = "button";
+          b.setAttribute("aria-label", c.names[i] + " " + opts[choices[i]] + " · 다음 값");
+          const step = direction => {
+            choices[i] = (choices[i] + direction + opts.length) % opts.length;
+            response = "";
             sound.tone(choices[i]);
             puzzle(false);
-            $("panelBody").querySelectorAll(".dials button")[i]?.focus({ preventScroll: true });
+            $("panelBody").querySelectorAll(".dial-value")[i]?.focus({ preventScroll: true });
           };
-          box.append(b);
+          b.className = "dial-value";
+          b.onclick = () => step(1);
+          b.onkeydown = event => {
+            if (!["ArrowLeft", "ArrowRight", "ArrowDown", "ArrowUp"].includes(event.key)) return;
+            event.preventDefault();
+            step(["ArrowLeft", "ArrowDown"].includes(event.key) ? -1 : 1);
+          };
+          const cell = document.createElement("div");
+          cell.className = "dial-cell";
+          const prev = document.createElement("button");
+          prev.type = "button";
+          prev.className = "dial-prev";
+          prev.textContent = "− 이전";
+          prev.setAttribute("aria-label", c.names[i] + " 이전 값");
+          prev.onclick = () => step(-1);
+          cell.append(b, prev);
+          box.append(cell);
         }
         el.append(box);
         const p = document.createElement("p");
         p.className = "hint";
-        p.textContent = "다이얼을 누르면 다음 값으로 바뀝니다.";
+        p.textContent = "다이얼 또는 방향키로 값을 조절하세요. 이전 버튼으로 되돌릴 수 있습니다.";
         el.append(p);
       }
       if (response) {
         const p = document.createElement("p");
         p.className = "bad";
+        p.setAttribute("role", "status");
         p.textContent = response;
         el.append(p);
       }
@@ -1019,7 +1056,6 @@ function puzzle(reset = true) {
             message("신호 복원 완료 · 출구 잠금이 풀렸습니다.", 5);
           } else {
             response = "신호가 맞지 않습니다. 회수한 기록을 다시 확인하세요.";
-            if (ch === 2) choices = [];
             puzzle(false);
           }
         },
@@ -1031,6 +1067,10 @@ function puzzle(reset = true) {
   );
   sound.threat(0);
   sound.puzzleMode();
+  if (ch === 2) {
+    const confirm = $("panelActions").querySelector("button");
+    confirm.disabled = choices.length !== 3;
+  }
 }
 function interact() {
   if (state !== "play" || !nearest) return;

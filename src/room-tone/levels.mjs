@@ -61,7 +61,13 @@ function random(seed) {
     return ((n ^ (n >>> 14)) >>> 0) / 4294967296;
   };
 }
+export function walkable(map, id) {
+  const w = map[0]?.length ?? 0;
+  return Number.isInteger(id) && w > 0 && id >= 0 && id < w * map.length &&
+    map[Math.floor(id / w)]?.[id % w] === ".";
+}
 export function neighbors(map, id) {
+  if (!walkable(map, id)) return [];
   const w = map[0].length,
     x = id % w,
     z = Math.floor(id / w);
@@ -71,13 +77,15 @@ export function neighbors(map, id) {
     [x, z + 1],
     [x, z - 1],
   ]
-    .filter(([a, b]) => map[b]?.[a] && map[b][a] !== "#")
+    .filter(([a, b]) => map[b]?.[a] === ".")
     .map(([a, b]) => b * w + a);
 }
 export function paths(map, start) {
-  const prev = new Int32Array(map.length * map[0].length).fill(-2),
+  const prev = new Int32Array(map.length * (map[0]?.length ?? 0)).fill(-2),
     dist = new Int32Array(prev.length).fill(-1),
-    q = [start];
+    q = [];
+  if (!walkable(map, start)) return { prev, dist, q };
+  q.push(start);
   prev[start] = -1;
   dist[start] = 0;
   for (let h = 0; h < q.length; h++) {
@@ -91,12 +99,66 @@ export function paths(map, start) {
   }
   return { prev, dist, q };
 }
-export function route(map, a, b) {
-  const { prev } = paths(map, a);
-  if (prev[b] === -2) return [];
+export function routeFrom(tree, a, b) {
+  const { prev, dist } = tree;
+  if (!Number.isInteger(a) || !Number.isInteger(b) ||
+      a < 0 || b < 0 || a >= prev.length || b >= prev.length ||
+      dist[a] !== 0 || dist[b] < 0) return [];
   const out = [];
-  for (let c = b; c !== a && c !== -1; c = prev[c]) out.push(c);
-  return out.reverse();
+  let c = b;
+  for (let remaining = prev.length; c !== a && remaining > 0; remaining--) {
+    if (c < 0 || c >= prev.length || dist[c] <= 0) return [];
+    out.push(c);
+    const parent = prev[c];
+    if (parent < 0 || parent >= prev.length || dist[parent] !== dist[c] - 1) return [];
+    c = parent;
+  }
+  return c === a ? out.reverse() : [];
+}
+export function route(map, a, b) {
+  if (!walkable(map, a) || !walkable(map, b) || a === b) return [];
+  return routeFrom(paths(map, a), a, b);
+}
+
+// Supercover traversal prevents sight and interactions through wall corners.
+export function lineOpen(map, a, b, tile) {
+  if (!(tile > 0) || ![a.x, a.z, b.x, b.z, tile].every(Number.isFinite)) return false;
+  const ax = a.x / tile + .5, az = a.z / tile + .5;
+  const bx = b.x / tile + .5, bz = b.z / tile + .5;
+  let x = Math.floor(ax), z = Math.floor(az);
+  const endX = Math.floor(bx), endZ = Math.floor(bz);
+  const dx = bx - ax, dz = bz - az;
+  const sx = Math.sign(dx), sz = Math.sign(dz);
+  const tx = sx ? 1 / Math.abs(dx) : Infinity;
+  const tz = sz ? 1 / Math.abs(dz) : Infinity;
+  let mx = sx ? (sx > 0 ? x + 1 - ax : ax - x) * tx : Infinity;
+  let mz = sz ? (sz > 0 ? z + 1 - az : az - z) * tz : Infinity;
+  const open = (u, v) => map[v]?.[u] === ".";
+  if (!open(x, z) || !open(endX, endZ)) return false;
+  while (x !== endX || z !== endZ) {
+    const nextX = x === endX ? Infinity : mx;
+    const nextZ = z === endZ ? Infinity : mz;
+    if (Math.abs(nextX - nextZ) < 1e-10) {
+      if (!open(x + sx, z) || !open(x, z + sz)) return false;
+      x += sx; z += sz; mx += tx; mz += tz;
+    } else if (nextX < nextZ) {
+      x += sx; mx += tx;
+    } else {
+      z += sz; mz += tz;
+    }
+    if (!open(x, z)) return false;
+  }
+  return true;
+}
+export function normalizeSave(s) {
+  if (s?.v !== 1 || !Number.isInteger(s.ch) || s.ch < 0 || s.ch >= chapters.length ||
+      !Array.isArray(s.found) || s.found.length !== 3) return null;
+  const found = s.found.map(v => v === true);
+  const w = chapters[s.ch].size;
+  const visited = Array.isArray(s.seen) ? s.seen.filter(v =>
+    Number.isInteger(v) && v >= 0 && v < w * w) : [];
+  return { v: 1, ch: s.ch, found, solved: s.solved === true && found.every(Boolean),
+    seen: [...new Set(visited)], elapsed: Number.isFinite(s.elapsed) && s.elapsed >= 0 ? s.elapsed : 0 };
 }
 export function makeLevel(ch) {
   const w = chapters[ch].size,

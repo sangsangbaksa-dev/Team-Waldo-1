@@ -3,7 +3,7 @@ import './style-polish.css';
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { modelBytes } from "./assets.js";
-import { chapters, makeLevel, route, neighbors } from "./levels.mjs";
+import { chapters, makeLevel, route, neighbors, paths, routeFrom, lineOpen, normalizeSave, walkable } from "./levels.mjs";
 import { buildEnvironment } from "./environment.js";
 import { Sound } from "./sound.js";
 import { openViewer } from "./viewer.js";
@@ -86,16 +86,7 @@ function read(k) {
   }
 }
 function saved() {
-  const s = read(SAVE);
-  if (s?.v !== 1 || !Number.isInteger(s.ch) || s.ch < 0 || s.ch >= chapters.length ||
-      !Array.isArray(s.found) || s.found.length !== 3) return null;
-  return {
-    ...s,
-    found: s.found.map(v => v === true),
-    solved: s.solved === true,
-    seen: Array.isArray(s.seen) ? s.seen.filter(v => Number.isSafeInteger(v) && v >= 0) : [],
-    elapsed: Number.isFinite(s.elapsed) && s.elapsed >= 0 ? s.elapsed : 0,
-  };
+  return normalizeSave(read(SAVE));
 }
 function save() {
   try {
@@ -309,16 +300,10 @@ function pass(x, z) {
   return level.map[row]?.[col] === ".";
 }
 function clearLine(a, b) {
-  const len = Math.hypot(a.x - b.x, a.z - b.z),
-    steps = Math.ceil(len / 0.42);
-  for (let i = 1; i < steps; i++) {
-    const t = i / steps;
-    if (!pass(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t)) return false;
-  }
-  return true;
+  return lineOpen(level.map, a, b, C);
 }
 function shift(dx, dz) {
-  const r = 0.225;
+  const r = 0.285; // Clearance from shallow wall equipment and corner trim.
   function space(x, z) {
     return (
       pass(x - r, z - r) &&
@@ -356,6 +341,7 @@ function pointPlayer() {
   $("toast").textContent = "";
   $("danger").style.opacity = "0";
   $("strain").textContent = "안정";
+  $("strain").dataset.threat = "safe";
   $("stamina").style.transform = "scaleX(1)";
   $("timer").textContent = clock(elapsed);
   sound.threat(0);
@@ -530,7 +516,7 @@ function prop(cell, type, i = 0) {
   );
   sign.position.y = type === "item" ? 1.39 : 1.64;
   root.add(sign);
-  return { cell, type, i, root };
+  return { cell, type, i, root, bright };
 }
 function loadScene() {
   model.removeFromParent();
@@ -590,8 +576,8 @@ async function start(cont) {
     found = s?.found ?? [false, false, false];
     solved = s?.solved ?? false;
     elapsed = s?.elapsed ?? 0;
-    seen = new Set(s?.seen || []);
     level = makeLevel(ch);
+    seen = new Set((s?.seen || []).filter(id => walkable(level.map, id)));
     loadScene();
     save();
     brief();
@@ -634,6 +620,14 @@ function renderHUD() {
       ? c.station + "으로 돌아가세요."
       : c.item + " 회수  " + total() + " / 3";
   $("lightState").textContent = lightOn ? "켜짐" : "꺼짐";
+  $("torch").setAttribute("aria-label", lightOn ? "손전등 끄기" : "손전등 켜기");
+  for (const item of items) {
+    if (item.type !== "exit") continue;
+    const color = solved ? 0x91d6a8 : 0xe1a06c;
+    item.bright.color.setHex(color);
+    item.bright.emissive.setHex(color);
+    item.bright.emissiveIntensity = solved ? 1.3 : 0.45;
+  }
   $("torch").setAttribute("aria-pressed", String(lightOn));
   $("crouch").setAttribute("aria-pressed", String(crouched));
   refreshGuide();
@@ -662,10 +656,12 @@ function refreshGuide() {
       ? [level.start]
       : level.items.filter((_, i) => !found[i]);
   // Compare distances along the corridors so walls don't make a distant target look close.
-  for (const [i, target] of targets.entries()) {
-    const candidate = route(level.map, cell, target);
-    if (i === 0 || candidate.length < guidePath.length) guidePath = candidate;
+  const tree = paths(level.map, cell);
+  let best = -1;
+  for (const target of targets) {
+    if (tree.dist[target] >= 0 && (best < 0 || tree.dist[target] < tree.dist[best])) best = target;
   }
+  guidePath = best < 0 ? [] : routeFrom(tree, cell, best);
   const guideLabel = solved ? "출구" : total() === 3 ? chapters[ch].station : chapters[ch].item;
   $("guideTextLabel").textContent = guideLabel + (guidePath.length ? " 방향" : " 주변");
   drawGuide();
@@ -912,6 +908,8 @@ function interact() {
   if (state !== "play" || !nearest) return;
   const o = nearest,
     c = chapters[ch];
+  if (!o.root.visible || Math.hypot(o.root.position.x - player.x, o.root.position.z - player.z) >= 2.16 ||
+      !clearLine(player, o.root.position)) return;
   if (o.type === "item") {
     found[o.i] = true;
     // The equipment makes a noise at the pickup location. The creature investigates it.
@@ -1082,8 +1080,9 @@ function enemyUpdate(dt, running) {
     : Math.max(0, 1 - dist / 12) * (inSight ? 0.96 : 0.57);
   sound.threat(threat);
   $("danger").style.opacity = String(threat * 0.53);
-  $("strain").textContent =
-    threat > 0.68 ? "바로 근처" : threat > 0.28 ? "접근 중" : "안정";
+  const strain = threat > 0.68 ? "바로 근처" : threat > 0.28 ? "접근 중" : "안정";
+  if ($("strain").textContent !== strain) $("strain").textContent = strain;
+  $("strain").dataset.threat = threat > 0.68 ? "near" : threat > 0.28 ? "alert" : "safe";
   if (!grace && Math.hypot(player.x - e.x, player.z - e.z) < 0.73 && clearLine(player, e)) {
     caught();
   }
@@ -1139,6 +1138,7 @@ function update(dt) {
   );
   camera.rotation.set(pitch, yaw, 0, "YXZ");
   lamp.visible = lightOn;
+  beam.intensity = THREE.MathUtils.damp(beam.intensity, lightOn ? 2 : 0.45, 8, dt);
   enemyUpdate(dt, running);
   if (state !== "play") return;
   const cell = cellOf(player);
@@ -1173,11 +1173,12 @@ function update(dt) {
         : chapters[ch].station + " 확인"
     : "";
   $("prompt").hidden = !caption;
-  $("promptText").textContent = caption;
-  $("act").disabled = !nearest;
+  if ($("promptText").textContent !== caption) $("promptText").textContent = caption;
+  if ($("act").disabled !== !nearest) $("act").disabled = !nearest;
   $("stamina").style.transform = "scaleX(" + stamina.toFixed(3) + ")";
-  $("timer").textContent = clock(elapsed);
-  if (now > noticeUntil) $("toast").textContent = "";
+  const timeText = clock(elapsed);
+  if ($("timer").textContent !== timeText) $("timer").textContent = timeText;
+  if (now > noticeUntil && $("toast").textContent) $("toast").textContent = "";
   if (now > saveAt) {
     save();
     saveAt = now + 12;

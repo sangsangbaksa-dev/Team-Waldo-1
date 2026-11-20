@@ -37,3 +37,13 @@
   #game #prompt { top:54%; }
 }
 @media(prefers-reduced-motion:reduce) { #game .hudright button,#game .gear button,.touchactions button { transition:none; } }
+
+/* Legible recording status and explicit danger levels, not color alone. */
+#game #strain { color:#c2d7b8; }
+#game #strain[data-threat="alert"] { color:#efc58a; }
+#game #strain[data-threat="near"] { color:#ffab92; }
+#game .statusfoot { font-variant-numeric:tabular-nums; }
+#game #guide { width:fit-content; max-width:100%; padding:.2rem .45rem; border-left:2px solid #9fac77; background:#0b1714bb; }
+#game #guide[hidden] { display:none; }
+#game #guideArrow { flex:none; }
+#game .map { border:1px solid #74827988; }

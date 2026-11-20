@@ -170,7 +170,7 @@ export class RtsSim {
     if (this.winner !== -1 || (owner !== 0 && owner !== 1) || typeof c !== 'object' || c === null) return false;
     const mine = (ids: unknown): Unit[] => {
       if (!Array.isArray(ids)) return [];
-      const out: Unit[] = []; for (const id of ids.slice(0, 120)) { const u = num(id) ? this.unit(id) : undefined; if (u && u.owner === owner) out.push(u); }
+      const out: Unit[] = [], seen = new Set<number>(); for (const id of ids.slice(0, 120)) { const u = num(id) ? this.unit(id) : undefined; if (u && u.owner === owner && u.hp > 0 && !seen.has(u.id)) { seen.add(u.id); out.push(u); } }
       return out;
     };
     switch (c.k) {
@@ -179,7 +179,7 @@ export class RtsSim {
         const cols = Math.ceil(Math.sqrt(us.length)), rows = Math.ceil(us.length / cols), x = Math.min(Math.max(c.x, 1.5), this.map.size - 1.5), y = Math.min(Math.max(c.y, 1.5), this.map.size - 1.5);
         us.sort((a, b) => a.id - b.id).forEach((u, i) => {
           const gap = us.length > 1 ? 1.15 : 0, tx = x + ((i % cols) - (cols - 1) / 2) * gap, ty = y + (Math.floor(i / cols) - (rows - 1) / 2) * gap;
-          this.order(u, { t: c.k, x: tx, y: ty, target: 0, phase: 0, timer: 0 });
+          this.order(u, { t: c.k, x: Math.min(this.map.size - 0.5, Math.max(0.5, tx)), y: Math.min(this.map.size - 0.5, Math.max(0.5, ty)), target: 0, phase: 0, timer: 0 });
         });
         return true;
       }
@@ -337,7 +337,7 @@ export class RtsSim {
       case 'move': if (this.walk(u, o.x, o.y, this.speedOf(u), 0.25)) this.order(u, idle()); break;
       case 'amove': {
         let t = o.target ? this.unit(o.target) ?? this.building(o.target) : undefined;
-        if (t && (t.hp <= 0 || this.gap(u, d.radius, t) > d.range + 6)) { t = undefined; o.target = 0; }
+        if (o.target && (!t || t.hp <= 0 || this.gap(u, d.radius, t) > d.range + 6)) { t = undefined; o.target = 0; u.path = []; u.pi = 0; u.repath = 0; }
         if (!t && d.dmg > 0 && (u.id + this.tick) % 3 === 0) { const f = this.pick(u.owner, u.x, u.y, d.range + 3.5); if (f) { t = f; o.target = f.id; u.path = []; } }
         if (t) this.engage(u, t); else if (this.walk(u, o.x, o.y, this.speedOf(u), 0.6)) this.order(u, idle());
         break;
@@ -437,19 +437,26 @@ export class RtsSim {
 
   /** 목적지까지 길을 찾아 걷습니다. 도착하면 true. */
   private walk(u: Unit, gx: number, gy: number, speed: number, tol: number): boolean {
-    if (this.dist(u.x, u.y, gx, gy) <= tol) return true;
-    if (u.path.length === 0) {
-      u.path = this.pather.find(u.x, u.y, gx, gy) ?? [gx, gy]; u.pi = 0;
-      if (u.path.length === 2 && this.dist(u.path[0], u.path[1], u.x, u.y) < tol) return true;
+    const goal = this.pather.freeAt(gx, gy) ? { x: gx, y: gy } : this.pather.nearestFree(gx, gy);
+    if (!goal) return false;
+    if (this.dist(u.x, u.y, goal.x, goal.y) <= tol) return true;
+    if (speed <= 0) return false;
+    if (u.pi * 2 >= u.path.length) {
+      if (u.repath > 0) return false;
+      u.path = this.pather.find(u.x, u.y, goal.x, goal.y) ?? []; u.pi = 0; u.repath = 14;
+      if (!u.path.length) return false;
     }
-    return this.follow(u, speed) && this.dist(u.x, u.y, gx, gy) <= tol + 1.2;
+    return this.follow(u, speed) && this.dist(u.x, u.y, goal.x, goal.y) <= tol;
   }
   /** 경로를 따라 한 틱 이동. 경로 끝에 닿았으면 true. */
   private follow(u: Unit, speed: number): boolean {
     let left = speed / 20;
     while (left > 0 && u.pi * 2 < u.path.length) {
       const tx = u.path[u.pi * 2], ty = u.path[u.pi * 2 + 1], dx = tx - u.x, dy = ty - u.y, d = Math.sqrt(dx * dx + dy * dy);
-      if (d <= left) { this.shift(u, dx, dy); left -= d; u.pi++; } else { this.shift(u, dx / d * left, dy / d * left); left = 0; }
+      const travel = Math.min(d, left), x0 = u.x, y0 = u.y;
+      if (d > 0) this.shift(u, dx / d * travel, dy / d * travel);
+      if (this.dist(u.x, u.y, tx, ty) < 0.001) { left -= travel; u.pi++; }
+      else { left = 0; if (this.dist(x0, y0, u.x, u.y) < 0.0001 || d <= travel) { u.path = []; u.pi = 0; } }
       if (d > 0.001) { u.fx = dx / d; u.fy = dy / d; }
     }
     return u.pi * 2 >= u.path.length;

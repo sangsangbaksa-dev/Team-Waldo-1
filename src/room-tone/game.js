@@ -28,6 +28,8 @@ let renderer,
   beam,
   model,
   mixer,
+  gait = [],
+  stride = 0,
   entity,
   environment,
   props,
@@ -254,6 +256,22 @@ async function setup() {
     model.traverse((o) => {
       if (o.isMesh) o.frustumCulled = false;
     });
+    model.updateMatrixWorld(true);
+    // Convert the character's cross-body axis into each joint's rest space.
+    // The idle animation still drives the head and the breathing chest.
+    for (const side of ["L", "R"]) {
+      for (const [name, amplitude, offset] of [
+        ["Thigh", 0.30, 0], ["Shin", -0.27, 0.9], ["UpperArm", -0.13, 0],
+      ]) {
+        const bone = model.getObjectByName(THREE.PropertyBinding.sanitizeNodeName(name + "." + side));
+        if (!bone) continue;
+        const axis = new THREE.Vector3(1, 0, 0).applyQuaternion(
+          bone.getWorldQuaternion(new THREE.Quaternion()).invert()
+        );
+        gait.push({bone, rest: bone.quaternion.clone(), axis, amplitude,
+          offset: offset + (side === "L" ? 0 : Math.PI), knee: name === "Shin"});
+      }
+    }
     mixer = new THREE.AnimationMixer(model);
     if (gltf.animations.length) mixer.clipAction(gltf.animations[0]).play();
   }
@@ -787,6 +805,10 @@ function interact() {
     c = chapters[ch];
   if (o.type === "item") {
     found[o.i] = true;
+    // The equipment makes a noise at the pickup location. The creature investigates it.
+    lastKnown = o.cell;
+    enemyPhase = 9 + 2 * ch;
+    nextPath = 0;
     o.root.visible = false;
     sound.pickup();
     grace = Math.max(grace, 3);
@@ -882,7 +904,7 @@ function enemyUpdate(dt) {
   grace = Math.max(0, grace - dt);
   const run = keys.has("ShiftLeft") || keys.has("ShiftRight") || mobileRun;
   const inSight = dist <= (lightOn ? 10.7 : 6.1) && clearLine(player, e);
-  const hear = moved > 0.01 && dist < (run ? 14 : 4.7);
+  const hear = moved > dt * 0.15 && dist < (run ? 14 : 4.7);
   if (!grace && (inSight || hear)) {
     lastKnown = cellOf(player);
     enemyPhase = 5.5;
@@ -905,6 +927,7 @@ function enemyUpdate(dt) {
     }
     path = route(level.map, ec, goal);
   }
+  const startX = e.x, startZ = e.z;
   if (path.length) {
     const p = xy(path[0]),
       x = p.x - e.x,
@@ -921,9 +944,16 @@ function enemyUpdate(dt) {
     }
     if (d > 0.03) entity.rotation.y = Math.atan2(x, z);
   }
-  model.position.y = 0.015 + 0.014 * Math.sin(now * (enemyPhase ? 6 : 3.5));
+  const travel = Math.hypot(e.x - startX, e.z - startZ);
+  stride += travel * 5.5;
+  model.position.y = 0.009 + 0.009 * Math.abs(Math.sin(stride));
   model.rotation.z = 0.025 * Math.sin(now * 2.1);
   mixer.update(dt * (enemyPhase ? 1.25 : 0.75));
+  for (const joint of gait) {
+    const swing = Math.sin(stride + joint.offset);
+    joint.bone.quaternion.copy(joint.rest);
+    joint.bone.rotateOnAxis(joint.axis, joint.amplitude * (joint.knee ? Math.max(0, swing) : swing));
+  }
   const threat = grace
     ? 0
     : Math.max(0, 1 - dist / 12) * (inSight ? 0.96 : 0.57);

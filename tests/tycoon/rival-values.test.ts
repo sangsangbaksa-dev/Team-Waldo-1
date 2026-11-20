@@ -15,6 +15,6 @@ it('one-pass rival stats and prices match individual lookup after ownership chan
       expect(value).toEqual(rivalValue(g, rival.id));
       expect(takeoverCostForValue(value.value)).toBe(takeoverCost(g, rival.id));
     }
-    g.lots[LOT_IDS[0]] = { owner: 'free' } as (typeof g.lots)[string];
+    g.lots[LOT_IDS[0]] = { owner: 'none' };
   }
 });

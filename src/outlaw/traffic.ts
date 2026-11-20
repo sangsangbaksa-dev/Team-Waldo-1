@@ -56,11 +56,12 @@ export function stepTraffic(sim: Sim, dt: number): void {
   const recent = events.slice(s.events); s.events = events.length;
   const grid = new Map<string, Vehicle[]>(), key = (x: number, z: number): string => `${Math.floor(x / 24)},${Math.floor(z / 24)}`;
   for (const v of sim.vehicles) { const k = key(v.x, v.z), bucket = grid.get(k); if (bucket) bucket.push(v); else grid.set(k, [v]); }
+  const removeFromGrid = (v: Vehicle): void => { const k = key(v.x, v.z), bucket = grid.get(k); if (bucket) { const i = bucket.indexOf(v); if (i >= 0) bucket.splice(i, 1); if (!bucket.length) grid.delete(k); } sim.removeVehicle(v); };
   let moving = 0, parked = 0, removed = 0;
   for (const v of sim.vehicles.slice()) {
     if (v.keep || v.driver === PLAYER_ID || p.vehicle === v.id || v.mode === 'police' || v.mode === 'scripted' || v.mode === 'none') continue;
     const dist = Math.hypot(v.x - p.x, v.z - p.z);
-    if (removed < 2 && dist > STREAM_RADIUS * (v.stolen && !v.driver ? 2 : 1.2)) { sim.removeVehicle(v); removed++; continue; }
+    if (removed < 2 && dist > STREAM_RADIUS * (v.stolen && !v.driver ? 2 : 1.2)) { removeFromGrid(v); removed++; continue; }
     if (v.mode === 'parked') { if (!v.stolen) parked++; continue; }
     if (v.mode !== 'traffic' && v.mode !== 'flee') continue;
     moving++;
@@ -112,7 +113,7 @@ export function stepTraffic(sim: Sim, dt: number): void {
     const waiting = stop || gap < 8; c.blocked = waiting && Math.abs(v.vf) < 1 ? c.blocked + elapsed : Math.max(0, c.blocked - elapsed * 2); v.input.horn = c.blocked > 3 && !stop && Math.floor(c.blocked * 2) % 4 === 0;
     c.idle = !waiting && speed > 2 && Math.abs(v.vf) < 0.7 ? c.idle + elapsed : Math.max(0, c.idle - elapsed);
     if (c.idle > 8 && c.idle - elapsed <= 8) { v.lane = nearestLane(sim.map, v.x, v.z, v.h); v.path = []; }
-    if (c.idle > 20 && removed < 2 && !v.stolen) { sim.removeVehicle(v); removed++; moving--; }
+    if (c.idle > 20 && removed < 2 && !v.stolen) { removeFromGrid(v); removed++; moving--; }
   }
   const d = district(sim, p.x, p.z), goal = d === 'downtown' || d === 'commercial' ? 30 : d === 'residential' ? 18 : 10;
   if (moving < Math.min(36, goal)) spawn(sim, false);

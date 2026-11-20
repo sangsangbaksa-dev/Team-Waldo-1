@@ -30,21 +30,27 @@ export const incidents = [
   {kind:"drop",caption:"… 환경음이 끊겼다",duration:3.2},
   {kind:"tape",caption:"… 녹음되지 않은 신호가 수신된다",duration:2.8},
   {kind:"breath",caption:"… 가까운 곳에서 낯선 숨소리",duration:2.5},
+  {kind:"echo",caption:"… 멈춘 발소리가 다시 울린다",duration:3.4},
+  {kind:"relay",caption:"… 비어 있는 회로에서 접점이 움직인다",duration:2.9},
 ];
-export function createDread(random=Math.random){
-  let wait=22, previous=-1, event=null, age=0;
+export function createDread(random=Math.random,chapter=0){
+  const stage=Math.max(0,Math.min(3,Math.floor(chapter)||0));
+  const available=[0,1,2,3,...(stage>=1?[4]:[]),...(stage>=2?[5]:[])];
+  let wait=22-stage*2, previous=-1, event=null, age=0;
   return {tick(dt,eligible){
     if(!Number.isFinite(dt)||dt<=0) return null;
     if(event){
       age+=dt;
       if(age<event.duration) return {...event,age,started:false};
-      event=null;wait=18+random()*17;
+      // Count only the portion of this tick after the prior incident ended.
+      dt=age-event.duration;
+      event=null;wait=18-stage*2+random()*17;
     }
     wait=Math.max(0,wait-dt);
     if(wait>0||!eligible) return null;
-    let index=Math.floor(random()*incidents.length);
-    if(index===previous) index=(index+1)%incidents.length;
-    previous=index;event=incidents[index];age=0;
+    let index=Math.min(available.length-1,Math.max(0,Math.floor(random()*available.length)));
+    if(available[index]===previous) index=(index+1)%available.length;
+    previous=available[index];event=incidents[previous];age=0;
     return {...event,age,started:true};
   }};
 }

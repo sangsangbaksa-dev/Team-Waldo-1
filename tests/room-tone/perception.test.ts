@@ -1,9 +1,9 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { enemyPerception, cellDistance, patrolGoal } from "../../src/room-tone/perception.mjs";
+import { enemyPerception, cellDistance, patrolGoal, type PerceptionInput } from "../../src/room-tone/perception.mjs";
 const base = { distance: 6, visible: true, facing: 1, lightOn: true,
   running: false, crouched: false, moving: false, corridorDistance: 6 };
-const detect = (overrides) => enemyPerception({ ...base, ...overrides });
+const detect = (overrides: Partial<PerceptionInput>) => enemyPerception({ ...base, ...overrides });
 
 test("sight has direction, darkness and close-range awareness", () => {
   assert.equal(detect({}).sight, true);

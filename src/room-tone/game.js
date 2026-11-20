@@ -9,6 +9,7 @@ import { Sound } from "./sound.js";
 import { archiveCells, cleanArchive, createDread, recordings } from "./dread.mjs";
 import { openViewer, closeViewer } from "./viewer.js";
 import { enemyPerception, cellDistance, patrolGoal } from "./perception.mjs";
+import { createRoomStorage } from "./storage.mjs";
 
 const $ = (id) => document.getElementById(id),
   C = 2.7,
@@ -75,6 +76,8 @@ let noticeUntil = 0,
   choices = [],
   response = "",
   opening = false;
+const roomStorage = createRoomStorage(() => localStorage);
+let savePersistent = true;
 let guidance = read("rt-guidance") === true;
 let guidePath = [];
 let returnFromMap = resume;
@@ -99,23 +102,14 @@ const clock = (t) => px(Math.floor(t / 60)) + ":" + px(Math.floor(t % 60));
 const pad = (i) => String(i + 1).padStart(2, "0");
 const total = () => found.filter(Boolean).length;
 function read(k) {
-  try {
-    return JSON.parse(localStorage.getItem(k) || "null");
-  } catch {
-    return null;
-  }
+  return roomStorage.read(k);
 }
 function saved() {
   const raw = read(SAVE), normalized = normalizeSave(raw);
   return normalized ? { ...normalized, archive: cleanArchive(raw.archive) } : null;
 }
 function save() {
-  try {
-    localStorage.setItem(
-      SAVE,
-      JSON.stringify({ v: 1, ch, found, solved, seen: [...seen], elapsed, archive }),
-    );
-  } catch { /* Browser storage or pointer lock is optional. */ }
+  savePersistent = roomStorage.write(SAVE, { v: 1, ch, found, solved, seen: [...seen], elapsed, archive });
 }
 function toggleAudio() {
   muted = !muted;
@@ -153,9 +147,12 @@ function homepage() {
     ? "이어하기 · " + pad(s.ch) + "구역"
     : "이어하기";
   const completion = read(LAST);
-  $("completion").textContent = Number.isFinite(completion?.elapsed) && completion.elapsed >= 0
-    ? "최근 탈출 기록  " + clock(completion.elapsed)
-    : "";
+  const summary = Number.isFinite(completion?.elapsed) && completion.elapsed >= 0
+    ? "최근 탈출 기록  " + clock(completion.elapsed) : "";
+  const best = Number.isFinite(completion?.best) && completion.best >= 0
+    ? " · 최고 기록 " + clock(completion.best) : "";
+  $("completion").textContent = (summary ? summary + best : "") +
+    (!savePersistent ? (summary ? " · " : "") + "저장소를 사용할 수 없어 이 탭에서만 이어갈 수 있습니다." : "");
 }
 $("inspect").onclick = () => {
   screens("viewer");
@@ -414,7 +411,7 @@ function shift(dx, dz) {
   if (space(player.x, player.z + dz)) player.z += dz;
 }
 function pointPlayer() {
-  dread = createDread();
+  dread = createDread(Math.random, ch);
   enemyStepDistance = 0;
   acousticCell = -1;
   acousticTree = null;
@@ -1032,7 +1029,7 @@ function puzzle(reset = true) {
     "puzzle",
   );
   sound.threat(0);
-  sound.pause(false);
+  sound.puzzleMode();
 }
 function interact() {
   if (state !== "play" || !nearest) return;
@@ -1101,10 +1098,12 @@ function interact() {
   } else {
     save();
     sound.success();
-    try {
-      localStorage.setItem(LAST, JSON.stringify({ elapsed }));
-      localStorage.removeItem(SAVE);
-    } catch { /* Browser storage or pointer lock is optional. */ }
+    const previous = read(LAST);
+    const best = Number.isFinite(previous?.best) && previous.best >= 0 ? Math.min(previous.best, elapsed)
+      : Number.isFinite(previous?.elapsed) && previous.elapsed >= 0 ? Math.min(previous.elapsed, elapsed) : elapsed;
+    const completionStored = roomStorage.write(LAST, { elapsed, best, recordings: archive.length });
+    const saveRemoved = roomStorage.remove(SAVE);
+    savePersistent = completionStored && saveRemoved;
     modal(
       "녹음 종료",
       "문이 닫힌 뒤에도 테이프에는 한 사람의 숨소리가 더 남아 있었다.",

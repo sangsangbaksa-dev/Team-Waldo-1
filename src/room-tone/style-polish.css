@@ -82,3 +82,7 @@
 #game .control-settings p { margin:0; color:#acb6ad; font-size:.85rem; line-height:1.5; }
 #game #viewWrap[data-motion="reduced"]::after { transition:none; opacity:.35!important; background-color:transparent!important; }
 #game #viewWrap[data-motion="reduced"] #danger { animation:none; }
+
+#game #viewWrap[data-incident="echo"]::after {opacity:.48;}
+#game #viewWrap[data-incident="relay"]::after {background-color:#40322224;opacity:.57;}
+@media(prefers-reduced-motion:reduce){#game #viewWrap[data-incident]::after{opacity:.35!important;background-color:transparent!important;}}

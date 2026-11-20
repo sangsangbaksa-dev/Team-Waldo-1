@@ -269,7 +269,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
 
   // ---------- 오버레이(체력 막대·선택 상자) ----------
   function drawOverlay(): void {
-    if (!sim || !view) return; const w = over.clientWidth, h = over.clientHeight; og.clearRect(0, 0, over.width, over.height);
+    if (!sim || !view) return; const w = over.clientWidth, h = over.clientHeight; og.setTransform(1, 0, 0, 1, 0, 0); og.clearRect(0, 0, over.width, over.height);
     const dpr = over.width / Math.max(1, w); og.setTransform(dpr, 0, 0, dpr, 0, 0);
     const bar = (x: number, y: number, bw: number, f: number, c: string): void => { og.fillStyle = 'rgba(0,0,0,.65)'; og.fillRect(x - bw / 2 - 1, y - 1, bw + 2, 5); og.fillStyle = c; og.fillRect(x - bw / 2, y, bw * Math.max(0, Math.min(1, f)), 3); };
     const col = (f: number, foe: boolean): string => foe ? '#ff5a4a' : f > 0.6 ? '#5dff9a' : f > 0.3 ? '#ffd24a' : '#ff5a4a';
@@ -280,7 +280,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     }
     for (const b of sim.buildings) {
       if (view.hiddenBuilding(b)) continue;
-      const sel = selected.has(b.id); if (!sel && b.hp >= b.maxhp && b.done) continue; const p = view.project(b.x + b.size / 2, b.y + b.size / 2, BUILDINGS[b.kind].size < 3 ? 2 : 3.3); if (!p) continue;
+      const sel = selected.has(b.id); if (!sel && b.hp >= b.maxhp && b.done) continue; const p = view.project(b.x + b.size / 2, b.y + b.size / 2, BUILDINGS[b.kind].size < 3 ? 2 : 3.3); if (!p || p.x < -60 || p.y < -60 || p.x > w + 60 || p.y > h + 60) continue;
       bar(p.x, p.y, 30 + b.size * 10, b.hp / b.maxhp, col(b.hp / b.maxhp, b.owner !== me));
       if (!b.done) bar(p.x, p.y + 6, 30 + b.size * 10, b.progress / BUILDINGS[b.kind].time, '#6fb7ff');
       else if (b.queue[0] && b.owner === me) bar(p.x, p.y + 6, 30 + b.size * 10, 1 - b.queue[0].left / UNITS[b.queue[0].u].time, '#6fb7ff');
@@ -605,7 +605,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       if (sim.winner !== -1) finish();
     }
     vision?.update(sim); applyEvents(); applyCampEvents(); if (bannerT > 0 && (bannerT -= dt) <= 0) $('#rt-banner').classList.remove('show');
-    for (const id of [...selected]) { const e = sim.index.get(id); if (!e) selected.delete(id); }
+    for (const id of selected) { if (!sim.index.has(id)) selected.delete(id); }
     // 카메라 이동: 화살표 키와 화면 가장자리
     if (!paused) {
       const sp = view.cam.dist * 0.9 * dt; let dx = 0, dy = 0;

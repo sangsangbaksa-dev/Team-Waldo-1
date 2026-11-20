@@ -7,7 +7,7 @@ import { chapters, makeLevel, neighbors, paths, routeFrom, lineOpen, normalizeSa
 import { buildEnvironment } from "./environment.js";
 import { Sound } from "./sound.js";
 import { archiveCells, cleanArchive, createDread, recordings } from "./dread.mjs";
-import { openViewer } from "./viewer.js";
+import { openViewer, closeViewer } from "./viewer.js";
 import { enemyPerception, cellDistance, patrolGoal } from "./perception.mjs";
 
 const $ = (id) => document.getElementById(id),
@@ -132,6 +132,7 @@ muted = read("rt-silent") !== true;
 toggleAudio();
 $("sound").onclick = $("gsound").onclick = toggleAudio;
 function screens(id) {
+  if (id !== "viewer") closeViewer();
   for (const key of ["home", "game", "viewer"]) $(key).hidden = key !== id;
   if (id !== "game" && frameId !== null) {
     cancelAnimationFrame(frameId);

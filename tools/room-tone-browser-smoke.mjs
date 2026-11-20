@@ -37,6 +37,8 @@ try {
       await page.getByRole("button", { name: "구역 진입", exact: true }).click();
       await page.locator("#dialog").waitFor({ state: "hidden" });
       await page.locator("#viewWrap canvas").waitFor({ state: "visible" });
+      const hasWebgl = await page.locator("#viewWrap canvas").evaluate(canvas=>canvas.width>0&&canvas.height>0&&canvas.getAttribute("data-engine")?.includes("three.js"));
+      assert.ok(hasWebgl,"3D renderer must initialize and size the canvas");
       assert.match(await page.locator("#zone").innerText(), /전원 정비동/);
       await page.screenshot({ path: out + "/room-tone-play-" + device + ".png" });
       if (mobile) {

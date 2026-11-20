@@ -198,3 +198,36 @@ export function buildExitDoorArt(THREE,root,bright,dark,steel){
   box(bright,0,2.39,.193,.43,.042,.018);
   box(rubber,0,.045,.11,1.88,.09,.17);
 }
+
+/* Batch repeated opaque meshes by geometry and material inside each prop.
+ * Parent transforms, visibility, transparent shadows and sprite signs remain unchanged. */
+export function batchStaticMeshes(THREE,root){
+  let removed=0;
+  const groups=new Map();
+  for(const child of [...root.children]){
+    if(child.isGroup){removed+=batchStaticMeshes(THREE,child);continue;}
+    if(!child.isMesh||child.isInstancedMesh||!child.visible||child.children.length||
+       Array.isArray(child.material)||child.material?.transparent||!child.geometry||!child.material)continue;
+    let materials=groups.get(child.geometry);
+    if(!materials){materials=new Map();groups.set(child.geometry,materials);}
+    let group=materials.get(child.material);
+    if(!group){group=[];materials.set(child.material,group);}
+    group.push(child);
+  }
+  for(const [geometry,materials] of groups)for(const [material,group] of materials){
+    if(group.length<2)continue;
+    const batch=new THREE.InstancedMesh(geometry,material,group.length);
+    batch.name="Static detail batch";
+    for(let i=0;i<group.length;i++){
+      const mesh=group[i];mesh.updateMatrix();
+      batch.setMatrixAt(i,mesh.matrix);
+      root.remove(mesh);
+    }
+    batch.instanceMatrix.needsUpdate=true;
+    batch.computeBoundingBox();
+    batch.computeBoundingSphere();
+    root.add(batch);
+    removed+=group.length-1;
+  }
+  return removed;
+}

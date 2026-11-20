@@ -5,12 +5,13 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { modelBytes } from "./assets.js";
 import { chapters, makeLevel, neighbors, paths, routeFrom, lineOpen, normalizeSave, walkable, puzzleOptions, puzzleCorrect } from "./levels.mjs";
 import { buildEnvironment } from "./environment.js";
-import { buildStationArt, buildCollectibleArt, buildExitDoorArt, addContactShadow, makeContactTexture } from "./props-art.js";
+import { buildStationArt, buildCollectibleArt, buildExitDoorArt, addContactShadow, makeContactTexture, batchStaticMeshes } from "./props-art.js";
 import { Sound } from "./sound.js";
 import { archiveCells, cleanArchive, createDread, recordings } from "./dread.mjs";
 import { openViewer, closeViewer } from "./viewer.js";
 import { enemyPerception, cellDistance, patrolGoal } from "./perception.mjs";
 import { createRoomStorage } from "./storage.mjs";
+import { exitWall, clearanceAllows } from "./space.mjs";
 
 const $ = (id) => document.getElementById(id),
   C = 2.7,
@@ -403,12 +404,17 @@ function clearLine(a, b) {
 }
 function shift(dx, dz) {
   const r = 0.285; // Clearance from shallow wall equipment and corner trim.
+  const obstacles = items.map(o=>({
+    ...o.collision,x:o.root.position.x,z:o.root.position.z,
+    ry:o.root.rotation.y,visible:o.root.visible,
+  }));
   function space(x, z) {
     return (
       pass(x - r, z - r) &&
       pass(x + r, z - r) &&
       pass(x - r, z + r) &&
-      pass(x + r, z + r)
+      pass(x + r, z + r) &&
+      clearanceAllows(x,z,player.x,player.z,r,obstacles)
     );
   }
   if (space(player.x + dx, player.z)) player.x += dx;
@@ -486,7 +492,8 @@ function disposeGroup(root) {
     mat = new Set(),
     tex = new Set();
   root.traverse((o) => {
-    if (o.geometry) geo.add(o.geometry);
+    if (o.isInstancedMesh) o.dispose();
+    if (o.geometry && !o.isSprite) geo.add(o.geometry);
     for (const m of Array.isArray(o.material) ? o.material : [o.material])
       if (m) {
         mat.add(m);
@@ -554,7 +561,7 @@ function prop(cell, type, i = 0) {
     const unit = new THREE.Group();
     root.add(unit);
     unit.position.y = 0.84;
-    root.userData.unit = unit;
+    unit.rotation.y = .32;
     // Low-profile display cradle and chapter-specific collectible.
     for(const side of [-1,1]){
       mesh(new THREE.BoxGeometry(.052,.11,.35),steel,root,side*.25,.665,0);
@@ -595,14 +602,14 @@ function prop(cell, type, i = 0) {
     const neighbor = neighbors(level.map, cell)[0];
     if(neighbor!==undefined){const front=xy(neighbor);root.rotation.y=Math.atan2(front.x-pos.x,front.z-pos.z);}
     // Attach the door to a solid tile face; never obstruct an open corridor.
-    const cx=cell%level.w, cz=Math.floor(cell/level.w);
-    const wall=[[0,-1],[0,1],[-1,0],[1,0]].find(([dx,dz])=>level.map[cz+dz]?.[cx+dx]==="#");
+    const wall=exitWall(level.map,cell);
     if(wall){
       const [dx,dz]=wall;
       const door=new THREE.Group();
       door.position.set(pos.x+dx*(C*.5-.005),0,pos.z+dz*(C*.5-.005));
       door.rotation.y=Math.atan2(-dx,-dz);
       buildExitDoorArt(THREE,door,bright,dark,steel);
+      batchStaticMeshes(THREE,door);
       props.add(door);
     }
   }
@@ -622,7 +629,10 @@ function prop(cell, type, i = 0) {
   );
   sign.position.y = type === "record" ? 1.10 : type === "item" ? 1.39 : 1.64;
   root.add(sign);
-  return { cell, type, i, root, bright };
+  batchStaticMeshes(THREE,root);
+  const [halfWidth,halfDepth] = type==="station" ? [.455,.275] :
+    type==="item" ? [.36,.245] : type==="record" ? [.24,.19] : [.38,.23];
+  return { cell, type, i, root, bright, collision:{halfWidth,halfDepth} };
 }
 function loadScene() {
   model.removeFromParent();
@@ -649,7 +659,7 @@ function loadScene() {
   camera.add(lamp.target);
   beam = new THREE.PointLight(0xc5dbcd, 2.0, 4.1, 1.3);
   camera.add(beam);
-  environment = buildEnvironment(THREE, scene, level.map, C, ch);
+  environment = buildEnvironment(THREE, scene, level.map, C, ch, level.exit);
   props = new THREE.Group();
   props.userData.contactTexture = makeContactTexture(THREE);
   scene.add(props);
@@ -1369,11 +1379,6 @@ function update(dt) {
     if (!o.root.visible) continue;
     const q = o.root.position,
       d = Math.hypot(q.x - player.x, q.z - player.z);
-    if (o.root.userData.unit && d < 12) {
-      // Keep the equipment seated in its cradle rather than floating like a power-up.
-      o.root.userData.unit.rotation.y = .32;
-      o.root.userData.unit.position.y = .84;
-    }
     if (d < reach && clearLine(player, q)) {
       nearest = o;
       reach = d;

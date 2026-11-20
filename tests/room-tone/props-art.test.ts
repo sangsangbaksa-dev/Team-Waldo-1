@@ -1,7 +1,7 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { buildStationArt, buildCollectibleArt, buildExitDoorArt, addContactShadow } from "../../src/room-tone/props-art.js";
+import { buildStationArt, buildCollectibleArt, buildExitDoorArt, addContactShadow, batchStaticMeshes } from "../../src/room-tone/props-art.js";
 
 test("each restoration station has distinct geometry within its original footprint", () => {
   const signatures = new Set<string>();
@@ -57,4 +57,24 @@ test("exit door fits a solid tile face and respects wall clearance",()=>{
   assert.ok(b.min.y>=-.001&&b.max.y<=2.7);
   assert.ok(b.min.z>=-.001&&b.max.z<=.24);
   assert.ok(root.children.length>=20);
+});
+
+test("static batches lower draw objects while retaining world bounds and shadow transparency",()=>{
+  for(let ch=0;ch<4;ch++){
+    const root=new THREE.Group();
+    const bright=new THREE.MeshStandardMaterial(),dark=new THREE.MeshStandardMaterial(),steel=new THREE.MeshStandardMaterial();
+    buildStationArt(THREE,root,ch,bright,dark,steel);
+    const shadow=addContactShadow(THREE,root,1.48,1.06,new THREE.Texture());
+    const before=new THREE.Box3().setFromObject(root), count=root.children.length;
+    const removed=batchStaticMeshes(THREE,root);
+    const after=new THREE.Box3().setFromObject(root);
+    assert.ok(removed>10);
+    assert.equal(root.children.length,count-removed);
+    assert.ok(before.min.distanceTo(after.min)<.0001);
+    assert.ok(before.max.distanceTo(after.max)<.0001);
+    assert.ok(root.children.includes(shadow));
+    assert.equal(batchStaticMeshes(THREE,root),0);
+    const batches=root.children.filter(child=>(child as THREE.InstancedMesh).isInstancedMesh);
+    assert.ok(batches.length>0);
+  }
 });

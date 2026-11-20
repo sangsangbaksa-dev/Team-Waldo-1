@@ -1,3 +1,4 @@
+import { exitWall } from "./space.mjs";
 /* Retained studio finish, mechanical details and practical lights for the four recording wings. */
 const WINGS = [
   {
@@ -517,7 +518,8 @@ function equipmentArt(type, p, chapter) {
   });
 }
 
-export function buildEnvironment(THREE, scene, map, tile, chapter) {
+export function buildEnvironment(THREE, scene, map, tile, chapter, exitCell = -1) {
+  const doorFace=exitWall(map,exitCell);
   chapter = Math.max(0, Math.min(3, Math.floor(chapter) || 0));
   const p = WINGS[chapter],
     root = new THREE.Group();
@@ -792,6 +794,11 @@ export function buildEnvironment(THREE, scene, map, tile, chapter) {
           tile + 0.003,
           H + 0.002,
         );
+        // Reserve the complete door face before adding trim or equipment.
+        if(doorFace && row*map[0].length+col===exitCell && dx===doorFace[0] && dz===doorFace[1]){
+          local("box", metal, 0, 2.78, .025, tile, .045, .05);
+          continue;
+        }
         local("box", paint, 0, 0.108, 0.025, tile + 0.004, 0.216, 0.05);
         local("box", metal, 0, 1.157, 0.025, tile + 0.003, 0.035, 0.048);
         local("box", seam, 0, 1.134, 0.015, tile + 0.003, 0.014, 0.029);

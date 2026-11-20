@@ -554,13 +554,22 @@ export class World {
     for (const z of this.businesses) if (Math.hypot(z.x - b.x, z.y - b.y) < 64) return this.enterBiz(fi, z) || 'enter';
     return '';
   }
+  /** Detach an occupant and place them beside the car, outside solid terrain. */
+  disembark(v: Vehicle, a: Actor, side = 1): void {
+    a.inVeh = 0;
+    a.x = v.x - Math.sin(v.ang) * (v.wid / 2 + a.r + 8) * side;
+    a.y = v.y + Math.cos(v.ang) * (v.wid / 2 + a.r + 8) * side;
+    a.vx = a.vy = 0;
+    resolveCircle(this.map, a, a.r);
+    if (v.driver === a.id) { v.driver = 0; v.f = -1; v.ai = ''; }
+  }
   toggleVehicle(fi: number): void {
     const b = this.boss(fi); if (!b || (fi === 0 && this.inside)) return;
-    if (b.inVeh) { const v = this.vehicles.find(q => q.id === b.inVeh); b.inVeh = 0; if (v) { v.driver = 0; v.f = -1; v.ai = ''; b.x = v.x + Math.cos(v.ang + 1.57) * (v.wid + 8); b.y = v.y + Math.sin(v.ang + 1.57) * (v.wid + 8); } return; }
+    if (b.inVeh) { const v = this.vehicles.find(q => q.id === b.inVeh); if (v) this.disembark(v, b); else b.inVeh = 0; return; }
     let best: Vehicle | null = null, bd = 78;
-    for (const v of this.vehicles) if (v.alive && v.burn <= 0 && v.ai !== 'chase') { const d = Math.hypot(v.x - b.x, v.y - b.y) - v.r; if (d < bd) { bd = d; best = v; } }
+    for (const v of this.vehicles) if (v.alive && v.burn <= 0 && v.ai !== 'chase') { if (v.driver && this.byId.get(v.driver)?.kind === 'boss') continue; const d = Math.hypot(v.x - b.x, v.y - b.y) - v.r; if (d < bd) { bd = d; best = v; } }
     if (!best) return;
-    if (best.driver) { const d = this.byId.get(best.driver); if (d) { if (d.kind === 'boss') return; d.inVeh = 0; d.x = best.x - Math.cos(best.ang + 1.57) * 34; d.y = best.y - Math.sin(best.ang + 1.57) * 34; d.fleeT = 8; } this.crime(fi, best.kind === 'police' ? 1 : 0.5); }
+    if (best.driver) { const d = this.byId.get(best.driver); if (d) { this.disembark(best, d, -1); d.fleeT = 8; } this.crime(fi, best.kind === 'police' ? 1 : 0.5); }
     else if (best.kind === 'police') this.crime(fi, 1);
     best.ai = ''; best.driver = b.id; best.f = fi; b.inVeh = best.id; b.vx = b.vy = 0; this.fx('door', b.x, b.y);
   }

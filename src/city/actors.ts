@@ -189,6 +189,7 @@ export function updateBullets(w: World, dt: number): void {
       for (const v of w.vehicles) {
         if (!v.alive || v.f === b.f) continue; const dx = v.x - b.x, dy = v.y - b.y; if (dx * dx + dy * dy > v.r * v.r) continue;
         if (v.f >= 0 && !w.hostile(b.f, v.f) && !(v.f === CIV && b.boss)) continue;
+        if (d.pierce) { if (b.hitIds?.includes(v.id)) continue; (b.hitIds ??= []).push(v.id); }
         if (v.f === CIV) w.crime(b.f, 0.15);
         if (d.splash) w.explode(b.x, b.y, d.splash, b.dmg, b.f, d.bdmg); else { w.hurtVehicle(v, b.dmg * (d.pierce ? 1.5 : 1), b.f); w.fx('spark', b.x, b.y); if (v.driver && v.ai === 'traffic') { v.idle = 99; } }
         if (!d.pierce) dead = true; break;
@@ -238,7 +239,7 @@ export function updateVehicles(w: World, dt: number): void {
     if (v.driver && (!drv || !drv.alive)) { v.driver = 0; v.f = -1; v.ai = ''; }
     if (v.burn > 0) {
       v.burn -= dt;
-      if (v.burn <= 0) { v.alive = false; if (drv && drv.alive) { drv.inVeh = 0; drv.x = v.x + 20; w.hurtActor(drv, 70, -1, false); } v.driver = 0; w.explode(v.x, v.y, 120, 95, -1, 0.6); w.fx('wreck', v.x, v.y, v.ang); continue; }
+      if (v.burn <= 0) { v.alive = false; if (drv && drv.alive) { w.disembark(v, drv); w.hurtActor(drv, 70, -1, false); } v.driver = 0; w.explode(v.x, v.y, 120, 95, -1, 0.6); w.fx('wreck', v.x, v.y, v.ang); continue; }
     }
     v.throttle = 0; v.brake = false;
     const player = drv && drv.kind === 'boss' && drv.f === 0 && !w.opts.autoPlayer;
@@ -248,7 +249,7 @@ export function updateVehicles(w: World, dt: number): void {
       if (v.kind === 'tank') { v.cd -= dt; if (inp.fire && v.cd <= 0) { v.cd = 1.2; w.shoot(v.x + Math.cos(drv.ang) * 40, v.y + Math.sin(drv.ang) * 40, drv.ang, 'v_cannon', 0, drv.id, f.mods.dmg, true); w.fx('recoil', v.x, v.y); } }
       else { drv.x = v.x; drv.y = v.y; const id = f.slots[f.cur].id; bossFire(w, drv, f, inp.fire && id !== 'rocket' && id !== 'sniper' && id !== 'railgun', dt); }
     } else if (v.ai === 'traffic') {
-      if (v.idle > 50 || v.hp < v.maxHp * 0.55) { if (drv) { drv.inVeh = 0; drv.x = v.x + Math.cos(v.ang + 1.57) * 34; drv.y = v.y + Math.sin(v.ang + 1.57) * 34; drv.fleeT = 8; drv.order = { type: 'wander', x: drv.x, y: drv.y }; } v.driver = 0; v.f = -1; v.ai = ''; v.idle = 0; }
+      if (v.idle > 50 || v.hp < v.maxHp * 0.55) { if (drv) { w.disembark(v, drv); drv.fleeT = 8; drv.order = { type: 'wander', x: drv.x, y: drv.y }; } v.driver = 0; v.f = -1; v.ai = ''; v.idle = 0; }
       else traffic(w, v);
     } else if (v.ai === 'chase') chase(w, v, dt);
     // 물리
@@ -271,14 +272,14 @@ export function updateVehicles(w: World, dt: number): void {
       if (v.ai === 'traffic') v.idle += dt * 6;
     }
     const spd = Math.hypot(v.vx, v.vy);
-    for (const o of w.vehicles) if (o !== v && o.alive && o.id > v.id) { const dx = o.x - v.x, dy = o.y - v.y, d = Math.hypot(dx, dy), min = v.r + o.r; if (d < min && d > 0.01) { const p = (min - d) / 2; v.x -= dx / d * p; v.y -= dy / d * p; o.x += dx / d * p; o.y += dy / d * p; const rel = Math.hypot(v.vx - o.vx, v.vy - o.vy); if (rel > 200) { w.hurtVehicle(v, rel * 0.05, o.f); w.hurtVehicle(o, rel * 0.05, v.f); w.fx('crash', v.x, v.y, rel); } const mx = (v.vx + o.vx) / 2, my = (v.vy + o.vy) / 2; v.vx = mx; v.vy = my; o.vx = mx; o.vy = my; } }
+    for (const o of w.vehicles) if (o !== v && o.alive && o.id > v.id) { const dx = o.x - v.x, dy = o.y - v.y, min = v.r + o.r, d2 = dx * dx + dy * dy; if (d2 < min * min) { const d = Math.sqrt(d2), nx = d > 0.01 ? dx / d : Math.cos(v.ang), ny = d > 0.01 ? dy / d : Math.sin(v.ang), p = (min - d) / 2; v.x -= nx * p; v.y -= ny * p; o.x += nx * p; o.y += ny * p; const rel = Math.hypot(v.vx - o.vx, v.vy - o.vy); if (rel > 200) { w.hurtVehicle(v, rel * 0.05, o.f); w.hurtVehicle(o, rel * 0.05, v.f); w.fx('crash', v.x, v.y, rel); } const mx = (v.vx + o.vx) / 2, my = (v.vy + o.vy) / 2; v.vx = mx; v.vy = my; o.vx = mx; o.vy = my; } }
     w.forNear(v.x, v.y, v.r + 26, a => {
       if (!a.alive || a.inVeh) return; const dx = a.x - v.x, dy = a.y - v.y, d = Math.hypot(dx, dy) || 1, min = v.r + a.r; if (d >= min) return;
       a.x = v.x + dx / d * min; a.y = v.y + dy / d * min;
       if (spd > 150 && a.runCd <= 0 && v.driver && (a.f === CIV || w.hostile(v.f, a.f))) { a.runCd = 0.5; w.hurtActor(a, (spd - 90) * (v.kind === 'tank' ? 0.9 : 0.42), v.f); w.fx('splat', a.x, a.y); if (!ACTORS[a.kind].mech) { a.vx += v.vx * 0.6; a.vy += v.vy * 0.6; } else { v.vx *= 0.5; v.vy *= 0.5; w.hurtVehicle(v, 30, a.f); } }
     });
     if (v.ai === 'traffic' && spd < 12) v.idle += dt; else if (v.ai === 'traffic' && v.idle < 90) v.idle = Math.max(0, v.idle - dt * 3);
-    if (drv && drv.alive) { drv.x = v.x; drv.y = v.y; if (!player) drv.ang = v.ang; }
+    if (drv && drv.alive && v.driver === drv.id && drv.inVeh === v.id) { drv.x = v.x; drv.y = v.y; if (!player) drv.ang = v.ang; }
   }
 }
 

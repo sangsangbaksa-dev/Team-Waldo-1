@@ -109,7 +109,7 @@ export class RaceView {
   private chaseLift = 0; private viewH = 1; private startLamps: THREE.Mesh[] = [];
   private disposables: Array<{ dispose(): void }> = []; private outposts: Outpost | null = null;
 
-  constructor(canvas: HTMLCanvasElement, private track: Track, carTemplates: Record<string, THREE.Object3D> | null, private quality: 'high' | 'standard' | 'low', private theme: Theme) {
+  constructor(canvas: HTMLCanvasElement, private track: Track, carTemplates: Record<string, THREE.Object3D> | null, private quality: 'high' | 'standard' | 'low', private theme: Theme, private reducedMotion = false) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(renderPixelRatio(canvas.clientWidth || innerWidth, canvas.clientHeight || innerHeight, devicePixelRatio, quality));
     this.scene.fog = new THREE.Fog(theme.fog.color, theme.fog.near, theme.fog.far); this.sun = new THREE.DirectionalLight(theme.light.sun, theme.light.sunPower);
@@ -465,8 +465,9 @@ export class RaceView {
   }
 
   resize(w: number, h: number): void { w = Math.max(1, w); h = Math.max(1, h); this.viewH = h; const ratio = renderPixelRatio(w, h, devicePixelRatio, this.quality); if (ratio !== this.renderer.getPixelRatio()) this.renderer.setPixelRatio(ratio); this.renderer.setSize(w, h, false); this.camera.aspect = w / Math.max(1, h); this.camera.updateProjectionMatrix(); }
-  kick(power: number): void { this.shake = Math.min(1, this.shake + power); }
-  punchFov(v: number): void { this.punch = Math.min(1.2, this.punch + v); }
+  resetChase(): void { this.camInit = false; this.camAnchor.ready = false; this.shake = this.punch = 0; }
+  kick(power: number): void { if (!this.reducedMotion) this.shake = Math.min(1, this.shake + power); }
+  punchFov(v: number): void { if (!this.reducedMotion) this.punch = Math.min(1.2, this.punch + v); }
   worldOf(r: Racer): THREE.Vector3 { return new THREE.Vector3(r.car.x, r.car.y, r.car.z); }
 
   update(race: RaceState, dt: number, wallHit: number): { speedFrac: number } {
@@ -520,20 +521,21 @@ export class RaceView {
     const lift = this.chaseLift, dist = 7.4 + sf * 1.6 + (bst ? 0.9 : 0) + lift * 0.8, height = 2.55 + sf * 0.3 + lift * (this.viewH < 520 ? 1.55 : 1.05);
     const ahead = 8.2 - lift * 1.5, cx = p.x - Math.cos(this.camH) * dist, cz = p.z - Math.sin(this.camH) * dist, cy = p.y + height;
     stepChaseAnchor(this.camAnchor, cx, cy, cz, dt, sf, bst ? BOOST_LAG : 1);
-    const sh = chaseShake(sf, bst, this.shake), tt = this.time;
+    const sh = this.reducedMotion ? 0 : chaseShake(sf, bst, this.shake), tt = this.time;
     this.camera.position.set(this.camAnchor.x + Math.sin(tt * 53) * sh, this.camAnchor.y + Math.sin(tt * 61 + 1) * sh, this.camAnchor.z + Math.sin(tt * 47 + 2) * sh);
     const lookI = t.n > 0 ? ((p.idx % t.n) + t.n) % t.n : 0;
     this.camera.lookAt(p.x + Math.cos(this.camH) * ahead, p.y + 1.15 + lift * 0.35 + (t.pitch[lookI] || 0) * 8, p.z + Math.sin(this.camH) * ahead);
     const grind = Math.abs(p.lat) > t.halfWidth - 1.65 && speed > 22 ? 1 : 0, rum = chaseRumble(sf, bst, grind);
-    this.camera.rotateZ(chaseRoll(p.yawRate, p.slip) + Math.sin(tt * 71) * rum); this.camera.rotateX(Math.sin(tt * 83 + 1.3) * rum * 0.8);
-    const targetFov = chaseFov(sf, bst, this.punch); this.fov += (targetFov - this.fov) * Math.min(1, dt * fovRate(targetFov, this.fov)); this.camera.fov = this.fov; this.camera.updateProjectionMatrix();
+    if (!this.reducedMotion) { this.camera.rotateZ(chaseRoll(p.yawRate, p.slip) + Math.sin(tt * 71) * rum); this.camera.rotateX(Math.sin(tt * 83 + 1.3) * rum * 0.8); }
+    const targetFov = this.reducedMotion ? 64 : chaseFov(sf, bst, this.punch); this.fov += (targetFov - this.fov) * Math.min(1, dt * fovRate(targetFov, this.fov)); this.camera.fov = this.fov; this.camera.updateProjectionMatrix();
     // 지면·태양광이 카메라를 따라감
     this.ground.position.x = Math.round(this.camera.position.x / 60) * 60; this.ground.position.z = Math.round(this.camera.position.z / 60) * 60;
     this.scene.getObjectByName('sky')?.position.copy(this.camera.position);
     this.sun.target.position.set(p.x, p.y, p.z); this.sun.position.set(p.x - 40, p.y + 60, p.z - 90);
-    this.updateGhost(race); this.post?.setSpeedBlur(Math.max(0, (sf - 0.42) * 0.1 + (bst ? 0.04 : 0)));
+    this.updateGhost(race); this.post?.setSpeedBlur(this.reducedMotion ? 0 : Math.max(0, (sf - 0.42) * 0.1 + (bst ? 0.04 : 0)));
     this.updateStartLights(race);
-    this.updateStreaks(dt, p.vx, p.vz, speed, bst);
+    this.streak.visible = !this.reducedMotion;
+    if (!this.reducedMotion) this.updateStreaks(dt, p.vx, p.vz, speed, bst);
     if (this.post) this.post.render(dt); else this.renderer.render(this.scene, this.camera);
     return { speedFrac: sf };
   }

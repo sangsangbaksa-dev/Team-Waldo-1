@@ -13,7 +13,8 @@ import { aiInput, boosting, kmh, type CarInput } from './physics';
 import { RacePvp } from './pvp';
 import { decideWinner } from './netcar';
 import { createRace, currentLap, placeOf, updateRace, type RaceEvent, type RaceState } from './race';
-import { ghostDelta, readGhost, writeGhost } from './ghost';
+import { ghostAt, ghostDelta, readGhost, writeGhost } from './ghost';
+import { minimapTransform } from './minimap';
 import { ownsSkin, readGarage, rewardFor, writeGarage } from './garage';
 import { mountSetup, type SetupHandle } from './setup-ui';
 import { buildMapTrack, type Track } from './track';
@@ -237,7 +238,7 @@ export function openRace(onExit: () => void): void {
   }
 
   function recover(): void {
-    const c = race.player.car, i = c.idx; c.x = track.x[i]; c.z = track.z[i]; c.y = track.y[i]; c.h = Math.atan2(track.tz[i], track.tx[i]); c.vx = c.vz = 0; c.vf = c.vl = 0; c.yawRate = 0; c.drifting = false; c.driftT = 0; msg('복귀');
+    const c = race.player.car, i = c.idx; c.x = track.x[i]; c.z = track.z[i]; c.y = track.y[i]; c.h = Math.atan2(track.tz[i], track.tx[i]); c.vx = c.vz = 0; c.vf = c.vl = 0; c.yawRate = c.steer = c.slip = c.lat = 0; c.drifting = false; c.driftT = 0; wrongT = 0; view?.resetChase(); msg('복귀');
   }
 
   let carTemplate: Record<string, THREE.Object3D> | null = null;
@@ -245,7 +246,7 @@ export function openRace(onExit: () => void): void {
     // 해제된 WebGL 컨텍스트는 같은 캔버스에서 다시 열 수 없으므로 캔버스를 새로 만듭니다.
     const fresh = document.createElement('canvas'); fresh.className = 'rc-canvas'; canvas.replaceWith(fresh); canvas = fresh;
     try {
-      view = new RaceView(canvas, track, tpl, prefs.quality, mapOf(setup).theme);
+      view = new RaceView(canvas, track, tpl, prefs.quality, mapOf(setup).theme, prefs.reducedMotion);
       view.setChaseLift(touch); view.setRacers(race.racers); view.setGhost(carById(setup.car).model, !!race.ghost); resize();
       return true;
     } catch {
@@ -261,7 +262,7 @@ export function openRace(onExit: () => void): void {
   }
 
   function drawFx(intensity: number): void {
-    if (!fg) return; fg.clearRect(0, 0, fx.width, fx.height); if (intensity < 0.22) return;
+    if (!fg) return; fg.clearRect(0, 0, fx.width, fx.height); if (prefs.reducedMotion || intensity < 0.22) return;
     const w = fx.width, h = fx.height, cx = w / 2, cy = h * 0.46, R = Math.hypot(w, h) / 2, a = Math.min(1, (intensity - 0.22) * 1.2), n = 36 + Math.floor(a * 50);
     fg.lineCap = 'round';
     for (let i = 0; i < n; i++) {
@@ -272,19 +273,21 @@ export function openRace(onExit: () => void): void {
   }
 
   // 미니맵(코스마다 한 번 그린 경로를 재사용)
-  let mpath = new Path2D(), mscale = 1, minX = 0, minZ = 0;
-  const mx = (x: number): number => 15 + (x - minX) * mscale, mz = (z: number): number => 15 + (z - minZ) * mscale;
+  let mpath = new Path2D(), mapTransform = minimapTransform(track.x, track.z);
+  const mx = (x: number): number => mapTransform.x + (x - mapTransform.minX) * mapTransform.scale, mz = (z: number): number => mapTransform.z + (z - mapTransform.minZ) * mapTransform.scale;
+  const mapBackground = document.createElement('canvas'); mapBackground.width = mini.width; mapBackground.height = mini.height;
   function prepareMinimap(): void {
-    minX = Infinity; minZ = Infinity; let maxX = -Infinity, maxZ = -Infinity;
-    for (let i = 0; i < track.n; i++) { minX = Math.min(minX, track.x[i]); maxX = Math.max(maxX, track.x[i]); minZ = Math.min(minZ, track.z[i]); maxZ = Math.max(maxZ, track.z[i]); }
-    mscale = 190 / Math.max(maxX - minX, maxZ - minZ, 1); mpath = new Path2D();
+    mapTransform = minimapTransform(track.x, track.z); mpath = new Path2D();
     for (let i = 0; i <= track.n; i++) { const j = i % track.n; if (i === 0) mpath.moveTo(mx(track.x[j]), mz(track.z[j])); else mpath.lineTo(mx(track.x[j]), mz(track.z[j])); }
+    const bg = mapBackground.getContext('2d');
+    if (bg) { bg.clearRect(0, 0, 220, 220); bg.lineJoin = 'round'; bg.strokeStyle = 'rgba(8,4,24,.8)'; bg.lineWidth = 9; bg.stroke(mpath); bg.strokeStyle = '#8f7dff'; bg.lineWidth = 4; bg.stroke(mpath); bg.fillStyle = '#fff'; bg.fillRect(mx(track.x[0]) - 5, mz(track.z[0]) - 2, 10, 4); }
   }
   prepareMinimap();
   function drawMini(): void {
-    if (!mg) return; mg.clearRect(0, 0, 220, 220); mg.lineJoin = 'round'; mg.strokeStyle = 'rgba(8,4,24,.8)'; mg.lineWidth = 9; mg.stroke(mpath); mg.strokeStyle = '#8f7dff'; mg.lineWidth = 4; mg.stroke(mpath);
-    mg.fillStyle = '#fff'; mg.fillRect(mx(track.x[0]) - 5, mz(track.z[0]) - 2, 10, 4);
-    for (const r of [...race.racers].reverse()) { mg.fillStyle = r.color; mg.beginPath(); mg.arc(mx(r.car.x), mz(r.car.z), r.player ? 6 : 4.5, 0, 7); mg.fill(); if (r.player) { mg.strokeStyle = '#fff'; mg.lineWidth = 2; mg.stroke(); } }
+    if (!mg) return; mg.clearRect(0, 0, 220, 220); mg.drawImage(mapBackground, 0, 0);
+    const ghost = race.ghost && race.phase === 'racing' ? ghostAt(race.ghost, race.clock) : null;
+    if (ghost) { mg.beginPath(); mg.arc(mx(ghost.x), mz(ghost.z), 5, 0, Math.PI * 2); mg.strokeStyle = '#75e9ff'; mg.lineWidth = 1.5; mg.stroke(); }
+    for (let i = race.racers.length - 1; i >= 0; i--) { const r = race.racers[i]; mg.fillStyle = r.color; mg.beginPath(); mg.arc(mx(r.car.x), mz(r.car.z), r.player ? 6 : 4.5, 0, 7); mg.fill(); if (r.player) { mg.strokeStyle = '#fff'; mg.lineWidth = 2; mg.stroke(); } }
   }
 
   function hud(simulatedSeconds: number): void {

@@ -362,7 +362,12 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   const cancelPointer = (e: PointerEvent): void => { touches.delete(e.pointerId); if (touches.size < 2) pinch = 0; pointer.down = pointer.drag = pointer.pan = false; };
   over.addEventListener('pointerup', release); over.addEventListener('pointercancel', cancelPointer); over.addEventListener('lostpointercapture', cancelPointer);
   over.addEventListener('pointerleave', () => { pointer.in = false; });
-  over.addEventListener('wheel', e => { e.preventDefault(); view?.zoom(e.deltaY > 0 ? 1.1 : 0.91); }, { passive: false });
+  over.addEventListener('wheel', e => {
+    e.preventDefault();
+    if (modal.classList.contains('show') || !view) return;
+    const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? over.clientHeight : 1);
+    if (Number.isFinite(dy) && dy !== 0) view.zoom(Math.exp(Math.max(-0.22, Math.min(0.22, dy * 0.0012))));
+  }, { passive: false });
   /** 터치: 내 유닛을 누르면 선택, 땅·적·광물을 누르면 명령, 선택이 없으면 해제. */
   function tapAt(sx: number, sy: number): void {
     if (!sim || !view) return; const id = view.pick(sx, sy), e = id ? sim.index.get(id) : undefined, { us, bs } = own();

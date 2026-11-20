@@ -219,7 +219,7 @@ export class Renderer3D {
     }
     if (g.userData.model) { g.scale.set(10, 10 * (0.15 + 0.85 * s.built), 10); const th = g.getObjectByName('turret_Head'); if (th) th.rotation.y = -s.ang; } else { g.scale.y = 0.15 + 0.85 * s.built; const head = g.getObjectByName('head'); if (head) head.rotation.y = -s.ang; }
   }
-  private syncVehicle(v: Vehicle): void {
+  private syncVehicle(v: Vehicle, dt: number): void {
     let g = this.vehs.get(v.id);
     if (!g && this.ml) { const mg = this.ml.makeVehicle(v); if (mg) { g = mg as THREE.Group; this.scene.add(g); this.vehs.set(v.id, g); } }
     if (!g) {
@@ -236,7 +236,7 @@ export class Renderer3D {
     g.position.set(v.x, 0, v.y); g.rotation.y = -v.ang;
     const t = g.getObjectByName('turret') ?? g.getObjectByName('tank_Turret'); if (t) { const d = this.world.byId.get(v.driver); t.rotation.y = -((d ? d.ang : v.ang) - v.ang); }
     const la = g.getObjectByName('la') ?? g.getObjectByName('police_LightA'), lb = g.getObjectByName('lb') ?? g.getObjectByName('police_LightB'); if (la && lb) { const on = v.ai === 'chase' && Math.floor(this.t * 6) % 2 === 0; la.visible = v.ai !== 'chase' || on; lb.visible = v.ai !== 'chase' || !on; }
-    if (v.hp < v.maxHp * 0.5 && Math.random() < 0.25) { if (v.burn > 0) this.fire.add(v.x, 24, v.y, (Math.random() - 0.5) * 30, 60, (Math.random() - 0.5) * 30, 0.6, 0xff7a2a); else this.smoke.add(v.x, 24, v.y, (Math.random() - 0.5) * 16, 50, (Math.random() - 0.5) * 16, 1.2, 0x333338); }
+    if (dt > 0 && v.hp < v.maxHp * 0.5 && Math.random() < 1 - Math.pow(0.75, dt * 60)) { if (v.burn > 0) this.fire.add(v.x, 24, v.y, (Math.random() - 0.5) * 30, 60, (Math.random() - 0.5) * 30, 0.6, 0xff7a2a); else this.smoke.add(v.x, 24, v.y, (Math.random() - 0.5) * 16, 50, (Math.random() - 0.5) * 16, 1.2, 0x333338); }
   }
   private syncLoot(l: Loot): void {
     let g = this.loots.get(l.id);
@@ -393,10 +393,10 @@ export class Renderer3D {
     // 크리스탈
     let nc = 0; for (const c of w.crystals) { if (c.amount <= 0) continue; const s = 9 + 9 * c.amount / c.max; d.rotation.set(0, c.id, 0); d.position.set(c.x, s * 1.1, c.y); d.scale.set(s * 0.75, s * 1.5, s * 0.75); d.updateMatrix(); this.crystals.setMatrixAt(nc++, d.matrix); } upd(this.crystals, nc);
     // 탄환
-    let nt = 0; for (const b of w.bullets) { if (nt >= 500) break; const wd = WEAPONS[b.w], a = Math.atan2(b.vy, b.vx), len = wd.splash ? 12 : wd.pierce ? 150 : 46, th = wd.splash ? 5 : wd.pierce ? 3 : b.boss ? 1.5 : 1.1; d.rotation.set(0, -a, 0); d.position.set(b.x - Math.cos(a) * len / 2, 30, b.y - Math.sin(a) * len / 2); d.scale.set(len, th, th); d.updateMatrix(); this.tracers.setMatrixAt(nt, d.matrix); this.tracers.setColorAt(nt, col.set(wd.color)); nt++; if (wd.splash && Math.random() < 0.6) this.smoke.add(b.x, 30, b.y, 0, 8, 0, 0.5, 0xcfcfcf); } upd(this.tracers, nt);
+    let nt = 0; for (const b of w.bullets) { if (nt >= 500) break; const wd = WEAPONS[b.w], a = Math.atan2(b.vy, b.vx), len = wd.splash ? 12 : wd.pierce ? 150 : 46, th = wd.splash ? 5 : wd.pierce ? 3 : b.boss ? 1.5 : 1.1; d.rotation.set(0, -a, 0); d.position.set(b.x - Math.cos(a) * len / 2, 30, b.y - Math.sin(a) * len / 2); d.scale.set(len, th, th); d.updateMatrix(); this.tracers.setMatrixAt(nt, d.matrix); this.tracers.setColorAt(nt, col.set(wd.color)); nt++; if (dt > 0 && wd.splash && Math.random() < 1 - Math.pow(0.4, dt * 60)) this.smoke.add(b.x, 30, b.y, 0, 8, 0, 0.5, 0xcfcfcf); } upd(this.tracers, nt);
     // 동적 오브젝트 동기화
     const seenS = this.seenStructures; seenS.clear(); for (const s of w.structures) if (s.alive) { seenS.add(s.id); this.syncStruct(s); } for (const [id, g] of this.structs) if (!seenS.has(id)) { this.scene.remove(g); this.structs.delete(id); }
-    const seenV = this.seenVehicles; seenV.clear(); for (const v of w.vehicles) if (v.alive) { seenV.add(v.id); this.syncVehicle(v); } for (const [id, g] of this.vehs) if (!seenV.has(id)) { this.scene.remove(g); this.vehs.delete(id); }
+    const seenV = this.seenVehicles; seenV.clear(); for (const v of w.vehicles) if (v.alive) { seenV.add(v.id); this.syncVehicle(v, dt); } for (const [id, g] of this.vehs) if (!seenV.has(id)) { this.scene.remove(g); this.vehs.delete(id); }
     const seenL = this.seenLoot; seenL.clear(); for (const l of w.loot) if (l.alive) { seenL.add(l.id); this.syncLoot(l); } for (const [id, g] of this.loots) if (!seenL.has(id)) { this.scene.remove(g); this.loots.delete(id); }
     for (const z of w.businesses) this.syncBiz(z);
     // 수송기

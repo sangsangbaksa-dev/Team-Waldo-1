@@ -7,12 +7,12 @@ export interface MoveInput { mx: number; mz: number; run: boolean }
 const WALK = 3.4, RUN = 6.4, RADIUS = 0.45, EYE = 1.62;
 const wrap = (a: number): number => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
 
-/** 단계별 옷차림: 빈털터리는 해진 작업복, 올라갈수록 말끔해집니다. */
+/** 단계별 옷차림: 늘 평범한 시민이고, 올라갈수록 색이 말끔해집니다(작업복·광부 차림은 쓰지 않습니다). */
 export function outfitFor(stage: number): { kind: string; team: number; seed: number } {
-  if (stage <= 0) return { kind: 'worker', team: 0x6e6455, seed: 11 };
+  if (stage <= 0) return { kind: 'civ', team: 0x6e6455, seed: 11 };
   if (stage <= 2) return { kind: 'civ3', team: 0x3a6ea5, seed: 11 };
-  if (stage <= 4) return { kind: 'boss', team: 0x2a3140, seed: 11 };
-  return { kind: 'boss', team: 0x14171e, seed: 11 };
+  if (stage <= 4) return { kind: 'civ5', team: 0x2a3140, seed: 11 };
+  return { kind: 'civ8', team: 0x14171e, seed: 11 };
 }
 
 export class Player {

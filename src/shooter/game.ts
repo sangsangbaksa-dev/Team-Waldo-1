@@ -1,3 +1,4 @@
+import '../shared/game-polish.css';
 // ZERO ZONE — 배틀로열 총게임 화면: 출격 설정, 조작(키보드·마우스·터치), HUD, 솔로(AI 99명, 비행기 낙하)와 1대1 온라인 대전의 진행.
 import './shooter.css';
 import { readPreferences } from '../prefs';
@@ -348,7 +349,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   const noMenu = (e: Event): void => e.preventDefault();
   window.addEventListener('mousemove', onMove); window.addEventListener('mousedown', onDown); window.addEventListener('mouseup', onUp);
   window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKey); window.addEventListener('wheel', onWheel, { passive: true }); canvas.addEventListener('contextmenu', noMenu);
-  const blur = (): void => { keys.clear(); mouse.fire = mouse.ads = false; }; window.addEventListener('blur', blur);
+  const blur = (): void => { keys.clear(); mouse.fire = mouse.ads = false; interactHeld = false; tc.fire = false; tc.move.id = tc.look.id = -1; tc.move.x = tc.move.y = 0; stickEl.style.opacity = '0'; root.querySelectorAll('.sz-tbuttons button[data-act="fire"].down, .sz-tbuttons button[data-act="interact"].down').forEach(b => b.classList.remove('down')); }; window.addEventListener('blur', blur);
+  const onVisibility = (): void => { if (document.hidden) blur(); }; document.addEventListener('visibilitychange', onVisibility);
 
   // 터치: 왼쪽 절반은 이동 스틱, 오른쪽 절반 드래그는 시점
   const stickEl = q('#sz-stick');
@@ -357,10 +359,11 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (!touch || e.pointerType !== 'touch' || !match || (e.target as HTMLElement).closest('button')) return; audio.unlock();
     if (e.clientX < innerWidth * 0.45 && tc.move.id < 0) { tc.move.id = e.pointerId; tc.move.ox = e.clientX; tc.move.oy = e.clientY; stickEl.style.cssText = `left:${e.clientX - 60}px;top:${e.clientY - 60}px;opacity:1`; stickFrom(e.clientX, e.clientY); }
     else if (e.clientX >= innerWidth * 0.45 && tc.look.id < 0) { tc.look.id = e.pointerId; tc.look.x = e.clientX; tc.look.y = e.clientY; }
+    if (tc.move.id === e.pointerId || tc.look.id === e.pointerId) { try { root.setPointerCapture(e.pointerId); } catch { /* browser may deny capture */ } }
   };
   const tMove = (e: PointerEvent): void => { if (e.pointerId === tc.move.id) stickFrom(e.clientX, e.clientY); else if (e.pointerId === tc.look.id) { look((e.clientX - tc.look.x) * 1.6, (e.clientY - tc.look.y) * 1.6); tc.look.x = e.clientX; tc.look.y = e.clientY; } };
   const tEnd = (e: PointerEvent): void => { if (e.pointerId === tc.move.id) { tc.move.id = -1; tc.move.x = tc.move.y = 0; stickEl.style.opacity = '0'; } else if (e.pointerId === tc.look.id) tc.look.id = -1; };
-  root.addEventListener('pointerdown', tStart); root.addEventListener('pointermove', tMove); root.addEventListener('pointerup', tEnd); root.addEventListener('pointercancel', tEnd);
+  root.addEventListener('pointerdown', tStart); root.addEventListener('pointermove', tMove); root.addEventListener('pointerup', tEnd); root.addEventListener('pointercancel', tEnd); root.addEventListener('lostpointercapture', tEnd);
   root.querySelectorAll<HTMLButtonElement>('.sz-tbuttons button').forEach(b => {
     const act = b.dataset.act!;
     b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); audio.unlock(); if (act === 'fire') tc.fire = true; else if (act === 'ads') tc.ads = !tc.ads; else if (act === 'crouch') tc.crouch = !tc.crouch; else if (act === 'reload') reloadReq = true; else if (act === 'interact') interactHeld = true; else if (act === 'swap') swapReq = true; else if (act === 'nade') nadeReq = true; else if (act === 'heal1') healReq = 1; else if (act === 'heal2') healReq = 2; if (act === 'crouch') b.classList.toggle('down', tc.crouch); else b.classList.add('down'); });
@@ -648,7 +651,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   function exit(): void {
     if (closed) return; closed = true; window.clearInterval(bgTimer); cancelAnimationFrame(raf); leavePvp(); leaveRoom(); if (document.pointerLockElement) document.exitPointerLock(); loading?.close();
     for (const [t, f] of [['mousemove', onMove], ['mousedown', onDown], ['mouseup', onUp], ['keydown', onKey], ['keyup', onKey], ['wheel', onWheel], ['resize', resize], ['blur', blur]] as const) window.removeEventListener(t, f as EventListener);
-    document.removeEventListener('pointerlockchange', onLock); endMatch(); audio.dispose(); root.remove(); onExit();
+    document.removeEventListener('pointerlockchange', onLock); document.removeEventListener('visibilitychange', onVisibility); endMatch(); audio.dispose(); root.remove(); onExit();
   }
   raf = requestAnimationFrame(frame);
 }

@@ -1,6 +1,7 @@
 // OUTLAW CITY — 황혼 도시의 방향 회전 레이더와 일시정지용 전체 지도.
 import type { CityMap, Poi, PoiKind } from './types';
 import type { Sim } from './sim';
+import { allZones } from './turf';
 
 const SIZE = 1024;
 const POI_STYLE: Record<PoiKind, { icon: string; color: string }> = {
@@ -75,6 +76,7 @@ export class Minimap {
     g.translate(cx, cy); g.rotate(angle); g.translate(-p.x * k, -p.z * k); g.drawImage(this.base, -this.map.half * k, -this.map.half * k, this.map.half * 2 * k, this.map.half * 2 * k); g.restore();
     g.save(); g.beginPath(); g.arc(cx, cy, size * .47, 0, Math.PI * 2); g.clip();
     const r = this.range;
+    for (const z of allZones(sim)) if (Math.hypot(z.x - p.x, z.z - p.z) < r + z.r) { const [x, y] = point(z.x, z.z); g.fillStyle = z.owned ? 'rgba(93,255,143,.10)' : 'rgba(255,69,69,.12)'; g.strokeStyle = z.owned ? 'rgba(93,255,143,.55)' : 'rgba(255,69,69,.55)'; g.lineWidth = 1.4; g.setLineDash([5, 4]); g.beginPath(); g.arc(x, y, z.r * k, 0, Math.PI * 2); g.fill(); g.stroke(); g.setLineDash([]); }
     for (const poi of this.map.pois) if (Math.abs(poi.x - p.x) < r && Math.abs(poi.z - p.z) < r) this.poi(g, point(poi.x, poi.z), poi, size * .046);
     for (const marker of [...sim.mission.markers, ...sim.activity.markers, ...sim.job.markers]) if (marker.blip) {
       const [x, y] = point(marker.x, marker.z), dx = x - cx, dy = y - cy, d = Math.hypot(dx, dy), edge = size * .405;
@@ -115,6 +117,11 @@ export class Minimap {
     g.setLineDash([]);
     const font = Math.max(8, Math.min(13, side * .018)); g.font = `700 ${font}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#d6dedf';
     for (let i = 0; i < 12; i++) { g.fillText(String.fromCharCode(65 + i), px(-this.map.half + (i + .5) * this.map.pitch), top - font * 1.2); g.fillText(String(i + 1), left - font * 1.2, pz(-this.map.half + (i + .5) * this.map.pitch)); }
+    for (const z of allZones(sim)) {
+      g.fillStyle = z.owned ? 'rgba(93,255,143,.12)' : 'rgba(255,69,69,.13)'; g.strokeStyle = z.owned ? 'rgba(93,255,143,.6)' : 'rgba(255,69,69,.6)'; g.lineWidth = Math.max(1.2, side / 600); g.setLineDash([6 * k, 5 * k]);
+      g.beginPath(); g.arc(px(z.x), pz(z.z), z.r * k, 0, Math.PI * 2); g.fill(); g.stroke(); g.setLineDash([]);
+      g.font = `700 ${font * 1.05}px sans-serif`; g.fillStyle = z.owned ? '#8dffb0' : '#ff8d8d'; g.fillText(`${z.name}${z.owned ? ' ✔' : ''}`, px(z.x), pz(z.z) - z.r * k * .55);
+    }
     for (const poi of this.map.pois) {
       const x = px(poi.x), y = pz(poi.z); this.poi(g, [x, y], poi, font * 1.7);
       g.font = `600 ${font}px sans-serif`; g.lineWidth = 3; g.strokeStyle = 'rgba(12,17,20,.9)'; g.strokeText(poi.name, x, y + font * 1.8); g.fillStyle = '#f1f3ef'; g.fillText(poi.name, x, y + font * 1.8);
@@ -139,7 +146,7 @@ export class Minimap {
   }
   private dot(g: CanvasRenderingContext2D, x: number, y: number, color: string, r: number): void { g.fillStyle = color; g.strokeStyle = 'rgba(8,12,15,.9)'; g.lineWidth = Math.max(1, r * .35); g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); g.stroke(); }
   private drawLegend(g: CanvasRenderingContext2D, left: number, y: number, w: number, font: number): void {
-    const items: Array<[string, string]> = [['⌂ 안전가옥', '#5dff8f'], ['G 총기점', '#ffb84d'], ['+ 병원', '#f3f5f6'], ['P 도색소', '#3df2ff'], ['M 의뢰', '#ffd23f'], ['경찰', '#3b82ff']];
+    const items: Array<[string, string]> = [['⌂ 안전가옥', '#5dff8f'], ['G 총기점', '#ffb84d'], ['+ 병원', '#f3f5f6'], ['P 도색소', '#3df2ff'], ['M 의뢰', '#ffd23f'], ['갱 구역', '#ff6b6b'], ['경찰', '#3b82ff']];
     g.font = `600 ${font}px sans-serif`; g.textAlign = 'left'; g.textBaseline = 'middle';
     const gap = Math.max(64, (w - left * 2) / items.length); items.forEach(([label, color], i) => { const x = left + i * gap; g.fillStyle = color; g.beginPath(); g.arc(x + font * .45, y, font * .34, 0, Math.PI * 2); g.fill(); g.fillStyle = '#d5dddd'; g.fillText(label, x + font, y); });
   }

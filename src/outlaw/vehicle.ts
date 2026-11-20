@@ -1,6 +1,7 @@
 ﻿// OUTLAW CITY — 도시 주행용 차량 물리·충돌·보행자 충격과 장애물을 살피는 자동 운전.
 import { GRAVITY, PLAYER_ID, VEHICLES, clamp, wrapAngle, type Ped, type Vehicle } from './types';
 import type { Sim } from './sim';
+import { tunedDef } from './tuning';
 import { collideBox, groundHeight, rayStatic } from './world';
 
 interface Motion { vy: number; air: boolean; reverse: number; honk: number; back: number; avoid: number }
@@ -74,7 +75,7 @@ function pedestrians(sim: Sim, v: Vehicle, dt: number): void {
 /** 입력으로 속도·방향을 갱신하고 지형·차·보행자 충돌을 처리합니다. */
 export function stepVehicle(sim: Sim, v: Vehicle, dt: number): void {
   if (!(dt > 0) || !Number.isFinite(dt) || !v.alive) return;
-  const d = VEHICLES[v.kind], m = motion(v), elapsed = Math.min(dt, 0.25), steps = Math.ceil(elapsed * 120), ds = elapsed / steps, g = gridFor(sim);
+  const d = tunedDef(v), m = motion(v), elapsed = Math.min(dt, 0.25), steps = Math.ceil(elapsed * 120), ds = elapsed / steps, g = gridFor(sim);
   v.crashT = Math.max(0, v.crashT - elapsed); v.hornT = Math.max(0, v.hornT - elapsed); m.honk = Math.max(0, m.honk - elapsed);
   if (v.driver && !v.wrecked && v.input.horn) { v.hornT = 0.25; if (m.honk <= 0) { sim.emit({ t: 'honk', id: v.id }); m.honk = 0.5; } }
   for (let i = 0; i < steps; i++) {

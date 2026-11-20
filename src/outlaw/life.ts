@@ -41,6 +41,8 @@ export const PROPERTIES: Property[] = [
   { id: 'dock', name: '부두 창고', price: 90000, income: 600, desc: '무엇이 들어오는지는 묻지 않는다.' },
   { id: 'stake', name: '카지노 지분', price: 200000, income: 1500, desc: '확률은 언제나 집이 이긴다.' },
 ];
+/** 점령한 구역 하나가 분당 내는 수입 */
+export const TURF_INCOME = 140;
 export const PROP_CAP_MIN = 40; // 방치해도 쌓이는 수입은 40분치까지
 
 export interface CarOffer { kind: VehicleKind; price: number; color: number }
@@ -51,14 +53,15 @@ export const CAR_SHOP: CarOffer[] = [
   { kind: 'hyper', price: 70000, color: 0xffb400 },
 ];
 
-export interface OwnedCar { kind: VehicleKind; color: number }
+export interface OwnedCar { kind: VehicleKind; color: number; /** 튜닝 단계(없으면 순정) */ tune?: { eng: number; tire: number; arm: number } }
 export interface LifeState {
   hero: string; props: string[]; propBank: number; propAt: number; cars: OwnedCar[];
   skills: Record<SkillId, number>; counters: Record<string, number>; ach: string[]; /** 옷 색 번호(-1 이면 기본 복장) */ outfit: number;
+  /** 점령한 갱 구역 id 목록(turf.ts) */ turf: string[];
 }
 export const OUTFITS = [0xb23a32, 0x2c5f9e, 0x222428, 0xe8e8e8, 0x3f7f4b, 0xd9b13c, 0x8a3fa0, 0xe06d1f];
 export const OUTFIT_PRICE = 60;
-export const blankLife = (): LifeState => ({ hero: 'h0', props: [], propBank: 0, propAt: 0, cars: [], skills: { stamina: 0, strength: 0, shooting: 0 }, counters: {}, ach: [], outfit: -1 });
+export const blankLife = (): LifeState => ({ hero: 'h0', props: [], propBank: 0, propAt: 0, cars: [], skills: { stamina: 0, strength: 0, shooting: 0 }, counters: {}, ach: [], outfit: -1, turf: [] });
 
 /** 주인공 + 능력치 → 최종 특전 */
 export function computePerks(life: LifeState): Perks {
@@ -69,7 +72,7 @@ export function computePerks(life: LifeState): Perks {
 
 /** 모은 수입(분당 → 초 단위로 환산). 소유 부동산 전부 합산. */
 export function propertyRate(life: LifeState, perks: Perks): number {
-  let sum = 0; for (const id of life.props) sum += PROPERTIES.find(q => q.id === id)?.income ?? 0; return sum * perks.biz / 60;
+  let sum = (life.turf?.length ?? 0) * TURF_INCOME; for (const id of life.props) sum += PROPERTIES.find(q => q.id === id)?.income ?? 0; return sum * perks.biz / 60;
 }
 
 export interface Achievement { id: string; name: string; desc: string; reward: number; test: (c: Record<string, number>, l: LifeState) => boolean }
@@ -95,5 +98,11 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'driver', name: '도시 운전사', desc: '택시 손님 5명 태우기', reward: 800, test: c => (c.taxi ?? 0) >= 5 },
   { id: 'contracts', name: '해결사', desc: '현상 의뢰 5건 완료', reward: 1500, test: c => (c.contracts ?? 0) >= 5 },
   { id: 'bomber', name: '폭파범', desc: '수류탄 10개 던지기', reward: 400, test: c => (c.grenades ?? 0) >= 10 },
-  { id: 'story', name: '이야기 끝', desc: '모든 의뢰 완료', reward: 5000, test: c => (c.story ?? 0) >= 7 },
+  { id: 'story', name: '이야기 끝', desc: '첫 번째 이야기의 의뢰 일곱 건 완료', reward: 5000, test: c => (c.story ?? 0) >= 7 },
+  { id: 'story2', name: '도시의 뒷이야기', desc: '모든 의뢰 완료', reward: 8000, test: c => (c.story ?? 0) >= 9 },
+  { id: 'holdup3', name: '새벽 강도', desc: '매장 3곳 털기', reward: 900, test: c => (c.holdups ?? 0) >= 3 },
+  { id: 'mugger', name: '길거리 협박꾼', desc: '총으로 위협해 지갑 10개 받기', reward: 700, test: c => (c.mugs ?? 0) >= 10 },
+  { id: 'turf1', name: '첫 영토', desc: '갱 구역 하나 점령', reward: 1000, test: (_c, l) => l.turf.length >= 1 },
+  { id: 'turf_all', name: '도시의 주인', desc: '갱 구역 전부 점령', reward: 12000, test: (_c, l) => l.turf.length >= 8 },
+  { id: 'tuner', name: '튜너', desc: '차 한 대를 전 부품 최대로', reward: 2000, test: (_c, l) => l.cars.some(c => !!c.tune && c.tune.eng >= 3 && c.tune.tire >= 3 && c.tune.arm >= 3) },
 ];

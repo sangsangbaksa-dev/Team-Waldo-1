@@ -41,10 +41,22 @@ try {
     await page.keyboard.press('KeyM'); await page.waitForSelector('#ty-bigmap'); await page.keyboard.press('Escape');
     await page.keyboard.press('Escape'); await page.waitForSelector('.ty-panel[aria-label="일시정지"]'); await page.click('[data-menu="save"]');
     assert.ok(await page.evaluate(() => !!localStorage.getItem('waldo.tycoon.v1')), 'Save is written');
+    // 처음부터 다시 시작: 한 번 누르면 확인만 받고, 두 번째에 저장이 지워지고 첫날로 돌아간다.
+    await page.click('[data-menu="restart"]'); assert.ok(await page.evaluate(() => window.__ty.core.state.cash > 0), 'The first press only asks for confirmation');
+    await page.click('[data-menu="restart"]'); await page.waitForSelector('.ty-modal', { state: 'hidden' });
+    assert.equal(await page.locator('#ty-cash').textContent(), '$0', 'Restart brings back the broke start');
+    assert.equal(await page.evaluate(() => window.__ty.core.state.day), 1, 'Restart returns to day 1');
+    await page.keyboard.press('Escape'); await page.waitForSelector('.ty-panel[aria-label="일시정지"]');
     await page.click('[data-menu="exit"]'); await page.waitForSelector('#start-tycoon');
     assert.match(await page.textContent('#start-tycoon .tile-status'), /일차/, 'The hub shows the saved stage and day');
     assert.deepEqual(errors, [], `No page errors (${size.name})`);
     await context.close();
     console.log(`tycoon smoke ${size.name}: ok`);
   }
+  // WebGL 이 없으면 허브로 조용히 튕기지 않고 안내 화면을 보여 준다.
+  const ctx = await browser.newContext({ viewport: { width: 900, height: 600 } });
+  await ctx.addInitScript(() => { const get = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function (t, ...a) { return /webgl/.test(t) ? null : get.call(this, t, ...a); }; });
+  const bare = await ctx.newPage(); await bare.goto(origin + '/'); await bare.click('#start-tycoon');
+  await bare.waitForSelector('.ty-title:not([hidden]) [data-title="exit"]'); assert.match(await bare.textContent('.ty-title h1'), /그래픽/, 'Without WebGL the failure screen is shown');
+  await bare.click('[data-title="exit"]'); await bare.waitForSelector('#start-tycoon'); console.log('tycoon smoke no-webgl: ok'); await ctx.close();
 } finally { await browser?.close(); server.kill(); }

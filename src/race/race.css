@@ -49,6 +49,8 @@
 .rc-record{font-size:14px}
 .rc-actions{display:flex;gap:10px;justify-content:center;margin-top:10px;flex-wrap:wrap}.rc-actions button{padding:13px 22px;border-radius:14px;border:1px solid #ffffff55;background:#ffffff18;color:#fff;font-weight:800;font-size:16px;cursor:pointer}.rc-actions button.primary{background:linear-gradient(120deg,#ff3b8d,#ff8a3d);border-color:transparent}
 @media (max-width:700px){.rc-tr canvas{width:96px;height:96px}.rc-msg{font-size:18px}.rc-msg.hint{font-size:13px}.rc-count{font-size:96px}.rc-btns button{width:34px;height:34px}.rc-pos b{font-size:40px}.rc-tl{padding:6px 10px}}
+/* 320px 폭 폰: 순위·시간·미니맵 상자가 서로 겹치지 않게 좌우 여백과 시간 상자를 줄입니다. */
+@media (max-width:360px){.rc-tl{left:max(8px,env(safe-area-inset-left))}.rc-tc{left:max(102px,calc(env(safe-area-inset-left) + 94px));transform:none;padding:4px 8px 6px}.rc-tr{right:max(8px,env(safe-area-inset-right))}}
 @media (prefers-reduced-motion:reduce){.rc-wrong{animation:none}}
 @media (max-height:480px){.rc-tr canvas{width:72px;height:72px}.rc-pedals{flex-direction:row;align-items:flex-end;gap:8px}.rc-pedal-row{flex-direction:row;gap:6px}.rc-pedals button{height:44px;min-width:64px;font-size:12px}.rc-pedals button.gas{height:64px;min-width:84px;font-size:15px}.touch .rc-touchpad button{min-width:64px;height:64px}.rc-btns button{width:30px;height:30px}.touch .rc-bottom{top:auto;bottom:74px;left:max(8px,env(safe-area-inset-left));transform:none}.touch .rc-speed b{font-size:26px}.touch .rc-msg.hint{display:none}.rc-keys{display:none}.rc-pos b{font-size:32px}}
 

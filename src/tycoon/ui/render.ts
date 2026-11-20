@@ -14,17 +14,18 @@ export function ladderHtml(stage: Stage): string {
 }
 
 function shopHtml(s: ShopView): string {
+  const factory = s.kind === 'factory';
+  const supply = s.stock === 0 ? '품절' : s.stock <= s.stockCap * 0.3 ? '재고 부족' : '재고 충분';
   return `<div class="ty-shop">
-    <div class="ty-shop-head"><b>${esc(s.name)}</b><span>${esc(s.kindName)} · Lv${s.level}/${s.maxLevel}</span><em class="${s.serving ? 'on' : 'off'}">${s.serving ? '영업 중' : '영업 안 함'}</em></div>
-    <div class="ty-kv"><span>재고</span><b>${s.stock}/${s.stockCap}</b>${bar(s.stockCap ? s.stock / s.stockCap : 0)}</div>
-    <div class="ty-kv"><span>평점</span><b>${s.rating}</b>${bar(s.rating / 100, 'gold')}</div>
-    <div class="ty-chips"><span>오늘 매출 ${formatMoney(s.todayRevenue)}</span><span>손님 ${s.todayCustomers}명</span><span>놓침 ${s.todayLost}명</span><span>일 순이익 ${formatMoney(s.profitPerDay)}</span><span>직원 ${s.staff.length}명</span><span>가격 ×${s.priceMult.toFixed(2)}</span></div>
+    <div class="ty-shop-head"><b>${esc(s.name)}</b><span>${esc(s.kindName)} · Lv${s.level}/${s.maxLevel}</span><em class="${factory || s.serving ? 'on' : 'off'}">${factory ? '가동 중' : s.serving ? '영업 중' : '영업 안 함'}</em></div>
+    ${factory ? '<p class="ty-factory-note">납품 수익 · 전체 매장 재료비 절감</p>' : `<div class="ty-supply ${s.stock <= s.stockCap * 0.3 ? 'low' : ''}">${supply}</div><div class="ty-kv"><span>재고</span><b>${s.stock}/${s.stockCap}</b>${bar(s.stockCap ? s.stock / s.stockCap : 0)}</div><div class="ty-kv"><span>평점</span><b>${s.rating}</b>${bar(s.rating / 100, 'gold')}</div>`}
+    <div class="ty-chips"><span>오늘 매출 ${formatMoney(s.todayRevenue)}</span><span>손님 ${s.todayCustomers}명</span><span>놓침 ${s.todayLost}명</span><span class="${s.profitPerDay < 0 ? 'cost' : 'gain'}">전일 순이익 ${formatMoney(s.profitPerDay)}</span><span>직원 ${s.staff.length}명</span><span>가격 ×${s.priceMult.toFixed(2)}</span></div>
   </div>`;
 }
 
 function actionHtml(a: ActionDef, idx: number): string {
   const chips = [a.cost > 0 ? `<span class="cost">-${formatMoney(a.cost)}</span>` : '', a.reward > 0 ? `<span class="gain">+${formatMoney(a.reward)}</span>` : '', a.energy ? `<span class="${a.energy < 0 ? 'gain' : 'cost'}">체력 ${a.energy < 0 ? '+' : '-'}${Math.abs(a.energy)}</span>` : '', a.durationSec > 0 ? `<span>${a.durationSec}초</span>` : ''].join('');
-  return `<li><button type="button" class="ty-act" data-act="${esc(a.id)}" ${a.enabled ? '' : 'disabled'}><span class="no">${idx < 9 ? idx + 1 : ''}</span><span class="body"><b>${esc(a.label)}</b><small>${esc(a.desc)}</small>${!a.enabled && a.disabledReason ? `<em>${esc(a.disabledReason)}</em>` : ''}</span><span class="chips">${chips}</span></button></li>`;
+  return `<li><button type="button" class="ty-act${a.id === 'sell' || a.id === 'discard_cargo' ? ' danger' : ''}" data-act="${esc(a.id)}" ${a.enabled ? '' : 'disabled'}><span class="no">${idx < 9 ? idx + 1 : ''}</span><span class="body"><b>${esc(a.label)}</b><small>${esc(a.desc)}</small>${!a.enabled && a.disabledReason ? `<em>${esc(a.disabledReason)}</em>` : ''}</span><span class="chips">${chips}</span></button></li>`;
 }
 
 /** 장소 패널(행동 목록). */
@@ -37,7 +38,7 @@ export function spotPanelHtml(core: TycoonCore, spotId: string, locked: boolean)
     : lot?.owner === 'rival' && lot.rival ? `<div class="ty-rivalbox" style="--c:${esc(lot.rival.color)}"><b>${esc(lot.rival.rivalName)}</b><span>${esc(lot.rival.kindName)} Lv${lot.rival.level}</span></div>`
     : lot ? `<div class="ty-chips"><span>부지 ${lot.size}</span><span>부지 가격 ${formatMoney(lot.price)}</span></div>` : '';
   const minStage = STAGE_NAMES[spot.minStage];
-  return `<div class="ty-panel" role="dialog" aria-label="${esc(spot.name)}">
+  return `<div class="ty-panel" role="dialog" aria-modal="true" aria-label="${esc(spot.name)}">
     <header><span class="ico">${esc(spot.icon)}</span><div><h2>${esc(spot.name)}</h2><p>${esc(d.name)} · ${status}</p></div><button type="button" class="ty-x" data-close aria-label="닫기">✕</button></header>
     ${locked ? `<p class="ty-locked">🔒 <b>${esc(minStage)}</b> 단계가 되면 열립니다.</p>` : ''}
     ${body}
@@ -48,15 +49,16 @@ export function spotPanelHtml(core: TycoonCore, spotId: string, locked: boolean)
 
 function reportHtml(r: DayReport): string {
   return `<div class="ty-report"><h3>${r.day}일차 결산</h3>
-    <div class="ty-chips"><span>매출 ${formatMoney(r.revenue)}</span><span>원가 ${formatMoney(r.costOfGoods)}</span><span>인건비 ${formatMoney(r.wages)}</span><span>유지비 ${formatMoney(r.upkeep)}</span><span>이자 ${formatMoney(r.interest)}</span><span>세금 ${formatMoney(r.tax)}</span>${r.worldIncome ? `<span>해외 ${formatMoney(r.worldIncome)}</span>` : ''}${r.jobIncome ? `<span>일당 ${formatMoney(r.jobIncome)}</span>` : ''}</div>
+    <div class="ty-chips"><span>매출 ${formatMoney(r.revenue)}</span><span>원가 ${formatMoney(r.costOfGoods)}</span><span>인건비 ${formatMoney(r.wages)}</span><span>유지비 ${formatMoney(r.upkeep)}</span><span>이자 ${formatMoney(r.interest)}</span><span>세금 ${formatMoney(r.tax)}</span>${r.worldIncome ? `<span>해외 ${formatMoney(r.worldIncome)}</span>` : ''}${r.jobIncome ? `<span>일·수집 수입 ${formatMoney(r.jobIncome)}</span>` : ''}</div>
     <p class="${r.profit >= 0 ? 'gain' : 'cost'}">순이익 <b>${formatMoney(r.profit)}</b> · 손님 ${r.customers}명 (놓침 ${r.lost})</p></div>`;
 }
 
 /** 현황판: 자산·목표·가게·라이벌·해외·이벤트. */
 export function statusHtml(s: TycoonState): string {
   const goal = s.goal;
-  return `<div class="ty-panel wide" role="dialog" aria-label="현황">
+  return `<div class="ty-panel wide" role="dialog" aria-modal="true" aria-label="현황">
     <header><span class="ico">📊</span><div><h2>${esc(s.stageName)}</h2><p>${s.day}일차 · 순자산 ${formatMoney(s.netWorth)}${s.debt ? ` · 빚 ${formatMoney(s.debt)}` : ''}</p></div><button type="button" class="ty-x" data-close aria-label="닫기">✕</button></header>
+    <div class="ty-finance"><div><small>보유 현금</small><b>${formatMoney(s.cash)}</b></div><div><small>순자산</small><b>${formatMoney(s.netWorth)}</b></div><div><small>부채</small><b class="${s.debt > 0 ? 'cost' : ''}">${formatMoney(s.debt)}</b></div><div><small>평균 평점</small><b>${s.owned.some(shop => shop.kind !== 'factory') ? `${s.reputation}/100` : '—'}</b></div></div>
     <section><h3>다음 목표 — ${esc(goal.label)}</h3>${bar(goal.progress, 'gold')}<ul class="ty-steps">${goal.steps.map(st => `<li class="${st.done ? 'done' : ''}"><span>${st.done ? '✔' : '○'} ${esc(st.label)}</span>${st.done ? '' : bar(st.progress)}</li>`).join('')}</ul></section>
     <section><h3>내 가게 (${s.owned.length})</h3>${s.owned.length ? s.owned.map(shopHtml).join('') : '<p class="ty-none">아직 가게가 없습니다. 부지를 사서 시작해 보세요.</p>'}</section>
     ${s.rivals.length ? `<section><h3>라이벌</h3><ul class="ty-list">${s.rivals.map(r => `<li style="--c:${esc(r.color)}"><i></i><b>${esc(r.name)}</b><span>${r.acquired ? '인수 완료' : `가게 ${r.shops} · 가치 ${formatMoney(r.value)}`}</span></li>`).join('')}</ul></section>` : ''}
@@ -67,11 +69,11 @@ export function statusHtml(s: TycoonState): string {
 }
 
 export function menuHtml(sound: boolean, firstPerson: boolean): string {
-  return `<div class="ty-panel narrow" role="dialog" aria-label="일시정지">
+  return `<div class="ty-panel narrow" role="dialog" aria-modal="true" aria-label="일시정지">
     <header><span class="ico">Ⅱ</span><div><h2>일시정지</h2><p>시간이 멈춰 있습니다</p></div></header>
     <ul class="ty-acts">
       <li><button type="button" class="ty-act" data-menu="resume"><span class="body"><b>계속하기</b></span></button></li>
-      <li><button type="button" class="ty-act" data-menu="save"><span class="body"><b>저장하기</b><small>자동 저장도 켜져 있습니다</small></span></button></li>
+      <li><button type="button" class="ty-act" data-menu="save"><span class="body"><b>저장하기</b><small>진행 상황을 브라우저에 저장합니다</small></span></button></li>
       <li><button type="button" class="ty-act" data-menu="view"><span class="body"><b>시점 바꾸기</b><small>지금: ${firstPerson ? '1인칭' : '3인칭'} (V)</small></span></button></li>
       <li><button type="button" class="ty-act" data-menu="sound"><span class="body"><b>소리 ${sound ? '끄기' : '켜기'}</b></span></button></li>
       <li><button type="button" class="ty-act danger" data-menu="exit"><span class="body"><b>허브로 나가기</b><small>저장하고 나갑니다</small></span></button></li>

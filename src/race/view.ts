@@ -390,14 +390,42 @@ export class RaceView {
     // 아치(출발선 + 구간마다)
     const archAt = (i: number, big: boolean): void => {
       const col = new THREE.Color(big ? th.arch.big : (i / 50) % 2 < 1 ? th.arch.a : th.arch.b), rot = -Math.atan2(t.tz[i], t.tx[i]) + Math.PI / 2, rx = -t.tz[i], rz = t.tx[i], h = big ? 15 : 11, post = hw + 2.6;
-      for (const s of [-1, 1]) parts.push(boxGeo(0.9, h, 0.9, t.x[i] + rx * post * s, t.y[i] + h / 2, t.z[i] + rz * post * s, rot, col));
-      parts.push(boxGeo(post * 2 + 1.8, big ? 2.4 : 0.8, 0.9, t.x[i], t.y[i] + h, t.z[i], rot, col));
+      const steel = col.clone().multiplyScalar(0.52), highlight = col.clone().lerp(new THREE.Color(0xf1f4f7),0.55);
+      const piece=(w:number,ht:number,d:number,lat:number,y:number,along:number,cc:THREE.Color):void=>{
+        parts.push(boxGeo(w,ht,d,t.x[i]+rx*lat+t.tx[i]*along,t.y[i]+y,t.z[i]+rz*lat+t.tz[i]*along,rot,cc));
+      };
+      for (const s of [-1, 1]) {
+        piece(0.9,h,0.9,post*s,h/2,0,col);
+        piece(1.75,0.45,1.75,post*s,0.23,0,steel);
+        if (big || !low) {
+          piece(0.25,h-1,0.16,post*s,h/2,-0.53,highlight);
+          piece(1.35,0.45,1.3,post*s,h-0.5,0,steel);
+        }
+      }
+      piece(post*2+1.8,big?2.4:0.8,0.9,0,h,0,col);
+      if (big || !low) {
+        for (const s of [-1,1]) {
+          piece(post*2+1.8,0.18,0.18,0,h+(big?1.21:0.42),s*0.52,highlight);
+          piece(post*2+1.8,0.18,0.18,0,h-(big?1.21:0.42),s*0.52,steel);
+        }
+      }
+      if (big) { // Solid housing under the gantry for the three starting lights.
+        piece(6.4,1.1,1.1,0,12.6,0,steel);
+        for(const lat of [-2.4,0,2.4]) piece(1.2,0.85,0.22,lat,12.6,-0.57,new THREE.Color(0x15171b));
+      }
     };
     archAt(0, true); const arches = low ? Math.ceil(th.arch.count / 2) : th.arch.count; for (let k = 1; k < arches; k++) { const i = Math.round((k / arches) * t.n) % t.n; if (!t.pads.some(p => Math.abs(p - i) < 6) && Math.min(i, t.n - i) > 12) archAt(i, false); }
     const archMat = new THREE.MeshBasicMaterial({ vertexColors: true }); this.scene.add(new THREE.Mesh(mergeGeometries(parts), archMat)); parts.forEach(p => p.dispose());
     // START 배너
     const bn = th.banner, banner = canvasTex(512, 96, g => { g.fillStyle = bn.bg; g.fillRect(0, 0, 512, 96); g.fillStyle = bn.fg; g.font = '900 64px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('SPEED RUSH', 256, 52); g.fillStyle = bn.accent; g.fillRect(0, 0, 512, 6); g.fillRect(0, 90, 512, 6); }, false);
-    const bm = new THREE.Mesh(new THREE.PlaneGeometry(hw * 2 + 3, 2.2), new THREE.MeshBasicMaterial({ map: banner, side: THREE.DoubleSide })); bm.position.set(t.x[0], t.y[0] + 15, t.z[0] + 0.01); bm.rotation.y = -Math.atan2(t.tz[0], t.tx[0]) + Math.PI / 2; this.scene.add(bm); this.disposables.push(bm.geometry, banner);
+    const bg = new THREE.PlaneGeometry(hw * 2 + 3, 2.2), bm = new THREE.MeshBasicMaterial({map:banner});
+    // Front and back signs face their respective drivers and sit outside the beam.
+    for(const s of [-1,1]) {
+      const panel=new THREE.Mesh(bg,bm);
+      panel.position.set(t.x[0]+t.tx[0]*s*0.48,t.y[0]+15,t.z[0]+t.tz[0]*s*0.48);
+      panel.rotation.y=-Math.atan2(t.tz[0],t.tx[0])+Math.PI/2+(s<0?Math.PI:0);this.scene.add(panel);
+    }
+    this.disposables.push(bg,bm,banner);
     this.disposables.push(archMat);
     // 도로 옆 기준점(속도감): 가로등 또는 반사 표지
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(1, 1, 1), c = new THREE.Color();

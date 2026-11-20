@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {facadeFins} from '../../src/city/architecture-detail';
+import {facadeFins,facadeStyle} from '../../src/city/architecture-detail';
 describe('LAST CITY facade detail budget',()=>{
   it('omits details on low settings and narrow/service faces',()=>{
     expect(facadeFins(300,400,0,'low')).toEqual([]);
@@ -14,4 +14,11 @@ describe('LAST CITY facade detail budget',()=>{
       expect(facadeFins(length,400,style,'standard').length).toBeLessThanOrEqual(fins.length);
     }
   });
+});
+
+it('uses recognizable landmark styles regardless of random seed',()=>{
+  expect(facadeStyle('bank','BANK',0.42,0.9)).toBe(2);
+  expect(facadeStyle('plant',undefined,0.4,0.2)).toBe(3);
+  expect(facadeStyle(undefined,'ARMY',0.14,0.1)).toBe(3);
+  expect(facadeStyle(undefined,undefined,0.3,0.7)).toBe(3);
 });

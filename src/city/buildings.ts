@@ -1,8 +1,8 @@
 // LAST CITY — 건물 생성기: Blender 로 구운 외벽 타일 + 1층 상점가 + 돌림띠·벽기둥·셋백·옥상 설비.
 import * as THREE from 'three';
 import type { World } from './world';
-import { BLOCK, SIZE } from './defs';
-import { facadeFins } from './architecture-detail';
+import { BIZ, BLOCK, SIZE } from './defs';
+import { facadeFins, facadeStyle } from './architecture-detail';
 import type { Atmosphere } from './atmosphere';
 import type { Emitter } from './streetfx';
 
@@ -91,10 +91,10 @@ export function buildBuildings(world: World, scene: THREE.Scene, base: string, q
   const facades = FACADE_STYLES.map(() => new Mesh()), shops = [new Mesh(), new Mesh()], trim = new Mesh(), lamps = new Mesh(), c = new THREE.Color(), wall = new THREE.Color();
   const tint = (s: { wall: string }): THREE.Color => wall.set(s.wall).lerp(new THREE.Color(0xe2ddd4), 0.5).clone();
   const beacons: [number, number, number][] = [], blades = BLADES.map(() => new Mesh()), streaks = new Mesh(), stacks: Emitter[] = [], white = new THREE.Color(1, 1, 1), signMats: THREE.MeshBasicMaterial[] = [];
-  const doors = new Map<number, { x: number; y: number }>(); for (const z of world.businesses) doors.set(z.solid, z);
+  const doors = new Map<number, World['businesses'][number]>(); for (const z of world.businesses) doors.set(z.solid, z);
   world.map.solids.forEach((s, i) => {
     if (s.struct || !s.alive) return;
-    const r = (k: number): number => hash(i * 31 + k), style = Math.floor(r(1) * FACADE_STYLES.length), F = facades[style], H = 150 + s.height * 1250 + r(2) * 60, tall = H > 520 && r(3) < 0.7;
+    const r = (k: number): number => hash(i * 31 + k), style = facadeStyle(doors.get(i)?.kind, s.sign, s.height, r(1)), F = facades[style], H = 150 + s.height * 1250 + r(2) * 60, tall = H > 520 && r(3) < 0.7;
     const tintC = tint(s), light = tintC.clone().lerp(new THREE.Color(0xf1ede4), 0.55), dark = tintC.clone().multiplyScalar(0.55);
     // 층(티어): 높은 건물은 위로 갈수록 좁아지는 셋백
     const tiers: { x0: number; z0: number; x1: number; z1: number; y0: number; y1: number }[] = [];
@@ -142,7 +142,22 @@ export function buildBuildings(world: World, scene: THREE.Scene, base: string, q
               surfaceBox(left, left + 3, 4, DOOR_H + 5, 4, dark);
               surfaceBox(right - 3, right, 4, DOOR_H + 5, 4, dark);
               surfaceBox(left, right, DOOR_H + 5, DOOR_H + 8, 13, dark);
-              surfaceBox(left + 4, right - 4, DOOR_H + 3, DOOR_H + 5, 1.8, new THREE.Color(0xffdeb1), lamps, 10);
+              const accent = new THREE.Color(dz ? BIZ[dz.kind].color : 0xffdeb1);
+              surfaceBox(left + 4, right - 4, DOOR_H + 3, DOOR_H + 5, 1.8, accent, lamps, 10);
+              if (dz?.kind === 'bank' && door > DOOR_W + 21 && door < sd.L - DOOR_W - 21) {
+                // A stone pilaster and an entablature distinguish the central bank.
+                for (const p of [left - 10, right + 4]) {
+                  surfaceBox(p, p+6, 2, DOOR_H + 11, 6, light);
+                  surfaceBox(p-2,p+8,0,5,9,dark);
+                  surfaceBox(p-2,p+8,DOOR_H+9,DOOR_H+13,9,light);
+                }
+                surfaceBox(left-11,right+11,DOOR_H+13,DOOR_H+17,10,light);
+              } else if (dz?.kind === 'casino' || dz?.kind === 'club') {
+                for (const offset of [-1,1]) {
+                  const center = door + offset * (DOOR_W + 3);
+                  surfaceBox(center-0.8,center+0.8,9,DOOR_H-3,1.4,accent,lamps,4.2);
+                }
+              }
             }
             const s0 = q(door - DOOR_W - 6, 0, 0), s1 = q(door + DOOR_W + 6, 0, 12);   // 문턱 계단
             trim.box(Math.min(s0[0], s1[0]), 0, Math.min(s0[2], s1[2]), Math.max(s0[0], s1[0]), 3, Math.max(s0[2], s1[2]), c.setHex(0x8d8f94).clone());

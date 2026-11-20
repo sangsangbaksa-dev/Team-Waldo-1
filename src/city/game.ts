@@ -234,7 +234,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     audio.play('door'); lock();
   }
   function pause(): void {
-    if (!world || world.over || duel || room) return; paused = true; keys.clear(); mouse.down = false; unlock();
+    if (!world || world.over || duel || room) return; paused = true; keys.clear(); mouse.down = false; touchFire = false; looks.clear(); for (const stick of [sticks.move, sticks.aim]) { stick.id = -1; stick.x = 0; stick.y = 0; } unlock();
     modal.innerHTML = `<section class="c-pause"><div class="c-kicker">PAUSED</div><h2>일시정지</h2>
       <div class="c-help"><div><b>보스 조작</b><p>WASD 이동 · 마우스 시점/사격 · V 시점 전환(1인칭·3인칭·전술뷰) · R 재장전 · 1~3 무기 · Space 대시 · H 회복 키트 · Q 고유 스킬</p></div><div><b>도시</b><p>E 사업체 매입·업그레이드·무기 줍기 · F 차량 탑승/하차 · 적 사업체 패드 위에서 6초 버티면 적대적 인수</p></div><div><b>지휘</b><p>Tab 지휘 패널(생산·건설·연구·시장) · 우클릭/지도 클릭 돌격 · Z 집결 · X 사수</p></div><div><b>승리</b><p>자기장은 점점 줄어듭니다. 적 본부를 부수면 그 보스는 부활하지 못합니다. 마지막까지 살아남는 왕국이 승리합니다.</p></div></div>
       <div class="c-actions"><button data-act="resume" class="c-primary">계속하기</button><button data-act="sound">효과음 ${prefs.sound ? '켜짐' : '꺼짐'}</button><button data-act="retry">새 게임</button><button data-act="exit">메뉴로 나가기</button></div></section>`;
@@ -702,8 +702,8 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     }
     audio.setEngine(veh ? Math.min(1, spd / veh.maxSpeed) : -1);
     if (hitT > 0) { hitT -= dt; if (hitT <= 0) cross.classList.remove('hit', 'kill'); }
-    hurt = Math.max(0, hurt - dt * 1.3); const low = b && b.hp < b.maxHp * 0.35 ? 0.35 + Math.sin(now / 160) * 0.12 : 0, outside = !!b && Math.hypot(b.x - w.zone.x, b.y - w.zone.y) > w.zone.r;
-    hurtEl.style.opacity = String(Math.max(hurt * 0.85, low)); hurtEl.classList.toggle('storm', outside && hurt < 0.1);if (outside) hurtEl.style.opacity = String(Math.max(0.45, hurt));
+    hurt = Math.max(0, hurt - dt * 1.3); const low = b && b.hp < b.maxHp * 0.35 ? 0.35 + (prefs.reducedMotion ? 0 : Math.sin(now / 160) * 0.12) : 0, outside = !!b && Math.hypot(b.x - w.zone.x, b.y - w.zone.y) > w.zone.r;
+    hurtEl.style.opacity = String(outside ? Math.max(0.45, hurt) : Math.max(hurt * 0.85, low)); hurtEl.classList.toggle('storm', outside && hurt < 0.1);
     if (three && R3) {
       if (ghost) { const p = R3.buildPoint(700); ghost.x = snapBuildCoord(p.x); ghost.y = snapBuildCoord(p.y); ghost.ok = w.canBuild(0, ghost.kind, ghost.x, ghost.y); }
       R3.draw(paused ? 0 : dt, ghost); overlay(); r.cam.x = b ? b.x : r.cam.x; r.cam.y = b ? b.y : r.cam.y;

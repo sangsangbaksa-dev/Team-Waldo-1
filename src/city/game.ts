@@ -11,7 +11,7 @@ import { STEPS, TUT_KEY, advance, newCounters, newTutState, type Counters, type 
 import { CityAudio } from './audio';
 import { reload, switchWeapon } from './actors';
 import { ACTORS, BLOCKS, PITCH, ROAD } from './defs';
-import { applyLook, doorFacingYaw, isLookSpike, mapPointerToWorld } from './uiMath';
+import { applyLook, doorFacingYaw, edgeMarkerPosition, isLookSpike, mapPointerToWorld } from './uiMath';
 import { DEMOLISH_REFUND_RATE, snapBuildCoord } from './placement';
 import { SHOP, canBuy, itemPrice } from './shop';
 import { PHASE_LABEL, WEATHER_ICON, WEATHER_LABEL, clockLabel } from './clock';
@@ -52,7 +52,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   <div class="c-modal" id="c-modal"></div>`;
   document.body.append(root);
   const q = <T extends HTMLElement>(s: string): T => root.querySelector<T>(s)!;
-  const canvas = q<HTMLCanvasElement>('.city-canvas'), canvas3 = q<HTMLCanvasElement>('.city-canvas3d'), layer = q('#c-layer'), cross = q('#c-cross'), hurtEl = q('#c-hurt'), hud = q('.city-hud'), modal = q('#c-modal'), panel = q('#c-panel'), bigmap = q('#c-bigmap');
+  const canvas = q<HTMLCanvasElement>('.city-canvas'); let canvas3 = q<HTMLCanvasElement>('.city-canvas3d'); const layer = q('#c-layer'), cross = q('#c-cross'), hurtEl = q('#c-hurt'), hud = q('.city-hud'), modal = q('#c-modal'), panel = q('#c-panel'), bigmap = q('#c-bigmap');
   const audio = new CityAudio(); audio.enabled = prefs.sound;
   type View = 'fp' | 'tp' | 'top';
   let preView: View = 'fp', tut: { s: TutState; c: Counters } | null = null, tutSig = '', tutDone = readTutDone(), lastPos = { x: 0, y: 0 }, lastYaw = 0, tutInfoLock = false;
@@ -105,14 +105,14 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   function start(k: ClassId, tutorial = false, dl: Duel | null = null, rm: Room | null = null): void {
     klass = k; modal.innerHTML = ''; hud.hidden = false; resultShown = false; paused = false; ghost = null; shopOpen = false; panel.hidden = true; bigmap.hidden = true; q('#c-missions').hidden = true;
     // A retry must not inherit held keys, touch gestures, firing or frame debt.
-    keys.clear(); mouse.down = false; touchFire = false; acc = 0; looks.clear(); chatLog.length = 0; chatOpen = false; chatForm().hidden = true;
+    keys.clear(); mouse.down = false; touchFire = false; acc = 0; hudT = hurt = hitT = toastT = bannerT = combat = areaT = sirenT = 0; area = ''; demolishArmed = null; cross.classList.remove('hostile','hit','kill'); hurtEl.style.opacity = '0'; q('#c-toast').className = 'c-toast'; q('#c-banner').className = 'c-banner'; q('#c-area').className = 'c-area'; looks.clear(); chatLog.length = 0; chatOpen = false; chatForm().hidden = true;
     for (const stick of [sticks.move, sticks.aim]) { stick.id = -1; stick.x = 0; stick.y = 0; }
     world = new World({ seed: dl ? dl.seed : rm ? rm.seed : (Math.random() * 2 ** 31) | 0, difficulty: diffSel, klass: k, tutorial: tutorial || !!dl || !!rm, duel: dl ? { side: dl.s.host ? 0 : 1, name: dl.s.opponent.nickname, arena: arenaOf(dl.seed) } : rm ? { side: 0, name: '', room: { seats: roomSeats(rm), names: roomNames(rm) } } : undefined });
     if (rm) { const r = rm; world.onShot = (x, y, a, wid, mul) => r.net.sendShot({ x, y, a, w: wid, m: mul }); }
     if (dl) { const d = dl; world.onShot = (x, y, a, wid, mul) => d.net.sendShot({ x, y, a, w: wid, m: mul }); }
     tut = tutorial ? { s: newTutState(), c: newCounters() } : null;  tutSig = ''; q('#c-tut').hidden = true; tutInfoLock = false;
     R = new Renderer(canvas, world); R.reduced = prefs.reducedMotion; const b = world.boss(0)!; R.cam.x = b.x; R.cam.y = b.y; R.cam.zoom = 0.6;
-    R3?.dispose(); R3 = null; layer.innerHTML = ''; tags.length = 0; marks.length = 0;
+    unlock(); locked = false; R3?.dispose(); R3 = null; const fresh = document.createElement('canvas'); fresh.className = canvas3.className; canvas3.replaceWith(fresh); canvas3 = fresh; bindCanvas(canvas3); layer.innerHTML = ''; tags.length = 0; marks.length = 0;
     try { R3 = new Renderer3D(canvas3, world, prefs.quality, layer, models); R3.reduced = prefs.reducedMotion; const hq = world.hq(0); if (hq) R3.yaw = Math.atan2(hq.y + 60 - b.y, hq.x + 60 - b.x) + Math.PI; R3.camPos.set(b.x, 46, b.y); }
     catch { R3 = null; toast('3D를 사용할 수 없어 전술 뷰로 시작합니다'); }
     lastYaw = R3 ? R3.yaw : 0; lastPos = { x: b.x, y: b.y };
@@ -129,7 +129,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     view = v; canvas.hidden = v !== 'top'; canvas3.hidden = v === 'top'; cross.hidden = v === 'top'; layer.hidden = v === 'top'; if (R3 && v !== 'top') R3.mode = v; if (v === 'top') unlock(); else { R3?.resize(); }
     R?.resize(); q('#c-view').textContent = v === 'fp' ? '1인칭' : v === 'tp' ? '3인칭' : '전술뷰';
   }
-  const onLock = (): void => { locked = document.pointerLockElement === canvas3; if (locked) { expectUnlock = false; everLocked = true; lookMuteUntil = performance.now() + 220; return; } const was = expectUnlock; expectUnlock = false; if (!was && view !== 'top' && world && !world.over && !paused && panel.hidden && bigmap.hidden && q('#c-missions').hidden && world.factions[0].pending === 0) pause(); };
+  const onLock = (): void => { const wasLocked = locked; locked = document.pointerLockElement === canvas3; if (locked) { expectUnlock = false; everLocked = true; lookMuteUntil = performance.now() + 220; return; } const was = expectUnlock; expectUnlock = false; if (wasLocked && !was && view !== 'top' && world && !world.over && !paused && panel.hidden && bigmap.hidden && q('#c-missions').hidden && world.factions[0].pending === 0) pause(); };
 
   const onMouseMove = (e: MouseEvent): void => {
     if (!R3 || view === 'top' || paused) return;
@@ -315,8 +315,10 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     }
     for (let i = ak.length - 1; i >= bk.length; i--) a.removeChild(ak[i]);
   }
+  const renderedHtml = new WeakMap<HTMLElement, string>();
   function put(el: HTMLElement, html: string): void {
-    const t = document.createElement('div'); t.innerHTML = html; sync(el, t);
+    if (renderedHtml.get(el) === html) return;
+    const t = document.createElement('div'); t.innerHTML = html; sync(el, t); renderedHtml.set(el, html);
   }
 
   function renderMissions(): void {
@@ -560,7 +562,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   };
   const place = (sx: number, sy: number): void => { const w = world!, raw = view === 'top' || !R3 ? R!.toWorld(sx, sy) : { x: ghost!.x, y: ghost!.y }, p = { x: snapBuildCoord(raw.x), y: snapBuildCoord(raw.y) }, e = w.build(0, ghost!.kind, p.x, p.y); if (e) toast(e); else { audio.play('build'); if (!keys.has('Shift')) ghost = null; } };
   const looks = new Map<number, { x: number; y: number }>();
-  for (const cv of [canvas, canvas3]) {
+  function bindCanvas(cv: HTMLCanvasElement): void {
     cv.addEventListener('pointerdown', e => {
       audio.unlock(); if (!world || paused || world.over) return; mouse.x = e.clientX; mouse.y = e.clientY; const three = cv === canvas3;
       if (e.pointerType === 'touch') {
@@ -585,8 +587,9 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     });
     const up = (e: PointerEvent): void => { looks.delete(e.pointerId); for (const s of [sticks.move, sticks.aim]) if (s.id === e.pointerId) { s.id = -1; s.x = s.y = 0; } if (e.pointerType !== 'touch' && (e.button === 0 || e.type !== 'pointerup')) mouse.down = false; };
     cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up); cv.addEventListener('lostpointercapture', up);
-    cv.addEventListener('wheel', e => { e.preventDefault(); if (cv === canvas) userZoom = Math.max(0.6, Math.min(1.5, userZoom * (e.deltaY > 0 ? 0.92 : 1.08))); else if (world) { const f = world.factions[0]; switchWeapon(world, 0, (f.cur + (e.deltaY > 0 ? 1 : f.slots.length - 1)) % f.slots.length); } }, { passive: false });
+    cv.addEventListener('wheel', e => { e.preventDefault(); if (Math.abs(e.deltaY) < 4 || !world || paused || world.over) return; if (cv === canvas) userZoom = Math.max(0.6, Math.min(1.5, userZoom * (e.deltaY > 0 ? 0.92 : 1.08))); else if (world) { const f = world.factions[0]; switchWeapon(world, 0, (f.cur + (e.deltaY > 0 ? 1 : f.slots.length - 1)) % f.slots.length); } }, { passive: false });
   }
+  bindCanvas(canvas); bindCanvas(canvas3);
   const onWindowPointerEnd = (e: PointerEvent): void => {
     looks.delete(e.pointerId);
     for (const stick of [sticks.move, sticks.aim]) if (stick.id === e.pointerId) { stick.id = -1; stick.x = 0; stick.y = 0; }
@@ -598,7 +601,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   const fireBtn = q('#c-fire'); fireBtn.addEventListener('pointerdown', e => { touchFire = true; e.preventDefault(); e.stopPropagation(); audio.unlock(); }); for (const n of ['pointerup', 'pointercancel', 'pointerleave', 'lostpointercapture']) fireBtn.addEventListener(n, () => { touchFire = false; });
   const mapClick = (c: HTMLCanvasElement) => (e: PointerEvent): void => {
     if (!world || paused || world.over || world.factions[0].pending > 0) return;
-    const r = c.getBoundingClientRect(), point = mapPointerToWorld(e.clientX, e.clientY, r.left, r.top, r.width, r.height);
+    const r = c.getBoundingClientRect(), point = mapPointerToWorld(e.clientX, e.clientY, r.left, r.top, r.width, r.height, world.map.arena ?? undefined);
     if (!point) return;
     world.order(0, 'amove', point.x, point.y);
     toast('전 병력 돌격!', false); e.stopPropagation();
@@ -643,13 +646,13 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       const m = list[i]; if (!m) { el.style.display = 'none'; return; }
       const p = r3.project(m.x, m.y, m.h); let x = p.x, y = p.y; const off = p.behind || x < 40 || x > r3.w - 40 || y < 40 || y > r3.h - 40;
       if (off && !m.edge) { el.style.display = 'none'; return; }
-      if (off) { let dx = x - r3.w / 2, dy = y - r3.h / 2; if (p.behind) { dx = -dx; dy = Math.abs(dy) + r3.h; } const k = Math.min((r3.w / 2 - 50) / Math.abs(dx || 1), (r3.h / 2 - 60) / Math.abs(dy || 1)); x = r3.w / 2 + dx * k; y = r3.h / 2 + dy * k; }
+      if (off) { const edge = edgeMarkerPosition(x, y, r3.w, r3.h, p.behind); x = edge.x; y = edge.y; }
       const dist = b ? Math.round(Math.hypot(m.x - b.x, m.y - b.y) / 30) : 0;
       el.style.display = ''; el.style.transform = `translate(${x}px,${y}px) translate(-50%,-50%)`; el.style.color = m.color; el.textContent = m.edge ? `${m.text} ${dist}m` : m.text; el.classList.toggle('edge', off);
     });
   }
   function crossTarget(): string {
-    const w = world!, b = w.boss(0); if (!b || !R3 || w.inside) return ''; const f = w.factions[0], range = WEAPONS[f.slots[f.cur].id].range, dx = Math.cos(R3.yaw), dy = Math.sin(R3.yaw); let best = range, html = '', hostile = false;
+    const w = world!, b = w.boss(0); if (!b || !R3 || w.inside) { cross.classList.remove('hostile'); return ''; } const f = w.factions[0], range = WEAPONS[f.slots[f.cur].id].range, dx = Math.cos(R3.yaw), dy = Math.sin(R3.yaw); let best = range, html = '', hostile = false;
     for (const a of w.actors) { if (!a.alive || a === b || a.inVeh) continue; const rx = a.x - b.x, ry = a.y - b.y, t = rx * dx + ry * dy; if (t < 0 || t > best || Math.abs(rx * dy - ry * dx) > a.r + 7) continue; if (!w.canSee(b.x, b.y, a.x, a.y)) continue; best = t; hostile = w.hostile(0, a.f); html = `<b style="color:${a.f < 8 ? FACTIONS[a.f].color : a.f === 8 ? '#8fb0ff' : '#ccc'}">${a.f < 8 ? FACTIONS[a.f].name + ' ' : ''}${ACTORS[a.kind].name}</b><i><u style="width:${Math.max(0, a.hp / a.maxHp * 100)}%;background:${a.f === 0 ? '#5dfc9b' : '#ff5d5d'}"></u></i>`; }
     for (const s of w.structures) { if (!s.alive) continue; const cx = s.x + s.w / 2 - b.x, cy = s.y + s.h / 2 - b.y, t = cx * dx + cy * dy; if (t < 0 || t > best + 60 || Math.abs(cx * dy - cy * dx) > Math.max(s.w, s.h) / 2) continue; best = t; hostile = s.f !== 0; html = `<b style="color:${FACTIONS[s.f].color}">${FACTIONS[s.f].name} ${STRUCTS[s.kind].name}</b><i><u style="width:${Math.max(0, s.hp / s.maxHp * 100)}%"></u></i>`; }
     cross.classList.toggle('hostile', hostile && !!html); return html;

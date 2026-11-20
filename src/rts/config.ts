@@ -10,7 +10,7 @@ export const NODE_AMOUNT = 1500;
 export const CARRY = 5;
 export const MINE_TICKS = 44;
 
-export type UnitKind = 'worker' | 'marine' | 'rocket' | 'tank' | 'jeep' | 'medic';
+export type UnitKind = 'worker' | 'marine' | 'rocket' | 'tank' | 'jeep' | 'medic' | 'engineer';
 export type BuildKind = 'hq' | 'depot' | 'barracks' | 'factory' | 'tower';
 export type WeaponKind = 'bullet' | 'rocket' | 'cannon';
 export type ArmorKind = 'light' | 'armored' | 'structure';
@@ -20,6 +20,7 @@ export interface UnitDef {
   dmg: number; weapon: WeaponKind; range: number; cd: number; splash: number;
   cost: number; supply: number; time: number; armor: ArmorKind; req?: BuildKind; key: string; from: BuildKind;
   /** 초당 치료량. 0 보다 크면 근처의 다친 아군 보병·일꾼·의무병을 고칩니다(무기는 없음). */ heal?: number;
+  /** 초당 수리량. 0 보다 크면 근처의 다친 아군 차량(전차·지프)과 완성된 건물을 광물 없이 고칩니다(무기는 없음). */ repair?: number;
 }
 export interface BuildDef {
   name: string; role: string; size: number; hp: number; cost: number; time: number; supply: number;
@@ -33,6 +34,7 @@ export const UNITS: Record<UnitKind, UnitDef> = {
   rocket: { name: '로켓병', role: '대 장갑', hp: 80, speed: 2.8, radius: 0.42, dmg: 18, weapon: 'rocket', range: 6.5, cd: 30, splash: 0, cost: 100, supply: 2, time: 280, armor: 'light', req: 'barracks', key: 'W', from: 'barracks' },
   jeep: { name: '정찰 지프', role: '고속 기동 · 일꾼 사냥', hp: 95, speed: 5.4, radius: 0.55, dmg: 5, weapon: 'bullet', range: 4.6, cd: 7, splash: 0, cost: 90, supply: 2, time: 240, armor: 'light', req: 'factory', key: 'W', from: 'factory' },
   medic: { name: '의무병', role: '아군 보병 치료', hp: 50, speed: 3.4, radius: 0.36, dmg: 0, weapon: 'bullet', range: 4.2, cd: 20, splash: 0, cost: 75, supply: 1, time: 220, armor: 'light', req: 'barracks', key: 'D', from: 'barracks', heal: 9 },
+  engineer: { name: '공병', role: '차량 · 건물 수리', hp: 60, speed: 3.1, radius: 0.36, dmg: 0, weapon: 'bullet', range: 3.2, cd: 20, splash: 0, cost: 70, supply: 1, time: 200, armor: 'light', req: 'factory', key: 'D', from: 'factory', repair: 22 },
   tank: { name: '전차', role: '광역 포격', hp: 190, speed: 2.3, radius: 0.75, dmg: 30, weapon: 'cannon', range: 8.5, cd: 36, splash: 1.7, cost: 175, supply: 3, time: 420, armor: 'armored', req: 'factory', key: 'Q', from: 'factory' },
 };
 
@@ -40,7 +42,7 @@ export const BUILDINGS: Record<BuildKind, BuildDef> = {
   hq: { name: '사령부', role: '일꾼 생산 · 자원 반납', size: 4, hp: 1500, cost: 400, time: 1200, supply: 10, key: 'H', trains: ['worker'] },
   depot: { name: '보급소', role: '인구수 +8', size: 2, hp: 400, cost: 100, time: 280, supply: 8, key: 'D', trains: [] },
   barracks: { name: '병영', role: '보병 · 로켓병 · 의무병', size: 3, hp: 900, cost: 150, time: 560, supply: 0, req: 'hq', key: 'B', trains: ['marine', 'rocket', 'medic'] },
-  factory: { name: '공장', role: '전차 · 정찰 지프', size: 3, hp: 1000, cost: 200, time: 720, supply: 0, req: 'barracks', key: 'F', trains: ['tank', 'jeep'] },
+  factory: { name: '공장', role: '전차 · 정찰 지프 · 공병', size: 3, hp: 1000, cost: 200, time: 720, supply: 0, req: 'barracks', key: 'F', trains: ['tank', 'jeep', 'engineer'] },
   tower: { name: '방어탑', role: '자동 사격', size: 2, hp: 500, cost: 125, time: 400, supply: 0, req: 'barracks', key: 'T', trains: [], dmg: 12, range: 7.5, cd: 14 },
 };
 
@@ -59,7 +61,7 @@ export const TANK_SIEGE = { range: 2.5, dmg: 1.5, splash: 0.5 } as const;
 
 /** 시야 반경(칸). 전장의 안개 계산에 씁니다. */
 export const VISION: Record<UnitKind | BuildKind, number> = {
-  worker: 8, marine: 10, rocket: 10, tank: 11, jeep: 13, medic: 9,
+  worker: 8, marine: 10, rocket: 10, tank: 11, jeep: 13, medic: 9, engineer: 9,
   hq: 14, depot: 8, barracks: 10, factory: 10, tower: 13,
 };
 

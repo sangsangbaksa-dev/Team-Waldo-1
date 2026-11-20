@@ -157,11 +157,11 @@
   .ty-top > div { padding: 5px 10px; border-radius: 12px; }
   .ty-cash { min-width: 0; } .ty-cash b { font-size: 20px; } .ty-stagebox b { font-size: 13px; } .ty-ladder li i { width: 14px; }
   .ty-clock { margin-left: 0; gap: 5px; } .ty-clock b { font-size: 17px; } .ty-clock em { display: none; } .ty-speed { display: none; }
-  .ty-left { top: 90px; left: 8px; width: 190px; } .ty-left > div { padding: 6px 10px; } .ty-goal small { display: none; }
-  .ty-task { top: 90px; left: auto; right: 8px; transform: none; padding: 6px 10px; max-width: 54vw; } .ty-task i { font-size: 20px; }
-  .ty-toasts { top: 150px; right: 8px; width: 60vw; }
+  .ty-left { top: 112px; left: 8px; width: 190px; } .ty-left > div { padding: 6px 10px; } .ty-goal small { display: none; }
+  .ty-task { top: 112px; left: auto; right: 8px; transform: none; padding: 6px 10px; max-width: 54vw; } .ty-task i { font-size: 20px; }
+  .ty-toasts { top: 172px; right: 8px; width: 60vw; }
   .ty-mini { width: 120px; height: 120px; bottom: 10px; left: 10px; }
-  .ty-root.touch .ty-mini { top: 190px; width: 96px; height: 96px; }
+  .ty-root.touch .ty-mini { top: 212px; width: 96px; height: 96px; }
   .ty-prompt { bottom: 84px; font-size: 14px; }
 }
 @media (prefers-reduced-motion: reduce) { .ty-root * { animation: none !important; transition: none !important; } }

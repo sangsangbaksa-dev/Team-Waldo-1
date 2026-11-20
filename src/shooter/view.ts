@@ -5,7 +5,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { AIR, PARTS, RED, WEAPONS, makeRng, type WeaponId } from './config';
 import { buildGun, lootPart, muzzleTip } from './gunbuild';
 import { bake, instantiate } from '../city/models';
-import { eyeOf, type Match, type MatchEvent, type Player } from './sim';
+import { SMOKE, eyeOf, type Match, type MatchEvent, type Player } from './sim';
 import type { ShooterAssets } from './assets';
 import type { CharacterRig } from '../shared/character';
 import { SOLDIER_KINDS } from './assets';
@@ -17,7 +17,7 @@ import { waterDepth } from './terrain';
 import { crateTexture, floorTexture, glowTexture, groundTexture, makeSky, wallTexture } from './textures';
 
 export type Quality = 'high' | 'standard' | 'low';
-const LOOT_COLOR: Record<string, number> = { weapon: 0xeaf6ff, ammo: 0xffa53a, medkit: 0x52f08a, armor: 0x5aa8ff, bandage: 0xf2f2f2, attach: 0xc59bff, helmet: 0xffd34d, boost: 0x39e6ff };
+const LOOT_COLOR: Record<string, number> = { weapon: 0xeaf6ff, ammo: 0xffa53a, medkit: 0x52f08a, armor: 0x5aa8ff, bandage: 0xf2f2f2, attach: 0xc59bff, helmet: 0xffd34d, boost: 0x39e6ff, smoke: 0xb8c0c8 };
 
 const rngOf = (seed: number): (() => number) => makeRng(seed);
 /** 부드러운 2차원 값 잡음(지형 색 변화용) */
@@ -266,6 +266,11 @@ export class ShooterView {
       const top = new THREE.Mesh(new THREE.CylinderGeometry(0.092, 0.092, 0.04, 12), new THREE.MeshLambertMaterial({ color: 0xcfd6da })); top.position.y = 1.07; g.add(top);
       const bolt = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.095), new THREE.MeshBasicMaterial({ color: 0xffe14a })); bolt.position.set(0, 0.9, 0); g.add(bolt);
     }
+    else if (l.kind === 'smoke') {
+      const can = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.26, 12), new THREE.MeshLambertMaterial({ color: 0x8a949c, emissive: 0x2a3036 })); can.position.y = 0.9; can.castShadow = true; g.add(can);
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.078, 0.078, 0.05, 12), new THREE.MeshLambertMaterial({ color: 0xe8d23a })); band.position.y = 0.92; g.add(band);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.05, 8), new THREE.MeshLambertMaterial({ color: 0xb0b6ba })); cap.position.y = 1.06; g.add(cap);
+    }
     else if (l.kind === 'grenade') {
       const sph = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), new THREE.MeshLambertMaterial({ color: 0x3b4a2a, emissive: 0x2a3a10 })); sph.position.y = 0.9; sph.castShadow = true; g.add(sph);
       const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.06, 8), new THREE.MeshLambertMaterial({ color: 0xb0b6ba })); cap.position.y = 1.06; g.add(cap);
@@ -313,7 +318,8 @@ export class ShooterView {
         for (let i = 0; i + 2 < e.ends.length; i += 3) this.tracer(mx, my, mz, e.ends[i], e.ends[i + 1], e.ends[i + 2], e.sup ? 0x8a8f96 : WEAPONS[e.weapon].pellets > 1 ? 0xffd9a0 : 0xfff0b8);
         if (isMe) { this.shake = Math.min(1, this.shake + WEAPONS[e.weapon].recoil * 9); this.fovPunch = Math.min(1, this.fovPunch + WEAPONS[e.weapon].recoil * 7); this.flashKick = 1; }
       } else if (e.t === 'nade') {
-        if (e.stage === 'boom') { this.boom(e.x, e.y, e.z); const dd = Math.hypot(e.x - me.x, e.z - me.z); if (dd < 25) this.shake = Math.min(1, this.shake + (1 - dd / 25) * 0.9); }
+        if (e.stage === 'boom' && e.smoke) { this.burst(e.x, e.z); }
+        else if (e.stage === 'boom') { this.boom(e.x, e.y, e.z); const dd = Math.hypot(e.x - me.x, e.z - me.z); if (dd < 25) this.shake = Math.min(1, this.shake + (1 - dd / 25) * 0.9); }
       } else if (e.t === 'veh') {
         if (e.stage === 'crash') { const dd = Math.hypot(e.x - me.x, e.z - me.z); this.spark(e.x, 1, e.z, 12, [1, 0.8, 0.45], 4); if (dd < 30) this.shake = Math.min(1, this.shake + (1 - dd / 30) * 0.5); }
         else if (e.stage === 'boom') { for (let k = 0; k < 6; k++) this.puff(e.x + (Math.random() - 0.5) * 3, 1.5 + Math.random() * 2, e.z + (Math.random() - 0.5) * 3, 0x2a2a2a, 3, 3.4, 3, 3.2, 0.65); }
@@ -329,8 +335,30 @@ export class ShooterView {
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, color: 0xffb060, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })); s.position.set(x, Math.max(1, y + 0.6), z); s.scale.setScalar(2); this.scene.add(s); this.booms.push({ s, t: 0 });
     this.spark(x, y + 0.4, z, 36, [1, 0.62, 0.22], 9); this.flash = Math.max(this.flash, 0.25);
   }
+  // 연막탄: 터진 자리에 회색 연기 덩어리를 깔고, 연막이 걷힐 때까지 천천히 일렁이게 합니다.
+  private smokeNodes = new Map<number, { s: THREE.Sprite; bx: number; by: number; bz: number; sc: number; ph: number }[]>();
+  private burst(x: number, z: number): void { this.spark(x, 0.6, z, 10, [0.8, 0.82, 0.85], 3); }
+  private updateClouds(dt: number): void {
+    const live = new Set<number>(), t = this.match.t, R = SMOKE.radius;
+    for (const c of this.match.clouds) {
+      live.add(c.id); let ps = this.smokeNodes.get(c.id);
+      if (!ps) {
+        ps = []; const n = 34;
+        for (let i = 0; i < n; i++) {
+          const a = Math.random() * 6.283, d = Math.sqrt(Math.random()) * R * 0.85, mat = new THREE.SpriteMaterial({ map: this.glow, color: new THREE.Color().setScalar(0.68 + Math.random() * 0.2), transparent: true, depthWrite: false, opacity: 0.7 });
+          const s = new THREE.Sprite(mat); this.scene.add(s); ps.push({ s, bx: c.x + Math.cos(a) * d, by: 0.8 + Math.random() * 4.4, bz: c.z + Math.sin(a) * d, sc: 5 + Math.random() * 3.5, ph: Math.random() * 6.28 });
+        }
+        this.smokeNodes.set(c.id, ps);
+      }
+      const k = this.match.cloudStrength(c);
+      for (const p of ps) { p.s.position.set(p.bx + Math.sin(t * 0.4 + p.ph) * 0.6, p.by + Math.sin(t * 0.3 + p.ph) * 0.25, p.bz + Math.cos(t * 0.35 + p.ph) * 0.6); p.s.scale.setScalar(p.sc * (0.4 + 0.6 * k)); (p.s.material as THREE.SpriteMaterial).opacity = 0.7 * Math.min(1, k * 1.4); }
+    }
+    for (const [id, ps] of this.smokeNodes) if (!live.has(id)) { for (const p of ps) { this.scene.remove(p.s); (p.s.material as THREE.Material).dispose(); } this.smokeNodes.delete(id); }
+    void dt;
+  }
   private updateNades(dt: number): void {
-    const live = new Set<number>(); for (const n of this.match.nades) { live.add(n.id); let m = this.nadeMeshes.get(n.id); if (!m) { m = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), new THREE.MeshLambertMaterial({ color: 0x3b4a2a, emissive: 0xff3010, emissiveIntensity: 0.2 })); this.scene.add(m); this.nadeMeshes.set(n.id, m); } m.position.set(n.x, n.y, n.z); (m.material as THREE.MeshLambertMaterial).emissiveIntensity = n.fuse < 1 ? 0.2 + Math.abs(Math.sin(this.time * 24)) * 1.2 : 0.2; }
+    this.updateClouds(dt);
+    const live = new Set<number>(); for (const n of this.match.nades) { live.add(n.id); let m = this.nadeMeshes.get(n.id); if (!m) { m = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), new THREE.MeshLambertMaterial({ color: n.smoke ? 0x9aa3ab : 0x3b4a2a, emissive: 0xff3010, emissiveIntensity: 0.2 })); this.scene.add(m); this.nadeMeshes.set(n.id, m); } m.position.set(n.x, n.y, n.z); (m.material as THREE.MeshLambertMaterial).emissiveIntensity = n.fuse < 1 ? 0.2 + Math.abs(Math.sin(this.time * 24)) * 1.2 : 0.2; }
     for (const [id, m] of this.nadeMeshes) if (!live.has(id)) { this.scene.remove(m); m.geometry.dispose(); (m.material as THREE.Material).dispose(); this.nadeMeshes.delete(id); }
     for (let i = this.booms.length - 1; i >= 0; i--) { const b = this.booms[i]; b.t += dt; b.s.scale.setScalar(2 + b.t * 16); (b.s.material as THREE.SpriteMaterial).opacity = Math.max(0, 1 - b.t * 3); if (b.t > 0.35) { this.scene.remove(b.s); (b.s.material as THREE.Material).dispose(); this.booms.splice(i, 1); } }
   }
@@ -470,9 +498,8 @@ export class ShooterView {
     const r = this.canvas.getBoundingClientRect(); return { x: (v.x * 0.5 + 0.5) * r.width, y: (-v.y * 0.5 + 0.5) * r.height, dist: this.camPos.distanceTo(new THREE.Vector3(x, y, z)) };
   }
 
-  /** final: 화면을 완전히 떠날 때만 true. 다시 시작·설정 복귀는 같은 캔버스에 새 렌더러를 만드는데, 그때 이미 잃어버린 WebGL 컨텍스트를 받으면 화면이 멈추기 때문에 컨텍스트는 그대로 둡니다. */
-  dispose(final = false): void {
+  dispose(): void {
     this.scene.traverse(o => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); const mat = m.material as THREE.Material | THREE.Material[] | undefined; if (Array.isArray(mat)) mat.forEach(x => x.dispose()); else mat?.dispose(); });
-    this.post?.dispose(); this.renderer.dispose(); if (final) this.renderer.forceContextLoss();
+    this.post?.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss();
   }
 }

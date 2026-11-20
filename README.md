@@ -10,6 +10,19 @@
 | **ZERO ZONE** | 줄어드는 자기장 속 총격전. 솔로(나 + AI 99명, 비행기 낙하산 강하, 난이도 4단계), 온라인 1대1과 멀티플레이 방 | `src/shooter` |
 | **OUTLAW CITY** | 도시 탐험·차량·의뢰. 솔로 저장과 온라인 결투·멀티플레이 방 | `src/outlaw` |
 
+##Agent rules
+
+There can be a lot of agents working at once, so be careful when commiting that has been commited less than 10minutes.
+No permanent upgrades! Please make the game fun! The game is for students who has only 15 minutes to spare in this game.
+
+### Prompt for Agents. 
+If you get a prompt 0: Work that has problems, or is not good. 
+1: Work for Design(2D or 3D) 
+2: Work for debugging
+3: Work for more functions
+4: Merge Everything
+5: Deploy in Vercel, and if it does not succeed, deploy in github pages.
+
 ## LAST CITY
 
 메인 페이지의 **LAST CITY**로 들어가는 3D 1인칭/3인칭 오픈월드 생존전입니다. 장군 선택, 연구, 본부 건설, 총력전 규칙으로 한 도시에 여덟 왕국을 떨어뜨립니다.

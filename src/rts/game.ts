@@ -290,7 +290,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     }
     if (!pointer.down) return;
     if (!pointer.drag && Math.hypot(p.x - pointer.sx, p.y - pointer.sy) > 8) pointer.drag = true;
-    if (pointer.pan && view && pointer.drag) { const k = view.cam.dist / over.clientHeight * 1.5; view.pan(-(p.x - px) * k * 0.9, -(p.y - py) * k * 1.2); }
+    if (pointer.pan && view && pointer.drag) { const k = view.cam.dist / Math.max(1, over.clientHeight) * 1.5; view.pan(-(p.x - px) * k * 0.9, -(p.y - py) * k * 1.2); }
   });
   const release = (e: PointerEvent): void => {
     const p = local(e); touches.delete(e.pointerId); if (touches.size < 2) pinch = 0;

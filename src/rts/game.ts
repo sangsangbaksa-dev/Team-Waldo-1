@@ -328,7 +328,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     audio.unlock(); if (!sim || !view || ended) return; const p = local(e); over.setPointerCapture(e.pointerId);
     pointer.x = p.x; pointer.y = p.y; pointer.in = true;
     if (e.pointerType === 'touch') {
-      touches.set(e.pointerId, p); if (touches.size === 2) { const [a, b] = [...touches.values()]; pinch = Math.hypot(a.x - b.x, a.y - b.y); pointer.down = false; return; }
+      touches.set(e.pointerId, p); if (touches.size >= 2) { const [a, b] = [...touches.values()]; pinch = touches.size === 2 ? Math.hypot(a.x - b.x, a.y - b.y) : 0; pointer.down = pointer.drag = false; return; }
       pointer.down = true; pointer.sx = p.x; pointer.sy = p.y; pointer.drag = false; pointer.button = 0; pointer.pan = !boxMode; return;
     }
     if (e.button === 1) { pointer.down = true; pointer.drag = false; pointer.pan = true; pointer.sx = p.x; pointer.sy = p.y; pointer.button = 1; return; }
@@ -342,6 +342,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       if (!touches.has(e.pointerId)) return;
       touches.set(e.pointerId, p);
       if (touches.size === 2) { const [a, b] = [...touches.values()], d = Math.hypot(a.x - b.x, a.y - b.y); if (pinch > 0 && d > 0 && view) view.zoom(pinch / d); pinch = d; return; }
+      if (touches.size > 2) return;
     }
     if (!pointer.down) return;
     if (!pointer.drag && Math.hypot(p.x - pointer.sx, p.y - pointer.sy) > 8) pointer.drag = true;
@@ -362,7 +363,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   const cancelPointer = (e: PointerEvent): void => { touches.delete(e.pointerId); if (touches.size < 2) pinch = 0; pointer.down = pointer.drag = pointer.pan = false; };
   over.addEventListener('pointerup', release); over.addEventListener('pointercancel', cancelPointer); over.addEventListener('lostpointercapture', cancelPointer);
   over.addEventListener('pointerleave', () => { pointer.in = false; });
-  over.addEventListener('wheel', e => { e.preventDefault(); view?.zoom(e.deltaY > 0 ? 1.1 : 0.91); }, { passive: false });
+  over.addEventListener('wheel', e => { e.preventDefault(); const delta = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? over.clientHeight : 1); if (Number.isFinite(delta) && delta !== 0) view?.zoom(Math.exp(Math.max(-0.25, Math.min(0.25, delta * 0.0015)))); }, { passive: false });
   /** 터치: 내 유닛을 누르면 선택, 땅·적·광물을 누르면 명령, 선택이 없으면 해제. */
   function tapAt(sx: number, sy: number): void {
     if (!sim || !view) return; const id = view.pick(sx, sy), e = id ? sim.index.get(id) : undefined, { us, bs } = own();
@@ -374,9 +375,12 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
 
   const hot = new Map<string, number>();
   function onKey(e: KeyboardEvent): void {
-    if (e.type === 'keyup') { keys.delete(e.key === 'Shift' ? 'Shift' : e.code); return; }
+    if (e.type === 'keyup') { keys.delete(e.code); if (!keys.has('ShiftLeft') && !keys.has('ShiftRight')) keys.delete('Shift'); return; }
+    if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select, [contenteditable=true]')) return;
     if (modal.classList.contains('show') && e.key !== 'Escape' && !(root.dataset.phase === 'paused' && e.key.toLowerCase() === 'p')) return;
-    keys.add(e.key === 'Shift' ? 'Shift' : e.code); audio.unlock();
+    keys.add(e.code); if (e.shiftKey) keys.add('Shift');
+    if (e.repeat) { if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault(); return; }
+    audio.unlock();
     const k = e.key.toUpperCase();
     if (root.dataset.phase === 'paused' && (e.key === 'Escape' || e.key.toLowerCase() === 'p')) { e.preventDefault(); hide(); paused = false; root.dataset.phase = 'play'; last = performance.now(); return; }
     if (e.key.toLowerCase() === 'p' && !e.ctrlKey && !e.metaKey && !e.altKey && sim && !ended) { e.preventDefault(); if (net) toast('온라인 대전은 일시정지할 수 없습니다', true); else openMenu(); return; }
@@ -453,7 +457,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     <li><b>터치</b>한 손가락 드래그는 화면 이동, 탭은 선택/명령, 두 손가락은 확대. 범위 선택 버튼으로 드래그 선택.</li></ul>
     <div class="rt-actions"><button class="primary" data-act="back">닫기</button></div></div>`;
   function openMenu(): void {
-    if (root.dataset.phase === 'setup' || ended || !sim) return; paused = !net; root.dataset.phase = 'paused';
+    if (root.dataset.phase === 'setup' || ended || !sim) return; resetControls(); paused = !net; root.dataset.phase = 'paused';
     show(`<div class="rt-card"><span class="rt-eyebrow">${net ? '대전 중 · 계속 진행됩니다' : '게임이 멈춰 있습니다'}</span><h2>${net ? '메뉴' : '일시정지'}</h2>${net ? '' : '<p class="rt-lead">P 또는 Esc 를 누르면 계속합니다.</p>'}<div class="rt-actions col"><button class="primary" data-act="resume">계속하기</button><button data-act="help2">조작법</button><button data-act="surrender">항복</button><button data-act="exit">나가기</button></div></div>`);
   }
   function resultCard(win: boolean | null, why: string, extra = ''): void {
@@ -516,7 +520,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     me = 0; ai = new RtsAi(1, difficulty); startRound(); $('#rt-vs').textContent = `AI · ${LEVELS[difficulty].label}`; $<HTMLButtonElement>('[data-act="speed"]').hidden = false; $<HTMLButtonElement>('[data-act="pause"]').hidden = false; speed = 1; $<HTMLButtonElement>('[data-act="speed"]').textContent = '×1';
   }
   function startRound(): void {
-    if (!sim) return; if (view) { view.dispose(); view = null; }
+    if (!sim) return; resetControls(); if (view) { view.dispose(); view = null; }
     // 해제한 WebGL 컨텍스트는 다시 쓸 수 없으니 캔버스를 새로 만듭니다.
     const fresh = document.createElement('canvas'); fresh.className = 'rt-canvas'; canvas.replaceWith(fresh); canvas = fresh; const q = prefs.quality;
     try { view = new RtsView(canvas, sim, me, q); } catch { show('<div class="rt-card"><span class="rt-eyebrow">FRONTLINE</span><h2>그래픽을 시작하지 못했어요</h2><p class="rt-lead">WebGL 을 사용할 수 없습니다. 브라우저를 새로고침하거나 그래픽 가속을 켠 뒤 다시 시도해 주세요.</p><div class="rt-actions"><button class="primary" data-act="exit">메뉴로</button></div></div>'); return; }
@@ -611,7 +615,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       const sp = view.cam.dist * 0.9 * dt; let dx = 0, dy = 0;
       if (keys.has('ArrowLeft')) dx -= 1; if (keys.has('ArrowRight')) dx += 1; if (keys.has('ArrowUp')) dy -= 1; if (keys.has('ArrowDown')) dy += 1;
       if (!touch && pointer.in && !pointer.down && root.dataset.phase === 'play' && !modal.classList.contains('show')) { const m = 14, w = over.clientWidth, h = over.clientHeight; if (pointer.x < m) dx -= 1; if (pointer.x > w - m) dx += 1; if (pointer.y < m) dy -= 1; if (pointer.y > h - m) dy += 1; }
-      if (dx || dy) view.pan(dx * sp, dy * sp);
+      if (dx || dy) { const length = Math.max(1, Math.hypot(dx, dy)); view.pan(dx * sp / length, dy * sp / length); }
     }
     if (mode?.t === 'build' && pointer.in && !touch) { const g = view.ground(pointer.x, pointer.y); if (g) { const at = ghostAt(g.x, g.y, mode.kind); view.setGhost(mode.kind, at.x, at.y, sim.canPlace(mode.kind, at.x, at.y) && sim.players[me].minerals >= BUILDINGS[mode.kind].cost); } }
     else if (mode?.t === 'build' && touch) { const g = view.ground(over.clientWidth / 2, over.clientHeight / 2.2); if (g) { const at = ghostAt(g.x, g.y, mode.kind); view.setGhost(mode.kind, at.x, at.y, sim.canPlace(mode.kind, at.x, at.y)); } } else view.setGhost(null);

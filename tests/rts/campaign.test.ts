@@ -147,3 +147,16 @@ describe('캠페인 저장', () => {
     delete (globalThis as unknown as { localStorage?: unknown }).localStorage;
   });
 });
+
+describe('전장의 안개 갱신', () => {
+  it('같은 시야에서는 텍스처 버전을 올리지 않고 유닛 위치가 바뀌면 올린다', () => {
+    const s = fresh(), v = new Vision(s.map.size, 0);
+    v.update(s, true); const version = v.version;
+    v.update(s, true); expect(v.version).toBe(version);
+    const u = s.units.find(u => u.owner === 0)!;
+    u.x = 45; u.y = 45; v.update(s, true);
+    expect(v.version).toBeGreaterThan(version);
+    expect(v.at(45, 45)).toBe(FOG_VISIBLE);
+    expect(v.explored(NaN, 0)).toBe(false);
+  });
+});

@@ -110,7 +110,7 @@ export class RtsAi {
       if (e.owner === me || e.kind === 'worker' && s.tick < 2400) continue;
       for (const b of s.buildings) if (b.owner === me) { const d = s.rectDist(e.x, e.y, b); if (d < 16) { tsup += UNITS[e.kind].supply; if (d < td) { td = d; threat = e; } break; } }
     }
-    if (threat && (this.phase !== 2 || tsup >= 8)) { go(army, threat.x, threat.y, true); if (this.phase === 2) { this.phase = 0; this.wave = false; this.lastWave = s.tick; } return; }
+    if (threat && (this.phase !== 2 || tsup >= 8)) { go(army.filter(u => u.o.t !== 'attack' && !(u.o.t === 'amove' && (u.o.target || s.dist(u.o.x, u.o.y, threat!.x, threat!.y) < 3))), threat.x, threat.y, true); if (this.phase === 2) { this.phase = 0; this.wave = false; this.lastWave = s.tick; } return; }
     if (!this.wave) {
       go(army, rally.x, rally.y, false);
       if (s.tick >= L.attackAfter && sup >= L.wave && s.tick - this.lastWave > 400) { this.wave = true; this.phase = 1; this.waveSupply = sup; this.stagedAt = s.tick; }

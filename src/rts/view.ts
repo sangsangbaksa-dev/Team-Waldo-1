@@ -14,7 +14,7 @@ interface UVis { kind: 'unit'; id: number; rig: UnitRig; ring: THREE.Mesh; px: n
 interface BVis { kind: 'building'; id: number; rig: BuildRig; frame: THREE.Group; scaff: THREE.Group; done: boolean; wasDone: boolean; rubble: number }
 interface NVis { kind: 'node'; id: number; obj: THREE.Group; base: number }
 type Quality = 'high' | 'standard' | 'low';
-interface Fx { obj: THREE.Object3D; t: number; life: number; tick: (f: Fx, dt: number) => void }
+interface Fx { obj: THREE.Object3D; t: number; life: number; tick: (f: Fx, dt: number) => void; complete?: () => void }
 
 const FOG_A_HIDDEN = 226, FOG_A_SEEN = 118, FOG_Y = 4;
 const ABILITY_COLOR: Record<string, number> = { marine: 0xffa53d, rocket: 0xff5a3c, tank: 0xffe066, jeep: 0x5de1ff, medic: 0x7dff9e };
@@ -33,7 +33,7 @@ export class RtsView {
   private projected = new THREE.Vector3(); private raycaster = new THREE.Raycaster(); private clock = 0; private w = 1; private h = 1; private fxBudget: number;
   private ringMats = [new THREE.MeshBasicMaterial({ color: 0x5dff9a, transparent: true, opacity: 0.9, depthWrite: false }), new THREE.MeshBasicMaterial({ color: 0xff5a4a, transparent: true, opacity: 0.9, depthWrite: false })];
   /** 전장의 안개: 있으면 보이지 않는 적을 숨기고 어둡게 덮습니다. */ vision: Vision | null = null;
-  private fog: { mesh: THREE.Mesh; tex: THREE.DataTexture; data: Uint8Array; cur: Float32Array } | null = null; private marks = new Map<string, MarkVis>();
+  private fog: { mesh: THREE.Mesh; tex: THREE.DataTexture; data: Uint8Array; cur: Float32Array; version: number; animating: boolean } | null = null; private marks = new Map<string, MarkVis>();
   private grid: THREE.Mesh | null = null; private scenery: Scenery | null = null; private desert: DesertProps | null = null;
 
   constructor(readonly canvas: HTMLCanvasElement, readonly sim: RtsSim, readonly viewer: number, readonly quality: Quality = 'high') {
@@ -162,22 +162,28 @@ export class RtsView {
   // ---------- 전장의 안개 ----------
   setVision(v: Vision | null): void {
     this.vision = v;
-    if (this.fog) { this.scene.remove(this.fog.mesh); this.fog.tex.dispose(); this.fog = null; }
+    if (this.fog) { this.removeOwned(this.fog.mesh); this.fog.tex.dispose(); this.fog = null; }
     if (!v) return;
     const n = this.sim.map.size, data = new Uint8Array(n * n * 4), cur = new Float32Array(n * n).fill(FOG_A_HIDDEN);
     for (let i = 0; i < n * n; i++) { data[i * 4] = 6; data[i * 4 + 1] = 10; data[i * 4 + 2] = 18; data[i * 4 + 3] = FOG_A_HIDDEN; }
     const tex = new THREE.DataTexture(data, n, n, THREE.RGBAFormat); tex.magFilter = tex.minFilter = THREE.LinearFilter; tex.needsUpdate = true;
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(n, n), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false }));
-    mesh.rotation.x = -Math.PI / 2; mesh.renderOrder = 20; mesh.frustumCulled = false; this.scene.add(mesh); this.fog = { mesh, tex, data, cur };
+    mesh.rotation.x = -Math.PI / 2; mesh.renderOrder = 20; mesh.frustumCulled = false; this.scene.add(mesh); this.fog = { mesh, tex, data, cur, version: -1, animating: true };
   }
   /** 안개가 서서히 걷히고 덮이도록 칸마다 투명도를 목표값으로 이동합니다. */
   private updateFog(dt: number): void {
     const f = this.fog, v = this.vision; if (!f || !v) return;
-    const n = this.sim.map.size, st = v.state, k = Math.min(1, dt * 6);
+    if (f.version === v.version && !f.animating) return;
+    f.version = v.version; f.animating = false;
+    const n = this.sim.map.size, st = v.state, k = Math.min(1, dt * 6); let dirty = false;
     for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-      const i = y * n + x, s = st[i], target = s === FOG_HIDDEN ? FOG_A_HIDDEN : s === FOG_SEEN ? FOG_A_SEEN : 0; let c = f.cur[i]; c += (target - c) * k; f.cur[i] = c; f.data[((n - 1 - y) * n + x) * 4 + 3] = Math.round(c);
+      const i = y * n + x, s = st[i], target = s === FOG_HIDDEN ? FOG_A_HIDDEN : s === FOG_SEEN ? FOG_A_SEEN : 0;
+      let c = f.cur[i] + (target - f.cur[i]) * k;
+      if (Math.abs(target - c) < 0.5) c = target; else f.animating = true;
+      f.cur[i] = c; const a = ((n - 1 - y) * n + x) * 4 + 3, value = Math.round(c);
+      if (f.data[a] !== value) { f.data[a] = value; dirty = true; }
     }
-    f.tex.needsUpdate = true;
+    if (dirty) f.tex.needsUpdate = true;
   }
   /** 카메라에서 본 땅과 같은 자리에 겹쳐 보이도록, 높이 FOG_Y 의 안개 판을 카메라 쪽으로 줄여 붙입니다. */
   private placeFog(): void {
@@ -195,7 +201,7 @@ export class RtsView {
     const keep = new Set<string>();
     for (const m of list) {
       keep.add(m.id); let o = this.marks.get(m.id);
-      if (o && (o.r !== m.r || o.kind !== m.kind)) { this.scene.remove(o.group); this.marks.delete(m.id); o = undefined; }
+      if (o && (o.r !== m.r || o.kind !== m.kind)) { this.removeOwned(o.group); this.marks.delete(m.id); o = undefined; }
       if (!o) {
         const group = new THREE.Group(), spin = new THREE.Group(), mat = (op: number): THREE.MeshBasicMaterial => new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: op, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending });
         const ring = new THREE.Mesh(new THREE.RingGeometry(m.r - 0.2, m.r, 48), mat(0.85)), fill = new THREE.Mesh(new THREE.CircleGeometry(1, 40), mat(0.3)), beam = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, m.kind === 'target' ? 9 : 7, 8, 1, true), mat(0.4));
@@ -207,7 +213,7 @@ export class RtsView {
       o.group.position.set(m.x, 0, m.y); o.fill.scale.setScalar(Math.max(0.001, m.progress * m.r));
       if (o.side !== m.side) { o.side = m.side; const col = m.kind === 'goal' ? 0x7dff9e : MARK_COLOR[m.side]; o.group.traverse(x => { if (x instanceof THREE.Mesh) (x.material as THREE.MeshBasicMaterial).color.setHex(col); }); }
     }
-    for (const [id, o] of this.marks) if (!keep.has(id)) { this.scene.remove(o.group); this.marks.delete(id); }
+    for (const [id, o] of this.marks) if (!keep.has(id)) { this.removeOwned(o.group); this.marks.delete(id); }
   }
   private updateMarks(dt: number): void {
     for (const o of this.marks.values()) { o.spin.rotation.y += dt * 0.5; (o.beam.material as THREE.MeshBasicMaterial).opacity = 0.3 + 0.15 * Math.sin(this.clock * 3); }
@@ -299,9 +305,29 @@ export class RtsView {
   }
 
   // ---------- 이펙트 ----------
-  private add(f: Fx): void { if (this.fx.length >= this.fxBudget) { const old = this.fx.shift(); if (old) this.scene.remove(old.obj); } this.fx.push(f); this.scene.add(f.obj); }
+  /** 독점 소유한 일시 효과/표시만 제거합니다. 공유 유닛 모델에는 쓰지 않습니다. */
+  private removeOwned(obj: THREE.Object3D): void {
+    this.scene.remove(obj);
+    const geometries = new Set<THREE.BufferGeometry>(), materials = new Set<THREE.Material>();
+    obj.traverse(o => { if (o instanceof THREE.Mesh) { geometries.add(o.geometry); for (const m of Array.isArray(o.material) ? o.material : [o.material]) materials.add(m); } });
+    for (const g of geometries) g.dispose();
+    for (const m of materials) m.dispose();
+  }
+  private add(f: Fx): void {
+    if (this.fx.length >= this.fxBudget) { const old = this.fx.shift(); if (old) this.removeOwned(old.obj); }
+    this.fx.push(f); this.scene.add(f.obj);
+  }
   private updateFx(dt: number): void {
-    for (let i = this.fx.length - 1; i >= 0; i--) { const f = this.fx[i]; f.t += dt; if (f.t >= f.life) { this.scene.remove(f.obj); this.fx.splice(i, 1); continue; } f.tick(f, dt); }
+    const completions: Array<() => void> = [];
+    for (let i = this.fx.length - 1; i >= 0; i--) {
+      const f = this.fx[i]; f.t += dt;
+      if (f.t >= f.life) {
+        this.removeOwned(f.obj); this.fx.splice(i, 1);
+        if (f.complete) completions.push(f.complete);
+      } else f.tick(f, dt);
+    }
+    // 효과 콜백이 새 효과를 추가해도 순회 중 배열이 바뀌지 않게 합니다.
+    for (const complete of completions.reverse()) complete();
   }
   private glowMat(color: number, opacity = 1): THREE.MeshBasicMaterial { return new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending }); }
   private puff(x: number, y: number, r: number, color: number): void {
@@ -353,7 +379,7 @@ export class RtsView {
       else if (e.t === 'deposit') { const s = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 4), this.glowMat(0x8fe6ff, 0.9)); s.position.set(e.x, 1.1, e.y); this.add({ obj: s, t: 0, life: 0.5, tick: (f, dt) => { s.position.y += dt * 1.4; (s.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - f.t / f.life); } }); }
     }
   }
-  private delay(sec: number, fn: () => void): void { this.add({ obj: new THREE.Object3D(), t: 0, life: sec, tick: f => { if (f.t + 0.02 >= f.life) fn(); } }); }
+  private delay(sec: number, fn: () => void): void { this.add({ obj: new THREE.Object3D(), t: 0, life: sec, tick: () => undefined, complete: fn }); }
 
   dispose(): void {
     this.scene.traverse(o => { if (o instanceof THREE.Mesh || o instanceof THREE.InstancedMesh) { o.geometry.dispose(); const m = o.material; (Array.isArray(m) ? m : [m]).forEach(x => x.dispose()); } });

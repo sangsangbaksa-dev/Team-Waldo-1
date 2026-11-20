@@ -6,6 +6,7 @@ import type { LoadingScreen } from '../loading';
 import type { PvpSession, RoomSession } from '../net/lobby';
 import { AIR, BOTS, FEEL, BR_PLAYERS, DIFFICULTIES, HELMET_NAMES, ARMOR_NAMES, HEAL, PARTS, PLAYER, VEHICLES, WEAPONS, adsSpread, partHandling, type Difficulty } from './config';
 import { waterDepth } from './terrain';
+import { advanceFastForward } from './frame-budget';
 import { Match, type Cause, type MatchEvent, type Player, type Vehicle } from './sim';
 import { CAUSES, WorldSync, easePuppet, encodeLoot, parseLoot } from './sync';
 import type { NetMsg } from '../net/types';
@@ -34,7 +35,7 @@ export interface OpenOptions { loading?: LoadingScreen }
 
 export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   const prefs = readPreferences(), touch = matchMedia('(pointer: coarse)').matches, base = import.meta.env.BASE_URL;
-  const root = document.createElement('div'); root.className = 'sz-root' + (touch ? ' touch' : '');
+  const root = document.createElement('div'); root.className = 'sz-root' + (touch ? ' touch' : '') + (prefs.reducedMotion ? ' reduce-motion' : '');
   root.innerHTML = `
     <canvas class="sz-canvas"></canvas>
     <div class="sz-hud" hidden>
@@ -115,7 +116,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     endMatch(); blur(); tc.ads = tc.crouch = false; root.querySelectorAll('.sz-tbuttons button.down').forEach(b => b.classList.remove('down')); rcP = rcY = combo = comboT = stepAcc = hitT = bannerT = shotN = 0; rcIdle = 9; match = m; meIdx = my; over = false; resultShown = false; soloRecorded = false; spectateId = -1; deadTimer = 0; cache.clear(); feed.length = 0; told.clear(); paused = false; modal.className = 'sz-modal'; modal.innerHTML = '';
     const p = m.players[my]; yaw = p.yaw; pitch = 0; countdown = 3.4; phase = 'countdown'; mapBase = null; nextMapDraw = nextCompassDraw = 0; q('#sz-spectate').hidden = true;
     const fresh = document.createElement('canvas'); fresh.className = canvas.className; canvas.replaceWith(fresh); canvas = fresh; canvas.addEventListener('contextmenu', noMenu);
-    try { view = new ShooterView(canvas, m, assets, prefs.quality); resize(); } catch { endMatch(); phase = 'loading'; setupEl.hidden = true; hud.hidden = true; card('ZERO ZONE', '그래픽을 시작하지 못했어요', '<p>WebGL 또는 그래픽 가속을 확인한 뒤 다시 시도해 주세요.</p>'); return; } setupEl.hidden = true; hud.hidden = false; buildSlots(); say(touch ? '왼쪽 스틱으로 이동' : '화면을 클릭해 조작 시작', 2.4);
+    try { view = new ShooterView(canvas, m, assets, prefs.quality, prefs.reducedMotion); resize(); } catch { endMatch(); phase = 'loading'; setupEl.hidden = true; hud.hidden = true; card('ZERO ZONE', '그래픽을 시작하지 못했어요', '<p>WebGL 또는 그래픽 가속을 확인한 뒤 다시 시도해 주세요.</p>'); return; } setupEl.hidden = true; hud.hidden = false; buildSlots(); say(touch ? '왼쪽 스틱으로 이동' : '화면을 클릭해 조작 시작', 2.4);
     if (!touch) lock(); audio.unlock();
     if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__zz = { get match() { return match; }, get phase() { return phase; }, me, skip, view, go: () => { countdown = Math.min(countdown, 0.45); }, advance: (sec: number) => { const m = match; if (!m) return; let now = performance.now(); for (let t = 0; t < sec && !m.over; t += 1 / 30) { if (room) syncRoom(1 / 30); m.step(1 / 30); now += 1000 / 30; const ev = m.drain(); onEvents(ev); if (room) roomTick(ev, now); } }, fire: (on: boolean) => { mouse.fire = on; }, ads: (on: boolean) => { mouse.ads = on; }, look: (y: number, p: number) => { yaw = y; pitch = p; } };
   }
@@ -330,7 +331,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (!wasLocked || locked) return;
     blur();
     if (!locked && (phase === 'play' || phase === 'countdown') && !pvpRunning() && !closed && !paused) setPause(true);
-    else if (!locked && pvpRunning() && !closed) say('클릭하면 조작이 돌아옵니다', 2);
+    else if (!locked && pvpRunning() && phase === 'play' && !closed) say('클릭하면 조작이 돌아옵니다', 2);
   }
   const pvpRunning = (): boolean => ((!!pvp && !pvp.done) || (!!room && !room.done)) && !!match;
   function look(dx: number, dy: number): void { lastLook = performance.now(); const k = sens(); yaw += dx * k; pitch = clamp(pitch - dy * k, -1.4, 1.4); }
@@ -495,7 +496,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       audio.engine(!!v && p.alive, v ? Math.abs(v.speed) / VEHICLES[v.kind].top : 0);
       const red = p.alive && !p.air ? m.redAt(p.x, p.z) : null, hot = !!red && m.t >= red.call; q('#sz-redfx').classList.toggle('on', hot); if (hot) say(m.t >= red!.start ? '폭격 구역 · 지금 벗어나세요!' : '폭격 구역 · 곧 폭격이 시작됩니다', 0.4); }
     // 데미지 비네트
-    q('#sz-vig').style.opacity = String(clamp(p.hurt * 1.4 + (p.hp < 30 && p.alive ? 0.35 + Math.sin(now / 160) * 0.12 : 0), 0, 0.9));
+    q('#sz-vig').style.opacity = String(clamp(p.hurt * 1.4 + (p.hp < 30 && p.alive ? 0.35 + (prefs.reducedMotion ? 0 : Math.sin(now / 160) * 0.12) : 0), 0, 0.9));
     q('#sz-scope').classList.toggle('on', p.ads && g?.id === 'sniper' && p.alive);
     // 명중 표시와 배너
     hitT = Math.max(0, hitT - dt); const hm = q('#sz-hitmark'); hm.style.opacity = String(hitT > 0 ? Math.min(1, hitT * 6) : 0); hm.classList.toggle('head', hitHead); hm.classList.toggle('kill', hitKill && hitT > 0);
@@ -606,9 +607,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   }
   function advanceSkip(): void {
     const job = skipJob; if (!job || job.match !== match) { skipJob = null; return; }
-    const m = job.match, deadline = performance.now() + 7;
-    let iterations = 0;
-    while (job.remaining > 0 && !m.over && iterations++ < 120 && performance.now() < deadline) { m.step(1 / 30); m.drain(); job.remaining--; }
+    const m = job.match;
+    job.remaining = advanceFastForward(m, job.remaining, () => performance.now());
     if (m.over || job.remaining <= 0) {
       skipJob = null; over = m.over; showResult(m.winner === me().id); return;
     }

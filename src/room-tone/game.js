@@ -44,6 +44,9 @@ let moved = 0,
   grace = 0,
   enemyPhase = 0,
   stamina = 1,
+  winded = false,
+  crouched = false,
+  eyeHeight = 1.58,
   lightOn = true,
   muted = false;
 let now = 0,
@@ -61,6 +64,9 @@ let noticeUntil = 0,
   choices = [],
   response = "",
   opening = false;
+let guidance = read("rt-guidance") === true;
+let guidePath = [];
+let returnFromMap = resume;
 const touch =
   matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
 const px = (t) => String(t).padStart(2, "0");
@@ -187,7 +193,7 @@ function guide(fromHome = false) {
   }
   modal(
     "조작 안내",
-    "괴물은 가까운 움직임을 듣습니다. 달리기를 멈추고 모퉁이를 돌아 시야를 끊으세요.",
+    "숙이면 발소리가 줄어듭니다. 모퉁이를 돌아 시야를 끊고, 추격이 멈출 때까지 기다리세요.",
     (el) => {
       el.innerHTML = $("guideText").innerHTML;
     },
@@ -316,11 +322,14 @@ function shift(dx, dz) {
 function pointPlayer() {
   const p = xy(level.start);
   const next = xy(neighbors(level.map, level.start)[0]);
-  player.set(p.x + (next.x-p.x)*0.38, 1.58, p.z + (next.z-p.z)*0.38);
+  player.set(p.x + (next.x - p.x) * 0.38, 1.58, p.z + (next.z - p.z) * 0.38);
   yaw = Math.atan2(-(next.x - p.x), -(next.z - p.z));
   pitch = 0;
   camera.rotation.set(0, yaw, 0, "YXZ");
   stamina = 1;
+  winded = false;
+  crouched = false;
+  eyeHeight = 1.58;
   lightOn = true;
   const far = xy(level.nest);
   entity.position.set(far.x, 0, far.z);
@@ -330,6 +339,9 @@ function pointPlayer() {
   grace = 22;
   enemyPhase = 0;
   lastCell = -1;
+  nearest = null;
+  $("prompt").hidden = true;
+  $("act").disabled = true;
   clearInputs();
 }
 function resize() {
@@ -601,6 +613,8 @@ function renderHUD() {
       ? c.station + "으로 돌아가세요."
       : c.item + " 회수  " + total() + " / 3";
   $("lightState").textContent = lightOn ? "켜짐" : "꺼짐";
+  $("crouch").setAttribute("aria-pressed", String(crouched));
+  refreshGuide();
 }
 function toggleLamp() {
   if (state !== "play") return;
@@ -609,6 +623,48 @@ function toggleLamp() {
   message("손전등 " + (lightOn ? "켜짐" : "꺼짐"), 1);
 }
 $("torch").onclick = toggleLamp;
+function toggleCrouch() {
+  if (state !== "play") return;
+  crouched = !crouched;
+  $("crouch").setAttribute("aria-pressed", String(crouched));
+}
+$("crouch").onclick = toggleCrouch;
+
+function refreshGuide() {
+  $("guide").hidden = !guidance;
+  if (!guidance) return;
+  const cell = cellOf(player);
+  const targets = solved
+    ? [level.exit]
+    : total() === 3
+      ? [level.start]
+      : level.items.filter((_, i) => !found[i]);
+  // Compare distances along the corridors so walls don't make a distant target look close.
+  for (const [i, target] of targets.entries()) {
+    const candidate = route(level.map, cell, target);
+    if (i === 0 || candidate.length < guidePath.length) guidePath = candidate;
+  }
+  const guideLabel = solved ? "출구" : total() === 3 ? chapters[ch].station : chapters[ch].item;
+  $("guideTextLabel").textContent = guideLabel + (guidePath.length ? " 방향" : " 주변");
+  drawGuide();
+}
+function drawGuide() {
+  if (!guidance) return;
+  const arrow = $("guideArrow");
+  arrow.hidden = guidePath.length === 0;
+  if (!guidePath.length) return;
+  const next = xy(guidePath[0]);
+  const angle = Math.atan2(next.x - player.x, -(next.z - player.z));
+  arrow.style.transform = "rotate(" + (angle + yaw) + "rad)";
+
+}
+function toggleGuide() {
+  guidance = !guidance;
+  try {
+    localStorage.setItem("rt-guidance", JSON.stringify(guidance));
+  } catch { /* The preference applies for this session when storage is unavailable. */ }
+  refreshGuide();
+}
 function drawMap(canvas) {
   const ctx = canvas.getContext("2d"),
     w = level.w,
@@ -621,6 +677,19 @@ function drawMap(canvas) {
       z = Math.floor(id / w);
     ctx.fillStyle = seen.has(id) ? "#59726a" : "#283b36";
     ctx.fillRect(x * S, z * S, S, S);
+  }
+  if (guidance && guidePath.length) {
+    ctx.beginPath();
+    for (const [i, id] of [cellOf(player), ...guidePath].entries()) {
+      const x = ((id % w) + 0.5) * S;
+      const y = (Math.floor(id / w) + 0.5) * S;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = "#d8dba1";
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = "round";
+    ctx.stroke();
   }
   const dot = (id, color, shape) => {
     const x = ((id % w) + 0.5) * S,
@@ -653,6 +722,7 @@ function drawMap(canvas) {
 }
 function mapPanel(fromBrief = false) {
   if (!fromBrief && state !== "play") return;
+  returnFromMap = fromBrief ? brief : resume;
   modal(
     "시설 도면",
     chapters[ch].location + " · " + chapters[ch].goal,
@@ -660,14 +730,28 @@ function mapPanel(fromBrief = false) {
       const can = document.createElement("canvas");
       can.className = "map";
       el.append(can);
+      can.setAttribute("aria-label", "현재 위치와 목표를 표시한 시설 도면");
       drawMap(can);
       const p = document.createElement("p");
       p.className = "mapkey";
       p.innerHTML =
         "<i>▲ 현재 위치</i><i>■ 회수 장비</i><i>■ 제어 장치</i><i>■ 출구</i>";
       el.append(p);
+      const button = document.createElement("button");
+      button.className = "map-guide";
+      function label() {
+        button.textContent = guidance ? "길 안내 끄기" : "길 안내 켜기";
+        button.setAttribute("aria-pressed", String(guidance));
+      }
+      button.onclick = () => {
+        toggleGuide();
+        label();
+        drawMap(can);
+      };
+      label();
+      el.append(button);
     },
-    [["닫기", fromBrief ? brief : resume]],
+    [["닫기", returnFromMap]],
     "map",
   );
 }
@@ -880,7 +964,7 @@ function caught() {
   sound.caught();
   modal(
     "신호가 끊겼습니다",
-    "회수한 장비와 복원 기록은 보존됩니다. 달리는 소리가 들리면 녀석은 마지막 위치까지 따라옵니다.",
+    "회수한 장비와 복원 기록은 보존됩니다. 모퉁이를 돌고 자세를 낮추면 추격을 피하기 쉽습니다.",
     null,
     [
       [
@@ -896,48 +980,62 @@ function caught() {
     "lost",
   );
 }
-function enemyUpdate(dt) {
-  const e = entity.position,
-    dx = player.x - e.x,
-    dz = player.z - e.z,
-    dist = Math.hypot(dx, dz);
+function enemyUpdate(dt, running) {
+  const e = entity.position;
+  const dist = Math.hypot(player.x - e.x, player.z - e.z);
   grace = Math.max(0, grace - dt);
-  const run = keys.has("ShiftLeft") || keys.has("ShiftRight") || mobileRun;
-  const inSight = dist <= (lightOn ? 10.7 : 6.1) && clearLine(player, e);
-  const hear = moved > dt * 0.15 && dist < (run ? 14 : 4.7);
-  if (!grace && (inSight || hear)) {
-    lastKnown = cellOf(player);
+  const visible = dist <= 14 && clearLine(player, e);
+  const inSight = visible && dist <= (lightOn ? 10.7 : 6.1);
+  const hearRange = running ? 14 : crouched ? 1.6 : 4.7;
+  const hear = moved > dt * 0.15 && dist < hearRange * (visible ? 1 : 0.55);
+  const tracking = !grace && (inSight || hear);
+  const playerCell = cellOf(player);
+  if (tracking) {
+    lastKnown = playerCell;
     enemyPhase = 5.5;
-  } else enemyPhase = Math.max(0, enemyPhase - dt);
+  } else {
+    enemyPhase = Math.max(0, enemyPhase - dt);
+  }
+
   nextPath -= dt;
+  const ec = cellOf(e);
   if (nextPath <= 0) {
     nextPath = enemyPhase ? 0.65 : 2.5;
-    const ec = cellOf(e);
-    let goal = enemyPhase > 0 ? lastKnown : -1;
-    if (goal < 0 || goal === ec) {
-      if (!path.length || enemyPhase) {
+    // Replan from the next corridor center. This keeps sharp turns out of walls.
+    const anchor = path[0] ?? ec;
+    let goal = lastKnown;
+    if (!enemyPhase) {
+      const previousGoal = path.at(-1);
+      if (previousGoal !== undefined && previousGoal !== anchor) {
+        goal = previousGoal;
+      } else {
         const viable = level.reachable.filter(
-          (k) =>
-            k !== level.start &&
-            k !== ec &&
-            pathsDistXZ(k, cellOf(player)) > (grace ? 6 : 0),
+          (k) => k !== level.start && k !== anchor &&
+            pathsDistXZ(k, playerCell) > (grace ? 6 : 0),
         );
         goal = viable[Math.floor(Math.random() * viable.length)] ?? level.nest;
-      } else goal = path[path.length - 1];
+      }
     }
-    path = route(level.map, ec, goal);
+    const newPath = route(level.map, anchor, goal);
+    const center = xy(anchor);
+    if (Math.hypot(center.x - e.x, center.z - e.z) > 0.01) {
+      newPath.unshift(anchor);
+    }
+    path = newPath;
   }
-  const startX = e.x, startZ = e.z;
-  if (path.length) {
-    const p = xy(path[0]),
-      x = p.x - e.x,
-      z = p.z - e.z,
-      d = Math.hypot(x, z),
-      v = (enemyPhase ? 1.8 + ch * 0.09 : 0.92 + ch * 0.05) * dt;
+  const startX = e.x;
+  const startZ = e.z;
+  const destination = tracking && inSight && ec === playerCell ? player
+    : path.length ? xy(path[0]) : null;
+  if (destination) {
+    const x = destination.x - e.x;
+    const z = destination.z - e.z;
+    const d = Math.hypot(x, z);
+    const v = (enemyPhase ? 1.8 + ch * 0.09 : 0.92 + ch * 0.05) * dt;
     if (d <= v) {
-      e.x = p.x;
-      e.z = p.z;
-      path.shift();
+      e.x = destination.x;
+      e.z = destination.z;
+      if (destination !== player) path.shift();
     } else {
       e.x += (x / d) * v;
       e.z += (z / d) * v;
@@ -961,7 +1059,7 @@ function enemyUpdate(dt) {
   $("danger").style.opacity = String(threat * 0.53);
   $("strain").textContent =
     threat > 0.68 ? "바로 근처" : threat > 0.28 ? "접근 중" : "안정";
-  if (!grace && dist < 0.73 && clearLine(player, e)) {
+  if (!grace && Math.hypot(player.x - e.x, player.z - e.z) < 0.73 && clearLine(player, e)) {
     caught();
   }
 }
@@ -985,16 +1083,16 @@ function update(dt) {
     f /= length;
     r /= length;
   }
-  const running =
-    (keys.has("ShiftLeft") || keys.has("ShiftRight") || mobileRun) &&
-    stamina > 0.045 &&
-    length > 0.1;
+  const sprintHeld = keys.has("ShiftLeft") || keys.has("ShiftRight") || mobileRun;
+  if (stamina <= 0.045) winded = true;
+  else if (!sprintHeld || stamina >= 0.3) winded = false;
+  const running = sprintHeld && !crouched && !winded && length > 0.1;
   stamina = THREE.MathUtils.clamp(
     stamina + (running ? -0.14 : 0.11) * dt,
     0,
     1,
   );
-  const scale = (running ? 3.22 : 1.88) * dt,
+  const scale = (running ? 3.22 : crouched ? 1.05 : 1.88) * dt,
     oldX = player.x,
     oldZ = player.z;
   shift(
@@ -1004,24 +1102,28 @@ function update(dt) {
   moved = Math.hypot(player.x - oldX, player.z - oldZ);
   stepAt += moved;
   if (stepAt > (running ? 1.02 : 0.86)) {
-    sound.step(running);
+    sound.step(running, crouched);
     stepAt = 0;
   }
+  eyeHeight = THREE.MathUtils.damp(eyeHeight, crouched ? 1.12 : 1.58, 12, dt);
   camera.position.set(
     player.x,
-    1.58 +
+    eyeHeight +
       Math.sin(elapsed * (running ? 12 : 8.3)) * Math.min(moved, 0.05) * 0.38,
     player.z,
   );
   camera.rotation.set(pitch, yaw, 0, "YXZ");
   lamp.visible = lightOn;
-  enemyUpdate(dt);
+  enemyUpdate(dt, running);
   if (state !== "play") return;
   const cell = cellOf(player);
   if (cell !== lastCell) {
     seen.add(cell);
     for (const n of neighbors(level.map, cell)) seen.add(n);
     lastCell = cell;
+    refreshGuide();
+  } else {
+    drawGuide();
   }
   nearest = null;
   let reach = 2.16;
@@ -1084,13 +1186,14 @@ document.addEventListener("keydown", (e) => {
         "ArrowLeft",
         "ArrowRight",
         "Space",
-        "Tab",
       ].includes(e.code)
     )
       e.preventDefault();
     if (!e.repeat) {
       if (e.code === "KeyE") interact();
       else if (e.code === "KeyF") toggleLamp();
+      else if (e.code === "KeyC") toggleCrouch();
+      else if (e.code === "KeyG") toggleGuide();
       else if (e.code === "KeyM") mapPanel();
       else if (e.code === "Escape" || e.code === "KeyP") pauseGame();
     }
@@ -1100,7 +1203,8 @@ document.addEventListener("keydown", (e) => {
     e.code === "Escape"
   ) {
     e.preventDefault();
-    resume();
+    if (state === "map") returnFromMap();
+    else resume();
   }
 });
 document.addEventListener("keyup", (e) => keys.delete(e.code));

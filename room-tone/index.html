@@ -112,6 +112,10 @@
       <header class="hud">
         <div class="hudleft">
           <span id="zone"></span><strong id="objective"></strong>
+          <div id="guide" hidden>
+            <span id="guideArrow" aria-hidden="true">▲</span>
+            <span id="guideTextLabel"></span>
+          </div>
         </div>
         <div class="hudright">
           <button id="gsound"><span>소리 켜짐</span></button
@@ -127,9 +131,12 @@
       </div>
       <div id="prompt" hidden><kbd>E</kbd> <span id="promptText"></span></div>
       <div id="toast" role="status" aria-live="polite"></div>
-      <button id="torch">
-        손전등 <span id="lightState">켜짐</span> <kbd>F</kbd>
-      </button>
+      <div class="gear">
+        <button id="crouch" aria-pressed="false">숙이기 <kbd>C</kbd></button>
+        <button id="torch">
+          손전등 <span id="lightState">켜짐</span> <kbd>F</kbd>
+        </button>
+      </div>
       <div id="stick" aria-label="터치 이동"><i id="stickknob"></i></div>
       <div class="touchactions">
         <button id="run">달리기</button><button id="act">조사</button>
@@ -159,6 +166,8 @@
           <dd>E</dd>
           <dt>달리기 · 손전등</dt>
           <dd>Shift · F</dd>
+          <dt>숙이기 · 길 안내</dt>
+          <dd>C · G</dd>
           <dt>시설 도면 · 일시정지</dt>
           <dd>M · P</dd>
         </dl>
@@ -168,7 +177,8 @@
         </p>
         <p>
           잠긴 문은 구역의 제어 장치에서 엽니다. 도면의 주황색 장비를 찾고,
-          청록색 장치로 돌아오세요.
+          청록색 장치로 돌아오세요. 길 안내를 켜면 도면에 경로가 표시되고,
+          이동 화면에서 다음 방향을 볼 수 있습니다. 숙이면 느려지지만 발소리가 줄어듭니다.
         </p>
       </div>
       <button id="howclose" class="primary">닫기</button>

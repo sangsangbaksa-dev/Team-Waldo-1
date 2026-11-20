@@ -319,14 +319,14 @@ export class Sound {
     src.stop(at + length + 0.01);
   }
 
-  step(running) {
+  step(running, crouched) {
     if (!this.ready()) return;
     const at = this.ctx.currentTime;
     if (at - this.lastStep < (running ? 0.23 : 0.31)) return;
     this.lastStep = at;
     this.stepSide *= -1;
     const side = this.stepSide * 0.23,
-      force = running ? 1.25 : 0.78;
+      force = crouched ? 0.28 : running ? 1.25 : 0.78;
     this.note(87 + Math.random() * 10, 42, 0.14, 0.12 * force, at, side);
     this.rustle(
       at + 0.008,

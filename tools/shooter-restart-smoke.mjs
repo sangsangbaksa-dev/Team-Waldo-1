@@ -22,7 +22,7 @@ try {
     await press('again');
     await page.waitForFunction(() => window.__zz.phase === 'countdown' || window.__zz.phase === 'play');
     const after = await page.evaluate(() => ({ seed: window.__zz.match.seed, alive: window.__zz.me().alive, modal: document.querySelector('.sz-modal')?.className }));
-    assert.notEqual(after.seed, before, `round ${round}: a new match starts`); assert.ok(after.alive); assert.equal(after.modal, 'sz-modal');
+    assert.notEqual(after.seed, before, `round ${round}: a new match starts`); assert.ok(after.alive); assert.equal(after.modal, 'sz-modal', 'no pause card pops up right after restarting');
     await page.evaluate(() => window.__zz.go()); await page.waitForFunction(() => window.__zz.phase === 'play');
     const t0 = await page.evaluate(() => window.__zz.match.t); await sleep(2500); assert.ok(await page.evaluate(t => window.__zz.match.t > t, t0), `round ${round}: the new match keeps running (frame loop alive)`);
   }

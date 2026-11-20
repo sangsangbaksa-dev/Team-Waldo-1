@@ -114,7 +114,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     endMatch(); match = m; meIdx = my; over = false; resultShown = false; soloRecorded = false; spectateId = -1; deadTimer = 0; cache.clear(); feed.length = 0; told.clear(); paused = false; modal.className = 'sz-modal'; modal.innerHTML = '';
     const p = m.players[my]; yaw = p.yaw; pitch = 0; countdown = 3.4; phase = 'countdown'; mapBase = null;
     // 지난 경기의 WebGL 컨텍스트는 dispose 에서 끝났으므로, 같은 캔버스를 다시 쓰면 렌더러가 죽은 컨텍스트를 받습니다(다시 시작이 안 됨). 경기마다 새 캔버스를 씁니다.
-    const fresh = document.createElement('canvas'); fresh.className = 'sz-canvas'; fresh.addEventListener('contextmenu', noMenu); canvas.replaceWith(fresh); canvas = fresh;
+    const fresh = document.createElement('canvas'); fresh.className = 'sz-canvas'; fresh.addEventListener('contextmenu', noMenu); if (document.pointerLockElement === canvas) { swapUnlock = true; locked = false; } canvas.replaceWith(fresh); canvas = fresh;
     view = new ShooterView(canvas, m, assets, prefs.quality); resize(); setupEl.hidden = true; hud.hidden = false; buildSlots(); say(touch ? '왼쪽 스틱으로 이동' : '화면을 클릭해 조작 시작', 2.4);
     if (!touch) lock(); audio.unlock();
     if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__zz = { get match() { return match; }, get phase() { return phase; }, me, skip, view, go: () => { countdown = Math.min(countdown, 0.45); }, advance: (sec: number) => { const m = match; if (!m) return; let now = performance.now(); for (let t = 0; t < sec && !m.over; t += 1 / 30) { if (room) syncRoom(1 / 30); m.step(1 / 30); now += 1000 / 30; const ev = m.drain(); onEvents(ev); if (room) roomTick(ev, now); } }, fire: (on: boolean) => { mouse.fire = on; }, ads: (on: boolean) => { mouse.ads = on; }, look: (y: number, p: number) => { yaw = y; pitch = p; } };
@@ -325,7 +325,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   const sens = (): number => 0.0023 / (view && me().ads ? Math.max(1, 78 / view.fov) * 0.9 : 1);
   // 포인터 잠금이 거절돼도 곧바로 '잠금 불가'로 굳히지 않습니다: 시작 직후(클릭 효력이 지난 뒤)나 Esc 직후 1초 안의 요청은 브라우저가 거절하는데,
   // 이때 굳혀 버리면 이후 마우스를 움직여도 시점이 돌지 않고 오른쪽 버튼을 누른 채로만 돌았습니다. 클릭으로 요청했다가 연달아 두 번 거절될 때만 대체 조작(오른쪽 버튼 드래그)으로 넘어갑니다.
-  let lockFailN = 0, lockRejected = false;
+  let lockFailN = 0, lockRejected = false, swapUnlock = false;
   function lock(byClick = false): void {
     if (touch || locked || lockFail || closed) return;
     const fail = (): void => { lockRejected = true; if (byClick && ++lockFailN >= 2) lockFail = true; };
@@ -334,6 +334,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   document.addEventListener('pointerlockchange', onLock);
   function onLock(): void {
     locked = document.pointerLockElement === canvas;
+    // 경기마다 캔버스를 바꾸므로, 잠겨 있던 옛 캔버스가 사라지며 오는 잠금 해제 알림은 일시정지로 보지 않습니다.
+    if (!locked && swapUnlock) { swapUnlock = false; return; }
     if (locked) { lockFailN = 0; lockFail = lockRejected = false; }
     if (closeSmith) return;
     if (!locked && (phase === 'play' || phase === 'countdown') && !pvpRunning() && !closed) setPause(true);

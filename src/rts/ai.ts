@@ -1,12 +1,12 @@
 // FRONTLINE — 컴퓨터 상대. 사람과 같은 명령(Cmd)만 내리고, 난이도는 판단 속도·건설 규모·공격 시점으로 가릅니다.
 // (가장 높은 단계만 채취량 보너스를 받으며 화면에도 그렇게 적습니다.)
-import { BUILDINGS, LEVELS, RESEARCH, RESEARCH_KINDS, UNITS, type BuildKind, type Difficulty, type UnitKind } from './config';
+import { BUILDINGS, LEVELS, RESEARCH, RESEARCH_KINDS, STIM_COST, TANK_SIEGE, UNITS, type BuildKind, type Difficulty, type UnitKind } from './config';
 import type { Building, Cmd, RtsSim, Unit } from './sim';
 
 const ARMY: Array<'marine' | 'rocket' | 'tank' | 'jeep' | 'medic'> = ['marine', 'rocket', 'tank', 'jeep', 'medic'];
 
 export class RtsAi {
-  private wave = false; private phase = 0; private stagedAt = 0; private waveSupply = 0; private lastWave = 0;
+  private wave = false; private phase = 0; private stagedAt = 0; private waveSupply = 0; private lastWave = 0; private stageGoal: { x: number; y: number } | null = null; private defending = false;
   constructor(readonly me: number, readonly level: Difficulty) {}
   get interval(): number { return LEVELS[this.level].think; }
 
@@ -80,6 +80,7 @@ export class RtsAi {
     const fighters = army.filter(u => u.kind !== 'medic');
     this.control(s, fighters, home);
     this.escort(s, army.filter(u => u.kind === 'medic'), fighters, home);
+    if (this.level === 'hard' || this.level === 'brutal') this.useAbilities(s, army);
   }
 
   /** 의무병은 싸우는 병력의 중심에서 조금 뒤(우리 기지 쪽)에 따라다니며 치료합니다. */
@@ -87,8 +88,25 @@ export class RtsAi {
     if (!medics.length) return;
     const hx = home.x + 2, hy = home.y + 2; let cx = hx, cy = hy;
     if (fighters.length) { cx = 0; cy = 0; for (const u of fighters) { cx += u.x; cy += u.y; } cx /= fighters.length; cy /= fighters.length; const dx = hx - cx, dy = hy - cy, l = Math.sqrt(dx * dx + dy * dy) || 1; cx += dx / l * 2.5; cy += dy / l * 2.5; }
-    const ids = medics.filter(u => u.o.t === 'idle' || s.dist(u.x, u.y, cx, cy) > 6).map(u => u.id);
+    const ids = medics.filter(u => u.o.t === 'idle' || (s.dist(u.x, u.y, cx, cy) > 6 && (u.o.t !== 'move' || s.dist(u.o.x, u.o.y, cx, cy) > 4))).map(u => u.id);
     if (ids.length) { const p = s.pather.nearestFree(cx, cy) ?? { x: cx, y: cy }; s.apply(this.me, { k: 'move', ids, x: p.x, y: p.y }); }
+  }
+
+  private useAbilities(s: RtsSim, army: Unit[]): void {
+    const ids: number[] = [];
+    for (const u of army) {
+      if (u.abcd > s.tick || u.hp <= 0) continue;
+      const d = UNITS[u.kind];
+      if (u.kind === 'medic') {
+        const wounded = s.units.filter(e => e.owner === this.me && e.hp > 0 && e.kind !== 'tank' && e.kind !== 'jeep' && e.hp < UNITS[e.kind].hp * 0.65 && s.dist(u.x, u.y, e.x, e.y) <= 5.5);
+        if (wounded.length >= 2) ids.push(u.id);
+      } else if (u.kind === 'marine' || u.kind === 'rocket' || u.kind === 'tank') {
+        if (u.kind === 'marine' && u.hp <= STIM_COST + d.hp * 0.5) continue;
+        const range = d.range + (u.kind === 'tank' ? TANK_SIEGE.range : 0);
+        if (s.pick(this.me, u.x, u.y, range)) ids.push(u.id);
+      } else if (u.kind === 'jeep' && (u.o.t === 'move' || u.o.t === 'amove') && !u.o.target && s.dist(u.x, u.y, u.o.x, u.o.y) > 14) ids.push(u.id);
+    }
+    if (ids.length) s.apply(this.me, { k: 'ability', ids });
   }
 
   private rally(s: RtsSim, home: Building): { x: number; y: number } {
@@ -98,7 +116,7 @@ export class RtsAi {
 
   private control(s: RtsSim, army: Unit[], home: Building): void {
     const L = LEVELS[this.level], me = this.me;
-    if (!army.length) { this.wave = false; return; }
+    if (!army.length) { this.wave = false; this.phase = 0; this.stageGoal = null; this.defending = false; return; }
     const sup = army.reduce((n, u) => n + UNITS[u.kind].supply, 0), rally = this.rally(s, home);
     const go = (units: Unit[], x: number, y: number, force: boolean): void => {
       const ids = units.filter(u => force || u.o.t === 'idle' || (u.o.t === 'amove' && !u.o.target && s.dist(u.o.x, u.o.y, x, y) > 6)).map(u => u.id);
@@ -110,13 +128,14 @@ export class RtsAi {
       if (e.owner === me || e.kind === 'worker' && s.tick < 2400) continue;
       for (const b of s.buildings) if (b.owner === me) { const d = s.rectDist(e.x, e.y, b); if (d < 16) { tsup += UNITS[e.kind].supply; if (d < td) { td = d; threat = e; } break; } }
     }
-    if (threat && (this.phase !== 2 || tsup >= 8)) { go(army, threat.x, threat.y, true); if (this.phase === 2) { this.phase = 0; this.wave = false; this.lastWave = s.tick; } return; }
+    if (threat && (this.phase !== 2 || tsup >= 8)) { go(army, threat.x, threat.y, !this.defending); this.defending = true; if (this.wave) { this.phase = 0; this.wave = false; this.stageGoal = null; this.lastWave = s.tick; } return; }
+    if (this.defending) { this.defending = false; go(army, rally.x, rally.y, true); }
     if (!this.wave) {
       go(army, rally.x, rally.y, false);
-      if (s.tick >= L.attackAfter && sup >= L.wave && s.tick - this.lastWave > 400) { this.wave = true; this.phase = 1; this.waveSupply = sup; this.stagedAt = s.tick; }
+      if (s.tick >= L.attackAfter && sup >= L.wave && s.tick - this.lastWave > 400) { this.wave = true; this.phase = 1; this.waveSupply = sup; this.stagedAt = s.tick; this.stageGoal = null; }
       return;
     }
-    if (L.retreat && sup < this.waveSupply * 0.35) { this.wave = false; this.phase = 0; this.lastWave = s.tick; go(army, rally.x, rally.y, true); return; }
+    if (L.retreat && sup < this.waveSupply * 0.35) { this.wave = false; this.phase = 0; this.stageGoal = null; this.lastWave = s.tick; go(army, rally.x, rally.y, true); return; }
     let cx = 0, cy = 0; for (const u of army) { cx += u.x; cy += u.y; } cx /= army.length; cy /= army.length;
     let tgt: { x: number; y: number } | null = null, bd = Infinity;
     for (const b of s.buildings) if (b.owner !== me) { const d = s.dist(cx, cy, b.x + b.size / 2, b.y + b.size / 2) - (b.kind === 'hq' ? 0 : 6); if (d < bd) { bd = d; tgt = { x: b.x + b.size / 2, y: b.y + b.size / 2 }; } }
@@ -124,10 +143,11 @@ export class RtsAi {
     if (this.phase === 1) {
       // 적 기지 앞 집결지에 모인 뒤에 한꺼번에 들어갑니다.
       const dx = tgt.x - cx, dy = tgt.y - cy, l = Math.sqrt(dx * dx + dy * dy) || 1, back = Math.min(l, 30);
-      const f = s.pather.nearestFree(tgt.x - dx / l * back, tgt.y - dy / l * back) ?? tgt;
-      go(army, f.x, f.y, this.stagedAt === s.tick);
+      const first = this.stageGoal === null;
+      const f = this.stageGoal ??= s.pather.nearestFree(tgt.x - dx / l * back, tgt.y - dy / l * back) ?? tgt;
+      go(army, f.x, f.y, first);
       const near = army.filter(u => s.dist(u.x, u.y, f.x, f.y) < 9).length;
-      if (near >= army.length * 0.8 || s.tick - this.stagedAt > 30 * 20) this.phase = 2;
+      if (near >= army.length * 0.8 || s.tick - this.stagedAt > 30 * 20) { this.phase = 2; this.stageGoal = null; go(army, tgt.x, tgt.y, true); }
       return;
     }
     go(army, tgt.x, tgt.y, false);

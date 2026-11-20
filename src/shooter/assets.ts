@@ -24,7 +24,7 @@ export function loadShooterAssets(base: string, onProgress?: (fraction: number) 
   cache ??= (async () => {
     const loader = new GLTFLoader(), dir = `${base}assets/models/`, prog = new Map<string, number>(), total = Object.values(FILES).reduce((a, b) => a + b, 0);
     const get = async (name: string): Promise<THREE.Object3D> => {
-      const buf = await retry(() => fetchBuffer(`${dir}${name}.glb`, loaded => { prog.set(name, loaded); onProgress?.(Math.min(0.95, [...prog.values()].reduce((a, b) => a + b, 0) / total)); }), { onRetry: n => onNote?.(n < 2 ? '' : `연결이 느립니다. 계속 시도하는 중입니다 (${n}회)`) });
+      const buf = await retry(() => fetchBuffer(`${dir}${name}.glb`, loaded => { prog.set(name, loaded); onProgress?.(Math.min(0.95, [...prog.values()].reduce((a, b) => a + b, 0) / total)); }), { maxAttempts: 2, onRetry: n => onNote?.(`연결이 느립니다. 재시도 중입니다 (${n}회)`) });
       return (await loader.parseAsync(buf, dir)).scene;
     };
     const [c, w, p] = await Promise.all(['characters', 'weapons', 'props'].map(get));

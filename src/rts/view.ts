@@ -3,7 +3,7 @@ import { renderPixelRatio } from '../shared/render-budget';
 import * as THREE from 'three';
 import { makePost, type PostFx } from '../postfx';
 import { BUILDINGS, TEAM_COLORS, UNITS, type BuildKind } from './config';
-import { crystalMat, makeBuilding, makeCrystals, makeUnit, matsFor, type BuildRig, type UnitRig } from './models';
+import { crystalMat, makeBuilding, makeCrystals, makeUnit, matsFor, releaseModelGeometry, type BuildRig, type UnitRig } from './models';
 import { DesertProps } from './desert';
 import { Scenery, buildLanes, bushSpots, paintGround } from './scenery';
 import type { Building, ResNode, RtsSim, SimEvent, Unit } from './sim';
@@ -15,6 +15,7 @@ interface BVis { kind: 'building'; id: number; rig: BuildRig; frame: THREE.Group
 interface NVis { kind: 'node'; id: number; obj: THREE.Group; base: number }
 type Quality = 'high' | 'standard' | 'low';
 interface Fx { obj: THREE.Object3D; t: number; life: number; tick: (f: Fx, dt: number) => void }
+interface DelayedFx { left: number; run: () => void }
 
 const FOG_A_HIDDEN = 226, FOG_A_SEEN = 118, FOG_Y = 4;
 const ABILITY_COLOR: Record<string, number> = { marine: 0xffa53d, rocket: 0xff5a3c, tank: 0xffe066, jeep: 0x5de1ff, medic: 0x7dff9e };
@@ -28,12 +29,13 @@ export class RtsView {
   /** 카메라가 바라보는 지점(맵 좌표)과 거리. */
   cam = { x: 48, y: 48, dist: 58 }; readonly yaw: number; private pitch = 0.95;
   private units = new Map<number, UVis>(); private builds = new Map<number, BVis>(); private nodes = new Map<number, NVis>();
-  private fx: Fx[] = []; private sun = new THREE.DirectionalLight(0xffe2b4, 2.5); private shadows: boolean;
+  private fx: Fx[] = []; private delayedFx: DelayedFx[] = []; private sun = new THREE.DirectionalLight(0xffe2b4, 2.5); private shadows: boolean;
   private ringGeo = new THREE.RingGeometry(0.9, 1.0, 28); private ghost: { kind: BuildKind; obj: THREE.Group; plane: THREE.Mesh } | null = null; private flag: THREE.Group;
   private projected = new THREE.Vector3(); private raycaster = new THREE.Raycaster(); private clock = 0; private w = 1; private h = 1; private fxBudget: number;
   private ringMats = [new THREE.MeshBasicMaterial({ color: 0x5dff9a, transparent: true, opacity: 0.9, depthWrite: false }), new THREE.MeshBasicMaterial({ color: 0xff5a4a, transparent: true, opacity: 0.9, depthWrite: false })];
   /** 전장의 안개: 있으면 보이지 않는 적을 숨기고 어둡게 덮습니다. */ vision: Vision | null = null;
   private fog: { mesh: THREE.Mesh; tex: THREE.DataTexture; data: Uint8Array; cur: Float32Array } | null = null; private marks = new Map<string, MarkVis>();
+  private contact: THREE.InstancedMesh | null = null; private contactDummy = new THREE.Object3D();
   private grid: THREE.Mesh | null = null; private scenery: Scenery | null = null; private desert: DesertProps | null = null;
 
   constructor(readonly canvas: HTMLCanvasElement, readonly sim: RtsSim, readonly viewer: number, readonly quality: Quality = 'high') {
@@ -47,11 +49,23 @@ export class RtsView {
     this.sun.castShadow = this.shadows; const sc = this.sun.shadow.camera; sc.left = -52; sc.right = 52; sc.top = 52; sc.bottom = -52; sc.near = 1; sc.far = 200;
     this.sun.shadow.mapSize.set(quality === 'high' ? 2048 : 1024, quality === 'high' ? 2048 : 1024); this.sun.shadow.bias = -0.0006; this.sun.shadow.normalBias = 0.04;
     this.scene.add(this.sun, this.sun.target);
-    this.buildTerrain(); this.flag = this.makeFlag(); this.flag.visible = false; this.scene.add(this.flag);
+    this.buildTerrain(); this.buildContactShadows(); this.flag = this.makeFlag(); this.flag.visible = false; this.scene.add(this.flag);
     const start = sim.map.starts[viewer]; this.cam.x = start.x + 2; this.cam.y = start.y + 2;
     if (window.innerWidth < 900 || matchMedia('(pointer: coarse)').matches) this.cam.dist = 50; // 작은 화면에서는 가깝게
     this.resize(canvas.clientWidth || 800, canvas.clientHeight || 600);
     this.post = makePost(quality, this.renderer, this.scene, this.camera, { strength: 0.4, radius: 0.5, threshold: 0.9, vignette: 0.24, saturation: 1.1 });
+  }
+
+  // Single instanced ground contact layer also works with dynamic shadows disabled.
+  private buildContactShadows(): void {
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 64;
+    const g = canvas.getContext('2d'); if (!g) return;
+    const gradient = g.createRadialGradient(32, 32, 2, 32, 32, 32);
+    gradient.addColorStop(0, 'rgba(32,24,16,0.72)'); gradient.addColorStop(0.45, 'rgba(32,24,16,0.48)'); gradient.addColorStop(1, 'rgba(32,24,16,0)');
+    g.fillStyle = gradient; g.fillRect(0, 0, 64, 64);
+    const tex = new THREE.CanvasTexture(canvas); tex.colorSpace = THREE.SRGBColorSpace;
+    this.contact = new THREE.InstancedMesh(new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: this.quality === 'low' ? 0.76 : 0.42, depthWrite: false, toneMapped: false }), 512);
+    this.contact.count = 0; this.contact.frustumCulled = false; this.contact.instanceMatrix.setUsage(THREE.DynamicDrawUsage); this.scene.add(this.contact);
   }
 
   // ---------- 지형 ----------
@@ -94,12 +108,12 @@ export class RtsView {
     }
     rocks.count = idx; rocks.instanceMatrix.needsUpdate = true; if (rocks.instanceColor) rocks.instanceColor.needsUpdate = true; scene.add(rocks);
     // 맵 바깥 협곡 암벽: 층층이 쌓인 붉은 사암 메사(그림자 없이 한 번의 그리기).
-    const mesas = this.quality === 'low' ? 46 : 96, strata = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true }), mesas * 3); let sc = 0;
+    const mesas = this.quality === 'low' ? 46 : 96, strata = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.46, 0.59, 1, 7, 1), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true }), mesas * 3); let sc = 0;
     for (let i = 0; i < mesas; i++) {
       const side = i % 4, a = rnd() * (n + 40) - 20, d = 5 + rnd() * 20, x = side === 0 ? a : side === 1 ? a : side === 2 ? -d : n + d, y = side === 0 ? -d : side === 1 ? n + d : a;
       const w = 6 + rnd() * 9, dp = 5 + rnd() * 8, h = 5 + rnd() * 13 * (1 + d / 30), hue = 0.04 + rnd() * 0.04;
       for (let t = 0; t < 3; t++) {
-        const f = 1 - t * 0.22, th = h * (t === 0 ? 0.5 : t === 1 ? 0.32 : 0.2), yy = t === 0 ? 0 : t === 1 ? h * 0.5 : h * 0.82;
+        const f = 1 - t * 0.24, th = h * (t === 0 ? 0.52 : t === 1 ? 0.34 : 0.22), yy = t === 0 ? 0 : t === 1 ? h * 0.5 : h * 0.82;
         m4.compose(new THREE.Vector3(x, yy + th / 2 - 0.6, y), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, rnd() * 0.5, 0)), new THREE.Vector3(w * f, th, dp * f));
         strata.setMatrixAt(sc, m4); col.setHSL(hue + t * 0.006, 0.42 - t * 0.04, 0.32 + t * 0.07 + rnd() * 0.05); strata.setColorAt(sc++, col);
       }
@@ -195,7 +209,7 @@ export class RtsView {
     const keep = new Set<string>();
     for (const m of list) {
       keep.add(m.id); let o = this.marks.get(m.id);
-      if (o && (o.r !== m.r || o.kind !== m.kind)) { this.scene.remove(o.group); this.marks.delete(m.id); o = undefined; }
+      if (o && (o.r !== m.r || o.kind !== m.kind)) { this.disposeOwned(o.group); this.marks.delete(m.id); o = undefined; }
       if (!o) {
         const group = new THREE.Group(), spin = new THREE.Group(), mat = (op: number): THREE.MeshBasicMaterial => new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: op, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending });
         const ring = new THREE.Mesh(new THREE.RingGeometry(m.r - 0.2, m.r, 48), mat(0.85)), fill = new THREE.Mesh(new THREE.CircleGeometry(1, 40), mat(0.3)), beam = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, m.kind === 'target' ? 9 : 7, 8, 1, true), mat(0.4));
@@ -207,7 +221,7 @@ export class RtsView {
       o.group.position.set(m.x, 0, m.y); o.fill.scale.setScalar(Math.max(0.001, m.progress * m.r));
       if (o.side !== m.side) { o.side = m.side; const col = m.kind === 'goal' ? 0x7dff9e : MARK_COLOR[m.side]; o.group.traverse(x => { if (x instanceof THREE.Mesh) (x.material as THREE.MeshBasicMaterial).color.setHex(col); }); }
     }
-    for (const [id, o] of this.marks) if (!keep.has(id)) { this.scene.remove(o.group); this.marks.delete(id); }
+    for (const [id, o] of this.marks) if (!keep.has(id)) { this.disposeOwned(o.group); this.marks.delete(id); }
   }
   private updateMarks(dt: number): void {
     for (const o of this.marks.values()) { o.spin.rotation.y += dt * 0.5; (o.beam.material as THREE.MeshBasicMaterial).opacity = 0.3 + 0.15 * Math.sin(this.clock * 3); }
@@ -218,8 +232,8 @@ export class RtsView {
     if (this.grid) this.grid.visible = !!kind;
     if (!kind) { if (this.ghost) this.ghost.obj.visible = false; return; }
     if (!this.ghost || this.ghost.kind !== kind) {
-      if (this.ghost) this.scene.remove(this.ghost.obj);
-      const rig = makeBuilding(kind, this.viewer), obj = new THREE.Group(), s = BUILDINGS[kind].size;
+      if (this.ghost) this.disposeOwned(this.ghost.obj);
+      const rig = makeBuilding(kind, this.viewer, false), obj = new THREE.Group(), s = BUILDINGS[kind].size;
       rig.root.traverse(o => { if (o instanceof THREE.Mesh) { o.castShadow = false; const mats = (Array.isArray(o.material) ? o.material : [o.material]).map(m => { const c = m.clone(); c.transparent = true; c.opacity = 0.55; return c; }); o.material = Array.isArray(o.material) ? mats : mats[0]; } });
       const plane = new THREE.Mesh(new THREE.PlaneGeometry(s, s), new THREE.MeshBasicMaterial({ color: 0x5dff9a, transparent: true, opacity: 0.4, depthWrite: false })); plane.rotation.x = -Math.PI / 2; plane.position.set(0, 0.06, 0);
       obj.add(rig.root, plane); this.scene.add(obj); this.ghost = { kind, obj, plane };
@@ -240,23 +254,37 @@ export class RtsView {
   private syncEntities(): void {
     const s = this.sim;
     for (const u of s.units) if (!this.units.has(u.id)) this.addUnit(u);
-    for (const [id, v] of this.units) if (!s.unit(id)) { this.scene.remove(v.rig.root); this.units.delete(id); }
+    for (const [id, v] of this.units) if (!s.unit(id)) { this.scene.remove(v.rig.root); releaseModelGeometry(v.rig.root); if (v.aura) this.disposeOwned(v.aura); this.units.delete(id); }
     for (const b of s.buildings) if (!this.builds.has(b.id)) this.addBuilding(b);
-    for (const [id, v] of this.builds) if (!s.building(id)) { this.scene.remove(v.rig.root, v.frame, v.scaff); this.builds.delete(id); }
+    for (const [id, v] of this.builds) if (!s.building(id)) { this.scene.remove(v.rig.root, v.frame, v.scaff); releaseModelGeometry(v.rig.root); v.frame.traverse(o => { if (o instanceof THREE.Mesh) o.geometry.dispose(); }); this.disposeOwned(v.scaff); this.builds.delete(id); }
     for (const n of s.nodes) if (!this.nodes.has(n.id)) this.addNode(n);
-    for (const [id, v] of this.nodes) if (!s.node(id)) { this.scene.remove(v.obj); this.nodes.delete(id); }
+    for (const [id, v] of this.nodes) if (!s.node(id)) { this.scene.remove(v.obj); releaseModelGeometry(v.obj); this.nodes.delete(id); }
   }
   private addUnit(u: Unit): void {
-    const rig = makeUnit(u.kind, u.owner), r = UNITS[u.kind].radius, ring = new THREE.Mesh(this.ringGeo, this.ringMats[u.owner === this.viewer ? 0 : 1]); ring.rotation.x = -Math.PI / 2; ring.scale.setScalar(r * 1.5 + 0.2); ring.position.y = 0.05; ring.visible = false;
+    const rig = makeUnit(u.kind, u.owner, this.quality !== 'low'), r = UNITS[u.kind].radius, ring = new THREE.Mesh(this.ringGeo, this.ringMats[u.owner === this.viewer ? 0 : 1]); ring.rotation.x = -Math.PI / 2; ring.scale.setScalar(r * 1.5 + 0.2); ring.position.y = 0.05; ring.visible = false;
     rig.root.add(ring); this.scene.add(rig.root); this.units.set(u.id, { kind: 'unit', id: u.id, rig, ring, px: u.x, py: u.y, cx: u.x, cy: u.y, yaw: -Math.atan2(u.fy, u.fx), moved: 0, shake: 0, aura: null });
     rig.root.scale.setScalar(US[u.kind]);
   }
   private addBuilding(b: Building): void {
-    const rig = makeBuilding(b.kind, b.owner), frame = new THREE.Group(), s = b.size;
+    const rig = makeBuilding(b.kind, b.owner, this.quality !== 'low'), frame = new THREE.Group(), s = b.size;
     for (const [x, z, w, d] of [[0, -s / 2, s, 0.1], [0, s / 2, s, 0.1], [-s / 2, 0, 0.1, s], [s / 2, 0, 0.1, s]] as const) { const bar = new THREE.Mesh(new THREE.BoxGeometry(w, 0.06, d), this.ringMats[b.owner === this.viewer ? 0 : 1]); bar.position.set(x, 0.06, z); frame.add(bar); }
     frame.position.set(b.x + s / 2, 0, b.y + s / 2); frame.visible = false;
     const scaff = new THREE.Group(), pm = new THREE.MeshStandardMaterial({ color: 0xb8a070, roughness: 0.8, metalness: 0.2 });
-    for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.2 + s * 0.25, 5), pm); p.position.set(x * (s / 2 - 0.1), (1.2 + s * 0.25) / 2, z * (s / 2 - 0.1)); scaff.add(p); }
+    const rail = new THREE.MeshStandardMaterial({ color: 0x74604a, roughness: 0.72, metalness: 0.22 });
+    const sh = Math.min(3.6, Math.max(1.6, rig.top * 0.90)), edge = s / 2 - 0.08;
+    const beam = (start: THREE.Vector3, end: THREE.Vector3, width: number, mat: THREE.Material): void => {
+      const vec = end.clone().sub(start), p = new THREE.Mesh(new THREE.BoxGeometry(width, vec.length(), width), mat);
+      p.position.copy(start).addScaledVector(vec, 0.5); p.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), vec.normalize()); scaff.add(p);
+    };
+    const corners = [[-edge,-edge],[edge,-edge],[edge,edge],[-edge,edge]];
+    for (const [x,z] of corners) beam(new THREE.Vector3(x,0,z), new THREE.Vector3(x,sh,z), 0.095, pm);
+    if (this.quality !== 'low') {
+      for (let i = 0; i < corners.length; i++) {
+        const [x,z] = corners[i], [nx,nz] = corners[(i+1)%corners.length];
+        for (const h of [sh*0.36, sh*0.82]) beam(new THREE.Vector3(x,h,z), new THREE.Vector3(nx,h,nz), 0.065, pm);
+        beam(new THREE.Vector3(x,sh*0.12,z), new THREE.Vector3(nx,sh*0.82,nz), 0.05, rail);
+      }
+    } else rail.dispose();
     scaff.position.set(b.x + s / 2, 0, b.y + s / 2); rig.root.position.set(b.x + s / 2, 0, b.y + s / 2);
     this.scene.add(rig.root, frame, scaff); this.builds.set(b.id, { kind: 'building', id: b.id, rig, frame, scaff, done: b.done, wasDone: b.done, rubble: 0 });
   }
@@ -264,17 +292,18 @@ export class RtsView {
 
   /** 선택·표시 상태를 갱신하고 그립니다. alpha 는 틱 사이 보간 비율(0~1). */
   render(dt: number, alpha: number, selected: ReadonlySet<number>): void {
-    this.clock += dt; this.scenery?.update(this.clock); this.desert?.update(this.clock); this.syncEntities(); const tick = this.sim.tick, s = this.sim;
+    this.clock += dt; this.scenery?.update(this.clock); this.desert?.update(this.clock); this.syncEntities(); const tick = this.sim.tick, s = this.sim; let contacts = 0;
     for (const [id, v] of this.units) {
       const u = s.unit(id); if (!u) continue; const hid = this.hiddenUnit(u); v.rig.root.visible = !hid; if (hid) { v.ring.visible = false; continue; } const x = v.px + (v.cx - v.px) * alpha, y = v.py + (v.cy - v.py) * alpha, sp = Math.sqrt((v.cx - v.px) ** 2 + (v.cy - v.py) ** 2);
       v.moved += (sp > 0.005 ? 1 : -1) * dt * 6; v.moved = Math.min(1, Math.max(0, v.moved));
       const want = -Math.atan2(u.fy, u.fx); let d = want - v.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); v.yaw += d * Math.min(1, dt * 12);
       const r = v.rig, root = r.root; root.position.set(x, 0, y); root.rotation.y = v.yaw;
+      if (this.contact && contacts < this.contact.instanceMatrix.count) { const q = this.contactDummy, radius = UNITS[u.kind].radius; q.position.set(x, 0.016, y); q.rotation.y = v.yaw; q.scale.set(radius * (u.kind === 'tank' || u.kind === 'jeep' ? 1.65 : 1.15), 1, radius * 1.05); q.updateMatrix(); this.contact.setMatrixAt(contacts++, q.matrix); }
       const bob = Math.sin(this.clock * (u.kind === 'tank' || u.kind === 'jeep' ? 9 : 14) + id) * (u.kind === 'tank' || u.kind === 'jeep' ? 0.015 : 0.05) * v.moved; r.body.position.y = Math.abs(bob); r.body.rotation.z = bob * (u.kind === 'tank' || u.kind === 'jeep' ? 0.2 : 0.5);
       const fired = tick - u.fired; r.flash.visible = u.kind !== 'medic' && fired >= 0 && fired < 2;
-      if (r.gun) r.gun.position.x = (u.kind === 'tank' ? 0.3 : 0.2) - (fired >= 0 && fired < 3 ? 0.08 : 0);
+      if (r.gun) r.gun.position.x = (r.gun.userData.restX as number) - (fired >= 0 && fired < 3 ? 0.08 * (1 - (fired + alpha) / 3) : 0);
       if (r.carry) r.carry.visible = u.carry > 0;
-      if (r.ch) { const st = r.ch.state; st.speed = v.moved * 3; st.walk += dt * v.moved * 4.8; st.time += dt; st.wave = u.kind === 'worker' && (tick - u.mine < 3 || (u.o.t === 'gather' && u.o.phase === 1)) ? 0.5 : 0; st.recoil = fired >= 0 && fired < 3 ? 1 : 0; st.hit = (tick - u.hurt) >= 0 && (tick - u.hurt) < 3 ? 0.4 : 0; r.ch.update(dt); }
+      if (r.ch) { r.ch.setDetail(this.quality === 'low' ? 2 : this.cam.dist > 65 ? 1 : 0); const st = r.ch.state; st.speed = v.moved * 3; st.walk += dt * v.moved * 4.8; st.time += dt; st.wave = u.kind === 'worker' && (tick - u.mine < 3 || (u.o.t === 'gather' && u.o.phase === 1)) ? 0.5 : 0; st.recoil = fired >= 0 && fired < 3 ? 1 : 0; st.hit = (tick - u.hurt) >= 0 && (tick - u.hurt) < 3 ? 0.4 : 0; r.ch.update(dt); }
       if (r.arm) { const work = tick - u.mine < 3 || (u.o.t === 'gather' && u.o.phase === 1); r.arm.rotation.z = work ? Math.sin(this.clock * 16) * 0.7 - 0.4 : -0.3; }
       const hurt = tick - u.hurt; root.scale.setScalar(US[u.kind] * (hurt >= 0 && hurt < 2 ? 1.1 : 1));
       v.ring.visible = selected.has(id);
@@ -285,23 +314,35 @@ export class RtsView {
     }
     for (const [id, v] of this.builds) {
       const b = s.building(id); if (!b) continue; const hidB = this.hiddenBuilding(b); v.rig.root.visible = !hidB; const p = b.done ? 1 : Math.min(1, 0.12 + 0.88 * b.progress / BUILDINGS[b.kind].time);
-      v.rig.root.scale.set(1, b.done ? 1 : Math.max(0.05, p), 1); v.scaff.visible = !b.done && !hidB; v.scaff.scale.y = 1 - p * 0.3;
-      if (b.done && !v.wasDone) { v.wasDone = true; this.puff(b.x + b.size / 2, b.y + b.size / 2, b.size * 0.8, 0xd8cfb8); }
+      v.rig.root.scale.set(1, b.done ? 1 : Math.max(0.05, p), 1); v.scaff.visible = !b.done && !hidB; v.scaff.scale.y = 0.45 + p * 0.55;
+      if (!hidB && b.done && b.hp / b.maxhp < 0.38 && this.quality !== 'low' && this.clock >= v.rubble) { v.rubble = this.clock + 1.0 + (id % 5) * 0.12; this.puff(b.x + b.size * 0.55, b.y + b.size * 0.45, b.size * 0.38, 0x514b43); }
+      if (b.done && !v.wasDone) { v.wasDone = true; if (!hidB) this.puff(b.x + b.size / 2, b.y + b.size / 2, b.size * 0.8, 0xd8cfb8); }
       for (const l of v.rig.light) l.visible = b.done && (Math.sin(this.clock * 3 + id) > -0.7);
       if (v.rig.spin && b.kind === 'hq') v.rig.spin.rotation.y += dt * 0.8;
-      if (v.rig.spin && b.kind === 'tower') { const want = -Math.atan2(b.fy, b.fx); if (tick - b.fired < 40) v.rig.spin.rotation.y = want; }
+      if (v.rig.spin && b.kind === 'tower') { const want = -Math.atan2(b.fy, b.fx); if (tick - b.fired < 40) { const d = want - v.rig.spin.rotation.y; v.rig.spin.rotation.y += Math.atan2(Math.sin(d), Math.cos(d)) * (1 - Math.exp(-dt * 20)); } }
       if (v.rig.flash) v.rig.flash.visible = tick - b.fired < 2;
       v.frame.visible = selected.has(id) && !hidB; const hurt = tick - b.hurt; if (!b.done) v.rig.root.rotation.y = 0; v.rig.root.position.y = hurt >= 0 && hurt < 2 ? 0.02 : 0;
     }
     for (const [id, v] of this.nodes) { const n = s.node(id); if (!n) continue; v.obj.visible = !this.hiddenNode(n); const f = 0.55 + 0.45 * Math.min(1, n.amount / 1500); v.obj.scale.set(f, f, f); }
+    if (this.contact) { this.contact.count = contacts; this.contact.instanceMatrix.needsUpdate = true; }
     crystalMat.emissiveIntensity = 1.0 + Math.sin(this.clock * 2.2) * 0.25;
     this.updateFx(dt); this.updateMarks(dt); this.updateFog(dt); this.placeCamera(); this.placeFog(); if (this.post) this.post.render(dt); else this.renderer.render(this.scene, this.camera);
   }
 
   // ---------- 이펙트 ----------
-  private add(f: Fx): void { if (this.fx.length >= this.fxBudget) { const old = this.fx.shift(); if (old) this.scene.remove(old.obj); } this.fx.push(f); this.scene.add(f.obj); }
+  // Only use for objects with exclusively owned geometry and materials, never shared model rigs.
+  private disposeOwned(obj: THREE.Object3D): void {
+    obj.removeFromParent();
+    const geometries = new Set<THREE.BufferGeometry>(), materials = new Set<THREE.Material>();
+    obj.traverse(o => { if (o instanceof THREE.Mesh) { geometries.add(o.geometry); for (const m of Array.isArray(o.material) ? o.material : [o.material]) materials.add(m); } });
+    for (const g of geometries) g.dispose(); for (const m of materials) m.dispose();
+  }
+  private add(f: Fx): void { if (this.fx.length >= this.fxBudget) { const old = this.fx.shift(); if (old) this.disposeOwned(old.obj); } this.fx.push(f); this.scene.add(f.obj); }
   private updateFx(dt: number): void {
-    for (let i = this.fx.length - 1; i >= 0; i--) { const f = this.fx[i]; f.t += dt; if (f.t >= f.life) { this.scene.remove(f.obj); this.fx.splice(i, 1); continue; } f.tick(f, dt); }
+    for (let i = this.fx.length - 1; i >= 0; i--) { const f = this.fx[i]; f.t += dt; if (f.t >= f.life) { this.disposeOwned(f.obj); this.fx.splice(i, 1); continue; } f.tick(f, dt); }
+    // Separate delayed callbacks from the active mesh list so an explosion cannot mutate it during iteration.
+    const due: DelayedFx[] = []; this.delayedFx = this.delayedFx.filter(f => { f.left -= dt; if (f.left > 0) return true; due.push(f); return false; });
+    for (const f of due) f.run();
   }
   private glowMat(color: number, opacity = 1): THREE.MeshBasicMaterial { return new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending }); }
   private puff(x: number, y: number, r: number, color: number): void {
@@ -313,7 +354,17 @@ export class RtsView {
     this.add({ obj: core, t: 0, life: big ? 0.6 : 0.4, tick: f => { const k = f.t / f.life; core.scale.setScalar(r * (0.35 + k * 0.9)); (core.material as THREE.MeshBasicMaterial).opacity = 0.6 * (1 - k); } });
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 24), this.glowMat(0xffc070, 0.45)); ring.rotation.x = -Math.PI / 2; ring.position.set(x, 0.08, y);
     this.add({ obj: ring, t: 0, life: 0.45, tick: f => { const k = f.t / f.life; ring.scale.setScalar(r * (0.6 + k * 1.8)); (ring.material as THREE.MeshBasicMaterial).opacity = 0.45 * (1 - k); } });
-    const bits = big ? 9 : 4, rnd = seeded(Math.floor(x * 31 + y * 17 + this.clock * 100));
+    const bits = this.quality === 'low' ? (big ? 4 : 2) : big ? 9 : 4, rnd = seeded(Math.floor(x * 31 + y * 17 + this.clock * 100));
+    if (this.quality !== 'low') {
+      // Flash turns white-hot briefly, then a column of dust and smoke rises behind it.
+      const hot = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 0), this.glowMat(0xfff2b5, 0.95)); hot.position.copy(core.position);
+      this.add({ obj: hot, t: 0, life: 0.18, tick: f => { const k = f.t / f.life; hot.scale.setScalar(r * (0.28 + k * 0.42)); (hot.material as THREE.MeshBasicMaterial).opacity = 0.95 * (1 - k) ** 2; } });
+      if (big) for (let i = 0; i < (this.quality === 'high' ? 3 : 2); i++) {
+        const smoke = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshBasicMaterial({ color: i % 2 ? 0x766a5d : 0x514943, transparent: true, opacity: 0.38, depthWrite: false }));
+        const dx = (rnd() - 0.5) * r, dz = (rnd() - 0.5) * r; smoke.position.set(x + dx, 0.45 + i * 0.35, y + dz);
+        this.add({ obj: smoke, t: 0, life: 1.5 + i * 0.3, tick: (f, dt) => { const k = f.t / f.life; smoke.position.y += dt * (0.7 + r * 0.22); smoke.position.x += dt * 0.25; smoke.scale.set(r * (0.25 + k * 0.65), r * (0.35 + k * 0.8), r * (0.25 + k * 0.65)); smoke.rotation.y += dt * 0.4; (smoke.material as THREE.MeshBasicMaterial).opacity = 0.38 * (1 - k); } });
+      }
+    }
     for (let i = 0; i < bits; i++) {
       const d = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.16), new THREE.MeshBasicMaterial({ color: i % 2 ? 0x2a2a2a : 0x5a4a38, transparent: true })); d.position.set(x, 0.5, y);
       const a = rnd() * 6.28, sp = (1.5 + rnd() * 3.5) * (big ? 1.3 : 1), vy = 3 + rnd() * 4;
@@ -322,8 +373,14 @@ export class RtsView {
     this.puff(x, y, r * 1.1, 0x4a4540);
   }
   private tracer(x0: number, y0: number, x1: number, y1: number, h0: number, h1: number, color: number, life: number, thick: number, len: number, arc = 0): void {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(len, thick, thick), this.glowMat(color, 1)); const dx = x1 - x0, dy = y1 - y0, dist = Math.sqrt(dx * dx + dy * dy) || 1; m.rotation.y = -Math.atan2(dy, dx); m.position.set(x0, h0, y0);
-    this.add({ obj: m, t: 0, life, tick: f => { const k = f.t / f.life; m.position.set(x0 + dx * k, h0 + (h1 - h0) * k + Math.sin(k * Math.PI) * arc * Math.min(1, dist / 8), y0 + dy * k); } });
+    const m = new THREE.Mesh(new THREE.BoxGeometry(len, thick, thick), this.glowMat(color, 1)); const dx = x1 - x0, dy = y1 - y0, dist = Math.sqrt(dx * dx + dy * dy) || 1; const height = arc * Math.min(1, dist / 8), axis = new THREE.Vector3(1, 0, 0), direction = new THREE.Vector3();
+    const pose = (k: number): void => {
+      m.position.set(x0 + dx * k, h0 + (h1 - h0) * k + Math.sin(k * Math.PI) * height, y0 + dy * k);
+      direction.set(dx, h1 - h0 + Math.cos(k * Math.PI) * Math.PI * height, dy);
+      if (direction.lengthSq() > 0.000001) m.quaternion.setFromUnitVectors(axis, direction.normalize());
+    };
+    pose(0);
+    this.add({ obj: m, t: 0, life, tick: f => { const k = f.t / f.life; pose(k); (m.material as THREE.MeshBasicMaterial).opacity = 1 - k * 0.35; } });
   }
   /** 시뮬레이션 이벤트를 눈에 보이는 효과로 바꿉니다. 소리는 호출한 쪽에서 처리합니다. */
   consume(events: SimEvent[]): void {
@@ -353,9 +410,11 @@ export class RtsView {
       else if (e.t === 'deposit') { const s = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 4), this.glowMat(0x8fe6ff, 0.9)); s.position.set(e.x, 1.1, e.y); this.add({ obj: s, t: 0, life: 0.5, tick: (f, dt) => { s.position.y += dt * 1.4; (s.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - f.t / f.life); } }); }
     }
   }
-  private delay(sec: number, fn: () => void): void { this.add({ obj: new THREE.Object3D(), t: 0, life: sec, tick: f => { if (f.t + 0.02 >= f.life) fn(); } }); }
+  private delay(sec: number, fn: () => void): void { if (this.delayedFx.length >= this.fxBudget) this.delayedFx.shift(); this.delayedFx.push({ left: sec, run: fn }); }
 
   dispose(): void {
+    this.delayedFx = [];
+    if (this.contact) (this.contact.material as THREE.MeshBasicMaterial).map?.dispose();
     this.scene.traverse(o => { if (o instanceof THREE.Mesh || o instanceof THREE.InstancedMesh) { o.geometry.dispose(); const m = o.material; (Array.isArray(m) ? m : [m]).forEach(x => x.dispose()); } });
     this.post?.dispose(); this.fog?.tex.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss();
   }

@@ -35,9 +35,16 @@ export function addBox(map: GameMap, b: Box): void {
   for (let cx = cellOf(b.x0); cx <= cellOf(b.x1); cx++) for (let cz = cellOf(b.z0); cz <= cellOf(b.z1); cz++) { const k = key(cx, cz); const l = map.grid.get(k); if (l) l.push(i); else map.grid.set(k, [i]); }
 }
 
-/** 이미 만든 상자를 옮기거나 켜고 끕니다(운전하는 차량). 옛 칸에 남은 번호는 좌표 비교에서 걸러져 해가 없습니다. */
+/** Update spatial membership when a vehicle collision box moves or is disabled. */
 export function moveBox(map: GameMap, i: number, b: Partial<Box>): void {
-  const o = map.boxes[i]; Object.assign(o, b);
+  const o = map.boxes[i]; if (!o) return;
+  // Remove the previous membership, preventing stale vehicle entries from accumulating.
+  for (let cx = cellOf(o.x0); cx <= cellOf(o.x1); cx++) for (let cz = cellOf(o.z0); cz <= cellOf(o.z1); cz++) {
+    const k = key(cx, cz), l = map.grid.get(k); if (!l) continue;
+    const at = l.indexOf(i); if (at >= 0) l.splice(at, 1);
+    if (!l.length) map.grid.delete(k);
+  }
+  Object.assign(o, b);
   if (o.y0 > 100) return;
   for (let cx = cellOf(o.x0); cx <= cellOf(o.x1); cx++) for (let cz = cellOf(o.z0); cz <= cellOf(o.z1); cz++) { const k = key(cx, cz), l = map.grid.get(k); if (!l) map.grid.set(k, [i]); else if (!l.includes(i)) l.push(i); }
 }

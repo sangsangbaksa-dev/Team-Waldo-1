@@ -182,12 +182,13 @@ export class Match {
         }
         this.update(p, dt);
       }
-      if (Math.hypot(p.x - zone.cx, p.z - zone.cz) > zone.r) this.damage(p, zone.dps * dt, -1, 'zone', false, p.x, 1, p.z, true);
+      if ((p.x - zone.cx) ** 2 + (p.z - zone.cz) ** 2 > zone.r ** 2) this.damage(p, zone.dps * dt, -1, 'zone', false, p.x, 1, p.z, true);
     }
     // 마지막 한 명이 남으면 끝납니다(동시에 모두 쓰러졌다면 마지막에 쓰러진 쪽이 승자).
     if (!this.over) {
-      const alive = this.players.filter(p => p.alive);
-      if (alive.length <= 1 && this.players.length > 1) this.finish(alive[0]?.id ?? this.lastDead());
+      let survivor = -1, alive = 0;
+      for (const p of this.players) if (p.alive) { survivor = p.id; if (++alive > 1) break; }
+      if (alive <= 1 && this.players.length > 1) this.finish(alive === 1 ? survivor : this.lastDead());
     }
   }
   /** 다른 브라우저가 움직이는 선수: 받은 상태는 밖에서 넣고, 여기서는 반동·피격 표시만 줄이고 차를 따라갑니다. */
@@ -213,7 +214,7 @@ export class Match {
   }
   /** 비행기 안·자유낙하·낙하산 중인 선수 한 명을 진행합니다. 착지하면 air 가 0 이 되어 보통 선수로 돌아갑니다. */
   private stepAir(p: Player, dt: number): void {
-    const inp = p.input, pl = this.plane!; if (p.bot && p.brain) thinkAir(this, p);
+    const inp = p.input, pl = this.plane!; if (p.bot && p.brain) thinkAir(this, p, dt);
     const wantJump = !!inp.jump && !p.jumpHeld; p.jumpHeld = !!inp.jump;
     if (!p.bot) { p.yaw = inp.yaw; p.pitch = Math.max(-1.45, Math.min(1.45, inp.pitch)); }
     p.speed = 0; p.vx *= 0; p.hurt = 0;
@@ -391,7 +392,7 @@ export class Match {
   finish(winner: number): void { if (this.over) return; this.over = true; this.winner = winner; const w = this.players[winner]; if (w && w.alive) w.place = 1; this.events.push({ t: 'over', winner }); }
 
   private update(p: Player, dt: number): void {
-    const inp = p.input, def = p.guns[p.cur] ? WEAPONS[p.guns[p.cur]!.id] : null;
+    const inp = p.input;
     if (p.boost > 0) { p.boost = Math.max(0, p.boost - dt); if (!p.remote && p.hp < BOOST.cap) p.hp = Math.min(BOOST.cap, p.hp + BOOST.heal * dt); }
     p.cd = Math.max(0, p.cd - dt); p.kick = Math.max(0, p.kick - dt * 7); p.muzzle = Math.max(0, p.muzzle - dt); p.hurt = Math.max(0, p.hurt - dt); p.emptyT = Math.max(0, p.emptyT - dt);
     if (!p.remote) {
@@ -421,15 +422,17 @@ export class Match {
     p.nadeCd -= dt; if (inp.nade && !p.nadeHeld && p.nades > 0 && p.nadeCd <= 0 && p.air === 0 && !p.remote) this.throwNade(p); p.nadeHeld = !!inp.nade;
     // 무기 교체
     if (inp.slot >= 0 && inp.slot < 2 && inp.slot !== p.cur && p.guns[inp.slot]) { p.cur = inp.slot; p.reload = 0; p.cd = Math.max(p.cd, 0.35); inp.slot = -1; }
-    const gun = p.guns[p.cur]; if (gun && !gun.att) gun.att = {};
+    const gun = p.guns[p.cur]; const def = gun ? WEAPONS[gun.id] : null; if (gun && !gun.att) gun.att = {};
     if (gun && def) {
-      if (p.reload > 0) { p.reload -= dt; if (p.reload <= 0) { p.reload = 0; const n = Math.min(magOf(def.id, gun.att) - gun.mag, gun.reserve); gun.mag += n; gun.reserve -= n; } }
+      if (p.reload > 0) { p.reload -= dt; if (p.reload <= 0) { p.reload = 0; const n = Math.max(0, Math.min(magOf(def.id, gun.att) - gun.mag, gun.reserve)); gun.mag += n; gun.reserve -= n; } }
       else if ((inp.reload && gun.mag < magOf(def.id, gun.att) && gun.reserve > 0) || (gun.mag === 0 && gun.reserve > 0 && inp.fire)) { p.reload = def.reload * partHandling(gun.att).reload; this.events.push({ t: 'reload', id: p.id }); }
       if (inp.fire && p.cd <= 0 && p.reload <= 0 && (def.auto || !p.fireHeld)) {
         if (gun.mag > 0) this.shoot(p, gun, def.id); else if (p.emptyT <= 0) { p.emptyT = 0.5; this.events.push({ t: 'empty', id: p.id }); }
       }
     }
-    p.fireHeld = inp.fire;
+    // Bots request sustained engagement; simulate repeated trigger presses for semi-auto guns.
+    // Human players still need to release the trigger between shots.
+    p.fireHeld = inp.fire && !(p.bot && def && !def.auto);
     // 줍기
     const wantE = inp.interact && !p.interactHeld; p.interactHeld = inp.interact;
     let took = false;
@@ -512,7 +515,10 @@ export class Match {
     const id = l.weapon!, def = WEAPONS[id], same = p.guns.find(g => g?.id === id);
     if (same) { same.reserve = Math.min(def.mag * 6, same.reserve + def.mag * 2); this.take(p, l); return; }
     const att: Attachments = { ...(l.att ?? {}) };
-    const free = p.guns.indexOf(null), slot = free >= 0 ? free : p.cur, old = p.guns[slot];
+    const free = p.guns.indexOf(null);
+    const rankAt = (i: number): number => WEAPONS[p.guns[i]!.id].rank;
+    const slot = free >= 0 ? free : p.bot && rankAt(1 - p.cur) < rankAt(p.cur) ? 1 - p.cur : p.cur, old = p.guns[slot];
+    if (p.bot && old && WEAPONS[old.id].rank >= def.rank) return;
     if (old) this.spawnLoot({ kind: 'weapon', weapon: old.id, att: { ...old.att }, x: p.x + Math.cos(p.yaw) * 0.8, z: p.z + Math.sin(p.yaw) * 0.8 });
     p.guns[slot] = { id, mag: magOf(id, att), reserve: def.mag * 2, att }; p.cur = slot; p.reload = 0; p.cd = 0.35; this.take(p, l);
   }

@@ -48,9 +48,23 @@ export function wallTexture(i: number): THREE.CanvasTexture {
     if (st.kind === 'brick') { for (let y = 0; y < s; y += 11) { g.beginPath(); g.moveTo(0, y); g.lineTo(s, y); g.stroke(); const off = (y / 11) % 2 ? 0 : 16; for (let x = off; x < s; x += 32) { g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + 11); g.stroke(); } } }
     else if (st.kind === 'siding') { for (let y = 0; y < s; y += 14) { g.beginPath(); g.moveTo(0, y); g.lineTo(s, y); g.stroke(); } }
     else if (st.kind === 'block') { for (let y = 0; y < s; y += 64) { g.beginPath(); g.moveTo(0, y); g.lineTo(s, y); g.stroke(); } for (let x = 0; x < s; x += 64) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, s); g.stroke(); } }
+    // Fine surface wear, rain streaks and subtle mottling before painting windows.
+    for (let j = 0; j < 18; j++) {
+      const x = rng() * s, y = rng() * s, len = 5 + rng() * 33;
+      g.fillStyle = 'rgba(32,35,30,.055)'; g.fillRect(x, y, 1 + rng() * 2, Math.min(len, s - y));
+    }
+    for (let j = 0; j < 8; j++) {
+      const x = rng() * s, y = rng() * s, r = 8 + rng() * 19;
+      const patch = g.createRadialGradient(x, y, 0, x, y, r);
+      patch.addColorStop(0, 'rgba(72,65,48,.11)'); patch.addColorStop(1, 'rgba(72,65,48,0)');
+      g.fillStyle = patch; g.fillRect(Math.max(0, x - r), Math.max(0, y - r), Math.min(s, x + r) - Math.max(0, x - r), Math.min(s, y + r) - Math.max(0, y - r));
+    }
     // 창: v=1.0~2.3m → 캔버스 y 는 위가 0 이라 (3.2-2.3)/3.2*256=72 ~ 112+...
     const x0 = 78, x1 = 178, y0 = 72, y1 = 150; g.fillStyle = st.frame; g.fillRect(x0 - 6, y0 - 6, x1 - x0 + 12, y1 - y0 + 12);
     const grad = g.createLinearGradient(x0, y0, x1, y1); grad.addColorStop(0, '#56738c'); grad.addColorStop(0.5, st.win); grad.addColorStop(1, '#0f1822'); g.fillStyle = grad; g.fillRect(x0, y0, x1 - x0, y1 - y0);
+    g.strokeStyle = 'rgba(8,15,21,.65)'; g.lineWidth = 3; g.strokeRect(x0 + 1.5, y0 + 1.5, x1 - x0 - 3, y1 - y0 - 3);
+    g.fillStyle = 'rgba(240,236,217,.65)'; g.fillRect(x0 - 9, y1 + 4, x1 - x0 + 18, 4);
+    g.fillStyle = 'rgba(20,23,24,.15)'; g.fillRect(x0 - 5, y1 + 8, x1 - x0 + 10, 7);
     g.fillStyle = st.frame; g.fillRect((x0 + x1) / 2 - 2, y0, 4, y1 - y0); g.fillRect(x0, (y0 + y1) / 2 - 2, x1 - x0, 4);
     g.fillStyle = 'rgba(255,255,255,0.18)'; g.beginPath(); g.moveTo(x0, y1); g.lineTo(x0 + 28, y0); g.lineTo(x0 + 44, y0); g.lineTo(x0 + 16, y1); g.fill();
     // 아랫단 얼룩
@@ -61,6 +75,17 @@ export function floorTexture(): THREE.CanvasTexture {
   return canvasTex(256, (g, s) => {
     const rng = makeRng(77); g.fillStyle = '#8c6d4a'; g.fillRect(0, 0, s, s);
     for (let y = 0; y < s; y += 32) { g.fillStyle = `hsl(${28 + rng() * 6}, ${28 + rng() * 10}%, ${34 + rng() * 10}%)`; g.fillRect(0, y, s, 30); g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(0, y + 30, s, 2); }
+    for (let y = 0; y < s; y += 32) {
+      const offset = ((y / 32) % 2) * 64;
+      for (let x = offset; x < s; x += 128) {
+        g.fillStyle = 'rgba(25,18,11,.24)'; g.fillRect(x, y, 1.5, 30);
+        g.fillStyle = 'rgba(238,211,174,.15)'; g.fillRect(x + 1.5, y + 1, 1, 28);
+      }
+      for (let k = 0; k < 7; k++) {
+        g.fillStyle = 'rgba(43,29,16,.10)';
+        g.fillRect(rng() * s, y + 2 + rng() * 25, 12 + rng() * 31, 0.7);
+      }
+    }
     speckle(g, s, 1500, rng, '#d8b98a', '#3b2a18', 0.2);
   });
 }

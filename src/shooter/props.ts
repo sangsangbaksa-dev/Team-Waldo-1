@@ -1,7 +1,7 @@
 // ZERO ZONE — 소품 모델: 건물 지붕, 차량, 컨테이너, 울타리, 전봇대, 주유소 같은 지도 위 물건과 보급 상자·총기 파츠 모양을 코드로 만듭니다.
 // 같은 색끼리 하나의 메시로 합쳐서(Pieces) 소품이 수백 개여도 그리기 호출은 수십 번에 머뭅니다.
 import * as THREE from 'three';
-import type { PartId } from './config';
+import type { PartId, WeaponId } from './config';
 import type { Building, GameMap, Prop } from './world';
 
 import { CYL, GLASS, BLACK, STEEL, RED, Pieces, shade, xf } from '../shared/pieces';
@@ -60,7 +60,7 @@ function prism(span: number, ph: number, len: number, shed: boolean): THREE.Buff
   const s = new THREE.Shape(); s.moveTo(-span / 2, 0); s.lineTo(span / 2, 0); if (shed) { s.lineTo(span / 2, ph); s.lineTo(-span / 2, ph * 0.25); } else s.lineTo(0, ph); s.closePath();
   const g = new THREE.ExtrudeGeometry(s, { depth: len, bevelEnabled: false }); g.translate(0, 0, -len / 2); return g;
 }
-function roof(p: Pieces, bd: Building, rng: () => number): void {
+function roof(p: Pieces, bd: Building, rng: () => number, detailed: boolean): void {
   const { x, z, w, d, h } = bd, base = xf(x, 0, z), sizeLong = Math.max(w, d), alongX = w >= d;
   if (bd.roof === 'flat') {
     const tall = bd.type === 'tower', par = tall ? 1.1 : 0.5, col = bd.type === 'bunker' ? 0x6f7268 : 0x4d5258;
@@ -70,6 +70,23 @@ function roof(p: Pieces, bd: Building, rng: () => number): void {
       if (rng() < 0.85) p.box(1.4, 0.9, 1.1, 0xb6babd, base, (rng() - 0.5) * w * 0.5, h + 0.8, (rng() - 0.5) * d * 0.5);
       p.box(0.9, 0.7, 0.9, 0xa5a9ac, base, (rng() - 0.5) * w * 0.4, h + 0.7, (rng() - 0.5) * d * 0.4);
       if (bd.type === 'shop') p.box(Math.min(5, w * 0.5), 1.1, 0.2, [0xc9302c, 0x2f6aa0, 0x2f7a4a, 0xd0a02c][bd.tex % 4], base, 0, h + 0.9, d / 2 + 0.2);
+    }
+    if (detailed) {
+      // Raised parapet caps and weathered roof membranes reuse a small shared palette.
+      for (const sign of [-1, 1]) {
+        p.box(w + 0.95, 0.09, 0.40, 0xb0b1ab, base, 0, h + 0.39 + par, sign * (d + 0.7) / 2);
+        p.box(0.40, 0.09, d + 0.95, 0xb0b1ab, base, sign * (w + 0.7) / 2, h + 0.39 + par, 0);
+      }
+      if (w > 7 && d > 5) {
+        for (let i = -1; i <= 1; i++) p.box(w * 0.72, 0.025, 0.045, 0x353d42, base, 0, h + 0.37, i * d * 0.22);
+        if (bd.type !== 'clinic' && bd.type !== 'bunker') {
+          const ax = -w * 0.23, az = d * 0.23;
+          p.box(1.55, 0.12, 1.15, 0x62696c, base, ax, h + 0.42, az);
+          p.box(1.3, 0.58, 0.9, 0xb0b6b7, base, ax, h + 0.76, az);
+          p.box(1.03, 0.04, 0.65, 0x434b50, base, ax, h + 1.07, az);
+          for (let i = 0; i < 5; i++) p.box(0.045, 0.04, 0.63, 0x8b9096, base, ax - 0.4 + i * 0.2, h + 1.09, az);
+        }
+      }
     }
     if (tall) { p.add(CYL(0.08, 3, 6), 0x5a5a5e, base.clone().multiply(xf(w * 0.25, h + 2, d * 0.25))); p.box(1.6, 0.5, 0.5, 0x3b3f44, base, -w * 0.15, h + 0.65, 0); }
     if (bd.type === 'bunker') p.box(w - 1, 0.4, d - 1, 0x58705a, base, 0, h + 0.5, 0);
@@ -87,11 +104,41 @@ function roof(p: Pieces, bd: Building, rng: () => number): void {
       p.box(2.6, 4.6, 2.6, col2, base, tx, h + 2.3, tz); p.box(3.1, 0.3, 3.1, 0x4d5560, base, tx, h + 4.75, tz); p.box(0.18, 1.6, 0.18, 0xe8dcc6, base, tx, h + 5.7, tz); p.box(0.9, 0.18, 0.18, 0xe8dcc6, base, tx, h + 5.9, tz);
     }
     if (bd.type === 'diner') p.box(Math.min(4.5, w * 0.5), 0.9, 0.2, [0xc9302c, 0x2f6aa0][bd.tex % 2], base, 0, h + 1.2, d / 2 + 0.2);
-    if (bd.type === 'warehouse' || bd.type === 'hangar') for (let i = -2; i <= 2; i++) p.box(alongX ? 0.25 : span, 0.08, alongX ? span : 0.25, shade(col, 0.82), base, alongX ? i * long * 0.2 : 0, h + ph * 0.5 + 0.1, alongX ? 0 : i * long * 0.2);
+    if (detailed) {
+      // Roof seams follow the slope rather than passing horizontally through the roof.
+      const local = base.clone().multiply(xf(0, h, 0, 0, alongX ? Math.PI / 2 : 0, 0));
+      const count = bd.type === 'warehouse' || bd.type === 'hangar' ? 7 : 4;
+      const rise = shed ? ph * 0.75 : ph;
+      const run = shed ? span : span / 2;
+      const slope = Math.atan2(rise, run), len = Math.hypot(run, rise);
+      for (let i = 0; i < count; i++) {
+        const z0 = (i / (count - 1) - 0.5) * long * 0.90;
+        if (shed) p.box(len, 0.065, 0.055, 0x51565a, local.clone().multiply(xf(0, ph * 0.625 + 0.045, z0, 0, 0, slope)));
+        else for (const side of [-1, 1]) p.box(len, 0.06, 0.055, 0x51565a, local.clone().multiply(xf(side * span / 4, ph / 2 + 0.045, z0, 0, 0, -side * slope)));
+      }
+      for (const side of [-1, 1]) p.box(0.10, 0.12, long, 0x44494c, local, side * span / 2, shed && side > 0 ? ph : shed ? ph * 0.25 : 0, 0);
+    }
   }
 }
 /** 건물 지붕과 장식: 한 번에 합쳐서 돌려줍니다. */
-export function buildRoofs(map: GameMap, rng: () => number): THREE.Group { const p = new Pieces(); for (const b of map.buildings) roof(p, b, rng); return p.mesh(); }
+export function buildRoofs(map: GameMap, rng: () => number, detailed = true): THREE.Group { const p = new Pieces(); for (const b of map.buildings) roof(p, b, rng, detailed); return p.mesh(); }
+
+/** Trim existing solid wall segments only: door gaps and collision shapes remain untouched. */
+export function buildFacadeTrim(map: GameMap): THREE.Group {
+  const p = new Pieces(), base = new THREE.Matrix4();
+  for (const b of map.boxes) {
+    if (b.kind !== 'wall') continue;
+    const w = b.x1 - b.x0, d = b.z1 - b.z0, h = b.y1 - b.y0;
+    if (h < 0.5 || Math.max(w, d) < 0.7) continue;
+    const x = (b.x0 + b.x1) / 2, z = (b.z0 + b.z1) / 2;
+    const horizontal = w > d, wide = horizontal ? w : w + 0.08, deep = horizontal ? d + 0.08 : d;
+    // Thin recessed-looking plinth, lintel and cap stay aligned to the actual wall span.
+    if (b.y0 < 0.1) p.box(wide, 0.12, deep, 0x656765, base, x, 0.14, z);
+    p.box(wide, 0.09, deep, 0x9b9e99, base, x, b.y1 - 0.07, z);
+    if (b.y0 >= 2) p.box(wide, 0.12, deep, 0x737b7d, base, x, b.y0 + 0.07, z);
+  }
+  return p.mesh(false);
+}
 /** 지도의 소품(차량·컨테이너·울타리 등)을 합쳐서 돌려줍니다. */
 export function buildProps(map: GameMap, skipBoxes?: Set<number>): THREE.Group { const p = new Pieces(); for (const pr of map.props) if (pr.kind !== 'bush' && !(skipBoxes && pr.box !== undefined && skipBoxes.has(pr.box))) prop(p, pr); return p.mesh(); }
 
@@ -101,6 +148,17 @@ export function makeDropCrate(): THREE.Group {
   const g = new THREE.Group(), red = new THREE.MeshLambertMaterial({ color: 0xc03a2b, emissive: 0x3a0a06 }), band = new THREE.MeshLambertMaterial({ color: 0xf0e8d2 });
   const crate = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.2, 1.7), red); crate.position.y = 0.6; crate.castShadow = true; g.add(crate);
   for (const [sx, sy, sz, x, y, z] of [[1.74, 0.18, 1.74, 0, 0.6, 0], [0.18, 1.24, 1.74, 0, 0.6, 0], [1.74, 1.24, 0.18, 0, 0.6, 0]] as const) { const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), band); m.position.set(x, y, z); g.add(m); }
+  const detail = new Pieces(), base = new THREE.Matrix4();
+  for (const x of [-0.74, 0.74]) for (const z of [-0.74, 0.74]) detail.box(0.15, 1.24, 0.15, 0x343b40, base, x, 0.63, z);
+  for (const z of [-0.62, 0.62]) detail.box(1.76, 0.10, 0.12, 0x454b4c, base, 0, 1.18, z);
+  for (const x of [-0.48, 0.48]) {
+    detail.box(0.23, 0.21, 0.07, 0x454b4c, base, x, 1.04, 0.89);
+    detail.box(0.36, 0.08, 0.08, 0xb9b4a4, base, x, 0.54, 0.89);
+  }
+  detail.box(1.12, 0.045, 1.12, 0x343b40, base, 0, 1.225, 0);
+  detail.box(0.74, 0.025, 0.17, 0xe5dbbd, base, 0, 1.26, 0);
+  detail.box(0.17, 0.025, 0.74, 0xe5dbbd, base, 0, 1.26, 0);
+  g.add(detail.mesh());
   const chute = new THREE.Group(); chute.name = 'chute';
   const cm = [new THREE.MeshLambertMaterial({ color: 0xe6e2d6, side: THREE.DoubleSide }), new THREE.MeshLambertMaterial({ color: 0xc03a2b, side: THREE.DoubleSide })];
   for (let i = 0; i < 8; i++) { const seg = new THREE.Mesh(new THREE.SphereGeometry(3.6, 4, 6, (i / 8) * Math.PI * 2, Math.PI / 4, 0, Math.PI / 2), cm[i % 2]); seg.position.y = 6.6; chute.add(seg); }
@@ -116,6 +174,20 @@ export function makePlane(): THREE.Group {
   const tail = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.3, 11), accent); tail.position.x = -10; g.add(tail);
   const fin = new THREE.Mesh(new THREE.BoxGeometry(4, 4.5, 0.3), body); fin.position.set(-10, 2.4, 0); g.add(fin);
   for (const z of [-8, 8]) { const eng = new THREE.Mesh(CYL(0.8, 4.2, 10), body); eng.rotation.z = Math.PI / 2; eng.position.set(3, -0.6, z); g.add(eng); }
+  const p = new Pieces(), base = new THREE.Matrix4();
+  for (const side of [-1, 1]) {
+    // Cockpit glazing, wingtip navigation markings, engine intake rims and cargo framing.
+    p.box(1.45, 0.48, 0.11, 0x263a49, base, 10.5, 0.87, side * 1.21);
+    p.box(0.72, 0.45, 0.10, 0x354c5a, base, 8.95, 0.91, side * 1.21);
+    p.box(0.08, 0.53, 0.12, 0x4c545d, base, 10.0, 0.87, side * 1.23);
+    p.box(3.9, 0.09, 1.5, side < 0 ? 0xa84337 : 0x43765d, base, 1, 0.23, side * 15.9);
+    p.box(3.4, 0.28, 0.6, 0x3d444a, base, -0.1, -0.55, side * 8);
+    p.add(CYL(0.63, 0.08, 12), 0x222c32, xf(5.13, -0.6, side * 8, 0, 0, Math.PI / 2));
+    p.add(new THREE.TorusGeometry(0.69, 0.07, 6, 12), 0x9ba4a8, xf(5.17, -0.6, side * 8, 0, Math.PI / 2));
+    for (let i = 0; i < 4; i++) p.box(0.33, 0.25, 0.075, 0x263a49, base, 5 - i * 1.2, 0.52, side * 1.43);
+  }
+  p.box(0.1, 1.1, 1.5, 0x3c4449, base, -11.05, -0.08, 0);
+  g.add(p.mesh(false));
   g.scale.setScalar(1.15); return g;
 }
 
@@ -127,12 +199,39 @@ export function partMesh(part: PartId, muzzle: number): THREE.Object3D {
   const box = (sx: number, sy: number, sz: number, mat: THREE.Material, x: number, y: number, z = 0): THREE.Mesh => { const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat); m.position.set(x, y, z); return m; };
   switch (part) {
     case 'suppressor': g.add(cyl(0.05, 0.3, dark, muzzle + 0.1, 0.05)); g.add(cyl(0.056, 0.03, mid, muzzle - 0.04, 0.05)); break;
-    case 'comp': g.add(cyl(0.04, 0.1, mid, muzzle + 0.02, 0.05)); for (const dx of [-0.02, 0.03]) g.add(box(0.012, 0.1, 0.1, dark, muzzle + dx, 0.05)); break;
-    case 'reddot': g.add(box(0.12, 0.02, 0.07, dark, muzzle * 0.42, 0.13)); g.add(box(0.1, 0.08, 0.012, glass, muzzle * 0.42, 0.18, 0.03)); g.add(box(0.1, 0.08, 0.012, glass, muzzle * 0.42, 0.18, -0.03)); g.add(box(0.012, 0.012, 0.012, dot, muzzle * 0.42, 0.18)); break;
+    case 'comp': case 'flash': g.add(cyl(0.04, 0.1, mid, muzzle + 0.02, 0.05)); for (const dx of [-0.02, 0.03]) g.add(box(0.012, 0.1, 0.1, dark, muzzle + dx, 0.05)); break;
+    case 'reddot': case 'holo': g.add(box(0.12, 0.02, 0.07, dark, muzzle * 0.42, 0.13)); g.add(box(0.1, 0.08, 0.012, glass, muzzle * 0.42, 0.18, 0.03)); g.add(box(0.1, 0.08, 0.012, glass, muzzle * 0.42, 0.18, -0.03)); g.add(box(0.012, 0.012, 0.012, dot, muzzle * 0.42, 0.18)); break;
     case 'scope2': g.add(cyl(0.04, 0.26, dark, muzzle * 0.42, 0.17)); g.add(cyl(0.05, 0.06, mid, muzzle * 0.42 + 0.14, 0.17)); g.add(cyl(0.05, 0.06, mid, muzzle * 0.42 - 0.14, 0.17)); g.add(box(0.05, 0.05, 0.05, mid, muzzle * 0.42, 0.12)); break;
-    case 'scope4': g.add(cyl(0.05, 0.4, dark, muzzle * 0.42, 0.18)); g.add(cyl(0.065, 0.09, mid, muzzle * 0.42 + 0.22, 0.18)); g.add(cyl(0.058, 0.07, mid, muzzle * 0.42 - 0.2, 0.18)); g.add(cyl(0.052, 0.005, glass, muzzle * 0.42 + 0.27, 0.18)); g.add(box(0.05, 0.06, 0.05, mid, muzzle * 0.42 + 0.08, 0.12)); g.add(box(0.05, 0.06, 0.05, mid, muzzle * 0.42 - 0.08, 0.12)); break;
-    case 'grip': { const v = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.03, 0.13, 8), dark); v.position.set(muzzle * 0.66, -0.07, 0); g.add(v); g.add(box(0.07, 0.02, 0.05, mid, muzzle * 0.66, -0.005)); break; }
-    case 'extmag': { const m = box(0.075, 0.26, 0.06, new THREE.MeshLambertMaterial({ color: 0x4a5236 }), muzzle * 0.36, -0.2); m.rotation.z = 0.12; g.add(m); g.add(box(0.08, 0.02, 0.065, dark, muzzle * 0.36 - 0.03, -0.335)); break; }
+    case 'scope4': case 'scope8': g.add(cyl(0.05, 0.4, dark, muzzle * 0.42, 0.18)); g.add(cyl(0.065, 0.09, mid, muzzle * 0.42 + 0.22, 0.18)); g.add(cyl(0.058, 0.07, mid, muzzle * 0.42 - 0.2, 0.18)); g.add(cyl(0.052, 0.005, glass, muzzle * 0.42 + 0.27, 0.18)); g.add(box(0.05, 0.06, 0.05, mid, muzzle * 0.42 + 0.08, 0.12)); g.add(box(0.05, 0.06, 0.05, mid, muzzle * 0.42 - 0.08, 0.12)); break;
+    case 'angled': case 'grip': { const v = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.03, 0.13, 8), dark); v.position.set(muzzle * 0.66, -0.07, 0); g.add(v); g.add(box(0.07, 0.02, 0.05, mid, muzzle * 0.66, -0.005)); break; }
+    case 'extmag': case 'quickmag': case 'extquick': { const m = box(0.075, 0.26, 0.06, new THREE.MeshLambertMaterial({ color: 0x4a5236 }), muzzle * 0.36, -0.2); m.rotation.z = 0.12; g.add(m); g.add(box(0.08, 0.02, 0.065, dark, muzzle * 0.36 - 0.03, -0.335)); break; }
+    case 'tactical': case 'cheek': {
+      g.add(box(0.28, 0.10, 0.095, mid, -0.23, 0.04));
+      g.add(box(0.07, 0.22, 0.10, dark, -0.38, -0.02));
+      g.add(box(0.18, 0.06, 0.095, dark, -0.22, 0.12));
+      break;
+    }
   }
   return g;
+}
+
+/** Lightweight visual fallback when the optional GLB models fail to load. */
+export function makeFallbackGun(id: WeaponId): { group: THREE.Group; tip: THREE.Vector3 } {
+  const p = new Pieces(), base = new THREE.Matrix4();
+  const compact = id === 'pistol', long = id === 'sniper', tube = id === 'shotgun';
+  const length = compact ? 0.38 : long ? 1.16 : tube ? 0.94 : id === 'smg' ? 0.64 : 0.82;
+  const body = 0x3a4248, dark = 0x20282d, steel = 0x6d7578;
+  p.box(compact ? 0.30 : 0.45, 0.13, 0.14, body, base, 0.09, 0.05, 0);
+  p.box(0.10, 0.23, 0.10, dark, base, 0, -0.10, 0);
+  p.box(compact ? 0.28 : 0.42, 0.045, 0.11, steel, base, 0.09, 0.135, 0);
+  p.add(CYL(tube ? 0.048 : 0.027, length * 0.6, 10), dark, xf(length * 0.66, 0.06, 0, 0, 0, Math.PI / 2));
+  if (!compact) {
+    p.box(length * 0.38, 0.12, 0.15, body, base, length * 0.49, 0.03, 0);
+    p.box(0.24, 0.12, 0.11, dark, base, -0.24, 0.03, 0);
+    p.box(0.07, 0.21, 0.13, body, base, -0.38, -0.01, 0);
+    p.box(0.12, 0.23, 0.11, steel, base, 0.19, -0.12, 0);
+    if (long) p.add(CYL(0.045, 0.30, 10), dark, xf(0.13, 0.21, 0, 0, 0, Math.PI / 2));
+  }
+  p.box(0.035, 0.055, 0.055, steel, base, length * 0.82, 0.15, 0);
+  return { group: p.mesh(false), tip: new THREE.Vector3(length * 0.96, 0.06, 0) };
 }

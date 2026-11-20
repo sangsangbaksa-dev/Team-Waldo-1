@@ -171,7 +171,7 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
       if (b.planT <= 0) {
         b.planT = 0.5 + rng() * 0.2;
         if (walkable(nav, p.x, p.z, b.goalX, b.goalZ)) b.path = null;
-        else if (!b.path || Math.hypot(b.pathGx - b.goalX, b.pathGz - b.goalZ) > 3 || b.stuck >= 2) { b.path = findPath(nav, p.x, p.z, b.goalX, b.goalZ) ?? []; b.pathIdx = 0; b.pathGx = b.goalX; b.pathGz = b.goalZ; }
+        else if (!b.path?.length || Math.hypot(b.pathGx - b.goalX, b.pathGz - b.goalZ) > 3 || b.stuck >= 2 || !walkable(nav, p.x, p.z, b.path[b.pathIdx * 2] ?? b.goalX, b.path[b.pathIdx * 2 + 1] ?? b.goalZ)) { b.path = findPath(nav, p.x, p.z, b.goalX, b.goalZ); b.pathIdx = 0; b.pathGx = b.goalX; b.pathGz = b.goalZ; if (!b.path?.length) b.planT = 1.5 + rng() * 0.5; }
       }
       if (b.path && b.path.length) {
         while (b.pathIdx * 2 < b.path.length && Math.hypot(b.path[b.pathIdx * 2] - p.x, b.path[b.pathIdx * 2 + 1] - p.z) < 1.1) b.pathIdx++;
@@ -207,14 +207,14 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
 }
 
 /** 비행기 안·낙하 중인 봇: 목표 지점에 가까워지면 뛰고, 목표를 향해 활강하다가 낙하산을 펴고 내립니다. */
-export function thinkAir(m: Match, p: Player): void {
+export function thinkAir(m: Match, p: Player, dt = 1 / 60): void {
   const b = p.brain!, inp = p.input, dx = b.dropX - p.x, dz = b.dropZ - p.z, d = Math.hypot(dx, dz);
   inp.jump = false; inp.sprint = false; inp.mx = 0; inp.mz = 0; inp.fire = false;
   if (p.air === 1) {
     // 가장 가까이 지나가는 순간(거리가 다시 늘기 시작할 때)에는 반드시 뜁니다
     if (d < b.jumpDist || d > b.lastD + 0.5) inp.jump = true; b.lastD = d; p.yaw = Math.atan2(m.plane!.dz, m.plane!.dx); inp.yaw = p.yaw; return;
   }
-  const want = Math.atan2(dz, dx), step = 2.2 * (1 / 60); p.yaw += clamp(angDiff(want, p.yaw), -step * 3, step * 3); inp.yaw = p.yaw; inp.pitch = p.pitch = 0;
+  const want = Math.atan2(dz, dx), step = 2.2 * dt; p.yaw += clamp(angDiff(want, p.yaw), -step * 3, step * 3); inp.yaw = p.yaw; inp.pitch = p.pitch = 0;
   if (p.air === 2) { inp.mz = 1; if (p.alt < b.openAlt) inp.jump = true; return; }
   if (d > 70) inp.mz = 1; else if (d > 12) inp.mz = Math.min(1, d / 60 + 0.25); // 가까워지면 속도를 줄여 목표 위에서 내립니다
 }

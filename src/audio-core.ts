@@ -20,6 +20,7 @@ export class AudioEngine {
   enabled = true;
   voices = 0;
   private wanted = false;
+  private disposed = false;
   private unsub: Array<() => void> = [];
   private live = new Set<AudioScheduledSourceNode>();
 
@@ -36,23 +37,32 @@ export class AudioEngine {
     }
     const vis = (): void => {
       if (!this.ctx) return;
-      if (document.hidden) void this.ctx.suspend();
-      else if (this.wanted) void this.ctx.resume();
+      if (document.hidden && this.ctx.state === 'running') this.setContextRunning(false);
+      else if (!document.hidden && this.wanted && this.ctx.state !== 'running') this.setContextRunning(true);
     };
     document.addEventListener('visibilitychange', vis);
     this.unsub.push(() => document.removeEventListener('visibilitychange', vis));
   }
 
+  private setContextRunning(running: boolean): void {
+    const ctx = this.ctx;
+    if (!ctx || ctx.state === 'closed') return;
+    // Some browsers reject resume/suspend during a tab or device transition.
+    void (running ? ctx.resume() : ctx.suspend()).catch(() => undefined);
+  }
+
   unlock(): AudioContext | null {
+    if (this.disposed) return null;
     this.wanted = true;
     if (this.ctx) {
-      if (typeof document === 'undefined' || !document.hidden) void this.ctx.resume();
+      if (this.ctx.state !== 'running' && (typeof document === 'undefined' || !document.hidden)) this.setContextRunning(true);
       return this.ctx;
     }
     const AC = audioCtor();
     if (!AC) return null;
+    let pending: AudioContext | null = null;
     try {
-      const ctx = new AC();
+      const ctx = pending = new AC();
       const bus = ctx.createGain();
       const compressor = ctx.createDynamicsCompressor();
       compressor.threshold.value = -12;
@@ -73,11 +83,14 @@ export class AudioEngine {
       this.compressor = compressor;
       this.master = master;
       this.noise = noise;
-      if (typeof document !== 'undefined' && document.hidden) void ctx.suspend();
-      else void ctx.resume();
+      if (typeof document !== 'undefined' && document.hidden) this.setContextRunning(false);
+      else if (ctx.state !== 'running') this.setContextRunning(true);
       return ctx;
     } catch {
+      if (pending && pending.state !== 'closed') void pending.close().catch(() => undefined);
       this.ctx = null;
+      this.master = this.bus = null;
+      this.compressor = null; this.noise = null;
       return null;
     }
   }
@@ -115,6 +128,8 @@ export class AudioEngine {
   }
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
     this.stopLive();
     for (const off of this.unsub) off();
     this.unsub = [];
@@ -125,13 +140,13 @@ export class AudioEngine {
     this.compressor = null;
     this.noise = null;
     this.wanted = false;
-    if (ctx && ctx.state !== 'closed') void ctx.close();
+    if (ctx && ctx.state !== 'closed') void ctx.close().catch(() => undefined);
   }
 }
 
 export function tone(eng: AudioEngine, freq: number, dur: number, vol: number, type: OscillatorType = 'sine', slide = 0, delay = 0): void {
   const c = eng.ctx, dest = eng.bus;
-  if (!c || !dest || !eng.enabled || vol < 0.01 || !eng.admit()) return;
+  if (!c || !dest || !eng.enabled || vol < 0.01 || dur <= 0 || delay < 0 || ![freq, dur, vol, slide, delay].every(Number.isFinite) || !eng.admit()) return;
   const t = c.currentTime + delay, o = c.createOscillator(), g = c.createGain();
   o.type = type;
   o.frequency.setValueAtTime(Math.max(20, freq), t);
@@ -148,7 +163,7 @@ export function tone(eng: AudioEngine, freq: number, dur: number, vol: number, t
 
 export function burst(eng: AudioEngine, dur: number, vol: number, freq: number, q = 1, type: BiquadFilterType = 'bandpass'): void {
   const c = eng.ctx, dest = eng.bus;
-  if (!c || !dest || !eng.noise || !eng.enabled || vol < 0.01 || !eng.admit()) return;
+  if (!c || !dest || !eng.noise || !eng.enabled || vol < 0.01 || dur <= 0 || ![dur, vol, freq, q].every(Number.isFinite) || !eng.admit()) return;
   const t = c.currentTime, s = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
   s.buffer = eng.noise; s.loop = true;
   f.type = type; f.frequency.value = freq; f.Q.value = q;

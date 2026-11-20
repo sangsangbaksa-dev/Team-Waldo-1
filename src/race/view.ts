@@ -60,16 +60,22 @@ class Particles {
     this.points = new THREE.Points(g, new THREE.PointsMaterial({ size, map: dotTex(), vertexColors: true, transparent: true, opacity, blending, depthWrite: false, sizeAttenuation: true })); this.points.frustumCulled = false;
   }
   emit(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, r: number, g: number, b: number): void {
-    const i = this.head; this.head = (this.head + 1) % this.cap; this.pos.set([x, y, z], i * 3); this.vel.set([vx, vy, vz], i * 3); this.life[i] = life; this.max[i] = life; this.rgb.set([r, g, b], i * 3);
+    const i = this.head, j = i * 3; this.head = (i + 1) % this.cap;
+    this.pos[j] = x; this.pos[j + 1] = y; this.pos[j + 2] = z;
+    this.vel[j] = vx; this.vel[j + 1] = vy; this.vel[j + 2] = vz;
+    this.life[i] = life; this.max[i] = life;
+    this.rgb[j] = r; this.rgb[j + 1] = g; this.rgb[j + 2] = b;
   }
   update(dt: number, gravity: number): void {
+    let dirty = false;
     for (let i = 0; i < this.cap; i++) {
-      if (this.life[i] <= 0) { this.col[i * 3] = this.col[i * 3 + 1] = this.col[i * 3 + 2] = 0; continue; }
+      if (this.life[i] <= 0) continue;
+      dirty = true;
       this.life[i] -= dt; const f = Math.max(0, this.life[i] / this.max[i]);
       this.vel[i * 3 + 1] -= gravity * dt; this.pos[i * 3] += this.vel[i * 3] * dt; this.pos[i * 3 + 1] += this.vel[i * 3 + 1] * dt; this.pos[i * 3 + 2] += this.vel[i * 3 + 2] * dt;
       this.col[i * 3] = this.rgb[i * 3] * f; this.col[i * 3 + 1] = this.rgb[i * 3 + 1] * f; this.col[i * 3 + 2] = this.rgb[i * 3 + 2] * f;
     }
-    (this.points.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true; (this.points.geometry.attributes.color as THREE.BufferAttribute).needsUpdate = true;
+    if (dirty) { (this.points.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true; (this.points.geometry.attributes.color as THREE.BufferAttribute).needsUpdate = true; }
   }
 }
 
@@ -551,7 +557,8 @@ export class RaceView {
         x = cam.x + dx * fwd + Math.cos(a) * rr * -dz + Math.sin(a) * rr * 0; z = cam.z + dz * fwd + Math.cos(a) * rr * dx; y = cam.y + Math.sin(a) * rr * 0.55 - 1.2;
         if (y < 0.4) y = 0.4 + Math.random(); this.streakSeed[i * 3] = x; this.streakSeed[i * 3 + 1] = y; this.streakSeed[i * 3 + 2] = z;
       }
-      this.streakPos.set([x, y, z, x + dx * len, y, z + dz * len], i * 6);
+      const j = i * 6, pos = this.streakPos;
+      pos[j] = x; pos[j + 1] = y; pos[j + 2] = z; pos[j + 3] = x + dx * len; pos[j + 4] = y; pos[j + 5] = z + dz * len;
     }
     (this.streak.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
   }
@@ -562,6 +569,8 @@ export class RaceView {
   dispose(): void {
     const seen = new Set<object>();
     const once = (d: { dispose(): void } | null | undefined): void => { if (!d || seen.has(d)) return; seen.add(d); d.dispose(); };
+    // Dry tracks never attach the rain emitter to the scene, but still own it.
+    once(this.rainFx.points.geometry); once(this.rainFx.points.material as THREE.Material);
     this.scene.traverse(o => {
       const m = o as THREE.Mesh;
       if (m.geometry) once(m.geometry);

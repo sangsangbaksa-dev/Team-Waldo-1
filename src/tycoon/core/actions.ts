@@ -182,8 +182,8 @@ function deliverAction(ctx: ActionCtx): ActionSpec {
 function marketActions(ctx: ActionCtx): ActionSpec[] {
   const { g } = ctx;
   const kinds = [...new Set(retailShops(g).map(s => s.shop.kind))];
-  if (!kinds.length) return [spec({ id: 'none', label: '재료 사기', run: () => '', ...off('먼저 가게를 여세요') }, ctx)];
-  return kinds.map(kind => {
+  const out: ActionSpec[] = kinds.length ? [] : [spec({ id: 'none', label: '재료 사기', run: () => '', ...off('먼저 가게를 여세요') }, ctx)];
+  for (const kind of kinds) {
     const def = SHOP_KINDS[kind];
     const price = unitCost(g, kind);
     const held = g.cargo?.kind === kind ? g.cargo.units : 0;
@@ -191,8 +191,8 @@ function marketActions(ctx: ActionCtx): ActionSpec[] {
     const room = CARGO_CAP - held;
     const units = Math.max(0, Math.min(room, Math.floor(g.cash / price)));
     const reason = other ?? (room <= 0 ? '더 들 수 없습니다' : units <= 0 ? `돈이 모자랍니다 (개당 ${fmt(price)})` : undefined);
-    return spec({
-      id: `buy_${kind}`, label: `${def.name} 재료 ${units || room}개`, desc: `개당 ${fmt(price)}. 매니저 자동 발주보다 싸다. 직접 가게까지 들고 가야 한다`, cost: Math.ceil(units * price), durationSec: 1.5, lockMovement: true,
+    out.push(spec({
+      id: `buy_${kind}`, label: `${def.name} 재료 ${units || room}개`, desc: `개당 ${fmt(price)}. 매니저 자동 발주보다 싸다. 직접 가게까지 들고 가야 한다`, cost: units * price, durationSec: 1.5, lockMovement: true,
       ...(reason ? off(reason) : {}),
       run: () => {
         const n = Math.max(0, Math.min(CARGO_CAP - (g.cargo?.kind === kind ? g.cargo.units : 0), Math.floor(g.cash / price)));
@@ -201,8 +201,14 @@ function marketActions(ctx: ActionCtx): ActionSpec[] {
         g.cargo = { kind, units: (g.cargo?.kind === kind ? g.cargo.units : 0) + n };
         return `${def.name} 재료 ${n}개를 샀습니다 (${fmt(cost)})`;
       },
-    }, ctx);
-  });
+    }, ctx));
+  }
+  // 해당 업종 가게를 모두 팔았어도 다른 재료를 살 수 있도록 한다.
+  if (g.cargo) {
+    const cargo = g.cargo;
+    out.push(spec({ id: 'discard_cargo', label: `${SHOP_KINDS[cargo.kind].name} 재료 ${cargo.units}개 처분`, desc: '환불 없이 짐을 비웁니다. 다른 업종의 재료를 구입할 수 있습니다.', durationSec: 1.5, lockMovement: true, run: () => { g.cargo = null; return '남은 재료를 처분했습니다'; } }, ctx));
+  }
+  return out;
 }
 
 // ── 은행 ─────────────────────────────────────────────

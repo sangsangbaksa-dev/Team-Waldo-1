@@ -5,7 +5,9 @@ import { OUTLAW_KEY } from '../../src/outlaw/records';
 import type { SaveData } from '../../src/outlaw/sim';
 
 const ViewStub = vi.hoisted(() => class {
-  setPixelRatio(): void {}
+  private pixelRatio = 1;
+  setPixelRatio(value: number): void { this.pixelRatio = value; }
+  getPixelRatio(): number { return this.pixelRatio; }
   setSize(): void {}
   dispose(): void {}
   forceContextLoss(): void {}

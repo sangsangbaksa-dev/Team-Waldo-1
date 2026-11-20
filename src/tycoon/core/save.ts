@@ -1,5 +1,5 @@
 // 저장/불러오기. 저장 데이터는 신뢰하지 않고 기본값 위에 검증해서 얹는다.
-import { DISTRICTS, ENERGY_MAX, EVENTS, REGIONS, RIVALS, SHOP_KINDS, STAGES } from './data';
+import { DISTRICTS, ENERGY_MAX, EVENTS, LEVEL_MULT, REGIONS, RIVALS, SHOP_KINDS, STAGES } from './data';
 import { LOT_IDS, SPOT_BY_ID, newGame, type GameData, type LotData, type ShopData, type StaffData } from './model';
 import type { ShopKind, Stage, TycoonCore, TycoonSave } from './types';
 
@@ -8,13 +8,14 @@ export const TYCOON_SAVE_KEY = 'waldo.tycoon.v1';
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => !!v && typeof v === 'object' && !Array.isArray(v);
 const num = (v: unknown, d: number, lo = -Infinity, hi = Infinity) => typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d;
+const str = (v: unknown, d: string): string => typeof v === 'string' ? v : typeof v === 'number' && Number.isFinite(v) ? String(v) : d;
 const bool = (v: unknown, d: boolean) => typeof v === 'boolean' ? v : d;
 const isKind = (v: unknown): v is ShopKind => typeof v === 'string' && Object.hasOwn(SHOP_KINDS, v);
 const isStage = (v: unknown): v is Stage => typeof v === 'string' && (STAGES as readonly string[]).includes(v);
 
 function staff(v: unknown): StaffData | null {
   if (!isObj(v) || (v.role !== 'clerk' && v.role !== 'manager')) return null;
-  return { id: String(v.id ?? 'st0'), name: String(v.name ?? '직원').slice(0, 12), role: v.role, skill: num(v.skill, 1, 0.7, 1.3) };
+  return { id: str(v.id, 'st0'), name: str(v.name, '직원').slice(0, 12), role: v.role, skill: num(v.skill, 1, 0.7, 1.3) };
 }
 
 function shop(v: unknown): ShopData | null {
@@ -26,8 +27,8 @@ function shop(v: unknown): ShopData | null {
   const clerks = list.filter(s => s.role === 'clerk').slice(0, level * 2);
   const manager = list.filter(s => s.role === 'manager').slice(0, 1);
   return {
-    kind: v.kind, name: String(v.name ?? def.name).slice(0, 30), level,
-    priceMult: num(v.priceMult, 1, 0.5, 2), stock: num(v.stock, 0, 0, def.stock * 3), rating: num(v.rating, 50, 0, 100),
+    kind: v.kind, name: str(v.name, def.name).slice(0, 30), level,
+    priceMult: num(v.priceMult, 1, 0.5, 2), stock: num(v.stock, 0, 0, Math.round(def.stock * LEVEL_MULT[level])), rating: num(v.rating, 50, 0, 100),
     staff: v.kind === 'factory' ? [] : [...clerks, ...manager], invested: num(v.invested, def.buildCost, 0),
     today: { revenue: num(t.revenue, 0, 0), customers: num(t.customers, 0, 0), lost: num(t.lost, 0, 0), cost: num(t.cost, 0, 0) },
     lastProfit: num(v.lastProfit, 0), busy: num(v.busy, 0, 0, 1),
@@ -69,13 +70,13 @@ export function restoreGame(raw: unknown): GameData | null {
   if (isObj(raw.rivals)) for (const r of RIVALS) g.rivals[r.id] = { acquired: isObj(raw.rivals[r.id]) && raw.rivals[r.id] !== null && bool((raw.rivals[r.id] as Obj).acquired, false) };
   for (const r of RIVALS) if (g.rivals[r.id].acquired) for (const id of LOT_IDS) if (g.lots[id].rivalId === r.id) g.lots[id] = { owner: 'none' };
   if (isObj(raw.regions)) for (const r of REGIONS) g.regions[r.id] = num(raw.regions[r.id], 0, 0, 1);
-  g.events = Array.isArray(raw.events) ? raw.events.filter(isObj).map(e => ({ id: String(e.id), daysLeft: Math.round(num(e.daysLeft, 0, 0, 5)), district: typeof e.district === 'string' && Object.hasOwn(DISTRICTS, e.district) ? e.district as GameData['events'][number]['district'] : undefined })).filter(e => e.daysLeft > 0 && EVENTS.some(def => def.id === e.id)) : [];
+  g.events = Array.isArray(raw.events) ? raw.events.filter(isObj).map(e => ({ id: str(e.id, ''), daysLeft: Math.round(num(e.daysLeft, 0, 0, 5)), district: typeof e.district === 'string' && Object.hasOwn(DISTRICTS, e.district) ? e.district as GameData['events'][number]['district'] : undefined })).filter(e => e.daysLeft > 0 && EVENTS.some(def => def.id === e.id)) : [];
   g.incorporated = bool(raw.incorporated, false);
   g.listed = bool(raw.listed, false) && g.incorporated;
   g.won = bool(raw.won, false);
   const t = raw.task;
-  g.task = isObj(t) && SPOT_BY_ID.has(String(t.target)) && SPOT_BY_ID.has(String(t.from))
-    ? { id: String(t.id), jobId: String(t.jobId), from: String(t.from), target: String(t.target), reward: num(t.reward, 0, 0, 1000), deadline: num(t.deadline, 0) }
+  g.task = isObj(t) && SPOT_BY_ID.has(str(t.target, '')) && SPOT_BY_ID.has(str(t.from, ''))
+    ? { id: str(t.id, ''), jobId: str(t.jobId, ''), from: str(t.from, ''), target: str(t.target, ''), reward: num(t.reward, 0, 0, 1000), deadline: num(t.deadline, 0) }
     : null;
   if (isObj(raw.lastReport)) {
     const r = raw.lastReport;

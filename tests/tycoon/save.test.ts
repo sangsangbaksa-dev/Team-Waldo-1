@@ -91,3 +91,17 @@ describe('타이쿤 저장', () => {
     expect(ids).not.toMatch(/upgrade|perk|skill|업그레이드|능력치/i);
   });
 });
+
+it('restores stock within the actual level capacity and handles malformed string fields', () => {
+  const raw = playedCore().serialize() as Record<string, unknown>;
+  const lots = raw.lots as Record<string, Record<string, unknown>>;
+  const shop = lots.lot_m1.shop as Record<string, unknown>;
+  shop.level = 1; shop.stock = 9999; shop.name = { toString: null };
+  raw.events = [{ id: { toString: null }, daysLeft: 2 }];
+  raw.task = { from: { toString: null }, target: 'bench' };
+  const again = createCore({ save: raw });
+  expect(again.data.lots.lot_m1.shop!.stock).toBe(80);
+  expect(again.data.lots.lot_m1.shop!.name).toBe('포장마차');
+  expect(again.data.events).toHaveLength(0);
+  expect(again.data.task).toBeNull();
+});

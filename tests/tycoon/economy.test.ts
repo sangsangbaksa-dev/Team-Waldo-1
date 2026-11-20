@@ -214,3 +214,29 @@ describe('타이쿤 밸런스(봇)', () => {
     for (let i = 1; i < order.length; i++) expect(r.reached[order[i]]!).toBeGreaterThanOrEqual(r.reached[order[i - 1]]!);
   }, 60000);
 });
+
+describe('도매시장 재료 관리', () => {
+  it('마지막 가게를 팔아도 남은 재료를 처분하고 다른 업종을 시작할 수 있다', () => {
+    const core = shopCore(20000);
+    act(core, 'lot_s1', 'build_stall');
+    act(core, 'wholesale', 'buy_stall');
+    act(core, 'lot_s1', 'sell');
+    expect(core.state.cargo?.kind).toBe('stall');
+    expect(core.actionsAt('wholesale').find(a => a.id === 'discard_cargo')?.enabled).toBe(true);
+    act(core, 'wholesale', 'discard_cargo');
+    expect(core.state.cargo).toBeNull();
+    act(core, 'lot_m3', 'build_cafe');
+    act(core, 'wholesale', 'buy_cafe');
+    expect(core.state.cargo?.kind).toBe('cafe');
+  });
+  it('정확히 한 개를 살 수 있는 소수점 잔고를 올림 때문에 거부하지 않는다', () => {
+    const core = shopCore(20000);
+    core.data.stage = 'smallshop';
+    act(core, 'lot_m3', 'build_cafe');
+    core.data.cash = 1.5;
+    core.data.events = [];
+    const action = core.actionsAt('wholesale').find(a => a.id === 'buy_cafe')!;
+    expect(action.enabled).toBe(true);
+    expect(action.cost).toBe(1.5);
+  });
+});

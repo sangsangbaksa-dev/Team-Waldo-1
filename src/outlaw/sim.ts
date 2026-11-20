@@ -230,6 +230,7 @@ export class Sim {
     }
   }
   explode(x: number, y: number, z: number, r: number, dmg: number, by: number): void {
+    if (![x, y, z, r, dmg].every(Number.isFinite) || r <= 0 || dmg <= 0) return;
     this.emit({ t: 'explosion', x, y, z, r });
     for (const q of this.peds) { if (!q.alive) continue; const d = Math.hypot(q.x - x, q.y + 1 - y, q.z - z); if (d > r) continue; const f = 1 - d / r; this.damagePed(q, dmg * f, by, 'explosion'); const dd = Math.max(0.5, Math.hypot(q.x - x, q.z - z)); q.vx += (q.x - x) / dd * 9 * f; q.vz += (q.z - z) / dd * 9 * f; q.vy = Math.max(q.vy, 4 * f); q.grounded = false; if (q.id !== PLAYER_ID) { q.fear = 1; if (q.team === 'civ') { q.mode = 'flee'; q.timer = 8; } } }
     for (const v of this.vehicles.slice()) { const d = Math.hypot(v.x - x, v.y + 0.8 - y, v.z - z); if (d > r + 3) continue; const f = 1 - d / (r + 3); this.damageVehicle(v, dmg * f * 1.6, by); const dd = Math.max(0.5, Math.hypot(v.x - x, v.z - z)); v.vx += (v.x - x) / dd * 14 * f; v.vz += (v.z - z) / dd * 14 * f; v.crashT = 0.3; }
@@ -368,7 +369,17 @@ export class Sim {
       if (!p.alive || p.vehicle) continue; if (Math.abs(pk.x - p.x) > 1.8 || Math.abs(pk.z - p.z) > 1.8 || Math.abs(pk.y - p.y) > 2.2) continue;
       if (pk.kind === 'health' && p.hp >= p.maxHp) continue; if (pk.kind === 'armor' && p.armor >= 100) continue;
       if (pk.kind === 'cash') this.addCash(pk.amount); else if (pk.kind === 'health') p.hp = Math.min(p.maxHp, p.hp + pk.amount * this.perk.heal); else if (pk.kind === 'armor') p.armor = Math.min(100, p.armor + pk.amount);
-      else if (pk.kind === 'weapon' && pk.weapon) this.giveWeapon(p, pk.weapon); else if (pk.kind === 'ammo') { const g = this.curGun(p); if (!g || WEAPONS[g.id].reserve <= 0 || g.reserve >= WEAPONS[g.id].reserve) continue; g.reserve = Math.min(WEAPONS[g.id].reserve, g.reserve + pk.amount); }
+      else if (pk.kind === 'weapon' && pk.weapon) {
+        const def = WEAPONS[pk.weapon], held = p.guns[WEAPON_ORDER.indexOf(pk.weapon)];
+        if (held && held.reserve >= def.reserve) continue;
+        this.giveWeapon(p, pk.weapon);
+      } else if (pk.kind === 'ammo') {
+        const needsAmmo = (gun: Gun | null): gun is Gun => !!gun && gun.reserve < WEAPONS[gun.id].reserve;
+        const selected = this.curGun(p);
+        const g = needsAmmo(selected ?? null) ? selected! : p.guns.find(needsAmmo);
+        if (!g) continue;
+        g.reserve = Math.min(WEAPONS[g.id].reserve, g.reserve + pk.amount);
+      }
       else if (pk.kind === 'package') { this.collected.add(pk.collect); this.addCash(pk.amount); this.say(`숨겨진 꾸러미 ${this.collected.size}/30`, 3); }
       pk.taken = true; this.emit({ t: 'pickup', ped: p.id, kind: pk.kind, amount: pk.amount });
     }

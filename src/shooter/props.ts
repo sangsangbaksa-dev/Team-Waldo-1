@@ -60,7 +60,7 @@ function prism(span: number, ph: number, len: number, shed: boolean): THREE.Buff
   const s = new THREE.Shape(); s.moveTo(-span / 2, 0); s.lineTo(span / 2, 0); if (shed) { s.lineTo(span / 2, ph); s.lineTo(-span / 2, ph * 0.25); } else s.lineTo(0, ph); s.closePath();
   const g = new THREE.ExtrudeGeometry(s, { depth: len, bevelEnabled: false }); g.translate(0, 0, -len / 2); return g;
 }
-function roof(p: Pieces, bd: Building, rng: () => number): void {
+function roof(p: Pieces, bd: Building, rng: () => number, detailed: boolean): void {
   const { x, z, w, d, h } = bd, base = xf(x, 0, z), sizeLong = Math.max(w, d), alongX = w >= d;
   if (bd.roof === 'flat') {
     const tall = bd.type === 'tower', par = tall ? 1.1 : 0.5, col = bd.type === 'bunker' ? 0x6f7268 : 0x4d5258;
@@ -70,6 +70,23 @@ function roof(p: Pieces, bd: Building, rng: () => number): void {
       if (rng() < 0.85) p.box(1.4, 0.9, 1.1, 0xb6babd, base, (rng() - 0.5) * w * 0.5, h + 0.8, (rng() - 0.5) * d * 0.5);
       p.box(0.9, 0.7, 0.9, 0xa5a9ac, base, (rng() - 0.5) * w * 0.4, h + 0.7, (rng() - 0.5) * d * 0.4);
       if (bd.type === 'shop') p.box(Math.min(5, w * 0.5), 1.1, 0.2, [0xc9302c, 0x2f6aa0, 0x2f7a4a, 0xd0a02c][bd.tex % 4], base, 0, h + 0.9, d / 2 + 0.2);
+    }
+    if (detailed) {
+      // Raised parapet caps and weathered roof membranes reuse a small shared palette.
+      for (const sign of [-1, 1]) {
+        p.box(w + 0.95, 0.09, 0.40, 0xb0b1ab, base, 0, h + 0.39 + par, sign * (d + 0.7) / 2);
+        p.box(0.40, 0.09, d + 0.95, 0xb0b1ab, base, sign * (w + 0.7) / 2, h + 0.39 + par, 0);
+      }
+      if (w > 7 && d > 5) {
+        for (let i = -1; i <= 1; i++) p.box(w * 0.72, 0.025, 0.045, 0x353d42, base, 0, h + 0.37, i * d * 0.22);
+        if (bd.type !== 'clinic' && bd.type !== 'bunker') {
+          const ax = -w * 0.23, az = d * 0.23;
+          p.box(1.55, 0.12, 1.15, 0x62696c, base, ax, h + 0.42, az);
+          p.box(1.3, 0.58, 0.9, 0xb0b6b7, base, ax, h + 0.76, az);
+          p.box(1.03, 0.04, 0.65, 0x434b50, base, ax, h + 1.07, az);
+          for (let i = 0; i < 5; i++) p.box(0.045, 0.04, 0.63, 0x8b9096, base, ax - 0.4 + i * 0.2, h + 1.09, az);
+        }
+      }
     }
     if (tall) { p.add(CYL(0.08, 3, 6), 0x5a5a5e, base.clone().multiply(xf(w * 0.25, h + 2, d * 0.25))); p.box(1.6, 0.5, 0.5, 0x3b3f44, base, -w * 0.15, h + 0.65, 0); }
     if (bd.type === 'bunker') p.box(w - 1, 0.4, d - 1, 0x58705a, base, 0, h + 0.5, 0);
@@ -87,11 +104,41 @@ function roof(p: Pieces, bd: Building, rng: () => number): void {
       p.box(2.6, 4.6, 2.6, col2, base, tx, h + 2.3, tz); p.box(3.1, 0.3, 3.1, 0x4d5560, base, tx, h + 4.75, tz); p.box(0.18, 1.6, 0.18, 0xe8dcc6, base, tx, h + 5.7, tz); p.box(0.9, 0.18, 0.18, 0xe8dcc6, base, tx, h + 5.9, tz);
     }
     if (bd.type === 'diner') p.box(Math.min(4.5, w * 0.5), 0.9, 0.2, [0xc9302c, 0x2f6aa0][bd.tex % 2], base, 0, h + 1.2, d / 2 + 0.2);
-    if (bd.type === 'warehouse' || bd.type === 'hangar') for (let i = -2; i <= 2; i++) p.box(alongX ? 0.25 : span, 0.08, alongX ? span : 0.25, shade(col, 0.82), base, alongX ? i * long * 0.2 : 0, h + ph * 0.5 + 0.1, alongX ? 0 : i * long * 0.2);
+    if (detailed) {
+      // Roof seams follow the slope rather than passing horizontally through the roof.
+      const local = base.clone().multiply(xf(0, h, 0, 0, alongX ? Math.PI / 2 : 0, 0));
+      const count = bd.type === 'warehouse' || bd.type === 'hangar' ? 7 : 4;
+      const rise = shed ? ph * 0.75 : ph;
+      const run = shed ? span : span / 2;
+      const slope = Math.atan2(rise, run), len = Math.hypot(run, rise);
+      for (let i = 0; i < count; i++) {
+        const z0 = (i / (count - 1) - 0.5) * long * 0.90;
+        if (shed) p.box(len, 0.065, 0.055, 0x51565a, local.clone().multiply(xf(0, ph * 0.625 + 0.045, z0, 0, 0, slope)));
+        else for (const side of [-1, 1]) p.box(len, 0.06, 0.055, 0x51565a, local.clone().multiply(xf(side * span / 4, ph / 2 + 0.045, z0, 0, 0, -side * slope)));
+      }
+      for (const side of [-1, 1]) p.box(0.10, 0.12, long, 0x44494c, local, side * span / 2, shed && side > 0 ? ph : shed ? ph * 0.25 : 0, 0);
+    }
   }
 }
 /** 건물 지붕과 장식: 한 번에 합쳐서 돌려줍니다. */
-export function buildRoofs(map: GameMap, rng: () => number): THREE.Group { const p = new Pieces(); for (const b of map.buildings) roof(p, b, rng); return p.mesh(); }
+export function buildRoofs(map: GameMap, rng: () => number, detailed = true): THREE.Group { const p = new Pieces(); for (const b of map.buildings) roof(p, b, rng, detailed); return p.mesh(); }
+
+/** Trim existing solid wall segments only: door gaps and collision shapes remain untouched. */
+export function buildFacadeTrim(map: GameMap): THREE.Group {
+  const p = new Pieces(), base = new THREE.Matrix4();
+  for (const b of map.boxes) {
+    if (b.kind !== 'wall') continue;
+    const w = b.x1 - b.x0, d = b.z1 - b.z0, h = b.y1 - b.y0;
+    if (h < 0.5 || Math.max(w, d) < 0.7) continue;
+    const x = (b.x0 + b.x1) / 2, z = (b.z0 + b.z1) / 2;
+    const horizontal = w > d, wide = horizontal ? w : w + 0.08, deep = horizontal ? d + 0.08 : d;
+    // Thin recessed-looking plinth, lintel and cap stay aligned to the actual wall span.
+    if (b.y0 < 0.1) p.box(wide, 0.12, deep, 0x656765, base, x, 0.14, z);
+    p.box(wide, 0.09, deep, 0x9b9e99, base, x, b.y1 - 0.07, z);
+    if (b.y0 >= 2) p.box(wide, 0.12, deep, 0x737b7d, base, x, b.y0 + 0.07, z);
+  }
+  return p.mesh(false);
+}
 /** 지도의 소품(차량·컨테이너·울타리 등)을 합쳐서 돌려줍니다. */
 export function buildProps(map: GameMap, skipBoxes?: Set<number>): THREE.Group { const p = new Pieces(); for (const pr of map.props) if (pr.kind !== 'bush' && !(skipBoxes && pr.box !== undefined && skipBoxes.has(pr.box))) prop(p, pr); return p.mesh(); }
 

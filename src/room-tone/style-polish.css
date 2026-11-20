@@ -4,3 +4,12 @@
 #game .hudleft strong { text-shadow: 0 2px 8px #000, 0 0 3px #000; }
 #game .panel, dialog { border-color: #786d5b; box-shadow: 0 18px 48px #0009, inset 0 1px 0 #ffffff12; }
 @media (prefers-reduced-motion: reduce) { #game #danger { animation: none; } }
+
+/* Preserve the dark atmosphere while accommodating long objectives and prompts. */
+#game .hudleft { min-width:0; }
+#game .hudleft strong { overflow-wrap:anywhere; line-height:1.35; }
+#game #prompt { box-sizing:border-box; max-width:calc(100vw - 32px); white-space:normal; overflow-wrap:anywhere; }
+#game #timer { font-variant-numeric:tabular-nums; }
+@media (pointer:coarse) {
+  #game .hudright button, #game .gear button { min-height:44px; }
+}

@@ -43,7 +43,7 @@ export type SimEvent =
   | { t: 'built'; kind: BuildKind; owner: number; x: number; y: number }
   | { t: 'trained'; kind: UnitKind; owner: number; x: number; y: number }
   | { t: 'ability'; kind: UnitKind; owner: number; x: number; y: number }
-  | { t: 'heal'; owner: number; x0: number; y0: number; x1: number; y1: number }
+  | { t: 'heal'; owner: number; x0: number; y0: number; x1: number; y1: number; /** 수리(공병)면 true */ fix?: boolean }
   | { t: 'alert'; owner: number; x: number; y: number }
   | { t: 'deposit'; owner: number; x: number; y: number }
   | { t: 'mined'; x: number; y: number }
@@ -327,7 +327,7 @@ export class RtsSim {
   // ---------- 유닛 ----------
   private updateUnit(u: Unit): void {
     const d = UNITS[u.kind]; if (u.cd > 0) u.cd--; if (u.repath > 0) u.repath--;
-    const o = u.o; if (d.heal) this.medic(u);
+    const o = u.o; if (d.heal) this.medic(u); else if (d.repair) this.engineer(u);
     switch (o.t) {
       case 'idle': {
         if (u.kind === 'worker') this.idleWorker(u);
@@ -400,6 +400,32 @@ export class RtsSim {
       u.path = this.pather.find(u.x, u.y, far.x, far.y) ?? [];
       u.pi = 0;
       u.repath = 5;
+    }
+    this.follow(u, this.speedOf(u));
+  }
+
+  /** 공병: 가까이에서 가장 많이 다친 아군 차량·건물을 고칩니다(광물 소모 없음). 가만히 있으면 다친 차량·건물 쪽으로 다가갑니다. */
+  private engineer(u: Unit): void {
+    const d = UNITS[u.kind], rate = d.repair ?? 0; let best: Unit | Building | null = null, bs = Infinity, far: Unit | Building | null = null, fd = 12;
+    const cands: Array<Unit | Building> = [];
+    for (const e of this.units) if (e.owner === u.owner && e.hp > 0 && (e.kind === 'tank' || e.kind === 'jeep')) cands.push(e);
+    for (const b of this.buildings) if (b.owner === u.owner && b.done && b.hp > 0) cands.push(b);
+    for (const e of cands) {
+      const max = e.k === 'unit' ? UNITS[e.kind].hp : e.maxhp; if (e.hp >= max) continue;
+      const gap = this.gap(u, d.radius, e);
+      if (gap <= d.range) { const r = e.hp / max; if (r < bs) { bs = r; best = e; } } else if (gap < fd) { fd = gap; far = e; }
+    }
+    if (best) {
+      const t: Unit | Building = best, tc = this.center(t), max = t.k === 'unit' ? UNITS[t.kind].hp : t.maxhp;
+      if (u.cd <= 0) { u.cd = 5; t.hp = Math.min(max, t.hp + rate / 4); u.fired = this.tick; this.emit({ t: 'heal', owner: u.owner, x0: u.x, y0: u.y, x1: tc.x, y1: tc.y, fix: true }); }
+      const l = Math.sqrt(sq(tc.x - u.x) + sq(tc.y - u.y)) || 1; u.fx = (tc.x - u.x) / l; u.fy = (tc.y - u.y) / l;
+    }
+    if (u.o.t !== 'idle' || u.o.phase === 9) return;
+    if (best || !far) { u.o.target = 0; u.path = []; return; }
+    const f: Unit | Building = far;
+    if (u.o.target !== f.id || u.repath <= 0) {
+      const g = f.k === 'unit' ? { x: f.x, y: f.y } : this.approach(f, u.x, u.y);
+      u.o.target = f.id; u.path = this.pather.find(u.x, u.y, g.x, g.y) ?? []; u.pi = 0; u.repath = 5;
     }
     this.follow(u, this.speedOf(u));
   }

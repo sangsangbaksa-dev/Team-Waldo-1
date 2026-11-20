@@ -16,10 +16,10 @@ type Quality = 'high' | 'standard' | 'low';
 interface Fx { obj: THREE.Object3D; t: number; life: number; tick: (f: Fx, dt: number) => void }
 
 const FOG_A_HIDDEN = 226, FOG_A_SEEN = 118, FOG_Y = 4;
-const ABILITY_COLOR: Record<string, number> = { marine: 0xffa53d, rocket: 0xff5a3c, tank: 0xffe066, jeep: 0x5de1ff, medic: 0x7dff9e };
+const ABILITY_COLOR: Record<string, number> = { marine: 0xffa53d, rocket: 0xff5a3c, tank: 0xffe066, jeep: 0x5de1ff, medic: 0x7dff9e, engineer: 0xffb347 };
 const MARK_COLOR = [0xff5a3c, 0x5db4ff, 0xffe27a] as const;
 interface MarkVis { group: THREE.Group; spin: THREE.Group; fill: THREE.Mesh; beam: THREE.Mesh; r: number; kind: Marker['kind']; side: number }
-const US: Record<string, number> = { worker: 1.4, marine: 1.45, rocket: 1.45, tank: 1.2, jeep: 1.15, medic: 1.45 };
+const US: Record<string, number> = { worker: 1.4, marine: 1.45, rocket: 1.45, tank: 1.2, jeep: 1.15, medic: 1.45, engineer: 1.45 };
 const seeded = (seed: number): (() => number) => { let s = seed >>> 0; return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }; };
 
 export class RtsView {
@@ -270,7 +270,7 @@ export class RtsView {
       const want = -Math.atan2(u.fy, u.fx); let d = want - v.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); v.yaw += d * Math.min(1, dt * 12);
       const r = v.rig, root = r.root; root.position.set(x, 0, y); root.rotation.y = v.yaw;
       const bob = Math.sin(this.clock * (u.kind === 'tank' || u.kind === 'jeep' ? 9 : 14) + id) * (u.kind === 'tank' || u.kind === 'jeep' ? 0.015 : 0.05) * v.moved; r.body.position.y = Math.abs(bob); r.body.rotation.z = bob * (u.kind === 'tank' || u.kind === 'jeep' ? 0.2 : 0.5);
-      const fired = tick - u.fired; r.flash.visible = u.kind !== 'medic' && fired >= 0 && fired < 2;
+      const fired = tick - u.fired; r.flash.visible = u.kind !== 'medic' && u.kind !== 'engineer' && fired >= 0 && fired < 2;
       if (r.gun) r.gun.position.x = (u.kind === 'tank' ? 0.3 : 0.2) - (fired >= 0 && fired < 3 ? 0.08 : 0);
       if (r.carry) r.carry.visible = u.carry > 0;
       if (r.ch) { const st = r.ch.state; st.speed = v.moved * 3; st.walk += dt * v.moved * 4.8; st.time += dt; st.wave = u.kind === 'worker' && (tick - u.mine < 3 || (u.o.t === 'gather' && u.o.phase === 1)) ? 0.5 : 0; st.recoil = fired >= 0 && fired < 3 ? 1 : 0; st.hit = (tick - u.hurt) >= 0 && (tick - u.hurt) < 3 ? 0.4 : 0; r.ch.update(dt); }
@@ -338,8 +338,8 @@ export class RtsView {
         else { this.tracer(e.x0, e.y0, e.x1, e.y1, 0.9, 0.4, 0xffe9b0, 0.22, 0.16, 0.7, 1.2); this.delay(0.22, () => this.explode(e.x1, e.y1, Math.max(1.1, e.splash), false)); }
       } else if (e.t === 'die') { if (e.building) { this.explode(e.x, e.y, e.size * 0.9, true); this.delay(0.18, () => this.explode(e.x + 0.7, e.y - 0.5, e.size * 0.6, true)); this.delay(0.34, () => this.explode(e.x - 0.6, e.y + 0.6, e.size * 0.7, true)); } else this.explode(e.x, e.y, e.kind === 'tank' ? 1.3 : 0.6, e.kind === 'tank'); }
       else if (e.t === 'heal') {
-        this.tracer(e.x0, e.y0, e.x1, e.y1, 1.0, 1.0, 0x7dff9e, 0.3, 0.04, 0.5);
-        const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.1), this.glowMat(0xb6ffc8, 0.9)); c.position.set(e.x1, 0.7, e.y1);
+        this.tracer(e.x0, e.y0, e.x1, e.y1, 1.0, 1.0, e.fix ? 0xffb347 : 0x7dff9e, 0.3, 0.04, 0.5);
+        const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.1), this.glowMat(e.fix ? 0xffd9a0 : 0xb6ffc8, 0.9)); c.position.set(e.x1, 0.7, e.y1);
         this.add({ obj: c, t: 0, life: 0.5, tick: (f, dt) => { c.position.y += dt * 1.4; c.rotation.y += dt * 6; (c.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - f.t / f.life); } });
       }
       else if (e.t === 'ability') {

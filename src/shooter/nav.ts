@@ -10,7 +10,8 @@ export function navFor(map: GameMap): Nav {
   const w = Math.ceil(map.half * 2), n = w * w; nav = { half: map.half, w, block: new Uint8Array(n), g: new Float32Array(n), from: new Int32Array(n), mark: new Uint32Array(n), stamp: 0 };
   const pad = PLAYER.radius + 0.1;
   for (const b of map.boxes) {
-    if (b.y0 >= PLAYER.height - 0.3) continue;
+    // Vehicles are dynamic and handled by live collision checks, not this cached static grid.
+    if (b.kind === 'vehicle' || b.y0 >= PLAYER.height - 0.3) continue;
     // 칸의 중심이 부풀린 상자 안에 들어올 때만 막습니다(1.5m 문틈도 항상 한 칸은 비도록).
     const x0 = Math.max(0, Math.ceil(b.x0 - pad + nav.half - 0.5)), x1 = Math.min(w - 1, Math.floor(b.x1 + pad + nav.half - 0.5)), z0 = Math.max(0, Math.ceil(b.z0 - pad + nav.half - 0.5)), z1 = Math.min(w - 1, Math.floor(b.z1 + pad + nav.half - 0.5));
     for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) nav.block[z * w + x] = 1;
@@ -42,21 +43,33 @@ const SQ2 = Math.SQRT2;
 /** A* 경로(평탄화된 [x,z,x,z,…]). 길이 없으면 null. */
 export function findPath(nav: Nav, sx: number, sz: number, gx: number, gz: number, maxNodes = 40000): number[] | null {
   const w = nav.w, s = freeCell(nav, cellOf(nav, sx), cellOf(nav, sz)), e = freeCell(nav, cellOf(nav, gx), cellOf(nav, gz)); if (s < 0 || e < 0) return null;
-  const stamp = ++nav.stamp, ex = e % w, ez = (e / w) | 0, open: Array<[number, number]> = [];
-  const push = (f: number, i: number): void => { open.push([f, i]); let k = open.length - 1; while (k > 0) { const p = (k - 1) >> 1; if (open[p][0] <= open[k][0]) break; [open[p], open[k]] = [open[k], open[p]]; k = p; } };
+  // Two stamps per search let the existing typed array track both discovered and closed cells.
+  if (nav.stamp >= 0xfffffffd) { nav.mark.fill(0); nav.stamp = 0; }
+  const stamp = nav.stamp + 1, closedStamp = stamp + 1; nav.stamp = closedStamp;
+  const ex = e % w, ez = (e / w) | 0, open: number[] = [];
+  const push = (f: number, i: number): void => {
+    let k = open.length / 2; open.push(f, i);
+    while (k > 0) { const p = (k - 1) >> 1; if (open[p * 2] <= f) break; open[k * 2] = open[p * 2]; open[k * 2 + 1] = open[p * 2 + 1]; k = p; }
+    open[k * 2] = f; open[k * 2 + 1] = i;
+  };
   const pop = (): number => {
-    const top = open[0][1], last = open.pop()!; if (open.length) { open[0] = last; let k = 0; for (;;) { const l = 2 * k + 1, r = l + 1; let m = k; if (l < open.length && open[l][0] < open[m][0]) m = l; if (r < open.length && open[r][0] < open[m][0]) m = r; if (m === k) break; [open[m], open[k]] = [open[k], open[m]]; k = m; } }
+    const top = open[1], lastI = open.pop()!, lastF = open.pop()!, count = open.length / 2;
+    if (count) {
+      let k = 0;
+      for (;;) { let child = 2 * k + 1; if (child >= count) break; if (child + 1 < count && open[(child + 1) * 2] < open[child * 2]) child++; if (open[child * 2] >= lastF) break; open[k * 2] = open[child * 2]; open[k * 2 + 1] = open[child * 2 + 1]; k = child; }
+      open[k * 2] = lastF; open[k * 2 + 1] = lastI;
+    }
     return top;
   };
   const h = (x: number, z: number): number => { const dx = Math.abs(x - ex), dz = Math.abs(z - ez); return (dx + dz) + (SQ2 - 2) * Math.min(dx, dz); };
   nav.g[s] = 0; nav.from[s] = -1; nav.mark[s] = stamp; push(h(s % w, (s / w) | 0), s);
-  const closed = new Set<number>(); let found = false, nodes = 0;
-  while (open.length && nodes++ < maxNodes) {
-    const i = pop(); if (closed.has(i)) continue; closed.add(i); if (i === e) { found = true; break; }
+  let found = false, nodes = 0;
+  while (open.length && nodes < maxNodes) {
+    const i = pop(); if (nav.mark[i] === closedStamp) continue; nav.mark[i] = closedStamp; nodes++; if (i === e) { found = true; break; }
     const x = i % w, z = (i / w) | 0;
     for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
       if (!dx && !dz) continue; const nx = x + dx, nz = z + dz; if (nx < 0 || nz < 0 || nx >= w || nz >= w) continue;
-      const j = nz * w + nx; if (nav.block[j]) continue; if (dx && dz && (nav.block[z * w + nx] || nav.block[nz * w + x])) continue; // 모서리 가로지르기 금지
+      const j = nz * w + nx; if (nav.block[j] || nav.mark[j] === closedStamp) continue; if (dx && dz && (nav.block[z * w + nx] || nav.block[nz * w + x])) continue; // 모서리 가로지르기 금지
       const g = nav.g[i] + (dx && dz ? SQ2 : 1); if (nav.mark[j] === stamp && g >= nav.g[j]) continue;
       nav.mark[j] = stamp; nav.g[j] = g; nav.from[j] = i; push(g + h(nx, nz), j);
     }

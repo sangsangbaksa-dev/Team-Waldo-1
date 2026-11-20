@@ -128,3 +128,18 @@
 .rc-card{max-height:100%;overflow:auto;overscroll-behavior:contain;touch-action:pan-y;scrollbar-width:thin}
 .rc-root button:focus-visible{outline:2px solid #8fb4ff;outline-offset:3px}
 @media(max-height:480px){.rc-card{padding:16px 20px;border-radius:16px}}
+
+
+/* Race results: align split times and separate the primary action from secondary controls. */
+.rc-card.result .rc-total { font-size: clamp(24px, 5vw, 36px); letter-spacing: .025em; }
+.rc-card.result .rc-laps li { align-items: baseline; gap: 12px; border: 1px solid #ffffff12; }
+.rc-card.result .rc-laps li b { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rc-card.result .rc-laps li.best { border-color: #ffe45e66; }
+.rc-card.result .rc-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
+.rc-card.result .rc-actions .primary { grid-column: 1 / -1; }
+.rc-card.result .rc-actions button { min-width: 0; padding-inline: 10px; }
+@media (max-height: 500px) {
+  .rc-card.result .rc-laps { gap: 3px; }
+  .rc-card.result .rc-laps li { padding-block: 4px; }
+  .rc-card.result .rc-actions { margin-top: 6px; gap: 6px; }
+}

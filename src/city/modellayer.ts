@@ -185,8 +185,8 @@ export class ModelLayer {
     for (const k of CHAR_KINDS) { const s = this.sets[k]; this.flush(s.body); this.flush(s.leg); this.flush(s.shin); this.flush(s.armL); this.flush(s.armR); }
     for (const [id, g] of this.mechs) if (!seenMech.has(id)) { this.scene.remove(g); this.mechs.delete(id); }
     // 크리스탈
-    let nc = 0; for (const c of w.crystals) { if (c.amount <= 0) continue; const s = 13 + 12 * c.amount / c.max; d.rotation.set(0, c.id * 1.7, 0); d.position.set(c.x, 0, c.y); d.scale.setScalar(s); d.updateMatrix(); this.crystalMesh.setMatrixAt(nc++, d.matrix); }
-    this.crystalMesh.count = 0; void nc; this.crystalMesh.instanceMatrix.needsUpdate = true;
+    // Match the fallback renderer: hidden crystal meshes need no matrix uploads.
+    this.crystalMesh.count = 0;
   }
   private syncMech(a: Actor): void {
     let g = this.mechs.get(a.id);

@@ -17,6 +17,7 @@ import { Skyline } from './skyline';
 import { StreetFx } from './streetfx';
 import { WetStreet } from './wetstreet';
 import { buildReach, clampLabelScreenPos, clampLookPitch, labelSpriteCenter } from './uiMath';
+import { wrapNear, wrapRange } from './render-math';
 
 export type ViewMode = 'fp' | 'tp';
 const EYE = EYE_HEIGHT, STRUCT_H: Record<StructKind, number> = { hq: 150, barracks: 86, depot: 58, factory: 104, lab: 96, turret: 50 };
@@ -43,9 +44,10 @@ class Points {
     let n = 0;
     for (const p of this.parts) {
       p.life -= dt; if (p.life <= 0) continue; p.vy -= p.grav * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; if (p.y < 1) { p.y = 1; p.vy *= -0.3; p.vx *= 0.6; p.vz *= 0.6; }
+      this.parts[n] = p;
       const k = p.life / p.max; this.pos[n * 3] = p.x; this.pos[n * 3 + 1] = p.y; this.pos[n * 3 + 2] = p.z; this.col[n * 4] = p.r; this.col[n * 4 + 1] = p.g; this.col[n * 4 + 2] = p.b; this.col[n * 4 + 3] = this.fade ? k * 0.7 : Math.min(1, k * 2); n++;
     }
-    this.parts = this.parts.filter(p => p.life > 0); this.geo.setDrawRange(0, n); this.geo.attributes.position.needsUpdate = true; this.geo.attributes.color.needsUpdate = true;
+    this.parts.length = n; this.geo.setDrawRange(0, n); this.geo.attributes.position.needsUpdate = true; this.geo.attributes.color.needsUpdate = true;
   }
 }
 
@@ -271,7 +273,9 @@ export class Renderer3D {
       o.label.material.map?.dispose(); o.label.material.map = canvasTex(320, 120, g => { g.fillStyle = 'rgba(10,16,16,0.82)'; g.beginPath(); g.roundRect(4, 4, 312, 112, 18); g.fill(); g.strokeStyle = css; g.lineWidth = 5; g.stroke(); g.textAlign = 'center'; g.fillStyle = '#fff'; g.font = "900 44px 'Noto Sans KR',sans-serif"; g.fillText(d.name, 160, 54); g.fillStyle = css; g.font = "700 28px 'Noto Sans KR',sans-serif"; g.fillText(line2, 160, 96); }); o.label.material.needsUpdate = true;
     }
     if (o.icon) { o.icon.position.y = 100 + Math.sin(this.t * 1.6 + z.id) * 2.5; o.icon.rotation.y = this.t * 0.7 + z.id; }
-    o.g.visible = Math.hypot(z.x - this.camPos.x, z.y - this.camPos.z) < 2600; void w;
+    const dx = z.x - this.camPos.x, dz = z.y - this.camPos.z;
+    o.g.visible = dx * dx + dz * dz < 2600 * 2600;
+    if (!o.g.visible) return;
     const out = (o.g.userData.out as [number, number] | undefined) ?? [0, 0];
     this.pinLabel(o.label, z.x + out[0] * 14, 126, z.y + out[1] * 14);
   }
@@ -282,7 +286,7 @@ export class Renderer3D {
     const p = this.project(x, z, y);
     if (p.behind) { label.visible = false; return; }
     label.visible = true;
-    const dist = Math.max(24, this.camPos.distanceTo(new THREE.Vector3(x, y, z)));
+    const dist = Math.max(24, Math.hypot(x - this.camPos.x, y - this.camPos.y, z - this.camPos.z));
     const px = this.h / (2 * Math.tan((this.camera.fov * Math.PI) / 180 / 2) * dist);
     const lw = Math.max(24, label.scale.x * px), lh = Math.max(16, label.scale.y * px);
     const c = clampLabelScreenPos(p.x, p.y, this.w, this.h, lw, lh, 10);
@@ -333,12 +337,16 @@ export class Renderer3D {
     }
     // 빗줄기: 폭풍우에는 굵고 비스듬하며, 밤에는 가로등·네온에 비쳐 희미한 안개색으로 보인다.
     const mat = this.rain.material as THREE.LineBasicMaterial; mat.color.setRGB(...a.fog).lerp(this.rainTint.set(0.8, 0.88, 1), 0.55 + 0.25 * (1 - a.night)); mat.opacity = 0.28 + a.rain * 0.4;
-    this.rain.visible = a.rain > 0.05; this.rain.geometry.setDrawRange(0, Math.round(n * 2 * a.rain));
+    this.rain.visible = a.rain > 0.05;
+    // A line requires two vertices. Never submit a partial raindrop.
+    this.rain.geometry.setDrawRange(0, Math.round(n * a.rain) * 2);
+    if (!this.rain.visible) return;
     const cp = this.camera.position, fall = EYE_HEIGHT * (24 + a.wind * 10) * dt, len = EYE_HEIGHT * (0.7 + a.wind * 0.5), slant = 0.12 + a.wind * 0.3;
     for (let i = 0; i < n; i++) {
-      let y = this.rainSeed[i * 3 + 1] - fall; if (y < 0) y += H; this.rainSeed[i * 3 + 1] = y;
-      const x = cp.x + ((this.rainSeed[i * 3] - cp.x + R * 3) % (2 * R)) - R, z = cp.z + ((this.rainSeed[i * 3 + 2] - cp.z + R * 3) % (2 * R)) - R;
-      this.rainPos.set([x, y, z, x - len * slant, y + len, z - len * slant * 0.4], i * 6);
+      const y = wrapRange(this.rainSeed[i * 3 + 1] - fall, H); this.rainSeed[i * 3 + 1] = y;
+      const x = wrapNear(this.rainSeed[i * 3], cp.x, R), z = wrapNear(this.rainSeed[i * 3 + 2], cp.z, R), at = i * 6;
+      this.rainPos[at] = x; this.rainPos[at + 1] = y; this.rainPos[at + 2] = z;
+      this.rainPos[at + 3] = x - len * slant; this.rainPos[at + 4] = y + len; this.rainPos[at + 5] = z - len * slant * 0.4;
     }
     (this.rain.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
   }
@@ -359,11 +367,13 @@ export class Renderer3D {
       const dist = veh ? (veh.kind === 'tank' ? 250 : 200) : 150, hgt = veh ? 95 : 56, pivotY = veh ? 30 : 50; let k = 1;
       for (let s = 0.15; s <= 1; s += 0.085) { if (solidAt(w.map, fx - cy * dist * s, fz - sy * dist * s)) { k = Math.max(0.3, s - 0.12); break; } }
       const tx = fx - cy * dist * k * cp, ty = pivotY + hgt * k + (1 - k) * 130 - spt * dist * k * 0.9, tz = fz - sy * dist * k * cp;
-      this.camPos.lerp(new THREE.Vector3(tx, Math.max(12, ty), tz), Math.min(1, dt * 14)); this.camera.position.copy(this.camPos); this.camera.lookAt(fx + cy * 70, pivotY + 4 + spt * 140, fz + sy * 70);
+      this.camPos.lerp(this.projected.set(tx, Math.max(12, ty), tz), Math.min(1, dt * 14)); this.camera.position.copy(this.camPos); this.camera.lookAt(fx + cy * 70, pivotY + 4 + spt * 140, fz + sy * 70);
     }
     { const m = 14, cp2 = this.camera.position; cp2.x = Math.max(m, Math.min(SIZE - m, cp2.x)); cp2.z = Math.max(m, Math.min(SIZE - m, cp2.z)); this.camPos.x = cp2.x; this.camPos.z = cp2.z; }
     if (this.shake > 0 && !this.reduced) { this.camera.position.x += (Math.random() - 0.5) * this.shake; this.camera.position.y += (Math.random() - 0.5) * this.shake; }
     const spd = veh ? Math.hypot(veh.vx, veh.vy) : 0, fov = 74 + Math.min(14, spd / 45); if (Math.abs(fov - this.camera.fov) > 0.2) { this.camera.fov += (fov - this.camera.fov) * 0.1; this.camera.updateProjectionMatrix(); }
+    // Labels are projected before renderer.render(), so refresh the camera transform now.
+    this.camera.updateMatrixWorld();
     this.updateRain(dt); this.updateBolt(dt); this.bfx.blink(this.t); this.applyAtmosphere(dt);
     if (this.ml) { this.gun.visible = false; this.ml.viewmodel(!third && !!pb, f0.slots[f0.cur]?.id ?? 'pistol', dt, this.recoil, f0.reloadT > 0, pb ? Math.min(1, Math.hypot(pb.vx, pb.vy) / 160) : 0, this.t, this.flashT > 0); } else { this.gun.visible = !third && !!pb; } if (!this.ml && this.gun.visible) { const tier = WEAPONS[f0.slots[f0.cur]?.id ?? 'pistol'].tier, rl = f0.reloadT > 0 ? 1 : 0; this.gun.scale.setScalar(0.62 + tier * 0.13); this.gun.position.set(5.6, -5.2 - rl * 4, -14 + this.recoil * 2.2); this.gun.rotation.x = this.recoil * 0.12 - rl * 0.7; this.muzzle.visible = this.flashT > 0; this.muzzle.rotation.z = this.t * 40; }
     // 캐릭터
@@ -388,7 +398,9 @@ export class Renderer3D {
     const upd = (m: THREE.InstancedMesh, n: number): void => { m.count = n; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; };
     upd(this.bodies, nb); upd(this.heads, nh); upd(this.guns, ng); upd(this.hulls, nm); upd(this.turrets, nm); upd(this.barrels, nm); if (this.ml) this.ml.update(pb, third, this.camPos);
     // 크리스탈
-    let nc = 0; for (const c of w.crystals) { if (c.amount <= 0) continue; const s = 9 + 9 * c.amount / c.max; d.rotation.set(0, c.id, 0); d.position.set(c.x, s * 1.1, c.y); d.scale.set(s * 0.75, s * 1.5, s * 0.75); d.updateMatrix(); this.crystals.setMatrixAt(nc++, d.matrix); } upd(this.crystals, 0); void nc;
+    // Crystal meshes are deliberately hidden in the current art direction.
+    // Avoid rebuilding their instance matrices each frame while count is zero.
+    this.crystals.count = 0;
     // 탄환
     let nt = 0; for (const b of w.bullets) { if (nt >= 500) break; const wd = WEAPONS[b.w], a = Math.atan2(b.vy, b.vx), len = wd.splash ? 12 : wd.pierce ? 150 : 46, th = wd.splash ? 5 : wd.pierce ? 3 : b.boss ? 1.5 : 1.1; d.rotation.set(0, -a, 0); d.position.set(b.x - Math.cos(a) * len / 2, 30, b.y - Math.sin(a) * len / 2); d.scale.set(len, th, th); d.updateMatrix(); this.tracers.setMatrixAt(nt, d.matrix); this.tracers.setColorAt(nt, col.set(wd.color)); nt++; if (wd.splash && Math.random() < 0.6) this.smoke.add(b.x, 30, b.y, 0, 8, 0, 0.5, 0xcfcfcf); } upd(this.tracers, nt);
     // 동적 오브젝트 동기화

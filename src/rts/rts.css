@@ -151,3 +151,12 @@
   .rt-btns button{min-width:30px;padding-inline:6px}
   .rt-missions .t b{flex-wrap:wrap;gap:4px}
 }
+
+/* Keep action labels readable and tactical feedback distinct from the battlefield. */
+.rt-cmd button{min-height:0;overflow:hidden}
+.rt-cmd button.on{box-shadow:inset 0 2px 0 var(--acc)}
+.rt-cmd button[aria-disabled="true"]{cursor:not-allowed}
+.rt-sel .rt-one h3{overflow-wrap:anywhere}
+.rt-res .rt-sup.full{border-color:#a24b3e;background:#331d1b}
+.rt-mini canvas{outline:1px solid #ffffff24;outline-offset:-1px}
+.rt-obj li span{min-width:0;overflow-wrap:anywhere}

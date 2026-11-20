@@ -50,7 +50,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   let raf = 0, last = 0, acc = 0, paused = false, closed = false, ended = false, speed = 1, uiT = 0, miniT = 0, hudKey = '', cmdKey = '', selKey = '', alertAt = { x: 0, y: 0, t: -999 };
   let camp: Campaign | null = null, vision: Vision | null = null, fogOn = readFog(), campSave: CampaignSave = readCampaign(), objKey = '', fogVer = -1, bannerT = 0;
   const selected = new Set<number>(), groups = new Map<number, number[]>(); let mode: Mode = null, submenu = false, buttons: Btn[] = [];
-  const pointer = { x: 0, y: 0, in: false, down: false, sx: 0, sy: 0, drag: false, button: 0, pan: false, lastTap: 0, lastTapId: 0 };
+  const pointer = { x: 0, y: 0, in: false, down: false, sx: 0, sy: 0, drag: false, button: 0, pan: false, lastTap: 0, lastTapId: 0, activeId: -1 };
   const touches = new Map<number, { x: number; y: number }>(); let pinch = 0, boxMode = false; const keys = new Set<string>();
   const stats = { start: 0 };
 
@@ -68,7 +68,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   };
   const setSel = (ids: number[]): void => { selected.clear(); ids.forEach(i => selected.add(i)); submenu = false; if (mode?.t !== 'build') mode = null; refresh(); };
   const refresh = (): void => { cmdKey = ''; selKey = ''; paintCommands(); paintSelection(true); };
-  const issue = (c: Cmd): void => { if (!sim || ended) return; if (net) net.send(c); else sim.apply(me, c); };
+  const issue = (c: Cmd): void => { if (!sim || ended || paused) return; if (net) net.send(c); else sim.apply(me, c); };
 
   // ---------- 명령 ----------
   const ping = (x: number, y: number, c: number): void => view?.ping(x, y, c);
@@ -320,23 +320,28 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       const ids: number[] = []; for (const u of sim.units) if (u.owner === me && u.kind === e.kind) { const p = view.project(u.x, u.y, 0.5); if (p && p.x >= 0 && p.y >= 0 && p.x <= over.clientWidth && p.y <= over.clientHeight) ids.push(u.id); }
       setSel(ids); audio.sfx('select'); return;
     }
-    if (add && e.k !== 'node' && e.owner === me && [...selected].every(s => sim!.unit(s))) { if (selected.has(id)) selected.delete(id); else selected.add(id); return; }
+    if (add && e.k === 'unit' && e.owner === me && [...selected].every(s => sim!.unit(s)?.owner === me)) { if (selected.has(id)) selected.delete(id); else selected.add(id); refresh(); return; }
     setSel([id]); audio.sfx('select');
   }
   over.addEventListener('contextmenu', e => e.preventDefault());
   over.addEventListener('pointerdown', e => {
-    audio.unlock(); if (!sim || !view || ended) return; const p = local(e); over.setPointerCapture(e.pointerId);
+    audio.unlock(); if (!sim || !view || ended || paused || modal.classList.contains('show')) return;
+    if (e.pointerType !== 'touch' && (pointer.down || ![0, 1, 2].includes(e.button))) return;
+    if (e.pointerType === 'touch' && touches.size >= 2) return;
+    const p = local(e); over.setPointerCapture(e.pointerId);
     pointer.x = p.x; pointer.y = p.y; pointer.in = true;
     if (e.pointerType === 'touch') {
-      touches.set(e.pointerId, p); if (touches.size === 2) { const [a, b] = [...touches.values()]; pinch = Math.hypot(a.x - b.x, a.y - b.y); pointer.down = false; return; }
-      pointer.down = true; pointer.sx = p.x; pointer.sy = p.y; pointer.drag = false; pointer.button = 0; pointer.pan = !boxMode; return;
+      touches.set(e.pointerId, p); if (touches.size === 2) { const [a, b] = [...touches.values()]; pinch = Math.hypot(a.x - b.x, a.y - b.y); pointer.down = false; pointer.activeId = -1; return; }
+      pointer.activeId = e.pointerId; pointer.down = true; pointer.sx = p.x; pointer.sy = p.y; pointer.drag = false; pointer.button = 0; pointer.pan = !boxMode; return;
     }
-    if (e.button === 1) { pointer.down = true; pointer.drag = false; pointer.pan = true; pointer.sx = p.x; pointer.sy = p.y; pointer.button = 1; return; }
+    if (e.button === 1) { pointer.activeId = e.pointerId; pointer.down = true; pointer.drag = false; pointer.pan = true; pointer.sx = p.x; pointer.sy = p.y; pointer.button = 1; return; }
     if (e.button === 2) { if (mode) { mode = null; setHint(''); cmdKey = ''; } else rightClick(p.x, p.y); return; }
-    pointer.down = true; pointer.sx = p.x; pointer.sy = p.y; pointer.drag = false; pointer.button = 0; pointer.pan = false;
+    pointer.activeId = e.pointerId; pointer.down = true; pointer.sx = p.x; pointer.sy = p.y; pointer.drag = false; pointer.button = 0; pointer.pan = false;
     if (mode && leftClickMode(p.x, p.y)) { pointer.down = false; cmdKey = ''; }
   });
   over.addEventListener('pointermove', e => {
+    if (e.pointerType === 'touch' && !touches.has(e.pointerId)) return;
+    if (pointer.down && pointer.activeId !== e.pointerId) return;
     const p = local(e); const px = pointer.x, py = pointer.y; pointer.x = p.x; pointer.y = p.y; pointer.in = true;
     if (e.pointerType === 'touch') {
       if (!touches.has(e.pointerId)) return;
@@ -349,7 +354,9 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   });
   const release = (e: PointerEvent): void => {
     const p = local(e); touches.delete(e.pointerId); if (touches.size < 2) pinch = 0;
-    if (!pointer.down || !sim || !view) { pointer.down = false; return; } pointer.down = false;
+    if (pointer.activeId !== e.pointerId) return;
+    pointer.activeId = -1;
+    if (!pointer.down || !sim || !view || paused) { pointer.down = false; return; } pointer.down = false;
     if (pointer.button === 1) return;
     if (e.pointerType === 'touch') {
       if (pointer.pan && pointer.drag) return;
@@ -359,7 +366,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     if (pointer.drag) { boxSelect(pointer.sx, pointer.sy, p.x, p.y, keys.has('Shift')); return; }
     const now = performance.now(), id = view.pick(p.x, p.y); clickSelect(p.x, p.y, keys.has('Shift'), now - pointer.lastTap < 350); pointer.lastTap = now; pointer.lastTapId = id;
   };
-  const cancelPointer = (e: PointerEvent): void => { touches.delete(e.pointerId); if (touches.size < 2) pinch = 0; pointer.down = pointer.drag = pointer.pan = false; };
+  const cancelPointer = (e: PointerEvent): void => { touches.delete(e.pointerId); if (touches.size < 2) pinch = 0; if (pointer.activeId === e.pointerId) { pointer.activeId = -1; pointer.down = pointer.drag = pointer.pan = false; } };
   over.addEventListener('pointerup', release); over.addEventListener('pointercancel', cancelPointer); over.addEventListener('lostpointercapture', cancelPointer);
   over.addEventListener('pointerleave', () => { pointer.in = false; });
   over.addEventListener('wheel', e => { e.preventDefault(); view?.zoom(e.deltaY > 0 ? 1.1 : 0.91); }, { passive: false });
@@ -375,6 +382,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   const hot = new Map<string, number>();
   function onKey(e: KeyboardEvent): void {
     if (e.type === 'keyup') { keys.delete(e.key === 'Shift' ? 'Shift' : e.code); return; }
+    if (e.repeat) { if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault(); return; }
     if (modal.classList.contains('show') && e.key !== 'Escape' && !(root.dataset.phase === 'paused' && e.key.toLowerCase() === 'p')) return;
     keys.add(e.key === 'Shift' ? 'Shift' : e.code); audio.unlock();
     const k = e.key.toUpperCase();
@@ -393,7 +401,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const b = buttons.find(x => x.key === k); if (b) { e.preventDefault(); if (b.enabled === false) toast(b.hint ?? '지금은 할 수 없습니다', true); else { b.on(); refresh(); } }
   }
-  const resetControls = (): void => { keys.clear(); touches.clear(); pinch = 0; miniDown = false; pointer.down = pointer.drag = pointer.pan = pointer.in = false; };
+  const resetControls = (): void => { keys.clear(); touches.clear(); pinch = 0; miniDown = false; pointer.activeId = -1; pointer.down = pointer.drag = pointer.pan = pointer.in = false; };
   const onVisibility = (): void => { if (document.hidden) resetControls(); };
   window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKey); window.addEventListener('blur', resetControls); document.addEventListener('visibilitychange', onVisibility);
 
@@ -521,7 +529,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     const fresh = document.createElement('canvas'); fresh.className = 'rt-canvas'; canvas.replaceWith(fresh); canvas = fresh; const q = prefs.quality;
     try { view = new RtsView(canvas, sim, me, q); } catch { show('<div class="rt-card"><span class="rt-eyebrow">FRONTLINE</span><h2>그래픽을 시작하지 못했어요</h2><p class="rt-lead">WebGL 을 사용할 수 없습니다. 브라우저를 새로고침하거나 그래픽 가속을 켠 뒤 다시 시도해 주세요.</p><div class="rt-actions"><button class="primary" data-act="exit">메뉴로</button></div></div>'); return; }
     vision = fogOn && !net ? new Vision(sim.map.size, me) : null; vision?.update(sim, true); view.setVision(vision); fogMini = null; fogVer = -1;
-    resetControls(); miniBase = null; selected.clear(); mode = null; submenu = false; ended = false; paused = false; acc = 0; hudKey = cmdKey = selKey = ''; groups.clear(); hide(); root.dataset.phase = 'play'; stats.start = performance.now(); resize();
+    resetControls(); miniBase = null; selected.clear(); mode = null; submenu = false; ended = false; paused = false; acc = 0; hudKey = cmdKey = selKey = ''; groups.clear(); hot.clear(); pointer.lastTap = 0; pointer.lastTapId = 0; alertAt = { x: 0, y: 0, t: -999 }; hide(); root.dataset.phase = 'play'; stats.start = performance.now(); resize();
     const h = sim.buildings.find(b => b.owner === me && b.kind === 'hq'); if (h) setSel([h.id]);
     if (camp && h) view.lookAt((h.x + 2 + camp.rally.x) / 2, (h.y + 2 + camp.rally.y) / 2);
     if (!camp) toast(net ? '대전 시작! 상대의 모든 건물을 파괴하세요' : '일꾼으로 광물을 캐고, 병영을 지어 병력을 모으세요', false); last = performance.now();
@@ -605,7 +613,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       if (sim.winner !== -1) finish();
     }
     vision?.update(sim); applyEvents(); applyCampEvents(); if (bannerT > 0 && (bannerT -= dt) <= 0) $('#rt-banner').classList.remove('show');
-    for (const id of selected) { if (!sim.index.has(id)) selected.delete(id); }
+    for (const id of selected) { const e = sim.index.get(id); if (!e || (e.k === 'unit' && view?.hiddenUnit(e))) selected.delete(id); }
     // 카메라 이동: 화살표 키와 화면 가장자리
     if (!paused) {
       const sp = view.cam.dist * 0.9 * dt; let dx = 0, dy = 0;

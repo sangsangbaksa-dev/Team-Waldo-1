@@ -170,7 +170,7 @@ export class RtsSim {
     if (this.winner !== -1 || (owner !== 0 && owner !== 1) || typeof c !== 'object' || c === null) return false;
     const mine = (ids: unknown): Unit[] => {
       if (!Array.isArray(ids)) return [];
-      const out: Unit[] = []; for (const id of ids.slice(0, 120)) { const u = num(id) ? this.unit(id) : undefined; if (u && u.owner === owner) out.push(u); }
+      const out: Unit[] = [], seen = new Set<number>(); for (const id of ids.slice(0, 120)) { const u = num(id) ? this.unit(id) : undefined; if (u && u.owner === owner && u.hp > 0 && !seen.has(u.id)) { seen.add(u.id); out.push(u); } }
       return out;
     };
     switch (c.k) {
@@ -178,7 +178,9 @@ export class RtsSim {
         if (!num(c.x) || !num(c.y)) return false; const us = mine(c.ids); if (!us.length) return false;
         const cols = Math.ceil(Math.sqrt(us.length)), rows = Math.ceil(us.length / cols), x = Math.min(Math.max(c.x, 1.5), this.map.size - 1.5), y = Math.min(Math.max(c.y, 1.5), this.map.size - 1.5);
         us.sort((a, b) => a.id - b.id).forEach((u, i) => {
-          const gap = us.length > 1 ? 1.15 : 0, tx = x + ((i % cols) - (cols - 1) / 2) * gap, ty = y + (Math.floor(i / cols) - (rows - 1) / 2) * gap;
+          const gap = us.length > 1 ? 1.15 : 0, halfX = (cols - 1) * gap / 2, halfY = (rows - 1) * gap / 2;
+          const centerX = Math.min(Math.max(x, 1.5 + halfX), this.map.size - 1.5 - halfX), centerY = Math.min(Math.max(y, 1.5 + halfY), this.map.size - 1.5 - halfY);
+          const tx = centerX + ((i % cols) - (cols - 1) / 2) * gap, ty = centerY + (Math.floor(i / cols) - (rows - 1) / 2) * gap;
           this.order(u, { t: c.k, x: tx, y: ty, target: 0, phase: 0, timer: 0 });
         });
         return true;
@@ -195,7 +197,7 @@ export class RtsSim {
       }
       case 'stop': { const us = mine(c.ids); for (const u of us) { this.order(u, idle()); u.o.phase = 9; /* 일부러 세운 일꾼은 자동 복귀하지 않음 */ } return us.length > 0; }
       case 'build': {
-        const w = num(c.id) ? this.unit(c.id) : undefined, d = BUILDINGS[c.b];
+        const w = num(c.id) ? this.unit(c.id) : undefined, d = Object.hasOwn(BUILDINGS, c.b) ? BUILDINGS[c.b] : undefined;
         if (!w || w.owner !== owner || w.kind !== 'worker' || !d || !num(c.x) || !num(c.y)) return false;
         const p = this.players[owner]; if (p.minerals < d.cost || (d.req && !this.has(owner, d.req)) || !this.canPlace(c.b, c.x, c.y)) return false;
         p.minerals -= d.cost; const b = this.addBuilding(owner, c.b, c.x, c.y, false); this.emit({ t: 'placed', owner, x: b.x + b.size / 2, y: b.y + b.size / 2 });
@@ -208,12 +210,12 @@ export class RtsSim {
         const us = mine(c.ids).filter(u => u.kind === 'worker'); for (const u of us) this.order(u, { t: 'build', x: 0, y: 0, target: b.id, phase: 0, timer: 0 }); return us.length > 0;
       }
       case 'train': {
-        const b = num(c.b) ? this.building(c.b) : undefined, d = UNITS[c.u]; if (!b || !d || b.owner !== owner || !b.done || d.from !== b.kind || !this.canTrain(owner, c.u)) return false;
+        const b = num(c.b) ? this.building(c.b) : undefined, d = Object.hasOwn(UNITS, c.u) ? UNITS[c.u] : undefined; if (!b || !d || b.owner !== owner || !b.done || d.from !== b.kind || !this.canTrain(owner, c.u)) return false;
         const p = this.players[owner]; if (b.queue.length >= 5 || p.minerals < d.cost || p.cap - p.used < d.supply) return false;
         p.minerals -= d.cost; p.used += d.supply; b.queue.push({ u: c.u, left: d.time }); return true;
       }
       case 'cancel': {
-        const b = num(c.b) ? this.building(c.b) : undefined; if (!b || b.owner !== owner || !num(c.i)) return false;
+        const b = num(c.b) ? this.building(c.b) : undefined; if (!b || b.owner !== owner || !Number.isInteger(c.i) || c.i < -2) return false;
         const p = this.players[owner];
         if (c.i === -2) { if (!b.research) return false; p.minerals += RESEARCH[b.research.r].cost; b.research = null; return true; }
         if (c.i < 0) { if (b.done || b.kind === 'hq' && this.buildings.filter(x => x.owner === owner && x.kind === 'hq').length < 2) return false; p.minerals += Math.floor(BUILDINGS[b.kind].cost * 0.75); this.remove(b); return true; }
@@ -231,12 +233,12 @@ export class RtsSim {
         return n > 0;
       }
       case 'research': {
-        const b = num(c.b) ? this.building(c.b) : undefined, d = RESEARCH[c.r]; if (!b || !d || b.owner !== owner || !b.done || d.from !== b.kind || b.research) return false;
+        const b = num(c.b) ? this.building(c.b) : undefined, d = Object.hasOwn(RESEARCH, c.r) ? RESEARCH[c.r] : undefined; if (!b || !d || b.owner !== owner || !b.done || d.from !== b.kind || b.research) return false;
         const p = this.players[owner]; if (p.up[c.r] || p.minerals < d.cost || this.buildings.some(x => x.owner === owner && x.research?.r === c.r)) return false;
         p.minerals -= d.cost; b.research = { r: c.r, left: d.time }; return true;
       }
       case 'rally': {
-        const b = num(c.b) ? this.building(c.b) : undefined; if (!b || b.owner !== owner || !num(c.x) || !num(c.y) || !BUILDINGS[b.kind].trains.length) return false;
+        const b = num(c.b) ? this.building(c.b) : undefined; if (!b || b.owner !== owner || !b.done || !num(c.x) || !num(c.y) || !BUILDINGS[b.kind].trains.length) return false;
         b.rx = Math.min(Math.max(c.x, 1), this.map.size - 1); b.ry = Math.min(Math.max(c.y, 1), this.map.size - 1); b.rnode = num(c.node) && this.node(c.node) ? c.node : 0; return true;
       }
       case 'surrender': this.players[owner].defeated = true; return true;

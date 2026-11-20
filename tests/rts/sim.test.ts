@@ -156,3 +156,21 @@ describe('건설 현장과 강화', () => {
     const pf = new Pather(s.map.size, s.grid), hq = hqOf(s, 0), path = pf.find(hq.x - 1, hq.y + 2, e[2].x - 1, e[2].y + 2); expect(path).not.toBeNull();
   });
 });
+
+
+describe('부대 명령 경계 조건', () => {
+  it('중복 유닛 명령을 제거하고 지도 가장자리에서도 대형을 유지한다', () => {
+    const s = fresh(), units = s.units.filter(u => u.owner === 0), ids = units.map(u => u.id);
+    expect(s.apply(0, { k: 'move', ids: [...ids, ...ids], x: -100, y: -100 })).toBe(true);
+    const positions = units.map(u => [u.o.x, u.o.y]);
+    expect(new Set(positions.map(p => p.join(','))).size).toBe(units.length);
+    expect(positions.every(([x, y]) => x >= 1.5 && y >= 1.5 && x <= s.map.size - 1.5 && y <= s.map.size - 1.5)).toBe(true);
+  });
+  it('잘못된 건물과 생산 종류 및 취소 인덱스는 상태를 변경하지 않는다', () => {
+    const s = fresh(), hq = hqOf(s, 0), w = s.units.find(u => u.owner === 0)!;
+    expect(s.apply(0, { k: 'build', id: w.id, b: 'constructor', x: 10, y: 10 } as unknown as Parameters<RtsSim['apply']>[1])).toBe(false);
+    expect(s.apply(0, { k: 'train', b: hq.id, u: 'constructor' } as unknown as Parameters<RtsSim['apply']>[1])).toBe(false);
+    expect(s.apply(0, { k: 'cancel', b: hq.id, i: -9 })).toBe(false);
+    expect(s.players[0].minerals).toBe(START_MINERALS);
+  });
+});

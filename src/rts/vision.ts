@@ -31,6 +31,7 @@ export class Vision {
     this.version++; return true;
   }
   at(x: number, y: number): number {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return FOG_HIDDEN;
     const cx = Math.floor(x), cy = Math.floor(y); if (cx < 0 || cy < 0 || cx >= this.n || cy >= this.n) return FOG_HIDDEN; return this.state[cy * this.n + cx];
   }
   visible(x: number, y: number): boolean { return this.at(x, y) === FOG_VISIBLE; }

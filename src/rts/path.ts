@@ -42,6 +42,7 @@ export class Pather {
     if (!goal || !start) return null;
     if (this.los(sx, sy, goal.x, goal.y)) return [goal.x, goal.y];
     const si = Math.floor(start.y) * n + Math.floor(start.x), gi = Math.floor(goal.y) * n + Math.floor(goal.x), gcx = gi % n, gcy = (gi - gcx) / n;
+    if (si === gi) return [goal.x, goal.y];
     this.stamp++; const st = this.stamp;
     const heap: number[] = [], push = (f: number, i: number): void => {
       heap.push(f, i); let k = heap.length / 2 - 1;
@@ -75,6 +76,8 @@ export class Pather {
       }
     }
     const end = found ? gi : best;
+    // No reachable cell improves the route: do not fabricate a direct path through a wall.
+    if (end === si) return null;
     const cells: number[] = []; for (let i = end; i !== -1; i = this.from[i]) cells.push(i);
     cells.reverse();
     const pts: number[] = []; for (const c of cells) { const x = c % n; pts.push(x + 0.5, (c - x) / n + 0.5); }
@@ -84,8 +87,12 @@ export class Pather {
       let j = last; while (j > i + 1 && !this.los(pts[i * 2], pts[i * 2 + 1], pts[j * 2], pts[j * 2 + 1])) j--;
       out.push(pts[j * 2], pts[j * 2 + 1]); i = j;
     }
-    if (found) { out[out.length - 2] = goal.x; out[out.length - 1] = goal.y; }
-    return out.length ? out : [goal.x, goal.y];
+    if (found) {
+      const lastX = out[out.length - 2], lastY = out[out.length - 1];
+      // Keep the last cell center if replacing it with the exact goal could cut a corner.
+      if (lastX !== goal.x || lastY !== goal.y) out.push(goal.x, goal.y);
+    }
+    return out.length ? out : null;
   }
 }
 const DX = [1, -1, 0, 0, 1, 1, -1, -1], DY = [0, 0, 1, -1, 1, -1, 1, -1];

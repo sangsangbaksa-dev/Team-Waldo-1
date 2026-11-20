@@ -268,7 +268,9 @@ export function openRace(onExit: () => void): void {
     }
   }
 
-  // 미니맵(코스마다 한 번 그린 경로를 재사용)
+  // Cache the static minimap raster; only live car markers require per-frame drawing.
+  const miniBase = document.createElement('canvas'); miniBase.width = miniBase.height = 220;
+  const miniBaseCtx = miniBase.getContext('2d');
   let mpath = new Path2D(), mscale = 1, minX = 0, minZ = 0;
   const mx = (x: number): number => 15 + (x - minX) * mscale, mz = (z: number): number => 15 + (z - minZ) * mscale;
   function prepareMinimap(): void {
@@ -276,12 +278,17 @@ export function openRace(onExit: () => void): void {
     for (let i = 0; i < track.n; i++) { minX = Math.min(minX, track.x[i]); maxX = Math.max(maxX, track.x[i]); minZ = Math.min(minZ, track.z[i]); maxZ = Math.max(maxZ, track.z[i]); }
     mscale = 190 / Math.max(maxX - minX, maxZ - minZ, 1); mpath = new Path2D();
     for (let i = 0; i <= track.n; i++) { const j = i % track.n; if (i === 0) mpath.moveTo(mx(track.x[j]), mz(track.z[j])); else mpath.lineTo(mx(track.x[j]), mz(track.z[j])); }
+    if (miniBaseCtx) { miniBaseCtx.clearRect(0, 0, 220, 220); paintMiniTrack(miniBaseCtx); }
+  }
+  function paintMiniTrack(g: CanvasRenderingContext2D): void {
+    g.lineJoin = 'round'; g.strokeStyle = 'rgba(8,4,24,.8)'; g.lineWidth = 9; g.stroke(mpath); g.strokeStyle = '#8f7dff'; g.lineWidth = 4; g.stroke(mpath);
+    g.fillStyle = '#fff'; g.fillRect(mx(track.x[0]) - 5, mz(track.z[0]) - 2, 10, 4);
   }
   prepareMinimap();
   function drawMini(): void {
-    if (!mg) return; mg.clearRect(0, 0, 220, 220); mg.lineJoin = 'round'; mg.strokeStyle = 'rgba(8,4,24,.8)'; mg.lineWidth = 9; mg.stroke(mpath); mg.strokeStyle = '#8f7dff'; mg.lineWidth = 4; mg.stroke(mpath);
-    mg.fillStyle = '#fff'; mg.fillRect(mx(track.x[0]) - 5, mz(track.z[0]) - 2, 10, 4);
-    for (const r of [...race.racers].reverse()) { mg.fillStyle = r.color; mg.beginPath(); mg.arc(mx(r.car.x), mz(r.car.z), r.player ? 6 : 4.5, 0, 7); mg.fill(); if (r.player) { mg.strokeStyle = '#fff'; mg.lineWidth = 2; mg.stroke(); } }
+    if (!mg) return; mg.clearRect(0, 0, 220, 220);
+    if (miniBaseCtx) mg.drawImage(miniBase, 0, 0); else paintMiniTrack(mg);
+    for (let i = race.racers.length - 1; i >= 0; i--) { const r = race.racers[i]; mg.fillStyle = r.color; mg.beginPath(); mg.arc(mx(r.car.x), mz(r.car.z), r.player ? 6 : 4.5, 0, 7); mg.fill(); if (r.player) { mg.strokeStyle = '#fff'; mg.lineWidth = 2; mg.stroke(); } }
   }
 
   function hud(): void {

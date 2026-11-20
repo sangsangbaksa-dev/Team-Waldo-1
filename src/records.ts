@@ -16,7 +16,7 @@ export const raceRaceKey = (map: string, laps: number): string => `${map}:${laps
 const seconds = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0;
 function timeTable(raw: unknown): Record<string, number> {
   const out: Record<string, number> = {};
-  if (typeof raw === 'object' && raw !== null) for (const [k, v] of Object.entries(raw)) if (seconds(v)) out[k] = v;
+  if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) for (const [k, v] of Object.entries(raw)) if (seconds(v) && !Object.hasOwn(Object.prototype, k)) out[k] = v;
   return out;
 }
 

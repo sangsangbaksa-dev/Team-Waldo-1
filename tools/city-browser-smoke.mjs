@@ -47,7 +47,11 @@ try {
       await page.goto(origin, { waitUntil: 'domcontentloaded' });
       await page.locator('.tile').first().waitFor();
       const entries = await page.locator('.tile').evaluateAll(tiles => tiles.map(tile => tile.dataset.game));
-      assert.deepEqual([...entries].sort(), ['city', 'outlaw', 'race', 'rts', 'shooter', 'tycoon'], 'The arcade lists all six games');
+      // Keep checking the baseline games, but allow new games to join the catalog.
+      for (const id of ['city', 'outlaw', 'race', 'rts', 'shooter', 'tycoon']) assert.ok(entries.includes(id), 'Missing arcade game: ' + id);
+      assert.equal(entries[0], 'city', 'LAST CITY must be the first game');
+      assert.equal(entries[1], 'race', 'SPEED RUSH must be the second game');
+      assert.equal(new Set(entries).size, entries.length, 'Game IDs must be unique');
       await page.screenshot({ path: 'browser-artifacts/last-city-home-' + size.name + '.png', animations: 'disabled' });
       await page.locator('#start-race').click();
       await page.locator('.rc-root').waitFor({ state: 'visible' });

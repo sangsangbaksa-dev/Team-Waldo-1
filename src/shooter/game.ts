@@ -1,5 +1,6 @@
 // ZERO ZONE — 배틀로열 총게임 화면: 출격 설정, 조작(키보드·마우스·터치), HUD, 솔로(AI 99명, 비행기 낙하)와 1대1 온라인 대전의 진행.
 import './shooter.css';
+import { editableTarget, wheelPixels, WheelGesture } from '../shared/input';
 import { readPreferences } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import type { PvpSession, RoomSession } from '../net/lobby';
@@ -53,7 +54,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     <div class="sz-modal" id="sz-modal"></div>`;
   document.body.append(root);
   const q = <T extends HTMLElement>(sel: string): T => root.querySelector<T>(sel)!;
-  const canvas = q<HTMLCanvasElement>('.sz-canvas'), hud = q('.sz-hud'), setupEl = q('#sz-setup'), modal = q('#sz-modal'), mapCv = q<HTMLCanvasElement>('#sz-map'), mapCtx = mapCv.getContext('2d')!;
+  let canvas = q<HTMLCanvasElement>('.sz-canvas'); const hud = q('.sz-hud'), setupEl = q('#sz-setup'), modal = q('#sz-modal'), mapCv = q<HTMLCanvasElement>('#sz-map'), mapCtx = mapCv.getContext('2d')!;
   const audio = new ShooterAudio(); audio.enabled = prefs.sound;
   let career = readShooterCareer();
   let level: Difficulty = (DIFFICULTIES as string[]).includes(career.level) ? (career.level as Difficulty) : 'normal', pickMode: 'solo' | 'pvp' | 'room' = 'solo';
@@ -109,7 +110,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
 
   // ---------- 경기 시작 ----------
   function begin(m: Match, my: number): void {
-    endMatch(); match = m; meIdx = my; over = false; resultShown = false; soloRecorded = false; spectateId = -1; deadTimer = 0; cache.clear(); feed.length = 0; told.clear(); paused = false; modal.className = 'sz-modal'; modal.innerHTML = '';
+    blur(); if (document.pointerLockElement === canvas) document.exitPointerLock(); locked = false; endMatch(); const fresh = document.createElement('canvas'); fresh.className = 'sz-canvas'; canvas.replaceWith(fresh); canvas = fresh; canvas.addEventListener('contextmenu', noMenu); match = m; meIdx = my; over = false; resultShown = false; soloRecorded = false; spectateId = -1; deadTimer = 0; cache.clear(); feed.length = 0; told.clear(); paused = false; modal.className = 'sz-modal'; modal.innerHTML = '';
     const p = m.players[my]; yaw = p.yaw; pitch = 0; countdown = 3.4; phase = 'countdown'; mapBase = null;
     view = new ShooterView(canvas, m, assets, prefs.quality); resize(); setupEl.hidden = true; hud.hidden = false; buildSlots(); say(touch ? '왼쪽 스틱으로 이동' : '화면을 클릭해 조작 시작', 2.4);
     if (!touch) lock(); audio.unlock();
@@ -230,13 +231,15 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   function endMatch(): void { view?.dispose(); view = null; match = null; }
 
   // ---------- 조작 ----------
-  let wheelAt = -Infinity, lookMuteUntil = 0;
+  let lookMuteUntil = 0;
+  const weaponWheel = new WheelGesture();
   const sens = (): number => 0.0023 / (view && me().ads ? Math.max(1, 78 / view.fov) * 0.9 : 1);
   function lock(): void { if (touch || locked || lockFail || closed) return; try { const r = canvas.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(() => { lockFail = true; }); } catch { lockFail = true; } }
   document.addEventListener('pointerlockchange', onLock);
   function onLock(): void {
-    locked = document.pointerLockElement === canvas;
+    const wasLocked = locked; locked = document.pointerLockElement === canvas;
     if (locked) { lookMuteUntil = performance.now() + 180; return; }
+    if (!wasLocked) return;
     blur();
     if (!locked && (phase === 'play' || phase === 'countdown') && !pvpRunning() && !closed) setPause(true);
     else if (!locked && pvpRunning() && !closed) say('클릭하면 조작이 돌아옵니다', 2);
@@ -251,24 +254,28 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   };
   const onUp = (e: MouseEvent): void => { if (e.button === 0) mouse.fire = false; else if (e.button === 2) mouse.ads = false; };
   const onKey = (e: KeyboardEvent): void => {
-    if (closed || e.repeat && e.type === 'keydown' && ['KeyR', 'KeyE'].includes(e.code)) return;
+    if (closed) return;
     if (e.type === 'keyup') { keys.delete(e.code); if (e.code === 'KeyE') interactHeld = false; return; }
+    if (editableTarget(e.target) || e.ctrlKey || e.metaKey || e.altKey || e.isComposing || !match) return;
+    if (e.code === 'Escape' && !e.repeat && !pvpRunning()) { if (paused || !locked || phase === 'countdown') setPause(!paused); return; }
+    if (paused || (phase !== 'play' && phase !== 'countdown')) return;
+    if (e.repeat) { if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault(); return; }
     keys.add(e.code);
     if (e.code === 'KeyR') reloadReq = true; else if (e.code === 'KeyE') interactHeld = true; else if (e.code === 'Digit1') slotReq = 0; else if (e.code === 'Digit2') slotReq = 1; else if (e.code === 'KeyQ') swapReq = true; else if (e.code === 'KeyG') nadeReq = true; else if (e.code === 'KeyH') healReq = 1; else if (e.code === 'KeyJ') healReq = 2;
     else if (e.code === 'Escape' && phase === 'countdown') setPause(true);
-    if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code) && match) e.preventDefault();
+    if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code) && match) e.preventDefault();
   };
-  const onWheel = (e: WheelEvent): void => { if (!match || paused || (!locked && e.target !== canvas)) return; e.preventDefault(); const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 120 : 1); if (!e.ctrlKey && Number.isFinite(dy) && Math.abs(dy) >= 8 && performance.now() - wheelAt >= 240) { wheelAt = performance.now(); swapReq = true; } };
+  const onWheel = (e: WheelEvent): void => { if (!match || paused || (!locked && e.target !== canvas)) return; e.preventDefault(); const dy = wheelPixels(e.deltaY, e.deltaMode, canvas.clientHeight); if (weaponWheel.push(dy, performance.now(), e.ctrlKey)) swapReq = true; };
   const noMenu = (e: Event): void => e.preventDefault();
   window.addEventListener('mousemove', onMove); window.addEventListener('mousedown', onDown); window.addEventListener('mouseup', onUp);
   window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKey); window.addEventListener('wheel', onWheel, { passive: false }); canvas.addEventListener('contextmenu', noMenu);
-  const blur = (): void => { keys.clear(); mouse.fire = mouse.ads = tc.fire = tc.ads = tc.crouch = false; interactHeld = reloadReq = swapReq = nadeReq = false; healReq = 0; slotReq = -1; tc.move.id = tc.look.id = -1; tc.move.x = tc.move.y = 0; stickEl.style.opacity = '0'; root.querySelectorAll('.sz-tbuttons .down').forEach(b => b.classList.remove('down')); }; window.addEventListener('blur', blur); document.addEventListener('visibilitychange', blur);
+  const blur = (): void => { keys.clear(); weaponWheel.reset(); mouse.fire = mouse.ads = tc.fire = tc.ads = tc.crouch = false; interactHeld = reloadReq = swapReq = nadeReq = false; healReq = 0; slotReq = -1; tc.move.id = tc.look.id = -1; tc.move.x = tc.move.y = 0; stickEl.style.opacity = '0'; root.querySelectorAll('.sz-tbuttons .down').forEach(b => b.classList.remove('down')); }; window.addEventListener('blur', blur); document.addEventListener('visibilitychange', blur);
 
   // 터치: 왼쪽 절반은 이동 스틱, 오른쪽 절반 드래그는 시점
   const stickEl = q('#sz-stick');
   function stickFrom(x: number, y: number): void { const m = tc.move, dx = x - m.ox, dy = y - m.oy, r = 56, d = Math.hypot(dx, dy), k = d > r ? r / d : 1; m.x = (dx * k) / r; m.y = (dy * k) / r; stickEl.firstElementChild!.setAttribute('style', `transform:translate(${dx * k}px,${dy * k}px)`); }
   const tStart = (e: PointerEvent): void => {
-    if (!touch || e.pointerType !== 'touch' || !match || (e.target as HTMLElement).closest('button')) return; audio.unlock();
+    if (e.pointerType !== 'touch' || !match || paused || (phase !== 'play' && phase !== 'countdown') || e.target !== canvas) return; audio.unlock();
     if (e.clientX < innerWidth * 0.45 && tc.move.id < 0) { tc.move.id = e.pointerId; tc.move.ox = e.clientX; tc.move.oy = e.clientY; stickEl.style.cssText = `left:${e.clientX - 60}px;top:${e.clientY - 60}px;opacity:1`; stickFrom(e.clientX, e.clientY); }
     else if (e.clientX >= innerWidth * 0.45 && tc.look.id < 0) { tc.look.id = e.pointerId; tc.look.x = e.clientX; tc.look.y = e.clientY; }
   };
@@ -492,7 +499,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   function setPause(on: boolean): void {
     if (pvpRunning() || (phase !== 'play' && phase !== 'countdown') || closed) return; paused = on;
     if (on) { blur(); if (document.pointerLockElement === canvas) document.exitPointerLock(); card('PAUSED', '일시정지', '', '<button class="primary" data-act="resume">계속하기</button><button data-act="again">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button>'); }
-    else { modal.className = 'sz-modal'; modal.innerHTML = ''; if (!touch) lock(); }
+    else { blur(); modal.className = 'sz-modal'; modal.innerHTML = ''; if (!touch) lock(); }
   }
   q('#sz-pause').addEventListener('click', () => { if (pvpRunning()) { say('대전 중에는 멈출 수 없습니다', 1.4); return; } setPause(true); });
   modal.addEventListener('click', e => {

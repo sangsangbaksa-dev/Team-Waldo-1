@@ -77,7 +77,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(70, 1, 0.1, 1200);
   let renderer: THREE.WebGLRenderer | null = null; let composer: EffectComposer | null = null; let bloom: UnrealBloomPass | null = null;
   let yaw = 0, pitch = 0, acc = 0, saveT = 0, shakeFov = 0, hitT = 0, hurtVig = 0, bannerT = 0, radioToast = 0;
-  const keys = new Set<string>(), mouse = { fire: false, aim: false };
+  const keys = new Set<string>(), mouse = { fire: false, aim: false, look: false };
   const tc = { fire: false, aim: false, jump: false, sprint: false, gas: false, brake: false, hand: false, left: false, right: false, moveId: -1, mx: 0, my: 0, ox: 0, oy: 0, lookId: -1, lx: 0, ly: 0 };
   let enterReq = false, slotReq = -1, reloadReq = false, station = 0, wheelOpen = false, wheelSel = -1, wheelX = 0, wheelY = 0, aimedAtEnemy = false;
   const orbitPos = new THREE.Vector3(), orbitQuat = new THREE.Quaternion();
@@ -110,9 +110,14 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (document.pointerLockElement) document.exitPointerLock();
   }
   function closeModal(): void { modalKind = ''; paused = false; modalEl.hidden = true; modalEl.innerHTML = ''; if (phase === 'play') lock(); }
-  function lock(): void { if (touch || locked || lockFail || closed) return; try { const r = canvas.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(() => { lockFail = true; }); } catch { lockFail = true; } }
+  // 포인터 잠금은 키보드(Esc·M·P)로 창을 닫은 직후나 Esc 로 막 풀린 직후에는 브라우저가 거절합니다. 거절을 영구 실패로 굳히면 시점 회전이 끝까지 죽으므로,
+  // 거절은 그 시도에만 해당하는 일로 보고 다음 클릭에서 다시 잠급니다. 그동안은 드래그로도 시점을 돌릴 수 있게 합니다.
+  function lock(): void {
+    if (touch || locked || closed) return;
+    try { const r = canvas.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(() => { lockFail = true; }); } catch { lockFail = true; }
+  }
   const onLock = (): void => {
-    locked = document.pointerLockElement === canvas;
+    locked = document.pointerLockElement === canvas; if (locked) lockFail = false;
     if (!locked && phase === 'play' && !modalKind && !closed && !wheelOpen) openPause();
   };
   document.addEventListener('pointerlockchange', onLock);
@@ -266,20 +271,20 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   };
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.code); if (e.code === 'KeyQ') closeWheel(); };
   const onMouseMove = (e: MouseEvent): void => {
-    if (!locked || phase !== 'play') return;
+    if (phase !== 'play' || !(locked || (lockFail && mouse.look))) return;
     if (wheelOpen) { wheelX = clamp(wheelX + e.movementX, -140, 140); wheelY = clamp(wheelY + e.movementY, -140, 140); updateWheel(); return; }
     const s = (mouse.aim ? 0.0014 : 0.0023); yaw += e.movementX * s; pitch = clamp(pitch - e.movementY * s, -1.2, 1.2);
   };
   const onMouseDown = (e: MouseEvent): void => {
     audio.unlock(); if (phase !== 'play' || modalKind) return;
-    if (!locked) { lock(); return; }
+    if (!locked) { lock(); if (!lockFail) return; mouse.look = true; }
     if (e.button === 0) mouse.fire = true; else if (e.button === 2) mouse.aim = true;
   };
-  const onMouseUp = (e: MouseEvent): void => { if (e.button === 0) mouse.fire = false; else if (e.button === 2) mouse.aim = false; };
+  const onMouseUp = (e: MouseEvent): void => { if (e.button === 0) mouse.fire = false; else if (e.button === 2) mouse.aim = false; mouse.look = false; };
   const onWheel = (e: WheelEvent): void => { if (phase !== 'play' || modalKind || !sim) return; const dir = e.deltaY > 0 ? 1 : -1; let i = sim.player.cur; for (let n = 0; n < NW; n++) { i = (i + dir + NW) % NW; if (sim.player.guns[i]) { slotReq = i; break; } } };
   const onCtx = (e: Event): void => e.preventDefault();
   function resetInput(): void {
-    keys.clear(); mouse.fire = mouse.aim = false; enterReq = reloadReq = false; slotReq = -1;
+    keys.clear(); mouse.fire = mouse.aim = mouse.look = false; enterReq = reloadReq = false; slotReq = -1;
     tc.fire = tc.aim = tc.jump = tc.sprint = tc.gas = tc.brake = tc.hand = tc.left = tc.right = false;
     tc.moveId = tc.lookId = -1; tc.mx = tc.my = 0;
     stickEl.style.opacity = '0'; (stickEl.firstElementChild as HTMLElement).style.transform = '';

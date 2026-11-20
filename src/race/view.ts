@@ -17,6 +17,8 @@ import { trackLightStrength } from './road-visuals';
 import { type Track } from './track';
 import { type Theme } from './maps';
 import { buildOutposts, type Outpost } from './outpost';
+import { makeRng } from '../city/map';
+import { artSeed, ClearanceIndex } from './scenery-index';
 
 const CAR_LEN = 4.7;
 const rnd = (a: number, b: number): number => a + Math.random() * (b - a);
@@ -111,12 +113,15 @@ export class RaceView {
   private crew: CharacterRig[] = []; private cars: CarVis[] = []; private ground!: THREE.Mesh; private pads: Array<{ tex: THREE.CanvasTexture }> = [];
   private rainFx = new Particles(1800, 0.32, THREE.NormalBlending, 0.55); private sparks = new Particles(420, 0.34, THREE.AdditiveBlending); private smoke = new Particles(420, 1.1, THREE.NormalBlending, 0.2); private skids = new SkidMarks(1400); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
   private camH = 0; private camInit = false; private camAnchor: ChaseAnchor = { x: 0, y: 0, z: 0, ready: false }; private fov = 64; private shake = 0; private punch = 0; private time = 0; private sun: THREE.DirectionalLight;
+  private artRandom:()=>number; private clearance:ClearanceIndex;
+  private artRnd(a:number,b:number):number{return a+this.artRandom()*(b-a);}
   private spray: Particles | null = null;
   private roadLights: RoadLightBatch | null = null;
   private chaseLift = 0; private viewH = 1; private startLamps: THREE.Mesh[] = [];
   private disposables: Array<{ dispose(): void }> = []; private outposts: Outpost | null = null;
 
   constructor(canvas: HTMLCanvasElement, private track: Track, carTemplates: Record<string, THREE.Object3D> | null, private quality: 'high' | 'standard' | 'low', private theme: Theme, private reducedMotion = false) {
+    this.artRandom=makeRng(artSeed(track));this.clearance=new ClearanceIndex(track);
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(renderPixelRatio(canvas.clientWidth || innerWidth, canvas.clientHeight || innerHeight, devicePixelRatio, quality));
     this.scene.fog = new THREE.Fog(theme.fog.color, theme.fog.near, theme.fog.far); this.sun = new THREE.DirectionalLight(theme.light.sun, theme.light.sunPower);
@@ -255,8 +260,8 @@ export class RaceView {
       if (gr.noise) {
         // 이음매가 보이지 않도록 가장자리를 넘어가는 얼룩을 반대편에도 그립니다.
         const blob = (x: number, y: number, r: number, c: string): void => { for (const [ox, oy] of [[0, 0], [S, 0], [-S, 0], [0, S], [0, -S]]) { const gg = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r); gg.addColorStop(0, c); gg.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gg; g.fillRect(x + ox - r, y + oy - r, r * 2, r * 2); } };
-        for (let i = 0; i < 46; i++) blob(Math.random() * S, Math.random() * S, 50 + Math.random() * 130, Math.random() < 0.5 ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.10)');
-        for (let i = 0; i < 5200; i++) { const a = Math.random() * 0.16; g.fillStyle = Math.random() < 0.5 ? `rgba(255,255,255,${a})` : `rgba(0,0,0,${a})`; g.fillRect(Math.random() * S, Math.random() * S, 1 + Math.random() * 3, 1 + Math.random() * 2); }
+        for (let i = 0; i < 46; i++) blob(this.artRandom() * S, this.artRandom() * S, 50 + this.artRandom() * 130, this.artRandom() < 0.5 ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.10)');
+        for (let i = 0; i < 5200; i++) { const a = this.artRandom() * 0.16; g.fillStyle = this.artRandom() < 0.5 ? `rgba(255,255,255,${a})` : `rgba(0,0,0,${a})`; g.fillRect(this.artRandom() * S, this.artRandom() * S, 1 + this.artRandom() * 3, 1 + this.artRandom() * 2); }
       } else { g.strokeStyle = gr.line; g.lineWidth = 3; g.strokeRect(0, 0, 128, 128); g.strokeStyle = gr.grid; g.lineWidth = 1; g.beginPath(); g.moveTo(64, 0); g.lineTo(64, 128); g.moveTo(0, 64); g.lineTo(128, 64); g.stroke(); }
     });
     tex.repeat.set(gr.noise ? 40 : 110, gr.noise ? 40 : 110);
@@ -268,15 +273,15 @@ export class RaceView {
     // 40m 를 한 장으로 쓰는 아스팔트: 굵은 얼룩, 고운 입자, 타이어 자국, 균열, 보수 자국, 가장자리 선
     const TW = 512, TH = 1024, asphalt = canvasTex(TW, TH, g => {
       g.fillStyle = rd.base; g.fillRect(0, 0, TW, TH);
-      for (let i = 0; i < 70; i++) { const x = Math.random() * TW, y = Math.random() * TH, r = 40 + Math.random() * 120, gr = g.createRadialGradient(x, y, 0, x, y, r), d = Math.random() < 0.5; gr.addColorStop(0, d ? 'rgba(0,0,0,.10)' : 'rgba(255,255,255,.05)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2); }
-      for (let i = 0; i < 9000; i++) { const a = Math.random() * 0.22; g.fillStyle = Math.random() < 0.55 ? `rgba(0,0,0,${a})` : `rgba(255,255,255,${a * 0.6})`; g.fillRect(Math.random() * TW, Math.random() * TH, 1 + Math.random() * 2, 1 + Math.random() * 2); }
+      for (let i = 0; i < 70; i++) { const x = this.artRandom() * TW, y = this.artRandom() * TH, r = 40 + this.artRandom() * 120, gr = g.createRadialGradient(x, y, 0, x, y, r), d = this.artRandom() < 0.5; gr.addColorStop(0, d ? 'rgba(0,0,0,.10)' : 'rgba(255,255,255,.05)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2); }
+      for (let i = 0; i < 9000; i++) { const a = this.artRandom() * 0.22; g.fillStyle = this.artRandom() < 0.55 ? `rgba(0,0,0,${a})` : `rgba(255,255,255,${a * 0.6})`; g.fillRect(this.artRandom() * TW, this.artRandom() * TH, 1 + this.artRandom() * 2, 1 + this.artRandom() * 2); }
       for (const cx of [TW * 0.30, TW * 0.70]) { const gr = g.createLinearGradient(cx - 34, 0, cx + 34, 0); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(0.5, 'rgba(0,0,0,.20)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(cx - 34, 0, 68, TH); }
-      g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 1.2; for (let i = 0; i < 14; i++) { let x = Math.random() * TW, y = Math.random() * TH; g.beginPath(); g.moveTo(x, y); for (let s = 0; s < 6; s++) { x += (Math.random() - 0.5) * 30; y += 12 + Math.random() * 22; g.lineTo(x, y); } g.stroke(); }
-      for (let i = 0; i < 5; i++) { g.fillStyle = 'rgba(8,8,10,.28)'; g.fillRect(Math.random() * (TW - 140) + 30, Math.random() * TH, 40 + Math.random() * 70, 18 + Math.random() * 60); }
+      g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 1.2; for (let i = 0; i < 14; i++) { let x = this.artRandom() * TW, y = this.artRandom() * TH; g.beginPath(); g.moveTo(x, y); for (let s = 0; s < 6; s++) { x += (this.artRandom() - 0.5) * 30; y += 12 + this.artRandom() * 22; g.lineTo(x, y); } g.stroke(); }
+      for (let i = 0; i < 5; i++) { g.fillStyle = 'rgba(8,8,10,.28)'; g.fillRect(this.artRandom() * (TW - 140) + 30, this.artRandom() * TH, 40 + this.artRandom() * 70, 18 + this.artRandom() * 60); }
       g.fillStyle = rd.edge; g.fillRect(14, 0, 9, TH); g.fillRect(TW - 23, 0, 9, TH);
       g.fillStyle = rd.center; if (rd.centerDouble) { g.fillRect(TW / 2 - 12, 0, 7, TH); g.fillRect(TW / 2 + 5, 0, 7, TH); } else for (let y = 0; y < TH; y += 256) g.fillRect(TW / 2 - 4, y + 20, 9, 150);
       g.fillStyle = rd.lane; g.fillRect(TW * 0.25, 0, 4, TH); g.fillRect(TW * 0.75, 0, 4, TH);
-      for (let i = 0; i < 2600; i++) { g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(Math.random() < 0.5 ? 14 + Math.random() * 9 : TW - 23 + Math.random() * 9, Math.random() * TH, 2, 2 + Math.random() * 4); }
+      for (let i = 0; i < 2600; i++) { g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(this.artRandom() < 0.5 ? 14 + this.artRandom() * 9 : TW - 23 + this.artRandom() * 9, this.artRandom() * TH, 2, 2 + this.artRandom() * 4); }
     });
     asphalt.anisotropy = 8;
     const roadGeo = ribbon(t, -hw, hw, 0, 0), wet = wetRoadFinish(th.rain, this.quality);
@@ -394,11 +399,11 @@ export class RaceView {
   private scatter(count: number, minOff: number, maxOff: number, clear: number, gap = 0, both = true, radius?: () => number): Array<[number, number, number, number]> {
     const t = this.track, hw = t.halfWidth, out: Array<[number, number, number, number]> = [];
     for (let tries = 0; tries < count * 40 && out.length < count; tries++) {
-      const r = radius ? radius() : 0, i = Math.floor(Math.random() * t.n), side = both ? (Math.random() < 0.5 ? -1 : 1) : 1, off = side * (hw + r + rnd(minOff, maxOff)), x = t.x[i] - t.tz[i] * off, z = t.z[i] + t.tx[i] * off;
+      const r = radius ? radius() : 0, i = Math.floor(this.artRandom() * t.n), side = both ? (this.artRandom() < 0.5 ? -1 : 1) : 1, off = side * (hw + r + this.artRnd(minOff, maxOff)), x = t.x[i] - t.tz[i] * off, z = t.z[i] + t.tx[i] * off;
       // 중심선 표본 사이 간격(ds)만큼 거리가 과대평가되므로 모든 표본을 확인하고 그만큼 여유를 둡니다.
       const need = hw + clear + r - t.ds * 0.5;
       // 높이 올라간 도로는 비탈이 옆으로 넓게 퍼지므로, 그 폭만큼 더 떨어뜨려 비탈에 소품이 파묻히지 않게 합니다.
-      let ok = true; for (let j = 0; j < t.n; j++) { if (Math.hypot(t.x[j] - x, t.z[j] - z) < need + Math.max(0, t.y[j] * 2.4 - 2)) { ok = false; break; } }
+      let ok=this.clearance.isClear(x,z,need);
       if (ok && gap > 0 && out.some(p => Math.hypot(p[0] - x, p[1] - z) < gap)) ok = false;
       if (ok) out.push([x, z, t.y[i], r]);
     }
@@ -481,17 +486,17 @@ export class RaceView {
     this.scene.add(emb(1), emb(-1));
     const sceneryKind = th.scenery;
     if (sceneryKind === 'city') {
-      const win = canvasTex(64, 128, g => { g.fillStyle = '#0d0a1f'; g.fillRect(0, 0, 64, 128); for (let y = 4; y < 124; y += 10) for (let x = 4; x < 60; x += 9) { if (Math.random() < 0.62) { const h = Math.random(); g.fillStyle = h < 0.5 ? '#ffd9a0' : h < 0.8 ? '#7be9ff' : '#ff7ad9'; g.fillRect(x, y, 5, 6); } } });
+      const win = canvasTex(64, 128, g => { g.fillStyle = '#0d0a1f'; g.fillRect(0, 0, 64, 128); for (let y = 4; y < 124; y += 10) for (let x = 4; x < 60; x += 9) { if (this.artRandom() < 0.62) { const h = this.artRandom(); g.fillStyle = h < 0.5 ? '#ffd9a0' : h < 0.8 ? '#7be9ff' : '#ff7ad9'; g.fillRect(x, y, 5, 6); } } });
       const classes = [{ h: 45, n: low ? 60 : 110 }, { h: 90, n: low ? 40 : 80 }, { h: 160, n: low ? 18 : 40 }];
       const placed: Array<[number, number, number]> = [];
       for (const k of classes) {
         const w = 22, g = new THREE.BoxGeometry(w, k.h, w), uv = g.attributes.uv as THREE.BufferAttribute; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * (w / 12), uv.getY(i) * (k.h / 14));
         const bmat = new THREE.MeshBasicMaterial({ map: win, color: th.tint }), mesh = new THREE.InstancedMesh(g, bmat, k.n); let count = 0;
         for (let tries = 0; tries < k.n * 30 && count < k.n; tries++) {
-          const i = Math.floor(Math.random() * t.n), side = Math.random() < 0.5 ? -1 : 1, off = side * (hw + rnd(50, 380)), x = t.x[i] - t.tz[i] * off + rnd(-20, 20), z = t.z[i] + t.tx[i] * off + rnd(-20, 20);
-          let ok = true; for (let j = 0; j < t.n; j += 2) { if (Math.hypot(t.x[j] - x, t.z[j] - z) < hw + 40) { ok = false; break; } }
+          const i = Math.floor(this.artRandom() * t.n), side = this.artRandom() < 0.5 ? -1 : 1, off = side * (hw + this.artRnd(50, 380)), x = t.x[i] - t.tz[i] * off + this.artRnd(-20, 20), z = t.z[i] + t.tx[i] * off + this.artRnd(-20, 20);
+          const ok=this.clearance.isClear(x,z,hw+40);
           if (!ok || placed.some(p => Math.hypot(p[0] - x, p[1] - z) < 34)) continue;
-          placed.push([x, z, k.h]); m4.compose(new THREE.Vector3(x, k.h / 2 - 0.4, z), q.setFromEuler(e.set(0, rnd(0, 6.28), 0)), sc.set(1, 1, 1)); mesh.setMatrixAt(count++, m4);
+          placed.push([x, z, k.h]); m4.compose(new THREE.Vector3(x, k.h / 2 - 0.4, z), q.setFromEuler(e.set(0, this.artRnd(0, 6.28), 0)), sc.set(1, 1, 1)); mesh.setMatrixAt(count++, m4);
         }
         mesh.count = count; this.scene.add(mesh); this.disposables.push(g, bmat);
       }
@@ -500,11 +505,11 @@ export class RaceView {
       // 컨테이너 더미, 창고, 크레인
       const palette = [0xb23a2e, 0x2e6da4, 0xd4a017, 0x2f8f6b, 0x8e939c, 0xb5651d, 0xe8e6df], items: Array<{ p: [number, number, number]; ry: number; color: number }> = [];
       for (const [x, z] of this.scatter(low ? 45 : 90, 0, 260, 16, 22, true, () => 40)) {
-        const ry = Math.random() < 0.5 ? 0 : Math.PI / 2, cols = 2 + Math.floor(Math.random() * 3), rows = 1 + Math.floor(Math.random() * 3), stack = 1 + Math.floor(Math.random() * 3);
-        for (let a = 0; a < cols; a++) for (let b = 0; b < rows; b++) for (let h = 0; h < stack; h++) { const lx = a * 12.6, lz = b * 2.8, cx = Math.cos(ry), sx = Math.sin(ry); items.push({ p: [x + lx * cx + lz * sx, 1.2 + h * 2.6 - 0.4, z - lx * sx + lz * cx], ry, color: palette[Math.floor(Math.random() * palette.length)] }); }
+        const ry = this.artRandom() < 0.5 ? 0 : Math.PI / 2, cols = 2 + Math.floor(this.artRandom() * 3), rows = 1 + Math.floor(this.artRandom() * 3), stack = 1 + Math.floor(this.artRandom() * 3);
+        for (let a = 0; a < cols; a++) for (let b = 0; b < rows; b++) for (let h = 0; h < stack; h++) { const lx = a * 12.6, lz = b * 2.8, cx = Math.cos(ry), sx = Math.sin(ry); items.push({ p: [x + lx * cx + lz * sx, 1.2 + h * 2.6 - 0.4, z - lx * sx + lz * cx], ry, color: palette[Math.floor(this.artRandom() * palette.length)] }); }
       }
       this.instanced(new THREE.BoxGeometry(12, 2.6, 2.4), mat({ color: 0xffffff }), items);
-      const sheds = this.scatter(low ? 6 : 14, 0, 320, 30, 90, true, () => 40).map(([x, z]) => ({ p: [x, 6 - 0.4, z] as [number, number, number], s: [rnd(0.9, 1.5), 1, rnd(0.8, 1.3)] as [number, number, number], ry: Math.round(Math.random()) * Math.PI / 2, color: 0x8b95a3 }));
+      const sheds = this.scatter(low ? 6 : 14, 0, 320, 30, 90, true, () => 40).map(([x, z]) => ({ p: [x, 6 - 0.4, z] as [number, number, number], s: [this.artRnd(0.9, 1.5), 1, this.artRnd(0.8, 1.3)] as [number, number, number], ry: Math.round(this.artRandom()) * Math.PI / 2, color: 0x8b95a3 }));
       this.instanced(new THREE.BoxGeometry(46, 12, 22), mat({ color: 0xffffff }), sheds);
       const crane = (x: number, z: number): void => { const g: THREE.BufferGeometry[] = [], col = new THREE.Color(0xe0872a); for (const dx of [-14, 14]) for (const dz of [-6, 6]) g.push(boxGeo(1.6, 46, 1.6, x + dx, 22.6, z + dz, 0, col)); g.push(boxGeo(36, 3, 16, x, 46, z, 0, col), boxGeo(70, 2.4, 3, x, 50, z, 0, col)); const mm = mergeGeometries(g); g.forEach(o => o.dispose()); this.scene.add(new THREE.Mesh(mm, mat({ vertexColors: true }))); this.disposables.push(mm); };
       for (const [x, z] of this.scatter(low ? 2 : 5, 70, 260, 50, 200)) crane(x, z);
@@ -513,16 +518,16 @@ export class RaceView {
       // 세 단으로 쌓은 침엽수. 눈 쌓인 코스는 위쪽이 하얗게 칠해집니다.
       const tiers: THREE.BufferGeometry[] = [[3.7, 6, 2.5], [2.9, 5.2, 6], [2.1, 4.6, 9.4]].map(([r, h, y]) => { const g = new THREE.ConeGeometry(r, h, 8, 2).translate(0, y, 0), p = g.attributes.position, c = new Float32Array(p.count * 3); for (let i = 0; i < p.count; i++) { const f = (p.getY(i) - (y - h / 2)) / h, white = snow ? Math.min(1, Math.max(0, (f - 0.25) * 2.2)) : 0, base = snow ? [0.16, 0.3, 0.24] : [1, 1, 1]; c.set([base[0] + (1 - base[0]) * white, base[1] + (1 - base[1]) * white, base[2] + (1 - base[2]) * white], i * 3); } g.setAttribute('color', new THREE.BufferAttribute(c, 3)); return g; });
       const crown = mergeGeometries(tiers.map(g => g.toNonIndexed())); tiers.forEach(g => g.dispose());
-      const tint = new THREE.Color(th.tint), shade = (): THREE.Color => (snow ? new THREE.Color().setScalar(rnd(0.82, 1.1)) : tint.clone().multiplyScalar(rnd(0.7, 1.25)));
-      const sizes = spots.map(() => rnd(0.8, 1.8));
+      const tint = new THREE.Color(th.tint), shade = (): THREE.Color => (snow ? new THREE.Color().setScalar(this.artRnd(0.82, 1.1)) : tint.clone().multiplyScalar(this.artRnd(0.7, 1.25)));
+      const sizes = spots.map(() => this.artRnd(0.8, 1.8));
       this.instanced(trunk, mat({ color: 0x4a3524 }), spots.map(([x, z], k) => ({ p: [x, 2 * sizes[k] - 0.4, z] as [number, number, number], s: [sizes[k], sizes[k], sizes[k]] as [number, number, number] })));
-      this.instanced(crown, mat({ vertexColors: true }), spots.map(([x, z], k) => ({ p: [x, 2 * sizes[k] - 0.4, z] as [number, number, number], s: [sizes[k], sizes[k], sizes[k]] as [number, number, number], ry: rnd(0, 6), color: shade() })));
+      this.instanced(crown, mat({ vertexColors: true }), spots.map(([x, z], k) => ({ p: [x, 2 * sizes[k] - 0.4, z] as [number, number, number], s: [sizes[k], sizes[k], sizes[k]] as [number, number, number], ry: this.artRnd(0, 6), color: shade() })));
       // 먼 산: 높이에 따라 색이 변하고 꼭대기에 눈이 덮인 울퉁불퉁한 봉우리
       let cx = 0, cz = 0; for (let i = 0; i < t.n; i++) { cx += t.x[i]; cz += t.z[i]; } cx /= t.n; cz /= t.n;
       let trackR = 0; for (let i = 0; i < t.n; i++) trackR = Math.max(trackR, Math.hypot(t.x[i] - cx, t.z[i] - cz)); // 봉우리 밑동이 코스에 닿지 않도록 코스 반경 바깥에 세웁니다.
       const rock = new THREE.Color(th.mountain), snowC = new THREE.Color(0xf4f7fb), pk: THREE.BufferGeometry[] = [];
       for (let k = 0; k < 18; k++) {
-        const a = (k / 18) * Math.PI * 2 + rnd(-0.12, 0.12), h = rnd(240, 460), w = rnd(240, 380), r = Math.max(rnd(1000, 1500), trackR + w * 1.55 + 60), g = new THREE.ConeGeometry(1, 1, 9, 4).toNonIndexed(), p = g.attributes.position, c = new Float32Array(p.count * 3), seed = rnd(0, 100);
+        const a = (k / 18) * Math.PI * 2 + this.artRnd(-0.12, 0.12), h = this.artRnd(240, 460), w = this.artRnd(240, 380), r = Math.max(this.artRnd(1000, 1500), trackR + w * 1.55 + 60), g = new THREE.ConeGeometry(1, 1, 9, 4).toNonIndexed(), p = g.attributes.position, c = new Float32Array(p.count * 3), seed = this.artRnd(0, 100);
         for (let i = 0; i < p.count; i++) {
           const y = p.getY(i) + 0.5, rad = Math.hypot(p.getX(i), p.getZ(i)), ang = Math.atan2(p.getZ(i), p.getX(i)), j = 1 + 0.32 * Math.sin(ang * 3 + seed) + 0.18 * Math.sin(ang * 7 + seed * 2) + (y > 0.05 && y < 0.95 ? 0.12 * Math.sin(y * 13 + ang * 5 + seed) : 0);
           const px = p.getX(i) * j, pz = p.getZ(i) * j, py = y + 0.1 * Math.sin(ang * 4 + seed) * (1 - y); p.setXYZ(i, px * w, py * h, pz * w);
@@ -534,16 +539,16 @@ export class RaceView {
       const mtn = mergeGeometries(pk); pk.forEach(g => g.dispose()); this.scene.add(new THREE.Mesh(mtn, mat({ vertexColors: true }))); this.disposables.push(mtn);
     } else {
       // 사막: 메사, 선인장, 모래 언덕, 전봇대
-      const strata = canvasTex(64, 128, g => { const cols = ['#b4622f', '#c97a3e', '#a8552a', '#d08a4b', '#b86a36']; for (let y = 0; y < 128; y += 8) { g.fillStyle = cols[Math.floor(Math.random() * cols.length)]; g.fillRect(0, y, 64, 8); } });
-      const mesas = this.scatter(low ? 18 : 40, 40, 1100, 70, 150, true, () => rnd(60, 170) * 1.25).map(([x, z, , r]) => { const w = r / 1.25, h = rnd(24, 90); return { p: [x, h / 2 - 0.4, z] as [number, number, number], s: [w, h, w * rnd(0.6, 1.2)] as [number, number, number], ry: rnd(0, 6) }; });
+      const strata = canvasTex(64, 128, g => { const cols = ['#b4622f', '#c97a3e', '#a8552a', '#d08a4b', '#b86a36']; for (let y = 0; y < 128; y += 8) { g.fillStyle = cols[Math.floor(this.artRandom() * cols.length)]; g.fillRect(0, y, 64, 8); } });
+      const mesas = this.scatter(low ? 18 : 40, 40, 1100, 70, 150, true, () => this.artRnd(60, 170) * 1.25).map(([x, z, , r]) => { const w = r / 1.25, h = this.artRnd(24, 90); return { p: [x, h / 2 - 0.4, z] as [number, number, number], s: [w, h, w * this.artRnd(0.6, 1.2)] as [number, number, number], ry: this.artRnd(0, 6) }; });
       const cyl = new THREE.CylinderGeometry(0.78, 1, 1, 7); (cyl.attributes.uv as THREE.BufferAttribute).array.forEach((_, i, arr) => { if (i % 2) (arr as Float32Array)[i] *= 2; });
       this.instanced(cyl, mat({ map: strata, color: th.tint }), mesas); this.disposables.push(strata);
-      const dunes = this.scatter(low ? 25 : 60, 30, 900, 40, 70, true, () => rnd(80, 200) * 1.25).map(([x, z, , r]) => ({ p: [x, -0.4, z] as [number, number, number], s: [r / 1.25, rnd(8, 22), r / 1.25] as [number, number, number], ry: rnd(0, 6), color: new THREE.Color(0xd9ae72).multiplyScalar(rnd(0.9, 1.08)) }));
+      const dunes = this.scatter(low ? 25 : 60, 30, 900, 40, 70, true, () => this.artRnd(80, 200) * 1.25).map(([x, z, , r]) => ({ p: [x, -0.4, z] as [number, number, number], s: [r / 1.25, this.artRnd(8, 22), r / 1.25] as [number, number, number], ry: this.artRnd(0, 6), color: new THREE.Color(0xd9ae72).multiplyScalar(this.artRnd(0.9, 1.08)) }));
       this.instanced(new THREE.SphereGeometry(1, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), mat({ color: 0xffffff }), dunes);
       const cg: THREE.BufferGeometry[] = [], green = new THREE.Color(0x4f7a3a);
       cg.push(boxGeo(0.9, 5, 0.9, 0, 2.5, 0, 0, green), boxGeo(2.2, 0.7, 0.7, 1.4, 2.4, 0, 0, green), boxGeo(0.7, 1.8, 0.7, 2.4, 3.2, 0, 0, green), boxGeo(2, 0.7, 0.7, -1.3, 3.2, 0, 0, green), boxGeo(0.7, 1.6, 0.7, -2.2, 3.9, 0, 0, green));
       const cactus = mergeGeometries(cg); cg.forEach(o => o.dispose());
-      this.instanced(cactus, mat({ vertexColors: true }), this.scatter(low ? 70 : 160, 9, 160, 14, 8).map(([x, z]) => { const s = rnd(0.8, 1.6); return { p: [x, -0.4, z] as [number, number, number], s: [s, s, s] as [number, number, number], ry: rnd(0, 6) }; }));
+      this.instanced(cactus, mat({ vertexColors: true }), this.scatter(low ? 70 : 160, 9, 160, 14, 8).map(([x, z]) => { const s = this.artRnd(0.8, 1.6); return { p: [x, -0.4, z] as [number, number, number], s: [s, s, s] as [number, number, number], ry: this.artRnd(0, 6) }; }));
       // 길가 군사 초소(FRONTLINE 사막 기지와 같은 공용 소품)
       this.outposts = buildOutposts(this.scene, t, low); this.disposables.push(this.outposts);
       // 전봇대와 전선(오른쪽 길가)

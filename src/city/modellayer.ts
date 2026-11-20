@@ -6,6 +6,7 @@ import { AWNING_OUT, CHAR_SCALE, HIP, KNEE, LEG_Z, PROPS } from './scale';
 import { CHAR_KINDS, instantiate, type Baked, type Models } from './models';
 import type { Actor, Structure, Vehicle, World } from './world';
 import { blankPose, calmState, computePose } from '../shared/character/pose';
+import { signalPhase } from './signal-visuals';
 
 const CLOTH = [0x8d99ae, 0xb08968, 0x6d8a96, 0xa58fb3, 0x9aa37b, 0xc58f8f, 0xd27d5a, 0x5f9ea0], SKIN = [0xf1c9a5, 0xd9a47a, 0xa8744f, 0x7a5236, 0xf5d6b8];
 export const fcol = (f: number): number => f === POLICE ? 0x3f6fe0 : f === CIV ? 0x9aa3ad : new THREE.Color(FACTIONS[f]?.color ?? '#fff').getHex();
@@ -23,6 +24,7 @@ export class ModelLayer {
   private d = new THREE.Object3D(); private base = new THREE.Matrix4(); private local = new THREE.Matrix4(); private q = new THREE.Quaternion(); private qz = new THREE.Quaternion(); private qy = new THREE.Quaternion();
   private st = calmState(); private pose = blankPose(); private torso = new THREE.Matrix4(); private m = new THREE.Matrix4(); private m2 = new THREE.Matrix4(); private down = new THREE.Matrix4().makeTranslation(0, -HIP, 0); private aim = new Map<number, number>();
   private v1 = new THREE.Vector3(); private one = new THREE.Vector3(1, 1, 1); private col = new THREE.Color(); private zAxis = new THREE.Vector3(0, 0, 1); private yAxis = new THREE.Vector3(0, 1, 0);
+  private signalTick=-1; private signalSets: { meshes:(THREE.InstancedMesh|null)[]; positions:THREE.Matrix4[] }[]=[];
   private sets: Record<string, CharSet> = {}; private mechs = new Map<number, THREE.Object3D>(); private crystalMesh: THREE.InstancedMesh;
   private lam = new THREE.MeshLambertMaterial({ vertexColors: true }); private basic = new THREE.MeshBasicMaterial({ vertexColors: true });
   vmScene = new THREE.Scene(); vmCam = new THREE.PerspectiveCamera(64, 1, 0.5, 200); private vm: THREE.Object3D | null = null; private vmId = ''; private vmSwap = 0; private flash: THREE.Sprite;
@@ -73,15 +75,22 @@ export class ModelLayer {
       lamp?.setMatrixAt(i, d.matrix); glowLamp?.setMatrixAt(i, d.matrix); i++;
     }
     if(lamp)lamp.count=i;if(glowLamp)glowLamp.count=i;
-    // 신호등: 교차로 모서리마다
-    const tlR = this.inst(B.tl_red, this.lam, 220), tlG = this.inst(B.tl_green, this.lam, 220), tlRg = B.tl_red.glow ? new THREE.InstancedMesh(B.tl_red.glow, this.basic, 220) : null, tlGg = B.tl_green.glow ? new THREE.InstancedMesh(B.tl_green.glow, this.basic, 220) : null;
-    if (tlRg) { tlRg.frustumCulled = false; this.scene.add(tlRg); } if (tlGg) { tlGg.frustumCulled = false; this.scene.add(tlGg); }
-    let nr = 0, ng = 0;
-    for (const b of w.map.blocks) if(b.type!=='void') for (const [cx, cy, ry] of [[16, 16, 0], [BLOCK - 16, 16, 0], [16, BLOCK - 16, Math.PI], [BLOCK - 16, BLOCK - 16, Math.PI]] as const) {
-      if (rng() < 0.45) continue; const red = (cx < BLOCK / 2) === (cy < BLOCK / 2); d.position.set(b.x + cx, 0, b.y + cy); d.rotation.set(0, ry + (cx > BLOCK / 2 ? Math.PI : 0) * 0, 0); d.scale.setScalar(PROPS.tl_red.scale); d.updateMatrix();
-      if (red) { tlR?.setMatrixAt(nr, d.matrix); tlRg?.setMatrixAt(nr, d.matrix); nr++; } else { tlG?.setMatrixAt(ng, d.matrix); tlGg?.setMatrixAt(ng, d.matrix); ng++; }
+    // Traffic signals borrow OUTLAW CITY's alternating two-direction phase.
+    const cap=w.map.blocks.filter(b=>b.type!=='void').length*4;
+    const tlR=this.inst(B.tl_red,this.lam,cap),tlG=this.inst(B.tl_green,this.lam,cap);
+    const glow=(geo:THREE.BufferGeometry|undefined):THREE.InstancedMesh|null=>{
+      if(!geo)return null;const m=new THREE.InstancedMesh(geo,this.basic,cap);
+      m.frustumCulled=false;m.count=0;this.scene.add(m);return m;
+    };
+    const tlRg=glow(B.tl_red.glow),tlGg=glow(B.tl_green.glow);
+    this.signalSets=[{meshes:[tlR,tlRg],positions:[]},{meshes:[tlG,tlGg],positions:[]}];
+    for(const b of w.map.blocks)if(b.type!=='void')for(const [cx,cy,ry] of [[16,16,0],[BLOCK-16,16,0],[16,BLOCK-16,Math.PI],[BLOCK-16,BLOCK-16,Math.PI]] as const){
+      if(rng()<0.45)continue;
+      const group=(cx<BLOCK/2)===(cy<BLOCK/2)?0:1;
+      d.position.set(b.x+cx,0,b.y+cy);d.rotation.set(0,ry,0);d.scale.setScalar(PROPS.tl_red.scale);d.updateMatrix();
+      this.signalSets[group].positions.push(d.matrix.clone());
     }
-    for (const [m, n] of [[tlR, nr], [tlRg, nr], [tlG, ng], [tlGg, ng]] as const) if (m) { m.count = n; m.instanceMatrix.needsUpdate = true; }
+    this.updateSignals();
     // 보도 소품: 블록 가장자리를 따라
     const edge = (b: { x: number; y: number }, inset: number): { x: number; z: number; nx: number; ny: number } => {
       const side = Math.floor(rng() * 4), t = 30 + rng() * (BLOCK - 60);
@@ -130,6 +139,17 @@ export class ModelLayer {
   }
 
   // ---------- 개별 모델 ----------
+  private updateSignals():void{
+    const phase=signalPhase(this.world.time);
+    if(phase===this.signalTick)return;this.signalTick=phase;
+    for(let i=0;i<2;i++){
+      const positions=this.signalSets[(i+phase)%2]?.positions??[];
+      for(const mesh of this.signalSets[i]?.meshes??[]){
+        if(!mesh)continue;positions.forEach((m,k)=>mesh.setMatrixAt(k,m));
+        mesh.count=positions.length;mesh.instanceMatrix.needsUpdate=true;
+      }
+    }
+  }
   makeStruct(s: Structure): THREE.Object3D | null { const t = this.models.structures[s.kind]; if (!t) return null; const g = instantiate(t, { team: fcol(s.f) }); g.scale.setScalar(10); g.position.set(s.x + s.w / 2, 0, s.y + s.h / 2); return g; }
   makeVehicle(v: Vehicle): THREE.Object3D | null {
     const t = this.models.vehicles[v.kind === 'sedan' ? CIV_CARS[v.id % CIV_CARS.length] : VEHICLE_MODEL[v.kind]]; if (!t) return null;
@@ -155,6 +175,7 @@ export class ModelLayer {
 
   // ---------- 매 프레임 ----------
   update(pb: Actor | null, third: boolean, cam: THREE.Vector3): void {
+    this.updateSignals();
     const w = this.world, d = this.d, base = this.base, torso = this.torso, m = this.m, now = performance.now() / 1000;
     for (const k of CHAR_KINDS) { const s = this.sets[k]; for (const p of [s.body, s.leg, s.shin, s.armL, s.armR]) if (p) p.n = 0; }
     const seenMech = new Set<number>();

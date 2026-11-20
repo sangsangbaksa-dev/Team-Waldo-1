@@ -1,3 +1,4 @@
+import '../shared/game-polish.css';
 // LAST CITY — 게임 루프, 입력, HUD
 import './city.css';
 import { BIZ, BUILD_ORDER, CLASSES, DIFFICULTY, DIFFICULTY_ORDER, FACTIONS, PERKS, RESEARCH, STRUCTS, UNITS, WEAPONS, type ClassId, type Difficulty, type ResearchId, type StructKind, type UnitId, type WeaponId } from './defs';
@@ -564,6 +565,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       audio.unlock(); if (!world || paused || world.over) return; mouse.x = e.clientX; mouse.y = e.clientY; const three = cv === canvas3;
       if (e.pointerType === 'touch') {
         if (ghost) { if (three) { const p = R3!.buildPoint(700); ghost.x = snapBuildCoord(p.x); ghost.y = snapBuildCoord(p.y); } place(e.clientX, e.clientY); return; }
+        try { cv.setPointerCapture(e.pointerId); } catch { /* window pointerup still clears input */ }
         if (e.clientX < innerWidth * 0.45) { const s = sticks.move; if (s.id < 0) { s.id = e.pointerId; s.ox = e.clientX; s.oy = e.clientY; s.x = s.y = 0; } }
         else if (three) looks.set(e.pointerId, { x: e.clientX, y: e.clientY });
         else { const s = sticks.aim; if (s.id < 0) { s.id = e.pointerId; s.ox = e.clientX; s.oy = e.clientY; s.x = s.y = 0; } }
@@ -581,8 +583,8 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       }
       mouse.x = e.clientX; mouse.y = e.clientY;
     });
-    const up = (e: PointerEvent): void => { looks.delete(e.pointerId); for (const s of [sticks.move, sticks.aim]) if (s.id === e.pointerId) { s.id = -1; s.x = s.y = 0; } if (e.pointerType !== 'touch' && e.button === 0) mouse.down = false; };
-    cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+    const up = (e: PointerEvent): void => { looks.delete(e.pointerId); for (const s of [sticks.move, sticks.aim]) if (s.id === e.pointerId) { s.id = -1; s.x = s.y = 0; } if (e.pointerType !== 'touch' && (e.button === 0 || e.type !== 'pointerup')) mouse.down = false; };
+    cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up); cv.addEventListener('lostpointercapture', up);
     cv.addEventListener('wheel', e => { e.preventDefault(); if (cv === canvas) userZoom = Math.max(0.6, Math.min(1.5, userZoom * (e.deltaY > 0 ? 0.92 : 1.08))); else if (world) { const f = world.factions[0]; switchWeapon(world, 0, (f.cur + (e.deltaY > 0 ? 1 : f.slots.length - 1)) % f.slots.length); } }, { passive: false });
   }
   const onWindowPointerEnd = (e: PointerEvent): void => {

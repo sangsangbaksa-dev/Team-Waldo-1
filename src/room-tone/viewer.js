@@ -39,6 +39,9 @@ function showFallback() {
   fallback = true;
   stage.classList.remove("ready");
   stage.classList.add("fallback");
+  if(renderer)renderer.domElement.hidden=true;
+  if(frameId!==null)cancelAnimationFrame(frameId);
+  frameId=null;
   image.src = $(
     mode === "face" ? "closeimage" : "bodyimage",
   ).textContent.trim();
@@ -92,8 +95,10 @@ play.onclick = () => {
 const fmt = (t) => t.toFixed(2).padStart(5, "0");
 function seek(t) {
   dirty = true;
+  if(!Number.isFinite(t))return;
+  t=Math.max(0,Math.min(duration,t));
   if (mixer && action) {
-    action.time = t === duration ? t - 0.0001 : t;
+    action.time = t === duration ? Math.max(0,t - 0.0001) : t;
     mixer.update(0);
   }
   $("time").value = fmt(t);
@@ -159,6 +164,7 @@ async function run() {
     light(0xf29c63, 2.9, 1.5, 2, -1.5);
     light(0x9ac8c7, 1.2, -2, 1, -1);
     const g = await new GLTFLoader().parseAsync(await modelBytes(), "");
+    if(fallback)return;
     scene.add(g.scene);
     g.scene.traverse((o) => {
       if (o.isMesh) {
@@ -169,7 +175,11 @@ async function run() {
     if (g.animations.length) {
       action = mixer.clipAction(g.animations[0]);
       action.play();
-      duration = g.animations[0].duration;
+      duration = Math.max(.0001,g.animations[0].duration);
+    } else {
+      playing=false;
+      play.disabled=true;
+      $("scrub").disabled=true;
     }
     // A soft grounding shadow follows the model at the floor.
     const pad = document.createElement("canvas");

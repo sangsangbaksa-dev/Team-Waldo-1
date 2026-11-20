@@ -153,7 +153,7 @@ export function lineOpen(map, a, b, tile) {
 export function normalizeSave(s) {
   if (s?.v !== 1 || !Number.isInteger(s.ch) || s.ch < 0 || s.ch >= chapters.length ||
       !Array.isArray(s.found) || s.found.length !== 3) return null;
-  const found = s.found.map(v => v === true);
+  const found = Array.from(s.found,v=>v===true);
   const w = chapters[s.ch].size;
   const visited = Array.isArray(s.seen) ? s.seen.filter(v =>
     Number.isInteger(v) && v >= 0 && v < w * w) : [];
@@ -276,6 +276,6 @@ export function puzzleAnswer(ch) {
 }
 export function puzzleCorrect(ch, choices) {
   const answer = puzzleAnswer(ch);
-  return answer.length === 3 && choices.length === answer.length &&
+  return answer.length === 3 && Array.isArray(choices) && choices.length === answer.length &&
     answer.every((v, i) => v >= 0 && choices[i] === v);
 }

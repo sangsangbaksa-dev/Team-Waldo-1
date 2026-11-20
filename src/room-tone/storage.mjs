@@ -13,11 +13,11 @@ export function createRoomStorage(getStorage) {
       try { raw = JSON.stringify(value); } catch { return false; }
       if (typeof raw !== "string") return false;
       session.set(key, raw);
-      try { getStorage().setItem(key, raw); return true; } catch { return false; }
+      try { getStorage().setItem(key, raw); session.delete(key); return true; } catch { return false; }
     },
     remove(key) {
       session.set(key, null);
-      try { getStorage().removeItem(key); return true; } catch { return false; }
+      try { getStorage().removeItem(key); session.delete(key); return true; } catch { return false; }
     },
   };
 }

@@ -47,7 +47,8 @@ try {
           return el.contains(document.elementFromPoint(r.x + r.width/2, r.y + r.height/2));
         });
         assert.ok(hit, "HUD must receive pointer events above the 3D canvas");
-        await page.locator("#pauseGame").click();
+        assert.equal(await page.evaluate(()=>Boolean(document.pointerLockElement)),false);
+        await page.locator("#pauseGame").tap();
       }
       else await page.keyboard.press("p");
       await page.getByRole("button", { name: "조작 설정", exact: true }).click();
@@ -76,7 +77,7 @@ try {
       await page.locator("#dialog").waitFor({ state: "hidden" });
       await page.locator("#prompt").waitFor({ state: "visible" });
       await page.screenshot({ path: out + "/room-tone-wing-" + (mobile ? "archive" : "radio") + ".png" });
-      if (mobile) await page.locator("#act").click();
+      if (mobile) await page.locator("#act").tap();
       else await page.keyboard.press("e");
       const confirm = page.getByRole("button", { name: "신호 확인", exact: true });
       await confirm.waitFor();

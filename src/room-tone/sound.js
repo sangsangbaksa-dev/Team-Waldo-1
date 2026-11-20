@@ -66,6 +66,7 @@ export class Sound {
     this.stepSide = 1;
     this.clock = null;
     this.waking = null;
+    this.puzzleActive = false;
   }
 
   async start() {
@@ -74,7 +75,11 @@ export class Sound {
     try {
       if (!this.ctx) {
         this.ctx = new Audio({ latencyHint: "interactive" });
-        this.build();
+        try{this.build();}catch(error){
+          const broken=this.ctx;this.ctx=null;this.level=null;this.bed=null;this.breath=null;this.radio=null;
+          try{await broken.close();}catch{/* Unavailable audio context. */}
+          throw error;
+        }
       }
       if (this.ctx.state === "suspended") {
         if (!this.waking)
@@ -84,7 +89,7 @@ export class Sound {
         await this.waking;
       }
       this.applyLevel();
-      if (!this.paused) this.startClock();
+      if (!this.paused && !this.puzzleActive) this.startClock();
     } catch {
       // Sound is optional on devices with a locked or unavailable audio output.
     }
@@ -152,6 +157,7 @@ export class Sound {
       .connect(this.breath)
       .connect(this.mix);
     this.ambience(this.chapter);
+    this.breath.gain.value=this.nearness*this.nearness*.12;
     this.nextDistant = c.currentTime + 6 + Math.random() * 5;
   }
 
@@ -168,10 +174,13 @@ export class Sound {
   setMute(muted) {
     this.muted = Boolean(muted);
     this.applyLevel();
+    if(this.muted){if(this.clock!==null)globalThis.clearInterval(this.clock);this.clock=null;}
+    else if(!this.paused && !this.puzzleActive)this.startClock();
   }
 
   pause(paused,tail=0) {
     this.paused=Boolean(paused);
+    this.puzzleActive=false;
     if(this.paused && tail>0 && this.level && !this.muted){
       const at=this.ctx.currentTime;
       ease(this.level.gain,0,at+tail,.08);
@@ -193,14 +202,16 @@ export class Sound {
   puzzleMode() {
     // Keep puzzle tones audible without restarting the ambience clock on every dial.
     this.paused = false;
+    this.puzzleActive = true;
     this.applyLevel();
     if (this.clock !== null) globalThis.clearInterval(this.clock);
     this.clock = null;
     if (this.bed) ease(this.bed.gain, 0.22, this.ctx.currentTime, 0.2);
+    void this.start();
   }
 
   startClock() {
-    if (this.clock !== null) return;
+    if (this.clock !== null || this.ctx?.state!=="running" || this.paused || this.puzzleActive || this.muted) return;
     this.clock = globalThis.setInterval(() => this.tick(), 210);
   }
 

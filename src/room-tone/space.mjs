@@ -17,7 +17,8 @@ export function propBlocks(x,z,r,rootX,rootZ,rotation,halfWidth,halfDepth){
 export function clearanceAllows(x,z,oldX,oldZ,r,obstacles){
   for(const o of obstacles){
     if(!o.visible)continue;
-    if(Math.abs(x-o.x)>1.1||Math.abs(z-o.z)>1.1)continue;
+    const extent=Math.hypot(o.halfWidth,o.halfDepth)+r;
+    if(Math.abs(x-o.x)>extent||Math.abs(z-o.z)>extent)continue;
     if(!propBlocks(x,z,r,o.x,o.z,o.ry,o.halfWidth,o.halfDepth))continue;
     // A resumed or pre-existing overlapping save may move outward, never deeper.
     const wasBlocked=propBlocks(oldX,oldZ,r,o.x,o.z,o.ry,o.halfWidth,o.halfDepth);

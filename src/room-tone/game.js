@@ -12,6 +12,7 @@ import { openViewer, closeViewer } from "./viewer.js";
 import { enemyPerception, cellDistance, patrolGoal } from "./perception.mjs";
 import { createRoomStorage } from "./storage.mjs";
 import { exitWall, clearanceAllows, doorMotion } from "./space.mjs";
+import { canLock, wrapAngle, capturePointer, canSaveState, motionState, stepRemainder } from "./runtime.mjs";
 
 const $ = (id) => document.getElementById(id),
   C = 2.7,
@@ -94,11 +95,12 @@ let sensitivity = Number.isFinite(savedControls?.sensitivity)
 let cameraMotion = savedControls?.cameraMotion !== false;
 const motionAllowed = () => cameraMotion && !reducedMotion.matches;
 function persistControls() {
-  $("viewWrap").dataset.motion = cameraMotion ? "normal" : "reduced";
+  $("viewWrap").dataset.motion = motionState(cameraMotion,reducedMotion.matches);
   try { localStorage.setItem("rt-controls", JSON.stringify({ sensitivity, cameraMotion })); } catch { /* Session settings still apply. */ }
 }
-$("viewWrap").dataset.motion = cameraMotion ? "normal" : "reduced";
-let lastPointerType = matchMedia("(pointer:coarse)").matches ? "touch" : "mouse";
+$("viewWrap").dataset.motion = motionState(cameraMotion,reducedMotion.matches);
+reducedMotion.addEventListener?.("change",()=>{$("viewWrap").dataset.motion=motionState(cameraMotion,reducedMotion.matches);});
+let lastPointerType = touch ? "touch" : "mouse";
 let draggingLook = false;
 let lookTravel = 0;
 const px = (t) => String(t).padStart(2, "0");
@@ -118,6 +120,7 @@ function save() {
 function toggleAudio() {
   muted = !muted;
   sound.setMute(muted);
+  if(!muted && ["play","puzzle","exit"].includes(state))void sound.start();
   try {
     localStorage.setItem("rt-silent", JSON.stringify(muted));
   } catch { /* Browser storage or pointer lock is optional. */ }
@@ -146,6 +149,7 @@ function homepage() {
   screens("home");
   setGameModal(false);
   const s = saved();
+  $("new").focus({preventScroll:true});
   $("continue").hidden = !s;
   $("new").textContent = s ? "처음부터" : "게임 시작";
   $("continue").textContent = s
@@ -188,8 +192,8 @@ function leaveLook() {
     document.exitPointerLock();
   }
 }
-function lockLook() {
-  if (state !== "play" || lastPointerType === "touch" || !renderer || document.pointerLockElement || lookId !== -1) return;
+function lockLook(explicit=false) {
+  if (state !== "play" || !canLock(touch,lastPointerType,explicit) || !renderer || document.pointerLockElement || lookId !== -1) return;
   try {
     const p = renderer.domElement.requestPointerLock?.();
     p?.catch(() => {});
@@ -230,7 +234,7 @@ function resume() {
   setGameModal(false);
   sound.pause(false);
   void sound.start(); // Recover audio suspended by the browser while paused.
-  lockLook();
+  // Mouse lock requires a deliberate click inside the canvas, not a HUD action.
   last = performance.now();
   now = last / 1000;
   scheduleFrame();
@@ -338,7 +342,7 @@ async function setup() {
     renderer.toneMappingExposure = 1.08;
     $("viewWrap").prepend(renderer.domElement);
     $("viewWrap").addEventListener("click", (e) => {
-      if (state === "play" && e.target === renderer.domElement && !draggingLook) lockLook();
+      if (state === "play" && e.target === renderer.domElement && !draggingLook) lockLook(true);
       draggingLook = false;
     });
     renderer.domElement.addEventListener("webglcontextlost", (e) => {
@@ -454,6 +458,7 @@ function pointPlayer() {
   const far = xy(level.nest);
   entity.position.set(far.x, 0, far.z);
   enemyShadow?.position.set(far.x, .004, far.z);
+  if(enemyShadow){enemyShadow.rotation.z=0;enemyShadow.material.opacity=.52;}
   path = [];
   nextPath = 0;
   lastKnown = -1;
@@ -693,18 +698,21 @@ function loadScene() {
 async function start(cont) {
   if (opening) return;
   opening = true;
-  screens("game");
   state = "load";
+  screens("game");
   setGameModal(true);
   $("panelTitle").textContent = "녹음실 연결 중";
   $("panelText").textContent = "공간과 캐릭터를 불러오고 있습니다.";
   $("panelBody").replaceChildren();
   $("panelActions").replaceChildren();
+  $("panelTitle").focus({preventScroll:true});
   try {
     // Audio is optional: a blocked AudioContext.resume must not hold up WebGL loading.
+    sound.pause(true);
     void sound.start();
     sound.setMute(muted);
     await setup();
+    if(contextLost || state!=="load")throw new Error("Scene loading interrupted");
     const s = cont ? saved() : null;
     ch = s?.ch ?? 0;
     found = s?.found ?? [false, false, false];
@@ -874,9 +882,10 @@ function drawMap(canvas) {
   ctx.fill();
   ctx.restore();
 }
-function mapPanel(fromBrief = false) {
-  if (!fromBrief && state !== "play") return;
-  returnFromMap = fromBrief ? brief : resume;
+function mapPanel(fromBrief = false,returnAction=null) {
+  if (!fromBrief && !returnAction && state !== "play") return;
+  if(level && canSaveState(state))save();
+  returnFromMap = returnAction ?? (fromBrief ? brief : resume);
   modal(
     "시설 도면",
     chapters[ch].location + " · " + chapters[ch].goal,
@@ -1111,6 +1120,15 @@ function interact() {
       puzzle();
       return;
     }
+    showStation();
+  } else if (!solved) {
+    message("문이 잠겼습니다. " + c.station + "에서 신호를 먼저 복원하세요.");
+  } else {
+    beginExitSequence(o);
+  }
+}
+function showStation(){
+    const c=chapters[ch];
     modal(
       c.station,
       "세 개의 " + c.item + "를 회수하면 장치를 복구할 수 있습니다.",
@@ -1119,19 +1137,13 @@ function interact() {
         [
           "도면 보기",
           () => {
-            state = "play";
-            mapPanel();
+            mapPanel(false,showStation);
           },
         ],
         ["닫기", resume, true],
       ],
       "station",
     );
-  } else if (!solved) {
-    message("문이 잠겼습니다. " + c.station + "에서 신호를 먼저 복원하세요.");
-  } else {
-    beginExitSequence(o);
-  }
 }
 function finishExit() {
   if(ch < 3) {
@@ -1194,7 +1206,7 @@ function beginExitSequence(o) {
   scheduleFrame();
 }
 function advanceExit(dt) {
-  if(!exitSequence){finishExit();return;}
+  if(!exitSequence){pauseMenu();return;}
   const sequence=exitSequence;
   sequence.age+=dt;
   const turn=Math.min(1,sequence.age/.60);
@@ -1373,6 +1385,7 @@ function update(dt) {
   let r = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0) + pointer.x;
   if (keys.has("ArrowLeft")) yaw += dt * 1.55 * sensitivity;
   if (keys.has("ArrowRight")) yaw -= dt * 1.55 * sensitivity;
+  yaw=wrapAngle(yaw);
   const length = Math.hypot(f, r);
   if (length > 1) {
     f /= length;
@@ -1399,7 +1412,7 @@ function update(dt) {
   stepAt += moved;
   if (stepAt > (running ? 1.02 : 0.86)) {
     sound.step(running, crouched);
-    stepAt = 0;
+    stepAt = stepRemainder(stepAt,running?1.02:.86);
   }
   eyeHeight = THREE.MathUtils.damp(eyeHeight, crouched ? 1.12 : 1.58, 12, dt);
   camera.position.set(
@@ -1489,6 +1502,7 @@ function frame(ts) {
   scheduleFrame();
 }
 document.addEventListener("keydown", (e) => {
+  if(e.isComposing)return;
   if (e.code === "Tab" && !$("game").hidden && !$("dialog").hidden) {
     const focusable = [...$("dialog").querySelectorAll("button:not(:disabled), input:not(:disabled), a[href]")];
     if (!focusable.length) { e.preventDefault(); return; }
@@ -1505,6 +1519,7 @@ document.addEventListener("keydown", (e) => {
   )
     return;
   if (state === "play") {
+    if(e.target instanceof HTMLButtonElement && ["Space","Enter"].includes(e.code))return;
     if (
       [
         "ArrowUp",
@@ -1539,7 +1554,7 @@ document.addEventListener("keyup", (e) => keys.delete(e.code));
 let hadPointerLock = false;
 document.addEventListener("pointerlockchange", () => {
   const locked = document.pointerLockElement === renderer?.domElement;
-  if (locked && state !== "play") {
+  if (locked && (state !== "play" || touch)) {
     // An asynchronous lock request may complete after a pause or screen change.
     hadPointerLock = false;
     document.exitPointerLock();
@@ -1549,23 +1564,31 @@ document.addEventListener("pointerlockchange", () => {
   hadPointerLock = locked;
 });
 window.addEventListener("pagehide", () => {
-  if (state === "play" || state === "exit") save();
+  if (level && canSaveState(state)) save();
 });
 document.addEventListener("pointerdown", (e) => {
   lastPointerType = e.pointerType || "mouse";
 }, true);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
+    if (level && canSaveState(state)) save();
+    if(state==="puzzle" || state==="exit")sound.pause(true);
     if (state === "play") pauseGame();
     if (frameId !== null) cancelAnimationFrame(frameId);
     frameId = null;
-  } else scheduleFrame();
+  } else {
+    if(state==="puzzle")sound.puzzleMode();
+    else if(state==="exit")sound.pause(false);
+    last=performance.now();
+    scheduleFrame();
+  }
 });
 window.addEventListener("blur", () => {
   if (state === "play") pauseGame();
 });
 function look(dx, dy) {
-  yaw -= dx * 0.00245 * sensitivity;
+  if(!Number.isFinite(dx)||!Number.isFinite(dy))return;
+  yaw = wrapAngle(yaw - dx * 0.00245 * sensitivity);
   pitch = THREE.MathUtils.clamp(pitch - dy * 0.0022 * sensitivity, -1.18, 1.18);
 }
 document.addEventListener("mousemove", (e) => {
@@ -1585,7 +1608,7 @@ wrap.addEventListener("pointerdown", (e) => {
   lookTravel = 0;
   lookLast = [e.clientX, e.clientY];
   // Capture on the canvas so a stationary tap still targets the canvas click handler.
-  e.target.setPointerCapture(e.pointerId);
+  if(!capturePointer(e.target,e.pointerId)){lookId=-1;lookLast=null;}
 });
 wrap.addEventListener("pointermove", (e) => {
   if (
@@ -1614,7 +1637,7 @@ stick.addEventListener("pointerdown", (e) => {
   moveId = e.pointerId;
   const b = stick.getBoundingClientRect();
   moveStart = [b.left + b.width / 2, b.top + b.height / 2];
-  stick.setPointerCapture(moveId);
+  if(!capturePointer(stick,moveId)){moveId=-1;moveStart=null;return;}
   stickMove(e);
 });
 function stickMove(e) {
@@ -1634,6 +1657,7 @@ for (const n of ["pointerup", "pointercancel", "lostpointercapture"])
   stick.addEventListener(n, (e) => {
     if (e.pointerId !== moveId) return;
     moveId = -1;
+    moveStart = null;
     pointer.x = pointer.y = 0;
     $("stickknob").style.transform = "";
   });
@@ -1641,7 +1665,7 @@ $("run").addEventListener("pointerdown", (e) => {
   if (state !== "play" || runId !== -1 || (e.pointerType === "mouse" && e.button !== 0)) return;
   runId = e.pointerId;
   mobileRun = true;
-  $("run").setPointerCapture(runId);
+  if(!capturePointer($("run"),runId)){runId=-1;mobileRun=false;}
 });
 for (const n of ["pointerup", "pointercancel", "lostpointercapture"])
   $("run").addEventListener(n, (e) => {

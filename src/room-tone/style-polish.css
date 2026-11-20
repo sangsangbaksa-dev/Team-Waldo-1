@@ -107,3 +107,8 @@
 /* The exit transition is a single fade, never a flashing effect. */
 #game[data-transition="exit"]::after {content:"";position:absolute;inset:0;background:#050807;opacity:var(--exit-fade,0);z-index:3;pointer-events:none;}
 #game[data-transition="exit"] :is(.hudright,.gear,#stick,.touchactions) {pointer-events:none;}
+
+/* Keep the renderer in the game stacking context even in mobile WebKit. */
+#game #viewWrap {position:absolute;inset:0;z-index:0;}
+#game .hudright {position:relative;pointer-events:auto;}
+#game .hudright button,#game .gear button,#game .touchactions button {touch-action:manipulation;}

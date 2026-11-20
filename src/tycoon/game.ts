@@ -81,7 +81,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   }
 
   // ---------- 저장 ----------
-  const save = (): void => { if (core && phase === 'play') saveTycoon(core); };
+  const save = (): boolean => !!core && phase === 'play' && saveTycoon(core);
 
   // ---------- 모달 ----------
   const paused = (): boolean => modal !== null;
@@ -128,7 +128,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   }
   function menuAction(m: string): void {
     if (m === 'resume') closeModal();
-    else if (m === 'save') { save(); toast('저장했습니다', 'good'); }
+    else if (m === 'save') { if (save()) toast('저장했습니다', 'good'); else toast('저장하지 못했습니다. 브라우저 저장 공간을 확인하세요.', 'bad'); }
     else if (m === 'view') { player.setFirstPerson(!player.firstPerson); renderModal(); }
     else if (m === 'sound') { audio.enabled = !audio.enabled; writePreferences({ ...readPreferences(), sound: audio.enabled }); renderModal(); }
     else if (m === 'exit') exit();
@@ -161,7 +161,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     keys.add(e.code);
   };
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.code); };
-  window.addEventListener('keydown', onKeyDown); window.addEventListener('keyup', onKeyUp); window.addEventListener('blur', resetInput); document.addEventListener('visibilitychange', resetInput);
+  window.addEventListener('keydown', onKeyDown); window.addEventListener('keyup', onKeyUp); window.addEventListener('blur', resetInput); const onVisibility = (): void => { resetInput(); if (document.hidden) save(); }; const onPageHide = (): void => { save(); }; document.addEventListener('visibilitychange', onVisibility); window.addEventListener('pagehide', onPageHide);
   canvas.addEventListener('pointerdown', e => {
     audio.unlock(); if (phase !== 'play' || modal) return;
     if (e.pointerType === 'touch') {
@@ -296,7 +296,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     syncT += dt; if (syncT > SYNC_EVERY) { syncT = 0; syncCity(false); attachCarry(); }
     saveT += dt; if (saveT > 25) { saveT = 0; save(); }
     audio.ambience(sky.daylight, sky.wet, 0); if (sky.wet > 0.8 && Math.random() < dt * 0.04) audio.thunder(); rainSound = sky.wet; void rainSound;
-    const fl = q('#ty-flash'); void fl;
+    
     // 토스트 정리
     const nowMs = performance.now(); while (toastList.length && toastList[0].at < nowMs) toastList.shift()!.el.remove();
     // HUD
@@ -331,7 +331,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 종료 ----------
   function exit(): void {
     if (closed) return; save(); closed = true; cancelAnimationFrame(raf);
-    window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', resetInput); document.removeEventListener('visibilitychange', resetInput);
+    window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', resetInput); document.removeEventListener('visibilitychange', onVisibility); window.removeEventListener('pagehide', onPageHide);
     window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp); window.removeEventListener('wheel', onWheel); window.removeEventListener('resize', resize); document.removeEventListener('pointerlockchange', onLock);
     if (document.pointerLockElement) document.exitPointerLock();
     for (const u of unsub) u();

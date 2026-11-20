@@ -534,7 +534,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   const looks = new Map<number, { x: number; y: number }>();
   for (const cv of [canvas, canvas3]) {
     cv.addEventListener('pointerdown', e => {
-      audio.unlock(); if (!world || paused || world.over) return; mouse.x = e.clientX; mouse.y = e.clientY; const three = cv === canvas3;
+      audio.unlock(); if (!world || paused || world.over || world.factions[0].pending > 0 || !panel.hidden || !bigmap.hidden || !q('#c-missions').hidden) return; mouse.x = e.clientX; mouse.y = e.clientY; const three = cv === canvas3;
       if (e.pointerType === 'touch') {
         if (ghost) { if (three) { const p = R3!.groundPoint(700); ghost.x = snapBuildCoord(p.x); ghost.y = snapBuildCoord(p.y); } place(e.clientX, e.clientY); return; }
         if (e.clientX < innerWidth * 0.45) { const s = sticks.move; if (s.id < 0) { s.id = e.pointerId; s.ox = e.clientX; s.oy = e.clientY; s.x = s.y = 0; } }
@@ -631,7 +631,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (closed) return; raf = requestAnimationFrame(frame); const w = world!, r = R!; const dt = Math.min(0.1, (now - last) / 1000); last = now;
     const f = w.factions[0], b = w.boss(0), three = view !== 'top' && !!R3;
     const veh = b && b.inVeh ? w.vehicles.find(v => v.id === b.inVeh) : undefined, spd = veh ? Math.hypot(veh.vx, veh.vy) : 0;
-    if (f.pending > 0 && !modal.firstChild) { showPerks(); keys.clear(); mouse.down = false; }
+    if (f.pending > 0 && !modal.firstChild) { showPerks(); onBlur(); }
     if (!paused && f.pending === 0 && !w.over) {
       const inp = w.input; let mx = (keys.has('d') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('a') || keys.has('ArrowLeft') ? 1 : 0), my = (keys.has('s') || keys.has('ArrowDown') ? 1 : 0) - (keys.has('w') || keys.has('ArrowUp') ? 1 : 0);
       if (sticks.move.id >= 0) { mx = sticks.move.x; my = sticks.move.y; }

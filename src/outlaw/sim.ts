@@ -72,8 +72,23 @@ export class Sim {
     return { v: 1, stunts: [...this.activity.stunts], styleTotal: Math.floor(this.activity.style.total), cash: Math.floor(this.cash), completed: [...this.mission.completed], guns: p.guns.filter((g): g is Gun => !!g && g.id !== 'fist').map(g => [g.id, g.mag, g.reserve]), armor: Math.floor(p.armor), collected: [...this.collected], clock: this.clock, kills: this.kills, playSec: Math.floor(this.playSec), life: JSON.parse(JSON.stringify(this.life)) as LifeState };
   }
   applySave(s: SaveData): void {
-    this.activity.stunts = [...(s.stunts ?? [])]; this.activity.style.total = s.styleTotal ?? 0; this.cash = s.cash; this.mission.completed = [...s.completed]; this.collected = new Set(s.collected); this.clock = s.clock; this.kills = s.kills; this.playSec = s.playSec; this.player.armor = s.armor;
-    for (const [id, mag, reserve] of s.guns) { const i = WEAPON_ORDER.indexOf(id); if (i > 0) this.player.guns[i] = { id, mag, reserve }; }
+    // Validate before changing live state so malformed saves cannot partially restore.
+    const num = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x) && x >= 0;
+    const ids = (x: unknown): x is number[] => Array.isArray(x) && x.every(v => Number.isSafeInteger(v) && v >= 0);
+    const strings = (x: unknown): x is string[] => Array.isArray(x) && x.every(v => typeof v === 'string');
+    if (!s || s.v !== 1 || ![s.cash, s.armor, s.clock, s.kills, s.playSec].every(num) || s.clock >= 24 ||
+        !strings(s.completed) || !ids(s.collected) || (s.stunts !== undefined && !ids(s.stunts)) ||
+        (s.styleTotal !== undefined && !num(s.styleTotal)) || !Array.isArray(s.guns) ||
+        !s.guns.every(g => Array.isArray(g) && g.length === 3 && WEAPON_ORDER.includes(g[0]) && num(g[1]) && num(g[2]))) return;
+    const life = s.life;
+    if (life !== undefined && (!life || typeof life.hero !== 'string' || !strings(life.props) ||
+        !num(life.propBank) || !num(life.propAt) || !Array.isArray(life.cars) ||
+        !life.cars.every(c => c && Object.hasOwn(VEHICLES, c.kind) && num(c.color) && c.color <= 0xffffff) ||
+        !life.counters || typeof life.counters !== 'object' || Array.isArray(life.counters) ||
+        !Object.values(life.counters).every(num) || !strings(life.ach) ||
+        !Number.isInteger(life.outfit) || life.outfit < -1 || life.outfit > 7)) return;
+    this.activity.stunts = [...new Set(s.stunts ?? [])]; this.activity.style.total = s.styleTotal ?? 0; this.cash = s.cash; this.mission.completed = [...new Set(s.completed)]; this.collected = new Set(s.collected); this.clock = s.clock; this.kills = s.kills; this.playSec = s.playSec; this.player.armor = s.armor;
+    for (const [id, mag, reserve] of s.guns) { const i = WEAPON_ORDER.indexOf(id); if (i > 0) this.player.guns[i] = { id, mag: Math.min(WEAPONS[id].mag, Math.floor(mag)), reserve: Math.min(WEAPONS[id].reserve, Math.floor(reserve)) }; }
     for (const pk of this.pickups) if (pk.collect >= 0 && this.collected.has(pk.collect)) pk.taken = true;
     if (s.life) {
       const saved = { ...s.life } as LifeState & { skills?: unknown }; delete saved.skills;

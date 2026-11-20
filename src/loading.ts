@@ -28,6 +28,7 @@ export function showLoading(title: string): LoadingScreen {
       if (text) label.textContent = text;
       if (fraction === null || !Number.isFinite(fraction)) { bar.classList.add('busy'); fill.style.removeProperty('width'); bar.removeAttribute('aria-valuenow'); pct.textContent = ''; return; }
       bar.classList.remove('busy');
+      if (!Number.isFinite(fraction)) return;
       shown = Math.max(shown, Math.min(1, Math.max(0, fraction))); // 재시도로 되돌아가도 막대는 뒤로 가지 않습니다
       fill.style.width = `${(shown * 100).toFixed(1)}%`;
       bar.setAttribute('aria-valuenow', String(Math.floor(shown * 100)));

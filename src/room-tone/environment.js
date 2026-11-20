@@ -582,6 +582,18 @@ export function buildEnvironment(THREE, scene, map, tile, chapter) {
     ),
   });
   resources.add(trans);
+  // Soft baked light pools: one shared texture, no additional real-time lights.
+  const pool = new THREE.MeshBasicMaterial({
+    color:p.lamp, map:trans.map, transparent:true, opacity:.12,
+    depthWrite:false, blending:THREE.AdditiveBlending,
+    polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1,
+  });
+  resources.add(pool);
+  const dirt = new THREE.MeshBasicMaterial({
+    color:0x141b16, map:trans.map, transparent:true, opacity:.26, depthWrite:false,
+    polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1,
+  });
+  resources.add(dirt);
   const dummy = new THREE.Object3D();
   function add(kind, mat, x, y, z, w, h, d = 1, ry = 0, rx = 0) {
     let byKind = batch.get(mat);
@@ -692,6 +704,9 @@ export function buildEnvironment(THREE, scene, map, tile, chapter) {
             orient,
           );
         }
+        if(lit){
+          add("plane",pool,x,.003,z,tile*.86,tile*.70,1,orient,-Math.PI/2);
+        }
         if (lit)
           add(
             "plane",
@@ -743,6 +758,10 @@ export function buildEnvironment(THREE, scene, map, tile, chapter) {
             ry,
           );
         const pick = hash(col, row, (f + 1) * 19 + chapter * 47);
+        // Contact darkening visually anchors baseboards without shadow maps.
+        if (pick < .62) {
+          add("plane",dirt,bx+nx*.27,.002,bz+nz*.27,tile*.95,.52,1,ry,-Math.PI/2);
+        }
         local(
           "plane",
           wallMats[Math.floor(hash(col, row, f + 75) * 3)],

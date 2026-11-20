@@ -5,6 +5,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { modelBytes } from "./assets.js";
 import { chapters, makeLevel, neighbors, paths, routeFrom, lineOpen, normalizeSave, walkable, puzzleOptions, puzzleCorrect } from "./levels.mjs";
 import { buildEnvironment } from "./environment.js";
+import { buildStationArt, addContactShadow, makeContactTexture } from "./props-art.js";
 import { Sound } from "./sound.js";
 import { archiveCells, cleanArchive, createDread, recordings } from "./dread.mjs";
 import { openViewer, closeViewer } from "./viewer.js";
@@ -534,6 +535,8 @@ function prop(cell, type, i = 0) {
     pos = xy(cell);
   root.position.set(pos.x, 0, pos.z);
   props.add(root);
+  const shadowTexture = props.userData.contactTexture;
+  addContactShadow(THREE, root, type === "station" ? 1.48 : 1.06, type === "station" ? 1.06 : .86, shadowTexture);
   const col =
       type === "exit" ? 0x91d6a8 : type === "station" ? 0x9ce1db : type === "record" ? 0xc9a5df : 0xf1ab63,
     bright = paint(col, col, 0.72),
@@ -599,31 +602,26 @@ function prop(cell, type, i = 0) {
     mesh(new THREE.BoxGeometry(.20,.026,.11),bright,root,0,.823,0);
     for(const x of [-.10,.10]) mesh(new THREE.CylinderGeometry(.058,.058,.018,12),steel,root,x,.827,.064);
   } else if (type === "station") {
-    mesh(new THREE.BoxGeometry(0.8, 0.94, 0.48), dark, root, 0, 0.47, 0);
-    const top = mesh(
-      new THREE.BoxGeometry(0.92, 0.13, 0.55),
-      steel,
-      root,
-      0,
-      0.99,
-      0,
-    );
-    top.rotation.x = -0.15;
-    mesh(new THREE.BoxGeometry(0.58, 0.36, 0.16), dark, root, 0, 1.19, -0.14);
-    mesh(new THREE.BoxGeometry(0.46, 0.25, 0.018), bright, root, 0, 1.2, -0.05);
-    for (let k = 0; k < 5; k++)
-      mesh(
-        new THREE.CylinderGeometry(0.035, 0.035, 0.045, 8),
-        k === 3 ? bright : dark,
-        root,
-        (k - 2) * 0.12,
-        1.08,
-        0.13,
-      );
+    buildStationArt(THREE, root, ch, bright, dark, steel);
+    const neighbor = neighbors(level.map, cell)[0];
+    if (neighbor !== undefined) {
+      const front = xy(neighbor);
+      root.rotation.y = Math.atan2(front.x - pos.x, front.z - pos.z);
+    }
   } else {
     mesh(new THREE.BoxGeometry(0.7, 0.83, 0.42), dark, root, 0, 0.42, 0);
     mesh(new THREE.BoxGeometry(0.52, 0.31, 0.32), steel, root, 0, 0.97, 0);
     mesh(new THREE.BoxGeometry(0.33, 0.1, 0.34), bright, root, 0, 1.02, 0);
+    // Raised industrial access reader, protective side rails and status strip.
+    for (const side of [-1, 1]) {
+      mesh(new THREE.BoxGeometry(.075,.68,.12),steel,root,side*.31,.42,.15);
+      mesh(new THREE.BoxGeometry(.09,.055,.32),steel,root,side*.33,.065,0);
+    }
+    mesh(new THREE.BoxGeometry(.43,.16,.024),dark,root,0,.94,.17);
+    mesh(new THREE.BoxGeometry(.31,.036,.029),bright,root,0,.975,.189);
+    for(let k=0;k<3;k++) mesh(new THREE.BoxGeometry(.06,.035,.03),steel,root,(k-1)*.105,.909,.19);
+    const neighbor = neighbors(level.map, cell)[0];
+    if(neighbor!==undefined){const front=xy(neighbor);root.rotation.y=Math.atan2(front.x-pos.x,front.z-pos.z);}
   }
   // Thin floor markings make interactive equipment identifiable in low light.
   const footprint = type === "station" ? 0.58 : 0.48;
@@ -670,6 +668,7 @@ function loadScene() {
   camera.add(beam);
   environment = buildEnvironment(THREE, scene, level.map, C, ch);
   props = new THREE.Group();
+  props.userData.contactTexture = makeContactTexture(THREE);
   scene.add(props);
   items = level.items.map((cell, i) => prop(cell, "item", i));
   items.forEach((o) => (o.root.visible = !found[o.i]));

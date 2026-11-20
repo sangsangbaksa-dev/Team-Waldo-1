@@ -96,3 +96,10 @@
 #game .puzzle-undo { min-height:44px; }
 #game .puzzle-undo:disabled,#game .panelActions button:disabled { opacity:.42; cursor:not-allowed; }
 @media(max-width:390px){#game .dials{gap:.25rem}#game .dial-cell .dial-value{padding-inline:.15rem}}
+
+/* Explicit stacking contexts keep the fixed 3D canvas behind interactive HUD. */
+#game { isolation:isolate; }
+#game #viewWrap { z-index:0; }
+#game .hud,#game .gear,#game #stick,#game .touchactions { z-index:2; }
+#game .statusfoot,#game #prompt,#game #toast { z-index:1; pointer-events:none; }
+#game #dialog { z-index:4; }

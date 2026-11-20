@@ -780,3 +780,9 @@ dialog h2 {
     padding: 0.5rem 1rem;
   }
 }
+
+/* Compact viewport and keyboard accessibility. */
+#dialog{padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));align-items:safe center;overflow:auto;overscroll-behavior:contain}
+.panel,dialog{max-height:min(92svh,100%);overscroll-behavior:contain;scrollbar-width:thin;touch-action:pan-y}
+@media(prefers-reduced-motion:reduce){.panel,.panelActions button,.hudright button,.gear button{transition:none;animation:none}}
+@media(max-height:480px){.panel,dialog{padding:14px}.panel h2,dialog h2{margin:.5rem 0;font-size:1.35rem}.panelActions{margin-top:.75rem}}

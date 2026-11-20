@@ -296,9 +296,9 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (b && b.dataset.act) { const a = b.dataset.act; b.setPointerCapture(e.pointerId); if (a === 'use') useAction(); else if (a === 'reload') reloadReq = true; else if (a === 'weapon') { const p = sim!.player; let i = p.cur; for (let n = 0; n < NW; n++) { i = (i + 1) % NW; if (p.guns[i]) { slotReq = i; break; } } } else (tc as unknown as Record<string, boolean>)[a === 'hand' ? 'hand' : a] = true; e.preventDefault(); }
   });
   const upTouch = (e: PointerEvent): void => { const b = (e.target as HTMLElement).closest('button'); const a = b?.dataset.act; if (a && a in tc) (tc as unknown as Record<string, boolean>)[a] = false; };
-  pad.addEventListener('pointerup', upTouch); pad.addEventListener('pointercancel', upTouch);
+  pad.addEventListener('pointerup', upTouch); pad.addEventListener('pointercancel', upTouch); pad.addEventListener('lostpointercapture', upTouch);
   canvas.addEventListener('pointerdown', e => {
-    if (!touch || phase !== 'play') return; audio.unlock();
+    if (!touch || e.pointerType !== 'touch' || phase !== 'play' || modalKind) return; audio.unlock();
     if (e.clientX < innerWidth * 0.4 && tc.moveId < 0) { tc.moveId = e.pointerId; tc.ox = e.clientX; tc.oy = e.clientY; stickEl.style.cssText = `left:${e.clientX - 60}px;top:${e.clientY - 60}px;opacity:1`; }
     else if (e.clientX >= innerWidth * 0.4 && tc.lookId < 0) { tc.lookId = e.pointerId; tc.lx = e.clientX; tc.ly = e.clientY; }
   });

@@ -232,3 +232,9 @@
   .ol-title > .ol-btns.v{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;width:min(420px,100%);min-width:0;margin-top:4px}
   .ol-title .ol-btns button{padding:8px 10px;font-size:14px;letter-spacing:0}
 }
+
+/* Compact viewport and keyboard accessibility. */
+.ol-modal{padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));align-items:safe center;touch-action:pan-y}
+.ol-card{max-height:100%;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;touch-action:pan-y}
+.ol-root button:focus-visible{outline:2px solid #3df2ff;outline-offset:3px}
+@media(max-height:480px){.ol-card{padding:14px 18px}}

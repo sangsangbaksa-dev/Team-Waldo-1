@@ -51,6 +51,13 @@ class Points {
   }
 }
 
+/** 사업체 3D 아이콘의 높이: 아이콘 꼭대기가 이름표(중심 126, 높이 37.5) 아래 7m 에 오도록 둡니다. 크기가 다른 아이콘이 글자를 가리지 않게 합니다. */
+const BIZ_LABEL_BOTTOM = 126 - 37.5 / 2;
+function bizIconY(icon: THREE.Object3D): number {
+  const box = new THREE.Box3().setFromObject(icon);
+  return Number.isFinite(box.max.y) ? Math.min(100, BIZ_LABEL_BOTTOM - 7 - 2.5 - box.max.y) : 100;
+}
+
 export class Renderer3D {
   post: PostFx | null = null; renderer: THREE.WebGLRenderer; scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(74, 1, 3, 6500);
   private hemi: THREE.HemisphereLight; private bolt = 0; private nextBolt = 9 + Math.random() * 10; private fill: THREE.DirectionalLight; private sea: THREE.Mesh; private groundMat: THREE.MeshPhongMaterial;
@@ -286,11 +293,11 @@ export class Renderer3D {
     const sig = `${z.owner}:${z.level}`;
     if (sig !== o.sig) {
       o.sig = sig;
-      if (this.ml) { if (o.icon) o.g.remove(o.icon); o.icon = this.ml.makeBiz(z.kind, col); if (o.icon) { const out = o.g.userData.out as [number, number]; o.icon.position.set(out[0] * 8, 100, out[1] * 8); o.g.add(o.icon); } }
+      if (this.ml) { if (o.icon) o.g.remove(o.icon); o.icon = this.ml.makeBiz(z.kind, col); if (o.icon) { const out = o.g.userData.out as [number, number]; o.icon.userData.y = bizIconY(o.icon); o.icon.position.set(out[0] * 8, o.icon.userData.y as number, out[1] * 8); o.g.add(o.icon); } }
       const css = z.kind === 'gunshop' ? '#ff5d5d' : z.owner >= 0 ? FACTIONS[z.owner].color : '#ffffff', line2 = z.kind === 'gunshop' ? 'E 구매' : z.owner < 0 ? `$${d.price} · +$${d.income}/s` : `${FACTIONS[z.owner].name} ${'★'.repeat(z.level)}`;
       o.label.material.map?.dispose(); o.label.material.map = canvasTex(320, 120, g => { g.fillStyle = 'rgba(10,16,16,0.82)'; g.beginPath(); g.roundRect(4, 4, 312, 112, 18); g.fill(); g.strokeStyle = css; g.lineWidth = 5; g.stroke(); g.textAlign = 'center'; g.fillStyle = '#fff'; g.font = "900 44px 'Noto Sans KR',sans-serif"; g.fillText(d.name, 160, 54); g.fillStyle = css; g.font = "700 28px 'Noto Sans KR',sans-serif"; g.fillText(line2, 160, 96); }); o.label.material.needsUpdate = true;
     }
-    if (o.icon) { o.icon.position.y = 100 + Math.sin(this.t * 1.6 + z.id) * 2.5; o.icon.rotation.y = this.t * 0.7 + z.id; }
+    if (o.icon) { o.icon.position.y = (o.icon.userData.y as number) + Math.sin(this.t * 1.6 + z.id) * 2.5; o.icon.rotation.y = this.t * 0.7 + z.id; }
     o.g.visible = Math.hypot(z.x - this.camPos.x, z.y - this.camPos.z) < 2600; void w;
     const out = (o.g.userData.out as [number, number] | undefined) ?? [0, 0];
     if (o.g.visible) this.pinLabel(o.label, z.x + out[0] * 14, 126, z.y + out[1] * 14);

@@ -1,3 +1,4 @@
+import { renderPixelRatio } from '../shared/render-budget';
 // SPEED RUSH — Three.js 장면: 석양 사이버 서킷, 스포츠카(Last City 의 vehicles.glb), 속도감 연출(FOV·카메라 흔들림·스트릭·불꽃·연기).
 import * as THREE from 'three';
 import { makePost, type PostFx } from '../postfx';
@@ -108,9 +109,9 @@ export class RaceView {
   private chaseLift = 0; private viewH = 1; private startLamps: THREE.Mesh[] = [];
   private disposables: Array<{ dispose(): void }> = []; private outposts: Outpost | null = null;
 
-  constructor(canvas: HTMLCanvasElement, private track: Track, carTemplates: Record<string, THREE.Object3D> | null, quality: 'high' | 'standard' | 'low', private theme: Theme) {
+  constructor(canvas: HTMLCanvasElement, private track: Track, carTemplates: Record<string, THREE.Object3D> | null, private quality: 'high' | 'standard' | 'low', private theme: Theme) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, quality === 'high' ? 2 : quality === 'standard' ? 1.5 : 1));
+    this.renderer.setPixelRatio(renderPixelRatio(canvas.clientWidth || innerWidth, canvas.clientHeight || innerHeight, devicePixelRatio, quality));
     this.scene.fog = new THREE.Fog(theme.fog.color, theme.fog.near, theme.fog.far); this.sun = new THREE.DirectionalLight(theme.light.sun, theme.light.sunPower);
     this.buildSky(); if (quality !== 'low') this.buildCarEnv(); this.buildGround(); this.buildRoad(); this.buildProps(quality);
     this.scene.add(new THREE.HemisphereLight(theme.light.sky, theme.light.ground, theme.light.hemi)); this.sun.position.set(-40, 60, 90); this.scene.add(this.sun, this.sun.target);
@@ -463,7 +464,7 @@ export class RaceView {
     }
   }
 
-  resize(w: number, h: number): void { this.viewH = h; this.renderer.setSize(w, h, false); this.camera.aspect = w / Math.max(1, h); this.camera.updateProjectionMatrix(); }
+  resize(w: number, h: number): void { w = Math.max(1, w); h = Math.max(1, h); this.viewH = h; const ratio = renderPixelRatio(w, h, devicePixelRatio, this.quality); if (ratio !== this.renderer.getPixelRatio()) this.renderer.setPixelRatio(ratio); this.renderer.setSize(w, h, false); this.camera.aspect = w / Math.max(1, h); this.camera.updateProjectionMatrix(); }
   kick(power: number): void { this.shake = Math.min(1, this.shake + power); }
   punchFov(v: number): void { this.punch = Math.min(1.2, this.punch + v); }
   worldOf(r: Racer): THREE.Vector3 { return new THREE.Vector3(r.car.x, r.car.y, r.car.z); }

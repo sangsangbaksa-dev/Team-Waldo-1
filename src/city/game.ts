@@ -111,7 +111,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (rm) { const r = rm; world.onShot = (x, y, a, wid, mul) => r.net.sendShot({ x, y, a, w: wid, m: mul }); }
     if (dl) { const d = dl; world.onShot = (x, y, a, wid, mul) => d.net.sendShot({ x, y, a, w: wid, m: mul }); }
     tut = tutorial ? { s: newTutState(), c: newCounters() } : null;  tutSig = ''; q('#c-tut').hidden = true; tutInfoLock = false;
-    R = new Renderer(canvas, world); R.reduced = prefs.reducedMotion; const b = world.boss(0)!; R.cam.x = b.x; R.cam.y = b.y; R.cam.zoom = 0.6;
+    R = new Renderer(canvas, world, prefs.quality); R.reduced = prefs.reducedMotion; const b = world.boss(0)!; R.cam.x = b.x; R.cam.y = b.y; R.cam.zoom = 0.6;
     unlock(); locked = false; R3?.dispose(); R3 = null; const fresh = document.createElement('canvas'); fresh.className = canvas3.className; canvas3.replaceWith(fresh); canvas3 = fresh; bindCanvas(canvas3); layer.innerHTML = ''; tags.length = 0; marks.length = 0;
     try { R3 = new Renderer3D(canvas3, world, prefs.quality, layer, models); R3.reduced = prefs.reducedMotion; const hq = world.hq(0); if (hq) R3.yaw = Math.atan2(hq.y + 60 - b.y, hq.x + 60 - b.x) + Math.PI; R3.camPos.set(b.x, 46, b.y); }
     catch { R3 = null; toast('3D를 사용할 수 없어 전술 뷰로 시작합니다'); }

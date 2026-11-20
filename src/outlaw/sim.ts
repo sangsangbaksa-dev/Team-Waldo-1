@@ -136,7 +136,7 @@ export class Sim {
   curGun(p: Ped): Gun | null { return p.guns[p.cur] ?? null; }
   eyeY(p: Ped): number { return p.y + (p.crouch ? 1.15 : 1.6); }
   nearPoi(x: number, z: number): Poi | null { let best: Poi | null = null, bd = Infinity; for (const q of this.map.pois) { const d = Math.hypot(q.x - x, q.z - z); if (d < q.r && d < bd) { bd = d; best = q; } } return best; }
-  addCash(n: number): void { this.cash = Math.max(0, this.cash + n); this.emit({ t: 'cash', amount: n, total: this.cash }); }
+  addCash(n: number): void { if (!Number.isFinite(n)) return; const old = this.cash; this.cash = clamp(old + n, 0, Number.MAX_SAFE_INTEGER); const amount = this.cash - old; if (amount) this.emit({ t: 'cash', amount, total: this.cash }); }
   addCrime(kind: CrimeKind, x: number, z: number, by: number, victim: number, weight: number): void { this.crimes.push({ kind, x, z, by, victim, weight, t: this.t }); }
   setStars(stars: number): void { const prev = this.wanted.stars; if (stars === prev) return; this.wanted.stars = stars; this.emit({ t: 'wanted', stars, prev }); }
   /** 수평 시야: 건물에 가리지 않으면 true */

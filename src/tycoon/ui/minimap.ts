@@ -6,6 +6,15 @@ import { spotColor, type SpotView } from '../scene/city';
 const ZONE_COLOR: Record<Zone, string> = { slum: '#8b6f55', market: '#c98a3b', harbor: '#3f8aa6', downtown: '#6f78c4', uptown: '#b865a8', fringe: '#566070' };
 export const zoneName = (z: Zone): string => (z === 'fringe' ? '외곽' : DISTRICTS[z].name);
 
+/** 지도 클릭 좌표(0~1)를 가까운 열린 장소에 연결한다. 빈 공간은 목적지가 아니다. */
+export function nearestMapSpot(layout: Layout, spots: readonly SpotView[], stage: number, u: number, v: number): string | null {
+  if (![u, v].every(Number.isFinite) || u < 0 || u > 1 || v < 0 || v > 1) return null;
+  const x = (u * 2 - 1) * WORLD_HALF, z = (v * 2 - 1) * WORLD_HALF;
+  let best: string | null = null, distance = 10;
+  for (const s of spots) { const l = layout.spotLots.get(s.id); if (!l || s.locked || !blockUnlocked(l.block, stage)) continue; const d = Math.hypot(l.doorX - x, l.doorZ - z); if (d < distance) { best = s.id; distance = d; } }
+  return best;
+}
+
 export interface MapView { stage: number; spots: SpotView[]; px: number; pz: number; yaw: number; target: string | null; time: number; names: boolean }
 
 export function drawMap(canvas: HTMLCanvasElement, layout: Layout, v: MapView): void {
@@ -18,6 +27,8 @@ export function drawMap(canvas: HTMLCanvasElement, layout: Layout, v: MapView): 
     if (!on) { g.globalAlpha = 0.5; g.strokeStyle = '#0c1016'; g.lineWidth = Math.max(1, S * 2); g.beginPath(); g.moveTo(X(b.cx - 15), Z(b.cz - 15)); g.lineTo(X(b.cx + 15), Z(b.cz + 15)); g.stroke(); }
   }
   g.globalAlpha = 1;
+  const targetLot = v.target ? layout.spotLots.get(v.target) : undefined;
+  if (targetLot) { g.save(); g.strokeStyle = 'rgba(255,220,120,.8)'; g.lineWidth = Math.max(1, S * 1.1); g.setLineDash([5, 5]); g.beginPath(); g.moveTo(X(v.px), Z(v.pz)); g.lineTo(X(targetLot.doorX), Z(targetLot.doorZ)); g.stroke(); g.restore(); }
   for (const s of v.spots) {
     const l = layout.spotLots.get(s.id); if (!l || !blockUnlocked(l.block, v.stage)) continue;
     const x = X(l.doorX), z = Z(l.doorZ), r = Math.max(2.2, S * (v.names ? 3.2 : 4.4)), target = v.target === s.id;

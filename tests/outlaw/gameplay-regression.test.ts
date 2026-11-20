@@ -79,3 +79,13 @@ describe('Outlaw pickup and explosion edge cases', () => {
     expect(sim.drain()).toEqual([]);
   });
 });
+
+it('ignores invalid cash deltas and emits the actual clamped balance change', () => {
+  const sim = new Sim(7); sim.cash = 50; sim.drain();
+  sim.addCash(NaN); sim.addCash(Infinity);
+  expect(sim.cash).toBe(50);
+  expect(sim.drain()).toEqual([]);
+  sim.addCash(-100);
+  expect(sim.cash).toBe(0);
+  expect(sim.drain()).toContainEqual({ t: 'cash', amount: -50, total: 0 });
+});

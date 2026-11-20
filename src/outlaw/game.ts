@@ -134,6 +134,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     const wasLocked = locked;
     locked = document.pointerLockElement === canvas;
     if (locked && (modalKind || closed)) { document.exitPointerLock(); return; }
+    if (locked) lockFail = false;
     if (wasLocked && !locked && phase === 'play' && !modalKind && !closed) openPause();
   };
   document.addEventListener('pointerlockchange', onLock);
@@ -142,7 +143,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     return `<h2>조작법</h2><div class="ol-keys"><div><b>이동</b>WASD · Shift 달리기 · Space 점프 · C 앉기</div><div><b>전투</b>좌클릭 사격 · 우클릭 조준 · R 재장전 · 1~9·0·-/휠 무기 · Q 무기 휠 · 수류탄은 사격 키로 투척</div><div><b>상호작용</b>E / F 차량 · 상점 · 의뢰 · 안전가옥</div><div><b>차량</b>W 가속 · S 브레이크/후진 · A D 조향 · Space 핸드브레이크 · H 경적 · R 라디오 · C 뒤돌아보기</div><div><b>휴대폰</b>P 휴대폰: 일거리·차고·부동산·업적 · 격투장/체육관/카지노/자동차 매장은 E</div><div><b>기타</b>M / Tab 전체 지도 (닫기 M) · Esc 일시정지</div></div><p class="hint">아슬아슬한 통과·점프·드리프트·헤드샷은 스타일 보너스가 됩니다. 시민을 해치면 수배 별이 올라갑니다.</p><div class="ol-btns"><button data-k="back" type="button">돌아가기</button></div>`;
   }
   function openPause(): void {
-    openModal('pause', `<h2>${versus ? '대전 메뉴' : '일시정지'}</h2><div class="ol-btns v"><button data-k="resume" type="button">계속하기</button><button data-k="phone" type="button">휴대폰</button><button data-k="map" type="button">전체 지도</button><button data-k="help" type="button">조작법</button><button data-k="sound" type="button">소리: ${audio.enabled ? '켜짐' : '꺼짐'}</button><button data-k="quality" type="button">품질: ${prefs.quality === 'high' ? '높음' : prefs.quality === 'standard' ? '보통' : '낮음'} (다음 실행부터)</button><button data-k="quit" type="button" class="danger">${versus ? '대전 나가기' : '저장하고 나가기'}</button></div>`);
+    openModal('pause', `<h2>${versus ? '대전 메뉴' : '일시정지'}</h2><div class="ol-btns v"><button data-k="resume" type="button">계속하기</button>${!versus ? '<button data-k="save" type="button">지금 저장</button>' : ''}${lockFail && !touch ? '<button data-k="retry-lock" type="button">마우스 잠금 다시 시도</button>' : ''}<button data-k="phone" type="button">휴대폰</button><button data-k="map" type="button">전체 지도</button><button data-k="help" type="button">조작법</button><button data-k="sound" type="button">소리: ${audio.enabled ? '켜짐' : '꺼짐'}</button><button data-k="quality" type="button">품질: ${prefs.quality === 'high' ? '높음' : prefs.quality === 'standard' ? '보통' : '낮음'} (다음 실행부터)</button><button data-k="quit" type="button" class="danger">${versus ? '대전 나가기' : '저장하고 나가기'}</button></div>`);
   }
   function openMap(): void {
     openModal('map', `<canvas id="ol-bigmap" width="900" height="780"></canvas><div class="ol-btns"><button data-k="resume" type="button">닫기 (M)</button></div>`);
@@ -161,7 +162,8 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   function uiClick(ds: DOMStringMap): void {
     if (!sim) return; const r = ui.click(ds);
     if (r.toast) toast(r.toast); if (r.sound) audio.play(r.sound);
-    if (r.begin) { closeModal(); begin(false); save(); return; }
+    if (['call', 'buyprop', 'collect', 'outfit', 'bribe', 'buycar'].includes(ds.ui ?? '') && !versus && !save()) toast('저장하지 못했습니다. 브라우저 저장 공간을 확인하세요.');
+    if (r.begin) { closeModal(); begin(false); if (!save()) toast('저장하지 못했습니다. 브라우저 저장 공간을 확인하세요.'); return; }
     if (r.close) { closeModal(); return; }
     if (r.kind) { const top = modalEl.querySelector('.ol-card'); const sy = top?.scrollTop ?? 0; openUi(r.kind); const nt = modalEl.querySelector('.ol-card'); if (nt) nt.scrollTop = sy; }
   }
@@ -174,6 +176,8 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     else if (b.dataset.armor) { toast(sim.buyArmor()); save(); openShop(); }
     else if (b.dataset.start) { const id = b.dataset.start; closeModal(); if (startMission(sim, id)) { audio.play('mission_start'); } }
     else if (k === 'resume') closeModal();
+    else if (k === 'save' && !versus) { if (save()) { audio.play('save'); toast('저장했습니다'); } else toast('저장하지 못했습니다. 브라우저 저장 공간을 확인하세요.'); }
+    else if (k === 'retry-lock') { lockFail = false; closeModal(); }
     else if (k === 'map') openMap();
     else if (k === 'phone') openUi('phone');
     else if (k === 'help') openModal('help', controlsHtml());
@@ -298,7 +302,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   };
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.code); if (e.code === 'KeyQ') closeWheel(); };
   const onMouseMove = (e: MouseEvent): void => {
-    if (phase !== 'play' || modalKind || (!locked && !(lockFail && (e.buttons & 2)))) return;
+    if (closed || phase !== 'play' || modalKind || (!locked && !(lockFail && (e.buttons & 2)))) return;
     if (wheelOpen) { wheelX = clamp(wheelX + e.movementX, -140, 140); wheelY = clamp(wheelY + e.movementY, -140, 140); updateWheel(); return; }
     const s = (mouse.aim ? 0.0014 : 0.0023); yaw += e.movementX * s; pitch = clamp(pitch - e.movementY * s, -1.2, 1.2);
   };

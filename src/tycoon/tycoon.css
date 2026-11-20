@@ -178,3 +178,5 @@
 .ty-ops small { color:var(--mute);font-size:11px; }
 .ty-ops b { font-size:18px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere; }
 .ty-stock-alert { margin:8px 0 0;color:var(--gold);font-size:12px;line-height:1.5; }
+
+.ty-map-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px;background:rgba(10,16,24,.96);border:1px solid var(--line);border-radius:12px;margin-top:8px}.ty-map-tools p{flex:1 1 180px;margin:0;font-size:12px;color:var(--mute)}.ty-map-tools button{background:#253446;color:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 12px;cursor:pointer}.ty-map-tools button:disabled{opacity:.4;cursor:default}.ty-bigmap{width:min(80vmin,720px);max-width:100%}.ty-bigmap canvas{cursor:crosshair;touch-action:manipulation}

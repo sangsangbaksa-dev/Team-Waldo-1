@@ -164,4 +164,16 @@
   .ty-root.touch .ty-mini { top: 212px; width: 96px; height: 96px; }
   .ty-prompt { bottom: 84px; font-size: 14px; }
 }
+/* 폰 세로: 상단 바가 두 줄로 접히므로(현황·지도·메뉴 버튼이 아래 줄로 내려옴) 체력·목표·알림·미니맵을 그 아래로 내립니다. */
+@media (max-width: 480px) {
+  .ty-left, .ty-task { top: 118px; }
+  .ty-root.touch .ty-mini { top: 176px; }
+  .ty-toasts { top: 282px; }
+  .ty-banner { top: 42%; }
+}
+/* 폰 가로: 미니맵이 오른쪽 행동 버튼 줄과 겹치지 않게 오른쪽 위 빈자리로 옮깁니다. */
+@media (max-height: 480px) {
+  .ty-root.touch .ty-mini { top: 8px; right: 8px; width: 88px; height: 88px; }
+  .ty-root.touch .ty-task { top: 104px; }
+}
 @media (prefers-reduced-motion: reduce) { .ty-root * { animation: none !important; transition: none !important; } }

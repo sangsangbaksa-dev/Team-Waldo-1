@@ -276,9 +276,9 @@ export class RtsView {
       const r = v.rig, root = r.root; root.position.set(x, 0, y); root.rotation.y = v.yaw;
       const bob = Math.sin(this.clock * (u.kind === 'tank' || u.kind === 'jeep' ? 9 : 14) + id) * (u.kind === 'tank' || u.kind === 'jeep' ? 0.015 : 0.05) * v.moved; r.body.position.y = Math.abs(bob); r.body.rotation.z = bob * (u.kind === 'tank' || u.kind === 'jeep' ? 0.2 : 0.5);
       const fired = tick - u.fired; r.flash.visible = u.kind !== 'medic' && fired >= 0 && fired < 2;
-      if (r.gun) r.gun.position.x = (u.kind === 'tank' ? 0.3 : 0.2) - (fired >= 0 && fired < 3 ? 0.08 : 0);
+      if (r.gun) r.gun.position.x = (r.gun.userData.restX as number) - (fired >= 0 && fired < 3 ? 0.08 * (1 - (fired + alpha) / 3) : 0);
       if (r.carry) r.carry.visible = u.carry > 0;
-      if (r.ch) { const st = r.ch.state; st.speed = v.moved * 3; st.walk += dt * v.moved * 4.8; st.time += dt; st.wave = u.kind === 'worker' && (tick - u.mine < 3 || (u.o.t === 'gather' && u.o.phase === 1)) ? 0.5 : 0; st.recoil = fired >= 0 && fired < 3 ? 1 : 0; st.hit = (tick - u.hurt) >= 0 && (tick - u.hurt) < 3 ? 0.4 : 0; r.ch.update(dt); }
+      if (r.ch) { r.ch.setDetail(this.quality === 'low' ? 2 : this.cam.dist > 65 ? 1 : 0); const st = r.ch.state; st.speed = v.moved * 3; st.walk += dt * v.moved * 4.8; st.time += dt; st.wave = u.kind === 'worker' && (tick - u.mine < 3 || (u.o.t === 'gather' && u.o.phase === 1)) ? 0.5 : 0; st.recoil = fired >= 0 && fired < 3 ? 1 : 0; st.hit = (tick - u.hurt) >= 0 && (tick - u.hurt) < 3 ? 0.4 : 0; r.ch.update(dt); }
       if (r.arm) { const work = tick - u.mine < 3 || (u.o.t === 'gather' && u.o.phase === 1); r.arm.rotation.z = work ? Math.sin(this.clock * 16) * 0.7 - 0.4 : -0.3; }
       const hurt = tick - u.hurt; root.scale.setScalar(US[u.kind] * (hurt >= 0 && hurt < 2 ? 1.1 : 1));
       v.ring.visible = selected.has(id);
@@ -290,10 +290,10 @@ export class RtsView {
     for (const [id, v] of this.builds) {
       const b = s.building(id); if (!b) continue; const hidB = this.hiddenBuilding(b); v.rig.root.visible = !hidB; const p = b.done ? 1 : Math.min(1, 0.12 + 0.88 * b.progress / BUILDINGS[b.kind].time);
       v.rig.root.scale.set(1, b.done ? 1 : Math.max(0.05, p), 1); v.scaff.visible = !b.done && !hidB; v.scaff.scale.y = 1 - p * 0.3;
-      if (b.done && !v.wasDone) { v.wasDone = true; this.puff(b.x + b.size / 2, b.y + b.size / 2, b.size * 0.8, 0xd8cfb8); }
+      if (b.done && !v.wasDone) { v.wasDone = true; if (!hidB) this.puff(b.x + b.size / 2, b.y + b.size / 2, b.size * 0.8, 0xd8cfb8); }
       for (const l of v.rig.light) l.visible = b.done && (Math.sin(this.clock * 3 + id) > -0.7);
       if (v.rig.spin && b.kind === 'hq') v.rig.spin.rotation.y += dt * 0.8;
-      if (v.rig.spin && b.kind === 'tower') { const want = -Math.atan2(b.fy, b.fx); if (tick - b.fired < 40) v.rig.spin.rotation.y = want; }
+      if (v.rig.spin && b.kind === 'tower') { const want = -Math.atan2(b.fy, b.fx); if (tick - b.fired < 40) { const d = want - v.rig.spin.rotation.y; v.rig.spin.rotation.y += Math.atan2(Math.sin(d), Math.cos(d)) * (1 - Math.exp(-dt * 20)); } }
       if (v.rig.flash) v.rig.flash.visible = tick - b.fired < 2;
       v.frame.visible = selected.has(id) && !hidB; const hurt = tick - b.hurt; if (!b.done) v.rig.root.rotation.y = 0; v.rig.root.position.y = hurt >= 0 && hurt < 2 ? 0.02 : 0;
     }

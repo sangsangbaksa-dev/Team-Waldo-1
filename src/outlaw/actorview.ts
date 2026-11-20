@@ -9,6 +9,7 @@ import { groundHeight } from './world';
 import type { Sim } from './sim';
 import type { OutlawAssets } from './assets';
 import type { Quality } from './cityview';
+import { ContactShadows } from './contact-shadows';
 
 interface Rig {
   root: THREE.Group; hip: THREE.Group; legs: THREE.Group[]; shins: THREE.Group[]; arms: THREE.Group[];
@@ -56,6 +57,7 @@ export class ActorView {
   private readonly cylinder: THREE.CylinderGeometry;
   private readonly tailLamp: THREE.PlaneGeometry;
   private readonly tireGeo: THREE.CylinderGeometry;
+  private readonly contact: ContactShadows;
   private time = 0;
   private disposed = false;
   private readonly cameraPos = new THREE.Vector3();
@@ -77,7 +79,8 @@ export class ActorView {
       data[i] = data[i + 1] = data[i + 2] = 255; data[i + 3] = Math.round(a * 255);
     }
     this.glow = new THREE.DataTexture(data, n, n); this.glow.needsUpdate = true; this.glow.magFilter = this.glow.minFilter = THREE.LinearFilter;
-    this.root.name = 'outlaw-actors'; this.root.add(this.sirenLight); scene.add(this.root); this.cameraPos.set(sim.player.x, sim.player.y, sim.player.z);
+    this.contact = new ContactShadows(quality === 'low' ? 28 : 64);
+    this.root.name = 'outlaw-actors'; this.root.add(this.sirenLight, this.contact.mesh); scene.add(this.root); this.cameraPos.set(sim.player.x, sim.player.y, sim.player.z);
     this.skidStart = quality === 'low' ? 128 : quality === 'standard' ? 224 : 320;
     // 이벤트 폭주와 장시간 드리프트도 GPU 자원 수를 늘리지 않도록 처음에만 할당합니다.
     for (let i = 0; i < this.skidStart + (quality === 'low' ? 48 : 96); i++) {
@@ -367,7 +370,7 @@ export class ActorView {
     if (state.some((n, i) => n !== c.last[i])) { c.root.position.set(v.x, v.y, v.z); c.root.rotation.set(v.roll, -v.h, v.pitch); c.last = state; }
     c.lamps.visible = night && !v.wrecked;
     const reversing = !v.wrecked && v.vf < -0.12 && v.input.throttle === 0 && v.input.brake > 0;
-    const braking = !v.wrecked && !reversing && v.vf > 0.35 && (v.input.brake > 0 || (v.vf - c.vf > dt * 1.5));
+    const braking = !v.wrecked && !reversing && v.vf > 0.35 && (v.input.brake > 0 || (c.vf - v.vf > dt * 1.5));
     const tailIdle = night ? 0.38 : 0.14;
     c.brakes.forEach(b => {
       b.visible = !v.wrecked;
@@ -438,12 +441,17 @@ export class ActorView {
       if (player || this.time >= r.nextPose || p.hurt > 0 || p.punchT > 0 || r.flash.visible) { this.pose(p, r); r.nextPose = this.time + (dist > 90 ? 0.22 : dist > 45 ? 0.1 : 0); }
     }
     this.prune(this.rigs, livePeds, r => r.root);
-    const liveCars = this.liveCars; liveCars.clear();
+    const liveCars = this.liveCars; liveCars.clear(); this.contact.begin(night ? 1 : 0);
     for (const v of this.sim.vehicles) {
       liveCars.add(v.id); const near = Math.hypot(v.x - this.cameraPos.x, v.z - this.cameraPos.z) <= 320;
-      let c = this.cars.get(v.id); if (!c && !near) continue; c ??= this.makeCar(v); c.root.visible = near; if (near) this.car(v, c, dt, night);
+      let c = this.cars.get(v.id); if (!c && !near) continue; c ??= this.makeCar(v); c.root.visible = near; if (near) {
+        this.car(v, c, dt, night);
+        const d = VEHICLES[v.kind], h = groundHeight(this.sim.map, v.x, v.z);
+        // No flat decal across sloped ramps or rooftop geometry.
+        if (h < .08) this.contact.add({ x: v.x, y: .185, z: v.z, yaw: -v.h, length: d.halfL * 2.32, width: d.halfW * 2.55, gap: Math.max(0, v.y - h) });
+      }
     }
-    this.prune(this.cars, liveCars, c => c.root);
+    this.contact.end(); this.prune(this.cars, liveCars, c => c.root);
     const liveLoot = this.liveLoot; liveLoot.clear();
     for (const p of this.sim.pickups) {
       liveLoot.add(p.id); const dist = Math.hypot(p.x - this.cameraPos.x, p.z - this.cameraPos.z), visible = !p.taken && dist < 90;
@@ -509,7 +517,7 @@ export class ActorView {
   }
   private releaseMaterials(o: THREE.Mesh): void { for (const m of Array.isArray(o.material) ? o.material : [o.material]) if (this.materials.has(m) && ![...this.palette.values()].includes(m)) { m.dispose(); this.materials.delete(m); } }
   dispose(): void {
-    if (this.disposed) return; this.disposed = true; this.root.removeFromParent(); this.root.clear();
+    if (this.disposed) return; this.disposed = true; this.contact.dispose(); this.root.removeFromParent(); this.root.clear();
     for (const g of this.geometries) g.dispose(); for (const m of this.materials) m.dispose(); this.glow.dispose();
     this.geometries.clear(); this.materials.clear(); this.palette.clear(); this.articulated.clear(); this.rigs.clear(); this.cars.clear(); this.loot.clear(); this.rockets.clear(); this.beacons.length = 0; this.fx.length = 0; this.lights.length = 0;
   }

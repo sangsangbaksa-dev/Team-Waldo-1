@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import type { CharacterKit, CharacterRig } from '../../shared/character';
 import { CIVILIANS } from '../../shared/character';
 import { makeVehicleMesh } from '../../shared/vehicle';
+import { ContactShadows } from '../../outlaw/contact-shadows';
 import { HALF, PITCH, WALK_EDGE, WORLD_HALF, hash01 } from './layout';
 import type { Quality } from './city';
 
@@ -67,7 +68,7 @@ export class Crowd {
   dispose(): void { this.group.removeFromParent(); }
 }
 
-interface Car { mesh: THREE.Group; axis: 'x' | 'z'; line: number; lane: number; dir: 1 | -1; t: number; speed: number; base: number; length: number; tailLights: THREE.Mesh[]; headPool: THREE.Mesh | null; }
+interface Car { mesh: THREE.Group; axis: 'x' | 'z'; line: number; lane: number; dir: 1 | -1; t: number; speed: number; base: number; length: number; width: number; tailLights: THREE.Mesh[]; headPool: THREE.Mesh | null; }
 /** 장애물 앞에서 서서히 감속하고 안전거리 안에 들어오면 정지한다. */
 export function trafficSpeedFactor(gap: number, stop = 3, slow = 12): number {
   return THREE.MathUtils.clamp((gap - stop) / Math.max(1, slow - stop), 0, 1);
@@ -87,10 +88,11 @@ export class Traffic {
   private brakeMat = new THREE.MeshBasicMaterial({ color: 0xff5030, toneMapped: false });
   private poolGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
   private poolTex = headlightTexture();
+  private contact: ContactShadows;
   private poolMat = new THREE.MeshBasicMaterial({ map: this.poolTex, color: 0xffe3b0, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
   private disposed = false;
   constructor(scene: THREE.Scene, quality: Quality) {
-    scene.add(this.group);
+    this.contact = new ContactShadows(16); this.group.add(this.contact.mesh); scene.add(this.group);
     const total = quality === 'high' ? 16 : quality === 'standard' ? 10 : 5, roads: number[] = []; for (let k = 0; k <= 2 * HALF + 1; k++) roads.push(k * PITCH - (HALF * PITCH + PITCH / 2));
     for (let k = 0; k < total; k++) {
       const kind = hash01(k, 21) < 0.14 ? 'van' : hash01(k, 22) < 0.1 ? 'bus' : hash01(k, 23) < 0.12 ? 'truck' : 'car', c = CAR_COLORS[k % CAR_COLORS.length];
@@ -106,14 +108,14 @@ export class Traffic {
       }
       mesh.visible = false; this.group.add(mesh);
       const axis = k % 2 ? 'x' : 'z', dir = (hash01(k, 24) < 0.5 ? 1 : -1) as 1 | -1;
-      const car: Car = { mesh, axis, line: roads[1 + (k * 3) % (roads.length - 2)], lane: 2.9, dir, t: (hash01(k, 25) * 2 - 1) * (WORLD_HALF - 8), speed: 6.5 + hash01(k, 26) * 5, base: 1, length: spec.w, tailLights, headPool };
+      const car: Car = { mesh, axis, line: roads[1 + (k * 3) % (roads.length - 2)], lane: 2.9, dir, t: (hash01(k, 25) * 2 - 1) * (WORLD_HALF - 8), speed: 6.5 + hash01(k, 26) * 5, base: 1, length: spec.w, width: spec.d, tailLights, headPool };
       placeCar(car); this.cars.push(car);
     }
     this.setStage(0);
   }
   setStage(stage: number): void { this.target = Math.min(this.cars.length, Math.round(this.cars.length * Math.min(1, 0.3 + stage * 0.14))); }
   update(dt: number, cam: THREE.Vector3, player: THREE.Vector3, night: number): void {
-    const count = Math.ceil(this.target * (1 - night * 0.4));
+    const count = Math.ceil(this.target * (1 - night * 0.4)); this.contact.begin(night);
     let n = 0;
     for (const c of this.cars) {
       const on = n++ < count; if (!on) { c.mesh.visible = false; continue; }
@@ -128,14 +130,15 @@ export class Traffic {
       placeCar(c); c.mesh.visible = Math.hypot(c.mesh.position.x - cam.x, c.mesh.position.z - cam.z) < 260;
       for (const lamp of c.tailLights) lamp.material = target < .75 ? this.brakeMat : this.tailMat;
       if (c.headPool) c.headPool.visible = night > .12;
+      if (c.mesh.visible) this.contact.add({ x: c.mesh.position.x, y: .045, z: c.mesh.position.z, yaw: c.mesh.rotation.y, length: c.length * 1.16, width: c.width * 1.25 });
     }
-    this.lightMat.color.setRGB(.44 + night * 1.5, .40 + night * 1.32, .30 + night * 1.05);
+    this.contact.end(); this.lightMat.color.setRGB(.44 + night * 1.5, .40 + night * 1.32, .30 + night * 1.05);
     this.tailMat.color.setRGB(0.48 + night * .7, 0.07, 0.035);
     this.brakeMat.color.setRGB(1.95, .12 + night * .07, .045);
     this.poolMat.opacity = night * .53;
   }
   dispose(): void {
-    if (this.disposed) return; this.disposed = true;
+    if (this.disposed) return; this.disposed = true; this.contact.dispose();
     const geometries = new Set<THREE.BufferGeometry>([this.headGeo, this.tailGeo, this.poolGeo]);
     const materials = new Set<THREE.Material>([this.lightMat, this.tailMat, this.brakeMat, this.poolMat]);
     this.group.traverse(o => { if (o instanceof THREE.Mesh) { geometries.add(o.geometry); for (const mat of Array.isArray(o.material) ? o.material : [o.material]) materials.add(mat); } });

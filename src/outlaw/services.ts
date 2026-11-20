@@ -2,7 +2,7 @@
 import type { Sim } from './sim';
 import { PLAYER_ID, VEHICLES, type VehicleKind } from './types';
 import { ACHIEVEMENTS, CAR_SHOP, OUTFITS, OUTFIT_PRICE, PROPERTIES, PROP_CAP_MIN, propertyRate } from './life';
-import { nearestLane } from './world';
+import { collideBox, groundHeight } from './world';
 
 const money = (n: number): string => '$' + Math.floor(n).toLocaleString('en-US');
 
@@ -35,23 +35,35 @@ export function buyCar(sim: Sim, index: number): string {
   const poi = sim.nearPoi(sim.player.x, sim.player.z); if (!poi || poi.kind !== 'dealer') return '자동차 매장이 아닙니다';
   const o = CAR_SHOP[index]; if (!o) return '없는 차량입니다'; const price = sim.price(o.price);
   if (sim.life.cars.some(c => c.kind === o.kind)) return '이미 보유한 차종입니다'; if (sim.cash < price) return '돈이 부족합니다';
-  sim.addCash(-price); sim.life.cars.push({ kind: o.kind, color: o.color }); spawnOwned(sim, sim.life.cars.length - 1, poi.x + 8, poi.z - 4); return `${VEHICLES[o.kind].name} 구입 · 내 차고에 등록`;
+  sim.addCash(-price); sim.life.cars.push({ kind: o.kind, color: o.color }); const placed = spawnOwned(sim, sim.life.cars.length - 1, poi.x + 8, poi.z - 4); return `${VEHICLES[o.kind].name} 구입 · 내 차고에 등록${placed ? '' : ' · 주차 공간 부족, 휴대폰에서 호출하세요'}`;
 }
 /** 내 차를 지정한 위치(없으면 플레이어 근처 도로)에 놓습니다. */
 export function spawnOwned(sim: Sim, index: number, x?: number, z?: number): boolean {
   const car = sim.life.cars[index]; if (!car) return false;
-  for (const v of sim.vehicles) if (v.tag === 'owned' && v.aux === 100 + index) { if (v.wrecked || !v.alive) sim.removeVehicle(v); else { if (v.driver === PLAYER_ID) return true; sim.removeVehicle(v); } }
-  let px = x ?? sim.player.x, pz = z ?? sim.player.z, h = sim.player.yaw;
-  if (x === undefined) {
-    const id = nearestLane(sim.map, sim.player.x + Math.cos(sim.player.yaw) * 14, sim.player.z + Math.sin(sim.player.yaw) * 14), lane = sim.map.lanes[id];
-    if (lane) { px = lane.x; pz = lane.z; h = lane.h; }
-  }
-  const v = sim.spawnVehicle(car.kind, px, pz, h, { keep: true, tag: 'owned', aux: 100 + index, color: car.color, locked: false }); v.mode = 'parked'; v.input.brake = 1; return true;
+  const old = sim.vehicles.filter(v => v.tag === 'owned' && v.aux === 100 + index);
+  if (old.some(v => v.driver === PLAYER_ID || v.passengers.includes(PLAYER_ID))) return false;
+  // Never despawn an occupied vehicle: callers can retry when it is empty.
+  if (old.some(v => !v.wrecked && (v.driver !== 0 || v.passengers.length > 0))) return false;
+  const d = VEHICLES[car.kind], radius = Math.hypot(d.halfL, d.halfW), p = sim.player;
+  const tx = x ?? p.x + Math.cos(p.yaw) * 14, tz = z ?? p.z + Math.sin(p.yaw) * 14;
+  const candidates = sim.map.lanes.filter(l => Math.hypot(l.x - tx, l.z - tz) < 140)
+    .sort((a, b) => Math.hypot(a.x - tx, a.z - tz) - Math.hypot(b.x - tx, b.z - tz));
+  const lane = candidates.find(l => {
+    if (Math.abs(l.x) + radius >= sim.map.half || Math.abs(l.z) + radius >= sim.map.half || groundHeight(sim.map, l.x, l.z) > .08) return false;
+    if (collideBox(sim.map, l.x, l.z, l.h, d.halfL + .25, d.halfW + .25, 0, d.height)) return false;
+    if (sim.vehicles.some(v => !old.includes(v) && Math.hypot(v.x - l.x, v.z - l.z) < radius + Math.hypot(VEHICLES[v.kind].halfL, VEHICLES[v.kind].halfW) + 1)) return false;
+    return !sim.peds.some(q => q.alive && !q.vehicle && Math.hypot(q.x - l.x, q.z - l.z) < radius + .8);
+  });
+  if (!lane) return false;
+  // Commit only after a clear position has been found.
+  for (const v of old) sim.removeVehicle(v);
+  const v = sim.spawnVehicle(car.kind, lane.x, lane.z, lane.h, { keep: true, tag: 'owned', aux: 100 + index, color: car.color, locked: false }); v.mode = 'parked'; v.input.brake = 1; return true;
 }
 export function callCar(sim: Sim, index: number): string {
   const car = sim.life.cars[index]; if (!car) return '차량이 없습니다'; if (sim.player.vehicle) return '차에서 내린 뒤 호출하세요';
   const fee = sim.price(150); if (sim.cash < fee) return '호출비가 부족합니다'; if (sim.wanted.stars > 0) return '수배 중에는 대리 기사가 오지 않습니다';
-  sim.addCash(-fee); spawnOwned(sim, index); return `${VEHICLES[car.kind].name} 도착 · 호출비 ${money(fee)}`;
+  if (!spawnOwned(sim, index)) return '안전한 주차 공간이 없습니다. 잠시 후 다시 호출하세요';
+  sim.addCash(-fee); return `${VEHICLES[car.kind].name} 도착 · 호출비 ${money(fee)}`;
 }
 export const vehicleName = (k: VehicleKind): string => VEHICLES[k].name;
 

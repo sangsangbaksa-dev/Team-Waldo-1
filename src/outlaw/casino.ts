@@ -48,7 +48,7 @@ export class Blackjack {
     this.bet = bet; for (let s = 0; s < 4; s++) for (let r = 0; r < 13; r++) this.deck.push({ rank: r, suit: s });
     for (let i = this.deck.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [this.deck[i], this.deck[j]] = [this.deck[j]!, this.deck[i]!]; }
     this.player = [this.draw(), this.draw()]; this.dealer = [this.draw(), this.draw()];
-    if (handValue(this.player) === 21) this.finish();
+    if (handValue(this.player) === 21 || handValue(this.dealer) === 21) this.finish();
   }
   private draw(): Card { return this.deck.pop()!; }
   hit(): void { if (this.state !== 'play') return; this.player.push(this.draw()); const v = handValue(this.player); if (v > 21) this.state = 'lose'; else if (v === 21) this.stand(); }
@@ -56,8 +56,9 @@ export class Blackjack {
   double(): void { if (this.state !== 'play' || this.player.length !== 2) return; this.bet *= 2; this.doubled = true; this.player.push(this.draw()); if (handValue(this.player) > 21) this.state = 'lose'; else this.stand(); }
   stand(): void { if (this.state !== 'play') return; this.finish(); }
   private finish(): void {
-    const pv = handValue(this.player);
-    if (pv === 21 && this.player.length === 2 && handValue(this.dealer) !== 21) { this.state = 'blackjack'; return; }
+    const pv = handValue(this.player), natural = pv === 21 && this.player.length === 2;
+    if (this.dealer.length === 2 && handValue(this.dealer) === 21) { this.state = natural ? 'push' : 'lose'; return; }
+    if (natural) { this.state = 'blackjack'; return; }
     while (handValue(this.dealer) < 17) this.dealer.push(this.draw());
     const dv = handValue(this.dealer); this.state = dv > 21 || pv > dv ? 'win' : pv === dv ? 'push' : 'lose';
   }

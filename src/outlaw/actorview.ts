@@ -5,7 +5,7 @@ import { blankPose, calmState, computePose } from '../shared/character/pose';
 import { instantiate, type Baked, type CharModel } from '../city/models';
 import { VEHICLES, clamp, type Ped, type Pickup, type SimEvent, type Vehicle, type VehicleDef, type WeaponId } from './types';
 import { MISSION_LIST, canStart } from './missions';
-import { groundHeight } from './world';
+import { groundHeight, surfaceAt } from './world';
 import type { Sim } from './sim';
 import type { OutlawAssets } from './assets';
 import type { Quality } from './cityview';
@@ -449,7 +449,7 @@ export class ActorView {
         this.car(v, c, dt, night);
         const d = VEHICLES[v.kind], h = groundHeight(this.sim.map, v.x, v.z);
         // No flat decal across sloped ramps or rooftop geometry.
-        if (h < .08) this.contact.add({ x: v.x, y: .185, z: v.z, yaw: -v.h, length: d.halfL * 2.32, width: d.halfW * 2.55, gap: Math.max(0, v.y - h) });
+        if (h < .08) this.contact.add({ x: v.x, y: surfaceAt(this.sim.map, v.x, v.z) === 'road' ? .038 : .185, z: v.z, yaw: -v.h, length: d.halfL * 2.32, width: d.halfW * 2.55, gap: Math.max(0, v.y - h) });
       }
     }
     this.contact.end(); this.prune(this.cars, liveCars, c => c.root);

@@ -160,9 +160,9 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   }
   function openUi(kind: string): void { if (!sim) return; openModal(kind, ui.render(kind)); }
   function uiClick(ds: DOMStringMap): void {
-    if (!sim) return; const r = ui.click(ds);
+    if (!sim) return; const cashBefore = sim.cash; const r = ui.click(ds);
     if (r.toast) toast(r.toast); if (r.sound) audio.play(r.sound);
-    if (['call', 'buyprop', 'collect', 'outfit', 'bribe', 'buycar'].includes(ds.ui ?? '') && !versus && !save()) toast('저장하지 못했습니다. 브라우저 저장 공간을 확인하세요.');
+    if ((['call', 'buyprop', 'collect', 'outfit', 'bribe', 'buycar'].includes(ds.ui ?? '') || (modalKind === 'casino' && sim.cash !== cashBefore)) && !versus && !save()) toast('저장하지 못했습니다. 브라우저 저장 공간을 확인하세요.');
     if (r.begin) { closeModal(); begin(false); if (!save()) toast('저장하지 못했습니다. 브라우저 저장 공간을 확인하세요.'); return; }
     if (r.close) { closeModal(); return; }
     if (r.kind) { const top = modalEl.querySelector('.ol-card'); const sy = top?.scrollTop ?? 0; openUi(r.kind); const nt = modalEl.querySelector('.ol-card'); if (nt) nt.scrollTop = sy; }

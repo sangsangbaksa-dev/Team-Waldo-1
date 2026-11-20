@@ -114,7 +114,7 @@ export class OutlawUi {
   }
 
   // ---------- 동작 ----------
-  private take(): boolean { const s = this.sim; if (s.cash < this.bet) { this.note = '돈이 부족합니다'; return false; } s.addCash(-this.bet); s.count('wagered', this.bet); return true; }
+  private take(): boolean { const s = this.sim; if (!BETS.includes(this.bet)) { this.note = '잘못된 판돈입니다'; return false; } if (s.cash < this.bet) { this.note = '돈이 부족합니다'; return false; } s.addCash(-this.bet); s.count('wagered', this.bet); return true; }
   click(ds: DOMStringMap): Outcome {
     const s = this.sim, id = ds.id ?? '', k = ds.ui, me = (kind: string, toast?: string): Outcome => ({ kind, toast });
     switch (k) {
@@ -130,22 +130,22 @@ export class OutlawUi {
       case 'bribe': return me('phone', bribe(s));
       case 'buycar': return me('dealer', buyCar(s, Number(id)));
       case 'ctab': this.casinoTab = id as never; this.note = ''; return me('casino');
-      case 'bet': this.bet = Number(id); return me('casino');
+      case 'bet': if (BETS.includes(Number(id))) this.bet = Number(id); return me('casino');
       case 'spin': { if (!this.take()) return me('casino'); const r = slotSpin(s.rng, this.bet); this.reels = r.reels; if (r.payout) s.addCash(r.payout); if (r.jackpot) s.count('jackpot'); this.note = r.payout ? `${r.note} · +${money(r.payout)}` : r.note; return { kind: 'casino', sound: r.payout ? 'cash' : undefined }; }
       case 'coin': { if (!this.take()) return me('casino'); const r = coinFlip(s.rng, this.bet, id as never); if (r.payout) s.addCash(r.payout); this.note = `${r.side === 'heads' ? '앞면' : '뒷면'} · ${r.payout ? '+' + money(r.payout) : '꽝'}`; return me('casino'); }
-      case 'hdeal': { if (!this.take()) return me('casino'); this.hilo = hiloDeal(s.rng, this.bet); this.note = ''; return me('casino'); }
+      case 'hdeal': { if (this.hilo?.state === 'play' || !this.take()) return me('casino'); this.hilo = hiloDeal(s.rng, this.bet); this.note = ''; return me('casino'); }
       case 'hhi': case 'hlo': {
-        const g = this.hilo; if (!g) return me('casino'); hiloGuess(g, s.rng, k === 'hhi' ? 'hi' : 'lo');
+        const g = this.hilo; if (!g || g.state !== 'play') return me('casino'); hiloGuess(g, s.rng, k === 'hhi' ? 'hi' : 'lo');
         this.note = g.state === 'lose' ? `틀렸습니다 -${money(g.bet)}` : `적중! 연속 ${g.streak}`; return me('casino');
       }
       case 'hcash': { const g = this.hilo; if (!g || g.state !== 'play' || g.streak < 1) return me('casino'); const pay = hiloValue(g); g.state = 'cashed'; s.addCash(pay); this.note = `정산 +${money(pay - g.bet)}`; return me('casino'); }
       case 'rbet': this.rbet = id as never; return me('casino');
       case 'rnum': this.rnum = (this.rnum + Number(id) + 37) % 37; this.rbet = 'number'; return me('casino');
       case 'rspin': { if (!this.take()) return me('casino'); const on: RouletteBet = this.rbet === 'number' ? { type: 'number', n: this.rnum } : { type: this.rbet }; const r = rouletteSpin(s.rng, this.bet, on); if (r.payout) s.addCash(r.payout); this.note = `${r.n} ${rouletteColor(r.n) === 'red' ? '빨강' : rouletteColor(r.n) === 'black' ? '검정' : '초록'} · ${r.payout ? '+' + money(r.payout) : '꽝'}`; return me('casino'); }
-      case 'deal': { if (!this.take()) return me('casino'); this.bj = new Blackjack(s.rng, this.bet); this.bjSettled = false; this.settle(); return me('casino'); }
+      case 'deal': { if (this.bj && !this.bj.over || !this.take()) return me('casino'); this.bj = new Blackjack(s.rng, this.bet); this.bjSettled = false; this.settle(); return me('casino'); }
       case 'hit': this.bj?.hit(); this.settle(); return me('casino');
       case 'stand': this.bj?.stand(); this.settle(); return me('casino');
-      case 'double': { const g = this.bj; if (!g) return me('casino'); if (s.cash < g.bet) { this.note = '더블할 돈이 부족합니다'; return me('casino'); } s.addCash(-g.bet); s.count('wagered', g.bet); g.double(); this.settle(); return me('casino'); }
+      case 'double': { const g = this.bj; if (!g || g.over || g.player.length !== 2) return me('casino'); if (s.cash < g.bet) { this.note = '더블할 돈이 부족합니다'; return me('casino'); } s.addCash(-g.bet); s.count('wagered', g.bet); g.double(); this.settle(); return me('casino'); }
       default: return {};
     }
   }

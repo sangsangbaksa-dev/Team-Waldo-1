@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import type { LotView, ShopKind, SpotDef, Stage } from '../core/types';
 import { stageIndex } from '../core/data';
 import { GeoBuilder } from './geo';
+import { addFacadeDetails } from './architecture';
 import { Colliders, GRID, HALF, PITCH, ROAD, BLOCK, WORLD_HALF, blockTier, blockUnlocked, hash01, type Block, type Box, type Layout, type Lot } from './layout';
 import { asphaltTexture, dirtTexture, facadeMaps, grassTexture, kindColor, puddleTexture, ringTexture, sidewalkTexture, signTexture, type FacadeStyle } from './textures';
 
@@ -50,7 +51,7 @@ export const spotColor = (v: SpotView): string => {
   return kindColor(v.kind);
 };
 
-interface LotGeo { walls: Record<FacadeStyle, GeoBuilder>; roofs: GeoBuilder; detail: GeoBuilder; glow: GeoBuilder; grass: GeoBuilder; dirt: GeoBuilder; boxes: Box[] }
+interface LotGeo { walls: Record<FacadeStyle, GeoBuilder>; roofs: GeoBuilder; detail: GeoBuilder; glazing: GeoBuilder; glow: GeoBuilder; grass: GeoBuilder; dirt: GeoBuilder; boxes: Box[] }
 class BlockView {
   group = new THREE.Group(); bld = new THREE.Group(); disposables: THREE.BufferGeometry[] = [];
   key = ''; rise = 1; riseDelay = 0; crane: THREE.Object3D | null = null;
@@ -63,6 +64,7 @@ export class CityView {
   private facade: Record<FacadeStyle, THREE.MeshStandardMaterial>;
   private roofMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 });
   private detailMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.1 });
+  private glazingMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.21, metalness: 0.32 });
   private glowMat = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
   private walkMat: THREE.MeshStandardMaterial; private dirtMat: THREE.MeshStandardMaterial; private grassMat: THREE.MeshStandardMaterial; private roadMat: THREE.MeshStandardMaterial;
   private wetU = { value: 0 };
@@ -171,7 +173,7 @@ export class CityView {
       const tier = blockTier(b, st);
       if (tier <= 1) for (const [dx, dz] of [[-6, 17], [6, -17], [17, 6], [-17, -6]] as const) { const h = hash01(b.i * 31 + b.j, dx + dz); if (h < 0.45) add(b.cx + dx, b.cz + dz, 0.8 + h, h); }
       else for (const [dx, dz] of [[-9, 17.4], [9, 17.4], [-9, -17.4], [9, -17.4], [17.4, 9], [17.4, -9], [-17.4, 9], [-17.4, -9]] as const) add(b.cx + dx, b.cz + dz, 0.9 + hash01(b.i + dx, b.j + dz) * 0.3, hash01(dx, dz * b.i));
-      for (const lot of b.lots) if (lot.kind === 'park') for (let k = 0; k < 6; k++) add(lot.cx + (hash01(lot.id, k) - 0.5) * 11, lot.cz + (hash01(lot.id, k + 9) - 0.5) * 11, 1.0 + hash01(lot.id, k + 4) * 0.7, hash01(lot.id, k + 20));
+      for (const lot of b.lots) if (lot.kind === 'park') for (let k = 0; k < 4; k++) add(lot.cx + (k % 2 ? 1 : -1) * (4.8 + hash01(lot.id, k) * 0.5), lot.cz + (k < 2 ? 1 : -1) * (5.1 + hash01(lot.id, k + 9) * 0.5), 0.82 + hash01(lot.id, k + 4) * 0.4, hash01(lot.id, k + 20));
     }
     this.trunkMesh.count = this.crownMesh.count = n;
     this.trunkMesh.instanceMatrix.needsUpdate = this.crownMesh.instanceMatrix.needsUpdate = true; if (this.crownMesh.instanceColor) this.crownMesh.instanceColor.needsUpdate = true;
@@ -306,10 +308,10 @@ export class CityView {
     slab.panel(b.cx, 0.09, b.cz + h, BLOCK, 0.18, 0, 1, curb); slab.panel(b.cx, 0.09, b.cz - h, BLOCK, 0.18, 0, -1, curb); slab.panel(b.cx + h, 0.09, b.cz, BLOCK, 0.18, 1, 0, curb); slab.panel(b.cx - h, 0.09, b.cz, BLOCK, 0.18, -1, 0, curb);
     this.addMesh(v, v.group, slab, slabMat, false);
     if (!unlocked) { this.buildConstruction(b, v); return; }
-    const g: LotGeo = { walls: { slum: new GeoBuilder(), shop: new GeoBuilder(), office: new GeoBuilder(), glass: new GeoBuilder() }, roofs: new GeoBuilder(), detail: new GeoBuilder(), glow: new GeoBuilder(), grass: new GeoBuilder(), dirt: new GeoBuilder(), boxes: [] };
+    const g: LotGeo = { walls: { slum: new GeoBuilder(), shop: new GeoBuilder(), office: new GeoBuilder(), glass: new GeoBuilder() }, roofs: new GeoBuilder(), detail: new GeoBuilder(), glazing: new GeoBuilder(), glow: new GeoBuilder(), grass: new GeoBuilder(), dirt: new GeoBuilder(), boxes: [] };
     for (const lot of b.lots) this.buildLot(lot, tier, g, v);
     for (const s of ['slum', 'shop', 'office', 'glass'] as FacadeStyle[]) this.addMesh(v, v.bld, g.walls[s], this.facade[s]);
-    this.addMesh(v, v.bld, g.roofs, this.roofMat); this.addMesh(v, v.bld, g.detail, this.detailMat); this.addMesh(v, v.bld, g.glow, this.glowMat, false);
+    this.addMesh(v, v.bld, g.roofs, this.roofMat); this.addMesh(v, v.bld, g.detail, this.detailMat); this.addMesh(v, v.bld, g.glazing, this.glazingMat, false); this.addMesh(v, v.bld, g.glow, this.glowMat, false);
     this.addMesh(v, v.group, g.grass, this.grassMat, false); this.addMesh(v, v.group, g.dirt, this.dirtMat, false);
     this.colliders.set(b, g.boxes);
   }
@@ -339,8 +341,24 @@ export class CityView {
   }
   private buildPark(lot: Lot, g: LotGeo): void {
     g.grass.floor(lot.cx - 7, lot.cz - 7, lot.cx + 7, lot.cz + 7, 0.22, 0xffffff, 1 / 3);
-    g.detail.solid(lot.cx, 0.22, lot.cz, 1.6, 0.4, 5, 0x8d8a82);
-    g.boxes.push({ x0: lot.cx - 0.9, x1: lot.cx + 0.9, z0: lot.cz - 2.6, z1: lot.cz + 2.6 });
+    const { cx, cz } = lot;
+    // Cross paths, raised planted beds and seating, rather than a single plain slab.
+    g.detail.floor(cx - 7, cz - 0.95, cx + 7, cz + 0.95, 0.235, 0xbdb7ab);
+    g.detail.floor(cx - 0.95, cz - 7, cx + 0.95, cz + 7, 0.236, 0xbdb7ab);
+    for (const s of [-1, 1]) {
+      const bz = cz + s * 2.0;
+      g.detail.solid(cx, 0.22, bz, 2.5, 0.47, 0.18, 0x4d5557);
+      g.detail.solid(cx, 0.69, bz, 2.8, 0.14, 0.68, 0x8b6848);
+      g.detail.solid(cx, 0.8, bz + s * 0.29, 2.8, 0.52, 0.13, 0x967456);
+      g.boxes.push({ x0: cx - 1.4, x1: cx + 1.4, z0: bz - 0.36, z1: bz + 0.36 });
+      for (const t of [-1, 1]) {
+        const px = cx + t * 3.5, pz = cz + s * 3.8;
+        g.detail.solid(px, 0.22, pz, 2.6, 0.28, 1.35, 0x85867e);
+        g.detail.solid(px, 0.50, pz, 2.3, 0.24, 1.05, 0x4e744b);
+        if (this.quality !== 'low') for (let k = 0; k < 5; k++) g.detail.solid(px - 0.8 + k * 0.4, 0.74, pz, 0.16, 0.09, 0.16, (k + lot.id) % 2 ? 0xd6a66e : 0xb76b82);
+        g.boxes.push({ x0: px - 1.3, x1: px + 1.3, z0: pz - 0.675, z1: pz + 0.675 });
+      }
+    }
   }
   /** 울타리 둘러친 땅(분양 중/공사 중). */
   private buildPlot(lot: Lot, g: LotGeo, v: BlockView, text: string, color: string, sub: string, building: boolean): void {
@@ -427,13 +445,15 @@ export class CityView {
       if (tier <= 1 && r(12) < 0.5) { g.detail.solid(cx - fw / 4, H, cz, 1.7, 1.8, 1.7, 0x6d5a48); g.detail.solid(cx - fw / 4, H + 1.8, cz, 2, 0.3, 2, 0x45392d); }
     }
     const nx = lot.fx, nz = lot.fz, fxp = cx + nx * (depth / 2 + 0.04), fzp = cz + nz * (depth / 2 + 0.04);
-    if (spec ? true : r(13) < 0.6) g.glow.panel(fxp + nx * 0.02, 1.35, fzp + nz * 0.02, 2.2, 2.5, nx, nz, spec ? 0xffd99a : 0xcaa56a);
-    if (tier >= 1 && !spec && r(14) < 0.5) g.glow.panel(fxp + nx * 0.03, 1.7, fzp + nz * 0.03, Math.min(along - 2, 7), 2.2, nx, nz, pick([0xffc27a, 0x9fd9ff, 0xff9ec1, 0xd5ffb0], r(15)));
-    if (spec?.awning || (!spec && tier <= 2 && r(16) < 0.4)) {
-      const ac = d ? parseInt(d.color.slice(1), 16) : pick([0xc0443c, 0x3c76c0, 0x3fa56a, 0xd09a2e], r(17));
+    if (!spec && r(13) < 0.6 && this.quality === 'low') g.glow.panel(fxp + nx * 0.02, 1.35, fzp + nz * 0.02, 2.2, 2.5, nx, nz, spec ? 0xffd99a : 0xcaa56a);
+    if (tier >= 1 && !spec && r(14) < 0.5 && this.quality === 'low') g.glow.panel(fxp + nx * 0.03, 1.7, fzp + nz * 0.03, Math.min(along - 2, 7), 2.2, nx, nz, pick([0xffc27a, 0x9fd9ff, 0xff9ec1, 0xd5ffb0], r(15)));
+    const awning = !!(spec?.awning || (!spec && tier <= 2 && r(16) < 0.4));
+    const ac = d ? parseInt(d.color.slice(1), 16) : pick([0xc0443c, 0x3c76c0, 0x3fa56a, 0xd09a2e], r(17));
+    if (awning) {
       const aw = Math.min(along - 1, 8);
       g.detail.solid(cx + nx * (depth / 2 + 0.8), 3.0, cz + nz * (depth / 2 + 0.8), nx ? 1.6 : aw, 0.22, nz ? 1.6 : aw, ac);
     }
+    addFacadeDetails(g.detail, g.glazing, g.glow, { x: cx, z: cz, w: fw, d: fd, height: H, nx, nz, depth, along, style, accent: ac, landmark: !!spec, industrial: spec?.extra === 'chimney' || spec?.extra === 'warehouse', awning, setback, quality: this.quality });
     if (!d || !spec) return;
     const sw = Math.min(7.6, Math.max(4, along - 0.8));
     this.signPlane(v, sw, sw / 4, cx + nx * (depth / 2 + 0.1), Math.min(H - 1.2, 4.7), cz + nz * (depth / 2 + 0.1), nx, nz, this.signMat(d.text, d.color, d.sub, d.dim));
@@ -487,7 +507,7 @@ export class CityView {
 
   dispose(): void {
     if (this.disposed) return; this.disposed = true;
-    const geometries = new Set<THREE.BufferGeometry>(), materials = new Set<THREE.Material>([...Object.values(this.facade), this.roofMat, this.detailMat, this.glowMat, this.walkMat, this.dirtMat, this.grassMat, this.roadMat, ...this.signMats.values()]);
+    const geometries = new Set<THREE.BufferGeometry>(), materials = new Set<THREE.Material>([...Object.values(this.facade), this.roofMat, this.detailMat, this.glazingMat, this.glowMat, this.walkMat, this.dirtMat, this.grassMat, this.roadMat, ...this.signMats.values()]);
     if (this.constructionSign) materials.add(this.constructionSign);
     const textures = new Set<THREE.Texture>([this.ringTex]);
     this.group.traverse(o => { if (o instanceof THREE.Mesh) { geometries.add(o.geometry); for (const m of Array.isArray(o.material) ? o.material : [o.material]) materials.add(m); if (o instanceof THREE.InstancedMesh) o.dispose(); } });

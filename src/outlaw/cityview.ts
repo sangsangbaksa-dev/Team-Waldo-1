@@ -6,6 +6,7 @@ import { makeRng, type CityMap, type Prop, type PropKind } from './types';
 import { signal } from './world';
 import * as tex from './textures';
 import type { OutlawAssets } from './assets';
+import { architectureDetails } from './architecture';
 
 export type Quality = 'high' | 'standard' | 'low';
 type Batch = Map<THREE.Material, THREE.BufferGeometry[]>;
@@ -174,6 +175,10 @@ export class CityView {
     const roof = this.mat({ map: this.texture(tex.roofTexture()), vertexColors: true, roughness: .9 });
     const tile = this.mat({ map: this.texture(tex.tileRoofTexture()), vertexColors: true, roughness: .9 });
     const equipment = this.mat({ color: 0x8c9598, roughness: .73, metalness: .24, vertexColors: true });
+    const trim = this.mat({ vertexColors: true, roughness: .72, metalness: .14 });
+    const glass = this.mat({ vertexColors: true, roughness: .22, metalness: .38 });
+    const light = this.mat({ vertexColors: true, emissive: 0xc6dfff, emissiveIntensity: .05, roughness: .45 }); this.neon.push(light);
+    const detailMaterials = { trim, glass, light };
     const signMats = new Map<string, THREE.MeshStandardMaterial>(); const signBatch: Batch = new Map(), poolBatch: Batch = new Map();
     const pools = new Map<string, THREE.MeshBasicMaterial>();
     const names: Record<string, string> = { gunshop: 'GUN SHOP', bank: 'BANK', casino: 'CASINO', club: 'BLUE HOUR', paynspray: 'PAY N SPRAY', hospital: 'HOSPITAL', police: 'POLICE', safehouse: 'OAK ST.', garage: 'MOTOR WORKS', chopshop: 'IRON YARD', dealer: 'PRESTIGE MOTORS', gym: 'STEEL GYM', arena: 'THE PIT' };
@@ -191,7 +196,9 @@ export class CityView {
         if (b.kind === 'factory') this.put(b.x, b.z, roof, box(b.x, b.h + 5, b.z, 1.8, 10, 1.8));
         if (b.kind === 'tower') this.put(b.x, b.z, equipment, box(b.x, b.h + 1.2, b.z, b.w * .58, 2, b.d * .58));
       }
-      const poi = this.map.pois.find(p => p.building === b.id && names[p.kind]); if (!b.neon && !poi) continue;
+      const poi = this.map.pois.find(p => p.building === b.id && names[p.kind]);
+      for (const d of architectureDetails(b, this.quality, !!poi)) this.put(b.x, b.z, detailMaterials[d.material], box(d.x, d.y, d.z, d.w, d.h, d.d, 4, d.tint));
+      if (!b.neon && !poi) continue;
       const label = poi ? names[poi.kind] : b.id % 2 ? 'NIGHTLINE' : 'AFTER HOURS';
       const color = poi?.kind === 'hospital' || poi?.kind === 'police' || b.id % 2 ? '#3df2ff' : '#ff3d81';
       const key = label + color; let m = signMats.get(key);

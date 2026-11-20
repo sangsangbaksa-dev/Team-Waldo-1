@@ -234,8 +234,9 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   let lookMuteUntil = 0;
   const weaponWheel = new WheelGesture();
   const sens = (): number => 0.0023 / (view && me().ads ? Math.max(1, 78 / view.fov) * 0.9 : 1);
-  function lock(): void { if (touch || locked || lockFail || closed) return; try { const r = canvas.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(() => { lockFail = true; }); } catch { lockFail = true; } }
-  document.addEventListener('pointerlockchange', onLock);
+  const lockError = (): void => { if (!locked) lockFail = true; };
+  function lock(): void { if (touch || locked || lockFail || closed) return; try { const r = canvas.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(lockError); } catch { lockError(); } }
+  document.addEventListener('pointerlockchange', onLock); document.addEventListener('pointerlockerror', lockError);
   function onLock(): void {
     const wasLocked = locked; locked = document.pointerLockElement === canvas;
     if (locked) { lookMuteUntil = performance.now() + 180; return; }
@@ -566,7 +567,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   function exit(): void {
     if (closed) return; closed = true; closeSmith?.(); cancelAnimationFrame(raf); leavePvp(); leaveRoom(); if (document.pointerLockElement) document.exitPointerLock(); loading?.close();
     for (const [t, f] of [['mousemove', onMove], ['mousedown', onDown], ['mouseup', onUp], ['keydown', onKey], ['keyup', onKey], ['wheel', onWheel], ['resize', resize], ['blur', blur]] as const) window.removeEventListener(t, f as EventListener);
-    document.removeEventListener('pointerlockchange', onLock); document.removeEventListener('visibilitychange', blur); endMatch(); audio.dispose(); root.remove(); onExit();
+    document.removeEventListener('pointerlockchange', onLock); document.removeEventListener('pointerlockerror', lockError); document.removeEventListener('visibilitychange', blur); endMatch(); audio.dispose(); root.remove(); onExit();
   }
   raf = requestAnimationFrame(frame);
 }

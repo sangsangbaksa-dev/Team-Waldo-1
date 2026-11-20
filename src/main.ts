@@ -99,7 +99,7 @@ function tile(entry: Entry, index: number): string {
   return `
     <li class="tile-item">
       <button class="tile" id="start-${entry.id}" type="button" data-game="${entry.id}" aria-describedby="summary-${entry.id}">
-        <span class="tile-media"><img src="${entry.image}" alt="${entry.imageAlt}" width="1280" height="800" ${index === 0 ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async"></span>
+        <span class="tile-media"><span class="tile-index" aria-hidden="true">${String(index + 1).padStart(2, '0')} / 05</span><img src="${entry.image}" alt="${entry.imageAlt}" width="1280" height="800" ${index === 0 ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async"></span>
         <span class="tile-body">
           <span class="tile-genre">${entry.genre}</span>
           <span class="tile-name">${entry.name}</span>
@@ -121,7 +121,7 @@ function renderMenu(): void {
   app.innerHTML = `
     <main class="home">
       <header class="home-head">
-        <a class="mark" href="${base}" aria-label="WALDO 홈">WALDO</a>
+        <a class="mark" href="${base}" aria-label="WALDO 홈">WALDO<span>GAME STUDIO</span></a>
         <div class="head-tools">
           <button class="sound-toggle" id="sound-toggle" type="button" aria-pressed="${sound}" aria-label="소리 ${sound ? '켜짐' : '꺼짐'}">
             <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M3 8v4h3l4 3.5v-11L6 8z" fill="currentColor"/>${sound
@@ -133,9 +133,9 @@ function renderMenu(): void {
         </div>
       </header>
       <section class="home-intro">
-        <h1>${['', '한', '두', '세', '네', '다섯'][ENTRIES.length] ?? ENTRIES.length} 편의 3D 게임.</h1>
-        <p>설치 없이 이 페이지에서 바로 시작합니다.</p>
+        <div class="intro-copy"><span class="home-kicker">WALDO GAME COLLECTION / 01</span><h1>${['', '한', '두', '세', '네', '다섯'][ENTRIES.length] ?? ENTRIES.length} 개의 세계,<br>하나의 플레이 공간.</h1><p>전략부터 레이싱, 오픈월드까지. 설치 없이 바로 플레이하세요.</p></div><div class="intro-count" aria-hidden="true"><b>${String(ENTRIES.length).padStart(2, '0')}</b><span>GAMES IN COLLECTION</span></div>
       </section>
+      <div class="collection-heading"><h2>게임 라이브러리</h2><span>${ENTRIES.length} TITLES</span></div>
       <ul class="tiles" aria-label="게임 목록">${ENTRIES.map(tile).join('')}</ul>
       <p class="home-notice" id="home-notice" role="status" aria-live="polite"></p>
       <footer class="home-foot">
@@ -151,7 +151,10 @@ function renderMenu(): void {
   app.querySelectorAll<HTMLButtonElement>('.tile').forEach(button => {
     const game = ENTRIES.find(entry => entry.id === button.dataset.game);
     if (!game) return;
-    button.querySelector('.tile-status')!.textContent = game.status();
+    const status = button.querySelector('.tile-status')!;
+    const record = game.status();
+    status.textContent = record || '첫 플레이';
+    status.classList.toggle('has-record', Boolean(record));
     button.onclick = () => { void launch(game.id); };
   });
   wireAccount();
@@ -164,7 +167,8 @@ function wireAccount(): void {
   const label = (nickname: string | null): void => { button.textContent = nickname ? `${nickname} · 랭킹` : '로그인 · 랭킹'; };
   button.onclick = () => {
     button.disabled = true;
-    void import('./net/lobby').then(({ openLobby }) => { openLobby({ onClose: () => { button.disabled = false; } }); })
+    const gen = generation;
+    void import('./net/lobby').then(({ openLobby }) => { if (gen !== generation || !button.isConnected || app.hidden) return; openLobby({ onClose: () => { button.disabled = false; } }); })
       .catch(() => { button.disabled = false; });
   };
   const gen = generation;
@@ -180,8 +184,9 @@ function wireAccount(): void {
 }
 
 async function launch(id: GameId): Promise<void> {
+  if (app.hidden || app.querySelector<HTMLButtonElement>(`#start-${id}`)?.disabled) return;
   const navigation = ++generation;
-  const buttons = app.querySelectorAll<HTMLButtonElement>('.tile');
+  const buttons = app.querySelectorAll<HTMLButtonElement>('button');
   const notice = app.querySelector<HTMLElement>('#home-notice');
   const label = app.querySelector<HTMLElement>(`#start-${id} .tile-cta`);
   buttons.forEach(b => { b.disabled = true; });
@@ -238,9 +243,12 @@ function handleAuthRedirect(): void {
   const failed = params.has('error') || params.has('error_code'), signedIn = params.has('access_token');
   if (!failed && !signedIn) return;
   const clean = (): void => { try { history.replaceState(null, '', location.pathname + location.search); } catch { /* 주소 정리는 선택 사항 */ } };
+  const authGeneration = generation;
   const open = (notice: string): void => {
-    void import('./net/lobby').then(({ openLobby }) => { openLobby({ notice, onClose: () => undefined }); }).catch(() => undefined);
+    if (!PVP_ENABLED || authGeneration !== generation || app.hidden) return;
+    void import('./net/lobby').then(({ openLobby }) => { if (authGeneration === generation && !app.hidden) openLobby({ notice, onClose: () => undefined }); }).catch(() => undefined);
   };
+  if (!PVP_ENABLED) { clean(); return; }
   if (failed) { clean(); open('인증 링크가 만료되었거나 이미 사용됐습니다. 이메일을 입력하고 "인증 메일 다시 받기"를 눌러 새 링크를 받아 주세요.'); return; }
   // 성공: 클라이언트가 만들어지면서 주소의 토큰을 읽어 로그인합니다(주소 정리는 그 뒤에).
   void import('./net/backend').then(async ({ currentAccount, setAccount }) => {

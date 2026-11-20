@@ -1,5 +1,6 @@
 // FRONTLINE — 실시간 전략 모드 진입점: 시작 화면, 입력, HUD, 게임 루프, 1대1 연결.
 import './rts.css';
+import { editableTarget, wheelPixels } from '../shared/input';
 import { readPreferences, writePreferences } from '../prefs';
 import { readRtsRecords, writeRtsRecords } from '../records';
 import type { LoadingScreen } from '../loading';
@@ -223,11 +224,11 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   let miniDown = false;
   const miniMove = (e: PointerEvent): void => { if (!view || !sim) return; const r = mini.getBoundingClientRect(), p = mmInv((e.clientX - r.left) / r.width * mini.width, (e.clientY - r.top) / r.height * mini.height); view.lookAt(p.x, p.y); };
   mini.addEventListener('pointerdown', e => {
-    e.preventDefault(); if (!sim) return; mini.setPointerCapture(e.pointerId);
+    e.preventDefault(); if (!sim || root.dataset.phase !== 'play' || (e.button !== 0 && e.button !== 2)) return; mini.setPointerCapture(e.pointerId);
     if (e.button === 2) { const r = mini.getBoundingClientRect(), p = mmInv((e.clientX - r.left) / r.width * mini.width, (e.clientY - r.top) / r.height * mini.height); orderMove(p.x, p.y, false); return; }
     miniDown = true; miniMove(e);
   });
-  mini.addEventListener('pointermove', e => { if (miniDown) miniMove(e); }); mini.addEventListener('pointerup', () => { miniDown = false; }); mini.addEventListener('contextmenu', e => e.preventDefault());
+  mini.addEventListener('pointermove', e => { if (miniDown) miniMove(e); }); mini.addEventListener('pointerup', () => { miniDown = false; }); mini.addEventListener('pointercancel', () => { miniDown = false; }); mini.addEventListener('lostpointercapture', () => { miniDown = false; }); mini.addEventListener('contextmenu', e => e.preventDefault());
 
   // ---------- 오버레이(체력 막대·선택 상자) ----------
   function drawOverlay(): void {
@@ -269,13 +270,13 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   }
   over.addEventListener('contextmenu', e => e.preventDefault());
   over.addEventListener('pointerdown', e => {
-    audio.unlock(); if (!sim || !view || ended) return; const p = local(e); over.setPointerCapture(e.pointerId);
+    audio.unlock(); if (!sim || !view || ended || root.dataset.phase !== 'play' || (e.pointerType !== 'touch' && ![0, 1, 2].includes(e.button))) return; const p = local(e); over.setPointerCapture(e.pointerId);
     pointer.x = p.x; pointer.y = p.y; pointer.in = true;
     if (e.pointerType === 'touch') {
-      touches.set(e.pointerId, p); if (touches.size === 2) { const [a, b] = [...touches.values()]; pinch = Math.hypot(a.x - b.x, a.y - b.y); pointer.down = false; return; }
+      touches.set(e.pointerId, p); if (touches.size >= 2) { const [a, b] = [...touches.values()]; pinch = Math.hypot(a.x - b.x, a.y - b.y); pointer.down = false; return; }
       pointer.down = true; pointer.sx = p.x; pointer.sy = p.y; pointer.drag = false; pointer.button = 0; pointer.pan = !boxMode; return;
     }
-    if (e.button === 1) { pointer.down = true; pointer.pan = true; pointer.sx = p.x; pointer.sy = p.y; pointer.button = 1; return; }
+    if (e.button === 1 || (e.button === 0 && e.altKey)) { pointer.down = true; pointer.drag = false; pointer.pan = true; pointer.sx = p.x; pointer.sy = p.y; pointer.button = 1; return; }
     if (e.button === 2) { if (mode) { mode = null; setHint(''); cmdKey = ''; } else rightClick(p.x, p.y); return; }
     pointer.down = true; pointer.sx = p.x; pointer.sy = p.y; pointer.drag = false; pointer.button = 0; pointer.pan = false;
     if (mode && leftClickMode(p.x, p.y)) { pointer.down = false; cmdKey = ''; }
@@ -283,17 +284,18 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   over.addEventListener('pointermove', e => {
     const p = local(e); const px = pointer.x, py = pointer.y; pointer.x = p.x; pointer.y = p.y; pointer.in = true;
     if (e.pointerType === 'touch') {
+      if (!touches.has(e.pointerId)) return;
       touches.set(e.pointerId, p);
-      if (touches.size === 2) { const [a, b] = [...touches.values()], d = Math.hypot(a.x - b.x, a.y - b.y); if (pinch > 0 && view) view.zoom(pinch / d); pinch = d; return; }
+      if (touches.size >= 2) { const [a, b] = [...touches.values()], d = Math.hypot(a.x - b.x, a.y - b.y); if (pinch > 1 && d > 1 && view) view.zoom(Math.max(0.75, Math.min(1.33, pinch / d))); pinch = d; return; }
     }
     if (!pointer.down) return;
     if (!pointer.drag && Math.hypot(p.x - pointer.sx, p.y - pointer.sy) > 8) pointer.drag = true;
-    if (pointer.pan && view && pointer.drag) { const k = view.cam.dist / over.clientHeight * 1.5; view.pan(-(p.x - px) * k * 0.9, -(p.y - py) * k * 1.2); }
+    if (pointer.pan && view && pointer.drag) { const k = view.cam.dist / Math.max(1, over.clientHeight) * 1.5; view.pan(-(p.x - px) * k * 0.9, -(p.y - py) * k * 1.2); }
   });
   const release = (e: PointerEvent): void => {
     const p = local(e); touches.delete(e.pointerId); if (touches.size < 2) pinch = 0;
-    if (!pointer.down || !sim || !view) { pointer.down = false; return; } pointer.down = false;
-    if (pointer.button === 1) return;
+    if (!pointer.down || !sim || !view || root.dataset.phase !== 'play') { pointer.down = false; return; } pointer.down = false;
+    if (pointer.button === 1 || e.type === 'pointercancel') return;
     if (e.pointerType === 'touch') {
       if (pointer.pan && pointer.drag) return;
       if (pointer.drag && !pointer.pan) { boxSelect(pointer.sx, pointer.sy, p.x, p.y, false); return; }
@@ -302,9 +304,9 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     if (pointer.drag) { boxSelect(pointer.sx, pointer.sy, p.x, p.y, keys.has('Shift')); return; }
     const now = performance.now(), id = view.pick(p.x, p.y); clickSelect(p.x, p.y, keys.has('Shift'), now - pointer.lastTap < 350); pointer.lastTap = now; pointer.lastTapId = id;
   };
-  over.addEventListener('pointerup', release); over.addEventListener('pointercancel', release);
+  over.addEventListener('pointerup', release); const cancelPointer = (e: PointerEvent): void => { touches.delete(e.pointerId); pinch = 0; pointer.down = pointer.drag = pointer.pan = false; }; over.addEventListener('pointercancel', cancelPointer); over.addEventListener('lostpointercapture', cancelPointer);
   over.addEventListener('pointerleave', () => { pointer.in = false; });
-  over.addEventListener('wheel', e => { e.preventDefault(); view?.zoom(e.deltaY > 0 ? 1.1 : 0.91); }, { passive: false });
+  over.addEventListener('wheel', e => { if (!view || root.dataset.phase !== 'play') return; e.preventDefault(); const dx = wheelPixels(e.deltaX, e.deltaMode, over.clientHeight), dy = wheelPixels(e.deltaY, e.deltaMode, over.clientHeight); if (!Number.isFinite(dx) || !Number.isFinite(dy)) return; if (!e.ctrlKey && (e.shiftKey || Math.abs(dx) > Math.abs(dy))) { const k = view.cam.dist / Math.max(1, over.clientHeight); view.pan(dx * k, dy * k); } else if (dy) view.zoom(Math.exp(Math.max(-120, Math.min(120, dy)) * 0.0015)); }, { passive: false });
   /** 터치: 내 유닛을 누르면 선택, 땅·적·광물을 누르면 명령, 선택이 없으면 해제. */
   function tapAt(sx: number, sy: number): void {
     if (!sim || !view) return; const id = view.pick(sx, sy), e = id ? sim.index.get(id) : undefined, { us, bs } = own();
@@ -316,9 +318,10 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
 
   const hot = new Map<string, number>();
   function onKey(e: KeyboardEvent): void {
-    if (modal.classList.contains('show') && e.key !== 'Escape' && !(root.dataset.phase === 'paused' && e.key.toLowerCase() === 'p')) return;
     if (e.type === 'keyup') { keys.delete(e.key === 'Shift' ? 'Shift' : e.code); return; }
-    keys.add(e.key === 'Shift' ? 'Shift' : e.code); audio.unlock();
+    if (editableTarget(e.target) || e.isComposing) return;
+    if (modal.classList.contains('show') && e.key !== 'Escape' && !(root.dataset.phase === 'paused' && e.key.toLowerCase() === 'p')) return;
+    keys.add(e.key === 'Shift' ? 'Shift' : e.code); if (e.repeat) { if (e.key.startsWith('Arrow') || e.code === 'Space') e.preventDefault(); return; } audio.unlock();
     const k = e.key.toUpperCase();
     if (root.dataset.phase === 'paused' && (e.key === 'Escape' || e.key.toLowerCase() === 'p')) { e.preventDefault(); hide(); paused = false; root.dataset.phase = 'play'; last = performance.now(); return; }
     if (e.key.toLowerCase() === 'p' && !e.ctrlKey && !e.metaKey && !e.altKey && sim && !ended) { e.preventDefault(); if (net) toast('온라인 대전은 일시정지할 수 없습니다', true); else openMenu(); return; }
@@ -335,6 +338,9 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const b = buttons.find(x => x.key === k); if (b) { e.preventDefault(); if (b.enabled === false) toast(b.hint ?? '지금은 할 수 없습니다', true); else { b.on(); refresh(); } }
   }
+  const resetControls = (): void => { keys.clear(); touches.clear(); pinch = 0; pointer.down = pointer.drag = pointer.pan = pointer.in = false; miniDown = false; };
+  const onHidden = (): void => { if (document.hidden) resetControls(); };
+  window.addEventListener('blur', resetControls); document.addEventListener('visibilitychange', onHidden);
   window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKey);
 
   // ---------- HUD ----------
@@ -368,11 +374,11 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     <li><b>병력</b>보병은 만능, 로켓병은 장갑에 강하고, 전차는 광역 피해, 정찰 지프(공장 W)는 빨라서 일꾼 사냥에 좋습니다. 의무병(병영 D)은 다친 보병·일꾼을 치료하니 부대 뒤에 두세요. 상대가 전차를 모으면 로켓병으로 맞서세요.</li>
     <li><b>일시정지</b>상단 ⏸ 버튼, P 또는 Esc (AI 대전에서만). 항복도 같은 메뉴에 있습니다.</li>
     <li><b>생산</b>건물 선택 → Q·W. 집결지는 R, 일꾼은 광물에 집결하면 바로 캡니다.</li>
-    <li><b>카메라</b>화살표 · 화면 가장자리 · 휠 확대 · 미니맵 클릭 · Space 최근 공격 위치 · . 놀고 있는 일꾼</li>
+    <li><b>카메라</b>화살표 · 화면 가장자리 · 휠/핀치 확대 · Alt+드래그 또는 Shift+스크롤 이동 · 미니맵 클릭 · Space 최근 공격 위치 · . 놀고 있는 일꾼</li>
     <li><b>터치</b>한 손가락 드래그는 화면 이동, 탭은 선택/명령, 두 손가락은 확대. 범위 선택 버튼으로 드래그 선택.</li></ul>
     <div class="rt-actions"><button class="primary" data-act="back">닫기</button></div></div>`;
   function openMenu(): void {
-    if (root.dataset.phase === 'setup' || ended || !sim) return; paused = !net; root.dataset.phase = 'paused';
+    if (root.dataset.phase === 'setup' || ended || !sim) return; resetControls(); paused = !net; root.dataset.phase = 'paused';
     show(`<div class="rt-card"><span class="rt-eyebrow">${net ? '대전 중 · 계속 진행됩니다' : '게임이 멈춰 있습니다'}</span><h2>${net ? '메뉴' : '일시정지'}</h2>${net ? '' : '<p class="rt-lead">P 또는 Esc 를 누르면 계속합니다.</p>'}<div class="rt-actions col"><button class="primary" data-act="resume">계속하기</button><button data-act="help2">조작법</button><button data-act="surrender">항복</button><button data-act="exit">나가기</button></div></div>`);
   }
   function resultCard(win: boolean | null, why: string, extra = ''): void {
@@ -401,7 +407,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     // 해제한 WebGL 컨텍스트는 다시 쓸 수 없으니 캔버스를 새로 만듭니다.
     const fresh = document.createElement('canvas'); fresh.className = 'rt-canvas'; canvas.replaceWith(fresh); canvas = fresh; const q = prefs.quality;
     try { view = new RtsView(canvas, sim, me, q); } catch { show('<div class="rt-card"><span class="rt-eyebrow">FRONTLINE</span><h2>그래픽을 시작하지 못했어요</h2><p class="rt-lead">WebGL 을 사용할 수 없습니다. 브라우저를 새로고침하거나 그래픽 가속을 켠 뒤 다시 시도해 주세요.</p><div class="rt-actions"><button class="primary" data-act="exit">메뉴로</button></div></div>'); return; }
-    miniBase = null; selected.clear(); mode = null; submenu = false; ended = false; paused = false; acc = 0; hudKey = cmdKey = selKey = ''; groups.clear(); hide(); root.dataset.phase = 'play'; stats.start = performance.now(); resize();
+    resetControls(); pointer.lastTap = 0; pointer.lastTapId = 0; hot.clear(); miniBase = null; selected.clear(); mode = null; submenu = false; ended = false; paused = false; acc = 0; hudKey = cmdKey = selKey = ''; groups.clear(); hide(); root.dataset.phase = 'play'; stats.start = performance.now(); resize();
     const h = sim.buildings.find(b => b.owner === me && b.kind === 'hq'); if (h) setSel([h.id]);
     toast(net ? '대전 시작! 상대의 모든 건물을 파괴하세요' : '일꾼으로 광물을 캐고, 병영을 지어 병력을 모으세요', false); last = performance.now();
   }
@@ -501,7 +507,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
 
   // ---------- 버튼 ----------
   function exit(): void {
-    if (closed) return; closed = true; leavePvp(); cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('waldo:preferences', onPrefs);
+    if (closed) return; closed = true; leavePvp(); cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('waldo:preferences', onPrefs); window.removeEventListener('blur', resetControls); document.removeEventListener('visibilitychange', onHidden);
     view?.dispose(); audio.dispose(); root.remove(); onExit();
   }
   const onPrefs = (): void => { const s = readPreferences().sound; audio.enabled = s; const m = root.querySelector<HTMLElement>('[data-act="mute"]'); if (m) { m.textContent = s ? '🔊' : '🔇'; m.setAttribute('aria-pressed', String(s)); } };

@@ -163,7 +163,11 @@ export class RtsSim {
   }
   supplyLeft(owner: number): number { const p = this.players[owner]; return p.cap - p.used; }
 
-  order(u: Unit, o: Order): void { u.o = o; u.path = []; u.pi = 0; u.repath = 0; }
+  private releaseMining(u: Unit): void {
+    if (u.o.t !== 'gather' || u.o.phase !== 1) return;
+    const nd = this.node(u.o.target); if (nd) nd.busyUntil = Math.min(nd.busyUntil, this.tick);
+  }
+  order(u: Unit, o: Order): void { this.releaseMining(u); u.o = o; u.path = []; u.pi = 0; u.repath = 0; }
 
   /** 명령 하나를 적용합니다. 규칙에 어긋나는 명령은 무시하고 false 를 돌려줍니다. */
   apply(owner: number, c: Cmd): boolean {
@@ -184,7 +188,7 @@ export class RtsSim {
         return true;
       }
       case 'attack': {
-        const t = num(c.target) ? this.index.get(c.target) : undefined; if (!t || t.k === 'node' || t.owner === owner) return false;
+        const t = num(c.target) ? this.index.get(c.target) : undefined; if (!t || t.k === 'node' || t.owner === owner || t.hp <= 0) return false;
         const us = mine(c.ids).filter(u => UNITS[u.kind].dmg > 0); if (!us.length) return false;
         for (const u of us) this.order(u, { t: 'attack', x: 0, y: 0, target: t.id, phase: 0, timer: 0 }); return true;
       }
@@ -196,7 +200,7 @@ export class RtsSim {
       case 'stop': { const us = mine(c.ids); for (const u of us) { this.order(u, idle()); u.o.phase = 9; /* 일부러 세운 일꾼은 자동 복귀하지 않음 */ } return us.length > 0; }
       case 'build': {
         const w = num(c.id) ? this.unit(c.id) : undefined, d = BUILDINGS[c.b];
-        if (!w || w.owner !== owner || w.kind !== 'worker' || !d || !num(c.x) || !num(c.y)) return false;
+        if (!w || w.hp <= 0 || w.owner !== owner || w.kind !== 'worker' || !d || !num(c.x) || !num(c.y)) return false;
         const p = this.players[owner]; if (p.minerals < d.cost || (d.req && !this.has(owner, d.req)) || !this.canPlace(c.b, c.x, c.y)) return false;
         p.minerals -= d.cost; const b = this.addBuilding(owner, c.b, c.x, c.y, false); this.emit({ t: 'placed', owner, x: b.x + b.size / 2, y: b.y + b.size / 2 });
         // q: 이미 짓고 있는 건물이 있으면 그것부터 마치고(afterBuild), 새 건물은 그다음에 맡습니다.
@@ -216,7 +220,7 @@ export class RtsSim {
         const b = num(c.b) ? this.building(c.b) : undefined; if (!b || b.owner !== owner || !num(c.i)) return false;
         const p = this.players[owner];
         if (c.i === -2) { if (!b.research) return false; p.minerals += RESEARCH[b.research.r].cost; b.research = null; return true; }
-        if (c.i < 0) { if (b.done || b.kind === 'hq' && this.buildings.filter(x => x.owner === owner && x.kind === 'hq').length < 2) return false; p.minerals += Math.floor(BUILDINGS[b.kind].cost * 0.75); this.remove(b); return true; }
+        if (c.i < 0) { if (b.done || b.kind === 'hq' && this.buildings.filter(x => x.owner === owner && x.kind === 'hq').length < 2) return false; p.minerals += Math.floor(BUILDINGS[b.kind].cost * 0.75); this.remove(b); this.recount(); return true; }
         const q = b.queue[c.i]; if (!q) return false; p.minerals += UNITS[q.u].cost; b.queue.splice(c.i, 1); this.recount(); return true;
       }
       case 'ability': {
@@ -338,7 +342,7 @@ export class RtsSim {
       case 'amove': {
         let t = o.target ? this.unit(o.target) ?? this.building(o.target) : undefined;
         if (o.target && (!t || t.hp <= 0 || this.gap(u, d.radius, t) > d.range + 6)) { t = undefined; o.target = 0; u.path = []; u.pi = 0; u.repath = 0; }
-        if (!t && d.dmg > 0 && (u.id + this.tick) % 3 === 0) { const f = this.pick(u.owner, u.x, u.y, d.range + 3.5); if (f) { t = f; o.target = f.id; u.path = []; } }
+        if (!t && d.dmg > 0 && (u.id + this.tick) % 3 === 0) { const f = this.pick(u.owner, u.x, u.y, d.range + 3.5); if (f) { t = f; o.target = f.id; u.path = []; u.pi = 0; u.repath = 0; } }
         if (t) this.engage(u, t); else if (this.walk(u, o.x, o.y, this.speedOf(u), 0.6)) this.order(u, idle());
         break;
       }
@@ -412,9 +416,10 @@ export class RtsSim {
       if (u.cd <= 0) { u.cd = this.cooldownOf(u); u.fired = this.tick; this.damage(u.owner, t, d.dmg * (siege ? TANK_SIEGE.dmg : 1), d.weapon, d.splash + (siege ? TANK_SIEGE.splash : 0), u.x, u.y); }
       return;
     }
-    if (u.path.length === 0 || u.repath <= 0) {
+    if (siege) return;
+    if (u.repath <= 0) {
       const goal = t.k === 'unit' ? { x: t.x, y: t.y } : this.approach(t, u.x, u.y);
-      u.path = this.pather.find(u.x, u.y, goal.x, goal.y) ?? [goal.x, goal.y]; u.pi = 0; u.repath = 14;
+      u.path = this.pather.find(u.x, u.y, goal.x, goal.y) ?? []; u.pi = 0; u.repath = 14;
     }
     this.follow(u, this.speedOf(u));
   }
@@ -471,21 +476,23 @@ export class RtsSim {
     if (u.kind !== 'worker') { this.order(u, idle()); return; }
     if (o.phase !== 2) {
       let nd = this.node(o.target);
-      if (!nd) { nd = this.nearestNode(hq ? hq.x + hq.size / 2 : u.x, hq ? hq.y + hq.size / 2 : u.y, 22, false) ?? undefined; if (!nd) { this.order(u, idle()); return; } o.target = nd.id; u.path = []; }
+      if (!nd) { nd = this.nearestNode(hq ? hq.x + hq.size / 2 : u.x, hq ? hq.y + hq.size / 2 : u.y, 22, false) ?? undefined; if (!nd) { this.order(u, idle()); return; } o.target = nd.id; o.phase = 0; o.timer = 0; u.path = []; u.pi = 0; u.repath = 0; }
       if (o.phase === 0) {
         if (this.dist(u.x, u.y, nd.x + 0.5, nd.y + 0.5) <= 1.7) {
           if (nd.busyUntil > this.tick) {
             // 다른 일꾼이 캐는 중이면 비어 있는 이웃 광물로 옮기거나 잠깐 기다립니다.
-            const alt = this.nearestNode(u.x, u.y, 9, true); if (alt && alt !== nd) { o.target = alt.id; u.path = []; }
+            const alt = this.nearestNode(u.x, u.y, 9, true); if (alt && alt !== nd) { o.target = alt.id; u.path = []; u.pi = 0; u.repath = 0; }
           } else { nd.busyUntil = this.tick + MINE_TICKS; o.phase = 1; o.timer = MINE_TICKS; u.path = []; }
         } else {
-          if (u.path.length === 0 || u.repath <= 0) { const g = this.approachNode(nd, u.x, u.y); u.path = this.pather.find(u.x, u.y, g.x, g.y) ?? [g.x, g.y]; u.pi = 0; u.repath = 40; }
+          if (u.repath <= 0) { const g = this.approachNode(nd, u.x, u.y); u.path = this.pather.find(u.x, u.y, g.x, g.y) ?? []; u.pi = 0; u.repath = 40; }
           this.follow(u, this.speedOf(u));
         }
+      } else if (this.dist(u.x, u.y, nd.x + 0.5, nd.y + 0.5) > 1.7) {
+        this.releaseMining(u); o.phase = 0; o.timer = 0; u.path = []; u.pi = 0; u.repath = 0;
       } else if (--o.timer <= 0) {
         const take = Math.min(CARRY, nd.amount); nd.amount -= take; u.carry = take; this.emit({ t: 'mined', x: nd.x + 0.5, y: nd.y + 0.5 });
         if (nd.amount <= 0) { this.nodes.splice(this.nodes.indexOf(nd), 1); this.index.delete(nd.id); this.grid[nd.y * this.map.size + nd.x] = 0; }
-        o.phase = 2; u.path = [];
+        o.phase = 2; u.path = []; u.pi = 0; u.repath = 0;
       }
       return;
     }
@@ -493,21 +500,21 @@ export class RtsSim {
     if (this.rectDist(u.x, u.y, hq) <= 1.3) {
       const mult = this.incomeMult[u.owner], p = this.players[u.owner], amt = Math.round(u.carry * mult);
       p.minerals += amt; p.mined += amt; u.carry = 0; this.emit({ t: 'deposit', owner: u.owner, x: u.x, y: u.y });
-      o.phase = 0; u.path = []; return;
+      o.phase = 0; u.path = []; u.pi = 0; u.repath = 0; return;
     }
-    if (u.path.length === 0 || u.repath <= 0) { const g = this.approach(hq, u.x, u.y); u.path = this.pather.find(u.x, u.y, g.x, g.y) ?? [g.x, g.y]; u.pi = 0; u.repath = 40; }
+    if (u.repath <= 0) { const g = this.approach(hq, u.x, u.y); u.path = this.pather.find(u.x, u.y, g.x, g.y) ?? []; u.pi = 0; u.repath = 40; }
     this.follow(u, this.speedOf(u));
   }
 
   private construct(u: Unit): void {
     const b = this.building(u.o.target);
-    if (!b || b.done || u.kind !== 'worker') { this.afterBuild(u); return; }
+    if (!b || b.hp <= 0 || b.done || u.kind !== 'worker') { this.afterBuild(u); return; }
     if (this.rectDist(u.x, u.y, b) > 1.35) {
-      if (u.path.length === 0 || u.repath <= 0) { const g = this.approach(b, u.x, u.y); u.path = this.pather.find(u.x, u.y, g.x, g.y) ?? [g.x, g.y]; u.pi = 0; u.repath = 30; }
+      if (u.repath <= 0) { const g = this.approach(b, u.x, u.y); u.path = this.pather.find(u.x, u.y, g.x, g.y) ?? []; u.pi = 0; u.repath = 30; }
       this.follow(u, this.speedOf(u)); return;
     }
     u.path = []; u.fx = b.x + b.size / 2 - u.x; u.fy = b.y + b.size / 2 - u.y; u.mine = this.tick;
-    const total = BUILDINGS[b.kind].time; b.progress++; b.hp = Math.min(b.maxhp, Math.max(b.hp, Math.round(b.maxhp * (0.1 + 0.9 * b.progress / total))));
+    const total = BUILDINGS[b.kind].time, before = Math.round(b.maxhp * (0.1 + 0.9 * b.progress / total)); b.progress++; const after = Math.round(b.maxhp * (0.1 + 0.9 * Math.min(1, b.progress / total))); b.hp = Math.min(b.maxhp, b.hp + Math.max(0, after - before));
     if (b.progress >= total) { b.done = true; b.hp = Math.max(b.hp, 1); this.emit({ t: 'built', kind: b.kind, owner: b.owner, x: b.x + b.size / 2, y: b.y + b.size / 2 }); this.afterBuild(u); }
   }
   /** 이 건물을 짓고 있는(또는 지으러 가는) 일꾼이 있는가. */
@@ -585,7 +592,7 @@ export class RtsSim {
       this.remove(b);
     }
     if (this.units.some(u => u.hp <= 0)) {
-      for (const u of this.units) if (u.hp <= 0) { this.players[u.owner].lost++; this.index.delete(u.id); this.emit({ t: 'die', kind: u.kind, building: false, owner: u.owner, x: u.x, y: u.y, size: 1 }); }
+      for (const u of this.units) if (u.hp <= 0) { this.releaseMining(u); this.players[u.owner].lost++; this.index.delete(u.id); this.emit({ t: 'die', kind: u.kind, building: false, owner: u.owner, x: u.x, y: u.y, size: 1 }); }
       this.units = this.units.filter(u => u.hp > 0);
     }
   }

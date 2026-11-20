@@ -75,8 +75,8 @@ describe('exact world grid ray traversal', () => {
   it('detects a box with an index above the old 16384-entry mask', () => {
     const m=emptyMap(); addBox(m,box(2,8,3,9));
     for(let i=1;i<16384;i++) m.boxes.push(box(90,90,91,91));
-    addBox(m,box(5,-1,6,1));
-    expect(rayWorld(m,0,1,0,1,0,0,15)).toBeCloseTo(5);
+    addBox(m,box(5,0.2,6,0.8));
+    expect(rayWorld(m,0,1,0.5,1,0,0,15)).toBeCloseTo(5);
   });
   it('does not skip exact grid boundaries', () => {
     const m=emptyMap(); addBox(m,box(1,15.5,3,16));

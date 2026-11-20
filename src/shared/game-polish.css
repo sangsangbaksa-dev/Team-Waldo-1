@@ -1,0 +1,24 @@
+/* Game-only UI polish. Keep each title's visual identity. */
+.city-root { --game-focus: #ead29a; }
+.rc-root { --game-focus: #b6a5ff; }
+.rt-root { --game-focus: #b8d6ff; }
+.sz-root { --game-focus: #ffd166; }
+.ol-root { --game-focus: #3df2ff; }
+.ty-root { --game-focus: #ffcf5a; }
+/* Keyboard focus is distinct from hover and selection. */
+:is(.city-root,.rc-root,.rt-root,.sz-root,.ol-root,.ty-root) :is(button,a,input,select,textarea):focus-visible {
+  outline: 2px solid var(--game-focus); outline-offset: 3px;
+}
+:is(.city-root,.rc-root,.rt-root,.sz-root,.ol-root,.ty-root) button:disabled { cursor: not-allowed; }
+.city-root .c-panel, .rc-root .rc-card, .rt-root .rt-card, .sz-root .sz-card,
+.ol-root .ol-card, .ty-root .ty-panel {
+  border-color: color-mix(in srgb, var(--game-focus) 30%, transparent);
+  box-shadow: 0 18px 48px #0008, inset 0 1px 0 #ffffff12;
+  scrollbar-color: #ffffff40 transparent;
+}
+.rc-root .rc-speed, .rt-root .rt-res, .ty-root .ty-cash { font-variant-numeric: tabular-nums; }
+.rc-root .rc-speed b, .rt-root .rt-res b, .ty-root .ty-cash b { text-shadow: 0 2px 8px #0009; }
+@media (prefers-reduced-motion: reduce) {
+  .sz-root .sz-redfx { animation: none; }
+  .rc-root .rc-drift { transition: none; }
+}

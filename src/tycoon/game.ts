@@ -81,7 +81,11 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   }
 
   // ---------- 저장 ----------
-  const save = (): void => { if (core && phase === 'play') saveTycoon(core); };
+  const save = (): boolean => !!core && phase === 'play' && saveTycoon(core);
+  const saveOnHide = (): void => { if (document.hidden) save(); };
+  const saveOnPageHide = (): void => { save(); };
+  document.addEventListener('visibilitychange', saveOnHide);
+  window.addEventListener('pagehide', saveOnPageHide);
 
   // ---------- 모달 ----------
   const paused = (): boolean => modal !== null;
@@ -128,7 +132,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   }
   function menuAction(m: string): void {
     if (m === 'resume') closeModal();
-    else if (m === 'save') { save(); toast('저장했습니다', 'good'); }
+    else if (m === 'save') { if (save()) toast('저장했습니다', 'good'); else toast('저장하지 못했습니다. 브라우저 저장 공간을 확인하세요.', 'bad', 5); }
     else if (m === 'view') { player.setFirstPerson(!player.firstPerson); renderModal(); }
     else if (m === 'sound') { audio.enabled = !audio.enabled; writePreferences({ ...readPreferences(), sound: audio.enabled }); renderModal(); }
     else if (m === 'exit') exit();
@@ -330,7 +334,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
 
   // ---------- 종료 ----------
   function exit(): void {
-    if (closed) return; save(); closed = true; cancelAnimationFrame(raf);
+    if (closed) return; save(); closed = true; cancelAnimationFrame(raf); document.removeEventListener('visibilitychange', saveOnHide); window.removeEventListener('pagehide', saveOnPageHide);
     window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', resetInput); document.removeEventListener('visibilitychange', resetInput);
     window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp); window.removeEventListener('wheel', onWheel); window.removeEventListener('resize', resize); document.removeEventListener('pointerlockchange', onLock);
     if (document.pointerLockElement) document.exitPointerLock();

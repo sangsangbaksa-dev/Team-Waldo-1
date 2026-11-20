@@ -159,9 +159,9 @@ export class CityView {
     this.group.add(this.trunkMesh, this.crownMesh);
   }
   private refillTrees(): void {
-    let n = 0; const col = new THREE.Color();
+    let n = 0; const col = new THREE.Color(); const spots: Array<{ x: number; z: number; s: number }> = [];
     const add = (x: number, z: number, s: number, h: number): void => {
-      if (n >= 700) return; const o = this.tmp; o.rotation.set(0, h * 6, 0); o.scale.setScalar(s); o.position.set(x, 0.18, z); o.updateMatrix();
+      if (n >= 700) return; spots.push({ x, z, s }); const o = this.tmp; o.rotation.set(0, h * 6, 0); o.scale.setScalar(s); o.position.set(x, 0.18, z); o.updateMatrix();
       this.trunkMesh.setMatrixAt(n, o.matrix); this.crownMesh.setMatrixAt(n, o.matrix);
       col.setHSL(0.24 + h * 0.08, 0.38 + h * 0.2, 0.2 + h * 0.12); this.crownMesh.setColorAt(n, col); n++;
     };
@@ -173,7 +173,7 @@ export class CityView {
       else for (const [dx, dz] of [[-9, 17.4], [9, 17.4], [-9, -17.4], [9, -17.4], [17.4, 9], [17.4, -9], [-17.4, 9], [-17.4, -9]] as const) add(b.cx + dx, b.cz + dz, 0.9 + hash01(b.i + dx, b.j + dz) * 0.3, hash01(dx, dz * b.i));
       for (const lot of b.lots) if (lot.kind === 'park') for (let k = 0; k < 6; k++) add(lot.cx + (hash01(lot.id, k) - 0.5) * 11, lot.cz + (hash01(lot.id, k + 9) - 0.5) * 11, 1.0 + hash01(lot.id, k + 4) * 0.7, hash01(lot.id, k + 20));
     }
-    this.trunkMesh.count = this.crownMesh.count = n;
+    this.trunkMesh.count = this.crownMesh.count = n; this.colliders.setTrees(spots);
     this.trunkMesh.instanceMatrix.needsUpdate = this.crownMesh.instanceMatrix.needsUpdate = true; if (this.crownMesh.instanceColor) this.crownMesh.instanceColor.needsUpdate = true;
   }
   private buildBeacons(): void {

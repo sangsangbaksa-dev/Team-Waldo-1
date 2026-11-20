@@ -243,7 +243,7 @@ export class RaceView {
       for (let i = 0; i < 9000; i++) { const a = Math.random() * 0.22; g.fillStyle = Math.random() < 0.55 ? `rgba(0,0,0,${a})` : `rgba(255,255,255,${a * 0.6})`; g.fillRect(Math.random() * TW, Math.random() * TH, 1 + Math.random() * 2, 1 + Math.random() * 2); }
       for (const cx of [TW * 0.30, TW * 0.70]) { const gr = g.createLinearGradient(cx - 34, 0, cx + 34, 0); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(0.5, 'rgba(0,0,0,.20)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(cx - 34, 0, 68, TH); }
       g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 1.2; for (let i = 0; i < 14; i++) { let x = Math.random() * TW, y = Math.random() * TH; g.beginPath(); g.moveTo(x, y); for (let s = 0; s < 6; s++) { x += (Math.random() - 0.5) * 30; y += 12 + Math.random() * 22; g.lineTo(x, y); } g.stroke(); }
-      for (let i = 0; i < 5; i++) { g.fillStyle = 'rgba(8,8,10,.28)'; g.fillRect(Math.random() * (TW - 140) + 30, Math.random() * TH, 40 + Math.random() * 70, 18 + Math.random() * 60); }
+      for (let i = 0; i < 5; i++) { const x = Math.random() * (TW - 140) + 30, y = Math.random() * TH, w = 40 + Math.random() * 70, h = 18 + Math.random() * 60; g.fillStyle = 'rgba(8,8,10,.07)'; for (let k = 4; k >= 0; k--) g.fillRect(x - k * 4, y - k * 4, w + k * 8, h + k * 8); } // 보수 자국: 가장자리를 겹쳐 번지게 해서 그림자 상자처럼 딱 잘리지 않게 합니다.
       g.fillStyle = rd.edge; g.fillRect(14, 0, 9, TH); g.fillRect(TW - 23, 0, 9, TH);
       g.fillStyle = rd.center; if (rd.centerDouble) { g.fillRect(TW / 2 - 12, 0, 7, TH); g.fillRect(TW / 2 + 5, 0, 7, TH); } else for (let y = 0; y < TH; y += 256) g.fillRect(TW / 2 - 4, y + 20, 9, 150);
       g.fillStyle = rd.lane; g.fillRect(TW * 0.25, 0, 4, TH); g.fillRect(TW * 0.75, 0, 4, TH);

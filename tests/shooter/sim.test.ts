@@ -244,7 +244,7 @@ describe('ZERO ZONE 건물·엄폐물·파츠·보급', () => {
       const m = royale(); expect(m.zone.phase).toBe(0); expect(m.zone.timeLeft).toBeCloseTo(ZONES.br[0].wait, 0); runCoarse(m, 10); expect(m.zone.timeLeft).toBeCloseTo(ZONES.br[0].wait, 0);
     });
     it('AI 99명은 모두 착지하고 판은 한 명이 남을 때까지 제때 끝난다', () => {
-      const m = royale(3); let landed = 0; for (let i = 0; i < 700 * 30 && !m.over; i++) { m.step(1 / 30); for (const e of m.drain()) if (e.t === 'land') landed++; }
+      const m = royale(3); let landed = 0; for (let i = 0; i < Math.ceil(BR_MATCH_SECONDS * 1.15) * 30 && !m.over; i++) { m.step(1 / 30); for (const e of m.drain()) if (e.t === 'land') landed++; }
       expect(landed).toBeGreaterThanOrEqual(95); expect(m.over).toBe(true); expect(m.t).toBeLessThan(BR_MATCH_SECONDS * 1.15);
     }, 60000);
     it('모든 전리품에 길이 있다(문 앞을 소품이 막지 않는다)', () => {
@@ -265,5 +265,35 @@ describe('수류탄', () => {
     const m = field('normal', 2), a = m.players[0]; a.input = { ...blankInput(), nade: true }; m.step(1 / 60); expect(m.nades).toHaveLength(0);
     a.input = blankInput(); a.nades = 4; m.loot.push({ id: 9999, kind: 'grenade', weapon: null, x: a.x, z: a.z, taken: false }); m.step(1 / 60);
     expect(a.nades).toBe(5);
+  });
+});
+
+describe('연막탄', () => {
+  it('던지면 피해 없이 연막이 깔리고, 연막 너머로는 시선이 끊기며, 시간이 지나면 걷힌다', () => {
+    const m = field('normal', 2), [a, b] = m.players; a.smokes = 2; a.x = 0; a.z = 0; a.yaw = 0; a.pitch = 0.1; b.x = 24; b.z = 0;
+    a.input = { ...blankInput(), smoke: true }; m.step(1 / 60); m.drain();
+    expect(a.smokes).toBe(1); expect(m.nades).toHaveLength(1); expect(m.nades[0].smoke).toBe(true); a.input = blankInput();
+    const hp = b.hp; run(m, 2.5);
+    expect(m.nades).toHaveLength(0); expect(m.clouds).toHaveLength(1); expect(b.hp).toBe(hp);
+    const c = m.clouds[0]; run(m, 1.5);
+    expect(m.smokeBlocks(c.x - 20, c.z, c.x + 20, c.z)).toBe(true);
+    expect(m.smokeBlocks(c.x - 20, c.z + 40, c.x + 20, c.z + 40)).toBe(false);
+    run(m, 20); expect(m.clouds).toHaveLength(0); expect(m.smokeBlocks(c.x - 20, c.z, c.x + 20, c.z)).toBe(false);
+  });
+  it('연막탄이 없으면 던지지 못하고, 줍기는 최대 3개', () => {
+    const m = field('normal', 2), a = m.players[0]; a.input = { ...blankInput(), smoke: true }; m.step(1 / 60); expect(m.nades).toHaveLength(0);
+    a.input = blankInput(); a.smokes = 3; m.loot.push({ id: 9998, kind: 'smoke', weapon: null, x: a.x, z: a.z, taken: false }); m.step(1 / 60);
+    expect(a.smokes).toBe(3);
+    a.smokes = 1; m.step(1 / 60); expect(a.smokes).toBe(2);
+  });
+});
+
+describe('마지막 원 교착', () => {
+  it('탄이 떨어진 두 선수가 마지막 원 안에 마주 서 있어도 판이 끝난다', () => {
+    const m = new Match({ seed: 5, mode: 'duel', difficulty: 'normal', humans: [{ name: 'a' }, { name: 'b' }] }), [a, b] = m.players;
+    for (const p of [a, b]) { p.guns = [{ id: 'pistol', mag: 0, reserve: 0, att: {} }, null]; p.hp = 100; }
+    let steps = 0; const total = Math.ceil(240 * 30);
+    for (; steps < total && !m.over; steps++) { const z = m.zone; a.x = z.cx + 1; a.z = z.cz; b.x = z.cx - 1; b.z = z.cz; m.step(1 / 30); m.drain(); }
+    expect(m.over).toBe(true); expect(steps / 30).toBeLessThan(200);
   });
 });

@@ -236,9 +236,9 @@ export class World {
   // ---------- 피해 ----------
   crime(_f: number, _amount: number): void { /* 수배 시스템 없음 */ }
   hurtActor(a: Actor, dmg: number, srcF: number, direct = true): void {
-    if (!a.alive || this.hidden(a)) return;
+    if (!a.alive || this.hidden(a) || !Number.isFinite(dmg) || dmg <= 0) return;
     if (this.opts.duel && a.f >= 1) return; // 상대 보스·병력의 체력은 상대 쪽에서만 줄어듭니다
-    if (a.inVeh) { const v = this.vehicles.find(q => q.id === a.inVeh); if (v) this.hurtVehicle(v, dmg, srcF); return; }
+    if (a.inVeh) { const v = this.vehicles.find(q => q.id === a.inVeh && q.alive && q.driver===a.id); if (v) { this.hurtVehicle(v, dmg, srcF); return; } a.inVeh=0; }
     dmg *= 1 - ACTORS[a.kind].armor; if (a.f === 0) dmg *= 0.75;
     if (srcF < 8 && srcF >= 0 && !this.factions[srcF].player && !this.opts.duel) dmg *= DIFFICULTY[this.opts.difficulty].dmg;
     if (a.kind === 'boss') {
@@ -258,13 +258,13 @@ export class World {
     this.fx(ACTORS[a.kind].mech ? 'boom' : 'death', a.x, a.y, a.r, undefined, a.f);
     const src = srcF >= 0 && srcF < 8 ? this.factions[srcF] : null;
     if (srcF === 0 && a.f !== 0) this.fx('kill', a.x, a.y, 0, a.f < 8 ? `${FACTIONS[a.f].name} ${ACTORS[a.kind].name}` : ACTORS[a.kind].name, a.f);
-    if (a.inVeh) { const v = this.vehicles.find(q => q.id === a.inVeh); if (v) { v.driver = 0; v.f = -1; } a.inVeh = 0; }
+    if (a.inVeh) { const v = this.vehicles.find(q => q.id === a.inVeh); if (v && v.driver===a.id) { v.driver = 0; v.f = -1; v.ai=''; } a.inVeh = 0; }
     if (a.f === CIV) { if (src) { this.crime(srcF, 0.8); this.spawnLoot('cash', a.x, a.y, 20 + Math.floor(this.rng() * 60)); } return; }
     if (a.f === POLICE) { if (src) { this.crime(srcF, 0.7); this.gainXp(src, ACTORS[a.kind].xp); src.kills++; if (this.rng() < 0.3) this.spawnLoot(this.rng() < 0.5 ? 'armor' : 'medkit', a.x, a.y, 30); } return; }
     const f = this.factions[a.f];
     if (src && src !== f) { this.gainXp(src, ACTORS[a.kind].xp); src.kills++; }
     if (a.kind === 'boss') {
-      f.deaths++; f.diedAt = this.time;
+      f.deaths++; f.diedAt = this.time; f.reloadT = 0;
       const drop = Math.min(2000, Math.floor(f.cash * 0.25)); f.cash -= drop; if (drop > 20) this.spawnLoot('cash', a.x, a.y, drop);
       const best = f.slots.slice(1).sort((p, q) => WEAPONS[q.id].tier - WEAPONS[p.id].tier)[0];
       // An exhausted rare weapon must not respawn as a full-ammo pickup.
@@ -282,12 +282,12 @@ export class World {
     resolveBountyKill(this, a, srcF);
   }
   hurtVehicle(v: Vehicle, dmg: number, srcF: number): void {
-    if (!v.alive) return; v.hp -= dmg;
+    if (!v.alive || !Number.isFinite(dmg) || dmg <= 0 || v.burn > 0) return; v.hp = Math.max(0,v.hp-dmg);
     if (v.kind === 'police' && srcF >= 0 && srcF < 8 && v.ai === 'chase') this.crime(srcF, 0.05);
     if (v.hp <= 0 && v.burn <= 0) { v.burn = 1.6; this.fx('burn', v.x, v.y); }
   }
   hurtStruct(s: Structure, dmg: number, srcF: number): void {
-    if (!s.alive || (this.opts.duel && s.f >= 1)) return; /* 상대 건물의 체력도 상대 쪽에서만 줄어듭니다 */ s.hp -= dmg; s.hurtT = this.time;
+    if (!s.alive || (this.opts.duel && s.f >= 1) || !Number.isFinite(dmg) || dmg <= 0) return; /* 상대 건물의 체력도 상대 쪽에서만 줄어듭니다 */ s.hp -= dmg; s.hurtT = this.time;
     if (s.hp > 0) return;
     s.alive = false; removeSolid(this.map, s.solid); this.fx('boom', s.x + s.w / 2, s.y + s.h / 2, Math.max(s.w, s.h));
     const f = this.factions[s.f], src = srcF >= 0 && srcF < 8 ? this.factions[srcF] : null;
@@ -404,7 +404,9 @@ export class World {
     this.fx('build', cx, cy); this.pushOut(s); return '';
   }
   pushOut(s: Structure): void { // 새 건물 자리에 있던 유닛을 바깥으로
-    this.forNear(s.x + s.w / 2, s.y + s.h / 2, Math.max(s.w, s.h), a => { if (a.x > s.x - a.r && a.x < s.x + s.w + a.r && a.y > s.y - a.r && a.y < s.y + s.h + a.r) { a.y = s.y + s.h + a.r + 2; a.path = null; } });
+    this.refreshActorGrid();
+    this.forNear(s.x + s.w / 2, s.y + s.h / 2, Math.max(s.w, s.h)+40, a => { if (a.x > s.x - a.r && a.x < s.x + s.w + a.r && a.y > s.y - a.r && a.y < s.y + s.h + a.r) { resolveCircle(this.map,a,a.r); a.path = null; } });
+    this.refreshActorGrid();
   }
   research(fi: number, id: ResearchId): string {
     const f = this.factions[fi], labs = this.structures.filter(s => s.alive && s.f === fi && s.kind === 'lab' && s.built >= 1);
@@ -463,18 +465,20 @@ export class World {
     if (this.factions[fi].player) this.fx('order', x, y, 0, type);
   }
   giveWeapon(f: Faction, id: WeaponId, ammo?: number): void {
-    const d = WEAPONS[id], have = f.slots.find(s => s.id === id), total = ammo && ammo > 0 ? ammo : d.ammo;
+    const d = WEAPONS[id]; if(!d)return;
+    const have = f.slots.find(s => s.id === id), total = d.ammo > 0 ? (ammo === undefined ? d.ammo : Number.isFinite(ammo) ? Math.max(0,Math.floor(ammo)) : 0) : d.ammo;
+    if(d.ammo>0 && total<=0)return;
     if (have) {
-      if (d.ammo > 0) { have.ammo += total; have.mag = Math.min(d.mag, Math.max(0, have.ammo)); }
+      if (d.ammo > 0) { have.ammo += total; have.mag = Math.min(have.mag, d.mag, Math.max(0, have.ammo)); }
       else have.mag = d.mag;
       return;
     }
     // A limited-ammo pickup cannot begin with more bullets loaded than it owns.
     const slot: WeaponSlot = { id, mag: d.ammo > 0 ? Math.min(d.mag, Math.max(0, total)) : d.mag, ammo: total };
-    if (f.slots.length < 3) { f.slots.push(slot); f.cur = f.slots.length - 1; return; }
+    if (f.slots.length < 3) { f.slots.push(slot); f.cur = f.slots.length - 1; f.reloadT=0; return; }
     const at = f.cur === 0 ? (WEAPONS[f.slots[1].id].tier <= WEAPONS[f.slots[2].id].tier ? 1 : 2) : f.cur, old = f.slots[at], b = this.boss(f.id);
-    if (b) this.spawnLoot('weapon', b.x + 26, b.y + 10, old.ammo, old.id);
-    f.slots[at] = slot; f.cur = at;
+    if (b) if(WEAPONS[old.id].ammo<=0 || old.ammo>0)this.spawnLoot('weapon', b.x + 26, b.y + 10, old.ammo, old.id);
+    f.slots[at] = slot; f.cur = at; f.reloadT = 0;
   }
   // ---------- 사업체 내부 ----------
   /** 지금 들어가 있는 사업체(없으면 null) */
@@ -558,7 +562,7 @@ export class World {
   }
   /** 보스 주변 상호작용. UI에 알릴 코드 반환 */
   interact(fi: number): string {
-    const f = this.factions[fi], b = this.boss(fi); if (!b || b.inVeh) return '';
+    const f = this.factions[fi], b = this.boss(fi); if (!b || b.inVeh || this.hidden(b)) return '';
     for (const l of this.loot) if (l.alive && l.type === 'weapon' && l.fall <= 0 && Math.hypot(l.x - b.x, l.y - b.y) < 46) { l.alive = false; this.giveWeapon(f, l.weapon!, l.amount); this.fx('pickup', l.x, l.y); return ''; }
     for (const z of this.businesses) if (Math.hypot(z.x - b.x, z.y - b.y) < 64) return this.enterBiz(fi, z) || 'enter';
     return '';
@@ -574,7 +578,7 @@ export class World {
   }
   toggleVehicle(fi: number): void {
     const b = this.boss(fi); if (!b || (fi === 0 && this.inside)) return;
-    if (b.inVeh) { const v = this.vehicles.find(q => q.id === b.inVeh); if (v) this.disembark(v, b); else b.inVeh = 0; return; }
+    if (b.inVeh) { const v = this.vehicles.find(q => q.id === b.inVeh); if (v && v.alive && v.driver===b.id) this.disembark(v, b); else b.inVeh = 0; return; }
     let best: Vehicle | null = null, bd = 78;
     for (const v of this.vehicles) if (v.alive && v.burn <= 0 && v.ai !== 'chase') { if (v.driver && this.byId.get(v.driver)?.kind === 'boss') continue; const d = Math.hypot(v.x - b.x, v.y - b.y) - v.r; if (d < bd) { bd = d; best = v; } }
     if (!best) return;
@@ -585,7 +589,7 @@ export class World {
 
   // ---------- 시뮬레이션 ----------
   step(dt: number): void {
-    if (this.over) return; const pf = this.factions[0]; if (pf.pending > 0) return;
+    if (this.over || !Number.isFinite(dt) || dt<=0) return; const pf = this.factions[0]; if (pf.pending > 0) return;
     this.time += dt; this.pathBudget = 10;
     this.refreshActorGrid();
     for (const f of this.factions) if (f.alive) {

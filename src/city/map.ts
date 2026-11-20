@@ -88,11 +88,12 @@ export function resolveCircle(map: CityMap, o: { x: number; y: number }, r: numb
   return hit;
 }
 export function navBlocked(map: CityMap, x: number, y: number): boolean {
-  if (x < 0 || y < 0 || x >= SIZE || y >= SIZE) return true;
+  if (!Number.isFinite(x)||!Number.isFinite(y)||x < 0 || y < 0 || x >= SIZE || y >= SIZE) return true;
   return map.nav[Math.floor(y / NAV) * NAVN + Math.floor(x / NAV)] > 0;
 }
 /** 두 지점 사이가 건물에 막히지 않았는지 (시야·직선 이동). */
 export function clearLine(map: CityMap, x0: number, y0: number, x1: number, y1: number, exact = false): boolean {
+  if(![x0,y0,x1,y1].every(Number.isFinite))return false;
   const dx = x1 - x0, dy = y1 - y0, d = Math.hypot(dx, dy), n = Math.max(1, Math.ceil(d / 18));
   for (let k = 1; k < n; k++) {
     const x = x0 + dx * k / n, y = y0 + dy * k / n;

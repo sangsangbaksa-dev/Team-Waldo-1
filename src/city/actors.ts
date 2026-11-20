@@ -4,11 +4,11 @@ import { carTarget, pedTarget } from './clock';
 import { clearLine, findPath, lanePoint, navBlocked, resolveCircle, solidAt } from './map';
 import { VEHICLES, type Actor, type Faction, type Vehicle, type World } from './world';
 
-const wrap = (a: number): number => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
+const wrap = (a: number): number => { if(!Number.isFinite(a))return 0; a%=Math.PI*2; return a>Math.PI?a-Math.PI*2:a< -Math.PI?a+Math.PI*2:a; };
 const DIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]];
 
 // ---------- 보스 무기 ----------
-export function switchWeapon(w: World, fi: number, idx: number): void { const f = w.factions[fi]; if (idx < 0 || idx >= f.slots.length || idx === f.cur) return; f.cur = idx; f.reloadT = 0; const b = w.boss(fi); if (b) b.cd = Math.max(b.cd, 0.18); }
+export function switchWeapon(w: World, fi: number, idx: number): void { const f = w.factions[fi]; if (!Number.isInteger(idx) || idx < 0 || idx >= f.slots.length || idx === f.cur) return; f.cur = idx; f.reloadT = 0; const b = w.boss(fi); if (b) b.cd = Math.max(b.cd, 0.18); }
 export function reload(w: World, fi: number): void {
   const f = w.factions[fi], s = f.slots[f.cur], d = WEAPONS[s.id];
   if (f.reloadT > 0 || s.mag >= d.mag || (d.ammo > 0 && s.ammo <= s.mag)) return; f.reloadT = d.reload * f.mods.reload; const b = w.boss(fi); if (b && f.player) w.fx('reload', b.x, b.y);
@@ -239,10 +239,11 @@ function chase(w: World, v: Vehicle, dt: number): void {
   v.cd -= dt; if (v.cd <= 0 && d < 400 && w.canSee(v.x, v.y, b.x, b.y)) { v.cd = 0.4; w.shoot(v.x, v.y, Math.atan2(b.y - v.y, b.x - v.x), 'u_pistol', POLICE, v.driver, 1, false); }
 }
 export function updateVehicles(w: World, dt: number): void {
+  if(!Number.isFinite(dt)||dt<=0)return;
   const inp = w.input;
   for (const v of w.vehicles) {
     if (!v.alive) continue; const drv = v.driver ? w.byId.get(v.driver) : undefined;
-    if (v.driver && (!drv || !drv.alive)) { v.driver = 0; v.f = -1; v.ai = ''; }
+    if (v.driver && (!drv || !drv.alive || drv.inVeh!==v.id)) { v.driver = 0; v.f = -1; v.ai = ''; }
     if (v.burn > 0) {
       v.burn -= dt;
       if (v.burn <= 0) { v.alive = false; if (drv && drv.alive) { w.disembark(v, drv); w.hurtActor(drv, 70, -1, false); } v.driver = 0; w.explode(v.x, v.y, 120, 95, -1, 0.6); w.fx('wreck', v.x, v.y, v.ang); continue; }
@@ -258,6 +259,7 @@ export function updateVehicles(w: World, dt: number): void {
       if (v.idle > 50 || v.hp < v.maxHp * 0.55) { if (drv) { w.disembark(v, drv); drv.fleeT = 8; drv.order = { type: 'wander', x: drv.x, y: drv.y }; } v.driver = 0; v.f = -1; v.ai = ''; v.idle = 0; }
       else traffic(w, v);
     } else if (v.ai === 'chase') chase(w, v, dt);
+    if(!v.alive)continue;
     // 물리
     const fx = Math.cos(v.ang), fy = Math.sin(v.ang); let sf = v.vx * fx + v.vy * fy; let lx = v.vx - fx * sf, ly = v.vy - fy * sf;
     const turn = v.kind === 'tank' ? 2.2 : 3.4, max = v.ai === 'traffic' ? 210 : v.maxSpeed * (v.hp < v.maxHp * 0.3 ? 0.7 : 1);
@@ -280,13 +282,17 @@ export function updateVehicles(w: World, dt: number): void {
     const spd = Math.hypot(v.vx, v.vy);
     for (const o of w.vehicles) if (o !== v && o.alive && o.id > v.id) { const dx = o.x - v.x, dy = o.y - v.y, min = v.r + o.r, d2 = dx * dx + dy * dy; if (d2 < min * min) { const d = Math.sqrt(d2), nx = d > 0.01 ? dx / d : Math.cos(v.ang), ny = d > 0.01 ? dy / d : Math.sin(v.ang), p = (min - d) / 2; v.x -= nx * p; v.y -= ny * p; o.x += nx * p; o.y += ny * p; const rel = Math.hypot(v.vx - o.vx, v.vy - o.vy); if (rel > 200) { w.hurtVehicle(v, rel * 0.05, o.f); w.hurtVehicle(o, rel * 0.05, v.f); w.fx('crash', v.x, v.y, rel); } const mx = (v.vx + o.vx) / 2, my = (v.vy + o.vy) / 2; v.vx = mx; v.vy = my; o.vx = mx; o.vy = my; } }
     w.forNear(v.x, v.y, v.r + 26, a => {
-      if (!a.alive || a.inVeh) return; const dx = a.x - v.x, dy = a.y - v.y, d = Math.hypot(dx, dy) || 1, min = v.r + a.r; if (d >= min) return;
-      a.x = v.x + dx / d * min; a.y = v.y + dy / d * min;
+      if (!a.alive || a.inVeh) return; const dx = a.x - v.x, dy = a.y - v.y, d = Math.hypot(dx, dy), min = v.r + a.r; if (d >= min) return;
+      if(w.opts.duel && a.f>=1 && a.f<8)return;
+      const nx=d>1e-6?dx/d:-Math.sin(v.ang),ny=d>1e-6?dy/d:Math.cos(v.ang);
+      a.x = v.x + nx * min; a.y = v.y + ny * min; resolveCircle(w.map,a,a.r);
       if (spd > 150 && a.runCd <= 0 && v.driver && (a.f === CIV || w.hostile(v.f, a.f))) { a.runCd = 0.5; w.hurtActor(a, (spd - 90) * (v.kind === 'tank' ? 0.9 : 0.42), v.f); w.fx('splat', a.x, a.y); if (!ACTORS[a.kind].mech) { a.vx += v.vx * 0.6; a.vy += v.vy * 0.6; } else { v.vx *= 0.5; v.vy *= 0.5; w.hurtVehicle(v, 30, a.f); } }
     });
     if (v.ai === 'traffic' && spd < 12) v.idle += dt; else if (v.ai === 'traffic' && v.idle < 90) v.idle = Math.max(0, v.idle - dt * 3);
     if (drv && drv.alive && v.driver === drv.id && drv.inVeh === v.id) { drv.x = v.x; drv.y = v.y; if (!player) drv.ang = v.ang; }
   }
+  // Pair separation may have moved a car after its own terrain/occupant update.
+  for(const v of w.vehicles)if(v.alive){resolveCircle(w.map,v,v.r);const a=w.byId.get(v.driver);if(a?.alive&&a.inVeh===v.id){a.x=v.x;a.y=v.y;}}
 }
 
 // ---------- 시민·교통·경찰 ----------

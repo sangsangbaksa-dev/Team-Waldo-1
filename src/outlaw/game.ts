@@ -5,6 +5,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import './outlaw.css';
+import { editableTarget, wheelPixels, WheelGesture } from '../shared/input';
 import { readPreferences, writePreferences } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import { PVP_ENABLED } from '../net/config';
@@ -110,11 +111,13 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (document.pointerLockElement) document.exitPointerLock();
   }
   function closeModal(): void { modalKind = ''; paused = false; modalEl.hidden = true; modalEl.innerHTML = ''; if (phase === 'play') lock(); }
-  let wheelAt = -Infinity, lookMuteUntil = 0;
+  let lookMuteUntil = 0;
+  const weaponWheel = new WheelGesture();
   function lock(): void { if (touch || locked || lockFail || closed) return; try { const r = canvas.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(() => { lockFail = true; }); } catch { lockFail = true; } }
   const onLock = (): void => {
-    locked = document.pointerLockElement === canvas;
+    const wasLocked = locked; locked = document.pointerLockElement === canvas;
     if (locked) { lookMuteUntil = performance.now() + 180; return; }
+    if (!wasLocked) return;
     resetInput();
     if (!locked && phase === 'play' && !modalKind && !closed && !wheelOpen) openPause();
   };
@@ -249,7 +252,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
 
   // ---------- 입력 ----------
   const onKeyDown = (e: KeyboardEvent): void => {
-    if (closed || lobby || openingLobby || modalKind === 'vsend') return; audio.unlock();
+    if (closed || lobby || openingLobby || modalKind === 'vsend' || editableTarget(e.target) || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return; audio.unlock();
     if (e.repeat) { return; }
     if (e.code === 'Escape') {
       if (modalKind) closeModal();
@@ -260,7 +263,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if ((e.code === 'KeyM' || e.code === 'Tab') && (!modalKind || modalKind === 'map')) { e.preventDefault(); if (modalKind) closeModal(); else openMap(); return; }
     if (e.code === 'KeyP') { if (modalKind === 'phone') closeModal(); else if (!modalKind) openUi('phone'); return; }
     if (modalKind) return;
-    keys.add(e.code);
+    keys.add(e.code); if (e.code === 'Space') e.preventDefault();
     if (e.code === 'KeyE' || e.code === 'KeyF') useAction();
     else if (e.code === 'KeyR') { if (sim?.player.vehicle) cycleRadio(); else reloadReq = true; }
     else if (e.code === 'KeyQ') openWheel();
@@ -271,7 +274,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   const onMouseMove = (e: MouseEvent): void => {
     if (phase !== 'play' || modalKind || !(locked || (lockFail && e.target === canvas)) || performance.now() < lookMuteUntil || Math.abs(e.movementX) > 300 || Math.abs(e.movementY) > 300) return;
     if (wheelOpen) { wheelX = clamp(wheelX + e.movementX, -140, 140); wheelY = clamp(wheelY + e.movementY, -140, 140); updateWheel(); return; }
-    const s = (mouse.aim ? 0.0014 : 0.0023); yaw += e.movementX * s; pitch = clamp(pitch - e.movementY * s, -1.2, 1.2);
+    const s = (mouse.aim || keys.has('KeyY') ? 0.0014 : 0.0023); yaw += e.movementX * s; pitch = clamp(pitch - e.movementY * s, -1.2, 1.2);
   };
   const onMouseDown = (e: MouseEvent): void => {
     audio.unlock(); if (phase !== 'play' || modalKind) return;
@@ -279,10 +282,10 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (e.button === 0) mouse.fire = true; else if (e.button === 2) mouse.aim = true;
   };
   const onMouseUp = (e: MouseEvent): void => { if (e.button === 0) mouse.fire = false; else if (e.button === 2) mouse.aim = false; };
-  const onWheel = (e: WheelEvent): void => { if (phase !== 'play' || modalKind || !sim || (!locked && e.target !== canvas)) return; e.preventDefault(); const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 120 : 1); if (e.ctrlKey || !Number.isFinite(dy) || Math.abs(dy) < 8 || performance.now() - wheelAt < 240) return; wheelAt = performance.now(); const dir = dy > 0 ? 1 : -1; let i = sim.player.cur; for (let n = 0; n < NW; n++) { i = (i + dir + NW) % NW; if (sim.player.guns[i]) { slotReq = i; break; } } };
+  const onWheel = (e: WheelEvent): void => { if (phase !== 'play' || modalKind || !sim || (!locked && e.target !== canvas)) return; e.preventDefault(); const dir = weaponWheel.push(wheelPixels(e.deltaY, e.deltaMode, canvas.clientHeight), performance.now(), e.ctrlKey); if (!dir) return; let i = sim.player.cur; for (let n = 0; n < NW; n++) { i = (i + dir + NW) % NW; if (sim.player.guns[i]) { slotReq = i; break; } } };
   const onCtx = (e: Event): void => e.preventDefault();
   function resetInput(): void {
-    keys.clear(); mouse.fire = mouse.aim = false; enterReq = reloadReq = false; slotReq = -1;
+    keys.clear(); weaponWheel.reset(); mouse.fire = mouse.aim = false; enterReq = reloadReq = false; slotReq = -1;
     tc.fire = tc.aim = tc.jump = tc.sprint = tc.gas = tc.brake = tc.hand = tc.left = tc.right = false;
     tc.moveId = tc.lookId = -1; tc.mx = tc.my = 0;
     stickEl.style.opacity = '0'; (stickEl.firstElementChild as HTMLElement).style.transform = '';
@@ -299,7 +302,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (b && b.dataset.act) { const a = b.dataset.act; b.setPointerCapture(e.pointerId); if (a === 'use') useAction(); else if (a === 'reload') reloadReq = true; else if (a === 'weapon') { const p = sim!.player; let i = p.cur; for (let n = 0; n < NW; n++) { i = (i + 1) % NW; if (p.guns[i]) { slotReq = i; break; } } } else (tc as unknown as Record<string, boolean>)[a === 'hand' ? 'hand' : a] = true; e.preventDefault(); }
   });
   const upTouch = (e: PointerEvent): void => { const b = (e.target as HTMLElement).closest('button'); const a = b?.dataset.act; if (a && a in tc) (tc as unknown as Record<string, boolean>)[a] = false; };
-  pad.addEventListener('pointerup', upTouch); pad.addEventListener('pointercancel', upTouch);
+  pad.addEventListener('pointerup', upTouch); pad.addEventListener('pointercancel', upTouch); pad.addEventListener('lostpointercapture', upTouch);
   canvas.addEventListener('pointerdown', e => {
     if (e.pointerType !== 'touch' || phase !== 'play' || modalKind) return; audio.unlock();
     if (e.clientX < innerWidth * 0.4 && tc.moveId < 0) { tc.moveId = e.pointerId; tc.ox = e.clientX; tc.oy = e.clientY; stickEl.style.cssText = `left:${e.clientX - 60}px;top:${e.clientY - 60}px;opacity:1`; }

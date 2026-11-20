@@ -19,7 +19,9 @@ function buildPart(kind: MilitaryLook): CharPart {
   const team = mat(0xffffff, 'Team'), skin = mat(0xffffff, 'Skin'), white = mat(0xe4e2d9), red = mat(0xb44338);
   const body = new THREE.Group(), leg = new THREE.Group(), shin = new THREE.Group(), armL = new THREE.Group(), armR = new THREE.Group();
   const box = (g: THREE.Group, x: number, y: number, z: number, w: number, h: number, d: number, m: THREE.Material): THREE.Mesh => {
-    const o = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), m); o.position.set(x,y,z); g.add(o); return o;
+    const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+    // BoxGeometry has six material-index groups; a single-material primitive must bake as one group.
+    o.geometry.clearGroups(); o.position.set(x,y,z); g.add(o); return o;
   };
   const sphere = (g: THREE.Group, x: number, y: number, z: number, r: number, m: THREE.Material, sx = 1, sy = 1, sz = 1): void => {
     const o = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 6), m); o.position.set(x,y,z); o.scale.set(sx,sy,sz); g.add(o);

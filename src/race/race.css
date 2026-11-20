@@ -122,3 +122,9 @@
 /* 드리프트 점수 */
 .rc-drift{position:absolute;left:50%;top:34%;transform:translateX(-50%);font:800 22px/1 system-ui;font-style:italic;letter-spacing:.04em;color:#ffe9a8;text-shadow:0 0 14px #000,0 2px 0 #0008;white-space:nowrap;pointer-events:none;opacity:.8;transition:opacity .15s}
 .rc-drift:empty{opacity:0}.rc-drift.live{opacity:1;color:#fff3c2}
+
+/* Compact viewport and keyboard accessibility. */
+.rc-modal{padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));overflow:auto;align-items:safe center;overscroll-behavior:contain;touch-action:pan-y}
+.rc-card{max-height:100%;overflow:auto;overscroll-behavior:contain;touch-action:pan-y;scrollbar-width:thin}
+.rc-root button:focus-visible{outline:2px solid #8fb4ff;outline-offset:3px}
+@media(max-height:480px){.rc-card{padding:16px 20px;border-radius:16px}}

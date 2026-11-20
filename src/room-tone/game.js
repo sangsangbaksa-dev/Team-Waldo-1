@@ -1227,7 +1227,8 @@ wrap.addEventListener("pointerdown", (e) => {
   if (
     state !== "play" ||
     e.target.tagName !== "CANVAS" ||
-    document.pointerLockElement
+    document.pointerLockElement ||
+    lookId !== -1 || (e.pointerType === "mouse" && e.button !== 0)
   )
     return;
   lookId = e.pointerId;
@@ -1245,7 +1246,7 @@ wrap.addEventListener("pointermove", (e) => {
     lookLast = [e.clientX, e.clientY];
   }
 });
-for (const n of ["pointerup", "pointercancel"])
+for (const n of ["pointerup", "pointercancel", "lostpointercapture"])
   wrap.addEventListener(n, (e) => {
     if (e.pointerId === lookId) {
       lookId = -1;
@@ -1254,7 +1255,7 @@ for (const n of ["pointerup", "pointercancel"])
   });
 const stick = $("stick");
 stick.addEventListener("pointerdown", (e) => {
-  if (state !== "play") return;
+  if (state !== "play" || moveId !== -1) return;
   moveId = e.pointerId;
   const b = stick.getBoundingClientRect();
   moveStart = [b.left + b.width / 2, b.top + b.height / 2];
@@ -1273,7 +1274,8 @@ function stickMove(e) {
 }
 stick.addEventListener("pointermove", stickMove);
 for (const n of ["pointerup", "pointercancel", "lostpointercapture"])
-  stick.addEventListener(n, () => {
+  stick.addEventListener(n, (e) => {
+    if (e.pointerId !== moveId) return;
     moveId = -1;
     pointer.x = pointer.y = 0;
     $("stickknob").style.transform = "";

@@ -132,3 +132,8 @@
 .rt-root { word-break: keep-all; overflow-wrap: break-word; }
 .rt-btns .rt-pause { font-weight: 700; letter-spacing: .02em; }
 @media (max-width: 640px) { .rt-btns .rt-pause { font-size: 0; padding: 0 12px; } .rt-btns .rt-pause::before { content: '⏸'; font-size: 15px; } }
+
+/* Compact viewport and keyboard accessibility. */
+.rt-modal{padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));align-items:safe center;overscroll-behavior:contain;touch-action:pan-y}
+.rt-card{max-height:100%;overscroll-behavior:contain;touch-action:pan-y;scrollbar-width:thin}
+@media(max-height:480px){.rt-card{padding:14px;gap:10px}}

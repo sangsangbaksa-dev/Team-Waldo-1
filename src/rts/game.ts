@@ -264,7 +264,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     if (e.button === 2) { const r = mini.getBoundingClientRect(), p = mmInv((e.clientX - r.left) / r.width * mini.width, (e.clientY - r.top) / r.height * mini.height); orderMove(p.x, p.y, false); return; }
     miniDown = true; miniMove(e);
   });
-  mini.addEventListener('pointermove', e => { if (miniDown) miniMove(e); }); mini.addEventListener('pointerup', () => { miniDown = false; }); mini.addEventListener('contextmenu', e => e.preventDefault());
+  mini.addEventListener('pointermove', e => { if (miniDown) miniMove(e); }); for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) mini.addEventListener(event, () => { miniDown = false; }); mini.addEventListener('contextmenu', e => e.preventDefault());
 
   // ---------- 오버레이(체력 막대·선택 상자) ----------
   function drawOverlay(): void {
@@ -330,7 +330,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       touches.set(e.pointerId, p); if (touches.size === 2) { const [a, b] = [...touches.values()]; pinch = Math.hypot(a.x - b.x, a.y - b.y); pointer.down = false; return; }
       pointer.down = true; pointer.sx = p.x; pointer.sy = p.y; pointer.drag = false; pointer.button = 0; pointer.pan = !boxMode; return;
     }
-    if (e.button === 1) { pointer.down = true; pointer.pan = true; pointer.sx = p.x; pointer.sy = p.y; pointer.button = 1; return; }
+    if (e.button === 1) { pointer.down = true; pointer.drag = false; pointer.pan = true; pointer.sx = p.x; pointer.sy = p.y; pointer.button = 1; return; }
     if (e.button === 2) { if (mode) { mode = null; setHint(''); cmdKey = ''; } else rightClick(p.x, p.y); return; }
     pointer.down = true; pointer.sx = p.x; pointer.sy = p.y; pointer.drag = false; pointer.button = 0; pointer.pan = false;
     if (mode && leftClickMode(p.x, p.y)) { pointer.down = false; cmdKey = ''; }
@@ -339,7 +339,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     const p = local(e); const px = pointer.x, py = pointer.y; pointer.x = p.x; pointer.y = p.y; pointer.in = true;
     if (e.pointerType === 'touch') {
       touches.set(e.pointerId, p);
-      if (touches.size === 2) { const [a, b] = [...touches.values()], d = Math.hypot(a.x - b.x, a.y - b.y); if (pinch > 0 && view) view.zoom(pinch / d); pinch = d; return; }
+      if (touches.size === 2) { const [a, b] = [...touches.values()], d = Math.hypot(a.x - b.x, a.y - b.y); if (pinch > 0 && d > 0 && view) view.zoom(pinch / d); pinch = d; return; }
     }
     if (!pointer.down) return;
     if (!pointer.drag && Math.hypot(p.x - pointer.sx, p.y - pointer.sy) > 8) pointer.drag = true;
@@ -357,7 +357,9 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     if (pointer.drag) { boxSelect(pointer.sx, pointer.sy, p.x, p.y, keys.has('Shift')); return; }
     const now = performance.now(), id = view.pick(p.x, p.y); clickSelect(p.x, p.y, keys.has('Shift'), now - pointer.lastTap < 350); pointer.lastTap = now; pointer.lastTapId = id;
   };
-  over.addEventListener('pointerup', release); over.addEventListener('pointercancel', release);
+  over.addEventListener('pointerup', release);
+  const cancelPointer = (e: PointerEvent): void => { touches.delete(e.pointerId); pinch = 0; pointer.down = pointer.drag = false; };
+  over.addEventListener('pointercancel', cancelPointer); over.addEventListener('lostpointercapture', cancelPointer);
   over.addEventListener('pointerleave', () => { pointer.in = false; });
   over.addEventListener('wheel', e => { e.preventDefault(); view?.zoom(e.deltaY > 0 ? 1.1 : 0.91); }, { passive: false });
   /** 터치: 내 유닛을 누르면 선택, 땅·적·광물을 누르면 명령, 선택이 없으면 해제. */
@@ -371,8 +373,8 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
 
   const hot = new Map<string, number>();
   function onKey(e: KeyboardEvent): void {
-    if (modal.classList.contains('show') && e.key !== 'Escape' && !(root.dataset.phase === 'paused' && e.key.toLowerCase() === 'p')) return;
     if (e.type === 'keyup') { keys.delete(e.key === 'Shift' ? 'Shift' : e.code); return; }
+    if (modal.classList.contains('show') && e.key !== 'Escape' && !(root.dataset.phase === 'paused' && e.key.toLowerCase() === 'p')) return;
     keys.add(e.key === 'Shift' ? 'Shift' : e.code); audio.unlock();
     const k = e.key.toUpperCase();
     if (root.dataset.phase === 'paused' && (e.key === 'Escape' || e.key.toLowerCase() === 'p')) { e.preventDefault(); hide(); paused = false; root.dataset.phase = 'play'; last = performance.now(); return; }
@@ -390,6 +392,9 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const b = buttons.find(x => x.key === k); if (b) { e.preventDefault(); if (b.enabled === false) toast(b.hint ?? '지금은 할 수 없습니다', true); else { b.on(); refresh(); } }
   }
+  const resetInput = (): void => { keys.clear(); touches.clear(); pinch = 0; miniDown = false; pointer.in = pointer.down = pointer.drag = false; };
+  const onVisibility = (): void => { if (document.hidden) resetInput(); };
+  window.addEventListener('blur', resetInput); document.addEventListener('visibilitychange', onVisibility);
   window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKey);
 
   // ---------- HUD ----------
@@ -618,7 +623,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
 
   // ---------- 버튼 ----------
   function exit(): void {
-    if (closed) return; closed = true; leavePvp(); cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('waldo:preferences', onPrefs);
+    if (closed) return; closed = true; leavePvp(); cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('blur', resetInput); document.removeEventListener('visibilitychange', onVisibility); window.removeEventListener('waldo:preferences', onPrefs);
     view?.dispose(); audio.dispose(); root.remove(); onExit();
   }
   const onPrefs = (): void => { const s = readPreferences().sound; audio.enabled = s; const m = root.querySelector<HTMLElement>('[data-act="mute"]'); if (m) { m.textContent = s ? '🔊' : '🔇'; m.setAttribute('aria-pressed', String(s)); } };

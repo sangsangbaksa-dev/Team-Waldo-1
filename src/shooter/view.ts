@@ -18,6 +18,7 @@ import { WeatherFx } from './weatherfx';
 import { waterDepth } from './terrain';
 import { makeFallbackTree } from './vegetation';
 import { resolveChaseCamera } from './camera';
+import { updateSoldierPose, type SoldierPoseHistory } from './soldier-pose';
 import { crateTexture, floorTexture, glowTexture, groundTexture, makeSky, wallTexture } from './textures';
 
 export type Quality = 'high' | 'standard' | 'low';
@@ -42,7 +43,7 @@ function worldBox(b: Box, tile = 3.2): THREE.BufferGeometry {
   return g;
 }
 
-interface Rig { chute: THREE.Group; root: THREE.Group; ch: CharacterRig; flash: THREE.Sprite; aim: number; death: number; lastHurt: number; lastMuzzle: number }
+interface Rig { chute: THREE.Group; root: THREE.Group; ch: CharacterRig; flash: THREE.Sprite; aim: number; death: number; lastHurt: number; lastMuzzle: number; poseHistory: SoldierPoseHistory }
 interface Fx { mesh: THREE.Mesh; life: number; max: number }
 
 export class ShooterView {
@@ -202,7 +203,7 @@ export class ShooterView {
     const lm = this.mat('chuteline', () => new THREE.LineBasicMaterial({ color: 0xd9d4c4 })), pts: THREE.Vector3[] = [];
     for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; pts.push(new THREE.Vector3(Math.cos(a) * 2.9, 5.1, Math.sin(a) * 2.9), new THREE.Vector3(0, 1.6, 0)); }
     chute.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), lm)); chute.visible = false; root.add(chute);
-    root.visible = false; this.scene.add(root); this.rigs.set(p.id, { chute, root, ch, flash, aim: 0, death: 0, lastHurt: 0, lastMuzzle: 0 });
+    root.visible = false; this.scene.add(root); this.rigs.set(p.id, { chute, root, ch, flash, aim: 0, death: 0, lastHurt: 0, lastMuzzle: 0, poseHistory: { air: -1, alive: true, dead: -1 } });
   }
   private poseRig(p: Player, dt: number, dist: number): void {
     const rig = this.rigs.get(p.id)!, ch = rig.ch;
@@ -214,10 +215,9 @@ export class ShooterView {
       const st = ch.state; st.speed = p.speed; st.walk = p.walk; st.time += dt; st.aim = rig.aim; st.crouch = p.crouch; st.dead = p.alive ? 0 : rig.death;
       if (p.muzzle > 0 && rig.lastMuzzle <= 0) ch.fire(); rig.lastMuzzle = p.muzzle; st.recoil = Math.max(0, st.recoil - dt * 8);
       if (p.hurt > rig.lastHurt) ch.hurt(); rig.lastHurt = p.hurt; st.hit = Math.max(0, st.hit - dt * 2.5);
-      ch.setDetail(dist > 90 ? 2 : dist > 45 ? 1 : 0);
-      // 낙하: 자유낙하는 배를 아래로 펴고, 낙하산은 똑바로 매달려 다리를 늘어뜨립니다
-      if (p.air === 2) { st.aim = 0; ch.root.rotation.z = -1.25; ch.update(dt); ch.root.rotation.z = -1.25; ch.state.wave = 0; }
-      else { ch.root.rotation.z = 0; ch.update(dt); }
+      // CharacterRig owns its ground pose. Resetting root.rotation.z here made
+      // distant corpses alternate between upright and fallen on skipped LOD frames.
+      updateSoldierPose(ch, rig.poseHistory, { air: p.air, alive: p.alive, distance: dist, dt });
     }
     rig.flash.position.set(0.95, 1.32 - p.crouch * 0.23, 0.1); rig.flash.visible = p.alive && !p.air && p.muzzle > 0 && p.guns[p.cur]?.att.muzzle !== 'suppressor';
     rig.chute.visible = p.air === 3;

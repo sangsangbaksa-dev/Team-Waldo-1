@@ -837,6 +837,41 @@ export function buildEnvironment(THREE, scene, map, tile, chapter) {
             local("box", k === (row + col) % 6 ? alarm : practical, u, 1.74, .108, .043, .025, .013);
             local("box", paint, u, 1.48, .038, .026, .14, .044);
           }
+        } else if (pick < .78 && chapter === 0) {
+          // Electrical conduit panel with insulated vertical runs and mounting collars.
+          local("box", seam, 0, 1.81, .034, .86, .96, .068);
+          for(let k=0;k<4;k++){
+            const u=(k-1.5)*.16;
+            local("box", metal, u, 1.94, .09, .048, 1.04, .053);
+            local("box", paint, u, 1.52, .125, .095,.17,.08);
+            local("box", seam, u, 2.15, .12, .087,.04,.06);
+          }
+        } else if (pick >= .83 && pick < .94 && chapter === 1) {
+          // Recessed-looking patch bay, stacked ports and connection labels.
+          local("box", seam, 0, 1.76, .055, 1.02,.72,.11);
+          local("box", metal, 0, 1.76, .122, .95,.64,.018);
+          for(let r=0;r<3;r++)for(let k=0;k<6;k++){
+            const u=(k-2.5)*.143, y=1.56+r*.175;
+            local("box", seam, u, y, .14,.11,.073,.022);
+            local("box", k%3===r?practical:paint,u+.035,y+.052,.15,.018,.014,.014);
+          }
+        } else if (pick >= .68 && pick < .82 && chapter === 2) {
+          // Shallow tape catalog drawers: handles, dividers and paper index strips.
+          local("box", seam, 0, 1.55, .075, 1.34,1.32,.15);
+          for(let k=0;k<5;k++){
+            const y=1.04+k*.25;
+            local("box", metal, 0,y,.164,1.23,.217,.044);
+            local("box", paint,-.38,y,.195,.29,.08,.018);
+            local("box", seam,.30,y,.205,.24,.044,.04);
+            local("box", metal,.30,y+.029,.22,.18,.024,.025);
+          }
+        } else if (pick >= .68 && pick < .84 && chapter === 3) {
+          // Acoustic diffuser fins, stepped depths produce a recognizable texture.
+          local("box", seam,0,1.85,.025,1.46,1.24,.05);
+          for(let k=0;k<13;k++){
+            const depth=.048+(k%5)*.026;
+            local("box", k%3===0?paint:metal,(k-6)*.105,1.85,depth/2+.025,.078,1.12,depth);
+          }
         } else if (pick > 0.955) {
           local("box", metal, -0.47, 1.96, 0.052, 0.046, 1.46, 0.046);
           local("box", paint, -0.47, 1.37, 0.075, 0.211, 0.28, 0.13);

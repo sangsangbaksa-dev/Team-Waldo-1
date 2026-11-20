@@ -1,7 +1,7 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { buildStationArt, addContactShadow } from "../../src/room-tone/props-art.js";
+import { buildStationArt, buildCollectibleArt, addContactShadow } from "../../src/room-tone/props-art.js";
 
 test("each restoration station has distinct geometry within its original footprint", () => {
   const signatures = new Set<string>();
@@ -30,4 +30,20 @@ test("contact shadow stays within a navigation tile and does not write depth",()
   assert.equal(shadow.position.y,.004);
   const box=new THREE.Box3().setFromObject(root);
   assert.ok(box.max.x-box.min.x<2.7 && box.max.z-box.min.z<2.7);
+});
+
+test("all twelve collectibles stay within the display cradle and vary by chapter",()=>{
+  const signatures=new Set<string>();
+  for(let ch=0;ch<4;ch++)for(let i=0;i<3;i++){
+    const root=new THREE.Group();
+    const bright=new THREE.MeshStandardMaterial(),dark=new THREE.MeshStandardMaterial(),steel=new THREE.MeshStandardMaterial();
+    buildCollectibleArt(THREE,root,ch,i,bright,dark,steel);
+    const b=new THREE.Box3().setFromObject(root);
+    assert.ok(b.min.x>=-.26&&b.max.x<=.26);
+    assert.ok(b.min.y>=-.18&&b.max.y<=.18);
+    assert.ok(b.min.z>=-.13&&b.max.z<=.13);
+    assert.ok(root.children.length>=6);
+    if(i===0)signatures.add(root.children.map(child=>(child as THREE.Mesh).geometry.type+":"+child.position.toArray().join(",")).join(";"));
+  }
+  assert.equal(signatures.size,4);
 });

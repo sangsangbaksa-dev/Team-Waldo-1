@@ -100,3 +100,69 @@ export function makeContactTexture(THREE) {
   ctx.fillRect(0,0,64,64);
   return new THREE.CanvasTexture(canvas);
 }
+
+/* Collectibles use recognizable silhouettes and restrained illumination instead of
+ * emissive blocks. Mesh bounds remain small enough for the original pedestal. */
+export function buildCollectibleArt(THREE, root, chapter, index, bright, dark, steel) {
+  const ceramic=new THREE.MeshStandardMaterial({color:0xdbd1b5,roughness:.72});
+  const copper=new THREE.MeshStandardMaterial({color:0xb89062,metalness:.65,roughness:.38});
+  const paper=new THREE.MeshStandardMaterial({color:0xc5bd9e,roughness:.94});
+  const plastic=new THREE.MeshStandardMaterial({color:0x353934,roughness:.48,metalness:.06});
+  const boxGeo=new THREE.BoxGeometry(1,1,1);
+  const cylinder=new THREE.CylinderGeometry(1,1,1,16);
+  const ring=new THREE.TorusGeometry(1,.14,8,20);
+  function piece(geo,mat,x,y,z,sx,sy,sz,rx=0,ry=0,rz=0){
+    const mesh=new THREE.Mesh(geo,mat);
+    mesh.position.set(x,y,z);mesh.scale.set(sx,sy,sz);mesh.rotation.set(rx,ry,rz);root.add(mesh);
+    return mesh;
+  }
+  const box=(mat,x,y,z,w,h,d)=>piece(boxGeo,mat,x,y,z,w,h,d);
+  const frontDisc=(mat,x,y,z,r,d)=>piece(cylinder,mat,x,y,z,r,d,r,Math.PI/2);
+  if(chapter===0){
+    const len=.29+index*.025;
+    piece(cylinder,ceramic,0,0,0,.071,len,.071,0,0,Math.PI/2);
+    for(const side of [-1,1]){
+      piece(cylinder,steel,side*len*.5,0,0,.082,.056,.082,0,0,Math.PI/2);
+      piece(cylinder,copper,side*(len*.5+.034),0,0,.055,.021,.055,0,0,Math.PI/2);
+    }
+    box(bright,0,.072,0,.10+index*.025,.013,.09);
+    for(let k=0;k<index+1;k++)box(dark,(k-index*.5)*.022,.08,0,.011,.006,.06);
+  }else if(chapter===1){
+    box(plastic,0,0,0,.37,.252,.032);
+    box(paper,0,0,.019,.333,.219,.011);
+    box(bright,0,.078,.026,.286,.041,.007);
+    for(let k=0;k<6;k++){
+      box(dark,-.024,-.02-k*.013,.027,.20-(k%2)*.04,.005,.006);
+      box(copper,.115,-.02-k*.013,.027,.03,.005,.006);
+    }
+    box(steel,-.145,.097,.027,.027,.025,.01);
+    for(let k=0;k<index+1;k++)box(plastic,.15-k*.025,.098,.027,.013,.019,.006);
+  }else if(chapter===2){
+    frontDisc(plastic,0,0,0,.139,.064);
+    frontDisc(steel,0,0,.041,.124,.016);
+    frontDisc(copper,0,0,.054,.040,.019);
+    piece(ring,dark,0,0,.053,.109,.109,.025);
+    for(let k=0;k<3;k++){
+      const a=k*Math.PI*2/3;
+      const spoke=box(plastic,Math.cos(a)*.082,Math.sin(a)*.082,.059,.066,.028,.012);
+      spoke.rotation.z=a;
+    }
+    frontDisc(bright,0,0,.069,.024,.007);
+    box(paper,0,-.125,.045,.15,.024,.013);
+  }else{
+    box(steel,0,0,0,.34,.24,.016);
+    box(plastic,0,0,.012,.322,.219,.012);
+    box(paper,0,.06,.021,.274,.056,.009);
+    for(let k=0;k<11;k++){
+      const x=(k-5)*.024;
+      const y=-.04+Math.sin(k*.63+index*Math.PI/2)*.025;
+      box(bright,x,y,.025,.026,.009,.007);
+    }
+    for(let k=0;k<7;k++)box(copper,(k-3)*.038,-.107,.019,.022,.032,.008);
+  }
+  // Avoid retaining unattached materials and geometries on chapter changes.
+  const usedMaterials=new Set(root.children.map(child=>child.material));
+  const usedGeometry=new Set(root.children.map(child=>child.geometry));
+  for(const m of [ceramic,copper,paper,plastic])if(!usedMaterials.has(m))m.dispose();
+  for(const geo of [boxGeo,cylinder,ring])if(!usedGeometry.has(geo))geo.dispose();
+}

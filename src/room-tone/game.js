@@ -5,7 +5,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { modelBytes } from "./assets.js";
 import { chapters, makeLevel, neighbors, paths, routeFrom, lineOpen, normalizeSave, walkable, puzzleOptions, puzzleCorrect } from "./levels.mjs";
 import { buildEnvironment } from "./environment.js";
-import { buildStationArt, addContactShadow, makeContactTexture } from "./props-art.js";
+import { buildStationArt, buildCollectibleArt, addContactShadow, makeContactTexture } from "./props-art.js";
 import { Sound } from "./sound.js";
 import { archiveCells, cleanArchive, createDread, recordings } from "./dread.mjs";
 import { openViewer, closeViewer } from "./viewer.js";
@@ -555,57 +555,24 @@ function prop(cell, type, i = 0) {
     root.add(unit);
     unit.position.y = 0.84;
     root.userData.unit = unit;
-    if (ch === 0) {
-      const f = mesh(
-        new THREE.CylinderGeometry(0.1, 0.1, 0.36, 12),
-        bright,
-        unit,
-        0,
-        0,
-        0,
-      );
-      f.rotation.z = Math.PI / 2;
-      for (const x of [-0.17, 0.17]) {
-        const cap = mesh(
-          new THREE.CylinderGeometry(0.109, 0.109, 0.065, 12),
-          steel,
-          unit,
-          x,
-          0,
-          0,
-        );
-        cap.rotation.z = Math.PI / 2;
-      }
-    } else if (ch === 2) {
-      mesh(new THREE.BoxGeometry(0.42, 0.245, 0.055), bright, unit, 0, 0, 0);
-      for (const x of [-0.107, 0.107]) {
-        mesh(
-          new THREE.TorusGeometry(0.05, 0.014, 7, 14),
-          dark,
-          unit,
-          x,
-          0,
-          0.038,
-        );
-      }
-    } else {
-      mesh(new THREE.BoxGeometry(0.35, 0.265, 0.045), bright, unit, 0, 0, 0);
-      for (let j = 0; j < 4; j++)
-        mesh(
-          new THREE.BoxGeometry(0.19 - j * 0.02, 0.01, 0.008),
-          dark,
-          unit,
-          0,
-          0.073 - j * 0.04,
-          0.026,
-        );
+    // Low-profile display cradle and chapter-specific collectible.
+    for(const side of [-1,1]){
+      mesh(new THREE.BoxGeometry(.052,.11,.35),steel,root,side*.25,.665,0);
+      mesh(new THREE.BoxGeometry(.45,.035,.055),dark,root,0,.705,side*.13);
     }
+    buildCollectibleArt(THREE, unit, ch, i, bright, dark, steel);
   } else if (type === "record") {
     mesh(new THREE.BoxGeometry(.48,.64,.38),dark,root,0,.32,0);
     mesh(new THREE.BoxGeometry(.42,.065,.28),steel,root,0,.66,0);
-    mesh(new THREE.BoxGeometry(.31,.12,.21),dark,root,0,.75,0);
-    mesh(new THREE.BoxGeometry(.20,.026,.11),bright,root,0,.823,0);
-    for(const x of [-.10,.10]) mesh(new THREE.CylinderGeometry(.058,.058,.018,12),steel,root,x,.827,.064);
+    mesh(new THREE.BoxGeometry(.35,.12,.23),dark,root,0,.75,0);
+    mesh(new THREE.BoxGeometry(.31,.025,.19),steel,root,0,.822,0);
+    mesh(new THREE.BoxGeometry(.18,.024,.09),dark,root,0,.844,-.025);
+    for(const x of [-.072,.072]){
+      mesh(new THREE.CylinderGeometry(.035,.035,.017,16),steel,root,x,.862,-.025);
+      mesh(new THREE.CylinderGeometry(.019,.019,.019,12),bright,root,x,.872,-.025);
+    }
+    for(let k=0;k<4;k++)mesh(new THREE.BoxGeometry(.036,.023,.035),k===0?bright:dark,root,(k-1.5)*.065,.85,.077);
+    mesh(new THREE.BoxGeometry(.025,.025,.025),bright,root,.125,.85,-.073);
   } else if (type === "station") {
     buildStationArt(THREE, root, ch, bright, dark, steel);
     const neighbor = neighbors(level.map, cell)[0];
@@ -1392,8 +1359,9 @@ function update(dt) {
     const q = o.root.position,
       d = Math.hypot(q.x - player.x, q.z - player.z);
     if (o.root.userData.unit && d < 12) {
-      o.root.userData.unit.rotation.y = now * 0.64;
-      o.root.userData.unit.position.y = 0.83 + 0.035 * Math.sin(now * 2 + o.i);
+      // Keep the equipment seated in its cradle rather than floating like a power-up.
+      o.root.userData.unit.rotation.y = .32;
+      o.root.userData.unit.position.y = .84;
     }
     if (d < reach && clearLine(player, q)) {
       nearest = o;

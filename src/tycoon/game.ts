@@ -9,6 +9,7 @@ import { loadCharacterKit, type CharacterKit } from '../shared/character';
 import { makePost, type PostFx } from '../postfx';
 import { clearTycoon, createCore, formatMoney, loadTycoon, readTycoonSummary, saveTycoon } from './core';
 import { STAGE_NAMES } from './core/data';
+import { readTycoonPosition, type TycoonPosition } from './core/save';
 import type { CoreEvent, SpotDef, TycoonCore, TycoonState } from './core/types';
 import { buildLayout, type Colliders, WORLD_HALF, type Layout } from './scene/layout';
 import { CityView, type Quality, type SpotView } from './scene/city';
@@ -73,6 +74,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   let bannerTimer = 0, winTimer = 0;
   let carryGroup: THREE.Group | null = null;
   let modalTrigger: HTMLElement | null = null;
+  let resumePosition: TycoonPosition | null = null;
 
   // ---------- 알림 ----------
   function toast(text: string, tone: 'info' | 'good' | 'bad' = 'info', sec = 3.4): void {
@@ -84,7 +86,10 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   }
 
   // ---------- 저장 ----------
-  const save = (): boolean => !!core && phase === 'play' && saveTycoon(core);
+  const save = (): boolean => !!core && !!player && phase === 'play' && saveTycoon(core, undefined, {
+    x: player.pos.x, z: player.pos.z, facing: player.facing, yaw: player.camYaw,
+    pitch: player.camPitch, distance: player.dist, firstPerson: player.firstPerson,
+  });
   const persistOnHide = (): void => { if (document.hidden) { save(); resetInput(); } };
   const persistOnPageHide = (): void => { save(); };
   document.addEventListener('visibilitychange', persistOnHide);
@@ -101,7 +106,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       case 'status': h = statusHtml(core.state); break;
       case 'menu': h = menuHtml(audio.enabled, player.firstPerson); break;
       case 'win': h = winHtml(core.state); break;
-      case 'map': h = '<div class="ty-bigmap" role="dialog" aria-modal="true" aria-label="도시 지도"><button type="button" class="ty-x" data-close aria-label="닫기">✕</button><canvas id="ty-bigmap" width="720" height="720"></canvas><div class="ty-map-caption">↑ 북쪽 · 흰 화살표: 내 위치 · 흰 테두리: 배달 목적지</div></div>'; break;
+      case 'map': h = '<div class="ty-bigmap" role="dialog" aria-modal="true" aria-label="도시 지도"><button type="button" class="ty-x" data-close aria-label="닫기">✕</button><canvas id="ty-bigmap" width="720" height="720"></canvas><div class="ty-map-caption">↑ 북쪽 · 흰 화살표: 내 위치 · 점선: 목적지까지 직선 방향</div></div>'; break;
     }
     if (h !== modalHtml || modalEl.hidden) { // 내용이 바뀔 때만 교체합니다(누르는 도중 버튼이 바뀌면 클릭이 사라집니다)
       const keep = modalEl.querySelector('.ty-panel')?.scrollTop ?? 0;
@@ -264,16 +269,26 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   titleEl.addEventListener('click', e => { audio.unlock(); const b = (e.target as HTMLElement).closest<HTMLElement>('[data-title]'); if (b) titleAction(b.dataset.title!); });
   function titleAction(a: string): void {
     if (a === 'exit') { exit(); return; }
-    if (a === 'new') { if (readTycoonSummary().has && !window.confirm('기존 저장 기록을 지우고 새로 시작할까요?')) return; clearTycoon(); bindCore(createCore()); syncCity(false); }
+    if (a === 'new') { if (readTycoonSummary().has && !window.confirm('기존 저장 기록을 지우고 새로 시작할까요?')) return; clearTycoon(); resumePosition = null; bindCore(createCore()); syncCity(false); }
     else if (a === 'continue') { /* 제목 화면에서 이미 저장본으로 만든 코어를 씁니다 */ }
     startPlay();
   }
   function startPlay(): void {
     phase = 'play'; titleEl.hidden = true; hudEl.hidden = false; resetInput(); applyStageLook();
-    const sp = layout.spawn, s = core.state; const bench = s.presence ? city.doorOf(s.presence) : null;
-    if (bench) player.teleport(bench.x + bench.fx * 2.5 + (bench.fz ? 2 : 0), bench.z + bench.fz * 2.5 + (bench.fx ? 2 : 0), Math.atan2(-bench.fx, -bench.fz)); else player.teleport(sp.x, sp.z, sp.yaw);
+    const sp = layout.spawn, s = core.state, restored = resumePosition;
+    resumePosition = null;
+    const valid = restored && Math.abs(restored.x) <= WORLD_HALF - 2 && Math.abs(restored.z) <= WORLD_HALF - 2;
+    if (valid && restored) {
+      const safe = { x: restored.x, z: restored.z };
+      colliders.resolve(restored.x, restored.z, 0.45, safe);
+      if (Math.hypot(safe.x - restored.x, safe.z - restored.z) <= 3) {
+        player.teleport(safe.x, safe.z, restored.facing);
+        player.setFirstPerson(restored.firstPerson);
+        player.camYaw = restored.yaw; player.camPitch = clamp(restored.pitch, restored.firstPerson ? -1.3 : -0.1, restored.firstPerson ? 1.3 : 1.2); player.dist = restored.distance;
+      } else player.teleport(sp.x, sp.z, sp.yaw);
+    } else player.teleport(sp.x, sp.z, sp.yaw);
     if (s.day === 1 && s.minutes < 6 * 60 + 30 && s.cash <= 20) { banner('빈털터리', '벤치에서 눈을 떴습니다. 병을 주워 팔고, 일을 찾아 걸어가 보세요.', 5000); toast('E 로 장소와 상호작용 · 지도(M)로 길을 찾으세요', 'info', 6); }
-    audio.unlock(); core.tick(0.0001);
+    audio.unlock(); core.tick(0.0001); if (player.firstPerson) lock();
   }
 
   // ---------- 루프 ----------
@@ -383,7 +398,8 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
       renderer.setPixelRatio(renderPixelRatio(innerWidth, innerHeight, devicePixelRatio, quality));
       renderer.shadowMap.enabled = quality !== 'low'; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1;
-      bindCore(createCore({ save: loadTycoon() }));
+      const saved = loadTycoon(); resumePosition = readTycoonPosition(saved);
+      bindCore(createCore({ save: saved }));
       layout = buildLayout(core.spots() as SpotDef[]);
       city = new CityView(layout, quality); scene.add(city.group); colliders = city.colliders;
       atmo = new Atmosphere(scene, renderer, quality);
@@ -399,7 +415,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       (window as unknown as { __ty: typeof dbg }).__ty = dbg;
     }
   })();
-  void WORLD_HALF;
+
 }
 
 const clamp = (v: number, a: number, b: number): number => Math.max(a, Math.min(b, v));

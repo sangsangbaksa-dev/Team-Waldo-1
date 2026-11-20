@@ -87,7 +87,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   const hasSave = (): boolean => { try { return !!localStorage.getItem(OUTLAW_KEY); } catch { return false; } };
 
   // ---------- 저장 ----------
-  function save(): void { if (!sim || versus) return; try { localStorage.setItem(OUTLAW_KEY, JSON.stringify(sim.exportSave())); } catch { /* 저장은 선택 사항입니다. */ } }
+  function save(): boolean { if (!sim || versus) return false; try { localStorage.setItem(OUTLAW_KEY, JSON.stringify(sim.exportSave())); return true; } catch { return false; } }
 
   // ---------- 알림 도구 ----------
   function toast(text: string, sec = 3.2): void {
@@ -326,7 +326,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (poi?.kind === 'casino') return { text: 'E · 카지노', run: () => openUi('casino') };
     if (poi?.kind === 'hospital') { if (p.hp < p.maxHp || p.armor < 40) return { text: `E · 치료 (${money(sim.price(120))})`, run: () => { toast(treat(sim!)); audio.play('pickup'); } }; }
     if (poi?.kind === 'arena') return sim.job.active ? null : { text: `E · 지하 격투 참가 (${money(sim.price(200))})`, run: () => { const r = startJob(sim!, 'fight'); if (r) toast(r); } };
-    if (poi?.kind === 'safehouse') return { text: 'E · 쉬기 · 저장', run: () => { const r = sim!.sleep(); toast(r); save(); audio.play('save'); } };
+    if (poi?.kind === 'safehouse') return { text: 'E · 쉬기 · 저장', run: () => { const r = sim!.sleep(); toast(r); if (save()) audio.play('save'); else if (!versus) toast('저장하지 못했습니다. 브라우저 저장 공간을 확인하세요.', 4); } };
     if (poi?.kind === 'start') { const m = MISSION_LIST.find(x => x.startPoi === poi.id); if (m && canStart(sim, m.id)) return { text: `E · 의뢰: ${m.title}`, run: () => openBrief(m.id) }; }
     if (sim.nearestVehicle(p)) return { text: 'E · 차량 탑승' };
     if (nearVending(sim)) return { text: `E · 음료 (${money(sim.price(8))})`, run: () => { toast(buySnack(sim!)); audio.play('pickup'); } };
@@ -396,7 +396,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
         case 'busted': audio.play('busted'); break;
         case 'wasted': audio.play('wasted'); break;
         case 'respawn': audio.play('door'); break;
-        case 'save': save(); audio.play('save'); toast('저장됨', 1.8); break;
+        case 'save': if (save()) { audio.play('save'); toast('저장됨', 1.8); } else if (!versus) toast('저장하지 못했습니다. 브라우저 저장 공간을 확인하세요.', 4); break;
         default: break;
       }
     }

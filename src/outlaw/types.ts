@@ -173,7 +173,7 @@ export interface MissionState {
 export const blankMissionState = (): MissionState => ({ active: '', stage: 0, timer: 0, text: '', markers: [], completed: [], data: {}, ids: {}, failed: '', banner: '', bannerT: 0 });
 
 export const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
-export const wrapAngle = (a: number): number => { while (a > Math.PI) a -= TAU; while (a < -Math.PI) a += TAU; return a; };
+export const wrapAngle = (a: number): number => Number.isFinite(a) ? Math.atan2(Math.sin(a), Math.cos(a)) : 0;
 export const angleDiff = (from: number, to: number): number => wrapAngle(to - from);
 /** 작은 시드 난수(mulberry32). */
 export function makeRng(seed: number): () => number {

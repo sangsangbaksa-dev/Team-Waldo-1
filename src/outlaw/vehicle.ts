@@ -122,6 +122,9 @@ export function stepVehicle(sim: Sim, v: Vehicle, dt: number): void {
       // SAT already rejects separated bodies; removed entries in the frame grid are ignored.
       if (q === v || !q.alive || sim.vehicle(q.id) !== q) continue; collideVehicles(sim, v, q); put(g, q);
     }
+    const lim = sim.map.half - Math.hypot(d.halfL, d.halfW);
+    if (Math.abs(v.x) > lim) { v.x = clamp(v.x, -lim, lim); if (v.vx * v.x > 0) v.vx = 0; }
+    if (Math.abs(v.z) > lim) { v.z = clamp(v.z, -lim, lim); if (v.vz * v.z > 0) v.vz = 0; }
     put(g, v); local(v);
   }
 }

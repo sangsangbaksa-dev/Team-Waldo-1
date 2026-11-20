@@ -11,9 +11,9 @@ import { stepPeds } from './peds';
 import { stepCombat } from './combat';
 import { stepTraffic } from './traffic';
 import { stepPolice } from './police';
-import { stepMissions } from './missions';
+import { MISSION_LIST, stepMissions } from './missions';
 import { stepActivities } from './activities';
-import { blankLife, computePerks, heroById, BASE_PERKS, PROPERTIES, OUTFITS, ACHIEVEMENTS, type LifeState, type Perks } from './life';
+import { blankLife, computePerks, heroById, BASE_PERKS, PROPERTIES, OUTFITS, ACHIEVEMENTS, PROP_CAP_MIN, propertyRate, type LifeState, type Perks } from './life';
 import { stepLife } from './services';
 import { stepJobs } from './jobs';
 
@@ -79,9 +79,10 @@ export class Sim {
       typeof v === 'number' && Number.isFinite(v) ? clamp(v, 0, max) : fallback;
     const strings = (v: unknown): string[] => Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === 'string'))] : [];
     const ids = (v: unknown): number[] => Array.isArray(v) ? [...new Set(v.filter((x): x is number => Number.isSafeInteger(x) && x >= 0))] : [];
-    this.activity.stunts = ids(s.stunts); this.activity.style.total = number(s.styleTotal);
-    this.cash = number(s.cash, this.cash); this.mission.completed = strings(s.completed);
-    this.collected = new Set(ids(s.collected)); this.clock = number(s.clock, this.clock) % 24;
+    this.activity.stunts = ids(s.stunts).filter(id => id < Math.min(6, this.map.ramps.length) * 2); this.activity.style.total = number(s.styleTotal);
+    this.cash = number(s.cash, this.cash); this.mission.completed = MISSION_LIST.filter(m => strings(s.completed).includes(m.id)).map(m => m.id);
+    const validPackages = new Set(this.pickups.filter(pk => pk.collect >= 0).map(pk => pk.collect));
+    this.collected = new Set(ids(s.collected).filter(id => validPackages.has(id))); this.clock = number(s.clock, this.clock) % 24;
     this.kills = Math.floor(number(s.kills)); this.playSec = number(s.playSec); this.player.armor = number(s.armor, 0, 100);
     if (Array.isArray(s.guns)) {
       const p = this.player; p.guns.fill(null); p.guns[0] = { id: 'fist', mag: 0, reserve: 0 };
@@ -110,6 +111,7 @@ export class Sim {
       if (l.counters && typeof l.counters === 'object' && !Array.isArray(l.counters))
         for (const [k, v] of Object.entries(l.counters)) if (/^[a-zA-Z][a-zA-Z0-9_]*$/.test(k) && !Object.hasOwn(Object.prototype, k)) life.counters[k] = number(v);
       this.life = life; this.applyHero(life.hero, false);
+      life.propBank = Math.min(life.propBank, propertyRate(life, this.perk) * PROP_CAP_MIN * 60);
     }
   }
   /** 주인공 시민을 정하고 능력치를 반영합니다. fresh 면 체력·방탄을 새로 채웁니다. */
@@ -120,7 +122,7 @@ export class Sim {
   refreshPerks(): void { this.perk = computePerks(this.life); }
   /** 상점 가격(주인공 할인 반영) */ price(n: number): number { return Math.max(1, Math.ceil(n * this.perk.price)); }
   /** 일·활동으로 번 돈(주인공 수입 배율 반영) */ earn(n: number): number { const v = Math.round(n * this.perk.pay); this.addCash(v); return v; }
-  /** 통계 카운터 */ count(key: string, n = 1): void { this.life.counters[key] = (this.life.counters[key] ?? 0) + n; }
+  /** 통계 카운터 */ count(key: string, n = 1): void { if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(key) || Object.hasOwn(Object.prototype, key) || !Number.isFinite(n) || n < 0) return; this.life.counters[key] = Math.min(Number.MAX_SAFE_INTEGER, (this.life.counters[key] ?? 0) + n); }
 
   // ---------- 조회 ----------
   ped(id: number): Ped | undefined { return this.pedMap.get(id); }
@@ -138,7 +140,7 @@ export class Sim {
   nearPoi(x: number, z: number): Poi | null { let best: Poi | null = null, bd = Infinity; for (const q of this.map.pois) { const d = Math.hypot(q.x - x, q.z - z); if (d < q.r && d < bd) { bd = d; best = q; } } return best; }
   addCash(n: number): void { if (!Number.isFinite(n)) return; const old = this.cash; this.cash = clamp(old + n, 0, Number.MAX_SAFE_INTEGER); const amount = this.cash - old; if (amount) this.emit({ t: 'cash', amount, total: this.cash }); }
   addCrime(kind: CrimeKind, x: number, z: number, by: number, victim: number, weight: number): void { this.crimes.push({ kind, x, z, by, victim, weight, t: this.t }); }
-  setStars(stars: number): void { const prev = this.wanted.stars; if (stars === prev) return; this.wanted.stars = stars; this.emit({ t: 'wanted', stars, prev }); }
+  setStars(stars: number): void { if (!Number.isFinite(stars)) return; stars = Math.round(clamp(stars, 0, 5)); const prev = this.wanted.stars; if (stars === prev) return; this.wanted.stars = stars; this.emit({ t: 'wanted', stars, prev }); }
   /** 수평 시야: 건물에 가리지 않으면 true */
   canSee(ax: number, az: number, bx: number, bz: number, y = 1.5): boolean { const dx = bx - ax, dz = bz - az, d = Math.hypot(dx, dz); if (d < 0.5) return true; return rayStatic(this.map, ax, y, az, dx / d, 0, dz / d, d) >= d - 0.3; }
 
@@ -171,11 +173,13 @@ export class Sim {
     Object.assign(v, o); this.vehicles.push(v); this.vehMap.set(v.id, v); return v;
   }
   removePed(p: Ped): void {
-    if (p.id === PLAYER_ID) return; if (p.vehicle) { const v = this.vehMap.get(p.vehicle); if (v) { if (v.driver === p.id) v.driver = 0; v.passengers = v.passengers.filter(i => i !== p.id); } }
-    this.remoteDamage.delete(p); this.pedMap.delete(p.id); const i = this.peds.indexOf(p); if (i >= 0) this.peds.splice(i, 1);
+    if (p.id === PLAYER_ID || this.pedMap.get(p.id) !== p) return; if (p.vehicle) { const v = this.vehMap.get(p.vehicle); if (v) { if (v.driver === p.id) { v.driver = 0; v.input = blankCarInput(); v.input.brake = 1; if (v.mode === 'traffic' || v.mode === 'police') v.mode = 'none'; } v.passengers = v.passengers.filter(i => i !== p.id); } p.vehicle = 0; p.seat = 0; }
+    this.remoteDamage.delete(p); this.lastAssault.delete(p.id); this.pedMap.delete(p.id); const i = this.peds.indexOf(p); if (i >= 0) this.peds.splice(i, 1);
   }
   removeVehicle(v: Vehicle): void {
-    for (const id of [v.driver, ...v.passengers]) { const p = this.pedMap.get(id); if (p) { p.vehicle = 0; if (p.id !== PLAYER_ID) this.removePed(p); else { p.x = v.x; p.z = v.z; } } }
+    if (this.vehMap.get(v.id) !== v) return;
+    for (const id of [v.driver, ...v.passengers]) { const p = this.pedMap.get(id); if (p && p.vehicle === v.id) { if (p.id !== PLAYER_ID) { p.vehicle = 0; p.seat = 0; this.removePed(p); } else this.ejectFrom(p, v); } }
+    v.driver = 0; v.passengers = [];
     this.vehMap.delete(v.id); const i = this.vehicles.indexOf(v); if (i >= 0) this.vehicles.splice(i, 1);
   }
   spawnPickup(kind: PickupKind, x: number, z: number, o: Partial<Pickup> = {}): Pickup {
@@ -247,11 +251,11 @@ export class Sim {
   /** 가까이 있는 탈 수 있는 차량(플레이어 기준) */
   nearestVehicle(p: Ped, maxD = 3.4): Vehicle | null {
     let best: Vehicle | null = null, bd = maxD;
-    for (const v of this.vehicles) { if (v.wrecked || !v.alive) continue; const d = VEHICLES[v.kind], dx = p.x - v.x, dz = p.z - v.z, c = Math.cos(v.h), s = Math.sin(v.h), lf = Math.abs(dx * c + dz * s) - d.halfL, ll = Math.abs(-dx * s + dz * c) - d.halfW, e = Math.hypot(Math.max(0, lf), Math.max(0, ll)); if (e < bd) { bd = e; best = v; } }
+    for (const v of this.vehicles) { if (v.wrecked || !v.alive || Math.abs(p.y - v.y) > 1.8) continue; const d = VEHICLES[v.kind], dx = p.x - v.x, dz = p.z - v.z, c = Math.cos(v.h), s = Math.sin(v.h), lf = Math.abs(dx * c + dz * s) - d.halfL, ll = Math.abs(-dx * s + dz * c) - d.halfW, e = Math.hypot(Math.max(0, lf), Math.max(0, ll)); if (e < bd && this.canSee(p.x, p.z, v.x, v.z, p.y + .85)) { bd = e; best = v; } }
     return best;
   }
   enterVehicle(p: Ped, v: Vehicle): boolean {
-    if (p.vehicle || v.wrecked || !v.alive || !p.alive) return false;
+    if (p.vehicle || v.wrecked || !v.alive || !p.alive || this.vehMap.get(v.id) !== v || this.pedMap.get(p.id) !== p) return false;
     if (v.locked && p.id === PLAYER_ID) { this.say('잠겨 있어 탈 수 없습니다', 2); return false; }
     if (v.driver && v.driver !== p.id) {
       const old = this.pedMap.get(v.driver);
@@ -267,8 +271,8 @@ export class Sim {
     if (p.id === PLAYER_ID) { v.mode = 'none'; v.input = blankCarInput(); } this.emit({ t: 'enter', ped: p.id, vehicle: v.id }); return true;
   }
   exitVehicle(p: Ped): void {
-    const v = this.vehMap.get(p.vehicle); if (!v) { p.vehicle = 0; return; }
-    if (v.driver === p.id) v.driver = 0; v.passengers = v.passengers.filter(i => i !== p.id); p.vehicle = 0; this.placeBeside(p, v);
+    const v = this.vehMap.get(p.vehicle); if (!v) { p.vehicle = 0; p.seat = 0; return; }
+    if (v.driver === p.id) v.driver = 0; v.passengers = v.passengers.filter(i => i !== p.id); p.vehicle = 0; p.seat = 0; this.placeBeside(p, v);
     if (p.id === PLAYER_ID) { v.mode = v.keep ? 'scripted' : 'parked'; v.input = blankCarInput(); v.input.handbrake = true; v.input.brake = 1; }
     this.emit({ t: 'exit', ped: p.id, vehicle: v.id });
   }
@@ -291,7 +295,7 @@ export class Sim {
   private punch(p: Ped): void {
     const mw = WEAPONS[this.curGun(p)?.id ?? 'fist'], melee = mw.melee ? mw : WEAPONS.fist;
     p.cd = melee.cd; p.punchT = 0.3; let best: Ped | null = null, bd = 99;
-    for (const q of this.peds) { if (q === p || !q.alive || q.vehicle) continue; const d = Math.hypot(q.x - p.x, q.z - p.z); if (d > melee.range || d >= bd) continue; if (Math.abs(wrapAngle(Math.atan2(q.z - p.z, q.x - p.x) - p.yaw)) > 1.0) continue; best = q; bd = d; }
+    for (const q of this.peds) { if (q === p || !q.alive || q.vehicle || Math.abs(q.y - p.y) > 1.25) continue; const d = Math.hypot(q.x - p.x, q.z - p.z); if (d > melee.range || d >= bd) continue; if (Math.abs(wrapAngle(Math.atan2(q.z - p.z, q.x - p.x) - p.yaw)) > 1.0 || !this.canSee(p.x, p.z, q.x, q.z, p.y + .9)) continue; best = q; bd = d; }
     this.emit({ t: 'shot', id: p.id, weapon: melee.id, ox: p.x, oy: p.y + 1.2, oz: p.z, ex: p.x + Math.cos(p.yaw) * 1.4, ey: p.y + 1.2, ez: p.z + Math.sin(p.yaw) * 1.4 });
     if (best) { const dmg = melee.dmg * (p.id === PLAYER_ID ? 1.4 * this.perk.melee : 1); this.damagePed(best, dmg, p.id, melee.id); best.vx += Math.cos(p.yaw) * (melee.id === 'bat' ? 8 : 5); best.vz += Math.sin(p.yaw) * (melee.id === 'bat' ? 8 : 5); this.emit({ t: 'hit', victim: best.id, attacker: p.id, dmg, head: false, x: best.x, y: best.y + 1.3, z: best.z, kind: 'ped' }); }
   }
@@ -341,7 +345,7 @@ export class Sim {
 
   // ---------- 보행 물리 ----------
   private movePed(p: Ped, dt: number): void {
-    if (p.vehicle) { const v = this.vehMap.get(p.vehicle); if (v) { p.x = v.x; p.y = v.y; p.z = v.z; p.yaw = v.h; p.speed = Math.abs(v.vf); p.vx = v.vx; p.vz = v.vz; } return; }
+    if (p.vehicle) { const v = this.vehMap.get(p.vehicle); if (v) { p.x = v.x; p.y = v.y; p.z = v.z; p.yaw = v.h; p.speed = Math.abs(v.vf); p.vx = v.vx; p.vz = v.vz; return; } p.vehicle = 0; p.seat = 0; }
     if (!p.alive) { p.vx *= Math.max(0, 1 - dt * 6); p.vz *= Math.max(0, 1 - dt * 6); }
     const inp = p.input, alive = p.alive;
     if (alive) {
@@ -355,7 +359,7 @@ export class Sim {
     p.x += p.vx * dt; p.z += p.vz * dt;
     const m = moveCircle(this.map, p.x, p.z, 0.4, p.y, p.y + 1.8); p.x = m.x; p.z = m.z;
     for (const v of this.vehicles) { // 차량 밖으로 밀어냅니다
-      const d = VEHICLES[v.kind]; if (Math.abs(v.x - p.x) > d.halfL + 1.6 || Math.abs(v.z - p.z) > d.halfL + 1.6) continue; if (p.y > v.y + d.height - 0.2) continue;
+      const d = VEHICLES[v.kind]; if (Math.abs(v.x - p.x) > d.halfL + 1.6 || Math.abs(v.z - p.z) > d.halfL + 1.6) continue; if (p.y > v.y + d.height - 0.2 || p.y + 1.8 < v.y) continue;
       const dx = p.x - v.x, dz = p.z - v.z, c = Math.cos(v.h), s = Math.sin(v.h); let lf = dx * c + dz * s, ll = -dx * s + dz * c; const ef = d.halfL + 0.4, el = d.halfW + 0.4;
       if (Math.abs(lf) < ef && Math.abs(ll) < el) { if (ef - Math.abs(lf) < el - Math.abs(ll)) lf = Math.sign(lf || 1) * ef; else ll = Math.sign(ll || 1) * el; p.x = v.x + lf * c - ll * s; p.z = v.z + lf * s + ll * c; }
     }
@@ -370,7 +374,7 @@ export class Sim {
     const p = this.player;
     for (const pk of this.pickups) {
       if (pk.taken) { if (pk.respawn > 0) { pk.respawn -= dt; if (pk.respawn <= 0) { pk.taken = false; pk.respawn = pk.kind === 'weapon' ? 120 : pk.kind === 'armor' ? 180 : pk.kind === 'ammo' ? 120 : 60; } } continue; }
-      if (!p.alive || p.vehicle) continue; if (Math.abs(pk.x - p.x) > 1.8 || Math.abs(pk.z - p.z) > 1.8 || Math.abs(pk.y - p.y) > 2.2) continue;
+      if (!p.alive || p.vehicle) continue; if (Math.hypot(pk.x - p.x, pk.z - p.z) > 1.8 || Math.abs(pk.y - p.y) > 2.2 || !this.canSee(p.x, p.z, pk.x, pk.z, p.y + .5)) continue;
       if (pk.kind === 'health' && p.hp >= p.maxHp) continue; if (pk.kind === 'armor' && p.armor >= 100) continue;
       if (pk.kind === 'cash') this.addCash(pk.amount); else if (pk.kind === 'health') p.hp = Math.min(p.maxHp, p.hp + pk.amount * this.perk.heal); else if (pk.kind === 'armor') p.armor = Math.min(100, p.armor + pk.amount);
       else if (pk.kind === 'weapon' && pk.weapon) {
@@ -384,7 +388,7 @@ export class Sim {
         if (!g) continue;
         g.reserve = Math.min(WEAPONS[g.id].reserve, g.reserve + pk.amount);
       }
-      else if (pk.kind === 'package') { this.collected.add(pk.collect); this.addCash(pk.amount); this.say(`숨겨진 꾸러미 ${this.collected.size}/30`, 3); }
+      else if (pk.kind === 'package') { if (pk.collect < 0 || this.collected.has(pk.collect)) { pk.taken = true; continue; } this.collected.add(pk.collect); this.addCash(pk.amount); this.say(`숨겨진 꾸러미 ${this.collected.size}/30`, 3); }
       pk.taken = true; this.emit({ t: 'pickup', ped: p.id, kind: pk.kind, amount: pk.amount });
     }
     if (this.pickups.length > 400) this.pickups = this.pickups.filter(q => !(q.taken && q.respawn <= 0 && q.collect < 0 && q.kind === 'cash'));
@@ -455,11 +459,13 @@ export class Sim {
   /** pin: 플레이어 보행 입력, cin: 차량 입력. pin.enter 는 눌린 프레임에만 true 여야 합니다. */
   step(dt: number, pin: PedInput, cin: CarInput): void {
     if (!Number.isFinite(dt) || dt <= 0) return;
+    dt = Math.min(.25, dt);
     this.t += dt; this.frame++; this.playSec += dt; this.clock = (this.clock + dt * 24 / DAY_SECONDS) % 24; this.rain += (rainTarget(this.t) - this.rain) * Math.min(1, dt * 0.25);
     const p = this.player;
     if (p.alive) {
-      p.input = { ...pin };
-      if (p.vehicle) { const v = this.vehMap.get(p.vehicle); if (v) { v.input = { ...cin }; if (pin.enter) this.exitVehicle(p); } else p.vehicle = 0; }
+      const finite = (n: number, fallback = 0) => Number.isFinite(n) ? n : fallback;
+      p.input = { ...pin, mx: clamp(finite(pin.mx), -1, 1), mz: clamp(finite(pin.mz), -1, 1), yaw: wrapAngle(finite(pin.yaw, p.yaw)), pitch: clamp(finite(pin.pitch, p.pitch), -1.2, 1.2), slot: Number.isInteger(pin.slot) ? pin.slot : -1 };
+      if (p.vehicle) { const v = this.vehMap.get(p.vehicle); if (v) { v.input = { ...cin, throttle: clamp(finite(cin.throttle), 0, 1), brake: clamp(finite(cin.brake), 0, 1), steer: clamp(finite(cin.steer), -1, 1) }; if (pin.enter) this.exitVehicle(p); } else p.vehicle = 0; }
       else if (pin.enter) { const v = this.nearestVehicle(p); if (v) this.enterVehicle(p, v); }
     } else if (this.downKind) { this.deadT += dt; if (this.deadT > (this.downKind === 'wasted' ? 4 : 3)) this.respawnPlayer(this.downKind); }
     stepPeds(this, dt); stepCombat(this, dt); stepTraffic(this, dt); stepPolice(this, dt);
@@ -469,6 +475,8 @@ export class Sim {
       this.movePed(q, dt);
     }
     for (const v of this.vehicles) stepVehicle(this, v, dt);
+    // Occupants must follow the final, post-collision vehicle pose this tick.
+    for (const q of this.peds) if (q.vehicle && !this.remoteDamage.has(q)) this.movePed(q, 0);
     this.stepProjectiles(dt); this.stepPickups(dt); this.stepFire(dt); stepMissions(this, dt); stepActivities(this, dt); stepLife(this, dt); stepJobs(this, dt);
     for (const q of this.peds.slice()) if (!q.alive && !q.keep && q.id !== PLAYER_ID && this.t - q.diedAt > 25) this.removePed(q);
   }

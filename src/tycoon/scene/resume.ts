@@ -5,7 +5,7 @@ export interface ResumePosition { x: number; z: number; yaw: number; cameraYaw: 
 
 /** 기존 v1 저장과 호환된다. 잘못된 위치나 건물 내부는 기본 시작점으로 돌아간다. */
 export function readResumePosition(raw: unknown, colliders: Colliders): ResumePosition | null {
-  if (!raw || typeof raw !== 'object' || !('position' in raw)) return null;
+  if (!raw || typeof raw !== 'object' || !('v' in raw) || raw.v !== 1 || !('position' in raw)) return null;
   const p = raw.position;
   if (!p || typeof p !== 'object') return null;
   const { x, z, firstPerson } = p as Partial<ResumePosition>;

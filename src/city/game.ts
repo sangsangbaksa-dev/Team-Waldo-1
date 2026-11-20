@@ -514,6 +514,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       return;
     }
     if (e.repeat) return;
+    if (e.target instanceof Element && e.target.closest('input,textarea,select,[contenteditable="true"]')) return;
     if (focusedControl) {
       // Keep Space/Enter on the button, but do not swallow WASD and other game keys.
       if (k === ' ' || k === 'Enter') return;
@@ -565,7 +566,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   let weaponWheelAt = -Infinity;
   function bindCanvas(cv: HTMLCanvasElement): void {
     cv.addEventListener('pointerdown', e => {
-      audio.unlock(); if (!world || paused || world.over) return; mouse.x = e.clientX; mouse.y = e.clientY; const three = cv === canvas3;
+      audio.unlock(); if (!world || paused || world.over || world.factions[0].pending > 0 || !panel.hidden || !bigmap.hidden || !q('#c-missions').hidden || chatOpen) return; mouse.x = e.clientX; mouse.y = e.clientY; const three = cv === canvas3;
       if (e.pointerType === 'touch') {
         if (ghost) { if (three) { const p = R3!.buildPoint(700); ghost.x = snapBuildCoord(p.x); ghost.y = snapBuildCoord(p.y); } place(e.clientX, e.clientY); return; }
         try { cv.setPointerCapture(e.pointerId); } catch { /* window pointerup still clears input */ }
@@ -609,7 +610,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   // Mobile pointers may end over the HUD rather than the canvas.
   window.addEventListener('pointerup', onWindowPointerEnd);
   window.addEventListener('pointercancel', onWindowPointerEnd);
-  const fireBtn = q('#c-fire'); fireBtn.addEventListener('pointerdown', e => { touchFire = true; e.preventDefault(); e.stopPropagation(); audio.unlock(); }); for (const n of ['pointerup', 'pointercancel', 'pointerleave', 'lostpointercapture']) fireBtn.addEventListener(n, () => { touchFire = false; });
+  const fireBtn = q('#c-fire'); fireBtn.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (!world || paused || world.over || world.factions[0].pending > 0 || !panel.hidden || !bigmap.hidden || !q('#c-missions').hidden || chatOpen || e.button !== 0) return; touchFire = true; audio.unlock(); }); for (const n of ['pointerup', 'pointercancel', 'pointerleave', 'lostpointercapture']) fireBtn.addEventListener(n, () => { touchFire = false; });
   const mapClick = (c: HTMLCanvasElement) => (e: PointerEvent): void => {
     if (!world || paused || world.over || world.factions[0].pending > 0) return;
     const r = c.getBoundingClientRect(), point = mapPointerToWorld(e.clientX, e.clientY, r.left, r.top, r.width, r.height, world.map.arena ?? undefined);
@@ -674,7 +675,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (closed) return; raf = requestAnimationFrame(frame); const w = world!, r = R!; const dt = Math.min(0.1, (now - last) / 1000); last = now;
     const f = w.factions[0], b = w.boss(0), three = view !== 'top' && !!R3;
     const veh = b && b.inVeh ? w.vehicles.find(v => v.id === b.inVeh) : undefined, spd = veh ? Math.hypot(veh.vx, veh.vy) : 0;
-    if (f.pending > 0 && !modal.firstChild) { showPerks(); keys.clear(); mouse.down = false; }
+    if (f.pending > 0 && !modal.firstChild) { showPerks(); onBlur(); }
     if (!paused && f.pending === 0 && !w.over) {
       const inp = w.input; let mx = (keys.has('d') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('a') || keys.has('ArrowLeft') ? 1 : 0), my = (keys.has('s') || keys.has('ArrowDown') ? 1 : 0) - (keys.has('w') || keys.has('ArrowUp') ? 1 : 0);
       if (sticks.move.id >= 0) { mx = sticks.move.x; my = sticks.move.y; }

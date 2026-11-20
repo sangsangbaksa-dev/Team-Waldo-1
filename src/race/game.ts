@@ -365,7 +365,7 @@ export function openRace(onExit: () => void): void {
   };
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.code); };
   function clearControls(): void { keys.clear(); for (const ids of heldPointers.values()) ids.clear(); for (const k of Object.keys(hold) as Array<keyof typeof hold>) hold[k] = false; root.querySelectorAll('[data-hold].down').forEach(b => b.classList.remove('down')); }
-  const onBlur = (): void => { clearControls(); if (race.phase === 'racing' && !setupUi) setPaused(true); };
+  const onBlur = (): void => { clearControls(); if ((race.phase === 'racing' || race.phase === 'countdown') && !setupUi) setPaused(true); };
   const onVisibility = (): void => { if (document.hidden) onBlur(); };
   addEventListener('keydown', onKey); addEventListener('keyup', onKeyUp); addEventListener('resize', resize); addEventListener('blur', onBlur); document.addEventListener('visibilitychange', onVisibility);
   root.addEventListener('click', e => { const b = (e.target as HTMLElement).closest<HTMLElement>('[data-act]'); if (b) act(b.dataset.act); });

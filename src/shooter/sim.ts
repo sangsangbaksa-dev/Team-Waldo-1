@@ -215,9 +215,9 @@ export class Match {
   /** 비행기 안·자유낙하·낙하산 중인 선수 한 명을 진행합니다. 착지하면 air 가 0 이 되어 보통 선수로 돌아갑니다. */
   private stepAir(p: Player, dt: number): void {
     const inp = p.input, pl = this.plane!; if (p.bot && p.brain) thinkAir(this, p, dt);
-    const wantJump = !!inp.jump && !p.jumpHeld; p.jumpHeld = !!inp.jump;
+    const wantJump = !!inp.jump && (!p.jumpHeld || p.bot && p.air === 2); p.jumpHeld = !!inp.jump;
     if (!p.bot) { p.yaw = inp.yaw; p.pitch = Math.max(-1.45, Math.min(1.45, inp.pitch)); }
-    p.speed = 0; p.vx *= 0; p.hurt = 0;
+    p.speed = 0; p.hurt = 0;
     if (p.air === 1) {
       const at = this.planeAt(Math.min(this.t, pl.end)); p.x = at.x; p.z = at.z; p.alt = AIR.alt;
       if (wantJump || this.t >= pl.end) { p.air = 2; p.vx = 0; p.vz = 0; this.events.push({ t: 'jump', id: p.id }); }
@@ -228,7 +228,7 @@ export class Match {
     let top: number, fall: number;
     if (p.air === 2) {
       const dive = inp.sprint && fwd; top = dive ? AIR.diveH : fwd ? AIR.fallFast : AIR.fallH; fall = dive ? AIR.dive : AIR.fall;
-      if ((wantJump && p.alt <= AIR.manualOpen) || p.alt <= AIR.open) { p.air = 3; this.events.push({ t: 'chute', id: p.id }); }
+      if ((wantJump && p.alt <= AIR.manualOpen) || p.alt <= AIR.open) { p.air = 3; top = AIR.chuteGo; fall = AIR.chute; this.events.push({ t: 'chute', id: p.id }); }
     } else { const run = inp.sprint && fwd; top = run ? AIR.chuteRun : fwd ? AIR.chuteGo : AIR.chuteH; fall = run ? AIR.chuteFast : AIR.chute; }
     const k = Math.min(1, dt * 3); p.vx += (wx * top - p.vx) * k; p.vz += (wz * top - p.vz) * k;
     p.x += p.vx * dt; p.z += p.vz * dt; p.alt -= (p.air === 3 && p.alt < 4 ? Math.max(3, fall * 0.5) : fall) * dt;
@@ -421,9 +421,9 @@ export class Match {
     // 수류탄
     p.nadeCd -= dt; if (inp.nade && !p.nadeHeld && p.nades > 0 && p.nadeCd <= 0 && p.air === 0 && !p.remote) this.throwNade(p); p.nadeHeld = !!inp.nade;
     // 무기 교체
-    if (inp.slot >= 0 && inp.slot < 2 && inp.slot !== p.cur && p.guns[inp.slot]) { p.cur = inp.slot; p.reload = 0; p.cd = Math.max(p.cd, 0.35); inp.slot = -1; }
+    if (inp.slot >= 0) { const slot = inp.slot; inp.slot = -1; if (Number.isInteger(slot) && slot < 2 && slot !== p.cur && p.guns[slot]) { p.cur = slot; p.reload = 0; p.cd = Math.max(p.cd, 0.35); } }
     const gun = p.guns[p.cur]; const def = gun ? WEAPONS[gun.id] : null; if (gun && !gun.att) gun.att = {};
-    if (gun && def) {
+    if (gun && def && p.healT <= 0) {
       if (p.reload > 0) { p.reload -= dt; if (p.reload <= 0) { p.reload = 0; const n = Math.max(0, Math.min(magOf(def.id, gun.att) - gun.mag, gun.reserve)); gun.mag += n; gun.reserve -= n; } }
       else if ((inp.reload && gun.mag < magOf(def.id, gun.att) && gun.reserve > 0) || (gun.mag === 0 && gun.reserve > 0 && inp.fire)) { p.reload = def.reload * partHandling(gun.att).reload; this.events.push({ t: 'reload', id: p.id }); }
       if (inp.fire && p.cd <= 0 && p.reload <= 0 && (def.auto || !p.fireHeld)) {
@@ -438,7 +438,7 @@ export class Match {
     let took = false;
     if (!p.remote) for (const l of this.loot) {
       if (l.taken) continue; const dx = l.x - p.x, dz = l.z - p.z; if (dx * dx + dz * dz > PLAYER.pickup * PLAYER.pickup) continue;
-      if (l.kind === 'weapon') { if (wantE) { this.takeWeapon(p, l); took = true; break; } continue; }
+      if (l.kind === 'weapon') { if (wantE && this.takeWeapon(p, l)) { took = true; break; } continue; }
       if (l.kind === 'attach') { if (this.takePart(p, l, wantE)) { took = true; break; } continue; }
       this.takeAuto(p, l);
     }
@@ -499,11 +499,14 @@ export class Match {
   }
   /** 파츠를 달 총: 들고 있는 총이 맞으면 그 총, 아니면 다른 칸의 총. 이미 같은 파츠면 null. */
   partTarget(p: Player, part: PartId): { gun: Gun; fit: 'new' | 'upgrade' | 'swap' } | null {
+    let swap: { gun: Gun; fit: 'swap' } | null = null;
     for (const g of [p.guns[p.cur], p.guns[1 - p.cur]]) {
       if (!g || !canFit(g.id, part)) continue;
-      const fit = partFit(g.att, part); if (fit === 'same') continue; return { gun: g, fit };
+      const fit = partFit(g.att, part); if (fit === 'same') continue;
+      if (fit !== 'swap') return { gun: g, fit };
+      swap ??= { gun: g, fit };
     }
-    return null;
+    return swap;
   }
   private takePart(p: Player, l: Loot, wantE: boolean): boolean {
     const part = l.part!, t = this.partTarget(p, part); if (!t || (t.fit === 'swap' && !wantE)) return false;
@@ -511,16 +514,16 @@ export class Match {
     if (old) this.spawnLoot({ kind: 'attach', weapon: null, part: old, level: 0, x: p.x + Math.cos(p.yaw) * 1.1, z: p.z + Math.sin(p.yaw) * 1.1 });
     t.gun.att[slot] = part; this.take(p, l); return true;
   }
-  private takeWeapon(p: Player, l: Loot): void {
+  private takeWeapon(p: Player, l: Loot): boolean {
     const id = l.weapon!, def = WEAPONS[id], same = p.guns.find(g => g?.id === id);
-    if (same) { same.reserve = Math.min(def.mag * 6, same.reserve + def.mag * 2); this.take(p, l); return; }
+    if (same) { if (same.reserve >= def.mag * 6) return false; same.reserve = Math.min(def.mag * 6, same.reserve + def.mag * 2); this.take(p, l); return true; }
     const att: Attachments = { ...(l.att ?? {}) };
     const free = p.guns.indexOf(null);
     const rankAt = (i: number): number => WEAPONS[p.guns[i]!.id].rank;
     const slot = free >= 0 ? free : p.bot && rankAt(1 - p.cur) < rankAt(p.cur) ? 1 - p.cur : p.cur, old = p.guns[slot];
-    if (p.bot && old && WEAPONS[old.id].rank >= def.rank) return;
+    if (p.bot && old && WEAPONS[old.id].rank >= def.rank) return false;
     if (old) this.spawnLoot({ kind: 'weapon', weapon: old.id, att: { ...old.att }, x: p.x + Math.cos(p.yaw) * 0.8, z: p.z + Math.sin(p.yaw) * 0.8 });
-    p.guns[slot] = { id, mag: magOf(id, att), reserve: def.mag * 2, att }; p.cur = slot; p.reload = 0; p.cd = 0.35; this.take(p, l);
+    p.guns[slot] = { id, mag: magOf(id, att), reserve: def.mag * 2, att }; p.cur = slot; p.reload = 0; p.cd = Math.max(p.cd, 0.35); this.take(p, l); return true;
   }
 
   private shoot(p: Player, gun: Gun, id: WeaponId): void {
@@ -550,7 +553,7 @@ export class Match {
       const px = ox - q.x, pz = oz - q.z, a = dx * dx + dz * dz; if (a < 1e-9) continue;
       const R = fromRemote ? 0.62 : 0.5, b = 2 * (px * dx + pz * dz), c = px * px + pz * pz - R * R, disc = b * b - 4 * a * c; if (disc < 0) continue;
       let t = (-b - Math.sqrt(disc)) / (2 * a); if (t < 0) { if (c < 0) t = 0; else continue; }
-      if (t >= hitT) continue; const y = oy + dy * t, cr = q.remote ? q.crouch : q.crouch; if (y < 0 || y > heightOf(cr) + 0.1) continue;
+      if (t >= hitT) continue; const y = oy + dy * t, cr = q.crouch; if (y < 0 || y > heightOf(cr) + 0.1) continue;
       hitT = t; target = q; head = y > headOf(cr);
     }
     const ex = ox + dx * hitT, ey = oy + dy * hitT, ez = oz + dz * hitT; ends.push(ex, ey, ez);
@@ -560,7 +563,7 @@ export class Match {
     } else {
       if (hitT < def.range) this.events.push({ t: 'hit', victim: -1, attacker: shooter, dmg: 0, head: false, x: ex, y: ey, z: ez, wall: true });
       if (vcand) {
-        const fall = hitT <= def.falloff ? 1 : Math.max(0.4, 1 - 0.6 * (hitT - def.falloff) / Math.max(1, def.range - def.falloff)), dmg = def.dmg * def.pellets * fall;
+        const fall = hitT <= def.falloff ? 1 : Math.max(0.4, 1 - 0.6 * (hitT - def.falloff) / Math.max(1, def.range - def.falloff)), dmg = def.dmg * fall;
         const drv = vcand.driver >= 0 ? this.players[vcand.driver] : null; if (drv && drv.id !== shooter) this.damage(drv, dmg * DRIVE.driverCut, shooter, id, false, drv.x, 1.2, drv.z, false);
         this.hurtVehicle(vcand, dmg * DRIVE.shotCut, shooter);
       }
@@ -579,7 +582,7 @@ export class Match {
     if (real && weapon !== 'zone' && q.armor > 0) { const soak = Math.min(q.armor, dmg * ARMOR_ABS[q.armorLv || 2]); q.armor -= soak; hp = dmg - soak; if (q.armor <= 0) { q.armor = 0; q.armorLv = 0; } }
     if (weapon !== 'zone' && by >= 0 && by !== q.id) { const a = this.players[by]; if (a) { a.dmgDealt += Math.min(dmg, Math.max(0, q.hp + 40)); if (head) a.heads++; } }
     if (real && weapon !== 'zone' && q.healT > 0) { q.healT = 0; this.events.push({ t: 'heal', id: q.id, stage: 'cancel', kind: q.healKind }); }
-    if (real) { q.hp -= hp; q.lastHitBy = by; if (!silent) { q.hurt = 0.5; const a = this.players[by]; if (a) q.hurtYaw = Math.atan2(a.z - q.z, a.x - q.x); } }
+    if (real) { q.hp -= hp; if (by >= 0 && by !== q.id) q.lastHitBy = by; if (!silent) { q.hurt = 0.5; const a = this.players[by]; if (a) q.hurtYaw = Math.atan2(a.z - q.z, a.x - q.x); } }
     if (!silent) this.events.push({ t: 'hit', victim: q.id, attacker: by, dmg: Math.round(dmg), head, x, y, z, wall: false });
     if (real && q.hp <= 0) this.kill(q, weapon === 'zone' ? -1 : by, weapon);
   }

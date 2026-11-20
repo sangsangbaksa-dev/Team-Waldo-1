@@ -11,14 +11,14 @@ import type { ShooterAssets } from './assets';
 import type { CharacterRig } from '../shared/character';
 import { SOLDIER_KINDS } from './assets';
 import type { Box, Loot } from './world';
-import { buildFacadeTrim, buildProps, buildRoofs, makeDropCrate, makePlane, makeVehicleMesh, partMesh } from './props';
+import { buildFacadeTrim, buildProps, buildRoofs, makeDropCrate, makeFallbackGun, makePlane, makeVehicleMesh, partMesh } from './props';
 import { TerrainView, tintGround } from './terrainview';
 import { WeatherFx } from './weatherfx';
 import { waterDepth } from './terrain';
 import { crateTexture, floorTexture, glowTexture, groundTexture, makeSky, wallTexture } from './textures';
 
 export type Quality = 'high' | 'standard' | 'low';
-const LOOT_COLOR: Record<string, number> = { weapon: 0xeaf6ff, ammo: 0xffa53a, medkit: 0x52f08a, armor: 0x5aa8ff, bandage: 0xf2f2f2, attach: 0xc59bff, helmet: 0xffd34d, boost: 0x39e6ff };
+const LOOT_COLOR: Record<string, number> = { weapon: 0xeaf6ff, ammo: 0xffa53a, medkit: 0x52f08a, armor: 0x5aa8ff, bandage: 0xf2f2f2, attach: 0xc59bff, helmet: 0xffd34d, boost: 0x39e6ff, grenade: 0xa6ca6b };
 
 const rngOf = (seed: number): (() => number) => makeRng(seed);
 /** 부드러운 2차원 값 잡음(지형 색 변화용) */
@@ -48,7 +48,7 @@ export class ShooterView {
   private sun: THREE.DirectionalLight; private glow = glowTexture(); private rigs = new Map<number, Rig>(); private lootNodes = new Map<number, { node: THREE.Object3D; baseY: number; dispose: () => void }>();
   private lootDummy = new THREE.Object3D();
   private zoneWall: THREE.Mesh; private zoneNext: THREE.Mesh; private tracers: Fx[] = []; private sparks: THREE.Points; private sparkData: { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; r: number; g: number; b: number }[] = [];
-  private vm: THREE.Object3D | null = null; private vmId = ''; private vmParts = ''; private vmSwap = 0; private vmFlash: THREE.Sprite; private bob = 0; private shake = 0; private terrainView: TerrainView | null = null; private fovPunch = 0; private flashKick = 0; private roll = 0; private sprintT = 0; private time = 0;
+  private vm: THREE.Object3D | null = null; private vmOwned = false; private aimBlend = 0; private reloadBlend = 0; private vmId = ''; private vmParts = ''; private vmSwap = 0; private vmFlash: THREE.Sprite; private bob = 0; private shake = 0; private terrainView: TerrainView | null = null; private fovPunch = 0; private flashKick = 0; private roll = 0; private sprintT = 0; private time = 0;
   private mats = new Map<string, THREE.Material>(); private tmpCol = new THREE.Color(); private beams: THREE.InstancedMesh;
   private projected = new THREE.Vector3(); private viewportW = 1; private viewportH = 1; private camPos = new THREE.Vector3(); fov = 78; frames = 0;
   /** 폭풍우 하늘: 번개(flash)가 가끔 하늘과 안개를 밝힙니다 */
@@ -259,8 +259,13 @@ export class ShooterView {
   private lootNode(l: Loot): { node: THREE.Object3D; baseY: number; dispose: () => void } {
     const g = new THREE.Group(), color = LOOT_COLOR[l.kind]; let sharedModel = false;
     if (l.kind === 'weapon' && l.weapon && this.assets?.groundGuns[l.weapon]) { const m = instantiate(this.assets.groundGuns[l.weapon]); m.scale.setScalar(1.25); m.position.y = 0.9; g.add(m); sharedModel = true; }
-    else if (l.kind === 'attach' && l.part && this.assets?.weaponNodes && lootPart(this.assets.weaponNodes, l.part, PARTS[l.part].slot)) { const m = lootPart(this.assets.weaponNodes, l.part, PARTS[l.part].slot)!; m.scale.setScalar(PARTS[l.part].slot === 'mag' || PARTS[l.part].slot === 'stock' ? 1.7 : 2.4); m.position.y = 0.95; g.add(m); sharedModel = true; }
-    else if (l.kind === 'attach' && l.part) { const m = partMesh(l.part, 0.5); m.scale.setScalar(1.9); m.position.set(-0.5, 0.95 + (l.part === 'extmag' ? 0.3 : l.part === 'grip' ? 0.08 : -0.12), 0); g.add(m); }
+    else if (l.kind === 'weapon' && l.weapon) { const { group } = makeFallbackGun(l.weapon); group.position.y = 0.9; g.add(group); }
+    else if (l.kind === 'attach' && l.part) {
+      const slot = PARTS[l.part].slot, model = this.assets?.weaponNodes ? lootPart(this.assets.weaponNodes, l.part, slot) : null;
+      const m = model ?? partMesh(l.part, 0.5); sharedModel = !!model;
+      m.scale.setScalar(model ? (slot === 'mag' || slot === 'stock' ? 1.7 : 2.4) : 1.9);
+      const center = new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3()); m.position.set(-center.x, 0.95 - center.y, -center.z); g.add(m);
+    }
     else if (l.kind === 'helmet') {
       const col = [0, 0x7a8a5a, 0x3a3d44, 0xd9b24a][l.level ?? 1], m = new THREE.MeshLambertMaterial({ color: col, emissive: col, emissiveIntensity: 0.12 }), dome = new THREE.Mesh(new THREE.SphereGeometry(0.27, 14, 9, 0, Math.PI * 2, 0, Math.PI / 2), m); dome.position.y = 0.82; dome.castShadow = true; g.add(dome);
       const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.05, 14), new THREE.MeshLambertMaterial({ color: 0x222428 })); rim.position.y = 0.82; g.add(rim);
@@ -278,9 +283,12 @@ export class ShooterView {
       const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, l.kind === 'armor' ? 0.55 : 0.34, l.kind === 'armor' ? 0.28 : 0.4), new THREE.MeshLambertMaterial({ color: l.kind === 'medkit' ? 0xf4f6f4 : l.kind === 'armor' ? 0x3f7fd8 : 0x6c7a3c, emissive: color, emissiveIntensity: 0.18 })); body.position.y = 0.9; body.castShadow = true; g.add(body);
       if (l.kind === 'medkit') { const m = new THREE.MeshBasicMaterial({ color: 0xd8232a }); const a = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.08, 0.06), m), b = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.34, 0.06), m); a.position.set(0, 0.9, 0.21); b.position.set(0, 0.9, 0.21); g.add(a, b); }
     }
+    // Animate the whole pickup, not only its first mesh (helmet rims, can lids, medkit crosses).
+    const item = new THREE.Group(); const parts = [...g.children]; const baseY = parts[0]?.position.y ?? 0.9;
+    for (const part of parts) { part.position.y -= baseY; item.add(part); }
+    item.position.y = baseY; g.add(item);
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.7, 28), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false })); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.08; g.add(ring);
     g.position.set(l.x, 0, l.z); this.scene.add(g);
-    const baseY = g.children[0].position.y;
     return { node: g, baseY, dispose: () => { g.removeFromParent(); const geos = new Set<THREE.BufferGeometry>(), mats = new Set<THREE.Material>(); for (const child of sharedModel ? [ring] : g.children) child.traverse(o => { if (o instanceof THREE.Mesh) { geos.add(o.geometry); for (const mat of Array.isArray(o.material) ? o.material : [o.material]) mats.add(mat); } }); for (const geo of geos) geo.dispose(); for (const mat of mats) mat.dispose(); } };
   }
   private syncLoot(cam: THREE.Vector3): void {
@@ -308,6 +316,8 @@ export class ShooterView {
   }
   private tracer(ax: number, ay: number, az: number, bx: number, by: number, bz: number, color: number): void {
     const len = Math.hypot(bx - ax, by - ay, bz - az); if (len < 1) return;
+    const cap = this.quality === 'low' ? 64 : 160;
+    if (this.tracers.length >= cap) { const old = this.tracers.shift()!; this.scene.remove(old.mesh); old.mesh.geometry.dispose(); (old.mesh.material as THREE.Material).dispose(); }
     const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1, 4, 1, true), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
     const mid = new THREE.Vector3((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2); mesh.position.copy(mid); mesh.scale.set(1, Math.min(len, 60), 1);
     // 앞부분만 짧게(총알이 날아가는 느낌): 끝점 쪽 60m 구간
@@ -337,7 +347,16 @@ export class ShooterView {
   private nadeMeshes = new Map<number, THREE.Mesh>(); private booms: Array<{ s: THREE.Sprite; t: number }> = [];
   private boom(x: number, y: number, z: number): void {
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, color: 0xffb060, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })); s.position.set(x, Math.max(1, y + 0.6), z); s.scale.setScalar(2); this.scene.add(s); this.booms.push({ s, t: 0 });
-    this.spark(x, y + 0.4, z, 36, [1, 0.62, 0.22], 9); this.flash = Math.max(this.flash, 0.25);
+    this.spark(x, y + 0.4, z, this.quality === 'low' ? 18 : 36, [1, 0.62, 0.22], 9);
+    if (this.quality !== 'low') {
+      this.puff(x, Math.max(0.2, y + 0.5), z, 0xffdf91, 1.3, 0.22, 0.8, 13, 0.85, true);
+      for (let i = 0; i < (this.quality === 'high' ? 5 : 3); i++) {
+        const a = i * Math.PI * 2 / 5;
+        this.puff(x + Math.cos(a) * 0.8, Math.max(0.25, y + 0.4), z + Math.sin(a) * 0.8, i % 2 ? 0x514c45 : 0x797065, 1.7, 1.5 + i * 0.18, 1.2, 2.8, 0.48);
+      }
+    }
+    const dd = Math.hypot(x - this.camPos.x, z - this.camPos.z);
+    if (dd < 45) this.flash = Math.max(this.flash, 0.18 * (1 - dd / 45));
   }
   private updateNades(dt: number): void {
     const live = new Set<number>(); for (const n of this.match.nades) { live.add(n.id); let m = this.nadeMeshes.get(n.id); if (!m) { m = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), new THREE.MeshLambertMaterial({ color: 0x3b4a2a, emissive: 0xff3010, emissiveIntensity: 0.2 })); this.scene.add(m); this.nadeMeshes.set(n.id, m); } m.position.set(n.x, n.y, n.z); (m.material as THREE.MeshLambertMaterial).emissiveIntensity = n.fuse < 1 ? 0.2 + Math.abs(Math.sin(this.time * 24)) * 1.2 : 0.2; }
@@ -353,7 +372,7 @@ export class ShooterView {
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, color, transparent: true, opacity: a, depthWrite: false, blending: add ? THREE.AdditiveBlending : THREE.NormalBlending, fog: !add }));
     s.position.set(x, y, z); s.scale.setScalar(size); this.scene.add(s); this.puffs.push({ s, t: 0, life, vy, grow, a });
   }
-  private freeNode(o: THREE.Object3D): void { this.scene.remove(o); o.traverse(c => { const m = c as THREE.Mesh; m.geometry?.dispose(); const mat = m.material as THREE.Material | THREE.Material[] | undefined; if (Array.isArray(mat)) mat.forEach(x => x.dispose()); else mat?.dispose(); }); }
+  private freeNode(o: THREE.Object3D): void { o.removeFromParent(); o.traverse(c => { const m = c as THREE.Mesh; m.geometry?.dispose(); const mat = m.material as THREE.Material | THREE.Material[] | undefined; if (Array.isArray(mat)) mat.forEach(x => x.dispose()); else mat?.dispose(); }); }
   private syncVehicles(dt: number, vx: number, vz: number): void {
     for (const v of this.match.vehicles) {
       let n = this.vehNodes.get(v.id);
@@ -417,20 +436,26 @@ export class ShooterView {
     const gun = p.guns[p.cur], id = gun?.id ?? '';
     const pk = id + JSON.stringify(gun?.att ?? {});
     if (pk !== this.vmParts) {
-      const swapped = id !== this.vmId; this.vmId = id; this.vmParts = pk; if (this.vm) this.vmScene.remove(this.vm); this.vm = null; if (swapped) this.vmSwap = 0.35;
+      const swapped = id !== this.vmId; this.vmId = id; this.vmParts = pk;
+      if (this.vm) { this.vmFlash.removeFromParent(); if (this.vmOwned) this.freeNode(this.vm); else this.vm.removeFromParent(); }
+      this.vm = null; this.vmOwned = false; if (swapped) { this.vmSwap = 0.35; this.reloadBlend = 0; }
       const nodes = this.assets?.weaponNodes;
       if (id && nodes?.[`n_${id}`]) {
         this.vm = buildGun(nodes, id as WeaponId, gun?.att, true); this.vm.traverse(o => { (o as THREE.Mesh).castShadow = false; });
         const tip = muzzleTip(id as WeaponId, gun?.att); this.vm.add(this.vmFlash); this.vmFlash.position.set(tip.x, tip.y, 0); this.vmScene.add(this.vm);
+      } else if (id) {
+        const model = makeFallbackGun(id as WeaponId); this.vm = model.group; this.vmOwned = true;
+        this.vm.add(this.vmFlash); this.vmFlash.position.copy(model.tip); this.vmScene.add(this.vm);
       }
     }
     if (!this.vm) return;
     this.vm.visible = show; if (!show) return;
-    this.vmSwap = Math.max(0, this.vmSwap - dt); const sw = this.vmSwap / 0.35, moving = Math.min(1, p.speed / 5), reloading = p.reload > 0, recoil = p.kick, ads = p.ads ? 1 : 0;
+    this.vmSwap = Math.max(0, this.vmSwap - dt); const sw = this.vmSwap / 0.35, moving = Math.min(1, p.speed / 5), reloading = p.reload > 0, recoil = p.kick;
+    const blend = 1 - Math.exp(-dt * 14); this.aimBlend += ((p.ads && !reloading ? 1 : 0) - this.aimBlend) * blend; this.reloadBlend += ((reloading ? 1 : 0) - this.reloadBlend) * blend; const ads = this.aimBlend;
     const bob = Math.sin(this.bob * 1.1) * 0.35 * moving * (1 - ads * 0.8), sway = Math.cos(this.bob * 0.55) * 0.25 * moving * (1 - ads * 0.8), big = id === 'sniper' ? 11 : 12.5;
     const sprint = !ads && !reloading && p.speed > 6.1 ? 1 : 0; this.sprintT += (sprint - this.sprintT) * Math.min(1, dt * 10);
-    this.vm.scale.setScalar(big); this.vm.rotation.set(recoil * 0.2 - (reloading ? 0.7 : 0) - sw * 0.8 - this.sprintT * 0.35, Math.PI / 2 + recoil * 0.05 + this.sprintT * 0.5, this.sprintT * 0.12);
-    this.vm.position.set(4.6 * (1 - ads * 0.9) + sway, -4.4 * (1 - ads * 0.25) + bob - (reloading ? 3 : 0) - sw * 5 - this.sprintT * 1.2, -9.5 + recoil * 2.4 + this.sprintT * 0.8);
+    this.vm.scale.setScalar(big); this.vm.rotation.set(recoil * 0.2 - this.reloadBlend * 0.7 - sw * 0.8 - this.sprintT * 0.35, Math.PI / 2 + recoil * 0.05 + this.sprintT * 0.5, this.sprintT * 0.12);
+    this.vm.position.set(4.6 * (1 - ads * 0.9) + sway, -4.4 * (1 - ads * 0.25) + bob - this.reloadBlend * 3 - sw * 5 - this.sprintT * 1.2, -9.5 + recoil * 2.4 + this.sprintT * 0.8);
     this.vmFlash.visible = p.muzzle > 0 && gun?.att.muzzle !== 'suppressor'; this.vmFlash.material.rotation = this.time * 40; this.flashKick = Math.max(0, this.flashKick - dt * 14); const fs = 0.3 + this.flashKick * 0.45 * (0.7 + Math.random() * 0.6); this.vmFlash.scale.set(fs, fs, 1);
   }
 
@@ -481,6 +506,7 @@ export class ShooterView {
   }
 
   dispose(): void {
+    this.vmFlash.removeFromParent(); this.vmFlash.material.dispose(); if (this.vmOwned && this.vm) this.freeNode(this.vm);
     for (const entry of this.lootNodes.values()) entry.dispose(); this.lootNodes.clear();
     this.scene.traverse(o => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); const mat = m.material as THREE.Material | THREE.Material[] | undefined; if (Array.isArray(mat)) mat.forEach(x => x.dispose()); else mat?.dispose(); });
     this.post?.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss();

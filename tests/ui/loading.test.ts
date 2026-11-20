@@ -11,6 +11,10 @@ describe('로딩 화면', () => {
     expect(document.querySelector('.ld-pct')!.textContent).toBe('40%');
     ld.progress(0.1);
     expect(document.querySelector('.ld-pct')!.textContent).toBe('40%');
+    ld.progress(Number.NaN);
+    expect(document.querySelector('.ld-bar')!.classList.contains('busy')).toBe(true);
+    ld.progress(0.5);
+    expect(document.querySelector('.ld-pct')!.textContent).toBe('50%');
     ld.progress(null);
     expect(document.querySelector('.ld-bar')!.classList.contains('busy')).toBe(true);
     ld.note('연결이 느립니다');
@@ -39,7 +43,19 @@ describe('retry', () => {
     const assertion = expect(a).rejects.toThrow('x');
     await vi.runAllTimersAsync(); await assertion;
     const b = retry(async () => { throw new Error('y'); }, { cancelled: () => true });
-    await expect(b).rejects.toThrow('y');
+    await expect(b).rejects.toThrow('Loading cancelled');
+  });
+  it('does not retry after cancellation during backoff', async () => {
+    vi.useFakeTimers();
+    let cancelled = false;
+    const task = vi.fn(async () => { throw new Error('net'); });
+    const result = retry(task, { cancelled: () => cancelled });
+    const assertion = expect(result).rejects.toThrow('net');
+    await Promise.resolve();
+    cancelled = true;
+    await vi.runAllTimersAsync();
+    await assertion;
+    expect(task).toHaveBeenCalledTimes(1);
   });
   it('대기 시간은 늘어나다 8초에서 멈춘다', () => {
     expect(backoffMs(0)).toBeLessThan(backoffMs(2)); expect(backoffMs(20)).toBe(8000);

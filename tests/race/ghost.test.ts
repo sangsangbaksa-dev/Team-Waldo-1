@@ -13,6 +13,23 @@ describe('고스트', () => {
     const r = new GhostRecorder(); for (let t = 0; t < 1; t += 1 / 90) r.tick(t, { x: t, z: 0, h: 0, total: t });
     expect(r.data.length / 4).toBeGreaterThanOrEqual(10); expect(r.data.length / 4).toBeLessThanOrEqual(11);
   });
+  it('긴 프레임에서도 누락된 표본을 정확한 시각에 보간한다', () => {
+    const recorder = new GhostRecorder();
+    recorder.tick(0, { x: 0, z: 0, h: 0, total: 0 });
+    recorder.tick(0.35, { x: 35, z: 0, h: 0, total: 35 });
+    const ghost = sanitizeGhost(recorder.finish(0.35, 1, { x: 35, z: 0, h: 0, total: 35 }))!;
+    expect(ghostAt(ghost, 0.2)?.x).toBeCloseTo(20);
+    expect(ghostAt(ghost, 0.325)?.x).toBeCloseTo(32.5);
+    expect(ghostTimeAt(ghost, 25)).toBeCloseTo(0.25);
+  });
+  it('부동소수점 오차가 있어도 결승 표본을 중복하지 않는다', () => {
+    const recorder = new GhostRecorder();
+    recorder.tick(0, { x: 0, z: 0, h: 0, total: 0 });
+    recorder.tick(0.3, { x: 30, z: 0, h: 0, total: 30 });
+    const ghost = sanitizeGhost(recorder.finish(0.3, 1, { x: 30, z: 0, h: 0, total: 30 }));
+    expect(ghost?.data).toHaveLength(16);
+    expect(ghostAt(ghost!, 0.3)?.x).toBe(30);
+  });
   it('시각에 맞는 위치를 보간하고 끝나면 null', () => {
     const g = line(); expect(ghostAt(g, 0.25)!.x).toBeCloseTo(2.5, 1); expect(ghostAt(g, 99)).toBeNull();
   });

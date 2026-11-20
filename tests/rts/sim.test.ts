@@ -156,3 +156,21 @@ describe('건설 현장과 강화', () => {
     const pf = new Pather(s.map.size, s.grid), hq = hqOf(s, 0), path = pf.find(hq.x - 1, hq.y + 2, e[2].x - 1, e[2].y + 2); expect(path).not.toBeNull();
   });
 });
+
+describe('이동 경로 복구', () => {
+  it('완전히 막힌 곳에서는 목표까지의 가짜 직선 경로를 반환하지 않는다', () => {
+    const grid = new Uint8Array(25).fill(1);
+    grid[6] = 0; grid[18] = 0;
+    expect(new Pather(5, grid).find(1.5, 1.5, 3.5, 3.5)).toBeNull();
+  });
+  it('부분 경로가 소진되어도 이동 명령을 다시 수행한다', () => {
+    const s = fresh();
+    const u = s.spawnAt(0, 'marine', 20.5, 50.5);
+    for (let y = 49; y <= 52; y++) for (let x = 19; x <= 27; x++) s.grid[y * s.map.size + x] = 0;
+    expect(s.apply(0, { k: 'move', ids: [u.id], x: 27.5, y: 50.5 })).toBe(true);
+    u.path = [u.x, u.y]; u.pi = 1;
+    run(s, 200);
+    expect(s.dist(u.x, u.y, 27.5, 50.5)).toBeLessThan(0.3);
+    expect(u.o.t).toBe('idle');
+  });
+});

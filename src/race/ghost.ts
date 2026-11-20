@@ -3,6 +3,8 @@
 /** 기록 간격(초) */
 export const GHOST_DT = 0.1;
 const STRIDE = 4; // x, z, 방향, 누적 진행(샘플 단위)
+const MAX_VALUES = 200_000;
+const TIME_EPS = 1e-9;
 export interface Ghost { time: number; laps: number; data: number[]; finalSample?: true }
 export interface GhostPose { x: number; z: number; h: number; total: number }
 
@@ -11,17 +13,28 @@ const r2 = (v: number): number => Math.round(v * 100) / 100;
 /** 달리는 동안 표본을 쌓습니다. */
 export class GhostRecorder {
   data: number[] = [];
+  private previous: { clock: number; pose: GhostPose } | undefined;
 
   tick(clock: number, c: GhostPose): void {
-    if (!Number.isFinite(clock) || clock < count(this) * GHOST_DT || ![c.x, c.z, c.h, c.total].every(Number.isFinite)) return;
-    this.data.push(r2(c.x), r2(c.z), r2(c.h), r2(c.total));
+    if (!Number.isFinite(clock) || clock < 0 || ![c.x, c.z, c.h, c.total].every(Number.isFinite)) return;
+    const previous = this.previous;
+    if (previous && clock < previous.clock) return;
+    // 렌더 프레임의 위치가 아니라 정확한 0.1초 시점의 위치를 저장합니다.
+    // 한 프레임이 길어져 여러 표본을 건너뛰어도 재생 시계가 밀리지 않습니다.
+    while (this.data.length < MAX_VALUES && count(this) * GHOST_DT <= clock + TIME_EPS) {
+      const time = count(this) * GHOST_DT;
+      const k = previous && clock > previous.clock ? Math.max(0, Math.min(1, (time - previous.clock) / (clock - previous.clock))) : 1;
+      const a = previous?.pose ?? c;
+      this.data.push(r2(a.x + (c.x - a.x) * k), r2(a.z + (c.z - a.z) * k), r2(angleLerp(a.h, c.h, k)), r2(a.total + (c.total - a.total) * k));
+    }
+    this.previous = { clock, pose: { x: c.x, z: c.z, h: c.h, total: c.total } };
   }
 
   finish(time: number, laps: number, c?: GhostPose): Ghost {
     const data = this.data.slice();
     if (!c) return { time, laps, data };
     const sample = [r2(c.x), r2(c.z), r2(c.h), r2(c.total)];
-    if (time === (count(this) - 1) * GHOST_DT) data.splice(-STRIDE, STRIDE, ...sample);
+    if (Math.abs(time - (count(this) - 1) * GHOST_DT) <= TIME_EPS) data.splice(-STRIDE, STRIDE, ...sample);
     else data.push(...sample);
     return { time, laps, data, finalSample: true };
   }
@@ -79,12 +92,12 @@ export function sanitizeGhost(raw: unknown): Ghost | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const r = raw as Record<string, unknown>;
   if (typeof r.time !== 'number' || !Number.isFinite(r.time) || r.time <= 0 || typeof r.laps !== 'number' || !Array.isArray(r.data)) return null;
-  if (r.data.length < STRIDE * 2 || r.data.length % STRIDE !== 0 || r.data.length > 200_000 || !r.data.every(v => typeof v === 'number' && Number.isFinite(v))) return null;
+  if (r.data.length < STRIDE * 2 || r.data.length % STRIDE !== 0 || r.data.length > MAX_VALUES || !r.data.every(v => typeof v === 'number' && Number.isFinite(v))) return null;
   if (!Number.isInteger(r.laps) || r.laps <= 0) return null;
   const result: Ghost = { time: r.time, laps: r.laps, data: r.data as number[] };
   if (r.finalSample === true) {
     const samples = count(result);
-    if (r.time <= (samples - 2) * GHOST_DT || r.time > (samples - 1) * GHOST_DT) return null;
+    if (r.time <= (samples - 2) * GHOST_DT || r.time > (samples - 1) * GHOST_DT + TIME_EPS) return null;
     result.finalSample = true;
   }
   return result;

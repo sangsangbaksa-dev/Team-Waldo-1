@@ -337,7 +337,7 @@ export class RtsSim {
       case 'move': if (this.walk(u, o.x, o.y, this.speedOf(u), 0.25)) this.order(u, idle()); break;
       case 'amove': {
         let t = o.target ? this.unit(o.target) ?? this.building(o.target) : undefined;
-        if (t && (t.hp <= 0 || this.gap(u, d.radius, t) > d.range + 6)) { t = undefined; o.target = 0; }
+        if (o.target && (!t || t.hp <= 0 || this.gap(u, d.radius, t) > d.range + 6)) { t = undefined; o.target = 0; u.path = []; u.pi = 0; u.repath = 0; }
         if (!t && d.dmg > 0 && (u.id + this.tick) % 3 === 0) { const f = this.pick(u.owner, u.x, u.y, d.range + 3.5); if (f) { t = f; o.target = f.id; u.path = []; } }
         if (t) this.engage(u, t); else if (this.walk(u, o.x, o.y, this.speedOf(u), 0.6)) this.order(u, idle());
         break;
@@ -438,11 +438,24 @@ export class RtsSim {
   /** 목적지까지 길을 찾아 걷습니다. 도착하면 true. */
   private walk(u: Unit, gx: number, gy: number, speed: number, tol: number): boolean {
     if (this.dist(u.x, u.y, gx, gy) <= tol) return true;
-    if (u.path.length === 0) {
-      u.path = this.pather.find(u.x, u.y, gx, gy) ?? [gx, gy]; u.pi = 0;
-      if (u.path.length === 2 && this.dist(u.path[0], u.path[1], u.x, u.y) < tol) return true;
+    // 부분 경로를 모두 걸었거나 건설로 길이 막히면 다시 찾습니다.
+    if (u.pi * 2 >= u.path.length) {
+      if (u.repath > 0) return false;
+      const goal = this.pather.nearestFree(gx, gy);
+      if (goal && this.dist(u.x, u.y, goal.x, goal.y) <= tol) return true;
+      u.path = goal ? this.pather.find(u.x, u.y, goal.x, goal.y) ?? [] : [];
+      u.pi = 0; u.repath = 20;
+      if (!u.path.length) return false;
     }
-    return this.follow(u, speed) && this.dist(u.x, u.y, gx, gy) <= tol + 1.2;
+    const x = u.x, y = u.y;
+    const finished = this.follow(u, speed);
+    if (finished) {
+      const goal = this.pather.nearestFree(gx, gy);
+      if (goal && this.dist(u.x, u.y, goal.x, goal.y) <= tol) return true;
+    }
+    // 막힌 경로를 매 틱 재탐색하지 않고, 최대 초당 한 번 다시 찾습니다.
+    if (this.dist(x, y, u.x, u.y) < 0.001) { u.path = []; u.pi = 0; }
+    return false;
   }
   /** 경로를 따라 한 틱 이동. 경로 끝에 닿았으면 true. */
   private follow(u: Unit, speed: number): boolean {

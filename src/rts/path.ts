@@ -74,6 +74,8 @@ export class Pather {
         if (this.seen[ni] !== st || ng < this.g[ni]) { this.seen[ni] = st; this.g[ni] = ng; this.from[ni] = cur; push(ng + hOf(ni), ni); }
       }
     }
+    // 목표 쪽으로 한 칸도 전진하지 못했으면 막힌 목표를 직선 경로로 반환하지 않습니다.
+    if (!found && best === si) return null;
     const end = found ? gi : best;
     const cells: number[] = []; for (let i = end; i !== -1; i = this.from[i]) cells.push(i);
     cells.reverse();

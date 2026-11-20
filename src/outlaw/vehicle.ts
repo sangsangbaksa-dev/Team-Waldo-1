@@ -118,7 +118,9 @@ export function stepVehicle(sim: Sim, v: Vehicle, dt: number): void {
     v.wheel += v.vf * ds / 0.34; pedestrians(sim, v, ds); put(g, v);
     const gx = Math.floor(v.x / 12), gz = Math.floor(v.z / 12);
     for (let x = gx - 1; x <= gx + 1; x++) for (let z = gz - 1; z <= gz + 1; z++) for (const q of [...(g.cells.get(`${x},${z}`) ?? [])]) {
-      if (q.id <= v.id || !q.alive) continue; collideVehicles(sim, v, q); put(g, q);
+      // Each moving body must check its new position against both older and newer cars.
+      // SAT already rejects separated bodies; removed entries in the frame grid are ignored.
+      if (q === v || !q.alive || sim.vehicle(q.id) !== q) continue; collideVehicles(sim, v, q); put(g, q);
     }
     put(g, v); local(v);
   }

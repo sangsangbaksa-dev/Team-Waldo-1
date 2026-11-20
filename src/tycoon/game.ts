@@ -70,6 +70,9 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   const keys = new Set<string>(); const tc = { moveId: -1, mx: 0, my: 0, ox: 0, oy: 0, lookId: -1, lx: 0, ly: 0, run: false }; let drag = -1, dragX = 0, dragY = 0, locked = false;
   let near: { id: string; spot: SpotView; dist: number } | null = null, spotViews: SpotView[] = [], lastStage = -1, lastCarry = '', hudDirty = true;
   const toastList: Array<{ el: HTMLElement; at: number }> = [];
+  let bannerTimer = 0, winTimer = 0;
+  let carryGroup: THREE.Group | null = null;
+  let modalTrigger: HTMLElement | null = null;
 
   // ---------- 알림 ----------
   function toast(text: string, tone: 'info' | 'good' | 'bad' = 'info', sec = 3.4): void {
@@ -77,7 +80,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     while (toastList.length > 5) toastList.shift()!.el.remove();
   }
   function banner(title: string, sub: string, ms = 3200): void {
-    const b = q('#ty-banner'); b.innerHTML = `<h2>${esc(title)}</h2><p>${esc(sub)}</p>`; b.classList.remove('show'); void b.offsetWidth; b.classList.add('show'); window.setTimeout(() => b.classList.remove('show'), ms);
+    const b = q('#ty-banner'); b.innerHTML = `<h2>${esc(title)}</h2><p>${esc(sub)}</p>`; b.classList.remove('show'); void b.offsetWidth; b.classList.add('show'); b.style.animationDuration = `${ms}ms`; window.clearTimeout(bannerTimer); bannerTimer = window.setTimeout(() => b.classList.remove('show'), ms);
   }
 
   // ---------- 저장 ----------
@@ -101,14 +104,22 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       case 'map': h = '<div class="ty-bigmap"><button type="button" class="ty-x" data-close aria-label="닫기">✕</button><canvas id="ty-bigmap" width="720" height="720"></canvas></div>'; break;
     }
     if (h !== modalHtml || modalEl.hidden) { // 내용이 바뀔 때만 교체합니다(누르는 도중 버튼이 바뀌면 클릭이 사라집니다)
-      const keep = modalEl.querySelector('.ty-panel')?.scrollTop ?? 0; modalEl.innerHTML = h; modalHtml = h; modalEl.hidden = false;
+      const keep = modalEl.querySelector('.ty-panel')?.scrollTop ?? 0;
+      const focused = document.activeElement instanceof HTMLElement && modalEl.contains(document.activeElement) ? document.activeElement : null;
+      const focusKey = focused?.dataset.act ?? focused?.dataset.menu ?? focused?.dataset.title;
+      modalEl.innerHTML = h; modalHtml = h; modalEl.hidden = false;
       const p = modalEl.querySelector('.ty-panel'); if (p) p.scrollTop = keep;
+      if (focused) { const buttons = Array.from(modalEl.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')); const matching = focusKey ? buttons.find(b => (b.dataset.act ?? b.dataset.menu ?? b.dataset.title) === focusKey) : undefined; (matching ?? buttons[0])?.focus({ preventScroll: true }); }
     }
     if (modal.kind === 'map') drawBig();
   }
   function drawBig(): void { const c = modalEl.querySelector<HTMLCanvasElement>('#ty-bigmap'); if (c) drawMap(c, layout, { stage: core.state.stageIndex, spots: spotViews, px: player.pos.x, pz: player.pos.z, yaw: player.facing, target: core.state.task?.targetSpotId ?? null, time: performance.now() / 1000, names: true }); }
-  function openModal(m: Modal): void { modal = m; if (m && document.pointerLockElement) document.exitPointerLock(); resetInput(); renderModal(); audio.open(); }
-  function closeModal(): void { modal = null; renderModal(); if (phase === 'play') lock(); }
+  function openModal(m: Modal): void {
+    if (!modal) modalTrigger = document.activeElement instanceof HTMLElement && root.contains(document.activeElement) ? document.activeElement : null;
+    modal = m; if (m && document.pointerLockElement === canvas) document.exitPointerLock(); resetInput(); renderModal();
+    modalEl.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true }); audio.open();
+  }
+  function closeModal(): void { modal = null; renderModal(); modalTrigger?.focus({ preventScroll: true }); modalTrigger = null; if (phase === 'play') lock(); }
   function openSpot(id: string): void { if (phase !== 'play') return; const spot = core.spot(id); if (!spot) return; openModal({ kind: 'spot', id }); }
   function interact(): void { if (phase !== 'play' || modal) return; if (near && !core.state.activity) openSpot(near.id); }
 
@@ -123,11 +134,12 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (title === 'keep') closeModal(); else if (title === 'exit') exit();
   });
   function doAction(spotId: string, actionId: string): void {
+    if (actionId === 'sell' && !window.confirm('가게를 매각할까요? 재고와 직원은 사라집니다.')) return;
+    if (actionId === 'discard_cargo' && !window.confirm('보유 재료를 환불 없이 버릴까요?')) return;
     const before = core.state.cash, r = core.perform(spotId, actionId);
     if (!r.ok) { audio.deny(); toast(r.message, 'bad'); renderModal(); return; }
     audio.click(); if (core.state.cash < before) audio.spend();
-    const def = core.actionsAt(spotId).find(a => a.id === actionId); void def;
-    if (core.state.activity) { closeModal(); toast(r.message); } else { toast(r.message, 'good'); renderModal(); }
+    if (core.state.activity) { closeModal(); toast(r.message); } else { save(); toast(r.message, 'good'); renderModal(); }
     hudDirty = true;
   }
   function menuAction(m: string): void {
@@ -152,6 +164,11 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (phase !== 'play') return;
     if (e.code === 'Escape') { e.preventDefault(); if (modal && modal.kind !== 'menu') closeModal(); else if (modal) closeModal(); else openModal({ kind: 'menu' }); return; }
     if (modal) {
+      if (e.code === 'Tab') {
+        const buttons = Array.from(modalEl.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+        if (buttons.length) { const i = buttons.indexOf(document.activeElement as HTMLButtonElement); if (i === -1 || (e.shiftKey ? i === 0 : i === buttons.length - 1)) { e.preventDefault(); (e.shiftKey ? buttons[buttons.length - 1] : buttons[0]).focus(); } }
+        return;
+      }
       if (modal.kind === 'spot' && /^Digit[1-9]$/.test(e.code)) { const a = core.actionsAt(modal.id)[Number(e.code.slice(5)) - 1]; if (a?.enabled) doAction(modal.id, a.id); e.preventDefault(); }
       else if (e.code === 'KeyE' && modal.kind !== 'menu') { e.preventDefault(); closeModal(); }
       return;
@@ -211,24 +228,32 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       case 'stage': banner(STAGE_NAMES[e.stage], e.text); audio.stageUp(); cineT = 0.001; syncCity(true); applyStageLook(); save(); break;
       case 'day': audio.day(); toast(`${core.state.day}일차 아침 — 어제 순이익 ${formatMoney(e.report.profit)}`, e.report.profit >= 0 ? 'good' : 'bad', 5); save(); break;
       case 'task': if (e.task) toast(e.text); break;
-      case 'win': banner('세계 정복', e.text, 6000); window.setTimeout(() => { if (!closed && phase === 'play') openModal({ kind: 'win' }); }, 3200); break;
+      case 'win': banner('세계 정복', e.text, 6000); window.clearTimeout(winTimer); winTimer = window.setTimeout(() => { if (!closed && phase === 'play') openModal({ kind: 'win' }); }, 3200); break;
     }
   }
   function syncCity(animate: boolean): void {
     if (!city) return;
     spotViews = core.spots() as SpotView[]; city.sync(core.state.stage, spotViews, animate); city.setTarget(core.state.task?.targetSpotId ?? null);
   }
+  function disposeCarry(): void {
+    if (!carryGroup) return;
+    carryGroup.removeFromParent();
+    carryGroup.traverse(obj => { if (obj instanceof THREE.Mesh) { obj.geometry.dispose(); const materials = Array.isArray(obj.material) ? obj.material : [obj.material]; for (const material of materials) material.dispose(); } });
+    carryGroup = null;
+  }
   function applyStageLook(): void {
+    disposeCarry();
     const si = core.state.stageIndex; player.setOutfit(si); crowd?.setStage(si); traffic?.setStage(si); lastStage = si; attachCarry(true);
   }
   function attachCarry(force = false): void {
     const s = core.state, key = `${s.cargo?.units ? s.cargo.kind : ''}${s.cargo?.units ?? 0}|${s.bottles}`; if (!force && key === lastCarry) return; lastCarry = key;
-    const rig = player?.rig; if (!rig) return; const old = rig.torso.getObjectByName('carry'); if (old) rig.torso.remove(old);
+    disposeCarry();
+    const rig = player?.rig; if (!rig) return;
     if (!s.cargo?.units && !s.bottles) return;
     const g = new THREE.Group(); g.name = 'carry';
     if (s.cargo?.units) { const sz = 0.3 + Math.min(0.35, s.cargo.units / 120); const m = new THREE.Mesh(new THREE.BoxGeometry(0.35, sz, sz * 1.3), new THREE.MeshLambertMaterial({ color: 0xb98a4a })); m.position.set(-0.32, 1.12, 0); g.add(m); }
     if (s.bottles) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.14 + Math.min(0.14, s.bottles / 120), 10, 8), new THREE.MeshLambertMaterial({ color: 0x8ab6a4, transparent: true, opacity: 0.9 })); m.position.set(0.02, 0.72, 0.34); g.add(m); }
-    rig.torso.add(g);
+    rig.torso.add(g); carryGroup = g;
   }
 
   // ---------- 제목/시작 ----------
@@ -269,10 +294,10 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   function tick(dt: number, nowS: number): void {
     if (!renderer || !core) return;
     const playing = phase === 'play', s = core.state;
-    if (playing && !paused()) core.tick(dt);
+    if (playing && !paused() && !document.hidden) { const hadActivity = !!s.activity; core.tick(dt); if (hadActivity && !core.state.activity) save(); }
     const st = core.state;
     // 입력 → 이동
-    const mv = readMove(), frozen = !playing || paused() || !!st.activity?.lockMovement;
+    const mv = readMove(), frozen = !playing || paused() || document.hidden || !!st.activity?.lockMovement;
     if (playing && !paused()) {
       const turn = (keys.has('ArrowLeft') ? 1 : 0) - (keys.has('ArrowRight') ? 1 : 0), tilt = (keys.has('ArrowDown') ? 1 : 0) - (keys.has('ArrowUp') ? 1 : 0);
       if (turn || tilt) player.look(-turn * dt * 1.8, tilt * dt * 1.2);
@@ -336,6 +361,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 종료 ----------
   function exit(): void {
     if (closed) return; if (phase === 'play' && !save() && !window.confirm('저장하지 못했습니다. 그래도 허브로 나갈까요?')) return; closed = true; cancelAnimationFrame(raf);
+    window.clearTimeout(bannerTimer); window.clearTimeout(winTimer); disposeCarry();
     document.removeEventListener('visibilitychange', persistOnHide); window.removeEventListener('pagehide', persistOnPageHide);
     window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', resetInput); document.removeEventListener('visibilitychange', resetInput);
     window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp); window.removeEventListener('wheel', onWheel); window.removeEventListener('resize', resize); document.removeEventListener('pointerlockchange', onLock);

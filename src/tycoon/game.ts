@@ -1,3 +1,4 @@
+import '../shared/game-polish.css';
 // TYCOON(HUSTLE) — 게임 조립: 3D 도시·플레이어·HUD·장소 패널·입력·저장. 경제 규칙은 core/ 가 맡습니다.
 import * as THREE from 'three';
 import './tycoon.css';
@@ -133,12 +134,14 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   }
 
   // ---------- 입력 ----------
-  function resetInput(): void { keys.clear(); tc.moveId = tc.lookId = -1; tc.mx = tc.my = 0; drag = -1; q('#ty-stick').style.opacity = '0'; }
+  function resetInput(): void { keys.clear(); tc.moveId = tc.lookId = -1; tc.mx = tc.my = 0; drag = -1; q('#ty-stick').style.opacity = '0'; (q('#ty-stick').firstElementChild as HTMLElement).style.transform = ''; }
   function lock(): void { if (touch || !player?.firstPerson || locked) return; try { const r = canvas.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(() => undefined); } catch { /* 선택 사항 */ } }
-  const onLock = (): void => { locked = document.pointerLockElement === canvas; };
+  const onLock = (): void => { locked = document.pointerLockElement === canvas; if (!locked) resetInput(); };
   document.addEventListener('pointerlockchange', onLock);
   const onKeyDown = (e: KeyboardEvent): void => {
-    if (e.target instanceof HTMLInputElement) return;
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
+    if (e.repeat) return;
+    if (e.target instanceof HTMLElement && e.target.closest('button,a') && (e.code === 'Enter' || e.code === 'Space')) return;
     audio.unlock();
     if (phase === 'title') { if (e.code === 'Enter') titleAction(readTycoonSummary().has ? 'continue' : 'new'); return; }
     if (phase !== 'play') return;

@@ -1220,6 +1220,9 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("blur", () => {
   if (state === "play") pauseGame();
 });
+window.addEventListener("pagehide", () => {
+  if (state === "play") save();
+});
 function look(dx, dy) {
   yaw -= dx * 0.00245;
   pitch = THREE.MathUtils.clamp(pitch - dy * 0.0022, -1.18, 1.18);

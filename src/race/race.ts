@@ -108,6 +108,8 @@ const IDLE: CarInput = { throttle: 0, brake: 0, steer: 0, drift: false, nitro: f
 
 export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): RaceEvent[] {
   const ev: RaceEvent[] = [], t = r.track;
+  if(!Number.isFinite(dt)||dt<=0)return ev;
+  const clockBefore=r.clock;
   if (r.phase !== 'done') r.clock += dt;
   const pressed = input.throttle > 0.05;
   if (r.phase === 'countdown') {
@@ -117,11 +119,14 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
     if (r.clock >= 0) {
       r.phase = 'racing'; ev.push({ type: 'go' });
       if (pressed && r.thrDownAt !== null && r.thrDownAt >= -0.5) { r.player.car.boostT = 1.4; ev.push({ type: 'launch' }); }
-      r.clock = 0; for (const k of r.racers) k.lapStart = 0;
+      // Simulate only the part of this tick after the starting light changes.
+      dt=Math.max(0,clockBefore+dt); r.clock=dt; for (const k of r.racers) k.lapStart = 0;
+      r.rec?.tick(0,r.player.car);
     }
   }
   r.thrPrev = pressed;
-  const racing = r.phase !== 'countdown';
+  if(r.phase==='countdown'||dt<=1e-10)return ev;
+  const racing = true;
   if (r.phase === 'racing') updateDraft(r, dt);
   for (const k of r.racers) {
     if (k.link) {
@@ -155,7 +160,7 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
     const mine = i === 0 || j === 0, rel = separateCars(r.racers[i].car, r.racers[j].car);
     if (mine && rel > 3) ev.push({ type: 'bump', power: rel });
   }
-  for (const k of r.racers) if (!k.link) { const hit = stayOnTrack(k.car, t, dt, false); if (k.player && hit > 0) ev.push({ type: 'hit', power: hit }); }
+  for (const k of r.racers) if (!k.link) { const hit = stayOnTrack(k.car, t, dt, false); if (k.player && hit > 0) { ev.push({ type: 'hit', power: hit }); if(r.phase==='racing'){const lost=stepDrift(r.drift,k.car,0,true);if(lost?.type==='lost')ev.push({type:'driftLost',points:lost.points});} } }
   // Keep the final result stable during the AI-driven finish animation.
   if (r.phase !== 'racing') return ev;
   // 랩·결승

@@ -39,10 +39,11 @@ export function newCar(t: Track, idx: number, lat: number): CarState {
 }
 
 const clamp = (v: number, a: number, b: number): number => Math.max(a, Math.min(b, v));
-export const wrapAngle = (a: number): number => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
+export const wrapAngle = (a: number): number => { if(!Number.isFinite(a))return 0; a%=Math.PI*2; return a>Math.PI?a-Math.PI*2:a< -Math.PI?a+Math.PI*2:a; };
 
 export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: CarParams = PLAYER_PARAMS): StepEvents {
   const ev: StepEvents = { hit: 0, driftBoost: 0, pad: false };
+  if(!Number.isFinite(dt)||dt<=0)return ev;
   let fx = Math.cos(c.h), fz = Math.sin(c.h), rx = -fz, rz = fx;
   let vf = c.vx * fx + c.vz * fz, vl = c.vx * rx + c.vz * rz;
 
@@ -105,7 +106,7 @@ export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: Car
 
   // 부스트 패드
   c.padCd = Math.max(0, c.padCd - dt);
-  if (c.padCd <= 0 && Math.abs(c.lat) < 7) for (const pad of t.pads) if (Math.abs(idxDelta(t, c.idx, pad)) <= 2) { c.boostT = Math.max(c.boostT, 2); c.padCd = 2; ev.pad = true; break; }
+  if (c.padCd <= 0 && c.vf > 5 && Math.abs(c.lat) < 7) for (const pad of t.pads) if (Math.abs(idxDelta(t, c.idx, pad)) <= 2) { c.boostT = Math.max(c.boostT, 2); c.padCd = 2; ev.pad = true; break; }
   return ev;
 }
 
@@ -120,7 +121,7 @@ export function syncLocalVelocity(c: CarState): void {
 export function stayOnTrack(c: CarState, t: Track, dt: number, progress: boolean): number {
   const nr = nearest(t, c.x, c.z, c.idx, 40), delta = idxDelta(t, c.idx, nr.i);
   if (progress) { c.total += delta; c.idx = nr.i; c.wallT = Math.max(0, c.wallT - dt); }
-  else if (Math.abs(delta) <= 8) c.idx = nr.i;
+  else if (Math.abs(delta) <= 8) { c.idx = nr.i; c.total += delta; }
   c.lat = nr.lat;
   const limit = t.halfWidth - BODY_HALF_WIDTH - 0.28;
   let hit = 0;
@@ -133,7 +134,7 @@ export function stayOnTrack(c: CarState, t: Track, dt: number, progress: boolean
       c.vx -= px * vn; c.vz -= pz * vn; c.drifting = false; c.driftT = 0;
       if (vn > 2.5 && c.wallT <= 0) { hit = vn; c.wallT = 0.18; }
     }
-    const want = Math.atan2(t.tz[nr.i], t.tx[nr.i]); c.h = wrapAngle(c.h + wrapAngle(want - c.h) * Math.min(1, WALL_HEADING_RATE * dt));
+    const roadHeading = Math.atan2(t.tz[nr.i], t.tx[nr.i]); const want = Math.abs(wrapAngle(c.h-roadHeading))>Math.PI/2?wrapAngle(roadHeading+Math.PI):roadHeading; c.h = wrapAngle(c.h + wrapAngle(want - c.h) * Math.min(1, WALL_HEADING_RATE * dt));
     c.lat = Math.sign(nr.lat) * limit;
     syncLocalVelocity(c);
   }

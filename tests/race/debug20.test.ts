@@ -1,0 +1,24 @@
+import {describe,it,expect} from 'vitest';
+import {buildTrack} from '../../src/race/track';
+import {createRace,updateRace} from '../../src/race/race';
+import {encodeSnap,parseSnap,followSnap} from '../../src/race/netcar';
+import {newCar,stepCar,stayOnTrack,wrapAngle} from '../../src/race/physics';
+import {GhostRecorder,sanitizeGhost,ghostAt} from '../../src/race/ghost';
+import {nitroForChain} from '../../src/race/driftscore';
+const track=buildTrack(),idle={throttle:0,brake:0,steer:0,drift:false,nitro:false};
+describe('SPEED RUSH integrity regressions',()=>{
+it('rejects sparse network packets',()=>{expect(parseSnap(new Array(16))).toBeNull();});
+it('rejects impossible steering and velocity',()=>{const s=encodeSnap(newCar(track,0,0));s[9]=5;expect(parseSnap(s)).toBeNull();s[9]=0;s[4]=1e6;expect(parseSnap(s)).toBeNull();});
+it('rejects invalid tank, boost and drift flags',()=>{const s=encodeSnap(newCar(track,0,0));s[13]=2;expect(parseSnap(s)).toBeNull();s[13]=1;s[14]=-1;expect(parseSnap(s)).toBeNull();s[14]=0;s[15]=4;expect(parseSnap(s)).toBeNull();});
+it('copies accepted packets so subsequent mutation cannot affect the car',()=>{const s=encodeSnap(newCar(track,0,0)),copy=parseSnap(s)!;s[0]=123456;expect(copy[0]).not.toBe(s[0]);});
+it('snaps elevation along with a large position correction',()=>{const c=newCar(track,0,0),s=encodeSnap(c);s[0]+=200;s[2]=40;followSnap(c,{snap:s,at:0},0,1/90);expect(c.y).toBe(40);});
+it('does not corrupt car state for invalid simulation deltas',()=>{const c=newCar(track,0,0),before=structuredClone(c);stepCar(c,idle,NaN,track);followSnap(c,{snap:encodeSnap(c),at:0},0,-1);expect(c).toEqual(before);});
+it('wraps huge and nonfinite headings in constant time',()=>{expect(wrapAngle(Infinity)).toBe(0);expect(Math.abs(wrapAngle(1e20))).toBeLessThanOrEqual(Math.PI);});
+it('cannot charge boost by parking on a pad',()=>{const c=newCar(track,track.pads[0],0);c.nitro=0;for(let i=0;i<180;i++)expect(stepCar(c,idle,1/90,track).pad).toBe(false);expect(c.boostT).toBe(0);});
+it('counts collision-induced index movement exactly once',()=>{const c=newCar(track,30,0);const total=c.total;c.x=track.x[31];c.z=track.z[31];stayOnTrack(c,track,1/90,false);expect(c.total).toBe(total+1);stayOnTrack(c,track,1/90,true);expect(c.total).toBe(total+1);});
+it('does not charge nitro during countdown',()=>{const r=createRace(track,1),n=r.player.car.nitro;updateRace(r,1,idle);expect(r.player.car.nitro).toBe(n);});
+it('preserves time at the countdown boundary',()=>{const r=createRace(track,1);r.clock=-0.003;updateRace(r,0.01,idle);expect(r.clock).toBeCloseTo(0.007);});
+it('records missing terminal ghost samples',()=>{const r=new GhostRecorder();r.tick(0,{x:0,z:0,h:0,total:0});const g=sanitizeGhost(r.finish(.35,1,{x:35,z:0,h:0,total:35}))!;expect(g).not.toBeNull();expect(ghostAt(g,.2)?.x).toBeCloseTo(20);});
+it('rejects sparse or impossible legacy ghost timelines',()=>{expect(sanitizeGhost({time:.1,laps:1,data:new Array(8)})).toBeNull();expect(sanitizeGhost({time:100,laps:1,data:Array(8).fill(0)})).toBeNull();});
+it('does not return negative or nonfinite nitro rewards',()=>{expect(nitroForChain(-100)).toBe(0);expect(nitroForChain(NaN)).toBe(0);});
+});

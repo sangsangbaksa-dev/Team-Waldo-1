@@ -12,17 +12,22 @@ export function encodeSnap(c: CarState): Snap {
 /** 형식이 맞지 않거나 숫자가 아닌 값이 있으면 버립니다(상대가 보낸 데이터는 믿지 않습니다). */
 export function parseSnap(raw: unknown): Snap | null {
   if (!Array.isArray(raw) || raw.length !== SNAP_LEN) return null;
-  return raw.every(v => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 1e7) ? (raw as Snap) : null;
+  // Array.every skips holes; explicitly materialize the packet before validation.
+  const s=Array.from(raw);
+  if(!s.every(v=>typeof v==='number'&&Number.isFinite(v)&&Math.abs(v)<1e7))return null;
+  if(Math.abs(s[3])>Math.PI+0.01||s.slice(4,8).some(v=>Math.abs(v)>250)||Math.abs(s[8])>Math.PI||Math.abs(s[9])>1.01||Math.abs(s[10])>20)return null;
+  if(!Number.isInteger(s[12])||s[12]<0||s[13]<0||s[13]>1||s[14]<0||s[14]>20||(s[15]!==0&&s[15]!==1))return null;
+  return s;
 }
 
 export interface RemoteLink { snap: Snap | null; at: number }
 
 /** 마지막 스냅샷을 속도로 조금 앞질러 예측한 위치로 부드럽게 따라갑니다. 너무 멀어지면 바로 옮깁니다. */
 export function followSnap(car: CarState, link: RemoteLink, now: number, dt: number): void {
-  const s = link.snap; if (!s) return;
+  const s = link.snap; if (!s || !Number.isFinite(now)||!Number.isFinite(link.at)||!Number.isFinite(dt)||dt<=0) return;
   const age = Math.min(0.25, Math.max(0, (now - link.at) / 1000)), tx = s[0] + s[4] * age, tz = s[1] + s[5] * age, far = Math.hypot(tx - car.x, tz - car.z) > 30;
   const k = far ? 1 : Math.min(1, dt * 14);
-  car.x += (tx - car.x) * k; car.z += (tz - car.z) * k; car.y += (s[2] - car.y) * Math.min(1, dt * 14);
+  car.x += (tx - car.x) * k; car.z += (tz - car.z) * k; car.y += (s[2] - car.y) * k;
   car.h = wrapAngle(car.h + wrapAngle(s[3] + s[10] * age - car.h) * k);
   car.vx = s[4]; car.vz = s[5]; car.vf = s[6]; car.vl = s[7]; car.slip = s[8]; car.steer = s[9]; car.yawRate = s[10];
   car.total = s[11]; car.idx = Math.round(s[12]); car.nitro = s[13]; car.boostT = s[14]; car.drifting = s[15] === 1;

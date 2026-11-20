@@ -4,7 +4,7 @@ export const RACE_KEY = 'waldo.race.v1';
 const RACE_KEY_V2 = 'waldo.race.v2';
 
 export function readCityCareer(): { matches: number; wins: number; best: number } {
-  try { const r = JSON.parse(localStorage.getItem(CITY_KEY) ?? '{}') as Record<string, unknown>; const n = (v: unknown): number => typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0; return { matches: n(r.matches), wins: n(r.wins), best: n(r.best) }; } catch { return { matches: 0, wins: 0, best: 0 }; }
+  try { const r = JSON.parse(localStorage.getItem(CITY_KEY) ?? '{}') as Record<string, unknown>; const n = (v: unknown): number => typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0; const matches = n(r.matches); return { matches, wins: Math.min(matches, n(r.wins)), best: n(r.best) }; } catch { return { matches: 0, wins: 0, best: 0 }; }
 }
 
 export const RACE_SETUP_KEY = 'waldo.race.setup.v1';
@@ -47,7 +47,13 @@ export function writeRaceSetupRaw(v: unknown): void {
   try { localStorage.setItem(RACE_SETUP_KEY, JSON.stringify(v)); } catch { /* 선택은 저장하지 않아도 됩니다. */ }
 }
 
-export const fmtTime = (s: number): string => { if (!Number.isFinite(s)) return '--:--.---'; const m = Math.floor(s / 60), r = s - m * 60; return `${m}:${r < 10 ? '0' : ''}${r.toFixed(3)}`; };
+export const fmtTime = (s: number): string => {
+  const ms = Math.round(s * 1000);
+  if (!Number.isSafeInteger(ms) || s < 0) return '--:--.---';
+  const minutes = Math.floor(ms / 60_000);
+  const sec = Math.floor(ms / 1000) % 60;
+  return `${minutes}:${String(sec).padStart(2, '0')}.${String(ms % 1000).padStart(3, '0')}`;
+};
 
 export const RTS_KEY = 'waldo.rts.v1';
 export interface RtsRecords { difficulty: string; matches: number; wins: number; bestWin: Record<string, number> }
@@ -56,7 +62,7 @@ export function readRtsRecords(): RtsRecords {
   try {
     const r = JSON.parse(localStorage.getItem(RTS_KEY) ?? '{}') as Record<string, unknown>, n = (v: unknown): number => typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0;
     if (typeof r.difficulty === 'string') rec.difficulty = r.difficulty;
-    rec.matches = n(r.matches); rec.wins = n(r.wins); rec.bestWin = timeTable(r.bestWin);
+    rec.matches = n(r.matches); rec.wins = Math.min(rec.matches, n(r.wins)); rec.bestWin = timeTable(r.bestWin);
   } catch { /* 기록 없이도 플레이할 수 있습니다. */ }
   return rec;
 }

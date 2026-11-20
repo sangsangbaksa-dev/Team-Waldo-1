@@ -182,12 +182,13 @@ export class Match {
         }
         this.update(p, dt);
       }
-      if (Math.hypot(p.x - zone.cx, p.z - zone.cz) > zone.r) this.damage(p, zone.dps * dt, -1, 'zone', false, p.x, 1, p.z, true);
+      if ((p.x - zone.cx) ** 2 + (p.z - zone.cz) ** 2 > zone.r ** 2) this.damage(p, zone.dps * dt, -1, 'zone', false, p.x, 1, p.z, true);
     }
     // 마지막 한 명이 남으면 끝납니다(동시에 모두 쓰러졌다면 마지막에 쓰러진 쪽이 승자).
     if (!this.over) {
-      const alive = this.players.filter(p => p.alive);
-      if (alive.length <= 1 && this.players.length > 1) this.finish(alive[0]?.id ?? this.lastDead());
+      let survivor = -1, alive = 0;
+      for (const p of this.players) if (p.alive) { survivor = p.id; if (++alive > 1) break; }
+      if (alive <= 1 && this.players.length > 1) this.finish(alive === 1 ? survivor : this.lastDead());
     }
   }
   /** 다른 브라우저가 움직이는 선수: 받은 상태는 밖에서 넣고, 여기서는 반동·피격 표시만 줄이고 차를 따라갑니다. */
@@ -429,7 +430,9 @@ export class Match {
         if (gun.mag > 0) this.shoot(p, gun, def.id); else if (p.emptyT <= 0) { p.emptyT = 0.5; this.events.push({ t: 'empty', id: p.id }); }
       }
     }
-    p.fireHeld = inp.fire;
+    // Bots request sustained engagement; simulate repeated trigger presses for semi-auto guns.
+    // Human players still need to release the trigger between shots.
+    p.fireHeld = inp.fire && !(p.bot && def && !def.auto);
     // 줍기
     const wantE = inp.interact && !p.interactHeld; p.interactHeld = inp.interact;
     let took = false;
@@ -512,7 +515,10 @@ export class Match {
     const id = l.weapon!, def = WEAPONS[id], same = p.guns.find(g => g?.id === id);
     if (same) { same.reserve = Math.min(def.mag * 6, same.reserve + def.mag * 2); this.take(p, l); return; }
     const att: Attachments = { ...(l.att ?? {}) };
-    const free = p.guns.indexOf(null), slot = free >= 0 ? free : p.cur, old = p.guns[slot];
+    const free = p.guns.indexOf(null);
+    const rankAt = (i: number): number => WEAPONS[p.guns[i]!.id].rank;
+    const slot = free >= 0 ? free : p.bot && rankAt(1 - p.cur) < rankAt(p.cur) ? 1 - p.cur : p.cur, old = p.guns[slot];
+    if (p.bot && old && WEAPONS[old.id].rank >= def.rank) return;
     if (old) this.spawnLoot({ kind: 'weapon', weapon: old.id, att: { ...old.att }, x: p.x + Math.cos(p.yaw) * 0.8, z: p.z + Math.sin(p.yaw) * 0.8 });
     p.guns[slot] = { id, mag: magOf(id, att), reserve: def.mag * 2, att }; p.cur = slot; p.reload = 0; p.cd = 0.35; this.take(p, l);
   }

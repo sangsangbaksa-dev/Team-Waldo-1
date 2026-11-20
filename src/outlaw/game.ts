@@ -1,3 +1,4 @@
+import { renderPixelRatio } from '../shared/render-budget';
 import '../shared/game-polish.css';
 // OUTLAW CITY — 게임 조립: 타이틀(도시 선회)·입력·HUD·상점/지도/일시정지·고정 간격 루프.
 import * as THREE from 'three';
@@ -430,7 +431,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
 
   // ---------- 루프 ----------
   function resize(): void {
-    if (!renderer) return; const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); composer?.setSize(w, h); bloom?.resolution.set(w / 2, h / 2); camera.aspect = w / h; camera.updateProjectionMatrix();
+    if (!renderer) return; const w = Math.max(1, innerWidth), h = Math.max(1, innerHeight), ratio = renderPixelRatio(w, h, devicePixelRatio, prefs.quality); if (ratio !== renderer.getPixelRatio()) { renderer.setPixelRatio(ratio); composer?.setPixelRatio(ratio); } renderer.setSize(w, h, false); composer?.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
   }
   window.addEventListener('resize', resize);
 
@@ -548,7 +549,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     for (const [t, f] of [['keydown', onKeyDown], ['keyup', onKeyUp], ['mousemove', onMouseMove], ['mouseup', onMouseUp], ['wheel', onWheel], ['blur', resetInput], ['resize', resize]] as Array<[string, EventListener]>) window.removeEventListener(t, f);
     lobby?.close(); versus?.dispose(); document.removeEventListener('pointerlockchange', onLock); if (document.pointerLockElement) document.exitPointerLock();
     try { actorView?.dispose(); cityView?.dispose(); } catch { /* 정리 실패는 무시 */ }
-    audio.dispose(); composer?.dispose(); renderer?.dispose(); renderer?.forceContextLoss(); root.remove(); onExit();
+    audio.dispose(); if (composer) { for (const pass of composer.passes) pass.dispose(); composer.dispose(); } renderer?.dispose(); renderer?.forceContextLoss(); root.remove(); onExit();
   }
 
   // ---------- 부팅 ----------
@@ -562,7 +563,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (closed) { opts.loading?.close(); return; }
     try {
       renderer = new THREE.WebGLRenderer({ canvas, antialias: prefs.quality !== 'low', powerPreference: 'high-performance' });
-      renderer.setPixelRatio(Math.min(prefs.quality === 'high' ? 2 : prefs.quality === 'standard' ? 1.5 : 1, devicePixelRatio || 1));
+      renderer.setPixelRatio(renderPixelRatio(innerWidth, innerHeight, devicePixelRatio, prefs.quality));
       if (prefs.quality !== 'low') { composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera)); bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), .3, .6, .82); composer.addPass(bloom); composer.addPass(new OutputPass()); }
       sim = new Sim(SEED); sim.clock = TITLE_CLOCK;
       cityView = new CityView(scene, renderer, sim.map, assets, prefs.quality); cityView.onLightning = delay => { const active = sim; setTimeout(() => { if (!closed && sim === active) audio.play('thunder'); }, delay * 1000); }; actorView = new ActorView(scene, sim, assets, prefs.quality);

@@ -90,7 +90,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
         <section class="${pickMode !== 'solo' ? 'dim' : ''}"><h3>AI 난이도</h3><div class="sz-seg four">${DIFFICULTIES.map(d => `<button type="button" class="sz-opt ${d === level ? 'on' : ''}" data-level="${d}" aria-pressed="${d === level}" ${pickMode !== 'solo' ? 'disabled' : ''}><b>${BOTS[d].label}</b></button>`).join('')}</div>
           <p class="sz-note">${pickMode !== 'solo' ? '온라인 대전과 방은 사람끼리 겨루므로 AI가 나오지 않습니다.' : `${b.blurb} (반응 ${b.react.toFixed(2)}초 · 시야 ${b.sight}m)`}</p></section>
         <section class="${pickMode !== 'solo' ? 'dim' : ''}"><h3>총기 조립</h3><div class="sz-smith"><div><b>부품을 골라 출격 구성을 만드세요</b><em>${esc(loadoutSummary(loadout))}${pickMode !== 'solo' ? ' · 솔로 배틀로열에서만 적용됩니다' : ''}</em></div><button type="button" data-act="smith" ${assetState === 'loading' ? 'disabled' : ''}>${assetState === 'loading' ? `불러오는 중 ${Math.floor(assetPct * 100)}%` : '총기 조립 열기'}</button></div></section>
-        <section><h3>조작</h3><ul class="sz-help">${touch ? '<li>왼쪽 스틱 이동 · 오른쪽 드래그 시점</li><li>사격 · 조준 · 장전 · 줍기 · 교체 버튼 (비행기에서는 <b>줍기</b> 버튼이 점프·낙하산, 차 옆에서는 탑승·하차, 운전 중 <b>웅크림</b> 버튼은 핸드브레이크)</li>' : '<li><b>WASD</b> 이동 · <b>Shift</b> 달리기 · 마우스 시점</li><li><b>좌클릭</b> 사격 · <b>우클릭</b> 조준 · <b>R</b> 장전</li><li><b>Space</b> 비행기에서 뛰기 · 낙하산 펴기(자동 105m) · <b>W</b> 활강 방향</li><li><b>G</b> 수류탄 · <b>E</b> 무기 줍기 · <b>1 / 2 / 휠</b> 무기 교체 · <b>Esc</b> 일시정지</li><li><b>E</b> 차량 타기·내리기 · <b>WASD</b> 운전 · <b>Space</b> 핸드브레이크 · 폭격 구역(붉은 원)에서는 벗어나세요</li>'}<li>탄약·구급상자·방탄복은 닿으면 자동으로 줍습니다.</li></ul></section>
+        <section><h3>조작</h3><ul class="sz-help">${touch ? '<li>왼쪽 스틱 이동 · 오른쪽 드래그 시점</li><li>사격 · 조준 · 장전 · 줍기 · 교체 버튼 (비행기에서는 <b>줍기</b> 버튼이 점프·낙하산, 차 옆에서는 탑승·하차, 운전 중 <b>웅크림</b> 버튼은 핸드브레이크)</li>' : '<li><b>WASD</b> 이동 · <b>Shift</b> 달리기 · 마우스 시점</li><li><b>좌클릭/F</b> 사격 · <b>우클릭/T</b> 조준 · <b>R</b> 장전</li><li><b>Space</b> 비행기에서 뛰기 · 낙하산 펴기(자동 105m) · <b>W</b> 활강 방향</li><li><b>G</b> 수류탄 · <b>E</b> 무기 줍기 · <b>1 / 2 / 휠</b> 무기 교체 · <b>Esc</b> 일시정지</li><li><b>E</b> 차량 타기·내리기 · <b>WASD</b> 운전 · <b>Space</b> 핸드브레이크 · 폭격 구역(붉은 원)에서는 벗어나세요</li>'}<li>탄약·구급상자·방탄복은 닿으면 자동으로 줍습니다.</li></ul></section>
         <footer><button type="button" class="ghost" data-act="exit">메뉴로</button><span class="sz-sum">${career.matches ? `전적 ${career.matches}판 ${career.wins}승 · 최다 처치 ${career.bestKills}` : '첫 출격'}</span>
           <button type="button" class="primary" data-act="start" ${wait ? 'disabled' : ''}>${assetState === 'failed' ? '도형 모드로 출격' : wait ? `불러오는 중 ${Math.floor(assetPct * 100)}%` : pickMode === 'solo' ? '출격' : pickMode === 'room' ? '방 찾기' : '상대 찾기'}</button></footer>
       </div>`;
@@ -246,7 +246,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   const onMove = (e: MouseEvent): void => { if (!match || closed || paused || performance.now() < lookMuteUntil || Math.abs(e.movementX) > 300 || Math.abs(e.movementY) > 300) return; if (locked || (lockFail && e.target === canvas)) look(e.movementX, e.movementY); };
   const onDown = (e: MouseEvent): void => {
     if (closed || !match || paused || e.target !== canvas) return; audio.unlock();
-    if (!locked && !lockFail && !touch) { lock(); if (paused) setPause(false); return; }
+    if (!locked && !lockFail && !touch) { lock(); return; }
     if (e.button === 0) mouse.fire = true; else if (e.button === 2) mouse.ads = true;
   };
   const onUp = (e: MouseEvent): void => { if (e.button === 0) mouse.fire = false; else if (e.button === 2) mouse.ads = false; };
@@ -398,7 +398,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     while (feed.length && now - feed[0].at > 6000) feed.shift();
     html(q('#sz-feed'), 'feed', feed.map(f => `<li class="${f.mine ? 'mine' : ''}">${esc(f.text)}</li>`).join(''));
     q('#sz-keys').classList.toggle('hide', phase !== 'countdown' || touch);
-    html(q('#sz-keys'), 'keys', phase === 'countdown' && !touch ? '<span><b>WASD</b> 이동</span><span><b>좌클릭</b> 사격</span><span><b>우클릭</b> 조준</span><span><b>C</b> 웅크리기</span><span><b>E</b> 줍기</span>' : '');
+    html(q('#sz-keys'), 'keys', phase === 'countdown' && !touch ? '<span><b>WASD</b> 이동</span><span><b>좌클릭/F</b> 사격</span><span><b>우클릭/T</b> 조준</span><span><b>C</b> 웅크리기</span><span><b>E</b> 줍기</span>' : '');
     drawMap(m, p); drawCompass(m, p);
   }
 
@@ -491,7 +491,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 일시정지·메뉴 ----------
   function setPause(on: boolean): void {
     if (pvpRunning() || (phase !== 'play' && phase !== 'countdown') || closed) return; paused = on;
-    if (on) { blur(); card('PAUSED', '일시정지', '', '<button class="primary" data-act="resume">계속하기</button><button data-act="again">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button>'); }
+    if (on) { blur(); if (document.pointerLockElement === canvas) document.exitPointerLock(); card('PAUSED', '일시정지', '', '<button class="primary" data-act="resume">계속하기</button><button data-act="again">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button>'); }
     else { modal.className = 'sz-modal'; modal.innerHTML = ''; if (!touch) lock(); }
   }
   q('#sz-pause').addEventListener('click', () => { if (pvpRunning()) { say('대전 중에는 멈출 수 없습니다', 1.4); return; } setPause(true); });

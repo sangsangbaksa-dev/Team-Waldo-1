@@ -55,3 +55,7 @@
 #home .hub-link:focus-visible { outline:2px solid #eca16d; outline-offset:3px; }
 #game #stamina.winded { background:#e99879; }
 @media(max-width:480px) { #home .mast { padding-inline:.75rem; } #home .wordmark { font-size:1rem; letter-spacing:.05em; gap:.35rem; } #home .hub-link { font-size:.76rem; } #home #sound { font-size:.76rem; padding-inline:.2rem; } }
+
+#game .mapkey[data-solved="false"] i:nth-child(4) { color:#f38e75; }
+#game .mapkey[data-solved="true"] i:nth-child(4) { color:#9ad991; }
+#game .dials button strong { font-variant-numeric:tabular-nums; }

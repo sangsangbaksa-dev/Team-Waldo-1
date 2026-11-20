@@ -243,3 +243,39 @@ export function makeLevel(ch) {
     reachable: base.q,
   };
 }
+
+const circuitOptions = ["5 A", "10 A", "15 A"];
+const tuneOptions = [
+  ["71.2", "72.4", "73.6", "74.8"],
+  ["80.0", "81.2", "82.4", "83.6"],
+  ["90.6", "91.8", "93.0", "94.2"],
+];
+const phaseOptions = ["0°", "90°", "180°", "270°"];
+export function puzzleOptions(ch, index) {
+  if (ch === 0) return [...circuitOptions];
+  if (ch === 1) return [...(tuneOptions[index] ?? [])];
+  if (ch === 3) return [...phaseOptions];
+  return [];
+}
+export function puzzleAnswer(ch) {
+  const chapter = chapters[ch];
+  if (!chapter) return [];
+  const labels = chapter.labels;
+  if (ch === 2) {
+    const time = (s) => {
+      const [m, sec] = s.split(":").map(Number);
+      return m * 60 + sec;
+    };
+    return labels.map((_, i) => i).sort((a, b) => time(labels[b]) - time(labels[a]));
+  }
+  return labels.map((label, i) => {
+    const target = ch === 1 ? label.replace(/ MHz$/, "") :
+      ch === 3 ? String((parseInt(label, 10) + 180) % 360) + "°" : label;
+    return puzzleOptions(ch, i).indexOf(target);
+  });
+}
+export function puzzleCorrect(ch, choices) {
+  const answer = puzzleAnswer(ch);
+  return answer.length === 3 && choices.length === answer.length &&
+    answer.every((v, i) => v >= 0 && choices[i] === v);
+}

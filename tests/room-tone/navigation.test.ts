@@ -1,6 +1,6 @@
-import { test } from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
-import { chapters, makeLevel, paths, route, routeFrom, neighbors, lineOpen, normalizeSave } from "../../src/room-tone/levels.mjs";
+import { chapters, makeLevel, paths, route, routeFrom, neighbors, lineOpen, normalizeSave, puzzleAnswer, puzzleOptions, puzzleCorrect } from "../../src/room-tone/levels.mjs";
 
 test("all chapters have distinct, reachable objectives and shortest routes", () => {
   for (let ch = 0; ch < chapters.length; ch++) {
@@ -46,5 +46,20 @@ test("save normalization rejects impossible completion and invalid visited cells
   assert.equal(normalizeSave({v:1,ch:4,found:[true,true,true]}), null);
   const save = normalizeSave({v:1,ch:0,found:[true,false,true],solved:true,seen:[22,22,-1,9999],elapsed:-1});
   assert.deepEqual(save,{v:1,ch:0,found:[true,false,true],solved:false,seen:[22],elapsed:0});
-  assert.equal(normalizeSave({v:1,ch:0,found:[true,true,true],solved:true}).solved,true);
+  assert.equal(normalizeSave({v:1,ch:0,found:[true,true,true],solved:true})?.solved,true);
+});
+
+test("every chapter puzzle is solvable using its own clue labels", () => {
+  const expected = [[0,1,2],[1,3,1],[1,2,0],[2,1,0]];
+  for (let ch = 0; ch < chapters.length; ch++) {
+    const answer = puzzleAnswer(ch);
+    assert.deepEqual(answer, expected[ch]);
+    assert.ok(puzzleCorrect(ch, answer));
+    assert.equal(puzzleCorrect(ch, answer.slice(1)), false);
+    assert.equal(puzzleCorrect(ch, [...answer,0]), false);
+    assert.equal(puzzleCorrect(ch, [-1,0,1]), false);
+    if (ch !== 2) answer.forEach((v,i) => assert.ok(v < puzzleOptions(ch,i).length));
+  }
+  assert.deepEqual(puzzleAnswer(-1), []);
+  assert.equal(puzzleCorrect(4, [0,1,2]), false);
 });

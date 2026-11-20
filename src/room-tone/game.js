@@ -3,7 +3,7 @@ import './style-polish.css';
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { modelBytes } from "./assets.js";
-import { chapters, makeLevel, route, neighbors, paths, routeFrom, lineOpen, normalizeSave, walkable } from "./levels.mjs";
+import { chapters, makeLevel, route, neighbors, paths, routeFrom, lineOpen, normalizeSave, walkable, puzzleOptions, puzzleCorrect } from "./levels.mjs";
 import { buildEnvironment } from "./environment.js";
 import { Sound } from "./sound.js";
 import { openViewer } from "./viewer.js";
@@ -531,6 +531,12 @@ function prop(cell, type, i = 0) {
     mesh(new THREE.BoxGeometry(0.52, 0.31, 0.32), steel, root, 0, 0.97, 0);
     mesh(new THREE.BoxGeometry(0.33, 0.1, 0.34), bright, root, 0, 1.02, 0);
   }
+  // Thin floor markings make interactive equipment identifiable in low light.
+  const footprint = type === "station" ? 0.58 : 0.48;
+  for (const side of [-1, 1]) {
+    mesh(new THREE.BoxGeometry(footprint * 2, .012, .025), bright, root, 0, .008, side * footprint);
+    mesh(new THREE.BoxGeometry(.025, .012, footprint * 2), bright, root, side * footprint, .008, 0);
+  }
   const sign = label(
     type === "item"
       ? chapters[ch].item + " " + pad(i)
@@ -747,7 +753,7 @@ function drawMap(canvas) {
     if (!found[i]) dot(id, "#e4a36d", "square");
   });
   dot(level.start, "#75c3ce", "square");
-  dot(level.exit, "#9ad991", "square");
+  dot(level.exit, solved ? "#9ad991" : "#f38e75", "square");
   const pos = cellOf(player),
     px = ((pos % w) + 0.5) * S,
     pz = (Math.floor(pos / w) + 0.5) * S;
@@ -778,7 +784,8 @@ function mapPanel(fromBrief = false) {
       const p = document.createElement("p");
       p.className = "mapkey";
       p.innerHTML =
-        "<i>▲ 현재 위치</i><i>■ 회수 장비</i><i>■ 제어 장치</i><i>■ 출구</i>";
+        "<i>▲ 현재 위치</i><i>■ 회수 장비</i><i>■ 제어 장치</i><i>" + (solved ? "■ 출구 열림" : "■ 출구 잠김") + "</i>";
+      p.dataset.solved = String(solved);
       el.append(p);
       const button = document.createElement("button");
       button.className = "map-guide";
@@ -810,20 +817,6 @@ function notes(el) {
     dl.append(dt, dd);
   }
   el.append(dl);
-}
-const circuitOptions = ["5 A", "10 A", "15 A"],
-  tuneOptions = [
-    ["71.2", "72.4", "73.6", "74.8"],
-    ["80.0", "81.2", "82.4", "83.6"],
-    ["90.6", "91.8", "93.0", "94.2"],
-  ];
-function expected() {
-  return [
-    [0, 1, 2],
-    [1, 3, 1],
-    [1, 2, 0],
-    [2, 1, 0],
-  ][ch];
 }
 function puzzle(reset = true) {
   if (reset) {
@@ -870,12 +863,7 @@ function puzzle(reset = true) {
         box.className = "dials";
         for (let i = 0; i < 3; i++) {
           const b = document.createElement("button");
-          const opts =
-            ch === 0
-              ? circuitOptions
-              : ch === 1
-                ? tuneOptions[i]
-                : ["0°", "90°", "180°", "270°"];
+          const opts = puzzleOptions(ch, i);
           b.innerHTML =
             "<small>" +
             c.names[i] +
@@ -907,7 +895,7 @@ function puzzle(reset = true) {
       [
         "신호 확인",
         () => {
-          if (expected().every((v, i) => choices[i] === v)) {
+          if (puzzleCorrect(ch, choices)) {
             solved = true;
             sound.success();
             save();
@@ -1205,7 +1193,7 @@ function update(dt) {
     ? nearest.type === "item"
       ? chapters[ch].item + " 회수"
       : nearest.type === "exit"
-        ? "출구 작동"
+        ? (solved ? "출구 작동" : "잠긴 출구 확인")
         : chapters[ch].station + " 확인"
     : "";
   $("prompt").hidden = !caption;

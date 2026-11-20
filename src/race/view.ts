@@ -11,6 +11,7 @@ import { type RaceState, type Racer } from './race';
 import { type Track } from './track';
 import { type Theme } from './maps';
 import { buildOutposts, type Outpost } from './outpost';
+import { buildBackdrop, distantFog } from './terrain';
 
 const CAR_LEN = 4.7;
 const rnd = (a: number, b: number): number => a + Math.random() * (b - a);
@@ -53,20 +54,22 @@ function dotTex(): THREE.CanvasTexture { dot ??= canvasTex(32, 32, g => { const 
 class Particles {
   readonly points: THREE.Points; private pos: Float32Array; private col: Float32Array; private vel: Float32Array; private life: Float32Array; private max: Float32Array; private rgb: Float32Array; private head = 0;
   constructor(private cap: number, size: number, blending: THREE.Blending, opacity = 1) {
-    this.pos = new Float32Array(cap * 3); this.col = new Float32Array(cap * 3); this.vel = new Float32Array(cap * 3); this.life = new Float32Array(cap); this.max = new Float32Array(cap); this.rgb = new Float32Array(cap * 3);
+    this.pos = new Float32Array(cap * 3); this.col = new Float32Array(cap * 4); this.vel = new Float32Array(cap * 3); this.life = new Float32Array(cap); this.max = new Float32Array(cap); this.rgb = new Float32Array(cap * 3);
     this.pos.fill(0, 0); for (let i = 0; i < cap; i++) this.pos[i * 3 + 1] = -999;
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(this.col, 3));
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(this.col, 4)); // RGBA: 수명에 따라 색이 아니라 투명도가 줄어듭니다(검게 변하는 연기 방지)
     this.points = new THREE.Points(g, new THREE.PointsMaterial({ size, map: dotTex(), vertexColors: true, transparent: true, opacity, blending, depthWrite: false, sizeAttenuation: true })); this.points.frustumCulled = false;
   }
   emit(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, r: number, g: number, b: number): void {
     const i = this.head; this.head = (this.head + 1) % this.cap; this.pos.set([x, y, z], i * 3); this.vel.set([vx, vy, vz], i * 3); this.life[i] = life; this.max[i] = life; this.rgb.set([r, g, b], i * 3);
   }
-  update(dt: number, gravity: number): void {
+  /** cam·nearFade 를 주면 카메라 nearFade(m) 안쪽 입자는 흐려집니다(렌즈 앞을 가리는 큰 동그라미 방지). */
+  update(dt: number, gravity: number, cam?: THREE.Vector3, nearFade = 0): void {
     for (let i = 0; i < this.cap; i++) {
-      if (this.life[i] <= 0) { this.col[i * 3] = this.col[i * 3 + 1] = this.col[i * 3 + 2] = 0; continue; }
+      if (this.life[i] <= 0) { this.col[i * 4 + 3] = 0; continue; }
       this.life[i] -= dt; const f = Math.max(0, this.life[i] / this.max[i]);
       this.vel[i * 3 + 1] -= gravity * dt; this.pos[i * 3] += this.vel[i * 3] * dt; this.pos[i * 3 + 1] += this.vel[i * 3 + 1] * dt; this.pos[i * 3 + 2] += this.vel[i * 3 + 2] * dt;
-      this.col[i * 3] = this.rgb[i * 3] * f; this.col[i * 3 + 1] = this.rgb[i * 3 + 1] * f; this.col[i * 3 + 2] = this.rgb[i * 3 + 2] * f;
+      let a = f; if (cam && nearFade > 0) { const d = Math.hypot(this.pos[i * 3] - cam.x, this.pos[i * 3 + 1] - cam.y, this.pos[i * 3 + 2] - cam.z); a *= Math.max(0, Math.min(1, (d - nearFade * 0.45) / (nearFade * 0.55))); }
+      this.col[i * 4] = this.rgb[i * 3]; this.col[i * 4 + 1] = this.rgb[i * 3 + 1]; this.col[i * 4 + 2] = this.rgb[i * 3 + 2]; this.col[i * 4 + 3] = a;
     }
     (this.points.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true; (this.points.geometry.attributes.color as THREE.BufferAttribute).needsUpdate = true;
   }
@@ -103,19 +106,21 @@ interface CarVis { racer: Racer; group: THREE.Group; flames: THREE.Mesh[]; shado
 export class RaceView {
   post: PostFx | null = null; readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera = new THREE.PerspectiveCamera(64, 1, 0.4, 3200);
   private crew: CharacterRig[] = []; private cars: CarVis[] = []; private ground!: THREE.Mesh; private pads: Array<{ tex: THREE.CanvasTexture }> = [];
-  private rainFx = new Particles(1800, 0.32, THREE.NormalBlending, 0.55); private sparks = new Particles(420, 0.34, THREE.AdditiveBlending); private smoke = new Particles(420, 1.1, THREE.NormalBlending, 0.2); private skids = new SkidMarks(1400); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
+  private rainFx = new Particles(1800, 0.32, THREE.NormalBlending, 0.55); private sparks = new Particles(420, 0.2, THREE.AdditiveBlending); private smoke = new Particles(420, 1.1, THREE.NormalBlending, 0.2); private skids = new SkidMarks(1400); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
   private camH = 0; private camInit = false; private camAnchor: ChaseAnchor = { x: 0, y: 0, z: 0, ready: false }; private fov = 64; private shake = 0; private punch = 0; private time = 0; private sun: THREE.DirectionalLight;
+  /** 하늘에 그린 해와 같은 방향에서 비추는 햇빛(높이는 조금 올려 차가 너무 어둡지 않게) */
+  private sunDir = new THREE.Vector3();
   private chaseLift = 0; private viewH = 1; private startLamps: THREE.Mesh[] = [];
   private disposables: Array<{ dispose(): void }> = []; private outposts: Outpost | null = null;
 
   constructor(canvas: HTMLCanvasElement, private track: Track, carTemplates: Record<string, THREE.Object3D> | null, quality: 'high' | 'standard' | 'low', private theme: Theme) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, quality === 'high' ? 2 : quality === 'standard' ? 1.5 : 1));
-    this.scene.fog = new THREE.Fog(theme.fog.color, theme.fog.near, theme.fog.far); this.sun = new THREE.DirectionalLight(theme.light.sun, theme.light.sunPower);
+    this.scene.fog = new THREE.Fog(theme.fog.color, theme.fog.near, theme.fog.far); this.sun = new THREE.DirectionalLight(theme.light.sun, theme.light.sunPower); this.sunDir.set(...theme.sky.sun); this.sunDir.y = Math.max(0.45, this.sunDir.y + 0.35); this.sunDir.normalize();
     this.buildSky(); if (quality !== 'low') this.buildCarEnv(); this.buildGround(); this.buildRoad(); this.buildProps(quality);
     this.scene.add(new THREE.HemisphereLight(theme.light.sky, theme.light.ground, theme.light.hemi)); this.sun.position.set(-40, 60, 90); this.scene.add(this.sun, this.sun.target);
     this.scene.add(this.skids.mesh, this.sparks.points, this.smoke.points); if (theme.rain) this.scene.add(this.rainFx.points);
-    const n = 220; this.streakPos = new Float32Array(n * 6); this.streakSeed = new Float32Array(n * 3);
+    const n = 90; this.streakPos = new Float32Array(n * 6); this.streakSeed = new Float32Array(n * 3);
     const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(this.streakPos, 3));
     this.streak = new THREE.LineSegments(sg, new THREE.LineBasicMaterial({ color: 0xcfe9ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })); this.streak.frustumCulled = false; this.scene.add(this.streak);
     this.carTemplates = carTemplates; this.viewH = window.innerHeight || 1;
@@ -231,7 +236,7 @@ export class RaceView {
       } else { g.strokeStyle = gr.line; g.lineWidth = 3; g.strokeRect(0, 0, 128, 128); g.strokeStyle = gr.grid; g.lineWidth = 1; g.beginPath(); g.moveTo(64, 0); g.lineTo(64, 128); g.moveTo(0, 64); g.lineTo(128, 64); g.stroke(); }
     });
     tex.repeat.set(gr.noise ? 40 : 110, gr.noise ? 40 : 110);
-    const mat = new THREE.MeshBasicMaterial({ map: tex }); this.ground = new THREE.Mesh(new THREE.PlaneGeometry(6600, 6600).rotateX(-Math.PI / 2), mat); this.ground.position.y = -0.4; this.scene.add(this.ground); this.disposables.push(this.ground.geometry, mat, tex);
+    const mat = new THREE.MeshBasicMaterial({ map: tex }); distantFog(mat); this.ground = new THREE.Mesh(new THREE.PlaneGeometry(6600, 6600).rotateX(-Math.PI / 2), mat); this.ground.position.y = -0.4; this.scene.add(this.ground); this.disposables.push(this.ground.geometry, mat, tex);
   }
 
   private buildRoad(): void {
@@ -425,21 +430,7 @@ export class RaceView {
       const sizes = spots.map(() => rnd(0.8, 1.8));
       this.instanced(trunk, mat({ color: 0x4a3524 }), spots.map(([x, z], k) => ({ p: [x, 2 * sizes[k] - 0.4, z] as [number, number, number], s: [sizes[k], sizes[k], sizes[k]] as [number, number, number] })));
       this.instanced(crown, mat({ vertexColors: true }), spots.map(([x, z], k) => ({ p: [x, 2 * sizes[k] - 0.4, z] as [number, number, number], s: [sizes[k], sizes[k], sizes[k]] as [number, number, number], ry: rnd(0, 6), color: shade() })));
-      // 먼 산: 높이에 따라 색이 변하고 꼭대기에 눈이 덮인 울퉁불퉁한 봉우리
-      let cx = 0, cz = 0; for (let i = 0; i < t.n; i++) { cx += t.x[i]; cz += t.z[i]; } cx /= t.n; cz /= t.n;
-      let trackR = 0; for (let i = 0; i < t.n; i++) trackR = Math.max(trackR, Math.hypot(t.x[i] - cx, t.z[i] - cz)); // 봉우리 밑동이 코스에 닿지 않도록 코스 반경 바깥에 세웁니다.
-      const rock = new THREE.Color(th.mountain), snowC = new THREE.Color(0xf4f7fb), pk: THREE.BufferGeometry[] = [];
-      for (let k = 0; k < 18; k++) {
-        const a = (k / 18) * Math.PI * 2 + rnd(-0.12, 0.12), h = rnd(240, 460), w = rnd(240, 380), r = Math.max(rnd(1000, 1500), trackR + w * 1.55 + 60), g = new THREE.ConeGeometry(1, 1, 9, 4).toNonIndexed(), p = g.attributes.position, c = new Float32Array(p.count * 3), seed = rnd(0, 100);
-        for (let i = 0; i < p.count; i++) {
-          const y = p.getY(i) + 0.5, rad = Math.hypot(p.getX(i), p.getZ(i)), ang = Math.atan2(p.getZ(i), p.getX(i)), j = 1 + 0.32 * Math.sin(ang * 3 + seed) + 0.18 * Math.sin(ang * 7 + seed * 2) + (y > 0.05 && y < 0.95 ? 0.12 * Math.sin(y * 13 + ang * 5 + seed) : 0);
-          const px = p.getX(i) * j, pz = p.getZ(i) * j, py = y + 0.1 * Math.sin(ang * 4 + seed) * (1 - y); p.setXYZ(i, px * w, py * h, pz * w);
-          const sn = Math.min(1, Math.max(0, (y - (th.snow ? 0.32 : 0.58)) * 5 + 0.25 * Math.sin(ang * 9 + seed))), shadeK = 0.78 + 0.3 * (0.5 + 0.5 * Math.sin(ang - 0.6)), col = rock.clone().multiplyScalar(shadeK).lerp(snowC, sn);
-          c.set([col.r * (0.92 + rad * 0.0), col.g, col.b], i * 3);
-        }
-        g.setAttribute('color', new THREE.BufferAttribute(c, 3)); g.translate(cx + Math.cos(a) * r, -0.4, cz + Math.sin(a) * r); pk.push(g);
-      }
-      const mtn = mergeGeometries(pk); pk.forEach(g => g.dispose()); this.scene.add(new THREE.Mesh(mtn, mat({ vertexColors: true }))); this.disposables.push(mtn);
+      this.addBackdrop(quality, crown, trunk);
     } else {
       // 사막: 메사, 선인장, 모래 언덕, 전봇대
       const strata = canvasTex(64, 128, g => { const cols = ['#b4622f', '#c97a3e', '#a8552a', '#d08a4b', '#b86a36']; for (let y = 0; y < 128; y += 8) { g.fillStyle = cols[Math.floor(Math.random() * cols.length)]; g.fillRect(0, y, 64, 8); } });
@@ -461,6 +452,13 @@ export class RaceView {
       const wires: number[] = []; for (let k = 0; k < ps.length; k++) { const a = ps[k], b = ps[(k + 1) % ps.length]; for (const dy of [10.4, 9.6, 8.8]) wires.push(a[0], a[1] + dy, a[2], b[0], b[1] + dy, b[2]); }
       const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wires, 3)); const wl = new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x2b2420 })); wl.frustumCulled = false; this.scene.add(wl); this.disposables.push(wg, wl.material as THREE.Material);
     }
+    if (sceneryKind !== 'forest') this.addBackdrop(quality);
+  }
+
+  /** 코스 둘레 원경 지형(능선·산맥)과 산기슭 숲 */
+  private addBackdrop(quality: 'high' | 'standard' | 'low', crown?: THREE.BufferGeometry, trunk?: THREE.BufferGeometry): void {
+    const b = buildBackdrop(this.track, this.theme, quality, crown, trunk); if (!b) return;
+    this.scene.add(b.group); this.disposables.push(b);
   }
 
   resize(w: number, h: number): void { this.viewH = h; this.renderer.setSize(w, h, false); this.camera.aspect = w / Math.max(1, h); this.camera.updateProjectionMatrix(); }
@@ -506,7 +504,7 @@ export class RaceView {
       }
       if (v.racer.player && wallHit > 0) for (let k = 0; k < 18; k++) this.sparks.emit(c.x, c.y + 0.5, c.z, rnd(-9, 9), rnd(1, 7), rnd(-9, 9), 0.5, 1, 0.8, 0.35);
     }
-    this.skids.flush(); this.sparks.update(dt, 14); this.smoke.update(dt, -1.5);
+    this.skids.flush(); this.sparks.update(dt, 14, this.camera.position, 7); this.smoke.update(dt, -1.5, this.camera.position, 10);
     if (this.theme.rain) {
       const cp = this.camera.position, n = Math.round(34 * this.theme.rain * Math.min(2, dt * 60));
       for (let i = 0; i < n; i++) this.rainFx.emit(cp.x + rnd(-38, 38), cp.y + rnd(-1, 20), cp.z + rnd(-38, 38), rnd(-3, 3), rnd(-44, -36), rnd(-3, 3), 0.45, 0.62, 0.74, 0.88);
@@ -529,28 +527,31 @@ export class RaceView {
     // 지면·태양광이 카메라를 따라감
     this.ground.position.x = Math.round(this.camera.position.x / 60) * 60; this.ground.position.z = Math.round(this.camera.position.z / 60) * 60;
     this.scene.getObjectByName('sky')?.position.copy(this.camera.position);
-    this.sun.target.position.set(p.x, p.y, p.z); this.sun.position.set(p.x - 40, p.y + 60, p.z - 90);
+    this.sun.target.position.set(p.x, p.y, p.z); this.sun.position.set(p.x + this.sunDir.x * 120, p.y + this.sunDir.y * 120, p.z + this.sunDir.z * 120);
     this.updateGhost(race); this.post?.setSpeedBlur(Math.max(0, (sf - 0.42) * 0.1 + (bst ? 0.04 : 0)));
     this.updateStartLights(race);
-    this.updateStreaks(dt, p.vx, p.vz, speed, bst);
+    this.updateStreaks(dt, p, p.vx, p.vz, speed, bst);
     if (this.post) this.post.render(dt); else this.renderer.render(this.scene, this.camera);
     return { speedFrac: sf };
   }
 
-  /** 카메라 주변에 흩어진 선이 속도 방향으로 길게 늘어나며 스쳐 지나갑니다. */
-  private updateStreaks(dt: number, vx: number, vz: number, speed: number, bst: boolean): void {
-    const n = this.streakSeed.length / 3, cam = this.camera.position, mat = this.streak.material as THREE.LineBasicMaterial;
-    const target = Math.max(0, (speed - 26) / 50) * (bst ? 1 : 0.75); mat.opacity += (target * 0.8 - mat.opacity) * Math.min(1, dt * 6);
-    const dx = speed > 1 ? vx / speed : 1, dz = speed > 1 ? vz / speed : 0, len = Math.min(42, 2 + speed * (bst ? 0.4 : 0.28));
+  /** 공기 흐름: 내 차 바로 옆·지붕 위로 가는 바람 줄기가 차를 스치며 뒤로 흘러갑니다(화면 전체가 아니라 차 주변에만). */
+  private updateStreaks(dt: number, car: { x: number; y: number; z: number }, vx: number, vz: number, speed: number, bst: boolean): void {
+    const n = this.streakSeed.length / 3, mat = this.streak.material as THREE.LineBasicMaterial;
+    const target = Math.min(1, Math.max(0, (speed - 30) / 40)) * (bst ? 1 : 0.7); mat.opacity += (target * 0.5 - mat.opacity) * Math.min(1, dt * 6);
+    const dx = speed > 1 ? vx / speed : 1, dz = speed > 1 ? vz / speed : 0, len = Math.min(16, 1.5 + speed * (bst ? 0.2 : 0.13));
     for (let i = 0; i < n; i++) {
       let x = this.streakSeed[i * 3], y = this.streakSeed[i * 3 + 1], z = this.streakSeed[i * 3 + 2];
-      const ahead = (x - cam.x) * dx + (z - cam.z) * dz;
-      if (ahead < -10 || Math.hypot(x - cam.x, z - cam.z) > 70 || (x === 0 && z === 0)) {
-        const a = Math.random() * Math.PI * 2, rr = rnd(3.5, 22), fwd = rnd(20, 70);
-        x = cam.x + dx * fwd + Math.cos(a) * rr * -dz + Math.sin(a) * rr * 0; z = cam.z + dz * fwd + Math.cos(a) * rr * dx; y = cam.y + Math.sin(a) * rr * 0.55 - 1.2;
-        if (y < 0.4) y = 0.4 + Math.random(); this.streakSeed[i * 3] = x; this.streakSeed[i * 3 + 1] = y; this.streakSeed[i * 3 + 2] = z;
+      const rx = x - car.x, rz = z - car.z, ahead = rx * dx + rz * dz, side = -rx * dz + rz * dx;
+      if (ahead < -2.5 || ahead > 40 || Math.abs(side) > 7 || (x === 0 && z === 0)) {
+        // 차 앞쪽에서 생겨 차체 옆(1.2~4m)이나 지붕 위를 지나가도록 놓습니다.
+        const roof = Math.random() < 0.25, lat = roof ? rnd(-0.9, 0.9) : (Math.random() < 0.5 ? -1 : 1) * rnd(1.25, 4), fwd = rnd(2, 34);
+        x = car.x + dx * fwd - dz * lat; z = car.z + dz * fwd + dx * lat; y = car.y + (roof ? rnd(1.45, 2.3) : rnd(0.25, 1.6));
+        this.streakSeed[i * 3] = x; this.streakSeed[i * 3 + 1] = y; this.streakSeed[i * 3 + 2] = z;
       }
-      this.streakPos.set([x, y, z, x + dx * len, y, z + dz * len], i * 6);
+      // 꼬리는 차 뒤 3m 까지만: 카메라 앞을 가로지르는 긴 선이 생기지 않게 합니다.
+      const ah = (x - car.x) * dx + (z - car.z) * dz, tail = Math.max(0, Math.min(len, ah + 3));
+      this.streakPos.set([x, y, z, x - dx * tail, y, z - dz * tail], i * 6);
     }
     (this.streak.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
   }

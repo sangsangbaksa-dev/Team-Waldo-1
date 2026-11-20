@@ -255,16 +255,8 @@ export function openRace(onExit: () => void): void {
     const w = innerWidth, h = innerHeight; view?.resize(w, h); fx.width = Math.floor(w / 2); fx.height = Math.floor(h / 2);
   }
 
-  function drawFx(intensity: number): void {
-    if (!fg) return; fg.clearRect(0, 0, fx.width, fx.height); if (intensity < 0.22) return;
-    const w = fx.width, h = fx.height, cx = w / 2, cy = h * 0.46, R = Math.hypot(w, h) / 2, a = Math.min(1, (intensity - 0.22) * 1.2), n = 36 + Math.floor(a * 50);
-    fg.lineCap = 'round';
-    for (let i = 0; i < n; i++) {
-      const ang = Math.random() * Math.PI * 2, r1 = R * (0.38 + Math.random() * 0.35), r2 = r1 + R * (0.1 + Math.random() * 0.25) * (0.5 + a);
-      fg.strokeStyle = `rgba(${200 + Math.random() * 55 | 0},${225 + Math.random() * 30 | 0},255,${(0.1 + Math.random() * 0.3) * a})`; fg.lineWidth = 0.6 + Math.random() * 1.8;
-      fg.beginPath(); fg.moveTo(cx + Math.cos(ang) * r1, cy + Math.sin(ang) * r1); fg.lineTo(cx + Math.cos(ang) * r2, cy + Math.sin(ang) * r2); fg.stroke();
-    }
-  }
+  /** 화면 전체에 그리던 방사형 속도선은 없앴습니다. 바람 줄기는 3D 장면에서 차 주변에만 그립니다(view.updateStreaks). */
+  function drawFx(_intensity: number): void { if (fg) fg.clearRect(0, 0, fx.width, fx.height); }
 
   // 미니맵(코스마다 한 번 그린 경로를 재사용)
   let mpath = new Path2D(), mscale = 1, minX = 0, minZ = 0;

@@ -125,10 +125,10 @@ describe('메인 페이지', () => {
   });
 });
 
-it('starts the displayed daily game only once, even with a queued second click', async () => {
+it('starts only one game even with a queued second click', async () => {
   await loadMenu();
   button('#start-race').click();
-  button('#daily-play').dispatchEvent(new Event('click'));
+  button('#start-city').dispatchEvent(new Event('click'));
   await vi.waitFor(() => expect(games.openRace).toHaveBeenCalledTimes(1));
   expect(Object.values(games).reduce((sum, mock) => sum + mock.mock.calls.length, 0)).toBe(1);
 });
@@ -139,4 +139,10 @@ it('changes quality and reduced motion without resetting the other preference', 
   const motion = document.querySelector<HTMLInputElement>('#home-motion')!;
   motion.checked = true; motion.dispatchEvent(new Event('change'));
   expect(JSON.parse(localStorage.getItem('waldo.preferences.v1')!)).toMatchObject({ quality: 'low', reducedMotion: true, sound: true });
+});
+
+it('keeps the hub free of daily challenge widgets', async () => {
+  await loadMenu();
+  expect(document.querySelector('.daily-challenge')).toBeNull();
+  expect(document.body.textContent).not.toContain('오늘의 도전');
 });

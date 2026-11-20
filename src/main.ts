@@ -3,7 +3,6 @@ import { retireUpgradeSaves } from './shared/retire-upgrades';
 import { readPreferences, writePreferences } from './prefs';
 import { showLoading, retry, retryNote } from './loading';
 import { ENTRIES, type Entry } from './game-catalog';
-import { dailyChallenge } from './daily-challenge';
 import { CHAT_ENABLED, PVP_ENABLED } from './net/config';
 
 import { gameLoaders, type GameId } from './game-launchers';
@@ -42,8 +41,6 @@ function renderMenu(): void {
   unsubscribeAccount = undefined;
   const prefs = readPreferences();
   const sound = prefs.sound;
-  const challenge = dailyChallenge(new Date());
-  const featured = ENTRIES.find(entry => entry.id === challenge.game)!;
   document.title = 'WALDO · 일곱 편의 3D 게임';
   app.hidden = false;
   app.innerHTML = `
@@ -68,10 +65,6 @@ function renderMenu(): void {
           <label><input id="home-motion" type="checkbox" ${prefs.reducedMotion ? 'checked' : ''}> 움직임 줄이기</label>
         </div>
       </section>
-      <section class="daily-challenge" aria-labelledby="daily-heading">
-        <div><span class="daily-kicker">DAILY CHALLENGE · 오늘의 도전</span><h2 id="daily-heading">${featured.name}</h2><p>${challenge.goal}</p><small>자율 도전 · 추가 보상이나 영구 강화 없음</small></div>
-        <button id="daily-play" type="button">도전 시작 <span aria-hidden="true">↗</span></button>
-      </section>
       <ul class="tiles" aria-label="게임 목록">${ENTRIES.map(tile).join('')}</ul>
       <p class="home-notice" id="home-notice" role="status" aria-live="polite"></p>
       <footer class="home-foot">
@@ -89,7 +82,6 @@ function renderMenu(): void {
   const motion = app.querySelector<HTMLInputElement>('#home-motion')!;
   motion.onchange = () => { writePreferences({ ...readPreferences(), reducedMotion: motion.checked }); app.classList.toggle('home-reduced-motion', motion.checked); };
   app.classList.toggle('home-reduced-motion', prefs.reducedMotion);
-  app.querySelector<HTMLButtonElement>('#daily-play')!.onclick = () => { void launch(challenge.game); };
   app.querySelectorAll<HTMLButtonElement>('.tile').forEach(button => {
     const game = ENTRIES.find(entry => entry.id === button.dataset.game);
     if (!game) return;

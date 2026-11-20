@@ -4,7 +4,7 @@
 // 메시지(모두 방 채널, 보낸 사람 id f 는 room.ts 가 붙입니다):
 //   w  방장 → 모두, 8Hz: b AI 상태 · s AI 사격 · vv 방장이 굴리는 차 · vh 상한 차 내구도 · dd 쓰러진 AI(가끔, 놓친 소식 보충)
 //   bd AI 가 쓰러짐 · la 새 전리품 · nd 수류탄 · ve 차 타기 요청 · vg 허락 · vn 거절 · vx 내린 차를 방장에게 넘김 · vd 운전 중 부딪혀 상한 양
-import { PARTS, WEAPONS, type Attachments, type PartId, type PartSlot, type WeaponId } from './config';
+import { AIR, PLAYER, canFit, PARTS, WEAPONS, type Attachments, type PartId, type PartSlot, type WeaponId } from './config';
 import type { Cause, Match, MatchEvent, Player, Vehicle } from './sim';
 import type { Loot, LootKind } from './world';
 import type { NetMsg } from '../net/types';
@@ -27,13 +27,13 @@ const r1 = (v: number): number => Math.round(v * 10), r2 = (v: number): number =
 const wrap = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));
 const numArr = (v: unknown, max: number): v is number[] => Array.isArray(v) && v.length <= max && v.every(fin);
 
-export interface PuppetTarget { x: number; z: number; yaw: number; pitch: number; speed: number; /** 받은 속도(있으면 받은 뒤 지난 시간만큼 앞으로 내다봅니다) */ vx?: number; vz?: number; air: number; alt: number; hp: number; w: WeaponId; ads: boolean; crouch: boolean; reload: boolean }
+export interface PuppetTarget { x: number; z: number; yaw: number; pitch: number; speed: number; /** 받은 속도(있으면 받은 뒤 지난 시간만큼 앞으로 내다봅니다) */ vx?: number; vz?: number; extrapolated?: number; air: number; alt: number; hp: number; w: WeaponId; ads: boolean; crouch: boolean; reload: boolean }
 export interface VehTarget { x: number; z: number; yaw: number; speed: number; at: number }
 
 /** 선수 상태를 받은 목표로 부드럽게 옮깁니다(사람·AI 꼭두각시 공용). */
 export function easePuppet(o: Player, t: PuppetTarget, dt: number): void {
   const k = Math.min(1, dt * 14);
-  if (t.vx !== undefined && t.vz !== undefined) { t.x += t.vx * dt; t.z += t.vz * dt; }
+  if (t.vx !== undefined && t.vz !== undefined) { const advance = Math.max(0, Math.min(dt, 0.8 - (t.extrapolated ?? 0))); t.x += t.vx * advance; t.z += t.vz * advance; t.extrapolated = (t.extrapolated ?? 0) + advance; }
   if (o.veh < 0) { const far = Math.abs(t.x - o.x) + Math.abs(t.z - o.z) > 25; o.x = far ? t.x : o.x + (t.x - o.x) * k; o.z = far ? t.z : o.z + (t.z - o.z) * k; }
   o.yaw += wrap(t.yaw - o.yaw) * k; o.pitch += (t.pitch - o.pitch) * k;
   o.air = (t.air | 0) as Player['air']; o.alt = o.air ? o.alt + (t.alt - o.alt) * k : 0;
@@ -48,14 +48,15 @@ export function parseLoot(m: NetMsg): Loot | null {
   if (!isInt(m.i, 0, 1e8) || !LOOT_KINDS.includes(m.k as LootKind) || !fin(m.x) || !fin(m.z) || Math.abs(m.x) > 1000 || Math.abs(m.z) > 1000) return null;
   const weapon = m.w === null ? null : WEAPON_IDS.includes(m.w as WeaponId) ? (m.w as WeaponId) : undefined; if (weapon === undefined) return null;
   const part = m.p === null || m.p === undefined ? null : Object.prototype.hasOwnProperty.call(PARTS, m.p as string) ? (m.p as PartId) : undefined; if (part === undefined) return null;
+  if ((m.k === 'weapon') !== (weapon !== null) || (m.k === 'attach') !== (part !== null)) return null;
   let att: Attachments | undefined;
   if (m.a && typeof m.a === 'object') {
     att = {}; for (const [slot, id] of Object.entries(m.a as Record<string, unknown>)) {
-      if (!SLOTS.includes(slot as PartSlot) || typeof id !== 'string' || !Object.prototype.hasOwnProperty.call(PARTS, id) || PARTS[id as PartId].slot !== slot) return null;
+      if (!SLOTS.includes(slot as PartSlot) || typeof id !== 'string' || !Object.prototype.hasOwnProperty.call(PARTS, id) || PARTS[id as PartId].slot !== slot || !weapon || !canFit(weapon, id as PartId)) return null;
       att[slot as PartSlot] = id as PartId;
     }
   }
-  return { id: m.i, kind: m.k as LootKind, weapon, part, level: isInt(m.l, 0, 3) ? m.l : 0, x: m.x, z: m.z, taken: false, ...(att ? { att } : {}) };
+  return { id: m.i, kind: m.k as LootKind, weapon, part, level: isInt(m.l, 1, 3) ? m.l : m.k === 'helmet' || m.k === 'armor' ? 1 : 0, x: m.x, z: m.z, taken: false, ...(att ? { att } : {}) };
 }
 
 /** 방장 쪽: 보낼 세계 상태를 모읍니다. 손님 쪽: 받은 상태를 경기에 넣고 꼭두각시를 따라가게 합니다. */
@@ -108,9 +109,9 @@ export class WorldSync {
     if (numArr(msg.b, BOT_STRIDE * 200) && msg.b.length % BOT_STRIDE === 0) {
       const b = msg.b;
       for (let i = 0; i < b.length; i += BOT_STRIDE) {
-        const id = b[i], p = m.players[id]; if (!isInt(id, 0, n - 1) || !p?.bot || !p.remote || !p.alive) continue;
+        const id = b[i], p = m.players[id]; if (!isInt(id, 0, n - 1) || !p?.bot || !p.remote || !p.alive || Math.abs(b[i + 1]) > 10000 || Math.abs(b[i + 2]) > 10000) continue;
         const w = WEAPON_IDS[b[i + 5]] ?? 'pistol', f = b[i + 6], had = this.bots.has(id);
-        const t: PuppetTarget = { x: b[i + 1] / 10, z: b[i + 2] / 10, yaw: b[i + 3] / 100, pitch: b[i + 4] / 100, w, ads: (f & 1) !== 0, crouch: (f & 2) !== 0, reload: (f & 4) !== 0, vx: Math.max(-90, Math.min(90, b[i + 7] / 10)), vz: Math.max(-90, Math.min(90, b[i + 8] / 10)), speed: 0, air: isInt(b[i + 9], 0, 3) ? b[i + 9] : 0, alt: Math.max(0, b[i + 10]), hp: Math.max(0, b[i + 11]) };
+        const t: PuppetTarget = { x: b[i + 1] / 10, z: b[i + 2] / 10, yaw: b[i + 3] / 100, pitch: b[i + 4] / 100, w, ads: (f & 1) !== 0, crouch: (f & 2) !== 0, reload: (f & 4) !== 0, vx: Math.max(-90, Math.min(90, b[i + 7] / 10)), vz: Math.max(-90, Math.min(90, b[i + 8] / 10)), speed: 0, air: isInt(b[i + 9], 0, 3) ? b[i + 9] : 0, alt: Math.max(0, Math.min(AIR.alt, b[i + 10])), hp: Math.max(0, Math.min(PLAYER.hp, b[i + 11])) };
         t.speed = Math.hypot(t.vx!, t.vz!); if (t.air === 1) t.vx = t.vz = 0;
         this.bots.set(id, t); if (!had) { p.x = t.x; p.z = t.z; p.yaw = t.yaw; p.alt = t.alt; }
       }
@@ -128,8 +129,9 @@ export class WorldSync {
   }
   private shot(s: unknown): void {
     const m = this.m; if (!numArr(s, 5 + 27) || s.length < 8 || (s.length - 5) % 3 !== 0) return;
-    const p = m.players[s[0]], w = WEAPON_IDS[s[1]]; if (!isInt(s[0], 0, m.players.length - 1) || !p?.remote || !p.alive || !w) return;
+    const p = m.players[s[0]], w = WEAPON_IDS[s[1]]; if (!isInt(s[0], 0, m.players.length - 1) || !p?.remote || !p.bot || !p.alive || !w || s.length !== 5 + WEAPONS[w].pellets * 3) return;
     const ox = s[2] / 100, oy = s[3] / 100, oz = s[4] / 100, aims: Array<[number, number]> = [];
+    if (Math.abs(ox) > 1000 || Math.abs(oz) > 1000 || oy < 0 || oy > AIR.alt + 5) return;
     for (let i = 5; i + 2 < s.length; i += 3) { const dx = s[i] / 10 - ox, dy = s[i + 1] / 10 - oy, dz = s[i + 2] / 10 - oz; aims.push([Math.atan2(dz, dx), Math.atan2(dy, Math.hypot(dx, dz))]); }
     p.muzzle = 0.06; p.kick = Math.min(1, p.kick + 0.3); m.remoteShot(p.id, w, ox, oy, oz, aims);
   }
@@ -148,12 +150,12 @@ export class WorldSync {
       this.vehs.set(v.id, { x, z, yaw, speed: Math.max(-40, Math.min(40, speed)), at: now });
     } else {
       this.vehs.delete(v.id); v.x = x; v.z = z; v.yaw = yaw; v.speed = 0;
-      if (v.moving) { v.moving = false; m.parkBox(v, true); }
+      v.moving = false; m.parkBox(v, true);
     }
     const d = isInt(driver, -1, m.players.length - 1) ? driver : -1;
     if (d !== v.driver) {
       const old = m.players[v.driver]; if (old?.remote && old.veh === v.id) old.veh = -1;
-      const nu = m.players[d]; if (d >= 0 && nu?.remote) { v.driver = d; nu.veh = v.id; } else if (d < 0 && (!old || old.remote)) v.driver = -1;
+      const nu = m.players[d]; if (d >= 0 && nu?.remote && nu.alive && !nu.air) { const previous = m.vehicles[nu.veh]; if (previous && previous !== v && previous.driver === nu.id) previous.driver = -1; v.driver = d; nu.veh = v.id; } else if (d < 0 && (!old || old.remote)) v.driver = -1;
     }
   }
   /** 꼭두각시 AI·차를 목표로 옮깁니다(매 시뮬레이션 단계 전에). */

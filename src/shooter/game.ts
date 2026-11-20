@@ -6,6 +6,7 @@ import type { LoadingScreen } from '../loading';
 import type { PvpSession, RoomSession } from '../net/lobby';
 import { AIR, BOTS, FEEL, BR_PLAYERS, DIFFICULTIES, HELMET_NAMES, ARMOR_NAMES, HEAL, PARTS, PLAYER, VEHICLES, WEAPONS, adsSpread, partHandling, type Difficulty } from './config';
 import { waterDepth } from './terrain';
+import { advanceFastForward } from './frame-budget';
 import { Match, type Cause, type MatchEvent, type Player, type Vehicle } from './sim';
 import { CAUSES, WorldSync, easePuppet, encodeLoot, parseLoot } from './sync';
 import type { NetMsg } from '../net/types';
@@ -34,7 +35,7 @@ export interface OpenOptions { loading?: LoadingScreen }
 
 export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   const prefs = readPreferences(), touch = matchMedia('(pointer: coarse)').matches, base = import.meta.env.BASE_URL;
-  const root = document.createElement('div'); root.className = 'sz-root' + (touch ? ' touch' : '');
+  const root = document.createElement('div'); root.className = 'sz-root' + (touch ? ' touch' : '') + (prefs.reducedMotion ? ' reduce-motion' : '');
   root.innerHTML = `
     <canvas class="sz-canvas"></canvas>
     <div class="sz-hud" hidden>
@@ -46,9 +47,10 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       <div class="sz-dmgs" id="sz-dmgs"></div>
       <div class="sz-air" id="sz-air"></div><div class="sz-banner" id="sz-banner"></div><div class="sz-count" id="sz-count"></div><div class="sz-prompt" id="sz-prompt"></div><div class="sz-cast" id="sz-cast"><span id="sz-castl"></span><i><b id="sz-castb"></b></i></div>
       <div class="sz-bl"><div class="sz-bar hp"><i id="sz-hp"></i><b id="sz-hpn">100</b></div><div class="sz-bar ar"><i id="sz-ar"></i><b id="sz-arn">0</b></div></div>
-      <div class="sz-br"><div class="sz-wname" id="sz-wname"></div><div class="sz-ammo"><b id="sz-mag">0</b><span id="sz-res">/ 0</span></div><div class="sz-slots" id="sz-slots"></div></div>
+      <div class="sz-br"><div class="sz-wname" id="sz-wname"></div><div class="sz-ammo"><b id="sz-mag">0</b><span id="sz-res">/ 0</span></div><div class="sz-reload-meter" id="sz-reload-meter" hidden><i id="sz-reload-fill"></i></div><div class="sz-slots" id="sz-slots"></div></div>
       <div class="sz-veh" id="sz-veh"><div class="nm" id="sz-vname"></div><div class="spd"><span id="sz-vspd">0</span><small>km/h</small></div><div class="bar" id="sz-vbar"><i id="sz-vhp"></i></div><small class="keys" id="sz-vkeys"></small></div>
       <div class="sz-keys" id="sz-keys"></div>
+      <div class="sz-spectate" id="sz-spectate" hidden><div><span>관전 모드</span><b id="sz-spectate-name"></b></div><button type="button" data-spectate="next">다음 선수</button><button type="button" data-spectate="result">내 결과</button></div>
       <div class="sz-tbtn"><button id="sz-pause" type="button" aria-label="일시정지">Ⅱ</button></div>
       <div class="sz-touchpad"><div class="sz-stick" id="sz-stick"><i></i></div><div class="sz-tbuttons">
         <button data-act="fire" class="fire" type="button">사격</button><button data-act="ads" type="button">조준</button><button data-act="crouch" type="button">웅크림</button><button data-act="reload" type="button">장전</button><button data-act="interact" type="button">줍기</button><button data-act="swap" type="button">교체</button><button data-act="nade" type="button">수류탄</button><button data-act="heal1" type="button">붕대</button><button data-act="heal2" type="button">구급</button></div></div>
@@ -66,7 +68,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   let phase: Phase = 'setup', closed = false, paused = false, match: Match | null = null, view: ShooterView | null = null, meIdx = 0, pvp: Pvp | null = null, room: Room | null = null, raf = 0, last = performance.now();
   let assets: ShooterAssets | null = null, assetState: 'loading' | 'ready' | 'failed' = 'loading', assetPct = 0;
   let countdown = 0, over = false, deadTimer = 0, resultShown = false, spectateId = -1;
-  let soloRecorded = false;
+  let soloRecorded = false, nextMapDraw = 0, nextCompassDraw = 0;
+  let skipJob: { match: Match; remaining: number; total: number } | null = null;
   let lastLook = 0, yaw = 0, pitch = 0, locked = false, lockFail = false, hitT = 0, hitHead = false, hitKill = false, combo = 0, comboT = 0, rcP = 0, rcY = 0, rcIdle = 9, shotN = 0, stepAcc = 0, bannerT = 0, mapBase: HTMLCanvasElement | null = null;
   const keys = new Set<string>(), mouse = { fire: false, ads: false }, tc = { fire: false, ads: false, crouch: false, move: { x: 0, y: 0, id: -1, ox: 0, oy: 0 }, look: { id: -1, x: 0, y: 0 } };
   let healReq = 0, nadeReq = false, reloadReq = false, slotReq = -1, swapReq = false, interactHeld = false;
@@ -111,9 +114,9 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 경기 시작 ----------
   function begin(m: Match, my: number): void {
     endMatch(); blur(); tc.ads = tc.crouch = false; root.querySelectorAll('.sz-tbuttons button.down').forEach(b => b.classList.remove('down')); rcP = rcY = combo = comboT = stepAcc = hitT = bannerT = shotN = 0; rcIdle = 9; match = m; meIdx = my; over = false; resultShown = false; soloRecorded = false; spectateId = -1; deadTimer = 0; cache.clear(); feed.length = 0; told.clear(); paused = false; modal.className = 'sz-modal'; modal.innerHTML = '';
-    const p = m.players[my]; yaw = p.yaw; pitch = 0; countdown = 3.4; phase = 'countdown'; mapBase = null;
+    const p = m.players[my]; yaw = p.yaw; pitch = 0; countdown = 3.4; phase = 'countdown'; mapBase = null; nextMapDraw = nextCompassDraw = 0; q('#sz-spectate').hidden = true;
     const fresh = document.createElement('canvas'); fresh.className = canvas.className; canvas.replaceWith(fresh); canvas = fresh; canvas.addEventListener('contextmenu', noMenu);
-    try { view = new ShooterView(canvas, m, assets, prefs.quality); resize(); } catch { endMatch(); phase = 'loading'; setupEl.hidden = true; hud.hidden = true; card('ZERO ZONE', '그래픽을 시작하지 못했어요', '<p>WebGL 또는 그래픽 가속을 확인한 뒤 다시 시도해 주세요.</p>'); return; } setupEl.hidden = true; hud.hidden = false; buildSlots(); say(touch ? '왼쪽 스틱으로 이동' : '화면을 클릭해 조작 시작', 2.4);
+    try { view = new ShooterView(canvas, m, assets, prefs.quality, prefs.reducedMotion); resize(); } catch { endMatch(); phase = 'loading'; setupEl.hidden = true; hud.hidden = true; card('ZERO ZONE', '그래픽을 시작하지 못했어요', '<p>WebGL 또는 그래픽 가속을 확인한 뒤 다시 시도해 주세요.</p>'); return; } setupEl.hidden = true; hud.hidden = false; buildSlots(); say(touch ? '왼쪽 스틱으로 이동' : '화면을 클릭해 조작 시작', 2.4);
     if (!touch) lock(); audio.unlock();
     if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__zz = { get match() { return match; }, get phase() { return phase; }, me, skip, view, go: () => { countdown = Math.min(countdown, 0.45); }, advance: (sec: number) => { const m = match; if (!m) return; let now = performance.now(); for (let t = 0; t < sec && !m.over; t += 1 / 30) { if (room) syncRoom(1 / 30); m.step(1 / 30); now += 1000 / 30; const ev = m.drain(); onEvents(ev); if (room) roomTick(ev, now); } }, fire: (on: boolean) => { mouse.fire = on; }, ads: (on: boolean) => { mouse.ads = on; }, look: (y: number, p: number) => { yaw = y; pitch = p; } };
   }
@@ -317,7 +320,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     endPvp();
   }
   function endPvp(): void { pvp?.net.dispose(); pvp = null; }
-  function endMatch(): void { if (document.pointerLockElement === canvas) document.exitPointerLock(); locked = false; view?.dispose(); view = null; match = null; }
+  function endMatch(): void { skipJob = null; audio.engine(false, 0); if (document.pointerLockElement === canvas) document.exitPointerLock(); locked = false; view?.dispose(); view = null; match = null; }
 
   // ---------- 조작 ----------
   const sens = (): number => 0.0023 / (view && me().ads ? Math.max(1, 78 / view.fov) * 0.9 : 1);
@@ -328,13 +331,13 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (!wasLocked || locked) return;
     blur();
     if (!locked && (phase === 'play' || phase === 'countdown') && !pvpRunning() && !closed && !paused) setPause(true);
-    else if (!locked && pvpRunning() && !closed) say('클릭하면 조작이 돌아옵니다', 2);
+    else if (!locked && pvpRunning() && phase === 'play' && !closed) say('클릭하면 조작이 돌아옵니다', 2);
   }
   const pvpRunning = (): boolean => ((!!pvp && !pvp.done) || (!!room && !room.done)) && !!match;
   function look(dx: number, dy: number): void { lastLook = performance.now(); const k = sens(); yaw += dx * k; pitch = clamp(pitch - dy * k, -1.4, 1.4); }
   const onMove = (e: MouseEvent): void => { if (!match || closed || paused) return; if (locked) look(e.movementX, e.movementY); else if (lockFail && (e.buttons & 2)) look(e.movementX, e.movementY); };
   const onDown = (e: MouseEvent): void => {
-    if (closed || !match || e.target !== canvas) return; audio.unlock();
+    if (closed || !match || paused || (phase !== 'play' && phase !== 'countdown') || e.target !== canvas) return; audio.unlock();
     if (!locked && !lockFail && !touch) { lock(); if (paused) setPause(false); return; }
     if (e.button === 0) mouse.fire = true; else if (e.button === 2) mouse.ads = true;
   };
@@ -342,19 +345,25 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   const onKey = (e: KeyboardEvent): void => {
     if (e.type === 'keyup') { keys.delete(e.code); if (e.code === 'KeyE') interactHeld = false; return; }
     if (!closed && match && !room?.chat?.typing && !e.repeat && e.code === 'Escape' && !pvpRunning() && (phase === 'play' || phase === 'countdown')) { e.preventDefault(); setPause(!paused); return; }
-    if (closed || !match || room?.chat?.typing || paused || (e.target instanceof HTMLElement && e.target.closest('input,textarea,select,[contenteditable=true]')) || e.repeat && ['KeyR', 'KeyE', 'KeyG', 'KeyH', 'KeyJ', 'KeyQ'].includes(e.code)) return;
+    if (closed || !match || (phase !== 'play' && phase !== 'countdown') || room?.chat?.typing || paused || (e.target instanceof HTMLElement && e.target.closest('input,textarea,select,[contenteditable=true]')) || e.repeat && ['KeyR', 'KeyE', 'KeyG', 'KeyH', 'KeyJ', 'KeyQ'].includes(e.code)) return;
     keys.add(e.code);
     if (e.code === 'Enter' && room?.chat && !room.done && match && !paused) { keys.clear(); mouse.fire = mouse.ads = false; interactHeld = false; if (document.pointerLockElement) document.exitPointerLock(); room.chat.open(); e.preventDefault(); return; }
     if (e.code === 'KeyR') reloadReq = true; else if (e.code === 'KeyE') interactHeld = true; else if (e.code === 'Digit1') slotReq = 0; else if (e.code === 'Digit2') slotReq = 1; else if (e.code === 'KeyQ') swapReq = true; else if (e.code === 'KeyG') nadeReq = true; else if (e.code === 'KeyH') healReq = 1; else if (e.code === 'KeyJ') healReq = 2;
     else if (e.code === 'Escape' && phase === 'countdown') setPause(true);
     if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code) && match) e.preventDefault();
   };
-  const onWheel = (e: WheelEvent): void => { if (match && !paused && Math.abs(e.deltaY) > 4) swapReq = true; };
+  let lastWheel = -Infinity, wheelDirection = 0;
+  const onWheel = (e: WheelEvent): void => {
+    if (!match || phase !== 'play' || paused || room?.chat?.typing || e.ctrlKey || !Number.isFinite(e.deltaY) || Math.abs(e.deltaY) < 1 || (!locked && e.target !== canvas)) return;
+    const now = performance.now(), direction = Math.sign(e.deltaY);
+    if (now - lastWheel >= 180 || direction !== wheelDirection || e.deltaMode === 1) swapReq = true;
+    lastWheel = now; wheelDirection = direction;
+  };
   const noMenu = (e: Event): void => e.preventDefault();
   window.addEventListener('mousemove', onMove); window.addEventListener('mousedown', onDown); window.addEventListener('mouseup', onUp);
   window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKey); window.addEventListener('wheel', onWheel, { passive: true }); canvas.addEventListener('contextmenu', noMenu);
   const blur = (): void => { keys.clear(); mouse.fire = mouse.ads = false; interactHeld = reloadReq = swapReq = nadeReq = false; healReq = 0; slotReq = -1; tc.fire = false; tc.move.id = tc.look.id = -1; tc.move.x = tc.move.y = 0; stickEl.style.opacity = '0'; root.querySelectorAll('.sz-tbuttons button[data-act="fire"].down, .sz-tbuttons button[data-act="interact"].down').forEach(b => b.classList.remove('down')); }; window.addEventListener('blur', blur);
-  const onVisibility = (): void => { if (document.hidden) blur(); }; document.addEventListener('visibilitychange', onVisibility);
+  const onVisibility = (): void => { if (document.hidden) { blur(); if (!pvpRunning()) setPause(true); } else { last = performance.now(); nextMapDraw = nextCompassDraw = 0; } }; document.addEventListener('visibilitychange', onVisibility);
 
   // 터치: 왼쪽 절반은 이동 스틱, 오른쪽 절반 드래그는 시점
   const stickEl = q('#sz-stick');
@@ -370,7 +379,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   root.addEventListener('pointerdown', tStart); root.addEventListener('pointermove', tMove); root.addEventListener('pointerup', tEnd); root.addEventListener('pointercancel', tEnd); root.addEventListener('lostpointercapture', tEnd);
   root.querySelectorAll<HTMLButtonElement>('.sz-tbuttons button').forEach(b => {
     const act = b.dataset.act!;
-    b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); audio.unlock(); if (act === 'fire') tc.fire = true; else if (act === 'ads') tc.ads = !tc.ads; else if (act === 'crouch') tc.crouch = !tc.crouch; else if (act === 'reload') reloadReq = true; else if (act === 'interact') interactHeld = true; else if (act === 'swap') swapReq = true; else if (act === 'nade') nadeReq = true; else if (act === 'heal1') healReq = 1; else if (act === 'heal2') healReq = 2; if (act === 'crouch') b.classList.toggle('down', tc.crouch); else if (act === 'ads') b.classList.toggle('down', tc.ads); else b.classList.add('down'); });
+    b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (!match || paused || phase !== 'play' || e.button !== 0) return; audio.unlock(); if (act === 'fire') tc.fire = true; else if (act === 'ads') tc.ads = !tc.ads; else if (act === 'crouch') tc.crouch = !tc.crouch; else if (act === 'reload') reloadReq = true; else if (act === 'interact') interactHeld = true; else if (act === 'swap') swapReq = true; else if (act === 'nade') nadeReq = true; else if (act === 'heal1') healReq = 1; else if (act === 'heal2') healReq = 2; if (act === 'crouch') b.classList.toggle('down', tc.crouch); else if (act === 'ads') b.classList.toggle('down', tc.ads); else b.classList.add('down'); });
     for (const n of ['pointerup', 'pointercancel', 'pointerleave', 'lostpointercapture']) b.addEventListener(n, () => { if (act === 'fire') tc.fire = false; else if (act === 'interact') interactHeld = false; if (act !== 'ads' && act !== 'crouch') b.classList.remove('down'); });
   });
 
@@ -453,10 +462,15 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     q('.sz-bl').classList.toggle('low', p.hp < 30);
     { const H = p.healKind === 'kit' ? HEAL.kit : HEAL.bandage, on = p.healT > 0; q('#sz-cast').classList.toggle('show', on); if (on) { set(q('#sz-castl'), 'castl', `${H.name} 사용 중`); q('#sz-castb').style.width = `${clamp((1 - p.healT / H.time) * 100, 0, 100)}%`; } }
     set(q('#sz-wname'), 'wn', def ? def.name + (p.reload > 0 ? ' · 장전 중' : '') : '맨손'); set(q('#sz-mag'), 'mag', g ? String(g.mag) : '-'); set(q('#sz-res'), 'res', g ? `/ ${g.reserve}` : '');
+    const reloadMeter = q('#sz-reload-meter'), reloading = !!g && !!def && p.reload > 0;
+    reloadMeter.hidden = !reloading;
+    if (reloading && g && def) q('#sz-reload-fill').style.width = `${clamp(1 - p.reload / (def.reload * partHandling(g.att).reload), 0, 1) * 100}%`;
+    q('.sz-ammo').classList.toggle('empty', !!g && g.mag === 0);
+    q('.sz-ammo').classList.toggle('low', !!g && !!def && g.mag > 0 && g.mag <= Math.max(1, Math.floor(def.mag * 0.2)));
     const gear = [p.bandages > 0 ? `<span class="gear heal">붕대 ${p.bandages} <small>H</small></span>` : '', p.kits > 0 ? `<span class="gear heal">구급상자 ${p.kits} <small>J</small></span>` : '', p.armorLv > 0 ? `<span class="gear">${ARMOR_NAMES[p.armorLv]}</span>` : '', p.nades > 0 ? `<span class="gear">수류탄 ${p.nades}</span>` : '', p.helmet > 0 ? `<span class="gear">${HELMET_NAMES[p.helmet]}</span>` : '', p.boost > 0 ? `<span class="gear boost">부스트 ${Math.ceil(p.boost)}초</span>` : ''].join('');
     html(q('#sz-slots'), 'slots', gear + p.guns.map((x, i) => `<span class="${i === p.cur ? 'on' : ''}">${i + 1} ${x ? WEAPONS[x.id].name : '비어 있음'}${x && Object.keys(x.att).length ? `<small>${Object.values(x.att).map(a => PARTS[a].name.replace(' 조준경', '').replace(' 사이트', '')).join(' · ')}</small>` : ''}</span>`).join(''));
     // 조준선: 탄퍼짐에 맞춰 벌어집니다
-    if (def && view) { const spread = def.spread * partHandling(g!.att).spread * (p.ads ? adsSpread(g!.att) : 1) * (1 + Math.min(1.6, p.speed / PLAYER.walk) * 0.5) * (1 + p.kick * 0.5), px = Math.tan(spread * (def.pellets > 1 ? 2 : 1)) / Math.tan((view.fov * Math.PI) / 360) * (canvas.clientHeight / 2); q('#sz-cross').style.setProperty('--gap', `${clamp(px, 4, 90).toFixed(1)}px`); }
+    if (def && view) { const spread = def.spread * partHandling(g!.att).spread * (p.ads ? adsSpread(g!.att) : 1) * (1 + Math.min(1.6, p.speed / PLAYER.walk) * 0.5) * (1 + p.kick * 0.5) * (1 - 0.22 * p.crouch), px = Math.tan(spread * (def.pellets > 1 ? 2 : 1)) / Math.tan((view.fov * Math.PI) / 360) * (canvas.clientHeight / 2); q('#sz-cross').style.setProperty('--gap', `${clamp(px, 4, 90).toFixed(1)}px`); }
     q('#sz-cross').classList.toggle('hide', p.ads && g?.id === 'sniper' || !p.alive);
     // 낙하 안내: 비행기 안·자유낙하·낙하산
     { const air = q('#sz-air'); let txt = '';
@@ -469,7 +483,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       }
       air.classList.toggle('show', !!txt); html(air, 'air', txt); }
     // 줍기 안내
-    let near: string | null = null; if (p.alive) for (const l of m.loot) { if (l.taken || (l.kind !== 'weapon' && l.kind !== 'attach')) continue; if (Math.hypot(l.x - p.x, l.z - p.z) < PLAYER.pickup) { if (l.kind === 'weapon') { near = WEAPONS[l.weapon!].name; break; } const t = m.partTarget(p, l.part!); if (t && t.fit === 'swap') { near = `${PARTS[l.part!].name} 교체`; break; } } }
+    let near: string | null = null; if (p.alive && p.air === 0 && p.veh < 0) for (const l of m.loot) { if (l.taken || (l.kind !== 'weapon' && l.kind !== 'attach')) continue; if (Math.hypot(l.x - p.x, l.z - p.z) <= PLAYER.pickup) { if (l.kind === 'weapon') { near = WEAPONS[l.weapon!].name; break; } const t = m.partTarget(p, l.part!); if (t && t.fit === 'swap') { near = `${PARTS[l.part!].name} 교체`; break; } } }
     if (!near && p.alive && p.air === 0 && p.veh < 0) { const v = m.vehicleNear(p); if (v) near = `${VEHICLES[v.kind].name} 탑승`; }
     q('#sz-prompt').classList.toggle('show', !!near); set(q('#sz-prompt'), 'prompt', near ? `${touch ? '줍기 버튼' : 'E'} · ${near}` : '');
     // 자기장 밖
@@ -482,7 +496,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       audio.engine(!!v && p.alive, v ? Math.abs(v.speed) / VEHICLES[v.kind].top : 0);
       const red = p.alive && !p.air ? m.redAt(p.x, p.z) : null, hot = !!red && m.t >= red.call; q('#sz-redfx').classList.toggle('on', hot); if (hot) say(m.t >= red!.start ? '폭격 구역 · 지금 벗어나세요!' : '폭격 구역 · 곧 폭격이 시작됩니다', 0.4); }
     // 데미지 비네트
-    q('#sz-vig').style.opacity = String(clamp(p.hurt * 1.4 + (p.hp < 30 && p.alive ? 0.35 + Math.sin(now / 160) * 0.12 : 0), 0, 0.9));
+    q('#sz-vig').style.opacity = String(clamp(p.hurt * 1.4 + (p.hp < 30 && p.alive ? 0.35 + (prefs.reducedMotion ? 0 : Math.sin(now / 160) * 0.12) : 0), 0, 0.9));
     q('#sz-scope').classList.toggle('on', p.ads && g?.id === 'sniper' && p.alive);
     // 명중 표시와 배너
     hitT = Math.max(0, hitT - dt); const hm = q('#sz-hitmark'); hm.style.opacity = String(hitT > 0 ? Math.min(1, hitT * 6) : 0); hm.classList.toggle('head', hitHead); hm.classList.toggle('kill', hitKill && hitT > 0);
@@ -493,7 +507,12 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     html(q('#sz-feed'), 'feed', feed.map(f => `<li class="${f.mine ? 'mine' : ''}">${esc(f.text)}</li>`).join(''));
     q('#sz-keys').classList.toggle('hide', phase !== 'countdown' || touch);
     html(q('#sz-keys'), 'keys', phase === 'countdown' && !touch ? '<span><b>WASD</b> 이동</span><span><b>좌클릭</b> 사격</span><span><b>우클릭</b> 조준</span><span><b>C</b> 웅크리기</span><span><b>E</b> 줍기</span>' : '');
-    drawMap(m, p); drawCompass(m, p);
+    const observed = !pvp && !room && !p.alive ? m.players[spectateId] : null, nav = observed?.alive ? observed : p;
+    const watching = !pvp && !room && !p.alive && !!observed?.alive && !resultShown && !m.over && !skipJob;
+    q('#sz-spectate').hidden = !watching;
+    if (watching) set(q('#sz-spectate-name'), 'spectate-name', observed!.name);
+    if (now >= nextMapDraw) { nextMapDraw = now + 80; drawMap(m, nav); }
+    if (now >= nextCompassDraw) { nextCompassDraw = now + 33; drawCompass(m, nav); }
   }
 
   // ---------- 이벤트 처리 ----------
@@ -547,7 +566,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     }
   }
   function onMyDeath(by: number): void {
-    phase = 'dead'; deadTimer = 0; spectateId = by >= 0 && match!.players[by]?.alive ? by : -1; mouse.fire = mouse.ads = false; tc.fire = false; audio.play('lose');
+    phase = 'dead'; deadTimer = 0; spectateId = by >= 0 && match!.players[by]?.alive ? by : -1; blur(); if (document.pointerLockElement === canvas) document.exitPointerLock(); audio.play('lose');
     if (pvp) { pvp.deadAt = match!.t; pvp.net.sendDead(match!.t); settleTie(); }
     else if (room) { const r = room, m = match; r.net.sendDead(m!.t, by, Math.max(0, CAUSES.indexOf(me().killedWeapon ?? 'zone'))); window.setTimeout(() => { if (!closed && room === r && match === m && !r.shown && !m?.over) { r.shown = true; roomResult(); } }, 1600); }
   }
@@ -566,10 +585,10 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (p.killedWeapon === 'zone') return '<p class="sz-killer">자기장 밖에서 쓰러졌습니다</p>';
     if (p.killedBy < 0) return p.killedWeapon === 'bomb' ? '<p class="sz-killer">폭격에 쓰러졌습니다</p>' : p.killedWeapon === 'vehicle' ? '<p class="sz-killer">차량 사고로 쓰러졌습니다</p>' : '';
     const k = match!.players[p.killedBy], w = p.killedWeapon ? causeName(p.killedWeapon) : '';
-    return k ? `<p class="sz-killer">${k.name}에게 쓰러짐 · ${w}${k.alive ? ` · 상대 체력 ${Math.ceil(k.hp)}` : ''}</p>` : '';
+    return k ? `<p class="sz-killer">${esc(k.name)}에게 쓰러짐 · ${w}${k.alive ? ` · 상대 체력 ${Math.ceil(k.hp)}` : ''}</p>` : '';
   }
   function showResult(win: boolean): void {
-    if (closed || !match) return; const p = me(), t = match.t, rank = win ? 1 : p.place; if (document.pointerLockElement) document.exitPointerLock();
+    if (closed || !match) return; resultShown = true; q('#sz-spectate').hidden = true; const p = me(), t = match.t, rank = win ? 1 : p.place; if (document.pointerLockElement) document.exitPointerLock();
     if (!soloRecorded) {
       recordShooterMatch(win, p.kills);
       career = readShooterCareer();
@@ -580,12 +599,27 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   }
 
   /** 시뮬레이션을 화면 없이 끝까지 돌립니다(내가 쓰러진 뒤 결과만 보고 싶을 때). */
-  function skip(maxSeconds = 600): void { const m = match; if (!m) return; for (let t = 0; t < maxSeconds && !m.over; t += 1 / 30) { m.step(1 / 30); m.drain(); } if (m.over) onOver(m.winner); }
+  function skip(maxSeconds = 600): void {
+    const m = match; if (!m || pvp || room || me().alive || skipJob || !Number.isFinite(maxSeconds) || maxSeconds <= 0) return;
+    const total = Math.ceil(Math.min(600, maxSeconds) * 30);
+    skipJob = { match: m, total, remaining: total }; resultShown = true; q('#sz-spectate').hidden = true;
+    card('ZERO ZONE', '경기 결과 계산 중', '<p id="sz-skip-progress" role="status">남은 경기를 빠르게 진행합니다.</p>', '<button data-act="skipcancel">관전으로 돌아가기</button><button data-act="exit">메뉴로</button>');
+  }
+  function advanceSkip(): void {
+    const job = skipJob; if (!job || job.match !== match) { skipJob = null; return; }
+    const m = job.match;
+    job.remaining = advanceFastForward(m, job.remaining, () => performance.now());
+    if (m.over || job.remaining <= 0) {
+      skipJob = null; over = m.over; showResult(m.winner === me().id); return;
+    }
+    const progress = q('#sz-skip-progress');
+    if (progress) set(progress, 'skip-progress', `경기 진행 중 · 생존 ${m.aliveCount()}명 · ${Math.floor((1 - job.remaining / job.total) * 100)}%`);
+  }
 
   // ---------- 일시정지·메뉴 ----------
   function setPause(on: boolean): void {
     if (pvpRunning() || (phase !== 'play' && phase !== 'countdown') || closed) return; paused = on;
-    if (on) { blur(); if (document.pointerLockElement === canvas) document.exitPointerLock(); card('PAUSED', '일시정지', '', '<button class="primary" data-act="resume">계속하기</button><button data-act="again">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button>'); }
+    if (on) { blur(); audio.engine(false, 0); if (document.pointerLockElement === canvas) document.exitPointerLock(); card('PAUSED', '일시정지', '', '<button class="primary" data-act="resume">계속하기</button><button data-act="again">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button>'); }
     else { modal.className = 'sz-modal'; modal.innerHTML = ''; if (!touch) lock(); }
   }
   q('#sz-pause').addEventListener('click', () => { if (pvpRunning()) { say('대전 중에는 멈출 수 없습니다', 1.4); return; } setPause(true); });
@@ -595,10 +629,20 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     else if (a === 'again') { startSolo(); }
     else if (a === 'setup') { endMatch(); hud.hidden = true; modal.className = 'sz-modal'; modal.innerHTML = ''; phase = 'setup'; paused = false; setupEl.hidden = false; paintSetup(); }
     else if (a === 'spectate') { modal.className = 'sz-modal'; modal.innerHTML = ''; resultShown = false; if (room) room.shown = true; }
-    else if (a === 'skip') { modal.className = 'sz-modal'; resultShown = false; skip(); }
+    else if (a === 'skip') { skip(); }
+    else if (a === 'skipcancel') { skipJob = null; modal.className = 'sz-modal'; modal.innerHTML = ''; resultShown = false; }
     else if (a === 'roomagain') { leaveRoom(); endMatch(); hud.hidden = true; modal.className = 'sz-modal'; modal.innerHTML = ''; phase = 'setup'; setupEl.hidden = false; pickMode = 'room'; paintSetup(); openPvpLobby(true); }
     else if (a === 'rematch') { leavePvpSilently(); endMatch(); hud.hidden = true; modal.className = 'sz-modal'; modal.innerHTML = ''; phase = 'setup'; setupEl.hidden = false; pickMode = 'pvp'; paintSetup(); openPvpLobby(); }
     else if (a === 'exit') exit();
+  });
+  q('#sz-spectate').addEventListener('click', e => {
+    const a = (e.target as HTMLElement).closest<HTMLElement>('[data-spectate]')?.dataset.spectate;
+    const m = match; if (!m || me().alive || pvp || room || resultShown || m.over || skipJob) return;
+    if (a === 'result') { showResult(false); return; }
+    if (a === 'next') {
+      const alive = m.players.filter(p => p.alive);
+      if (alive.length) { const i = alive.findIndex(p => p.id === spectateId); spectateId = alive[(i + 1) % alive.length].id; nextMapDraw = nextCompassDraw = 0; }
+    }
   });
   function leavePvpSilently(): void { endPvp(); }
 
@@ -607,6 +651,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (closed) return; raf = requestAnimationFrame(frame);
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
     if (!match || !view) return;
+    if (skipJob) { advanceSkip(); return; }
+    if (paused) return;
     const m = match, p = me();
     if (phase === 'countdown' && !paused) {
       countdown -= dt; const c = Math.ceil(countdown - 0.4), el = q('#sz-count');

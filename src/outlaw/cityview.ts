@@ -7,6 +7,7 @@ import { signal } from './world';
 import * as tex from './textures';
 import type { OutlawAssets } from './assets';
 import { architectureDetails } from './architecture';
+import { EnvironmentPlumes, type PlumeEmitter } from './environment-fx';
 
 export type Quality = 'high' | 'standard' | 'low';
 type Batch = Map<THREE.Material, THREE.BufferGeometry[]>;
@@ -72,6 +73,8 @@ export class CityView {
   private roadMat: THREE.MeshStandardMaterial | null = null;
   private pavementMat: THREE.MeshStandardMaterial | null = null;
   private wetness = -1;
+  private plumes: EnvironmentPlumes;
+  private plumeEmitters: PlumeEmitter[] = [];
   private poolMap: THREE.Texture | null = null;
   private sky = tex.makeSkyDome();
   private hemi = new THREE.HemisphereLight();
@@ -108,7 +111,9 @@ export class CityView {
       this.chunks.push({ root, x: -map.half + (x + .5) * size, z: -map.half + (z + .5) * size, batch: new Map() });
     }
     for (let i = 0; i < 6; i++) { const f = tex.facadeTexture(i); this.facades.push(this.mat({ map: this.texture(f.map), emissiveMap: this.texture(f.emissive), emissive: 0xffe5be, emissiveIntensity: 0, roughness: i === 0 ? .36 : .82, metalness: i === 0 ? .25 : .02, vertexColors: true })); }
+    this.plumes = new EnvironmentPlumes(quality);
     this.buildGround(); this.buildBuildings(); this.buildRamps(); this.buildProps(); this.buildSignals(); this.buildHorizon();
+    this.plumes.setEmitters(this.plumeEmitters); this.root.add(this.plumes.group);
     for (const c of this.chunks) this.flush(c.batch, c.root);
     // 처음 렌더하기 전에도 황혼 조명이 준비됩니다.
     this.lighting(16.6, new THREE.Vector3(), 0);
@@ -163,7 +168,11 @@ export class CityView {
       for (let n = 14; n < len - 12; n += 9) { const px = road.ax + dx * n / len, pz = road.az + dz * n / len; this.put(x, z, yellow, plane(px, .014, pz, horizontal ? 4 : .15, horizontal ? .15 : 4)); }
       if (this.quality !== 'low') {
         // Road drains and inspection covers share one chunk material, without collision or extra meshes.
-        if (road.id % 3 === 0) this.put(x, z, hardware, surface(new THREE.CircleGeometry(.67, 12).rotateX(-Math.PI / 2).translate(x + (horizontal ? 6 : 1.8), .031, z + (horizontal ? 1.8 : 6)), 4, 0x454b4e));
+        if (road.id % 3 === 0) {
+          const mx = x + (horizontal ? 6 : 1.8), mz = z + (horizontal ? 1.8 : 6);
+          this.put(x, z, hardware, surface(new THREE.CircleGeometry(.67, 12).rotateX(-Math.PI / 2).translate(mx, .031, mz), 4, 0x454b4e));
+          if (road.id % 12 === 0) this.plumeEmitters.push({ x: mx, y: .12, z: mz, rise: 3.7, spread: 1.1, smoke: false });
+        }
         for (const s of [-1, 1]) {
           const px = x + (horizontal ? 16 : s * 6.35), pz = z + (horizontal ? s * 6.35 : 16);
           this.put(x, z, hardware, box(px, .026, pz, horizontal ? 1.0 : .38, .035, horizontal ? .38 : 1.0, 4, 0x555c60));
@@ -206,7 +215,7 @@ export class CityView {
           this.put(b.x, b.z, equipment, surface(new THREE.CylinderGeometry(1.8, 1.8, 3.2, 10).translate(b.x + b.w * .2, b.h + 2.4, b.z)));
           for (const s of [-1, 1]) this.put(b.x, b.z, equipment, box(b.x + b.w * .2 + s, b.h + .55, b.z, .16, 1, 2.2));
         }
-        if (b.kind === 'factory') this.put(b.x, b.z, roof, box(b.x, b.h + 5, b.z, 1.8, 10, 1.8));
+        if (b.kind === 'factory') { this.put(b.x, b.z, roof, box(b.x, b.h + 5, b.z, 1.8, 10, 1.8)); this.plumeEmitters.push({ x: b.x, y: b.h + 10.1, z: b.z, rise: 12, spread: 3.5, smoke: true }); }
         if (b.kind === 'tower') this.put(b.x, b.z, equipment, box(b.x, b.h + 1.2, b.z, b.w * .58, 2, b.d * .58));
       }
       const poi = this.map.pois.find(p => p.building === b.id && names[p.kind]);
@@ -371,7 +380,7 @@ export class CityView {
     for (const m of this.reflections) m.opacity = Math.min(.55, c.night * .3 + rain * .3);
   }
   update(dt: number, camera: THREE.PerspectiveCamera, clock: number, t: number, rain = 0): void {
-    if (this.disposed) return; this.lightning(dt, rain); this.lighting(clock, camera.position, rain); this.rainFx(dt, camera.position, rain);
+    if (this.disposed) return; this.lightning(dt, rain); this.lighting(clock, camera.position, rain); this.rainFx(dt, camera.position, rain); this.plumes.update(t, camera.position, this.night, rain);
     const radius = this.quality === 'low' ? 610 : 810, halfChunk = this.map.half / 4;
     for (const c of this.chunks) { const dx = Math.max(0, Math.abs(camera.position.x - c.x) - halfChunk), dz = Math.max(0, Math.abs(camera.position.z - c.z) - halfChunk); c.root.visible = dx * dx + dz * dz < radius * radius; }
     if (this.signals && (Math.abs(t - this.signalTick) >= .25 || this.signalTick === -Infinity)) {
@@ -381,7 +390,7 @@ export class CityView {
     }
   }
   dispose(): void {
-    if (this.disposed) return; this.disposed = true; const geometries = new Set<THREE.BufferGeometry>();
+    if (this.disposed) return; this.disposed = true; this.plumes.dispose(); const geometries = new Set<THREE.BufferGeometry>();
     this.root.traverse(o => { if (o instanceof THREE.Mesh || o instanceof THREE.LineSegments) { geometries.add(o.geometry); if (o instanceof THREE.InstancedMesh) o.dispose(); } });
     this.materials.add(this.bulbs); this.materials.add(this.glow);
     for (const g of geometries) g.dispose(); for (const m of this.materials) m.dispose(); for (const t of this.textures) t.dispose();

@@ -5,6 +5,7 @@ import { stageIndex } from '../core/data';
 import { GeoBuilder } from './geo';
 import { addFacadeDetails } from './architecture';
 import { addStreetProps } from './street';
+import { EnvironmentPlumes, type PlumeEmitter } from '../../outlaw/environment-fx';
 import { Colliders, GRID, HALF, PITCH, ROAD, BLOCK, WORLD_HALF, blockTier, blockUnlocked, hash01, type Block, type Box, type Layout, type Lot } from './layout';
 import { asphaltTexture, dirtTexture, facadeMaps, grassTexture, kindColor, puddleTexture, ringTexture, sidewalkTexture, signTexture, type FacadeStyle } from './textures';
 
@@ -55,7 +56,7 @@ export const spotColor = (v: SpotView): string => {
 interface LotGeo { walls: Record<FacadeStyle, GeoBuilder>; roofs: GeoBuilder; detail: GeoBuilder; glazing: GeoBuilder; glow: GeoBuilder; grass: GeoBuilder; dirt: GeoBuilder; boxes: Box[] }
 class BlockView {
   group = new THREE.Group(); bld = new THREE.Group(); disposables: THREE.BufferGeometry[] = [];
-  key = ''; rise = 1; riseDelay = 0; crane: THREE.Object3D | null = null;
+  key = ''; rise = 1; riseDelay = 0; crane: THREE.Object3D | null = null; emitters: PlumeEmitter[] = [];
 }
 
 export class CityView {
@@ -71,7 +72,8 @@ export class CityView {
   private wetU = { value: 0 };
   private signMats = new Map<string, THREE.MeshBasicMaterial>();
   private beacons = new Map<string, { group: THREE.Group; ring: THREE.Mesh; beam: THREE.Mesh; lot: Lot; open: boolean }>();
-  private stage = -1; private time = 0; private targetId: string | null = null; private spotViews = new Map<string, SpotView>();
+  private stage = -1; private time = 0; private night = 0; private wet = 0;
+  private plumes: EnvironmentPlumes; private targetId: string | null = null; private spotViews = new Map<string, SpotView>();
   private lampMesh!: THREE.InstancedMesh; private lampGlow!: THREE.InstancedMesh; private poolMesh!: THREE.InstancedMesh;
   private trunkMesh!: THREE.InstancedMesh; private crownMesh!: THREE.InstancedMesh;
   private tmp = new THREE.Object3D();
@@ -100,6 +102,7 @@ export class CityView {
   roughnessFactor *= mix(1.0, texelRoughness.g * 0.85, uWet);
 #endif`);
     };
+    this.plumes = new EnvironmentPlumes(quality); this.group.add(this.plumes.group);
     this.buildGround(); this.buildRoadMarks(); this.buildProps(); this.buildBeacons(); this.buildBackdrop();
   }
 
@@ -225,7 +228,7 @@ export class CityView {
   sync(stage: Stage, views: SpotView[], animate: boolean): void {
     const si = stageIndex(stage), changed = this.stage !== si; this.stage = si;
     this.spotViews.clear(); for (const v of views) this.spotViews.set(v.id, v);
-    let order = 0;
+    let order = 0, rebuilt = false;
     const sorted = [...this.layout.blocks].sort((a, b) => a.ring - b.ring || Math.abs(a.i) + Math.abs(a.j) - Math.abs(b.i) - Math.abs(b.j));
     for (const b of sorted) {
       const key = `${blockUnlocked(b, si) ? 1 : 0}${blockTier(b, si)}|${b.lots.map(l => spotSig(l.spot ? this.spotViews.get(l.spot.id) : undefined)).join(',')}`;
@@ -233,10 +236,11 @@ export class CityView {
       if (v && v.key === key) continue;
       const fresh = !v || v.key.slice(0, 2) !== key.slice(0, 2);
       if (!v) { v = new BlockView(); this.views.set(b, v); this.group.add(v.group); } else this.clearBlock(v);
-      v.key = key; this.buildBlock(b, v, si);
+      v.key = key; this.buildBlock(b, v, si); rebuilt = true;
       if (animate && fresh && blockUnlocked(b, si)) { v.rise = 0.02; v.riseDelay = order++ * 0.05; v.bld.scale.y = 0.02; }
     }
     if (changed) { this.refillTrees(); this.refillSkyline(); } this.recolorBeacons();
+    if (rebuilt) this.refreshPlumes();
     if (this.globeAnchor && !this.globe) this.addGlobe(this.globeAnchor.x, this.globeAnchor.y, this.globeAnchor.z);
     if (this.globe) this.globe.visible = si >= 6;
   }
@@ -255,6 +259,7 @@ export class CityView {
   /** 문 앞 표지 위치(없으면 null). */
   doorOf(id: string): { x: number; z: number; fx: number; fz: number } | null { const l = this.layout.spotLots.get(id); return l ? { x: l.doorX, z: l.doorZ, fx: l.fx, fz: l.fz } : null; }
   setNight(n: number): void {
+    this.night = n;
     const e = 0.04 + n * 0.85;
     for (const m of Object.values(this.facade)) m.emissiveIntensity = e;
     this.skylineMat.emissiveIntensity = 0.04 + n * 0.8;
@@ -263,16 +268,20 @@ export class CityView {
     (this.hills.material as THREE.MeshBasicMaterial).color.setHSL(0.6, 0.3, lerp(0.14, 0.05, n));
   }
   setWet(w: number): void {
+    this.wet = w;
     this.wetU.value = w; this.roadMat.roughness = lerp(0.92, 0.5, w); this.roadMat.metalness = lerp(0, 0.35, w);
     this.walkMat.roughness = lerp(0.92, 0.55, w);
     for (const m of Object.values(this.facade)) m.roughness = lerp(m === this.facade.glass ? 0.18 : 0.9, 0.35, w * 0.5);
   }
   update(dt: number, player: THREE.Vector3): void {
     this.time += dt;
+    let finishedRise = false;
     for (const v of this.views.values()) if (v.rise < 1) {
       if (v.riseDelay > 0) { v.riseDelay -= dt; continue; }
-      v.rise = Math.min(1, v.rise + dt / 1.6); const e = 1 - Math.pow(1 - v.rise, 3); v.bld.scale.y = Math.max(0.02, e);
+      v.rise = Math.min(1, v.rise + dt / 1.6); const e = 1 - Math.pow(1 - v.rise, 3); v.bld.scale.y = Math.max(0.02, e); if (v.rise === 1) finishedRise = true;
     }
+    if (finishedRise) this.refreshPlumes();
+    this.plumes.update(this.time, player, this.night, this.wet);
     for (const v of this.construction) if (v.crane) v.crane.rotation.y += dt * 0.12;
     for (const b of this.beacons.values()) {
       if (!b.group.visible) continue;
@@ -293,8 +302,9 @@ export class CityView {
   }
 
   // ---------- 구획 짓기 ----------
+  private refreshPlumes(): void { this.plumes.setEmitters([...this.views.values()].filter(v => v.rise === 1).flatMap(v => v.emitters)); }
   private clearBlock(v: BlockView): void {
-    this.construction.delete(v);
+    this.construction.delete(v); v.emitters.length = 0; v.rise = 1; v.riseDelay = 0;
     if (v.crane) { const mats = new Set<THREE.Material>(); v.crane.traverse(o => { if (o instanceof THREE.Mesh) for (const m of Array.isArray(o.material) ? o.material : [o.material]) mats.add(m); }); for (const m of mats) m.dispose(); }
     v.crane = null;
     for (const g of v.disposables) g.dispose(); v.disposables = [];
@@ -464,7 +474,7 @@ export class CityView {
     const sw = Math.min(7.6, Math.max(4, along - 0.8));
     this.signPlane(v, sw, sw / 4, cx + nx * (depth / 2 + 0.1), Math.min(H - 1.2, 4.7), cz + nz * (depth / 2 + 0.1), nx, nz, this.signMat(d.text, d.color, d.sub, d.dim));
     const ex = spec.extra;
-    if (ex === 'chimney') { g.detail.solid(cx - fw / 4, H, cz - fd / 4, 1.6, 10, 1.6, 0x6b5f57); g.glow.solid(cx - fw / 4, H + 10, cz - fd / 4, 1.0, 0.3, 1.0, 0xff8a3a); }
+    if (ex === 'chimney') { g.detail.solid(cx - fw / 4, H, cz - fd / 4, 1.6, 10, 1.6, 0x6b5f57); g.glow.solid(cx - fw / 4, H + 10, cz - fd / 4, 1.0, 0.3, 1.0, 0xff8a3a); v.emitters.push({ x: cx - fw / 4, y: H + 10.35, z: cz - fd / 4, rise: 9, spread: 2.6, smoke: true }); }
     if (ex === 'tower') { g.detail.solid(cx, H, cz, 3, 6, 3, 0x9aa4b0); g.glow.solid(cx, H + 6, cz, 0.4, 0.4, 0.4, 0xff3030); if (d.level >= 3 || spec.floors === 14) g.glow.solid(cx, H + 0.5, cz + nz * (depth / 2 - 0.2), nx ? 0.4 : fw - 1, 0.5, nz ? 0.4 : fd - 1, 0x59b9ff); }
     if (ex === 'columns') for (let k = -2; k <= 2; k++) g.detail.solid(cx + (nz ? k * 2.2 : 0) + nx * (depth / 2 + 0.5), 0.2, cz + (nx ? k * 2.2 : 0) + nz * (depth / 2 + 0.5), 0.5, 4.2, 0.5, 0xe5e1d6);
     if (ex === 'warehouse') for (let k = 0; k < 4; k++) g.detail.solid(cx - nx * 0 + (nz ? (k - 1.5) * 2.4 : 0) + nx * (depth / 2 + 1.5), 0.2, cz + (nx ? (k - 1.5) * 2.4 : 0) + nz * (depth / 2 + 1.5), 1.6, 1.2 + (k % 2) * 0.6, 1.6, [0xb07a3a, 0x8a6a3a, 0xc29a4a, 0x9a7a4a][k]);
@@ -512,7 +522,7 @@ export class CityView {
   private constructionSign: THREE.MeshBasicMaterial | null = null;
 
   dispose(): void {
-    if (this.disposed) return; this.disposed = true;
+    if (this.disposed) return; this.disposed = true; this.plumes.dispose();
     const geometries = new Set<THREE.BufferGeometry>(), materials = new Set<THREE.Material>([...Object.values(this.facade), this.roofMat, this.detailMat, this.glazingMat, this.glowMat, this.walkMat, this.dirtMat, this.grassMat, this.roadMat, ...this.signMats.values()]);
     if (this.constructionSign) materials.add(this.constructionSign);
     const textures = new Set<THREE.Texture>([this.ringTex]);

@@ -34,14 +34,14 @@ const TEMPLATES: number[][][] = [
 
 export function addSolid(map: CityMap, s: Solid): number {
   const idx = map.solids.push(s) - 1;
-  for (let gy = Math.floor(s.y / GC); gy <= Math.floor((s.y + s.h) / GC); gy++) for (let gx = Math.floor(s.x / GC); gx <= Math.floor((s.x + s.w) / GC); gx++) map.grid[gy * GN + gx]?.push(idx);
+  for (let gy = Math.max(0, Math.floor(s.y / GC)); gy <= Math.min(GN - 1, Math.floor((s.y + s.h) / GC)); gy++) for (let gx = Math.max(0, Math.floor(s.x / GC)); gx <= Math.min(GN - 1, Math.floor((s.x + s.w) / GC)); gx++) map.grid[gy * GN + gx]?.push(idx);
   markNav(map, s, 1);
   return idx;
 }
 export function removeSolid(map: CityMap, idx: number): void {
   const s = map.solids[idx]; if (!s || !s.alive) return;
   s.alive = false; markNav(map, s, -1);
-  for (let gy = Math.floor(s.y / GC); gy <= Math.floor((s.y + s.h) / GC); gy++) for (let gx = Math.floor(s.x / GC); gx <= Math.floor((s.x + s.w) / GC); gx++) {
+  for (let gy = Math.max(0, Math.floor(s.y / GC)); gy <= Math.min(GN - 1, Math.floor((s.y + s.h) / GC)); gy++) for (let gx = Math.max(0, Math.floor(s.x / GC)); gx <= Math.min(GN - 1, Math.floor((s.x + s.w) / GC)); gx++) {
     const cell = map.grid[gy * GN + gx]; if (!cell) continue; const at = cell.indexOf(idx); if (at >= 0) cell.splice(at, 1);
   }
 }
@@ -54,7 +54,7 @@ function markNav(map: CityMap, s: Solid, d: number): void {
     }
 }
 export function solidAt(map: CityMap, x: number, y: number): Solid | null {
-  if (x < 0 || y < 0 || x >= SIZE || y >= SIZE) return null;
+  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x >= SIZE || y >= SIZE) return null;
   const cell = map.grid[Math.floor(y / GC) * GN + Math.floor(x / GC)];
   for (let k = 0; k < cell.length; k++) { const s = map.solids[cell[k]]; if (x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h) return s; }
   return null;
@@ -88,11 +88,12 @@ export function resolveCircle(map: CityMap, o: { x: number; y: number }, r: numb
   return hit;
 }
 export function navBlocked(map: CityMap, x: number, y: number): boolean {
-  if (x < 0 || y < 0 || x >= SIZE || y >= SIZE) return true;
+  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x >= SIZE || y >= SIZE) return true;
   return map.nav[Math.floor(y / NAV) * NAVN + Math.floor(x / NAV)] > 0;
 }
 /** 두 지점 사이가 건물에 막히지 않았는지 (시야·직선 이동). */
 export function clearLine(map: CityMap, x0: number, y0: number, x1: number, y1: number, exact = false): boolean {
+  if (![x0, y0, x1, y1].every(Number.isFinite)) return false;
   const dx = x1 - x0, dy = y1 - y0, d = Math.hypot(dx, dy), n = Math.max(1, Math.ceil(d / 18));
   for (let k = 1; k < n; k++) {
     const x = x0 + dx * k / n, y = y0 + dy * k / n;
@@ -115,9 +116,12 @@ export function rectHitsRoad(x: number, y: number, w: number, h: number): boolea
   return rangeHitsRoad(x, x + w) || rangeHitsRoad(y, y + h);
 }
 export function rectFree(map: CityMap, x: number, y: number, w: number, h: number): boolean {
-  if (x < 20 || y < 20 || x + w > SIZE - 20 || y + h > SIZE - 20) return false;
+  if (![x, y, w, h].every(Number.isFinite) || w <= 0 || h <= 0 || x < 20 || y < 20 || x + w > SIZE - 20 || y + h > SIZE - 20) return false;
   const pad = SOLID_CLEARANCE;
-  for (const s of map.solids) if (s.alive && x < s.x + s.w + pad && x + w > s.x - pad && y < s.y + s.h + pad && y + h > s.y - pad) return false;
+  // Query only spatial cells overlapping the padded footprint, not every building in the city.
+  for (let gy = Math.max(0, Math.floor((y - pad) / GC)); gy <= Math.min(GN - 1, Math.floor((y + h + pad) / GC)); gy++) for (let gx = Math.max(0, Math.floor((x - pad) / GC)); gx <= Math.min(GN - 1, Math.floor((x + w + pad) / GC)); gx++) {
+    for (const id of map.grid[gy * GN + gx]) { const s = map.solids[id]; if (s.alive && x < s.x + s.w + pad && x + w > s.x - pad && y < s.y + s.h + pad && y + h > s.y - pad) return false; }
+  }
   // 도로 침범 금지 (블록 안 보도는 허용)
   if (rectHitsRoad(x, y, w, h)) return false;
   return true;
@@ -151,9 +155,12 @@ function nearestFree(map: CityMap, cx: number, cy: number): number {
   return -1;
 }
 export function findPath(map: CityMap, x0: number, y0: number, x1: number, y1: number): number[] | null {
+  if (![x0, y0, x1, y1].every(Number.isFinite)) return null;
   const start = nearestFree(map, Math.floor(x0 / NAV), Math.floor(y0 / NAV)), goal = nearestFree(map, Math.floor(x1 / NAV), Math.floor(y1 / NAV));
   if (start < 0 || goal < 0) return null;
-  stampId++; heap.length = 0; heapF.length = 0;
+  // A blocked destination in the same navigation cell still needs a reachable waypoint.
+  if (start === goal) return navBlocked(map, x1, y1) ? [(goal % NAVN) * NAV + NAV / 2, ((goal / NAVN) | 0) * NAV + NAV / 2] : [x1, y1];
+  stampId++; if (stampId > 0xffffffff) { stamp.fill(0); closed.fill(0); stampId = 1; } heap.length = 0; heapF.length = 0;
   const gx = goal % NAVN, gy = (goal / NAVN) | 0;
   gScore[start] = 0; came[start] = -1; stamp[start] = stampId; push(start, 0);
   let found = false, expanded = 0;

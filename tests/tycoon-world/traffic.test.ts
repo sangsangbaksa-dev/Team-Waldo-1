@@ -22,9 +22,10 @@ describe('HUSTLE traffic signals', () => {
   it('brakes before a red light and lets cars already in the intersection leave', () => {
     // At (24,24), the offset is 3 seconds.
     expect(signalAspect(10,24,24,'x')).toBe('red');
-    expect(intersectionFactor(10,'x',24,14.5,1,4)).toBe(0);
+    expect(intersectionFactor(10,'x',24,11.85,1,4)).toBe(0);
     expect(intersectionFactor(10,'x',24,1,1,4)).toBeGreaterThan(0);
     expect(intersectionFactor(10,'x',24,20,1,4)).toBe(1);
-    expect(intersectionFactor(0,'x',24,14.5,1,4)).toBe(1);
+    expect(intersectionFactor(0,'x',24,11.85,1,4)).toBe(1);
+    expect(intersectionFactor(10,'x',168,11.85,1,4)).toBe(1);
   });
 });

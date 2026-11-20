@@ -185,7 +185,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (e.code === 'Tab') { e.preventDefault(); openModal({ kind: 'status' }); return; }
     if (e.code === 'KeyM') { openModal({ kind: 'map' }); return; }
     if (e.code === 'KeyE' || e.code === 'Enter') { interact(); return; }
-    if (e.code === 'KeyV') { player.setFirstPerson(!player.firstPerson); if (player.firstPerson) lock(); else if (document.pointerLockElement) document.exitPointerLock(); return; }
+    if (e.code === 'KeyV') { player.setFirstPerson(!player.firstPerson); if (player.firstPerson) lock(); else if (document.pointerLockElement === canvas) document.exitPointerLock(); return; }
     if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3') { core.setSpeed(e.code === 'Digit1' ? 1 : e.code === 'Digit2' ? 2 : 4); hudDirty = true; return; }
     if (e.code.startsWith('Arrow')) e.preventDefault();
     keys.add(e.code);

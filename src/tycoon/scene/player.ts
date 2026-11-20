@@ -5,7 +5,7 @@ import type { Colliders } from './layout';
 
 export interface MoveInput { mx: number; mz: number; run: boolean }
 const WALK = 3.4, RUN = 6.4, RADIUS = 0.45, EYE = 1.62;
-const wrap = (a: number): number => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
+const wrap = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));
 
 /** 단계별 옷차림: 빈털터리는 해진 작업복, 올라갈수록 말끔해집니다. */
 export function outfitFor(stage: number): { kind: string; team: number; seed: number } {
@@ -32,28 +32,34 @@ export class Player {
     this.rig = this.kit.create(o.kind, o.seed, o.team); this.rig.root.rotation.y = this.facing; this.scene.add(this.rig.root); this.rig.root.visible = !this.firstPerson;
   }
   teleport(x: number, z: number, yaw: number): void {
-    this.pos.set(x, 0.18, z); this.vel.set(0, 0, 0); this.facing = yaw; this.camYaw = yaw + Math.PI; this.camInit = false;
+    this.pos.set(x, 0.18, z); this.vel.set(0, 0, 0); this.facing = wrap(yaw); this.camYaw = wrap(yaw - Math.PI / 2); this.camInit = false; this.speed = 0;
     if (this.rig) { this.rig.root.position.copy(this.pos); this.rig.root.rotation.y = this.facing; }
   }
   celebrate(): void { this.wave = 1.4; }
   setFirstPerson(on: boolean): void { this.firstPerson = on; this.camInit = false; if (this.rig) this.rig.root.visible = !on; if (on) this.camPitch = 0; else this.camPitch = 0.28; }
 
   update(dt: number, input: MoveInput, colliders: Colliders, frozen: boolean): void {
-    const len = Math.hypot(input.mx, input.mz), mag = frozen ? 0 : Math.min(1, len);
+    if (!Number.isFinite(dt) || dt <= 0) return;
+    dt = Math.min(.25, dt);
+    const mx = Number.isFinite(input.mx) ? input.mx : 0, mz = Number.isFinite(input.mz) ? input.mz : 0;
+    const len = Math.hypot(mx, mz), mag = frozen ? 0 : Math.min(1, len);
     const target = mag * (input.run ? RUN : WALK);
     if (frozen) this.vel.set(0, 0, 0);
     // 카메라 기준 이동 방향
     let dx = 0, dz = 0;
-    if (mag > 0.01) { const ix = input.mx / len, iz = input.mz / len, sn = Math.sin(this.camYaw), cs = Math.cos(this.camYaw); dx = ix * cs - iz * sn; dz = -ix * sn - iz * cs; }
+    if (mag > 0.01) { const ix = mx / len, iz = mz / len, sn = Math.sin(this.camYaw), cs = Math.cos(this.camYaw); dx = ix * cs - iz * sn; dz = -ix * sn - iz * cs; }
     const ax = dx * target, az = dz * target, k = Math.min(1, dt * 10);
     if (frozen) this.vel.set(0, 0, 0);
     else { this.vel.x += (ax - this.vel.x) * k; this.vel.z += (az - this.vel.z) * k; }
+    const startX = this.pos.x, startZ = this.pos.z;
     const steps = Math.max(1, Math.ceil(dt / 0.04)), sd = dt / steps;
     for (let i = 0; i < steps; i++) {
       this.pos.x += this.vel.x * sd; this.pos.z += this.vel.z * sd;
       colliders.resolve(this.pos.x, this.pos.z, RADIUS, this.tmp); this.pos.x = this.tmp.x; this.pos.z = this.tmp.z;
     }
-    this.speed = Math.hypot(this.vel.x, this.vel.z);
+    // Wall contact cannot accumulate walking animation speed while stationary.
+    if (!frozen) { this.vel.x = (this.pos.x - startX) / dt; this.vel.z = (this.pos.z - startZ) / dt; }
+    this.speed = frozen ? 0 : Math.hypot(this.vel.x, this.vel.z);
     if (this.firstPerson) this.facing = this.camYaw + Math.PI / 2;
     else if (this.speed > 0.4) { const want = Math.atan2(-this.vel.z, this.vel.x), d = wrap(want - this.facing); this.facing += d * Math.min(1, dt * 12); }
     if (this.wave > 0) this.wave = Math.max(0, this.wave - dt);
@@ -83,6 +89,7 @@ export class Player {
     camera.position.copy(this.camPos); camera.lookAt(px, 0.18 + ty, pz);
   }
   look(dx: number, dy: number): void {
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) return;
     this.camYaw = wrap(this.camYaw - dx); this.camPitch = THREE.MathUtils.clamp(this.camPitch + dy * (this.firstPerson ? -1 : 1), this.firstPerson ? -1.3 : -0.1, this.firstPerson ? 1.3 : 1.2);
     if (this.firstPerson) this.camPitch = THREE.MathUtils.clamp(this.camPitch, -1.3, 1.3);
   }

@@ -81,11 +81,23 @@ export function buildLayout(spots: readonly SpotDef[]): Layout {
   }
   const home = spotLots.get('bench') ?? [...spotLots.values()].find(l => l.spot?.kind === 'home');
   const sb = blocks.find(b => b.i === START.i && b.j === START.j)!;
-  const spawn = home ? { x: home.doorX + (home.fx ? home.fx * 2 : 3), z: home.doorZ + (home.fz ? home.fz * 2 : 3), yaw: Math.atan2(-home.fx, -home.fz) } : { x: sb.cx + 16.5, z: sb.cz + 16.5, yaw: 0 };
+  const spawn = home ? { x: home.doorX + (home.fx ? home.fx * 2 : 3), z: home.doorZ + (home.fz ? home.fz * 2 : 3), yaw: Math.atan2(home.fz, -home.fx) } : { x: sb.cx + 16.5, z: sb.cz + 16.5, yaw: 0 };
   return { blocks, lots, spotLots, spawn };
 }
 
 export interface Box { x0: number; x1: number; z0: number; z1: number }
+/** The rendered fence and collision geometry share the same five segments, with a 3m front opening. */
+export function recycleFenceSegments(lot: Pick<Lot,'cx'|'cz'|'fx'|'fz'>): Box[] {
+  const boxes: Box[] = [];
+  for (const [nx,nz] of [[0,1],[0,-1],[1,0],[-1,0]] as const) {
+    const ranges = nx === lot.fx && nz === lot.fz ? [[-6.8,-1.5],[1.5,6.8]] : [[-6.8,6.8]];
+    for (const [a,b] of ranges) {
+      const x = lot.cx + nx*6.8, z = lot.cz + nz*6.8;
+      boxes.push(nx ? {x0:x-.15,x1:x+.15,z0:z+a,z1:z+b} : {x0:x+a,x1:x+b,z0:z-.15,z1:z+.15});
+    }
+  }
+  return boxes;
+}
 /** 충돌 상자 모음: 구획 단위로 모아 두고 플레이어 주변만 검사합니다. */
 export class Colliders {
   private byBlock = new Map<string, Box[]>();

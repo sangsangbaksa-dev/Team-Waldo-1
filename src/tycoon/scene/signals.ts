@@ -15,12 +15,14 @@ export function signalAspect(t: number, x: number, z: number, axis: Axis): Signa
 }
 /** Stop before the intersection; cars already inside finish crossing. */
 export function intersectionFactor(t: number, axis: Axis, line: number, pos: number, dir: 1 | -1, length: number): number {
-  const edge = ROAD / 2 + 1.35 + length / 2;
-  for (const cross of ROAD_CENTERS) {
+  // Stop behind the complete crosswalk, not inside its stripes.
+  const edge = ROAD / 2 + 3.0 + length / 2;
+  if (!ROAD_CENTERS.slice(1, -1).includes(line)) return 1;
+  for (const cross of ROAD_CENTERS.slice(1, -1)) {
     const forward = (cross - pos) * dir, gap = forward - edge;
     if (gap < -.12 || gap > 15) continue;
     const x = axis === 'x' ? cross : line, z = axis === 'z' ? cross : line;
-    if (signalAspect(t, x, z, axis) !== 'green') return Math.max(0, Math.min(1, (gap - .15) / 12));
+    if (signalAspect(t, x, z, axis) !== 'green') return gap <= .150001 ? 0 : Math.min(1, (gap - .15) / 12);
   }
   return 1;
 }

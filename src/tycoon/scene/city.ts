@@ -7,7 +7,7 @@ import { addFacadeDetails } from './architecture';
 import { addStreetProps } from './street';
 import { IntersectionLights } from './signals';
 import { EnvironmentPlumes, type PlumeEmitter } from '../../outlaw/environment-fx';
-import { Colliders, GRID, HALF, PITCH, ROAD, BLOCK, WORLD_HALF, blockTier, blockUnlocked, hash01, type Block, type Box, type Layout, type Lot } from './layout';
+import { Colliders, GRID, HALF, PITCH, ROAD, BLOCK, WORLD_HALF, blockTier, blockUnlocked, hash01, recycleFenceSegments, type Block, type Box, type Layout, type Lot } from './layout';
 import { asphaltTexture, dirtTexture, facadeMaps, grassTexture, kindColor, puddleTexture, ringTexture, sidewalkTexture, signTexture, type FacadeStyle } from './textures';
 
 export type Quality = 'high' | 'standard' | 'low';
@@ -398,7 +398,7 @@ export class CityView {
     const label = (text: string, color: string, sub: string): void => this.signPlane(v, 5.6, 1.4, ...(([x, z]) => [x, 3.3, z] as [number, number, number])(at(0, 6.7)), lot.fx, lot.fz, this.signMat(text, color, sub, false));
     if (spot.kind === 'home') {
       g.grass.floor(cx - 7, cz - 7, cx + 7, cz + 7, 0.2, 0xffffff, 1 / 3);
-      for (const a of [-3.5, 3.5]) { box(a, 2, 2.6, 0.12, 0.8, 0x7a5c3a, 0.65, false); box(a, 1.5, 2.6, 0.5, 0.12, 0x6a4c2c, 0.9, false); box(a - 1.1, 2, 0.15, 0.5, 0.6, 0x333, 0.18, false); box(a + 1.1, 2, 0.15, 0.5, 0.6, 0x333, 0.18, false); }
+      for (const a of [-3.5, 3.5]) { box(a, 2, 2.6, 0.12, 0.8, 0x7a5c3a, 0.65, true); box(a, 1.5, 2.6, 0.5, 0.12, 0x6a4c2c, 0.9, false); box(a - 1.1, 2, 0.15, 0.5, 0.6, 0x333, 0.18, false); box(a + 1.1, 2, 0.15, 0.5, 0.6, 0x333, 0.18, false); }
       box(-3.5, -2.4, 3, 1.6, 2.2, 0xa88458); box(-3.5, -2.4, 3.1, 0.15, 2.3, 0x8f6d44, 1.7, false); box(2.2, -3.5, 1.1, 1.0, 1.1, 0x5f7a5c);
       g.glow.solid(...(([x, z]) => [x, 0.22, z] as [number, number, number])(at(-3.5, -1.2)), 0.5, 0.08, 0.5, 0xffd9a0);
       label(spot.name, kindColor('home'), '오늘 밤은 여기서');
@@ -413,14 +413,15 @@ export class CityView {
         g.grass.floor(cx - 7, cz - 7, cx + 7, cz + 7, 0.22, 0xffffff, 1 / 3);
         box(-3, -2, 0.18, 2.6, 0.18, 0xc0392b, 0.2); box(-1.4, -2, 0.18, 2.6, 0.18, 0xc0392b, 0.2); box(-2.2, -2, 1.9, 0.16, 0.16, 0xc0392b, 2.6, false);
         box(3.5, -1.5, 1.2, 1.6, 4, 0x3a7ac8, 0.2); box(3.5, -4.2, 3, 0.3, 3, 0xd9c28a, 0.2, false);
-        box(0, 2.5, 2.4, 0.5, 0.6, 0x7a5c3a, 0.2, false);
+        box(0, 2.5, 2.4, 0.5, 0.6, 0x7a5c3a, 0.2, true);
       }
       label(spot.name, kindColor('scrap'), '빈 병이 굴러다닌다');
     } else { // recycle
       g.dirt.floor(cx - 7, cz - 7, cx + 7, cz + 7, 0.2, 0xb9ad98, 1 / 3);
-      for (const [nx, nz] of [[0, 1], [0, -1], [1, 0], [-1, 0]] as const) { const px = cx + nx * 6.8, pz = cz + nz * 6.8; g.detail.panel(px, 1.5, pz, 13.6, 3, nx, nz, 0x6d747c); g.detail.panel(px, 1.5, pz, 13.6, 3, -nx, -nz, 0x585e65); }
-      g.boxes.push({ x0: cx - 6.9, x1: cx + 6.9, z0: cz - 6.9, z1: cz - 6.4 }, { x0: cx - 6.9, x1: cx - 6.4, z0: cz - 6.9, z1: cz + 6.9 }, { x0: cx + 6.4, x1: cx + 6.9, z0: cz - 6.9, z1: cz + 6.9 });
-      const wallBack = lot.fz ? [{ x0: cx - 6.9, x1: cx + 6.9, z0: lot.fz > 0 ? cz + 6.4 : cz - 6.9, z1: lot.fz > 0 ? cz + 6.9 : cz - 6.4 }] : [{ x0: lot.fx > 0 ? cx + 6.4 : cx - 6.9, x1: lot.fx > 0 ? cx + 6.9 : cx - 6.4, z0: cz - 6.9, z1: cz + 6.9 }]; void wallBack;
+      for (const wall of recycleFenceSegments(lot)) {
+        g.detail.solid((wall.x0 + wall.x1) / 2, .18, (wall.z0 + wall.z1) / 2, wall.x1 - wall.x0, 2.8, wall.z1 - wall.z0, 0x6d747c);
+        g.boxes.push(wall);
+      }
       for (let k = 0; k < 9; k++) { const c = [0x8a4b2a, 0x5f6b74, 0x9a8b3a, 0x3f6f8a, 0x777][k % 5]; box(-4.5 + (k % 3) * 2.2, -4 + Math.floor(k / 3) * 1.8, 2 + hash01(k, lot.id) * 1.2, 0.8 + hash01(lot.id, k) * 1.8, 1.6, c, 0.2, false); }
       box(2.5, -3, 4.5, 3.2, 3.4, 0x6d6f73); g.glow.solid(...(([x, z]) => [x, 3.4, z] as [number, number, number])(at(2.5, -3)), 0.5, 0.3, 0.5, 0xff8a3a);
       box(-2, 1, 1.6, 0.6, 1.6, 0x7a4a2a);
@@ -478,8 +479,15 @@ export class CityView {
     const ex = spec.extra;
     if (ex === 'chimney') { g.detail.solid(cx - fw / 4, H, cz - fd / 4, 1.6, 10, 1.6, 0x6b5f57); g.glow.solid(cx - fw / 4, H + 10, cz - fd / 4, 1.0, 0.3, 1.0, 0xff8a3a); v.emitters.push({ x: cx - fw / 4, y: H + 10.35, z: cz - fd / 4, rise: 9, spread: 2.6, smoke: true }); }
     if (ex === 'tower') { g.detail.solid(cx, H, cz, 3, 6, 3, 0x9aa4b0); g.glow.solid(cx, H + 6, cz, 0.4, 0.4, 0.4, 0xff3030); if (d.level >= 3 || spec.floors === 14) g.glow.solid(cx, H + 0.5, cz + nz * (depth / 2 - 0.2), nx ? 0.4 : fw - 1, 0.5, nz ? 0.4 : fd - 1, 0x59b9ff); }
-    if (ex === 'columns') for (let k = -2; k <= 2; k++) g.detail.solid(cx + (nz ? k * 2.2 : 0) + nx * (depth / 2 + 0.5), 0.2, cz + (nx ? k * 2.2 : 0) + nz * (depth / 2 + 0.5), 0.5, 4.2, 0.5, 0xe5e1d6);
-    if (ex === 'warehouse') for (let k = 0; k < 4; k++) g.detail.solid(cx - nx * 0 + (nz ? (k - 1.5) * 2.4 : 0) + nx * (depth / 2 + 1.5), 0.2, cz + (nx ? (k - 1.5) * 2.4 : 0) + nz * (depth / 2 + 1.5), 1.6, 1.2 + (k % 2) * 0.6, 1.6, [0xb07a3a, 0x8a6a3a, 0xc29a4a, 0x9a7a4a][k]);
+    if (ex === 'columns') for (const k of [-2, -1, 1, 2]) {
+      const x = cx + (nz ? k * 2.2 : 0) + nx * (depth / 2 + .5), z = cz + (nx ? k * 2.2 : 0) + nz * (depth / 2 + .5);
+      g.detail.solid(x, .2, z, .5, 4.2, .5, 0xe5e1d6); g.boxes.push({ x0: x-.25, x1:x+.25, z0:z-.25, z1:z+.25 });
+    }
+    if (ex === 'warehouse') for (const k of [-3.4, 3.4]) {
+      const x = cx + nz*k + nx*(depth/2+1.05), z = cz + nx*k + nz*(depth/2+1.05);
+      g.detail.solid(x,.2,z,1.5,1.5,1.5,0x9a7a4a); g.detail.solid(x,1.7,z,1.35,.75,1.35,0xb07a3a);
+      g.boxes.push({x0:x-.75,x1:x+.75,z0:z-.75,z1:z+.75});
+    }
     if (ex === 'terminal') {
       g.detail.solid(cx - nz * 3, H, cz + nx * 3, 3, 8, 3, 0xb9c0c8); g.glow.solid(cx - nz * 3, H + 8, cz + nx * 3, 3.4, 0.8, 3.4, 0x59d0ff);
       for (let k = 0; k < 2; k++) { const px = cx - nx * (depth / 2 + 2.5) * 0 + (nz ? (k ? 3 : -3) : 0), pz = cz + (nx ? (k ? 3 : -3) : 0); g.detail.solid(px, H + 0.1, pz, 5, 0.7, 0.7, 0xe8eaee); g.detail.solid(px, H + 0.1, pz, 0.7, 0.4, 3.6, 0xe8eaee); }

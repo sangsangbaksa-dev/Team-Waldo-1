@@ -375,9 +375,12 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   const hot = new Map<string, number>();
   function onKey(e: KeyboardEvent): void {
     if (e.type === 'keyup') { keys.delete(e.key === 'Shift' ? 'Shift' : e.code); return; }
+    if ((e.target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
     if (modal.classList.contains('show') && e.key !== 'Escape' && !(root.dataset.phase === 'paused' && e.key.toLowerCase() === 'p')) return;
     keys.add(e.key === 'Shift' ? 'Shift' : e.code); audio.unlock();
     const k = e.key.toUpperCase();
+    // Held keys move the camera, but must not repeatedly execute orders or toggle menus.
+    if (e.repeat) { if (!e.ctrlKey && !e.metaKey && !e.altKey && (['Space', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Escape'].includes(e.code) || buttons.some(b => b.key === k))) e.preventDefault(); return; }
     if (root.dataset.phase === 'paused' && (e.key === 'Escape' || e.key.toLowerCase() === 'p')) { e.preventDefault(); hide(); paused = false; root.dataset.phase = 'play'; last = performance.now(); return; }
     if (e.key.toLowerCase() === 'p' && !e.ctrlKey && !e.metaKey && !e.altKey && sim && !ended) { e.preventDefault(); if (net) toast('온라인 대전은 일시정지할 수 없습니다', true); else openMenu(); return; }
     if (e.key === 'Escape') { if (mode || submenu) { mode = null; submenu = false; setHint(''); cmdKey = ''; } else if (selected.size) setSel([]); else openMenu(); e.preventDefault(); return; }
@@ -453,7 +456,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     <li><b>터치</b>한 손가락 드래그는 화면 이동, 탭은 선택/명령, 두 손가락은 확대. 범위 선택 버튼으로 드래그 선택.</li></ul>
     <div class="rt-actions"><button class="primary" data-act="back">닫기</button></div></div>`;
   function openMenu(): void {
-    if (root.dataset.phase === 'setup' || ended || !sim) return; paused = !net; root.dataset.phase = 'paused';
+    if (root.dataset.phase === 'setup' || ended || !sim) return; resetControls(); paused = !net; root.dataset.phase = 'paused';
     show(`<div class="rt-card"><span class="rt-eyebrow">${net ? '대전 중 · 계속 진행됩니다' : '게임이 멈춰 있습니다'}</span><h2>${net ? '메뉴' : '일시정지'}</h2>${net ? '' : '<p class="rt-lead">P 또는 Esc 를 누르면 계속합니다.</p>'}<div class="rt-actions col"><button class="primary" data-act="resume">계속하기</button><button data-act="help2">조작법</button><button data-act="surrender">항복</button><button data-act="exit">나가기</button></div></div>`);
   }
   function resultCard(win: boolean | null, why: string, extra = ''): void {
@@ -521,7 +524,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     const fresh = document.createElement('canvas'); fresh.className = 'rt-canvas'; canvas.replaceWith(fresh); canvas = fresh; const q = prefs.quality;
     try { view = new RtsView(canvas, sim, me, q); } catch { show('<div class="rt-card"><span class="rt-eyebrow">FRONTLINE</span><h2>그래픽을 시작하지 못했어요</h2><p class="rt-lead">WebGL 을 사용할 수 없습니다. 브라우저를 새로고침하거나 그래픽 가속을 켠 뒤 다시 시도해 주세요.</p><div class="rt-actions"><button class="primary" data-act="exit">메뉴로</button></div></div>'); return; }
     vision = fogOn && !net ? new Vision(sim.map.size, me) : null; vision?.update(sim, true); view.setVision(vision); fogMini = null; fogVer = -1;
-    miniBase = null; selected.clear(); mode = null; submenu = false; ended = false; paused = false; acc = 0; hudKey = cmdKey = selKey = ''; groups.clear(); hide(); root.dataset.phase = 'play'; stats.start = performance.now(); resize();
+    resetControls(); hot.clear(); pointer.lastTap = 0; pointer.lastTapId = 0; miniBase = null; selected.clear(); mode = null; submenu = false; ended = false; paused = false; acc = 0; hudKey = cmdKey = selKey = ''; groups.clear(); hide(); root.dataset.phase = 'play'; stats.start = performance.now(); resize();
     const h = sim.buildings.find(b => b.owner === me && b.kind === 'hq'); if (h) setSel([h.id]);
     if (camp && h) view.lookAt((h.x + 2 + camp.rally.x) / 2, (h.y + 2 + camp.rally.y) / 2);
     if (!camp) toast(net ? '대전 시작! 상대의 모든 건물을 파괴하세요' : '일꾼으로 광물을 캐고, 병영을 지어 병력을 모으세요', false); last = performance.now();
@@ -596,7 +599,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     }
   }
   function frame(now: number): void {
-    raf = requestAnimationFrame(frame); const dt = Math.min(0.1, (now - last) / 1000); last = now;
+    if (closed) return; raf = requestAnimationFrame(frame); const dt = Math.min(0.1, (now - last) / 1000); last = now;
     if (!sim || !view || root.dataset.phase === 'setup') return;
     if (toastT > 0 && (toastT -= dt) <= 0) $('#rt-toast').classList.remove('show');
     if (!ended && !paused) {
@@ -607,11 +610,11 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     vision?.update(sim); applyEvents(); applyCampEvents(); if (bannerT > 0 && (bannerT -= dt) <= 0) $('#rt-banner').classList.remove('show');
     for (const id of selected) { if (!sim.index.has(id)) selected.delete(id); }
     // 카메라 이동: 화살표 키와 화면 가장자리
-    if (!paused) {
+    if (!paused && !ended && !modal.classList.contains('show')) {
       const sp = view.cam.dist * 0.9 * dt; let dx = 0, dy = 0;
       if (keys.has('ArrowLeft')) dx -= 1; if (keys.has('ArrowRight')) dx += 1; if (keys.has('ArrowUp')) dy -= 1; if (keys.has('ArrowDown')) dy += 1;
       if (!touch && pointer.in && !pointer.down && root.dataset.phase === 'play' && !modal.classList.contains('show')) { const m = 14, w = over.clientWidth, h = over.clientHeight; if (pointer.x < m) dx -= 1; if (pointer.x > w - m) dx += 1; if (pointer.y < m) dy -= 1; if (pointer.y > h - m) dy += 1; }
-      if (dx || dy) view.pan(dx * sp, dy * sp);
+      if (dx || dy) { const len = Math.max(1, Math.hypot(dx, dy)); view.pan(dx * sp / len, dy * sp / len); }
     }
     if (mode?.t === 'build' && pointer.in && !touch) { const g = view.ground(pointer.x, pointer.y); if (g) { const at = ghostAt(g.x, g.y, mode.kind); view.setGhost(mode.kind, at.x, at.y, sim.canPlace(mode.kind, at.x, at.y) && sim.players[me].minerals >= BUILDINGS[mode.kind].cost); } }
     else if (mode?.t === 'build' && touch) { const g = view.ground(over.clientWidth / 2, over.clientHeight / 2.2); if (g) { const at = ghostAt(g.x, g.y, mode.kind); view.setGhost(mode.kind, at.x, at.y, sim.canPlace(mode.kind, at.x, at.y)); } } else view.setGhost(null);

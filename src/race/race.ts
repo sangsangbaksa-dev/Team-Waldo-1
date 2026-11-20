@@ -19,11 +19,11 @@ export interface RaceState {
   thrDownAt: number | null; thrPrev: boolean; bestLap: number; lastCount: number; level: LevelDef;
 }
 export const COUNTDOWN = 3;
-/** 라이벌 세 명: 이름, 고정 차선, 자기 차량 최고속 대비 목표 속도 비율, 코너 한계. 1단계 값은 이전 버전과 같습니다. */
+/** 라이벌 세 명: 이름, 고정 차선, 균형형 최고속(74) 대비 목표 속도, 코너 한계. 세 대 모두 플레이어 순항 속도 이상입니다. */
 const FIELD = [
-  { name: 'VIPER', lane: -5, frac: 70.5 / 74, grip: 37 },
-  { name: 'SOLAR', lane: 5, frac: 68 / 74, grip: 35 },
-  { name: 'MINT', lane: 0, frac: 65.5 / 74, grip: 33 },
+  { name: 'VIPER', lane: -5, frac: 76 / 74, grip: 40 },
+  { name: 'SOLAR', lane: 5, frac: 73.5 / 74, grip: 38 },
+  { name: 'MINT', lane: 0, frac: 71 / 74, grip: 36 },
 ];
 const SLOTS: Array<[number, number]> = [[-3, -5], [-3, 5], [-8, -5], [-8, 5]];
 /** 1대1 대전 설정: 방장 여부(출발 칸), 상대 닉네임과 차량 */

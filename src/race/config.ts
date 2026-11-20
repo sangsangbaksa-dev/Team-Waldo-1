@@ -39,20 +39,20 @@ export interface LevelDef {
   id: number; name: string; blurb: string;
   /** 라이벌 목표 속도·코너링 한계 배율 */
   topMul: number; gripMul: number;
-  /** 플레이어와의 거리에 따른 추격·감속 보정 범위 */
+  /** 앞섰을 때 유지하는 최저 배율(1 미만이면 감속)과, 뒤처졌을 때 추격 상한 */
   bandLo: number; bandHi: number; bandK: number;
   /** 코너 안쪽을 파고드는 정도(0~1) */
   line: number;
   /** 니트로를 쓰기 시작하는 잔량. 없으면 쓰지 않음 */
   nitro?: number;
 }
-// 1단계는 이전 버전의 라이벌과 같은 값입니다.
+// bandLo는 1 이상이라 앞선 라이벌이 플레이어를 기다려 주지 않습니다.
 export const LEVELS: ReadonlyArray<LevelDef> = [
-  { id: 1, name: '쉬움', blurb: '레이싱 라인을 타고 직선에서 니트로를 자주 씁니다', topMul: 1.075, gripMul: 1.15, bandLo: 0.955, bandHi: 1.095, bandK: 0.00028, line: 0.675, nitro: 0.5 },
-  { id: 2, name: '보통', blurb: '라인이 거의 완벽하고 쉽게 떨어지지 않습니다', topMul: 1.105, gripMul: 1.215, bandLo: 0.965, bandHi: 1.11, bandK: 0.00033, line: 0.9, nitro: 0.28 },
-  { id: 3, name: '어려움', blurb: '완벽한 라인과 니트로로 끝까지 압박합니다', topMul: 1.135, gripMul: 1.285, bandLo: 0.975, bandHi: 1.13, bandK: 0.0004, line: 1, nitro: 0.1 },
-  { id: 4, name: '매우 어려움', blurb: '실수 없이 니트로를 아낌없이 쓰며 거의 따라잡을 수 없습니다', topMul: 1.15, gripMul: 1.33, bandLo: 0.985, bandHi: 1.145, bandK: 0.00046, line: 1, nitro: 0.05 },
-  { id: 5, name: '극한', blurb: '드리프트와 니트로를 완벽하게 써야 겨우 이기는 최강의 라이벌입니다', topMul: 1.18, gripMul: 1.38, bandLo: 0.99, bandHi: 1.155, bandK: 0.0005, line: 1, nitro: 0.03 },
+  { id: 1, name: '쉬움', blurb: '앞선 라이벌은 속도를 줄이지 않고, 직선에서 니트로를 씁니다', topMul: 1.14, gripMul: 1.22, bandLo: 1, bandHi: 1.06, bandK: 0.00016, line: 0.86, nitro: 0.35 },
+  { id: 2, name: '보통', blurb: '라인이 거의 완벽하고, 한 번 앞서면 쉽게 따라잡지 못합니다', topMul: 1.19, gripMul: 1.3, bandLo: 1.02, bandHi: 1.08, bandK: 0.00018, line: 0.95, nitro: 0.2 },
+  { id: 3, name: '어려움', blurb: '완벽한 라인과 니트로로 계속 압박합니다', topMul: 1.24, gripMul: 1.38, bandLo: 1.04, bandHi: 1.1, bandK: 0.0002, line: 1, nitro: 0.1 },
+  { id: 4, name: '매우 어려움', blurb: '실수 없이 앞서 달리며 니트로를 아낌없이 씁니다', topMul: 1.29, gripMul: 1.46, bandLo: 1.06, bandHi: 1.12, bandK: 0.00022, line: 1, nitro: 0.05 },
+  { id: 5, name: '극한', blurb: '드리프트와 니트로를 완벽하게 써야 겨우 따라붙습니다', topMul: 1.34, gripMul: 1.54, bandLo: 1.08, bandHi: 1.14, bandK: 0.00024, line: 1, nitro: 0.02 },
 ];
 export const levelById = (id: number): LevelDef => LEVELS.find(l => l.id === id) ?? LEVELS[0];
 

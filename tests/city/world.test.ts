@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { World } from '../../src/city/world';
 import { findPath, generateCity, makeRng, navBlocked } from '../../src/city/map';
-import { BIZ, FACTION_COUNT, SIZE, STRUCTS, SUPPLY_CAP, UNITS } from '../../src/city/defs';
+import { BIZ, DIFFICULTY, DIFFICULTY_ORDER, FACTION_COUNT, SIZE, STRUCTS, SUPPLY_CAP, UNITS, type Difficulty } from '../../src/city/defs';
 
 const make = (seed = 7): World => new World({ seed, difficulty: 'd4', klass: 'tycoon' });
 const run = (w: World, seconds: number): void => { for (let i = 0; i < seconds * 30 && !w.over; i++) { w.step(1 / 30); w.events.length = 0; } };
@@ -112,6 +112,28 @@ describe('LAST CITY rules', () => {
     w.killActor(boss, -1); w.checkElimination(); expect(enemy.alive).toBe(true); expect(enemy.respawnT).toBeGreaterThan(0);
     w.hurtStruct(w.hq(3)!, 1e6, -1); run(w, 20); expect(enemy.alive).toBe(false); expect(enemy.place).toBe(8);
     expect(w.businesses.some(z => z.owner === 3)).toBe(false);
+  });
+});
+
+describe('LAST CITY difficulty', () => {
+  it('raises rival pressure and the damage the player takes on each step', () => {
+    for (let i = 1; i < DIFFICULTY_ORDER.length; i++) {
+      const a = DIFFICULTY[DIFFICULTY_ORDER[i - 1]], b = DIFFICULTY[DIFFICULTY_ORDER[i]];
+      expect(b.income).toBeGreaterThan(a.income);
+      expect(b.dmg).toBeGreaterThan(a.dmg);
+      expect(b.taken).toBeGreaterThan(a.taken);
+      expect(b.cap).toBeGreaterThan(a.cap);
+      expect(b.attackArmy).toBeLessThan(a.attackArmy);
+    }
+    const dealt = (difficulty: Difficulty): number => {
+      const w = new World({ seed: 4, difficulty, klass: 'warlord' });
+      const soldier = w.spawnUnit('rifle', 0, 80, 80), hp = soldier.hp;
+      w.hurtActor(soldier, 40, 1);
+      return hp - soldier.hp;
+    };
+    expect(dealt('d5')).toBeGreaterThan(dealt('d4'));
+    expect(dealt('d4')).toBeGreaterThan(dealt('d1'));
+    expect(dealt('d1')).toBeCloseTo(40 * DIFFICULTY.d1.taken * DIFFICULTY.d1.dmg, 5);
   });
 });
 

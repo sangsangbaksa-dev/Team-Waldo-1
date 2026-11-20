@@ -34,14 +34,14 @@ const TEMPLATES: number[][][] = [
 
 export function addSolid(map: CityMap, s: Solid): number {
   const idx = map.solids.push(s) - 1;
-  for (let gy = Math.floor(s.y / GC); gy <= Math.floor((s.y + s.h) / GC); gy++) for (let gx = Math.floor(s.x / GC); gx <= Math.floor((s.x + s.w) / GC); gx++) map.grid[gy * GN + gx]?.push(idx);
+  for (let gy = Math.max(0, Math.floor(s.y / GC)); gy <= Math.min(GN - 1, Math.floor((s.y + s.h) / GC)); gy++) for (let gx = Math.max(0, Math.floor(s.x / GC)); gx <= Math.min(GN - 1, Math.floor((s.x + s.w) / GC)); gx++) map.grid[gy * GN + gx].push(idx);
   markNav(map, s, 1);
   return idx;
 }
 export function removeSolid(map: CityMap, idx: number): void {
   const s = map.solids[idx]; if (!s || !s.alive) return;
   s.alive = false; markNav(map, s, -1);
-  for (let gy = Math.floor(s.y / GC); gy <= Math.floor((s.y + s.h) / GC); gy++) for (let gx = Math.floor(s.x / GC); gx <= Math.floor((s.x + s.w) / GC); gx++) {
+  for (let gy = Math.max(0, Math.floor(s.y / GC)); gy <= Math.min(GN - 1, Math.floor((s.y + s.h) / GC)); gy++) for (let gx = Math.max(0, Math.floor(s.x / GC)); gx <= Math.min(GN - 1, Math.floor((s.x + s.w) / GC)); gx++) {
     const cell = map.grid[gy * GN + gx]; if (!cell) continue; const at = cell.indexOf(idx); if (at >= 0) cell.splice(at, 1);
   }
 }
@@ -54,7 +54,7 @@ function markNav(map: CityMap, s: Solid, d: number): void {
     }
 }
 export function solidAt(map: CityMap, x: number, y: number): Solid | null {
-  if (x < 0 || y < 0 || x >= SIZE || y >= SIZE) return null;
+  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x >= SIZE || y >= SIZE) return null;
   const cell = map.grid[Math.floor(y / GC) * GN + Math.floor(x / GC)];
   for (let k = 0; k < cell.length; k++) { const s = map.solids[cell[k]]; if (x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h) return s; }
   return null;
@@ -115,11 +115,18 @@ export function rectHitsRoad(x: number, y: number, w: number, h: number): boolea
   return rangeHitsRoad(x, x + w) || rangeHitsRoad(y, y + h);
 }
 export function rectFree(map: CityMap, x: number, y: number, w: number, h: number): boolean {
-  if (x < 20 || y < 20 || x + w > SIZE - 20 || y + h > SIZE - 20) return false;
-  const pad = SOLID_CLEARANCE;
-  for (const s of map.solids) if (s.alive && x < s.x + s.w + pad && x + w > s.x - pad && y < s.y + s.h + pad && y + h > s.y - pad) return false;
-  // 도로 침범 금지 (블록 안 보도는 허용)
+  if (![x, y, w, h].every(Number.isFinite) || w <= 0 || h <= 0 || x < 20 || y < 20 || x + w > SIZE - 20 || y + h > SIZE - 20) return false;
+  // Reject roads before querying the expanded footprint in the collision grid.
   if (rectHitsRoad(x, y, w, h)) return false;
+  const pad = SOLID_CLEARANCE;
+  const x0 = Math.max(0, Math.floor((x - pad) / GC)), x1 = Math.min(GN - 1, Math.floor((x + w + pad) / GC));
+  const y0 = Math.max(0, Math.floor((y - pad) / GC)), y1 = Math.min(GN - 1, Math.floor((y + h + pad) / GC));
+  for (let gy = y0; gy <= y1; gy++) for (let gx = x0; gx <= x1; gx++) {
+    for (const id of map.grid[gy * GN + gx]) {
+      const s = map.solids[id];
+      if (s.alive && x < s.x + s.w + pad && x + w > s.x - pad && y < s.y + s.h + pad && y + h > s.y - pad) return false;
+    }
+  }
   return true;
 }
 

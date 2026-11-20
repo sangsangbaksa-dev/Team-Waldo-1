@@ -51,6 +51,7 @@ export function openRace(onExit: () => void): void {
   let multi: { s: RoomSession; net: RaceMulti; myFin: number | null; gone: Set<string>; done: boolean } | null = null;
   let pvp: { s: PvpSession; net: RacePvp; myFin: number | null; oppFin: number | null; done: boolean } | null = null;
   const keys = new Set<string>(), hold = { left: false, right: false, brake: false, drift: false, nitro: false, gas: false };
+  const clearInput = (): void => { keys.clear(); for (const k of Object.keys(hold) as Array<keyof typeof hold>) hold[k] = false; root.querySelectorAll('[data-hold].down').forEach(b => b.classList.remove('down')); };
   let driftBests = readDriftBests(), nitroWas = false, driftWas = false;
   const cache = new Map<string, string>(); const setText = (id: string, v: string): void => { if (cache.get(id) !== v) { cache.set(id, v); $(id).textContent = v; } };
 
@@ -90,8 +91,8 @@ export function openRace(onExit: () => void): void {
     const map = mapOf(setup), car = carById(setup.car), level = levelById(setup.level), key = raceRaceKey(map.id, setup.laps);
     const bestLap = Math.min(...race.player.lapTimes), prevLap = records.bestLap[map.id] ?? Infinity, prevRace = records.bestRace[key] ?? Infinity, newBest = bestLap < prevLap || time < prevRace;
     records = { bestLap: { ...records.bestLap, [map.id]: Math.min(prevLap, bestLap) }, bestRace: { ...records.bestRace, [key]: Math.min(prevRace, time) }, last: { map: map.id, label: map.name } }; writeRaceRecords(records);
-    const trial = !!race.trial, ghostNew = trial && race.rec !== undefined && time < (race.ghost?.time ?? Infinity);
-    if (ghostNew && race.rec) writeGhost(map.id, setup.laps, setup.car, race.rec.finish(time, setup.laps, race.player.car));
+    const trial = !!race.trial, ghostCandidate = trial && race.rec !== undefined && time < (race.ghost?.time ?? Infinity);
+    const ghostNew = ghostCandidate && !!race.rec && writeGhost(map.id, setup.laps, setup.car, race.rec.finish(time, setup.laps, race.player.car));
     const drift = race.drift.total, prevDrift = driftBests[map.id] ?? 0, driftNew = drift > prevDrift; if (driftNew) { driftBests = { ...driftBests, [map.id]: drift }; writeDriftBests(driftBests); }
     const coins = trial ? Math.round(rewardFor(4, 1, setup.laps, newBest) / 10) * 5 : rewardFor(place, level.id, setup.laps, newBest); garage.value = { ...garage.value, coins: garage.value.coins + coins }; writeGarage(garage.value);
     window.setTimeout(() => {
@@ -99,7 +100,7 @@ export function openRace(onExit: () => void): void {
       modal.className = 'rc-modal show'; root.dataset.phase = 'done';
       modal.innerHTML = `<div class="rc-card result p${place}"><span class="rc-eyebrow">${map.name} · ${setup.laps}랩 · ${trial ? '타임어택' : level.name} · ${car.name}</span><h2>${trial ? (ghostNew ? 'NEW GHOST' : 'FINISH') : `${ORD[place] ?? place + 'TH'} <small>/ 4</small>`}</h2><p class="rc-total">${fmtTime(time)}</p>
         <ol class="rc-laps">${race.player.lapTimes.map((l, i) => `<li${l === bestLap ? ' class="best"' : ''}><span>LAP ${i + 1}</span><b>${fmtTime(l)}</b></li>`).join('')}</ol>
-        <p class="rc-record">${trial ? (ghostNew ? '고스트를 갱신했습니다 — 다음 도전에서 이 주행과 겨룹니다' : race.ghost ? `고스트 ${fmtTime(race.ghost.time)} · ${time - race.ghost.time >= 0 ? '+' : '-'}${Math.abs(time - race.ghost.time).toFixed(2)}초` : '') : ''}${trial ? '' : newBest ? '개인 최고 기록 갱신' : `${map.name} 최고 랩 ${fmtTime(records.bestLap[map.id] ?? Infinity)}`}</p>
+        <p class="rc-record">${trial ? (ghostNew ? '고스트를 갱신했습니다 — 다음 도전에서 이 주행과 겨룹니다' : ghostCandidate ? '고스트를 저장하지 못했습니다 (저장 공간 또는 브라우저 설정 확인)' : race.ghost ? `고스트 ${fmtTime(race.ghost.time)} · ${time - race.ghost.time >= 0 ? '+' : '-'}${Math.abs(time - race.ghost.time).toFixed(2)}초` : '') : ''}${trial ? '' : newBest ? '개인 최고 기록 갱신' : `${map.name} 최고 랩 ${fmtTime(records.bestLap[map.id] ?? Infinity)}`}</p>
         <p class="rc-record">드리프트 ${drift.toLocaleString('ko-KR')}점${driftNew && drift > 0 ? ' ★ 코스 최고 기록' : prevDrift > 0 ? ` · 코스 최고 ${prevDrift.toLocaleString('ko-KR')}점` : ''}</p>
         <p class="rc-reward">+${coins} 코인 <small>(보유 ${garage.value.coins.toLocaleString('ko-KR')})</small></p>
         <div class="rc-actions"><button class="primary" data-act="restart">다시 달리기</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button></div></div>`;
@@ -108,7 +109,7 @@ export function openRace(onExit: () => void): void {
 
   /** 선택한 설정으로 코스·레이스·화면을 새로 만듭니다. */
   function begin(): void {
-    raceGen++; wrongT = 0;
+    raceGen++; wrongT = 0; clearInput(); nitroWas = driftWas = false; wallHit = fxIntensity = 0;
     if (view) { view.dispose(); view = null; }
     track = buildMapTrack(mapOf(setup)); prepareMinimap(); audio.setCar(setup.car);
     const trial = setup.mode === 'trial', ghost = trial ? readGhost(setup.map, setup.laps, setup.car) : null;
@@ -120,7 +121,7 @@ export function openRace(onExit: () => void): void {
   }
   function restart(): void { begin(); }
   function showSetup(): void {
-    raceGen++; wrongT = 0;
+    raceGen++; wrongT = 0; clearInput(); nitroWas = driftWas = false; wallHit = fxIntensity = 0;
     if (view) { view.dispose(); view = null; }
     setupUi?.destroy(); paused = false; modal.className = 'rc-modal'; modal.innerHTML = ''; root.dataset.phase = 'setup';
     setupUi = mountSetup(root, setup, records, garage, {
@@ -155,7 +156,7 @@ export function openRace(onExit: () => void): void {
   function beginPvp(oppCar: string): void {
     if (!pvp || closed) return; const s = pvp.s;
     track = buildMapTrack(mapOf(setup)); prepareMinimap();
-    wrongT = 0;
+    wrongT = 0; clearInput(); nitroWas = driftWas = false; wallHit = fxIntensity = 0;
     race = createRace(track, setup.laps, Infinity, { ...setup, pvp: { host: s.host, opponent: s.opponent.nickname, opponentCar: oppCar } });
     acc = 0; cache.clear(); lastPlace = 2; setText('#rc-laps', String(setup.laps)); setText('#rc-of', '/ 2'); setText('#rc-best', `VS ${s.opponent.nickname}`);
     if (!startView(carTemplate)) return;
@@ -213,7 +214,7 @@ export function openRace(onExit: () => void): void {
     if (!multi || closed) return; const s = multi.s, meIdx = Math.max(0, list.findIndex(p => p.id === s.me.id));
     const players = list.filter(p => p.id !== s.me.id).map(p => ({ id: p.id, car: p.car, nickname: s.players.find(x => x.id === p.id)?.nickname ?? '플레이어' }));
     track = buildMapTrack(mapOf(setup)); prepareMinimap();
-    wrongT = 0;
+    wrongT = 0; clearInput(); nitroWas = driftWas = false; wallHit = fxIntensity = 0;
     race = createRace(track, setup.laps, Infinity, { ...setup, multi: { slot: meIdx, players } });
     acc = 0; cache.clear(); lastPlace = list.length; setText('#rc-laps', String(setup.laps)); setText('#rc-of', `/ ${list.length}`); setText('#rc-best', `${list.length}인 레이스`);
     if (!startView(carTemplate)) return;
@@ -327,7 +328,7 @@ export function openRace(onExit: () => void): void {
   }
 
   const setPaused = (on: boolean): void => {
-    if (!view || setupUi || pvp || multi || race.phase === 'done' || finishedShown || closed) return; paused = on; modal.className = on ? 'rc-modal show' : 'rc-modal'; if (on) { audio.drive(0, 0, 0, false, false, false); modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">PAUSED</span><h2>일시정지</h2><div class="rc-actions"><button class="primary" data-act="resume">계속하기</button><button data-act="restart">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button></div></div>'; } else modal.innerHTML = '';
+    if (!view || setupUi || pvp || multi || race.phase === 'done' || finishedShown || closed) return; clearInput(); paused = on; modal.className = on ? 'rc-modal show' : 'rc-modal'; if (on) { audio.drive(0, 0, 0, false, false, false); modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">PAUSED</span><h2>일시정지</h2><div class="rc-actions"><button class="primary" data-act="resume">계속하기</button><button data-act="restart">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button></div></div>'; } else modal.innerHTML = '';
   };
   const exit = (): void => {
     if (closed) return; closed = true; cancelAnimationFrame(raf); removeEventListener('keydown', onKey); removeEventListener('keyup', onKeyUp); removeEventListener('resize', resize); removeEventListener('blur', onBlur); document.removeEventListener('visibilitychange', onVisibility);
@@ -349,10 +350,10 @@ export function openRace(onExit: () => void): void {
     if (e.repeat) { if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); return; }
     audio.unlock(); if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
     if (e.code === 'Escape' || e.code === 'KeyP') { setPaused(!paused); return; } if (e.code === 'KeyM') { act('mute'); return; } if (e.code === 'KeyR' && !paused && race.phase === 'racing') { recover(); return; }
-    if (e.code === 'Enter' && finishedShown && !pvp && !multi) { restart(); return; } keys.add(e.code);
+    if (e.code === 'Enter' && finishedShown && !pvp && !multi) { restart(); return; } if (!paused && view && race.phase !== 'done') keys.add(e.code);
   };
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.code); };
-  const onBlur = (): void => { keys.clear(); for (const k of Object.keys(hold) as Array<keyof typeof hold>) hold[k] = false; root.querySelectorAll('[data-hold].down').forEach(b => b.classList.remove('down')); if (race.phase !== 'done' && !setupUi) setPaused(true); };
+  const onBlur = (): void => { clearInput(); if (race.phase !== 'done' && !setupUi) setPaused(true); };
   const onVisibility = (): void => { if (document.hidden) onBlur(); };
   addEventListener('keydown', onKey); addEventListener('keyup', onKeyUp); addEventListener('resize', resize); addEventListener('blur', onBlur); document.addEventListener('visibilitychange', onVisibility);
   root.addEventListener('click', e => { const b = (e.target as HTMLElement).closest<HTMLElement>('[data-act]'); if (b) act(b.dataset.act); });
@@ -360,7 +361,7 @@ export function openRace(onExit: () => void): void {
     const k = b.dataset.hold as keyof typeof hold;
     const release = (): void => { hold[k] = false; b.classList.remove('down'); };
     b.addEventListener('pointerdown', e => {
-      if (e.button !== 0) return;
+      if (e.button !== 0 || paused || !view || race.phase === 'done') return;
       e.preventDefault(); audio.unlock();
       try { b.setPointerCapture(e.pointerId); } catch { /* 캡처를 거절해도 누르고 있는 동안은 조향이 유지됩니다. */ }
       hold[k] = true; b.classList.add('down');

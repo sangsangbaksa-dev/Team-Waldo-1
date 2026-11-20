@@ -22,6 +22,7 @@ If you get a prompt 0: Work that has problems, or is not good.
 3: Work for more functions
 4: Merge Everything
 5: Deploy in Vercel, and if it does not succeed, deploy in github pages.
+Written by Waldo, the owner of the repository
 
 ## LAST CITY
 

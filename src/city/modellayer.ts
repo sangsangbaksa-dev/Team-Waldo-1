@@ -78,7 +78,7 @@ export class ModelLayer {
     // Traffic signals borrow OUTLAW CITY's alternating two-direction phase.
     const cap=w.map.blocks.filter(b=>b.type!=='void').length*4;
     const tlR=this.inst(B.tl_red,this.lam,cap),tlG=this.inst(B.tl_green,this.lam,cap);
-    const glow=(geo:THREE.BufferGeometry|undefined):THREE.InstancedMesh|null=>{
+    const glow=(geo:THREE.BufferGeometry|null|undefined):THREE.InstancedMesh|null=>{
       if(!geo)return null;const m=new THREE.InstancedMesh(geo,this.basic,cap);
       m.frustumCulled=false;m.count=0;this.scene.add(m);return m;
     };

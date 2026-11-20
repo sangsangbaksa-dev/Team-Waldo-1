@@ -66,7 +66,13 @@ try {
       await page.locator('[data-setup="start"]').click();
       await page.waitForFunction(() => document.querySelector('.rc-root')?.dataset.phase === 'countdown');
       assert.equal(await page.locator('#rc-laps').innerText(), '1', 'HUD must show the chosen lap count');
+      await page.waitForFunction(()=>window.__race?.view?.renderer?.info?.render?.calls>0);
+      const raceStart=await page.evaluate(()=>({calls:window.__race.view.renderer.info.render.calls,triangles:window.__race.view.renderer.info.render.triangles}));
+      assert.ok(raceStart.calls>0 && raceStart.triangles>0,'SPEED RUSH must submit actual 3D geometry');
       await page.screenshot({path:'browser-artifacts/last-city-race-'+size.name+'.png',animations:'disabled'});
+      await page.evaluate(()=>{window.__race.dbg.auto=true;window.__race.skip(6);});
+      await page.waitForFunction(()=>window.__race.race.clock>0 && Math.abs(window.__race.race.player.car.vf)>3);
+      await page.screenshot({path:'browser-artifacts/last-city-race-driving-'+size.name+'.png',animations:'disabled'});
       await page.locator('.rc-btns [data-act="exit"]').click();
       await page.locator('.tile').first().waitFor();
       await page.locator('#start-city').click();
@@ -74,10 +80,18 @@ try {
       await page.locator('[data-act="class:warlord"]').click();
       await page.locator('.city-hud').waitFor({ state: 'visible' });
       await page.waitForFunction(() => !!window.__city?.world);
+      assert.ok(await page.evaluate(()=>!!window.__city.r3),'LAST CITY must not silently fall back to 2D');
+      await page.waitForFunction(()=>window.__city.r3.renderer.info.render.calls>0);
       if(size.name==='desktop'){
         // Exercise the standard-quality nighttime / wet-road render path.
         await page.evaluate(()=>{const {world,r3}=window.__city;world.hour=23;world.weather='rain';r3?.snapAtmosphere();});
         await page.screenshot({path:'browser-artifacts/last-city-night-'+size.name+'.png',animations:'disabled'});
+        const entered=await page.evaluate(()=>{const w=window.__city.world,z=w.businesses.find(b=>b.kind==='bank'&&(b.owner<0||b.owner===0));return !!z&&!w.enterBiz(0,z);});
+        assert.ok(entered,'Bank interior should be enterable');
+        await page.waitForFunction(()=>!!window.__city.r3.ins && window.__city.r3.ins.scene.children.length>0);
+        await page.screenshot({path:'browser-artifacts/last-city-bank-'+size.name+'.png',animations:'disabled'});
+        await page.evaluate(()=>window.__city.world.exitBiz(0));
+        await page.waitForFunction(()=>!window.__city.r3.ins);
       }
       if (size.name === 'desktop') await page.keyboard.press('j');
       else await page.locator('.c-topbtns [data-act="missions"]').click();
@@ -103,7 +117,7 @@ try {
       else await page.locator('[data-act="closemissions"]').click();
       await page.locator('.c-missions').waitFor({ state: 'hidden' });
       assert.deepEqual(errors, [], 'Unexpected browser errors');
-      results.push({ ...size, status: 'passed', cards: 8 });
+      results.push({ ...size, status: 'passed', cards: 8, raceStart });
       console.log('PASS Last City mission UI: ' + size.name);
     } catch (error) {
       results.push({ ...size, status: 'failed', error: String(error.stack ?? error), pageErrors: errors });

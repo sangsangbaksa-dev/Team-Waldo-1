@@ -135,8 +135,8 @@ export class OutlawUi {
       case 'coin': { if (!this.take()) return me('casino'); const r = coinFlip(s.rng, this.bet, id as never); if (r.payout) s.addCash(r.payout); this.note = `${r.side === 'heads' ? '앞면' : '뒷면'} · ${r.payout ? '+' + money(r.payout) : '꽝'}`; return me('casino'); }
       case 'hdeal': { if (this.hilo?.state === 'play' || !this.take()) return me('casino'); this.hilo = hiloDeal(s.rng, this.bet); this.note = ''; return me('casino'); }
       case 'hhi': case 'hlo': {
-        const g = this.hilo; if (!g || g.state !== 'play') return me('casino'); hiloGuess(g, s.rng, k === 'hhi' ? 'hi' : 'lo');
-        this.note = g.state === 'lose' ? `틀렸습니다 -${money(g.bet)}` : `적중! 연속 ${g.streak}`; return me('casino');
+        const g = this.hilo; if (!g || g.state !== 'play') return me('casino'); const before = g.streak; hiloGuess(g, s.rng, k === 'hhi' ? 'hi' : 'lo');
+        this.note = g.streak === before ? `틀렸습니다 -${money(g.bet)}` : `적중! 연속 ${g.streak}`; return me('casino');
       }
       case 'hcash': { const g = this.hilo; if (!g || g.state !== 'play' || g.streak < 1) return me('casino'); const pay = hiloValue(g); g.state = 'cashed'; s.addCash(pay); this.note = `정산 +${money(pay - g.bet)}`; return me('casino'); }
       case 'rbet': this.rbet = id as never; return me('casino');

@@ -76,8 +76,8 @@ export const levelById = (id: number): LevelDef => LEVELS.find(l => l.id === id)
 export const LAP_OPTIONS = [1, 2, 3] as const;
 export type Laps = (typeof LAP_OPTIONS)[number];
 
-export type RaceMode = 'race' | 'trial';
-export interface RaceSetup { map: string; laps: Laps; level: number; car: string; skin: string; /** race: 라이벌과 경주, trial: 혼자 달리며 내 최고 기록의 고스트와 겨루는 타임어택 */ mode: RaceMode }
+export type RaceMode = 'race' | 'trial' | 'knockout';
+export interface RaceSetup { map: string; laps: Laps; level: number; car: string; skin: string; /** race: 라이벌과 경주, trial: 혼자 달리며 내 최고 기록의 고스트와 겨루는 타임어택, knockout: 랩마다 꼴찌가 탈락하는 서바이벌(3랩 고정) */ mode: RaceMode }
 export const DEFAULT_SETUP: RaceSetup = { map: MAPS[0].id, laps: 3, level: 1, car: CARS[0].id, skin: 'stock', mode: 'race' };
 
 /** 저장된 값이 깨져 있어도 항상 고를 수 있는 선택으로 되돌립니다. */
@@ -90,7 +90,7 @@ export function sanitizeSetup(raw: unknown): RaceSetup {
     level: pick(r.level, v => LEVELS.some(l => l.id === v), DEFAULT_SETUP.level),
     car: pick(r.car, v => CARS.some(c => c.id === v), DEFAULT_SETUP.car),
     skin: pick(r.skin, v => SKINS.some(k => k.id === v), DEFAULT_SETUP.skin),
-    mode: pick(r.mode, v => v === 'race' || v === 'trial', DEFAULT_SETUP.mode),
+    mode: pick(r.mode, v => v === 'race' || v === 'trial' || v === 'knockout', DEFAULT_SETUP.mode),
   };
 }
 export const mapOf = (s: RaceSetup): MapDef => MAPS.find(m => m.id === s.map) ?? MAPS[0];

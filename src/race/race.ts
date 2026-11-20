@@ -14,12 +14,16 @@ export interface Racer {
   link?: RemoteLink;
   /** 멀티플레이 방에서 이 차량을 모는 사람의 계정 id */
   peer?: string;
+  /** 녹아웃에서 탈락한 순위(4위 탈락이면 4). 탈락한 차는 코스에서 빠집니다. */
+  out?: number;
 }
 export type RaceEvent =
   | { type: 'count'; n: number } | { type: 'go' } | { type: 'launch' }
   | { type: 'lap'; lap: number; time: number; best: boolean } | { type: 'finish'; place: number; time: number }
   | { type: 'hit'; power: number } | { type: 'driftBoost'; secs: number } | { type: 'pad' } | { type: 'bump'; power: number }
-  | { type: 'driftBank'; points: number; mult: number } | { type: 'driftLost'; points: number };
+  | { type: 'driftBank'; points: number; mult: number } | { type: 'driftLost'; points: number }
+  /** 녹아웃: 선두가 랩을 마칠 때 꼴찌가 탈락합니다. player 가 true 면 내 차가 탈락해 레이스가 끝납니다. */
+  | { type: 'knockout'; name: string; place: number; player: boolean; left: number };
 export interface RaceState {
   track: Track; laps: number; clock: number; phase: 'countdown' | 'racing' | 'done'; racers: Racer[]; player: Racer;
   thrDownAt: number | null; thrPrev: boolean; bestLap: number; lastCount: number; level: LevelDef;
@@ -27,6 +31,8 @@ export interface RaceState {
   trial?: boolean; ghost?: Ghost | null; rec?: GhostRecorder;
   /** 드리프트 점수(모든 모드) */
   drift: DriftScore;
+  /** 녹아웃(서바이벌) 모드: 지금까지 탈락시킨 횟수 */
+  knockout?: { done: number };
 }
 export const COUNTDOWN = 3;
 /** 라이벌 세 명: 이름, 고정 차선, 자기 차량 최고속 대비 목표 속도 비율, 코너 한계. 1단계 값은 이전 버전과 같습니다. */
@@ -40,7 +46,7 @@ const SLOTS: Array<[number, number]> = [[-3, -5], [-3, 5], [-8, -5], [-8, 5], [-
 export interface PvpOptions { host: boolean; opponent: string; opponentCar: string }
 /** 멀티플레이 방 설정: 내 출발 칸(0~5)과 나를 뺀 참가자(입장 순서). 모두 네트워크 스냅샷으로 움직입니다. */
 export interface MultiOptions { slot: number; players: Array<{ id: string; nickname: string; car: string }> }
-export interface RaceOptions { level?: number; car?: string; pvp?: PvpOptions; multi?: MultiOptions; /** 코스 번호(날씨에 따른 그립 보정) */ map?: string; /** 도장(스킨) id — 내 차량의 색만 바꿉니다 */ skin?: string; /** 타임어택(혼자 달리기) */ trial?: boolean; ghost?: Ghost | null; }
+export interface RaceOptions { level?: number; car?: string; pvp?: PvpOptions; multi?: MultiOptions; /** 코스 번호(날씨에 따른 그립 보정) */ map?: string; /** 도장(스킨) id — 내 차량의 색만 바꿉니다 */ skin?: string; /** 타임어택(혼자 달리기) */ trial?: boolean; ghost?: Ghost | null; /** 녹아웃: 랩마다 꼴찌 탈락 */ knockout?: boolean; }
 /** 빗길에서 줄어드는 그립 배율 */
 export const wetGrip = (rain: number | undefined): number => 1 - 0.22 * (rain ?? 0);
 
@@ -69,10 +75,14 @@ export function createRace(track: Track, laps = 3, bestLap = Infinity, opts: Rac
     const ai: AiProfile = { lane: f.lane, top: p.top * f.frac * level.topMul, grip: f.grip * handling * handling * level.gripMul, skill: 1, line: level.line, nitro: level.nitro };
     return mk(i + 1, f.name, def, false, [SLOTS[0], SLOTS[1], SLOTS[3]][i], ai);
   });
-  return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [player, ...rivals], player, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift()};
+  return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [player, ...rivals], player, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift(), ...(opts.knockout ? { knockout: { done: 0 } } : {}) };
 }
 
-const score = (r: Racer): number => (r.finishTime !== null ? 1e9 - r.finishTime : r.car.total);
+const score = (r: Racer): number => (r.out !== undefined ? -1e9 - r.out : r.finishTime !== null ? 1e9 - r.finishTime : r.car.total);
+/** 녹아웃에서 아직 달리는 차 */
+export const activeRacers = (r: RaceState): Racer[] => r.racers.filter(k => k.out === undefined);
+/** 녹아웃: 이번 랩이 끝나면 탈락하는 차가 몇 대 남았는지(남은 탈락 횟수). 녹아웃이 아니면 0 */
+export const knockoutsLeft = (r: RaceState): number => (r.knockout ? Math.max(0, Math.min(r.laps - 1, r.racers.length - 1) - r.knockout.done) : 0);
 export function standings(r: RaceState): Racer[] { return [...r.racers].sort((a, b) => score(b) - score(a)); }
 /** 앞선 라이벌은 속도를 깎지 않습니다. 뒤처진 차만 bandHi 까지 따라잡습니다. */
 export function rivalBand(level: LevelDef, gapMeters: number): number {
@@ -98,8 +108,8 @@ export function inSlipstream(me: CarState, others: ReadonlyArray<CarState>): boo
   return false;
 }
 function updateDraft(r: RaceState, dt: number): void {
-  const cars = r.racers.map(k => k.car);
-  for (const k of r.racers) if (!k.link) k.car.draft = Math.max(0, Math.min(1, k.car.draft + (inSlipstream(k.car, cars) ? dt * 0.55 : -dt * 1.4)));
+  const cars = activeRacers(r).map(k => k.car);
+  for (const k of r.racers) if (!k.link && k.out === undefined) k.car.draft = Math.max(0, Math.min(1, k.car.draft + (inSlipstream(k.car, cars) ? dt * 0.55 : -dt * 1.4)));
 }
 
 const IDLE: CarInput = { throttle: 0, brake: 0, steer: 0, drift: false, nitro: false };
@@ -122,6 +132,7 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
   const racing = r.phase !== 'countdown';
   if (racing) updateDraft(r, dt);
   for (const k of r.racers) {
+    if (k.out !== undefined) continue;
     if (k.link) {
       followSnap(k.car, k.link, now, dt);
       const n = t.n; k.car.idx = n > 0 ? ((Math.round(k.car.idx) % n) + n) % n : 0;
@@ -149,15 +160,15 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
   }
   // 차량 간 충돌(차체 길이에 맞춘 캡슐). 밀린 뒤에는 다시 도로 안으로 붙입니다.
   for (let i = 0; i < r.racers.length; i++) for (let j = i + 1; j < r.racers.length; j++) {
-    if (r.racers[i].link || r.racers[j].link) continue; // 상대 차량은 겹쳐 달립니다(충돌 동기화 없음)
+    if (r.racers[i].link || r.racers[j].link || r.racers[i].out !== undefined || r.racers[j].out !== undefined) continue; // 상대 차량은 겹쳐 달립니다(충돌 동기화 없음)
     const mine = i === 0 || j === 0, rel = separateCars(r.racers[i].car, r.racers[j].car);
     if (mine && rel > 3) ev.push({ type: 'bump', power: rel });
   }
-  for (const k of r.racers) if (!k.link) { const hit = stayOnTrack(k.car, t, dt, false); if (k.player && hit > 0) ev.push({ type: 'hit', power: hit }); }
+  for (const k of r.racers) if (!k.link && k.out === undefined) { const hit = stayOnTrack(k.car, t, dt, false); if (k.player && hit > 0) ev.push({ type: 'hit', power: hit }); }
   // 랩·결승
   if (r.rec && r.phase === 'racing') r.rec.tick(r.clock, r.player.car);
   for (const k of r.racers) {
-    if (k.finishTime !== null || k.link) continue;
+    if (k.finishTime !== null || k.link || k.out !== undefined) continue;
     const lapDone = Math.floor(k.car.total / t.n);
     while (k.lapTimes.length < Math.min(lapDone, r.laps)) {
       const lt = r.clock - k.lapStart; k.lapTimes.push(lt); k.lapStart = r.clock;
@@ -168,5 +179,17 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
       if (k.player) { const fl = flushDrift(r.drift); if (fl?.type === 'bank') ev.push({ type: 'driftBank', points: fl.points, mult: fl.mult }); r.phase = 'done'; ev.push({ type: 'finish', place: standings(r).indexOf(k) + 1, time: r.clock }); }
     }
   }
+  if (r.knockout && r.phase === 'racing') knockoutStep(r, ev);
   return ev;
+}
+
+/** 녹아웃: 선두가 랩을 하나 마칠 때마다 그 순간 꼴찌인 차가 탈락합니다(마지막 랩은 남은 차끼리 결승). */
+function knockoutStep(r: RaceState, ev: RaceEvent[]): void {
+  const ko = r.knockout!; if (knockoutsLeft(r) <= 0) return;
+  const live = activeRacers(r), leaderLaps = Math.max(...live.map(k => k.lapTimes.length));
+  if (leaderLaps <= ko.done) return;
+  const order = standings(r).filter(k => k.out === undefined), last = order[order.length - 1];
+  last.out = order.length; ko.done++;
+  ev.push({ type: 'knockout', name: last.name, place: last.out, player: last.player, left: order.length - 1 });
+  if (last.player) { r.phase = 'done'; const fl = flushDrift(r.drift); if (fl?.type === 'bank') ev.push({ type: 'driftBank', points: fl.points, mult: fl.mult }); }
 }

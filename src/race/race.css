@@ -9,6 +9,7 @@
 .rc-tl{position:absolute;left:max(18px,env(safe-area-inset-left));top:max(14px,env(safe-area-inset-top));background:rgba(8,4,20,.5);border:1px solid rgba(255,255,255,.16);border-radius:16px;padding:8px 14px 10px}
 .rc-pos{display:flex;align-items:baseline;gap:6px;font-weight:800;font-style:italic;line-height:.85;letter-spacing:-.04em;text-shadow:0 3px 16px #000a}.rc-pos b{font-size:64px;color:#ffe45e}.rc-pos span{font-style:normal;font-size:22px;font-weight:600;opacity:.92;letter-spacing:.04em}
 .rc-lap{margin-top:4px;font-weight:700;letter-spacing:.14em;font-size:13px;text-shadow:0 2px 8px #000a}.rc-lap b{font-size:20px;font-weight:800}
+.rc-ko{margin-top:6px;font-size:11px;font-weight:800;letter-spacing:.08em;color:#ffd166;text-shadow:0 2px 8px #000a}.rc-ko:empty{display:none}.rc-ko.danger{color:#ff5a6a;animation:rc-ko-blink .6s steps(2) infinite}@keyframes rc-ko-blink{50%{opacity:.35}}
 .rc-tc{position:absolute;left:50%;top:max(14px,env(safe-area-inset-top));transform:translateX(-50%);text-align:center;text-shadow:0 2px 10px #000b;background:rgba(8,4,20,.5);border:1px solid rgba(255,255,255,.16);border-radius:14px;padding:6px 16px 8px}
 .rc-time{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:.01em}.rc-best{font-size:12px;letter-spacing:.12em;opacity:.8;margin-top:2px;font-variant-numeric:tabular-nums;min-height:15px;font-weight:600}
 .rc-tr{position:absolute;right:max(14px,env(safe-area-inset-right));top:max(12px,env(safe-area-inset-top));display:grid;justify-items:end;gap:8px}

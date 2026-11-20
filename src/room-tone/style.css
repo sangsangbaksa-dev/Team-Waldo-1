@@ -401,7 +401,7 @@ input[type="range"] {
   gap: 0.4rem;
 }
 .hudright button,
-#torch,
+.gear button,
 .touchactions button {
   background: #12201cdb;
   border: 1px solid #7482798c;
@@ -416,7 +416,7 @@ kbd {
   padding: 1px 4px;
 }
 .statusfoot,
-#torch {
+.gear {
   position: absolute;
   bottom: max(1.4rem, env(safe-area-inset-bottom));
 }
@@ -458,8 +458,29 @@ kbd {
   background: #e1c293;
   transform-origin: left;
 }
-#torch {
+.gear {
   right: 2vw;
+  display: flex;
+  gap: 0.4rem;
+}
+.gear button[aria-pressed="true"],
+.map-guide[aria-pressed="true"] {
+  background: #344339;
+  border-color: #b3c995;
+  color: #dfedcb;
+}
+#guide {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.35rem;
+}
+#guide span {
+  color: #d8dba1;
+}
+.map-guide {
+  display: block;
+  margin: 0 auto;
 }
 #prompt,
 #toast {
@@ -591,6 +612,9 @@ dialog h2 {
 #stick {
   display: none;
 }
+.touch .gear {
+  bottom: calc(max(3.3rem, env(safe-area-inset-bottom)) + 3.55rem);
+}
 .touch #stick,
 .touch .touchactions {
   display: flex;
@@ -693,7 +717,7 @@ dialog h2 {
     padding: 0.45rem 0.5rem;
   }
   .hudright kbd,
-  #torch kbd {
+  .gear kbd {
     display: none;
   }
   .hudleft strong {
@@ -704,6 +728,10 @@ dialog h2 {
   }
   .statusfoot .stambar {
     width: 32px;
+  }
+  .gear button {
+    padding: 0.45rem;
+    font-size: 0.76rem;
   }
   .touch #toast {
     bottom: 27%;

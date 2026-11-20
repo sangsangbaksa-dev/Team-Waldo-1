@@ -20,7 +20,7 @@ import { MISSION_LIST, canStart, startMission } from './missions';
 import { OutlawUi } from './ui';
 import { pickpocket, pickpocketTarget, startJob } from './jobs';
 import { treat, buySnack, nearVending } from './services';
-import { OUTLAW_KEY } from './records';
+import { OUTLAW_KEY, readOutlawSummary } from './records';
 import { Versus, type VsSession, type VsResult } from './versus';
 import { WEAPONS, WEAPON_ORDER, PLAYER_ID, VEHICLES, blankPedInput, blankCarInput, clamp, wrapAngle, type PedInput, type SimEvent, type Vehicle } from './types';
 
@@ -83,7 +83,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   let enterReq = false, slotReq = -1, reloadReq = false, station = 0, wheelOpen = false, wheelSel = -1, wheelX = 0, wheelY = 0, aimedAtEnemy = false;
   const orbitPos = new THREE.Vector3(), orbitQuat = new THREE.Quaternion();
   const toastList: Array<{ el: HTMLElement; at: number }> = [];
-  const hasSave = (): boolean => { try { return !!localStorage.getItem(OUTLAW_KEY); } catch { return false; } };
+  const hasSave = (): boolean => readOutlawSummary().has;
 
   // ---------- 저장 ----------
   function save(): void { if (!sim || versus) return; try { localStorage.setItem(OUTLAW_KEY, JSON.stringify(sim.exportSave())); } catch { /* 저장은 선택 사항입니다. */ } }

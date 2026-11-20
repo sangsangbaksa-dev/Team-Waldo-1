@@ -140,6 +140,7 @@ export class CityView {
     const paint = this.mat({ color: 0xe1dbc3, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }); paint.userData.ground = true;
     const yellow = this.mat({ color: 0xe6bb57, polygonOffset: true, polygonOffsetFactor: -2 }); yellow.userData.ground = true;
     const crossing = this.mat({ map: this.texture(tex.crosswalkTexture()), transparent: true, alphaTest: .1, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+    const hardware = this.mat({ vertexColors: true, roughness: .78, metalness: .24 }); hardware.userData.ground = true;
     const { gx, roadW, sidewalkW } = this.map;
     for (let iz = 0; iz < gx.length - 1; iz++) for (let ix = 0; ix < gx.length - 1; ix++) {
       const x = (gx[ix] + gx[ix + 1]) / 2, z = (gx[iz] + gx[iz + 1]) / 2, w = gx[ix + 1] - gx[ix] - roadW, d = gx[iz + 1] - gx[iz] - roadW;
@@ -157,6 +158,15 @@ export class CityView {
     for (const road of this.map.roads) {
       const dx = road.bx - road.ax, dz = road.bz - road.az, len = Math.hypot(dx, dz), x = (road.ax + road.bx) / 2, z = (road.az + road.bz) / 2, horizontal = Math.abs(dx) > Math.abs(dz);
       for (let n = 14; n < len - 12; n += 9) { const px = road.ax + dx * n / len, pz = road.az + dz * n / len; this.put(x, z, yellow, plane(px, .014, pz, horizontal ? 4 : .15, horizontal ? .15 : 4)); }
+      if (this.quality !== 'low') {
+        // Road drains and inspection covers share one chunk material, without collision or extra meshes.
+        if (road.id % 3 === 0) this.put(x, z, hardware, surface(new THREE.CircleGeometry(.67, 12).rotateX(-Math.PI / 2).translate(x + (horizontal ? 6 : 1.8), .031, z + (horizontal ? 1.8 : 6)), 4, 0x454b4e));
+        for (const s of [-1, 1]) {
+          const px = x + (horizontal ? 16 : s * 6.35), pz = z + (horizontal ? s * 6.35 : 16);
+          this.put(x, z, hardware, box(px, .026, pz, horizontal ? 1.0 : .38, .035, horizontal ? .38 : 1.0, 4, 0x555c60));
+          for (let k = -2; k <= 2; k++) this.put(x, z, hardware, box(px + (horizontal ? k * .16 : 0), .047, pz + (horizontal ? 0 : k * .16), horizontal ? .055 : .29, .014, horizontal ? .29 : .055, 4, 0x202528));
+        }
+      }
       for (const s of [-1, 1]) {
         const px = x + (horizontal ? 0 : s * 6.4), pz = z + (horizontal ? s * 6.4 : 0);
         this.put(x, z, paint, plane(px, .012, pz, horizontal ? len - 22 : .12, horizontal ? .12 : len - 22));

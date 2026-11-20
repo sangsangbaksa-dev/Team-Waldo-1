@@ -140,7 +140,10 @@ export class CityView {
     for (const b of this.layout.blocks) for (const sx of [-1, 1]) for (const sz of [-1, 1]) lamps.push([b.cx + sx * 16.9, b.cz + sz * 16.9, Math.atan2(-sx, -sz)]);
     const pole = new THREE.CylinderGeometry(0.1, 0.14, 7, 6); pole.translate(0, 3.5, 0);
     const arm = new THREE.BoxGeometry(0.1, 0.1, 1.6); arm.translate(0, 7, 0.7);
-    const poleGeo = mergeSimple([pole, arm]);
+    const footing = new THREE.CylinderGeometry(0.23, 0.31, 0.38, 8); footing.translate(0, 0.19, 0);
+    const hood = new THREE.BoxGeometry(0.56, 0.21, 0.97); hood.translate(0, 7.02, 1.4);
+    const poleGeo = mergeSimple([pole, arm, footing, hood]);
+    pole.dispose(); arm.dispose(); footing.dispose(); hood.dispose();
     this.lampMesh = new THREE.InstancedMesh(poleGeo, new THREE.MeshStandardMaterial({ color: 0x2a2e33, roughness: 0.5, metalness: 0.6 }), lamps.length);
     this.lampGlow = new THREE.InstancedMesh(new THREE.BoxGeometry(0.5, 0.12, 0.9), new THREE.MeshBasicMaterial({ color: 0xffd9a0, toneMapped: false }), lamps.length);
     const pool = new THREE.PlaneGeometry(1, 1); pool.rotateX(-Math.PI / 2);
@@ -148,7 +151,7 @@ export class CityView {
     lamps.forEach(([x, z, yaw], i) => {
       const o = this.tmp; o.rotation.set(0, yaw, 0); o.scale.setScalar(1); o.position.set(x, 0.18, z); o.updateMatrix(); this.lampMesh.setMatrixAt(i, o.matrix);
       const dx = Math.sin(yaw) * 1.5, dz = Math.cos(yaw) * 1.5;
-      o.position.set(x + dx, 7.15, z + dz); o.updateMatrix(); this.lampGlow.setMatrixAt(i, o.matrix);
+      o.position.set(x + dx, 7.06, z + dz); o.updateMatrix(); this.lampGlow.setMatrixAt(i, o.matrix);
       o.rotation.set(0, 0, 0); o.scale.set(13, 1, 13); o.position.set(x + dx, 0.2, z + dz); o.updateMatrix(); this.poolMesh.setMatrixAt(i, o.matrix);
     });
     this.lampMesh.castShadow = false; this.group.add(this.lampMesh, this.lampGlow, this.poolMesh);
@@ -253,7 +256,7 @@ export class CityView {
     const e = 0.04 + n * 0.85;
     for (const m of Object.values(this.facade)) m.emissiveIntensity = e;
     this.skylineMat.emissiveIntensity = 0.04 + n * 0.8;
-    (this.lampGlow.material as THREE.MeshBasicMaterial).color.setScalar(0.25 + n * 1.2);
+    (this.lampGlow.material as THREE.MeshBasicMaterial).color.setRGB(0.25 + n * 1.42, 0.21 + n * 1.15, 0.14 + n * 0.74);
     (this.poolMesh.material as THREE.MeshBasicMaterial).opacity = n * 0.85;
     (this.hills.material as THREE.MeshBasicMaterial).color.setHSL(0.6, 0.3, lerp(0.14, 0.05, n));
   }

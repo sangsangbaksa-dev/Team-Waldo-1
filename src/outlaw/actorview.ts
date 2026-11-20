@@ -55,6 +55,7 @@ export class ActorView {
   private readonly cone: THREE.ConeGeometry;
   private readonly cylinder: THREE.CylinderGeometry;
   private readonly tailLamp: THREE.PlaneGeometry;
+  private readonly tireGeo: THREE.CylinderGeometry;
   private time = 0;
   private disposed = false;
   private readonly cameraPos = new THREE.Vector3();
@@ -69,6 +70,7 @@ export class ActorView {
     this.ring = this.ownGeo(new THREE.RingGeometry(0.88, 1, 48)); this.ball = this.ownGeo(new THREE.SphereGeometry(1, 10, 6));
     this.capsule = this.ownGeo(new THREE.CapsuleGeometry(0.26, 0.75, 3, 8)); this.cone = this.ownGeo(new THREE.ConeGeometry(1, 1, 12, 1, true)); this.cylinder = this.ownGeo(new THREE.CylinderGeometry(1, 1, 1, 12, 1, true));
     this.tailLamp = this.ownGeo(new THREE.PlaneGeometry(0.26, 0.14));
+    this.tireGeo = this.ownGeo(new THREE.CylinderGeometry(0.5, 0.5, 1, 12).rotateX(Math.PI / 2));
     const n = 64, data = new Uint8Array(n * n * 4);
     for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
       const a = Math.pow(Math.max(0, 1 - Math.hypot((x + 0.5) / n * 2 - 1, (y + 0.5) / n * 2 - 1)), 1.7), i = (y * n + x) * 4;
@@ -212,9 +214,47 @@ export class ActorView {
     let template: THREE.Object3D | undefined; try { template = this.assets?.vehicleTemplate(v.kind); } catch { /* 누락 모델은 도형으로 대체합니다. */ }
     const body = template ? instantiate(template, { paint: v.color }) : new THREE.Group(), d = VEHICLES[v.kind]; root.add(body);
     if (!template) {
-      const shell = this.mesh(body, this.box, 0xffffff, 0, 0.65, 0, d.halfL * 2, 0.75, d.halfW * 2); shell.material = this.ownMat(new THREE.MeshLambertMaterial({ color: v.color }));
-      this.mesh(body, this.box, 0x263c4a, -0.25, 1.15, 0, d.halfL * 0.95, 0.65, d.halfW * 1.7);
-      for (const x of [-0.65, 0.65]) for (const z of [-1, 1]) this.mesh(body, this.box, 0x15171b, d.halfL * x, 0.35, z * d.halfW, 0.7, 0.7, 0.28);
+      // 차량 에셋을 불러오지 못해도 차종에 맞는 실루엣과 둥근 타이어를 유지한다.
+      const L = d.halfL, W = d.halfW, H = d.height;
+      const heavy = ['truck', 'van', 'ambulance', 'suv', 'tank'].includes(v.kind);
+      const sporty = ['sports', 'gt', 'hyper', 'muscle', 'buggy'].includes(v.kind);
+      const paint = this.ownMat(new THREE.MeshStandardMaterial({ color: v.color, roughness: 0.38, metalness: 0.4 }));
+      const glazing = this.ownMat(new THREE.MeshStandardMaterial({ color: 0x344c5d, roughness: 0.18, metalness: 0.42 }));
+      const colored = (x: number, y: number, z: number, sx: number, sy: number, sz: number): THREE.Mesh => {
+        const m = this.mesh(body, this.box, 0xffffff, x, y, z, sx, sy, sz); m.material = paint; return m;
+      };
+      colored(0, H * 0.40, 0, L * 1.94, H * 0.38, W * 1.93);
+      colored(L * 0.55, H * 0.61, 0, L * 0.77, H * 0.13, W * 1.84);
+      colored(-L * 0.66, H * 0.55, 0, L * 0.58, H * 0.17, W * 1.86);
+      const cabinL = heavy ? L * 1.12 : sporty ? L * 0.91 : L * 1.04, cabinX = heavy ? -L * 0.16 : -L * 0.12;
+      const cabin = this.mesh(body, this.box, 0xffffff, cabinX, H * 0.73, 0, cabinL, H * 0.37, W * 1.76); cabin.material = glazing;
+      colored(cabinX, H * 0.94, 0, cabinL * 0.96, H * 0.09, W * 1.7);
+      for (const side of [-1, 1]) {
+        colored(cabinX, H * 0.76, side * W * 0.89, 0.12, H * 0.36, 0.06);
+        this.mesh(body, this.box, 0x273038, cabinX + cabinL * 0.39, H * 0.69, side * W, 0.25, 0.15, 0.22);
+        colored(0, H * 0.27, side * W * 0.95, L * 1.30, H * 0.13, 0.09);
+      }
+      for (const s of [-1, 1]) this.mesh(body, this.box, 0x343a3e, s * L * 0.95, H * 0.27, 0, 0.20, H * 0.16, W * 1.91);
+      this.mesh(body, this.box, 0x243039, L * 0.985, H * 0.44, 0, 0.045, H * 0.19, W * 0.85);
+      for (const side of [-1, 1]) {
+        this.mesh(body, this.box, 0xe3f1e7, L * 0.985, H * 0.47, side * W * 0.66, 0.07, H * 0.10, W * 0.32);
+        this.mesh(body, this.box, 0x9f2526, -L * 0.985, H * 0.44, side * W * 0.66, 0.07, H * 0.10, W * 0.32);
+      }
+      if (v.kind === 'tank') {
+        colored(0.04, H * 0.92, 0, L * 0.75, H * 0.25, W * 1.15);
+        this.mesh(body, this.box, 0x586057, L * 0.63, H * 1.03, 0, L * 1.14, 0.22, 0.22);
+        for (const side of [-1, 1]) this.mesh(body, this.box, 0x202527, 0, H * 0.26, side * W * 0.88, L * 1.9, H * 0.32, W * 0.38);
+      } else {
+        const radius = Math.min(heavy ? 0.48 : 0.36, H * 0.32);
+        for (const ax of [-0.66, 0.66]) for (const side of [-1, 1]) {
+          const wheel = new THREE.Group(); wheel.name = 'wheel'; wheel.position.set(L * ax, radius, W * side * 0.94); body.add(wheel);
+          this.mesh(wheel, this.tireGeo, 0x17191c, 0, 0, 0, radius * 2, radius * 2, heavy ? 0.32 : 0.28);
+          this.mesh(wheel, this.tireGeo, 0x929da6, 0, 0, side * 0.15, radius * 1.12, radius * 1.12, 0.05);
+          this.mesh(wheel, this.box, 0x48525b, 0, 0, side * 0.182, radius * 0.90, 0.055, 0.035);
+        }
+      }
+      if (v.kind === 'taxi' || v.kind === 'police' || v.kind === 'ambulance') this.mesh(body, this.box, v.kind === 'taxi' ? 0xf2cf57 : 0xd8e9ef, cabinX, H * 1.02, 0, 0.28, 0.15, v.kind === 'taxi' ? 0.56 : W * 1.1);
+      if (sporty && this.quality !== 'low') { for (const s of [-1, 1]) this.mesh(body, this.box, 0x262b30, -L * 0.83, H * 0.68, s * W * 0.56, 0.14, 0.24, 0.08); this.mesh(body, this.box, 0x333a3e, -L * 0.83, H * 0.8, 0, 0.29, 0.10, W * 1.5); }
     }
     const { box, xForward } = this.vehicleBounds(body, d);
     const size = box.getSize(new THREE.Vector3());

@@ -67,7 +67,7 @@ export class Crowd {
   dispose(): void { this.group.removeFromParent(); }
 }
 
-interface Car { mesh: THREE.Group; axis: 'x' | 'z'; line: number; lane: number; dir: 1 | -1; t: number; speed: number; base: number; length: number; }
+interface Car { mesh: THREE.Group; axis: 'x' | 'z'; line: number; lane: number; dir: 1 | -1; t: number; speed: number; base: number; length: number; tailLights: THREE.Mesh[]; headPool: THREE.Mesh | null; }
 /** 장애물 앞에서 서서히 감속하고 안전거리 안에 들어오면 정지한다. */
 export function trafficSpeedFactor(gap: number, stop = 3, slow = 12): number {
   return THREE.MathUtils.clamp((gap - stop) / Math.max(1, slow - stop), 0, 1);
@@ -84,6 +84,10 @@ export class Traffic {
   private cars: Car[] = []; private target = 0;
   private lightMat = new THREE.MeshBasicMaterial({ color: 0xfff1c8, toneMapped: false }); private tailMat = new THREE.MeshBasicMaterial({ color: 0xff2a1a, toneMapped: false });
   private headGeo = new THREE.BoxGeometry(0.12, 0.2, 0.32); private tailGeo = new THREE.BoxGeometry(0.12, 0.18, 0.32);
+  private brakeMat = new THREE.MeshBasicMaterial({ color: 0xff5030, toneMapped: false });
+  private poolGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+  private poolTex = headlightTexture();
+  private poolMat = new THREE.MeshBasicMaterial({ map: this.poolTex, color: 0xffe3b0, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
   private disposed = false;
   constructor(scene: THREE.Scene, quality: Quality) {
     scene.add(this.group);
@@ -92,13 +96,17 @@ export class Traffic {
       const kind = hash01(k, 21) < 0.14 ? 'van' : hash01(k, 22) < 0.1 ? 'bus' : hash01(k, 23) < 0.12 ? 'truck' : 'car', c = CAR_COLORS[k % CAR_COLORS.length];
       const spec = kind === 'bus' ? { w: 9.5, d: 2.6, h: 3 } : kind === 'van' ? { w: 5, d: 2.1, h: 2.2 } : kind === 'truck' ? { w: 5.2, d: 2.1, h: 1.9 } : { w: 4.4, d: 1.9, h: 1.5 };
       const mesh = makeVehicleMesh({ kind, ...spec, c, v: k % 2, wreck: false });
+      const tailLights: THREE.Mesh[] = []; let headPool: THREE.Mesh | null = null;
       for (const z of [-0.65, 0.65] as const) {
         const hl = new THREE.Mesh(this.headGeo, this.lightMat), tl = new THREE.Mesh(this.tailGeo, this.tailMat);
-        const sc = spec.d / 1.9; hl.position.set(spec.w / 2 + 0.02, kind === 'bus' ? 0.9 : 0.72, z * sc); tl.position.set(-spec.w / 2 - 0.02, kind === 'bus' ? 0.9 : 0.68, z * sc); mesh.add(hl, tl);
+        const sc = spec.d / 1.9; hl.position.set(spec.w / 2 + 0.02, kind === 'bus' ? 0.9 : 0.72, z * sc); tl.position.set(-spec.w / 2 - 0.02, kind === 'bus' ? 0.9 : 0.68, z * sc); mesh.add(hl, tl); tailLights.push(tl);
+      }
+      if (quality !== 'low') {
+        headPool = new THREE.Mesh(this.poolGeo, this.poolMat); headPool.position.set(spec.w / 2 + 4.8, -0.135, 0); headPool.scale.set(11, 1, 5.5); headPool.visible = false; mesh.add(headPool);
       }
       mesh.visible = false; this.group.add(mesh);
       const axis = k % 2 ? 'x' : 'z', dir = (hash01(k, 24) < 0.5 ? 1 : -1) as 1 | -1;
-      const car: Car = { mesh, axis, line: roads[1 + (k * 3) % (roads.length - 2)], lane: 2.9, dir, t: (hash01(k, 25) * 2 - 1) * (WORLD_HALF - 8), speed: 6.5 + hash01(k, 26) * 5, base: 1, length: spec.w };
+      const car: Car = { mesh, axis, line: roads[1 + (k * 3) % (roads.length - 2)], lane: 2.9, dir, t: (hash01(k, 25) * 2 - 1) * (WORLD_HALF - 8), speed: 6.5 + hash01(k, 26) * 5, base: 1, length: spec.w, tailLights, headPool };
       placeCar(car); this.cars.push(car);
     }
     this.setStage(0);
@@ -118,14 +126,31 @@ export class Traffic {
       c.base = target < c.base ? target : c.base + (target - c.base) * Math.min(1, dt * 2.5);
       c.t += c.dir * c.speed * c.base * dt; if (c.t > WORLD_HALF - 6) c.t = -WORLD_HALF + 6; if (c.t < -WORLD_HALF + 6) c.t = WORLD_HALF - 6;
       placeCar(c); c.mesh.visible = Math.hypot(c.mesh.position.x - cam.x, c.mesh.position.z - cam.z) < 260;
+      for (const lamp of c.tailLights) lamp.material = target < .75 ? this.brakeMat : this.tailMat;
+      if (c.headPool) c.headPool.visible = night > .12;
     }
-    this.lightMat.color.setScalar(0.4 + night * 1.6); this.tailMat.color.setRGB(0.5 + night, 0.1, 0.06);
+    this.lightMat.color.setRGB(.44 + night * 1.5, .40 + night * 1.32, .30 + night * 1.05);
+    this.tailMat.color.setRGB(0.48 + night * .7, 0.07, 0.035);
+    this.brakeMat.color.setRGB(1.95, .12 + night * .07, .045);
+    this.poolMat.opacity = night * .53;
   }
   dispose(): void {
     if (this.disposed) return; this.disposed = true;
-    const geometries = new Set<THREE.BufferGeometry>([this.headGeo, this.tailGeo]);
-    const materials = new Set<THREE.Material>([this.lightMat, this.tailMat]);
+    const geometries = new Set<THREE.BufferGeometry>([this.headGeo, this.tailGeo, this.poolGeo]);
+    const materials = new Set<THREE.Material>([this.lightMat, this.tailMat, this.brakeMat, this.poolMat]);
     this.group.traverse(o => { if (o instanceof THREE.Mesh) { geometries.add(o.geometry); for (const mat of Array.isArray(o.material) ? o.material : [o.material]) materials.add(mat); } });
-    for (const g of geometries) g.dispose(); for (const m of materials) m.dispose(); this.group.removeFromParent(); this.group.clear(); this.cars.length = 0;
+    for (const g of geometries) g.dispose(); for (const m of materials) m.dispose(); this.poolTex.dispose(); this.group.removeFromParent(); this.group.clear(); this.cars.length = 0;
   }
+}
+
+// Procedural soft footprint: no external texture dependency or extra dynamic lights.
+function headlightTexture(): THREE.DataTexture {
+  const n = 32, pixels = new Uint8Array(n * n * 4);
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const u = (i + .5) / n * 2 - 1, v = (j + .5) / n * 2 - 1;
+    const left = Math.exp(-((v - .35) ** 2) * 12), right = Math.exp(-((v + .35) ** 2) * 12);
+    const falloff = Math.max(0, 1 - u * u) ** 2 * Math.max(0, 1 - v * v);
+    const p = (j * n + i) * 4; pixels[p] = pixels[p + 1] = pixels[p + 2] = 255; pixels[p + 3] = Math.round(Math.min(1, (left + right) * falloff) * 255);
+  }
+  const t = new THREE.DataTexture(pixels, n, n); t.minFilter = t.magFilter = THREE.LinearFilter; t.needsUpdate = true; return t;
 }

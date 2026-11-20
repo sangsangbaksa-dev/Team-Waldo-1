@@ -39,7 +39,14 @@ try {
       await page.locator("#viewWrap canvas").waitFor({ state: "visible" });
       assert.match(await page.locator("#zone").innerText(), /전원 정비동/);
       await page.screenshot({ path: out + "/room-tone-play-" + device + ".png" });
-      if (mobile) await page.locator("#pauseGame").click();
+      if (mobile) {
+        const hit = await page.locator("#pauseGame").evaluate(el => {
+          const r = el.getBoundingClientRect();
+          return el.contains(document.elementFromPoint(r.x + r.width/2, r.y + r.height/2));
+        });
+        assert.ok(hit, "HUD must receive pointer events above the 3D canvas");
+        await page.locator("#pauseGame").click();
+      }
       else await page.keyboard.press("p");
       await page.getByRole("button", { name: "조작 설정", exact: true }).click();
       const range = page.getByRole("slider", { name: "시점 감도" });
@@ -66,6 +73,7 @@ try {
       await page.getByRole("button", { name: "구역 진입", exact: true }).click();
       await page.locator("#dialog").waitFor({ state: "hidden" });
       await page.locator("#prompt").waitFor({ state: "visible" });
+      await page.screenshot({ path: out + "/room-tone-wing-" + (mobile ? "archive" : "radio") + ".png" });
       if (mobile) await page.locator("#act").click();
       else await page.keyboard.press("e");
       const confirm = page.getByRole("button", { name: "신호 확인", exact: true });

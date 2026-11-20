@@ -27,7 +27,8 @@ let state = "home",
   found = [false, false, false],
   seen = new Set(),
   elapsed = 0;
-let archive = [], dread = createDread(), enemyStepDistance = 0;
+let archive = [], dread = createDread();
+let enemyShadow, chaseWeight = 0;
 let acousticCell = -1, acousticTree = null, patrolTarget = -1;
 let renderer,
   scene,
@@ -415,7 +416,10 @@ function shift(dx, dz) {
 }
 function pointPlayer() {
   dread = createDread(Math.random, ch);
-  enemyStepDistance = 0;
+  chaseWeight = 0;
+  model.rotation.set(0, 0, 0);
+  model.position.y = 0;
+  for (const joint of gait) joint.bone.quaternion.copy(joint.rest);
   acousticCell = -1;
   acousticTree = null;
   patrolTarget = -1;
@@ -439,6 +443,7 @@ function pointPlayer() {
   lightOn = true;
   const far = xy(level.nest);
   entity.position.set(far.x, 0, far.z);
+  enemyShadow?.position.set(far.x, .004, far.z);
   path = [];
   nextPath = 0;
   lastKnown = -1;
@@ -650,7 +655,7 @@ function loadScene() {
   scene.background = new THREE.Color(
     [0x0b1311, 0x0b1119, 0x1b1110, 0x090f12][ch],
   );
-  scene.fog = new THREE.FogExp2(scene.background, 0.067);
+  scene.fog = new THREE.FogExp2(scene.background, [0.061, 0.063, 0.073, 0.067][ch]);
   camera = new THREE.PerspectiveCamera(68, 1, 0.045, 65);
   scene.add(camera);
   scene.add(new THREE.HemisphereLight(
@@ -678,6 +683,8 @@ function loadScene() {
     record.root.visible=!archive.includes(ch*2+i);
     items.push(record);
   });
+  enemyShadow = addContactShadow(THREE, props, .92, .74, props.userData.contactTexture);
+  enemyShadow.material.opacity = .52;
   entity = new THREE.Group();
   entity.add(model);
   scene.add(entity);
@@ -1268,24 +1275,36 @@ function enemyUpdate(dt, running) {
     entity.rotation.y += dt * 1.45;
   }
   const travel = Math.hypot(e.x - startX, e.z - startZ);
-  enemyStepDistance+=travel;
-  if(enemyStepDistance >= (enemyPhase ? .68 : .82)){
-    enemyStepDistance=0;
+  // A half-cycle represents one footfall, shared by the gait and the sound.
+  chaseWeight = THREE.MathUtils.damp(chaseWeight, enemyPhase ? 1 : 0, 5, dt);
+  const stepSpan = THREE.MathUtils.lerp(.70, .86, chaseWeight);
+  const previousStep = Math.floor(stride / Math.PI);
+  stride += travel * Math.PI / stepSpan;
+  const stepped = Math.floor(stride / Math.PI) > previousStep;
+  stride %= Math.PI * 2;
+  if (stepped) {
     const distance=Math.hypot(e.x-player.x,e.z-player.z);
     if(distance<17 && !grace){
       const pan=((e.x-player.x)*Math.cos(yaw)-(e.z-player.z)*Math.sin(yaw))/Math.max(distance,.1);
       sound.enemyStep(distance,pan,clearLine(player,e),Boolean(enemyPhase));
     }
   }
-  stride += travel * 5.5;
-  gaitWeight = THREE.MathUtils.damp(gaitWeight, Math.min(1, travel / Math.max(dt, .001)), 9, dt);
-  model.position.y = 0.009 + 0.009 * gaitWeight * Math.abs(Math.sin(stride));
-  model.rotation.z = 0.025 * Math.sin(now * 2.1);
+  const speed = travel / Math.max(dt, .001);
+  gaitWeight = THREE.MathUtils.damp(gaitWeight, Math.min(1, speed / .92), 9, dt);
+  const amplitude = gaitWeight * (1 + .22 * chaseWeight);
+  model.position.y = .005 + .023 * amplitude * Math.abs(Math.sin(stride));
+  model.rotation.z = .015 * Math.sin(now * 1.4) * (1 - gaitWeight) + .018 * amplitude * Math.sin(stride);
+  model.rotation.x = -.035 * amplitude * chaseWeight;
+  if (enemyShadow) {
+    enemyShadow.position.set(e.x, .004, e.z);
+    enemyShadow.rotation.z = -entity.rotation.y;
+    enemyShadow.material.opacity = .48 + .08 * (1 - Math.abs(Math.sin(stride))) * gaitWeight;
+  }
   mixer.update(dt * (enemyPhase ? 1.25 : 0.75));
   for (const joint of gait) {
     const swing = Math.sin(stride + joint.offset);
     joint.bone.quaternion.copy(joint.rest);
-    joint.bone.rotateOnAxis(joint.axis, joint.amplitude * gaitWeight * (joint.knee ? Math.max(0, swing) : swing));
+    joint.bone.rotateOnAxis(joint.axis, joint.amplitude * amplitude * (joint.knee ? Math.max(0, swing) : swing));
   }
   const threat = grace
     ? 0

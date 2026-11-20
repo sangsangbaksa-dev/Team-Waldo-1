@@ -170,8 +170,10 @@
 }
 
 /* ---- 주인공 선택·휴대폰·상점·카지노 ---- */
-.ol-card.hero,.ol-card.phone,.ol-card.casino,.ol-card.dealer{width:min(760px,96vw);max-height:92vh;overflow:auto}
+.ol-card.hero,.ol-card.phone,.ol-card.casino,.ol-card.dealer,.ol-card.shop{width:min(760px,96vw);max-height:92vh;overflow:auto}
 .ol-card .sub{opacity:.75;margin:0 0 10px;font-size:14px}
+/* 긴 카드(주인공 선택·휴대폰·상점…)는 스크롤해도 하단 버튼이 항상 보이게 고정합니다 */
+.ol-card.hero .ol-btns,.ol-card.phone .ol-btns,.ol-card.casino .ol-btns,.ol-card.dealer .ol-btns,.ol-card.shop .ol-btns{position:sticky;bottom:-22px;z-index:2;margin:12px -24px -22px;padding:10px 24px 22px;background:linear-gradient(180deg,rgba(10,12,16,0),rgba(10,12,16,.96) 28%)}
 .hero-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:10px 0}
 .hero-card{cursor:pointer;text-align:left;color:#fff;background:rgba(20,22,30,.9);border:1px solid #ffffff30;border-bottom:4px solid #556;padding:10px;display:flex;flex-direction:column;gap:3px;transition:.12s;font-family:inherit}
 .hero-card:hover{transform:translateY(-3px);border-bottom-color:var(--cy)}

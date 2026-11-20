@@ -1,0 +1,22 @@
+name: Games 01-02 scoped debugging
+on:
+  push:
+    branches: [agent/games-01-02-debug20]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  scoped:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx eslint src/city src/race tests/city tests/race
+      - run: npm run typecheck
+      - run: npx vitest run tests/city tests/race
+      - run: npm run build

@@ -25,7 +25,7 @@ const fin = (v: unknown): v is number => typeof v === 'number' && Number.isFinit
 const isInt = (v: unknown, lo: number, hi: number): v is number => fin(v) && Number.isInteger(v) && v >= lo && v <= hi;
 const r1 = (v: number): number => Math.round(v * 10), r2 = (v: number): number => Math.round(v * 100);
 const wrap = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));
-const numArr = (v: unknown, max: number): v is number[] => Array.isArray(v) && v.length <= max && v.every(fin);
+const numArr = (v: unknown, max: number): v is number[] => Array.isArray(v) && v.length <= max && Array.from(v).every(fin);
 
 export interface PuppetTarget { x: number; z: number; yaw: number; pitch: number; speed: number; /** 받은 속도(있으면 받은 뒤 지난 시간만큼 앞으로 내다봅니다) */ vx?: number; vz?: number; air: number; alt: number; hp: number; w: WeaponId; ads: boolean; crouch: boolean; reload: boolean }
 export interface VehTarget { x: number; z: number; yaw: number; speed: number; at: number }
@@ -47,8 +47,9 @@ export function encodeLoot(l: Loot): NetMsg {
 export function parseLoot(m: NetMsg): Loot | null {
   if (!isInt(m.i, 0, 1e8) || !LOOT_KINDS.includes(m.k as LootKind) || !fin(m.x) || !fin(m.z) || Math.abs(m.x) > 1000 || Math.abs(m.z) > 1000) return null;
   const weapon = m.w === null ? null : WEAPON_IDS.includes(m.w as WeaponId) ? (m.w as WeaponId) : undefined; if (weapon === undefined) return null;
-  const part = m.p === null || m.p === undefined ? null : Object.prototype.hasOwnProperty.call(PARTS, m.p as string) ? (m.p as PartId) : undefined; if (part === undefined) return null;
+  const part = m.p === null || m.p === undefined ? null : typeof m.p === 'string' && Object.prototype.hasOwnProperty.call(PARTS, m.p) ? (m.p as PartId) : undefined; if (part === undefined) return null;
   let att: Attachments | undefined;
+  if (m.a !== null && m.a !== undefined && (typeof m.a !== 'object' || Array.isArray(m.a))) return null;
   if (m.a && typeof m.a === 'object') {
     att = {}; for (const [slot, id] of Object.entries(m.a as Record<string, unknown>)) {
       if (!SLOTS.includes(slot as PartSlot) || typeof id !== 'string' || !Object.prototype.hasOwnProperty.call(PARTS, id) || PARTS[id as PartId].slot !== slot) return null;
@@ -128,7 +129,7 @@ export class WorldSync {
   }
   private shot(s: unknown): void {
     const m = this.m; if (!numArr(s, 5 + 27) || s.length < 8 || (s.length - 5) % 3 !== 0) return;
-    const p = m.players[s[0]], w = WEAPON_IDS[s[1]]; if (!isInt(s[0], 0, m.players.length - 1) || !p?.remote || !p.alive || !w) return;
+    const p = m.players[s[0]], w = WEAPON_IDS[s[1]]; if (!isInt(s[0], 0, m.players.length - 1) || !p?.bot || !p.remote || !p.alive || !w) return;
     const ox = s[2] / 100, oy = s[3] / 100, oz = s[4] / 100, aims: Array<[number, number]> = [];
     for (let i = 5; i + 2 < s.length; i += 3) { const dx = s[i] / 10 - ox, dy = s[i + 1] / 10 - oy, dz = s[i + 2] / 10 - oz; aims.push([Math.atan2(dz, dx), Math.atan2(dy, Math.hypot(dx, dz))]); }
     p.muzzle = 0.06; p.kick = Math.min(1, p.kick + 0.3); m.remoteShot(p.id, w, ox, oy, oz, aims);

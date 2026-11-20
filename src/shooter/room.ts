@@ -27,7 +27,7 @@ export class ShooterRoomNet {
     this.timer = window.setInterval(() => this.tick(), 500);
   }
   private abort(): void { if (this.dead) return; this.dead = true; window.clearInterval(this.timer); this.hooks.onAbort(); }
-  private hello(): void { if (!this.started) this.ch.send({ t: 'hello', f: this.session.me.id }); }
+  private hello(): void { if (!this.dead && !this.started) this.ch.send({ t: 'hello', f: this.session.me.id }); }
   private tick(): void {
     if (this.dead) return; const now = performance.now();
     if (now - this.lastTick > 2000) for (const id of this.heard.keys()) this.heard.set(id, now); // 내 탭이 멈춘 시간은 상대의 침묵으로 세지 않습니다
@@ -46,24 +46,26 @@ export class ShooterRoomNet {
   }
   private launch(): void { const list = this.ids.filter(id => this.hellos.has(id)); this.ch.send({ t: 'start', f: this.session.me.id, list }); this.begin(list); }
   private begin(list: string[]): void {
-    if (this.started) return; this.started = true; this.list = list; const now = performance.now(); this.startedAt = now;
+    if (this.dead || this.started) return; this.started = true; this.list = list; const now = performance.now(); this.startedAt = now;
     for (const id of list) if (id !== this.session.me.id) this.heard.set(id, now);
     this.hooks.onStart(list);
   }
   private leave(id: string): void { if (this.gone.has(id)) return; this.gone.add(id); this.heard.delete(id); this.hooks.onGone(id); }
   private onMsg(m: NetMsg): void {
+    if (this.dead) return;
     const f = typeof m.f === 'string' ? m.f : ''; if (!f || f === this.session.me.id || !this.ids.includes(f)) return;
     if (this.started && this.heard.has(f)) this.heard.set(f, performance.now());
     if (m.t === 'hello') { if (this.started && this.session.host) this.ch.send({ t: 'start', f: this.session.me.id, list: this.list }); else if (!this.started) this.hellos.add(f); }
     else if (m.t === 'start') {
       if (f !== this.session.room.host_id || this.session.host || !Array.isArray(m.list)) return;
       const list = (m.list as unknown[]).filter((x): x is string => typeof x === 'string' && this.ids.includes(x));
+      if (list.length !== m.list.length || new Set(list).size !== list.length || list[0] !== this.session.room.host_id) return;
       if (list.includes(this.session.me.id) && list.length >= 2) this.begin(list);
     }
-    else if (!this.started || this.gone.has(f)) return;
+    else if (!this.started || !this.list.includes(f) || this.gone.has(f)) return;
     else if (m.t === 'p') { const p = parsePose(m); if (p) this.hooks.onPose(f, p); }
     else if (m.t === 'sh') { const s = parseShot(m); if (s) this.hooks.onShot(f, s); }
-    else if (m.t === 'pk') { if (num(m.i, 0, 1e8)) this.hooks.onPickup(m.i); }
+    else if (m.t === 'pk') { if (num(m.i, 0, 1e8) && Number.isInteger(m.i)) this.hooks.onPickup(m.i); }
     else if (m.t === 'dead') { if (num(m.mt, 0, 100000)) this.hooks.onDead(f, m.mt, num(m.k, -1, 1000) ? Math.floor(m.k) : -1, num(m.c, 0, 100) ? Math.floor(m.c) : 0); }
     else if (m.t === 'bye') this.leave(f);
     else if (m.t !== 'ka') this.hooks.onData(f, m);
@@ -75,12 +77,12 @@ export class ShooterRoomNet {
   /** 동기화 메시지를 보냅니다(보낸 사람 id 를 붙입니다). */
   send(m: NetMsg): void { if (this.started && !this.dead) this.ch.send({ ...m, f: this.f }); }
   sendPose(p: Pose, now: number): void {
-    if (!this.started || now - this.lastPose < 66) return; this.lastPose = now;
+    if (this.dead || !this.started || !Number.isFinite(now) || (now >= this.lastPose && now - this.lastPose < 66)) return; this.lastPose = now;
     this.ch.send({ ...poseMsg(p), f: this.f });
   }
-  sendShot(s: NetShot): void { if (this.started) this.ch.send({ t: 'sh', f: this.f, w: s.w, ox: Math.round(s.ox * 100) / 100, oy: Math.round(s.oy * 100) / 100, oz: Math.round(s.oz * 100) / 100, e: s.ends.map(v => Math.round(v * 10) / 10) }); }
-  sendPickup(id: number): void { this.ch.send({ t: 'pk', f: this.f, i: id }); }
-  sendDead(mt: number, killer: number, cause = 0): void { this.ch.send({ t: 'dead', f: this.f, mt: Math.round(mt * 100) / 100, k: killer, c: cause }); }
-  bye(): void { this.ch.send({ t: 'bye', f: this.f }); }
+  sendShot(s: NetShot): void { if (this.started && !this.dead) this.ch.send({ t: 'sh', f: this.f, w: s.w, ox: Math.round(s.ox * 100) / 100, oy: Math.round(s.oy * 100) / 100, oz: Math.round(s.oz * 100) / 100, e: s.ends.map(v => Math.round(v * 10) / 10) }); }
+  sendPickup(id: number): void { if (!this.dead) this.ch.send({ t: 'pk', f: this.f, i: id }); }
+  sendDead(mt: number, killer: number, cause = 0): void { if (!this.dead) this.ch.send({ t: 'dead', f: this.f, mt: Math.round(mt * 100) / 100, k: killer, c: cause }); }
+  bye(): void { if (!this.dead) this.ch.send({ t: 'bye', f: this.f }); }
   dispose(): void { this.dead = true; window.clearInterval(this.timer); this.ch.close(); }
 }

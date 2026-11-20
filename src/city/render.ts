@@ -1,4 +1,5 @@
 // LAST CITY — 캔버스 렌더러 (유사 3D 건물, 파티클, 자기장, 미니맵)
+import { renderPixelRatio } from '../shared/render-budget';
 import { ACTORS, BIZ, BLOCK, BLOCKS, CIV, FACTIONS, PITCH, POLICE, ROAD, SIZE, STRUCTS, WEAPONS, type StructKind } from './defs';
 import { EVENT_INFO } from './events';
 import { HQ_BUILD_RANGE, structCenter } from './placement';
@@ -18,9 +19,9 @@ const DUEL_RADAR = 700;
 export class Renderer {
   ctx: CanvasRenderingContext2D; cam = { x: 0, y: 0, zoom: 1 }; shake = 0; parts: Particle[] = []; decals: Decal[] = []; rings: { x: number; y: number; r: number; max: number; life: number; color: string }[] = [];
   w = 0; h = 0; dpr = 1; hurt = 0; mini: HTMLCanvasElement | null = null; reduced = false; t = 0;
-  constructor(public canvas: HTMLCanvasElement, public world: World) { this.ctx = canvas.getContext('2d', { alpha: false })!; this.resize(); }
+  constructor(public canvas: HTMLCanvasElement, public world: World, public quality: 'high' | 'standard' | 'low' = 'high') { this.ctx = canvas.getContext('2d', { alpha: false })!; this.resize(); }
   resize(): void {
-    this.dpr = Math.min(2, window.devicePixelRatio || 1); this.w = this.canvas.clientWidth || window.innerWidth; this.h = this.canvas.clientHeight || window.innerHeight;
+    this.w = this.canvas.clientWidth || window.innerWidth; this.h = this.canvas.clientHeight || window.innerHeight; this.dpr = renderPixelRatio(this.w, this.h, window.devicePixelRatio, this.quality);
     const width = Math.max(1, Math.round(this.w * this.dpr)), height = Math.max(1, Math.round(this.h * this.dpr)); if (this.canvas.width !== width) this.canvas.width = width; if (this.canvas.height !== height) this.canvas.height = height;
   }
   toWorld(sx: number, sy: number): { x: number; y: number } { return { x: (sx - this.w / 2) / this.cam.zoom + this.cam.x, y: (sy - this.h / 2) / this.cam.zoom + this.cam.y }; }
@@ -81,27 +82,28 @@ export class Renderer {
     this.pads(); this.lootLayer();
     // 건설 고스트
     if (ghost) { const d = STRUCTS[ghost.kind]; ctx.fillStyle = ghost.ok ? 'rgba(90,255,160,0.35)' : 'rgba(255,80,80,0.35)'; ctx.strokeStyle = ghost.ok ? '#7dffb0' : '#ff6b6b'; ctx.lineWidth = 2; ctx.fillRect(ghost.x - d.w / 2, ghost.y - d.h / 2, d.w, d.h); ctx.strokeRect(ghost.x - d.w / 2, ghost.y - d.h / 2, d.w, d.h); const hq = w.hq(0); if (hq) { ctx.setLineDash([10, 10]); ctx.strokeStyle = 'rgba(125,255,176,0.4)'; const hc = structCenter(hq); ctx.beginPath(); ctx.arc(hc.x, hc.y, HQ_BUILD_RANGE, 0, 6.29); ctx.stroke(); ctx.setLineDash([]); } }
-    for (const r of this.rings) { r.life -= dt; const k = 1 - Math.max(0, r.life) / 0.5; ctx.strokeStyle = r.color; ctx.globalAlpha = Math.max(0, Math.min(1, r.life * 3)); ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(r.x, r.y, r.r + (r.max - r.r) * Math.min(1, k * 1.6), 0, 6.29); ctx.stroke(); }
-    ctx.globalAlpha = 1; this.rings = this.rings.filter(r => r.life > 0);
+    let ringCount = 0; for (const r of this.rings) { r.life -= dt; if (r.life <= 0) continue; this.rings[ringCount++] = r; const k = 1 - Math.max(0, r.life) / 0.5; ctx.strokeStyle = r.color; ctx.globalAlpha = Math.max(0, Math.min(1, r.life * 3)); ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(r.x, r.y, r.r + (r.max - r.r) * Math.min(1, k * 1.6), 0, 6.29); ctx.stroke(); }
+    ctx.globalAlpha = 1; this.rings.length = ringCount;
     // 차량·캐릭터
-    for (const v of w.vehicles) if (v.alive && this.visible(v.x, v.y)) this.vehicle(v);
+    for (const v of w.vehicles) if (v.alive && this.visible(v.x, v.y)) this.vehicle(v, dt);
     const pb = w.boss(0);
     for (const a of w.actors) if (a.alive && !a.inVeh && this.visible(a.x, a.y)) this.actor(a, a === pb);
     // 조준선
     if (pb && aim && !pb.inVeh) { const wd = WEAPONS[w.factions[0].slots[w.factions[0].cur].id], d = Math.min(wd.range, Math.hypot(aim.x - pb.x, aim.y - pb.y)); ctx.strokeStyle = 'rgba(255,255,255,0.13)'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 8]); ctx.beginPath(); ctx.moveTo(pb.x + Math.cos(pb.ang) * 22, pb.y + Math.sin(pb.ang) * 22); ctx.lineTo(pb.x + Math.cos(pb.ang) * d, pb.y + Math.sin(pb.ang) * d); ctx.stroke(); ctx.setLineDash([]); }
     // 탄환
     ctx.lineCap = 'round';
-    for (const b of w.bullets) { if (!this.visible(b.x, b.y)) continue; const d = WEAPONS[b.w]; if (d.splash) { ctx.fillStyle = '#ffb066'; ctx.beginPath(); ctx.arc(b.x, b.y, 4.5, 0, 6.29); ctx.fill(); this.part(b.x, b.y, 0, 0, 0.35, 5, 'rgba(200,200,200,0.35)', 2); } else { ctx.strokeStyle = d.color; ctx.lineWidth = d.pierce ? 4 : b.boss ? 2.6 : 1.8; ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.moveTo(b.px - b.vx * 0.012, b.py - b.vy * 0.012); ctx.lineTo(b.x, b.y); ctx.stroke(); } }
+    for (const b of w.bullets) { if (!this.visible(b.x, b.y)) continue; const d = WEAPONS[b.w]; if (d.splash) { ctx.fillStyle = '#ffb066'; ctx.beginPath(); ctx.arc(b.x, b.y, 4.5, 0, 6.29); ctx.fill(); if (dt > 0) this.part(b.x, b.y, 0, 0, 0.35, 5, 'rgba(200,200,200,0.35)', 2); } else { ctx.strokeStyle = d.color; ctx.lineWidth = d.pierce ? 4 : b.boss ? 2.6 : 1.8; ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.moveTo(b.px - b.vx * 0.012, b.py - b.vy * 0.012); ctx.lineTo(b.x, b.y); ctx.stroke(); } }
     ctx.globalAlpha = 1;
     this.buildings(pb, x0, y0, x1, y1);
     // 파티클
+    let partCount = 0; const drag = Math.pow(0.93, dt * 60);
     for (const p of this.parts) {
-      p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; if (p.kind !== 3) { p.vx *= 0.93; p.vy *= 0.93; } const k = Math.max(0, p.life / p.max);
+      p.life -= dt; if (p.life <= 0) continue; this.parts[partCount++] = p; p.x += p.vx * dt; p.y += p.vy * dt; if (p.kind !== 3) { p.vx *= drag; p.vy *= drag; } const k = Math.max(0, p.life / p.max);
       if (p.kind === 3) { ctx.globalAlpha = Math.min(1, k * 2); ctx.font = `800 ${p.size}px 'Noto Sans KR',sans-serif`; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.strokeText(p.text!, p.x, p.y); ctx.fillStyle = p.color; ctx.fillText(p.text!, p.x, p.y); continue; }
       ctx.globalAlpha = p.kind === 2 ? k * 0.8 : k; if (p.kind === 1) ctx.globalCompositeOperation = 'lighter';
       ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (p.kind === 2 ? 1.6 - k * 0.6 : 0.4 + k * 0.6), 0, 6.29); ctx.fill(); ctx.globalCompositeOperation = 'source-over';
     }
-    ctx.globalAlpha = 1; this.parts = this.parts.filter(p => p.life > 0);
+    ctx.globalAlpha = 1; this.parts.length = partCount;
     // 수송기
     for (const p of w.planes) { ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(Math.atan2(p.vy, p.vx)); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(-40, 50, 90, 16); ctx.fillStyle = '#cfd6e0'; ctx.beginPath(); ctx.moveTo(60, 0); ctx.lineTo(-40, -12); ctx.lineTo(-40, 12); ctx.fill(); ctx.fillRect(-10, -60, 26, 120); ctx.fillRect(-46, -24, 14, 48); ctx.restore(); }
     this.zoneLayer(x0, y0, x1, y1);
@@ -201,7 +203,7 @@ export class Renderer {
     }
     if (a.hp < a.maxHp || a.kind === 'boss') { const bw = a.kind === 'boss' ? 40 : def.mech ? 34 : 22, k = Math.max(0, a.hp / a.maxHp); ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(a.x - bw / 2 - 1, a.y - a.r - 12, bw + 2, 6); ctx.fillStyle = a.f === 0 ? '#5dfc9b' : k > 0.5 ? '#ffd24a' : '#ff5d5d'; ctx.fillRect(a.x - bw / 2, a.y - a.r - 11, bw * k, 4); if (a.kind === 'boss' && w.factions[a.f].armor > 0) { ctx.fillStyle = '#6fb2ff'; ctx.fillRect(a.x - bw / 2, a.y - a.r - 7, bw * w.factions[a.f].armor / 100, 2); } }
   }
-  vehicle(v: Vehicle): void {
+  vehicle(v: Vehicle, dt = 1 / 60): void {
     const { ctx, world: w } = this, L = v.len, W2 = v.wid;
     ctx.save(); ctx.translate(v.x, v.y); ctx.fillStyle = 'rgba(0,0,0,0.32)'; ctx.rotate(v.ang); ctx.fillRect(-L / 2 + 4, -W2 / 2 + 5, L, W2);
     if (v.kind === 'tank') {
@@ -216,14 +218,14 @@ export class Renderer {
       if (v.kind === 'police') { const on = v.ai === 'chase' && Math.floor(this.t * 6) % 2 === 0; ctx.fillStyle = on ? '#ff2d2d' : '#2d5bff'; ctx.fillRect(-4, -W2 / 2 + 2, 6, (W2 - 4) / 2); ctx.fillStyle = on ? '#2d5bff' : '#ff2d2d'; ctx.fillRect(-4, 0, 6, (W2 - 4) / 2); ctx.fillStyle = '#16233f'; ctx.fillRect(-L / 2 + 2, -W2 / 2, 8, W2); ctx.fillRect(L / 2 - 10, -W2 / 2, 6, W2); }
     }
     ctx.restore();
-    if (v.hp < v.maxHp * 0.5 && Math.random() < 0.3) this.part(v.x, v.y, (Math.random() - 0.5) * 20, -30, 0.9, 8, v.burn > 0 ? '#ff7a2a' : 'rgba(40,40,44,0.5)', v.burn > 0 ? 1 : 2);
+    if (dt > 0 && v.hp < v.maxHp * 0.5 && Math.random() < 1 - Math.pow(0.7, dt * 60)) this.part(v.x, v.y, (Math.random() - 0.5) * 20, -30, 0.9, 8, v.burn > 0 ? '#ff7a2a' : 'rgba(40,40,44,0.5)', v.burn > 0 ? 1 : 2);
     if (v.driver && v.f === 0) { ctx.strokeStyle = FACTIONS[0].color; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(v.x, v.y, v.r + 12, 0, 6.29); ctx.stroke(); }
     if (v.hp < v.maxHp && v.hp > 0) { ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(v.x - 20, v.y - v.r - 14, 40, 5); ctx.fillStyle = '#ffd24a'; ctx.fillRect(v.x - 19, v.y - v.r - 13, 38 * v.hp / v.maxHp, 3); }
   }
   buildings(pb: Actor | null, x0: number, y0: number, x1: number, y1: number): void {
     const { ctx, world: w } = this, cx = this.cam.x, cy = this.cam.y, list: number[] = [];
     for (let i = 0; i < w.map.solids.length; i++) { const s = w.map.solids[i]; if (s.alive && s.x < x1 + 60 && s.x + s.w > x0 - 60 && s.y < y1 + 60 && s.y + s.h > y0 - 60) list.push(i); }
-    list.sort((p, q) => { const a = w.map.solids[p], b = w.map.solids[q]; return Math.hypot(b.x + b.w / 2 - cx, b.y + b.h / 2 - cy) - Math.hypot(a.x + a.w / 2 - cx, a.y + a.h / 2 - cy); });
+    list.sort((p, q) => { const a = w.map.solids[p], b = w.map.solids[q]; return (b.x + b.w / 2 - cx) ** 2 + (b.y + b.h / 2 - cy) ** 2 - (a.x + a.w / 2 - cx) ** 2 - (a.y + a.h / 2 - cy) ** 2; });
     for (const t of w.map.trees) if (this.visible(t.x, t.y)) { ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.arc(t.x + 5, t.y + 6, t.r, 0, 6.29); ctx.fill(); }
     for (const i of list) {
       const s = w.map.solids[i], st = s.struct ? w.structures.find(q => q.id === s.struct) : undefined, h = s.height * (st && st.built < 1 ? 0.3 + st.built * 0.7 : 1);

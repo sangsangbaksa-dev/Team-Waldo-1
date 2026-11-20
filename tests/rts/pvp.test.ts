@@ -33,6 +33,26 @@ describe('FRONTLINE 락스텝', () => {
     expect(A.buildings.some(x => x.kind === 'depot')).toBe(true); expect(ha.onDesync).not.toHaveBeenCalled(); expect(hb.onDesync).not.toHaveBeenCalled();
     a.dispose(); b.dispose();
   });
+  it('한 턴에 12개를 초과한 명령은 다음 턴에 전달해 양쪽에 동일하게 적용한다', async () => {
+    const [sa, sb] = link(), ha = hooks(), hb = hooks(), A = new RtsSim(), B = new RtsSim();
+    A.record = B.record = false;
+    const a = new RtsNet(sa, ha), b = new RtsNet(sb, hb);
+    const worker = A.units.find(u => u.owner === 0)!;
+    await Promise.resolve();
+    await drive(a, A, b, B, 180, f => {
+      if (f === 5) {
+        for (let i = 0; i < 24; i++) a.send({ k: 'move', ids: [worker.id], x: 40 + i % 2, y: 45 });
+        a.send({ k: 'stop', ids: [worker.id] });
+      }
+    });
+    expect(A.unit(worker.id)?.o.t).toBe('idle');
+    expect(B.unit(worker.id)?.o.t).toBe('idle');
+    expect(A.unit(worker.id)?.o.phase).toBe(9);
+    expect(B.unit(worker.id)?.o.phase).toBe(9);
+    expect(ha.onDesync).not.toHaveBeenCalled();
+    expect(hb.onDesync).not.toHaveBeenCalled();
+    a.dispose(); b.dispose();
+  });
   it('메시지가 3분의 1쯤 사라져도 복구되어 계속 진행한다', async () => {
     const [sa, sb] = link(0.33), A = new RtsSim(), B = new RtsSim(); A.record = B.record = false;
     const a = new RtsNet(sa, hooks()), b = new RtsNet(sb, hooks()); await Promise.resolve();

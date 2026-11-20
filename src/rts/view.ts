@@ -238,12 +238,15 @@ export class RtsView {
   /** 시뮬레이션이 한 틱 진행될 때마다 부릅니다. 보간을 위해 직전 위치를 기억합니다. */
   onTick(): void { for (const u of this.sim.units) { const v = this.units.get(u.id); if (v) { v.px = v.cx; v.py = v.cy; v.cx = u.x; v.cy = u.y; } } }
 
+  private releaseDetails(root: THREE.Object3D): void {
+    root.traverse(o => { if (o instanceof THREE.Mesh && o.userData.ownedDetail) o.geometry.dispose(); });
+  }
   private syncEntities(): void {
     const s = this.sim;
     for (const u of s.units) if (!this.units.has(u.id)) this.addUnit(u);
-    for (const [id, v] of this.units) if (!s.unit(id)) { this.scene.remove(v.rig.root); if (v.aura) this.disposeOwned(v.aura); this.units.delete(id); }
+    for (const [id, v] of this.units) if (!s.unit(id)) { this.scene.remove(v.rig.root); this.releaseDetails(v.rig.root); if (v.aura) this.disposeOwned(v.aura); this.units.delete(id); }
     for (const b of s.buildings) if (!this.builds.has(b.id)) this.addBuilding(b);
-    for (const [id, v] of this.builds) if (!s.building(id)) { this.scene.remove(v.rig.root, v.frame, v.scaff); v.frame.traverse(o => { if (o instanceof THREE.Mesh) o.geometry.dispose(); }); this.disposeOwned(v.scaff); this.builds.delete(id); }
+    for (const [id, v] of this.builds) if (!s.building(id)) { this.scene.remove(v.rig.root, v.frame, v.scaff); this.releaseDetails(v.rig.root); v.frame.traverse(o => { if (o instanceof THREE.Mesh) o.geometry.dispose(); }); this.disposeOwned(v.scaff); this.builds.delete(id); }
     for (const n of s.nodes) if (!this.nodes.has(n.id)) this.addNode(n);
     for (const [id, v] of this.nodes) if (!s.node(id)) { this.scene.remove(v.obj); this.nodes.delete(id); }
   }

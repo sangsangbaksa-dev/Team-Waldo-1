@@ -78,7 +78,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
 
   // ---------- 자산(백그라운드로 받기) ----------
   const loading = opts.loading;
-  void loadShooterAssets(base, f => { assetPct = f; loading?.progress(f, '3D 모델을 불러오는 중'); if (!closed && phase === 'setup') paintSetup(); }, n => { if (!closed) loading?.note(n); }).then(a => { if (!closed) { assets = a; assetState = 'ready'; } }).catch(() => { if (!closed) assetState = 'failed'; }).finally(() => { if (!closed) { loading?.close(); if (phase === 'setup') paintSetup(); } });
+  void loadShooterAssets(base, f => { if (closed) return; assetPct = f; loading?.progress(f, '3D 모델을 불러오는 중'); if (phase === 'setup') paintSetup(); }, n => { if (!closed) loading?.note(n); }).then(a => { if (!closed) { assets = a; assetState = 'ready'; } }).catch(() => { if (!closed) assetState = 'failed'; }).finally(() => { if (!closed) { loading?.close(); if (phase === 'setup') paintSetup(); } });
 
   // ---------- 출격 설정 화면 ----------
   function paintSetup(): void {

@@ -284,7 +284,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     // 카메라
     if (playing) {
       player.placeCamera(camera, dt, colliders);
-      if (cineT > 0) { cineT += dt; const k = Math.sin(Math.min(1, cineT / 4.2) * Math.PI), vx = player.pos.x + 20, vz = player.pos.z + 46, vy = 46 + 30 * k; camera.position.lerp(new THREE.Vector3(vx, vy, vz), k * 0.88); camera.lookAt(player.pos.x - 10 * k, 4 + 6 * k, player.pos.z - 6 * k); if (cineT > 4.2) cineT = 0; }
+      if (cineT > 0) { cineT += dt; const k = Math.sin(Math.min(1, cineT / 4.2) * Math.PI), vx = player.pos.x + 20, vz = player.pos.z + 46, vy = 46 + 30 * k; camera.position.lerp(cineTarget.set(vx, vy, vz), k * 0.88); camera.lookAt(player.pos.x - 10 * k, 4 + 6 * k, player.pos.z - 6 * k); if (cineT > 4.2) cineT = 0; }
     } else {
       titleAngle += dt * 0.07; const cx = titleFocus.x, cz = titleFocus.z; camera.position.set(cx + Math.cos(titleAngle) * 52, 26 + Math.sin(titleAngle * 0.7) * 3, cz + Math.sin(titleAngle) * 52); camera.lookAt(cx, 3, cz);
     }
@@ -292,7 +292,6 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     syncT += dt; if (syncT > SYNC_EVERY) { syncT = 0; syncCity(false); attachCarry(); }
     saveT += dt; if (saveT > 25) { saveT = 0; save(); }
     audio.ambience(sky.daylight, sky.wet, 0); if (sky.wet > 0.8 && Math.random() < dt * 0.04) audio.thunder(); rainSound = sky.wet; void rainSound;
-    const fl = q('#ty-flash'); void fl;
     // 토스트 정리
     const nowMs = performance.now(); while (toastList.length && toastList[0].at < nowMs) toastList.shift()!.el.remove();
     // HUD
@@ -303,7 +302,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     void s;
     if (post) post.render(dt); else renderer.render(scene, camera);
   }
-  const titleFocus = new THREE.Vector3();
+  const titleFocus = new THREE.Vector3(), cineTarget = new THREE.Vector3();
 
   function updateHud(s: TycoonState): void {
     set('cash', formatMoney(s.cash)); set('debt', s.debt ? `빚 ${formatMoney(s.debt)}` : ''); set('stage', s.stageName); html('ladder', ladderHtml(s.stage));

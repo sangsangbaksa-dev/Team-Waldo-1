@@ -214,7 +214,7 @@ export class Match {
   }
   /** 비행기 안·자유낙하·낙하산 중인 선수 한 명을 진행합니다. 착지하면 air 가 0 이 되어 보통 선수로 돌아갑니다. */
   private stepAir(p: Player, dt: number): void {
-    const inp = p.input, pl = this.plane!; if (p.bot && p.brain) thinkAir(this, p);
+    const inp = p.input, pl = this.plane!; if (p.bot && p.brain) thinkAir(this, p, dt);
     const wantJump = !!inp.jump && !p.jumpHeld; p.jumpHeld = !!inp.jump;
     if (!p.bot) { p.yaw = inp.yaw; p.pitch = Math.max(-1.45, Math.min(1.45, inp.pitch)); }
     p.speed = 0; p.vx *= 0; p.hurt = 0;

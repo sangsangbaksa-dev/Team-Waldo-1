@@ -17,7 +17,7 @@ const SILENT_MS = 6000, NEVER_MS = 25000;
 
 export class RacePvp {
   started = false;
-  private ch: Channel; private timer: number; private born = performance.now(); private heard = performance.now(); private lastSnap = 0; private lastTick = performance.now(); private dead = false; private disposed = false;
+  private ch: Channel; private timer: number; private born = performance.now(); private heard = performance.now(); private lastSnap = 0; private lastAlive = 0; private lastTick = performance.now(); private dead = false; private disposed = false;
   constructor(readonly session: PvpSession, private car: string, private hooks: PvpHooks) {
     this.ch = session.open(m => this.onMsg(m));
     void this.ch.ready.then(() => this.hello(), () => this.gone('never'));
@@ -29,7 +29,7 @@ export class RacePvp {
     if (this.dead) return; const now = performance.now();
     if (now - this.lastTick > 2000) this.heard = now; // 내 탭이 멈췄던 시간은 상대의 침묵으로 세지 않습니다
     this.lastTick = now;
-    if (!this.started) { this.hello(); if (now - this.born > NEVER_MS) this.gone('never'); } else if (now - this.heard > SILENT_MS) this.gone('silent');
+    if (!this.started) { this.hello(); if (now - this.born > NEVER_MS) this.gone('never'); } else { if (now - this.lastAlive >= 2000) { this.lastAlive = now; this.ch.send({ t: 'ka' }); } if (now - this.heard > SILENT_MS) this.gone('silent'); }
   }
   private begin(car: unknown): void {
     if (this.dead || this.started) return; this.started = true;
@@ -45,7 +45,7 @@ export class RacePvp {
     else if (m.t === 'bye') this.gone('bye');
   }
   /** 15Hz 로 내 차량 상태를 보냅니다. */
-  sendSnap(car: CarState, now: number): void { if (this.dead || !this.started || now - this.lastSnap < 66) return; this.lastSnap = now; this.ch.send({ t: 's', c: encodeSnap(car) }); }
+  sendSnap(car: CarState, now: number): void { if (this.dead || !this.started || !Number.isFinite(now) || (now >= this.lastSnap && now - this.lastSnap < 66)) return; this.lastSnap = now; this.ch.send({ t: 's', c: encodeSnap(car) }); }
   sendFinish(time: number): void { if (!this.dead && this.started) this.ch.send({ t: 'fin', time }); }
   bye(): void { if (!this.dead) this.ch.send({ t: 'bye' }); }
   dispose(): void { if (this.disposed) return; this.disposed = this.dead = true; window.clearInterval(this.timer); this.ch.close(); }

@@ -20,7 +20,7 @@ const SILENT_MS = 6000, GATHER_MS = 12000, NEVER_MS = 25000;
 
 export class RaceMulti {
   started = false;
-  private ch: Channel; private timer: number; private born = performance.now(); private lastSnap = 0; private lastTick = performance.now(); private dead = false; private disposed = false;
+  private ch: Channel; private timer: number; private born = performance.now(); private lastSnap = 0; private lastAlive = 0; private lastTick = performance.now(); private dead = false; private disposed = false;
   private startList: Array<{ id: string; car: string }> = []; private cars = new Map<string, string>(); private heard = new Map<string, number>(); private gone = new Set<string>(); private ids: string[];
   constructor(readonly session: RoomSession, private car: string, private hooks: MultiHooks) {
     this.ids = session.players.map(p => p.id); this.cars.set(session.me.id, car);
@@ -41,6 +41,7 @@ export class RaceMulti {
       else if (now - this.born > NEVER_MS) this.abort();
       return;
     }
+    if (now - this.lastAlive >= 2000) { this.lastAlive = now; this.ch.send({ t: 'ka', f: this.session.me.id }); }
     for (const [id, at] of this.heard) if (!this.gone.has(id) && now - at > SILENT_MS) this.leave(id);
   }
   /** 방장: 모인 사람만으로 출발 신호를 보냅니다. */
@@ -70,11 +71,11 @@ export class RaceMulti {
       }
       if (seen.has(this.session.me.id) && seen.has(this.session.room.host_id) && list.length >= 2) this.begin(list);
     }
-    else if (m.t === 's') { const s = parseSnap(m.c); if (s && this.started && !this.gone.has(f)) this.hooks.onSnap(f, s); }
+    else if (m.t === 's') { const s = parseSnap(m.c); if (s && this.started && this.heard.has(f) && !this.gone.has(f)) this.hooks.onSnap(f, s); }
     else if (m.t === 'fin') { if (this.started && this.heard.has(f) && typeof m.time === 'number' && Number.isFinite(m.time) && m.time > 0) this.hooks.onFinish(f, m.time); }
-    else if (m.t === 'bye') this.leave(f);
+    else if (m.t === 'bye') { if (this.started && this.heard.has(f)) this.leave(f); else if (!this.started) this.cars.delete(f); }
   }
-  sendSnap(car: CarState, now: number): void { if (this.dead || !this.started || now - this.lastSnap < 66) return; this.lastSnap = now; this.ch.send({ t: 's', f: this.session.me.id, c: encodeSnap(car) }); }
+  sendSnap(car: CarState, now: number): void { if (this.dead || !this.started || !Number.isFinite(now) || (now >= this.lastSnap && now - this.lastSnap < 66)) return; this.lastSnap = now; this.ch.send({ t: 's', f: this.session.me.id, c: encodeSnap(car) }); }
   sendFinish(time: number): void { if (!this.dead && this.started) this.ch.send({ t: 'fin', f: this.session.me.id, time }); }
   bye(): void { if (!this.dead) this.ch.send({ t: 'bye', f: this.session.me.id }); }
   dispose(): void { if (this.disposed) return; this.disposed = this.dead = true; window.clearInterval(this.timer); this.ch.close(); }

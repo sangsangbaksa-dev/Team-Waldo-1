@@ -18,7 +18,7 @@ export interface Building {
   /** 연구 중인 강화. */ research: { r: ResearchKind; left: number } | null;
   /** 건설 중인데 일꾼이 없었던 시간(틱). */ idle: number;
 }
-export interface ResNode { k: 'node'; id: number; x: number; y: number; amount: number; busyUntil: number }
+export interface ResNode { k: 'node'; id: number; x: number; y: number; amount: number; busyUntil: number; miner?: number }
 export type Entity = Unit | Building | ResNode;
 export interface Player { minerals: number; used: number; cap: number; mined: number; kills: number; lost: number; made: number; defeated: boolean; income: number; up: Record<ResearchKind, boolean> }
 
@@ -165,7 +165,7 @@ export class RtsSim {
 
   private releaseMining(u: Unit): void {
     if (u.o.t !== 'gather' || u.o.phase !== 1) return;
-    const nd = this.node(u.o.target); if (nd) nd.busyUntil = Math.min(nd.busyUntil, this.tick);
+    const nd = this.node(u.o.target); if (nd?.miner === u.id) { nd.busyUntil = this.tick; nd.miner = undefined; }
   }
   order(u: Unit, o: Order): void { this.releaseMining(u); u.o = o; u.path = []; u.pi = 0; u.repath = 0; }
 
@@ -220,7 +220,7 @@ export class RtsSim {
         const b = num(c.b) ? this.building(c.b) : undefined; if (!b || b.owner !== owner || !num(c.i)) return false;
         const p = this.players[owner];
         if (c.i === -2) { if (!b.research) return false; p.minerals += RESEARCH[b.research.r].cost; b.research = null; return true; }
-        if (c.i < 0) { if (b.done || b.kind === 'hq' && this.buildings.filter(x => x.owner === owner && x.kind === 'hq').length < 2) return false; p.minerals += Math.floor(BUILDINGS[b.kind].cost * 0.75); this.remove(b); this.recount(); return true; }
+        if (c.i < 0) { if (b.done || b.kind === 'hq' && this.buildings.filter(x => x.owner === owner && x.kind === 'hq' && x.hp > 0).length < 2) return false; p.minerals += Math.floor(BUILDINGS[b.kind].cost * 0.75); this.remove(b); this.recount(); return true; }
         const q = b.queue[c.i]; if (!q) return false; p.minerals += UNITS[q.u].cost; b.queue.splice(c.i, 1); this.recount(); return true;
       }
       case 'ability': {
@@ -303,7 +303,7 @@ export class RtsSim {
   }
   nearestNode(x: number, y: number, max: number, onlyFree: boolean): ResNode | null {
     let best: ResNode | null = null, bd = max * max;
-    for (const nd of this.nodes) { if (onlyFree && nd.busyUntil > this.tick) continue; const d = sq(nd.x + 0.5 - x) + sq(nd.y + 0.5 - y); if (d < bd) { bd = d; best = nd; } }
+    for (const nd of this.nodes) { if (onlyFree && (nd.busyUntil > this.tick || nd.miner !== undefined)) continue; const d = sq(nd.x + 0.5 - x) + sq(nd.y + 0.5 - y); if (d < bd) { bd = d; best = nd; } }
     return best;
   }
   nearestHq(owner: number, x: number, y: number): Building | null {
@@ -479,10 +479,10 @@ export class RtsSim {
       if (!nd) { nd = this.nearestNode(hq ? hq.x + hq.size / 2 : u.x, hq ? hq.y + hq.size / 2 : u.y, 22, false) ?? undefined; if (!nd) { this.order(u, idle()); return; } o.target = nd.id; o.phase = 0; o.timer = 0; u.path = []; u.pi = 0; u.repath = 0; }
       if (o.phase === 0) {
         if (this.dist(u.x, u.y, nd.x + 0.5, nd.y + 0.5) <= 1.7) {
-          if (nd.busyUntil > this.tick) {
+          if (nd.busyUntil > this.tick || nd.miner !== undefined && nd.miner !== u.id) {
             // 다른 일꾼이 캐는 중이면 비어 있는 이웃 광물로 옮기거나 잠깐 기다립니다.
             const alt = this.nearestNode(u.x, u.y, 9, true); if (alt && alt !== nd) { o.target = alt.id; u.path = []; u.pi = 0; u.repath = 0; }
-          } else { nd.busyUntil = this.tick + MINE_TICKS; o.phase = 1; o.timer = MINE_TICKS; u.path = []; }
+          } else { nd.busyUntil = this.tick + MINE_TICKS; nd.miner = u.id; o.phase = 1; o.timer = MINE_TICKS; u.path = []; }
         } else {
           if (u.repath <= 0) { const g = this.approachNode(nd, u.x, u.y); u.path = this.pather.find(u.x, u.y, g.x, g.y) ?? []; u.pi = 0; u.repath = 40; }
           this.follow(u, this.speedOf(u));
@@ -490,7 +490,7 @@ export class RtsSim {
       } else if (this.dist(u.x, u.y, nd.x + 0.5, nd.y + 0.5) > 1.7) {
         this.releaseMining(u); o.phase = 0; o.timer = 0; u.path = []; u.pi = 0; u.repath = 0;
       } else if (--o.timer <= 0) {
-        const take = Math.min(CARRY, nd.amount); nd.amount -= take; u.carry = take; this.emit({ t: 'mined', x: nd.x + 0.5, y: nd.y + 0.5 });
+        this.releaseMining(u); const take = Math.min(CARRY, nd.amount); nd.amount -= take; u.carry = take; this.emit({ t: 'mined', x: nd.x + 0.5, y: nd.y + 0.5 });
         if (nd.amount <= 0) { this.nodes.splice(this.nodes.indexOf(nd), 1); this.index.delete(nd.id); this.grid[nd.y * this.map.size + nd.x] = 0; }
         o.phase = 2; u.path = []; u.pi = 0; u.repath = 0;
       }

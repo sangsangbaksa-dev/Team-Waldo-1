@@ -555,7 +555,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       mouse.x = e.clientX; mouse.y = e.clientY;
     });
     const up = (e: PointerEvent): void => { looks.delete(e.pointerId); for (const s of [sticks.move, sticks.aim]) if (s.id === e.pointerId) { s.id = -1; s.x = s.y = 0; } if (e.pointerType !== 'touch' && e.button === 0) mouse.down = false; };
-    cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+    cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up); cv.addEventListener('lostpointercapture', up);
     cv.addEventListener('wheel', e => { if (!world || paused || world.over || !panel.hidden || !bigmap.hidden) return; e.preventDefault(); const dy = wheelPixels(e.deltaY, e.deltaMode, cv.clientHeight); if (!Number.isFinite(dy) || dy === 0) return; if (cv === canvas) userZoom = Math.max(0.6, Math.min(1.5, userZoom * Math.exp(-Math.max(-120, Math.min(120, dy)) * 0.0015))); else { const step = weaponWheel.push(dy, performance.now(), e.ctrlKey); const f = world.factions[0]; if (step && f.slots.length) switchWeapon(world, 0, (f.cur + step + f.slots.length) % f.slots.length); } }, { passive: false });
   }
   const onWindowPointerEnd = (e: PointerEvent): void => {
@@ -566,7 +566,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   // Mobile pointers may end over the HUD rather than the canvas.
   window.addEventListener('pointerup', onWindowPointerEnd);
   window.addEventListener('pointercancel', onWindowPointerEnd);
-  const fireBtn = q('#c-fire'); fireBtn.addEventListener('pointerdown', e => { touchFire = true; e.preventDefault(); e.stopPropagation(); audio.unlock(); }); for (const n of ['pointerup', 'pointercancel', 'pointerleave']) fireBtn.addEventListener(n, () => { touchFire = false; });
+  const fireBtn = q('#c-fire'); fireBtn.addEventListener('pointerdown', e => { touchFire = true; e.preventDefault(); e.stopPropagation(); audio.unlock(); }); for (const n of ['pointerup', 'pointercancel', 'pointerleave', 'lostpointercapture']) fireBtn.addEventListener(n, () => { touchFire = false; });
   const mapClick = (c: HTMLCanvasElement) => (e: PointerEvent): void => {
     if (!world || paused || world.over || world.factions[0].pending > 0) return;
     const r = c.getBoundingClientRect(), point = mapPointerToWorld(e.clientX, e.clientY, r.left, r.top, r.width, r.height);

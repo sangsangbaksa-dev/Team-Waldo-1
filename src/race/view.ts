@@ -394,7 +394,22 @@ export class RaceView {
     this.scene.add(emb(1), emb(-1));
     const sceneryKind = th.scenery;
     if (sceneryKind === 'city') {
-      const win = canvasTex(64, 128, g => { g.fillStyle = '#0d0a1f'; g.fillRect(0, 0, 64, 128); for (let y = 4; y < 124; y += 10) for (let x = 4; x < 60; x += 9) { if (Math.random() < 0.62) { const h = Math.random(); g.fillStyle = h < 0.5 ? '#ffd9a0' : h < 0.8 ? '#7be9ff' : '#ff7ad9'; g.fillRect(x, y, 5, 6); } } });
+      // 한 장 = 가로 12m(창 4칸) × 세로 14m(4층). 층마다 슬래브 띠가 있고, 불 켜진 창은 몇 칸씩 이어져 실제 사무실처럼 보입니다.
+      // (예전 6×12 칸의 작은 무작위 점은 멀리서 노이즈처럼 번쩍였습니다.)
+      const win = canvasTex(128, 256, g => {
+        g.fillStyle = '#100c24'; g.fillRect(0, 0, 128, 256);
+        for (let f = 0; f < 4; f++) {
+          const y0 = f * 64; g.fillStyle = '#1d1838'; g.fillRect(0, y0, 128, 7);
+          let run = 0, col = '#ffd9a0';
+          for (let c = 0; c < 4; c++) {
+            if (run <= 0 && Math.random() < 0.42) { run = 1 + Math.floor(Math.random() * 3); const h = Math.random(); col = h < 0.6 ? '#ffd29a' : h < 0.85 ? '#86e6ff' : '#ff86d8'; }
+            const x = c * 32 + 4, y = y0 + 14;
+            if (run-- > 0) { g.fillStyle = col; g.fillRect(x, y, 24, 40); g.fillStyle = 'rgba(0,0,0,.18)'; g.fillRect(x, y + 28, 24, 12); }
+            else { g.fillStyle = '#1a1533'; g.fillRect(x, y, 24, 40); g.fillStyle = 'rgba(120,110,200,.10)'; g.fillRect(x, y, 24, 6); }
+            g.fillStyle = '#0a0818'; g.fillRect(c * 32, y0 + 7, 3, 57);
+          }
+        }
+      });
       const classes = [{ h: 45, n: low ? 60 : 110 }, { h: 90, n: low ? 40 : 80 }, { h: 160, n: low ? 18 : 40 }];
       const placed: Array<[number, number, number]> = [];
       for (const k of classes) {

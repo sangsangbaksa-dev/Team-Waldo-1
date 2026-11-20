@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SIZE } from '../../src/city/defs';
-import { mapPointerToWorld } from '../../src/city/uiMath';
+import { edgeMarkerPosition, mapPointerToWorld } from '../../src/city/uiMath';
 
 describe('LAST CITY minimap hit testing', () => {
   it('maps x and y independently on rectangular displayed maps', () => {
@@ -18,6 +18,21 @@ import {
   LOOK_PITCH_MAX, LOOK_PITCH_MIN, applyLook, areaChipRect, clampLabelScreenPos, clampLookPitch,
   declutterFromAreaChip, doorFacingYaw, isLookSpike, labelSpriteCenter,
 } from '../../src/city/uiMath';
+
+describe('arena minimap and compact markers', () => {
+  it('maps the displayed arena rather than the entire city', () => {
+    const bounds = { x0: 800, y0: 1200, x1: 1400, y1: 1800 };
+    expect(mapPointerToWorld(110, 220, 10, 20, 200, 400, bounds)).toEqual({ x: 1100, y: 1500 });
+    expect(mapPointerToWorld(-1, 999, 10, 20, 200, 400, bounds)).toEqual({ x: 800, y: 1800 });
+    expect(mapPointerToWorld(10, 20, 10, 20, 200, 400, { ...bounds, x1: 800 })).toBeNull();
+  });
+  it('keeps edge markers finite and inside tiny viewports', () => {
+    expect(edgeMarkerPosition(999, -999, 60, 80, false)).toEqual({ x: 30, y: 40 });
+    const p = edgeMarkerPosition(900, -20, 800, 600, false);
+    expect(p.x).toBeGreaterThanOrEqual(50); expect(p.x).toBeLessThanOrEqual(750);
+    expect(p.y).toBeGreaterThanOrEqual(60); expect(p.y).toBeLessThanOrEqual(540);
+  });
+});
 
 describe('look pitch and spikes', () => {
   it('clamps pitch so the camera cannot dive through the ground', () => {

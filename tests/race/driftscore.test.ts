@@ -36,3 +36,17 @@ describe('SPEED RUSH drift score', () => {
     expect(() => writeDriftBests({ a: 1 }, { setItem: () => { throw new Error('full'); } })).not.toThrow();
   });
 });
+
+it('does not start a chain on the crash frame or accept invalid time/speed', () => {
+  const d = createDrift();
+  expect(stepDrift(d, sliding, 0.1, true)).toBeNull();
+  stepDrift(d, sliding, NaN, false); stepDrift(d, { ...sliding, vf: Infinity }, 0.1, false);
+  expect(d).toEqual(createDrift());
+  expect(nitroForChain(-100)).toBe(0); expect(nitroForChain(NaN)).toBe(0);
+});
+it('integrates multiplier changes independently of step length', () => {
+  const a = createDrift(), b = createDrift();
+  stepDrift(a, sliding, 7, false);
+  for (let i = 0; i < 70; i++) stepDrift(b, sliding, 0.1, false);
+  expect(a.chain).toBeCloseTo(b.chain, 6);
+});

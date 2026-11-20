@@ -48,7 +48,7 @@ function detail(parent: THREE.Object3D, build: (g: THREE.Group) => void): void {
   });
   for (const [mat, list] of batches) {
     const geo = mergeGeometries(list, false); for (const p of list) p.dispose();
-    if (!geo) continue; const mesh = new THREE.Mesh(geo, mat); mesh.receiveShadow = true; parent.add(mesh);
+    if (!geo) continue; const mesh = new THREE.Mesh(geo, mat); mesh.receiveShadow = true; mesh.userData.ownedDetail = true; parent.add(mesh);
   }
 }
 

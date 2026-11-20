@@ -64,7 +64,8 @@ let now = 0,
   lookId = -1,
   moveStart = null,
   lookLast = null,
-  mobileRun = false;
+  mobileRun = false,
+  runId = -1;
 let noticeUntil = 0,
   saveAt = 0,
   lastCell = -1,
@@ -143,9 +144,16 @@ $("inspect").onclick = () => {
 };
 $("back").onclick = homepage;
 function clearInputs() {
+  // Clear IDs before releasing capture: lostpointercapture can fire during cleanup.
+  const captures = [[$("stick"), moveId], [renderer?.domElement ?? $("viewWrap"), lookId], [$("run"), runId]];
   keys.clear();
   pointer.x = pointer.y = 0;
-  moveId = lookId = -1;
+  moveId = lookId = runId = -1;
+  for (const [el, id] of captures) {
+    if (id !== -1 && el.hasPointerCapture?.(id)) {
+      try { el.releasePointerCapture(id); } catch { /* Pointer already ended. */ }
+    }
+  }
   moveStart = lookLast = null;
   draggingLook = false;
   lookTravel = 0;
@@ -160,7 +168,7 @@ function leaveLook() {
   }
 }
 function lockLook() {
-  if (lastPointerType === "touch" || !renderer || document.pointerLockElement) return;
+  if (state !== "play" || lastPointerType === "touch" || !renderer || document.pointerLockElement || lookId !== -1) return;
   try {
     const p = renderer.domElement.requestPointerLock?.();
     p?.catch(() => {});
@@ -199,6 +207,7 @@ function resume() {
   state = "play";
   setGameModal(false);
   sound.pause(false);
+  void sound.start(); // Recover audio suspended by the browser while paused.
   lockLook();
   last = performance.now();
   $("viewWrap").focus({ preventScroll: true });
@@ -259,8 +268,8 @@ async function setup() {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.08;
     $("viewWrap").prepend(renderer.domElement);
-    $("viewWrap").addEventListener("click", () => {
-      if (state === "play" && !draggingLook) lockLook();
+    $("viewWrap").addEventListener("click", (e) => {
+      if (state === "play" && e.target === renderer.domElement && !draggingLook) lockLook();
       draggingLook = false;
     });
     renderer.domElement.addEventListener("webglcontextlost", (e) => {
@@ -344,6 +353,8 @@ function pointPlayer() {
   enemyStepDistance = 0;
   $("viewWrap").removeAttribute("data-incident");
   lamp.intensity = 28;
+  lamp.visible = true;
+  beam.intensity = 2;
   const p = xy(level.start);
   const next = xy(neighbors(level.map, level.start)[0]);
   player.set(p.x + (next.x - p.x) * 0.38, 1.58, p.z + (next.z - p.z) * 0.38);
@@ -1210,7 +1221,7 @@ function update(dt) {
   camera.position.set(
     player.x,
     eyeHeight + (reducedMotion.matches ? 0 :
-      Math.sin(elapsed * (running ? 12 : 8.3)) * Math.min(moved, 0.05) * 0.38),
+      Math.sin(elapsed * (running ? 12 : 8.3)) * Math.min(moved / Math.max(dt, 0.001), 3) * (0.38 / 60)),
     player.z,
   );
   camera.rotation.set(pitch, yaw, 0, "YXZ");
@@ -1336,6 +1347,12 @@ document.addEventListener("keyup", (e) => keys.delete(e.code));
 let hadPointerLock = false;
 document.addEventListener("pointerlockchange", () => {
   const locked = document.pointerLockElement === renderer?.domElement;
+  if (locked && state !== "play") {
+    // An asynchronous lock request may complete after a pause or screen change.
+    hadPointerLock = false;
+    document.exitPointerLock();
+    return;
+  }
   if (hadPointerLock && !locked && state === "play") pauseGame();
   hadPointerLock = locked;
 });
@@ -1356,7 +1373,7 @@ function look(dx, dy) {
   pitch = THREE.MathUtils.clamp(pitch - dy * 0.0022, -1.18, 1.18);
 }
 document.addEventListener("mousemove", (e) => {
-  if (state === "play" && document.pointerLockElement)
+  if (state === "play" && document.pointerLockElement === renderer?.domElement)
     look(e.movementX, e.movementY);
 });
 const wrap = $("viewWrap");
@@ -1371,7 +1388,8 @@ wrap.addEventListener("pointerdown", (e) => {
   draggingLook = false;
   lookTravel = 0;
   lookLast = [e.clientX, e.clientY];
-  wrap.setPointerCapture(e.pointerId);
+  // Capture on the canvas so a stationary tap still targets the canvas click handler.
+  e.target.setPointerCapture(e.pointerId);
 });
 wrap.addEventListener("pointermove", (e) => {
   if (
@@ -1396,7 +1414,7 @@ for (const n of ["pointerup", "pointercancel", "lostpointercapture"])
   });
 const stick = $("stick");
 stick.addEventListener("pointerdown", (e) => {
-  if (state !== "play" || moveId !== -1) return;
+  if (state !== "play" || moveId !== -1 || (e.pointerType === "mouse" && e.button !== 0)) return;
   moveId = e.pointerId;
   const b = stick.getBoundingClientRect();
   moveStart = [b.left + b.width / 2, b.top + b.height / 2];
@@ -1407,9 +1425,11 @@ function stickMove(e) {
   if (e.pointerId !== moveId || !moveStart) return;
   let x = (e.clientX - moveStart[0]) / 36,
     y = (e.clientY - moveStart[1]) / 36;
-  const a = Math.max(1, Math.hypot(x, y));
-  pointer.x = x / a;
-  pointer.y = y / a;
+  const distance = Math.hypot(x, y);
+  // Radial dead zone avoids drift while a thumb rests near the center.
+  const strength = Math.max(0, Math.min(1, (distance - 0.12) / 0.88));
+  pointer.x = distance ? (x / distance) * strength : 0;
+  pointer.y = distance ? (y / distance) * strength : 0;
   $("stickknob").style.transform =
     "translate(" + pointer.x * 27 + "px," + pointer.y * 27 + "px)";
 }
@@ -1422,10 +1442,16 @@ for (const n of ["pointerup", "pointercancel", "lostpointercapture"])
     $("stickknob").style.transform = "";
   });
 $("run").addEventListener("pointerdown", (e) => {
+  if (state !== "play" || runId !== -1 || (e.pointerType === "mouse" && e.button !== 0)) return;
+  runId = e.pointerId;
   mobileRun = true;
-  $("run").setPointerCapture(e.pointerId);
+  $("run").setPointerCapture(runId);
 });
 for (const n of ["pointerup", "pointercancel", "lostpointercapture"])
-  $("run").addEventListener(n, () => (mobileRun = false));
+  $("run").addEventListener(n, (e) => {
+    if (e.pointerId !== runId) return;
+    runId = -1;
+    mobileRun = false;
+  });
 document.body.classList.toggle("touch", touch);
 homepage();

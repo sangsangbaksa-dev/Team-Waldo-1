@@ -11,6 +11,7 @@ describe('batched vehicle contact shadows', () => {
   });
   it('fades the texture to the outside and expands slightly for an airborne vehicle', () => {
     const t = contactShadowTexture(32), data = t.image.data;
+    if (!data) throw new Error('Missing shadow texture pixels');
     expect(data[3]).toBeLessThan(2); expect(data[(16 * 32 + 16) * 4 + 3]).toBeGreaterThan(240);
     expect(shadowScale(1)).toBeGreaterThan(shadowScale(0)); expect(shadowScale(100)).toBe(shadowScale(2)); t.dispose();
   });

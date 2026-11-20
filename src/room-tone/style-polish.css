@@ -1,0 +1,6 @@
+
+/* Room Tone — readable controls without brightening the scene. */
+:where(#home,#viewer,#game,dialog) :is(button,input):focus-visible { outline: 2px solid #eca16d; outline-offset: 3px; }
+#game .hudleft strong { text-shadow: 0 2px 8px #000, 0 0 3px #000; }
+#game .panel, dialog { border-color: #786d5b; box-shadow: 0 18px 48px #0009, inset 0 1px 0 #ffffff12; }
+@media (prefers-reduced-motion: reduce) { #game #danger { animation: none; } }

@@ -172,6 +172,106 @@
 .ty-root button:focus-visible{outline:2px solid #ffcf5a;outline-offset:3px}
 @media(max-height:480px){.ty-titlebox h1{font-size:clamp(44px,10vh,80px)}.ty-titlebox .keys{margin-top:10px}.ty-titlebox .sub{margin-bottom:10px}}
 
+/* HUSTLE: readable financial HUD, responsive controls and modal feedback. */
+.ty-root { --bg: rgba(13, 20, 30, .92); --mute: #b4c0d0; --line: rgba(182, 203, 230, .2); touch-action: auto; }
+.ty-canvas, .ty-touchpad { touch-action: none; }
+.ty-top { top: max(10px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); }
+.ty-top > div, .ty-left > div { border-radius: 10px; box-shadow: 0 4px 16px #0003; }
+.ty-cash { border-top: 2px solid var(--gold) !important; }
+.ty-cash b { overflow-wrap: anywhere; }
+.ty-stagebox { min-width: 0; }
+.ty-speed button { min-width: 32px; min-height: 32px; }
+.ty-speed button.on:hover { background: #ffe087; }
+.ty-tools button { min-height: 36px; }
+.ty-goal > b { color: #f7e5b2; }
+.ty-panel { background: #131c29; border-color: #415068; border-radius: 12px; }
+.ty-panel header { padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.ty-panel h3 { color: #f4d58b; }
+.ty-act { min-height: 54px; border-radius: 9px; }
+.ty-act:disabled { opacity: .78; background: #101722; }
+.ty-act:disabled .body b { color: var(--mute); }
+.ty-act .chips { text-align: right; }
+.ty-x { flex: none; min-width: 40px; min-height: 40px; }
+.ty-root .cost { color: var(--bad); }
+.ty-root .gain { color: var(--good); }
+.ty-toasts { z-index: 2; pointer-events: none; }
+.ty-modal { z-index: 1; }
+.ty-title { z-index: 3; }
+.ty-titlebox .sub { text-shadow: 0 2px 12px #000; }
+.ty-title-btns button { min-height: 48px; border-radius: 9px; }
+.ty-tfoot { right: max(14px, env(safe-area-inset-right)); bottom: max(16px, env(safe-area-inset-bottom)); }
+.ty-mini { bottom: max(12px, env(safe-area-inset-bottom)); left: max(12px, env(safe-area-inset-left)); }
+@media (max-width: 860px) {
+  .ty-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 5px; }
+  .ty-top > div { min-width: 0; padding: 5px 8px; backdrop-filter: none; }
+  .ty-clock { justify-content: space-between; flex-wrap: wrap; }
+  .ty-clock em { display: inline; font-size: 11px; }
+  .ty-speed { display: flex; margin-left: 0; }
+  .ty-speed button { padding: 2px 6px; min-width: 28px; min-height: 28px; }
+  .ty-tools { justify-content: space-evenly; }
+  .ty-tools button { padding: 5px; flex: 1; }
+  .ty-left { top: calc(max(10px, env(safe-area-inset-top)) + 144px); width: min(46vw, 210px); }
+  .ty-task { top: calc(max(10px, env(safe-area-inset-top)) + 144px); max-width: 47vw; }
+  .ty-toasts { top: auto; bottom: 88px; width: min(60vw, 300px); }
+  .ty-root.touch .ty-toasts { bottom: 258px; right: 8px; }
+  .ty-root.touch .ty-mini { left: auto; top: calc(max(10px, env(safe-area-inset-top)) + 225px); }
+}
+@media (max-width: 380px) {
+  .ty-top > div { padding: 4px 6px; }
+  .ty-tools { gap: 3px; }
+  .ty-cash b { font-size: 18px; }
+  .ty-panel { padding: 12px; }
+  .ty-act { gap: 7px; padding: 8px; }
+  .ty-act .chips { font-size: 11px; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .ty-top { display: flex; flex-wrap: nowrap; }
+  .ty-left, .ty-task { top: 82px; }
+  .ty-root.touch .ty-mini { top: 142px; width: 76px; height: 76px; }
+  .ty-tfoot { flex-direction: row; align-items: flex-end; gap: 6px; }
+  .ty-tfoot button, .ty-tfoot button.big { min-width: 64px; padding: 10px; font-size: 13px; }
+  .ty-root.touch .ty-prompt, .ty-root.touch .ty-activity { bottom: 68px; }
+  .ty-root.touch .ty-toasts { bottom: 112px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ty-banner.show { opacity: 1; transform: none; }
+}
+
+/* Business dashboard: key financial values and inventory status. */
+.ty-finance { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin: 12px 0 18px; }
+.ty-finance > div { min-width: 0; display: flex; flex-direction: column; gap: 5px; padding: 12px; background: #0d1520; border: 1px solid var(--line); border-radius: 9px; }
+.ty-finance small { color: var(--mute); font-size: 11px; }
+.ty-finance b { color: var(--ink); font-size: clamp(18px, 3vw, 24px); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.ty-finance > div:first-child b { color: var(--gold); }
+.ty-finance b.cost { color: var(--bad); }
+.ty-supply { margin: 8px 0 4px; font-size: 11px; color: var(--good); font-weight: 700; }
+.ty-supply.low { color: #ffc17a; }
+.ty-factory-note { color: var(--mute); font-size: 12px; margin: 8px 0; }
+.ty-shop .ty-chips .gain { color: var(--good); }
+.ty-shop .ty-chips .cost { color: var(--bad); }
+.ty-map-caption { position: absolute; bottom: 8px; left: 8px; padding: 6px 10px; border-radius: 6px; background: #0b111ce8; color: #dbe6f3; font-size: 11px; pointer-events: none; }
+.ty-task > div { min-width: 0; }
+.ty-task span { display: block; }
+@media (max-width: 380px) {
+  .ty-finance { gap: 5px; }
+  .ty-finance > div { padding: 8px; }
+}
+
+/* A warmer city-business identity, with legible controls over the live scene. */
+.ty-root { --gold: #ffd16b; --bg: rgba(17, 26, 31, .91); --line: rgba(226, 239, 222, .16); --mute: #b1c0bc; }
+.ty-title { background: linear-gradient(90deg, rgba(8, 23, 26, .91), rgba(10, 23, 25, .65) 55%, rgba(8, 17, 20, .25)); justify-content: flex-start; padding-left: clamp(24px, 8vw, 140px); }
+.ty-titlebox:not(.win) { text-align: left; max-width: 760px; }
+.ty-titlebox .kick { color: #a9d9c5; font-weight: 800; letter-spacing: .24em; }
+.ty-titlebox h1 { letter-spacing: -.045em; background: linear-gradient(180deg, #fff8dc, #ffd16b 75%, #e6a93e); -webkit-background-clip: text; background-clip: text; }
+.ty-titlebox .sub { max-width: 560px; line-height: 1.6; }
+.ty-title-guide { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 24px; }
+.ty-title-guide span { padding: 8px 11px; border: 1px solid rgba(198, 226, 211, .25); border-radius: 7px; color: #e4eee7; background: rgba(14, 40, 37, .65); font-size: 12px; }
+.ty-title-guide b { color: #ffcf68; margin-right: 6px; }
+.ty-titlebox:not(.win) .ty-title-btns { justify-content: flex-start; }
+.ty-panel { background: linear-gradient(160deg, rgba(30, 47, 47, .98), rgba(13, 24, 29, .98)); border-color: rgba(204, 229, 215, .22); }
+.ty-act:focus-visible, .ty-root button:focus-visible { outline: 3px solid #ffe29b; outline-offset: 2px; }
+@media (max-width: 600px) { .ty-title { justify-content: center; padding: 20px; } .ty-titlebox:not(.win) { text-align: center; } .ty-title-guide, .ty-titlebox:not(.win) .ty-title-btns { justify-content: center; } }
+
 /* 운영 브리핑: 작은 화면에서도 읽기 쉬운 2열 KPI */
 .ty-ops { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px; }
 .ty-ops > div { display:flex;flex-direction:column;gap:4px;padding:10px 12px;border:1px solid var(--line);background:rgba(255,255,255,.045);border-radius:10px; }

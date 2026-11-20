@@ -33,13 +33,15 @@ export function createCore(opts: CoreOptions = {}): TycoonCore & { /** 테스트
   const subs = new Set<(s: TycoonState) => void>();
   const listeners = new Set<(e: CoreEvent) => void>();
 
-  const emit = (e: CoreEvent) => { dirty = true; for (const fn of listeners) fn(e); };
+  // UI 이벤트(특히 자동 저장)는 변경이 모두 끝난 뒤 발행한다.
+  const pending: CoreEvent[] = [];
+  const emit = (e: CoreEvent) => { dirty = true; pending.push(e); };
   const ctx: ActionCtx = {
     g, emit,
     skipMinutes: (n) => {
       sim.asleep = true;
-      for (let i = 0; i < n; i++) advanceMinute(g, sim, emit);
-      sim.asleep = false;
+      try { for (let i = 0; i < n; i++) advanceMinute(g, sim, emit); }
+      finally { sim.asleep = false; dirty = true; }
     },
   };
 
@@ -56,9 +58,16 @@ export function createCore(opts: CoreOptions = {}): TycoonCore & { /** 테스트
     for (const fn of subs) fn(s);
   };
 
+  const publish = () => {
+    const changed = dirty || pending.length > 0;
+    for (const event of pending.splice(0)) for (const fn of listeners) fn(event);
+    if (changed) notify();
+  };
+
   const finishActivity = () => {
     const a = activity!;
     activity = null;
+    dirty = true;
     // 완료 시점에 다시 검사(그 사이 돈이나 시간이 바뀌었을 수 있다)
     const now = buildActions(ctx, a.spotId).find(x => x.id === a.actionId);
     if (!now?.enabled) {
@@ -74,7 +83,7 @@ export function createCore(opts: CoreOptions = {}): TycoonCore & { /** 테스트
     get state() { return state(); },
     get data() { return g; },
     tick(dtSec: number) {
-      if (!(dtSec > 0)) return;
+      if (!Number.isFinite(dtSec) || dtSec <= 0) return;
       const dt = Math.min(MAX_DT, dtSec);
       if (activity) {
         activity.elapsed += dt;
@@ -92,7 +101,7 @@ export function createCore(opts: CoreOptions = {}): TycoonCore & { /** 테스트
         }
         dirty = true;
       }
-      if (dirty) notify();
+      publish();
     },
     spots() {
       return SPOTS.map(s => ({ ...(s.kind === 'lot' ? lotView(g, s, sim.presence) : s), locked: !spotUnlocked(g, s) }));
@@ -119,7 +128,7 @@ export function createCore(opts: CoreOptions = {}): TycoonCore & { /** 테스트
       const msg = a.run();
       checkStage(g, emit);
       dirty = true;
-      notify();
+      publish();
       return { ok: true, message: msg };
     },
     cancelActivity() {
@@ -137,7 +146,9 @@ export function createCore(opts: CoreOptions = {}): TycoonCore & { /** 테스트
       notify();
     },
     setSpeed(s: 1 | 2 | 4) {
-      speed = s === 2 || s === 4 ? s : 1;
+      const next = s === 2 || s === 4 ? s : 1;
+      if (next === speed) return;
+      speed = next;
       dirty = true;
       notify();
     },

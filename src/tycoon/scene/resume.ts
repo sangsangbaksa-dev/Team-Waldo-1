@@ -8,7 +8,9 @@ export function readResumePosition(raw: unknown, colliders: Colliders): ResumePo
   if (!raw || typeof raw !== 'object' || !('position' in raw)) return null;
   const p = raw.position;
   if (!p || typeof p !== 'object') return null;
-  const { x, z, yaw, cameraYaw, cameraPitch, firstPerson } = p as Partial<ResumePosition>;
+  const { x, z, firstPerson } = p as Partial<ResumePosition>;
+  const pos = p as Partial<ResumePosition> & { facing?: number; pitch?: number };
+  const yaw = pos.facing ?? pos.yaw, cameraYaw = pos.cameraYaw ?? (pos.facing !== undefined ? pos.yaw : undefined), cameraPitch = pos.cameraPitch ?? pos.pitch;
   if (typeof x !== 'number' || typeof z !== 'number' || typeof yaw !== 'number' || ![x, z, yaw].every(Number.isFinite) || Math.abs(x) > WORLD_HALF - 2 || Math.abs(z) > WORLD_HALF - 2) return null;
   const out = { x, z };
   if (colliders.resolve(x, z, 0.45, out)) return null;

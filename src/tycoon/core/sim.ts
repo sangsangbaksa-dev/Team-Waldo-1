@@ -72,9 +72,11 @@ export function shopMinute(g: GameData, id: string, spot: SpotDef, shop: ShopDat
 
 /** 매니저 자동 발주(수수료 붙음). force 면 비율과 상관없이 채운다 */
 export function restockIfLow(g: GameData, shop: ShopData, force: boolean): void {
+  if (shop.kind === 'factory') return;
   const cap = stockCap(shop);
   if (!force && shop.stock > cap * 0.3) return;
   const price = unitCost(g, shop.kind) * (1 + MANAGER_RESTOCK_FEE);
+  if (!Number.isFinite(price) || price <= 0) return;
   const want = Math.floor(cap - shop.stock);
   const afford = Math.floor(Math.max(0, g.cash) / price);
   const units = Math.min(want, afford);
@@ -140,6 +142,7 @@ export function endDay(g: GameData, emit: Emit): void {
     if (s > 0 && s < CONQUER_SHARE - 1e-9) g.regions[r.id] = Math.max(0.0001, s - REGION_DECAY);
   }
   tickEvents(g, emit);
+  if (g.cash < 0) { g.debt -= g.cash; g.cash = 0; }
   rivalsExpand(g, emit);
   // 구독자가 여기서 저장하므로 당일 모든 변경을 끝낸 뒤 알린다.
   emit({ type: 'day', text: `${report.day}일차 정산: 순이익 ${fmt(report.profit)}`, report });
@@ -204,7 +207,7 @@ function rivalsExpand(g: GameData, emit: Emit): void {
     const spot = pick(g, free);
     const kinds = LOT_KINDS[spot.size!].filter(k => k !== 'factory');
     const kind = pick(g, kinds);
-    const level = 1 + Math.floor(rand(g) * Math.min(3, 1 + stageIndex(g.stage) / 2));
+    const level = Math.min(SHOP_KINDS[kind].maxLevel, 1 + Math.floor(rand(g) * Math.min(3, 1 + stageIndex(g.stage) / 2)));
     g.lots[spot.id] = { owner: 'rival', rivalId: r.id, rivalKind: kind, rivalLevel: level };
     emit({ type: 'toast', text: `${r.name}이(가) ${spot.name}에 ${SHOP_KINDS[kind].name}을(를) 열었습니다.`, tone: 'bad' });
   }

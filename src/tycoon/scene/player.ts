@@ -9,10 +9,10 @@ const wrap = (a: number): number => { while (a > Math.PI) a -= Math.PI * 2; whil
 
 /** 단계별 옷차림: 빈털터리는 해진 작업복, 올라갈수록 말끔해집니다. */
 export function outfitFor(stage: number): { kind: string; team: number; seed: number } {
-  if (stage <= 0) return { kind: 'worker', team: 0x6e6455, seed: 11 };
+  if (stage <= 0) return { kind: 'civ', team: 0x6e6455, seed: 11 };
   if (stage <= 2) return { kind: 'civ3', team: 0x3a6ea5, seed: 11 };
-  if (stage <= 4) return { kind: 'boss', team: 0x2a3140, seed: 11 };
-  return { kind: 'boss', team: 0x14171e, seed: 11 };
+  if (stage <= 4) return { kind: 'civ4', team: 0x2a3140, seed: 11 };
+  return { kind: 'civ6', team: 0x14171e, seed: 11 };
 }
 
 export class Player {
@@ -36,7 +36,7 @@ export class Player {
     if (this.rig) { this.rig.root.position.copy(this.pos); this.rig.root.rotation.y = this.facing; }
   }
   celebrate(): void { this.wave = 1.4; }
-  setFirstPerson(on: boolean): void { this.firstPerson = on; if (this.rig) this.rig.root.visible = !on; if (on) this.camPitch = 0; else this.camPitch = 0.28; }
+  setFirstPerson(on: boolean): void { this.firstPerson = on; this.camInit = false; if (this.rig) this.rig.root.visible = !on; if (on) this.camPitch = 0; else this.camPitch = 0.28; }
 
   update(dt: number, input: MoveInput, colliders: Colliders, frozen: boolean): void {
     const len = Math.hypot(input.mx, input.mz), mag = frozen ? 0 : Math.min(1, len);
@@ -46,7 +46,8 @@ export class Player {
     let dx = 0, dz = 0;
     if (mag > 0.01) { const ix = input.mx / len, iz = input.mz / len, sn = Math.sin(this.camYaw), cs = Math.cos(this.camYaw); dx = ix * cs - iz * sn; dz = -ix * sn - iz * cs; }
     const ax = dx * target, az = dz * target, k = Math.min(1, dt * 10);
-    this.vel.x += (ax - this.vel.x) * k; this.vel.z += (az - this.vel.z) * k;
+    if (frozen) this.vel.set(0, 0, 0);
+    else { this.vel.x += (ax - this.vel.x) * k; this.vel.z += (az - this.vel.z) * k; }
     const steps = Math.max(1, Math.ceil(dt / 0.04)), sd = dt / steps;
     for (let i = 0; i < steps; i++) {
       this.pos.x += this.vel.x * sd; this.pos.z += this.vel.z * sd;
@@ -78,11 +79,11 @@ export class Player {
     }
     const wx = px + sy * cp * d, wy = Math.max(0.6, 0.18 + ty + sp * d), wz = pz + cy * cp * d;
     if (!this.camInit) { this.camPos.set(wx, wy, wz); this.camInit = true; }
-    const k = 1 - Math.pow(0.0005, dt); this.camPos.x += (wx - this.camPos.x) * k; this.camPos.y += (wy - this.camPos.y) * k; this.camPos.z += (wz - this.camPos.z) * k;
+    const k = d < this.dist ? 1 : 1 - Math.pow(0.0005, dt); this.camPos.x += (wx - this.camPos.x) * k; this.camPos.y += (wy - this.camPos.y) * k; this.camPos.z += (wz - this.camPos.z) * k;
     camera.position.copy(this.camPos); camera.lookAt(px, 0.18 + ty, pz);
   }
   look(dx: number, dy: number): void {
-    this.camYaw -= dx; this.camPitch = THREE.MathUtils.clamp(this.camPitch + dy * (this.firstPerson ? -1 : 1), this.firstPerson ? -1.3 : -0.1, this.firstPerson ? 1.3 : 1.2);
+    this.camYaw = wrap(this.camYaw - dx); this.camPitch = THREE.MathUtils.clamp(this.camPitch + dy * (this.firstPerson ? -1 : 1), this.firstPerson ? -1.3 : -0.1, this.firstPerson ? 1.3 : 1.2);
     if (this.firstPerson) this.camPitch = THREE.MathUtils.clamp(this.camPitch, -1.3, 1.3);
   }
   dispose(): void { if (this.rig) this.scene.remove(this.rig.root); }

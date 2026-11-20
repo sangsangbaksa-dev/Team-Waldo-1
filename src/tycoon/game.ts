@@ -9,6 +9,7 @@ import { loadCharacterKit, type CharacterKit } from '../shared/character';
 import { makePost, type PostFx } from '../postfx';
 import { createCore, formatMoney, loadTycoon, readTycoonSummary, saveTycoon } from './core';
 import { STAGE_NAMES } from './core/data';
+import { readTycoonPosition } from './core/save';
 import type { CoreEvent, SpotDef, TycoonCore, TycoonState } from './core/types';
 import { buildLayout, type Colliders, WORLD_HALF, type Layout } from './scene/layout';
 import { CityView, type Quality, type SpotView } from './scene/city';
@@ -47,7 +48,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       <div class="ty-task" id="ty-task" hidden><i id="ty-arrow">➤</i><div><b id="ty-task-label"></b><span id="ty-task-sub"></span></div></div>
       <div class="ty-activity" id="ty-activity" hidden><b id="ty-act-label"></b><div class="ty-bar gold"><i id="ty-act-bar"></i></div><small>움직이면 취소됩니다</small></div>
       <button type="button" class="ty-prompt" id="ty-prompt" hidden></button>
-      <ul class="ty-toasts" id="ty-toasts"></ul>
+      <ul class="ty-toasts" id="ty-toasts" role="status" aria-live="polite"></ul>
       <div class="ty-mini"><canvas id="ty-minimap" width="220" height="220"></canvas></div>
       <div class="ty-banner" id="ty-banner"></div>
       <div class="ty-touchpad"><div class="ty-stick" id="ty-stick"><i></i></div>
@@ -71,6 +72,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   const keys = new Set<string>(); const tc = { moveId: -1, mx: 0, my: 0, ox: 0, oy: 0, lookId: -1, lx: 0, ly: 0, run: false }; let drag = -1, dragX = 0, dragY = 0, locked = false;
   let near: { id: string; spot: SpotView; dist: number } | null = null, spotViews: SpotView[] = [], lastStage = -1, lastCarry = '', hudDirty = true;
   const toastList: Array<{ el: HTMLElement; at: number }> = [];
+  let bannerTimer = 0, winTimer = 0;
   let waypoint: string | null = null, resumeRaw: unknown = null;
   const navigationTarget = (): string | null => core.state.task?.targetSpotId ?? waypoint;
 
@@ -80,11 +82,11 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     while (toastList.length > 5) toastList.shift()!.el.remove();
   }
   function banner(title: string, sub: string, ms = 3200): void {
-    const b = q('#ty-banner'); b.innerHTML = `<h2>${esc(title)}</h2><p>${esc(sub)}</p>`; b.classList.remove('show'); void b.offsetWidth; b.classList.add('show'); window.setTimeout(() => b.classList.remove('show'), ms);
+    const b = q('#ty-banner'); b.innerHTML = `<h2>${esc(title)}</h2><p>${esc(sub)}</p>`; b.classList.remove('show'); void b.offsetWidth; b.classList.add('show'); b.style.animationDuration = `${ms}ms`; window.clearTimeout(bannerTimer); bannerTimer = window.setTimeout(() => b.classList.remove('show'), ms);
   }
 
   // ---------- 저장 ----------
-  const save = (): boolean => !!core && !!player && phase === 'play' && saveTycoon({ serialize: () => ({ ...core.serialize(), position: { x: player.pos.x, z: player.pos.z, yaw: player.facing, cameraYaw: player.camYaw, cameraPitch: player.camPitch, firstPerson: player.firstPerson } }) });
+  const save = (): boolean => !!core && !!player && phase === 'play' && saveTycoon(core, undefined, { x: player.pos.x, z: player.pos.z, facing: player.facing, yaw: player.camYaw, pitch: player.camPitch, distance: player.dist, firstPerson: player.firstPerson });
 
   // ---------- 모달 ----------
   const paused = (): boolean => modal !== null;
@@ -101,7 +103,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       case 'status': h = statusHtml(core.state); break;
       case 'menu': h = menuHtml(audio.enabled, player.firstPerson); break;
       case 'win': h = winHtml(core.state); break;
-      case 'map': h = `<div class="ty-bigmap" role="dialog" aria-label="도시 지도"><button type="button" class="ty-x" data-close aria-label="닫기">✕</button><canvas id="ty-bigmap" width="720" height="720" aria-label="도시 지도, 장소를 눌러 목적지 지정"></canvas><div class="ty-map-tools"><p>${core.state.task ? '진행 중인 배달 목적지를 우선 안내합니다.' : waypoint ? '목적지: ' + esc(core.spot(waypoint)?.name ?? '') : '지도에서 장소를 눌러 길 안내를 시작하세요.'}</p><button type="button" data-nav-clear ${waypoint ? '' : 'disabled'}>목적지 해제</button><button type="button" data-close>지도 닫기</button></div></div>`; break;
+      case 'map': h = `<div class="ty-bigmap" role="dialog" aria-modal="true" aria-label="도시 지도"><button type="button" class="ty-x" data-close aria-label="닫기">✕</button><canvas id="ty-bigmap" width="720" height="720" aria-label="도시 지도, 장소를 눌러 목적지 지정"></canvas><div class="ty-map-tools"><p>${core.state.task ? '진행 중인 배달 목적지를 우선 안내합니다.' : waypoint ? '목적지: ' + esc(core.spot(waypoint)?.name ?? '') : '지도에서 장소를 눌러 길 안내를 시작하세요.'}</p><button type="button" data-nav-clear ${waypoint ? '' : 'disabled'}>목적지 해제</button><button type="button" data-close>지도 닫기</button></div></div>`; break;
     }
     if (h !== modalHtml || modalEl.hidden) { // 내용이 바뀔 때만 교체합니다(누르는 도중 버튼이 바뀌면 클릭이 사라집니다)
       const keep = modalEl.querySelector('.ty-panel')?.scrollTop ?? 0;
@@ -144,10 +146,11 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (title === 'keep') closeModal(); else if (title === 'exit') exit(); else if (title === 'new-confirm' && modal?.kind === 'new') { closeModal(); titleAction('new-confirm'); }
   });
   function doAction(spotId: string, actionId: string): void {
+    if (actionId === 'sell' && !window.confirm('가게를 매각할까요? 재고와 직원은 사라집니다.')) return;
+    if (actionId === 'discard_cargo' && !window.confirm('보유 재료를 환불 없이 버릴까요?')) return;
     const before = core.state.cash, r = core.perform(spotId, actionId);
     if (!r.ok) { audio.deny(); toast(r.message, 'bad'); renderModal(); return; }
     audio.click(); if (core.state.cash < before) audio.spend();
-    const def = core.actionsAt(spotId).find(a => a.id === actionId); void def;
     if (core.state.activity) { closeModal(); toast(r.message); } else { toast(r.message, 'good'); renderModal(); }
     hudDirty = true;
     if (!core.state.activity) save();
@@ -161,7 +164,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   }
 
   // ---------- 입력 ----------
-  function resetInput(): void { keys.clear(); tc.moveId = tc.lookId = -1; tc.mx = tc.my = 0; drag = -1; q('#ty-stick').style.opacity = '0'; (q('#ty-stick').firstElementChild as HTMLElement).style.transform = ''; }
+  function resetInput(): void { keys.clear(); tc.moveId = tc.lookId = -1; tc.mx = tc.my = 0; tc.run = false; q('#ty-t-run').classList.remove('on'); q('#ty-t-run').setAttribute('aria-pressed', 'false'); drag = -1; q('#ty-stick').style.opacity = '0'; (q('#ty-stick').firstElementChild as HTMLElement).style.transform = ''; }
   function lock(): void { if (closed || modal || phase !== 'play' || touch || !player?.firstPerson || locked) return; try { const r = canvas.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(() => undefined); } catch { /* 선택 사항 */ } }
   const onLock = (): void => { locked = document.pointerLockElement === canvas; if (locked && (closed || modal || phase !== 'play' || !player?.firstPerson)) { document.exitPointerLock(); return; } if (!locked) resetInput(); };
   document.addEventListener('pointerlockchange', onLock);
@@ -175,7 +178,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (phase !== 'play') return;
     if (e.code === 'Escape') { e.preventDefault(); if (modal && modal.kind !== 'menu') closeModal(); else if (modal) closeModal(); else openModal({ kind: 'menu' }); return; }
     if (modal) {
-      if (modal.kind === 'spot' && /^Digit[1-9]$/.test(e.code)) { const a = core.actionsAt(modal.id)[Number(e.code.slice(5)) - 1]; if (a) doAction(modal.id, a.id); e.preventDefault(); }
+      if (modal.kind === 'spot' && /^Digit[1-9]$/.test(e.code)) { const a = core.actionsAt(modal.id)[Number(e.code.slice(5)) - 1]; if (a?.enabled) doAction(modal.id, a.id); e.preventDefault(); }
       else if (e.code === 'KeyE' && modal.kind !== 'menu') { e.preventDefault(); closeModal(); }
       return;
     }
@@ -214,7 +217,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   canvas.addEventListener('wheel', onWheel, { passive: false });
   q('.ty-touchpad').addEventListener('pointerdown', e => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-t]'); if (!b) return; audio.unlock(); e.preventDefault();
-    const t = b.dataset.t; if (t === 'use') interact(); else if (t === 'run') { tc.run = !tc.run; b.classList.toggle('on', tc.run); } else if (t === 'view') { player.setFirstPerson(!player.firstPerson); }
+    const t = b.dataset.t; if (t === 'use') interact(); else if (t === 'run') { tc.run = !tc.run; b.classList.toggle('on', tc.run); b.setAttribute('aria-pressed', String(tc.run)); } else if (t === 'view') { player.setFirstPerson(!player.firstPerson); }
   });
   q('#ty-prompt').addEventListener('click', () => { audio.unlock(); interact(); });
   q('#ty-b-status').addEventListener('click', () => { audio.unlock(); if (!modal) openModal({ kind: 'status' }); });
@@ -236,7 +239,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       case 'stage': banner(STAGE_NAMES[e.stage], e.text); audio.stageUp(); cineT = 0.001; syncCity(true); applyStageLook(); checkpointPending = true; break;
       case 'day': audio.day(); toast(`${core.state.day}일차 아침 — 어제 순이익 ${formatMoney(e.report.profit)}`, e.report.profit >= 0 ? 'good' : 'bad', 5); checkpointPending = true; break;
       case 'task': if (e.task) toast(e.text); break;
-      case 'win': checkpointPending = true; banner('세계 정복', e.text, 6000); window.setTimeout(() => { if (!closed && phase === 'play') openModal({ kind: 'win' }); }, 3200); break;
+      case 'win': checkpointPending = true; banner('세계 정복', e.text, 6000); window.clearTimeout(winTimer); winTimer = window.setTimeout(() => { if (!closed && phase === 'play') openModal({ kind: 'win' }); }, 3200); break;
     }
   }
   function syncCity(animate: boolean): void {
@@ -272,7 +275,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   function startPlay(): void {
     phase = 'play'; titleEl.hidden = true; hudEl.hidden = false; resetInput(); applyStageLook();
     const sp = layout.spawn, s = core.state, resume = readResumePosition(resumeRaw, colliders);
-    if (resume) { player.teleport(resume.x, resume.z, resume.yaw); player.setFirstPerson(resume.firstPerson); player.camYaw = resume.cameraYaw; player.camPitch = resume.cameraPitch; }
+    if (resume) { player.teleport(resume.x, resume.z, resume.yaw); player.setFirstPerson(resume.firstPerson); player.camYaw = resume.cameraYaw; player.camPitch = resume.cameraPitch; player.dist = readTycoonPosition(resumeRaw)?.distance ?? player.dist; }
     else player.teleport(sp.x, sp.z, sp.yaw);
     resumeRaw = null;
     if (s.day === 1 && s.minutes < 6 * 60 + 30 && s.cash <= 20) { banner('빈털터리', '벤치에서 눈을 떴습니다. 병을 주워 팔고, 일을 찾아 걸어가 보세요.', 5000); toast('E 로 장소와 상호작용 · 지도(M)로 길을 찾으세요', 'info', 6); }
@@ -297,12 +300,12 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   function tick(dt: number, nowS: number): void {
     if (!renderer || !core) return;
     const playing = phase === 'play', s = core.state;
-    if (playing && !paused()) core.tick(dt);
+    if (playing && !paused() && !document.hidden) core.tick(dt);
     const st = core.state;
     if (playing && (checkpointPending || (s.activity && !st.activity))) { checkpointPending = false; save(); }
     // 입력 → 이동
-    const mv = readMove(), frozen = !playing || paused() || !!st.activity?.lockMovement;
-    if (playing && !paused()) {
+    const mv = readMove(), frozen = !playing || paused() || document.hidden || !!st.activity?.lockMovement;
+    if (playing && !paused() && !document.hidden) {
       const turn = (keys.has('ArrowLeft') ? 1 : 0) - (keys.has('ArrowRight') ? 1 : 0), tilt = (keys.has('ArrowDown') ? 1 : 0) - (keys.has('ArrowUp') ? 1 : 0);
       if (turn || tilt) player.look(-turn * dt * 1.8, tilt * dt * 1.2);
       if (st.activity?.lockMovement && Math.hypot(mv.mx, mv.mz) > 0.35) { core.cancelActivity(); toast('중단했습니다'); }
@@ -328,11 +331,11 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     }
     // 주기 작업
     syncT += dt; if (syncT > SYNC_EVERY) { syncT = 0; syncCity(false); attachCarry(); }
-    saveT += dt; if (saveT > 25) { saveT = 0; save(); }
+    saveT += dt; if (saveT > 25) { saveT = 0; if (playing && !save()) toast('자동 저장 실패 — 저장 공간을 확인하세요.', 'bad', 5); }
     audio.ambience(sky.daylight, sky.wet, 0); if (sky.wet > 0.8 && Math.random() < dt * 0.04) audio.thunder(); rainSound = sky.wet; void rainSound;
     
     // 토스트 정리
-    const nowMs = performance.now(); while (toastList.length && toastList[0].at < nowMs) toastList.shift()!.el.remove();
+    const nowMs = performance.now(); for (let i = toastList.length - 1; i >= 0; i--) if (toastList[i].at <= nowMs) { toastList[i].el.remove(); toastList.splice(i, 1); }
     // HUD
     hudT += dt; if (playing && (hudDirty || hudT > 0.25)) { hudDirty = false; hudT = 0; updateHud(st); }
     if (playing && modal?.kind === 'spot' && hudT === 0) renderModal();
@@ -346,7 +349,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   function updateHud(s: TycoonState): void {
     set('cash', formatMoney(s.cash)); set('debt', s.debt ? `빚 ${formatMoney(s.debt)}` : ''); set('stage', s.stageName); html('ladder', ladderHtml(s.stage));
     set('clock', s.clock); set('day', `${s.day}일차`); set('sun', s.night ? '☾' : '☀');
-    for (const b of q('#ty-speed').children) (b as HTMLElement).classList.toggle('on', Number((b as HTMLElement).dataset.speed) === s.speed);
+    for (const b of q('#ty-speed').children) { const button = b as HTMLElement, active = Number(button.dataset.speed) === s.speed; button.classList.toggle('on', active); button.setAttribute('aria-pressed', String(active)); }
     style('energy', 'width', `${s.energy}%`); set('energy-n', String(s.energy)); q('#ty-energy').parentElement!.classList.toggle('low', s.energy < 25);
     html('carry', `${s.cargo?.units ? `<span>📦 재료 ${s.cargo.units}</span>` : ''}${s.bottles ? `<span>🍾 빈 병 ${s.bottles}</span>` : ''}`);
     html('goal', `<b>${esc(s.goal.label)}</b><div class="ty-bar gold"><i style="width:${Math.round(s.goal.progress * 100)}%"></i></div>${s.goal.steps.filter(x => !x.done).slice(0, 3).map(x => `<small>○ ${esc(x.label)}</small>`).join('')}`);
@@ -354,8 +357,8 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     const a = s.activity; q('#ty-activity').hidden = !a; if (a) { set('act-label', a.label); style('act-bar', 'width', `${Math.round(a.progress * 100)}%`); }
     const t = s.task, nav = navigationTarget(); q('#ty-task').hidden = !nav;
     if (nav) {
-      const d = city.doorOf(nav); set('task-label', t ? t.label : `목적지 · ${core.spot(nav)?.name ?? ''}`); set('task-sub', t ? `${formatMoney(t.reward)} · ${t.minutesLeft > 0 ? `${Math.floor(t.minutesLeft / 60)}시간 ${t.minutesLeft % 60}분 남음` : '지각 — 보수 절반'}` : d ? `${Math.round(Math.hypot(d.x - player.pos.x, d.z - player.pos.z))}m 남음` : '지도에서 목적지 해제');
-      if (d) { const ang = Math.atan2(d.x - player.pos.x, d.z - player.pos.z), rel = -(ang + player.camYaw) + Math.PI / 2 + Math.PI; style('arrow', 'transform', `rotate(${(rel * 180 / Math.PI).toFixed(0)}deg)`); }
+      const d = city.doorOf(nav); set('task-label', t ? t.label : `목적지 · ${core.spot(nav)?.name ?? ''}`); set('task-sub', t ? `${formatMoney(t.reward)} · ${t.minutesLeft >= 0 ? `${Math.floor(t.minutesLeft / 60)}시간 ${t.minutesLeft % 60}분 남음` : '지각 — 보수 절반'}${d ? ` · ${Math.round(Math.hypot(d.x - player.pos.x, d.z - player.pos.z))}m` : ''}` : d ? `${Math.round(Math.hypot(d.x - player.pos.x, d.z - player.pos.z))}m 남음` : '지도에서 목적지 해제');
+      if (d) { const ang = Math.atan2(d.x - player.pos.x, d.z - player.pos.z), rel = player.camYaw - ang + Math.PI / 2; style('arrow', 'transform', `rotate(${(rel * 180 / Math.PI).toFixed(0)}deg)`); }
     }
     // 프롬프트
     const p = q<HTMLButtonElement>('#ty-prompt');
@@ -364,7 +367,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
 
   // ---------- 종료 ----------
   function exit(): void {
-    if (closed) return; save(); closed = true; cancelAnimationFrame(raf);
+    if (closed) return; if (phase === 'play' && !save() && !window.confirm('저장하지 못했습니다. 그래도 허브로 나갈까요?')) return; closed = true; cancelAnimationFrame(raf); window.clearTimeout(bannerTimer); window.clearTimeout(winTimer);
     window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', resetInput); document.removeEventListener('visibilitychange', onVisibility); window.removeEventListener('pagehide', onPageHide);
     window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp); canvas.removeEventListener('wheel', onWheel); window.removeEventListener('resize', resize); document.removeEventListener('pointerlockchange', onLock);
     if (document.pointerLockElement === canvas) document.exitPointerLock();

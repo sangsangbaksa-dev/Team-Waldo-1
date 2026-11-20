@@ -263,6 +263,10 @@ export interface EventDef {
 export const EVENTS: readonly EventDef[] = [
   { id: 'rain', name: '장맛비', desc: '거리에 사람이 줄었다. 카페만 붐빈다.', days: 1, weight: 4, minStage: 'broke', traffic: 0.75, kinds: { cafe: 1.4 } },
   { id: 'festival', name: '거리 축제', desc: '이 구역에 사람이 몰린다!', days: 2, weight: 3, minStage: 'broke', traffic: 1.6, local: true },
+  { id: 'market_day', name: '장날', desc: '시장에 구경 나온 사람들로 붐빈다.', days: 1, weight: 3, minStage: 'broke', traffic: 1.35, local: true },
+  { id: 'heatwave', name: '무더위', desc: '시원한 음료를 찾는 손님이 늘었다.', days: 2, weight: 2, minStage: 'smallshop', traffic: 0.9, kinds: { cafe: 1.5 } },
+  { id: 'payday', name: '월급날', desc: '쇼핑을 즐기는 손님이 늘었다.', days: 1, weight: 2, minStage: 'smallshop', kinds: { mart: 1.25, boutique: 1.4, tech: 1.25 } },
+  { id: 'night_market', name: '야시장 소식', desc: '먹거리 가게가 입소문을 탔다.', days: 2, weight: 2, minStage: 'parttime', kinds: { stall: 1.4, restaurant: 1.3 }, local: true },
   { id: 'boom', name: '경기 호황', desc: '다들 지갑을 연다.', days: 3, weight: 2, minStage: 'smallshop', traffic: 1.25 },
   { id: 'recession', name: '경기 침체', desc: '손님이 줄고 다들 아낀다.', days: 3, weight: 2, minStage: 'bigshop', traffic: 0.8 },
   { id: 'cost', name: '원자재 파동', desc: '재료값이 30% 올랐다.', days: 2, weight: 2, minStage: 'smallshop', costMult: 1.3 },

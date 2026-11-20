@@ -242,8 +242,8 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
 
   // ---------- HUD ----------
   function squadBar(w: World): string {
-    const n = (i: number): number => w.squadMembers(0, i).length, tot = n(0);
-    return `<button data-act="sq:0" class="${w.squadSel === 0 ? 'on' : ''}" title="전체 (Shift+0)">전체 <small>${tot}</small></button>` + [1, 2, 3, 4, 5].map(i => `<button data-act="sq:${i}" class="${w.squadSel === i ? 'on' : ''}" title="${i}분대 (Shift+${i})">${i}<small>${n(i)}</small></button>`).join('');
+    const members = w.squadMembers(0, 0), counts = [0, 0, 0, 0, 0, 0]; for (const a of members) if (a.sq >= 1 && a.sq <= 5) counts[a.sq]++; const n = (i: number): number => counts[i] ?? 0, tot = members.length;
+    return `<button data-act="sq:0" aria-pressed="${w.squadSel === 0}" class="${w.squadSel === 0 ? 'on' : ''}" title="전체 (Shift+0)">전체 <small>${tot}</small></button>` + [1, 2, 3, 4, 5].map(i => `<button data-act="sq:${i}" aria-pressed="${w.squadSel === i}" class="${w.squadSel === i ? 'on' : ''}" title="${i}분대 (Shift+${i})">${i}<small>${n(i)}</small></button>`).join('');
   }
   function renderCmd(): void {
     q('#c-cmd').innerHTML = `<div class="c-squads" id="c-squads"></div><button data-act="order:follow"><kbd>Z</kbd>집결</button><button data-act="order:hold"><kbd>X</kbd>사수</button><button data-act="charge"><kbd>우클릭</kbd>돌격</button><button data-act="missions"><kbd>J</kbd>임무</button><button data-act="panel" class="c-cmd-main"><kbd>Tab</kbd>지휘 패널</button>`;
@@ -354,10 +354,10 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     put(q('#c-feed'), w.feed.filter(x => w.time - x.t < 7).slice(-5).map(x => `<div style="border-color:${x.color}">${x.text}</div>`).join(''));
     const army = w.armyOf(0).length; put(q('#c-squads'), squadBar(w));
     if (b) {
-      const s = f.slots[f.cur], wd = WEAPONS[s.id];
-      put(q('#c-boss'), `<div class="c-bars"><div class="hp"><i style="width:${Math.max(0, b.hp / b.maxHp * 100)}%"></i><span>${Math.ceil(b.hp)} / ${b.maxHp}</span></div><div class="ar"><i style="width:${f.armor}%"></i></div><div class="xp"><i style="width:${f.xp / w.xpNeed(f.level) * 100}%"></i></div></div>
-        <div class="c-slots">${f.slots.map((x, i) => `<button data-act="slot:${i}" class="${i === f.cur ? 'on' : ''}"><kbd>${i + 1}</kbd>${WEAPONS[x.id].name}</button>`).join('')}</div>
-        <div class="c-ammo"><b>${f.reloadT > 0 ? '재장전…' : s.mag}</b><small>/ ${wd.ammo > 0 ? s.ammo - s.mag : '∞'}</small><span>Lv.${f.level} · 병력 ${army} · 키트 ${f.medkits}</span></div>
+      const s = f.slots[f.cur], wd = WEAPONS[s.id], hp = Math.max(0, Math.min(100, b.hp / b.maxHp * 100)), armor = Math.max(0, Math.min(100, f.armor)), xp = Math.max(0, Math.min(100, f.xp / w.xpNeed(f.level) * 100));
+      put(q('#c-boss'), `<div class="c-bars"><div class="hp${hp <= 35 ? ' critical' : ''}" role="progressbar" aria-label="체력" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(hp)}"><i style="width:${hp}%"></i><span>${Math.max(0, Math.ceil(b.hp))} / ${b.maxHp}</span></div><div class="ar" role="progressbar" aria-label="방어력" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(armor)}"><i style="width:${armor}%"></i></div><div class="xp" role="progressbar" aria-label="경험치" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(xp)}"><i style="width:${xp}%"></i></div></div>
+        <div class="c-slots">${f.slots.map((x, i) => `<button data-act="slot:${i}" aria-pressed="${i === f.cur}" class="${i === f.cur ? 'on' : ''}"><kbd>${i + 1}</kbd>${WEAPONS[x.id].name}</button>`).join('')}</div>
+        <div class="c-ammo${f.reloadT > 0 ? ' reloading' : s.mag <= Math.max(1, Math.floor(wd.mag * 0.2)) ? ' low' : ''}"><b>${f.reloadT > 0 ? '재장전…' : s.mag}</b><small>/ ${wd.ammo > 0 ? Math.max(0, s.ammo - s.mag) : '∞'}</small><span>Lv.${f.level} · 병력 ${army} · 키트 ${f.medkits}</span></div>
         <div class="c-skills"><span class="${f.skillCd > 0 ? 'cd' : ''}"><kbd>Q</kbd>${CLASSES[f.klass].skill}${f.skillCd > 0 ? ' ' + Math.ceil(f.skillCd) : ''}</span><span class="${f.dashCd > 0 ? 'cd' : ''}"><kbd>␣</kbd>대시</span></div>`);
     } else put(q('#c-boss'), `<div class="c-down"><b>쓰러짐</b> ${f.respawnT > 0 ? `${Math.ceil(f.respawnT)}초 후 본부에서 부활` : '…'}</div>`);
     // 상호작용 안내

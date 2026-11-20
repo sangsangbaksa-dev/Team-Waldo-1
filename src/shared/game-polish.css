@@ -22,3 +22,18 @@
   .sz-root .sz-redfx { animation: none; }
   .rc-root .rc-drift { transition: none; }
 }
+
+/* Readable, scrollable game dialogs; retain each title's existing palette. */
+.rc-root .rc-modal { padding: max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left)); box-sizing:border-box; }
+.rc-root .rc-card { box-sizing:border-box; max-width:100%; max-height:100%; min-height:0; overflow-y:auto; overscroll-behavior:contain; touch-action:pan-y; scrollbar-width:thin; }
+:is(.rc-card,.rt-card,.sz-card,.ol-card,.ty-panel) :is(h2,h3,p) { overflow-wrap:anywhere; }
+.city-root .c-panel header button:focus-visible { outline-offset:-2px; }
+.rc-root .rc-card h2, .sz-root .sz-card h2 { text-wrap:balance; }
+@media (max-height:560px) {
+  .rc-root .rc-card { padding:16px; border-radius:16px; }
+  .rc-root .rc-card h2 { font-size:clamp(26px,8svh,42px); margin:6px 0 10px; }
+  .rc-root .rc-card.result h2 { font-size:clamp(38px,13svh,70px); }
+}
+@media (pointer:coarse) {
+  .rc-root .rc-card button, .sz-root .sz-card button { min-height:44px; }
+}

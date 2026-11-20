@@ -190,9 +190,18 @@ export class World {
     if (fb === POLICE) return fa < 8 && this.factions[fa].wanted >= 1;
     return true;
   }
+  /** Refresh after movement, before collision, capture and pickup queries. */
+  refreshActorGrid(): void {
+    for (const cell of this.hash) cell.length = 0;
+    for (const a of this.actors) {
+      if (!a.alive || a.inVeh || this.hidden(a)) continue;
+      const x = Math.min(HN - 1, Math.max(0, Math.floor(a.x / HC))), y = Math.min(HN - 1, Math.max(0, Math.floor(a.y / HC)));
+      this.hash[y * HN + x].push(a);
+    }
+  }
   forNear(x: number, y: number, r: number, fn: (a: Actor) => void): void {
     const x0 = Math.max(0, Math.floor((x - r) / HC)), x1 = Math.min(HN - 1, Math.floor((x + r) / HC)), y0 = Math.max(0, Math.floor((y - r) / HC)), y1 = Math.min(HN - 1, Math.floor((y + r) / HC));
-    for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) { const cell = this.hash[cy * HN + cx]; for (let k = 0; k < cell.length; k++) fn(cell[k]); }
+    for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) { const cell = this.hash[cy * HN + cx]; for (let k = 0; k < cell.length; k++) { const a = cell[k]; if (a.alive && !a.inVeh && !this.hidden(a)) fn(a); } }
   }
   bossMaxHp(f: Faction): number { return Math.round((ACTORS.boss.hp + f.mods.hp + (f.level - 1) * 12) * (f.id === 0 ? 2.2 : 1)); }
   /** 병력 현재 체력을 연구·특성 배율에 맞춰 다시 계산합니다. 이미 입은 피해는 유지하고, 오른 최대 체력만큼만 더합니다. */
@@ -554,13 +563,22 @@ export class World {
     for (const z of this.businesses) if (Math.hypot(z.x - b.x, z.y - b.y) < 64) return this.enterBiz(fi, z) || 'enter';
     return '';
   }
+  /** Detach an occupant and place them beside the car, outside solid terrain. */
+  disembark(v: Vehicle, a: Actor, side = 1): void {
+    a.inVeh = 0;
+    a.x = v.x - Math.sin(v.ang) * (v.wid / 2 + a.r + 8) * side;
+    a.y = v.y + Math.cos(v.ang) * (v.wid / 2 + a.r + 8) * side;
+    a.vx = a.vy = 0;
+    resolveCircle(this.map, a, a.r);
+    if (v.driver === a.id) { v.driver = 0; v.f = -1; v.ai = ''; }
+  }
   toggleVehicle(fi: number): void {
     const b = this.boss(fi); if (!b || (fi === 0 && this.inside)) return;
-    if (b.inVeh) { const v = this.vehicles.find(q => q.id === b.inVeh); b.inVeh = 0; if (v) { v.driver = 0; v.f = -1; v.ai = ''; b.x = v.x + Math.cos(v.ang + 1.57) * (v.wid + 8); b.y = v.y + Math.sin(v.ang + 1.57) * (v.wid + 8); } return; }
+    if (b.inVeh) { const v = this.vehicles.find(q => q.id === b.inVeh); if (v) this.disembark(v, b); else b.inVeh = 0; return; }
     let best: Vehicle | null = null, bd = 78;
-    for (const v of this.vehicles) if (v.alive && v.burn <= 0 && v.ai !== 'chase') { const d = Math.hypot(v.x - b.x, v.y - b.y) - v.r; if (d < bd) { bd = d; best = v; } }
+    for (const v of this.vehicles) if (v.alive && v.burn <= 0 && v.ai !== 'chase') { if (v.driver && this.byId.get(v.driver)?.kind === 'boss') continue; const d = Math.hypot(v.x - b.x, v.y - b.y) - v.r; if (d < bd) { bd = d; best = v; } }
     if (!best) return;
-    if (best.driver) { const d = this.byId.get(best.driver); if (d) { if (d.kind === 'boss') return; d.inVeh = 0; d.x = best.x - Math.cos(best.ang + 1.57) * 34; d.y = best.y - Math.sin(best.ang + 1.57) * 34; d.fleeT = 8; } this.crime(fi, best.kind === 'police' ? 1 : 0.5); }
+    if (best.driver) { const d = this.byId.get(best.driver); if (d) { this.disembark(best, d, -1); d.fleeT = 8; } this.crime(fi, best.kind === 'police' ? 1 : 0.5); }
     else if (best.kind === 'police') this.crime(fi, 1);
     best.ai = ''; best.driver = b.id; best.f = fi; b.inVeh = best.id; b.vx = b.vy = 0; this.fx('door', b.x, b.y);
   }
@@ -569,8 +587,7 @@ export class World {
   step(dt: number): void {
     if (this.over) return; const pf = this.factions[0]; if (pf.pending > 0) return;
     this.time += dt; this.pathBudget = 10;
-    for (const c of this.hash) c.length = 0;
-    for (const a of this.actors) if (a.alive && !a.inVeh) this.hash[Math.min(HN - 1, Math.max(0, Math.floor(a.y / HC))) * HN + Math.min(HN - 1, Math.max(0, Math.floor(a.x / HC)))].push(a);
+    this.refreshActorGrid();
     for (const f of this.factions) if (f.alive) {
       f.ai.t -= dt; if (f.ai.t <= 0 && (!f.player || this.opts.autoPlayer) && !this.opts.tutorial) { f.ai.t = 0.8 + this.rng() * 0.4; thinkFaction(this, f); }
       f.skillCd = Math.max(0, f.skillCd - dt); f.buffT = Math.max(0, f.buffT - dt); f.dashCd = Math.max(0, f.dashCd - dt); f.dashT = Math.max(0, f.dashT - dt);
@@ -579,7 +596,8 @@ export class World {
       if (b) { if (f.mods.regen || this.time - f.combatT > 6) b.hp = Math.min(b.maxHp, b.hp + (f.mods.regen + (this.time - f.combatT > 6 ? 4 : 0)) * dt); }
       else if (f.respawnT > 0) { f.respawnT -= dt; if (f.respawnT <= 0) this.respawn(f); }
     }
-    this.updateStructures(dt); updateActors(this, dt); this.autoEnter(dt); updateVehicles(this, dt); updateBullets(this, dt);
+    this.updateStructures(dt); updateActors(this, dt); this.autoEnter(dt); updateVehicles(this, dt);
+    this.refreshActorGrid(); updateBullets(this, dt);
     this.updateBusinesses(dt); this.updateZone(dt); this.updateLoot(dt);
     this.secT += dt; if (this.secT >= 1) { this.secT -= 1; this.everySecond(); }
     this.checkElimination();

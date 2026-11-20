@@ -41,8 +41,8 @@ function seek(w: World, a: Actor, tx: number, ty: number, sp: number): void {
 const stop = (a: Actor): void => { a.vx *= 0.6; a.vy *= 0.6; };
 
 function targetPos(w: World, a: Actor): { x: number; y: number; vx: number; vy: number; ok: boolean } | null {
-  if (a.tk === 1) { const t = w.byId.get(a.tid); if (!t || !t.alive || t.inVeh || w.hidden(t)) return null; return { x: t.x, y: t.y, vx: t.vx, vy: t.vy, ok: true }; }
-  if (a.tk === 2) { const s = w.structures.find(q => q.id === a.tid); if (!s || !s.alive) return null; return { x: Math.max(s.x - 3, Math.min(a.x, s.x + s.w + 3)), y: Math.max(s.y - 3, Math.min(a.y, s.y + s.h + 3)), vx: 0, vy: 0, ok: true }; }
+  if (a.tk === 1) { const t = w.byId.get(a.tid); if (!t || !t.alive || t.inVeh || w.hidden(t) || (a.weapon === 'u_heal' ? t.f !== a.f || t.hp >= t.maxHp : !w.hostile(a.f, t.f))) return null; return { x: t.x, y: t.y, vx: t.vx, vy: t.vy, ok: true }; }
+  if (a.tk === 2) { const s = w.structures.find(q => q.id === a.tid); if (!s || !s.alive || !w.hostile(a.f, s.f)) return null; return { x: Math.max(s.x - 3, Math.min(a.x, s.x + s.w + 3)), y: Math.max(s.y - 3, Math.min(a.y, s.y + s.h + 3)), vx: 0, vy: 0, ok: true }; }
   if (a.tk === 3) { const v = w.vehicles.find(q => q.id === a.tid); if (!v || !v.alive || !v.driver || !w.hostile(a.f, v.f)) return null; return { x: v.x, y: v.y, vx: v.vx, vy: v.vy, ok: true }; }
   return null;
 }
@@ -50,13 +50,13 @@ function think(w: World, a: Actor, range: number): void {
   a.stuck = 1;
   if (a.kind === 'worker' || a.f === CIV || a.order.type === 'move') { a.tk = 0; return; }
   if (a.weapon === 'u_heal') {
-    let best = 0, br = 0.97; w.forNear(a.x, a.y, 300, t => { if (t.alive && t.f === a.f && t !== a && !ACTORS[t.kind].mech) { const r = t.hp / t.maxHp; if (r < br && Math.hypot(t.x - a.x, t.y - a.y) < 300) { br = r; best = t.id; } } });
+    let best = 0, br = 0.97; w.forNear(a.x, a.y, 300, t => { if (t.alive && !t.inVeh && !w.hidden(t) && t.f === a.f && t !== a && !ACTORS[t.kind].mech) { const r = t.hp / t.maxHp; if (r < br && Math.hypot(t.x - a.x, t.y - a.y) < 300) { br = r; best = t.id; } } });
     a.tk = best ? 1 : 0; a.tid = best; a.los = true; return;
   }
   const sight = Math.min(range + 130, 800); let bd = sight, bk: 0 | 1 | 2 | 3 = 0, bid = 0, blos = false;
   // 현재 목표 유지 선호
   w.forNear(a.x, a.y, sight, t => {
-    if (!t.alive || w.hidden(t) || !w.hostile(a.f, t.f)) return; let d = Math.hypot(t.x - a.x, t.y - a.y); if (a.tk === 1 && a.tid === t.id) d -= 70; if (t.kind === 'worker') d += 120;
+    if (!t.alive || t.inVeh || w.hidden(t) || !w.hostile(a.f, t.f)) return; let d = Math.hypot(t.x - a.x, t.y - a.y); if (a.tk === 1 && a.tid === t.id) d -= 70; if (t.kind === 'worker') d += 120;
     if (d >= bd) return; const los = w.canSee(a.x, a.y, t.x, t.y); if (!los && (d > sight * 0.6 || blos)) return;
     bd = los ? d : Math.min(bd, d + 200); bk = 1; bid = t.id; blos = los;
   });
@@ -109,6 +109,7 @@ export function updateActors(w: World, dt: number): void {
     }
     const range = Math.min(wd.range, a.kind === 'boss' ? 620 : 9999);
     a.thinkT -= dt; if (a.thinkT <= 0) { a.thinkT = 0.22 + w.rng() * 0.12; think(w, a, range); }
+    if (a.order.type === 'move') a.tk = 0;
     let tp = a.tk ? targetPos(w, a) : null; if (a.tk && !tp) { a.tk = 0; a.thinkT = 0; }
     const o = a.order; let leader: { x: number; y: number } | null = null;
     if (o.type === 'follow') { const b = w.boss(a.f); if (b) { leader = b; if (tp && Math.hypot(b.x - a.x, b.y - a.y) > 640) tp = null; } }
@@ -152,15 +153,20 @@ export function updateActors(w: World, dt: number): void {
     const v2 = a.vx * a.vx + a.vy * a.vy; if (v2 > 4 && !(tp && a.los)) a.ang += wrap(Math.atan2(a.vy, a.vx) - a.ang) * 0.2;
     a.x += a.vx * dt; a.y += a.vy * dt; a.walk += Math.sqrt(v2) * dt;
   }
-  // 분리 + 지형 충돌
+  // Separate using current positions, not the grid from before movement.
+  w.refreshActorGrid();
   for (const a of w.actors) {
-    if (!a.alive || a.inVeh) continue; const pl = a.kind === 'boss' && a.f === 0;
+    if (!a.alive || a.inVeh || w.hidden(a)) continue; const pl = a.kind === 'boss' && a.f === 0;
     w.forNear(a.x, a.y, a.r + 28, b => {
-      if (b.id <= a.id || !b.alive || b.inVeh) return; const dx = b.x - a.x, dy = b.y - a.y, min = a.r + b.r, d2 = dx * dx + dy * dy;
-      if (d2 >= min * min || d2 < 0.01) return; const d = Math.sqrt(d2), push = (min - d) * 0.5, wa = pl ? 0.15 : ACTORS[a.kind].mech ? 0.3 : 1, wb = ACTORS[b.kind].mech ? 0.3 : 1, t = wa + wb;
-      a.x -= dx / d * push * 2 * wa / t; a.y -= dy / d * push * 2 * wa / t; b.x += dx / d * push * 2 * wb / t; b.y += dy / d * push * 2 * wb / t;
+      if (b.id <= a.id || !b.alive || b.inVeh || w.hidden(b)) return; const dx = b.x - a.x, dy = b.y - a.y, min = a.r + b.r, d2 = dx * dx + dy * dy;
+      if (d2 >= min * min) return; const d = Math.sqrt(d2), nx = d > 0.001 ? dx / d : Math.cos(a.id), ny = d > 0.001 ? dy / d : Math.sin(a.id), push = min - d;
+      const wa = w.opts.duel && a.f >= 1 ? 0 : pl ? 0.15 : ACTORS[a.kind].mech ? 0.3 : 1;
+      const wb = w.opts.duel && b.f >= 1 ? 0 : b.kind === 'boss' && b.f === 0 ? 0.15 : ACTORS[b.kind].mech ? 0.3 : 1;
+      const t = wa + wb; if (!t) return;
+      a.x -= nx * push * wa / t; a.y -= ny * push * wa / t; b.x += nx * push * wb / t; b.y += ny * push * wb / t;
     });
-    if (!pl || w.opts.autoPlayer) resolveCircle(w.map, a, a.r);
+    // The player's position can be displaced by unit separation as well.
+    if (!w.opts.duel || a.f === 0) resolveCircle(w.map, a, a.r);
   }
 }
 
@@ -189,6 +195,7 @@ export function updateBullets(w: World, dt: number): void {
       for (const v of w.vehicles) {
         if (!v.alive || v.f === b.f) continue; const dx = v.x - b.x, dy = v.y - b.y; if (dx * dx + dy * dy > v.r * v.r) continue;
         if (v.f >= 0 && !w.hostile(b.f, v.f) && !(v.f === CIV && b.boss)) continue;
+        if (d.pierce) { if (b.hitIds?.includes(v.id)) continue; (b.hitIds ??= []).push(v.id); }
         if (v.f === CIV) w.crime(b.f, 0.15);
         if (d.splash) w.explode(b.x, b.y, d.splash, b.dmg, b.f, d.bdmg); else { w.hurtVehicle(v, b.dmg * (d.pierce ? 1.5 : 1), b.f); w.fx('spark', b.x, b.y); if (v.driver && v.ai === 'traffic') { v.idle = 99; } }
         if (!d.pierce) dead = true; break;
@@ -238,7 +245,7 @@ export function updateVehicles(w: World, dt: number): void {
     if (v.driver && (!drv || !drv.alive)) { v.driver = 0; v.f = -1; v.ai = ''; }
     if (v.burn > 0) {
       v.burn -= dt;
-      if (v.burn <= 0) { v.alive = false; if (drv && drv.alive) { drv.inVeh = 0; drv.x = v.x + 20; w.hurtActor(drv, 70, -1, false); } v.driver = 0; w.explode(v.x, v.y, 120, 95, -1, 0.6); w.fx('wreck', v.x, v.y, v.ang); continue; }
+      if (v.burn <= 0) { v.alive = false; if (drv && drv.alive) { w.disembark(v, drv); w.hurtActor(drv, 70, -1, false); } v.driver = 0; w.explode(v.x, v.y, 120, 95, -1, 0.6); w.fx('wreck', v.x, v.y, v.ang); continue; }
     }
     v.throttle = 0; v.brake = false;
     const player = drv && drv.kind === 'boss' && drv.f === 0 && !w.opts.autoPlayer;
@@ -248,7 +255,7 @@ export function updateVehicles(w: World, dt: number): void {
       if (v.kind === 'tank') { v.cd -= dt; if (inp.fire && v.cd <= 0) { v.cd = 1.2; w.shoot(v.x + Math.cos(drv.ang) * 40, v.y + Math.sin(drv.ang) * 40, drv.ang, 'v_cannon', 0, drv.id, f.mods.dmg, true); w.fx('recoil', v.x, v.y); } }
       else { drv.x = v.x; drv.y = v.y; const id = f.slots[f.cur].id; bossFire(w, drv, f, inp.fire && id !== 'rocket' && id !== 'sniper' && id !== 'railgun', dt); }
     } else if (v.ai === 'traffic') {
-      if (v.idle > 50 || v.hp < v.maxHp * 0.55) { if (drv) { drv.inVeh = 0; drv.x = v.x + Math.cos(v.ang + 1.57) * 34; drv.y = v.y + Math.sin(v.ang + 1.57) * 34; drv.fleeT = 8; drv.order = { type: 'wander', x: drv.x, y: drv.y }; } v.driver = 0; v.f = -1; v.ai = ''; v.idle = 0; }
+      if (v.idle > 50 || v.hp < v.maxHp * 0.55) { if (drv) { w.disembark(v, drv); drv.fleeT = 8; drv.order = { type: 'wander', x: drv.x, y: drv.y }; } v.driver = 0; v.f = -1; v.ai = ''; v.idle = 0; }
       else traffic(w, v);
     } else if (v.ai === 'chase') chase(w, v, dt);
     // 물리
@@ -271,14 +278,14 @@ export function updateVehicles(w: World, dt: number): void {
       if (v.ai === 'traffic') v.idle += dt * 6;
     }
     const spd = Math.hypot(v.vx, v.vy);
-    for (const o of w.vehicles) if (o !== v && o.alive && o.id > v.id) { const dx = o.x - v.x, dy = o.y - v.y, d = Math.hypot(dx, dy), min = v.r + o.r; if (d < min && d > 0.01) { const p = (min - d) / 2; v.x -= dx / d * p; v.y -= dy / d * p; o.x += dx / d * p; o.y += dy / d * p; const rel = Math.hypot(v.vx - o.vx, v.vy - o.vy); if (rel > 200) { w.hurtVehicle(v, rel * 0.05, o.f); w.hurtVehicle(o, rel * 0.05, v.f); w.fx('crash', v.x, v.y, rel); } const mx = (v.vx + o.vx) / 2, my = (v.vy + o.vy) / 2; v.vx = mx; v.vy = my; o.vx = mx; o.vy = my; } }
+    for (const o of w.vehicles) if (o !== v && o.alive && o.id > v.id) { const dx = o.x - v.x, dy = o.y - v.y, min = v.r + o.r, d2 = dx * dx + dy * dy; if (d2 < min * min) { const d = Math.sqrt(d2), nx = d > 0.01 ? dx / d : Math.cos(v.ang), ny = d > 0.01 ? dy / d : Math.sin(v.ang), p = (min - d) / 2; v.x -= nx * p; v.y -= ny * p; o.x += nx * p; o.y += ny * p; const rel = Math.hypot(v.vx - o.vx, v.vy - o.vy); if (rel > 200) { w.hurtVehicle(v, rel * 0.05, o.f); w.hurtVehicle(o, rel * 0.05, v.f); w.fx('crash', v.x, v.y, rel); } const mx = (v.vx + o.vx) / 2, my = (v.vy + o.vy) / 2; v.vx = mx; v.vy = my; o.vx = mx; o.vy = my; } }
     w.forNear(v.x, v.y, v.r + 26, a => {
       if (!a.alive || a.inVeh) return; const dx = a.x - v.x, dy = a.y - v.y, d = Math.hypot(dx, dy) || 1, min = v.r + a.r; if (d >= min) return;
       a.x = v.x + dx / d * min; a.y = v.y + dy / d * min;
       if (spd > 150 && a.runCd <= 0 && v.driver && (a.f === CIV || w.hostile(v.f, a.f))) { a.runCd = 0.5; w.hurtActor(a, (spd - 90) * (v.kind === 'tank' ? 0.9 : 0.42), v.f); w.fx('splat', a.x, a.y); if (!ACTORS[a.kind].mech) { a.vx += v.vx * 0.6; a.vy += v.vy * 0.6; } else { v.vx *= 0.5; v.vy *= 0.5; w.hurtVehicle(v, 30, a.f); } }
     });
     if (v.ai === 'traffic' && spd < 12) v.idle += dt; else if (v.ai === 'traffic' && v.idle < 90) v.idle = Math.max(0, v.idle - dt * 3);
-    if (drv && drv.alive) { drv.x = v.x; drv.y = v.y; if (!player) drv.ang = v.ang; }
+    if (drv && drv.alive && v.driver === drv.id && drv.inVeh === v.id) { drv.x = v.x; drv.y = v.y; if (!player) drv.ang = v.ang; }
   }
 }
 

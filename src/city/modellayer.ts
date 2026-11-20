@@ -6,6 +6,7 @@ import { AWNING_OUT, CHAR_SCALE, HIP, KNEE, LEG_Z, PROPS } from './scale';
 import { CHAR_KINDS, instantiate, type Baked, type Models } from './models';
 import type { Actor, Structure, Vehicle, World } from './world';
 import { blankPose, calmState, computePose } from '../shared/character/pose';
+import { signalPhase } from './signal-visuals';
 
 const CLOTH = [0x8d99ae, 0xb08968, 0x6d8a96, 0xa58fb3, 0x9aa37b, 0xc58f8f, 0xd27d5a, 0x5f9ea0], SKIN = [0xf1c9a5, 0xd9a47a, 0xa8744f, 0x7a5236, 0xf5d6b8];
 export const fcol = (f: number): number => f === POLICE ? 0x3f6fe0 : f === CIV ? 0x9aa3ad : new THREE.Color(FACTIONS[f]?.color ?? '#fff').getHex();
@@ -23,6 +24,7 @@ export class ModelLayer {
   private d = new THREE.Object3D(); private base = new THREE.Matrix4(); private local = new THREE.Matrix4(); private q = new THREE.Quaternion(); private qz = new THREE.Quaternion(); private qy = new THREE.Quaternion();
   private st = calmState(); private pose = blankPose(); private torso = new THREE.Matrix4(); private m = new THREE.Matrix4(); private m2 = new THREE.Matrix4(); private down = new THREE.Matrix4().makeTranslation(0, -HIP, 0); private aim = new Map<number, number>();
   private v1 = new THREE.Vector3(); private one = new THREE.Vector3(1, 1, 1); private col = new THREE.Color(); private zAxis = new THREE.Vector3(0, 0, 1); private yAxis = new THREE.Vector3(0, 1, 0);
+  private signalTick=-1; private signalSets: { meshes:(THREE.InstancedMesh|null)[]; positions:THREE.Matrix4[] }[]=[];
   private sets: Record<string, CharSet> = {}; private mechs = new Map<number, THREE.Object3D>(); private crystalMesh: THREE.InstancedMesh;
   private lam = new THREE.MeshLambertMaterial({ vertexColors: true }); private basic = new THREE.MeshBasicMaterial({ vertexColors: true });
   vmScene = new THREE.Scene(); vmCam = new THREE.PerspectiveCamera(64, 1, 0.5, 200); private vm: THREE.Object3D | null = null; private vmId = ''; private vmSwap = 0; private flash: THREE.Sprite;
@@ -64,23 +66,31 @@ export class ModelLayer {
       const m = this.inst(B[name], this.lam, list.length, true); if (!m) continue; list.forEach((t, i) => put(m, i, t.x, t.y, t.x * 0.37, (t.r / rad) * 1.05, (t.r / rad) * (0.9 + (i % 3) * 0.12))); m.count = list.length; m.instanceMatrix.needsUpdate = true;
     }
     // 가로등
-    const corners: [number, number][] = [[8, 8], [BLOCK - 8, 8], [8, BLOCK - 8], [BLOCK - 8, BLOCK - 8]], lampN = w.map.blocks.length * 4;
+    const corners: [number, number][] = [[8, 8], [BLOCK - 8, 8], [8, BLOCK - 8], [BLOCK - 8, BLOCK - 8]], lampN = w.map.blocks.filter(b=>b.type!=='void').length * 4;
     const lamp = this.inst(B.lamp, this.lam, lampN, true); let glowLamp: THREE.InstancedMesh | null = null;
     if (B.lamp.glow) { glowLamp = new THREE.InstancedMesh(B.lamp.glow, this.basic, lampN); glowLamp.frustumCulled = false; this.scene.add(glowLamp); }
     let i = 0;
-    for (const b of w.map.blocks) for (const [dx, dy] of corners) {
+    for (const b of w.map.blocks) if(b.type!=='void') for (const [dx, dy] of corners) {
       const ang = Math.atan2(dy - BLOCK / 2, dx - BLOCK / 2); d.position.set(b.x + dx, 0, b.y + dy); d.rotation.set(0, -ang, 0); d.scale.setScalar(PROPS.lamp.scale); d.updateMatrix();
       lamp?.setMatrixAt(i, d.matrix); glowLamp?.setMatrixAt(i, d.matrix); i++;
     }
-    // 신호등: 교차로 모서리마다
-    const tlR = this.inst(B.tl_red, this.lam, 220), tlG = this.inst(B.tl_green, this.lam, 220), tlRg = B.tl_red.glow ? new THREE.InstancedMesh(B.tl_red.glow, this.basic, 220) : null, tlGg = B.tl_green.glow ? new THREE.InstancedMesh(B.tl_green.glow, this.basic, 220) : null;
-    if (tlRg) { tlRg.frustumCulled = false; this.scene.add(tlRg); } if (tlGg) { tlGg.frustumCulled = false; this.scene.add(tlGg); }
-    let nr = 0, ng = 0;
-    for (const b of w.map.blocks) for (const [cx, cy, ry] of [[16, 16, 0], [BLOCK - 16, 16, 0], [16, BLOCK - 16, Math.PI], [BLOCK - 16, BLOCK - 16, Math.PI]] as const) {
-      if (rng() < 0.45) continue; const red = (cx < BLOCK / 2) === (cy < BLOCK / 2); d.position.set(b.x + cx, 0, b.y + cy); d.rotation.set(0, ry + (cx > BLOCK / 2 ? Math.PI : 0) * 0, 0); d.scale.setScalar(PROPS.tl_red.scale); d.updateMatrix();
-      if (red) { tlR?.setMatrixAt(nr, d.matrix); tlRg?.setMatrixAt(nr, d.matrix); nr++; } else { tlG?.setMatrixAt(ng, d.matrix); tlGg?.setMatrixAt(ng, d.matrix); ng++; }
+    if(lamp)lamp.count=i;if(glowLamp)glowLamp.count=i;
+    // Traffic signals borrow OUTLAW CITY's alternating two-direction phase.
+    const cap=w.map.blocks.filter(b=>b.type!=='void').length*4;
+    const tlR=this.inst(B.tl_red,this.lam,cap),tlG=this.inst(B.tl_green,this.lam,cap);
+    const glow=(geo:THREE.BufferGeometry|null|undefined):THREE.InstancedMesh|null=>{
+      if(!geo)return null;const m=new THREE.InstancedMesh(geo,this.basic,cap);
+      m.frustumCulled=false;m.count=0;this.scene.add(m);return m;
+    };
+    const tlRg=glow(B.tl_red.glow),tlGg=glow(B.tl_green.glow);
+    this.signalSets=[{meshes:[tlR,tlRg],positions:[]},{meshes:[tlG,tlGg],positions:[]}];
+    for(const b of w.map.blocks)if(b.type!=='void')for(const [cx,cy,ry] of [[16,16,0],[BLOCK-16,16,0],[16,BLOCK-16,Math.PI],[BLOCK-16,BLOCK-16,Math.PI]] as const){
+      if(rng()<0.45)continue;
+      const group=(cx<BLOCK/2)===(cy<BLOCK/2)?0:1;
+      d.position.set(b.x+cx,0,b.y+cy);d.rotation.set(0,ry,0);d.scale.setScalar(PROPS.tl_red.scale);d.updateMatrix();
+      this.signalSets[group].positions.push(d.matrix.clone());
     }
-    for (const [m, n] of [[tlR, nr], [tlRg, nr], [tlG, ng], [tlGg, ng]] as const) if (m) { m.count = n; m.instanceMatrix.needsUpdate = true; }
+    this.updateSignals();
     // 보도 소품: 블록 가장자리를 따라
     const edge = (b: { x: number; y: number }, inset: number): { x: number; z: number; nx: number; ny: number } => {
       const side = Math.floor(rng() * 4), t = 30 + rng() * (BLOCK - 60);
@@ -91,7 +101,7 @@ export class ModelLayer {
     const placed: { x: number; z: number; r: number }[] = [];
     for (const [name, per, inset, rad] of plan) {
       const items: { x: number; z: number; ry: number }[] = [];
-      for (const b of w.map.blocks) { if (b.type === 'base') continue; let n = Math.floor(per) + (rng() < per % 1 ? 1 : 0); if (name === 'barrier' && b.type !== 'police' && b.type !== 'military') n = rng() < 0.15 ? 1 : 0; while (n-- > 0) { const e = edge(b, inset); items.push({ x: e.x, z: e.z, ry: -Math.atan2(e.ny, e.nx) + (name === 'barrier' ? Math.PI / 2 : 0) }); if (name === 'cone') for (let k = 1; k < 3; k++) items.push({ x: e.x + k * 17 * (e.ny !== 0 ? 1 : 0), z: e.z + k * 17 * (e.nx !== 0 ? 1 : 0), ry: 0 }); } }
+      for (const b of w.map.blocks) { if (b.type === 'base' || b.type === 'void') continue; let n = Math.floor(per) + (rng() < per % 1 ? 1 : 0); if (name === 'barrier' && b.type !== 'police' && b.type !== 'military') n = rng() < 0.15 ? 1 : 0; while (n-- > 0) { const e = edge(b, inset); items.push({ x: e.x, z: e.z, ry: -Math.atan2(e.ny, e.nx) + (name === 'barrier' ? Math.PI / 2 : 0) }); if (name === 'cone') for (let k = 1; k < 3; k++) items.push({ x: e.x + k * 17 * (e.ny !== 0 ? 1 : 0), z: e.z + k * 17 * (e.nx !== 0 ? 1 : 0), ry: 0 }); } }
       for (const it of items) placed.push({ x: it.x, z: it.z, r: rad });
       const m = this.inst(B[name], this.lam, items.length, false); if (!m) continue; items.forEach((it, k) => put(m, k, it.x, it.z, it.ry, PROPS[name].scale)); m.count = items.length; m.instanceMatrix.needsUpdate = true;
     }
@@ -99,7 +109,7 @@ export class ModelLayer {
     // [이름, 블록당 개수, 연석에서 중심까지의 거리] — 크기(깊이·폭)와 배율은 scale.ts 의 PROPS 에서 가져옵니다.
     const street: [string, number, number][] = [['bus_stop', 0.35, 19], ['vending', 0.5, 12], ['billboard', 0.2, 12], ['kiosk', 0.25, 18], ['planter', 0.9, 12],
       ['bollards', 0.6, 6], ['phone_booth', 0.25, 13], ['street_sign', 0.7, 11], ['parasol', 0.35, 18]];
-    for (const b of w.map.blocks) for (const [dx, dy] of corners) placed.push({ x: b.x + dx, z: b.y + dy, r: 14 }); // 가로등·신호등 자리
+    for (const b of w.map.blocks) if(b.type!=='void') for (const [dx, dy] of corners) placed.push({ x: b.x + dx, z: b.y + dy, r: 14 }); // 가로등·신호등 자리
     const free = (x: number, z: number, hx: number, hz: number, tall: boolean): boolean => {
       const gap = tall ? AWNING_OUT + 2 : 4; // 차양은 지상 약 66 부터라서 낮은 소품은 차양 아래에 들어갈 수 있습니다
       for (const s of w.map.solids) if (x + hx > s.x - gap && x - hx < s.x + s.w + gap && z + hz > s.y - gap && z - hz < s.y + s.h + gap) return false;
@@ -114,7 +124,7 @@ export class ModelLayer {
       const P = PROPS[name], hd = P.depth * P.scale / 2, hw = P.width * P.scale / 2, tall = P.height * P.scale > 60;
       const items: { x: number; z: number; ry: number }[] = [];
       for (const b of w.map.blocks) {
-        if (b.type === 'base') continue; let n = Math.floor(per) + (rng() < per % 1 ? 1 : 0);
+        if (b.type === 'base' || b.type === 'void') continue; let n = Math.floor(per) + (rng() < per % 1 ? 1 : 0);
         while (n-- > 0) for (let tries = 0; tries < 8; tries++) {
           const e = edge(b, inset), hx = e.nx !== 0 ? hd : hw, hz = e.nx !== 0 ? hw : hd; if (!free(e.x, e.z, hx, hz, tall)) continue;
           items.push({ x: e.x, z: e.z, ry: -Math.atan2(e.ny, e.nx) }); placed.push({ x: e.x, z: e.z, r: Math.max(hd, hw) }); break;
@@ -129,6 +139,17 @@ export class ModelLayer {
   }
 
   // ---------- 개별 모델 ----------
+  private updateSignals():void{
+    const phase=signalPhase(this.world.time);
+    if(phase===this.signalTick)return;this.signalTick=phase;
+    for(let i=0;i<2;i++){
+      const positions=this.signalSets[(i+phase)%2]?.positions??[];
+      for(const mesh of this.signalSets[i]?.meshes??[]){
+        if(!mesh)continue;positions.forEach((m,k)=>mesh.setMatrixAt(k,m));
+        mesh.count=positions.length;mesh.instanceMatrix.needsUpdate=true;
+      }
+    }
+  }
   makeStruct(s: Structure): THREE.Object3D | null { const t = this.models.structures[s.kind]; if (!t) return null; const g = instantiate(t, { team: fcol(s.f) }); g.scale.setScalar(10); g.position.set(s.x + s.w / 2, 0, s.y + s.h / 2); return g; }
   makeVehicle(v: Vehicle): THREE.Object3D | null {
     const t = this.models.vehicles[v.kind === 'sedan' ? CIV_CARS[v.id % CIV_CARS.length] : VEHICLE_MODEL[v.kind]]; if (!t) return null;
@@ -154,11 +175,13 @@ export class ModelLayer {
 
   // ---------- 매 프레임 ----------
   update(pb: Actor | null, third: boolean, cam: THREE.Vector3): void {
+    this.updateSignals();
     const w = this.world, d = this.d, base = this.base, torso = this.torso, m = this.m, now = performance.now() / 1000;
     for (const k of CHAR_KINDS) { const s = this.sets[k]; for (const p of [s.body, s.leg, s.shin, s.armL, s.armR]) if (p) p.n = 0; }
     const seenMech = new Set<number>();
+    const liveMech = new Set<number>();
     for (const a of w.actors) {
-      if (!a.alive || a.inVeh) continue; const dx = a.x - cam.x, dz = a.y - cam.z; if (dx * dx + dz * dz > 2600 * 2600) continue;
+      if (!a.alive || a.inVeh) continue; if(ACTORS[a.kind].mech)liveMech.add(a.id); const dx = a.x - cam.x, dz = a.y - cam.z; if (dx * dx + dz * dz > 2600 * 2600) continue;
       const def = ACTORS[a.kind];
       if (def.mech) { seenMech.add(a.id); this.syncMech(a); continue; }
       if (a === pb && !third) continue; const key = a.kind === 'civ' ? CIV_SKINS[a.id % CIV_SKINS.length] : a.kind, s = this.sets[key]; if (!s) continue;
@@ -183,15 +206,16 @@ export class ModelLayer {
       if (s.armR && s.pr) { this.joint(m, torso, s.pr.x, s.pr.y, s.pr.z, P.armR); this.put(s.armR, m, team, skin); }
     }
     for (const k of CHAR_KINDS) { const s = this.sets[k]; this.flush(s.body); this.flush(s.leg); this.flush(s.shin); this.flush(s.armL); this.flush(s.armR); }
-    for (const [id, g] of this.mechs) if (!seenMech.has(id)) { this.scene.remove(g); this.mechs.delete(id); }
+    for (const [id, g] of this.mechs) { if(!liveMech.has(id)){this.scene.remove(g);this.mechs.delete(id);}else g.visible=seenMech.has(id); }
+    for(const id of this.aim.keys())if(!w.byId.get(id)?.alive)this.aim.delete(id);
     // 크리스탈
-    let nc = 0; for (const c of w.crystals) { if (c.amount <= 0) continue; const s = 13 + 12 * c.amount / c.max; d.rotation.set(0, c.id * 1.7, 0); d.position.set(c.x, 0, c.y); d.scale.setScalar(s); d.updateMatrix(); this.crystalMesh.setMatrixAt(nc++, d.matrix); }
-    this.crystalMesh.count = 0; void nc; this.crystalMesh.instanceMatrix.needsUpdate = true;
+    // Match the fallback renderer: hidden crystal meshes need no matrix uploads.
+    this.crystalMesh.count = 0;
   }
   private syncMech(a: Actor): void {
     let g = this.mechs.get(a.id);
     if (!g) { const t = this.models.vehicles[a.kind]; if (!t) return; g = instantiate(t, { team: fcol(a.f) }); g.scale.setScalar(12); this.scene.add(g); this.mechs.set(a.id, g); }
-    g.position.set(a.x, 0, a.y); g.rotation.y = -a.ang;
+    g.visible=true; g.position.set(a.x, 0, a.y); g.rotation.y = -a.ang;
   }
 
   // ---------- 1인칭 총 ----------

@@ -12,6 +12,7 @@ import { type RaceState, type Racer } from './race';
 import { type Track } from './track';
 import { type Theme } from './maps';
 import { buildOutposts, type Outpost } from './outpost';
+import { makeFallbackCar } from './visual-car';
 
 const CAR_LEN = 4.7;
 const rnd = (a: number, b: number): number => a + Math.random() * (b - a);
@@ -108,7 +109,7 @@ class SkidMarks {
 let driverKit: CharacterKit | null = null;
 /** 공용 캐릭터 키트: 운전석 드라이버와 출발선 피트 크루에 씁니다. 없으면 차만 그립니다. */
 export function setDriverKit(k: CharacterKit | null): void { driverKit = k; }
-interface CarVis { racer: Racer; group: THREE.Group; flames: THREE.Mesh[]; shadow: THREE.Mesh; lastV: number}
+interface CarVis { racer: Racer; group: THREE.Group; flames: THREE.Mesh[]; shadow: THREE.Mesh; lastV: number; wheels: THREE.Mesh[]; brake: THREE.MeshBasicMaterial; rearGlow: THREE.MeshBasicMaterial; }
 
 export class RaceView {
   post: PostFx | null = null; readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera = new THREE.PerspectiveCamera(64, 1, 0.4, 3200);
@@ -173,21 +174,28 @@ export class RaceView {
     const shGeo = new THREE.PlaneGeometry(CAR_LEN * 1.25, 2.9); shGeo.rotateX(-Math.PI / 2);
     const shTex = canvasTex(64, 64, g => { const gr = g.createRadialGradient(32, 32, 2, 32, 32, 30); gr.addColorStop(0, 'rgba(0,0,0,.75)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); }, false);
     const shMat = new THREE.MeshBasicMaterial({ map: shTex, transparent: true, depthWrite: false, fog: false });
+    const brakeGeo = new THREE.BoxGeometry(0.045, 0.12, 0.48);
+    const glowGeo = new THREE.PlaneGeometry(1.4, 0.7).rotateX(-Math.PI / 2);
+    const glowTex = canvasTex(64, 32, g => { const gr = g.createRadialGradient(32, 16, 0, 32, 16, 16); gr.addColorStop(0, 'rgba(255,255,255,.65)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 32); }, false);
     for (const r of racers) {
       const group = new THREE.Group(); group.rotation.order = 'YXZ';
-      let body: THREE.Object3D;
+      let body: THREE.Object3D; let wheels: THREE.Mesh[] = [];
       const tpl = this.carTemplates?.[r.model];
       if (tpl) { body = instantiate(tpl, { paint: new THREE.Color(r.color).getHex(), team: new THREE.Color(r.accent).getHex() }); this.polishCar(body); }
-      else { const m = new THREE.Mesh(new THREE.BoxGeometry(CAR_LEN, 1.1, 2), new THREE.MeshLambertMaterial({ color: r.color })); m.position.y = 0.6; body = m; }
+      else { const car = makeFallbackCar(r.color, r.accent); body = car.root; wheels = car.wheels; }
       group.add(body);
+      const brake = new THREE.MeshBasicMaterial({ color: 0xff241f, toneMapped: false });
+      const rearGlow = new THREE.MeshBasicMaterial({ color: 0xff2016, map: glowTex, transparent: true, opacity: 0.15, depthWrite: false, blending: THREE.AdditiveBlending });
+      const glow = new THREE.Mesh(glowGeo, rearGlow); glow.position.set(-2.55, 0.045, 0); group.add(glow);
+      for (const s of [-1, 1]) { const lamp = new THREE.Mesh(brakeGeo, brake); lamp.position.set(-2.36, 0.53, s * 0.65); group.add(lamp); }
       const flames: THREE.Mesh[] = [];
       for (const s of [-1, 1]) {
         const f = new THREE.Mesh(flameGeo, new THREE.MeshBasicMaterial({ color: 0x66b8ff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
         f.position.set(-CAR_LEN / 2 - 0.05, 0.32, s * 0.34); f.scale.set(0.001, 1, 1); group.add(f); flames.push(f);
       }
-      const shadow = new THREE.Mesh(shGeo, shMat); this.scene.add(group, shadow); this.cars.push({ racer: r, group, flames, shadow, lastV: 0 });
+      const shadow = new THREE.Mesh(shGeo, shMat); this.scene.add(group, shadow); this.cars.push({ racer: r, group, flames, shadow, lastV: 0, wheels, brake, rearGlow });
     }
-    this.disposables.push(flameGeo, shGeo, shTex, shMat);
+    this.disposables.push(flameGeo, shGeo, shTex, shMat, brakeGeo, glowGeo, glowTex);
   }
 
   /** 타임어택 고스트: 반투명 하늘색 차 한 대(없으면 null 로 끕니다). */
@@ -285,6 +293,17 @@ export class RaceView {
       for (let h = 0; h < 2; h++) tires.push({ p: [t.x[i] - t.tz[i] * off, t.y[i] + 0.3 + h * 0.58, t.z[i] + t.tx[i] * off], ry: 0, color: Math.floor(i / 8) % 2 ? 0x1c1c20 : 0xd8d8de });
     }
     if (tires.length) this.instanced(new THREE.CylinderGeometry(0.62, 0.62, 0.55, 12), new THREE.MeshBasicMaterial({ color: 0xffffff }), tires);
+    // 방호벽 반사판과 강철 기둥: 지형 높이를 따라가며 인스턴싱으로 처리합니다.
+    const posts: Array<{ p: [number, number, number]; ry: number }> = [], reflectors: Array<{ p: [number, number, number]; ry: number; color: number }> = [];
+    const interval = this.quality === 'low' ? 10 : 5;
+    for (let i = 0; i < t.n; i += interval) for (const side of [-1, 1]) {
+      const off = side * (wl + 0.18), ry = -Math.atan2(t.tz[i], t.tx[i]);
+      posts.push({ p: [t.x[i] - t.tz[i] * off, t.y[i] + 0.65, t.z[i] + t.tx[i] * off], ry });
+      const inner = side * (wl - 0.045);
+      reflectors.push({ p: [t.x[i] - t.tz[i] * inner, t.y[i] + 0.92, t.z[i] + t.tx[i] * inner], ry, color: side < 0 ? 0xffb45c : 0xd8f4ff });
+    }
+    this.instanced(new THREE.BoxGeometry(0.18, 1.3, 0.25), new THREE.MeshStandardMaterial({ color: 0x414751, roughness: 0.65, metalness: 0.5 }), posts);
+    this.instanced(new THREE.BoxGeometry(0.48, 0.17, 0.12), new THREE.MeshBasicMaterial({ color: 0xffffff }), reflectors);
     // 부스트 패드
     const padTexBase = (): THREE.CanvasTexture => canvasTex(256, 128, g => {
       g.fillStyle = 'rgba(20,10,40,.55)'; g.fillRect(0, 0, 256, 128); g.strokeStyle = th.pad; g.lineWidth = 14; g.lineJoin = 'round';
@@ -365,9 +384,12 @@ export class RaceView {
       const col = new THREE.Color(big ? th.arch.big : (i / 50) % 2 < 1 ? th.arch.a : th.arch.b), rot = -Math.atan2(t.tz[i], t.tx[i]) + Math.PI / 2, rx = -t.tz[i], rz = t.tx[i], h = big ? 15 : 11, post = hw + 2.6;
       for (const s of [-1, 1]) parts.push(boxGeo(0.9, h, 0.9, t.x[i] + rx * post * s, t.y[i] + h / 2, t.z[i] + rz * post * s, rot, col));
       parts.push(boxGeo(post * 2 + 1.8, big ? 2.4 : 0.8, 0.9, t.x[i], t.y[i] + h, t.z[i], rot, col));
+      const steel = new THREE.Color(0x424957);
+      for (const s of [-1, 1]) { const x = t.x[i] + rx * post * s, z = t.z[i] + rz * post * s; parts.push(boxGeo(1.8, 0.35, 1.8, x, t.y[i] + 0.175, z, rot, steel)); parts.push(boxGeo(1.1, 0.24, 1.05, x, t.y[i] + h - 1.8, z, rot, steel)); }
+      if (!low) for (let j = -2; j <= 2; j++) parts.push(boxGeo(0.24, 0.32, 1.12, t.x[i] + rx * j * post / 3, t.y[i] + h - (big ? 1.12 : 0.38), t.z[i] + rz * j * post / 3, rot, steel));
     };
     archAt(0, true); const arches = low ? Math.ceil(th.arch.count / 2) : th.arch.count; for (let k = 1; k < arches; k++) { const i = Math.round((k / arches) * t.n) % t.n; if (!t.pads.some(p => Math.abs(p - i) < 6) && Math.min(i, t.n - i) > 12) archAt(i, false); }
-    const archMat = new THREE.MeshBasicMaterial({ vertexColors: true }); this.scene.add(new THREE.Mesh(mergeGeometries(parts), archMat)); parts.forEach(p => p.dispose());
+    const archMat = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.3, roughness: 0.5 }); const archGeo = mergeGeometries(parts); this.scene.add(new THREE.Mesh(archGeo, archMat)); parts.forEach(p => p.dispose());
     // START 배너
     const bn = th.banner, banner = canvasTex(512, 96, g => { g.fillStyle = bn.bg; g.fillRect(0, 0, 512, 96); g.fillStyle = bn.fg; g.font = '900 64px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('SPEED RUSH', 256, 52); g.fillStyle = bn.accent; g.fillRect(0, 0, 512, 6); g.fillRect(0, 90, 512, 6); }, false);
     const bm = new THREE.Mesh(new THREE.PlaneGeometry(hw * 2 + 3, 2.2), new THREE.MeshBasicMaterial({ map: banner, side: THREE.DoubleSide })); bm.position.set(t.x[0], t.y[0] + 15, t.z[0] + 0.01); bm.rotation.y = -Math.atan2(t.tz[0], t.tx[0]) + Math.PI / 2; this.scene.add(bm); this.disposables.push(bm.geometry, banner);
@@ -488,6 +510,10 @@ export class RaceView {
       const c = v.racer.car, sample = t.n > 0 ? ((c.idx % t.n) + t.n) % t.n : 0, pitchRoad = t.pitch[sample] || 0, accel = (c.vf - v.lastV) / Math.max(dt, 1e-4); v.lastV = c.vf;
       const roll = Math.max(-0.09, Math.min(0.09, -c.yawRate * c.vf * 0.0028)) + c.slip * -0.08, pitch = pitchRoad - Math.max(-0.04, Math.min(0.04, accel * 0.0012));
       const pose = carEuler(roll, c.h, pitch);
+      const braking = c.vf > 2 && accel < -5;
+      v.brake.color.setRGB(braking ? 3.1 : 0.9, braking ? 0.12 : 0.035, 0.025);
+      v.rearGlow.opacity += ((braking ? 0.7 : 0.12) - v.rearGlow.opacity) * Math.min(1, dt * 12);
+      for (const wheel of v.wheels) wheel.rotation.z -= c.vf * dt / 0.37;
       v.group.position.set(c.x, c.y + 0.02, c.z); v.group.rotation.set(pose.x, pose.y, pose.z, pose.order); v.shadow.position.set(c.x, c.y + 0.05, c.z); v.shadow.rotation.y = -c.h;
       const fl = boosting(c), len = fl ? 1.0 + Math.sin(this.time * 90 + v.racer.id) * 0.25 + Math.min(0.9, speed / 90) : 0.001;
       for (const f of v.flames) { f.scale.x += (len - f.scale.x) * Math.min(1, dt * 20); f.visible = fl || f.scale.x > 0.08; (f.material as THREE.MeshBasicMaterial).color.setHex(v.racer.player ? 0x6ec6ff : 0xffa14a); }

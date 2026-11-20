@@ -9,7 +9,7 @@ import { readTycoonSummary } from './tycoon/core/save';
 import { STAGE_NAMES } from './tycoon/core/data';
 import { CHAT_ENABLED, PVP_ENABLED } from './net/config';
 
-type GameId = 'city' | 'race' | 'rts' | 'shooter' | 'outlaw' | 'tycoon' | 'room-tone';
+import { gameLoaders, type GameId } from './game-launchers';
 
 interface Entry {
   id: GameId;
@@ -227,6 +227,8 @@ async function launch(id: GameId): Promise<void> {
     return;
   }
   const navigation = ++generation;
+  unsubscribeAccount?.();
+  unsubscribeAccount = undefined;
   const buttons = app.querySelectorAll<HTMLButtonElement>('.tile');
   const notice = app.querySelector<HTMLElement>('#home-notice');
   const label = app.querySelector<HTMLElement>(`#start-${id} .tile-cta`);
@@ -235,43 +237,15 @@ async function launch(id: GameId): Promise<void> {
   if (label) label.textContent = '불러오는 중…';
   if (notice) notice.textContent = '';
   // 일시적인 다운로드 오류에는 재시도하고, 계속 실패하면 메뉴로 복귀합니다.
-  const loading = showLoading(id === 'city' ? 'LAST CITY' : id === 'rts' ? 'FRONTLINE' : id === 'shooter' ? 'ZERO ZONE' : id === 'outlaw' ? 'OUTLAW CITY' : id === 'tycoon' ? 'HUSTLE' : 'SPEED RUSH');
+  const loading = showLoading(ENTRIES.find(entry => entry.id === id)?.name ?? 'WALDO');
   loading.progress(null, '게임을 불러오는 중');
   const cancelled = (): boolean => generation !== navigation;
   const fetchGame = <T,>(load: () => Promise<T>): Promise<T> => retry(load, { cancelled, maxAttempts: 4, onRetry: n => loading.note(retryNote(n)) });
   try {
-    if (id === 'city') {
-      const { openCity } = await fetchGame(() => import('./city/game'));
-      if (cancelled()) { loading.close(); return; }
-      app.hidden = true;
-      openCity(renderMenu, { loading });
-    } else if (id === 'rts') {
-      const { openRts } = await fetchGame(() => import('./rts/game'));
-      if (cancelled()) { loading.close(); return; }
-      app.hidden = true;
-      openRts(renderMenu, { loading });
-    } else if (id === 'shooter') {
-      const { openShooter } = await fetchGame(() => import('./shooter/game'));
-      if (cancelled()) { loading.close(); return; }
-      app.hidden = true;
-      openShooter(renderMenu, { loading });
-    } else if (id === 'outlaw') {
-      const { openOutlaw } = await fetchGame(() => import('./outlaw/game'));
-      if (cancelled()) { loading.close(); return; }
-      app.hidden = true;
-      openOutlaw(renderMenu, { loading });
-    } else if (id === 'tycoon') {
-      const { openTycoon } = await fetchGame(() => import('./tycoon/game'));
-      if (cancelled()) { loading.close(); return; }
-      app.hidden = true;
-      openTycoon(renderMenu, { loading });
-    } else {
-      const { openRace } = await fetchGame(() => import('./race/game'));
-      if (cancelled()) { loading.close(); return; }
-      app.hidden = true;
-      openRace(renderMenu);
-      loading.close();
-    }
+    const start = await fetchGame(gameLoaders[id]);
+    if (cancelled()) { loading.close(); return; }
+    app.hidden = true;
+    start(renderMenu, loading);
   } catch {
     loading.close();
     if (cancelled()) return;

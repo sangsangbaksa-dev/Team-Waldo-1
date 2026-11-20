@@ -42,6 +42,8 @@ export class WetStreet {
     this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(SIZE, SIZE), this.mat); this.mesh.rotation.x = -Math.PI / 2; this.mesh.position.set(SIZE / 2, 0.35, SIZE / 2); this.mesh.renderOrder = 1; this.mesh.name = 'wetstreet';
   }
 
+  dispose(): void { this.mesh.removeFromParent(); this.mesh.geometry.dispose(); this.mat.alphaMap?.dispose(); this.mat.dispose(); this.rt?.dispose(); this.rt = null; this.cube = null; }
+
   /** 분위기에 맞춰 젖은 정도·반사 세기를 바꾸고, 고화질이면 주변 도시를 몇 초마다 다시 굽는다. */
   update(dt: number, atm: Atmosphere, cam: THREE.Vector3, renderer: THREE.WebGLRenderer, scene: THREE.Scene, hide: THREE.Object3D[]): void {
     const wet = atm.wet; this.mesh.visible = wet > 0.04;
@@ -50,7 +52,7 @@ export class WetStreet {
     if (!this.cube || !this.mesh.visible) return;
     this.since += dt; if (this.since < 1.3) return; this.since = 0;
     const vis = hide.map(o => o.visible); this.mesh.visible = false; hide.forEach(o => { o.visible = false; });
-    this.cube.position.set(cam.x, Math.max(14, cam.y * 0.6), cam.z); this.cube.update(renderer, scene);
-    hide.forEach((o, i) => { o.visible = vis[i]; }); this.mesh.visible = true;
+    try { this.cube.position.set(cam.x, Math.max(14, cam.y * 0.6), cam.z); this.cube.update(renderer, scene); }
+    finally { hide.forEach((o, i) => { o.visible = vis[i]; }); this.mesh.visible = true; }
   }
 }

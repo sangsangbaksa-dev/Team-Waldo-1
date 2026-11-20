@@ -574,7 +574,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
 
   function isEnemyAhead(cy: number): boolean {
     const s = sim!, p = s.player; const ey = s.eyeY(p), dir = camera.getWorldDirection(cameraDir);
-    for (const q2 of s.peds) { if (!q2.alive || q2.id === PLAYER_ID || !s.hostile(p.team, q2.team)) continue; const dx = q2.x - camera.position.x, dz = q2.z - camera.position.z, dy = q2.y + 1.2 - camera.position.y, d = Math.hypot(dx, dz, dy); if (d > 70 || d < 2) continue; if ((dx * dir.x + dy * dir.y + dz * dir.z) / d > 0.9945) return s.canSee(p.x, p.z, q2.x, q2.z, ey - 0.1); }
+    for (const q2 of s.peds) { if (!q2.alive || q2.id === PLAYER_ID || !s.hostile(p.team, q2.team)) continue; const dx = q2.x - camera.position.x, dz = q2.z - camera.position.z, dy = q2.y + 1.2 - camera.position.y, d = Math.hypot(dx, dz, dy); if (d > 70 || d < 2) continue; if ((dx * dir.x + dy * dir.y + dz * dir.z) / d > 0.9945 && s.canSee(p.x, p.z, q2.x, q2.z, ey - 0.1)) return true; }
     void cy; return false;
   }
 

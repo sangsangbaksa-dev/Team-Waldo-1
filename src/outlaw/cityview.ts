@@ -356,7 +356,8 @@ export class CityView {
   }
   dispose(): void {
     if (this.disposed) return; this.disposed = true; const geometries = new Set<THREE.BufferGeometry>();
-    this.root.traverse(o => { if (o instanceof THREE.Mesh) { geometries.add(o.geometry); if (o instanceof THREE.InstancedMesh) o.dispose(); } });
+    this.root.traverse(o => { if (o instanceof THREE.Mesh || o instanceof THREE.LineSegments) { geometries.add(o.geometry); if (o instanceof THREE.InstancedMesh) o.dispose(); } });
+    this.materials.add(this.bulbs); this.materials.add(this.glow);
     for (const g of geometries) g.dispose(); for (const m of this.materials) m.dispose(); for (const t of this.textures) t.dispose();
     this.sun.shadow.dispose(); this.moon.shadow.dispose(); this.root.removeFromParent(); this.root.clear();
     if (this.scene.fog === this.fog) this.scene.fog = this.oldFog;

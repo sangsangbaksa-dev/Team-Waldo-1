@@ -41,7 +41,7 @@ export class Atmosphere {
   private dome: THREE.Mesh; private skyU: Record<string, THREE.IUniform>;
   private rain: THREE.LineSegments; private rainU: Record<string, THREE.IUniform>;
   private fog = new THREE.FogExp2(0x9fb6cc, 0.003);
-  private env: THREE.Texture | null = null; private pmrem: THREE.PMREMGenerator;
+  private env: THREE.WebGLRenderTarget | null = null; private pmrem: THREE.PMREMGenerator;
   private time = 0; private rainLevel = 0; private flash = 0; private nextFlash = 8;
   state: SkyState = { daylight: 1, wet: 0, night: 0, hour: 12 };
   /** 이번 날에 비가 오는가(날짜로 결정). */
@@ -66,7 +66,7 @@ export class Atmosphere {
   private buildEnv(): void {
     const s = new THREE.Scene(), g = new THREE.SphereGeometry(50, 32, 16);
     const m = new THREE.ShaderMaterial({ side: THREE.BackSide, vertexShader: 'varying vec3 v; void main(){ v = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }', fragmentShader: 'varying vec3 v; void main(){ float h = normalize(v).y; vec3 c = mix(vec3(0.28,0.3,0.34), vec3(0.62,0.74,0.9), smoothstep(-0.1, 0.9, h)); c += vec3(1.0,0.7,0.4) * smoothstep(0.55, 0.0, abs(h - 0.08)) * 0.5; gl_FragColor = vec4(c, 1.); }' });
-    s.add(new THREE.Mesh(g, m)); this.env = this.pmrem.fromScene(s, 0.04).texture; this.scene.environment = this.env;
+    s.add(new THREE.Mesh(g, m)); this.env = this.pmrem.fromScene(s, 0.04); this.scene.environment = this.env.texture; g.dispose(); m.dispose();
   }
   /** 매 프레임: 시계·날짜·플레이어 위치로 하늘/조명/날씨를 갱신하고 돌려줍니다. */
   update(dt: number, camera: THREE.Camera, focus: THREE.Vector3, minutes: number, day: number): SkyState {
@@ -104,7 +104,7 @@ export class Atmosphere {
   /** 렌더러 노출(밤엔 살짝 올려 어둠이 답답하지 않게). */
   exposure(): number { return lerp(0.95, 1.15, this.state.night); }
   dispose(): void {
-    this.scene.remove(this.dome, this.rain, this.sun, this.moon, this.hemi); this.dome.geometry.dispose(); (this.dome.material as THREE.Material).dispose(); this.rain.geometry.dispose(); (this.rain.material as THREE.Material).dispose();
+    this.scene.remove(this.dome, this.rain, this.sun, this.sun.target, this.moon, this.hemi); this.sun.shadow.dispose(); this.dome.geometry.dispose(); (this.dome.material as THREE.Material).dispose(); this.rain.geometry.dispose(); (this.rain.material as THREE.Material).dispose();
     this.env?.dispose(); this.pmrem.dispose(); this.scene.environment = null;
   }
 }

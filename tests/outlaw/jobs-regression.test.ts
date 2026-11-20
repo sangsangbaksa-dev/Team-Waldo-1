@@ -41,11 +41,22 @@ describe('Outlaw job regression', () => {
   });
   it('blocks firearm selection before shooting in the arena', () => {
     const sim = new Sim(7), p = sim.player;
-    sim.job.active = 'fight';
+    const arena = sim.map.pois.find(q => q.kind === 'arena')!; p.x = arena.x; p.z = arena.z; sim.cash = 1000;
+    expect(startJob(sim, 'fight')).toBe('');
     const slot = WEAPON_ORDER.indexOf('pistol'), gun = p.guns[slot]!;
     const mag = gun.mag; p.cur = slot; p.cd = 0;
     sim.step(1 / 60, { ...blankPedInput(), slot, fire: true }, blankCarInput());
     expect(p.cur).toBe(0);
     expect(gun.mag).toBe(mag);
   });
+});
+
+it('ambulance patient loses health only once for each damage amount', () => {
+  const sim = new Sim(7);
+  expect(startJob(sim, 'paramedic')).toBe('');
+  const car = sim.vehicle(sim.job.ids.car)!;
+  sim.job.stage = 1; sim.job.data.carHp = car.hp;
+  car.hp -= car.maxHp * 0.1; car.crashT = 0.22;
+  for (let i = 0; i < 60; i++) stepJobs(sim, 1 / 60);
+  expect(sim.job.data.hp).toBeCloseTo(84.35, 5);
 });

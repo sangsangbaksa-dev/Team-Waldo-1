@@ -287,10 +287,11 @@ export class CityView {
 
   // ---------- 구획 짓기 ----------
   private clearBlock(v: BlockView): void {
-    this.construction.delete(v); v.crane = null;
+    this.construction.delete(v);
+    if (v.crane) { const mats = new Set<THREE.Material>(); v.crane.traverse(o => { if (o instanceof THREE.Mesh) for (const m of Array.isArray(o.material) ? o.material : [o.material]) mats.add(m); }); for (const m of mats) m.dispose(); }
+    v.crane = null;
     for (const g of v.disposables) g.dispose(); v.disposables = [];
     v.group.clear(); v.bld = new THREE.Group();
-    for (const [id, b] of this.beacons) if (b.lot.block && false) void id;
   }
   private addMesh(v: BlockView, parent: THREE.Object3D, gb: GeoBuilder, mat: THREE.Material, cast = true): void {
     const g = gb.build(); if (!g) return; v.disposables.push(g);
@@ -486,9 +487,14 @@ export class CityView {
 
   dispose(): void {
     if (this.disposed) return; this.disposed = true;
-    this.group.traverse(o => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); const mat = m.material as THREE.Material | THREE.Material[] | undefined; if (mat) for (const x of Array.isArray(mat) ? mat : [mat]) { const t = x as THREE.MeshStandardMaterial; t.map?.dispose(); (t as THREE.MeshStandardMaterial).emissiveMap?.dispose(); x.dispose(); } });
-    for (const v of this.views.values()) for (const g of v.disposables) g.dispose();
-    this.ringTex.dispose();
+    const geometries = new Set<THREE.BufferGeometry>(), materials = new Set<THREE.Material>([...Object.values(this.facade), this.roofMat, this.detailMat, this.glowMat, this.walkMat, this.dirtMat, this.grassMat, this.roadMat, ...this.signMats.values()]);
+    if (this.constructionSign) materials.add(this.constructionSign);
+    const textures = new Set<THREE.Texture>([this.ringTex]);
+    this.group.traverse(o => { if (o instanceof THREE.Mesh) { geometries.add(o.geometry); for (const m of Array.isArray(o.material) ? o.material : [o.material]) materials.add(m); if (o instanceof THREE.InstancedMesh) o.dispose(); } });
+    for (const v of this.views.values()) for (const g of v.disposables) geometries.add(g);
+    for (const m of materials) { const t = m as THREE.MeshStandardMaterial; for (const tex of [t.map, t.emissiveMap, t.roughnessMap]) if (tex) textures.add(tex); m.dispose(); }
+    for (const g of geometries) g.dispose(); for (const t of textures) t.dispose();
+    this.group.removeFromParent(); this.group.clear(); this.views.clear(); this.signMats.clear(); this.beacons.clear(); this.construction.clear();
   }
 }
 

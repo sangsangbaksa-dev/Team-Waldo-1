@@ -134,7 +134,6 @@ export function endDay(g: GameData, emit: Emit): void {
   }
   g.day++;
   g.minute = 0;
-  emit({ type: 'day', text: `${report.day}일차 정산: 순이익 ${fmt(report.profit)}`, report });
   // 해외 점유율: 정복 전에는 현지 경쟁으로 조금씩 깎인다
   for (const r of REGIONS) {
     const s = g.regions[r.id] ?? 0;
@@ -142,6 +141,8 @@ export function endDay(g: GameData, emit: Emit): void {
   }
   tickEvents(g, emit);
   rivalsExpand(g, emit);
+  // 구독자가 여기서 저장하므로 당일 모든 변경을 끝낸 뒤 알린다.
+  emit({ type: 'day', text: `${report.day}일차 정산: 순이익 ${fmt(report.profit)}`, report });
 }
 
 function tickEvents(g: GameData, emit: Emit): void {

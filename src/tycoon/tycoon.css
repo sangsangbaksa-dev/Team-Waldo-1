@@ -171,3 +171,10 @@
 .ty-panel{max-height:min(100%,760px);overscroll-behavior:contain;scrollbar-width:thin;touch-action:pan-y}
 .ty-root button:focus-visible{outline:2px solid #ffcf5a;outline-offset:3px}
 @media(max-height:480px){.ty-titlebox h1{font-size:clamp(44px,10vh,80px)}.ty-titlebox .keys{margin-top:10px}.ty-titlebox .sub{margin-bottom:10px}}
+
+/* 운영 브리핑: 작은 화면에서도 읽기 쉬운 2열 KPI */
+.ty-ops { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px; }
+.ty-ops > div { display:flex;flex-direction:column;gap:4px;padding:10px 12px;border:1px solid var(--line);background:rgba(255,255,255,.045);border-radius:10px; }
+.ty-ops small { color:var(--mute);font-size:11px; }
+.ty-ops b { font-size:18px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere; }
+.ty-stock-alert { margin:8px 0 0;color:var(--gold);font-size:12px;line-height:1.5; }

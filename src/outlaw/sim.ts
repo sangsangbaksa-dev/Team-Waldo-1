@@ -277,6 +277,10 @@ export class Sim {
   private updateGun(p: Ped, dt: number): void {
     p.cd = Math.max(0, p.cd - dt); p.kick = Math.max(0, p.kick - dt * 7); p.muzzle = Math.max(0, p.muzzle - dt); p.hurt = Math.max(0, p.hurt - dt); p.punchT = Math.max(0, p.punchT - dt);
     const inp = p.input; p.aiming = inp.aim;
+    if (p.id === PLAYER_ID && this.job.active === 'fight') {
+      if (inp.slot >= 0 && !WEAPONS[p.guns[inp.slot]?.id ?? 'fist'].melee) inp.slot = -1;
+      if (p.guns[p.cur] && !WEAPONS[p.guns[p.cur]!.id].melee) { p.cur = 0; p.reload = 0; }
+    }
     if (inp.slot >= 0 && inp.slot < p.guns.length && p.guns[inp.slot] && inp.slot !== p.cur) { p.cur = inp.slot; p.reload = 0; p.cd = Math.max(p.cd, 0.3); inp.slot = -1; }
     const g = p.guns[p.cur]; if (!g) return; const def = WEAPONS[g.id];
     if (p.reload > 0) { p.reload -= dt; if (p.reload <= 0) { p.reload = 0; const n = Math.min(def.mag - g.mag, g.reserve); g.mag += n; g.reserve -= n; } }

@@ -1,5 +1,5 @@
 // TYCOON — 화면 조각(HTML 문자열). 이벤트는 game.ts 가 위임 방식으로 붙입니다.
-import { DISTRICTS, STAGES, STAGE_NAMES } from '../core/data';
+import { CLOSE_HOUR, DISTRICTS, OPEN_HOUR, STAGES, STAGE_NAMES } from '../core/data';
 import { formatMoney } from '../core';
 import type { ActionDef, DayReport, LotView, ShopView, SpotDef, Stage, TycoonCore, TycoonState } from '../core/types';
 
@@ -13,10 +13,14 @@ export function ladderHtml(stage: Stage): string {
   return `<ol class="ty-ladder" aria-label="단계">${STAGES.map((s, i) => `<li class="${i < cur ? 'done' : i === cur ? 'now' : ''}" title="${STAGE_NAMES[s]}"><i></i></li>`).join('')}</ol>`;
 }
 
-function shopHtml(s: ShopView): string {
+function shopHtml(s: ShopView, minutes: number): string {
+  const factory = s.kind === 'factory';
+  const low = !factory && s.stockCap > 0 && s.stock / s.stockCap <= 0.3;
+  const open = minutes >= OPEN_HOUR * 60 && minutes < CLOSE_HOUR * 60;
+  const status = factory ? '납품 운영' : s.serving ? '영업 중' : !open ? '영업시간 종료' : s.stock <= 0 ? '재고 소진' : '응대 인력 필요';
   return `<div class="ty-shop">
-    <div class="ty-shop-head"><b>${esc(s.name)}</b><span>${esc(s.kindName)} · Lv${s.level}/${s.maxLevel}</span><em class="${s.serving ? 'on' : 'off'}">${s.serving ? '영업 중' : '영업 안 함'}</em></div>
-    <div class="ty-kv"><span>재고</span><b>${s.stock}/${s.stockCap}</b>${bar(s.stockCap ? s.stock / s.stockCap : 0)}</div>
+    <div class="ty-shop-head"><b>${esc(s.name)}</b><span>${esc(s.kindName)} · Lv${s.level}/${s.maxLevel}</span><em class="${s.serving || factory ? 'on' : 'off'}">${status}</em></div>
+    ${factory ? '<p class="ty-none">공장은 재료 원가를 낮추고 매일 자정에 납품 수익을 냅니다.</p>' : `<div class="ty-kv"><span>재고${low ? ' · 부족' : ''}</span><b>${s.stock}/${s.stockCap}</b>${bar(s.stockCap ? s.stock / s.stockCap : 0, low ? 'gold' : '')}</div>`}
     <div class="ty-kv"><span>평점</span><b>${s.rating}</b>${bar(s.rating / 100, 'gold')}</div>
     <div class="ty-chips"><span>오늘 매출 ${formatMoney(s.todayRevenue)}</span><span>손님 ${s.todayCustomers}명</span><span>놓침 ${s.todayLost}명</span><span>일 순이익 ${formatMoney(s.profitPerDay)}</span><span>직원 ${s.staff.length}명</span><span>가격 ×${s.priceMult.toFixed(2)}</span></div>
   </div>`;
@@ -33,7 +37,7 @@ export function spotPanelHtml(core: TycoonCore, spotId: string, locked: boolean)
   const lot = spot.kind === 'lot' ? spot as LotView : null, d = DISTRICTS[spot.district];
   const status = lot ? (lot.owner === 'player' ? '내 가게' : lot.owner === 'rival' ? `라이벌 · ${esc(lot.rival?.rivalName ?? '')}` : `분양 중 · ${formatMoney(lot.price)}`) : esc(KIND_LABEL[spot.kind] ?? '');
   const acts = locked ? [] : core.actionsAt(spotId);
-  const body = lot?.owner === 'player' && lot.shop ? shopHtml(lot.shop)
+  const body = lot?.owner === 'player' && lot.shop ? shopHtml(lot.shop, core.state.minutes)
     : lot?.owner === 'rival' && lot.rival ? `<div class="ty-rivalbox" style="--c:${esc(lot.rival.color)}"><b>${esc(lot.rival.rivalName)}</b><span>${esc(lot.rival.kindName)} Lv${lot.rival.level}</span></div>`
     : lot ? `<div class="ty-chips"><span>부지 ${lot.size}</span><span>부지 가격 ${formatMoney(lot.price)}</span></div>` : '';
   const minStage = STAGE_NAMES[spot.minStage];
@@ -55,10 +59,15 @@ function reportHtml(r: DayReport): string {
 /** 현황판: 자산·목표·가게·라이벌·해외·이벤트. */
 export function statusHtml(s: TycoonState): string {
   const goal = s.goal;
+  const retail = s.owned.filter(shop => shop.kind !== 'factory');
+  const lowStock = retail.filter(shop => shop.stockCap > 0 && shop.stock / shop.stockCap <= 0.3);
+  const revenue = s.owned.reduce((n, shop) => n + shop.todayRevenue, 0);
+  const yesterday = s.owned.reduce((n, shop) => n + shop.profitPerDay, 0);
   return `<div class="ty-panel wide" role="dialog" aria-label="현황">
     <header><span class="ico">📊</span><div><h2>${esc(s.stageName)}</h2><p>${s.day}일차 · 순자산 ${formatMoney(s.netWorth)}${s.debt ? ` · 빚 ${formatMoney(s.debt)}` : ''}</p></div><button type="button" class="ty-x" data-close aria-label="닫기">✕</button></header>
     <section><h3>다음 목표 — ${esc(goal.label)}</h3>${bar(goal.progress, 'gold')}<ul class="ty-steps">${goal.steps.map(st => `<li class="${st.done ? 'done' : ''}"><span>${st.done ? '✔' : '○'} ${esc(st.label)}</span>${st.done ? '' : bar(st.progress)}</li>`).join('')}</ul></section>
-    <section><h3>내 가게 (${s.owned.length})</h3>${s.owned.length ? s.owned.map(shopHtml).join('') : '<p class="ty-none">아직 가게가 없습니다. 부지를 사서 시작해 보세요.</p>'}</section>
+    <section><h3>운영 브리핑</h3><div class="ty-ops"><div><small>오늘 가게 매출</small><b>${formatMoney(revenue)}</b></div><div><small>어제 보유 가게 순이익</small><b>${formatMoney(yesterday)}</b></div><div><small>현재 영업 중</small><b>${retail.filter(shop => shop.serving).length}/${retail.length}</b></div><div><small>재고 부족</small><b>${lowStock.length}곳</b></div></div>${lowStock.length ? `<p class="ty-stock-alert">재료 보충 필요: ${lowStock.map(shop => esc(shop.name)).join(' · ')}</p>` : ''}</section>
+    <section><h3>내 가게 (${s.owned.length})</h3>${s.owned.length ? s.owned.map(shop => shopHtml(shop, s.minutes)).join('') : '<p class="ty-none">아직 가게가 없습니다. 부지를 사서 시작해 보세요.</p>'}</section>
     ${s.rivals.length ? `<section><h3>라이벌</h3><ul class="ty-list">${s.rivals.map(r => `<li style="--c:${esc(r.color)}"><i></i><b>${esc(r.name)}</b><span>${r.acquired ? '인수 완료' : `가게 ${r.shops} · 가치 ${formatMoney(r.value)}`}</span></li>`).join('')}</ul></section>` : ''}
     ${s.stageIndex >= 5 ? `<section><h3>세계 시장</h3><ul class="ty-list">${s.regions.map(r => `<li><b>${esc(r.name)}</b><span>${Math.round(r.share * 100)}%${r.conquered ? ' · 정복' : ''}</span>${bar(r.share, r.conquered ? 'gold' : '')}</li>`).join('')}</ul></section>` : ''}
     ${s.events.length ? `<section><h3>진행 중인 일</h3><ul class="ty-list">${s.events.map(e => `<li><b>${esc(e.name)}</b><span>${esc(e.desc)} (${e.daysLeft}일)</span></li>`).join('')}</ul></section>` : ''}

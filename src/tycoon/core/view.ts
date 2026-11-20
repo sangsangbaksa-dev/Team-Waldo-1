@@ -21,7 +21,7 @@ export function shopView(g: GameData, spotId: string, shop: ShopData, presence: 
     stockCap: stockCap(shop),
     rating: Math.round(shop.rating),
     staff: shop.staff.map(s => ({ ...s, wage: WAGES[s.role] })),
-    serving: shop.kind !== 'factory' && open && shop.stock >= 1 && serveCapacity(shop, presence === spotId && g.energy > 0) > 0,
+    serving: shop.kind !== 'factory' && open && shop.stock > 0 && serveCapacity(shop, presence === spotId && g.energy > 0) > 0,
     todayRevenue: Math.round(shop.today.revenue),
     todayCustomers: Math.floor(shop.today.customers),
     todayLost: Math.floor(shop.today.lost),

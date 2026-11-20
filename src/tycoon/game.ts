@@ -86,6 +86,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 모달 ----------
   const paused = (): boolean => modal !== null;
   let modalHtml = '', modalOrigin: HTMLElement | null = null;
+  let checkpointPending = false;
   function renderModal(): void {
     if (!modal) { modalEl.hidden = true; modalEl.innerHTML = ''; modalHtml = ''; return; }
     let h = '';
@@ -217,10 +218,10 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     switch (e.type) {
       case 'cash': if (e.amount > 0) { audio.coin(e.amount); player?.celebrate(); toast(`+${formatMoney(e.amount)}`, 'good', 2.2); } break;
       case 'toast': toast(e.text, e.tone ?? 'info'); if (e.tone === 'bad') audio.bad(); else if (e.tone === 'good') audio.good(); break;
-      case 'stage': banner(STAGE_NAMES[e.stage], e.text); audio.stageUp(); cineT = 0.001; syncCity(true); applyStageLook(); save(); break;
-      case 'day': audio.day(); toast(`${core.state.day}일차 아침 — 어제 순이익 ${formatMoney(e.report.profit)}`, e.report.profit >= 0 ? 'good' : 'bad', 5); save(); break;
+      case 'stage': banner(STAGE_NAMES[e.stage], e.text); audio.stageUp(); cineT = 0.001; syncCity(true); applyStageLook(); checkpointPending = true; break;
+      case 'day': audio.day(); toast(`${core.state.day}일차 아침 — 어제 순이익 ${formatMoney(e.report.profit)}`, e.report.profit >= 0 ? 'good' : 'bad', 5); checkpointPending = true; break;
       case 'task': if (e.task) toast(e.text); break;
-      case 'win': banner('세계 정복', e.text, 6000); window.setTimeout(() => { if (!closed && phase === 'play') openModal({ kind: 'win' }); }, 3200); break;
+      case 'win': checkpointPending = true; banner('세계 정복', e.text, 6000); window.setTimeout(() => { if (!closed && phase === 'play') openModal({ kind: 'win' }); }, 3200); break;
     }
   }
   function syncCity(animate: boolean): void {
@@ -258,7 +259,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     const sp = layout.spawn, s = core.state; const bench = s.presence ? city.doorOf(s.presence) : null;
     if (bench) player.teleport(bench.x + bench.fx * 2.5 + (bench.fz ? 2 : 0), bench.z + bench.fz * 2.5 + (bench.fx ? 2 : 0), Math.atan2(-bench.fx, -bench.fz)); else player.teleport(sp.x, sp.z, sp.yaw);
     if (s.day === 1 && s.minutes < 6 * 60 + 30 && s.cash <= 20) { banner('빈털터리', '벤치에서 눈을 떴습니다. 병을 주워 팔고, 일을 찾아 걸어가 보세요.', 5000); toast('E 로 장소와 상호작용 · 지도(M)로 길을 찾으세요', 'info', 6); }
-    audio.unlock(); core.tick(0.0001);
+    audio.unlock(); core.tick(0.0001); save();
   }
 
   // ---------- 루프 ----------
@@ -281,6 +282,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     const playing = phase === 'play', s = core.state;
     if (playing && !paused()) core.tick(dt);
     const st = core.state;
+    if (playing && (checkpointPending || (s.activity && !st.activity))) { checkpointPending = false; save(); }
     // 입력 → 이동
     const mv = readMove(), frozen = !playing || paused() || !!st.activity?.lockMovement;
     if (playing && !paused()) {

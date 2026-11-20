@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createCore, REGIONS } from '../../src/tycoon/core';
 import type { LotView, TycoonCore } from '../../src/tycoon/core';
 import { runBot } from '../../src/tycoon/core/bot';
+import { statusHtml } from '../../src/tycoon/ui/render';
 
 function finish(core: TycoonCore): void {
   for (let i = 0; i < 400 && core.state.activity; i++) core.tick(0.1);
@@ -238,5 +239,28 @@ describe('도매시장 재료 관리', () => {
     const action = core.actionsAt('wholesale').find(a => a.id === 'buy_cafe')!;
     expect(action.enabled).toBe(true);
     expect(action.cost).toBe(1.5);
+  });
+});
+
+describe('운영 브리핑과 자정 저장 시점', () => {
+  it('자정 이벤트 구독자는 해외 점유율 감소가 적용된 상태를 저장한다', () => {
+    const core = createCore({ seed: 3 });
+    core.data.regions.asia = 0.3;
+    core.data.minute = 1439;
+    let share = -1;
+    core.onEvent(e => { if (e.type === 'day') share = core.data.regions.asia; });
+    core.tick(1 / 6);
+    expect(share).toBeCloseTo(0.29);
+    expect(core.data.regions.asia).toBeCloseTo(share);
+  });
+  it('운영 브리핑에 재고 부족 상점과 영업 현황을 표시한다', () => {
+    const core = shopCore();
+    act(core, 'lot_m1', 'build_stall');
+    core.data.lots.lot_m1.shop!.stock = 0;
+    core.setPresence(null);
+    const html = statusHtml(core.state);
+    expect(html).toContain('운영 브리핑');
+    expect(html).toContain('재료 보충 필요');
+    expect(html).toContain('재고 소진');
   });
 });

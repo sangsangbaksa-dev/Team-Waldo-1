@@ -14,7 +14,7 @@ export const JOB_LIST: JobInfo[] = [
   { id: 'trial', name: '타임 트라이얼', giver: '레이서 나래', desc: '아무 차나 타고 표시된 관문 다섯 곳을 제한 시간 안에 통과합니다. 남은 시간이 보너스가 됩니다.', pay: '$900 + 시간 보너스', cooldown: 20 },
   { id: 'getaway', name: '도주 운전', giver: '익명의 의뢰인', desc: '은행 앞에서 일행을 태우는 순간 경찰이 붙습니다. 추격을 따돌리고 은신처까지 달리세요.', pay: '$2,200', cooldown: 90 },
   { id: 'smuggle', name: '밀수', giver: '항만 브로커', desc: '해체장의 밴을 훔쳐 먼 곳의 인수 지점에 넘깁니다. 상자를 실은 순간 경찰이 눈치챕니다.', pay: '$1,800', cooldown: 60 },
-  { id: 'cargo', name: '민감 화물', giver: '야간 운송사', desc: '깨지기 쉬운 화물을 밴에 실어 먼 하역장까지 옮깁니다. 충돌하면 화물이 상하고, 비 오는 밤엔 웃돈이 붙습니다.', pay: '$1,300 + 상태·우천 보너스', cooldown: 45 },
+  { id: 'cargo', name: '민감 화물', giver: '야간 운송사', desc: '깨지기 쉬운 화물을 밴에 실어 먼 하역장까지 옮깁니다. 충돌하면 화물이 상하고, 비 오는 밤엔 웃돈이 붙습니다.', pay: '$1,300 + 상태·우천 야간 보너스', cooldown: 45 },
   { id: 'demolish', name: '차량 파괴', giver: '보험 사기꾼', desc: '표시된 주차 차량 세 대를 부숴 흔적 없이 처리합니다. 소란이 커지면 경찰이 옵니다.', pay: '$1,500', cooldown: 60 },
   { id: 'tail', name: '미행', giver: '사설 탐정', desc: '표적 세단을 들키지 않게 따라갑니다. 너무 가까우면 들키고 너무 멀면 놓칩니다.', pay: '$1,600', cooldown: 60 },
   { id: 'fight', name: '지하 격투', giver: '격투장 주인', desc: '격투장 앞에서 3연전. 총은 쓰지 않습니다. 이길수록 상금이 커집니다.', pay: '$400 · $800 · $1,600', cooldown: 0 },
@@ -33,7 +33,13 @@ export function spotNear(sim: Sim, min: number, max: number, from: { x: number; 
   for (let i = 0; i < 60; i++) { const q = pts[Math.floor(sim.rng() * n)]!, d = dist(q, from), score = d < min ? min - d : d > max ? d - max : 0; if (score < bs) { bs = score; best = q; if (!score) break; } }
   return best;
 }
-function notice(s: Sim, what: 'start' | 'stage' | 'pass' | 'fail', text: string): void { s.emit({ t: 'activity', kind: s.job.active || 'job', what, text }); s.say(text, 3); }
+function notice(s: Sim, what: 'start' | 'stage' | 'pass' | 'fail', text: string, kind = s.job.active || 'job'): void { s.emit({ t: 'activity', kind, what, text }); s.say(text, 3); }
+// 실제 차량 체력 손실만 계산한다. 충돌 연출 타이머를 프레임마다 피해로 계산하지 않는다.
+function impactLoss(j: Sim['job'], car: Vehicle): number {
+  const previous = j.data.carHp ?? car.hp;
+  j.data.carHp = car.hp;
+  return Math.max(0, previous - car.hp) / Math.max(1, car.maxHp) * 150;
+}
 function gang(s: Sim, x: number, z: number, boss = false): Ped { return s.spawnPed(boss ? 'boss' : 'gang', x, z, { keep: true, tag: 'job', mode: 'guard', tx: x, tz: z, aux: 6 }); }
 
 export function jobBlock(sim: Sim, id: string): string {
@@ -69,6 +75,8 @@ export function startJob(sim: Sim, id: string): string {
     pts.forEach((q, i) => { j.data[`x${i}`] = q.x; j.data[`z${i}`] = q.z; }); j.timer = 55 + 5 * 38; j.data.total = 5;
   } else if (id === 'getaway') {
     const b = poi(sim, 'bank0'); j.data.x = b.x; j.data.z = b.z; j.timer = 300; j.data.wait = 0;
+    const homes = sim.map.pois.filter(q => q.kind === 'safehouse').sort((a, b2) => dist(b2, b) - dist(a, b));
+    const h = homes[0] ?? b; j.data.escapeX = h.x; j.data.escapeZ = h.z;
   } else if (id === 'smuggle') {
     const c = poi(sim, 'chop0'), lane = sim.map.lanes[nearestLane(sim.map, c.x, c.z)];
     const v = sim.spawnVehicle('van', lane?.x ?? c.x, lane?.z ?? c.z, lane?.h ?? 0, { keep: true, tag: 'job', locked: false, color: 0x44505c }); v.mode = 'parked'; v.input.brake = 1; j.ids.car = v.id;
@@ -98,14 +106,14 @@ function end(sim: Sim, pass: boolean, text: string, cash = 0): void {
   for (const v of sim.vehicles.slice()) if (v.tag === 'job') { v.keep = false; v.tag = ''; if (v.driver !== PLAYER_ID) { if (dist(v, sim.player) > 150 || id === 'repo') sim.removeVehicle(v); else { v.mode = 'parked'; v.input.brake = 1; } } }
   let msg = text; if (cash > 0) { const n = sim.earn(cash); msg += ` · +$${n.toLocaleString('en-US')}`; }
   if (pass && id !== 'fight') sim.count(id === 'contract' ? 'contracts' : id);
-  sim.job = blankJobState(); notice(sim, pass ? 'pass' : 'fail', msg);
+  sim.job = blankJobState(); notice(sim, pass ? 'pass' : 'fail', msg, id);
   const cd = cooldowns.get(sim) ?? {}; cd[id] = sim.t + (jobInfo(id)?.cooldown ?? 0); cooldowns.set(sim, cd);
   if (pass) sim.emit({ t: 'save' });
 }
 export function cancelJob(sim: Sim, reason = '일을 포기했습니다'): void { if (sim.job.active) end(sim, false, reason); }
 
 export function stepJobs(sim: Sim, dt: number): void {
-  const j = sim.job, p = sim.player; if (!j.active) return;
+  const j = sim.job, p = sim.player; if (!j.active || !Number.isFinite(dt) || dt < 0) return;
   if (!p.alive || sim.downKind) { end(sim, false, '일 실패 · 쓰러졌습니다'); return; }
   if (sim.mission.active) { end(sim, false, '일 중단 · 의뢰 시작'); return; }
   if (j.timer > 0 || j.data.timed) { j.timer = Math.max(0, j.timer - dt); if (!j.timer && j.active !== 'fight') { end(sim, false, '일 실패 · 시간 초과'); return; } }
@@ -120,18 +128,18 @@ export function stepJobs(sim: Sim, dt: number): void {
     if (!j.stage) {
       if (!pt || !pt.alive) { end(sim, false, '환자를 잃었습니다'); return; }
       j.markers = [mark(pt.x, pt.z, 6, '환자', 'item')]; j.text = p.vehicle === car.id ? `환자 옆에 구급차를 세우세요 · ${clock(j.timer)}` : `구급차에 타서 환자에게 가세요 · ${clock(j.timer)}`;
-      if (p.vehicle === car.id && dist(car, pt) < 9 && Math.abs(car.vf) < 3) { sim.removePed(pt); pt.keep = false; j.stage = 1; j.data.hp = 100; j.timer = Math.max(j.timer, 120); sim.say('환자 탑승 · 시립 병원으로!', 3); }
+      if (p.vehicle === car.id && dist(car, pt) < 9 && Math.abs(car.vf) < 3) { sim.removePed(pt); pt.keep = false; j.stage = 1; j.data.hp = 100; j.data.carHp = car.hp; j.timer = Math.max(j.timer, 120); sim.say('환자 탑승 · 시립 병원으로!', 3); }
     } else {
       const h = poi(sim, 'hosp0'); j.markers = [mark(h.x, h.z, 9, '시립 병원')]; j.text = `환자 체력 ${Math.max(0, Math.floor(j.data.hp))} · 병원까지 ${Math.floor(dist(car, h))}m · ${clock(j.timer)}`;
-      j.data.hp -= dt * 1.4 + (car.crashT > 0.05 ? 3 : 0) * (dt > 0 ? 1 : 0); if (p.vehicle !== car.id) j.text = '구급차에 다시 타세요 · 환자가 기다립니다';
+      j.data.hp -= dt * 0.65 + impactLoss(j, car); if (p.vehicle !== car.id) j.text = '구급차에 다시 타세요 · 환자가 기다립니다';
       if (j.data.hp <= 0) { end(sim, false, '환자가 위독합니다 · 이송 실패'); return; }
-      if (p.vehicle === car.id && dist(car, h) < 11) end(sim, true, '이송 성공', 450 + Math.round(j.data.hp * 4.5));
+      if (p.vehicle === car.id && dist(car, h) < 11 && Math.abs(car.vf) < 3) end(sim, true, '이송 성공', 450 + Math.round(j.data.hp * 4.5));
     }
   } else if (id === 'vigilante' || id === 'contract') {
     const en = Array.from({ length: j.data.count }, (_, i) => sim.ped(j.ids[`e${i}`])).filter((q): q is Ped => !!q && q.alive);
     j.markers = en.length ? en.map(q => mark(q.x, q.z, 3, q.kind === 'boss' ? '우두머리' : '적', 'target')) : []; j.text = `${id === 'contract' ? '우두머리와 경호원' : '갱'} ${en.length}명 남음 · ${clock(j.timer)}`;
+    if (sim.civKills > j.data.civ0!) { end(sim, false, '시민을 해쳤습니다 · 일 실패'); return; }
     if (!en.length) end(sim, true, id === 'contract' ? '현상 의뢰 완료' : '동네를 되찾았습니다', id === 'contract' ? 2500 : 700);
-    if (sim.civKills > j.data.civ0!) end(sim, false, '시민을 해쳤습니다 · 일 실패');
   } else if (id === 'repo') {
     const car = sim.vehicle(j.ids.car); if (!car || car.wrecked || !car.alive) { end(sim, false, '회수 차량이 파괴되었습니다'); return; }
     if (!j.stage) { j.markers = [mark(car.x, car.z, 5, '회수 차량', 'item')]; j.text = `표시된 차량을 훔치세요 · ${clock(j.timer)}`; if (p.vehicle === car.id) { j.stage = 1; sim.setStars(Math.max(1, wantedUp)); sim.wanted.lastX = p.x; sim.wanted.lastZ = p.z; sim.wanted.unseenT = 0; sim.say('경찰이 눈치챘다! 해체장으로!', 3); } }
@@ -147,8 +155,8 @@ export function stepJobs(sim: Sim, dt: number): void {
       j.data.wait = car && dist(car, b) < 9 && Math.abs(car.vf) < 2 ? j.data.wait! + dt : 0;
       if (j.data.wait >= 2) { j.stage = 1; sim.setStars(3); sim.wanted.lastX = p.x; sim.wanted.lastZ = p.z; sim.wanted.unseenT = 0; sim.say('일행 탑승! 경찰이 몰려온다!', 3); }
     } else {
-      const homes = sim.map.pois.filter(q => q.kind === 'safehouse').sort((a, b) => dist(a, p) - dist(b, p)), h = homes[1] ?? homes[0]!; j.markers = [mark(h.x, h.z, 8, '은신처')]; j.text = `경찰을 따돌리고 은신처로 · 수배 ${sim.wanted.stars}★ · ${clock(j.timer)}`;
-      if (!car) { j.data.out = (j.data.out ?? 0) + dt; if (j.data.out > 12) end(sim, false, '차를 버려 일행이 떠났습니다'); } else j.data.out = 0;
+      const h = { x: j.data.escapeX, z: j.data.escapeZ }; j.markers = [mark(h.x, h.z, 8, '은신처')]; j.text = `경찰을 따돌리고 은신처로 · 수배 ${sim.wanted.stars}★ · ${clock(j.timer)}`;
+      if (!car) { j.data.out = (j.data.out ?? 0) + dt; if (j.data.out > 12) { end(sim, false, '차를 버려 일행이 떠났습니다'); return; } } else j.data.out = 0;
       if (car && dist(car, h) < 9 && (sim.wanted.stars === 0 || sim.wanted.unseenT > 4)) end(sim, true, '도주 성공', 2200);
     }
   } else if (id === 'smuggle') {
@@ -157,12 +165,12 @@ export function stepJobs(sim: Sim, dt: number): void {
     else { const t = { x: j.data.x!, z: j.data.z! }; j.markers = [mark(t.x, t.z, 9, '인수 지점')]; j.text = `인수 지점까지 ${Math.floor(dist(car, t))}m · ${clock(j.timer)}`; if (p.vehicle === car.id && dist(car, t) < 10 && sim.wanted.stars <= 2) end(sim, true, '밀수 성공', 1800); }
   } else if (id === 'cargo') {
     const car = sim.vehicle(j.ids.car); if (!car || car.wrecked || !car.alive) { end(sim, false, '밴이 파괴되었습니다'); return; }
-    if (!j.stage) { j.markers = [mark(car.x, car.z, 5, '화물 밴', 'item')]; j.text = `화물 밴에 타세요 · ${clock(j.timer)}`; if (p.vehicle === car.id) { j.stage = 1; sim.say('화물 적재 완료 · 살살 모세요', 3); } }
+    if (!j.stage) { j.markers = [mark(car.x, car.z, 5, '화물 밴', 'item')]; j.text = `화물 밴에 타세요 · ${clock(j.timer)}`; if (p.vehicle === car.id) { j.stage = 1; j.data.carHp = car.hp; sim.say('화물 적재 완료 · 살살 모세요', 3); } }
     else {
-      const t = { x: j.data.x!, z: j.data.z! }; j.markers = [mark(t.x, t.z, 9, '하역장')]; if (p.vehicle === car.id) { j.data.hp -= (car.crashT > 0.05 ? 4.5 : 0) + (Math.hypot(car.vx, car.vz) > 38 ? dt * 1.2 : 0); if (sim.rain > 0.3) j.data.rain += dt; } else j.text = '밴에 다시 타세요 · 화물이 기다립니다';
+      const t = { x: j.data.x!, z: j.data.z! }; j.markers = [mark(t.x, t.z, 9, '하역장')]; j.data.hp -= impactLoss(j, car); if (p.vehicle === car.id) { j.data.hp -= Math.hypot(car.vx, car.vz) > 38 ? dt * 1.2 : 0; if (sim.rain > 0.3 && (sim.clock >= 20 || sim.clock < 6)) j.data.rain += dt; } else j.text = '밴에 다시 타세요 · 화물이 기다립니다';
       if (p.vehicle === car.id) j.text = `화물 상태 ${Math.max(0, Math.floor(j.data.hp))}% · 하역장까지 ${Math.floor(dist(car, t))}m · ${clock(j.timer)}`;
       if (j.data.hp <= 0) { end(sim, false, '화물이 모두 망가졌습니다'); return; }
-      if (p.vehicle === car.id && dist(car, t) < 10) { const wet = j.data.rain > 20 ? 400 : 0; end(sim, true, wet ? '화물 인도 · 우천 보너스' : '화물 인도', 1300 + Math.round(j.data.hp * 4) + wet); }
+      if (p.vehicle === car.id && dist(car, t) < 10) { const wet = j.data.rain > 20 ? 400 : 0; end(sim, true, wet ? '화물 인도 · 우천 야간 보너스' : '화물 인도', 1300 + Math.round(j.data.hp * 4) + wet); }
     }
   } else if (id === 'demolish') {
     const cars = Array.from({ length: j.data.total! }, (_, i) => sim.vehicle(j.ids[`c${i}`])), left = cars.filter(v => v && v.alive && !v.wrecked);
@@ -180,7 +188,7 @@ export function stepJobs(sim: Sim, dt: number): void {
   } else if (id === 'fight') {
     const x = j.data.x!, z = j.data.z!, round = j.data.round!;
     if (dist(p, { x, z }) > 45) { end(sim, false, '링을 벗어났습니다'); return; }
-    const g = p.guns[p.cur]; if (g && !(g.id === 'fist' || g.id === 'bat') && sim.frame % 60 === 0) { p.cur = 0; sim.say('격투장에서는 총을 쓸 수 없습니다', 2); }
+    const g = p.guns[p.cur]; if (g && !(g.id === 'fist' || g.id === 'bat')) { p.cur = 0; p.reload = 0; }
     const foe = sim.ped(j.ids.foe);
     if (!foe) { // 다음 상대 등장
       if (round >= 3) { end(sim, true, '챔피언 등극', 0); return; }

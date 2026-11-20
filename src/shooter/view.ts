@@ -9,6 +9,7 @@ import { bake, instantiate } from '../city/models';
 import { eyeOf, type Match, type MatchEvent, type Player } from './sim';
 import type { ShooterAssets } from './assets';
 import type { CharacterRig } from '../shared/character';
+import { makeProceduralMilitary } from '../shared/character/procedural';
 import { SOLDIER_KINDS } from './assets';
 import type { Box, Loot } from './world';
 import { buildFacadeTrim, buildProps, buildRoofs, makeDropCrate, makeFallbackGun, makePlane, makeVehicleMesh, partMesh } from './props';
@@ -39,7 +40,7 @@ function worldBox(b: Box, tile = 3.2): THREE.BufferGeometry {
   return g;
 }
 
-interface Rig { chute: THREE.Group; root: THREE.Group; ch: CharacterRig | null; flash: THREE.Sprite; aim: number; lastHurt: number; lastMuzzle: number }
+interface Rig { chute: THREE.Group; root: THREE.Group; ch: CharacterRig; flash: THREE.Sprite; aim: number; death: number; lastHurt: number; lastMuzzle: number }
 interface Fx { mesh: THREE.Mesh; life: number; max: number }
 
 export class ShooterView {
@@ -75,7 +76,7 @@ export class ShooterView {
       vertexShader: 'varying vec3 vP; varying float vH; void main(){ vP = position; vH = position.y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
       fragmentShader: `varying vec3 vP; varying float vH; uniform float t;
         void main(){ float a = atan(vP.z, vP.x); float band = 0.5 + 0.5 * sin(a * 90.0 + vH * 0.35 - t * 1.4); float rows = 0.5 + 0.5 * sin(vH * 0.9 - t * 2.2);
-          float fade = smoothstep(45.0, -5.0, vH) * 0.85 + 0.12; vec3 col = mix(vec3(0.08, 0.35, 1.0), vec3(0.45, 0.85, 1.0), band * rows); gl_FragColor = vec4(col, (0.18 + 0.2 * band * rows) * fade); }`,
+          float fade = (1.0 - smoothstep(-5.0, 45.0, vH)) * 0.85 + 0.12; vec3 col = mix(vec3(0.08, 0.35, 1.0), vec3(0.45, 0.85, 1.0), band * rows); gl_FragColor = vec4(col, (0.18 + 0.2 * band * rows) * fade); }`,
     }));
     this.zoneWall.position.y = 45; this.zoneWall.frustumCulled = false; sc.add(this.zoneWall);
     this.zoneNext = new THREE.Mesh(new THREE.RingGeometry(0.992, 1, 160), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false, fog: false }));
@@ -183,25 +184,27 @@ export class ShooterView {
 
   // ---------- 병사 ---------- (공용 캐릭터 리그: src/shared/character)
   private makeRig(p: Player): void {
-    const root = new THREE.Group(); let ch: CharacterRig | null = null;
+    const root = new THREE.Group(), kind = SOLDIER_KINDS[p.id % SOLDIER_KINDS.length],
+      look = { team: p.color, skin: p.skin, height: 0.97 + (p.id % 5) * 0.015, width: 1 };
     const s = this.assets?.kit;
-    if (s) { ch = s.create(SOLDIER_KINDS[p.id % SOLDIER_KINDS.length], { team: p.color, skin: p.skin, height: 0.97 + (p.id % 5) * 0.015, width: 1 }); root.add(ch.root); }
-    else { // 모델을 못 받았을 때의 단순한 병사
-      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 1.0, 4, 8), new THREE.MeshLambertMaterial({ color: p.color })); body.position.y = 1.0; body.castShadow = true; root.add(body);
-    }
+    const ch = s?.has(kind) ? s.create(kind, look) : makeProceduralMilitary(kind, look);
+    root.add(ch.root);
     const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, color: 0xffd98a, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false })); flash.scale.set(0.8, 0.8, 1); flash.visible = false; root.add(flash);
     const chute = new THREE.Group(), cm = this.mat(`chute${p.color}`, () => new THREE.MeshLambertMaterial({ color: p.color, side: THREE.DoubleSide, emissive: 0x111111 })), canopy = new THREE.Mesh(new THREE.SphereGeometry(3.1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2.15), cm);
     canopy.scale.set(1, 0.62, 1); canopy.position.y = 5.2; chute.add(canopy);
     const lm = this.mat('chuteline', () => new THREE.LineBasicMaterial({ color: 0xd9d4c4 })), pts: THREE.Vector3[] = [];
     for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; pts.push(new THREE.Vector3(Math.cos(a) * 2.9, 5.1, Math.sin(a) * 2.9), new THREE.Vector3(0, 1.6, 0)); }
     chute.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), lm)); chute.visible = false; root.add(chute);
-    root.visible = false; this.scene.add(root); this.rigs.set(p.id, { chute, root, ch, flash, aim: 0, lastHurt: 0, lastMuzzle: 0 });
+    root.visible = false; this.scene.add(root); this.rigs.set(p.id, { chute, root, ch, flash, aim: 0, death: 0, lastHurt: 0, lastMuzzle: 0 });
   }
   private poseRig(p: Player, dt: number, dist: number): void {
-    const rig = this.rigs.get(p.id)!, ch = rig.ch; rig.aim += (1 - rig.aim) * Math.min(1, dt * 8);
+    const rig = this.rigs.get(p.id)!, ch = rig.ch;
+    const aiming = p.alive && !p.air && p.guns[p.cur] && p.speed < 6.1 && p.reload <= 0 ? 1 : 0;
+    rig.aim += (aiming - rig.aim) * (1 - Math.exp(-dt * 8));
+    rig.death = Math.min(1, Math.max(0, (this.match.t - p.diedAt) / 0.42));
     rig.root.position.set(p.x, 0, p.z); rig.root.rotation.set(0, -p.yaw, 0);
     if (ch) {
-      const st = ch.state; st.speed = p.speed; st.walk = p.walk; st.time += dt; st.aim = rig.aim; st.crouch = p.crouch; st.dead = p.alive ? 0 : 1;
+      const st = ch.state; st.speed = p.speed; st.walk = p.walk; st.time += dt; st.aim = rig.aim; st.crouch = p.crouch; st.dead = p.alive ? 0 : rig.death;
       if (p.muzzle > 0 && rig.lastMuzzle <= 0) ch.fire(); rig.lastMuzzle = p.muzzle; st.recoil = Math.max(0, st.recoil - dt * 8);
       if (p.hurt > rig.lastHurt) ch.hurt(); rig.lastHurt = p.hurt; st.hit = Math.max(0, st.hit - dt * 2.5);
       ch.setDetail(dist > 90 ? 2 : dist > 45 ? 1 : 0);
@@ -209,7 +212,7 @@ export class ShooterView {
       if (p.air === 2) { st.aim = 0; ch.root.rotation.z = -1.25; ch.update(dt); ch.root.rotation.z = -1.25; ch.state.wave = 0; }
       else { ch.root.rotation.z = 0; ch.update(dt); }
     }
-    rig.flash.position.set(0.95, 1.32, 0.1); rig.flash.visible = p.muzzle > 0;
+    rig.flash.position.set(0.95, 1.32 - p.crouch * 0.23, 0.1); rig.flash.visible = p.alive && !p.air && p.muzzle > 0 && p.guns[p.cur]?.att.muzzle !== 'suppressor';
     rig.chute.visible = p.air === 3;
     if (p.air === 2) { rig.root.position.set(p.x, p.alt + 0.6, p.z); rig.root.rotation.set(0, -p.yaw, 0); }
     else if (p.air === 3) { rig.root.position.set(p.x, p.alt, p.z); rig.root.rotation.set(0, -p.yaw, 0); }

@@ -22,3 +22,27 @@
   .sz-root .sz-redfx { animation: none; }
   .rc-root .rc-drift { transition: none; }
 }
+
+
+/* Compact in-game dialogs: keep actions reachable in landscape and on small laptops. */
+.city-root .c-modal section, .rc-root .rc-card, .sz-root .sz-card,
+.ol-root .ol-card, .ty-root .ty-panel, .rt-root .rt-card {
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-width: thin;
+}
+:is(.rc-card,.sz-card,.ol-card,.ty-panel,.rt-card) :is(h2,h3) { overflow-wrap: anywhere; }
+:is(.rc-card,.sz-card,.ol-card,.c-modal section,.ty-panel,.rt-card) button { min-height: 40px; }
+@media (max-height: 550px) {
+  .city-root .c-modal section, .rc-root .rc-card, .sz-root .sz-card,
+  .ol-root .ol-card, .ty-root .ty-panel, .rt-root .rt-card {
+    max-height: calc(100dvh - 24px);
+    padding: 14px 16px;
+  }
+  :is(.rc-card,.sz-card,.ol-card,.ty-panel,.rt-card) h2 { font-size: clamp(22px,5vh,36px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ol-logo span,.sz-zonefx,.rc-wrong { animation: none !important; }
+}

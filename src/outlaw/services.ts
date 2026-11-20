@@ -1,7 +1,7 @@
 // OUTLAW CITY — 상점·부동산·차고·체육관·병원·보석금 같은 돈 쓰는 서비스와 수입·업적 갱신. Sim 위에서 돌아가는 순수 로직입니다.
 import type { Sim } from './sim';
 import { PLAYER_ID, VEHICLES, type VehicleKind } from './types';
-import { ACHIEVEMENTS, CAR_SHOP, OUTFIT_PRICE, PROPERTIES, PROP_CAP_MIN, propertyRate } from './life';
+import { ACHIEVEMENTS, CAR_SHOP, OUTFITS, OUTFIT_PRICE, PROPERTIES, PROP_CAP_MIN, propertyRate } from './life';
 import { nearestLane } from './world';
 
 const money = (n: number): string => '$' + Math.floor(n).toLocaleString('en-US');
@@ -65,6 +65,7 @@ export function buySnack(sim: Sim): string {
   sim.addCash(-fee); const p = sim.player; p.hp = Math.min(p.maxHp, p.hp + 25 * sim.perk.heal); return `음료 구입 · 체력 회복 · ${money(fee)}`;
 }
 export function setOutfit(sim: Sim, i: number): string {
+  if (!Number.isInteger(i) || i < -1 || i >= OUTFITS.length) return '없는 복장입니다';
   const fee = sim.price(OUTFIT_PRICE); if (sim.life.outfit === i) return '이미 입고 있습니다'; if (sim.cash < fee) return '돈이 부족합니다'; sim.addCash(-fee); sim.life.outfit = i; return `새 옷 · ${money(fee)}`;
 }
 

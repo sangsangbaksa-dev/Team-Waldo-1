@@ -53,7 +53,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
       <div class="ol-big" id="ol-big"></div>
       <div class="ol-tbtn"><button id="ol-pause" type="button" aria-label="일시정지">Ⅱ</button><button id="ol-mapbtn" type="button" aria-label="지도">M</button><button id="ol-phonebtn" type="button" aria-label="휴대폰">📱</button></div>
       <div class="ol-touchpad"><div class="ol-stick" id="ol-stick"><i></i></div>
-        <div class="ol-tfoot"><button data-act="fire" class="fire" type="button">사격</button><button data-act="aim" type="button">조준</button><button data-act="jump" type="button">점프</button><button data-act="use" type="button">타기</button><button data-act="reload" type="button">장전</button><button data-act="weapon" type="button">무기</button><button data-act="sprint" type="button">달리기</button></div>
+        <div class="ol-tfoot"><button data-act="fire" class="fire" type="button">사격</button><button data-act="aim" type="button">조준</button><button data-act="jump" type="button">점프</button><button id="ol-use-label" data-act="use" type="button">타기</button><button data-act="reload" type="button">장전</button><button data-act="weapon" type="button">무기</button><button data-act="sprint" type="button">달리기</button></div>
         <div class="ol-tcar"><button data-act="left" type="button">◀</button><button data-act="right" type="button">▶</button><button data-act="gas" class="fire" type="button">가속</button><button data-act="brake" type="button">브레이크</button><button data-act="hand" type="button">드리프트</button></div></div>
     </div>
     <div class="ol-wheel" id="ol-wheel" hidden></div>
@@ -74,6 +74,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   let phase: 'load' | 'menu' | 'trans' | 'play' = 'load';
   let paused = false, modalKind = '', locked = false, lockFail = false, transT = 0;
   let modalOrigin: HTMLElement | null = null, wheelDelta = 0, lastWheelAt = -Infinity;
+  let radarElapsed = Infinity, bigVersion = 0;
   let sim: Sim | null = null, cityView: CityView | null = null, actorView: ActorView | null = null, chase: ChaseCamera | null = null, minimap: Minimap | null = null;
   let assets: OutlawAssets | null = null, versus: Versus | null = null;
   let lobby: { close(): void } | undefined, openingLobby = false;
@@ -96,14 +97,14 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     while (toastList.length > 5) toastList.shift()!.el.remove();
   }
   function big(h: string, cls: string, ms = 2600): void {
-    const el = q('#ol-big'); el.className = 'ol-big'; void el.offsetWidth; el.className = 'ol-big on ' + cls; el.innerHTML = h;
-    window.setTimeout(() => { if (el.innerHTML === h) el.className = 'ol-big'; }, ms);
+    const el = q('#ol-big'), version = ++bigVersion; el.className = 'ol-big'; void el.offsetWidth; el.className = 'ol-big on ' + cls; el.innerHTML = h;
+    window.setTimeout(() => { if (!closed && version === bigVersion) el.className = 'ol-big'; }, ms);
   }
   function floater(text: string, cls = ''): void {
     const el = document.createElement('div'); el.className = 'ol-fl ' + cls; el.textContent = text; q('#ol-floaters').append(el); window.setTimeout(() => el.remove(), 1400);
   }
   function countUp(el: HTMLElement, to: number, prefix: string): void {
-    const t0 = performance.now(); const tick = (): void => { const k = Math.min(1, (performance.now() - t0) / 900); el.textContent = prefix + money(to * (1 - Math.pow(1 - k, 3))); if (k < 1 && !closed) requestAnimationFrame(tick); }; tick();
+    const t0 = performance.now(); const tick = (): void => { if (closed || !el.isConnected) return; const k = Math.min(1, (performance.now() - t0) / 900); el.textContent = prefix + money(to * (1 - Math.pow(1 - k, 3))); if (k < 1 && !closed) requestAnimationFrame(tick); }; tick();
   }
 
   // ---------- 모달 ----------
@@ -147,8 +148,8 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   }
   function openShop(): void {
     if (!sim) return; const p = sim.player;
-    const rows = WEAPON_ORDER.slice(1).map((id, i) => { const d = WEAPONS[id], have = !!p.guns[i + 1]; return `<button class="row" data-buy="${id}" type="button"><b>${d.name}</b><span>피해 ${d.dmg}${d.pellets > 1 ? '×' + d.pellets : ''} · 탄창 ${d.mag}</span><em>${have ? '탄약 보충 ' + money(sim!.price(Math.ceil(d.price * 0.2))) : money(sim!.price(d.price))}</em></button>`; }).join('');
-    openModal('shop', `<h2>총기점</h2><p class="cash">보유 ${money(sim.cash)}</p><div class="ol-list">${rows}<button class="row" data-armor="1" type="button"><b>방탄복</b><span>방탄 100</span><em>${money(sim.price(300))}</em></button></div><div class="ol-btns"><button data-k="resume" type="button">나가기</button></div>`);
+    const rows = WEAPON_ORDER.slice(1).map((id, i) => { const d = WEAPONS[id], have = p.guns[i + 1], full = !!have && (d.melee || have.reserve >= d.reserve), price = sim!.price(have ? Math.ceil(d.price * 0.2) : d.price); return `<button class="row" data-buy="${id}" type="button" ${full || sim!.cash < price ? 'disabled' : ''}><b>${d.name}</b><span>피해 ${d.dmg}${d.pellets > 1 ? '×' + d.pellets : ''} · ${d.melee ? '근접' : have ? '예비 탄 ' + have.reserve + '/' + d.reserve : '탄창 ' + d.mag}</span><em>${full ? (d.melee ? '보유 중' : '탄약 가득 참') : have ? '보충 ' + money(price) : money(price)}</em></button>`; }).join('');
+    openModal('shop', `<h2>총기점</h2><p class="cash">보유 ${money(sim.cash)}</p><div class="ol-list">${rows}<button class="row" data-armor="1" type="button" ${p.armor >= 100 || sim.cash < sim.price(300) ? 'disabled' : ''}><b>방탄복</b><span>현재 ${Math.ceil(p.armor)} / 100</span><em>${p.armor >= 100 ? '가득 참' : money(sim.price(300))}</em></button></div><div class="ol-btns"><button data-k="resume" type="button">나가기</button></div>`);
   }
   function openBrief(id: string): void {
     const m = MISSION_LIST.find(x => x.id === id); if (!m) return;
@@ -163,12 +164,12 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (r.kind) { const top = modalEl.querySelector('.ol-card'); const sy = top?.scrollTop ?? 0; openUi(r.kind); const nt = modalEl.querySelector('.ol-card'); if (nt) nt.scrollTop = sy; }
   }
   modalEl.addEventListener('click', e => {
-    const b = (e.target as HTMLElement).closest('button'); if (!b || !sim) return;
+    const b = (e.target as HTMLElement).closest('button'); if (!b || b.disabled || !sim) return;
     audio.unlock(); audio.play('menu_click');
     const k = b.dataset.k;
     if (b.dataset.ui) { uiClick(b.dataset); return; }
-    if (b.dataset.buy) { toast(sim.buyWeapon(b.dataset.buy as never)); openShop(); }
-    else if (b.dataset.armor) { toast(sim.buyArmor()); openShop(); }
+    if (b.dataset.buy) { toast(sim.buyWeapon(b.dataset.buy as never)); save(); openShop(); }
+    else if (b.dataset.armor) { toast(sim.buyArmor()); save(); openShop(); }
     else if (b.dataset.start) { const id = b.dataset.start; closeModal(); if (startMission(sim, id)) { audio.play('mission_start'); } }
     else if (k === 'resume') closeModal();
     else if (k === 'map') openMap();
@@ -365,7 +366,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   function interaction(): { text: string; run?: () => void } | null {
     if (!sim) return null; const p = sim.player; if (!p.alive || sim.downKind) return null;
     const poi = sim.nearPoi(p.x, p.z);
-    if (p.vehicle) { if (poi?.kind === 'paynspray') return { text: `E · 도색 & 수배 해제 (${money(sim.price(150))})`, run: () => { toast(sim!.paynspray()); audio.play('pickup'); } }; return null; }
+    if (p.vehicle) { if (poi?.kind === 'paynspray') return { text: `E · 도색 & 수배 해제 (${money(sim.price(150))})`, run: () => { toast(sim!.paynspray()); audio.play('pickup'); } }; return { text: 'E · 차량 하차' }; }
     if (poi?.kind === 'gunshop') return { text: 'E · 총기점', run: openShop };
     if (poi?.kind === 'dealer') return { text: 'E · 자동차 매장', run: () => openUi('dealer') };
     if (poi?.kind === 'casino') return { text: 'E · 카지노', run: () => openUi('casino') };
@@ -378,7 +379,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (pickpocketTarget(sim)) return { text: 'E · 소매치기', run: () => { toast(pickpocket(sim!)); audio.play('pickup'); } };
     return null;
   }
-  function useAction(): void { const it = interaction(); if (it?.run) { it.run(); audio.play('door'); } else { enterReq = true; } }
+  function useAction(): void { if (!sim?.player.alive || sim.downKind || modalKind) return; const it = interaction(); if (it?.run) { it.run(); audio.play('door'); } else { enterReq = true; } }
   function cycleRadio(): void { station = (station + 1) % 4; audio.setRadio(station); radioToast = 2.4; }
 
   // ---------- 무기 휠 ----------
@@ -440,7 +441,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
         case 'activity': { if (e.what === 'pass') { audio.play('mission_pass'); toast('✔ ' + e.text, 3.6); } else if (e.what === 'fail') { audio.play('mission_fail'); toast('✖ ' + e.text, 3.6); } else { toast(e.text, 3.4); if (e.what === 'start') audio.play('mission_start'); } break; }
         case 'busted': audio.play('busted'); break;
         case 'wasted': audio.play('wasted'); break;
-        case 'respawn': audio.play('door'); break;
+        case 'respawn': resetInput(); yaw = sim.player.yaw; pitch = 0; shakeFov = 0; chase.reset({ x: sim.player.x, y: sim.player.y, z: sim.player.z, yaw, speed: 0 }, { yaw, pitch }); audio.setRadio(0); station = 0; audio.play('door'); save(); break;
         case 'save': save(); audio.play('save'); toast('저장됨', 1.8); break;
         default: break;
       }
@@ -482,17 +483,18 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
 
   function tick(dt: number): void {
     if (!sim || !chase || !cityView || !actorView || !renderer || !minimap) return;
-    const p = sim.player, car: Vehicle | undefined = p.vehicle ? sim.vehicle(p.vehicle) : undefined;
+    const p = sim.player;
     // 시뮬레이션
     let scale = 1; if (wheelOpen) scale = 0.2; else if (sim.downKind === 'wasted') scale = 0.45;
     const playing = phase === 'play' || phase === 'trans';
     if (!paused || (versus && !versus.ended)) {
       acc += Math.min(dt, 0.1) * scale; let n = 0;
       const inp = playing && !paused && p.alive && !sim.downKind ? gather() : { p: blankPedInput(), c: blankCarInput() };
-      while (acc >= STEP && n < 6) { inp.p.enter = n === 0 && enterReq; sim.step(STEP, inp.p, inp.c); acc -= STEP; n++; if (n === 1) { enterReq = false; slotReq = -1; reloadReq = false; inp.p.slot = -1; inp.p.reload = false; } }
+      while (acc >= STEP && n < 6) { inp.p.enter = n === 0 && playing && !paused && p.alive && !sim.downKind && enterReq; sim.step(STEP, inp.p, inp.c); acc -= STEP; n++; if (n === 1) { enterReq = false; slotReq = -1; reloadReq = false; inp.p.slot = -1; inp.p.reload = false; } }
       if (n === 6) acc = 0;
       if (phase === 'menu') sim.clock = (sim.clock < TITLE_CLOCK - 0.02 || sim.clock > TITLE_CLOCK + 0.5) ? TITLE_CLOCK : sim.clock;
     }
+    const car: Vehicle | undefined = p.vehicle ? sim.vehicle(p.vehicle) : undefined;
     const events = sim.drain();
     if (versus) {
       versus.update(dt, events);
@@ -509,17 +511,17 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
       camera.position.set(cx + Math.cos(a) * r, 62 + Math.sin(t * 0.2) * 6, cz + Math.sin(a) * r); camera.lookAt(cx + Math.cos(a + 1.1) * 30, 8, cz + Math.sin(a + 1.1) * 30); if (camera.fov !== 62) { camera.fov = 62; camera.updateProjectionMatrix(); }
     } else {
       const air = !car && !p.grounded, aim = (mouse.aim || tc.aim) && !car;
-      if (!paused) chase.update(Math.min(dt, 0.05), car ? 'car' : 'foot', target, { yaw, pitch }, { aim, lookBack: !!car && keys.has('KeyC'), air });
+      if (!paused) chase.update(Math.min(dt, 0.05), car ? 'car' : 'foot', target, { yaw, pitch }, { aim, lookBack: !!car && keys.has('KeyC'), air, fovKick: shakeFov });
       if (phase === 'trans') {
-        transT += dt / 1.5; const e = transT * transT * (3 - 2 * transT); const cp = camera.position.clone(), cq = camera.quaternion.clone();
+        transT += dt / 1.5; const k = Math.min(1, transT), e = k * k * (3 - 2 * k); const cp = camera.position.clone(), cq = camera.quaternion.clone();
         camera.position.lerpVectors(orbitPos, cp, Math.min(1, e)); camera.quaternion.slerpQuaternions(orbitQuat, cq, Math.min(1, e)); if (transT >= 1) phase = 'play';
       }
-      if (shakeFov > 0.01) { camera.fov += shakeFov; camera.updateProjectionMatrix(); shakeFov *= 0.86; }
+      if (!paused) shakeFov *= Math.exp(-9 * dt);
     }
     cityView.update(dt, camera, sim.clock, sim.t, sim.rain); actorView.update(dt, camera, sim.clock);
     if (composer && bloom && activeQuality !== 'low') { const n = cityView?.night ?? 0, r = sim?.rain ?? 0; bloom.strength = .18 + n * .55 + r * .14; composer.render(dt); } else renderer.render(scene, camera);
     if (playing) hud(dt, car);
-    if (phase !== 'menu') { saveT += dt; if (saveT > 30) { saveT = 0; if (p.alive) save(); } }
+    if (playing && !paused) { saveT += dt; if (saveT > 30) { saveT = 0; if (p.alive) save(); } }
   }
 
   function camYawNow(): number { const d = new THREE.Vector3(); camera.getWorldDirection(d); return Math.atan2(d.z, d.x); }
@@ -532,9 +534,9 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     set('hpn', String(Math.ceil(Math.max(0, p.hp)))); style('hp', 'width', `${clamp(p.hp / p.maxHp, 0, 1) * 100}%`); set('arn', String(Math.ceil(p.armor))); style('ar', 'width', `${clamp(p.armor, 0, 100)}%`);
     root.classList.toggle('lowhp', p.alive && p.hp < p.maxHp * 0.3);
     const g = s.curGun(p), d = g ? WEAPONS[g.id] : WEAPONS.fist; set('wname', d.name); set('mag', d.melee ? '∞' : String(g?.mag ?? 0)); set('res', d.melee ? '' : `/ ${g?.reserve ?? 0}`);
-    html('slots', WEAPON_ORDER.map((_id, i) => `<i class="${p.guns[i] ? 'has' : ''} ${i === p.cur ? 'cur' : ''}">${i + 1}</i>`).join(''));
+    html('slots', WEAPON_ORDER.map((_id, i) => `<i class="${p.guns[i] ? 'has' : ''} ${i === p.cur ? 'cur' : ''}">${i === 10 ? "−" : (i + 1) % 10}</i>`).join(''));
     set('dname', districtName(p.x, p.z, s.map));
-    if (s.frame % 2 === 0) minimap!.draw(radar, s, cy);
+    radarElapsed += dt; if (radarElapsed >= 1 / 30) { radarElapsed = 0; minimap!.draw(radar, s, cy); }
     // 속도계
     root.classList.toggle('incar', !!car); if (car) { set('kmh', String(Math.round(Math.abs(car.vf) * 3.6))); style('dmg', 'width', `${clamp(car.hp / car.maxHp, 0, 1) * 100}%`); const spd = Math.abs(car.vf); style('lines', 'opacity', String(clamp((spd - 28) / 30, 0, 0.9))); } else style('lines', 'opacity', '0');
     if (car && !car.alive) style('lines', 'opacity', '0');
@@ -554,7 +556,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     const cross = q('#ol-cross'); const aiming = (mouse.aim || tc.aim) && !car; cross.className = 'ol-cross' + (car ? ' hide' : '') + (aiming ? ' aim' : '') + (aimedAtEnemy ? ' enemy' : '');
     hitT = Math.max(0, hitT - dt); const h = q('#ol-hit'); h.style.opacity = String(clamp(hitT / 0.28, 0, 1)); if (hitT === 0) h.classList.remove('kill');
     // 프롬프트
-    const it = (!modalKind && p.alive) ? interaction() : null; set('prompt', it?.text ?? ''); q('#ol-prompt').classList.toggle('on', !!it);
+    const it = (!modalKind && p.alive) ? interaction() : null; set('prompt', it ? (touch ? it.text.replace(/^E · /, '') : it.text) : ''); set('use-label', car ? '내리기' : it?.run ? '사용' : '타기'); q('#ol-prompt').classList.toggle('on', !!it);
     // 피격 연출
     hurtVig = Math.max(0, hurtVig - dt * 1.4); const lowPulse = p.alive && p.hp < p.maxHp * 0.3 ? 0.35 + Math.sin(performance.now() / 160) * 0.2 : 0;
     style('vig', 'opacity', String(clamp(Math.max(hurtVig, lowPulse), 0, 1)));

@@ -36,11 +36,11 @@ export class ChaseCamera {
     this.yaw = look?.yaw ?? target?.yaw ?? 0;
     this.pitch = look?.pitch ?? 0;
     this.distance = 3.2;
-    this.freeLookTime = 0;
+    this.freeLookTime = 0; this.position.set(0, 0, 0); this.lastLookYaw = this.shotYaw = this.yaw; this.lastLookPitch = this.shotPitch = this.pitch; this.fov = 70;
     this.shakePower = this.shakeTime = 0;
   }
 
-  update(dt: number, mode: 'foot' | 'car', target: Target, look: Look, opts: { aim: boolean; lookBack: boolean; air: boolean }): void {
+  update(dt: number, mode: 'foot' | 'car', target: Target, look: Look, opts: { aim: boolean; lookBack: boolean; air: boolean; fovKick?: number }): void {
     const step = clamp(dt, 0, 0.05);
     const changed = Math.abs(angleDiff(this.lastLookYaw, look.yaw)) + Math.abs(look.pitch - this.lastLookPitch) > 0.0008;
     this.lastLookYaw = look.yaw;
@@ -118,7 +118,8 @@ export class ChaseCamera {
     this.shotPitch = Math.atan2(aimY, Math.hypot(aimX, aimZ));
     if (mode === 'foot' && aim) wantedFov = 55;
     this.fov = this.smooth(this.fov, wantedFov, step, 5);
-    if (Math.abs(this.camera.fov - this.fov) > 0.01) { this.camera.fov = this.fov; this.camera.updateProjectionMatrix(); }
+    const displayedFov = this.fov + clamp(opts.fovKick ?? 0, 0, 6);
+    if (Math.abs(this.camera.fov - displayedFov) > 0.01) { this.camera.fov = displayedFov; this.camera.updateProjectionMatrix(); }
   }
 
   private smooth(a: number, b: number, dt: number, rate: number): number { return a + (b - a) * (1 - Math.exp(-rate * dt)); }

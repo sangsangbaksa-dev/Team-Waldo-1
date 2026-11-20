@@ -272,3 +272,12 @@
 @media(prefers-reduced-motion:reduce){
   .ol-root .ol-card button,.ol-root .ol-card .hero-card{transition:none;transform:none}
 }
+
+/* OUTLAW driving and equipment HUD. */
+.ol-root .ol-slots{flex-wrap:wrap;justify-content:flex-end;max-width: min(290px, 44vw);gap:3px}
+.ol-root .ol-slots i{box-sizing:border-box;flex:0 0 22px}
+.ol-root .ol-card.shop .row:disabled{opacity:.65;border-left-color:#667085}
+.ol-root .ol-card.shop .row:disabled em{color:#b6bdca}
+.ol-root .ol-card.shop .row:not(:disabled):hover span{color:#fff}
+.ol-root .ol-tfoot [data-act=use]{border-color:#3df2ff80;background:#122932d9}
+@media(max-width:640px){.ol-root .ol-mission{min-width:0;max-width:min(62vw,340px);padding:7px 10px}.ol-root .ol-mission b{font-size:15px;letter-spacing:.03em}.ol-root .ol-mission p{font-size:12px}.ol-root .ol-slots i{flex-basis:18px;height:18px;line-height:17px;font-size:10px}}

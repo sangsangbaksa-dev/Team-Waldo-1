@@ -208,3 +208,9 @@
 .c-chatin{pointer-events:auto;left:12px;bottom:176px;width:min(360px,70vw);z-index:4;margin:0}
 .c-chatin input{width:100%;box-sizing:border-box;background:#0b1214f2;color:#fff;border:1px solid #6fd3ff;border-radius:8px;padding:7px 10px;font:inherit;font-size:13px}
 .touch .c-chat{bottom:170px}.touch .c-chatin{bottom:136px}
+
+/* Compact viewport and keyboard accessibility. */
+.c-modal{padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));align-items:safe center;overscroll-behavior:contain;touch-action:pan-y}
+.c-modal section{max-height:100%;overflow:auto;overscroll-behavior:contain;touch-action:pan-y;scrollbar-width:thin}
+.c-panel{overscroll-behavior:contain}
+.c-modal button:focus-visible{outline:2px solid #e7c58c;outline-offset:3px}

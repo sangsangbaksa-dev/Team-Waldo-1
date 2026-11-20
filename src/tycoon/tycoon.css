@@ -165,3 +165,9 @@
   .ty-prompt { bottom: 84px; font-size: 14px; }
 }
 @media (prefers-reduced-motion: reduce) { .ty-root * { animation: none !important; transition: none !important; } }
+
+/* Compact viewport and keyboard accessibility. */
+.ty-modal,.ty-title{padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));align-items:safe center;overflow:auto;overscroll-behavior:contain;touch-action:pan-y}
+.ty-panel{max-height:min(100%,760px);overscroll-behavior:contain;scrollbar-width:thin;touch-action:pan-y}
+.ty-root button:focus-visible{outline:2px solid #ffcf5a;outline-offset:3px}
+@media(max-height:480px){.ty-titlebox h1{font-size:clamp(44px,10vh,80px)}.ty-titlebox .keys{margin-top:10px}.ty-titlebox .sub{margin-bottom:10px}}

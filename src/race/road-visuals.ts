@@ -14,3 +14,8 @@ export function emissionStep(carry:number,rate:number,dt:number):{count:number;c
   const count=Math.floor(total+1e-9);
   return {count,carry:Math.max(0,total-count)};
 }
+
+/** Night and storm themes get cheap road illumination, dry daytime themes do not. */
+export function trackLightStrength(sunPower:number,rain:number|undefined):number{
+  return Math.min(0.62,Math.max(0,(1.1-sunPower)*0.8)+Math.max(0,rain??0)*0.15);
+}

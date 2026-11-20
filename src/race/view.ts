@@ -12,6 +12,8 @@ import { SLOTS, type RaceState, type Racer } from './race';
 import { brakeGlow, gridPaint, reflectorIndices } from './track-detail';
 import { sprayRate, emissionStep, wetRoadFinish } from './road-visuals';
 import { addStreetFurniture, startFurniture } from '../shared/street-furniture';
+import { RoadLightBatch } from '../shared/road-lights';
+import { trackLightStrength } from './road-visuals';
 import { type Track } from './track';
 import { type Theme } from './maps';
 import { buildOutposts, type Outpost } from './outpost';
@@ -110,6 +112,7 @@ export class RaceView {
   private rainFx = new Particles(1800, 0.32, THREE.NormalBlending, 0.55); private sparks = new Particles(420, 0.34, THREE.AdditiveBlending); private smoke = new Particles(420, 1.1, THREE.NormalBlending, 0.2); private skids = new SkidMarks(1400); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
   private camH = 0; private camInit = false; private camAnchor: ChaseAnchor = { x: 0, y: 0, z: 0, ready: false }; private fov = 64; private shake = 0; private punch = 0; private time = 0; private sun: THREE.DirectionalLight;
   private spray: Particles | null = null;
+  private roadLights: RoadLightBatch | null = null;
   private chaseLift = 0; private viewH = 1; private startLamps: THREE.Mesh[] = [];
   private disposables: Array<{ dispose(): void }> = []; private outposts: Outpost | null = null;
 
@@ -118,6 +121,7 @@ export class RaceView {
     this.renderer.setPixelRatio(renderPixelRatio(canvas.clientWidth || innerWidth, canvas.clientHeight || innerHeight, devicePixelRatio, quality));
     this.scene.fog = new THREE.Fog(theme.fog.color, theme.fog.near, theme.fog.far); this.sun = new THREE.DirectionalLight(theme.light.sun, theme.light.sunPower);
     this.buildSky(); if (quality !== 'low') this.buildCarEnv(); this.buildGround(); this.buildRoad(); this.buildProps(quality);
+    if(quality!=='low'&&trackLightStrength(theme.light.sunPower,theme.rain)>0){this.roadLights=new RoadLightBatch(this.scene,12);}
     this.scene.add(new THREE.HemisphereLight(theme.light.sky, theme.light.ground, theme.light.hemi)); this.sun.position.set(-40, 60, 90); this.scene.add(this.sun, this.sun.target);
     this.scene.add(this.skids.mesh, this.sparks.points, this.smoke.points); if (theme.rain) { this.scene.add(this.rainFx.points); this.spray = new Particles(quality === 'low' ? 160 : 420, 0.8, THREE.NormalBlending, 0.24); this.scene.add(this.spray.points); }
     const n = 220; this.streakPos = new Float32Array(n * 6); this.streakSeed = new Float32Array(n * 3);
@@ -563,6 +567,7 @@ export class RaceView {
     this.outposts?.update(this.time);
     for (const ch of this.crew) { ch.state.time += dt; ch.update(dt); }
     // 차량 배치
+    this.roadLights?.begin();
     for (const v of this.cars) {
       const c = v.racer.car, sample = t.n > 0 ? ((c.idx % t.n) + t.n) % t.n : 0, pitchRoad = t.pitch[sample] || 0, accel = (c.vf - v.lastV) / Math.max(dt, 1e-4); v.lastV = c.vf;
       v.brakeLevel = brakeGlow(v.brakeLevel, accel, dt, Math.abs(c.vf));
@@ -585,6 +590,13 @@ export class RaceView {
           this.skids.mark(v.racer.id * 2 + w, bx, c.y + 0.07, bz, Math.min(0.55, 0.22 + k * 0.4));
         } else this.skids.lift(v.racer.id * 2 + w);
       }
+      if(this.roadLights){
+        const strength=trackLightStrength(this.theme.light.sunPower,this.theme.rain),fx=Math.cos(c.h),fz=Math.sin(c.h);
+        // Small pools stay close to the local road surface, even on the hills.
+        const front=CAR_LEN/2+3.2;
+        this.roadLights.add(c.x+fx*front,c.y+Math.tan(pitchRoad)*front+0.10,c.z+fz*front,c.h,6.4,2.9,0xffebc7,strength,pitchRoad);
+        if(this.theme.rain){const back=CAR_LEN/2+1.7;this.roadLights.add(c.x-fx*back,c.y-Math.tan(pitchRoad)*back+0.12,c.z-fz*back,c.h,3.4,2.1,0xff2737,(0.12+v.brakeLevel*0.56)*this.theme.rain,pitchRoad);}
+      }
       // On wet tracks, the rear tires leave a low, directional plume of road spray.
       if (this.spray) {
         const e=emissionStep(v.sprayCarry,sprayRate(Math.abs(c.vf),this.theme.rain??0,this.quality==='low'),dt);v.sprayCarry=e.carry;
@@ -606,6 +618,7 @@ export class RaceView {
       }
       if (v.racer.player && wallHit > 0) for (let k = 0; k < 18; k++) this.sparks.emit(c.x, c.y + 0.5, c.z, rnd(-9, 9), rnd(1, 7), rnd(-9, 9), 0.5, 1, 0.8, 0.35);
     }
+    this.roadLights?.end();
     this.skids.flush(); this.sparks.update(dt, 14); this.smoke.update(dt, -1.5); this.spray?.update(dt, 5.8);
     if (this.theme.rain) {
       const cp = this.camera.position, n = Math.round(34 * this.theme.rain * Math.min(2, dt * 60));
@@ -660,6 +673,7 @@ export class RaceView {
   static intensity(race: RaceState): number { return Math.min(1.4, kmh(race.player.car) / 270 + (boosting(race.player.car) ? 0.25 : 0)); }
 
   dispose(): void {
+    this.roadLights?.dispose();this.roadLights=null;
     const seen = new Set<object>();
     const once = (d: { dispose(): void } | null | undefined): void => { if (!d || seen.has(d)) return; seen.add(d); d.dispose(); };
     this.scene.traverse(o => {

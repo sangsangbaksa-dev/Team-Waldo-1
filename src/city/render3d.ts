@@ -19,6 +19,7 @@ import { WetStreet } from './wetstreet';
 import { buildReach, clampLabelScreenPos, clampLookPitch, labelSpriteCenter } from './uiMath';
 import { wrapNear, wrapRange } from './render-math';
 import { addStreetFurniture, parkFurniture } from '../shared/street-furniture';
+import { RoadLightBatch, lightRange, nearVisual } from '../shared/road-lights';
 
 export type ViewMode = 'fp' | 'tp';
 const EYE = EYE_HEIGHT, STRUCT_H: Record<StructKind, number> = { hq: 150, barracks: 86, depot: 58, factory: 104, lab: 96, turret: 50 };
@@ -60,6 +61,7 @@ export class Renderer3D {
   private rain: THREE.LineSegments | null = null; private rainPos = new Float32Array(0); private rainSeed = new Float32Array(0);
   yaw = 0; pitch = -0.05; mode: ViewMode = 'fp'; w = 0; h = 0; shake = 0; t = 0; reduced = false; recoil = 0; flashT = 0; camPos = new THREE.Vector3(); chaseYaw = 0; private focus = new THREE.Vector2(SIZE / 2, SIZE / 2); private deadT = 0;
   private furniture: { dispose(): void } | null = null;
+  private roadLights: RoadLightBatch | null = null;
   private projected = new THREE.Vector3(); private dummy = new THREE.Object3D(); private color = new THREE.Color();
   private bodies: THREE.InstancedMesh; private heads: THREE.InstancedMesh; private guns: THREE.InstancedMesh; private hulls: THREE.InstancedMesh; private turrets: THREE.InstancedMesh; private barrels: THREE.InstancedMesh;
   private crystals: THREE.InstancedMesh; private tracers: THREE.InstancedMesh; private rings: THREE.InstancedMesh; private ringList: { x: number; y: number; r0: number; r1: number; life: number; max: number; color: number }[] = [];
@@ -107,6 +109,7 @@ export class Renderer3D {
     gt.anisotropy = this.renderer.capabilities.getMaxAnisotropy(); gt.minFilter = THREE.LinearMipmapLinearFilter;
     this.groundMat = new THREE.MeshPhongMaterial({ map: gt, specular: 0x7a6a66, shininess: 55 }); const ground = new THREE.Mesh(new THREE.PlaneGeometry(SIZE, SIZE), this.groundMat); ground.rotation.x = -Math.PI / 2; ground.position.set(SIZE / 2, 0, SIZE / 2); ground.receiveShadow = true; sc.add(ground);
     this.buildCity();
+    if (quality !== 'low') this.roadLights = new RoadLightBatch(sc, quality === 'high' ? 24 : 12);
     this.glow = canvasTex(64, 64, g => { const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.4, 'rgba(255,255,255,0.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); });
     this.sparks = new Points(500, 7, true, this.glow, false); this.fire = new Points(400, 46, true, this.glow, false); this.smoke = new Points(300, 70, false, this.glow, true); sc.add(this.sparks.mesh, this.fire.mesh, this.smoke.mesh);
     // 하늘·스카이라인·젖은 거리·거리 연출: 모두 this.atm(시각·날씨)을 따라 매 프레임 색과 세기가 바뀝니다.
@@ -157,7 +160,7 @@ export class Renderer3D {
     this.scene.add(pole, bulb);
   }
   resize(): void { this.w = this.canvas.clientWidth || window.innerWidth; this.h = this.canvas.clientHeight || window.innerHeight; const ratio = renderPixelRatio(this.w, this.h, devicePixelRatio, this.quality); if (ratio !== this.renderer.getPixelRatio()) this.renderer.setPixelRatio(ratio); this.renderer.setSize(this.w, this.h, false); this.camera.aspect = this.w / this.h; this.camera.updateProjectionMatrix(); }
-  dispose(): void { this.furniture?.dispose(); this.furniture = null; this.post?.dispose(); this.ins?.dispose(); this.ins = null; this.renderer.dispose(); this.scene.traverse(o => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); }); for (const f of this.floaters) f.el.remove(); }
+  dispose(): void { this.roadLights?.dispose(); this.roadLights = null; this.furniture?.dispose(); this.furniture = null; this.post?.dispose(); this.ins?.dispose(); this.ins = null; this.renderer.dispose(); this.scene.traverse(o => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); }); for (const f of this.floaters) f.el.remove(); }
   /** 조준선이 닿는 지면 좌표 */
   groundPoint(max = 760): { x: number; y: number } {
     const b = this.world.boss(0), ox = b ? b.x : this.camPos.x, oy = b ? b.y : this.camPos.z; let d = this.pitch < -0.03 ? Math.min(max, (this.mode === 'fp' ? EYE : 120) / Math.tan(-this.pitch)) : max * 0.8; d = Math.max(70, d);
@@ -211,7 +214,7 @@ export class Renderer3D {
 
   private syncStruct(s: Structure): void {
     let g = this.structs.get(s.id); const H = STRUCT_H[s.kind], f = FACTIONS[s.f];
-    if (!g && this.ml) { const mg = this.ml.makeStruct(s); if (mg) { g = mg as THREE.Group; if (s.kind === 'hq') { const beam = new THREE.Mesh(new THREE.CylinderGeometry(5, 5, 900, 6), new THREE.MeshBasicMaterial({ color: fcol(s.f), transparent: true, opacity: 0.35, depthWrite: false, fog: false })); beam.scale.setScalar(0.1); beam.position.y = 60; g.add(beam); } this.scene.add(g); this.structs.set(s.id, g); } }
+    if (!g && this.ml) { const mg = this.ml.makeStruct(s); if (mg) { g = mg as THREE.Group; g.userData.bakedStructure = true; if (s.kind === 'hq') { const beam = new THREE.Mesh(new THREE.CylinderGeometry(5, 5, 900, 6), new THREE.MeshBasicMaterial({ color: fcol(s.f), transparent: true, opacity: 0.35, depthWrite: false, fog: false })); beam.scale.setScalar(0.1); beam.position.y = 60; g.add(beam); } this.scene.add(g); this.structs.set(s.id, g); } }
     if (!g) {
       g = new THREE.Group(); const body = new THREE.Mesh(this.box, this.mat(new THREE.Color(f.dark).lerp(new THREE.Color(0x8a8f96), 0.35).getHex())); body.scale.set(s.w, H, s.h); body.position.y = H / 2; body.castShadow = body.receiveShadow = true; g.add(body);
       const trim = new THREE.Mesh(this.box, this.mat(fcol(s.f))); trim.scale.set(s.w + 4, 8, s.h + 4); trim.position.y = H; g.add(trim);
@@ -221,7 +224,7 @@ export class Renderer3D {
       if (s.kind === 'lab') { const d = new THREE.Mesh(new THREE.SphereGeometry(24, 12, 8, 0, 6.29, 0, 1.57), new THREE.MeshLambertMaterial({ color: 0x9fe8ff, emissive: 0x2a6a80 })); d.position.y = H; g.add(d); }
       g.position.set(s.x + s.w / 2, 0, s.y + s.h / 2); this.scene.add(g); this.structs.set(s.id, g);
     }
-    if (this.ml) { g.scale.set(10, 10 * (0.15 + 0.85 * s.built), 10); const th = g.getObjectByName('turret_Head'); if (th) th.rotation.y = -s.ang; } else { g.scale.y = 0.15 + 0.85 * s.built; const head = g.getObjectByName('head'); if (head) head.rotation.y = -s.ang; }
+    if (g.userData.bakedStructure) { g.scale.set(10, 10 * (0.15 + 0.85 * s.built), 10); const th = g.getObjectByName('turret_Head'); if (th) th.rotation.y = -s.ang; } else { g.scale.y = 0.15 + 0.85 * s.built; const head = g.getObjectByName('head'); if (head) head.rotation.y = -s.ang; }
   }
   private syncVehicle(v: Vehicle): void {
     let g = this.vehs.get(v.id);
@@ -242,6 +245,24 @@ export class Renderer3D {
     const la = g.getObjectByName('la') ?? g.getObjectByName('police_LightA'), lb = g.getObjectByName('lb') ?? g.getObjectByName('police_LightB'); if (la && lb) { const on = v.ai === 'chase' && Math.floor(this.t * 6) % 2 === 0; la.visible = v.ai !== 'chase' || on; lb.visible = v.ai !== 'chase' || !on; }
     if (v.hp < v.maxHp * 0.5 && Math.random() < 0.25) { if (v.burn > 0) this.fire.add(v.x, 24, v.y, (Math.random() - 0.5) * 30, 60, (Math.random() - 0.5) * 30, 0.6, 0xff7a2a); else this.smoke.add(v.x, 24, v.y, (Math.random() - 0.5) * 16, 50, (Math.random() - 0.5) * 16, 1.2, 0x333338); }
   }
+  /** Ground lights follow nearby traffic; visual only, never modify collision or AI. */
+  private updateRoadLights(): void {
+    const lights=this.roadLights; if(!lights)return;
+    lights.begin();
+    const {world:w,camPos:cam}=this, night=this.atm.night,wet=this.atm.wet;
+    if(night>0.04||wet>0.3){
+      const near=w.vehicles.filter(v=>v.alive&&v.driver&&v.burn<=0&&nearVisual(v.x,v.y,cam.x,cam.z,720)).sort((a,b)=>(a.x-cam.x)**2+(a.y-cam.z)**2-((b.x-cam.x)**2+(b.y-cam.z)**2));
+      for(const v of near){
+        if(lights.remaining<2)break;
+        const fx=Math.cos(v.ang),fz=Math.sin(v.ang),front=v.len/2;
+        const range=lightRange(150, d=>solidAt(w.map,v.x+fx*(front+d),v.y+fz*(front+d)));
+        const power=Math.min(0.52,0.12+night*0.4+wet*0.08);
+        if(range>12)lights.add(v.x+fx*(front+range/2),0.16,v.y+fz*(front+range/2),v.ang,range,v.wid*1.55,0xffe3aa,power);
+        if(wet>0.25)lights.add(v.x-fx*(front+18),0.18,v.y-fz*(front+18),v.ang,36,v.wid*1.45,0xff323e,(v.brake?0.7:0.22)*wet);
+      }
+    }
+    lights.end();
+  }
   private syncLoot(l: Loot): void {
     let g = this.loots.get(l.id);
     if (!g) {
@@ -251,11 +272,11 @@ export class Renderer3D {
       else if (l.type === 'weapon') item.scale.set(22, 5, 4); else if (l.type === 'cash') item.scale.set(14, 4, 9); else item.scale.set(11, 11, 11);
       const beam = new THREE.Mesh(new THREE.CylinderGeometry(l.type === 'crate' ? 6 : 2, l.type === 'crate' ? 6 : 2, l.type === 'crate' ? 1400 : 130, 6), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: l.type === 'crate' ? 0.5 : 0.35, depthWrite: false, fog: false })); beam.position.y = l.type === 'crate' ? 700 : 65; beam.name = 'beam';
       if (this.ml && l.type === 'weapon') { const gm = this.ml.makeLootGun(l.weapon!); if (gm) { gm.name = 'item'; gm.scale.setScalar(22); item.visible = false; item.name = 'item_old'; g.add(gm); } }
-      else if (this.ml && l.type === 'crate') { const cm = this.ml.makeCrate(); if (cm) { const chute = cm.getObjectByName('crate_Chute'); if (chute) { cm.remove(chute); chute.name = 'chute'; chute.scale.setScalar(10); chute.position.set(0, 30, 0); g.add(chute); const old = g.getObjectByName('chute'); if (old && old !== chute) old.visible = false; } cm.name = 'item'; cm.scale.setScalar(10); item.visible = false; item.name = 'item_old'; g.add(cm); } }
+      else if (this.ml && l.type === 'crate') { const cm = this.ml.makeCrate(); if (cm) { const chute = cm.getObjectByName('crate_Chute'); if (chute) { cm.remove(chute); chute.name = 'chute'; chute.scale.setScalar(10); chute.position.set(0, 30, 0); g.add(chute); const old = g.getObjectByName('chute'); if (old && old !== chute) old.visible = false; } cm.name = 'item'; cm.scale.setScalar(10); g.userData.bakedCrate = true; item.visible = false; item.name = 'item_old'; g.add(cm); } }
       g.add(item, beam); g.position.set(l.x, 0, l.y); this.scene.add(g); this.loots.set(l.id, g);
     }
-    const item = g.getObjectByName('item')!, fall = Math.max(0, l.fall) * 150; item.position.y = (l.type === 'crate' ? (this.ml ? 0 : 13) : 16 + Math.sin(this.t * 3 + l.id) * 3) + fall; if (l.type !== 'crate') item.rotation.y = this.t * 1.5 + l.id;
-    const ch = g.getObjectByName('chute'); if (ch) { ch.visible = l.fall > 0; ch.position.y = (this.ml ? 30 : 50) + fall; }
+    const item = g.getObjectByName('item')!, fall = Math.max(0, l.fall) * 150; item.position.y = (l.type === 'crate' ? (g.userData.bakedCrate ? 0 : 13) : 16 + Math.sin(this.t * 3 + l.id) * 3) + fall; if (l.type !== 'crate') item.rotation.y = this.t * 1.5 + l.id;
+    const ch = g.getObjectByName('chute'); if (ch) { ch.visible = l.fall > 0; ch.position.y = (g.userData.bakedCrate ? 30 : 50) + fall; }
   }
   private syncBiz(z: Business): void {
     let o = this.biz.get(z.id); const w = this.world, d = BIZ[z.kind], col = z.kind === 'gunshop' ? 0xff5d5d : z.owner >= 0 ? fcol(z.owner) : 0xf2f2f2;
@@ -408,8 +429,9 @@ export class Renderer3D {
     let nt = 0; for (const b of w.bullets) { if (nt >= 500) break; const wd = WEAPONS[b.w], a = Math.atan2(b.vy, b.vx), len = wd.splash ? 12 : wd.pierce ? 150 : 46, th = wd.splash ? 5 : wd.pierce ? 3 : b.boss ? 1.5 : 1.1; d.rotation.set(0, -a, 0); d.position.set(b.x - Math.cos(a) * len / 2, 30, b.y - Math.sin(a) * len / 2); d.scale.set(len, th, th); d.updateMatrix(); this.tracers.setMatrixAt(nt, d.matrix); this.tracers.setColorAt(nt, col.set(wd.color)); nt++; if (wd.splash && Math.random() < 0.6) this.smoke.add(b.x, 30, b.y, 0, 8, 0, 0.5, 0xcfcfcf); } upd(this.tracers, nt);
     // 동적 오브젝트 동기화
     const seenS = new Set<number>(); for (const s of w.structures) if (s.alive) { seenS.add(s.id); this.syncStruct(s); } for (const [id, g] of this.structs) if (!seenS.has(id)) { this.scene.remove(g); this.structs.delete(id); }
-    const seenV = new Set<number>(); for (const v of w.vehicles) if (v.alive) { seenV.add(v.id); this.syncVehicle(v); } for (const [id, g] of this.vehs) if (!seenV.has(id)) { this.scene.remove(g); this.vehs.delete(id); }
-    const seenL = new Set<number>(); for (const l of w.loot) if (l.alive) { seenL.add(l.id); this.syncLoot(l); } for (const [id, g] of this.loots) if (!seenL.has(id)) { this.scene.remove(g); this.loots.delete(id); }
+    const seenV = new Set<number>(); for (const v of w.vehicles) if (v.alive) { seenV.add(v.id); if (nearVisual(v.x,v.y,this.camPos.x,this.camPos.z,Math.min(3000,this.atm.fogFar+250))) { this.syncVehicle(v); this.vehs.get(v.id)!.visible=true; } else { const g=this.vehs.get(v.id); if(g)g.visible=false; } } for (const [id, g] of this.vehs) if (!seenV.has(id)) { this.scene.remove(g); this.vehs.delete(id); }
+    this.updateRoadLights();
+    const seenL = new Set<number>(); for (const l of w.loot) if (l.alive) { seenL.add(l.id); if(l.type==='crate'||nearVisual(l.x,l.y,this.camPos.x,this.camPos.z,1600)){this.syncLoot(l);this.loots.get(l.id)!.visible=true;}else{const g=this.loots.get(l.id);if(g)g.visible=false;} } for (const [id, g] of this.loots) if (!seenL.has(id)) { this.scene.remove(g); this.loots.delete(id); }
     for (const z of w.businesses) this.syncBiz(z);
     // 수송기
     while (this.planes.length < w.planes.length) { const pm = this.ml?.makePlane(); if (pm) { const pg = new THREE.Group(); pg.add(pm); this.scene.add(pg); this.planes.push(pg); continue; } const g = new THREE.Group(), m = this.mat(0xcfd6e0), a = new THREE.Mesh(this.box, m), b = new THREE.Mesh(this.box, m), c = new THREE.Mesh(this.box, m); a.scale.set(150, 22, 24); b.scale.set(34, 5, 190); c.scale.set(18, 30, 5); c.position.set(-64, 22, 0); g.add(a, b, c); this.scene.add(g); this.planes.push(g); }

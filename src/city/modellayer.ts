@@ -68,7 +68,7 @@ export class ModelLayer {
     const lamp = this.inst(B.lamp, this.lam, lampN, true); let glowLamp: THREE.InstancedMesh | null = null;
     if (B.lamp.glow) { glowLamp = new THREE.InstancedMesh(B.lamp.glow, this.basic, lampN); glowLamp.frustumCulled = false; this.scene.add(glowLamp); }
     let i = 0;
-    for (const b of w.map.blocks) for (const [dx, dy] of corners) {
+    for (const b of w.map.blocks) if(b.type!=='void') for (const [dx, dy] of corners) {
       const ang = Math.atan2(dy - BLOCK / 2, dx - BLOCK / 2); d.position.set(b.x + dx, 0, b.y + dy); d.rotation.set(0, -ang, 0); d.scale.setScalar(PROPS.lamp.scale); d.updateMatrix();
       lamp?.setMatrixAt(i, d.matrix); glowLamp?.setMatrixAt(i, d.matrix); i++;
     }
@@ -76,7 +76,7 @@ export class ModelLayer {
     const tlR = this.inst(B.tl_red, this.lam, 220), tlG = this.inst(B.tl_green, this.lam, 220), tlRg = B.tl_red.glow ? new THREE.InstancedMesh(B.tl_red.glow, this.basic, 220) : null, tlGg = B.tl_green.glow ? new THREE.InstancedMesh(B.tl_green.glow, this.basic, 220) : null;
     if (tlRg) { tlRg.frustumCulled = false; this.scene.add(tlRg); } if (tlGg) { tlGg.frustumCulled = false; this.scene.add(tlGg); }
     let nr = 0, ng = 0;
-    for (const b of w.map.blocks) for (const [cx, cy, ry] of [[16, 16, 0], [BLOCK - 16, 16, 0], [16, BLOCK - 16, Math.PI], [BLOCK - 16, BLOCK - 16, Math.PI]] as const) {
+    for (const b of w.map.blocks) if(b.type!=='void') for (const [cx, cy, ry] of [[16, 16, 0], [BLOCK - 16, 16, 0], [16, BLOCK - 16, Math.PI], [BLOCK - 16, BLOCK - 16, Math.PI]] as const) {
       if (rng() < 0.45) continue; const red = (cx < BLOCK / 2) === (cy < BLOCK / 2); d.position.set(b.x + cx, 0, b.y + cy); d.rotation.set(0, ry + (cx > BLOCK / 2 ? Math.PI : 0) * 0, 0); d.scale.setScalar(PROPS.tl_red.scale); d.updateMatrix();
       if (red) { tlR?.setMatrixAt(nr, d.matrix); tlRg?.setMatrixAt(nr, d.matrix); nr++; } else { tlG?.setMatrixAt(ng, d.matrix); tlGg?.setMatrixAt(ng, d.matrix); ng++; }
     }
@@ -91,7 +91,7 @@ export class ModelLayer {
     const placed: { x: number; z: number; r: number }[] = [];
     for (const [name, per, inset, rad] of plan) {
       const items: { x: number; z: number; ry: number }[] = [];
-      for (const b of w.map.blocks) { if (b.type === 'base') continue; let n = Math.floor(per) + (rng() < per % 1 ? 1 : 0); if (name === 'barrier' && b.type !== 'police' && b.type !== 'military') n = rng() < 0.15 ? 1 : 0; while (n-- > 0) { const e = edge(b, inset); items.push({ x: e.x, z: e.z, ry: -Math.atan2(e.ny, e.nx) + (name === 'barrier' ? Math.PI / 2 : 0) }); if (name === 'cone') for (let k = 1; k < 3; k++) items.push({ x: e.x + k * 17 * (e.ny !== 0 ? 1 : 0), z: e.z + k * 17 * (e.nx !== 0 ? 1 : 0), ry: 0 }); } }
+      for (const b of w.map.blocks) { if (b.type === 'base' || b.type === 'void') continue; let n = Math.floor(per) + (rng() < per % 1 ? 1 : 0); if (name === 'barrier' && b.type !== 'police' && b.type !== 'military') n = rng() < 0.15 ? 1 : 0; while (n-- > 0) { const e = edge(b, inset); items.push({ x: e.x, z: e.z, ry: -Math.atan2(e.ny, e.nx) + (name === 'barrier' ? Math.PI / 2 : 0) }); if (name === 'cone') for (let k = 1; k < 3; k++) items.push({ x: e.x + k * 17 * (e.ny !== 0 ? 1 : 0), z: e.z + k * 17 * (e.nx !== 0 ? 1 : 0), ry: 0 }); } }
       for (const it of items) placed.push({ x: it.x, z: it.z, r: rad });
       const m = this.inst(B[name], this.lam, items.length, false); if (!m) continue; items.forEach((it, k) => put(m, k, it.x, it.z, it.ry, PROPS[name].scale)); m.count = items.length; m.instanceMatrix.needsUpdate = true;
     }
@@ -99,7 +99,7 @@ export class ModelLayer {
     // [이름, 블록당 개수, 연석에서 중심까지의 거리] — 크기(깊이·폭)와 배율은 scale.ts 의 PROPS 에서 가져옵니다.
     const street: [string, number, number][] = [['bus_stop', 0.35, 19], ['vending', 0.5, 12], ['billboard', 0.2, 12], ['kiosk', 0.25, 18], ['planter', 0.9, 12],
       ['bollards', 0.6, 6], ['phone_booth', 0.25, 13], ['street_sign', 0.7, 11], ['parasol', 0.35, 18]];
-    for (const b of w.map.blocks) for (const [dx, dy] of corners) placed.push({ x: b.x + dx, z: b.y + dy, r: 14 }); // 가로등·신호등 자리
+    for (const b of w.map.blocks) if(b.type!=='void') for (const [dx, dy] of corners) placed.push({ x: b.x + dx, z: b.y + dy, r: 14 }); // 가로등·신호등 자리
     const free = (x: number, z: number, hx: number, hz: number, tall: boolean): boolean => {
       const gap = tall ? AWNING_OUT + 2 : 4; // 차양은 지상 약 66 부터라서 낮은 소품은 차양 아래에 들어갈 수 있습니다
       for (const s of w.map.solids) if (x + hx > s.x - gap && x - hx < s.x + s.w + gap && z + hz > s.y - gap && z - hz < s.y + s.h + gap) return false;
@@ -114,7 +114,7 @@ export class ModelLayer {
       const P = PROPS[name], hd = P.depth * P.scale / 2, hw = P.width * P.scale / 2, tall = P.height * P.scale > 60;
       const items: { x: number; z: number; ry: number }[] = [];
       for (const b of w.map.blocks) {
-        if (b.type === 'base') continue; let n = Math.floor(per) + (rng() < per % 1 ? 1 : 0);
+        if (b.type === 'base' || b.type === 'void') continue; let n = Math.floor(per) + (rng() < per % 1 ? 1 : 0);
         while (n-- > 0) for (let tries = 0; tries < 8; tries++) {
           const e = edge(b, inset), hx = e.nx !== 0 ? hd : hw, hz = e.nx !== 0 ? hw : hd; if (!free(e.x, e.z, hx, hz, tall)) continue;
           items.push({ x: e.x, z: e.z, ry: -Math.atan2(e.ny, e.nx) }); placed.push({ x: e.x, z: e.z, r: Math.max(hd, hw) }); break;
@@ -157,8 +157,9 @@ export class ModelLayer {
     const w = this.world, d = this.d, base = this.base, torso = this.torso, m = this.m, now = performance.now() / 1000;
     for (const k of CHAR_KINDS) { const s = this.sets[k]; for (const p of [s.body, s.leg, s.shin, s.armL, s.armR]) if (p) p.n = 0; }
     const seenMech = new Set<number>();
+    const liveMech = new Set<number>();
     for (const a of w.actors) {
-      if (!a.alive || a.inVeh) continue; const dx = a.x - cam.x, dz = a.y - cam.z; if (dx * dx + dz * dz > 2600 * 2600) continue;
+      if (!a.alive || a.inVeh) continue; if(ACTORS[a.kind].mech)liveMech.add(a.id); const dx = a.x - cam.x, dz = a.y - cam.z; if (dx * dx + dz * dz > 2600 * 2600) continue;
       const def = ACTORS[a.kind];
       if (def.mech) { seenMech.add(a.id); this.syncMech(a); continue; }
       if (a === pb && !third) continue; const key = a.kind === 'civ' ? CIV_SKINS[a.id % CIV_SKINS.length] : a.kind, s = this.sets[key]; if (!s) continue;
@@ -183,7 +184,8 @@ export class ModelLayer {
       if (s.armR && s.pr) { this.joint(m, torso, s.pr.x, s.pr.y, s.pr.z, P.armR); this.put(s.armR, m, team, skin); }
     }
     for (const k of CHAR_KINDS) { const s = this.sets[k]; this.flush(s.body); this.flush(s.leg); this.flush(s.shin); this.flush(s.armL); this.flush(s.armR); }
-    for (const [id, g] of this.mechs) if (!seenMech.has(id)) { this.scene.remove(g); this.mechs.delete(id); }
+    for (const [id, g] of this.mechs) { if(!liveMech.has(id)){this.scene.remove(g);this.mechs.delete(id);}else g.visible=seenMech.has(id); }
+    for(const id of this.aim.keys())if(!w.byId.get(id)?.alive)this.aim.delete(id);
     // 크리스탈
     // Match the fallback renderer: hidden crystal meshes need no matrix uploads.
     this.crystalMesh.count = 0;
@@ -191,7 +193,7 @@ export class ModelLayer {
   private syncMech(a: Actor): void {
     let g = this.mechs.get(a.id);
     if (!g) { const t = this.models.vehicles[a.kind]; if (!t) return; g = instantiate(t, { team: fcol(a.f) }); g.scale.setScalar(12); this.scene.add(g); this.mechs.set(a.id, g); }
-    g.position.set(a.x, 0, a.y); g.rotation.y = -a.ang;
+    g.visible=true; g.position.set(a.x, 0, a.y); g.rotation.y = -a.ang;
   }
 
   // ---------- 1인칭 총 ----------

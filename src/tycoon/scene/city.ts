@@ -4,6 +4,7 @@ import type { LotView, ShopKind, SpotDef, Stage } from '../core/types';
 import { stageIndex } from '../core/data';
 import { GeoBuilder } from './geo';
 import { addFacadeDetails } from './architecture';
+import { addStreetProps } from './street';
 import { Colliders, GRID, HALF, PITCH, ROAD, BLOCK, WORLD_HALF, blockTier, blockUnlocked, hash01, type Block, type Box, type Layout, type Lot } from './layout';
 import { asphaltTexture, dirtTexture, facadeMaps, grassTexture, kindColor, puddleTexture, ringTexture, sidewalkTexture, signTexture, type FacadeStyle } from './textures';
 
@@ -180,6 +181,7 @@ export class CityView {
     }
     this.trunkMesh.count = this.crownMesh.count = n;
     this.trunkMesh.instanceMatrix.needsUpdate = this.crownMesh.instanceMatrix.needsUpdate = true; if (this.crownMesh.instanceColor) this.crownMesh.instanceColor.needsUpdate = true;
+    this.trunkMesh.computeBoundingSphere(); this.crownMesh.computeBoundingSphere();
   }
   private buildBeacons(): void {
     for (const [id, lot] of this.layout.spotLots) {
@@ -232,9 +234,9 @@ export class CityView {
       const fresh = !v || v.key.slice(0, 2) !== key.slice(0, 2);
       if (!v) { v = new BlockView(); this.views.set(b, v); this.group.add(v.group); } else this.clearBlock(v);
       v.key = key; this.buildBlock(b, v, si);
-      if (animate && fresh && blockUnlocked(b, si) && (changed || true)) { v.rise = 0.02; v.riseDelay = order++ * 0.05; v.bld.scale.y = 0.02; }
+      if (animate && fresh && blockUnlocked(b, si)) { v.rise = 0.02; v.riseDelay = order++ * 0.05; v.bld.scale.y = 0.02; }
     }
-    this.refillTrees(); this.refillSkyline(); this.recolorBeacons();
+    if (changed) { this.refillTrees(); this.refillSkyline(); } this.recolorBeacons();
     if (this.globeAnchor && !this.globe) this.addGlobe(this.globeAnchor.x, this.globeAnchor.y, this.globeAnchor.z);
     if (this.globe) this.globe.visible = si >= 6;
   }
@@ -313,6 +315,7 @@ export class CityView {
     if (!unlocked) { this.buildConstruction(b, v); return; }
     const g: LotGeo = { walls: { slum: new GeoBuilder(), shop: new GeoBuilder(), office: new GeoBuilder(), glass: new GeoBuilder() }, roofs: new GeoBuilder(), detail: new GeoBuilder(), glazing: new GeoBuilder(), glow: new GeoBuilder(), grass: new GeoBuilder(), dirt: new GeoBuilder(), boxes: [] };
     for (const lot of b.lots) this.buildLot(lot, tier, g, v);
+    g.boxes.push(...addStreetProps(g.detail, g.glow, b, this.quality));
     for (const s of ['slum', 'shop', 'office', 'glass'] as FacadeStyle[]) this.addMesh(v, v.bld, g.walls[s], this.facade[s]);
     this.addMesh(v, v.bld, g.roofs, this.roofMat); this.addMesh(v, v.bld, g.detail, this.detailMat); this.addMesh(v, v.bld, g.glazing, this.glazingMat, false); this.addMesh(v, v.bld, g.glow, this.glowMat, false);
     this.addMesh(v, v.group, g.grass, this.grassMat, false); this.addMesh(v, v.group, g.dirt, this.dirtMat, false);

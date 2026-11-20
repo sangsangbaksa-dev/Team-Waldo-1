@@ -69,6 +69,9 @@ export class CityView {
   private facades: THREE.MeshStandardMaterial[] = [];
   private neon: THREE.MeshStandardMaterial[] = [];
   private reflections: THREE.MeshBasicMaterial[] = [];
+  private roadMat: THREE.MeshStandardMaterial | null = null;
+  private pavementMat: THREE.MeshStandardMaterial | null = null;
+  private wetness = -1;
   private poolMap: THREE.Texture | null = null;
   private sky = tex.makeSkyDome();
   private hemi = new THREE.HemisphereLight();
@@ -132,9 +135,9 @@ export class CityView {
     } batch.clear();
   }
   private buildGround(): void {
-    const asphalt = this.mat({ map: this.texture(tex.asphaltTexture()), color: 0x9ca7ac, roughness: .48, metalness: .12 }); asphalt.userData.ground = true;
+    const asphalt = this.mat({ map: this.texture(tex.asphaltTexture()), roughnessMap: this.texture(tex.asphaltRoughnessTexture()), color: 0xb6bfc1, roughness: .96, metalness: .02 }); asphalt.userData.ground = true; this.roadMat = asphalt;
     const ground = new THREE.Mesh(plane(0, -.025, 0, 4400, 4400, 12), asphalt); ground.receiveShadow = true; this.root.add(ground);
-    const walk = this.mat({ map: this.texture(tex.sidewalkTexture()), roughness: .93 }); walk.userData.ground = true;
+    const walk = this.mat({ map: this.texture(tex.sidewalkTexture()), roughness: .93 }); walk.userData.ground = true; this.pavementMat = walk;
     const grass = this.mat({ map: this.texture(tex.grassTexture()), roughness: 1 }); grass.userData.ground = true;
     const dirt = this.mat({ map: this.texture(tex.dirtTexture()), roughness: 1 }); dirt.userData.ground = true;
     const paint = this.mat({ color: 0xe1dbc3, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }); paint.userData.ground = true;
@@ -189,7 +192,7 @@ export class CityView {
     const glass = this.mat({ vertexColors: true, roughness: .22, metalness: .38 });
     const light = this.mat({ vertexColors: true, emissive: 0xc6dfff, emissiveIntensity: .05, roughness: .45 }); this.neon.push(light);
     const detailMaterials = { trim, glass, light };
-    const signMats = new Map<string, THREE.MeshStandardMaterial>(); const signBatch: Batch = new Map(), poolBatch: Batch = new Map();
+    const signMats = new Map<string, THREE.MeshStandardMaterial>();
     const pools = new Map<string, THREE.MeshBasicMaterial>();
     const names: Record<string, string> = { gunshop: 'GUN SHOP', bank: 'BANK', casino: 'CASINO', club: 'BLUE HOUR', paynspray: 'PAY N SPRAY', hospital: 'HOSPITAL', police: 'POLICE', safehouse: 'OAK ST.', garage: 'MOTOR WORKS', chopshop: 'IRON YARD', dealer: 'PRESTIGE MOTORS', gym: 'STEEL GYM', arena: 'THE PIT' };
     for (const b of this.map.buildings) {
@@ -219,11 +222,11 @@ export class CityView {
         let pool = pools.get(color);
         if (!pool) { pool = new THREE.MeshBasicMaterial({ map: this.poolTexture(), color, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }); pools.set(color, pool); this.materials.add(pool); this.reflections.push(pool); }
         const reflection = new THREE.PlaneGeometry(w * 1.5, 11).rotateX(-Math.PI / 2).translate(b.x, .193, b.z - b.d / 2 - 4.5);
-        const parts = poolBatch.get(pool); if (parts) parts.push(reflection); else poolBatch.set(pool, [reflection]);
+        this.put(b.x, b.z, pool, reflection);
       }
-      const list = signBatch.get(m); if (list) list.push(g); else signBatch.set(m, [g]);
+      this.put(b.x, b.z, m, g);
     }
-    this.flush(signBatch, this.root); this.flush(poolBatch, this.root);
+
   }
   private buildRamps(): void {
     const metal = this.mat({ color: 0x333940, roughness: .7, side: THREE.DoubleSide, vertexColors: true });
@@ -298,8 +301,11 @@ export class CityView {
       const sx = corner < 2 ? -1 : 1, sz = corner % 2 ? -1 : 1, group = corner % 2;
       props.push({ kind: 'lamp', x: x + sx * 8.1, z: z + sz * 8.1, ry: group ? (sz > 0 ? Math.PI / 2 : -Math.PI / 2) : sx > 0 ? 0 : Math.PI, r: 0, scale: 1 }); groups.push(group);
     }
-    const pieces = [box(0, 2, 0, .12, 4, .12), box(0, 3.9, 0, .4, 1.2, .35)], pole = mergeGeometries(pieces)!; pieces.forEach(g => g.dispose());
-    this.instances(pole, this.mat({ color: 0x30373b }), props);
+    const pieces = [box(0, 2, 0, .12, 4, .12, 4, 0x485258), box(0, 3.9, 0, .4, 1.2, .35, 4, 0x273035), box(0, .13, 0, .38, .26, .38, 4, 0x777c77)];
+    // Lens hoods are part of the same merged signal geometry, not per-signal draw calls.
+    if (this.quality !== 'low') for (let n = 0; n < 3; n++) pieces.push(box(.19, 4.57 - n * .35, 0, .26, .08, .34, 4, 0x20282d));
+    const pole = mergeGeometries(pieces)!; pieces.forEach(g => g.dispose());
+    this.instances(pole, this.mat({ vertexColors: true, roughness: .74, metalness: .22 }), props);
     const bulbs: Prop[] = [];
     props.forEach(p => { for (let n = 0; n < 3; n++) { bulbs.push(p); lamps.push(n); } });
     const m = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }); this.materials.add(m);
@@ -344,6 +350,9 @@ export class CityView {
   }
   private lighting(clock: number, position: THREE.Vector3, rain: number): void {
     const c = tex.skyColors(clock); this.night = c.night; this.sky.update(c); this.sky.mesh.position.copy(position);
+    // Quantize the material update: rain changes surface response without rewriting geometry.
+    const wet = Math.round(Math.max(0, Math.min(1, rain)) * 50) / 50;
+    if (wet !== this.wetness) { this.wetness = wet; if (this.roadMat) { this.roadMat.roughness = .96 - .58 * wet; this.roadMat.metalness = .02 + .17 * wet; this.roadMat.color.setRGB(.47 - .15 * wet, .51 - .15 * wet, .53 - .14 * wet); } if (this.pavementMat) this.pavementMat.roughness = .93 - .37 * wet; }
     this.fog.color.copy(c.fog).lerp(new THREE.Color(0x56606a), rain * .75).lerp(new THREE.Color(0xdce6ff), this.bolt * .55); this.fog.density = .00165 + c.night * .00055 + rain * .0042; this.scene.background = this.fog.color;
     this.hemi.color.copy(c.hemiSky).lerp(new THREE.Color(0x9aaccb), c.night * .4); this.hemi.groundColor.copy(c.hemiGround); this.hemi.intensity = (c.hemiIntensity * 1.35 + c.night * .5) * (1 - rain * .3) + this.bolt * 4;
     this.sun.color.copy(c.sun); this.sun.intensity = c.sunIntensity * 2.2 * (1 - rain * .78);

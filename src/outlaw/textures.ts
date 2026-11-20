@@ -21,6 +21,21 @@ export function asphaltTexture(): THREE.CanvasTexture { return texture('asphalt'
   g.strokeStyle = 'rgba(15,16,17,.19)'; g.lineWidth = 12; for (const x of [70, 171]) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x + 3, s); g.stroke(); }
   g.lineWidth = 1; g.strokeStyle = 'rgba(20,20,20,.35)'; for (let i = 0; i < 7; i++) { let x = r() * s, y = r() * s; g.beginPath(); g.moveTo(x, y); for (let j = 0; j < 5; j++) { x += (r() - .5) * 16; y += (r() - .5) * 18; g.lineTo(x, y); } g.stroke(); }
 }); }
+/** Seamless, neutral roughness variation: repeatable patches are more matte than puddles. */
+export function asphaltRoughnessTexture(): THREE.CanvasTexture {
+  const t = texture('asphaltRoughness', (g, s) => {
+    g.fillStyle = '#d9d9d9'; g.fillRect(0, 0, s, s);
+    const r = makeRng(913);
+    for (let k = 0; k < 22; k++) {
+      const x = r() * s, y = r() * s, radius = 12 + r() * 27;
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+        const px = x + dx * s, py = y + dy * s;
+        const grad = g.createRadialGradient(px, py, 0, px, py, radius); grad.addColorStop(0, 'rgba(70,70,70,.65)'); grad.addColorStop(1, 'rgba(70,70,70,0)'); g.fillStyle = grad; g.fillRect(px - radius, py - radius, radius * 2, radius * 2);
+      }
+    }
+  });
+  t.colorSpace = THREE.NoColorSpace; return t;
+}
 export function crosswalkTexture(): THREE.CanvasTexture { return texture('crosswalk', (g, s) => { g.fillStyle = 'rgba(230,228,211,.92)'; for (let x = 12; x < s; x += 64) g.fillRect(x, 18, 38, s - 36); }, false); }
 export function laneLineTexture(): THREE.CanvasTexture { return texture('lane', (g, s) => { g.fillStyle = 'rgba(222,203,144,.9)'; g.fillRect(s * .45, s * .15, s * .1, s * .55); }); }
 export function concreteTexture(): THREE.CanvasTexture { return texture('concrete', (g, s) => base(g, s, '#a7a49b', 5)); }

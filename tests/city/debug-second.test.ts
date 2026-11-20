@@ -1,0 +1,23 @@
+import {describe,it,expect} from 'vitest';
+import {World} from '../../src/city/world';
+import {INTERIORS,resolveInterior} from '../../src/city/interior';
+import {purchase} from '../../src/city/shop';
+import {startEvent,updateCityEvents} from '../../src/city/events';
+const make=(tutorial=true)=>new World({seed:7,difficulty:'d4',klass:'tycoon',tutorial});
+const enter=(w:World)=>{const b=w.businesses.find(z=>z.kind==='store')!;expect(w.enterBiz(0,b)).toBe('');return b;};
+describe('LAST CITY second debugging pass',()=>{
+it('returns no boss or HQ for invalid faction ids',()=>{const w=make();expect(w.boss(99)).toBeNull();expect(w.hq(99)).toBeNull();});
+it('rejects invalid experience gains',()=>{const w=make(),f=w.factions[0],xp=f.xp;w.gainXp(f,NaN);w.gainXp(f,-50);expect(f.xp).toBe(xp);});
+it('ignores unknown perks without crashing',()=>{const w=make(),f=w.factions[0],n=f.perks.length;w.applyPerk(f,999);expect(f.perks.length).toBe(n);});
+it('preserves selected squad when given NaN',()=>{const w=make();w.selectSquad(2);w.selectSquad(NaN);expect(w.squadSel).toBe(2);});
+it('preserves squad assignments on invalid split or assignment',()=>{const w=make(),a=w.spawnUnit('rifle',0,500,500);a.sq=2;w.splitSquads(0,NaN);w.assignAllTo(0,99);expect(a.sq).toBe(2);});
+it('ignores corrupt orders rather than poisoning actor paths',()=>{const w=make(),a=w.spawnUnit('rifle',0,500,500),before=a.order;w.order(0,'move',NaN,100);expect(a.order).toBe(before);});
+it('does not teleport between interiors by repeated entry',()=>{const w=make(),b=enter(w),other=w.businesses.find(z=>z.id!==b.id&&z.owner<0)!;expect(w.enterBiz(0,other)).not.toBe('');expect(w.insideBiz()?.id).toBe(b.id);});
+it('blocks another faction using the local player counter',()=>{const w=make(),b=enter(w),l=INTERIORS[b.kind];w.inside!.x=l.counterSpot.x;w.inside!.y=l.counterSpot.y;expect(w.shop(1,'medkit').ok).toBe(false);expect(w.buyHere(1)).not.toBe('');});
+it('blocks transactions after an enemy takes the shop',()=>{const w=make(),b=enter(w),l=INTERIORS[b.kind];w.inside!.x=l.counterSpot.x;w.inside!.y=l.counterSpot.y;b.owner=1;expect(w.shop(0,'medkit').ok).toBe(false);});
+it('keeps interior movement finite on invalid input',()=>{const w=make();enter(w);const before={...w.inside};w.input.mx=NaN;w.moveInside(.03);expect(w.inside).toEqual(before);});
+it('recovers nonfinite interior coordinates at spawn',()=>{const l=INTERIORS.store,p={x:NaN,y:Infinity};resolveInterior(l,p);expect(p).toEqual(l.spawn && {x:l.spawn.x,y:l.spawn.y});});
+it('does not discard extra ammo or leave an active reload on refill',()=>{const w=make(),f=w.factions[0],b=w.businesses.find(z=>z.kind==='store')!;w.giveWeapon(f,'railgun',30);const s=f.slots[f.cur];s.mag=0;f.reloadT=.5;f.cash=1000;expect(purchase(w,0,b,'ammo').ok).toBe(true);expect(s.ammo).toBe(30);expect(f.reloadT).toBe(0);});
+it('does not overwrite an active event or start one in tutorial',()=>{const w=make(false),p=w.boss(0)!;for(let i=0;i<20&&!w.event;i++)startEvent(w,'rescue',p.x,p.y);expect(w.event).not.toBeNull();const ev=w.event;startEvent(w,'bounty',p.x,p.y);expect(w.event).toBe(ev);const t=make();startEvent(t,'rescue',p.x,p.y);expect(t.event).toBeNull();});
+it('does not reward a delivery after its timer already expired',()=>{const w=make(false),p=w.boss(0)!;w.event={kind:'delivery',x:p.x,y:p.y,t:0,total:140,vid:0,prog:0,ids:[],stage:1,tx:p.x,ty:p.y,pay:500};const cash=w.factions[0].cash;updateCityEvents(w);expect(w.eventsDone).toBe(0);expect(w.factions[0].cash).toBe(cash);});
+});

@@ -85,10 +85,10 @@ export function purchase(w: World, fi: number, biz: Business, id: string): ShopR
       if (!needsAmmo(s)) continue;
       const d = WEAPONS[s.id];
       changed = true;
-      if (d.ammo > 0) s.ammo = d.ammo;
+      if (d.ammo > 0) s.ammo = Math.max(s.ammo,d.ammo);
       s.mag = d.ammo > 0 ? Math.min(d.mag, s.ammo) : d.mag;
     }
-    if (!changed) return fail('탄약이 이미 가득합니다'); f.cash -= price; return done('탄약 보충 완료');
+    if (!changed) return fail('탄약이 이미 가득합니다'); f.reloadT=0; f.cash -= price; return done('탄약 보충 완료');
   }
   if (id === 'mercs') { const e = w.hireMercs(fi); return e ? fail(e) : done('용병 3명 고용'); }
   if (id === 'champagne') { f.cash -= price; f.buffT = 8; w.fx('roar', b.x, b.y, 0, undefined, fi); return done('건배! 8초간 연사 속도 +60%'); }

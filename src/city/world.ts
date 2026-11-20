@@ -181,8 +181,8 @@ export class World {
   }
 
   // ---------- 조회 ----------
-  boss(f: number): Actor | null { const a = this.byId.get(this.factions[f].boss); return a && a.alive ? a : null; }
-  hq(f: number): Structure | null { const id = this.factions[f].hq; return this.structures.find(s => s.id === id && s.alive) ?? null; }
+  boss(f: number): Actor | null { const a = this.byId.get(this.factions[f]?.boss ?? -1); return a && a.alive ? a : null; }
+  hq(f: number): Structure | null { const id = this.factions[f]?.hq; return this.structures.find(s => s.id === id && s.alive) ?? null; }
   hostile(fa: number, fb: number): boolean {
     if (fa === fb || fa === CIV || fb === CIV) return false;
     if (fa < 0 || fb < 0) return true;
@@ -304,6 +304,7 @@ export class World {
     this.recomputeSupply(f);
   }
   explode(x: number, y: number, r: number, dmg: number, f: number, bmul: number): void {
+    if(![x,y,r,dmg,bmul].every(Number.isFinite)||r<=0||dmg<=0||bmul<0)return;
     this.fx('boom', x, y, r);
     this.forNear(x, y, r + 30, a => {
       if (!a.alive || a.inVeh || (a.f !== CIV && !this.hostile(f, a.f))) return;
@@ -316,7 +317,7 @@ export class World {
     }
   }
   gainXp(f: Faction, n: number): void {
-    if (!f.alive || this.opts.duel) return; f.xp += n * f.mods.xp;
+    if (!f.alive || this.opts.duel || !Number.isFinite(n) || n<=0) return; f.xp += n * f.mods.xp;
     while (f.xp >= this.xpNeed(f.level)) {
       f.xp -= this.xpNeed(f.level); f.level++;
       const b = this.boss(f.id); if (b) { b.maxHp = this.bossMaxHp(f); b.hp = Math.min(b.maxHp, b.hp + 40); this.fx('levelup', b.x, b.y, 0, undefined, f.id); }
@@ -329,7 +330,7 @@ export class World {
     for (let k = 0; k < 3; k++) f.choices.push(pool.splice(Math.floor(this.rng() * pool.length), 1)[0]);
   }
   applyPerk(f: Faction, idx: number): void {
-    const p = PERKS[idx]; p.apply(f.mods); f.perks.push(p.id);
+    const p = PERKS[idx]; if(!p)return; p.apply(f.mods); f.perks.push(p.id);
     const b = this.boss(f.id); if (b) { const m = this.bossMaxHp(f); b.hp += Math.max(0, m - b.maxHp); b.maxHp = m; }
     if (p.id === 'unitHp') this.syncArmyHealth(f);
   }
@@ -444,18 +445,21 @@ export class World {
   squadSel = 0;
   isSoldier(a: Actor): boolean { return a.alive && a.kind !== 'worker' && a.kind !== 'boss' && a.kind !== 'guard' && a.f < 8; }
   squadMembers(fi: number, sq: number): Actor[] { return this.actors.filter(a => a.f === fi && this.isSoldier(a) && (sq === 0 || a.sq === sq)); }
-  selectSquad(n: number): void { this.squadSel = Math.max(0, Math.min(SQUAD_MAX, Math.floor(n))); }
+  selectSquad(n: number): void { if(!Number.isFinite(n))return; this.squadSel = Math.max(0, Math.min(SQUAD_MAX, Math.floor(n))); }
   /** 전 병력을 병과별로 고르게 n개 분대로 나눈다(n<=1 이면 편성 해제). */
   splitSquads(fi: number, n: number): void {
+    if(!Number.isFinite(n))return;
     const army = this.squadMembers(fi, 0).sort((a, b) => (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : a.id - b.id)), c = Math.min(SQUAD_MAX, Math.max(0, Math.floor(n)));
     army.forEach((a, i) => { a.sq = c <= 1 ? 0 : (i % c) + 1; });
     if (c <= 1) this.squadSel = 0; else if (this.squadSel > c) this.squadSel = 1;
   }
   /** 모든 병력을 한 분대로 모은다. */
-  assignAllTo(fi: number, sq: number): void { for (const a of this.squadMembers(fi, 0)) a.sq = sq; }
+  assignAllTo(fi: number, sq: number): void { if(!Number.isInteger(sq)||sq<0||sq>SQUAD_MAX)return; for (const a of this.squadMembers(fi, 0)) a.sq = sq; }
   /** 전체(0) 선택 상태에서 미편성 병력을 해당 분대로 옮긴다. */
-  moveUnassigned(fi: number, sq: number): void { for (const a of this.squadMembers(fi, 0)) if (a.sq === 0) a.sq = sq; }
+  moveUnassigned(fi: number, sq: number): void { if(!Number.isInteger(sq)||sq<1||sq>SQUAD_MAX)return; for (const a of this.squadMembers(fi, 0)) if (a.sq === 0) a.sq = sq; }
   order(fi: number, type: Order['type'], x: number, y: number, squad = fi === 0 ? this.squadSel : 0): void {
+    if(!this.factions[fi]||![x,y].every(Number.isFinite)||!Number.isInteger(squad)||squad<0||squad>SQUAD_MAX)return;
+    x=Math.max(0,Math.min(SIZE,x));y=Math.max(0,Math.min(SIZE,y));
     let k = 0;
     for (const a of this.actors) if (a.alive && a.f === fi && a.kind !== 'worker' && a.kind !== 'boss' && a.kind !== 'guard' && (squad === 0 || a.sq === squad)) {
       const ring = Math.floor(Math.sqrt(k)), ang = k * 2.4; k++;
@@ -487,7 +491,7 @@ export class World {
   /** 보스가 안에 있으면 적의 표적·피해에서 제외 */
   hidden(a: Actor): boolean { return !!this.inside && a.kind === 'boss' && a.f === 0; }
   enterBiz(fi: number, z: Business): string {
-    const b = this.boss(fi); if (fi !== 0 || !b || b.inVeh) return '들어갈 수 없습니다';
+    const b = this.boss(fi); if (fi !== 0 || !b || b.inVeh || this.inside || !this.businesses.includes(z)) return '들어갈 수 없습니다';
     if (z.owner >= 0 && z.owner !== fi) return '적 사업체 — 패드 위에서 버티면 인수합니다';
     const lay = INTERIORS[z.kind]; this.inside = { biz: z.id, x: lay.spawn.x, y: lay.spawn.y, ang: lay.spawn.ang, walk: 0 };
     b.vx = b.vy = 0; this.fx('door', b.x, b.y); return '';
@@ -516,25 +520,26 @@ export class World {
   }
   /** 내부 공간에서 걷기(보스 입력 mx,my 는 실내 좌표 기준) */
   moveInside(dt: number): void {
-    const s = this.inside, lay = this.insideLayout(); if (!s || !lay) return; const inp = this.input, m = Math.hypot(inp.mx, inp.my), k = m > 1 ? 1 / m : 1;
-    const p = { x: s.x + inp.mx * k * INTERIOR_SPEED * dt, y: s.y + inp.my * k * INTERIOR_SPEED * dt }; resolveInterior(lay, p);
-    s.walk += Math.hypot(p.x - s.x, p.y - s.y); s.x = p.x; s.y = p.y; s.ang = Math.atan2(inp.ay - s.y, inp.ax - s.x);
+    const s = this.inside, lay = this.insideLayout(); if (!s || !lay || !Number.isFinite(dt)||dt<=0) return; const inp = this.input; if(![inp.mx,inp.my,inp.ax,inp.ay].every(Number.isFinite))return; const m = Math.hypot(inp.mx, inp.my), k = m > 1 ? 1 / m : 1;
+    const steps=Math.max(1,Math.ceil(Math.min(dt,.25)*INTERIOR_SPEED/5)),step=Math.min(dt,.25)/steps;
+    for(let i=0;i<steps;i++){const p={x:s.x+inp.mx*k*INTERIOR_SPEED*step,y:s.y+inp.my*k*INTERIOR_SPEED*step};resolveInterior(lay,p);s.walk+=Math.hypot(p.x-s.x,p.y-s.y);s.x=p.x;s.y=p.y;}
+    s.ang=Math.atan2(inp.ay-s.y,inp.ax-s.x);
   }
   nearInsideCounter(): boolean { const s = this.inside, lay = this.insideLayout(); return !!s && !!lay && nearCounter(lay, s.x, s.y); }
   nearInsideDoor(): boolean { const s = this.inside, lay = this.insideLayout(); return !!s && !!lay && nearDoor(lay, s.x, s.y); }
   /** 내부 E 키: 카운터 → 'shop', 문 → 'exit' */
   interactInside(fi: number): 'shop' | 'exit' | '' {
-    if (!this.inside) return ''; if (this.nearInsideDoor()) { this.exitBiz(fi); return 'exit'; }
+    if (fi!==0 || !this.inside) return ''; if (this.nearInsideDoor()) { this.exitBiz(fi); return 'exit'; }
     return this.nearInsideCounter() ? 'shop' : '';
   }
   /** 카운터 앞에서 사업체 매입·업그레이드 */
   buyHere(fi: number): string {
-    const z = this.insideBiz(); if (!z || !this.nearInsideCounter()) return '카운터 앞에서만 거래할 수 있습니다';
+    const z = this.insideBiz(); if (fi!==0 || !z || !this.nearInsideCounter()) return '카운터 앞에서만 거래할 수 있습니다';
     return z.owner < 0 ? this.buyBiz(fi, z) : z.owner === fi ? this.upgradeBiz(fi, z) : '내 사업체가 아닙니다';
   }
   /** 카운터 앞에서 물건 구매 */
   shop(fi: number, id: string): ShopResult {
-    const z = this.insideBiz(); if (!z || !this.nearInsideCounter()) return { ok: false, msg: '카운터 앞에서만 구매할 수 있습니다' };
+    const z = this.insideBiz(); if (fi!==0 || !z || !this.nearInsideCounter() || (z.owner>=0&&z.owner!==fi)) return { ok: false, msg: '카운터 앞에서만 구매할 수 있습니다' };
     return purchase(this, fi, z, id);
   }
   bribe(fi: number): string {
@@ -542,7 +547,7 @@ export class World {
     if (f.cash < p) return `뇌물 $${p} 필요`; f.cash -= p; f.wanted = 0; this.say('경찰 매수 완료. 수배 해제', '#9db8ff'); return '';
   }
   hireMercs(fi: number, free = false): string {
-    const f = this.factions[fi], b = this.boss(fi); if (!b) return '보스가 쓰러져 있습니다';
+    const f = this.factions[fi], b = this.boss(fi); if (!b) return '보스가 쓰러져 있습니다'; if(this.opts.duel)return '대전에서는 용병을 호출할 수 없습니다';
     if (this.actors.filter(a => a.alive && a.f === fi && a.kind === 'merc').length + 3 > 9) return '용병은 최대 9명입니다';
     if (!free) { if (f.cash < 350) return '용병 호출에 $350 필요'; f.cash -= 350; }
     for (let k = 0; k < 3; k++) { const m = this.spawnUnit('merc', fi, b.x + Math.cos(k * 2.1) * 36, b.y + Math.sin(k * 2.1) * 36); m.temp = 0; this.fx('spawn', m.x, m.y, 0, undefined, fi); }
@@ -555,7 +560,7 @@ export class World {
     else if (f.klass === 'tycoon') { const e = this.hireMercs(fi); if (e) return e; }
     else {
       let placed = false;
-      for (let k = 0; k < 10 && !placed; k++) { const x = b.x + Math.cos(b.ang + k * 0.7) * (50 + k * 6), y = b.y + Math.sin(b.ang + k * 0.7) * (50 + k * 6); if (rectFree(this.map, x - 22, y - 22, 44, 44) || !navBlocked(this.map, x, y) && k > 6) { const s = this.addStructure('turret', fi, x - 22, y - 22, true, 25); this.pushOut(s); placed = true; } }
+      for (let k = 0; k < 10 && !placed; k++) { const x = b.x + Math.cos(b.ang + k * 0.7) * (50 + k * 6), y = b.y + Math.sin(b.ang + k * 0.7) * (50 + k * 6); if (rectFree(this.map, x - STRUCTS.turret.w/2, y - STRUCTS.turret.h/2, STRUCTS.turret.w, STRUCTS.turret.h)) { const s = this.addStructure('turret', fi, x - STRUCTS.turret.w/2, y - STRUCTS.turret.h/2, true, 25); this.pushOut(s); placed = true; } }
       if (!placed) return '설치할 공간이 없습니다';
     }
     f.skillCd = CLASSES[f.klass].cd; return '';

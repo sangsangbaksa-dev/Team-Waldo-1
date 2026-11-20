@@ -133,10 +133,15 @@ export function stayOnTrack(c: CarState, t: Track, dt: number, progress: boolean
 }
 
 /** 두 차체를 길이·너비에 맞게 떼어 냅니다. 중심을 잇는 방향으로 밀므로 뒤쪽 충돌이 차를 코스 밖으로 밀어내지 않습니다. */
+// Conservative square bound: no oriented chassis projection can exceed
+// half-length + half-width. Near pairs still use the original narrow phase.
+const COLLISION_LIMIT = 2 * (BODY_HALF_LENGTH + BODY_HALF_WIDTH);
 export function separateCars(a: CarState, b: CarState): number {
+  const dx = b.x - a.x, dz = b.z - a.z;
+  if (Math.abs(dx) > COLLISION_LIMIT || Math.abs(dz) > COLLISION_LIMIT) return 0;
   const ahx = Math.cos(a.h), ahz = Math.sin(a.h), arx = -ahz, arz = ahx;
   const bhx = Math.cos(b.h), bhz = Math.sin(b.h), brx = -bhz, brz = bhx;
-  const dx = b.x - a.x, dz = b.z - a.z; let dist = Math.hypot(dx, dz), nx = ahx, nz = ahz;
+  let dist = Math.hypot(dx, dz), nx = ahx, nz = ahz;
   if (dist > 1e-4) { nx = dx / dist; nz = dz / dist; } else dist = 0;
   const span = (hx: number, hz: number, rx: number, rz: number): number => Math.abs(hx * nx + hz * nz) * BODY_HALF_LENGTH + Math.abs(rx * nx + rz * nz) * BODY_HALF_WIDTH;
   const need = span(ahx, ahz, arx, arz) + span(bhx, bhz, brx, brz);

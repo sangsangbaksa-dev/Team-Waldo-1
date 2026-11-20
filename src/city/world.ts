@@ -49,6 +49,8 @@ export interface WorldOptions { seed: number; difficulty: Difficulty; klass: Cla
 export interface Quest { text: string; reward: number; done: boolean; check: (w: World) => boolean }
 
 const HC = 128, HN = Math.ceil(SIZE / HC);
+/** Stable in-place compaction keeps the simulation's hot entity lists allocation-free. */
+function compactAlive<T extends { alive: boolean }>(items: T[]): void { let n = 0; for (const item of items) if (item.alive) items[n++] = item; items.length = n; }
 export const VEHICLES: Record<string, { hp: number; max: number; accel: number; r: number; len: number; wid: number; colors: string[] }> = {
   sedan: { hp: 320, max: 430, accel: 420, r: 28, len: 85, wid: 36, colors: ['#d9d9d9', '#4b6cb7', '#a33', '#3c7a52', '#c9a227', '#444b59'] },
   sports: { hp: 260, max: 620, accel: 620, r: 28, len: 85, wid: 36, colors: ['#ff3b3b', '#ffd400', '#00d0ff', '#ff7ad9'] },
@@ -583,8 +585,8 @@ export class World {
     this.updateBusinesses(dt); this.updateZone(dt); this.updateLoot(dt);
     this.secT += dt; if (this.secT >= 1) { this.secT -= 1; this.everySecond(); }
     this.checkElimination();
-    if (this.actors.length > 60 && this.actors.some(a => !a.alive)) this.actors = this.actors.filter(a => a.alive);
-    this.vehicles = this.vehicles.filter(v => v.alive); this.loot = this.loot.filter(l => l.alive); this.structures = this.structures.filter(s => s.alive);
+    if (this.actors.length > 60) compactAlive(this.actors);
+    compactAlive(this.vehicles); compactAlive(this.loot); compactAlive(this.structures);
   }
   respawn(f: Faction): void {
     const hq = this.hq(f.id); if (!hq) return;

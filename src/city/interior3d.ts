@@ -11,6 +11,7 @@ import { furnish } from './interiorfurn';
 import { Kit, rnd, type Quality } from './interiorkit';
 import type { Models } from './models';
 import { EYE_HEIGHT } from './scale';
+import { addInteriorArchitecture } from './interior-architecture';
 
 /** 1인칭 눈높이(키 1.9m 모델의 눈). 서 있는 점원·손님의 눈과 같습니다. */
 export const EYE_IN = EYE_HEIGHT;
@@ -75,6 +76,7 @@ export class Interior3D {
     this.scene.background = new THREE.Color(m.bg); this.scene.fog = new THREE.FogExp2(m.fog, m.fogD);
     this.scene.add(new THREE.AmbientLight(m.amb, m.ambI), this.camera);
     this.shell(m);
+    addInteriorArchitecture(kit, lay, m.trim);
     const ctx = { kit, lay, models, stock: kit.stock(2600, 1400) };
     furnish(ctx); DECOR[lay.kind](ctx, m.look); EXTRA[lay.kind](ctx); addFolk(kit, models, quality === 'high' ? lay.folk : lay.folk.slice(0, quality === 'standard' ? 8 : 4), m.look);
   }

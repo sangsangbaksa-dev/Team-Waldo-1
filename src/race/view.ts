@@ -10,6 +10,7 @@ import { BOOST_LAG, carEuler, chaseFov, chaseRoll, chaseRumble, chaseShake, chev
 import { wrapAngle, boosting, kmh } from './physics';
 import { SLOTS, type RaceState, type Racer } from './race';
 import { brakeGlow, gridPaint, reflectorIndices } from './track-detail';
+import { sprayRate, emissionStep, wetRoadFinish } from './road-visuals';
 import { type Track } from './track';
 import { type Theme } from './maps';
 import { buildOutposts, type Outpost } from './outpost';
@@ -65,8 +66,8 @@ class Particles {
   }
   update(dt: number, gravity: number): void {
     for (let i = 0; i < this.cap; i++) {
-      if (this.life[i] <= 0) { this.col[i * 3] = this.col[i * 3 + 1] = this.col[i * 3 + 2] = 0; continue; }
-      this.life[i] -= dt; const f = Math.max(0, this.life[i] / this.max[i]);
+      if (this.life[i] <= 0) { this.pos[i * 3 + 1] = -999; this.col[i * 3] = this.col[i * 3 + 1] = this.col[i * 3 + 2] = 0; continue; }
+      this.life[i] -= dt; if (this.life[i] <= 0) { this.pos[i * 3 + 1] = -999; continue; } const f = Math.max(0, this.life[i] / this.max[i]);
       this.vel[i * 3 + 1] -= gravity * dt; this.pos[i * 3] += this.vel[i * 3] * dt; this.pos[i * 3 + 1] += this.vel[i * 3 + 1] * dt; this.pos[i * 3 + 2] += this.vel[i * 3 + 2] * dt;
       this.col[i * 3] = this.rgb[i * 3] * f; this.col[i * 3 + 1] = this.rgb[i * 3 + 1] * f; this.col[i * 3 + 2] = this.rgb[i * 3 + 2] * f;
     }
@@ -100,13 +101,14 @@ class SkidMarks {
 let driverKit: CharacterKit | null = null;
 /** 공용 캐릭터 키트: 운전석 드라이버와 출발선 피트 크루에 씁니다. 없으면 차만 그립니다. */
 export function setDriverKit(k: CharacterKit | null): void { driverKit = k; }
-interface CarVis { racer: Racer; group: THREE.Group; flames: THREE.Mesh[]; shadow: THREE.Mesh; lastV: number; brake: THREE.MeshBasicMaterial[]; brakeLevel: number }
+interface CarVis { racer: Racer; group: THREE.Group; flames: THREE.Mesh[]; shadow: THREE.Mesh; lastV: number; brake: THREE.MeshBasicMaterial[]; brakeLevel: number; sprayCarry: number }
 
 export class RaceView {
   post: PostFx | null = null; readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera = new THREE.PerspectiveCamera(64, 1, 0.4, 3200);
   private crew: CharacterRig[] = []; private cars: CarVis[] = []; private ground!: THREE.Mesh; private pads: Array<{ tex: THREE.CanvasTexture }> = [];
   private rainFx = new Particles(1800, 0.32, THREE.NormalBlending, 0.55); private sparks = new Particles(420, 0.34, THREE.AdditiveBlending); private smoke = new Particles(420, 1.1, THREE.NormalBlending, 0.2); private skids = new SkidMarks(1400); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
   private camH = 0; private camInit = false; private camAnchor: ChaseAnchor = { x: 0, y: 0, z: 0, ready: false }; private fov = 64; private shake = 0; private punch = 0; private time = 0; private sun: THREE.DirectionalLight;
+  private spray: Particles | null = null;
   private chaseLift = 0; private viewH = 1; private startLamps: THREE.Mesh[] = [];
   private disposables: Array<{ dispose(): void }> = []; private outposts: Outpost | null = null;
 
@@ -116,7 +118,7 @@ export class RaceView {
     this.scene.fog = new THREE.Fog(theme.fog.color, theme.fog.near, theme.fog.far); this.sun = new THREE.DirectionalLight(theme.light.sun, theme.light.sunPower);
     this.buildSky(); if (quality !== 'low') this.buildCarEnv(); this.buildGround(); this.buildRoad(); this.buildProps(quality);
     this.scene.add(new THREE.HemisphereLight(theme.light.sky, theme.light.ground, theme.light.hemi)); this.sun.position.set(-40, 60, 90); this.scene.add(this.sun, this.sun.target);
-    this.scene.add(this.skids.mesh, this.sparks.points, this.smoke.points); if (theme.rain) this.scene.add(this.rainFx.points);
+    this.scene.add(this.skids.mesh, this.sparks.points, this.smoke.points); if (theme.rain) { this.scene.add(this.rainFx.points); this.spray = new Particles(quality === 'low' ? 160 : 420, 0.8, THREE.NormalBlending, 0.24); this.scene.add(this.spray.points); }
     const n = 220; this.streakPos = new Float32Array(n * 6); this.streakSeed = new Float32Array(n * 3);
     const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(this.streakPos, 3));
     this.streak = new THREE.LineSegments(sg, new THREE.LineBasicMaterial({ color: 0xcfe9ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })); this.streak.frustumCulled = false; this.scene.add(this.streak);
@@ -197,7 +199,7 @@ export class RaceView {
         const f = new THREE.Mesh(flameGeo, new THREE.MeshBasicMaterial({ color: 0x66b8ff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
         f.position.set(-CAR_LEN / 2 - 0.05, 0.32, s * 0.34); f.scale.set(0.001, 1, 1); group.add(f); flames.push(f);
       }
-      const shadow = new THREE.Mesh(shGeo, shMat); this.scene.add(group, shadow); this.cars.push({ racer: r, group, flames, shadow, lastV: 0, brake, brakeLevel: 0 });
+      const shadow = new THREE.Mesh(shGeo, shMat); this.scene.add(group, shadow); this.cars.push({ racer: r, group, flames, shadow, lastV: 0, brake, brakeLevel: 0, sprayCarry: 0 });
     }
     this.disposables.push(flameGeo, shGeo, shTex, shMat);
   }
@@ -272,7 +274,26 @@ export class RaceView {
       for (let i = 0; i < 2600; i++) { g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(Math.random() < 0.5 ? 14 + Math.random() * 9 : TW - 23 + Math.random() * 9, Math.random() * TH, 2, 2 + Math.random() * 4); }
     });
     asphalt.anisotropy = 8;
-    const road = new THREE.Mesh(ribbon(t, -hw, hw, 0, 0), new THREE.MeshBasicMaterial({ map: asphalt })); road.renderOrder = 0; this.scene.add(road);
+    const roadGeo = ribbon(t, -hw, hw, 0, 0), wet = wetRoadFinish(th.rain, this.quality);
+    let roadMat: THREE.Material = new THREE.MeshBasicMaterial({ map: asphalt });
+    if (wet) {
+      roadGeo.computeVertexNormals();
+      // The neutral gloss map masks paint and creates broad, broken wet highlights.
+      const gloss = canvasTex(128, 256, g => {
+        g.fillStyle = '#666'; g.fillRect(0,0,128,256);
+        for(let i=0;i<26;i++){
+          const x=(i*37)%128,y=(i*83)%256,rx=8+(i%6)*4,ry=12+(i%4)*10;
+          const grad=g.createRadialGradient(x,y,0,x,y,Math.max(rx,ry));
+          grad.addColorStop(0,i%3===0?'#dedede':'#303030');grad.addColorStop(1,'rgba(100,100,100,0)');
+          g.save();g.translate(x,y);g.scale(rx/Math.max(rx,ry),ry/Math.max(rx,ry));g.translate(-x,-y);g.fillStyle=grad;g.fillRect(x-Math.max(rx,ry),y-Math.max(rx,ry),2*Math.max(rx,ry),2*Math.max(rx,ry));g.restore();
+        }
+      });
+      gloss.colorSpace=THREE.NoColorSpace;
+      roadMat.dispose();
+      roadMat=new THREE.MeshPhongMaterial({map:asphalt,specularMap:gloss,specular:new THREE.Color(wet.specular,wet.specular,wet.specular),shininess:wet.shininess});
+      this.disposables.push(gloss);
+    }
+    const road = new THREE.Mesh(roadGeo, roadMat); road.renderOrder = 0; this.scene.add(road);
     // 연석(빨강·흰색, 두 칸씩), 콘크리트 방호벽(밑단 어둡고 윗단이 또렷한 띠 + 상판), 도로 아래 스커트
     const curbCol = (i: number): [number, number, number] => [...th.curb[Math.floor(i / 2) % 2]];
     const curbMat = new THREE.MeshBasicMaterial({ vertexColors: true });
@@ -547,7 +568,7 @@ export class RaceView {
       const roll = Math.max(-0.09, Math.min(0.09, -c.yawRate * c.vf * 0.0028)) + c.slip * -0.08, pitch = pitchRoad - Math.max(-0.04, Math.min(0.04, accel * 0.0012));
       const pose = carEuler(roll, c.h, pitch);
       v.group.position.set(c.x, c.y + 0.02, c.z); v.group.rotation.set(pose.x, pose.y, pose.z, pose.order); v.shadow.position.set(c.x, c.y + 0.05, c.z); v.shadow.rotation.y = -c.h;
-      const fl = boosting(c), len = fl ? 1.0 + Math.sin(this.time * 90 + v.racer.id) * 0.25 + Math.min(0.9, speed / 90) : 0.001;
+      const fl = boosting(c), len = fl ? 1.0 + Math.sin(this.time * 90 + v.racer.id) * 0.25 + Math.min(0.9, Math.abs(c.vf) / 90) : 0.001;
       for (const f of v.flames) { f.scale.x += (len - f.scale.x) * Math.min(1, dt * 20); f.visible = fl || f.scale.x > 0.08; (f.material as THREE.MeshBasicMaterial).color.setHex(v.racer.player ? 0x6ec6ff : 0xffa14a); }
       if (fl && Math.random() < 0.9) this.sparks.emit(c.x - Math.cos(c.h) * 2.4, c.y + 0.5, c.z - Math.sin(c.h) * 2.4, -Math.cos(c.h) * 8 + rnd(-2, 2), rnd(0, 2), -Math.sin(c.h) * 8 + rnd(-2, 2), 0.35, 0.4, 0.8, 1);
       // 타이어: 드리프트·옆미끄러짐·출발 휠스핀에서 연기와 스키드 마크가 남습니다.
@@ -562,6 +583,15 @@ export class RaceView {
           this.skids.mark(v.racer.id * 2 + w, bx, c.y + 0.07, bz, Math.min(0.55, 0.22 + k * 0.4));
         } else this.skids.lift(v.racer.id * 2 + w);
       }
+      // On wet tracks, the rear tires leave a low, directional plume of road spray.
+      if (this.spray) {
+        const e=emissionStep(v.sprayCarry,sprayRate(Math.abs(c.vf),this.theme.rain??0,this.quality==='low'),dt);v.sprayCarry=e.carry;
+        const fx=Math.cos(c.h),fz=Math.sin(c.h),dir=c.vf>=0?1:-1;
+        for(let i=0;i<e.count;i++) {
+          const side=(i+v.racer.id)%2?1:-1;
+          this.spray.emit(c.x-fx*1.45-fz*side*0.78,c.y+0.16,c.z-fz*1.45+fx*side*0.78,-c.vx*0.23-fx*dir*2+rnd(-1,1),rnd(1.5,3.1),-c.vz*0.23-fz*dir*2+rnd(-1,1),0.45+rnd(0,0.3),0.67,0.75,0.83);
+        }
+      }
       // 벽을 긁으며 달리면 불꽃이 계속 튑니다.
       if (v.racer.player && Math.abs(c.lat) > t.halfWidth - 1.65 && Math.abs(c.vf) > 22) {
         const sgn = Math.sign(c.lat) || 1, px = -t.tz[sample] * sgn, pz = t.tx[sample] * sgn;
@@ -574,7 +604,7 @@ export class RaceView {
       }
       if (v.racer.player && wallHit > 0) for (let k = 0; k < 18; k++) this.sparks.emit(c.x, c.y + 0.5, c.z, rnd(-9, 9), rnd(1, 7), rnd(-9, 9), 0.5, 1, 0.8, 0.35);
     }
-    this.skids.flush(); this.sparks.update(dt, 14); this.smoke.update(dt, -1.5);
+    this.skids.flush(); this.sparks.update(dt, 14); this.smoke.update(dt, -1.5); this.spray?.update(dt, 5.8);
     if (this.theme.rain) {
       const cp = this.camera.position, n = Math.round(34 * this.theme.rain * Math.min(2, dt * 60));
       for (let i = 0; i < n; i++) this.rainFx.emit(cp.x + rnd(-38, 38), cp.y + rnd(-1, 20), cp.z + rnd(-38, 38), rnd(-3, 3), rnd(-44, -36), rnd(-3, 3), 0.45, 0.62, 0.74, 0.88);

@@ -11,7 +11,7 @@ import { STEPS, TUT_KEY, advance, newCounters, newTutState, type Counters, type 
 import { CityAudio } from './audio';
 import { reload, switchWeapon } from './actors';
 import { ACTORS, BLOCKS, PITCH, ROAD } from './defs';
-import { applyLook, doorFacingYaw, isLookSpike, mapPointerToWorld } from './uiMath';
+import { applyLook, doorFacingYaw, isLookSpike, mapPointerToWorld, wheelPixels, WeaponWheel } from './uiMath';
 import { DEMOLISH_REFUND_RATE, snapBuildCoord } from './placement';
 import { SHOP, canBuy, itemPrice } from './shop';
 import { PHASE_LABEL, WEATHER_ICON, WEATHER_LABEL, clockLabel } from './clock';
@@ -105,7 +105,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   function start(k: ClassId, tutorial = false, dl: Duel | null = null, rm: Room | null = null): void {
     klass = k; modal.innerHTML = ''; hud.hidden = false; resultShown = false; paused = false; ghost = null; shopOpen = false; panel.hidden = true; bigmap.hidden = true; q('#c-missions').hidden = true;
     // A retry must not inherit held keys, touch gestures, firing or frame debt.
-    keys.clear(); mouse.down = false; touchFire = false; acc = 0; looks.clear(); chatLog.length = 0; chatOpen = false; chatForm().hidden = true;
+    keys.clear(); mouse.down = false; touchFire = false; acc = 0; looks.clear(); weaponWheel.reset(); chatLog.length = 0; chatOpen = false; chatForm().hidden = true;
     for (const stick of [sticks.move, sticks.aim]) { stick.id = -1; stick.x = 0; stick.y = 0; }
     world = new World({ seed: dl ? dl.seed : rm ? rm.seed : (Math.random() * 2 ** 31) | 0, difficulty: diffSel, klass: k, tutorial: tutorial || !!dl || !!rm, duel: dl ? { side: dl.s.host ? 0 : 1, name: dl.s.opponent.nickname, arena: arenaOf(dl.seed) } : rm ? { side: 0, name: '', room: { seats: roomSeats(rm), names: roomNames(rm) } } : undefined });
     if (rm) { const r = rm; world.onShot = (x, y, a, wid, mul) => r.net.sendShot({ x, y, a, w: wid, m: mul }); }
@@ -530,7 +530,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   const onResize = (): void => { R?.resize(); R3?.resize(); };
   const aimPoint = (): { x: number; y: number } => view === 'top' || !R3 ? R!.toWorld(mouse.x, mouse.y) : R3.groundPoint(900);
   const onBlur = (): void => {
-    keys.clear(); mouse.down = false; touchFire = false; looks.clear();
+    keys.clear(); mouse.down = false; touchFire = false; looks.clear(); weaponWheel.reset();
     for (const stick of [sticks.move, sticks.aim]) { stick.id = -1; stick.x = 0; stick.y = 0; }
     if (world && !world.over && !paused && world.factions[0].pending === 0 && document.hidden) pause();
   };
@@ -560,6 +560,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   };
   const place = (sx: number, sy: number): void => { const w = world!, raw = view === 'top' || !R3 ? R!.toWorld(sx, sy) : { x: ghost!.x, y: ghost!.y }, p = { x: snapBuildCoord(raw.x), y: snapBuildCoord(raw.y) }, e = w.build(0, ghost!.kind, p.x, p.y); if (e) toast(e); else { audio.play('build'); if (!keys.has('Shift')) ghost = null; } };
   const looks = new Map<number, { x: number; y: number }>();
+  const weaponWheel = new WeaponWheel();
   for (const cv of [canvas, canvas3]) {
     cv.addEventListener('pointerdown', e => {
       audio.unlock(); if (!world || paused || world.over) return; mouse.x = e.clientX; mouse.y = e.clientY; const three = cv === canvas3;
@@ -585,12 +586,25 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     });
     const up = (e: PointerEvent): void => { looks.delete(e.pointerId); for (const s of [sticks.move, sticks.aim]) if (s.id === e.pointerId) { s.id = -1; s.x = s.y = 0; } if (e.pointerType !== 'touch' && (e.button === 0 || e.type !== 'pointerup')) mouse.down = false; };
     cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up); cv.addEventListener('lostpointercapture', up);
-    cv.addEventListener('wheel', e => { e.preventDefault(); if (cv === canvas) userZoom = Math.max(0.6, Math.min(1.5, userZoom * (e.deltaY > 0 ? 0.92 : 1.08))); else if (world) { const f = world.factions[0]; switchWeapon(world, 0, (f.cur + (e.deltaY > 0 ? 1 : f.slots.length - 1)) % f.slots.length); } }, { passive: false });
+    cv.addEventListener('wheel', e => {
+      e.preventDefault();
+      // Trackpads emit many small deltas; horizontal scrolling and pinch gestures
+      // must not cycle weapons. Normalize mouse line/page units before use.
+      if (!world || paused || world.over || e.ctrlKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      const dy = wheelPixels(e.deltaY, e.deltaMode, cv.clientHeight);
+      if (!dy) return;
+      if (cv === canvas) userZoom = Math.max(0.6, Math.min(1.5, userZoom * Math.exp(-dy * 0.00085)));
+      else {
+        const step = weaponWheel.push(dy, performance.now());
+        const f = world.factions[0];
+        if (step && f.slots.length > 1) switchWeapon(world, 0, (f.cur + step + f.slots.length) % f.slots.length);
+      }
+    }, { passive: false });
   }
   const onWindowPointerEnd = (e: PointerEvent): void => {
     looks.delete(e.pointerId);
     for (const stick of [sticks.move, sticks.aim]) if (stick.id === e.pointerId) { stick.id = -1; stick.x = 0; stick.y = 0; }
-    if (e.pointerType !== 'touch') mouse.down = false;
+    if (e.pointerType !== 'touch' && (e.button === 0 || e.type !== 'pointerup')) mouse.down = false;
   };
   // Mobile pointers may end over the HUD rather than the canvas.
   window.addEventListener('pointerup', onWindowPointerEnd);

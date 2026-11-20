@@ -43,9 +43,11 @@ export function clampLabelScreenPos(
   x: number, y: number, screenW: number, screenH: number, labelW: number, labelH: number, margin = 8,
 ): { x: number; y: number } {
   const hw = Math.max(0, labelW / 2), hh = Math.max(0, labelH / 2);
-  const minX = margin + hw, maxX = Math.max(minX, screenW - margin - hw);
-  const minY = margin + hh, maxY = Math.max(minY, screenH - margin - hh);
-  return { x: Math.min(maxX, Math.max(minX, x)), y: Math.min(maxY, Math.max(minY, y)) };
+  // When a label is wider than the viewport, center it instead of biasing
+  // its clipping to the right/bottom on narrow screens.
+  const minX = margin + hw, maxX = screenW - margin - hw;
+  const minY = margin + hh, maxY = screenH - margin - hh;
+  return { x: minX > maxX ? screenW / 2 : Math.min(maxX, Math.max(minX, x)), y: minY > maxY ? screenH / 2 : Math.min(maxY, Math.max(minY, y)) };
 }
 
 /**
@@ -88,4 +90,30 @@ export function buildReach(pitch: number, max = 700): number {
   if (!Number.isFinite(pitch)) return max * 0.8;
   const t = Math.max(0, Math.min(1, (-pitch - 0.04) / 0.75));
   return BUILD_REACH_MIN + (max - BUILD_REACH_MIN) * (1 - t);
+}
+
+/** WheelEvent deltaMode: pixels (0), lines (1), pages (2). */
+export function wheelPixels(delta: number, mode: number, pageHeight: number): number {
+  if (!Number.isFinite(delta)) return 0;
+  const unit = mode === 1 ? 16 : mode === 2 ? Math.max(1, Number.isFinite(pageHeight) ? pageHeight : 1) : 1;
+  return Math.max(-240, Math.min(240, delta * unit));
+}
+
+/** Accumulate small trackpad gestures; cap weapon changes during inertial scrolling. */
+export class WeaponWheel {
+  private pending = 0;
+  private lastEvent = -Infinity;
+  private lastSwitch = -Infinity;
+  reset(): void { this.pending = 0; this.lastEvent = -Infinity; this.lastSwitch = -Infinity; }
+  push(delta: number, now: number): -1 | 0 | 1 {
+    if (!Number.isFinite(delta) || !Number.isFinite(now) || delta === 0) return 0;
+    if (now - this.lastEvent > 200 || Math.sign(delta) !== Math.sign(this.pending)) this.pending = 0;
+    this.lastEvent = now;
+    if (now - this.lastSwitch < 150) return 0;
+    this.pending += delta;
+    if (Math.abs(this.pending) < 40) return 0;
+    const direction = this.pending > 0 ? 1 : -1;
+    this.pending = 0; this.lastSwitch = now;
+    return direction;
+  }
 }

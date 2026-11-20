@@ -453,7 +453,7 @@ export class ShooterView {
     this.vmSwap = Math.max(0, this.vmSwap - dt); const sw = this.vmSwap / 0.35, moving = Math.min(1, p.speed / 5), reloading = p.reload > 0, recoil = p.kick;
     const blend = 1 - Math.exp(-dt * 14); this.aimBlend += ((p.ads && !reloading ? 1 : 0) - this.aimBlend) * blend; this.reloadBlend += ((reloading ? 1 : 0) - this.reloadBlend) * blend; const ads = this.aimBlend;
     const bob = Math.sin(this.bob * 1.1) * 0.35 * moving * (1 - ads * 0.8), sway = Math.cos(this.bob * 0.55) * 0.25 * moving * (1 - ads * 0.8), big = id === 'sniper' ? 11 : 12.5;
-    const sprint = !ads && !reloading && p.speed > 6.1 ? 1 : 0; this.sprintT += (sprint - this.sprintT) * Math.min(1, dt * 10);
+    const sprint = !p.ads && !reloading && p.speed > 6.1 ? 1 : 0; this.sprintT += (sprint - this.sprintT) * Math.min(1, dt * 10);
     this.vm.scale.setScalar(big); this.vm.rotation.set(recoil * 0.2 - this.reloadBlend * 0.7 - sw * 0.8 - this.sprintT * 0.35, Math.PI / 2 + recoil * 0.05 + this.sprintT * 0.5, this.sprintT * 0.12);
     this.vm.position.set(4.6 * (1 - ads * 0.9) + sway, -4.4 * (1 - ads * 0.25) + bob - this.reloadBlend * 3 - sw * 5 - this.sprintT * 1.2, -9.5 + recoil * 2.4 + this.sprintT * 0.8);
     this.vmFlash.visible = p.muzzle > 0 && gun?.att.muzzle !== 'suppressor'; this.vmFlash.material.rotation = this.time * 40; this.flashKick = Math.max(0, this.flashKick - dt * 14); const fs = 0.3 + this.flashKick * 0.45 * (0.7 + Math.random() * 0.6); this.vmFlash.scale.set(fs, fs, 1);

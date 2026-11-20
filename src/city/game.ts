@@ -32,7 +32,7 @@ const clock = (t: number): string => `${Math.floor(Math.max(0, t) / 60)}:${Strin
 
 function readTutDone(): boolean { try { return localStorage.getItem(TUT_KEY) === '1'; } catch { return false; } }
 export function openCity(onExit: () => void, options: { difficulty?: string; loading?: LoadingScreen } = {}): void {
-  let diffSel: Difficulty = 'd4'; try { const sv = localStorage.getItem('waldo-city-diff'); if (sv && sv in DIFFICULTY) diffSel = sv as Difficulty; } catch { /* 저장 불가 환경 */ }
+  let diffSel: Difficulty = 'd4'; try { const sv = localStorage.getItem('waldo-city-diff'); if (sv && Object.hasOwn(DIFFICULTY, sv)) diffSel = sv as Difficulty; } catch { /* 저장 불가 환경 */ }
   void options;
   const prefs = readPreferences(), touch = matchMedia('(pointer: coarse)').matches;
   const root = document.createElement('div'); root.className = 'city-root' + (touch ? ' touch' : '');

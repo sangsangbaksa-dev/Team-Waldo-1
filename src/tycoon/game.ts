@@ -154,7 +154,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   }
   function menuAction(m: string): void {
     if (m === 'resume') closeModal();
-    else if (m === 'save') { if (save()) toast('저장했습니다', 'good'); else toast('저장하지 못했습니다. 브라우저 저장 공간을 확인하세요.', 'bad'); }
+    else if (m === 'save') { if (save()) toast('저장했습니다', 'good'); else toast('저장하지 못했습니다. 브라우저 저장 공간을 확인하세요.', 'bad', 5); }
     else if (m === 'view') { player.setFirstPerson(!player.firstPerson); renderModal(); }
     else if (m === 'sound') { audio.enabled = !audio.enabled; writePreferences({ ...readPreferences(), sound: audio.enabled }); renderModal(); }
     else if (m === 'exit') exit();

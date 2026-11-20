@@ -12,6 +12,8 @@ type Batch = Map<THREE.Material, THREE.BufferGeometry[]>;
 interface Chunk { root: THREE.Group; x: number; z: number; batch: Batch }
 interface Lamps { mesh: THREE.InstancedMesh; groups: number[]; lamps: number[] }
 const UP = new THREE.Vector3(0, 1, 0);
+/** 태양 그림자 상자 반폭(m)·맵 해상도·시선 앞쪽으로 미는 거리. 상자 밖은 그림자가 없어 경계가 보이므로 넉넉히 잡습니다. */
+const SHADOW_HALF = 150, SHADOW_MAP = 3072, SHADOW_LEAD = 60;
 
 // shooter/view.ts의 worldBox/buildBuildings처럼 월드 UV와 재질별 병합으로 건물 수와 드로우콜을 분리합니다.
 function surface(g: THREE.BufferGeometry, tile = 4, tint = 0xffffff, facade = false): THREE.BufferGeometry {
@@ -84,7 +86,7 @@ export class CityView {
   private signals: Lamps | null = null;
   private signalTick = -Infinity;
   private disposed = false;
-  private scratch = new THREE.Vector3();
+  private scratch = new THREE.Vector3(); private lookDir = new THREE.Vector3(0, 0, -1);
   private matrix = new THREE.Object3D();
 
   constructor(readonly scene: THREE.Scene, readonly renderer: THREE.WebGLRenderer, readonly map: CityMap, readonly assets: OutlawAssets | null, readonly quality: Quality) {
@@ -96,7 +98,7 @@ export class CityView {
     this.root.add(this.sky.mesh, this.hemi, this.sun, this.sun.target, this.moon, this.moon.target);
     this.materials.add(this.sky.mesh.material as THREE.Material); this.materials.add(this.bulbs); this.materials.add(this.glow);
     this.sun.castShadow = quality === 'high'; const shadow = this.sun.shadow;
-    shadow.mapSize.set(2048, 2048); Object.assign(shadow.camera, { left: -90, right: 90, top: 90, bottom: -90, near: 1, far: 650 });
+    shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP); Object.assign(shadow.camera, { left: -SHADOW_HALF, right: SHADOW_HALF, top: SHADOW_HALF, bottom: -SHADOW_HALF, near: 1, far: 650 });
     shadow.bias = -.00025; shadow.normalBias = .12; shadow.camera.updateProjectionMatrix();
     const size = map.half * 2 / 4;
     for (let z = 0; z < 4; z++) for (let x = 0; x < 4; x++) {
@@ -325,7 +327,7 @@ export class CityView {
     l.position.set(0, Math.max(0, pos.y - 18), 0);
     (l.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
   }
-  private lighting(clock: number, position: THREE.Vector3, rain: number): void {
+  private lighting(clock: number, position: THREE.Vector3, rain: number, look?: THREE.Vector3): void {
     const c = tex.skyColors(clock); this.night = c.night; this.sky.update(c); this.sky.mesh.position.copy(position);
     this.fog.color.copy(c.fog).lerp(new THREE.Color(0x56606a), rain * .75).lerp(new THREE.Color(0xdce6ff), this.bolt * .55); this.fog.density = .00165 + c.night * .00055 + rain * .0042; this.scene.background = this.fog.color;
     this.hemi.color.copy(c.hemiSky).lerp(new THREE.Color(0x9aaccb), c.night * .4); this.hemi.groundColor.copy(c.hemiGround); this.hemi.intensity = (c.hemiIntensity * 1.35 + c.night * .5) * (1 - rain * .3) + this.bolt * 4;
@@ -333,8 +335,9 @@ export class CityView {
     this.moon.intensity = c.night * .48; this.moon.position.copy(position).addScaledVector(c.moonDir, 280); this.moon.target.position.copy(position);
     // 광원 좌표계의 그림자 텍셀에 맞춰 카메라 이동 시 떨림을 줄입니다.
     const dir = this.scratch.copy(c.sunDir); if (dir.y < .045) dir.y = .045; dir.normalize();
-    const right = new THREE.Vector3().crossVectors(UP, dir).normalize(), up = new THREE.Vector3().crossVectors(dir, right), step = 180 / 2048;
-    const target = position.clone(); target.y = 0;
+    const right = new THREE.Vector3().crossVectors(UP, dir).normalize(), up = new THREE.Vector3().crossVectors(dir, right), step = SHADOW_HALF * 2 / SHADOW_MAP;
+    // 그림자 상자(±SHADOW_HALF)를 시선 앞쪽으로 밀어, 보이는 쪽 그림자가 중간에 뚝 끊기지 않게 합니다.
+    const target = position.clone(); target.y = 0; if (look) target.addScaledVector(look, SHADOW_LEAD);
     target.addScaledVector(right, Math.round(target.dot(right) / step) * step - target.dot(right)); target.addScaledVector(up, Math.round(target.dot(up) / step) * step - target.dot(up));
     this.sun.target.position.copy(target); this.sun.position.copy(target).addScaledVector(dir, 300);
     for (const f of this.facades) f.emissiveIntensity = c.night * 1.15;
@@ -345,7 +348,7 @@ export class CityView {
     for (const m of this.reflections) m.opacity = Math.min(.55, c.night * .3 + rain * .3);
   }
   update(dt: number, camera: THREE.PerspectiveCamera, clock: number, t: number, rain = 0): void {
-    if (this.disposed) return; this.lightning(dt, rain); this.lighting(clock, camera.position, rain); this.rainFx(dt, camera.position, rain);
+    if (this.disposed) return; this.lightning(dt, rain); camera.getWorldDirection(this.lookDir); this.lookDir.y = 0; if (this.lookDir.lengthSq() > 1e-4) this.lookDir.normalize(); this.lighting(clock, camera.position, rain, this.lookDir); this.rainFx(dt, camera.position, rain);
     const radius = this.quality === 'low' ? 610 : 810, halfChunk = this.map.half / 4;
     for (const c of this.chunks) { const dx = Math.max(0, Math.abs(camera.position.x - c.x) - halfChunk), dz = Math.max(0, Math.abs(camera.position.z - c.z) - halfChunk); c.root.visible = dx * dx + dz * dz < radius * radius; }
     if (this.signals && (Math.abs(t - this.signalTick) >= .25 || this.signalTick === -Infinity)) {

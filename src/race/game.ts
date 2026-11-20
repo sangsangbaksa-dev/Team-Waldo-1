@@ -23,8 +23,7 @@ import { loadCharacterKit } from '../shared/character';
 import { driftLive, readDriftBests, writeDriftBests } from './driftscore';
 import { PVP_ENABLED } from '../net/config';
 import { advanceWrongWay, WRONG_WAY_DELAY } from './hud-timing';
-
-const STEP = 1 / 90;
+import { framePlan, STEP, escapeRaceText } from './frame-plan';
 const ORD = ['', '1ST', '2ND', '3RD', '4TH', '5TH', '6TH'];
 
 export function openRace(onExit: () => void): void {
@@ -140,12 +139,12 @@ export function openRace(onExit: () => void): void {
       .catch(() => { modal.className = 'rc-modal show'; modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">1대1 대전</span><h2>대전 기능을 불러오지 못했어요</h2><div class="rc-actions"><button data-act="setup">설정으로</button></div></div>'; });
   }
   function pvpCard(eyebrow: string, title: string, body = '', actions = '<button data-act="exit">메뉴로</button>'): void {
-    modal.className = 'rc-modal show'; modal.innerHTML = `<div class="rc-card"><span class="rc-eyebrow">${eyebrow}</span><h2>${title}</h2>${body}<div class="rc-actions">${actions}</div></div>`;
+    modal.className = 'rc-modal show'; modal.innerHTML = `<div class="rc-card"><span class="rc-eyebrow">${escapeRaceText(eyebrow)}</span><h2>${title}</h2>${body}<div class="rc-actions">${actions}</div></div>`;
   }
   function startPvp(s: PvpSession): void {
     endPvp(); setupUi?.destroy(); setupUi = null; if (view) { view.dispose(); view = null; }
     const cfg = s.match.config; setup = sanitizeSetup({ ...setup, map: cfg.map, laps: cfg.laps }); paused = false; finishedShown = false; root.dataset.phase = 'setup';
-    pvpCard('1대1 대전', `${s.opponent.nickname} 님과 연결하는 중…`, `<p class="rc-record">${mapOf(setup).name} · ${setup.laps}랩 · ${carById(setup.car).name}</p>`, '<button data-act="exit">나가기</button>');
+    pvpCard('1대1 대전', `${escapeRaceText(s.opponent.nickname)} 님과 연결하는 중…`, `<p class="rc-record">${mapOf(setup).name} · ${setup.laps}랩 · ${carById(setup.car).name}</p>`, '<button data-act="exit">나가기</button>');
     const net: RacePvp = new RacePvp(s, setup.car, {
       onStart: car => beginPvp(car),
       onSnap: snap => { const rival = race.racers[1]; if (pvp && rival?.link) rival.link = { snap, at: performance.now() }; },
@@ -233,7 +232,7 @@ export function openRace(onExit: () => void): void {
   function showMulti(): void {
     const m = multi; if (!m || m.done) return; m.done = true; finishedShown = true;
     const rows = [...race.racers].map(r => ({ r, t: r.player ? m.myFin : r.finishTime })).sort((a, b) => (a.t ?? Infinity) - (b.t ?? Infinity));
-    const place = rows.findIndex(x => x.r.player) + 1, body = `<ol class="rc-board">${rows.map((x, i) => `<li class="${x.r.player ? 'me' : ''}"><b>${ORD[i + 1] ?? (i + 1) + 'TH'}</b><span>${x.r.player ? '나' : x.r.name}</span><em>${x.t === null ? (x.r.peer && m.gone.has(x.r.peer) ? '나감' : '기록 없음') : fmtTime(x.t)}</em></li>`).join('')}</ol><p class="rc-record">3명 이상의 방은 순위만 표시하고 레이팅에는 반영되지 않습니다.</p>`;
+    const place = rows.findIndex(x => x.r.player) + 1, body = `<ol class="rc-board">${rows.map((x, i) => `<li class="${x.r.player ? 'me' : ''}"><b>${ORD[i + 1] ?? (i + 1) + 'TH'}</b><span>${x.r.player ? '나' : escapeRaceText(x.r.name)}</span><em>${x.t === null ? (x.r.peer && m.gone.has(x.r.peer) ? '나감' : '기록 없음') : fmtTime(x.t)}</em></li>`).join('')}</ol><p class="rc-record">3명 이상의 방은 순위만 표시하고 레이팅에는 반영되지 않습니다.</p>`;
     window.setTimeout(() => { if (!closed && multi === m) pvpCard(`${mapOf(setup).name} · ${setup.laps}랩 · ${rows.length}명`, `${ORD[place] ?? place + 'TH'} <small>/ ${rows.length}</small>`, body, '<button class="primary" data-act="rematch">다시 대전</button><button data-act="exit">메뉴로</button>'); }, 700);
   }
 
@@ -313,11 +312,12 @@ export function openRace(onExit: () => void): void {
 
   function frame(now: number): void {
     if (closed) return; raf = requestAnimationFrame(frame);
-    const dt = Math.min(0.1, (now - last) / 1000 || 0.016); last = now;
+    const elapsed = Math.max(0, (now - last) / 1000); last = now;
+    const dt = Math.min(0.1, elapsed);
     if (!paused && view) {
-      acc += dt; let steps = 0; const input = readInput();
-      while (acc >= STEP && steps < 6) { handle(updateRace(race, STEP, input, now)); acc -= STEP; steps++; }
-      if (steps === 6) acc = 0;
+      const plan = framePlan(acc, elapsed); acc = plan.remainder;
+      const steps = plan.steps, input = readInput();
+      for (let i = 0; i < steps; i++) handle(updateRace(race, STEP, input, now));
       const c = race.player.car; audio.drive(c.vf, input.throttle, c.slip, boosting(c), c.drifting, wallHit > 0);
       // 니트로를 누르는 순간 쾅 터지고, 드리프트에 들어가는 순간 타이어가 찢어지는 소리가 납니다.
       const nitroNow = race.phase === 'racing' && input.nitro && c.nitro > 0 && c.boostT > 0, driftNow = c.drifting && race.phase === 'racing';

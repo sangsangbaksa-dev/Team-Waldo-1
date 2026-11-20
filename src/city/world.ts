@@ -190,9 +190,18 @@ export class World {
     if (fb === POLICE) return fa < 8 && this.factions[fa].wanted >= 1;
     return true;
   }
+  /** Refresh after movement, before collision, capture and pickup queries. */
+  refreshActorGrid(): void {
+    for (const cell of this.hash) cell.length = 0;
+    for (const a of this.actors) {
+      if (!a.alive || a.inVeh || this.hidden(a)) continue;
+      const x = Math.min(HN - 1, Math.max(0, Math.floor(a.x / HC))), y = Math.min(HN - 1, Math.max(0, Math.floor(a.y / HC)));
+      this.hash[y * HN + x].push(a);
+    }
+  }
   forNear(x: number, y: number, r: number, fn: (a: Actor) => void): void {
     const x0 = Math.max(0, Math.floor((x - r) / HC)), x1 = Math.min(HN - 1, Math.floor((x + r) / HC)), y0 = Math.max(0, Math.floor((y - r) / HC)), y1 = Math.min(HN - 1, Math.floor((y + r) / HC));
-    for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) { const cell = this.hash[cy * HN + cx]; for (let k = 0; k < cell.length; k++) fn(cell[k]); }
+    for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) { const cell = this.hash[cy * HN + cx]; for (let k = 0; k < cell.length; k++) { const a = cell[k]; if (a.alive && !a.inVeh && !this.hidden(a)) fn(a); } }
   }
   bossMaxHp(f: Faction): number { return Math.round((ACTORS.boss.hp + f.mods.hp + (f.level - 1) * 12) * (f.id === 0 ? 2.2 : 1)); }
   /** 병력 현재 체력을 연구·특성 배율에 맞춰 다시 계산합니다. 이미 입은 피해는 유지하고, 오른 최대 체력만큼만 더합니다. */
@@ -578,8 +587,7 @@ export class World {
   step(dt: number): void {
     if (this.over) return; const pf = this.factions[0]; if (pf.pending > 0) return;
     this.time += dt; this.pathBudget = 10;
-    for (const c of this.hash) c.length = 0;
-    for (const a of this.actors) if (a.alive && !a.inVeh) this.hash[Math.min(HN - 1, Math.max(0, Math.floor(a.y / HC))) * HN + Math.min(HN - 1, Math.max(0, Math.floor(a.x / HC)))].push(a);
+    this.refreshActorGrid();
     for (const f of this.factions) if (f.alive) {
       f.ai.t -= dt; if (f.ai.t <= 0 && (!f.player || this.opts.autoPlayer) && !this.opts.tutorial) { f.ai.t = 0.8 + this.rng() * 0.4; thinkFaction(this, f); }
       f.skillCd = Math.max(0, f.skillCd - dt); f.buffT = Math.max(0, f.buffT - dt); f.dashCd = Math.max(0, f.dashCd - dt); f.dashT = Math.max(0, f.dashT - dt);
@@ -588,7 +596,8 @@ export class World {
       if (b) { if (f.mods.regen || this.time - f.combatT > 6) b.hp = Math.min(b.maxHp, b.hp + (f.mods.regen + (this.time - f.combatT > 6 ? 4 : 0)) * dt); }
       else if (f.respawnT > 0) { f.respawnT -= dt; if (f.respawnT <= 0) this.respawn(f); }
     }
-    this.updateStructures(dt); updateActors(this, dt); this.autoEnter(dt); updateVehicles(this, dt); updateBullets(this, dt);
+    this.updateStructures(dt); updateActors(this, dt); this.autoEnter(dt); updateVehicles(this, dt);
+    this.refreshActorGrid(); updateBullets(this, dt);
     this.updateBusinesses(dt); this.updateZone(dt); this.updateLoot(dt);
     this.secT += dt; if (this.secT >= 1) { this.secT -= 1; this.everySecond(); }
     this.checkElimination();

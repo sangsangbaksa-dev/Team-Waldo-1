@@ -41,8 +41,8 @@ function seek(w: World, a: Actor, tx: number, ty: number, sp: number): void {
 const stop = (a: Actor): void => { a.vx *= 0.6; a.vy *= 0.6; };
 
 function targetPos(w: World, a: Actor): { x: number; y: number; vx: number; vy: number; ok: boolean } | null {
-  if (a.tk === 1) { const t = w.byId.get(a.tid); if (!t || !t.alive || t.inVeh || w.hidden(t)) return null; return { x: t.x, y: t.y, vx: t.vx, vy: t.vy, ok: true }; }
-  if (a.tk === 2) { const s = w.structures.find(q => q.id === a.tid); if (!s || !s.alive) return null; return { x: Math.max(s.x - 3, Math.min(a.x, s.x + s.w + 3)), y: Math.max(s.y - 3, Math.min(a.y, s.y + s.h + 3)), vx: 0, vy: 0, ok: true }; }
+  if (a.tk === 1) { const t = w.byId.get(a.tid); if (!t || !t.alive || t.inVeh || w.hidden(t) || (a.weapon === 'u_heal' ? t.f !== a.f || t.hp >= t.maxHp : !w.hostile(a.f, t.f))) return null; return { x: t.x, y: t.y, vx: t.vx, vy: t.vy, ok: true }; }
+  if (a.tk === 2) { const s = w.structures.find(q => q.id === a.tid); if (!s || !s.alive || !w.hostile(a.f, s.f)) return null; return { x: Math.max(s.x - 3, Math.min(a.x, s.x + s.w + 3)), y: Math.max(s.y - 3, Math.min(a.y, s.y + s.h + 3)), vx: 0, vy: 0, ok: true }; }
   if (a.tk === 3) { const v = w.vehicles.find(q => q.id === a.tid); if (!v || !v.alive || !v.driver || !w.hostile(a.f, v.f)) return null; return { x: v.x, y: v.y, vx: v.vx, vy: v.vy, ok: true }; }
   return null;
 }
@@ -50,13 +50,13 @@ function think(w: World, a: Actor, range: number): void {
   a.stuck = 1;
   if (a.kind === 'worker' || a.f === CIV || a.order.type === 'move') { a.tk = 0; return; }
   if (a.weapon === 'u_heal') {
-    let best = 0, br = 0.97; w.forNear(a.x, a.y, 300, t => { if (t.alive && t.f === a.f && t !== a && !ACTORS[t.kind].mech) { const r = t.hp / t.maxHp; if (r < br && Math.hypot(t.x - a.x, t.y - a.y) < 300) { br = r; best = t.id; } } });
+    let best = 0, br = 0.97; w.forNear(a.x, a.y, 300, t => { if (t.alive && !t.inVeh && !w.hidden(t) && t.f === a.f && t !== a && !ACTORS[t.kind].mech) { const r = t.hp / t.maxHp; if (r < br && Math.hypot(t.x - a.x, t.y - a.y) < 300) { br = r; best = t.id; } } });
     a.tk = best ? 1 : 0; a.tid = best; a.los = true; return;
   }
   const sight = Math.min(range + 130, 800); let bd = sight, bk: 0 | 1 | 2 | 3 = 0, bid = 0, blos = false;
   // 현재 목표 유지 선호
   w.forNear(a.x, a.y, sight, t => {
-    if (!t.alive || w.hidden(t) || !w.hostile(a.f, t.f)) return; let d = Math.hypot(t.x - a.x, t.y - a.y); if (a.tk === 1 && a.tid === t.id) d -= 70; if (t.kind === 'worker') d += 120;
+    if (!t.alive || t.inVeh || w.hidden(t) || !w.hostile(a.f, t.f)) return; let d = Math.hypot(t.x - a.x, t.y - a.y); if (a.tk === 1 && a.tid === t.id) d -= 70; if (t.kind === 'worker') d += 120;
     if (d >= bd) return; const los = w.canSee(a.x, a.y, t.x, t.y); if (!los && (d > sight * 0.6 || blos)) return;
     bd = los ? d : Math.min(bd, d + 200); bk = 1; bid = t.id; blos = los;
   });
@@ -109,6 +109,7 @@ export function updateActors(w: World, dt: number): void {
     }
     const range = Math.min(wd.range, a.kind === 'boss' ? 620 : 9999);
     a.thinkT -= dt; if (a.thinkT <= 0) { a.thinkT = 0.22 + w.rng() * 0.12; think(w, a, range); }
+    if (a.order.type === 'move') a.tk = 0;
     let tp = a.tk ? targetPos(w, a) : null; if (a.tk && !tp) { a.tk = 0; a.thinkT = 0; }
     const o = a.order; let leader: { x: number; y: number } | null = null;
     if (o.type === 'follow') { const b = w.boss(a.f); if (b) { leader = b; if (tp && Math.hypot(b.x - a.x, b.y - a.y) > 640) tp = null; } }
@@ -152,15 +153,20 @@ export function updateActors(w: World, dt: number): void {
     const v2 = a.vx * a.vx + a.vy * a.vy; if (v2 > 4 && !(tp && a.los)) a.ang += wrap(Math.atan2(a.vy, a.vx) - a.ang) * 0.2;
     a.x += a.vx * dt; a.y += a.vy * dt; a.walk += Math.sqrt(v2) * dt;
   }
-  // 분리 + 지형 충돌
+  // Separate using current positions, not the grid from before movement.
+  w.refreshActorGrid();
   for (const a of w.actors) {
-    if (!a.alive || a.inVeh) continue; const pl = a.kind === 'boss' && a.f === 0;
+    if (!a.alive || a.inVeh || w.hidden(a)) continue; const pl = a.kind === 'boss' && a.f === 0;
     w.forNear(a.x, a.y, a.r + 28, b => {
-      if (b.id <= a.id || !b.alive || b.inVeh) return; const dx = b.x - a.x, dy = b.y - a.y, min = a.r + b.r, d2 = dx * dx + dy * dy;
-      if (d2 >= min * min || d2 < 0.01) return; const d = Math.sqrt(d2), push = (min - d) * 0.5, wa = pl ? 0.15 : ACTORS[a.kind].mech ? 0.3 : 1, wb = ACTORS[b.kind].mech ? 0.3 : 1, t = wa + wb;
-      a.x -= dx / d * push * 2 * wa / t; a.y -= dy / d * push * 2 * wa / t; b.x += dx / d * push * 2 * wb / t; b.y += dy / d * push * 2 * wb / t;
+      if (b.id <= a.id || !b.alive || b.inVeh || w.hidden(b)) return; const dx = b.x - a.x, dy = b.y - a.y, min = a.r + b.r, d2 = dx * dx + dy * dy;
+      if (d2 >= min * min) return; const d = Math.sqrt(d2), nx = d > 0.001 ? dx / d : Math.cos(a.id), ny = d > 0.001 ? dy / d : Math.sin(a.id), push = min - d;
+      const wa = w.opts.duel && a.f >= 1 ? 0 : pl ? 0.15 : ACTORS[a.kind].mech ? 0.3 : 1;
+      const wb = w.opts.duel && b.f >= 1 ? 0 : b.kind === 'boss' && b.f === 0 ? 0.15 : ACTORS[b.kind].mech ? 0.3 : 1;
+      const t = wa + wb; if (!t) return;
+      a.x -= nx * push * wa / t; a.y -= ny * push * wa / t; b.x += nx * push * wb / t; b.y += ny * push * wb / t;
     });
-    if (!pl || w.opts.autoPlayer) resolveCircle(w.map, a, a.r);
+    // The player's position can be displaced by unit separation as well.
+    if (!w.opts.duel || a.f === 0) resolveCircle(w.map, a, a.r);
   }
 }
 

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createCore } from '../../src/tycoon/core';
-import { restoreGame } from '../../src/tycoon/core/save';
+import { readTycoonPosition, restoreGame, saveTycoon, TYCOON_SAVE_KEY } from '../../src/tycoon/core/save';
 import { newGame } from '../../src/tycoon/core/model';
-import { BOTTLE_CAP, BOTTLE_PRICE, JOBS, SHOP_KINDS } from '../../src/tycoon/core/data';
+import { BOTTLE_CAP, BOTTLE_PRICE, ENERGY_MAX, JOBS, LEVEL_MULT, SHOP_KINDS } from '../../src/tycoon/core/data';
 
 describe('HUSTLE economic regression', () => {
   it('saves only the completed transaction during an overnight sleep', () => {
@@ -18,7 +18,7 @@ describe('HUSTLE economic regression', () => {
     expect(core.perform('bench', 'sleep').ok).toBe(true);
     for (let i = 0; i < 12; i++) core.tick(0.25);
     expect(core.data.day).toBe(2);
-    expect(savedEnergy).toBe(100);
+    expect(savedEnergy).toBe(ENERGY_MAX);
     expect(core.state.activity).toBeNull();
   });
 
@@ -61,10 +61,32 @@ describe('HUSTLE economic regression', () => {
     expect(restored.debt).toBe(60);
     expect(restored.bottles).toBe(BOTTLE_CAP);
     expect(restored.lots.lot_s1.shop?.level).toBe(SHOP_KINDS.stall.maxLevel);
-    expect(restored.lots.lot_s1.shop?.stock).toBe(144);
+    expect(restored.lots.lot_s1.shop?.stock).toBe(Math.round(SHOP_KINDS.stall.stock * LEVEL_MULT[SHOP_KINDS.stall.maxLevel]));
     expect(restored.lots.lot_h1.owner).toBe('none');
     expect(restored.events).toHaveLength(1);
     expect(restored.cargo).toBeNull();
     expect(restored.task?.reward).toBe(JOBS.delivery.pay);
+  });
+});
+
+describe('HUSTLE resume location', () => {
+  it('round-trips the optional camera and position with the economic save', () => {
+    const core = createCore({ seed: 7 });
+    const values = new Map<string, string>();
+    const storage = {
+      setItem: (key: string, value: string) => { values.set(key, value); },
+    } as Storage;
+    const position = { x: 3, z: -4, facing: 0.5, yaw: -0.5, pitch: 0.2, distance: 8, firstPerson: true };
+    expect(saveTycoon(core, storage, position)).toBe(true);
+    const raw: unknown = JSON.parse(values.get(TYCOON_SAVE_KEY)!);
+    expect(readTycoonPosition(raw)).toEqual(position);
+    expect(restoreGame(raw)?.cash).toBe(core.state.cash);
+  });
+
+  it('accepts old saves and rejects invalid coordinates', () => {
+    const g = newGame(7);
+    expect(readTycoonPosition(g)).toBeNull();
+    expect(readTycoonPosition({ ...g, position: { x: Infinity, z: 1 } })).toBeNull();
+    expect(readTycoonPosition({ ...g, position: { x: 1, z: 2, distance: 900 } })?.distance).toBe(14);
   });
 });

@@ -23,6 +23,8 @@ let fallback = false,
   rotation = false,
   last = 0;
 let dirty = true;
+let frameId = null;
+let wakeViewer = () => {};
 const presets = { face: { y: 1.774, d: 0.86 }, body: { y: 1.0, d: 3.55 } };
 const up = new THREE.Vector3(0, 1, 0);
 function updateButtons() {
@@ -219,11 +221,10 @@ async function run() {
     stage.classList.add("ready");
     note.textContent = "드래그로 회전 · 스크롤로 확대";
     function frame(ts) {
-      if (fallback) return;
-      requestAnimationFrame(frame);
-      const dt = Math.min((ts - last) / 1000 || 0, 0.1);
+      frameId = null;
+      if (fallback || document.hidden || $("viewer").hidden) return;
+      const dt = Math.max(0, Math.min((ts - last) / 1000 || 0, 0.1));
       last = ts;
-      if (document.hidden || document.getElementById("viewer").hidden) return;
       if (playing && action) {
         mixer.update(dt);
         dirty = true;
@@ -244,8 +245,16 @@ async function run() {
         renderer.render(scene, camera);
         dirty = false;
       }
+      if (!fallback && !document.hidden && !$("viewer").hidden)
+        frameId = requestAnimationFrame(frame);
     }
-    requestAnimationFrame(frame);
+    wakeViewer = () => {
+      if (frameId !== null || fallback || document.hidden || $("viewer").hidden) return;
+      last = performance.now();
+      dirty = true;
+      frameId = requestAnimationFrame(frame);
+    };
+    wakeViewer();
   } catch (err) {
     console.error("3D viewer", err);
     showFallback();
@@ -257,5 +266,16 @@ export function openViewer() {
     opened = true;
     updateButtons();
     run();
-  } else responsive();
+  } else {
+    responsive();
+    wakeViewer();
+  }
 }
+export function closeViewer() {
+  if (frameId !== null) cancelAnimationFrame(frameId);
+  frameId = null;
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) closeViewer();
+  else wakeViewer();
+});

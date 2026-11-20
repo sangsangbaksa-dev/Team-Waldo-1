@@ -72,3 +72,38 @@
 #game .record-archive p {margin:.35rem 0 0;font-size:.88rem;line-height:1.55;}
 #game .mapkey i:last-child {color:#c9a5df;}
 @media(prefers-reduced-motion:reduce){#game #viewWrap::after{transition:none;opacity:.35!important;background-color:transparent!important;}}
+
+/* Local input/accessibility preferences. */
+#game .control-settings { display:grid; gap:1rem; padding:.8rem 0; }
+#game .control-settings label { display:flex; flex-wrap:wrap; align-items:center; gap:.65rem; color:#e5dcca; }
+#game .control-settings label output { margin-left:auto; font-variant-numeric:tabular-nums; color:#efc58a; }
+#game .control-settings input[type="range"] { width:100%; accent-color:#c99467; min-height:32px; }
+#game .control-settings input[type="checkbox"] { width:20px; height:20px; accent-color:#c99467; }
+#game .control-settings p { margin:0; color:#acb6ad; font-size:.85rem; line-height:1.5; }
+#game #viewWrap[data-motion="reduced"]::after { transition:none; opacity:.35!important; background-color:transparent!important; }
+#game #viewWrap[data-motion="reduced"] #danger { animation:none; }
+
+#game #viewWrap[data-incident="echo"]::after {opacity:.48;}
+#game #viewWrap[data-incident="relay"]::after {background-color:#40322224;opacity:.57;}
+@media(prefers-reduced-motion:reduce){#game #viewWrap[data-incident]::after{opacity:.35!important;background-color:transparent!important;}}
+
+/* Restoration console: tactile bidirectional dials and undo. */
+#game .dial-cell { flex:1; min-width:0; display:grid; gap:.35rem; }
+#game .dial-cell .dial-value { width:100%; min-height:78px; padding:.65rem .3rem; background:linear-gradient(#26372f,#17231e); border-color:#657566; }
+#game .dial-value small { font-size:.75rem; overflow-wrap:anywhere; }
+#game .dial-value strong { font-size:clamp(.95rem,3.1vw,1.25rem); letter-spacing:.025em; }
+#game .dial-cell .dial-prev { min-height:44px; color:#bdc9b8; font-size:.75rem; background:#18241e; }
+#game .puzzle-undo { min-height:44px; }
+#game .puzzle-undo:disabled,#game .panelActions button:disabled { opacity:.42; cursor:not-allowed; }
+@media(max-width:390px){#game .dials{gap:.25rem}#game .dial-cell .dial-value{padding-inline:.15rem}}
+
+/* Explicit stacking contexts keep the fixed 3D canvas behind interactive HUD. */
+#game { isolation:isolate; }
+#game #viewWrap { z-index:0; }
+#game .hud,#game .gear,#game #stick,#game .touchactions { z-index:2; }
+#game .statusfoot,#game #prompt,#game #toast { z-index:1; pointer-events:none; }
+#game #dialog { z-index:4; }
+
+/* The exit transition is a single fade, never a flashing effect. */
+#game[data-transition="exit"]::after {content:"";position:absolute;inset:0;background:#050807;opacity:var(--exit-fade,0);z-index:3;pointer-events:none;}
+#game[data-transition="exit"] :is(.hudright,.gear,#stick,.touchactions) {pointer-events:none;}

@@ -190,6 +190,15 @@ export class Sound {
     }
   }
 
+  puzzleMode() {
+    // Keep puzzle tones audible without restarting the ambience clock on every dial.
+    this.paused = false;
+    this.applyLevel();
+    if (this.clock !== null) globalThis.clearInterval(this.clock);
+    this.clock = null;
+    if (this.bed) ease(this.bed.gain, 0.22, this.ctx.currentTime, 0.2);
+  }
+
   startClock() {
     if (this.clock !== null) return;
     this.clock = globalThis.setInterval(() => this.tick(), 210);
@@ -379,6 +388,17 @@ export class Sound {
     );
   }
 
+  door() {
+    if(!this.ready())return;
+    const at=this.ctx.currentTime;
+    this.note(107,42,.20,.12,at,0,"triangle");
+    this.rustle(at+.06,.15,.12,680,0,1.1);
+    this.note(53,46,1.03,.085,at+.24,0,"sine");
+    this.rustle(at+.24,.94,.095,320,0,.75);
+    this.note(92,31,.25,.11,at+1.35,0,"triangle");
+    this.rustle(at+1.32,.24,.10,920,0,1.2);
+  }
+
   enemyStep(distance,pan,visible,hunting) {
     if(!this.ready()) return;
     const at=this.ctx.currentTime;
@@ -416,6 +436,18 @@ export class Sound {
         this.rustle(at+offset,.72,.065-i*.012,480+i*95,pan,.75);
         this.note(68,46,.65,.025,at+offset,pan,"sine",.19);
       });
+    } else if(kind==="echo"){
+      [0.12,.65,1.44,2.45].forEach((offset,i)=>{
+        const side=pan*(1-i*.2);
+        this.note(83,39,.18,.065-i*.011,at+offset,side,"triangle");
+        this.rustle(at+offset+.02,.18,.07-i*.012,360+i*85,side,.85);
+      });
+    } else if(kind==="relay"){
+      [0,.21,.38,1.2,1.46].forEach((offset,i)=>{
+        this.rustle(at+offset,.06,.075-i*.007,1800+i*140,pan,2.4);
+        this.note(160-i*9,65,.12,.025,at+offset,pan,"square");
+      });
+      this.note(48,42,.8,.025,at+1.65,-pan,"sine",.25);
     }
   }
   caught() {

@@ -1,3 +1,4 @@
+import { exitWall } from "./space.mjs";
 /* Retained studio finish, mechanical details and practical lights for the four recording wings. */
 const WINGS = [
   {
@@ -230,16 +231,37 @@ function floorArt(p, chapter) {
   const rand = seeded(821 + chapter * 83);
   return surface(512, 512, (c, w, h) => {
     box2d(c, 0, 0, w, h, p.floor);
-    for (let z = 0; z < 4; z++)
-      for (let x = 0; x < 4; x++) {
-        const xx = x * 128,
-          yy = z * 128;
-        box2d(c, xx, yy, 128, 128, "rgba(13,18,15," + rand() * 0.11 + ")");
-        box2d(c, xx, yy, 128, 2.5, "rgba(15,18,16,.68)");
-        box2d(c, xx, yy, 2.5, 128, "rgba(15,18,16,.68)");
-        box2d(c, xx + 3, yy + 3, 122, 1, "rgba(218,215,193,.31)");
-        box2d(c, xx + 3, yy + 3, 1, 123, "rgba(218,215,193,.21)");
+    if (chapter === 2) {
+      // Archive wing: poured concrete with broad expansion joints and trolley wear.
+      for (const edge of [0,256]) {
+        box2d(c,edge,0,3,h,"rgba(18,23,24,.65)");
+        box2d(c,0,edge,w,3,"rgba(18,23,24,.65)");
       }
+      for (let j=0;j<18;j++){
+        const x=rand()*w,y=rand()*h,r=18+rand()*75;
+        const stain=c.createRadialGradient(x,y,0,x,y,r);
+        stain.addColorStop(0,"rgba(27,25,21,.13)");
+        stain.addColorStop(1,"rgba(27,25,21,0)");
+        box2d(c,x-r,y-r,r*2,r*2,stain);
+      }
+      for(const x of [116,396])box2d(c,x,0,9,h,"rgba(24,28,27,.12)");
+    } else {
+      // Power: ceramic squares. Radio: narrow rubber strips. Master: dark acoustic tiles.
+      const cols=chapter===1?8:4, rows=chapter===1?2:4;
+      const tw=w/cols, th=h/rows;
+      for (let z=0;z<rows;z++) for(let x=0;x<cols;x++){
+        const xx=x*tw,yy=z*th;
+        box2d(c,xx,yy,tw,th,"rgba(13,18,15,"+rand()*.11+")");
+        box2d(c,xx,yy,tw,chapter===3?1.4:2.5,"rgba(15,18,16,.68)");
+        box2d(c,xx,yy,chapter===3?1.4:2.5,th,"rgba(15,18,16,.68)");
+        box2d(c,xx+3,yy+3,tw-6,1,"rgba(218,215,193,.23)");
+        box2d(c,xx+3,yy+3,1,th-5,"rgba(218,215,193,.18)");
+        if(chapter===1)for(let groove=8;groove<tw-4;groove+=8)
+          box2d(c,xx+groove,yy+5,1,th-10,"rgba(18,22,19,.15)");
+        if(chapter===3)for(let py=8;py<th-4;py+=8)for(let px=8;px<tw-4;px+=8)
+          box2d(c,xx+px,yy+py,1.3,1.3,"rgba(21,24,18,.26)");
+      }
+    }
     for (let i = 0; i < 11000; i++) {
       const x = rand() * w,
         y = rand() * h,
@@ -496,7 +518,8 @@ function equipmentArt(type, p, chapter) {
   });
 }
 
-export function buildEnvironment(THREE, scene, map, tile, chapter) {
+export function buildEnvironment(THREE, scene, map, tile, chapter, exitCell = -1) {
+  const doorFace=exitWall(map,exitCell);
   chapter = Math.max(0, Math.min(3, Math.floor(chapter) || 0));
   const p = WINGS[chapter],
     root = new THREE.Group();
@@ -531,8 +554,8 @@ export function buildEnvironment(THREE, scene, map, tile, chapter) {
     });
   const wallMats = [0, 1, 2].map((i) => texMat(wallArt(p, chapter, i)));
   const floorMat = texMat(floorArt(p, chapter), {
-    roughness: 0.63,
-    metalness: 0.12,
+    roughness: [0.57,0.85,0.94,0.87][chapter],
+    metalness: [0.12,0.04,0.03,0.02][chapter],
   });
   const ceilingMat = texMat(ceilingArt());
   const paint = standard({ color: p.trim, roughness: 0.79, metalness: 0.22 });
@@ -582,6 +605,18 @@ export function buildEnvironment(THREE, scene, map, tile, chapter) {
     ),
   });
   resources.add(trans);
+  // Soft baked light pools: one shared texture, no additional real-time lights.
+  const pool = new THREE.MeshBasicMaterial({
+    color:p.lamp, map:trans.map, transparent:true, opacity:.12,
+    depthWrite:false, blending:THREE.AdditiveBlending,
+    polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1,
+  });
+  resources.add(pool);
+  const dirt = new THREE.MeshBasicMaterial({
+    color:0x141b16, map:trans.map, transparent:true, opacity:.26, depthWrite:false,
+    polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1,
+  });
+  resources.add(dirt);
   const dummy = new THREE.Object3D();
   function add(kind, mat, x, y, z, w, h, d = 1, ry = 0, rx = 0) {
     let byKind = batch.get(mat);
@@ -652,6 +687,27 @@ export function buildEnvironment(THREE, scene, map, tile, chapter) {
           add("box", junctionPaint, x, .006, z + side * tile * .36, tile * .55, .012, .055);
         }
       }
+      // Distinct overhead gantries give each passage a physical rhythm.
+      // All added pieces stay above the player's collision envelope.
+      if ((col + row * 2) % 5 === 0) {
+        const cross = alongZ ? 0 : Math.PI / 2;
+        add("box", seam, x, H - .13, z, tile - .035, .25, .15, cross);
+        add("box", metal, x, H - .265, z, tile - .08, .032, .19, cross);
+        for (const sign of [-1, 1]) {
+          const u = sign * (tile * .5 - .21);
+          add("box", metal, x + Math.cos(cross) * u, H - .19,
+            z - Math.sin(cross) * u, .16, .28, .25, cross);
+        }
+      }
+      // Cable bundles and vent trunks are chapter-specific, not additional dynamic lights.
+      if (chapter >= 1 && hash(col, row, 92) > .78) {
+        for (let cable = 0; cable < (chapter === 2 ? 3 : 2); cable++) {
+          const offset = .65 + cable * .12;
+          add("box", cable === 0 ? paint : seam,
+            x + Math.sin(orient) * offset, H - .21,
+            z + Math.cos(orient) * offset, tile - .06, .065, .07, orient);
+        }
+      }
       // Only shallow or overhead objects enter navigable cells.
       if ((row * 3 + col) % 4 === 0) {
         add("box", seam, x, H - 0.033, z, 1.5, 0.066, 0.31, orient);
@@ -670,6 +726,9 @@ export function buildEnvironment(THREE, scene, map, tile, chapter) {
             0.032,
             orient,
           );
+        }
+        if(lit){
+          add("plane",pool,x,.003,z,tile*.86,tile*.70,1,orient,-Math.PI/2);
         }
         if (lit)
           add(
@@ -722,6 +781,10 @@ export function buildEnvironment(THREE, scene, map, tile, chapter) {
             ry,
           );
         const pick = hash(col, row, (f + 1) * 19 + chapter * 47);
+        // Contact darkening visually anchors baseboards without shadow maps.
+        if (pick < .62) {
+          add("plane",dirt,bx+nx*.27,.002,bz+nz*.27,tile*.95,.52,1,ry,-Math.PI/2);
+        }
         local(
           "plane",
           wallMats[Math.floor(hash(col, row, f + 75) * 3)],
@@ -731,6 +794,11 @@ export function buildEnvironment(THREE, scene, map, tile, chapter) {
           tile + 0.003,
           H + 0.002,
         );
+        // Reserve the complete door face before adding trim or equipment.
+        if(doorFace && row*map[0].length+col===exitCell && dx===doorFace[0] && dz===doorFace[1]){
+          local("box", metal, 0, 2.78, .025, tile, .045, .05);
+          continue;
+        }
         local("box", paint, 0, 0.108, 0.025, tile + 0.004, 0.216, 0.05);
         local("box", metal, 0, 1.157, 0.025, tile + 0.003, 0.035, 0.048);
         local("box", seam, 0, 1.134, 0.015, tile + 0.003, 0.014, 0.029);
@@ -766,6 +834,50 @@ export function buildEnvironment(THREE, scene, map, tile, chapter) {
           for (const u of [-0.55, 0.04, 0.63]) {
             local("box", seam, u, 1.91, 0.041, 0.54, 0.97, 0.082);
             local("plane", badgeMats.panel, u, 1.91, 0.084, 0.503, 0.927);
+          }
+        } else if (pick < .68 && chapter >= 2) {
+          // Storage-wing patch panels and master-room signal buses, kept flush to walls.
+          local("box", seam, 0, 1.65, .041, 1.08, .46, .082);
+          for (let k = 0; k < 6; k++) {
+            const u = -.42 + k * .168;
+            local("box", metal, u, 1.66, .086, .105, .30, .036);
+            local("box", k === (row + col) % 6 ? alarm : practical, u, 1.74, .108, .043, .025, .013);
+            local("box", paint, u, 1.48, .038, .026, .14, .044);
+          }
+        } else if (pick < .78 && chapter === 0) {
+          // Electrical conduit panel with insulated vertical runs and mounting collars.
+          local("box", seam, 0, 1.81, .034, .86, .96, .068);
+          for(let k=0;k<4;k++){
+            const u=(k-1.5)*.16;
+            local("box", metal, u, 1.94, .09, .048, 1.04, .053);
+            local("box", paint, u, 1.52, .125, .095,.17,.08);
+            local("box", seam, u, 2.15, .12, .087,.04,.06);
+          }
+        } else if (pick >= .83 && pick < .94 && chapter === 1) {
+          // Recessed-looking patch bay, stacked ports and connection labels.
+          local("box", seam, 0, 1.76, .055, 1.02,.72,.11);
+          local("box", metal, 0, 1.76, .122, .95,.64,.018);
+          for(let r=0;r<3;r++)for(let k=0;k<6;k++){
+            const u=(k-2.5)*.143, y=1.56+r*.175;
+            local("box", seam, u, y, .14,.11,.073,.022);
+            local("box", k%3===r?practical:paint,u+.035,y+.052,.15,.018,.014,.014);
+          }
+        } else if (pick >= .68 && pick < .82 && chapter === 2) {
+          // Shallow tape catalog drawers: handles, dividers and paper index strips.
+          local("box", seam, 0, 1.55, .075, 1.34,1.32,.15);
+          for(let k=0;k<5;k++){
+            const y=1.04+k*.25;
+            local("box", metal, 0,y,.164,1.23,.217,.044);
+            local("box", paint,-.38,y,.195,.29,.08,.018);
+            local("box", seam,.30,y,.205,.24,.044,.04);
+            local("box", metal,.30,y+.029,.22,.18,.024,.025);
+          }
+        } else if (pick >= .68 && pick < .84 && chapter === 3) {
+          // Acoustic diffuser fins, stepped depths produce a recognizable texture.
+          local("box", seam,0,1.85,.025,1.46,1.24,.05);
+          for(let k=0;k<13;k++){
+            const depth=.048+(k%5)*.026;
+            local("box", k%3===0?paint:metal,(k-6)*.105,1.85,depth/2+.025,.078,1.12,depth);
           }
         } else if (pick > 0.955) {
           local("box", metal, -0.47, 1.96, 0.052, 0.046, 1.46, 0.046);

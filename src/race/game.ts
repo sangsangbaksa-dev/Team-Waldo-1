@@ -1,5 +1,6 @@
 // SPEED RUSH — 레이싱 모드 진입점: 입력, HUD, 게임 루프. 레이싱카 모델은 race.glb(tools/blender/race.py)입니다.
 import './race.css';
+import { dragSteer, editableTarget } from '../shared/input';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { readPreferences, writePreferences } from '../prefs';
@@ -101,7 +102,7 @@ export function openRace(onExit: () => void): void {
 
   /** 선택한 설정으로 코스·레이스·화면을 새로 만듭니다. */
   function begin(): void {
-    raceGen++;
+    clearDriveInput(); raceGen++;
     if (view) { view.dispose(); view = null; }
     track = buildMapTrack(mapOf(setup)); prepareMinimap(); audio.setCar(setup.car);
     const trial = setup.mode === 'trial', ghost = trial ? readGhost(setup.map, setup.laps, setup.car) : null;
@@ -113,7 +114,7 @@ export function openRace(onExit: () => void): void {
   }
   function restart(): void { begin(); }
   function showSetup(): void {
-    raceGen++;
+    clearDriveInput(); raceGen++;
     if (view) { view.dispose(); view = null; }
     setupUi?.destroy(); paused = false; modal.className = 'rc-modal'; modal.innerHTML = ''; root.dataset.phase = 'setup';
     setupUi = mountSetup(root, setup, records, garage, {
@@ -146,7 +147,7 @@ export function openRace(onExit: () => void): void {
     pvp = { s, net, myFin: null, oppFin: null, done: false };
   }
   function beginPvp(oppCar: string): void {
-    if (!pvp || closed) return; const s = pvp.s;
+    if (!pvp || closed) return; clearDriveInput(); const s = pvp.s;
     track = buildMapTrack(mapOf(setup)); prepareMinimap();
     race = createRace(track, setup.laps, Infinity, { ...setup, pvp: { host: s.host, opponent: s.opponent.nickname, opponentCar: oppCar } });
     acc = 0; cache.clear(); lastPlace = 2; setText('#rc-laps', String(setup.laps)); setText('#rc-of', '/ 2'); setText('#rc-best', `VS ${s.opponent.nickname}`);
@@ -202,7 +203,7 @@ export function openRace(onExit: () => void): void {
     multi = { s, net, myFin: null, gone: new Set(), done: false };
   }
   function beginMulti(list: Array<{ id: string; car: string }>): void {
-    if (!multi || closed) return; const s = multi.s, meIdx = Math.max(0, list.findIndex(p => p.id === s.me.id));
+    if (!multi || closed) return; clearDriveInput(); const s = multi.s, meIdx = Math.max(0, list.findIndex(p => p.id === s.me.id));
     const players = list.filter(p => p.id !== s.me.id).map(p => ({ id: p.id, car: p.car, nickname: s.players.find(x => x.id === p.id)?.nickname ?? '플레이어' }));
     track = buildMapTrack(mapOf(setup)); prepareMinimap();
     race = createRace(track, setup.laps, Infinity, { ...setup, multi: { slot: meIdx, players } });
@@ -326,23 +327,23 @@ export function openRace(onExit: () => void): void {
     }
   };
   const onKey = (e: KeyboardEvent): void => {
-    if (setupUi && e.code !== 'KeyM') return;
+    if (editableTarget(e.target) || e.ctrlKey || e.metaKey || e.altKey || e.isComposing || (setupUi && e.code !== 'KeyM')) return;
     if (e.target instanceof HTMLElement && e.target.closest('.rc-modal.show button') && (e.code === 'Enter' || e.code === 'Space')) return;
-    if (e.repeat && e.code !== 'KeyR') { if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); return; }
+    if (e.repeat) { if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); return; }
     audio.unlock(); if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
     if (e.code === 'Escape' || e.code === 'KeyP') { setPaused(!paused); return; } if (e.code === 'KeyM') { act('mute'); return; } if (e.code === 'KeyR' && !paused && race.phase === 'racing') { recover(); return; }
-    if (e.code === 'Enter' && finishedShown && !pvp && !multi) { restart(); return; } keys.add(e.code);
+    if (e.code === 'Enter' && finishedShown && !pvp && !multi) { restart(); return; } if (!paused && !finishedShown && !setupUi) keys.add(e.code);
   };
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.code); };
   const clearDriveInput = (): void => { keys.clear(); for (const k of Object.keys(hold) as Array<keyof typeof hold>) hold[k] = false; root.querySelectorAll('[data-hold].down').forEach(b => b.classList.remove('down')); steerPointer = -1; pointerSteer = 0; };
   const onBlur = (): void => { clearDriveInput(); if (race.phase === 'racing' && !setupUi) setPaused(true); };
   const onHidden = (): void => { if (document.hidden) onBlur(); };
   document.addEventListener('visibilitychange', onHidden);
-  const steerCanvas = root.querySelector<HTMLCanvasElement>('.rc-canvas')!;
-  steerCanvas.addEventListener('pointerdown', e => { if (e.pointerType !== 'mouse' || e.button !== 0 || paused || setupUi || race.phase !== 'racing') return; steerPointer = e.pointerId; steerOrigin = e.clientX; pointerSteer = 0; steerCanvas.setPointerCapture(e.pointerId); });
-  steerCanvas.addEventListener('pointermove', e => { if (e.pointerId === steerPointer) { if (!(e.buttons & 1)) { steerPointer = -1; pointerSteer = 0; return; } pointerSteer = Math.max(-1, Math.min(1, (e.clientX - steerOrigin) / 100)); } });
+  root.addEventListener('pointerdown', e => { if (e.target !== canvas || e.pointerType !== 'mouse' || e.button !== 0 || paused || setupUi || race.phase !== 'racing' || steerPointer !== -1) return; steerPointer = e.pointerId; steerOrigin = e.clientX; pointerSteer = 0; try { canvas.setPointerCapture(e.pointerId); } catch { /* leave/up will release the gesture */ } });
+  root.addEventListener('pointermove', e => { if (e.pointerId === steerPointer) { if (!(e.buttons & 1)) { steerPointer = -1; pointerSteer = 0; return; } pointerSteer = dragSteer(e.clientX - steerOrigin); } });
+  root.addEventListener('pointerleave', e => { if (!canvas.hasPointerCapture(e.pointerId) && e.pointerId === steerPointer) { steerPointer = -1; pointerSteer = 0; } });
   const endSteer = (e: PointerEvent): void => { if (e.pointerId === steerPointer) { steerPointer = -1; pointerSteer = 0; } };
-  for (const event of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) steerCanvas.addEventListener(event, endSteer);
+  for (const event of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) root.addEventListener(event, endSteer);
   addEventListener('keydown', onKey); addEventListener('keyup', onKeyUp); addEventListener('resize', resize); addEventListener('blur', onBlur);
   root.addEventListener('click', e => { const b = (e.target as HTMLElement).closest<HTMLElement>('[data-act]'); if (b) act(b.dataset.act); });
   root.querySelectorAll<HTMLElement>('[data-hold]').forEach(b => {

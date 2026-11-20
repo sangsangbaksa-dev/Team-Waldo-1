@@ -5,7 +5,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { modelBytes } from "./assets.js";
 import { chapters, makeLevel, neighbors, paths, routeFrom, lineOpen, normalizeSave, walkable, puzzleOptions, puzzleCorrect } from "./levels.mjs";
 import { buildEnvironment } from "./environment.js";
-import { buildStationArt, buildCollectibleArt, addContactShadow, makeContactTexture } from "./props-art.js";
+import { buildStationArt, buildCollectibleArt, buildExitDoorArt, addContactShadow, makeContactTexture } from "./props-art.js";
 import { Sound } from "./sound.js";
 import { archiveCells, cleanArchive, createDread, recordings } from "./dread.mjs";
 import { openViewer, closeViewer } from "./viewer.js";
@@ -594,6 +594,17 @@ function prop(cell, type, i = 0) {
     for(let k=0;k<3;k++) mesh(new THREE.BoxGeometry(.06,.035,.03),steel,root,(k-1)*.105,.909,.19);
     const neighbor = neighbors(level.map, cell)[0];
     if(neighbor!==undefined){const front=xy(neighbor);root.rotation.y=Math.atan2(front.x-pos.x,front.z-pos.z);}
+    // Attach the door to a solid tile face; never obstruct an open corridor.
+    const cx=cell%level.w, cz=Math.floor(cell/level.w);
+    const wall=[[0,-1],[0,1],[-1,0],[1,0]].find(([dx,dz])=>level.map[cz+dz]?.[cx+dx]==="#");
+    if(wall){
+      const [dx,dz]=wall;
+      const door=new THREE.Group();
+      door.position.set(pos.x+dx*(C*.5-.005),0,pos.z+dz*(C*.5-.005));
+      door.rotation.y=Math.atan2(-dx,-dz);
+      buildExitDoorArt(THREE,door,bright,dark,steel);
+      props.add(door);
+    }
   }
   // Thin floor markings make interactive equipment identifiable in low light.
   const footprint = type === "station" ? 0.58 : 0.48;

@@ -166,3 +166,35 @@ export function buildCollectibleArt(THREE, root, chapter, index, bright, dark, s
   for(const m of [ceramic,copper,paper,plastic])if(!usedMaterials.has(m))m.dispose();
   for(const geo of [boxGeo,cylinder,ring])if(!usedGeometry.has(geo))geo.dispose();
 }
+
+/* Wall-mounted pressure door. +Z is the room-facing side. A locked exit is a
+ * visual landmark rather than a new walkable passage in the existing maze. */
+export function buildExitDoorArt(THREE,root,bright,dark,steel){
+  const frame=new THREE.MeshStandardMaterial({color:0x343f3b,roughness:.67,metalness:.42});
+  const panel=new THREE.MeshStandardMaterial({color:0x4b5551,roughness:.73,metalness:.28});
+  const rubber=new THREE.MeshStandardMaterial({color:0x151d1b,roughness:.94});
+  const boxGeo=new THREE.BoxGeometry(1,1,1);
+  const box=(mat,x,y,z,w,h,d)=>{
+    const mesh=new THREE.Mesh(boxGeo,mat);
+    mesh.position.set(x,y,z);mesh.scale.set(w,h,d);root.add(mesh);return mesh;
+  };
+  box(rubber,0,1.29,.024,2.07,2.58,.048);
+  for(const side of [-1,1]){
+    box(frame,side*.98,1.27,.08,.15,2.50,.16);
+    box(steel,side*.902,1.25,.167,.033,2.35,.024);
+    box(panel,side*.455,1.22,.069,.88,2.36,.098);
+    for(const y of [.24,1.18,2.15]){
+      box(frame,side*.455,y,.131,.81,.064,.052);
+    }
+    for(const u of [-.38,.38]){
+      box(steel,side*.455+u,.18,.166,.028,.025,.022);
+      box(steel,side*.455+u,2.28,.166,.028,.025,.022);
+    }
+    box(rubber,side*.083,1.12,.139,.085,.32,.07);
+    box(steel,side*.08,1.12,.192,.038,.22,.03);
+  }
+  box(frame,0,2.51,.087,2.11,.14,.174);
+  box(dark,0,2.39,.172,.59,.099,.026);
+  box(bright,0,2.39,.193,.43,.042,.018);
+  box(rubber,0,.045,.11,1.88,.09,.17);
+}

@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { loadCharacterKit, type CharacterKit, type CharacterRig } from '../shared/character';
+import { makeProceduralMilitary, type MilitaryLook } from '../shared/character/procedural';
 import { BUILDINGS, TEAM_COLORS, type BuildKind, type UnitKind } from './config';
 
 const std = (color: number, o: Partial<THREE.MeshStandardMaterialParameters> = {}): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial({ color, roughness: 0.62, metalness: 0.25, flatShading: true, ...o });
@@ -55,7 +56,7 @@ function detail(parent: THREE.Object3D, build: (g: THREE.Group) => void): void {
 let unitKit: CharacterKit | null = null;
 /** 공용 캐릭터 키트를 미리 받아 둡니다. 준비되기 전에 만든 유닛은 도형 모델로 남습니다. */
 export function preloadUnitKit(): void { if (!unitKit) void loadCharacterKit(import.meta.env.BASE_URL).then(k => { unitKit = k; }).catch(() => undefined); }
-const KIT_OF: Partial<Record<UnitKind, string>> = { worker: 'worker', marine: 'rifle', rocket: 'heavy', medic: 'medic' };
+const KIT_OF: Partial<Record<UnitKind, MilitaryLook>> = { worker: 'worker', marine: 'rifle', rocket: 'heavy', medic: 'medic' };
 export interface UnitRig { ch?: CharacterRig; root: THREE.Group; body: THREE.Object3D; gun: THREE.Object3D | null; flash: THREE.Mesh; carry: THREE.Object3D | null; arm: THREE.Object3D | null; scale: number }
 
 /** 의무병 등 — 등의 구급 배낭(흰 바탕에 팀색 십자). */
@@ -78,13 +79,15 @@ export function makeUnit(kind: UnitKind, owner: number, detailed = true): UnitRi
   let gun: THREE.Object3D | null = null, carry: THREE.Object3D | null = null, arm: THREE.Object3D | null = null, muzzle = 0.8, mh = 0.62;
   const flash = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe9a0 })); flash.visible = false;
   const kitKind = KIT_OF[kind];
-  if (kitKind && unitKit?.has(kitKind)) { // 공용 캐릭터(손 모델·팀색·피부색 포함)
-    const ch = unitKit.create(kitKind, { team: TEAM_COLORS[owner] ?? 0xcccccc, skin: 0xd6b28f, height: 1, width: 1 }); ch.root.scale.multiplyScalar(0.5); body.add(ch.root);
+  if (kitKind) { // Use identical animation and proportions for downloaded and procedural characters.
+    const look = { team: TEAM_COLORS[owner] ?? 0xcccccc, skin: 0xd6b28f, height: 0.5, width: 0.5 };
+    const ch = unitKit?.has(kitKind) ? unitKit.create(kitKind, look) : makeProceduralMilitary(kitKind, look); body.add(ch.root);
     ch.state.aim = kind === 'worker' || kind === 'medic' ? 0 : 1;
     if (kind === 'worker') { carry = new THREE.Group(); carry.position.set(-0.3, 0.45, 0); body.add(carry); const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.14), crystalMat); c.position.y = 0.1; c.scale.y = 1.4; carry.add(c); carry.visible = false; mh = 0.8; muzzle = 0.4; }
-    else if (kind === 'medic') { medicPack(body, m); mh = 0.9; muzzle = 0.4; }
+    else if (kind === 'medic') { if (unitKit?.has(kitKind)) medicPack(body, m); mh = 0.9; muzzle = 0.4; }
     else { gun = new THREE.Group(); gun.position.set(0.2, 0.52, 0.17); body.add(gun); mh = kind === 'rocket' ? 1.15 : 1; muzzle = kind === 'rocket' ? 0.95 : 0.88; }
     flash.position.set(muzzle, mh * 0.7, kind === 'rocket' ? 0.3 : 0.17); root.add(flash);
+    if (gun) gun.userData.restX = gun.position.x;
     return { ch, root, body, gun, flash, carry, arm, scale: 1 };
   }
   if (kind === 'worker') {
@@ -155,6 +158,7 @@ export function makeUnit(kind: UnitKind, owner: number, detailed = true): UnitRi
   }
   flash.position.set(muzzle, mh * 0.7, kind === 'marine' ? 0.17 : kind === 'rocket' ? 0.3 : 0); if (kind === 'tank') flash.position.set(1.8, 0.85, 0); if (kind === 'jeep') flash.position.set(1.2, 1.0, 0);
   root.add(flash);
+  if (gun) gun.userData.restX = gun.position.x;
   return { root, body, gun, flash, carry, arm, scale: 1 };
 }
 

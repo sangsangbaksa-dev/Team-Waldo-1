@@ -3,7 +3,7 @@ import { renderPixelRatio } from '../shared/render-budget';
 import * as THREE from 'three';
 import { makePost, type PostFx } from '../postfx';
 import { BUILDINGS, TEAM_COLORS, UNITS, type BuildKind } from './config';
-import { crystalMat, makeBuilding, makeCrystals, makeUnit, matsFor, type BuildRig, type UnitRig } from './models';
+import { crystalMat, makeBuilding, makeCrystals, makeUnit, matsFor, releaseModelGeometry, type BuildRig, type UnitRig } from './models';
 import { DesertProps } from './desert';
 import { Scenery, buildLanes, bushSpots, paintGround } from './scenery';
 import type { Building, ResNode, RtsSim, SimEvent, Unit } from './sim';
@@ -232,7 +232,7 @@ export class RtsView {
     if (this.grid) this.grid.visible = !!kind;
     if (!kind) { if (this.ghost) this.ghost.obj.visible = false; return; }
     if (!this.ghost || this.ghost.kind !== kind) {
-      if (this.ghost) { this.scene.remove(this.ghost.obj); this.ghost.obj.traverse(o => { if (o instanceof THREE.Mesh) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.dispose()); }); this.ghost.plane.geometry.dispose(); }
+      if (this.ghost) this.disposeOwned(this.ghost.obj);
       const rig = makeBuilding(kind, this.viewer, false), obj = new THREE.Group(), s = BUILDINGS[kind].size;
       rig.root.traverse(o => { if (o instanceof THREE.Mesh) { o.castShadow = false; const mats = (Array.isArray(o.material) ? o.material : [o.material]).map(m => { const c = m.clone(); c.transparent = true; c.opacity = 0.55; return c; }); o.material = Array.isArray(o.material) ? mats : mats[0]; } });
       const plane = new THREE.Mesh(new THREE.PlaneGeometry(s, s), new THREE.MeshBasicMaterial({ color: 0x5dff9a, transparent: true, opacity: 0.4, depthWrite: false })); plane.rotation.x = -Math.PI / 2; plane.position.set(0, 0.06, 0);
@@ -251,17 +251,14 @@ export class RtsView {
   /** 시뮬레이션이 한 틱 진행될 때마다 부릅니다. 보간을 위해 직전 위치를 기억합니다. */
   onTick(): void { for (const u of this.sim.units) { const v = this.units.get(u.id); if (v) { v.px = v.cx; v.py = v.cy; v.cx = u.x; v.cy = u.y; } } }
 
-  private releaseDetails(root: THREE.Object3D): void {
-    root.traverse(o => { if (o instanceof THREE.Mesh && o.userData.ownedDetail) o.geometry.dispose(); });
-  }
   private syncEntities(): void {
     const s = this.sim;
     for (const u of s.units) if (!this.units.has(u.id)) this.addUnit(u);
-    for (const [id, v] of this.units) if (!s.unit(id)) { this.scene.remove(v.rig.root); this.releaseDetails(v.rig.root); if (v.aura) this.disposeOwned(v.aura); this.units.delete(id); }
+    for (const [id, v] of this.units) if (!s.unit(id)) { this.scene.remove(v.rig.root); releaseModelGeometry(v.rig.root); if (v.aura) this.disposeOwned(v.aura); this.units.delete(id); }
     for (const b of s.buildings) if (!this.builds.has(b.id)) this.addBuilding(b);
-    for (const [id, v] of this.builds) if (!s.building(id)) { this.scene.remove(v.rig.root, v.frame, v.scaff); this.releaseDetails(v.rig.root); v.frame.traverse(o => { if (o instanceof THREE.Mesh) o.geometry.dispose(); }); this.disposeOwned(v.scaff); this.builds.delete(id); }
+    for (const [id, v] of this.builds) if (!s.building(id)) { this.scene.remove(v.rig.root, v.frame, v.scaff); releaseModelGeometry(v.rig.root); v.frame.traverse(o => { if (o instanceof THREE.Mesh) o.geometry.dispose(); }); this.disposeOwned(v.scaff); this.builds.delete(id); }
     for (const n of s.nodes) if (!this.nodes.has(n.id)) this.addNode(n);
-    for (const [id, v] of this.nodes) if (!s.node(id)) { this.scene.remove(v.obj); this.nodes.delete(id); }
+    for (const [id, v] of this.nodes) if (!s.node(id)) { this.scene.remove(v.obj); releaseModelGeometry(v.obj); this.nodes.delete(id); }
   }
   private addUnit(u: Unit): void {
     const rig = makeUnit(u.kind, u.owner, this.quality !== 'low'), r = UNITS[u.kind].radius, ring = new THREE.Mesh(this.ringGeo, this.ringMats[u.owner === this.viewer ? 0 : 1]); ring.rotation.x = -Math.PI / 2; ring.scale.setScalar(r * 1.5 + 0.2); ring.position.y = 0.05; ring.visible = false;

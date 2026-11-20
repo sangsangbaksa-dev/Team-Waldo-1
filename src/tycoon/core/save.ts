@@ -113,8 +113,38 @@ export function loadTycoon(storage?: Storage): unknown {
   } catch { return null; }
 }
 
-export function saveTycoon(core: Pick<TycoonCore, 'serialize'>, storage?: Storage): boolean {
-  try { const target = store(storage); if (!target) return false; target.setItem(TYCOON_SAVE_KEY, JSON.stringify(core.serialize())); return true; } catch { return false; }
+/** 화면 상태는 경제 저장과 독립적으로 선택 저장한다. 기존 v1 저장도 읽을 수 있다. */
+export interface TycoonPosition {
+  x: number;
+  z: number;
+  facing: number;
+  yaw: number;
+  pitch: number;
+  distance: number;
+  firstPerson: boolean;
+}
+
+export function readTycoonPosition(raw: unknown): TycoonPosition | null {
+  if (!isObj(raw) || raw.v !== 1 || !isObj(raw.position)) return null;
+  const p = raw.position;
+  if (typeof p.x !== 'number' || !Number.isFinite(p.x) || typeof p.z !== 'number' || !Number.isFinite(p.z)) return null;
+  return {
+    x: p.x, z: p.z,
+    facing: num(p.facing, 0, -Math.PI * 2, Math.PI * 2),
+    yaw: num(p.yaw, 0, -Math.PI * 2, Math.PI * 2),
+    pitch: num(p.pitch, 0.28, -1.3, 1.3),
+    distance: num(p.distance, 7.5, 3.5, 14),
+    firstPerson: bool(p.firstPerson, false),
+  };
+}
+
+export function saveTycoon(core: Pick<TycoonCore, 'serialize'>, storage?: Storage, position?: TycoonPosition): boolean {
+  try {
+    const target = store(storage); if (!target) return false;
+    const state = core.serialize();
+    target.setItem(TYCOON_SAVE_KEY, JSON.stringify(position ? { ...state, position } : state));
+    return true;
+  } catch { return false; }
 }
 
 export function clearTycoon(storage?: Storage): void {

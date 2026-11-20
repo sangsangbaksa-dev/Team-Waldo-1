@@ -371,7 +371,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     <li><b>병력</b>보병은 만능, 로켓병은 장갑에 강하고, 전차는 광역 피해, 정찰 지프(공장 W)는 빨라서 일꾼 사냥에 좋습니다. 의무병(병영 D)은 다친 보병·일꾼을 치료하니 부대 뒤에 두세요. 상대가 전차를 모으면 로켓병으로 맞서세요.</li>
     <li><b>일시정지</b>상단 ⏸ 버튼, P 또는 Esc (AI 대전에서만). 항복도 같은 메뉴에 있습니다.</li>
     <li><b>생산</b>건물 선택 → Q·W. 집결지는 R, 일꾼은 광물에 집결하면 바로 캡니다.</li>
-    <li><b>카메라</b>화살표 · 화면 가장자리 · 휠 확대 · 미니맵 클릭 · Space 최근 공격 위치 · . 놀고 있는 일꾼</li>
+    <li><b>카메라</b>화살표 · 화면 가장자리 · 휠/핀치 확대 · Alt+드래그 또는 Shift+스크롤 이동 · 미니맵 클릭 · Space 최근 공격 위치 · . 놀고 있는 일꾼</li>
     <li><b>터치</b>한 손가락 드래그는 화면 이동, 탭은 선택/명령, 두 손가락은 확대. 범위 선택 버튼으로 드래그 선택.</li></ul>
     <div class="rt-actions"><button class="primary" data-act="back">닫기</button></div></div>`;
   function openMenu(): void {

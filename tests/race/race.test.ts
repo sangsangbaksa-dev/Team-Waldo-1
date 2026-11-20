@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { aiInput, kmh, newCar, separateCars, stayOnTrack, stepCar, BODY_HALF_WIDTH, NITRO_SECONDS, PLAYER_PARAMS, WALL_HEADING_RATE, wrapAngle, type CarInput } from '../../src/race/physics';
-import { COUNTDOWN, createRace, currentLap, placeOf, rivalBand, updateRace } from '../../src/race/race';
+import { COUNTDOWN, createRace, currentLap, placeOf, raceProgress, rivalBand, updateRace } from '../../src/race/race';
 import { buildTrack, idxDelta, nearest } from '../../src/race/track';
 
 const track = buildTrack(), DT = 1 / 90;
@@ -181,4 +181,12 @@ describe('결승 후 경기 기록 고정', () => {
     expect(wrapAngle(Infinity)).toBe(0);
     expect(wrapAngle(NaN)).toBe(0);
   });
+});
+
+it('전체 레이스 진행률은 출발 전과 역주행에서 0, 완주에서 1이 된다', () => {
+  const r = createRace(track, 2);
+  expect(raceProgress(r)).toBe(0);
+  r.player.car.total = -2; expect(raceProgress(r)).toBe(0);
+  r.player.car.total = track.n; expect(raceProgress(r)).toBeCloseTo(0.5);
+  r.player.finishTime = 99; expect(raceProgress(r)).toBe(1);
 });

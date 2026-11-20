@@ -82,6 +82,13 @@ export function rivalBand(level: LevelDef, gapMeters: number): number {
 }
 export const placeOf = (r: RaceState, who: Racer = r.player): number => standings(r).indexOf(who) + 1;
 export const currentLap = (r: RaceState, who: Racer = r.player): number => Math.min(r.laps, Math.max(1, Math.floor(who.car.total / r.track.n) + 1));
+/** 전체 주행 진행률(0~1). 출발선 전이나 역주행에서는 0, 완주하면 1입니다. */
+export function raceProgress(r: RaceState): number {
+  if (r.player.finishTime !== null) return 1;
+  const goal = r.laps * r.track.n;
+  return goal > 0 ? Math.max(0, Math.min(1, r.player.car.total / goal)) : 0;
+}
+
 /** 플레이어와 racer 사이의 거리(m). 양수면 racer 가 앞. */
 export const gapMeters = (r: RaceState, who: Racer): number => (who.car.total - r.player.car.total) * r.track.ds;
 

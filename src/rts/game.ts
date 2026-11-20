@@ -173,20 +173,32 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     }
     return out;
   }
+  /** 공통 빠른 선택: 터치·마우스·키보드에서 같은 동작을 사용합니다. */
+  function quickSelect(kind: 'army' | 'idle'): void {
+    if (!sim || ended || root.dataset.phase !== 'play') return;
+    const candidates = sim.units.filter(u => u.owner === me && u.hp > 0 && (kind === 'army' ? u.kind !== 'worker' : u.kind === 'worker' && u.o.t === 'idle'));
+    if (!candidates.length) { toast(kind === 'army' ? '병력이 없습니다' : '놀고 있는 일꾼이 없습니다'); return; }
+    if (kind === 'army') {
+      setSel(candidates.map(u => u.id)); view?.lookAt(candidates[0].x, candidates[0].y);
+    } else {
+      const i = (candidates.findIndex(u => selected.has(u.id)) + 1) % candidates.length;
+      const w = candidates[i]; setSel([w.id]); view?.lookAt(w.x, w.y);
+    }
+    mode = null; submenu = false; setHint(''); refresh(); audio.sfx('select');
+  }
   function paintCommands(): void {
     buttons = buildButtons(); const el = $('#rt-cmd');
-    const key = buttons.map(b => `${b.label}|${b.sub}|${b.enabled}|${b.active}`).join(';') + (touch ? `|${boxMode}` : ''); if (key === cmdKey) return; cmdKey = key;
+    const showQuick = !!sim && !ended && (touch || (!selected.size && !submenu && !mode));
+    let army = 0, idle = 0;
+    if (showQuick && sim) for (const u of sim.units) if (u.owner === me && u.hp > 0) { if (u.kind !== 'worker') army++; else if (u.o.t === 'idle') idle++; }
+    const key = buttons.map(b => `${b.label}|${b.sub}|${b.key}|${b.enabled}|${b.active}|${b.hint}`).join(';') + (showQuick ? `|quick:${army}:${idle}:${boxMode}` : ''); if (key === cmdKey) return; cmdKey = key;
     el.innerHTML = buttons.map((b, i) => `<button type="button" data-i="${i}" class="${b.active ? 'on' : ''}" ${b.enabled === false ? 'aria-disabled="true"' : ''} title="${esc(b.hint ?? '')}"><b>${esc(b.label)}</b>${b.sub ? `<small>${esc(b.sub)}</small>` : ''}<kbd>${b.key === 'ESCAPE' ? 'Esc' : esc(b.key)}</kbd></button>`).join('') +
-      (touch ? `<button type="button" data-box class="${boxMode ? 'on' : ''}"><b>범위 선택</b><small>${boxMode ? '켜짐' : '꺼짐'}</small></button><button type="button" data-quick="army"><b>전체 병력</b><small>일꾼 제외</small></button><button type="button" data-quick="idle"><b>놀고 있는 일꾼</b></button>` : '');
+      (showQuick ? (touch ? `<button type="button" data-box class="${boxMode ? 'on' : ''}"><b>범위 선택</b><small>${boxMode ? '켜짐' : '꺼짐'}</small></button>` : '') + `<button type="button" data-quick="army" title="F2 전체 병력 선택"><b>전체 병력</b><small>${army}기 · 일꾼 제외</small></button><button type="button" data-quick="idle" title="마침표 키로 선택"><b>쉬는 일꾼</b><small>${idle}명</small></button>` : '');
   }
   $('#rt-cmd').addEventListener('click', e => {
     const t = (e.target as HTMLElement).closest<HTMLElement>('button'); if (!t) return;
     if (t.dataset.box !== undefined) { boxMode = !boxMode; cmdKey = ''; return; }
-    if (t.dataset.quick && sim) {
-      if (t.dataset.quick === 'army') { const a = sim.units.filter(u => u.owner === me && u.kind !== 'worker' && u.hp > 0); if (a.length) { setSel(a.map(u => u.id)); view?.lookAt(a[0].x, a[0].y); } else toast('병력이 없습니다'); }
-      else { const w = sim.units.filter(u => u.owner === me && u.kind === 'worker' && u.o.t === 'idle'); if (w.length) { const i = Math.max(0, w.findIndex(u => selected.has(u.id)) + 1) % w.length; setSel([w[i].id]); view?.lookAt(w[i].x, w[i].y); } else toast('놀고 있는 일꾼이 없습니다'); }
-      cmdKey = ''; return;
-    }
+    if (t.dataset.quick === 'army' || t.dataset.quick === 'idle') { quickSelect(t.dataset.quick); return; }
     const b = buttons[Number(t.dataset.i)]; if (!b) return; if (b.enabled === false) { toast(b.hint ?? '지금은 할 수 없습니다', true); return; } b.on(); cmdKey = ''; selKey = '';
   });
 
@@ -391,7 +403,8 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       const g = (groups.get(n) ?? []).filter(id => sim!.unit(id)); if (g.length) { setSel(g); const now = performance.now(); if (now - (hot.get(k) ?? 0) < 400) { const u = sim.unit(g[0]); if (u) view?.lookAt(u.x, u.y); } hot.set(k, now); audio.sfx('select'); e.preventDefault(); }
       return;
     }
-    if (e.key === '.') { const w = sim.units.filter(u => u.owner === me && u.kind === 'worker' && u.o.t === 'idle'); if (w.length) { const i = Math.max(0, w.findIndex(u => selected.has(u.id)) + 1) % w.length; setSel([w[i].id]); view?.lookAt(w[i].x, w[i].y); } else toast('놀고 있는 일꾼이 없습니다'); return; }
+    if (e.code === 'F2' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); quickSelect('army'); return; }
+    if (e.key === '.' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); quickSelect('idle'); return; }
     if (e.code === 'Space') { e.preventDefault(); if (sim.tick - alertAt.t < 600) view?.lookAt(alertAt.x, alertAt.y); else { const h = sim.buildings.find(b => b.owner === me && b.kind === 'hq'); if (h) view?.lookAt(h.x + 2, h.y + 2); } return; }
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); return; }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -453,7 +466,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     <li><b>캠페인</b>점령·방어·호송·급습·총공세·기습 여섯 작전. 목표를 모두 이루면 승리하고, 목표 시간·보너스 목표마다 별을 받습니다.</li>
     <li><b>일시정지</b>상단 ⏸ 버튼, P 또는 Esc (AI 대전에서만). 항복도 같은 메뉴에 있습니다.</li>
     <li><b>생산</b>건물 선택 → Q·W. 집결지는 R, 일꾼은 광물에 집결하면 바로 캡니다.</li>
-    <li><b>카메라</b>화살표 · 화면 가장자리 · 휠 확대 · 미니맵 클릭 · Space 최근 공격 위치 · . 놀고 있는 일꾼</li>
+    <li><b>카메라</b>화살표 · 화면 가장자리 · 휠 확대 · 미니맵 클릭 · Space 최근 공격 위치 · F2 전체 병력 · . 놀고 있는 일꾼</li>
     <li><b>터치</b>한 손가락 드래그는 화면 이동, 탭은 선택/명령, 두 손가락은 확대. 범위 선택 버튼으로 드래그 선택.</li></ul>
     <div class="rt-actions"><button class="primary" data-act="back">닫기</button></div></div>`;
   function openMenu(): void {

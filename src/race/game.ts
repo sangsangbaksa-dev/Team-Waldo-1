@@ -12,7 +12,7 @@ import { carById, levelById, mapOf, sanitizeSetup, type RaceSetup } from './conf
 import { aiInput, boosting, kmh, type CarInput } from './physics';
 import { RacePvp } from './pvp';
 import { decideWinner } from './netcar';
-import { createRace, currentLap, placeOf, updateRace, type RaceEvent, type RaceState } from './race';
+import { createRace, currentLap, gapMeters, placeOf, raceProgress, standings, updateRace, type RaceEvent, type RaceState } from './race';
 import { ghostDelta, readGhost, writeGhost } from './ghost';
 import { ownsSkin, readGarage, rewardFor, writeGarage } from './garage';
 import { mountSetup, type SetupHandle } from './setup-ui';
@@ -32,8 +32,8 @@ export function openRace(onExit: () => void): void {
   const root = document.createElement('div'); root.className = 'rc-root' + (touch ? ' touch' : ''); root.dataset.phase = 'loading';
   root.innerHTML = `<canvas class="rc-canvas"></canvas><canvas class="rc-fx"></canvas><div class="rc-vignette"></div><div class="rc-boostfx"></div>
   <div class="rc-hud">
-    <div class="rc-tl"><div class="rc-pos"><b id="rc-pos">4</b><span id="rc-of">/ 4</span></div><div class="rc-lap">LAP <b id="rc-lap">1</b>/<span id="rc-laps">3</span></div></div>
-    <div class="rc-tc"><div class="rc-time" id="rc-time">0:00.000</div><div class="rc-best" id="rc-best"></div></div>
+    <div class="rc-tl"><div class="rc-pos"><b id="rc-pos">4</b><span id="rc-of">/ 4</span></div><div class="rc-lap">LAP <b id="rc-lap">1</b>/<span id="rc-laps">3</span></div><div class="rc-progress" aria-hidden="true"><i id="rc-progress"></i></div><div id="rc-progress-text" class="rc-progress-text">0%</div></div>
+    <div class="rc-tc"><div class="rc-time" id="rc-time">0:00.000</div><div class="rc-best" id="rc-best"></div><div class="rc-gap" id="rc-gap" hidden></div></div>
     <div class="rc-tr"><canvas id="rc-map" width="220" height="220" aria-label="미니맵"></canvas><div class="rc-btns"><button data-act="mute" title="소리 (M)" aria-pressed="${prefs.sound}">${prefs.sound ? '🔊' : '🔇'}</button><button data-act="pause" title="일시정지 (Esc)">Ⅱ</button><button data-act="exit" title="나가기">✕</button></div></div>
     <div class="rc-msg" id="rc-msg"></div><div class="rc-count" id="rc-count"></div><div class="rc-wrong" id="rc-wrong">역주행!</div><div class="rc-draft" id="rc-draft">SLIPSTREAM</div><div class="rc-drift" id="rc-drift"></div>
     <div class="rc-bottom"><div class="rc-nitro"><span>NITRO</span><div><i id="rc-nitro"></i></div></div><div class="rc-speed"><b id="rc-kmh">0</b><small>km/h</small><em id="rc-gear">N</em></div><div class="rc-rev"><i id="rc-rev"></i></div></div>
@@ -300,6 +300,17 @@ export function openRace(onExit: () => void): void {
     setText('#rc-time', fmtTime(Math.max(0, race.clock))); const gd = race.ghost && race.phase === 'racing' ? ghostDelta(race.ghost, c.total, race.clock) : null;
     setText('#rc-best', race.trial ? (race.ghost ? (gd === null ? `GHOST ${fmtTime(race.ghost.time)}` : `GHOST ${gd >= 0 ? '+' : '-'}${Math.abs(gd).toFixed(2)}`) : '첫 기록 — 이 주행이 고스트가 됩니다') : Number.isFinite(race.bestLap) ? `BEST ${fmtTime(race.bestLap)}` : '');
     $('#rc-best').classList.toggle('ahead', gd !== null && gd < 0);
+    const progress = Math.floor(raceProgress(race) * 100);
+    $('#rc-progress').style.width = progress + '%'; setText('#rc-progress-text', progress + '%');
+    const gap = $('#rc-gap');
+    if (!race.trial && race.phase === 'racing' && race.racers.length > 1) {
+      const order = standings(race), front = place > 1, rival = order[front ? place - 2 : 1];
+      if (rival) {
+        gap.hidden = false;
+        const distance = Math.round(Math.abs(gapMeters(race, rival)));
+        setText('#rc-gap', rival.finishTime !== null ? '앞차 완주' : (front ? '앞차 ' : '추격 ') + (distance < 1000 ? distance + 'm' : (distance / 1000).toFixed(1) + 'km'));
+      } else gap.hidden = true;
+    } else gap.hidden = true;
     setText('#rc-gear', race.phase === 'countdown' || Math.abs(c.vf) < 1 ? 'N' : c.vf < -0.5 ? 'R' : String(gearFor(c.vf)));
     $<HTMLElement>('#rc-nitro').style.width = `${(c.nitro * 100).toFixed(0)}%`; $('#rc-nitro').parentElement!.classList.toggle('on', boosting(c));
     $<HTMLElement>('#rc-draft').style.opacity = String(c.draft > 0.15 ? Math.min(1, c.draft * 1.3) : 0);

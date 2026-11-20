@@ -236,3 +236,23 @@
 @media (prefers-reduced-motion: reduce) {
   .ty-banner.show { opacity: 1; transform: none; }
 }
+
+/* Business dashboard: key financial values and inventory status. */
+.ty-finance { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin: 12px 0 18px; }
+.ty-finance > div { min-width: 0; display: flex; flex-direction: column; gap: 5px; padding: 12px; background: #0d1520; border: 1px solid var(--line); border-radius: 9px; }
+.ty-finance small { color: var(--mute); font-size: 11px; }
+.ty-finance b { color: var(--ink); font-size: clamp(18px, 3vw, 24px); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.ty-finance > div:first-child b { color: var(--gold); }
+.ty-finance b.cost { color: var(--bad); }
+.ty-supply { margin: 8px 0 4px; font-size: 11px; color: var(--good); font-weight: 700; }
+.ty-supply.low { color: #ffc17a; }
+.ty-factory-note { color: var(--mute); font-size: 12px; margin: 8px 0; }
+.ty-shop .ty-chips .gain { color: var(--good); }
+.ty-shop .ty-chips .cost { color: var(--bad); }
+.ty-map-caption { position: absolute; bottom: 8px; left: 8px; padding: 6px 10px; border-radius: 6px; background: #0b111ce8; color: #dbe6f3; font-size: 11px; pointer-events: none; }
+.ty-task > div { min-width: 0; }
+.ty-task span { display: block; }
+@media (max-width: 380px) {
+  .ty-finance { gap: 5px; }
+  .ty-finance > div { padding: 8px; }
+}

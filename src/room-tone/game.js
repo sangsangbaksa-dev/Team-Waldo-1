@@ -696,7 +696,8 @@ async function start(cont) {
   $("panelBody").replaceChildren();
   $("panelActions").replaceChildren();
   try {
-    await sound.start();
+    // Audio is optional: a blocked AudioContext.resume must not hold up WebGL loading.
+    void sound.start();
     sound.setMute(muted);
     await setup();
     const s = cont ? saved() : null;

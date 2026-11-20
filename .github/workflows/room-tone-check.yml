@@ -1,0 +1,49 @@
+name: ROOM TONE verification
+on:
+  push:
+    paths:
+      - 'src/room-tone/**'
+      - 'room-tone/**'
+      - 'public/room-tone/**'
+      - 'tests/room-tone/**'
+      - 'tools/room-tone-browser-smoke.mjs'
+      - '.github/workflows/room-tone-check.yml'
+  pull_request:
+    paths:
+      - 'src/room-tone/**'
+      - 'room-tone/**'
+      - 'public/room-tone/**'
+      - 'tests/room-tone/**'
+      - 'tools/room-tone-browser-smoke.mjs'
+      - '.github/workflows/room-tone-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: room-tone-check-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx vitest run tests/room-tone
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium --only-shell
+      - name: Room Tone desktop and mobile smoke
+        run: node tools/room-tone-browser-smoke.mjs
+        timeout-minutes: 5
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: room-tone-evidence
+          path: browser-artifacts/room-tone-*
+          if-no-files-found: warn
+          retention-days: 7

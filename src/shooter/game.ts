@@ -78,7 +78,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
 
   // ---------- 자산(백그라운드로 받기) ----------
   const loading = opts.loading;
-  void loadShooterAssets(base, f => { assetPct = f; loading?.progress(f, '3D 모델을 불러오는 중'); if (phase === 'setup') paintSetup(); }, n => loading?.note(n)).then(a => { assets = a; assetState = 'ready'; }).catch(() => { assetState = 'failed'; }).finally(() => { loading?.close(); if (phase === 'setup') paintSetup(); });
+  void loadShooterAssets(base, f => { assetPct = f; loading?.progress(f, '3D 모델을 불러오는 중'); if (!closed && phase === 'setup') paintSetup(); }, n => { if (!closed) loading?.note(n); }).then(a => { if (!closed) { assets = a; assetState = 'ready'; } }).catch(() => { if (!closed) assetState = 'failed'; }).finally(() => { if (!closed) { loading?.close(); if (phase === 'setup') paintSetup(); } });
 
   // ---------- 출격 설정 화면 ----------
   function paintSetup(): void {
@@ -113,9 +113,10 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     endMatch(); blur(); tc.ads = tc.crouch = false; root.querySelectorAll('.sz-tbuttons button.down').forEach(b => b.classList.remove('down')); locked = lockFail = false;
     // The previous renderer forces context loss on dispose. Never reuse its canvas.
     const fresh = document.createElement('canvas'); fresh.className = 'sz-canvas'; canvas.replaceWith(fresh); canvas = fresh; canvas.addEventListener('contextmenu', noMenu);
+    hitT = combo = comboT = rcP = rcY = shotN = stepAcc = bannerT = lastLook = 0; hitHead = hitKill = false; rcIdle = 9; q('#sz-banner').classList.remove('show'); q('#sz-nums').replaceChildren(); q('#sz-dmgs').replaceChildren();
     match = m; meIdx = my; over = false; resultShown = false; soloRecorded = false; spectateId = -1; deadTimer = 0; cache.clear(); feed.length = 0; told.clear(); paused = false; modal.className = 'sz-modal'; modal.innerHTML = '';
     const p = m.players[my]; yaw = p.yaw; pitch = 0; countdown = 3.4; phase = 'countdown'; mapBase = null;
-    try { view = new ShooterView(canvas, m, assets, prefs.quality); } catch { endMatch(); phase = 'setup'; hud.hidden = true; setupEl.hidden = true; card('ZERO ZONE', '그래픽을 시작하지 못했어요', '<p>브라우저의 그래픽 가속을 확인한 뒤 다시 시도해 주세요.</p>', '<button class="primary" data-act="setup">설정으로</button><button data-act="exit">메뉴로</button>'); return; } resize(); setupEl.hidden = true; hud.hidden = false; buildSlots(); say(touch ? '왼쪽 스틱으로 이동' : '화면을 클릭해 조작 시작', 2.4);
+    try { view = new ShooterView(canvas, m, assets, prefs.quality); } catch { leavePvp(); leaveRoom(); endMatch(); phase = 'setup'; hud.hidden = true; setupEl.hidden = true; card('ZERO ZONE', '그래픽을 시작하지 못했어요', '<p>브라우저의 그래픽 가속을 확인한 뒤 다시 시도해 주세요.</p>', '<button class="primary" data-act="setup">설정으로</button><button data-act="exit">메뉴로</button>'); return; } resize(); setupEl.hidden = true; hud.hidden = false; buildSlots(); say(touch ? '왼쪽 스틱으로 이동' : '화면을 클릭해 조작 시작', 2.4);
     if (!touch) lock(); audio.unlock();
     if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__zz = { get match() { return match; }, get phase() { return phase; }, me, skip, view, go: () => { countdown = Math.min(countdown, 0.45); }, advance: (sec: number) => { const m = match; if (!m) return; let now = performance.now(); for (let t = 0; t < sec && !m.over; t += 1 / 30) { if (room) syncRoom(1 / 30); m.step(1 / 30); now += 1000 / 30; const ev = m.drain(); onEvents(ev); if (room) roomTick(ev, now); } }, fire: (on: boolean) => { mouse.fire = on; }, ads: (on: boolean) => { mouse.ads = on; }, look: (y: number, p: number) => { yaw = y; pitch = p; } };
   }
@@ -202,6 +203,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       : new Match({ seed: r.seed, mode: 'duel', difficulty: 'normal', humans, lootBase: (idx + 1) * 1_000_000 });
     ids.forEach((id, i) => { if (id !== me0) r.remotes.set(i, { p: m.players[i], target: null }); });
     r.mine = idx; r.sync = new WorldSync(m); begin(m, idx);
+    if (match !== m || room !== r) return;
     r.chat = new ChatBox(hud, text => { r.chat?.add('나', me0, text, true, performance.now()); r.net.send({ t: 'ch', x: text }); }, () => { if (!touch && !locked && phase === 'play') lock(); });
   }
   /** 동기화 메시지(sync.ts 형식) */
@@ -211,11 +213,11 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     else if (msg.t === 'w') { if (host && !m.authority) r.sync.apply(msg, now); }
     else if (msg.t === 'bd') { if (host && !m.authority) r.sync.botDead(msg.i, msg.k, msg.c); }
     else if (msg.t === 'la') { const l = parseLoot(msg); if (l) m.addLoot(l); }
-    else if (msg.t === 'nd') { const n = parseNade(msg), o = typeof msg.o === 'number' && Number.isInteger(msg.o) ? m.players[msg.o] : undefined; if (n && o?.remote) m.addNade(o.id, n.x, n.y, n.z, n.vx, n.vy, n.vz); }
+    else if (msg.t === 'nd') { const n = parseNade(msg), o = typeof msg.o === 'number' && Number.isInteger(msg.o) ? m.players[msg.o] : undefined; if (n && o?.remote && o.alive && (o.bot ? host : o === from?.p)) m.addNade(o.id, n.x, n.y, n.z, n.vx, n.vy, n.vz); }
     else if (msg.t === 've') {
       // 손님이 차에 타려고 함: 방장만 판정합니다.
       const v = typeof msg.i === 'number' ? m.vehicles[msg.i] : undefined; if (!m.authority || !from || !v) return; const p = from.p;
-      const ok = !v.wreck && v.driver < 0 && p.alive && !p.air && Math.hypot(p.x - v.x, p.z - v.z) < 9;
+      const ok = !v.wreck && v.driver < 0 && p.alive && !p.air && p.veh < 0 && m.vehicleNear(p) === v;
       if (ok) { m.enterVehicle(p, v); v.remote = true; r.sync.vehs.set(v.id, { x: v.x, z: v.z, yaw: v.yaw, speed: 0, at: now }); }
       r.net.send({ t: ok ? 'vg' : 'vn', i: v.id, d: p.id });
     }
@@ -229,7 +231,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     }
     else if (msg.t === 'vx') {
       // 손님이 내린(또는 쓰러진) 차: 방장이 받아 굴리고, 나머지는 운전자만 비웁니다.
-      const v = typeof msg.i === 'number' ? m.vehicles[msg.i] : undefined; if (!v || v.wreck || !from) return;
+      const v = typeof msg.i === 'number' ? m.vehicles[msg.i] : undefined; if (!v || v.wreck || !from || v.driver !== from.p.id) return;
       const x = Number(msg.x), z = Number(msg.z), y = Number(msg.y), sp = Number(msg.s); if (![x, z, y, sp].every(Number.isFinite) || Math.abs(x) > 1000 || Math.abs(z) > 1000) return;
       if (m.authority) { if (v.remote) { r.sync.vehs.delete(v.id); v.x = x; v.z = z; v.yaw = y; v.speed = Math.max(-40, Math.min(40, sp)); reclaim(v); } }
       else if (v.remote) { if (v.driver === from.p.id) { from.p.veh = -1; v.driver = -1; } r.sync.vehicleState(v, x, z, y, sp, -1, true, now); }
@@ -323,7 +325,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
 
   // ---------- 조작 ----------
   const sens = (): number => 0.0023 / (view && me().ads ? Math.max(1, 78 / view.fov) * 0.9 : 1);
-  function lock(): void { if (touch || locked || lockFail || closed) return; try { const r = canvas.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(() => { lockFail = true; }); } catch { lockFail = true; } }
+  function lock(): void { if (touch || locked || lockFail || closed || paused || !match) return; const target = canvas; try { const r = target.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(() => { if (canvas === target && !closed) lockFail = true; }); } catch { lockFail = true; } }
   document.addEventListener('pointerlockchange', onLock);
   function onLock(): void {
     const wasLocked = locked; locked = document.pointerLockElement === canvas;
@@ -349,12 +351,12 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (paused) return;
     keys.add(e.code);
     if (e.repeat && ['KeyR', 'KeyE', 'KeyQ', 'KeyG', 'KeyH', 'KeyJ', 'Digit1', 'Digit2'].includes(e.code)) return;
-    if (e.code === 'Enter' && room?.chat && !room.done && match && !paused) { keys.clear(); mouse.fire = mouse.ads = false; interactHeld = false; if (document.pointerLockElement) document.exitPointerLock(); room.chat.open(); e.preventDefault(); return; }
+    if (e.code === 'Enter' && room?.chat && !room.done && match && !paused) { keys.clear(); mouse.fire = mouse.ads = false; interactHeld = false; if (document.pointerLockElement === canvas) document.exitPointerLock(); room.chat.open(); e.preventDefault(); return; }
     if (e.code === 'KeyR') reloadReq = true; else if (e.code === 'KeyE') interactHeld = true; else if (e.code === 'Digit1') slotReq = 0; else if (e.code === 'Digit2') slotReq = 1; else if (e.code === 'KeyQ') swapReq = true; else if (e.code === 'KeyG') nadeReq = true; else if (e.code === 'KeyH') healReq = 1; else if (e.code === 'KeyJ') healReq = 2;
     else if (e.code === 'Escape' && phase === 'countdown') setPause(true);
     if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code) && match) e.preventDefault();
   };
-  const onWheel = (e: WheelEvent): void => { if (match && !paused && Math.abs(e.deltaY) > 4) swapReq = true; };
+  const onWheel = (e: WheelEvent): void => { if (match && !closed && !paused && phase === 'play' && !room?.chat?.typing && (locked || e.target === canvas) && Math.abs(e.deltaY) > 4) swapReq = true; };
   const noMenu = (e: Event): void => e.preventDefault();
   window.addEventListener('mousemove', onMove); window.addEventListener('mousedown', onDown); window.addEventListener('mouseup', onUp);
   window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKey); window.addEventListener('wheel', onWheel, { passive: true }); canvas.addEventListener('contextmenu', noMenu);
@@ -598,7 +600,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     const a = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act; if (!a) return; audio.unlock();
     if (a === 'resume') setPause(false);
     else if (a === 'again') { startSolo(); }
-    else if (a === 'setup') { endMatch(); hud.hidden = true; modal.className = 'sz-modal'; modal.innerHTML = ''; phase = 'setup'; paused = false; setupEl.hidden = false; paintSetup(); }
+    else if (a === 'setup') { leavePvp(); leaveRoom(); endMatch(); hud.hidden = true; modal.className = 'sz-modal'; modal.innerHTML = ''; phase = 'setup'; paused = false; setupEl.hidden = false; paintSetup(); }
     else if (a === 'spectate') { modal.className = 'sz-modal'; modal.innerHTML = ''; resultShown = false; if (room) room.shown = true; }
     else if (a === 'skip') { modal.className = 'sz-modal'; resultShown = false; skip(); }
     else if (a === 'roomagain') { leaveRoom(); endMatch(); hud.hidden = true; modal.className = 'sz-modal'; modal.innerHTML = ''; phase = 'setup'; setupEl.hidden = false; pickMode = 'room'; paintSetup(); openPvpLobby(true); }
@@ -650,7 +652,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   function syncRemote(dt: number): void {
     const o = pvp!.opp!, t = pvp!.target; if (!t || !o.alive) return; const k = Math.min(1, dt * 14);
     o.x += (t.x - o.x) * k; o.z += (t.z - o.z) * k; let dy = t.yaw - o.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); o.yaw += dy * k; o.pitch += (t.pitch - o.pitch) * k;
-    o.hp = t.hp; o.armor = t.armor; o.speed = t.speed; o.walk += t.speed * dt; o.ads = t.ads; o.crouch += ((t.crouch ? 1 : 0) - o.crouch) * Math.min(1, dt * 12); o.reload = t.reloading ? 1 : 0;
+    o.hp = t.hp; o.armor = t.armor; o.speed = t.speed; o.ads = t.ads; o.crouch += ((t.crouch ? 1 : 0) - o.crouch) * Math.min(1, dt * 12); o.reload = t.reloading ? 1 : 0;
     if (o.guns[0]?.id !== t.w) o.guns[0] = { id: t.w, mag: 1, reserve: 0, att: {} }; o.cur = 0;
   }
 

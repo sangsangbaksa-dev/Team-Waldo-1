@@ -52,20 +52,29 @@ let dot: THREE.CanvasTexture | null = null;
 function dotTex(): THREE.CanvasTexture { dot ??= canvasTex(32, 32, g => { const gr = g.createRadialGradient(16, 16, 0, 16, 16, 16); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.45, 'rgba(255,255,255,.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 32, 32); }, false); return dot; }
 
 class Particles {
-  readonly points: THREE.Points; private pos: Float32Array; private col: Float32Array; private vel: Float32Array; private life: Float32Array; private max: Float32Array; private rgb: Float32Array; private head = 0;
+  readonly points: THREE.Points; private pos: Float32Array; private col: Float32Array; private vel: Float32Array; private life: Float32Array; private max: Float32Array; private rgb: Float32Array; private head = 0; private active = 0;
   constructor(private cap: number, size: number, blending: THREE.Blending, opacity = 1) {
     this.pos = new Float32Array(cap * 3); this.col = new Float32Array(cap * 3); this.vel = new Float32Array(cap * 3); this.life = new Float32Array(cap); this.max = new Float32Array(cap); this.rgb = new Float32Array(cap * 3);
     this.pos.fill(0, 0); for (let i = 0; i < cap; i++) this.pos[i * 3 + 1] = -999;
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(this.col, 3));
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage)); g.setAttribute('color', new THREE.BufferAttribute(this.col, 3).setUsage(THREE.DynamicDrawUsage));
     this.points = new THREE.Points(g, new THREE.PointsMaterial({ size, map: dotTex(), vertexColors: true, transparent: true, opacity, blending, depthWrite: false, sizeAttenuation: true })); this.points.frustumCulled = false;
   }
   emit(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, r: number, g: number, b: number): void {
-    const i = this.head; this.head = (this.head + 1) % this.cap; this.pos.set([x, y, z], i * 3); this.vel.set([vx, vy, vz], i * 3); this.life[i] = life; this.max[i] = life; this.rgb.set([r, g, b], i * 3);
+    const i = this.head, j = i * 3; this.head = (this.head + 1) % this.cap;
+    if (this.life[i] <= 0) this.active++;
+    this.pos[j] = x; this.pos[j + 1] = y; this.pos[j + 2] = z;
+    this.vel[j] = vx; this.vel[j + 1] = vy; this.vel[j + 2] = vz;
+    this.life[i] = life; this.max[i] = life;
+    this.rgb[j] = r; this.rgb[j + 1] = g; this.rgb[j + 2] = b;
   }
   update(dt: number, gravity: number): void {
+    if (!this.active) { this.points.visible = false; return; }
+    this.points.visible = true;
     for (let i = 0; i < this.cap; i++) {
-      if (this.life[i] <= 0) { this.col[i * 3] = this.col[i * 3 + 1] = this.col[i * 3 + 2] = 0; continue; }
-      this.life[i] -= dt; const f = Math.max(0, this.life[i] / this.max[i]);
+      if (this.life[i] <= 0) continue;
+      this.life[i] -= dt;
+      if (this.life[i] <= 0) { this.active--; this.pos[i * 3 + 1] = -999; this.col[i * 3] = this.col[i * 3 + 1] = this.col[i * 3 + 2] = 0; continue; }
+      const f = this.life[i] / this.max[i];
       this.vel[i * 3 + 1] -= gravity * dt; this.pos[i * 3] += this.vel[i * 3] * dt; this.pos[i * 3 + 1] += this.vel[i * 3 + 1] * dt; this.pos[i * 3 + 2] += this.vel[i * 3 + 2] * dt;
       this.col[i * 3] = this.rgb[i * 3] * f; this.col[i * 3 + 1] = this.rgb[i * 3 + 1] * f; this.col[i * 3 + 2] = this.rgb[i * 3 + 2] * f;
     }
@@ -123,12 +132,12 @@ export class RaceView {
     this.post = makePost(quality, this.renderer, this.scene, this.camera, { strength: 0.3, radius: 0.5, threshold: 0.96, vignette: 0.3, saturation: 1.1, contrast: 1.06 });
   }
   private carTemplates: Record<string, THREE.Object3D> | null;
-  private carEnv: THREE.Texture | null = null; private carMats = new Map<string, THREE.Material>();
+  private carEnv: THREE.Texture | null = null; private carEnvTarget: THREE.WebGLRenderTarget | null = null; private carMats = new Map<string, THREE.Material>();
   /** 하늘을 반사 맵으로 구워 차체 도장·유리에 노을과 하늘이 비치게 합니다. */
   private buildCarEnv(): void {
     const sky = this.scene.getObjectByName('sky') as THREE.Mesh | undefined; if (!sky) return;
     const tmp = new THREE.Scene(), pm = new THREE.PMREMGenerator(this.renderer), m = sky.clone(); m.position.set(0, 0, 0); tmp.add(m);
-    this.carEnv = pm.fromScene(tmp, 0, 1, 4000).texture; pm.dispose();
+    try { this.carEnvTarget = pm.fromScene(tmp, 0, 1, 4000); this.carEnv = this.carEnvTarget.texture; } finally { pm.dispose(); }
   }
   /** 차체 재질을 광택 도장(클리어코트)·반사 유리·금속으로 바꿉니다. 발광 재질은 그대로 둡니다. */
   private polishCar(body: THREE.Object3D): void {
@@ -569,6 +578,6 @@ export class RaceView {
       for (const mat of mats) { once(mat); const maps = mat as THREE.MeshBasicMaterial; once(maps.map); if (maps.alphaMap) once(maps.alphaMap); }
     });
     for (const d of this.disposables) once(d);
-    this.carEnv?.dispose(); this.post?.dispose(); this.renderer.dispose();
+    once(this.rainFx.points.geometry); once(this.rainFx.points.material as THREE.Material); this.carEnvTarget?.dispose(); this.post?.dispose(); this.renderer.dispose();
   }
 }

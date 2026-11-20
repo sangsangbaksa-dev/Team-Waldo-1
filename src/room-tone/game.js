@@ -1183,7 +1183,9 @@ function frame(ts) {
 document.addEventListener("keydown", (e) => {
   if (
     e.target instanceof HTMLInputElement ||
-    e.target instanceof HTMLSelectElement
+    e.target instanceof HTMLSelectElement ||
+    e.target instanceof HTMLTextAreaElement ||
+    (e.target instanceof HTMLElement && e.target.isContentEditable)
   )
     return;
   if (state === "play") {

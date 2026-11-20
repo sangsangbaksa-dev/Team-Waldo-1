@@ -210,7 +210,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (e.pointerId === tc.lookId) tc.lookId = -1; if (e.pointerId === drag) drag = -1;
   };
   window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); window.addEventListener('pointercancel', onUp); canvas.addEventListener('lostpointercapture', onUp);
-  const onWheel = (e: WheelEvent): void => { if (phase !== 'play' || modal || player.firstPerson || e.ctrlKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return; e.preventDefault(); const pixels = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? innerHeight : 1); player.dist = clamp(player.dist + pixels * 0.01, 3.5, 14); };
+  const onWheel = (e: WheelEvent): void => { if (phase !== 'play' || modal || player.firstPerson || e.ctrlKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return; e.preventDefault(); const pixels = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? innerHeight : 1); if (Number.isFinite(pixels)) player.dist = clamp(player.dist * Math.exp(clamp(pixels * 0.001, -0.18, 0.18)), 3.5, 14); };
   canvas.addEventListener('wheel', onWheel, { passive: false });
   q('.ty-touchpad').addEventListener('pointerdown', e => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-t]'); if (!b) return; audio.unlock(); e.preventDefault();

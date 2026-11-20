@@ -313,7 +313,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   };
   const onMouseUp = (e: MouseEvent): void => { if (e.button === 0) mouse.fire = false; else if (e.button === 2) mouse.aim = false; };
   const onWheel = (e: WheelEvent): void => {
-    if (phase !== 'play' || modalKind || wheelOpen || !sim || e.ctrlKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+    if (phase !== 'play' || modalKind || wheelOpen || !sim || e.ctrlKey || !Number.isFinite(e.deltaY) || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
     e.preventDefault();
     const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? innerHeight : 1);
     const now = performance.now();

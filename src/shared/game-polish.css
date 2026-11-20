@@ -23,6 +23,30 @@
   .rc-root .rc-drift { transition: none; }
 }
 
+
+/* Compact in-game dialogs: keep actions reachable in landscape and on small laptops. */
+.city-root .c-modal section, .rc-root .rc-card, .sz-root .sz-card,
+.ol-root .ol-card, .ty-root .ty-panel, .rt-root .rt-card {
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-width: thin;
+}
+:is(.rc-card,.sz-card,.ol-card,.ty-panel,.rt-card) :is(h2,h3) { overflow-wrap: anywhere; }
+:is(.rc-card,.sz-card,.ol-card,.c-modal section,.ty-panel,.rt-card) button { min-height: 40px; }
+@media (max-height: 550px) {
+  .city-root .c-modal section, .rc-root .rc-card, .sz-root .sz-card,
+  .ol-root .ol-card, .ty-root .ty-panel, .rt-root .rt-card {
+    max-height: calc(100dvh - 24px);
+    padding: 14px 16px;
+  }
+  :is(.rc-card,.sz-card,.ol-card,.ty-panel,.rt-card) h2 { font-size: clamp(22px,5vh,36px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ol-logo span,.sz-zonefx,.rc-wrong { animation: none !important; }
+}
+
 /* Readable, scrollable game dialogs; retain each title's existing palette. */
 .rc-root .rc-modal { padding: max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left)); box-sizing:border-box; }
 .rc-root .rc-card { box-sizing:border-box; max-width:100%; max-height:100%; min-height:0; overflow-y:auto; overscroll-behavior:contain; touch-action:pan-y; scrollbar-width:thin; }

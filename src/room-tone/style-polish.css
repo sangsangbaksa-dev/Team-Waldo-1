@@ -5,6 +5,14 @@
 #game .panel, dialog { border-color: #786d5b; box-shadow: 0 18px 48px #0009, inset 0 1px 0 #ffffff12; }
 @media (prefers-reduced-motion: reduce) { #game #danger { animation: none; } }
 
+#dialog .panel, dialog { overscroll-behavior: contain; scrollbar-width: thin; touch-action: pan-y; }
+.panelActions button, .hudright button, .gear button { min-height: 40px; }
+#objective, #guideTextLabel { overflow-wrap: anywhere; }
+@media (max-height: 500px) {
+  #dialog .panel { padding: 14px 18px; max-height: calc(100dvh - 20px); }
+  #dialog .panel h2 { margin-top: .6rem; font-size: 1.5rem; }
+}
+
 /* Preserve the dark atmosphere while accommodating long objectives and prompts. */
 #game .hudleft { min-width:0; }
 #game .hudleft strong { overflow-wrap:anywhere; line-height:1.35; }

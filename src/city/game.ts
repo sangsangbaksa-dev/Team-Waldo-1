@@ -562,6 +562,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   };
   const place = (sx: number, sy: number): void => { const w = world!, raw = view === 'top' || !R3 ? R!.toWorld(sx, sy) : { x: ghost!.x, y: ghost!.y }, p = { x: snapBuildCoord(raw.x), y: snapBuildCoord(raw.y) }, e = w.build(0, ghost!.kind, p.x, p.y); if (e) toast(e); else { audio.play('build'); if (!keys.has('Shift')) ghost = null; } };
   const looks = new Map<number, { x: number; y: number }>();
+  let weaponWheelAt = -Infinity;
   function bindCanvas(cv: HTMLCanvasElement): void {
     cv.addEventListener('pointerdown', e => {
       audio.unlock(); if (!world || paused || world.over) return; mouse.x = e.clientX; mouse.y = e.clientY; const three = cv === canvas3;
@@ -587,7 +588,17 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     });
     const up = (e: PointerEvent): void => { looks.delete(e.pointerId); for (const s of [sticks.move, sticks.aim]) if (s.id === e.pointerId) { s.id = -1; s.x = s.y = 0; } if (e.pointerType !== 'touch' && (e.button === 0 || e.type !== 'pointerup')) mouse.down = false; };
     cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up); cv.addEventListener('lostpointercapture', up);
-    cv.addEventListener('wheel', e => { e.preventDefault(); if (Math.abs(e.deltaY) < 4 || !world || paused || world.over) return; if (cv === canvas) userZoom = Math.max(0.6, Math.min(1.5, userZoom * (e.deltaY > 0 ? 0.92 : 1.08))); else if (world) { const f = world.factions[0]; switchWeapon(world, 0, (f.cur + (e.deltaY > 0 ? 1 : f.slots.length - 1)) % f.slots.length); } }, { passive: false });
+    cv.addEventListener('wheel', e => {
+      e.preventDefault();
+      if (!world || paused || world.over || !Number.isFinite(e.deltaY) || e.deltaY === 0) return;
+      if (cv === canvas) {
+        const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? cv.clientHeight : 1);
+        userZoom = Math.max(0.6, Math.min(1.5, userZoom * Math.exp(Math.max(-0.18, Math.min(0.18, -dy * 0.0008)))));
+      } else if (!e.ctrlKey) {
+        const now = performance.now(), fresh = now - weaponWheelAt >= 200 || e.deltaMode === 1; weaponWheelAt = now;
+        if (fresh) { const f = world.factions[0]; switchWeapon(world, 0, (f.cur + (e.deltaY > 0 ? 1 : f.slots.length - 1)) % f.slots.length); }
+      }
+    }, { passive: false });
   }
   bindCanvas(canvas); bindCanvas(canvas3);
   const onWindowPointerEnd = (e: PointerEvent): void => {

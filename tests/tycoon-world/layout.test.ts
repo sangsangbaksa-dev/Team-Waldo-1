@@ -73,3 +73,22 @@ describe('Colliders', () => {
     expect(Math.abs(out.x - b.cx) >= 2.5 - 1e-6 || Math.abs(out.z - b.cz) >= 2.5 - 1e-6).toBe(true);
   });
 });
+
+describe('Colliders trees', () => {
+  const layout = buildLayout(SPOTS), b = layout.blocks[0], tx = b.cx + 17, tz = b.cz + 6, out = { x: 0, z: 0 };
+  const c = new Colliders(); c.setTrees([{ x: tx, z: tz, s: 1 }]);
+
+  it('blocks walking through a trunk but not past it', () => {
+    expect(c.resolve(tx + 0.4, tz, 0.5, out)).toBe(true);
+    expect(Math.hypot(out.x - tx, out.z - tz)).toBeGreaterThanOrEqual(0.5 + 0.3 - 1e-6);
+    expect(c.resolve(tx + 3, tz, 0.5, out)).toBe(false);
+  });
+  it('keeps the third-person camera out of the leaves', () => {
+    expect(c.crownHit(tx, 3.8, tz, 0.4)).toBe(true);
+    expect(c.crownHit(tx + 4, 3.8, tz, 0.4)).toBe(false);
+    expect(c.crownHit(tx, 8, tz, 0.4)).toBe(false);
+  });
+  it('replaces the previous trees on every refill', () => {
+    c.setTrees([]); expect(c.crownHit(tx, 3.8, tz, 0.4)).toBe(false); expect(c.resolve(tx + 0.1, tz, 0.5, out)).toBe(false);
+  });
+});

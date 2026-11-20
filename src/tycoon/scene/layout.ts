@@ -89,14 +89,33 @@ export interface Box { x0: number; x1: number; z0: number; z1: number }
 /** 충돌 상자 모음: 구획 단위로 모아 두고 플레이어 주변만 검사합니다. */
 export class Colliders {
   private byBlock = new Map<string, Box[]>();
+  private treeBoxes = new Map<string, Box[]>();
+  private crowns = new Map<string, Array<{ x: number; y: number; z: number; r: number }>>();
   set(b: Block, boxes: Box[]): void { this.byBlock.set(`${b.i},${b.j}`, boxes); }
+  /** 가로수: 줄기는 걸어서 못 지나가는 작은 상자, 수관(잎 덩어리)은 카메라만 피하는 구로 등록합니다. 매번 통째로 갈아 끼웁니다. */
+  setTrees(trees: Array<{ x: number; z: number; s: number }>): void {
+    this.treeBoxes.clear(); this.crowns.clear();
+    for (const t of trees) {
+      const key = `${Math.round(t.x / PITCH)},${Math.round(t.z / PITCH)}`, w = 0.3 * t.s;
+      (this.treeBoxes.get(key) ?? this.treeBoxes.set(key, []).get(key)!).push({ x0: t.x - w, x1: t.x + w, z0: t.z - w, z1: t.z + w });
+      (this.crowns.get(key) ?? this.crowns.set(key, []).get(key)!).push({ x: t.x, y: 0.18 + 3.6 * t.s, z: t.z, r: 1.7 * t.s });
+    }
+  }
+  /** 점(x,y,z) 이 나무 수관 안(또는 margin 이내)인가? 3인칭 카메라가 잎 속으로 파고드는 것을 막는 데 씁니다. */
+  crownHit(x: number, y: number, z: number, margin: number): boolean {
+    const bi = Math.round(x / PITCH), bj = Math.round(z / PITCH);
+    for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
+      for (const c of this.crowns.get(`${bi + di},${bj + dj}`) ?? []) { const dx = x - c.x, dy = y - c.y, dz = z - c.z, r = c.r + margin; if (dx * dx + dy * dy + dz * dz < r * r) return true; }
+    }
+    return false;
+  }
   /** 원(반지름 r)을 상자 밖으로 밀어냅니다. 밀린 결과를 out 에 담고 충돌했는지 돌려줍니다. */
   resolve(x: number, z: number, r: number, out: { x: number; z: number }): boolean {
     let hit = false;
     const bi = Math.round(x / PITCH), bj = Math.round(z / PITCH);
     for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
-      const boxes = this.byBlock.get(`${bi + di},${bj + dj}`); if (!boxes) continue;
-      for (const b of boxes) {
+      const key = `${bi + di},${bj + dj}`, boxes = this.byBlock.get(key), trees = this.treeBoxes.get(key); if (!boxes && !trees) continue;
+      for (const b of trees ? (boxes ? [...boxes, ...trees] : trees) : boxes!) {
         const nx = Math.max(b.x0, Math.min(x, b.x1)), nz = Math.max(b.z0, Math.min(z, b.z1)), dx = x - nx, dz = z - nz, d2 = dx * dx + dz * dz;
         if (d2 >= r * r) continue;
         hit = true;

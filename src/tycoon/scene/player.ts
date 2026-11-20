@@ -73,7 +73,7 @@ export class Player {
     let d = this.dist; const t = this.tmp;
     for (let s = 1.2; s <= this.dist; s += 0.5) {
       const x = px + sy * cp * s, z = pz + cy * cp * s, y = 0.18 + ty + sp * s;
-      if (y < 7 && colliders.resolve(x, z, 0.5, t) && Math.hypot(t.x - x, t.z - z) > 0.2) { d = Math.max(1.4, s - 0.9); break; }
+      if ((y < 7 && colliders.resolve(x, z, 0.5, t) && Math.hypot(t.x - x, t.z - z) > 0.2) || colliders.crownHit(x, y, z, 0.45)) { d = Math.max(1.4, s - 0.9); break; }
     }
     const wx = px + sy * cp * d, wy = Math.max(0.6, 0.18 + ty + sp * d), wz = pz + cy * cp * d;
     if (!this.camInit) { this.camPos.set(wx, wy, wz); this.camInit = true; }

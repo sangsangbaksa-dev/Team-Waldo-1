@@ -107,7 +107,7 @@ export function openRace(onExit: () => void): void {
 
   /** 선택한 설정으로 코스·레이스·화면을 새로 만듭니다. */
   function begin(): void {
-    raceGen++;
+    clearControls(); nitroWas = driftWas = false; raceGen++;
     if (view) { view.dispose(); view = null; }
     track = buildMapTrack(mapOf(setup)); prepareMinimap(); audio.setCar(setup.car);
     const trial = setup.mode === 'trial', ghost = trial ? readGhost(setup.map, setup.laps, setup.car) : null;
@@ -119,7 +119,7 @@ export function openRace(onExit: () => void): void {
   }
   function restart(): void { begin(); }
   function showSetup(): void {
-    raceGen++;
+    clearControls(); raceGen++;
     if (view) { view.dispose(); view = null; }
     setupUi?.destroy(); paused = false; modal.className = 'rc-modal'; modal.innerHTML = ''; root.dataset.phase = 'setup';
     setupUi = mountSetup(root, setup, records, garage, {
@@ -238,6 +238,7 @@ export function openRace(onExit: () => void): void {
 
   let carTemplate: Record<string, THREE.Object3D> | null = null;
   function startView(tpl: Record<string, THREE.Object3D> | null): boolean {
+    clearControls(); nitroWas = driftWas = false;
     // 해제된 WebGL 컨텍스트는 같은 캔버스에서 다시 열 수 없으므로 캔버스를 새로 만듭니다.
     const fresh = document.createElement('canvas'); fresh.className = 'rc-canvas'; canvas.replaceWith(fresh); canvas = fresh;
     try {
@@ -322,7 +323,7 @@ export function openRace(onExit: () => void): void {
   }
 
   const setPaused = (on: boolean): void => {
-    if (!view || setupUi || pvp || multi || race.phase === 'done' || finishedShown || closed) return; paused = on; modal.className = on ? 'rc-modal show' : 'rc-modal'; if (on) { audio.drive(0, 0, 0, false, false, false); modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">PAUSED</span><h2>일시정지</h2><div class="rc-actions"><button class="primary" data-act="resume">계속하기</button><button data-act="restart">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button></div></div>'; } else modal.innerHTML = '';
+    if (!view || setupUi || pvp || multi || race.phase === 'done' || finishedShown || closed) return; paused = on; modal.className = on ? 'rc-modal show' : 'rc-modal'; if (on) { clearControls(); audio.drive(0, 0, 0, false, false, false); modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">PAUSED</span><h2>일시정지</h2><div class="rc-actions"><button class="primary" data-act="resume">계속하기</button><button data-act="restart">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button></div></div>'; } else modal.innerHTML = '';
   };
   const exit = (): void => {
     if (closed) return; closed = true; cancelAnimationFrame(raf); removeEventListener('keydown', onKey); removeEventListener('keyup', onKeyUp); removeEventListener('resize', resize); removeEventListener('blur', onBlur); document.removeEventListener('visibilitychange', onVisibility);
@@ -347,7 +348,8 @@ export function openRace(onExit: () => void): void {
     if (e.code === 'Enter' && finishedShown && !pvp && !multi) { restart(); return; } keys.add(e.code);
   };
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.code); };
-  const onBlur = (): void => { keys.clear(); for (const k of Object.keys(hold) as Array<keyof typeof hold>) hold[k] = false; root.querySelectorAll('[data-hold].down').forEach(b => b.classList.remove('down')); if (race.phase === 'racing' && !setupUi) setPaused(true); };
+  function clearControls(): void { keys.clear(); for (const k of Object.keys(hold) as Array<keyof typeof hold>) hold[k] = false; root.querySelectorAll('[data-hold].down').forEach(b => b.classList.remove('down')); }
+  const onBlur = (): void => { clearControls(); if (race.phase === 'racing' && !setupUi) setPaused(true); };
   const onVisibility = (): void => { if (document.hidden) onBlur(); };
   addEventListener('keydown', onKey); addEventListener('keyup', onKeyUp); addEventListener('resize', resize); addEventListener('blur', onBlur); document.addEventListener('visibilitychange', onVisibility);
   root.addEventListener('click', e => { const b = (e.target as HTMLElement).closest<HTMLElement>('[data-act]'); if (b) act(b.dataset.act); });

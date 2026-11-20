@@ -3,11 +3,12 @@ import './style-polish.css';
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { modelBytes } from "./assets.js";
-import { chapters, makeLevel, route, neighbors, paths, routeFrom, lineOpen, normalizeSave, walkable, puzzleOptions, puzzleCorrect } from "./levels.mjs";
+import { chapters, makeLevel, neighbors, paths, routeFrom, lineOpen, normalizeSave, walkable, puzzleOptions, puzzleCorrect } from "./levels.mjs";
 import { buildEnvironment } from "./environment.js";
 import { Sound } from "./sound.js";
 import { archiveCells, cleanArchive, createDread, recordings } from "./dread.mjs";
 import { openViewer } from "./viewer.js";
+import { enemyPerception, cellDistance, patrolGoal } from "./perception.mjs";
 
 const $ = (id) => document.getElementById(id),
   C = 2.7,
@@ -25,6 +26,7 @@ let state = "home",
   seen = new Set(),
   elapsed = 0;
 let archive = [], dread = createDread(), enemyStepDistance = 0;
+let acousticCell = -1, acousticTree = null, patrolTarget = -1;
 let renderer,
   scene,
   camera,
@@ -351,6 +353,10 @@ function shift(dx, dz) {
 function pointPlayer() {
   dread = createDread();
   enemyStepDistance = 0;
+  acousticCell = -1;
+  acousticTree = null;
+  patrolTarget = -1;
+  entity.rotation.y = 0;
   $("viewWrap").removeAttribute("data-incident");
   lamp.intensity = 28;
   lamp.visible = true;
@@ -1075,12 +1081,21 @@ function enemyUpdate(dt, running) {
   const e = entity.position;
   const dist = Math.hypot(player.x - e.x, player.z - e.z);
   grace = Math.max(0, grace - dt);
+  const playerCell = cellOf(player), ec = cellOf(e);
   const visible = dist <= 14 && clearLine(player, e);
-  const inSight = visible && dist <= (lightOn ? 10.7 : 6.1);
-  const hearRange = running ? 14 : crouched ? 1.6 : 4.7;
-  const hear = moved > dt * 0.15 && dist < hearRange * (visible ? 1 : 0.55);
+  // Cache the acoustic distance field until the player enters another tile.
+  if (!acousticTree || acousticCell !== playerCell) {
+    acousticCell = playerCell;
+    acousticTree = paths(level.map, playerCell);
+  }
+  const facing = ((player.x - e.x) * Math.sin(entity.rotation.y) +
+    (player.z - e.z) * Math.cos(entity.rotation.y)) / Math.max(dist, .001);
+  const { sight: inSight, heard: hear } = enemyPerception({
+    distance: dist, visible, facing, lightOn, running, crouched,
+    moving: moved > dt * 0.15,
+    corridorDistance: cellDistance(acousticTree.dist[ec], C),
+  });
   const tracking = !grace && (inSight || hear);
-  const playerCell = cellOf(player);
   if (tracking) {
     lastKnown = playerCell;
     enemyPhase = 5.5;
@@ -1089,7 +1104,6 @@ function enemyUpdate(dt, running) {
   }
 
   nextPath -= dt;
-  const ec = cellOf(e);
   const directChase = tracking && inSight && ec === playerCell;
   if (directChase) {
     // A direct pursuit changes the actual position; discard stale corridor waypoints.
@@ -1100,19 +1114,22 @@ function enemyUpdate(dt, running) {
     // Replan from the next corridor center. This keeps sharp turns out of walls.
     const anchor = path[0] ?? ec;
     let goal = lastKnown;
+    const tree = paths(level.map, anchor);
     if (!enemyPhase) {
-      const previousGoal = path.at(-1);
-      if (previousGoal !== undefined && previousGoal !== anchor) {
-        goal = previousGoal;
+      if (patrolTarget >= 0 && patrolTarget !== anchor && tree.dist[patrolTarget] > 0 &&
+          (!grace || acousticTree.dist[patrolTarget] > 6)) {
+        goal = patrolTarget;
       } else {
-        const viable = level.reachable.filter(
-          (k) => k !== level.start && k !== anchor &&
-            pathsDistXZ(k, playerCell) > (grace ? 6 : 0),
-        );
-        goal = viable[Math.floor(Math.random() * viable.length)] ?? level.nest;
+        const viable = grace
+          ? level.reachable.filter(k => acousticTree.dist[k] > 6)
+          : level.reachable;
+        goal = patrolGoal(viable, tree.dist, anchor, level.start, patrolTarget);
+        patrolTarget = goal;
       }
+    } else {
+      patrolTarget = -1;
     }
-    const newPath = route(level.map, anchor, goal);
+    const newPath = routeFrom(tree, anchor, goal);
     const center = xy(anchor);
     if (Math.hypot(center.x - e.x, center.z - e.z) > 0.01) {
       newPath.unshift(anchor);
@@ -1141,6 +1158,9 @@ function enemyUpdate(dt, running) {
       const delta = Math.atan2(Math.sin(angle), Math.cos(angle));
       entity.rotation.y += delta * (1 - Math.exp(-10 * dt));
     }
+  } else if (enemyPhase && !tracking) {
+    // Briefly scan the last heard location instead of facing a wall motionlessly.
+    entity.rotation.y += dt * 1.45;
   }
   const travel = Math.hypot(e.x - startX, e.z - startZ);
   enemyStepDistance+=travel;
@@ -1173,12 +1193,6 @@ function enemyUpdate(dt, running) {
   if (!grace && Math.hypot(player.x - e.x, player.z - e.z) < 0.73 && clearLine(player, e)) {
     caught();
   }
-}
-function pathsDistXZ(a, b) {
-  return (
-    Math.abs((a % level.w) - (b % level.w)) +
-    Math.abs(Math.floor(a / level.w) - Math.floor(b / level.w))
-  );
 }
 function update(dt) {
   elapsed += dt;

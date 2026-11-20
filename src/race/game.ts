@@ -238,7 +238,7 @@ export function openRace(onExit: () => void): void {
 
   let carTemplate: Record<string, THREE.Object3D> | null = null;
   function startView(tpl: Record<string, THREE.Object3D> | null): boolean {
-    clearControls(); nitroWas = driftWas = false;
+    clearControls(); nitroWas = driftWas = false; wrongT = 0;
     // 해제된 WebGL 컨텍스트는 같은 캔버스에서 다시 열 수 없으므로 캔버스를 새로 만듭니다.
     const fresh = document.createElement('canvas'); fresh.className = 'rc-canvas'; canvas.replaceWith(fresh); canvas = fresh;
     try {
@@ -284,7 +284,7 @@ export function openRace(onExit: () => void): void {
     for (const r of [...race.racers].reverse()) { mg.fillStyle = r.color; mg.beginPath(); mg.arc(mx(r.car.x), mz(r.car.z), r.player ? 6 : 4.5, 0, 7); mg.fill(); if (r.player) { mg.strokeStyle = '#fff'; mg.lineWidth = 2; mg.stroke(); } }
   }
 
-  function hud(): void {
+  function hud(dt: number): void {
     const p = race.player, c = p.car, place = placeOf(race), sp = kmh(c);
     setText('#rc-pos', race.trial ? '' : String(place)); setText('#rc-lap', String(currentLap(race))); setText('#rc-kmh', String(Math.round(sp)));
     setText('#rc-time', fmtTime(Math.max(0, race.clock))); const gd = race.ghost && race.phase === 'racing' ? ghostDelta(race.ghost, c.total, race.clock) : null;
@@ -297,7 +297,9 @@ export function openRace(onExit: () => void): void {
     setText('#rc-drift', driftLive(dr) && dr.chain >= 30 ? `DRIFT ${Math.round(dr.chain).toLocaleString('ko-KR')}${dr.mult > 1 ? `  ×${dr.mult}` : ''}` : ''); $('#rc-drift').classList.toggle('live', c.drifting);
     const rev = Math.min(1, Math.abs(c.vf) / p.params.top); $<HTMLElement>('#rc-rev').style.width = `${(rev * 100).toFixed(0)}%`;
     root.dataset.kmh = String(Math.round(sp)); root.dataset.place = String(place); root.dataset.lap = String(currentLap(race)); root.dataset.phase = finishedShown ? 'done' : race.phase;
-    const tx = track.tx[c.idx], tz = track.tz[c.idx], dir = c.vx * tx + c.vz * tz; $('#rc-wrong').classList.toggle('show', race.phase === 'racing' && dir < -6 && (wrongT += 1) > 20); if (dir >= -6) wrongT = 0;
+    const tx = track.tx[c.idx], tz = track.tz[c.idx], dir = c.vx * tx + c.vz * tz;
+    wrongT = race.phase === 'racing' && dir < -6 ? wrongT + dt : 0;
+    $('#rc-wrong').classList.toggle('show', wrongT > 1 / 3);
     const speedy = Math.min(1.4, sp / 270 + (boosting(c) ? 0.25 : 0)); $<HTMLElement>('.rc-boostfx').style.opacity = boosting(c) ? '1' : '0'; $<HTMLElement>('.rc-vignette').style.opacity = String(Math.min(1, 0.15 + speedy * 0.7));
     if (!race.trial && place < lastPlace && race.phase === 'racing') { msg(`추월!  ${ORD[place]}`, 'gold'); view?.punchFov(0.4); }
     lastPlace = place;
@@ -317,7 +319,7 @@ export function openRace(onExit: () => void): void {
       if (driftNow && !driftWas) { audio.sfx('chirp'); view.punchFov(0.25); }
       nitroWas = nitroNow; driftWas = driftNow;
       view.update(race, dt, wallHit); wallHit = 0; fxIntensity += (RaceView.intensity(race) - fxIntensity) * Math.min(1, dt * 5); drawFx(fxIntensity);
-      pvp?.net.sendSnap(race.player.car, now); multi?.net.sendSnap(race.player.car, now); hud(); drawMini();
+      pvp?.net.sendSnap(race.player.car, now); multi?.net.sendSnap(race.player.car, now); hud(steps * STEP); drawMini();
       if (msgT > 0 && (msgT -= dt) <= 0) $('#rc-msg').className = 'rc-msg';
     }
   }

@@ -391,7 +391,7 @@ export class Match {
   finish(winner: number): void { if (this.over) return; this.over = true; this.winner = winner; const w = this.players[winner]; if (w && w.alive) w.place = 1; this.events.push({ t: 'over', winner }); }
 
   private update(p: Player, dt: number): void {
-    const inp = p.input, def = p.guns[p.cur] ? WEAPONS[p.guns[p.cur]!.id] : null;
+    const inp = p.input;
     if (p.boost > 0) { p.boost = Math.max(0, p.boost - dt); if (!p.remote && p.hp < BOOST.cap) p.hp = Math.min(BOOST.cap, p.hp + BOOST.heal * dt); }
     p.cd = Math.max(0, p.cd - dt); p.kick = Math.max(0, p.kick - dt * 7); p.muzzle = Math.max(0, p.muzzle - dt); p.hurt = Math.max(0, p.hurt - dt); p.emptyT = Math.max(0, p.emptyT - dt);
     if (!p.remote) {
@@ -421,9 +421,9 @@ export class Match {
     p.nadeCd -= dt; if (inp.nade && !p.nadeHeld && p.nades > 0 && p.nadeCd <= 0 && p.air === 0 && !p.remote) this.throwNade(p); p.nadeHeld = !!inp.nade;
     // 무기 교체
     if (inp.slot >= 0 && inp.slot < 2 && inp.slot !== p.cur && p.guns[inp.slot]) { p.cur = inp.slot; p.reload = 0; p.cd = Math.max(p.cd, 0.35); inp.slot = -1; }
-    const gun = p.guns[p.cur]; if (gun && !gun.att) gun.att = {};
+    const gun = p.guns[p.cur]; const def = gun ? WEAPONS[gun.id] : null; if (gun && !gun.att) gun.att = {};
     if (gun && def) {
-      if (p.reload > 0) { p.reload -= dt; if (p.reload <= 0) { p.reload = 0; const n = Math.min(magOf(def.id, gun.att) - gun.mag, gun.reserve); gun.mag += n; gun.reserve -= n; } }
+      if (p.reload > 0) { p.reload -= dt; if (p.reload <= 0) { p.reload = 0; const n = Math.max(0, Math.min(magOf(def.id, gun.att) - gun.mag, gun.reserve)); gun.mag += n; gun.reserve -= n; } }
       else if ((inp.reload && gun.mag < magOf(def.id, gun.att) && gun.reserve > 0) || (gun.mag === 0 && gun.reserve > 0 && inp.fire)) { p.reload = def.reload * partHandling(gun.att).reload; this.events.push({ t: 'reload', id: p.id }); }
       if (inp.fire && p.cd <= 0 && p.reload <= 0 && (def.auto || !p.fireHeld)) {
         if (gun.mag > 0) this.shoot(p, gun, def.id); else if (p.emptyT <= 0) { p.emptyT = 0.5; this.events.push({ t: 'empty', id: p.id }); }

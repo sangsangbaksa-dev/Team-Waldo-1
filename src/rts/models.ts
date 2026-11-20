@@ -26,15 +26,30 @@ export function matsFor(owner: number): Mats {
 export const crystalMat = new THREE.MeshStandardMaterial({ color: 0x4fd6ff, emissive: 0x1d8fd0, emissiveIntensity: 1.1, roughness: 0.25, metalness: 0.2, flatShading: true });
 const crystalHi = new THREE.MeshStandardMaterial({ color: 0xbff2ff, emissive: 0x57c9f0, emissiveIntensity: 1.5, roughness: 0.2, flatShading: true });
 
+const crystalBase = std(0x3d4650);
+const medicWhite = std(0xf1efe8, { roughness: 0.6, metalness: 0.05 });
+const jeepSand = std(0xb99a62, { roughness: 0.75, metalness: 0.15 });
+const flashMat = new THREE.MeshBasicMaterial({ color: 0xffe9a0 });
+
+/** Release only per-model geometry, never the common character kit or team materials. */
+export function releaseModelGeometry(root: THREE.Object3D): void {
+  const seen = new Set<THREE.BufferGeometry>();
+  root.traverse(o => {
+    if (o instanceof THREE.Mesh && (o.userData.ownedGeometry || o.userData.ownedDetail) && !seen.has(o.geometry)) {
+      seen.add(o.geometry); o.geometry.dispose();
+    }
+  });
+}
+
 type Part = THREE.Mesh;
 function box(g: THREE.Object3D, w: number, h: number, d: number, m: THREE.Material, x = 0, y = 0, z = 0): Part {
-  const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y + h / 2, z); o.castShadow = true; o.receiveShadow = true; g.add(o); return o;
+  const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y + h / 2, z); o.castShadow = true; o.receiveShadow = true; o.userData.ownedGeometry = true; g.add(o); return o;
 }
 function cyl(g: THREE.Object3D, rt: number, rb: number, h: number, m: THREE.Material, x = 0, y = 0, z = 0, seg = 10): Part {
-  const o = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), m); o.position.set(x, y + h / 2, z); o.castShadow = true; o.receiveShadow = true; g.add(o); return o;
+  const o = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), m); o.position.set(x, y + h / 2, z); o.castShadow = true; o.receiveShadow = true; o.userData.ownedGeometry = true; g.add(o); return o;
 }
 function ball(g: THREE.Object3D, r: number, m: THREE.Material, x = 0, y = 0, z = 0, sy = 1): Part {
-  const o = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 8), m); o.position.set(x, y + r, z); o.scale.y = sy; o.castShadow = true; g.add(o); return o;
+  const o = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 8), m); o.position.set(x, y + r, z); o.scale.y = sy; o.castShadow = true; o.userData.ownedGeometry = true; g.add(o); return o;
 }
 
 // Batch decorative rigid parts by material; moving turrets and lights stay separate.
@@ -61,12 +76,12 @@ export interface UnitRig { ch?: CharacterRig; root: THREE.Group; body: THREE.Obj
 
 /** 의무병 등 — 등의 구급 배낭(흰 바탕에 팀색 십자). */
 function medicPack(body: THREE.Object3D, m: Mats): void {
-  const white = std(0xf1efe8, { roughness: 0.6, metalness: 0.05 });
+  const white = medicWhite;
   box(body, 0.16, 0.36, 0.34, white, -0.22, 0.34, 0); box(body, 0.04, 0.22, 0.07, m.team, -0.31, 0.43, 0); box(body, 0.04, 0.07, 0.22, m.team, -0.31, 0.5, 0);
 }
 /** 정찰 지프: 낮은 차체·바퀴 네 개·롤바. 팀색 줄무늬와 사막 위장 도색. */
 function jeepBody(body: THREE.Object3D, m: Mats): void {
-  const sand = std(0xb99a62, { roughness: 0.75, metalness: 0.15 });
+  const sand = jeepSand;
   box(body, 1.5, 0.22, 0.78, m.dark, 0, 0.22, 0); box(body, 1.4, 0.26, 0.74, sand, 0, 0.4, 0); box(body, 0.5, 0.2, 0.7, sand, 0.55, 0.62, 0); box(body, 1.3, 0.06, 0.3, m.team, -0.02, 0.66, 0);
   box(body, 0.05, 0.3, 0.6, m.glow, 0.78, 0.46, 0); box(body, 0.1, 0.34, 0.74, m.steel, -0.2, 0.66, 0); // 앞유리 틀·롤바
   for (const [x, z] of [[-0.5, -0.46], [0.5, -0.46], [-0.5, 0.46], [0.5, 0.46]] as const) { const w = cyl(body, 0.22, 0.22, 0.16, m.dark, x, 0.0, z, 10); w.rotation.x = Math.PI / 2; w.position.y = 0.22; }
@@ -77,13 +92,13 @@ function jeepBody(body: THREE.Object3D, m: Mats): void {
 export function makeUnit(kind: UnitKind, owner: number, detailed = true): UnitRig {
   const m = matsFor(owner), root = new THREE.Group(), body = new THREE.Group(); root.add(body);
   let gun: THREE.Object3D | null = null, carry: THREE.Object3D | null = null, arm: THREE.Object3D | null = null, muzzle = 0.8, mh = 0.62;
-  const flash = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe9a0 })); flash.visible = false;
+  const flash = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), flashMat); flash.visible = false; flash.userData.ownedGeometry = true;
   const kitKind = KIT_OF[kind];
   if (kitKind) { // Use identical animation and proportions for downloaded and procedural characters.
     const look = { team: TEAM_COLORS[owner] ?? 0xcccccc, skin: 0xd6b28f, height: 0.5, width: 0.5 };
     const ch = unitKit?.has(kitKind) ? unitKit.create(kitKind, look) : makeProceduralMilitary(kitKind, look); body.add(ch.root);
     ch.state.aim = kind === 'worker' || kind === 'medic' ? 0 : 1;
-    if (kind === 'worker') { carry = new THREE.Group(); carry.position.set(-0.3, 0.45, 0); body.add(carry); const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.14), crystalMat); c.position.y = 0.1; c.scale.y = 1.4; carry.add(c); carry.visible = false; mh = 0.8; muzzle = 0.4; }
+    if (kind === 'worker') { carry = new THREE.Group(); carry.position.set(-0.3, 0.45, 0); body.add(carry); const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.14), crystalMat); c.userData.ownedGeometry = true; c.position.y = 0.1; c.scale.y = 1.4; carry.add(c); carry.visible = false; mh = 0.8; muzzle = 0.4; }
     else if (kind === 'medic') { if (unitKit?.has(kitKind)) medicPack(body, m); mh = 0.9; muzzle = 0.4; }
     else { gun = new THREE.Group(); gun.position.set(0.2, 0.52, 0.17); body.add(gun); mh = kind === 'rocket' ? 1.15 : 1; muzzle = kind === 'rocket' ? 0.95 : 0.88; }
     flash.position.set(muzzle, mh * 0.7, kind === 'rocket' ? 0.3 : 0.17); root.add(flash);
@@ -175,7 +190,7 @@ export function makeBuilding(kind: BuildKind, owner: number, detailed = true): B
     spin = new THREE.Group(); spin.position.set(0, 3.45, 0); root.add(spin);
     const orb = new THREE.Mesh(new THREE.OctahedronGeometry(0.34, 0), m.glow); orb.scale.y = 1.5; orb.castShadow = true; spin.add(orb); light.push(orb);
     barrel = new THREE.Group(); barrel.position.set(0.3, 0, 0); spin.add(barrel); const nozzle = cyl(barrel, 0.0, 0.14, 0.5, m.steel, 0.2, -0.25, 0, 6); nozzle.rotation.z = -Math.PI / 2; nozzle.position.set(0.2, 0, 0);
-    flash = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe9a0 })); flash.position.set(0.95, 0, 0); flash.visible = false; spin.add(flash); top = 4.0;
+    flash = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), flashMat); flash.position.set(0.95, 0, 0); flash.visible = false; spin.add(flash); top = 4.0;
   }
   if (detailed) detail(root, g => {
     // Ground-level chassis trim, vents and durable structural braces, within the existing footprint.
@@ -206,6 +221,7 @@ export function makeBuilding(kind: BuildKind, owner: number, detailed = true): B
       for (let i = 0; i < 5; i++) box(g, 0.08, 0.05, 0.76, m.armor, -0.62, 1.5 + i * 0.15);
     }
   });
+  root.traverse(o => { if (o instanceof THREE.Mesh) o.userData.ownedGeometry = true; });
   return { root, light, spin, barrel, flash, top };
 }
 
@@ -217,6 +233,7 @@ export function makeCrystals(seed: number): THREE.Group {
     c.scale.set(1, h / 0.4, 1); const a = i / n * Math.PI * 2 + rnd(), d = i === 0 ? 0 : 0.28 + rnd() * 0.1;
     c.position.set(Math.cos(a) * d, h * 0.5, Math.sin(a) * d); c.rotation.set((rnd() - 0.5) * 0.35, rnd() * 3, (rnd() - 0.5) * 0.35); c.castShadow = true; g.add(c);
   }
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.72, 0.12, 8), std(0x3d4650)); base.position.y = 0.05; base.receiveShadow = true; g.add(base);
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.72, 0.12, 8), crystalBase); base.position.y = 0.05; base.receiveShadow = true; g.add(base);
+  g.traverse(o => { if (o instanceof THREE.Mesh) o.userData.ownedGeometry = true; });
   return g;
 }

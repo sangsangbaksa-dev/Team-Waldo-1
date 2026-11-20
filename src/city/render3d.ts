@@ -1,3 +1,4 @@
+import { renderPixelRatio } from '../shared/render-budget';
 // LAST CITY — Three.js 3D 렌더러 (1인칭 / 3인칭 / 차량 추격 카메라)
 import * as THREE from 'three';
 import { makePost, type PostFx } from '../postfx';
@@ -55,7 +56,7 @@ export class Renderer3D {
   atm: Atmosphere; private flash = 0; private moodT = 0; private skyDome!: SkyDome; private skyline!: Skyline; private wetStreet!: WetStreet; private streetFx!: StreetFx; private bfx!: BuildingFx;
   private rain: THREE.LineSegments | null = null; private rainPos = new Float32Array(0); private rainSeed = new Float32Array(0);
   yaw = 0; pitch = -0.05; mode: ViewMode = 'fp'; w = 0; h = 0; shake = 0; t = 0; reduced = false; recoil = 0; flashT = 0; camPos = new THREE.Vector3(); chaseYaw = 0; private focus = new THREE.Vector2(SIZE / 2, SIZE / 2); private deadT = 0;
-  private dummy = new THREE.Object3D(); private color = new THREE.Color();
+  private projected = new THREE.Vector3(); private dummy = new THREE.Object3D(); private color = new THREE.Color();
   private bodies: THREE.InstancedMesh; private heads: THREE.InstancedMesh; private guns: THREE.InstancedMesh; private hulls: THREE.InstancedMesh; private turrets: THREE.InstancedMesh; private barrels: THREE.InstancedMesh;
   private crystals: THREE.InstancedMesh; private tracers: THREE.InstancedMesh; private rings: THREE.InstancedMesh; private ringList: { x: number; y: number; r0: number; r1: number; life: number; max: number; color: number }[] = [];
   private sparks: Points; private fire: Points; private smoke: Points; private ml: ModelLayer | null = null;
@@ -68,7 +69,7 @@ export class Renderer3D {
 
   constructor(public canvas: HTMLCanvasElement, public world: World, public quality: 'high' | 'standard' | 'low', public layer: HTMLElement, public models: Models | null = null) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(quality === 'high' ? 2 : quality === 'standard' ? 1.5 : 1, window.devicePixelRatio || 1));
+    this.renderer.setPixelRatio(renderPixelRatio(canvas.clientWidth || innerWidth, canvas.clientHeight || innerHeight, devicePixelRatio, quality));
     this.renderer.shadowMap.enabled = quality === 'high'; this.renderer.shadowMap.type = THREE.PCFShadowMap;
     // 필름 톤매핑: 하이라이트가 하얗게 날아가지 않고 노을빛이 부드럽게 번진다.
     if (quality !== 'low') { this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.06; }
@@ -150,7 +151,7 @@ export class Renderer3D {
     for (const b of w.map.blocks) for (const [dx, dy] of [[8, 8], [BLOCK - 8, 8], [8, BLOCK - 8], [BLOCK - 8, BLOCK - 8]]) { this.dummy.rotation.set(0, 0, 0); this.dummy.scale.set(1, 1, 1); this.dummy.position.set(b.x + dx, 47, b.y + dy); this.dummy.updateMatrix(); pole.setMatrixAt(q, this.dummy.matrix); this.dummy.position.y = 97; this.dummy.updateMatrix(); bulb.setMatrixAt(q++, this.dummy.matrix); }
     this.scene.add(pole, bulb);
   }
-  resize(): void { this.w = this.canvas.clientWidth || window.innerWidth; this.h = this.canvas.clientHeight || window.innerHeight; this.renderer.setSize(this.w, this.h, false); this.camera.aspect = this.w / this.h; this.camera.updateProjectionMatrix(); }
+  resize(): void { this.w = this.canvas.clientWidth || window.innerWidth; this.h = this.canvas.clientHeight || window.innerHeight; const ratio = renderPixelRatio(this.w, this.h, devicePixelRatio, this.quality); if (ratio !== this.renderer.getPixelRatio()) this.renderer.setPixelRatio(ratio); this.renderer.setSize(this.w, this.h, false); this.camera.aspect = this.w / this.h; this.camera.updateProjectionMatrix(); }
   dispose(): void { this.post?.dispose(); this.ins?.dispose(); this.ins = null; this.renderer.dispose(); this.scene.traverse(o => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); }); for (const f of this.floaters) f.el.remove(); }
   /** 조준선이 닿는 지면 좌표 */
   groundPoint(max = 760): { x: number; y: number } {
@@ -162,7 +163,7 @@ export class Renderer3D {
     const b = this.world.boss(0), ox = b ? b.x : this.camPos.x, oy = b ? b.y : this.camPos.z, d = buildReach(this.pitch, max);
     return { x: ox + Math.cos(this.yaw) * d, y: oy + Math.sin(this.yaw) * d };
   }
-  project(x: number, y: number, h: number): { x: number; y: number; behind: boolean } { const v = new THREE.Vector3(x, h, y).project(this.camera); return { x: (v.x + 1) / 2 * this.w, y: (1 - v.y) / 2 * this.h, behind: v.z > 1 }; }
+  project(x: number, y: number, h: number): { x: number; y: number; behind: boolean } { const v = this.projected.set(x, h, y).project(this.camera); return { x: (v.x + 1) / 2 * this.w, y: (1 - v.y) / 2 * this.h, behind: v.z > 1 || v.z < -1 }; }
   floater(x: number, y: number, h: number, text: string, color: string): void {
     if (this.floaters.length > 24) return; const el = document.createElement('div'); el.className = 'c-float'; el.textContent = text; el.style.color = color; this.layer.append(el); this.floaters.push({ el, x, y, h, life: 1.4 });
   }

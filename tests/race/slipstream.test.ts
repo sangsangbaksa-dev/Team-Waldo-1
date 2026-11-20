@@ -20,3 +20,11 @@ describe('SPEED RUSH slipstream', () => {
     expect(run(1)).toBeGreaterThan(run(0) + 1);
   });
 });
+
+it('역주행하는 앞차에서는 슬립스트림을 얻지 못한다', () => {
+  const me = newCar(track, 40, 0), lead = newCar(track, 44, 0);
+  me.vf = lead.vf = 50;
+  expect(inSlipstream(me, [lead])).toBe(true);
+  lead.h = me.h + Math.PI;
+  expect(inSlipstream(me, [lead])).toBe(false);
+});

@@ -174,3 +174,36 @@ describe('이동 경로 복구', () => {
     expect(u.o.t).toBe('idle');
   });
 });
+
+describe('명령과 건설 회귀 방지', () => {
+  it('객체 상속 키와 잘못된 취소 값이 상태를 변경하지 않는다', () => {
+    const s = fresh(), w = s.units.find(u => u.owner === 0)!;
+    const before = s.hash();
+    for (const bad of [
+      { k: 'build', id: w.id, b: 'constructor', x: 30, y: 30 },
+      { k: 'build', id: w.id, b: '__proto__', x: 30, y: 30 },
+      { k: 'train', b: hqOf(s, 0).id, u: 'constructor' },
+      { k: 'research', b: hqOf(s, 0).id, r: 'toString' },
+      { k: 'cancel', b: hqOf(s, 0).id, i: -3 },
+    ]) expect(s.apply(0, bad as never)).toBe(false);
+    expect(s.hash()).toBe(before);
+  });
+  it('중복 유닛 ID가 단일 유닛 이동 목적지를 변경하지 않는다', () => {
+    const s = fresh(), w = s.units.find(u => u.owner === 0)!;
+    s.apply(0, { k: 'move', ids: [w.id, w.id, w.id], x: 40, y: 40 });
+    expect([w.o.x, w.o.y]).toEqual([40, 40]);
+  });
+  it('공사 중 받은 피해가 시공 체력 증가로 지워지지 않는다', () => {
+    const s = fresh(), hq = hqOf(s, 0), w = s.units.find(u => u.owner === 0)!;
+    const at = s.findSite('depot', hq.x + 8, hq.y)!;
+    const b = s.addBuilding(0, 'depot', at.x, at.y, false);
+    w.x = at.x - 0.5; w.y = at.y + 0.5;
+    s.apply(0, { k: 'resume', ids: [w.id], b: b.id });
+    for (let i = 0; i < 200 && b.progress < 20; i++) s.step();
+    expect(b.progress).toBeGreaterThanOrEqual(20);
+    b.hp -= 25;
+    const lost = Math.round(b.maxhp * (0.1 + 0.9 * b.progress / BUILDINGS.depot.time)) - b.hp;
+    for (let i = 0; i < 20; i++) s.step();
+    expect(Math.round(b.maxhp * (0.1 + 0.9 * b.progress / BUILDINGS.depot.time)) - b.hp).toBe(lost);
+  });
+});

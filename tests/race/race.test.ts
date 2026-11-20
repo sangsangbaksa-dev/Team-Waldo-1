@@ -159,3 +159,26 @@ describe('SPEED RUSH race flow', () => {
     expect(new Set(r.racers.map(k => `${Math.round(k.car.x)},${Math.round(k.car.z)}`)).size).toBe(4);
   });
 });
+
+describe('결승 후 경기 기록 고정', () => {
+  it('플레이어 완주 뒤에 라이벌이 지나가도 결승 기록과 순위가 바뀌지 않는다', () => {
+    const r = createRace(track, 1); r.phase = 'racing'; r.clock = 42;
+    r.player.car.total = track.n;
+    for (const rival of r.racers.slice(1)) rival.car.total = track.n - 1;
+    const finish = updateRace(r, DT, GAS).find(e => e.type === 'finish');
+    expect(finish?.type).toBe('finish');
+    const place = placeOf(r), lapTimes = [...r.player.lapTimes], points = { ...r.drift };
+    for (const rival of r.racers.slice(1)) rival.car.total = track.n + 10;
+    for (let i = 0; i < 180; i++) updateRace(r, DT, GAS);
+    expect(placeOf(r)).toBe(place);
+    expect(r.player.lapTimes).toEqual(lapTimes);
+    expect(r.drift).toEqual(points);
+    expect(r.racers.slice(1).every(k => k.finishTime === null)).toBe(true);
+  });
+  it('큰 각도도 반복문 없이 정규화하고 비정상 값은 안전하게 처리한다', () => {
+    expect(wrapAngle(1e12)).toBeGreaterThanOrEqual(-Math.PI);
+    expect(wrapAngle(1e12)).toBeLessThanOrEqual(Math.PI);
+    expect(wrapAngle(Infinity)).toBe(0);
+    expect(wrapAngle(NaN)).toBe(0);
+  });
+});

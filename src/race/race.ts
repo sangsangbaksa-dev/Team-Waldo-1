@@ -91,7 +91,7 @@ export function inSlipstream(me: CarState, others: ReadonlyArray<CarState>): boo
   if (me.vf < DRAFT_MIN_SPEED) return false;
   const fx = Math.cos(me.h), fz = Math.sin(me.h);
   for (const o of others) {
-    if (o === me || o.vf < DRAFT_MIN_SPEED * 0.8) continue;
+    if (o === me || o.vf < DRAFT_MIN_SPEED * 0.8 || Math.cos(o.h - me.h) < 0.5) continue;
     const dx = o.x - me.x, dz = o.z - me.z, ahead = dx * fx + dz * fz, side = Math.abs(-dx * fz + dz * fx);
     if (ahead > DRAFT_NEAR && ahead < DRAFT_FAR && side < DRAFT_SIDE + ahead * 0.03) return true;
   }
@@ -120,7 +120,7 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
   }
   r.thrPrev = pressed;
   const racing = r.phase !== 'countdown';
-  if (racing) updateDraft(r, dt);
+  if (r.phase === 'racing') updateDraft(r, dt);
   for (const k of r.racers) {
     if (k.link) {
       followSnap(k.car, k.link, now, dt);
@@ -135,10 +135,10 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
         inp = aiInput(k.car, t, { ...k.ai, top: k.ai.top * band, grip: k.ai.grip * band * band });
       }
     }
-        k.lastEv = stepCar(k.car, inp, dt, t, k.params);
+    k.lastEv = stepCar(k.car, inp, dt, t, k.params);
     if (k.player) {
       if (k.lastEv.hit > 0) ev.push({ type: 'hit', power: k.lastEv.hit });
-      if (racing) {
+      if (r.phase === 'racing') {
         const de = stepDrift(r.drift, k.car, dt, k.lastEv.hit > 0);
         if (de?.type === 'bank') { k.car.nitro = Math.min(1, k.car.nitro + nitroForChain(de.points)); ev.push({ type: 'driftBank', points: de.points, mult: de.mult }); }
         else if (de?.type === 'lost') ev.push({ type: 'driftLost', points: de.points });
@@ -154,8 +154,10 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
     if (mine && rel > 3) ev.push({ type: 'bump', power: rel });
   }
   for (const k of r.racers) if (!k.link) { const hit = stayOnTrack(k.car, t, dt, false); if (k.player && hit > 0) ev.push({ type: 'hit', power: hit }); }
+  // 결승 이후는 연출용 주행만 합니다. 랩과 순위 기록은 더 이상 변경하지 않습니다.
+  if (r.phase !== 'racing') return ev;
   // 랩·결승
-  if (r.rec && r.phase === 'racing') r.rec.tick(r.clock, r.player.car);
+  r.rec?.tick(r.clock, r.player.car);
   for (const k of r.racers) {
     if (k.finishTime !== null || k.link) continue;
     const lapDone = Math.floor(k.car.total / t.n);
@@ -165,8 +167,14 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
     }
     if (k.lapTimes.length >= r.laps) {
       k.finishTime = r.clock;
-      if (k.player) { const fl = flushDrift(r.drift); if (fl?.type === 'bank') ev.push({ type: 'driftBank', points: fl.points, mult: fl.mult }); r.phase = 'done'; ev.push({ type: 'finish', place: standings(r).indexOf(k) + 1, time: r.clock }); }
     }
+  }
+  // 같은 물리 스텝에 결승선을 지난 모든 차량의 기록을 먼저 확정합니다.
+  if (r.player.finishTime !== null) {
+    const fl = flushDrift(r.drift);
+    if (fl?.type === 'bank') ev.push({ type: 'driftBank', points: fl.points, mult: fl.mult });
+    r.phase = 'done';
+    ev.push({ type: 'finish', place: placeOf(r), time: r.player.finishTime });
   }
   return ev;
 }

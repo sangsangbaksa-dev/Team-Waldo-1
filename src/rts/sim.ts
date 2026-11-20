@@ -133,7 +133,7 @@ export class RtsSim {
   /** 이 진영이 완성한 건물을 가지고 있는가. */
   has(owner: number, kind: BuildKind): boolean { return this.buildings.some(b => b.owner === owner && b.kind === kind && b.done); }
   canPlace(kind: BuildKind, x: number, y: number): boolean {
-    const s = BUILDINGS[kind].size; if (!Number.isInteger(x) || !Number.isInteger(y)) return false;
+    if (!Object.hasOwn(BUILDINGS, kind) || !Number.isInteger(x) || !Number.isInteger(y)) return false; const s = BUILDINGS[kind].size;
     for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) if (!this.pather.free(x + i, y + j)) return false;
     return true;
   }
@@ -170,7 +170,7 @@ export class RtsSim {
     if (this.winner !== -1 || (owner !== 0 && owner !== 1) || typeof c !== 'object' || c === null) return false;
     const mine = (ids: unknown): Unit[] => {
       if (!Array.isArray(ids)) return [];
-      const out: Unit[] = []; for (const id of ids.slice(0, 120)) { const u = num(id) ? this.unit(id) : undefined; if (u && u.owner === owner) out.push(u); }
+      const out: Unit[] = [], seen = new Set<number>(); for (const id of ids.slice(0, 120)) { const u = num(id) ? this.unit(id) : undefined; if (u && u.owner === owner && u.hp > 0 && !seen.has(u.id)) { seen.add(u.id); out.push(u); } }
       return out;
     };
     switch (c.k) {
@@ -178,7 +178,7 @@ export class RtsSim {
         if (!num(c.x) || !num(c.y)) return false; const us = mine(c.ids); if (!us.length) return false;
         const cols = Math.ceil(Math.sqrt(us.length)), rows = Math.ceil(us.length / cols), x = Math.min(Math.max(c.x, 1.5), this.map.size - 1.5), y = Math.min(Math.max(c.y, 1.5), this.map.size - 1.5);
         us.sort((a, b) => a.id - b.id).forEach((u, i) => {
-          const gap = us.length > 1 ? 1.15 : 0, tx = x + ((i % cols) - (cols - 1) / 2) * gap, ty = y + (Math.floor(i / cols) - (rows - 1) / 2) * gap;
+          const gap = us.length > 1 ? 1.15 : 0, clamp = (v: number): number => Math.max(0.5, Math.min(this.map.size - 0.5, v)), tx = clamp(x + ((i % cols) - (cols - 1) / 2) * gap), ty = clamp(y + (Math.floor(i / cols) - (rows - 1) / 2) * gap);
           this.order(u, { t: c.k, x: tx, y: ty, target: 0, phase: 0, timer: 0 });
         });
         return true;
@@ -195,8 +195,8 @@ export class RtsSim {
       }
       case 'stop': { const us = mine(c.ids); for (const u of us) { this.order(u, idle()); u.o.phase = 9; /* 일부러 세운 일꾼은 자동 복귀하지 않음 */ } return us.length > 0; }
       case 'build': {
-        const w = num(c.id) ? this.unit(c.id) : undefined, d = BUILDINGS[c.b];
-        if (!w || w.owner !== owner || w.kind !== 'worker' || !d || !num(c.x) || !num(c.y)) return false;
+        const w = num(c.id) ? this.unit(c.id) : undefined, d = typeof c.b === 'string' && Object.hasOwn(BUILDINGS, c.b) ? BUILDINGS[c.b] : undefined;
+        if (!w || w.hp <= 0 || w.owner !== owner || w.kind !== 'worker' || !d || !num(c.x) || !num(c.y)) return false;
         const p = this.players[owner]; if (p.minerals < d.cost || (d.req && !this.has(owner, d.req)) || !this.canPlace(c.b, c.x, c.y)) return false;
         p.minerals -= d.cost; const b = this.addBuilding(owner, c.b, c.x, c.y, false); this.emit({ t: 'placed', owner, x: b.x + b.size / 2, y: b.y + b.size / 2 });
         // q: 이미 짓고 있는 건물이 있으면 그것부터 마치고(afterBuild), 새 건물은 그다음에 맡습니다.
@@ -208,12 +208,12 @@ export class RtsSim {
         const us = mine(c.ids).filter(u => u.kind === 'worker'); for (const u of us) this.order(u, { t: 'build', x: 0, y: 0, target: b.id, phase: 0, timer: 0 }); return us.length > 0;
       }
       case 'train': {
-        const b = num(c.b) ? this.building(c.b) : undefined, d = UNITS[c.u]; if (!b || !d || b.owner !== owner || !b.done || d.from !== b.kind || !this.canTrain(owner, c.u)) return false;
+        const b = num(c.b) ? this.building(c.b) : undefined, d = typeof c.u === 'string' && Object.hasOwn(UNITS, c.u) ? UNITS[c.u] : undefined; if (!b || !d || b.owner !== owner || !b.done || d.from !== b.kind || !this.canTrain(owner, c.u)) return false;
         const p = this.players[owner]; if (b.queue.length >= 5 || p.minerals < d.cost || p.cap - p.used < d.supply) return false;
         p.minerals -= d.cost; p.used += d.supply; b.queue.push({ u: c.u, left: d.time }); return true;
       }
       case 'cancel': {
-        const b = num(c.b) ? this.building(c.b) : undefined; if (!b || b.owner !== owner || !num(c.i)) return false;
+        const b = num(c.b) ? this.building(c.b) : undefined; if (!b || b.owner !== owner || !num(c.i) || !Number.isInteger(c.i) || c.i < -2) return false;
         const p = this.players[owner];
         if (c.i === -2) { if (!b.research) return false; p.minerals += RESEARCH[b.research.r].cost; b.research = null; return true; }
         if (c.i < 0) { if (b.done || b.kind === 'hq' && this.buildings.filter(x => x.owner === owner && x.kind === 'hq').length < 2) return false; p.minerals += Math.floor(BUILDINGS[b.kind].cost * 0.75); this.remove(b); return true; }
@@ -231,7 +231,7 @@ export class RtsSim {
         return n > 0;
       }
       case 'research': {
-        const b = num(c.b) ? this.building(c.b) : undefined, d = RESEARCH[c.r]; if (!b || !d || b.owner !== owner || !b.done || d.from !== b.kind || b.research) return false;
+        const b = num(c.b) ? this.building(c.b) : undefined, d = typeof c.r === 'string' && Object.hasOwn(RESEARCH, c.r) ? RESEARCH[c.r] : undefined; if (!b || !d || b.owner !== owner || !b.done || d.from !== b.kind || b.research) return false;
         const p = this.players[owner]; if (p.up[c.r] || p.minerals < d.cost || this.buildings.some(x => x.owner === owner && x.research?.r === c.r)) return false;
         p.minerals -= d.cost; b.research = { r: c.r, left: d.time }; return true;
       }
@@ -299,7 +299,7 @@ export class RtsSim {
   }
   nearestNode(x: number, y: number, max: number, onlyFree: boolean): ResNode | null {
     let best: ResNode | null = null, bd = max * max;
-    for (const nd of this.nodes) { if (onlyFree && nd.busyUntil > this.tick) continue; const d = sq(nd.x + 0.5 - x) + sq(nd.y + 0.5 - y); if (d < bd) { bd = d; best = nd; } }
+    for (const nd of this.nodes) { if (nd.amount <= 0 || (onlyFree && nd.busyUntil > this.tick)) continue; const d = sq(nd.x + 0.5 - x) + sq(nd.y + 0.5 - y); if (d < bd) { bd = d; best = nd; } }
     return best;
   }
   nearestHq(owner: number, x: number, y: number): Building | null {
@@ -477,7 +477,7 @@ export class RtsSim {
     if (u.kind !== 'worker') { this.order(u, idle()); return; }
     if (o.phase !== 2) {
       let nd = this.node(o.target);
-      if (!nd) { nd = this.nearestNode(hq ? hq.x + hq.size / 2 : u.x, hq ? hq.y + hq.size / 2 : u.y, 22, false) ?? undefined; if (!nd) { this.order(u, idle()); return; } o.target = nd.id; u.path = []; }
+      if (!nd || nd.amount <= 0) { nd = this.nearestNode(hq ? hq.x + hq.size / 2 : u.x, hq ? hq.y + hq.size / 2 : u.y, 22, false) ?? undefined; if (!nd) { this.order(u, idle()); return; } o.target = nd.id; o.phase = 0; o.timer = 0; u.path = []; u.pi = 0; u.repath = 0; }
       if (o.phase === 0) {
         if (this.dist(u.x, u.y, nd.x + 0.5, nd.y + 0.5) <= 1.7) {
           if (nd.busyUntil > this.tick) {
@@ -507,13 +507,16 @@ export class RtsSim {
 
   private construct(u: Unit): void {
     const b = this.building(u.o.target);
-    if (!b || b.done || u.kind !== 'worker') { this.afterBuild(u); return; }
+    if (!b || b.hp <= 0 || b.done || u.kind !== 'worker') { this.afterBuild(u); return; }
     if (this.rectDist(u.x, u.y, b) > 1.35) {
       if (u.path.length === 0 || u.repath <= 0) { const g = this.approach(b, u.x, u.y); u.path = this.pather.find(u.x, u.y, g.x, g.y) ?? [g.x, g.y]; u.pi = 0; u.repath = 30; }
       this.follow(u, this.speedOf(u)); return;
     }
     u.path = []; u.fx = b.x + b.size / 2 - u.x; u.fy = b.y + b.size / 2 - u.y; u.mine = this.tick;
-    const total = BUILDINGS[b.kind].time; b.progress++; b.hp = Math.min(b.maxhp, Math.max(b.hp, Math.round(b.maxhp * (0.1 + 0.9 * b.progress / total))));
+    const total = BUILDINGS[b.kind].time, builtHp = Math.round(b.maxhp * (0.1 + 0.9 * b.progress / total));
+    b.progress++;
+    // 시공으로 추가된 체력만 반영해 적의 공격 피해를 지우지 않습니다.
+    b.hp = Math.min(b.maxhp, b.hp + Math.round(b.maxhp * (0.1 + 0.9 * b.progress / total)) - builtHp);
     if (b.progress >= total) { b.done = true; b.hp = Math.max(b.hp, 1); this.emit({ t: 'built', kind: b.kind, owner: b.owner, x: b.x + b.size / 2, y: b.y + b.size / 2 }); this.afterBuild(u); }
   }
   /** 이 건물을 짓고 있는(또는 지으러 가는) 일꾼이 있는가. */
@@ -543,7 +546,7 @@ export class RtsSim {
   spareWorker(b: Building): Unit | null {
     let best: Unit | null = null, bd = sq(60); const c = this.center(b);
     for (const u of this.units) {
-      if (u.hp <= 0 || u.owner !== b.owner || u.kind !== 'worker' || (u.o.t !== 'gather' && u.o.t !== 'idle')) continue;
+      if (u.hp <= 0 || u.owner !== b.owner || u.kind !== 'worker' || (u.o.t !== 'gather' && u.o.t !== 'idle') || (u.o.t === 'idle' && u.o.phase === 9)) continue;
       const d = sq(u.x - c.x) + sq(u.y - c.y) + (u.carry > 0 ? 100 : 0); if (d < bd) { bd = d; best = u; }
     }
     return best;
@@ -553,7 +556,7 @@ export class RtsSim {
     for (const b of this.buildings) { if (b.owner !== u.owner || b.done || b.hp <= 0 || this.hasBuilder(b)) continue; const d = sq(b.x + b.size / 2 - u.x) + sq(b.y + b.size / 2 - u.y); if (d < sd) { sd = d; site = b; } }
     if (site) { this.order(u, { t: 'build', x: 0, y: 0, target: site.id, phase: 0, timer: 0 }); return; }
     const nd = this.nearestNode(u.x, u.y, 24, false);
-    if (nd) this.order(u, { t: 'gather', target: nd.id, x: 0, y: 0, phase: 0, timer: 0 }); else this.order(u, idle());
+    if (nd) this.order(u, { t: 'gather', target: nd.id, x: 0, y: 0, phase: u.carry > 0 ? 2 : 0, timer: 0 }); else if (u.carry > 0 && this.nearestHq(u.owner, u.x, u.y)) this.order(u, { t: 'gather', target: 0, x: 0, y: 0, phase: 2, timer: 0 }); else this.order(u, idle());
   }
 
   /** 겹친 유닛을 밀어냅니다. 움직이는 쪽은 덜, 서 있는 쪽은 더 밀립니다. 채취 중인 일꾼끼리는 통과합니다. */

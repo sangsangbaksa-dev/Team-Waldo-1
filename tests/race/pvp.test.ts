@@ -64,3 +64,14 @@ describe('SPEED RUSH 1대1 레이스', () => {
     expect(decideWinner(50, 50, false)).toBe('them');
   });
 });
+
+it('비정상 차량 상태나 빈 슬롯이 있는 네트워크 패킷을 거부한다', () => {
+  const valid = encodeSnap(createRace(track, 1).player.car);
+  expect(parseSnap(valid)).not.toBeNull();
+  for (const [i, value] of [[3, 99999], [4, 201], [9, 2], [12, -1], [13, 2], [14, -1], [15, 3]]) {
+    const invalid = valid.slice(); invalid[i] = value;
+    expect(parseSnap(invalid)).toBeNull();
+  }
+  const sparse = valid.slice(); delete sparse[4];
+  expect(parseSnap(sparse)).toBeNull();
+});

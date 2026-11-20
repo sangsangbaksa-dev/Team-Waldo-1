@@ -12,7 +12,14 @@ export function encodeSnap(c: CarState): Snap {
 /** 형식이 맞지 않거나 숫자가 아닌 값이 있으면 버립니다(상대가 보낸 데이터는 믿지 않습니다). */
 export function parseSnap(raw: unknown): Snap | null {
   if (!Array.isArray(raw) || raw.length !== SNAP_LEN) return null;
-  return raw.every(v => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 1e7) ? (raw as Snap) : null;
+  if (!Array.from(raw).every(v => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 1e7)) return null;
+  const s = raw as Snap;
+  // 실제 자동차 상태에서 나올 수 없는 값은 폐기합니다(패킷 변조 및 렌더링 오류 방지).
+  if (Math.abs(s[3]) > Math.PI + 0.001 || s.slice(4, 8).some(v => Math.abs(v) > 200)
+      || Math.abs(s[8]) > Math.PI || Math.abs(s[9]) > 1 || Math.abs(s[10]) > 10
+      || !Number.isInteger(s[12]) || s[12] < 0 || s[13] < 0 || s[13] > 1
+      || s[14] < 0 || s[14] > 10 || (s[15] !== 0 && s[15] !== 1)) return null;
+  return s.slice();
 }
 
 export interface RemoteLink { snap: Snap | null; at: number }

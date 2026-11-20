@@ -39,7 +39,7 @@ export function newCar(t: Track, idx: number, lat: number): CarState {
 }
 
 const clamp = (v: number, a: number, b: number): number => Math.max(a, Math.min(b, v));
-export const wrapAngle = (a: number): number => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
+export const wrapAngle = (a: number): number => { if (!Number.isFinite(a)) return 0; a %= Math.PI * 2; if (a > Math.PI) a -= Math.PI * 2; else if (a < -Math.PI) a += Math.PI * 2; return a; };
 
 export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: CarParams = PLAYER_PARAMS): StepEvents {
   const ev: StepEvents = { hit: 0, driftBoost: 0, pad: false };

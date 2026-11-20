@@ -18,6 +18,7 @@ import { StreetFx } from './streetfx';
 import { WetStreet } from './wetstreet';
 import { buildReach, clampLabelScreenPos, clampLookPitch, labelSpriteCenter } from './uiMath';
 import { wrapNear, wrapRange } from './render-math';
+import { addStreetFurniture, parkFurniture } from '../shared/street-furniture';
 
 export type ViewMode = 'fp' | 'tp';
 const EYE = EYE_HEIGHT, STRUCT_H: Record<StructKind, number> = { hq: 150, barracks: 86, depot: 58, factory: 104, lab: 96, turret: 50 };
@@ -58,6 +59,7 @@ export class Renderer3D {
   atm: Atmosphere; private flash = 0; private moodT = 0; private skyDome!: SkyDome; private skyline!: Skyline; private wetStreet!: WetStreet; private streetFx!: StreetFx; private bfx!: BuildingFx;
   private rain: THREE.LineSegments | null = null; private rainPos = new Float32Array(0); private rainSeed = new Float32Array(0);
   yaw = 0; pitch = -0.05; mode: ViewMode = 'fp'; w = 0; h = 0; shake = 0; t = 0; reduced = false; recoil = 0; flashT = 0; camPos = new THREE.Vector3(); chaseYaw = 0; private focus = new THREE.Vector2(SIZE / 2, SIZE / 2); private deadT = 0;
+  private furniture: { dispose(): void } | null = null;
   private projected = new THREE.Vector3(); private dummy = new THREE.Object3D(); private color = new THREE.Color();
   private bodies: THREE.InstancedMesh; private heads: THREE.InstancedMesh; private guns: THREE.InstancedMesh; private hulls: THREE.InstancedMesh; private turrets: THREE.InstancedMesh; private barrels: THREE.InstancedMesh;
   private crystals: THREE.InstancedMesh; private tracers: THREE.InstancedMesh; private rings: THREE.InstancedMesh; private ringList: { x: number; y: number; r0: number; r1: number; life: number; max: number; color: number }[] = [];
@@ -144,6 +146,7 @@ export class Renderer3D {
 
   private buildCity(): void {
     const w = this.world; this.bfx = buildBuildings(w, this.scene, import.meta.env.BASE_URL, this.quality); buildPerimeter(this.scene);
+    this.furniture = addStreetFurniture(this.scene, parkFurniture(w.map, this.quality));
     if (this.models) return;
     // 나무·가로등
     const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(3, 4, 40, 6), this.mat(0x5b4030), w.map.trees.length), leaf = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), this.mat(0x3f7d45), w.map.trees.length);
@@ -154,7 +157,7 @@ export class Renderer3D {
     this.scene.add(pole, bulb);
   }
   resize(): void { this.w = this.canvas.clientWidth || window.innerWidth; this.h = this.canvas.clientHeight || window.innerHeight; const ratio = renderPixelRatio(this.w, this.h, devicePixelRatio, this.quality); if (ratio !== this.renderer.getPixelRatio()) this.renderer.setPixelRatio(ratio); this.renderer.setSize(this.w, this.h, false); this.camera.aspect = this.w / this.h; this.camera.updateProjectionMatrix(); }
-  dispose(): void { this.post?.dispose(); this.ins?.dispose(); this.ins = null; this.renderer.dispose(); this.scene.traverse(o => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); }); for (const f of this.floaters) f.el.remove(); }
+  dispose(): void { this.furniture?.dispose(); this.furniture = null; this.post?.dispose(); this.ins?.dispose(); this.ins = null; this.renderer.dispose(); this.scene.traverse(o => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); }); for (const f of this.floaters) f.el.remove(); }
   /** 조준선이 닿는 지면 좌표 */
   groundPoint(max = 760): { x: number; y: number } {
     const b = this.world.boss(0), ox = b ? b.x : this.camPos.x, oy = b ? b.y : this.camPos.z; let d = this.pitch < -0.03 ? Math.min(max, (this.mode === 'fp' ? EYE : 120) / Math.tan(-this.pitch)) : max * 0.8; d = Math.max(70, d);

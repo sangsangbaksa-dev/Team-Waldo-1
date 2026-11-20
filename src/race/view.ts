@@ -11,6 +11,7 @@ import { wrapAngle, boosting, kmh } from './physics';
 import { SLOTS, type RaceState, type Racer } from './race';
 import { brakeGlow, gridPaint, reflectorIndices } from './track-detail';
 import { sprayRate, emissionStep, wetRoadFinish } from './road-visuals';
+import { addStreetFurniture, startFurniture } from '../shared/street-furniture';
 import { type Track } from './track';
 import { type Theme } from './maps';
 import { buildOutposts, type Outpost } from './outpost';
@@ -448,6 +449,7 @@ export class RaceView {
     }
     this.disposables.push(bg,bm,banner);
     this.disposables.push(archMat);
+    this.disposables.push(addStreetFurniture(this.scene, startFurniture(t, low)));
     // 도로 옆 기준점(속도감): 가로등 또는 반사 표지
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(1, 1, 1), c = new THREE.Color();
     if (th.lamp.kind === 'lamp') {

@@ -59,6 +59,7 @@ let moved = 0,
 let now = 0,
   last = 0,
   frameStarted = false,
+  frameId = null,
   sceneDirty = true,
   contextLost = false,
   nearest = null,
@@ -132,6 +133,11 @@ toggleAudio();
 $("sound").onclick = $("gsound").onclick = toggleAudio;
 function screens(id) {
   for (const key of ["home", "game", "viewer"]) $(key).hidden = key !== id;
+  if (id !== "game" && frameId !== null) {
+    cancelAnimationFrame(frameId);
+    frameId = null;
+  }
+  scheduleFrame();
 }
 function homepage() {
   state = "home";
@@ -214,6 +220,7 @@ function modal(title, description, body, actions, type = "panel") {
     $("panelActions").append(b);
   }
   $("panelTitle").focus({ preventScroll: true });
+  scheduleFrame();
 }
 function resume() {
   state = "play";
@@ -222,6 +229,8 @@ function resume() {
   void sound.start(); // Recover audio suspended by the browser while paused.
   lockLook();
   last = performance.now();
+  now = last / 1000;
+  scheduleFrame();
   $("viewWrap").focus({ preventScroll: true });
 }
 function guide(fromHome = false) {
@@ -344,6 +353,7 @@ async function setup() {
     renderer.domElement.addEventListener("webglcontextrestored", () => {
       contextLost = false;
       sceneDirty = true;
+      scheduleFrame();
     });
   }
   if (contextLost) throw new Error("WebGL context is unavailable");
@@ -372,10 +382,8 @@ async function setup() {
     mixer = new THREE.AnimationMixer(model);
     if (gltf.animations.length) mixer.clipAction(gltf.animations[0]).play();
   }
-  if (!frameStarted) {
-    frameStarted = true;
-    requestAnimationFrame(frame);
-  }
+  frameStarted = true;
+  scheduleFrame();
 }
 function xy(cell) {
   return { x: (cell % level.w) * C, z: Math.floor(cell / level.w) * C };
@@ -463,6 +471,7 @@ function resize() {
   if (ratio !== renderer.getPixelRatio()) renderer.setPixelRatio(ratio);
   renderer.setSize(w, h, false);
   sceneDirty = true;
+  scheduleFrame();
 }
 window.addEventListener("resize", resize);
 function disposeGroup(root) {
@@ -1349,8 +1358,14 @@ function update(dt) {
     saveAt = now + 12;
   }
 }
+function scheduleFrame() {
+  if (!frameStarted || frameId !== null || document.hidden || contextLost ||
+      !scene || $("game").hidden) return;
+  if (state !== "play" && (!sceneDirty || ["load", "error"].includes(state))) return;
+  frameId = requestAnimationFrame(frame);
+}
 function frame(ts) {
-  requestAnimationFrame(frame);
+  frameId = null;
   const dt = Math.min(0.075, Math.max(0, (ts - last) / 1000));
   last = ts;
   now = ts / 1000;
@@ -1364,6 +1379,7 @@ function frame(ts) {
     renderer.render(scene, camera);
     sceneDirty = false;
   }
+  scheduleFrame();
 }
 document.addEventListener("keydown", (e) => {
   if (e.code === "Tab" && !$("game").hidden && !$("dialog").hidden) {
@@ -1432,7 +1448,11 @@ document.addEventListener("pointerdown", (e) => {
   lastPointerType = e.pointerType || "mouse";
 }, true);
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden && state === "play") pauseGame();
+  if (document.hidden) {
+    if (state === "play") pauseGame();
+    if (frameId !== null) cancelAnimationFrame(frameId);
+    frameId = null;
+  } else scheduleFrame();
 });
 window.addEventListener("blur", () => {
   if (state === "play") pauseGame();

@@ -164,7 +164,8 @@ function wireAccount(): void {
   const label = (nickname: string | null): void => { button.textContent = nickname ? `${nickname} · 랭킹` : '로그인 · 랭킹'; };
   button.onclick = () => {
     button.disabled = true;
-    void import('./net/lobby').then(({ openLobby }) => { openLobby({ onClose: () => { button.disabled = false; } }); })
+    const gen = generation;
+    void import('./net/lobby').then(({ openLobby }) => { if (gen !== generation || !button.isConnected || app.hidden) return; openLobby({ onClose: () => { button.disabled = false; } }); })
       .catch(() => { button.disabled = false; });
   };
   const gen = generation;
@@ -180,8 +181,9 @@ function wireAccount(): void {
 }
 
 async function launch(id: GameId): Promise<void> {
+  if (app.hidden || app.querySelector<HTMLButtonElement>(`#start-${id}`)?.disabled) return;
   const navigation = ++generation;
-  const buttons = app.querySelectorAll<HTMLButtonElement>('.tile');
+  const buttons = app.querySelectorAll<HTMLButtonElement>('button');
   const notice = app.querySelector<HTMLElement>('#home-notice');
   const label = app.querySelector<HTMLElement>(`#start-${id} .tile-cta`);
   buttons.forEach(b => { b.disabled = true; });

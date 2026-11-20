@@ -110,15 +110,18 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (document.pointerLockElement) document.exitPointerLock();
   }
   function closeModal(): void { modalKind = ''; paused = false; modalEl.hidden = true; modalEl.innerHTML = ''; if (phase === 'play') lock(); }
+  let wheelAt = -Infinity, lookMuteUntil = 0;
   function lock(): void { if (touch || locked || lockFail || closed) return; try { const r = canvas.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(() => { lockFail = true; }); } catch { lockFail = true; } }
   const onLock = (): void => {
     locked = document.pointerLockElement === canvas;
+    if (locked) { lookMuteUntil = performance.now() + 180; return; }
+    resetInput();
     if (!locked && phase === 'play' && !modalKind && !closed && !wheelOpen) openPause();
   };
   document.addEventListener('pointerlockchange', onLock);
 
   function controlsHtml(): string {
-    return `<h2>조작법</h2><div class="ol-keys"><div><b>이동</b>WASD · Shift 달리기 · Space 점프 · C 앉기</div><div><b>전투</b>좌클릭 사격 · 우클릭 조준 · R 재장전 · 1~9·0·-/휠 무기 · Q 무기 휠 · 수류탄은 사격 키로 투척</div><div><b>상호작용</b>E / F 차량 · 상점 · 의뢰 · 안전가옥</div><div><b>차량</b>W 가속 · S 브레이크/후진 · A D 조향 · Space 핸드브레이크 · H 경적 · R 라디오 · C 뒤돌아보기</div><div><b>휴대폰</b>P 휴대폰: 일거리·차고·부동산·업적 · 격투장/체육관/카지노/자동차 매장은 E</div><div><b>기타</b>M / Tab 전체 지도 · Esc 일시정지</div></div><p class="hint">아슬아슬한 통과·점프·드리프트·헤드샷은 스타일 보너스가 됩니다. 시민을 해치면 수배 별이 올라갑니다.</p><div class="ol-btns"><button data-k="back" type="button">돌아가기</button></div>`;
+    return `<h2>조작법</h2><div class="ol-keys"><div><b>이동</b>WASD · Shift 달리기 · Space 점프 · C 앉기</div><div><b>전투</b>좌클릭/T 사격 · 우클릭/Y 조준 · R 재장전 · 1~9·0·-/휠 무기 · Q 무기 휠 · 수류탄은 사격 키로 투척</div><div><b>상호작용</b>E / F 차량 · 상점 · 의뢰 · 안전가옥</div><div><b>차량</b>W 가속 · S 브레이크/후진 · A D 조향 · Space 핸드브레이크 · H 경적 · R 라디오 · C 뒤돌아보기</div><div><b>휴대폰</b>P 휴대폰: 일거리·차고·부동산·업적 · 격투장/체육관/카지노/자동차 매장은 E</div><div><b>기타</b>M / Tab 전체 지도 · Esc 일시정지</div></div><p class="hint">아슬아슬한 통과·점프·드리프트·헤드샷은 스타일 보너스가 됩니다. 시민을 해치면 수배 별이 올라갑니다.</p><div class="ol-btns"><button data-k="back" type="button">돌아가기</button></div>`;
   }
   function openPause(): void {
     openModal('pause', `<h2>${versus ? '대전 메뉴' : '일시정지'}</h2><div class="ol-btns v"><button data-k="resume" type="button">계속하기</button><button data-k="phone" type="button">휴대폰</button><button data-k="map" type="button">전체 지도</button><button data-k="help" type="button">조작법</button><button data-k="sound" type="button">소리: ${audio.enabled ? '켜짐' : '꺼짐'}</button><button data-k="quality" type="button">품질: ${prefs.quality === 'high' ? '높음' : prefs.quality === 'standard' ? '보통' : '낮음'} (다음 실행부터)</button><button data-k="quit" type="button" class="danger">${versus ? '대전 나가기' : '저장하고 나가기'}</button></div>`);
@@ -266,17 +269,17 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   };
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.code); if (e.code === 'KeyQ') closeWheel(); };
   const onMouseMove = (e: MouseEvent): void => {
-    if (!locked || phase !== 'play') return;
+    if (phase !== 'play' || modalKind || !(locked || (lockFail && e.target === canvas)) || performance.now() < lookMuteUntil || Math.abs(e.movementX) > 300 || Math.abs(e.movementY) > 300) return;
     if (wheelOpen) { wheelX = clamp(wheelX + e.movementX, -140, 140); wheelY = clamp(wheelY + e.movementY, -140, 140); updateWheel(); return; }
     const s = (mouse.aim ? 0.0014 : 0.0023); yaw += e.movementX * s; pitch = clamp(pitch - e.movementY * s, -1.2, 1.2);
   };
   const onMouseDown = (e: MouseEvent): void => {
     audio.unlock(); if (phase !== 'play' || modalKind) return;
-    if (!locked) { lock(); return; }
+    if (!locked && !lockFail) { lock(); return; }
     if (e.button === 0) mouse.fire = true; else if (e.button === 2) mouse.aim = true;
   };
   const onMouseUp = (e: MouseEvent): void => { if (e.button === 0) mouse.fire = false; else if (e.button === 2) mouse.aim = false; };
-  const onWheel = (e: WheelEvent): void => { if (phase !== 'play' || modalKind || !sim) return; const dir = e.deltaY > 0 ? 1 : -1; let i = sim.player.cur; for (let n = 0; n < NW; n++) { i = (i + dir + NW) % NW; if (sim.player.guns[i]) { slotReq = i; break; } } };
+  const onWheel = (e: WheelEvent): void => { if (phase !== 'play' || modalKind || !sim || (!locked && e.target !== canvas)) return; e.preventDefault(); const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 120 : 1); if (e.ctrlKey || !Number.isFinite(dy) || Math.abs(dy) < 8 || performance.now() - wheelAt < 240) return; wheelAt = performance.now(); const dir = dy > 0 ? 1 : -1; let i = sim.player.cur; for (let n = 0; n < NW; n++) { i = (i + dir + NW) % NW; if (sim.player.guns[i]) { slotReq = i; break; } } };
   const onCtx = (e: Event): void => e.preventDefault();
   function resetInput(): void {
     keys.clear(); mouse.fire = mouse.aim = false; enterReq = reloadReq = false; slotReq = -1;
@@ -286,7 +289,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     wheelSel = -1; closeWheel();
   }
   window.addEventListener('keydown', onKeyDown); window.addEventListener('keyup', onKeyUp); window.addEventListener('mousemove', onMouseMove);
-  canvas.addEventListener('mousedown', onMouseDown); window.addEventListener('mouseup', onMouseUp); window.addEventListener('wheel', onWheel, { passive: true }); canvas.addEventListener('contextmenu', onCtx); window.addEventListener('blur', resetInput);
+  canvas.addEventListener('mousedown', onMouseDown); window.addEventListener('mouseup', onMouseUp); window.addEventListener('wheel', onWheel, { passive: false }); canvas.addEventListener('contextmenu', onCtx); window.addEventListener('blur', resetInput);
 
   // 터치
   const stickEl = q('#ol-stick');
@@ -298,7 +301,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   const upTouch = (e: PointerEvent): void => { const b = (e.target as HTMLElement).closest('button'); const a = b?.dataset.act; if (a && a in tc) (tc as unknown as Record<string, boolean>)[a] = false; };
   pad.addEventListener('pointerup', upTouch); pad.addEventListener('pointercancel', upTouch);
   canvas.addEventListener('pointerdown', e => {
-    if (!touch || phase !== 'play') return; audio.unlock();
+    if (e.pointerType !== 'touch' || phase !== 'play' || modalKind) return; audio.unlock();
     if (e.clientX < innerWidth * 0.4 && tc.moveId < 0) { tc.moveId = e.pointerId; tc.ox = e.clientX; tc.oy = e.clientY; stickEl.style.cssText = `left:${e.clientX - 60}px;top:${e.clientY - 60}px;opacity:1`; }
     else if (e.clientX >= innerWidth * 0.4 && tc.lookId < 0) { tc.lookId = e.pointerId; tc.lx = e.clientX; tc.ly = e.clientY; }
   });
@@ -410,7 +413,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   function gather(): { p: PedInput; c: typeof cin } {
     const p = sim!.player, car = p.vehicle ? sim!.vehicle(p.vehicle) : undefined;
     const kx = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0) + tc.mx, kz = (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0) - tc.my;
-    const aim = (mouse.aim || tc.aim) && !car, fire = (mouse.fire || tc.fire) && !wheelOpen;
+    const aim = (mouse.aim || tc.aim || keys.has('KeyY')) && !car, fire = (mouse.fire || tc.fire || keys.has('KeyT')) && !wheelOpen;
     const out = blankPedInput(); out.fire = fire && !car; out.aim = aim; out.jump = keys.has('Space') || tc.jump; out.sprint = keys.has('ShiftLeft') || keys.has('ShiftRight') || tc.sprint; out.crouch = keys.has('KeyC'); out.reload = reloadReq;
     out.slot = slotReq; out.enter = false; out.pitch = chase?.aimPitch ?? pitch;
     const fx = Math.cos(yaw), fz = Math.sin(yaw), rx = -Math.sin(yaw), rz = Math.cos(yaw);

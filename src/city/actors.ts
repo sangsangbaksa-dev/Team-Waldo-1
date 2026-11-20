@@ -33,7 +33,7 @@ function seek(w: World, a: Actor, tx: number, ty: number, sp: number): void {
     if (!a.path || Math.hypot(a.pgx - tx, a.pgy - ty) > 110 || a.pathI >= a.path.length) {
       if (a.repathT <= 0 && w.pathBudget > 0) { w.pathBudget--; a.path = findPath(w.map, a.x, a.y, tx, ty); a.pathI = 0; a.pgx = tx; a.pgy = ty; a.repathT = 0.7 + w.rng() * 0.7; }
     }
-    if (a.path && a.pathI < a.path.length) { gx = a.path[a.pathI]; gy = a.path[a.pathI + 1]; if (Math.hypot(gx - a.x, gy - a.y) < 20) a.pathI += 2; }
+    if (a.path) { while (a.pathI < a.path.length && Math.hypot(a.path[a.pathI] - a.x, a.path[a.pathI + 1] - a.y) < 20) a.pathI += 2; if (a.pathI < a.path.length) { gx = a.path[a.pathI]; gy = a.path[a.pathI + 1]; } }
   }
   const dx = gx - a.x, dy = gy - a.y, d = Math.hypot(dx, dy) || 1;
   a.vx += (dx / d * sp - a.vx) * 0.25; a.vy += (dy / d * sp - a.vy) * 0.25;
@@ -189,6 +189,7 @@ export function updateBullets(w: World, dt: number): void {
       for (const v of w.vehicles) {
         if (!v.alive || v.f === b.f) continue; const dx = v.x - b.x, dy = v.y - b.y; if (dx * dx + dy * dy > v.r * v.r) continue;
         if (v.f >= 0 && !w.hostile(b.f, v.f) && !(v.f === CIV && b.boss)) continue;
+        if (d.pierce) { if (b.hitIds?.includes(v.id)) continue; (b.hitIds ??= []).push(v.id); }
         if (v.f === CIV) w.crime(b.f, 0.15);
         if (d.splash) w.explode(b.x, b.y, d.splash, b.dmg, b.f, d.bdmg); else { w.hurtVehicle(v, b.dmg * (d.pierce ? 1.5 : 1), b.f); w.fx('spark', b.x, b.y); if (v.driver && v.ai === 'traffic') { v.idle = 99; } }
         if (!d.pierce) dead = true; break;

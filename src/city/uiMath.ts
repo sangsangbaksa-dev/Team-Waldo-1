@@ -4,10 +4,13 @@ import { SIZE } from './defs';
 
 export function mapPointerToWorld(
   clientX: number, clientY: number, left: number, top: number, width: number, height: number,
+  bounds: { x0: number; y0: number; x1: number; y1: number } = { x0: 0, y0: 0, x1: SIZE, y1: SIZE },
 ): { x: number; y: number } | null {
   if (![clientX, clientY, left, top, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return null;
-  const clamp = (v: number): number => Math.max(0, Math.min(SIZE, v));
-  return { x: clamp((clientX - left) / width * SIZE), y: clamp((clientY - top) / height * SIZE) };
+  const { x0, y0, x1, y1 } = bounds;
+  if (![x0, y0, x1, y1].every(Number.isFinite) || x1 <= x0 || y1 <= y0) return null;
+  const unit = (v: number): number => Math.max(0, Math.min(1, v));
+  return { x: x0 + unit((clientX - left) / width) * (x1 - x0), y: y0 + unit((clientY - top) / height) * (y1 - y0) };
 }
 
 /** Look pitch limits. Past the min, the camera dives through the ground. */
@@ -60,6 +63,15 @@ export function labelSpriteCenter(
     x: Math.min(1, Math.max(0, 0.5 + (sx - clampedX) / w)),
     y: Math.min(1, Math.max(0, 0.5 + (clampedY - sy) / h)),
   };
+}
+
+/** Clamp edge markers safely even when the viewport is extremely small. */
+export function edgeMarkerPosition(x: number, y: number, w: number, h: number, behind: boolean): { x: number; y: number } {
+  const cx = Math.max(0, w / 2), cy = Math.max(0, h / 2);
+  let dx = Number.isFinite(x) ? x - cx : 0, dy = Number.isFinite(y) ? y - cy : 0;
+  if (behind) { dx = -dx; dy = Math.abs(dy) + Math.max(1, h); }
+  const k = Math.min(Math.max(0, cx - 50) / Math.max(1, Math.abs(dx)), Math.max(0, cy - 60) / Math.max(1, Math.abs(dy)));
+  return { x: cx + dx * k, y: cy + dy * k };
 }
 
 /** Screen rect reserved for the region-name chip (tactical view). */

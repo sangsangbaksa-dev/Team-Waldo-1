@@ -235,3 +235,13 @@
 @media (prefers-reduced-motion:reduce) {
   .city-root .c-prompt, .city-root .c-bars i { transition:none; }
 }
+
+/* Critical HUD states remain readable without flashing the whole screen. */
+.city-root .c-bars .hp.critical { box-shadow:inset 0 0 0 1px #ff7474a0; }
+.city-root .c-bars .hp.critical i { background:linear-gradient(180deg,#ff9b91,#d74742); }
+.city-root .c-ammo.low b { color:#ff9d83; }
+.city-root .c-ammo.reloading b { color:#ffe0a2; font-size:18px; letter-spacing:-.02em; }
+.city-root .c-squads button[aria-pressed="true"] { box-shadow:inset 0 -2px 0 #fff4cc88; }
+.city-root .c-ammo small { white-space:nowrap; }
+.city-root .c-ammo span { text-align:right; }
+@media (max-width:640px) { .city-root .c-ammo.reloading b { font-size:15px; } .city-root .c-ammo span { font-size:10px; } }

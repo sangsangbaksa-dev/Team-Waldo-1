@@ -214,3 +214,24 @@
 .c-modal section{max-height:100%;overflow:auto;overscroll-behavior:contain;touch-action:pan-y;scrollbar-width:thin}
 .c-panel{overscroll-behavior:contain}
 .c-modal button:focus-visible{outline:2px solid #e7c58c;outline-offset:3px}
+
+/* LAST CITY combat HUD — readable in bright streets and on narrow displays. */
+.city-root .c-prompt { box-sizing:border-box; max-width:min(560px,calc(100vw - 32px)); white-space:normal; overflow-wrap:anywhere; text-align:center; line-height:1.45; text-wrap:pretty; }
+.city-root .c-target { max-width:calc(100vw - 36px); white-space:normal; overflow-wrap:anywhere; padding:4px 10px; border-radius:6px; background:#0b1519b5; }
+.city-root .c-target:empty { display:none; }
+.city-root .c-target i { max-width:100%; box-shadow:inset 0 0 0 1px #ffffff26; }
+.city-root .c-bars>div { box-shadow:inset 0 0 0 1px #ffffff26; }
+.city-root .c-bars span { font-size:11px; line-height:16px; font-weight:800; font-variant-numeric:tabular-nums; }
+.city-root .c-ammo b { font-variant-numeric:tabular-nums; }
+.city-root .c-slots button { min-width:0; text-overflow:ellipsis; }
+.city-root .c-slots .on { box-shadow:0 2px 0 #f9dfaa,0 4px 10px #0005; }
+.city-root .c-mark.edge { max-width: min(220px,45vw); overflow:hidden; text-overflow:ellipsis; }
+.city-root .c-body { overscroll-behavior:contain; touch-action:pan-y; }
+@media (max-width:640px) {
+  .city-root .c-prompt { font-size:12px; padding:7px 10px; }
+  .city-root .c-target { font-size:11px; }
+  .city-root .c-mark { font-size:10px; padding:2px 5px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .city-root .c-prompt, .city-root .c-bars i { transition:none; }
+}

@@ -388,6 +388,17 @@ export class Sound {
     );
   }
 
+  door() {
+    if(!this.ready())return;
+    const at=this.ctx.currentTime;
+    this.note(107,42,.20,.12,at,0,"triangle");
+    this.rustle(at+.06,.15,.12,680,0,1.1);
+    this.note(53,46,1.03,.085,at+.24,0,"sine");
+    this.rustle(at+.24,.94,.095,320,0,.75);
+    this.note(92,31,.25,.11,at+1.35,0,"triangle");
+    this.rustle(at+1.32,.24,.10,920,0,1.2);
+  }
+
   enemyStep(distance,pan,visible,hunting) {
     if(!this.ready()) return;
     const at=this.ctx.currentTime;

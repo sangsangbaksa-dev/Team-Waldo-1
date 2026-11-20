@@ -25,3 +25,10 @@ export function clearanceAllows(x,z,oldX,oldZ,r,obstacles){
   }
   return true;
 }
+
+export function doorMotion(elapsed,duration=1.65){
+  const t=Number.isFinite(elapsed)&&Number.isFinite(duration)&&duration>0?Math.max(0,Math.min(1,elapsed/duration)):0;
+  const slide=Math.max(0,Math.min(1,(t-.12)/.72));
+  const fade=Math.max(0,Math.min(1,(t-.70)/.30));
+  return {progress:slide*slide*(3-2*slide),fade:fade*fade*(3-2*fade),done:t>=1};
+}

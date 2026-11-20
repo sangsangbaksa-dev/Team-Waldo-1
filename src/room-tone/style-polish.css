@@ -103,3 +103,7 @@
 #game .hud,#game .gear,#game #stick,#game .touchactions { z-index:2; }
 #game .statusfoot,#game #prompt,#game #toast { z-index:1; pointer-events:none; }
 #game #dialog { z-index:4; }
+
+/* The exit transition is a single fade, never a flashing effect. */
+#game[data-transition="exit"]::after {content:"";position:absolute;inset:0;background:#050807;opacity:var(--exit-fade,0);z-index:3;pointer-events:none;}
+#game[data-transition="exit"] :is(.hudright,.gear,#stick,.touchactions) {pointer-events:none;}

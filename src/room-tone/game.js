@@ -11,7 +11,7 @@ import { archiveCells, cleanArchive, createDread, recordings } from "./dread.mjs
 import { openViewer, closeViewer } from "./viewer.js";
 import { enemyPerception, cellDistance, patrolGoal } from "./perception.mjs";
 import { createRoomStorage } from "./storage.mjs";
-import { exitWall, clearanceAllows } from "./space.mjs";
+import { exitWall, clearanceAllows, doorMotion } from "./space.mjs";
 
 const $ = (id) => document.getElementById(id),
   C = 2.7,
@@ -30,6 +30,7 @@ let state = "home",
   elapsed = 0;
 let archive = [], dread = createDread();
 let enemyShadow, chaseWeight = 0;
+let exitSequence = null;
 let acousticCell = -1, acousticTree = null, patrolTarget = -1;
 let renderer,
   scene,
@@ -138,6 +139,7 @@ function screens(id) {
   scheduleFrame();
 }
 function homepage() {
+  cancelExitSequence();
   state = "home";
   leaveLook();
   sound.pause(true);
@@ -331,6 +333,7 @@ async function setup() {
     });
     renderer.setPixelRatio(renderPixelRatio(innerWidth, innerHeight, Math.min(devicePixelRatio || 1, touch ? 1.35 : 1.65), touch ? 'standard' : 'high'));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.localClippingEnabled = true;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.08;
     $("viewWrap").prepend(renderer.domElement);
@@ -343,6 +346,7 @@ async function setup() {
       contextLost = true;
       if (state === "home" || state === "won") return;
       if (level && state !== "load") save();
+      cancelExitSequence();
       modal(
         "그래픽 연결이 끊겼습니다",
         savePersistent ? "타이틀로 돌아가 그래픽 복구 후 이어할 수 있습니다. 새로고침도 가능합니다." :
@@ -548,6 +552,7 @@ function prop(cell, type, i = 0) {
   root.position.set(pos.x, 0, pos.z);
   props.add(root);
   const shadowTexture = props.userData.contactTexture;
+  let exitArt = null;
   addContactShadow(THREE, root, type === "station" ? 1.48 : 1.06, type === "station" ? 1.06 : .86, shadowTexture);
   const col =
       type === "exit" ? 0x91d6a8 : type === "station" ? 0x9ce1db : type === "record" ? 0xc9a5df : 0xf1ab63,
@@ -608,9 +613,10 @@ function prop(cell, type, i = 0) {
       const door=new THREE.Group();
       door.position.set(pos.x+dx*(C*.5-.005),0,pos.z+dz*(C*.5-.005));
       door.rotation.y=Math.atan2(-dx,-dz);
-      buildExitDoorArt(THREE,door,bright,dark,steel);
+      exitArt = buildExitDoorArt(THREE,door,bright,dark,steel);
       batchStaticMeshes(THREE,door);
       props.add(door);
+      exitArt.setProgress(0);
     }
   }
   // Thin floor markings make interactive equipment identifiable in low light.
@@ -632,9 +638,10 @@ function prop(cell, type, i = 0) {
   batchStaticMeshes(THREE,root);
   const [halfWidth,halfDepth] = type==="station" ? [.455,.275] :
     type==="item" ? [.36,.245] : type==="record" ? [.24,.19] : [.38,.23];
-  return { cell, type, i, root, bright, collision:{halfWidth,halfDepth} };
+  return { cell, type, i, root, bright, exitArt, collision:{halfWidth,halfDepth} };
 }
 function loadScene() {
+  cancelExitSequence();
   model.removeFromParent();
   if (environment?.userData?.dispose) environment.userData.dispose();
   else disposeGroup(environment);
@@ -1122,7 +1129,12 @@ function interact() {
     );
   } else if (!solved) {
     message("문이 잠겼습니다. " + c.station + "에서 신호를 먼저 복원하세요.");
-  } else if (ch < 3) {
+  } else {
+    beginExitSequence(o);
+  }
+}
+function finishExit() {
+  if(ch < 3) {
     ch++;
     found = [false, false, false];
     solved = false;
@@ -1153,6 +1165,52 @@ function interact() {
       [["타이틀로", homepage]],
       "won",
     );
+  }
+}
+function cancelExitSequence() {
+  if(exitSequence) exitSequence.art.setProgress(0);
+  exitSequence=null;
+  $("game").removeAttribute("data-transition");
+  $("game").style.removeProperty("--exit-fade");
+}
+function beginExitSequence(o) {
+  // Save before the animation so an interrupted transition can be retried.
+  save();
+  if(!o.exitArt || !motionAllowed()) { finishExit(); return; }
+  state="exit";
+  leaveLook();
+  nearest=null;
+  $("prompt").hidden=true;
+  $("act").disabled=true;
+  const center=o.exitArt.worldCenter();
+  const targetYaw=Math.atan2(player.x-center.x,player.z-center.z);
+  const delta=targetYaw-yaw;
+  exitSequence={art:o.exitArt,age:0,fromYaw:yaw,fromPitch:pitch,turn:Math.atan2(Math.sin(delta),Math.cos(delta))};
+  $("game").dataset.transition="exit";
+  sound.threat(0);
+  sound.door();
+  message("출구 개방 중",2);
+  last=performance.now();
+  scheduleFrame();
+}
+function advanceExit(dt) {
+  if(!exitSequence){finishExit();return;}
+  const sequence=exitSequence;
+  sequence.age+=dt;
+  const turn=Math.min(1,sequence.age/.60);
+  const eased=turn*turn*(3-2*turn);
+  yaw=sequence.fromYaw+sequence.turn*eased;
+  pitch=sequence.fromPitch*(1-eased);
+  camera.rotation.set(pitch,yaw,0,"YXZ");
+  const m=doorMotion(sequence.age);
+  sequence.art.setProgress(m.progress);
+  $("game").style.setProperty("--exit-fade",String(m.fade));
+  if(m.done){
+    // Preserve the fully open pose for the final frame; scene replacement clears it.
+    exitSequence=null;
+    $("game").removeAttribute("data-transition");
+    $("game").style.removeProperty("--exit-fade");
+    finishExit();
   }
 }
 $("act").onclick = interact;
@@ -1406,7 +1464,7 @@ function update(dt) {
 function scheduleFrame() {
   if (!frameStarted || frameId !== null || document.hidden || contextLost ||
       !scene || $("game").hidden) return;
-  if (state !== "play" && (!sceneDirty || ["load", "error"].includes(state))) return;
+  if (state !== "play" && state !== "exit" && (!sceneDirty || ["load", "error"].includes(state))) return;
   frameId = requestAnimationFrame(frame);
 }
 function frame(ts) {
@@ -1419,6 +1477,10 @@ function frame(ts) {
     update(dt);
     renderer.render(scene, camera);
     sceneDirty = false;
+  } else if(state === "exit") {
+    advanceExit(dt);
+    renderer.render(scene,camera);
+    sceneDirty=false;
   } else if (sceneDirty && !["load", "error"].includes(state)) {
     // Static modal backgrounds only need a new frame after a scene/size change.
     renderer.render(scene, camera);
@@ -1487,7 +1549,7 @@ document.addEventListener("pointerlockchange", () => {
   hadPointerLock = locked;
 });
 window.addEventListener("pagehide", () => {
-  if (state === "play") save();
+  if (state === "play" || state === "exit") save();
 });
 document.addEventListener("pointerdown", (e) => {
   lastPointerType = e.pointerType || "mouse";

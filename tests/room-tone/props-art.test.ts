@@ -56,7 +56,9 @@ test("exit door fits a solid tile face and respects wall clearance",()=>{
   assert.ok(b.min.x>=-1.10&&b.max.x<=1.10);
   assert.ok(b.min.y>=-.001&&b.max.y<=2.7);
   assert.ok(b.min.z>=-.001&&b.max.z<=.24);
-  assert.ok(root.children.length>=20);
+  let meshes=0;
+  root.traverse(child=>{if((child as THREE.Mesh).isMesh)meshes++;});
+  assert.ok(meshes>=20);
 });
 
 test("static batches lower draw objects while retaining world bounds and shadow transparency",()=>{
@@ -77,4 +79,28 @@ test("static batches lower draw objects while retaining world bounds and shadow 
     const batches=root.children.filter(child=>(child as THREE.InstancedMesh).isInstancedMesh);
     assert.ok(batches.length>0);
   }
+});
+
+test("door leaves slide independently into fixed jambs and reset safely",()=>{
+  const root=new THREE.Group();
+  root.position.set(5,0,3);root.rotation.y=Math.PI/2;
+  const bright=new THREE.MeshStandardMaterial(),dark=new THREE.MeshStandardMaterial(),steel=new THREE.MeshStandardMaterial();
+  const door=buildExitDoorArt(THREE,root,bright,dark,steel);
+  batchStaticMeshes(THREE,root);
+  const left=root.getObjectByName("Left acoustic leaf")!,right=root.getObjectByName("Right acoustic leaf")!;
+  door.setProgress(.5);
+  assert.equal(left.position.x,-.47);
+  assert.equal(right.position.x,.47);
+  const mesh=left.children.find(child=>(child as THREE.Mesh).isMesh) as THREE.Mesh;
+  const plane=(mesh.material as THREE.Material).clippingPlanes![0];
+  assert.ok(plane.distanceToPoint(door.worldCenter())>0);
+  const constant=plane.constant;
+  door.setProgress(.9);
+  assert.equal(plane.constant,constant);
+  door.setProgress(1);
+  assert.equal(left.visible,false);
+  assert.equal(right.visible,false);
+  door.setProgress(0);
+  assert.equal(left.visible,true);
+  assert.equal(right.position.x,0);
 });

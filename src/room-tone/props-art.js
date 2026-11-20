@@ -173,30 +173,63 @@ export function buildExitDoorArt(THREE,root,bright,dark,steel){
   const frame=new THREE.MeshStandardMaterial({color:0x343f3b,roughness:.67,metalness:.42});
   const panel=new THREE.MeshStandardMaterial({color:0x4b5551,roughness:.73,metalness:.28});
   const rubber=new THREE.MeshStandardMaterial({color:0x151d1b,roughness:.94});
+  const recess=new THREE.MeshBasicMaterial({color:0x070c0b});
   const boxGeo=new THREE.BoxGeometry(1,1,1);
-  const box=(mat,x,y,z,w,h,d)=>{
+  const box=(mat,x,y,z,w,h,d,parent=root)=>{
     const mesh=new THREE.Mesh(boxGeo,mat);
-    mesh.position.set(x,y,z);mesh.scale.set(w,h,d);root.add(mesh);return mesh;
+    mesh.position.set(x,y,z);mesh.scale.set(w,h,d);parent.add(mesh);return mesh;
   };
-  box(rubber,0,1.29,.024,2.07,2.58,.048);
+  box(recess,0,1.29,.024,2.07,2.58,.048);
+  const leaves=[];
   for(const side of [-1,1]){
     box(frame,side*.98,1.27,.08,.15,2.50,.16);
     box(steel,side*.902,1.25,.167,.033,2.35,.024);
-    box(panel,side*.455,1.22,.069,.88,2.36,.098);
-    for(const y of [.24,1.18,2.15]){
-      box(frame,side*.455,y,.131,.81,.064,.052);
-    }
+    const leaf=new THREE.Group();
+    leaf.name=side<0?"Left acoustic leaf":"Right acoustic leaf";
+    root.add(leaf);
+    // A fixed clipping plane conceals the moving leaf inside its jamb.
+    const clip=new THREE.Plane(new THREE.Vector3(-side,0,0),.895);
+    const clipped=new Map();
+    const material=mat=>{
+      if(!clipped.has(mat)){
+        const copy=mat.clone();
+        copy.clippingPlanes=[clip];
+        clipped.set(mat,copy);
+      }
+      return clipped.get(mat);
+    };
+    const leafBox=(mat,x,y,z,w,h,depth)=>box(material(mat),x,y,z,w,h,depth,leaf);
+    leafBox(panel,side*.455,1.22,.069,.88,2.36,.098);
+    for(const y of [.24,1.18,2.15])leafBox(frame,side*.455,y,.131,.81,.064,.052);
     for(const u of [-.38,.38]){
-      box(steel,side*.455+u,.18,.166,.028,.025,.022);
-      box(steel,side*.455+u,2.28,.166,.028,.025,.022);
+      leafBox(steel,side*.455+u,.18,.166,.028,.025,.022);
+      leafBox(steel,side*.455+u,2.28,.166,.028,.025,.022);
     }
-    box(rubber,side*.083,1.12,.139,.085,.32,.07);
-    box(steel,side*.08,1.12,.192,.038,.22,.03);
+    leafBox(rubber,side*.083,1.12,.139,.085,.32,.07);
+    leafBox(steel,side*.08,1.12,.192,.038,.22,.03);
+    leaves.push({leaf,side,clip});
   }
+  panel.dispose();
   box(frame,0,2.51,.087,2.11,.14,.174);
   box(dark,0,2.39,.172,.59,.099,.026);
   box(bright,0,2.39,.193,.43,.042,.018);
   box(rubber,0,.045,.11,1.88,.09,.17);
+  const target=new THREE.Vector3();
+  return {
+    root,
+    setProgress(value){
+      const progress=Number.isFinite(value)?Math.max(0,Math.min(1,value)):0;
+      root.updateWorldMatrix(true,false);
+      for(const {leaf,side,clip} of leaves){
+        clip.normal.set(-side,0,0);
+        clip.constant=.895;
+        clip.applyMatrix4(root.matrixWorld);
+        leaf.position.x=side*.94*progress;
+        leaf.visible=progress<1;
+      }
+    },
+    worldCenter(){return root.getWorldPosition(target);}
+  };
 }
 
 /* Batch repeated opaque meshes by geometry and material inside each prop.

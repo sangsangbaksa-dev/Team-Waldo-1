@@ -5,6 +5,7 @@ export function addContactShadow(THREE:typeof Three,root:Three.Group,width:numbe
 
 export function buildCollectibleArt(THREE:typeof Three,root:Three.Group,chapter:number,index:number,bright:Three.Material,dark:Three.Material,steel:Three.Material):void;
 
-export function buildExitDoorArt(THREE:typeof Three,root:Three.Group,bright:Three.Material,dark:Three.Material,steel:Three.Material):void;
+export interface ExitDoorArt { root:Three.Group; setProgress(value:number):void; worldCenter():Three.Vector3 }
+export function buildExitDoorArt(THREE:typeof Three,root:Three.Group,bright:Three.Material,dark:Three.Material,steel:Three.Material):ExitDoorArt;
 
 export function batchStaticMeshes(THREE:typeof Three,root:Three.Group):number;

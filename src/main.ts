@@ -9,7 +9,7 @@ import { readTycoonSummary } from './tycoon/core/save';
 import { STAGE_NAMES } from './tycoon/core/data';
 import { CHAT_ENABLED, PVP_ENABLED } from './net/config';
 
-type GameId = 'city' | 'race' | 'rts' | 'shooter' | 'outlaw' | 'tycoon';
+type GameId = 'city' | 'race' | 'rts' | 'shooter' | 'outlaw' | 'tycoon' | 'room-tone';
 
 interface Entry {
   id: GameId;
@@ -103,6 +103,16 @@ const ENTRIES: Entry[] = [
       return r.has ? (r.won ? `세계 정복 · ${r.day}일` : `${STAGE_NAMES[r.stage]} · ${r.day}일차`) : '';
     },
   },
+  {
+    id: 'room-tone',
+    name: 'ROOM TONE',
+    genre: '1인칭 심리 공포',
+    summary: '폐쇄된 녹음 시설의 신호를 복원하세요. 발소리를 쫓아오는 잔향을 피해 네 구역을 빠져나가야 합니다.',
+    facts: ['1인 플레이 · 약 30분', '탐색 · 퍼즐 · 추적', '자동 저장 · 터치 지원'],
+    image: `${base}room-tone/keyart.jpg`,
+    imageAlt: '녹음실 문 뒤에서 복도를 응시하는 잔향',
+    status: () => '',
+  },
 ];
 
 retireUpgradeSaves();
@@ -133,7 +143,7 @@ function renderMenu(): void {
   unsubscribeAccount?.();
   unsubscribeAccount = undefined;
   const sound = readPreferences().sound;
-  document.title = 'WALDO · 여섯 편의 3D 게임';
+  document.title = 'WALDO · 일곱 편의 3D 게임';
   app.hidden = false;
   app.innerHTML = `
     <main class="home">
@@ -150,7 +160,7 @@ function renderMenu(): void {
         </div>
       </header>
       <section class="home-intro">
-        <h1>${['', '한', '두', '세', '네', '다섯', '여섯'][ENTRIES.length] ?? ENTRIES.length} 편의 3D 게임.</h1>
+        <h1>${['', '한', '두', '세', '네', '다섯', '여섯', '일곱'][ENTRIES.length] ?? ENTRIES.length} 편의 3D 게임.</h1>
         <p>설치 없이 이 페이지에서 바로 시작합니다.</p>
       </section>
       <ul class="tiles" aria-label="게임 목록">${ENTRIES.map(tile).join('')}</ul>
@@ -212,6 +222,10 @@ function wireAccount(): void {
 }
 
 async function launch(id: GameId): Promise<void> {
+  if (id === 'room-tone') {
+    location.assign(`${base}room-tone/`);
+    return;
+  }
   const navigation = ++generation;
   const buttons = app.querySelectorAll<HTMLButtonElement>('.tile');
   const notice = app.querySelector<HTMLElement>('#home-notice');

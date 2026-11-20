@@ -16,6 +16,8 @@ import { buildFacadeTrim, buildProps, buildRoofs, makeDropCrate, makeFallbackGun
 import { TerrainView, tintGround } from './terrainview';
 import { WeatherFx } from './weatherfx';
 import { waterDepth } from './terrain';
+import { makeFallbackTree } from './vegetation';
+import { resolveChaseCamera } from './camera';
 import { crateTexture, floorTexture, glowTexture, groundTexture, makeSky, wallTexture } from './textures';
 
 export type Quality = 'high' | 'standard' | 'low';
@@ -170,13 +172,18 @@ export class ShooterView {
         const lam = new THREE.MeshLambertMaterial({ vertexColors: true });
         for (const part of [baked.fixed, baked.team, baked.skin]) if (part) geos.push([part, lam]);
       } else {
-        const trunk = new THREE.CylinderGeometry(0.18, 0.28, 3, 6); trunk.translate(0, 1.5, 0); const crown = new THREE.ConeGeometry(1.8, 5, 8); crown.translate(0, 5, 0);
-        geos = [[trunk, new THREE.MeshLambertMaterial({ color: 0x5b4126 })], [crown, new THREE.MeshLambertMaterial({ color: pine ? 0x2c5a35 : 0x4f7a37 })]];
+        geos = makeFallbackTree(pine, this.quality === 'low');
       }
-      let top = 1; if (baked) { const bb = new THREE.Box3(); for (const [g] of geos) { g.computeBoundingBox(); bb.union(g.boundingBox!); } top = Math.max(0.5, bb.max.y); }
+      let top = 1; { const bb = new THREE.Box3(); for (const [g] of geos) { g.computeBoundingBox(); if (g.boundingBox) bb.union(g.boundingBox); } top = Math.max(0.5, bb.max.y); }
       for (const [g, m] of geos) {
         const mesh = new THREE.InstancedMesh(g, m, list.length);
-        list.forEach((t, i) => { const h = (baked ? (pine ? 9 : 7.5) / top : 1) * t.s; d.position.set(t.x, 0, t.z); d.rotation.set(0, r() * 6.28, 0); d.scale.setScalar(h); d.updateMatrix(); mesh.setMatrixAt(i, d.matrix); });
+        list.forEach((t, i) => {
+          // All material batches use identical yaw/scale, so trunk and crowns stay aligned.
+          const rot = rngOf((this.match.seed + Math.imul(i + 1, 937) + (pine ? 17 : 31)) >>> 0);
+          const h = (pine ? 9 : 7.5) / top * t.s;
+          d.position.set(t.x, 0, t.z); d.rotation.set(0, rot() * 6.28, 0); d.scale.setScalar(h); d.updateMatrix(); mesh.setMatrixAt(i, d.matrix);
+          if (!baked) mesh.setColorAt(i, this.tmpCol.setScalar(0.85 + rot() * 0.24));
+        });
         mesh.castShadow = true; mesh.receiveShadow = false; this.scene.add(mesh);
       }
     }
@@ -475,11 +482,15 @@ export class ShooterView {
     if (drv) {
       // 운전 중: 차 뒤 위에서 따라가는 시점(마우스로 둘러보고, 달리면 천천히 정면으로 돌아옵니다)
       const yc = spectate ? drv.yaw : view.yaw, dist = 6.4 + drv.w * 0.42, cp = Math.max(-0.5, Math.min(0.7, view.pitch)), sp = Math.abs(drv.speed);
-      cam.position.set(drv.x - Math.cos(yc) * dist, Math.max(0.7, drv.h + 1.35 + dist * 0.17 - Math.sin(cp) * 3.2), drv.z - Math.sin(yc) * dist); cam.rotation.order = 'YXZ';
+      const desired = { x: drv.x - Math.cos(yc) * dist, y: Math.max(0.7, drv.h + 1.35 + dist * 0.17 - Math.sin(cp) * 3.2), z: drv.z - Math.sin(yc) * dist };
+      const safe = resolveChaseCamera(m.map, { x: drv.x, y: drv.h + 0.5, z: drv.z }, desired);
+      cam.position.set(safe.x, safe.y, safe.z); cam.rotation.order = 'YXZ';
       this.roll += (0 - this.roll) * Math.min(1, dt * 9);
       cam.rotation.set(-0.13 + cp * 0.55 + (Math.random() - 0.5) * sp * 0.0007, -yc - Math.PI / 2 + (Math.random() - 0.5) * sp * 0.0007, this.roll);
     } else if (spectate) {
-      const back = 3.6, cx = view.x - Math.cos(view.yaw) * back, cz = view.z - Math.sin(view.yaw) * back; cam.position.set(cx, 2.3 + view.alt, cz); cam.rotation.order = 'YXZ'; cam.rotation.set(-0.12, -view.yaw - Math.PI / 2, 0);
+      const back = 3.6, cx = view.x - Math.cos(view.yaw) * back, cz = view.z - Math.sin(view.yaw) * back;
+      const safe = resolveChaseCamera(m.map, { x: view.x, y: eyeOf(view) + view.alt, z: view.z }, { x: cx, y: 2.3 + view.alt, z: cz });
+      cam.position.set(safe.x, safe.y, safe.z); cam.rotation.order = 'YXZ'; cam.rotation.set(-0.12, -view.yaw - Math.PI / 2, 0);
     } else {
       const bobY = Math.sin(this.bob) * 0.035 * Math.min(1, view.speed / 5); cam.position.set(view.x, eyeOf(view) + view.alt + bobY, view.z); cam.rotation.order = 'YXZ';
       if (view.air === 1 && m.plane) { const pl = m.plane; cam.position.set(view.x - pl.dx * 58, AIR.alt + 15, view.z - pl.dz * 58); } // 수송기 뒤 위에서 항로를 내려다봅니다

@@ -450,8 +450,15 @@ kbd {
   height: 13px;
   background: #b3bca4;
 }
+.stamina-status {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 8ch;
+  text-align: center;
+  white-space: nowrap;
+  color: #f3d4a7;
+}
 .stambar {
-  width: 60px;
   height: 3px;
   background: #3d4944;
 }
@@ -729,9 +736,6 @@ dialog h2 {
   }
   .statusfoot {
     font-size: 0.75rem;
-  }
-  .statusfoot .stambar {
-    width: 32px;
   }
   .gear button {
     padding: 0.45rem;

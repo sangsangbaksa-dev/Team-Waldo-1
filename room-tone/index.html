@@ -127,12 +127,14 @@
         <span class="rec">REC</span><b id="timer">00:00</b
         ><span class="statusline"></span
         ><span>수신 <strong id="strain">안정</strong></span>
-        <div class="stambar" role="progressbar" aria-label="달리기 체력" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i id="stamina"></i></div>
+        <div class="stamina-status">
+          <span aria-hidden="true">체력 <b id="staminaText">100%</b></span>
+          <div class="stambar" role="progressbar" aria-label="달리기 체력" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i id="stamina"></i></div>
+        </div>
       </div>
       <div id="prompt" hidden><kbd>E</kbd> <span id="promptText"></span></div>
       <div id="toast" role="status" aria-live="polite"></div>
       <div class="gear">
-        <button id="crouch" aria-pressed="false">숙이기 <kbd>C</kbd></button>
         <button id="torch">
           손전등 <span id="lightState">켜짐</span> <kbd>F</kbd>
         </button>
@@ -166,8 +168,8 @@
           <dd>E</dd>
           <dt>달리기 · 손전등</dt>
           <dd>Shift · F</dd>
-          <dt>숙이기 · 길 안내</dt>
-          <dd>C · G</dd>
+          <dt>길 안내</dt>
+          <dd>G</dd>
           <dt>시설 도면 · 일시정지</dt>
           <dd>M · P</dd>
         </dl>
@@ -178,7 +180,7 @@
         <p>
           잠긴 문은 구역의 제어 장치에서 엽니다. 도면의 주황색 장비를 찾고,
           청록색 장치로 돌아오세요. 길 안내를 켜면 도면에 경로가 표시되고,
-          이동 화면에서 다음 방향을 볼 수 있습니다. 숙이면 느려지지만 발소리가 줄어듭니다.
+          이동 화면에서 다음 방향을 볼 수 있습니다. 달리면 체력이 줄고, 걷거나 멈추면 회복됩니다.
         </p>
       </div>
       <button id="howclose" class="primary">닫기</button>

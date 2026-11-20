@@ -11,6 +11,7 @@ import { openViewer } from "./viewer.js";
 
 const $ = (id) => document.getElementById(id),
   C = 2.7,
+  EYE_HEIGHT = 1.58,
   SAVE = "waldo.rt03.campaign.v1",
   LAST = "waldo.rt03.complete.v1";
 const sound = new Sound(),
@@ -51,8 +52,6 @@ let moved = 0,
   enemyPhase = 0,
   stamina = 1,
   winded = false,
-  crouched = false,
-  eyeHeight = 1.58,
   lightOn = true,
   muted = false;
 let now = 0,
@@ -211,7 +210,7 @@ function guide(fromHome = false) {
   }
   modal(
     "조작 안내",
-    "숙이면 발소리가 줄어듭니다. 모퉁이를 돌아 시야를 끊고, 추격이 멈출 때까지 기다리세요.",
+    "모퉁이를 돌아 시야를 끊고, 추격이 멈출 때까지 기다리세요.",
     (el) => {
       el.innerHTML = $("guideText").innerHTML;
     },
@@ -350,7 +349,7 @@ function pointPlayer() {
   lamp.intensity = 28;
   const p = xy(level.start);
   const next = xy(neighbors(level.map, level.start)[0]);
-  player.set(p.x + (next.x - p.x) * 0.38, 1.58, p.z + (next.z - p.z) * 0.38);
+  player.set(p.x + (next.x - p.x) * 0.38, EYE_HEIGHT, p.z + (next.z - p.z) * 0.38);
   yaw = Math.atan2(-(next.x - p.x), -(next.z - p.z));
   pitch = 0;
   camera.rotation.set(0, yaw, 0, "YXZ");
@@ -358,8 +357,6 @@ function pointPlayer() {
   sceneDirty = true;
   stamina = 1;
   winded = false;
-  crouched = false;
-  eyeHeight = 1.58;
   lightOn = true;
   const far = xy(level.nest);
   entity.position.set(far.x, 0, far.z);
@@ -380,9 +377,7 @@ function pointPlayer() {
   $("danger").removeAttribute("data-pursuit");
   $("strain").textContent = "안정";
   $("strain").dataset.threat = "safe";
-  $("stamina").style.transform = "scaleX(1)";
-  $("stamina").classList.remove("winded");
-  $("stamina").parentElement.setAttribute("aria-valuenow", "100");
+  renderStamina();
   $("timer").textContent = clock(elapsed);
   sound.threat(0);
   $("prompt").hidden = true;
@@ -688,8 +683,17 @@ function renderHUD() {
     item.bright.emissiveIntensity = solved ? 1.3 : 0.45;
   }
   $("torch").setAttribute("aria-pressed", String(lightOn));
-  $("crouch").setAttribute("aria-pressed", String(crouched));
   refreshGuide();
+}
+function renderStamina() {
+  const fill = $("stamina"), meter = fill.parentElement;
+  const percent = String(Math.round(stamina * 100));
+  fill.style.transform = "scaleX(" + stamina.toFixed(3) + ")";
+  fill.classList.toggle("winded", winded);
+  if (meter.getAttribute("aria-valuenow") !== percent) {
+    meter.setAttribute("aria-valuenow", percent);
+    $("staminaText").textContent = percent + "%";
+  }
 }
 function toggleLamp() {
   if (state !== "play") return;
@@ -698,12 +702,6 @@ function toggleLamp() {
   message("손전등 " + (lightOn ? "켜짐" : "꺼짐"), 1);
 }
 $("torch").onclick = toggleLamp;
-function toggleCrouch() {
-  if (state !== "play") return;
-  crouched = !crouched;
-  $("crouch").setAttribute("aria-pressed", String(crouched));
-}
-$("crouch").onclick = toggleCrouch;
 
 function refreshGuide() {
   $("guide").hidden = !guidance;
@@ -1061,7 +1059,7 @@ function caught() {
 function finishCaught() {
   modal(
     "신호가 끊겼습니다",
-    "회수한 장비와 복원 기록은 보존됩니다. 모퉁이를 돌고 자세를 낮추면 추격을 피하기 쉽습니다.",
+    "회수한 장비와 복원 기록은 보존됩니다. 모퉁이를 돌아 시야를 끊으면 추격을 피하기 쉽습니다.",
     null,
     [
       [
@@ -1083,7 +1081,7 @@ function enemyUpdate(dt, running) {
   grace = Math.max(0, grace - dt);
   const visible = dist <= 14 && clearLine(player, e);
   const inSight = visible && dist <= (lightOn ? 10.7 : 6.1);
-  const hearRange = running ? 14 : crouched ? 1.6 : 4.7;
+  const hearRange = running ? 14 : 4.7;
   const hear = moved > dt * 0.15 && dist < hearRange * (visible ? 1 : 0.55);
   const tracking = !grace && (inSight || hear);
   const playerCell = cellOf(player);
@@ -1218,8 +1216,8 @@ function update(dt) {
   const sprintHeld = keys.has("ShiftLeft") || keys.has("ShiftRight") || mobileRun;
   if (stamina <= 0.045) winded = true;
   else if (!sprintHeld || stamina >= 0.3) winded = false;
-  const running = sprintHeld && !crouched && !winded && length > 0.1;
-  const scale = (running ? 3.22 : crouched ? 1.05 : 1.88) * dt,
+  const running = sprintHeld && !winded && length > 0.1;
+  const scale = (running ? 3.22 : 1.88) * dt,
     oldX = player.x,
     oldZ = player.z;
   shift(
@@ -1229,19 +1227,15 @@ function update(dt) {
   moved = Math.hypot(player.x - oldX, player.z - oldZ);
   const exerting = running && moved > dt * 0.15;
   stamina = THREE.MathUtils.clamp(stamina + (exerting ? -0.14 : 0.11) * dt, 0, 1);
-  $("stamina").classList.toggle("winded", winded);
-  const staminaPercent = String(Math.round(stamina * 100));
-  const meter = $("stamina").parentElement;
-  if (meter.getAttribute("aria-valuenow") !== staminaPercent) meter.setAttribute("aria-valuenow", staminaPercent);
+  renderStamina();
   stepAt += moved;
   if (stepAt > (running ? 1.02 : 0.86)) {
-    sound.step(running, crouched);
+    sound.step(running);
     stepAt = 0;
   }
-  eyeHeight = THREE.MathUtils.damp(eyeHeight, crouched ? 1.12 : 1.58, 12, dt);
   camera.position.set(
     player.x,
-    eyeHeight + (reducedMotion.matches ? 0 :
+    EYE_HEIGHT + (reducedMotion.matches ? 0 :
       Math.sin(elapsed * (running ? 12 : 8.3)) * Math.min(moved, 0.05) * 0.38),
     player.z,
   );
@@ -1293,7 +1287,6 @@ function update(dt) {
   $("prompt").hidden = !caption;
   if ($("promptText").textContent !== caption) $("promptText").textContent = caption;
   if ($("act").disabled !== !nearest) $("act").disabled = !nearest;
-  $("stamina").style.transform = "scaleX(" + stamina.toFixed(3) + ")";
   const timeText = clock(elapsed);
   if ($("timer").textContent !== timeText) $("timer").textContent = timeText;
   if (now > noticeUntil && $("toast").textContent) $("toast").textContent = "";
@@ -1359,7 +1352,6 @@ document.addEventListener("keydown", (e) => {
     if (!e.repeat) {
       if (e.code === "KeyE") interact();
       else if (e.code === "KeyF") toggleLamp();
-      else if (e.code === "KeyC") toggleCrouch();
       else if (e.code === "KeyG") toggleGuide();
       else if (e.code === "KeyM") mapPanel();
       else if (e.code === "Escape" || e.code === "KeyP") pauseGame();

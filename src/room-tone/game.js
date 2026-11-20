@@ -8,6 +8,7 @@ import { buildEnvironment } from "./environment.js";
 import { Sound } from "./sound.js";
 import { archiveCells, cleanArchive, createDread, recordings } from "./dread.mjs";
 import { openViewer } from "./viewer.js";
+import { SPEED, chooseHideouts, senseThreat, hidingCheck } from "./stealth.mjs";
 
 const $ = (id) => document.getElementById(id),
   C = 2.7,
@@ -27,6 +28,8 @@ let state = "home",
   elapsed = 0;
 let archive = [], dread = createDread(), enemyStepDistance = 0;
 let enemyRevealed = false, pursuitPose = 0, dangerOpacity = 0, catchTime = 0;
+let hideouts=[],hiding=null,hideCompromised=false,hideCheck=0;
+let noiseBurst=0,noiseTime=0,searchMode="patrol",litCells=new Set();
 let renderer,
   scene,
   camera,
@@ -334,7 +337,7 @@ function shift(dx, dz) {
       pass(x - r, z - r) &&
       pass(x + r, z - r) &&
       pass(x - r, z + r) &&
-      pass(x + r, z + r)
+      pass(x + r, z + r) && !hideouts.some(o=>{const dx=x-o.root.position.x,dz=z-o.root.position.z;return Math.abs(dx*o.dx+dz*o.dz)<.36+r&&Math.abs(dx*o.dz-dz*o.dx)<o.width/2+r;})
     );
   }
   if (space(player.x + dx, player.z)) player.x += dx;
@@ -342,6 +345,8 @@ function shift(dx, dz) {
 }
 function pointPlayer() {
   dread = createDread();
+  hiding=null;hideCompromised=false;hideCheck=0;noiseBurst=noiseTime=0;searchMode="patrol";
+  $("viewWrap").removeAttribute("data-hiding");$("stealthReadout").textContent="은신처를 확인하세요";$("torch").disabled=false;$("run").disabled=false;
   enemyStepDistance = 0;
   enemyRevealed = false;
   pursuitPose = dangerOpacity = 0;
@@ -366,7 +371,7 @@ function pointPlayer() {
   path = [];
   nextPath = 0;
   lastKnown = -1;
-  grace = 22;
+  grace = 9;
   enemyPhase = 0;
   lastCell = -1;
   nearest = null;
@@ -566,6 +571,54 @@ function prop(cell, type, i = 0) {
   root.add(sign);
   return { cell, type, i, root, bright };
 }
+function hideProp(spec,i){
+ const root=new THREE.Group(),pos=xy(spec.cell),{dx,dz,kind}=spec;
+ root.position.set(pos.x+dx*.89,0,pos.z+dz*.89);root.rotation.y=Math.atan2(-dx,-dz);props.add(root);
+ const shell=paint(0x303336),trim=paint(0x727579),interior=paint(0x111214),tag=paint(0xc8c8c8,0x9a9a9a,.15);
+ const box=(w,h,d,x,y,z,mat=shell)=>mesh(new THREE.BoxGeometry(w,h,d),mat,root,x,y,z);
+ const desk=kind==="desk",width=desk?1.05:.85,height=desk?1.03:2.05;
+ box(width,.05,.72,0,height,0,trim);box(width,height,.055,0,height/2,-.33,interior);
+ for(const side of [-1,1])box(.055,height,.70,side*(width/2-.028),height/2,0);
+ if(desk){box(width*.69,.48,.055,-width*.15,.26,.32);box(width,.07,.74,0,height+.055,0,trim);}
+ else{
+  box(width,.99,.055,0,.50,.33);box(width,.40,.055,0,1.84,.33);box(width,.42,.055,0,1.24,.33);
+  box(.055,.17,.08,width*.32,1.16,.39,trim);
+  for(let j=0;j<4;j++)box(.22,.018,.016,-.18,1.91-j*.055,.366,interior);
+  if(kind==="booth")for(const side of [-1,1])box(.07,height,.075,side*(width/2-.04),height/2,.35,trim);
+ }
+ const name=desk?"책상 아래":kind==="booth"?"방음 부스":"철제 옷장";
+ box(.19,.05,.014,0,desk?1.075:2.0,.38,tag);
+ const sign=label(name,"#dedede");sign.position.y=height+.21;root.add(sign);
+ return {...spec,type:"hide",i,root,name,width,eye:desk?.68:1.57};
+}
+function noiseAtPlayer(strength,duration=.55){noiseBurst=Math.max(noiseBurst,strength);noiseTime=Math.max(noiseTime,duration);}
+function exposedToFixture(){const cell=cellOf(player),p=xy(cell);return litCells.has(cell)&&Math.hypot(player.x-p.x,player.z-p.z)<1.1;}
+function perceive(distance,clear,running=false,concealed=!!hiding){
+ const e=entity.position,dx=player.x-e.x,dz=player.z-e.z,d=Math.max(distance,.001);
+ const facing=(Math.sin(entity.rotation.y)*dx+Math.cos(entity.rotation.y)*dz)/d;
+ const flashFacing=(Math.sin(yaw)*dx+Math.cos(yaw)*dz)*Math.cos(pitch)/d;
+ return senseThreat({distance,clear,facing,flashFacing,lightOn,lit:exposedToFixture(),moving:moved>.001,running,noise:noiseTime>0?noiseBurst:0,hidden:concealed});
+}
+function leaveHide(){
+ if(!hiding)return;
+ const previous=hiding,spot=xy(previous.cell);hiding=null;hideCompromised=false;hideCheck=0;
+ player.set(spot.x,EYE_HEIGHT,spot.z);yaw=Math.atan2(previous.dx,previous.dz);pitch=0;
+ lightOn=false;noiseAtPlayer(4.2);sound.pickup();
+ $("viewWrap").removeAttribute("data-hiding");$("torch").disabled=false;$("run").disabled=false;
+ clearInputs();renderHUD();message("은신처에서 나왔습니다 · 손전등 꺼짐",1.8);
+}
+function enterHide(o){
+ const distance=Math.hypot(player.x-entity.position.x,player.z-entity.position.z),clear=clearLine(player,entity.position);
+ hideCompromised=!grace&&(perceive(distance,clear,false,false).visual||(distance<2.4&&clear));
+ const pos=xy(o.cell);player.set(pos.x,EYE_HEIGHT,pos.z);
+ hiding=o;hideCheck=0;lightOn=false;yaw=Math.atan2(o.dx,o.dz);pitch=0;
+ noiseAtPlayer(3.4,.42);sound.pickup();
+ if(hideCompromised){lastKnown=o.cell;enemyPhase=7;searchMode="search";nextPath=0;}
+ $("viewWrap").dataset.hiding=o.kind;$("torch").disabled=true;$("run").disabled=true;
+ clearInputs();renderHUD();nearest=null;
+ message(hideCompromised?"들켰을 수 있습니다. 적이 은신처를 확인합니다.":"숨었습니다. 발소리가 멀어질 때까지 기다리세요.",3);
+}
+
 function loadScene() {
   model.removeFromParent();
   if (environment?.userData?.dispose) environment.userData.dispose();
@@ -573,33 +626,36 @@ function loadScene() {
   disposeGroup(props);
   scene = new THREE.Scene();
   scene.background = new THREE.Color(
-    [0x0b1311, 0x0b1119, 0x1b1110, 0x090f12][ch],
+    [0x101010, 0x121212, 0x151515, 0x0d0d0d][ch],
   );
-  scene.fog = new THREE.FogExp2(scene.background, 0.067);
+  scene.fog = new THREE.FogExp2(scene.background, 0.078);
   camera = new THREE.PerspectiveCamera(68, 1, 0.045, 65);
   scene.add(camera);
-  scene.add(new THREE.HemisphereLight(0xc0d4cf, 0x44413c, 0.63));
-  const fill = new THREE.DirectionalLight(0xc6d2cd, 0.24);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x292929, 0.43));
+  const fill = new THREE.DirectionalLight(0xffffff, 0.17);
   fill.position.set(4, 6, 2);
   scene.add(fill);
-  lamp = new THREE.SpotLight(0xffeccc, 28, 24, 0.49, 0.57, 1.05);
+  lamp = new THREE.SpotLight(0xffffff, 28, 24, 0.49, 0.57, 1.05);
   camera.add(lamp);
   lamp.position.set(0.16, -0.11, -0.12);
   lamp.target.position.set(0, 0, -7.5);
   camera.add(lamp.target);
-  beam = new THREE.PointLight(0xc5dbcd, 2.0, 4.1, 1.3);
+  beam = new THREE.PointLight(0xffffff, 1.4, 4.1, 1.3);
   camera.add(beam);
   environment = buildEnvironment(THREE, scene, level.map, C, ch);
+  litCells=new Set(environment.userData.litCells);
   props = new THREE.Group();
   scene.add(props);
   items = level.items.map((cell, i) => prop(cell, "item", i));
   items.forEach((o) => (o.root.visible = !found[o.i]));
   items.push(prop(level.start, "station"), prop(level.exit, "exit"));
-  archiveCells(level).forEach((cell,i)=>{
+  const records=archiveCells(level);
+  records.forEach((cell,i)=>{
     const record=prop(cell,"record",i);
     record.root.visible=!archive.includes(ch*2+i);
     items.push(record);
   });
+  hideouts=chooseHideouts(level,records).map(hideProp);items.push(...hideouts);
   entity = new THREE.Group();
   entity.add(model);
   scene.add(entity);
@@ -656,7 +712,7 @@ function brief() {
       el.innerHTML =
         '<p class="taskline">' +
         chapters[ch].goal +
-        '</p><p class="hint">도면에서 장비와 출구 방향을 확인하세요. 구역마다 숨은 녹음 기록 2개가 있습니다. 진행 상황은 자동 저장됩니다.</p>';
+        '</p><p class="hint">도면에서 장비와 출구 방향을 확인하세요. 옷장, 책상 아래, 방음 부스에 숨을 수 있습니다. 손전등과 발소리에 주의하세요. 구역마다 숨은 녹음 기록 2개가 있습니다. 진행 상황은 자동 저장됩니다.</p>';
     },
     [
       ["구역 진입", resume],
@@ -696,7 +752,7 @@ function renderStamina() {
   }
 }
 function toggleLamp() {
-  if (state !== "play") return;
+  if (state !== "play" || hiding) return;
   lightOn = !lightOn;
   renderHUD();
   message("손전등 " + (lightOn ? "켜짐" : "꺼짐"), 1);
@@ -774,6 +830,7 @@ function drawMap(canvas) {
     ctx.fillStyle = color;
     ctx.beginPath();
     if (shape === "square") ctx.rect(x - 4, y - 4, 8, 8);
+    else if(shape==="diamond"){ctx.moveTo(x,y-5);ctx.lineTo(x+5,y);ctx.lineTo(x,y+5);ctx.lineTo(x-5,y);ctx.closePath();}
     else ctx.arc(x, y, 4.6, 0, Math.PI * 2);
     ctx.fill();
   };
@@ -781,6 +838,7 @@ function drawMap(canvas) {
     if (!found[i]) dot(id, "#e4a36d", "square");
   });
   for(const record of items) if(record.type==="record" && record.root.visible && seen.has(record.cell)) dot(record.cell,"#c9a5df","circle");
+  for(const o of hideouts)if(seen.has(o.cell))dot(o.cell,"#eeeeee","diamond");
   dot(level.start, "#75c3ce", "square");
   dot(level.exit, solved ? "#9ad991" : "#f38e75", "square");
   const pos = cellOf(player),
@@ -814,7 +872,7 @@ function mapPanel(fromBrief = false) {
       p.className = "mapkey";
       p.innerHTML =
         "<i>▲ 현재 위치</i><i>■ 회수 장비</i><i>■ 제어 장치</i><i>" + (solved ? "■ 출구 열림" : "■ 출구 잠김") + "</i>";
-      p.innerHTML += "<i>● 발견된 녹음 기록</i>";
+      p.innerHTML += "<i>● 발견된 녹음 기록</i><i>◆ 발견한 은신처</i>";
       p.dataset.solved = String(solved);
       el.append(p);
       const button = document.createElement("button");
@@ -962,11 +1020,15 @@ function puzzle(reset = true) {
   sound.pause(false);
 }
 function interact() {
-  if (state !== "play" || !nearest) return;
+  if(state!=="play")return;
+  if(hiding){leaveHide();return;}
+  if(!nearest)return;
   const o = nearest,
     c = chapters[ch];
   if (!o.root.visible || Math.hypot(o.root.position.x - player.x, o.root.position.z - player.z) >= 2.16 ||
       !clearLine(player, o.root.position)) return;
+  if(o.type==="hide"){enterHide(o);return;}
+  noiseAtPlayer(o.type==="item"?14:o.type==="record"?5.5:8,.9);
   if(o.type==="record"){
     const id=ch*2+o.i;
     if(!archive.includes(id)) archive.push(id);
@@ -977,13 +1039,9 @@ function interact() {
     message(recordings[ch][o.i].title+" · 녹음함에 저장됨 ("+archive.length+"/8)",5);
   } else if (o.type === "item") {
     found[o.i] = true;
-    // The equipment makes a noise at the pickup location. The creature investigates it.
-    lastKnown = o.cell;
-    enemyPhase = 9 + 2 * ch;
-    nextPath = 0;
+    // Equipment noise is limited by the acoustic range.
     o.root.visible = false;
     sound.pickup();
-    grace = Math.max(grace, 3);
     nearest = null;
     renderHUD();
     save();
@@ -1049,6 +1107,7 @@ function interact() {
 $("act").onclick = interact;
 function caught() {
   // Preserve progress at contact, before the brief final encounter begins.
+  if(hiding)leaveHide();
   save();
   sound.caught();
   clearInputs();
@@ -1061,7 +1120,7 @@ function caught() {
 function finishCaught() {
   modal(
     "신호가 끊겼습니다",
-    "회수한 장비와 복원 기록은 보존됩니다. 모퉁이를 돌아 시야를 끊으면 추격을 피하기 쉽습니다.",
+    "회수한 장비와 복원 기록은 보존됩니다. 손전등을 끄고 모퉁이를 돌아 시야를 끊은 뒤 은신처에 숨으세요.",
     null,
     [
       [
@@ -1081,18 +1140,11 @@ function enemyUpdate(dt, running) {
   const e = entity.position;
   const dist = Math.hypot(player.x - e.x, player.z - e.z);
   grace = Math.max(0, grace - dt);
-  const visible = dist <= 14 && clearLine(player, e);
-  const inSight = visible && dist <= (lightOn ? 10.7 : 6.1);
-  const hearRange = running ? 14 : 4.7;
-  const hear = moved > dt * 0.15 && dist < hearRange * (visible ? 1 : 0.55);
-  const tracking = !grace && (inSight || hear);
-  const playerCell = cellOf(player);
-  if (tracking) {
-    lastKnown = playerCell;
-    enemyPhase = 5.5;
-  } else {
-    enemyPhase = Math.max(0, enemyPhase - dt);
-  }
+  const visible=dist<=16&&clearLine(player,e),sense=perceive(dist,visible,running);
+  const inSight=sense.visual,hear=sense.heard,tracking=!grace&&(inSight||hear),playerCell=cellOf(player);
+  if(tracking){if(lastKnown!==playerCell||(inSight&&searchMode!=="chase"))nextPath=0;lastKnown=playerCell;enemyPhase=inSight?7:5.5;searchMode=inSight?"chase":"search";}
+  else{enemyPhase=Math.max(0,enemyPhase-dt);if(searchMode==="chase")searchMode="search";if(!enemyPhase)searchMode="patrol";}
+  if(hiding&&hideCompromised&&!grace){hideCheck=hidingCheck(true,dist,hideCheck,dt);if(hideCheck>=1.35){caught();return;}}else hideCheck=0;
 
   nextPath -= dt;
   const ec = cellOf(e);
@@ -1102,10 +1154,11 @@ function enemyUpdate(dt, running) {
     path = [];
     nextPath = 0;
   } else if (nextPath <= 0) {
-    nextPath = enemyPhase ? 0.65 : 2.5;
+    nextPath = enemyPhase ? 0.35 : 1.7;
     // Replan from the next corridor center. This keeps sharp turns out of walls.
     const anchor = path[0] ?? ec;
     let goal = lastKnown;
+    if(enemyPhase&&!tracking&&anchor===lastKnown&&!(hiding&&hideCompromised)){const nearby=neighbors(level.map,anchor).filter(k=>k!==level.start);goal=nearby[Math.floor(Math.random()*nearby.length)]??anchor;lastKnown=goal;}
     if (!enemyPhase) {
       const previousGoal = path.at(-1);
       if (previousGoal !== undefined && previousGoal !== anchor) {
@@ -1133,7 +1186,7 @@ function enemyUpdate(dt, running) {
     const x = destination.x - e.x;
     const z = destination.z - e.z;
     const d = Math.hypot(x, z);
-    const v = (enemyPhase ? 2.05 + ch * 0.07 : 0.92 + ch * 0.05) * dt;
+    const v = ((searchMode==="chase"?SPEED.chase:searchMode==="search"?SPEED.investigate:SPEED.patrol)+ch*.085)*dt;
     if (d <= v) {
       e.x = destination.x;
       e.z = destination.z;
@@ -1190,10 +1243,12 @@ function enemyUpdate(dt, running) {
   dangerOpacity = THREE.MathUtils.damp(dangerOpacity, threat * (closingIn ? 0.92 : 0.68), 6, dt);
   danger.style.opacity = dangerOpacity.toFixed(3);
   const strain = $("strain");
-  const status = threat > 0.68 ? "바로 근처" : closingIn ? "추격 중" : threat > 0.28 ? "기척 감지" : "안정";
+  const status=hiding?(hideCheck>0?"은신처 확인 중":threat>.28?"숨는 중 · 근처 기척":"은신 중"):searchMode==="chase"?"빛·시야 감지 / 추격":searchMode==="search"?"소리·흔적 수색":threat>.28?"기척 감지":"안정";
   if (strain.textContent !== status) strain.textContent = status;
   strain.dataset.threat = threat > 0.68 || closingIn ? "near" : threat > 0.28 ? "alert" : "safe";
-  if (!grace && proximity < 0.73 && exposed) caught();
+  const readout=hiding?(hideCheck>0?"발각 위험 · E로 탈출":"은신 중 · E로 나오기"):(sense.noise>9?"소음 높음":sense.noise>0?"소음 낮음":"정숙")+"  /  "+(lightOn?"손전등 노출":exposedToFixture()?"조명 아래":"어둠");
+  if($("stealthReadout").textContent!==readout)$("stealthReadout").textContent=readout;
+  if(!grace&&!hiding&&proximity<.82&&exposed)caught();
 }
 function pathsDistXZ(a, b) {
   return (
@@ -1218,8 +1273,8 @@ function update(dt) {
   const sprintHeld = keys.has("ShiftLeft") || keys.has("ShiftRight") || mobileRun;
   if (stamina <= 0.045) winded = true;
   else if (!sprintHeld || stamina >= 0.3) winded = false;
-  const running = sprintHeld && !winded && length > 0.1;
-  const scale = (running ? 3.22 : 1.88) * dt,
+  const running = !hiding && sprintHeld && !winded && length > 0.1;
+  const scale = (hiding ? 0 : running ? SPEED.sprint : SPEED.walk) * dt,
     oldX = player.x,
     oldZ = player.z;
   shift(
@@ -1227,6 +1282,7 @@ function update(dt) {
     (-Math.cos(yaw) * f - Math.sin(yaw) * r) * scale,
   );
   moved = Math.hypot(player.x - oldX, player.z - oldZ);
+  noiseTime=Math.max(0,noiseTime-dt);if(!noiseTime)noiseBurst=0;
   const exerting = running && moved > dt * 0.15;
   stamina = THREE.MathUtils.clamp(stamina + (exerting ? -0.14 : 0.11) * dt, 0, 1);
   renderStamina();
@@ -1241,12 +1297,13 @@ function update(dt) {
       Math.sin(elapsed * (running ? 12 : 8.3)) * Math.min(moved, 0.05) * 0.38),
     player.z,
   );
+  if(hiding){camera.position.set(hiding.root.position.x,hiding.eye,hiding.root.position.z);const target=Math.atan2(hiding.dx,hiding.dz);const angle=Math.atan2(Math.sin(yaw-target),Math.cos(yaw-target));yaw=target+THREE.MathUtils.clamp(angle,-.14,.14);pitch=THREE.MathUtils.clamp(pitch,-.10,.10);}
   camera.rotation.set(pitch, yaw, 0, "YXZ");
-  lamp.visible = lightOn;
-  beam.intensity = THREE.MathUtils.damp(beam.intensity, lightOn ? 2 : 0.45, 8, dt);
+  lamp.visible=lightOn&&!hiding;
+  beam.intensity=THREE.MathUtils.damp(beam.intensity,hiding?.10:lightOn?1.4:.24,8,dt);
   enemyUpdate(dt, running);
   if (state !== "play") return;
-  const event=dread.tick(dt,!grace && !enemyPhase && moved>dt*.3 && !solved && now>noticeUntil);
+  const event=dread.tick(dt,!hiding && !grace && !enemyPhase && moved>dt*.3 && !solved && now>noticeUntil);
   if(event?.started){
     sound.incident(event.kind,Math.random()<.5?-.83:.83);
     message(event.caption,event.duration);
@@ -1279,8 +1336,8 @@ function update(dt) {
       reach = d;
     }
   }
-  const caption = nearest
-    ? nearest.type === "item"
+  const caption=hiding?"은신처에서 나오기":nearest
+    ? nearest.type==="hide"?nearest.name+"에 숨기":nearest.type === "item"
       ? chapters[ch].item + " 회수"
       : nearest.type === "exit"
         ? (solved ? "출구 작동" : "잠긴 출구 확인")
@@ -1289,7 +1346,9 @@ function update(dt) {
   const prompt = $("prompt"), promptText = $("promptText"), act = $("act");
   if (prompt.hidden !== !caption) prompt.hidden = !caption;
   if (promptText.textContent !== caption) promptText.textContent = caption;
-  if (act.disabled !== !nearest) act.disabled = !nearest;
+  const canAct=!!hiding||!!nearest;
+  if(act.disabled===canAct)act.disabled=!canAct;
+  const actLabel=hiding?"나오기":nearest?.type==="hide"?"숨기":"조사";if(act.textContent!==actLabel)act.textContent=actLabel;
   const timer = $("timer"), timeText = clock(elapsed);
   if (timer.textContent !== timeText) timer.textContent = timeText;
   if (now > noticeUntil && $("toast").textContent) $("toast").textContent = "";

@@ -610,6 +610,7 @@ export function buildEnvironment(THREE, scene, map, tile, chapter) {
       [0, -1],
     ];
   let surfaces = 0;
+  const litCells=[];
   for (let row = 0; row < map.length; row++)
     for (let col = 0; col < map[row].length; col++) {
       if (!open(col, row)) continue;
@@ -671,6 +672,7 @@ export function buildEnvironment(THREE, scene, map, tile, chapter) {
             orient,
           );
         }
+        if(lit){litCells.push(row*map[0].length+col);add("plane",trans,x,.013,z,2.12,2.12,1,0,-Math.PI/2);}
         if (lit)
           add(
             "plane",
@@ -784,6 +786,7 @@ export function buildEnvironment(THREE, scene, map, tile, chapter) {
     }
   }
   root.userData.exposedWallFaces = surfaces;
+  root.userData.litCells=litCells;
   root.userData.dispose = () => {
     root.removeFromParent();
     for (const obj of root.children) if (obj.isInstancedMesh) obj.dispose();

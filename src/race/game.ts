@@ -47,6 +47,7 @@ export function openRace(onExit: () => void): void {
   /** 1대1 대전 진행 상태. null 이면 혼자 달리는 모드입니다. */
   let multi: { s: RoomSession; net: RaceMulti; myFin: number | null; gone: Set<string>; done: boolean } | null = null;
   let pvp: { s: PvpSession; net: RacePvp; myFin: number | null; oppFin: number | null; done: boolean } | null = null;
+  let steerPointer = -1, steerOrigin = 0, pointerSteer = 0;
   const keys = new Set<string>(), hold = { left: false, right: false, brake: false, drift: false, nitro: false, gas: false };
   const cache = new Map<string, string>(); const setText = (id: string, v: string): void => { if (cache.get(id) !== v) { cache.set(id, v); $(id).textContent = v; } };
 
@@ -61,7 +62,7 @@ export function openRace(onExit: () => void): void {
     const brake = k('ArrowDown') || k('KeyS') || hold.brake;
     // 터치 자동 가속은 출발 후에만. 카운트다운 중에는 가속 버튼을 눌러야 출발 부스트가 납니다.
     const gas = k('ArrowUp') || k('KeyW') || hold.gas || (touch && race.phase === 'racing' && !brake);
-    return { throttle: gas ? 1 : 0, brake: brake ? 1 : 0, steer: (right ? 1 : 0) - (left ? 1 : 0), drift: k('Space') || hold.drift, nitro: k('ShiftLeft') || k('ShiftRight') || hold.nitro };
+    return { throttle: gas ? 1 : 0, brake: brake ? 1 : 0, steer: left || right ? (right ? 1 : 0) - (left ? 1 : 0) : pointerSteer, drift: k('Space') || hold.drift, nitro: k('ShiftLeft') || k('ShiftRight') || hold.nitro };
   }
 
   function handle(ev: RaceEvent[]): void {
@@ -308,10 +309,10 @@ export function openRace(onExit: () => void): void {
   }
 
   const setPaused = (on: boolean): void => {
-    if (!view || setupUi || pvp || multi || race.phase === 'done' || finishedShown || closed) return; paused = on; modal.className = on ? 'rc-modal show' : 'rc-modal'; if (on) { audio.drive(0, 0, 0, false, false, false); modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">PAUSED</span><h2>일시정지</h2><div class="rc-actions"><button class="primary" data-act="resume">계속하기</button><button data-act="restart">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button></div></div>'; } else modal.innerHTML = '';
+    if (!view || setupUi || pvp || multi || race.phase === 'done' || finishedShown || closed) return; paused = on; if (on) clearDriveInput(); modal.className = on ? 'rc-modal show' : 'rc-modal'; if (on) { audio.drive(0, 0, 0, false, false, false); modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">PAUSED</span><h2>일시정지</h2><div class="rc-actions"><button class="primary" data-act="resume">계속하기</button><button data-act="restart">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button></div></div>'; } else modal.innerHTML = '';
   };
   const exit = (): void => {
-    if (closed) return; closed = true; cancelAnimationFrame(raf); removeEventListener('keydown', onKey); removeEventListener('keyup', onKeyUp); removeEventListener('resize', resize); removeEventListener('blur', onBlur);
+    if (closed) return; closed = true; cancelAnimationFrame(raf); removeEventListener('keydown', onKey); removeEventListener('keyup', onKeyUp); removeEventListener('resize', resize); removeEventListener('blur', onBlur); document.removeEventListener('visibilitychange', onHidden);
     leavePvp(); if (multi) { if (!multi.done) multi.net.bye(); endMulti(); } audio.dispose(); view?.dispose(); setupUi?.destroy(); root.remove(); onExit();
   };
   const act = (a: string | undefined): void => {
@@ -333,7 +334,15 @@ export function openRace(onExit: () => void): void {
     if (e.code === 'Enter' && finishedShown && !pvp && !multi) { restart(); return; } keys.add(e.code);
   };
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.code); };
-  const onBlur = (): void => { keys.clear(); for (const k of Object.keys(hold) as Array<keyof typeof hold>) hold[k] = false; if (race.phase === 'racing' && !setupUi) setPaused(true); };
+  const clearDriveInput = (): void => { keys.clear(); for (const k of Object.keys(hold) as Array<keyof typeof hold>) hold[k] = false; root.querySelectorAll('[data-hold].down').forEach(b => b.classList.remove('down')); steerPointer = -1; pointerSteer = 0; };
+  const onBlur = (): void => { clearDriveInput(); if (race.phase === 'racing' && !setupUi) setPaused(true); };
+  const onHidden = (): void => { if (document.hidden) onBlur(); };
+  document.addEventListener('visibilitychange', onHidden);
+  const steerCanvas = root.querySelector<HTMLCanvasElement>('.rc-canvas')!;
+  steerCanvas.addEventListener('pointerdown', e => { if (e.pointerType !== 'mouse' || e.button !== 0 || paused || setupUi || race.phase !== 'racing') return; steerPointer = e.pointerId; steerOrigin = e.clientX; pointerSteer = 0; steerCanvas.setPointerCapture(e.pointerId); });
+  steerCanvas.addEventListener('pointermove', e => { if (e.pointerId === steerPointer) { if (!(e.buttons & 1)) { steerPointer = -1; pointerSteer = 0; return; } pointerSteer = Math.max(-1, Math.min(1, (e.clientX - steerOrigin) / 100)); } });
+  const endSteer = (e: PointerEvent): void => { if (e.pointerId === steerPointer) { steerPointer = -1; pointerSteer = 0; } };
+  for (const event of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) steerCanvas.addEventListener(event, endSteer);
   addEventListener('keydown', onKey); addEventListener('keyup', onKeyUp); addEventListener('resize', resize); addEventListener('blur', onBlur);
   root.addEventListener('click', e => { const b = (e.target as HTMLElement).closest<HTMLElement>('[data-act]'); if (b) act(b.dataset.act); });
   root.querySelectorAll<HTMLElement>('[data-hold]').forEach(b => {
@@ -345,7 +354,7 @@ export function openRace(onExit: () => void): void {
       try { b.setPointerCapture(e.pointerId); } catch { /* 캡처를 거절해도 누르고 있는 동안은 조향이 유지됩니다. */ }
       hold[k] = true; b.classList.add('down');
     });
-    b.addEventListener('pointerup', release); b.addEventListener('pointercancel', release);
+    b.addEventListener('pointerup', release); b.addEventListener('pointercancel', release); b.addEventListener('lostpointercapture', release);
     b.addEventListener('pointerleave', e => { if (!b.hasPointerCapture(e.pointerId)) release(); });
     b.addEventListener('contextmenu', e => e.preventDefault());
   });

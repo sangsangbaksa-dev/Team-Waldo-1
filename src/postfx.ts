@@ -48,10 +48,10 @@ export class PostFx {
   }
   setSize(w: number, h: number): void { w = Math.max(1, w); h = Math.max(1, h); const pr = this.renderer.getPixelRatio(); if (w === this.sw && h === this.sh && pr === this.pr) return; if (pr !== this.pr) this.composer.setPixelRatio(pr); this.composer.setSize(w, h); this.sw = w; this.sh = h; this.pr = pr; }
   /** 속도 블러 세기(0 이면 패스를 끕니다). 0.02~0.06 이 적당합니다. */
-  setSpeedBlur(v: number): void { this.blur.enabled = v > 0.004; this.blur.uniforms.amt.value = v; }
+  setSpeedBlur(v: number): void { const amount = Number.isFinite(v) ? Math.max(0, Math.min(0.15, v)) : 0; this.blur.enabled = amount > 0.004; this.blur.uniforms.amt.value = amount; }
   setCamera(camera: THREE.Camera): void { (this.composer.passes[0] as RenderPass).camera = camera; }
   setScene(scene: THREE.Scene): void { (this.composer.passes[0] as RenderPass).scene = scene; }
-  set(o: PostOptions): void { if (o.strength !== undefined) this.bloom.strength = o.strength; if (o.threshold !== undefined) this.bloom.threshold = o.threshold; if (o.vignette !== undefined) this.grade.uniforms.vig.value = o.vignette; }
+  set(o: PostOptions): void { if (o.strength !== undefined) this.bloom.strength = o.strength; if (o.threshold !== undefined) this.bloom.threshold = o.threshold; if (o.radius !== undefined) this.bloom.radius = o.radius; if (o.vignette !== undefined) this.grade.uniforms.vig.value = o.vignette; if (o.saturation !== undefined) this.grade.uniforms.sat.value = o.saturation; if (o.contrast !== undefined) this.grade.uniforms.con.value = o.contrast; }
   render(dt: number): void { const sz = this.renderer.getSize(_v); if (sz.x !== this.sw || sz.y !== this.sh || this.renderer.getPixelRatio() !== this.pr) this.setSize(sz.x, sz.y); this.composer.render(dt); }
   dispose(): void { for (const pass of this.composer.passes) pass.dispose(); this.composer.dispose(); }
 }

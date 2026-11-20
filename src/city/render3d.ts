@@ -32,7 +32,7 @@ class Points {
   parts: P[] = []; geo = new THREE.BufferGeometry(); pos: Float32Array; col: Float32Array; mesh: THREE.Points;
   constructor(public max: number, size: number, additive: boolean, tex: THREE.Texture, public fade: boolean) {
     this.pos = new Float32Array(max * 3); this.col = new Float32Array(max * 4);
-    this.geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3)); this.geo.setAttribute('color', new THREE.BufferAttribute(this.col, 4));
+    this.geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage)); this.geo.setAttribute('color', new THREE.BufferAttribute(this.col, 4).setUsage(THREE.DynamicDrawUsage)); this.geo.setDrawRange(0, 0);
     this.mesh = new THREE.Points(this.geo, new THREE.PointsMaterial({ size, map: tex, vertexColors: true, transparent: true, depthWrite: false, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending, sizeAttenuation: true }));
     this.mesh.frustumCulled = false;
   }
@@ -43,9 +43,9 @@ class Points {
     let n = 0;
     for (const p of this.parts) {
       p.life -= dt; if (p.life <= 0) continue; p.vy -= p.grav * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; if (p.y < 1) { p.y = 1; p.vy *= -0.3; p.vx *= 0.6; p.vz *= 0.6; }
-      const k = p.life / p.max; this.pos[n * 3] = p.x; this.pos[n * 3 + 1] = p.y; this.pos[n * 3 + 2] = p.z; this.col[n * 4] = p.r; this.col[n * 4 + 1] = p.g; this.col[n * 4 + 2] = p.b; this.col[n * 4 + 3] = this.fade ? k * 0.7 : Math.min(1, k * 2); n++;
+      this.parts[n] = p; const k = p.life / p.max; this.pos[n * 3] = p.x; this.pos[n * 3 + 1] = p.y; this.pos[n * 3 + 2] = p.z; this.col[n * 4] = p.r; this.col[n * 4 + 1] = p.g; this.col[n * 4 + 2] = p.b; this.col[n * 4 + 3] = this.fade ? k * 0.7 : Math.min(1, k * 2); n++;
     }
-    this.parts = this.parts.filter(p => p.life > 0); this.geo.setDrawRange(0, n); this.geo.attributes.position.needsUpdate = true; this.geo.attributes.color.needsUpdate = true;
+    this.parts.length = n; this.geo.setDrawRange(0, n); this.geo.attributes.position.needsUpdate = true; this.geo.attributes.color.needsUpdate = true;
   }
 }
 
@@ -56,10 +56,11 @@ export class Renderer3D {
   atm: Atmosphere; private flash = 0; private moodT = 0; private skyDome!: SkyDome; private skyline!: Skyline; private wetStreet!: WetStreet; private streetFx!: StreetFx; private bfx!: BuildingFx;
   private rain: THREE.LineSegments | null = null; private rainPos = new Float32Array(0); private rainSeed = new Float32Array(0);
   yaw = 0; pitch = -0.05; mode: ViewMode = 'fp'; w = 0; h = 0; shake = 0; t = 0; reduced = false; recoil = 0; flashT = 0; camPos = new THREE.Vector3(); chaseYaw = 0; private focus = new THREE.Vector2(SIZE / 2, SIZE / 2); private deadT = 0;
-  private projected = new THREE.Vector3(); private dummy = new THREE.Object3D(); private color = new THREE.Color();
+  private projected = new THREE.Vector3(); private chaseTarget = new THREE.Vector3(); private dummy = new THREE.Object3D(); private color = new THREE.Color();
   private bodies: THREE.InstancedMesh; private heads: THREE.InstancedMesh; private guns: THREE.InstancedMesh; private hulls: THREE.InstancedMesh; private turrets: THREE.InstancedMesh; private barrels: THREE.InstancedMesh;
   private crystals: THREE.InstancedMesh; private tracers: THREE.InstancedMesh; private rings: THREE.InstancedMesh; private ringList: { x: number; y: number; r0: number; r1: number; life: number; max: number; color: number }[] = [];
   private sparks: Points; private fire: Points; private smoke: Points; private ml: ModelLayer | null = null;
+  private seenStructures = new Set<number>(); private seenVehicles = new Set<number>(); private seenLoot = new Set<number>();
   private structs = new Map<number, THREE.Group>(); private vehs = new Map<number, THREE.Group>(); private loots = new Map<number, THREE.Group>(); private biz = new Map<number, { g: THREE.Group; sig: string; label: THREE.Sprite; icon: THREE.Object3D | null }>();
   private booms: { m: THREE.Mesh; life: number; r: number }[] = []; private light: THREE.PointLight; private lightT = 0;
   private zoneWall: THREE.Mesh; private zoneTex: THREE.Texture; private nextRing: THREE.Mesh; private ghost: THREE.Mesh; private sun: THREE.DirectionalLight; private gun = new THREE.Group(); private muzzle: THREE.Mesh; private planes: THREE.Group[] = [];
@@ -337,8 +338,9 @@ export class Renderer3D {
     const cp = this.camera.position, fall = EYE_HEIGHT * (24 + a.wind * 10) * dt, len = EYE_HEIGHT * (0.7 + a.wind * 0.5), slant = 0.12 + a.wind * 0.3;
     for (let i = 0; i < n; i++) {
       let y = this.rainSeed[i * 3 + 1] - fall; if (y < 0) y += H; this.rainSeed[i * 3 + 1] = y;
-      const x = cp.x + ((this.rainSeed[i * 3] - cp.x + R * 3) % (2 * R)) - R, z = cp.z + ((this.rainSeed[i * 3 + 2] - cp.z + R * 3) % (2 * R)) - R;
-      this.rainPos.set([x, y, z, x - len * slant, y + len, z - len * slant * 0.4], i * 6);
+      const wrap = (v: number): number => ((v % (2 * R)) + 2 * R) % (2 * R) - R;
+      const x = cp.x + wrap(this.rainSeed[i * 3] - cp.x), z = cp.z + wrap(this.rainSeed[i * 3 + 2] - cp.z);
+      const j = i * 6; this.rainPos[j] = x; this.rainPos[j + 1] = y; this.rainPos[j + 2] = z; this.rainPos[j + 3] = x - len * slant; this.rainPos[j + 4] = y + len; this.rainPos[j + 5] = z - len * slant * 0.4;
     }
     (this.rain.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
   }
@@ -359,7 +361,7 @@ export class Renderer3D {
       const dist = veh ? (veh.kind === 'tank' ? 250 : 200) : 150, hgt = veh ? 95 : 56, pivotY = veh ? 30 : 50; let k = 1;
       for (let s = 0.15; s <= 1; s += 0.085) { if (solidAt(w.map, fx - cy * dist * s, fz - sy * dist * s)) { k = Math.max(0.3, s - 0.12); break; } }
       const tx = fx - cy * dist * k * cp, ty = pivotY + hgt * k + (1 - k) * 130 - spt * dist * k * 0.9, tz = fz - sy * dist * k * cp;
-      this.camPos.lerp(new THREE.Vector3(tx, Math.max(12, ty), tz), Math.min(1, dt * 14)); this.camera.position.copy(this.camPos); this.camera.lookAt(fx + cy * 70, pivotY + 4 + spt * 140, fz + sy * 70);
+      this.camPos.lerp(this.chaseTarget.set(tx, Math.max(12, ty), tz), Math.min(1, dt * 14)); this.camera.position.copy(this.camPos); this.camera.lookAt(fx + cy * 70, pivotY + 4 + spt * 140, fz + sy * 70);
     }
     { const m = 14, cp2 = this.camera.position; cp2.x = Math.max(m, Math.min(SIZE - m, cp2.x)); cp2.z = Math.max(m, Math.min(SIZE - m, cp2.z)); this.camPos.x = cp2.x; this.camPos.z = cp2.z; }
     if (this.shake > 0 && !this.reduced) { this.camera.position.x += (Math.random() - 0.5) * this.shake; this.camera.position.y += (Math.random() - 0.5) * this.shake; }
@@ -392,9 +394,9 @@ export class Renderer3D {
     // 탄환
     let nt = 0; for (const b of w.bullets) { if (nt >= 500) break; const wd = WEAPONS[b.w], a = Math.atan2(b.vy, b.vx), len = wd.splash ? 12 : wd.pierce ? 150 : 46, th = wd.splash ? 5 : wd.pierce ? 3 : b.boss ? 1.5 : 1.1; d.rotation.set(0, -a, 0); d.position.set(b.x - Math.cos(a) * len / 2, 30, b.y - Math.sin(a) * len / 2); d.scale.set(len, th, th); d.updateMatrix(); this.tracers.setMatrixAt(nt, d.matrix); this.tracers.setColorAt(nt, col.set(wd.color)); nt++; if (wd.splash && Math.random() < 0.6) this.smoke.add(b.x, 30, b.y, 0, 8, 0, 0.5, 0xcfcfcf); } upd(this.tracers, nt);
     // 동적 오브젝트 동기화
-    const seenS = new Set<number>(); for (const s of w.structures) if (s.alive) { seenS.add(s.id); this.syncStruct(s); } for (const [id, g] of this.structs) if (!seenS.has(id)) { this.scene.remove(g); this.structs.delete(id); }
-    const seenV = new Set<number>(); for (const v of w.vehicles) if (v.alive) { seenV.add(v.id); this.syncVehicle(v); } for (const [id, g] of this.vehs) if (!seenV.has(id)) { this.scene.remove(g); this.vehs.delete(id); }
-    const seenL = new Set<number>(); for (const l of w.loot) if (l.alive) { seenL.add(l.id); this.syncLoot(l); } for (const [id, g] of this.loots) if (!seenL.has(id)) { this.scene.remove(g); this.loots.delete(id); }
+    const seenS = this.seenStructures; seenS.clear(); for (const s of w.structures) if (s.alive) { seenS.add(s.id); this.syncStruct(s); } for (const [id, g] of this.structs) if (!seenS.has(id)) { this.scene.remove(g); this.structs.delete(id); }
+    const seenV = this.seenVehicles; seenV.clear(); for (const v of w.vehicles) if (v.alive) { seenV.add(v.id); this.syncVehicle(v); } for (const [id, g] of this.vehs) if (!seenV.has(id)) { this.scene.remove(g); this.vehs.delete(id); }
+    const seenL = this.seenLoot; seenL.clear(); for (const l of w.loot) if (l.alive) { seenL.add(l.id); this.syncLoot(l); } for (const [id, g] of this.loots) if (!seenL.has(id)) { this.scene.remove(g); this.loots.delete(id); }
     for (const z of w.businesses) this.syncBiz(z);
     // 수송기
     while (this.planes.length < w.planes.length) { const pm = this.ml?.makePlane(); if (pm) { const pg = new THREE.Group(); pg.add(pm); this.scene.add(pg); this.planes.push(pg); continue; } const g = new THREE.Group(), m = this.mat(0xcfd6e0), a = new THREE.Mesh(this.box, m), b = new THREE.Mesh(this.box, m), c = new THREE.Mesh(this.box, m); a.scale.set(150, 22, 24); b.scale.set(34, 5, 190); c.scale.set(18, 30, 5); c.position.set(-64, 22, 0); g.add(a, b, c); this.scene.add(g); this.planes.push(g); }

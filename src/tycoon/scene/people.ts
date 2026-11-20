@@ -7,7 +7,9 @@ import { HALF, PITCH, WALK_EDGE, WORLD_HALF, hash01 } from './layout';
 import type { Quality } from './city';
 
 interface Node { i: number; j: number; sx: number; sz: number }
-const nodePos = (n: Node): [number, number] => [n.i * PITCH + n.sx * WALK_EDGE, n.j * PITCH + n.sz * WALK_EDGE];
+const nodeX = (n: Node): number => n.i * PITCH + n.sx * WALK_EDGE;
+const nodeZ = (n: Node): number => n.j * PITCH + n.sz * WALK_EDGE;
+const nodePos = (n: Node): [number, number] => [nodeX(n), nodeZ(n)];
 const inGrid = (i: number, j: number): boolean => Math.abs(i) <= HALF && Math.abs(j) <= HALF;
 /** 모서리 노드의 이웃: 같은 구획의 인접 모서리 둘 + 길 건너 맞은편 둘. */
 function neighbors(n: Node): Node[] {
@@ -50,7 +52,7 @@ export class Crowd {
         let tries = 0, node: Node = w.from; do { node = { i: Math.floor(Math.random() * 7) - 3, j: Math.floor(Math.random() * 7) - 3, sx: Math.random() < 0.5 ? -1 : 1, sz: Math.random() < 0.5 ? -1 : 1 }; } while (!unlockedAt(node.i, node.j) && ++tries < 30);
         const [x, z] = nodePos(node); if (Math.hypot(x - cam.x, z - cam.z) < 18) continue; w.from = w.to = node; w.prev = null; w.x = x; w.z = z; w.active = true; this.pickNext(w);
       }
-      const [tx0, tz0] = nodePos(w.to), [fx0, fz0] = nodePos(w.from), dx0 = tx0 - fx0, dz0 = tz0 - fz0, l0 = Math.hypot(dx0, dz0) || 1;
+      const tx0 = nodeX(w.to), tz0 = nodeZ(w.to), fx0 = nodeX(w.from), fz0 = nodeZ(w.from), dx0 = tx0 - fx0, dz0 = tz0 - fz0, l0 = Math.hypot(dx0, dz0) || 1;
       const tx = tx0 + (-dz0 / l0) * w.lane, tz = tz0 + (dx0 / l0) * w.lane, dx = tx - w.x, dz = tz - w.z, d = Math.hypot(dx, dz);
       if (w.wait > 0) { w.wait -= dt; w.rig.state.speed = 0; }
       else if (d < 0.6) { w.wait = hash01(w.x, w.z) < 0.2 ? 1 + Math.random() * 3 : 0; this.pickNext(w); if (!unlockedAt(w.to.i, w.to.j) && Math.random() < 0.6) { const back = w.from; w.from = w.to; w.to = back; } }

@@ -41,6 +41,7 @@ export class ActorView {
   private readonly livePeds = new Set<number>();
   private readonly liveCars = new Set<number>();
   private readonly liveLoot = new Set<number>();
+  private readonly liveRocketIds = new Set<number>();
   private readonly rockets = new Map<number, THREE.Group>();
   private readonly beacons: Beacon[] = [];
   private readonly fx: Fx[] = [];
@@ -477,7 +478,7 @@ export class ActorView {
     for (; index < this.beacons.length; index++) this.beacons[index].root.visible = false;
   }
   private projectiles(dt: number): void {
-    const live = new Set<number>();
+    const live = this.liveRocketIds; live.clear();
     for (const p of this.sim.projectiles) {
       live.add(p.id); let g = this.rockets.get(p.id); const visible = Math.hypot(p.x - this.cameraPos.x, p.z - this.cameraPos.z) < 320; if (!g && !visible) continue;
       if (!g && p.kind === 'grenade') { g = new THREE.Group(); this.mesh(g, this.ball, 0x3d4a35, 0, 0, 0, 0.11, 0.14, 0.11); this.mesh(g, this.box, 0x8a8f86, 0, 0.14, 0, 0.05, 0.05, 0.05); this.root.add(g); this.rockets.set(p.id, g); g.userData.trail = 0; }

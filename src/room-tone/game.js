@@ -657,11 +657,13 @@ function refreshGuide() {
 function drawGuide() {
   if (!guidance) return;
   const arrow = $("guideArrow");
-  arrow.hidden = guidePath.length === 0;
+  const hidden = guidePath.length === 0;
+  if (arrow.hidden !== hidden) arrow.hidden = hidden;
   if (!guidePath.length) return;
   const next = xy(guidePath[0]);
   const angle = Math.atan2(next.x - player.x, -(next.z - player.z));
-  arrow.style.transform = "rotate(" + (angle + yaw) + "rad)";
+  const transform = "rotate(" + (angle + yaw) + "rad)";
+  if (arrow.style.transform !== transform) arrow.style.transform = transform;
 
 }
 function toggleGuide() {

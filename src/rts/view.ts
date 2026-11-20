@@ -9,6 +9,7 @@ import { Scenery, buildLanes, bushSpots, paintGround } from './scenery';
 import type { Building, ResNode, RtsSim, SimEvent, Unit } from './sim';
 import type { Marker } from './campaign';
 import { FOG_HIDDEN, FOG_SEEN, type Vision } from './vision';
+import { updateFogAlpha } from './fog-alpha';
 
 interface UVis { kind: 'unit'; id: number; rig: UnitRig; ring: THREE.Mesh; px: number; py: number; cx: number; cy: number; yaw: number; moved: number; shake: number; aura: THREE.Mesh | null }
 interface BVis { kind: 'building'; id: number; rig: BuildRig; frame: THREE.Group; scaff: THREE.Group; done: boolean; wasDone: boolean; rubble: number }
@@ -162,7 +163,7 @@ export class RtsView {
   // ---------- 전장의 안개 ----------
   setVision(v: Vision | null): void {
     this.vision = v;
-    if (this.fog) { this.scene.remove(this.fog.mesh); this.fog.tex.dispose(); this.fog = null; }
+    if (this.fog) { this.scene.remove(this.fog.mesh); this.fog.mesh.geometry.dispose(); (this.fog.mesh.material as THREE.Material).dispose(); this.fog.tex.dispose(); this.fog = null; }
     if (!v) return;
     const n = this.sim.map.size, data = new Uint8Array(n * n * 4), cur = new Float32Array(n * n).fill(FOG_A_HIDDEN);
     for (let i = 0; i < n * n; i++) { data[i * 4] = 6; data[i * 4 + 1] = 10; data[i * 4 + 2] = 18; data[i * 4 + 3] = FOG_A_HIDDEN; }
@@ -173,11 +174,11 @@ export class RtsView {
   /** 안개가 서서히 걷히고 덮이도록 칸마다 투명도를 목표값으로 이동합니다. */
   private updateFog(dt: number): void {
     const f = this.fog, v = this.vision; if (!f || !v) return;
-    const n = this.sim.map.size, st = v.state, k = Math.min(1, dt * 6);
+    const n = this.sim.map.size, st = v.state, k = Math.min(1, dt * 6); let dirty = false;
     for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-      const i = y * n + x, s = st[i], target = s === FOG_HIDDEN ? FOG_A_HIDDEN : s === FOG_SEEN ? FOG_A_SEEN : 0; let c = f.cur[i]; c += (target - c) * k; f.cur[i] = c; f.data[((n - 1 - y) * n + x) * 4 + 3] = Math.round(c);
+      const i = y * n + x, s = st[i], target = s === FOG_HIDDEN ? FOG_A_HIDDEN : s === FOG_SEEN ? FOG_A_SEEN : 0; if (updateFogAlpha(f.cur, f.data, i, ((n - 1 - y) * n + x) * 4 + 3, target, k)) dirty = true;
     }
-    f.tex.needsUpdate = true;
+    if (dirty) f.tex.needsUpdate = true;
   }
   /** 카메라에서 본 땅과 같은 자리에 겹쳐 보이도록, 높이 FOG_Y 의 안개 판을 카메라 쪽으로 줄여 붙입니다. */
   private placeFog(): void {

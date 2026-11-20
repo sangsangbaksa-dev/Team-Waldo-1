@@ -13,7 +13,7 @@ export class GhostRecorder {
   data: number[] = [];
 
   tick(clock: number, c: GhostPose): void {
-    if (clock < count(this) * GHOST_DT) return;
+    if (!Number.isFinite(clock) || ![c.x,c.z,c.h,c.total].every(Number.isFinite) || clock < count(this) * GHOST_DT || this.data.length >= 199_996) return;
     this.data.push(r2(c.x), r2(c.z), r2(c.h), r2(c.total));
   }
 
@@ -21,7 +21,7 @@ export class GhostRecorder {
     const data = this.data.slice();
     if (!c) return { time, laps, data };
     const sample = [r2(c.x), r2(c.z), r2(c.h), r2(c.total)];
-    if (time === (count(this) - 1) * GHOST_DT) data.splice(-STRIDE, STRIDE, ...sample);
+    if (Math.abs(time - (count(this) - 1) * GHOST_DT) < 1e-8 && data.length >= STRIDE) data.splice(-STRIDE, STRIDE, ...sample);
     else data.push(...sample);
     return { time, laps, data, finalSample: true };
   }
@@ -34,7 +34,7 @@ const angleLerp = (a: number, b: number, k: number): number => { let d = (b - a)
 /** 출발 후 clock 초 시점의 고스트 위치. 기록이 끝나면 null(결승선을 지난 뒤). */
 export function ghostAt(g: Ghost, clock: number): GhostPose | null {
   const n = count(g);
-  if (n === 0 || clock > g.time) return null;
+  if (n === 0 || !Number.isFinite(clock) || clock > g.time) return null;
   if (clock <= 0) return pose(g, 0);
   if (clock >= sampleTime(g, n - 1)) return pose(g, n - 1);
   const i = Math.min(n - 2, Math.floor(clock / GHOST_DT));
@@ -61,7 +61,7 @@ function furthestProgress(g: Ghost): number[] {
 
 /** 고스트가 누적 진행 total 에 도달한 시각(초). 아직 기록에 없으면 null. */
 export function ghostTimeAt(g: Ghost, total: number): number | null {
-  const n = count(g); if (n < 2) return null;
+  const n = count(g); if (n < 2 || !Number.isFinite(total)) return null;
   if (total <= g.data[3]) return 0;
   const progress = furthestProgress(g);
   let lo = 0, hi = n - 1; if (progress[hi] < total) return null;
@@ -71,7 +71,7 @@ export function ghostTimeAt(g: Ghost, total: number): number | null {
   return start + (sampleTime(g, hi) - start) * k;
 }
 /** 내 현재 시각과 고스트의 차이(초). 음수면 내가 앞섭니다. */
-export const ghostDelta = (g: Ghost, total: number, clock: number): number | null => { const t = ghostTimeAt(g, total); return t === null ? null : clock - t; };
+export const ghostDelta = (g: Ghost, total: number, clock: number): number | null => { const t = ghostTimeAt(g, total); return t === null || !Number.isFinite(clock) ? null : clock - t; };
 
 export const ghostKey = (map: string, laps: number, car: string): string => `waldo.race.ghost.v1:${map}:${laps}:${car}`;
 /** 저장된 값이 깨져 있으면 null. */

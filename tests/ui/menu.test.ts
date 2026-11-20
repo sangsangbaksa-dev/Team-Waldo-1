@@ -34,10 +34,10 @@ beforeEach(() => {
 });
 
 describe('메인 페이지', () => {
-  it('LAST CITY, SPEED RUSH, FRONTLINE, ZERO ZONE, OUTLAW CITY, HUSTLE를 보여 준다', async () => {
+  it('LAST CITY, SPEED RUSH, FRONTLINE, ZERO ZONE, OUTLAW CITY, HUSTLE, ROOM TONE을 보여 준다', async () => {
     await loadMenu();
     const tiles = [...document.querySelectorAll<HTMLButtonElement>('.tile')];
-    expect(tiles.map(t => t.dataset.game)).toEqual(['city', 'race', 'rts', 'shooter', 'outlaw', 'tycoon']);
+    expect(tiles.map(t => t.dataset.game)).toEqual(['city', 'race', 'rts', 'shooter', 'outlaw', 'tycoon', 'room-tone']);
     expect(document.body.textContent).not.toMatch(/왕국 전쟁|KINGDOMS|군단전/);
   });
 
@@ -72,24 +72,24 @@ describe('메인 페이지', () => {
     expect(games.openRace).not.toHaveBeenCalled();
   });
 
-  it('OUTLAW CITY를 실행하고 나오면 여섯 게임이 다시 나타난다', async () => {
+  it('OUTLAW CITY를 실행하고 나오면 일곱 게임이 다시 나타난다', async () => {
     await loadMenu();
     button('#start-outlaw').click();
     await vi.waitFor(() => expect(games.openOutlaw).toHaveBeenCalledTimes(1));
     expect(document.querySelector<HTMLElement>('#game')!.hidden).toBe(true);
     games.openOutlaw.mock.calls[0]![0]();
     expect(document.querySelector<HTMLElement>('#game')!.hidden).toBe(false);
-    expect(document.querySelectorAll('.tile')).toHaveLength(6);
+    expect(document.querySelectorAll('.tile')).toHaveLength(7);
   });
 
-  it('HUSTLE을 실행하고 나오면 여섯 게임이 다시 나타난다', async () => {
+  it('HUSTLE을 실행하고 나오면 일곱 게임이 다시 나타난다', async () => {
     await loadMenu();
     button('#start-tycoon').click();
     await vi.waitFor(() => expect(games.openTycoon).toHaveBeenCalledTimes(1));
     expect(document.querySelector<HTMLElement>('#game')!.hidden).toBe(true);
     games.openTycoon.mock.calls[0]![0]();
     expect(document.querySelector<HTMLElement>('#game')!.hidden).toBe(false);
-    expect(document.querySelectorAll('.tile')).toHaveLength(6);
+    expect(document.querySelectorAll('.tile')).toHaveLength(7);
   });
 
   it('저장된 기록이 있으면 타일에 표시한다', async () => {

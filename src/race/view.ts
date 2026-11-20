@@ -13,6 +13,7 @@ import { type Track } from './track';
 import { type Theme } from './maps';
 import { buildOutposts, type Outpost } from './outpost';
 import { isolateRearLamps, makeFallbackCar } from './visual-car';
+import { RaceRain } from './weather';
 
 const CAR_LEN = 4.7;
 const rnd = (a: number, b: number): number => a + Math.random() * (b - a);
@@ -114,7 +115,7 @@ interface CarVis { racer: Racer; group: THREE.Group; flames: THREE.Mesh[]; shado
 export class RaceView {
   post: PostFx | null = null; readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera = new THREE.PerspectiveCamera(64, 1, 0.4, 3200);
   private crew: CharacterRig[] = []; private cars: CarVis[] = []; private ground!: THREE.Mesh; private pads: Array<{ tex: THREE.CanvasTexture }> = [];
-  private rainFx = new Particles(1800, 0.32, THREE.NormalBlending, 0.55); private sparks = new Particles(420, 0.34, THREE.AdditiveBlending); private smoke = new Particles(420, 1.1, THREE.NormalBlending, 0.2); private skids = new SkidMarks(1400); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
+  private rainFx: RaceRain | null = null; private sparks = new Particles(420, 0.34, THREE.AdditiveBlending); private smoke = new Particles(420, 1.1, THREE.NormalBlending, 0.2); private skids = new SkidMarks(1400); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
   private camH = 0; private camInit = false; private camAnchor: ChaseAnchor = { x: 0, y: 0, z: 0, ready: false }; private fov = 64; private shake = 0; private punch = 0; private time = 0; private sun: THREE.DirectionalLight;
   private chaseLift = 0; private viewH = 1; private startLamps: THREE.Mesh[] = [];
   private disposables: Array<{ dispose(): void }> = []; private outposts: Outpost | null = null;
@@ -125,7 +126,7 @@ export class RaceView {
     this.scene.fog = new THREE.Fog(theme.fog.color, theme.fog.near, theme.fog.far); this.sun = new THREE.DirectionalLight(theme.light.sun, theme.light.sunPower);
     this.buildSky(); if (quality !== 'low') this.buildCarEnv(); this.buildGround(); this.buildRoad(); this.buildProps(quality);
     this.scene.add(new THREE.HemisphereLight(theme.light.sky, theme.light.ground, theme.light.hemi)); this.sun.position.set(-40, 60, 90); this.scene.add(this.sun, this.sun.target);
-    this.scene.add(this.skids.mesh, this.sparks.points, this.smoke.points); if (theme.rain) this.scene.add(this.rainFx.points);
+    this.scene.add(this.skids.mesh, this.sparks.points, this.smoke.points); if (theme.rain) { this.rainFx = new RaceRain(quality === 'high' ? 1100 : quality === 'standard' ? 560 : 220); this.scene.add(this.rainFx.mesh); }
     const n = 220; this.streakPos = new Float32Array(n * 6); this.streakSeed = new Float32Array(n * 3);
     const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(this.streakPos, 3));
     this.streak = new THREE.LineSegments(sg, new THREE.LineBasicMaterial({ color: 0xcfe9ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })); this.streak.frustumCulled = false; this.scene.add(this.streak);
@@ -550,11 +551,7 @@ export class RaceView {
       if (v.racer.player && wallHit > 0) for (let k = 0; k < 18; k++) this.sparks.emit(c.x, c.y + 0.5, c.z, rnd(-9, 9), rnd(1, 7), rnd(-9, 9), 0.5, 1, 0.8, 0.35);
     }
     this.skids.flush(); this.sparks.update(dt, 14); this.smoke.update(dt, -1.5);
-    if (this.theme.rain) {
-      const cp = this.camera.position, n = Math.round(34 * this.theme.rain * Math.min(2, dt * 60));
-      for (let i = 0; i < n; i++) this.rainFx.emit(cp.x + rnd(-38, 38), cp.y + rnd(-1, 20), cp.z + rnd(-38, 38), rnd(-3, 3), rnd(-44, -36), rnd(-3, 3), 0.45, 0.62, 0.74, 0.88);
-      this.rainFx.update(dt, 0);
-    }
+
     // 카메라: 속도에 비례해 시야각만 넓히고, 위치 보간에는 흔들림을 넣지 않습니다.
     const hd = p.h; if (!this.camInit) { this.camH = hd; this.camInit = true; }
     this.camH += wrapAngle(hd - this.camH) * Math.min(1, dt * (p.drifting ? 3.2 : 7));
@@ -564,6 +561,7 @@ export class RaceView {
     stepChaseAnchor(this.camAnchor, cx, cy, cz, dt, sf, bst ? BOOST_LAG : 1);
     const sh = chaseShake(sf, bst, this.shake), tt = this.time;
     this.camera.position.set(this.camAnchor.x + Math.sin(tt * 53) * sh, this.camAnchor.y + Math.sin(tt * 61 + 1) * sh, this.camAnchor.z + Math.sin(tt * 47 + 2) * sh);
+    this.rainFx?.update(dt,this.camera.position,this.theme.rain ?? 0);
     const lookI = t.n > 0 ? ((p.idx % t.n) + t.n) % t.n : 0;
     this.camera.lookAt(p.x + Math.cos(this.camH) * ahead, p.y + 1.15 + lift * 0.35 + (t.pitch[lookI] || 0) * 8, p.z + Math.sin(this.camH) * ahead);
     const grind = Math.abs(p.lat) > t.halfWidth - 1.65 && speed > 22 ? 1 : 0, rum = chaseRumble(sf, bst, grind);
@@ -611,6 +609,6 @@ export class RaceView {
       for (const mat of mats) { once(mat); const maps = mat as THREE.MeshBasicMaterial; once(maps.map); if (maps.alphaMap) once(maps.alphaMap); }
     });
     for (const d of this.disposables) once(d);
-    once(this.rainFx.points.geometry); once(this.rainFx.points.material as THREE.Material); this.carEnvTarget?.dispose(); this.post?.dispose(); this.renderer.dispose();
+    this.carEnvTarget?.dispose(); this.post?.dispose(); this.renderer.dispose();
   }
 }

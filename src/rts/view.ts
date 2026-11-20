@@ -1,4 +1,5 @@
 import { renderPixelRatio } from '../shared/render-budget';
+import { concreteTexture } from '../shooter/textures';
 // FRONTLINE — 3D 화면: 지형, 유닛·건물 표시, 이펙트, 카메라와 화면 좌표 변환. 시뮬레이션은 읽기만 합니다.
 import * as THREE from 'three';
 import { makePost, type PostFx } from '../postfx';
@@ -65,12 +66,17 @@ export class RtsView {
     g.strokeStyle = 'rgba(120,92,56,.22)'; g.lineWidth = 0.09 * k; for (let i = 0; i < 380; i++) { const x = rnd() * tex.width, y = rnd() * tex.height, l = (2 + rnd() * 5) * k; g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + l * 0.5, y - l * 0.18, x + l, y + l * 0.05); g.stroke(); }
     g.strokeStyle = 'rgba(255,240,205,.16)'; for (let i = 0; i < 260; i++) { const x = rnd() * tex.width, y = rnd() * tex.height, l = (2 + rnd() * 4) * k; g.beginPath(); g.moveTo(x, y + 0.14 * k); g.quadraticCurveTo(x + l * 0.5, y - l * 0.14, x + l, y + 0.2 * k); g.stroke(); }
     for (const s of this.sim.map.starts) { const grd = g.createRadialGradient((s.x + 2) * k, (s.y + 2) * k, 2 * k, (s.x + 2) * k, (s.y + 2) * k, 11 * k); grd.addColorStop(0, 'rgba(150,134,106,.95)'); grd.addColorStop(1, 'rgba(150,134,106,0)'); g.fillStyle = grd; g.fillRect(0, 0, tex.width, tex.height); }
+    // ZERO ZONE의 콘크리트 표면 질감을 군사 기지 바닥에 재사용합니다.
+    const concrete = concreteTexture();
     // 군사 기지 바닥: 본부 아래 육각 콘크리트 패드와 경고 줄무늬 테두리.
     for (const s of this.sim.map.starts) {
       const cx = (s.x + 2) * k, cy = (s.y + 2) * k, hex = (r: number): void => { g.beginPath(); for (let q = 0; q < 6; q++) { const a = Math.PI / 6 + (q * Math.PI) / 3; g[q ? 'lineTo' : 'moveTo'](cx + Math.cos(a) * r * k, cy + Math.sin(a) * r * k); } g.closePath(); };
       g.save(); hex(8.2); g.fillStyle = 'rgba(64,66,68,.85)'; g.fill(); g.lineWidth = 0.5 * k; g.setLineDash([1.4 * k, 1.4 * k]); g.strokeStyle = 'rgba(232,190,50,.8)'; g.stroke(); g.setLineDash([]);
-      hex(6.9); g.fillStyle = 'rgba(118,120,122,.78)'; g.fill(); g.lineWidth = 0.16 * k; g.strokeStyle = 'rgba(40,42,44,.5)'; g.stroke(); g.restore();
+      hex(6.9); g.fillStyle = 'rgba(118,120,122,.78)'; g.fill();
+      g.save();g.clip();g.globalAlpha=.55;g.drawImage(concrete.image as HTMLCanvasElement,cx-7*k,cy-7*k,14*k,14*k);g.restore();
+      g.lineWidth = 0.16 * k; g.strokeStyle = 'rgba(40,42,44,.5)'; g.stroke(); g.restore();
     }
+    concrete.dispose();
     for (const e of this.sim.map.expansions) { const grd = g.createRadialGradient((e.x + 2) * k, (e.y + 2) * k, 2 * k, (e.x + 2) * k, (e.y + 2) * k, 9 * k); grd.addColorStop(0, 'rgba(142,124,92,.7)'); grd.addColorStop(1, 'rgba(142,124,92,0)'); g.fillStyle = grd; g.fillRect(0, 0, tex.width, tex.height); }
     const lanes = buildLanes(this.sim.map), bushes = bushSpots(this.sim.map, lanes); paintGround(g, k, this.sim.map, lanes, bushes);
     g.strokeStyle = 'rgba(70,52,28,.06)'; g.lineWidth = 1; for (let i = 0; i <= n; i += 4) { g.beginPath(); g.moveTo(i * k, 0); g.lineTo(i * k, tex.height); g.moveTo(0, i * k); g.lineTo(tex.width, i * k); g.stroke(); }

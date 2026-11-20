@@ -111,8 +111,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 경기 시작 ----------
   function begin(m: Match, my: number): void {
     blur(); if (document.pointerLockElement === canvas) document.exitPointerLock(); locked = false; endMatch(); const fresh = document.createElement('canvas'); fresh.className = 'sz-canvas'; canvas.replaceWith(fresh); canvas = fresh; canvas.addEventListener('contextmenu', noMenu); match = m; meIdx = my; over = false; resultShown = false; soloRecorded = false; spectateId = -1; deadTimer = 0; cache.clear(); feed.length = 0; told.clear(); paused = false; modal.className = 'sz-modal'; modal.innerHTML = '';
-    const p = m.players[my]; yaw = p.yaw; pitch = 0; countdown = 3.4; phase = 'countdown'; mapBase = null;
-    view = new ShooterView(canvas, m, assets, prefs.quality); resize(); setupEl.hidden = true; hud.hidden = false; buildSlots(); say(touch ? '왼쪽 스틱으로 이동' : '화면을 클릭해 조작 시작', 2.4);
+    const p = m.players[my]; yaw = p.yaw; pitch = 0; rcP = rcY = combo = comboT = hitT = stepAcc = 0; rcIdle = 9; shotN = 0; countdown = 3.4; phase = 'countdown'; mapBase = null;
+    try { view = new ShooterView(canvas, m, assets, prefs.quality); } catch { endMatch(); leavePvp(); leaveRoom(); phase = 'setup'; paused = false; hud.hidden = true; setupEl.hidden = false; card('ZERO ZONE', '그래픽을 시작하지 못했습니다', '<p>브라우저 그래픽 가속을 확인하고 다시 도전하세요.</p>', '<button data-act="setup">설정으로</button><button data-act="exit">메뉴로</button>'); return; } resize(); setupEl.hidden = true; hud.hidden = false; buildSlots(); say(touch ? '왼쪽 스틱으로 이동' : '화면을 클릭해 조작 시작', 2.4);
     if (!touch) lock(); audio.unlock();
     if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__zz = { get match() { return match; }, get phase() { return phase; }, me, skip, view, go: () => { countdown = Math.min(countdown, 0.45); }, fire: (on: boolean) => { mouse.fire = on; }, ads: (on: boolean) => { mouse.ads = on; }, look: (y: number, p: number) => { yaw = y; pitch = p; } };
   }

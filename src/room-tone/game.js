@@ -6,6 +6,7 @@ import { modelBytes } from "./assets.js";
 import { chapters, makeLevel, route, neighbors, paths, routeFrom, lineOpen, normalizeSave, walkable, puzzleOptions, puzzleCorrect } from "./levels.mjs";
 import { buildEnvironment } from "./environment.js";
 import { Sound } from "./sound.js";
+import { archiveCells, cleanArchive, createDread, recordings } from "./dread.mjs";
 import { openViewer } from "./viewer.js";
 
 const $ = (id) => document.getElementById(id),
@@ -23,6 +24,7 @@ let state = "home",
   found = [false, false, false],
   seen = new Set(),
   elapsed = 0;
+let archive = [], dread = createDread(), enemyStepDistance = 0;
 let renderer,
   scene,
   camera,
@@ -90,13 +92,14 @@ function read(k) {
   }
 }
 function saved() {
-  return normalizeSave(read(SAVE));
+  const raw = read(SAVE), normalized = normalizeSave(raw);
+  return normalized ? { ...normalized, archive: cleanArchive(raw.archive) } : null;
 }
 function save() {
   try {
     localStorage.setItem(
       SAVE,
-      JSON.stringify({ v: 1, ch, found, solved, seen: [...seen], elapsed }),
+      JSON.stringify({ v: 1, ch, found, solved, seen: [...seen], elapsed, archive }),
     );
   } catch { /* Browser storage or pointer lock is optional. */ }
 }
@@ -176,7 +179,7 @@ function setGameModal(open) {
 function modal(title, description, body, actions, type = "panel") {
   state = type;
   leaveLook();
-  sound.pause(true);
+  sound.pause(true, type === "lost" || type === "won" ? 0.85 : 0);
   setGameModal(true);
   $("panelTitle").textContent = title;
   $("panelText").textContent = description;
@@ -237,6 +240,7 @@ function pauseGame() {
     null,
     [
       ["계속하기", resume],
+      ["녹음 기록 " + archive.length + " / 8", archivePanel],
       ["조작 안내", () => guide()],
       ["타이틀로", homepage, true],
     ],
@@ -336,6 +340,10 @@ function shift(dx, dz) {
   if (space(player.x, player.z + dz)) player.z += dz;
 }
 function pointPlayer() {
+  dread = createDread();
+  enemyStepDistance = 0;
+  $("viewWrap").removeAttribute("data-incident");
+  lamp.intensity = 28;
   const p = xy(level.start);
   const next = xy(neighbors(level.map, level.start)[0]);
   player.set(p.x + (next.x - p.x) * 0.38, 1.58, p.z + (next.z - p.z) * 0.38);
@@ -447,7 +455,7 @@ function prop(cell, type, i = 0) {
   root.position.set(pos.x, 0, pos.z);
   props.add(root);
   const col =
-      type === "exit" ? 0x91d6a8 : type === "station" ? 0x9ce1db : 0xf1ab63,
+      type === "exit" ? 0x91d6a8 : type === "station" ? 0x9ce1db : type === "record" ? 0xc9a5df : 0xf1ab63,
     bright = paint(col, col, 0.72),
     dark = paint(0x26332f),
     steel = paint(0x718078);
@@ -504,6 +512,12 @@ function prop(cell, type, i = 0) {
           0.026,
         );
     }
+  } else if (type === "record") {
+    mesh(new THREE.BoxGeometry(.48,.64,.38),dark,root,0,.32,0);
+    mesh(new THREE.BoxGeometry(.42,.065,.28),steel,root,0,.66,0);
+    mesh(new THREE.BoxGeometry(.31,.12,.21),dark,root,0,.75,0);
+    mesh(new THREE.BoxGeometry(.20,.026,.11),bright,root,0,.823,0);
+    for(const x of [-.10,.10]) mesh(new THREE.CylinderGeometry(.058,.058,.018,12),steel,root,x,.827,.064);
   } else if (type === "station") {
     mesh(new THREE.BoxGeometry(0.8, 0.94, 0.48), dark, root, 0, 0.47, 0);
     const top = mesh(
@@ -542,10 +556,10 @@ function prop(cell, type, i = 0) {
       ? chapters[ch].item + " " + pad(i)
       : type === "exit"
         ? "EXIT  /  출구"
-        : chapters[ch].station,
-    type === "exit" ? "#a7dcb7" : type === "station" ? "#a2ddd5" : "#edba81",
+        : type === "record" ? "REC / " + pad(ch * 2 + i) : chapters[ch].station,
+    type === "exit" ? "#a7dcb7" : type === "station" ? "#a2ddd5" : type === "record" ? "#d5b6ed" : "#edba81",
   );
-  sign.position.y = type === "item" ? 1.39 : 1.64;
+  sign.position.y = type === "record" ? 1.10 : type === "item" ? 1.39 : 1.64;
   root.add(sign);
   return { cell, type, i, root, bright };
 }
@@ -556,13 +570,13 @@ function loadScene() {
   disposeGroup(props);
   scene = new THREE.Scene();
   scene.background = new THREE.Color(
-    [0x111b1b, 0x141d23, 0x211b19, 0x101b18][ch],
+    [0x0b1311, 0x0b1119, 0x1b1110, 0x090f12][ch],
   );
-  scene.fog = new THREE.FogExp2(scene.background, 0.05);
+  scene.fog = new THREE.FogExp2(scene.background, 0.067);
   camera = new THREE.PerspectiveCamera(68, 1, 0.045, 65);
   scene.add(camera);
-  scene.add(new THREE.HemisphereLight(0xc0d4cf, 0x44413c, 0.86));
-  const fill = new THREE.DirectionalLight(0xc6d2cd, 0.36);
+  scene.add(new THREE.HemisphereLight(0xc0d4cf, 0x44413c, 0.63));
+  const fill = new THREE.DirectionalLight(0xc6d2cd, 0.24);
   fill.position.set(4, 6, 2);
   scene.add(fill);
   lamp = new THREE.SpotLight(0xffeccc, 28, 24, 0.49, 0.57, 1.05);
@@ -578,6 +592,11 @@ function loadScene() {
   items = level.items.map((cell, i) => prop(cell, "item", i));
   items.forEach((o) => (o.root.visible = !found[o.i]));
   items.push(prop(level.start, "station"), prop(level.exit, "exit"));
+  archiveCells(level).forEach((cell,i)=>{
+    const record=prop(cell,"record",i);
+    record.root.visible=!archive.includes(ch*2+i);
+    items.push(record);
+  });
   entity = new THREE.Group();
   entity.add(model);
   scene.add(entity);
@@ -607,6 +626,7 @@ async function start(cont) {
     found = s?.found ?? [false, false, false];
     solved = s?.solved ?? false;
     elapsed = s?.elapsed ?? 0;
+    archive = s?.archive ?? [];
     level = makeLevel(ch);
     seen = new Set((s?.seen || []).filter(id => walkable(level.map, id)));
     loadScene();
@@ -633,7 +653,7 @@ function brief() {
       el.innerHTML =
         '<p class="taskline">' +
         chapters[ch].goal +
-        '</p><p class="hint">도면에서 장비와 출구 방향을 확인하세요. 진행 상황은 자동으로 저장됩니다.</p>';
+        '</p><p class="hint">도면에서 장비와 출구 방향을 확인하세요. 구역마다 숨은 녹음 기록 2개가 있습니다. 진행 상황은 자동 저장됩니다.</p>';
     },
     [
       ["구역 진입", resume],
@@ -752,6 +772,7 @@ function drawMap(canvas) {
   level.items.forEach((id, i) => {
     if (!found[i]) dot(id, "#e4a36d", "square");
   });
+  for(const record of items) if(record.type==="record" && record.root.visible && seen.has(record.cell)) dot(record.cell,"#c9a5df","circle");
   dot(level.start, "#75c3ce", "square");
   dot(level.exit, solved ? "#9ad991" : "#f38e75", "square");
   const pos = cellOf(player),
@@ -785,6 +806,7 @@ function mapPanel(fromBrief = false) {
       p.className = "mapkey";
       p.innerHTML =
         "<i>▲ 현재 위치</i><i>■ 회수 장비</i><i>■ 제어 장치</i><i>" + (solved ? "■ 출구 열림" : "■ 출구 잠김") + "</i>";
+      p.innerHTML += "<i>● 발견된 녹음 기록</i>";
       p.dataset.solved = String(solved);
       el.append(p);
       const button = document.createElement("button");
@@ -806,6 +828,20 @@ function mapPanel(fromBrief = false) {
   );
 }
 $("mapBtn").onclick = () => mapPanel();
+function archivePanel() {
+  modal("회수한 녹음 기록","보조 기록 "+archive.length+" / 8 · 탈출에 필수는 아닙니다.",el=>{
+    const list=document.createElement("div");
+    list.className="record-archive";
+    recordings.flat().forEach((entry,id)=>{
+      const row=document.createElement("section"), heading=document.createElement("strong"), detail=document.createElement("p");
+      heading.textContent=archive.includes(id)?entry.title:String(id+1).padStart(2,"0")+" / 미회수";
+      detail.textContent=archive.includes(id)?entry.text:"신호 없음";
+      row.dataset.found=String(archive.includes(id));
+      row.append(heading,detail);list.append(row);
+    });
+    el.append(list);
+  },[["돌아가기",resume]],"archive");
+}
 function notes(el) {
   const dl = document.createElement("dl");
   dl.className = "notes";
@@ -923,7 +959,15 @@ function interact() {
     c = chapters[ch];
   if (!o.root.visible || Math.hypot(o.root.position.x - player.x, o.root.position.z - player.z) >= 2.16 ||
       !clearLine(player, o.root.position)) return;
-  if (o.type === "item") {
+  if(o.type==="record"){
+    const id=ch*2+o.i;
+    if(!archive.includes(id)) archive.push(id);
+    o.root.visible=false;
+    nearest=null;
+    sound.recording();
+    save();
+    message(recordings[ch][o.i].title+" · 녹음함에 저장됨 ("+archive.length+"/8)",5);
+  } else if (o.type === "item") {
     found[o.i] = true;
     // The equipment makes a noise at the pickup location. The creature investigates it.
     lastKnown = o.cell;
@@ -987,7 +1031,7 @@ function interact() {
         el.innerHTML =
           '<div class="endstat"><span>복원 구역</span><strong>04 / 04</strong><span>탈출 기록</span><strong>' +
           clock(elapsed) +
-          "</strong></div>";
+          "</strong><span>회수 기록</span><strong>" + archive.length + " / 8</strong></div>";
       },
       [["타이틀로", homepage]],
       "won",
@@ -1088,6 +1132,15 @@ function enemyUpdate(dt, running) {
     }
   }
   const travel = Math.hypot(e.x - startX, e.z - startZ);
+  enemyStepDistance+=travel;
+  if(enemyStepDistance >= (enemyPhase ? .68 : .82)){
+    enemyStepDistance=0;
+    const distance=Math.hypot(e.x-player.x,e.z-player.z);
+    if(distance<17 && !grace){
+      const pan=((e.x-player.x)*Math.cos(yaw)-(e.z-player.z)*Math.sin(yaw))/Math.max(distance,.1);
+      sound.enemyStep(distance,pan,clearLine(player,e),Boolean(enemyPhase));
+    }
+  }
   stride += travel * 5.5;
   gaitWeight = THREE.MathUtils.damp(gaitWeight, Math.min(1, travel / Math.max(dt, .001)), 9, dt);
   model.position.y = 0.009 + 0.009 * gaitWeight * Math.abs(Math.sin(stride));
@@ -1102,7 +1155,7 @@ function enemyUpdate(dt, running) {
     ? 0
     : Math.max(0, 1 - dist / 12) * (inSight ? 0.96 : 0.57);
   sound.threat(threat);
-  $("danger").style.opacity = String(threat * 0.53);
+  $("danger").style.opacity = String(threat * 0.72);
   const strain = threat > 0.68 ? "바로 근처" : threat > 0.28 ? "접근 중" : "안정";
   if ($("strain").textContent !== strain) $("strain").textContent = strain;
   $("strain").dataset.threat = threat > 0.68 ? "near" : threat > 0.28 ? "alert" : "safe";
@@ -1165,6 +1218,15 @@ function update(dt) {
   beam.intensity = THREE.MathUtils.damp(beam.intensity, lightOn ? 2 : 0.45, 8, dt);
   enemyUpdate(dt, running);
   if (state !== "play") return;
+  const event=dread.tick(dt,!grace && !enemyPhase && moved>dt*.3 && !solved && now>noticeUntil);
+  if(event?.started){
+    sound.incident(event.kind,Math.random()<.5?-.83:.83);
+    message(event.caption,event.duration);
+  }
+  const dim=event?.kind==="drop" && !reducedMotion.matches?Math.sin(Math.PI*event.age/event.duration):0;
+  lamp.intensity=28*(1-.68*dim);
+  const atmosphere=event?.kind??"none";
+  if($("viewWrap").dataset.incident!==atmosphere) $("viewWrap").dataset.incident=atmosphere;
   const cell = cellOf(player);
   if (cell !== lastCell) {
     seen.add(cell);
@@ -1194,7 +1256,7 @@ function update(dt) {
       ? chapters[ch].item + " 회수"
       : nearest.type === "exit"
         ? (solved ? "출구 작동" : "잠긴 출구 확인")
-        : chapters[ch].station + " 확인"
+        : nearest.type === "record" ? "녹음 기록 회수" : chapters[ch].station + " 확인"
     : "";
   $("prompt").hidden = !caption;
   if ($("promptText").textContent !== caption) $("promptText").textContent = caption;

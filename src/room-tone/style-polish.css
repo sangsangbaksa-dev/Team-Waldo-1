@@ -59,3 +59,16 @@
 #game .mapkey[data-solved="false"] i:nth-child(4) { color:#f38e75; }
 #game .mapkey[data-solved="true"] i:nth-child(4) { color:#9ad991; }
 #game .dials button strong { font-variant-numeric:tabular-nums; }
+
+/* Slow tension, no strobe. */
+#game #viewWrap::after {content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 45%,transparent 31%,#030406bd 100%);opacity:.35;transition:opacity .8s ease,background-color .8s ease;}
+#game #viewWrap[data-incident="drop"]::after {opacity:.83;}
+#game #viewWrap[data-incident="tape"]::after {background-color:#35263a28;opacity:.63;}
+#game #viewWrap[data-incident="breath"]::after {opacity:.56;}
+#game .record-archive {display:grid;gap:.4rem;max-height:42vh;overflow:auto;padding:.2rem;}
+#game .record-archive section {border-left:2px solid #7d6b8f;padding:.5rem .7rem;background:#171c20;}
+#game .record-archive section[data-found="false"] {border-color:#444b49;color:#a0aaa5;}
+#game .record-archive strong {color:#d5b6ed;font-size:.84rem;letter-spacing:.05em;}
+#game .record-archive p {margin:.35rem 0 0;font-size:.88rem;line-height:1.55;}
+#game .mapkey i:last-child {color:#c9a5df;}
+@media(prefers-reduced-motion:reduce){#game #viewWrap::after{transition:none;opacity:.35!important;background-color:transparent!important;}}

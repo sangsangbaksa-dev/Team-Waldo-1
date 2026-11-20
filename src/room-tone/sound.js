@@ -101,6 +101,8 @@ export class Sound {
     ceiling.release.value = 0.19;
     this.level = gain(c, 0);
     this.mix.connect(ceiling).connect(this.level).connect(c.destination);
+    this.bed=gain(c,1);
+    this.bed.connect(this.mix);
 
     this.noise = noiseBuffer(c, 2.4);
     const verb = c.createConvolver();
@@ -113,11 +115,11 @@ export class Sound {
 
     this.hum = c.createOscillator();
     this.hum.type = "sine";
-    this.hum.connect(gain(c, 0.045)).connect(this.mix);
+    this.hum.connect(gain(c, 0.045)).connect(this.bed);
     this.hum.start();
     this.motor = c.createOscillator();
     this.motor.type = "sine";
-    this.motor.connect(gain(c, 0.015)).connect(this.mix);
+    this.motor.connect(gain(c, 0.015)).connect(this.bed);
     this.motor.start();
 
     const noise = c.createBufferSource();
@@ -128,10 +130,10 @@ export class Sound {
       .connect(this.air)
       .connect(filter(c, "highpass", 130))
       .connect(gain(c, 0.036))
-      .connect(this.mix);
+      .connect(this.bed);
     this.radio = filter(c, "bandpass", 1000, 3.2);
     const radioLevel = gain(c, 0.01);
-    noise.connect(this.radio).connect(radioLevel).connect(this.mix);
+    noise.connect(this.radio).connect(radioLevel).connect(this.bed);
     const wobble = c.createOscillator();
     wobble.frequency.value = 0.111;
     wobble.connect(gain(c, 0.007)).connect(radioLevel.gain);
@@ -168,9 +170,16 @@ export class Sound {
     this.applyLevel();
   }
 
-  pause(paused) {
-    this.paused = Boolean(paused);
-    this.applyLevel();
+  pause(paused,tail=0) {
+    this.paused=Boolean(paused);
+    if(this.paused && tail>0 && this.level && !this.muted){
+      const at=this.ctx.currentTime;
+      ease(this.level.gain,0,at+tail,.08);
+      if(this.bed) ease(this.bed.gain,.12,at,.04);
+    } else {
+      this.applyLevel();
+      if(this.bed) ease(this.bed.gain,1,this.ctx.currentTime,.12);
+    }
     if (this.paused) {
       if (this.clock !== null) globalThis.clearInterval(this.clock);
       this.clock = null;
@@ -370,6 +379,45 @@ export class Sound {
     );
   }
 
+  enemyStep(distance,pan,visible,hunting) {
+    if(!this.ready()) return;
+    const at=this.ctx.currentTime;
+    const force=Math.max(0,1-distance/17)**1.55*(visible?1:.38)*(hunting?1.1:.78);
+    this.note(82,33,.22,.13*force,at,pan,"triangle");
+    this.rustle(at+.025,.24,.15*force,visible?510:235,pan,.8);
+    this.rustle(at+.12,.16,.045*force,1070,pan);
+  }
+  recording() {
+    if(!this.ready()) return;
+    const at=this.ctx.currentTime;
+    this.rustle(at,.23,.09,1450,0,2.4);
+    this.note(527,410,.25,.035,at+.12,0,"triangle");
+  }
+  incident(kind,pan) {
+    if(!this.ready()) return;
+    const at=this.ctx.currentTime;
+    if(kind==="knock"){
+      [0,.34,.91].forEach((offset,i)=>{
+        this.note(105-i*9,38,.22,.085,at+offset,pan,"triangle");
+        this.rustle(at+offset,.15,.08,430,pan,.9);
+      });
+    } else if(kind==="drop"){
+      const volume=this.bed.gain;
+      volume.cancelScheduledValues(at);
+      volume.setTargetAtTime(.035,at,.22);
+      volume.setTargetAtTime(1,at+2.1,.48);
+      this.note(72,38,1.45,.048,at+.2,pan,"sine",.36);
+    } else if(kind==="tape"){
+      this.rustle(at,1.35,.065,1550,pan,2.1);
+      this.note(730,290,.63,.025,at+.43,pan,"triangle",.18);
+      this.note(191,204,.82,.024,at+1.2,-pan,"sine",.19);
+    } else if(kind==="breath"){
+      [0,.83].forEach((offset,i)=>{
+        this.rustle(at+offset,.72,.065-i*.012,480+i*95,pan,.75);
+        this.note(68,46,.65,.025,at+offset,pan,"sine",.19);
+      });
+    }
+  }
   caught() {
     if (!this.ready()) return;
     const at = this.ctx.currentTime;

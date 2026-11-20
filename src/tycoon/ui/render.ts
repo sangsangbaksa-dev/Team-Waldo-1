@@ -66,7 +66,7 @@ export function statusHtml(s: TycoonState): string {
   </div>`;
 }
 
-export function menuHtml(sound: boolean, firstPerson: boolean): string {
+export function menuHtml(sound: boolean, firstPerson: boolean, confirmRestart = false): string {
   return `<div class="ty-panel narrow" role="dialog" aria-label="일시정지">
     <header><span class="ico">Ⅱ</span><div><h2>일시정지</h2><p>시간이 멈춰 있습니다</p></div></header>
     <ul class="ty-acts">
@@ -74,6 +74,7 @@ export function menuHtml(sound: boolean, firstPerson: boolean): string {
       <li><button type="button" class="ty-act" data-menu="save"><span class="body"><b>저장하기</b><small>자동 저장도 켜져 있습니다</small></span></button></li>
       <li><button type="button" class="ty-act" data-menu="view"><span class="body"><b>시점 바꾸기</b><small>지금: ${firstPerson ? '1인칭' : '3인칭'} (V)</small></span></button></li>
       <li><button type="button" class="ty-act" data-menu="sound"><span class="body"><b>소리 ${sound ? '끄기' : '켜기'}</b></span></button></li>
+      <li><button type="button" class="ty-act danger" data-menu="restart"><span class="body"><b>${confirmRestart ? '정말 처음부터 다시 할까요? (한 번 더 누르기)' : '처음부터 다시 시작'}</b><small>저장된 진행이 지워지고 빈털터리로 돌아갑니다</small></span></button></li>
       <li><button type="button" class="ty-act danger" data-menu="exit"><span class="body"><b>허브로 나가기</b><small>저장하고 나갑니다</small></span></button></li>
     </ul></div>`;
 }
@@ -88,6 +89,11 @@ export function titleHtml(has: boolean, summary: string): string {
     </div>
     <p class="keys">WASD 이동 · Shift 달리기 · E 상호작용 · 마우스 드래그로 시점 · V 1인칭 · Tab 현황 · M 지도</p>
   </div>`;
+}
+
+export function failHtml(): string {
+  return `<div class="ty-titlebox"><p class="kick">HUSTLE</p><h1>그래픽을 시작하지 못했어요</h1><p class="sub">WebGL 을 지원하는 브라우저에서 다시 시도해 주세요.</p>
+    <div class="ty-title-btns"><button type="button" class="primary" data-title="exit">허브로</button></div></div>`;
 }
 
 export function winHtml(s: TycoonState): string {

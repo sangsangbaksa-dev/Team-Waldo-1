@@ -1,5 +1,6 @@
 // ZERO ZONE — 배틀로열 총게임 화면: 출격 설정, 조작(키보드·마우스·터치), HUD, 솔로(AI 99명, 비행기 낙하)와 1대1 온라인 대전의 진행.
 import './shooter.css';
+import { FrameGate } from '../shared/frame-gate';
 import { readPreferences } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import type { PvpSession, RoomSession } from '../net/lobby';
@@ -382,6 +383,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   function addFeed(text: string, mine: boolean): void { feed.push({ text, at: performance.now(), mine }); if (feed.length > 5) feed.shift(); }
   function nameOf(id: number): string { return id < 0 ? '자기장' : match?.players[id]?.name ?? '?'; }
 
+  const miniGate = new FrameGate(50);
   function drawMap(m: Match, p: Player): void {
     const S = mapCv.width, half = m.map.half, k = S / (half * 2), px = (x: number): number => (x + half) * k, pz = (z: number): number => (z + half) * k, g = mapCtx;
     if (!mapBase) {
@@ -486,7 +488,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     html(q('#sz-feed'), 'feed', feed.map(f => `<li class="${f.mine ? 'mine' : ''}">${esc(f.text)}</li>`).join(''));
     q('#sz-keys').classList.toggle('hide', phase !== 'countdown' || touch);
     html(q('#sz-keys'), 'keys', phase === 'countdown' && !touch ? '<span><b>WASD</b> 이동</span><span><b>좌클릭</b> 사격</span><span><b>우클릭</b> 조준</span><span><b>C</b> 웅크리기</span><span><b>E</b> 줍기</span>' : '');
-    drawMap(m, p); drawCompass(m, p);
+    if (miniGate.due(now) || !mapBase) drawMap(m, p);
+    drawCompass(m, p);
   }
 
   // ---------- 이벤트 처리 ----------

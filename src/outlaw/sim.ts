@@ -13,7 +13,7 @@ import { stepTraffic } from './traffic';
 import { stepPolice } from './police';
 import { stepMissions } from './missions';
 import { stepActivities } from './activities';
-import { blankLife, computePerks, heroById, BASE_PERKS, type LifeState, type Perks } from './life';
+import { blankLife, computePerks, heroById, BASE_PERKS, PROPERTIES, OUTFITS, ACHIEVEMENTS, type LifeState, type Perks } from './life';
 import { stepLife } from './services';
 import { stepJobs } from './jobs';
 
@@ -71,14 +71,39 @@ export class Sim {
     const p = this.player;
     return { v: 1, stunts: [...this.activity.stunts], styleTotal: Math.floor(this.activity.style.total), cash: Math.floor(this.cash), completed: [...this.mission.completed], guns: p.guns.filter((g): g is Gun => !!g && g.id !== 'fist').map(g => [g.id, g.mag, g.reserve]), armor: Math.floor(p.armor), collected: [...this.collected], clock: this.clock, kills: this.kills, playSec: Math.floor(this.playSec), life: JSON.parse(JSON.stringify(this.life)) as LifeState };
   }
-  applySave(s: SaveData): void {
-    this.activity.stunts = [...(s.stunts ?? [])]; this.activity.style.total = s.styleTotal ?? 0; this.cash = s.cash; this.mission.completed = [...s.completed]; this.collected = new Set(s.collected); this.clock = s.clock; this.kills = s.kills; this.playSec = s.playSec; this.player.armor = s.armor;
-    for (const [id, mag, reserve] of s.guns) { const i = WEAPON_ORDER.indexOf(id); if (i > 0) this.player.guns[i] = { id, mag, reserve }; }
+  applySave(raw: unknown): void {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
+    const s = raw as Record<string, unknown>;
+    if (s.v !== 1) return;
+    const number = (v: unknown, fallback = 0, max = Number.MAX_SAFE_INTEGER): number =>
+      typeof v === 'number' && Number.isFinite(v) ? clamp(v, 0, max) : fallback;
+    const strings = (v: unknown): string[] => Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === 'string'))] : [];
+    const ids = (v: unknown): number[] => Array.isArray(v) ? [...new Set(v.filter((x): x is number => Number.isSafeInteger(x) && x >= 0))] : [];
+    this.activity.stunts = ids(s.stunts); this.activity.style.total = number(s.styleTotal);
+    this.cash = number(s.cash, this.cash); this.mission.completed = strings(s.completed);
+    this.collected = new Set(ids(s.collected)); this.clock = number(s.clock, this.clock) % 24;
+    this.kills = Math.floor(number(s.kills)); this.playSec = number(s.playSec); this.player.armor = number(s.armor, 0, 100);
+    if (Array.isArray(s.guns)) for (const row of s.guns) {
+      if (!Array.isArray(row) || typeof row[0] !== 'string' || !Object.hasOwn(WEAPONS, row[0])) continue;
+      const id = row[0] as WeaponId, i = WEAPON_ORDER.indexOf(id), w = WEAPONS[id];
+      if (i > 0) this.player.guns[i] = { id, mag: Math.floor(number(row[1], 0, w.mag)), reserve: Math.floor(number(row[2], 0, w.reserve)) };
+    }
     for (const pk of this.pickups) if (pk.collect >= 0 && this.collected.has(pk.collect)) pk.taken = true;
-    if (s.life) {
-      const saved = { ...s.life } as LifeState & { skills?: unknown }; delete saved.skills;
-      this.life = { ...blankLife(), ...saved, ach: (saved.ach ?? []).filter(id => id !== 'trained') };
-      this.applyHero(this.life.hero, false); this.player.armor = s.armor;
+    if (s.life && typeof s.life === 'object' && !Array.isArray(s.life)) {
+      const l = s.life as Record<string, unknown>, life = blankLife();
+      life.hero = typeof l.hero === 'string' ? heroById(l.hero).id : life.hero;
+      life.props = strings(l.props).filter(id => PROPERTIES.some(p => p.id === id));
+      life.ach = strings(l.ach).filter(id => ACHIEVEMENTS.some(a => a.id === id));
+      life.propBank = number(l.propBank); life.propAt = number(l.propAt);
+      life.outfit = Number.isInteger(l.outfit) && Number(l.outfit) >= -1 && Number(l.outfit) < OUTFITS.length ? Number(l.outfit) : -1;
+      if (Array.isArray(l.cars)) for (const c of l.cars) {
+        if (!c || typeof c !== 'object' || typeof c.kind !== 'string' || !Object.hasOwn(VEHICLES, c.kind)) continue;
+        const kind = c.kind as VehicleKind;
+        if (!life.cars.some(x => x.kind === kind)) life.cars.push({ kind, color: Math.floor(number(c.color, 0xffffff, 0xffffff)) });
+      }
+      if (l.counters && typeof l.counters === 'object' && !Array.isArray(l.counters))
+        for (const [k, v] of Object.entries(l.counters)) if (/^[a-zA-Z][a-zA-Z0-9_]*$/.test(k) && !Object.hasOwn(Object.prototype, k)) life.counters[k] = number(v);
+      this.life = life; this.applyHero(life.hero, false);
     }
   }
   /** 주인공 시민을 정하고 능력치를 반영합니다. fresh 면 체력·방탄을 새로 채웁니다. */

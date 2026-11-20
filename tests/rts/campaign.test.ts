@@ -143,6 +143,9 @@ describe('캠페인 저장', () => {
     expect(readCampaign()).toEqual({ stars: {}, best: {} });
     store.set('waldo.rts.campaign.v1', '{broken'); expect(readCampaign()).toEqual({ stars: {}, best: {} });
     store.set('waldo.rts.campaign.v1', JSON.stringify({ stars: { 1: 9, 2: 2, x: 'a' }, best: { 2: -4, 3: 120 } })); expect(readCampaign()).toEqual({ stars: { 2: 2 }, best: { 3: 120 } });
+    store.set('waldo.rts.campaign.v1', JSON.stringify({ stars: { 999: 3, 1: 1.5 }, best: { 1: 0.1, 999: 5 } }));
+    expect(readCampaign()).toEqual({ stars: {}, best: {} });
+    expect(recordResult(readCampaign(), 1, 3, NaN)).toEqual({ stars: {}, best: {} });
     writeCampaign({ stars: { 1: 3 }, best: { 1: 99 } }); expect(readCampaign().stars[1]).toBe(3);
     delete (globalThis as unknown as { localStorage?: unknown }).localStorage;
   });

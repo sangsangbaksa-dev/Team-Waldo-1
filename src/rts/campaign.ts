@@ -168,16 +168,19 @@ export interface CampaignSave { stars: Record<number, number>; best: Record<numb
 export const CAMPAIGN_KEY = 'waldo.rts.campaign.v1';
 export function readCampaign(): CampaignSave {
   const out: CampaignSave = { stars: {}, best: {} };
+  const validId = (k: string): boolean => MISSIONS.some(m => String(m.id) === k);
   try {
     const raw = JSON.parse(localStorage.getItem(CAMPAIGN_KEY) ?? 'null') as Partial<CampaignSave> | null;
-    for (const [k, v] of Object.entries(raw?.stars ?? {})) if (typeof v === 'number' && v >= 0 && v <= 3) out.stars[Number(k)] = Math.floor(v);
-    for (const [k, v] of Object.entries(raw?.best ?? {})) if (typeof v === 'number' && v > 0 && v < 1e6) out.best[Number(k)] = Math.floor(v);
+    for (const [k, v] of Object.entries(raw?.stars ?? {})) if (validId(k) && Number.isInteger(v) && v >= 0 && v <= 3) out.stars[Number(k)] = Math.floor(v);
+    for (const [k, v] of Object.entries(raw?.best ?? {})) if (validId(k) && typeof v === 'number' && v >= 1 && v < 1e6) out.best[Number(k)] = Math.floor(v);
   } catch { /* 저장 불가·손상 */ }
   return out;
 }
 export function writeCampaign(s: CampaignSave): void { try { localStorage.setItem(CAMPAIGN_KEY, JSON.stringify(s)); } catch { /* 저장 불가 환경 */ } }
 /** 미션 결과를 저장합니다. 별과 최단 시간은 더 좋은 값만 남깁니다. */
 export function recordResult(s: CampaignSave, id: number, stars: number, seconds: number): CampaignSave {
+  if (!MISSIONS.some(m => m.id === id) || !Number.isInteger(stars) || stars < 1 || stars > 3 || !Number.isFinite(seconds) || seconds < 0) return s;
+  seconds = Math.max(1, seconds);
   const best = s.best[id]; return { stars: { ...s.stars, [id]: Math.max(s.stars[id] ?? 0, stars) }, best: { ...s.best, [id]: best ? Math.min(best, Math.floor(seconds)) : Math.floor(seconds) } };
 }
 /** 앞 미션을 한 번이라도 깼으면 열립니다. */

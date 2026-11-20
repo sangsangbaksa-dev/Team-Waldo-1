@@ -137,3 +137,17 @@
 .rt-modal{padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));align-items:safe center;overscroll-behavior:contain;touch-action:pan-y}
 .rt-card{max-height:100%;overscroll-behavior:contain;touch-action:pan-y;scrollbar-width:thin}
 @media(max-height:480px){.rt-card{padding:14px;gap:10px}}
+
+/* Narrow tactical HUD: reserve usable command space rather than clipping horizontally. */
+@media (max-width:480px){
+  .rt-bottom{grid-template-columns:minmax(64px,24%) minmax(0,1fr) minmax(116px,46%);gap:4px;padding-inline:5px}
+  .rt-sel{padding:6px;min-width:0}
+  .rt-cmd{grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;padding:4px;overflow:auto;grid-auto-rows:minmax(28px,1fr)}
+  .rt-cmd button b{overflow-wrap:anywhere;font-size:10px}
+  .rt-res{min-width:0;gap:3px;flex-wrap:wrap}
+  .rt-res>span{padding:4px 6px;gap:3px}
+  .rt-top{gap:4px;align-items:flex-start}
+  .rt-btns{gap:3px;flex-wrap:wrap;justify-content:flex-end}
+  .rt-btns button{min-width:30px;padding-inline:6px}
+  .rt-missions .t b{flex-wrap:wrap;gap:4px}
+}

@@ -37,11 +37,11 @@ export function poseMsg(p: Pose): NetMsg {
   if (p.vs) m.vs = p.vs.map(r);
   return m;
 }
-export interface NetNade { x: number; y: number; z: number; vx: number; vy: number; vz: number }
+export interface NetNade { x: number; y: number; z: number; vx: number; vy: number; vz: number; /** 연막탄 */ smoke?: boolean }
 export function parseNade(m: NetMsg): NetNade | null {
-  return num(m.x, -1000, 1000) && num(m.y, -5, 60) && num(m.z, -1000, 1000) && num(m.vx, -80, 80) && num(m.vy, -80, 80) && num(m.vz, -80, 80) ? { x: m.x, y: m.y, z: m.z, vx: m.vx, vy: m.vy, vz: m.vz } : null;
+  return num(m.x, -1000, 1000) && num(m.y, -5, 60) && num(m.z, -1000, 1000) && num(m.vx, -80, 80) && num(m.vy, -80, 80) && num(m.vz, -80, 80) ? { x: m.x, y: m.y, z: m.z, vx: m.vx, vy: m.vy, vz: m.vz, smoke: m.s === 1 } : null;
 }
-export function nadeMsg(n: NetNade, owner: number): NetMsg { const r = (v: number): number => Math.round(v * 100) / 100; return { t: 'nd', o: owner, x: r(n.x), y: r(n.y), z: r(n.z), vx: r(n.vx), vy: r(n.vy), vz: r(n.vz) }; }
+export function nadeMsg(n: NetNade, owner: number): NetMsg { const r = (v: number): number => Math.round(v * 100) / 100; return { t: 'nd', o: owner, x: r(n.x), y: r(n.y), z: r(n.z), vx: r(n.vx), vy: r(n.vy), vz: r(n.vz), ...(n.smoke ? { s: 1 } : {}) }; }
 export function parseShot(m: NetMsg): NetShot | null {
   if (!weapon(m.w) || !num(m.ox) || !num(m.oy, -50, 50) || !num(m.oz) || !Array.isArray(m.e) || m.e.length < 3 || m.e.length > 27 || m.e.length % 3 !== 0 || !m.e.every(v => num(v))) return null;
   return { w: m.w, ox: m.ox, oy: m.oy, oz: m.oz, ends: m.e as number[] };

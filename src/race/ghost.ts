@@ -13,7 +13,7 @@ export class GhostRecorder {
   data: number[] = [];
 
   tick(clock: number, c: GhostPose): void {
-    if (!Number.isFinite(clock) || clock < count(this) * GHOST_DT || ![c.x, c.z, c.h, c.total].every(Number.isFinite)) return;
+    if (!Number.isFinite(clock) || clock < count(this) * GHOST_DT || !Number.isFinite(c.x) || !Number.isFinite(c.z) || !Number.isFinite(c.h) || !Number.isFinite(c.total)) return;
     this.data.push(r2(c.x), r2(c.z), r2(c.h), r2(c.total));
   }
 
@@ -38,9 +38,9 @@ export function ghostAt(g: Ghost, clock: number): GhostPose | null {
   if (clock <= 0) return pose(g, 0);
   if (clock >= sampleTime(g, n - 1)) return pose(g, n - 1);
   const i = Math.min(n - 2, Math.floor(clock / GHOST_DT));
-  const a = pose(g, i), b = pose(g, i + 1);
+  const a = i * STRIDE, b = a + STRIDE, d = g.data;
   const start = sampleTime(g, i), k = (clock - start) / (sampleTime(g, i + 1) - start);
-  return { x: a.x + (b.x - a.x) * k, z: a.z + (b.z - a.z) * k, h: angleLerp(a.h, b.h, k), total: a.total + (b.total - a.total) * k };
+  return { x: d[a] + (d[b] - d[a]) * k, z: d[a + 1] + (d[b + 1] - d[a + 1]) * k, h: angleLerp(d[a + 2], d[b + 2], k), total: d[a + 3] + (d[b + 3] - d[a + 3]) * k };
 }
 function pose(g: Ghost, i: number): GhostPose { const o = i * STRIDE; return { x: g.data[o], z: g.data[o + 1], h: g.data[o + 2], total: g.data[o + 3] }; }
 

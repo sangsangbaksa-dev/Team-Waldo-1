@@ -24,6 +24,7 @@ import { PVP_ENABLED } from '../net/config';
 
 const STEP = 1 / 90;
 const ORD = ['', '1ST', '2ND', '3RD', '4TH', '5TH', '6TH'];
+const escapeText = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 export function openRace(onExit: () => void): void {
   const prefs = readPreferences(), touch = matchMedia('(pointer: coarse)').matches;
@@ -50,6 +51,7 @@ export function openRace(onExit: () => void): void {
   let multi: { s: RoomSession; net: RaceMulti; myFin: number | null; gone: Set<string>; done: boolean } | null = null;
   let pvp: { s: PvpSession; net: RacePvp; myFin: number | null; oppFin: number | null; done: boolean } | null = null;
   const keys = new Set<string>(), hold = { left: false, right: false, brake: false, drift: false, nitro: false, gas: false };
+  const heldPointers = new Map<keyof typeof hold, Set<number>>();
   let driftBests = readDriftBests(), nitroWas = false, driftWas = false;
   const cache = new Map<string, string>(); const setText = (id: string, v: string): void => { if (cache.get(id) !== v) { cache.set(id, v); $(id).textContent = v; } };
 
@@ -133,16 +135,18 @@ export function openRace(onExit: () => void): void {
   // ---------- 1대1 대전 ----------
   function openPvpLobby(): void {
     if (!PVP_ENABLED) return;
-    void import('../net/lobby').then(({ openLobby }) => openLobby({ game: 'race', maxPlayers: 6, config: () => ({ map: setup.map, laps: setup.laps }), onMatch: startPvp, onRoom: startMulti, onClose: () => undefined }))
-      .catch(() => { modal.className = 'rc-modal show'; modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">1대1 대전</span><h2>대전 기능을 불러오지 못했어요</h2><div class="rc-actions"><button data-act="setup">설정으로</button></div></div>'; });
+    const gen = raceGen;
+    void import('../net/lobby').then(({ openLobby }) => { if (!closed && gen === raceGen) openLobby({ game: 'race', maxPlayers: 6, config: () => ({ map: setup.map, laps: setup.laps }), onMatch: startPvp, onRoom: startMulti, onClose: () => undefined }); })
+      .catch(() => { if (closed || gen !== raceGen) return; modal.className = 'rc-modal show'; modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">1대1 대전</span><h2>대전 기능을 불러오지 못했어요</h2><div class="rc-actions"><button data-act="setup">설정으로</button></div></div>'; });
   }
   function pvpCard(eyebrow: string, title: string, body = '', actions = '<button data-act="exit">메뉴로</button>'): void {
-    modal.className = 'rc-modal show'; modal.innerHTML = `<div class="rc-card"><span class="rc-eyebrow">${eyebrow}</span><h2>${title}</h2>${body}<div class="rc-actions">${actions}</div></div>`;
+    modal.className = 'rc-modal show'; modal.innerHTML = `<div class="rc-card"><span class="rc-eyebrow">${escapeText(eyebrow)}</span><h2>${title}</h2>${body}<div class="rc-actions">${actions}</div></div>`;
   }
   function startPvp(s: PvpSession): void {
+    if (closed) return;
     endPvp(); setupUi?.destroy(); setupUi = null; if (view) { view.dispose(); view = null; }
     const cfg = s.match.config; setup = sanitizeSetup({ ...setup, map: cfg.map, laps: cfg.laps }); paused = false; finishedShown = false; root.dataset.phase = 'setup';
-    pvpCard('1대1 대전', `${s.opponent.nickname} 님과 연결하는 중…`, `<p class="rc-record">${mapOf(setup).name} · ${setup.laps}랩 · ${carById(setup.car).name}</p>`, '<button data-act="exit">나가기</button>');
+    pvpCard('1대1 대전', `${escapeText(s.opponent.nickname)} 님과 연결하는 중…`, `<p class="rc-record">${mapOf(setup).name} · ${setup.laps}랩 · ${carById(setup.car).name}</p>`, '<button data-act="exit">나가기</button>');
     const net: RacePvp = new RacePvp(s, setup.car, {
       onStart: car => beginPvp(car),
       onSnap: snap => { const rival = race.racers[1]; if (pvp && rival?.link) rival.link = { snap, at: performance.now() }; },
@@ -195,6 +199,7 @@ export function openRace(onExit: () => void): void {
   function endMulti(): void { multi?.net.dispose(); multi = null; }
   function racerOf(id: string): ReturnType<typeof createRace>['racers'][number] | undefined { return race.racers.find(r => r.peer === id); }
   function startMulti(s: RoomSession): void {
+    if (closed) return;
     endPvp(); setupUi?.destroy(); setupUi = null; if (view) { view.dispose(); view = null; }
     const cfg = s.room.config; setup = sanitizeSetup({ ...setup, map: cfg.map, laps: cfg.laps }); paused = false; finishedShown = false; root.dataset.phase = 'setup';
     pvpCard('멀티플레이', `${s.players.length}명과 연결하는 중…`, `<p class="rc-record">${mapOf(setup).name} · ${setup.laps}랩 · ${carById(setup.car).name}</p>`, '<button data-act="exit">나가기</button>');
@@ -228,7 +233,7 @@ export function openRace(onExit: () => void): void {
   function showMulti(): void {
     const m = multi; if (!m || m.done) return; m.done = true; finishedShown = true;
     const rows = [...race.racers].map(r => ({ r, t: r.player ? m.myFin : r.finishTime })).sort((a, b) => (a.t ?? Infinity) - (b.t ?? Infinity));
-    const place = rows.findIndex(x => x.r.player) + 1, body = `<ol class="rc-board">${rows.map((x, i) => `<li class="${x.r.player ? 'me' : ''}"><b>${ORD[i + 1] ?? (i + 1) + 'TH'}</b><span>${x.r.player ? '나' : x.r.name}</span><em>${x.t === null ? (x.r.peer && m.gone.has(x.r.peer) ? '나감' : '기록 없음') : fmtTime(x.t)}</em></li>`).join('')}</ol><p class="rc-record">3명 이상의 방은 순위만 표시하고 레이팅에는 반영되지 않습니다.</p>`;
+    const place = rows.findIndex(x => x.r.player) + 1, body = `<ol class="rc-board">${rows.map((x, i) => `<li class="${x.r.player ? 'me' : ''}"><b>${ORD[i + 1] ?? (i + 1) + 'TH'}</b><span>${x.r.player ? '나' : escapeText(x.r.name)}</span><em>${x.t === null ? (x.r.peer && m.gone.has(x.r.peer) ? '나감' : '기록 없음') : fmtTime(x.t)}</em></li>`).join('')}</ol><p class="rc-record">3명 이상의 방은 순위만 표시하고 레이팅에는 반영되지 않습니다.</p>`;
     window.setTimeout(() => { if (!closed && multi === m) pvpCard(`${mapOf(setup).name} · ${setup.laps}랩 · ${rows.length}명`, `${ORD[place] ?? place + 'TH'} <small>/ ${rows.length}</small>`, body, '<button class="primary" data-act="rematch">다시 대전</button><button data-act="exit">메뉴로</button>'); }, 700);
   }
 
@@ -238,7 +243,7 @@ export function openRace(onExit: () => void): void {
 
   let carTemplate: Record<string, THREE.Object3D> | null = null;
   function startView(tpl: Record<string, THREE.Object3D> | null): boolean {
-    clearControls(); nitroWas = driftWas = false;
+    clearControls(); nitroWas = driftWas = false; wrongT = 0;
     // 해제된 WebGL 컨텍스트는 같은 캔버스에서 다시 열 수 없으므로 캔버스를 새로 만듭니다.
     const fresh = document.createElement('canvas'); fresh.className = 'rc-canvas'; canvas.replaceWith(fresh); canvas = fresh;
     try {
@@ -284,7 +289,7 @@ export function openRace(onExit: () => void): void {
     for (const r of [...race.racers].reverse()) { mg.fillStyle = r.color; mg.beginPath(); mg.arc(mx(r.car.x), mz(r.car.z), r.player ? 6 : 4.5, 0, 7); mg.fill(); if (r.player) { mg.strokeStyle = '#fff'; mg.lineWidth = 2; mg.stroke(); } }
   }
 
-  function hud(): void {
+  function hud(dt: number): void {
     const p = race.player, c = p.car, place = placeOf(race), sp = kmh(c);
     setText('#rc-pos', race.trial ? '' : String(place)); setText('#rc-lap', String(currentLap(race))); setText('#rc-kmh', String(Math.round(sp)));
     setText('#rc-time', fmtTime(Math.max(0, race.clock))); const gd = race.ghost && race.phase === 'racing' ? ghostDelta(race.ghost, c.total, race.clock) : null;
@@ -297,7 +302,9 @@ export function openRace(onExit: () => void): void {
     setText('#rc-drift', driftLive(dr) && dr.chain >= 30 ? `DRIFT ${Math.round(dr.chain).toLocaleString('ko-KR')}${dr.mult > 1 ? `  ×${dr.mult}` : ''}` : ''); $('#rc-drift').classList.toggle('live', c.drifting);
     const rev = Math.min(1, Math.abs(c.vf) / p.params.top); $<HTMLElement>('#rc-rev').style.width = `${(rev * 100).toFixed(0)}%`;
     root.dataset.kmh = String(Math.round(sp)); root.dataset.place = String(place); root.dataset.lap = String(currentLap(race)); root.dataset.phase = finishedShown ? 'done' : race.phase;
-    const tx = track.tx[c.idx], tz = track.tz[c.idx], dir = c.vx * tx + c.vz * tz; $('#rc-wrong').classList.toggle('show', race.phase === 'racing' && dir < -6 && (wrongT += 1) > 20); if (dir >= -6) wrongT = 0;
+    const tx = track.tx[c.idx], tz = track.tz[c.idx], dir = c.vx * tx + c.vz * tz;
+    wrongT = race.phase === 'racing' && dir < -6 ? wrongT + dt : 0;
+    $('#rc-wrong').classList.toggle('show', wrongT > 1 / 3);
     const speedy = Math.min(1.4, sp / 270 + (boosting(c) ? 0.25 : 0)); $<HTMLElement>('.rc-boostfx').style.opacity = boosting(c) ? '1' : '0'; $<HTMLElement>('.rc-vignette').style.opacity = String(Math.min(1, 0.15 + speedy * 0.7));
     if (!race.trial && place < lastPlace && race.phase === 'racing') { msg(`추월!  ${ORD[place]}`, 'gold'); view?.punchFov(0.4); }
     lastPlace = place;
@@ -317,7 +324,7 @@ export function openRace(onExit: () => void): void {
       if (driftNow && !driftWas) { audio.sfx('chirp'); view.punchFov(0.25); }
       nitroWas = nitroNow; driftWas = driftNow;
       view.update(race, dt, wallHit); wallHit = 0; fxIntensity += (RaceView.intensity(race) - fxIntensity) * Math.min(1, dt * 5); drawFx(fxIntensity);
-      pvp?.net.sendSnap(race.player.car, now); multi?.net.sendSnap(race.player.car, now); hud(); drawMini();
+      pvp?.net.sendSnap(race.player.car, now); multi?.net.sendSnap(race.player.car, now); hud(steps * STEP); drawMini();
       if (msgT > 0 && (msgT -= dt) <= 0) $('#rc-msg').className = 'rc-msg';
     }
   }
@@ -348,22 +355,23 @@ export function openRace(onExit: () => void): void {
     if (e.code === 'Enter' && finishedShown && !pvp && !multi) { restart(); return; } keys.add(e.code);
   };
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.code); };
-  function clearControls(): void { keys.clear(); for (const k of Object.keys(hold) as Array<keyof typeof hold>) hold[k] = false; root.querySelectorAll('[data-hold].down').forEach(b => b.classList.remove('down')); }
+  function clearControls(): void { keys.clear(); for (const ids of heldPointers.values()) ids.clear(); for (const k of Object.keys(hold) as Array<keyof typeof hold>) hold[k] = false; root.querySelectorAll('[data-hold].down').forEach(b => b.classList.remove('down')); }
   const onBlur = (): void => { clearControls(); if (race.phase === 'racing' && !setupUi) setPaused(true); };
   const onVisibility = (): void => { if (document.hidden) onBlur(); };
   addEventListener('keydown', onKey); addEventListener('keyup', onKeyUp); addEventListener('resize', resize); addEventListener('blur', onBlur); document.addEventListener('visibilitychange', onVisibility);
   root.addEventListener('click', e => { const b = (e.target as HTMLElement).closest<HTMLElement>('[data-act]'); if (b) act(b.dataset.act); });
   root.querySelectorAll<HTMLElement>('[data-hold]').forEach(b => {
     const k = b.dataset.hold as keyof typeof hold;
-    const release = (): void => { hold[k] = false; b.classList.remove('down'); };
+    const ids = new Set<number>(); heldPointers.set(k, ids);
+    const release = (e: PointerEvent): void => { ids.delete(e.pointerId); hold[k] = ids.size > 0; b.classList.toggle('down', hold[k]); };
     b.addEventListener('pointerdown', e => {
       if (e.button !== 0) return;
       e.preventDefault(); audio.unlock();
       try { b.setPointerCapture(e.pointerId); } catch { /* 캡처를 거절해도 누르고 있는 동안은 조향이 유지됩니다. */ }
-      hold[k] = true; b.classList.add('down');
+      ids.add(e.pointerId); hold[k] = true; b.classList.add('down');
     });
     b.addEventListener('pointerup', release); b.addEventListener('pointercancel', release); b.addEventListener('lostpointercapture', release);
-    b.addEventListener('pointerleave', e => { if (!b.hasPointerCapture(e.pointerId)) release(); });
+    b.addEventListener('pointerleave', e => { if (!b.hasPointerCapture(e.pointerId)) release(e); });
     b.addEventListener('contextmenu', e => e.preventDefault());
   });
 

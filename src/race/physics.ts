@@ -1,5 +1,6 @@
 // SPEED RUSH — 아케이드 차량 물리. 조향은 요 속도로, 미끄러짐은 횡방향 그립으로 다루고 드리프트·니트로·벽 충돌을 포함합니다. (THREE 의존 없음)
 import { idxDelta, nearest, type Track } from './track';
+import { maxLookCurvature } from './track-queries';
 
 export interface CarInput { throttle: number; brake: number; steer: number; drift: boolean; nitro: boolean; }
 export interface CarState {
@@ -156,8 +157,7 @@ export function aiInput(c: CarState, t: Track, ai: AiProfile): CarInput {
   const line = ai.line ?? 0, inside = clamp(t.k[(ti + 8) % t.n] * 1400, -1, 1) * (t.halfWidth - 7), lane = ai.lane * (1 - line) + inside * line;
   const tx = t.x[ti] - t.tz[ti] * lane, tz = t.z[ti] + t.tx[ti] * lane;
   const err = wrapAngle(Math.atan2(tz - c.z, tx - c.x) - c.h), steer = clamp(err * 2.6, -1, 1);
-  const look = Math.max(12, Math.round((speed * 1.7) / t.ds)); let kmax = 0;
-  for (let o = 0; o <= look; o += 2) kmax = Math.max(kmax, Math.abs(t.k[(c.idx + o) % t.n]));
+  const look = Math.max(12, Math.round((speed * 1.7) / t.ds)), kmax = maxLookCurvature(t.k, c.idx, look);
   const top = ai.top * (c.boostT > 0 ? BOOST_TOP : 1), target = Math.min(top, Math.sqrt(ai.grip / Math.max(kmax, 1e-4)));
   const over = speed - target, straight = kmax < 0.005 && speed > 35 && over < 2;
   return { throttle: over < 0 ? 1 : 0, brake: over > 4 ? Math.min(1, over / 12) : 0, steer, drift: false, nitro: ai.nitro !== undefined && straight && c.nitro > ai.nitro };

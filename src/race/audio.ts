@@ -64,7 +64,7 @@ export class RaceAudio {
     this.boostG = loop('bandpass', 600, 0.8);
     this.bed = window.setInterval(() => this.tickBed(), 320);
   }
-  setEnabled(on: boolean): void { this.enabled = on; this.eng.setEnabled(on); }
+  setEnabled(on: boolean): void { this.enabled = on; }
   dispose(): void {
     if (this.bed !== null) { clearInterval(this.bed); this.bed = null; }
     for (const src of [this.motor?.o1, this.motor?.o2, this.subOsc?.o, this.whistle?.o, this.wind?.src, this.skid?.src, this.boostG?.src]) {
@@ -101,6 +101,9 @@ export class RaceAudio {
   }
 
   sfx(name: 'count' | 'go' | 'lap' | 'best' | 'hit' | 'bump' | 'pad' | 'drift' | 'nitro' | 'chirp' | 'finish' | 'click', power = 1): void {
+    // Race lifecycle must advance even when muted or audio is not unlocked.
+    if (name === 'go') this.done = false;
+    if (name === 'finish') { this.done = true; this.drive(0, 0, 0, false, false, false); }
     if (!this.eng.ctx || !this.enabled) return;
     // hit/bump can be emitted twice in one frame (wall + car shove) or every step while cars grind.
     const gap = name === 'hit' || name === 'bump' ? 150 : 0;
@@ -111,7 +114,7 @@ export class RaceAudio {
     }
     switch (name) {
       case 'count': tone(this.eng, 520, 0.16, 0.28, 'square'); break;
-      case 'go': tone(this.eng, 1040, 0.4, 0.32, 'square'); tone(this.eng, 1560, 0.4, 0.16, 'sawtooth'); this.done = false; break;
+      case 'go': tone(this.eng, 1040, 0.4, 0.32, 'square'); tone(this.eng, 1560, 0.4, 0.16, 'sawtooth'); break;
       case 'lap': tone(this.eng, 660, 0.11, 0.24, 'triangle'); tone(this.eng, 990, 0.18, 0.24, 'triangle', 0, 0.1); break;
       case 'best': tone(this.eng, 660, 0.11, 0.24, 'triangle'); tone(this.eng, 880, 0.11, 0.24, 'triangle', 0, 0.1); tone(this.eng, 1320, 0.26, 0.24, 'triangle', 0, 0.2); break;
       case 'hit': burst(this.eng, 0.3, Math.min(0.7, 0.24 + power * 0.03), 600, 0.8, 'lowpass'); tone(this.eng, 90, 0.22, Math.min(0.45, 0.2 + power * 0.025), 'sine', -50); break;
@@ -120,7 +123,7 @@ export class RaceAudio {
       case 'drift': tone(this.eng, 500, 0.26, 0.24, 'sawtooth', 1200); burst(this.eng, 0.35, 0.24, 2500, 0.7, 'highpass'); break;
       case 'nitro': tone(this.eng, 90, 0.5, 0.42, 'sine', -40); tone(this.eng, 160, 0.7, 0.3, 'sawtooth', 1500); burst(this.eng, 0.8, 0.34, 1800, 0.7, 'highpass'); burst(this.eng, 0.25, 0.3, 500, 0.9, 'lowpass'); break;
       case 'chirp': burst(this.eng, 0.22, 0.26, 2600, 5, 'bandpass'); tone(this.eng, 900, 0.18, 0.1, 'sawtooth', -400); break;
-      case 'finish': this.done = true; this.drive(0, 0, 0, false, false, false);
+      case 'finish':
         for (let i = 0; i < 4; i++) tone(this.eng, 523 * [1, 1.25, 1.5, 2][i], 0.32, 0.24, 'triangle', 0, i * 0.12);
         break;
       case 'click': tone(this.eng, 700, 0.05, 0.16, 'square'); break;

@@ -37,7 +37,9 @@ export class ActorView {
   private readonly rigs = new Map<number, Rig>();
   private readonly cars = new Map<number, CarView>();
   private readonly loot = new Map<number, LootView>();
-  private readonly livePeds = new Set<number>(), liveCars = new Set<number>(), liveLoot = new Set<number>();
+  private readonly livePeds = new Set<number>();
+  private readonly liveCars = new Set<number>();
+  private readonly liveLoot = new Set<number>();
   private readonly rockets = new Map<number, THREE.Group>();
   private readonly beacons: Beacon[] = [];
   private readonly fx: Fx[] = [];

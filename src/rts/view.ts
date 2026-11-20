@@ -176,7 +176,7 @@ export class RtsView {
   // ---------- 전장의 안개 ----------
   setVision(v: Vision | null): void {
     this.vision = v;
-    if (this.fog) { this.scene.remove(this.fog.mesh); this.fog.tex.dispose(); this.fog = null; }
+    if (this.fog) { this.disposeOwned(this.fog.mesh); this.fog.tex.dispose(); this.fog = null; }
     if (!v) return;
     const n = this.sim.map.size, data = new Uint8Array(n * n * 4), cur = new Float32Array(n * n).fill(FOG_A_HIDDEN);
     for (let i = 0; i < n * n; i++) { data[i * 4] = 6; data[i * 4 + 1] = 10; data[i * 4 + 2] = 18; data[i * 4 + 3] = FOG_A_HIDDEN; }
@@ -414,6 +414,7 @@ export class RtsView {
 
   dispose(): void {
     this.delayedFx = [];
+    this.desert?.dispose();
     if (this.contact) (this.contact.material as THREE.MeshBasicMaterial).map?.dispose();
     this.scene.traverse(o => { if (o instanceof THREE.Mesh || o instanceof THREE.InstancedMesh) { o.geometry.dispose(); const m = o.material; (Array.isArray(m) ? m : [m]).forEach(x => x.dispose()); } });
     this.post?.dispose(); this.fog?.tex.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss();

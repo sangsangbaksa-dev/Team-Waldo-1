@@ -32,6 +32,7 @@ let renderer,
   mixer,
   gait = [],
   stride = 0,
+  gaitWeight = 0,
   entity,
   environment,
   props,
@@ -54,6 +55,8 @@ let moved = 0,
 let now = 0,
   last = 0,
   frameStarted = false,
+  sceneDirty = true,
+  contextLost = false,
   nearest = null,
   moveId = -1,
   lookId = -1,
@@ -74,6 +77,7 @@ const touch =
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 let lastPointerType = matchMedia("(pointer:coarse)").matches ? "touch" : "mouse";
 let draggingLook = false;
+let lookTravel = 0;
 const px = (t) => String(t).padStart(2, "0");
 const clock = (t) => px(Math.floor(t / 60)) + ":" + px(Math.floor(t % 60));
 const pad = (i) => String(i + 1).padStart(2, "0");
@@ -118,7 +122,7 @@ function homepage() {
   leaveLook();
   sound.pause(true);
   screens("home");
-  $("dialog").hidden = true;
+  setGameModal(false);
   const s = saved();
   $("continue").hidden = !s;
   $("new").textContent = s ? "처음부터" : "게임 시작";
@@ -141,12 +145,16 @@ function clearInputs() {
   moveId = lookId = -1;
   moveStart = lookLast = null;
   draggingLook = false;
+  lookTravel = 0;
   mobileRun = false;
   $("stickknob").style.transform = "";
 }
 function leaveLook() {
   clearInputs();
-  if (document.pointerLockElement) document.exitPointerLock();
+  if (document.pointerLockElement === renderer?.domElement) {
+    hadPointerLock = false;
+    document.exitPointerLock();
+  }
 }
 function lockLook() {
   if (lastPointerType === "touch" || !renderer || document.pointerLockElement) return;
@@ -159,11 +167,17 @@ function message(msg, sec = 3.2) {
   $("toast").textContent = msg;
   noticeUntil = now + sec;
 }
+function setGameModal(open) {
+  $("dialog").hidden = !open;
+  for (const child of $("game").children) {
+    if (child.id !== "dialog") child.inert = open;
+  }
+}
 function modal(title, description, body, actions, type = "panel") {
   state = type;
   leaveLook();
   sound.pause(true);
-  $("dialog").hidden = false;
+  setGameModal(true);
   $("panelTitle").textContent = title;
   $("panelText").textContent = description;
   $("panelBody").replaceChildren();
@@ -180,7 +194,7 @@ function modal(title, description, body, actions, type = "panel") {
 }
 function resume() {
   state = "play";
-  $("dialog").hidden = true;
+  setGameModal(false);
   sound.pause(false);
   lockLook();
   last = performance.now();
@@ -241,12 +255,13 @@ async function setup() {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.08;
     $("viewWrap").prepend(renderer.domElement);
-    renderer.domElement.addEventListener("click", () => {
+    $("viewWrap").addEventListener("click", () => {
       if (state === "play" && !draggingLook) lockLook();
       draggingLook = false;
     });
     renderer.domElement.addEventListener("webglcontextlost", (e) => {
       e.preventDefault();
+      contextLost = true;
       if (state === "home" || state === "won") return;
       if (level && state !== "load") save();
       modal(
@@ -257,7 +272,12 @@ async function setup() {
         "error",
       );
     });
+    renderer.domElement.addEventListener("webglcontextrestored", () => {
+      contextLost = false;
+      sceneDirty = true;
+    });
   }
+  if (contextLost) throw new Error("WebGL context is unavailable");
   if (!model) {
     const gltf = await new GLTFLoader().parseAsync(await modelBytes(), "");
     model = gltf.scene;
@@ -322,6 +342,8 @@ function pointPlayer() {
   yaw = Math.atan2(-(next.x - p.x), -(next.z - p.z));
   pitch = 0;
   camera.rotation.set(0, yaw, 0, "YXZ");
+  camera.position.copy(player);
+  sceneDirty = true;
   stamina = 1;
   winded = false;
   crouched = false;
@@ -336,13 +358,15 @@ function pointPlayer() {
   enemyPhase = 0;
   lastCell = -1;
   nearest = null;
-  stepAt = moved = stride = 0;
+  stepAt = moved = stride = gaitWeight = 0;
   noticeUntil = 0;
   $("toast").textContent = "";
   $("danger").style.opacity = "0";
   $("strain").textContent = "안정";
   $("strain").dataset.threat = "safe";
   $("stamina").style.transform = "scaleX(1)";
+  $("stamina").classList.remove("winded");
+  $("stamina").parentElement.setAttribute("aria-valuenow", "100");
   $("timer").textContent = clock(elapsed);
   sound.threat(0);
   $("prompt").hidden = true;
@@ -359,6 +383,7 @@ function resize() {
   const ratio = renderPixelRatio(w, h, Math.min(devicePixelRatio || 1, touch ? 1.35 : 1.65), touch ? 'standard' : 'high');
   if (ratio !== renderer.getPixelRatio()) renderer.setPixelRatio(ratio);
   renderer.setSize(w, h, false);
+  sceneDirty = true;
 }
 window.addEventListener("resize", resize);
 function disposeGroup(root) {
@@ -562,7 +587,7 @@ async function start(cont) {
   opening = true;
   screens("game");
   state = "load";
-  $("dialog").hidden = false;
+  setGameModal(true);
   $("panelTitle").textContent = "녹음실 연결 중";
   $("panelText").textContent = "공간과 캐릭터를 불러오고 있습니다.";
   $("panelBody").replaceChildren();
@@ -1022,7 +1047,12 @@ function enemyUpdate(dt, running) {
 
   nextPath -= dt;
   const ec = cellOf(e);
-  if (nextPath <= 0) {
+  const directChase = tracking && inSight && ec === playerCell;
+  if (directChase) {
+    // A direct pursuit changes the actual position; discard stale corridor waypoints.
+    path = [];
+    nextPath = 0;
+  } else if (nextPath <= 0) {
     nextPath = enemyPhase ? 0.65 : 2.5;
     // Replan from the next corridor center. This keeps sharp turns out of walls.
     const anchor = path[0] ?? ec;
@@ -1048,7 +1078,7 @@ function enemyUpdate(dt, running) {
   }
   const startX = e.x;
   const startZ = e.z;
-  const destination = tracking && inSight && ec === playerCell ? player
+  const destination = directChase ? player
     : path.length ? xy(path[0]) : null;
   if (destination) {
     const x = destination.x - e.x;
@@ -1063,17 +1093,22 @@ function enemyUpdate(dt, running) {
       e.x += (x / d) * v;
       e.z += (z / d) * v;
     }
-    if (d > 0.03) entity.rotation.y = Math.atan2(x, z);
+    if (d > 0.03) {
+      const angle = Math.atan2(x, z) - entity.rotation.y;
+      const delta = Math.atan2(Math.sin(angle), Math.cos(angle));
+      entity.rotation.y += delta * (1 - Math.exp(-10 * dt));
+    }
   }
   const travel = Math.hypot(e.x - startX, e.z - startZ);
   stride += travel * 5.5;
-  model.position.y = 0.009 + 0.009 * Math.abs(Math.sin(stride));
+  gaitWeight = THREE.MathUtils.damp(gaitWeight, Math.min(1, travel / Math.max(dt, .001)), 9, dt);
+  model.position.y = 0.009 + 0.009 * gaitWeight * Math.abs(Math.sin(stride));
   model.rotation.z = 0.025 * Math.sin(now * 2.1);
   mixer.update(dt * (enemyPhase ? 1.25 : 0.75));
   for (const joint of gait) {
     const swing = Math.sin(stride + joint.offset);
     joint.bone.quaternion.copy(joint.rest);
-    joint.bone.rotateOnAxis(joint.axis, joint.amplitude * (joint.knee ? Math.max(0, swing) : swing));
+    joint.bone.rotateOnAxis(joint.axis, joint.amplitude * gaitWeight * (joint.knee ? Math.max(0, swing) : swing));
   }
   const threat = grace
     ? 0
@@ -1111,11 +1146,6 @@ function update(dt) {
   if (stamina <= 0.045) winded = true;
   else if (!sprintHeld || stamina >= 0.3) winded = false;
   const running = sprintHeld && !crouched && !winded && length > 0.1;
-  stamina = THREE.MathUtils.clamp(
-    stamina + (running ? -0.14 : 0.11) * dt,
-    0,
-    1,
-  );
   const scale = (running ? 3.22 : crouched ? 1.05 : 1.88) * dt,
     oldX = player.x,
     oldZ = player.z;
@@ -1124,6 +1154,12 @@ function update(dt) {
     (-Math.cos(yaw) * f - Math.sin(yaw) * r) * scale,
   );
   moved = Math.hypot(player.x - oldX, player.z - oldZ);
+  const exerting = running && moved > dt * 0.15;
+  stamina = THREE.MathUtils.clamp(stamina + (exerting ? -0.14 : 0.11) * dt, 0, 1);
+  $("stamina").classList.toggle("winded", winded);
+  const staminaPercent = String(Math.round(stamina * 100));
+  const meter = $("stamina").parentElement;
+  if (meter.getAttribute("aria-valuenow") !== staminaPercent) meter.setAttribute("aria-valuenow", staminaPercent);
   stepAt += moved;
   if (stepAt > (running ? 1.02 : 0.86)) {
     sound.step(running, crouched);
@@ -1189,16 +1225,28 @@ function frame(ts) {
   const dt = Math.min(0.075, Math.max(0, (ts - last) / 1000));
   last = ts;
   now = ts / 1000;
-  if (document.hidden || !scene || $("game").hidden) return;
+  if (document.hidden || contextLost || !scene || $("game").hidden) return;
   if (state === "play") {
     update(dt);
     renderer.render(scene, camera);
-  } else if (["brief", "loading"].includes(state)) {
-    camera.position.copy(player);
+    sceneDirty = false;
+  } else if (sceneDirty && !["load", "error"].includes(state)) {
+    // Static modal backgrounds only need a new frame after a scene/size change.
     renderer.render(scene, camera);
+    sceneDirty = false;
   }
 }
 document.addEventListener("keydown", (e) => {
+  if (e.code === "Tab" && !$("game").hidden && !$("dialog").hidden) {
+    const focusable = [...$("dialog").querySelectorAll("button:not(:disabled), input:not(:disabled), a[href]")];
+    if (!focusable.length) { e.preventDefault(); return; }
+    const index = focusable.indexOf(document.activeElement);
+    if (index < 0 || (e.shiftKey ? index === 0 : index === focusable.length - 1)) {
+      e.preventDefault();
+      focusable[e.shiftKey ? focusable.length - 1 : 0].focus();
+    }
+    return;
+  }
   if (
     e.target instanceof HTMLInputElement ||
     e.target instanceof HTMLSelectElement
@@ -1271,6 +1319,7 @@ wrap.addEventListener("pointerdown", (e) => {
     return;
   lookId = e.pointerId;
   draggingLook = false;
+  lookTravel = 0;
   lookLast = [e.clientX, e.clientY];
   wrap.setPointerCapture(e.pointerId);
 });
@@ -1282,7 +1331,8 @@ wrap.addEventListener("pointermove", (e) => {
     !document.pointerLockElement
   ) {
     const dx = e.clientX - lookLast[0], dy = e.clientY - lookLast[1];
-    if (Math.abs(dx) + Math.abs(dy) > 2) draggingLook = true;
+    lookTravel += Math.hypot(dx, dy);
+    if (lookTravel > 4) draggingLook = true;
     look(dx, dy);
     lookLast = [e.clientX, e.clientY];
   }

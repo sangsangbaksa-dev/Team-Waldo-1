@@ -47,3 +47,11 @@
 #game #guide[hidden] { display:none; }
 #game #guideArrow { flex:none; }
 #game .map { border:1px solid #74827988; }
+
+/* Navigation back to the arcade and fatigue feedback. */
+#home .mast-actions { display:flex; align-items:center; gap:clamp(.25rem,2vw,1.25rem); }
+#home .hub-link { color:#e5c6a8; text-decoration:none; font-size:.86rem; font-weight:650; padding:.65rem .2rem; }
+#home .hub-link:hover { text-decoration:underline; }
+#home .hub-link:focus-visible { outline:2px solid #eca16d; outline-offset:3px; }
+#game #stamina.winded { background:#e99879; }
+@media(max-width:480px) { #home .mast { padding-inline:.75rem; } #home .wordmark { font-size:1rem; letter-spacing:.05em; gap:.35rem; } #home .hub-link { font-size:.76rem; } #home #sound { font-size:.76rem; padding-inline:.2rem; } }

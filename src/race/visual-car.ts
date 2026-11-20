@@ -22,9 +22,9 @@ export function makeFallbackCar(color: THREE.ColorRepresentation, accent: THREE.
     const pos:number[] = [], idx:number[] = [];
     for (const [x,w,b,t] of rows) pos.push(x,b,-w,x,b,w,x,t,w*0.91,x,t,-w*0.91);
     for(let i=0;i<rows.length-1;i++) for(let j=0;j<4;j++){
-      const a=i*4+j,b=i*4+(j+1)%4,c=b+4,d=a+4; idx.push(a,b,d,b,c,d);
+      const a=i*4+j,b=i*4+(j+1)%4,c=b+4,d=a+4; idx.push(a,d,b,b,d,c);
     }
-    idx.push(0,2,1,0,3,2); const e=(rows.length-1)*4; idx.push(e,e+1,e+2,e,e+2,e+3);
+    idx.push(0,1,2,0,2,3); const e=(rows.length-1)*4; idx.push(e,e+2,e+1,e,e+3,e+2);
     const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setIndex(idx);
     const flat=g.toNonIndexed();g.dispose();flat.computeVertexNormals();return flat;
   };
@@ -41,7 +41,12 @@ export function makeFallbackCar(color: THREE.ColorRepresentation, accent: THREE.
   box(dark,.12,.15,1.56,-2.26,.30,0);
   box(paint,.28,.08,1.89,-1.99,1.05,0);
   for(const z of [-.65,.65])box(dark,.10,.33,.12,-1.99,.89,z);
-  for(const [mat,parts] of batch){const geometry=mergeGeometries(parts.map(g=>{const out=g.index?g.toNonIndexed():g; if(out!==g)g.dispose();if(out.hasAttribute('uv'))out.deleteAttribute('uv');return out;})); if(geometry)root.add(new THREE.Mesh(geometry,mat)); for(const p of parts)p.dispose();}
+    for(const [mat,parts] of batch){
+    const flat=parts.map(g=>{const out=g.index?g.toNonIndexed():g; if(out!==g)g.dispose();if(out.hasAttribute('uv'))out.deleteAttribute('uv');return out;});
+    const geometry=mergeGeometries(flat);
+    for(const p of flat)p.dispose();
+    if(geometry)root.add(new THREE.Mesh(geometry,mat));
+  }
   const tireGeo = new THREE.CylinderGeometry(.37,.37,.23,16); tireGeo.rotateX(Math.PI/2);
   const hubGeo = new THREE.CylinderGeometry(.22,.22,.025,12); hubGeo.rotateX(Math.PI/2);
   for(const x of [-1.43,1.42])for(const z of [-.99,.99]){

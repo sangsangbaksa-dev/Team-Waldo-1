@@ -269,6 +269,12 @@ export class RaceView {
     });
     asphalt.anisotropy = 8;
     const road = new THREE.Mesh(ribbon(t, -hw, hw, 0, 0), new THREE.MeshBasicMaterial({ map: asphalt })); road.renderOrder = 0; this.scene.add(road);
+    // 젖은 노면의 긴 반사 띠. 실제 동적 조명 대신 하나의 반사 텍스처로 표현합니다.
+    if (th.rain && this.quality !== 'low') {
+      const wet = canvasTex(128,256,g=>{g.clearRect(0,0,128,256);for(const x of [18,43,84,110]) { const gr=g.createLinearGradient(x-11,0,x+11,0);gr.addColorStop(0,'rgba(255,255,255,0)');gr.addColorStop(.5,'rgba(255,255,255,.24)');gr.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=gr;g.fillRect(x-11,0,22,256); }});
+      const sheen=new THREE.Mesh(ribbon(t,-hw+.2,hw-.2,.015,.015),new THREE.MeshBasicMaterial({map:wet,color:th.light.sky,transparent:true,opacity:0.55*th.rain,depthWrite:false,blending:THREE.AdditiveBlending}));
+      sheen.renderOrder=1;this.scene.add(sheen);this.disposables.push(wet);
+    }
     // 연석(빨강·흰색, 두 칸씩), 콘크리트 방호벽(밑단 어둡고 윗단이 또렷한 띠 + 상판), 도로 아래 스커트
     const curbCol = (i: number): [number, number, number] => [...th.curb[Math.floor(i / 2) % 2]];
     const curbMat = new THREE.MeshBasicMaterial({ vertexColors: true });
@@ -389,7 +395,7 @@ export class RaceView {
       if (!low) for (let j = -2; j <= 2; j++) parts.push(boxGeo(0.24, 0.32, 1.12, t.x[i] + rx * j * post / 3, t.y[i] + h - (big ? 1.12 : 0.38), t.z[i] + rz * j * post / 3, rot, steel));
     };
     archAt(0, true); const arches = low ? Math.ceil(th.arch.count / 2) : th.arch.count; for (let k = 1; k < arches; k++) { const i = Math.round((k / arches) * t.n) % t.n; if (!t.pads.some(p => Math.abs(p - i) < 6) && Math.min(i, t.n - i) > 12) archAt(i, false); }
-    const archMat = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.3, roughness: 0.5 }); const archGeo = mergeGeometries(parts); this.scene.add(new THREE.Mesh(archGeo, archMat)); parts.forEach(p => p.dispose());
+    const archMat = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.3, roughness: 0.5 }); const archGeo = mergeGeometries(parts); if (archGeo) this.scene.add(new THREE.Mesh(archGeo, archMat)); parts.forEach(p => p.dispose());
     // START 배너
     const bn = th.banner, banner = canvasTex(512, 96, g => { g.fillStyle = bn.bg; g.fillRect(0, 0, 512, 96); g.fillStyle = bn.fg; g.font = '900 64px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('SPEED RUSH', 256, 52); g.fillStyle = bn.accent; g.fillRect(0, 0, 512, 6); g.fillRect(0, 90, 512, 6); }, false);
     const bm = new THREE.Mesh(new THREE.PlaneGeometry(hw * 2 + 3, 2.2), new THREE.MeshBasicMaterial({ map: banner, side: THREE.DoubleSide })); bm.position.set(t.x[0], t.y[0] + 15, t.z[0] + 0.01); bm.rotation.y = -Math.atan2(t.tz[0], t.tx[0]) + Math.PI / 2; this.scene.add(bm); this.disposables.push(bm.geometry, banner);

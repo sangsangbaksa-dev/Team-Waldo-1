@@ -26,7 +26,10 @@ export function isLookSpike(dx: number, dy: number, limit = LOOK_SPIKE_PX): bool
 }
 
 export function applyLook(yaw: number, pitch: number, dx: number, dy: number, sensitivity = 0.0024): { yaw: number; pitch: number } {
-  return { yaw: yaw + dx * sensitivity, pitch: clampLookPitch(pitch - dy * sensitivity) };
+  const safeYaw = Number.isFinite(yaw) ? yaw : 0;
+  const safePitch = clampLookPitch(pitch);
+  if (![dx, dy, sensitivity].every(Number.isFinite)) return { yaw: safeYaw, pitch: safePitch };
+  return { yaw: safeYaw + dx * sensitivity, pitch: clampLookPitch(safePitch - dy * sensitivity) };
 }
 
 /** Face the outward door vector (unit, building → street). */

@@ -38,6 +38,15 @@ describe('고스트', () => {
     expect(ghostTimeAt(ghost, 8)).toBeCloseTo(0.08);
     expect(ghostTimeAt(ghost, 11)).toBeCloseTo(0.475);
   });
+  it('유효하지 않은 시간과 위치는 기록 및 재생하지 않는다', () => {
+    const recorder = new GhostRecorder();
+    recorder.tick(0, { x: NaN, z: 0, h: 0, total: 0 });
+    expect(recorder.data).toHaveLength(0);
+    const g = line();
+    expect(ghostAt(g, NaN)).toBeNull();
+    expect(ghostTimeAt(g, Infinity)).toBeNull();
+    expect(ghostDelta(g, 20, NaN)).toBeNull();
+  });
   it('깨진 저장값은 버린다', () => {
     expect(sanitizeGhost(null)).toBeNull(); expect(sanitizeGhost({ time: 5, laps: 1, data: [1, 2, 3] })).toBeNull(); expect(sanitizeGhost(line())).not.toBeNull();
   });

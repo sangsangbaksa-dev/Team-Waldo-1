@@ -1,5 +1,5 @@
 // 저장/불러오기. 저장 데이터는 신뢰하지 않고 기본값 위에 검증해서 얹는다.
-import { ENERGY_MAX, REGIONS, RIVALS, SHOP_KINDS, STAGES } from './data';
+import { DISTRICTS, ENERGY_MAX, EVENTS, REGIONS, RIVALS, SHOP_KINDS, STAGES } from './data';
 import { LOT_IDS, SPOT_BY_ID, newGame, type GameData, type LotData, type ShopData, type StaffData } from './model';
 import type { ShopKind, Stage, TycoonCore, TycoonSave } from './types';
 
@@ -9,7 +9,7 @@ type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => !!v && typeof v === 'object' && !Array.isArray(v);
 const num = (v: unknown, d: number, lo = -Infinity, hi = Infinity) => typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d;
 const bool = (v: unknown, d: boolean) => typeof v === 'boolean' ? v : d;
-const isKind = (v: unknown): v is ShopKind => typeof v === 'string' && v in SHOP_KINDS;
+const isKind = (v: unknown): v is ShopKind => typeof v === 'string' && Object.hasOwn(SHOP_KINDS, v);
 const isStage = (v: unknown): v is Stage => typeof v === 'string' && (STAGES as readonly string[]).includes(v);
 
 function staff(v: unknown): StaffData | null {
@@ -69,7 +69,7 @@ export function restoreGame(raw: unknown): GameData | null {
   if (isObj(raw.rivals)) for (const r of RIVALS) g.rivals[r.id] = { acquired: isObj(raw.rivals[r.id]) && raw.rivals[r.id] !== null && bool((raw.rivals[r.id] as Obj).acquired, false) };
   for (const r of RIVALS) if (g.rivals[r.id].acquired) for (const id of LOT_IDS) if (g.lots[id].rivalId === r.id) g.lots[id] = { owner: 'none' };
   if (isObj(raw.regions)) for (const r of REGIONS) g.regions[r.id] = num(raw.regions[r.id], 0, 0, 1);
-  g.events = Array.isArray(raw.events) ? raw.events.filter(isObj).map(e => ({ id: String(e.id), daysLeft: Math.round(num(e.daysLeft, 0, 0, 5)), district: typeof e.district === 'string' ? e.district as GameData['events'][number]['district'] : undefined })).filter(e => e.daysLeft > 0) : [];
+  g.events = Array.isArray(raw.events) ? raw.events.filter(isObj).map(e => ({ id: String(e.id), daysLeft: Math.round(num(e.daysLeft, 0, 0, 5)), district: typeof e.district === 'string' && Object.hasOwn(DISTRICTS, e.district) ? e.district as GameData['events'][number]['district'] : undefined })).filter(e => e.daysLeft > 0 && EVENTS.some(def => def.id === e.id)) : [];
   g.incorporated = bool(raw.incorporated, false);
   g.listed = bool(raw.listed, false) && g.incorporated;
   g.won = bool(raw.won, false);
@@ -77,7 +77,10 @@ export function restoreGame(raw: unknown): GameData | null {
   g.task = isObj(t) && SPOT_BY_ID.has(String(t.target)) && SPOT_BY_ID.has(String(t.from))
     ? { id: String(t.id), jobId: String(t.jobId), from: String(t.from), target: String(t.target), reward: num(t.reward, 0, 0, 1000), deadline: num(t.deadline, 0) }
     : null;
-  g.lastReport = isObj(raw.lastReport) ? raw.lastReport as unknown as GameData['lastReport'] : null;
+  if (isObj(raw.lastReport)) {
+    const r = raw.lastReport;
+    g.lastReport = { day: Math.floor(num(r.day, 1, 1, g.day)), revenue: num(r.revenue, 0, 0), costOfGoods: num(r.costOfGoods, 0, 0), wages: num(r.wages, 0, 0), upkeep: num(r.upkeep, 0, 0), interest: num(r.interest, 0, 0), tax: num(r.tax, 0, 0), worldIncome: num(r.worldIncome, 0, 0), jobIncome: num(r.jobIncome, 0, 0), profit: num(r.profit, 0), customers: num(r.customers, 0, 0), lost: num(r.lost, 0, 0) };
+  }
   if (isObj(raw.ledger)) for (const k of Object.keys(g.ledger) as Array<keyof GameData['ledger']>) g.ledger[k] = num(raw.ledger[k], 0);
   g.nextId = Math.floor(num(raw.nextId, 1, 1));
   g.shopsOpened = Math.floor(num(raw.shopsOpened, 0, 0));
@@ -101,7 +104,7 @@ export function loadTycoon(storage?: Storage): unknown {
 }
 
 export function saveTycoon(core: Pick<TycoonCore, 'serialize'>, storage?: Storage): boolean {
-  try { store(storage)?.setItem(TYCOON_SAVE_KEY, JSON.stringify(core.serialize())); return true; } catch { return false; }
+  try { const target = store(storage); if (!target) return false; target.setItem(TYCOON_SAVE_KEY, JSON.stringify(core.serialize())); return true; } catch { return false; }
 }
 
 export function clearTycoon(storage?: Storage): void {

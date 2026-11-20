@@ -84,14 +84,15 @@ function read(k) {
 }
 function saved() {
   const s = read(SAVE);
-  return s?.v === 1 &&
-    Number.isInteger(s.ch) &&
-    s.ch >= 0 &&
-    s.ch < 4 &&
-    Array.isArray(s.found) &&
-    s.found.length === 3
-    ? s
-    : null;
+  if (s?.v !== 1 || !Number.isInteger(s.ch) || s.ch < 0 || s.ch >= chapters.length ||
+      !Array.isArray(s.found) || s.found.length !== 3) return null;
+  return {
+    ...s,
+    found: s.found.map(v => v === true),
+    solved: s.solved === true,
+    seen: Array.isArray(s.seen) ? s.seen.filter(v => Number.isSafeInteger(v) && v >= 0) : [],
+    elapsed: Number.isFinite(s.elapsed) && s.elapsed >= 0 ? s.elapsed : 0,
+  };
 }
 function save() {
   try {
@@ -130,8 +131,9 @@ function homepage() {
   $("continue").textContent = s
     ? "이어하기 · " + pad(s.ch) + "구역"
     : "이어하기";
-  $("completion").textContent = read(LAST)
-    ? "최근 탈출 기록  " + clock(read(LAST).elapsed)
+  const completion = read(LAST);
+  $("completion").textContent = Number.isFinite(completion?.elapsed) && completion.elapsed >= 0
+    ? "최근 탈출 기록  " + clock(completion.elapsed)
     : "";
 }
 $("inspect").onclick = () => {

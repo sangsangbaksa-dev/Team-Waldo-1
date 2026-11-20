@@ -62,6 +62,18 @@ describe('타이쿤 저장', () => {
     expect(g.state.stage).toBe('broke');
   });
 
+  it('잘못된 업종과 이벤트 및 결산 수치를 정리한다', () => {
+    const save = playedCore().serialize() as Record<string, unknown>;
+    const lots = save.lots as Record<string, Record<string, unknown>>;
+    (lots.lot_m1.shop as Record<string, unknown>).kind = 'constructor';
+    save.lastReport = { day: 1, revenue: '<img src=x>', profit: -20, customers: null };
+    save.events = [{ id: 'unknown', daysLeft: 2 }];
+    const g = createCore({ save });
+    expect(g.state.owned).toHaveLength(0);
+    expect(g.state.events).toHaveLength(0);
+    expect(g.state.lastReport).toMatchObject({ day: 1, revenue: 0, profit: -20, customers: 0 });
+  });
+
   it('영구 능력치 업그레이드는 없다: 알 수 없는 필드는 버리고 에너지 최대치는 고정이다', () => {
     const core = playedCore();
     const save = { ...core.serialize(), perks: { energy: 5 }, skills: { charm: 3 }, maxEnergy: 200, upgrades: ['speed'] };

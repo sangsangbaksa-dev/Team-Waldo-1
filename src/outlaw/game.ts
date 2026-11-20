@@ -575,7 +575,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     } catch (err) { console.error(err); opts.loading?.close(); toast('그래픽을 시작하지 못했습니다'); exit(); return; }
     phase = 'menu'; showTitle(); opts.loading?.close(); raf = requestAnimationFrame(frame);
     if (import.meta.env.DEV) {
-      const dbg = { sim, cam: camera, get phase() { return phase; }, begin, teleport: (x: number, z: number) => { sim!.player.x = x; sim!.player.z = z; }, give: (id: string) => sim!.giveWeapon(sim!.player, id as never), get hud() { return hudEl; } };
+      const dbg = { sim, scene, cam: camera, get phase() { return phase; }, begin, teleport: (x: number, z: number) => { sim!.player.x = x; sim!.player.z = z; }, give: (id: string) => sim!.giveWeapon(sim!.player, id as never), get hud() { return hudEl; } };
       (window as unknown as { __ol: typeof dbg }).__ol = dbg;
     }
   })();

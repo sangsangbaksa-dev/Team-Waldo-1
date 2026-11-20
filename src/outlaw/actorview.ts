@@ -19,6 +19,8 @@ interface CarView {
   policeNodes: THREE.Object3D[]; wheels: THREE.Object3D[]; last: number[]; vf: number; emit: number; skidX: number; skidZ: number; scorched: boolean;
 }
 interface LootView { root: THREE.Group; prop: THREE.Group; sparkle: THREE.Sprite }
+/** 카메라~표식 중심 거리와 빔 반지름으로 빔을 얼마나 보일지(0~1) 정합니다. 빔 벽에 바짝 붙으면 0. */
+export const beamClearance = (dist: number, wall: number): number => Math.min(1, Math.max(0, (dist - wall - 2) / 12));
 interface Beacon { root: THREE.Group; ring: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>; beam: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial> }
 type FxKind = 'fire' | 'smoke' | 'spark' | 'blood' | 'debris' | 'ring' | 'tracer' | 'skid' | 'pool';
 interface Fx { mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>; kind: FxKind; life: number; total: number; vx: number; vy: number; vz: number; size: number; growth: number; alpha: number }
@@ -417,7 +419,9 @@ export class ActorView {
       b.root.position.set(x, groundHeight(this.sim.map, x, z), z); b.ring.scale.setScalar(Math.max(0.7, r)); b.ring.material.color.setHex(color); b.beam.material.color.setHex(color);
       const pulse = 0.82 + Math.sin(this.time * 2.2 + index) * 0.18, height = mission ? 40 : close ? 7 : 4;
       b.ring.material.opacity = (mission ? 0.7 : close ? 0.6 : 0.28) * pulse; b.beam.material.opacity = (mission ? 0.075 : close ? 0.045 : 0.02) * pulse;
-      b.beam.scale.set(Math.max(0.5, r * 0.8), height, Math.max(0.5, r * 0.8)); b.beam.position.y = height / 2; index++;
+      b.beam.scale.set(Math.max(0.5, r * 0.8), height, Math.max(0.5, r * 0.8)); b.beam.position.y = height / 2;
+      // 카메라가 빔 바로 옆·안에 있으면 빔 벽이 화면을 가로질러 초록 면과 수직 경계로 보이므로, 가까워질수록 걷어 냅니다.
+      const clear = beamClearance(dist, Math.max(0.5, r * 0.8)); b.beam.material.opacity *= clear; b.beam.visible = clear > 0.02; index++;
     };
     for (const m of [...this.sim.mission.markers, ...this.sim.activity.markers, ...this.sim.job.markers]) add(m.x, m.z, m.r, m.color, true);
     for (const m of MISSION_LIST) if (canStart(this.sim, m.id)) { const p = this.sim.map.pois.find(p => p.id === m.startPoi); if (p) add(p.x, p.z, p.r, 0xffd23f, true); }

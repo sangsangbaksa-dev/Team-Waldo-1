@@ -551,7 +551,8 @@ export class RaceView {
         x = cam.x + dx * fwd + Math.cos(a) * rr * -dz + Math.sin(a) * rr * 0; z = cam.z + dz * fwd + Math.cos(a) * rr * dx; y = cam.y + Math.sin(a) * rr * 0.55 - 1.2;
         if (y < 0.4) y = 0.4 + Math.random(); this.streakSeed[i * 3] = x; this.streakSeed[i * 3 + 1] = y; this.streakSeed[i * 3 + 2] = z;
       }
-      this.streakPos.set([x, y, z, x + dx * len, y, z + dz * len], i * 6);
+      const j = i * 6, pos = this.streakPos;
+      pos[j] = x; pos[j + 1] = y; pos[j + 2] = z; pos[j + 3] = x + dx * len; pos[j + 4] = y; pos[j + 5] = z + dz * len;
     }
     (this.streak.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
   }

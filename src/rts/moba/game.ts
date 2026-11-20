@@ -99,6 +99,9 @@ export function openMoba(onBack: () => void, onExit: () => void, room?: RoomLink
     if (e.code === 'Space') { e.preventDefault(); free = false; return; }
   }
   window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKey);
+  // 초점을 잃으면 누르고 있던 키·마우스를 놓은 것으로 칩니다(키 떼는 소식이 오지 않아 화면이 계속 움직이던 문제).
+  const onBlur = (): void => { keys.clear(); pointer.right = false; };
+  window.addEventListener('blur', onBlur);
   const rectOf = (): DOMRect => over.getBoundingClientRect(); const local = (e: PointerEvent): { x: number; y: number } => { const r = rectOf(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
   over.addEventListener('contextmenu', e => e.preventDefault());
   over.addEventListener('pointerdown', e => {
@@ -329,7 +332,7 @@ export function openMoba(onBack: () => void, onExit: () => void, room?: RoomLink
   }
 
   // ---------- 버튼 ----------
-  function exitAll(): void { if (closed) return; closed = true; if (net) { net.bye(); net.dispose(); net = null; } cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); view?.dispose(); audio.dispose(); root.remove(); }
+  function exitAll(): void { if (closed) return; closed = true; if (net) { net.bye(); net.dispose(); net = null; } cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('blur', onBlur); view?.dispose(); audio.dispose(); root.remove(); }
   root.addEventListener('click', e => {
     const t = (e.target as HTMLElement).closest<HTMLElement>('[data-act],[data-champ],[data-lane],[data-level],[data-buy],[data-spell],[data-rune],[data-team]'); if (!t) return; audio.unlock();
     if (t.dataset.team) { roomTeam = t.dataset.team === '1' ? 1 : 0; modal.querySelectorAll<HTMLElement>('[data-team]').forEach(b => b.setAttribute('aria-pressed', String(b === t))); audio.sfx('click'); return; }

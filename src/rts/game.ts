@@ -391,6 +391,9 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     const b = buttons.find(x => x.key === k); if (b) { e.preventDefault(); if (b.enabled === false) toast(b.hint ?? '지금은 할 수 없습니다', true); else { b.on(); refresh(); } }
   }
   window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKey);
+  // 창을 벗어난 사이 뗀 키·손가락은 알 수 없으므로 초점을 잃으면 모두 놓은 것으로 칩니다(안 그러면 화면이 혼자 계속 움직이거나 두 손가락 상태가 남아 다음 터치가 먹히지 않습니다).
+  const onBlur = (): void => { keys.clear(); touches.clear(); pinch = 0; pointer.down = false; pointer.drag = false; };
+  window.addEventListener('blur', onBlur);
 
   // ---------- HUD ----------
   function paintHud(): void {
@@ -618,7 +621,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
 
   // ---------- 버튼 ----------
   function exit(): void {
-    if (closed) return; closed = true; leavePvp(); cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('waldo:preferences', onPrefs);
+    if (closed) return; closed = true; leavePvp(); cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('blur', onBlur); window.removeEventListener('waldo:preferences', onPrefs);
     view?.dispose(); audio.dispose(); root.remove(); onExit();
   }
   const onPrefs = (): void => { const s = readPreferences().sound; audio.enabled = s; const m = root.querySelector<HTMLElement>('[data-act="mute"]'); if (m) { m.textContent = s ? '🔊' : '🔇'; m.setAttribute('aria-pressed', String(s)); } };

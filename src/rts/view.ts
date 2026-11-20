@@ -137,8 +137,19 @@ export class RtsView {
   private placeCamera(): void {
     const { x, y, dist } = this.cam, c = Math.cos(this.pitch), s = Math.sin(this.pitch), sign = this.yaw === 0 ? 1 : -1;
     this.camera.position.set(x, dist * s, y + dist * c * sign * 0.9 + sign * 2); this.camera.lookAt(x, 0, y - sign * 1.5); this.camera.updateMatrixWorld();
-    this.sun.position.set(x - 20, 44, y + 18); this.sun.target.position.set(x, 0, y); this.sun.target.updateMatrixWorld();
+    this.sun.position.set(x - 20, 44, y + 18); this.sun.target.position.set(x, 0, y); this.sun.target.updateMatrixWorld(); this.fitShadow(x, y, 52, 120);
   }
+  /** 화면에 보이는 땅 전체에 그림자가 닿도록 그림자 카메라 범위를 줌·시점에 맞춥니다(범위 밖은 그림자가 뚝 끊겨 보입니다). */
+  private fitShadow(x: number, z: number, min: number, max: number): void {
+    if (!this.shadows) return; const cam = this.camera, o = cam.position; let r = min;
+    for (const [nx, ny] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+      const d = new THREE.Vector3(nx, ny, 0.5).unproject(cam).sub(o); const hit = d.y < -1e-3 ? -o.y / d.y : Infinity;
+      const gx = hit === Infinity ? o.x + d.x * 1e3 : o.x + d.x * hit, gz = hit === Infinity ? o.z + d.z * 1e3 : o.z + d.z * hit; r = Math.max(r, Math.hypot(gx - x, gz - z));
+    }
+    r = Math.min(max, r * 1.05); const sc = this.sun.shadow.camera;
+    if (Math.abs(sc.right - r) > 1) { sc.left = sc.bottom = -r; sc.right = sc.top = r; sc.updateProjectionMatrix(); }
+  }
+
 
   /** 화면 좌표(캔버스 안, 픽셀) → 맵 좌표. 하늘을 가리키면 null. */
   ground(sx: number, sy: number): { x: number; y: number } | null {

@@ -18,7 +18,7 @@ const num = (v: unknown, lo = -1e6, hi = 1e6): v is number => typeof v === 'numb
 
 export class ShooterRoomNet {
   started = false; list: string[] = [];
-  private ch: Channel; private timer: number; private born = performance.now(); private lastTick = performance.now(); private lastPose = 0; private lastAlive = 0; private startedAt = 0; private dead = false;
+  private ch: Channel; private timer: number; private born = performance.now(); private lastTick = performance.now(); private lastPose = 0; private lastAlive = 0; private startedAt = 0; private dead = false; private deadMsg: NetMsg | null = null;
   private hellos = new Set<string>(); private heard = new Map<string, number>(); private gone = new Set<string>(); private ids: string[];
   constructor(readonly session: RoomSession, private hooks: RoomHooks) {
     this.ids = session.players.map(p => p.id); this.hellos.add(session.me.id);
@@ -39,7 +39,8 @@ export class ShooterRoomNet {
       return;
     }
     // 화면이 백그라운드로 가 프레임이 멈춰도 2초마다 살아 있다고 알립니다(멈춘 탭을 나간 사람으로 오해하지 않게).
-    if (now - this.lastAlive > 2000) { this.lastAlive = now; this.ch.send({ t: 'ka', f: this.f }); }
+    // 내가 쓰러졌다는 소식도 이때 다시 보냅니다(채널이 한 번 놓쳐도 남은 사람의 경기가 끝나지 않는 일이 없게. 받는 쪽은 이미 쓰러진 선수면 무시합니다).
+    if (now - this.lastAlive > 2000) { this.lastAlive = now; this.ch.send({ t: 'ka', f: this.f }); if (this.deadMsg) this.ch.send(this.deadMsg); }
     // 시작 직후에는 각자 3D 장면을 만드느라 몇 초씩 멈출 수 있어 더 오래 기다립니다(멈춘 방장을 나간 것으로 오해해 AI 를 둘이 계산하지 않게).
     const limit = now - this.startedAt < 30000 ? NEVER_MS : SILENT_MS;
     for (const [id, at] of this.heard) if (!this.gone.has(id) && now - at > limit) this.leave(id);
@@ -80,7 +81,7 @@ export class ShooterRoomNet {
   }
   sendShot(s: NetShot): void { if (this.started) this.ch.send({ t: 'sh', f: this.f, w: s.w, ox: Math.round(s.ox * 100) / 100, oy: Math.round(s.oy * 100) / 100, oz: Math.round(s.oz * 100) / 100, e: s.ends.map(v => Math.round(v * 10) / 10) }); }
   sendPickup(id: number): void { this.ch.send({ t: 'pk', f: this.f, i: id }); }
-  sendDead(mt: number, killer: number, cause = 0): void { this.ch.send({ t: 'dead', f: this.f, mt: Math.round(mt * 100) / 100, k: killer, c: cause }); }
+  sendDead(mt: number, killer: number, cause = 0): void { this.deadMsg = { t: 'dead', f: this.f, mt: Math.round(mt * 100) / 100, k: killer, c: cause }; this.ch.send(this.deadMsg); }
   bye(): void { this.ch.send({ t: 'bye', f: this.f }); }
   dispose(): void { this.dead = true; window.clearInterval(this.timer); this.ch.close(); }
 }

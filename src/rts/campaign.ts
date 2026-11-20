@@ -324,4 +324,28 @@ export const MISSIONS: MissionDef[] = [
       });
     },
   },
+  {
+    id: 7, title: '철벽 수리전', tag: '방어', ai: null, par: 8 * 60, bonus: '방어탑 세 채를 모두 지켜내기',
+    blurb: '전차가 앞장선 일곱 차례의 공세. 공병으로 방어탑과 전차를 계속 고치며 버텨라.',
+    brief: ['적이 일곱 차례 공세를 보냅니다. 중반부터 전차가 앞장서 방어탑을 부수러 옵니다.', '공병은 광물 없이 가까이의 아군 전차와 건물을 고칩니다. 방어탑 곁에 세워 두면 맞는 만큼 고쳐 주니, 포격이 끝난 건물을 따로 챙기세요.', '공세가 갈 때마다 광물로 병력을 보충하고, 공장에서 공병과 전차를 더 뽑을 수 있습니다. 방어탑 세 채를 끝까지 지키면 별 하나를 더 받습니다.'],
+    setup(c) {
+      c.base({ minerals: 700, buildings: ['barracks', 'factory', 'depot', 'depot', 'tower', 'tower', 'tower'], army: [['marine', 5], ['rocket', 3], ['tank', 2], ['engineer', 3], ['medic', 1]] });
+      c.flag.towers = c.sim.buildings.filter(b => b.owner === 0 && b.kind === 'tower').length;
+      c.objective('def', '적 공세 7차례를 모두 막아낸다'); c.objective('towers', '방어탑을 하나도 잃지 않고 승리', true);
+      const N = { x: 38, y: 48 }, E = { x: 58, y: 66 }, M = { x: 48, y: 58 };
+      c.wave(60, [['marine', 6]], N, null, '1차 공세: 보병이 북쪽에서 접근 중');
+      c.wave(140, [['tank', 2], ['marine', 3]], E, null, '2차 공세: 전차가 방어탑을 노립니다');
+      c.wave(230, [['tank', 3], ['marine', 3]], M, null, '3차 공세: 전차 편대');
+      c.wave(320, [['rocket', 4], ['jeep', 3], ['marine', 4]], N, null, '4차 공세: 기동대가 측면을 칩니다');
+      c.wave(410, [['tank', 4], ['marine', 4]], E, null, '5차 공세: 전차 포격대');
+      c.wave(500, [['tank', 3], ['rocket', 4], ['marine', 6]], M, null, '6차 공세: 혼성 주력');
+      c.wave(590, [['tank', 5], ['rocket', 4], ['marine', 8]], E, null, '최종 공세: 적 기갑 주력이 몰려옵니다');
+      c.hook(() => {
+        const hq = c.hq; if (!hq) { c.lose('사령부가 무너졌습니다'); return; }
+        const total = c.waves.length, left = c.wavesLeft(), next = c.nextWaveIn(), towers = c.sim.buildings.filter(b => b.owner === 0 && b.kind === 'tower').length;
+        c.note('def', `격퇴 ${total - left}/${total} · 방어탑 ${towers}/${c.flag.towers}${next !== null ? ` · 다음 공세 ${Math.floor(next / 60)}:${String(next % 60).padStart(2, '0')}` : ''}`);
+        if (left === 0) { if (towers >= c.flag.towers) c.complete('towers'); c.complete('def'); c.win('모든 공세를 막아냈습니다.'); }
+      });
+    },
+  },
 ];

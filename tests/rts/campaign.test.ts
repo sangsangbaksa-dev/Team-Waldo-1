@@ -124,6 +124,13 @@ describe('캠페인 미션', () => {
     burn(4); run(s, 10, c); expect(ids).toHaveLength(4); expect(c.targetsLeft()).toBe(0); expect(c.result).toBe('win'); expect(c.objectives.find(o => o.id === 'lean')!.done).toBe(true);
     const t = mission(6); run(t.s, 10 * 60 * TICK + 20, t.c); expect(t.c.result).toBe('lose');
   });
+  it('7: 공병과 방어탑 세 채로 시작하고, 가만히 있으면 지며, 공세를 모두 막으면 방어탑 보너스를 받는다', () => {
+    const { s, c } = mission(7); expect(s.units.filter(u => u.owner === 0 && u.kind === 'engineer')).toHaveLength(3); expect(c.flag.towers).toBe(3); expect(c.waves).toHaveLength(7);
+    const lost = mission(7); run(lost.s, 14 * 60 * TICK, lost.c); expect(lost.c.result).toBe('lose');
+    for (const w of c.waves) { w.spawned = true; } run(s, 10, c); expect(c.result).toBe('win'); expect(c.objectives.find(o => o.id === 'towers')!.done).toBe(true);
+    const t = mission(7); t.s.buildings.find(b => b.owner === 0 && b.kind === 'tower')!.hp = 0; for (const w of t.c.waves) w.spawned = true; run(t.s, 10, t.c);
+    expect(t.c.result).toBe('win'); expect(t.c.objectives.find(o => o.id === 'towers')!.done).toBe(false);
+  });
   it('항복하거나 모든 건물을 잃으면 패배한다', () => {
     const a = mission(1); a.s.apply(0, { k: 'surrender' }); run(a.s, 10, a.c); expect(a.c.result).toBe('lose'); expect(a.c.stars()).toBe(0);
     const b = mission(1); for (const x of b.s.buildings.filter(y => y.owner === 0)) x.hp = 0; run(b.s, 10, b.c); expect(b.c.result).toBe('lose');

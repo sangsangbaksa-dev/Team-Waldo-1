@@ -5,6 +5,7 @@ import { stageIndex } from '../core/data';
 import { GeoBuilder } from './geo';
 import { addFacadeDetails } from './architecture';
 import { addStreetProps } from './street';
+import { IntersectionLights } from './signals';
 import { EnvironmentPlumes, type PlumeEmitter } from '../../outlaw/environment-fx';
 import { Colliders, GRID, HALF, PITCH, ROAD, BLOCK, WORLD_HALF, blockTier, blockUnlocked, hash01, type Block, type Box, type Layout, type Lot } from './layout';
 import { asphaltTexture, dirtTexture, facadeMaps, grassTexture, kindColor, puddleTexture, ringTexture, sidewalkTexture, signTexture, type FacadeStyle } from './textures';
@@ -73,7 +74,8 @@ export class CityView {
   private signMats = new Map<string, THREE.MeshBasicMaterial>();
   private beacons = new Map<string, { group: THREE.Group; ring: THREE.Mesh; beam: THREE.Mesh; lot: Lot; open: boolean }>();
   private stage = -1; private time = 0; private night = 0; private wet = 0;
-  private plumes: EnvironmentPlumes; private targetId: string | null = null; private spotViews = new Map<string, SpotView>();
+  private plumes: EnvironmentPlumes;
+  private signals: IntersectionLights; private targetId: string | null = null; private spotViews = new Map<string, SpotView>();
   private lampMesh!: THREE.InstancedMesh; private lampGlow!: THREE.InstancedMesh; private poolMesh!: THREE.InstancedMesh;
   private trunkMesh!: THREE.InstancedMesh; private crownMesh!: THREE.InstancedMesh;
   private tmp = new THREE.Object3D();
@@ -102,7 +104,7 @@ export class CityView {
   roughnessFactor *= mix(1.0, texelRoughness.g * 0.85, uWet);
 #endif`);
     };
-    this.plumes = new EnvironmentPlumes(quality); this.group.add(this.plumes.group);
+    this.plumes = new EnvironmentPlumes(quality); this.signals = new IntersectionLights(); this.group.add(this.plumes.group, this.signals.group);
     this.buildGround(); this.buildRoadMarks(); this.buildProps(); this.buildBeacons(); this.buildBackdrop();
   }
 
@@ -136,7 +138,7 @@ export class CityView {
     };
     mk(dashes, 0.25, 3.2, 0xe9c34a, 0.025, 0.9);
     mk(stripes.filter(s => s[2]), 0.55, 3.4, 0xe8e8e8, 0.03, 0.85);
-    mk(stripes.filter(s => !s[2]), 3.4, 0.55, 0xe8e8e8, 0.03, 0.85);
+    mk(stripes.filter(s => !s[2]), 0.55, 3.4, 0xe8e8e8, 0.03, 0.85);
   }
   private buildProps(): void {
     // 가로등(기둥+팔), 머리, 바닥 빛무리
@@ -281,7 +283,7 @@ export class CityView {
       v.rise = Math.min(1, v.rise + dt / 1.6); const e = 1 - Math.pow(1 - v.rise, 3); v.bld.scale.y = Math.max(0.02, e); if (v.rise === 1) finishedRise = true;
     }
     if (finishedRise) this.refreshPlumes();
-    this.plumes.update(this.time, player, this.night, this.wet);
+    this.plumes.update(this.time, player, this.night, this.wet); this.signals.update(this.time);
     for (const v of this.construction) if (v.crane) v.crane.rotation.y += dt * 0.12;
     for (const b of this.beacons.values()) {
       if (!b.group.visible) continue;
@@ -522,7 +524,7 @@ export class CityView {
   private constructionSign: THREE.MeshBasicMaterial | null = null;
 
   dispose(): void {
-    if (this.disposed) return; this.disposed = true; this.plumes.dispose();
+    if (this.disposed) return; this.disposed = true; this.plumes.dispose(); this.signals.dispose();
     const geometries = new Set<THREE.BufferGeometry>(), materials = new Set<THREE.Material>([...Object.values(this.facade), this.roofMat, this.detailMat, this.glazingMat, this.glowMat, this.walkMat, this.dirtMat, this.grassMat, this.roadMat, ...this.signMats.values()]);
     if (this.constructionSign) materials.add(this.constructionSign);
     const textures = new Set<THREE.Texture>([this.ringTex]);

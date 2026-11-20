@@ -4,6 +4,7 @@ import type { CharacterKit, CharacterRig } from '../../shared/character';
 import { CIVILIANS } from '../../shared/character';
 import { makeVehicleMesh } from '../../shared/vehicle';
 import { ContactShadows } from '../../outlaw/contact-shadows';
+import { intersectionFactor } from './signals';
 import { HALF, PITCH, WALK_EDGE, WORLD_HALF, hash01 } from './layout';
 import type { Quality } from './city';
 
@@ -75,14 +76,14 @@ export function trafficSpeedFactor(gap: number, stop = 3, slow = 12): number {
 }
 function placeCar(c: Car): void {
   const lane = c.dir > 0 ? c.lane : -c.lane;
-  if (c.axis === 'x') { c.mesh.position.set(c.t, 0.18, c.line + lane); c.mesh.rotation.y = c.dir > 0 ? 0 : Math.PI; }
-  else { c.mesh.position.set(c.line - lane, 0.18, c.t); c.mesh.rotation.y = c.dir > 0 ? -Math.PI / 2 : Math.PI / 2; }
+  if (c.axis === 'x') { c.mesh.position.set(c.t, .025, c.line + lane); c.mesh.rotation.y = c.dir > 0 ? 0 : Math.PI; }
+  else { c.mesh.position.set(c.line - lane, .025, c.t); c.mesh.rotation.y = c.dir > 0 ? -Math.PI / 2 : Math.PI / 2; }
 }
 const CAR_COLORS = [0xb83a34, 0x2f5f9a, 0xd8d8d2, 0x23262b, 0x3a7a58, 0xd0a23a, 0x6a6e74, 0x8a4aa0];
 
 export class Traffic {
   readonly group = new THREE.Group();
-  private cars: Car[] = []; private target = 0;
+  private cars: Car[] = []; private target = 0; private time = 0;
   private lightMat = new THREE.MeshBasicMaterial({ color: 0xfff1c8, toneMapped: false }); private tailMat = new THREE.MeshBasicMaterial({ color: 0xff2a1a, toneMapped: false });
   private headGeo = new THREE.BoxGeometry(0.12, 0.2, 0.32); private tailGeo = new THREE.BoxGeometry(0.12, 0.18, 0.32);
   private brakeMat = new THREE.MeshBasicMaterial({ color: 0xff5030, toneMapped: false });
@@ -104,7 +105,7 @@ export class Traffic {
         const sc = spec.d / 1.9; hl.position.set(spec.w / 2 + 0.02, kind === 'bus' ? 0.9 : 0.72, z * sc); tl.position.set(-spec.w / 2 - 0.02, kind === 'bus' ? 0.9 : 0.68, z * sc); mesh.add(hl, tl); tailLights.push(tl);
       }
       if (quality !== 'low') {
-        headPool = new THREE.Mesh(this.poolGeo, this.poolMat); headPool.position.set(spec.w / 2 + 4.8, -0.135, 0); headPool.scale.set(11, 1, 5.5); headPool.visible = false; mesh.add(headPool);
+        headPool = new THREE.Mesh(this.poolGeo, this.poolMat); headPool.position.set(spec.w / 2 + 4.8, .02, 0); headPool.scale.set(11, 1, 5.5); headPool.visible = false; mesh.add(headPool);
       }
       mesh.visible = false; this.group.add(mesh);
       const axis = k % 2 ? 'x' : 'z', dir = (hash01(k, 24) < 0.5 ? 1 : -1) as 1 | -1;
@@ -115,6 +116,7 @@ export class Traffic {
   }
   setStage(stage: number): void { this.target = Math.min(this.cars.length, Math.round(this.cars.length * Math.min(1, 0.3 + stage * 0.14))); }
   update(dt: number, cam: THREE.Vector3, player: THREE.Vector3, night: number): void {
+    this.time += dt;
     const count = Math.ceil(this.target * (1 - night * 0.4)); this.contact.begin(night);
     let n = 0;
     for (const c of this.cars) {
@@ -122,7 +124,7 @@ export class Traffic {
       // 앞에 사람이 있으면 멈춥니다
       const along = c.axis === 'x' ? c.dir : 0, alongZ = c.axis === 'z' ? c.dir : 0, px = c.mesh.position.x, pz = c.mesh.position.z;
       const rx = player.x - px, rz = player.z - pz, fwd = rx * along + rz * alongZ, side = Math.abs(rx * alongZ * -1 + rz * along * 1);
-      let target = fwd > 0 && side < 2.6 ? trafficSpeedFactor(fwd - c.length / 2) : 1;
+      let target = Math.min(fwd > 0 && side < 2.6 ? trafficSpeedFactor(fwd - c.length / 2) : 1, intersectionFactor(this.time, c.axis, c.line, c.t, c.dir, c.length));
       for (let i = 0; i < count; i++) { const other = this.cars[i]; if (other === c || other.axis !== c.axis || other.line !== c.line || other.dir !== c.dir) continue; const gap = (other.t - c.t) * c.dir; if (gap > 0) target = Math.min(target, trafficSpeedFactor(gap - (c.length + other.length) / 2)); }
       // 감속은 안전 우선, 재출발은 부드럽게 가속한다.
       c.base = target < c.base ? target : c.base + (target - c.base) * Math.min(1, dt * 2.5);

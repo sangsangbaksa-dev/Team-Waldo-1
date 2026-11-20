@@ -39,6 +39,7 @@ export function exteriorSurface(x: number, z: number, w: number, d: number, angl
     if (x1 <= x - rx || x0 >= x + rx || z1 <= z - rz || z0 >= z + rz) continue;
     const next: Vertex[][] = [];
     for (const poly of polys) {
+      if (poly.every(p => p.x <= x0) || poly.every(p => p.x >= x1) || poly.every(p => p.z <= z0) || poly.every(p => p.z >= z1)) { next.push(poly); continue; }
       // Four disjoint strips outside the footprint; discard the remaining interior.
       let middle = poly;
       for (const [axis, edge, greater] of [['x', x0, true], ['x', x1, false], ['z', z0, true], ['z', z1, false]] as const) {

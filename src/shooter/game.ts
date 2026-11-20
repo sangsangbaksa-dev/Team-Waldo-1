@@ -327,7 +327,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     const wasLocked = locked; locked = document.pointerLockElement === canvas;
     if (!wasLocked || locked) return;
     blur();
-    if (!locked && (phase === 'play' || phase === 'countdown') && !pvpRunning() && !closed) setPause(true);
+    if (!locked && (phase === 'play' || phase === 'countdown') && !pvpRunning() && !closed && !paused) setPause(true);
     else if (!locked && pvpRunning() && !closed) say('클릭하면 조작이 돌아옵니다', 2);
   }
   const pvpRunning = (): boolean => ((!!pvp && !pvp.done) || (!!room && !room.done)) && !!match;
@@ -341,6 +341,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   const onUp = (e: MouseEvent): void => { if (e.button === 0) mouse.fire = false; else if (e.button === 2) mouse.ads = false; };
   const onKey = (e: KeyboardEvent): void => {
     if (e.type === 'keyup') { keys.delete(e.code); if (e.code === 'KeyE') interactHeld = false; return; }
+    if (!closed && match && !room?.chat?.typing && !e.repeat && e.code === 'Escape' && !pvpRunning() && (phase === 'play' || phase === 'countdown')) { e.preventDefault(); setPause(!paused); return; }
     if (closed || !match || room?.chat?.typing || paused || (e.target instanceof HTMLElement && e.target.closest('input,textarea,select,[contenteditable=true]')) || e.repeat && ['KeyR', 'KeyE', 'KeyG', 'KeyH', 'KeyJ', 'KeyQ'].includes(e.code)) return;
     keys.add(e.code);
     if (e.code === 'Enter' && room?.chat && !room.done && match && !paused) { keys.clear(); mouse.fire = mouse.ads = false; interactHeld = false; if (document.pointerLockElement) document.exitPointerLock(); room.chat.open(); e.preventDefault(); return; }
@@ -584,7 +585,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 일시정지·메뉴 ----------
   function setPause(on: boolean): void {
     if (pvpRunning() || (phase !== 'play' && phase !== 'countdown') || closed) return; paused = on;
-    if (on) { blur(); card('PAUSED', '일시정지', '', '<button class="primary" data-act="resume">계속하기</button><button data-act="again">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button>'); }
+    if (on) { blur(); if (document.pointerLockElement === canvas) document.exitPointerLock(); card('PAUSED', '일시정지', '', '<button class="primary" data-act="resume">계속하기</button><button data-act="again">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button>'); }
     else { modal.className = 'sz-modal'; modal.innerHTML = ''; if (!touch) lock(); }
   }
   q('#sz-pause').addEventListener('click', () => { if (pvpRunning()) { say('대전 중에는 멈출 수 없습니다', 1.4); return; } setPause(true); });

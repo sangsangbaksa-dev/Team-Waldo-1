@@ -101,7 +101,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       case 'status': h = statusHtml(core.state); break;
       case 'menu': h = menuHtml(audio.enabled, player.firstPerson); break;
       case 'win': h = winHtml(core.state); break;
-      case 'map': h = '<div class="ty-bigmap"><button type="button" class="ty-x" data-close aria-label="닫기">✕</button><canvas id="ty-bigmap" width="720" height="720"></canvas></div>'; break;
+      case 'map': h = '<div class="ty-bigmap" role="dialog" aria-modal="true" aria-label="도시 지도"><button type="button" class="ty-x" data-close aria-label="닫기">✕</button><canvas id="ty-bigmap" width="720" height="720"></canvas><div class="ty-map-caption">↑ 북쪽 · 흰 화살표: 내 위치 · 흰 테두리: 배달 목적지</div></div>'; break;
     }
     if (h !== modalHtml || modalEl.hidden) { // 내용이 바뀔 때만 교체합니다(누르는 도중 버튼이 바뀌면 클릭이 사라집니다)
       const keep = modalEl.querySelector('.ty-panel')?.scrollTop ?? 0;
@@ -298,7 +298,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     const st = core.state;
     // 입력 → 이동
     const mv = readMove(), frozen = !playing || paused() || document.hidden || !!st.activity?.lockMovement;
-    if (playing && !paused()) {
+    if (playing && !paused() && !document.hidden) {
       const turn = (keys.has('ArrowLeft') ? 1 : 0) - (keys.has('ArrowRight') ? 1 : 0), tilt = (keys.has('ArrowDown') ? 1 : 0) - (keys.has('ArrowUp') ? 1 : 0);
       if (turn || tilt) player.look(-turn * dt * 1.8, tilt * dt * 1.2);
       if (st.activity?.lockMovement && Math.hypot(mv.mx, mv.mz) > 0.35) { core.cancelActivity(); toast('중단했습니다'); }
@@ -350,8 +350,10 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     const a = s.activity; q('#ty-activity').hidden = !a; if (a) { set('act-label', a.label); style('act-bar', 'width', `${Math.round(a.progress * 100)}%`); }
     const t = s.task; q('#ty-task').hidden = !t;
     if (t) {
-      const d = city.doorOf(t.targetSpotId); set('task-label', t.label); set('task-sub', `${formatMoney(t.reward)} · ${t.minutesLeft > 0 ? `${Math.floor(t.minutesLeft / 60)}시간 ${t.minutesLeft % 60}분 남음` : '지각 — 보수 절반'}`);
-      if (d) { const ang = Math.atan2(d.x - player.pos.x, d.z - player.pos.z), rel = -(ang + player.camYaw) + Math.PI / 2 + Math.PI; style('arrow', 'transform', `rotate(${(rel * 180 / Math.PI).toFixed(0)}deg)`); }
+      const d = city.doorOf(t.targetSpotId); set('task-label', t.label);
+      const distance = d ? ` · ${Math.round(Math.hypot(d.x - player.pos.x, d.z - player.pos.z))}m` : '';
+      set('task-sub', `기본 ${formatMoney(t.reward)} · ${t.minutesLeft >= 0 ? `${Math.floor(t.minutesLeft / 60)}시간 ${t.minutesLeft % 60}분 남음` : '지각 — 보수 절반'}${distance}`);
+      if (d) { const ang = Math.atan2(d.x - player.pos.x, d.z - player.pos.z), rel = player.camYaw - ang + Math.PI / 2; style('arrow', 'transform', `rotate(${(rel * 180 / Math.PI).toFixed(0)}deg)`); }
     }
     // 프롬프트
     const p = q<HTMLButtonElement>('#ty-prompt');

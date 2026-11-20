@@ -3,7 +3,7 @@ import { renderPixelRatio } from '../shared/render-budget';
 import * as THREE from 'three';
 import { makePost, type PostFx } from '../postfx';
 import { BUILDINGS, TEAM_COLORS, UNITS, type BuildKind } from './config';
-import { crystalMat, makeBuilding, makeCrystals, makeUnit, matsFor, type BuildRig, type UnitRig } from './models';
+import { crystalMat, disposeModelParts, makeBuilding, makeCrystals, makeUnit, matsFor, type BuildRig, type UnitRig } from './models';
 import { DesertProps } from './desert';
 import { Scenery, buildLanes, bushSpots, paintGround } from './scenery';
 import type { Building, ResNode, RtsSim, SimEvent, Unit } from './sim';
@@ -228,9 +228,9 @@ export class RtsView {
     if (this.grid) this.grid.visible = !!kind;
     if (!kind) { if (this.ghost) this.ghost.obj.visible = false; return; }
     if (!this.ghost || this.ghost.kind !== kind) {
-      if (this.ghost) this.scene.remove(this.ghost.obj);
+      if (this.ghost) { this.scene.remove(this.ghost.obj); this.removeOwned(this.ghost.obj); }
       const rig = makeBuilding(kind, this.viewer), obj = new THREE.Group(), s = BUILDINGS[kind].size;
-      rig.root.traverse(o => { if (o instanceof THREE.Mesh) { o.castShadow = false; const mats = (Array.isArray(o.material) ? o.material : [o.material]).map(m => { const c = m.clone(); c.transparent = true; c.opacity = 0.55; return c; }); o.material = Array.isArray(o.material) ? mats : mats[0]; } });
+      rig.root.traverse(o => { if (o instanceof THREE.Mesh) { o.castShadow = false; const mats = (Array.isArray(o.material) ? o.material : [o.material]).map(m => { const c = m.clone(); c.transparent = true; c.opacity = 0.55; c.depthWrite = false; return c; }); o.material = Array.isArray(o.material) ? mats : mats[0]; } });
       const plane = new THREE.Mesh(new THREE.PlaneGeometry(s, s), new THREE.MeshBasicMaterial({ color: 0x5dff9a, transparent: true, opacity: 0.4, depthWrite: false })); plane.rotation.x = -Math.PI / 2; plane.position.set(0, 0.06, 0);
       obj.add(rig.root, plane); this.scene.add(obj); this.ghost = { kind, obj, plane };
     }
@@ -250,11 +250,11 @@ export class RtsView {
   private syncEntities(): void {
     const s = this.sim;
     for (const u of s.units) if (!this.units.has(u.id)) this.addUnit(u);
-    for (const [id, v] of this.units) if (!s.unit(id)) { this.scene.remove(v.rig.root); this.units.delete(id); }
+    for (const [id, v] of this.units) if (!s.unit(id)) { this.scene.remove(v.rig.root); disposeModelParts(v.rig.root, [v.ring, ...(v.rig.ch ? [v.rig.ch.root] : [])]); this.units.delete(id); }
     for (const b of s.buildings) if (!this.builds.has(b.id)) this.addBuilding(b);
-    for (const [id, v] of this.builds) if (!s.building(id)) { this.scene.remove(v.rig.root, v.frame, v.scaff); this.builds.delete(id); }
+    for (const [id, v] of this.builds) if (!s.building(id)) { this.scene.remove(v.rig.root, v.frame, v.scaff); disposeModelParts(v.rig.root); disposeModelParts(v.frame, [], this.ringMats); disposeModelParts(v.scaff); this.builds.delete(id); }
     for (const n of s.nodes) if (!this.nodes.has(n.id)) this.addNode(n);
-    for (const [id, v] of this.nodes) if (!s.node(id)) { this.scene.remove(v.obj); this.nodes.delete(id); }
+    for (const [id, v] of this.nodes) if (!s.node(id)) { this.scene.remove(v.obj); disposeModelParts(v.obj); this.nodes.delete(id); }
   }
   private addUnit(u: Unit): void {
     const rig = makeUnit(u.kind, u.owner), r = UNITS[u.kind].radius, ring = new THREE.Mesh(this.ringGeo, this.ringMats[u.owner === this.viewer ? 0 : 1]); ring.rotation.x = -Math.PI / 2; ring.scale.setScalar(r * 1.5 + 0.2); ring.position.y = 0.05; ring.visible = false;
@@ -267,6 +267,14 @@ export class RtsView {
     frame.position.set(b.x + s / 2, 0, b.y + s / 2); frame.visible = false;
     const scaff = new THREE.Group(), pm = new THREE.MeshStandardMaterial({ color: 0xb8a070, roughness: 0.8, metalness: 0.2 });
     for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.2 + s * 0.25, 5), pm); p.position.set(x * (s / 2 - 0.1), (1.2 + s * 0.25) / 2, z * (s / 2 - 0.1)); scaff.add(p); }
+    // 거푸집 사방의 가로대와 대각 버팀대로 건설 중 실루엣을 분명히 보여 줍니다.
+    const h = 1.2 + s * 0.25, span = s - 0.2, rail = new THREE.BoxGeometry(span, 0.055, 0.055), brace = new THREE.BoxGeometry(Math.hypot(span,h*0.68),0.045,0.045);
+    for (let side=0;side<4;side++) { const face=new THREE.Group(); face.rotation.y=side*Math.PI/2;
+      for(const y of [h*0.28,h*0.81]) { const beam=new THREE.Mesh(rail,pm); beam.position.set(0,y,span/2); face.add(beam); }
+      if(this.quality!=='low'){const diagonal=new THREE.Mesh(brace,pm);diagonal.position.set(0,h*0.55,span/2);diagonal.rotation.z=(side%2?1:-1)*Math.atan2(h*0.68,span);face.add(diagonal);}
+      scaff.add(face);
+    }
+    if(this.quality==='low')brace.dispose();
     scaff.position.set(b.x + s / 2, 0, b.y + s / 2); rig.root.position.set(b.x + s / 2, 0, b.y + s / 2);
     this.scene.add(rig.root, frame, scaff); this.builds.set(b.id, { kind: 'building', id: b.id, rig, frame, scaff, done: b.done, wasDone: b.done, rubble: 0 });
   }
@@ -282,7 +290,8 @@ export class RtsView {
       const r = v.rig, root = r.root; root.position.set(x, 0, y); root.rotation.y = v.yaw;
       const bob = Math.sin(this.clock * (u.kind === 'tank' || u.kind === 'jeep' ? 9 : 14) + id) * (u.kind === 'tank' || u.kind === 'jeep' ? 0.015 : 0.05) * v.moved; r.body.position.y = Math.abs(bob); r.body.rotation.z = bob * (u.kind === 'tank' || u.kind === 'jeep' ? 0.2 : 0.5);
       const fired = tick - u.fired; r.flash.visible = u.kind !== 'medic' && fired >= 0 && fired < 2;
-      if (r.gun) r.gun.position.x = (u.kind === 'tank' ? 0.3 : 0.2) - (fired >= 0 && fired < 3 ? 0.08 : 0);
+      if (r.gun) { const recoil = fired >= 0 && fired < 6 ? (1 - fired / 6) * (u.kind === 'tank' ? 0.17 : 0.06) : 0; r.gun.position.x = r.gunRestX - recoil; }
+      for(const wheel of r.wheels) wheel.rotation.z = (wheel.rotation.z - sp * 20 * dt / (0.22 * US[u.kind])) % (Math.PI*2);
       if (r.carry) r.carry.visible = u.carry > 0;
       if (r.ch) { const st = r.ch.state; st.speed = v.moved * 3; st.walk += dt * v.moved * 4.8; st.time += dt; st.wave = u.kind === 'worker' && (tick - u.mine < 3 || (u.o.t === 'gather' && u.o.phase === 1)) ? 0.5 : 0; st.recoil = fired >= 0 && fired < 3 ? 1 : 0; st.hit = (tick - u.hurt) >= 0 && (tick - u.hurt) < 3 ? 0.4 : 0; r.ch.update(dt); }
       if (r.arm) { const work = tick - u.mine < 3 || (u.o.t === 'gather' && u.o.phase === 1); r.arm.rotation.z = work ? Math.sin(this.clock * 16) * 0.7 - 0.4 : -0.3; }
@@ -296,7 +305,7 @@ export class RtsView {
     for (const [id, v] of this.builds) {
       const b = s.building(id); if (!b) continue; const hidB = this.hiddenBuilding(b); v.rig.root.visible = !hidB; const p = b.done ? 1 : Math.min(1, 0.12 + 0.88 * b.progress / BUILDINGS[b.kind].time);
       v.rig.root.scale.set(1, b.done ? 1 : Math.max(0.05, p), 1); v.scaff.visible = !b.done && !hidB; v.scaff.scale.y = 1 - p * 0.3;
-      if (b.done && !v.wasDone) { v.wasDone = true; this.puff(b.x + b.size / 2, b.y + b.size / 2, b.size * 0.8, 0xd8cfb8); }
+      if (b.done && !v.wasDone) { v.wasDone = true; if (!hidB && (!this.vision || this.vision.visible(b.x + b.size / 2, b.y + b.size / 2))) this.puff(b.x + b.size / 2, b.y + b.size / 2, b.size * 0.8, 0xd8cfb8); }
       for (let i=0;i<v.rig.light.length;i++) { const l=v.rig.light[i]; l.visible = b.done && (b.hp/b.maxhp > 0.35 || Math.sin(this.clock * 11 + id + i) > -0.25); }
       if (v.rig.spin && b.kind === 'hq') v.rig.spin.rotation.y += dt * 0.8;
       if (v.rig.spin && b.kind === 'tower') { const want = -Math.atan2(b.fy, b.fx); if (tick - b.fired < 40) v.rig.spin.rotation.y = want; }

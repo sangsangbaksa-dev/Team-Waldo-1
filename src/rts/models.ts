@@ -49,7 +49,7 @@ let unitKit: CharacterKit | null = null;
 /** 공용 캐릭터 키트를 미리 받아 둡니다. 준비되기 전에 만든 유닛은 도형 모델로 남습니다. */
 export function preloadUnitKit(): void { if (!unitKit) void loadCharacterKit(import.meta.env.BASE_URL).then(k => { unitKit = k; }).catch(() => undefined); }
 const KIT_OF: Partial<Record<UnitKind, string>> = { worker: 'worker', marine: 'rifle', rocket: 'heavy', medic: 'medic' };
-export interface UnitRig { ch?: CharacterRig; root: THREE.Group; body: THREE.Object3D; gun: THREE.Object3D | null; flash: THREE.Mesh; carry: THREE.Object3D | null; arm: THREE.Object3D | null; scale: number }
+export interface UnitRig { ch?: CharacterRig; root: THREE.Group; body: THREE.Object3D; gun: THREE.Object3D | null; flash: THREE.Mesh; carry: THREE.Object3D | null; arm: THREE.Object3D | null; scale: number; gunRestX: number; wheels: THREE.Mesh[] }
 
 /** 의무병 등 — 등의 구급 배낭(흰 바탕에 팀색 십자). */
 function medicPack(body: THREE.Object3D, m: Mats): void {
@@ -57,19 +57,23 @@ function medicPack(body: THREE.Object3D, m: Mats): void {
   box(body, 0.16, 0.36, 0.34, white, -0.22, 0.34, 0); box(body, 0.04, 0.22, 0.07, m.team, -0.31, 0.43, 0); box(body, 0.04, 0.07, 0.22, m.team, -0.31, 0.5, 0);
 }
 /** 정찰 지프: 낮은 차체·바퀴 네 개·롤바. 팀색 줄무늬와 사막 위장 도색. */
-function jeepBody(body: THREE.Object3D, m: Mats): void {
+function jeepBody(body: THREE.Object3D, m: Mats): THREE.Mesh[] {
+  const wheels: THREE.Mesh[] = [];
   const sand = std(0xb99a62, { roughness: 0.75, metalness: 0.15 });
   box(body, 1.5, 0.22, 0.78, m.dark, 0, 0.22, 0); box(body, 1.4, 0.26, 0.74, sand, 0, 0.4, 0); box(body, 0.5, 0.2, 0.7, sand, 0.55, 0.62, 0); box(body, 1.3, 0.06, 0.3, m.team, -0.02, 0.66, 0);
   box(body, 0.05, 0.3, 0.6, m.glow, 0.78, 0.46, 0); box(body, 0.1, 0.34, 0.74, m.steel, -0.2, 0.66, 0); // 앞유리 틀·롤바
-  for (const [x, z] of [[-0.5, -0.46], [0.5, -0.46], [-0.5, 0.46], [0.5, 0.46]] as const) { const w = cyl(body, 0.22, 0.22, 0.16, m.dark, x, 0.0, z, 10); w.rotation.x = Math.PI / 2; w.position.y = 0.22; }
+  for (const [x, z] of [[-0.5, -0.46], [0.5, -0.46], [-0.5, 0.46], [0.5, 0.46]] as const) { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.22,0.16,12).rotateX(Math.PI/2),m.dark); w.position.set(x,0.22,z); w.castShadow=true; body.add(w); wheels.push(w);
+    const hub=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.12,0.026,6).rotateX(Math.PI/2),m.steel); hub.position.z=Math.sign(z)*0.09; w.add(hub); }
   box(body, 0.08, 0.28, 0.5, m.armor, -0.74, 0.4, 0); box(body, 0.34, 0.3, 0.3, m.hull, -0.6, 0.66, 0); // 뒤 예비 타이어 보관함
   panels(body, m.dark, [[0.05,0.12,0.52,0.81,0.35,0], [0.38,0.1,0.09,0.5,0.63,-0.36],[0.38,0.1,0.09,0.5,0.63,0.36], [0.06,0.38,0.06,-0.48,0.64,-0.32], [0.06,0.38,0.06,-0.48,0.64,0.32], [0.4,0.06,0.7,-0.36,1.0,0]]);
   panels(body, m.steel, [[0.10,0.10,0.88,0.79,0.28,0],[0.10,0.09,0.82,-0.78,0.28,0],[0.13,0.07,0.08,-0.32,0.66,0.39],[0.13,0.07,0.08,-0.32,0.66,-0.39]]);
+  return wheels;
 }
 
 /** 모델은 +X 방향을 봅니다. */
 export function makeUnit(kind: UnitKind, owner: number): UnitRig {
   const m = matsFor(owner), root = new THREE.Group(), body = new THREE.Group(); root.add(body);
+  let wheels: THREE.Mesh[] = [];
   let gun: THREE.Object3D | null = null, carry: THREE.Object3D | null = null, arm: THREE.Object3D | null = null, muzzle = 0.8, mh = 0.62;
   const flash = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe9a0 })); flash.visible = false;
   const kitKind = KIT_OF[kind];
@@ -80,7 +84,7 @@ export function makeUnit(kind: UnitKind, owner: number): UnitRig {
     else if (kind === 'medic') { medicPack(body, m); mh = 0.9; muzzle = 0.4; }
     else { gun = new THREE.Group(); gun.position.set(0.2, 0.52, 0.17); body.add(gun); mh = kind === 'rocket' ? 1.15 : 1; muzzle = kind === 'rocket' ? 0.95 : 0.88; }
     flash.position.set(muzzle, mh * 0.7, kind === 'rocket' ? 0.3 : 0.17); root.add(flash);
-    return { ch, root, body, gun, flash, carry, arm, scale: 1 };
+    return { ch, root, body, gun, flash, carry, arm, scale: 1, gunRestX: gun?.position.x ?? 0, wheels };
   }
   if (kind === 'worker') {
     cyl(body, 0.17, 0.2, 0.34, m.team, 0, 0.12, 0); ball(body, 0.17, m.team, 0, 0.4, 0, 1.1);
@@ -95,7 +99,7 @@ export function makeUnit(kind: UnitKind, owner: number): UnitRig {
     cyl(body, 0.2, 0.22, 0.42, m.armor, 0, 0.22, 0); ball(body, 0.16, m.armor, 0.02, 0.68, 0); box(body, 0.1, 0.08, 0.2, m.glow, 0.14, 0.74, 0);
     medicPack(body, m); mh = 0.9; muzzle = 0.4;
   } else if (kind === 'jeep') {
-    jeepBody(body, m); gun = new THREE.Group(); gun.position.set(-0.1, 0.9, 0); body.add(gun);
+    wheels = jeepBody(body, m); gun = new THREE.Group(); gun.position.set(-0.1, 0.9, 0); body.add(gun);
     box(gun, 0.8, 0.09, 0.09, m.dark, 0.34, -0.05, 0.06); box(gun, 0.8, 0.09, 0.09, m.dark, 0.34, -0.05, -0.06); box(gun, 0.2, 0.18, 0.28, m.steel, 0, -0.1, 0);
     mh = 1.0; muzzle = 0.95; gun.userData.m = muzzle;
   } else if (kind === 'marine') {
@@ -131,7 +135,7 @@ export function makeUnit(kind: UnitKind, owner: number): UnitRig {
   }
   flash.position.set(muzzle, mh * 0.7, kind === 'marine' ? 0.17 : kind === 'rocket' ? 0.3 : 0); if (kind === 'tank') flash.position.set(1.8, 0.85, 0); if (kind === 'jeep') flash.position.set(1.2, 1.0, 0);
   root.add(flash);
-  return { root, body, gun, flash, carry, arm, scale: 1 };
+  return { root, body, gun, flash, carry, arm, scale: 1, gunRestX: gun?.position.x ?? 0, wheels };
 }
 
 export interface BuildRig { root: THREE.Group; light: THREE.Mesh[]; spin: THREE.Object3D | null; barrel: THREE.Object3D | null; flash: THREE.Mesh | null; top: number }
@@ -205,6 +209,24 @@ export function makeBuilding(kind: BuildKind, owner: number): BuildRig {
     panels(root,m.armor,[[0.42,0.45,0.17,0,0.34,-0.83],[0.42,0.45,0.17,0,0.34,0.83],[0.17,0.45,0.42,0.83,0.34,0],[0.17,0.45,0.42,-0.83,0.34,0]]);
   }
   return { root, light, spin, barrel, flash, top };
+}
+
+/** 절차적 모델이 독점 소유한 GPU 자원만 정리합니다. 팀 공용 재질과 캐릭터 키트 자원은 보존합니다. */
+export function disposeModelParts(root: THREE.Object3D, excluded: readonly THREE.Object3D[] = [], extraShared: readonly THREE.Material[] = []): void {
+  const skip = new Set(excluded), shared = new Set<THREE.Material>([crystalMat, crystalHi, ...extraShared]);
+  for (const mats of cache.values()) for (const mat of Object.values(mats)) shared.add(mat);
+  const geometries = new Set<THREE.BufferGeometry>(), materials = new Set<THREE.Material>();
+  const walk = (o: THREE.Object3D): void => {
+    if (skip.has(o)) return;
+    if (o instanceof THREE.Mesh) {
+      geometries.add(o.geometry);
+      for (const mat of Array.isArray(o.material) ? o.material : [o.material]) if (!shared.has(mat)) materials.add(mat);
+    }
+    for (const ch of o.children) walk(ch);
+  };
+  walk(root);
+  for (const g of geometries) g.dispose();
+  for (const mat of materials) mat.dispose();
 }
 
 export function makeCrystals(seed: number): THREE.Group {

@@ -13,3 +13,27 @@
 @media (pointer:coarse) {
   #game .hudright button, #game .gear button { min-height:44px; }
 }
+
+/* Recording-console HUD: visibility without sacrificing the dark environment. */
+#game .hud { padding-top:max(clamp(.8rem,2.2vw,2rem),env(safe-area-inset-top)); }
+#game .hudright { flex-shrink:0; }
+#game .hudright button,#game .gear button,.touchactions button { border-radius:4px; transition:background-color .16s,border-color .16s; }
+#game .hudright button:hover,#game .gear button:hover { background:#263b32; border-color:#b3c995; }
+#game .reticle { transform:translate(-50%,-50%); box-shadow:0 0 0 1px #08100e90; }
+#game .statusfoot { padding:.55rem .75rem; background:#0c1714d9; border:1px solid #74827955; border-radius:4px; }
+#game .stambar { height:5px; border-radius:2px; overflow:hidden; }
+#game #prompt { border-radius:4px; box-shadow:0 5px 24px #0008; }
+#game .panel { border-top:2px solid #c99467; }
+#game .dials button { min-width:0; min-height:62px; }
+#game .choiceRow button:disabled,#game #act:disabled { opacity:.48; }
+#game .panelActions button { min-height:44px; }
+@media(max-width:480px) {
+  #game .hud { gap:.4rem; padding-inline:max(8px,env(safe-area-inset-left)); }
+  #game .hudright { gap:.25rem; }
+  #game #gsound span { font-size:.72rem; }
+  #game .statusfoot { gap:.35rem; padding:.4rem; font-size:.7rem; }
+  #game .gear { gap:.25rem; }
+  #game .gear button { min-height:36px; }
+  #game #prompt { top:54%; }
+}
+@media(prefers-reduced-motion:reduce) { #game .hudright button,#game .gear button,.touchactions button { transition:none; } }

@@ -102,6 +102,7 @@ function responsive() {
   if (!renderer) return;
   const w = stage.clientWidth,
     h = stage.clientHeight;
+  if (!camera || w <= 0 || h <= 0) return;
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h, false);

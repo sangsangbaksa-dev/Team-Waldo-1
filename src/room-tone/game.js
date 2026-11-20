@@ -71,6 +71,9 @@ let guidePath = [];
 let returnFromMap = resume;
 const touch =
   matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+let lastPointerType = matchMedia("(pointer:coarse)").matches ? "touch" : "mouse";
+let draggingLook = false;
 const px = (t) => String(t).padStart(2, "0");
 const clock = (t) => px(Math.floor(t / 60)) + ":" + px(Math.floor(t % 60));
 const pad = (i) => String(i + 1).padStart(2, "0");
@@ -145,6 +148,8 @@ function clearInputs() {
   keys.clear();
   pointer.x = pointer.y = 0;
   moveId = lookId = -1;
+  moveStart = lookLast = null;
+  draggingLook = false;
   mobileRun = false;
   $("stickknob").style.transform = "";
 }
@@ -153,7 +158,7 @@ function leaveLook() {
   if (document.pointerLockElement) document.exitPointerLock();
 }
 function lockLook() {
-  if (touch || !renderer) return;
+  if (lastPointerType === "touch" || !renderer || document.pointerLockElement) return;
   try {
     const p = renderer.domElement.requestPointerLock?.();
     p?.catch(() => {});
@@ -246,11 +251,13 @@ async function setup() {
     renderer.toneMappingExposure = 1.08;
     $("viewWrap").prepend(renderer.domElement);
     renderer.domElement.addEventListener("click", () => {
-      if (state === "play") lockLook();
+      if (state === "play" && !draggingLook) lockLook();
+      draggingLook = false;
     });
     renderer.domElement.addEventListener("webglcontextlost", (e) => {
       e.preventDefault();
-      save();
+      if (state === "home" || state === "won") return;
+      if (level && state !== "load") save();
       modal(
         "그래픽 연결이 끊겼습니다",
         "브라우저를 새로고침하면 저장한 구역에서 이어갈 수 있습니다.",
@@ -344,6 +351,14 @@ function pointPlayer() {
   enemyPhase = 0;
   lastCell = -1;
   nearest = null;
+  stepAt = moved = stride = 0;
+  noticeUntil = 0;
+  $("toast").textContent = "";
+  $("danger").style.opacity = "0";
+  $("strain").textContent = "안정";
+  $("stamina").style.transform = "scaleX(1)";
+  $("timer").textContent = clock(elapsed);
+  sound.threat(0);
   $("prompt").hidden = true;
   $("act").disabled = true;
   clearInputs();
@@ -619,6 +634,7 @@ function renderHUD() {
       ? c.station + "으로 돌아가세요."
       : c.item + " 회수  " + total() + " / 3";
   $("lightState").textContent = lightOn ? "켜짐" : "꺼짐";
+  $("torch").setAttribute("aria-pressed", String(lightOn));
   $("crouch").setAttribute("aria-pressed", String(crouched));
   refreshGuide();
 }
@@ -816,6 +832,8 @@ function puzzle(reset = true) {
             choices.push(i);
             sound.tone(i);
             puzzle(false);
+            const next = $("panelBody").querySelector(".choiceRow button:not(:disabled)") ?? $("panelActions").querySelector("button");
+            next?.focus({ preventScroll: true });
           };
           row.append(b);
         }
@@ -847,6 +865,7 @@ function puzzle(reset = true) {
             choices[i] = (choices[i] + 1) % opts.length;
             sound.tone(choices[i]);
             puzzle(false);
+            $("panelBody").querySelectorAll(".dials button")[i]?.focus({ preventScroll: true });
           };
           box.append(b);
         }
@@ -1114,8 +1133,8 @@ function update(dt) {
   eyeHeight = THREE.MathUtils.damp(eyeHeight, crouched ? 1.12 : 1.58, 12, dt);
   camera.position.set(
     player.x,
-    eyeHeight +
-      Math.sin(elapsed * (running ? 12 : 8.3)) * Math.min(moved, 0.05) * 0.38,
+    eyeHeight + (reducedMotion.matches ? 0 :
+      Math.sin(elapsed * (running ? 12 : 8.3)) * Math.min(moved, 0.05) * 0.38),
     player.z,
   );
   camera.rotation.set(pitch, yaw, 0, "YXZ");
@@ -1214,6 +1233,19 @@ document.addEventListener("keydown", (e) => {
   }
 });
 document.addEventListener("keyup", (e) => keys.delete(e.code));
+// Escape may be consumed by the browser while releasing pointer lock.
+let hadPointerLock = false;
+document.addEventListener("pointerlockchange", () => {
+  const locked = document.pointerLockElement === renderer?.domElement;
+  if (hadPointerLock && !locked && state === "play") pauseGame();
+  hadPointerLock = locked;
+});
+window.addEventListener("pagehide", () => {
+  if (state === "play") save();
+});
+document.addEventListener("pointerdown", (e) => {
+  lastPointerType = e.pointerType || "mouse";
+}, true);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && state === "play") pauseGame();
 });
@@ -1237,6 +1269,7 @@ wrap.addEventListener("pointerdown", (e) => {
   )
     return;
   lookId = e.pointerId;
+  draggingLook = false;
   lookLast = [e.clientX, e.clientY];
   wrap.setPointerCapture(e.pointerId);
 });
@@ -1247,7 +1280,9 @@ wrap.addEventListener("pointermove", (e) => {
     lookLast &&
     !document.pointerLockElement
   ) {
-    look(e.clientX - lookLast[0], e.clientY - lookLast[1]);
+    const dx = e.clientX - lookLast[0], dy = e.clientY - lookLast[1];
+    if (Math.abs(dx) + Math.abs(dy) > 2) draggingLook = true;
+    look(dx, dy);
     lookLast = [e.clientX, e.clientY];
   }
 });

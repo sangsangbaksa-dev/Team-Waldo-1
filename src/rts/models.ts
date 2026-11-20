@@ -1,5 +1,6 @@
 // FRONTLINE — 유닛·건물·자원 3D 모델. 별도 에셋 파일 없이 기본 도형을 조립합니다(원점은 발밑/바닥 중심).
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { loadCharacterKit, type CharacterKit, type CharacterRig } from '../shared/character';
 import { BUILDINGS, TEAM_COLORS, type BuildKind, type UnitKind } from './config';
 
@@ -35,6 +36,22 @@ function ball(g: THREE.Object3D, r: number, m: THREE.Material, x = 0, y = 0, z =
   const o = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 8), m); o.position.set(x, y + r, z); o.scale.y = sy; o.castShadow = true; g.add(o); return o;
 }
 
+// Batch decorative rigid parts by material; moving turrets and lights stay separate.
+function detail(parent: THREE.Object3D, build: (g: THREE.Group) => void): void {
+  const g = new THREE.Group(); build(g); g.updateMatrixWorld(true);
+  const batches = new Map<THREE.Material, THREE.BufferGeometry[]>();
+  g.traverse(o => {
+    if (!(o instanceof THREE.Mesh) || Array.isArray(o.material)) return;
+    const geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+    geo.applyMatrix4(o.matrixWorld); o.geometry.dispose();
+    const list = batches.get(o.material) ?? []; list.push(geo); batches.set(o.material, list);
+  });
+  for (const [mat, list] of batches) {
+    const geo = mergeGeometries(list, false); for (const p of list) p.dispose();
+    if (!geo) continue; const mesh = new THREE.Mesh(geo, mat); mesh.receiveShadow = true; parent.add(mesh);
+  }
+}
+
 let unitKit: CharacterKit | null = null;
 /** 공용 캐릭터 키트를 미리 받아 둡니다. 준비되기 전에 만든 유닛은 도형 모델로 남습니다. */
 export function preloadUnitKit(): void { if (!unitKit) void loadCharacterKit(import.meta.env.BASE_URL).then(k => { unitKit = k; }).catch(() => undefined); }
@@ -56,7 +73,7 @@ function jeepBody(body: THREE.Object3D, m: Mats): void {
 }
 
 /** 모델은 +X 방향을 봅니다. */
-export function makeUnit(kind: UnitKind, owner: number): UnitRig {
+export function makeUnit(kind: UnitKind, owner: number, detailed = true): UnitRig {
   const m = matsFor(owner), root = new THREE.Group(), body = new THREE.Group(); root.add(body);
   let gun: THREE.Object3D | null = null, carry: THREE.Object3D | null = null, arm: THREE.Object3D | null = null, muzzle = 0.8, mh = 0.62;
   const flash = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe9a0 })); flash.visible = false;
@@ -83,7 +100,17 @@ export function makeUnit(kind: UnitKind, owner: number): UnitRig {
     cyl(body, 0.2, 0.22, 0.42, m.armor, 0, 0.22, 0); ball(body, 0.16, m.armor, 0.02, 0.68, 0); box(body, 0.1, 0.08, 0.2, m.glow, 0.14, 0.74, 0);
     medicPack(body, m); mh = 0.9; muzzle = 0.4;
   } else if (kind === 'jeep') {
-    jeepBody(body, m); gun = new THREE.Group(); gun.position.set(-0.1, 0.9, 0); body.add(gun);
+    jeepBody(body, m);
+    if (detailed) detail(body, g => {
+      for (const z of [-0.48, 0.48]) for (const x of [-0.5, 0.5]) {
+        const hub = cyl(g, 0.115, 0.115, 0.035, m.steel, x, 0, z * 1.15, 8); hub.rotation.x = Math.PI / 2; hub.position.y = 0.22;
+        box(g, 0.46, 0.07, 0.24, m.hull, x, 0.43, z);
+      }
+      box(g, 0.09, 0.1, 0.8, m.steel, 0.85, 0.24);
+      for (const z of [-0.24, 0.24]) { box(g, 0.04, 0.12, 0.18, m.steel, 0.825, 0.49, z); box(g, 0.3, 0.03, 0.06, m.dark, 0.49, 0.82, z); }
+      box(g, 0.04, 0.46, 0.04, m.dark, -0.63, 0.9, -0.29);
+    });
+    gun = new THREE.Group(); gun.position.set(-0.1, 0.9, 0); body.add(gun);
     box(gun, 0.8, 0.09, 0.09, m.dark, 0.34, -0.05, 0.06); box(gun, 0.8, 0.09, 0.09, m.dark, 0.34, -0.05, -0.06); box(gun, 0.2, 0.18, 0.28, m.steel, 0, -0.1, 0);
     mh = 1.0; muzzle = 0.95; gun.userData.m = muzzle;
   } else if (kind === 'marine') {
@@ -106,6 +133,24 @@ export function makeUnit(kind: UnitKind, owner: number): UnitRig {
     const tur = new THREE.Group(); tur.position.set(-0.06, 0.7, 0); body.add(tur); cyl(tur, 0.42, 0.5, 0.3, m.armor, 0, 0, 0, 10); box(tur, 0.5, 0.2, 0.6, m.team, -0.1, 0.18, 0);
     gun = new THREE.Group(); gun.position.set(0.3, 0.14, 0); tur.add(gun); const bar = cyl(gun, 0.08, 0.1, 1.5, m.steel, 0.7, -0.08, 0); bar.rotation.z = Math.PI / 2; bar.position.set(0.7, 0, 0); cyl(gun, 0.12, 0.12, 0.2, m.dark, 1.42, -0.08, 0).rotation.z = Math.PI / 2;
     box(tur, 0.18, 0.18, 0.2, m.glow, -0.28, 0.32, 0.22);
+    if (detailed) {
+      detail(body, g => {
+        for (const z of [-0.67, 0.67]) {
+          for (let i = 0; i < 5; i++) {
+            const w = cyl(g, 0.115, 0.115, 0.055, m.steel, -0.6 + i * 0.3, 0, z, 8); w.rotation.x = Math.PI / 2; w.position.y = 0.16;
+          }
+          box(g, 1.38, 0.12, 0.12, m.hull, 0, 0.35, z * 0.9);
+          for (let i = 0; i < 3; i++) box(g, 0.36, 0.09, 0.045, m.teamDark, -0.45 + i * 0.45, 0.38, z);
+        }
+        for (let i = 0; i < 4; i++) box(g, 0.08, 0.025, 0.55, m.dark, -0.56 + i * 0.12, 0.73);
+        const glacis = box(g, 0.35, 0.16, 0.79, m.armor, 0.53, 0.48); glacis.rotation.z = -0.28;
+      });
+      detail(tur, g => {
+        cyl(g, 0.15, 0.15, 0.045, m.steel, -0.13, 0.38, 0.13, 10);
+        box(g, 0.03, 0.53, 0.03, m.dark, -0.31, 0.34, -0.23);
+        for (const z of [-0.28, 0.28]) box(g, 0.18, 0.13, 0.09, m.hull, -0.27, 0.12, z);
+      });
+    }
     mh = 1.0; muzzle = 1.5; gun.userData.m = muzzle;
   }
   flash.position.set(muzzle, mh * 0.7, kind === 'marine' ? 0.17 : kind === 'rocket' ? 0.3 : 0); if (kind === 'tank') flash.position.set(1.8, 0.85, 0); if (kind === 'jeep') flash.position.set(1.2, 1.0, 0);
@@ -115,7 +160,7 @@ export function makeUnit(kind: UnitKind, owner: number): UnitRig {
 
 export interface BuildRig { root: THREE.Group; light: THREE.Mesh[]; spin: THREE.Object3D | null; barrel: THREE.Object3D | null; flash: THREE.Mesh | null; top: number }
 
-export function makeBuilding(kind: BuildKind, owner: number): BuildRig {
+export function makeBuilding(kind: BuildKind, owner: number, detailed = true): BuildRig {
   const m = matsFor(owner), root = new THREE.Group(), s = BUILDINGS[kind].size, light: THREE.Mesh[] = [];
   let spin: THREE.Object3D | null = null, barrel: THREE.Object3D | null = null, flash: THREE.Mesh | null = null, top = 2;
   const lamp = (x: number, y: number, z: number, w = 0.2, h = 0.12, d = 0.2): void => { const l = box(root, w, h, d, m.glow, x, y, z); light.push(l); };
@@ -154,6 +199,35 @@ export function makeBuilding(kind: BuildKind, owner: number): BuildRig {
     barrel = new THREE.Group(); barrel.position.set(0.3, 0, 0); spin.add(barrel); const nozzle = cyl(barrel, 0.0, 0.14, 0.5, m.steel, 0.2, -0.25, 0, 6); nozzle.rotation.z = -Math.PI / 2; nozzle.position.set(0.2, 0, 0);
     flash = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe9a0 })); flash.position.set(0.95, 0, 0); flash.visible = false; spin.add(flash); top = 4.0;
   }
+  if (detailed) detail(root, g => {
+    // Ground-level chassis trim, vents and durable structural braces, within the existing footprint.
+    const edge = s / 2 - 0.16;
+    for (const z of [-edge, edge]) {
+      box(g, s - 0.35, 0.065, 0.055, m.steel, 0, 0.13, z);
+      for (const x of [-edge + 0.16, edge - 0.16]) box(g, 0.14, 0.045, 0.22, m.teamDark, x, 0.22, z);
+    }
+    if (kind === 'hq' || kind === 'barracks' || kind === 'factory') {
+      const front = kind === 'hq' ? (s - 0.9) / 2 + 0.40 : kind === 'factory' ? (s - 0.7) / 2 + 0.16 : (s - 0.8) / 2 + 0.11;
+      const width = kind === 'factory' ? 1.4 : kind === 'hq' ? 0.9 : 1.1;
+      const center = kind === 'factory' ? 0.2 : 0;
+      for (let i = 0; i < 5; i++) box(g, width * 0.88, 0.028, 0.04, m.armor, center, 0.34 + i * 0.13, front + 0.055);
+      for (const x of [center - width / 2 - 0.05, center + width / 2 + 0.05]) box(g, 0.09, 0.89, 0.12, m.steel, x, 0.3, front);
+      for (const side of [-1, 1]) {
+        const x = side * (s / 2 - 0.42);
+        for (const z of [-0.65, 0.65]) box(g, 0.10, 0.78, 0.18, m.armor, x, 0.3, z);
+        for (let i = 0; i < 4; i++) box(g, 0.075, 0.06, 0.47, m.dark, x, 0.67 + i * 0.10, 0);
+      }
+    }
+    if (kind === 'factory') {
+      for (const x of [-1, -0.4]) { cyl(g, 0.25, 0.25, 0.09, m.steel, x, x === -1 ? 3.12 : 2.70, -0.9, 8); }
+      box(g, 0.76, 0.09, 0.38, m.armor, 0.75, 1.51, 0.96);
+    } else if (kind === 'depot') {
+      for (const x of [-0.45, 0.4]) { cyl(g, 0.12, 0.12, 0.12, m.dark, x, 1.25, -0.45, 8); box(g, 0.42, 0.06, 0.10, m.armor, x, 0.43, -0.08); }
+    } else if (kind === 'tower') {
+      for (const z of [-0.38, 0.38]) box(g, 0.08, 0.78, 0.10, m.steel, -0.58, 1.42, z);
+      for (let i = 0; i < 5; i++) box(g, 0.08, 0.05, 0.76, m.armor, -0.62, 1.5 + i * 0.15);
+    }
+  });
   return { root, light, spin, barrel, flash, top };
 }
 

@@ -11,7 +11,9 @@ export class Pather {
 
   /** (x,y) 에서 가장 가까운 빈 칸의 중심. 반경 안에 없으면 null. */
   nearestFree(x: number, y: number, max = 16): Pt | null {
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(max) || max < 0) return null;
     const cx = Math.floor(x), cy = Math.floor(y);
+    if (cx < -max || cy < -max || cx >= this.n + max || cy >= this.n + max) return null;
     if (this.free(cx, cy)) return { x: Math.min(Math.max(x, cx + 0.05), cx + 0.95), y: Math.min(Math.max(y, cy + 0.05), cy + 0.95) };
     let best: Pt | null = null, bd = Infinity;
     for (let r = 1; r <= max; r++) {
@@ -27,6 +29,7 @@ export class Pather {
 
   /** 두 점 사이를 막힘 없이 걸을 수 있는지(몸 폭을 조금 감안해 좌우도 확인). */
   los(x0: number, y0: number, x1: number, y1: number): boolean {
+    if (!this.freeAt(x0, y0) || !this.freeAt(x1, y1)) return false;
     const dx = x1 - x0, dy = y1 - y0, len = Math.sqrt(dx * dx + dy * dy);
     if (len < 0.01) return true;
     const ux = dx / len, uy = dy / len, px = -uy * 0.3, py = ux * 0.3, steps = Math.ceil(len / 0.4);
@@ -42,7 +45,9 @@ export class Pather {
     if (!goal || !start) return null;
     if (this.los(sx, sy, goal.x, goal.y)) return [goal.x, goal.y];
     const si = Math.floor(start.y) * n + Math.floor(start.x), gi = Math.floor(goal.y) * n + Math.floor(goal.x), gcx = gi % n, gcy = (gi - gcx) / n;
-    this.stamp++; const st = this.stamp;
+    this.stamp = (this.stamp + 1) >>> 0;
+    if (this.stamp === 0) { this.seen.fill(0); this.shut.fill(0); this.stamp = 1; }
+    const st = this.stamp;
     const heap: number[] = [], push = (f: number, i: number): void => {
       heap.push(f, i); let k = heap.length / 2 - 1;
       while (k > 0) { const p = (k - 1) >> 1; if (heap[p * 2] <= heap[k * 2]) break; const tf = heap[p * 2], ti = heap[p * 2 + 1]; heap[p * 2] = heap[k * 2]; heap[p * 2 + 1] = heap[k * 2 + 1]; heap[k * 2] = tf; heap[k * 2 + 1] = ti; k = p; }
@@ -59,9 +64,9 @@ export class Pather {
     const hOf = (i: number): number => { const x = i % n, y = (i - x) / n, dx = Math.abs(x - gcx), dy = Math.abs(y - gcy); return (dx + dy) + (Math.SQRT2 - 2) * Math.min(dx, dy); };
     this.g[si] = 0; this.seen[si] = st; this.from[si] = -1; push(hOf(si), si);
     let best = si, bestH = hOf(si), found = false, budget = 6000;
-    while (heap.length && budget-- > 0) {
+    while (heap.length && budget > 0) {
       const cur = pop();
-      if (this.shut[cur] === st) continue; this.shut[cur] = st;
+      if (this.shut[cur] === st) continue; this.shut[cur] = st; budget--;
       if (cur === gi) { found = true; break; }
       const h = hOf(cur); if (h < bestH) { bestH = h; best = cur; }
       const cx = cur % n, cy = (cur - cx) / n;
@@ -75,6 +80,7 @@ export class Pather {
       }
     }
     const end = found ? gi : best;
+    if (!found && end === si) return null;
     const cells: number[] = []; for (let i = end; i !== -1; i = this.from[i]) cells.push(i);
     cells.reverse();
     const pts: number[] = []; for (const c of cells) { const x = c % n; pts.push(x + 0.5, (c - x) / n + 0.5); }
@@ -84,8 +90,12 @@ export class Pather {
       let j = last; while (j > i + 1 && !this.los(pts[i * 2], pts[i * 2 + 1], pts[j * 2], pts[j * 2 + 1])) j--;
       out.push(pts[j * 2], pts[j * 2 + 1]); i = j;
     }
-    if (found) { out[out.length - 2] = goal.x; out[out.length - 1] = goal.y; }
-    return out.length ? out : [goal.x, goal.y];
+    if (found) {
+      if (!out.length) return [goal.x, goal.y];
+      const lastX = out[out.length - 2], lastY = out[out.length - 1];
+      if (lastX !== goal.x || lastY !== goal.y) out.push(goal.x, goal.y);
+    }
+    return out.length ? out : null;
   }
 }
 const DX = [1, -1, 0, 0, 1, 1, -1, -1], DY = [0, 0, 1, -1, 1, -1, 1, -1];

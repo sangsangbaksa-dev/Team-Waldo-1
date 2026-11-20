@@ -7,6 +7,7 @@ import type { Cmd, RtsSim } from './sim';
 
 export const TURN_TICKS = 3, DELAY = 2, HASH_EVERY = 20;
 const SILENT_MS = 9000, NEVER_MS = 25000, BEAT_MS = 250;
+const CMDS_PER_TURN = 12;
 
 export interface NetHooks {
   onGone(reason: 'bye' | 'silent' | 'never'): void;
@@ -18,7 +19,7 @@ export interface NetSession { host: boolean; open(onMessage: (m: NetMsg) => void
 /** 모양이 맞는 명령만 통과시킵니다(상대가 보낸 값이므로 믿지 않습니다). 세부 검증은 시뮬레이션이 합니다. */
 function cleanCmds(v: unknown): Cmd[] {
   if (!Array.isArray(v)) return [];
-  return v.slice(0, 12).filter((c): c is Cmd => typeof c === 'object' && c !== null && typeof (c as { k?: unknown }).k === 'string');
+  return v.slice(0, CMDS_PER_TURN).filter((c): c is Cmd => typeof c === 'object' && c !== null && typeof (c as { k?: unknown }).k === 'string');
 }
 
 export class RtsNet {
@@ -63,7 +64,7 @@ export class RtsNet {
   }
   private begin(): void { if (this.started) return; this.started = true; this.heard = performance.now(); this.ch.send({ t: 'hello' }); this.hooks.onStart?.(); }
   private onMsg(m: NetMsg): void {
-    if (this.dead) return; this.heard = performance.now();
+    if (this.dead || !m || (m.t !== 'hello' && m.t !== 'bye' && m.t !== 'T')) return; this.heard = performance.now();
     if (m.t === 'hello') { this.begin(); if (this.started) this.transmit(); return; }
     if (m.t === 'bye') { this.gone('bye'); return; }
     if (m.t !== 'T') return;
@@ -73,8 +74,8 @@ export class RtsNet {
       if (!this.theirs.has(e[0])) this.theirs.set(e[0], cleanCmds(e[1]));
     }
     while (this.theirs.has(this.have + 1)) this.have++;
-    if (typeof m.a === 'number' && m.a > this.ack) this.ack = Math.min(m.a, this.turn + DELAY);
-    if (Array.isArray(m.h)) for (const e of m.h.slice(0, 6)) if (Array.isArray(e) && typeof e[0] === 'number' && typeof e[1] === 'number') this.theirHash.set(e[0], e[1]);
+    if (typeof m.a === 'number' && Number.isSafeInteger(m.a) && m.a > this.ack) this.ack = Math.min(m.a, this.turn + DELAY);
+    if (Array.isArray(m.h)) for (const e of m.h.slice(0, 6)) if (Array.isArray(e) && Number.isSafeInteger(e[0]) && e[0] >= Math.max(0, this.turn - HASH_EVERY * 4) && e[0] <= this.turn + 60 && e[0] % HASH_EVERY === 0 && Number.isSafeInteger(e[1])) this.theirHash.set(e[0], e[1]);
     this.check();
   }
   private check(): void {
@@ -86,13 +87,13 @@ export class RtsNet {
 
   /** 프레임마다 부릅니다. 두 쪽의 명령이 모두 모인 만큼 시뮬레이션을 진행하고, 실행한 틱 수를 돌려줍니다. */
   pump(sim: RtsSim, dt: number, onTick: () => void, cap = 0.6): number {
-    if (this.dead || !this.started) return 0;
+    if (this.dead || !this.started || !Number.isFinite(dt) || dt < 0) return 0;
     this.acc = Math.min(this.acc + dt, cap); let ran = 0; this.stalled = false;
     while (this.acc >= 1 / TICK && sim.winner === -1) {
       if (sim.tick % TURN_TICKS === 0) {
         const t = sim.tick / TURN_TICKS;
-        if (t % HASH_EVERY === 0 && !this.hashes.has(t)) { this.hashes.set(t, sim.hash()); this.check(); }
-        if (!this.mine.has(t + DELAY)) { this.mine.set(t + DELAY, this.pending); this.pending = []; this.turn = t; this.transmit(); this.lastSend = performance.now(); }
+        if (t % HASH_EVERY === 0 && !this.hashes.has(t)) { this.hashes.set(t, sim.hash()); this.check(); if (this.dead) break; }
+        if (!this.mine.has(t + DELAY)) { this.mine.set(t + DELAY, this.pending.splice(0, CMDS_PER_TURN)); this.turn = t; this.transmit(); this.lastSend = performance.now(); }
         this.turn = t;
         const theirs = this.theirs.get(t), mine = this.mine.get(t);
         if (!theirs || !mine) { this.stalled = true; break; }
@@ -101,6 +102,7 @@ export class RtsNet {
         for (const c of b) sim.apply(1, c);
         this.theirs.delete(t - 4); this.mine.delete(t - 4);
         for (const k of this.hashes.keys()) if (k < t - HASH_EVERY * 4) this.hashes.delete(k);
+        for (const k of this.theirHash.keys()) if (k < t - HASH_EVERY * 4) this.theirHash.delete(k);
       }
       sim.step(); onTick(); ran++; this.acc -= 1 / TICK;
     }

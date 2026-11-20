@@ -87,7 +87,7 @@ export class RtsAi {
     if (!medics.length) return;
     const hx = home.x + 2, hy = home.y + 2; let cx = hx, cy = hy;
     if (fighters.length) { cx = 0; cy = 0; for (const u of fighters) { cx += u.x; cy += u.y; } cx /= fighters.length; cy /= fighters.length; const dx = hx - cx, dy = hy - cy, l = Math.sqrt(dx * dx + dy * dy) || 1; cx += dx / l * 2.5; cy += dy / l * 2.5; }
-    const ids = medics.filter(u => u.o.t === 'idle' || s.dist(u.x, u.y, cx, cy) > 6).map(u => u.id);
+    const ids = medics.filter(u => u.o.t === 'idle' || (u.o.t === 'move' && s.dist(u.o.x, u.o.y, cx, cy) > 6)).map(u => u.id);
     if (ids.length) { const p = s.pather.nearestFree(cx, cy) ?? { x: cx, y: cy }; s.apply(this.me, { k: 'move', ids, x: p.x, y: p.y }); }
   }
 
@@ -98,7 +98,7 @@ export class RtsAi {
 
   private control(s: RtsSim, army: Unit[], home: Building): void {
     const L = LEVELS[this.level], me = this.me;
-    if (!army.length) { this.wave = false; return; }
+    if (!army.length) { this.wave = false; this.phase = 0; return; }
     const sup = army.reduce((n, u) => n + UNITS[u.kind].supply, 0), rally = this.rally(s, home);
     const go = (units: Unit[], x: number, y: number, force: boolean): void => {
       const ids = units.filter(u => force || u.o.t === 'idle' || (u.o.t === 'amove' && !u.o.target && s.dist(u.o.x, u.o.y, x, y) > 6)).map(u => u.id);

@@ -174,3 +174,21 @@ describe('부대 명령 경계 조건', () => {
     expect(s.players[0].minerals).toBe(START_MINERALS);
   });
 });
+
+
+describe('경로 복구', () => {
+  it('완전히 갇힌 시작점은 막힌 목적지로 직행하는 경로를 만들지 않는다', () => {
+    const grid = new Uint8Array(25).fill(1); grid[6] = grid[18] = 0;
+    const p = new Pather(5, grid);
+    expect(p.find(1.5, 1.5, 3.5, 3.5)).toBeNull();
+    expect(p.find(NaN, 1, 3.5, 3.5)).toBeNull();
+    expect(p.los(2.5, 2.5, 2.5, 2.5)).toBe(false);
+  });
+  it('목적지가 막힌 경우 가까운 빈 칸에서 이동을 마친다', () => {
+    const s = fresh(), hq = hqOf(s, 0), u = s.spawnAt(0, 'marine', hq.x - 2, hq.y + 2);
+    s.apply(0, { k: 'move', ids: [u.id], x: hq.x + 2, y: hq.y + 2 });
+    run(s, 200);
+    expect(u.o.t).toBe('idle');
+    expect(s.pather.freeAt(u.x, u.y)).toBe(true);
+  });
+});

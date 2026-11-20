@@ -191,7 +191,7 @@ export class RtsSim {
         for (const u of us) this.order(u, { t: 'attack', x: 0, y: 0, target: t.id, phase: 0, timer: 0 }); return true;
       }
       case 'gather': {
-        const nd = num(c.node) ? this.node(c.node) : undefined; if (!nd) return false;
+        const nd = num(c.node) ? this.node(c.node) : undefined; if (!nd || nd.amount <= 0) return false;
         const us = mine(c.ids).filter(u => u.kind === 'worker'); if (!us.length) return false;
         for (const u of us) this.order(u, { t: 'gather', x: 0, y: 0, target: nd.id, phase: u.carry > 0 ? 2 : 0, timer: 0 }); return true;
       }
@@ -301,7 +301,7 @@ export class RtsSim {
   }
   nearestNode(x: number, y: number, max: number, onlyFree: boolean): ResNode | null {
     let best: ResNode | null = null, bd = max * max;
-    for (const nd of this.nodes) { if (onlyFree && nd.busyUntil > this.tick) continue; const d = sq(nd.x + 0.5 - x) + sq(nd.y + 0.5 - y); if (d < bd) { bd = d; best = nd; } }
+    for (const nd of this.nodes) { if (nd.amount <= 0 || (onlyFree && nd.busyUntil > this.tick)) continue; const d = sq(nd.x + 0.5 - x) + sq(nd.y + 0.5 - y); if (d < bd) { bd = d; best = nd; } }
     return best;
   }
   nearestHq(owner: number, x: number, y: number): Building | null {
@@ -339,7 +339,7 @@ export class RtsSim {
       case 'move': if (this.walk(u, o.x, o.y, this.speedOf(u), 0.25)) this.order(u, idle()); break;
       case 'amove': {
         let t = o.target ? this.unit(o.target) ?? this.building(o.target) : undefined;
-        if (t && (t.hp <= 0 || this.gap(u, d.radius, t) > d.range + 6)) { t = undefined; o.target = 0; }
+        if (o.target && (!t || t.hp <= 0 || this.gap(u, d.radius, t) > d.range + 6)) { t = undefined; o.target = 0; u.path = []; u.pi = 0; u.repath = 0; }
         if (!t && d.dmg > 0 && (u.id + this.tick) % 3 === 0) { const f = this.pick(u.owner, u.x, u.y, d.range + 3.5); if (f) { t = f; o.target = f.id; u.path = []; } }
         if (t) this.engage(u, t); else if (this.walk(u, o.x, o.y, this.speedOf(u), 0.6)) this.order(u, idle());
         break;
@@ -440,18 +440,30 @@ export class RtsSim {
   /** 목적지까지 길을 찾아 걷습니다. 도착하면 true. */
   private walk(u: Unit, gx: number, gy: number, speed: number, tol: number): boolean {
     if (this.dist(u.x, u.y, gx, gy) <= tol) return true;
-    if (u.path.length === 0) {
-      u.path = this.pather.find(u.x, u.y, gx, gy) ?? [gx, gy]; u.pi = 0;
-      if (u.path.length === 2 && this.dist(u.path[0], u.path[1], u.x, u.y) < tol) return true;
+    if (speed <= 0) return false;
+    if (u.path.length === 0 || u.pi * 2 >= u.path.length) {
+      if (u.repath > 0) return false;
+      const goal = this.pather.nearestFree(gx, gy);
+      if (!goal) { u.repath = 20; return false; }
+      if (this.dist(u.x, u.y, goal.x, goal.y) <= tol) return true;
+      u.path = this.pather.find(u.x, u.y, goal.x, goal.y) ?? []; u.pi = 0; u.repath = 12;
+      if (u.path.length === 0) return false;
     }
-    return this.follow(u, speed) && this.dist(u.x, u.y, gx, gy) <= tol + 1.2;
+    if (!this.follow(u, speed)) return false;
+    const goal = this.pather.nearestFree(gx, gy);
+    u.path = []; u.pi = 0;
+    return !!goal && this.dist(u.x, u.y, goal.x, goal.y) <= tol + 0.25;
   }
   /** 경로를 따라 한 틱 이동. 경로 끝에 닿았으면 true. */
   private follow(u: Unit, speed: number): boolean {
     let left = speed / 20;
     while (left > 0 && u.pi * 2 < u.path.length) {
       const tx = u.path[u.pi * 2], ty = u.path[u.pi * 2 + 1], dx = tx - u.x, dy = ty - u.y, d = Math.sqrt(dx * dx + dy * dy);
-      if (d <= left) { this.shift(u, dx, dy); left -= d; u.pi++; } else { this.shift(u, dx / d * left, dy / d * left); left = 0; }
+      if (d <= left) {
+        this.shift(u, dx, dy);
+        if (Math.abs(tx - u.x) + Math.abs(ty - u.y) > 0.02) { u.path = []; u.pi = 0; return false; }
+        left -= d; u.pi++;
+      } else { this.shift(u, dx / d * left, dy / d * left); left = 0; }
       if (d > 0.001) { u.fx = dx / d; u.fy = dy / d; }
     }
     return u.pi * 2 >= u.path.length;
@@ -466,7 +478,7 @@ export class RtsSim {
     if (u.kind !== 'worker') { this.order(u, idle()); return; }
     if (o.phase !== 2) {
       let nd = this.node(o.target);
-      if (!nd) { nd = this.nearestNode(hq ? hq.x + hq.size / 2 : u.x, hq ? hq.y + hq.size / 2 : u.y, 22, false) ?? undefined; if (!nd) { this.order(u, idle()); return; } o.target = nd.id; u.path = []; }
+      if (!nd || nd.amount <= 0) { nd = this.nearestNode(hq ? hq.x + hq.size / 2 : u.x, hq ? hq.y + hq.size / 2 : u.y, 22, false) ?? undefined; if (!nd) { this.order(u, idle()); return; } o.target = nd.id; o.phase = 0; o.timer = 0; u.path = []; }
       if (o.phase === 0) {
         if (this.dist(u.x, u.y, nd.x + 0.5, nd.y + 0.5) <= 1.7) {
           if (nd.busyUntil > this.tick) {
@@ -532,7 +544,7 @@ export class RtsSim {
   spareWorker(b: Building): Unit | null {
     let best: Unit | null = null, bd = sq(60); const c = this.center(b);
     for (const u of this.units) {
-      if (u.hp <= 0 || u.owner !== b.owner || u.kind !== 'worker' || (u.o.t !== 'gather' && u.o.t !== 'idle')) continue;
+      if (u.hp <= 0 || u.owner !== b.owner || u.kind !== 'worker' || (u.o.t !== 'gather' && u.o.t !== 'idle') || (u.o.t === 'idle' && u.o.phase === 9)) continue;
       const d = sq(u.x - c.x) + sq(u.y - c.y) + (u.carry > 0 ? 100 : 0); if (d < bd) { bd = d; best = u; }
     }
     return best;
@@ -542,7 +554,7 @@ export class RtsSim {
     for (const b of this.buildings) { if (b.owner !== u.owner || b.done || b.hp <= 0 || this.hasBuilder(b)) continue; const d = sq(b.x + b.size / 2 - u.x) + sq(b.y + b.size / 2 - u.y); if (d < sd) { sd = d; site = b; } }
     if (site) { this.order(u, { t: 'build', x: 0, y: 0, target: site.id, phase: 0, timer: 0 }); return; }
     const nd = this.nearestNode(u.x, u.y, 24, false);
-    if (nd) this.order(u, { t: 'gather', target: nd.id, x: 0, y: 0, phase: 0, timer: 0 }); else this.order(u, idle());
+    if (nd || u.carry > 0) this.order(u, { t: 'gather', target: nd?.id ?? 0, x: 0, y: 0, phase: u.carry > 0 ? 2 : 0, timer: 0 }); else this.order(u, idle());
   }
 
   /** 겹친 유닛을 밀어냅니다. 움직이는 쪽은 덜, 서 있는 쪽은 더 밀립니다. 채취 중인 일꾼끼리는 통과합니다. */

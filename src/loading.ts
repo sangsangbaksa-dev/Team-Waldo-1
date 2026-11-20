@@ -26,7 +26,7 @@ export function showLoading(title: string): LoadingScreen {
   return {
     progress(fraction, text) {
       if (text) label.textContent = text;
-      if (fraction === null) { bar.classList.add('busy'); pct.textContent = ''; return; }
+      if (fraction === null || !Number.isFinite(fraction)) { bar.classList.add('busy'); pct.textContent = ''; return; }
       bar.classList.remove('busy');
       shown = Math.max(shown, Math.min(1, Math.max(0, fraction))); // 재시도로 되돌아가도 막대는 뒤로 가지 않습니다
       fill.style.width = `${(shown * 100).toFixed(1)}%`;
@@ -51,9 +51,16 @@ export interface RetryOptions {
 }
 
 export async function retry<T>(task: (attempt: number) => Promise<T>, opt: RetryOptions = {}): Promise<T> {
+  let lastError: unknown = new Error('Loading cancelled');
   for (let attempt = 0; ; attempt++) {
-    try { return await task(attempt); }
+    if (opt.cancelled?.()) throw lastError;
+    try {
+      const result = await task(attempt);
+      if (opt.cancelled?.()) throw lastError;
+      return result;
+    }
     catch (e) {
+      lastError = e;
       if ((opt.maxAttempts !== undefined && attempt + 1 >= opt.maxAttempts) || opt.cancelled?.()) throw e;
       opt.onRetry?.(attempt + 1, e);
       await sleep(backoffMs(attempt));

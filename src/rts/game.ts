@@ -1,5 +1,6 @@
 // FRONTLINE — 실시간 전략 모드 진입점: 시작 화면, 입력, HUD, 게임 루프, 1대1 연결.
 import './rts.css';
+import { editableTarget, wheelPixels } from '../shared/input';
 import { readPreferences, writePreferences } from '../prefs';
 import { readRtsRecords, writeRtsRecords } from '../records';
 import type { LoadingScreen } from '../loading';
@@ -223,7 +224,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   let miniDown = false;
   const miniMove = (e: PointerEvent): void => { if (!view || !sim) return; const r = mini.getBoundingClientRect(), p = mmInv((e.clientX - r.left) / r.width * mini.width, (e.clientY - r.top) / r.height * mini.height); view.lookAt(p.x, p.y); };
   mini.addEventListener('pointerdown', e => {
-    e.preventDefault(); if (!sim) return; mini.setPointerCapture(e.pointerId);
+    e.preventDefault(); if (!sim || root.dataset.phase !== 'play' || (e.button !== 0 && e.button !== 2)) return; mini.setPointerCapture(e.pointerId);
     if (e.button === 2) { const r = mini.getBoundingClientRect(), p = mmInv((e.clientX - r.left) / r.width * mini.width, (e.clientY - r.top) / r.height * mini.height); orderMove(p.x, p.y, false); return; }
     miniDown = true; miniMove(e);
   });
@@ -269,10 +270,10 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   }
   over.addEventListener('contextmenu', e => e.preventDefault());
   over.addEventListener('pointerdown', e => {
-    audio.unlock(); if (!sim || !view || ended) return; const p = local(e); over.setPointerCapture(e.pointerId);
+    audio.unlock(); if (!sim || !view || ended || root.dataset.phase !== 'play' || (e.pointerType !== 'touch' && ![0, 1, 2].includes(e.button))) return; const p = local(e); over.setPointerCapture(e.pointerId);
     pointer.x = p.x; pointer.y = p.y; pointer.in = true;
     if (e.pointerType === 'touch') {
-      touches.set(e.pointerId, p); if (touches.size === 2) { const [a, b] = [...touches.values()]; pinch = Math.hypot(a.x - b.x, a.y - b.y); pointer.down = false; return; }
+      touches.set(e.pointerId, p); if (touches.size >= 2) { const [a, b] = [...touches.values()]; pinch = Math.hypot(a.x - b.x, a.y - b.y); pointer.down = false; return; }
       pointer.down = true; pointer.sx = p.x; pointer.sy = p.y; pointer.drag = false; pointer.button = 0; pointer.pan = !boxMode; return;
     }
     if (e.button === 1 || (e.button === 0 && e.altKey)) { pointer.down = true; pointer.drag = false; pointer.pan = true; pointer.sx = p.x; pointer.sy = p.y; pointer.button = 1; return; }
@@ -283,8 +284,9 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   over.addEventListener('pointermove', e => {
     const p = local(e); const px = pointer.x, py = pointer.y; pointer.x = p.x; pointer.y = p.y; pointer.in = true;
     if (e.pointerType === 'touch') {
+      if (!touches.has(e.pointerId)) return;
       touches.set(e.pointerId, p);
-      if (touches.size === 2) { const [a, b] = [...touches.values()], d = Math.hypot(a.x - b.x, a.y - b.y); if (pinch > 1 && d > 1 && view) view.zoom(Math.max(0.75, Math.min(1.33, pinch / d))); pinch = d; return; }
+      if (touches.size >= 2) { const [a, b] = [...touches.values()], d = Math.hypot(a.x - b.x, a.y - b.y); if (pinch > 1 && d > 1 && view) view.zoom(Math.max(0.75, Math.min(1.33, pinch / d))); pinch = d; return; }
     }
     if (!pointer.down) return;
     if (!pointer.drag && Math.hypot(p.x - pointer.sx, p.y - pointer.sy) > 8) pointer.drag = true;
@@ -292,7 +294,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   });
   const release = (e: PointerEvent): void => {
     const p = local(e); touches.delete(e.pointerId); if (touches.size < 2) pinch = 0;
-    if (!pointer.down || !sim || !view) { pointer.down = false; return; } pointer.down = false;
+    if (!pointer.down || !sim || !view || root.dataset.phase !== 'play') { pointer.down = false; return; } pointer.down = false;
     if (pointer.button === 1 || e.type === 'pointercancel') return;
     if (e.pointerType === 'touch') {
       if (pointer.pan && pointer.drag) return;
@@ -304,7 +306,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   };
   over.addEventListener('pointerup', release); const cancelPointer = (e: PointerEvent): void => { touches.delete(e.pointerId); pinch = 0; pointer.down = pointer.drag = pointer.pan = false; }; over.addEventListener('pointercancel', cancelPointer); over.addEventListener('lostpointercapture', cancelPointer);
   over.addEventListener('pointerleave', () => { pointer.in = false; });
-  over.addEventListener('wheel', e => { if (!view || root.dataset.phase !== 'play') return; e.preventDefault(); const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? over.clientHeight : 1; const dx = e.deltaX * unit, dy = e.deltaY * unit; if (!Number.isFinite(dx) || !Number.isFinite(dy)) return; if (e.shiftKey && !e.ctrlKey) { const k = view.cam.dist / Math.max(1, over.clientHeight); view.pan(dx * k, dy * k); } else if (dy) view.zoom(Math.exp(Math.max(-120, Math.min(120, dy)) * 0.0015)); }, { passive: false });
+  over.addEventListener('wheel', e => { if (!view || root.dataset.phase !== 'play') return; e.preventDefault(); const dx = wheelPixels(e.deltaX, e.deltaMode, over.clientHeight), dy = wheelPixels(e.deltaY, e.deltaMode, over.clientHeight); if (!Number.isFinite(dx) || !Number.isFinite(dy)) return; if (!e.ctrlKey && (e.shiftKey || Math.abs(dx) > Math.abs(dy))) { const k = view.cam.dist / Math.max(1, over.clientHeight); view.pan(dx * k, dy * k); } else if (dy) view.zoom(Math.exp(Math.max(-120, Math.min(120, dy)) * 0.0015)); }, { passive: false });
   /** 터치: 내 유닛을 누르면 선택, 땅·적·광물을 누르면 명령, 선택이 없으면 해제. */
   function tapAt(sx: number, sy: number): void {
     if (!sim || !view) return; const id = view.pick(sx, sy), e = id ? sim.index.get(id) : undefined, { us, bs } = own();
@@ -317,8 +319,9 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   const hot = new Map<string, number>();
   function onKey(e: KeyboardEvent): void {
     if (e.type === 'keyup') { keys.delete(e.key === 'Shift' ? 'Shift' : e.code); return; }
+    if (editableTarget(e.target) || e.isComposing) return;
     if (modal.classList.contains('show') && e.key !== 'Escape' && !(root.dataset.phase === 'paused' && e.key.toLowerCase() === 'p')) return;
-    keys.add(e.key === 'Shift' ? 'Shift' : e.code); audio.unlock();
+    keys.add(e.key === 'Shift' ? 'Shift' : e.code); if (e.repeat) { if (e.key.startsWith('Arrow') || e.code === 'Space') e.preventDefault(); return; } audio.unlock();
     const k = e.key.toUpperCase();
     if (root.dataset.phase === 'paused' && (e.key === 'Escape' || e.key.toLowerCase() === 'p')) { e.preventDefault(); hide(); paused = false; root.dataset.phase = 'play'; last = performance.now(); return; }
     if (e.key.toLowerCase() === 'p' && !e.ctrlKey && !e.metaKey && !e.altKey && sim && !ended) { e.preventDefault(); if (net) toast('온라인 대전은 일시정지할 수 없습니다', true); else openMenu(); return; }
@@ -404,7 +407,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     // 해제한 WebGL 컨텍스트는 다시 쓸 수 없으니 캔버스를 새로 만듭니다.
     const fresh = document.createElement('canvas'); fresh.className = 'rt-canvas'; canvas.replaceWith(fresh); canvas = fresh; const q = prefs.quality;
     try { view = new RtsView(canvas, sim, me, q); } catch { show('<div class="rt-card"><span class="rt-eyebrow">FRONTLINE</span><h2>그래픽을 시작하지 못했어요</h2><p class="rt-lead">WebGL 을 사용할 수 없습니다. 브라우저를 새로고침하거나 그래픽 가속을 켠 뒤 다시 시도해 주세요.</p><div class="rt-actions"><button class="primary" data-act="exit">메뉴로</button></div></div>'); return; }
-    miniBase = null; selected.clear(); mode = null; submenu = false; ended = false; paused = false; acc = 0; hudKey = cmdKey = selKey = ''; groups.clear(); hide(); root.dataset.phase = 'play'; stats.start = performance.now(); resize();
+    resetControls(); pointer.lastTap = 0; pointer.lastTapId = 0; hot.clear(); miniBase = null; selected.clear(); mode = null; submenu = false; ended = false; paused = false; acc = 0; hudKey = cmdKey = selKey = ''; groups.clear(); hide(); root.dataset.phase = 'play'; stats.start = performance.now(); resize();
     const h = sim.buildings.find(b => b.owner === me && b.kind === 'hq'); if (h) setSel([h.id]);
     toast(net ? '대전 시작! 상대의 모든 건물을 파괴하세요' : '일꾼으로 광물을 캐고, 병영을 지어 병력을 모으세요', false); last = performance.now();
   }

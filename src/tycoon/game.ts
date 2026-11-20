@@ -1,3 +1,4 @@
+import { renderPixelRatio } from '../shared/render-budget';
 import '../shared/game-polish.css';
 // TYCOON(HUSTLE) — 게임 조립: 3D 도시·플레이어·HUD·장소 패널·입력·저장. 경제 규칙은 core/ 가 맡습니다.
 import * as THREE from 'three';
@@ -246,7 +247,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   }
 
   // ---------- 루프 ----------
-  function resize(): void { if (!renderer) return; const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); post?.setSize(w, h); camera.aspect = w / h; camera.fov = h > w ? 74 : 66; camera.updateProjectionMatrix(); }
+  function resize(): void { if (!renderer) return; const w = Math.max(1, innerWidth), h = Math.max(1, innerHeight), ratio = renderPixelRatio(w, h, devicePixelRatio, quality); if (ratio !== renderer.getPixelRatio()) renderer.setPixelRatio(ratio); renderer.setSize(w, h, false); post?.setSize(w, h); camera.aspect = w / h; camera.fov = h > w ? 74 : 66; camera.updateProjectionMatrix(); }
   window.addEventListener('resize', resize);
 
   function readMove(): { mx: number; mz: number; run: boolean } {
@@ -346,7 +347,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     opts.loading?.progress(0.9, '도시를 짓는 중'); await new Promise(r => setTimeout(r, 30)); if (closed) { opts.loading?.close(); return; }
     try {
       renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
-      renderer.setPixelRatio(Math.min(quality === 'high' ? 2 : quality === 'standard' ? 1.5 : 1, devicePixelRatio || 1));
+      renderer.setPixelRatio(renderPixelRatio(innerWidth, innerHeight, devicePixelRatio, quality));
       renderer.shadowMap.enabled = quality !== 'low'; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1;
       bindCore(createCore({ save: loadTycoon() }));
       layout = buildLayout(core.spots() as SpotDef[]);

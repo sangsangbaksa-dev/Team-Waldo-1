@@ -596,6 +596,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     }
   }
   function frame(now: number): void {
+    if (closed) return;
     raf = requestAnimationFrame(frame); const dt = Math.min(0.1, (now - last) / 1000); last = now;
     if (!sim || !view || root.dataset.phase === 'setup') return;
     if (toastT > 0 && (toastT -= dt) <= 0) $('#rt-toast').classList.remove('show');

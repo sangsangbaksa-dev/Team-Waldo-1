@@ -80,7 +80,17 @@ export function rivalBand(level: LevelDef, gapMeters: number): number {
   const floor = gapMeters > 0 ? Math.max(1, level.bandLo) : level.bandLo;
   return Math.max(floor, Math.min(level.bandHi, raw));
 }
-export const placeOf = (r: RaceState, who: Racer = r.player): number => standings(r).indexOf(who) + 1;
+/** Rank without copying/sorting every HUD frame. Preserve stable tie ordering. */
+export function placeOf(r: RaceState, who: Racer = r.player): number {
+  const index = r.racers.indexOf(who); if (index < 0) return 0;
+  const ownScore = score(who); let rank = 1;
+  for (let i = 0; i < r.racers.length; i++) {
+    if (i === index) continue;
+    const other = score(r.racers[i]);
+    if (other > ownScore || (other === ownScore && i < index)) rank++;
+  }
+  return rank;
+}
 export const currentLap = (r: RaceState, who: Racer = r.player): number => Math.min(r.laps, Math.max(1, Math.floor(who.car.total / r.track.n) + 1));
 /** 플레이어와 racer 사이의 거리(m). 양수면 racer 가 앞. */
 export const gapMeters = (r: RaceState, who: Racer): number => (who.car.total - r.player.car.total) * r.track.ds;

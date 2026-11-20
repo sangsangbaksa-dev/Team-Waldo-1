@@ -25,22 +25,20 @@ export function loadOutlawAssets(
     }).then(({ models, raceCars }) => {
       const required = (key: string, fallback: string): CharModel => models.chars[key] ?? models.chars[fallback]!;
       const civilians = ['civ', 'civ2', 'civ3', 'civ4', 'civ5', 'civ6', 'civ7', 'civ8'];
-      const heroKeys = ['civ', 'civ2', 'civ3', 'civ4', 'civ5', 'civ6', 'civ7', 'civ8'];
       const gangKinds = ['rifle', 'merc', 'guard'];
       const assets: OutlawAssets = {
         ...models,
         pedModel(kind, variant) {
           const n = Math.abs(Math.trunc(variant));
-          if (kind === 'civ') {
+          if (kind === 'civ' || kind === 'player') {
             for (let i = 0; i < civilians.length; i++) {
               const candidate = civilians[(n + civilians.length - i) % civilians.length]!;
               if (models.chars[candidate]) return models.chars[candidate]!;
             }
             return required('civ', 'worker');
           }
-          if (kind === 'player') { const hk = heroKeys[n % heroKeys.length]!; if (models.chars[hk]) return models.chars[hk]!; }
           const key = kind === 'cop' ? 'cop' : kind === 'swat' ? 'swat' : kind === 'soldier' ? 'heavy' : kind === 'gang' ? gangKinds[n % gangKinds.length]! : kind === 'boss' ? 'boss' : 'worker';
-          return required(key, kind === 'player' ? 'boss' : 'worker');
+          return required(key, 'worker');
         },
         vehicleTemplate(kind) {
           const alias: Record<string, string> = { gt: 'gt', muscle: 'long', hyper: 'wide', ambulance: 'van' };

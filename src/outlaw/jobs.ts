@@ -7,6 +7,9 @@ import { autoDrive } from './vehicle';
 export interface JobInfo { id: string; name: string; giver: string; desc: string; pay: string; cooldown: number }
 export const JOB_LIST: JobInfo[] = [
   { id: 'courier', name: '음식 배달', giver: '배달 앱', desc: '세 곳에 제한 시간 안에 주문을 전달합니다. 빠를수록 팁이 늘어납니다.', pay: '$120×3 + 팁', cooldown: 20 },
+  { id: 'cleanup', name: '동네 청소', giver: '주민 센터', desc: '인도 세 곳의 쓰레기를 수거합니다. 걸어서 가까이 가면 수거합니다.', pay: '$450 + 시간 보너스', cooldown: 20 },
+  { id: 'photos', name: '도시 사진 산책', giver: '관광 안내소', desc: '도시 명소 세 곳을 방문해 사진을 찍습니다. 도착하면 차에서 내려야 합니다.', pay: '$600', cooldown: 30 },
+  { id: 'roadside', name: '긴급 출동', giver: '정비 협회', desc: '고장 난 차를 찾아 내려서 수리한 뒤 정비소에 보고합니다.', pay: '$750 + 시간 보너스', cooldown: 30 },
   { id: 'paramedic', name: '응급 이송', giver: '구급 센터', desc: '구급차를 몰고 환자를 태워 시립 병원까지 안전하게 이송합니다.', pay: '$450~900', cooldown: 30 },
   { id: 'vigilante', name: '자경단', giver: '동네 주민', desc: '동네를 어지럽히는 갱 네 명을 제압합니다. 시민을 해치면 실패합니다.', pay: '$700', cooldown: 45 },
   { id: 'contract', name: '현상 의뢰', giver: '브로커', desc: '경호원을 거느린 우두머리를 쓰러뜨립니다. 무장이 단단합니다.', pay: '$2,500', cooldown: 90 },
@@ -52,6 +55,18 @@ export function startJob(sim: Sim, id: string): string {
   if (id === 'courier') {
     const a = spotNear(sim, 120, 260), b = spotNear(sim, 160, 320, a), c = spotNear(sim, 160, 320, b);
     [a, b, c].forEach((q, i) => { j.data[`x${i}`] = q.x; j.data[`z${i}`] = q.z; }); j.data.total = 3; j.timer = 260; j.data.bonus = 0;
+  } else if (id === 'cleanup') {
+    let from: { x: number; z: number } = p;
+    for (let i = 0; i < 3; i++) { const q = spotNear(sim, 65, 150, from); j.data[`x${i}`] = q.x; j.data[`z${i}`] = q.z; from = q; }
+    j.timer = 240;
+  } else if (id === 'photos') {
+    const sites = sim.map.pois.filter(q => ['park', 'casino', 'dock', 'club', 'bank'].includes(q.kind)).sort((a, b) => dist(a, p) - dist(b, p));
+    for (let i = 0; i < 3; i++) { const q = sites[i] ?? spotNear(sim, 100 + i * 60, 300 + i * 60); j.data[`x${i}`] = q.x; j.data[`z${i}`] = q.z; }
+    j.timer = 360;
+  } else if (id === 'roadside') {
+    const q = spotNear(sim, 150, 300), lane = sim.map.lanes[nearestLane(sim.map, q.x, q.z)];
+    const v = sim.spawnVehicle('sedan', lane?.x ?? q.x, lane?.z ?? q.z, lane?.h ?? 0, { keep: true, tag: 'job', locked: true, color: 0x497a98 });
+    v.mode = 'parked'; v.input.brake = 1; v.hp = v.maxHp * 0.4; j.ids.car = v.id; j.timer = 240; j.data.repair = 0;
   } else if (id === 'paramedic') {
     const lane = sim.map.lanes[nearestLane(sim.map, p.x + Math.cos(p.yaw) * 10, p.z + Math.sin(p.yaw) * 10)];
     const v = sim.spawnVehicle('ambulance', lane?.x ?? p.x + 6, lane?.z ?? p.z, lane?.h ?? p.yaw, { keep: true, tag: 'job', color: 0xf4f6f8, locked: false }); v.mode = 'parked'; v.input.brake = 1; j.ids.car = v.id;
@@ -114,6 +129,27 @@ export function stepJobs(sim: Sim, dt: number): void {
     const i = j.stage, x = j.data[`x${i}`]!, z = j.data[`z${i}`]!; j.markers = [mark(x, z, 5, `배달 ${i + 1}/3`)];
     j.text = `주문 ${i + 1}/3 배달 · 남은 시간 ${clock(j.timer)}`;
     if (Math.hypot(p.x - x, p.z - z) < 5.5) { const tip = Math.floor(j.timer / 12); sim.earn(120 + tip); j.stage++; sim.say(`배달 완료 · 팁 $${tip}`, 2); if (j.stage >= 3) end(sim, true, '배달 완료'); }
+  } else if (id === 'cleanup' || id === 'photos') {
+    const i = j.stage, x = j.data[`x${i}`]!, z = j.data[`z${i}`]!;
+    const label = id === 'cleanup' ? '쓰레기 수거' : '사진 촬영';
+    j.markers = [mark(x, z, 5, `${label} ${i + 1}/3`, 'item')];
+    j.text = `${label} ${i + 1}/3 · 내려서 장소에 접근하세요 · ${clock(j.timer)}`;
+    if (!p.vehicle && Math.hypot(p.x - x, p.z - z) < 5.5) {
+      j.stage++; sim.say(`${label} ${j.stage}/3 완료`, 2);
+      if (j.stage >= 3) end(sim, true, id === 'cleanup' ? '동네 청소 완료' : '도시 사진 산책 완료', id === 'cleanup' ? 450 + Math.floor(j.timer) : 600);
+    }
+  } else if (id === 'roadside') {
+    const car = sim.vehicle(j.ids.car);
+    if (!car || !car.alive || car.wrecked) { end(sim, false, '고장 차량이 파괴되었습니다'); return; }
+    if (!j.stage) {
+      j.markers = [mark(car.x, car.z, 5, '고장 차량', 'item')];
+      j.data.repair = !p.vehicle && dist(p, car) < 5 ? j.data.repair + dt : 0;
+      j.text = `차량 옆에서 수리하세요 · ${Math.floor(j.data.repair)}/5초 · ${clock(j.timer)}`;
+      if (j.data.repair >= 5) { car.hp = car.maxHp; j.stage = 1; sim.say('수리 완료 · 정비소에 보고하세요', 3); }
+    } else {
+      const garage = poi(sim, 'garage0'); j.markers = [mark(garage.x, garage.z, 8, '정비소')]; j.text = `정비소에 보고하세요 · ${clock(j.timer)}`;
+      if (dist(p, garage) < 9) end(sim, true, '긴급 출동 완료', 750 + Math.floor(j.timer));
+    }
   } else if (id === 'paramedic') {
     const car = sim.vehicle(j.ids.car), pt = sim.ped(j.ids.patient);
     if (!car || car.wrecked || !car.alive) { end(sim, false, '구급차가 파괴되었습니다'); return; }

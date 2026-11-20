@@ -38,9 +38,9 @@
       <header class="mast">
         <span class="wordmark"
           ><i class="signalMark" aria-hidden="true">∿</i> TEAM WALDO</span
-        ><button class="bare" id="sound" type="button">
+        ><div class="mast-actions"><a class="hub-link" href="../">게임 목록</a><button class="bare" id="sound" type="button">
           <b aria-hidden="true">◖</b> <span>소리 켜짐</span>
-        </button>
+        </button></div>
       </header>
       <section class="intro">
         <div class="kicker"><i></i> 1인칭 심리 공포</div>
@@ -127,7 +127,7 @@
         <span class="rec">REC</span><b id="timer">00:00</b
         ><span class="statusline"></span
         ><span>수신 <strong id="strain">안정</strong></span>
-        <div class="stambar" aria-label="달리기 체력"><i id="stamina"></i></div>
+        <div class="stambar" role="progressbar" aria-label="달리기 체력" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i id="stamina"></i></div>
       </div>
       <div id="prompt" hidden><kbd>E</kbd> <span id="promptText"></span></div>
       <div id="toast" role="status" aria-live="polite"></div>

@@ -59,7 +59,7 @@ export function buildActions(ctx: ActionCtx, spotId: string): ActionSpec[] {
     case 'scrap': out.push(scrapAction(ctx, spotId)); break;
     case 'recycle': out.push(recycleAction(ctx)); break;
     case 'food': for (const f of FOOD) out.push(foodAction(ctx, f)); break;
-    case 'job': out.push(jobAction(ctx, spotId)); break;
+    case 'job': out.push(jobAction(ctx, spotId)); if (spotId !== 'job_delivery') out.push(extraShift(ctx, spotId)); break;
     case 'market': out.push(...marketActions(ctx)); break;
     case 'bank': out.push(...bankActions(ctx)); break;
     case 'office': out.push(...officeActions(ctx)); break;
@@ -110,7 +110,7 @@ function recycleAction(ctx: ActionCtx): ActionSpec {
     ...(g.bottles <= 0 ? off('팔 빈 병이 없습니다') : {}),
     run: () => {
       const pay = g.bottles * BOTTLE_PRICE;
-      earn(g, pay); g.bottles = 0;
+      earn(g, pay); g.ledger.jobIncome += pay; g.bottles = 0;
       ctx.emit({ type: 'cash', text: `+${fmt(pay)}`, amount: pay });
       return `빈 병을 팔아 ${fmt(pay)}을 벌었습니다`;
     },
@@ -144,7 +144,7 @@ function jobAction(ctx: ActionCtx, spotId: string): ActionSpec {
         const target = pick(g, targets);
         g.energy -= job.energy;
         g.task = { id: nextId(g, 'task'), jobId: job.id, from: spotId, target: target.id, reward: job.pay, deadline: absMinute(g) + DELIVERY_MINUTES };
-        ctx.emit({ type: 'task', text: `${target.name}(으)로 배달하세요`, task: null });
+        ctx.emit({ type: 'task', text: `${target.name}(으)로 배달하세요`, task: { id: g.task.id, label: `${target.name}(으)로 배달`, fromSpotId: spotId, targetSpotId: target.id, reward: job.pay, minutesLeft: DELIVERY_MINUTES } });
         return `${target.name}까지 배달하세요!`;
       },
     }, ctx);
@@ -157,6 +157,24 @@ function jobAction(ctx: ActionCtx, spotId: string): ActionSpec {
       earn(g, job.pay); g.ledger.jobIncome += job.pay; g.jobsDone++;
       ctx.emit({ type: 'cash', text: `+${fmt(job.pay)}`, amount: job.pay });
       return `${job.name} 끝! ${fmt(job.pay)}`;
+    },
+  }, ctx);
+}
+
+/** A longer, better-paying shift offers a different energy/time tradeoff at each workplace. */
+function extraShift(ctx: ActionCtx, spotId: string): ActionSpec {
+  const job = JOBS[JOB_AT[spotId]], g = ctx.g;
+  const pay = Math.round(job.pay * 1.8), energy = Math.round(job.energy * 1.6);
+  const h = g.minute / 60;
+  const labels: Record<string, string> = { job_mart: '야간 진열 지원', job_cafe: '단체 주문 준비', job_dock: '화물 분류 지원' };
+  return spec({
+    id: 'extra_shift', label: labels[spotId], desc: '긴 추가 근무. 기본 근무보다 보수가 높지만 체력을 더 쓴다.',
+    reward: pay, energy, durationSec: job.durationSec * 1.5, lockMovement: true,
+    ...(h < job.fromHour || h >= job.toHour ? off(`${job.fromHour}시~${job.toHour}시에만 일합니다`) : {}),
+    run: () => {
+      g.energy -= energy; earn(g, pay); g.ledger.jobIncome += pay; g.jobsDone++;
+      ctx.emit({ type: 'cash', text: `+${fmt(pay)}`, amount: pay });
+      return `추가 근무 완료! ${fmt(pay)}`;
     },
   }, ctx);
 }
@@ -182,8 +200,7 @@ function deliverAction(ctx: ActionCtx): ActionSpec {
 function marketActions(ctx: ActionCtx): ActionSpec[] {
   const { g } = ctx;
   const kinds = [...new Set(retailShops(g).map(s => s.shop.kind))];
-  if (!kinds.length) return [spec({ id: 'none', label: '재료 사기', run: () => '', ...off('먼저 가게를 여세요') }, ctx)];
-  return kinds.map(kind => {
+  const out = kinds.map(kind => {
     const def = SHOP_KINDS[kind];
     const price = unitCost(g, kind);
     const held = g.cargo?.kind === kind ? g.cargo.units : 0;
@@ -203,6 +220,12 @@ function marketActions(ctx: ActionCtx): ActionSpec[] {
       },
     }, ctx);
   });
+  if (!kinds.length) out.push(spec({ id: 'none', label: '재료 사기', run: () => '', ...off('먼저 가게를 여세요') }, ctx));
+  if (g.cargo) out.push(spec({
+    id: 'discard_cargo', label: `${SHOP_KINDS[g.cargo.kind].name} 재료 ${g.cargo.units}개 비우기`, desc: '환불 없이 보유 재료를 버립니다. 다른 업종의 재료를 사려면 먼저 비우세요.',
+    run: () => { g.cargo = null; return '보유 재료를 비웠습니다.'; },
+  }, ctx));
+  return out;
 }
 
 // ── 은행 ─────────────────────────────────────────────
@@ -223,11 +246,11 @@ function bankActions(ctx: ActionCtx): ActionSpec[] {
       run: () => { g.cash += amt; g.debt += amt; return `${fmt(amt)}을 빌렸습니다. 빚 ${fmt(g.debt)}`; },
     }, ctx));
   }
-  const pay = Math.min(g.debt, Math.floor(g.cash));
+  const pay = Math.max(0, Math.min(g.debt, g.cash));
   out.push(spec({
     id: 'repay', label: pay >= g.debt ? '빚 전부 갚기' : `${fmt(pay)} 갚기`, desc: `남은 빚 ${fmt(g.debt)}`, cost: pay,
     ...(g.debt <= 0 ? off('갚을 빚이 없습니다') : pay <= 0 ? off('현금이 없습니다') : {}),
-    run: () => { const p = Math.min(g.debt, Math.floor(g.cash)); g.cash -= p; g.debt -= p; if (g.debt < 0.5) g.debt = 0; return `${fmt(p)}을 갚았습니다`; },
+    run: () => { const p = Math.max(0, Math.min(g.debt, g.cash)); g.cash -= p; g.debt = Math.max(0, g.debt - p); return `${fmt(p)}을 갚았습니다`; },
   }, ctx));
   return out;
 }
@@ -374,7 +397,7 @@ function shopActions(ctx: ActionCtx, spot: SpotDef, shop: ShopData): ActionSpec[
   const factory = shop.kind === 'factory';
   if (!factory) {
     const cap = stockCap(shop);
-    const space = Math.floor(cap - shop.stock);
+    const space = Math.max(0, Math.floor(cap - shop.stock));
     const carry = g.cargo?.kind === shop.kind ? g.cargo.units : 0;
     out.push(spec({
       id: 'restock', label: `재료 채우기 (+${Math.min(space, carry)})`, desc: `재고 ${Math.floor(shop.stock)}/${cap}. 도매시장에서 사 온 재료를 넣는다`, durationSec: 1.5, lockMovement: true,
@@ -396,6 +419,17 @@ function shopActions(ctx: ActionCtx, spot: SpotDef, shop: ShopData): ActionSpec[
       id: 'price_down', label: '가격 내리기', desc: '손님이 늘고 평점이 오른다',
       ...(shop.priceMult <= 0.5 + 1e-9 ? off('더 내릴 수 없습니다') : {}),
       run: () => { shop.priceMult = Math.max(0.5, Math.round((shop.priceMult - 0.1) * 10) / 10); return `가격 ${Math.round(shop.priceMult * 100)}%`; },
+    }, ctx));
+    out.push(spec({
+      id: 'clean_shop', label: '가게 정리하기', desc: '직접 청소하고 진열을 정돈한다. 평점 +8 (최대 100).', energy: 12, durationSec: 4, lockMovement: true,
+      ...(shop.rating >= 100 ? off('평점이 이미 최고입니다') : {}),
+      run: () => { g.energy -= 12; shop.rating = Math.min(100, shop.rating + 8); return `매장을 정리했습니다. 평점 ${Math.round(shop.rating)}`; },
+    }, ctx));
+    const campaignCost = Math.max(20, Math.round(def.buildCost * 0.025));
+    out.push(spec({
+      id: 'promote_shop', label: '동네 홍보하기', desc: '전단을 돌려 가게를 알린다. 평점 +15 (최대 100).', cost: campaignCost, energy: 8, durationSec: 3, lockMovement: true,
+      ...(shop.rating >= 100 ? off('평점이 이미 최고입니다') : {}),
+      run: () => { g.cash -= campaignCost; g.ledger.upkeep += campaignCost; g.energy -= 8; shop.rating = Math.min(100, shop.rating + 15); return `동네에 가게를 알렸습니다. 평점 ${Math.round(shop.rating)}`; },
     }, ctx));
     const clerks = shop.staff.filter(s => s.role === 'clerk').length;
     const maxClerks = shop.level * CLERKS_PER_LEVEL;

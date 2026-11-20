@@ -6,6 +6,7 @@ import type { SaveData } from '../../src/outlaw/sim';
 
 const ViewStub = vi.hoisted(() => class {
   setPixelRatio(): void {}
+  getPixelRatio(): number { return 1; }
   setSize(): void {}
   dispose(): void {}
   forceContextLoss(): void {}

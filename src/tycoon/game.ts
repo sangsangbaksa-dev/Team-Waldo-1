@@ -9,6 +9,7 @@ import { loadCharacterKit, type CharacterKit } from '../shared/character';
 import { makePost, type PostFx } from '../postfx';
 import { clearTycoon, createCore, formatMoney, loadTycoon, readTycoonSummary, saveTycoon } from './core';
 import { STAGE_NAMES } from './core/data';
+import { readTycoonPosition, type TycoonPosition } from './core/save';
 import type { CoreEvent, SpotDef, TycoonCore, TycoonState } from './core/types';
 import { buildLayout, type Colliders, WORLD_HALF, type Layout } from './scene/layout';
 import { CityView, type Quality, type SpotView } from './scene/city';
@@ -46,7 +47,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       <div class="ty-task" id="ty-task" hidden><i id="ty-arrow">➤</i><div><b id="ty-task-label"></b><span id="ty-task-sub"></span></div></div>
       <div class="ty-activity" id="ty-activity" hidden><b id="ty-act-label"></b><div class="ty-bar gold"><i id="ty-act-bar"></i></div><small>움직이면 취소됩니다</small></div>
       <button type="button" class="ty-prompt" id="ty-prompt" hidden></button>
-      <ul class="ty-toasts" id="ty-toasts"></ul>
+      <ul class="ty-toasts" id="ty-toasts" role="status" aria-live="polite"></ul>
       <div class="ty-mini"><canvas id="ty-minimap" width="220" height="220"></canvas></div>
       <div class="ty-banner" id="ty-banner"></div>
       <div class="ty-touchpad"><div class="ty-stick" id="ty-stick"><i></i></div>
@@ -70,6 +71,10 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   const keys = new Set<string>(); const tc = { moveId: -1, mx: 0, my: 0, ox: 0, oy: 0, lookId: -1, lx: 0, ly: 0, run: false }; let drag = -1, dragX = 0, dragY = 0, locked = false;
   let near: { id: string; spot: SpotView; dist: number } | null = null, spotViews: SpotView[] = [], lastStage = -1, lastCarry = '', hudDirty = true;
   const toastList: Array<{ el: HTMLElement; at: number }> = [];
+  let bannerTimer = 0, winTimer = 0;
+  let carryGroup: THREE.Group | null = null;
+  let modalTrigger: HTMLElement | null = null;
+  let resumePosition: TycoonPosition | null = null;
 
   // ---------- 알림 ----------
   function toast(text: string, tone: 'info' | 'good' | 'bad' = 'info', sec = 3.4): void {
@@ -77,11 +82,18 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     while (toastList.length > 5) toastList.shift()!.el.remove();
   }
   function banner(title: string, sub: string, ms = 3200): void {
-    const b = q('#ty-banner'); b.innerHTML = `<h2>${esc(title)}</h2><p>${esc(sub)}</p>`; b.classList.remove('show'); void b.offsetWidth; b.classList.add('show'); window.setTimeout(() => b.classList.remove('show'), ms);
+    const b = q('#ty-banner'); b.innerHTML = `<h2>${esc(title)}</h2><p>${esc(sub)}</p>`; b.classList.remove('show'); void b.offsetWidth; b.classList.add('show'); b.style.animationDuration = `${ms}ms`; window.clearTimeout(bannerTimer); bannerTimer = window.setTimeout(() => b.classList.remove('show'), ms);
   }
 
   // ---------- 저장 ----------
-  const save = (): boolean => !!core && phase === 'play' && saveTycoon(core);
+  const save = (): boolean => !!core && !!player && phase === 'play' && saveTycoon(core, undefined, {
+    x: player.pos.x, z: player.pos.z, facing: player.facing, yaw: player.camYaw,
+    pitch: player.camPitch, distance: player.dist, firstPerson: player.firstPerson,
+  });
+  const persistOnHide = (): void => { if (document.hidden) { save(); resetInput(); } };
+  const persistOnPageHide = (): void => { save(); };
+  document.addEventListener('visibilitychange', persistOnHide);
+  window.addEventListener('pagehide', persistOnPageHide);
 
   // ---------- 모달 ----------
   const paused = (): boolean => modal !== null;
@@ -94,19 +106,27 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       case 'status': h = statusHtml(core.state); break;
       case 'menu': h = menuHtml(audio.enabled, player.firstPerson); break;
       case 'win': h = winHtml(core.state); break;
-      case 'map': h = '<div class="ty-bigmap"><button type="button" class="ty-x" data-close aria-label="닫기">✕</button><canvas id="ty-bigmap" width="720" height="720"></canvas></div>'; break;
+      case 'map': h = '<div class="ty-bigmap" role="dialog" aria-modal="true" aria-label="도시 지도"><button type="button" class="ty-x" data-close aria-label="닫기">✕</button><canvas id="ty-bigmap" width="720" height="720"></canvas><div class="ty-map-caption">↑ 북쪽 · 흰 화살표: 내 위치 · 점선: 목적지까지 직선 방향</div></div>'; break;
     }
     if (h !== modalHtml || modalEl.hidden) { // 내용이 바뀔 때만 교체합니다(누르는 도중 버튼이 바뀌면 클릭이 사라집니다)
-      const keep = modalEl.querySelector('.ty-panel')?.scrollTop ?? 0; modalEl.innerHTML = h; modalHtml = h; modalEl.hidden = false;
+      const keep = modalEl.querySelector('.ty-panel')?.scrollTop ?? 0;
+      const focused = document.activeElement instanceof HTMLElement && modalEl.contains(document.activeElement) ? document.activeElement : null;
+      const focusKey = focused?.dataset.act ?? focused?.dataset.menu ?? focused?.dataset.title;
+      modalEl.innerHTML = h; modalHtml = h; modalEl.hidden = false;
       const p = modalEl.querySelector('.ty-panel'); if (p) p.scrollTop = keep;
+      if (focused) { const buttons = Array.from(modalEl.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')); const matching = focusKey ? buttons.find(b => (b.dataset.act ?? b.dataset.menu ?? b.dataset.title) === focusKey) : undefined; (matching ?? buttons[0])?.focus({ preventScroll: true }); }
     }
     if (modal.kind === 'map') drawBig();
   }
   function drawBig(): void { const c = modalEl.querySelector<HTMLCanvasElement>('#ty-bigmap'); if (c) drawMap(c, layout, { stage: core.state.stageIndex, spots: spotViews, px: player.pos.x, pz: player.pos.z, yaw: player.facing, target: core.state.task?.targetSpotId ?? null, time: performance.now() / 1000, names: true }); }
-  function openModal(m: Modal): void { modal = m; if (m && document.pointerLockElement) document.exitPointerLock(); resetInput(); renderModal(); audio.open(); }
-  function closeModal(): void { modal = null; renderModal(); if (phase === 'play') lock(); }
+  function openModal(m: Modal): void {
+    if (!modal) modalTrigger = document.activeElement instanceof HTMLElement && root.contains(document.activeElement) ? document.activeElement : null;
+    modal = m; if (m && document.pointerLockElement === canvas) document.exitPointerLock(); resetInput(); renderModal();
+    modalEl.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true }); audio.open();
+  }
+  function closeModal(): void { modal = null; renderModal(); modalTrigger?.focus({ preventScroll: true }); modalTrigger = null; if (phase === 'play') lock(); }
   function openSpot(id: string): void { if (phase !== 'play') return; const spot = core.spot(id); if (!spot) return; openModal({ kind: 'spot', id }); }
-  function interact(): void { if (phase !== 'play' || modal) return; if (near) openSpot(near.id); }
+  function interact(): void { if (phase !== 'play' || modal) return; if (near && !core.state.activity) openSpot(near.id); }
 
   modalEl.addEventListener('click', e => {
     const t = e.target as HTMLElement; audio.unlock();
@@ -119,23 +139,24 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (title === 'keep') closeModal(); else if (title === 'exit') exit();
   });
   function doAction(spotId: string, actionId: string): void {
+    if (actionId === 'sell' && !window.confirm('가게를 매각할까요? 재고와 직원은 사라집니다.')) return;
+    if (actionId === 'discard_cargo' && !window.confirm('보유 재료를 환불 없이 버릴까요?')) return;
     const before = core.state.cash, r = core.perform(spotId, actionId);
     if (!r.ok) { audio.deny(); toast(r.message, 'bad'); renderModal(); return; }
     audio.click(); if (core.state.cash < before) audio.spend();
-    const def = core.actionsAt(spotId).find(a => a.id === actionId); void def;
-    if (core.state.activity) { closeModal(); toast(r.message); } else { toast(r.message, 'good'); renderModal(); }
+    if (core.state.activity) { closeModal(); toast(r.message); } else { save(); toast(r.message, 'good'); renderModal(); }
     hudDirty = true;
   }
   function menuAction(m: string): void {
     if (m === 'resume') closeModal();
-    else if (m === 'save') { if (save()) toast('저장했습니다', 'good'); else toast('저장하지 못했습니다. 브라우저 저장 공간을 확인하세요.', 'bad'); }
+    else if (m === 'save') { const ok = save(); toast(ok ? '저장했습니다' : '저장하지 못했습니다. 브라우저 저장 공간을 확인하세요.', ok ? 'good' : 'bad', 5); }
     else if (m === 'view') { player.setFirstPerson(!player.firstPerson); renderModal(); }
     else if (m === 'sound') { audio.enabled = !audio.enabled; writePreferences({ ...readPreferences(), sound: audio.enabled }); renderModal(); }
     else if (m === 'exit') exit();
   }
 
   // ---------- 입력 ----------
-  function resetInput(): void { keys.clear(); tc.moveId = tc.lookId = -1; tc.mx = tc.my = 0; drag = -1; q('#ty-stick').style.opacity = '0'; (q('#ty-stick').firstElementChild as HTMLElement).style.transform = ''; }
+  function resetInput(): void { keys.clear(); tc.moveId = tc.lookId = -1; tc.mx = tc.my = 0; tc.run = false; q('#ty-t-run').classList.remove('on'); q('#ty-t-run').setAttribute('aria-pressed', 'false'); drag = -1; q('#ty-stick').style.opacity = '0'; (q('#ty-stick').firstElementChild as HTMLElement).style.transform = ''; }
   function lock(): void { if (touch || !player?.firstPerson || locked) return; try { const r = canvas.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(() => undefined); } catch { /* 선택 사항 */ } }
   const onLock = (): void => { locked = document.pointerLockElement === canvas; if (!locked) resetInput(); };
   document.addEventListener('pointerlockchange', onLock);
@@ -148,8 +169,13 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (phase !== 'play') return;
     if (e.code === 'Escape') { e.preventDefault(); if (modal && modal.kind !== 'menu') closeModal(); else if (modal) closeModal(); else openModal({ kind: 'menu' }); return; }
     if (modal) {
-      if (modal.kind === 'spot' && /^Digit[1-9]$/.test(e.code)) { const a = core.actionsAt(modal.id)[Number(e.code.slice(5)) - 1]; if (a) doAction(modal.id, a.id); e.preventDefault(); }
-      else if ((e.code === 'KeyE' || e.code === 'Tab') && modal.kind !== 'menu') { e.preventDefault(); closeModal(); }
+      if (e.code === 'Tab') {
+        const buttons = Array.from(modalEl.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+        if (buttons.length) { const i = buttons.indexOf(document.activeElement as HTMLButtonElement); if (i === -1 || (e.shiftKey ? i === 0 : i === buttons.length - 1)) { e.preventDefault(); (e.shiftKey ? buttons[buttons.length - 1] : buttons[0]).focus(); } }
+        return;
+      }
+      if (modal.kind === 'spot' && /^Digit[1-9]$/.test(e.code)) { const a = core.actionsAt(modal.id)[Number(e.code.slice(5)) - 1]; if (a?.enabled) doAction(modal.id, a.id); e.preventDefault(); }
+      else if (e.code === 'KeyE' && modal.kind !== 'menu') { e.preventDefault(); closeModal(); }
       return;
     }
     if (e.code === 'Tab') { e.preventDefault(); openModal({ kind: 'status' }); return; }
@@ -161,13 +187,14 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     keys.add(e.code);
   };
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.code); };
-  window.addEventListener('keydown', onKeyDown); window.addEventListener('keyup', onKeyUp); window.addEventListener('blur', resetInput); const onVisibility = (): void => { resetInput(); if (document.hidden) save(); }; const onPageHide = (): void => { save(); }; document.addEventListener('visibilitychange', onVisibility); window.addEventListener('pagehide', onPageHide);
+  window.addEventListener('keydown', onKeyDown); window.addEventListener('keyup', onKeyUp); window.addEventListener('blur', resetInput); document.addEventListener('visibilitychange', resetInput);
   canvas.addEventListener('pointerdown', e => {
     audio.unlock(); if (phase !== 'play' || modal) return;
     if (e.pointerType === 'touch') {
+      try { canvas.setPointerCapture(e.pointerId); } catch { /* pointer may have ended */ }
       if (e.clientX < innerWidth * 0.45 && tc.moveId < 0) { tc.moveId = e.pointerId; tc.ox = e.clientX; tc.oy = e.clientY; const st = q('#ty-stick'); st.style.cssText = `left:${e.clientX - 60}px;top:${e.clientY - 60}px;opacity:1`; }
       else if (tc.lookId < 0) { tc.lookId = e.pointerId; tc.lx = e.clientX; tc.ly = e.clientY; }
-    } else if (e.button === 0) { drag = e.pointerId; dragX = e.clientX; dragY = e.clientY; if (player.firstPerson) lock(); }
+    } else if (e.button === 0) { try { canvas.setPointerCapture(e.pointerId); } catch { /* pointer may have ended */ } drag = e.pointerId; dragX = e.clientX; dragY = e.clientY; if (player.firstPerson) lock(); }
   });
   const onMove = (e: PointerEvent): void => {
     if (e.pointerId === tc.moveId) { const dx = clamp((e.clientX - tc.ox) / 55, -1, 1), dy = clamp((e.clientY - tc.oy) / 55, -1, 1); tc.mx = dx; tc.my = dy; (q('#ty-stick').firstElementChild as HTMLElement).style.transform = `translate(${dx * 38}px,${dy * 38}px)`; }
@@ -184,7 +211,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   window.addEventListener('wheel', onWheel, { passive: true });
   q('.ty-touchpad').addEventListener('pointerdown', e => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-t]'); if (!b) return; audio.unlock(); e.preventDefault();
-    const t = b.dataset.t; if (t === 'use') interact(); else if (t === 'run') { tc.run = !tc.run; b.classList.toggle('on', tc.run); } else if (t === 'view') { player.setFirstPerson(!player.firstPerson); }
+    const t = b.dataset.t; if (t === 'use') interact(); else if (t === 'run') { tc.run = !tc.run; b.classList.toggle('on', tc.run); b.setAttribute('aria-pressed', String(tc.run)); } else if (t === 'view') { player.setFirstPerson(!player.firstPerson); }
   });
   q('#ty-prompt').addEventListener('click', () => { audio.unlock(); interact(); });
   q('#ty-b-status').addEventListener('click', () => { audio.unlock(); if (!modal) openModal({ kind: 'status' }); });
@@ -206,24 +233,32 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       case 'stage': banner(STAGE_NAMES[e.stage], e.text); audio.stageUp(); cineT = 0.001; syncCity(true); applyStageLook(); save(); break;
       case 'day': audio.day(); toast(`${core.state.day}일차 아침 — 어제 순이익 ${formatMoney(e.report.profit)}`, e.report.profit >= 0 ? 'good' : 'bad', 5); save(); break;
       case 'task': if (e.task) toast(e.text); break;
-      case 'win': banner('세계 정복', e.text, 6000); window.setTimeout(() => { if (!closed && phase === 'play') openModal({ kind: 'win' }); }, 3200); break;
+      case 'win': banner('세계 정복', e.text, 6000); window.clearTimeout(winTimer); winTimer = window.setTimeout(() => { if (!closed && phase === 'play') openModal({ kind: 'win' }); }, 3200); break;
     }
   }
   function syncCity(animate: boolean): void {
     if (!city) return;
     spotViews = core.spots() as SpotView[]; city.sync(core.state.stage, spotViews, animate); city.setTarget(core.state.task?.targetSpotId ?? null);
   }
+  function disposeCarry(): void {
+    if (!carryGroup) return;
+    carryGroup.removeFromParent();
+    carryGroup.traverse(obj => { if (obj instanceof THREE.Mesh) { obj.geometry.dispose(); const materials = Array.isArray(obj.material) ? obj.material : [obj.material]; for (const material of materials) material.dispose(); } });
+    carryGroup = null;
+  }
   function applyStageLook(): void {
+    disposeCarry();
     const si = core.state.stageIndex; player.setOutfit(si); crowd?.setStage(si); traffic?.setStage(si); lastStage = si; attachCarry(true);
   }
   function attachCarry(force = false): void {
     const s = core.state, key = `${s.cargo?.units ? s.cargo.kind : ''}${s.cargo?.units ?? 0}|${s.bottles}`; if (!force && key === lastCarry) return; lastCarry = key;
-    const rig = player?.rig; if (!rig) return; const old = rig.torso.getObjectByName('carry'); if (old) rig.torso.remove(old);
+    disposeCarry();
+    const rig = player?.rig; if (!rig) return;
     if (!s.cargo?.units && !s.bottles) return;
     const g = new THREE.Group(); g.name = 'carry';
     if (s.cargo?.units) { const sz = 0.3 + Math.min(0.35, s.cargo.units / 120); const m = new THREE.Mesh(new THREE.BoxGeometry(0.35, sz, sz * 1.3), new THREE.MeshLambertMaterial({ color: 0xb98a4a })); m.position.set(-0.32, 1.12, 0); g.add(m); }
     if (s.bottles) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.14 + Math.min(0.14, s.bottles / 120), 10, 8), new THREE.MeshLambertMaterial({ color: 0x8ab6a4, transparent: true, opacity: 0.9 })); m.position.set(0.02, 0.72, 0.34); g.add(m); }
-    rig.torso.add(g);
+    rig.torso.add(g); carryGroup = g;
   }
 
   // ---------- 제목/시작 ----------
@@ -234,16 +269,26 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   titleEl.addEventListener('click', e => { audio.unlock(); const b = (e.target as HTMLElement).closest<HTMLElement>('[data-title]'); if (b) titleAction(b.dataset.title!); });
   function titleAction(a: string): void {
     if (a === 'exit') { exit(); return; }
-    if (a === 'new') { clearTycoon(); bindCore(createCore()); syncCity(false); }
+    if (a === 'new') { if (readTycoonSummary().has && !window.confirm('기존 저장 기록을 지우고 새로 시작할까요?')) return; clearTycoon(); resumePosition = null; bindCore(createCore()); syncCity(false); }
     else if (a === 'continue') { /* 제목 화면에서 이미 저장본으로 만든 코어를 씁니다 */ }
     startPlay();
   }
   function startPlay(): void {
     phase = 'play'; titleEl.hidden = true; hudEl.hidden = false; resetInput(); applyStageLook();
-    const sp = layout.spawn, s = core.state; const bench = s.presence ? city.doorOf(s.presence) : null;
-    if (bench) player.teleport(bench.x + bench.fx * 2.5 + (bench.fz ? 2 : 0), bench.z + bench.fz * 2.5 + (bench.fx ? 2 : 0), Math.atan2(-bench.fx, -bench.fz)); else player.teleport(sp.x, sp.z, sp.yaw);
+    const sp = layout.spawn, s = core.state, restored = resumePosition;
+    resumePosition = null;
+    const valid = restored && Math.abs(restored.x) <= WORLD_HALF - 2 && Math.abs(restored.z) <= WORLD_HALF - 2;
+    if (valid && restored) {
+      const safe = { x: restored.x, z: restored.z };
+      colliders.resolve(restored.x, restored.z, 0.45, safe);
+      if (Math.hypot(safe.x - restored.x, safe.z - restored.z) <= 3) {
+        player.teleport(safe.x, safe.z, restored.facing);
+        player.setFirstPerson(restored.firstPerson);
+        player.camYaw = restored.yaw; player.camPitch = clamp(restored.pitch, restored.firstPerson ? -1.3 : -0.1, restored.firstPerson ? 1.3 : 1.2); player.dist = restored.distance;
+      } else player.teleport(sp.x, sp.z, sp.yaw);
+    } else player.teleport(sp.x, sp.z, sp.yaw);
     if (s.day === 1 && s.minutes < 6 * 60 + 30 && s.cash <= 20) { banner('빈털터리', '벤치에서 눈을 떴습니다. 병을 주워 팔고, 일을 찾아 걸어가 보세요.', 5000); toast('E 로 장소와 상호작용 · 지도(M)로 길을 찾으세요', 'info', 6); }
-    audio.unlock(); core.tick(0.0001);
+    audio.unlock(); core.tick(0.0001); if (player.firstPerson) lock();
   }
 
   // ---------- 루프 ----------
@@ -251,7 +296,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   window.addEventListener('resize', resize);
 
   function readMove(): { mx: number; mz: number; run: boolean } {
-    let mx = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0), mz = (keys.has('KeyW') || keys.has('ArrowUp') && false ? 1 : 0) - (keys.has('KeyS') ? 1 : 0);
+    let mx = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0), mz = (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0);
     if (touch || tc.moveId >= 0) { mx += tc.mx; mz += -tc.my; }
     const l = Math.hypot(mx, mz); if (l > 1) { mx /= l; mz /= l; }
     return { mx, mz, run: keys.has('ShiftLeft') || keys.has('ShiftRight') || tc.run };
@@ -264,11 +309,11 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   function tick(dt: number, nowS: number): void {
     if (!renderer || !core) return;
     const playing = phase === 'play', s = core.state;
-    if (playing && !paused()) core.tick(dt);
+    if (playing && !paused() && !document.hidden) { const hadActivity = !!s.activity; core.tick(dt); if (hadActivity && !core.state.activity) save(); }
     const st = core.state;
     // 입력 → 이동
-    const mv = readMove(), frozen = !playing || paused() || !!st.activity?.lockMovement;
-    if (playing && !paused()) {
+    const mv = readMove(), frozen = !playing || paused() || document.hidden || !!st.activity?.lockMovement;
+    if (playing && !paused() && !document.hidden) {
       const turn = (keys.has('ArrowLeft') ? 1 : 0) - (keys.has('ArrowRight') ? 1 : 0), tilt = (keys.has('ArrowDown') ? 1 : 0) - (keys.has('ArrowUp') ? 1 : 0);
       if (turn || tilt) player.look(-turn * dt * 1.8, tilt * dt * 1.2);
       if (st.activity?.lockMovement && Math.hypot(mv.mx, mv.mz) > 0.35) { core.cancelActivity(); toast('중단했습니다'); }
@@ -294,11 +339,11 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     }
     // 주기 작업
     syncT += dt; if (syncT > SYNC_EVERY) { syncT = 0; syncCity(false); attachCarry(); }
-    saveT += dt; if (saveT > 25) { saveT = 0; save(); }
+    saveT += dt; if (saveT > 25) { saveT = 0; if (playing && !save()) toast('자동 저장 실패 — 저장 공간을 확인하세요.', 'bad', 5); }
     audio.ambience(sky.daylight, sky.wet, 0); if (sky.wet > 0.8 && Math.random() < dt * 0.04) audio.thunder(); rainSound = sky.wet; void rainSound;
-    
+    const fl = q('#ty-flash'); void fl;
     // 토스트 정리
-    const nowMs = performance.now(); while (toastList.length && toastList[0].at < nowMs) toastList.shift()!.el.remove();
+    const nowMs = performance.now(); for (let i = toastList.length - 1; i >= 0; i--) if (toastList[i].at <= nowMs) { toastList[i].el.remove(); toastList.splice(i, 1); }
     // HUD
     hudT += dt; if (playing && (hudDirty || hudT > 0.25)) { hudDirty = false; hudT = 0; updateHud(st); }
     if (playing && modal?.kind === 'spot' && hudT === 0) renderModal();
@@ -312,7 +357,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   function updateHud(s: TycoonState): void {
     set('cash', formatMoney(s.cash)); set('debt', s.debt ? `빚 ${formatMoney(s.debt)}` : ''); set('stage', s.stageName); html('ladder', ladderHtml(s.stage));
     set('clock', s.clock); set('day', `${s.day}일차`); set('sun', s.night ? '☾' : '☀');
-    for (const b of q('#ty-speed').children) (b as HTMLElement).classList.toggle('on', Number((b as HTMLElement).dataset.speed) === s.speed);
+    for (const b of q('#ty-speed').children) { const button = b as HTMLElement, active = Number(button.dataset.speed) === s.speed; button.classList.toggle('on', active); button.setAttribute('aria-pressed', String(active)); }
     style('energy', 'width', `${s.energy}%`); set('energy-n', String(s.energy)); q('#ty-energy').parentElement!.classList.toggle('low', s.energy < 25);
     html('carry', `${s.cargo?.units ? `<span>📦 재료 ${s.cargo.units}</span>` : ''}${s.bottles ? `<span>🍾 빈 병 ${s.bottles}</span>` : ''}`);
     html('goal', `<b>${esc(s.goal.label)}</b><div class="ty-bar gold"><i style="width:${Math.round(s.goal.progress * 100)}%"></i></div>${s.goal.steps.filter(x => !x.done).slice(0, 3).map(x => `<small>○ ${esc(x.label)}</small>`).join('')}`);
@@ -320,8 +365,10 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     const a = s.activity; q('#ty-activity').hidden = !a; if (a) { set('act-label', a.label); style('act-bar', 'width', `${Math.round(a.progress * 100)}%`); }
     const t = s.task; q('#ty-task').hidden = !t;
     if (t) {
-      const d = city.doorOf(t.targetSpotId); set('task-label', t.label); set('task-sub', `${formatMoney(t.reward)} · ${t.minutesLeft > 0 ? `${Math.floor(t.minutesLeft / 60)}시간 ${t.minutesLeft % 60}분 남음` : '지각 — 보수 절반'}`);
-      if (d) { const ang = Math.atan2(d.x - player.pos.x, d.z - player.pos.z), rel = -(ang + player.camYaw) + Math.PI / 2 + Math.PI; style('arrow', 'transform', `rotate(${(rel * 180 / Math.PI).toFixed(0)}deg)`); }
+      const d = city.doorOf(t.targetSpotId); set('task-label', t.label);
+      const distance = d ? ` · ${Math.round(Math.hypot(d.x - player.pos.x, d.z - player.pos.z))}m` : '';
+      set('task-sub', `기본 ${formatMoney(t.reward)} · ${t.minutesLeft >= 0 ? `${Math.floor(t.minutesLeft / 60)}시간 ${t.minutesLeft % 60}분 남음` : '지각 — 보수 절반'}${distance}`);
+      if (d) { const ang = Math.atan2(d.x - player.pos.x, d.z - player.pos.z), rel = player.camYaw - ang + Math.PI / 2; style('arrow', 'transform', `rotate(${(rel * 180 / Math.PI).toFixed(0)}deg)`); }
     }
     // 프롬프트
     const p = q<HTMLButtonElement>('#ty-prompt');
@@ -330,10 +377,12 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
 
   // ---------- 종료 ----------
   function exit(): void {
-    if (closed) return; save(); closed = true; cancelAnimationFrame(raf);
-    window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', resetInput); document.removeEventListener('visibilitychange', onVisibility); window.removeEventListener('pagehide', onPageHide);
+    if (closed) return; if (phase === 'play' && !save() && !window.confirm('저장하지 못했습니다. 그래도 허브로 나갈까요?')) return; closed = true; cancelAnimationFrame(raf);
+    window.clearTimeout(bannerTimer); window.clearTimeout(winTimer); disposeCarry();
+    document.removeEventListener('visibilitychange', persistOnHide); window.removeEventListener('pagehide', persistOnPageHide);
+    window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', resetInput); document.removeEventListener('visibilitychange', resetInput);
     window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp); window.removeEventListener('wheel', onWheel); window.removeEventListener('resize', resize); document.removeEventListener('pointerlockchange', onLock);
-    if (document.pointerLockElement) document.exitPointerLock();
+    if (document.pointerLockElement === canvas) document.exitPointerLock();
     for (const u of unsub) u();
     try { crowd?.dispose(); traffic?.dispose(); player?.dispose(); city?.dispose(); atmo?.dispose(); } catch { /* 정리 실패는 무시 */ }
     audio.dispose(); post?.dispose(); renderer?.dispose(); renderer?.forceContextLoss(); root.remove(); onExit();
@@ -349,7 +398,8 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
       renderer.setPixelRatio(renderPixelRatio(innerWidth, innerHeight, devicePixelRatio, quality));
       renderer.shadowMap.enabled = quality !== 'low'; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1;
-      bindCore(createCore({ save: loadTycoon() }));
+      const saved = loadTycoon(); resumePosition = readTycoonPosition(saved);
+      bindCore(createCore({ save: saved }));
       layout = buildLayout(core.spots() as SpotDef[]);
       city = new CityView(layout, quality); scene.add(city.group); colliders = city.colliders;
       atmo = new Atmosphere(scene, renderer, quality);
@@ -365,7 +415,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       (window as unknown as { __ty: typeof dbg }).__ty = dbg;
     }
   })();
-  void WORLD_HALF;
+
 }
 
 const clamp = (v: number, a: number, b: number): number => Math.max(a, Math.min(b, v));

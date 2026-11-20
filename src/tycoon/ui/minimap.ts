@@ -21,12 +21,18 @@ export function drawMap(canvas: HTMLCanvasElement, layout: Layout, v: MapView): 
   for (const s of v.spots) {
     const l = layout.spotLots.get(s.id); if (!l || !blockUnlocked(l.block, v.stage)) continue;
     const x = X(l.doorX), z = Z(l.doorZ), r = Math.max(2.2, S * (v.names ? 3.2 : 4.4)), target = v.target === s.id;
-    g.fillStyle = s.locked ? '#6b727c' : spotColor(s); g.beginPath(); g.arc(x, z, target ? r * 1.6 + Math.sin(v.time * 6) * r * 0.3 : r, 0, 7); g.fill();
+    g.fillStyle = s.locked ? '#6b727c' : spotColor(s); g.beginPath(); g.arc(x, z, target ? r * 1.6 + Math.sin(v.time * 6) * r * 0.3 : r, 0, Math.PI * 2); g.fill();
     g.strokeStyle = target ? '#fff' : 'rgba(0,0,0,.6)'; g.lineWidth = target ? 2 : 1; g.stroke();
     if (v.names) { g.font = `600 ${Math.max(9, S * 6)}px system-ui,sans-serif`; g.fillStyle = s.locked ? '#9aa1ab' : '#fff'; g.textAlign = 'center'; g.shadowColor = '#000'; g.shadowBlur = 4; g.fillText(s.name, x, z - r - 3); g.shadowBlur = 0; }
   }
   if (v.names) { g.font = `800 ${Math.max(12, S * 9)}px system-ui,sans-serif`; g.textAlign = 'center'; g.fillStyle = 'rgba(255,255,255,.55)'; for (const b of layout.blocks) if ((b.i === -3 && b.j === 3) || (b.i === -1 && b.j === 2) || (b.i === 2 && b.j === 3) || (b.i === 0 && b.j === 0) || (b.i === 3 && b.j === -2)) g.fillText(zoneName(b.zone), X(b.cx), Z(b.cz)); }
+  // 목적지 방향을 점선으로 안내한다(도로 경로가 아닌 직선 방향).
+  const destination = v.target ? layout.spotLots.get(v.target) : undefined;
+  if (destination && v.names) {
+    g.save(); g.strokeStyle = '#fff9'; g.lineWidth = 2; g.setLineDash([6, 6]); g.beginPath();
+    g.moveTo(X(v.px), Z(v.pz)); g.lineTo(X(destination.doorX), Z(destination.doorZ)); g.stroke(); g.restore();
+  }
   // 플레이어 화살표(바라보는 방향)
-  const px = X(v.px), pz = Z(v.pz); g.save(); g.translate(px, pz); g.rotate(-v.yaw + Math.PI / 2);
+  const px = X(v.px), pz = Z(v.pz); g.save(); g.translate(px, pz); g.rotate(-v.yaw);
   const a = Math.max(6, S * 7); g.fillStyle = '#fff'; g.strokeStyle = '#111'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(a, 0); g.lineTo(-a * 0.7, a * 0.7); g.lineTo(-a * 0.35, 0); g.lineTo(-a * 0.7, -a * 0.7); g.closePath(); g.fill(); g.stroke(); g.restore();
 }

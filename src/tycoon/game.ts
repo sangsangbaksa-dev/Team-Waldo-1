@@ -15,7 +15,7 @@ import { Player } from './scene/player';
 import { Crowd, Traffic } from './scene/people';
 import { TycoonAudio } from './audio';
 import { drawMap } from './ui/minimap';
-import { esc, ladderHtml, menuHtml, spotPanelHtml, statusHtml, titleHtml, winHtml } from './ui/render';
+import { esc, failHtml, ladderHtml, menuHtml, spotPanelHtml, statusHtml, titleHtml, winHtml } from './ui/render';
 
 interface OpenOptions { loading?: LoadingScreen }
 type Phase = 'load' | 'title' | 'play';
@@ -83,14 +83,14 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
 
   // ---------- 모달 ----------
   const paused = (): boolean => modal !== null;
-  let modalHtml = '';
+  let modalHtml = '', confirmRestart = false;
   function renderModal(): void {
     if (!modal) { modalEl.hidden = true; modalEl.innerHTML = ''; modalHtml = ''; return; }
     let h = '';
     switch (modal.kind) {
       case 'spot': h = spotPanelHtml(core, modal.id, !!city.spotView(modal.id)?.locked); break;
       case 'status': h = statusHtml(core.state); break;
-      case 'menu': h = menuHtml(audio.enabled, player.firstPerson); break;
+      case 'menu': h = menuHtml(audio.enabled, player.firstPerson, confirmRestart); break;
       case 'win': h = winHtml(core.state); break;
       case 'map': h = '<div class="ty-bigmap"><button type="button" class="ty-x" data-close aria-label="닫기">✕</button><canvas id="ty-bigmap" width="720" height="720"></canvas></div>'; break;
     }
@@ -101,8 +101,8 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (modal.kind === 'map') drawBig();
   }
   function drawBig(): void { const c = modalEl.querySelector<HTMLCanvasElement>('#ty-bigmap'); if (c) drawMap(c, layout, { stage: core.state.stageIndex, spots: spotViews, px: player.pos.x, pz: player.pos.z, yaw: player.facing, target: core.state.task?.targetSpotId ?? null, time: performance.now() / 1000, names: true }); }
-  function openModal(m: Modal): void { modal = m; if (m && document.pointerLockElement) document.exitPointerLock(); resetInput(); renderModal(); audio.open(); }
-  function closeModal(): void { modal = null; renderModal(); if (phase === 'play') lock(); }
+  function openModal(m: Modal): void { modal = m; confirmRestart = false; if (m && document.pointerLockElement) document.exitPointerLock(); resetInput(); renderModal(); audio.open(); }
+  function closeModal(): void { modal = null; confirmRestart = false; renderModal(); if (phase === 'play') lock(); }
   function openSpot(id: string): void { if (phase !== 'play') return; const spot = core.spot(id); if (!spot) return; openModal({ kind: 'spot', id }); }
   function interact(): void { if (phase !== 'play' || modal) return; if (near) openSpot(near.id); }
 
@@ -124,8 +124,16 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (core.state.activity) { closeModal(); toast(r.message); } else { toast(r.message, 'good'); renderModal(); }
     hudDirty = true;
   }
+  /** 저장을 지우고 빈털터리 첫날부터 다시 시작합니다(메뉴에서 두 번 눌러야 실행). */
+  function restartGame(): void {
+    clearTycoon(); bindCore(createCore());
+    modal = null; confirmRestart = false; renderModal(); toastList.length = 0; q('#ty-toasts').replaceChildren(); q('#ty-banner').classList.remove('show');
+    cineT = 0; lastCarry = ''; lastStage = -1; cache.clear(); hudDirty = true; syncCity(false); startPlay(); save(); lock();
+  }
   function menuAction(m: string): void {
+    if (m !== 'restart') confirmRestart = false;
     if (m === 'resume') closeModal();
+    else if (m === 'restart') { if (confirmRestart) restartGame(); else { confirmRestart = true; renderModal(); } }
     else if (m === 'save') { save(); toast('저장했습니다', 'good'); }
     else if (m === 'view') { player.setFirstPerson(!player.firstPerson); renderModal(); }
     else if (m === 'sound') { audio.enabled = !audio.enabled; writePreferences({ ...readPreferences(), sound: audio.enabled }); renderModal(); }
@@ -354,7 +362,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       post = makePost(quality, renderer, scene, camera, { strength: 0.42, radius: 0.55, threshold: 0.84, vignette: 0.32, saturation: 1.1, contrast: 1.06 });
       syncCity(false); applyStageLook(); resize();
       const bench = layout.spotLots.get('bench') ?? [...layout.spotLots.values()][0]; titleFocus.set(bench?.cx ?? layout.spawn.x, 0, bench?.cz ?? layout.spawn.z);
-    } catch (err) { console.error(err); opts.loading?.close(); exit(); return; }
+    } catch (err) { console.error(err); opts.loading?.close(); titleEl.innerHTML = failHtml(); titleEl.hidden = false; return; }
     phase = 'title'; showTitle(); opts.loading?.close(); raf = requestAnimationFrame(frame);
     if (import.meta.env.DEV) {
       const dbg = { get core() { return core; }, get city() { return city; }, get player() { return player; }, get cam() { return camera; }, get phase() { return phase; }, layout, start: (a: string) => titleAction(a), openSpot, syncCity, atmo: () => atmo, info: () => ({ calls: renderer?.info.render.calls, tris: renderer?.info.render.triangles, geos: renderer?.info.memory.geometries }), hud: hudEl, closeModal, openModal: (k: string) => openModal({ kind: k } as Modal) };

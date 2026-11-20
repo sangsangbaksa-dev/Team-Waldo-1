@@ -5,6 +5,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import './outlaw.css';
+import { FrameGate } from '../shared/frame-gate';
 import { readPreferences, writePreferences } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import { PVP_ENABLED } from '../net/config';
@@ -81,6 +82,8 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   const tc = { fire: false, aim: false, jump: false, sprint: false, gas: false, brake: false, hand: false, left: false, right: false, moveId: -1, mx: 0, my: 0, ox: 0, oy: 0, lookId: -1, lx: 0, ly: 0 };
   let enterReq = false, slotReq = -1, reloadReq = false, station = 0, wheelOpen = false, wheelSel = -1, wheelX = 0, wheelY = 0, aimedAtEnemy = false;
   const orbitPos = new THREE.Vector3(), orbitQuat = new THREE.Quaternion();
+  const cameraDirection = new THREE.Vector3(), audioRight = new THREE.Vector3();
+  const miniGate = new FrameGate(50);
   const toastList: Array<{ el: HTMLElement; at: number }> = [];
   const hasSave = (): boolean => { try { return !!localStorage.getItem(OUTLAW_KEY); } catch { return false; } };
 
@@ -475,7 +478,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (phase !== 'menu') { saveT += dt; if (saveT > 30) { saveT = 0; if (p.alive) save(); } }
   }
 
-  function camYawNow(): number { const d = new THREE.Vector3(); camera.getWorldDirection(d); return Math.atan2(d.z, d.x); }
+  function camYawNow(): number { camera.getWorldDirection(cameraDirection); return Math.atan2(cameraDirection.z, cameraDirection.x); }
 
   function hud(dt: number, car: Vehicle | undefined): void {
     const s = sim!, p = s.player, cy = camYawNow();
@@ -487,7 +490,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     const g = s.curGun(p), d = g ? WEAPONS[g.id] : WEAPONS.fist; set('wname', d.name); set('mag', d.melee ? '∞' : String(g?.mag ?? 0)); set('res', d.melee ? '' : `/ ${g?.reserve ?? 0}`);
     html('slots', WEAPON_ORDER.map((_id, i) => `<i class="${p.guns[i] ? 'has' : ''} ${i === p.cur ? 'cur' : ''}">${i + 1}</i>`).join(''));
     set('dname', districtName(p.x, p.z, s.map));
-    if (s.frame % 2 === 0) minimap!.draw(radar, s, cy);
+    if (miniGate.due(performance.now())) minimap!.draw(radar, s, cy);
     // 속도계
     root.classList.toggle('incar', !!car); if (car) { set('kmh', String(Math.round(Math.abs(car.vf) * 3.6))); style('dmg', 'width', `${clamp(car.hp / car.maxHp, 0, 1) * 100}%`); const spd = Math.abs(car.vf); style('lines', 'opacity', String(clamp((spd - 28) / 30, 0, 0.9))); } else style('lines', 'opacity', '0');
     if (car && !car.alive) style('lines', 'opacity', '0');
@@ -522,7 +525,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   }
 
   function isEnemyAhead(cy: number): boolean {
-    const s = sim!, p = s.player; const ey = s.eyeY(p), dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+    const s = sim!, p = s.player; const ey = s.eyeY(p), dir = camera.getWorldDirection(cameraDirection);
     for (const q2 of s.peds) { if (!q2.alive || q2.id === PLAYER_ID || !s.hostile(p.team, q2.team)) continue; const dx = q2.x - camera.position.x, dz = q2.z - camera.position.z, dy = q2.y + 1.2 - camera.position.y, d = Math.hypot(dx, dz, dy); if (d > 70 || d < 2) continue; if ((dx * dir.x + dy * dir.y + dz * dir.z) / d > 0.9945) return s.canSee(p.x, p.z, q2.x, q2.z, ey - 0.1); }
     void cy; return false;
   }
@@ -530,7 +533,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   function audioFrame(car: Vehicle | undefined): void {
     const s = sim!; if (!audio.enabled) return;
     if (car) { audio.setEngine(true, car.kind, Math.abs(car.vf), car.input.throttle); audio.setSkid(clamp((Math.abs(car.vl) - 3) / 8, 0, 1) * (Math.abs(car.vf) > 4 ? 1 : 0)); audio.setWind(clamp((Math.abs(car.vf) - 15) / 40, 0, 1)); } else { audio.setEngine(false, 'sedan', 0, 0); audio.setSkid(0); audio.setWind(0); }
-    let best = Infinity, pan = 0; const r = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    let best = Infinity, pan = 0; const r = audioRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
     for (const v of s.vehicles) if (v.siren && v.alive) { const dx = v.x - camera.position.x, dz = v.z - camera.position.z, d = Math.hypot(dx, dz); if (d < best) { best = d; pan = d > 1 ? clamp((dx * r.x + dz * r.z) / d, -1, 1) : 0; } }
     audio.setSiren(best < 160 ? 1 - best / 160 : 0, pan);
     audio.setRain(s.rain); const h = s.clock; audio.setAmbience(clamp(1 - Math.abs(h - 14) / 12, 0.1, 1), h > 20 || h < 5.5);

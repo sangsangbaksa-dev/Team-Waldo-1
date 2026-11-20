@@ -107,3 +107,12 @@ describe('ZERO ZONE 온라인 방 동기화', () => {
     gs.apply({ t: 'w', b: [4, 'x', 1], vv: [999, 1, 2, 3, 4, 5, 6], vh: [0, -5], s: [[1, 2]] }, 0); gs.step(0.1); expect(guest.players[4].x).toBe(x);
   });
 });
+
+it('refreshes far bots at least every three world packets', () => {
+  const { host, hs } = pair();
+  const far = [{ x: 10000, z: 10000 }];
+  const count = host.players.filter(p => p.bot && p.alive).length;
+  expect((hs.world(125, far)!.b as number[]).length).toBe(0);
+  expect((hs.world(250, far)!.b as number[]).length).toBe(0);
+  expect((hs.world(375, far)!.b as number[]).length).toBe(count * 12);
+});

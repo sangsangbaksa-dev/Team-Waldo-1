@@ -18,7 +18,8 @@ export const BOT_STRIDE = 12;
 /** 차 한 대: 번호, x, z, yaw, 속도, 운전자+1, 움직이는 중 */
 export const VEH_STRIDE = 7;
 /** 사람 가까이(이 거리 안)의 AI 는 매번, 먼 AI 는 FAR_EVERY 번에 한 번 보냅니다. */
-const NEAR = 190, FAR_EVERY = 6;
+// Far bots may turn abruptly; bound extrapolation between full snapshots to about 375 ms.
+const NEAR = 190, FAR_EVERY = 3;
 export const WORLD_MS = 125;
 
 const fin = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);

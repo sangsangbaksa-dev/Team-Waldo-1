@@ -277,7 +277,8 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (e.button === 0) mouse.fire = true; else if (e.button === 2) mouse.aim = true;
   };
   const onMouseUp = (e: MouseEvent): void => { if (e.button === 0) mouse.fire = false; else if (e.button === 2) mouse.aim = false; };
-  const onWheel = (e: WheelEvent): void => { if (phase !== 'play' || modalKind || !sim || Math.abs(e.deltaY) < 4) return; const dir = e.deltaY > 0 ? 1 : -1; let i = sim.player.cur; for (let n = 0; n < NW; n++) { i = (i + dir + NW) % NW; if (sim.player.guns[i]) { slotReq = i; break; } } };
+  let wheelAt = -Infinity;
+  const onWheel = (e: WheelEvent): void => { if (phase !== 'play' || modalKind || !sim || wheelOpen || e.ctrlKey || !Number.isFinite(e.deltaY) || Math.abs(e.deltaY) < 1 || (!locked && e.target !== canvas)) return; const now = performance.now(), fresh = now - wheelAt >= 200 || e.deltaMode === 1; wheelAt = now; if (!fresh) return; const dir = e.deltaY > 0 ? 1 : -1; let i = sim.player.cur; for (let n = 0; n < NW; n++) { i = (i + dir + NW) % NW; if (sim.player.guns[i]) { slotReq = i; break; } } };
   const onCtx = (e: Event): void => e.preventDefault();
   function resetInput(): void {
     keys.clear(); mouse.fire = mouse.aim = false; enterReq = reloadReq = false; slotReq = -1;
@@ -299,7 +300,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   const upTouch = (e: PointerEvent): void => { const b = (e.target as HTMLElement).closest('button'); const a = b?.dataset.act; if (a && a in tc) (tc as unknown as Record<string, boolean>)[a] = false; };
   pad.addEventListener('pointerup', upTouch); pad.addEventListener('pointercancel', upTouch); pad.addEventListener('lostpointercapture', upTouch);
   canvas.addEventListener('pointerdown', e => {
-    if (!touch || phase !== 'play') return; audio.unlock();
+    if (!touch || e.pointerType !== 'touch' || phase !== 'play' || modalKind) return; audio.unlock();
     if (e.clientX < innerWidth * 0.4 && tc.moveId < 0) { tc.moveId = e.pointerId; tc.ox = e.clientX; tc.oy = e.clientY; stickEl.style.cssText = `left:${e.clientX - 60}px;top:${e.clientY - 60}px;opacity:1`; }
     else if (e.clientX >= innerWidth * 0.4 && tc.lookId < 0) { tc.lookId = e.pointerId; tc.lx = e.clientX; tc.ly = e.clientY; }
   });

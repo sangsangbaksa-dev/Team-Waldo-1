@@ -9,9 +9,12 @@ describe('로딩 화면', () => {
     const ld = showLoading('LAST CITY');
     ld.progress(0.4);
     expect(document.querySelector('.ld-pct')!.textContent).toBe('40%');
+    expect(document.querySelector('[role="progressbar"]')!.getAttribute('aria-valuenow')).toBe('40');
     ld.progress(0.1);
     expect(document.querySelector('.ld-pct')!.textContent).toBe('40%');
     ld.progress(Number.NaN);
+    expect(document.querySelector('[role="progressbar"]')!.hasAttribute('aria-valuenow')).toBe(false);
+    expect(document.querySelector<HTMLElement>('.ld-bar i')!.style.width).toBe('');
     expect(document.querySelector('.ld-bar')!.classList.contains('busy')).toBe(true);
     ld.progress(0.5);
     expect(document.querySelector('.ld-pct')!.textContent).toBe('50%');

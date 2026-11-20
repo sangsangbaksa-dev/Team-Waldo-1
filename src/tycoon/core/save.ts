@@ -1,13 +1,13 @@
 // 저장/불러오기. 저장 데이터는 신뢰하지 않고 기본값 위에 검증해서 얹는다.
-import { BOTTLE_CAP, CARGO_CAP, CLERKS_PER_LEVEL, DISTRICTS, ENERGY_MAX, EVENTS, JOBS, LEVEL_MULT, LOT_KINDS, REGIONS, RIVALS, SHOP_KINDS, STAGES } from './data';
-import { LOT_IDS, SPOT_BY_ID, newGame, type GameData, type LotData, type ShopData, type StaffData } from './model';
+import { BOTTLE_CAP, CARGO_CAP, CLERKS_PER_LEVEL, DISTRICTS, ENERGY_MAX, EVENTS, JOBS, LEVEL_MULT, LOT_KINDS, REGIONS, RIVALS, SHOP_KINDS, STAGES, DELIVERY_MINUTES, CONQUER_SHARE, stageAtLeast } from './data';
+import { LOT_IDS, SPOT_BY_ID, newGame, absMinute, type GameData, type LotData, type ShopData, type StaffData } from './model';
 import type { ShopKind, Stage, TycoonCore, TycoonSave } from './types';
 
 export const TYCOON_SAVE_KEY = 'waldo.tycoon.v1';
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => !!v && typeof v === 'object' && !Array.isArray(v);
-const num = (v: unknown, d: number, lo = -Infinity, hi = Infinity) => typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d;
+const num = (v: unknown, d: number, lo = -Number.MAX_SAFE_INTEGER, hi = Number.MAX_SAFE_INTEGER) => typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d;
 const str = (v: unknown, fallback: string, max = 64) => typeof v === 'string' && v.trim() ? v.slice(0, max) : fallback;
 const bool = (v: unknown, d: boolean) => typeof v === 'boolean' ? v : d;
 const isKind = (v: unknown): v is ShopKind => typeof v === 'string' && Object.hasOwn(SHOP_KINDS, v);
@@ -55,9 +55,9 @@ export function restoreGame(raw: unknown): GameData | null {
   const g = newGame(num(raw.rng, 1));
   g.cash = num(raw.cash, 0, -Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER);
   g.stage = isStage(raw.stage) ? raw.stage : 'broke';
-  g.day = Math.round(num(raw.day, 1, 1));
+  g.day = Math.round(num(raw.day, 1, 1, Math.floor(Number.MAX_SAFE_INTEGER / 1440) - 1));
   g.minute = Math.floor(num(raw.minute, g.minute, 0, 1439));
-  g.rng = (num(raw.rng, 1) >>> 0) || 1;
+  g.rng = num(raw.rng, 1, 0, 0xffffffff) >>> 0;
   g.debt = num(raw.debt, 0, 0, Number.MAX_SAFE_INTEGER);
   if (g.cash < 0) { g.debt = Math.min(Number.MAX_SAFE_INTEGER, g.debt - g.cash); g.cash = 0; }
   g.energy = num(raw.energy, ENERGY_MAX, 0, ENERGY_MAX);
@@ -78,21 +78,26 @@ export function restoreGame(raw: unknown): GameData | null {
     if (!def) continue;
     const district = typeof e.district === 'string' && Object.hasOwn(DISTRICTS, e.district) ? e.district as GameData['events'][number]['district'] : undefined;
     const daysLeft = Math.floor(num(e.daysLeft, 0, 0, def.days));
-    if (daysLeft > 0 && (!def.local || district)) g.events.push({ id: def.id, daysLeft, district });
+    if (daysLeft > 0 && stageAtLeast(g.stage, def.minStage) && (!def.local || district && stageAtLeast(g.stage, DISTRICTS[district].minStage))) g.events.push({ id: def.id, daysLeft, district: def.local ? district : undefined });
   }
   g.incorporated = bool(raw.incorporated, false);
   g.listed = bool(raw.listed, false) && g.incorporated;
-  g.won = bool(raw.won, false);
-  const t = raw.task;
-  g.task = isObj(t) && t.jobId === 'delivery' && t.from === 'job_delivery' && typeof t.target === 'string' && t.target !== t.from && SPOT_BY_ID.has(t.target)
-    ? { id: str(t.id, 'task-restored'), jobId: 'delivery', from: 'job_delivery', target: t.target, reward: JOBS.delivery.pay, deadline: num(t.deadline, 0, 0) }
+  g.won = bool(raw.won, false) && g.stage === 'world' && REGIONS.every(r => g.regions[r.id] >= CONQUER_SHARE - 1e-9);
+  const t = raw.task, destination = isObj(t) && typeof t.target === 'string' ? SPOT_BY_ID.get(t.target) : undefined;
+  g.task = isObj(t) && t.jobId === 'delivery' && t.from === 'job_delivery' && destination && destination.kind !== 'job' && stageAtLeast(g.stage, destination.minStage)
+    ? { id: str(t.id, 'task-restored'), jobId: 'delivery', from: 'job_delivery', target: destination.id, reward: JOBS.delivery.pay, deadline: num(t.deadline, 0, 0, absMinute(g) + DELIVERY_MINUTES) }
     : null;
   if (isObj(raw.lastReport)) {
     const r = raw.lastReport;
     g.lastReport = { day: Math.floor(num(r.day, 1, 1, g.day)), revenue: num(r.revenue, 0, 0), costOfGoods: num(r.costOfGoods, 0, 0), wages: num(r.wages, 0, 0), upkeep: num(r.upkeep, 0, 0), interest: num(r.interest, 0, 0), tax: num(r.tax, 0, 0), worldIncome: num(r.worldIncome, 0, 0), jobIncome: num(r.jobIncome, 0, 0), profit: num(r.profit, 0), customers: num(r.customers, 0, 0), lost: num(r.lost, 0, 0) };
   }
-  if (isObj(raw.ledger)) for (const k of Object.keys(g.ledger) as Array<keyof GameData['ledger']>) g.ledger[k] = num(raw.ledger[k], 0);
-  g.nextId = Math.floor(num(raw.nextId, 1, 1));
+  if (isObj(raw.ledger)) for (const k of Object.keys(g.ledger) as Array<keyof GameData['ledger']>) g.ledger[k] = num(raw.ledger[k], 0, 0);
+  // Repair duplicate or malformed staff IDs without changing valid identities.
+  const staffList = LOT_IDS.flatMap(id => g.lots[id].shop?.staff ?? []), ids = new Set<string>();
+  const suffix = (id: string) => /^(?:st|task)([1-9][0-9]{0,11})$/.exec(id);
+  g.nextId = Math.floor(num(raw.nextId, 1, 1, 1e12));
+  for (const id of [...staffList.map(s => s.id), ...(g.task ? [g.task.id] : [])]) { const m = suffix(id); if (m) g.nextId = Math.max(g.nextId, Number(m[1]) + 1); }
+  for (const s of staffList) { if (!/^st[1-9][0-9]{0,11}$/.test(s.id) || ids.has(s.id)) s.id = `st${g.nextId++}`; ids.add(s.id); }
   g.shopsOpened = Math.floor(num(raw.shopsOpened, 0, 0));
   return g;
 }

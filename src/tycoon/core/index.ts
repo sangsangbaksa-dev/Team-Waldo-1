@@ -138,7 +138,8 @@ export function createCore(opts: CoreOptions = {}): TycoonCore & { /** 테스트
       notify();
     },
     setPresence(spotId: string | null) {
-      const id = spotId && SPOT_BY_ID.has(spotId) ? spotId : null;
+      const spot = spotId ? SPOT_BY_ID.get(spotId) : undefined;
+      const id = spot && spotUnlocked(g, spot) ? spot.id : null;
       if (id === sim.presence) return;
       sim.presence = id;
       if (activity && activity.spotId !== id) { activity = null; }

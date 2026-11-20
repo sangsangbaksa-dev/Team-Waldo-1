@@ -13,7 +13,7 @@ export function readResumePosition(raw: unknown, colliders: Colliders): ResumePo
   const yaw = pos.facing ?? pos.yaw, cameraYaw = pos.cameraYaw ?? (pos.facing !== undefined ? pos.yaw : undefined), cameraPitch = pos.cameraPitch ?? pos.pitch;
   if (typeof x !== 'number' || typeof z !== 'number' || typeof yaw !== 'number' || ![x, z, yaw].every(Number.isFinite) || Math.abs(x) > WORLD_HALF - 2 || Math.abs(z) > WORLD_HALF - 2) return null;
   const out = { x, z };
-  if (colliders.resolve(x, z, 0.45, out)) return null;
+  if (colliders.resolve(x, z, 0.45, out) || Math.hypot(out.x - x, out.z - z) > .001) return null;
   const normalize = (n: number) => Math.atan2(Math.sin(n), Math.cos(n));
   const fp = firstPerson === true;
   return { x, z, yaw: normalize(yaw), cameraYaw: normalize(typeof cameraYaw === 'number' && Number.isFinite(cameraYaw) ? cameraYaw : yaw - Math.PI / 2), cameraPitch: typeof cameraPitch === 'number' && Number.isFinite(cameraPitch) ? Math.max(fp ? -1.3 : -0.1, Math.min(fp ? 1.3 : 1.2, cameraPitch)) : fp ? 0 : 0.28, firstPerson: fp };

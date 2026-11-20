@@ -105,3 +105,22 @@ it('restores stock within the actual level capacity and handles malformed string
   expect(again.data.events).toHaveLength(0);
   expect(again.data.task).toBeNull();
 });
+
+it('repairs impossible save values without resetting valid RNG state', () => {
+  const raw = playedCore().serialize() as Record<string, unknown>;
+  raw.rng = 0; raw.day = 1e100; raw.won = true;
+  raw.ledger = { revenue: -50, interest: -100 };
+  raw.task = { id:'task2',jobId:'delivery',from:'job_delivery',target:'job_mart',deadline:1e100 };
+  const g = createCore({save:raw}).data;
+  expect(g.rng).toBe(0); expect(Number.isSafeInteger(g.day*1440)).toBe(true); expect(g.won).toBe(false);
+  expect(g.ledger.revenue).toBe(0); expect(g.ledger.interest).toBe(0); expect(g.task).toBeNull();
+});
+it('repairs duplicate staff IDs and advances the counter beyond preserved IDs', () => {
+  const raw = playedCore().serialize() as Record<string, unknown>;
+  const lots = raw.lots as Record<string, Record<string, unknown>>;
+  const shop = lots.lot_m1.shop as Record<string, unknown>;
+  shop.staff = [{id:'st50',name:'A',role:'clerk',skill:1},{id:'st50',name:'B',role:'manager',skill:1}];
+  raw.nextId = 1;
+  const g = createCore({save:raw}).data, staff=g.lots.lot_m1.shop!.staff;
+  expect(staff[0].id).toBe('st50'); expect(new Set(staff.map(s=>s.id)).size).toBe(2); expect(g.nextId).toBeGreaterThan(50);
+});

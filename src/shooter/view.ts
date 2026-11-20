@@ -11,7 +11,7 @@ import type { ShooterAssets } from './assets';
 import type { CharacterRig } from '../shared/character';
 import { SOLDIER_KINDS } from './assets';
 import type { Box, Loot } from './world';
-import { buildProps, buildRoofs, makeDropCrate, makePlane, makeVehicleMesh, partMesh } from './props';
+import { buildFacadeTrim, buildProps, buildRoofs, makeDropCrate, makePlane, makeVehicleMesh, partMesh } from './props';
 import { TerrainView, tintGround } from './terrainview';
 import { WeatherFx } from './weatherfx';
 import { waterDepth } from './terrain';
@@ -119,7 +119,9 @@ export class ShooterView {
     const floorTex = floorTexture(), floors: THREE.BufferGeometry[] = [];
     for (const b of map.buildings) { const f = new THREE.PlaneGeometry(b.w, b.d); f.rotateX(-Math.PI / 2); f.translate(b.x, 0.05, b.z); const uv = f.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * b.w / 3, uv.getY(i) * b.d / 3); floors.push(f); }
     if (floors.length) { const m = new THREE.Mesh(mergeGeometries(floors, false), new THREE.MeshLambertMaterial({ map: floorTex })); m.receiveShadow = true; this.scene.add(m); }
-    this.scene.add(buildRoofs(map, rngOf(this.match.seed + 3)), buildProps(map, new Set(this.match.vehicles.map(v => v.box))));
+    const detailed = this.quality !== 'low';
+    this.scene.add(buildRoofs(map, rngOf(this.match.seed + 3), detailed), buildProps(map, new Set(this.match.vehicles.map(v => v.box))));
+    if (detailed) this.scene.add(buildFacadeTrim(map));
     if (crates.length) {
       const ct = crateTexture(), geos = crates.map(b => worldBox(b, 1.2)); const m = new THREE.Mesh(mergeGeometries(geos, false), new THREE.MeshLambertMaterial({ map: ct })); m.castShadow = true; m.receiveShadow = true; this.scene.add(m);
     }

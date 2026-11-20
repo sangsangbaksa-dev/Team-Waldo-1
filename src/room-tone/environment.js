@@ -230,16 +230,37 @@ function floorArt(p, chapter) {
   const rand = seeded(821 + chapter * 83);
   return surface(512, 512, (c, w, h) => {
     box2d(c, 0, 0, w, h, p.floor);
-    for (let z = 0; z < 4; z++)
-      for (let x = 0; x < 4; x++) {
-        const xx = x * 128,
-          yy = z * 128;
-        box2d(c, xx, yy, 128, 128, "rgba(13,18,15," + rand() * 0.11 + ")");
-        box2d(c, xx, yy, 128, 2.5, "rgba(15,18,16,.68)");
-        box2d(c, xx, yy, 2.5, 128, "rgba(15,18,16,.68)");
-        box2d(c, xx + 3, yy + 3, 122, 1, "rgba(218,215,193,.31)");
-        box2d(c, xx + 3, yy + 3, 1, 123, "rgba(218,215,193,.21)");
+    if (chapter === 2) {
+      // Archive wing: poured concrete with broad expansion joints and trolley wear.
+      for (const edge of [0,256]) {
+        box2d(c,edge,0,3,h,"rgba(18,23,24,.65)");
+        box2d(c,0,edge,w,3,"rgba(18,23,24,.65)");
       }
+      for (let j=0;j<18;j++){
+        const x=rand()*w,y=rand()*h,r=18+rand()*75;
+        const stain=c.createRadialGradient(x,y,0,x,y,r);
+        stain.addColorStop(0,"rgba(27,25,21,.13)");
+        stain.addColorStop(1,"rgba(27,25,21,0)");
+        box2d(c,x-r,y-r,r*2,r*2,stain);
+      }
+      for(const x of [116,396])box2d(c,x,0,9,h,"rgba(24,28,27,.12)");
+    } else {
+      // Power: ceramic squares. Radio: narrow rubber strips. Master: dark acoustic tiles.
+      const cols=chapter===1?8:4, rows=chapter===1?2:4;
+      const tw=w/cols, th=h/rows;
+      for (let z=0;z<rows;z++) for(let x=0;x<cols;x++){
+        const xx=x*tw,yy=z*th;
+        box2d(c,xx,yy,tw,th,"rgba(13,18,15,"+rand()*.11+")");
+        box2d(c,xx,yy,tw,chapter===3?1.4:2.5,"rgba(15,18,16,.68)");
+        box2d(c,xx,yy,chapter===3?1.4:2.5,th,"rgba(15,18,16,.68)");
+        box2d(c,xx+3,yy+3,tw-6,1,"rgba(218,215,193,.23)");
+        box2d(c,xx+3,yy+3,1,th-5,"rgba(218,215,193,.18)");
+        if(chapter===1)for(let groove=8;groove<tw-4;groove+=8)
+          box2d(c,xx+groove,yy+5,1,th-10,"rgba(18,22,19,.15)");
+        if(chapter===3)for(let py=8;py<th-4;py+=8)for(let px=8;px<tw-4;px+=8)
+          box2d(c,xx+px,yy+py,1.3,1.3,"rgba(21,24,18,.26)");
+      }
+    }
     for (let i = 0; i < 11000; i++) {
       const x = rand() * w,
         y = rand() * h,
@@ -531,8 +552,8 @@ export function buildEnvironment(THREE, scene, map, tile, chapter) {
     });
   const wallMats = [0, 1, 2].map((i) => texMat(wallArt(p, chapter, i)));
   const floorMat = texMat(floorArt(p, chapter), {
-    roughness: 0.63,
-    metalness: 0.12,
+    roughness: [0.57,0.85,0.94,0.87][chapter],
+    metalness: [0.12,0.04,0.03,0.02][chapter],
   });
   const ceilingMat = texMat(ceilingArt());
   const paint = standard({ color: p.trim, roughness: 0.79, metalness: 0.22 });

@@ -327,7 +327,17 @@ export class RtsView {
     this.add({ obj: core, t: 0, life: big ? 0.6 : 0.4, tick: f => { const k = f.t / f.life; core.scale.setScalar(r * (0.35 + k * 0.9)); (core.material as THREE.MeshBasicMaterial).opacity = 0.6 * (1 - k); } });
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 24), this.glowMat(0xffc070, 0.45)); ring.rotation.x = -Math.PI / 2; ring.position.set(x, 0.08, y);
     this.add({ obj: ring, t: 0, life: 0.45, tick: f => { const k = f.t / f.life; ring.scale.setScalar(r * (0.6 + k * 1.8)); (ring.material as THREE.MeshBasicMaterial).opacity = 0.45 * (1 - k); } });
-    const bits = big ? 9 : 4, rnd = seeded(Math.floor(x * 31 + y * 17 + this.clock * 100));
+    const bits = this.quality === 'low' ? (big ? 4 : 2) : big ? 9 : 4, rnd = seeded(Math.floor(x * 31 + y * 17 + this.clock * 100));
+    if (this.quality !== 'low') {
+      // Flash turns white-hot briefly, then a column of dust and smoke rises behind it.
+      const hot = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 0), this.glowMat(0xfff2b5, 0.95)); hot.position.copy(core.position);
+      this.add({ obj: hot, t: 0, life: 0.18, tick: f => { const k = f.t / f.life; hot.scale.setScalar(r * (0.28 + k * 0.42)); (hot.material as THREE.MeshBasicMaterial).opacity = 0.95 * (1 - k) ** 2; } });
+      if (big) for (let i = 0; i < (this.quality === 'high' ? 3 : 2); i++) {
+        const smoke = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshBasicMaterial({ color: i % 2 ? 0x766a5d : 0x514943, transparent: true, opacity: 0.38, depthWrite: false }));
+        const dx = (rnd() - 0.5) * r, dz = (rnd() - 0.5) * r; smoke.position.set(x + dx, 0.45 + i * 0.35, y + dz);
+        this.add({ obj: smoke, t: 0, life: 1.5 + i * 0.3, tick: (f, dt) => { const k = f.t / f.life; smoke.position.y += dt * (0.7 + r * 0.22); smoke.position.x += dt * 0.25; smoke.scale.set(r * (0.25 + k * 0.65), r * (0.35 + k * 0.8), r * (0.25 + k * 0.65)); smoke.rotation.y += dt * 0.4; (smoke.material as THREE.MeshBasicMaterial).opacity = 0.38 * (1 - k); } });
+      }
+    }
     for (let i = 0; i < bits; i++) {
       const d = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.16), new THREE.MeshBasicMaterial({ color: i % 2 ? 0x2a2a2a : 0x5a4a38, transparent: true })); d.position.set(x, 0.5, y);
       const a = rnd() * 6.28, sp = (1.5 + rnd() * 3.5) * (big ? 1.3 : 1), vy = 3 + rnd() * 4;
@@ -336,8 +346,14 @@ export class RtsView {
     this.puff(x, y, r * 1.1, 0x4a4540);
   }
   private tracer(x0: number, y0: number, x1: number, y1: number, h0: number, h1: number, color: number, life: number, thick: number, len: number, arc = 0): void {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(len, thick, thick), this.glowMat(color, 1)); const dx = x1 - x0, dy = y1 - y0, dist = Math.sqrt(dx * dx + dy * dy) || 1; m.rotation.y = -Math.atan2(dy, dx); m.position.set(x0, h0, y0);
-    this.add({ obj: m, t: 0, life, tick: f => { const k = f.t / f.life; m.position.set(x0 + dx * k, h0 + (h1 - h0) * k + Math.sin(k * Math.PI) * arc * Math.min(1, dist / 8), y0 + dy * k); } });
+    const m = new THREE.Mesh(new THREE.BoxGeometry(len, thick, thick), this.glowMat(color, 1)); const dx = x1 - x0, dy = y1 - y0, dist = Math.sqrt(dx * dx + dy * dy) || 1; const height = arc * Math.min(1, dist / 8), axis = new THREE.Vector3(1, 0, 0), direction = new THREE.Vector3();
+    const pose = (k: number): void => {
+      m.position.set(x0 + dx * k, h0 + (h1 - h0) * k + Math.sin(k * Math.PI) * height, y0 + dy * k);
+      direction.set(dx, h1 - h0 + Math.cos(k * Math.PI) * Math.PI * height, dy);
+      if (direction.lengthSq() > 0.000001) m.quaternion.setFromUnitVectors(axis, direction.normalize());
+    };
+    pose(0);
+    this.add({ obj: m, t: 0, life, tick: f => { const k = f.t / f.life; pose(k); (m.material as THREE.MeshBasicMaterial).opacity = 1 - k * 0.35; } });
   }
   /** 시뮬레이션 이벤트를 눈에 보이는 효과로 바꿉니다. 소리는 호출한 쪽에서 처리합니다. */
   consume(events: SimEvent[]): void {

@@ -1,5 +1,6 @@
 // FRONTLINE — 유닛·건물·자원 3D 모델. 별도 에셋 파일 없이 기본 도형을 조립합니다(원점은 발밑/바닥 중심).
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { loadCharacterKit, type CharacterKit, type CharacterRig } from '../shared/character';
 import { BUILDINGS, TEAM_COLORS, type BuildKind, type UnitKind } from './config';
 
@@ -35,6 +36,15 @@ function ball(g: THREE.Object3D, r: number, m: THREE.Material, x = 0, y = 0, z =
   const o = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 8), m); o.position.set(x, y + r, z); o.scale.y = sy; o.castShadow = true; g.add(o); return o;
 }
 
+/** 정적 장갑·환기구·골조를 재질별로 합쳐 디테일이 많아져도 draw call 을 늘리지 않습니다. */
+type Panel = readonly [number, number, number, number, number, number];
+function panels(root: THREE.Object3D, mat: THREE.Material, specs: readonly Panel[]): void {
+  const parts = specs.map(([w,h,d,x,y,z]) => new THREE.BoxGeometry(w,h,d).translate(x,y+h/2,z));
+  if (!parts.length) return;
+  const geo = mergeGeometries(parts); parts.forEach(g => g.dispose());
+  if (geo) { const mesh = new THREE.Mesh(geo, mat); mesh.castShadow = true; mesh.receiveShadow = true; root.add(mesh); }
+}
+
 let unitKit: CharacterKit | null = null;
 /** 공용 캐릭터 키트를 미리 받아 둡니다. 준비되기 전에 만든 유닛은 도형 모델로 남습니다. */
 export function preloadUnitKit(): void { if (!unitKit) void loadCharacterKit(import.meta.env.BASE_URL).then(k => { unitKit = k; }).catch(() => undefined); }
@@ -53,6 +63,8 @@ function jeepBody(body: THREE.Object3D, m: Mats): void {
   box(body, 0.05, 0.3, 0.6, m.glow, 0.78, 0.46, 0); box(body, 0.1, 0.34, 0.74, m.steel, -0.2, 0.66, 0); // 앞유리 틀·롤바
   for (const [x, z] of [[-0.5, -0.46], [0.5, -0.46], [-0.5, 0.46], [0.5, 0.46]] as const) { const w = cyl(body, 0.22, 0.22, 0.16, m.dark, x, 0.0, z, 10); w.rotation.x = Math.PI / 2; w.position.y = 0.22; }
   box(body, 0.08, 0.28, 0.5, m.armor, -0.74, 0.4, 0); box(body, 0.34, 0.3, 0.3, m.hull, -0.6, 0.66, 0); // 뒤 예비 타이어 보관함
+  panels(body, m.dark, [[0.05,0.12,0.52,0.81,0.35,0], [0.38,0.1,0.09,0.5,0.63,-0.36],[0.38,0.1,0.09,0.5,0.63,0.36], [0.06,0.38,0.06,-0.48,0.64,-0.32], [0.06,0.38,0.06,-0.48,0.64,0.32], [0.4,0.06,0.7,-0.36,1.0,0]]);
+  panels(body, m.steel, [[0.10,0.10,0.88,0.79,0.28,0],[0.10,0.09,0.82,-0.78,0.28,0],[0.13,0.07,0.08,-0.32,0.66,0.39],[0.13,0.07,0.08,-0.32,0.66,-0.39]]);
 }
 
 /** 모델은 +X 방향을 봅니다. */
@@ -102,10 +114,19 @@ export function makeUnit(kind: UnitKind, owner: number): UnitRig {
     mh = 1.15; muzzle = 0.95;
   } else {
     box(body, 1.5, 0.3, 0.32, m.dark, 0, 0, 0.5); box(body, 1.5, 0.3, 0.32, m.dark, 0, 0, -0.5); // 무한궤도
+    const treads: Panel[] = [], hubs: Panel[] = [];
+    for (const side of [-1,1]) for (let i=0;i<6;i++) {
+      const x = -0.63 + i*0.25; treads.push([0.19,0.035,0.34,x,0.3,side*0.5]); hubs.push([0.13,0.16,0.035,x,0.07,side*0.67]);
+    }
+    panels(body,m.armor,treads); panels(body,m.steel,hubs);
+    panels(body,m.hull,[[1.22,0.13,0.08,0,0.35,0.64],[1.22,0.13,0.08,0,0.35,-0.64]]);
     box(body, 1.25, 0.34, 0.8, m.hull, 0, 0.26, 0); box(body, 0.9, 0.12, 0.7, m.team, -0.08, 0.6, 0);
     const tur = new THREE.Group(); tur.position.set(-0.06, 0.7, 0); body.add(tur); cyl(tur, 0.42, 0.5, 0.3, m.armor, 0, 0, 0, 10); box(tur, 0.5, 0.2, 0.6, m.team, -0.1, 0.18, 0);
     gun = new THREE.Group(); gun.position.set(0.3, 0.14, 0); tur.add(gun); const bar = cyl(gun, 0.08, 0.1, 1.5, m.steel, 0.7, -0.08, 0); bar.rotation.z = Math.PI / 2; bar.position.set(0.7, 0, 0); cyl(gun, 0.12, 0.12, 0.2, m.dark, 1.42, -0.08, 0).rotation.z = Math.PI / 2;
     box(tur, 0.18, 0.18, 0.2, m.glow, -0.28, 0.32, 0.22);
+    panels(body, m.dark, [[0.05,0.13,0.46,-0.65,0.39,0],[0.3,0.05,0.10,-0.38,0.62,-0.27],[0.3,0.05,0.10,-0.38,0.62,0.27]]);
+    panels(tur,m.steel,[[0.18,0.05,0.22,-0.18,0.42,0],[0.06,0.35,0.06,-0.38,0.38,-0.23]]);
+    panels(tur,m.armor,[[0.19,0.18,0.13,0.22,0.19,-0.39],[0.19,0.18,0.13,0.22,0.19,0.39]]);
     mh = 1.0; muzzle = 1.5; gun.userData.m = muzzle;
   }
   flash.position.set(muzzle, mh * 0.7, kind === 'marine' ? 0.17 : kind === 'rocket' ? 0.3 : 0); if (kind === 'tank') flash.position.set(1.8, 0.85, 0); if (kind === 'jeep') flash.position.set(1.2, 1.0, 0);
@@ -153,6 +174,35 @@ export function makeBuilding(kind: BuildKind, owner: number): BuildRig {
     const orb = new THREE.Mesh(new THREE.OctahedronGeometry(0.34, 0), m.glow); orb.scale.y = 1.5; orb.castShadow = true; spin.add(orb); light.push(orb);
     barrel = new THREE.Group(); barrel.position.set(0.3, 0, 0); spin.add(barrel); const nozzle = cyl(barrel, 0.0, 0.14, 0.5, m.steel, 0.2, -0.25, 0, 6); nozzle.rotation.z = -Math.PI / 2; nozzle.position.set(0.2, 0, 0);
     flash = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe9a0 })); flash.position.set(0.95, 0, 0); flash.visible = false; spin.add(flash); top = 4.0;
+  }
+  // 같은 사막 군사 기지의 디자인 언어: 기초 볼트, 철제 패널, 역할별 설비.
+  const edge=s/2-0.18, foot: Panel[]=[];
+  for(const x of [-edge,edge])for(const z of [-edge,edge])foot.push([0.22,0.09,0.22,x,0.2,z]);
+  panels(root,m.steel,foot);
+  if(kind==='hq'||kind==='barracks'||kind==='factory'){
+    const vents:Panel[]=[], frames:Panel[]=[];
+    const side=s/2-0.25, y=kind==='hq'?0.7:0.48;
+    for(const x of [-1,1]){
+      frames.push([0.13,0.62,0.72,x*side,y,0.05]);
+      for(let i=0;i<4;i++)vents.push([0.15,0.045,0.58,x*(side+0.03),y+0.11+i*0.115,0.05]);
+    }
+    panels(root,m.dark,frames);panels(root,m.steel,vents);
+    if(kind==='hq') {
+      panels(root,m.armor,[[0.75,0.15,0.55,-1.05,1.78,0.9],[0.75,0.15,0.55,1.05,1.78,0.9]]);
+      lamp(-1.05,1.94,0.9,0.52,0.035,0.32);lamp(1.05,1.94,0.9,0.52,0.035,0.32);
+      panels(root,m.teamDark,[[0.18,0.70,0.85,-1.55,0.42,-0.65],[0.18,0.70,0.85,1.55,0.42,-0.65]]);
+    }else if(kind==='barracks'){
+      panels(root,m.armor,[[0.22,0.84,0.22,-0.75,0.22,1.25],[0.22,0.84,0.22,0.75,0.22,1.25],[1.65,0.18,0.52,0,1.12,1.23]]);
+      panels(root,m.steel,[[0.52,0.11,0.36,-0.65,1.55,0.3],[0.52,0.11,0.36,0.65,1.55,0.3]]);
+    }else {
+      panels(root,m.steel,[[0.12,1.16,0.12,-0.64,0.23,1.37],[0.12,1.16,0.12,1.03,0.23,1.37],[1.8,0.13,0.19,0.2,1.29,1.37]]);
+      panels(root,m.dark,[[0.16,0.055,0.8,-0.28,0.23,1.02],[0.16,0.055,0.8,0.62,0.23,1.02]]);
+    }
+  }else if(kind==='depot'){
+    panels(root,m.steel,[[1.56,0.06,0.09,0,0.29,-0.83],[0.08,0.08,1.56,0.83,0.31,0],[0.08,0.08,1.56,-0.83,0.31,0]]);
+    panels(root,m.dark,[[0.12,0.12,0.38,-0.48,0.72,-0.45],[0.12,0.12,0.38,0.40,0.72,-0.45]]);
+  }else {
+    panels(root,m.armor,[[0.42,0.45,0.17,0,0.34,-0.83],[0.42,0.45,0.17,0,0.34,0.83],[0.17,0.45,0.42,0.83,0.34,0],[0.17,0.45,0.42,-0.83,0.34,0]]);
   }
   return { root, light, spin, barrel, flash, top };
 }

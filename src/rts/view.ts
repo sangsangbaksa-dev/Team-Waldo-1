@@ -34,7 +34,7 @@ export class RtsView {
   private ringMats = [new THREE.MeshBasicMaterial({ color: 0x5dff9a, transparent: true, opacity: 0.9, depthWrite: false }), new THREE.MeshBasicMaterial({ color: 0xff5a4a, transparent: true, opacity: 0.9, depthWrite: false })];
   /** 전장의 안개: 있으면 보이지 않는 적을 숨기고 어둡게 덮습니다. */ vision: Vision | null = null;
   private fog: { mesh: THREE.Mesh; tex: THREE.DataTexture; data: Uint8Array; cur: Float32Array; version: number; animating: boolean } | null = null; private marks = new Map<string, MarkVis>();
-  private grid: THREE.Mesh | null = null; private scenery: Scenery | null = null; private desert: DesertProps | null = null;
+  private grid: THREE.Mesh | null = null; private surfaceTex: THREE.CanvasTexture | null = null; private scenery: Scenery | null = null; private desert: DesertProps | null = null;
 
   constructor(readonly canvas: HTMLCanvasElement, readonly sim: RtsSim, readonly viewer: number, readonly quality: Quality = 'high') {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
@@ -75,7 +75,11 @@ export class RtsView {
     const lanes = buildLanes(this.sim.map), bushes = bushSpots(this.sim.map, lanes); paintGround(g, k, this.sim.map, lanes, bushes);
     g.strokeStyle = 'rgba(70,52,28,.06)'; g.lineWidth = 1; for (let i = 0; i <= n; i += 4) { g.beginPath(); g.moveTo(i * k, 0); g.lineTo(i * k, tex.height); g.moveTo(0, i * k); g.lineTo(tex.width, i * k); g.stroke(); }
     const map = new THREE.CanvasTexture(tex); map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 4;
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(n, n), new THREE.MeshStandardMaterial({ map, roughness: 1, metalness: 0 }));
+    const grain = document.createElement('canvas'); grain.width = grain.height = 128; const grainCtx = grain.getContext('2d')!;
+    const pixels = grainCtx.createImageData(128, 128);
+    for (let i=0;i<pixels.data.length;i+=4) { const c=110+Math.floor(rnd()*36); pixels.data[i]=pixels.data[i+1]=pixels.data[i+2]=c; pixels.data[i+3]=255; }
+    grainCtx.putImageData(pixels,0,0); const bump = new THREE.CanvasTexture(grain); bump.wrapS=bump.wrapT=THREE.RepeatWrapping; bump.repeat.set(n/6,n/6); this.surfaceTex=bump;
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(n, n), new THREE.MeshStandardMaterial({ map, bumpMap: this.quality==='low'?null:bump, bumpScale:0.065, roughness: 1, metalness: 0 }));
     ground.rotation.x = -Math.PI / 2; ground.position.set(n / 2, 0, n / 2); ground.receiveShadow = true; scene.add(ground);
     this.scenery = new Scenery(scene, this.sim.map, lanes, bushes, this.quality, this.shadows); this.desert = new DesertProps(scene, this.sim.map, lanes, this.quality, this.shadows);
     const far = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.MeshStandardMaterial({ color: 0xb89a66, roughness: 1 })); far.rotation.x = -Math.PI / 2; far.position.set(n / 2, -0.05, n / 2); scene.add(far);
@@ -293,7 +297,7 @@ export class RtsView {
       const b = s.building(id); if (!b) continue; const hidB = this.hiddenBuilding(b); v.rig.root.visible = !hidB; const p = b.done ? 1 : Math.min(1, 0.12 + 0.88 * b.progress / BUILDINGS[b.kind].time);
       v.rig.root.scale.set(1, b.done ? 1 : Math.max(0.05, p), 1); v.scaff.visible = !b.done && !hidB; v.scaff.scale.y = 1 - p * 0.3;
       if (b.done && !v.wasDone) { v.wasDone = true; this.puff(b.x + b.size / 2, b.y + b.size / 2, b.size * 0.8, 0xd8cfb8); }
-      for (const l of v.rig.light) l.visible = b.done && (Math.sin(this.clock * 3 + id) > -0.7);
+      for (let i=0;i<v.rig.light.length;i++) { const l=v.rig.light[i]; l.visible = b.done && (b.hp/b.maxhp > 0.35 || Math.sin(this.clock * 11 + id + i) > -0.25); }
       if (v.rig.spin && b.kind === 'hq') v.rig.spin.rotation.y += dt * 0.8;
       if (v.rig.spin && b.kind === 'tower') { const want = -Math.atan2(b.fy, b.fx); if (tick - b.fired < 40) v.rig.spin.rotation.y = want; }
       if (v.rig.flash) v.rig.flash.visible = tick - b.fired < 2;
@@ -346,6 +350,16 @@ export class RtsView {
       this.add({ obj: d, t: 0, life: 0.8, tick: (f, dt) => { d.position.x += Math.cos(a) * sp * dt; d.position.z += Math.sin(a) * sp * dt; d.position.y = Math.max(0.05, 0.5 + vy * f.t - 9 * f.t * f.t); d.rotation.x += dt * 8; (d.material as THREE.MeshBasicMaterial).opacity = 1 - f.t / f.life; } });
     }
     this.puff(x, y, r * 1.1, 0x4a4540);
+    // 대형 폭발은 바닥의 그을음과 서서히 떠오르는 연기를 남깁니다. 효과 예산에 포함됩니다.
+    if (big && this.quality !== 'low') {
+      const smoke = new THREE.Group(), mat = new THREE.MeshStandardMaterial({ color:0x4b453e, transparent:true, opacity:0.46, depthWrite:false, roughness:1 });
+      const geo=new THREE.IcosahedronGeometry(0.62,1);
+      for(let i=0;i<3;i++){ const cloud=new THREE.Mesh(geo,mat); cloud.position.set((rnd()-.5)*r,i*.5,(rnd()-.5)*r); smoke.add(cloud); }
+      smoke.position.set(x,0.4,y);
+      this.add({obj:smoke,t:0,life:2.2,tick:f=>{ const k=f.t/f.life; smoke.position.y=0.4+k*r*1.8; smoke.scale.setScalar(r*(0.45+k*0.85)); mat.opacity=0.46*(1-k); }});
+      const soot = new THREE.Mesh(new THREE.CircleGeometry(r*0.95,20),new THREE.MeshBasicMaterial({color:0x322a21,transparent:true,opacity:0.28,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1})); soot.rotation.x=-Math.PI/2;soot.position.set(x,0.025,y);
+      this.add({obj:soot,t:0,life:6,tick:f=>{(soot.material as THREE.MeshBasicMaterial).opacity=0.28*Math.min(1,(1-f.t/f.life)*3);}});
+    }
   }
   private tracer(x0: number, y0: number, x1: number, y1: number, h0: number, h1: number, color: number, life: number, thick: number, len: number, arc = 0): void {
     const m = new THREE.Mesh(new THREE.BoxGeometry(len, thick, thick), this.glowMat(color, 1)); const dx = x1 - x0, dy = y1 - y0, dist = Math.sqrt(dx * dx + dy * dy) || 1; m.rotation.y = -Math.atan2(dy, dx); m.position.set(x0, h0, y0);
@@ -383,7 +397,7 @@ export class RtsView {
 
   dispose(): void {
     this.scene.traverse(o => { if (o instanceof THREE.Mesh || o instanceof THREE.InstancedMesh) { o.geometry.dispose(); const m = o.material; (Array.isArray(m) ? m : [m]).forEach(x => x.dispose()); } });
-    this.post?.dispose(); this.fog?.tex.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss();
+    this.post?.dispose(); this.fog?.tex.dispose(); this.surfaceTex?.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss();
   }
 }
 void TEAM_COLORS; void matsFor;

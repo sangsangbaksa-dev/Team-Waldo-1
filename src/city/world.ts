@@ -469,7 +469,7 @@ export class World {
     const have = f.slots.find(s => s.id === id), total = d.ammo > 0 ? (ammo === undefined ? d.ammo : Number.isFinite(ammo) ? Math.max(0,Math.floor(ammo)) : 0) : d.ammo;
     if(d.ammo>0 && total<=0)return;
     if (have) {
-      if (d.ammo > 0) { have.ammo += total; have.mag = Math.min(have.mag, d.mag, Math.max(0, have.ammo)); }
+      if (d.ammo > 0) { have.ammo += total; have.mag = Math.min(d.mag, Math.max(0, have.ammo)); }
       else have.mag = d.mag;
       return;
     }

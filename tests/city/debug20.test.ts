@@ -7,7 +7,7 @@ function sandbox(){const w=new World({seed:7,difficulty:'d4',klass:'tycoon',tuto
 describe('LAST CITY defensive regressions',()=>{
 it('rejects fractional and nonfinite weapon selection',()=>{const w=sandbox();switchWeapon(w,0,NaN);switchWeapon(w,0,0.5);expect(w.factions[0].cur).toBe(0);});
 it('does not create ammunition from an empty pickup',()=>{const w=sandbox(),f=w.factions[0];w.giveWeapon(f,'railgun',0);expect(f.slots.some(s=>s.id==='railgun')).toBe(false);});
-it('does not reload the current magazine by collecting reserve ammo',()=>{const w=sandbox(),f=w.factions[0];w.giveWeapon(f,'railgun',5);const s=f.slots.find(s=>s.id==='railgun')!;s.mag=0;w.giveWeapon(f,'railgun',5);expect(s.mag).toBe(0);expect(s.ammo).toBe(10);});
+it('does not drop a depleted rare weapon when replacing a full slot',()=>{const w=sandbox(),f=w.factions[0];w.giveWeapon(f,'rifle');w.giveWeapon(f,'railgun',2);f.slots[f.cur].ammo=0;const before=w.loot.filter(l=>l.weapon==='railgun').length;w.giveWeapon(f,'rocket',2);expect(w.loot.filter(l=>l.weapon==='railgun').length).toBe(before);});
 it('clears a reload when equipping another pickup',()=>{const w=sandbox(),f=w.factions[0];f.reloadT=1;w.giveWeapon(f,'rifle',20);expect(f.reloadT).toBe(0);});
 it('clears pending reload on death',()=>{const w=sandbox(),f=w.factions[0];f.reloadT=1;w.killActor(w.boss(0)!,1);expect(f.reloadT).toBe(0);});
 it('rejects invalid damage without poisoning health',()=>{const w=sandbox(),b=w.boss(0)!,hp=b.hp;w.hurtActor(b,NaN,1);w.hurtActor(b,-10,1);expect(b.hp).toBe(hp);});

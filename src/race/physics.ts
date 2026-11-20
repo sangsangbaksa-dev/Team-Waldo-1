@@ -110,7 +110,7 @@ export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: Car
   return ev;
 }
 
-/** 중심선 진행도를 갱신하고 차체가 연석 밖으로 나가지 못하게 되돌립니다. progress 가 아니면 랩 거리는 더하지 않습니다. */
+/** 중심선 진행도를 갱신하고 차체가 연석 밖으로 나가지 못하게 되돌립니다. 충돌 후 재투영도 실제 이동한 작은 인덱스 차이만 누적합니다. */
 /** Update body-local velocity after an impulse or heading correction. */
 export function syncLocalVelocity(c: CarState): void {
   const fx = Math.cos(c.h), fz = Math.sin(c.h);

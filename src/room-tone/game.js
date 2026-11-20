@@ -1155,12 +1155,15 @@ function update(dt) {
         ? "출구 작동"
         : chapters[ch].station + " 확인"
     : "";
-  $("prompt").hidden = !caption;
-  $("promptText").textContent = caption;
-  $("act").disabled = !nearest;
-  $("stamina").style.transform = "scaleX(" + stamina.toFixed(3) + ")";
-  $("timer").textContent = clock(elapsed);
-  if (now > noticeUntil) $("toast").textContent = "";
+  const prompt = $("prompt"), promptText = $("promptText"), act = $("act");
+  if (prompt.hidden !== !caption) prompt.hidden = !caption;
+  if (promptText.textContent !== caption) promptText.textContent = caption;
+  if (act.disabled !== !nearest) act.disabled = !nearest;
+  const bar = $("stamina"), transform = "scaleX(" + stamina.toFixed(3) + ")";
+  if (bar.style.transform !== transform) bar.style.transform = transform;
+  const timer = $("timer"), timeText = clock(elapsed);
+  if (timer.textContent !== timeText) timer.textContent = timeText;
+  if (now > noticeUntil && $("toast").textContent) $("toast").textContent = "";
   if (now > saveAt) {
     save();
     saveAt = now + 12;

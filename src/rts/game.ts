@@ -610,7 +610,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   }
   function frame(now: number): void {
     if (closed) return; raf = requestAnimationFrame(frame); const dt = Math.min(0.1, (now - last) / 1000); last = now;
-    if (!sim || !view || root.dataset.phase === 'setup') return;
+    if (!sim || !view || root.dataset.phase === 'setup' || root.style.display === 'none') return;
     if (toastT > 0 && (toastT -= dt) <= 0) $('#rt-toast').classList.remove('show');
     if (!ended && !paused) {
       if (net) { const boost = import.meta.env.DEV ? (window as unknown as { __rtsBoost?: number }).__rtsBoost ?? 1 : 1; net.pump(sim, dt * boost, () => { view!.onTick(); if (import.meta.env.DEV && sim!.tick % 20 === 0) { const l = ((window as unknown as { __rtsLog?: Array<[number, number]> }).__rtsLog ??= []); l.push([sim!.tick, sim!.hash()]); } }, 0.6 * boost); if (net.stalled) $('#rt-vs').textContent = `상대를 기다리는 중… · vs ${pvp?.s.opponent.nickname ?? ''}`; else if (pvp) $('#rt-vs').textContent = `vs ${pvp.s.opponent.nickname}`; }

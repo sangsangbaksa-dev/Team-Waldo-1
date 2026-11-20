@@ -1,6 +1,7 @@
 import '../shared/game-polish.css';
 // SPEED RUSH — 레이싱 모드 진입점: 입력, HUD, 게임 루프. 레이싱카 모델은 race.glb(tools/blender/race.py)입니다.
 import './race.css';
+import { FrameGate } from '../shared/frame-gate';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { readPreferences, writePreferences } from '../prefs';
@@ -290,6 +291,7 @@ export function openRace(onExit: () => void): void {
     g.fillStyle = '#fff'; g.fillRect(mx(track.x[0]) - 5, mz(track.z[0]) - 2, 10, 4);
   }
   prepareMinimap();
+  const miniGate = new FrameGate(1000 / 30);
   function drawMini(): void {
     if (!mg) return; mg.clearRect(0, 0, 220, 220);
     if (miniBaseCtx) mg.drawImage(miniBase, 0, 0); else paintMiniTrack(mg);
@@ -331,7 +333,7 @@ export function openRace(onExit: () => void): void {
       if (driftNow && !driftWas) { audio.sfx('chirp'); view.punchFov(0.25); }
       nitroWas = nitroNow; driftWas = driftNow;
       view.update(race, dt, wallHit); wallHit = 0; fxIntensity += (RaceView.intensity(race) - fxIntensity) * Math.min(1, dt * 5); drawFx(fxIntensity);
-      pvp?.net.sendSnap(race.player.car, now); multi?.net.sendSnap(race.player.car, now); hud(steps * STEP); drawMini();
+      pvp?.net.sendSnap(race.player.car, now); multi?.net.sendSnap(race.player.car, now); hud(steps * STEP); if (miniGate.due(now)) drawMini();
       if (msgT > 0 && (msgT -= dt) <= 0) $('#rc-msg').className = 'rc-msg';
     }
   }

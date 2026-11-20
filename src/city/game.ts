@@ -733,7 +733,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     }
     if (areaT > 0) { areaT -= dt; if (areaT <= 0) q('#c-area').className = 'c-area'; }
     if (f.wanted >= 2 && !paused && now - sirenT > 2400 && w.vehicles.some(v => v.ai === 'chase' && b && Math.hypot(v.x - b.x, v.y - b.y) < 900)) { sirenT = now; audio.play('wail'); }
-    if (tut && !paused && b) { if (!b.inVeh) tut.c.move += Math.hypot(b.x - lastPos.x, b.y - lastPos.y) * (Math.hypot(b.x - lastPos.x, b.y - lastPos.y) < 80 ? 1 : 0); else if (veh) tut.c.vehicleDist += spd * dt; lastPos = { x: b.x, y: b.y }; if (R3) { let dy = R3.yaw - lastYaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2; tut.c.look += Math.min(1, Math.abs(dy)); lastYaw = R3.yaw; } }
+    if (tut && !paused && b) { if (!b.inVeh) { const distance = Math.hypot(b.x - lastPos.x, b.y - lastPos.y); if (distance < 80) tut.c.move += distance; } else if (veh) tut.c.vehicleDist += spd * dt; lastPos.x = b.x; lastPos.y = b.y; if (R3) { let dy = R3.yaw - lastYaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2; tut.c.look += Math.min(1, Math.abs(dy)); lastYaw = R3.yaw; } }
     hudT -= dt; if (hudT <= 0) { hudT = 0.12; renderHud(); if (tut && !paused) tutTick(); const target = q('#c-target'), nextTarget = three ? crossTarget() : ''; if (target.dataset.rendered !== nextTarget) { target.dataset.rendered = nextTarget; target.innerHTML = nextTarget; } }
     if (toastT > 0) { toastT -= dt; if (toastT <= 0) q('#c-toast').className = 'c-toast'; }
     if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) q('#c-banner').className = 'c-banner'; }

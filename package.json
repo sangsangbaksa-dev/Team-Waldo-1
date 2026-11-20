@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "city-sim": "node --import tsx tools/city-sim.ts"
+    "city-sim": "node --import tsx tools/city-sim.ts",
+    "rts-sim": "node --import tsx tools/rts-sim.ts",
+    "tycoon-sim": "node --import tsx tools/tycoon-sim.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.119.0",

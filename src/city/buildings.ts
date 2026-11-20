@@ -2,6 +2,8 @@
 import * as THREE from 'three';
 import type { World } from './world';
 import { SIZE } from './defs';
+import type { Atmosphere } from './atmosphere';
+import type { Emitter } from './streetfx';
 
 export const FACADE_STYLES = ['brick', 'glass', 'deco', 'industrial', 'ribbon'] as const;
 const GF = 100;                      // 1층 높이 (사람 키 약 40 — scale.ts 의 HUMAN 기준 — 의 2배 이상)
@@ -52,10 +54,42 @@ function shopTexture(variant: number): THREE.CanvasTexture {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.RepeatWrapping; t.anisotropy = 8; return t;
 }
 
-export function buildBuildings(world: World, scene: THREE.Scene, base: string): void {
+/** 상점가 발광 무늬: 낮에는 거의 꺼져 있고 밤이면 유리창·간판 글씨가 켜진다(shopTexture 와 같은 칸 배치). */
+function shopEmissive(variant: number): THREE.CanvasTexture {
+  const W = 512, H = 160, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d')!, LIT = ['255,196,120', '120,222,255', '255,120,196', '196,255,150', '255,236,170'];
+  g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
+  for (let b = 0; b < 4; b++) {
+    const x = b * 128, gx = x + 16, gw = 98, col = LIT[(b * 2 + variant * 3) % LIT.length], on = hash(variant * 17 + b * 5) < 0.78;
+    if (on) { const grd = g.createLinearGradient(0, 44, 0, H - 24); grd.addColorStop(0, `rgba(${col},0.85)`); grd.addColorStop(1, `rgba(${col},0.45)`); g.fillStyle = grd; g.fillRect(gx + 4, 48, gw - 8, H - 78); g.fillStyle = '#000'; g.fillRect(gx + gw / 2 - 1.5, 44, 3, H - 70); }
+    g.fillStyle = `rgb(${LIT[(b + variant) % LIT.length]})`; g.font = '700 18px sans-serif'; g.textAlign = 'center'; g.fillText(['OPEN', 'SHOP', 'CAFÉ', 'BAR', '24H', 'MART'][(b * 2 + variant) % 6], x + 64, 24);
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.RepeatWrapping; t.anisotropy = 8; return t;
+}
+
+/** 세로로 걸린 네온 돌출 간판 무늬(글자를 위에서 아래로 쌓는다). */
+const BLADES: [string, string][] = [['HOTEL', '#ff4fa8'], ['BAR', '#35e0ff'], ['24H', '#ffd24a'], ['CLUB', '#b36bff'], ['술집', '#ff6a3a'], ['PAWN', '#5dff9a'], ['LIVE', '#ff3a3a'], ['RAMEN', '#ffb13a']];
+function bladeTexture(text: string, color: string): THREE.CanvasTexture {
+  const W = 64, H = 192, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d')!;
+  g.fillStyle = '#07060a'; g.fillRect(0, 0, W, H); g.strokeStyle = color; g.lineWidth = 5; g.shadowColor = color; g.shadowBlur = 8; g.strokeRect(5, 5, W - 10, H - 10);
+  const chars = [...text], step = Math.min(44, (H - 24) / chars.length); g.fillStyle = color; g.font = `900 ${Math.round(step * 0.82)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  chars.forEach((ch, i) => g.fillText(ch, W / 2, H / 2 + (i - (chars.length - 1) / 2) * step));
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
+}
+function streakTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas'); c.width = 16; c.height = 128; const g = c.getContext('2d')!, gr = g.createLinearGradient(0, 0, 0, 128);
+  gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.35, 'rgba(255,255,255,0.85)'); gr.addColorStop(0.5, 'rgba(255,255,255,1)'); gr.addColorStop(0.65, 'rgba(255,255,255,0.85)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 16, 128);
+  const gx = g.createLinearGradient(0, 0, 16, 0); gx.addColorStop(0, 'rgba(0,0,0,0.9)'); gx.addColorStop(0.5, 'rgba(0,0,0,0)'); gx.addColorStop(1, 'rgba(0,0,0,0.9)'); g.globalCompositeOperation = 'destination-out'; g.fillStyle = gx; g.fillRect(0, 0, 16, 128);
+  return new THREE.CanvasTexture(c);
+}
+
+export interface BuildingFx { blink: (t: number) => void; setMood: (atm: Atmosphere) => void; stacks: Emitter[] }
+
+/** 높은 건물 옥상의 붉은 항공장애등을 두 박자로 번갈아 깜박이게 하는 갱신 함수를 돌려준다. */
+export function buildBuildings(world: World, scene: THREE.Scene, base: string): BuildingFx {
   const loader = new THREE.TextureLoader(), tex = (n: string): THREE.Texture => { const t = loader.load(`${base}assets/tex/${n}.png`); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; return t; };
   const facades = FACADE_STYLES.map(() => new Mesh()), shops = [new Mesh(), new Mesh()], trim = new Mesh(), c = new THREE.Color(), wall = new THREE.Color();
   const tint = (s: { wall: string }): THREE.Color => wall.set(s.wall).lerp(new THREE.Color(0xe2ddd4), 0.5).clone();
+  const beacons: [number, number, number][] = [], blades = BLADES.map(() => new Mesh()), streaks = new Mesh(), stacks: Emitter[] = [], white = new THREE.Color(1, 1, 1), signMats: THREE.MeshBasicMaterial[] = [];
   const doors = new Map<number, { x: number; y: number }>(); for (const z of world.businesses) doors.set(z.solid, z);
   world.map.solids.forEach((s, i) => {
     if (s.struct || !s.alive) return;
@@ -101,6 +135,29 @@ export function buildBuildings(world: World, scene: THREE.Scene, base: string): 
             trim.quad([q(t0, GF - 34, o), q(t1, GF - 34, o), q(t1, GF - 38, o), q(t0, GF - 38, o)], [sd.n[0], 0, sd.n[1]], col.clone().multiplyScalar(0.8));
           }
         }
+        // 파이프 다발(산업풍 건물과 일부 건물): 외벽을 타고 오르는 수직관, 가로 배관, 붉은 플랜지
+        if (ti === 0 && (style === 3 || r(95) < 0.3) && sd.L > 60 && hash(i * 41 + si) < 0.75) {
+          const top = Math.min(t.y1 - 8, H - 8), steel = r(96) < 0.5, pc = new THREE.Color(steel ? 0x565c63 : 0x4a3a32), fl = new THREE.Color(0x8a2a24);
+          const wallBox = (a: number, b: number, y0: number, y1: number, out: number, thick: number, cc: THREE.Color): void => {
+            const p0 = P(sd, a, 0), p1 = P(sd, b, 0), xs = [p0[0], p1[0], p0[0] + sd.n[0] * (out + thick), p1[0] + sd.n[0] * (out + thick)], zs = [p0[2], p1[2], p0[2] + sd.n[1] * (out + thick), p1[2] + sd.n[1] * (out + thick)];
+            trim.box(Math.min(...xs), y0, Math.min(...zs), Math.max(...xs), y1, Math.max(...zs), cc);
+          };
+          const nv = 1 + Math.floor(hash(i * 7 + si) * 3);
+          for (let q = 0; q < nv; q++) { const tt = sd.L * (0.08 + 0.84 * hash(i * 11 + si * 5 + q)); if (door >= 0 && Math.abs(tt - door) < DOOR_W + 14) continue; wallBox(tt - 2.5, tt + 2.5, GF, top, 1, 5, pc); wallBox(tt - 4.5, tt + 4.5, GF + 40 + hash(q + i) * (top - GF) * 0.5, GF + 48 + hash(q + i) * (top - GF) * 0.5, 0.5, 6, fl); }
+          const hy = GF + 50 + hash(i * 3 + si) * Math.max(10, top - GF - 70), a0 = sd.L * (0.1 + hash(i + si) * 0.3), a1 = Math.min(sd.L - 6, a0 + 50 + hash(i * 5 + si) * sd.L * 0.5);
+          wallBox(a0, a1, hy, hy + 7, 3, 7, pc); wallBox(a0 - 3, a0 + 3, hy - 2, hy + 9, 2, 9, fl); wallBox(a1 - 3, a1 + 3, hy - 2, hy + 9, 2, 9, fl);
+        }
+        // 세로로 걸린 네온 돌출 간판 + 젖은 길 위에 번지는 반사 줄기
+        if (ti === 0 && sd.L > 70 && H > GF + 130 && hash(i * 53 + si * 7) < 0.36) {
+          const bi = Math.floor(hash(i * 29 + si) * BLADES.length), tt = sd.L * (0.15 + hash(i * 13 + si * 3) * 0.7);
+          if (door < 0 || Math.abs(tt - door) > 50) {
+            const y0 = GF + 28 + hash(i + si * 11) * Math.min(220, H - GF - 150), bw = 20, bh = 58, b0 = P(sd, tt, y0), dd = [sd.d[0], 0, sd.d[1]], o = (k: number, y: number): number[] => [b0[0] + sd.n[0] * k, y, b0[2] + sd.n[1] * k];
+            blades[bi].quad([o(0, y0), o(bw, y0), o(bw, y0 + bh), o(0, y0 + bh)], dd, white, [[0, 0], [1, 0], [1, 1], [0, 1]]);
+            const bx = Math.min(b0[0], b0[0] + sd.n[0] * 6), bz = Math.min(b0[2], b0[2] + sd.n[1] * 6); trim.box(bx - 1, y0 + bh * 0.5 - 1, bz - 1, bx + Math.abs(sd.n[0]) * 6 + 1, y0 + bh * 0.5 + 1, bz + Math.abs(sd.n[1]) * 6 + 1, new THREE.Color(0x2a2d33));
+            const cc = new THREE.Color(BLADES[bi][1]), sx = b0[0] + sd.n[0] * 34, sz = b0[2] + sd.n[1] * 34, ln = 70, wd = 9;
+            streaks.quad([[sx - sd.d[0] * ln - sd.n[0] * wd, 1.2, sz - sd.d[1] * ln - sd.n[1] * wd], [sx - sd.d[0] * ln + sd.n[0] * wd, 1.2, sz - sd.d[1] * ln + sd.n[1] * wd], [sx + sd.d[0] * ln + sd.n[0] * wd, 1.2, sz + sd.d[1] * ln + sd.n[1] * wd], [sx + sd.d[0] * ln - sd.n[0] * wd, 1.2, sz + sd.d[1] * ln - sd.n[1] * wd]], [0, 1, 0], cc, [[0, 0], [1, 0], [1, 1], [0, 1]]);
+          }
+        }
       });
       // 돌림띠 + 파라펫
       const cs = 4, ch = 7;
@@ -113,30 +170,63 @@ export function buildBuildings(world: World, scene: THREE.Scene, base: string): 
       if (t.y1 - t.y0 > 300) { const my = t.y0 + (t.y1 - t.y0) * 0.5; trim.box(t.x0 - 2, my, t.z0 - 2, t.x1 + 2, my + 5, t.z1 + 2, light, false); }
       // 옥상 설비
       if (ti === tiers.length - 1) {
+        if (tall) { beacons.push([t.x0 + 5, t.y1 + 9, t.z0 + 5], [t.x1 - 5, t.y1 + 9, t.z1 - 5]); }
         const w = t.x1 - t.x0, d = t.z1 - t.z0, n = 2 + Math.floor(r(8) * 4);
         for (let k = 0; k < n; k++) {
-          const px = t.x0 + 12 + r(20 + k) * (w - 36), pz = t.z0 + 12 + r(40 + k) * (d - 36), kind = Math.floor(r(60 + k) * 4);
+          const px = t.x0 + 12 + r(20 + k) * (w - 36), pz = t.z0 + 12 + r(40 + k) * (d - 36), kind = Math.floor(r(60 + k) * 5);
           if (kind === 0) trim.box(px, t.y1 + 1, pz, px + 16, t.y1 + 11, pz + 12, c.set(0x8d939c));            // 냉각기
           else if (kind === 1) { trim.box(px, t.y1 + 1, pz, px + 8, t.y1 + 22, pz + 8, c.set(0x6b4a30)); trim.box(px - 3, t.y1 + 22, pz - 3, px + 11, t.y1 + 32, pz + 11, c.set(0x7d5a3a)); }   // 물탱크
           else if (kind === 2) trim.box(px, t.y1 + 1, pz, px + 20, t.y1 + 16, pz + 18, c.set(0xb8b3aa));        // 계단탑
-          else trim.box(px, t.y1 + 1, pz, px + 2, t.y1 + 38, pz + 2, c.set(0x30343a));                          // 안테나
+          else if (kind === 3) trim.box(px, t.y1 + 1, pz, px + 2, t.y1 + 38, pz + 2, c.set(0x30343a));          // 안테나
+          else {   // 굴뚝: 붉은 띠 + 끝에서 연기가 오른다
+            const sh = 56 + r(70 + k) * 44; trim.box(px, t.y1 + 1, pz, px + 9, t.y1 + sh, pz + 9, c.set(0x5a5650)); trim.box(px - 0.5, t.y1 + sh - 14, pz - 0.5, px + 9.5, t.y1 + sh - 8, pz + 9.5, c.set(0xa23a2e));
+            if (stacks.length < 46) { stacks.push({ x: px + 4.5, y: t.y1 + sh + 3, z: pz + 4.5, rise: 150, spread: 0.7, smoke: true }); if (tall) beacons.push([px + 4.5, t.y1 + sh + 6, pz + 4.5]); }
+          }
         }
       }
     });
     // 모서리 벽기둥 + 하단 기단
-    const t0 = tiers[0];
+    const t0 = tiers[0]; if (tall && style === 3) beacons.push([t0.x1 + 3, t0.y1 * 0.97, t0.z1 + 3]);
     for (const [cx, cz] of [[t0.x0, t0.z0], [t0.x1, t0.z0], [t0.x0, t0.z1], [t0.x1, t0.z1]]) trim.box(cx - 3, 0, cz - 3, cx + 3, Math.min(t0.y1, H) - 4, cz + 3, light, false);
     trim.box(t0.x0 - 2, 0, t0.z0 - 2, t0.x1 + 2, 8, t0.z1 + 2, dark, true);
     if (s.sign) {
       const stex = new THREE.CanvasTexture((() => { const cv = document.createElement('canvas'); cv.width = 256; cv.height = 96; const g = cv.getContext('2d')!; g.fillStyle = '#14161a'; g.fillRect(0, 0, 256, 96); g.strokeStyle = s.signColor!; g.lineWidth = 6; g.strokeRect(5, 5, 246, 86); g.fillStyle = s.signColor!; g.font = '900 60px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(s.sign!, 128, 52); return cv; })());
-      stex.colorSpace = THREE.SRGBColorSpace; const sm = new THREE.MeshBasicMaterial({ map: stex, side: THREE.DoubleSide }), W = Math.min(s.w, s.h, 150) * 0.9, top = tiers[tiers.length - 1].y1;
+      stex.colorSpace = THREE.SRGBColorSpace; const sm = new THREE.MeshBasicMaterial({ map: stex, side: THREE.DoubleSide }), W = Math.min(s.w, s.h, 150) * 0.9, top = tiers[tiers.length - 1].y1; signMats.push(sm);
       for (let q = 0; q < 2; q++) { const m = new THREE.Mesh(new THREE.PlaneGeometry(W, W * 0.375), sm); m.position.set(s.x + s.w / 2, top + W * 0.22 + 8, s.y + s.h / 2); m.rotation.y = q * Math.PI / 2; scene.add(m); }
     }
   });
   const add = (m: Mesh, mat: THREE.Material): void => { if (!m.idx.length) return; const o = new THREE.Mesh(m.geo(), mat); o.castShadow = true; o.receiveShadow = true; scene.add(o); };
-  FACADE_STYLES.forEach((n, k) => add(facades[k], new THREE.MeshLambertMaterial({ map: tex(`facade_${n}`), emissiveMap: tex(`facade_${n}_e`), emissive: 0xffffff, emissiveIntensity: 0.5, vertexColors: true, side: THREE.DoubleSide })));
-  shops.forEach((m, k) => add(m, new THREE.MeshLambertMaterial({ map: shopTexture(k * 2), vertexColors: true, side: THREE.DoubleSide })));
+  const facadeMats = FACADE_STYLES.map(n => new THREE.MeshLambertMaterial({ map: tex(`facade_${n}`), emissiveMap: tex(`facade_${n}_e`), emissive: 0xffd9a8, emissiveIntensity: 0.5, vertexColors: true, side: THREE.DoubleSide }));
+  FACADE_STYLES.forEach((_, k) => add(facades[k], facadeMats[k]));
+  const shopMats = shops.map((_, k) => new THREE.MeshLambertMaterial({ map: shopTexture(k * 2), emissiveMap: shopEmissive(k * 2), emissive: 0xffffff, emissiveIntensity: 0.2, vertexColors: true, side: THREE.DoubleSide }));
+  shops.forEach((m, k) => add(m, shopMats[k]));
   add(trim, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+  // 네온 돌출 간판(스스로 빛나는 재질)과 반사 줄기(가산 혼합)
+  const bladeMats = BLADES.map(([text, color]) => new THREE.MeshBasicMaterial({ map: bladeTexture(text, color), side: THREE.DoubleSide }));
+  blades.forEach((m, k) => { if (!m.idx.length) return; const o = new THREE.Mesh(m.geo(), bladeMats[k]); scene.add(o); });
+  const streakMat = new THREE.MeshBasicMaterial({ map: streakTexture(), vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, opacity: 0 });
+  if (streaks.idx.length) { const o = new THREE.Mesh(streaks.geo(), streakMat); o.renderOrder = 3; scene.add(o); }
+  // 붉은 항공장애등: 흐린 비 오는 하늘 아래에서도 도시 스카이라인이 읽히도록 번쩍이는 점
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64; const g = cv.getContext('2d');
+  if (g) { const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.25, 'rgba(255,255,255,0.7)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); }
+  const glow = new THREE.CanvasTexture(cv), groups = [new THREE.Group(), new THREE.Group()];
+  beacons.forEach(([x, y, z], k) => {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: 0xff2a1c, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+    sp.scale.setScalar(46); sp.position.set(x, y, z); groups[k % 2].add(sp);
+  });
+  scene.add(groups[0], groups[1]);
+  const beaconMats = groups.flatMap(g => g.children.map(c => (c as THREE.Sprite).material as THREE.SpriteMaterial));
+  return {
+    blink: (t: number): void => { const ph = (t % 2.4) / 2.4; groups[0].visible = ph < 0.4; groups[1].visible = ph >= 0.5 && ph < 0.9; },
+    setMood: (atm: Atmosphere): void => {
+      // 창문은 낮엔 거의 꺼지고 밤·흐린 날엔 켜진다. 네온은 낮에도 은은하게 보인다.
+      facadeMats.forEach(m => { m.emissiveIntensity = 0.05 + atm.windows * 0.72; }); shopMats.forEach(m => { m.emissiveIntensity = 0.05 + atm.windows * 1.15; });
+      const n = 0.3 + atm.neon * 0.95; bladeMats.forEach(m => m.color.setScalar(n)); signMats.forEach(m => m.color.setScalar(0.4 + atm.neon * 0.8));
+      streakMat.opacity = Math.min(1, atm.wet * atm.lamps * 0.34); streakMat.visible = streakMat.opacity > 0.02;
+      for (const m of beaconMats) m.opacity = 0.7 + atm.night * 0.3;
+    },
+    stacks,
+  };
 }
 
 /** 맵 가장자리를 둘러싼 방파제 벽 + 철조망 기둥 (자기장 대신 자연스러운 경계) */
@@ -147,6 +237,6 @@ export function buildPerimeter(scene: THREE.Scene): void {
   };
   ring(0, 0, SIZE, SIZE, -20, H, conc); ring(-6, -6, SIZE + 6, SIZE + 6, H, H + 10, cap); ring(0, 0, SIZE, SIZE, -20, 14, dark);
   for (let k = 0; k <= SIZE; k += 120) for (const [x, z] of [[k, -2], [k, SIZE + 2], [-2, k], [SIZE + 2, k]]) m.box(x - 2, H + 10, z - 2, x + 2, H + 56, z + 2, dark);
-  for (const [a, b, c2, d] of [[-E, -E, SIZE + E, -T - 1], [-E, SIZE + T + 1, SIZE + E, SIZE + E], [-E, -T - 1, -T - 1, SIZE + T + 1], [SIZE + T + 1, -T - 1, SIZE + E, SIZE + T + 1]]) m.box(a, -40, b, c2, -8, d, new THREE.Color(0x2b5f7a));
+  for (const [a, b, c2, d] of [[-E, -E, SIZE + E, -T - 1], [-E, SIZE + T + 1, SIZE + E, SIZE + E], [-E, -T - 1, -T - 1, SIZE + T + 1], [SIZE + T + 1, -T - 1, SIZE + E, SIZE + T + 1]]) m.box(a, -40, b, c2, -8, d, new THREE.Color(0x2a4558));
   const o = new THREE.Mesh(m.geo(), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })); o.castShadow = false; scene.add(o);
 }

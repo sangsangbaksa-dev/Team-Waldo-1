@@ -1,8 +1,9 @@
 // 개발·테스트 전용 로컬 백엔드(`?pvp=local`). 같은 브라우저의 탭끼리 localStorage/BroadcastChannel 로 매칭·동기화해서
 // 네트워크 없이 두 탭으로 대전 흐름을 확인할 수 있습니다. 배포 빌드에는 포함되지 않습니다.
-import type { Account, Backend, Channel, GameKind, MatchRow, NetMsg, RankRow, Rating } from './types';
+import { CHAT_REPORT, CHAT_RULES, cleanChat, isChatKey, judgeChat, type ChatMessage } from './chat';
+import type { Account, Backend, Channel, GameKind, MatchRow, NetMsg, RankRow, Rating, RoomInfo, RoomListItem, RoomRow } from './types';
 
-interface Db { users: Record<string, { id: string; email: string; password: string; nickname: string }>; matches: Record<string, MatchRow & { claims: Record<string, string>; claimAt: Record<string, number>; created: number }>; ratings: Record<string, Rating & { user: string; game: GameKind }> }
+interface Db { users: Record<string, { id: string; email: string; password: string; nickname: string }>; matches: Record<string, MatchRow & { claims: Record<string, string>; claimAt: Record<string, number>; created: number }>; ratings: Record<string, Rating & { user: string; game: GameKind }>; rooms?: Record<string, RoomRow & { members: Array<{ user_id: string; ready: boolean }>; created: number }>; chat?: { seq: number; msgs: ChatMessage[]; mutes: Record<string, number>; reports: Array<{ id: number; reporter: string; target: string; at: number }> } }
 const KEY = 'waldo.local.pvp', ME = 'waldo.local.pvp.me';
 const load = (): Db => { try { return JSON.parse(localStorage.getItem(KEY) ?? '') as Db; } catch { return { users: {}, matches: {}, ratings: {} }; } };
 const save = (d: Db): void => localStorage.setItem(KEY, JSON.stringify(d));
@@ -25,6 +26,25 @@ export function createLocalBackend(): Backend {
     for (const m of Object.values(d.matches)) if (m.status === 'waiting' && m.host_id === a.id) m.status = 'cancelled';
     const m = { id: uid(), game, code, host_id: a.id, guest_id: null, status: 'waiting' as const, config, winner_id: null, host_delta: null, guest_delta: null, claims: {}, claimAt: {}, created: Date.now() };
     d.matches[m.id] = m; save(d); return pub(m);
+  };
+
+  const roomsOf = (d: Db): NonNullable<Db['rooms']> => (d.rooms ??= {});
+  const pubRoom = (r: NonNullable<Db['rooms']>[string]): RoomRow => { const { members: _m, created: _c, ...row } = r; void _m; void _c; return row; };
+  const exitRooms = (d: Db, user: string, only?: string): void => {
+    for (const r of Object.values(roomsOf(d))) {
+      if (r.status !== 'waiting' || (only && r.id !== only) || !r.members.some(m => m.user_id === user)) continue;
+      r.members = r.members.filter(m => m.user_id !== user);
+      if (r.host_id === user) { const nxt = r.members[0]; if (!nxt) r.status = 'closed'; else { r.host_id = nxt.user_id; nxt.ready = true; } }
+    }
+  };
+
+  const chatOf = (d: Db): NonNullable<Db['chat']> => (d.chat ??= { seq: 0, msgs: [], mutes: {}, reports: [] });
+  /** 서버의 pvp_chat_can_read 와 같은 규칙: 전체·게임 로비는 누구나, 방·매치는 그 사람들만 */
+  const canRead = (d: Db, channel: string): boolean => {
+    if (channel === 'lobby' || channel.startsWith('g:')) return true;
+    const a = me(); if (!a) return false; const id = channel.slice(2);
+    if (channel.startsWith('r:')) return !!roomsOf(d)[id]?.members.some(m => m.user_id === a.id);
+    const m = d.matches[id]; return !!m && (m.host_id === a.id || m.guest_id === a.id);
   };
 
   return {
@@ -72,9 +92,67 @@ export function createLocalBackend(): Backend {
     },
     async rating(game): Promise<Rating | null> { const a = me(); if (!a) return null; const r = load().ratings[`${a.id}:${game}`]; return r ?? { rating: 1000, wins: 0, losses: 0 }; },
     async nickname(userId) { return load().users[userId]?.nickname ?? '상대'; },
+    async roomCreate(game, max, isPublic, config) {
+      const a = need(), d = load(); exitRooms(d, a.id);
+      const r = { id: uid(), code: Math.random().toString(36).slice(2, 7).toUpperCase(), game, host_id: a.id, max_players: Math.min(6, Math.max(2, max)), is_public: isPublic, status: 'waiting' as const, config, match_id: null, members: [{ user_id: a.id, ready: true }], created: Date.now() };
+      roomsOf(d)[r.id] = r; save(d); return pubRoom(r);
+    },
+    async roomJoin(code) {
+      const a = need(), d = load(), r = Object.values(roomsOf(d)).find(x => x.code === code.trim().toUpperCase() && x.status === 'waiting');
+      if (!r) throw new Error('room_not_found'); if (r.members.some(m => m.user_id === a.id)) return pubRoom(r);
+      if (r.members.length >= r.max_players) throw new Error('room_full');
+      exitRooms(d, a.id); r.members.push({ user_id: a.id, ready: false }); save(d); return pubRoom(r);
+    },
+    async roomLeave(id) { const a = need(), d = load(); exitRooms(d, a.id, id); save(d); },
+    async roomReady(id, ready) { const a = need(), d = load(), r = roomsOf(d)[id], m = r?.members.find(x => x.user_id === a.id); if (r && m && r.status === 'waiting' && r.host_id !== a.id) { m.ready = ready; save(d); } },
+    async roomPing() { /* 로컬 백엔드는 끊김을 따로 처리하지 않습니다. */ },
+    async roomStart(id) {
+      const a = need(), d = load(), r = roomsOf(d)[id]; if (!r || r.host_id !== a.id) throw new Error('not_host'); if (r.status !== 'waiting') return pubRoom(r);
+      if (r.members.length < 2) throw new Error('need_players'); if (r.members.some(m => !m.ready)) throw new Error('not_ready');
+      if (r.members.length === 2) {
+        const m = { id: uid(), game: r.game, code: null, host_id: r.host_id, guest_id: r.members.find(x => x.user_id !== r.host_id)!.user_id, status: 'playing' as const, config: r.config, winner_id: null, host_delta: null, guest_delta: null, claims: {}, claimAt: {}, created: Date.now() };
+        d.matches[m.id] = m; r.match_id = m.id;
+      }
+      r.status = 'playing'; save(d); return pubRoom(r);
+    },
+    async roomState(id): Promise<RoomInfo> {
+      const d = load(), r = roomsOf(d)[id]; if (!r) throw new Error('not found');
+      return { room: pubRoom(r), members: r.members.map(m => ({ ...m, nickname: d.users[m.user_id]?.nickname ?? '?' })) };
+    },
+    async roomList(game): Promise<RoomListItem[]> {
+      const d = load(); return Object.values(roomsOf(d)).filter(r => r.game === game && r.status === 'waiting' && r.is_public).sort((x, y) => y.created - x.created)
+        .map(r => ({ room: pubRoom(r), host: d.users[r.host_id]?.nickname ?? '?', count: r.members.length }));
+    },
     open(matchId, onMessage): Channel {
       const bc = new BroadcastChannel(`waldo-pvp-${matchId}`); bc.onmessage = e => onMessage(e.data as NetMsg);
       return { ready: Promise.resolve(), send: msg => bc.postMessage(msg), close: () => bc.close() };
+    },
+    async chatHistory(channel, limit) { return chatOf(load()).msgs.filter(m => m.channel === channel && canRead(load(), channel)).slice(-limit); },
+    async chatSend(channel, raw) {
+      const a = need(), d = load(), c = chatOf(d);
+      if (!isChatKey(channel) || !canRead(d, channel)) throw new Error('chat_denied');
+      const body = cleanChat(raw), now = Date.now();
+      const mine = c.msgs.filter(m => m.user_id === a.id).slice(-CHAT_RULES.windowMax).map(m => ({ body: m.body, at: Date.parse(m.created_at) }));
+      const verdict = judgeChat(body, mine, now, c.mutes[a.id] ?? 0);
+      if (verdict === 'mute') { c.mutes[a.id] = now + CHAT_RULES.muteMs; save(d); throw new Error('chat_muted'); }
+      if (verdict) throw new Error(verdict);
+      const m: ChatMessage = { id: ++c.seq, channel, user_id: a.id, nickname: a.nickname, body, created_at: new Date(now).toISOString() };
+      c.msgs.push(m); c.msgs = c.msgs.slice(-500); save(d);
+      if (typeof BroadcastChannel !== 'undefined') { const bc = new BroadcastChannel('waldo-chat'); bc.postMessage(m); bc.close(); }
+      return m;
+    },
+    async chatReport(id) {
+      const a = need(), d = load(), c = chatOf(d), m = c.msgs.find(x => x.id === id);
+      if (!m || !canRead(d, m.channel)) throw new Error('chat_denied'); if (m.user_id === a.id) throw new Error('chat_own');
+      const now = Date.now(); if (!c.reports.some(r => r.id === id && r.reporter === a.id)) c.reports.push({ id, reporter: a.id, target: m.user_id, at: now });
+      const who = new Set(c.reports.filter(r => r.target === m.user_id && now - r.at < CHAT_REPORT.windowMin * 60000).map(r => r.reporter));
+      if (who.size >= CHAT_REPORT.reporters) c.mutes[m.user_id] = Math.max(c.mutes[m.user_id] ?? 0, now + CHAT_REPORT.muteMin * 60000);
+      save(d);
+    },
+    chatWatch(channel, onMessage) {
+      if (typeof BroadcastChannel === 'undefined') return { ready: Promise.resolve(), close: () => undefined };
+      const bc = new BroadcastChannel('waldo-chat'); bc.onmessage = e => { const m = e.data as ChatMessage; if (m.channel === channel && canRead(load(), channel)) onMessage(m); };
+      return { ready: Promise.resolve(), close: () => bc.close() };
     },
   };
 }

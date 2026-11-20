@@ -1,5 +1,6 @@
 // LAST CITY — 캐릭터·차량·탄환 갱신
 import { ACTORS, BLOCKS, CIV, PITCH, POLICE, ROAD, SIZE, WEAPONS, type WeaponDef } from './defs';
+import { carTarget, pedTarget } from './clock';
 import { clearLine, findPath, lanePoint, navBlocked, resolveCircle, solidAt } from './map';
 import { VEHICLES, type Actor, type Faction, type Vehicle, type World } from './world';
 
@@ -84,7 +85,7 @@ export function updateActors(w: World, dt: number): void {
   for (const a of w.actors) {
     if (!a.alive) continue; a.flash -= dt; a.runCd -= dt; a.repathT -= dt;
     if (a.inVeh) continue;
-    if (w.opts.duel && a.f === 1) continue; // 결투의 상대는 네트워크가 움직입니다
+    if (w.opts.duel && a.f >= 1) continue; // 결투의 상대는 네트워크가 움직입니다
     const def = ACTORS[a.kind], fac = a.f < 8 ? w.factions[a.f] : null;
     let sp = def.speed;
     if (a.kind === 'boss' && fac) {
@@ -288,13 +289,16 @@ export function updatePopulation(w: World, init: boolean): void {
   for (const v of w.vehicles) if (v.alive) { if (v.ai === 'traffic') cars++; if (v.ai === 'chase') ccars++; }
   const far = (x: number, y: number, d: number): boolean => init || !pb || Math.hypot(pb.x - x, pb.y - y) > d;
   const inZone = (x: number, y: number): boolean => Math.hypot(x - z.x, y - z.y) < z.r - 40;
-  if (peds < 34) for (let k = 0; k < 4; k++) {
+  const calm = w.opts.duel || w.opts.tutorial, pedMax = calm ? 34 : pedTarget(w.phase, w.weather), carMax = calm ? 16 : carTarget(w.phase, w.weather);
+  // 밤·폭풍우에는 시민이 집으로 돌아갑니다: 멀리 있는 배회 시민을 한 번에 한 명씩 정리
+  if (!init && peds > pedMax + 3) for (const a of w.actors) if (a.alive && a.f === CIV && !a.inVeh && a.order.type === 'wander' && (!pb || Math.hypot(pb.x - a.x, pb.y - a.y) > 700)) { a.alive = false; a.gone = true; w.byId.delete(a.id); break; }
+  if (peds < pedMax) for (let k = 0; k < 4; k++) {
     const bl = w.map.blocks[Math.floor(w.rng() * w.map.blocks.length)]; if (bl.type === 'base') continue; const t = w.rng() * 400 + 20, side = Math.floor(w.rng() * 4);
     const x = bl.x + (side === 0 ? 14 : side === 1 ? 426 : t), y = bl.y + (side === 2 ? 14 : side === 3 ? 426 : t);
     if (navBlocked(w.map, x, y) || !far(x, y, 750) || !inZone(x, y)) continue;
     const c = w.spawnActor('civ', CIV, x, y); c.order = { type: 'wander', x, y }; c.slot = Math.floor(w.rng() * 6); break;
   }
-  if (cars < 16) for (let k = 0; k < 4; k++) {
+  if (cars < carMax) for (let k = 0; k < 4; k++) {
     const p = lanePoint(w.rng); if (!far(p.x, p.y, 850) || !inZone(p.x, p.y) || w.vehicles.some(v => Math.hypot(v.x - p.x, v.y - p.y) < 90)) continue;
     const r = w.rng(), v = w.spawnVehicle(r < 0.12 ? 'sports' : r < 0.3 ? 'truck' : 'sedan', p.x, p.y, p.dir * Math.PI / 2); v.dir = p.dir; v.nextTurn = p.dir; v.ai = 'traffic';
     const d = w.spawnActor('civ', CIV, p.x, p.y); d.inVeh = v.id; v.driver = d.id; v.f = CIV; break;

@@ -2,8 +2,9 @@
 import type { PvpSession } from '../net/lobby';
 import type { Channel, NetMsg } from '../net/types';
 import { WEAPONS, type WeaponId } from './defs';
+import { cleanChat } from './chat';
 
-export const TARGET_KILLS = 5, TIME_LIMIT = 300;
+export const TARGET_KILLS = 5, TIME_LIMIT = 600;
 const SILENT_MS = 8000, NEVER_MS = 25000;
 
 export interface DuelPose { x: number; y: number; a: number; hp: number; mh: number; w: WeaponId }
@@ -14,6 +15,12 @@ export interface DuelHooks {
   onShot(s: DuelShot): void;
   /** 상대의 누적 사망 횟수 */
   onDeaths(n: number): void;
+  /** 상대의 병력·건물·사격 상태 */
+  onArmy(m: NetMsg): void;
+  /** 상대 본부가 무너졌습니다(내 승리) */
+  onHqDown(): void;
+  /** 상대의 채팅 */
+  onChat(text: string): void;
   onGone(reason: 'bye' | 'silent' | 'never'): void;
 }
 
@@ -24,7 +31,7 @@ export function parseShot(m: NetMsg): DuelShot | null { return num(m.x) && num(m
 
 /**
  * 결투 승패: 먼저 TARGET_KILLS 번 쓰러뜨리면 승리. 제한 시간이 지나면 킬이 더 많은 쪽이 이기고, 같으면 다음 킬이 승부를 가릅니다.
- * (킬 = 상대의 사망 횟수)
+ * (킬 = 상대의 사망 횟수) 본부가 무너지면 시간·킬과 무관하게 그 쪽이 집니다(게임 쪽에서 처리).
  */
 export function duelOutcome(myDeaths: number, oppDeaths: number, time: number): 'win' | 'lose' | null {
   if (myDeaths >= TARGET_KILLS || oppDeaths >= TARGET_KILLS || time >= TIME_LIMIT) { if (oppDeaths > myDeaths) return 'win'; if (myDeaths > oppDeaths) return 'lose'; }
@@ -55,6 +62,9 @@ export class CityDuel {
     else if (!this.started) return;
     else if (m.t === 'p') { const p = parsePose(m); if (p) this.hooks.onPose(p); }
     else if (m.t === 'sh') { const s = parseShot(m); if (s) this.hooks.onShot(s); }
+    else if (m.t === 'a') this.hooks.onArmy(m);
+    else if (m.t === 'hq') this.hooks.onHqDown();
+    else if (m.t === 'c') { const text = cleanChat(m.text); if (text) this.hooks.onChat(text); }
     else if (m.t === 'dead') { if (num(m.n, 0, 1000)) this.hooks.onDeaths(m.n); }
     else if (m.t === 'bye') this.gone('bye');
   }
@@ -65,6 +75,9 @@ export class CityDuel {
     this.ch.send({ t: 'p', x: r(p.x), y: r(p.y), a: Math.round(p.a * 100) / 100, hp: Math.round(p.hp), mh: Math.round(p.mh), w: p.w });
   }
   sendShot(s: DuelShot): void { if (this.started) this.ch.send({ t: 'sh', x: Math.round(s.x), y: Math.round(s.y), a: Math.round(s.a * 1000) / 1000, w: s.w, m: Math.round(s.m * 100) / 100 }); }
+  sendArmy(m: NetMsg): void { if (this.started) this.ch.send(m); }
+  sendHqDown(): void { this.ch.send({ t: 'hq' }); }
+  sendChat(text: string): void { const t = cleanChat(text); if (this.started && t) this.ch.send({ t: 'c', text: t }); }
   sendDeaths(n: number): void { this.ch.send({ t: 'dead', n }); }
   bye(): void { this.ch.send({ t: 'bye' }); }
   dispose(): void { this.dead = true; window.clearInterval(this.timer); this.ch.close(); }

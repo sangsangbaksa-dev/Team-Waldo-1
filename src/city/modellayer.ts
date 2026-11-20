@@ -5,6 +5,8 @@ import { makeRng } from './map';
 import { AWNING_OUT, CHAR_SCALE, HIP, KNEE, LEG_Z, PROPS } from './scale';
 import { CHAR_KINDS, instantiate, type Baked, type Models } from './models';
 import type { Actor, Structure, Vehicle, World } from './world';
+import { cullChunks, type ChunkRef } from './chunks';
+import { blankPose, calmState, computePose } from '../shared/character/pose';
 
 const CLOTH = [0x8d99ae, 0xb08968, 0x6d8a96, 0xa58fb3, 0x9aa37b, 0xc58f8f, 0xd27d5a, 0x5f9ea0], SKIN = [0xf1c9a5, 0xd9a47a, 0xa8744f, 0x7a5236, 0xf5d6b8];
 export const fcol = (f: number): number => f === POLICE ? 0x3f6fe0 : f === CIV ? 0x9aa3ad : new THREE.Color(FACTIONS[f]?.color ?? '#fff').getHex();
@@ -17,12 +19,13 @@ const VEHICLE_MODEL: Record<string, string> = { sedan: 'sedan', sports: 'sports'
 /** 한 부위(몸통·허벅지·정강이·팔)의 인스턴스 메시 묶음. 재질 종류별로 나뉩니다. */
 interface Part { fixed?: THREE.InstancedMesh; team?: THREE.InstancedMesh; skin?: THREE.InstancedMesh; glow?: THREE.InstancedMesh; n: number }
 interface CharSet { body: Part; leg: Part; shin?: Part; armL?: Part; armR?: Part; pl?: THREE.Vector3; pr?: THREE.Vector3 }
-const AIM = 1.42;
 
 export class ModelLayer {
   private d = new THREE.Object3D(); private base = new THREE.Matrix4(); private local = new THREE.Matrix4(); private q = new THREE.Quaternion(); private qz = new THREE.Quaternion(); private qy = new THREE.Quaternion();
-  private torso = new THREE.Matrix4(); private m = new THREE.Matrix4(); private m2 = new THREE.Matrix4(); private down = new THREE.Matrix4().makeTranslation(0, -HIP, 0); private aim = new Map<number, number>();
+  private st = calmState(); private pose = blankPose(); private torso = new THREE.Matrix4(); private m = new THREE.Matrix4(); private m2 = new THREE.Matrix4(); private down = new THREE.Matrix4().makeTranslation(0, -HIP, 0); private aim = new Map<number, number>();
   private v1 = new THREE.Vector3(); private one = new THREE.Vector3(1, 1, 1); private col = new THREE.Color(); private zAxis = new THREE.Vector3(0, 0, 1); private yAxis = new THREE.Vector3(0, 1, 0);
+  /** 정적 소품 칸들과, 이 거리(보통 안개 끝)보다 먼 칸은 그리지 않는 컬링 거리 */
+  readonly statics: ChunkRef[] = []; reach = 4700;
   private sets: Record<string, CharSet> = {}; private mechs = new Map<number, THREE.Object3D>(); private crystalMesh: THREE.InstancedMesh;
   private lam = new THREE.MeshLambertMaterial({ vertexColors: true }); private basic = new THREE.MeshBasicMaterial({ vertexColors: true });
   vmScene = new THREE.Scene(); vmCam = new THREE.PerspectiveCamera(64, 1, 0.5, 200); private vm: THREE.Object3D | null = null; private vmId = ''; private vmSwap = 0; private flash: THREE.Sprite;
@@ -49,11 +52,32 @@ export class ModelLayer {
     this.flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: 0xffd98a, blending: THREE.AdditiveBlending, depthTest: false, transparent: true })); this.flash.scale.set(0.55, 0.55, 1); this.flash.visible = false; this.flash.renderOrder = 10;
   }
 
+  /** 스스로 빛나는 부품(가로등·신호등·눈·차 불빛)의 밝기: 낮엔 은은하게, 밤엔 눈부시게. */
+  setGlow(k: number): void { this.basic.color.setScalar(k); }
+
   private inst(b: Baked, mat: THREE.Material, n: number, shadow = false): THREE.InstancedMesh | null {
     if (!b.fixed) return null; const m = new THREE.InstancedMesh(b.fixed, mat, n); m.frustumCulled = false; m.castShadow = shadow; this.scene.add(m); return m;
   }
 
+  /** 도시 전체에 흩어진 고정 소품(나무·가로등·신호등·보도 소품)을 가로세로 CELL 칸 구역별로 쪼개 각자 시야 판정(frustum culling)을 받게 합니다.
+   *  하나의 큰 InstancedMesh 는 보이지 않는 곳의 수십만 삼각형까지 매 프레임(그림자 패스 포함) 그려서 렉의 주원인이었습니다. */
+  private chunkStatics(before: Set<THREE.Object3D>): void {
+    const CELL = 800, mat = new THREE.Matrix4(), p = new THREE.Vector3();
+    for (const m of [...this.scene.children]) {
+      if (before.has(m) || !(m instanceof THREE.InstancedMesh) || m.count === 0) continue;
+      const cells = new Map<string, number[]>();
+      for (let i = 0; i < m.count; i++) { m.getMatrixAt(i, mat); p.setFromMatrixPosition(mat); const key = Math.floor(p.x / CELL) + ',' + Math.floor(p.z / CELL), a = cells.get(key); if (a) a.push(i); else cells.set(key, [i]); }
+      for (const ids of cells.values()) {
+        const c = new THREE.InstancedMesh(m.geometry, m.material, ids.length); c.castShadow = m.castShadow; c.receiveShadow = m.receiveShadow; c.renderOrder = m.renderOrder;
+        ids.forEach((src, k) => { m.getMatrixAt(src, mat); c.setMatrixAt(k, mat); }); c.instanceMatrix.needsUpdate = true; c.computeBoundingSphere(); this.scene.add(c);
+        const bs = c.boundingSphere!; this.statics.push({ mesh: c, x: bs.center.x, z: bs.center.z, r: bs.radius }); // 안개 너머 칸을 끄기 위해 기억
+      }
+      this.scene.remove(m); m.dispose();
+    }
+  }
+
   private scatter(): void {
+    const before = new Set(this.scene.children);
     const w = this.world, rng = makeRng(20261113), d = this.d, B = this.models.baked, put = (m: THREE.InstancedMesh, i: number, x: number, z: number, ry: number, s: number, sy = s): void => { d.position.set(x, 0, z); d.rotation.set(0, ry, 0); d.scale.set(s, sy, s); d.updateMatrix(); m.setMatrixAt(i, d.matrix); };
     // 나무
     const rounds = w.map.trees.filter((_, i) => i % 3 !== 0), pines = w.map.trees.filter((_, i) => i % 3 === 0);
@@ -123,6 +147,7 @@ export class ModelLayer {
     }
     if (lamp) lamp.instanceMatrix.needsUpdate = true;
     if (glowLamp) glowLamp.instanceMatrix.needsUpdate = true;
+    this.chunkStatics(before);
   }
 
   // ---------- 개별 모델 ----------
@@ -152,6 +177,7 @@ export class ModelLayer {
   // ---------- 매 프레임 ----------
   update(pb: Actor | null, third: boolean, cam: THREE.Vector3): void {
     const w = this.world, d = this.d, base = this.base, torso = this.torso, m = this.m, now = performance.now() / 1000;
+    cullChunks(this.statics, cam, this.reach);
     for (const k of CHAR_KINDS) { const s = this.sets[k]; for (const p of [s.body, s.leg, s.shin, s.armL, s.armR]) if (p) p.n = 0; }
     const seenMech = new Set<number>();
     for (const a of w.actors) {
@@ -160,29 +186,24 @@ export class ModelLayer {
       if (def.mech) { seenMech.add(a.id); this.syncMech(a); continue; }
       if (a === pb && !third) continue; const key = a.kind === 'civ' ? CIV_SKINS[a.id % CIV_SKINS.length] : a.kind, s = this.sets[key]; if (!s) continue;
       if (s.body.n >= (CAP[key] ?? 80)) continue;
-      // 걷기: 보폭(amp)과 달리기 정도(run)에 따라 다리·무릎·팔·몸통 기울기가 함께 움직입니다.
-      const S = CHAR_SCALE, spd = Math.hypot(a.vx, a.vy), amp = Math.min(1, spd / 70), run = Math.min(1, spd / 220), ph = a.walk * 0.09, sn = Math.sin(ph), cs = Math.cos(ph);
-      const bob = Math.abs(sn) * amp * 0.04 * S, team = a.flash > 0 ? 0xffffff : a.f === CIV ? CLOTH[a.slot % CLOTH.length] : fcol(a.f), skin = a.flash > 0 ? 0xffffff : SKIN[a.id % SKIN.length];
+      // 포즈는 공용 캐릭터 모듈(src/shared/character)이 계산합니다: 걷기·달리기·겨누기·숨쉬기
+      const S = CHAR_SCALE, spd = Math.hypot(a.vx, a.vy), amp = Math.min(1, spd / 70), run = Math.min(1, spd / 220), st = this.st;
+      st.speed = amp < 1 ? amp * 3.2 : 3.2 + run * 4.6; st.walk = a.walk * 0.09 / 1.35; st.time = now + a.id; st.aim = 0; st.recoil = 0;
+      if (a.kind === 'boss') { let u = this.aim.get(a.id) ?? 0; u += ((a.cd > 0 ? 1 : 0) - u) * (a.cd > 0 ? 0.45 : 0.035); this.aim.set(a.id, u); st.aim = Math.min(1, u * 1.15); }
+      const P = computePose(st, this.pose);
+      const bob = P.rootY * S, team = a.flash > 0 ? 0xffffff : a.f === CIV ? CLOTH[a.slot % CLOTH.length] : fcol(a.f), skin = a.flash > 0 ? 0xffffff : SKIN[a.id % SKIN.length];
       this.q.setFromAxisAngle(this.yAxis, -a.ang); base.compose(this.v1.set(a.x, bob, a.y), this.q, d.scale.set(S, S, S));
-      this.joint(m, base, 0, HIP, 0, -(0.04 * amp + 0.1 * run), -sn * 0.07 * amp); torso.multiplyMatrices(m, this.down);
+      this.joint(m, base, 0, HIP, 0, P.torsoLean, P.torsoTwist); torso.multiplyMatrices(m, this.down);
       this.put(s.body, torso, team, skin);
       for (let side = -1; side <= 1; side += 2) {
+        const th = side < 0 ? P.thighL : P.thighR, sh = side < 0 ? P.shinL : P.shinR;
         if (s.shin) {
-          this.joint(m, base, 0, HIP, side * LEG_Z, sn * side * (0.5 + 0.2 * run) * amp + 0.12 * run); this.put(s.leg, m, team, skin);
-          this.joint(this.m2, m, 0, -KNEE, 0, -amp * (0.12 + (0.6 + 0.5 * run) * Math.max(0, cs * side))); this.put(s.shin, this.m2, team, skin);
-        } else { this.joint(m, base, 0, HIP, side * LEG_Z, sn * side * 0.75 * amp); this.put(s.leg, m, team, skin); }
+          this.joint(m, base, 0, HIP, side * LEG_Z, th); this.put(s.leg, m, team, skin);
+          this.joint(this.m2, m, 0, -KNEE, 0, sh); this.put(s.shin, this.m2, team, skin);
+        } else { this.joint(m, base, 0, HIP, side * LEG_Z, th * 1.3); this.put(s.leg, m, team, skin); }
       }
-      if (s.armL || s.armR) {
-        const idle = Math.sin(now * 1.6 + a.id) * 0.025 * (1 - amp), swing = sn * (0.42 + 0.3 * run) * amp;
-        if (s.armL && s.pl) { this.joint(m, torso, s.pl.x, s.pl.y, s.pl.z, swing + idle + 0.06 * run); this.put(s.armL, m, team, skin); }
-        if (s.armR && s.pr) {
-          let ang = -swing - idle + 0.06 * run;
-          if (a.kind === 'boss') { // 총을 쏘는 동안에는 오른팔을 들어 겨눕니다
-            let u = this.aim.get(a.id) ?? 0; u += ((a.cd > 0 ? 1 : 0) - u) * (a.cd > 0 ? 0.45 : 0.035); this.aim.set(a.id, u); ang += (AIM - ang) * Math.min(1, u * 1.15);
-          }
-          this.joint(m, torso, s.pr.x, s.pr.y, s.pr.z, ang); this.put(s.armR, m, team, skin);
-        }
-      }
+      if (s.armL && s.pl) { this.joint(m, torso, s.pl.x, s.pl.y, s.pl.z, P.armL); this.put(s.armL, m, team, skin); }
+      if (s.armR && s.pr) { this.joint(m, torso, s.pr.x, s.pr.y, s.pr.z, P.armR); this.put(s.armR, m, team, skin); }
     }
     for (const k of CHAR_KINDS) { const s = this.sets[k]; this.flush(s.body); this.flush(s.leg); this.flush(s.shin); this.flush(s.armL); this.flush(s.armR); }
     for (const [id, g] of this.mechs) if (!seenMech.has(id)) { this.scene.remove(g); this.mechs.delete(id); }

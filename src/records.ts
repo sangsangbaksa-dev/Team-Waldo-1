@@ -48,3 +48,18 @@ export function writeRaceSetupRaw(v: unknown): void {
 }
 
 export const fmtTime = (s: number): string => { if (!Number.isFinite(s)) return '--:--.---'; const m = Math.floor(s / 60), r = s - m * 60; return `${m}:${r < 10 ? '0' : ''}${r.toFixed(3)}`; };
+
+export const RTS_KEY = 'waldo.rts.v1';
+export interface RtsRecords { difficulty: string; matches: number; wins: number; bestWin: Record<string, number> }
+export function readRtsRecords(): RtsRecords {
+  const rec: RtsRecords = { difficulty: 'normal', matches: 0, wins: 0, bestWin: {} };
+  try {
+    const r = JSON.parse(localStorage.getItem(RTS_KEY) ?? '{}') as Record<string, unknown>, n = (v: unknown): number => typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0;
+    if (typeof r.difficulty === 'string') rec.difficulty = r.difficulty;
+    rec.matches = n(r.matches); rec.wins = n(r.wins); rec.bestWin = timeTable(r.bestWin);
+  } catch { /* 기록 없이도 플레이할 수 있습니다. */ }
+  return rec;
+}
+export function writeRtsRecords(rec: RtsRecords): void {
+  try { localStorage.setItem(RTS_KEY, JSON.stringify(rec)); } catch { /* 저장 불가 환경 */ }
+}

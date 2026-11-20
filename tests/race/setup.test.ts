@@ -9,7 +9,7 @@ const DT = 1 / 90;
 
 describe('코스', () => {
   it('다섯 곳이고 사막 고속도로가 포함된다', () => {
-    expect(MAPS.map(m => m.id)).toEqual(['sunset', 'harbor', 'alpine', 'desert', 'frost']);
+    expect(MAPS.map(m => m.id)).toEqual(['sunset', 'harbor', 'alpine', 'desert', 'frost', 'storm', 'dusk']);
   });
   for (const m of MAPS) {
     const t = buildMapTrack(m);
@@ -39,7 +39,7 @@ describe('코스', () => {
 
 describe('차량', () => {
   it('여섯 대이고 능력치 합계가 모두 같다', () => {
-    expect(CARS).toHaveLength(6);
+    expect(CARS).toHaveLength(8);
     for (const c of CARS) { expect(STAT_KEYS.reduce((s, k) => s + c.points[k], 0), c.id).toBe(STAT_BUDGET); for (const k of STAT_KEYS) { expect(c.points[k]).toBeGreaterThanOrEqual(1); expect(c.points[k]).toBeLessThanOrEqual(5); } }
   });
   it('성격이 모두 다르다', () => {
@@ -70,11 +70,11 @@ describe('난이도', () => {
     expect(LEVELS.map(l => l.name)).toEqual(['쉬움', '보통', '어려움', '매우 어려움', '극한']);
     for (let i = 1; i < LEVELS.length; i++) { const a = LEVELS[i - 1], b = LEVELS[i]; expect(b.topMul).toBeGreaterThan(a.topMul); expect(b.gripMul).toBeGreaterThan(a.gripMul); expect(b.bandHi).toBeGreaterThanOrEqual(a.bandHi); expect(b.bandLo).toBeGreaterThanOrEqual(a.bandLo); expect(b.line).toBeGreaterThanOrEqual(a.line); }
   });
-  it('1단계(쉬움)는 처음 버전의 3.5단계 값이다', () => {
-    // 플레이어가 마지막 차량이면 첫 라이벌이 균형형(ARC)이라 기준 수치(70.5, 37)에 배율만 곱해진다.
-    const r = createRace(buildMapTrack(MAPS[0]), 3, Infinity, { level: 1, car: 'fuse' });
-    expect(r.racers[1].ai.top).toBeCloseTo(70.5 * 1.075, 6); expect(r.racers[1].ai.grip).toBeCloseTo(37 * 1.15, 6); expect(r.racers[1].ai.nitro).toBe(0.5); expect(r.racers[1].ai.line).toBeCloseTo(0.675, 6);
-    expect([LEVELS[0].bandLo, LEVELS[0].bandHi, LEVELS[0].bandK]).toEqual([0.955, 1.095, 0.00028]);
+  it('1단계(쉬움)의 라이벌 수치가 레벨 정의를 따른다', () => {
+    // 플레이어가 마지막 차량(RALLY)이면 첫 라이벌이 균형형(ARC)이라 기준 수치(70.5, 37)에 배율만 곱해진다.
+    const r = createRace(buildMapTrack(MAPS[0]), 3, Infinity, { level: 1, car: 'rally' });
+    expect(r.racers[1].ai.top).toBeCloseTo(70.5 * 1.1, 6); expect(r.racers[1].ai.grip).toBeCloseTo(37 * 1.2, 6); expect(r.racers[1].ai.nitro).toBe(0.4); expect(r.racers[1].ai.line).toBeCloseTo(0.78, 6);
+    expect([LEVELS[0].bandLo, LEVELS[0].bandHi, LEVELS[0].bandK]).toEqual([0.97, 1.115, 0.00034]);
   });
   it('라이벌은 플레이어와 다른 차량을 탄다', () => {
     for (const c of CARS) { const colors = createRace(buildMapTrack(MAPS[0]), 1, Infinity, { car: c.id }).racers.map(k => k.color); expect(new Set(colors).size).toBe(4); }
@@ -87,9 +87,9 @@ describe('난이도', () => {
 
 describe('선택 값 검증', () => {
   it('깨진 값은 기본 선택으로 되돌린다', () => {
-    expect(sanitizeSetup(null)).toEqual({ map: 'sunset', laps: 3, level: 1, car: 'arc' });
-    expect(sanitizeSetup({ map: 'nope', laps: 9, level: 0, car: 7 })).toEqual({ map: 'sunset', laps: 3, level: 1, car: 'arc' });
-    expect(sanitizeSetup({ map: 'desert', laps: 2, level: 5, car: 'fuse' })).toEqual({ map: 'desert', laps: 2, level: 5, car: 'fuse' });
+    expect(sanitizeSetup(null)).toEqual({ map: 'sunset', laps: 3, level: 1, car: 'arc', skin: 'stock', mode: 'race' });
+    expect(sanitizeSetup({ map: 'nope', laps: 9, level: 0, car: 7 })).toEqual({ map: 'sunset', laps: 3, level: 1, car: 'arc', skin: 'stock', mode: 'race' });
+    expect(sanitizeSetup({ map: 'desert', laps: 2, level: 5, car: 'fuse', skin: 'neon', mode: 'trial' })).toEqual({ map: 'desert', laps: 2, level: 5, car: 'fuse', skin: 'neon', mode: 'trial' });
   });
 });
 

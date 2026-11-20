@@ -2,3 +2,9 @@
 // 비밀 키(service_role, secret)는 이 저장소에 절대 넣지 않습니다.
 export const SUPABASE_URL = 'https://qgeblwepfowfswfxtemd.supabase.co';
 export const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_5J9A5uOS09eJ7gi5QJVhQg_42BOYw95';
+
+/** 온라인 대전(1대1·멀티플레이 방)과 로그인·랭킹 화면의 스위치. false 이면 모든 게임에서 관련 버튼이 사라지고 로비도 열리지 않습니다. */
+export const PVP_ENABLED = true;
+
+/** 게임 공통 채팅(허브·온라인 로비·온라인 게임 중). false 이면 채팅 창이 나타나지 않습니다. PVP_ENABLED 가 false 여도 꺼집니다. */
+export const CHAT_ENABLED = true;

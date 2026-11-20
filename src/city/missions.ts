@@ -1,5 +1,6 @@
 // LAST CITY — 작전 지령의 표시 모델 (게임 규칙 및 보상은 World가 관리)
 import type { World } from './world';
+import { SIDE_MILESTONES } from './events';
 
 export interface MissionItem {
   chapter: string;
@@ -29,7 +30,7 @@ export function missionLog(world: World): MissionItem[] {
   const rifle = world.actors.filter(a => a.alive && a.f === 0 && a.kind === 'rifle').length;
   const armed = f.slots.some(x => x.id !== 'pistol' && !(x.id === 'smg' && world.opts.klass === 'warlord'));
   const captured = f.ai.biz === -7 || !!world.quests[5]?.done;
-  const defeated = f.bossKills >= 1 && world.factions.some(x => !x.alive);
+  const defeated = world.factions.some(x => x.id !== 0 && !x.alive);
   const observed: number[] = [owned, Number(barracks), rifle, Number(armed), owned, Number(captured), Number(defeated)];
   const targets = [1, 1, 4, 1, 3, 1, 1];
   const items: MissionItem[] = world.quests.map((q, i) => {
@@ -51,7 +52,7 @@ export function missionLog(world: World): MissionItem[] {
     chapter: '08 · 결전',
     title: '최후의 왕국',
     objective: '나머지 일곱 왕국을 모두 무너뜨리고 최후까지 살아남으세요.',
-    hint: '지도(M)에서 적 본부를 확인하고 지휘 패널(Tab)과 병력 돌격으로 공격하세요. 자기장 밖에 머물지 마세요.',
+    hint: '지도(M)에서 적 본부를 확인하고 지휘 패널(Tab)과 병력 돌격으로 공격하세요. 오래 끌면 라이벌이 총력전에 들어가니 서두르세요.',
     current: world.winner === 0 ? 7 : Math.max(0, 7 - rivalsLeft),
     target: 7,
     reward: 0,
@@ -62,4 +63,11 @@ export function missionLog(world: World): MissionItem[] {
 
 export function missionSummary(items: readonly MissionItem[]): { completed: number; total: number; active: MissionItem | null } {
   return { completed: items.filter(x => x.done).length, total: items.length, active: items.find(x => !x.done) ?? null };
+}
+
+export interface SideJobItem { title: string; objective: string; current: number; target: number; reward: number; done: boolean }
+/** 부업 이정표(도시 사건을 몇 건 끝냈는지)와 연속 성공 상태 */
+export function sideJobs(world: World): { items: SideJobItem[]; streak: number; done: number } {
+  const items = SIDE_MILESTONES.map((m, i) => ({ title: m.title, objective: `도시 사건(수송차·구조·배달·현상금) ${m.n}건 완료`, current: Math.min(m.n, world.eventsDone), target: m.n, reward: m.reward, done: world.sideClaimed > i }));
+  return { items, streak: world.eventStreak, done: world.eventsDone };
 }

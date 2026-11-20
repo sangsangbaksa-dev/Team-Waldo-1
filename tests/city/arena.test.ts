@@ -35,6 +35,13 @@ describe('LAST CITY 1대1 전용 맵', () => {
       expect(map.biz.some(z => z.kind === 'gunshop')).toBe(true);
     });
 
+    it('일꾼이 캘 크리스탈이 양쪽 본부 근처에 점대칭으로 있고 건물 안에 묻히지 않는다', () => {
+      expect(map.crystals.length).toBeGreaterThanOrEqual(12);
+      const key = (c: { x: number; y: number }): string => `${Math.round(c.x)},${Math.round(c.y)}`, set = new Set(map.crystals.map(key));
+      for (const c of map.crystals) { expect(set.has(key({ x: SIZE - c.x, y: SIZE - c.y }))).toBe(true); expect(solidAt(map, c.x, c.y)).toBeFalsy(); }
+      for (const base of map.bases) expect(map.crystals.filter(c => Math.hypot(c.x - base.x, c.y - base.y) < 340).length).toBeGreaterThanOrEqual(6);
+    });
+
     it('블록은 9×9 전부 있고 경기장 밖은 void 다', () => {
       expect(map.blocks).toHaveLength(BLOCKS * BLOCKS);
       expect(map.blocks.filter(b => b.type !== 'void')).toHaveLength(9);
@@ -88,7 +95,7 @@ describe('LAST CITY 1대1 전용 맵', () => {
       expect(at(host, 0)).toEqual(at(guest, 1)); expect(at(host, 1)).toEqual(at(guest, 0)); expect(at(host, 0)).not.toEqual(at(host, 1));
       expect(host.loot.map(l => [l.x, l.y, l.type, l.weapon])).toEqual(guest.loot.map(l => [l.x, l.y, l.type, l.weapon]));
       expect(host.map.arena?.name).toBe(arenaInfo(id).name);
-      expect(host.vehicles).toHaveLength(0); expect(host.actors.filter(a => a.alive)).toHaveLength(2);
+      expect(host.vehicles).toHaveLength(0); expect(host.actors.filter(a => a.alive && a.kind === 'boss')).toHaveLength(2); expect(host.actors.filter(a => a.alive && a.f === 1)).toHaveLength(1);
       expect(host.businesses.length).toBe(host.map.biz.length);
     }
   });

@@ -1,7 +1,9 @@
 // SPEED RUSH — 출발 전 선택 화면(코스·랩 수·난이도·차량). DOM 만 쓰며 THREE 에 의존하지 않습니다.
-import { CARS, LAP_OPTIONS, LEVELS, STAT_KEYS, STAT_LABELS, carById, levelById, sanitizeSetup, type RaceSetup } from './config';
+import { CARS, LAP_OPTIONS, LEVELS, SKINS, STAT_KEYS, STAT_LABELS, carById, levelById, paintOf, sanitizeSetup, type RaceSetup } from './config';
 import { MAPS, mapById } from './maps';
 import { buildMapTrack } from './track';
+import { buySkin, ownsSkin, writeGarage, type Garage } from './garage';
+import { readGhost } from './ghost';
 import { fmtTime, raceRaceKey, type RaceRecords } from '../records';
 
 const esc = (s: string): string => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c);
@@ -19,38 +21,67 @@ function outline(id: string): { d: string; km: string } {
 
 export interface SetupHandle { read(): RaceSetup; destroy(): void }
 
-export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceRecords, cb: { onStart: (s: RaceSetup) => void; onExit: () => void; onPvp?: (s: RaceSetup) => void }): SetupHandle {
+export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceRecords, garage: { value: Garage }, cb: { onStart: (s: RaceSetup) => void; onExit: () => void; onPvp?: (s: RaceSetup) => void }): SetupHandle {
   let cur = sanitizeSetup(initial);
+  if (!ownsSkin(garage.value, cur.skin)) cur = { ...cur, skin: 'stock' };
   const root = document.createElement('div'); root.className = 'rc-setup'; root.setAttribute('role', 'dialog'); root.setAttribute('aria-label', '레이스 설정');
-  const mapCard = (m: (typeof MAPS)[number]): string => { const o = outline(m.id); return `<button type="button" class="rc-opt rc-map" data-pick="map:${m.id}"><svg viewBox="0 0 120 64" aria-hidden="true"><path d="${o.d}"/></svg><span class="rc-opt-name">${esc(m.name)}</span><span class="rc-opt-sub">${esc(m.place)} · ${o.km}km</span></button>`; };
-  const carCard = (c: (typeof CARS)[number]): string => `<button type="button" class="rc-opt rc-car" data-pick="car:${c.id}"><span class="rc-car-head"><i style="background:${c.color}"></i><b>${c.name}</b><em>${c.role}</em></span><span class="rc-stats">${STAT_KEYS.map(k => `<span class="rc-stat"><label>${STAT_LABELS[k]}</label><span class="bar" role="img" aria-label="${STAT_LABELS[k]} ${c.points[k]} / 5"><span style="width:${c.points[k] * 20}%"></span></span></span>`).join('')}</span></button>`;
+  const hex = (n: number): string => `#${n.toString(16).padStart(6, '0')}`;
+  const mapCard = (m: (typeof MAPS)[number]): string => { const o = outline(m.id); return `<button type="button" class="rc-opt rc-map" data-pick="map:${m.id}" style="--m-sky:${hex(m.theme.light.sky)};--m-fog:${hex(m.theme.fog.color)};--m-ground:${hex(m.theme.light.ground)};--m-line:${hex(m.theme.arch.a)}"><svg viewBox="0 0 120 64" aria-hidden="true"><path d="${o.d}"/></svg><span class="rc-opt-name">${esc(m.name)}</span><span class="rc-opt-sub">${esc(m.place)} · ${o.km}km</span></button>`; };
+  const carCard = (c: (typeof CARS)[number]): string => `<button type="button" class="rc-opt rc-car" data-pick="car:${c.id}" style="--car:${c.color}"><span class="rc-car-head"><i style="background:${c.color}"></i><b>${c.name}</b><em>${c.role}</em></span><span class="rc-stats">${STAT_KEYS.map(k => `<span class="rc-stat"><label>${STAT_LABELS[k]}</label><span class="bar" role="img" aria-label="${STAT_LABELS[k]} ${c.points[k]} / 5"><span style="width:${c.points[k] * 20}%"></span></span></span>`).join('')}</span></button>`;
   root.innerHTML = `
     <div class="rc-setup-inner">
       <header><span class="rc-eyebrow">SPEED RUSH</span><h2>레이스 설정</h2></header>
       <div class="rc-setup-cols">
         <div class="rc-setup-col">
           <section><h3>코스</h3><div class="rc-grid maps">${MAPS.map(mapCard).join('')}</div><p class="rc-note" data-note="map"></p></section>
+          <section><h3>모드</h3><div class="rc-seg" data-seg="mode"><button type="button" class="rc-opt" data-pick="mode:race">레이스</button><button type="button" class="rc-opt" data-pick="mode:trial">타임어택</button></div><p class="rc-note" data-note="mode"></p></section>
           <section><h3>종목</h3><div class="rc-seg" data-seg="laps">${LAP_OPTIONS.map(n => `<button type="button" class="rc-opt" data-pick="laps:${n}">${n}랩</button>`).join('')}</div><p class="rc-note" data-note="record"></p></section>
           <section><h3>난이도</h3><div class="rc-seg lv" data-seg="level">${LEVELS.map(l => `<button type="button" class="rc-opt" data-pick="level:${l.id}"><b>${l.id}</b>${l.name}</button>`).join('')}</div><p class="rc-note" data-note="level"></p></section>
         </div>
-        <section class="rc-setup-col"><h3>차량</h3><div class="rc-grid cars">${CARS.map(carCard).join('')}</div><p class="rc-note" data-note="car"></p></section>
+        <section class="rc-setup-col"><h3>차량</h3><div class="rc-grid cars">${CARS.map(carCard).join('')}</div><p class="rc-note" data-note="car"></p><div class="rc-garage" data-garage></div></section>
       </div>
-      <footer><button type="button" class="ghost" data-setup="exit">메뉴로</button><span class="rc-pick" data-note="summary"></span>${cb.onPvp ? '<button type="button" data-setup="pvp">1대1 대전</button>' : ''}<button type="button" class="primary" data-setup="start">출발</button></footer>
+      <footer><button type="button" class="ghost" data-setup="exit">메뉴로</button><span class="rc-pick" data-note="summary"></span>${cb.onPvp ? '<button type="button" data-setup="pvp">온라인 대전 · 방</button>' : ''}<button type="button" class="primary" data-setup="start">출발</button></footer>
     </div>`;
   host.append(root);
   const note = (k: string): HTMLElement => root.querySelector<HTMLElement>(`[data-note="${k}"]`)!;
 
+  function paintGarage(): void {
+    const car = carById(cur.car), box = root.querySelector<HTMLElement>('[data-garage]')!;
+    const paintRow = SKINS.map(k => { const pt = paintOf(car, k.id), own = ownsSkin(garage.value, k.id), can = garage.value.coins >= k.cost;
+      return own ? `<button type="button" class="rc-skin" data-pick="skin:${k.id}" title="${esc(k.name)}" style="--c:${pt.color};--a:${pt.accent}"><i></i><span>${esc(k.name)}</span></button>` : `<button type="button" class="rc-skin locked" data-buyskin="${k.id}" title="${esc(k.name)} ${k.cost}코인" style="--c:${pt.color};--a:${pt.accent}"${can ? '' : ' disabled'}><i></i><span>${esc(k.name)} · ${k.cost}</span></button>`; }).join('');
+    box.innerHTML = `<div class="rc-garage-head"><h3>차량 도장</h3><span class="rc-coins" aria-label="보유 코인">${garage.value.coins.toLocaleString('ko-KR')} 코인</span></div><div class="rc-skins" role="group" aria-label="도장">${paintRow}</div><p class="rc-note">코인은 도장 구매에만 사용됩니다. 차량 성능에는 영향을 주지 않습니다.</p>`;
+  }
   function paint(): void {
+    paintGarage();
     const map = mapById(cur.map), car = carById(cur.car), lv = levelById(cur.level);
     root.querySelectorAll<HTMLElement>('[data-pick]').forEach(b => { const [k, v] = b.dataset.pick!.split(':'); const on = String(cur[k as keyof RaceSetup]) === v; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
     note('map').textContent = map.blurb; note('level').textContent = lv.blurb; note('car').textContent = `${car.name} · ${car.role} — ${car.blurb}`;
     const lap = records.bestLap[map.id], race = records.bestRace[raceRaceKey(map.id, cur.laps)];
+    const ghost = cur.mode === 'trial' ? readGhost(map.id, cur.laps, car.id) : null;
+    note('mode').textContent = cur.mode === 'trial' ? `혼자 달리며 내 최고 주행(고스트)과 겨룹니다.${ghost ? ` 저장된 고스트 ${fmtTime(ghost.time)}` : ' 아직 고스트가 없습니다 — 첫 주행이 고스트가 됩니다.'}` : '라이벌 3대와 순위를 겨룹니다. 코스 위 상자를 먹고 E 키로 아이템(니트로 셀·실드·오일·서지)을 쓰세요. 드리프트를 이어 가면 점수가 쌓입니다.';
+    root.querySelector<HTMLElement>('[data-seg="level"]')?.closest('section')?.toggleAttribute('hidden', cur.mode === 'trial');
     note('record').textContent = lap !== undefined || race !== undefined ? `${map.name} 최고 랩 ${lap !== undefined ? fmtTime(lap) : '--'} · ${cur.laps}랩 최고 ${race !== undefined ? fmtTime(race) : '--'}` : '기록 없음';
-    note('summary').textContent = `${map.name} · ${cur.laps}랩 · ${lv.name} · ${car.name}`;
+    note('summary').textContent = `${map.name} · ${cur.laps}랩 · ${cur.mode === 'trial' ? '타임어택' : lv.name} · ${car.name}`;
   }
   root.addEventListener('click', e => {
     const t = e.target as HTMLElement, pick = t.closest<HTMLElement>('[data-pick]'), act = t.closest<HTMLElement>('[data-setup]');
-    if (pick) { const [k, v] = pick.dataset.pick!.split(':'); cur = sanitizeSetup({ ...cur, [k]: k === 'laps' || k === 'level' ? Number(v) : v }); paint(); }
+    const skin = t.closest<HTMLElement>('[data-buyskin]');
+    const focusSkin = (): void => root.querySelector<HTMLButtonElement>(`[data-pick="skin:${cur.skin}"]`)?.focus();
+    if (skin) {
+      const next = buySkin(garage.value, skin.dataset.buyskin!);
+      if (next) {
+        garage.value = next; writeGarage(next);
+        cur = sanitizeSetup({ ...cur, skin: skin.dataset.buyskin });
+        paint(); focusSkin();
+      }
+      return;
+    }
+    if (pick) {
+      const [k, v] = pick.dataset.pick!.split(':');
+      cur = sanitizeSetup({ ...cur, [k]: k === 'laps' || k === 'level' ? Number(v) : v });
+      paint();
+      if (k === 'skin') focusSkin();
+    }
     else if (act?.dataset.setup === 'start') cb.onStart(cur);
     else if (act?.dataset.setup === 'pvp') cb.onPvp?.(cur);
     else if (act?.dataset.setup === 'exit') cb.onExit();

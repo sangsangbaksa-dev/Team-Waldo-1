@@ -1,7 +1,8 @@
 // Supabase 백엔드: 계정(Auth), 매칭·전적(RPC), 실시간 동기화(Realtime Broadcast).
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './config';
-import type { Account, Backend, Channel, GameKind, MatchRow, NetMsg, RankRow, Rating } from './types';
+import type { ChatMessage } from './chat';
+import type { Account, Backend, Channel, GameKind, MatchRow, NetMsg, RankRow, Rating, RoomInfo, RoomListItem, RoomRow } from './types';
 
 /** 확인 메일의 링크가 돌아올 주소: 지금 접속한 사이트의 이 페이지(배포 주소마다 달라서 고정하지 않습니다). Supabase 의 Redirect URLs 에 등록된 주소여야 합니다. */
 const homeUrl = (): string => location.origin + location.pathname.replace(/index\.html$/, '');
@@ -17,6 +18,7 @@ export function createSupabaseBackend(): Backend {
     const { data } = await sb.from('pvp_profiles').select('nickname').eq('id', id).maybeSingle();
     return { id, email, nickname: (data as { nickname: string } | null)?.nickname ?? '플레이어' };
   }
+  let chatSeq = 0;
   const rpc = async <T>(fn: string, args: Record<string, unknown> = {}): Promise<T> => ok(await sb.rpc(fn, args)) as T;
 
   return {
@@ -56,6 +58,21 @@ export function createSupabaseBackend(): Backend {
       return (data as Rating | null) ?? { rating: 1000, wins: 0, losses: 0 };
     },
     async nickname(userId) { const { data } = await sb.from('pvp_profiles').select('nickname').eq('id', userId).maybeSingle(); return (data as { nickname: string } | null)?.nickname ?? '상대'; },
+    roomCreate: (game, max, isPublic, config) => rpc<RoomRow>('pvp_room_create', { p_game: game, p_max: max, p_public: isPublic, p_config: config }),
+    roomJoin: code => rpc<RoomRow>('pvp_room_join', { p_code: code }),
+    async roomLeave(id) { await rpc('pvp_room_leave', { p_id: id }); },
+    async roomReady(id, ready) { await rpc('pvp_room_ready', { p_id: id, p_ready: ready }); },
+    async roomPing(id) { await rpc('pvp_room_ping', { p_id: id }); },
+    roomStart: id => rpc<RoomRow>('pvp_room_start', { p_id: id }),
+    async roomState(id): Promise<RoomInfo> {
+      const room = ok(await sb.from('pvp_rooms').select('*').eq('id', id).single()) as RoomRow;
+      const rows = ok(await sb.from('pvp_room_members').select('user_id,ready,joined_at,pvp_profiles(nickname)').eq('room_id', id).order('joined_at').order('user_id')) as unknown as Array<{ user_id: string; ready: boolean; pvp_profiles: { nickname: string } | null }>;
+      return { room, members: rows.map(r => ({ user_id: r.user_id, ready: r.ready, nickname: r.pvp_profiles?.nickname ?? '플레이어' })) };
+    },
+    async roomList(game): Promise<RoomListItem[]> {
+      const rows = ok(await sb.from('pvp_rooms').select('*,pvp_room_members(user_id),pvp_profiles(nickname)').eq('game', game).eq('status', 'waiting').eq('is_public', true).order('created_at', { ascending: false }).limit(20)) as unknown as Array<RoomRow & { pvp_room_members: unknown[]; pvp_profiles: { nickname: string } | null }>;
+      return rows.map(({ pvp_room_members, pvp_profiles, ...room }) => ({ room, host: pvp_profiles?.nickname ?? '플레이어', count: pvp_room_members.length }));
+    },
     open(matchId, onMessage): Channel {
       const ch = sb.channel(`pvp:${matchId}`, { config: { broadcast: { self: false, ack: false } } });
       const ready = new Promise<void>((resolve, reject) => {
@@ -64,6 +81,27 @@ export function createSupabaseBackend(): Backend {
       });
       ready.catch(() => { /* 호출한 쪽에서 처리합니다. */ });
       return { ready, send: msg => { void ch.send({ type: 'broadcast', event: 'm', payload: msg }); }, close: () => { void sb.removeChannel(ch); } };
+    },
+    async chatHistory(channel, limit) {
+      const rows = ok(await sb.from('pvp_chat_messages').select('id,channel,user_id,nickname,body,created_at').eq('channel', channel).order('id', { ascending: false }).limit(limit)) as ChatMessage[];
+      return rows.map(m => ({ ...m, id: Number(m.id) })).reverse();
+    },
+    async chatSend(channel, body) {
+      // 15초 한도를 넘긴 전송은 서버가 제한을 기록하고 null 을 돌려줍니다.
+      const row = await rpc<ChatMessage | null>('pvp_chat_send', { p_channel: channel, p_body: body });
+      if (!row || row.id == null) throw new Error('chat_muted');
+      return { ...row, id: Number(row.id) };
+    },
+    async chatReport(id) { await rpc('pvp_chat_report', { p_id: id }); },
+    chatWatch(channel, onMessage) {
+      // 같은 대화방을 두 곳에서 지켜봐도 겹치지 않게 채널 이름에 번호를 붙입니다.
+      const ch = sb.channel(`chat:${channel}:${++chatSeq}`);
+      const ready = new Promise<void>((resolve, reject) => {
+        ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'pvp_chat_messages', filter: `channel=eq.${channel}` }, (p: { new: unknown }) => { const m = p.new as ChatMessage | null; if (m && m.id != null) onMessage({ ...m, id: Number(m.id) }); })
+          .subscribe((status: string) => { if (status === 'SUBSCRIBED') resolve(); else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') reject(new Error('network')); });
+      });
+      ready.catch(() => { /* 화면은 다시 연결될 때까지 기록만 보여 줍니다. */ });
+      return { ready, close: () => { void sb.removeChannel(ch); } };
     },
   };
 }

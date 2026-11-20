@@ -10,7 +10,7 @@ export const STAT_BUDGET = 15;
 
 export interface CarDef {
   id: string; name: string; role: string; blurb: string; color: string; points: StatPoints;
-  /** race.glb 의 차체 노드 이름과 보조색(스트라이프·윙) */
+  /** race.glb 의 차체 노드 이름(gt·wide·long)와 보조색(스트라이프·윙) */
   model: 'gt' | 'wide' | 'long'; accent: string;
 }
 
@@ -21,7 +21,24 @@ export const CARS: ReadonlyArray<CarDef> = [
   { id: 'orbit', name: 'ORBIT', role: '코너링형', blurb: '코너에서 속도를 덜 잃음', color: '#e5e9ef', points: { accel: 2, top: 3, handling: 5, drift: 2, nitro: 3 }, model: 'gt', accent: '#d8323f' },
   { id: 'slide', name: 'SLIDE', role: '드리프트형', blurb: '미끄러지며 부스트를 빨리 모음', color: '#8a5cf0', points: { accel: 3, top: 2, handling: 3, drift: 5, nitro: 2 }, model: 'wide', accent: '#f2c230' },
   { id: 'fuse', name: 'FUSE', role: '니트로형', blurb: '니트로가 오래가고 빨리 참', color: '#2fbf8a', points: { accel: 2, top: 3, handling: 3, drift: 2, nitro: 5 }, model: 'gt', accent: '#1b1d22' },
+  { id: 'nova', name: 'NOVA', role: '고속 코너형', blurb: '직선과 코너가 모두 빠른 만능 스포츠카', color: '#16c7d9', points: { accel: 3, top: 4, handling: 4, drift: 2, nitro: 2 }, model: 'long', accent: '#f2f2f2' },
+  { id: 'rally', name: 'RALLY', role: '랠리형', blurb: '출발이 빠르고 드리프트가 잘 걸리는 랠리 머신', color: '#f2c230', points: { accel: 4, top: 2, handling: 3, drift: 4, nitro: 2 }, model: 'wide', accent: '#1b1d22' },
 ];
+
+/** 차량 도장(스킨). stock 은 차량 고유색이고, 나머지는 차고에서 코인으로 삽니다. */
+export interface SkinDef { id: string; name: string; color: string; accent: string; cost: number }
+export const SKINS: ReadonlyArray<SkinDef> = [
+  { id: 'stock', name: '기본', color: '', accent: '', cost: 0 },
+  { id: 'night', name: '나이트 블랙', color: '#15171d', accent: '#ff3b5c', cost: 220 },
+  { id: 'pearl', name: '펄 화이트', color: '#f1f3f6', accent: '#2e7dff', cost: 220 },
+  { id: 'sunset', name: '선셋 오렌지', color: '#ff6a2b', accent: '#2a1038', cost: 320 },
+  { id: 'neon', name: '네온 라임', color: '#9cff2e', accent: '#1b1d22', cost: 320 },
+  { id: 'royal', name: '로열 퍼플', color: '#6a35d9', accent: '#f2c230', cost: 420 },
+  { id: 'gold', name: '골드 러시', color: '#d9a62e', accent: '#15171d', cost: 600 },
+];
+export const skinById = (id: string): SkinDef => SKINS.find(s => s.id === id) ?? SKINS[0];
+/** 스킨을 입힌 차량의 차체색·보조색 */
+export const paintOf = (car: CarDef, skinId: string): { color: string; accent: string } => { const k = skinById(skinId); return k.color ? { color: k.color, accent: k.accent } : { color: car.color, accent: car.accent }; };
 export const carById = (id: string): CarDef => CARS.find(c => c.id === id) ?? CARS[0];
 
 // 한 점당 성능 변화량. 기준(3점)에서 ±2점이 곧 가장 낮은/높은 값입니다.
@@ -46,21 +63,22 @@ export interface LevelDef {
   /** 니트로를 쓰기 시작하는 잔량. 없으면 쓰지 않음 */
   nitro?: number;
 }
-// 1단계는 이전 버전의 라이벌과 같은 값입니다.
+// 이전 버전보다 라이벌이 전반적으로 빨라지고 더 끈질기게 따라붙습니다.
 export const LEVELS: ReadonlyArray<LevelDef> = [
-  { id: 1, name: '쉬움', blurb: '레이싱 라인을 타고 직선에서 니트로를 자주 씁니다', topMul: 1.075, gripMul: 1.15, bandLo: 0.955, bandHi: 1.095, bandK: 0.00028, line: 0.675, nitro: 0.5 },
-  { id: 2, name: '보통', blurb: '라인이 거의 완벽하고 쉽게 떨어지지 않습니다', topMul: 1.105, gripMul: 1.215, bandLo: 0.965, bandHi: 1.11, bandK: 0.00033, line: 0.9, nitro: 0.28 },
-  { id: 3, name: '어려움', blurb: '완벽한 라인과 니트로로 끝까지 압박합니다', topMul: 1.135, gripMul: 1.285, bandLo: 0.975, bandHi: 1.13, bandK: 0.0004, line: 1, nitro: 0.1 },
-  { id: 4, name: '매우 어려움', blurb: '실수 없이 니트로를 아낌없이 쓰며 거의 따라잡을 수 없습니다', topMul: 1.15, gripMul: 1.33, bandLo: 0.985, bandHi: 1.145, bandK: 0.00046, line: 1, nitro: 0.05 },
-  { id: 5, name: '극한', blurb: '드리프트와 니트로를 완벽하게 써야 겨우 이기는 최강의 라이벌입니다', topMul: 1.18, gripMul: 1.38, bandLo: 0.99, bandHi: 1.155, bandK: 0.0005, line: 1, nitro: 0.03 },
+  { id: 1, name: '쉬움', blurb: '레이싱 라인을 타고 직선에서 니트로를 자주 씁니다', topMul: 1.1, gripMul: 1.2, bandLo: 0.97, bandHi: 1.115, bandK: 0.00034, line: 0.78, nitro: 0.4 },
+  { id: 2, name: '보통', blurb: '라인이 거의 완벽하고 쉽게 떨어지지 않습니다', topMul: 1.135, gripMul: 1.265, bandLo: 0.98, bandHi: 1.13, bandK: 0.0004, line: 0.95, nitro: 0.2 },
+  { id: 3, name: '어려움', blurb: '완벽한 라인과 니트로로 끝까지 압박합니다', topMul: 1.165, gripMul: 1.335, bandLo: 0.988, bandHi: 1.15, bandK: 0.00048, line: 1, nitro: 0.07 },
+  { id: 4, name: '매우 어려움', blurb: '실수 없이 니트로를 아낌없이 쓰며 거의 따라잡을 수 없습니다', topMul: 1.185, gripMul: 1.385, bandLo: 0.995, bandHi: 1.165, bandK: 0.00055, line: 1, nitro: 0.03 },
+  { id: 5, name: '극한', blurb: '드리프트와 니트로를 완벽하게 써야 겨우 이기는 최강의 라이벌입니다', topMul: 1.215, gripMul: 1.44, bandLo: 1, bandHi: 1.18, bandK: 0.0006, line: 1, nitro: 0.02 },
 ];
 export const levelById = (id: number): LevelDef => LEVELS.find(l => l.id === id) ?? LEVELS[0];
 
 export const LAP_OPTIONS = [1, 2, 3] as const;
 export type Laps = (typeof LAP_OPTIONS)[number];
 
-export interface RaceSetup { map: string; laps: Laps; level: number; car: string }
-export const DEFAULT_SETUP: RaceSetup = { map: MAPS[0].id, laps: 3, level: 1, car: CARS[0].id };
+export type RaceMode = 'race' | 'trial';
+export interface RaceSetup { map: string; laps: Laps; level: number; car: string; skin: string; /** race: 라이벌과 경주, trial: 혼자 달리며 내 최고 기록의 고스트와 겨루는 타임어택 */ mode: RaceMode }
+export const DEFAULT_SETUP: RaceSetup = { map: MAPS[0].id, laps: 3, level: 1, car: CARS[0].id, skin: 'stock', mode: 'race' };
 
 /** 저장된 값이 깨져 있어도 항상 고를 수 있는 선택으로 되돌립니다. */
 export function sanitizeSetup(raw: unknown): RaceSetup {
@@ -71,6 +89,8 @@ export function sanitizeSetup(raw: unknown): RaceSetup {
     laps: pick(r.laps, v => LAP_OPTIONS.includes(v as Laps), DEFAULT_SETUP.laps),
     level: pick(r.level, v => LEVELS.some(l => l.id === v), DEFAULT_SETUP.level),
     car: pick(r.car, v => CARS.some(c => c.id === v), DEFAULT_SETUP.car),
+    skin: pick(r.skin, v => SKINS.some(k => k.id === v), DEFAULT_SETUP.skin),
+    mode: pick(r.mode, v => v === 'race' || v === 'trial', DEFAULT_SETUP.mode),
   };
 }
 export const mapOf = (s: RaceSetup): MapDef => MAPS.find(m => m.id === s.map) ?? MAPS[0];

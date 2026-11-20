@@ -22,6 +22,8 @@ export interface Theme {
   /** 먼 산 바위 색과 눈 덮임 여부(forest 배경) */
   mountain: number;
   snow?: boolean;
+  /** 비 세기(0~1): 빗줄기 표시와 노면 그립 감소 */
+  rain?: number;
   /** 건물·컨테이너·나무·바위 등 배경 소품의 색 */
   tint: number;
 }
@@ -71,6 +73,21 @@ const HARBOR: Theme = {
   tint: 0xffffff,
 };
 
+const STORM: Theme = {
+  ...HARBOR, rain: 1,
+  sky: { top: [0.02, 0.03, 0.06], mid: [0.07, 0.1, 0.15], low: [0.16, 0.2, 0.26], hor: [0.2, 0.25, 0.3], sun: [-0.4, 0.25, -1], sunColor: [0.55, 0.62, 0.72], stars: 0, clouds: 1 },
+  fog: { color: 0x2a3640, near: 60, far: 760 },
+  ground: { base: '#0b1218', line: '#1c2b38', grid: 'rgba(120,170,210,.1)', noise: false },
+  light: { sky: 0x7d93ad, ground: 0x0a1118, hemi: 0.85, sun: 0x9fb4cf, sunPower: 0.6 },
+  road: { base: '#1b1f27', edge: '#e8ecef', center: '#ffe27a', lane: 'rgba(255,255,255,.1)', centerDouble: false },
+  wall: { inner: [0.08, 0.1, 0.14], a: [0.9, 0.25, 0.2], b: [0.8, 0.83, 0.86] },
+  arch: { big: 0xdfe6ee, a: 0xff5a4a, b: 0x8fd4ff, count: 10 },
+  banner: { bg: '#0a1118', fg: '#ffffff', accent: '#ff5a4a' },
+  pad: '#9fe0ff',
+  shoulder: 0x141b22,
+  mountain: 0x1a2733,
+};
+
 const ALPINE: Theme = {
   scenery: 'forest',
   sky: { top: [0.22, 0.42, 0.78], mid: [0.52, 0.7, 0.9], low: [0.98, 0.84, 0.62], hor: [0.92, 0.82, 0.72], sun: [0.5, 0.28, -1], sunColor: [1.0, 0.92, 0.72], stars: 0, clouds: 0.8 },
@@ -87,6 +104,24 @@ const ALPINE: Theme = {
   shoulder: 0x5a5a46,
   mountain: 0x6a7a8c,
   tint: 0x2f5d34,
+};
+
+const DUSK: Theme = {
+  scenery: 'forest',
+  sky: { top: [0.16, 0.2, 0.42], mid: [0.78, 0.4, 0.34], low: [1.0, 0.56, 0.24], hor: [1.0, 0.62, 0.34], sun: [0.8, 0.06, -1], sunColor: [1.0, 0.7, 0.36], stars: 0.1, clouds: 0.9 },
+  fog: { color: 0xc9805a, near: 140, far: 1500 },
+  ground: { base: '#2b3524', line: '#323d29', grid: 'rgba(0,0,0,0)', noise: true },
+  light: { sky: 0xffb98a, ground: 0x3a3626, hemi: 0.95, sun: 0xff9a54, sunPower: 1.9 },
+  road: { base: '#35363b', edge: '#f1e9d8', center: '#f4c64a', lane: 'rgba(255,255,255,.05)', centerDouble: true },
+  curb: [[0.82, 0.2, 0.16], [0.95, 0.93, 0.88]],
+  wall: { inner: [0.2, 0.18, 0.2], a: [0.62, 0.6, 0.62], b: [0.8, 0.74, 0.7] },
+  arch: { big: 0xe9d3b8, a: 0xb8946e, b: 0xb8946e, count: 8 },
+  lamp: { kind: 'pole', a: 0x5a3f2a, b: 0x5a3f2a },
+  banner: { bg: '#241410', fg: '#ffffff', accent: '#ff8a3c' },
+  pad: '#ffd28a',
+  shoulder: 0x4d4634,
+  mountain: 0x4a4660,
+  tint: 0x24472c,
 };
 
 const DESERT: Theme = {
@@ -168,6 +203,23 @@ export const MAPS: ReadonlyArray<MapDef> = [
       [0, 0, 0], [300, 0, 1], [560, -30, 5], [760, -110, 9], [880, -260, 14], [900, -420, 18], [820, -560, 20],
       [660, -650, 18], [480, -640, 16], [380, -570, 11], [330, -480, 8], [250, -420, 6], [150, -440, 6], [70, -520, 10],
       [-40, -560, 14], [-170, -500, 19], [-230, -380, 18], [-210, -250, 14], [-120, -90, 6], [-60, -20, 2],
+    ],
+  },
+  {
+    id: 'storm', name: '스톰 코스트', place: '해안 · 폭우', blurb: '비에 젖은 해안 도로. 그립이 줄어 드리프트가 길어지고 시야가 좁습니다', halfWidth: 13, pads: [0.1, 0.36, 0.62, 0.88], theme: STORM,
+    points: [
+      [-60, 0, 0], [200, 0, 1], [430, -15, 3], [610, -75, 6], [715, -190, 9], [720, -330, 11], [650, -440, 12], [530, -495, 10],
+      [425, -450, 8], [390, -350, 6], [315, -295, 4], [215, -325, 4], [160, -425, 6], [70, -480, 8],
+      [-50, -450, 9], [-125, -350, 7], [-185, -235, 5], [-170, -115, 3], [-130, -35, 1],
+    ],
+  },
+  {
+    id: 'dusk', name: '더스크 파인 패스', place: '산악 · 해 질 녘', blurb: '소나무 숲 사이로 노을을 향해 오르는 산길. 붉은 테일램프가 길게 번집니다', halfWidth: 12, pads: [0.1, 0.28, 0.48, 0.68, 0.88], theme: DUSK,
+    points: [
+      [0, 0, 0], [240, 0, 1], [420, 20, 4], [540, 70, 9], [590, 150, 15], [560, 235, 21], [470, 275, 26],
+      [350, 260, 30], [250, 300, 34], [210, 390, 38], [270, 470, 40], [390, 500, 38], [510, 540, 33],
+      [560, 640, 26], [500, 730, 19], [370, 760, 13], [230, 720, 9], [110, 650, 6], [-10, 620, 4],
+      [-140, 560, 3], [-230, 440, 2], [-240, 300, 2], [-190, 170, 1], [-110, 60, 0],
     ],
   },
 ];

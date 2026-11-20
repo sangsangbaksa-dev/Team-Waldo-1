@@ -10,14 +10,21 @@ import { STEPS, TUT_KEY, advance, newCounters, newTutState, type Counters, type 
 import { CityAudio } from './audio';
 import { reload, switchWeapon } from './actors';
 import { ACTORS, BLOCKS, PITCH, ROAD } from './defs';
-import { mapPointerToWorld } from './uiMath';
+import { applyLook, doorFacingYaw, isLookSpike, mapPointerToWorld } from './uiMath';
+import { DEMOLISH_REFUND_RATE, snapBuildCoord } from './placement';
 import { SHOP, canBuy, itemPrice } from './shop';
-import { missionLog, missionSummary } from './missions';
+import { PHASE_LABEL, WEATHER_ICON, WEATHER_LABEL, clockLabel } from './clock';
+import { missionLog, missionSummary, sideJobs } from './missions';
+import { EVENT_INFO } from './events';
 import { readPreferences, recordMatch, writePreferences } from '../prefs';
-import type { PvpSession } from '../net/lobby';
+import type { PvpSession, RoomSession } from '../net/lobby';
 import { arenaInfo, arenaOf } from './arena';
+import { CityRoom, ROOM_LIVES, ROOM_TIME, roomRanking, roomWinner } from './room';
 import { CityDuel, TARGET_KILLS, TIME_LIMIT, duelOutcome } from './duel';
+import { DuelArmy, parseArmy } from './duelarmy';
 import { CITY_KEY, readCityCareer } from '../records';
+import { PVP_ENABLED } from '../net/config';
+import { ChatLimiter, cleanChat, pushChat, visibleChat, type ChatLine } from './chat';
 
 const $ = (n: number): string => Math.floor(n).toLocaleString('en-US');
 const clock = (t: number): string => `${Math.floor(Math.max(0, t) / 60)}:${String(Math.floor(Math.max(0, t) % 60)).padStart(2, '0')}`;
@@ -32,10 +39,11 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   <div class="city-hud" hidden>
     <div class="c-tl"><div class="c-res" id="c-res"></div><div class="c-quest" id="c-quest"></div></div>
     <div class="c-tc" id="c-zone"></div>
-    <div class="c-tr"><canvas id="c-mini" width="200" height="200" aria-label="미니맵"></canvas><div id="c-wanted"></div><div class="c-topbtns"><button data-act="view" id="c-view" title="시점 전환 (V)">1인칭</button><button data-act="missions" title="작전 지령 (J)">임무</button><button data-act="map" title="전술 지도 (M)">지도</button><button data-act="pause" title="일시정지 (Esc)">Ⅱ</button></div></div>
-    <div class="c-target" id="c-target"></div><aside class="c-tut" id="c-tut" hidden></aside><div class="c-area" id="c-area"></div><div class="c-feed" id="c-feed"></div><div class="c-banner" id="c-banner"></div><div class="c-prompt" id="c-prompt"></div><div class="c-toast" id="c-toast"></div>
+    <div class="c-tr"><canvas id="c-mini" width="200" height="200" aria-label="미니맵"></canvas><div id="c-wanted"></div><div class="c-topbtns"><button data-act="view" id="c-view" title="시점 전환 (V)">1인칭</button><button data-act="missions" title="작전 지령 (J)">임무</button><button data-act="map" title="전술 지도 (M)">지도</button><button data-act="chat" id="c-chatbtn" title="채팅 (Enter)" hidden>채팅</button><button data-act="pause" title="일시정지 (Esc)">Ⅱ</button></div></div>
+    <div class="c-target" id="c-target"></div><aside class="c-tut" id="c-tut" hidden></aside><div class="c-area" id="c-area"></div><div class="c-feed" id="c-feed"></div><div class="c-chat" id="c-chat" aria-live="polite"></div><form class="c-chatin" id="c-chatin" hidden><input id="c-chatbox" maxlength="80" autocomplete="off" placeholder="메시지 입력 후 Enter · Esc 취소" aria-label="채팅 입력"></form><div class="c-banner" id="c-banner"></div><div class="c-prompt" id="c-prompt"></div><div class="c-toast" id="c-toast"></div>
     <div class="c-bl" id="c-boss"></div>
     <div class="c-bc" id="c-cmd"></div>
+    <div class="c-place" id="c-place" hidden><div class="c-place-info"><b id="c-place-name"></b><span id="c-place-msg"></span><small>시선을 돌려 위치 조절 · 우클릭/Esc 취소 · Shift 연속 설치</small></div><div class="c-place-btns"><button data-act="placeok" class="ok">설치</button><button data-act="placecancel">취소</button></div></div>
     <aside class="c-panel" id="c-panel" hidden></aside>
     <aside class="c-missions" id="c-missions" hidden aria-label="작전 지령 목록"><header><div><span>OPERATIONS / LAST CITY</span><h2>도시 작전 지령</h2></div><button data-act="closemissions" aria-label="작전 지령 닫기">닫기 ✕</button></header><div class="c-mission-summary" id="c-mission-summary"></div><div class="c-mission-list" id="c-mission-list"></div><footer>임무를 완료하면 보상이 자동 지급됩니다 · <kbd>J</kbd> 닫기</footer></aside>
     <div class="c-bigmap" id="c-bigmap" hidden><div><canvas id="c-big" width="620" height="620"></canvas><p>지도를 누르면 전 병력이 그 지점으로 <b>돌격</b>합니다 · M 닫기</p></div></div>
@@ -51,9 +59,31 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   let models: Models | null = null, R3: Renderer3D | null = null, view: View = 'fp', locked = false, lockFail = false, expectUnlock = false, touchFire = false, hurt = 0, lastLook = 0, hitT = 0;
   const tags: HTMLElement[] = [], marks: HTMLElement[] = []; let area = '', areaT = 0, sirenT = 0;
   let world: World | null = null, R: Renderer | null = null, raf = 0, last = 0, acc = 0, paused = false, closed = false, ghost: Ghost | null = null, tab = 'train', hudT = 0, toastT = 0, bannerT = 0, shopOpen = false, resultShown = false, userZoom = 1, combat = 0, klass: ClassId = 'warlord';
+  let demolishArmed: { id: number; at: number } | null = null;
   /** 1대1 결투 진행 상태. null 이면 혼자 하는 게임입니다. */
-  interface Duel { s: PvpSession; net: CityDuel; myDeaths: number; oppDeaths: number; done: boolean; pose: { x: number; y: number; a: number; hp: number; mh: number; w: WeaponId } | null; rx: number; ry: number; seed: number; oppKlass: string; started: boolean; graceAt: number }
+  interface Duel { s: PvpSession; net: CityDuel; army: DuelArmy; oppHqDown: boolean; hqSent: boolean; myDeaths: number; oppDeaths: number; done: boolean; pose: { x: number; y: number; a: number; hp: number; mh: number; w: WeaponId } | null; rx: number; ry: number; seed: number; oppKlass: string; started: boolean; graceAt: number }
   let duel: Duel | null = null;
+  // ---------- 채팅(결투·멀티 방) ----------
+  const chatLog: ChatLine[] = [], chatLim = new ChatLimiter(); let chatOpen = false, chatSent = -1e9;
+  const chatForm = (): HTMLFormElement => q('#c-chatin') as HTMLFormElement, chatBox = (): HTMLInputElement => q('#c-chatbox') as HTMLInputElement;
+  const chatLive = (): boolean => !!((duel && duel.started && !duel.done) || (room && room.started && !room.done));
+  const chatNow = (): number => performance.now() / 1000;
+  function addChat(name: string, text: string, mine: boolean): void { pushChat(chatLog, { name, text, t: chatNow(), mine }); if (!mine) audio.play('click'); }
+  function openChat(): void {
+    if (!chatLive() || chatOpen || !world || world.over) return;
+    chatOpen = true; keys.clear(); mouse.down = false; touchFire = false; unlock(); chatForm().hidden = false; chatBox().value = ''; chatBox().focus();
+  }
+  function closeChat(send: boolean): void {
+    if (!chatOpen) return; chatOpen = false; const text = cleanChat(chatBox().value); chatBox().value = ''; chatForm().hidden = true; chatBox().blur();
+    if (send && text) {
+      const now = performance.now();
+      if (now - chatSent < 1200) toast('너무 빨리 보냈습니다. 잠시 후 다시 보내세요'); else if (chatLive()) { chatSent = now; if (room) room.net.sendChat(text); else if (duel) duel.net.sendChat(text); addChat('나', text, true); }
+    }
+    if (!paused && !(world && world.over) && panel.hidden && bigmap.hidden) lock();
+  }
+  /** 3인 이상 방(영웅 난투전) 진행 상태. */
+  interface Room { s: RoomSession; net: CityRoom; ids: string[]; names: Map<string, string>; fac: Map<string, number>; poses: Map<string, { p: { x: number; y: number; a: number; hp: number; mh: number; w: WeaponId }; rx: number; ry: number }>; deaths: Map<string, number>; out: Set<string>; hqSent: boolean; myDeaths: number; done: boolean; seed: number; started: boolean; graceAt: number }
+  let room: Room | null = null;
   const keys = new Set<string>(), mouse = { x: innerWidth / 2, y: innerHeight / 2, down: false };
   const sticks = { move: { id: -1, ox: 0, oy: 0, x: 0, y: 0 }, aim: { id: -1, ox: 0, oy: 0, x: 0, y: 0 } };
 
@@ -67,17 +97,18 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       <button class="c-tutcard${tutDone ? '' : ' rec'}" data-act="tutorial"><span>${tutDone ? '다시 연습' : '처음이라면 추천 · 약 5분'}</span><b>튜토리얼 시작</b><p>이동·사격·사업체·기지 건설·병력 지휘·차량·시장까지 한 단계씩 안전하게 익힙니다. 연습장에서는 자기장과 라이벌이 멈춰 있습니다.</p></button>
       <div class="c-sub">${tutDone ? '바로 시작할 영웅을 고르세요' : '또는 바로 시작할 영웅을 고르세요'}</div>
       <div class="c-classes">${(Object.keys(CLASSES) as ClassId[]).map(k => `<button class="c-class" data-act="class:${k}"><span>${CLASSES[k].tag}</span><b>${CLASSES[k].name}</b><p>${CLASSES[k].desc}</p><em>Q · ${CLASSES[k].skill}</em><small>${CLASSES[k].skillDesc}</small></button>`).join('')}</div>
-      <div class="c-keys">${touch ? '<span>왼쪽 드래그 이동</span><span>오른쪽 드래그 시점</span><span>사격 버튼</span><span>버튼으로 상호작용·지휘</span>' : '<span><b>WASD</b> 이동</span><span><b>마우스</b> 시점·사격</span><span><b>V</b> 1인칭/3인칭/전술뷰</span><span><b>E</b> 매입·줍기</span><span><b>F</b> 차량 탑승</span><span><b>Tab</b> 지휘 패널</span><span><b>우클릭</b> 병력 돌격</span><span><b>Z/X</b> 집결·사수</span><span><b>Space</b> 대시</span><span><b>M</b> 지도</span>'}</div>
-      <div class="c-sub">1대1 결투 · 로그인 필요</div><div class="c-diffs">${(Object.keys(CLASSES) as ClassId[]).map(k => `<button class="c-diff" data-act="duel:${k}" title="${CLASSES[k].desc}">${CLASSES[k].name}으로 대전</button>`).join('')}</div><p class="c-lead c-diffdesc">같은 도시에서 둘만 남아 ${TARGET_KILLS}킬을 먼저 채우면 승리합니다. 병력·건설 없이 무기와 사업체 구매, 보스의 총싸움으로 가립니다.</p>
+      <div class="c-keys">${touch ? '<span>왼쪽 드래그 이동</span><span>오른쪽 드래그 시점</span><span>사격 버튼</span><span>버튼으로 상호작용·지휘</span>' : '<span><b>WASD</b> 이동</span><span><b>마우스</b> 시점·사격</span><span><b>V</b> 1인칭/3인칭/전술뷰</span><span><b>E</b> 매입·줍기</span><span><b>F</b> 차량 탑승</span><span><b>Tab</b> 지휘 패널</span><span><b>우클릭</b> 병력 돌격</span><span><b>Z/X</b> 집결·사수</span><span><b>Space</b> 대시</span><span><b>M</b> 지도</span><span><b>Delete</b> 철거</span>'}</div>
+      ${PVP_ENABLED ? `<div class="c-sub">1대1 결투 · 멀티 방(3~6인) · 로그인 필요</div><div class="c-diffs">${(Object.keys(CLASSES) as ClassId[]).map(k => `<button class="c-diff" data-act="duel:${k}" title="${CLASSES[k].desc}">${CLASSES[k].name}으로 대전·방 만들기</button>`).join('')}</div><p class="c-lead c-diffdesc">같은 도시에서 둘만 남아 ${TARGET_KILLS}킬을 먼저 채우면 승리합니다. 병력을 뽑고 건물을 지어 싸우세요. 상대 본부를 무너뜨리면 즉시 승리하고, 내 본부가 무너지면 패배합니다. 제한 시간은 ${clock(TIME_LIMIT)}입니다. 방 만들기로 3~6명이 모이면 병력 없이 영웅끼리 싸우는 난투전(목숨 ${ROOM_LIVES}개, 마지막 생존자 우승)이 열립니다.</p>` : ''}
       <div class="c-sub">난이도</div><div class="c-diffs">${DIFFICULTY_ORDER.map(d => `<button class="c-diff${d === diffSel ? ' on' : ''}" data-act="diff:${d}" title="${DIFFICULTY[d].desc}">${DIFFICULTY[d].label}</button>`).join('')}</div><p class="c-lead c-diffdesc">${DIFFICULTY[diffSel].desc}</p>
       <div class="c-setup-foot"><span>난이도 · ${DIFFICULTY[diffSel].label}</span><button data-act="exit" class="c-ghost">메뉴로</button></div></section>`;
   }
-  function start(k: ClassId, tutorial = false, dl: Duel | null = null): void {
+  function start(k: ClassId, tutorial = false, dl: Duel | null = null, rm: Room | null = null): void {
     klass = k; modal.innerHTML = ''; hud.hidden = false; resultShown = false; paused = false; ghost = null; shopOpen = false; panel.hidden = true; bigmap.hidden = true; q('#c-missions').hidden = true;
     // A retry must not inherit held keys, touch gestures, firing or frame debt.
-    keys.clear(); mouse.down = false; touchFire = false; acc = 0; looks.clear();
+    keys.clear(); mouse.down = false; touchFire = false; acc = 0; looks.clear(); chatLog.length = 0; chatOpen = false; chatForm().hidden = true;
     for (const stick of [sticks.move, sticks.aim]) { stick.id = -1; stick.x = 0; stick.y = 0; }
-    world = new World({ seed: dl ? dl.seed : (Math.random() * 2 ** 31) | 0, difficulty: diffSel, klass: k, tutorial: tutorial || !!dl, duel: dl ? { side: dl.s.host ? 0 : 1, name: dl.s.opponent.nickname, arena: arenaOf(dl.seed) } : undefined });
+    world = new World({ seed: dl ? dl.seed : rm ? rm.seed : (Math.random() * 2 ** 31) | 0, difficulty: diffSel, klass: k, tutorial: tutorial || !!dl || !!rm, duel: dl ? { side: dl.s.host ? 0 : 1, name: dl.s.opponent.nickname, arena: arenaOf(dl.seed) } : rm ? { side: 0, name: '', room: { seats: roomSeats(rm), names: roomNames(rm) } } : undefined });
+    if (rm) { const r = rm; world.onShot = (x, y, a, wid, mul) => r.net.sendShot({ x, y, a, w: wid, m: mul }); }
     if (dl) { const d = dl; world.onShot = (x, y, a, wid, mul) => d.net.sendShot({ x, y, a, w: wid, m: mul }); }
     tut = tutorial ? { s: newTutState(), c: newCounters() } : null;  tutSig = ''; q('#c-tut').hidden = true; tutInfoLock = false;
     R = new Renderer(canvas, world); R.reduced = prefs.reducedMotion; const b = world.boss(0)!; R.cam.x = b.x; R.cam.y = b.y; R.cam.zoom = 0.6;
@@ -87,10 +118,10 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     lastYaw = R3 ? R3.yaw : 0; lastPos = { x: b.x, y: b.y };
     setView(R3 ? (view === 'top' ? 'fp' : view) : 'top'); lock();
     if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__city = { world, renderer: R, r3: R3 };
-    audio.unlock(); if (dl) banner(`${dl.s.opponent.nickname} 님과 1대1 · ${arenaInfo(arenaOf(dl.seed)).name} · ${TARGET_KILLS}킬 선취 · 제한 ${Math.round(TIME_LIMIT / 60)}분`); else if (!tutorial) banner('작전 지령 01 · 첫 사업체를 확보하세요 · J 전체 임무');
+    audio.unlock(); if (rm) banner(`멀티 방 ${rm.ids.length}명 · 영웅 난투전 · 목숨 ${ROOM_LIVES}개 · 마지막까지 살아남으세요`); else if (dl) banner(`${dl.s.opponent.nickname} 님과 1대1 · ${arenaInfo(arenaOf(dl.seed)).name} · ${TARGET_KILLS}킬 선취 · 제한 ${Math.round(TIME_LIMIT / 60)}분`); else if (!tutorial) banner('작전 지령 01 · 첫 사업체를 확보하세요 · J 전체 임무');
     renderCmd(); last = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(frame);
   }
-  let everLocked = false, lockErrors = 0;
+  let everLocked = false, lockErrors = 0, lookMuteUntil = 0;
   function onLockErr(): void { if (!everLocked && ++lockErrors >= 2) lockFail = true; }
   function lock(): void { if (touch || view === 'top' || lockFail || locked) return; try { const r = canvas3.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(onLockErr); } catch { onLockErr(); } }
   function unlock(): void { if (document.pointerLockElement) { expectUnlock = true; document.exitPointerLock(); } }
@@ -98,12 +129,21 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     view = v; canvas.hidden = v !== 'top'; canvas3.hidden = v === 'top'; cross.hidden = v === 'top'; layer.hidden = v === 'top'; if (R3 && v !== 'top') R3.mode = v; if (v === 'top') unlock(); else { R3?.resize(); }
     R?.resize(); q('#c-view').textContent = v === 'fp' ? '1인칭' : v === 'tp' ? '3인칭' : '전술뷰';
   }
-  const onLock = (): void => { locked = document.pointerLockElement === canvas3; if (locked) { expectUnlock = false; everLocked = true; return; } const was = expectUnlock; expectUnlock = false; if (!was && view !== 'top' && world && !world.over && !paused && panel.hidden && bigmap.hidden && q('#c-missions').hidden && world.factions[0].pending === 0) pause(); };
+  const onLock = (): void => { locked = document.pointerLockElement === canvas3; if (locked) { expectUnlock = false; everLocked = true; lookMuteUntil = performance.now() + 220; return; } const was = expectUnlock; expectUnlock = false; if (!was && view !== 'top' && world && !world.over && !paused && panel.hidden && bigmap.hidden && q('#c-missions').hidden && world.factions[0].pending === 0) pause(); };
 
-  const onMouseMove = (e: MouseEvent): void => { if (!R3 || view === 'top' || paused) return; if (locked || (lockFail && mouse.down)) { R3.yaw += e.movementX * 0.0024; R3.pitch = Math.max(-1.2, Math.min(1.0, R3.pitch - e.movementY * 0.0024)); lastLook = performance.now(); } };
+  const onMouseMove = (e: MouseEvent): void => {
+    if (!R3 || view === 'top' || paused) return;
+    if (!(locked || (lockFail && mouse.down))) return;
+    // A placement click must not also rotate the camera, and pointer-lock
+    // acquisition can inject a huge movementY that buries the view in the ground.
+    if (ghost && (e.buttons & 1)) return;
+    if (performance.now() < lookMuteUntil || isLookSpike(e.movementX, e.movementY)) return;
+    const look = applyLook(R3.yaw, R3.pitch, e.movementX, e.movementY);
+    R3.yaw = look.yaw; R3.pitch = look.pitch; lastLook = performance.now();
+  };
   document.addEventListener('pointerlockchange', onLock); document.addEventListener('pointerlockerror', onLockErr); document.addEventListener('mousemove', onMouseMove);
   function exit(): void {
-    if (closed) return; closed = true; cancelAnimationFrame(raf); leaveDuel(); audio.dispose(); unlock(); R3?.dispose(); root.remove();
+    if (closed) return; closed = true; cancelAnimationFrame(raf); leaveDuel(); endRoom(); audio.dispose(); unlock(); R3?.dispose(); root.remove();
     document.removeEventListener('pointerlockchange', onLock); document.removeEventListener('pointerlockerror', onLockErr); document.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('resize', onResize); window.removeEventListener('blur', onBlur); window.removeEventListener('pointerup', onWindowPointerEnd); window.removeEventListener('pointercancel', onWindowPointerEnd); document.removeEventListener('visibilitychange', onBlur);
     onExit();
@@ -113,13 +153,14 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   function act(code: string, ev?: Event): void {
     const [a, ...rest] = code.split(':'), arg = rest.join(':'), w = world; audio.unlock();
     if (a === 'diff') { diffSel = arg as Difficulty; try { localStorage.setItem('waldo-city-diff', arg); } catch { /* 무시 */ } setup(); audio.play('click'); return; }
+    if (a === 'chat') { openChat(); return; }
     if (a === 'sq') { if (w) { w.selectSquad(Number(arg)); put(q('#c-squads'), squadBar(w)); toast(w.squadSel ? `${w.squadSel}분대 선택 — 명령이 이 분대에만 적용됩니다` : '전체 병력 선택', false); if (!panel.hidden) renderPanel(); } return; }
     if (a === 'squadsplit') { if (w) { w.splitSquads(0, Number(arg)); put(q('#c-squads'), squadBar(w)); toast(Number(arg) > 1 ? `${arg}개 분대로 편성` : '분대 편성 해제', false); renderPanel(); } return; }
     if (a === 'squadall') { if (w) { w.assignAllTo(0, Number(arg)); w.selectSquad(Number(arg)); put(q('#c-squads'), squadBar(w)); renderPanel(); } return; }
     if (a === 'squadpull') { if (w) { w.moveUnassigned(0, Number(arg)); renderPanel(); } return; }
     if (a === 'class') { start(arg as ClassId); return; }
-    if (a === 'duel') { klass = arg as ClassId; openDuelLobby(); return; }
-    if (a === 'rematch') { endDuel(); setup(); openDuelLobby(); return; }
+    if (a === 'duel') { klass = arg as ClassId; openRoomLobby(); return; }
+    if (a === 'rematch') { endDuel(); endRoom(); setup(); openRoomLobby(); return; }
     if (a === 'tutorial') { klass = 'warlord'; start('warlord', true); return; }
     if (a === 'tutdone') { tut = null; setup(); return; }
     if (a === 'exit') { exit(); return; }
@@ -131,7 +172,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (a === 'perk') { w.pickPerk(Number(arg)); audio.play('levelup'); modal.innerHTML = ''; last = performance.now(); if (f.pending === 0) lock(); return; }
     if (a === 'tutnext') { if (tut) { tut.c.acked = true; lock(); } return; }
     if (a === 'tutskip') { finishTutorial(true); return; }
-    if (a === 'view') { if (world?.inside) return; if (tut) tut.c.viewSwitches++; setView(view === 'fp' ? 'tp' : view === 'tp' ? (duel ? 'fp' : 'top') : R3 ? 'fp' : 'top'); if (!paused) lock(); audio.play('click'); return; }
+    if (a === 'view') { if (world?.inside) return; if (tut) tut.c.viewSwitches++; setView(view === 'fp' ? 'tp' : view === 'tp' ? (duel || room ? 'fp' : 'top') : R3 ? 'fp' : 'top'); if (!paused) lock(); audio.play('click'); return; }
     if (paused || w.over) return;
     if (a === 'missions') {
       const board = q('#c-missions');
@@ -146,7 +187,10 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     else if (a === 'closepanel') { panel.hidden = true; shopOpen = false; lock(); }
     else if (a === 'map') { q('#c-missions').hidden = true; bigmap.hidden = !bigmap.hidden; if (bigmap.hidden) lock(); else unlock(); }
     else if (a === 'train') res(w.train(0, arg as UnitId));
-    else if (a === 'build') { ghost = { kind: arg as StructKind, x: 0, y: 0, ok: false }; if (view !== 'top' || innerWidth < 900) { panel.hidden = true; lock(); } toast(view === 'top' ? '배치할 위치를 누르세요 (우클릭·Esc 취소)' : '바닥을 조준하고 클릭해 배치 (우클릭 취소)', false); }
+    else if (a === 'build') { ghost = { kind: arg as StructKind, x: 0, y: 0, ok: false }; if (view !== 'top' || innerWidth < 900) { panel.hidden = true; lock(); } }
+    else if (a === 'placeok') place();
+    else if (a === 'placecancel') ghost = null;
+    else if (a === 'demolish') requestDemolish(Number(arg));
     else if (a === 'research') res(w.research(0, arg as ResearchId));
     else if (a === 'sell') { const e = w.market(0, true, arg === 'all' ? f.crystal : Number(arg)); res(e); if (!e && tut) tut.c.sells++; }
     else if (a === 'buy') res(w.market(0, false, Number(arg)));
@@ -160,7 +204,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     else if (a === 'interact') interact();
     else if (a === 'vehicle') { w.toggleVehicle(0); }
     else if (a === 'skill') res(w.useSkill(0));
-    else if (a === 'dash') { w.input.dash = true; setTimeout(() => { if (world) world.input.dash = false; }, 80); }
+    else if (a === 'dash') { w.input.dash = true; setTimeout(() => { if (world === w) w.input.dash = false; }, 80); }
     else if (a === 'weapon') switchWeapon(w, 0, (f.cur + 1) % f.slots.length);
     else if (a === 'slot') switchWeapon(w, 0, Number(arg));
     else if (a === 'medkit') w.useMedkit(0);
@@ -170,8 +214,9 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   function interact(): void {
     const w = world!;
     if (w.inside) {
+      const z = w.insideBiz(), out = z && w.nearInsideDoor() ? w.doorOut(z) : null;
       const r = w.interactInside(0);
-      if (r === 'exit') leaveBuilding(); else if (r === 'shop') { shopOpen = true; panel.hidden = false; renderPanel(); unlock(); audio.play('click'); } else toast('카운터 앞이나 출입문 앞에서 E 를 누르세요', false);
+      if (r === 'exit') leaveBuilding(out ?? undefined); else if (r === 'shop') { shopOpen = true; panel.hidden = false; renderPanel(); unlock(); audio.play('click'); } else toast('카운터 앞이나 출입문 앞에서 E 를 누르세요', false);
       return;
     }
     const e = w.interact(0);
@@ -185,11 +230,13 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     R3.yaw = w.inside!.ang; R3.pitch = 0; panel.hidden = true; shopOpen = false; touchFire = false; mouse.down = false; audio.play('door'); banner(`${BIZ[z.kind].name} 내부`);
     if (tut) tut.c.entered = true;
   }
-  function leaveBuilding(): void {
-    shopOpen = false; panel.hidden = true; if (view !== preView) setView(preView); if (R3) { R3.yaw = Math.PI / 2; R3.pitch = -0.05; } audio.play('door'); lock();
+  function leaveBuilding(out?: { x: number; y: number }): void {
+    shopOpen = false; panel.hidden = true; if (view !== preView) setView(preView);
+    if (R3) { if (out) R3.yaw = doorFacingYaw(out.x, out.y); R3.pitch = -0.05; }
+    audio.play('door'); lock();
   }
   function pause(): void {
-    if (!world || world.over || duel) return; paused = true; keys.clear(); mouse.down = false; unlock();
+    if (!world || world.over || duel || room) return; paused = true; keys.clear(); mouse.down = false; unlock();
     modal.innerHTML = `<section class="c-pause"><div class="c-kicker">PAUSED</div><h2>일시정지</h2>
       <div class="c-help"><div><b>보스 조작</b><p>WASD 이동 · 마우스 시점/사격 · V 시점 전환(1인칭·3인칭·전술뷰) · R 재장전 · 1~3 무기 · Space 대시 · H 회복 키트 · Q 고유 스킬</p></div><div><b>도시</b><p>E 사업체 매입·업그레이드·무기 줍기 · F 차량 탑승/하차 · 적 사업체 패드 위에서 6초 버티면 적대적 인수</p></div><div><b>지휘</b><p>Tab 지휘 패널(생산·건설·연구·시장) · 우클릭/지도 클릭 돌격 · Z 집결 · X 사수</p></div><div><b>승리</b><p>자기장은 점점 줄어듭니다. 적 본부를 부수면 그 보스는 부활하지 못합니다. 마지막까지 살아남는 왕국이 승리합니다.</p></div></div>
       <div class="c-actions"><button data-act="resume" class="c-primary">계속하기</button><button data-act="sound">효과음 ${prefs.sound ? '켜짐' : '꺼짐'}</button><button data-act="retry">새 게임</button><button data-act="exit">메뉴로 나가기</button></div></section>`;
@@ -221,7 +268,10 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
         + `<button class="c-row" data-act="mercs" ${f.cash >= 350 ? '' : 'disabled'}><b>용병 3명 즉시 고용</b><span>인구를 차지하지 않는 현금 병력</span><i class="ca">$350</i></button>`
         + `<p class="c-note">대기열: ${w.structures.filter(s => s.f === 0 && s.queue.length).map(s => `${STRUCTS[s.kind].name} ${s.queue.length}`).join(' · ') || '없음'}</p>`;
     } else if (tab === 'build') {
-      body = '<h3>건설 <small>본부 반경·보유 사업체 주변</small></h3>' + BUILD_ORDER.map(k => `<button class="c-row" data-act="build:${k}"><b>${STRUCTS[k].name}</b><span>${STRUCTS[k].desc}</span>${cost(STRUCTS[k].crystal, STRUCTS[k].cash)}</button>`).join('');
+      const mine = w.structures.filter(s => s.alive && s.f === 0 && s.kind !== 'hq' && s.temp <= 0);
+        const rows = BUILD_ORDER.map(k => `<button class="c-row" data-act="build:${k}"><b>${STRUCTS[k].name}</b><span>${STRUCTS[k].desc}</span>${cost(STRUCTS[k].crystal, STRUCTS[k].cash)}</button>`).join('');
+        const demo = mine.length ? `<p class="c-note">아군 건물 철거 · 건설비 ${Math.round(DEMOLISH_REFUND_RATE * 100)}% 환급 · 대기열은 전액 · <kbd>Delete</kbd> 로 조준한 건물</p>` + mine.map(s => { const ref = w.demolishRefundOf(0, s.kind), armed = demolishArmed?.id === s.id; return `<button class="c-row" data-act="demolish:${s.id}"><b>${armed ? '확인: ' : ''}철거 · ${STRUCTS[s.kind].name}</b><span>${armed ? '한 번 더 누르면 철거합니다' : '건설비 절반과 대기 중 훈련·연구 비용을 돌려받습니다'}</span><i class="cr">◆${ref.crystal}</i>${ref.cash ? `<i class="ca">$${ref.cash}</i>` : ''}</button>`; }).join('') : '';
+        body = '<h3>건설 <small>본부 반경·아군 건물·보유 사업체 주변</small></h3>' + rows + demo;
     } else if (tab === 'research') {
       const lab = w.structures.some(s => s.alive && s.f === 0 && s.kind === 'lab' && s.built >= 1);
       body = `<h3>연구 ${lab ? '' : '<small>연구소 필요</small>'}</h3>` + (Object.keys(RESEARCH) as ResearchId[]).map(id => { const lv = f.up[id]; return `<button class="c-row" data-act="research:${id}" ${lab && lv < 3 ? '' : 'disabled'}><b>${RESEARCH[id].name} ${'●'.repeat(lv)}${'○'.repeat(3 - lv)}</b><span>${RESEARCH[id].desc}</span>${lv < 3 ? `<i class="cr">◆${RESEARCH[id].crystal * (lv + 1)}</i><i class="ca">$${RESEARCH[id].cash * (lv + 1)}</i>` : ''}</button>`; }).join('');
@@ -246,7 +296,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       const rows = [...w.factions].sort((a, b) => Number(b.alive) - Number(a.alive) || w.netWorth(b) - w.netWorth(a));
       body = '<h3>왕국 순위</h3><table class="c-rank"><tr><th>왕국</th><th>순자산</th><th>병력</th><th>사업</th><th>Lv</th></tr>' + rows.map(r => `<tr class="${r.alive ? '' : 'dead'}"><td><i style="background:${r.color}"></i>${r.name}${w.hq(r.id) ? '' : r.alive ? ' <small>본부 없음</small>' : ''}</td><td>${r.alive ? '$' + $(w.netWorth(r)) : '궤멸'}</td><td>${w.armyOf(r.id).length}</td><td>${w.businesses.filter(b => b.owner === r.id).length}</td><td>${r.level}</td></tr>`).join('') + '</table>';
     }
-    const tabs: [string, string][] = [['train', '생산'], ['build', '건설'], ['research', '연구'], ['market', '시장'], ['assets', '자산'], ['squad', '분대'], ['rank', '순위']];
+    const tabs = ([['train', '생산'], ['build', '건설'], ['research', '연구'], ['market', '시장'], ['assets', '자산'], ['squad', '분대'], ['rank', '순위']] as [string, string][]).filter(([k]) => !((duel || room) && k === 'rank'));
     const head = `<header>${shopOpen ? `<b>${w.insideBiz() ? BIZ[w.insideBiz()!.kind].name : '상점'}</b>` : tabs.map(([k, n]) => `<button data-act="tab:${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}<button data-act="closepanel" class="c-x" aria-label="닫기">✕</button></header>`;
     const cur = panel.querySelector<HTMLElement>('.c-body');
     if (cur && panel.dataset.head === head) { const top = cur.scrollTop; put(cur, body); cur.scrollTop = top; return; }   // 본문만 갱신: 스크롤 위치·스크롤바 드래그 유지
@@ -285,17 +335,22 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
         <div class="c-mission-meta"><span>${entry.done ? '완료됨' : entry.current + ' / ' + entry.target}</span><span>${entry.reward ? '보상 $' + $(entry.reward) : '최종 승리'}</span></div>
         ${current ? '<div class="c-mission-hint"><b>전술 안내</b> ' + entry.hint + '</div>' : ''}
       </article>`;
-    }).join(''));
+    }).join('') + sideBoard());
+  }
+  function sideBoard(): string {
+    const sj = sideJobs(world!);
+    return `<h3 class="c-side-h">도시 부업 <small>사건 ${sj.done}건 완료${sj.streak > 1 ? ` · 연속 ${sj.streak}회 보너스 ×${(1 + Math.min(5, sj.streak - 1) * 0.1).toFixed(1)}` : ''}</small></h3>` + sj.items.map(it => `<article class="c-side-card${it.done ? ' complete' : ''}"><div class="c-mission-top"><span>부업 이정표</span><b>${it.done ? '완료' : '진행 중'}</b></div><h3>${it.title}</h3><p>${it.objective}</p><div class="c-mission-bar"><i style="width:${it.current / it.target * 100}%"></i></div><div class="c-mission-meta"><span>${it.current} / ${it.target}</span><span>보상 $${$(it.reward)}</span></div></article>`).join('');
   }
 
   function renderHud(): void {
     const w = world!, f = w.factions[0], b = w.boss(0), z = w.zone;
     put(q('#c-res'), `<span class="ca" title="자금">$ <b>${$(f.cash)}</b><small>+${$(f.income)}/s</small></span><span class="cr" title="크리스탈">◆ <b>${$(f.crystal)}</b></span><span title="인구">병력 <b>${f.supply}/${f.supplyMax}</b></span>`);
-    const entries = tut || duel ? [] : missionLog(w), summary = missionSummary(entries), current = summary.active;
-    put(q('#c-quest'), tut || duel ? '' : current ? `<div class="c-quest-head"><span>작전 지령 <b>${summary.completed}/${summary.total}</b></span><button data-act="missions" aria-label="전체 작전 지령 보기"><kbd>J</kbd>전체 보기</button></div><strong>${current.title}</strong><p>${current.objective}</p><div class="c-quest-progress" role="progressbar" aria-label="${current.title} 진행률" aria-valuemin="0" aria-valuemax="${current.target}" aria-valuenow="${current.current}"><i style="width:${current.current / current.target * 100}%"></i></div><small>${current.current}/${current.target}${current.reward ? ' · 완료 보상 $' + $(current.reward) : ' · 최종 작전'}</small>` : '<div class="c-quest-head"><span>작전 지령 완료</span><button data-act="missions">전체 보기</button></div><strong>최후의 왕국!</strong>');
+    const entries = tut || duel || room ? [] : missionLog(w), summary = missionSummary(entries), current = summary.active;
+    put(q('#c-quest'), tut || duel || room ? '' : current ? `<div class="c-quest-head"><span>작전 지령 <b>${summary.completed}/${summary.total}</b></span><button data-act="missions" aria-label="전체 작전 지령 보기"><kbd>J</kbd>전체 보기</button></div><strong>${current.title}</strong><p>${current.objective}</p><div class="c-quest-progress" role="progressbar" aria-label="${current.title} 진행률" aria-valuemin="0" aria-valuemax="${current.target}" aria-valuenow="${current.current}"><i style="width:${current.current / current.target * 100}%"></i></div><small>${current.current}/${current.target}${current.reward ? ' · 완료 보상 $' + $(current.reward) : ' · 최종 작전'}</small>` : '<div class="c-quest-head"><span>작전 지령 완료</span><button data-act="missions">전체 보기</button></div><strong>최후의 왕국!</strong>');
     if (!q('#c-missions').hidden) renderMissions();
-    void z; if (duel) put(q('#c-zone'), `<b>${clock(Math.max(0, TIME_LIMIT - w.time))}</b><span>나 <b>${duel.oppDeaths}</b> : <b>${duel.myDeaths}</b> ${duel.s.opponent.nickname.replace(/[<>&"]/g, '')}</span><span>${TARGET_KILLS}킬 선취</span>`); else if (tut) put(q('#c-zone'), `<b>튜토리얼</b><span>연습장 · 라이벌 정지</span><span>${Math.min(tut.s.i, STEPS.length - 1) + 1}/${STEPS.length}</span>`); else put(q('#c-zone'), `<b>${clock(w.time)}</b><span>생존 왕국 <b>${w.aliveCount()}</b>/8</span>`);
+    void z; if (room) { const alive = room.ids.filter(id => !room!.out.has(id) && (room!.deaths.get(id) ?? 0) < ROOM_LIVES).length; put(q('#c-zone'), `<b>${clock(Math.max(0, ROOM_TIME - w.time))}</b><span>남은 목숨 <b>${Math.max(0, ROOM_LIVES - room.myDeaths)}</b>/${ROOM_LIVES}</span><span>생존 <b>${alive}</b>/${room.ids.length}명</span>`); } else if (duel) put(q('#c-zone'), `<b>${clock(Math.max(0, TIME_LIMIT - w.time))}</b><span>나 <b>${duel.oppDeaths}</b> : <b>${duel.myDeaths}</b> ${duel.s.opponent.nickname.replace(/[<>&"]/g, '')}</span><span>${TARGET_KILLS}킬 선취</span>`); else if (tut) put(q('#c-zone'), `<b>튜토리얼</b><span>연습장 · 라이벌 정지</span><span>${Math.min(tut.s.i, STEPS.length - 1) + 1}/${STEPS.length}</span>`); else put(q('#c-zone'), `<b>${clock(w.time)}</b><span>생존 왕국 <b>${w.aliveCount()}</b>/8</span><span class="c-citytime" title="밤에는 클럽·카지노, 낮에는 편의점·공장 수입이 늘고 폭풍우에는 줄어듭니다">${WEATHER_ICON[w.weather]} ${clockLabel(w.hour)} · ${PHASE_LABEL[w.phase]} · ${WEATHER_LABEL[w.weather]}</span>`);
     put(q('#c-wanted'), f.wanted >= 1 ? `<span class="stars">${'★'.repeat(Math.floor(f.wanted))}${'☆'.repeat(5 - Math.floor(f.wanted))}</span> 수배 중` : '');
+    { const live = chatLive(); (q('#c-chatbtn') as HTMLElement).hidden = !live; put(q('#c-chat'), live ? visibleChat(chatLog, chatNow(), chatOpen).map(l => `<div class="${l.mine ? 'me' : ''}"><b>${esc(l.name)}</b> ${esc(l.text)}</div>`).join('') : ''); }
     put(q('#c-feed'), w.feed.filter(x => w.time - x.t < 7).slice(-5).map(x => `<div style="border-color:${x.color}">${x.text}</div>`).join(''));
     const army = w.armyOf(0).length; put(q('#c-squads'), squadBar(w));
     if (b) {
@@ -330,33 +385,86 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   // ---------- 1대1 결투 ----------
   const duelCard = (title: string, body: string, actions: string): void => { modal.innerHTML = `<section class="c-pause"><div class="c-kicker">1대1 결투</div><h2>${title}</h2>${body}<div class="c-actions">${actions}</div></section>`; };
   const esc = (t: string): string => t.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
-  function openDuelLobby(): void {
-    void import('../net/lobby').then(({ openLobby }) => openLobby({ game: 'city', config: () => ({ seed: (Math.random() * 2 ** 31) | 0 }), onMatch: startDuel, onClose: () => undefined }))
-      .catch(() => toast('대전 기능을 불러오지 못했습니다'));
-  }
   function startDuel(s: PvpSession): void {
     endDuel(); hud.hidden = true; unlock();
     const raw = s.match.config.seed; let seed = typeof raw === 'number' && Number.isInteger(raw) && raw >= 0 && raw < 2 ** 31 ? raw : 0;
     if (!seed) for (const ch of s.match.id) seed = (seed * 31 + ch.charCodeAt(0)) >>> 1;
     duelCard(`${esc(s.opponent.nickname)} 님과 연결하는 중…`, `<p class="c-lead">${CLASSES[klass].name} · ${TARGET_KILLS}킬 선취</p>`, '<button data-act="exit">나가기</button>');
-    const d = { s, myDeaths: 0, oppDeaths: 0, done: false, pose: null, rx: 0, ry: 0, seed, oppKlass: 'warlord', started: false, graceAt: 0 } as unknown as Duel;
+    const d = { s, army: new DuelArmy(), oppHqDown: false, hqSent: false, myDeaths: 0, oppDeaths: 0, done: false, pose: null, rx: 0, ry: 0, seed, oppKlass: 'warlord', started: false, graceAt: 0 } as unknown as Duel;
     duel = d;
     d.net = new CityDuel(s, klass, {
       onStart: oppKlass => { if (duel !== d || closed) return; d.oppKlass = oppKlass; d.started = true; start(klass, false, d); },
       onPose: p => { if (!d.pose) { d.rx = p.x; d.ry = p.y; } d.pose = p; },
       onShot: sh => { if (d.started && !d.done && world) world.remoteShot(sh.x, sh.y, sh.a, sh.w, sh.m); },
       onDeaths: n => { d.oppDeaths = Math.max(d.oppDeaths, n); },
+      onArmy: m => { const a = parseArmy(m); if (a && d.started && !d.done && world) d.army.receive(world, a); },
+      onHqDown: () => { d.oppHqDown = true; },
+      onChat: text => { if (duel === d && d.started && !d.done && chatLim.allow('opp', performance.now())) addChat(s.opponent.nickname, text, false); },
       onGone: reason => { if (!d.done) void concludeDuel(s.me.id, reason === 'never' ? '상대가 접속하지 않았습니다' : reason === 'bye' ? '상대가 나갔습니다' : '상대와의 연결이 끊어졌습니다'); },
     });
   }
+  // ---------- 멀티플레이 방(영웅 난투전) ----------
+  /** 조직 번호: 나는 0, 나머지는 방 순서대로 1.. 입니다. seats[i] 는 그 조직이 시작할 본부 번호(방 순서)입니다. */
+  const roomOrder = (r: Room): string[] => [r.s.me.id, ...r.ids.filter(id => id !== r.s.me.id)];
+  const roomSeats = (r: Room): number[] => roomOrder(r).map(id => r.ids.indexOf(id));
+  const roomNames = (r: Room): string[] => roomOrder(r).map(id => r.names.get(id) ?? '참가자');
+  function openRoomLobby(): void {
+    if (!PVP_ENABLED) { toast('멀티플레이는 잠시 꺼 두었습니다'); return; }
+    void import('../net/lobby').then(({ openLobby }) => openLobby({ game: 'city', maxPlayers: 6, config: () => ({ seed: (Math.random() * 2 ** 31) | 0 }), onMatch: startDuel, onRoom: startRoom, inGameChat: false, onClose: () => undefined }))
+      .catch(() => toast('대전 기능을 불러오지 못했습니다'));
+  }
+  const roomCard = (title: string, body: string, actions: string): void => { modal.innerHTML = `<section class="c-pause"><div class="c-kicker">멀티 방 · 영웅 난투전</div><h2>${title}</h2>${body}<div class="c-actions">${actions}</div></section>`; };
+  function startRoom(s: RoomSession): void {
+    endDuel(); endRoom(); hud.hidden = true; unlock();
+    const raw = s.room.config.seed; let seed = typeof raw === 'number' && Number.isInteger(raw) && raw >= 0 && raw < 2 ** 31 ? raw : 0;
+    if (!seed) for (const ch of s.room.id) seed = (seed * 31 + ch.charCodeAt(0)) >>> 1;
+    roomCard('참가자를 모으는 중…', `<p class="c-lead">${s.players.length}명 · ${CLASSES[klass].name} · 목숨 ${ROOM_LIVES}개</p>`, '<button data-act="exit">나가기</button>');
+    const r = { s, ids: s.players.map(p => p.id), names: new Map(s.players.map(p => [p.id, p.nickname])), fac: new Map(), poses: new Map(), deaths: new Map(), out: new Set(), hqSent: false, myDeaths: 0, done: false, seed, started: false, graceAt: 0 } as unknown as Room;
+    room = r;
+    r.net = new CityRoom(s, klass, {
+      onStart: list => { if (room !== r || closed) return; r.ids = list.map(p => p.id); r.ids.forEach((id, i) => { if (id !== s.me.id) r.fac.set(id, roomOrder(r).indexOf(id)); void i; }); r.started = true; start(klass, false, null, r); },
+      onPose: (id, p) => { const e = r.poses.get(id); if (e) e.p = p; else r.poses.set(id, { p, rx: p.x, ry: p.y }); },
+      onShot: (id, sh) => { const fi = r.fac.get(id); if (r.started && !r.done && world && fi !== undefined && !r.out.has(id)) world.remoteShot(sh.x, sh.y, sh.a, sh.w, sh.m, fi); },
+      onDeaths: (id, n) => { r.deaths.set(id, Math.max(r.deaths.get(id) ?? 0, n)); },
+      onHqDown: id => { r.out.add(id); },
+      onChat: (id, text) => { if (room === r && r.started && !r.done && chatLim.allow(id, performance.now())) addChat(r.names.get(id) ?? '참가자', text, false); },
+      onGone: id => { r.out.add(id); },
+      onAbort: () => { if (!r.done) { r.done = true; roomCard('시작하지 못했습니다', '<p class="c-lead">참가자가 모이지 않았거나 방장이 연결을 잃었습니다.</p>', '<button data-act="exit">메뉴로</button>'); } },
+    });
+  }
+  function roomTick(now: number, dt: number): void {
+    const r = room, w = world; if (!r || !w || r.done) return; const f = w.factions[0], b = w.boss(0), me = r.s.me.id;
+    for (const [id, e] of r.poses) {
+      const fi = r.fac.get(id); if (fi === undefined) continue;
+      if (r.out.has(id) || (r.deaths.get(id) ?? 0) >= ROOM_LIVES) { const pb = w.boss(fi); if (pb) pb.alive = false; continue; }
+      const far = Math.hypot(e.p.x - e.rx, e.p.y - e.ry) > 400, k = far ? 1 : Math.min(1, dt * 12); e.rx += (e.p.x - e.rx) * k; e.ry += (e.p.y - e.ry) * k; w.puppet(e.rx, e.ry, e.p.a, e.p.hp, e.p.mh, e.p.w, fi);
+    }
+    if (!w.hq(0) && !r.hqSent) { r.hqSent = true; r.out.add(me); r.net.sendHqDown(); }
+    if (b) r.net.sendPose({ x: b.x, y: b.y, a: b.ang, hp: b.hp, mh: b.maxHp, w: f.slots[f.cur]?.id ?? 'pistol' }, now);
+    if (f.deaths > r.myDeaths) { r.myDeaths = f.deaths; r.deaths.set(me, f.deaths); r.net.sendDeaths(f.deaths); }
+    const winner = roomWinner(r.ids, r.deaths, r.out, w.time), myOut = r.out.has(me) || r.myDeaths >= ROOM_LIVES;
+    if (!winner && !myOut) { r.graceAt = 0; return; }
+    if (!r.graceAt) r.graceAt = now; else if (now - r.graceAt > 1000) concludeRoom(winner, myOut && winner !== me ? (r.hqSent ? '내 본부가 무너졌습니다' : '목숨을 모두 잃었습니다') : winner === me ? '마지막까지 살아남았습니다' : '제한 시간 종료');
+  }
+  function concludeRoom(winner: string | null, why: string): void {
+    const r = room, w = world; if (!r || r.done) return; r.done = true; resultShown = true; if (w) w.over = true; unlock(); hud.hidden = true;
+    const rank = roomRanking(r.ids, r.deaths, r.out), me = r.s.me.id, place = rank.indexOf(me) + 1, win = winner === me;
+    audio.play(win ? 'win' : 'lose');
+    roomCard(win ? '우승' : `${place}위`, `<p class="c-lead">${esc(why)}</p><ol class="c-lead">${rank.map(id => `<li${id === me ? ' style="font-weight:700"' : ''}>${esc(r.names.get(id) ?? '참가자')} · 쓰러진 횟수 ${r.deaths.get(id) ?? 0}${r.out.has(id) ? ' · 탈락' : ''}</li>`).join('')}</ol>`, '<button data-act="rematch" class="c-primary">다시 방 찾기</button><button data-act="exit">메뉴로</button>');
+  }
+  function endRoom(): void { if (room) { if (!room.done && room.started) room.net.bye(); room.net.dispose(); } room = null; if (world) world.onShot = null; }
+
   function duelTick(now: number, dt: number): void {
     const d = duel, w = world; if (!d || !w || d.done) return; const f = w.factions[0], b = w.boss(0);
     if (d.pose) { const far = Math.hypot(d.pose.x - d.rx, d.pose.y - d.ry) > 400, k = far ? 1 : Math.min(1, dt * 12); d.rx += (d.pose.x - d.rx) * k; d.ry += (d.pose.y - d.ry) * k; w.puppet(d.rx, d.ry, d.pose.a, d.pose.hp, d.pose.mh, d.pose.w); }
+    d.army.step(dt); const army = d.army.snapshot(w, now); if (army) d.net.sendArmy(army);
+    if (!w.hq(0) && !d.hqSent) { d.hqSent = true; d.net.sendHqDown(); }
     if (b) d.net.sendPose({ x: b.x, y: b.y, a: b.ang, hp: b.hp, mh: b.maxHp, w: f.slots[f.cur]?.id ?? 'pistol' }, now);
     if (f.deaths > d.myDeaths) { d.myDeaths = f.deaths; d.net.sendDeaths(d.myDeaths); }
-    const out = duelOutcome(d.myDeaths, d.oppDeaths, w.time);
+    const out = d.hqSent ? 'lose' : d.oppHqDown ? 'win' : duelOutcome(d.myDeaths, d.oppDeaths, w.time);
     if (!out) { d.graceAt = 0; return; }
-    if (!d.graceAt) d.graceAt = now; else if (now - d.graceAt > 1000) void concludeDuel(out === 'win' ? d.s.me.id : d.s.opponent.id, out === 'win' ? `${d.oppDeaths}킬로 승리` : `${d.myDeaths}번 쓰러졌습니다`);
+    const why = d.hqSent ? '내 본부가 무너졌습니다' : d.oppHqDown ? '상대 본부를 무너뜨렸습니다' : out === 'win' ? `${d.oppDeaths}킬로 승리` : `${d.myDeaths}번 쓰러졌습니다`;
+    if (!d.graceAt) d.graceAt = now; else if (now - d.graceAt > 1000) void concludeDuel(out === 'win' ? d.s.me.id : d.s.opponent.id, why);
   }
   /** 승자를 서버에 보고하고 확정된 레이팅 변화를 보여 줍니다(보고 규칙은 SPEED RUSH 와 같습니다). */
   async function concludeDuel(winner: string, why: string): Promise<void> {
@@ -385,7 +493,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     recordMatch(win, w.time, f.kills);
     try { const c = readCityCareer(); localStorage.setItem(CITY_KEY, JSON.stringify({ matches: c.matches + 1, wins: c.wins + Number(win), best: c.best ? Math.min(c.best, place) : place })); } catch { /* 기록은 선택 사항 */ }
     modal.innerHTML = `<section class="c-result ${win ? 'win' : ''}"><div class="c-kicker">${win ? 'LAST KINGDOM STANDING' : 'KINGDOM FALLEN'}</div><h2>${win ? '최후의 왕국!' : `#${place} <small>/ 8 왕국</small>`}</h2><p class="c-lead">${win ? '도시의 모든 것이 이제 당신의 것입니다.' : place <= 3 ? '거의 다 왔습니다. 한 판 더!' : '경제를 먼저 굴리고, 병력과 함께 움직여 보세요.'}</p>
-      <div class="c-stats"><div><b>${clock(w.time)}</b><span>생존 시간</span></div><div><b>${f.kills}</b><span>처치</span></div><div><b>${f.bossKills}</b><span>보스 처치</span></div><div><b>$${$(f.earned)}</b><span>총 수익</span></div><div><b>${f.level}</b><span>보스 레벨</span></div></div>
+      <div class="c-stats"><div><b>${clock(w.time)}</b><span>생존 시간</span></div><div><b>${f.kills}</b><span>처치</span></div><div><b>${f.bossKills}</b><span>보스 처치</span></div><div><b>$${$(f.earned)}</b><span>총 수익</span></div><div><b>${f.level}</b><span>보스 레벨</span></div><div><b>${w.eventsDone}</b><span>부업 완료</span></div></div>
       <div class="c-actions"><button data-act="retry" class="c-primary">다시 도전</button><button data-act="exit">메뉴로</button></div></section>`;
   }
 
@@ -393,6 +501,8 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   function onKey(e: KeyboardEvent): void {
     if (closed) return; const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, w = world;
     if (!w) return; const f = w.factions[0];
+    if (chatOpen) return; // 입력 칸이 자체 키를 처리합니다
+    if (k === 'Enter' && chatLive() && !paused && !w.over && f.pending === 0 && !(e.target instanceof Element && e.target.closest('button,a,select,textarea'))) { e.preventDefault(); openChat(); return; }
     if (f.pending > 0) { if (!e.repeat && k >= '1' && k <= '3') act(`perk:${Number(k) - 1}`); return; }
     if (k === 'Escape') { if (ghost) ghost = null; else if (!bigmap.hidden) { bigmap.hidden = true; lock(); } else if (!q('#c-missions').hidden) { q('#c-missions').hidden = true; lock(); } else if (!panel.hidden) { panel.hidden = true; shopOpen = false; lock(); } else if (paused) act('resume'); else pause(); return; }
     if (tut && k === 'Enter' && STEPS[tut.s.i]?.info && !paused) { act('tutnext'); return; }
@@ -403,13 +513,19 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       if (panel.hidden && bigmap.hidden && q('#c-missions').hidden && !focusedControl) { e.preventDefault(); act('panel'); }
       return;
     }
-    if (focusedControl || e.repeat) return;
+    if (e.repeat) return;
+    if (focusedControl) {
+      // Keep Space/Enter on the button, but do not swallow WASD and other game keys.
+      if (k === ' ' || k === 'Enter') return;
+      if (e.target instanceof HTMLElement) e.target.blur();
+    }
     if (e.shiftKey && /^Digit[0-5]$/.test(e.code)) { act('sq:' + e.code.slice(5)); return; }
     keys.add(k);
     if (k === ' ') e.preventDefault();
     if (k === 'e') interact(); else if (k === 'f') w.toggleVehicle(0); else if (k === 'r') reload(w, 0); else if (k === 'q') res(w.useSkill(0)); else if (k === 'h') w.useMedkit(0);
     else if (k === 'z') act('order:follow'); else if (k === 'x') act('order:hold'); else if (k === 'c') { const p = aimPoint(); w.order(0, 'amove', p.x, p.y); } else if (k === 'v') act('view');
     else if (k === 'j') act('missions'); else if (k === 'm') act('map'); else if (k === 'b') { tab = 'build'; shopOpen = false; panel.hidden = false; renderPanel(); unlock(); }
+    else if (k === 'Delete' || k === 'Backspace') { const t = w.structAt(aimPoint().x, aimPoint().y); if (t) requestDemolish(t.id); else toast('철거할 아군 건물을 조준하세요'); }
     else if (k >= '1' && k <= '3') switchWeapon(w, 0, Number(k) - 1);
   }
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key); };
@@ -420,6 +536,9 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     for (const stick of [sticks.move, sticks.aim]) { stick.id = -1; stick.x = 0; stick.y = 0; }
     if (world && !world.over && !paused && world.factions[0].pending === 0 && document.hidden) pause();
   };
+  chatBox().addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); closeChat(true); } else if (e.key === 'Escape') { e.preventDefault(); closeChat(false); } });
+  chatBox().addEventListener('keyup', e => e.stopPropagation());
+  chatForm().addEventListener('submit', e => { e.preventDefault(); closeChat(true); });
   window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKeyUp); window.addEventListener('resize', onResize); window.addEventListener('blur', onBlur); document.addEventListener('visibilitychange', onBlur);
   // Click fires for mouse, touch and keyboard activation; pointerdown excluded keyboard users.
   root.addEventListener('click', e => {
@@ -427,13 +546,37 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (t && !(t as HTMLButtonElement).disabled) { e.stopPropagation(); act(t.dataset.act!, e); }
   });
   root.addEventListener('contextmenu', e => e.preventDefault());
-  const place = (sx: number, sy: number): void => { const w = world!, p = view === 'top' || !R3 ? R!.toWorld(sx, sy) : { x: ghost!.x, y: ghost!.y }, e = w.build(0, ghost!.kind, p.x, p.y); if (e) toast(e); else { audio.play('build'); if (!keys.has('Shift')) ghost = null; } };
+  const requestDemolish = (id: number): void => {
+    const w = world; if (!w) return;
+    const s = w.structures.find(z => z.id === id), err = w.canDemolish(0, id);
+    if (err || !s) { toast(err || '철거할 건물이 없습니다'); demolishArmed = null; return; }
+    const ref = w.demolishRefundOf(0, s.kind), now = performance.now();
+    if (demolishArmed && demolishArmed.id === id && now - demolishArmed.at < 4000) {
+      const e = w.demolish(0, id); demolishArmed = null;
+      if (e) toast(e); else { audio.play('poof'); toast(`${STRUCTS[s.kind].name} 철거 · ◆${ref.crystal}${ref.cash ? ` $${ref.cash}` : ''} 환급`, false); if (!panel.hidden) renderPanel(); }
+      return;
+    }
+    demolishArmed = { id, at: now };
+    toast(`${STRUCTS[s.kind].name} 철거를 한 번 더 눌러 확인 (건설비 50% 환급)`, false);
+    if (!panel.hidden) renderPanel();
+  };
+  /** 보이는 고스트 자리에 짓습니다(보는 대로 지어지도록 고스트 좌표를 씁니다). */
+  const place = (): void => { if (!world || !ghost) return; const e = world.build(0, ghost.kind, ghost.x, ghost.y); if (e) toast(e); else { audio.play('build'); if (!keys.has('Shift')) ghost = null; } };
+  let placeKey = '';
+  const syncPlaceBar = (): void => {
+    const el = q('#c-place'); if (!ghost || !world) { if (!el.hidden) { el.hidden = true; placeKey = ''; } return; }
+    const err = world.buildError(0, ghost.kind, ghost.x, ghost.y), key = ghost.kind + '|' + err;
+    if (el.hidden) el.hidden = false;
+    if (key === placeKey) return; placeKey = key;
+    q('#c-place-name').textContent = STRUCTS[ghost.kind].name; const m = q('#c-place-msg'); m.textContent = err || (touch ? '설치할 수 있습니다 — 설치를 누르세요' : '설치할 수 있습니다 — 클릭'); m.className = err ? 'bad' : 'ok';
+    (el.querySelector('[data-act="placeok"]') as HTMLButtonElement).disabled = !!err;
+  };
   const looks = new Map<number, { x: number; y: number }>();
   for (const cv of [canvas, canvas3]) {
     cv.addEventListener('pointerdown', e => {
       audio.unlock(); if (!world || paused || world.over) return; mouse.x = e.clientX; mouse.y = e.clientY; const three = cv === canvas3;
       if (e.pointerType === 'touch') {
-        if (ghost) { if (three) { const p = R3!.groundPoint(700); ghost.x = p.x; ghost.y = p.y; } place(e.clientX, e.clientY); return; }
+        if (ghost && !three) return; // 탑뷰: 누른 곳으로 고스트가 따라옵니다. 설치는 아래 '설치' 버튼
         if (e.clientX < innerWidth * 0.45) { const s = sticks.move; if (s.id < 0) { s.id = e.pointerId; s.ox = e.clientX; s.oy = e.clientY; s.x = s.y = 0; } }
         else if (three) looks.set(e.pointerId, { x: e.clientX, y: e.clientY });
         else { const s = sticks.aim; if (s.id < 0) { s.id = e.pointerId; s.ox = e.clientX; s.oy = e.clientY; s.x = s.y = 0; } }
@@ -441,12 +584,13 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       }
       if (three && !locked && !lockFail) { lock(); return; }
       if (e.button === 2) { if (ghost) ghost = null; else { const p = three ? R3!.groundPoint(900) : R!.toWorld(e.clientX, e.clientY); world.order(0, 'amove', p.x, p.y); } return; }
-      if (e.button === 0) { if (ghost) place(e.clientX, e.clientY); else mouse.down = true; }
+      if (e.button === 0) { if (ghost) place(); else mouse.down = true; }
     });
     cv.addEventListener('pointermove', e => {
       if (e.pointerType === 'touch') {
+        if (ghost && cv === canvas) { mouse.x = e.clientX; mouse.y = e.clientY; return; }
         for (const s of [sticks.move, sticks.aim]) if (s.id === e.pointerId) { s.x = Math.max(-1, Math.min(1, (e.clientX - s.ox) / 56)); s.y = Math.max(-1, Math.min(1, (e.clientY - s.oy) / 56)); }
-        const l = looks.get(e.pointerId); if (l && R3) { R3.yaw += (e.clientX - l.x) * 0.0062; R3.pitch = Math.max(-1.2, Math.min(1, R3.pitch - (e.clientY - l.y) * 0.005)); l.x = e.clientX; l.y = e.clientY; lastLook = performance.now(); }
+        const l = looks.get(e.pointerId); if (l && R3) { const look = applyLook(R3.yaw, R3.pitch, e.clientX - l.x, e.clientY - l.y, 0.005); R3.yaw = look.yaw; R3.pitch = look.pitch; l.x = e.clientX; l.y = e.clientY; lastLook = performance.now(); }
         return;
       }
       mouse.x = e.clientX; mouse.y = e.clientY;
@@ -500,6 +644,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     const w = world!, r3 = R3!, b = w.boss(0), list: { x: number; y: number; h: number; text: string; color: string; edge: boolean }[] = [];
     if (w.inside) { for (const el of marks) el.style.display = 'none'; return; }
     const hq = w.hq(0); if (hq && b && (Math.hypot(hq.x + 60 - b.x, hq.y + 60 - b.y) > 420 || w.time - hq.hurtT < 5)) list.push({ x: hq.x + 60, y: hq.y + 60, h: 190, text: w.time - hq.hurtT < 5 ? '본부 피격!' : '본부', color: w.time - hq.hurtT < 5 ? '#ff6b6b' : FACTIONS[0].color, edge: true });
+    if (w.event) list.push({ x: w.event.x, y: w.event.y, h: 70, text: `${EVENT_INFO[w.event.kind].name}${w.event.kind === 'delivery' ? (w.event.stage ? ' · 목적지' : ' · 수령지') : ''} ${w.event.t}s`, color: EVENT_INFO[w.event.kind].color, edge: true });
     for (const l of w.loot) if (l.alive && l.type === 'crate') list.push({ x: l.x, y: l.y, h: 60, text: '보급 상자', color: '#ffe27a', edge: true });
     const z = w.zone; if (b && Math.hypot(b.x - z.nx, b.y - z.ny) > z.nr && z.nr < 3800) list.push({ x: z.nx, y: z.ny, h: 40, text: '안전지대', color: '#c9a2ff', edge: true });
     if (b && !w.businesses.some(q2 => q2.owner === 0)) { let best: { x: number; y: number } | null = null, bd = 1e9; for (const q2 of w.businesses) if (q2.owner < 0 && q2.kind !== 'gunshop') { const d = Math.hypot(q2.x - b.x, q2.y - b.y); if (d < bd) { bd = d; best = q2; } } if (best) list.push({ x: best.x, y: best.y, h: 60, text: '매입 가능', color: '#ffffff', edge: true }); }
@@ -551,13 +696,17 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
         if (e.t === 'shot') { audio.play(e.s!, vol * (e.f === 0 ? 1 : 0.6)); if (vol > 0.3) combat = Math.min(1, combat + 0.08); }
         else if (e.t === 'boom') audio.play('boom', vol); else if (e.t === 'hit') { if (e.a === 1) { hitT = 0.14; cross.classList.add('hit'); audio.play('hit', 0.9); } else audio.play('hit', vol * 0.5); } else if (e.t === 'spark') audio.play('hit', vol * 0.4); else if (e.t === 'death') audio.play('death', vol);
         else if (e.t === 'kill') { hitT = 0.3; cross.classList.add('hit', 'kill'); audio.play('pickup', 0.8); }
-        else if (e.t === 'phurt') hurt = Math.min(1, hurt + (e.a ?? 10) / 45);
+        else if (e.t === 'phurt') { hurt = Math.min(1, hurt + (e.a ?? 10) / 45); audio.play('hurt', 0.7); }
         else if (e.t === 'cash' && e.f === 0) audio.play('cash'); else if (e.t === 'pickup' && d < 60) audio.play('pickup'); else if (e.t === 'levelup' && e.f === 0) audio.play('levelup');
         else if (e.t === 'order') { if (tut) tut.c.orders++; } else if (e.t === 'quest') { audio.play('quest'); banner(`목표 달성 +$${e.a}`); } else if (e.t === 'siren') audio.play('siren'); else if (e.t === 'announce') { audio.play('announce'); banner(e.s!); }
         else if (e.t === 'crash') audio.play('crash', 0.8); else if (e.t === 'reload') audio.play('reload'); else if (e.t === 'dash') audio.play('dash'); else if (e.t === 'door') audio.play('door'); else if ((e.t === 'built' || e.t === 'capture') && e.f === 0) audio.play('build');
         else if (e.t === 'thud') audio.play('boom', vol * 0.5); else if (e.t === 'playerdown') { audio.play('lose'); hurt = 1; }
+        else if (e.t === 'crystal') audio.play('crystal', vol); else if (e.t === 'heal' || e.t === 'healbeam') audio.play('heal', vol);
+        else if (e.t === 'skid') audio.play('skid', vol); else if (e.t === 'splat') audio.play('splat', vol);
+        else if (e.t === 'burn' || e.t === 'wreck') audio.play('burn', vol); else if (e.t === 'spawn' && e.f === 0) audio.play('spawn');
+        else if (e.t === 'roar') audio.play('roar', vol); else if (e.t === 'poof') audio.play('poof', vol); else if (e.t === 'crate' && d < 80) audio.play('crate');
       }
-      if (duel) duelTick(now, dt);
+      if (duel) duelTick(now, dt); else if (room) roomTick(now, dt);
       w.events.length = 0; combat = Math.max(0, combat - dt * 0.25); audio.intensity = combat;
     }
     audio.setEngine(veh ? Math.min(1, spd / veh.maxSpeed) : -1);
@@ -565,14 +714,15 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     hurt = Math.max(0, hurt - dt * 1.3); const low = b && b.hp < b.maxHp * 0.35 ? 0.35 + Math.sin(now / 160) * 0.12 : 0, outside = !!b && Math.hypot(b.x - w.zone.x, b.y - w.zone.y) > w.zone.r;
     hurtEl.style.opacity = String(Math.max(hurt * 0.85, low)); hurtEl.classList.toggle('storm', outside && hurt < 0.1);if (outside) hurtEl.style.opacity = String(Math.max(0.45, hurt));
     if (three && R3) {
-      if (ghost) { const p = R3.groundPoint(700); ghost.x = Math.round(p.x / 10) * 10; ghost.y = Math.round(p.y / 10) * 10; ghost.ok = w.canBuild(0, ghost.kind, ghost.x, ghost.y); }
+      if (ghost) { const p = R3.buildPoint(ghost.kind); ghost.x = snapBuildCoord(p.x); ghost.y = snapBuildCoord(p.y); ghost.ok = !w.buildError(0, ghost.kind, ghost.x, ghost.y); }
       R3.draw(paused ? 0 : dt, ghost); overlay(); r.cam.x = b ? b.x : r.cam.x; r.cam.y = b ? b.y : r.cam.y;
     } else {
       if (b) { const look = touch ? { x: 0, y: 0 } : { x: (mouse.x - r.w / 2) * 0.22 / r.cam.zoom, y: (mouse.y - r.h / 2) * 0.22 / r.cam.zoom }; const tx = b.x + look.x + (veh ? veh.vx * 0.35 : 0), ty = b.y + look.y + (veh ? veh.vy * 0.35 : 0); r.cam.x += (tx - r.cam.x) * Math.min(1, dt * 7); r.cam.y += (ty - r.cam.y) * Math.min(1, dt * 7); }
       const base = Math.max(0.55, Math.min(1, Math.min(r.w, r.h * 1.5) / 1100)); r.cam.zoom += (base * userZoom * (1 - Math.min(0.3, spd / 1800)) - r.cam.zoom) * Math.min(1, dt * 3);
-      if (ghost) { const p = r.toWorld(mouse.x, mouse.y); ghost.x = p.x; ghost.y = p.y; ghost.ok = w.canBuild(0, ghost.kind, p.x, p.y); }
+      if (ghost) { const p = r.toWorld(mouse.x, mouse.y); ghost.x = snapBuildCoord(p.x); ghost.y = snapBuildCoord(p.y); ghost.ok = !w.buildError(0, ghost.kind, ghost.x, ghost.y); }
       r.draw(paused ? 0 : dt, ghost, touch || !b ? null : r.toWorld(mouse.x, mouse.y));
     }
+    syncPlaceBar();
     root.classList.toggle('down', !b && !w.over);
     if (b) { // 구역 이름
       const bi = Math.max(0, Math.min(BLOCKS - 1, Math.floor((b.x - ROAD / 2) / PITCH))), bj = Math.max(0, Math.min(BLOCKS - 1, Math.floor((b.y - ROAD / 2) / PITCH))), bl = w.map.blocks[bj * BLOCKS + bi], ring = Math.max(Math.abs(bi - 4), Math.abs(bj - 4));

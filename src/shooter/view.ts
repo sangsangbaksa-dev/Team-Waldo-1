@@ -17,7 +17,7 @@ import { waterDepth } from './terrain';
 import { crateTexture, floorTexture, glowTexture, groundTexture, makeSky, wallTexture } from './textures';
 
 export type Quality = 'high' | 'standard' | 'low';
-const LOOT_COLOR: Record<string, number> = { weapon: 0xeaf6ff, ammo: 0xffa53a, medkit: 0x52f08a, armor: 0x5aa8ff, bandage: 0xf2f2f2, attach: 0xc59bff, helmet: 0xffd34d, boost: 0x39e6ff, smoke: 0xb8c0c8 };
+const LOOT_COLOR: Record<string, number> = { weapon: 0xeaf6ff, ammo: 0xffa53a, medkit: 0x52f08a, armor: 0x5aa8ff, bandage: 0xf2f2f2, attach: 0xc59bff, helmet: 0xffd34d, boost: 0x39e6ff, smoke: 0xb8c0c8, flash: 0xfff2a0 };
 
 const rngOf = (seed: number): (() => number) => makeRng(seed);
 /** 부드러운 2차원 값 잡음(지형 색 변화용) */
@@ -266,6 +266,11 @@ export class ShooterView {
       const top = new THREE.Mesh(new THREE.CylinderGeometry(0.092, 0.092, 0.04, 12), new THREE.MeshLambertMaterial({ color: 0xcfd6da })); top.position.y = 1.07; g.add(top);
       const bolt = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.095), new THREE.MeshBasicMaterial({ color: 0xffe14a })); bolt.position.set(0, 0.9, 0); g.add(bolt);
     }
+    else if (l.kind === 'flash') {
+      const can = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.24, 12), new THREE.MeshLambertMaterial({ color: 0x2c3138, emissive: 0x14171a })); can.position.y = 0.9; can.castShadow = true; g.add(can);
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.074, 0.074, 0.05, 12), new THREE.MeshBasicMaterial({ color: 0xfff2a0 })); band.position.y = 0.93; g.add(band);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.05, 8), new THREE.MeshLambertMaterial({ color: 0xb0b6ba })); cap.position.y = 1.05; g.add(cap);
+    }
     else if (l.kind === 'smoke') {
       const can = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.26, 12), new THREE.MeshLambertMaterial({ color: 0x8a949c, emissive: 0x2a3036 })); can.position.y = 0.9; can.castShadow = true; g.add(can);
       const band = new THREE.Mesh(new THREE.CylinderGeometry(0.078, 0.078, 0.05, 12), new THREE.MeshLambertMaterial({ color: 0xe8d23a })); band.position.y = 0.92; g.add(band);
@@ -319,6 +324,7 @@ export class ShooterView {
         if (isMe) { this.shake = Math.min(1, this.shake + WEAPONS[e.weapon].recoil * 9); this.fovPunch = Math.min(1, this.fovPunch + WEAPONS[e.weapon].recoil * 7); this.flashKick = 1; }
       } else if (e.t === 'nade') {
         if (e.stage === 'boom' && e.smoke) { this.burst(e.x, e.z); }
+        else if (e.stage === 'boom' && e.flash) { this.spark(e.x, Math.max(0.6, e.y), e.z, 26, [1, 1, 0.9], 9); }
         else if (e.stage === 'boom') { this.boom(e.x, e.y, e.z); const dd = Math.hypot(e.x - me.x, e.z - me.z); if (dd < 25) this.shake = Math.min(1, this.shake + (1 - dd / 25) * 0.9); }
       } else if (e.t === 'veh') {
         if (e.stage === 'crash') { const dd = Math.hypot(e.x - me.x, e.z - me.z); this.spark(e.x, 1, e.z, 12, [1, 0.8, 0.45], 4); if (dd < 30) this.shake = Math.min(1, this.shake + (1 - dd / 30) * 0.5); }
@@ -358,7 +364,7 @@ export class ShooterView {
   }
   private updateNades(dt: number): void {
     this.updateClouds(dt);
-    const live = new Set<number>(); for (const n of this.match.nades) { live.add(n.id); let m = this.nadeMeshes.get(n.id); if (!m) { m = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), new THREE.MeshLambertMaterial({ color: n.smoke ? 0x9aa3ab : 0x3b4a2a, emissive: 0xff3010, emissiveIntensity: 0.2 })); this.scene.add(m); this.nadeMeshes.set(n.id, m); } m.position.set(n.x, n.y, n.z); (m.material as THREE.MeshLambertMaterial).emissiveIntensity = n.fuse < 1 ? 0.2 + Math.abs(Math.sin(this.time * 24)) * 1.2 : 0.2; }
+    const live = new Set<number>(); for (const n of this.match.nades) { live.add(n.id); let m = this.nadeMeshes.get(n.id); if (!m) { m = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), new THREE.MeshLambertMaterial({ color: n.smoke ? 0x9aa3ab : n.flash ? 0xe8e4b0 : 0x3b4a2a, emissive: 0xff3010, emissiveIntensity: 0.2 })); this.scene.add(m); this.nadeMeshes.set(n.id, m); } m.position.set(n.x, n.y, n.z); (m.material as THREE.MeshLambertMaterial).emissiveIntensity = n.fuse < 1 ? 0.2 + Math.abs(Math.sin(this.time * 24)) * 1.2 : 0.2; }
     for (const [id, m] of this.nadeMeshes) if (!live.has(id)) { this.scene.remove(m); m.geometry.dispose(); (m.material as THREE.Material).dispose(); this.nadeMeshes.delete(id); }
     for (let i = this.booms.length - 1; i >= 0; i--) { const b = this.booms[i]; b.t += dt; b.s.scale.setScalar(2 + b.t * 16); (b.s.material as THREE.SpriteMaterial).opacity = Math.max(0, 1 - b.t * 3); if (b.t > 0.35) { this.scene.remove(b.s); (b.s.material as THREE.Material).dispose(); this.booms.splice(i, 1); } }
   }

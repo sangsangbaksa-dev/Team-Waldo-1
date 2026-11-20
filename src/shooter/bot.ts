@@ -37,6 +37,7 @@ function wantLoot(p: Player, kind: string, weapon: string | null, part: PartId |
   if (kind === 'helmet') return p.helmet < 3 ? 2.2 : 0;
   if (kind === 'grenade') return p.nades < 3 ? 1.3 : 0;
   if (kind === 'smoke') return p.smokes < 2 ? 1.0 : 0;
+  if (kind === 'flash') return p.flashes < 2 ? 0.9 : 0;
   if (kind === 'boost') return p.boost <= 0 && p.hp < 95 ? 1.6 : 0;
   if (kind === 'attach') return part && p.guns.some(g => { if (!g || !canFit(g.id, part)) return false; const f = partFit(g.att, part); return f === 'new' || f === 'upgrade'; }) ? 1.4 : 0;
   if (kind === 'ammo') return p.guns.some(g => g && g.reserve < WEAPONS[g.id].mag * 2) ? 2 : 0;
@@ -52,7 +53,8 @@ function wantLoot(p: Player, kind: string, weapon: string | null, part: PartId |
 
 export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void {
   const b = p.brain!, T = b.t, inp = p.input, rng = m.rng, eye = PLAYER.eye;
-  inp.heal = 0; inp.nade = false; inp.smoke = false; inp.fire = false; inp.reload = false; inp.interact = false; inp.sprint = false; inp.ads = false; inp.slot = -1; inp.mx = 0; inp.mz = 0;
+  inp.heal = 0; inp.nade = false; inp.smoke = false; inp.flash = false; inp.fire = false; inp.reload = false; inp.interact = false; inp.sprint = false; inp.ads = false; inp.slot = -1; inp.mx = 0; inp.mz = 0;
+  if (p.blind > 0.4) return; // 눈이 멀면 가만히 서서 더듬습니다
   b.goalT -= dt; b.investT -= dt; b.strafeT -= dt; b.errT -= dt; b.detourT -= dt; b.lootT -= dt; b.think -= dt; b.lootScan -= dt;
 
   // ---- 주변 살피기 (0.12~0.2초마다) ----
@@ -95,6 +97,8 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
 
   // 다치면 연막탄을 앞에 던져 시선을 끊고 빠집니다
   if (visible && q && p.smokes > 0 && p.nadeCd <= 0 && p.hp < 45 && Math.hypot(q.x - p.x, q.z - p.z) > 10 && rng() < 0.08) inp.smoke = true;
+  // 가까운 적에게 섬광탄을 던져 눈을 멀게 한 뒤 몰아칩니다
+  if (visible && q && p.flashes > 0 && p.nadeCd <= 0 && p.blind <= 0) { const fd = Math.hypot(q.x - p.x, q.z - p.z); if (fd > 6 && fd < 16 && rng() < 0.05) inp.flash = true; }
   if (visible && q && p.nades > 0 && p.nadeCd <= 0) { const nd = Math.hypot(q.x - p.x, q.z - p.z); if (nd > 9 && nd < 22 && rng() < 0.06) inp.nade = true; }
 
   // ---- 시선과 조준 ----

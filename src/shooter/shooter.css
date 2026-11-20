@@ -137,6 +137,7 @@
 .sz-veh .nm{font-size:13px;font-weight:700;opacity:.85;margin-bottom:4px}.sz-veh .bar{height:7px;margin-top:6px;border-radius:5px;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.3);overflow:hidden}
 .sz-veh .bar i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#ffd34d,#7ee08a);transition:width .12s}.sz-veh .bar.low i{background:linear-gradient(90deg,#ff5a3c,#ffb04d)}
 .sz-veh small.keys{display:block;margin-top:6px;font-size:12px;font-weight:500;opacity:.8}
+.sz-flashfx{position:absolute;inset:0;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,#fff 0,#fff 55%,rgba(255,255,255,.88) 100%);transition:opacity .12s}
 .sz-redfx{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .2s;background:radial-gradient(ellipse at center,rgba(255,40,20,0) 45%,rgba(255,40,20,.4) 100%);animation:szred .7s infinite alternate}
 .sz-redfx.on{opacity:1}@keyframes szred{from{filter:brightness(.8)}to{filter:brightness(1.3)}}
 .touch .sz-veh{bottom:max(150px,env(safe-area-inset-bottom))}

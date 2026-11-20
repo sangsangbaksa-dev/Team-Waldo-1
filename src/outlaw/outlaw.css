@@ -245,3 +245,30 @@
   .ol-card .ol-btns button{white-space:normal;min-height:42px;line-height:1.3}
   .ol-card .outfits{flex-wrap:wrap}
 }
+
+/* OUTLAW: readable neon-noir menus, independent of hub and other games. */
+.ol-root .ol-modal{background:rgba(4,7,12,.75)}
+.ol-root .ol-card{box-sizing:border-box;max-width:100%;max-height:calc(100vh - 32px);max-height:calc(100dvh - max(12px,env(safe-area-inset-top)) - max(12px,env(safe-area-inset-bottom)));padding:clamp(14px,3vw,26px);border:1px solid #ffffff29;border-top:3px solid var(--mag);border-radius:12px;background:linear-gradient(155deg,#1b202b,#10131b 75%);box-shadow:0 20px 65px #000b;scrollbar-color:#626a80 #141821}
+.ol-root .ol-card h2{font-size:clamp(22px,4vw,32px);letter-spacing:.035em;line-height:1.2;overflow-wrap:anywhere}
+.ol-root .ol-card .sub{color:#c0c9d6;opacity:1;line-height:1.55}
+.ol-root .ol-card .ol-btns.v{min-width:0}
+.ol-root .ol-card .ol-btns button{min-height:44px;max-width:100%;clip-path:none;border-radius:6px;font-size:15px;letter-spacing:.025em;font-style:normal;line-height:1.35;overflow-wrap:anywhere}
+.ol-root .ol-card .ol-btns button:not(:disabled):hover{transform:none;background:#94304f}
+.ol-root .ol-card .ol-list .row:not(:disabled):hover{transform:none;background:#30394a}
+.ol-root .ol-card button:focus-visible{outline:2px solid var(--cy);outline-offset:-2px;transform:none}
+.ol-root .ol-card button:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.ol-root .ol-card .row2{border-radius:6px;min-width:0;background:#242b38}
+.ol-root .ol-card .row2>div{min-width:0;overflow-wrap:anywhere}
+.ol-root .ol-card .tab,.ol-root .ol-card .chip-b,.ol-root .ol-card .row2 button{min-height:42px}
+.ol-root .ol-card .phone-body{scrollbar-width:thin;overscroll-behavior:contain}
+.ol-root .ol-card.map canvas{max-height:min(68vh,660px);max-height:min(68dvh,660px)}
+.ol-root .ol-touchpad button:active{background:#8f3156;border-color:#fff}
+@media(max-width:420px){
+  .ol-root .ol-card .row2{flex-wrap:wrap;gap:8px}
+  .ol-root .ol-card .row2 button{width:100%}
+  .ol-root .ol-card .phone-head{flex-wrap:wrap}
+  .ol-root .ol-card .reels i{width:clamp(44px,16vw,72px);height:clamp(44px,16vw,72px);font-size:clamp(24px,9vw,40px)}
+}
+@media(prefers-reduced-motion:reduce){
+  .ol-root .ol-card button,.ol-root .ol-card .hero-card{transition:none;transform:none}
+}

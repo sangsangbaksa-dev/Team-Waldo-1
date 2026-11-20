@@ -33,10 +33,10 @@ const esc = (s: string): string => s.replace(/[&<>]/g, c => c === '&' ? '&amp;' 
 const money = (n: number): string => '$' + Math.floor(n).toLocaleString('en-US');
 
 export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
-  const prefs = readPreferences(), touch = matchMedia('(pointer: coarse)').matches, base = import.meta.env.BASE_URL;
+  const prefs = readPreferences(), activeQuality = prefs.quality, touch = matchMedia('(pointer: coarse)').matches, base = import.meta.env.BASE_URL;
   const root = document.createElement('div'); root.className = 'ol-root' + (touch ? ' touch' : '');
   root.innerHTML = `
-    <canvas class="ol-canvas"></canvas>
+    <canvas class="ol-canvas" tabindex="-1"></canvas>
     <div class="ol-fx"><div class="ol-vig" id="ol-vig"></div><div class="ol-lines" id="ol-lines"></div><div class="ol-gray" id="ol-gray"></div><div class="ol-dir" id="ol-dir"><i></i></div></div>
     <div class="ol-hud" id="ol-hud" hidden>
       <div class="ol-tr"><div class="ol-cash" id="ol-cash">$0</div><div class="ol-clock" id="ol-clock">00:00</div><div class="ol-stars" id="ol-stars"><i>★</i><i>★</i><i>★</i><i>★</i><i>★</i></div></div>
@@ -58,7 +58,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     </div>
     <div class="ol-wheel" id="ol-wheel" hidden></div>
     <div class="ol-title" id="ol-title"></div>
-    <div class="ol-modal" id="ol-modal" hidden></div>`;
+    <div class="ol-modal" id="ol-modal" role="dialog" aria-modal="true" aria-label="게임 메뉴" hidden></div>`;
   document.body.append(root);
   const q = <T extends HTMLElement>(sel: string): T => root.querySelector<T>(sel)!;
   const canvas = q<HTMLCanvasElement>('.ol-canvas'), hudEl = q('#ol-hud'), titleEl = q('#ol-title'), modalEl = q('#ol-modal'), wheelEl = q('#ol-wheel');
@@ -73,6 +73,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   let closed = false, raf = 0, last = performance.now();
   let phase: 'load' | 'menu' | 'trans' | 'play' = 'load';
   let paused = false, modalKind = '', locked = false, lockFail = false, transT = 0;
+  let modalOrigin: HTMLElement | null = null, wheelDelta = 0, lastWheelAt = -Infinity;
   let sim: Sim | null = null, cityView: CityView | null = null, actorView: ActorView | null = null, chase: ChaseCamera | null = null, minimap: Minimap | null = null;
   let assets: OutlawAssets | null = null, versus: Versus | null = null;
   let lobby: { close(): void } | undefined, openingLobby = false;
@@ -87,7 +88,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   const hasSave = (): boolean => readOutlawSummary().has;
 
   // ---------- 저장 ----------
-  function save(): void { if (!sim || versus || phase === 'menu') return; try { localStorage.setItem(OUTLAW_KEY, JSON.stringify(sim.exportSave())); } catch { /* 저장은 선택 사항입니다. */ } }
+  function save(): void { if (!sim || versus || !sim.player.alive || (phase !== 'play' && phase !== 'trans')) return; try { localStorage.setItem(OUTLAW_KEY, JSON.stringify(sim.exportSave())); } catch { /* 저장은 선택 사항입니다. */ } }
 
   // ---------- 알림 도구 ----------
   function toast(text: string, sec = 3.2): void {
@@ -108,19 +109,34 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 모달 ----------
   function openModal(kind: string, h: string): void {
     resetInput();
-    modalKind = kind; paused = true; modalEl.hidden = false; modalEl.innerHTML = `<div class="ol-card ${kind}">${h}</div>`;
-    if (document.pointerLockElement) document.exitPointerLock();
+    const previous = modalKind === kind ? Array.from(modalEl.querySelectorAll('button')).indexOf(document.activeElement as HTMLButtonElement) : -1;
+    if (!modalKind) modalOrigin = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    modalKind = kind; paused = true; modalEl.hidden = false;
+    titleEl.inert = hudEl.inert = true;
+    modalEl.innerHTML = `<div class="ol-card ${kind}" tabindex="-1">${h}</div>`;
+    const buttons = Array.from(modalEl.querySelectorAll<HTMLButtonElement>('button'));
+    const target = buttons[previous] && !buttons[previous].disabled ? buttons[previous] : buttons.find(b => !b.disabled);
+    (target ?? q('.ol-card')).focus({ preventScroll: true });
+    if (document.pointerLockElement === canvas) document.exitPointerLock();
   }
-  function closeModal(): void { modalKind = ''; paused = false; modalEl.hidden = true; modalEl.innerHTML = ''; if (phase === 'play') lock(); }
+  function closeModal(): void {
+    modalKind = ''; paused = false; modalEl.hidden = true; modalEl.innerHTML = '';
+    titleEl.inert = hudEl.inert = false;
+    if (phase === 'play') { canvas.focus({ preventScroll: true }); lock(); }
+    else if (modalOrigin?.isConnected) modalOrigin.focus({ preventScroll: true });
+    modalOrigin = null;
+  }
   function lock(): void { if (touch || locked || lockFail || closed) return; try { const r = canvas.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(() => { lockFail = true; }); } catch { lockFail = true; } }
   const onLock = (): void => {
+    const wasLocked = locked;
     locked = document.pointerLockElement === canvas;
-    if (!locked && phase === 'play' && !modalKind && !closed && !wheelOpen) openPause();
+    if (locked && (modalKind || closed)) { document.exitPointerLock(); return; }
+    if (wasLocked && !locked && phase === 'play' && !modalKind && !closed) openPause();
   };
   document.addEventListener('pointerlockchange', onLock);
 
   function controlsHtml(): string {
-    return `<h2>조작법</h2><div class="ol-keys"><div><b>이동</b>WASD · Shift 달리기 · Space 점프 · C 앉기</div><div><b>전투</b>좌클릭 사격 · 우클릭 조준 · R 재장전 · 1~9·0·-/휠 무기 · Q 무기 휠 · 수류탄은 사격 키로 투척</div><div><b>상호작용</b>E / F 차량 · 상점 · 의뢰 · 안전가옥</div><div><b>차량</b>W 가속 · S 브레이크/후진 · A D 조향 · Space 핸드브레이크 · H 경적 · R 라디오 · C 뒤돌아보기</div><div><b>휴대폰</b>P 휴대폰: 일거리·차고·부동산·업적 · 격투장/체육관/카지노/자동차 매장은 E</div><div><b>기타</b>M / Tab 전체 지도 · Esc 일시정지</div></div><p class="hint">아슬아슬한 통과·점프·드리프트·헤드샷은 스타일 보너스가 됩니다. 시민을 해치면 수배 별이 올라갑니다.</p><div class="ol-btns"><button data-k="back" type="button">돌아가기</button></div>`;
+    return `<h2>조작법</h2><div class="ol-keys"><div><b>이동</b>WASD · Shift 달리기 · Space 점프 · C 앉기</div><div><b>전투</b>좌클릭 사격 · 우클릭 조준 · R 재장전 · 1~9·0·-/휠 무기 · Q 무기 휠 · 수류탄은 사격 키로 투척</div><div><b>상호작용</b>E / F 차량 · 상점 · 의뢰 · 안전가옥</div><div><b>차량</b>W 가속 · S 브레이크/후진 · A D 조향 · Space 핸드브레이크 · H 경적 · R 라디오 · C 뒤돌아보기</div><div><b>휴대폰</b>P 휴대폰: 일거리·차고·부동산·업적 · 격투장/체육관/카지노/자동차 매장은 E</div><div><b>기타</b>M / Tab 전체 지도 (닫기 M) · Esc 일시정지</div></div><p class="hint">아슬아슬한 통과·점프·드리프트·헤드샷은 스타일 보너스가 됩니다. 시민을 해치면 수배 별이 올라갑니다.</p><div class="ol-btns"><button data-k="back" type="button">돌아가기</button></div>`;
   }
   function openPause(): void {
     openModal('pause', `<h2>${versus ? '대전 메뉴' : '일시정지'}</h2><div class="ol-btns v"><button data-k="resume" type="button">계속하기</button><button data-k="phone" type="button">휴대폰</button><button data-k="map" type="button">전체 지도</button><button data-k="help" type="button">조작법</button><button data-k="sound" type="button">소리: ${audio.enabled ? '켜짐' : '꺼짐'}</button><button data-k="quality" type="button">품질: ${prefs.quality === 'high' ? '높음' : prefs.quality === 'standard' ? '보통' : '낮음'} (다음 실행부터)</button><button data-k="quit" type="button" class="danger">${versus ? '대전 나가기' : '저장하고 나가기'}</button></div>`);
@@ -171,7 +187,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
       <div class="ol-btns v"><button data-t="new" type="button">새 게임</button>${sv ? '<button data-t="cont" type="button">이어하기</button>' : ''}${PVP_ENABLED ? '<button data-t="duel" type="button">온라인 1대1</button><button data-t="room" type="button">온라인 룸 (2~6인)</button>' : ''}<button data-t="help" type="button">조작법</button><button data-t="exit" type="button" class="ghost">메뉴로</button></div><p class="ol-title-status" role="status"></p>`;
   }
   titleEl.addEventListener('click', e => {
-    const b = (e.target as HTMLElement).closest('button'); if (!b || !sim || phase !== 'menu' || lobby || openingLobby) return;
+    const b = (e.target as HTMLElement).closest('button'); if (!b || !sim || phase !== 'menu' || modalKind || lobby || openingLobby) return;
     audio.unlock(); audio.play('menu_click');
     const t = b.dataset.t;
     if (t === 'exit') exit();
@@ -248,15 +264,26 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
 
   // ---------- 입력 ----------
   const onKeyDown = (e: KeyboardEvent): void => {
-    if (closed || lobby || openingLobby || modalKind === 'vsend') return; audio.unlock();
-    if (e.repeat) { return; }
+    if (closed || lobby || openingLobby) return;
+    if (modalKind && e.code === 'Tab') {
+      const buttons = Array.from(modalEl.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+      e.preventDefault();
+      const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+      const next = index < 0 ? (e.shiftKey ? buttons.length - 1 : 0) : (index + (e.shiftKey ? -1 : 1) + buttons.length) % buttons.length;
+      (buttons[next] ?? q('.ol-card')).focus();
+      return;
+    }
+    if (modalKind === 'vsend' || e.ctrlKey || e.metaKey || e.altKey) return;
+    audio.unlock();
+    if (phase === 'play' && !modalKind && ['Space', 'Tab'].includes(e.code)) e.preventDefault();
+    if (e.repeat) return;
     if (e.code === 'Escape') {
       if (modalKind) closeModal();
       else if (phase === 'play' && !locked) openPause();
       return;
     }
     if (phase !== 'play') return;
-    if ((e.code === 'KeyM' || e.code === 'Tab') && (!modalKind || modalKind === 'map')) { e.preventDefault(); if (modalKind) closeModal(); else openMap(); return; }
+    if ((e.code === 'KeyM' || (e.code === 'Tab' && !modalKind)) && (!modalKind || modalKind === 'map')) { e.preventDefault(); if (modalKind) closeModal(); else openMap(); return; }
     if (e.code === 'KeyP') { if (modalKind === 'phone') closeModal(); else if (!modalKind) openUi('phone'); return; }
     if (modalKind) return;
     keys.add(e.code);
@@ -278,22 +305,36 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (e.button === 0) mouse.fire = true; else if (e.button === 2) mouse.aim = true;
   };
   const onMouseUp = (e: MouseEvent): void => { if (e.button === 0) mouse.fire = false; else if (e.button === 2) mouse.aim = false; };
-  const onWheel = (e: WheelEvent): void => { if (phase !== 'play' || modalKind || !sim || Math.abs(e.deltaY) < 4) return; const dir = e.deltaY > 0 ? 1 : -1; let i = sim.player.cur; for (let n = 0; n < NW; n++) { i = (i + dir + NW) % NW; if (sim.player.guns[i]) { slotReq = i; break; } } };
+  const onWheel = (e: WheelEvent): void => {
+    if (phase !== 'play' || modalKind || wheelOpen || !sim || e.ctrlKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+    e.preventDefault();
+    const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? innerHeight : 1);
+    const now = performance.now();
+    if (now - lastWheelAt < 160) return;
+    if (Math.sign(dy) !== Math.sign(wheelDelta)) wheelDelta = 0;
+    wheelDelta += dy;
+    if (Math.abs(wheelDelta) < 32) return;
+    const dir = Math.sign(wheelDelta); wheelDelta = 0; lastWheelAt = now;
+    let i = slotReq >= 0 ? slotReq : sim.player.cur;
+    for (let n = 0; n < NW; n++) { i = (i + dir + NW) % NW; if (sim.player.guns[i]) { slotReq = i; break; } }
+  };
   const onCtx = (e: Event): void => e.preventDefault();
   function resetInput(): void {
-    keys.clear(); mouse.fire = mouse.aim = false; enterReq = reloadReq = false; slotReq = -1;
+    keys.clear(); mouse.fire = mouse.aim = false; enterReq = reloadReq = false; slotReq = -1; wheelDelta = 0; lastWheelAt = -Infinity;
     tc.fire = tc.aim = tc.jump = tc.sprint = tc.gas = tc.brake = tc.hand = tc.left = tc.right = false;
     tc.moveId = tc.lookId = -1; tc.mx = tc.my = 0;
     stickEl.style.opacity = '0'; (stickEl.firstElementChild as HTMLElement).style.transform = '';
     wheelSel = -1; closeWheel();
   }
+  const onBlur = (): void => { resetInput(); if (!versus && phase === 'play' && !modalKind && !closed) openPause(); };
   window.addEventListener('keydown', onKeyDown); window.addEventListener('keyup', onKeyUp); window.addEventListener('mousemove', onMouseMove);
-  canvas.addEventListener('mousedown', onMouseDown); window.addEventListener('mouseup', onMouseUp); window.addEventListener('wheel', onWheel, { passive: true }); canvas.addEventListener('contextmenu', onCtx); window.addEventListener('blur', resetInput);
+  canvas.addEventListener('mousedown', onMouseDown); window.addEventListener('mouseup', onMouseUp); canvas.addEventListener('wheel', onWheel, { passive: false }); canvas.addEventListener('contextmenu', onCtx); window.addEventListener('blur', onBlur);
 
   // 터치
   const stickEl = q('#ol-stick');
   const pad = q('.ol-touchpad');
   pad.addEventListener('pointerdown', e => {
+    if (phase !== 'play' || modalKind || !sim || closed) return;
     audio.unlock(); const b = (e.target as HTMLElement).closest('button');
     if (b && b.dataset.act) { const a = b.dataset.act; b.setPointerCapture(e.pointerId); if (a === 'use') useAction(); else if (a === 'reload') reloadReq = true; else if (a === 'weapon') { const p = sim!.player; let i = p.cur; for (let n = 0; n < NW; n++) { i = (i + 1) % NW; if (p.guns[i]) { slotReq = i; break; } } } else (tc as unknown as Record<string, boolean>)[a === 'hand' ? 'hand' : a] = true; e.preventDefault(); }
   });
@@ -303,6 +344,8 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (!touch || e.pointerType !== 'touch' || phase !== 'play' || modalKind) return; audio.unlock();
     if (e.clientX < innerWidth * 0.4 && tc.moveId < 0) { tc.moveId = e.pointerId; tc.ox = e.clientX; tc.oy = e.clientY; stickEl.style.cssText = `left:${e.clientX - 60}px;top:${e.clientY - 60}px;opacity:1`; }
     else if (e.clientX >= innerWidth * 0.4 && tc.lookId < 0) { tc.lookId = e.pointerId; tc.lx = e.clientX; tc.ly = e.clientY; }
+    else return;
+    canvas.setPointerCapture(e.pointerId); e.preventDefault();
   });
   const movePtr = (e: PointerEvent): void => {
     if (e.pointerId === tc.moveId) { const dx = clamp((e.clientX - tc.ox) / 55, -1, 1), dy = clamp((e.clientY - tc.oy) / 55, -1, 1); tc.mx = dx; tc.my = dy; const k = stickEl.firstElementChild as HTMLElement; k.style.transform = `translate(${dx * 38}px,${dy * 38}px)`; }
@@ -310,10 +353,10 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   };
   window.addEventListener('pointermove', movePtr);
   const saveCheckpoint = (): void => { if (sim?.player.alive && !closed) save(); };
-  const onVisibility = (): void => { resetInput(); if (document.hidden) saveCheckpoint(); };
+  const onVisibility = (): void => { resetInput(); if (document.hidden) { saveCheckpoint(); if (!versus && phase === 'play' && !modalKind && !closed) openPause(); } };
   document.addEventListener('visibilitychange', onVisibility); window.addEventListener('pagehide', saveCheckpoint);
   const endPtr = (e: PointerEvent): void => { if (e.pointerId === tc.moveId) { tc.moveId = -1; tc.mx = tc.my = 0; stickEl.style.opacity = '0'; (stickEl.firstElementChild as HTMLElement).style.transform = ''; } if (e.pointerId === tc.lookId) tc.lookId = -1; };
-  window.addEventListener('pointerup', endPtr); window.addEventListener('pointercancel', endPtr);
+  window.addEventListener('pointerup', endPtr); window.addEventListener('pointercancel', endPtr); canvas.addEventListener('lostpointercapture', endPtr);
   q('#ol-pause').onclick = () => { if (phase === 'play' && !modalKind) openPause(); };
   q('#ol-mapbtn').onclick = () => { if (phase === 'play' && !modalKind) openMap(); };
   q('#ol-phonebtn').onclick = () => { if (phase === 'play' && !modalKind) openUi('phone'); };
@@ -433,7 +476,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
 
   // ---------- 루프 ----------
   function resize(): void {
-    if (!renderer) return; const w = Math.max(1, innerWidth), h = Math.max(1, innerHeight), ratio = renderPixelRatio(w, h, devicePixelRatio, prefs.quality); if (ratio !== renderer.getPixelRatio()) { renderer.setPixelRatio(ratio); composer?.setPixelRatio(ratio); } renderer.setSize(w, h, false); composer?.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
+    if (!renderer) return; const w = Math.max(1, innerWidth), h = Math.max(1, innerHeight), ratio = renderPixelRatio(w, h, devicePixelRatio, activeQuality); if (ratio !== renderer.getPixelRatio()) { renderer.setPixelRatio(ratio); composer?.setPixelRatio(ratio); } renderer.setSize(w, h, false); composer?.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
   }
   window.addEventListener('resize', resize);
 
@@ -474,7 +517,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
       if (shakeFov > 0.01) { camera.fov += shakeFov; camera.updateProjectionMatrix(); shakeFov *= 0.86; }
     }
     cityView.update(dt, camera, sim.clock, sim.t, sim.rain); actorView.update(dt, camera, sim.clock);
-    if (composer && bloom && prefs.quality !== 'low') { const n = cityView?.night ?? 0, r = sim?.rain ?? 0; bloom.strength = .18 + n * .55 + r * .14; composer.render(dt); } else renderer.render(scene, camera);
+    if (composer && bloom && activeQuality !== 'low') { const n = cityView?.night ?? 0, r = sim?.rain ?? 0; bloom.strength = .18 + n * .55 + r * .14; composer.render(dt); } else renderer.render(scene, camera);
     if (playing) hud(dt, car);
     if (phase !== 'menu') { saveT += dt; if (saveT > 30) { saveT = 0; if (p.alive) save(); } }
   }
@@ -548,7 +591,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   function exit(): void {
     if (closed) return; saveCheckpoint(); closed = true; cancelAnimationFrame(raf);
     window.removeEventListener('pointermove', movePtr); window.removeEventListener('pointerup', endPtr); window.removeEventListener('pointercancel', endPtr); document.removeEventListener('visibilitychange', onVisibility); window.removeEventListener('pagehide', saveCheckpoint);
-    for (const [t, f] of [['keydown', onKeyDown], ['keyup', onKeyUp], ['mousemove', onMouseMove], ['mouseup', onMouseUp], ['wheel', onWheel], ['blur', resetInput], ['resize', resize]] as Array<[string, EventListener]>) window.removeEventListener(t, f);
+    for (const [t, f] of [['keydown', onKeyDown], ['keyup', onKeyUp], ['mousemove', onMouseMove], ['mouseup', onMouseUp], ['blur', onBlur], ['resize', resize]] as Array<[string, EventListener]>) window.removeEventListener(t, f);
     lobby?.close(); versus?.dispose(); document.removeEventListener('pointerlockchange', onLock); if (document.pointerLockElement) document.exitPointerLock();
     try { actorView?.dispose(); cityView?.dispose(); } catch { /* 정리 실패는 무시 */ }
     audio.dispose(); if (composer) { for (const pass of composer.passes) pass.dispose(); composer.dispose(); } renderer?.dispose(); renderer?.forceContextLoss(); root.remove(); onExit();
@@ -564,11 +607,11 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     await new Promise(r => setTimeout(r, 30));
     if (closed) { opts.loading?.close(); return; }
     try {
-      renderer = new THREE.WebGLRenderer({ canvas, antialias: prefs.quality !== 'low', powerPreference: 'high-performance' });
-      renderer.setPixelRatio(renderPixelRatio(innerWidth, innerHeight, devicePixelRatio, prefs.quality));
-      if (prefs.quality !== 'low') { composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera)); bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), .3, .6, .82); composer.addPass(bloom); composer.addPass(new OutputPass()); }
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: activeQuality !== 'low', powerPreference: 'high-performance' });
+      renderer.setPixelRatio(renderPixelRatio(innerWidth, innerHeight, devicePixelRatio, activeQuality));
+      if (activeQuality !== 'low') { composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera)); bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), .3, .6, .82); composer.addPass(bloom); composer.addPass(new OutputPass()); }
       sim = new Sim(SEED); sim.clock = TITLE_CLOCK;
-      cityView = new CityView(scene, renderer, sim.map, assets, prefs.quality); cityView.onLightning = delay => { const active = sim; setTimeout(() => { if (!closed && sim === active) audio.play('thunder'); }, delay * 1000); }; actorView = new ActorView(scene, sim, assets, prefs.quality);
+      cityView = new CityView(scene, renderer, sim.map, assets, activeQuality); cityView.onLightning = delay => { const active = sim; setTimeout(() => { if (!closed && sim === active) audio.play('thunder'); }, delay * 1000); }; actorView = new ActorView(scene, sim, assets, activeQuality);
       chase = new ChaseCamera(camera, sim.map); minimap = new Minimap(sim.map); resize();
       for (let i = 0; i < 90; i++) sim.step(STEP, blankPedInput(), blankCarInput()); sim.drain();
     } catch (err) { console.error(err); opts.loading?.close(); toast('그래픽을 시작하지 못했습니다'); exit(); return; }

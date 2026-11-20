@@ -12,23 +12,30 @@ export class Vision {
   /** 칸마다 0=한 번도 못 봄, 1=봤지만 지금은 안 보임, 2=지금 보임. */
   readonly state: Uint8Array;
   private readonly size: number;
+  private readonly nextVisible: Uint8Array;
   /** 값이 바뀔 때마다 늘어납니다. 그리는 쪽이 다시 칠할지 판단하는 데 씁니다. */
   version = 0; private seenTick = -99;
 
-  constructor(readonly n: number, readonly owner: number) { this.size = n; this.state = new Uint8Array(n * n); }
+  constructor(readonly n: number, readonly owner: number) { this.size = n; this.state = new Uint8Array(n * n); this.nextVisible = new Uint8Array(n * n); }
 
   /** 시야를 다시 계산합니다. force 가 아니면 VISION_EVERY 틱마다만 합니다. */
   update(sim: RtsSim, force = false): boolean {
     if (!force && sim.tick - this.seenTick < VISION_EVERY && sim.tick >= this.seenTick) return false;
     this.seenTick = sim.tick; const n = this.size, st = this.state;
-    for (let i = 0; i < st.length; i++) if (st[i] === FOG_VISIBLE) st[i] = FOG_SEEN;
+    const visible = this.nextVisible; visible.fill(0);
     const reveal = (cx: number, cy: number, r: number): void => {
       const r2 = r * r, x0 = Math.max(0, Math.floor(cx - r)), x1 = Math.min(n - 1, Math.ceil(cx + r)), y0 = Math.max(0, Math.floor(cy - r)), y1 = Math.min(n - 1, Math.ceil(cy + r));
-      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const dx = x + 0.5 - cx, dy = y + 0.5 - cy; if (dx * dx + dy * dy <= r2) st[y * n + x] = FOG_VISIBLE; }
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const dx = x + 0.5 - cx, dy = y + 0.5 - cy; if (dx * dx + dy * dy <= r2) visible[y * n + x] = 1; }
     };
     for (const u of sim.units) if (u.owner === this.owner && u.hp > 0) reveal(u.x, u.y, VISION[u.kind]);
     for (const b of sim.buildings) if (b.owner === this.owner && b.hp > 0) reveal(b.x + b.size / 2, b.y + b.size / 2, VISION[b.kind] + b.size / 2 - 1);
-    this.version++; return true;
+    let changed = false;
+    for (let i = 0; i < st.length; i++) {
+      const next = visible[i] ? FOG_VISIBLE : st[i] === FOG_VISIBLE ? FOG_SEEN : st[i];
+      if (next !== st[i]) { st[i] = next; changed = true; }
+    }
+    if (changed) this.version++;
+    return changed;
   }
   at(x: number, y: number): number {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return FOG_HIDDEN;

@@ -26,3 +26,11 @@ describe('Last City 작전 지령', () => {
     expect(summary.active?.title).toBe('병영 가동');
   });
 });
+
+it('does not count the eliminated player as a defeated rival', () => {
+  const world = new World({ seed: 42, difficulty: 'd4', klass: 'warlord' });
+  world.factions[0]!.alive = false;
+  expect(missionLog(world).at(-1)?.current).toBe(0);
+  world.factions[1]!.alive = false;
+  expect(missionLog(world).at(-1)?.current).toBe(1);
+});

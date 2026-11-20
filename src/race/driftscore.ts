@@ -39,11 +39,23 @@ function bank(d: DriftScore): DriftEvent | null {
 
 /** 한 스텝만큼 드리프트 점수를 갱신합니다. 벽에 부딪히면(crash) 체인이 날아갑니다. */
 export function stepDrift(d: DriftScore, c: Pick<CarState, 'drifting' | 'vf' | 'slip'>, dt: number, crash: boolean): DriftEvent | null {
-  if (crash && driftLive(d)) { const points = Math.round(d.chain / 5) * 5; d.chain = 0; d.mult = 1; d.held = 0; d.grace = 0; return { type: 'lost', points }; }
+  if (crash) {
+    if (!driftLive(d)) return null; // 충돌 프레임에는 새 체인을 시작하지 않습니다.
+    const points = Math.round(d.chain / 5) * 5;
+    d.chain = 0; d.mult = 1; d.held = 0; d.grace = 0;
+    return { type: 'lost', points };
+  }
+  if (!Number.isFinite(dt) || dt <= 0 || !Number.isFinite(c.vf) || !Number.isFinite(c.slip)) return null;
   if (c.drifting && c.vf > MIN_SPEED) {
-    d.grace = GRACE; d.held += dt; d.mult = Math.min(MAX_MULT, 1 + Math.floor(d.held / MULT_EVERY));
+    d.grace = GRACE;
+    const start = d.held;
+    d.held += dt;
+    d.mult = Math.min(MAX_MULT, 1 + Math.floor(d.held / MULT_EVERY));
     // 각도가 클수록, 빠를수록 점수가 많이 쌓입니다. 실제 드리프트의 미끄럼각은 0.05~0.2rad 정도라 그 범위에서 초당 100~300점 × 배율이 됩니다.
-    d.chain += Math.min(0.5, Math.max(0.05, Math.abs(c.slip))) * c.vf * 24 * d.mult * dt;
+    // 배율 경계를 지나는 스텝을 분할하여 프레임 간격이 점수에 영향을 주지 않도록 합니다.
+    let weightedTime = dt;
+    for (let m = 1; m < MAX_MULT; m++) weightedTime += Math.max(0, Math.min(dt, d.held - Math.max(start, m * MULT_EVERY)));
+    d.chain += Math.min(0.5, Math.max(0.05, Math.abs(c.slip))) * c.vf * 24 * weightedTime;
     return null;
   }
   if (d.chain > 0) {
@@ -57,7 +69,7 @@ export function stepDrift(d: DriftScore, c: Pick<CarState, 'drifting' | 'vf' | '
 export const flushDrift = (d: DriftScore): DriftEvent | null => (d.chain > 0 ? bank(d) : null);
 
 /** 체인을 확정할 때 돌려주는 니트로(0~0.2). 큰 체인일수록 많지만 상한이 있습니다. */
-export const nitroForChain = (points: number): number => Math.min(0.2, points / 6000);
+export const nitroForChain = (points: number): number => Number.isFinite(points) ? Math.max(0, Math.min(0.2, points / 6000)) : 0;
 
 // ---- 코스별 최고 점수 기록(브라우저 localStorage, 읽기·쓰기가 실패해도 게임은 계속됩니다) ----
 export const DRIFT_KEY = 'waldo.race.drift.v1';

@@ -124,3 +124,19 @@ describe('메인 페이지', () => {
     expect(JSON.parse(localStorage.getItem('waldo.preferences.v1')!)).toMatchObject({ sound: true, quality: 'low' });
   });
 });
+
+it('starts the displayed daily game only once, even with a queued second click', async () => {
+  await loadMenu();
+  button('#start-race').click();
+  button('#daily-play').dispatchEvent(new Event('click'));
+  await vi.waitFor(() => expect(games.openRace).toHaveBeenCalledTimes(1));
+  expect(Object.values(games).reduce((sum, mock) => sum + mock.mock.calls.length, 0)).toBe(1);
+});
+it('changes quality and reduced motion without resetting the other preference', async () => {
+  await loadMenu();
+  const quality = document.querySelector<HTMLSelectElement>('#home-quality')!;
+  quality.value = 'low'; quality.dispatchEvent(new Event('change'));
+  const motion = document.querySelector<HTMLInputElement>('#home-motion')!;
+  motion.checked = true; motion.dispatchEvent(new Event('change'));
+  expect(JSON.parse(localStorage.getItem('waldo.preferences.v1')!)).toMatchObject({ quality: 'low', reducedMotion: true, sound: true });
+});

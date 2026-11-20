@@ -18,7 +18,7 @@ export class Vision {
 
   constructor(readonly n: number, readonly owner: number) { this.size = n; this.state = new Uint8Array(n * n); this.nextVisible = new Uint8Array(n * n); }
 
-  /** 시야를 다시 계산합니다. force 가 아니면 VISION_EVERY 틱마다만 합니다. */
+  /** 시야를 다시 계산합니다. force 가 아니면 VISION_EVERY 틱마다만 합니다. 실제 계산했으면 true, 시야 데이터 변경은 version으로 확인합니다. */
   update(sim: RtsSim, force = false): boolean {
     if (!force && sim.tick - this.seenTick < VISION_EVERY && sim.tick >= this.seenTick) return false;
     this.seenTick = sim.tick; const n = this.size, st = this.state;
@@ -35,7 +35,7 @@ export class Vision {
       if (next !== st[i]) { st[i] = next; changed = true; }
     }
     if (changed) this.version++;
-    return changed;
+    return true;
   }
   at(x: number, y: number): number {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return FOG_HIDDEN;

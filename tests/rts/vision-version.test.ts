@@ -9,8 +9,10 @@ describe('fog version', () => {
     expect(v.update(sim as unknown as RtsSim, true)).toBe(true);
     const version = v.version;
     expect(v.at(5, 5)).toBe(FOG_VISIBLE);
-    sim.tick += 4;
+    sim.tick += 1;
     expect(v.update(sim as unknown as RtsSim)).toBe(false);
+    sim.tick += 3;
+    expect(v.update(sim as unknown as RtsSim)).toBe(true);
     expect(v.version).toBe(version);
     unit.x = 40.5; sim.tick += 4;
     expect(v.update(sim as unknown as RtsSim)).toBe(true);

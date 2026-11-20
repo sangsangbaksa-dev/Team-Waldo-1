@@ -87,7 +87,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   const hasSave = (): boolean => { try { return !!localStorage.getItem(OUTLAW_KEY); } catch { return false; } };
 
   // ---------- 저장 ----------
-  function save(): void { if (!sim || versus) return; try { localStorage.setItem(OUTLAW_KEY, JSON.stringify(sim.exportSave())); } catch { /* 저장은 선택 사항입니다. */ } }
+  function save(): void { if (!sim || versus || phase === 'menu') return; try { localStorage.setItem(OUTLAW_KEY, JSON.stringify(sim.exportSave())); } catch { /* 저장은 선택 사항입니다. */ } }
 
   // ---------- 알림 도구 ----------
   function toast(text: string, sec = 3.2): void {
@@ -309,7 +309,9 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     else if (e.pointerId === tc.lookId) { yaw += (e.clientX - tc.lx) * 0.0055; pitch = clamp(pitch - (e.clientY - tc.ly) * 0.0045, -1.2, 1.2); tc.lx = e.clientX; tc.ly = e.clientY; }
   };
   window.addEventListener('pointermove', movePtr);
-  document.addEventListener('visibilitychange', resetInput);
+  const saveCheckpoint = (): void => { if (sim?.player.alive && !closed) save(); };
+  const onVisibility = (): void => { resetInput(); if (document.hidden) saveCheckpoint(); };
+  document.addEventListener('visibilitychange', onVisibility); window.addEventListener('pagehide', saveCheckpoint);
   const endPtr = (e: PointerEvent): void => { if (e.pointerId === tc.moveId) { tc.moveId = -1; tc.mx = tc.my = 0; stickEl.style.opacity = '0'; (stickEl.firstElementChild as HTMLElement).style.transform = ''; } if (e.pointerId === tc.lookId) tc.lookId = -1; };
   window.addEventListener('pointerup', endPtr); window.addEventListener('pointercancel', endPtr);
   q('#ol-pause').onclick = () => { if (phase === 'play' && !modalKind) openPause(); };
@@ -461,7 +463,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     const target = car ? { x: car.x, y: car.y, z: car.z, yaw: car.h, speed: car.vf } : { x: p.x, y: p.y, z: p.z, yaw: p.yaw, speed: p.speed };
     if (phase === 'menu') {
       const t = performance.now() / 1000, a = t * 0.045, r = 130, cx = p.x, cz = p.z;
-      camera.position.set(cx + Math.cos(a) * r, 62 + Math.sin(t * 0.2) * 6, cz + Math.sin(a) * r); camera.lookAt(cx + Math.cos(a + 1.1) * 30, 8, cz + Math.sin(a + 1.1) * 30); camera.fov = 62; camera.updateProjectionMatrix();
+      camera.position.set(cx + Math.cos(a) * r, 62 + Math.sin(t * 0.2) * 6, cz + Math.sin(a) * r); camera.lookAt(cx + Math.cos(a + 1.1) * 30, 8, cz + Math.sin(a + 1.1) * 30); if (camera.fov !== 62) { camera.fov = 62; camera.updateProjectionMatrix(); }
     } else {
       const air = !car && !p.grounded, aim = (mouse.aim || tc.aim) && !car;
       if (!paused) chase.update(Math.min(dt, 0.05), car ? 'car' : 'foot', target, { yaw, pitch }, { aim, lookBack: !!car && keys.has('KeyC'), air });
@@ -544,8 +546,8 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   }
 
   function exit(): void {
-    if (closed) return; closed = true; cancelAnimationFrame(raf);
-    window.removeEventListener('pointermove', movePtr); window.removeEventListener('pointerup', endPtr); window.removeEventListener('pointercancel', endPtr); document.removeEventListener('visibilitychange', resetInput);
+    if (closed) return; saveCheckpoint(); closed = true; cancelAnimationFrame(raf);
+    window.removeEventListener('pointermove', movePtr); window.removeEventListener('pointerup', endPtr); window.removeEventListener('pointercancel', endPtr); document.removeEventListener('visibilitychange', onVisibility); window.removeEventListener('pagehide', saveCheckpoint);
     for (const [t, f] of [['keydown', onKeyDown], ['keyup', onKeyUp], ['mousemove', onMouseMove], ['mouseup', onMouseUp], ['wheel', onWheel], ['blur', resetInput], ['resize', resize]] as Array<[string, EventListener]>) window.removeEventListener(t, f);
     lobby?.close(); versus?.dispose(); document.removeEventListener('pointerlockchange', onLock); if (document.pointerLockElement) document.exitPointerLock();
     try { actorView?.dispose(); cityView?.dispose(); } catch { /* 정리 실패는 무시 */ }

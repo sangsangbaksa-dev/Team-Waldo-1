@@ -17,7 +17,7 @@ export function showLoading(title: string): LoadingScreen {
   el.className = 'ld-screen';
   el.setAttribute('role', 'status');
   el.setAttribute('aria-live', 'polite');
-  el.innerHTML = `<div class="ld-box"><div class="ld-kicker">WALDO</div><h2 class="ld-title"></h2><div class="ld-bar"><i></i></div><div class="ld-row"><span class="ld-label">불러오는 중</span><span class="ld-pct"></span></div><p class="ld-note"></p></div>`;
+  el.innerHTML = `<div class="ld-box"><div class="ld-kicker">WALDO</div><h2 class="ld-title"></h2><div class="ld-bar" role="progressbar" aria-label="게임 로딩 진행률" aria-valuemin="0" aria-valuemax="100"><i></i></div><div class="ld-row"><span class="ld-label">불러오는 중</span><span class="ld-pct"></span></div><p class="ld-note"></p></div>`;
   el.querySelector('.ld-title')!.textContent = title;
   document.body.append(el);
   const bar = el.querySelector<HTMLElement>('.ld-bar')!, fill = el.querySelector<HTMLElement>('.ld-bar i')!;
@@ -26,10 +26,11 @@ export function showLoading(title: string): LoadingScreen {
   return {
     progress(fraction, text) {
       if (text) label.textContent = text;
-      if (fraction === null || !Number.isFinite(fraction)) { bar.classList.add('busy'); pct.textContent = ''; return; }
+      if (fraction === null || !Number.isFinite(fraction)) { bar.classList.add('busy'); fill.style.removeProperty('width'); bar.removeAttribute('aria-valuenow'); pct.textContent = ''; return; }
       bar.classList.remove('busy');
       shown = Math.max(shown, Math.min(1, Math.max(0, fraction))); // 재시도로 되돌아가도 막대는 뒤로 가지 않습니다
       fill.style.width = `${(shown * 100).toFixed(1)}%`;
+      bar.setAttribute('aria-valuenow', String(Math.floor(shown * 100)));
       pct.textContent = `${Math.floor(shown * 100)}%`;
     },
     note(text) { noteEl.textContent = text; },

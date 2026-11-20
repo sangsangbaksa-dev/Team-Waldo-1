@@ -55,8 +55,45 @@ try {
       await page.reload({ waitUntil: "domcontentloaded" });
       await page.locator("#continue").waitFor({ state: "visible" });
       assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("rt-controls"))), { sensitivity: 2, cameraMotion: false });
+      // Seed a legitimate checkpoint to reach puzzle UI without traversing the maze.
+      await page.evaluate(ch => {
+        localStorage.setItem("waldo.rt03.campaign.v1", JSON.stringify({
+          v: 1, ch, found: [true,true,true], solved: false, seen: [], elapsed: 60, archive: [],
+        }));
+      }, mobile ? 2 : 1);
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await page.locator("#continue").click();
+      await page.getByRole("button", { name: "구역 진입", exact: true }).click();
+      await page.locator("#dialog").waitFor({ state: "hidden" });
+      await page.locator("#prompt").waitFor({ state: "visible" });
+      if (mobile) await page.locator("#act").click();
+      else await page.keyboard.press("e");
+      const confirm = page.getByRole("button", { name: "신호 확인", exact: true });
+      await confirm.waitFor();
+      if (mobile) {
+        assert.equal(await confirm.isEnabled(), false);
+        await page.locator(".choiceRow button").nth(1).click();
+        await page.locator(".choiceRow button").nth(2).click();
+        await page.getByRole("button", { name: "마지막 선택 취소" }).click();
+        assert.equal(await page.locator(".choiceRow button").nth(2).isEnabled(), true);
+        await page.locator(".choiceRow button").nth(2).click();
+        await page.locator(".choiceRow button").nth(0).click();
+      } else {
+        const values = page.locator(".dial-value");
+        await page.locator(".dial-prev").nth(0).click();
+        assert.match(await values.nth(0).innerText(), /74.8/);
+        await values.nth(0).click();
+        await values.nth(0).click();
+        await page.locator(".dial-prev").nth(1).click();
+        await values.nth(2).click();
+      }
+      await page.screenshot({ path: out + "/room-tone-puzzle-" + device + ".png" });
+      await confirm.click();
+      await page.locator("#dialog").waitFor({ state: "hidden" });
+      assert.match(await page.locator("#objective").innerText(), /출구 단말기/);
+      assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("waldo.rt03.campaign.v1")).solved), true);
       assert.deepEqual(errors, [], "Unexpected browser errors");
-      results.push({ device, status: "passed" });
+      results.push({ device, status: "passed", puzzle: mobile ? "reel" : "frequency" });
     } catch (error) {
       process.exitCode = 1;
       results.push({ device, status: "failed", error: String(error), pageErrors: errors });

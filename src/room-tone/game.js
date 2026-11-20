@@ -342,9 +342,11 @@ async function setup() {
       if (level && state !== "load") save();
       modal(
         "그래픽 연결이 끊겼습니다",
-        "브라우저를 새로고침하면 저장한 구역에서 이어갈 수 있습니다.",
+        savePersistent ? "타이틀로 돌아가 그래픽 복구 후 이어할 수 있습니다. 새로고침도 가능합니다." :
+          "저장소를 사용할 수 없습니다. 진행 상황을 유지하려면 새로고침하지 말고 타이틀로 돌아가세요.",
         null,
-        [["다시 불러오기", () => location.reload()]],
+        savePersistent ? [["타이틀로", homepage], ["다시 불러오기", () => location.reload(), true]] :
+          [["타이틀로", homepage]],
         "error",
       );
     });

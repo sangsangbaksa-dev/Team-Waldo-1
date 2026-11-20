@@ -1,7 +1,8 @@
 // LAST CITY — 건물 생성기: Blender 로 구운 외벽 타일 + 1층 상점가 + 돌림띠·벽기둥·셋백·옥상 설비.
 import * as THREE from 'three';
 import type { World } from './world';
-import { SIZE } from './defs';
+import { BLOCK, SIZE } from './defs';
+import { facadeFins } from './architecture-detail';
 import type { Atmosphere } from './atmosphere';
 import type { Emitter } from './streetfx';
 
@@ -85,9 +86,9 @@ function streakTexture(): THREE.CanvasTexture {
 export interface BuildingFx { blink: (t: number) => void; setMood: (atm: Atmosphere) => void; stacks: Emitter[] }
 
 /** 높은 건물 옥상의 붉은 항공장애등을 두 박자로 번갈아 깜박이게 하는 갱신 함수를 돌려준다. */
-export function buildBuildings(world: World, scene: THREE.Scene, base: string): BuildingFx {
+export function buildBuildings(world: World, scene: THREE.Scene, base: string, quality: 'low' | 'standard' | 'high' = 'standard'): BuildingFx {
   const loader = new THREE.TextureLoader(), tex = (n: string): THREE.Texture => { const t = loader.load(`${base}assets/tex/${n}.png`); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; return t; };
-  const facades = FACADE_STYLES.map(() => new Mesh()), shops = [new Mesh(), new Mesh()], trim = new Mesh(), c = new THREE.Color(), wall = new THREE.Color();
+  const facades = FACADE_STYLES.map(() => new Mesh()), shops = [new Mesh(), new Mesh()], trim = new Mesh(), lamps = new Mesh(), c = new THREE.Color(), wall = new THREE.Color();
   const tint = (s: { wall: string }): THREE.Color => wall.set(s.wall).lerp(new THREE.Color(0xe2ddd4), 0.5).clone();
   const beacons: [number, number, number][] = [], blades = BLADES.map(() => new Mesh()), streaks = new Mesh(), stacks: Emitter[] = [], white = new THREE.Color(1, 1, 1), signMats: THREE.MeshBasicMaterial[] = [];
   const doors = new Map<number, { x: number; y: number }>(); for (const z of world.businesses) doors.set(z.solid, z);
@@ -116,6 +117,16 @@ export function buildBuildings(world: World, scene: THREE.Scene, base: string): 
         // 외벽(윗부분)
         const u1 = sd.L / 176, vb = (yb - GF) / 184, vt = (t.y1 - GF) / 184, uo2 = uo + si * 0.37, bay = Math.max(1, Math.round(sd.L / 44));
         F.quad([P(sd, 0, yb), P(sd, sd.L, yb), P(sd, sd.L, t.y1), P(sd, 0, t.y1)], [sd.n[0], 0, sd.n[1]], tintC, [[uo2, vb], [uo2 + u1 * (bay * 44 / sd.L), vb], [uo2 + u1 * (bay * 44 / sd.L), vt], [uo2, vt]]);
+        // Vertical facade ribs give the skyline real depth without additional materials.
+        const surfaceBox = (a: number, b: number, lo: number, hi: number, depth: number, color: THREE.Color, target = trim, start = 0): void => {
+          const p = P(sd, a, lo), q = P(sd, b, hi);
+          const x0 = p[0] + sd.n[0] * start, z0 = p[2] + sd.n[1] * start;
+          const x1 = q[0] + sd.n[0] * (start + depth), z1 = q[2] + sd.n[1] * (start + depth);
+          target.box(Math.min(x0, x1), lo, Math.min(z0, z1), Math.max(x0, x1), hi, Math.max(z0, z1), color);
+        };
+        for (const f of facadeFins(sd.L, t.y1 - yb, style, quality)) {
+          surfaceBox(f.at - f.width / 2, f.at + f.width / 2, yb + 5, t.y1 - 10, f.depth, light.clone().lerp(dark, f.shade));
+        }
         if (ti === 0) {   // 1층 상점가 + 차양
           const S = shops[(style + si) % 2], gu = sd.L / 176;
           S.quad([P(sd, 0, 0), P(sd, sd.L, 0), P(sd, sd.L, GF), P(sd, 0, GF)], [sd.n[0], 0, sd.n[1]], light, [[0, 0], [gu, 0], [gu, 1], [0, 1]]);
@@ -125,6 +136,14 @@ export function buildBuildings(world: World, scene: THREE.Scene, base: string): 
             trim.quad([q(door - DOOR_W, 0, 1.8), q(door + DOOR_W, 0, 1.8), q(door + DOOR_W, DOOR_H, 1.8), q(door - DOOR_W, DOOR_H, 1.8)], dn, c.setHex(0x6fa3c4).clone());
             trim.quad([q(door - 2, 0, 2.2), q(door + 2, 0, 2.2), q(door + 2, DOOR_H, 2.2), q(door - 2, DOOR_H, 2.2)], dn, c.setHex(0x1a1c20).clone());
             trim.quad([q(door - 14, 36, 2.6), q(door - 8, 36, 2.6), q(door - 8, 48, 2.6), q(door - 14, 48, 2.6)], dn, c.setHex(0xe8c868).clone());   // 손잡이
+            // Recessed metallic entry frame, overhead canopy and a warm light strip.
+            if (door > DOOR_W + 6 && door < sd.L - DOOR_W - 6) {
+              const left = door - DOOR_W - 5, right = door + DOOR_W + 5;
+              surfaceBox(left, left + 3, 4, DOOR_H + 5, 4, dark);
+              surfaceBox(right - 3, right, 4, DOOR_H + 5, 4, dark);
+              surfaceBox(left, right, DOOR_H + 5, DOOR_H + 8, 13, dark);
+              surfaceBox(left + 4, right - 4, DOOR_H + 3, DOOR_H + 5, 1.8, new THREE.Color(0xffdeb1), lamps, 10);
+            }
             const s0 = q(door - DOOR_W - 6, 0, 0), s1 = q(door + DOOR_W + 6, 0, 12);   // 문턱 계단
             trim.box(Math.min(s0[0], s1[0]), 0, Math.min(s0[2], s1[2]), Math.max(s0[0], s1[0]), 3, Math.max(s0[2], s1[2]), c.setHex(0x8d8f94).clone());
           }
@@ -174,7 +193,13 @@ export function buildBuildings(world: World, scene: THREE.Scene, base: string): 
         const w = t.x1 - t.x0, d = t.z1 - t.z0, n = 2 + Math.floor(r(8) * 4);
         for (let k = 0; k < n; k++) {
           const px = t.x0 + 12 + r(20 + k) * (w - 36), pz = t.z0 + 12 + r(40 + k) * (d - 36), kind = Math.floor(r(60 + k) * 5);
-          if (kind === 0) trim.box(px, t.y1 + 1, pz, px + 16, t.y1 + 11, pz + 12, c.set(0x8d939c));            // 냉각기
+          if (kind === 0) {
+            trim.box(px, t.y1 + 1, pz, px + 16, t.y1 + 11, pz + 12, c.set(0x8d939c));
+            if (quality !== 'low') {
+              trim.box(px + 2, t.y1 + 11, pz + 2, px + 14, t.y1 + 12, pz + 10, c.set(0x333b44));
+              for (let f = 0; f < 4; f++) trim.box(px + 3 + f * 3, t.y1 + 12, pz + 2, px + 4 + f * 3, t.y1 + 12.6, pz + 10, c.set(0x9ca3a8));
+            }
+          }
           else if (kind === 1) { trim.box(px, t.y1 + 1, pz, px + 8, t.y1 + 22, pz + 8, c.set(0x6b4a30)); trim.box(px - 3, t.y1 + 22, pz - 3, px + 11, t.y1 + 32, pz + 11, c.set(0x7d5a3a)); }   // 물탱크
           else if (kind === 2) trim.box(px, t.y1 + 1, pz, px + 20, t.y1 + 16, pz + 18, c.set(0xb8b3aa));        // 계단탑
           else if (kind === 3) trim.box(px, t.y1 + 1, pz, px + 2, t.y1 + 38, pz + 2, c.set(0x30343a));          // 안테나
@@ -195,12 +220,22 @@ export function buildBuildings(world: World, scene: THREE.Scene, base: string): 
       for (let q = 0; q < 2; q++) { const m = new THREE.Mesh(new THREE.PlaneGeometry(W, W * 0.375), sm); m.position.set(s.x + s.w / 2, top + W * 0.22 + 8, s.y + s.h / 2); m.rotation.y = q * Math.PI / 2; scene.add(m); }
     }
   });
-  const add = (m: Mesh, mat: THREE.Material): void => { if (!m.idx.length) return; const o = new THREE.Mesh(m.geo(), mat); o.castShadow = true; o.receiveShadow = true; scene.add(o); };
+  // Shallow curb geometry follows existing block boundaries; it changes no collision.
+  if (quality !== 'low') for (const b of world.map.blocks) {
+    if (b.type === 'void') continue;
+    const x = b.x, z = b.y, e = BLOCK, c = new THREE.Color(0x94989b);
+    trim.box(x, 0.05, z, x + e, 2.5, z + 4, c);
+    trim.box(x, 0.05, z + e - 4, x + e, 2.5, z + e, c);
+    trim.box(x, 0.05, z + 4, x + 4, 2.5, z + e - 4, c);
+    trim.box(x + e - 4, 0.05, z + 4, x + e, 2.5, z + e - 4, c);
+  }
+  const add = (m: Mesh, mat: THREE.Material, shadow = true): void => { if (!m.idx.length) return; const o = new THREE.Mesh(m.geo(), mat); o.castShadow = shadow; o.receiveShadow = shadow; scene.add(o); };
   const facadeMats = FACADE_STYLES.map(n => new THREE.MeshLambertMaterial({ map: tex(`facade_${n}`), emissiveMap: tex(`facade_${n}_e`), emissive: 0xffd9a8, emissiveIntensity: 0.5, vertexColors: true, side: THREE.DoubleSide }));
   FACADE_STYLES.forEach((_, k) => add(facades[k], facadeMats[k]));
   const shopMats = shops.map((_, k) => new THREE.MeshLambertMaterial({ map: shopTexture(k * 2), emissiveMap: shopEmissive(k * 2), emissive: 0xffffff, emissiveIntensity: 0.2, vertexColors: true, side: THREE.DoubleSide }));
   shops.forEach((m, k) => add(m, shopMats[k]));
   add(trim, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+  const entryMat = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }); add(lamps, entryMat, false);
   // 네온 돌출 간판(스스로 빛나는 재질)과 반사 줄기(가산 혼합)
   const bladeMats = BLADES.map(([text, color]) => new THREE.MeshBasicMaterial({ map: bladeTexture(text, color), side: THREE.DoubleSide }));
   blades.forEach((m, k) => { if (!m.idx.length) return; const o = new THREE.Mesh(m.geo(), bladeMats[k]); scene.add(o); });
@@ -221,6 +256,7 @@ export function buildBuildings(world: World, scene: THREE.Scene, base: string): 
     setMood: (atm: Atmosphere): void => {
       // 창문은 낮엔 거의 꺼지고 밤·흐린 날엔 켜진다. 네온은 낮에도 은은하게 보인다.
       facadeMats.forEach(m => { m.emissiveIntensity = 0.05 + atm.windows * 0.72; }); shopMats.forEach(m => { m.emissiveIntensity = 0.05 + atm.windows * 1.15; });
+      entryMat.color.setScalar(0.45 + atm.lamps * 0.95);
       const n = 0.3 + atm.neon * 0.95; bladeMats.forEach(m => m.color.setScalar(n)); signMats.forEach(m => m.color.setScalar(0.4 + atm.neon * 0.8));
       streakMat.opacity = Math.min(1, atm.wet * atm.lamps * 0.34); streakMat.visible = streakMat.opacity > 0.02;
       for (const m of beaconMats) m.opacity = 0.7 + atm.night * 0.3;

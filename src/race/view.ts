@@ -8,7 +8,8 @@ import { ghostAt } from './ghost';
 import { type CharacterKit, type CharacterRig } from '../shared/character';
 import { BOOST_LAG, carEuler, chaseFov, chaseRoll, chaseRumble, chaseShake, chevronFacing, fovRate, stepChaseAnchor, type ChaseAnchor } from './camera';
 import { wrapAngle, boosting, kmh } from './physics';
-import { type RaceState, type Racer } from './race';
+import { SLOTS, type RaceState, type Racer } from './race';
+import { brakeGlow, gridPaint, reflectorIndices } from './track-detail';
 import { type Track } from './track';
 import { type Theme } from './maps';
 import { buildOutposts, type Outpost } from './outpost';
@@ -99,7 +100,7 @@ class SkidMarks {
 let driverKit: CharacterKit | null = null;
 /** 공용 캐릭터 키트: 운전석 드라이버와 출발선 피트 크루에 씁니다. 없으면 차만 그립니다. */
 export function setDriverKit(k: CharacterKit | null): void { driverKit = k; }
-interface CarVis { racer: Racer; group: THREE.Group; flames: THREE.Mesh[]; shadow: THREE.Mesh; lastV: number}
+interface CarVis { racer: Racer; group: THREE.Group; flames: THREE.Mesh[]; shadow: THREE.Mesh; lastV: number; brake: THREE.MeshBasicMaterial[]; brakeLevel: number }
 
 export class RaceView {
   post: PostFx | null = null; readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera = new THREE.PerspectiveCamera(64, 1, 0.4, 3200);
@@ -159,6 +160,23 @@ export class RaceView {
   /** 터치 조작이 화면 아래를 가릴 때 차를 버튼 위로 올립니다. */
   setChaseLift(on: boolean): void { this.chaseLift = on ? 1 : 0; }
 
+  /** A readable sports-car silhouette even if the GLB fails to load. */
+  private fallbackCar(color: string): THREE.Group {
+    const g = new THREE.Group(), paint = new THREE.MeshLambertMaterial({ color }), glass = new THREE.MeshLambertMaterial({ color: 0x23313e }), rubber = new THREE.MeshLambertMaterial({ color: 0x171a1d }), metal = new THREE.MeshLambertMaterial({ color: 0x929ba4 }), tail = new THREE.MeshBasicMaterial({ color: 0xe22732 });
+    tail.name = 'GlowRed';
+    const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number): THREE.Mesh => { const m = new THREE.Mesh(geo, mat); m.position.set(x,y,z); g.add(m); return m; };
+    add(new THREE.BoxGeometry(4.55,0.52,1.83), paint,0,0.56,0);
+    add(new THREE.BoxGeometry(2.05,0.55,1.55), glass,-0.26,1.04,0);
+    add(new THREE.BoxGeometry(1.6,0.12,1.48), paint,-0.3,1.36,0);
+    add(new THREE.BoxGeometry(0.38,0.18,1.68), metal,-2.15,0.31,0);
+    add(new THREE.BoxGeometry(0.42,0.12,1.86), paint,-1.9,1.02,0);
+    for (const x of [-1.43,1.43]) for (const s of [-1,1]) {
+      const wheel = add(new THREE.CylinderGeometry(0.39,0.39,0.31,16),rubber,x,0.39,s*0.86); wheel.rotation.x = Math.PI/2;
+      const rim = add(new THREE.CylinderGeometry(0.24,0.24,0.035,12),metal,x,0.39,s*1.027); rim.rotation.x = Math.PI/2;
+    }
+    for (const s of [-1,1]) add(new THREE.BoxGeometry(0.05,0.15,0.54),tail,-2.29,0.7,s*0.55);
+    return g;
+  }
   setRacers(racers: Racer[]): void {
     const flameGeo = new THREE.ConeGeometry(0.15, 1, 10, 1, true); flameGeo.rotateZ(Math.PI / 2); flameGeo.translate(-0.5, 0, 0);
     const shGeo = new THREE.PlaneGeometry(CAR_LEN * 1.25, 2.9); shGeo.rotateX(-Math.PI / 2);
@@ -169,14 +187,17 @@ export class RaceView {
       let body: THREE.Object3D;
       const tpl = this.carTemplates?.[r.model];
       if (tpl) { body = instantiate(tpl, { paint: new THREE.Color(r.color).getHex(), team: new THREE.Color(r.accent).getHex() }); this.polishCar(body); }
-      else { const m = new THREE.Mesh(new THREE.BoxGeometry(CAR_LEN, 1.1, 2), new THREE.MeshLambertMaterial({ color: r.color })); m.position.y = 0.6; body = m; }
+      else body = this.fallbackCar(r.color);
+      // Clone only the rear-light material per car; cached template paints remain shared.
+      const brake: THREE.MeshBasicMaterial[] = [], copies = new Map<THREE.Material, THREE.MeshBasicMaterial>();
+      body.traverse(o => { const m = o as THREE.Mesh; if (!m.isMesh) return; const swap = (mat: THREE.Material): THREE.Material => { if (mat.name !== 'GlowRed' || !(mat instanceof THREE.MeshBasicMaterial)) return mat; let copy = copies.get(mat); if (!copy) { copy = mat.clone(); copies.set(mat,copy); brake.push(copy); this.disposables.push(copy); } return copy; }; m.material = Array.isArray(m.material) ? m.material.map(swap) : swap(m.material); });
       group.add(body);
       const flames: THREE.Mesh[] = [];
       for (const s of [-1, 1]) {
         const f = new THREE.Mesh(flameGeo, new THREE.MeshBasicMaterial({ color: 0x66b8ff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
         f.position.set(-CAR_LEN / 2 - 0.05, 0.32, s * 0.34); f.scale.set(0.001, 1, 1); group.add(f); flames.push(f);
       }
-      const shadow = new THREE.Mesh(shGeo, shMat); this.scene.add(group, shadow); this.cars.push({ racer: r, group, flames, shadow, lastV: 0 });
+      const shadow = new THREE.Mesh(shGeo, shMat); this.scene.add(group, shadow); this.cars.push({ racer: r, group, flames, shadow, lastV: 0, brake, brakeLevel: 0 });
     }
     this.disposables.push(flameGeo, shGeo, shTex, shMat);
   }
@@ -269,6 +290,16 @@ export class RaceView {
     const shL = new THREE.Mesh(ribbon(t, -wl - 8, -wl, 0.02, 0.02), shMat), shR = new THREE.Mesh(ribbon(t, wl, wl + 8, 0.02, 0.02), shMat);
     this.scene.add(curbL, curbR, wallL, wallR, capL, capR, shL, shR, skirt(-wl, -wl), skirt(wl, wl));
     this.disposables.push(road.geometry, asphalt, curbL.geometry, curbR.geometry, curbMat, wallL.geometry, wallR.geometry, capL.geometry, capR.geometry, shL.geometry, shR.geometry, shMat, wallMat, skirtMat);
+    // Reflective barrier hardware: two batched meshes, no new collision or lights.
+    const mounts: Array<{p: [number, number, number]; ry: number; s: [number, number, number]}> = [], reflectors: Array<{p:[number, number, number]; ry:number; color:number}> = [];
+    for (const i of reflectorIndices(t.n, t.ds, this.quality === 'low')) for (const side of [-1,1]) {
+      const off = side * (wl - 0.08), ry = -Math.atan2(t.tz[i], t.tx[i]);
+      const x = t.x[i] - t.tz[i]*off, z=t.z[i]+t.tx[i]*off;
+      mounts.push({p:[x,t.y[i]+0.91,z],ry,s:[0.46,0.19,0.18]});
+      reflectors.push({p:[x+t.tz[i]*side*0.11,t.y[i]+0.91,z-t.tx[i]*side*0.11],ry,color:side<0?0xffd38a:0xe5f5ff});
+    }
+    this.instanced(new THREE.BoxGeometry(1,1,1),new THREE.MeshLambertMaterial({color:0x33363a}),mounts);
+    this.instanced(new THREE.BoxGeometry(0.35,0.10,0.035),new THREE.MeshBasicMaterial({color:0xffffff}),reflectors);
     // 급커브 바깥쪽 타이어 벽
     const tires: Array<{ p: [number, number, number]; ry: number; color: number }> = [];
     for (let i = 0; i < t.n; i += 2) {
@@ -289,6 +320,11 @@ export class RaceView {
     const i0 = 0, check = canvasTex(256, 32, g => { for (let x = 0; x < 16; x++) for (let y = 0; y < 2; y++) { g.fillStyle = (x + y) % 2 ? '#111' : '#fff'; g.fillRect(x * 16, y * 16, 16, 16); } });
     check.repeat.set(1, 1); const line = new THREE.Mesh(new THREE.PlaneGeometry(2.4, hw * 2).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: check, polygonOffset: true, polygonOffsetFactor: -3 }));
     line.rotation.order = 'YXZ'; line.rotation.y = -Math.atan2(t.tz[i0], t.tx[i0]); line.rotation.z = t.pitch[i0]; line.rotation.y += 0; line.position.set(t.x[i0], t.y[i0] + 0.08, t.z[i0]); line.rotateY(Math.PI / 2); this.scene.add(line); this.disposables.push(line.geometry, check);
+    // Grid box decals use the same slot definitions as the simulator.
+    const gridPos = gridPaint(t, SLOTS), gridGeo = new THREE.BufferGeometry();
+    gridGeo.setAttribute('position', new THREE.Float32BufferAttribute(gridPos,3));
+    const gridMat = new THREE.MeshBasicMaterial({color:0xe8edf1,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2});
+    const gridMesh = new THREE.Mesh(gridGeo,gridMat); this.scene.add(gridMesh); this.disposables.push(gridGeo,gridMat);
     const lampGeo = new THREE.SphereGeometry(0.42, 14, 10), rx0 = -t.tz[0], rz0 = t.tx[0];
     for (let i = 0; i < 3; i++) {
       const lat = (i - 1) * 2.4, mat = new THREE.MeshBasicMaterial({ color: 0x2a1016 });
@@ -478,6 +514,8 @@ export class RaceView {
     // 차량 배치
     for (const v of this.cars) {
       const c = v.racer.car, sample = t.n > 0 ? ((c.idx % t.n) + t.n) % t.n : 0, pitchRoad = t.pitch[sample] || 0, accel = (c.vf - v.lastV) / Math.max(dt, 1e-4); v.lastV = c.vf;
+      v.brakeLevel = brakeGlow(v.brakeLevel, accel, dt, Math.abs(c.vf));
+      for (const mat of v.brake) mat.color.setRGB(0.85 + v.brakeLevel * 1.65, 0.035 + v.brakeLevel * 0.045, 0.045);
       const roll = Math.max(-0.09, Math.min(0.09, -c.yawRate * c.vf * 0.0028)) + c.slip * -0.08, pitch = pitchRoad - Math.max(-0.04, Math.min(0.04, accel * 0.0012));
       const pose = carEuler(roll, c.h, pitch);
       v.group.position.set(c.x, c.y + 0.02, c.z); v.group.rotation.set(pose.x, pose.y, pose.z, pose.order); v.shadow.position.set(c.x, c.y + 0.05, c.z); v.shadow.rotation.y = -c.h;

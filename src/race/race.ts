@@ -35,7 +35,7 @@ const FIELD = [
   { name: 'SOLAR', lane: 5, frac: 68 / 74, grip: 35 },
   { name: 'MINT', lane: 0, frac: 65.5 / 74, grip: 33 },
 ];
-const SLOTS: Array<[number, number]> = [[-3, -5], [-3, 5], [-8, -5], [-8, 5], [-13, -5], [-13, 5]];
+export const SLOTS: Array<[number, number]> = [[-3, -5], [-3, 5], [-8, -5], [-8, 5], [-13, -5], [-13, 5]];
 /** 1대1 대전 설정: 방장 여부(출발 칸), 상대 닉네임과 차량 */
 export interface PvpOptions { host: boolean; opponent: string; opponentCar: string }
 /** 멀티플레이 방 설정: 내 출발 칸(0~5)과 나를 뺀 참가자(입장 순서). 모두 네트워크 스냅샷으로 움직입니다. */

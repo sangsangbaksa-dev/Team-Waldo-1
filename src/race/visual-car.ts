@@ -2,6 +2,22 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
+/** GLB의 실제 후미등 재질을 차량별로 분리합니다. 공유 재질은 수정하지 않습니다. */
+export function isolateRearLamps(root: THREE.Object3D): THREE.MeshBasicMaterial[] {
+  const copies = new Map<THREE.Material, THREE.MeshBasicMaterial>();
+  root.traverse(o => {
+    if (!(o instanceof THREE.Mesh)) return;
+    const swap = (m: THREE.Material): THREE.Material => {
+      if (!(m instanceof THREE.MeshBasicMaterial) || m.name !== 'GlowRed') return m;
+      let copy = copies.get(m);
+      if (!copy) { copy = m.clone(); copy.toneMapped = false; copies.set(m, copy); }
+      return copy;
+    };
+    o.material = Array.isArray(o.material) ? o.material.map(swap) : swap(o.material);
+  });
+  return [...copies.values()];
+}
+
 export interface FallbackCar { root: THREE.Group; wheels: THREE.Mesh[] }
 export function makeFallbackCar(color: THREE.ColorRepresentation, accent: THREE.ColorRepresentation): FallbackCar {
   const root = new THREE.Group(), wheels: THREE.Mesh[] = [];
@@ -49,9 +65,12 @@ export function makeFallbackCar(color: THREE.ColorRepresentation, accent: THREE.
   }
   const tireGeo = new THREE.CylinderGeometry(.37,.37,.23,16); tireGeo.rotateX(Math.PI/2);
   const hubGeo = new THREE.CylinderGeometry(.22,.22,.025,12); hubGeo.rotateX(Math.PI/2);
+  const spokeParts = [];
+  for(let i=0;i<5;i++) { const a=i*Math.PI*2/5; spokeParts.push(new THREE.BoxGeometry(.26,.035,.018).translate(.075,0,0).rotateZ(a)); }
+  const spokeGeo=mergeGeometries(spokeParts); spokeParts.forEach(g=>g.dispose());
   for(const x of [-1.43,1.42])for(const z of [-.99,.99]){
     const wheel=new THREE.Mesh(tireGeo,rubber);wheel.position.set(x,.37,z);
-    const hub=new THREE.Mesh(hubGeo,metal);hub.position.z=Math.sign(z)*.12;wheel.add(hub);root.add(wheel);wheels.push(wheel);
+    const hub=new THREE.Mesh(hubGeo,dark);hub.position.z=Math.sign(z)*.12;wheel.add(hub);if(spokeGeo){const spokes=new THREE.Mesh(spokeGeo,metal);spokes.position.z=Math.sign(z)*.14;wheel.add(spokes);}root.add(wheel);wheels.push(wheel);
   }
   return {root,wheels};
 }

@@ -4,7 +4,7 @@ import { blockedAt, circleHits, generateMap, lineClear, moveBox, pushOut, rayWor
 import { WATER_SLOW, waterDepth } from './terrain';
 import { thinkBot, thinkAir, newBrain, type BotBrain } from './bot';
 
-export interface Input { mx: number; mz: number; yaw: number; pitch: number; fire: boolean; sprint: boolean; reload: boolean; interact: boolean; ads: boolean; slot: number; /** 수류탄 던지기(눌린 프레임) */ nade?: boolean; /** 연막탄 던지기(눌린 프레임) */ smoke?: boolean; /** 웅크리기(누르고 있는 동안) */ crouch?: boolean; /** 점프(비행기에서 뛰어내리기) · 낙하산 펴기 */ jump?: boolean; /** 치료 시작: 1 붕대 · 2 구급상자 */ heal?: number }
+export interface Input { mx: number; mz: number; yaw: number; pitch: number; fire: boolean; sprint: boolean; reload: boolean; interact: boolean; ads: boolean; slot: number; /** 수류탄 던지기(눌린 프레임) */ nade?: boolean; /** 연막탄 던지기(눌린 프레임) */ smoke?: boolean; /** 섬광탄 던지기(눌린 프레임) */ flash?: boolean; /** 웅크리기(누르고 있는 동안) */ crouch?: boolean; /** 점프(비행기에서 뛰어내리기) · 낙하산 펴기 */ jump?: boolean; /** 치료 시작: 1 붕대 · 2 구급상자 */ heal?: number }
 export const blankInput = (): Input => ({ mx: 0, mz: 0, yaw: 0, pitch: 0, fire: false, sprint: false, reload: false, interact: false, ads: false, slot: -1 });
 /** 광선과 차체(옆에서 본 직사각형 × 높이)의 첫 교차 거리(없으면 Infinity). */
 export function rayVehicle(v: Vehicle, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
@@ -35,10 +35,12 @@ export const eyeOf = (p: { crouch: number }): number => PLAYER.eye - (PLAYER.eye
 export const heightOf = (cr: number): number => PLAYER.height - (PLAYER.height - PLAYER.crouchHeight) * cr;
 export const headOf = (cr: number): number => PLAYER.head - (PLAYER.head - PLAYER.crouchHead) * cr;
 /** 던져진 수류탄 */
-export interface Nade { id: number; owner: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; fuse: number; /** 연막탄이면 true: 터지면 피해 대신 시야를 가리는 연기가 깔립니다 */ smoke?: boolean }
+export interface Nade { id: number; owner: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; fuse: number; /** 연막탄이면 true: 터지면 피해 대신 시야를 가리는 연기가 깔립니다 */ smoke?: boolean; /** 섬광탄이면 true: 터지면 근처 사람의 눈을 멀게 합니다 */ flash?: boolean }
 /** 연막탄이 만든 연기 구름: 반경 안으로 지나는 시선은 막힙니다(총알은 그대로 지나갑니다). */
 export interface Cloud { id: number; x: number; z: number; age: number }
 export const SMOKE = { max: 3, pick: 1, fuse: 1.5, radius: 6.5, life: 18, fade: 3 };
+/** 섬광탄: 터지면 시야 안에 있던 사람은 눈이 멀고(최대 time 초) 화면이 하얘집니다. 피해는 없습니다. */
+export const FLASH = { max: 3, pick: 1, fuse: 1.8, radius: 20, time: 4.2, min: 0.6 };
 export const NADE = { max: 5, pick: 2, fuse: 2.7, speed: 17, radius: 7, dmg: 150, cd: 1.2 };
 export interface Drop { x: number; z: number; at: number; fall: number; called: boolean; landed: boolean; /** 상자 안 전리품 번호의 시작(모든 브라우저가 같은 번호) */ ids: number; rng: () => number }
 export interface Player {
@@ -48,7 +50,7 @@ export interface Player {
   kills: number; place: number; diedAt: number; input: Input; brain: BotBrain | null;
   /** 낙하 상태와 지면으로부터의 높이(m) */ air: AirState; alt: number; jumpHeld: boolean; landedAt: number;
   /** 웅크린 정도 0(서 있음)~1(완전히 웅크림) */ crouch: number; walk: number; kick: number; muzzle: number; hurt: number; hurtYaw: number; ads: boolean; speed: number; lastHitBy: number; emptyT: number;
-  /** 수류탄 개수·재사용 대기 */ nades: number; nadeCd: number; nadeHeld: boolean; /** 연막탄 개수와 던지기 키 상태 */ smokes: number; smokeHeld: boolean;
+  /** 수류탄 개수·재사용 대기 */ nades: number; nadeCd: number; nadeHeld: boolean; /** 연막탄 개수와 던지기 키 상태 */ smokes: number; smokeHeld: boolean; /** 섬광탄 개수, 던지기 키 상태, 눈이 먼 남은 시간(초) */ flashes: number; flashHeld: boolean; blind: number;
   /** 치료 도구 개수 · 시전 남은 시간(0이면 안 하는 중)과 종류 · 방탄복 등급 */ bandages: number; kits: number; healT: number; healKind: 'bandage' | 'kit'; armorLv: number;
   /** 경기 기록: 준 피해 · 머리 명중 수 · 나를 쓰러뜨린 선수와 무기 */ dmgDealt: number; heads: number; killedBy: number; killedWeapon: Cause | null; /** 타고 있는 차량 번호(-1 없음) */ veh: number;
   /** 가방에 든 파츠(사람만): 줍는 즉시 들어가고, L 조립 화면에서 총에 끼웁니다 */ parts: PartId[];
@@ -64,7 +66,7 @@ export type MatchEvent =
   | { t: 'veh'; stage: 'enter' | 'exit' | 'crash' | 'boom'; id: number; x: number; z: number }
   | { t: 'red'; stage: 'call' | 'start' | 'end'; x: number; z: number; r: number }
   | { t: 'jump'; id: number } | { t: 'chute'; id: number } | { t: 'land'; id: number }
-  | { t: 'nade'; stage: 'throw' | 'boom'; id: number; /** 연막탄이면 true */ smoke?: boolean; x: number; y: number; z: number; /** 던질 때의 속도(온라인으로 같은 수류탄을 다시 만들 때 씁니다) */ vx?: number; vy?: number; vz?: number; remote?: boolean }
+  | { t: 'nade'; stage: 'throw' | 'boom'; id: number; /** 연막탄이면 true */ smoke?: boolean; /** 섬광탄이면 true */ flash?: boolean; x: number; y: number; z: number; /** 던질 때의 속도(온라인으로 같은 수류탄을 다시 만들 때 씁니다) */ vx?: number; vy?: number; vz?: number; remote?: boolean }
   /** 새로 생긴 전리품(쓰러진 선수의 총, 바꿔 낀 파츠 등). 온라인에서는 만든 쪽이 모두에게 알립니다. */
   | { t: 'loot'; loot: Loot }
   /** 온라인 손님이 차에 타려고 함(방장이 허락해야 탑니다) */ | { t: 'vreq'; id: number }
@@ -137,7 +139,7 @@ export class Match {
         id: i, name: h?.name ?? names[bi % names.length] + (cyc > 0 ? String(cyc + 1) : ''), bot: !h, remote: !!h?.remote, color: TEAM_COLORS[i % TEAM_COLORS.length], skin: SKIN_TONES[i % SKIN_TONES.length],
         x: sp.x, z: sp.z, yaw: air ? Math.atan2(this.plane!.dz, this.plane!.dx) : Math.atan2(-sp.z, -sp.x), pitch: 0, vx: 0, vz: 0, hp: PLAYER.hp, armor: 0, helmet: 0, boost: 0, alive: true,
         guns: [{ id: 'pistol', mag: WEAPONS.pistol.mag, reserve: WEAPONS.pistol.mag * 2, att: {} }, null], cur: 0, reload: 0, cd: 0.4, fireHeld: false, interactHeld: false,
-        kills: 0, place: 0, diedAt: 0, input: blankInput(), brain: null, air: air ? 1 : 0, alt: air ? AIR.alt : 0, jumpHeld: false, landedAt: 0, crouch: 0, walk: 0, kick: 0, muzzle: 0, hurt: 0, hurtYaw: 0, ads: false, speed: 0, lastHitBy: -1, emptyT: 0, nades: 0, nadeCd: 0, nadeHeld: false, smokes: 0, smokeHeld: false,
+        kills: 0, place: 0, diedAt: 0, input: blankInput(), brain: null, air: air ? 1 : 0, alt: air ? AIR.alt : 0, jumpHeld: false, landedAt: 0, crouch: 0, walk: 0, kick: 0, muzzle: 0, hurt: 0, hurtYaw: 0, ads: false, speed: 0, lastHitBy: -1, emptyT: 0, nades: 0, nadeCd: 0, nadeHeld: false, smokes: 0, smokeHeld: false, flashes: 0, flashHeld: false, blind: 0,
         bandages: 0, kits: 0, healT: 0, healKind: 'bandage', armorLv: 0, dmgDealt: 0, heads: 0, killedBy: -1, killedWeapon: null, veh: -1, parts: [],
       };
       if (p.bot) { p.brain = newBrain(this.rng, BOTS[o.difficulty]); if (air) this.planDrop(p); }
@@ -424,7 +426,7 @@ export class Match {
     if (!p.remote) {
       if (p.healT > 0) {
         const H = p.healKind === 'kit' ? HEAL.kit : HEAL.bandage;
-        if (inp.fire || inp.nade || inp.smoke || p.air) { p.healT = 0; this.events.push({ t: 'heal', id: p.id, stage: 'cancel', kind: p.healKind }); }
+        if (inp.fire || inp.nade || inp.smoke || inp.flash || p.air) { p.healT = 0; this.events.push({ t: 'heal', id: p.id, stage: 'cancel', kind: p.healKind }); }
         else { p.healT -= dt; if (p.healT <= 0) { p.healT = 0; p.hp = Math.min(Math.max(p.hp, H.cap), p.hp + H.amount); this.events.push({ t: 'heal', id: p.id, stage: 'done', kind: p.healKind }); } }
       } else if (inp.heal && p.air === 0) {
         const want = inp.heal; inp.heal = 0;
@@ -435,6 +437,8 @@ export class Match {
     // 수류탄
     p.nadeCd -= dt; if (inp.nade && !p.nadeHeld && p.nades > 0 && p.nadeCd <= 0 && p.air === 0 && !p.remote) this.throwNade(p, false); p.nadeHeld = !!inp.nade;
     if (inp.smoke && !p.smokeHeld && p.smokes > 0 && p.nadeCd <= 0 && p.air === 0 && !p.remote) this.throwNade(p, true); p.smokeHeld = !!inp.smoke;
+    if (inp.flash && !p.flashHeld && p.flashes > 0 && p.nadeCd <= 0 && p.air === 0 && !p.remote) this.throwNade(p, false, true); p.flashHeld = !!inp.flash;
+    if (p.blind > 0) p.blind = Math.max(0, p.blind - dt);
     // 무기 교체
     if (inp.slot >= 0 && inp.slot < 2 && inp.slot !== p.cur && p.guns[inp.slot]) { p.cur = inp.slot; p.reload = 0; p.cd = Math.max(p.cd, 0.35); inp.slot = -1; }
     const gun = p.guns[p.cur]; if (gun && !gun.att) gun.att = {};
@@ -459,15 +463,15 @@ export class Match {
     if (wantE && !took && !p.bot && !p.remote && p.air === 0 && this.vehicles.length) { const v = this.vehicleNear(p); if (v) { if (this.authority) this.enterVehicle(p, v); else this.events.push({ t: 'vreq', id: v.id }); } }
   }
 
-  private throwNade(p: Player, smoke: boolean): void {
-    if (smoke) p.smokes--; else p.nades--; p.nadeCd = NADE.cd; const cp = Math.cos(p.pitch), eye = eyeOf(p), fx = Math.cos(p.yaw) * cp, fz = Math.sin(p.yaw) * cp;
-    const n: Nade = { id: this.nadeId++, owner: p.id, x: p.x + fx * 0.6, y: eye - 0.1, z: p.z + fz * 0.6, vx: fx * NADE.speed + p.vx * 0.5, vy: Math.sin(p.pitch) * NADE.speed + 4.5, vz: fz * NADE.speed + p.vz * 0.5, fuse: smoke ? SMOKE.fuse : NADE.fuse, smoke };
-    this.nades.push(n); this.sounds.push({ x: p.x, z: p.z, t: this.t, by: p.id, quiet: true }); this.events.push({ t: 'nade', stage: 'throw', id: p.id, smoke, x: n.x, y: n.y, z: n.z, vx: n.vx, vy: n.vy, vz: n.vz });
+  private throwNade(p: Player, smoke: boolean, flash = false): void {
+    if (smoke) p.smokes--; else if (flash) p.flashes--; else p.nades--; p.nadeCd = NADE.cd; const cp = Math.cos(p.pitch), eye = eyeOf(p), fx = Math.cos(p.yaw) * cp, fz = Math.sin(p.yaw) * cp;
+    const n: Nade = { id: this.nadeId++, owner: p.id, x: p.x + fx * 0.6, y: eye - 0.1, z: p.z + fz * 0.6, vx: fx * NADE.speed + p.vx * 0.5, vy: Math.sin(p.pitch) * NADE.speed + 4.5, vz: fz * NADE.speed + p.vz * 0.5, fuse: smoke ? SMOKE.fuse : flash ? FLASH.fuse : NADE.fuse, smoke, flash };
+    this.nades.push(n); this.sounds.push({ x: p.x, z: p.z, t: this.t, by: p.id, quiet: true }); this.events.push({ t: 'nade', stage: 'throw', id: p.id, smoke, flash, x: n.x, y: n.y, z: n.z, vx: n.vx, vy: n.vy, vz: n.vz });
   }
   /** 다른 브라우저에서 던진 수류탄을 똑같이 만들어 굴립니다(터지면 이 브라우저가 계산하는 선수만 다칩니다). */
-  addNade(owner: number, x: number, y: number, z: number, vx: number, vy: number, vz: number, smoke = false): void {
-    const n: Nade = { id: this.nadeId++, owner, x, y, z, vx, vy, vz, fuse: smoke ? SMOKE.fuse : NADE.fuse, smoke }; this.nades.push(n);
-    this.sounds.push({ x, z, t: this.t, by: owner, quiet: true }); this.events.push({ t: 'nade', stage: 'throw', id: owner, smoke, x, y, z, remote: true });
+  addNade(owner: number, x: number, y: number, z: number, vx: number, vy: number, vz: number, smoke = false, flash = false): void {
+    const n: Nade = { id: this.nadeId++, owner, x, y, z, vx, vy, vz, fuse: smoke ? SMOKE.fuse : flash ? FLASH.fuse : NADE.fuse, smoke, flash }; this.nades.push(n);
+    this.sounds.push({ x, z, t: this.t, by: owner, quiet: true }); this.events.push({ t: 'nade', stage: 'throw', id: owner, smoke, flash, x, y, z, remote: true });
   }
   private stepNades(dt: number): void {
     for (let i = this.nades.length - 1; i >= 0; i--) {
@@ -479,6 +483,7 @@ export class Match {
       if (n.fuse > 0) continue;
       this.nades.splice(i, 1);
       if (n.smoke) { this.clouds.push({ id: this.cloudId++, x: n.x, z: n.z, age: 0 }); this.events.push({ t: 'nade', stage: 'boom', id: n.owner, smoke: true, x: n.x, y: n.y, z: n.z }); continue; }
+      if (n.flash) { this.flashBlind(n); this.events.push({ t: 'nade', stage: 'boom', id: n.owner, flash: true, x: n.x, y: n.y, z: n.z }); this.sounds.push({ x: n.x, z: n.z, t: this.t, by: n.owner }); continue; }
       this.events.push({ t: 'nade', stage: 'boom', id: n.owner, x: n.x, y: n.y, z: n.z });
       this.sounds.push({ x: n.x, z: n.z, t: this.t, by: n.owner });
       for (const v of this.vehicles) { if (v.wreck) continue; const d = Math.hypot(v.x - n.x, v.z - n.z); if (d < NADE.radius + 1.5) this.hurtVehicle(v, NADE.dmg * 1.4 * (1 - d / (NADE.radius + 1.5)), n.owner); }
@@ -487,6 +492,17 @@ export class Match {
         let dmg = NADE.dmg * (1 - d / NADE.radius) ** 1.2; if (!lineClear(this.map, n.x, Math.max(0.3, n.y), n.z, q.x, 1.0, q.z)) dmg *= 0.3; if (dmg < 3) continue;
         this.damage(q, dmg, n.owner, 'grenade', false, q.x, 1.2, q.z, false);
       }
+    }
+  }
+  /** 섬광탄이 터진 자리를 볼 수 있는 사람의 눈을 멀게 합니다. 가깝고 정면으로 볼수록 오래 멉니다. 벽 뒤나 연막 너머는 영향이 없습니다. */
+  private flashBlind(n: Nade): void {
+    for (const q of this.players) {
+      if (!q.alive || q.air) continue;
+      const dx = n.x - q.x, dz = n.z - q.z, d = Math.hypot(dx, dz); if (d > FLASH.radius) continue;
+      if (!lineClear(this.map, n.x, Math.max(0.3, n.y), n.z, q.x, 1.4, q.z) || this.smokeBlocks(n.x, n.z, q.x, q.z)) continue;
+      const face = d < 1.2 ? 1 : (Math.cos(q.yaw) * dx + Math.sin(q.yaw) * dz) / d; // 1 = 정면, -1 = 등지고 있음
+      const look = 0.35 + 0.65 * Math.max(0, (face + 0.2) / 1.2), near = 1 - 0.55 * (d / FLASH.radius), t = FLASH.time * look * near;
+      if (t >= FLASH.min && t > q.blind) q.blind = t;
     }
   }
   private stepClouds(dt: number): void {
@@ -511,7 +527,8 @@ export class Match {
   /** 다른 쪽(원격)이 먼저 주운 전리품을 치웁니다. */
   removeLoot(id: number): void { const l = this.loot.find(x => x.id === id); if (l) l.taken = true; }
   private takeAuto(p: Player, l: Loot): void {
-    if (l.kind === 'smoke') { if (p.smokes >= SMOKE.max) return; p.smokes = Math.min(SMOKE.max, p.smokes + SMOKE.pick); this.take(p, l); }
+    if (l.kind === 'flash') { if (p.flashes >= FLASH.max) return; p.flashes = Math.min(FLASH.max, p.flashes + FLASH.pick); this.take(p, l); }
+    else if (l.kind === 'smoke') { if (p.smokes >= SMOKE.max) return; p.smokes = Math.min(SMOKE.max, p.smokes + SMOKE.pick); this.take(p, l); }
     else if (l.kind === 'grenade') { if (p.nades >= NADE.max) return; p.nades = Math.min(NADE.max, p.nades + NADE.pick); this.take(p, l); }
     else if (l.kind === 'bandage') { if (p.bandages >= HEAL.bandage.max) return; p.bandages = Math.min(HEAL.bandage.max, p.bandages + HEAL.bandage.pick); this.take(p, l); }
     else if (l.kind === 'medkit') { if (p.kits >= HEAL.kit.max) return; p.kits = Math.min(HEAL.kit.max, p.kits + HEAL.kit.pick); this.take(p, l); }

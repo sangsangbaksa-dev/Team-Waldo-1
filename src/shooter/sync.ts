@@ -11,7 +11,7 @@ import type { NetMsg } from '../net/types';
 
 export const WEAPON_IDS = Object.keys(WEAPONS) as WeaponId[];
 export const CAUSES: Cause[] = [...WEAPON_IDS, 'zone', 'grenade', 'vehicle', 'bomb'];
-const LOOT_KINDS: LootKind[] = ['weapon', 'ammo', 'medkit', 'bandage', 'armor', 'attach', 'helmet', 'boost', 'grenade', 'smoke'];
+const LOOT_KINDS: LootKind[] = ['weapon', 'ammo', 'medkit', 'bandage', 'armor', 'attach', 'helmet', 'boost', 'grenade', 'smoke', 'flash'];
 const SLOTS: PartSlot[] = ['sight', 'muzzle', 'grip', 'mag', 'stock'];
 /** AI 한 명의 값 개수: 번호, x, z, yaw, pitch, 무기, 상태 비트, 속도 x, 속도 z, 낙하 상태, 고도, 체력 */
 export const BOT_STRIDE = 12;

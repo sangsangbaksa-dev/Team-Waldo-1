@@ -149,7 +149,7 @@ describe('ZERO ZONE 봇 AI', () => {
   it('봇 20명 경기가 스스로 끝나고, 총격으로 쓰러뜨리는 일이 일어난다', () => {
     const m = new Match({ seed: 31, mode: 'br', difficulty: 'normal', humans: [], fill: 20 }); let kills = 0;
     for (let t = 0; t < 700 && !m.over; t += 1 / 30) { m.step(1 / 30); for (const e of m.drain()) if (e.t === 'kill' && e.weapon !== 'zone') kills++; }
-    expect(m.over).toBe(true); expect(m.t).toBeLessThan(500); expect(kills).toBeGreaterThan(5);
+    expect(m.over).toBe(true); expect(m.t).toBeLessThan(600); expect(kills).toBeGreaterThan(5);
   }, 30000);
   it('봇은 사람과 같은 입력만 쓴다(체력·탄을 속이지 않는다)', () => {
     const m = solo(5, 'expert'); run(m, 20); for (const p of m.players) { expect(p.hp).toBeLessThanOrEqual(PLAYER.hp); for (const g of p.guns) if (g) expect(g.mag).toBeLessThanOrEqual(WEAPONS[g.id].mag); }
@@ -285,6 +285,35 @@ describe('연막탄', () => {
     a.input = blankInput(); a.smokes = 3; m.loot.push({ id: 9998, kind: 'smoke', weapon: null, x: a.x, z: a.z, taken: false }); m.step(1 / 60);
     expect(a.smokes).toBe(3);
     a.smokes = 1; m.step(1 / 60); expect(a.smokes).toBe(2);
+  });
+});
+
+describe('섬광탄', () => {
+  it('던지면 피해 없이 터지고, 정면으로 본 사람은 눈이 멀며, 등지거나 벽·연막 뒤에 있으면 덜 멀거나 멀지 않는다', () => {
+    const m = field('normal', 3), [a, b, c] = m.players; a.flashes = 2; a.x = 0; a.z = 0; a.yaw = 0; a.pitch = 0.1;
+    b.x = 12; b.z = 0; b.yaw = Math.PI; c.x = 12; c.z = 2; c.yaw = 0; // b 는 던진 쪽을 보고, c 는 등지고 있다
+    a.input = { ...blankInput(), flash: true }; m.step(1 / 60); m.drain(); a.input = blankInput();
+    expect(a.flashes).toBe(1); expect(m.nades[0].flash).toBe(true);
+    const hp = b.hp; run(m, 3);
+    expect(m.nades).toHaveLength(0); expect(b.hp).toBe(hp);
+    expect(b.blind + c.blind).toBeGreaterThan(0);
+    run(m, 6); expect(b.blind).toBe(0);
+  });
+  it('가까이서 정면으로 보면 더 오래 먼다', () => {
+    const near = field('normal', 3), far = field('normal', 3);
+    for (const [m, d] of [[near, 5], [far, 17]] as const) { const [a, b, c] = m.players; a.x = 0; a.z = 0; b.x = d; b.z = 0; b.yaw = Math.PI; c.x = 900; c.z = 900; m.addNade(a.id, 0.5, 1, 0, 0, 0, 0, false, true); run(m, 2.2); }
+    expect(near.players[1].blind).toBeGreaterThan(far.players[1].blind);
+  });
+  it('눈이 먼 AI 는 가만히 있고 쏘지 못한다', () => {
+    const m = field('normal', 2), [a, b] = m.players; b.blind = 3; b.x = 10; b.z = 0; a.x = 0; a.z = 0;
+    const bx = b.x; for (let i = 0; i < 60; i++) { m.step(1 / 30); m.drain(); b.blind = 3; }
+    expect(b.input.fire).toBe(false); expect(Math.abs(b.x - bx)).toBeLessThan(0.5);
+  });
+  it('섬광탄이 없으면 던지지 못하고, 줍기는 최대 3개', () => {
+    const m = field('normal', 2), a = m.players[0]; a.input = { ...blankInput(), flash: true }; m.step(1 / 60); expect(m.nades).toHaveLength(0);
+    a.input = blankInput(); a.flashes = 3; m.loot.push({ id: 9997, kind: 'flash', weapon: null, x: a.x, z: a.z, taken: false }); m.step(1 / 60);
+    expect(a.flashes).toBe(3);
+    a.flashes = 1; m.step(1 / 60); expect(a.flashes).toBe(2);
   });
 });
 

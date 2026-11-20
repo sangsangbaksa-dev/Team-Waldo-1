@@ -175,7 +175,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   }
   function paintCommands(): void {
     buttons = buildButtons(); const el = $('#rt-cmd');
-    const key = buttons.map(b => `${b.label}|${b.sub}|${b.enabled}|${b.active}`).join(';') + (touch ? `|${boxMode}` : ''); if (key === cmdKey) return; cmdKey = key;
+    const key = buttons.map(b => `${b.label}|${b.sub}|${b.enabled}|${b.active}`).join(';') + (touch ? `|${boxMode}` : ''); if (key === cmdKey || el.querySelector('button:active')) return; cmdKey = key;
     el.innerHTML = buttons.map((b, i) => `<button type="button" data-i="${i}" class="${b.active ? 'on' : ''}" ${b.enabled === false ? 'aria-disabled="true"' : ''} title="${esc(b.hint ?? '')}"><b>${esc(b.label)}</b>${b.sub ? `<small>${esc(b.sub)}</small>` : ''}<kbd>${b.key === 'ESCAPE' ? 'Esc' : esc(b.key)}</kbd></button>`).join('') +
       (touch ? `<button type="button" data-box class="${boxMode ? 'on' : ''}"><b>범위 선택</b><small>${boxMode ? '켜짐' : '꺼짐'}</small></button><button type="button" data-quick="army"><b>전체 병력</b><small>일꾼 제외</small></button><button type="button" data-quick="idle"><b>놀고 있는 일꾼</b></button>` : '');
   }
@@ -194,7 +194,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   function paintSelection(force = false): void {
     if (!sim) return; const el = $('#rt-sel'), ents = [...selected].map(id => sim!.index.get(id)).filter((e): e is Unit | Building | ResNode => !!e);
     const key = ents.map(e => e.k === 'unit' ? `${e.id}:${e.hp}:${e.ab > sim!.tick ? 1 : 0}:${Math.ceil(Math.max(0, e.abcd - sim!.tick) / TICK)}` : e.k === 'building' ? `${e.id}:${e.hp}:${e.queue.length}:${e.queue[0]?.left ?? 0}:${e.done}:${e.progress >> 4}:${e.research ? e.research.left >> 3 : -1}` : `${e.id}:${e.amount}`).join(',');
-    if (!force && key === selKey) return; selKey = key;
+    if (!force && (key === selKey || el.querySelector('button:active'))) return; selKey = key;
     if (!ents.length) { el.innerHTML = '<p class="rt-tip">유닛이나 건물을 선택하세요.<br>드래그로 여러 유닛을 한꺼번에 선택할 수 있습니다.</p>'; return; }
     const bar = (v: number, max: number, c = ''): string => `<span class="rt-bar ${c}"><i style="width:${Math.max(0, Math.min(100, v / max * 100)).toFixed(0)}%"></i></span>`;
     if (ents.length === 1) {
@@ -453,7 +453,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     <li><b>터치</b>한 손가락 드래그는 화면 이동, 탭은 선택/명령, 두 손가락은 확대. 범위 선택 버튼으로 드래그 선택.</li></ul>
     <div class="rt-actions"><button class="primary" data-act="back">닫기</button></div></div>`;
   function openMenu(): void {
-    if (root.dataset.phase === 'setup' || ended || !sim) return; paused = !net; root.dataset.phase = 'paused';
+    if (root.dataset.phase === 'setup' || ended || !sim) return; resetControls(); paused = !net; root.dataset.phase = 'paused';
     show(`<div class="rt-card"><span class="rt-eyebrow">${net ? '대전 중 · 계속 진행됩니다' : '게임이 멈춰 있습니다'}</span><h2>${net ? '메뉴' : '일시정지'}</h2>${net ? '' : '<p class="rt-lead">P 또는 Esc 를 누르면 계속합니다.</p>'}<div class="rt-actions col"><button class="primary" data-act="resume">계속하기</button><button data-act="help2">조작법</button><button data-act="surrender">항복</button><button data-act="exit">나가기</button></div></div>`);
   }
   function resultCard(win: boolean | null, why: string, extra = ''): void {
@@ -521,7 +521,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     const fresh = document.createElement('canvas'); fresh.className = 'rt-canvas'; canvas.replaceWith(fresh); canvas = fresh; const q = prefs.quality;
     try { view = new RtsView(canvas, sim, me, q); } catch { show('<div class="rt-card"><span class="rt-eyebrow">FRONTLINE</span><h2>그래픽을 시작하지 못했어요</h2><p class="rt-lead">WebGL 을 사용할 수 없습니다. 브라우저를 새로고침하거나 그래픽 가속을 켠 뒤 다시 시도해 주세요.</p><div class="rt-actions"><button class="primary" data-act="exit">메뉴로</button></div></div>'); return; }
     vision = fogOn && !net ? new Vision(sim.map.size, me) : null; vision?.update(sim, true); view.setVision(vision); fogMini = null; fogVer = -1;
-    miniBase = null; selected.clear(); mode = null; submenu = false; ended = false; paused = false; acc = 0; hudKey = cmdKey = selKey = ''; groups.clear(); hide(); root.dataset.phase = 'play'; stats.start = performance.now(); resize();
+    resetControls(); miniBase = null; selected.clear(); mode = null; submenu = false; ended = false; paused = false; acc = 0; hudKey = cmdKey = selKey = ''; groups.clear(); hide(); root.dataset.phase = 'play'; stats.start = performance.now(); resize();
     const h = sim.buildings.find(b => b.owner === me && b.kind === 'hq'); if (h) setSel([h.id]);
     if (camp && h) view.lookAt((h.x + 2 + camp.rally.x) / 2, (h.y + 2 + camp.rally.y) / 2);
     if (!camp) toast(net ? '대전 시작! 상대의 모든 건물을 파괴하세요' : '일꾼으로 광물을 캐고, 병영을 지어 병력을 모으세요', false); last = performance.now();
@@ -578,7 +578,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   // ---------- 루프 ----------
   function resize(): void {
     const w = root.clientWidth, h = root.clientHeight, dpr = Math.min(window.devicePixelRatio || 1, 2);
-    over.width = Math.round(w * dpr); over.height = Math.round(h * dpr); view?.resize(w, h, root.dataset.phase === 'setup' ? 0 : $('.rt-bottom').offsetHeight);
+    const ow = Math.max(1, Math.round(w * dpr)), oh = Math.max(1, Math.round(h * dpr)); if (over.width !== ow) over.width = ow; if (over.height !== oh) over.height = oh; view?.resize(w, h, root.dataset.phase === 'setup' ? 0 : $('.rt-bottom').offsetHeight);
   }
   const ro = new ResizeObserver(resize); ro.observe(root);
   function applyEvents(): void {
@@ -596,7 +596,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     }
   }
   function frame(now: number): void {
-    raf = requestAnimationFrame(frame); const dt = Math.min(0.1, (now - last) / 1000); last = now;
+    if (closed) return; raf = requestAnimationFrame(frame); const dt = Math.min(0.1, (now - last) / 1000); last = now;
     if (!sim || !view || root.dataset.phase === 'setup') return;
     if (toastT > 0 && (toastT -= dt) <= 0) $('#rt-toast').classList.remove('show');
     if (!ended && !paused) {

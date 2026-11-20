@@ -45,6 +45,7 @@ export interface RaceOptions { level?: number; car?: string; pvp?: PvpOptions; m
 export const wetGrip = (rain: number | undefined): number => 1 - 0.22 * (rain ?? 0);
 
 export function createRace(track: Track, laps = 3, bestLap = Infinity, opts: RaceOptions = {}): RaceState {
+  laps=Number.isFinite(laps)?Math.max(1,Math.min(3,Math.floor(laps))):3;
   const wet = wetGrip(mapById(opts.map ?? '').theme.rain), level = levelById(opts.level ?? 1), mine = carById(opts.car ?? CARS[0].id), at = CARS.indexOf(mine);
   const mk = (id: number, name: string, def: CarDef, player: boolean, slot: [number, number], ai: AiProfile): Racer =>
     ({ id, name, color: def.color, player, car: newCar(track, track.n + slot[0], slot[1]), ai: { ...ai, grip: ai.grip * wet }, params: { ...carParams(def), grip: carParams(def).grip * wet }, model: def.model, accent: def.accent, lapTimes: [], lapStart: 0, finishTime: null, lastEv: { hit: 0, driftBoost: 0, pad: false } });
@@ -56,9 +57,11 @@ export function createRace(track: Track, laps = 3, bestLap = Infinity, opts: Rac
     return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [me, rival], player: me, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift() };
   }
   if (opts.multi) {
-    const ai: AiProfile = { lane: 0, top: 58, grip: 30, skill: 1 }, me = mk(0, 'YOU', mine, true, SLOTS[opts.multi.slot] ?? SLOTS[0], ai);
-    const free = SLOTS.map((_, i) => i).filter(i => i !== opts.multi!.slot);
-    const others = opts.multi.players.map((pl, i) => { const r = mk(i + 1, pl.nickname, carById(pl.car), false, SLOTS[free[i]] ?? SLOTS[0], ai); r.link = { snap: null, at: 0 }; r.peer = pl.id; return r; });
+    const slot=Number.isInteger(opts.multi.slot)&&opts.multi.slot>=0&&opts.multi.slot<SLOTS.length?opts.multi.slot:0;
+    const ai: AiProfile = { lane: 0, top: 58, grip: 30, skill: 1 }, me = mk(0, 'YOU', mine, true, SLOTS[slot], ai);
+    const free = SLOTS.map((_, i) => i).filter(i => i !== slot);
+    const unique=[...new Map(opts.multi.players.filter(p=>p.id).map(p=>[p.id,p])).values()].slice(0,free.length);
+    const others = unique.map((pl, i) => { const r = mk(i + 1, pl.nickname, carById(pl.car), false, SLOTS[free[i]] ?? SLOTS[0], ai); r.link = { snap: null, at: 0 }; r.peer = pl.id; return r; });
     return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [me, ...others], player: me, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift() };
   }
   const player = mk(0, 'YOU', mine, true, SLOTS[2], { lane: 0, top: 58, grip: 30, skill: 1 });
@@ -72,8 +75,7 @@ export function createRace(track: Track, laps = 3, bestLap = Infinity, opts: Rac
   return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [player, ...rivals], player, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift()};
 }
 
-const score = (r: Racer): number => (r.finishTime !== null ? 1e9 - r.finishTime : r.car.total);
-export function standings(r: RaceState): Racer[] { return [...r.racers].sort((a, b) => score(b) - score(a)); }
+export function standings(r: RaceState): Racer[] { return [...r.racers].sort((a,b)=>{if(a.finishTime!==null&&b.finishTime!==null)return a.finishTime-b.finishTime;if(a.finishTime!==null)return -1;if(b.finishTime!==null)return 1;return b.car.total-a.car.total;}); }
 /** 앞선 라이벌은 속도를 깎지 않습니다. 뒤처진 차만 bandHi 까지 따라잡습니다. */
 export function rivalBand(level: LevelDef, gapMeters: number): number {
   const raw = 1 - gapMeters * level.bandK;

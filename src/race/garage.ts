@@ -8,14 +8,16 @@ export const ownsSkin = (g: Garage, id: string): boolean => id === 'stock' || g.
 /** 스킨을 사고 새 차고를 돌려줍니다. 이미 있거나 코인이 모자라면 null. */
 export function buySkin(g: Garage, id: string): Garage | null {
   const k = skinById(id);
-  if (k.id !== id || ownsSkin(g, id) || g.coins < k.cost) return null;
+  if (k.id !== id || ownsSkin(g, id) || !Number.isFinite(g.coins) || g.coins < k.cost) return null;
   return { ...g, coins: g.coins - k.cost, skins: [...g.skins, id] };
 }
 
 const PLACE_COINS = [220, 130, 80, 40];
 /** 결승 보상: 순위 · 난이도(1~5) · 랩 수에 비례하고 최고 기록을 깨면 보너스가 붙습니다. */
 export function rewardFor(place: number, level: number, laps: number, newBest: boolean): number {
-  const base = PLACE_COINS[Math.max(0, Math.min(3, place - 1))] ?? 40;
+  if(![place,level,laps].every(Number.isFinite)||place<1||level<1||laps<1)return 0;
+  level=Math.min(5,Math.floor(level));laps=Math.min(3,Math.floor(laps));
+  const base = PLACE_COINS[Math.max(0, Math.min(3, Math.floor(place) - 1))] ?? 40;
   return Math.round((base * (1 + 0.2 * (level - 1)) * (0.6 + 0.2 * laps) + (newBest ? 60 : 0)) / 5) * 5;
 }
 

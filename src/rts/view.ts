@@ -35,6 +35,7 @@ export class RtsView {
   private ringMats = [new THREE.MeshBasicMaterial({ color: 0x5dff9a, transparent: true, opacity: 0.9, depthWrite: false }), new THREE.MeshBasicMaterial({ color: 0xff5a4a, transparent: true, opacity: 0.9, depthWrite: false })];
   /** 전장의 안개: 있으면 보이지 않는 적을 숨기고 어둡게 덮습니다. */ vision: Vision | null = null;
   private fog: { mesh: THREE.Mesh; tex: THREE.DataTexture; data: Uint8Array; cur: Float32Array } | null = null; private marks = new Map<string, MarkVis>();
+  private contact: THREE.InstancedMesh | null = null; private contactDummy = new THREE.Object3D();
   private grid: THREE.Mesh | null = null; private scenery: Scenery | null = null; private desert: DesertProps | null = null;
 
   constructor(readonly canvas: HTMLCanvasElement, readonly sim: RtsSim, readonly viewer: number, readonly quality: Quality = 'high') {
@@ -48,11 +49,23 @@ export class RtsView {
     this.sun.castShadow = this.shadows; const sc = this.sun.shadow.camera; sc.left = -52; sc.right = 52; sc.top = 52; sc.bottom = -52; sc.near = 1; sc.far = 200;
     this.sun.shadow.mapSize.set(quality === 'high' ? 2048 : 1024, quality === 'high' ? 2048 : 1024); this.sun.shadow.bias = -0.0006; this.sun.shadow.normalBias = 0.04;
     this.scene.add(this.sun, this.sun.target);
-    this.buildTerrain(); this.flag = this.makeFlag(); this.flag.visible = false; this.scene.add(this.flag);
+    this.buildTerrain(); this.buildContactShadows(); this.flag = this.makeFlag(); this.flag.visible = false; this.scene.add(this.flag);
     const start = sim.map.starts[viewer]; this.cam.x = start.x + 2; this.cam.y = start.y + 2;
     if (window.innerWidth < 900 || matchMedia('(pointer: coarse)').matches) this.cam.dist = 50; // 작은 화면에서는 가깝게
     this.resize(canvas.clientWidth || 800, canvas.clientHeight || 600);
     this.post = makePost(quality, this.renderer, this.scene, this.camera, { strength: 0.4, radius: 0.5, threshold: 0.9, vignette: 0.24, saturation: 1.1 });
+  }
+
+  // Single instanced ground contact layer also works with dynamic shadows disabled.
+  private buildContactShadows(): void {
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 64;
+    const g = canvas.getContext('2d'); if (!g) return;
+    const gradient = g.createRadialGradient(32, 32, 2, 32, 32, 32);
+    gradient.addColorStop(0, 'rgba(32,24,16,0.72)'); gradient.addColorStop(0.45, 'rgba(32,24,16,0.48)'); gradient.addColorStop(1, 'rgba(32,24,16,0)');
+    g.fillStyle = gradient; g.fillRect(0, 0, 64, 64);
+    const tex = new THREE.CanvasTexture(canvas); tex.colorSpace = THREE.SRGBColorSpace;
+    this.contact = new THREE.InstancedMesh(new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: this.quality === 'low' ? 0.76 : 0.42, depthWrite: false, toneMapped: false }), 512);
+    this.contact.count = 0; this.contact.frustumCulled = false; this.contact.instanceMatrix.setUsage(THREE.DynamicDrawUsage); this.scene.add(this.contact);
   }
 
   // ---------- 지형 ----------
@@ -260,7 +273,21 @@ export class RtsView {
     for (const [x, z, w, d] of [[0, -s / 2, s, 0.1], [0, s / 2, s, 0.1], [-s / 2, 0, 0.1, s], [s / 2, 0, 0.1, s]] as const) { const bar = new THREE.Mesh(new THREE.BoxGeometry(w, 0.06, d), this.ringMats[b.owner === this.viewer ? 0 : 1]); bar.position.set(x, 0.06, z); frame.add(bar); }
     frame.position.set(b.x + s / 2, 0, b.y + s / 2); frame.visible = false;
     const scaff = new THREE.Group(), pm = new THREE.MeshStandardMaterial({ color: 0xb8a070, roughness: 0.8, metalness: 0.2 });
-    for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.2 + s * 0.25, 5), pm); p.position.set(x * (s / 2 - 0.1), (1.2 + s * 0.25) / 2, z * (s / 2 - 0.1)); scaff.add(p); }
+    const rail = new THREE.MeshStandardMaterial({ color: 0x74604a, roughness: 0.72, metalness: 0.22 });
+    const sh = Math.min(3.6, Math.max(1.6, rig.top * 0.90)), edge = s / 2 - 0.08;
+    const beam = (start: THREE.Vector3, end: THREE.Vector3, width: number, mat: THREE.Material): void => {
+      const vec = end.clone().sub(start), p = new THREE.Mesh(new THREE.BoxGeometry(width, vec.length(), width), mat);
+      p.position.copy(start).addScaledVector(vec, 0.5); p.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), vec.normalize()); scaff.add(p);
+    };
+    const corners = [[-edge,-edge],[edge,-edge],[edge,edge],[-edge,edge]];
+    for (const [x,z] of corners) beam(new THREE.Vector3(x,0,z), new THREE.Vector3(x,sh,z), 0.095, pm);
+    if (this.quality !== 'low') {
+      for (let i = 0; i < corners.length; i++) {
+        const [x,z] = corners[i], [nx,nz] = corners[(i+1)%corners.length];
+        for (const h of [sh*0.36, sh*0.82]) beam(new THREE.Vector3(x,h,z), new THREE.Vector3(nx,h,nz), 0.065, pm);
+        beam(new THREE.Vector3(x,sh*0.12,z), new THREE.Vector3(nx,sh*0.82,nz), 0.05, rail);
+      }
+    } else rail.dispose();
     scaff.position.set(b.x + s / 2, 0, b.y + s / 2); rig.root.position.set(b.x + s / 2, 0, b.y + s / 2);
     this.scene.add(rig.root, frame, scaff); this.builds.set(b.id, { kind: 'building', id: b.id, rig, frame, scaff, done: b.done, wasDone: b.done, rubble: 0 });
   }
@@ -268,12 +295,13 @@ export class RtsView {
 
   /** 선택·표시 상태를 갱신하고 그립니다. alpha 는 틱 사이 보간 비율(0~1). */
   render(dt: number, alpha: number, selected: ReadonlySet<number>): void {
-    this.clock += dt; this.scenery?.update(this.clock); this.desert?.update(this.clock); this.syncEntities(); const tick = this.sim.tick, s = this.sim;
+    this.clock += dt; this.scenery?.update(this.clock); this.desert?.update(this.clock); this.syncEntities(); const tick = this.sim.tick, s = this.sim; let contacts = 0;
     for (const [id, v] of this.units) {
       const u = s.unit(id); if (!u) continue; const hid = this.hiddenUnit(u); v.rig.root.visible = !hid; if (hid) { v.ring.visible = false; continue; } const x = v.px + (v.cx - v.px) * alpha, y = v.py + (v.cy - v.py) * alpha, sp = Math.sqrt((v.cx - v.px) ** 2 + (v.cy - v.py) ** 2);
       v.moved += (sp > 0.005 ? 1 : -1) * dt * 6; v.moved = Math.min(1, Math.max(0, v.moved));
       const want = -Math.atan2(u.fy, u.fx); let d = want - v.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); v.yaw += d * Math.min(1, dt * 12);
       const r = v.rig, root = r.root; root.position.set(x, 0, y); root.rotation.y = v.yaw;
+      if (this.contact && contacts < this.contact.instanceMatrix.count) { const q = this.contactDummy, radius = UNITS[u.kind].radius; q.position.set(x, 0.016, y); q.rotation.y = v.yaw; q.scale.set(radius * (u.kind === 'tank' || u.kind === 'jeep' ? 1.65 : 1.15), 1, radius * 1.05); q.updateMatrix(); this.contact.setMatrixAt(contacts++, q.matrix); }
       const bob = Math.sin(this.clock * (u.kind === 'tank' || u.kind === 'jeep' ? 9 : 14) + id) * (u.kind === 'tank' || u.kind === 'jeep' ? 0.015 : 0.05) * v.moved; r.body.position.y = Math.abs(bob); r.body.rotation.z = bob * (u.kind === 'tank' || u.kind === 'jeep' ? 0.2 : 0.5);
       const fired = tick - u.fired; r.flash.visible = u.kind !== 'medic' && fired >= 0 && fired < 2;
       if (r.gun) r.gun.position.x = (r.gun.userData.restX as number) - (fired >= 0 && fired < 3 ? 0.08 * (1 - (fired + alpha) / 3) : 0);
@@ -289,7 +317,8 @@ export class RtsView {
     }
     for (const [id, v] of this.builds) {
       const b = s.building(id); if (!b) continue; const hidB = this.hiddenBuilding(b); v.rig.root.visible = !hidB; const p = b.done ? 1 : Math.min(1, 0.12 + 0.88 * b.progress / BUILDINGS[b.kind].time);
-      v.rig.root.scale.set(1, b.done ? 1 : Math.max(0.05, p), 1); v.scaff.visible = !b.done && !hidB; v.scaff.scale.y = 1 - p * 0.3;
+      v.rig.root.scale.set(1, b.done ? 1 : Math.max(0.05, p), 1); v.scaff.visible = !b.done && !hidB; v.scaff.scale.y = 0.45 + p * 0.55;
+      if (!hidB && b.done && b.hp / b.maxhp < 0.38 && this.quality !== 'low' && this.clock >= v.rubble) { v.rubble = this.clock + 1.0 + (id % 5) * 0.12; this.puff(b.x + b.size * 0.55, b.y + b.size * 0.45, b.size * 0.38, 0x514b43); }
       if (b.done && !v.wasDone) { v.wasDone = true; if (!hidB) this.puff(b.x + b.size / 2, b.y + b.size / 2, b.size * 0.8, 0xd8cfb8); }
       for (const l of v.rig.light) l.visible = b.done && (Math.sin(this.clock * 3 + id) > -0.7);
       if (v.rig.spin && b.kind === 'hq') v.rig.spin.rotation.y += dt * 0.8;
@@ -298,6 +327,7 @@ export class RtsView {
       v.frame.visible = selected.has(id) && !hidB; const hurt = tick - b.hurt; if (!b.done) v.rig.root.rotation.y = 0; v.rig.root.position.y = hurt >= 0 && hurt < 2 ? 0.02 : 0;
     }
     for (const [id, v] of this.nodes) { const n = s.node(id); if (!n) continue; v.obj.visible = !this.hiddenNode(n); const f = 0.55 + 0.45 * Math.min(1, n.amount / 1500); v.obj.scale.set(f, f, f); }
+    if (this.contact) { this.contact.count = contacts; this.contact.instanceMatrix.needsUpdate = true; }
     crystalMat.emissiveIntensity = 1.0 + Math.sin(this.clock * 2.2) * 0.25;
     this.updateFx(dt); this.updateMarks(dt); this.updateFog(dt); this.placeCamera(); this.placeFog(); if (this.post) this.post.render(dt); else this.renderer.render(this.scene, this.camera);
   }
@@ -387,6 +417,7 @@ export class RtsView {
 
   dispose(): void {
     this.delayedFx = [];
+    if (this.contact) (this.contact.material as THREE.MeshBasicMaterial).map?.dispose();
     this.scene.traverse(o => { if (o instanceof THREE.Mesh || o instanceof THREE.InstancedMesh) { o.geometry.dispose(); const m = o.material; (Array.isArray(m) ? m : [m]).forEach(x => x.dispose()); } });
     this.post?.dispose(); this.fog?.tex.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss();
   }

@@ -53,7 +53,7 @@ export class ShooterView {
   /** 폭풍우 하늘: 번개(flash)가 가끔 하늘과 안개를 밝힙니다 */
   private wfx: WeatherFx | null = null; private sky: THREE.Mesh; private hemi: THREE.HemisphereLight; private flash = 0; private nextBolt = 6; private carrier: THREE.Group | null = null; private fogBase = new THREE.Color(0x76828a);
 
-  constructor(readonly canvas: HTMLCanvasElement, readonly match: Match, private assets: ShooterAssets | null, readonly quality: Quality) {
+  constructor(readonly canvas: HTMLCanvasElement, readonly match: Match, private assets: ShooterAssets | null, readonly quality: Quality, readonly reducedMotion = false) {
     const hi = quality === 'high';
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(renderPixelRatio(canvas.clientWidth || innerWidth, canvas.clientHeight || innerHeight, devicePixelRatio, quality));
@@ -442,23 +442,23 @@ export class ShooterView {
     const vx = view.x, vz = view.z;
     for (const p of m.players) { const rig = this.rigs.get(p.id)!; const hide = (!spectate && p.id === me.id) || p.air === 1 || p.veh >= 0 || Math.abs(p.x - vx) + Math.abs(p.z - vz) > (p.air ? 520 : 190); rig.root.visible = !hide; if (hide) continue; this.poseRig(p, dt, Math.abs(p.x - vx) + Math.abs(p.z - vz)); if (!p.alive) rig.flash.visible = false; }
     // 카메라
-    this.bob += view.speed * dt * 1.7; this.shake = Math.max(0, this.shake - dt * 6);
+    this.bob += view.speed * dt * 1.7; this.shake = this.reducedMotion ? 0 : Math.max(0, this.shake - dt * 6);
     const drv = view.veh >= 0 ? m.vehicles[view.veh] ?? null : null;
     if (drv) {
       // 운전 중: 차 뒤 위에서 따라가는 시점(마우스로 둘러보고, 달리면 천천히 정면으로 돌아옵니다)
       const yc = spectate ? drv.yaw : view.yaw, dist = 6.4 + drv.w * 0.42, cp = Math.max(-0.5, Math.min(0.7, view.pitch)), sp = Math.abs(drv.speed);
       cam.position.set(drv.x - Math.cos(yc) * dist, Math.max(0.7, drv.h + 1.35 + dist * 0.17 - Math.sin(cp) * 3.2), drv.z - Math.sin(yc) * dist); cam.rotation.order = 'YXZ';
       this.roll += (0 - this.roll) * Math.min(1, dt * 9);
-      cam.rotation.set(-0.13 + cp * 0.55 + (Math.random() - 0.5) * sp * 0.0007, -yc - Math.PI / 2 + (Math.random() - 0.5) * sp * 0.0007, this.roll);
+      cam.rotation.set(-0.13 + cp * 0.55 + (Math.random() - 0.5) * sp * (this.reducedMotion ? 0 : 0.0007), -yc - Math.PI / 2 + (Math.random() - 0.5) * sp * (this.reducedMotion ? 0 : 0.0007), this.roll);
     } else if (spectate) {
       const back = 3.6, cx = view.x - Math.cos(view.yaw) * back, cz = view.z - Math.sin(view.yaw) * back; cam.position.set(cx, 2.3 + view.alt, cz); cam.rotation.order = 'YXZ'; cam.rotation.set(-0.12, -view.yaw - Math.PI / 2, 0);
     } else {
-      const bobY = Math.sin(this.bob) * 0.035 * Math.min(1, view.speed / 5); cam.position.set(view.x, eyeOf(view) + view.alt + bobY, view.z); cam.rotation.order = 'YXZ';
+      const bobY = (this.reducedMotion ? 0 : Math.sin(this.bob)) * 0.035 * Math.min(1, view.speed / 5); cam.position.set(view.x, eyeOf(view) + view.alt + bobY, view.z); cam.rotation.order = 'YXZ';
       if (view.air === 1 && m.plane) { const pl = m.plane; cam.position.set(view.x - pl.dx * 58, AIR.alt + 15, view.z - pl.dz * 58); } // 수송기 뒤 위에서 항로를 내려다봅니다
-      const lat = view.vx * -Math.sin(view.yaw) + view.vz * Math.cos(view.yaw); this.roll += ((view.air === 0 ? -lat * 0.0022 : 0) - this.roll) * Math.min(1, dt * 9);
+      const lat = view.vx * -Math.sin(view.yaw) + view.vz * Math.cos(view.yaw); this.roll += ((view.air === 0 && !this.reducedMotion ? -lat * 0.0022 : 0) - this.roll) * Math.min(1, dt * 9);
       cam.rotation.set(view.pitch + view.kick * 0.03 + (Math.random() - 0.5) * this.shake * 0.012, -view.yaw - Math.PI / 2 + (Math.random() - 0.5) * this.shake * 0.012, this.roll + (Math.random() - 0.5) * this.shake * 0.006);
     }
-    this.terrainView?.update(dt); this.wfx?.update(dt, this.time, cam.position, view.alt > 40 ? 0.35 : 1); this.fovPunch = Math.max(0, this.fovPunch - dt * 6); const targetFov = 78 / zoom - this.fovPunch * (zoom > 1.6 ? 0.6 : 2.2); this.fov += (targetFov - this.fov) * Math.min(1, dt * 14); if (Math.abs(cam.fov - this.fov) > 0.01) { cam.fov = this.fov; cam.updateProjectionMatrix(); }
+    this.terrainView?.update(dt); this.wfx?.update(dt, this.time, cam.position, view.alt > 40 ? 0.35 : 1); this.fovPunch = Math.max(0, this.fovPunch - dt * 6); const targetFov = 78 / zoom - (this.reducedMotion ? 0 : this.fovPunch) * (zoom > 1.6 ? 0.6 : 2.2); this.fov += (targetFov - this.fov) * Math.min(1, dt * 14); if (Math.abs(cam.fov - this.fov) > 0.01) { cam.fov = this.fov; cam.updateProjectionMatrix(); }
     this.camPos.copy(cam.position);
     // 해와 그림자는 카메라를 따라 이동
     (this.scene.fog as THREE.FogExp2).density = 0.0042 / (1 + view.alt / 110);

@@ -42,6 +42,9 @@ export class WetStreet {
     this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(SIZE, SIZE), this.mat); this.mesh.rotation.x = -Math.PI / 2; this.mesh.position.set(SIZE / 2, 0.35, SIZE / 2); this.mesh.renderOrder = 1; this.mesh.name = 'wetstreet';
   }
 
+  targetTexture():THREE.Texture|null{return this.rt?.texture??null;}
+  disposeTarget():void{this.rt?.dispose();this.rt=null;this.cube=null;}
+
   /** 분위기에 맞춰 젖은 정도·반사 세기를 바꾸고, 고화질이면 주변 도시를 몇 초마다 다시 굽는다. */
   update(dt: number, atm: Atmosphere, cam: THREE.Vector3, renderer: THREE.WebGLRenderer, scene: THREE.Scene, hide: THREE.Object3D[]): void {
     const wet = atm.wet; this.mesh.visible = wet > 0.04;

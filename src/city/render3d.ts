@@ -8,7 +8,8 @@ import type { Business, Fx, Loot, Structure, Vehicle, World } from './world';
 import type { Ghost } from './render';
 import { ModelLayer } from './modellayer';
 import { buildBuildings, buildPerimeter, type BuildingFx } from './buildings';
-import type { Models } from './models';
+import { isSharedModelResource, type Models } from './models';
+import { disposeRenderTrees } from '../shared/scene-disposal';
 import { Interior3D } from './interior3d';
 import { EYE_HEIGHT } from './scale';
 import { atmosphereAt, blendAtmosphere, lightDirection, type Atmosphere } from './atmosphere';
@@ -160,7 +161,14 @@ export class Renderer3D {
     this.scene.add(pole, bulb);
   }
   resize(): void { this.w = this.canvas.clientWidth || window.innerWidth; this.h = this.canvas.clientHeight || window.innerHeight; const ratio = renderPixelRatio(this.w, this.h, devicePixelRatio, this.quality); if (ratio !== this.renderer.getPixelRatio()) this.renderer.setPixelRatio(ratio); this.renderer.setSize(this.w, this.h, false); this.camera.aspect = this.w / this.h; this.camera.updateProjectionMatrix(); }
-  dispose(): void { this.roadLights?.dispose(); this.roadLights = null; this.furniture?.dispose(); this.furniture = null; this.post?.dispose(); this.ins?.dispose(); this.ins = null; this.renderer.dispose(); this.scene.traverse(o => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); }); for (const f of this.floaters) f.el.remove(); }
+  dispose(): void {
+    this.roadLights?.dispose();this.roadLights=null;this.furniture?.dispose();this.furniture=null;
+    this.post?.dispose();this.ins?.dispose();this.ins=null;
+    const targetTexture=this.wetStreet.targetTexture();
+    disposeRenderTrees([this.scene,...(this.ml?[this.ml.vmScene]:[])],r=>isSharedModelResource(r)||r===targetTexture,[this.box,this.glow,...this.mats.values()]);
+    this.wetStreet.disposeTarget();this.renderer.dispose();
+    for(const f of this.floaters)f.el.remove();this.floaters.length=0;
+  }
   /** 조준선이 닿는 지면 좌표 */
   groundPoint(max = 760): { x: number; y: number } {
     const b = this.world.boss(0), ox = b ? b.x : this.camPos.x, oy = b ? b.y : this.camPos.z; let d = this.pitch < -0.03 ? Math.min(max, (this.mode === 'fp' ? EYE : 120) / Math.tan(-this.pitch)) : max * 0.8; d = Math.max(70, d);

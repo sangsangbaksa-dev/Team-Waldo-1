@@ -29,17 +29,21 @@ export interface Models {
 const isGlow = (n: string): boolean => n.startsWith('Glow');
 
 const matCache = new Map<string, THREE.Material>();
+const sharedAssets = new WeakSet<object>();
+/** GLB geometry and interned materials outlive individual renderer sessions. */
+export function isSharedModelResource(resource:object):boolean{return sharedAssets.has(resource);}
 /** 모델 복제: Team/Paint 재질은 색으로 치환하고 나머지는 가벼운 Lambert로 통일합니다. */
 export function instantiate(template: THREE.Object3D, opts: { team?: number; paint?: number } = {}): THREE.Object3D {
   const out = template.clone(true);
   out.traverse(o => {
     const mesh = o as THREE.Mesh; if (!mesh.isMesh) return;
+    sharedAssets.add(mesh.geometry);
     const swap = (m: THREE.Material): THREE.Material => {
       const s = m as THREE.MeshStandardMaterial, n = s.name;
       let hex = s.color.getHex(); if (n === 'Team' && opts.team !== undefined) hex = opts.team; else if (n === 'Paint' && opts.paint !== undefined) hex = opts.paint;
       const key = `${isGlow(n) ? 'g' : 'l'}${n}:${hex}`; let r = matCache.get(key);
       if (!r) { r = isGlow(n) ? new THREE.MeshBasicMaterial({ color: s.emissive && s.emissive.getHex() ? s.emissive : s.color, fog: true }) : new THREE.MeshLambertMaterial({ color: hex }); (r as THREE.Material).name = n; matCache.set(key, r); }
-      return r;
+      sharedAssets.add(r);return r;
     };
     mesh.material = Array.isArray(mesh.material) ? mesh.material.map(swap) : swap(mesh.material);
     mesh.castShadow = true; mesh.receiveShadow = false;
@@ -130,6 +134,8 @@ async function build(c: THREE.Object3D, w: THREE.Object3D, v: THREE.Object3D, s:
     const baked: Record<string, Baked> = {};
     for (const k of ['tree_round', 'tree_pine', 'lamp', 'crystal', 'hydrant', 'bench', 'bin', 'cone', 'mailbox', 'dumpster', 'barrier', 'tl_red', 'tl_green']) baked[k] = bake(pn[k]);
     for (const k of STREET_PROPS) if (pn[k]) baked[k] = bake(pn[k]);
+    for(const c of Object.values(chars))for(const b of [c.body,c.leg,c.shin,c.armL?.geo,c.armR?.geo])if(b)for(const g of [b.fixed,b.team,b.skin,b.glow])if(g)sharedAssets.add(g);
+    for(const b of Object.values(baked))for(const g of [b.fixed,b.team,b.skin,b.glow])if(g)sharedAssets.add(g);
     return { chars, groundGuns, viewGuns, vehicles: vn, structures: sn, props: pn, baked, biz };
   }
 }

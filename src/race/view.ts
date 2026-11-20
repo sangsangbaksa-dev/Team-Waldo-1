@@ -3,7 +3,8 @@ import { renderPixelRatio } from '../shared/render-budget';
 import * as THREE from 'three';
 import { makePost, type PostFx } from '../postfx';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { instantiate } from '../city/models';
+import { instantiate, isSharedModelResource } from '../city/models';
+import { disposeRenderTrees } from '../shared/scene-disposal';
 import { ghostAt } from './ghost';
 import { type CharacterKit, type CharacterRig } from '../shared/character';
 import { BOOST_LAG, carEuler, chaseFov, chaseRoll, chaseRumble, chaseShake, chevronFacing, fovRate, stepChaseAnchor, type ChaseAnchor } from './camera';
@@ -136,12 +137,13 @@ export class RaceView {
     this.post = makePost(quality, this.renderer, this.scene, this.camera, { strength: 0.3, radius: 0.5, threshold: 0.96, vignette: 0.3, saturation: 1.1, contrast: 1.06 });
   }
   private carTemplates: Record<string, THREE.Object3D> | null;
+  private carEnvTarget: THREE.WebGLRenderTarget | null = null;
   private carEnv: THREE.Texture | null = null; private carMats = new Map<string, THREE.Material>();
   /** 하늘을 반사 맵으로 구워 차체 도장·유리에 노을과 하늘이 비치게 합니다. */
   private buildCarEnv(): void {
     const sky = this.scene.getObjectByName('sky') as THREE.Mesh | undefined; if (!sky) return;
     const tmp = new THREE.Scene(), pm = new THREE.PMREMGenerator(this.renderer), m = sky.clone(); m.position.set(0, 0, 0); tmp.add(m);
-    this.carEnv = pm.fromScene(tmp, 0, 1, 4000).texture; pm.dispose();
+    this.carEnvTarget = pm.fromScene(tmp, 0, 1, 4000);this.carEnv=this.carEnvTarget.texture;pm.dispose();
   }
   /** 차체 재질을 광택 도장(클리어코트)·반사 유리·금속으로 바꿉니다. 발광 재질은 그대로 둡니다. */
   private polishCar(body: THREE.Object3D): void {
@@ -550,7 +552,7 @@ export class RaceView {
       const cactus = mergeGeometries(cg); cg.forEach(o => o.dispose());
       this.instanced(cactus, mat({ vertexColors: true }), this.scatter(low ? 70 : 160, 9, 160, 14, 8).map(([x, z]) => { const s = this.artRnd(0.8, 1.6); return { p: [x, -0.4, z] as [number, number, number], s: [s, s, s] as [number, number, number], ry: this.artRnd(0, 6) }; }));
       // 길가 군사 초소(FRONTLINE 사막 기지와 같은 공용 소품)
-      this.outposts = buildOutposts(this.scene, t, low); this.disposables.push(this.outposts);
+      this.outposts = buildOutposts(this.scene, t, low);
       // 전봇대와 전선(오른쪽 길가)
       const pole = 55, ps: Array<[number, number, number]> = [];
       for (let i = 0; i < t.n; i += Math.round(pole / t.ds)) { const off = hw + 9; ps.push([t.x[i] - t.tz[i] * off, Math.max(-0.4, t.y[i] - (off - hw - 1.5) / Math.max(6, t.y[i] * 2.4 + 4) * (t.y[i] + 0.4)), t.z[i] + t.tx[i] * off]); }
@@ -679,15 +681,9 @@ export class RaceView {
 
   dispose(): void {
     this.roadLights?.dispose();this.roadLights=null;
-    const seen = new Set<object>();
-    const once = (d: { dispose(): void } | null | undefined): void => { if (!d || seen.has(d)) return; seen.add(d); d.dispose(); };
-    this.scene.traverse(o => {
-      const m = o as THREE.Mesh;
-      if (m.geometry) once(m.geometry);
-      const mats = m.material == null ? [] : Array.isArray(m.material) ? m.material : [m.material];
-      for (const mat of mats) { once(mat); const maps = mat as THREE.MeshBasicMaterial; once(maps.map); if (maps.alphaMap) once(maps.alphaMap); }
-    });
-    for (const d of this.disposables) once(d);
-    this.carEnv?.dispose(); this.post?.dispose(); this.renderer.dispose();
+    this.outposts?.dispose();this.outposts=null;
+    disposeRenderTrees([this.scene],r=>isSharedModelResource(r)||r===dot||r===this.carEnv,this.disposables);
+    this.disposables.length=0;this.carEnvTarget?.dispose();this.carEnvTarget=null;this.carEnv=null;
+    this.post?.dispose();this.renderer.dispose();
   }
 }

@@ -352,6 +352,8 @@ function pointPlayer() {
   pursuitPose = dangerOpacity = 0;
   $("viewWrap").removeAttribute("data-incident");
   lamp.intensity = 28;
+  lamp.visible = true;
+  beam.intensity = 1.4;
   const p = xy(level.start);
   const next = xy(neighbors(level.map, level.start)[0]);
   player.set(p.x + (next.x - p.x) * 0.38, EYE_HEIGHT, p.z + (next.z - p.z) * 0.38);
@@ -589,7 +591,7 @@ function hideProp(spec,i){
  const name=desk?"책상 아래":kind==="booth"?"방음 부스":"철제 옷장";
  box(.19,.05,.014,0,desk?1.075:2.0,.38,tag);
  const sign=label(name,"#dedede");sign.position.y=height+.21;root.add(sign);
- return {...spec,type:"hide",i,root,name,width,eye:desk?.68:1.57};
+ return {...spec,type:"hide",i,root,name,width,eye:desk ? .68 : 1.57};
 }
 function noiseAtPlayer(strength,duration=.55){noiseBurst=Math.max(noiseBurst,strength);noiseTime=Math.max(noiseTime,duration);}
 function exposedToFixture(){const cell=cellOf(player),p=xy(cell);return litCells.has(cell)&&Math.hypot(player.x-p.x,player.z-p.z)<1.1;}
@@ -603,6 +605,7 @@ function leaveHide(){
  if(!hiding)return;
  const previous=hiding,spot=xy(previous.cell);hiding=null;hideCompromised=false;hideCheck=0;
  player.set(spot.x,EYE_HEIGHT,spot.z);yaw=Math.atan2(previous.dx,previous.dz);pitch=0;
+ camera.position.copy(player);camera.rotation.set(pitch,yaw,0,"YXZ");
  lightOn=false;noiseAtPlayer(4.2);sound.pickup();
  $("viewWrap").removeAttribute("data-hiding");$("torch").disabled=false;$("run").disabled=false;
  clearInputs();renderHUD();message("은신처에서 나왔습니다 · 손전등 꺼짐",1.8);
@@ -1025,7 +1028,7 @@ function interact() {
   if(!nearest)return;
   const o = nearest,
     c = chapters[ch];
-  if (!o.root.visible || Math.hypot(o.root.position.x - player.x, o.root.position.z - player.z) >= 2.16 ||
+  if (!o.root.visible || Math.hypot(o.root.position.x - player.x, o.root.position.z - player.z) >= (o.type==="hide"?1.65:2.16) ||
       !clearLine(player, o.root.position)) return;
   if(o.type==="hide"){enterHide(o);return;}
   noiseAtPlayer(o.type==="item"?14:o.type==="record"?5.5:8,.9);
@@ -1107,7 +1110,7 @@ function interact() {
 $("act").onclick = interact;
 function caught() {
   // Preserve progress at contact, before the brief final encounter begins.
-  if(hiding)leaveHide();
+  if(hiding){leaveHide();lamp.visible=true;lamp.intensity=28;}
   save();
   sound.caught();
   clearInputs();
@@ -1300,7 +1303,7 @@ function update(dt) {
   if(hiding){camera.position.set(hiding.root.position.x,hiding.eye,hiding.root.position.z);const target=Math.atan2(hiding.dx,hiding.dz);const angle=Math.atan2(Math.sin(yaw-target),Math.cos(yaw-target));yaw=target+THREE.MathUtils.clamp(angle,-.14,.14);pitch=THREE.MathUtils.clamp(pitch,-.10,.10);}
   camera.rotation.set(pitch, yaw, 0, "YXZ");
   lamp.visible=lightOn&&!hiding;
-  beam.intensity=THREE.MathUtils.damp(beam.intensity,hiding?.10:lightOn?1.4:.24,8,dt);
+  beam.intensity=THREE.MathUtils.damp(beam.intensity,hiding ? .10 : lightOn ? 1.4 : .24,8,dt);
   enemyUpdate(dt, running);
   if (state !== "play") return;
   const event=dread.tick(dt,!hiding && !grace && !enemyPhase && moved>dt*.3 && !solved && now>noticeUntil);
@@ -1331,7 +1334,7 @@ function update(dt) {
       o.root.userData.unit.rotation.y = now * 0.64;
       o.root.userData.unit.position.y = 0.83 + 0.035 * Math.sin(now * 2 + o.i);
     }
-    if (d < reach && clearLine(player, q)) {
+    if (d < reach && (o.type!=="hide"||d<1.65) && clearLine(player, q)) {
       nearest = o;
       reach = d;
     }

@@ -80,6 +80,16 @@ let returnFromMap = resume;
 const touch =
   matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+const savedControls = read("rt-controls");
+let sensitivity = Number.isFinite(savedControls?.sensitivity)
+  ? Math.max(.5, Math.min(2, savedControls.sensitivity)) : 1;
+let cameraMotion = savedControls?.cameraMotion !== false;
+const motionAllowed = () => cameraMotion && !reducedMotion.matches;
+function persistControls() {
+  $("viewWrap").dataset.motion = cameraMotion ? "normal" : "reduced";
+  try { localStorage.setItem("rt-controls", JSON.stringify({ sensitivity, cameraMotion })); } catch { /* Session settings still apply. */ }
+}
+$("viewWrap").dataset.motion = cameraMotion ? "normal" : "reduced";
 let lastPointerType = matchMedia("(pointer:coarse)").matches ? "touch" : "mouse";
 let draggingLook = false;
 let lookTravel = 0;
@@ -225,7 +235,7 @@ function guide(fromHome = false) {
     (el) => {
       el.innerHTML = $("guideText").innerHTML;
     },
-    [["돌아가기", resume]],
+    [["돌아가기", pauseMenu]],
     "help",
   );
 }
@@ -245,6 +255,9 @@ $("continue").onclick = () => start(true);
 function pauseGame() {
   if (state !== "play") return;
   save();
+  pauseMenu();
+}
+function pauseMenu() {
   modal(
     "녹음 일시정지",
     chapters[ch].location + " · " + clock(elapsed),
@@ -253,12 +266,53 @@ function pauseGame() {
       ["계속하기", resume],
       ["녹음 기록 " + archive.length + " / 8", archivePanel],
       ["조작 안내", () => guide()],
+      ["조작 설정", settingsPanel],
       ["타이틀로", homepage, true],
     ],
     "pause",
   );
 }
 $("pauseGame").onclick = pauseGame;
+function settingsPanel() {
+  modal("조작 설정", "시점 감도와 화면 효과를 조절하세요. 설정은 이 기기에 저장됩니다.", el => {
+    const settings = document.createElement("div");
+    settings.className = "control-settings";
+    const row = document.createElement("label");
+    const heading = document.createElement("span");
+    heading.textContent = "시점 감도";
+    const value = document.createElement("output");
+    value.textContent = Math.round(sensitivity * 100) + "%";
+    const slider = document.createElement("input");
+    slider.type = "range";
+    slider.min = "50";
+    slider.max = "200";
+    slider.step = "5";
+    slider.value = String(Math.round(sensitivity * 100));
+    slider.setAttribute("aria-label", "시점 감도");
+    slider.oninput = () => {
+      sensitivity = Number(slider.value) / 100;
+      value.textContent = slider.value + "%";
+      persistControls();
+    };
+    row.append(heading, value, slider);
+    const motionRow = document.createElement("label");
+    const check = document.createElement("input");
+    check.type = "checkbox";
+    check.checked = cameraMotion;
+    check.onchange = () => { cameraMotion = check.checked; persistControls(); };
+    motionRow.append(check, document.createTextNode("카메라 흔들림 및 밝기 변화"));
+    const hint = document.createElement("p");
+    hint.textContent = reducedMotion.matches ? "기기의 동작 줄이기 설정이 우선 적용됩니다." :
+      "화면 움직임이 불편하면 이 옵션을 끄세요.";
+    settings.append(row, motionRow, hint);
+    el.append(settings);
+  }, [["돌아가기", pauseMenu], ["기본값 복원", () => {
+    sensitivity = 1;
+    cameraMotion = true;
+    persistControls();
+    settingsPanel();
+  }, true]], "settings");
+}
 async function setup() {
   if (!renderer) {
     renderer = new THREE.WebGLRenderer({
@@ -857,7 +911,7 @@ function archivePanel() {
       row.append(heading,detail);list.append(row);
     });
     el.append(list);
-  },[["돌아가기",resume]],"archive");
+  },[["돌아가기",pauseMenu]],"archive");
 }
 function notes(el) {
   const dl = document.createElement("dl");
@@ -1201,8 +1255,8 @@ function update(dt) {
     (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0) -
     pointer.y;
   let r = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0) + pointer.x;
-  if (keys.has("ArrowLeft")) yaw += dt * 1.55;
-  if (keys.has("ArrowRight")) yaw -= dt * 1.55;
+  if (keys.has("ArrowLeft")) yaw += dt * 1.55 * sensitivity;
+  if (keys.has("ArrowRight")) yaw -= dt * 1.55 * sensitivity;
   const length = Math.hypot(f, r);
   if (length > 1) {
     f /= length;
@@ -1234,7 +1288,7 @@ function update(dt) {
   eyeHeight = THREE.MathUtils.damp(eyeHeight, crouched ? 1.12 : 1.58, 12, dt);
   camera.position.set(
     player.x,
-    eyeHeight + (reducedMotion.matches ? 0 :
+    eyeHeight + (!motionAllowed() ? 0 :
       Math.sin(elapsed * (running ? 12 : 8.3)) * Math.min(moved / Math.max(dt, 0.001), 3) * (0.38 / 60)),
     player.z,
   );
@@ -1248,7 +1302,7 @@ function update(dt) {
     sound.incident(event.kind,Math.random()<.5?-.83:.83);
     message(event.caption,event.duration);
   }
-  const dim=event?.kind==="drop" && !reducedMotion.matches?Math.sin(Math.PI*event.age/event.duration):0;
+  const dim=event?.kind==="drop" && motionAllowed()?Math.sin(Math.PI*event.age/event.duration):0;
   lamp.intensity=28*(1-.68*dim);
   const atmosphere=event?.kind??"none";
   if($("viewWrap").dataset.incident!==atmosphere) $("viewWrap").dataset.incident=atmosphere;
@@ -1323,8 +1377,8 @@ document.addEventListener("keydown", (e) => {
     return;
   }
   if (
-    e.target instanceof HTMLInputElement ||
-    e.target instanceof HTMLSelectElement
+    e.code !== "Escape" && (e.target instanceof HTMLInputElement ||
+    e.target instanceof HTMLSelectElement)
   )
     return;
   if (state === "play") {
@@ -1348,11 +1402,12 @@ document.addEventListener("keydown", (e) => {
     }
     if (state === "play") keys.add(e.code);
   } else if (
-    ["pause", "map", "help", "station", "puzzle"].includes(state) &&
+    ["pause", "map", "help", "archive", "settings", "station", "puzzle"].includes(state) &&
     e.code === "Escape"
   ) {
     e.preventDefault();
     if (state === "map") returnFromMap();
+    else if (["help", "archive", "settings"].includes(state)) pauseMenu();
     else resume();
   }
 });
@@ -1383,8 +1438,8 @@ window.addEventListener("blur", () => {
   if (state === "play") pauseGame();
 });
 function look(dx, dy) {
-  yaw -= dx * 0.00245;
-  pitch = THREE.MathUtils.clamp(pitch - dy * 0.0022, -1.18, 1.18);
+  yaw -= dx * 0.00245 * sensitivity;
+  pitch = THREE.MathUtils.clamp(pitch - dy * 0.0022 * sensitivity, -1.18, 1.18);
 }
 document.addEventListener("mousemove", (e) => {
   if (state === "play" && document.pointerLockElement === renderer?.domElement)

@@ -64,7 +64,7 @@ export class RaceAudio {
     this.boostG = loop('bandpass', 600, 0.8);
     this.bed = window.setInterval(() => this.tickBed(), 320);
   }
-  setEnabled(on: boolean): void { this.enabled = on; this.eng.setEnabled(on); }
+  setEnabled(on: boolean): void { this.enabled = on; }
   dispose(): void {
     if (this.bed !== null) { clearInterval(this.bed); this.bed = null; }
     for (const src of [this.motor?.o1, this.motor?.o2, this.subOsc?.o, this.whistle?.o, this.wind?.src, this.skid?.src, this.boostG?.src]) {

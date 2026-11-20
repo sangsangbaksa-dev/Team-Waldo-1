@@ -337,15 +337,21 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   };
   const onUp = (e: MouseEvent): void => { if (e.button === 0) mouse.fire = false; else if (e.button === 2) mouse.ads = false; };
   const onKey = (e: KeyboardEvent): void => {
-    if (closed || room?.chat?.typing || e.repeat && e.type === 'keydown' && ['KeyR', 'KeyE'].includes(e.code)) return;
     if (e.type === 'keyup') { keys.delete(e.code); if (e.code === 'KeyE') interactHeld = false; return; }
+    if (closed || room?.chat?.typing || e.repeat && ['KeyR', 'KeyE', 'KeyQ', 'KeyG', 'KeyH', 'KeyJ'].includes(e.code)) return;
     keys.add(e.code);
     if (e.code === 'Enter' && room?.chat && !room.done && match && !paused) { keys.clear(); mouse.fire = mouse.ads = false; interactHeld = false; if (document.pointerLockElement) document.exitPointerLock(); room.chat.open(); e.preventDefault(); return; }
     if (e.code === 'KeyR') reloadReq = true; else if (e.code === 'KeyE') interactHeld = true; else if (e.code === 'Digit1') slotReq = 0; else if (e.code === 'Digit2') slotReq = 1; else if (e.code === 'KeyQ') swapReq = true; else if (e.code === 'KeyG') nadeReq = true; else if (e.code === 'KeyH') healReq = 1; else if (e.code === 'KeyJ') healReq = 2;
     else if (e.code === 'Escape' && phase === 'countdown') setPause(true);
     if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code) && match) e.preventDefault();
   };
-  const onWheel = (e: WheelEvent): void => { if (match && !paused && Math.abs(e.deltaY) > 4) swapReq = true; };
+  let wheelAt = -Infinity;
+  const onWheel = (e: WheelEvent): void => {
+    if (!match || paused || phase !== 'play' || e.ctrlKey || !Number.isFinite(e.deltaY) || Math.abs(e.deltaY) < 1 || (!locked && e.target !== canvas)) return;
+    const now = performance.now();
+    if (now - wheelAt >= 200 || e.deltaMode === 1) swapReq = true;
+    wheelAt = now;
+  };
   const noMenu = (e: Event): void => e.preventDefault();
   window.addEventListener('mousemove', onMove); window.addEventListener('mousedown', onDown); window.addEventListener('mouseup', onUp);
   window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKey); window.addEventListener('wheel', onWheel, { passive: true }); canvas.addEventListener('contextmenu', noMenu);

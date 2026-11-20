@@ -26,7 +26,9 @@ describe('HUSTLE player regression', () => {
     player.teleport(20, 20, 0);
     player.setFirstPerson(false);
     player.placeCamera(camera, 0.016, colliders);
-    expect(camera.position.x).toBeCloseTo(20);
+    // Facing +X: third-person camera starts behind the player, not on the old heading.
+    expect(camera.position.x).toBeCloseTo(20 - Math.cos(player.camPitch) * player.dist);
+    expect(camera.position.z).toBeCloseTo(20);
     expect(camera.position.distanceTo(player.pos)).toBeLessThan(10);
   });
 });

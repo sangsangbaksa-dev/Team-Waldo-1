@@ -113,7 +113,8 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   function closeModal(): void { modalKind = ''; paused = false; modalEl.hidden = true; modalEl.innerHTML = ''; if (phase === 'play') lock(); }
   let lookMuteUntil = 0;
   const weaponWheel = new WheelGesture();
-  function lock(): void { if (touch || locked || lockFail || closed) return; try { const r = canvas.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(() => { lockFail = true; }); } catch { lockFail = true; } }
+  const lockError = (): void => { if (!locked) lockFail = true; };
+  function lock(): void { if (touch || locked || lockFail || closed) return; try { const r = canvas.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(lockError); } catch { lockError(); } }
   const onLock = (): void => {
     const wasLocked = locked; locked = document.pointerLockElement === canvas;
     if (locked) { lookMuteUntil = performance.now() + 180; return; }
@@ -121,7 +122,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     resetInput();
     if (!locked && phase === 'play' && !modalKind && !closed && !wheelOpen) openPause();
   };
-  document.addEventListener('pointerlockchange', onLock);
+  document.addEventListener('pointerlockchange', onLock); document.addEventListener('pointerlockerror', lockError);
 
   function controlsHtml(): string {
     return `<h2>조작법</h2><div class="ol-keys"><div><b>이동</b>WASD · Shift 달리기 · Space 점프 · C 앉기</div><div><b>전투</b>좌클릭/T 사격 · 우클릭/Y 조준 · R 재장전 · 1~9·0·-/휠 무기 · Q 무기 휠 · 수류탄은 사격 키로 투척</div><div><b>상호작용</b>E / F 차량 · 상점 · 의뢰 · 안전가옥</div><div><b>차량</b>W 가속 · S 브레이크/후진 · A D 조향 · Space 핸드브레이크 · H 경적 · R 라디오 · C 뒤돌아보기</div><div><b>휴대폰</b>P 휴대폰: 일거리·차고·부동산·업적 · 격투장/체육관/카지노/자동차 매장은 E</div><div><b>기타</b>M / Tab 전체 지도 · Esc 일시정지</div></div><p class="hint">아슬아슬한 통과·점프·드리프트·헤드샷은 스타일 보너스가 됩니다. 시민을 해치면 수배 별이 올라갑니다.</p><div class="ol-btns"><button data-k="back" type="button">돌아가기</button></div>`;
@@ -551,7 +552,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (closed) return; closed = true; cancelAnimationFrame(raf);
     window.removeEventListener('pointermove', movePtr); window.removeEventListener('pointerup', endPtr); window.removeEventListener('pointercancel', endPtr); document.removeEventListener('visibilitychange', resetInput);
     for (const [t, f] of [['keydown', onKeyDown], ['keyup', onKeyUp], ['mousemove', onMouseMove], ['mouseup', onMouseUp], ['wheel', onWheel], ['blur', resetInput], ['resize', resize]] as Array<[string, EventListener]>) window.removeEventListener(t, f);
-    lobby?.close(); versus?.dispose(); document.removeEventListener('pointerlockchange', onLock); if (document.pointerLockElement) document.exitPointerLock();
+    lobby?.close(); versus?.dispose(); document.removeEventListener('pointerlockchange', onLock); document.removeEventListener('pointerlockerror', lockError); if (document.pointerLockElement) document.exitPointerLock();
     try { actorView?.dispose(); cityView?.dispose(); } catch { /* 정리 실패는 무시 */ }
     audio.dispose(); composer?.dispose(); renderer?.dispose(); renderer?.forceContextLoss(); root.remove(); onExit();
   }

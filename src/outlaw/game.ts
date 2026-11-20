@@ -85,11 +85,13 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   const tc = { fire: false, aim: false, jump: false, sprint: false, gas: false, brake: false, hand: false, left: false, right: false, moveId: -1, mx: 0, my: 0, ox: 0, oy: 0, lookId: -1, lx: 0, ly: 0 };
   let enterReq = false, slotReq = -1, reloadReq = false, station = 0, wheelOpen = false, wheelSel = -1, wheelX = 0, wheelY = 0, aimedAtEnemy = false;
   const orbitPos = new THREE.Vector3(), orbitQuat = new THREE.Quaternion();
+  const transitionPos = new THREE.Vector3(), transitionQuat = new THREE.Quaternion();
+  const cameraDir = new THREE.Vector3(), audioRight = new THREE.Vector3();
   const toastList: Array<{ el: HTMLElement; at: number }> = [];
   const hasSave = (): boolean => readOutlawSummary().has;
 
   // ---------- 저장 ----------
-  function save(): void { if (!sim || versus || !sim.player.alive || (phase !== 'play' && phase !== 'trans')) return; try { localStorage.setItem(OUTLAW_KEY, JSON.stringify(sim.exportSave())); } catch { /* 저장은 선택 사항입니다. */ } }
+  function save(): boolean { if (!sim || versus || !sim.player.alive || (phase !== 'play' && phase !== 'trans')) return false; try { localStorage.setItem(OUTLAW_KEY, JSON.stringify(sim.exportSave())); return true; } catch { return false; } }
 
   // ---------- 알림 도구 ----------
   function toast(text: string, sec = 3.2): void {
@@ -372,7 +374,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (poi?.kind === 'casino') return { text: 'E · 카지노', run: () => openUi('casino') };
     if (poi?.kind === 'hospital') { if (p.hp < p.maxHp || p.armor < 40) return { text: `E · 치료 (${money(sim.price(120))})`, run: () => { toast(treat(sim!)); audio.play('pickup'); } }; }
     if (poi?.kind === 'arena') return sim.job.active ? null : { text: `E · 지하 격투 참가 (${money(sim.price(200))})`, run: () => { const r = startJob(sim!, 'fight'); if (r) toast(r); } };
-    if (poi?.kind === 'safehouse') return { text: 'E · 쉬기 · 저장', run: () => { const r = sim!.sleep(); toast(r); save(); audio.play('save'); } };
+    if (poi?.kind === 'safehouse') return { text: 'E · 쉬기 · 저장', run: () => { toast(sim!.sleep()); } };
     if (poi?.kind === 'start') { const m = MISSION_LIST.find(x => x.startPoi === poi.id); if (m && canStart(sim, m.id)) return { text: `E · 의뢰: ${m.title}`, run: () => openBrief(m.id) }; }
     if (sim.nearestVehicle(p)) return { text: 'E · 차량 탑승' };
     if (nearVending(sim)) return { text: `E · 음료 (${money(sim.price(8))})`, run: () => { toast(buySnack(sim!)); audio.play('pickup'); } };
@@ -399,7 +401,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 사운드 도우미 ----------
   function at(name: string, x: number, z: number): void {
     const dx = x - camera.position.x, dz = z - camera.position.z, d = Math.hypot(dx, dz);
-    if (d > 260) return; const r = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion); const pan = d > 1 ? clamp((dx * r.x + dz * r.z) / d, -1, 1) : 0; audio.play(name, d, pan);
+    if (d > 260) return; const r = audioRight.set(1, 0, 0).applyQuaternion(camera.quaternion); const pan = d > 1 ? clamp((dx * r.x + dz * r.z) / d, -1, 1) : 0; audio.play(name, d, pan);
   }
   const camDist = (x: number, z: number): number => Math.hypot(x - camera.position.x, z - camera.position.z);
 
@@ -442,7 +444,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
         case 'busted': audio.play('busted'); break;
         case 'wasted': audio.play('wasted'); break;
         case 'respawn': resetInput(); yaw = sim.player.yaw; pitch = 0; shakeFov = 0; chase.reset({ x: sim.player.x, y: sim.player.y, z: sim.player.z, yaw, speed: 0 }, { yaw, pitch }); audio.setRadio(0); station = 0; audio.play('door'); save(); break;
-        case 'save': save(); audio.play('save'); toast('저장됨', 1.8); break;
+        case 'save': if (!versus) { if (save()) { audio.play('save'); toast('저장됨', 1.8); } else toast('저장하지 못했습니다. 브라우저 저장 공간을 확인하세요.'); } break;
         default: break;
       }
     }
@@ -513,7 +515,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
       const air = !car && !p.grounded, aim = (mouse.aim || tc.aim) && !car;
       if (!paused) chase.update(Math.min(dt, 0.05), car ? 'car' : 'foot', target, { yaw, pitch }, { aim, lookBack: !!car && keys.has('KeyC'), air, fovKick: shakeFov });
       if (phase === 'trans') {
-        transT += dt / 1.5; const k = Math.min(1, transT), e = k * k * (3 - 2 * k); const cp = camera.position.clone(), cq = camera.quaternion.clone();
+        transT += dt / 1.5; const k = Math.min(1, transT), e = k * k * (3 - 2 * k); const cp = transitionPos.copy(camera.position), cq = transitionQuat.copy(camera.quaternion);
         camera.position.lerpVectors(orbitPos, cp, Math.min(1, e)); camera.quaternion.slerpQuaternions(orbitQuat, cq, Math.min(1, e)); if (transT >= 1) phase = 'play';
       }
       if (!paused) shakeFov *= Math.exp(-9 * dt);
@@ -524,7 +526,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (playing && !paused) { saveT += dt; if (saveT > 30) { saveT = 0; if (p.alive) save(); } }
   }
 
-  function camYawNow(): number { const d = new THREE.Vector3(); camera.getWorldDirection(d); return Math.atan2(d.z, d.x); }
+  function camYawNow(): number { const d = camera.getWorldDirection(cameraDir); return Math.atan2(d.z, d.x); }
 
   function hud(dt: number, car: Vehicle | undefined): void {
     const s = sim!, p = s.player, cy = camYawNow();
@@ -571,7 +573,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   }
 
   function isEnemyAhead(cy: number): boolean {
-    const s = sim!, p = s.player; const ey = s.eyeY(p), dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+    const s = sim!, p = s.player; const ey = s.eyeY(p), dir = camera.getWorldDirection(cameraDir);
     for (const q2 of s.peds) { if (!q2.alive || q2.id === PLAYER_ID || !s.hostile(p.team, q2.team)) continue; const dx = q2.x - camera.position.x, dz = q2.z - camera.position.z, dy = q2.y + 1.2 - camera.position.y, d = Math.hypot(dx, dz, dy); if (d > 70 || d < 2) continue; if ((dx * dir.x + dy * dir.y + dz * dir.z) / d > 0.9945) return s.canSee(p.x, p.z, q2.x, q2.z, ey - 0.1); }
     void cy; return false;
   }
@@ -579,7 +581,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   function audioFrame(car: Vehicle | undefined): void {
     const s = sim!; if (!audio.enabled) return;
     if (car) { audio.setEngine(true, car.kind, Math.abs(car.vf), car.input.throttle); audio.setSkid(clamp((Math.abs(car.vl) - 3) / 8, 0, 1) * (Math.abs(car.vf) > 4 ? 1 : 0)); audio.setWind(clamp((Math.abs(car.vf) - 15) / 40, 0, 1)); } else { audio.setEngine(false, 'sedan', 0, 0); audio.setSkid(0); audio.setWind(0); }
-    let best = Infinity, pan = 0; const r = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    let best = Infinity, pan = 0; const r = audioRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
     for (const v of s.vehicles) if (v.siren && v.alive) { const dx = v.x - camera.position.x, dz = v.z - camera.position.z, d = Math.hypot(dx, dz); if (d < best) { best = d; pan = d > 1 ? clamp((dx * r.x + dz * r.z) / d, -1, 1) : 0; } }
     audio.setSiren(best < 160 ? 1 - best / 160 : 0, pan);
     audio.setRain(s.rain); const h = s.clock; audio.setAmbience(clamp(1 - Math.abs(h - 14) / 12, 0.1, 1), h > 20 || h < 5.5);
@@ -594,7 +596,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (closed) return; saveCheckpoint(); closed = true; cancelAnimationFrame(raf);
     window.removeEventListener('pointermove', movePtr); window.removeEventListener('pointerup', endPtr); window.removeEventListener('pointercancel', endPtr); document.removeEventListener('visibilitychange', onVisibility); window.removeEventListener('pagehide', saveCheckpoint);
     for (const [t, f] of [['keydown', onKeyDown], ['keyup', onKeyUp], ['mousemove', onMouseMove], ['mouseup', onMouseUp], ['blur', onBlur], ['resize', resize]] as Array<[string, EventListener]>) window.removeEventListener(t, f);
-    lobby?.close(); versus?.dispose(); document.removeEventListener('pointerlockchange', onLock); if (document.pointerLockElement) document.exitPointerLock();
+    lobby?.close(); versus?.dispose(); document.removeEventListener('pointerlockchange', onLock); if (document.pointerLockElement === canvas) document.exitPointerLock();
     try { actorView?.dispose(); cityView?.dispose(); } catch { /* 정리 실패는 무시 */ }
     audio.dispose(); if (composer) { for (const pass of composer.passes) pass.dispose(); composer.dispose(); } renderer?.dispose(); renderer?.forceContextLoss(); root.remove(); onExit();
   }

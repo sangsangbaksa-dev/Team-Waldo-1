@@ -417,7 +417,7 @@ export class Sim {
   }
   buyArmor(): string { const poi = this.nearPoi(this.player.x, this.player.z); if (!poi || poi.kind !== 'gunshop') return '총기점이 아닙니다'; if (this.player.armor >= 100) return '방탄복이 가득 찼습니다'; const ap = this.price(300); if (this.cash < ap) return '돈이 부족합니다'; this.addCash(-ap); this.player.armor = 100; return '방탄복 구입'; }
   /** 안전가옥에서 쉬기: 체력 회복·저장·시간 경과 */
-  sleep(): string { const p = this.player, poi = this.nearPoi(p.x, p.z); if (!poi || poi.kind !== 'safehouse') return '안전가옥이 아닙니다'; if (this.wanted.stars > 0) return '수배 중에는 쉴 수 없습니다'; p.hp = p.maxHp; this.clock = (this.clock + 8) % 24; this.emit({ t: 'save' }); return '푹 쉬었습니다. 저장되었습니다'; }
+  sleep(): string { const p = this.player, poi = this.nearPoi(p.x, p.z); if (!poi || poi.kind !== 'safehouse') return '안전가옥이 아닙니다'; if (this.wanted.stars > 0) return '수배 중에는 쉴 수 없습니다'; p.hp = p.maxHp; this.clock = (this.clock + 8) % 24; this.emit({ t: 'save' }); return '푹 쉬었습니다'; }
   /** 도색 가게: 차를 새로 칠하고 수배를 풀어 줍니다(경찰이 보고 있지 않을 때). */
   paynspray(): string {
     const p = this.player, v = this.vehMap.get(p.vehicle), poi = this.nearPoi(p.x, p.z); if (!v || !v.alive || v.wrecked || !poi || poi.kind !== 'paynspray') return '도색 가게 안에서 차를 타고 있어야 합니다';

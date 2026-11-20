@@ -21,14 +21,14 @@ import { esc, ladderHtml, menuHtml, spotPanelHtml, statusHtml, titleHtml, winHtm
 
 interface OpenOptions { loading?: LoadingScreen }
 type Phase = 'load' | 'title' | 'play';
-type Modal = { kind: 'spot'; id: string } | { kind: 'status' } | { kind: 'menu' } | { kind: 'map' } | { kind: 'win' } | null;
+type Modal = { kind: 'new' } | { kind: 'spot'; id: string } | { kind: 'status' } | { kind: 'menu' } | { kind: 'map' } | { kind: 'win' } | null;
 const PROMPT_RANGE = 6.5, SYNC_EVERY = 0.5;
 
 export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   const prefs = readPreferences(), touch = matchMedia('(pointer: coarse)').matches, base = import.meta.env.BASE_URL, quality: Quality = prefs.quality;
   const root = document.createElement('div'); root.className = 'ty-root' + (touch ? ' touch' : '');
   root.innerHTML = `
-    <canvas class="ty-canvas"></canvas>
+    <canvas class="ty-canvas" tabindex="-1" aria-label="게임 화면"></canvas>
     <div class="ty-fx"><div class="ty-vig"></div><div class="ty-flash" id="ty-flash"></div></div>
     <div class="ty-hud" id="ty-hud" hidden>
       <div class="ty-top">
@@ -85,11 +85,12 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
 
   // ---------- 모달 ----------
   const paused = (): boolean => modal !== null;
-  let modalHtml = '';
+  let modalHtml = '', modalOrigin: HTMLElement | null = null;
   function renderModal(): void {
     if (!modal) { modalEl.hidden = true; modalEl.innerHTML = ''; modalHtml = ''; return; }
     let h = '';
     switch (modal.kind) {
+      case 'new': h = '<div class="ty-panel narrow" role="dialog" aria-label="새 게임 확인"><header><h2>새로 시작할까요?</h2></header><p>기존 저장 기록은 삭제됩니다.</p><ul><li><button type="button" class="ty-act" data-title="keep">취소</button></li><li><button type="button" class="ty-act danger" data-title="new-confirm">기존 기록 삭제 후 시작</button></li></ul></div>'; break;
       case 'spot': h = spotPanelHtml(core, modal.id, !!city.spotView(modal.id)?.locked); break;
       case 'status': h = statusHtml(core.state); break;
       case 'menu': h = menuHtml(audio.enabled, player.firstPerson); break;
@@ -97,14 +98,22 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       case 'map': h = '<div class="ty-bigmap"><button type="button" class="ty-x" data-close aria-label="닫기">✕</button><canvas id="ty-bigmap" width="720" height="720"></canvas></div>'; break;
     }
     if (h !== modalHtml || modalEl.hidden) { // 내용이 바뀔 때만 교체합니다(누르는 도중 버튼이 바뀌면 클릭이 사라집니다)
-      const keep = modalEl.querySelector('.ty-panel')?.scrollTop ?? 0; modalEl.innerHTML = h; modalHtml = h; modalEl.hidden = false;
+      const keep = modalEl.querySelector('.ty-panel')?.scrollTop ?? 0;
+      const active = document.activeElement;
+      const before = Array.from(modalEl.querySelectorAll<HTMLButtonElement>('button'));
+      const index = before.indexOf(active as HTMLButtonElement);
+      const action = before[index]?.dataset;
+      modalEl.innerHTML = h; modalHtml = h; modalEl.hidden = false;
       const p = modalEl.querySelector('.ty-panel'); if (p) p.scrollTop = keep;
+      const buttons = Array.from(modalEl.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+      const same = action && buttons.find(b => ['act', 'menu', 'title', 'close'].some(k => action[k] !== undefined && b.dataset[k] === action[k]));
+      if (index >= 0 || !modalEl.contains(active)) (same || buttons[0])?.focus({ preventScroll: true });
     }
     if (modal.kind === 'map') drawBig();
   }
   function drawBig(): void { const c = modalEl.querySelector<HTMLCanvasElement>('#ty-bigmap'); if (c) drawMap(c, layout, { stage: core.state.stageIndex, spots: spotViews, px: player.pos.x, pz: player.pos.z, yaw: player.facing, target: core.state.task?.targetSpotId ?? null, time: performance.now() / 1000, names: true }); }
-  function openModal(m: Modal): void { modal = m; if (m && document.pointerLockElement) document.exitPointerLock(); resetInput(); renderModal(); audio.open(); }
-  function closeModal(): void { modal = null; renderModal(); if (phase === 'play') lock(); }
+  function openModal(m: Modal): void { if (!modal) modalOrigin = document.activeElement instanceof HTMLElement ? document.activeElement : null; modal = m; if (m && document.pointerLockElement === canvas) document.exitPointerLock(); hudEl.inert = titleEl.inert = !!m; resetInput(); renderModal(); audio.open(); }
+  function closeModal(): void { modal = null; renderModal(); hudEl.inert = titleEl.inert = false; if (modalOrigin?.isConnected) modalOrigin.focus({ preventScroll: true }); else if (phase === 'play') canvas.focus({ preventScroll: true }); modalOrigin = null; if (phase === 'play') lock(); }
   function openSpot(id: string): void { if (phase !== 'play') return; const spot = core.spot(id); if (!spot) return; openModal({ kind: 'spot', id }); }
   function interact(): void { if (phase !== 'play' || modal) return; if (near) openSpot(near.id); }
 
@@ -116,7 +125,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     const menu = t.closest<HTMLElement>('[data-menu]')?.dataset.menu;
     if (menu) menuAction(menu);
     const title = t.closest<HTMLElement>('[data-title]')?.dataset.title;
-    if (title === 'keep') closeModal(); else if (title === 'exit') exit();
+    if (title === 'keep') closeModal(); else if (title === 'exit') exit(); else if (title === 'new-confirm' && modal?.kind === 'new') { closeModal(); titleAction('new-confirm'); }
   });
   function doAction(spotId: string, actionId: string): void {
     const before = core.state.cash, r = core.perform(spotId, actionId);
@@ -125,6 +134,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     const def = core.actionsAt(spotId).find(a => a.id === actionId); void def;
     if (core.state.activity) { closeModal(); toast(r.message); } else { toast(r.message, 'good'); renderModal(); }
     hudDirty = true;
+    if (!core.state.activity) save();
   }
   function menuAction(m: string): void {
     if (m === 'resume') closeModal();
@@ -136,20 +146,21 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
 
   // ---------- 입력 ----------
   function resetInput(): void { keys.clear(); tc.moveId = tc.lookId = -1; tc.mx = tc.my = 0; drag = -1; q('#ty-stick').style.opacity = '0'; (q('#ty-stick').firstElementChild as HTMLElement).style.transform = ''; }
-  function lock(): void { if (touch || !player?.firstPerson || locked) return; try { const r = canvas.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(() => undefined); } catch { /* 선택 사항 */ } }
-  const onLock = (): void => { locked = document.pointerLockElement === canvas; if (!locked) resetInput(); };
+  function lock(): void { if (closed || modal || phase !== 'play' || touch || !player?.firstPerson || locked) return; try { const r = canvas.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(() => undefined); } catch { /* 선택 사항 */ } }
+  const onLock = (): void => { locked = document.pointerLockElement === canvas; if (locked && (closed || modal || phase !== 'play' || !player?.firstPerson)) { document.exitPointerLock(); return; } if (!locked) resetInput(); };
   document.addEventListener('pointerlockchange', onLock);
   const onKeyDown = (e: KeyboardEvent): void => {
-    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
+    if (closed || e.ctrlKey || e.metaKey || e.altKey || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
+    if (modal && e.code === 'Tab') { const buttons = Array.from(modalEl.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')); e.preventDefault(); const i = buttons.indexOf(document.activeElement as HTMLButtonElement); const next = i < 0 ? (e.shiftKey ? buttons.length - 1 : 0) : (i + (e.shiftKey ? -1 : 1) + buttons.length) % buttons.length; buttons[next]?.focus({ preventScroll: true }); return; }
     if (e.repeat) return;
     if (e.target instanceof HTMLElement && e.target.closest('button,a') && (e.code === 'Enter' || e.code === 'Space')) return;
     audio.unlock();
-    if (phase === 'title') { if (e.code === 'Enter') titleAction(readTycoonSummary().has ? 'continue' : 'new'); return; }
+    if (phase === 'title') { if (modal) { if (e.code === 'Escape') closeModal(); return; } if (e.code === 'Enter') titleAction(readTycoonSummary().has ? 'continue' : 'new'); return; }
     if (phase !== 'play') return;
     if (e.code === 'Escape') { e.preventDefault(); if (modal && modal.kind !== 'menu') closeModal(); else if (modal) closeModal(); else openModal({ kind: 'menu' }); return; }
     if (modal) {
       if (modal.kind === 'spot' && /^Digit[1-9]$/.test(e.code)) { const a = core.actionsAt(modal.id)[Number(e.code.slice(5)) - 1]; if (a) doAction(modal.id, a.id); e.preventDefault(); }
-      else if ((e.code === 'KeyE' || e.code === 'Tab') && modal.kind !== 'menu') { e.preventDefault(); closeModal(); }
+      else if (e.code === 'KeyE' && modal.kind !== 'menu') { e.preventDefault(); closeModal(); }
       return;
     }
     if (e.code === 'Tab') { e.preventDefault(); openModal({ kind: 'status' }); return; }
@@ -161,15 +172,18 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     keys.add(e.code);
   };
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.code); };
-  window.addEventListener('keydown', onKeyDown); window.addEventListener('keyup', onKeyUp); window.addEventListener('blur', resetInput); const onVisibility = (): void => { resetInput(); if (document.hidden) save(); }; const onPageHide = (): void => { save(); }; document.addEventListener('visibilitychange', onVisibility); window.addEventListener('pagehide', onPageHide);
+  window.addEventListener('keydown', onKeyDown); window.addEventListener('keyup', onKeyUp); window.addEventListener('blur', resetInput); const onVisibility = (): void => { resetInput(); if (document.hidden) { save(); if (!closed && phase === 'play' && !modal) openModal({ kind: 'menu' }); } }; const onPageHide = (): void => { save(); }; document.addEventListener('visibilitychange', onVisibility); window.addEventListener('pagehide', onPageHide);
   canvas.addEventListener('pointerdown', e => {
     audio.unlock(); if (phase !== 'play' || modal) return;
     if (e.pointerType === 'touch') {
       if (e.clientX < innerWidth * 0.45 && tc.moveId < 0) { tc.moveId = e.pointerId; tc.ox = e.clientX; tc.oy = e.clientY; const st = q('#ty-stick'); st.style.cssText = `left:${e.clientX - 60}px;top:${e.clientY - 60}px;opacity:1`; }
-      else if (tc.lookId < 0) { tc.lookId = e.pointerId; tc.lx = e.clientX; tc.ly = e.clientY; }
-    } else if (e.button === 0) { drag = e.pointerId; dragX = e.clientX; dragY = e.clientY; if (player.firstPerson) lock(); }
+      else if (e.clientX >= innerWidth * 0.45 && tc.lookId < 0) { tc.lookId = e.pointerId; tc.lx = e.clientX; tc.ly = e.clientY; }
+      else return;
+      canvas.setPointerCapture(e.pointerId); e.preventDefault();
+    } else if (e.button === 0) { drag = e.pointerId; dragX = e.clientX; dragY = e.clientY; canvas.setPointerCapture(e.pointerId); if (player.firstPerson) lock(); }
   });
   const onMove = (e: PointerEvent): void => {
+    if (closed || phase !== 'play' || modal) return;
     if (e.pointerId === tc.moveId) { const dx = clamp((e.clientX - tc.ox) / 55, -1, 1), dy = clamp((e.clientY - tc.oy) / 55, -1, 1); tc.mx = dx; tc.my = dy; (q('#ty-stick').firstElementChild as HTMLElement).style.transform = `translate(${dx * 38}px,${dy * 38}px)`; }
     else if (e.pointerId === tc.lookId) { player.look((e.clientX - tc.lx) * 0.0055, (e.clientY - tc.ly) * 0.0045); tc.lx = e.clientX; tc.ly = e.clientY; }
     else if (locked && phase === 'play' && !modal) player.look(e.movementX * 0.0024, e.movementY * 0.002);
@@ -180,8 +194,8 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (e.pointerId === tc.lookId) tc.lookId = -1; if (e.pointerId === drag) drag = -1;
   };
   window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); window.addEventListener('pointercancel', onUp); canvas.addEventListener('lostpointercapture', onUp);
-  const onWheel = (e: WheelEvent): void => { if (phase === 'play' && !modal && !player.firstPerson) player.dist = clamp(player.dist + e.deltaY * 0.01, 3.5, 14); };
-  window.addEventListener('wheel', onWheel, { passive: true });
+  const onWheel = (e: WheelEvent): void => { if (phase !== 'play' || modal || player.firstPerson || e.ctrlKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return; e.preventDefault(); const pixels = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? innerHeight : 1); player.dist = clamp(player.dist + pixels * 0.01, 3.5, 14); };
+  canvas.addEventListener('wheel', onWheel, { passive: false });
   q('.ty-touchpad').addEventListener('pointerdown', e => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-t]'); if (!b) return; audio.unlock(); e.preventDefault();
     const t = b.dataset.t; if (t === 'use') interact(); else if (t === 'run') { tc.run = !tc.run; b.classList.toggle('on', tc.run); } else if (t === 'view') { player.setFirstPerson(!player.firstPerson); }
@@ -234,7 +248,8 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   titleEl.addEventListener('click', e => { audio.unlock(); const b = (e.target as HTMLElement).closest<HTMLElement>('[data-title]'); if (b) titleAction(b.dataset.title!); });
   function titleAction(a: string): void {
     if (a === 'exit') { exit(); return; }
-    if (a === 'new') { clearTycoon(); bindCore(createCore()); syncCity(false); }
+    if (a === 'new' && readTycoonSummary().has) { openModal({ kind: 'new' }); return; }
+    if (a === 'new' || a === 'new-confirm') { clearTycoon(); bindCore(createCore()); syncCity(false); }
     else if (a === 'continue') { /* 제목 화면에서 이미 저장본으로 만든 코어를 씁니다 */ }
     startPlay();
   }
@@ -251,7 +266,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   window.addEventListener('resize', resize);
 
   function readMove(): { mx: number; mz: number; run: boolean } {
-    let mx = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0), mz = (keys.has('KeyW') || keys.has('ArrowUp') && false ? 1 : 0) - (keys.has('KeyS') ? 1 : 0);
+    let mx = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0), mz = (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0);
     if (touch || tc.moveId >= 0) { mx += tc.mx; mz += -tc.my; }
     const l = Math.hypot(mx, mz); if (l > 1) { mx /= l; mz /= l; }
     return { mx, mz, run: keys.has('ShiftLeft') || keys.has('ShiftRight') || tc.run };
@@ -288,7 +303,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     // 카메라
     if (playing) {
       player.placeCamera(camera, dt, colliders);
-      if (cineT > 0) { cineT += dt; const k = Math.sin(Math.min(1, cineT / 4.2) * Math.PI), vx = player.pos.x + 20, vz = player.pos.z + 46, vy = 46 + 30 * k; camera.position.lerp(new THREE.Vector3(vx, vy, vz), k * 0.88); camera.lookAt(player.pos.x - 10 * k, 4 + 6 * k, player.pos.z - 6 * k); if (cineT > 4.2) cineT = 0; }
+      if (cineT > 0) { cineT += dt; const k = Math.sin(Math.min(1, cineT / 4.2) * Math.PI), vx = player.pos.x + 20, vz = player.pos.z + 46, vy = 46 + 30 * k; camera.position.lerp(cinematicTarget.set(vx, vy, vz), k * 0.88); camera.lookAt(player.pos.x - 10 * k, 4 + 6 * k, player.pos.z - 6 * k); if (cineT > 4.2) cineT = 0; }
     } else {
       titleAngle += dt * 0.07; const cx = titleFocus.x, cz = titleFocus.z; camera.position.set(cx + Math.cos(titleAngle) * 52, 26 + Math.sin(titleAngle * 0.7) * 3, cz + Math.sin(titleAngle) * 52); camera.lookAt(cx, 3, cz);
     }
@@ -307,7 +322,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     void s;
     if (post) post.render(dt); else renderer.render(scene, camera);
   }
-  const titleFocus = new THREE.Vector3();
+  const titleFocus = new THREE.Vector3(), cinematicTarget = new THREE.Vector3();
 
   function updateHud(s: TycoonState): void {
     set('cash', formatMoney(s.cash)); set('debt', s.debt ? `빚 ${formatMoney(s.debt)}` : ''); set('stage', s.stageName); html('ladder', ladderHtml(s.stage));
@@ -332,8 +347,8 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   function exit(): void {
     if (closed) return; save(); closed = true; cancelAnimationFrame(raf);
     window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', resetInput); document.removeEventListener('visibilitychange', onVisibility); window.removeEventListener('pagehide', onPageHide);
-    window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp); window.removeEventListener('wheel', onWheel); window.removeEventListener('resize', resize); document.removeEventListener('pointerlockchange', onLock);
-    if (document.pointerLockElement) document.exitPointerLock();
+    window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp); canvas.removeEventListener('wheel', onWheel); window.removeEventListener('resize', resize); document.removeEventListener('pointerlockchange', onLock);
+    if (document.pointerLockElement === canvas) document.exitPointerLock();
     for (const u of unsub) u();
     try { crowd?.dispose(); traffic?.dispose(); player?.dispose(); city?.dispose(); atmo?.dispose(); } catch { /* 정리 실패는 무시 */ }
     audio.dispose(); post?.dispose(); renderer?.dispose(); renderer?.forceContextLoss(); root.remove(); onExit();

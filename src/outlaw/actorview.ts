@@ -55,6 +55,8 @@ export class ActorView {
   private time = 0;
   private disposed = false;
   private readonly cameraPos = new THREE.Vector3();
+  private readonly livePedIds = new Set<number>(); private readonly liveCarIds = new Set<number>();
+  private readonly liveLootIds = new Set<number>(); private readonly liveRocketIds = new Set<number>();
   private fxCursor = 0;
   private skidCursor = 0;
   /** 사이렌 차량 주변 벽·노면에 번지는 적청 점멸광(가장 가까운 한 대) */
@@ -377,7 +379,7 @@ export class ActorView {
   }
   update(dt: number, camera: THREE.PerspectiveCamera, clock: number): void {
     if (this.disposed) return; dt = Math.max(0, Number.isFinite(dt) ? dt : 0); this.time += dt; camera.getWorldPosition(this.cameraPos); this.sirenWash(); this.spikeStrips();
-    const hour = ((clock % 24) + 24) % 24, night = hour >= 20 || hour < 6, livePeds = new Set<number>();
+    const hour = ((clock % 24) + 24) % 24, night = hour >= 20 || hour < 6, livePeds = this.livePedIds; livePeds.clear();
     for (const p of this.sim.peds) {
       livePeds.add(p.id); const dist = Math.hypot(p.x - this.cameraPos.x, p.z - this.cameraPos.z), player = p.id === this.sim.player.id;
       let r = this.rigs.get(p.id); if (!r && !player && dist > 160) continue; r ??= this.makeRig(p); r.flashT = Math.max(0, r.flashT - dt);
@@ -395,13 +397,13 @@ export class ActorView {
       if (player || this.time >= r.nextPose || p.hurt > 0 || p.punchT > 0 || r.flash.visible) { this.pose(p, r); r.nextPose = this.time + (dist > 90 ? 0.22 : dist > 45 ? 0.1 : 0); }
     }
     this.prune(this.rigs, livePeds, r => r.root);
-    const liveCars = new Set<number>();
+    const liveCars = this.liveCarIds; liveCars.clear();
     for (const v of this.sim.vehicles) {
       liveCars.add(v.id); const near = Math.hypot(v.x - this.cameraPos.x, v.z - this.cameraPos.z) <= 320;
       let c = this.cars.get(v.id); if (!c && !near) continue; c ??= this.makeCar(v); c.root.visible = near; if (near) this.car(v, c, dt, night);
     }
     this.prune(this.cars, liveCars, c => c.root);
-    const liveLoot = new Set<number>();
+    const liveLoot = this.liveLootIds; liveLoot.clear();
     for (const p of this.sim.pickups) {
       liveLoot.add(p.id); const dist = Math.hypot(p.x - this.cameraPos.x, p.z - this.cameraPos.z), visible = !p.taken && dist < 90;
       let l = this.loot.get(p.id); if (!l && !visible) continue; l ??= this.makeLoot(p); l.root.visible = visible;
@@ -426,7 +428,7 @@ export class ActorView {
     for (; index < this.beacons.length; index++) this.beacons[index].root.visible = false;
   }
   private projectiles(dt: number): void {
-    const live = new Set<number>();
+    const live = this.liveRocketIds; live.clear();
     for (const p of this.sim.projectiles) {
       live.add(p.id); let g = this.rockets.get(p.id); const visible = Math.hypot(p.x - this.cameraPos.x, p.z - this.cameraPos.z) < 320; if (!g && !visible) continue;
       if (!g && p.kind === 'grenade') { g = new THREE.Group(); this.mesh(g, this.ball, 0x3d4a35, 0, 0, 0, 0.11, 0.14, 0.11); this.mesh(g, this.box, 0x8a8f86, 0, 0.14, 0, 0.05, 0.05, 0.05); this.root.add(g); this.rockets.set(p.id, g); g.userData.trail = 0; }

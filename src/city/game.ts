@@ -101,7 +101,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       <details class="c-setup-details"><summary>조작법</summary><div class="c-keys">${touch ? '<span>왼쪽 드래그 이동</span><span>오른쪽 드래그 시점</span><span>사격 버튼</span><span>버튼으로 상호작용·지휘</span>' : '<span><b>WASD</b> 이동</span><span><b>마우스</b> 시점·사격</span><span><b>V</b> 1인칭/3인칭/전술뷰</span><span><b>E</b> 매입·줍기</span><span><b>F</b> 차량 탑승</span><span><b>Tab</b> 지휘 패널</span><span><b>우클릭</b> 병력 돌격</span><span><b>Z/X</b> 집결·사수</span><span><b>Space</b> 대시</span><span><b>M</b> 지도</span><span><b>Delete</b> 철거</span>'}</div></details>
       ${PVP_ENABLED ? `<details class="c-setup-details"><summary>온라인 대전</summary><div class="c-sub">1대1 결투 · 멀티 방(3~6인) · 로그인 필요</div><div class="c-diffs">${(Object.keys(CLASSES) as ClassId[]).map(k => `<button class="c-diff" data-act="duel:${k}" title="${CLASSES[k].desc}">${CLASSES[k].name}으로 대전·방 만들기</button>`).join('')}</div><p class="c-lead c-diffdesc">같은 도시에서 둘만 남아 ${TARGET_KILLS}킬을 먼저 채우면 승리합니다. 병력을 뽑고 건물을 지어 싸우세요. 상대 본부를 무너뜨리면 즉시 승리하고, 내 본부가 무너지면 패배합니다. 제한 시간은 ${clock(TIME_LIMIT)}입니다. 방 만들기로 3~6명이 모이면 병력 없이 영웅끼리 싸우는 난투전(목숨 ${ROOM_LIVES}개, 마지막 생존자 우승)이 열립니다.</p></details>` : ''}
       <div class="c-sub wd-label">난이도</div><div class="c-diffs wd-seg" role="group" aria-label="난이도">${DIFFICULTY_ORDER.map(d => `<button class="c-diff${d === diffSel ? ' on' : ''}" data-act="diff:${d}" aria-pressed="${d === diffSel}" title="${DIFFICULTY[d].desc}">${DIFFICULTY[d].label}</button>`).join('')}</div><p class="c-lead c-diffdesc">${DIFFICULTY[diffSel].desc}</p>
-      <div class="c-setup-foot"><span>난이도 · ${DIFFICULTY[diffSel].label}</span><button data-act="exit" class="c-ghost wd-btn ghost">아케이드로</button></div></section>`;
+      <div class="c-setup-foot"><span>난이도 · ${DIFFICULTY[diffSel].label}</span><button data-act="exit" class="c-ghost wd-btn ghost">게임 목록으로</button></div></section>`;
   }
   function start(k: ClassId, tutorial = false, dl: Duel | null = null, rm: Room | null = null): void {
     klass = k; modal.innerHTML = ''; hud.hidden = false; resultShown = false; paused = false; ghost = null; shopOpen = false; panel.hidden = true; bigmap.hidden = true; q('#c-missions').hidden = true;
@@ -240,7 +240,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (!world || world.over || duel || room) return; paused = true; keys.clear(); mouse.down = false; unlock();
     modal.innerHTML = `<section class="c-pause wd-panel"><div class="c-kicker wd-eyebrow">LAST CITY</div><h2 class="wd-title">일시정지</h2>
       <div class="c-help"><div><b>보스 조작</b><p>WASD 이동 · 마우스 시점/사격 · V 시점 전환(1인칭·3인칭·전술뷰) · R 재장전 · 1~3 무기 · Space 대시 · H 회복 키트 · Q 고유 스킬</p></div><div><b>도시</b><p>E 사업체 매입·업그레이드·무기 줍기 · F 차량 탑승/하차 · 적 사업체 패드 위에서 6초 버티면 적대적 인수</p></div><div><b>지휘</b><p>Tab 지휘 패널(생산·건설·연구·시장) · 우클릭/지도 클릭 돌격 · Z 집결 · X 사수</p></div><div><b>승리</b><p>자기장은 점점 줄어듭니다. 적 본부를 부수면 그 보스는 부활하지 못합니다. 마지막까지 살아남는 왕국이 승리합니다.</p></div></div>
-      <div class="c-actions wd-actions"><button data-act="resume" class="c-primary wd-btn primary">이어하기</button><button data-act="sound" class="wd-btn">소리 ${prefs.sound ? '켬' : '끔'}</button><button data-act="retry" class="wd-btn">다시 시작</button><button data-act="exit" class="wd-btn ghost">아케이드로</button></div></section>`;
+      <div class="c-actions wd-actions"><button data-act="resume" class="c-primary wd-btn primary">이어하기</button><button data-act="sound" class="wd-btn">소리 ${prefs.sound ? '켬' : '끔'}</button><button data-act="retry" class="wd-btn">다시 시작</button><button data-act="exit" class="wd-btn ghost">게임 목록으로</button></div></section>`;
   }
 
   // ---------- HUD ----------
@@ -495,7 +495,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     try { const c = readCityCareer(); localStorage.setItem(CITY_KEY, JSON.stringify({ matches: c.matches + 1, wins: c.wins + Number(win), best: c.best ? Math.min(c.best, place) : place })); } catch { /* 기록은 선택 사항 */ }
     modal.innerHTML = `<section class="c-result wd-panel ${win ? 'win' : ''}"><div class="c-kicker wd-eyebrow">경기 결과</div><h2 class="wd-title">${win ? '최후의 왕국!' : `#${place} <small>/ 8 왕국</small>`}</h2><p class="c-lead">${win ? '도시의 모든 것이 이제 당신의 것입니다.' : place <= 3 ? '거의 다 왔습니다. 한 판 더!' : '경제를 먼저 굴리고, 병력과 함께 움직여 보세요.'}</p>
       <div class="c-stats"><div><b>${clock(w.time)}</b><span>생존 시간</span></div><div><b>${f.kills}</b><span>처치</span></div><div><b>${w.businesses.filter(z => z.owner === 0).length}</b><span>보유 사업체</span></div><div><b>$${$(f.earned)}</b><span>총 수익</span></div><div><b>${f.level}</b><span>보스 레벨</span></div><div><b>${w.eventsDone}</b><span>부업 완료</span></div></div>
-      <div class="c-actions wd-actions"><button data-act="retry" class="c-primary wd-btn primary">다시 시작</button><button data-act="exit" class="wd-btn ghost">아케이드로</button></div></section>`;
+      <div class="c-actions wd-actions"><button data-act="retry" class="c-primary wd-btn primary">다시 시작</button><button data-act="exit" class="wd-btn ghost">게임 목록으로</button></div></section>`;
   }
 
   // ---------- 입력 ----------

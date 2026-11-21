@@ -1,4 +1,4 @@
-// SKY WAR — 공중전 시뮬레이션(렌더링과 무관한 순수 로직). 아케이드 비행 모델 + 웨이브 AI.
+// SKY WAR — 공중전 시뮬레이션(렌더링과 무관한 순수 로직). 단순화한 비행 모델 + 웨이브 AI.
 import * as THREE from 'three';
 
 export const WORLD_R = 3200;        // 이 반경 밖에서는 경고 후 기수를 안쪽으로 돌립니다

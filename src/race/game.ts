@@ -106,7 +106,7 @@ export function openRace(onExit: () => void): void {
         <p class="rc-record">${trial ? (ghostNew ? '고스트를 갱신했습니다 — 다음 도전에서 이 주행과 겨룹니다' : race.ghost ? `고스트 ${fmtTime(race.ghost.time)} · ${time - race.ghost.time >= 0 ? '+' : '-'}${Math.abs(time - race.ghost.time).toFixed(2)}초` : '') : ''}${trial ? '' : newBest ? '개인 최고 기록 갱신' : `${map.name} 최고 랩 ${fmtTime(records.bestLap[map.id] ?? Infinity)}`}</p>
         <p class="rc-record">드리프트 ${drift.toLocaleString('ko-KR')}점${driftNew && drift > 0 ? ' ★ 코스 최고 기록' : prevDrift > 0 ? ` · 코스 최고 ${prevDrift.toLocaleString('ko-KR')}점` : ''}</p>
         <p class="rc-reward">+${coins} 코인 <small>(보유 ${garage.value.coins.toLocaleString('ko-KR')})</small></p>
-        <div class="rc-actions"><button class="primary" data-act="restart">다시 시작</button><button data-act="setup">설정</button><button data-act="exit">아케이드로</button></div></div>`;
+        <div class="rc-actions"><button class="primary" data-act="restart">다시 시작</button><button data-act="setup">설정</button><button data-act="exit">게임 목록으로</button></div></div>`;
     }, 1600);
   }
 
@@ -323,7 +323,7 @@ export function openRace(onExit: () => void): void {
   }
 
   const setPaused = (on: boolean): void => {
-    if (!view || setupUi || pvp || multi || race.phase === 'done' || finishedShown || closed) return; paused = on; modal.className = on ? 'rc-modal show' : 'rc-modal'; if (on) { audio.drive(0, 0, 0, false, false, false); modal.innerHTML = '<div class="rc-card wd-panel"><span class="rc-eyebrow wd-eyebrow">SPEED RUSH</span><h2 class="wd-title">일시정지</h2><div class="rc-actions"><button class="wd-btn primary" data-act="resume">이어하기</button><button class="wd-btn ghost" data-act="restart">다시 시작</button><button class="wd-btn ghost" data-act="setup">설정</button><button class="wd-btn ghost" data-act="exit">아케이드로</button></div></div>'; } else modal.innerHTML = '';
+    if (!view || setupUi || pvp || multi || race.phase === 'done' || finishedShown || closed) return; paused = on; modal.className = on ? 'rc-modal show' : 'rc-modal'; if (on) { audio.drive(0, 0, 0, false, false, false); modal.innerHTML = '<div class="rc-card wd-panel"><span class="rc-eyebrow wd-eyebrow">SPEED RUSH</span><h2 class="wd-title">일시정지</h2><div class="rc-actions"><button class="wd-btn primary" data-act="resume">이어하기</button><button class="wd-btn ghost" data-act="restart">다시 시작</button><button class="wd-btn ghost" data-act="setup">설정</button><button class="wd-btn ghost" data-act="exit">게임 목록으로</button></div></div>'; } else modal.innerHTML = '';
   };
   const exit = (): void => {
     if (closed) return; closed = true; cancelAnimationFrame(raf); removeEventListener('keydown', onKey); removeEventListener('keyup', onKeyUp); removeEventListener('resize', resize); removeEventListener('blur', onBlur);

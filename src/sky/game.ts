@@ -34,10 +34,10 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     <li><b>조준 보조</b>는 위 설정에서 조절 (끔=직접 조준, 강=자동 사격, T로 자동 사격 토글) · 적을 가운데 두면 락온 후 미사일 발사</li>
     <li>키보드: WASD/방향키 · Q/E 러더 · C 조종석 시점 · Shift 부스트 · Ctrl 감속 · Space 기관포 · M 미사일 · F 플레어 · P 일시정지</li></ul>
     <div class="sk-record"><span class="sk-section-label">FLIGHT RECORD</span><div class="sk-rec" id="sk-rec"></div></div>
-    <div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-start">시작</button><button class="wd-btn ghost" id="sk-quit">아케이드로</button></div>
+    <div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-start">시작</button><button class="wd-btn ghost" id="sk-quit">게임 목록으로</button></div>
   </div></div>
-  <div class="sk-modal sk-result wd-screen" id="sk-end" hidden><div class="sk-card wd-panel"><div class="wd-eyebrow">MISSION REPORT</div><h2 class="wd-title" id="sk-end-t"></h2><div id="sk-end-s"></div><div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-again">다시 시작</button><button class="wd-btn ghost" id="sk-quit2">아케이드로</button></div></div></div>
-  <div class="sk-modal sk-pause-modal wd-screen" id="sk-paused" hidden><div class="sk-card wd-panel"><div class="wd-eyebrow">FLIGHT SUSPENDED</div><h2 class="wd-title">일시정지</h2><p class="wd-lead">잠시 쉬어가세요.</p><div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-resume">이어하기</button><button class="wd-btn ghost" id="sk-quit3">아케이드로</button></div></div></div>`;
+  <div class="sk-modal sk-result wd-screen" id="sk-end" hidden><div class="sk-card wd-panel"><div class="wd-eyebrow">MISSION REPORT</div><h2 class="wd-title" id="sk-end-t"></h2><div id="sk-end-s"></div><div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-again">다시 시작</button><button class="wd-btn ghost" id="sk-quit2">게임 목록으로</button></div></div></div>
+  <div class="sk-modal sk-pause-modal wd-screen" id="sk-paused" hidden><div class="sk-card wd-panel"><div class="wd-eyebrow">FLIGHT SUSPENDED</div><h2 class="wd-title">일시정지</h2><p class="wd-lead">잠시 쉬어가세요.</p><div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-resume">이어하기</button><button class="wd-btn ghost" id="sk-quit3">게임 목록으로</button></div></div></div>`;
   document.body.appendChild(root);
   const $ = <T extends HTMLElement>(id: string): T => root.querySelector('#' + id) as T;
   const canvas = root.querySelector<HTMLCanvasElement>('.sk-canvas')!, ov = root.querySelector<HTMLCanvasElement>('.sk-ov')!, octx = ov.getContext('2d')!;

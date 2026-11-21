@@ -253,3 +253,4 @@
 .c-modal .wd-panel .c-actions button{min-width:0;font-weight:600;background:var(--wd-raised);border-color:var(--wd-line)}
 .c-modal .wd-panel .c-actions .primary{background:var(--wd-accent);color:var(--wd-accent-ink);border-color:var(--wd-accent)}
 .c-setup .c-classes{grid-template-columns:repeat(3,minmax(0,1fr))}.c-setup .c-class{min-width:0;overflow-wrap:anywhere}
+.c-modal.wd-has-rails > .c-setup{width:min(700px,100%)}@media (min-width:1480px){.c-modal.wd-has-rails > .c-setup{width:700px}}

@@ -175,7 +175,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   function showTitle(): void {
     titleEl.hidden = false; const sv = hasSave();
     titleEl.innerHTML = `<div class="ol-title-panel wd-panel"><p class="wd-eyebrow">WALDO · 오픈 월드</p><div class="ol-logo wd-title"><span>OUTLAW</span><span class="b">CITY</span></div><p class="ol-tag wd-lead">도시는 네 것이다. 대가는 네가 치른다.</p>
-      <div class="ol-btns v wd-actions"><button data-t="new" type="button" class="wd-btn primary">시작</button>${sv ? '<button data-t="cont" type="button" class="wd-btn">이어하기</button>' : ''}${PVP_ENABLED ? '<button data-t="duel" type="button">온라인 1대1</button><button data-t="room" type="button">온라인 룸 (2~6인)</button>' : ''}<button data-t="help" type="button">조작법</button><button data-t="exit" type="button" class="ghost wd-btn">아케이드로</button></div><p class="ol-title-status" role="status"></p></div>`;
+      <div class="ol-btns v wd-actions"><button data-t="new" type="button" class="wd-btn primary">시작</button>${sv ? '<button data-t="cont" type="button" class="wd-btn">이어하기</button>' : ''}${PVP_ENABLED ? '<button data-t="duel" type="button">온라인 1대1</button><button data-t="room" type="button">온라인 룸 (2~6인)</button>' : ''}<button data-t="help" type="button">조작법</button><button data-t="exit" type="button" class="ghost wd-btn">게임 목록으로</button></div><p class="ol-title-status" role="status"></p></div>`;
   }
   titleEl.addEventListener('click', e => {
     const b = (e.target as HTMLElement).closest('button'); if (!b || !sim || phase !== 'menu' || lobby || openingLobby) return;

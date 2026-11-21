@@ -75,7 +75,7 @@ export function menuHtml(sound: boolean, firstPerson: boolean, confirmRestart = 
       <button type="button" class="ty-act wd-btn ghost" data-menu="view">시점: ${firstPerson ? '1인칭' : '3인칭'} (V)</button>
       <button type="button" class="ty-act wd-btn ghost" data-menu="sound">소리 ${sound ? '끄기' : '켜기'}</button>
       <button type="button" class="ty-act danger wd-btn ghost" data-menu="restart">${confirmRestart ? '다시 시작하려면 한 번 더 누르세요' : '다시 시작'}</button>
-      <button type="button" class="ty-act danger wd-btn ghost" data-menu="exit">아케이드로</button>
+      <button type="button" class="ty-act danger wd-btn ghost" data-menu="exit">게임 목록으로</button>
     </div></div></div>`;
 }
 
@@ -85,7 +85,7 @@ export function titleHtml(has: boolean, summary: string): string {
     <div class="ty-ladder-lg">${STAGES.map(s => `<span>${STAGE_NAMES[s]}</span>`).join('<i>›</i>')}</div>
     <div class="ty-title-btns wd-actions">
       ${has ? `<button type="button" class="wd-btn primary" data-title="continue">이어하기<small>${esc(summary)}</small></button><button type="button" class="wd-btn ghost" data-title="new">다시 시작</button>` : '<button type="button" class="wd-btn primary" data-title="new">시작</button>'}
-      <button type="button" class="wd-btn ghost" data-title="exit">아케이드로</button>
+      <button type="button" class="wd-btn ghost" data-title="exit">게임 목록으로</button>
     </div>
     <p class="keys">WASD 이동 · Shift 달리기 · E 상호작용 · 마우스 드래그로 시점 · V 1인칭 · Tab 현황 · M 지도</p>
   </div>`;
@@ -93,11 +93,11 @@ export function titleHtml(has: boolean, summary: string): string {
 
 export function failHtml(): string {
   return `<div class="ty-titlebox wd-panel"><p class="kick wd-eyebrow">HUSTLE</p><h1 class="wd-title">그래픽을 시작하지 못했어요</h1><p class="sub wd-lead">WebGL을 지원하는 브라우저에서 다시 시도해 주세요.</p>
-    <div class="ty-title-btns wd-actions"><button type="button" class="wd-btn primary" data-title="exit">아케이드로</button></div></div>`;
+    <div class="ty-title-btns wd-actions"><button type="button" class="wd-btn primary" data-title="exit">게임 목록으로</button></div></div>`;
 }
 
 export function winHtml(s: TycoonState): string {
   return `<div class="ty-win-screen wd-screen"><div class="ty-titlebox win wd-panel"><p class="kick wd-eyebrow">HUSTLE / MILESTONE</p><h1 class="wd-title">세계 정복</h1><p class="sub wd-lead">${s.day}일 만에 세계를 손에 넣었습니다. 순자산 ${formatMoney(s.netWorth)}</p>
-    <div class="ty-title-btns wd-actions"><button type="button" class="wd-btn primary" data-title="keep">이어하기</button><button type="button" class="wd-btn ghost" data-title="exit">아케이드로</button></div></div></div>`;
+    <div class="ty-title-btns wd-actions"><button type="button" class="wd-btn primary" data-title="keep">이어하기</button><button type="button" class="wd-btn ghost" data-title="exit">게임 목록으로</button></div></div></div>`;
 }
 export type { SpotDef };

@@ -440,7 +440,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       <p class="rt-diffnote" id="rt-diffnote">${LEVELS[difficulty].blurb}</p>
       <div class="rt-actions"><button data-act="start" id="rt-start">AI와 1대1 대전</button>${PVP_ENABLED ? '<button data-act="pvp" id="rt-pvp">온라인 1대1 대전</button>' : ''}</div>
       <div class="rt-actions"><button data-act="moba" id="rt-moba">라인전 4:4</button>${PVP_ENABLED ? '<button data-act="mobaroom" id="rt-mobaroom">온라인 라인전 · 최대 4명</button>' : ''}</div>
-      <div class="rt-actions sub"><button data-act="fog" id="rt-fog" aria-pressed="${fogOn}" title="적이 보이는 범위를 시야 안으로 제한합니다">전장의 안개 ${fogOn ? '켜짐' : '꺼짐'}</button><button data-act="help">조작법</button><button data-act="exit">아케이드로</button></div>
+      <div class="rt-actions sub"><button data-act="fog" id="rt-fog" aria-pressed="${fogOn}" title="적이 보이는 범위를 시야 안으로 제한합니다">전장의 안개 ${fogOn ? '켜짐' : '꺼짐'}</button><button data-act="help">조작법</button><button data-act="exit">게임 목록으로</button></div>
       <p class="rt-rec">${rec.matches ? `AI 대전 ${rec.matches}판 ${rec.wins}승${rec.bestWin[difficulty] ? ` · ${LEVELS[difficulty].label} 최단 승리 ${clock(rec.bestWin[difficulty] * TICK)}` : ''}` : '처음이라면 쉬움 난이도로 시작해 보세요.'}</p></div>`);
     modal.querySelector<HTMLElement>('#rt-campaign')?.focus();
   }
@@ -461,13 +461,13 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     <div class="rt-actions"><button class="primary" data-act="back">닫기</button></div></div>`;
   function openMenu(): void {
     if (root.dataset.phase === 'setup' || ended || !sim) return; paused = !net; root.dataset.phase = 'paused';
-    show(`<div class="rt-card"><span class="rt-eyebrow">${net ? '대전 중 · 계속 진행됩니다' : 'FRONTLINE'}</span><h2>${net ? '설정' : '일시정지'}</h2>${net ? '' : '<p class="rt-lead">P 또는 Esc를 눌러 이어할 수 있습니다.</p>'}<div class="rt-actions col"><button class="primary" data-act="resume">이어하기</button><button data-act="help2">조작법</button><button data-act="surrender">항복</button><button data-act="exit">아케이드로</button></div></div>`);
+    show(`<div class="rt-card"><span class="rt-eyebrow">${net ? '대전 중 · 계속 진행됩니다' : 'FRONTLINE'}</span><h2>${net ? '설정' : '일시정지'}</h2>${net ? '' : '<p class="rt-lead">P 또는 Esc를 눌러 이어할 수 있습니다.</p>'}<div class="rt-actions col"><button class="primary" data-act="resume">이어하기</button><button data-act="help2">조작법</button><button data-act="surrender">항복</button><button data-act="exit">게임 목록으로</button></div></div>`);
   }
   function resultCard(win: boolean | null, why: string, extra = ''): void {
     if (!sim) return; const p = sim.players[me];
     show(`<div class="rt-card rt-result ${win ? 'win' : 'lose'}"><span class="rt-eyebrow">${pvp ? `vs ${esc(pvp.s.opponent.nickname)}` : `AI ${LEVELS[difficulty].label}`} · ${clock(sim.tick)}</span><h2>${win === null ? '무효' : win ? '승리' : '패배'}</h2><p>${esc(why)}</p>
       <dl class="rt-stats"><div><dt>시간</dt><dd>${clock(sim.tick)}</dd></div><div><dt>처치</dt><dd>${p.kills}</dd></div><div><dt>손실</dt><dd>${p.lost}</dd></div><div><dt>채취</dt><dd>${p.mined}</dd></div></dl>${extra}
-      <div class="rt-actions">${pvp ? '' : '<button class="primary" data-act="again">다시 시작</button>'}<button data-act="${pvp ? 'exit' : 'setup'}" ${pvp ? 'class="primary"' : ''}>${pvp ? '아케이드로' : '설정'}</button>${pvp ? '' : '<button data-act="exit">아케이드로</button>'}</div></div>`);
+      <div class="rt-actions">${pvp ? '' : '<button class="primary" data-act="again">다시 시작</button>'}<button data-act="${pvp ? 'exit' : 'setup'}" ${pvp ? 'class="primary"' : ''}>${pvp ? '게임 목록으로' : '설정'}</button>${pvp ? '' : '<button data-act="exit">게임 목록으로</button>'}</div></div>`);
   }
   function finish(): void {
     if (!sim || ended) return; ended = true; root.dataset.phase = 'over'; selected.clear(); setHint(''); mode = null;

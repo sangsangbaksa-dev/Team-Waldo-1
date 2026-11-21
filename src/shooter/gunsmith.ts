@@ -1,8 +1,10 @@
 // ZERO ZONE — 경기 중 총기 조립 화면(L): 지금 가방에 있는 파츠만으로 들고 있는 총을 조립합니다. 총을 3D 로 돌려 보며 능력치 변화를 바로 확인합니다.
 // 파츠는 경기 중에 줍는 것이라 영구 보관·영구 강화는 없습니다. 달린 파츠를 빼면 가방으로 돌아옵니다.
 import * as THREE from 'three';
-import { BAG_MAX, PARTS, PART_FITS, PART_SLOTS, SLOT_NAMES, WEAPONS, canFit, gunStats, partsFor, type GunStats, type PartDef, type PartId, type PartSlot, type WeaponId } from './config';
+import { ARMOR_NAMES, BAG_MAX, HELMET_NAMES, PARTS, PART_FITS, PART_SLOTS, SLOT_NAMES, WEAPONS, canFit, gunStats, partsFor, type GunStats, type PartDef, type PartId, type PartSlot, type WeaponId } from './config';
 import { buildGun, slotPoint } from './gunbuild';
+import { ICON_DEFS, gearIcon, partIcon } from './icons';
+import './gunsmith.css';
 import type { ShooterAssets } from './assets';
 import type { Player } from './sim';
 
@@ -16,7 +18,6 @@ export interface GunsmithOptions {
 const esc = (s: string): string => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
 const MINUS = '−';
 const pct = (v: number): string => `${v < 1 ? MINUS : '+'}${Math.abs(Math.round((v - 1) * 100))}%`;
-const NONE_NAME: Record<PartSlot, string> = { sight: '기본 조준', muzzle: '총구 장치 없음', grip: '손잡이 없음', mag: '기본 탄창', stock: '기본 개머리판' };
 
 interface Row { key: string; label: string; score: (s: GunStats, w: WeaponId) => number; text: (s: GunStats, w: WeaponId) => string; delta: (a: GunStats, b: GunStats) => string }
 const sgn = (n: number, unit = ''): string => (n === 0 ? '' : `${n > 0 ? '+' : MINUS}${Math.abs(n)}${unit}`);
@@ -51,15 +52,14 @@ export function ownedFor(weapon: WeaponId, slot: PartSlot, parts: readonly PartI
 }
 
 export function openGunsmith(host: HTMLElement, o: GunsmithOptions): () => void {
-  let gunIdx = Math.max(0, o.me().cur), slot: PartSlot | null = null, zoomed = false, tab: 'parts' | 'stats' = 'parts', closed = false;
+  let gunIdx = Math.max(0, o.me().cur), slot: PartSlot | null = null, zoomed = false, tab: 'equip' | 'parts' | 'stats' = 'equip', closed = false, filter: PartSlot | 'all' = 'all', dragging: { part?: PartId; gun?: number; slot?: PartSlot } | null = null;
   if (!o.me().guns[gunIdx]) gunIdx = o.me().guns[0] ? 0 : 1;
   const root = document.createElement('div'); root.className = 'gs-root' + (o.touch ? ' touch' : '') + (o.live ? ' live' : ''); root.setAttribute('role', 'dialog'); root.setAttribute('aria-modal', 'true'); root.setAttribute('aria-label', '총기 조립');
-  root.innerHTML = `
-    <header class="gs-head"><div><span class="gs-eyebrow">ZERO ZONE</span><h2>총기 조립</h2></div><div class="gs-bag" id="gs-bag"></div><button type="button" class="gs-done" data-act="close">완료${o.touch ? '' : ' <small>L</small>'}</button></header>
-    <nav class="gs-weapons" id="gs-weapons" aria-label="들고 있는 총"></nav>
-    <aside class="gs-statscol"><div class="gs-panel gs-stats" id="gs-stats"></div></aside>
+  root.innerHTML = `${ICON_DEFS}
+    <header class="gs-head"><div><span class="gs-eyebrow">ZERO ZONE</span><h2>총기 조립</h2></div><div class="gs-bag" id="gs-bag"></div><button type="button" class="gs-done" data-act="close">완료${o.touch ? '' : ' <small>Tab</small>'}</button></header>
+    <div class="gs-leftcol"><div class="gs-panel gs-equip" id="gs-equip"></div><div class="gs-panel gs-stats" id="gs-stats"></div></div>
     <section class="gs-stage" id="gs-stage"><canvas id="gs-canvas" aria-label="총기 3D 미리보기"></canvas><div class="gs-hots" id="gs-hots"></div><div class="gs-hint" id="gs-hint">끌어서 돌려 보세요</div><div class="gs-nogl" id="gs-nogl" hidden>3D 모델을 불러오지 못했습니다. 능력치는 그대로 확인할 수 있습니다.</div></section>
-    <div class="gs-tabs" role="tablist"><button type="button" role="tab" data-tab="parts">파츠</button><button type="button" role="tab" data-tab="stats">능력치</button></div>
+    <div class="gs-tabs" role="tablist"><button type="button" role="tab" data-tab="equip">장비</button><button type="button" role="tab" data-tab="parts">배낭</button><button type="button" role="tab" data-tab="stats">능력치</button></div>
     <aside class="gs-partscol"><div class="gs-panel gs-parts" id="gs-parts"></div></aside>
     <footer class="gs-foot"><p id="gs-note">${o.live ? '<b>경기는 계속됩니다.</b> 조립하는 동안 움직일 수 없으니 안전한 곳에서 하세요.' : '<b>경기가 멈춰 있습니다.</b> 파츠는 이번 경기에서 주운 것만 쓸 수 있습니다.'}</p><button type="button" data-act="close">경기로 돌아가기</button></footer>`;
   host.append(root);
@@ -113,18 +113,25 @@ export function openGunsmith(host: HTMLElement, o: GunsmithOptions): () => void 
 
   // ---------- 화면 ----------
   const slotsOf = (w: WeaponId): PartSlot[] => PART_SLOTS.filter(s => PART_FITS[w].includes(s));
-  function paintWeapons(): void {
+  const shortName = (id: PartId): string => PARTS[id].name.replace(' 조준경', '').replace(' 사이트', '').replace(' 탄창', '탄창');
+  function paintEquip(): void {
     const me = o.me();
-    q('#gs-weapons').innerHTML = me.guns.map((g, i) => {
-      if (!g) return `<button type="button" disabled><b>${i + 1} 비어 있음</b><small>—</small></button>`;
-      const n = Object.keys(g.att).length; return `<button type="button" class="${i === gunIdx ? 'on' : ''}" data-w="${i}" aria-pressed="${i === gunIdx}"><b>${i + 1} ${WEAPONS[g.id].name}</b><small>${n ? `파츠 ${n}개` : '기본'}${i === me.cur ? ' · 들고 있음' : ''}</small></button>`;
+    const cards = me.guns.map((g, i) => {
+      if (!g) return `<div class="gs-wcard empty"><div class="gs-wtop"><span class="gs-wno">${i + 1}</span><b>${i ? '보조 무기' : '주무기'} 없음</b></div></div>`;
+      const boxes = slotsOf(g.id).map(s => {
+        const pid = g.att[s], on = i === gunIdx && s === slot;
+        return `<button type="button" class="gs-sbox${pid ? ' has' : ''}${on ? ' on' : ''}" data-gun="${i}" data-slot="${s}"${pid ? ' draggable="true"' : ''} aria-label="${SLOT_NAMES[s]}: ${pid ? esc(PARTS[pid].name) : '비어 있음'}"><i>${partIcon(s, pid)}</i><small>${SLOT_NAMES[s]}</small><span>${pid ? esc(shortName(pid)) : '비어 있음'}</span>${pid ? '<u class="x" data-unequip="1" title="빼서 배낭에 넣기">×</u>' : ''}</button>`;
+      }).join('');
+      return `<div class="gs-wcard${i === gunIdx ? ' on' : ''}" data-w="${i}"><div class="gs-wtop"><span class="gs-wno">${i + 1}</span><b>${WEAPONS[g.id].name}</b>${i === me.cur ? '<em>들고 있음</em>' : ''}<span class="gs-ammo">${g.mag}<small>/${g.reserve}</small></span></div><div class="gs-wslots">${boxes}</div></div>`;
     }).join('');
+    const gi = (ico: string, label: string, text: string, has: boolean): string => `<div class="gs-gi${has ? ' has' : ''}"><i>${ico}</i><small>${label}</small><span>${text}</span></div>`;
+    q('#gs-equip').innerHTML = `<h3>장비</h3>${cards}<h4>방어구 · 소모품</h4><div class="gs-gear">${gi(gearIcon.helmet(me.helmet), '헬멧', me.helmet ? HELMET_NAMES[me.helmet]! : '없음', me.helmet > 0)}${gi(gearIcon.vest(me.armorLv), '방탄복', me.armorLv ? ARMOR_NAMES[me.armorLv]! : '없음', me.armorLv > 0)}${gi(gearIcon.bandage(), '붕대', `×${me.bandages}`, me.bandages > 0)}${gi(gearIcon.medkit(), '구급상자', `×${me.kits}`, me.kits > 0)}</div>`;
   }
   function paintBag(): void {
-    const n = o.me().parts.length; q('#gs-bag').innerHTML = `<span>가방 파츠</span><b>${n}<em> / ${BAG_MAX}</em></b>`;
+    const n = o.me().parts.length; q('#gs-bag').innerHTML = `<span>배낭</span><i><u style="width:${Math.min(100, (n / BAG_MAX) * 100).toFixed(0)}%"></u></i><b>${n}<em> / ${BAG_MAX}</em></b>`;
   }
   function paintHots(): void {
-    const w = weapon(); if (!w) { hotsEl.innerHTML = ''; return; }
+    const w = weapon(); if (!w || nogl) { hotsEl.innerHTML = ''; return; }
     hotsEl.innerHTML = slotsOf(w).map(s => { const p = att()[s]; return `<button type="button" class="gs-hot ${s} ${zoomed && s === slot ? 'on' : ''} ${p ? 'has' : ''}" data-slot="${s}" aria-label="${SLOT_NAMES[s]}: ${p ? PARTS[p].name : '비어 있음'}"><i></i><span><small>${SLOT_NAMES[s]}</small>${p ? esc(PARTS[p].name) : ''}</span></button>`; }).join('');
   }
   function paintStats(): void {
@@ -136,39 +143,62 @@ export function openGunsmith(host: HTMLElement, o: GunsmithOptions): () => void 
     }).join('');
   }
   function paintParts(): void {
-    const w = weapon(); if (!w) { q('#gs-parts').innerHTML = '<p class="gs-empty">이 칸에는 총이 없습니다.</p>'; return; }
-    const tabs = slotsOf(w); if (!slot || !tabs.includes(slot)) slot = tabs[0];
-    const cur = att()[slot], have = bagCounts(o.me().parts), owned = ownedFor(w, slot, o.me().parts);
-    const opts = [`<button type="button" class="gs-opt ${!cur ? 'on' : ''}" data-part="" aria-pressed="${!cur}" ${cur && o.me().parts.length >= BAG_MAX ? 'disabled' : ''}><b>${NONE_NAME[slot]}</b><small>${cur ? '끼운 파츠를 빼서 가방에 넣습니다' : slot === 'sight' && w === 'sniper' ? '기본 장착 4배율 스코프' : '추가 파츠 없음'}</small></button>`];
-    if (cur) opts.push(`<button type="button" class="gs-opt on" data-part="${cur}" aria-pressed="true" disabled><b>${esc(PARTS[cur].name)}</b><small>${esc(PARTS[cur].blurb)}</small><span class="gs-chips">${modChips(PARTS[cur]).map(c => `<u class="${c.good ? 'good' : 'bad'}">${c.t}</u>`).join('')}</span><span class="gs-cost">장착 중</span></button>`);
-    for (const p of owned) {
-      if (p.id === cur && (have.get(p.id) ?? 0) < 1) continue;
-      opts.push(`<button type="button" class="gs-opt" data-part="${p.id}" aria-pressed="false"><b>${esc(p.name)}</b><small>${esc(p.blurb)}</small><span class="gs-chips">${modChips(p).map(c => `<u class="${c.good ? 'good' : 'bad'}">${c.t}</u>`).join('')}</span><span class="gs-cost">×${have.get(p.id)}</span></button>`);
-    }
-    const missing = !owned.length ? `<p class="gs-empty">이 칸에 맞는 ${SLOT_NAMES[slot]} 파츠가 가방에 없습니다.<br>지도에서 파츠를 주우면 여기서 끼울 수 있습니다.</p>` : '';
-    q('#gs-parts').innerHTML = `<div class="gs-slots">${tabs.map(s => `<button type="button" data-slot="${s}" class="${s === slot ? 'on' : ''}" aria-pressed="${s === slot}"><small>${SLOT_NAMES[s]}</small><b>${att()[s] ? esc(PARTS[att()[s]!].name.replace(' 조준경', '').replace(' 사이트', '').replace(' 탄창', '탄창')) : '—'}</b></button>`).join('')}</div><div class="gs-opts">${opts.join('')}${missing}</div>`;
+    const w = weapon(), me = o.me(), have = bagCounts(me.parts);
+    if (!w) { q('#gs-parts').innerHTML = '<p class="gs-empty">이 칸에는 총이 없습니다.</p>'; return; }
+    const kinds = [...have.keys()].sort((a, b) => PART_SLOTS.indexOf(PARTS[a].slot) - PART_SLOTS.indexOf(PARTS[b].slot));
+    const shown = kinds.filter(id => filter === 'all' || PARTS[id].slot === filter);
+    const chips = ['all', ...slotsOf(w)].map(f => `<button type="button" data-filter="${f}" class="${f === filter ? 'on' : ''}" aria-pressed="${f === filter}">${f === 'all' ? '전체' : SLOT_NAMES[f as PartSlot]}</button>`).join('');
+    const rows = shown.map(id => {
+      const d = PARTS[id], fits = canFit(w, id), cur = att()[d.slot];
+      return `<button type="button" class="gs-item${fits ? '' : ' nofit'}" data-part="${id}"${fits ? ' draggable="true"' : ' disabled'}><i>${partIcon(d.slot, id)}</i><span class="gs-it"><b>${esc(d.name)}</b><small>${fits ? esc(d.blurb) : `${WEAPONS[w].name}에는 달 수 없습니다`}</small><span class="gs-chips">${modChips(d).map(c => `<u class="${c.good ? 'good' : 'bad'}">${c.t}</u>`).join('')}</span></span><em>×${have.get(id)}</em><span class="gs-go">${fits ? (cur ? '교체' : '장착') : ''}</span></button>`;
+    }).join('');
+    const empty = !kinds.length ? '<p class="gs-empty">배낭이 비어 있습니다.<br>지도에서 파츠를 주우면 여기에 쌓입니다.</p>' : !shown.length ? `<p class="gs-empty">${SLOT_NAMES[filter as PartSlot]} 파츠가 없습니다.</p>` : '';
+    q('#gs-parts').innerHTML = `<h3>배낭</h3><div class="gs-filter">${chips}</div><div class="gs-list">${rows}${empty}</div><p class="gs-tip">누르면 장착, 끌어서 슬롯에 놓아도 됩니다. 슬롯의 파츠를 배낭 쪽으로 끌면 뺍니다.</p>`;
   }
   let sig = '';
   const signature = (): string => { const me = o.me(); return `${gunIdx}|${me.cur}|${me.parts.join(',')}|${me.guns.map(g => (g ? g.id + JSON.stringify(g.att) : '-')).join(';')}`; };
   function paintAll(rebuildGun = true): void {
-    sig = signature(); paintWeapons(); paintBag(); paintStats(); paintParts(); paintHots();
+    sig = signature(); paintEquip(); paintBag(); paintStats(); paintParts(); paintHots();
     root.dataset.view = tab; root.querySelectorAll<HTMLElement>('.gs-tabs button').forEach(b => { b.classList.toggle('on', b.dataset.tab === tab); b.setAttribute('aria-selected', String(b.dataset.tab === tab)); });
     if (rebuildGun) rebuild(); else focus();
   }
-  function setPart(part: string): void {
-    const w = weapon(); if (!slot || !w) return;
-    if (o.equip(gunIdx, slot, part ? (part as PartId) : null)) paintAll(); else paintAll(false);
+  function equipTo(gi: number, sl: PartSlot, part: PartId | null): void {
+    if (o.equip(gi, sl, part)) paintAll(); else paintAll(false);
   }
   root.addEventListener('click', e => {
-    const t = e.target as HTMLElement, w = t.closest<HTMLElement>('[data-w]'), s = t.closest<HTMLElement>('[data-slot]'), p = t.closest<HTMLElement>('[data-part]'), act = t.closest<HTMLElement>('[data-act]'), tb = t.closest<HTMLElement>('[data-tab]');
-    if (w) { gunIdx = Number(w.dataset.w); slot = null; zoomed = false; sway = reduce ? 0 : 0.3; paintAll(); }
-    else if (p && !(p as HTMLButtonElement).disabled) setPart(p.dataset.part ?? '');
-    else if (s) { const next = s.dataset.slot as PartSlot; zoomed = !(zoomed && slot === next); slot = next; if (tab !== 'parts') tab = 'parts'; paintAll(false); }
-    else if (tb) { tab = tb.dataset.tab as 'parts' | 'stats'; paintAll(false); }
-    else if (act?.dataset.act === 'close') close();
+    const t = e.target as HTMLElement, w = t.closest<HTMLElement>('[data-w]'), s = t.closest<HTMLElement>('[data-slot]'), p = t.closest<HTMLElement>('[data-part]'), act = t.closest<HTMLElement>('[data-act]'), tb = t.closest<HTMLElement>('[data-tab]'), un = t.closest<HTMLElement>('[data-unequip]'), fl = t.closest<HTMLElement>('[data-filter]');
+    if (act?.dataset.act === 'close') close();
+    else if (tb) { tab = tb.dataset.tab as typeof tab; paintAll(false); }
+    else if (un && s) equipTo(Number(s.dataset.gun ?? gunIdx), s.dataset.slot as PartSlot, null);
+    else if (p && !(p as HTMLButtonElement).disabled) { const id = p.dataset.part as PartId; equipTo(gunIdx, PARTS[id].slot, id); }
+    else if (fl) { filter = fl.dataset.filter as typeof filter; paintAll(false); }
+    else if (s) {
+      const gi = Number(s.dataset.gun ?? gunIdx), next = s.dataset.slot as PartSlot, other = gi !== gunIdx;
+      if (other) { gunIdx = gi; zoomed = false; }
+      zoomed = !(zoomed && slot === next && !other); slot = next; filter = next; if (tab === 'stats') tab = 'parts'; paintAll(other);
+    }
+    else if (w) { gunIdx = Number(w.dataset.w); slot = null; zoomed = false; filter = 'all'; sway = reduce ? 0 : 0.3; paintAll(); }
   });
+  // 끌어서 놓기: 배낭의 파츠를 슬롯에 놓으면 장착, 슬롯의 파츠를 배낭 쪽에 놓으면 해제
+  root.addEventListener('dragstart', e => {
+    const el = (e.target as HTMLElement).closest<HTMLElement>('[data-part],.gs-sbox[draggable="true"]'); if (!el) return;
+    dragging = el.dataset.part ? { part: el.dataset.part as PartId } : { gun: Number(el.dataset.gun), slot: el.dataset.slot as PartSlot };
+    e.dataTransfer?.setData('text/plain', 'part'); if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'; root.classList.add('dragging');
+  });
+  const dropBox = (e: DragEvent): HTMLElement | null => { const b = (e.target as HTMLElement).closest<HTMLElement>('.gs-sbox'); if (!b || !dragging?.part) return null; const g = o.me().guns[Number(b.dataset.gun)]; return g && PARTS[dragging.part].slot === b.dataset.slot && canFit(g.id, dragging.part) ? b : null; };
+  root.addEventListener('dragover', e => {
+    if (!dragging) return; const over = root.querySelector('.gs-sbox.drop'), b = dropBox(e);
+    if (b || (dragging.slot && (e.target as HTMLElement).closest('.gs-parts'))) e.preventDefault();
+    if (over && over !== b) over.classList.remove('drop'); b?.classList.add('drop');
+  });
+  root.addEventListener('drop', e => {
+    if (!dragging) return; const d = dragging, b = dropBox(e); e.preventDefault();
+    if (b && d.part) equipTo(Number(b.dataset.gun), b.dataset.slot as PartSlot, d.part);
+    else if (d.slot && (e.target as HTMLElement).closest('.gs-parts')) equipTo(d.gun ?? gunIdx, d.slot, null);
+  });
+  root.addEventListener('dragend', () => { dragging = null; root.classList.remove('dragging'); root.querySelector('.gs-sbox.drop')?.classList.remove('drop'); });
   const onKey = (e: KeyboardEvent): void => {
-    if (e.code === 'Escape' || e.code === 'KeyL') { e.preventDefault(); e.stopPropagation(); if (e.type === 'keydown' && !e.repeat) close(); return; }
+    if (e.code === 'Escape' || e.code === 'KeyL' || e.code === 'Tab') { e.preventDefault(); e.stopPropagation(); if (e.type === 'keydown' && !e.repeat) close(); return; }
     if (e.type !== 'keydown') return;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.code === 'Digit1' || e.code === 'Digit2') {
       const me = o.me(), next = e.code === 'Digit1' ? 0 : e.code === 'Digit2' ? 1 : 1 - gunIdx; if (me.guns[next] && next !== gunIdx) { gunIdx = next; slot = null; zoomed = false; paintAll(); }

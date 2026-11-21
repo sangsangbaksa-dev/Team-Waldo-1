@@ -10,6 +10,16 @@ import { MISSION_LIST } from './missions';
 const CLOTH = [0x616b78, 0x8a7066, 0x585e57, 0x857b69, 0x595569, 0x6b7b7b, 0x805d60, 0x414651];
 const hex = (n: number): string => '#' + n.toString(16).padStart(6, '0');
 const money = (n: number): string => '$' + Math.floor(n).toLocaleString('en-US');
+const SKIN = ['#f1c9a5', '#d9a77f', '#b27a54', '#8a5a3c'], HAIR = ['#2b211c', '#5a3a24', '#1c1c22', '#8c6a3f'];
+// 주인공 카드용 흉상 그림: 옷 색은 실제 3D 모델 옷 색과 같음
+const portrait = (cloth: number, v: number): string => {
+  const c = hex(cloth), s = SKIN[v % 4]!, h = HAIR[(v * 3) % 4]!, id = `pg${v}`;
+  return `<svg viewBox="0 0 64 64" width="100%" height="100%" aria-hidden="true"><defs><radialGradient id="${id}" cx=".5" cy=".35" r=".75"><stop offset="0" stop-color="#3a4656"/><stop offset="1" stop-color="#151a22"/></radialGradient></defs>
+    <rect width="64" height="64" rx="10" fill="url(#${id})"/><path d="M8 64c2-14 11-20 24-20s22 6 24 20z" fill="${c}"/><path d="M26 44l6 9 6-9z" fill="#e9e4da" opacity=".85"/>
+    <rect x="27" y="35" width="10" height="9" rx="3" fill="${s}"/><ellipse cx="32" cy="27" rx="11" ry="12.5" fill="${s}"/>
+    <path d="M21 26c0-10 5-14 11-14s11 4 11 14c-3-5-7-7-11-7s-8 2-11 7z" fill="${h}"/><circle cx="28" cy="28" r="1.4" fill="#222"/><circle cx="36" cy="28" r="1.4" fill="#222"/>
+    <path d="M29 34q3 2 6 0" stroke="#7a4a3a" stroke-width="1.3" fill="none" stroke-linecap="round"/><path d="M8 64c2-14 11-20 24-20s22 6 24 20" stroke="#000" stroke-opacity=".35" fill="none"/></svg>`;
+};
 const esc = (s: string): string => s.replace(/[&<>]/g, c => c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;');
 
 export interface Outcome { toast?: string; kind?: string; begin?: boolean; close?: boolean; sound?: string }
@@ -31,7 +41,7 @@ export class OutlawUi {
   // ---------- 주인공 선택 ----------
   private hero(): string {
     const cards = HEROES.map(h => `<button class="hero-card${h.id === this.heroSel ? ' sel' : ''}" data-ui="hero" data-id="${h.id}" type="button">
-      <i class="sw" style="background:${hex(CLOTH[h.variant]!)}">${esc(h.name.slice(-2, -1) || h.name[0]!)}</i><b>${esc(h.name)}</b><em>${esc(h.job)}</em><span>${esc(h.perkText)}</span></button>`).join('');
+      <i class="sw">${portrait(CLOTH[h.variant]!, h.variant)}</i><b>${esc(h.name)}</b><em>${esc(h.job)}</em><span>${esc(h.perkText)}</span></button>`).join('');
     const sel = heroById(this.heroSel);
     return `<h2>누구로 시작할까?</h2><p class="sub">이 도시에 사는 평범한 시민 중 한 명이 주인공이 됩니다.</p><div class="hero-grid">${cards}</div>
       <p class="hero-bio"><b>${esc(sel.name)}</b> · ${esc(sel.job)} — ${esc(sel.bio)}</p>

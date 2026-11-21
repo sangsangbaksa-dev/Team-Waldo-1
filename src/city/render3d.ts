@@ -84,19 +84,20 @@ export class Renderer3D {
   constructor(public canvas: HTMLCanvasElement, public world: World, public quality: 'high' | 'standard' | 'low', public layer: HTMLElement, public models: Models | null = null) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
     this.prMax = Math.min(quality === 'high' ? 2 : quality === 'standard' ? 1.5 : 1, window.devicePixelRatio || 1); this.pr = this.prCeil = this.prMax; this.renderer.setPixelRatio(this.pr);
-    this.renderer.shadowMap.enabled = quality === 'high'; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; this.renderer.shadowMap.autoUpdate = false; this.renderer.shadowMap.needsUpdate = true; // 그림자 맵은 2~3프레임에 한 번만 다시 그린다
+    this.renderer.shadowMap.enabled = quality !== 'low'; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; this.renderer.shadowMap.autoUpdate = false; this.renderer.shadowMap.needsUpdate = true; // 그림자 맵은 2~3프레임에 한 번만 다시 그린다
     // 필름 톤매핑: 하이라이트가 하얗게 날아가지 않고 노을빛이 부드럽게 번진다.
     if (quality !== 'low') { this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.06; }
     const sc = this.scene, w = world;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    if (quality === 'high') { this.environment = makeEnvironment(this.renderer, { top: 0x526c91, horizon: 0xe6a77b, ground: 0x252b36, sun: 0xffc58d, sunDir: [-0.6, 0.7, -0.4] }); sc.environment = this.environment; }
+    if (quality !== 'low') { this.environment = makeEnvironment(this.renderer, { top: 0x526c91, horizon: 0xe6a77b, ground: 0x252b36, sun: 0xffc58d, sunDir: [-0.6, 0.7, -0.4] }); sc.environment = this.environment; }
     this.atm = atmosphereAt(w.hour, w.weather); sc.fog = new THREE.Fog(0xc48a74, 980, 4700); sc.add(this.camera);
     this.hemi = new THREE.HemisphereLight(0xb7c6e8, 0x8a6450, 0.95); sc.add(this.hemi);
     this.sun = new THREE.DirectionalLight(0xffd4a8, 2.05); this.sun.position.set(-600, 700, -400); sc.add(this.sun); sc.add(this.sun.target);
     this.hemi.layers.enable(PROBE_LAYER); this.sun.layers.enable(PROBE_LAYER);
     // 반대편 채움광: 그늘진 외벽이 검게 뭉개지지 않게 색을 남긴다.
     const fill = this.fill = new THREE.DirectionalLight(0x8aa4c8, 0.48); fill.position.set(520, 280, 620); fill.layers.enable(PROBE_LAYER); sc.add(fill);
-    if (quality === 'high') { this.sun.castShadow = true; const s = this.sun.shadow; s.mapSize.set(2048, 2048); s.camera.left = s.camera.bottom = -800; s.camera.right = s.camera.top = 800; s.camera.near = 10; s.camera.far = 3000; s.bias = -0.0012; s.normalBias = 1.5; }
+    // 표준 화질도 그림자를 켭니다(맵 1024). 부하가 크면 govern() 이 해상도를 먼저 낮춥니다.
+    if (quality !== 'low') { this.sun.castShadow = true; const s = this.sun.shadow; const m = quality === 'high' ? 2048 : 1024; s.mapSize.set(m, m); s.camera.left = s.camera.bottom = -800; s.camera.right = s.camera.top = 800; s.camera.near = 10; s.camera.far = 3000; s.bias = -0.0012; s.normalBias = 1.5; }
     // 바다 + 지면
     const sea = this.sea = new THREE.Mesh(new THREE.PlaneGeometry(30000, 30000), new THREE.MeshLambertMaterial({ color: 0x2a4558 })); sea.rotation.x = -Math.PI / 2; sea.position.set(SIZE / 2, -6, SIZE / 2); sc.add(sea);
     const T = quality === 'low' ? 2048 : 4096, k = T / SIZE, gt = canvasTex(T, T, g => {
@@ -141,7 +142,7 @@ export class Renderer3D {
     const bodyGeo = new THREE.CylinderGeometry(0.72, 0.85, 1, 10); bodyGeo.translate(0, 0.5, 0);
     this.bodies = inst(bodyGeo, lam(), 520); this.heads = inst(new THREE.SphereGeometry(1, 10, 8), lam(), 520); this.guns = inst(this.box, new THREE.MeshLambertMaterial({ color: 0x1a1c20 }), 520, false);
     this.hulls = inst(this.box, lam(), 90); this.turrets = inst(new THREE.CylinderGeometry(1, 1, 1, 10), lam(), 90); this.barrels = inst(this.box, new THREE.MeshLambertMaterial({ color: 0x1c1e22 }), 90, false);
-    this.crystals = inst(new THREE.OctahedronGeometry(1), new THREE.MeshLambertMaterial({ color: 0x52d9ff, emissive: 0x1a7fa8, emissiveIntensity: 0.9 }), w.crystals.length, false);
+    this.crystals = inst(new THREE.OctahedronGeometry(1), new THREE.MeshPhongMaterial({ color: 0x52d9ff, emissive: 0x1a7fa8, emissiveIntensity: 0.9, specular: 0xe6faff, shininess: 90, flatShading: true }), w.crystals.length, false);
     this.tracers = inst(this.box, new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false }), 500, false);
     const ringGeo = new THREE.RingGeometry(0.86, 1, 40); ringGeo.rotateX(-Math.PI / 2); this.rings = inst(ringGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false }), 60, false);
     for (let i = 0; i < 8; i++) { const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: fcol(i), side: THREE.DoubleSide, transparent: true, opacity: 0.9, depthWrite: false })); m.visible = false; sc.add(m); this.bossRings.push(m); }
@@ -220,7 +221,7 @@ export class Renderer3D {
         const r = Math.max(50, e.a ?? 80);
         if (near) { for (let k = 0; k < 16; k++) { const a = rnd() * 6.28, s = rnd() * r * 1.6; this.fire.add(e.x, 20 + rnd() * 30, e.y, Math.cos(a) * s, rnd() * r * 1.4, Math.sin(a) * s, 0.4 + rnd() * 0.4, k % 2 ? 0xff9a3c : 0xff5a1f); }
           for (let k = 0; k < 9; k++) { const a = rnd() * 6.28; this.smoke.add(e.x, 30, e.y, Math.cos(a) * 40, 50 + rnd() * 70, Math.sin(a) * 40, 1.6 + rnd(), 0x3c3c42); }
-          for (let k = 0; k < 14; k++) this.sparks.add(e.x, 20, e.y, (rnd() - 0.5) * 500, rnd() * 420, (rnd() - 0.5) * 500, 0.8, 0xffd28a, 500);
+          for (let k = 0; k < 14; k++) this.sparks.add(e.x, 20, e.y, (rnd() - 0.5) * 500, rnd() * 420, (rnd() - 0.5) * 500, 0.8, 0xffd28a, 500); for (let k = 0; k < 8; k++) this.fire.add(e.x + (rnd() - 0.5) * r * 0.5, 40 + rnd() * 50, e.y + (rnd() - 0.5) * r * 0.5, (rnd() - 0.5) * 60, 90 + rnd() * 120, (rnd() - 0.5) * 60, 0.7 + rnd() * 0.5, 0xffb347); // 불기둥
           const bm = this.booms.find(q => q.life <= 0); if (bm) { bm.life = 0.32; bm.r = r; bm.m.position.set(e.x, 24, e.y); bm.m.visible = true; }
           this.light.position.set(e.x, 80, e.y); this.lightT = 0.25; this.ring(e.x, e.y, 10, r * 1.2, 0xffd28a, 0.35); this.ring(e.x, e.y, 6, r * 2.1, 0xfff0d0, 0.55);
           for (let k = 0; k < 8; k++) { const a = rnd() * 6.28, s = 30 + rnd() * r * 0.9; this.smoke.add(e.x + Math.cos(a) * s * 0.4, 14, e.y + Math.sin(a) * s * 0.4, Math.cos(a) * s, 18 + rnd() * 30, Math.sin(a) * s, 1.1 + rnd() * 0.8, 0x8a7c70); } }

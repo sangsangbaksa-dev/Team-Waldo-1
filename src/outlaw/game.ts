@@ -24,6 +24,7 @@ import { OUTLAW_KEY } from './records';
 import { Versus, type VsSession, type VsResult } from './versus';
 import { WEAPONS, WEAPON_ORDER, PLAYER_ID, VEHICLES, blankPedInput, blankCarInput, clamp, wrapAngle, type PedInput, type SimEvent, type Vehicle } from './types';
 import { starIcon } from '../shared/glyphs';
+import { weaponIcon } from './icons';
 
 interface OpenOptions { loading?: LoadingScreen }
 const SEED = 20260101, STEP = 1 / 60, TITLE_CLOCK = 17.2;
@@ -39,7 +40,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     <canvas class="ol-canvas"></canvas>
     <div class="ol-fx"><div class="ol-vig" id="ol-vig"></div><div class="ol-lines" id="ol-lines"></div><div class="ol-gray" id="ol-gray"></div><div class="ol-dir" id="ol-dir"><i></i></div></div>
     <div class="ol-hud" id="ol-hud" hidden>
-      <div class="ol-tr"><div class="ol-cash" id="ol-cash">$0</div><div class="ol-clock" id="ol-clock">00:00</div><div class="ol-stars" id="ol-stars"><i>★</i><i>★</i><i>★</i><i>★</i><i>★</i></div></div>
+      <div class="ol-tr"><div class="ol-cash" id="ol-cash">$0</div><div class="ol-clock" id="ol-clock">00:00</div><div class="ol-stars" id="ol-stars">${(`<i>${starIcon(false)}${starIcon(true)}</i>`).repeat(5)}</div></div>
       <div class="ol-bl"><div class="ol-radar"><canvas id="ol-radar" width="260" height="260"></canvas><span id="ol-dname"></span></div>
         <div class="ol-bars"><div class="ol-bar hp"><i id="ol-hp"></i><b id="ol-hpn">100</b></div><div class="ol-bar ar"><i id="ol-ar"></i><b id="ol-arn">0</b></div></div></div>
       <div class="ol-br"><div class="ol-wname" id="ol-wname"></div><div class="ol-ammo"><b id="ol-mag">0</b><span id="ol-res"></span></div><div class="ol-slots" id="ol-slots"></div></div>
@@ -347,7 +348,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 무기 휠 ----------
   function openWheel(): void {
     if (wheelOpen || !sim) return; wheelOpen = true; wheelX = wheelY = 0; wheelSel = -1; wheelEl.hidden = false; if (document.pointerLockElement) { /* 잠금 유지 */ }
-    wheelEl.innerHTML = WEAPON_ORDER.map((_id, i) => { const a = (i / NW) * Math.PI * 2 - Math.PI / 2; return `<div class="ws" data-i="${i}" style="left:calc(50% + ${Math.cos(a) * 165}px);top:calc(50% + ${Math.sin(a) * 165}px)"><b>${WHEEL_NAMES[i]}</b><span></span></div>`; }).join('') + '<div class="wc"><b id="ol-wsel"></b></div>';
+    wheelEl.innerHTML = WEAPON_ORDER.map((_id, i) => { const a = (i / NW) * Math.PI * 2 - Math.PI / 2; return `<div class="ws" data-i="${i}" style="left:calc(50% + ${Math.cos(a) * 165}px);top:calc(50% + ${Math.sin(a) * 165}px)">${weaponIcon(_id)}<b>${WHEEL_NAMES[i]}</b><span></span></div>`; }).join('') + '<div class="wc"><b id="ol-wsel"></b></div>';
     updateWheel();
   }
   function updateWheel(): void {
@@ -494,8 +495,8 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (cache.get('stars') !== sk) { cache.set('stars', sk); stars.className = 'ol-stars' + (w.evadeT > 0 && w.stars > 0 ? ' search' : '') + (w.stars > 0 && w.unseenT < 3 ? ' seen' : ''); [...stars.children].forEach((el, i) => el.classList.toggle('on', i < w.stars)); if (w.evadeT > 0 && Math.floor(performance.now() / 350) % 2) stars.classList.add('dim'); }
     set('hpn', String(Math.ceil(Math.max(0, p.hp)))); style('hp', 'width', `${clamp(p.hp / p.maxHp, 0, 1) * 100}%`); set('arn', String(Math.ceil(p.armor))); style('ar', 'width', `${clamp(p.armor, 0, 100)}%`);
     root.classList.toggle('lowhp', p.alive && p.hp < p.maxHp * 0.3);
-    const g = s.curGun(p), d = g ? WEAPONS[g.id] : WEAPONS.fist; set('wname', d.name); set('mag', d.melee ? '∞' : String(g?.mag ?? 0)); set('res', d.melee ? '' : `/ ${g?.reserve ?? 0}`);
-    html('slots', WEAPON_ORDER.map((_id, i) => `<i class="${p.guns[i] ? 'has' : ''} ${i === p.cur ? 'cur' : ''}">${i + 1}</i>`).join(''));
+    const g = s.curGun(p), d = g ? WEAPONS[g.id] : WEAPONS.fist; html('wname', weaponIcon(d.id) + esc(d.name)); set('mag', d.melee ? '∞' : String(g?.mag ?? 0)); set('res', d.melee ? '' : `/ ${g?.reserve ?? 0}`);
+    html('slots', WEAPON_ORDER.map((id, i) => `<i class="${p.guns[i] ? 'has' : ''} ${i === p.cur ? 'cur' : ''}" title="${WHEEL_NAMES[i]}">${weaponIcon(id)}<u>${i + 1}</u></i>`).join(''));
     set('dname', districtName(p.x, p.z, s.map));
     if (s.frame % 2 === 0) minimap!.draw(radar, s, cy);
     // 속도계

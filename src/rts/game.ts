@@ -9,6 +9,7 @@ import { RtsAi } from './ai';
 import { Campaign, MISSIONS, readCampaign, recordResult, unlocked, writeCampaign, type CampaignSave } from './campaign';
 import { Vision, FOG_HIDDEN, FOG_VISIBLE } from './vision';
 import { RtsAudio } from './audio';
+import { buttonIcon, unitIcon } from './icons';
 import { ABILITIES, ABILITY_KEYS, BUILDINGS, DIFFICULTIES, LEVELS, RESEARCH, RESEARCH_KINDS, STIM_COST, SUPPLY_MAX, TICK, UNITS, isDifficulty, type BuildKind, type Difficulty, type UnitKind } from './config';
 import { RtsNet } from './pvp';
 import { RtsSim, type Building, type Cmd, type ResNode, type Unit } from './sim';
@@ -177,7 +178,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   function paintCommands(): void {
     buttons = buildButtons(); const el = $('#rt-cmd');
     const key = buttons.map(b => `${b.label}|${b.sub}|${b.enabled}|${b.active}`).join(';') + (touch ? `|${boxMode}` : ''); if (key === cmdKey) return; cmdKey = key;
-    el.innerHTML = buttons.map((b, i) => `<button type="button" data-i="${i}" class="${b.active ? 'on' : ''}" ${b.enabled === false ? 'aria-disabled="true"' : ''} title="${esc(b.hint ?? '')}"><b>${esc(b.label)}</b>${b.sub ? `<small>${esc(b.sub)}</small>` : ''}<kbd>${b.key === 'ESCAPE' ? 'Esc' : esc(b.key)}</kbd></button>`).join('') +
+    el.innerHTML = buttons.map((b, i) => `<button type="button" data-i="${i}" class="${b.active ? 'on' : ''}" ${b.enabled === false ? 'aria-disabled="true"' : ''} title="${esc(b.hint ?? '')}">${buttonIcon(b.label, b.key)}<b>${esc(b.label)}</b>${b.sub ? `<small>${esc(b.sub)}</small>` : ''}<kbd>${b.key === 'ESCAPE' ? 'Esc' : esc(b.key)}</kbd></button>`).join('') +
       (touch ? `<button type="button" data-box class="${boxMode ? 'on' : ''}"><b>범위 선택</b><small>${boxMode ? '켜짐' : '꺼짐'}</small></button><button type="button" data-quick="army"><b>전체 병력</b><small>일꾼 제외</small></button><button type="button" data-quick="idle"><b>놀고 있는 일꾼</b></button>` : '');
   }
   $('#rt-cmd').addEventListener('click', e => {
@@ -212,7 +213,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       return;
     }
     const units = ents.filter((e): e is Unit => e.k === 'unit'), shown = units.slice(0, 24);
-    el.innerHTML = `<div class="rt-multi">${shown.map(u => `<button type="button" data-id="${u.id}" title="${UNITS[u.kind].name}" class="${u.owner === me ? '' : 'foe'}"><b>${UNITS[u.kind].name.slice(0, 2)}</b>${bar(u.hp, UNITS[u.kind].hp)}</button>`).join('')}${units.length > shown.length ? `<span class="rt-more">+${units.length - shown.length}</span>` : ''}</div>`;
+    el.innerHTML = `<div class="rt-multi">${shown.map(u => `<button type="button" data-id="${u.id}" title="${UNITS[u.kind].name}" class="${u.owner === me ? '' : 'foe'}">${unitIcon(u.kind)}${bar(u.hp, UNITS[u.kind].hp)}</button>`).join('')}${units.length > shown.length ? `<span class="rt-more">+${units.length - shown.length}</span>` : ''}</div>`;
   }
   $('#rt-sel').addEventListener('click', e => {
     const t = e.target as HTMLElement, rq = t.closest<HTMLElement>('[data-r]'), q = t.closest<HTMLElement>('[data-q]'), c = t.closest<HTMLElement>('[data-id]');

@@ -16,6 +16,7 @@ import { ShooterNet, decideDeath, nadeMsg, parseNade, seedOf, type Pose } from '
 import { ShooterRoomNet, ROOM_MAX } from './room';
 import { ChatBox } from './chat';
 import { openGunsmith } from './gunsmith';
+import { ICON_DEFS, gearIcon } from './icons';
 import { readShooterCareer, recordShooterMatch, writeShooterCareer } from './records';
 import { PVP_ENABLED } from '../net/config';
 
@@ -37,7 +38,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   const prefs = readPreferences(), touch = matchMedia('(pointer: coarse)').matches, base = import.meta.env.BASE_URL;
   const root = document.createElement('div'); root.className = 'sz-root' + (touch ? ' touch' : ''); root.style.setProperty('--wd-hue', '#b8cf91');
   root.innerHTML = `
-    <canvas class="sz-canvas"></canvas>
+    ${ICON_DEFS}<canvas class="sz-canvas"></canvas>
     <div class="sz-hud" hidden>
       <div class="sz-vig" id="sz-vig"></div><div class="sz-zonefx" id="sz-zonefx"></div><div class="sz-redfx" id="sz-redfx"></div><div class="sz-flashfx" id="sz-flashfx"></div><div class="sz-scope" id="sz-scope"></div>
       <div class="sz-tl"><div class="sz-stat"><b id="sz-alive">100</b><span>생존</span></div><div class="sz-stat"><b id="sz-kills">0</b><span>처치</span></div></div>
@@ -482,7 +483,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     q('.sz-bl').classList.toggle('low', p.hp < 30);
     { const H = p.healKind === 'kit' ? HEAL.kit : HEAL.bandage, on = p.healT > 0; q('#sz-cast').classList.toggle('show', on); if (on) { set(q('#sz-castl'), 'castl', `${H.name} 사용 중`); q('#sz-castb').style.width = `${clamp((1 - p.healT / H.time) * 100, 0, 100)}%`; } }
     set(q('#sz-wname'), 'wn', def ? def.name + (p.reload > 0 ? ' · 장전 중' : '') : '맨손'); set(q('#sz-mag'), 'mag', g ? String(g.mag) : '-'); set(q('#sz-res'), 'res', g ? `/ ${g.reserve}` : ''); q('#sz-mag').classList.toggle('low', !!g && g.mag <= Math.max(2, Math.ceil(WEAPONS[g.id].mag * 0.2))); q('#sz-mag').classList.toggle('reloading', p.reload > 0);
-    const gear = [p.bandages > 0 ? `<span class="gear heal">붕대 ${p.bandages} <small>H</small></span>` : '', p.kits > 0 ? `<span class="gear heal">구급상자 ${p.kits} <small>J</small></span>` : '', p.armorLv > 0 ? `<span class="gear">${ARMOR_NAMES[p.armorLv]}</span>` : '', p.nades > 0 ? `<span class="gear">수류탄 ${p.nades} <small>G</small></span>` : '', p.smokes > 0 ? `<span class="gear">연막탄 ${p.smokes} <small>B</small></span>` : '', p.flashes > 0 ? `<span class="gear">섬광탄 ${p.flashes} <small>V</small></span>` : '', p.helmet > 0 ? `<span class="gear">${HELMET_NAMES[p.helmet]}</span>` : '', p.boost > 0 ? `<span class="gear boost">부스트 ${Math.ceil(p.boost)}초</span>` : '', p.parts.length > 0 ? `<span class="gear heal">파츠 ${p.parts.length} <small>${touch ? '조립' : 'L'}</small></span>` : ''].join('');
+    const ic = (svg: string): string => `<i class="gi">${svg}</i>`;
+    const gear = [p.bandages > 0 ? `<span class="gear heal">${ic(gearIcon.bandage())}붕대 ${p.bandages} <small>H</small></span>` : '', p.kits > 0 ? `<span class="gear heal">${ic(gearIcon.medkit())}구급상자 ${p.kits} <small>J</small></span>` : '', p.armorLv > 0 ? `<span class="gear">${ic(gearIcon.vest(p.armorLv))}${ARMOR_NAMES[p.armorLv]}</span>` : '', p.nades > 0 ? `<span class="gear">${ic(gearIcon.nade())}수류탄 ${p.nades} <small>G</small></span>` : '', p.smokes > 0 ? `<span class="gear">${ic(gearIcon.smoke())}연막탄 ${p.smokes} <small>B</small></span>` : '', p.flashes > 0 ? `<span class="gear">${ic(gearIcon.flash())}섬광탄 ${p.flashes} <small>V</small></span>` : '', p.helmet > 0 ? `<span class="gear">${ic(gearIcon.helmet(p.helmet))}${HELMET_NAMES[p.helmet]}</span>` : '', p.boost > 0 ? `<span class="gear boost">${ic(gearIcon.boost())}부스트 ${Math.ceil(p.boost)}초</span>` : '', p.parts.length > 0 ? `<span class="gear heal">${ic(gearIcon.parts())}파츠 ${p.parts.length} <small>${touch ? '조립' : 'L'}</small></span>` : ''].join('');
     html(q('#sz-slots'), 'slots', gear + p.guns.map((x, i) => `<span class="${i === p.cur ? 'on' : ''}">${i + 1} ${x ? WEAPONS[x.id].name : '비어 있음'}${x && Object.keys(x.att).length ? `<small>${Object.values(x.att).map(a => PARTS[a].name.replace(' 조준경', '').replace(' 사이트', '')).join(' · ')}</small>` : ''}</span>`).join(''));
     // 조준선: 탄퍼짐에 맞춰 벌어집니다
     if (def && view) { const spread = def.spread * partHandling(g!.att).spread * (p.ads ? adsSpread(g!.att) : 1) * (1 + Math.min(1.6, p.speed / PLAYER.walk) * 0.5) * (1 + p.kick * 0.5), px = Math.tan(spread * (def.pellets > 1 ? 2 : 1)) / Math.tan((view.fov * Math.PI) / 360) * (canvas.clientHeight / 2); q('#sz-cross').style.setProperty('--gap', `${clamp(px, 4, 90).toFixed(1)}px`); }

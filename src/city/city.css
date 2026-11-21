@@ -254,3 +254,17 @@
 .c-modal .wd-panel .c-actions .primary{background:var(--wd-accent);color:var(--wd-accent-ink);border-color:var(--wd-accent)}
 .c-setup .c-classes{grid-template-columns:repeat(3,minmax(0,1fr))}.c-setup .c-class{min-width:0;overflow-wrap:anywhere}
 .c-modal.wd-has-rails > .c-setup{width:min(700px,100%)}@media (min-width:1480px){.c-modal.wd-has-rails > .c-setup{width:700px}}
+
+/* 그래픽 개선: HUD 아이콘 크기, 막대 광택, 자금·병력 칩 */
+.c-res .wd-ico,.c-topbtns .wd-ico,.c-ammo .wd-ico{width:1.25em;height:1.25em;vertical-align:-.3em;margin-right:4px;filter:drop-shadow(0 1px 1px #0009)}
+.c-topbtns button:has(.wd-ico:only-child) .wd-ico{margin:0}
+.c-slots .wd-ico{width:1.7em;height:1.2em;vertical-align:-.28em;margin-right:5px;filter:drop-shadow(0 1px 1px #0009)}
+.c-slots .on .wd-ico{filter:drop-shadow(0 1px 0 #ffffff66)}
+.c-ammo span .wd-ico{width:1.1em;height:1.1em;vertical-align:-.22em;margin:0 2px 0 0}
+.c-bars>div{box-shadow:inset 0 1px 3px #000c,0 0 0 1px #ffffff1f}
+.c-bars i{box-shadow:inset 0 1px #ffffff66,inset 0 -2px #00000040}
+.c-bars .hp i{background:repeating-linear-gradient(90deg,transparent 0 19px,#00000038 19px 20px),linear-gradient(180deg,#9af0b8,#2faa66 55%,#1f7f4c)}
+.c-bars .ar i{background:linear-gradient(180deg,#a9d0ff,#4f90e6)}
+.c-bars .xp i{background:linear-gradient(180deg,#ffe58a,#e0a91f)}
+.c-res span{background-image:linear-gradient(180deg,#ffffff12,#0000 60%)}
+.c-damage,.c-float{text-shadow:0 2px 0 #000a,0 0 10px #000b}

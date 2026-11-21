@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { makeEnvironment, standardize } from '../shared/gfx';
 import { readPreferences } from '../prefs';
-import { detailBuilding, detailCrystal, paintTerrainDetail } from './visuals';
+import { detailBuilding, detailCrystal, paintTerrainDetail, stoneTexture } from './visuals';
 import { makePost, type PostFx } from '../postfx';
 import { BUILDINGS, TEAM_COLORS, UNITS, type BuildKind } from './config';
 import { crystalMat, makeBuilding, makeCrystals, makeUnit, matsFor, type BuildRig, type UnitRig } from './models';
@@ -91,7 +91,7 @@ export class RtsView {
       let nb = 0; for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) if (t[Math.min(n - 1, Math.max(0, y + j)) * n + Math.min(n - 1, Math.max(0, x + i))]) nb++;
       cells.push([x, y, nb]);
     }
-    const rockGeo = new THREE.IcosahedronGeometry(0.9, 0), rocks = new THREE.InstancedMesh(rockGeo, new THREE.MeshStandardMaterial({ roughness: 0.95, metalness: 0.05, flatShading: true }), cells.length * 2);
+    const rockGeo = new THREE.IcosahedronGeometry(0.9, 0), rocks = new THREE.InstancedMesh(rockGeo, new THREE.MeshStandardMaterial({ map: stoneTexture(false), roughness: 0.95, metalness: 0.05, flatShading: true }), cells.length * 2);
     rocks.castShadow = this.shadows; rocks.receiveShadow = true; const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), col = new THREE.Color(); let idx = 0;
     for (const [x, y, nb] of cells) for (let r = 0; r < 2; r++) {
       const edge = x === 0 || y === 0 || x === n - 1 || y === n - 1, hgt = (0.5 + nb * 0.14 + rnd() * 0.6) * (edge ? 2.6 : 1) * (r ? 0.7 : 1), sx = 0.75 + rnd() * 0.55;
@@ -100,7 +100,7 @@ export class RtsView {
     }
     rocks.count = idx; rocks.instanceMatrix.needsUpdate = true; if (rocks.instanceColor) rocks.instanceColor.needsUpdate = true; scene.add(rocks);
     // 맵 바깥 협곡 암벽: 층층이 쌓인 붉은 사암 메사(그림자 없이 한 번의 그리기).
-    const mesas = this.quality === 'low' ? 46 : 96, strata = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true }), mesas * 3); let sc = 0;
+    const mesas = this.quality === 'low' ? 46 : 96, strata = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ map: stoneTexture(true, 23), roughness: 0.92, flatShading: true }), mesas * 3); let sc = 0;
     for (let i = 0; i < mesas; i++) {
       const side = i % 4, a = rnd() * (n + 40) - 20, d = 5 + rnd() * 20, x = side === 0 ? a : side === 1 ? a : side === 2 ? -d : n + d, y = side === 0 ? -d : side === 1 ? n + d : a;
       const w = 6 + rnd() * 9, dp = 5 + rnd() * 8, h = 5 + rnd() * 13 * (1 + d / 30), hue = 0.04 + rnd() * 0.04;

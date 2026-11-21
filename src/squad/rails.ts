@@ -6,11 +6,14 @@ import type { Battle } from './sim';
 const img = (t: UnitType, side: 0 | 1 = 0): string => `<img src="${spriteUrl(t, side)}" alt="">`;
 const dot = (t: UnitType, side: 0 | 1): string => `<span class="sq-rail-unit" title="${UNITS[t].name}">${img(t, side)}</span>`;
 
+/** 상성 화살표(그린 그림): 글자 '→' 대신 금빛 그라데이션 화살. */
+const ARROW = '<svg viewBox="0 0 22 14" aria-hidden="true"><defs><linearGradient id="sq-arw" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff1c2"/><stop offset="1" stop-color="#d9a441"/></linearGradient></defs><path d="M1 5h11V1l9 6-9 6V9H1z" fill="url(#sq-arw)" stroke="#2a1c0a" stroke-width="1" stroke-linejoin="round"/></svg>';
+
 const CYCLE: Array<[UnitType, UnitType]> = [['guard', 'striker'], ['striker', 'archer'], ['archer', 'guard']];
 
 export function leftRail(): string {
   return `<aside class="wd-rail wd-rail-l" aria-hidden="true">
-    <div class="wd-card"><h3 class="wd-label">병종 상성</h3><ul class="sq-cycle">${CYCLE.map(([a, b]) => `<li>${dot(a, 0)}<i>→</i>${dot(b, 0)}<span>${UNITS[a].name}가 ${UNITS[b].name}를 제압</span></li>`).join('')}</ul></div>
+    <div class="wd-card"><h3 class="wd-label">병종 상성</h3><ul class="sq-cycle">${CYCLE.map(([a, b]) => `<li>${dot(a, 0)}${ARROW}${dot(b, 0)}<span>${UNITS[a].name}가 ${UNITS[b].name}를 제압</span></li>`).join('')}</ul></div>
     <div class="wd-card"><h3 class="wd-label">지원 병종</h3><ul class="sq-cycle"><li>${dot('medic', 0)}<span>${UNITS.medic.role}</span></li><li>${dot('siege', 0)}<span>${UNITS.siege.role}</span></li></ul></div></aside>`;
 }
 

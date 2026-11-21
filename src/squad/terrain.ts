@@ -36,6 +36,7 @@ function barricade(c: CanvasRenderingContext2D, w: number, h: number, r: () => n
 }
 
 function banner(c: CanvasRenderingContext2D, x: number, y: number, col: string, dir: number): void {
+  const sg = c.createRadialGradient(x + 6, y + 48, 1, x + 6, y + 48, 22); sg.addColorStop(0, '#000000aa'); sg.addColorStop(1, '#0000'); c.fillStyle = sg; c.beginPath(); c.ellipse(x + 6, y + 48, 22, 7, 0, 0, Math.PI * 2); c.fill();
   c.strokeStyle = '#1a1008'; c.lineWidth = 5; c.beginPath(); c.moveTo(x, y + 46); c.lineTo(x, y - 6); c.stroke(); c.strokeStyle = '#c9a15a'; c.lineWidth = 3; c.stroke();
   c.beginPath(); c.moveTo(x, y); c.quadraticCurveTo(x + dir * 22, y + 4, x + dir * 38, y - 2); c.lineTo(x + dir * 30, y + 14); c.lineTo(x + dir * 38, y + 26); c.quadraticCurveTo(x + dir * 22, y + 28, x, y + 24); c.closePath();
   c.fillStyle = col; c.fill(); c.lineWidth = 1.5; c.strokeStyle = '#1a1008'; c.stroke();
@@ -49,6 +50,11 @@ export function terrain(w: number, h: number): HTMLCanvasElement {
   team(c, w, h, 0, [58, 38, 48], r); team(c, w, h, h / 2, [30, 52, 74], r);
   barricade(c, w, h, r);
   banner(c, 20, 18, '#d6454f', 1); banner(c, w - 20, 18, '#d6454f', -1); banner(c, 20, h - 66, '#3f8fe0', 1); banner(c, w - 20, h - 66, '#3f8fe0', -1);
+  // 조명: 왼쪽 위 따뜻한 햇빛 + 오른쪽 아래 차가운 반사광을 겹쳐 평면 바닥에 입체감을 줍니다.
+  c.globalCompositeOperation = 'soft-light';
+  const key = c.createRadialGradient(w * .15, h * .1, 0, w * .15, h * .1, h * .9); key.addColorStop(0, '#ffe2a8cc'); key.addColorStop(1, '#ffe2a800'); c.fillStyle = key; c.fillRect(0, 0, w, h);
+  const fill = c.createRadialGradient(w * .9, h * .95, 0, w * .9, h * .95, h * .7); fill.addColorStop(0, '#7fb4ff99'); fill.addColorStop(1, '#7fb4ff00'); c.fillStyle = fill; c.fillRect(0, 0, w, h);
+  c.globalCompositeOperation = 'source-over';
   const v = c.createRadialGradient(w / 2, h / 2, h * .25, w / 2, h / 2, h * .72); v.addColorStop(0, '#0000'); v.addColorStop(1, '#0009'); c.fillStyle = v; c.fillRect(0, 0, w, h);
   cached = cv; return cv;
 }

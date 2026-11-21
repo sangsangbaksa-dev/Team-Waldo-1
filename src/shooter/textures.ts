@@ -70,6 +70,22 @@ export function crateTexture(): THREE.CanvasTexture {
     g.strokeStyle = '#5b4222'; g.lineWidth = 6; g.strokeRect(5, 5, s - 10, s - 10); g.lineWidth = 4; g.beginPath(); g.moveTo(8, 8); g.lineTo(s - 8, s - 8); g.moveTo(s - 8, 8); g.lineTo(8, s - 8); g.stroke();
   });
 }
+/** 바닥 보급품 상자 표면: 단색 박스 대신 손으로 그린 케이스(모서리 마모, 걸쇠, 표식). */
+const lootTexCache = new Map<string, THREE.CanvasTexture>();
+export function lootCaseTexture(kind: 'medkit' | 'armor' | 'ammo'): THREE.CanvasTexture {
+  const hit = lootTexCache.get(kind); if (hit) return hit;
+  const base = kind === 'medkit' ? '#eceeea' : kind === 'armor' ? '#35619e' : '#5f6b36';
+  const t = canvasTex(128, (g, s) => {
+    const rng = makeRng(kind.length * 31); g.fillStyle = base; g.fillRect(0, 0, s, s); speckle(g, s, 700, rng, 'rgba(255,255,255,0.5)', 'rgba(0,0,0,0.6)', 0.18);
+    const v = g.createLinearGradient(0, 0, 0, s); v.addColorStop(0, 'rgba(255,255,255,0.18)'); v.addColorStop(1, 'rgba(0,0,0,0.28)'); g.fillStyle = v; g.fillRect(0, 0, s, s);
+    g.strokeStyle = 'rgba(0,0,0,0.45)'; g.lineWidth = 5; g.strokeRect(3, 3, s - 6, s - 6); g.strokeStyle = 'rgba(255,255,255,0.25)'; g.lineWidth = 1.5; g.strokeRect(8, 8, s - 16, s - 16);
+    g.fillStyle = '#2b2d30'; g.fillRect(s * 0.42, 2, s * 0.16, 10); g.fillStyle = '#9aa0a4'; g.fillRect(s * 0.45, 4, s * 0.1, 5);
+    if (kind === 'medkit') { g.fillStyle = '#c81e26'; g.fillRect(s * 0.4, s * 0.24, s * 0.2, s * 0.56); g.fillRect(s * 0.22, s * 0.42, s * 0.56, s * 0.2); g.strokeStyle = 'rgba(90,0,0,0.6)'; g.lineWidth = 2; g.strokeRect(s * 0.4, s * 0.24, s * 0.2, s * 0.56); }
+    else if (kind === 'armor') { g.strokeStyle = 'rgba(10,20,40,0.55)'; g.lineWidth = 3; for (let i = 1; i < 4; i++) { g.beginPath(); g.moveTo(14, s * i / 4); g.lineTo(s - 14, s * i / 4); g.stroke(); } g.fillStyle = '#e8ecf0'; g.font = 'bold 26px sans-serif'; g.textAlign = 'center'; g.fillText('III', s / 2, s * 0.6); }
+    else { g.fillStyle = '#e2c25a'; g.fillRect(14, s * 0.4, s - 28, s * 0.2); g.fillStyle = '#2a2a1a'; g.font = 'bold 18px monospace'; g.textAlign = 'center'; g.fillText('AMMO', s / 2, s * 0.55); }
+  }, false);
+  lootTexCache.set(kind, t); return t;
+}
 export function glowTexture(): THREE.CanvasTexture {
   return canvasTex(64, (g, s) => { const r = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2); r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(0.35, 'rgba(255,255,255,0.45)'); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, s, s); }, false);
 }

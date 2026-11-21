@@ -27,6 +27,7 @@ import { CITY_KEY, readCityCareer } from '../records';
 import { PVP_ENABLED } from '../net/config';
 import { ChatLimiter, cleanChat, pushChat, visibleChat, type ChatLine } from './chat';
 import { gemIcon, starIcon } from '../shared/glyphs';
+import { cityIcon, hudIcon } from './icons';
 
 const $ = (n: number): string => Math.floor(n).toLocaleString('en-US');
 const clock = (t: number): string => `${Math.floor(Math.max(0, t) / 60)}:${String(Math.floor(Math.max(0, t) % 60)).padStart(2, '0')}`;
@@ -41,7 +42,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   <div class="city-hud" hidden><div class="c-damage" id="c-damage"></div><div class="c-income" id="c-income"></div>
     <div class="c-tl"><div class="c-res" id="c-res"></div><div class="c-quest" id="c-quest"></div></div>
     <div class="c-tc" id="c-zone"></div>
-    <div class="c-tr"><canvas id="c-mini" width="200" height="200" aria-label="미니맵"></canvas><div id="c-wanted"></div><div class="c-topbtns"><button data-act="view" id="c-view" title="시점 전환 (V)">1인칭</button><button data-act="missions" title="작전 지령 (J)">임무</button><button data-act="map" title="전술 지도 (M)">지도</button><button data-act="chat" id="c-chatbtn" title="채팅 (Enter)" hidden>채팅</button><button data-act="pause" title="일시정지 (Esc)">Ⅱ</button></div></div>
+    <div class="c-tr"><canvas id="c-mini" width="200" height="200" aria-label="미니맵"></canvas><div id="c-wanted"></div><div class="c-topbtns"><button data-act="view" id="c-view" title="시점 전환 (V)">${hudIcon('eye')}1인칭</button><button data-act="missions" title="작전 지령 (J)">${hudIcon('clip')}임무</button><button data-act="map" title="전술 지도 (M)">${hudIcon('map')}지도</button><button data-act="chat" id="c-chatbtn" title="채팅 (Enter)" hidden>${hudIcon('chat')}채팅</button><button data-act="pause" title="일시정지 (Esc)" aria-label="일시정지">${hudIcon('pause')}</button></div></div>
     <div class="c-target" id="c-target"></div><aside class="c-tut" id="c-tut" hidden></aside><div class="c-area" id="c-area"></div><div class="c-feed" id="c-feed"></div><div class="c-chat" id="c-chat" aria-live="polite"></div><form class="c-chatin" id="c-chatin" hidden><input id="c-chatbox" maxlength="80" autocomplete="off" placeholder="메시지 입력 후 Enter · Esc 취소" aria-label="채팅 입력"></form><div class="c-banner" id="c-banner"></div><div class="c-prompt" id="c-prompt"></div><div class="c-toast" id="c-toast"></div>
     <div class="c-bl" id="c-boss"></div>
     <div class="c-bc" id="c-cmd"></div>
@@ -129,7 +130,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   function unlock(): void { if (document.pointerLockElement) { expectUnlock = true; document.exitPointerLock(); } }
   function setView(v: View): void {
     view = v; canvas.hidden = v !== 'top'; canvas3.hidden = v === 'top'; cross.hidden = v === 'top'; layer.hidden = v === 'top'; if (R3 && v !== 'top') R3.mode = v; if (v === 'top') unlock(); else { R3?.resize(); }
-    R?.resize(); q('#c-view').textContent = v === 'fp' ? '1인칭' : v === 'tp' ? '3인칭' : '전술뷰';
+    R?.resize(); q('#c-view').innerHTML = hudIcon('eye') + (v === 'fp' ? '1인칭' : v === 'tp' ? '3인칭' : '전술뷰');
   }
   const onLock = (): void => { locked = document.pointerLockElement === canvas3; if (locked) { expectUnlock = false; everLocked = true; lookMuteUntil = performance.now() + 220; return; } mouse.down = false; if (world) world.input.fire = false; const was = expectUnlock; expectUnlock = false; if (!was && view !== 'top' && world && !world.over && !paused && panel.hidden && bigmap.hidden && q('#c-missions').hidden && world.factions[0].pending === 0) pause(); };
 
@@ -261,7 +262,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
         const d = BIZ[z.kind], rows: string[] = [];
         if (z.owner < 0 && z.kind !== 'gunshop') rows.push(`<button class="c-row c-hl" data-act="bizbuy" ${near && f.cash >= w.bizPrice(f, z) ? '' : 'disabled'}><b>${d.name} 매입</b><span>초당 +$${d.income}${d.crystal ? ` · 크리스탈 +${d.crystal}/s` : ''} · 업그레이드하면 경비병이 본부에서 출동</span><i class="ca">$${w.bizPrice(f, z)}</i></button>`);
         else if (z.owner === 0) rows.push(`<button class="c-row c-hl" data-act="bizbuy" ${near && z.level < 3 && f.cash >= w.upgradePrice(z) ? '' : 'disabled'}><b>${d.name} ${'★'.repeat(z.level)}${'☆'.repeat(3 - z.level)}</b><span>${z.level < 3 ? '업그레이드 → 수입 증가 + 경비병 배치' : '최고 등급입니다'}</span>${z.level < 3 ? `<i class="ca">$${w.upgradePrice(z)}</i>` : ''}</button>`);
-        for (const it of SHOP[z.kind]) { const p = itemPrice(w, it); rows.push(`<button class="c-row" data-act="shop:${it.id}" ${near && canBuy(w, 0, it) ? '' : 'disabled'}><b>${it.icon} ${it.name}</b><span>${it.desc}</span><i class="ca">$${$(p)}</i></button>`); }
+        for (const it of SHOP[z.kind]) { const p = itemPrice(w, it); rows.push(`<button class="c-row" data-act="shop:${it.id}" ${near && canBuy(w, 0, it) ? '' : 'disabled'}><b>${cityIcon(it.icon)} ${it.name}</b><span>${it.desc}</span><i class="ca">$${$(p)}</i></button>`); }
         body = `<h3>${d.name} <small>${near ? '카운터에서 거래 중' : '(카운터 앞에서만 거래 가능)'}</small></h3>` + rows.join('');
       } else body = '<p class="c-note">거래할 수 없습니다.</p>';
     } else if (tab === 'train') {
@@ -346,11 +347,11 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
 
   function renderHud(): void {
     const w = world!, f = w.factions[0], b = w.boss(0), z = w.zone;
-    put(q('#c-res'), `<span class="ca" title="자금">$ <b>${$(f.cash)}</b><small>+${$(f.income)}/s</small></span><span class="cr" title="크리스탈">${gemIcon()} <b>${$(f.crystal)}</b></span><span title="인구">병력 <b>${f.supply}/${f.supplyMax}</b></span>`);
+    put(q('#c-res'), `<span class="ca" title="자금">${hudIcon('cash')} <b>${$(f.cash)}</b><small>+${$(f.income)}/s</small></span><span class="cr" title="크리스탈">${gemIcon()} <b>${$(f.crystal)}</b></span><span title="인구">${hudIcon('troops')} 병력 <b>${f.supply}/${f.supplyMax}</b></span>`);
     const entries = tut || duel || room ? [] : missionLog(w), summary = missionSummary(entries), current = summary.active;
     put(q('#c-quest'), tut || duel || room ? '' : current ? `<div class="c-quest-head"><span>작전 지령 <b>${summary.completed}/${summary.total}</b></span><button data-act="missions" aria-label="전체 작전 지령 보기"><kbd>J</kbd>전체 보기</button></div><strong>${current.title}</strong><p>${current.objective}</p><div class="c-quest-progress" role="progressbar" aria-label="${current.title} 진행률" aria-valuemin="0" aria-valuemax="${current.target}" aria-valuenow="${current.current}"><i style="width:${current.current / current.target * 100}%"></i></div><small>${current.current}/${current.target}${current.reward ? ' · 완료 보상 $' + $(current.reward) : ' · 최종 작전'}</small>` : '<div class="c-quest-head"><span>작전 지령 완료</span><button data-act="missions">전체 보기</button></div><strong>최후의 왕국!</strong>');
     if (!q('#c-missions').hidden) renderMissions();
-    void z; if (room) { const alive = room.ids.filter(id => !room!.out.has(id) && (room!.deaths.get(id) ?? 0) < ROOM_LIVES).length; put(q('#c-zone'), `<b>${clock(Math.max(0, ROOM_TIME - w.time))}</b><span>남은 목숨 <b>${Math.max(0, ROOM_LIVES - room.myDeaths)}</b>/${ROOM_LIVES}</span><span>생존 <b>${alive}</b>/${room.ids.length}명</span>`); } else if (duel) put(q('#c-zone'), `<b>${clock(Math.max(0, TIME_LIMIT - w.time))}</b><span>나 <b>${duel.oppDeaths}</b> : <b>${duel.myDeaths}</b> ${duel.s.opponent.nickname.replace(/[<>&"]/g, '')}</span><span>${TARGET_KILLS}킬 선취</span>`); else if (tut) put(q('#c-zone'), `<b>튜토리얼</b><span>연습장 · 라이벌 정지</span><span>${Math.min(tut.s.i, STEPS.length - 1) + 1}/${STEPS.length}</span>`); else put(q('#c-zone'), `<b>${clock(w.time)}</b><span>생존 왕국 <b>${w.aliveCount()}</b>/8</span><span class="c-citytime" title="밤에는 클럽·카지노, 낮에는 편의점·공장 수입이 늘고 폭풍우에는 줄어듭니다">${WEATHER_ICON[w.weather]} ${clockLabel(w.hour)} · ${PHASE_LABEL[w.phase]} · ${WEATHER_LABEL[w.weather]}</span>`);
+    void z; if (room) { const alive = room.ids.filter(id => !room!.out.has(id) && (room!.deaths.get(id) ?? 0) < ROOM_LIVES).length; put(q('#c-zone'), `<b>${clock(Math.max(0, ROOM_TIME - w.time))}</b><span>남은 목숨 <b>${Math.max(0, ROOM_LIVES - room.myDeaths)}</b>/${ROOM_LIVES}</span><span>생존 <b>${alive}</b>/${room.ids.length}명</span>`); } else if (duel) put(q('#c-zone'), `<b>${clock(Math.max(0, TIME_LIMIT - w.time))}</b><span>나 <b>${duel.oppDeaths}</b> : <b>${duel.myDeaths}</b> ${duel.s.opponent.nickname.replace(/[<>&"]/g, '')}</span><span>${TARGET_KILLS}킬 선취</span>`); else if (tut) put(q('#c-zone'), `<b>튜토리얼</b><span>연습장 · 라이벌 정지</span><span>${Math.min(tut.s.i, STEPS.length - 1) + 1}/${STEPS.length}</span>`); else put(q('#c-zone'), `<b>${clock(w.time)}</b><span>생존 왕국 <b>${w.aliveCount()}</b>/8</span><span class="c-citytime" title="밤에는 클럽·카지노, 낮에는 편의점·공장 수입이 늘고 폭풍우에는 줄어듭니다">${cityIcon(WEATHER_ICON[w.weather])} ${clockLabel(w.hour)} · ${PHASE_LABEL[w.phase]} · ${WEATHER_LABEL[w.weather]}</span>`);
     put(q('#c-wanted'), f.wanted >= 1 ? `<span class="stars">${starIcon(true).repeat(Math.floor(f.wanted))}${starIcon(false).repeat(5 - Math.floor(f.wanted))}</span> 수배 중` : '');
     { const live = chatLive(); (q('#c-chatbtn') as HTMLElement).hidden = !live; put(q('#c-chat'), live ? visibleChat(chatLog, chatNow(), chatOpen).map(l => `<div class="${l.mine ? 'me' : ''}"><b>${esc(l.name)}</b> ${esc(l.text)}</div>`).join('') : ''); }
     put(q('#c-feed'), w.feed.filter(x => w.time - x.t < 7).slice(-5).map(x => `<div style="border-color:${x.color}">${x.text}</div>`).join(''));
@@ -358,8 +359,8 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (b) {
       const s = f.slots[f.cur], wd = WEAPONS[s.id];
       put(q('#c-boss'), `<div class="c-bars"><div class="hp"><i style="width:${Math.max(0, b.hp / b.maxHp * 100)}%"></i><span>${Math.ceil(b.hp)} / ${b.maxHp}</span></div><div class="ar"><i style="width:${f.armor}%"></i></div><div class="xp"><i style="width:${f.xp / w.xpNeed(f.level) * 100}%"></i></div></div>
-        <div class="c-slots">${f.slots.map((x, i) => `<button data-act="slot:${i}" class="${i === f.cur ? 'on' : ''}"><kbd>${i + 1}</kbd>${WEAPONS[x.id].name}</button>`).join('')}</div>
-        <div class="c-ammo"><b>${f.reloadT > 0 ? '재장전…' : s.mag}</b><small>/ ${wd.ammo > 0 ? s.ammo - s.mag : '∞'}</small><span>Lv.${f.level} · 병력 ${army} · 키트 ${f.medkits}</span></div>
+        <div class="c-slots">${f.slots.map((x, i) => `<button data-act="slot:${i}" class="${i === f.cur ? 'on' : ''}"><kbd>${i + 1}</kbd>${hudIcon('w:' + x.id)}${WEAPONS[x.id].name}</button>`).join('')}</div>
+        <div class="c-ammo"><b>${f.reloadT > 0 ? '재장전…' : s.mag}</b><small>/ ${wd.ammo > 0 ? s.ammo - s.mag : '∞'}</small><span>Lv.${f.level} · 병력 ${army} · ${hudIcon('kit')} ${f.medkits}</span></div>
         <div class="c-skills"><span class="${f.skillCd > 0 ? 'cd' : ''}"><kbd>Q</kbd>${CLASSES[f.klass].skill}${f.skillCd > 0 ? ' ' + Math.ceil(f.skillCd) : ''}</span><span class="${f.dashCd > 0 ? 'cd' : ''}"><kbd>␣</kbd>대시</span></div>`);
     } else put(q('#c-boss'), `<div class="c-down"><b>쓰러짐</b> ${f.respawnT > 0 ? `${Math.ceil(f.respawnT)}초 후 본부에서 부활` : '…'}</div>`);
     // 상호작용 안내
@@ -382,7 +383,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   function showPerks(): void {
     const f = world!.factions[0];
     unlock();
-    modal.innerHTML = `<section class="c-perks"><div class="c-kicker">LEVEL ${f.level}</div><h2>특성을 선택하세요</h2><div class="c-classes">${f.choices.map((c, i) => `<button class="c-class" data-act="perk:${i}"><span>${PERKS[c].icon}</span><b>${PERKS[c].name}</b><p>${PERKS[c].desc}</p><small>${i + 1} 키</small></button>`).join('')}</div></section>`;
+    modal.innerHTML = `<section class="c-perks"><div class="c-kicker">LEVEL ${f.level}</div><h2>특성을 선택하세요</h2><div class="c-classes">${f.choices.map((c, i) => `<button class="c-class" data-act="perk:${i}"><span>${cityIcon(PERKS[c].icon)}</span><b>${PERKS[c].name}</b><p>${PERKS[c].desc}</p><small>${i + 1} 키</small></button>`).join('')}</div></section>`;
   }
   // ---------- 1대1 결투 ----------
   const duelCard = (title: string, body: string, actions: string): void => { modal.innerHTML = `<section class="c-pause"><div class="c-kicker">1대1 결투</div><h2>${title}</h2>${body}<div class="c-actions">${actions}</div></section>`; };

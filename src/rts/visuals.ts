@@ -77,3 +77,15 @@ export function paintTerrainDetail(g: CanvasRenderingContext2D, width: number, q
     g.strokeStyle = 'rgba(91,64,40,.16)'; g.beginPath(); g.moveTo(x, y); g.lineTo(x + length * 0.45, y + length * 0.14); g.lineTo(x + length, y + length * 0.06); g.stroke();
   }
 }
+
+/** 손으로 그린 듯한 회색조 암석 질감(인스턴스 색과 곱해져 색조는 인스턴스가 정함). strata=가로 지층 줄무늬. */
+export function stoneTexture(strata: boolean, seed = 11): THREE.CanvasTexture {
+  const w = 128, h = strata ? 256 : 128, c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d')!; let s = seed; const r = (): number => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+  g.fillStyle = '#c9c9c9'; g.fillRect(0, 0, w, h);
+  if (strata) for (let y = 0; y < h;) { const bh = 6 + r() * 18; g.fillStyle = `rgba(${r() < 0.5 ? '255,255,255' : '40,30,20'},${0.08 + r() * 0.2})`; g.fillRect(0, y, w, bh); g.fillStyle = 'rgba(30,20,10,.28)'; g.fillRect(0, y, w, 1.5); y += bh; }
+  for (let i = 0; i < (strata ? 70 : 260); i++) { g.fillStyle = `rgba(${r() < 0.5 ? '0,0,0' : '255,255,255'},${0.05 + r() * 0.12})`; const x = r() * w, y = r() * h; if (strata) g.fillRect(x, y, 1 + r() * 2, 8 + r() * 40); else { g.beginPath(); g.arc(x, y, 1 + r() * 4, 0, 6.283); g.fill(); } }
+  g.strokeStyle = 'rgba(20,14,8,.35)'; g.lineWidth = 1;
+  for (let i = 0; i < (strata ? 9 : 7); i++) { let x = r() * w, y = r() * h; g.beginPath(); g.moveTo(x, y); for (let k = 0; k < 4; k++) { x += (r() - 0.5) * 22; y += strata ? 8 + r() * 14 : (r() - 0.5) * 22; g.lineTo(x, y); } g.stroke(); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; return t;
+}

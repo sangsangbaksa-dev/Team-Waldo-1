@@ -16,7 +16,7 @@ import { buildProps, buildRoofs, makeDropCrate, makePlane, makeVehicleMesh, part
 import { TerrainView, tintGround } from './terrainview';
 import { WeatherFx } from './weatherfx';
 import { waterDepth } from './terrain';
-import { crateTexture, floorTexture, glowTexture, groundTexture, makeSky, wallTexture } from './textures';
+import { crateTexture, floorTexture, glowTexture, groundTexture, lootCaseTexture, makeSky, wallTexture } from './textures';
 
 export type Quality = 'high' | 'standard' | 'low';
 const LOOT_COLOR: Record<string, number> = { weapon: 0xeaf6ff, ammo: 0xffa53a, medkit: 0x52f08a, armor: 0x5aa8ff, bandage: 0xf2f2f2, attach: 0xc59bff, helmet: 0xffd34d, boost: 0x39e6ff, smoke: 0xb8c0c8, flash: 0xfff2a0 };
@@ -263,7 +263,7 @@ export class ShooterView {
     else if (l.kind === 'attach' && l.part && this.assets?.weaponNodes && lootPart(this.assets.weaponNodes, l.part, PARTS[l.part].slot)) { const m = lootPart(this.assets.weaponNodes, l.part, PARTS[l.part].slot)!; m.scale.setScalar(PARTS[l.part].slot === 'mag' || PARTS[l.part].slot === 'stock' ? 1.7 : 2.4); m.position.y = 0.95; g.add(m); }
     else if (l.kind === 'attach' && l.part) { const m = partMesh(l.part, 0.5); m.scale.setScalar(1.9); m.position.set(-0.5, 0.95 + (l.part === 'extmag' ? 0.3 : l.part === 'grip' ? 0.08 : -0.12), 0); g.add(m); }
     else if (l.kind === 'helmet') {
-      const col = [0, 0x7a8a5a, 0x3a3d44, 0xd9b24a][l.level ?? 1], m = new THREE.MeshLambertMaterial({ color: col, emissive: col, emissiveIntensity: 0.12 }), dome = new THREE.Mesh(new THREE.SphereGeometry(0.27, 14, 9, 0, Math.PI * 2, 0, Math.PI / 2), m); dome.position.y = 0.82; dome.castShadow = true; g.add(dome);
+      const col = [0, 0x7a8a5a, 0x3a3d44, 0xd9b24a][l.level ?? 1], m = new THREE.MeshStandardMaterial({ color: col, roughness: l.level === 3 ? 0.3 : 0.6, metalness: l.level === 3 ? 0.8 : 0.25, emissive: col, emissiveIntensity: 0.06 }), dome = new THREE.Mesh(new THREE.SphereGeometry(0.27, 14, 9, 0, Math.PI * 2, 0, Math.PI / 2), m); dome.position.y = 0.82; dome.castShadow = true; g.add(dome);
       const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.05, 14), new THREE.MeshLambertMaterial({ color: 0x222428 })); rim.position.y = 0.82; g.add(rim);
     }
     else if (l.kind === 'boost') {
@@ -274,20 +274,20 @@ export class ShooterView {
     else if (l.kind === 'flash') {
       const can = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.24, 12), new THREE.MeshLambertMaterial({ color: 0x2c3138, emissive: 0x14171a })); can.position.y = 0.9; can.castShadow = true; g.add(can);
       const band = new THREE.Mesh(new THREE.CylinderGeometry(0.074, 0.074, 0.05, 12), new THREE.MeshBasicMaterial({ color: 0xfff2a0 })); band.position.y = 0.93; g.add(band);
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.05, 8), new THREE.MeshLambertMaterial({ color: 0xb0b6ba })); cap.position.y = 1.05; g.add(cap);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.05, 8), new THREE.MeshStandardMaterial({ color: 0xb0b6ba, roughness: 0.3, metalness: 0.9 })); cap.position.y = 1.05; g.add(cap);
     }
     else if (l.kind === 'smoke') {
       const can = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.26, 12), new THREE.MeshLambertMaterial({ color: 0x8a949c, emissive: 0x2a3036 })); can.position.y = 0.9; can.castShadow = true; g.add(can);
       const band = new THREE.Mesh(new THREE.CylinderGeometry(0.078, 0.078, 0.05, 12), new THREE.MeshLambertMaterial({ color: 0xe8d23a })); band.position.y = 0.92; g.add(band);
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.05, 8), new THREE.MeshLambertMaterial({ color: 0xb0b6ba })); cap.position.y = 1.06; g.add(cap);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.05, 8), new THREE.MeshStandardMaterial({ color: 0xb0b6ba, roughness: 0.3, metalness: 0.9 })); cap.position.y = 1.06; g.add(cap);
     }
     else if (l.kind === 'grenade') {
       const sph = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), new THREE.MeshLambertMaterial({ color: 0x3b4a2a, emissive: 0x2a3a10 })); sph.position.y = 0.9; sph.castShadow = true; g.add(sph);
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.06, 8), new THREE.MeshLambertMaterial({ color: 0xb0b6ba })); cap.position.y = 1.06; g.add(cap);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.06, 8), new THREE.MeshStandardMaterial({ color: 0xb0b6ba, roughness: 0.3, metalness: 0.9 })); cap.position.y = 1.06; g.add(cap);
     }
     else {
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, l.kind === 'armor' ? 0.55 : 0.34, l.kind === 'armor' ? 0.28 : 0.4), new THREE.MeshLambertMaterial({ color: l.kind === 'medkit' ? 0xf4f6f4 : l.kind === 'armor' ? 0x3f7fd8 : 0x6c7a3c, emissive: color, emissiveIntensity: 0.18 })); body.position.y = 0.9; body.castShadow = true; g.add(body);
-      if (l.kind === 'medkit') { const m = new THREE.MeshBasicMaterial({ color: 0xd8232a }); const a = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.08, 0.06), m), b = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.34, 0.06), m); a.position.set(0, 0.9, 0.21); b.position.set(0, 0.9, 0.21); g.add(a, b); }
+      const face = lootCaseTexture(l.kind === 'medkit' ? 'medkit' : l.kind === 'armor' ? 'armor' : 'ammo');
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, l.kind === 'armor' ? 0.55 : 0.34, l.kind === 'armor' ? 0.28 : 0.4), new THREE.MeshStandardMaterial({ map: face, roughness: l.kind === 'medkit' ? 0.45 : 0.7, metalness: l.kind === 'ammo' ? 0.35 : 0.1, emissive: color, emissiveIntensity: 0.08 })); body.position.y = 0.9; body.castShadow = true; g.add(body);
     }
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.7, 28), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -8, polygonOffsetUnits: -8 })); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.1; ring.renderOrder = 4; g.add(ring);
     g.position.set(l.x, 0, l.z); this.scene.add(g); return g;

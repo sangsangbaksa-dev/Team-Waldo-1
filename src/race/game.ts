@@ -24,19 +24,34 @@ import { PVP_ENABLED } from '../net/config';
 
 const STEP = 1 / 90;
 const ORD = ['', '1ST', '2ND', '3RD', '4TH', '5TH', '6TH'];
+/** HUD 버튼 아이콘(이모지 대신 직접 그린 선 아이콘). */
+const svgIcon = (d: string): string => `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const ICON = {
+  soundOn: svgIcon('<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor"/><path d="M15.5 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/>'),
+  soundOff: svgIcon('<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor"/><path d="M16 9.5l5 5M21 9.5l-5 5"/>'),
+  pause: svgIcon('<path d="M8.5 6v12M15.5 6v12" stroke-width="3"/>'),
+  exit: svgIcon('<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>'),
+  nitro: svgIcon('<path d="M12 2.5c.6 3.2 5.5 5.6 5.5 10.6A5.5 5.5 0 0 1 12 18.6a5.5 5.5 0 0 1-5.5-5.5c0-2 1-3.4 2.2-4.6.2 1.4.9 2.2 1.7 2.7C10.2 8 10.4 5 12 2.5z" fill="currentColor" stroke-width="1.4"/><path d="M12 21.5v-.01" stroke-width="2"/>'),
+  flag: svgIcon('<path d="M5 21V4"/><path d="M5 4.5h13l-2.6 3.8L18 12H5z" fill="currentColor" stroke-width="1.4"/><path d="M9.5 4.5v7.5M13.8 4.5v7.5" stroke="#0b0b18" stroke-width="1.5"/>'),
+  left: svgIcon('<path d="M14.5 5.5L8 12l6.5 6.5" stroke-width="3"/>'),
+  right: svgIcon('<path d="M9.5 5.5L16 12l-6.5 6.5" stroke-width="3"/>'),
+  gas: svgIcon('<path d="M6 19l3.5-14h5L18 19z" fill="currentColor" stroke-width="1.4"/><path d="M12 8.5v4.5" stroke="#1b0d3e" stroke-width="2"/>'),
+  drift: svgIcon('<path d="M4 19c6 0 8-3 9-6s2.5-5 7-5" stroke-width="2.6"/><path d="M17 4.5L20.5 8 17 11.5"/>'),
+  brake: svgIcon('<circle cx="12" cy="12" r="7.5"/><path d="M12 8v5.2" stroke-width="2.8"/><circle cx="12" cy="16" r=".4" stroke-width="2.6"/>'),
+};
 
 export function openRace(onExit: () => void): void {
   const prefs = readPreferences(), touch = matchMedia('(pointer: coarse)').matches;
   const root = document.createElement('div'); root.className = 'rc-root' + (touch ? ' touch' : ''); root.dataset.phase = 'loading';
   root.innerHTML = `<canvas class="rc-canvas"></canvas><canvas class="rc-fx"></canvas><div class="rc-vignette"></div><div class="rc-boostfx"></div><div class="rc-speedlines"></div>
   <div class="rc-hud">
-    <div class="rc-tl"><div class="rc-pos"><b id="rc-pos">4</b><span id="rc-of">/ 4</span></div><div class="rc-lap">LAP <b id="rc-lap">1</b>/<span id="rc-laps">3</span></div><div class="rc-ko" id="rc-ko"></div></div>
+    <div class="rc-tl"><div class="rc-pos"><b id="rc-pos">4</b><span id="rc-of">/ 4</span></div><div class="rc-lap">${ICON.flag}LAP <b id="rc-lap">1</b>/<span id="rc-laps">3</span></div><div class="rc-ko" id="rc-ko"></div></div>
     <div class="rc-tc"><div class="rc-time" id="rc-time">0:00.000</div><div class="rc-best" id="rc-best"></div></div>
-    <div class="rc-tr"><canvas id="rc-map" width="220" height="220" aria-label="미니맵"></canvas><div class="rc-btns"><button data-act="mute" title="소리 (M)" aria-pressed="${prefs.sound}">${prefs.sound ? '🔊' : '🔇'}</button><button data-act="pause" title="일시정지 (Esc)">Ⅱ</button><button data-act="exit" title="나가기">✕</button></div></div>
+    <div class="rc-tr"><canvas id="rc-map" width="220" height="220" aria-label="미니맵"></canvas><div class="rc-btns"><button data-act="mute" title="소리 (M)" aria-pressed="${prefs.sound}">${prefs.sound ? ICON.soundOn : ICON.soundOff}</button><button data-act="pause" title="일시정지 (Esc)">${ICON.pause}</button><button data-act="exit" title="나가기">${ICON.exit}</button></div></div>
     <div class="rc-msg" id="rc-msg"></div><div class="rc-count" id="rc-count"></div><div class="rc-wrong" id="rc-wrong">역주행!</div><div class="rc-draft" id="rc-draft">SLIPSTREAM</div><div class="rc-drift" id="rc-drift"></div>
-    <div class="rc-edge" id="rc-edge">TRACK EDGE <span>SPEED REDUCED</span></div><div class="rc-bottom"><div class="rc-nitro"><span>NITRO</span><div><i id="rc-nitro"></i></div></div><div class="rc-speed"><b id="rc-kmh">0</b><small>km/h</small><em id="rc-gear">N</em></div><div class="rc-rev"><i id="rc-rev"></i></div></div>
+    <div class="rc-edge" id="rc-edge">TRACK EDGE <span>SPEED REDUCED</span></div><div class="rc-bottom"><div class="rc-nitro"><span>${ICON.nitro}NITRO</span><div><i id="rc-nitro"></i></div></div><div class="rc-speed"><b id="rc-kmh">0</b><small>km/h</small><em id="rc-gear">N</em></div><div class="rc-rev"><i id="rc-rev"></i></div></div>
     <div class="rc-keys"><span><kbd>W</kbd><kbd>↑</kbd> 가속</span><span><kbd>A</kbd><kbd>D</kbd> 조향</span><span><kbd>Space</kbd> 드리프트</span><span><kbd>Shift</kbd> 니트로</span><span><kbd>R</kbd> 복귀</span></div>
-    <div class="rc-touchpad"><div class="rc-steer"><button data-hold="left" aria-label="왼쪽">◀</button><button data-hold="right" aria-label="오른쪽">▶</button></div><div class="rc-pedals"><button data-hold="gas" class="gas" aria-label="가속">가속</button><div class="rc-pedal-row"><button data-hold="nitro">NITRO</button><button data-hold="drift">DRIFT</button><button data-hold="brake">BRAKE</button></div></div></div>
+    <div class="rc-touchpad"><div class="rc-steer"><button data-hold="left" aria-label="왼쪽">${ICON.left}</button><button data-hold="right" aria-label="오른쪽">${ICON.right}</button></div><div class="rc-pedals"><button data-hold="gas" class="gas" aria-label="가속">${ICON.gas}가속</button><div class="rc-pedal-row"><button data-hold="nitro">${ICON.nitro}NITRO</button><button data-hold="drift">${ICON.drift}DRIFT</button><button data-hold="brake">${ICON.brake}BRAKE</button></div></div></div>
   </div>
   <div class="rc-modal" id="rc-modal"><div class="rc-card"><span class="rc-eyebrow">SPEED RUSH</span><h2>엔진 예열 중…</h2></div></div>`;
   document.body.append(root);
@@ -336,7 +351,7 @@ export function openRace(onExit: () => void): void {
     else if (a === 'mute') {
       audio.setEnabled(!audio.enabled);
       const next = { ...readPreferences(), sound: audio.enabled }; prefs.sound = next.sound; writePreferences(next);
-      const mute = root.querySelector<HTMLElement>('[data-act="mute"]'); if (mute) { mute.textContent = audio.enabled ? '🔊' : '🔇'; mute.setAttribute('aria-pressed', String(audio.enabled)); }
+      const mute = root.querySelector<HTMLElement>('[data-act="mute"]'); if (mute) { mute.innerHTML = audio.enabled ? ICON.soundOn : ICON.soundOff; mute.setAttribute('aria-pressed', String(audio.enabled)); }
     }
   };
   const onKey = (e: KeyboardEvent): void => {

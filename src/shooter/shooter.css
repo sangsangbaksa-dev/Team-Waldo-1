@@ -297,3 +297,13 @@
 .sz-actions.wd-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
 .sz-actions button{padding:13px 10px;background:var(--wd-raised);border-color:var(--wd-line)}
 .sz-actions button.primary{background:var(--wd-accent);color:var(--wd-accent-ink)}
+
+/* 그래픽 보강: HUD 장비 아이콘·게이지 광택 */
+.sz-slots span.gear{display:inline-flex;align-items:center;gap:5px}
+.sz-slots span .gi{display:inline-block;width:30px;height:20px;flex:none;filter:drop-shadow(0 1px 1px #000a)}
+.sz-slots span .gi .zi{display:block;width:100%;height:100%}
+.sz-slots span.gear{background:linear-gradient(180deg,#1b2420d9,#0d1311d9);box-shadow:inset 0 1px 0 #ffffff1f,0 2px 6px #0008}
+.sz-bar.hp i{background:linear-gradient(180deg,#8fe79d 0,#3fae5a 45%,#2b8044 100%);box-shadow:0 0 10px #4fdc7a66}
+.sz-bar.ar i{background:linear-gradient(180deg,#a6d2ff 0,#3c78d6 45%,#2a58a8 100%);box-shadow:0 0 10px #5aa0ff66}
+.sz-bar{box-shadow:inset 0 2px 5px #000a,0 2px 8px #0007}
+.sz-ammo b{text-shadow:0 2px 0 #000b,0 0 18px #c4df9133}

@@ -220,3 +220,8 @@
 .mb-modal .mb-eyebrow,.mb-modal .mb-lead{color:#9a9ea5}.mb-modal .mb-card h2{font-size:clamp(30px,6vw,42px)}
 .mb-modal .mb-pick .wd-seg{display:flex;flex-wrap:wrap;gap:4px;padding:4px;background:#0e0f12;border:1px solid #2a2e34;border-radius:13px}.mb-modal .mb-pick .wd-seg button{border:0;border-radius:9px;background:transparent;color:#9a9ea5}.mb-modal .mb-pick .wd-seg button[aria-pressed="true"]{background:#1c1f23;color:#f1eee6;box-shadow:inset 0 0 0 1px #3a3f47}
 .mb-modal .mb-actions button{background:transparent;border:1px solid #2a2e34;color:#9a9ea5;border-radius:12px}.mb-modal .mb-actions button.primary{background:#e8e2d0;border-color:#e8e2d0;color:#14130f}
+.rt-ic { width: 22px; height: 22px; flex: none; color: #e9dca8; filter: drop-shadow(0 1px 1px #0008); }
+.rt-cmd button.on .rt-ic { color: #ffe68a; }
+.rt-multi button { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.rt-multi button.foe .rt-ic { color: #ff9d86; }
+@media (max-width: 720px) { .rt-ic { width: 16px; height: 16px; } }

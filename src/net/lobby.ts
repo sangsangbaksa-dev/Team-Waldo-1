@@ -1,6 +1,6 @@
 // 모든 게임이 공유하는 Supabase 로비(1대1 + 멀티플레이 방). 게임 쪽에서 쓰는 방법:
 //   import('../net/lobby').then(({ openLobby }) => openLobby({
-//     game: 'city' | 'race' | 'rts' | 'shooter' | 'outlaw',   // GameKind. 새 게임은 types.ts·마이그레이션의 허용 목록에 추가
+//     game: 'city' | 'race' | 'rts' | 'shooter' | 'outlaw' | 'squad',   // GameKind. 새 게임은 types.ts·마이그레이션의 허용 목록에 추가
 //     maxPlayers: 6,                               // 생략하면 2(1대1 전용). 2보다 크면 onRoom 필수
 //     config: () => ({ ...방 설정(시드·코스 등) }), // 방장/먼저 기다린 쪽의 값이 상대에게 전달됨(match.config / room.config)
 //     onMatch: (s: PvpSession) => ...,              // 1대1 시작(무작위 매칭 또는 2인 방): 레이팅 반영, s.backend.report(s.match.id, winnerId)
@@ -202,7 +202,7 @@ export function openLobby(opts: LobbyOptions): { close(): void } {
   const title = opts.game ? `${GAME_NAMES[opts.game]} · 온라인 대전` : '계정 · 랭킹';
   const rankTable = (): string => ranks === null ? '<p class="pvp-dim">불러오는 중…</p>' : ranks.length === 0 ? '<p class="pvp-dim">아직 기록된 대전이 없습니다.</p>'
     : `<table class="pvp-rank"><thead><tr><th>#</th><th>닉네임</th><th>레이팅</th><th>전적</th></tr></thead><tbody>${ranks.map(r => `<tr${r.user_id === me?.id ? ' class="me"' : ''}><td>${r.rank}</td><td>${esc(r.nickname)}</td><td>${r.rating}</td><td>${r.wins}승 ${r.losses}패</td></tr>`).join('')}</tbody></table>`;
-  const tabs = (): string => `<div class="pvp-tabs" role="tablist">${(['race', 'city', 'rts', 'shooter', 'outlaw'] as GameKind[]).map(g => `<button type="button" role="tab" aria-selected="${g === rankGame}" data-act="rank:${g}">${GAME_NAMES[g]}</button>`).join('')}</div>`;
+  const tabs = (): string => `<div class="pvp-tabs" role="tablist">${(['race', 'city', 'rts', 'shooter', 'outlaw', 'squad'] as GameKind[]).map(g => `<button type="button" role="tab" aria-selected="${g === rankGame}" data-act="rank:${g}">${GAME_NAMES[g]}</button>`).join('')}</div>`;
 
   function body(): string {
     if (screen === 'load') return '<p class="pvp-dim">연결하는 중…</p>';

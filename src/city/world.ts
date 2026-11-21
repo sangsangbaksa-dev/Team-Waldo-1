@@ -683,6 +683,7 @@ export class World {
       for (const z of this.businesses) if (z.owner === f.id) { inc += BIZ[z.kind].income * BIZ_LEVEL_MULT[z.level] * (mood ? incomeMood(z.kind, this.phase, this.weather) : 1); cr += BIZ[z.kind].crystal * z.level; }
       inc *= f.mods.income * (1 + 0.12 * f.up.eco) * (f.player ? 1 : diff.income); inc += 2;
       f.cash += inc; f.earned += inc; f.crystal += cr * (f.player ? 1 : diff.income); f.income = inc;
+      if (f.id === 0) this.fx('income', 0, 0, inc, undefined, 0);
     }
     // 시세
     this.price += (this.rng() - 0.5) * 0.8 + (10 - this.price) * 0.03;

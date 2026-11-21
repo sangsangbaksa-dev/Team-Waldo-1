@@ -10,7 +10,7 @@ import { readTycoonSummary } from './tycoon/core/save';
 import { STAGE_NAMES } from './tycoon/core/data';
 import { CHAT_ENABLED, PVP_ENABLED } from './net/config';
 
-type GameId = 'city' | 'race' | 'rts' | 'shooter' | 'outlaw' | 'tycoon' | 'sky' | 'room-tone';
+type GameId = 'city' | 'race' | 'rts' | 'shooter' | 'outlaw' | 'tycoon' | 'sky' | 'room-tone' | 'squad';
 
 interface Entry {
   id: GameId;
@@ -26,6 +26,12 @@ interface Entry {
 const base = import.meta.env.BASE_URL;
 
 const ENTRIES: Entry[] = [
+  {
+    id: 'squad', name: 'SQUAD CLASH', genre: '도형 병사 배치전',
+    summary: '같은 골드로 도형 병사를 배치하고 자동 전투를 지켜보세요. 상성과 진형이 승부를 가릅니다.',
+    facts: ['AI 대전 · 2인 로컬 대전', '병사 5종 · 3판 2선승', '마우스 · 키보드 · 터치'],
+    image: `${base}assets/home/squad-clash.svg`, imageAlt: '파란색과 빨간색 도형 병사들이 마주 선 전장', status: () => '',
+  },
   {
     id: 'city',
     name: 'LAST CITY',
@@ -138,7 +144,7 @@ let hubChat: { close(): void } | undefined;
 
 function tile(entry: Entry, index: number): string {
   return `
-    <li class="tile-item">
+    <li class="tile-item" style="--tile-index: ${index}">
       <button class="tile" id="start-${entry.id}" type="button" data-game="${entry.id}" aria-describedby="summary-${entry.id}">
         <span class="tile-media"><img src="${entry.image}" alt="${entry.imageAlt}" width="1280" height="800" ${index === 0 ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async"></span>
         <span class="tile-body">
@@ -174,7 +180,7 @@ function renderMenu(): void {
         </div>
       </header>
       <section class="home-intro">
-        <h1>${['', '한', '두', '세', '네', '다섯', '여섯'][ENTRIES.length] ?? ENTRIES.length} 편의 3D 게임.</h1>
+        <h1>${ENTRIES.length}편의 아케이드 게임.</h1>
         <p>설치 없이 이 페이지에서 바로 시작합니다.</p>
       </section>
       <ul class="tiles" aria-label="게임 목록">${ENTRIES.map(tile).join('')}</ul>
@@ -192,7 +198,17 @@ function renderMenu(): void {
   app.querySelectorAll<HTMLButtonElement>('.tile').forEach(button => {
     const game = ENTRIES.find(entry => entry.id === button.dataset.game);
     if (!game) return;
-    button.querySelector('.tile-status')!.textContent = game.status();
+    const status = game.status();
+    button.querySelector('.tile-status')!.textContent = status ? `내 기록 · ${status}` : '아직 플레이 기록이 없어요';
+    const image = button.querySelector<HTMLImageElement>('.tile-media img')!;
+    const settleImage = (): void => {
+      image.parentElement?.classList.add(image.naturalWidth ? 'is-loaded' : 'is-error');
+    };
+    if (image.complete) settleImage();
+    else {
+      image.addEventListener('load', settleImage, { once: true });
+      image.addEventListener('error', settleImage, { once: true });
+    }
     button.onclick = () => { void launch(game.id); };
   });
   wireAccount();
@@ -249,12 +265,17 @@ async function launch(id: GameId): Promise<void> {
   if (label) label.textContent = '불러오는 중…';
   if (notice) notice.textContent = '';
   // 일시적인 다운로드 오류에는 재시도하고, 계속 실패하면 메뉴로 복귀합니다.
-  const loading = showLoading(id === 'city' ? 'LAST CITY' : id === 'rts' ? 'FRONTLINE' : id === 'shooter' ? 'ZERO ZONE' : id === 'outlaw' ? 'OUTLAW CITY' : id === 'tycoon' ? 'HUSTLE' : id === 'sky' ? 'SKY WAR' : 'SPEED RUSH');
+  const loading = showLoading(id === 'squad' ? 'SQUAD CLASH' : id === 'city' ? 'LAST CITY' : id === 'rts' ? 'FRONTLINE' : id === 'shooter' ? 'ZERO ZONE' : id === 'outlaw' ? 'OUTLAW CITY' : id === 'tycoon' ? 'HUSTLE' : id === 'sky' ? 'SKY WAR' : 'SPEED RUSH');
   loading.progress(null, '게임을 불러오는 중');
   const cancelled = (): boolean => generation !== navigation;
   const fetchGame = <T,>(load: () => Promise<T>): Promise<T> => retry(load, { cancelled, maxAttempts: 4, onRetry: n => loading.note(retryNote(n)) });
   try {
-    if (id === 'city') {
+    if (id === 'squad') {
+      const { openSquad } = await fetchGame(() => import('./squad/game'));
+      if (cancelled()) { loading.close(); return; }
+      app.hidden = true;
+      openSquad(renderMenu, { loading });
+    } else if (id === 'city') {
       const { openCity } = await fetchGame(() => import('./city/game'));
       if (cancelled()) { loading.close(); return; }
       app.hidden = true;

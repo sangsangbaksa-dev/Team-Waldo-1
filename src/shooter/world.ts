@@ -337,6 +337,7 @@ export function generateMap(seed: number, mode: Mode): GameMap {
   for (let i = 0, tries = 0; i < rocks && tries < 800; tries++) {
     const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * half * 0.94, x = Math.cos(a) * r, z = Math.sin(a) * r; if (!clear(x, z, 3) || blockedAt(map, x, z, 2.2)) continue;
     const sx = 1.2 + rng() * 2.2, sz = 1.2 + rng() * 2.2, sy = 0.9 + rng() * 1.5;
+    if (!freeRect(map, x - sx * 0.8, z - sz * 0.8, x + sx * 0.8, z + sz * 0.8, 0)) continue;
     map.rocks.push({ x, z, sx, sy, sz, ry: rng() * Math.PI }); addBox(map, { x0: x - sx * 0.8, x1: x + sx * 0.8, z0: z - sz * 0.8, z1: z + sz * 0.8, y0: 0, y1: sy, kind: 'rock', tex: 0 }); i++;
   }
   // 나무: 무리 지어 심고 밑동만 충돌

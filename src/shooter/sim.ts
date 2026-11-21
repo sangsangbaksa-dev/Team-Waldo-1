@@ -56,7 +56,7 @@ export interface Player {
   /** 가방에 든 파츠(사람만): 줍는 즉시 들어가고, L 조립 화면에서 총에 끼웁니다 */ parts: PartId[];
 }
 export type MatchEvent =
-  | { t: 'shot'; id: number; weapon: WeaponId; ox: number; oy: number; oz: number; ends: number[]; remote: boolean; sup?: boolean }
+  | { t: 'shot'; id: number; weapon: WeaponId; ox: number; oy: number; oz: number; ends: number[]; remote: boolean; sup?: boolean; hit?: boolean }
   | { t: 'hit'; victim: number; attacker: number; dmg: number; head: boolean; x: number; y: number; z: number; wall: boolean }
   | { t: 'kill'; victim: number; attacker: number; weapon: Cause }
   | { t: 'pickup'; id: number; loot: number; kind: Loot['kind']; weapon: WeaponId | null; part?: PartId | null; level?: number }
@@ -595,12 +595,13 @@ export class Match {
     const h = partHandling(gun.att), quiet = gun.att.muzzle === 'suppressor';
     p.kick = Math.max(0, p.kick - def.recoil * 12 * (1 - h.kick));
     const moving = Math.min(1.6, p.speed / PLAYER.walk), spread = def.spread * h.spread * (p.ads ? adsSpread(gun.att) : 1) * (1 + moving * 0.5) * (1 + p.kick * 0.5) * (1 - 0.22 * p.crouch);
-    const ox = p.x, oy = eyeOf(p), oz = p.z, ends: number[] = [];
+    const ox = p.x, oy = eyeOf(p), oz = p.z, ends: number[] = [], eventStart = this.events.length;
     for (let i = 0; i < def.pellets; i++) {
       const a = this.rng() * Math.PI * 2, r = spread * Math.sqrt(this.rng()), yaw = p.yaw + Math.cos(a) * r, pitch = p.pitch + Math.sin(a) * r;
       this.bullet(p.id, id, ox, oy, oz, yaw, pitch, ends, false);
     }
-    this.events.push({ t: 'shot', id: p.id, weapon: id, ox, oy, oz, ends, remote: false, sup: quiet });
+    const hit = this.events.slice(eventStart).some(e => e.t === 'hit' && e.attacker === p.id && e.victim >= 0);
+    this.events.push({ t: 'shot', id: p.id, weapon: id, ox, oy, oz, ends, remote: false, sup: quiet, hit });
     this.sounds.push({ x: p.x, z: p.z, t: this.t, by: p.id, quiet });
   }
 

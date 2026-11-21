@@ -780,3 +780,63 @@ dialog h2 {
     padding: 0.5rem 1rem;
   }
 }
+
+/* 모노크롬: 화면 전체를 흑백 공포 톤으로 */
+html { background: #000; filter: grayscale(1) contrast(1.14) brightness(0.96); }
+
+#viewWrap.hiding::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 13vw 4vw rgba(0, 0, 0, 0.8);
+}
+
+/* Monochrome print and film treatment. */
+body { background: #090909; color: #ededeb; }
+button { background: #242424; border-color: #666; }
+button:focus-visible, input:focus-visible { outline-color: #eee; }
+button.primary { background: #e1e1dd; border-color: #e1e1dd; color: #151515; }
+.secondary { background: #191919; border-color: #777; }
+.bare b, .signalMark, .kicker, .intro em, .rec, #guide span,
+.hudleft span, kbd, .dials strong, .bad, .mapkey i,
+.mapkey i:nth-child(n), #toast { color: #d6d6d2 !important; }
+.signalMark { border-color: #999; }
+.intro h1 { font-family: Georgia, "Times New Roman", serif; font-weight: 400; letter-spacing: -0.075em; }
+.kicker, .wordmark, .hudleft span, .statusfoot, .homefoot { font-family: "Courier New", monospace; }
+.kicker { font-size: 0.75rem; letter-spacing: 0.16em; }
+.filmline { height: 1px; background: linear-gradient(90deg, #ccc 0 13%, #505050 13%); }
+.lens { background: radial-gradient(ellipse at center, transparent 35%, #000a 100%); }
+#danger { background: radial-gradient(ellipse, transparent 28%, #aaa 135%); }
+.rec:before, .stambar i { background: #d3d3d0; }
+.hudright button, .gear button, .touchactions button, #prompt { background: #171717df; border-color: #7779; }
+.gear button[aria-pressed="true"], .map-guide[aria-pressed="true"] { background: #444; border-color: #ccc; color: #fff; }
+.panel, dialog { background: #171717fa; border-color: #666; color: #eee; box-shadow: 0 20px 80px #000a; }
+.panel h2, dialog h2 { font-family: Georgia, "Noto Serif KR", serif; font-weight: 400; }
+.panel p, dialog p, .keys dt, .notes dt { color: #bbb; }
+.taskline, .readout, .endstat { background: #292929; border-color: #aaa; }
+#home::after, #viewWrap::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background-image: repeating-radial-gradient(circle at 23% 41%, #fff 0 0.45px, transparent 0.8px 3px);
+  background-size: 7px 7px;
+  opacity: 0.035;
+  animation: film-flicker 5s steps(2, end) infinite;
+}
+#viewWrap.noticed .lens { animation: notice-pulse 1.4s ease-out; }
+@keyframes notice-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 transparent; }
+  20%, 55% { box-shadow: inset 0 0 9vw 2vw #ddd9; }
+}
+@keyframes film-flicker {
+  0%, 91%, 100% { opacity: 0.035; }
+  92% { opacity: 0.065; }
+  94% { opacity: 0.02; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #home::after, #viewWrap::before { animation: none; }
+  #viewWrap.noticed .lens { animation: none; box-shadow: inset 0 0 9vw 2vw #ddd9; }
+}

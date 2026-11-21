@@ -81,6 +81,7 @@ export class CityAudio {
       case 'crystal': t(880, 0.06, 0.14 * v, 'triangle', 80); t(1320, 0.1, 0.12 * v, 'triangle', 0, 0.06); break;
       case 'heal': t(392, 0.12, 0.14 * v, 'sine', 80); t(523, 0.18, 0.14 * v, 'sine', 40, 0.08); break;
       case 'hurt': n(0.08, 0.22 * v, 700, 0.8, 'lowpass'); t(180, 0.1, 0.16 * v, 'triangle', -80); break;
+      case 'heartbeat': t(74, 0.12, 0.18 * v, 'sine', -24); t(62, 0.15, 0.13 * v, 'sine', -20, 0.16); break;
       case 'skid': n(0.16, 0.18 * v, 1600, 3); break;
       case 'splat': n(0.12, 0.28 * v, 400, 0.7, 'lowpass'); t(110, 0.1, 0.16 * v, 'sine', -50); break;
       case 'burn': n(0.4, 0.22 * v, 500, 0.6, 'lowpass'); t(90, 0.3, 0.12 * v, 'sawtooth', 40); break;

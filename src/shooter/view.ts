@@ -301,13 +301,14 @@ export class ShooterView {
 
   // ---------- 효과 ----------
   private spark(x: number, y: number, z: number, n: number, rgb: [number, number, number], speed: number): void {
-    for (let i = 0; i < n && this.sparkData.length < 240; i++) {
+    const limit = this.quality === 'low' ? 80 : 240;
+    for (let i = 0; i < (this.quality === 'low' ? Math.ceil(n / 2) : n) && this.sparkData.length < limit; i++) {
       const a = Math.random() * 6.28, up = Math.random() * 0.9 + 0.1, s = speed * (0.4 + Math.random());
       this.sparkData.push({ x, y, z, vx: Math.cos(a) * s * (1 - up * 0.4), vy: up * s * 1.2, vz: Math.sin(a) * s * (1 - up * 0.4), life: 0.35 + Math.random() * 0.35, r: rgb[0], g: rgb[1], b: rgb[2] });
     }
   }
   private tracer(ax: number, ay: number, az: number, bx: number, by: number, bz: number, color: number): void {
-    const len = Math.hypot(bx - ax, by - ay, bz - az); if (len < 1) return;
+    const len = Math.hypot(bx - ax, by - ay, bz - az); if (len < 1 || this.tracers.length >= (this.quality === 'low' ? 24 : 100)) return;
     const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1, 4, 1, true), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
     const mid = new THREE.Vector3((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2); mesh.position.copy(mid); mesh.scale.set(1, Math.min(len, 60), 1);
     // 앞부분만 짧게(총알이 날아가는 느낌): 끝점 쪽 60m 구간
@@ -320,7 +321,7 @@ export class ShooterView {
         const shooter = this.match.players[e.id]; if (!shooter) continue;
         const fx = Math.cos(shooter.yaw), fz = Math.sin(shooter.yaw), isMe = e.id === me.id;
         const mx = e.ox + (isMe ? fx * 0.7 - fz * 0.22 : fx * 0.9), my = isMe ? e.oy - 0.16 : e.oy - 0.25, mz = e.oz + (isMe ? fz * 0.7 + fx * 0.22 : fz * 0.9);
-        for (let i = 0; i + 2 < e.ends.length; i += 3) this.tracer(mx, my, mz, e.ends[i], e.ends[i + 1], e.ends[i + 2], e.sup ? 0x8a8f96 : WEAPONS[e.weapon].pellets > 1 ? 0xffd9a0 : 0xfff0b8);
+        for (let i = 0; i + 2 < e.ends.length; i += this.quality === 'low' && WEAPONS[e.weapon].pellets > 1 ? 6 : 3) this.tracer(mx, my, mz, e.ends[i], e.ends[i + 1], e.ends[i + 2], e.sup ? 0x8a8f96 : WEAPONS[e.weapon].pellets > 1 ? 0xffd9a0 : 0xfff0b8);
         if (isMe) { this.shake = Math.min(1, this.shake + WEAPONS[e.weapon].recoil * 9); this.fovPunch = Math.min(1, this.fovPunch + WEAPONS[e.weapon].recoil * 7); this.flashKick = 1; }
       } else if (e.t === 'nade') {
         if (e.stage === 'boom' && e.smoke) { this.burst(e.x, e.z); }

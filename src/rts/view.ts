@@ -239,7 +239,7 @@ export class RtsView {
   /** 명령을 내린 자리에 잠깐 보이는 표시. */
   ping(x: number, y: number, color: number): void {
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.8, 1, 24), this.glowMat(color, 0.9)); ring.rotation.x = -Math.PI / 2; ring.position.set(x, 0.09, y);
-    this.add({ obj: ring, t: 0, life: 0.5, tick: f => { const k = f.t / f.life; ring.scale.setScalar(1.1 - k * 0.7); (ring.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - k); } });
+    this.add({ obj: ring, t: 0, life: 0.7, tick: f => { const k = f.t / f.life; ring.scale.setScalar(0.65 + k * 0.9); (ring.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - k); } });
   }
   setRally(p: { x: number; y: number } | null): void { this.flag.visible = !!p; if (p) this.flag.position.set(p.x, 0, p.y); }
 
@@ -288,6 +288,7 @@ export class RtsView {
       if (r.arm) { const work = tick - u.mine < 3 || (u.o.t === 'gather' && u.o.phase === 1); r.arm.rotation.z = work ? Math.sin(this.clock * 16) * 0.7 - 0.4 : -0.3; }
       const hurt = tick - u.hurt; root.scale.setScalar(US[u.kind] * (hurt >= 0 && hurt < 2 ? 1.1 : 1));
       v.ring.visible = selected.has(id);
+      if (v.ring.visible) v.ring.scale.setScalar((UNITS[u.kind].radius * 1.5 + 0.2) * (1 + 0.06 * Math.sin(this.clock * 4)));
       if (u.ab > tick && u.kind !== 'medic') {
         if (!v.aura) { v.aura = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.62, 28), this.glowMat(ABILITY_COLOR[u.kind] ?? 0xffffff, 0.75)); v.aura.rotation.x = -Math.PI / 2; v.aura.position.y = 0.08; r.root.add(v.aura); }
         v.aura.visible = true; v.aura.scale.setScalar(1.25 + Math.sin(this.clock * 9 + id) * 0.12);

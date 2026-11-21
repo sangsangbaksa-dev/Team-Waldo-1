@@ -49,16 +49,21 @@ export const DIFFS: Difficulty[] = [
 const FWD = new THREE.Vector3(0, 0, -1);
 const rnd = (a: number, b: number): number => a + Math.random() * (b - a);
 const tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3(), eul = new THREE.Euler();
+const aiForward = new THREE.Vector3(), aiAim = new THREE.Vector3(), bulletTest = new THREE.Vector3();
+const gunDir = new THREE.Vector3(), gunSide = new THREE.Vector3();
+const MAX_BULLETS = 400;
 
 export function forward(j: { q: THREE.Quaternion }, out = new THREE.Vector3()): THREE.Vector3 { return out.copy(FWD).applyQuaternion(j.q); }
 
 export class SkySim {
   jets: Jet[] = []; pickups: Pickup[] = []; missiles: Missile[] = []; bullets: Bullet[] = []; events: SimEvent[] = [];
+  private bulletPool: Bullet[] = [];
   player!: Jet; wave = 0; score = 0; kills = 0; time = 0; over = false; waveDelay = 0; combo = 0; comboT = 0;
   bestCombo = 0; shots = 0; hits = 0; shield = 0; overdrive = 0; warnT = 0; private nid = 1; spawnQueue = 0; intermission = 2;
   constructor(public diff: Difficulty) { this.reset(); }
 
   reset(): void {
+    this.bulletPool.length = 0;
     this.jets = []; this.pickups = []; this.missiles = []; this.bullets = []; this.events = []; this.wave = 0; this.score = 0; this.kills = 0; this.time = 0; this.over = false; this.intermission = 2; this.combo = 0; this.comboT = 0; this.bestCombo = 0; this.shots = 0; this.hits = 0; this.shield = 0; this.overdrive = 0; this.missileRegen = 0; this.stallWarnT = 0; this.afterburner = 0;
     const p = this.makeJet('player', 'fighter', new THREE.Vector3(0, 700, 2200), 1); p.q.identity(); p.speed = CRUISE; p.missiles = 6; p.hp = p.maxHp = 100;
     this.player = p;
@@ -201,7 +206,7 @@ export class SkySim {
     const target = p.alive ? p : null;
     if (!target) { this.flyJet(e, 0, 0.3, 0.5, dt); return; }
     const to = tmpV2.copy(target.pos).sub(e.pos); const dist = to.length();
-    const myFwd = forward(e, new THREE.Vector3()); const align = myFwd.dot(to.clone().divideScalar(dist || 1));
+    const myFwd = forward(e, aiForward); const align = myFwd.dot(to) / (dist || 1);
     e.throttle = e.kind === 'bomber' ? 0.4 : THREE.MathUtils.clamp(0.55 + (dist - 500) / 1500, 0.4, 1);
     // 나를 노리는 미사일 회피
     const threatened = this.missiles.some(m => m.alive && m.target === e.id && m.pos.distanceTo(e.pos) < 700);
@@ -218,9 +223,9 @@ export class SkySim {
       return;
     }
     // 전투기: 추격 → 근접하면 사선 이탈(strafe)로 오버슈트 방지
-    let aim = this.leadPoint(e, target, 520, new THREE.Vector3());
+    const aim = this.leadPoint(e, target, 520, aiAim);
     if (dist < 260 && e.strafe <= 0) { e.strafe = rnd(1.6, 3.2); e.bailT = Math.random() < 0.5 ? 1 : -1; }
-    if (dist < 300 && e.strafe > 0 && e.strafe < 2) { aim = e.pos.clone().addScaledVector(myFwd, 400).add(new THREE.Vector3(0, 220, 0)); aim.x += e.bailT * 240; }
+    if (dist < 300 && e.strafe > 0 && e.strafe < 2) { aim.copy(e.pos).addScaledVector(myFwd, 400); aim.y += 220; aim.x += e.bailT * 240; }
     const a = this.steerTo(e, aim, dt, 0.55 + e.skill * 0.5);
     if (align > 0.992 && dist < GUN_RANGE * 0.9 && e.gunCd <= 0) { this.fireGun(e, 0.03 * e.aimJitter * (2 - e.skill)); e.gunCd = e.kind === 'ace' ? 0.1 : 0.17; }
     if (e.missiles > 0 && e.missileCd <= 0 && a > 0.95 && dist > 500 && dist < 1500) { if (Math.random() < 0.55) { this.fireMissile(e, p.id); e.missiles--; } e.missileCd = rnd(8, 14) / e.skill; }
@@ -228,9 +233,12 @@ export class SkySim {
 
   fireGun(j: Jet, spread: number): void {
     if (j.team === 'player') this.shots++;
-    const dir = forward(j, new THREE.Vector3()); dir.x += rnd(-spread, spread); dir.y += rnd(-spread, spread); dir.z += rnd(-spread, spread); dir.normalize();
-    const side = new THREE.Vector3(j.kind === 'bomber' || j.kind === 'boss' ? 0 : (Math.random() < 0.5 ? -4 : 4), -1, 0).applyQuaternion(j.q);
-    this.bullets.push({ pos: j.pos.clone().add(side).addScaledVector(dir, 12), vel: dir.multiplyScalar(j.speed + 680), life: GUN_RANGE / 680, team: j.team, owner: j.id, alive: true });
+    const dir = forward(j, gunDir); dir.x += rnd(-spread, spread); dir.y += rnd(-spread, spread); dir.z += rnd(-spread, spread); dir.normalize();
+    const side = gunSide.set(j.kind === 'bomber' || j.kind === 'boss' ? 0 : (Math.random() < 0.5 ? -4 : 4), -1, 0).applyQuaternion(j.q);
+    if (this.bullets.length < MAX_BULLETS) {
+      const b = this.bulletPool.pop() ?? { pos: new THREE.Vector3(), vel: new THREE.Vector3(), life: 0, team: j.team, owner: j.id, alive: true };
+      b.pos.copy(j.pos).add(side).addScaledVector(dir, 12); b.vel.copy(dir).multiplyScalar(j.speed + 680); b.life = GUN_RANGE / 680; b.team = j.team; b.owner = j.id; b.alive = true; this.bullets.push(b);
+    }
     this.events.push({ t: 'gun', id: j.id });
   }
   fireMissile(j: Jet, target: number): void {
@@ -276,12 +284,12 @@ export class SkySim {
         if (!j.alive || j.team === b.team) continue;
         // 선분-구 판정(고속 탄 통과 방지)
         const r = j.kind === 'boss' ? 36 : j.kind === 'bomber' ? 22 : 13; const seg = tmpV2.copy(b.pos).sub(prev); const len2 = seg.lengthSq();
-        const tt = len2 > 0 ? THREE.MathUtils.clamp(new THREE.Vector3().copy(j.pos).sub(prev).dot(seg) / len2, 0, 1) : 0;
-        if (new THREE.Vector3().copy(prev).addScaledVector(seg, tt).distanceTo(j.pos) < r) { if (b.team === 'player') this.hits++; this.damage(j, b.team === 'player' ? GUN_DMG : GUN_DMG * 0.35, b.owner, b.pos); b.alive = false; break; }
+        const tt = len2 > 0 ? THREE.MathUtils.clamp(bulletTest.copy(j.pos).sub(prev).dot(seg) / len2, 0, 1) : 0;
+        if (bulletTest.copy(prev).addScaledVector(seg, tt).distanceTo(j.pos) < r) { if (b.team === 'player') this.hits++; this.damage(j, b.team === 'player' ? GUN_DMG : GUN_DMG * 0.35, b.owner, b.pos); b.alive = false; break; }
       }
       if (b.life <= 0 || b.pos.y < SEA_Y) b.alive = false;
     }
-    this.bullets = this.bullets.filter(b => b.alive);
+    let live = 0; for (const b of this.bullets) { if (b.alive) this.bullets[live++] = b; else this.bulletPool.push(b); } this.bullets.length = live;
   }
 
   damage(j: Jet, dmg: number, by: number, at: THREE.Vector3): void {

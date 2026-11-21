@@ -1,10 +1,10 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { fixMonster } from "./monster.js";
 import { modelBytes } from "./assets.js";
 import { chapters, makeLevel, route, neighbors } from "./levels.mjs";
 import { buildEnvironment } from "./environment.js";
 import { Sound } from "./sound.js";
-import { openViewer } from "./viewer.js";
 
 const $ = (id) => document.getElementById(id),
   C = 2.7,
@@ -17,6 +17,10 @@ let state = "home",
   ch = 0,
   level,
   items = [],
+  hidingSpots = [],
+  hiddenSpot = null,
+  hideBreath = 1,
+  hideReadyAt = 0,
   solved = false,
   found = [false, false, false],
   seen = new Set(),
@@ -42,6 +46,12 @@ let moved = 0,
   nextPath = 0,
   lastKnown = -1,
   grace = 0,
+  exitGrace = 0,
+  wasTracking = false,
+  searchRemaining = 0,
+  searching = false,
+  enemySteps = 0,
+  alertUntil = 0,
   enemyPhase = 0,
   stamina = 1,
   winded = false,
@@ -114,7 +124,7 @@ muted = read("rt-silent") !== true;
 toggleAudio();
 $("sound").onclick = $("gsound").onclick = toggleAudio;
 function screens(id) {
-  for (const key of ["home", "game", "viewer"]) $(key).hidden = key !== id;
+  for (const key of ["home", "game"]) $(key).hidden = key !== id;
 }
 function homepage() {
   state = "home";
@@ -132,11 +142,6 @@ function homepage() {
     ? "최근 탈출 기록  " + clock(read(LAST).elapsed)
     : "";
 }
-$("inspect").onclick = () => {
-  screens("viewer");
-  openViewer();
-};
-$("back").onclick = homepage;
 function clearInputs() {
   keys.clear();
   pointer.x = pointer.y = 0;
@@ -259,6 +264,7 @@ async function setup() {
   if (!model) {
     const gltf = await new GLTFLoader().parseAsync(await modelBytes(), "");
     model = gltf.scene;
+    fixMonster(THREE, model);
     model.traverse((o) => {
       if (o.isMesh) o.frustumCulled = false;
     });
@@ -326,6 +332,10 @@ function pointPlayer() {
   yaw = Math.atan2(-(next.x - p.x), -(next.z - p.z));
   pitch = 0;
   camera.rotation.set(0, yaw, 0, "YXZ");
+  hiddenSpot = null;
+  hideBreath = 1;
+  hideReadyAt = 0;
+  $("viewWrap").classList.remove("hiding");
   stamina = 1;
   winded = false;
   crouched = false;
@@ -337,6 +347,13 @@ function pointPlayer() {
   nextPath = 0;
   lastKnown = -1;
   grace = 22;
+  exitGrace = 0;
+  wasTracking = false;
+  searchRemaining = 0;
+  searching = false;
+  enemySteps = 0;
+  alertUntil = 0;
+  $("viewWrap").classList.remove("noticed");
   enemyPhase = 0;
   lastCell = -1;
   nearest = null;
@@ -511,6 +528,69 @@ function prop(cell, type, i = 0) {
   root.add(sign);
   return { cell, type, i, root };
 }
+function makeHidingSpots() {
+  const reserved = [level.start, level.exit, level.nest, ...level.items];
+  const candidates = level.reachable.filter((cell) =>
+    neighbors(level.map, cell).length >= 3 &&
+    reserved.every((other) => pathsDistXZ(cell, other) > 2),
+  );
+  const selected = [];
+  for (const cell of candidates) {
+    if (selected.some((other) => pathsDistXZ(cell, other) < 5)) continue;
+    const x = cell % level.w, z = Math.floor(cell / level.w);
+    const wall = [[1, 0], [-1, 0], [0, 1], [0, -1]].find(
+      ([dx, dz]) => level.map[z + dz]?.[x + dx] === "#",
+    );
+    if (!wall) continue;
+    selected.push(cell);
+    const center = xy(cell), [dx, dz] = wall;
+    const root = new THREE.Group();
+    root.position.set(center.x + dx * 0.82, 0, center.z + dz * 0.82);
+    // Local back points toward the wall; the open front faces the room.
+    root.rotation.y = Math.atan2(dx, dz);
+    props.add(root);
+    const metal = paint(0x454b49), trim = paint(0x242a29);
+    mesh(new THREE.BoxGeometry(1.02, 2.05, 0.08), metal, root, 0, 1.025, 0.35);
+    for (const side of [-0.49, 0.49])
+      mesh(new THREE.BoxGeometry(0.08, 2.05, 0.72), metal, root, side, 1.025, 0);
+    mesh(new THREE.BoxGeometry(1.02, 0.08, 0.72), trim, root, 0, 2.05, 0);
+    for (const side of [-0.36, 0.36])
+      mesh(new THREE.BoxGeometry(0.26, 1.95, 0.06), trim, root, side, 1, -0.35);
+    hidingSpots.push({ type: "hide", cell, root, dx, dz });
+  }
+}
+function leaveHiding(exhausted = false) {
+  if (!hiddenSpot) return;
+  const spot = hiddenSpot;
+  hiddenSpot = null;
+  hideReadyAt = now + 8;
+  exitGrace = 1.5;
+  $("lightState").textContent = lightOn ? "켜짐" : "꺼짐";
+  player.x = spot.root.position.x - spot.dx * 0.9;
+  player.z = spot.root.position.z - spot.dz * 0.9;
+  $("viewWrap").classList.remove("hiding");
+  message(exhausted ? "숨이 차서 나왔습니다." : "숨을 곳에서 나왔습니다.", 2);
+}
+function enterHiding(spot) {
+  if (now < hideReadyAt) {
+    message("숨을 고르는 중입니다. 잠시 후 다시 숨으세요.", 2);
+    return;
+  }
+  const distance = Math.hypot(player.x - entity.position.x, player.z - entity.position.z);
+  if (!grace && distance < 9 && clearLine(player, entity)) {
+    message("괴물이 보고 있습니다. 시야에서 벗어난 뒤 숨으세요.", 3);
+    return;
+  }
+  hiddenSpot = spot;
+  $("lightState").textContent = "꺼짐";
+  hideBreath = 1;
+  player.x = spot.root.position.x;
+  player.z = spot.root.position.z;
+  yaw = Math.atan2(spot.dx, spot.dz);
+  pitch = 0;
+  $("viewWrap").classList.add("hiding");
+  message("숨을 참는 중 · E / 조사로 나오기", 3);
+}
 function loadScene() {
   model.removeFromParent();
   if (environment?.userData?.dispose) environment.userData.dispose();
@@ -540,6 +620,8 @@ function loadScene() {
   items = level.items.map((cell, i) => prop(cell, "item", i));
   items.forEach((o) => (o.root.visible = !found[o.i]));
   items.push(prop(level.start, "station"), prop(level.exit, "exit"));
+  hidingSpots = [];
+  makeHidingSpots();
   entity = new THREE.Group();
   entity.add(model);
   scene.add(entity);
@@ -617,7 +699,7 @@ function renderHUD() {
   refreshGuide();
 }
 function toggleLamp() {
-  if (state !== "play") return;
+  if (state !== "play" || hiddenSpot) return;
   lightOn = !lightOn;
   renderHUD();
   message("손전등 " + (lightOn ? "켜짐" : "꺼짐"), 1);
@@ -670,12 +752,12 @@ function drawMap(canvas) {
     w = level.w,
     S = 14;
   canvas.width = canvas.height = w * S;
-  ctx.fillStyle = "#0e1616";
+  ctx.fillStyle = "#101010";
   ctx.fillRect(0, 0, w * S, w * S);
   for (const id of level.reachable) {
     const x = id % w,
       z = Math.floor(id / w);
-    ctx.fillStyle = seen.has(id) ? "#59726a" : "#283b36";
+    ctx.fillStyle = seen.has(id) ? "#777777" : "#303030";
     ctx.fillRect(x * S, z * S, S, S);
   }
   if (guidance && guidePath.length) {
@@ -686,7 +768,7 @@ function drawMap(canvas) {
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
-    ctx.strokeStyle = "#d8dba1";
+    ctx.strokeStyle = "#dddddd";
     ctx.lineWidth = 2.5;
     ctx.lineJoin = "round";
     ctx.stroke();
@@ -697,21 +779,24 @@ function drawMap(canvas) {
     ctx.fillStyle = color;
     ctx.beginPath();
     if (shape === "square") ctx.rect(x - 4, y - 4, 8, 8);
-    else ctx.arc(x, y, 4.6, 0, Math.PI * 2);
+    else if (shape === "diamond") {
+      ctx.moveTo(x, y - 5); ctx.lineTo(x + 5, y);
+      ctx.lineTo(x, y + 5); ctx.lineTo(x - 5, y); ctx.closePath();
+    } else ctx.arc(x, y, 4.6, 0, Math.PI * 2);
     ctx.fill();
   };
   level.items.forEach((id, i) => {
-    if (!found[i]) dot(id, "#e4a36d", "square");
+    if (!found[i]) dot(id, "#f0f0f0", "square");
   });
-  dot(level.start, "#75c3ce", "square");
-  dot(level.exit, "#9ad991", "square");
+  dot(level.start, "#dddddd", "circle");
+  dot(level.exit, "#dddddd", "diamond");
   const pos = cellOf(player),
     px = ((pos % w) + 0.5) * S,
     pz = (Math.floor(pos / w) + 0.5) * S;
   ctx.save();
   ctx.translate(px, pz);
   ctx.rotate(-yaw);
-  ctx.fillStyle = "#fff4d4";
+  ctx.fillStyle = "#ffffff";
   ctx.beginPath();
   ctx.moveTo(0, -8);
   ctx.lineTo(-5, 5);
@@ -735,7 +820,7 @@ function mapPanel(fromBrief = false) {
       const p = document.createElement("p");
       p.className = "mapkey";
       p.innerHTML =
-        "<i>▲ 현재 위치</i><i>■ 회수 장비</i><i>■ 제어 장치</i><i>■ 출구</i>";
+        "<i>▲ 현재 위치</i><i>■ 회수 장비</i><i>● 제어 장치</i><i>◆ 출구</i>";
       el.append(p);
       const button = document.createElement("button");
       button.className = "map-guide";
@@ -884,7 +969,10 @@ function puzzle(reset = true) {
   sound.pause(false);
 }
 function interact() {
-  if (state !== "play" || !nearest) return;
+  if (state !== "play") return;
+  if (hiddenSpot) { leaveHiding(); return; }
+  if (!nearest) return;
+  if (nearest.type === "hide") { enterHiding(nearest); return; }
   const o = nearest,
     c = chapters[ch];
   if (o.type === "item") {
@@ -984,18 +1072,36 @@ function enemyUpdate(dt, running) {
   const e = entity.position;
   const dist = Math.hypot(player.x - e.x, player.z - e.z);
   grace = Math.max(0, grace - dt);
+  exitGrace = Math.max(0, exitGrace - dt);
   const visible = dist <= 14 && clearLine(player, e);
-  const inSight = visible && dist <= (lightOn ? 10.7 : 6.1);
+  const inSight = !hiddenSpot && visible && dist <= (lightOn ? 10.7 : 6.1);
   const hearRange = running ? 14 : crouched ? 1.6 : 4.7;
-  const hear = moved > dt * 0.15 && dist < hearRange * (visible ? 1 : 0.55);
+  const hear = !hiddenSpot && moved > dt * 0.15 && dist < hearRange * (visible ? 1 : 0.55);
   const tracking = !grace && (inSight || hear);
   const playerCell = cellOf(player);
   if (tracking) {
+    if (!wasTracking) {
+      sound.notice();
+      alertUntil = now + 1.4;
+    }
     lastKnown = playerCell;
     enemyPhase = 5.5;
+    searchRemaining = 0;
+    searching = false;
   } else {
-    enemyPhase = Math.max(0, enemyPhase - dt);
+    if (wasTracking && lastKnown !== -1) searchRemaining = 6;
+    if (searchRemaining > 0) {
+      const nearLastSeen = pathsDistXZ(cellOf(e), lastKnown) <= 1;
+      if (nearLastSeen) searching = true;
+      if (searching) searchRemaining = Math.max(0, searchRemaining - dt);
+      enemyPhase = Math.max(enemyPhase, 0.01);
+    } else {
+      searching = false;
+      enemyPhase = Math.max(0, enemyPhase - dt);
+    }
   }
+  wasTracking = tracking;
+  $("viewWrap").classList.toggle("noticed", now < alertUntil);
 
   nextPath -= dt;
   const ec = cellOf(e);
@@ -1004,6 +1110,10 @@ function enemyUpdate(dt, running) {
     // Replan from the next corridor center. This keeps sharp turns out of walls.
     const anchor = path[0] ?? ec;
     let goal = lastKnown;
+    if (!tracking && searching && searchRemaining > 0) {
+      const nearby = [lastKnown, ...neighbors(level.map, lastKnown)];
+      goal = nearby[Math.floor(Math.random() * nearby.length)];
+    }
     if (!enemyPhase) {
       const previousGoal = path.at(-1);
       if (previousGoal !== undefined && previousGoal !== anchor) {
@@ -1031,7 +1141,7 @@ function enemyUpdate(dt, running) {
     const x = destination.x - e.x;
     const z = destination.z - e.z;
     const d = Math.hypot(x, z);
-    const v = (enemyPhase ? 1.8 + ch * 0.09 : 0.92 + ch * 0.05) * dt;
+    const v = (enemyPhase ? Math.min(3.1, 2.7 + ch * 0.135) : 1.06 + ch * 0.0575) * dt;
     if (d <= v) {
       e.x = destination.x;
       e.z = destination.z;
@@ -1043,6 +1153,11 @@ function enemyUpdate(dt, running) {
     if (d > 0.03) entity.rotation.y = Math.atan2(x, z);
   }
   const travel = Math.hypot(e.x - startX, e.z - startZ);
+  enemySteps += travel;
+  if (enemySteps >= 0.95) {
+    sound.monsterStep(dist);
+    enemySteps = 0;
+  }
   stride += travel * 5.5;
   model.position.y = 0.009 + 0.009 * Math.abs(Math.sin(stride));
   model.rotation.z = 0.025 * Math.sin(now * 2.1);
@@ -1059,7 +1174,7 @@ function enemyUpdate(dt, running) {
   $("danger").style.opacity = String(threat * 0.53);
   $("strain").textContent =
     threat > 0.68 ? "바로 근처" : threat > 0.28 ? "접근 중" : "안정";
-  if (!grace && Math.hypot(player.x - e.x, player.z - e.z) < 0.73 && clearLine(player, e)) {
+  if (!hiddenSpot && !grace && !exitGrace && Math.hypot(player.x - e.x, player.z - e.z) < 0.73 && clearLine(player, e)) {
     caught();
   }
 }
@@ -1076,8 +1191,8 @@ function update(dt) {
     (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0) -
     pointer.y;
   let r = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0) + pointer.x;
-  if (keys.has("ArrowLeft")) yaw += dt * 1.55;
-  if (keys.has("ArrowRight")) yaw -= dt * 1.55;
+  if (!hiddenSpot && keys.has("ArrowLeft")) yaw += dt * 1.55;
+  if (!hiddenSpot && keys.has("ArrowRight")) yaw -= dt * 1.55;
   const length = Math.hypot(f, r);
   if (length > 1) {
     f /= length;
@@ -1086,7 +1201,7 @@ function update(dt) {
   const sprintHeld = keys.has("ShiftLeft") || keys.has("ShiftRight") || mobileRun;
   if (stamina <= 0.045) winded = true;
   else if (!sprintHeld || stamina >= 0.3) winded = false;
-  const running = sprintHeld && !crouched && !winded && length > 0.1;
+  const running = !hiddenSpot && sprintHeld && !crouched && !winded && length > 0.1;
   stamina = THREE.MathUtils.clamp(
     stamina + (running ? -0.14 : 0.11) * dt,
     0,
@@ -1095,7 +1210,7 @@ function update(dt) {
   const scale = (running ? 3.22 : crouched ? 1.05 : 1.88) * dt,
     oldX = player.x,
     oldZ = player.z;
-  shift(
+  if (!hiddenSpot) shift(
     (-Math.sin(yaw) * f + Math.cos(yaw) * r) * scale,
     (-Math.cos(yaw) * f - Math.sin(yaw) * r) * scale,
   );
@@ -1105,6 +1220,10 @@ function update(dt) {
     sound.step(running, crouched);
     stepAt = 0;
   }
+  if (hiddenSpot) {
+    hideBreath = Math.max(0, hideBreath - dt / 18);
+    if (hideBreath === 0) leaveHiding(true);
+  }
   eyeHeight = THREE.MathUtils.damp(eyeHeight, crouched ? 1.12 : 1.58, 12, dt);
   camera.position.set(
     player.x,
@@ -1113,7 +1232,7 @@ function update(dt) {
     player.z,
   );
   camera.rotation.set(pitch, yaw, 0, "YXZ");
-  lamp.visible = lightOn;
+  lamp.visible = beam.visible = lightOn && !hiddenSpot;
   enemyUpdate(dt, running);
   if (state !== "play") return;
   const cell = cellOf(player);
@@ -1127,7 +1246,7 @@ function update(dt) {
   }
   nearest = null;
   let reach = 2.16;
-  for (const o of items) {
+  for (const o of [...items, ...hidingSpots]) {
     if (!o.root.visible) continue;
     const q = o.root.position,
       d = Math.hypot(q.x - player.x, q.z - player.z);
@@ -1140,8 +1259,8 @@ function update(dt) {
       reach = d;
     }
   }
-  const caption = nearest
-    ? nearest.type === "item"
+  const caption = hiddenSpot ? "숨을 곳에서 나오기" : nearest
+    ? nearest.type === "hide" ? "숨기" : nearest.type === "item"
       ? chapters[ch].item + " 회수"
       : nearest.type === "exit"
         ? "출구 작동"
@@ -1149,8 +1268,8 @@ function update(dt) {
     : "";
   $("prompt").hidden = !caption;
   $("promptText").textContent = caption;
-  $("act").disabled = !nearest;
-  $("stamina").style.transform = "scaleX(" + stamina.toFixed(3) + ")";
+  $("act").disabled = !nearest && !hiddenSpot;
+  $("stamina").style.transform = "scaleX(" + (hiddenSpot ? hideBreath : stamina).toFixed(3) + ")";
   $("timer").textContent = clock(elapsed);
   if (now > noticeUntil) $("toast").textContent = "";
   if (now > saveAt) {
@@ -1215,6 +1334,7 @@ window.addEventListener("blur", () => {
   if (state === "play") pauseGame();
 });
 function look(dx, dy) {
+  if (hiddenSpot) return;
   yaw -= dx * 0.00245;
   pitch = THREE.MathUtils.clamp(pitch - dy * 0.0022, -1.18, 1.18);
 }

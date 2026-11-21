@@ -1,7 +1,7 @@
 // 1대1 PvP 공통 타입. 백엔드(Supabase)와 개발용 로컬 백엔드가 같은 인터페이스를 구현합니다.
 import type { ChatKey, ChatMessage } from './chat';
-export type GameKind = 'city' | 'race' | 'rts' | 'shooter' | 'outlaw';
-export const GAME_NAMES: Record<GameKind, string> = { city: 'LAST CITY', race: 'SPEED RUSH', rts: 'FRONTLINE', shooter: 'ZERO ZONE', outlaw: 'OUTLAW CITY' };
+export type GameKind = 'city' | 'race' | 'rts' | 'shooter' | 'outlaw' | 'squad';
+export const GAME_NAMES: Record<GameKind, string> = { city: 'LAST CITY', race: 'SPEED RUSH', rts: 'FRONTLINE', shooter: 'ZERO ZONE', outlaw: 'OUTLAW CITY', squad: 'SQUAD CLASH' };
 
 export interface Account { id: string; email: string; nickname: string }
 export interface MatchRow {

@@ -36,7 +36,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   const prefs = readPreferences(), touch = matchMedia('(pointer: coarse)').matches;
   const root = document.createElement('div'); root.className = 'city-root' + (touch ? ' touch' : '');
   root.innerHTML = `<canvas class="city-canvas3d"></canvas><canvas class="city-canvas" hidden></canvas><div class="c-layer" id="c-layer"></div><div class="c-hurt" id="c-hurt"></div><div class="c-cross" id="c-cross"><i></i><b></b></div>
-  <div class="city-hud" hidden>
+  <div class="city-hud" hidden><div class="c-damage" id="c-damage"></div><div class="c-income" id="c-income"></div>
     <div class="c-tl"><div class="c-res" id="c-res"></div><div class="c-quest" id="c-quest"></div></div>
     <div class="c-tc" id="c-zone"></div>
     <div class="c-tr"><canvas id="c-mini" width="200" height="200" aria-label="미니맵"></canvas><div id="c-wanted"></div><div class="c-topbtns"><button data-act="view" id="c-view" title="시점 전환 (V)">1인칭</button><button data-act="missions" title="작전 지령 (J)">임무</button><button data-act="map" title="전술 지도 (M)">지도</button><button data-act="chat" id="c-chatbtn" title="채팅 (Enter)" hidden>채팅</button><button data-act="pause" title="일시정지 (Esc)">Ⅱ</button></div></div>
@@ -57,7 +57,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   type View = 'fp' | 'tp' | 'top';
   let preView: View = 'fp', tut: { s: TutState; c: Counters } | null = null, tutSig = '', tutDone = readTutDone(), lastPos = { x: 0, y: 0 }, lastYaw = 0, tutInfoLock = false;
   let models: Models | null = null, R3: Renderer3D | null = null, view: View = 'fp', locked = false, lockFail = false, expectUnlock = false, touchFire = false, hurt = 0, lastLook = 0, hitT = 0;
-  const tags: HTMLElement[] = [], marks: HTMLElement[] = []; let area = '', areaT = 0, sirenT = 0;
+  const tags: HTMLElement[] = [], marks: HTMLElement[] = []; let area = '', areaT = 0, sirenT = 0, heartbeatT = 0;
   let world: World | null = null, R: Renderer | null = null, raf = 0, last = 0, acc = 0, paused = false, closed = false, ghost: Ghost | null = null, tab = 'train', hudT = 0, toastT = 0, bannerT = 0, shopOpen = false, resultShown = false, userZoom = 1, combat = 0, klass: ClassId = 'warlord';
   let demolishArmed: { id: number; at: number } | null = null;
   /** 1대1 결투 진행 상태. null 이면 혼자 하는 게임입니다. */
@@ -97,8 +97,8 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       <button class="c-tutcard${tutDone ? '' : ' rec'}" data-act="tutorial"><span>${tutDone ? '다시 연습' : '처음이라면 추천 · 약 5분'}</span><b>튜토리얼 시작</b><p>이동·사격·사업체·기지 건설·병력 지휘·차량·시장까지 한 단계씩 안전하게 익힙니다. 연습장에서는 자기장과 라이벌이 멈춰 있습니다.</p></button>
       <div class="c-sub">${tutDone ? '바로 시작할 영웅을 고르세요' : '또는 바로 시작할 영웅을 고르세요'}</div>
       <div class="c-classes">${(Object.keys(CLASSES) as ClassId[]).map(k => `<button class="c-class" data-act="class:${k}"><span>${CLASSES[k].tag}</span><b>${CLASSES[k].name}</b><p>${CLASSES[k].desc}</p><em>Q · ${CLASSES[k].skill}</em><small>${CLASSES[k].skillDesc}</small></button>`).join('')}</div>
-      <div class="c-keys">${touch ? '<span>왼쪽 드래그 이동</span><span>오른쪽 드래그 시점</span><span>사격 버튼</span><span>버튼으로 상호작용·지휘</span>' : '<span><b>WASD</b> 이동</span><span><b>마우스</b> 시점·사격</span><span><b>V</b> 1인칭/3인칭/전술뷰</span><span><b>E</b> 매입·줍기</span><span><b>F</b> 차량 탑승</span><span><b>Tab</b> 지휘 패널</span><span><b>우클릭</b> 병력 돌격</span><span><b>Z/X</b> 집결·사수</span><span><b>Space</b> 대시</span><span><b>M</b> 지도</span><span><b>Delete</b> 철거</span>'}</div>
-      ${PVP_ENABLED ? `<div class="c-sub">1대1 결투 · 멀티 방(3~6인) · 로그인 필요</div><div class="c-diffs">${(Object.keys(CLASSES) as ClassId[]).map(k => `<button class="c-diff" data-act="duel:${k}" title="${CLASSES[k].desc}">${CLASSES[k].name}으로 대전·방 만들기</button>`).join('')}</div><p class="c-lead c-diffdesc">같은 도시에서 둘만 남아 ${TARGET_KILLS}킬을 먼저 채우면 승리합니다. 병력을 뽑고 건물을 지어 싸우세요. 상대 본부를 무너뜨리면 즉시 승리하고, 내 본부가 무너지면 패배합니다. 제한 시간은 ${clock(TIME_LIMIT)}입니다. 방 만들기로 3~6명이 모이면 병력 없이 영웅끼리 싸우는 난투전(목숨 ${ROOM_LIVES}개, 마지막 생존자 우승)이 열립니다.</p>` : ''}
+      <details class="c-setup-details"><summary>조작법</summary><div class="c-keys">${touch ? '<span>왼쪽 드래그 이동</span><span>오른쪽 드래그 시점</span><span>사격 버튼</span><span>버튼으로 상호작용·지휘</span>' : '<span><b>WASD</b> 이동</span><span><b>마우스</b> 시점·사격</span><span><b>V</b> 1인칭/3인칭/전술뷰</span><span><b>E</b> 매입·줍기</span><span><b>F</b> 차량 탑승</span><span><b>Tab</b> 지휘 패널</span><span><b>우클릭</b> 병력 돌격</span><span><b>Z/X</b> 집결·사수</span><span><b>Space</b> 대시</span><span><b>M</b> 지도</span><span><b>Delete</b> 철거</span>'}</div></details>
+      ${PVP_ENABLED ? `<details class="c-setup-details"><summary>온라인 대전</summary><div class="c-sub">1대1 결투 · 멀티 방(3~6인) · 로그인 필요</div><div class="c-diffs">${(Object.keys(CLASSES) as ClassId[]).map(k => `<button class="c-diff" data-act="duel:${k}" title="${CLASSES[k].desc}">${CLASSES[k].name}으로 대전·방 만들기</button>`).join('')}</div><p class="c-lead c-diffdesc">같은 도시에서 둘만 남아 ${TARGET_KILLS}킬을 먼저 채우면 승리합니다. 병력을 뽑고 건물을 지어 싸우세요. 상대 본부를 무너뜨리면 즉시 승리하고, 내 본부가 무너지면 패배합니다. 제한 시간은 ${clock(TIME_LIMIT)}입니다. 방 만들기로 3~6명이 모이면 병력 없이 영웅끼리 싸우는 난투전(목숨 ${ROOM_LIVES}개, 마지막 생존자 우승)이 열립니다.</p></details>` : ''}
       <div class="c-sub">난이도</div><div class="c-diffs">${DIFFICULTY_ORDER.map(d => `<button class="c-diff${d === diffSel ? ' on' : ''}" data-act="diff:${d}" title="${DIFFICULTY[d].desc}">${DIFFICULTY[d].label}</button>`).join('')}</div><p class="c-lead c-diffdesc">${DIFFICULTY[diffSel].desc}</p>
       <div class="c-setup-foot"><span>난이도 · ${DIFFICULTY[diffSel].label}</span><button data-act="exit" class="c-ghost">메뉴로</button></div></section>`;
   }
@@ -129,7 +129,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     view = v; canvas.hidden = v !== 'top'; canvas3.hidden = v === 'top'; cross.hidden = v === 'top'; layer.hidden = v === 'top'; if (R3 && v !== 'top') R3.mode = v; if (v === 'top') unlock(); else { R3?.resize(); }
     R?.resize(); q('#c-view').textContent = v === 'fp' ? '1인칭' : v === 'tp' ? '3인칭' : '전술뷰';
   }
-  const onLock = (): void => { locked = document.pointerLockElement === canvas3; if (locked) { expectUnlock = false; everLocked = true; lookMuteUntil = performance.now() + 220; return; } const was = expectUnlock; expectUnlock = false; if (!was && view !== 'top' && world && !world.over && !paused && panel.hidden && bigmap.hidden && q('#c-missions').hidden && world.factions[0].pending === 0) pause(); };
+  const onLock = (): void => { locked = document.pointerLockElement === canvas3; if (locked) { expectUnlock = false; everLocked = true; lookMuteUntil = performance.now() + 220; return; } mouse.down = false; if (world) world.input.fire = false; const was = expectUnlock; expectUnlock = false; if (!was && view !== 'top' && world && !world.over && !paused && panel.hidden && bigmap.hidden && q('#c-missions').hidden && world.factions[0].pending === 0) pause(); };
 
   const onMouseMove = (e: MouseEvent): void => {
     if (!R3 || view === 'top' || paused) return;
@@ -493,7 +493,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     recordMatch(win, w.time, f.kills);
     try { const c = readCityCareer(); localStorage.setItem(CITY_KEY, JSON.stringify({ matches: c.matches + 1, wins: c.wins + Number(win), best: c.best ? Math.min(c.best, place) : place })); } catch { /* 기록은 선택 사항 */ }
     modal.innerHTML = `<section class="c-result ${win ? 'win' : ''}"><div class="c-kicker">${win ? 'LAST KINGDOM STANDING' : 'KINGDOM FALLEN'}</div><h2>${win ? '최후의 왕국!' : `#${place} <small>/ 8 왕국</small>`}</h2><p class="c-lead">${win ? '도시의 모든 것이 이제 당신의 것입니다.' : place <= 3 ? '거의 다 왔습니다. 한 판 더!' : '경제를 먼저 굴리고, 병력과 함께 움직여 보세요.'}</p>
-      <div class="c-stats"><div><b>${clock(w.time)}</b><span>생존 시간</span></div><div><b>${f.kills}</b><span>처치</span></div><div><b>${f.bossKills}</b><span>보스 처치</span></div><div><b>$${$(f.earned)}</b><span>총 수익</span></div><div><b>${f.level}</b><span>보스 레벨</span></div><div><b>${w.eventsDone}</b><span>부업 완료</span></div></div>
+      <div class="c-stats"><div><b>${clock(w.time)}</b><span>생존 시간</span></div><div><b>${f.kills}</b><span>처치</span></div><div><b>${w.businesses.filter(z => z.owner === 0).length}</b><span>보유 사업체</span></div><div><b>$${$(f.earned)}</b><span>총 수익</span></div><div><b>${f.level}</b><span>보스 레벨</span></div><div><b>${w.eventsDone}</b><span>부업 완료</span></div></div>
       <div class="c-actions"><button data-act="retry" class="c-primary">다시 도전</button><button data-act="exit">메뉴로</button></div></section>`;
   }
 
@@ -533,6 +533,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   const aimPoint = (): { x: number; y: number } => view === 'top' || !R3 ? R!.toWorld(mouse.x, mouse.y) : R3.groundPoint(900);
   const onBlur = (): void => {
     keys.clear(); mouse.down = false; touchFire = false; looks.clear();
+    if (world) { world.input.fire = false; world.input.mx = world.input.my = 0; world.input.dash = false; world.input.brake = false; }
     for (const stick of [sticks.move, sticks.aim]) { stick.id = -1; stick.x = 0; stick.y = 0; }
     if (world && !world.over && !paused && world.factions[0].pending === 0 && document.hidden) pause();
   };
@@ -650,6 +651,18 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (b && !w.businesses.some(q2 => q2.owner === 0)) { let best: { x: number; y: number } | null = null, bd = 1e9; for (const q2 of w.businesses) if (q2.owner < 0 && q2.kind !== 'gunshop') { const d = Math.hypot(q2.x - b.x, q2.y - b.y); if (d < bd) { bd = d; best = q2; } } if (best) list.push({ x: best.x, y: best.y, h: 60, text: '매입 가능', color: '#ffffff', edge: true }); }
     for (const f of w.factions) { if (f.id === 0) continue; const o = w.boss(f.id); if (!o || !b) continue; const d = Math.hypot(o.x - b.x, o.y - b.y); if (d < 1500 && (!w.opts.duel || w.canSee(b.x, b.y, o.x, o.y))) list.push({ x: o.x, y: o.y, h: 62, text: `${f.name} Lv.${f.level} · ${Math.ceil(o.hp)}`, color: f.color, edge: false }); }
     if (tut) { list.length = 0; const st = STEPS[tut.s.i], mk = st?.marker?.({ w, c: tut.c, s: tut.s, yaw: r3.yaw }); if (mk) list.push({ x: mk.x, y: mk.y, h: mk.h, text: mk.text, color: '#ffe27a', edge: true }); }
+    else if (b && !duel && !room) {
+      const active = missionLog(w).findIndex(m => !m.done);
+      let target: { x: number; y: number } | undefined;
+      if (active === 1 || active === 2) target = w.hq(0) ?? undefined;
+      else if (active === 0 || active === 3 || active === 4 || active === 5) {
+        const candidates = w.businesses.filter(z => active === 3 ? z.kind === 'gunshop' : active === 5 ? z.owner > 0 : z.owner < 0 && z.kind !== 'gunshop');
+        target = candidates.sort((a, c) => Math.hypot(a.x - b.x, a.y - b.y) - Math.hypot(c.x - b.x, c.y - b.y))[0];
+      } else if (active >= 6) {
+        target = w.factions.filter(f => f.id !== 0 && f.alive).map(f => w.hq(f.id)).filter((h): h is NonNullable<typeof h> => !!h).sort((a, c) => Math.hypot(a.x - b.x, a.y - b.y) - Math.hypot(c.x - b.x, c.y - b.y))[0];
+      }
+      if (target) list.push({ x: target.x, y: target.y, h: 90, text: '목표', color: '#ffe27a', edge: true });
+    }
     while (marks.length < list.length) { const el = document.createElement('div'); el.className = 'c-mark'; layer.append(el); marks.push(el); }
     marks.forEach((el, i) => {
       const m = list[i]; if (!m) { el.style.display = 'none'; return; }
@@ -657,7 +670,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       if (off && !m.edge) { el.style.display = 'none'; return; }
       if (off) { let dx = x - r3.w / 2, dy = y - r3.h / 2; if (p.behind) { dx = -dx; dy = Math.abs(dy) + r3.h; } const k = Math.min((r3.w / 2 - 50) / Math.abs(dx || 1), (r3.h / 2 - 60) / Math.abs(dy || 1)); x = r3.w / 2 + dx * k; y = r3.h / 2 + dy * k; }
       const dist = b ? Math.round(Math.hypot(m.x - b.x, m.y - b.y) / 30) : 0;
-      el.style.display = ''; el.style.transform = `translate(${x}px,${y}px) translate(-50%,-50%)`; el.style.color = m.color; el.textContent = m.edge ? `${m.text} ${dist}m` : m.text; el.classList.toggle('edge', off);
+      el.style.display = ''; el.style.transform = `translate(${x}px,${y}px) translate(-50%,-50%)`; el.style.setProperty('--direction', `${Math.atan2(y - r3.h / 2, x - r3.w / 2)}rad`); el.style.color = m.color; el.textContent = m.edge ? `${m.text} ${dist}m` : m.text; el.classList.toggle('edge', off);
     });
   }
   function crossTarget(): string {
@@ -683,7 +696,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
         const ox = b ? b.x : 0, oy = b ? b.y : 0; inp.ax = ox + c * 600; inp.ay = oy + s * 600; inp.fire = ((mouse.down && (locked || lockFail)) || touchFire) && !ghost && !w.inside;
       } else {
         inp.mx = mx; inp.my = my;
-        if (sticks.aim.id >= 0 && b) { const m = Math.hypot(sticks.aim.x, sticks.aim.y); if (m > 0.2) { inp.ax = b.x + sticks.aim.x / m * 300; inp.ay = b.y + sticks.aim.y / m * 300; } inp.fire = m > 0.35; }
+        if (sticks.aim.id >= 0 && b) { const m = Math.hypot(sticks.aim.x, sticks.aim.y); if (m > 0.2) { inp.ax = b.x + sticks.aim.x / m * 300; inp.ay = b.y + sticks.aim.y / m * 300; } inp.fire = m > 0.35 && !ghost && !w.inside; }
         else if (touch && b) { inp.fire = touchFire; if (Math.hypot(mx, my) > 0.2) { inp.ax = b.x + mx * 300; inp.ay = b.y + my * 300; } }
         else { const p = r.toWorld(mouse.x, mouse.y); inp.ax = p.x; inp.ay = p.y; inp.fire = mouse.down && !ghost; }
       }
@@ -695,11 +708,12 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
         const d = Math.hypot(e.x - lx, e.y - ly), vol = Math.max(0, 1 - d / 1200);
         if (e.t === 'shot') { audio.play(e.s!, vol * (e.f === 0 ? 1 : 0.6)); if (vol > 0.3) combat = Math.min(1, combat + 0.08); }
         else if (e.t === 'boom') audio.play('boom', vol); else if (e.t === 'hit') { if (e.a === 1) { hitT = 0.14; cross.classList.add('hit'); audio.play('hit', 0.9); } else audio.play('hit', vol * 0.5); } else if (e.t === 'spark') audio.play('hit', vol * 0.4); else if (e.t === 'death') audio.play('death', vol);
-        else if (e.t === 'kill') { hitT = 0.3; cross.classList.add('hit', 'kill'); audio.play('pickup', 0.8); }
-        else if (e.t === 'phurt') { hurt = Math.min(1, hurt + (e.a ?? 10) / 45); audio.play('hurt', 0.7); }
+        else if (e.t === 'kill') { hitT = 0.3; cross.classList.add('hit', 'kill'); audio.play('pickup', 0.8); w.say(`처치 · ${e.s ?? '적'}`, '#e9c989'); }
+        else if (e.t === 'phurt') { hurt = Math.min(1, hurt + (e.a ?? 10) / 45); audio.play('hurt', 0.7); const el = q('#c-damage'); el.textContent = `−${Math.ceil(e.a ?? 0)}`; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show'); }
+        else if (e.t === 'income') { const el = q('#c-income'); el.textContent = `+$${$(e.a ?? 0)}`; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show'); }
         else if (e.t === 'cash' && e.f === 0) audio.play('cash'); else if (e.t === 'pickup' && d < 60) audio.play('pickup'); else if (e.t === 'levelup' && e.f === 0) audio.play('levelup');
         else if (e.t === 'order') { if (tut) tut.c.orders++; } else if (e.t === 'quest') { audio.play('quest'); banner(`목표 달성 +$${e.a}`); } else if (e.t === 'siren') audio.play('siren'); else if (e.t === 'announce') { audio.play('announce'); banner(e.s!); }
-        else if (e.t === 'crash') audio.play('crash', 0.8); else if (e.t === 'reload') audio.play('reload'); else if (e.t === 'dash') audio.play('dash'); else if (e.t === 'door') audio.play('door'); else if ((e.t === 'built' || e.t === 'capture') && e.f === 0) audio.play('build');
+        else if (e.t === 'crash') audio.play('crash', 0.8); else if (e.t === 'reload') audio.play('reload'); else if (e.t === 'dash') audio.play('dash'); else if (e.t === 'door') audio.play('door'); else if ((e.t === 'built' || e.t === 'capture') && e.f === 0) { audio.play('build'); if (e.t === 'capture') { const z = w.businesses.find(z => Math.hypot(z.x - e.x, z.y - e.y) < 1); toast(`${z ? BIZ[z.kind].name : '사업체'} 점령`, false); } }
         else if (e.t === 'thud') audio.play('boom', vol * 0.5); else if (e.t === 'playerdown') { audio.play('lose'); hurt = 1; }
         else if (e.t === 'crystal') audio.play('crystal', vol); else if (e.t === 'heal' || e.t === 'healbeam') audio.play('heal', vol);
         else if (e.t === 'skid') audio.play('skid', vol); else if (e.t === 'splat') audio.play('splat', vol);
@@ -712,6 +726,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     audio.setEngine(veh ? Math.min(1, spd / veh.maxSpeed) : -1);
     if (hitT > 0) { hitT -= dt; if (hitT <= 0) cross.classList.remove('hit', 'kill'); }
     hurt = Math.max(0, hurt - dt * 1.3); const low = b && b.hp < b.maxHp * 0.35 ? 0.35 + Math.sin(now / 160) * 0.12 : 0, outside = !!b && Math.hypot(b.x - w.zone.x, b.y - w.zone.y) > w.zone.r;
+    if (low && !paused && !w.over && f.pending === 0 && now >= heartbeatT) { audio.play('heartbeat'); heartbeatT = now + 1250; }
     hurtEl.style.opacity = String(Math.max(hurt * 0.85, low)); hurtEl.classList.toggle('storm', outside && hurt < 0.1);if (outside) hurtEl.style.opacity = String(Math.max(0.45, hurt));
     if (three && R3) {
       if (ghost) { const p = R3.buildPoint(ghost.kind); ghost.x = snapBuildCoord(p.x); ghost.y = snapBuildCoord(p.y); ghost.ok = !w.buildError(0, ghost.kind, ghost.x, ghost.y); }

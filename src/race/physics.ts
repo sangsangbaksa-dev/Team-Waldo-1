@@ -64,6 +64,7 @@ export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: Car
   if (inp.throttle <= 0 && inp.brake <= 0) vf -= Math.sign(vf) * Math.min(Math.abs(vf), (1.6 + 0.0016 * vf * vf) * dt);
   if (vf > maxV) vf = Math.max(maxV, vf - 26 * dt);
   if (inp.drift && c.drifting) vf -= Math.min(Math.max(vf, 0), 2.2 * dt);
+  if (Math.abs(c.lat) > t.halfWidth - BODY_HALF_WIDTH - 1.4) vf *= Math.exp(-0.38 * dt);
 
   // 드리프트 상태: 핸드브레이크를 누른 채 속도와 조향이 충분할 때 시작
   const wasDrift = c.drifting;
@@ -89,7 +90,7 @@ export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: Car
   // 드리프트 충전 → 해제 시 미니 터보
   if (c.drifting) c.driftT += dt * (0.5 + Math.min(1.5, Math.abs(c.slip) * 5)) * p.drift;
   if (wasDrift && !c.drifting) {
-    if (c.driftT > 0.9) { ev.driftBoost = Math.min(c.driftT * 0.5, 2.2); c.boostT = Math.max(c.boostT, ev.driftBoost); c.nitro = Math.min(1, c.nitro + c.driftT * 0.07); }
+    if (c.driftT > 0.9) { ev.driftBoost = Math.min(c.driftT * 0.5, 2.2); c.boostT = Math.max(c.boostT, ev.driftBoost); }
     c.driftT = 0;
   }
   c.vx = fx * vf + rx * vl; c.vz = fz * vf + rz * vl;

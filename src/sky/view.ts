@@ -58,6 +58,9 @@ export class SkyView {
   private rings: { mesh: THREE.Mesh; life: number; max: number }[] = [];
   private cloudTex: THREE.CanvasTexture; private sunTex: THREE.CanvasTexture;
   private seaTime = { value: 0 };
+  private readonly v1 = new THREE.Vector3(); private readonly v2 = new THREE.Vector3(); private readonly v3 = new THREE.Vector3(); private readonly v4 = new THREE.Vector3();
+  private readonly up = new THREE.Vector3(0, 1, 0); private readonly matrix = new THREE.Matrix4(); private readonly rotation = new THREE.Quaternion();
+  private readonly jetIds = new Set<number>(); private readonly pickupIds = new Set<number>(); private readonly missileIds = new Set<number>();
   constructor() {
     const sc = this.scene; sc.fog = new THREE.Fog(0xb9b8b2, 1800, 7400); sc.background = new THREE.Color(0xd8b6a2);
     sc.add(new THREE.HemisphereLight(0xdbe7f2, 0x36515b, 1.2));
@@ -79,10 +82,10 @@ export class SkyView {
     const sea = new THREE.Mesh(new THREE.PlaneGeometry(20000, 20000, 80, 80), seaMat); sea.rotation.x = -Math.PI / 2; sea.position.y = -1; sc.add(sea); this.sea = sea;
     // 섬 지형
     const N = 200, size = 7600, geo = new THREE.PlaneGeometry(size, size, N, N); geo.rotateX(-Math.PI / 2);
-    const pos = geo.attributes.position as THREE.BufferAttribute, col = new Float32Array(pos.count * 3), c = new THREE.Color();
+    const pos = geo.attributes.position as THREE.BufferAttribute, col = new Float32Array(pos.count * 3), c = new THREE.Color(), grass = new THREE.Color(0x2c6a2c);
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), z = pos.getZ(i), h = terrainY(x, z); pos.setY(i, h - (h < 1 ? 6 : 0));
-      if (h < 6) c.set(0x2a6f9c); else if (h < 22) c.set(0xe2cf94); else if (h < 160) c.setHex(0x3f8a3a).lerp(new THREE.Color(0x2c6a2c), h / 160); else if (h < 280) c.set(0x7a6f62); else c.set(0xf2f4f8);
+      if (h < 6) c.set(0x2a6f9c); else if (h < 22) c.set(0xe2cf94); else if (h < 160) c.setHex(0x3f8a3a).lerp(grass, h / 160); else if (h < 280) c.set(0x7a6f62); else c.set(0xf2f4f8);
       col.set([c.r, c.g, c.b], i * 3);
     }
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3)); geo.computeVertexNormals();
@@ -108,22 +111,25 @@ export class SkyView {
     p.s.position.copy(pos); p.s.scale.setScalar(size); p.v.copy(vel); p.life = p.max = life; p.grow = grow; p.alive = true; p.s.visible = true;
   }
   boom(pos: THREE.Vector3, big: boolean): void {
+    if (this.rings.length >= 32) { const old = this.rings.shift()!; this.scene.remove(old.mesh); this.disposeObject(old.mesh); }
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.8, 1, 32), new THREE.MeshBasicMaterial({ color: 0xffd8a0, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
     ring.position.copy(pos); ring.quaternion.copy(this.camera.quaternion); this.scene.add(ring); this.rings.push({ mesh: ring, life: 0.45, max: big ? 160 : 75 });
     const n = big ? 18 : 8, sz = big ? 60 : 28;
-    for (let i = 0; i < n; i++) this.emit(pos, new THREE.Vector3((Math.random() - 0.5) * 90, (Math.random() - 0.3) * 80, (Math.random() - 0.5) * 90), 0.6 + Math.random() * 0.6, sz * (0.6 + Math.random() * 0.8), 2.2, 'fire', i % 3 ? 0xffb040 : 0xff5a20);
-    for (let i = 0; i < n / 2; i++) this.emit(pos, new THREE.Vector3((Math.random() - 0.5) * 40, 10 + Math.random() * 30, (Math.random() - 0.5) * 40), 2 + Math.random(), sz, 1.6, 'smoke');
-    for (let i = 0; i < (big ? 10 : 5); i++) this.emit(pos, new THREE.Vector3((Math.random() - 0.5) * 180, Math.random() * 120, (Math.random() - 0.5) * 180), 0.45 + Math.random() * 0.4, 3, -0.3, 'fire', 0xffd07a);
+    for (let i = 0; i < n; i++) this.emit(pos, this.v1.set((Math.random() - 0.5) * 90, (Math.random() - 0.3) * 80, (Math.random() - 0.5) * 90), 0.6 + Math.random() * 0.6, sz * (0.6 + Math.random() * 0.8), 2.2, 'fire', i % 3 ? 0xffb040 : 0xff5a20);
+    for (let i = 0; i < n / 2; i++) this.emit(pos, this.v1.set((Math.random() - 0.5) * 40, 10 + Math.random() * 30, (Math.random() - 0.5) * 40), 2 + Math.random(), sz, 1.6, 'smoke');
+    for (let i = 0; i < (big ? 10 : 5); i++) this.emit(pos, this.v1.set((Math.random() - 0.5) * 180, Math.random() * 120, (Math.random() - 0.5) * 180), 0.45 + Math.random() * 0.4, 3, -0.3, 'fire', 0xffd07a);
     const d = pos.distanceTo(this.camera.position); if (d < 700) this.shake = Math.max(this.shake, (big ? 1 : 0.5) * (1 - d / 700));
   }
-  spark(pos: THREE.Vector3): void { for (let i = 0; i < 3; i++) this.emit(pos, new THREE.Vector3((Math.random() - 0.5) * 60, (Math.random() - 0.5) * 60, (Math.random() - 0.5) * 60), 0.25, 8, 0.2, 'fire', 0xffe08a); }
+  spark(pos: THREE.Vector3): void { for (let i = 0; i < 3; i++) this.emit(pos, this.v1.set((Math.random() - 0.5) * 60, (Math.random() - 0.5) * 60, (Math.random() - 0.5) * 60), 0.25, 8, 0.2, 'fire', 0xffe08a); }
   kick(a: number): void { this.shake = Math.max(this.shake, a); }
 
   sync(sim: SkySim, dt: number, time: number): void {
+    this.jetIds.clear();
     // 제트 메시
     for (const j of sim.jets) {
       let m = this.meshes.get(j.id);
       if (!j.alive) { if (m) { this.scene.remove(m); this.disposeObject(m); this.meshes.delete(j.id); } continue; }
+      this.jetIds.add(j.id);
       if (!m) { m = buildJet(j.kind, j.team); m.userData.team = j.team; this.scene.add(m); this.meshes.set(j.id, m); }
       m.visible = !(this.cockpit && j.team === 'player');
       m.position.copy(j.pos); m.quaternion.copy(j.q);
@@ -133,18 +139,18 @@ export class SkyView {
         (fl.material as THREE.MeshBasicMaterial).opacity = 0.4 + throttle * 0.55;
       }
       if ((j.speed > 170 || (j.speed > 120 && Math.abs(j.roll) > 0.8)) && Math.random() < Math.min(1, dt * 24)) {
-        const tip = new THREE.Vector3();
+        const tip = this.v1;
         for (const side of [-1, 1]) {
           tip.set(side * (j.kind === 'boss' ? 11 : j.kind === 'bomber' ? 9.5 : j.kind === 'ace' ? 8.2 : 7.2), 0, 2.2).multiplyScalar(j.kind === 'boss' ? 2.8 : j.kind === 'bomber' ? 1.7 : 1).applyQuaternion(j.q).add(j.pos);
-          this.emit(tip, new THREE.Vector3(), 0.8, 5, 0.9, 'smoke', 0xe0eaf0);
+          this.emit(tip, this.v2.set(0, 0, 0), 0.8, 5, 0.9, 'smoke', 0xe0eaf0);
         }
       }
-      if (j.hp < j.maxHp * 0.45 && Math.random() < dt * 14) this.emit(j.pos, new THREE.Vector3(0, 6, 0), 1.2, 16, 2, 'smoke'); // 피격 연기
-      if (j.hp < j.maxHp * 0.2 && Math.random() < dt * 20) this.emit(j.pos, new THREE.Vector3(0, 4, 0), 0.4, 14, 1, 'fire', 0xff6a20);
+      if (j.hp < j.maxHp * 0.45 && Math.random() < dt * 14) this.emit(j.pos, this.v2.set(0, 6, 0), 1.2, 16, 2, 'smoke'); // 피격 연기
+      if (j.hp < j.maxHp * 0.2 && Math.random() < dt * 20) this.emit(j.pos, this.v2.set(0, 4, 0), 0.4, 14, 1, 'fire', 0xff6a20);
     }
-    for (const [id, m] of this.meshes) if (!sim.jets.some(j => j.id === id && j.alive)) { this.scene.remove(m); this.disposeObject(m); this.meshes.delete(id); }
+    for (const [id, m] of this.meshes) if (!this.jetIds.has(id)) { this.scene.remove(m); this.disposeObject(m); this.meshes.delete(id); }
     // 픽업(수리/탄약 링)
-    const pk = new Set<number>();
+    const pk = this.pickupIds; pk.clear();
     for (const k of sim.pickups) {
       pk.add(k.id); let m = this.pickMeshes.get(k.id);
       if (!m) { m = new THREE.Mesh(new THREE.TorusGeometry(9, 1.6, 8, 24), new THREE.MeshBasicMaterial({ color: k.kind === 'repair' ? 0x5dff8f : k.kind === 'shield' ? 0xffe27a : 0x6ab8ff })); this.scene.add(m); this.pickMeshes.set(k.id, m); }
@@ -152,13 +158,13 @@ export class SkyView {
     }
     for (const [id, m] of this.pickMeshes) if (!pk.has(id)) { this.scene.remove(m); this.disposeObject(m); this.pickMeshes.delete(id); }
     // 미사일
-    const seen = new Set<number>();
+    const seen = this.missileIds; seen.clear();
     for (const ms of sim.missiles) {
       seen.add(ms.id); let m = this.missileMeshes.get(ms.id);
       if (!m) { m = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 5, 6), new THREE.MeshBasicMaterial({ color: 0xffffff })); m.rotation.order = 'YXZ'; this.scene.add(m); this.missileMeshes.set(ms.id, m); }
-      m.position.copy(ms.pos); m.lookAt(ms.pos.clone().add(ms.vel)); m.rotateX(Math.PI / 2);
-      if (Math.random() < Math.min(1, dt * 30)) this.emit(ms.pos, new THREE.Vector3(0, 3, 0), 1.1, 9, 1.8, 'smoke', 0xc8ccd0);
-      if (Math.random() < Math.min(1, dt * 24)) this.emit(ms.pos, new THREE.Vector3(), 0.18, 10, 0.5, 'fire', 0xffa040);
+      m.position.copy(ms.pos); m.lookAt(this.v1.copy(ms.pos).add(ms.vel)); m.rotateX(Math.PI / 2);
+      if (Math.random() < Math.min(1, dt * 30)) this.emit(ms.pos, this.v1.set(0, 3, 0), 1.1, 9, 1.8, 'smoke', 0xc8ccd0);
+      if (Math.random() < Math.min(1, dt * 24)) this.emit(ms.pos, this.v1.set(0, 0, 0), 0.18, 10, 0.5, 'fire', 0xffa040);
     }
     for (const [id, m] of this.missileMeshes) if (!seen.has(id)) { this.scene.remove(m); this.disposeObject(m); this.missileMeshes.delete(id); }
     // 예광탄
@@ -174,23 +180,23 @@ export class SkyView {
     for (let i = this.rings.length - 1; i >= 0; i--) { const r = this.rings[i]; r.life -= dt; const k = Math.max(0, r.life / 0.45); r.mesh.scale.setScalar(r.max * (1 - k) + 1); (r.mesh.material as THREE.MeshBasicMaterial).opacity = k * 0.7; if (r.life <= 0) { this.scene.remove(r.mesh); this.disposeObject(r.mesh); this.rings.splice(i, 1); } }
     this.seaTime.value = time;
     for (const cloud of this.clouds) { cloud.position.x += 6 * dt; if (cloud.position.x > 3600) cloud.position.x -= 7200; }
-    this.dome.position.copy(this.camera.position); this.sunGlow.position.copy(this.camera.position).addScaledVector(this.sun.position.clone().normalize(), 7000); this.sea.position.x = this.camera.position.x; this.sea.position.z = this.camera.position.z;
+    this.dome.position.copy(this.camera.position); this.sunGlow.position.copy(this.camera.position).addScaledVector(this.v1.copy(this.sun.position).normalize(), 7000); this.sea.position.x = this.camera.position.x; this.sea.position.z = this.camera.position.z;
   }
 
   /** 추적 카메라(부드러운 지연 + 속도감 FOV + 폭발 흔들림). boost: 0~1 */
   follow(p: Jet, dt: number, look: THREE.Vector2, boost: number): void {
     if (this.cockpit) {
-      const offset = new THREE.Vector3(0, 1.2, -2.5).applyQuaternion(p.q);
+      const offset = this.v1.set(0, 1.2, -2.5).applyQuaternion(p.q);
       this.camera.position.copy(p.pos).add(offset);
       this.camera.quaternion.copy(p.q);
       const vibration = 0.025 + Math.max(0, p.speed - 120) * 0.0008 + boost * 0.12 + this.shake * 0.5;
-      this.camera.position.add(new THREE.Vector3((Math.random() - 0.5) * vibration, (Math.random() - 0.5) * vibration, 0).applyQuaternion(p.q));
+      this.camera.position.add(this.v1.set((Math.random() - 0.5) * vibration, (Math.random() - 0.5) * vibration, 0).applyQuaternion(p.q));
     } else {
-      const fwd = forward(p), up = new THREE.Vector3(0, 1, 0).applyQuaternion(p.q);
-      const want = p.pos.clone().addScaledVector(fwd, -34 - boost * 10).addScaledVector(up, 9 + p.pitch * -4);
+      const fwd = forward(p, this.v1), up = this.v2.copy(this.up).applyQuaternion(p.q);
+      const want = this.v3.copy(p.pos).addScaledVector(fwd, -34 - boost * 10).addScaledVector(up, 9 + p.pitch * -4);
       this.camera.position.lerp(want, Math.min(1, dt * 7));
-      const target = p.pos.clone().addScaledVector(fwd, 120);
-      const q = new THREE.Matrix4().lookAt(this.camera.position, target, up.lerp(new THREE.Vector3(0, 1, 0), 0.5)); const tq = new THREE.Quaternion().setFromRotationMatrix(q);
+      const target = this.v4.copy(p.pos).addScaledVector(fwd, 120);
+      const q = this.matrix.lookAt(this.camera.position, target, up.lerp(this.up, 0.5)); const tq = this.rotation.setFromRotationMatrix(q);
       this.camera.quaternion.slerp(tq, Math.min(1, dt * 6));
       if (this.shake > 0) { this.camera.position.x += (Math.random() - 0.5) * this.shake * 5; this.camera.position.y += (Math.random() - 0.5) * this.shake * 5; }
     }
@@ -201,7 +207,7 @@ export class SkyView {
 
   /** 월드 좌표→화면(0~1). 화면 밖/뒤면 null */
   project(v: THREE.Vector3): { x: number; y: number; behind: boolean } {
-    const p = v.clone().project(this.camera); return { x: (p.x + 1) / 2, y: (1 - p.y) / 2, behind: p.z > 1 };
+    const p = this.v1.copy(v).project(this.camera); return { x: (p.x + 1) / 2, y: (1 - p.y) / 2, behind: p.z > 1 };
   }
   private disposeObject(object: THREE.Object3D): void { object.traverse(o => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); const mat = m.material as THREE.Material | THREE.Material[] | undefined; if (Array.isArray(mat)) mat.forEach(x => x.dispose()); else mat?.dispose?.(); }); }
   dispose(): void { this.disposeObject(this.scene); this.fire.dispose(); this.smoke.dispose(); this.cloudTex.dispose(); this.sunTex.dispose(); }

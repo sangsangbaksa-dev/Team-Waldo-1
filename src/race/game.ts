@@ -27,13 +27,13 @@ const ORD = ['', '1ST', '2ND', '3RD', '4TH', '5TH', '6TH'];
 export function openRace(onExit: () => void): void {
   const prefs = readPreferences(), touch = matchMedia('(pointer: coarse)').matches;
   const root = document.createElement('div'); root.className = 'rc-root' + (touch ? ' touch' : ''); root.dataset.phase = 'loading';
-  root.innerHTML = `<canvas class="rc-canvas"></canvas><canvas class="rc-fx"></canvas><div class="rc-vignette"></div><div class="rc-boostfx"></div>
+  root.innerHTML = `<canvas class="rc-canvas"></canvas><canvas class="rc-fx"></canvas><div class="rc-vignette"></div><div class="rc-boostfx"></div><div class="rc-speedlines"></div>
   <div class="rc-hud">
     <div class="rc-tl"><div class="rc-pos"><b id="rc-pos">4</b><span id="rc-of">/ 4</span></div><div class="rc-lap">LAP <b id="rc-lap">1</b>/<span id="rc-laps">3</span></div><div class="rc-ko" id="rc-ko"></div></div>
     <div class="rc-tc"><div class="rc-time" id="rc-time">0:00.000</div><div class="rc-best" id="rc-best"></div></div>
     <div class="rc-tr"><canvas id="rc-map" width="220" height="220" aria-label="미니맵"></canvas><div class="rc-btns"><button data-act="mute" title="소리 (M)" aria-pressed="${prefs.sound}">${prefs.sound ? '🔊' : '🔇'}</button><button data-act="pause" title="일시정지 (Esc)">Ⅱ</button><button data-act="exit" title="나가기">✕</button></div></div>
     <div class="rc-msg" id="rc-msg"></div><div class="rc-count" id="rc-count"></div><div class="rc-wrong" id="rc-wrong">역주행!</div><div class="rc-draft" id="rc-draft">SLIPSTREAM</div><div class="rc-drift" id="rc-drift"></div>
-    <div class="rc-bottom"><div class="rc-nitro"><span>NITRO</span><div><i id="rc-nitro"></i></div></div><div class="rc-speed"><b id="rc-kmh">0</b><small>km/h</small><em id="rc-gear">N</em></div><div class="rc-rev"><i id="rc-rev"></i></div></div>
+    <div class="rc-edge" id="rc-edge">TRACK EDGE <span>SPEED REDUCED</span></div><div class="rc-bottom"><div class="rc-nitro"><span>NITRO</span><div><i id="rc-nitro"></i></div></div><div class="rc-speed"><b id="rc-kmh">0</b><small>km/h</small><em id="rc-gear">N</em></div><div class="rc-rev"><i id="rc-rev"></i></div></div>
     <div class="rc-keys"><span><kbd>W</kbd><kbd>↑</kbd> 가속</span><span><kbd>A</kbd><kbd>D</kbd> 조향</span><span><kbd>Space</kbd> 드리프트</span><span><kbd>Shift</kbd> 니트로</span><span><kbd>R</kbd> 복귀</span></div>
     <div class="rc-touchpad"><div class="rc-steer"><button data-hold="left" aria-label="왼쪽">◀</button><button data-hold="right" aria-label="오른쪽">▶</button></div><div class="rc-pedals"><button data-hold="gas" class="gas" aria-label="가속">가속</button><div class="rc-pedal-row"><button data-hold="nitro">NITRO</button><button data-hold="drift">DRIFT</button><button data-hold="brake">BRAKE</button></div></div></div>
   </div>
@@ -76,7 +76,7 @@ export function openRace(onExit: () => void): void {
       case 'hit': wallHit = e.power; view?.kick(Math.min(1, e.power * 0.05)); audio.sfx('hit', e.power); break;
       case 'bump': view?.kick(Math.min(0.5, e.power * 0.03)); audio.sfx('bump'); break;
       case 'lap': if (e.lap < race.laps) { msg(e.best ? `LAP ${e.lap}  ${fmtTime(e.time)}  ★ BEST` : `LAP ${e.lap}  ${fmtTime(e.time)}`, e.best ? 'gold' : ''); audio.sfx(e.best ? 'best' : 'lap'); } break;
-      case 'driftBank': msg(`DRIFT +${e.points.toLocaleString('ko-KR')}${e.mult > 1 ? `  ×${e.mult}` : ''}`, 'gold'); audio.sfx('drift'); break;
+      case 'driftBank': msg(`DRIFT +${e.points.toLocaleString('ko-KR')}${e.mult > 1 ? `  ×${e.mult}` : ''}${race.phase === 'racing' ? `  ·  NITRO +${Math.round(Math.min(0.2, e.points / 6000) * 100)}%` : ''}`, 'gold'); audio.sfx('drift'); break;
       case 'driftLost': if (e.points >= 200) { msg('DRIFT 체인 끊김', 'hint'); msgT = 1.2; } break;
       case 'knockout':
         if (e.player) { msg('탈락!', 'hint'); audio.sfx('hit', 6); finishRace(e.place, race.clock, true); }
@@ -100,7 +100,7 @@ export function openRace(onExit: () => void): void {
       if (closed || gen !== raceGen) return;
       modal.className = 'rc-modal show'; root.dataset.phase = 'done';
       modal.innerHTML = `<div class="rc-card result p${place}"><span class="rc-eyebrow">${map.name} · ${setup.laps}랩 · ${trial ? '타임어택' : ko ? `녹아웃 · ${level.name}` : level.name} · ${car.name}</span><h2>${trial ? (ghostNew ? 'NEW GHOST' : 'FINISH') : eliminated ? `탈락 <small>${ORD[place] ?? place + 'TH'} / 4</small>` : `${ORD[place] ?? place + 'TH'} <small>/ 4</small>`}</h2><p class="rc-total">${eliminated ? `${race.player.lapTimes.length}랩 생존` : fmtTime(time)}</p>
-        <ol class="rc-laps">${race.player.lapTimes.map((l, i) => `<li${l === bestLap ? ' class="best"' : ''}><span>LAP ${i + 1}</span><b>${fmtTime(l)}</b></li>`).join('')}</ol>
+        <div class="rc-result-stats"><div><span>BEST LAP</span><b>${Number.isFinite(bestLap) ? fmtTime(bestLap) : '—'}</b></div><div><span>VS PERSONAL BEST</span><b>${eliminated ? '—' : Number.isFinite(prevRace) ? `${time - prevRace >= 0 ? '+' : '−'}${Math.abs(time - prevRace).toFixed(3)}s` : 'FIRST FINISH'}</b></div></div><ol class="rc-laps">${race.player.lapTimes.map((l, i) => `<li${l === bestLap ? ' class="best"' : ''}><span>LAP ${i + 1}</span><b>${fmtTime(l)}</b></li>`).join('')}</ol>
         <p class="rc-record">${trial ? (ghostNew ? '고스트를 갱신했습니다 — 다음 도전에서 이 주행과 겨룹니다' : race.ghost ? `고스트 ${fmtTime(race.ghost.time)} · ${time - race.ghost.time >= 0 ? '+' : '-'}${Math.abs(time - race.ghost.time).toFixed(2)}초` : '') : ''}${trial ? '' : newBest ? '개인 최고 기록 갱신' : `${map.name} 최고 랩 ${fmtTime(records.bestLap[map.id] ?? Infinity)}`}</p>
         <p class="rc-record">드리프트 ${drift.toLocaleString('ko-KR')}점${driftNew && drift > 0 ? ' ★ 코스 최고 기록' : prevDrift > 0 ? ` · 코스 최고 ${prevDrift.toLocaleString('ko-KR')}점` : ''}</p>
         <p class="rc-reward">+${coins} 코인 <small>(보유 ${garage.value.coins.toLocaleString('ko-KR')})</small></p>
@@ -279,7 +279,7 @@ export function openRace(onExit: () => void): void {
     for (const r of [...race.racers].reverse()) { if (r.out !== undefined) continue; mg.fillStyle = r.color; mg.beginPath(); mg.arc(mx(r.car.x), mz(r.car.z), r.player ? 6 : 4.5, 0, 7); mg.fill(); if (r.player) { mg.strokeStyle = '#fff'; mg.lineWidth = 2; mg.stroke(); } }
   }
 
-  function hud(): void {
+  function hud(dt: number): void {
     const p = race.player, c = p.car, place = placeOf(race), sp = kmh(c);
     setText('#rc-pos', race.trial ? '' : String(place)); setText('#rc-lap', String(currentLap(race))); setText('#rc-kmh', String(Math.round(sp)));
     setText('#rc-time', fmtTime(Math.max(0, race.clock))); const gd = race.ghost && race.phase === 'racing' ? ghostDelta(race.ghost, c.total, race.clock) : null;
@@ -292,8 +292,10 @@ export function openRace(onExit: () => void): void {
     setText('#rc-drift', driftLive(dr) && dr.chain >= 30 ? `DRIFT ${Math.round(dr.chain).toLocaleString('ko-KR')}${dr.mult > 1 ? `  ×${dr.mult}` : ''}` : ''); $('#rc-drift').classList.toggle('live', c.drifting);
     const rev = Math.min(1, Math.abs(c.vf) / p.params.top); $<HTMLElement>('#rc-rev').style.width = `${(rev * 100).toFixed(0)}%`;
     root.dataset.kmh = String(Math.round(sp)); root.dataset.place = String(place); root.dataset.lap = String(currentLap(race)); root.dataset.phase = finishedShown ? 'done' : race.phase;
-    const tx = track.tx[c.idx], tz = track.tz[c.idx], dir = c.vx * tx + c.vz * tz; $('#rc-wrong').classList.toggle('show', race.phase === 'racing' && dir < -6 && (wrongT += 1) > 20); if (dir >= -6) wrongT = 0;
+    const tx = track.tx[c.idx], tz = track.tz[c.idx], dir = c.vx * tx + c.vz * tz; wrongT = race.phase === 'racing' && dir < -6 ? wrongT + dt : 0; $('#rc-wrong').classList.toggle('show', wrongT > 0.35);
     const speedy = Math.min(1.4, sp / 270 + (boosting(c) ? 0.25 : 0)); $<HTMLElement>('.rc-boostfx').style.opacity = boosting(c) ? '1' : '0'; $<HTMLElement>('.rc-vignette').style.opacity = String(Math.min(1, 0.15 + speedy * 0.7));
+    $<HTMLElement>('.rc-speedlines').style.opacity = race.phase === 'racing' ? String(Math.max(0, Math.min(0.8, (sp - 130) / 180 + (c.nitroLit ? 0.3 : 0)))) : '0';
+    $('#rc-edge').classList.toggle('show', race.phase === 'racing' && Math.abs(c.lat) > track.halfWidth - 2.4 && sp > 25);
     if (race.knockout) { const left = knockoutsLeft(race), live = activeRacers(race).length, danger = left > 0 && race.phase === 'racing' && place === live; setText('#rc-of', `/ ${live}`); setText('#rc-ko', left > 0 ? (danger ? '꼴찌 — 이번 랩 끝에 탈락!' : `KNOCKOUT · 이번 랩 꼴찌 탈락`) : '최종 랩 · 결승'); $('#rc-ko').classList.toggle('danger', danger); }
     if (!race.trial && place < lastPlace && race.phase === 'racing') { msg(`추월!  ${ORD[place]}`, 'gold'); view?.punchFov(0.4); }
     lastPlace = place;
@@ -313,7 +315,7 @@ export function openRace(onExit: () => void): void {
       if (driftNow && !driftWas) { audio.sfx('chirp'); view.punchFov(0.25); }
       nitroWas = nitroNow; driftWas = driftNow;
       view.update(race, dt, wallHit); wallHit = 0; fxIntensity += (RaceView.intensity(race) - fxIntensity) * Math.min(1, dt * 5); drawFx(fxIntensity);
-      pvp?.net.sendSnap(race.player.car, now); multi?.net.sendSnap(race.player.car, now); hud(); drawMini();
+      pvp?.net.sendSnap(race.player.car, now); multi?.net.sendSnap(race.player.car, now); hud(dt); drawMini();
       if (msgT > 0 && (msgT -= dt) <= 0) $('#rc-msg').className = 'rc-msg';
     }
   }

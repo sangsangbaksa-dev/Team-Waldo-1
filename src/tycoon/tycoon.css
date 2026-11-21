@@ -56,6 +56,15 @@
 .ty-task[hidden], .ty-activity[hidden], .ty-prompt[hidden] { display: none; }
 .ty-task i { font-style: normal; font-size: 26px; color: #fff; display: inline-block; text-shadow: 0 0 12px #fff; }
 .ty-task b { display: block; font-size: 14px; } .ty-task span { color: var(--gold); font-size: 12px; }
+.ty-waypoint { position: absolute; z-index: 3; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 3px; pointer-events: none; color: #fff2cf; font-weight: 800; font-size: 12px; text-shadow: 0 2px 6px #332018; }
+.ty-waypoint[hidden], .ty-hint[hidden] { display: none; }
+.ty-waypoint i { display: block; font-style: normal; font-size: 23px; color: #ffd079; filter: drop-shadow(0 2px 5px #5c3219); }
+.ty-waypoint span { background: rgba(42, 32, 32, .88); border-radius: 20px; padding: 3px 7px; }
+.ty-earnings { position: absolute; top: 65px; left: 30px; pointer-events: none; z-index: 4; }
+.ty-earnings span { position: absolute; white-space: nowrap; font-size: 21px; font-weight: 900; color: #ffe2a2; text-shadow: 0 2px 7px #68401b; animation: ty-earn 1.6s ease-out forwards; }
+@keyframes ty-earn { 0% { opacity: 0; transform: translateY(4px) scale(.9); } 15% { opacity: 1; } 100% { opacity: 0; transform: translateY(-50px) scale(1.1); } }
+.ty-hint { position: absolute; left: 50%; bottom: 168px; transform: translateX(-50%); max-width: 80%; padding: 9px 15px; border: 1px solid rgba(255, 220, 171, .35); border-radius: 20px; background: rgba(42, 32, 32, .9); color: #fff3dc; font-size: 13px; text-align: center; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .ty-earnings span { animation: none; } }
 .ty-activity { position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%); width: min(360px, 86vw); background: var(--bg); border: 1px solid var(--line); border-radius: 14px; padding: 10px 16px; text-align: center; backdrop-filter: blur(10px); display: flex; flex-direction: column; gap: 7px; }
 .ty-activity small { color: var(--mute); font-size: 11px; }
 .ty-prompt { position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; background: rgba(12, 16, 24, .86); border: 1px solid rgba(255, 255, 255, .28); border-radius: 999px; padding: 9px 20px 9px 12px; font-size: 15px; box-shadow: 0 8px 30px rgba(0, 0, 0, .45); animation: ty-pop .25s ease-out; backdrop-filter: blur(10px); }
@@ -177,3 +186,56 @@
   .ty-root.touch .ty-task { top: 104px; }
 }
 @media (prefers-reduced-motion: reduce) { .ty-root * { animation: none !important; transition: none !important; } }
+/* Warm dusk surfaces for secondary UI. */
+.ty-title { background: radial-gradient(ellipse at 50% 35%, rgba(94, 57, 42, .25), rgba(22, 18, 20, .88) 78%); }
+.ty-titlebox { width: min(760px, 100%); padding: clamp(24px, 5vw, 48px); color: #f5eee7; }
+.ty-titlebox .kick { color: #e7ad77; font-size: 11px; font-weight: 800; letter-spacing: .32em; }
+.ty-titlebox h1 { margin: 12px 0; font-size: clamp(50px, 10vw, 108px); letter-spacing: -.045em; background: none; color: #fff5e9; filter: none; text-shadow: 0 6px 32px rgba(20, 12, 12, .45); }
+.ty-titlebox .sub { color: #d8c8bd; line-height: 1.6; }
+.ty-ladder-lg { margin: 24px 0 30px; color: #d7bfb0; font-size: 12px; }
+.ty-ladder-lg span { padding: 5px 11px; border-color: rgba(237, 191, 154, .2); background: rgba(38, 29, 29, .55); }
+.ty-title-btns button { border-radius: 10px; border-color: rgba(244, 219, 198, .22); background: rgba(48, 37, 36, .8); transition: background .18s, transform .18s, border-color .18s; }
+.ty-title-btns button.primary { background: #e9a766; color: #291b17; box-shadow: 0 8px 26px rgba(20, 12, 10, .25); }
+.ty-title-btns button:hover { background: #5b4540; border-color: #e9a766; }
+.ty-title-btns button.primary:hover { background: #f4bb82; }
+.ty-title-btns button:active { transform: translateY(2px); }
+.ty-titlebox .keys { color: #bba99f; line-height: 1.6; }
+.ty-titlebox.win { background: rgba(38, 29, 29, .96); }
+.ty-modal { background: rgba(20, 16, 18, .68); animation: ty-veil .2s ease-out; }
+@keyframes ty-veil { from { opacity: 0; } to { opacity: 1; } }
+.ty-panel { color: #f5eee7; background: linear-gradient(155deg, #3c302f, #261f21); border-color: rgba(237, 191, 154, .24); border-radius: 16px; padding: 20px; box-shadow: 0 24px 70px rgba(15, 10, 12, .55); animation: ty-panel .24s ease-out; }
+.ty-panel header { margin-bottom: 16px; }
+.ty-panel header .ico { background: rgba(233, 167, 102, .12); border-radius: 12px; }
+.ty-panel header h2 { font-size: 21px; line-height: 1.25; letter-spacing: -.02em; }
+.ty-panel header p, .ty-panel .ty-none, .ty-panel footer, .ty-panel .ty-act small, .ty-panel .ty-kv span, .ty-panel .ty-list li span { color: #c3b2a9; }
+.ty-panel h3 { margin-top: 18px; color: #e9a766; font-size: 13px; }
+.ty-panel .ty-x { background: rgba(255, 245, 233, .07); transition: background .16s, transform .16s; }
+.ty-panel .ty-x:hover, .ty-bigmap .ty-x:hover { background: #76564a; }
+.ty-panel .ty-x:active, .ty-bigmap .ty-x:active { transform: scale(.94); }
+.ty-act { background: rgba(255, 245, 233, .045); border-color: rgba(237, 191, 154, .13); transition: background .16s, border-color .16s, transform .12s; }
+.ty-act:hover:not(:disabled) { background: rgba(233, 167, 102, .13); border-color: rgba(233, 167, 102, .55); }
+.ty-act b { font-size: 14px; }
+.ty-act small { line-height: 1.5; }
+.ty-panel .ty-shop, .ty-panel .ty-report, .ty-panel .ty-rivalbox { background: rgba(255, 245, 233, .045); }
+.ty-panel .ty-chips span { background: rgba(255, 245, 233, .07); }
+.ty-panel .ty-bar > i { background: #e9a766; }
+.ty-bigmap { animation: ty-panel .24s ease-out; }
+.ty-bigmap canvas { border: 2px solid rgba(237, 191, 154, .4); box-shadow: 0 24px 70px rgba(15, 10, 12, .55); }
+.ty-prompt { color: #f5eee7; background: rgba(38, 29, 29, .94); border-color: rgba(237, 191, 154, .35); padding: 8px 18px 8px 9px; font-size: 14px; transition: background .16s, border-color .16s; }
+.ty-prompt kbd { background: #e9a766; color: #291b17; min-width: 30px; text-align: center; }
+.ty-prompt em { color: #e9a766; }
+.ty-prompt:hover { background: #513d38; border-color: #e9a766; }
+.ty-prompt:active { background: #684c40; }
+.ty-toasts li { color: #f5eee7; background: rgba(42, 32, 32, .94); border-color: rgba(237, 191, 154, .2); border-left-color: #e9a766; padding: 9px 13px; box-shadow: 0 8px 24px rgba(20, 12, 12, .22); }
+.ty-toasts li.good { border-left-color: #e9a766; }
+.ty-mini { border: 2px solid rgba(237, 191, 154, .55); box-shadow: 0 0 0 3px rgba(38, 29, 29, .8), 0 8px 24px rgba(15, 10, 12, .45); transition: border-color .16s, filter .16s; }
+.ty-mini:hover { border-color: #e9a766; filter: brightness(1.1); }
+.ty-ladder li i { background: rgba(255, 245, 233, .18); }
+.ty-ladder li.done i { background: rgba(233, 167, 102, .55); }
+.ty-ladder li.now i { background: #e9a766; box-shadow: 0 0 8px rgba(233, 167, 102, .5); }
+.ty-clock #ty-sun { color: #e9a766; }
+.ty-clock b { letter-spacing: -.03em; }
+.ty-root button:focus-visible { outline: 2px solid #f4bb82; outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .ty-root * { animation: none !important; transition: none !important; } }
+
+.ty-root.touch .ty-hint { bottom: 270px; }

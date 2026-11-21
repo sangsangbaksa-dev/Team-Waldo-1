@@ -36,7 +36,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       <div class="rt-vs" id="rt-vs"></div>
       <div class="rt-btns"><button data-act="speed" title="속도" hidden>×1</button><button data-act="pause" class="rt-pause" title="일시정지 (P)">⏸ 일시정지</button><button data-act="mute" title="소리" aria-pressed="${prefs.sound}">${prefs.sound ? '🔊' : '🔇'}</button><button data-act="menu" title="메뉴 (Esc)">☰</button></div></div>
     <div class="rt-obj" id="rt-obj" aria-live="polite"></div><div class="rt-banner" id="rt-banner" role="status" aria-live="assertive"></div>
-    <div class="rt-toast" id="rt-toast" role="status" aria-live="polite"></div><div class="rt-hint" id="rt-hint"></div>
+    <div class="rt-toast" id="rt-toast" role="status" aria-live="polite"></div><div class="rt-hint" id="rt-hint"></div><div class="rt-shortcuts">. 놀고 있는 일꾼 <span>·</span> F2 대기 병력 <span>·</span> Space 최근 경고</div>
     <div class="rt-bottom"><div class="rt-mini"><canvas id="rt-mini" width="220" height="220" aria-label="미니맵"></canvas></div><div class="rt-sel" id="rt-sel"></div><div class="rt-cmd" id="rt-cmd"></div></div>
     <div class="rt-modal" id="rt-modal"></div>`;
   document.body.append(root);
@@ -244,7 +244,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     }
     const cs = view.corners(over.clientHeight - $('.rt-bottom').offsetHeight);
     if (cs.length > 2) { mg.strokeStyle = '#fff'; mg.lineWidth = 1.5; mg.beginPath(); cs.forEach((c, i) => { const [x, y] = mm(Math.min(n, Math.max(0, c.x)), Math.min(n, Math.max(0, c.y))); if (i) mg.lineTo(x, y); else mg.moveTo(x, y); }); mg.closePath(); mg.stroke(); }
-    if (sim.tick - alertAt.t < 100 && Math.floor(performance.now() / 250) % 2) { const [x, y] = mm(alertAt.x, alertAt.y); mg.strokeStyle = '#ff3b30'; mg.lineWidth = 2; mg.beginPath(); mg.arc(x, y, 9, 0, Math.PI * 2); mg.stroke(); }
+    if (sim.tick >= alertAt.t && sim.tick - alertAt.t < 100) { const [x, y] = mm(alertAt.x, alertAt.y), pulse = (performance.now() % 800) / 800; mg.strokeStyle = `rgba(255,75,55,${1 - pulse * 0.7})`; mg.lineWidth = 3; mg.beginPath(); mg.arc(x, y, 5 + pulse * 12, 0, Math.PI * 2); mg.stroke(); }
   }
   /** 미니맵 안개: 칸마다 투명도를 정해 한 장의 작은 그림으로 그린 뒤 늘려 덮습니다. */
   let fogMini: HTMLCanvasElement | null = null;
@@ -270,7 +270,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   function drawOverlay(): void {
     if (!sim || !view) return; const w = over.clientWidth, h = over.clientHeight; og.clearRect(0, 0, over.width, over.height);
     const dpr = over.width / Math.max(1, w); og.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const bar = (x: number, y: number, bw: number, f: number, c: string): void => { og.fillStyle = 'rgba(0,0,0,.65)'; og.fillRect(x - bw / 2 - 1, y - 1, bw + 2, 5); og.fillStyle = c; og.fillRect(x - bw / 2, y, bw * Math.max(0, Math.min(1, f)), 3); };
+    const bar = (x: number, y: number, bw: number, f: number, c: string): void => { og.fillStyle = 'rgba(0,0,0,.9)'; og.fillRect(x - bw / 2 - 2, y - 2, bw + 4, 8); og.fillStyle = '#41483e'; og.fillRect(x - bw / 2, y, bw, 4); og.fillStyle = c; og.fillRect(x - bw / 2, y, bw * Math.max(0, Math.min(1, f)), 4); };
     const col = (f: number, foe: boolean): string => foe ? '#ff5a4a' : f > 0.6 ? '#5dff9a' : f > 0.3 ? '#ffd24a' : '#ff5a4a';
     for (const u of sim.units) {
       const sel = selected.has(u.id), d = UNITS[u.kind], max = camp?.maxHp(u) ?? d.hp, vip = !!camp?.isVip(u.id); if (!sel && !vip && u.hp >= max) continue; if (view.hiddenUnit(u)) continue; const p = view.project(u.x, u.y, 1.2); if (!p || p.x < -20 || p.y < -20 || p.x > w + 20 || p.y > h + 20) continue;
@@ -285,7 +285,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       else if (b.queue[0] && b.owner === me) bar(p.x, p.y + 6, 30 + b.size * 10, 1 - b.queue[0].left / UNITS[b.queue[0].u].time, '#6fb7ff');
     }
     if (camp) drawMarkers(w, h);
-    if (pointer.down && pointer.drag && pointer.button === 0 && !pointer.pan) { const x = Math.min(pointer.sx, pointer.x), y = Math.min(pointer.sy, pointer.y), bw = Math.abs(pointer.x - pointer.sx), bh = Math.abs(pointer.y - pointer.sy); og.strokeStyle = '#5dff9a'; og.fillStyle = 'rgba(93,255,154,.12)'; og.lineWidth = 1.5; og.fillRect(x, y, bw, bh); og.strokeRect(x, y, bw, bh); }
+    if (pointer.down && pointer.drag && pointer.button === 0 && !pointer.pan) { const x = Math.min(pointer.sx, pointer.x), y = Math.min(pointer.sy, pointer.y), bw = Math.abs(pointer.x - pointer.sx), bh = Math.abs(pointer.y - pointer.sy); og.fillStyle = 'rgba(123,224,160,.12)'; og.fillRect(x, y, bw, bh); og.strokeStyle = 'rgba(0,0,0,.7)'; og.lineWidth = 3; og.strokeRect(x, y, bw, bh); og.strokeStyle = '#a2efb7'; og.lineWidth = 1; og.strokeRect(x, y, bw, bh); }
   }
 
   /** 목표 표시 이름표. 화면 밖이면 가장자리에 화살표로 방향을 알려 줍니다. */
@@ -385,6 +385,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       return;
     }
     if (e.key === '.') { const w = sim.units.filter(u => u.owner === me && u.kind === 'worker' && u.o.t === 'idle'); if (w.length) { const i = Math.max(0, w.findIndex(u => selected.has(u.id)) + 1) % w.length; setSel([w[i].id]); view?.lookAt(w[i].x, w[i].y); } else toast('놀고 있는 일꾼이 없습니다'); return; }
+    if (e.key === 'F2') { e.preventDefault(); const army = sim.units.filter(u => u.owner === me && u.kind !== 'worker' && u.o.t === 'idle'); if (army.length) { setSel(army.map(u => u.id)); audio.sfx('select'); } else toast('대기 중인 병력이 없습니다'); return; }
     if (e.code === 'Space') { e.preventDefault(); if (sim.tick - alertAt.t < 600) view?.lookAt(alertAt.x, alertAt.y); else { const h = sim.buildings.find(b => b.owner === me && b.kind === 'hq'); if (h) view?.lookAt(h.x + 2, h.y + 2); } return; }
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); return; }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -455,9 +456,9 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     show(`<div class="rt-card"><span class="rt-eyebrow">${net ? '대전 중 · 계속 진행됩니다' : '게임이 멈춰 있습니다'}</span><h2>${net ? '메뉴' : '일시정지'}</h2>${net ? '' : '<p class="rt-lead">P 또는 Esc 를 누르면 계속합니다.</p>'}<div class="rt-actions col"><button class="primary" data-act="resume">계속하기</button><button data-act="help2">조작법</button><button data-act="surrender">항복</button><button data-act="exit">나가기</button></div></div>`);
   }
   function resultCard(win: boolean | null, why: string, extra = ''): void {
-    if (!sim) return; const p = sim.players[me], o = sim.players[1 - me];
+    if (!sim) return; const p = sim.players[me];
     show(`<div class="rt-card rt-result ${win ? 'win' : 'lose'}"><span class="rt-eyebrow">${pvp ? `vs ${esc(pvp.s.opponent.nickname)}` : `AI ${LEVELS[difficulty].label}`} · ${clock(sim.tick)}</span><h2>${win === null ? '무효' : win ? '승리' : '패배'}</h2><p>${esc(why)}</p>
-      <dl class="rt-stats"><div><dt>채취</dt><dd>${p.mined}</dd></div><div><dt>처치</dt><dd>${p.kills}</dd></div><div><dt>손실</dt><dd>${p.lost}</dd></div><div><dt>상대 처치</dt><dd>${o.kills}</dd></div></dl>${extra}
+      <dl class="rt-stats"><div><dt>시간</dt><dd>${clock(sim.tick)}</dd></div><div><dt>처치</dt><dd>${p.kills}</dd></div><div><dt>손실</dt><dd>${p.lost}</dd></div><div><dt>채취</dt><dd>${p.mined}</dd></div></dl>${extra}
       <div class="rt-actions">${pvp ? '' : '<button class="primary" data-act="again">다시 하기</button>'}<button data-act="${pvp ? 'exit' : 'setup'}" ${pvp ? 'class="primary"' : ''}>${pvp ? '메뉴로' : '설정으로'}</button>${pvp ? '' : '<button data-act="exit">메뉴로</button>'}</div></div>`);
   }
   function finish(): void {
@@ -479,7 +480,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     root.dataset.phase = 'setup'; paused = false; ended = false; campSave = readCampaign();
     show(`<div class="rt-card rt-camp" role="dialog" aria-label="캠페인"><span class="rt-eyebrow">FRONTLINE 캠페인</span><h2>작전 선택</h2><p class="rt-lead">앞 작전을 완수하면 다음 작전이 열립니다. 별은 완수 · 목표 시간 · 보너스 목표마다 하나씩 받습니다. 영구 강화는 없고, 매 작전은 같은 조건에서 시작합니다.</p>
       <div class="rt-missions">${MISSIONS.map(m => { const ok = unlocked(campSave, m.id), st = campSave.stars[m.id] ?? 0, best = campSave.best[m.id];
-        return `<button type="button" data-mission="${m.id}" ${ok ? '' : 'aria-disabled="true"'}><span class="n">${ok ? m.id : '🔒'}</span><span class="t"><b>${m.title}<em>${m.tag}</em></b><small>${m.blurb}</small></span><span class="s"><i>${starsOf(st)}</i>${best ? `<small>최단 ${clock(best * TICK)}</small>` : ''}</span></button>`; }).join('')}</div>
+        return `<button type="button" data-mission="${m.id}" ${ok ? '' : 'aria-disabled="true"'}><span class="n">${ok ? m.id : '잠김'}</span><span class="t"><b>${m.title}<em>${m.tag}</em></b><small>${m.blurb}</small></span><span class="s"><i>${starsOf(st)}</i>${best ? `<small>최단 ${clock(best * TICK)}</small>` : ''}</span></button>`; }).join('')}</div>
       <div class="rt-actions sub"><button data-act="setup">뒤로</button></div></div>`);
     modal.querySelector<HTMLElement>('[data-mission]:not([aria-disabled])')?.focus();
   }
@@ -499,7 +500,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   function campResult(win: boolean): void {
     if (!sim || !camp) return; const c = camp, p = sim.players[0], o = sim.players[1], next = MISSIONS.find(m => m.id === c.def.id + 1), stars = c.stars();
     show(`<div class="rt-card rt-result ${win ? 'win' : 'lose'}"><span class="rt-eyebrow">작전 ${c.def.id} · ${esc(c.def.title)} · ${clock(sim.tick)}</span><h2>${win ? '작전 성공' : '작전 실패'}</h2><p>${esc(c.reason)}</p>
-      ${win ? `<div class="rt-starsrow" aria-label="별 ${stars}개">${starsOf(stars)}</div>` : ''}
+      <div class="rt-starsrow" aria-label="별 ${win ? stars : 0}개">${starsOf(win ? stars : 0)}</div>
       <ul class="rt-objs">${c.objectives.map(ob => `<li class="${ob.done ? 'done' : ''}"><i>${ob.done ? '✓' : ob.bonus ? '★' : '✗'}</i>${esc(ob.text)}</li>`).join('')}</ul>
       <dl class="rt-stats"><div><dt>처치</dt><dd>${p.kills}</dd></div><div><dt>손실</dt><dd>${p.lost}</dd></div><div><dt>적 처치</dt><dd>${o.kills}</dd></div><div><dt>시간</dt><dd>${clock(sim.tick)}</dd></div></dl>
       <div class="rt-actions">${win && next ? '<button class="primary" data-act="next">다음 작전</button>' : ''}<button ${win && next ? '' : 'class="primary"'} data-act="again">다시 하기</button><button data-act="camp">작전 목록</button></div></div>`);
@@ -519,7 +520,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     const fresh = document.createElement('canvas'); fresh.className = 'rt-canvas'; canvas.replaceWith(fresh); canvas = fresh; const q = prefs.quality;
     try { view = new RtsView(canvas, sim, me, q); } catch { show('<div class="rt-card"><span class="rt-eyebrow">FRONTLINE</span><h2>그래픽을 시작하지 못했어요</h2><p class="rt-lead">WebGL 을 사용할 수 없습니다. 브라우저를 새로고침하거나 그래픽 가속을 켠 뒤 다시 시도해 주세요.</p><div class="rt-actions"><button class="primary" data-act="exit">메뉴로</button></div></div>'); return; }
     vision = fogOn && !net ? new Vision(sim.map.size, me) : null; vision?.update(sim, true); view.setVision(vision); fogMini = null; fogVer = -1;
-    miniBase = null; selected.clear(); mode = null; submenu = false; ended = false; paused = false; acc = 0; hudKey = cmdKey = selKey = ''; groups.clear(); hide(); root.dataset.phase = 'play'; stats.start = performance.now(); resize();
+    miniBase = null; alertAt = { x: 0, y: 0, t: -999 }; selected.clear(); mode = null; submenu = false; ended = false; paused = false; acc = 0; hudKey = cmdKey = selKey = ''; groups.clear(); hide(); root.dataset.phase = 'play'; stats.start = performance.now(); resize();
     const h = sim.buildings.find(b => b.owner === me && b.kind === 'hq'); if (h) setSel([h.id]);
     if (camp && h) view.lookAt((h.x + 2 + camp.rally.x) / 2, (h.y + 2 + camp.rally.y) / 2);
     if (!camp) toast(net ? '대전 시작! 상대의 모든 건물을 파괴하세요' : '일꾼으로 광물을 캐고, 병영을 지어 병력을 모으세요', false); last = performance.now();

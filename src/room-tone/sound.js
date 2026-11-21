@@ -345,6 +345,22 @@ export class Sound {
     );
   }
 
+  notice() {
+    if (!this.ready()) return;
+    const at = this.ctx.currentTime;
+    this.note(48, 92, 1.15, 0.16, at, 0, "sine", 0.35);
+    this.note(49, 94, 1.15, 0.06, at, 0, "triangle", 0.35);
+  }
+
+  monsterStep(distance) {
+    if (!this.ready()) return;
+    const volume = Math.pow(limited(1 - distance / 18, 0, 1), 2);
+    if (volume < 0.002) return;
+    const at = this.ctx.currentTime;
+    this.note(68, 33, 0.2, 0.2 * volume, at);
+    this.rustle(at, 0.16, 0.17 * volume, 220, 0, 0.7);
+  }
+
   tone(index) {
     if (!this.ready()) return;
     const n = limited(Math.round(Number(index) || 0), 0, TONES.length - 1);

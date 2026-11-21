@@ -43,6 +43,9 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
       <div class="ol-br"><div class="ol-wname" id="ol-wname"></div><div class="ol-ammo"><b id="ol-mag">0</b><span id="ol-res"></span></div><div class="ol-slots" id="ol-slots"></div></div>
       <div class="ol-speedo" id="ol-speedo"><b id="ol-kmh">0</b><span>km/h</span><div class="ol-dmg"><i id="ol-dmg"></i></div><em id="ol-radio"></em></div>
       <div class="ol-mission" id="ol-mission" hidden><span class="tag" id="ol-mtag"></span><b id="ol-mtitle"></b><p id="ol-mtext"></p><em id="ol-mtimer"></em></div>
+      <div class="ol-waypoint" id="ol-waypoint" hidden><span class="ol-waypoint-arrow">▲</span><b id="ol-waypoint-distance"></b></div>
+      <div class="ol-police-warning" id="ol-police-warning" hidden>경찰 근처</div>
+      <div class="ol-down-details" id="ol-down-details" hidden></div>
       <div class="ol-banner" id="ol-banner"></div><div class="ol-vs" id="ol-vs" hidden></div>
       <div class="ol-style" id="ol-style"></div><div class="ol-sgauge" id="ol-sgauge"><i id="ol-sg"></i><b id="ol-sgm"></b></div>
       <div class="ol-cross" id="ol-cross"><i></i><i></i><i></i><i></i></div><div class="ol-hit" id="ol-hit"><i></i><i></i><i></i><i></i></div>
@@ -88,8 +91,8 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   function save(): void { if (!sim || versus) return; try { localStorage.setItem(OUTLAW_KEY, JSON.stringify(sim.exportSave())); } catch { /* 저장은 선택 사항입니다. */ } }
 
   // ---------- 알림 도구 ----------
-  function toast(text: string, sec = 3.2): void {
-    const li = document.createElement('li'); li.textContent = text; q('#ol-toasts').append(li); toastList.push({ el: li, at: performance.now() + sec * 1000 });
+  function toast(text: string, sec = 3.2, kind = ''): void {
+    const li = document.createElement('li'); li.textContent = text; if (kind) li.classList.add(kind); q('#ol-toasts').append(li); toastList.push({ el: li, at: performance.now() + sec * 1000 });
     while (toastList.length > 5) toastList.shift()!.el.remove();
   }
   function big(h: string, cls: string, ms = 2600): void {
@@ -380,7 +383,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
         case 'honk': { const v = sim.vehicle(e.id); if (v) at('honk', v.x, v.z); break; }
         case 'scream': { const v = sim.ped(e.id); if (v) at('scream', v.x, v.z); break; }
         case 'pickup': { if (e.ped === PLAYER_ID) { audio.play(e.kind === 'weapon' ? 'weapon_pickup' : e.kind === 'cash' ? 'cash' : 'pickup'); if (e.kind !== 'cash') toast(e.kind === 'health' ? '체력 회복' : e.kind === 'armor' ? '방탄복 획득' : e.kind === 'weapon' ? '무기 획득' : e.kind === 'ammo' ? '탄약 획득' : '꾸러미 획득', 2); } break; }
-        case 'cash': { if (e.amount !== 0) floater((e.amount > 0 ? '+' : '−') + money(Math.abs(e.amount)), e.amount > 0 ? 'up' : 'down'); break; }
+        case 'cash': { if (e.amount !== 0) floater((e.amount > 0 ? '+' : '−') + money(Math.abs(e.amount)), e.amount > 0 ? 'up' : 'down'); if (e.amount > 0) toast(`현금 획득  +${money(e.amount)}`, 2.6, 'cash'); break; }
         case 'wanted': {
           if (e.stars > e.prev) { audio.play('wanted_up'); big('<span class="w">WANTED</span><span class="s">' + '★'.repeat(e.stars) + '</span>', 'wanted', 2000); }
           else if (e.stars === 0 && e.prev > 0) { audio.play('wanted_down'); big('WANTED LEVEL LOST', 'lost', 2400); }
@@ -389,7 +392,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
         case 'msg': toast(e.text, e.sec); break;
         case 'mission': {
           if (e.what === 'start') { audio.play('mission_start'); }
-          else if (e.what === 'pass') { audio.play('mission_pass'); const m = MISSION_LIST.find(x => x.id === e.id); big(`<span class="mp">MISSION PASSED</span><span class="mr" id="ol-reward"></span><span class="mn">${esc(m?.title ?? e.text)}</span>`, 'pass', 4200); if (m) countUp(q('#ol-reward'), m.reward, '+'); save(); }
+          else if (e.what === 'pass') { audio.play('mission_pass'); const m = MISSION_LIST.find(x => x.id === e.id); big(`<span class="mp">MISSION PASSED</span><span class="mr" id="ol-reward"></span><span class="mn">${esc(m?.title ?? e.text)}</span>`, 'pass', 4200); toast(`임무 완료  ·  ${m?.title ?? e.text}`, 4, 'complete'); if (m) countUp(q('#ol-reward'), m.reward, '+'); save(); }
           else if (e.what === 'fail') { audio.play('mission_fail'); big(`<span class="mf">MISSION FAILED</span><span class="mn">${esc(e.text)}</span>`, 'fail', 3200); }
           else toast(e.text, 3);
           break;
@@ -504,6 +507,20 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     else if (s.job.active) { q('#ol-mission').hidden = false; set('mtag', '일거리'); set('mtitle', s.job.title); set('mtext', s.job.text); const t = s.job.timer; set('mtimer', t > 0 && s.job.active !== 'fight' ? `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}` : ''); }
     else if (act.active && act.text) { q('#ol-mission').hidden = false; set('mtag', '사이드'); set('mtitle', ({ taxi: '택시', armored: '현금수송차', bounty: '현상금', rampage: '렘페이지', vigilante: '소탕', race: '스트리트 레이스', export: '차량 수출' } as Record<string, string>)[act.active] ?? '활동'); set('mtext', act.text); const t = act.timer; set('mtimer', t > 0 ? `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}` : ''); }
     else q('#ol-mission').hidden = true;
+    const markers = s.mission.active ? s.mission.markers : s.job.active ? s.job.markers : act.active ? act.markers : [];
+    const targetMarker = markers.reduce<(typeof markers)[number] | undefined>((best, marker) => !best || Math.hypot(marker.x - p.x, marker.z - p.z) < Math.hypot(best.x - p.x, best.z - p.z) ? marker : best, undefined);
+    const waypoint = q('#ol-waypoint'); waypoint.hidden = !targetMarker || !p.alive || phase !== 'play';
+    if (targetMarker && !waypoint.hidden) {
+      const dx = targetMarker.x - p.x, dz = targetMarker.z - p.z;
+      const relative = Math.atan2(dz, dx) - cy;
+      const horizontal = Math.sin(relative), forward = Math.cos(relative);
+      const edgeX = forward > 0 ? clamp(horizontal / Math.max(0.2, forward), -1, 1) : (horizontal >= 0 ? 1 : -1);
+      waypoint.style.left = `${50 + edgeX * 43}%`;
+      waypoint.style.top = forward > 0 && Math.abs(edgeX) < 0.95 ? '18%' : '48%';
+      waypoint.querySelector<HTMLElement>('.ol-waypoint-arrow')!.style.transform = `rotate(${forward > 0 && Math.abs(edgeX) < 0.95 ? 0 : edgeX * 90}deg)`;
+      set('waypoint-distance', `${Math.round(Math.hypot(dx, dz))} m`);
+    }
+    q('#ol-police-warning').hidden = !(w.stars > 0 && p.alive && (s.peds.some(cop => cop.alive && cop.team === 'cop' && Math.hypot(cop.x - p.x, cop.z - p.z) < 55) || s.vehicles.some(v => v.siren && v.alive && Math.hypot(v.x - p.x, v.z - p.z) < 70)));
     bannerT = s.mission.bannerT; set('banner', s.mission.banner && bannerT > 0 ? s.mission.banner : ''); q('#ol-banner').classList.toggle('on', !!s.mission.banner && bannerT > 0);
     // 스타일 게이지
     const st = act.style; style('sg', 'width', `${clamp(st.timer / 5, 0, 1) * 100}%`); set('sgm', st.combo > 0 ? `COMBO ×${st.mult}` : ''); q('#ol-sgauge').classList.toggle('on', st.combo > 0);
@@ -519,6 +536,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     const dir = q('#ol-dir'); if (p.hurt > 0.05 && p.alive) { dir.style.opacity = String(clamp(p.hurt * 2, 0, 1)); dir.style.transform = `rotate(${(p.hurtYaw - cy) * 180 / Math.PI + 90}deg)`; } else dir.style.opacity = '0';
     // 쓰러짐/체포
     const down = s.downKind; const gray = q('#ol-gray'); gray.className = 'ol-gray' + (down ? ' on ' + down : '');
+    const downDetails = q('#ol-down-details'); downDetails.hidden = !down; if (down) downDetails.textContent = `처치 ${s.kills}  ·  완료 임무 ${s.mission.completed.length}  ·  보유 ${money(s.cash)}  |  재시작 ${Math.max(0, Math.ceil((down === 'wasted' ? 4 : 3) - s.deadT))}초`;
     if (down && cache.get('down') !== down) { cache.set('down', down); big(down === 'wasted' ? 'WASTED' : 'BUSTED', down, 4200); } else if (!down && cache.get('down')) { cache.set('down', ''); q('#ol-big').className = 'ol-big'; }
     // 토스트 수명
     const now = performance.now(); while (toastList.length && toastList[0].at < now) toastList.shift()!.el.remove();

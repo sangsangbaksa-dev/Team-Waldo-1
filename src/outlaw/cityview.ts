@@ -6,6 +6,7 @@ import { makeRng, type CityMap, type Prop, type PropKind } from './types';
 import { signal } from './world';
 import * as tex from './textures';
 import type { OutlawAssets } from './assets';
+import { makeEnvironment } from '../shared/gfx';
 
 export type Quality = 'high' | 'standard' | 'low';
 type Batch = Map<THREE.Material, THREE.BufferGeometry[]>;
@@ -23,7 +24,8 @@ function surface(g: THREE.BufferGeometry, tile = 4, tint = 0xffffff, facade = fa
     const vertical = Math.abs(n.getY(i)) < .5;
     uv[i * 2] = (Math.abs(n.getX(i)) > .5 ? p.getZ(i) : p.getX(i)) / (facade && vertical ? 18 : tile);
     uv[i * 2 + 1] = (vertical ? p.getY(i) : p.getZ(i)) / (facade && vertical ? 3.3 : tile);
-    color.set([c.r, c.g, c.b], i * 3);
+    const shade = n.getY(i) > .5 ? 1 : n.getY(i) < -.5 ? .65 : Math.abs(n.getX(i)) > .5 ? .82 : .92;
+    color.set([c.r * shade, c.g * shade, c.b * shade], i * 3);
   }
   flat.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); flat.setAttribute('color', new THREE.BufferAttribute(color, 3)); flat.clearGroups(); return flat;
 }
@@ -78,6 +80,9 @@ export class CityView {
   private fog = new THREE.FogExp2(0xb9cbd0, .0018);
   private oldFog: THREE.Scene['fog'];
   private oldBackground: THREE.Scene['background'];
+  private oldEnvironment: THREE.Scene['environment'];
+  private environment: THREE.Texture | null = null;
+  private asphalt: THREE.MeshStandardMaterial | null = null;
   private oldRenderer: { tone: THREE.ToneMapping; exposure: number; shadows: boolean; shadowType: THREE.ShadowMapType };
   private bulbs = new THREE.MeshBasicMaterial({ color: 0xffdfaa });
   private glow = new THREE.MeshBasicMaterial({ color: 0xffd39b, transparent: true, opacity: .22, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3 });
@@ -90,11 +95,12 @@ export class CityView {
   private matrix = new THREE.Object3D();
 
   constructor(readonly scene: THREE.Scene, readonly renderer: THREE.WebGLRenderer, readonly map: CityMap, readonly assets: OutlawAssets | null, readonly quality: Quality) {
-    this.oldFog = scene.fog; this.oldBackground = scene.background;
+    this.oldFog = scene.fog; this.oldBackground = scene.background; this.oldEnvironment = scene.environment;
     this.oldRenderer = { tone: renderer.toneMapping, exposure: renderer.toneMappingExposure, shadows: renderer.shadowMap.enabled, shadowType: renderer.shadowMap.type };
     renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.18;
-    renderer.shadowMap.enabled = quality === 'high'; renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.shadowMap.enabled = quality === 'high'; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     scene.fog = this.fog; this.root.name = 'OUTLAW CITY / static'; scene.add(this.root);
+    if (quality === 'high') { this.environment = makeEnvironment(renderer, { top: 0x7396bd, horizon: 0xe5c2a5, ground: 0x30383a, sun: 0xffdfb3, sunDir: [0.5, 0.7, 0.3], sunPower: 4 }); scene.environment = this.environment; }
     this.root.add(this.sky.mesh, this.hemi, this.sun, this.sun.target, this.moon, this.moon.target);
     this.materials.add(this.sky.mesh.material as THREE.Material); this.materials.add(this.bulbs); this.materials.add(this.glow);
     this.sun.castShadow = quality === 'high'; const shadow = this.sun.shadow;
@@ -133,7 +139,7 @@ export class CityView {
     } batch.clear();
   }
   private buildGround(): void {
-    const asphalt = this.mat({ map: this.texture(tex.asphaltTexture()), color: 0x9ca7ac, roughness: .48, metalness: .12 }); asphalt.userData.ground = true;
+    const asphalt = this.mat({ map: this.texture(tex.asphaltTexture()), color: 0x9ca7ac, roughness: .78, metalness: .08 }); asphalt.userData.ground = true; this.asphalt = asphalt;
     const ground = new THREE.Mesh(plane(0, -.025, 0, 4400, 4400, 12), asphalt); ground.receiveShadow = true; this.root.add(ground);
     const walk = this.mat({ map: this.texture(tex.sidewalkTexture()), roughness: .93 }); walk.userData.ground = true;
     const grass = this.mat({ map: this.texture(tex.grassTexture()), roughness: 1 }); grass.userData.ground = true;
@@ -176,12 +182,33 @@ export class CityView {
     const roof = this.mat({ map: this.texture(tex.roofTexture()), vertexColors: true, roughness: .9 });
     const tile = this.mat({ map: this.texture(tex.tileRoofTexture()), vertexColors: true, roughness: .9 });
     const equipment = this.mat({ color: 0x8c9598, roughness: .73, metalness: .24, vertexColors: true });
+    const trim = this.mat({ color: 0x777975, roughness: .78, metalness: .12, vertexColors: true });
+    const darkTrim = this.mat({ color: 0x303a40, roughness: .55, metalness: .32, vertexColors: true });
+    const glass = this.mat({ color: 0x78909a, roughness: .24, metalness: .38, vertexColors: true });
     const signMats = new Map<string, THREE.MeshStandardMaterial>(); const signBatch: Batch = new Map(), poolBatch: Batch = new Map();
     const pools = new Map<string, THREE.MeshBasicMaterial>();
     const names: Record<string, string> = { gunshop: 'GUN SHOP', bank: 'BANK', casino: 'CASINO', club: 'BLUE HOUR', paynspray: 'PAY N SPRAY', hospital: 'HOSPITAL', police: 'POLICE', safehouse: 'OAK ST.', garage: 'MOTOR WORKS', chopshop: 'IRON YARD', dealer: 'PRESTIGE MOTORS', gym: 'STEEL GYM', arena: 'THE PIT' };
     for (const b of this.map.buildings) {
       this.put(b.x, b.z, this.facades[b.tex % 6], box(b.x, b.h / 2 + .15, b.z, b.w, b.h, b.d, 4, new THREE.Color(b.color).lerp(new THREE.Color(0xffffff), .65).getHex(), true));
       this.put(b.x, b.z, roof, box(b.x, b.h + .2, b.z, b.w + .45, .3, b.d + .45));
+      // Street-level plinths, cornices and recessed entrances break up the flat facade.
+      const front = b.z - b.d / 2;
+      this.put(b.x, b.z, trim, box(b.x, .45, front - .09, b.w + .16, .58, .22));
+      this.put(b.x, b.z, trim, box(b.x, Math.min(b.h - .4, 4.1), front - .11, b.w + .22, .18, .28));
+      this.put(b.x, b.z, trim, box(b.x, b.h - .35, front - .1, b.w + .25, .24, .24));
+      if (b.h > 7 && b.w > 7) {
+        const doorW = Math.min(2.3, b.w * .22);
+        this.put(b.x, b.z, darkTrim, box(b.x, 1.75, front - .15, doorW + .36, 3.2, .18));
+        this.put(b.x, b.z, glass, box(b.x, 1.9, front - .26, doorW, 2.7, .06));
+        this.put(b.x, b.z, trim, box(b.x, 1.9, front - .3, .07, 2.7, .08));
+        for (const side of [-1, 1]) {
+          this.put(b.x, b.z, trim, box(b.x + side * (b.w / 2 - .22), b.h / 2, front - .1, .24, b.h - .5, .24));
+          this.put(b.x, b.z, darkTrim, box(b.x + side * (doorW / 2 + .15), 3.45, front - .3, .18, .25, .28));
+        }
+      }
+      if (this.quality !== 'low' && b.h > 12) {
+        for (let y = 7; y < b.h - 2; y += 9.9) this.put(b.x, b.z, trim, box(b.x, y, front - .06, b.w, .1, .14));
+      }
       if (b.roof === 'gable') this.put(b.x, b.z, tile, surface(wedge(b.w + .8, b.d + .8, Math.min(b.w, b.d) * .22, true).translate(b.x, b.h + .35, b.z)));
       else {
         this.put(b.x, b.z, equipment, box(b.x - b.w * .2, b.h + 1, b.z, 2.7, 1.5, 2));
@@ -346,6 +373,7 @@ export class CityView {
     if (this.lampPools) this.lampPools.visible = c.night > .4;
     this.glow.opacity = .16 + c.night * .24;
     for (const m of this.reflections) m.opacity = Math.min(.55, c.night * .3 + rain * .3);
+    if (this.asphalt) { this.asphalt.roughness = Math.max(.3, .78 - rain * .4 - c.night * .08); this.asphalt.metalness = .08 + rain * .16; }
   }
   update(dt: number, camera: THREE.PerspectiveCamera, clock: number, t: number, rain = 0): void {
     if (this.disposed) return; this.lightning(dt, rain); camera.getWorldDirection(this.lookDir); this.lookDir.y = 0; if (this.lookDir.lengthSq() > 1e-4) this.lookDir.normalize(); this.lighting(clock, camera.position, rain, this.lookDir); this.rainFx(dt, camera.position, rain);
@@ -364,6 +392,8 @@ export class CityView {
     this.sun.shadow.dispose(); this.moon.shadow.dispose(); this.root.removeFromParent(); this.root.clear();
     if (this.scene.fog === this.fog) this.scene.fog = this.oldFog;
     this.scene.background = this.oldBackground;
+    if (this.scene.environment === this.environment) this.scene.environment = this.oldEnvironment;
+    this.environment?.dispose();
     this.renderer.toneMapping = this.oldRenderer.tone; this.renderer.toneMappingExposure = this.oldRenderer.exposure;
     this.renderer.shadowMap.enabled = this.oldRenderer.shadows; this.renderer.shadowMap.type = this.oldRenderer.shadowType;
     this.chunks.length = 0; this.materials.clear(); this.textures.clear();

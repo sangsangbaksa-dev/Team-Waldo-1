@@ -26,6 +26,7 @@ import { DuelArmy, parseArmy } from './duelarmy';
 import { CITY_KEY, readCityCareer } from '../records';
 import { PVP_ENABLED } from '../net/config';
 import { ChatLimiter, cleanChat, pushChat, visibleChat, type ChatLine } from './chat';
+import { gemIcon, starIcon } from '../shared/glyphs';
 
 const $ = (n: number): string => Math.floor(n).toLocaleString('en-US');
 const clock = (t: number): string => `${Math.floor(Math.max(0, t) / 60)}:${String(Math.floor(Math.max(0, t) % 60)).padStart(2, '0')}`;
@@ -253,7 +254,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   }
   function renderPanel(): void {
     const w = world!, f = w.factions[0]; let body = '';
-    const cost = (c: number, m: number): string => `${c ? `<i class="cr">◆${w.cost(f, c)}</i>` : ''}${m ? `<i class="ca">$${w.cost(f, m)}</i>` : ''}`;
+    const cost = (c: number, m: number): string => `${c ? `<i class="cr">${gemIcon()}${w.cost(f, c)}</i>` : ''}${m ? `<i class="ca">$${w.cost(f, m)}</i>` : ''}`;
     if (shopOpen) {
       const z = w.insideBiz(), near = w.nearInsideCounter();
       if (z) {
@@ -345,12 +346,12 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
 
   function renderHud(): void {
     const w = world!, f = w.factions[0], b = w.boss(0), z = w.zone;
-    put(q('#c-res'), `<span class="ca" title="자금">$ <b>${$(f.cash)}</b><small>+${$(f.income)}/s</small></span><span class="cr" title="크리스탈">◆ <b>${$(f.crystal)}</b></span><span title="인구">병력 <b>${f.supply}/${f.supplyMax}</b></span>`);
+    put(q('#c-res'), `<span class="ca" title="자금">$ <b>${$(f.cash)}</b><small>+${$(f.income)}/s</small></span><span class="cr" title="크리스탈">${gemIcon()} <b>${$(f.crystal)}</b></span><span title="인구">병력 <b>${f.supply}/${f.supplyMax}</b></span>`);
     const entries = tut || duel || room ? [] : missionLog(w), summary = missionSummary(entries), current = summary.active;
     put(q('#c-quest'), tut || duel || room ? '' : current ? `<div class="c-quest-head"><span>작전 지령 <b>${summary.completed}/${summary.total}</b></span><button data-act="missions" aria-label="전체 작전 지령 보기"><kbd>J</kbd>전체 보기</button></div><strong>${current.title}</strong><p>${current.objective}</p><div class="c-quest-progress" role="progressbar" aria-label="${current.title} 진행률" aria-valuemin="0" aria-valuemax="${current.target}" aria-valuenow="${current.current}"><i style="width:${current.current / current.target * 100}%"></i></div><small>${current.current}/${current.target}${current.reward ? ' · 완료 보상 $' + $(current.reward) : ' · 최종 작전'}</small>` : '<div class="c-quest-head"><span>작전 지령 완료</span><button data-act="missions">전체 보기</button></div><strong>최후의 왕국!</strong>');
     if (!q('#c-missions').hidden) renderMissions();
     void z; if (room) { const alive = room.ids.filter(id => !room!.out.has(id) && (room!.deaths.get(id) ?? 0) < ROOM_LIVES).length; put(q('#c-zone'), `<b>${clock(Math.max(0, ROOM_TIME - w.time))}</b><span>남은 목숨 <b>${Math.max(0, ROOM_LIVES - room.myDeaths)}</b>/${ROOM_LIVES}</span><span>생존 <b>${alive}</b>/${room.ids.length}명</span>`); } else if (duel) put(q('#c-zone'), `<b>${clock(Math.max(0, TIME_LIMIT - w.time))}</b><span>나 <b>${duel.oppDeaths}</b> : <b>${duel.myDeaths}</b> ${duel.s.opponent.nickname.replace(/[<>&"]/g, '')}</span><span>${TARGET_KILLS}킬 선취</span>`); else if (tut) put(q('#c-zone'), `<b>튜토리얼</b><span>연습장 · 라이벌 정지</span><span>${Math.min(tut.s.i, STEPS.length - 1) + 1}/${STEPS.length}</span>`); else put(q('#c-zone'), `<b>${clock(w.time)}</b><span>생존 왕국 <b>${w.aliveCount()}</b>/8</span><span class="c-citytime" title="밤에는 클럽·카지노, 낮에는 편의점·공장 수입이 늘고 폭풍우에는 줄어듭니다">${WEATHER_ICON[w.weather]} ${clockLabel(w.hour)} · ${PHASE_LABEL[w.phase]} · ${WEATHER_LABEL[w.weather]}</span>`);
-    put(q('#c-wanted'), f.wanted >= 1 ? `<span class="stars">${'★'.repeat(Math.floor(f.wanted))}${'☆'.repeat(5 - Math.floor(f.wanted))}</span> 수배 중` : '');
+    put(q('#c-wanted'), f.wanted >= 1 ? `<span class="stars">${starIcon(true).repeat(Math.floor(f.wanted))}${starIcon(false).repeat(5 - Math.floor(f.wanted))}</span> 수배 중` : '');
     { const live = chatLive(); (q('#c-chatbtn') as HTMLElement).hidden = !live; put(q('#c-chat'), live ? visibleChat(chatLog, chatNow(), chatOpen).map(l => `<div class="${l.mine ? 'me' : ''}"><b>${esc(l.name)}</b> ${esc(l.text)}</div>`).join('') : ''); }
     put(q('#c-feed'), w.feed.filter(x => w.time - x.t < 7).slice(-5).map(x => `<div style="border-color:${x.color}">${x.text}</div>`).join(''));
     const army = w.armyOf(0).length; put(q('#c-squads'), squadBar(w));

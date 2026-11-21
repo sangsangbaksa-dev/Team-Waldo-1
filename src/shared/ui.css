@@ -63,3 +63,7 @@
 @keyframes wd-rail-in { from { opacity: 0; transform: translateY(10px); } }
 @media (prefers-reduced-motion: reduce) { .wd-has-rails > .wd-rail { animation: none; } }
 @media (max-width: 1479px) { .c-modal > .wd-rail { display: none !important; } }
+
+/* 문자 기호 대신 쓰는 작은 그림(shared/glyphs.ts) */
+.wd-ico { display: inline-block; width: 1em; height: 1em; vertical-align: -.16em; }
+.wd-rails-off > .wd-rail { display: none !important; }

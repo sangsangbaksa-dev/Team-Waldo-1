@@ -1,11 +1,14 @@
 // FRONTLINE 롤식 라인전 — 3D 화면: 지형, 챔피언·미니언·포탑·몬스터, 스킬 이펙트, 카메라. 시뮬레이션은 읽기만 합니다.
 import * as THREE from 'three';
+import { makeEnvironment, standardize } from '../../shared/gfx';
+import { readPreferences } from '../../prefs';
 import { makePost, type PostFx } from '../../postfx';
 import { makeBuilding, makeUnit, matsFor, type BuildRig, type UnitRig } from '../models';
 import { CHAMPS, LANE_PTS, LANES, NEXUS, RIVER, SIZE, type ChampId, type MonsterKind } from './config';
 import { animateChamp, decorateChamp } from './champs3d';
 import { buildScenery, type Scenery } from './scenery3d';
 import { isMinion, type Ent, type MobaSim, type SimEvent } from './sim';
+import { addLaneDetails, decorateStructure } from './detail3d';
 
 type Quality = 'high' | 'standard' | 'low';
 interface Vis { id: number; root: THREE.Group; rig: UnitRig | null; brig: BuildRig | null; ring: THREE.Mesh | null; x: number; y: number; yaw: number; moved: number; hit: number; seen: boolean; mon: THREE.Group | null }
@@ -19,18 +22,21 @@ export class MobaView {
   private vis = new Map<number, Vis>(); private fx: Fx[] = []; private raycaster = new THREE.Raycaster(); private sun = new THREE.DirectionalLight(0xffe2b4, 2.4);
   private shadows: boolean; private aim: THREE.Mesh; private aimRange: THREE.Mesh; private fxBudget: number;
   private glow = new Map<number, THREE.MeshBasicMaterial>();
+  private environment: THREE.Texture | null = null; private reducedMotion = readPreferences().reducedMotion;
   private scenery!: Scenery; private fog!: THREE.Mesh; private fogCtx!: CanvasRenderingContext2D; private fogTex!: THREE.CanvasTexture; private fogT = 0; private wardVis = new Map<number, THREE.Group>();
 
   constructor(readonly canvas: HTMLCanvasElement, readonly sim: MobaSim, readonly quality: Quality = 'high') {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality === 'high' ? 2 : 1.5)); this.shadows = quality !== 'low';
-    this.renderer.shadowMap.enabled = this.shadows; this.renderer.shadowMap.type = THREE.PCFShadowMap; this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.05;
+    this.renderer.shadowMap.enabled = this.shadows; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; this.renderer.outputColorSpace = THREE.SRGBColorSpace; this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.05;
     this.fxBudget = quality === 'high' ? 140 : quality === 'standard' ? 80 : 36;
     const sky = new THREE.Color(0xc4cfb0); this.scene.background = sky; this.scene.fog = new THREE.Fog(sky, 100, 250);
     this.scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x5a5a3c, 1.25));
-    this.sun.castShadow = this.shadows; const sc = this.sun.shadow.camera; sc.left = -34; sc.right = 34; sc.top = 34; sc.bottom = -34; sc.near = 1; sc.far = 160; this.sun.shadow.mapSize.set(1024, 1024); this.sun.shadow.bias = -0.0006; this.sun.shadow.normalBias = 0.04;
+    const rim = new THREE.DirectionalLight(0x9ebcff, 0.6); rim.position.set(30, 20, -35); this.scene.add(rim);
+    this.sun.castShadow = this.shadows; const sc = this.sun.shadow.camera; sc.left = -34; sc.right = 34; sc.top = 34; sc.bottom = -34; sc.near = 1; sc.far = 160; this.sun.shadow.mapSize.set(quality === 'high' ? 2048 : 1024, quality === 'high' ? 2048 : 1024); this.sun.shadow.bias = -0.0006; this.sun.shadow.normalBias = 0.04;
     this.scene.add(this.sun, this.sun.target);
-    this.buildTerrain(); this.scenery = buildScenery(this.scene, sim.map, this.shadows, quality === 'low'); this.buildFog();
+    if (quality === 'high') { this.environment = makeEnvironment(this.renderer, { top: 0x648ec6, horizon: 0xf2d6ad, ground: 0x435541, sun: 0xffe1a9, sunDir: [-0.45, 1, 0.4], sunPower: 3 }); this.scene.environment = this.environment; }
+    this.buildTerrain(); addLaneDetails(this.scene, quality); this.scenery = buildScenery(this.scene, sim.map, this.shadows, quality === 'low'); this.buildFog();
     this.aim = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 40), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, depthWrite: false, side: THREE.DoubleSide })); this.aim.rotation.x = -Math.PI / 2; this.aim.position.y = 0.08; this.aim.visible = false; this.scene.add(this.aim);
     this.aimRange = new THREE.Mesh(new THREE.RingGeometry(0.985, 1, 64), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, depthWrite: false, side: THREE.DoubleSide })); this.aimRange.rotation.x = -Math.PI / 2; this.aimRange.position.y = 0.07; this.aimRange.visible = false; this.scene.add(this.aimRange);
     const me = sim.me(); this.cam.x = me.x; this.cam.y = me.y; if (window.innerWidth < 900 || matchMedia('(pointer: coarse)').matches) this.cam.dist = 32;
@@ -48,6 +54,12 @@ export class MobaView {
     // 정글 길(옅은 흙길): 둥지에서 길목으로 가는 길은 장식 정도로만.
     poly(RIVER, 7.5, 'rgba(70,150,190,.55)'); poly(RIVER, 5.2, 'rgba(96,190,225,.85)'); poly(RIVER, 2.2, 'rgba(160,225,245,.7)');
     for (const l of LANES) { poly(LANE_PTS[l], 8.5, 'rgba(96,84,60,.55)'); poly(LANE_PTS[l], 7, '#a8946a'); poly(LANE_PTS[l], 5, '#b9a67c'); }
+    // Fine irregular ground markings break up the broad color fields at camera height.
+    for (let i = 0; i < (this.quality === 'low' ? 2500 : 8000); i++) {
+      const x = r() * tex.width, y = r() * tex.height, size = 1 + r() * 5;
+      g.fillStyle = r() < 0.5 ? 'rgba(32,55,29,.12)' : 'rgba(224,213,158,.12)';
+      g.beginPath(); g.ellipse(x, y, size, size * (0.25 + r() * 0.5), r() * Math.PI, 0, Math.PI * 2); g.fill();
+    }
     for (const c of this.sim.map.camps) { const gr = g.createRadialGradient(c.at.x * k, c.at.y * k, 0, c.at.x * k, c.at.y * k, 4.4 * k); gr.addColorStop(0, 'rgba(160,140,100,.9)'); gr.addColorStop(1, 'rgba(160,140,100,0)'); g.fillStyle = gr; g.fillRect((c.at.x - 5) * k, (c.at.y - 5) * k, 10 * k, 10 * k); }
     NEXUS.forEach((b, t) => { const gr = g.createRadialGradient(b.x * k, b.y * k, 3 * k, b.x * k, b.y * k, 13 * k); gr.addColorStop(0, t === 0 ? 'rgba(80,130,210,.85)' : 'rgba(215,95,70,.85)'); gr.addColorStop(0.75, t === 0 ? 'rgba(120,150,190,.45)' : 'rgba(190,130,110,.45)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect((b.x - 14) * k, (b.y - 14) * k, 28 * k, 28 * k); });
     const map = new THREE.CanvasTexture(tex); map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 4;
@@ -164,6 +176,8 @@ export class MobaView {
     else if (e.kind === 'nexus') { brig = makeBuilding('hq', e.team); brig.root.scale.setScalar(1.35); root.add(brig.root); }
     else { mon = this.monster(e.sub as MonsterKind, e.team); mon.scale.setScalar(1); root.add(mon); }
     if (e.kind === 'hero') { ring = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.05, 32), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, depthWrite: false })); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.06; ring.scale.setScalar(1.3); root.add(ring); }
+    if (e.kind === 'turret' || e.kind === 'nexus') decorateStructure(root, e.team, e.kind === 'nexus');
+    standardize(root, { roughness: 0.65, metalness: 0.18, envMapIntensity: 0.8 });
     this.scene.add(root); void matsFor; return { id: e.id, root, rig, brig, ring, x: e.x, y: e.y, yaw: 0, moved: 0, hit: -99, seen: true, mon };
   }
   private updateVis(dt: number, viewerTeam: number, meId: number): void {
@@ -179,7 +193,7 @@ export class MobaView {
         v.rig.root.rotation.y = v.yaw; const bob = Math.sin(this.clock * 13 + e.id) * 0.05 * v.moved; v.rig.body.position.y = Math.abs(bob); v.rig.body.rotation.z = bob * 0.5;
         const fired = this.sim.tick - e.fired; if (v.rig.ch) { const st = v.rig.ch.state; st.speed = v.moved * 3; st.walk += dt * v.moved * 4.8; st.time += dt; st.recoil = fired >= 0 && fired < 3 ? 1 : 0; v.rig.ch.update(dt); } v.rig.flash.visible = fired >= 0 && fired < 2 && e.range > 2.5; if (v.rig.gun) v.rig.gun.position.x = (v.rig.gun.position.x * 0 + 0.2) - (fired >= 0 && fired < 3 ? 0.08 : 0);
         if (isMinion(e.kind)) { const lunge = fired >= 0 && fired < 4 && e.range < 2.5 ? Math.sin(fired / 4 * Math.PI) * 0.35 : 0; v.rig.body.position.x = lunge; }
-        if (v.rig.carry) v.rig.carry.visible = false; if (e.hero) animateChamp(v.rig, this.clock);
+        if (v.rig.carry) v.rig.carry.visible = false; if (e.hero && !this.reducedMotion) animateChamp(v.rig, this.clock);
         if (e.hero) { const sk = this.sim.tick - e.hero.castAt; v.rig.body.scale.setScalar(sk >= 0 && sk < 6 ? 1.12 : 1); }
       }
       if (v.mon && e.kind === 'inhib') { const gem = v.mon.children.find(c => c.userData.spin); if (gem) { gem.rotation.y += dt * 1.4; gem.position.y = 1.9 + Math.sin(this.clock * 2) * 0.12; } }
@@ -231,12 +245,12 @@ export class MobaView {
   }
 
   render(dt: number): void {
-    this.clock += dt; const me = this.sim.me(); this.updateVis(dt, this.sim.myTeam, me.id); this.syncWards(); this.scenery.update(dt, this.clock); if ((this.fogT -= dt) <= 0) { this.fogT = 0.12; this.paintFog(); }
+    this.clock += dt; const me = this.sim.me(); this.updateVis(dt, this.sim.myTeam, me.id); this.syncWards(); if (!this.reducedMotion) this.scenery.update(dt, this.clock); if ((this.fogT -= dt) <= 0) { this.fogT = 0.12; this.paintFog(); }
     for (let i = this.fx.length - 1; i >= 0; i--) { const f = this.fx[i]; f.t += dt; if (f.t >= f.life) { this.scene.remove(f.obj); this.fx.splice(i, 1); } else f.tick(f, dt); }
     this.placeCamera(); if (this.post) this.post.render(dt); else this.renderer.render(this.scene, this.camera);
   }
   dispose(): void {
     this.scene.traverse(o => { if (o instanceof THREE.Mesh || o instanceof THREE.InstancedMesh) { o.geometry.dispose(); const m = o.material; (Array.isArray(m) ? m : [m]).forEach(x => x.dispose()); } });
-    this.post?.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss(); void TEAM_HEX; void this.glow;
+    this.environment?.dispose(); this.post?.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss(); void TEAM_HEX; void this.glow;
   }
 }

@@ -111,3 +111,13 @@
 .sk-modal .sk-card .wd-btn:hover{border-color:#697078}.sk-modal .sk-card .wd-btn.primary:hover{background:#fff}
 .sk-result #sk-end-s{margin-top:22px;border-color:var(--wd-line);background:#0e0f12;border-radius:12px;color:var(--wd-text)}
 .sk-stat b{color:var(--wd-text)}.sk-stat span,.sk-best{color:var(--wd-muted)}.sk-stat.hi b{color:var(--wd-accent);text-shadow:none}.sk-newrec{background:var(--wd-accent);color:var(--wd-accent-ink);animation:none}
+
+/* Drawn HUD icons (SVG paths shared with the canvas overlay) */
+.sk-ic{width:15px;height:15px;flex:none;fill:currentColor;vertical-align:-3px;margin-right:6px;filter:drop-shadow(0 1px 3px #000a)}
+.sk-brow{display:grid;grid-template-columns:16px 1fr;gap:8px;align-items:center}.sk-brow .sk-ic{margin:0;width:16px;height:16px}
+.sk-brow:has(.hp) .sk-ic{color:#7dffb0}.sk-brow:has(.heat) .sk-ic{color:#ffb07a}.sk-brow:has(.fuel) .sk-ic{color:#9fe3ff}.sk-brow:has(.low) .sk-ic{color:#ff6b5a}
+.sk-gauges>div:not(.thr):before{display:none}.sk-gauges>div:not(.thr){padding-left:8px}.sk-gauges>div .sk-ic{color:#9fdcf0}
+.sk-gauges #sk-mis .sk-ic{margin:0 1px 0 0;width:11px;height:14px;color:#ffd09a}
+.sk-status{display:flex;gap:12px;justify-content:flex-end;align-items:center}.sk-status .sk-ic{width:16px;height:16px;margin-right:4px;color:#ffe27a;vertical-align:-3px}
+.sk-btns button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:12px}.sk-btns button .sk-ic{width:22px;height:22px;margin:0;color:#bfe9ff}
+.sk-btns #sk-b-mis .sk-ic{color:#ffd09a}.sk-btns #sk-b-flare .sk-ic{color:#ffe27a}.sk-btns #sk-b-boost .sk-ic{color:#8fffd0}

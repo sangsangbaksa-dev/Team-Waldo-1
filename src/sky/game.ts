@@ -8,6 +8,7 @@ import { SkyAudio } from './audio';
 import { readSkyRecords, recordSkyRun } from './records';
 import { readPreferences } from '../prefs';
 import type { LoadingScreen } from '../loading';
+import { drawIcon, svgIcon } from './art';
 
 const clamp = THREE.MathUtils.clamp;
 const AIM_CONE = Math.cos(THREE.MathUtils.degToRad(5)), ASSIST_CONE = Math.cos(THREE.MathUtils.degToRad(9));
@@ -19,10 +20,10 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   root.innerHTML = `<canvas class="sk-canvas"></canvas><canvas class="sk-ov"></canvas>
   <div class="sk-hud" hidden>
     <div class="sk-top"><div class="sk-score"><b id="sk-score">0</b><span id="sk-combo"></span></div><div class="sk-wave" id="sk-wave"></div><div class="sk-status" id="sk-status"></div></div>
-    <div class="sk-bars"><div class="sk-bar hp"><i id="sk-hp"></i></div><div class="sk-bar heat"><i id="sk-heat"></i></div><div class="sk-bar fuel"><i id="sk-fuel"></i></div></div>
-    <div class="sk-gauges"><div>속도 <b id="sk-spd">0</b></div><div>고도 <b id="sk-alt">0</b></div><div>미사일 <b id="sk-mis">0</b></div><div class="thr"><i id="sk-thr"></i></div></div>
+    <div class="sk-bars"><div class="sk-brow">${svgIcon('hp')}<div class="sk-bar hp"><i id="sk-hp"></i></div></div><div class="sk-brow">${svgIcon('heat')}<div class="sk-bar heat"><i id="sk-heat"></i></div></div><div class="sk-brow">${svgIcon('fuel')}<div class="sk-bar fuel"><i id="sk-fuel"></i></div></div></div>
+    <div class="sk-gauges"><div>${svgIcon('speed')}속도 <b id="sk-spd">0</b></div><div>${svgIcon('alt')}고도 <b id="sk-alt">0</b></div><div>${svgIcon('missile')}미사일 <b id="sk-mis">0</b></div><div class="thr"><i id="sk-thr"></i></div></div>
     <div class="sk-alert" id="sk-alert"></div><div class="sk-banner" id="sk-banner"></div>
-    <div class="sk-btns"><button id="sk-b-fire">기관포</button><button id="sk-b-mis">미사일</button><button id="sk-b-flare">플레어</button><button id="sk-b-boost">부스트</button></div>
+    <div class="sk-btns"><button id="sk-b-fire">${svgIcon('gun')}<span>기관포</span></button><button id="sk-b-mis">${svgIcon('missile')}<span>미사일</span></button><button id="sk-b-flare">${svgIcon('flare')}<span>플레어</span></button><button id="sk-b-boost">${svgIcon('boost')}<span>부스트</span></button></div>
     <button class="sk-pause" id="sk-pause" aria-label="일시정지">Ⅱ</button><div class="sk-hint" id="sk-hint"></div>
   </div>
   <div class="sk-modal wd-screen" id="sk-title"><div class="sk-card wd-panel">
@@ -111,13 +112,14 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   function hint(t: string): void { const el = $('sk-hint'); el.textContent = t; hintT = 3; }
   function banner(t: string, sec = 2.2): void { const el = $('sk-banner'); el.textContent = t; el.classList.add('on'); bannerT = sec; }
   function alertMsg(t: string, sec = 1): void { $('sk-alert').textContent = t; alertT = sec; }
+  const html = new WeakMap<HTMLElement, string>(); const setHtml = (el: HTMLElement, v: string): void => { if (html.get(el) !== v) { html.set(el, v); el.innerHTML = v; } };
   function hud(p: Jet): void {
     $('sk-score').textContent = String(sim!.score); $('sk-combo').textContent = sim!.combo > 1 ? ` ×${sim!.combo}` : '';
     $('sk-wave').textContent = `WAVE ${Math.max(1, sim!.wave)} · 적 ${sim!.enemies().length}`;
     $('sk-hp').style.width = `${Math.max(0, p.hp / p.maxHp * 100)}%`; $('sk-hp').parentElement!.classList.toggle('low', p.hp < 30);
     $('sk-heat').style.width = `${clamp(p.heat / 1.2 * 100, 0, 100)}%`; $('sk-heat').parentElement!.classList.toggle('hot', p.heat > 0.9);
-    $('sk-spd').textContent = String(Math.round(p.speed * 3.6)) + ' · ' + p.g.toFixed(1) + 'G'; $('sk-alt').textContent = String(Math.round(p.pos.y)); $('sk-mis').textContent = '▮'.repeat(p.missiles) || '—';
-    $('sk-status').textContent = [sim!.shield > 0 ? `🛡 ${Math.ceil(sim!.shield)}` : '', sim!.overdrive > 0 ? `⚡ ${sim!.overdrive.toFixed(1)}s` : ''].filter(Boolean).join('  ');
+    $('sk-spd').textContent = String(Math.round(p.speed * 3.6)) + ' · ' + p.g.toFixed(1) + 'G'; $('sk-alt').textContent = String(Math.round(p.pos.y)); setHtml($('sk-mis'), p.missiles > 0 ? svgIcon('missile', 'sk-ic mini').repeat(Math.min(p.missiles, 12)) : '—');
+    setHtml($('sk-status'), [sim!.shield > 0 ? `${svgIcon('shield')}${Math.ceil(sim!.shield)}` : '', sim!.overdrive > 0 ? `${svgIcon('bolt')}${sim!.overdrive.toFixed(1)}s` : ''].filter(Boolean).join(' '));
     $('sk-fuel').style.width = `${p.fuel * 100}%`;
     $('sk-thr').style.width = `${throttle * 100}%`;
     if (alertT > 0) { alertT -= 1 / 60; if (alertT <= 0) $('sk-alert').textContent = ''; }
@@ -150,13 +152,16 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
         octx.save(); octx.translate(x, y); octx.rotate(a); octx.fillStyle = 'rgba(255,120,80,.85)'; octx.beginPath(); octx.moveTo(12, 0); octx.lineTo(-8, -8); octx.lineTo(-8, 8); octx.fill(); octx.restore();
       }
     }
-    for (const k of sim!.pickups) { const s = view!.project(k.pos); if (s.behind || s.x < 0 || s.x > 1 || s.y < 0 || s.y > 1) continue; octx.strokeStyle = k.kind === 'repair' ? '#5dff8f' : k.kind === 'shield' ? '#ffe27a' : '#6ab8ff'; octx.lineWidth = 2; octx.beginPath(); octx.arc(s.x * W, s.y * H, 14 + 3 * Math.sin(performance.now() / 150), 0, 7); octx.stroke(); octx.fillStyle = octx.strokeStyle; octx.font = '700 12px system-ui'; octx.fillText(k.kind === 'repair' ? '+' : '▮', s.x * W - 4, s.y * H + 4); }
+    for (const k of sim!.pickups) { const s = view!.project(k.pos); if (s.behind || s.x < 0 || s.x > 1 || s.y < 0 || s.y > 1) continue; octx.strokeStyle = k.kind === 'repair' ? '#5dff8f' : k.kind === 'shield' ? '#ffe27a' : '#6ab8ff'; octx.lineWidth = 2; octx.beginPath(); octx.arc(s.x * W, s.y * H, 14 + 3 * Math.sin(performance.now() / 150), 0, 7); octx.stroke(); octx.fillStyle = octx.strokeStyle; drawIcon(octx, k.kind === 'repair' ? 'hp' : k.kind === 'shield' ? 'shield' : 'missile', s.x * W, s.y * H, 15); }
     // 레이더(내 기수가 위쪽)
     const R = 58, rx = W - R - 16, ry = H - R - 16 - (innerWidth < 700 ? 60 : 0); octx.fillStyle = 'rgba(8,30,20,.55)'; octx.strokeStyle = 'rgba(120,255,180,.5)'; octx.lineWidth = 1.4; octx.beginPath(); octx.arc(rx, ry, R, 0, 7); octx.fill(); octx.stroke(); octx.beginPath(); octx.arc(rx, ry, R / 2, 0, 7); octx.stroke();
+    { const sw = performance.now() / 900 % (Math.PI * 2), g = octx.createRadialGradient(rx, ry, 0, rx, ry, R); g.addColorStop(0, 'rgba(120,255,180,0)'); g.addColorStop(1, 'rgba(120,255,180,.28)'); // 레이더 소인선 + 십자선
+      octx.save(); octx.beginPath(); octx.arc(rx, ry, R, 0, 7); octx.clip(); octx.fillStyle = g; octx.beginPath(); octx.moveTo(rx, ry); octx.arc(rx, ry, R, sw - 0.7, sw); octx.closePath(); octx.fill(); octx.restore();
+      octx.strokeStyle = 'rgba(120,255,180,.25)'; octx.beginPath(); octx.moveTo(rx - R, ry); octx.lineTo(rx + R, ry); octx.moveTo(rx, ry - R); octx.lineTo(rx, ry + R); octx.stroke(); octx.strokeStyle = 'rgba(120,255,180,.5)'; }
     const yaw = p.yaw, cs = Math.cos(yaw), sn = Math.sin(yaw), range = 2400;
     for (const j of sim!.jets) { if (!j.alive || j === p) continue; const dx = j.pos.x - p.pos.x, dz = j.pos.z - p.pos.z; const lx = dx * cs - dz * sn, lz = dx * sn + dz * cs; // 로컬 x(오른쪽), z(뒤쪽)
       const k = R / range; let px = lx * k, py = lz * k; const m = Math.hypot(px, py); if (m > R - 3) { px *= (R - 3) / m; py *= (R - 3) / m; }
-      octx.fillStyle = j.kind === 'ace' ? '#ffd23f' : '#ff5a4a'; octx.fillRect(rx + px - 2.5, ry + py - 2.5, 5, 5); }
+      octx.fillStyle = j.kind === 'ace' ? '#ffd23f' : '#ff5a4a'; octx.shadowColor = octx.fillStyle; octx.shadowBlur = 6; octx.beginPath(); octx.moveTo(rx + px, ry + py - 4); octx.lineTo(rx + px + 3.5, ry + py); octx.lineTo(rx + px, ry + py + 4); octx.lineTo(rx + px - 3.5, ry + py); octx.fill(); octx.shadowBlur = 0; }
     octx.fillStyle = '#9dffc4'; octx.beginPath(); octx.moveTo(rx, ry - 6); octx.lineTo(rx - 4, ry + 4); octx.lineTo(rx + 4, ry + 4); octx.fill();
     // 위험 테두리
     const dng = Math.max(p.hp < 30 ? 0.6 : 0, sim!.missiles.some(m => m.target === p.id) ? 0.8 : 0); if (dng > 0) { const g = octx.createRadialGradient(cx, cy, Math.min(W, H) * 0.35, cx, cy, Math.max(W, H) * 0.75); g.addColorStop(0, 'rgba(255,0,0,0)'); g.addColorStop(1, `rgba(255,30,30,${dng * (0.35 + 0.25 * Math.sin(performance.now() / 90))})`); octx.fillStyle = g; octx.fillRect(0, 0, W, H); }
@@ -249,8 +254,9 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
 
   try {
     renderer = new THREE.WebGLRenderer({ canvas, antialias: prefs.quality !== 'low', powerPreference: 'high-performance' });
+    renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.08;
     renderer.setPixelRatio(Math.min(prefs.quality === 'high' ? 2 : prefs.quality === 'standard' ? 1.5 : 1, devicePixelRatio || 1));
-    view = new SkyView(); sim = new SkySim(diff); sim.intermission = 1e9; resize();
+    view = new SkyView(renderer); sim = new SkySim(diff); sim.intermission = 1e9; resize();
   } catch (err) { console.error(err); opts.loading?.close(); exit(); return; }
   opts.loading?.close(); last = performance.now(); raf = requestAnimationFrame(frame);
   (window as unknown as { __sky?: unknown }).__sky = { get sim() { return sim; }, start };

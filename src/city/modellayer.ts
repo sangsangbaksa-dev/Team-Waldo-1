@@ -27,7 +27,7 @@ export class ModelLayer {
   /** 정적 소품 칸들과, 이 거리(보통 안개 끝)보다 먼 칸은 그리지 않는 컬링 거리 */
   readonly statics: ChunkRef[] = []; reach = 4700;
   private sets: Record<string, CharSet> = {}; private mechs = new Map<number, THREE.Object3D>(); private crystalMesh: THREE.InstancedMesh;
-  private lam = new THREE.MeshLambertMaterial({ vertexColors: true }); private basic = new THREE.MeshBasicMaterial({ vertexColors: true });
+  private lam = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.72, metalness: 0.12 }); private basic = new THREE.MeshBasicMaterial({ vertexColors: true });
   vmScene = new THREE.Scene(); vmCam = new THREE.PerspectiveCamera(64, 1, 0.5, 200); private vm: THREE.Object3D | null = null; private vmId = ''; private vmSwap = 0; private flash: THREE.Sprite;
 
   constructor(private scene: THREE.Scene, private world: World, private models: Models, glow: THREE.Texture, shadows: boolean) {

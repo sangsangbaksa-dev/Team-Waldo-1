@@ -17,6 +17,7 @@ import { buildLanes } from './scenery';
 import { preloadUnitKit } from './models';
 import { PVP_ENABLED } from '../net/config';
 import type { RoomLink } from './moba/net';
+import { starIcon } from '../shared/glyphs';
 
 const esc = (s: string): string => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
 const clock = (ticks: number): string => { const s = Math.floor(ticks / TICK); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -235,9 +236,9 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     }
     mg.drawImage(miniBase, 0, 0);
     const vis = vision, seenNode = (x: number, y: number): boolean => !vis || vis.explored(x, y);
-    mg.fillStyle = '#2fc4ff'; for (const nd of sim.nodes) { if (!seenNode(nd.x + 0.5, nd.y + 0.5)) continue; const [x, y] = mm(nd.x + 0.5, nd.y + 0.5); mg.fillRect(x - 2, y - 2, 4, 4); }
-    for (const b of sim.buildings) { if (b.owner !== me && !seenNode(b.x + b.size / 2, b.y + b.size / 2)) continue; const [x, y] = mm(b.x + b.size / 2, b.y + b.size / 2), s = b.size * k; mg.fillStyle = b.owner === 0 ? '#3d8bff' : '#ff5a3c'; mg.fillRect(x - s / 2, y - s / 2, s, s); }
-    for (const u of sim.units) { if (u.owner !== me && vis && !vis.visible(u.x, u.y)) continue; const [x, y] = mm(u.x, u.y); mg.fillStyle = camp?.isVip(u.id) ? '#ffe066' : u.owner === 0 ? '#9fd0ff' : '#ffb09f'; const r = camp?.isVip(u.id) ? 3.5 : 1.5; mg.fillRect(x - r, y - r, r * 2, r * 2); }
+    for (const nd of sim.nodes) { if (!seenNode(nd.x + 0.5, nd.y + 0.5)) continue; const [x, y] = mm(nd.x + 0.5, nd.y + 0.5); mg.fillStyle = '#64e4ff'; mg.strokeStyle = '#12475e'; mg.lineWidth = 1; mg.beginPath(); mg.moveTo(x, y - 3.5); mg.lineTo(x + 2.5, y); mg.lineTo(x, y + 3.5); mg.lineTo(x - 2.5, y); mg.closePath(); mg.fill(); mg.stroke(); }
+    for (const b of sim.buildings) { if (b.owner !== me && !seenNode(b.x + b.size / 2, b.y + b.size / 2)) continue; const [x, y] = mm(b.x + b.size / 2, b.y + b.size / 2), r = Math.max(3, b.size * k / 2); mg.fillStyle = b.owner === 0 ? '#3d8bff' : '#ff5a3c'; mg.strokeStyle = '#17212b'; mg.lineWidth = 1.3; mg.beginPath(); for (let i = 0; i < 6; i++) { const a = Math.PI / 3 * i; if (i) mg.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); else mg.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r); } mg.closePath(); mg.fill(); mg.stroke(); mg.fillStyle = 'rgba(255,255,255,.75)'; mg.fillRect(x - 1, y - 1, 2, 2); }
+    for (const u of sim.units) { if (u.owner !== me && vis && !vis.visible(u.x, u.y)) continue; const [x, y] = mm(u.x, u.y); mg.fillStyle = camp?.isVip(u.id) ? '#ffe066' : u.owner === 0 ? '#9fd0ff' : '#ffb09f'; const r = camp?.isVip(u.id) ? 3.5 : 1.8; mg.strokeStyle = '#25303a'; mg.lineWidth = 1; mg.beginPath(); mg.arc(x, y, r, 0, Math.PI * 2); mg.fill(); mg.stroke(); }
     if (vis) drawMiniFog(vis);
     if (camp) for (const m of camp.markerList()) {
       const [x, y] = mm(m.x, m.y), col = m.kind === 'goal' ? '#7dff9e' : m.side === 1 ? '#5db4ff' : m.side === 0 ? '#ff5a3c' : '#ffe27a'; mg.strokeStyle = col; mg.lineWidth = 2;
@@ -483,7 +484,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   }
 
   // ---------- 캠페인 ----------
-  const starsOf = (n: number): string => '★'.repeat(n) + '☆'.repeat(3 - n);
+  const starsOf = (n: number): string => starIcon(true).repeat(n) + starIcon(false).repeat(3 - n);
   function campaignScreen(): void {
     root.dataset.phase = 'setup'; paused = false; ended = false; campSave = readCampaign();
     show(`<div class="rt-card rt-camp" role="dialog" aria-label="캠페인"><span class="rt-eyebrow">FRONTLINE 캠페인</span><h2>작전 선택</h2><p class="rt-lead">앞 작전을 완수하면 다음 작전이 열립니다. 별은 완수 · 목표 시간 · 보너스 목표마다 하나씩 받습니다. 영구 강화는 없고, 매 작전은 같은 조건에서 시작합니다.</p>
@@ -496,7 +497,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     const m = MISSIONS.find(x => x.id === id); if (!m) return; const par = `${Math.floor(m.par / 60)}:${String(m.par % 60).padStart(2, '0')}`;
     show(`<div class="rt-card rt-brief" role="dialog" aria-label="${m.title}"><span class="rt-eyebrow">작전 ${m.id} · ${m.tag}</span><h2>${m.title}</h2><p class="rt-lead">${m.blurb}</p>
       <ul class="rt-help">${m.brief.map(t => `<li>${t}</li>`).join('')}</ul>
-      <dl class="rt-starlist"><div><dt>★</dt><dd>작전 완수</dd></div><div><dt>★</dt><dd>${par} 안에 완수</dd></div><div><dt>★</dt><dd>${m.bonus}</dd></div></dl>
+      <dl class="rt-starlist"><div><dt>${starIcon(true)}</dt><dd>작전 완수</dd></div><div><dt>${starIcon(true)}</dt><dd>${par} 안에 완수</dd></div><div><dt>${starIcon(true)}</dt><dd>${m.bonus}</dd></div></dl>
       <div class="rt-actions"><button class="primary" data-act="launch" data-id="${m.id}" id="rt-launch">작전 개시</button><button data-act="camp">작전 목록</button></div></div>`);
     modal.querySelector<HTMLElement>('#rt-launch')?.focus();
   }

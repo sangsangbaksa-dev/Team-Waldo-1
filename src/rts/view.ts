@@ -1,5 +1,8 @@
 // FRONTLINE — 3D 화면: 지형, 유닛·건물 표시, 이펙트, 카메라와 화면 좌표 변환. 시뮬레이션은 읽기만 합니다.
 import * as THREE from 'three';
+import { makeEnvironment, standardize } from '../shared/gfx';
+import { readPreferences } from '../prefs';
+import { detailBuilding, detailCrystal, paintTerrainDetail } from './visuals';
 import { makePost, type PostFx } from '../postfx';
 import { BUILDINGS, TEAM_COLORS, UNITS, type BuildKind } from './config';
 import { crystalMat, makeBuilding, makeCrystals, makeUnit, matsFor, type BuildRig, type UnitRig } from './models';
@@ -34,15 +37,18 @@ export class RtsView {
   /** 전장의 안개: 있으면 보이지 않는 적을 숨기고 어둡게 덮습니다. */ vision: Vision | null = null;
   private fog: { mesh: THREE.Mesh; tex: THREE.DataTexture; data: Uint8Array; cur: Float32Array } | null = null; private marks = new Map<string, MarkVis>();
   private grid: THREE.Mesh | null = null; private scenery: Scenery | null = null; private desert: DesertProps | null = null;
+  private environment: THREE.Texture | null = null; private reducedMotion = readPreferences().reducedMotion;
 
   constructor(readonly canvas: HTMLCanvasElement, readonly sim: RtsSim, readonly viewer: number, readonly quality: Quality = 'high') {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality === 'high' ? 2 : 1.5));
-    this.shadows = quality !== 'low'; this.renderer.shadowMap.enabled = this.shadows; this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.shadows = quality !== 'low'; this.renderer.shadowMap.enabled = this.shadows; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.05;
     this.yaw = viewer === 0 ? 0 : Math.PI; this.fxBudget = quality === 'high' ? 160 : quality === 'standard' ? 90 : 40;
     const sky = new THREE.Color(0xe3c898); this.scene.background = sky; this.scene.fog = new THREE.Fog(sky, 105, 290);
+    if (quality === 'high') { this.environment = makeEnvironment(this.renderer, { top: 0x729bc0, horizon: 0xf0c28b, ground: 0x574838, sun: 0xffd8a1, sunDir: [0.5, 0.8, 0.35], sunPower: 3 }); this.scene.environment = this.environment; }
     this.scene.add(new THREE.HemisphereLight(0xfff0d4, 0x9a7a52, 1.2));
+    const rim = new THREE.DirectionalLight(0x8eb9e6, 0.55); rim.position.set(30, 18, -35); this.scene.add(rim);
     this.sun.castShadow = this.shadows; const sc = this.sun.shadow.camera; sc.left = -52; sc.right = 52; sc.top = 52; sc.bottom = -52; sc.near = 1; sc.far = 200;
     this.sun.shadow.mapSize.set(quality === 'high' ? 2048 : 1024, quality === 'high' ? 2048 : 1024); this.sun.shadow.bias = -0.0006; this.sun.shadow.normalBias = 0.04;
     this.scene.add(this.sun, this.sun.target);
@@ -72,6 +78,7 @@ export class RtsView {
     }
     for (const e of this.sim.map.expansions) { const grd = g.createRadialGradient((e.x + 2) * k, (e.y + 2) * k, 2 * k, (e.x + 2) * k, (e.y + 2) * k, 9 * k); grd.addColorStop(0, 'rgba(142,124,92,.7)'); grd.addColorStop(1, 'rgba(142,124,92,0)'); g.fillStyle = grd; g.fillRect(0, 0, tex.width, tex.height); }
     const lanes = buildLanes(this.sim.map), bushes = bushSpots(this.sim.map, lanes); paintGround(g, k, this.sim.map, lanes, bushes);
+    paintTerrainDetail(g, tex.width, this.quality);
     g.strokeStyle = 'rgba(70,52,28,.06)'; g.lineWidth = 1; for (let i = 0; i <= n; i += 4) { g.beginPath(); g.moveTo(i * k, 0); g.lineTo(i * k, tex.height); g.moveTo(0, i * k); g.lineTo(tex.width, i * k); g.stroke(); }
     const map = new THREE.CanvasTexture(tex); map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 4;
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(n, n), new THREE.MeshStandardMaterial({ map, roughness: 1, metalness: 0 }));
@@ -258,11 +265,13 @@ export class RtsView {
   }
   private addUnit(u: Unit): void {
     const rig = makeUnit(u.kind, u.owner), r = UNITS[u.kind].radius, ring = new THREE.Mesh(this.ringGeo, this.ringMats[u.owner === this.viewer ? 0 : 1]); ring.rotation.x = -Math.PI / 2; ring.scale.setScalar(r * 1.5 + 0.2); ring.position.y = 0.05; ring.visible = false;
+    standardize(rig.root, { roughness: 0.66, metalness: 0.18, envMapIntensity: 0.8 });
     rig.root.add(ring); this.scene.add(rig.root); this.units.set(u.id, { kind: 'unit', id: u.id, rig, ring, px: u.x, py: u.y, cx: u.x, cy: u.y, yaw: -Math.atan2(u.fy, u.fx), moved: 0, shake: 0, aura: null });
     rig.root.scale.setScalar(US[u.kind]);
   }
   private addBuilding(b: Building): void {
     const rig = makeBuilding(b.kind, b.owner), frame = new THREE.Group(), s = b.size;
+    detailBuilding(rig.root, s, TEAM_COLORS[b.owner] ?? 0xcccccc, this.quality); standardize(rig.root, { roughness: 0.7, metalness: 0.2 });
     for (const [x, z, w, d] of [[0, -s / 2, s, 0.1], [0, s / 2, s, 0.1], [-s / 2, 0, 0.1, s], [s / 2, 0, 0.1, s]] as const) { const bar = new THREE.Mesh(new THREE.BoxGeometry(w, 0.06, d), this.ringMats[b.owner === this.viewer ? 0 : 1]); bar.position.set(x, 0.06, z); frame.add(bar); }
     frame.position.set(b.x + s / 2, 0, b.y + s / 2); frame.visible = false;
     const scaff = new THREE.Group(), pm = new THREE.MeshStandardMaterial({ color: 0xb8a070, roughness: 0.8, metalness: 0.2 });
@@ -270,7 +279,7 @@ export class RtsView {
     scaff.position.set(b.x + s / 2, 0, b.y + s / 2); rig.root.position.set(b.x + s / 2, 0, b.y + s / 2);
     this.scene.add(rig.root, frame, scaff); this.builds.set(b.id, { kind: 'building', id: b.id, rig, frame, scaff, done: b.done, wasDone: b.done, rubble: 0 });
   }
-  private addNode(n: ResNode): void { const obj = makeCrystals(n.id); obj.position.set(n.x + 0.5, 0, n.y + 0.5); this.scene.add(obj); this.nodes.set(n.id, { kind: 'node', id: n.id, obj, base: 1 }); }
+  private addNode(n: ResNode): void { const obj = makeCrystals(n.id); detailCrystal(obj, this.quality); obj.position.set(n.x + 0.5, 0, n.y + 0.5); this.scene.add(obj); this.nodes.set(n.id, { kind: 'node', id: n.id, obj, base: 1 }); }
 
   /** 선택·표시 상태를 갱신하고 그립니다. alpha 는 틱 사이 보간 비율(0~1). */
   render(dt: number, alpha: number, selected: ReadonlySet<number>): void {
@@ -305,7 +314,7 @@ export class RtsView {
       v.frame.visible = selected.has(id) && !hidB; const hurt = tick - b.hurt; if (!b.done) v.rig.root.rotation.y = 0; v.rig.root.position.y = hurt >= 0 && hurt < 2 ? 0.02 : 0;
     }
     for (const [id, v] of this.nodes) { const n = s.node(id); if (!n) continue; v.obj.visible = !this.hiddenNode(n); const f = 0.55 + 0.45 * Math.min(1, n.amount / 1500); v.obj.scale.set(f, f, f); }
-    crystalMat.emissiveIntensity = 1.0 + Math.sin(this.clock * 2.2) * 0.25;
+    crystalMat.emissiveIntensity = 1.0 + (this.reducedMotion ? 0 : Math.sin(this.clock * 2.2) * 0.25);
     this.updateFx(dt); this.updateMarks(dt); this.updateFog(dt); this.placeCamera(); this.placeFog(); if (this.post) this.post.render(dt); else this.renderer.render(this.scene, this.camera);
   }
 
@@ -368,7 +377,7 @@ export class RtsView {
 
   dispose(): void {
     this.scene.traverse(o => { if (o instanceof THREE.Mesh || o instanceof THREE.InstancedMesh) { o.geometry.dispose(); const m = o.material; (Array.isArray(m) ? m : [m]).forEach(x => x.dispose()); } });
-    this.post?.dispose(); this.fog?.tex.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss();
+    this.post?.dispose(); this.fog?.tex.dispose(); this.environment?.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss();
   }
 }
 void TEAM_COLORS; void matsFor;

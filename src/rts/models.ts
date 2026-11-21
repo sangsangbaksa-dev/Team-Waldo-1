@@ -14,7 +14,7 @@ export function matsFor(owner: number): Mats {
   let m = cache.get(owner); if (m) return m;
   const c = TEAM_COLORS[owner] ?? 0xcccccc, tc = new THREE.Color(c);
   m = {
-    team: std(c, { roughness: 0.45, metalness: 0.35 }), teamDark: std(tc.clone().multiplyScalar(0.55).getHex()),
+    team: std(c, { roughness: 0.42, metalness: 0.35, emissive: tc, emissiveIntensity: 0.12 }), teamDark: std(tc.clone().multiplyScalar(0.55).getHex()),
     glow: new THREE.MeshStandardMaterial({ color: tc.clone().lerp(new THREE.Color(0xffffff), 0.35), emissive: tc, emissiveIntensity: 1.4, roughness: 0.3 }),
     armor: std(0x5a6068), steel: std(0x9aa2ac, { metalness: 0.55, roughness: 0.4 }), dark: std(0x23272d, { metalness: 0.4 }), skin: std(0xd6b28f, { metalness: 0, roughness: 0.8 }),
     hull: std(owner === 0 ? 0x6b7787 : 0x7d6c68), concrete: std(owner === 0 ? 0x8a929d : 0x958a86, { metalness: 0.1, roughness: 0.85 }),
@@ -178,5 +178,6 @@ export function makeCrystals(seed: number): THREE.Group {
     c.position.set(Math.cos(a) * d, h * 0.5, Math.sin(a) * d); c.rotation.set((rnd() - 0.5) * 0.35, rnd() * 3, (rnd() - 0.5) * 0.35); c.castShadow = true; g.add(c);
   }
   const base = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.72, 0.12, 8), std(0x3d4650)); base.position.y = 0.05; base.receiveShadow = true; g.add(base);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.59, 0.035, 5, 16), crystalHi); rim.rotation.x = Math.PI / 2; rim.position.y = 0.13; g.add(rim);
   return g;
 }

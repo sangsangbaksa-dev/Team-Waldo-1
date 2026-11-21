@@ -1,5 +1,7 @@
 // ZERO ZONE — 3D 장면: 지형·건물·나무·전리품·병사·자기장 벽·1인칭 총과 사격 효과. 경기 상태(Match)를 읽기만 합니다.
 import * as THREE from 'three';
+import { makeEnvironment, standardize } from '../shared/gfx';
+import { readPreferences } from '../prefs';
 import { makePost, type PostFx } from '../postfx';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { AIR, PARTS, RED, WEAPONS, makeRng, type WeaponId } from './config';
@@ -49,6 +51,7 @@ export class ShooterView {
   private vm: THREE.Object3D | null = null; private vmId = ''; private vmParts = ''; private vmSwap = 0; private vmFlash: THREE.Sprite; private bob = 0; private shake = 0; private terrainView: TerrainView | null = null; private fovPunch = 0; private flashKick = 0; private roll = 0; private sprintT = 0; private time = 0;
   private mats = new Map<string, THREE.Material>(); private tmpCol = new THREE.Color(); private beams: THREE.InstancedMesh;
   private camPos = new THREE.Vector3(); fov = 78; frames = 0;
+  private environment: THREE.Texture | null = null; private reducedMotion = readPreferences().reducedMotion;
   /** 폭풍우 하늘: 번개(flash)가 가끔 하늘과 안개를 밝힙니다 */
   private wfx: WeatherFx | null = null; private sky: THREE.Mesh; private hemi: THREE.HemisphereLight; private flash = 0; private nextBolt = 6; private carrier: THREE.Group | null = null; private fogBase = new THREE.Color(0x76828a);
 
@@ -56,12 +59,14 @@ export class ShooterView {
     const hi = quality === 'high';
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(hi ? 2 : quality === 'standard' ? 1.5 : 1, window.devicePixelRatio || 1));
-    this.renderer.shadowMap.enabled = hi; this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.shadowMap.enabled = hi; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.05; this.renderer.autoClear = false;
     const sc = this.scene, sunDir = new THREE.Vector3(0.55, 0.62, 0.38);
+    if (hi) { this.environment = makeEnvironment(this.renderer, { top: 0x637e9b, horizon: 0xc9c5b4, ground: 0x43463b, sun: 0xffe4bc, sunDir: [0.55, 0.62, 0.38], sunPower: 3 }); sc.environment = this.environment; this.vmScene.environment = this.environment; }
     sc.fog = new THREE.FogExp2(0x76828a, 0.0042); this.sky = makeSky(sunDir); sc.add(this.sky);
     this.hemi = new THREE.HemisphereLight(0xa9bccf, 0x5d5a48, 0.82); sc.add(this.hemi);
     this.sun = new THREE.DirectionalLight(0xdbe4ee, 1.8); this.sun.position.copy(sunDir).multiplyScalar(120); sc.add(this.sun, this.sun.target);
+    const rim = new THREE.DirectionalLight(0x8aaed0, 0.3); rim.position.set(-80, 35, -100); sc.add(rim);
     if (hi) { this.sun.castShadow = true; const s = this.sun.shadow; s.mapSize.set(2048, 2048); s.camera.left = s.camera.bottom = -78; s.camera.right = s.camera.top = 78; s.camera.near = 20; s.camera.far = 320; s.bias = -0.0004; s.normalBias = 0.05; }
     this.post = makePost(quality, this.renderer, this.scene, this.camera, { strength: 0.42, radius: 0.55, threshold: 0.88, vignette: 0.3 });
     this.buildGround(); this.buildBuildings(); this.buildScatter();
@@ -101,7 +106,7 @@ export class ShooterView {
     }
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     const t = groundTexture(); t.repeat.set(size / 6, size / 6);
-    const ground = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: t, vertexColors: true })); ground.receiveShadow = true; this.scene.add(ground);
+    const ground = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: t, vertexColors: true, roughness: 1 })); ground.receiveShadow = true; this.scene.add(ground);
     // 마을 바닥·흙길·물·구릉·절벽·다리
     this.terrainView = new TerrainView(this.match.map, this.quality === 'low'); this.scene.add(this.terrainView.group);
     this.wfx = new WeatherFx(this.match.map, this.glow, this.quality); this.scene.add(this.wfx.group);
@@ -111,7 +116,7 @@ export class ShooterView {
     const map = this.match.map, byTex: THREE.BufferGeometry[][] = [[], [], [], []], crates: Box[] = [];
     for (const b of map.boxes) { if (b.kind === 'wall') byTex[b.tex % 4].push(worldBox(b)); else if (b.kind === 'crate') crates.push(b); }
     byTex.forEach((list, i) => {
-      if (!list.length) return; const m = new THREE.Mesh(mergeGeometries(list, false), new THREE.MeshLambertMaterial({ map: wallTexture(i) }));
+      if (!list.length) return; const m = new THREE.Mesh(mergeGeometries(list, false), new THREE.MeshStandardMaterial({ map: wallTexture(i), roughness: 0.88 }));
       m.castShadow = true; m.receiveShadow = true; this.scene.add(m);
     });
     const floorTex = floorTexture(), floors: THREE.BufferGeometry[] = [];
@@ -445,7 +450,7 @@ export class ShooterView {
       const swapped = id !== this.vmId; this.vmId = id; this.vmParts = pk; if (this.vm) this.vmScene.remove(this.vm); this.vm = null; if (swapped) this.vmSwap = 0.35;
       const nodes = this.assets?.weaponNodes;
       if (id && nodes?.[`n_${id}`]) {
-        this.vm = buildGun(nodes, id as WeaponId, gun?.att, true); this.vm.traverse(o => { (o as THREE.Mesh).castShadow = false; });
+        this.vm = buildGun(nodes, id as WeaponId, gun?.att, true); standardize(this.vm, { roughness: 0.48, metalness: 0.48, envMapIntensity: 0.8 }); this.vm.traverse(o => { (o as THREE.Mesh).castShadow = false; });
         const tip = muzzleTip(id as WeaponId, gun?.att); this.vm.add(this.vmFlash); this.vmFlash.position.set(tip.x, tip.y, 0); this.vmScene.add(this.vm);
       }
     }
@@ -493,6 +498,7 @@ export class ShooterView {
     this.zoneNext.visible = z.nextR < z.r - 0.5; this.zoneNext.scale.set(z.nextR, z.nextR, 1); this.zoneNext.position.x = z.nextCx; this.zoneNext.position.z = z.nextCz;
     this.syncLoot(cam.position); this.syncDrops(); this.syncVehicles(dt, vx, vz); this.syncReds(); this.updateFx(dt);
     this.syncCarrier(); this.weather(dt);
+    if (!this.reducedMotion) for (const aircraft of [this.plane, this.carrier]) if (aircraft?.visible) aircraft.traverse(o => { if (o.name === 'propeller') o.rotation.x += dt * 24; });
     this.viewmodel(view, !spectate && me.alive && !me.air && me.veh < 0, dt);
     // 그리기: 월드 → 깊이 지우고 1인칭 총
     if (this.post) { this.post.setCamera(cam); this.post.render(dt); } else { this.renderer.clear(); this.renderer.render(this.scene, cam); }
@@ -507,6 +513,6 @@ export class ShooterView {
 
   dispose(): void {
     this.scene.traverse(o => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); const mat = m.material as THREE.Material | THREE.Material[] | undefined; if (Array.isArray(mat)) mat.forEach(x => x.dispose()); else mat?.dispose(); });
-    this.post?.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss();
+    this.environment?.dispose(); this.post?.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss();
   }
 }

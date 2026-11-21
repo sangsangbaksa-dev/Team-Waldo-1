@@ -9,6 +9,7 @@ import { groundHeight } from './world';
 import type { Sim } from './sim';
 import type { OutlawAssets } from './assets';
 import type { Quality } from './cityview';
+import { standardize } from '../shared/gfx';
 
 interface Rig {
   root: THREE.Group; hip: THREE.Group; legs: THREE.Group[]; shins: THREE.Group[]; arms: THREE.Group[];
@@ -117,7 +118,7 @@ export class ActorView {
   private ownMat<T extends THREE.Material>(m: T): T { this.materials.add(m); return m; }
   private material(color: number, baked = false, glow = false): THREE.Material {
     const key = `${color}:${baked}:${glow}`; let m = this.palette.get(key);
-    if (!m) { m = this.ownMat(glow ? new THREE.MeshBasicMaterial({ color, vertexColors: baked }) : new THREE.MeshLambertMaterial({ color, vertexColors: baked })); this.palette.set(key, m); }
+    if (!m) { m = this.ownMat(glow ? new THREE.MeshBasicMaterial({ color, vertexColors: baked }) : new THREE.MeshStandardMaterial({ color, vertexColors: baked, roughness: .78, metalness: .04, envMapIntensity: .65 })); this.palette.set(key, m); }
     return m;
   }
   private mesh(parent: THREE.Object3D, geo: THREE.BufferGeometry, color: number, x: number, y: number, z: number, sx = 1, sy = 1, sz = 1): THREE.Mesh {
@@ -210,8 +211,9 @@ export class ActorView {
     const root = new THREE.Group(); root.rotation.order = 'YXZ'; root.name = `vehicle-${v.id}`;
     let template: THREE.Object3D | undefined; try { template = this.assets?.vehicleTemplate(v.kind); } catch { /* 누락 모델은 도형으로 대체합니다. */ }
     const body = template ? instantiate(template, { paint: v.color }) : new THREE.Group(), d = VEHICLES[v.kind]; root.add(body);
+    if (template) standardize(body, { roughness: .46, metalness: .25, envMapIntensity: 1.1 });
     if (!template) {
-      const shell = this.mesh(body, this.box, 0xffffff, 0, 0.65, 0, d.halfL * 2, 0.75, d.halfW * 2); shell.material = this.ownMat(new THREE.MeshLambertMaterial({ color: v.color }));
+      const shell = this.mesh(body, this.box, 0xffffff, 0, 0.65, 0, d.halfL * 2, 0.75, d.halfW * 2); shell.material = this.ownMat(new THREE.MeshPhysicalMaterial({ color: v.color, metalness: .35, roughness: .32, clearcoat: .8, clearcoatRoughness: .18 }));
       this.mesh(body, this.box, 0x263c4a, -0.25, 1.15, 0, d.halfL * 0.95, 0.65, d.halfW * 1.7);
       for (const x of [-0.65, 0.65]) for (const z of [-1, 1]) this.mesh(body, this.box, 0x15171b, d.halfL * x, 0.35, z * d.halfW, 0.7, 0.7, 0.28);
     }

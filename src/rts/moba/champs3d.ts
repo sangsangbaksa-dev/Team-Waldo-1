@@ -13,6 +13,10 @@ export function decorateChamp(rig: UnitRig, champ: ChampId, team: number): void 
   const add = (geo: THREE.BufferGeometry, mt: THREE.Material, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0, parent: THREE.Object3D = g): THREE.Mesh => { const o = new THREE.Mesh(geo, mt); o.position.set(x, y, z); o.rotation.set(rx, ry, rz); o.castShadow = true; parent.add(o); return o; };
   const box = (w: number, h: number, d: number): THREE.BoxGeometry => new THREE.BoxGeometry(w, h, d), cone = (r: number, h: number, s = 6): THREE.ConeGeometry => new THREE.ConeGeometry(r, h, s), cyl = (r0: number, r1: number, h: number, s = 8): THREE.CylinderGeometry => new THREE.CylinderGeometry(r0, r1, h, s);
   const steel = mat(0xb8c0ca, { metalness: 0.6, roughness: 0.35 }), dark = mat(0x2a2d33), cloth = mat(team === 0 ? 0x2a5fb8 : 0xb83a2a, { metalness: 0.05, roughness: 0.8 });
+  for (const z of [-0.24, 0.24]) {
+    const pauldron = add(new THREE.SphereGeometry(0.13, 8, 6), m.team, -0.02, 0.66, z); pauldron.scale.set(1.2, 0.55, 1);
+    const trim = add(new THREE.SphereGeometry(0.045, 8, 6), m.glow, 0.04, 0.7, z * 1.1); trim.scale.y = 0.55;
+  }
   switch (champ) {
     case 'blade': { // 등에 맨 대검, 어깨 갑옷, 망토
       add(box(0.07, 1, 0.2), steel, -0.26, 0.55, 0.05, 0, 0, 0.35); add(box(0.1, 0.06, 0.4), dark, -0.3, 0.08, 0.05, 0, 0, 0.35);

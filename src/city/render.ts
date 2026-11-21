@@ -4,6 +4,7 @@ import { EVENT_INFO } from './events';
 import { HQ_BUILD_RANGE, structCenter } from './placement';
 import { declutterFromAreaChip } from './uiMath';
 import type { Actor, Fx, Vehicle, World } from './world';
+import { drawPointer } from '../shared/pointer';
 
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; color: string; kind: 0 | 1 | 2 | 3; text?: string }
 interface Decal { x: number; y: number; r: number; color: string; ang: number; kind: 0 | 1 }
@@ -120,7 +121,7 @@ export class Renderer {
   arrow(x: number, y: number, color: string, label: string): void {
     const s = this.toScreen(x, y), m = 46; if (s.x > m && s.y > m && s.x < this.w - m && s.y < this.h - m) return;
     const { ctx } = this, cx = this.w / 2, cy = this.h / 2, a = Math.atan2(s.y - cy, s.x - cx), k = Math.min((cx - m) / Math.abs(Math.cos(a) || 1e-6), (cy - m) / Math.abs(Math.sin(a) || 1e-6)), px = cx + Math.cos(a) * k, py = cy + Math.sin(a) * k;
-    ctx.save(); ctx.translate(px, py); ctx.rotate(a); ctx.fillStyle = color; ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-8, -9); ctx.lineTo(-8, 9); ctx.fill(); ctx.restore();
+    ctx.save(); ctx.translate(px, py); ctx.rotate(a); drawPointer(ctx, 14, color); ctx.restore();
     ctx.font = "700 11px 'Noto Sans KR',sans-serif"; ctx.textAlign = 'center'; ctx.fillStyle = color; ctx.fillText(`${label} ${Math.round(Math.hypot(x - this.cam.x, y - this.cam.y) / 10)}m`, Math.max(50, Math.min(this.w - 50, px - Math.cos(a) * 34)), Math.max(20, Math.min(this.h - 12, py - Math.sin(a) * 26)));
   }
   ground(x0: number, y0: number, x1: number, y1: number): void {
@@ -286,7 +287,7 @@ export class Renderer {
     const z = w.zone; g.fillStyle = 'rgba(128,64,220,0.35)'; g.beginPath(); g.rect(ox * k, oy * k, S, S); g.arc(z.x * k, z.y * k, Math.max(0, z.r * k), 0, 6.29, true); g.fill('evenodd');
     g.strokeStyle = '#c59bff'; g.lineWidth = 2; g.beginPath(); g.arc(z.x * k, z.y * k, Math.max(0, z.r * k), 0, 6.29); g.stroke();
     if (z.nr < z.r) { g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.setLineDash([4, 4]); g.beginPath(); g.arc(z.nx * k, z.ny * k, Math.max(1, z.nr * k), 0, 6.29); g.stroke(); g.setLineDash([]); }
-    if (heading !== null && pb) { g.save(); g.translate(pb.x * k, pb.y * k); g.rotate(heading); g.fillStyle = '#fff'; g.beginPath(); g.moveTo(big ? 16 : 11, 0); g.lineTo(big ? 5 : 3, big ? -6 : -4); g.lineTo(big ? 5 : 3, big ? 6 : 4); g.fill(); g.restore(); }
+    if (heading !== null && pb) { g.save(); g.translate(pb.x * k, pb.y * k); g.rotate(heading); drawPointer(g, big ? 16 : 11, '#fff'); g.restore(); }
     else if (!big) { g.strokeStyle = 'rgba(255,255,255,0.6)'; g.lineWidth = 1; g.strokeRect((this.cam.x - this.w / 2 / this.cam.zoom) * k, (this.cam.y - this.h / 2 / this.cam.zoom) * k, this.w / this.cam.zoom * k, this.h / this.cam.zoom * k); }
     g.setTransform(1, 0, 0, 1, 0, 0);
   }

@@ -1,6 +1,8 @@
 // LAST CITY — Three.js 3D 렌더러 (1인칭 / 3인칭 / 차량 추격 카메라)
 import * as THREE from 'three';
 import { makePost, type PostFx } from '../postfx';
+import { makeEnvironment, standardize } from '../shared/gfx';
+import { CityDetails } from './visualdetails';
 import { ACTORS, BIZ, BLOCK, BLOCKS, CIV, FACTIONS, PITCH, POLICE, ROAD, SIZE, STRUCTS, WEAPONS, type StructKind } from './defs';
 import { fpCameraSpot, solidAt } from './map';
 import type { Business, Fx, Loot, Structure, Vehicle, World } from './world';
@@ -77,21 +79,24 @@ export class Renderer3D {
   /** 적응형 화질(0=원본 → 3=가장 가볍게): 프레임 시간 중앙값이 길면 해상도·반사·그림자·후처리를 차례로 줄입니다. */
   perfLevel = 0; adaptive = true; private gaps: number[] = []; private lastT = 0; private settle = 90; private postOn = true; private shadowTick = 0; private camGoal = new THREE.Vector3(); private labelV = new THREE.Vector3(); private labelP = new THREE.Vector3();
   private mats = new Map<number, THREE.MeshLambertMaterial>(); private box = new THREE.BoxGeometry(1, 1, 1); private glow: THREE.Texture;
+  private environment: THREE.Texture | null = null; private details!: CityDetails;
 
   constructor(public canvas: HTMLCanvasElement, public world: World, public quality: 'high' | 'standard' | 'low', public layer: HTMLElement, public models: Models | null = null) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
     this.prMax = Math.min(quality === 'high' ? 2 : quality === 'standard' ? 1.5 : 1, window.devicePixelRatio || 1); this.pr = this.prCeil = this.prMax; this.renderer.setPixelRatio(this.pr);
-    this.renderer.shadowMap.enabled = quality === 'high'; this.renderer.shadowMap.type = THREE.PCFShadowMap; this.renderer.shadowMap.autoUpdate = false; this.renderer.shadowMap.needsUpdate = true; // 그림자 맵은 2~3프레임에 한 번만 다시 그린다
+    this.renderer.shadowMap.enabled = quality === 'high'; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; this.renderer.shadowMap.autoUpdate = false; this.renderer.shadowMap.needsUpdate = true; // 그림자 맵은 2~3프레임에 한 번만 다시 그린다
     // 필름 톤매핑: 하이라이트가 하얗게 날아가지 않고 노을빛이 부드럽게 번진다.
     if (quality !== 'low') { this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.06; }
     const sc = this.scene, w = world;
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    if (quality === 'high') { this.environment = makeEnvironment(this.renderer, { top: 0x526c91, horizon: 0xe6a77b, ground: 0x252b36, sun: 0xffc58d, sunDir: [-0.6, 0.7, -0.4] }); sc.environment = this.environment; }
     this.atm = atmosphereAt(w.hour, w.weather); sc.fog = new THREE.Fog(0xc48a74, 980, 4700); sc.add(this.camera);
     this.hemi = new THREE.HemisphereLight(0xb7c6e8, 0x8a6450, 0.95); sc.add(this.hemi);
     this.sun = new THREE.DirectionalLight(0xffd4a8, 2.05); this.sun.position.set(-600, 700, -400); sc.add(this.sun); sc.add(this.sun.target);
     this.hemi.layers.enable(PROBE_LAYER); this.sun.layers.enable(PROBE_LAYER);
     // 반대편 채움광: 그늘진 외벽이 검게 뭉개지지 않게 색을 남긴다.
     const fill = this.fill = new THREE.DirectionalLight(0x8aa4c8, 0.48); fill.position.set(520, 280, 620); fill.layers.enable(PROBE_LAYER); sc.add(fill);
-    if (quality === 'high') { this.sun.castShadow = true; const s = this.sun.shadow; s.mapSize.set(2048, 2048); s.camera.left = s.camera.bottom = -800; s.camera.right = s.camera.top = 800; s.camera.near = 10; s.camera.far = 3000; s.bias = -0.0012; }
+    if (quality === 'high') { this.sun.castShadow = true; const s = this.sun.shadow; s.mapSize.set(2048, 2048); s.camera.left = s.camera.bottom = -800; s.camera.right = s.camera.top = 800; s.camera.near = 10; s.camera.far = 3000; s.bias = -0.0012; s.normalBias = 1.5; }
     // 바다 + 지면
     const sea = this.sea = new THREE.Mesh(new THREE.PlaneGeometry(30000, 30000), new THREE.MeshLambertMaterial({ color: 0x2a4558 })); sea.rotation.x = -Math.PI / 2; sea.position.set(SIZE / 2, -6, SIZE / 2); sc.add(sea);
     const T = quality === 'low' ? 2048 : 4096, k = T / SIZE, gt = canvasTex(T, T, g => {
@@ -111,6 +116,12 @@ export class Renderer3D {
       for (let q = 0; q < 900; q++) { const gx = Math.floor((q * 37) % (BLOCKS + 1)), gy = Math.floor((q * 53) % (BLOCKS + 1)), px = gx * PITCH + ((q * 7919) % ROAD), py = gy * PITCH + ((q * 104729) % ROAD), rx = 5 + (q % 7) * 2.2, ry = 2.5 + (q % 5) * 1.2; const gr = g.createLinearGradient(px, py - ry, px, py + ry); gr.addColorStop(0, 'rgba(24,28,38,0.42)'); gr.addColorStop(1, 'rgba(14,18,28,0.38)'); g.fillStyle = gr; g.beginPath(); g.ellipse(px, py, rx, ry, 0, 0, 6.29); g.fill(); }
       for (let q = 0; q < 9000; q++) { g.fillStyle = q % 3 ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.06)'; g.fillRect((q * 7561) % SIZE, (q * 6029) % SIZE, 2 + q % 6, 2 + q % 4); }
       for (let q = 0; q < 2600; q++) { g.fillStyle = q % 2 ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.035)'; g.fillRect((q * 7919) % SIZE, (q * 104729) % SIZE, 14 + q % 30, 3 + q % 5); }
+      for (let j = 0; j <= BLOCKS; j++) for (let i = 0; i <= BLOCKS; i++) {
+        const x = i * PITCH + ROAD * 0.74, y = j * PITCH + ROAD * 0.72;
+        g.fillStyle = 'rgba(12,15,19,0.48)'; g.beginPath(); g.arc(x + 2, y + 2, 9, 0, Math.PI * 2); g.fill();
+        g.fillStyle = '#55575b'; g.beginPath(); g.arc(x, y, 8, 0, Math.PI * 2); g.fill();
+        g.strokeStyle = 'rgba(20,22,25,0.65)'; g.lineWidth = 1; g.beginPath(); g.arc(x, y, 6, 0, Math.PI * 2); g.moveTo(x - 5, y); g.lineTo(x + 5, y); g.moveTo(x, y - 5); g.lineTo(x, y + 5); g.stroke();
+      }
     });
     gt.anisotropy = this.renderer.capabilities.getMaxAnisotropy(); gt.minFilter = THREE.LinearMipmapLinearFilter;
     this.groundMat = new THREE.MeshPhongMaterial({ map: gt, specular: 0x7a6a66, shininess: 55 }); const ground = new THREE.Mesh(new THREE.PlaneGeometry(SIZE, SIZE), this.groundMat); ground.rotation.x = -Math.PI / 2; ground.position.set(SIZE / 2, 0, SIZE / 2); ground.receiveShadow = true; sc.add(ground);
@@ -122,6 +133,7 @@ export class Renderer3D {
     this.skyline = new Skyline(this.glow); sc.add(this.skyline.group); this.skyline.group.traverse(o => o.layers.enable(PROBE_LAYER));
     this.wetStreet = new WetStreet(quality); sc.add(this.wetStreet.mesh);
     this.streetFx = new StreetFx(sc, this.glow, this.bfx.stacks, false);
+    this.details = new CityDetails(sc, w.map.blocks, this.glow, quality);
     if (this.models) { try { this.ml = new ModelLayer(sc, w, this.models, this.glow, quality === 'high'); } catch { this.ml = null; } }
     // 인스턴스 메시
     const inst = (geo: THREE.BufferGeometry, mat: THREE.Material, n: number, shadow = true): THREE.InstancedMesh => { const m = new THREE.InstancedMesh(geo, mat, n); m.count = 0; m.frustumCulled = false; m.castShadow = shadow; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); sc.add(m); return m; };
@@ -178,7 +190,7 @@ export class Renderer3D {
     if (med > 28 && this.perfLevel < 3) { learnedLevel = this.perfLevel + 1; this.setPerfLevel(learnedLevel); }
   }
   resize(): void { this.w = this.canvas.clientWidth || window.innerWidth; this.h = this.canvas.clientHeight || window.innerHeight; this.renderer.setSize(this.w, this.h, false); this.camera.aspect = this.w / this.h; this.camera.updateProjectionMatrix(); }
-  dispose(): void { this.post?.dispose(); this.ins?.dispose(); this.ins = null; this.renderer.dispose(); this.scene.traverse(o => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); }); for (const f of this.floaters) f.el.remove(); }
+  dispose(): void { this.post?.dispose(); this.ins?.dispose(); this.ins = null; this.environment?.dispose(); this.details.dispose(); this.renderer.dispose(); this.scene.traverse(o => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); }); for (const f of this.floaters) f.el.remove(); }
   /** 조준선이 닿는 지면 좌표 */
   groundPoint(max = 760): { x: number; y: number } {
     const b = this.world.boss(0), ox = b ? b.x : this.camPos.x, oy = b ? b.y : this.camPos.z; let d = this.pitch < -0.03 ? Math.min(max, (this.mode === 'fp' ? EYE : 120) / Math.tan(-this.pitch)) : max * 0.8; d = Math.max(70, d);
@@ -247,7 +259,7 @@ export class Renderer3D {
   }
   private syncVehicle(v: Vehicle): void {
     let g = this.vehs.get(v.id);
-    if (!g && this.ml) { const mg = this.ml.makeVehicle(v); if (mg) { g = mg as THREE.Group; this.scene.add(g); this.vehs.set(v.id, g); } }
+    if (!g && this.ml) { const mg = this.ml.makeVehicle(v); if (mg) { if (this.quality === 'high') standardize(mg, { roughness: 0.38, metalness: 0.35, envMapIntensity: 1.2 }); g = mg as THREE.Group; this.scene.add(g); this.vehs.set(v.id, g); } }
     if (!g) {
       g = new THREE.Group(); const col = new THREE.Color(v.color).getHex(), m = (sx: number, sy: number, sz: number, x: number, y: number, z: number, c: number): THREE.Mesh => { const o = new THREE.Mesh(this.box, this.mat(c)); o.scale.set(sx, sy, sz); o.position.set(x, y, z); o.castShadow = true; g!.add(o); return o; };
       if (v.kind === 'tank') { m(v.len, 16, v.wid, 0, 13, 0, col); m(v.len + 4, 12, 8, 0, 7, -v.wid / 2, 0x23261f); m(v.len + 4, 12, 8, 0, 7, v.wid / 2, 0x23261f); const t = new THREE.Group(); t.name = 'turret'; const dome = new THREE.Mesh(new THREE.CylinderGeometry(14, 16, 12, 10), this.mat(0x4a5733)), bar = new THREE.Mesh(this.box, this.mat(0x1e2218)); bar.scale.set(44, 5, 5); bar.position.set(28, 2, 0); t.add(dome, bar); t.position.y = 27; g.add(t); }
@@ -341,7 +353,7 @@ export class Renderer3D {
     (this.sea.material as THREE.MeshLambertMaterial).color.setRGB(a.fog[0] * 0.55, a.fog[1] * 0.7, a.fog[2] * 0.8);
     // 젖은 아스팔트의 하이라이트: 비 오는 밤엔 반짝임이 강하고 맑은 낮엔 약하다.
     this.groundMat.shininess = 40 + a.wet * 60; this.groundMat.specular.setRGB(...a.sunColor).multiplyScalar(0.15 + a.wet * 0.25);
-    if (this.ml) this.ml.reach = a.fogFar; this.skyDome.update(a, cam, this.t, f); this.skyline.update(a, cam, this.t); this.streetFx.update(this.t, a, this.reduced);
+    if (this.ml) this.ml.reach = a.fogFar; this.skyDome.update(a, cam, this.t, f); this.skyline.update(a, cam, this.t); this.streetFx.update(this.t, a, this.reduced); this.details.update(a.lamps, this.t, this.reduced);
     this.moodT -= dt; if (this.moodT <= 0 || snap) { this.moodT = 0.25; this.bfx.setMood(a); this.ml?.setGlow(0.75 + a.lamps * 0.5); }
     this.wetStreet.update(dt, a, cam, this.renderer, this.scene, [this.rain ?? this.gun, this.gun].filter(Boolean) as THREE.Object3D[]);
     if (this.post) this.post.set({ strength: 0.36 + a.night * 0.2 + a.rain * 0.08, threshold: 0.9 - a.night * 0.1 });

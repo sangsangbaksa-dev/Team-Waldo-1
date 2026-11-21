@@ -11,9 +11,9 @@ const shared = <T extends THREE.Material>(key: string, make: () => T): T => { le
 
 function partGroup(b: Baked, look: Look, fx: { emissive: number }): THREE.Group {
   const g = new THREE.Group(), add = (geo: THREE.BufferGeometry | null, m: THREE.Material): void => { if (!geo) return; const mesh = new THREE.Mesh(geo, m); mesh.castShadow = true; g.add(mesh); };
-  add(b.fixed, shared(`fixed${fx.emissive}`, () => new THREE.MeshLambertMaterial({ vertexColors: true, emissive: fx.emissive })));
-  add(b.team, shared(`team${look.team}`, () => new THREE.MeshLambertMaterial({ vertexColors: true, color: look.team })));
-  add(b.skin, shared(`skin${look.skin}`, () => new THREE.MeshLambertMaterial({ vertexColors: true, color: look.skin })));
+  add(b.fixed, shared(`fixed${fx.emissive}`, () => new THREE.MeshStandardMaterial({ vertexColors: true, emissive: fx.emissive, roughness: 0.78, metalness: 0.08 })));
+  add(b.team, shared(`team${look.team}`, () => new THREE.MeshStandardMaterial({ vertexColors: true, color: look.team, roughness: 0.72, metalness: 0.06 })));
+  add(b.skin, shared(`skin${look.skin}`, () => new THREE.MeshStandardMaterial({ vertexColors: true, color: look.skin, roughness: 0.55, metalness: 0 })));
   add(b.glow, shared('glow', () => new THREE.MeshBasicMaterial({ vertexColors: true })));
   return g;
 }

@@ -1,6 +1,6 @@
 # team-waldo
 
-Vite + TypeScript + Three.js 아케이드 허브. 게임 9개가 있습니다.
+Vite + TypeScript + Three.js 게임 허브. 게임 9개가 있습니다.
 
 | 폴더 | 게임 |
 |---|---|

@@ -9,13 +9,22 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 export interface PostOptions { strength?: number; radius?: number; threshold?: number; vignette?: number; /** 채도 배율(1 = 그대로) */ saturation?: number; /** 대비(1 = 그대로) */ contrast?: number }
 
 const Grade = {
-  uniforms: { tDiffuse: { value: null as THREE.Texture | null }, vig: { value: 0.28 }, sat: { value: 1.08 }, con: { value: 1.06 } },
+  uniforms: { tDiffuse: { value: null as THREE.Texture | null }, vig: { value: 0.28 }, sat: { value: 1.08 }, con: { value: 1.06 }, time: { value: 0 } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-  fragmentShader: `uniform sampler2D tDiffuse; uniform float vig, sat, con; varying vec2 vUv;
-    void main(){ vec4 c = texture2D(tDiffuse, vUv); float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
-      c.rgb = mix(vec3(l), c.rgb, sat); c.rgb = (c.rgb - 0.18) * con + 0.18;
-      vec2 d = vUv - 0.5; float v = smoothstep(0.78, 0.2, length(d * vec2(1.0, 0.92))); c.rgb *= mix(1.0 - vig, 1.0, v);
-      gl_FragColor = vec4(max(c.rgb, 0.0), c.a); }`,
+  // 가장자리 색수차 · 그림자 청록/하이라이트 따뜻하게 나누는 톤 · 부드러운 S 커브 · 미세한 필름 입자 · 비네팅
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float vig, sat, con, time; varying vec2 vUv;
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+    void main(){
+      vec2 d = vUv - 0.5; float edge = dot(d, d); vec2 shift = d * edge * 0.005;
+      vec3 c = vec3(texture2D(tDiffuse, vUv + shift).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv - shift).b);
+      float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      c = mix(vec3(l), c, sat); c = (c - 0.18) * con + 0.18;
+      c = mix(c, c * vec3(0.94, 1.0, 1.05), (1.0 - smoothstep(0.0, 0.45, l)) * 0.35);
+      c = mix(c, c * vec3(1.06, 1.01, 0.93), smoothstep(0.45, 1.0, l) * 0.3);
+      c = mix(c, c * c * (3.0 - 2.0 * min(c, vec3(1.0))), 0.1);
+      float v = smoothstep(0.78, 0.2, length(d * vec2(1.0, 0.92))); c *= mix(1.0 - vig, 1.0, v);
+      c += (hash(vUv * 1024.0 + time) - 0.5) * 0.011;
+      gl_FragColor = vec4(max(c, 0.0), 1.0); }`,
 };
 
 /** 속도감 방사형 블러: 화면 중심에서 멀수록 바깥으로 번집니다(중심 근처의 차는 선명하게 남음). */
@@ -52,6 +61,6 @@ export class PostFx {
   setCamera(camera: THREE.Camera): void { (this.composer.passes[0] as RenderPass).camera = camera; }
   setScene(scene: THREE.Scene): void { (this.composer.passes[0] as RenderPass).scene = scene; }
   set(o: PostOptions): void { if (o.strength !== undefined) this.bloom.strength = o.strength; if (o.threshold !== undefined) this.bloom.threshold = o.threshold; if (o.vignette !== undefined) this.grade.uniforms.vig.value = o.vignette; }
-  render(dt: number): void { const sz = this.renderer.getSize(_v); if (sz.x !== this.sw || sz.y !== this.sh) { this.sw = sz.x; this.sh = sz.y; this.setSize(sz.x, sz.y); } this.composer.render(dt); }
+  render(dt: number): void { this.grade.uniforms.time.value = (this.grade.uniforms.time.value + dt * 60) % 997; const sz = this.renderer.getSize(_v); if (sz.x !== this.sw || sz.y !== this.sh) { this.sw = sz.x; this.sh = sz.y; this.setSize(sz.x, sz.y); } this.composer.render(dt); }
   dispose(): void { this.composer.dispose(); }
 }

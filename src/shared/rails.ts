@@ -25,14 +25,23 @@ function decorate(): void {
     s.classList.add('wd-has-rails');
     s.insertAdjacentHTML('afterbegin', left(info!));
     s.insertAdjacentHTML('beforeend', right(info!));
+    sizer.observe(s); const panel = s.querySelector<HTMLElement>(':scope > :not(.wd-rail)'); if (panel) sizer.observe(panel); fit(s);
   });
 }
+
+/** 카드가 넓어 양옆 자리가 부족하면(패널 폭 + 양쪽 260px + 간격) 좌우 패널을 숨깁니다. */
+function fit(s: HTMLElement): void {
+  const panel = s.querySelector<HTMLElement>(':scope > :not(.wd-rail)'); if (!panel) return;
+  s.classList.toggle('wd-rails-off', s.clientWidth > 0 && s.clientWidth < panel.offsetWidth + 2 * (260 + 56));
+}
+const fitAll = (): void => document.querySelectorAll<HTMLElement>('.wd-has-rails').forEach(fit);
+const sizer = new ResizeObserver(fitAll);
 
 const observer = new MutationObserver(decorate);
 
 /** 게임을 열 때 정보를 넘기고, 게임 목록으로 돌아오면 null 로 끕니다. */
 export function setRails(next: RailInfo | null): void {
-  info = next; observer.disconnect();
+  info = next; observer.disconnect(); sizer.disconnect();
   if (!next) return;
   observer.observe(document.body, { childList: true, subtree: true });
   decorate();

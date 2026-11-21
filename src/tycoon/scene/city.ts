@@ -5,6 +5,7 @@ import { stageIndex } from '../core/data';
 import { GeoBuilder } from './geo';
 import { Colliders, GRID, HALF, PITCH, ROAD, BLOCK, WORLD_HALF, blockTier, blockUnlocked, hash01, type Block, type Box, type Layout, type Lot } from './layout';
 import { asphaltTexture, dirtTexture, facadeMaps, grassTexture, kindColor, puddleTexture, ringTexture, sidewalkTexture, signTexture, type FacadeStyle } from './textures';
+import { StreetDetail } from './street-detail';
 
 export type Quality = 'high' | 'standard' | 'low';
 /** 코어가 알려 주는 장소 정보(잠김 여부 포함). */
@@ -77,6 +78,7 @@ export class CityView {
   private globe: THREE.Group | null = null;
   private ringTex = ringTexture();
   private disposed = false;
+  private street: StreetDetail; private nightLevel = 0; private wetLevel = 0;
 
   constructor(private layout: Layout, private quality: Quality) {
     const mk = (style: FacadeStyle, rough: number, metal: number): THREE.MeshStandardMaterial => {
@@ -98,6 +100,7 @@ export class CityView {
 #endif`);
     };
     this.buildGround(); this.buildRoadMarks(); this.buildProps(); this.buildBeacons(); this.buildBackdrop();
+    this.street = new StreetDetail(layout, quality); this.group.add(this.street.group);
   }
 
   // ---------- 정적 지형 ----------
@@ -248,6 +251,7 @@ export class CityView {
   /** 문 앞 표지 위치(없으면 null). */
   doorOf(id: string): { x: number; z: number; fx: number; fz: number } | null { const l = this.layout.spotLots.get(id); return l ? { x: l.doorX, z: l.doorZ, fx: l.fx, fz: l.fz } : null; }
   setNight(n: number): void {
+    this.nightLevel = n; this.street.setWeather(n, this.wetLevel);
     const e = 0.04 + n * 0.85;
     for (const m of Object.values(this.facade)) m.emissiveIntensity = e;
     this.skylineMat.emissiveIntensity = 0.04 + n * 0.8;
@@ -256,6 +260,7 @@ export class CityView {
     (this.hills.material as THREE.MeshBasicMaterial).color.setHSL(0.6, 0.3, lerp(0.14, 0.05, n));
   }
   setWet(w: number): void {
+    this.wetLevel = w; this.street.setWeather(this.nightLevel, w);
     this.wetU.value = w; this.roadMat.roughness = lerp(0.92, 0.5, w); this.roadMat.metalness = lerp(0, 0.35, w);
     this.walkMat.roughness = lerp(0.92, 0.55, w);
     for (const m of Object.values(this.facade)) m.roughness = lerp(m === this.facade.glass ? 0.18 : 0.9, 0.35, w * 0.5);
@@ -486,6 +491,7 @@ export class CityView {
 
   dispose(): void {
     if (this.disposed) return; this.disposed = true;
+    this.street.dispose();
     this.group.traverse(o => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); const mat = m.material as THREE.Material | THREE.Material[] | undefined; if (mat) for (const x of Array.isArray(mat) ? mat : [mat]) { const t = x as THREE.MeshStandardMaterial; t.map?.dispose(); (t as THREE.MeshStandardMaterial).emissiveMap?.dispose(); x.dispose(); } });
     for (const v of this.views.values()) for (const g of v.disposables) g.dispose();
     this.ringTex.dispose();

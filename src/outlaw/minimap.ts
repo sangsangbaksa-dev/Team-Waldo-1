@@ -1,6 +1,7 @@
 // OUTLAW CITY — 황혼 도시의 방향 회전 레이더와 일시정지용 전체 지도.
 import type { CityMap, Poi, PoiKind } from './types';
 import type { Sim } from './sim';
+import { drawPointer } from '../shared/pointer';
 
 const SIZE = 1024;
 const POI_STYLE: Record<PoiKind, { icon: string; color: string }> = {
@@ -78,7 +79,7 @@ export class Minimap {
     for (const poi of this.map.pois) if (Math.abs(poi.x - p.x) < r && Math.abs(poi.z - p.z) < r) this.poi(g, point(poi.x, poi.z), poi, size * .046);
     for (const marker of [...sim.mission.markers, ...sim.activity.markers, ...sim.job.markers]) if (marker.blip) {
       const [x, y] = point(marker.x, marker.z), dx = x - cx, dy = y - cy, d = Math.hypot(dx, dy), edge = size * .405;
-      if (d > edge) { const a = Math.atan2(dy, dx); g.save(); g.translate(cx + Math.cos(a) * edge, cy + Math.sin(a) * edge); g.rotate(a); g.fillStyle = markerColor(marker.color, marker.kind); g.beginPath(); g.moveTo(8, 0); g.lineTo(-5, -4); g.lineTo(-3, 0); g.lineTo(-5, 4); g.closePath(); g.fill(); g.restore(); }
+      if (d > edge) { const a = Math.atan2(dy, dx); g.save(); g.translate(cx + Math.cos(a) * edge, cy + Math.sin(a) * edge); g.rotate(a); drawPointer(g, 8, markerColor(marker.color, marker.kind)); g.restore(); }
       else { g.save(); g.translate(x, y); g.rotate(Math.PI / 4); g.fillStyle = markerColor(marker.color, marker.kind); g.fillRect(-4, -4, 8, 8); g.restore(); }
     }
     const wanted = sim.wanted.stars > 0, blink = Math.floor(sim.t * 4) % 2 === 0;
@@ -95,7 +96,7 @@ export class Minimap {
     }
     g.restore();
     // 플레이어 방향은 카메라 기준 고정 화살표여서 조작 중 방향 감각이 흔들리지 않습니다.
-    g.save(); g.translate(cx, cy); g.fillStyle = '#fff'; g.strokeStyle = 'rgba(0,0,0,.85)'; g.lineWidth = 2; g.beginPath(); g.moveTo(0, -size * .055); g.lineTo(size * .035, size * .035); g.lineTo(0, size * .02); g.lineTo(-size * .035, size * .035); g.closePath(); g.fill(); g.stroke(); g.restore();
+    g.save(); g.translate(cx, cy); g.rotate(-Math.PI / 2); drawPointer(g, size * .06, '#fff'); g.restore();
     g.font = `700 ${Math.max(9, size * .065)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#f3f5f6'; g.shadowColor = '#101619'; g.shadowBlur = 3; g.fillText('N', cx, cy - size * .405); g.shadowBlur = 0;
     g.strokeStyle = 'rgba(223,232,231,.8)'; g.lineWidth = Math.max(1.5, size * .009); g.beginPath(); g.arc(cx, cy, size * .47, 0, Math.PI * 2); g.stroke();
     g.fillStyle = 'rgba(8,13,16,.78)'; g.fillRect(cx - size * .32, cy + size * .37, size * .64, size * .075);
@@ -126,7 +127,7 @@ export class Minimap {
       for (const car of sim.vehicles) if (car.alive && car.kind === 'police') this.dot(g, px(car.x), pz(car.z), color, font * .7);
     }
     for (const id of Object.values(sim.mission.ids)) { const ped = sim.peds.find(q => q.id === id && q.alive), car = sim.vehicles.find(q => q.id === id && q.alive); if (ped) this.dot(g, px(ped.x), pz(ped.z), '#ff4545', font * .55); else if (car) this.dot(g, px(car.x), pz(car.z), '#ff4545', font * .55); }
-    const p = sim.player, x = px(p.x), y = pz(p.z); g.save(); g.translate(x, y); g.rotate(Math.PI / 2 + p.yaw); g.fillStyle = '#fff'; g.strokeStyle = '#101619'; g.lineWidth = 2; g.beginPath(); g.moveTo(0, -font * 1.1); g.lineTo(font * .7, font * .7); g.lineTo(0, font * .3); g.lineTo(-font * .7, font * .7); g.closePath(); g.fill(); g.stroke(); g.restore();
+    const p = sim.player, x = px(p.x), y = pz(p.z); g.save(); g.translate(x, y); g.rotate(p.yaw); drawPointer(g, font * 1.1, '#fff', '#101619'); g.restore();
     g.restore(); g.strokeStyle = '#aeb9bb'; g.lineWidth = 1.5; g.strokeRect(left, top, side, side);
     this.drawLegend(g, left, top + side + h * .045, w, font);
   }

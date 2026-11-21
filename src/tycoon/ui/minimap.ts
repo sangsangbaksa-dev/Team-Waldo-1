@@ -2,6 +2,7 @@
 import { DISTRICTS } from '../core/data';
 import { BLOCK, WORLD_HALF, blockUnlocked, type Layout, type Zone } from '../scene/layout';
 import { spotColor, type SpotView } from '../scene/city';
+import { drawPointer } from '../../shared/pointer';
 
 const ZONE_COLOR: Record<Zone, string> = { slum: '#8b6f55', market: '#c98a3b', harbor: '#3f8aa6', downtown: '#6f78c4', uptown: '#b865a8', fringe: '#566070' };
 export const zoneName = (z: Zone): string => (z === 'fringe' ? '외곽' : DISTRICTS[z].name);
@@ -28,5 +29,5 @@ export function drawMap(canvas: HTMLCanvasElement, layout: Layout, v: MapView): 
   if (v.names) { g.font = `800 ${Math.max(12, S * 9)}px system-ui,sans-serif`; g.textAlign = 'center'; g.fillStyle = 'rgba(255,255,255,.55)'; for (const b of layout.blocks) if ((b.i === -3 && b.j === 3) || (b.i === -1 && b.j === 2) || (b.i === 2 && b.j === 3) || (b.i === 0 && b.j === 0) || (b.i === 3 && b.j === -2)) g.fillText(zoneName(b.zone), X(b.cx), Z(b.cz)); }
   // 플레이어 화살표(바라보는 방향)
   const px = X(v.px), pz = Z(v.pz); g.save(); g.translate(px, pz); g.rotate(-v.yaw + Math.PI / 2);
-  const a = Math.max(6, S * 7); g.fillStyle = '#fff'; g.strokeStyle = '#111'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(a, 0); g.lineTo(-a * 0.7, a * 0.7); g.lineTo(-a * 0.35, 0); g.lineTo(-a * 0.7, -a * 0.7); g.closePath(); g.fill(); g.stroke(); g.restore();
+  const a = Math.max(6, S * 7); drawPointer(g, a, '#fff', '#111'); g.restore();
 }

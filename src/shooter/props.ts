@@ -109,13 +109,55 @@ export function makeDropCrate(): THREE.Group {
   g.add(chute); return g;
 }
 export function makePlane(): THREE.Group {
-  const g = new THREE.Group(), body = new THREE.MeshLambertMaterial({ color: 0x4f565e }), accent = new THREE.MeshLambertMaterial({ color: 0xc9cdd2 });
-  const fus = new THREE.Mesh(CYL(1.5, 22, 12), body); fus.rotation.z = Math.PI / 2; g.add(fus);
-  const nose = new THREE.Mesh(new THREE.ConeGeometry(1.5, 4, 12), body); nose.rotation.z = -Math.PI / 2; nose.position.x = 13; g.add(nose);
-  const wing = new THREE.Mesh(new THREE.BoxGeometry(5, 0.35, 34), accent); wing.position.x = 1; g.add(wing);
-  const tail = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.3, 11), accent); tail.position.x = -10; g.add(tail);
-  const fin = new THREE.Mesh(new THREE.BoxGeometry(4, 4.5, 0.3), body); fin.position.set(-10, 2.4, 0); g.add(fin);
-  for (const z of [-8, 8]) { const eng = new THREE.Mesh(CYL(0.8, 4.2, 10), body); eng.rotation.z = Math.PI / 2; eng.position.set(3, -0.6, z); g.add(eng); }
+  const g = new THREE.Group();
+  const body = new THREE.MeshStandardMaterial({ color: 0x657079, roughness: 0.68, metalness: 0.48 });
+  const upper = new THREE.MeshStandardMaterial({ color: 0x849097, roughness: 0.62, metalness: 0.38 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x28343b, roughness: 0.72, metalness: 0.45 });
+  const glass = new THREE.MeshStandardMaterial({ color: 0x183441, roughness: 0.18, metalness: 0.65, emissive: 0x081821 });
+  const pale = new THREE.MeshStandardMaterial({ color: 0xb5bec0, roughness: 0.56, metalness: 0.45 });
+  const light = (color: number): THREE.MeshBasicMaterial => new THREE.MeshBasicMaterial({ color });
+  const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number): THREE.Mesh => {
+    const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; g.add(m); return m;
+  };
+  const cylinder = (r1: number, r2: number, length: number, mat: THREE.Material, x: number, y: number, z: number): THREE.Mesh => {
+    const m = add(new THREE.CylinderGeometry(r1, r2, length, 16), mat, x, y, z); m.rotation.z = -Math.PI / 2; return m;
+  };
+  // The profiles keep the large aircraft readable from both the chase camera and the ground.
+  const profile = [[0, 0], [1.1, 0], [1.55, 1.4], [1.72, 4], [1.72, 17], [1.5, 20], [0.72, 22], [0, 22.5]].map(([r, x]) => new THREE.Vector2(r, x - 11));
+  const fuselage = add(new THREE.LatheGeometry(profile, 24), body, 0, 0, 0); fuselage.rotation.z = -Math.PI / 2;
+  const belly = add(new THREE.BoxGeometry(15, 0.35, 2.7), dark, -1, -1.35, 0); belly.rotation.z = -0.025;
+  const cockpit = add(new THREE.SphereGeometry(1, 16, 10), glass, 9.15, 0.92, 0); cockpit.scale.set(2.15, 0.72, 1.3);
+  for (const z of [-0.67, 0, 0.67]) { const bar = add(new THREE.BoxGeometry(2.5, 0.08, 0.07), pale, 9.1, 1.46, z); bar.rotation.z = -0.14; }
+  for (const x of [-7.5, -4, -0.5, 3, 6.5]) {
+    const ring = add(new THREE.TorusGeometry(1.72, 0.035, 5, 24), dark, x, 0, 0); ring.rotation.y = Math.PI / 2;
+  }
+  for (const side of [-1, 1]) {
+    for (let x = -7; x <= 5; x += 3) {
+      const window = add(new THREE.BoxGeometry(0.72, 0.42, 0.08), glass, x, 0.48, side * 1.65);
+      window.rotation.x = side * 0.12;
+    }
+    const wing = add(new THREE.BoxGeometry(5.2, 0.42, 16), upper, 0.5, 0.8, side * 8.4); wing.rotation.y = side * 0.10; wing.rotation.x = side * 0.035;
+    const flap = add(new THREE.BoxGeometry(0.55, 0.12, 13), dark, -2.1, 0.72, side * 8.6); flap.rotation.y = side * 0.1;
+    const tip = add(new THREE.BoxGeometry(2.6, 0.35, 0.55), pale, 0, 1.15, side * 16.4); tip.rotation.z = -0.08;
+    add(new THREE.SphereGeometry(0.18, 8, 6), light(side < 0 ? 0xff5550 : 0x65ff91), 1.2, 1.1, side * 16.5);
+    const tail = add(new THREE.BoxGeometry(3.4, 0.24, 5.8), upper, -9, 1.0, side * 3.2); tail.rotation.y = side * 0.2;
+    for (const z of [side * 5.2, side * 10.6]) {
+      cylinder(0.8, 0.92, 4.1, body, 2.7, 0.25, z);
+      cylinder(0.74, 0.74, 0.16, dark, 4.83, 0.25, z);
+      cylinder(0.25, 0.36, 0.55, pale, 5.05, 0.25, z);
+      const prop = new THREE.Group(); prop.name = 'propeller'; prop.position.set(5.36, 0.25, z); g.add(prop);
+      const hub = new THREE.Mesh(new THREE.SphereGeometry(0.26, 10, 8), dark); prop.add(hub);
+      for (let i = 0; i < 4; i++) {
+        const blade = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.65, 0.24), dark);
+        blade.position.set(0, Math.cos(i * Math.PI / 2) * 0.9, Math.sin(i * Math.PI / 2) * 0.9); blade.rotation.x = i * Math.PI / 2; prop.add(blade);
+        const marking = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.18, 0.25), pale);
+        marking.position.set(0, Math.cos(i * Math.PI / 2) * 1.62, Math.sin(i * Math.PI / 2) * 1.62); marking.rotation.x = i * Math.PI / 2; prop.add(marking);
+      }
+    }
+  }
+  const fin = add(new THREE.BoxGeometry(4.2, 4.2, 0.35), body, -9.5, 2.8, 0); fin.rotation.z = -0.2;
+  add(new THREE.BoxGeometry(1.1, 2.8, 0.38), upper, -11, 2.9, 0).rotation.z = -0.2;
+  add(new THREE.SphereGeometry(0.2, 8, 6), light(0xff5550), -10.6, 5.0, 0);
   g.scale.setScalar(1.15); return g;
 }
 

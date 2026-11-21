@@ -16,15 +16,59 @@ function grain(g: CanvasRenderingContext2D, s: number, seed: number, count: numb
   for (let i = 0; i < count; i++) { g.fillStyle = r() < .5 ? `rgba(255,255,255,${alpha * r()})` : `rgba(0,0,0,${alpha * r()})`; g.fillRect(r() * s, r() * s, 1 + r() * 2, 1 + r() * 2); }
 }
 function base(g: CanvasRenderingContext2D, s: number, color: string, seed: number): void { g.fillStyle = color; g.fillRect(0, 0, s, s); grain(g, s, seed, 2400, .25); }
+// Fine aggregate, repairs and weathering are baked once into the repeating city maps.
+function roadDetail(g: CanvasRenderingContext2D, s: number): void {
+  const r = makeRng(901);
+  for (let i = 0; i < 1300; i++) {
+    const x = r() * s, y = r() * s, radius = .3 + r() * 1.3;
+    g.fillStyle = r() > .48 ? 'rgba(187,190,184,.18)' : 'rgba(5,8,10,.22)';
+    g.beginPath(); g.ellipse(x, y, radius * 1.5, radius, r() * Math.PI, 0, Math.PI * 2); g.fill();
+  }
+  for (let i = 0; i < 5; i++) {
+    const x = r() * s, y = r() * s, w = 12 + r() * 35, h = 8 + r() * 30;
+    g.fillStyle = 'rgba(25,30,31,.13)'; g.fillRect(x, y, w, h);
+    g.strokeStyle = 'rgba(17,20,21,.18)'; g.lineWidth = 1; g.strokeRect(x, y, w, h);
+  }
+  g.strokeStyle = 'rgba(12,14,15,.28)'; g.lineWidth = 1.5;
+  for (let i = 0; i < 9; i++) {
+    let x = r() * s, y = r() * s; g.beginPath(); g.moveTo(x, y);
+    for (let j = 0; j < 7; j++) { x += (r() - .5) * 13; y += r() * 9; g.lineTo(x, y); }
+    g.stroke();
+  }
+}
+function pavementDetail(g: CanvasRenderingContext2D, s: number): void {
+  const r = makeRng(902);
+  for (let y = 0; y < s; y += 64) for (let x = 0; x < s; x += 64) {
+    g.fillStyle = `rgba(255,255,245,${.025 + r() * .045})`; g.fillRect(x + 3, y + 3, 58, 58);
+    g.fillStyle = 'rgba(36,39,38,.12)'; g.fillRect(x + 2, y + 60, 60, 2); g.fillRect(x + 60, y + 2, 2, 60);
+    g.fillStyle = 'rgba(238,237,224,.24)'; g.fillRect(x + 3, y + 3, 57, 1); g.fillRect(x + 3, y + 3, 1, 57);
+    for (let i = 0; i < 16; i++) { g.fillStyle = 'rgba(54,57,54,.10)'; g.fillRect(x + r() * 60 + 2, y + r() * 60 + 2, 1 + r() * 2, 1 + r() * 2); }
+  }
+}
+function facadeDetail(g: CanvasRenderingContext2D, s: number, variant: number): void {
+  const r = makeRng(910 + variant);
+  // Subtle masonry, joints and runoff give broad walls a sense of scale.
+  g.strokeStyle = 'rgba(20,29,33,.11)'; g.lineWidth = 1;
+  for (let y = 0; y < s; y += 32) { g.beginPath(); g.moveTo(0, y + .5); g.lineTo(s, y + .5); g.stroke(); }
+  for (let i = 0; i < 36; i++) {
+    const x = r() * s, y = r() * s, h = 5 + r() * 30;
+    const streak = g.createLinearGradient(x, y, x, y + h);
+    streak.addColorStop(0, 'rgba(24,28,29,.12)'); streak.addColorStop(1, 'rgba(24,28,29,0)');
+    g.fillStyle = streak; g.fillRect(x, y, 1 + r() * 3, h);
+  }
+  g.fillStyle = 'rgba(15,23,27,.24)'; g.fillRect(0, 155, s, 4);
+  g.fillStyle = 'rgba(240,235,220,.18)'; g.fillRect(0, 159, s, 2);
+}
 export function asphaltTexture(): THREE.CanvasTexture { return texture('asphalt', (g, s) => {
   base(g, s, '#454747', 1); const r = makeRng(3);
   g.strokeStyle = 'rgba(15,16,17,.19)'; g.lineWidth = 12; for (const x of [70, 171]) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x + 3, s); g.stroke(); }
   g.lineWidth = 1; g.strokeStyle = 'rgba(20,20,20,.35)'; for (let i = 0; i < 7; i++) { let x = r() * s, y = r() * s; g.beginPath(); g.moveTo(x, y); for (let j = 0; j < 5; j++) { x += (r() - .5) * 16; y += (r() - .5) * 18; g.lineTo(x, y); } g.stroke(); }
+  roadDetail(g, s);
 }); }
 export function crosswalkTexture(): THREE.CanvasTexture { return texture('crosswalk', (g, s) => { g.fillStyle = 'rgba(230,228,211,.92)'; for (let x = 12; x < s; x += 64) g.fillRect(x, 18, 38, s - 36); }, false); }
 export function laneLineTexture(): THREE.CanvasTexture { return texture('lane', (g, s) => { g.fillStyle = 'rgba(222,203,144,.9)'; g.fillRect(s * .45, s * .15, s * .1, s * .55); }); }
 export function concreteTexture(): THREE.CanvasTexture { return texture('concrete', (g, s) => base(g, s, '#a7a49b', 5)); }
-export function sidewalkTexture(): THREE.CanvasTexture { return texture('sidewalk', (g, s) => { base(g, s, '#aaa99f', 6); g.strokeStyle = 'rgba(58,58,55,.4)'; g.lineWidth = 2; for (let x = 0; x < s; x += 64) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, s); g.moveTo(0, x); g.lineTo(s, x); g.stroke(); } }); }
+export function sidewalkTexture(): THREE.CanvasTexture { return texture('sidewalk', (g, s) => { base(g, s, '#aaa99f', 6); pavementDetail(g, s); g.strokeStyle = 'rgba(58,58,55,.4)'; g.lineWidth = 2; for (let x = 0; x < s; x += 64) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, s); g.moveTo(0, x); g.lineTo(s, x); g.stroke(); } }); }
 export function grassTexture(): THREE.CanvasTexture { return texture('grass', (g, s) => { base(g, s, '#647452', 7); const r = makeRng(8); for (let i = 0; i < 500; i++) { g.fillStyle = r() < .5 ? 'rgba(39,61,35,.18)' : 'rgba(161,167,103,.18)'; g.fillRect(r() * s, r() * s, 3 + r() * 8, 1 + r() * 4); } }); }
 export function dirtTexture(): THREE.CanvasTexture { return texture('dirt', (g, s) => base(g, s, '#85745c', 9)); }
 export function roofTexture(): THREE.CanvasTexture { return texture('roof', (g, s) => base(g, s, '#555550', 10)); }
@@ -40,10 +84,17 @@ export function facadeTexture(variant: number, _night = false): Facade {
   for (let i = 0; i < count; i++) windows.push({ x: i * 256 / count + 5, y: v === 5 ? 43 : 45, w: 256 / count - 10, h: v === 5 ? 48 : v === 4 ? 88 : 105, lit: rng() < .4, warm: rng() < .65 });
   const map = texture(`facade${v}`, (g, s) => {
     base(g, s, colors[v], 30 + v);
+    facadeDetail(g, s, v);
     if (v === 3) { g.strokeStyle = 'rgba(55,32,29,.35)'; for (let y = 0; y < s; y += 16) { g.beginPath(); g.moveTo(0, y); g.lineTo(s, y); for (let x = (y / 16 % 2) * 16; x < s; x += 32) { g.moveTo(x, y); g.lineTo(x, y + 16); } g.stroke(); } }
     if (v === 4 || v === 5) { g.strokeStyle = 'rgba(36,40,39,.25)'; for (let n = 0; n < s; n += v === 4 ? 16 : 12) { g.beginPath(); if (v === 4) { g.moveTo(0, n); g.lineTo(s, n); } else { g.moveTo(n, 0); g.lineTo(n, s); } g.stroke(); } }
     if (v === 2) { g.fillStyle = '#685f53'; g.fillRect(0, 190, s, 28); g.fillStyle = '#c1b29a'; g.fillRect(0, 190, s, 3); }
     for (const w of windows) { g.fillStyle = '#333c3d'; g.fillRect(w.x - 3, w.y - 3, w.w + 6, w.h + 6); const grad = g.createLinearGradient(w.x, w.y, w.x + w.w, w.y + w.h); grad.addColorStop(0, '#78909a'); grad.addColorStop(.5, '#344956'); grad.addColorStop(1, '#273741'); g.fillStyle = grad; g.fillRect(w.x, w.y, w.w, w.h); g.fillStyle = 'rgba(190,199,196,.45)'; g.fillRect(w.x + w.w / 2, w.y, 2, w.h); if (v === 1 || v === 3) g.fillRect(w.x, w.y + w.h / 2, w.w, 2); if (v === 3) { g.fillStyle = '#655a52'; g.fillRect(w.x - 4, w.y + w.h + 8, w.w + 8, 7); g.fillStyle = '#373d3d'; g.fillRect(w.x - 3, w.y + w.h - 10, w.w + 6, 3); } }
+    for (const w of windows) {
+      g.fillStyle = 'rgba(8,17,21,.38)'; g.fillRect(w.x - 3, w.y + w.h + 2, w.w + 6, 5);
+      g.fillStyle = 'rgba(226,231,220,.28)'; g.fillRect(w.x - 2, w.y + w.h, w.w + 4, 2);
+      g.fillStyle = 'rgba(210,229,232,.12)';
+      g.beginPath(); g.moveTo(w.x + 2, w.y + 2); g.lineTo(w.x + w.w * .55, w.y + 2); g.lineTo(w.x + 2, w.y + w.h * .65); g.closePath(); g.fill();
+    }
     g.fillStyle = 'rgba(30,32,32,.2)'; g.fillRect(0, 0, s, 3);
   });
   const emissive = texture(`facadeLight${v}`, (g, s) => { g.fillStyle = '#000'; g.fillRect(0, 0, s, s); for (const w of windows) if (w.lit) { g.fillStyle = w.warm ? '#eac985' : '#c8d7db'; g.fillRect(w.x, w.y, w.w, w.h); g.fillStyle = '#000'; g.fillRect(w.x + w.w / 2, w.y, 2, w.h); if (v === 1 || v === 3) g.fillRect(w.x, w.y + w.h / 2, w.w, 2); } });

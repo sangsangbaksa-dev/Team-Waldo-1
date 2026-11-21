@@ -23,6 +23,7 @@ import { treat, buySnack, nearVending } from './services';
 import { OUTLAW_KEY } from './records';
 import { Versus, type VsSession, type VsResult } from './versus';
 import { WEAPONS, WEAPON_ORDER, PLAYER_ID, VEHICLES, blankPedInput, blankCarInput, clamp, wrapAngle, type PedInput, type SimEvent, type Vehicle } from './types';
+import { starIcon } from '../shared/glyphs';
 
 interface OpenOptions { loading?: LoadingScreen }
 const SEED = 20260101, STEP = 1 / 60, TITLE_CLOCK = 17.2;
@@ -386,7 +387,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
         case 'pickup': { if (e.ped === PLAYER_ID) { audio.play(e.kind === 'weapon' ? 'weapon_pickup' : e.kind === 'cash' ? 'cash' : 'pickup'); if (e.kind !== 'cash') toast(e.kind === 'health' ? '체력 회복' : e.kind === 'armor' ? '방탄복 획득' : e.kind === 'weapon' ? '무기 획득' : e.kind === 'ammo' ? '탄약 획득' : '꾸러미 획득', 2); } break; }
         case 'cash': { if (e.amount !== 0) floater((e.amount > 0 ? '+' : '−') + money(Math.abs(e.amount)), e.amount > 0 ? 'up' : 'down'); if (e.amount > 0) toast(`현금 획득  +${money(e.amount)}`, 2.6, 'cash'); break; }
         case 'wanted': {
-          if (e.stars > e.prev) { audio.play('wanted_up'); big('<span class="w">WANTED</span><span class="s">' + '★'.repeat(e.stars) + '</span>', 'wanted', 2000); }
+          if (e.stars > e.prev) { audio.play('wanted_up'); big('<span class="w">WANTED</span><span class="s">' + starIcon(true).repeat(e.stars) + '</span>', 'wanted', 2000); }
           else if (e.stars === 0 && e.prev > 0) { audio.play('wanted_down'); big('WANTED LEVEL LOST', 'lost', 2400); }
           break;
         }

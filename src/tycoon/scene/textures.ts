@@ -40,6 +40,9 @@ export function facadeMaps(style: FacadeStyle): FacadeMaps {
       const gl = g.createLinearGradient(wx, wy, wx + ww, wy + wh); gl.addColorStop(0, style === 'glass' ? '#9fc0da' : '#3b4a5a'); gl.addColorStop(1, style === 'glass' ? '#47627c' : '#1a222c'); g.fillStyle = gl; g.fillRect(wx, wy, ww, wh);
       g.fillStyle = 'rgba(255,255,255,.12)'; g.beginPath(); g.moveTo(wx, wy + wh * 0.6); g.lineTo(wx + ww * 0.55, wy); g.lineTo(wx + ww, wy); g.lineTo(wx, wy + wh); g.fill();
     }
+    g.fillStyle = 'rgba(255,255,255,.16)'; g.fillRect(wx, wy, ww, 2);
+    g.fillStyle = 'rgba(7,12,18,.35)'; g.fillRect(wx, wy + wh - 3, ww, 3);
+    if (style !== 'glass') { g.fillStyle = 'rgba(32,35,38,.65)'; g.fillRect(wx + ww * 0.5 - 1, wy, 2, wh); g.fillStyle = 'rgba(220,220,210,.3)'; g.fillRect(wx - 4, wy + wh + 3, ww + 8, 3); }
     if (style === 'glass') { g.strokeStyle = 'rgba(15,25,35,.55)'; g.lineWidth = 3; g.strokeRect(wx, wy, ww, wh); g.beginPath(); g.moveTo(wx + ww / 2, wy); g.lineTo(wx + ww / 2, wy + wh); g.stroke(); }
     if (style === 'slum' && r() < 0.4) { g.fillStyle = 'rgba(60,70,80,.7)'; g.fillRect(x + cell * 0.1, y + cell * 0.74, cell * 0.8, 5); g.fillStyle = `hsl(${r() * 360},40%,${40 + r() * 20}%)`; g.fillRect(x + cell * 0.2 + r() * cell * 0.4, y + cell * 0.78, 10, 18); } // 빨래
     if (style !== 'glass') { g.fillStyle = 'rgba(0,0,0,.18)'; g.fillRect(x, y + cell - 6, cell, 6); } // 층 구분
@@ -54,6 +57,7 @@ export function asphaltTexture(): THREE.CanvasTexture {
   g.strokeStyle = 'rgba(10,10,12,.55)'; g.lineWidth = 1.2;
   for (let k = 0; k < 7; k++) { g.beginPath(); let x = r() * S, y = r() * S; g.moveTo(x, y); for (let n = 0; n < 12; n++) { x += (r() - 0.4) * 40; y += (r() - 0.5) * 40; g.lineTo(x, y); } g.stroke(); }
   for (let k = 0; k < 5; k++) { const x = r() * S, y = r() * S, rad = 30 + r() * 60, gr = g.createRadialGradient(x, y, 2, x, y, rad); gr.addColorStop(0, 'rgba(8,8,10,.35)'); gr.addColorStop(1, 'rgba(8,8,10,0)'); g.fillStyle = gr; g.fillRect(x - rad, y - rad, rad * 2, rad * 2); }
+  for (let k = 0; k < 22; k++) { const x = r() * S, y = r() * S, w = 18 + r() * 42, h = 2 + r() * 4; g.fillStyle = 'rgba(15,17,20,.12)'; g.fillRect(x, y, w, h); g.fillStyle = 'rgba(210,215,220,.035)'; g.fillRect(x, y, w, 1); }
   return tex(c);
 }
 /** 젖은 정도 지도: 밝을수록 매끈(물웅덩이) */
@@ -91,10 +95,13 @@ export function signTexture(text: string, color: string, sub = ''): THREE.Canvas
   const [c, g] = canvas(512, 128);
   const gr = g.createLinearGradient(0, 0, 0, 128); gr.addColorStop(0, color); gr.addColorStop(1, '#101418'); g.fillStyle = '#101418'; g.fillRect(0, 0, 512, 128);
   g.fillStyle = gr; g.globalAlpha = 0.9; g.fillRect(6, 6, 500, 116); g.globalAlpha = 1;
-  g.strokeStyle = 'rgba(255,255,255,.8)'; g.lineWidth = 4; g.strokeRect(10, 10, 492, 108);
+  g.fillStyle = 'rgba(5,10,18,.78)'; g.fillRect(15, 15, 482, 98);
+  g.shadowColor = color; g.shadowBlur = 18; g.strokeStyle = color; g.lineWidth = 5; g.strokeRect(13, 13, 486, 102);
+  g.shadowBlur = 0; g.strokeStyle = 'rgba(255,255,255,.7)'; g.lineWidth = 1.5; g.strokeRect(17, 17, 478, 94);
+  g.fillStyle = color; g.fillRect(30, 27, 32, 3); g.fillRect(450, 27, 32, 3);
   let size = 62; g.font = `800 ${size}px "Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif`;
   while (g.measureText(text).width > 440 && size > 26) { size -= 3; g.font = `800 ${size}px "Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif`; }
-  g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#fff'; g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 6; g.fillText(text, 256, sub ? 52 : 66);
+  g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#fff'; g.shadowColor = color; g.shadowBlur = 16; g.fillText(text, 256, sub ? 52 : 66); g.shadowBlur = 4; g.fillText(text, 256, sub ? 52 : 66);
   if (sub) { g.shadowBlur = 0; g.font = '600 26px system-ui,sans-serif'; g.fillStyle = 'rgba(255,255,255,.85)'; g.fillText(sub, 256, 98); }
   return tex(c, false);
 }

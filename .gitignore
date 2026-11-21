@@ -3,6 +3,9 @@ dist
 *.log
 .DS_Store
 browser-artifacts/
+.browser-check/
+artifacts/
 qa/
 .vercel/
 __pycache__/
+graphify-out/

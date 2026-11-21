@@ -5,11 +5,12 @@ import { showLoading, retry, retryNote } from './loading';
 import { readCityCareer, readRaceRecords, readRtsRecords, fmtTime } from './records';
 import { readShooterCareer } from './shooter/records';
 import { readOutlawSummary } from './outlaw/records';
+import { readSkySummary } from './sky/records';
 import { readTycoonSummary } from './tycoon/core/save';
 import { STAGE_NAMES } from './tycoon/core/data';
 import { CHAT_ENABLED, PVP_ENABLED } from './net/config';
 
-type GameId = 'city' | 'race' | 'rts' | 'shooter' | 'outlaw' | 'tycoon';
+type GameId = 'city' | 'race' | 'rts' | 'shooter' | 'outlaw' | 'tycoon' | 'sky' | 'room-tone';
 
 interface Entry {
   id: GameId;
@@ -102,6 +103,29 @@ const ENTRIES: Entry[] = [
       const r = readTycoonSummary();
       return r.has ? (r.won ? `세계 정복 · ${r.day}일` : `${STAGE_NAMES[r.stage]} · ${r.day}일차`) : '';
     },
+  },
+  {
+    id: 'sky',
+    name: 'SKY WAR',
+    genre: '전투기 공중전',
+    summary: '군도 위 하늘에서 끝없이 몰려오는 적기와 맞서세요. 커서만 움직여 조종하고, 자동 조준으로 기관포를 쏘고, 락온 미사일과 플레어로 에이스를 격추합니다.',
+    facts: ['터치패드 조종 · 자동 조준/사격', '웨이브 무한 · 난이도 3단계 · 락온 미사일', '키보드 · 마우스 · 터치'],
+    image: `${base}assets/home/sky-war.jpg`,
+    imageAlt: '구름 위에서 적기를 쫓는 전투기',
+    status: () => {
+      const r = readSkySummary();
+      return r.has ? `최고 ${r.bestScore}점 · 웨이브 ${r.bestWave}` : '';
+    },
+  },
+  {
+    id: 'room-tone',
+    name: 'ROOM TONE',
+    genre: '1인칭 심리 공포',
+    summary: '폐쇄된 녹음 시설의 신호를 복원하세요. 발소리를 쫓아오는 잔향을 피해 네 구역을 빠져나가야 합니다.',
+    facts: ['1인 플레이 · 약 30분', '탐색 · 퍼즐 · 추적', '자동 저장 · 터치 지원'],
+    image: `${base}room-tone/keyart.jpg`,
+    imageAlt: '녹음실 문 뒤에서 복도를 응시하는 잔향',
+    status: () => '',
   },
 ];
 
@@ -212,6 +236,10 @@ function wireAccount(): void {
 }
 
 async function launch(id: GameId): Promise<void> {
+  if (id === 'room-tone') {
+    location.assign(`${base}room-tone/`);
+    return;
+  }
   const navigation = ++generation;
   const buttons = app.querySelectorAll<HTMLButtonElement>('.tile');
   const notice = app.querySelector<HTMLElement>('#home-notice');
@@ -221,7 +249,7 @@ async function launch(id: GameId): Promise<void> {
   if (label) label.textContent = '불러오는 중…';
   if (notice) notice.textContent = '';
   // 일시적인 다운로드 오류에는 재시도하고, 계속 실패하면 메뉴로 복귀합니다.
-  const loading = showLoading(id === 'city' ? 'LAST CITY' : id === 'rts' ? 'FRONTLINE' : id === 'shooter' ? 'ZERO ZONE' : id === 'outlaw' ? 'OUTLAW CITY' : id === 'tycoon' ? 'HUSTLE' : 'SPEED RUSH');
+  const loading = showLoading(id === 'city' ? 'LAST CITY' : id === 'rts' ? 'FRONTLINE' : id === 'shooter' ? 'ZERO ZONE' : id === 'outlaw' ? 'OUTLAW CITY' : id === 'tycoon' ? 'HUSTLE' : id === 'sky' ? 'SKY WAR' : 'SPEED RUSH');
   loading.progress(null, '게임을 불러오는 중');
   const cancelled = (): boolean => generation !== navigation;
   const fetchGame = <T,>(load: () => Promise<T>): Promise<T> => retry(load, { cancelled, maxAttempts: 4, onRetry: n => loading.note(retryNote(n)) });
@@ -246,6 +274,11 @@ async function launch(id: GameId): Promise<void> {
       if (cancelled()) { loading.close(); return; }
       app.hidden = true;
       openOutlaw(renderMenu, { loading });
+    } else if (id === 'sky') {
+      const { openSky } = await fetchGame(() => import('./sky/game'));
+      if (cancelled()) { loading.close(); return; }
+      app.hidden = true;
+      openSky(renderMenu, { loading });
     } else if (id === 'tycoon') {
       const { openTycoon } = await fetchGame(() => import('./tycoon/game'));
       if (cancelled()) { loading.close(); return; }

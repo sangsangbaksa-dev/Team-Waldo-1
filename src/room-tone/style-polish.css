@@ -80,3 +80,16 @@
 #game .record-archive p {margin:.35rem 0 0;font-size:.88rem;line-height:1.55;}
 #game .mapkey i:last-child {color:#c9a5df;}
 @media(prefers-reduced-motion:reduce){#game #viewWrap::after{transition:none;opacity:.35!important;background-color:transparent!important;}}
+
+/* Silver-gelatin monochrome: keep map symbols distinct and avoid rapid flicker. */
+#viewWrap canvas{filter:grayscale(1) contrast(1.18);background:#111}
+#home .heroart,#stage canvas,#stage img{filter:grayscale(1) contrast(1.12)}
+#game .hud,#game .gear,#game .statusfoot,#game #prompt,#game #toast,#game .touchactions{filter:grayscale(1)}
+#game #danger,#game #danger[data-pursuit="chase"],#game #danger[data-pursuit="caught"]{background:radial-gradient(ellipse,transparent 32%,#0007 65%,#080808 100%)}
+#game .lens{background:radial-gradient(ellipse,transparent 38%,#0009 100%)}
+#game #viewWrap::after{background:repeating-linear-gradient(0deg,#fff0 0 3px,#ffffff08 3px 4px),radial-gradient(ellipse,transparent 40%,#000a 100%);opacity:.45}
+#game #viewWrap[data-hiding]::after{background:radial-gradient(ellipse at 50% 48%,transparent 10%,#0009 56%,#000 100%);opacity:.75}
+#game #stealthReadout{display:block;margin-top:.45rem;color:#e4e4e4;font:600 .72rem/1.35 monospace;letter-spacing:.03em;text-shadow:0 1px 3px #000}
+#game #viewWrap[data-hiding] .reticle{opacity:.3}
+#game .mapkey i:last-child{color:#eee}
+@media(max-width:600px){#game #stealthReadout{font-size:.65rem;max-width:22ch}}

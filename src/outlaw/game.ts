@@ -4,6 +4,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import '../shared/ui.css';
 import './outlaw.css';
 import { readPreferences, writePreferences } from '../prefs';
 import type { LoadingScreen } from '../loading';
@@ -32,7 +33,7 @@ const money = (n: number): string => '$' + Math.floor(n).toLocaleString('en-US')
 
 export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   const prefs = readPreferences(), touch = matchMedia('(pointer: coarse)').matches, base = import.meta.env.BASE_URL;
-  const root = document.createElement('div'); root.className = 'ol-root' + (touch ? ' touch' : '');
+  const root = document.createElement('div'); root.className = 'ol-root' + (touch ? ' touch' : ''); root.style.setProperty('--wd-hue', '#e0a575');
   root.innerHTML = `
     <canvas class="ol-canvas"></canvas>
     <div class="ol-fx"><div class="ol-vig" id="ol-vig"></div><div class="ol-lines" id="ol-lines"></div><div class="ol-gray" id="ol-gray"></div><div class="ol-dir" id="ol-dir"><i></i></div></div>
@@ -58,7 +59,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
         <div class="ol-tcar"><button data-act="left" type="button">◀</button><button data-act="right" type="button">▶</button><button data-act="gas" class="fire" type="button">가속</button><button data-act="brake" type="button">브레이크</button><button data-act="hand" type="button">드리프트</button></div></div>
     </div>
     <div class="ol-wheel" id="ol-wheel" hidden></div>
-    <div class="ol-title" id="ol-title"></div>
+    <div class="ol-title wd-screen" id="ol-title" style="--wd-hue:#e0a575"></div>
     <div class="ol-modal" id="ol-modal" hidden></div>`;
   document.body.append(root);
   const q = <T extends HTMLElement>(sel: string): T => root.querySelector<T>(sel)!;
@@ -129,7 +130,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     return `<h2>조작법</h2><div class="ol-keys"><div><b>이동</b>WASD · Shift 달리기 · Space 점프 · C 앉기</div><div><b>전투</b>좌클릭 사격 · 우클릭 조준 · R 재장전 · 1~9·0·-/휠 무기 · Q 무기 휠 · 수류탄은 사격 키로 투척</div><div><b>상호작용</b>E / F 차량 · 상점 · 의뢰 · 안전가옥</div><div><b>차량</b>W 가속 · S 브레이크/후진 · A D 조향 · Space 핸드브레이크 · H 경적 · R 라디오 · C 뒤돌아보기</div><div><b>휴대폰</b>P 휴대폰: 일거리·차고·부동산·업적 · 격투장/체육관/카지노/자동차 매장은 E</div><div><b>기타</b>M / Tab 전체 지도 · Esc 일시정지</div></div><p class="hint">아슬아슬한 통과·점프·드리프트·헤드샷은 스타일 보너스가 됩니다. 시민을 해치면 수배 별이 올라갑니다.</p><div class="ol-btns"><button data-k="back" type="button">돌아가기</button></div>`;
   }
   function openPause(): void {
-    openModal('pause', `<h2>${versus ? '대전 메뉴' : '일시정지'}</h2><div class="ol-btns v"><button data-k="resume" type="button">계속하기</button><button data-k="phone" type="button">휴대폰</button><button data-k="map" type="button">전체 지도</button><button data-k="help" type="button">조작법</button><button data-k="sound" type="button">소리: ${audio.enabled ? '켜짐' : '꺼짐'}</button><button data-k="quality" type="button">품질: ${prefs.quality === 'high' ? '높음' : prefs.quality === 'standard' ? '보통' : '낮음'} (다음 실행부터)</button><button data-k="quit" type="button" class="danger">${versus ? '대전 나가기' : '저장하고 나가기'}</button></div>`);
+    openModal('pause', `<p class="wd-eyebrow">OUTLAW CITY</p><h2 class="wd-title">${versus ? '대전 메뉴' : '일시정지'}</h2><div class="ol-btns v wd-actions"><button data-k="resume" type="button" class="wd-btn primary">이어하기</button><button data-k="phone" type="button">휴대폰</button><button data-k="map" type="button">전체 지도</button><button data-k="help" type="button">조작법</button><button data-k="sound" type="button">소리 ${audio.enabled ? '켬' : '끔'}</button><button data-k="quality" type="button">품질: ${prefs.quality === 'high' ? '높음' : prefs.quality === 'standard' ? '보통' : '낮음'} (다음 실행부터)</button><button data-k="quit" type="button" class="danger">${versus ? '대전 나가기' : '저장하고 나가기'}</button></div>`);
   }
   function openMap(): void {
     openModal('map', `<canvas id="ol-bigmap" width="900" height="780"></canvas><div class="ol-btns"><button data-k="resume" type="button">닫기 (M)</button></div>`);
@@ -173,8 +174,8 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 타이틀 ----------
   function showTitle(): void {
     titleEl.hidden = false; const sv = hasSave();
-    titleEl.innerHTML = `<div class="ol-logo"><span>OUTLAW</span><span class="b">CITY</span></div><p class="ol-tag">도시는 네 것이다. 대가는 네가 치른다.</p>
-      <div class="ol-btns v"><button data-t="new" type="button">새 게임</button>${sv ? '<button data-t="cont" type="button">이어하기</button>' : ''}${PVP_ENABLED ? '<button data-t="duel" type="button">온라인 1대1</button><button data-t="room" type="button">온라인 룸 (2~6인)</button>' : ''}<button data-t="help" type="button">조작법</button><button data-t="exit" type="button" class="ghost">메뉴로</button></div><p class="ol-title-status" role="status"></p>`;
+    titleEl.innerHTML = `<div class="ol-title-panel wd-panel"><p class="wd-eyebrow">WALDO · 오픈 월드</p><div class="ol-logo wd-title"><span>OUTLAW</span><span class="b">CITY</span></div><p class="ol-tag wd-lead">도시는 네 것이다. 대가는 네가 치른다.</p>
+      <div class="ol-btns v wd-actions"><button data-t="new" type="button" class="wd-btn primary">시작</button>${sv ? '<button data-t="cont" type="button" class="wd-btn">이어하기</button>' : ''}${PVP_ENABLED ? '<button data-t="duel" type="button">온라인 1대1</button><button data-t="room" type="button">온라인 룸 (2~6인)</button>' : ''}<button data-t="help" type="button">조작법</button><button data-t="exit" type="button" class="ghost wd-btn">아케이드로</button></div><p class="ol-title-status" role="status"></p></div>`;
   }
   titleEl.addEventListener('click', e => {
     const b = (e.target as HTMLElement).closest('button'); if (!b || !sim || phase !== 'menu' || lobby || openingLobby) return;
@@ -184,7 +185,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     else if (t === 'help') openModal('help', controlsHtml().replace('data-k="back"', 'data-k="resume"'));
     else if (t === 'new') {
       if (hasSave() && !confirmNew) { confirmNew = true; b.textContent = '저장 덮어쓰기? 다시 누르면 시작'; return; }
-      confirmNew = false; b.textContent = '새 게임'; ui.heroSel = 'h0'; openUi('hero');
+      confirmNew = false; b.textContent = '시작'; ui.heroSel = 'h0'; openUi('hero');
     }
     else if (t === 'cont') begin(true);
     else if (t === 'duel' || t === 'room') openVersusLobby(t === 'duel');

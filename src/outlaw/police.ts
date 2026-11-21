@@ -7,10 +7,11 @@ import { autoDrive } from './vehicle';
 type Role = 'patrol' | 'swat' | 'tank' | 'block';
 interface Unit { role: Role; crew: number[]; repath: number; idle: number }
 interface Report { crime: Crime; witnesses: number[]; left: number }
-interface State { units: Map<number, Unit>; reports: Report[]; spawn: number; quiet: number; stars: number; paths: number; contact: number; arrestCop: number; arrestVehicle: number }
+interface State { units: Map<number, Unit>; reports: Report[]; spawn: number; quiet: number; stars: number; peak: number; paths: number; contact: number; arrestCop: number; arrestVehicle: number }
+export const chaseEscapeReward = (peak: number): number => Math.max(0, Math.min(5, Math.floor(peak))) * 150;
 const states = new WeakMap<Sim, State>(), thresholds = [0, 1, 4, 9, 16, 26], escape = [0, 15, 20, 25, 30, 35], TAG = 'outlaw:police';
 function state(sim: Sim): State {
-  let s = states.get(sim); if (!s) { s = { units: new Map(), reports: [], spawn: 0, quiet: 0, stars: 0, paths: 1, contact: 0, arrestCop: 0, arrestVehicle: 0 }; states.set(sim, s); } return s;
+  let s = states.get(sim); if (!s) { s = { units: new Map(), reports: [], spawn: 0, quiet: 0, stars: 0, peak: 0, paths: 1, contact: 0, arrestCop: 0, arrestVehicle: 0 }; states.set(sim, s); } return s;
 }
 function admit(sim: Sim, c: Crime): void {
   const w = sim.wanted; w.heat += Math.max(0, c.weight); w.lastX = c.x; w.lastZ = c.z; w.unseenT = 0; w.evadeT = 0;
@@ -137,9 +138,10 @@ export function stepPolice(sim: Sim, dt: number): void {
   if (!(dt > 0) || !Number.isFinite(dt)) return;
   const s = state(sim), w = sim.wanted, p = sim.player; s.paths = 1; s.spawn -= dt;
   // 서비스가 수배를 지웠다면 이전 통화가 완료되어 다시 별이 붙지 않게 합니다.
-  if (s.stars > 0 && !w.stars) s.reports.length = 0;
+  if (s.stars > 0 && !w.stars) { s.reports.length = 0; s.peak = 0; }
   crimes(sim, s, dt);
-  if (!p.alive) { s.reports.length = 0; w.bustT = 0; s.contact = 0; for (const q of sim.peds) if (q.team === 'cop') { q.input = blankPedInput(); q.mode = 'idle'; q.target = 0; } for (const id of s.units.keys()) { const v = sim.vehicle(id); if (v && v.driver !== PLAYER_ID) { v.input = blankCarInput(); v.input.handbrake = true; } } return; }
+  if (!p.alive) { s.peak = 0; s.reports.length = 0; w.bustT = 0; s.contact = 0; for (const q of sim.peds) if (q.team === 'cop') { q.input = blankPedInput(); q.mode = 'idle'; q.target = 0; } for (const id of s.units.keys()) { const v = sim.vehicle(id); if (v && v.driver !== PLAYER_ID) { v.input = blankCarInput(); v.input.handbrake = true; } } return; }
+  s.peak = sim.downKind ? 0 : Math.max(s.peak, w.stars);
   const cops = sim.peds.filter(q => q.alive && q.team === 'cop'), pv = sim.vehicle(p.vehicle), px = pv?.x ?? p.x, pz = pv?.z ?? p.z;
   let seen = false;
   for (const q of cops) { const v = sim.vehicle(q.vehicle), x = v?.x ?? q.x, z = v?.z ?? q.z; if (Math.hypot(x - px, z - pz) <= 70 && sim.canSee(x, z, px, pz, (v?.y ?? q.y) + 1.5)) { seen = true; break; } }
@@ -151,7 +153,7 @@ export function stepPolice(sim: Sim, dt: number): void {
       if (w.unseenT > 8) {
         if (w.evadeT <= 0) { w.evadeT = escape[w.stars]; sim.say('수색 중 — 시야 밖에서 숨어 계세요', 2.5); }
         w.evadeT -= Math.min(dt, w.unseenT - Math.max(8, previous));
-        if (w.evadeT <= 0) { const old = w.stars; w.heat = Math.max(0, thresholds[old] - 0.1); sim.setStars(old - 1); w.evadeT = old > 1 ? escape[old - 1] : 0; if (old === 1) { w.heat = 0; sim.say('추격을 따돌렸습니다', 3); } }
+        if (w.evadeT <= 0) { const old = w.stars; w.heat = Math.max(0, thresholds[old] - 0.1); sim.setStars(old - 1); w.evadeT = old > 1 ? escape[old - 1] : 0; if (old === 1) { w.heat = 0; const reward = chaseEscapeReward(s.peak); s.peak = 0; if (reward) sim.addCash(reward); sim.say(`추격을 따돌렸습니다 · +$${reward}`, 3); } }
       }
     }
   } else { w.evadeT = 0; w.unseenT += dt; s.quiet += dt; w.heat = Math.max(0, w.heat - dt * 0.015); }

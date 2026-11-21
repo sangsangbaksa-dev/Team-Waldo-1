@@ -29,8 +29,8 @@ const ENTRIES: Entry[] = [
   {
     id: 'squad', name: 'SQUAD CLASH', genre: '도형 병사 배치전',
     summary: '같은 골드로 도형 병사를 배치하고 자동 전투를 지켜보세요. 상성과 진형이 승부를 가릅니다.',
-    facts: ['AI 대전 · 2인 로컬 대전', '병사 5종 · 3판 2선승', '마우스 · 키보드 · 터치'],
-    image: `${base}assets/home/squad-clash.svg`, imageAlt: '파란색과 빨간색 도형 병사들이 마주 선 전장', status: () => '',
+    facts: ['AI · 한 화면 2인 · 온라인', '병사 5종 · 3판 2선승', '마우스 · 키보드 · 터치'],
+    image: `${base}assets/home/squad-clash.svg`, imageAlt: '위쪽 빨강 진영과 아래쪽 파랑 진영의 도형 병사들이 마주 선 세로 전장', status: () => '',
   },
   {
     id: 'city',

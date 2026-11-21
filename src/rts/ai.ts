@@ -1,12 +1,17 @@
 // FRONTLINE — 컴퓨터 상대. 사람과 같은 명령(Cmd)만 내리고, 난이도는 판단 속도·건설 규모·공격 시점으로 가릅니다.
 // (가장 높은 단계만 채취량 보너스를 받으며 화면에도 그렇게 적습니다.)
-import { BUILDINGS, LEVELS, RESEARCH, RESEARCH_KINDS, UNITS, type BuildKind, type Difficulty, type UnitKind } from './config';
+import { ABILITIES, BUILDINGS, LEVELS, RESEARCH, RESEARCH_KINDS, STIM_COST, UNITS, type BuildKind, type Difficulty, type UnitKind } from './config';
 import type { Building, Cmd, RtsSim, Unit } from './sim';
 
 const ARMY: Array<'marine' | 'rocket' | 'tank' | 'jeep' | 'medic'> = ['marine', 'rocket', 'tank', 'jeep', 'medic'];
+export function shouldUseAbility(kind: UnitKind, hp: number, ready: boolean, enemies: boolean, wounded: boolean): boolean {
+  return !!ABILITIES[kind] && ready && enemies && (kind !== 'marine' || hp > STIM_COST + UNITS.marine.hp * 0.4) && (kind !== 'medic' || wounded);
+}
 
 export class RtsAi {
   private wave = false; private phase = 0; private stagedAt = 0; private waveSupply = 0; private lastWave = 0;
+  private warning = false;
+  takeWaveWarning(): boolean { const warning = this.warning; this.warning = false; return warning; }
   constructor(readonly me: number, readonly level: Difficulty) {}
   get interval(): number { return LEVELS[this.level].think; }
 
@@ -81,6 +86,12 @@ export class RtsAi {
       else if (k && b.kind === 'factory' && b.queue.length === 0 && s.supplyLeft(me) >= UNITS[k].supply) hold = UNITS[k].cost; // 값이 모일 때까지 병영은 아껴 씁니다
     }
     const fighters = army.filter(u => u.kind !== 'medic' && u.kind !== 'engineer');
+    for (const u of army) {
+      if (!ABILITIES[u.kind] || u.abcd > s.tick) continue;
+      const enemies = s.units.some(e => e.owner !== me && e.hp > 0 && s.dist(u.x, u.y, e.x, e.y) < 8);
+      const wounded = u.kind === 'medic' && mine.some(a => (a.kind === 'marine' || a.kind === 'rocket' || a.kind === 'worker') && a.hp < UNITS[a.kind].hp * 0.7 && s.dist(u.x, u.y, a.x, a.y) < 6);
+      if (shouldUseAbility(u.kind, u.hp, true, enemies, wounded)) s.apply(me, { k: 'ability', ids: [u.id] });
+    }
     this.control(s, fighters, home);
     this.escort(s, army.filter(u => u.kind === 'medic' || u.kind === 'engineer'), fighters, home);
   }
@@ -116,7 +127,7 @@ export class RtsAi {
     if (threat && (this.phase !== 2 || tsup >= 8)) { go(army, threat.x, threat.y, true); if (this.phase === 2) { this.phase = 0; this.wave = false; this.lastWave = s.tick; } return; }
     if (!this.wave) {
       go(army, rally.x, rally.y, false);
-      if (s.tick >= L.attackAfter && sup >= L.wave && s.tick - this.lastWave > 400) { this.wave = true; this.phase = 1; this.waveSupply = sup; this.stagedAt = s.tick; }
+      if (s.tick >= L.attackAfter && sup >= L.wave && s.tick - this.lastWave > 400) { this.wave = true; this.warning = true; this.phase = 1; this.waveSupply = sup; this.stagedAt = s.tick; }
       return;
     }
     if (L.retreat && sup < this.waveSupply * 0.35) { this.wave = false; this.phase = 0; this.lastWave = s.tick; go(army, rally.x, rally.y, true); return; }

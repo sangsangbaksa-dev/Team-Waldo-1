@@ -7,7 +7,7 @@ import {
 } from './data';
 import {
   LOT_IDS, SPOT_BY_ID, absMinute, buildTotal, earn, expandCost, lotPrice, makeStaff, netWorth, nextId, pick,
-  retailShops, rivalShopValue, shopValue, stockCap, unitCost, type GameData, type ShopData,
+  retailShops, rivalShopValue, shopValue, stockCap, unitCost, rand, type GameData, type ShopData,
 } from './model';
 import { checkStage, fmt, ipoReady, spotUnlocked, type Emit } from './sim';
 import type { ActionDef, ShopKind, SpotDef } from './types';
@@ -59,7 +59,7 @@ export function buildActions(ctx: ActionCtx, spotId: string): ActionSpec[] {
     case 'scrap': out.push(scrapAction(ctx, spotId)); break;
     case 'recycle': out.push(recycleAction(ctx)); break;
     case 'food': for (const f of FOOD) out.push(foodAction(ctx, f)); break;
-    case 'job': out.push(jobAction(ctx, spotId)); break;
+    case 'job': out.push(jobAction(ctx, spotId)); if (!JOBS[JOB_AT[spotId]].delivery) out.push(rushAction(ctx, spotId)); break;
     case 'market': out.push(...marketActions(ctx)); break;
     case 'bank': out.push(...bankActions(ctx)); break;
     case 'office': out.push(...officeActions(ctx)); break;
@@ -106,10 +106,10 @@ function scrapAction(ctx: ActionCtx, spotId: string): ActionSpec {
 function recycleAction(ctx: ActionCtx): ActionSpec {
   const { g } = ctx;
   return spec({
-    id: 'sell_bottles', label: '빈 병 팔기', desc: `개당 ${fmt(BOTTLE_PRICE)}`, reward: g.bottles * BOTTLE_PRICE,
+    id: 'sell_bottles', label: '빈 병 팔기', desc: `개당 ${fmt(BOTTLE_PRICE)} · 15개 이상 한 번에 팔면 25% 추가`, reward: Math.round(g.bottles * BOTTLE_PRICE * (g.bottles >= 15 ? 1.25 : 1)),
     ...(g.bottles <= 0 ? off('팔 빈 병이 없습니다') : {}),
     run: () => {
-      const pay = g.bottles * BOTTLE_PRICE;
+      const pay = Math.round(g.bottles * BOTTLE_PRICE * (g.bottles >= 15 ? 1.25 : 1));
       earn(g, pay); g.bottles = 0;
       ctx.emit({ type: 'cash', text: `+${fmt(pay)}`, amount: pay });
       return `빈 병을 팔아 ${fmt(pay)}을 벌었습니다`;
@@ -157,6 +157,26 @@ function jobAction(ctx: ActionCtx, spotId: string): ActionSpec {
       earn(g, job.pay); g.ledger.jobIncome += job.pay; g.jobsDone++;
       ctx.emit({ type: 'cash', text: `+${fmt(job.pay)}`, amount: job.pay });
       return `${job.name} 끝! ${fmt(job.pay)}`;
+    },
+  }, ctx);
+}
+
+function rushAction(ctx: ActionCtx, spotId: string): ActionSpec {
+  const { g } = ctx;
+  const job = JOBS[JOB_AT[spotId]];
+  const h = g.minute / 60;
+  const energy = job.energy + 6;
+  return spec({
+    id: 'rush', label: '바쁜 시간 도전',
+    desc: `에너지 ${energy}. 70% 확률로 일당의 2배, 실패하면 절반을 받습니다.`,
+    energy, durationSec: job.durationSec, lockMovement: true,
+    ...(h < job.fromHour || h >= job.toHour ? off(`${job.fromHour}~${job.toHour}시에만 일합니다`) : {}),
+    run: () => {
+      const success = rand(g) < 0.7;
+      const pay = Math.round(job.pay * (success ? 2 : 0.5));
+      g.energy -= energy; earn(g, pay); g.ledger.jobIncome += pay; g.jobsDone++;
+      ctx.emit({ type: 'cash', text: `+${fmt(pay)}`, amount: pay });
+      return success ? `러시 성공! ${fmt(pay)}` : `러시 실패, 위로금 ${fmt(pay)}`;
     },
   }, ctx);
 }

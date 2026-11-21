@@ -46,12 +46,32 @@ describe('SkySim crash', () => {
   it('a player diving straight down into the sea dies', () => {
     const sim = new SkySim(DIFFS[1]);
     const player = sim.player;
-    player.pitch = -1;
+    const dive: Input = { ...NEUTRAL, pitch: -1 };
     let steps = 0;
     while (player.alive && steps < 2000) {
-      sim.step(DT, NEUTRAL);
+      sim.step(DT, dive);
       steps++;
     }
     expect(player.alive).toBe(false);
+  });
+});
+
+describe('combat rewards', () => {
+  it('awards one missile at three kills and respects the ammo cap', () => {
+    const sim = new SkySim(DIFFS[1]);
+    sim.player.missiles = 7;
+    for (let i = 0; i < 3; i++) sim.kill(sim.makeJet('enemy', 'fighter', new THREE.Vector3(0, 700, 0), 1), sim.player.id);
+    expect(sim.player.missiles).toBe(8);
+    expect(sim.combo).toBe(3);
+  });
+  it('rewards a missile dodge once and extends an active combo', () => {
+    const sim = new SkySim(DIFFS[1]);
+    sim.combo = 2; sim.comboT = 1;
+    sim.missiles.push({ id: 100, owner: 999, team: 'enemy', pos: sim.player.pos.clone().add(new THREE.Vector3(0, 0, 200)), vel: new THREE.Vector3(0, 0, 1), target: 0, life: 10, alive: true, nearPlayer: true });
+    sim.step(DT, NEUTRAL);
+    expect(sim.shield).toBe(5);
+    expect(sim.comboT).toBeGreaterThan(5);
+    sim.step(DT, NEUTRAL);
+    expect(sim.shield).toBe(5);
   });
 });

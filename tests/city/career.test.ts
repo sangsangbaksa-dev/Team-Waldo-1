@@ -28,7 +28,7 @@ describe('새 도시 사건', () => {
     target.x += 30;
     w.hurtActor(target, 1000, 0);
     updateCityEvents(w);
-    expect(w.eventsDone).toBe(1); expect(w.factions[0].cash).toBe(cash0 + 500);
+    expect(w.eventsDone).toBe(1); expect(w.factions[0].cash).toBe(cash0 + 700);
     expect(w.loot.some(l => l.x === target.x && l.y === target.y && (l.type === 'armor' || l.type === 'medkit'))).toBe(true);
     for (const id of ids.slice(1)) expect(w.byId.get(id)).toBeUndefined();
   });

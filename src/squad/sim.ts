@@ -10,7 +10,7 @@ export const BUDGET = 1000;
 export function validArmy(army: Placement[], side: Side): boolean {
   const cells = new Set<string>(); let cost = 0;
   for (const p of army) {
-    if (!UNITS[p.type] || !Number.isInteger(p.x) || !Number.isInteger(p.y) || p.x < (side ? 10 : 0) || p.x >= (side ? 20 : 10) || p.y < 0 || p.y >= 12) return false;
+    if (!UNITS[p.type] || !Number.isInteger(p.x) || !Number.isInteger(p.y) || p.y < (side ? 0 : 10) || p.y >= (side ? 10 : 20) || p.x < 0 || p.x >= 12) return false;
     const key = `${p.x},${p.y}`; if (cells.has(key)) return false; cells.add(key); cost += UNITS[p.type].cost;
   }
   return cost <= BUDGET;
@@ -57,7 +57,7 @@ export class Battle {
       if (healing && distance < 1.4) move = 0;
       let dx = distance ? (target.x - u.x) / distance * move : 0, dy = distance ? (target.y - u.y) / distance * move : 0;
       for (const other of alive) { if (other === u || other.hp <= 0) continue; const ox = u.x - other.x, oy = u.y - other.y, gap = hyp(ox, oy); if (gap > 0.001 && gap < 0.6) { dx += ox / gap * (0.6 - gap); dy += oy / gap * (0.6 - gap); } }
-      u.x = Math.max(0.3, Math.min(19.7, u.x + dx * d.speed * STEP)); u.y = Math.max(0.3, Math.min(11.7, u.y + dy * d.speed * STEP));
+      u.x = Math.max(0.3, Math.min(11.7, u.x + dx * d.speed * STEP)); u.y = Math.max(0.3, Math.min(19.7, u.y + dy * d.speed * STEP));
     }
     const left = this.units.filter(u => u.side === 0 && u.hp > 0), right = this.units.filter(u => u.side === 1 && u.hp > 0);
     if (!left.length || !right.length || this.tick >= 1800) {

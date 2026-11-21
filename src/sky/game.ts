@@ -1,5 +1,6 @@
 // SKY WAR — 전투기 공중전. 터치패드 우선 조작: 커서 위치가 곧 조종간(클릭 없이 조종), 자동 조준·자동 사격.
 import * as THREE from 'three';
+import '../shared/ui.css';
 import './sky.css';
 import { SkySim, DIFFS, forward, GUN_RANGE, LOCK_TIME, MAX_SPEED, MIN_SPEED, terrainY, type Difficulty, type Input, type Jet } from './sim';
 import { SkyView } from './view';
@@ -24,19 +25,19 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     <div class="sk-btns"><button id="sk-b-fire">기관포</button><button id="sk-b-mis">미사일</button><button id="sk-b-flare">플레어</button><button id="sk-b-boost">부스트</button></div>
     <button class="sk-pause" id="sk-pause" aria-label="일시정지">Ⅱ</button><div class="sk-hint" id="sk-hint"></div>
   </div>
-  <div class="sk-modal" id="sk-title"><div class="sk-card">
-    <div class="sk-brand"><div class="sk-jet" aria-hidden="true"><i></i></div><span class="sk-eyebrow">AIR COMBAT / ENDLESS WAVES</span><h1>SKY WAR</h1></div><p class="sub">전투기 공중전 · 끝없는 웨이브</p>
-    <div class="sk-section-label">SELECT DIFFICULTY</div><div class="sk-diff" id="sk-diff"></div>
-    <div class="sk-section-label">FLIGHT CONTROLS</div><div class="sk-ctl" id="sk-ctl"><label>조준 보조 <button data-k="assist"></button></label><label>감도 <button data-k="sens"></button></label><label>상하 <button data-k="inv"></button></label></div>
+  <div class="sk-modal wd-screen" id="sk-title"><div class="sk-card wd-panel">
+    <div class="sk-brand"><span class="sk-eyebrow wd-eyebrow">AIR COMBAT / ENDLESS WAVES</span><h1 class="wd-title">SKY WAR</h1></div><p class="sub wd-lead">끝없이 이어지는 하늘에서 나만의 기록을 세워보세요.</p>
+    <div class="wd-field"><div class="sk-section-label wd-label">난이도</div><div class="sk-diff wd-seg" id="sk-diff"></div></div>
+    <div class="wd-field"><div class="sk-section-label wd-label">설정</div><div class="sk-ctl" id="sk-ctl"><label>조준 보조 <button data-k="assist"></button></label><label>감도 <button data-k="sens"></button></label><label>상하 <button data-k="inv"></button></label></div></div>
     <ul class="sk-how"><li><b>커서/손가락 위치</b>로 조종 — 클릭 없이 움직이면 기체가 따라갑니다 (화면 가운데 = 직진)</li>
     <li><b>두 손가락 스크롤</b> = 스로틀 · <b>탭/클릭</b> = 기관포 · <b>두 손가락 탭(우클릭)</b> = 미사일</li>
     <li><b>조준 보조</b>는 위 설정에서 조절 (끔=직접 조준, 강=자동 사격, T로 자동 사격 토글) · 적을 가운데 두면 락온 후 미사일 발사</li>
     <li>키보드: WASD/방향키 · Q/E 러더 · C 조종석 시점 · Shift 부스트 · Ctrl 감속 · Space 기관포 · M 미사일 · F 플레어 · P 일시정지</li></ul>
     <div class="sk-record"><span class="sk-section-label">FLIGHT RECORD</span><div class="sk-rec" id="sk-rec"></div></div>
-    <div class="sk-row"><button class="primary" id="sk-start">출격</button><button id="sk-quit">메뉴로</button></div>
+    <div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-start">시작</button><button class="wd-btn ghost" id="sk-quit">아케이드로</button></div>
   </div></div>
-  <div class="sk-modal sk-result" id="sk-end" hidden><div class="sk-card"><div class="sk-section-label">MISSION REPORT</div><h2 id="sk-end-t"></h2><div id="sk-end-s"></div><div class="sk-row"><button class="primary" id="sk-again">다시 출격</button><button id="sk-quit2">메뉴로</button></div></div></div>
-  <div class="sk-modal sk-pause-modal" id="sk-paused" hidden><div class="sk-card"><div class="sk-section-label">FLIGHT SUSPENDED</div><h2>일시정지</h2><div class="sk-row"><button class="primary" id="sk-resume">계속</button><button id="sk-quit3">메뉴로</button></div></div></div>`;
+  <div class="sk-modal sk-result wd-screen" id="sk-end" hidden><div class="sk-card wd-panel"><div class="wd-eyebrow">MISSION REPORT</div><h2 class="wd-title" id="sk-end-t"></h2><div id="sk-end-s"></div><div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-again">다시 시작</button><button class="wd-btn ghost" id="sk-quit2">아케이드로</button></div></div></div>
+  <div class="sk-modal sk-pause-modal wd-screen" id="sk-paused" hidden><div class="sk-card wd-panel"><div class="wd-eyebrow">FLIGHT SUSPENDED</div><h2 class="wd-title">일시정지</h2><p class="wd-lead">잠시 쉬어가세요.</p><div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-resume">이어하기</button><button class="wd-btn ghost" id="sk-quit3">아케이드로</button></div></div></div>`;
   document.body.appendChild(root);
   const $ = <T extends HTMLElement>(id: string): T => root.querySelector('#' + id) as T;
   const canvas = root.querySelector<HTMLCanvasElement>('.sk-canvas')!, ov = root.querySelector<HTMLCanvasElement>('.sk-ov')!, octx = ov.getContext('2d')!;
@@ -199,14 +200,14 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
           case 'missile': audio.play('missile', mine(ev.id) ? 0 : 300); break;
           case 'boom': view.boom(ev.pos, ev.big); audio.play('boom', dist(ev.pos)); break;
           case 'hit': { view.spark(ev.pos); if (mine(ev.id)) { audio.play('hurt'); view.kick(0.45); } else audio.play('hit', dist(ev.pos)); break; }
-          case 'kill': if (ev.by === p.id) banner(`격추! +${ev.points ?? 0}점${(ev.combo ?? 0) > 1 ? ` · 콤보 ×${ev.combo}` : ''}`, 1); break;
+          case 'kill': if (ev.by === p.id) banner(`격추! +${ev.points ?? 0}점${(ev.combo ?? 0) > 1 ? ` · 콤보 ×${ev.combo}` : ''}${ev.combo === 3 ? ' · 미사일 +1' : ''}`, 1); break;
           case 'lock': audio.play('lock'); break; case 'lockdone': audio.play('lockdone'); alertMsg('락온 — 미사일 발사!', 1.2); break;
           case 'warn': audio.play('warn'); alertMsg('⚠ 미사일 접근 — 플레어(F)/기동!', 1); break;
           case 'wave': audio.play('wave'); banner(`WAVE ${ev.n}${ev.modifier ? ` · ${ev.modifier}` : ''}`, 2.4); break;
           case 'flare': alertMsg('플레어 투하', 0.8); break;
           case 'pickup': audio.play('wave'); alertMsg(ev.kind === 'repair' ? '수리 +30' : ev.kind === 'shield' ? '방어막 +30' : '미사일 +2', 1); break;
           case 'boss': banner('BOSS — 중폭격기 접근', 3); audio.play('warn'); break;
-          case 'dodge': alertMsg(`아슬아슬 회피! +${ev.points}점`, 1.5); audio.play('lockdone'); break;
+          case 'dodge': alertMsg(`아슬아슬 회피! +${ev.points}점 · 방어막 +5 · 콤보 연장`, 1.5); audio.play('lockdone'); break;
           case 'stall': audio.play('warn'); alertMsg('STALL — 기수를 내려 속도 회복!', 1); break;
           case 'overdrive': alertMsg('오버드라이브! 연사 강화 5초', 2); audio.play('win'); break;
           case 'crash': break;
@@ -238,7 +239,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     saveCtl(); paintCtl();
   })); paintCtl();
   const dEl = $('sk-diff'); let sel = 1;
-  DIFFS.forEach((d, i) => { const b = document.createElement('button'); b.textContent = d.name; b.className = i === sel ? 'on' : ''; b.onclick = () => { sel = i; dEl.querySelectorAll('button').forEach((x, k) => x.classList.toggle('on', k === i)); }; dEl.appendChild(b); });
+  DIFFS.forEach((d, i) => { const b = document.createElement('button'); b.textContent = ({ easy: '쉬움', normal: '보통', hard: '어려움' })[d.id]; b.className = i === sel ? 'on' : ''; b.setAttribute('aria-pressed', String(i === sel)); b.onclick = () => { sel = i; dEl.querySelectorAll('button').forEach((x, k) => { x.classList.toggle('on', k === i); x.setAttribute('aria-pressed', String(k === i)); }); }; dEl.appendChild(b); });
   const rec = readSkyRecords(); $('sk-rec').textContent = rec.runs ? `최고 점수 ${rec.bestScore} · 최고 웨이브 ${rec.bestWave} · 누적 격추 ${rec.kills}` : '첫 출격을 기다립니다';
   $('sk-start').onclick = () => start(DIFFS[sel]!); $('sk-again').onclick = () => start(DIFFS[sel]!); $('sk-resume').onclick = togglePause; $('sk-pause').onclick = togglePause;
   for (const id of ['sk-quit', 'sk-quit2', 'sk-quit3']) $(id).onclick = exit;

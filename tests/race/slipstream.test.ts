@@ -1,4 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { draftNitro } from '../../src/race/race';
+
+it('rewards sustained slipstream without giving nitro for weak drafting', () => {
+  expect(draftNitro(0.5, 10)).toBe(0);
+  expect(draftNitro(1, 10)).toBeCloseTo(0.2);
+  expect(draftNitro(1, -1)).toBe(0);
+});
 import { newCar, stepCar, PLAYER_PARAMS, type CarInput } from '../../src/race/physics';
 import { inSlipstream } from '../../src/race/race';
 import { buildTrack } from '../../src/race/track';

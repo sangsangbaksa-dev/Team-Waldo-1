@@ -1,5 +1,6 @@
 // TYCOON(HUSTLE) — 게임 조립: 3D 도시·플레이어·HUD·장소 패널·입력·저장. 경제 규칙은 core/ 가 맡습니다.
 import * as THREE from 'three';
+import '../shared/ui.css';
 import './tycoon.css';
 import { readPreferences, writePreferences } from '../prefs';
 import type { LoadingScreen } from '../loading';
@@ -54,7 +55,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
         <div class="ty-tfoot"><button type="button" data-t="use" class="big">행동</button><button type="button" data-t="run" id="ty-t-run">달리기</button><button type="button" data-t="view">시점</button></div></div>
     </div>
     <div class="ty-modal" id="ty-modal" hidden></div>
-    <div class="ty-title" id="ty-title" hidden></div>`;
+    <div class="ty-title wd-screen" id="ty-title" hidden></div>`;
   document.body.append(root);
   const q = <T extends HTMLElement>(sel: string): T => root.querySelector<T>(sel)!;
   const canvas = q<HTMLCanvasElement>('.ty-canvas'), hudEl = q('#ty-hud'), modalEl = q('#ty-modal'), titleEl = q('#ty-title'), mini = q<HTMLCanvasElement>('#ty-minimap');
@@ -113,7 +114,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
 
   modalEl.addEventListener('click', e => {
     const t = e.target as HTMLElement; audio.unlock();
-    if (t.closest('[data-close]') || t === modalEl) { closeModal(); return; }
+    if (t.closest('[data-close]') || t === modalEl || t.matches('.ty-pause-screen, .ty-win-screen')) { closeModal(); return; }
     const act = t.closest<HTMLElement>('[data-act]');
     if (act && modal?.kind === 'spot') { doAction(modal.id, act.dataset.act!); return; }
     const menu = t.closest<HTMLElement>('[data-menu]')?.dataset.menu;

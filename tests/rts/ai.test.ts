@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RtsAi } from '../../src/rts/ai';
+import { RtsAi, shouldUseAbility } from '../../src/rts/ai';
 import { DIFFICULTIES, LEVELS, TICK, type Difficulty } from '../../src/rts/config';
 import { RtsSim } from '../../src/rts/sim';
 
@@ -12,6 +12,14 @@ function play(a: Difficulty | null, b: Difficulty | null, minutes: number): RtsS
 const count = (s: RtsSim, p: number, kind: string): number => s.buildings.filter(b => b.owner === p && b.kind === kind).length;
 
 describe('FRONTLINE AI', () => {
+  it('uses abilities in combat only when ready and worthwhile', () => {
+    expect(shouldUseAbility('marine', 100, true, true, false)).toBe(true);
+    expect(shouldUseAbility('marine', 10, true, true, false)).toBe(false);
+    expect(shouldUseAbility('rocket', 100, false, true, false)).toBe(false);
+    expect(shouldUseAbility('medic', 100, true, true, false)).toBe(false);
+    expect(shouldUseAbility('medic', 100, true, true, true)).toBe(true);
+    expect(shouldUseAbility('worker', 100, true, true, true)).toBe(false);
+  });
   it('어려움 AI는 차량이 모이면 공병을 뽑고, 쉬움 AI는 뽑지 않는다', () => {
     let seen = 0, cap = 0;
     const s = new RtsSim({ income: [1, 1] }); s.record = false; const ai = new RtsAi(1, 'hard');

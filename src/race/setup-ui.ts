@@ -24,23 +24,23 @@ export interface SetupHandle { read(): RaceSetup; destroy(): void }
 export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceRecords, garage: { value: Garage }, cb: { onStart: (s: RaceSetup) => void; onExit: () => void; onPvp?: (s: RaceSetup) => void }): SetupHandle {
   let cur = sanitizeSetup(initial);
   if (!ownsSkin(garage.value, cur.skin)) cur = { ...cur, skin: 'stock' };
-  const root = document.createElement('div'); root.className = 'rc-setup'; root.setAttribute('role', 'dialog'); root.setAttribute('aria-label', '레이스 설정');
+  const root = document.createElement('div'); root.className = 'rc-setup wd-screen'; root.setAttribute('role', 'dialog'); root.setAttribute('aria-label', '레이스 설정');
   const hex = (n: number): string => `#${n.toString(16).padStart(6, '0')}`;
   const mapCard = (m: (typeof MAPS)[number]): string => { const o = outline(m.id); return `<button type="button" class="rc-opt rc-map" data-pick="map:${m.id}" style="--m-sky:${hex(m.theme.light.sky)};--m-fog:${hex(m.theme.fog.color)};--m-ground:${hex(m.theme.light.ground)};--m-line:${hex(m.theme.arch.a)}"><svg viewBox="0 0 120 64" aria-hidden="true"><path d="${o.d}"/></svg><span class="rc-opt-name">${esc(m.name)}</span><span class="rc-opt-sub">${esc(m.place)} · ${o.km}km</span></button>`; };
   const carCard = (c: (typeof CARS)[number]): string => `<button type="button" class="rc-opt rc-car" data-pick="car:${c.id}" style="--car:${c.color}"><span class="rc-car-head"><i style="background:${c.color}"></i><b>${c.name}</b><em>${c.role}</em></span><span class="rc-stats">${STAT_KEYS.map(k => `<span class="rc-stat" title="${STAT_LABELS[k]}: ${c.points[k]} / 5"><label>${STAT_LABELS[k]}</label><span class="bar" role="img" aria-label="${STAT_LABELS[k]} ${c.points[k]} / 5"><span style="width:${c.points[k] * 20}%"></span></span></span>`).join('')}</span></button>`;
   root.innerHTML = `
-    <div class="rc-setup-inner">
-      <header><span class="rc-eyebrow">SPEED RUSH</span><h2>레이스 설정</h2></header>
+    <div class="rc-setup-inner wd-panel">
+      <header><span class="rc-eyebrow wd-eyebrow">SPEED RUSH</span><h2 class="wd-title">레이스 설정</h2><p class="wd-lead">코스와 차량을 고르고 나만의 레이스를 시작하세요.</p></header>
       <div class="rc-setup-cols">
         <div class="rc-setup-col">
           <section><h3>코스</h3><div class="rc-grid maps">${MAPS.map(mapCard).join('')}</div><p class="rc-note" data-note="map"></p></section>
-          <section><h3>모드</h3><div class="rc-seg" data-seg="mode"><button type="button" class="rc-opt" data-pick="mode:race">레이스</button><button type="button" class="rc-opt" data-pick="mode:knockout">녹아웃</button><button type="button" class="rc-opt" data-pick="mode:trial">타임어택</button></div><p class="rc-note" data-note="mode"></p></section>
-          <section><h3>종목</h3><div class="rc-seg" data-seg="laps">${LAP_OPTIONS.map(n => `<button type="button" class="rc-opt" data-pick="laps:${n}">${n}랩</button>`).join('')}</div><p class="rc-note" data-note="record"></p></section>
-          <section><h3>난이도</h3><div class="rc-seg lv" data-seg="level">${LEVELS.map(l => `<button type="button" class="rc-opt" data-pick="level:${l.id}"><b>${l.id}</b>${l.name}</button>`).join('')}</div><p class="rc-note" data-note="level"></p></section>
+          <section><h3>모드</h3><div class="rc-seg wd-seg" data-seg="mode"><button type="button" class="rc-opt" data-pick="mode:race">레이스</button><button type="button" class="rc-opt" data-pick="mode:knockout">녹아웃</button><button type="button" class="rc-opt" data-pick="mode:trial">타임어택</button></div><p class="rc-note" data-note="mode"></p></section>
+          <section><h3>랩</h3><div class="rc-seg wd-seg" data-seg="laps">${LAP_OPTIONS.map(n => `<button type="button" class="rc-opt" data-pick="laps:${n}">${n}랩</button>`).join('')}</div><p class="rc-note" data-note="record"></p></section>
+          <section><h3>난이도</h3><div class="rc-seg lv wd-seg" data-seg="level">${LEVELS.map(l => `<button type="button" class="rc-opt" data-pick="level:${l.id}"><b>${l.id}</b>${l.name}</button>`).join('')}</div><p class="rc-note" data-note="level"></p></section>
         </div>
         <section class="rc-setup-col"><h3>차량</h3><div class="rc-grid cars">${CARS.map(carCard).join('')}</div><p class="rc-note" data-note="car"></p><div class="rc-garage" data-garage></div></section>
       </div>
-      <footer><button type="button" class="ghost" data-setup="exit">메뉴로</button><span class="rc-pick" data-note="summary"></span>${cb.onPvp ? '<button type="button" data-setup="pvp">온라인 대전 · 방</button>' : ''}<button type="button" class="primary" data-setup="start">출발</button></footer>
+      <footer><button type="button" class="wd-btn ghost" data-setup="exit">아케이드로</button><span class="rc-pick" data-note="summary"></span>${cb.onPvp ? '<button type="button" class="wd-btn ghost" data-setup="pvp">온라인 대전</button>' : ''}<button type="button" class="wd-btn primary" data-setup="start">시작</button></footer>
     </div>`;
   host.append(root);
   const note = (k: string): HTMLElement => root.querySelector<HTMLElement>(`[data-note="${k}"]`)!;

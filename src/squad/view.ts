@@ -1,16 +1,16 @@
 import { UNITS } from './units';
 import type { Battle, Placement, Side } from './sim';
 export function draw(canvas: HTMLCanvasElement, armies: Placement[][], side: Side, battle: Battle | null, selectedRange: number, hover: { x: number; y: number } | null): void {
-  const ctx = canvas.getContext('2d')!; const w = canvas.width, h = canvas.height, cw = w / 20, ch = h / 12;
+  const ctx = canvas.getContext('2d')!; const w = canvas.width, h = canvas.height, cw = w / 12, ch = h / 20;
   ctx.save();
   if (battle && battle.effects.some(e => e.kind === 'siege' && e.age < .12) && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) ctx.translate(Math.sin(battle.tick * 3) * 3, Math.cos(battle.tick * 4) * 2);
   ctx.fillStyle = '#111b29'; ctx.fillRect(0, 0, w, h);
-  ctx.fillStyle = '#15283a'; ctx.fillRect(0, 0, w / 2, h); ctx.fillStyle = '#321d29'; ctx.fillRect(w / 2, 0, w / 2, h);
+  ctx.fillStyle = '#321d29'; ctx.fillRect(0, 0, w, h / 2); ctx.fillStyle = '#15283a'; ctx.fillRect(0, h / 2, w, h / 2);
   ctx.strokeStyle = '#ffffff0d'; ctx.lineWidth = 1;
-  for (let x = 0; x <= 20; x++) { ctx.beginPath(); ctx.moveTo(x * cw, 0); ctx.lineTo(x * cw, h); ctx.stroke(); }
-  for (let y = 0; y <= 12; y++) { ctx.beginPath(); ctx.moveTo(0, y * ch); ctx.lineTo(w, y * ch); ctx.stroke(); }
-  ctx.strokeStyle = '#ffffff60'; ctx.setLineDash([6, 8]); ctx.beginPath(); ctx.moveTo(w / 2, 0); ctx.lineTo(w / 2, h); ctx.stroke(); ctx.setLineDash([]);
-  if (!battle) { ctx.fillStyle = '#080d14b8'; ctx.fillRect(side ? 0 : w / 2, 0, w / 2, h); }
+  for (let x = 0; x <= 12; x++) { ctx.beginPath(); ctx.moveTo(x * cw, 0); ctx.lineTo(x * cw, h); ctx.stroke(); }
+  for (let y = 0; y <= 20; y++) { ctx.beginPath(); ctx.moveTo(0, y * ch); ctx.lineTo(w, y * ch); ctx.stroke(); }
+  ctx.strokeStyle = '#ffffff60'; ctx.setLineDash([6, 8]); ctx.beginPath(); ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2); ctx.stroke(); ctx.setLineDash([]);
+  if (!battle) { ctx.fillStyle = '#080d14b8'; ctx.fillRect(0, side ? h / 2 : 0, w, h / 2); }
   if (!battle && hover) { ctx.fillStyle = '#ffffff20'; ctx.fillRect(hover.x * cw, hover.y * ch, cw, ch); ctx.strokeStyle = '#ffffff45'; ctx.beginPath(); ctx.ellipse((hover.x + .5) * cw, (hover.y + .5) * ch, selectedRange * cw, selectedRange * ch, 0, 0, Math.PI * 2); ctx.stroke(); }
   const units = battle ? battle.units.filter(u => u.hp > 0) : armies[side]!.map((p, i) => ({ ...p, x: p.x + .5, y: p.y + .5, side, hp: UNITS[p.type].hp, id: i }));
   for (const u of units) {

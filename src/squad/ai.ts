@@ -10,8 +10,8 @@ export function buildArmy(side: Side, difficulty: Difficulty, enemy: Placement[]
     let type = plans[difficulty][i % plans[difficulty].length]!; if (UNITS[type].cost > gold) type = 'striker';
     if (UNITS[type].cost > gold) break;
     const roleColumn = type === 'guard' || type === 'striker' ? 0 : type === 'medic' ? 2 : 3;
-    let x = side ? 10 + roleColumn : 9 - roleColumn, y = (i * 3 + Math.floor(i / 4)) % 12;
-    while (army.some(p => p.x === x && p.y === y)) { y = (y + 1) % 12; if (y === 0) x += side ? 1 : -1; }
+    let y = side ? 9 - roleColumn : 10 + roleColumn, x = (i * 3 + Math.floor(i / 4)) % 12;
+    while (army.some(p => p.x === x && p.y === y)) { x = (x + 1) % 12; if (x === 0) y += side ? -1 : 1; }
     army.push({ type, x, y }); gold -= UNITS[type].cost; i++;
   }
   return army;

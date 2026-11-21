@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { World } from '../../src/city/world';
-import { startEvent } from '../../src/city/events';
+import { quickEventBonus, startEvent } from '../../src/city/events';
 
 function run(seed: number, until: (w: World) => boolean, max = 30 * 1200): World {
   const w = new World({ seed, difficulty: 'd3', klass: 'warlord', autoPlayer: true });
@@ -9,6 +9,12 @@ function run(seed: number, until: (w: World) => boolean, max = 30 * 1200): World
 }
 
 describe('도시 사건', () => {
+  it('남은 시간이 많을수록 신속 보상이 커지고 범위를 넘지 않는다', () => {
+    expect(quickEventBonus(0, 100)).toBe(0);
+    expect(quickEventBonus(50, 100)).toBe(100);
+    expect(quickEventBonus(120, 100)).toBe(200);
+    expect(quickEventBonus(5, 0)).toBe(0);
+  });
   it('시작 후 일정 시간 안에 사건이 생긴다', () => {
     const w = run(1, x => !!x.event);
     expect(w.event).not.toBeNull();

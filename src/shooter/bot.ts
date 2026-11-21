@@ -29,6 +29,11 @@ const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.m
 const gauss = (rng: () => number): number => (rng() + rng() + rng() - 1.5) / 0.75;
 /** 무기별로 싸우기 좋은 거리 */
 const IDEAL: Record<string, number> = { shotgun: 8, smg: 16, pistol: 18, rifle: 32, sniper: 70 };
+export function pursuitPoint(x: number, z: number, targetX: number, targetZ: number, side: number): { x: number; z: number } {
+  const dx = targetX - x, dz = targetZ - z, d = Math.hypot(dx, dz);
+  const offset = Math.min(7, d * 0.3) * (side < 0 ? -1 : 1);
+  return d > 0 ? { x: targetX - dz / d * offset, z: targetZ + dx / d * offset } : { x: targetX, z: targetZ };
+}
 
 function wantLoot(p: Player, kind: string, weapon: string | null, part: PartId | null, lv = 0): number {
   if (kind === 'bandage') return p.bandages < 4 ? 2.2 + (100 - p.hp) / 40 : 0;
@@ -148,7 +153,7 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
       b.goalX = zone.nextCx + b.offX * zone.nextR * 0.5; b.goalZ = zone.nextCz + b.offZ * zone.nextR * 0.5; b.goalT = 1; b.lootId = -1; run = true;
     } else if (q && !visible) {
       // 놓친 적을 마지막으로 본 곳까지 쫓아갑니다
-      b.goalX = b.lastX; b.goalZ = b.lastZ; b.goalT = 0.3; b.lootId = -1; if (Math.hypot(b.lastX - p.x, b.lastZ - p.z) < 3) b.target = -1;
+      const flank = pursuitPoint(p.x, p.z, b.lastX, b.lastZ, b.strafe); b.goalX = flank.x; b.goalZ = flank.z; b.goalT = 0.3; b.lootId = -1; if (Math.hypot(b.lastX - p.x, b.lastZ - p.z) < 3) b.target = -1;
     } else {
       if (b.lootId >= 0) { const l = m.loot.find(x => x.id === b.lootId); if (!l || l.taken || b.lootT <= 0) { if (l && !l.taken) b.skip.add(l.id); b.lootId = -1; } }
       if (b.lootId < 0 && b.lootScan <= 0) {

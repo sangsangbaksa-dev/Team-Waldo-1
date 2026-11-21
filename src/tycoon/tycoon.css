@@ -239,3 +239,18 @@
 @media (prefers-reduced-motion: reduce) { .ty-root * { animation: none !important; transition: none !important; } }
 
 .ty-root.touch .ty-hint { bottom: 270px; }
+
+/* Arcade title, pause and milestone screens. */
+.ty-title.wd-screen,.ty-pause-screen.wd-screen,.ty-win-screen.wd-screen{--wd-hue:#c9b7a1;position:absolute;display:grid;place-items:center;overflow:auto;padding:clamp(16px,4vw,40px);background:radial-gradient(1100px 560px at 50% -12%,color-mix(in srgb,var(--wd-hue) 13%,transparent),transparent 62%),var(--wd-bg);touch-action:pan-y}
+.ty-titlebox.wd-panel,.ty-pause-panel.wd-panel{width:min(460px,100%);max-width:460px;max-height:none;overflow:visible;margin:auto;padding:clamp(24px,4.5vw,36px);text-align:left;color:var(--wd-text);border:1px solid var(--wd-line);border-radius:22px;background:linear-gradient(180deg,#17191d,#121316);box-shadow:0 28px 70px #0009,inset 0 1px 0 #ffffff0a;animation:none}
+.ty-titlebox .kick.wd-eyebrow{margin:0 0 12px;color:var(--wd-muted);font-size:11px;font-weight:600;letter-spacing:.22em}
+.ty-titlebox h1.wd-title,.ty-pause-panel h2.wd-title{margin:0;color:var(--wd-text);font-size:clamp(30px,6vw,42px);line-height:1.05;letter-spacing:-.035em;background:none;filter:none;text-shadow:none}
+.ty-titlebox .sub.wd-lead{margin:14px 0 0;color:var(--wd-muted);font-size:15px;line-height:1.65}
+.ty-titlebox .ty-ladder-lg{justify-content:flex-start;gap:8px;margin:22px 0 0;color:var(--wd-muted)}
+.ty-titlebox .ty-ladder-lg span{padding:6px 12px;border:1px solid var(--wd-line);background:transparent;border-radius:999px}.ty-titlebox .ty-ladder-lg i{display:none}
+.ty-titlebox .ty-title-btns,.ty-pause-panel .ty-acts{display:grid;gap:10px;margin:26px 0 0;padding:0}
+.ty-titlebox .ty-title-btns .wd-btn,.ty-pause-panel .ty-acts .wd-btn{display:block;width:100%;min-width:0;padding:13px 18px;border:1px solid var(--wd-line);border-radius:12px;background:transparent;color:var(--wd-muted);box-shadow:none;font-size:15px;text-align:center;backdrop-filter:none}
+.ty-titlebox .ty-title-btns .wd-btn.primary,.ty-pause-panel .ty-acts .wd-btn.primary{background:var(--wd-accent);border-color:var(--wd-accent);color:var(--wd-accent-ink)}
+.ty-titlebox .ty-title-btns .wd-btn:hover,.ty-pause-panel .ty-acts .wd-btn:hover{border-color:#697078}.ty-titlebox .ty-title-btns .wd-btn.primary:hover,.ty-pause-panel .ty-acts .wd-btn.primary:hover{background:#fff}
+.ty-titlebox .keys{margin:22px 0 0;color:var(--wd-muted);font-size:12px;line-height:1.6}
+.ty-pause-panel .wd-lead{color:var(--wd-muted)}

@@ -1,4 +1,5 @@
 // ZERO ZONE — 배틀로열 총게임 화면: 출격 설정, 조작(키보드·마우스·터치), HUD, 솔로(AI 99명, 비행기 낙하)와 1대1 온라인 대전의 진행.
+import '../shared/ui.css';
 import './shooter.css';
 import { readPreferences } from '../prefs';
 import type { LoadingScreen } from '../loading';
@@ -34,7 +35,7 @@ export interface OpenOptions { loading?: LoadingScreen }
 
 export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   const prefs = readPreferences(), touch = matchMedia('(pointer: coarse)').matches, base = import.meta.env.BASE_URL;
-  const root = document.createElement('div'); root.className = 'sz-root' + (touch ? ' touch' : '');
+  const root = document.createElement('div'); root.className = 'sz-root' + (touch ? ' touch' : ''); root.style.setProperty('--wd-hue', '#b8cf91');
   root.innerHTML = `
     <canvas class="sz-canvas"></canvas>
     <div class="sz-hud" hidden>
@@ -53,7 +54,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       <div class="sz-touchpad"><div class="sz-stick" id="sz-stick"><i></i></div><div class="sz-tbuttons">
         <button data-act="fire" class="fire" type="button">사격</button><button data-act="ads" type="button">조준</button><button data-act="crouch" type="button">웅크림</button><button data-act="reload" type="button">장전</button><button data-act="interact" type="button">줍기</button><button data-act="smith" type="button">조립</button><button data-act="swap" type="button">교체</button><button data-act="nade" type="button">수류탄</button><button data-act="smoke" type="button">연막</button><button data-act="flash" type="button">섬광</button><button data-act="heal1" type="button">붕대</button><button data-act="heal2" type="button">구급</button></div></div>
     </div>
-    <div class="sz-setup" id="sz-setup"></div>
+    <div class="sz-setup wd-screen" id="sz-setup" style="--wd-hue:#b8cf91"></div>
     <div class="sz-modal" id="sz-modal"></div>`;
   document.body.append(root);
   const q = <T extends HTMLElement>(sel: string): T => root.querySelector<T>(sel)!;
@@ -88,9 +89,9 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     const b = BOTS[level], wait = assetState === 'loading';
     setupEl.hidden = false; setupEl.setAttribute('role', 'dialog'); setupEl.setAttribute('aria-label', 'ZERO ZONE 출격 설정');
     setupEl.innerHTML = `
-      <div class="sz-setup-inner">
-        <header><span class="sz-eyebrow">ZERO ZONE</span><h2>출격 설정</h2><p>줄어드는 자기장 안에서 마지막까지 살아남으세요. 총을 줍고, 엄폐하고, 쏩니다.</p></header>
-        <section><h3>모드</h3><div class="sz-seg three">
+      <div class="sz-setup-inner wd-panel">
+        <header><span class="sz-eyebrow wd-eyebrow">배틀로열</span><h2 class="wd-title">ZERO ZONE</h2><p class="wd-lead">줄어드는 자기장 안에서 마지막까지 살아남으세요.</p></header>
+        <section class="wd-field"><h3 class="wd-label">모드 선택</h3><div class="sz-seg three">
           <button type="button" class="sz-opt ${pickMode === 'solo' ? 'on' : ''}" data-mode="solo" aria-pressed="${pickMode === 'solo'}"><b>솔로 배틀로열</b><em>나 + AI 99명 · 비행기에서 낙하산 강하 · 마지막 1명이 승리</em></button>
           ${PVP_ENABLED ? `<button type="button" class="sz-opt ${pickMode === 'pvp' ? 'on' : ''}" data-mode="pvp" aria-pressed="${pickMode === 'pvp'}"><b>1대1 온라인 대전</b><em>2인 PvP · 무작위 매칭 또는 방 코드</em></button>` : ''}
           ${PVP_ENABLED ? `<button type="button" class="sz-opt ${pickMode === 'room' ? 'on' : ''}" data-mode="room" aria-pressed="${pickMode === 'room'}"><b>멀티플레이 방</b><em>3~${ROOM_MAX}인 + AI · 방 코드 또는 공개 방 · 차량·폭격까지 함께</em></button>` : ''}</div></section>
@@ -99,8 +100,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
         <section class="${pickMode === 'pvp' || (pickMode === 'room' && !roomFill) ? 'dim' : ''}"><h3>AI 난이도</h3><div class="sz-seg four">${DIFFICULTIES.map(d => `<button type="button" class="sz-opt ${d === level ? 'on' : ''}" data-level="${d}" aria-pressed="${d === level}" ${pickMode === 'pvp' || (pickMode === 'room' && !roomFill) ? 'disabled' : ''}><b>${BOTS[d].label}</b></button>`).join('')}</div>
           <p class="sz-note">${pickMode === 'pvp' ? '1대1 대전은 사람끼리 겨루므로 AI가 나오지 않습니다.' : pickMode === 'room' && !roomFill ? '사람만 모이는 방에는 AI가 나오지 않습니다.' : `${b.blurb} (반응 ${b.react.toFixed(2)}초 · 시야 ${b.sight}m)${pickMode === 'room' ? ' · 방을 만든 사람의 난이도로 진행됩니다' : ''}`}</p></section>
         <section><h3>조작</h3><ul class="sz-help">${touch ? '<li><b>왼쪽 스틱</b><span>이동</span></li><li><b>오른쪽 화면</b><span>시점</span></li><li><b>버튼</b><span>사격 · 조준 · 장전</span></li><li><b>점프</b><span>비행기에서 뛰기 · 낙하산</span></li><li><b>투척</b><span>수류탄 · 연막 · 섬광</span></li><li><b>줍기 / 탑승</b><span>무기 · 차량</span></li>' : '<li><b>WASD</b><span>이동 · 마우스 시점</span></li><li><b>Shift</b><span>달리기</span></li><li><b>좌클릭 / 우클릭</b><span>사격 / 조준</span></li><li><b>R</b><span>장전</span></li><li><b>E</b><span>무기 줍기 · 차량 타기/내리기</span></li><li><b>Space</b><span>비행기에서 뛰기 · 낙하산 · 핸드브레이크</span></li><li><b>W</b><span>활강 방향</span></li><li><b>1 / 2 / 휠</b><span>무기 교체</span></li><li><b>G / B / V</b><span>수류탄 / 연막탄 / 섬광탄</span></li><li><b>L</b><span>총기 조립</span></li><li><b>Esc</b><span>일시정지</span></li>'}<li class="sz-help-note">낙하산은 105m에서 자동으로 펴집니다. 탄약·구급상자·방탄복·총기 파츠는 닿으면 자동으로 줍습니다. 파츠는 가방에 들어가고, ${touch ? '<b>조립</b> 버튼' : '<b>L</b>'}으로 들고 있는 총에 조립합니다. 폭격 구역(붉은 원)에서는 벗어나세요. 경기 시간 약 12분.</li></ul></section>
-        <footer><button type="button" class="ghost" data-act="exit">메뉴로</button><span class="sz-sum">${career.matches ? `전적 ${career.matches}판 ${career.wins}승 · 최다 처치 ${career.bestKills}` : '첫 출격'}</span>
-          <button type="button" class="primary" data-act="start" ${wait ? 'disabled' : ''}>${assetState === 'failed' ? '도형 모드로 출격' : wait ? `불러오는 중 ${Math.floor(assetPct * 100)}%` : pickMode === 'solo' ? '출격' : pickMode === 'room' ? '방 찾기' : '상대 찾기'}</button></footer>
+        <footer class="wd-actions"><button type="button" class="ghost wd-btn" data-act="exit">아케이드로</button><span class="sz-sum">${career.matches ? `전적 ${career.matches}판 ${career.wins}승 · 최다 처치 ${career.bestKills}` : '첫 출격'}</span>
+          <button type="button" class="primary wd-btn" data-act="start" ${wait ? 'disabled' : ''}>${assetState === 'failed' ? '도형 모드로 시작' : wait ? `불러오는 중 ${Math.floor(assetPct * 100)}%` : pickMode === 'solo' ? '시작' : pickMode === 'room' ? '방 찾기' : '상대 찾기'}</button></footer>
       </div>`;
   }
   setupEl.addEventListener('click', e => {
@@ -134,7 +135,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       .catch(() => { setupEl.querySelector('.sz-note')!.textContent = '대전 화면을 불러오지 못했습니다. 네트워크를 확인해 주세요.'; });
   }
   function card(eyebrow: string, title: string, body = '', actions = '<button data-act="exit">메뉴로</button>', cls = ''): void {
-    modal.className = 'sz-modal show'; modal.innerHTML = `<div class="sz-card ${cls}"><span class="sz-eyebrow">${eyebrow}</span><h2>${title}</h2>${body}<div class="sz-actions">${actions}</div></div>`;
+    modal.className = 'sz-modal show wd-screen'; modal.style.setProperty('--wd-hue', '#b8cf91'); modal.innerHTML = `<div class="sz-card wd-panel ${cls}"><span class="sz-eyebrow wd-eyebrow">${eyebrow}</span><h2 class="wd-title">${title}</h2>${body}<div class="sz-actions wd-actions">${actions}</div></div>`;
   }
   function startPvp(s: PvpSession): void {
     endPvp(); endMatch(); setupEl.hidden = true; hud.hidden = true; phase = 'loading';
@@ -619,7 +620,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 일시정지·메뉴 ----------
   function setPause(on: boolean): void {
     if (pvpRunning() || (phase !== 'play' && phase !== 'countdown') || closed) return; paused = on;
-    if (on) { mouse.fire = mouse.ads = false; card('PAUSED', '일시정지', '', '<button class="primary" data-act="resume">계속하기</button><button data-act="again">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button>'); }
+    if (on) { mouse.fire = mouse.ads = false; card('ZERO ZONE', '일시정지', '', '<button class="primary" data-act="resume">이어하기</button><button data-act="again">다시 시작</button><button data-act="setup">설정</button><button data-act="exit">아케이드로</button>'); }
     else { modal.className = 'sz-modal'; modal.innerHTML = ''; if (!touch) lock(); }
   }
   q('#sz-pause').addEventListener('click', () => { if (pvpRunning()) { say('대전 중에는 멈출 수 없습니다', 1.4); return; } setPause(true); });

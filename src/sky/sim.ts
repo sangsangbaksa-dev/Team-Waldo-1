@@ -260,7 +260,7 @@ export class SkySim {
   private stepMissiles(dt: number): void {
     for (const m of this.missiles) {
       if (!m.alive) continue; m.life -= dt;
-      if (m.team === 'enemy' && this.player.alive && !m.dodged) { const d = m.pos.distanceTo(this.player.pos); if (d < 120) m.nearPlayer = true; else if (m.nearPlayer && d > 180) { m.dodged = true; this.score += 150; this.events.push({ t: 'dodge', points: 150 }); } }
+      if (m.team === 'enemy' && this.player.alive && !m.dodged) { const d = m.pos.distanceTo(this.player.pos); if (d < 120) m.nearPlayer = true; else if (m.nearPlayer && d > 180) { m.dodged = true; this.score += 150; if (this.combo > 0) this.comboT = Math.max(this.comboT, 6); this.shield = Math.min(50, this.shield + 5); this.events.push({ t: 'dodge', points: 150 }); } }
       const tgt = m.target ? this.get(m.target) : undefined;
       if (tgt) {
         const want = tmpV.copy(tgt.pos).sub(m.pos); const d = want.length() || 1; want.divideScalar(d);
@@ -303,6 +303,7 @@ export class SkySim {
     if (j.team === 'enemy' && by === this.player.id) {
       this.kills++; this.combo = Math.min(5, this.combo + 1); this.bestCombo = Math.max(this.bestCombo, this.combo); this.comboT = 6;
       points = Math.round((j.kind === 'boss' ? 2500 : j.kind === 'bomber' ? 300 : j.kind === 'ace' ? 500 : 200) * (1 + (this.combo - 1) * 0.25)); this.score += points;
+      if (this.combo === 3) this.player.missiles = Math.min(8, this.player.missiles + 1);
       if (this.combo === 5 && this.overdrive <= 0) { this.overdrive = 5; this.events.push({ t: 'overdrive' }); }
     }
     this.events.push({ t: 'kill', by, id: j.id, points, combo: this.combo });

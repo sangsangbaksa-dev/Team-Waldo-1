@@ -198,7 +198,16 @@ export function openMoba(onBack: () => void, onExit: () => void, room?: RoomLink
   }
 
   // ---------- 상점·점수판·메뉴 ----------
-  const show = (html: string, kind = ''): void => { modal.className = 'mb-modal show'; modal.dataset.kind = kind; modal.innerHTML = html; };
+  const show = (html: string, kind = ''): void => {
+    modal.className = 'mb-modal show'; modal.dataset.kind = kind; modal.innerHTML = html;
+    if (['setup', 'menu', 'result', 'wait'].includes(kind)) {
+      modal.classList.add('wd-screen'); modal.querySelector('.mb-card')?.classList.add('wd-panel');
+      modal.querySelector('.mb-eyebrow')?.classList.add('wd-eyebrow'); modal.querySelector('h2')?.classList.add('wd-title');
+      modal.querySelectorAll('.mb-lead').forEach(el => el.classList.add('wd-lead'));
+      modal.querySelectorAll('.mb-actions button').forEach(el => el.classList.add('wd-btn', el.classList.contains('primary') ? 'primary' : 'ghost'));
+      modal.querySelectorAll('.mb-pick [role="group"]').forEach(el => el.classList.add('wd-seg'));
+    }
+  };
   const hide = (): void => { modal.className = 'mb-modal'; modal.dataset.kind = ''; modal.innerHTML = ''; };
   let shopKey = '';
   function shop(): void { show('', 'shop'); shopKey = ''; paintShop(); }
@@ -216,7 +225,7 @@ export function openMoba(onBack: () => void, onExit: () => void, room?: RoomLink
   function board(): void {
     if (!sim) return; show(`<div class="mb-card mb-wide"><span class="mb-eyebrow">점수판 · ${clock(sim.tick)}</span><div class="mb-tables">${teamTable(0)}${teamTable(1)}</div>${objLine()}<div class="mb-actions"><button class="primary" data-act="closeModal">닫기</button></div></div>`, 'board');
   }
-  function openMenu(): void { if (root.dataset.phase !== 'play' || ended) return; paused = !net; root.dataset.phase = net ? 'play' : 'paused'; show(`<div class="mb-card"><span class="mb-eyebrow">${net ? '대전 중 · 계속 진행됩니다' : '게임이 멈춰 있습니다'}</span><h2>${net ? '메뉴' : '일시정지'}</h2>${net ? '' : '<p class="mb-lead">Esc 를 누르면 계속합니다.</p>'}<div class="mb-actions col"><button class="primary" data-act="resume">계속하기</button><button data-act="help2">조작법</button>${net ? '' : '<button data-act="surrender">항복</button><button data-act="setup">챔피언 선택으로</button>'}<button data-act="back">라인 모드 나가기</button></div></div>`, 'menu'); }
+  function openMenu(): void { if (root.dataset.phase !== 'play' || ended) return; paused = !net; root.dataset.phase = net ? 'play' : 'paused'; show(`<div class="mb-card"><span class="mb-eyebrow">${net ? '대전 중 · 계속 진행됩니다' : 'FRONTLINE'}</span><h2>${net ? '설정' : '일시정지'}</h2>${net ? '' : '<p class="mb-lead">Esc를 눌러 이어할 수 있습니다.</p>'}<div class="mb-actions col"><button class="primary" data-act="resume">이어하기</button><button data-act="help2">조작법</button>${net ? '' : '<button data-act="surrender">항복</button><button data-act="setup">챔피언 선택</button>'}<button data-act="back">뒤로</button></div></div>`, 'menu'); }
   function resume(): void { hide(); paused = false; root.dataset.phase = 'play'; last = performance.now(); }
   const helpHtml = (back: string): string => `<div class="mb-card"><span class="mb-eyebrow">조작법</span><h2>롤식 라인전 4 대 4</h2><ul class="mb-help">
     <li><b>목표</b>적 넥서스를 부수면 승리. 포탑은 바깥쪽부터 차례로 무너뜨려야 안쪽이 열립니다.</li>
@@ -238,7 +247,7 @@ export function openMoba(onBack: () => void, onExit: () => void, room?: RoomLink
     const cd = (id: ChampId): string => { const d = CHAMPS[id]; return `<button type="button" data-champ="${id}" aria-pressed="${id === champ}"><b>${d.name}</b><small>${d.role}</small><em>${d.blurb}</em><ul>${d.skills.map(s => `<li><kbd>${s.key}</kbd>${esc(s.name)}</li>`).join('')}</ul></button>`; };
     const spellRow = (slot: number): string => `<div role="group" aria-label="소환사 주문 ${slot + 1}">${SPELL_IDS.map(id => `<button type="button" data-spell="${slot}:${id}" aria-pressed="${spells[slot] === id}" title="${esc(SPELLS[id].desc)}">${SPELLS[id].name}</button>`).join('')}</div>`;
     show(`<div class="mb-card mb-setup" role="dialog" aria-label="라인전 시작"><span class="mb-eyebrow">FRONTLINE · 라인전</span><h2>소환사의 협곡 4 대 4</h2>
-      <p class="mb-lead">챔피언 하나를 직접 조종해 라인을 밀고, 포탑과 억제기를 부수고, 적 넥서스를 무너뜨리세요. 미니언 웨이브·정글·와드 시야·드래곤·군주·상점이 모두 있습니다.</p>
+      <p class="mb-lead">챔피언을 선택하고 팀과 함께 적 기지를 공략하세요.</p>
       <div class="mb-champs" role="group" aria-label="챔피언">${CHAMP_IDS.map(cd).join('')}</div>
       <div class="mb-pick">${room ? `<span>팀</span><div role="group" aria-label="팀"><button type="button" data-team="0" aria-pressed="${roomTeam === 0}">청 팀</button><button type="button" data-team="1" aria-pressed="${roomTeam === 1}">적 팀</button></div>` : `<span>자리</span><div role="group" aria-label="자리">${ROLES.map(l => `<button type="button" data-lane="${l}" aria-pressed="${l === lane}">${LANE_NAME[l]}</button>`).join('')}</div>`}<span>난이도</span><div role="group" aria-label="난이도">${(Object.keys(LEVELS) as Level[]).map(l => `<button type="button" data-level="${l}" aria-pressed="${l === level}">${LEVELS[l].label}</button>`).join('')}</div></div>
       <div class="mb-pick"><span>주문 D</span>${spellRow(0)}</div><div class="mb-pick"><span>주문 F</span>${spellRow(1)}</div>

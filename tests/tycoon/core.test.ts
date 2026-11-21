@@ -19,6 +19,24 @@ function setHour(core: ReturnType<typeof createCore>, hour: number): void {
 }
 
 describe('타이쿤 코어: 시작과 빈털터리', () => {
+  it('대량 재활용에 보너스를 주고 표기한 금액을 지급한다', () => {
+    const core = createCore({ seed: 2 });
+    core.data.bottles = 15;
+    expect(core.actionsAt('junkyard').find(a => a.id === 'sell_bottles')?.reward).toBe(38);
+    act(core, 'junkyard', 'sell_bottles');
+    expect(core.data.cash).toBe(38);
+    expect(core.data.bottles).toBe(0);
+  });
+
+  it('러시 도전은 에너지를 추가로 쓰고 성공 또는 실패 보수를 준다', () => {
+    const core = createCore({ seed: 6 });
+    core.data.stage = 'parttime'; core.data.minute = 8 * 60;
+    act(core, 'job_mart', 'rush');
+    expect(core.data.energy).toBe(80);
+    expect([14, 56]).toContain(core.data.cash);
+    expect(core.data.jobsDone).toBe(1);
+    expect(core.data.ledger.jobIncome).toBe(core.data.cash);
+  });
   it('빈털터리로 06시 벤치에서 시작한다', () => {
     const core = createCore({ seed: 1 });
     const s = core.state;

@@ -18,7 +18,7 @@ export interface Racer {
   out?: number;
 }
 export type RaceEvent =
-  | { type: 'count'; n: number } | { type: 'go' } | { type: 'launch' }
+  | { type: 'count'; n: number } | { type: 'go' } | { type: 'launch' } | { type: 'finalLap' }
   | { type: 'lap'; lap: number; time: number; best: boolean } | { type: 'finish'; place: number; time: number }
   | { type: 'hit'; power: number } | { type: 'driftBoost'; secs: number } | { type: 'pad' } | { type: 'bump'; power: number }
   | { type: 'driftBank'; points: number; mult: number } | { type: 'driftLost'; points: number }
@@ -97,6 +97,7 @@ export const gapMeters = (r: RaceState, who: Racer): number => (who.car.total - 
 
 /** 슬립스트림: 앞차 뒤 3~32m, 옆으로 2.6m 이내에서 빠르게 달리면 충전되고 벗어나면 식습니다. */
 export const DRAFT_NEAR = 3, DRAFT_FAR = 32, DRAFT_SIDE = 2.6, DRAFT_MIN_SPEED = 24;
+export const draftNitro = (draft: number, dt: number): number => Math.max(0, draft - 0.5) * Math.max(0, dt) * 0.04;
 export function inSlipstream(me: CarState, others: ReadonlyArray<CarState>): boolean {
   if (me.vf < DRAFT_MIN_SPEED) return false;
   const fx = Math.cos(me.h), fz = Math.sin(me.h);
@@ -110,6 +111,7 @@ export function inSlipstream(me: CarState, others: ReadonlyArray<CarState>): boo
 function updateDraft(r: RaceState, dt: number): void {
   const cars = activeRacers(r).map(k => k.car);
   for (const k of r.racers) if (!k.link && k.out === undefined) k.car.draft = Math.max(0, Math.min(1, k.car.draft + (inSlipstream(k.car, cars) ? dt * 0.55 : -dt * 1.4)));
+  for (const k of r.racers) if (!k.link && k.out === undefined && k.finishTime === null) k.car.nitro = Math.min(1, k.car.nitro + draftNitro(k.car.draft, dt));
 }
 
 const IDLE: CarInput = { throttle: 0, brake: 0, steer: 0, drift: false, nitro: false };
@@ -172,7 +174,8 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
     const lapDone = Math.floor(k.car.total / t.n);
     while (k.lapTimes.length < Math.min(lapDone, r.laps)) {
       const lt = r.clock - k.lapStart; k.lapTimes.push(lt); k.lapStart = r.clock;
-      if (k.player) { const best = lt < r.bestLap; if (best) r.bestLap = lt; ev.push({ type: 'lap', lap: k.lapTimes.length, time: lt, best }); }
+      if (r.laps > 1 && k.lapTimes.length === r.laps - 1) k.car.nitro = Math.min(1, k.car.nitro + 0.15);
+      if (k.player) { const best = lt < r.bestLap; if (best) r.bestLap = lt; ev.push({ type: 'lap', lap: k.lapTimes.length, time: lt, best }); if (r.laps > 1 && k.lapTimes.length === r.laps - 1) ev.push({ type: 'finalLap' }); }
     }
     if (k.lapTimes.length >= r.laps) {
       k.finishTime = r.clock;

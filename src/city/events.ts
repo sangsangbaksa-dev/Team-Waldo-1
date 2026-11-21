@@ -18,6 +18,8 @@ export const EVENT_INFO: Record<CityEventKind, { name: string; color: string }> 
 export const SIDE_MILESTONES = [{ n: 3, reward: 400, title: '동네 해결사' }, { n: 6, reward: 900, title: '골목 청소부' }, { n: 10, reward: 1800, title: '도시의 만능 일꾼' }] as const;
 /** 연속 성공 보너스 배율 (최대 +50%) */
 export const streakMult = (streak: number): number => 1 + Math.min(5, Math.max(0, streak)) * 0.1;
+export const quickEventBonus = (remaining: number, total: number): number =>
+  total > 0 ? Math.round(200 * Math.max(0, Math.min(1, remaining / total))) : 0;
 const KINDS: CityEventKind[] = ['convoy', 'rescue', 'delivery', 'bounty'];
 const RESCUE_TIME = 3, FIRST_AT = 70;
 
@@ -130,9 +132,9 @@ function finish(w: World, ok: boolean): void {
     const tb = Math.round(ev.t * 2), amt = pay(ev.pay + tb); cash(amt, 35);
     w.say(`📦 배달 완료 +$${amt} (시간 보너스 $${tb})${bonus}`, EVENT_INFO.delivery.color); w.fx('announce', 0, 0, 0, `배달 완료 +$${amt}`);
   } else if (ev.kind === 'bounty') {
-    const amt = pay(ev.pay); cash(amt, 70); w.spawnLoot(w.rng() < 0.5 ? 'armor' : 'medkit', ev.x, ev.y, 50);
+    const quick = quickEventBonus(ev.t, ev.total), amt = pay(ev.pay + quick); cash(amt, 70); w.spawnLoot(w.rng() < 0.5 ? 'armor' : 'medkit', ev.x, ev.y, 50);
     for (const id of ev.ids.slice(1)) removeActor(w, id);
-    w.say(`🎯 현상금 사냥 성공 +$${amt}${bonus}`, EVENT_INFO.bounty.color); w.fx('announce', 0, 0, 0, `현상금 +$${amt}`);
+    w.say(`🎯 현상금 사냥 성공 +$${amt} (신속 보너스 $${quick})${bonus}`, EVENT_INFO.bounty.color); w.fx('announce', 0, 0, 0, `현상금 +$${amt}`);
   } else {
     const amt = pay(350); cash(amt, 40); w.spawnLoot('armor', ev.x + 30, ev.y, 40);
     for (const id of ev.ids) { const a = w.byId.get(id); if (a) { a.order = { type: 'wander', x: a.x, y: a.y }; a.fleeT = 0; } }

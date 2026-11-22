@@ -186,7 +186,13 @@ export function makeLevel(ch) {
       for (const distances of ds) {
         if (distances[cell] < nearest) nearest = distances[cell];
       }
-      const v = nearest + 0.012 * (neighbors(map, cell).length === 1 ? 1 : 0);
+      const x = cell % w, z = Math.floor(cell / w);
+      const degree =
+        Number(map[z]?.[x + 1] === ".") +
+        Number(map[z]?.[x - 1] === ".") +
+        Number(map[z + 1]?.[x] === ".") +
+        Number(map[z - 1]?.[x] === ".");
+      const v = nearest + 0.012 * (degree === 1 ? 1 : 0);
       if (v > score) {
         score = v;
         best = cell;

@@ -832,8 +832,9 @@ function refreshGuide() {
 function drawGuide() {
   if (!guidance) return;
   const arrow = $("guideArrow");
-  arrow.hidden = guidePath.length === 0;
-  if (!guidePath.length) return;
+  const arrowHidden = guidePath.length === 0;
+  if (arrow.hidden !== arrowHidden) arrow.hidden = arrowHidden;
+  if (arrowHidden) return;
   const next = xy(guidePath[0]);
   const angle = Math.atan2(next.x - player.x, -(next.z - player.z));
   const heading = "rotate(" + (angle + yaw) + "rad)";
@@ -1411,7 +1412,9 @@ function update(dt) {
         ? "출구 작동"
         : chapters[ch].station + " 확인"
     : "";
-  $("prompt").hidden = !caption;
+  const prompt = $("prompt");
+  const promptHidden = !caption;
+  if (prompt.hidden !== promptHidden) prompt.hidden = promptHidden;
   if ($("promptText").textContent !== caption) $("promptText").textContent = caption;
   if ($("act").disabled !== (!nearest && !hiddenSpot)) $("act").disabled = !nearest && !hiddenSpot;
   const staminaScale = "scaleX(" + (hiddenSpot ? hideBreath : stamina).toFixed(3) + ")";

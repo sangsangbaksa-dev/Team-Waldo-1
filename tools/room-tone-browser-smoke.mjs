@@ -142,10 +142,14 @@ try {
         const churn=await page.evaluate(async()=>{
           const stamina=document.querySelector("#stamina");
           const strain=document.querySelector("#strain");
+          const prompt=document.querySelector("#prompt");
+          const arrow=document.querySelector("#guideArrow");
           let count=0;
           const observer=new MutationObserver(records=>{count+=records.length;});
           observer.observe(stamina,{attributes:true,attributeFilter:["style"]});
           observer.observe(strain,{characterData:true,childList:true,subtree:true});
+          observer.observe(prompt,{attributes:true,attributeFilter:["hidden"]});
+          observer.observe(arrow,{attributes:true,attributeFilter:["hidden"]});
           await new Promise(resolve=>setTimeout(resolve,300));
           observer.disconnect();
           return count;

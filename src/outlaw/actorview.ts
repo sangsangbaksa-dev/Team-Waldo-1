@@ -17,7 +17,7 @@ interface Rig {
 }
 interface CarView {
   root: THREE.Group; body: THREE.Object3D; lamps: THREE.Group; brakes: THREE.Mesh[]; reverse: THREE.Mesh[]; sirens: THREE.Sprite[];
-  policeNodes: THREE.Object3D[]; wheels: THREE.Object3D[]; last: number[]; vf: number; emit: number; skidX: number; skidZ: number; scorched: boolean;
+  policeNodes: THREE.Object3D[]; wheels: THREE.Object3D[]; last: number[]; paintColor: number; vf: number; emit: number; skidX: number; skidZ: number; scorched: boolean;
 }
 interface LootView { root: THREE.Group; prop: THREE.Group; sparkle: THREE.Sprite }
 interface Beacon { root: THREE.Group; ring: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>; beam: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial> }
@@ -34,6 +34,7 @@ export class ActorView {
   private readonly geometries = new Set<THREE.BufferGeometry>();
   private readonly materials = new Set<THREE.Material>();
   private readonly palette = new Map<string, THREE.Material>();
+  private readonly paletteMaterials = new Set<THREE.Material>();
   private readonly articulated = new Map<CharModel, CharModel>();
   private readonly rigs = new Map<number, Rig>();
   private readonly cars = new Map<number, CarView>();
@@ -124,7 +125,7 @@ export class ActorView {
   private ownMat<T extends THREE.Material>(m: T): T { this.materials.add(m); return m; }
   private material(color: number, baked = false, glow = false): THREE.Material {
     const key = `${color}:${baked}:${glow}`; let m = this.palette.get(key);
-    if (!m) { m = this.ownMat(glow ? new THREE.MeshBasicMaterial({ color, vertexColors: baked }) : new THREE.MeshLambertMaterial({ color, vertexColors: baked })); this.palette.set(key, m); }
+    if (!m) { m = this.ownMat(glow ? new THREE.MeshBasicMaterial({ color, vertexColors: baked }) : new THREE.MeshLambertMaterial({ color, vertexColors: baked })); this.palette.set(key, m); this.paletteMaterials.add(m); }
     return m;
   }
   private mesh(parent: THREE.Object3D, geo: THREE.BufferGeometry, color: number, x: number, y: number, z: number, sx = 1, sy = 1, sz = 1): THREE.Mesh {
@@ -285,7 +286,7 @@ export class ActorView {
     }
     body.traverse(o => { if (/police_Light[AB]/i.test(o.name)) policeNodes.push(o); if (/wheel|tyre|tire/i.test(o.name) && !(o.parent && /wheel|tyre|tire/i.test(o.parent.name))) wheels.push(o); });
     root.add(lamps); this.root.add(root);
-    const c: CarView = { root, body, lamps, brakes, reverse, sirens, policeNodes, wheels, last: [], vf: v.vf, emit: 0, skidX: v.x, skidZ: v.z, scorched: false }; this.cars.set(v.id, c); return c;
+    const c: CarView = { root, body, lamps, brakes, reverse, sirens, policeNodes, wheels, last: [], paintColor: v.color, vf: v.vf, emit: 0, skidX: v.x, skidZ: v.z, scorched: false }; this.cars.set(v.id, c); return c;
   }
   private makeLoot(p: Pickup): LootView {
     const root = new THREE.Group(), prop = new THREE.Group(), color = LOOT[p.kind]; root.add(prop); root.name = `pickup-${p.id}`;
@@ -366,9 +367,12 @@ export class ActorView {
     }
   }
   private car(v: Vehicle, c: CarView, dt: number, night: boolean): void {
-    const d = VEHICLES[v.kind], state = [v.x, v.y, v.z, v.h, v.pitch, v.roll];
+    const d = VEHICLES[v.kind], last = c.last;
     // +x가 전방이므로 피치는 z축, 롤은 x축입니다.
-    if (state.some((n, i) => n !== c.last[i])) { c.root.position.set(v.x, v.y, v.z); c.root.rotation.set(v.roll, -v.h, v.pitch); c.last = state; }
+    if (last[0] !== v.x || last[1] !== v.y || last[2] !== v.z || last[3] !== v.h || last[4] !== v.pitch || last[5] !== v.roll) {
+      c.root.position.set(v.x, v.y, v.z); c.root.rotation.set(v.roll, -v.h, v.pitch);
+      last[0] = v.x; last[1] = v.y; last[2] = v.z; last[3] = v.h; last[4] = v.pitch; last[5] = v.roll;
+    }
     c.lamps.visible = night && !v.wrecked;
     const reversing = !v.wrecked && v.vf < -0.12 && v.input.throttle === 0 && v.input.brake > 0;
     const braking = !v.wrecked && !reversing && v.vf > 0.35 && (v.input.brake > 0 || (c.vf - v.vf > dt * 1.5));
@@ -445,7 +449,12 @@ export class ActorView {
     const liveCars = this.liveCars; liveCars.clear(); this.contact.begin(night ? 1 : 0);
     for (const v of this.sim.vehicles) {
       liveCars.add(v.id); const near = Math.hypot(v.x - this.cameraPos.x, v.z - this.cameraPos.z) <= 320;
-      let c = this.cars.get(v.id); if (!c && !near) continue; c ??= this.makeCar(v); c.root.visible = near; if (near) {
+      let c = this.cars.get(v.id);
+      if (c && c.paintColor !== v.color) {
+        // Pay'n'Spray updates the simulation color; rebuild only this car's paint.
+        this.release(c.root); this.cars.delete(v.id); c = undefined;
+      }
+      if (!c && !near) continue; c ??= this.makeCar(v); c.root.visible = near; if (near) {
         this.car(v, c, dt, night);
         const d = VEHICLES[v.kind], h = groundHeight(this.sim.map, v.x, v.z);
         // No flat decal across sloped ramps or rooftop geometry.
@@ -516,10 +525,10 @@ export class ActorView {
       if (o instanceof THREE.Mesh) this.releaseMaterials(o);
     });
   }
-  private releaseMaterials(o: THREE.Mesh): void { for (const m of Array.isArray(o.material) ? o.material : [o.material]) if (this.materials.has(m) && ![...this.palette.values()].includes(m)) { m.dispose(); this.materials.delete(m); } }
+  private releaseMaterials(o: THREE.Mesh): void { for (const m of Array.isArray(o.material) ? o.material : [o.material]) if (this.materials.has(m) && !this.paletteMaterials.has(m)) { m.dispose(); this.materials.delete(m); } }
   dispose(): void {
     if (this.disposed) return; this.disposed = true; this.contact.dispose(); this.root.removeFromParent(); this.root.clear();
     for (const g of this.geometries) g.dispose(); for (const m of this.materials) m.dispose(); this.glow.dispose();
-    this.geometries.clear(); this.materials.clear(); this.palette.clear(); this.articulated.clear(); this.rigs.clear(); this.cars.clear(); this.loot.clear(); this.rockets.clear(); this.beacons.length = 0; this.fx.length = 0; this.lights.length = 0;
+    this.geometries.clear(); this.materials.clear(); this.palette.clear(); this.paletteMaterials.clear(); this.articulated.clear(); this.rigs.clear(); this.cars.clear(); this.loot.clear(); this.rockets.clear(); this.beacons.length = 0; this.fx.length = 0; this.lights.length = 0;
   }
 }

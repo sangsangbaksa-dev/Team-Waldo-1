@@ -58,6 +58,9 @@ export class ShooterView {
   private sun: THREE.DirectionalLight; private glow = glowTexture(); private rigs = new Map<number, Rig>(); private lootNodes = new Map<number, { node: THREE.Object3D; baseY: number; dispose: () => void }>();
   private lootDummy = new THREE.Object3D(); private beamStamps: Array<{ id: number; x: number; z: number; kind: string }> = [];
   private pendingRigUpgrades = new Set<number>(); private pendingLootUpgrades = new Set<number>();
+  // Scratch sets survive across render frames; avoid fresh sets when dozens
+  // of pickups or grenades are tracked at 60fps.
+  private readonly liveLootIds = new Set<number>(); private readonly liveNadeIds = new Set<number>();
   private zoneWall: THREE.Mesh; private zoneNext: THREE.Mesh; private tracers: Fx[] = []; private readonly tracerPool = new TracerPool(); private sparks: THREE.Points; private sparkData: { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; r: number; g: number; b: number }[] = [];
   private vm: THREE.Object3D | null = null; private vmOwned = false; private aimBlend = 0; private reloadBlend = 0; private vmId = ''; private vmParts = ''; private vmSwap = 0; private vmFlash: THREE.Sprite; private bob = 0; private shake = 0; private terrainView: TerrainView | null = null; private fovPunch = 0; private flashKick = 0; private roll = 0; private sprintT = 0; private time = 0;
   private mats = new Map<string, THREE.Material>(); private tmpCol = new THREE.Color(); private beams: THREE.InstancedMesh;
@@ -350,7 +353,7 @@ export class ShooterView {
     return { node: g, baseY, dispose: () => { g.removeFromParent(); const geos = new Set<THREE.BufferGeometry>(), mats = new Set<THREE.Material>(); for (const child of sharedModel ? [ring] : g.children) child.traverse(o => { if (o instanceof THREE.Mesh) { geos.add(o.geometry); for (const mat of Array.isArray(o.material) ? o.material : [o.material]) mats.add(mat); } }); for (const geo of geos) geo.dispose(); for (const mat of mats) mat.dispose(); } };
   }
   private syncLoot(cam: THREE.Vector3): void {
-    const live = new Set<number>(); let nb = 0, upgrades = 0, beamsDirty = false; const d = this.lootDummy;
+    const live = this.liveLootIds; live.clear(); let nb = 0, upgrades = 0, beamsDirty = false; const d = this.lootDummy;
     for (const l of this.match.loot) {
       if (l.taken) continue;
       const dx = l.x - cam.x, dz = l.z - cam.z, d2 = dx * dx + dz * dz; let entry = this.lootNodes.get(l.id);
@@ -431,7 +434,7 @@ export class ShooterView {
     if (dd < 45) this.flash = Math.max(this.flash, 0.18 * (1 - dd / 45));
   }
   private updateNades(dt: number): void {
-    const live = new Set<number>(); for (const n of this.match.nades) { live.add(n.id); let m = this.nadeMeshes.get(n.id); if (!m) { m = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), new THREE.MeshLambertMaterial({ color: 0x3b4a2a, emissive: 0xff3010, emissiveIntensity: 0.2 })); this.scene.add(m); this.nadeMeshes.set(n.id, m); } m.position.set(n.x, n.y, n.z); (m.material as THREE.MeshLambertMaterial).emissiveIntensity = n.fuse < 1 ? 0.2 + Math.abs(Math.sin(this.time * 24)) * 1.2 : 0.2; }
+    const live = this.liveNadeIds; live.clear(); for (const n of this.match.nades) { live.add(n.id); let m = this.nadeMeshes.get(n.id); if (!m) { m = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), new THREE.MeshLambertMaterial({ color: 0x3b4a2a, emissive: 0xff3010, emissiveIntensity: 0.2 })); this.scene.add(m); this.nadeMeshes.set(n.id, m); } m.position.set(n.x, n.y, n.z); (m.material as THREE.MeshLambertMaterial).emissiveIntensity = n.fuse < 1 ? 0.2 + Math.abs(Math.sin(this.time * 24)) * 1.2 : 0.2; }
     for (const [id, m] of this.nadeMeshes) if (!live.has(id)) { this.scene.remove(m); m.geometry.dispose(); (m.material as THREE.Material).dispose(); this.nadeMeshes.delete(id); }
     for (let i = this.booms.length - 1; i >= 0; i--) { const b = this.booms[i]; b.t += dt; b.s.scale.setScalar(2 + b.t * 16); (b.s.material as THREE.SpriteMaterial).opacity = Math.max(0, 1 - b.t * 3); if (b.t > 0.35) { this.scene.remove(b.s); (b.s.material as THREE.Material).dispose(); this.booms.splice(i, 1); } }
   }
@@ -622,7 +625,7 @@ export class ShooterView {
     // games. Detach the skeletons before releasing this scene's own resources.
     for (const rig of this.rigs.values()) rig.ch.root.removeFromParent();
     this.rigs.clear();
-    this.pendingRigUpgrades.clear(); this.pendingLootUpgrades.clear(); this.beamStamps.length = 0;
+    this.pendingRigUpgrades.clear(); this.pendingLootUpgrades.clear(); this.liveLootIds.clear(); this.liveNadeIds.clear(); this.beamStamps.length = 0;
     disposeSceneResources(this.scene, { extraTextures: [this.glow] });
     this.post?.dispose();
     this.renderer.dispose();

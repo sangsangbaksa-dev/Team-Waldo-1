@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { RtsSim } from './sim';
-import { BUILDINGS } from './config';
+import { BUILDINGS, UNITS } from './config';
 
 function miner() {
   const s = new RtsSim(), n = s.nodes[0], w = s.units.find(u => u.kind === 'worker' && u.owner === 0)!;
@@ -22,6 +22,30 @@ function site() {
 }
 
 describe('RTS debugging regressions', () => {
+  it('does not accept a destroyed HQ as a live technology prerequisite', () => {
+    const s = new RtsSim();
+    const hq = s.buildings.find(b => b.kind === 'hq' && b.owner === 0)!;
+    expect(s.has(0, 'hq')).toBe(true);
+    hq.hp = 0;
+    expect(s.has(0, 'hq')).toBe(false);
+  });
+  it('does not count dead units or buildings toward live supply totals', () => {
+    const s = new RtsSim(), hq = s.buildings.find(b => b.kind === 'hq' && b.owner === 0)!;
+    const u = s.units.find(u => u.owner === 0)!;
+    const beforeCap = s.players[0].cap, beforeUsed = s.players[0].used;
+    hq.hp = 0; u.hp = 0; s.recount();
+    expect(s.players[0].cap).toBeLessThan(beforeCap);
+    expect(s.players[0].used).toBe(beforeUsed - UNITS[u.kind].supply);
+  });
+  it('rejects a resume order targeting a destroyed construction site', () => {
+    const {s,w,b} = site(); b.hp = 0;
+    expect(s.apply(0, {k:'resume', b:b.id, ids:[w.id]})).toBe(false);
+  });
+  it('rejects rally-point commands on a destroyed producer', () => {
+    const s = new RtsSim(), hq = s.buildings.find(b => b.kind === 'hq' && b.owner === 0)!;
+    hq.hp = 0;
+    expect(s.apply(0,{k:'rally',b:hq.id,x:20,y:20,node:0})).toBe(false);
+  });
   it('releases the mineral reservation immediately when stopping', () => {
     const { s, n, w } = miner();
     expect(n.miner).toBe(w.id); expect(n.busyUntil).toBeGreaterThan(s.tick);

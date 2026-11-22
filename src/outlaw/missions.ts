@@ -32,7 +32,36 @@ function pass(s: Sim): void { const m = s.mission, info = MISSION_LIST.find(q =>
 export function canStart(s: Sim, id: string): boolean { const q = MISSION_LIST.find(m => m.id === id); return !!q && !s.mission.active && !s.mission.completed.includes(id) && q.requires.every(r => s.mission.completed.includes(r)); }
 function car(s: Sim, kind: 'sports' | 'sedan' | 'van', x: number, z: number, h = 0): Vehicle { return s.spawnVehicle(kind, x, z, h, { keep: true, tag: s.mission.active, locked: false }); }
 function gang(s: Sim, x: number, z: number, boss = false): void { s.spawnPed(boss ? 'boss' : 'gang', x, z, { keep: true, tag: s.mission.active, mode: 'guard', tx: x, tz: z, aux: 6 }); }
-function nearWalk(s: Sim, x: number, z: number, count: number): Array<{x: number; z: number}> { const out: Array<{x: number; z: number}> = []; for (const p of [...s.map.walkPoints].sort((a, b) => dist(a, {x,z}) - dist(b, {x,z}))) { if (out.every(q => dist(p, q) >= 4)) out.push(p); if (out.length >= count) break; } return out; }
+/** Greedy stable nearest nonoverlapping sidewalk points. Only a handful of
+ * guards are needed, so O(points × guards) scans avoid full map-array copies,
+ * repeated square roots and an O(points log points) global sort. */
+export function nearestWalkPoints(
+  points: readonly { x: number; z: number }[], x: number, z: number, count: number,
+): Array<{ x: number; z: number }> {
+  const chosen: Array<{ x: number; z: number }> = [];
+  for (let n = 0; n < count; n++) {
+    let closest: { x: number; z: number } | undefined, distSq = Infinity;
+    for (const p of points) {
+      const d = (p.x - x) ** 2 + (p.z - z) ** 2;
+      if (d >= distSq || chosen.some(q => (q.x-p.x) ** 2 + (q.z-p.z) ** 2 < 16)) continue;
+      closest = p; distSq = d;
+    }
+    if (!closest) break;
+    chosen.push(closest);
+  }
+  return chosen;
+}
+function farthestWalkPoint(points: readonly { x: number; z: number }[], x: number, z: number): { x: number; z: number } | undefined {
+  let farthest: { x: number; z: number } | undefined, distSq = -1;
+  for (const p of points) {
+    const d = (p.x - x) ** 2 + (p.z - z) ** 2;
+    if (d > distSq) { farthest = p; distSq = d; }
+  }
+  return farthest;
+}
+function nearWalk(s: Sim, x: number, z: number, count: number): Array<{ x: number; z: number }> {
+  return nearestWalkPoints(s.map.walkPoints, x, z, count);
+}
 function route(s: Sim, x: number, z: number): number[] {
   const lanes = s.map.lanes, start = nearestLane(s.map, x, z); if (start < 0) return [];
   const result: number[] = [], visited = new Set<number>(); let current = start, last = lanes[start];
@@ -42,7 +71,7 @@ function route(s: Sim, x: number, z: number): number[] {
 export function startMission(s: Sim, id: string): boolean {
   if (!canStart(s, id)) return false; const m = s.mission, p = s.player; m.active = id; m.stage = 0; m.timer = 0; m.data = {}; m.ids = {}; m.failed = ''; m.markers = [];
   const start = poi(s, id) ?? p;
-  if (id === 'm_delivery') { const target = [...s.map.walkPoints].sort((a,b) => dist(b, start) - dist(a, start))[0] ?? start; m.data.x = target.x; m.data.z = target.z; m.timer = 180; }
+  if (id === 'm_delivery') { const target = farthestWalkPoint(s.map.walkPoints, start.x, start.z) ?? start; m.data.x = target.x; m.data.z = target.z; m.timer = 180; }
   if (id === 'm_theft') { const lane = s.map.lanes[nearestLane(s.map, 0, 0)]; const v = car(s, 'sports', lane?.x ?? 0, lane?.z ?? 0, lane?.h); v.color = 0xe32c36; m.ids.car = v.id; m.timer = 240; }
   if (id === 'm_debt' || id === 'm_boss') { const center = id === 'm_debt' ? (s.map.buildings.find(b => b.district === 'industrial' && b.kind === 'warehouse') ?? poi(s, 'chop0')) : poi(s, 'casino0'); const points = nearWalk(s, center.x, center.z, id === 'm_debt' ? 5 : 9); points.forEach((q, i) => { gang(s, q.x, q.z, id === 'm_boss' && i === 0); const ped = s.peds[s.peds.length - 1]; if (id === 'm_debt' && i === 0) ped.hp = ped.maxHp = 220; m.ids[`enemy${i}`] = ped.id; }); m.data.count = points.length; }
   if (id === 'm_chase') { const lane = s.map.lanes[nearestLane(s.map, start.x, start.z)]; const v = car(s, 'sedan', lane?.x ?? start.x, lane?.z ?? start.z, lane?.h); v.mode = 'scripted'; const driver = s.spawnPed('gang', v.x, v.z, { keep: true, tag: id, mode: 'scripted', vehicle: v.id }); v.driver = driver.id; m.ids.car = v.id; m.ids.driver = driver.id; m.data.node = lane?.id ?? -1; }
@@ -59,7 +88,11 @@ export function stepMissions(s: Sim, dt: number): void {
   if (id === 'm_delivery') { const target = m.stage ? poi(s, 'garage0') : {x:m.data.x,z:m.data.z}; goal(target, m.stage ? '차고' : '꾸러미', 5, m.stage ? 'goal' : 'item'); m.text = `${m.stage ? '차고에 꾸러미를 배달해' : '꾸러미를 챙겨. 차를 훔쳐 타도 좋아'}  ${clock(m.timer)}`; if (dist(p, target) < 5) { if (!m.stage) stage(s, 1, '꾸러미 확보 — 차고로!'); else pass(s); } }
   else if (id === 'm_theft') { const v = s.vehicle(m.ids.car); if (!v || !v.alive || v.wrecked || v.hp <= 0) { failMission(s, '주문 차량이 파괴됐습니다'); return; } if (!m.stage && p.vehicle === v.id) { wanted(s, 2); stage(s, 1, '경찰이다! 해체장으로 달려'); } const target = m.stage ? poi(s, 'chop0') : v; goal(target, m.stage ? '해체장' : '빨간 스포츠카', 7, m.stage ? 'goal' : 'target'); m.text = `${m.stage ? `해체장으로 운반 · 차량 ${Math.ceil(v.hp / v.maxHp * 100)}% (50% 이상)` : '빨간 스포츠카를 훔쳐'}  ${clock(m.timer)}`; if (m.stage && p.vehicle === v.id && dist(v, target) < 8 && v.hp >= v.maxHp * 0.5) pass(s); }
   else if (id === 'm_debt' || (id === 'm_boss' && !m.stage)) { const enemies = Array.from({length:m.data.count}, (_,i) => s.ped(m.ids[`enemy${i}`])).filter(q => q?.alive); m.markers = enemies.map(q => mark(q!.x, q!.z, 3, q!.kind === 'boss' ? '보스' : '적', 'target')); m.text = `${id === 'm_debt' ? '창고의 갱을 정리해' : '카지노의 보스와 경호원을 쓰러뜨려'} · 남은 적 ${enemies.length}`; if (id === 'm_boss' && !m.data.alert && !s.ped(m.ids.enemy0)?.alive) { m.data.alert = 1; wanted(s, 3); notice(s, 'stage', '보스 제압! 경찰이 몰려온다'); } if (!enemies.length) { if (id === 'm_debt') pass(s); else { wanted(s, 3); stage(s, 1, '거래 종료 — 은신처로 탈출'); } } }
-  else if (id === 'm_chase') { const v = s.vehicle(m.ids.car), d = s.ped(m.ids.driver); if (!v || v.wrecked || !v.alive || !d?.alive || v.driver !== d.id) { pass(s); return; } let node = s.map.lanes[m.data.node]; if (!node || dist(v, node) < 12) { const next = node?.next[0]; m.data.node = next ?? nearestLane(s.map, v.x, v.z, v.h); node = s.map.lanes[m.data.node]; } if (node) autoDrive(s, v, node.x, node.z, 35, dt); goal(v, '도주 차량', 6, 'target'); const far = dist(p, v) > 120; if (far) { if (!m.data.far) notice(s, 'stage', '놈을 놓친다! 20초 안에 따라잡아'); m.data.far = (m.data.far ?? 0) + dt; if (m.data.far >= 20) { failMission(s, '도주 차량을 놓쳤습니다'); return; } } else m.data.far = 0; m.text = far ? `도주 차량을 따라잡아 · ${Math.ceil(20 - m.data.far)}초` : '도주 차량이나 운전자를 멈춰 세워'; }
+  else if (id === 'm_chase') {
+    const v = s.vehicle(m.ids.car), d = s.ped(m.ids.driver);
+    // Despawned/missing scripted targets are not a successful takedown.
+    if (!v) { failMission(s, '도주 차량이 사라졌습니다'); return; }
+    if (v.wrecked || !v.alive || !d?.alive || v.driver !== d.id) { pass(s); return; } let node = s.map.lanes[m.data.node]; if (!node || dist(v, node) < 12) { const next = node?.next[0]; m.data.node = next ?? nearestLane(s.map, v.x, v.z, v.h); node = s.map.lanes[m.data.node]; } if (node) autoDrive(s, v, node.x, node.z, 35, dt); goal(v, '도주 차량', 6, 'target'); const far = dist(p, v) > 120; if (far) { if (!m.data.far) notice(s, 'stage', '놈을 놓친다! 20초 안에 따라잡아'); m.data.far = (m.data.far ?? 0) + dt; if (m.data.far >= 20) { failMission(s, '도주 차량을 놓쳤습니다'); return; } } else m.data.far = 0; m.text = far ? `도주 차량을 따라잡아 · ${Math.ceil(20 - m.data.far)}초` : '도주 차량이나 운전자를 멈춰 세워'; }
   else if (id === 'm_heist') { const target = poi(s, m.stage ? 'safe1' : 'bank0'); goal(target, m.stage ? '은신처' : '은행 금고', 7); if (!m.stage) { m.data.hold = dist(p, target) < 7 ? (m.data.hold ?? 0) + dt : 0; m.text = `은행 앞에서 금고를 열어 · ${Math.min(2.5, m.data.hold).toFixed(1)}/2.5초`; if (m.data.hold >= 2.5) { wanted(s, 4); m.timer = 300; stage(s, 1, '금고 확보! 경찰을 따돌려'); } } else { m.text = `${s.wanted.stars ? '경찰을 먼저 따돌려라' : '은신처로 돌아가'}  ${clock(m.timer)}`; if (dist(p, target) < 7 && s.wanted.stars === 0) pass(s); } }
   else if (id === 'm_race') { const own = [0,4].map(i => s.vehicle(m.ids[`race${i}`])).find(v => v?.id === p.vehicle); if (!m.stage) { const v = s.vehicle(m.ids.race0); if (v) goal(v, '스포츠카', 8); m.text = '스포츠카에 올라타 출발해'; if (own) { m.ids.playerCar = own.id; stage(s, 1, '레이스 시작! 첫 관문으로'); } } else { const v = s.vehicle(m.ids.playerCar), total = m.data.total; if (!v || v.wrecked || !v.alive) { failMission(s, '레이스 차량이 파괴됐습니다'); return; } const idx = m.data.player ?? 0, cp = s.map.lanes[m.data[`cp${idx}`]]; if (!cp) { failMission(s, '경주 경로를 찾을 수 없습니다'); return; } goal(cp, `체크포인트 ${idx + 1}/${total}`, 18); if (p.vehicle === v.id && dist(v, cp) < 18) { m.data.player = idx + 1; if (idx + 1 >= total) { pass(s); return; } notice(s, 'stage', `체크포인트 ${idx + 1}/${total}`); } let rank = 1; for (let i = 1; i <= 3; i++) { const rival = s.vehicle(m.ids[`race${i}`]); if (!rival || rival.wrecked || !rival.alive || rival.driver === p.id || !s.ped(rival.driver)?.alive) continue; const k = `r${i}`, ri = m.data[k] ?? 0, target = s.map.lanes[m.data[`cp${ri}`]]; if (!target) continue; if (dist(rival, target) < 18) { m.data[k] = ri + 1; rival.path = []; if (ri + 1 >= total) { failMission(s, '라이벌이 먼저 도착했습니다'); return; } } drive(s, rival, target, 32 + i * 1.5 + Math.max(-3, Math.min(3, ((m.data.player ?? 0) - ri) * 1.5)), dt, `path${i}`); const pc = s.map.lanes[m.data[`cp${m.data.player ?? 0}`]]; if (ri > (m.data.player ?? 0) || (ri === (m.data.player ?? 0) && pc && dist(rival, target) < dist(v, pc))) rank++; } m.text = `${rank}위 / 4 · 체크포인트 ${Math.min(total, (m.data.player ?? 0) + 1)}/${total}`; } }
   else if (id === 'm_boss') { const target = poi(s, 'safe0'); goal(target, '은신처', 7); m.text = '경찰을 뚫고 은신처로 탈출해 · 수배 3★ 이하'; if (dist(p, target) < 7 && s.wanted.stars <= 3) pass(s); }

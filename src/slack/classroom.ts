@@ -177,7 +177,9 @@ export const createClassroomView: CreateView = (sim, audio) => {
   const gDown = (e: PointerEvent) => {
     if (e.button !== 0 || view() !== 'game') return;
     const p = gpos(e); if (!p) return;
-    el.focus({ preventScroll: true }); audio.resume(); getGame().command(p[0], p[1]);
+    // Keep the tactical map focused so mouse/trackpad users can immediately
+    // continue with arrow keys or Enter, without another Tab cycle.
+    gcv.focus({ preventScroll: true }); audio.resume(); getGame().command(p[0], p[1]);
   };
   const gMove = (e: PointerEvent) => { const p = gpos(e); if (p) gHand = p[2]; };
   el.addEventListener('keydown', keydown);

@@ -88,3 +88,23 @@ it('supports hold-to-cover on classroom touch controls without pointer capture',
   expect(sim.state.cover).toBe(false);
   view.dispose();
 });
+
+it('keeps tactical map keyboard focus after clicking with a mouse or trackpad', () => {
+  const sim = createSim('class', 3, 1); sim.start();
+  const view = createClassroomView(sim, audio);
+  document.body.append(view.el);
+  sim.doActivity('game'); sim.setCover(false); view.frame(0.1);
+  const canvas = view.el.querySelector<HTMLCanvasElement>('.sl-win.gm canvas')!;
+  Object.defineProperty(canvas, 'getBoundingClientRect', {
+    configurable: true, value: () => ({ left: 0, top: 0, width: 320, height: 180 }),
+  });
+  const e = new Event('pointerdown', { bubbles: true, cancelable: true });
+  Object.assign(e, { button: 0, clientX: 100, clientY: 90 });
+  canvas.dispatchEvent(e);
+  expect(document.activeElement).toBe(canvas);
+  const arrow = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'ArrowRight' });
+  canvas.dispatchEvent(arrow);
+  expect(arrow.defaultPrevented).toBe(true);
+  expect(view.el.querySelector('#sl-rts-cursor')?.textContent).toContain('지휘 위치');
+  view.dispose();
+});

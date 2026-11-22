@@ -129,15 +129,17 @@ try {
         r3.draw=(...args)=>{count++;return original(...args);};
         window.__cityDrawCount=()=>count;
       });
-      await page.locator('.c-topbtns [data-act="pause"]').click();
+      // In desktop first-person mode the pointer is locked to the canvas: Escape is the
+      // real pause shortcut. Mobile users can tap the visible HUD control instead.
+      if(size.name==='desktop')await page.keyboard.press('Escape');
+      else await page.locator('.c-topbtns [data-act="pause"]').click();
       await page.locator('.c-pause').waitFor({state:'visible'});
       await page.waitForTimeout(180);
       const pausedDraws=await page.evaluate(()=>window.__cityDrawCount());
       await page.waitForTimeout(200);
       assert.equal(await page.evaluate(()=>window.__cityDrawCount()),pausedDraws,'Paused 3D scene must remain static');
       await page.locator('.c-pause [data-act="resume"]').click();
-      await page.waitForFunction(()=>window.__cityDrawCount()>0);
-      await page.waitForTimeout(120);
+      await page.waitForFunction(previous=>window.__cityDrawCount()>previous,pausedDraws);
       assert.ok(await page.evaluate(()=>window.__cityDrawCount())>pausedDraws,'Resume must restore WebGL drawing');
       assert.deepEqual(errors, [], 'Unexpected browser errors');
       results.push({ ...size, status: 'passed', cards: 8, raceStart });

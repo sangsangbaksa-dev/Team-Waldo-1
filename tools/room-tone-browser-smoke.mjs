@@ -31,6 +31,7 @@ try {
   for(const config of [
     {name:"desktop",width:1280,height:800,mobile:false},
     {name:"mobile",width:390,height:844,mobile:true},
+    {name:"mobile-compact",width:320,height:640,mobile:true},
   ]){
     const context=await browser.newContext({
       viewport:{width:config.width,height:config.height},
@@ -79,6 +80,17 @@ try {
       assert.match(await page.locator("#panelTitle").innerText(),/끊어진 전원/);
       await page.getByRole("button",{name:"구역 진입"}).click();
       assert.equal(await page.locator("#dialog").isVisible(),false);
+      if(config.mobile) {
+        for (const id of ["#gsound","#mapBtn","#pauseGame","#crouch","#torch","#run","#act"]) {
+          const box=await page.locator(id).boundingBox();
+          assert.ok(box && box.width>=40 && box.height>=40,
+            id+" touch target must be at least 40x40 px");
+        }
+        const left=await page.locator(".hudleft").boundingBox();
+        const right=await page.locator(".hudright").boundingBox();
+        assert.ok(left && right && left.x+left.width <= right.x+2,
+          "Mobile HUD text must not overlap the control group");
+      }
 
       if(config.mobile){
         assert.equal(await page.evaluate(()=>Boolean(document.pointerLockElement)),false);

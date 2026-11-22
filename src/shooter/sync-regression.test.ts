@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AIR, PLAYER } from './config';
 import { Match, type Player, type Vehicle } from './sim';
-import { canAcceptVehicleDamageReport, easePuppet, parseLoot, WorldSync, WEAPON_IDS, type PuppetTarget } from './sync';
+import { canAcceptRoomLoot, canAcceptVehicleDamageReport, easePuppet, parseLoot, WorldSync, WEAPON_IDS, type PuppetTarget } from './sync';
 
 function fixture() {
   const m = new Match({seed: 42, mode: 'duel', difficulty: 'normal', humans: [{name:'A'}], fill: 2, authority: false});
@@ -26,6 +26,29 @@ describe('network synchronization regressions', () => {
   });
   it('normalizes missing helmet level to one', () => {
     expect(parseLoot({...base,k:'helmet'})?.level).toBe(1);
+  });
+  it('accepts a valid player weapon swap within its own online loot ID range', () => {
+    const sender = {id:2, remote:true, bot:false, x:30, z:-40} as Player;
+    const loot = parseLoot({...base, k:'weapon', w:'rifle', i:3_001_010, x:31, z:-40})!;
+    expect(canAcceptRoomLoot(loot, 2, false, sender)).toBe(true);
+    expect(canAcceptRoomLoot(loot, 2, true, sender)).toBe(true);
+  });
+  it('rejects spoofed, distant, unsupported, and anonymous online loot', () => {
+    const sender = {id:2, remote:true, bot:false, x:30, z:-40} as Player;
+    const loot = parseLoot({...base, k:'weapon', w:'rifle', i:3_001_010, x:31, z:-40})!;
+    expect(canAcceptRoomLoot(loot, 1, false, sender)).toBe(false);
+    expect(canAcceptRoomLoot({...loot,id:2_001_010},2,false,sender)).toBe(false);
+    expect(canAcceptRoomLoot({...loot,x:600},2,false,sender)).toBe(false);
+    expect(canAcceptRoomLoot({...loot,kind:'medkit',weapon:null},2,false,sender)).toBe(false);
+    expect(canAcceptRoomLoot(loot,2,false,undefined)).toBe(false);
+    expect(canAcceptRoomLoot(loot,2,false,{...sender,bot:true})).toBe(false);
+    expect(canAcceptRoomLoot({...loot,id:3_000_000},2,false,sender)).toBe(false);
+  });
+  it('allows the room authority to replicate distant AI death loot in its own namespace', () => {
+    const host = {id:0, remote:true, bot:false, x:0,z:0} as Player;
+    const loot = parseLoot({...base, k:'helmet', i:1_004_200, x:500, z:200})!;
+    expect(canAcceptRoomLoot(loot,0,true,host)).toBe(true);
+    expect(canAcceptRoomLoot(loot,0,false,host)).toBe(false);
   });
   it('does not extrapolate a stale bot indefinitely', () => {
     const {bot} = fixture(); bot.x = bot.z = 0;

@@ -58,3 +58,50 @@ describe("ROOM TONE shared hiding-place geometry", () => {
     expect(variants.flatMap((root) => root.children).length).toBeGreaterThanOrEqual(20);
   });
 });
+
+describe("ROOM TONE allocation-free BFS compatibility", () => {
+  function referencePaths(map: string[], start: number) {
+    const width = map[0]?.length ?? 0;
+    const prev = new Int32Array(map.length * width).fill(-2);
+    const dist = new Int32Array(prev.length).fill(-1);
+    const q: number[] = [];
+    if (!walkable(map, start)) return {prev,dist,q};
+    q.push(start); prev[start] = -1; dist[start] = 0;
+    for (let h=0; h<q.length; h++) {
+      for (const k of neighbors(map,q[h])) {
+        if (prev[k]!==-2) continue;
+        prev[k]=q[h]; dist[k]=dist[q[h]]+1; q.push(k);
+      }
+    }
+    return {prev,dist,q};
+  }
+  it("preserves exact queue order, distance and parent on cyclic maps",()=>{
+    const maps=[
+      [".......",".......",".......",".......","......."],
+      ["#########","#...#...#","#.#...#.#","#...#...#","#########"],
+      ["#.#.#","#####","#...#","#####","#.#.#"],
+      ["."],
+      ["#####","#####","#####"],
+    ];
+    for(const map of maps) for(let start=0;start<map.length*map[0].length;start++){
+      const original=referencePaths(map,start);
+      const optimized=paths(map,start);
+      expect(optimized.q).toEqual(original.q);
+      expect(optimized.dist).toEqual(original.dist);
+      expect(optimized.prev).toEqual(original.prev);
+    }
+  });
+  it("preserves exact output for every reachable start in all four chapters",()=>{
+    for(let ch=0;ch<4;ch++){
+      const level=makeLevel(ch);
+      const starts=[level.start, ...level.items, level.exit, level.nest,
+        ...level.reachable.filter((_,i)=>i%13===0)];
+      for(const start of starts){
+        const expected=referencePaths(level.map,start),actual=paths(level.map,start);
+        expect(actual.prev).toEqual(expected.prev);
+        expect(actual.dist).toEqual(expected.dist);
+        expect(actual.q).toEqual(expected.q);
+      }
+    }
+  });
+});

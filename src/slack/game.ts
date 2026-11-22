@@ -89,7 +89,8 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
   const clearView = (): void => { view?.dispose(); view?.el.remove(); view = null; sim = null; };
   const exit = (): void => { if (closed) return; closed = true; cancelAnimationFrame(raf); root.removeEventListener('keydown', keydown); document.removeEventListener('visibilitychange', visibility); clearView(); audio.dispose(); root.remove(); onExit(); };
   const pause = (): void => { if (state === 'play') {
-      state = 'paused'; root.classList.remove('sl-danger'); $('[data-paused]').hidden = false; audio.ambience(null); audio.hold(true);
+      state = 'paused'; if (raf) cancelAnimationFrame(raf); raf = 0;
+      root.classList.remove('sl-danger'); $('[data-paused]').hidden = false; audio.ambience(null); audio.hold(true);
       $('[data-resume]').focus();
       $('.sl-view').inert = true; $('.sl-hud').inert = true; $('[data-tip]').inert = true;
       root.classList.add('sl-paused');
@@ -106,7 +107,8 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
   const start = async (): Promise<void> => {
     if (closed || state === 'loading' || state === 'play') return;
     const restarting = state !== 'title';
-    state = 'loading'; root.classList.remove('sl-danger'); clearView();
+    state = 'loading'; if (raf) cancelAnimationFrame(raf); raf = 0;
+    root.classList.remove('sl-danger'); clearView();
     if (restarting) { audio.dispose(); audio = createSlackAudio(); audio.setMuted(muted); }
     audio.hold(false); audio.resume();
     $('.sl-hud').hidden = true; $('.sl-toast').textContent = ''; toastTime = 0;

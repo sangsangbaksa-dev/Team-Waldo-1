@@ -123,3 +123,16 @@ it('labels music and video play controls for keyboard and screen-reader players'
   video.click(); expect(video.getAttribute('aria-label')).toBe('재생');
   video.click(); expect(video.getAttribute('aria-label')).toBe('일시정지');
 });
+
+it('processes delayed messenger replies in chronological order without ghost typing indicators', () => {
+  view.el.querySelector<HTMLButtonElement>('[data-app="chat"]')!.click();
+  view.frame(0.1);
+  const chip = view.el.querySelector<HTMLButtonElement>('[data-chip]')!;
+  for (let i = 0; i < 90; i++) chip.click();
+  view.frame(5); // Several start/end callbacks become due in a single stalled frame.
+  const pane = view.el.querySelector('.sc-messages')!;
+  expect(pane.querySelectorAll('p:not(.mine)')).toHaveLength(4);
+  expect(pane.childElementCount).toBeLessThanOrEqual(30);
+  expect(view.el.querySelector('.sc-typing')?.classList.contains('on')).toBe(false);
+  expect(view.el.querySelector<HTMLButtonElement>('[data-room="0"] [data-last]')?.textContent).not.toBe('입력 중...');
+});

@@ -180,3 +180,19 @@ it('reuses unchanged HUD text nodes across small animation ticks', async () => {
   expect(timer.firstChild).toBe(firstTimerNode);
   expect(fun.firstChild).toBe(firstFunNode);
 });
+
+it('stops the scheduled animation immediately on pause even with a live toast', async () => {
+  openSlack(vi.fn());
+  button('[data-stage="dorm"]').click(); button('[data-start]').click();
+  await vi.dynamicImportSettled();
+  key('1');
+  const sim = vi.mocked(createSim).mock.results[0].value;
+  sim.state.sus = 100;
+  advance(100);
+  expect(button('.sl-toast').textContent).toContain('들켰어요');
+  expect(frames.size).toBe(1);
+  key('p');
+  expect(frames.size).toBe(0);
+  button('[data-resume]').click();
+  expect(frames.size).toBe(1);
+});

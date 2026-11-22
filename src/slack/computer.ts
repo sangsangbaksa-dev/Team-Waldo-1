@@ -62,7 +62,14 @@ export const createComputerView: CreateView = (sim, audio) => {
   const setCls = (k: string, on: boolean, t: HTMLElement = el) => { if (cache[k] !== on) { cache[k] = on; t.classList.toggle(k, on); } };
   const setTxt = (t: HTMLElement | null, v: string) => { if (t && t.textContent !== v) t.textContent = v; };
   const queue: { at: number; fn: () => void }[] = [];
-  const later = (s: number, fn: () => void) => queue.push({ at: elapsed + s, fn });
+  // Insert in deadline order. A throttled frame can complete several pending
+  // events at once; processing them backwards leaves phantom typing bubbles.
+  const later = (s: number, fn: () => void): void => {
+    const job = { at: elapsed + s, fn };
+    let i = queue.length;
+    while (i > 0 && queue[i - 1]!.at > job.at) i--;
+    queue.splice(i, 0, job);
+  };
   const toast = (text: string, s = 3) => { setTxt(toastEl, text); toastEl.classList.add('on'); toastUntil = elapsed + s; };
   const say = (text: string, s = 2) => { setTxt(bubble, text); bubbleUntil = elapsed + s; };
   const setBadge = (id: DormActivity, n: number) => { const b = taskBtn(id); const v = n > 0 ? String(n) : ''; if (b.dataset.badge !== v) b.dataset.badge = v; };
@@ -134,7 +141,10 @@ export const createComputerView: CreateView = (sim, audio) => {
   };
 
   /* ---------- 메신저 ---------- */
-  const C = { room: 0, typing: -1 };
+  const C = { room: 0 };
+  const typing = rooms.map(() => 0);
+  const pendingReplies = rooms.map(() => 0);
+  const MAX_PENDING_REPLIES = 4;
   const chatHtml = () => `<div class="sc-chat"><div class="sc-rooms">${rooms.map((r, i) => `<button type="button" data-room="${i}"><strong>${r.name}</strong><small data-last>${r.msgs[r.msgs.length - 1].t}</small><i data-unread></i></button>`).join('')}</div><div class="sc-chat-pane"><div class="sc-chat-head"><span data-chat-name></span> <small data-chat-sub></small></div><div class="sc-messages" data-messages></div><div class="sc-typing" data-typing>입력 중<span>...</span></div><div class="sc-chips">${chips.map(c => `<button type="button" data-chip="${c}">${c}</button>`).join('')}</div></div></div>`;
   const chatRow = (m: { m: boolean; who: string; t: string }) => {
     const p = document.createElement('p'); if (m.m) p.className = 'mine'; else { const b = document.createElement('b'); b.textContent = m.who; p.append(b); }
@@ -146,7 +156,7 @@ export const createComputerView: CreateView = (sim, audio) => {
     const w = built.chat;
     if (w) w.querySelectorAll<HTMLElement>('[data-room]').forEach((b, i) => {
       b.classList.toggle('cur', i === C.room); const r = rooms[i];
-      setTxt($('[data-last]', b), C.typing === i ? '입력 중...' : r.msgs[r.msgs.length - 1].t); setTxt($('[data-unread]', b), r.unread ? String(r.unread) : '');
+      setTxt($('[data-last]', b), typing[i]! > 0 ? '입력 중...' : r.msgs[r.msgs.length - 1].t); setTxt($('[data-unread]', b), r.unread ? String(r.unread) : '');
     });
     setBadge('chat', chatBadgeTotal());
   };
@@ -154,7 +164,7 @@ export const createComputerView: CreateView = (sim, audio) => {
     C.room = i; rooms[i].unread = 0; const w = wins.chat; const r = rooms[i];
     setTxt($('[data-chat-name]', w), r.name); setTxt($('[data-chat-sub]', w), r.sub);
     $('[data-messages]', w).replaceChildren(...r.msgs.slice(-30).map(chatRow)); const m = $('[data-messages]', w); m.scrollTop = m.scrollHeight;
-    $('[data-typing]', w).classList.toggle('on', C.typing === i); chatRefresh();
+    $('[data-typing]', w).classList.toggle('on', typing[i]! > 0); chatRefresh();
   };
   const chatPush = (i: number, msg: { m: boolean; who: string; t: string }) => {
     const r = rooms[i]; r.msgs.push(msg);
@@ -172,8 +182,20 @@ export const createComputerView: CreateView = (sim, audio) => {
     chatRefresh();
   };
   const chatIncoming = (i: number, text: string, delay: number) => {
-    later(delay, () => { C.typing = i; if (C.room === i && built.chat) $('[data-typing]', built.chat).classList.add('on'); chatRefresh(); });
-    later(delay + 1.3, () => { C.typing = -1; if (built.chat) $('[data-typing]', built.chat).classList.remove('on'); chatPush(i, { m: false, who: i === 0 ? pick(['지후', '서연', '태오']) : rooms[i].name.replace('룸메 ', ''), t: text }); });
+    // Don't let repeated quick-reply taps schedule hundreds of overlapping bots.
+    if (pendingReplies[i]! >= MAX_PENDING_REPLIES) return;
+    pendingReplies[i]!++;
+    later(delay, () => {
+      typing[i]!++;
+      if (C.room === i && built.chat) $('[data-typing]', built.chat).classList.add('on');
+      chatRefresh();
+    });
+    later(delay + 1.3, () => {
+      pendingReplies[i] = Math.max(0, pendingReplies[i]! - 1);
+      typing[i] = Math.max(0, typing[i]! - 1);
+      if (C.room === i && built.chat) $('[data-typing]', built.chat).classList.toggle('on', typing[i]! > 0);
+      chatPush(i, { m: false, who: i === 0 ? pick(['지후', '서연', '태오']) : rooms[i].name.replace('룸메 ', ''), t: text });
+    });
   };
   let nextIncoming = 8;
 
@@ -368,7 +390,7 @@ export const createComputerView: CreateView = (sim, audio) => {
     if (tickAcc < 0.1) return;
     const step = tickAcc; tickAcc = 0;
     vidTick(step); musicTick(step); shopTick(step);
-    if (queue.length) for (let i = queue.length - 1; i >= 0; i--) if (queue[i].at <= elapsed) { const { fn } = queue[i]; queue.splice(i, 1); fn(); }
+    while (queue.length && queue[0]!.at <= elapsed) queue.shift()!.fn();
     if (elapsed > nextIncoming && state.phase === 'play') {
       nextIncoming = elapsed + 9 + Math.random() * 7; const r = Math.random() < 0.6 ? 0 : Math.random() < 0.6 ? 1 : 2; chatIncoming(r, pick(rooms[r].pool), 0);
     }

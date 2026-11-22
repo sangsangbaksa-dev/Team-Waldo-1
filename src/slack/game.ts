@@ -8,7 +8,7 @@ import { readSlackRecord, recordSlackRun } from './records';
 import type { ActivityId, Level, Sim, SlackState, StageId, StageView } from './types';
 
 const stageInfo: Record<StageId, { name: string; blurb: string }> = {
-  class: { name: '교실 저녁 자습', blurb: '선생님 몰래 폰·만화·쪽지. 졸음도 조심!' },
+  class: { name: '교실 저녁 자습', blurb: '학교 노트북으로 몰래 게임 영상·게임. 수업 자료 창으로 얼른 전환!' },
   dorm: { name: '기숙사 컴퓨터실', blurb: '사감 몰래 게임·영상·웹툰. 배터리는 없어요.' },
 };
 const levelInfo: Record<Level, string> = {
@@ -17,17 +17,16 @@ const levelInfo: Record<Level, string> = {
   3: '재미 목표 90 · 순찰이 잦고 빨라요. 방심은 금물.',
 };
 const activityName: Record<ActivityId, string> = {
-  phone: '몰래 폰', manga: '만화책', doodle: '낙서', snack: '과자', sleep: '잠자기', note: '쪽지', music: '음악',
-  game: '게임', video: '영상', chat: '메신저', webtoon: '웹툰', shop: '쇼핑',
+  game: '게임', video: '영상', chat: '메신저', webtoon: '웹툰', shop: '쇼핑', music: '음악',
 };
 const tutorialKey = 'waldo.slack.tutorial.v1';
 const tutorialSeen = (): boolean => { try { return localStorage.getItem(tutorialKey) === '1'; } catch { return false; } };
 const markTutorialSeen = (): void => { try { localStorage.setItem(tutorialKey, '1'); } catch { /* 저장소를 못 써도 게임은 계속 */ } };
 /** 첫 판 안내: 각 단계는 done 이 참이 되면 다음으로. 마지막 단계는 몇 초 뒤 자동 종료. */
-const tutorialSteps: { text: string; done: (s: SlackState, t: number) => boolean }[] = [
-  { text: '먼저 딴짓을 골라 보세요. 숫자 키 또는 화면의 활동 버튼을 누르면 돼요.', done: s => s.activity !== null },
-  { text: '딴짓하는 동안 재미 게이지가 차올라요. 발소리와 문 소리에 귀를 기울이세요.', done: (s, t) => s.watcher.mode !== 'away' || t > 25 },
-  { text: '감독이 다가와요! 스페이스바를 꾹 누르거나(모바일은 공부하는 척 버튼) 공부하는 척하세요.', done: (s, t) => (s.cover && s.watcher.mode !== 'away') || s.watcher.mode === 'leave' || t > 20 },
+const tutorialSteps: { text: string; classText?: string; done: (s: SlackState, t: number) => boolean }[] = [
+  { text: '먼저 딴짓을 골라 보세요. 숫자 키 또는 화면의 활동 버튼을 누르면 돼요.', classText: '먼저 딴짓을 골라 보세요. 1 게임 영상 시청 · 2 게임 플레이 (키 또는 노트북 화면의 버튼).', done: s => s.activity !== null },
+  { text: '딴짓하는 동안 재미 게이지가 차올라요. 발소리와 문 소리에 귀를 기울이세요.', classText: '재미 게이지가 차올라요. 발소리와 유리창 너머 그림자를 살피세요. 게임은 재미가 크지만 소리가 커서 더 위험해요.', done: (s, t) => s.watcher.mode !== 'away' || t > 25 },
+  { text: '감독이 다가와요! 스페이스바를 꾹 누르거나(모바일은 공부하는 척 버튼) 공부하는 척하세요.', classText: '감독이 다가와요! 스페이스바를 꾹 눌러(모바일은 버튼) 수업 자료 창으로 전환하세요.', done: (s, t) => (s.cover && s.watcher.mode !== 'away') || s.watcher.mode === 'leave' || t > 20 },
   { text: '좋아요! 감독이 떠나면 다시 딴짓하세요. 재미가 목표선(흰 막대)에 닿으면 클리어예요.', done: (_s, t) => t > 7 },
 ];
 
@@ -36,7 +35,7 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
   root.innerHTML = `<div class="sl-view"></div><div class="sl-vignette"></div>
   <div class="sl-hud" hidden><div class="sl-hudclock"><span>남은 시간</span><b data-time>02:30</b></div><div class="sl-fun"><div><b>재미</b><span data-fun></span></div><div class="sl-track"><i data-fun-bar></i><em data-goal></em></div></div><div class="sl-numbers"><span class="sl-chip">들킴 <span class="sl-pips" data-pips><i></i><i></i><i></i></span><b hidden data-strikes>0</b></span><span class="sl-chip" data-battery-chip>배터리 <b data-battery>100</b>%</span><span class="sl-chip">연속 <b data-combo>1</b>배</span><span class="sl-chip" data-risk-chip>긴장 <span class="sl-risk"><i><em data-risk></em></i></span></span></div><div class="sl-tools"><button data-sound>소리 켜짐</button><button data-pause>일시정지</button></div></div>
   <div class="sl-tip" data-tip hidden role="note"><b data-tip-step>안내</b><span data-tip-text></span><button type="button" data-tip-skip>건너뛰기</button></div><div class="sl-toast" role="status"></div>
-  <div class="sl-modal wd-screen" data-title><div class="sl-card sl-titlecard wd-panel"><div class="sl-kicker">오늘도 무사히</div><h1>SLACK OFF <small>딴짓</small></h1><p class="sl-lead">조용한 밤, 눈치를 살피며 나만의 시간을 즐겨 보세요. 재미 게이지를 목표까지 채우되 세 번 들키면 끝!</p><div class="sl-field"><b>장소</b><div class="sl-stages" data-stages><button type="button" class="sl-stage" data-stage="class"><span class="sl-art class"><i class="a1"></i><i class="a2"></i><i class="a3"></i></span><b>${stageInfo.class.name}</b><small>${stageInfo.class.blurb}</small><em data-rec="class"></em></button><button type="button" class="sl-stage" data-stage="dorm"><span class="sl-art dorm"><i class="a1"></i><i class="a2"></i><i class="a3"></i></span><b>${stageInfo.dorm.name}</b><small>${stageInfo.dorm.blurb}</small><em data-rec="dorm"></em></button></div></div><div class="sl-field"><b>난이도</b><div class="sl-options" data-levels><button type="button" data-level="1">느긋하게<small>목표 60</small></button><button type="button" data-level="2">보통<small>목표 75</small></button><button type="button" data-level="3">아슬아슬<small>목표 90</small></button></div><p class="sl-leveldesc" data-leveldesc></p></div><div class="sl-keys"><span><kbd>Space</kbd> 누르는 동안 공부하는 척</span><span><kbd>1</kbd>~<kbd>7</kbd> 딴짓 고르기</span><span><kbd>P</kbd> 일시정지</span></div><p class="sl-help">발소리와 문 소리가 가까워지면 얼른 공부하는 척! 터치는 화면의 버튼으로 같은 조작을 할 수 있어요.</p><div class="sl-actions"><button class="wd-btn primary" data-start>시작하기</button><button class="wd-btn ghost" data-exit>게임 목록으로</button><button type="button" class="sl-soundbtn" data-sound>소리 켜짐</button></div></div></div>
+  <div class="sl-modal wd-screen" data-title><div class="sl-card sl-titlecard wd-panel"><div class="sl-kicker">오늘도 무사히</div><h1>SLACK OFF <small>딴짓</small></h1><p class="sl-lead">조용한 밤, 눈치를 살피며 나만의 시간을 즐겨 보세요. 재미 게이지를 목표까지 채우되 세 번 들키면 끝!</p><div class="sl-field"><b>장소</b><div class="sl-stages" data-stages><button type="button" class="sl-stage" data-stage="class"><span class="sl-art class"><i class="a1"></i><i class="a2"></i><i class="a3"></i></span><b>${stageInfo.class.name}</b><small>${stageInfo.class.blurb}</small><em data-rec="class"></em></button><button type="button" class="sl-stage" data-stage="dorm"><span class="sl-art dorm"><i class="a1"></i><i class="a2"></i><i class="a3"></i></span><b>${stageInfo.dorm.name}</b><small>${stageInfo.dorm.blurb}</small><em data-rec="dorm"></em></button></div></div><div class="sl-field"><b>난이도</b><div class="sl-options" data-levels><button type="button" data-level="1">느긋하게<small>목표 60</small></button><button type="button" data-level="2">보통<small>목표 75</small></button><button type="button" data-level="3">아슬아슬<small>목표 90</small></button></div><p class="sl-leveldesc" data-leveldesc></p></div><div class="sl-keys"><span data-key-cover><kbd>Space</kbd> 누르는 동안 공부하는 척</span><span data-key-pick><kbd>1</kbd>~<kbd>7</kbd> 딴짓 고르기</span><span><kbd>P</kbd> 일시정지</span></div><p class="sl-help">발소리와 문 소리가 가까워지면 얼른 공부하는 척! 터치는 화면의 버튼으로 같은 조작을 할 수 있어요.</p><div class="sl-actions"><button class="wd-btn primary" data-start>시작하기</button><button class="wd-btn ghost" data-exit>게임 목록으로</button><button type="button" class="sl-soundbtn" data-sound>소리 켜짐</button></div></div></div>
   <div class="sl-modal wd-screen" data-paused hidden><div class="sl-card narrow wd-panel"><div class="sl-kicker">잠깐 쉬어 가요</div><h2>일시정지</h2><ul class="sl-hl sl-pause-stats" data-pause-stats></ul><div class="sl-keys"><span><kbd>Space</kbd> 공부하는 척</span><span><kbd>P</kbd> / <kbd>Esc</kbd> 계속하기</span></div><div class="sl-actions"><button class="wd-btn primary" data-resume>계속하기</button><button class="wd-btn" data-restart>처음부터</button><button class="wd-btn ghost" data-exit>게임 목록으로</button><button type="button" class="sl-soundbtn" data-sound>소리 켜짐</button></div></div></div>
   <div class="sl-modal wd-screen" data-result hidden><div class="sl-card wd-panel"><div class="sl-kicker" data-result-kicker>오늘의 기록</div><div class="sl-result-head"><div class="sl-grade" data-grade></div><div><h2 data-result-title></h2><p class="sl-reason" data-reason></p></div></div><div class="sl-result-stats" data-stats></div><ul class="sl-hl" data-highlights></ul><div class="sl-record" data-record></div><div class="sl-actions"><button class="wd-btn primary" data-retry>다시 도전</button><button class="wd-btn" data-next>다음 장소</button><button class="wd-btn ghost" data-exit>게임 목록으로</button></div></div></div>`;
   document.body.append(root); const $ = <T extends HTMLElement>(selector: string): T => root.querySelector<T>(selector)!;
@@ -48,7 +47,7 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
   const toast = (message: string, duration = 3): void => { $('[role="status"]').textContent = message; toastTime = duration; };
   const endTutorial = (): void => { tutorial = false; markTutorialSeen(); $('[data-tip]').hidden = true; root.classList.remove('tipping'); };
   const showTutorialStep = (): void => {
-    const tip = $('[data-tip]'); tip.hidden = false; root.classList.add('tipping'); $('[data-tip-step]').textContent = `안내 ${tutStep + 1}/${tutorialSteps.length}`; $('[data-tip-text]').textContent = tutorialSteps[tutStep].text; tutTime = 0;
+    const tip = $('[data-tip]'); tip.hidden = false; root.classList.add('tipping'); $('[data-tip-step]').textContent = `안내 ${tutStep + 1}/${tutorialSteps.length}`; const step = tutorialSteps[tutStep]; $('[data-tip-text]').textContent = stage === 'class' ? step.classText ?? step.text : step.text; tutTime = 0;
   };
   const refreshTitle = (): void => {
     root.querySelectorAll<HTMLButtonElement>('[data-stage]').forEach(b => { const on = b.dataset.stage === stage; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
@@ -56,6 +55,8 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
     const best = readSlackRecord().best;
     root.querySelectorAll<HTMLElement>('[data-rec]').forEach(e => { const r = best[e.dataset.rec as StageId]; e.textContent = r ? `최고 ${r.grade}등급 · ${r.score}점` : '아직 기록 없음'; });
     $('[data-leveldesc]').textContent = levelInfo[level];
+    $('[data-key-cover]').innerHTML = stage === 'class' ? '<kbd>Space</kbd> 누르는 동안 수업 자료 창으로 전환' : '<kbd>Space</kbd> 누르는 동안 공부하는 척';
+    $('[data-key-pick]').innerHTML = stage === 'class' ? '<kbd>1</kbd> 영상 · <kbd>2</kbd> 게임' : '<kbd>1</kbd>~<kbd>7</kbd> 딴짓 고르기';
     root.querySelectorAll<HTMLElement>('[data-sound]').forEach(b => { b.textContent = muted ? '소리 꺼짐' : '소리 켜짐'; b.setAttribute('aria-pressed', String(!muted)); });
   };
   const exit = (): void => { if (closed) return; closed = true; cancelAnimationFrame(raf); window.removeEventListener('keydown', keydown); document.removeEventListener('visibilitychange', visibility); view?.dispose(); audio.dispose(); root.remove(); onExit(); };
@@ -70,7 +71,7 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
     $('[data-title]').hidden = true; $('[data-result]').hidden = true; $('[data-paused]').hidden = true; $('[data-tip]').hidden = true; root.classList.remove('tipping');
     try {
       const createView = stage === 'class' ? (await import('./classroom')).createClassroomView : (await import('./computer')).createComputerView;
-      if (closed) return; sim = createSim(stage, Math.floor(Math.random() * 2147483647), level); view = createView(sim, audio); $('.sl-view').append(view.el); sim.start(); view.frame(0); state = 'play'; last = performance.now(); beat = 0; $('.sl-hud').hidden = false; audio.ambience(stage);
+      if (closed) return; sim = createSim(stage, Math.floor(Math.random() * 2147483647), level); view = createView(sim, audio); $('.sl-view').append(view.el); sim.start(); view.frame(0); state = 'play'; last = performance.now(); beat = 0; $('.sl-hud').hidden = false; $('[data-battery-chip]').style.display = stage === 'class' ? 'none' : ''; audio.ambience(stage);
       audio.muffle(false); tally = { act: {}, maxCombo: 1, maxSus: 0, warns: 0, reasons: [] }; beat = 0;
       if (tutorial) { tutStep = 0; showTutorialStep(); } else { $('[data-tip]').hidden = true; root.classList.remove('tipping'); }
     } catch (err) { console.error(err); state = 'title'; $('[data-title]').hidden = false; toast('화면을 불러오지 못했어요. 다시 시도해 주세요.'); }

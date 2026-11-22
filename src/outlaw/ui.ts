@@ -2,6 +2,7 @@
 import type { Sim } from './sim';
 import { OUTFITS, ACHIEVEMENTS, CAR_SHOP, HEROES, PROPERTIES, heroById } from './life';
 import { VEHICLES } from './types';
+import { phoneIcon } from './icons';
 import { JOB_LIST, cancelJob, jobBlock, startJob } from './jobs';
 import { bribe, setOutfit, buyCar, buyProperty, callCar, collectProperties, vehicleName } from './services';
 import { Blackjack, HILO_STEP, SLOT_SYMBOLS, cardLabel, coinFlip, handValue, hiloDeal, hiloGuess, hiloValue, rouletteColor, rouletteSpin, slotSpin, type HiLo, type RouletteBet } from './casino';
@@ -51,7 +52,7 @@ export class OutlawUi {
   // ---------- 휴대폰 ----------
   private phone(): string {
     const s = this.sim, tabs = TABS.map(([id, name]) => `<button class="tab${id === this.tab ? ' on' : ''}" data-ui="tab" data-id="${id}" type="button">${name}</button>`).join('');
-    return `<div class="phone-head"><h2>📱 휴대폰</h2><b class="cash">${money(s.cash)}</b></div><div class="tabs">${tabs}</div><div class="phone-body">${this[this.tab](s)}</div>
+    return `<div class="phone-head"><h2>${phoneIcon()} 휴대폰</h2><b class="cash">${money(s.cash)}</b></div><div class="tabs">${tabs}</div><div class="phone-body">${this[this.tab](s)}</div>
       <div class="ol-btns"><button data-k="resume" type="button">닫기 (P)</button></div>`;
   }
   private jobs(s: Sim): string {

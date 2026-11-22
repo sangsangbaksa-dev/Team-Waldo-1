@@ -54,7 +54,35 @@ export function buildJet(kind: Kind, team: 'player' | 'enemy'): THREE.Group {
   return g;
 }
 
-interface Particle { s: THREE.Sprite; v: THREE.Vector3; life: number; max: number; grow: number; alive: boolean; }
+interface Particle { p: THREE.Vector3; v: THREE.Vector3; life: number; max: number; grow: number; size: number; r: number; g: number; b: number; alive: boolean; }
+
+/** 파티클 한 종류를 InstancedBufferGeometry 한 장(드로우콜 1)으로 그리는 빌보드 풀. 예전엔 입자마다 Sprite(드로우콜 최대 260)였습니다. */
+class BillboardPool {
+  readonly mesh: THREE.Mesh; readonly parts: Particle[] = []; private idx = 0;
+  private readonly off: THREE.InstancedBufferAttribute; private readonly sz: THREE.InstancedBufferAttribute; private readonly col: THREE.InstancedBufferAttribute;
+  constructor(tex: THREE.Texture, additive: boolean, readonly n: number) {
+    const q = new THREE.PlaneGeometry(1, 1), g = new THREE.InstancedBufferGeometry(); g.index = q.index; g.setAttribute('position', q.attributes.position!); g.setAttribute('uv', q.attributes.uv!); g.instanceCount = n;
+    this.off = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3).setUsage(THREE.DynamicDrawUsage); this.sz = new THREE.InstancedBufferAttribute(new Float32Array(n), 1).setUsage(THREE.DynamicDrawUsage); this.col = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4).setUsage(THREE.DynamicDrawUsage);
+    g.setAttribute('aOff', this.off); g.setAttribute('aSize', this.sz); g.setAttribute('aCol', this.col);
+    const m = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending, fog: false, uniforms: { map: { value: tex } },
+      vertexShader: 'attribute vec3 aOff;attribute float aSize;attribute vec4 aCol;varying vec2 vUv;varying vec4 vC;void main(){vUv=uv;vC=aCol;vec4 mv=modelViewMatrix*vec4(aOff,1.);mv.xy+=position.xy*aSize;gl_Position=projectionMatrix*mv;}',
+      fragmentShader: 'uniform sampler2D map;varying vec2 vUv;varying vec4 vC;void main(){vec4 t=texture2D(map,vUv);gl_FragColor=vec4(t.rgb*vC.rgb,t.a*vC.a);\n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}' });
+    this.mesh = new THREE.Mesh(g, m); this.mesh.frustumCulled = false; this.mesh.renderOrder = 2;
+    for (let i = 0; i < n; i++) this.parts.push({ p: new THREE.Vector3(), v: new THREE.Vector3(), life: 0, max: 1, grow: 1, size: 0, r: 1, g: 1, b: 1, alive: false });
+  }
+  emit(pos: THREE.Vector3, vel: THREE.Vector3, life: number, size: number, grow: number, color: number, tmp: THREE.Color): void {
+    const q = this.parts[this.idx++ % this.n]!; tmp.setHex(color); q.r = tmp.r; q.g = tmp.g; q.b = tmp.b; q.p.copy(pos); q.v.copy(vel); q.life = q.max = life; q.size = size; q.grow = grow; q.alive = true;
+  }
+  update(dt: number): void {
+    const o = this.off.array as Float32Array, s = this.sz.array as Float32Array, c = this.col.array as Float32Array;
+    for (let i = 0; i < this.n; i++) {
+      const q = this.parts[i]!;
+      if (q.alive) { q.life -= dt; if (q.life <= 0) q.alive = false; else { q.p.addScaledVector(q.v, dt); q.size *= 1 + q.grow * dt * 0.8; } }
+      if (q.alive) { o[i * 3] = q.p.x; o[i * 3 + 1] = q.p.y; o[i * 3 + 2] = q.p.z; s[i] = q.size; c[i * 4] = q.r; c[i * 4 + 1] = q.g; c[i * 4 + 2] = q.b; c[i * 4 + 3] = q.life / q.max; } else s[i] = 0;
+    }
+    this.off.needsUpdate = this.sz.needsUpdate = this.col.needsUpdate = true;
+  }
+}
 
 export class SkyView {
   scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(65, 1, 1, 9000);
@@ -64,7 +92,7 @@ export class SkyView {
     for (const mesh of this.meshes.values()) if (mesh.userData.team === 'player') mesh.visible = !on;
   }
   private pickMeshes = new Map<number, THREE.Mesh>(); private meshes = new Map<number, THREE.Group>(); private missileMeshes = new Map<number, THREE.Mesh>();
-  private particles: Particle[] = []; private pIdx = 0;
+  private firePool!: BillboardPool; private smokePool!: BillboardPool; private level = 0; private readonly tmpColor = new THREE.Color();
   private tracers: THREE.LineSegments; private tracerPos = new Float32Array(400 * 6);
   private fire = fireSprite(); private smoke = smokeSprite();
   private tracerHeads: THREE.Points; private tracerHeadPos = new Float32Array(400 * 3); private shadowSun = new THREE.Vector3(2000, 3000, 1200).normalize(); private seaNormalMap = seaNormal();
@@ -132,7 +160,7 @@ export class SkyView {
     const ct = this.cloudTex = cloudSprite();
     for (let i = 0; i < (this.quality === 'high' ? 60 : this.quality === 'standard' ? 40 : 24); i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: ct, transparent: true, opacity: 0.55 + Math.random() * 0.35, depthWrite: false, fog: false })); const k = 260 + Math.random() * 520; s.scale.set(k * 1.8, k * 0.8, 1); s.position.set((Math.random() - 0.5) * 7000, 500 + Math.random() * 1100, (Math.random() - 0.5) * 7000); sc.add(s); this.clouds.push(s); }
     // 파티클 풀
-    for (let i = 0; i < 260; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.fire, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); s.visible = false; sc.add(s); this.particles.push({ s, v: new THREE.Vector3(), life: 0, max: 1, grow: 1, alive: false }); }
+    this.firePool = new BillboardPool(this.fire, true, 160); this.smokePool = new BillboardPool(this.smoke, false, 120); sc.add(this.firePool.mesh, this.smokePool.mesh);
     // 예광탄
     const tg = new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.BufferAttribute(this.tracerPos, 3)); tg.setDrawRange(0, 0);
     this.tracers = new THREE.LineSegments(tg, new THREE.LineBasicMaterial({ color: 0xffe27a, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false })); this.tracers.frustumCulled = false; sc.add(this.tracers);
@@ -141,12 +169,17 @@ export class SkyView {
   }
   private dome: THREE.Mesh; private sea: THREE.Mesh;
 
+  /** 적응형 화질: 1 그림자 끔 · 2 구름 절반 · 3 구름 전부 숨김 + 파티클 절반 */
+  setLevel(l: number): void {
+    this.level = l;
+    if (l >= 1) this.sun.castShadow = false;
+    this.clouds.forEach((c, i) => { c.visible = l < 3 && (l < 2 || i % 2 === 0); });
+  }
   resize(w: number, h: number): void { this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); }
 
   private emit(pos: THREE.Vector3, vel: THREE.Vector3, life: number, size: number, grow: number, kind: 'fire' | 'smoke', color = 0xffffff): void {
-    const p = this.particles[this.pIdx++ % this.particles.length]; const m = p.s.material as THREE.SpriteMaterial;
-    m.map = kind === 'fire' ? this.fire : this.smoke; m.blending = kind === 'fire' ? THREE.AdditiveBlending : THREE.NormalBlending; m.color.setHex(color); m.opacity = 1;
-    p.s.position.copy(pos); p.s.scale.setScalar(size); p.v.copy(vel); p.life = p.max = life; p.grow = grow; p.alive = true; p.s.visible = true;
+    if (this.level >= 3 && Math.random() < 0.5) return; // 최저 단계: 파티클 절반만
+    (kind === 'fire' ? this.firePool : this.smokePool).emit(pos, vel, life, size, grow, color, this.tmpColor);
   }
   boom(pos: THREE.Vector3, big: boolean): void {
     if (this.rings.length >= 32) { const old = this.rings.shift()!; this.scene.remove(old.mesh); this.disposeObject(old.mesh); }
@@ -223,10 +256,7 @@ export class SkyView {
     for (const b of sim.bullets) { if (n >= 400) break; hp[n * 3] = b.pos.x; hp[n * 3 + 1] = b.pos.y; hp[n * 3 + 2] = b.pos.z; const o = n * 6; tp[o] = b.pos.x; tp[o + 1] = b.pos.y; tp[o + 2] = b.pos.z; tp[o + 3] = b.pos.x - b.vel.x * 0.035; tp[o + 4] = b.pos.y - b.vel.y * 0.035; tp[o + 5] = b.pos.z - b.vel.z * 0.035; n++; }
     (this.tracers.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true; this.tracers.geometry.setDrawRange(0, n * 2); (this.tracerHeads.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true; this.tracerHeads.geometry.setDrawRange(0, n);
     // 파티클
-    for (const p of this.particles) {
-      if (!p.alive) continue; p.life -= dt; if (p.life <= 0) { p.alive = false; p.s.visible = false; continue; }
-      p.s.position.addScaledVector(p.v, dt); const k = p.life / p.max; (p.s.material as THREE.SpriteMaterial).opacity = k; p.s.scale.multiplyScalar(1 + p.grow * dt * 0.8);
-    }
+    this.firePool.update(dt); this.smokePool.update(dt);
     // 하늘·바다가 카메라를 따라감(무한한 느낌)
     for (let i = this.rings.length - 1; i >= 0; i--) { const r = this.rings[i]; r.life -= dt; const k = Math.max(0, r.life / 0.45); r.mesh.scale.setScalar(r.max * (1 - k) + 1); (r.mesh.material as THREE.MeshBasicMaterial).opacity = k * 0.7; if (r.life <= 0) { this.scene.remove(r.mesh); this.disposeObject(r.mesh); this.rings.splice(i, 1); } }
     this.seaTime.value = this.reducedMotion ? 0 : time;

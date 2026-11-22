@@ -143,7 +143,7 @@ export function makeSkyDome(): { mesh: THREE.Mesh; update: (colors: ReturnType<t
         float n=mix(mix(hash(vec3(id,0.0)),hash(vec3(id+vec2(1,0),0.0)),f.x),mix(hash(vec3(id+vec2(0,1),0.0)),hash(vec3(id+vec2(1,1),0.0)),f.x),f.y);
         c=mix(c,mix(vec3(.22,.25,.30),vec3(.87,.87,.85),1.0-night),smoothstep(.58,.78,n)*.25*smoothstep(.03,.22,h));
         gl_FragColor=vec4(c,1.0); #include <tonemapping_fragment> #include <colorspace_fragment> }`.replace(/ #include/g, '\n#include').replace(/ }$/, '\n}') });
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(900, 32, 16), material); mesh.renderOrder = -10; mesh.frustumCulled = false;
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(900, 32, 16), material); mesh.renderOrder = 100; mesh.frustumCulled = false; // 불투명 물체 뒤에 그려 가려진 픽셀의 하늘 셰이더 비용을 건너뜁니다(깊이 1.0)
   const start = typeof performance !== 'undefined' ? performance.now() : 0;
   return { mesh, update: (c) => { uniforms.top.value.copy(c.top); uniforms.horizon.value.copy(c.horizon); uniforms.sunColor.value.copy(c.sun); uniforms.sunDir.value.copy(c.sunDir); uniforms.moonDir.value.copy(c.moonDir); uniforms.night.value = c.night; uniforms.stars.value = c.stars; uniforms.time.value = typeof performance !== 'undefined' ? (performance.now() - start) / 1000 : 0; } };
 }

@@ -5,6 +5,36 @@ import { BUILDINGS, TEAM_COLORS, type BuildKind, type UnitKind } from './config'
 
 const std = (color: number, o: Partial<THREE.MeshStandardMaterialParameters> = {}): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial({ color, roughness: 0.62, metalness: 0.25, flatShading: true, ...o });
 
+/** 손으로 그린 듯한 금속판·콘크리트 질감(흰색 계열 — 재질 색과 곱해집니다). 한 번만 만들어 모든 팀이 공유합니다. */
+const paintCache = new Map<string, THREE.CanvasTexture>();
+function painted(kind: 'plate' | 'concrete'): THREE.CanvasTexture | undefined {
+  if (typeof document === 'undefined') return undefined;
+  const hit = paintCache.get(kind); if (hit) return hit;
+  const S = 256, cv = document.createElement('canvas'); cv.width = cv.height = S; const g = cv.getContext('2d'); if (!g) return undefined;
+  let seed = kind === 'plate' ? 4242 : 9191; const rnd = (): number => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+  const base = g.createLinearGradient(0, 0, 0, S); base.addColorStop(0, kind === 'plate' ? '#f6f6f4' : '#efede8'); base.addColorStop(1, kind === 'plate' ? '#c9c9c6' : '#cfcbc2');
+  g.fillStyle = base; g.fillRect(0, 0, S, S);
+  if (kind === 'plate') {
+    for (const [x, y, w, h] of [[0, 0, 128, 128], [128, 0, 128, 128], [0, 128, 128, 128], [128, 128, 128, 128]] as const) { // 4장의 패널: 모서리가 밝고 안쪽이 살짝 어두움
+      const pg = g.createRadialGradient(x + w / 2, y + h / 2, 8, x + w / 2, y + h / 2, w * 0.78); pg.addColorStop(0, 'rgba(255,255,255,.22)'); pg.addColorStop(1, 'rgba(60,60,64,.22)');
+      g.fillStyle = pg; g.fillRect(x, y, w, h);
+    }
+    g.lineWidth = 3; g.strokeStyle = 'rgba(25,26,30,.55)'; g.beginPath(); g.moveTo(128, 0); g.lineTo(128, S); g.moveTo(0, 128); g.lineTo(S, 128); g.stroke();
+    g.lineWidth = 1.2; g.strokeStyle = 'rgba(255,255,255,.6)'; g.beginPath(); g.moveTo(131, 0); g.lineTo(131, S); g.moveTo(0, 131); g.lineTo(S, 131); g.stroke();
+    for (const px of [10, 118, 138, 246]) for (const py of [10, 118, 138, 246]) { // 리벳
+      g.fillStyle = 'rgba(30,30,34,.55)'; g.beginPath(); g.arc(px + 1, py + 1.5, 3.2, 0, 6.3); g.fill(); g.fillStyle = 'rgba(255,255,255,.85)'; g.beginPath(); g.arc(px, py, 2.6, 0, 6.3); g.fill();
+    }
+    g.lineWidth = 0.8; for (let i = 0; i < 46; i++) { const x = rnd() * S, y = rnd() * S, l = 6 + rnd() * 22; g.strokeStyle = i % 2 ? 'rgba(20,20,24,.28)' : 'rgba(255,255,255,.4)'; g.beginPath(); g.moveTo(x, y); g.lineTo(x + l, y + (rnd() - 0.5) * 5); g.stroke(); }
+    for (let i = 0; i < 7; i++) { const x = rnd() * S, y = 150 + rnd() * 106, r = 14 + rnd() * 26, sg = g.createRadialGradient(x, y, 0, x, y, r); sg.addColorStop(0, 'rgba(70,52,34,.3)'); sg.addColorStop(1, 'rgba(70,52,34,0)'); g.fillStyle = sg; g.fillRect(x - r, y - r, r * 2, r * 2); } // 그을음·녹물
+  } else {
+    for (let i = 0; i < 1400; i++) { g.fillStyle = i % 2 ? 'rgba(40,36,30,.16)' : 'rgba(255,255,255,.3)'; g.fillRect(rnd() * S, rnd() * S, 1 + rnd() * 2, 1 + rnd() * 2); }
+    g.lineWidth = 2; g.strokeStyle = 'rgba(30,28,26,.42)'; g.beginPath(); g.moveTo(0, 170); g.lineTo(S, 170); g.moveTo(128, 0); g.lineTo(128, 170); g.stroke(); // 줄눈
+    g.lineWidth = 1; g.strokeStyle = 'rgba(30,28,26,.35)'; g.beginPath(); let cx = 40 + rnd() * 60, cy = 8; g.moveTo(cx, cy); while (cy < 150) { cx += (rnd() - 0.5) * 16; cy += 10 + rnd() * 14; g.lineTo(cx, cy); } g.stroke(); // 갈라진 금
+    const sg = g.createLinearGradient(0, S * 0.7, 0, S); sg.addColorStop(0, 'rgba(60,48,34,0)'); sg.addColorStop(1, 'rgba(60,48,34,.38)'); g.fillStyle = sg; g.fillRect(0, S * 0.7, S, S * 0.3); // 아래쪽 흙먼지
+  }
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; t.wrapS = t.wrapT = THREE.RepeatWrapping; paintCache.set(kind, t); return t;
+}
+
 export interface Mats {
   team: THREE.MeshStandardMaterial; teamDark: THREE.MeshStandardMaterial; glow: THREE.MeshStandardMaterial;
   armor: THREE.MeshStandardMaterial; steel: THREE.MeshStandardMaterial; dark: THREE.MeshStandardMaterial; skin: THREE.MeshStandardMaterial; hull: THREE.MeshStandardMaterial; concrete: THREE.MeshStandardMaterial;
@@ -12,12 +42,12 @@ export interface Mats {
 const cache = new Map<number, Mats>();
 export function matsFor(owner: number): Mats {
   let m = cache.get(owner); if (m) return m;
-  const c = TEAM_COLORS[owner] ?? 0xcccccc, tc = new THREE.Color(c);
+  const c = TEAM_COLORS[owner] ?? 0xcccccc, tc = new THREE.Color(c), plate = painted('plate') ?? null, conc = painted('concrete') ?? null;
   m = {
-    team: std(c, { roughness: 0.42, metalness: 0.35, emissive: tc, emissiveIntensity: 0.12 }), teamDark: std(tc.clone().multiplyScalar(0.55).getHex()),
+    team: std(c, { roughness: 0.42, metalness: 0.35, emissive: tc, emissiveIntensity: 0.12, map: plate }), teamDark: std(tc.clone().multiplyScalar(0.55).getHex(), { map: plate }),
     glow: new THREE.MeshStandardMaterial({ color: tc.clone().lerp(new THREE.Color(0xffffff), 0.35), emissive: tc, emissiveIntensity: 1.4, roughness: 0.3 }),
-    armor: std(0x5a6068), steel: std(0x9aa2ac, { metalness: 0.55, roughness: 0.4 }), dark: std(0x23272d, { metalness: 0.4 }), skin: std(0xd6b28f, { metalness: 0, roughness: 0.8 }),
-    hull: std(owner === 0 ? 0x6b7787 : 0x7d6c68), concrete: std(owner === 0 ? 0x8a929d : 0x958a86, { metalness: 0.1, roughness: 0.85 }),
+    armor: std(0x5a6068, { map: plate }), steel: std(0x9aa2ac, { metalness: 0.55, roughness: 0.4, map: plate }), dark: std(0x23272d, { metalness: 0.4, map: plate }), skin: std(0xd6b28f, { metalness: 0, roughness: 0.8 }),
+    hull: std(owner === 0 ? 0x6b7787 : 0x7d6c68, { map: plate }), concrete: std(owner === 0 ? 0x8a929d : 0x958a86, { metalness: 0.1, roughness: 0.85, map: conc }),
   };
   cache.set(owner, m); return m;
 }

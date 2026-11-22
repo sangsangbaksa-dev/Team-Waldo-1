@@ -2,6 +2,7 @@
 // 화면과 미니맵에서 읽기만 하는 값이라 시뮬레이션(락스텝)에는 영향을 주지 않습니다.
 import { VISION } from './config';
 import type { RtsSim } from './sim';
+import { G_FOREST, G_HILL, RULES } from './terrain';
 
 export const FOG_HIDDEN = 0, FOG_SEEN = 1, FOG_VISIBLE = 2;
 
@@ -22,9 +23,12 @@ export class Vision {
     if (!force && sim.tick - this.seenTick < VISION_EVERY && sim.tick >= this.seenTick) return false;
     this.seenTick = sim.tick; const n = this.size, st = this.state;
     for (let i = 0; i < st.length; i++) if (st[i] === FOG_VISIBLE) st[i] = FOG_SEEN;
-    const reveal = (cx: number, cy: number, r: number): void => {
+    const ground = sim.map.ground;
+    // 언덕 위에서는 더 멀리 보고, 숲 속 칸은 가까이(forestSight)서만 보입니다. 숲 안에 서 있으면 숲도 그대로 봅니다.
+    const reveal = (cx: number, cy: number, r0: number): void => {
+      const gx = Math.floor(cx), gy = Math.floor(cy), here = gx >= 0 && gy >= 0 && gx < n && gy < n ? ground[gy * n + gx] : 0, r = here === G_HILL ? r0 + RULES.hillVision : r0, fs2 = RULES.forestSight * RULES.forestSight;
       const r2 = r * r, x0 = Math.max(0, Math.floor(cx - r)), x1 = Math.min(n - 1, Math.ceil(cx + r)), y0 = Math.max(0, Math.floor(cy - r)), y1 = Math.min(n - 1, Math.ceil(cy + r));
-      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const dx = x + 0.5 - cx, dy = y + 0.5 - cy; if (dx * dx + dy * dy <= r2) st[y * n + x] = FOG_VISIBLE; }
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const dx = x + 0.5 - cx, dy = y + 0.5 - cy; const d2 = dx * dx + dy * dy; if (d2 <= r2 && (d2 <= fs2 || here === G_FOREST || ground[y * n + x] !== G_FOREST)) st[y * n + x] = FOG_VISIBLE; }
     };
     for (const u of sim.units) if (u.owner === this.owner && u.hp > 0) reveal(u.x, u.y, VISION[u.kind]);
     for (const b of sim.buildings) if (b.owner === this.owner && b.hp > 0) reveal(b.x + b.size / 2, b.y + b.size / 2, VISION[b.kind] + b.size / 2 - 1);

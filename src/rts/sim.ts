@@ -3,6 +3,7 @@
 import { ABILITIES, BUILDINGS, CARRY, MINE_TICKS, MULT, NODE_AMOUNT, RESEARCH, START_MINERALS, START_WORKERS, STIM_COST, SUPPLY_MAX, TANK_SIEGE, UNITS, type BuildKind, type ResearchKind, type UnitKind } from './config';
 import { buildMap, type RtsMap } from './map';
 import { Pather } from './path';
+import { G_HILL, RULES, coverMult, speedMult } from './terrain';
 
 export type OrderType = 'idle' | 'move' | 'amove' | 'attack' | 'gather' | 'build';
 export interface Order { t: OrderType; x: number; y: number; target: number; phase: number; timer: number }
@@ -70,7 +71,7 @@ export class RtsSim {
 
   constructor(opts: SimOptions = {}) {
     this.map = buildMap(); const n = this.map.size;
-    this.grid = new Uint8Array(this.map.terrain); this.pather = new Pather(n, this.grid);
+    this.grid = new Uint8Array(this.map.terrain); this.pather = new Pather(n, this.grid, this.map.ground);
     this.scripted = opts.scripted === true; this.incomeMult = opts.income ?? [1, 1]; this.head = new Int32Array(Math.ceil(n / 2) ** 2);
     this.players = [0, 1].map(() => ({ minerals: START_MINERALS, used: 0, cap: 0, mined: 0, kills: 0, lost: 0, made: 0, defeated: false, income: 0, up: { atk: false, arm: false, cannon: false, speed: false } }));
     for (const nd of this.map.nodes) if (nd.base < 2) this.addNode(nd.x, nd.y);
@@ -134,7 +135,7 @@ export class RtsSim {
   has(owner: number, kind: BuildKind): boolean { return this.buildings.some(b => b.owner === owner && b.kind === kind && b.done); }
   canPlace(kind: BuildKind, x: number, y: number): boolean {
     const s = BUILDINGS[kind].size; if (!Number.isInteger(x) || !Number.isInteger(y)) return false;
-    for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) if (!this.pather.free(x + i, y + j)) return false;
+    for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) if (!this.pather.free(x + i, y + j) || this.map.noBuild[(y + j) * this.map.size + x + i]) return false;
     return true;
   }
   /** (ax,ay) 가까이에서 둘레가 비어 있고 광물과 떨어진 첫 자리. minD2 보다 가까운 자리는 건너뜁니다. */
@@ -147,7 +148,7 @@ export class RtsSim {
     return best;
   }
   private roomy(x: number, y: number, size: number): boolean {
-    for (let j = -1; j <= size; j++) for (let i = -1; i <= size; i++) if (!this.pather.free(x + i, y + j)) return false;
+    for (let j = -1; j <= size; j++) for (let i = -1; i <= size; i++) if (!this.pather.free(x + i, y + j) || this.map.noBuild[(y + j) * this.map.size + x + i]) return false;
     for (const nd of this.nodes) if (nd.x > x - 4 && nd.x < x + size + 3 && nd.y > y - 4 && nd.y < y + size + 3) return false;
     return true;
   }
@@ -312,7 +313,7 @@ export class RtsSim {
     const up = this.players[owner].up; if (w === 'cannon' ? up.cannon : up.atk) { dmg *= 1.25; if (w === 'cannon') splash += 0.4; }
     const tc = this.center(t); this.emit({ t: 'shot', w, owner, x0: fromX, y0: fromY, x1: tc.x, y1: tc.y, splash });
     const hit = (e: Unit | Building, mult: number): void => {
-      const armor = e.k === 'unit' ? UNITS[e.kind].armor : 'structure', amt = Math.max(1, Math.round(dmg * MULT[w][armor] * mult * (this.players[e.owner].up.arm ? 0.8 : 1)));
+      const armor = e.k === 'unit' ? UNITS[e.kind].armor : 'structure', cover = e.k === 'unit' ? coverMult(this.groundAt(e.x, e.y), e.kind) : 1, amt = Math.max(1, Math.round(dmg * MULT[w][armor] * mult * cover * (this.players[e.owner].up.arm ? 0.8 : 1)));
       e.hp -= amt; e.hurt = this.tick;
       if (this.tick - this.lastAlert[e.owner] > 120) { this.lastAlert[e.owner] = this.tick; this.emit({ t: 'alert', owner: e.owner, x: this.center(e).x, y: this.center(e).y }); }
       if (e.hp <= 0) this.players[owner].kills++;
@@ -356,9 +357,14 @@ export class RtsSim {
   /** 강화(기동 훈련)와 특수 능력을 반영한 이동 속도. 일꾼은 강화의 영향을 받지 않습니다. */
   private speedOf(u: Unit): number {
     let s = UNITS[u.kind].speed; if (u.kind !== 'worker' && this.players[u.owner].up.speed) s *= 1.12;
+    s *= speedMult(this.groundAt(u.x, u.y), u.kind);
     if (u.ab > this.tick) { if (u.kind === 'marine') s *= 1.35; else if (u.kind === 'jeep') s *= 1.8; else if (u.kind === 'tank') s = 0; }
     return s;
   }
+  /** (x,y) 칸의 지형 효과(terrain.ts 의 G_*). 맵 밖은 0. */
+  groundAt(x: number, y: number): number { const n = this.map.size, cx = Math.floor(x), cy = Math.floor(y); return cx < 0 || cy < 0 || cx >= n || cy >= n ? 0 : this.map.ground[cy * n + cx]; }
+  /** 언덕 위의 유닛은 사거리가 늘어납니다. */
+  private rangeBonus(u: Unit): number { return this.groundAt(u.x, u.y) === G_HILL ? RULES.hillRange : 0; }
   /** 이 유닛의 포격 태세(전차 능력)가 켜져 있는가. */
   private sieged(u: Unit): boolean { return u.kind === 'tank' && u.ab > this.tick; }
   /** 능력으로 줄어드는 쿨다운(틱). */
@@ -433,7 +439,7 @@ export class RtsSim {
   /** 사정거리 안이면 쏘고, 아니면 다가갑니다. */
   private engage(u: Unit, t: Unit | Building): void {
     const d = UNITS[u.kind], gap = this.gap(u, d.radius, t), tc = this.center(t), siege = this.sieged(u);
-    if (gap <= d.range + (siege ? TANK_SIEGE.range : 0)) {
+    if (gap <= d.range + (siege ? TANK_SIEGE.range : 0) + this.rangeBonus(u)) {
       u.path = []; const dx = tc.x - u.x, dy = tc.y - u.y, l = Math.sqrt(dx * dx + dy * dy) || 1; u.fx = dx / l; u.fy = dy / l;
       if (u.cd <= 0) { u.cd = this.cooldownOf(u); u.fired = this.tick; this.damage(u.owner, t, d.dmg * (siege ? TANK_SIEGE.dmg : 1), d.weapon, d.splash + (siege ? TANK_SIEGE.splash : 0), u.x, u.y); }
       return;

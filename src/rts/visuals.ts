@@ -89,3 +89,21 @@ export function stoneTexture(strata: boolean, seed = 11): THREE.CanvasTexture {
   for (let i = 0; i < (strata ? 9 : 7); i++) { let x = r() * w, y = r() * h; g.beginPath(); g.moveTo(x, y); for (let k = 0; k < 4; k++) { x += (r() - 0.5) * 22; y += strata ? 8 + r() * 14 : (r() - 0.5) * 22; g.lineTo(x, y); } g.stroke(); }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; return t;
 }
+
+/** Soft painted sprites for explosions, smoke and scorch marks (white-hot core fading to transparent); built once per kind. */
+const softCache = new Map<string, THREE.CanvasTexture>();
+export function softTex(kind: 'fire' | 'smoke' | 'scorch' | 'spark'): THREE.CanvasTexture | null {
+  if (typeof document === 'undefined') return null;
+  const hit = softCache.get(kind); if (hit) return hit;
+  const S = 128, c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d'); if (!g) return null;
+  const stops: Record<string, Array<[number, string]>> = {
+    fire: [[0, 'rgba(255,250,225,1)'], [0.25, 'rgba(255,196,96,.95)'], [0.55, 'rgba(255,110,30,.55)'], [1, 'rgba(120,30,0,0)']],
+    smoke: [[0, 'rgba(70,64,58,.85)'], [0.6, 'rgba(48,44,40,.45)'], [1, 'rgba(30,28,26,0)']],
+    scorch: [[0, 'rgba(14,10,7,.8)'], [0.55, 'rgba(24,17,11,.45)'], [1, 'rgba(30,22,14,0)']],
+    spark: [[0, 'rgba(255,255,255,1)'], [0.3, 'rgba(255,236,170,.7)'], [1, 'rgba(255,200,100,0)']],
+  };
+  const rg = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2); for (const [o, col] of stops[kind]) rg.addColorStop(o, col);
+  g.fillStyle = rg; g.fillRect(0, 0, S, S);
+  if (kind === 'smoke' || kind === 'scorch') { let seed = kind === 'smoke' ? 31 : 57; const rnd = (): number => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; }; for (let i = 0; i < 9; i++) { const a = rnd() * 6.28, r = 12 + rnd() * 26, x = S / 2 + Math.cos(a) * r, y = S / 2 + Math.sin(a) * r, q = 14 + rnd() * 14, b = g.createRadialGradient(x, y, 0, x, y, q); b.addColorStop(0, kind === 'smoke' ? 'rgba(80,72,64,.35)' : 'rgba(10,7,4,.4)'); b.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = b; g.fillRect(x - q, y - q, q * 2, q * 2); } }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; softCache.set(kind, t); return t;
+}

@@ -453,7 +453,7 @@ export class Match {
     // 줍기
     const wantE = inp.interact && !p.interactHeld; p.interactHeld = inp.interact;
     let took = false;
-    if (!p.remote) for (const l of this.loot) {
+    if (!p.remote) for (const l of this.lootNear(p.x, p.z)) {
       if (l.taken) continue; const dx = l.x - p.x, dz = l.z - p.z; if (dx * dx + dz * dz > PLAYER.pickup * PLAYER.pickup) continue;
       if (l.kind === 'weapon') { if (wantE) { this.takeWeapon(p, l); took = true; break; } continue; }
       if (l.kind === 'attach') { if (this.takePart(p, l, wantE)) { took = true; break; } continue; }
@@ -461,6 +461,19 @@ export class Match {
     }
     // 주울 무기가 없을 때 E 는 가까운 차량에 탑니다
     if (wantE && !took && !p.bot && !p.remote && p.air === 0 && this.vehicles.length) { const v = this.vehicleNear(p); if (v) { if (this.authority) this.enterVehicle(p, v); else this.events.push({ t: 'vreq', id: v.id }); } }
+  }
+
+  /** 줍기 후보: 4m 칸 격자로 주변 전리품만 모읍니다(100명 x 전체 순회를 피함). 원래 배열 순서를 지켜 줍는 순서가 같습니다. 전리품은 추가만 되고 움직이지 않습니다. */
+  private lootGrid = new Map<number, number[]>(); private lootIndexed = 0; private lootScratch: Loot[] = []; private lootIdx: number[] = [];
+  private lootNear(x: number, z: number): Loot[] {
+    for (; this.lootIndexed < this.loot.length; this.lootIndexed++) {
+      const l = this.loot[this.lootIndexed], k = (Math.floor(l.x / 4) + 1024) * 4096 + Math.floor(l.z / 4) + 1024; let c = this.lootGrid.get(k); if (!c) this.lootGrid.set(k, c = []); c.push(this.lootIndexed);
+    }
+    const idx = this.lootIdx, out = this.lootScratch, cx = Math.floor(x / 4), cz = Math.floor(z / 4); idx.length = 0; out.length = 0;
+    for (let i = cx - 1; i <= cx + 1; i++) for (let j = cz - 1; j <= cz + 1; j++) { const c = this.lootGrid.get((i + 1024) * 4096 + j + 1024); if (c) for (const n of c) idx.push(n); }
+    if (idx.length > 1) idx.sort((a, b) => a - b);
+    for (const n of idx) out.push(this.loot[n]);
+    return out;
   }
 
   private throwNade(p: Player, smoke: boolean, flash = false): void {

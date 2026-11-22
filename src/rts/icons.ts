@@ -23,7 +23,13 @@ const P: Record<string, string> = {
   power: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
 };
 
-const svg = (d: string, fill = false): string => `<svg class="rt-ic" viewBox="0 0 24 24" aria-hidden="true" fill="${fill ? 'currentColor' : 'none'}" fill-opacity="${fill ? '.24' : '1'}" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+let icId = 0;
+/** Filled icons get a painted look: a light-to-dark gradient body, a bright rim stroke and a dark under-stroke for depth. */
+const svg = (d: string, fill = false): string => {
+  if (!fill) return `<svg class="rt-ic" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+  const id = `rtg${icId++}`;
+  return `<svg class="rt-ic" viewBox="0 0 24 24" aria-hidden="true" stroke-linecap="round" stroke-linejoin="round"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0.35" y2="1"><stop offset="0" stop-color="currentColor" stop-opacity=".75"/><stop offset=".55" stop-color="currentColor" stop-opacity=".3"/><stop offset="1" stop-color="currentColor" stop-opacity=".1"/></linearGradient></defs><g fill="none" stroke="#000" stroke-opacity=".45" stroke-width="2.6" transform="translate(.5 .7)">${d}</g><g fill="url(#${id})" stroke="currentColor" stroke-width="1.7">${d}</g></svg>`;
+};
 
 export const unitIcon = (k: UnitKind): string => svg(P[k], true);
 export const buildingIcon = (k: BuildKind): string => svg(P[k], true);

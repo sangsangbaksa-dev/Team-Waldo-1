@@ -56,6 +56,8 @@ export class ActorView {
   private readonly cylinder: THREE.CylinderGeometry;
   private readonly tailLamp: THREE.PlaneGeometry;
   private time = 0;
+  /** 적응형 화질의 그리기 거리 배율(1 = 기본). */
+  private drawScale = 1;
   private disposed = false;
   private readonly cameraPos = new THREE.Vector3();
   private fxCursor = 0;
@@ -85,6 +87,7 @@ export class ActorView {
     }
     if (quality !== 'low') for (let i = 0; i < 2; i++) { const light = new THREE.PointLight(0xffa34b, 0, 24, 2); this.root.add(light); this.lights.push(light); }
   }
+  setDetail(level: number): void { this.drawScale = level >= 2 ? .65 : level >= 1 ? .8 : 1; }
   private ownGeo<T extends THREE.BufferGeometry>(g: T): T { this.geometries.add(g); return g; }
   /** GLB 차체 로컬 AABB. 시뮬 halfL과 모델 축/스케일이 어긋날 때 후미등 뜨는 문제를 막습니다. */
   private vehicleBounds(body: THREE.Object3D, d: VehicleDef): { box: THREE.Box3; xForward: boolean } {
@@ -384,9 +387,9 @@ export class ActorView {
     const hour = ((clock % 24) + 24) % 24, night = hour >= 20 || hour < 6, livePeds = new Set<number>();
     for (const p of this.sim.peds) {
       livePeds.add(p.id); const dist = Math.hypot(p.x - this.cameraPos.x, p.z - this.cameraPos.z), player = p.id === this.sim.player.id;
-      let r = this.rigs.get(p.id); if (!r && !player && dist > 160) continue; r ??= this.makeRig(p); r.flashT = Math.max(0, r.flashT - dt);
+      let r = this.rigs.get(p.id); if (!r && !player && dist > 160 * this.drawScale) continue; r ??= this.makeRig(p); r.flashT = Math.max(0, r.flashT - dt);
       const dead = p.alive ? 0 : Math.max(0, this.sim.t - p.diedAt), sink = player ? 0 : clamp((dead - 7) / 3, 0, 1);
-      r.root.visible = !p.vehicle && (player || (dist <= 160 && sink < 1)); if (!r.root.visible) continue;
+      r.root.visible = !p.vehicle && (player || (dist <= 160 * this.drawScale && sink < 1)); if (!r.root.visible) continue;
       const weapon = p.guns[p.cur]?.id ?? 'fist';
       if (weapon !== r.weapon) {
         if (r.gun) { this.release(r.gun); r.gun = null; } r.weapon = weapon;
@@ -401,7 +404,7 @@ export class ActorView {
     this.prune(this.rigs, livePeds, r => r.root);
     const liveCars = new Set<number>();
     for (const v of this.sim.vehicles) {
-      liveCars.add(v.id); const near = Math.hypot(v.x - this.cameraPos.x, v.z - this.cameraPos.z) <= 320;
+      liveCars.add(v.id); const near = Math.hypot(v.x - this.cameraPos.x, v.z - this.cameraPos.z) <= 320 * this.drawScale;
       let c = this.cars.get(v.id); if (!c && !near) continue; c ??= this.makeCar(v); c.root.visible = near; if (near) this.car(v, c, dt, night);
     }
     this.prune(this.cars, liveCars, c => c.root);

@@ -81,6 +81,8 @@ export class CityDetails {
 
   private material<T extends THREE.Material>(m: T): T { this.materials.push(m); return m; }
   private geometry<T extends THREE.BufferGeometry>(g: T): T { this.geometries.push(g); return g; }
+  /** 적응형 화질에서 장식 인스턴스를 통째로 끕니다. */
+  setVisible(v: boolean): void { this.group.visible = v; }
   update(lamps: number, t: number, reduced: boolean): void {
     const intensity = Math.max(0, Math.min(1, lamps));
     this.glowMat.opacity = intensity * (reduced ? 0.48 : 0.48 + Math.sin(t * 0.8) * 0.025);

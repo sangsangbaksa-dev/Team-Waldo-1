@@ -64,3 +64,7 @@
 .sq-field{box-shadow:0 22px 60px #000b,0 0 0 1px #38495a,inset 0 0 40px #0008;border-radius:14px}
 .wd-panel.sq-card{background:radial-gradient(120% 80% at 50% 0,#1f2a3a 0,#17191d 45%,#101114 100%)}
 .sq-final-score{text-shadow:0 0 24px #4fa8ff77,0 3px 0 #0a1a2c}
+.sq-ico{width:1.05em;height:1.05em;flex:none;vertical-align:-.15em;margin-right:.3em;filter:drop-shadow(0 1px 1px #0008)}
+.sq-budget strong .sq-ico{width:.95em;height:.95em;filter:drop-shadow(0 0 6px #ffd45a88)}
+.sq-palette em .sq-ico{width:.95em;height:.95em;margin-right:.2em}
+.sq-stats span .sq-ico{width:1.15em;height:1.15em}

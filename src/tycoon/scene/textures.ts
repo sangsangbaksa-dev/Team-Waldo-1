@@ -87,6 +87,32 @@ export function dirtTexture(): THREE.CanvasTexture {
   return tex(c);
 }
 
+/** 옥상: 타르 지붕 + 자갈 + 보수 자국 + 물 얼룩(5 m 마다 반복). 꼭짓점 색이 곱해져 건물마다 색이 달라집니다. */
+export function roofTexture(): THREE.CanvasTexture {
+  const S = 256, [c, g] = canvas(S, S), r = rng(123);
+  g.fillStyle = '#c9c9c9'; g.fillRect(0, 0, S, S);
+  for (let k = 0; k < 3200; k++) { const v = 150 + Math.floor(r() * 90); g.fillStyle = `rgba(${v},${v},${v},.4)`; g.fillRect(r() * S, r() * S, 1 + r() * 2.5, 1 + r() * 2.5); }
+  g.fillStyle = 'rgba(0,0,0,.14)'; for (let x = 0; x < S; x += 32) g.fillRect(x, 0, 2, S); // 방수 시트 이음매
+  for (let k = 0; k < 4; k++) { const x = r() * S, y = r() * S, rad = 20 + r() * 40, gr = g.createRadialGradient(x, y, 2, x, y, rad); gr.addColorStop(0, 'rgba(20,30,40,.3)'); gr.addColorStop(1, 'rgba(20,30,40,0)'); g.fillStyle = gr; g.fillRect(x - rad, y - rad, rad * 2, rad * 2); }
+  g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(0, 0, S, 3); g.fillRect(0, 0, 3, S); // 가장자리 턱
+  return tex(c);
+}
+/** 나뭇잎: 짙고 옅은 잎 덩어리 + 하이라이트. 흰 바탕이라 인스턴스 색(초록 계열)이 곱해집니다. */
+export function leafTexture(): THREE.CanvasTexture {
+  const S = 256, [c, g] = canvas(S, S), r = rng(808);
+  g.fillStyle = '#9a9a9a'; g.fillRect(0, 0, S, S);
+  for (let k = 0; k < 700; k++) { const x = r() * S, y = r() * S, rad = 3 + r() * 9, v = Math.floor(90 + r() * 165); g.fillStyle = `rgba(${v},${v},${v},.55)`; g.beginPath(); g.ellipse(x, y, rad, rad * 0.6, r() * Math.PI, 0, Math.PI * 2); g.fill(); }
+  for (let k = 0; k < 160; k++) { g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(r() * S, r() * S, 2, 2); }
+  return tex(c);
+}
+/** 나무껍질: 세로 결. */
+export function barkTexture(): THREE.CanvasTexture {
+  const S = 128, [c, g] = canvas(S, S), r = rng(404);
+  g.fillStyle = '#8a6a4c'; g.fillRect(0, 0, S, S);
+  for (let k = 0; k < 90; k++) { const x = r() * S, v = Math.floor(40 + r() * 120); g.fillStyle = `rgba(${v},${v - 18},${v - 36},.55)`; g.fillRect(x, r() * S, 1 + r() * 3, 14 + r() * 50); }
+  return tex(c);
+}
+
 export const KIND_COLORS: Record<string, string> = { home: '#6c8cff', job: '#f2b233', food: '#ff7a4d', shop: '#35c48a', market: '#8bd13b', bank: '#4bb0e8', office: '#8f7bff', factory: '#e0733a', hq: '#ffd24a', port: '#3ad0d0' };
 export const kindColor = (k: string): string => KIND_COLORS[k] ?? '#d0d6e0';
 

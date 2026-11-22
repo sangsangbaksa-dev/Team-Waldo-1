@@ -1,12 +1,16 @@
 // FRONTLINE — 격자 길찾기(A*). 결과는 월드 좌표(칸 중심)의 평탄한 배열 [x0,y0,x1,y1,...] 입니다.
 // 부동소수점 덧셈·곱셈·sqrt 만 써서 모든 브라우저에서 같은 결과가 나옵니다(1대1 동기화의 전제).
 
+import { G_FOREST, G_MUD, RULES } from './terrain';
+
 export class Pather {
   private g: Float32Array; private from: Int32Array; private seen: Uint32Array; private shut: Uint32Array; private stamp = 0;
-  constructor(readonly n: number, readonly grid: Uint8Array) {
+  constructor(readonly n: number, readonly grid: Uint8Array, private readonly ground?: Uint8Array) {
     this.g = new Float32Array(n * n); this.from = new Int32Array(n * n); this.seen = new Uint32Array(n * n); this.shut = new Uint32Array(n * n);
   }
   free(cx: number, cy: number): boolean { return cx >= 0 && cy >= 0 && cx < this.n && cy < this.n && this.grid[cy * this.n + cx] === 0; }
+  /** 진흙·숲은 느려서 같은 거리면 비켜 가도록 비용을 조금 더합니다(지형 효과와 같은 규칙). */
+  private extra(i: number): number { const g = this.ground ? this.ground[i] : 0; return g === G_MUD ? RULES.pathMud : g === G_FOREST ? RULES.pathForest : 0; }
   freeAt(x: number, y: number): boolean { return this.free(Math.floor(x), Math.floor(y)); }
 
   /** (x,y) 에서 가장 가까운 빈 칸의 중심. 반경 안에 없으면 null. */
@@ -70,7 +74,7 @@ export class Pather {
         if (!this.free(nx, ny)) continue;
         if (ox !== 0 && oy !== 0 && (!this.free(cx + ox, cy) || !this.free(cx, cy + oy))) continue;
         const ni = ny * n + nx; if (this.shut[ni] === st) continue;
-        const ng = this.g[cur] + (ox !== 0 && oy !== 0 ? Math.SQRT2 : 1);
+        const ng = this.g[cur] + (ox !== 0 && oy !== 0 ? Math.SQRT2 : 1) * (1 + this.extra(ni));
         if (this.seen[ni] !== st || ng < this.g[ni]) { this.seen[ni] = st; this.g[ni] = ng; this.from[ni] = cur; push(ng + hOf(ni), ni); }
       }
     }

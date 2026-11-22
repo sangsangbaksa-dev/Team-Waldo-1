@@ -1,5 +1,6 @@
 // FRONTLINE — 맵. 두 진영이 180도 회전 대칭이라 어느 쪽에서 시작해도 같은 조건입니다.
 import { MAP_SIZE } from './config';
+import { buildTerrain, type Bridge } from './terrain';
 
 export interface Pt { x: number; y: number }
 export interface RtsMap {
@@ -14,6 +15,13 @@ export interface RtsMap {
   expansions: Pt[];
   /** 장식용 바위 군집 중심 — 막힌 칸의 연결된 덩어리. */
   rocks: Array<Pt & { r: number }>;
+  /** 칸마다 지형 효과(terrain.ts 의 G_*): 0 평지 1 숲 2 언덕 3 진흙 4 폐허 5 다리. 걸을 수 있는 칸에만 있습니다. */
+  ground: Uint8Array;
+  /** 1 이면 강(막힌 칸이지만 바위가 아니라 물로 그립니다). */
+  water: Uint8Array;
+  /** 1 이면 건물을 지을 수 없는 칸(다리 둘레). */
+  noBuild: Uint8Array;
+  bridges: Bridge[];
 }
 
 const flip = (p: Pt): Pt => ({ x: MAP_SIZE - 1 - p.x, y: MAP_SIZE - 1 - p.y });
@@ -49,6 +57,8 @@ export function buildMap(): RtsMap {
   SIDE_NODES.forEach(p => { nodes.push({ ...p, base: 4 }); const q = flip(p); nodes.push({ ...q, base: 5 }); });
   const starts: [Pt, Pt] = [{ x: 14, y: 74 }, { x: n - 14 - 4, y: n - 74 - 4 }];
   const expansions: Pt[] = [{ x: 18, y: 18 }, { x: n - 18 - 4, y: n - 18 - 4 }, { x: 44, y: 79 }, { x: n - 44 - 4, y: n - 79 - 4 }];
-  cached = { size: n, terrain, starts, nodes, expansions, rocks };
+  const keep = [...starts, ...expansions].map(p => ({ x: p.x, y: p.y, w: 4, h: 4 })).concat(nodes.map(p => ({ x: p.x, y: p.y, w: 1, h: 1 })));
+  const layers = buildTerrain(n, terrain, keep);
+  cached = { size: n, terrain, starts, nodes, expansions, rocks, ground: layers.ground, water: layers.water, noBuild: layers.noBuild, bridges: layers.bridges };
   return cached;
 }

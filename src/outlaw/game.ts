@@ -24,7 +24,7 @@ import { OUTLAW_KEY } from './records';
 import { Versus, type VsSession, type VsResult } from './versus';
 import { WEAPONS, WEAPON_ORDER, PLAYER_ID, VEHICLES, blankPedInput, blankCarInput, clamp, wrapAngle, type PedInput, type SimEvent, type Vehicle } from './types';
 import { starIcon } from '../shared/glyphs';
-import { weaponIcon } from './icons';
+import { phoneIcon, weaponIcon } from './icons';
 
 interface OpenOptions { loading?: LoadingScreen }
 const SEED = 20260101, STEP = 1 / 60, TITLE_CLOCK = 17.2;
@@ -55,7 +55,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
       <div class="ol-prompt" id="ol-prompt"></div>
       <ul class="ol-toasts" id="ol-toasts"></ul><div class="ol-floaters" id="ol-floaters"></div>
       <div class="ol-big" id="ol-big"></div>
-      <div class="ol-tbtn"><button id="ol-pause" type="button" aria-label="일시정지">Ⅱ</button><button id="ol-mapbtn" type="button" aria-label="지도">M</button><button id="ol-phonebtn" type="button" aria-label="휴대폰">📱</button></div>
+      <div class="ol-tbtn"><button id="ol-pause" type="button" aria-label="일시정지">Ⅱ</button><button id="ol-mapbtn" type="button" aria-label="지도">M</button><button id="ol-phonebtn" type="button" aria-label="휴대폰">${phoneIcon()}</button></div>
       <div class="ol-touchpad"><div class="ol-stick" id="ol-stick"><i></i></div>
         <div class="ol-tfoot"><button data-act="fire" class="fire" type="button">사격</button><button data-act="aim" type="button">조준</button><button data-act="jump" type="button">점프</button><button data-act="use" type="button">타기</button><button data-act="reload" type="button">장전</button><button data-act="weapon" type="button">무기</button><button data-act="sprint" type="button">달리기</button></div>
         <div class="ol-tcar"><button data-act="left" type="button">◀</button><button data-act="right" type="button">▶</button><button data-act="gas" class="fire" type="button">가속</button><button data-act="brake" type="button">브레이크</button><button data-act="hand" type="button">드리프트</button></div></div>
@@ -82,6 +82,8 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   let lobby: { close(): void } | undefined, openingLobby = false;
   const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(70, 1, 0.1, 1200);
   let renderer: THREE.WebGLRenderer | null = null; let composer: EffectComposer | null = null; let bloom: UnrealBloomPass | null = null;
+  // 적응형 화질: 프레임 시간이 길면 단계(0~4)를 올려 해상도·그림자·후처리·그리기 거리를 줄이고, 여유가 오래가면 한 단계씩 되돌립니다.
+  let detail = 0, detailFloor = 0, ftEma = 16.7, slowT = 0, fastT = 0, detailCool = 4, restoredAt = -99, adaptClock = 0, radarT = 1, basePr = 1;
   let yaw = 0, pitch = 0, acc = 0, saveT = 0, shakeFov = 0, hitT = 0, hurtVig = 0, bannerT = 0, radioToast = 0;
   const keys = new Set<string>(), mouse = { fire: false, aim: false, look: false };
   const tc = { fire: false, aim: false, jump: false, sprint: false, gas: false, brake: false, hand: false, left: false, right: false, moveId: -1, mx: 0, my: 0, ox: 0, oy: 0, lookId: -1, lx: 0, ly: 0 };
@@ -440,9 +442,29 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
 
   // ---------- 루프 ----------
   function resize(): void {
-    if (!renderer) return; const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); composer?.setSize(w, h); bloom?.resolution.set(w / 2, h / 2); camera.aspect = w / h; camera.updateProjectionMatrix();
+    if (!renderer) return; const w = innerWidth, h = innerHeight; composer?.setPixelRatio(renderer.getPixelRatio()); renderer.setSize(w, h, false); composer?.setSize(w, h); bloom?.resolution.set(w / 2, h / 2); camera.aspect = w / h; camera.updateProjectionMatrix();
   }
   window.addEventListener('resize', resize);
+
+  const PR_SCALE = [1, .85, .75, .75, .6];
+  function applyDetail(): void {
+    if (!renderer) return;
+    renderer.setPixelRatio(Math.max(.5, basePr * PR_SCALE[detail])); cityView?.setDetail(detail); actorView?.setDetail(detail); resize();
+  }
+  function adapt(ms: number): void {
+    // 일시정지·메뉴 모달·탭 전환·로딩 직후의 튀는 프레임은 재지 않습니다.
+    if (paused || document.hidden || ms > 250) { slowT = fastT = 0; return; }
+    adaptClock += ms / 1000; detailCool = Math.max(0, detailCool - ms / 1000);
+    ftEma += (ms - ftEma) * .06;
+    if (ftEma > 24) { slowT += ms / 1000; fastT = 0; } else if (ftEma < 15) { fastT += ms / 1000; slowT = 0; } else slowT = fastT = 0;
+    if (slowT > 1.5 && detail < 4 && detailCool <= 0) {
+      // 되돌린 직후 다시 느려졌다면 그 단계가 이 기기의 한계이므로 다시 올리지 않습니다.
+      if (adaptClock - restoredAt < 20) detailFloor = detail + 1;
+      detail++; slowT = 0; detailCool = 3; ftEma = 20; applyDetail();
+    } else if (fastT > 8 && detail > detailFloor && detailCool <= 0) {
+      detail--; fastT = 0; detailCool = 3; restoredAt = adaptClock; applyDetail();
+    }
+  }
 
   function tick(dt: number): void {
     if (!sim || !chase || !cityView || !actorView || !renderer || !minimap) return;
@@ -481,7 +503,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
       if (shakeFov > 0.01) { camera.fov += shakeFov; camera.updateProjectionMatrix(); shakeFov *= 0.86; }
     }
     cityView.update(dt, camera, sim.clock, sim.t, sim.rain); actorView.update(dt, camera, sim.clock);
-    if (composer && bloom && prefs.quality !== 'low') { const n = cityView?.night ?? 0, r = sim?.rain ?? 0; bloom.strength = .18 + n * .55 + r * .14; composer.render(dt); } else renderer.render(scene, camera);
+    if (composer && bloom && prefs.quality !== 'low' && detail < 3) { const n = cityView?.night ?? 0, r = sim?.rain ?? 0; bloom.strength = .18 + n * .55 + r * .14; composer.render(dt); } else renderer.render(scene, camera);
     if (playing) hud(dt, car);
     if (phase !== 'menu') { saveT += dt; if (saveT > 30) { saveT = 0; if (p.alive) save(); } }
   }
@@ -498,7 +520,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     const g = s.curGun(p), d = g ? WEAPONS[g.id] : WEAPONS.fist; html('wname', weaponIcon(d.id) + esc(d.name)); set('mag', d.melee ? '∞' : String(g?.mag ?? 0)); set('res', d.melee ? '' : `/ ${g?.reserve ?? 0}`);
     html('slots', WEAPON_ORDER.map((id, i) => `<i class="${p.guns[i] ? 'has' : ''} ${i === p.cur ? 'cur' : ''}" title="${WHEEL_NAMES[i]}">${weaponIcon(id)}<u>${i + 1}</u></i>`).join(''));
     set('dname', districtName(p.x, p.z, s.map));
-    if (s.frame % 2 === 0) minimap!.draw(radar, s, cy);
+    radarT += dt; if (radarT >= .05) { radarT = 0; minimap!.draw(radar, s, cy); }
     // 속도계
     root.classList.toggle('incar', !!car); if (car) { set('kmh', String(Math.round(Math.abs(car.vf) * 3.6))); style('dmg', 'width', `${clamp(car.hp / car.maxHp, 0, 1) * 100}%`); const spd = Math.abs(car.vf); style('lines', 'opacity', String(clamp((spd - 28) / 30, 0, 0.9))); } else style('lines', 'opacity', '0');
     if (car && !car.alive) style('lines', 'opacity', '0');
@@ -563,8 +585,8 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   }
 
   function frame(now: number): void {
-    if (closed) return; raf = requestAnimationFrame(frame); const dt = Math.min(0.1, (now - last) / 1000); last = now;
-    try { tick(dt); } catch (err) { console.error(err); }
+    if (closed) return; raf = requestAnimationFrame(frame); const dt = Math.min(0.1, (now - last) / 1000), last0 = now - last; last = now;
+    try { tick(dt); if (phase === 'play') adapt(last0); } catch (err) { console.error(err); }
   }
 
   function exit(): void {
@@ -587,7 +609,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (closed) { opts.loading?.close(); return; }
     try {
       renderer = new THREE.WebGLRenderer({ canvas, antialias: prefs.quality !== 'low', powerPreference: 'high-performance' });
-      renderer.setPixelRatio(Math.min(prefs.quality === 'high' ? 2 : prefs.quality === 'standard' ? 1.5 : 1, devicePixelRatio || 1));
+      basePr = Math.min(prefs.quality === 'high' ? 2 : prefs.quality === 'standard' ? 1.5 : 1, devicePixelRatio || 1); renderer.setPixelRatio(basePr);
       if (prefs.quality !== 'low') { composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera)); bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), .3, .6, .82); composer.addPass(bloom); composer.addPass(new OutputPass()); }
       sim = new Sim(SEED); sim.clock = TITLE_CLOCK;
       cityView = new CityView(scene, renderer, sim.map, assets, prefs.quality); cityView.onLightning = delay => { const active = sim; setTimeout(() => { if (!closed && sim === active) audio.play('thunder'); }, delay * 1000); }; actorView = new ActorView(scene, sim, assets, prefs.quality);
@@ -596,7 +618,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     } catch (err) { console.error(err); opts.loading?.close(); toast('그래픽을 시작하지 못했습니다'); exit(); return; }
     phase = 'menu'; showTitle(); opts.loading?.close(); raf = requestAnimationFrame(frame);
     if (import.meta.env.DEV) {
-      const dbg = { sim, scene, cam: camera, get phase() { return phase; }, begin, teleport: (x: number, z: number) => { sim!.player.x = x; sim!.player.z = z; }, give: (id: string) => sim!.giveWeapon(sim!.player, id as never), get hud() { return hudEl; } };
+      const dbg = { sim, scene, cam: camera, get phase() { return phase; }, begin, teleport: (x: number, z: number) => { sim!.player.x = x; sim!.player.z = z; }, give: (id: string) => sim!.giveWeapon(sim!.player, id as never), get hud() { return hudEl; }, get renderer() { return renderer; }, get composer() { return composer; }, get detail() { return detail; } };
       (window as unknown as { __ol: typeof dbg }).__ol = dbg;
     }
   })();

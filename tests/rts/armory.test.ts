@@ -13,9 +13,9 @@ describe('FRONTLINE 기본 능력치와 경기 내 연구', () => {
     sim.players[0].up.speed = true;
     const hq = sim.buildings.find(b => b.owner === 0 && b.kind === 'hq')!;
     const jeep = sim.spawn(0, 'jeep', hq), worker = sim.spawn(0, 'worker', hq);
-    jeep.x = worker.x = 30; jeep.y = 30; worker.y = 34;
-    sim.apply(0, { k: 'move', ids: [jeep.id], x: 48, y: 30 });
-    sim.apply(0, { k: 'move', ids: [worker.id], x: 48, y: 34 });
+    jeep.x = worker.x = 30; jeep.y = 3; worker.y = 5;
+    sim.apply(0, { k: 'move', ids: [jeep.id], x: 48, y: 3 });
+    sim.apply(0, { k: 'move', ids: [worker.id], x: 48, y: 5 });
     for (let i = 0; i < TICK; i++) sim.step();
     expect(jeep.x - 30).toBeCloseTo(UNITS.jeep.speed * 1.12);
     expect(worker.x - 30).toBeCloseTo(UNITS.worker.speed);

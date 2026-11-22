@@ -130,7 +130,7 @@
 .rc-drift:empty{opacity:0}.rc-drift.live{opacity:1;color:#fff3c2}
 
 
-/* SPEED RUSH ? neon paddock and instrument refinements */
+/* SPEED RUSH - neon paddock and instrument refinements */
 .rc-setup{isolation:isolate;background:radial-gradient(ellipse at 72% 0%,#ad477e 0%,#5b276f 24%,#22113e 52%,#080712 85%);color:#f7f1ff}
 .rc-setup::before,.rc-setup::after{content:"";position:fixed;pointer-events:none;z-index:-1}
 .rc-setup::before{width:clamp(180px,27vw,360px);aspect-ratio:1;right:9%;top:-8%;border-radius:50%;background:repeating-linear-gradient(to bottom,transparent 0 18px,#7b326d 19px 22px),linear-gradient(#ffbc99,#ff619f 60%,#b14ac1);box-shadow:0 0 90px #ff70b46b;opacity:.48}
@@ -160,7 +160,7 @@
 .rc-speed{background:linear-gradient(180deg,#211233b8,#080718dd);border:1px solid #ed83d158;box-shadow:0 0 24px #ff50b42b}.rc-speed b{font-size:96px;font-weight:900;letter-spacing:-.06em;text-shadow:0 0 24px #ff70cb88,0 3px 14px #000}.rc-speed small{color:#98efff}
 .rc-rev{height:10px;background:repeating-linear-gradient(90deg,#ffffff27 0 12px,transparent 12px 15px);overflow:hidden}.rc-rev i{background:repeating-linear-gradient(90deg,transparent 0 12px,#10091b 12px 15px),linear-gradient(90deg,#5cf4ff,#fcda77 65%,#ff4b97);filter:drop-shadow(0 0 5px #ff6acb)}
 .rc-nitro div{background:#110c25;border-color:#7ceeff66}.rc-nitro i{background:linear-gradient(90deg,#326fff,#55e9ff,#c8fff8);box-shadow:0 0 10px #51e9ff}.rc-nitro.on div{box-shadow:0 0 18px #64faffaa}
-.rc-keys{gap:5px;border-radius:12px;background:#100b20d9;border-color:#a985bd55}.rc-keys::before{content:"CONTROLS  ?";color:#8df6ff;font-size:10px;letter-spacing:.18em;font-weight:800}.rc-keys kbd{background:#342440;border-color:#bd9cc466;border-bottom-width:2px;color:#fff}
+.rc-keys{gap:5px;border-radius:12px;background:#100b20d9;border-color:#a985bd55}.rc-keys::before{content:"CONTROLS";color:#8df6ff;font-size:10px;letter-spacing:.18em;font-weight:800}.rc-keys kbd{background:#342440;border-color:#bd9cc466;border-bottom-width:2px;color:#fff}
 @media(max-width:760px){.rc-setup footer{gap:8px;flex-wrap:wrap}.rc-setup footer .rc-pick{flex:1 0 100%;order:-1;font-size:11px}.rc-setup footer .primary{min-width:100px;padding:12px 18px}.rc-setup-inner{padding-bottom:165px}}
 @media(max-width:700px){.rc-speed b{font-size:72px}}
 @media(max-width:700px){.touch .rc-speed b{font-size:34px}}
@@ -187,3 +187,14 @@
 /* HUD 선 아이콘 */
 .rc-lap svg,.rc-nitro span svg{width:15px;height:15px;vertical-align:-3px;margin-right:5px;filter:drop-shadow(0 0 5px currentColor)}.rc-nitro span svg{color:#5ee9ff}.rc-nitro.on span svg{color:#fff;filter:drop-shadow(0 0 8px #6cf)}.rc-lap svg{color:#fff2a3}
 .rc-touchpad button svg{width:22px;height:22px;vertical-align:-5px}.rc-steer button svg{width:30px;height:30px;vertical-align:middle}.rc-pedals button svg{margin-right:6px}
+/* 그린 그림: 차량 옆모습·코스 지평선·HUD 아이콘 입체감 */
+.rc-carart{display:block;width:100%;height:auto;filter:drop-shadow(0 2px 3px #0009)}
+.rc-car-art{display:block;padding:6px 10px 0;border-radius:8px;background:radial-gradient(ellipse at 50% 100%,color-mix(in srgb,var(--car,#888) 38%,transparent),transparent 70%),linear-gradient(180deg,#0e0f12,#17191d)}
+.rc-car-art .rc-carart{max-width:150px;margin:0 auto}
+.rc-skin i{width:34px;height:16px;border-radius:0;background:none;border:0;display:block}.rc-skin i .rc-carart{filter:none}
+.rc-setup .rc-map svg{background:linear-gradient(180deg,var(--m-sky,#2a2f3a) 0%,var(--m-fog,#556) 52%,var(--m-ground,#1a1c20) 52%,#0e0f12 100%)}
+.rc-setup .rc-map path{stroke:#fff;stroke-opacity:.92;filter:drop-shadow(0 1px 2px #000c)}.rc-setup .rc-map.on path{stroke:var(--m-line,#fff);filter:drop-shadow(0 0 3px #000)}
+.rc-lap svg,.rc-nitro span svg,.rc-btns svg,.rc-touchpad svg{filter:drop-shadow(0 1px 1.5px #000a)}
+.rc-btns button{background:linear-gradient(180deg,#2b1a52cc,#120a30dd)}
+.rc-pedals button.gas{box-shadow:inset 0 2px #fff6,inset 0 -3px #0004,0 6px 16px #ff4b8d55}
+.rc-touchpad button{background:linear-gradient(180deg,#2d1a5ccc,#150b34cc);box-shadow:inset 0 1px #ffffff40,0 5px 14px #0007}

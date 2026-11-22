@@ -3,9 +3,9 @@ export type StageId = 'class' | 'dorm';
 export type Level = 1 | 2 | 3;
 export type Phase = 'ready' | 'play' | 'caught' | 'done';
 
-/** 교실: phone 폰 숏폼·메신저, manga 교과서 속 만화/웹툰, doodle 낙서, snack 과자, sleep 엎드려 자기, note 짝꿍과 쪽지, music 이어폰.
+/** 교실(학교 노트북 딴짓): video 게임 플레이 영상 시청, game 게임 창으로 직접 플레이. 공부하는 척(cover)=수업 자료 창 전환(보스키).
  *  기숙사 컴퓨터실: game 게임, video 영상, chat 메신저, webtoon 웹툰, shop 쇼핑몰, music 음악. */
-export type ClassActivity = 'phone' | 'manga' | 'doodle' | 'snack' | 'sleep' | 'note' | 'music';
+export type ClassActivity = 'video' | 'game';
 export type DormActivity = 'game' | 'video' | 'chat' | 'webtoon' | 'shop' | 'music';
 export type ActivityId = ClassActivity | DormActivity;
 
@@ -19,19 +19,19 @@ export interface SlackState {
   stage: StageId; level: Level; phase: Phase;
   time: number;            // 경과 초
   limit: number;           // 제한 초(교실 150, 기숙사 150)
-  cover: boolean;          // 공부하는 척 중(교실: 교과서 펴고 필기 / 기숙사: 인강 창 전면)
+  cover: boolean;          // 공부하는 척 중(교실: 수업 자료 창 전환 / 기숙사: 인강 창 전면)
   activity: ActivityId | null;   // 지금 하는 딴짓(null=딴짓 안 함)
   fun: number;             // 0..100 재미(딴짓 만끽도). 목표치 goal 도달 시 클리어 가능
   goal: number;            // 클리어 재미 목표
   sus: number;             // 0..100 의심도. 100 = 적발
-  sleepy: number;          // 0..100 졸림(교실). 100 이면 졸다가 걸림
+  sleepy: number;          // (미사용, 항상 0. 호환용)
   study: number;           // 0..100 공부 진도(cover 일 때 오름). 너무 낮으면 등급 깎임
   strikes: number;         // 적발 횟수(3 이면 게임 끝). 적발 1회마다 sus 40 으로 리셋되고 잠시 cover 강제
   combo: number;           // 연속 무탈 딴짓 배수 1..5
   score: number;
-  friend: number;          // 0..100 짝꿍(교실)/룸메(기숙사) 우호도. 높으면 경고를 줌
+  friend: number;          // 0..100 룸메(기숙사 전용) 우호도. 교실에선 쓰지 않음
   watcher: Watcher;
-  battery: number;         // 폰/기기 배터리 100..0 (phone·video·game 은 소모)
+  battery: number;         // 기숙사 PC 배터리 100..0 (교실 학교 노트북은 배터리 없음, 항상 100)
   grade: 'S' | 'A' | 'B' | 'C' | 'D' | null;  // done 일 때만
   caughtBy: string | null; // caught 일 때 사유 문구(예: "엎드려 자다 걸림")
 }
@@ -58,9 +58,9 @@ export interface Sim {
   /** dt 초만큼 진행. phase 가 play 가 아니면 아무 일도 안 함. */
   update(dt: number): void;
   setCover(on: boolean): void;
-  /** null 이면 딴짓 멈춤. 이 스테이지에서 쓸 수 없는 id 는 무시. 배터리 0 이면 phone/video/game 불가. */
+  /** null 이면 딴짓 멈춤. 이 스테이지에서 쓸 수 없는 id 는 무시(교실은 video/game 만). */
   doActivity(id: ActivityId | null): void;
-  /** 짝꿍 호감 올리기(쪽지·과자 나눠주기). 성공하면 true */
+  /** 룸메 호감 올리기(기숙사 전용, 교실은 항상 false). 성공하면 true */
   bribe(): boolean;
   /** 쌓인 이벤트를 가져가고 비웁니다 */
   drain(): SlackEvent[];

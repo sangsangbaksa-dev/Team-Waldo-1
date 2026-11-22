@@ -16,7 +16,9 @@
 /* 상단 */
 .ty-top { position: absolute; left: 12px; right: 12px; top: 10px; display: flex; gap: 10px; align-items: stretch; }
 .ty-top > div { background: var(--bg); border: 1px solid var(--line); border-radius: 14px; padding: 8px 14px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
-.ty-cash { min-width: 140px; display: flex; flex-direction: column; }
+.ty-cash { min-width: 140px; display: flex; flex-direction: column; position: relative; padding-left: 34px; }
+.ty-ico { width: 18px; height: 18px; flex: none; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .5)); }
+.ty-cash .ty-ico.coin { position: absolute; left: 0; top: 50%; width: 28px; height: 28px; margin-top: -14px; filter: drop-shadow(0 0 8px rgba(255, 207, 90, .45)); }
 .ty-cash .lbl { font-size: 11px; color: var(--mute); letter-spacing: .08em; }
 .ty-cash b { font-size: 26px; line-height: 1.1; color: var(--gold); font-variant-numeric: tabular-nums; letter-spacing: -.01em; text-shadow: 0 0 18px rgba(255, 207, 90, .25); }
 .ty-cash small { color: var(--bad); font-size: 12px; }
@@ -41,7 +43,7 @@
 /* 좌측 */
 .ty-left { position: absolute; left: 12px; top: 84px; width: 250px; display: flex; flex-direction: column; gap: 8px; }
 .ty-left > div { background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
-.ty-energy { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; }
+.ty-energy { display: grid; grid-template-columns: auto auto 1fr auto; align-items: center; gap: 8px; }
 .ty-energy label { font-size: 12px; color: var(--mute); }
 .ty-energy b { font-size: 13px; font-variant-numeric: tabular-nums; }
 .ty-energy.low .ty-bar > i { background: linear-gradient(90deg, #ff5d4d, #ff9a6a); }

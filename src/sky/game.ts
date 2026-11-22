@@ -9,6 +9,7 @@ import { readSkyRecords, recordSkyRun } from './records';
 import { readPreferences } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import { drawIcon, svgIcon } from './art';
+import { AdaptiveQuality } from '../shared/adaptive';
 
 const clamp = THREE.MathUtils.clamp;
 const AIM_CONE = Math.cos(THREE.MathUtils.degToRad(5)), ASSIST_CONE = Math.cos(THREE.MathUtils.degToRad(9));
@@ -43,6 +44,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   const $ = <T extends HTMLElement>(id: string): T => root.querySelector('#' + id) as T;
   const canvas = root.querySelector<HTMLCanvasElement>('.sk-canvas')!, ov = root.querySelector<HTMLCanvasElement>('.sk-ov')!, octx = ov.getContext('2d')!;
 
+  let adaptive: AdaptiveQuality | null = null;
   let renderer: THREE.WebGLRenderer | null = null; let view: SkyView | null = null; let sim: SkySim | null = null;
   let diff: Difficulty = DIFFS[1]!; let state: 'title' | 'play' | 'paused' | 'over' = 'title'; let closed = false; let raf = 0; let last = 0; let saved = false;
   let mBoost = false, bannerT = 0, alertT = 0, flare = false, mFire = false, mMissile = false, autoFire = false, throttle = 0.55, hintT = 8, cockpit = false;
@@ -229,7 +231,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     }
     if (state !== 'paused') view.sync(sim, dt, now / 1000);
     if (state === 'play' || state === 'over') { view.follow(sim.player, dt, cameraLook, clamp((throttle - 0.55) * 2, 0, 1)); }
-    renderer.render(view.scene, view.camera);
+    renderer.render(view.scene, view.camera); if (state !== 'paused') adaptive?.tick();
     if (state === 'play') { hud(sim.player); overlay(sim.player); } else if (state === 'over') { octx.clearRect(0, 0, ov.width, ov.height); }
     if (state === 'title') { // 타이틀 배경: 느리게 선회하는 카메라
       const t = now / 4000; view.camera.position.set(Math.cos(t) * 900, 520, Math.sin(t) * 900); view.camera.lookAt(0, 250, 0);
@@ -255,9 +257,11 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   try {
     renderer = new THREE.WebGLRenderer({ canvas, antialias: prefs.quality !== 'low', powerPreference: 'high-performance' });
     renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.08;
-    renderer.setPixelRatio(Math.min(prefs.quality === 'high' ? 2 : prefs.quality === 'standard' ? 1.5 : 1, devicePixelRatio || 1));
+    const maxPr = Math.min(prefs.quality === 'high' ? 2 : prefs.quality === 'standard' ? 1.5 : 1, devicePixelRatio || 1);
+    adaptive = new AdaptiveQuality({ max: maxPr, setPixelRatio: pr => { renderer?.setPixelRatio(pr); resize(); }, setLevel: l => view?.setLevel(l) });
+    renderer.setPixelRatio(adaptive.pr);
     view = new SkyView(renderer); sim = new SkySim(diff); sim.intermission = 1e9; resize();
   } catch (err) { console.error(err); opts.loading?.close(); exit(); return; }
   opts.loading?.close(); last = performance.now(); raf = requestAnimationFrame(frame);
-  (window as unknown as { __sky?: unknown }).__sky = { get sim() { return sim; }, start };
+  (window as unknown as { __sky?: unknown }).__sky = { get sim() { return sim; }, get renderer() { return renderer; }, start };
 }

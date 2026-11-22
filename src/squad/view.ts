@@ -1,4 +1,4 @@
-import { UNITS } from './units';
+import { UNITS, type UnitType } from './units';
 import { sprite } from './sprites';
 import { terrain } from './terrain';
 import type { Battle, Effect, Placement, Side } from './sim';
@@ -29,12 +29,12 @@ function drawEffect(ctx: CanvasRenderingContext2D, e: Effect, cw: number, ch: nu
   if (e.kind === 'siege') {
     const f = Math.min(1, t / .28);
     if (f < 1) { const bx = x1 + (x2 - x1) * f, by = y1 + (y2 - y1) * f - Math.sin(f * Math.PI) * 70; ctx.fillStyle = '#10141a'; ctx.beginPath(); ctx.arc(bx, by, 6, 0, TAU); ctx.fill(); ctx.fillStyle = '#ffd37a'; ctx.beginPath(); ctx.arc(bx - 1.5, by - 1.5, 2, 0, TAU); ctx.fill(); }
-    else { const k = Math.min(1, (t - .28) / .45); ctx.globalAlpha = 1 - k; const g = ctx.createRadialGradient(x2, y2, 2, x2, y2, 14 + k * 46); g.addColorStop(0, '#fff6c8'); g.addColorStop(.45, '#ff9a3c'); g.addColorStop(1, '#ff5a2a00'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x2, y2, 14 + k * 46, 0, TAU); ctx.fill();
+    else { const k = Math.min(1, (t - .28) / .45); ctx.globalAlpha = 1 - k; const g = ctx.createRadialGradient(x2, y2, 2, x2, y2, 14 + k * 46); g.addColorStop(0, '#fff6c8'); g.addColorStop(.45, '#ff9a3c'); g.addColorStop(1, '#ff5a2a00'); ctx.fillStyle = g; ctx.globalCompositeOperation = 'lighter'; ctx.beginPath(); ctx.arc(x2, y2, 14 + k * 46, 0, TAU); ctx.fill(); ctx.globalCompositeOperation = 'source-over'; // 불빛은 덧셈 합성으로 바닥을 밝힘
       ctx.strokeStyle = '#fff1c2'; ctx.lineWidth = 3 * (1 - k); ctx.beginPath(); ctx.ellipse(x2, y2 + 6, 20 + k * 52, 7 + k * 16, 0, 0, TAU); ctx.stroke();
       ctx.fillStyle = '#3a2a1e'; for (let i = 0; i < 6; i++) { const a = i * TAU / 6 + .4, d = 10 + k * 40; spark(ctx, x2 + Math.cos(a) * d, y2 + Math.sin(a) * d * .6 - Math.sin(k * Math.PI) * 18, 4 * (1 - k) + 1); } }
   } else if (e.kind === 'heal') {
     ctx.globalAlpha = Math.max(0, 1 - t / .8); ctx.strokeStyle = '#87efb766'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-    const hg = ctx.createRadialGradient(x2, y2, 1, x2, y2, 22); hg.addColorStop(0, '#87efb766'); hg.addColorStop(1, '#87efb700'); ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(x2, y2, 22, 0, TAU); ctx.fill();
+    const hg = ctx.createRadialGradient(x2, y2, 1, x2, y2, 22); hg.addColorStop(0, '#87efb766'); hg.addColorStop(1, '#87efb700'); ctx.fillStyle = hg; ctx.globalCompositeOperation = 'lighter'; ctx.beginPath(); ctx.arc(x2, y2, 22, 0, TAU); ctx.fill(); ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = col; for (let i = 0; i < 5; i++) { const a = i * 1.26 + t * 3, r = 10 + i * 2, px = x2 + Math.cos(a) * r, py = y2 - t * 30 - i * 3 + Math.sin(a) * 4; if (i % 2) spark(ctx, px, py, 3.5); else plus(ctx, px, py, 3.5); }
   } else if (e.kind === 'hit') {
     if (far) {
@@ -52,7 +52,7 @@ function drawEffect(ctx: CanvasRenderingContext2D, e: Effect, cw: number, ch: nu
   if (e.value && e.kind !== 'death') { ctx.save(); ctx.globalAlpha = Math.max(0, 1 - t / .7); ctx.textAlign = 'center'; ctx.font = 'bold 14px sans-serif'; ctx.lineWidth = 3; ctx.strokeStyle = '#0b1018'; ctx.fillStyle = col; const label = `${e.kind === 'heal' ? '+' : '−'}${Math.round(e.value)}`, ty = y2 - 28 - t * 22; ctx.strokeText(label, x2, ty); ctx.fillText(label, x2, ty); ctx.restore(); }
 }
 
-export function draw(canvas: HTMLCanvasElement, armies: Placement[][], side: Side, battle: Battle | null, selectedRange: number, hover: { x: number; y: number } | null): void {
+export function draw(canvas: HTMLCanvasElement, armies: Placement[][], side: Side, battle: Battle | null, selectedRange: number, hover: { x: number; y: number } | null, ghost?: UnitType): void {
   const ctx = canvas.getContext('2d')!; const w = canvas.width, h = canvas.height, cw = w / 12, ch = h / 20;
   ctx.save();
   if (battle && battle.effects.some(e => e.kind === 'siege' && e.age > .28 && e.age < .4) && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) ctx.translate(Math.sin(battle.tick * 3) * 3, Math.cos(battle.tick * 4) * 2);
@@ -75,6 +75,15 @@ export function draw(canvas: HTMLCanvasElement, armies: Placement[][], side: Sid
     ctx.save(); ctx.setLineDash([6, 6]); ctx.strokeStyle = tint + 'b0'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.restore();
     const cg = ctx.createLinearGradient(0, hover.y * ch, 0, (hover.y + 1) * ch); cg.addColorStop(0, tint + '55'); cg.addColorStop(1, tint + '18');
     ctx.fillStyle = cg; ctx.beginPath(); ctx.roundRect(hover.x * cw + 1, hover.y * ch + 1, cw - 2, ch - 2, 6); ctx.fill(); ctx.strokeStyle = tint + 'd0'; ctx.lineWidth = 2; ctx.stroke();
+    // 놓기 전 미리보기: 반투명 병사 + 발밑 그림자(내 진영 칸에서만).
+    if (ghost && hover.y >= (side ? 0 : 10) && hover.y < (side ? 10 : 20) && hover.x >= 0 && hover.x < 12) { const gs = Math.min(cw, ch) * 1.5; ctx.save(); ctx.globalAlpha = .62; ctx.drawImage(sprite(ghost, side), hx - gs / 2, hy - gs * .56, gs, gs); ctx.restore(); }
+  }
+  // 쓰러진 병사 자리: 그을린 얼룩과 팀 색 천 조각이 전투가 끝날 때까지 남습니다.
+  if (battle) for (const u of battle.units) if (u.hp <= 0) {
+    const x = u.x * cw, y = u.y * ch + Math.min(cw, ch) * .42, rs = Math.min(cw, ch) * .5, sg = ctx.createRadialGradient(x, y, 1, x, y, rs);
+    sg.addColorStop(0, '#05070bcc'); sg.addColorStop(.6, '#05070b66'); sg.addColorStop(1, '#0000');
+    ctx.fillStyle = sg; ctx.beginPath(); ctx.ellipse(x, y, rs, rs * .38, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = u.side ? '#a82b3acc' : '#1b5aa6cc'; ctx.beginPath(); ctx.moveTo(x - 7, y - 1); ctx.quadraticCurveTo(x, y - 6, x + 8, y - 2); ctx.lineTo(x + 5, y + 3); ctx.quadraticCurveTo(x - 1, y + 1, x - 6, y + 4); ctx.closePath(); ctx.fill(); ctx.strokeStyle = '#0b1018aa'; ctx.lineWidth = 1; ctx.stroke();
   }
   const units = battle ? battle.units.filter(u => u.hp > 0) : armies[side]!.map((p, i) => ({ ...p, x: p.x + .5, y: p.y + .5, side, hp: UNITS[p.type].hp, id: i }));
   for (const u of [...units].sort((a, b) => a.y - b.y)) {
@@ -83,6 +92,7 @@ export function draw(canvas: HTMLCanvasElement, armies: Placement[][], side: Sid
     const gy = y + size * .3, glow = ctx.createRadialGradient(x, gy, 1, x, gy, size * .42);
     glow.addColorStop(0, u.side ? '#ff6a7055' : '#4fa8ff55'); glow.addColorStop(1, '#0000');
     ctx.fillStyle = glow; ctx.beginPath(); ctx.ellipse(x, gy, size * .42, size * .14, 0, 0, TAU); ctx.fill();
+    const cs = ctx.createRadialGradient(x + size * .05, gy, 1, x + size * .05, gy, size * .3); cs.addColorStop(0, '#000000a0'); cs.addColorStop(1, '#0000'); ctx.fillStyle = cs; ctx.beginPath(); ctx.ellipse(x + size * .05, gy, size * .3, size * .09, 0, 0, TAU); ctx.fill();
     ctx.strokeStyle = u.side ? '#ff8a8fcc' : '#7cc0ffcc'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(x, gy, size * .34, size * .1, 0, 0, TAU); ctx.stroke();
     ctx.drawImage(sprite(u.type, u.side), x - size / 2, y - size * .56 + bob, size, size);
     if (battle) hpBar(ctx, x - cw * .36, y - size * .66, cw * .72, Math.max(0, u.hp / d.hp), u.side);

@@ -5,7 +5,7 @@ import type { ActivityId, Level, StageId } from '../../src/slack/types';
 /** 헤드리스 봇: 감독 단서(발소리·순회)를 delay 초 늦게 보고 엄폐. greedy 면 발소리는 무시하고 문 창/순회만 피함. */
 function playBot(stage: StageId, seed: number, level: Level, opts: { delay: number; variety: boolean; greedy?: boolean }) {
   const sim = createSim(stage, seed, level); sim.start();
-  const acts: ActivityId[] = stage === 'class' ? ['manga', 'doodle', 'note', 'snack'] : ['video', 'webtoon', 'chat', 'game'];
+  const acts: ActivityId[] = stage === 'class' ? ['video', 'game'] : ['video', 'webtoon', 'chat', 'game'];
   const hist: string[] = []; const lag = Math.round(opts.delay * 10); let ai = 0, since = 0;
   sim.doActivity(acts[0]);
   for (let i = 0; i < 3000 && sim.state.phase === 'play'; i++) {
@@ -25,7 +25,7 @@ const clearRate = (stage: StageId, level: Level, opts: { delay: number; variety:
 
 describe('딴짓 시뮬레이션', () => {
   it('같은 시드는 같은 결과와 이벤트를 만든다', () => {
-    const run = () => { const sim = createSim('class', 42, 2); sim.start(); sim.doActivity('manga'); sim.setCover(false); for (let i = 0; i < 500; i++) sim.update(0.1); return [sim.state, sim.drain()]; };
+    const run = () => { const sim = createSim('class', 42, 2); sim.start(); sim.doActivity('game'); sim.setCover(false); for (let i = 0; i < 500; i++) sim.update(0.1); return [sim.state, sim.drain()]; };
     expect(run()).toEqual(run());
   });
   it('엄폐만 하면 들키지 않고 시간 종료 후 등급을 받는다', () => {
@@ -42,9 +42,26 @@ describe('딴짓 시뮬레이션', () => {
     expect(sim.state.strikes).toBe(3); expect(sim.state.phase).toBe('caught');
     expect(sim.drain().filter(event => event.t === 'strike')).toHaveLength(3);
   });
-  it('배터리가 없으면 휴대폰을 시작할 수 없다', () => {
-    const sim = createSim('class', 1, 1); sim.start(); sim.state.battery = 0; sim.doActivity('phone');
+  it('교실은 video/game 외의 활동 id 를 무시한다', () => {
+    const sim = createSim('class', 1, 1); sim.start();
+    for (const id of ['phone', 'manga', 'doodle', 'snack', 'sleep', 'note', 'music', 'chat', 'webtoon', 'shop']) { sim.doActivity(id as ActivityId); expect(sim.state.activity).toBeNull(); }
+    sim.doActivity('video'); expect(sim.state.activity).toBe('video'); sim.doActivity('game'); expect(sim.state.activity).toBe('game');
+  });
+  it('교실 노트북은 배터리가 없고 짝꿍·경고·졸림 기능이 없다', () => {
+    const sim = createSim('class', 5, 2); sim.start(); sim.state.battery = 0; sim.doActivity('game'); expect(sim.state.activity).toBe('game');
+    sim.state.battery = 100; expect(sim.bribe()).toBe(false);
+    const types = new Set<string>(); let text = '';
+    for (let i = 0; i < 1500 && sim.state.phase === 'play'; i++) { sim.setCover(i % 40 > 20); sim.update(0.1); for (const e of sim.drain()) { types.add(e.t); if (e.t === 'toast') text += e.text; } }
+    expect(types.has('friend-warn')).toBe(false); expect(text).not.toMatch(/짝꿍|쪽지|졸/);
+    expect(sim.state.battery).toBe(100); expect(sim.state.sleepy).toBe(0);
+  });
+  it('기숙사는 배터리가 없으면 게임을 시작할 수 없다', () => {
+    const sim = createSim('dorm', 1, 1); sim.start(); sim.state.battery = 0; sim.doActivity('game');
     expect(sim.state.activity).toBeNull();
+  });
+  it('교실 game 은 video 보다 재미가 크고 더 위험하다', () => {
+    const run = (id: 'game' | 'video') => { const sim = createSim('class', 3, 1); sim.start(); sim.setCover(false); sim.doActivity(id); for (let i = 0; i < 30; i++) sim.update(0.1); return sim.state; };
+    const g = run('game'), v = run('video'); expect(g.fun).toBeGreaterThan(v.fun); expect(g.sus).toBeGreaterThan(v.sus);
   });
   it('모든 스테이지와 난이도에서 수치가 유한하다', () => {
     for (const stage of ['class', 'dorm'] as StageId[]) for (const level of [1, 2, 3] as Level[]) {

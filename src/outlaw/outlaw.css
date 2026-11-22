@@ -289,6 +289,8 @@
 .ol-stars.seen i.on{filter:hue-rotate(-28deg) saturate(1.5) drop-shadow(0 0 6px #ff3d3d)}
 .ol-stars.search i.on{filter:hue-rotate(160deg) drop-shadow(0 0 6px var(--blue))}
 .ol-wi{width:40px;height:24px;flex:none;filter:drop-shadow(0 2px 2px #000b)}
+.ol-pi{width:1.25em;height:1.25em;vertical-align:-.25em;filter:drop-shadow(0 1px 2px #000b)}
+.ol-tbtn button .ol-pi{width:24px;height:24px;vertical-align:middle}
 .ol-wname{display:flex;align-items:center;gap:8px;justify-content:flex-end}
 .ol-wname .ol-wi{width:46px;height:28px}
 .ol-slots i{position:relative;width:34px;height:24px;line-height:0;display:grid;place-items:center;background:linear-gradient(180deg,#1b222c99,#0a0d1280)}

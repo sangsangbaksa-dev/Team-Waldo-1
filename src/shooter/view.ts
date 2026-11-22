@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { makeEnvironment, standardize } from '../shared/gfx';
 import { readPreferences } from '../prefs';
 import { makePost, type PostFx } from '../postfx';
+import { AdaptiveQuality } from '../shared/adaptive';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { AIR, PARTS, RED, WEAPONS, makeRng, type WeaponId } from './config';
 import { buildGun, lootPart, muzzleTip } from './gunbuild';
@@ -16,7 +17,7 @@ import { buildProps, buildRoofs, makeDropCrate, makePlane, makeVehicleMesh, part
 import { TerrainView, tintGround } from './terrainview';
 import { WeatherFx } from './weatherfx';
 import { waterDepth } from './terrain';
-import { crateTexture, floorTexture, glowTexture, groundTexture, lootCaseTexture, makeSky, wallTexture } from './textures';
+import { chuteTexture, crateTexture, floorTexture, glowTexture, groundTexture, leafTexture, lootCaseTexture, makeSky, rockTexture, wallTexture } from './textures';
 
 export type Quality = 'high' | 'standard' | 'low';
 const LOOT_COLOR: Record<string, number> = { weapon: 0xeaf6ff, ammo: 0xffa53a, medkit: 0x52f08a, armor: 0x5aa8ff, bandage: 0xf2f2f2, attach: 0xc59bff, helmet: 0xffd34d, boost: 0x39e6ff, smoke: 0xb8c0c8, flash: 0xfff2a0 };
@@ -51,6 +52,9 @@ export class ShooterView {
   private vm: THREE.Object3D | null = null; private vmId = ''; private vmParts = ''; private vmSwap = 0; private vmFlash: THREE.Sprite; private bob = 0; private shake = 0; private terrainView: TerrainView | null = null; private fovPunch = 0; private flashKick = 0; private roll = 0; private sprintT = 0; private time = 0;
   private mats = new Map<string, THREE.Material>(); private tmpCol = new THREE.Color(); private beams: THREE.InstancedMesh;
   private camPos = new THREE.Vector3(); fov = 78; frames = 0;
+  /** 적응형 화질: 프레임이 길면 해상도 → 후처리 → 그림자 → 원거리 장식 순으로 낮춥니다 */
+  private adapt: AdaptiveQuality; level = 0; private vw = 0; private vh = 0;
+  private cullSets: Array<{ m: THREE.InstancedMesh; x: number; z: number; r: number; far: number; grass: boolean }> = []; private tracerGeo = new THREE.CylinderGeometry(0.012, 0.012, 1, 4, 1, true);
   private environment: THREE.Texture | null = null; private reducedMotion = readPreferences().reducedMotion;
   /** 폭풍우 하늘: 번개(flash)가 가끔 하늘과 안개를 밝힙니다 */
   private wfx: WeatherFx | null = null; private sky: THREE.Mesh; private hemi: THREE.HemisphereLight; private flash = 0; private nextBolt = 6; private carrier: THREE.Group | null = null; private fogBase = new THREE.Color(0x76828a);
@@ -59,7 +63,8 @@ export class ShooterView {
     const hi = quality === 'high';
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(hi ? 2 : quality === 'standard' ? 1.5 : 1, window.devicePixelRatio || 1));
-    this.renderer.shadowMap.enabled = hi; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.enabled = hi; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; this.renderer.shadowMap.autoUpdate = false; this.renderer.shadowMap.needsUpdate = true; // 그림자 맵은 두 프레임에 한 번 갱신(frame)
+    this.adapt = new AdaptiveQuality({ max: this.renderer.getPixelRatio(), setPixelRatio: pr => { this.renderer.setPixelRatio(pr); this.applySize(); }, setLevel: l => this.setLevel(l) }); this.renderer.setPixelRatio(this.adapt.pr);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.05; this.renderer.autoClear = false;
     const sc = this.scene, sunDir = new THREE.Vector3(0.55, 0.62, 0.38);
     if (hi) { this.environment = makeEnvironment(this.renderer, { top: 0x637e9b, horizon: 0xc9c5b4, ground: 0x43463b, sun: 0xffe4bc, sunDir: [0.55, 0.62, 0.38], sunPower: 3 }); sc.environment = this.environment; this.vmScene.environment = this.environment; }
@@ -143,24 +148,24 @@ export class ShooterView {
         const x = (r() * 2 - 1) * (map.half + 20), z = (r() * 2 - 1) * (map.half + 20); if (map.compounds.some(c => Math.hypot(c.x - x, c.z - z) < c.r - 5) || map.sites.some(c => Math.hypot(c.x - x, c.z - z) < c.r + 1) || waterDepth(map.terrain, x, z) || map.terrain.hills.some(h => Math.hypot(h.x - x, h.z - z) < h.r * 1.05)) continue;
         d.position.set(x, 0, z); d.rotation.set(0, r() * 6.28, 0); d.scale.setScalar(0.8 + r() * 0.7); d.updateMatrix(); mesh.setMatrixAt(k++, d.matrix);
       }
-      mesh.count = k; mesh.receiveShadow = false; this.scene.add(mesh);
+      mesh.count = k; mesh.receiveShadow = false; this.chunk(mesh, 90, 150, true);
     }
     // 덤불
     { const bushes = map.props.filter(q => q.kind === 'bush');
       if (bushes.length) {
         const g = new THREE.IcosahedronGeometry(1, 1), p = g.attributes.position; for (let i = 0; i < p.count; i++) { const k = 0.82 + 0.3 * Math.sin(i * 12.9898) ** 2; p.setXYZ(i, p.getX(i) * k, p.getY(i) * k, p.getZ(i) * k); } g.computeVertexNormals();
-        const mesh = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ flatShading: true }), bushes.length);
+        const mesh = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ map: leafTexture(), flatShading: true }), bushes.length);
         bushes.forEach((q, i) => { d.position.set(q.x, q.h * 0.35, q.z); d.rotation.set(0, q.ry, 0); d.scale.set(q.w * 0.5, q.h * 0.55, q.w * 0.5); d.updateMatrix(); mesh.setMatrixAt(i, d.matrix); mesh.setColorAt(i, this.tmpCol.setHex(q.c)); });
-        mesh.castShadow = true; this.scene.add(mesh);
+        mesh.castShadow = true; this.chunk(mesh, 100, 260);
       } }
     // 바위
     if (map.rocks.length) {
       const g = new THREE.IcosahedronGeometry(1, 2), p = g.attributes.position, n = noise2(3);
       for (let i = 0; i < p.count; i++) { const k = 0.78 + 0.4 * n(p.getX(i) * 2 + 20, p.getZ(i) * 2 + p.getY(i) * 2 + 20); p.setXYZ(i, p.getX(i) * k, p.getY(i) * k * 0.9, p.getZ(i) * k); }
       g.computeVertexNormals();
-      const mesh = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ color: 0x8d8a82, flatShading: true }), map.rocks.length);
+      const mesh = new THREE.InstancedMesh(g, new THREE.MeshStandardMaterial({ color: 0x9a978f, map: rockTexture(), roughness: 0.95, flatShading: true }), map.rocks.length);
       map.rocks.forEach((k, i) => { d.position.set(k.x, k.sy * 0.28, k.z); d.rotation.set(0, k.ry, 0); d.scale.set(k.sx, k.sy, k.sz); d.updateMatrix(); mesh.setMatrixAt(i, d.matrix); mesh.setColorAt(i, this.tmpCol.setScalar(0.8 + r() * 0.4)); });
-      mesh.castShadow = true; mesh.receiveShadow = true; this.scene.add(mesh);
+      mesh.castShadow = true; mesh.receiveShadow = true; this.chunk(mesh, 120, 480);
     }
     // 나무: 모델이 있으면 Blender 나무, 없으면 단순한 원뿔
     for (const pine of [false, true]) {
@@ -171,16 +176,31 @@ export class ShooterView {
         for (const part of [baked.fixed, baked.team, baked.skin]) if (part) geos.push([part, lam]);
       } else {
         const trunk = new THREE.CylinderGeometry(0.18, 0.28, 3, 6); trunk.translate(0, 1.5, 0); const crown = new THREE.ConeGeometry(1.8, 5, 8); crown.translate(0, 5, 0);
-        geos = [[trunk, new THREE.MeshLambertMaterial({ color: 0x5b4126 })], [crown, new THREE.MeshLambertMaterial({ color: pine ? 0x2c5a35 : 0x4f7a37 })]];
+        geos = [[trunk, new THREE.MeshLambertMaterial({ color: 0x5b4126 })], [crown, new THREE.MeshLambertMaterial({ color: pine ? 0x3a7446 : 0x66994a, map: leafTexture() })]];
       }
       let top = 1; if (baked) { const bb = new THREE.Box3(); for (const [g] of geos) { g.computeBoundingBox(); bb.union(g.boundingBox!); } top = Math.max(0.5, bb.max.y); }
       for (const [g, m] of geos) {
         const mesh = new THREE.InstancedMesh(g, m, list.length);
         list.forEach((t, i) => { const h = (baked ? (pine ? 9 : 7.5) / top : 1) * t.s; d.position.set(t.x, 0, t.z); d.rotation.set(0, r() * 6.28, 0); d.scale.setScalar(h); d.updateMatrix(); mesh.setMatrixAt(i, d.matrix); });
-        mesh.castShadow = true; mesh.receiveShadow = false; this.scene.add(mesh);
+        mesh.castShadow = true; mesh.receiveShadow = false; this.chunk(mesh, 140, 520);
       }
     }
   }
+
+  /** 정적 인스턴스를 격자 칸으로 쪼갭니다: 한 덩어리면 프러스텀·그림자 컬링이 안 먹어 지도 전체를 매 프레임 그렸습니다. far 밖의 칸은 frame 에서 숨깁니다(안개에 묻히는 거리). */
+  private chunk(src: THREE.InstancedMesh, cell: number, far: number, grass = false): void {
+    const a = src.instanceMatrix.array, col = src.instanceColor?.array, cells = new Map<number, number[]>();
+    for (let i = 0; i < src.count; i++) { const k = (Math.floor(a[i * 16 + 12] / cell) + 512) * 1024 + Math.floor(a[i * 16 + 14] / cell) + 512; let c = cells.get(k); if (!c) cells.set(k, c = []); c.push(i); }
+    for (const list of cells.values()) {
+      const m = new THREE.InstancedMesh(src.geometry, src.material, list.length); let sx = 0, sz = 0;
+      if (col) m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(list.length * 3), 3);
+      list.forEach((i, j) => { m.instanceMatrix.array.set(a.subarray(i * 16, i * 16 + 16), j * 16); if (col) m.instanceColor!.array.set(col.subarray(i * 3, i * 3 + 3), j * 3); sx += a[i * 16 + 12]; sz += a[i * 16 + 14]; });
+      m.castShadow = src.castShadow; m.receiveShadow = src.receiveShadow; m.computeBoundingSphere(); this.scene.add(m);
+      this.cullSets.push({ m, x: sx / list.length, z: sz / list.length, r: cell * 0.75, far, grass });
+    }
+  }
+  private applySize(): void { if (!this.vw) return; this.renderer.setSize(this.vw, this.vh, false); this.post?.setSize(this.vw, this.vh); }
+  private setLevel(l: number): void { this.level = l; if (l >= 2) this.sun.castShadow = false; }
 
   // ---------- 병사 ---------- (공용 캐릭터 리그: src/shared/character)
   private makeRig(p: Player): void {
@@ -191,7 +211,7 @@ export class ShooterView {
       const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 1.0, 4, 8), new THREE.MeshLambertMaterial({ color: p.color })); body.position.y = 1.0; body.castShadow = true; root.add(body);
     }
     const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, color: 0xffd98a, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false })); flash.scale.set(0.8, 0.8, 1); flash.visible = false; root.add(flash);
-    const chute = new THREE.Group(), cm = this.mat(`chute${p.color}`, () => new THREE.MeshLambertMaterial({ color: p.color, side: THREE.DoubleSide, emissive: 0x111111 })), canopy = new THREE.Mesh(new THREE.SphereGeometry(3.1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2.15), cm);
+    const chute = new THREE.Group(), cm = this.mat(`chute${p.color}`, () => new THREE.MeshLambertMaterial({ color: p.color, map: chuteTexture(), side: THREE.DoubleSide, emissive: 0x111111 })), canopy = new THREE.Mesh(new THREE.SphereGeometry(3.1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2.15), cm);
     canopy.scale.set(1, 0.62, 1); canopy.position.y = 5.2; chute.add(canopy);
     const lm = this.mat('chuteline', () => new THREE.LineBasicMaterial({ color: 0xd9d4c4 })), pts: THREE.Vector3[] = [];
     for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; pts.push(new THREE.Vector3(Math.cos(a) * 2.9, 5.1, Math.sin(a) * 2.9), new THREE.Vector3(0, 1.6, 0)); }
@@ -314,7 +334,7 @@ export class ShooterView {
   }
   private tracer(ax: number, ay: number, az: number, bx: number, by: number, bz: number, color: number): void {
     const len = Math.hypot(bx - ax, by - ay, bz - az); if (len < 1 || this.tracers.length >= (this.quality === 'low' ? 24 : 100)) return;
-    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1, 4, 1, true), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    const mesh = new THREE.Mesh(this.tracerGeo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
     const mid = new THREE.Vector3((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2); mesh.position.copy(mid); mesh.scale.set(1, Math.min(len, 60), 1);
     // 앞부분만 짧게(총알이 날아가는 느낌): 끝점 쪽 60m 구간
     const dir = new THREE.Vector3(bx - ax, by - ay, bz - az).normalize(); if (len > 60) mesh.position.set(bx - dir.x * 30, by - dir.y * 30, bz - dir.z * 30);
@@ -435,7 +455,7 @@ export class ShooterView {
   private updateFx(dt: number): void {
     for (let i = this.puffs.length - 1; i >= 0; i--) { const f = this.puffs[i]; f.t += dt; f.s.position.y += f.vy * dt; f.s.scale.addScalar(f.grow * dt); (f.s.material as THREE.SpriteMaterial).opacity = Math.max(0, f.a * (1 - f.t / f.life)); if (f.t >= f.life) { this.scene.remove(f.s); (f.s.material as THREE.Material).dispose(); this.puffs.splice(i, 1); } }
     this.updateNades(dt);
-    for (let i = this.tracers.length - 1; i >= 0; i--) { const f = this.tracers[i]; f.life -= dt; (f.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, f.life / f.max) * 0.9; if (f.life <= 0) { this.scene.remove(f.mesh); f.mesh.geometry.dispose(); (f.mesh.material as THREE.Material).dispose(); this.tracers.splice(i, 1); } }
+    for (let i = this.tracers.length - 1; i >= 0; i--) { const f = this.tracers[i]; f.life -= dt; (f.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, f.life / f.max) * 0.9; if (f.life <= 0) { this.scene.remove(f.mesh); (f.mesh.material as THREE.Material).dispose(); this.tracers.splice(i, 1); } }
     const pos = this.sparks.geometry.attributes.position as THREE.BufferAttribute, col = this.sparks.geometry.attributes.color as THREE.BufferAttribute;
     for (let i = this.sparkData.length - 1; i >= 0; i--) { const s = this.sparkData[i]; s.life -= dt; s.vy -= 9 * dt; s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt; if (s.y < 0.02) { s.y = 0.02; s.vy *= -0.3; s.vx *= 0.6; s.vz *= 0.6; } if (s.life <= 0) this.sparkData.splice(i, 1); }
     this.sparkData.forEach((s, i) => { pos.setXYZ(i, s.x, s.y, s.z); const k = Math.min(1, s.life * 2.5); col.setXYZ(i, s.r * k, s.g * k, s.b * k); });
@@ -464,13 +484,13 @@ export class ShooterView {
     this.vmFlash.visible = p.muzzle > 0 && gun?.att.muzzle !== 'suppressor'; this.vmFlash.material.rotation = this.time * 40; this.flashKick = Math.max(0, this.flashKick - dt * 14); const fs = 0.3 + this.flashKick * 0.45 * (0.7 + Math.random() * 0.6); this.vmFlash.scale.set(fs, fs, 1);
   }
 
-  resize(w: number, h: number): void { this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); }
+  resize(w: number, h: number): void { this.vw = w; this.vh = h; this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); }
 
   /** 매 프레임: 장면을 경기 상태에 맞추고 그립니다. spectate 가 있으면 그 선수 뒤에서 따라갑니다(내가 쓰러진 뒤). */
   frame(dt: number, me: Player, spectate: Player | null, zoom: number): void {
     this.time += dt; this.frames++; const m = this.match, z = m.zone, cam = this.camera, view = spectate ?? me;
     const vx = view.x, vz = view.z;
-    for (const p of m.players) { const rig = this.rigs.get(p.id)!; const hide = (!spectate && p.id === me.id) || p.air === 1 || p.veh >= 0 || Math.abs(p.x - vx) + Math.abs(p.z - vz) > (p.air ? 520 : 190); rig.root.visible = !hide; if (hide) continue; this.poseRig(p, dt, Math.abs(p.x - vx) + Math.abs(p.z - vz)); if (!p.alive) rig.flash.visible = false; }
+    for (const p of m.players) { const rig = this.rigs.get(p.id)!; const hide = (!spectate && p.id === me.id) || p.air === 1 || p.veh >= 0 || Math.abs(p.x - vx) + Math.abs(p.z - vz) > (p.air ? 520 : this.level >= 3 ? 120 : 190); rig.root.visible = !hide; if (hide) continue; this.poseRig(p, dt, Math.abs(p.x - vx) + Math.abs(p.z - vz)); if (!p.alive) rig.flash.visible = false; }
     // 카메라
     this.bob += view.speed * dt * 1.7; this.shake = Math.max(0, this.shake - dt * 6);
     const drv = view.veh >= 0 ? m.vehicles[view.veh] ?? null : null;
@@ -492,7 +512,8 @@ export class ShooterView {
     this.camPos.copy(cam.position);
     // 해와 그림자는 카메라를 따라 이동
     (this.scene.fog as THREE.FogExp2).density = 0.0042 / (1 + view.alt / 110);
-    this.sun.position.set(view.x + 66, 92, view.z + 46); this.sun.target.position.set(view.x, 0, view.z); this.sun.target.updateMatrixWorld();
+    this.sun.position.set(view.x + 66, 92, view.z + 46); this.sun.target.position.set(view.x, 0, view.z); this.sun.target.updateMatrixWorld(); this.renderer.shadowMap.needsUpdate = this.frames < 3 || (this.frames & 1) === 0;
+    const mult = Math.min(3, 1 + view.alt / 110); for (const c of this.cullSets) c.m.visible = !(c.grass && this.level >= 3) && Math.hypot(c.x - vx, c.z - vz) < c.far * mult + c.r;
     // 자기장
     this.zoneWall.scale.set(z.r, 1, z.r); this.zoneWall.position.x = z.cx; this.zoneWall.position.z = z.cz; (this.zoneWall.material as THREE.ShaderMaterial).uniforms.t.value = this.time;
     this.zoneNext.visible = z.nextR < z.r - 0.5; this.zoneNext.scale.set(z.nextR, z.nextR, 1); this.zoneNext.position.x = z.nextCx; this.zoneNext.position.z = z.nextCz;
@@ -501,7 +522,8 @@ export class ShooterView {
     if (!this.reducedMotion) for (const aircraft of [this.plane, this.carrier]) if (aircraft?.visible) aircraft.traverse(o => { if (o.name === 'propeller') o.rotation.x += dt * 24; });
     this.viewmodel(view, !spectate && me.alive && !me.air && me.veh < 0, dt);
     // 그리기: 월드 → 깊이 지우고 1인칭 총
-    if (this.post) { this.post.setCamera(cam); this.post.render(dt); } else { this.renderer.clear(); this.renderer.render(this.scene, cam); }
+    this.adapt.tick();
+    if (this.post && this.level < 1) { this.post.setCamera(cam); this.post.render(dt); } else { this.renderer.clear(); this.renderer.render(this.scene, cam); }
     if (this.vm && this.vm.visible) { this.vmCam.fov = cam.fov > 60 ? 64 : 64 * (cam.fov / 60); this.vmCam.aspect = cam.aspect; this.vmCam.updateProjectionMatrix(); this.renderer.clearDepth(); this.renderer.render(this.vmScene, this.vmCam); }
   }
 

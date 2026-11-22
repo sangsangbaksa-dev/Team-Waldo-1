@@ -78,7 +78,19 @@ export function addRaceScenery(scene: THREE.Scene, track: Track, quality: 'high'
   add(new THREE.PlaneGeometry(3.6, 1.2), signMaterial, signFaces);
   add(new THREE.BoxGeometry(0.34, 0.09, 3.8), glow(), lamps);
   add(new THREE.BoxGeometry(12, 2.7, 6), dark(), stands);
-  add(new THREE.BoxGeometry(11.7, 0.22, 0.72), new THREE.MeshStandardMaterial({ color: 0xc95343, roughness: 0.7 }), seats);
+  const crowdCanvas = document.createElement('canvas'); crowdCanvas.width = 256; crowdCanvas.height = 16;
+  const cg = crowdCanvas.getContext('2d');
+  if (cg) { // 객석: 줄지어 앉은 관중(머리·상의 색 점)과 좌석 등받이
+    cg.fillStyle = '#7e2f28'; cg.fillRect(0, 0, 256, 16);
+    const tops = ['#e8e6df', '#d9a23a', '#2f6fd0', '#c23b3b', '#58d8ee', '#2a2f3a'], skins = ['#e2b48c', '#c68c64', '#8d5a3b', '#f0c8a0'];
+    for (let x = 3; x < 256; x += 8) {
+      cg.fillStyle = tops[(x * 7 + (x >> 3)) % tops.length]; cg.fillRect(x, 6, 6, 10);
+      cg.fillStyle = skins[(x >> 3) % skins.length]; cg.beginPath(); cg.arc(x + 3, 4, 2.6, 0, 7); cg.fill();
+    }
+    cg.fillStyle = 'rgba(0,0,0,.3)'; cg.fillRect(0, 13, 256, 3);
+  }
+  const crowdTex = new THREE.CanvasTexture(crowdCanvas); crowdTex.colorSpace = THREE.SRGBColorSpace;
+  add(new THREE.BoxGeometry(11.7, 0.22, 0.72), new THREE.MeshStandardMaterial({ map: crowdTex, roughness: 0.75 }), seats);
   add(new THREE.BoxGeometry(12, 0.12, 0.12), trim(), rails);
   add(new THREE.BoxGeometry(0.8, 9, 0.8), dark(), gatePosts);
   add(new THREE.BoxGeometry(1.1, 0.8, track.halfWidth * 2 + 6.8), dark(), gateCaps);

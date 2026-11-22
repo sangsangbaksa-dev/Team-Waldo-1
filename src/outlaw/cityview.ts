@@ -15,6 +15,8 @@ interface Lamps { mesh: THREE.InstancedMesh; groups: number[]; lamps: number[] }
 const UP = new THREE.Vector3(0, 1, 0);
 /** 태양 그림자 상자 반폭(m)·맵 해상도·시선 앞쪽으로 미는 거리. 상자 밖은 그림자가 없어 경계가 보이므로 넉넉히 잡습니다. */
 const SHADOW_HALF = 150, SHADOW_MAP = 3072, SHADOW_LEAD = 60;
+/** 한 변의 청크 수. 청크가 작을수록 시야·그림자 절두체 컬링으로 건너뛰는 지오메트리가 늘어납니다(드로우콜은 청크 수만큼 늘어남). */
+const CHUNKS = 8;
 
 // shooter/view.ts의 worldBox/buildBuildings처럼 월드 UV와 재질별 병합으로 건물 수와 드로우콜을 분리합니다.
 function surface(g: THREE.BufferGeometry, tile = 4, tint = 0xffffff, facade = false): THREE.BufferGeometry {
@@ -86,8 +88,10 @@ export class CityView {
   private oldRenderer: { tone: THREE.ToneMapping; exposure: number; shadows: boolean; shadowType: THREE.ShadowMapType };
   private bulbs = new THREE.MeshBasicMaterial({ color: 0xffdfaa });
   private glow = new THREE.MeshBasicMaterial({ color: 0xffd39b, transparent: true, opacity: .22, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3 });
-  private lampHeads: THREE.InstancedMesh | null = null;
-  private lampPools: THREE.InstancedMesh | null = null;
+  private lampHeads: THREE.InstancedMesh[] = [];
+  private lampPools: THREE.InstancedMesh[] = [];
+  /** 적응형 화질이 줄이는 그리기 거리 배율(1 = 기본). */
+  private drawScale = 1;
   private signals: Lamps | null = null;
   private signalTick = -Infinity;
   private disposed = false;
@@ -106,8 +110,8 @@ export class CityView {
     this.sun.castShadow = quality === 'high'; const shadow = this.sun.shadow;
     shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP); Object.assign(shadow.camera, { left: -SHADOW_HALF, right: SHADOW_HALF, top: SHADOW_HALF, bottom: -SHADOW_HALF, near: 1, far: 650 });
     shadow.bias = -.00025; shadow.normalBias = .12; shadow.camera.updateProjectionMatrix();
-    const size = map.half * 2 / 4;
-    for (let z = 0; z < 4; z++) for (let x = 0; x < 4; x++) {
+    const size = map.half * 2 / CHUNKS;
+    for (let z = 0; z < CHUNKS; z++) for (let x = 0; x < CHUNKS; x++) {
       const root = new THREE.Group(); root.name = `city chunk ${x},${z}`; this.root.add(root);
       this.chunks.push({ root, x: -map.half + (x + .5) * size, z: -map.half + (z + .5) * size, batch: new Map() });
     }
@@ -128,7 +132,7 @@ export class CityView {
     grad.addColorStop(0, 'rgba(255,255,255,.8)'); grad.addColorStop(.35, 'rgba(255,255,255,.23)'); grad.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
     const t = new THREE.CanvasTexture(canvas); this.textures.add(t); this.poolMap = t; return t;
   }  private mat(p: THREE.MeshStandardMaterialParameters): THREE.MeshStandardMaterial { const m = new THREE.MeshStandardMaterial(p); this.materials.add(m); return m; }
-  private chunk(x: number, z: number): Chunk { const s = this.map.half / 2; return this.chunks[THREE.MathUtils.clamp(Math.floor((z + this.map.half) / s), 0, 3) * 4 + THREE.MathUtils.clamp(Math.floor((x + this.map.half) / s), 0, 3)]; }
+  private chunk(x: number, z: number): Chunk { const s = this.map.half * 2 / CHUNKS; return this.chunks[THREE.MathUtils.clamp(Math.floor((z + this.map.half) / s), 0, CHUNKS - 1) * CHUNKS + THREE.MathUtils.clamp(Math.floor((x + this.map.half) / s), 0, CHUNKS - 1)]; }
   private put(x: number, z: number, m: THREE.Material, g: THREE.BufferGeometry): void { const b = this.chunk(x, z).batch; const a = b.get(m); if (a) a.push(g); else b.set(m, [g]); }
   private flush(batch: Batch, root: THREE.Group): void {
     for (const [m, list] of batch) {
@@ -248,11 +252,17 @@ export class CityView {
       }
     }
   }
-  // city/render3d.ts처럼 같은 소품은 행렬만 갖는 인스턴스로 묶습니다.
-  private instances(g: THREE.BufferGeometry, m: THREE.Material, props: readonly Prop[]): THREE.InstancedMesh {
-    const mesh = new THREE.InstancedMesh(g, m, props.length);
-    props.forEach((p, i) => { this.matrix.position.set(p.x, .15, p.z); this.matrix.rotation.set(0, -p.ry, 0); this.matrix.scale.setScalar(p.scale); this.matrix.updateMatrix(); mesh.setMatrixAt(i, this.matrix.matrix); });
-    mesh.instanceMatrix.needsUpdate = true; mesh.computeBoundingSphere(); mesh.castShadow = !(m instanceof THREE.MeshBasicMaterial); mesh.receiveShadow = true; this.root.add(mesh); return mesh;
+  // city/render3d.ts처럼 같은 소품은 행렬만 갖는 인스턴스로 묶되, 청크별로 나눠 절두체·거리 컬링이 먹히게 합니다(전부 한 덩어리면 도시 전체가 매 프레임 그려집니다).
+  private instances(g: THREE.BufferGeometry, m: THREE.Material, props: readonly Prop[]): THREE.InstancedMesh[] {
+    const groups = new Map<Chunk, Prop[]>();
+    for (const p of props) { const c = this.chunk(p.x, p.z), a = groups.get(c); if (a) a.push(p); else groups.set(c, [p]); }
+    const meshes: THREE.InstancedMesh[] = [];
+    for (const [c, list] of groups) {
+      const mesh = new THREE.InstancedMesh(g, m, list.length);
+      list.forEach((p, i) => { this.matrix.position.set(p.x, .15, p.z); this.matrix.rotation.set(0, -p.ry, 0); this.matrix.scale.setScalar(p.scale); this.matrix.updateMatrix(); mesh.setMatrixAt(i, this.matrix.matrix); });
+      mesh.instanceMatrix.needsUpdate = true; mesh.computeBoundingSphere(); mesh.castShadow = !(m instanceof THREE.MeshBasicMaterial); mesh.receiveShadow = true; c.root.add(mesh); meshes.push(mesh);
+    }
+    return meshes;
   }
   private buildProps(): void {
     const groups = new Map<PropKind, Prop[]>();
@@ -261,7 +271,7 @@ export class CityView {
     const lit = new THREE.MeshBasicMaterial({ vertexColors: true }); this.materials.add(lit);
     for (const [kind, props] of groups) {
       const source = this.assets?.props[kind];
-      if (source) { const baked = bake(source); for (const [part, g] of Object.entries(baked)) if (g) this.instances(propGeometry(g, 130), part === 'glow' ? lit : fixed, props); }
+      if (source) { const baked = bake(source); for (const [part, g] of Object.entries(baked)) if (g) this.instances(propGeometry(g, props.length > 1000 ? 64 : 130), part === 'glow' ? lit : fixed, props); }
       else {
         const parts: THREE.BufferGeometry[] = [], add = (g: THREE.BufferGeometry, color: number): void => { parts.push(surface(g, 4, color)); };
         if (kind.startsWith('tree')) {
@@ -369,15 +379,20 @@ export class CityView {
     this.sun.target.position.copy(target); this.sun.position.copy(target).addScaledVector(dir, 300);
     for (const f of this.facades) f.emissiveIntensity = c.night * 1.15;
     for (const n of this.neon) n.emissiveIntensity = .25 + c.night * 2.8;
-    if (this.lampHeads) this.lampHeads.visible = c.night > .4;
-    if (this.lampPools) this.lampPools.visible = c.night > .4;
+    for (const m of this.lampHeads) m.visible = c.night > .4;
+    for (const m of this.lampPools) m.visible = c.night > .4;
     this.glow.opacity = .16 + c.night * .24;
     for (const m of this.reflections) m.opacity = Math.min(.55, c.night * .3 + rain * .3);
     if (this.asphalt) { this.asphalt.roughness = Math.max(.3, .78 - rain * .4 - c.night * .08); this.asphalt.metalness = .08 + rain * .16; }
   }
+  /** 적응형 화질: 단계가 오를수록 그리기 거리를 줄이고(1단계 0.85, 2단계 이상 0.7) 2단계부터 그림자를 끕니다. 0이면 원래대로. */
+  setDetail(level: number): void {
+    this.drawScale = level >= 2 ? .7 : level >= 1 ? .85 : 1;
+    if (this.quality === 'high') this.sun.castShadow = level < 2;
+  }
   update(dt: number, camera: THREE.PerspectiveCamera, clock: number, t: number, rain = 0): void {
     if (this.disposed) return; this.lightning(dt, rain); camera.getWorldDirection(this.lookDir); this.lookDir.y = 0; if (this.lookDir.lengthSq() > 1e-4) this.lookDir.normalize(); this.lighting(clock, camera.position, rain, this.lookDir); this.rainFx(dt, camera.position, rain);
-    const radius = this.quality === 'low' ? 610 : 810, halfChunk = this.map.half / 4;
+    const radius = (this.quality === 'low' ? 610 : 810) * this.drawScale, halfChunk = this.map.half / CHUNKS;
     for (const c of this.chunks) { const dx = Math.max(0, Math.abs(camera.position.x - c.x) - halfChunk), dz = Math.max(0, Math.abs(camera.position.z - c.z) - halfChunk); c.root.visible = dx * dx + dz * dz < radius * radius; }
     if (this.signals && (Math.abs(t - this.signalTick) >= .25 || this.signalTick === -Infinity)) {
       this.signalTick = t; const { mesh, groups, lamps } = this.signals, colors = [0xff4545, 0xffd23f, 0x5dff8f];

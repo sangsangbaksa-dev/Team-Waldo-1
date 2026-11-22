@@ -31,14 +31,14 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     <div class="ty-fx"><div class="ty-vig"></div><div class="ty-flash" id="ty-flash"></div></div>
     <div class="ty-hud" id="ty-hud" hidden>
       <div class="ty-top">
-        <div class="ty-cash"><span class="lbl">현금</span><b id="ty-cash">$0</b><small id="ty-debt"></small></div>
+        <div class="ty-cash"><svg class="ty-ico coin" viewBox="0 0 24 24" aria-hidden="true"><defs><radialGradient id="tyg" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#fff3b0"/><stop offset=".55" stop-color="#ffcf5a"/><stop offset="1" stop-color="#b9801c"/></radialGradient></defs><circle cx="12" cy="12" r="10" fill="url(#tyg)" stroke="#7a4f10" stroke-width="1.5"/><circle cx="12" cy="12" r="6.4" fill="none" stroke="#b9801c" stroke-width="1"/><path d="M12 7v10M14.4 9.4c-.6-.9-4.8-1-4.8.9 0 2.2 4.8 1 4.8 3.3 0 1.9-4.2 1.9-4.8.9" fill="none" stroke="#7a4f10" stroke-width="1.5" stroke-linecap="round"/></svg><span class="lbl">현금</span><b id="ty-cash">$0</b><small id="ty-debt"></small></div>
         <div class="ty-stagebox"><b id="ty-stage"></b><div id="ty-ladder"></div></div>
         <div class="ty-clock"><span id="ty-sun">☀</span><b id="ty-clock">06:00</b><em id="ty-day">1일차</em>
           <div class="ty-speed" id="ty-speed"><button type="button" data-speed="1" aria-label="1배속">1×</button><button type="button" data-speed="2" aria-label="2배속">2×</button><button type="button" data-speed="4" aria-label="4배속">4×</button></div></div>
         <div class="ty-tools"><button type="button" id="ty-b-status" aria-label="현황">현황</button><button type="button" id="ty-b-map" aria-label="지도">지도</button><button type="button" id="ty-b-menu" aria-label="메뉴">Ⅱ</button></div>
       </div>
       <div class="ty-left">
-        <div class="ty-energy"><label>체력</label><div class="ty-bar"><i id="ty-energy"></i></div><b id="ty-energy-n">100</b></div>
+        <div class="ty-energy"><svg class="ty-ico bolt" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 2 5 13.5h6L9.5 22 19 9.8h-6.2z" fill="#5be3a0" stroke="#1d7a52" stroke-width="1.4" stroke-linejoin="round"/></svg><label>체력</label><div class="ty-bar"><i id="ty-energy"></i></div><b id="ty-energy-n">100</b></div>
         <div class="ty-carry" id="ty-carry"></div>
         <div class="ty-goal" id="ty-goal"></div>
       </div>
@@ -339,7 +339,21 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (playing && modal?.kind === 'status' && Math.floor(nowS * 2) % 4 === 0 && hudT === 0) renderModal();
     clockT += dt; if (playing && clockT > 0.1) { clockT = 0; drawMap(mini, layout, { stage: st.stageIndex, spots: spotViews, px: player.pos.x, pz: player.pos.z, yaw: player.facing, target: st.task?.targetSpotId ?? null, time: nowS, names: false }); if (modal?.kind === 'map') drawBig(); }
     void s;
-    if (post) post.render(dt); else renderer.render(scene, camera);
+    govern(dt);
+    if (++shadowTick >= shadowEvery) { shadowTick = 0; renderer.shadowMap.needsUpdate = true; } // 그림자 맵은 몇 프레임에 한 번만 다시 그립니다
+    if (post && postOn) post.render(dt); else renderer.render(scene, camera);
+  }
+  // 적응형 화질: 프레임 시간(지수평균)이 길면 해상도 → 그림자 갱신 빈도 → 후처리 → 그림자 순으로 줄입니다. 규칙·시뮬레이션에는 영향이 없습니다.
+  let prMax = 1, pr = 1, frameMs = 16, prCool = 3, postOn = true, shadowEvery = 2, shadowTick = 0;
+  function govern(dt: number): void {
+    if (!renderer || phase === 'load' || dt <= 0.001) return;
+    frameMs += (dt * 1000 - frameMs) * 0.08; prCool -= dt; if (prCool > 0 || frameMs < 26) return;
+    const floor = Math.min(0.75, prMax);
+    if (pr > floor + 0.001) { pr = Math.max(floor, pr - 0.25); renderer.setPixelRatio(pr); resize(); }
+    else if (shadowEvery < 4) shadowEvery = 4;
+    else if (post && postOn) postOn = false;
+    else if (atmo.sun.castShadow) atmo.sun.castShadow = false;
+    prCool = 4; frameMs = 16;
   }
   const titleFocus = new THREE.Vector3();
 
@@ -386,8 +400,8 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     opts.loading?.progress(0.9, '도시를 짓는 중'); await new Promise(r => setTimeout(r, 30)); if (closed) { opts.loading?.close(); return; }
     try {
       renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
-      renderer.setPixelRatio(Math.min(quality === 'high' ? 2 : quality === 'standard' ? 1.5 : 1, devicePixelRatio || 1));
-      renderer.shadowMap.enabled = quality !== 'low'; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1;
+      prMax = pr = Math.min(quality === 'high' ? 2 : quality === 'standard' ? 1.5 : 1, devicePixelRatio || 1); renderer.setPixelRatio(pr);
+      renderer.shadowMap.enabled = quality !== 'low'; renderer.shadowMap.autoUpdate = false; renderer.shadowMap.needsUpdate = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1;
       bindCore(createCore({ save: loadTycoon() }));
       layout = buildLayout(core.spots() as SpotDef[]);
       city = new CityView(layout, quality); scene.add(city.group); colliders = city.colliders;
@@ -400,7 +414,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     } catch (err) { console.error(err); opts.loading?.close(); titleEl.innerHTML = failHtml(); titleEl.hidden = false; return; }
     phase = 'title'; showTitle(); opts.loading?.close(); raf = requestAnimationFrame(frame);
     if (import.meta.env.DEV) {
-      const dbg = { get core() { return core; }, get city() { return city; }, get player() { return player; }, get cam() { return camera; }, get phase() { return phase; }, layout, start: (a: string) => titleAction(a), openSpot, syncCity, atmo: () => atmo, info: () => ({ calls: renderer?.info.render.calls, tris: renderer?.info.render.triangles, geos: renderer?.info.memory.geometries }), hud: hudEl, closeModal, openModal: (k: string) => openModal({ kind: k } as Modal) };
+      const dbg = { get core() { return core; }, get city() { return city; }, get player() { return player; }, get cam() { return camera; }, get phase() { return phase; }, layout, start: (a: string) => titleAction(a), openSpot, syncCity, atmo: () => atmo, renderer: () => renderer, info: () => ({ calls: renderer?.info.render.calls, tris: renderer?.info.render.triangles, geos: renderer?.info.memory.geometries }), hud: hudEl, closeModal, openModal: (k: string) => openModal({ kind: k } as Modal) };
       (window as unknown as { __ty: typeof dbg }).__ty = dbg;
     }
   })();

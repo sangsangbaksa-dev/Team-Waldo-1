@@ -1,6 +1,7 @@
 // SPEED RUSH — Three.js 장면: 석양 사이버 서킷, 스포츠카(Last City 의 vehicles.glb), 속도감 연출(FOV·카메라 흔들림·스트릭·불꽃·연기).
 import * as THREE from 'three';
 import { makePost, type PostFx } from '../postfx';
+import { AdaptiveQuality } from '../shared/adaptive';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { instantiate } from '../city/models';
 import { ghostAt } from './ghost';
@@ -49,6 +50,16 @@ function boxGeo(w: number, h: number, d: number, x: number, y: number, z: number
   const g = new THREE.BoxGeometry(w, h, d); g.rotateY(rotY); g.translate(x, y, z);
   const c = new Float32Array(g.attributes.position.count * 3); for (let i = 0; i < c.length; i += 3) c.set([color.r, color.g, color.b], i); g.setAttribute('color', new THREE.BufferAttribute(c, 3)); return g;
 }
+
+/** 흰 바탕에 곱해지는 거친 입자 무늬(자갈·풀·모래·껍질). 칠한 색 위에 곱해져 단색 면이 사라집니다. */
+function grainTex(w: number, h: number, count: number, extra?: (g: CanvasRenderingContext2D) => void): THREE.CanvasTexture {
+  return canvasTex(w, h, g => {
+    g.fillStyle = '#f4f4f4'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < count; i++) { const a = Math.random() * 0.22; g.fillStyle = Math.random() < 0.55 ? `rgba(0,0,0,${a})` : `rgba(255,255,255,${a * 1.3})`; g.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 3, 1 + Math.random() * 3); }
+    extra?.(g);
+  });
+}
+function scaleUv(g: THREE.BufferGeometry, su: number, sv: number): THREE.BufferGeometry { const uv = g.attributes.uv as THREE.BufferAttribute; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * su, uv.getY(i) * sv); return g; }
 
 let dot: THREE.CanvasTexture | null = null;
 /** 부드러운 원형 스프라이트(점이 네모로 보이지 않게). */
@@ -126,7 +137,9 @@ export class RaceView {
     this.renderer.toneMappingExposure = 1.1;
     this.shadows = quality !== 'low';
     if (this.shadows) { this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; }
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, quality === 'high' ? 2 : quality === 'standard' ? 1.5 : 1));
+    // 적응형 화질: 프레임이 길면 해상도 → 후처리 → 그림자 → 장식 순으로 낮춥니다(shared/adaptive.ts).
+    this.adaptive = new AdaptiveQuality({ max: Math.min(devicePixelRatio || 1, quality === 'high' ? 2 : quality === 'standard' ? 1.5 : 1), setPixelRatio: pr => { this.renderer.setPixelRatio(pr); this.renderer.setSize(this.vw, this.vh, false); this.post?.setSize(this.vw, this.vh); }, setLevel: l => this.setLevel(l) });
+    this.renderer.setPixelRatio(this.adaptive.pr);
     this.scene.fog = new THREE.Fog(theme.fog.color, theme.fog.near, theme.fog.far); this.sun = new THREE.DirectionalLight(theme.light.sun, theme.light.sunPower); this.sunDir.set(...theme.sky.sun); this.sunDir.y = Math.max(0.45, this.sunDir.y + 0.35); this.sunDir.normalize();
     this.buildSky(); if (quality !== 'low') this.buildCarEnv(); this.buildGround(); this.buildRoad(); this.buildProps(quality);
     addRaceScenery(this.scene, track, quality);
@@ -145,6 +158,13 @@ export class RaceView {
     this.post = makePost(quality, this.renderer, this.scene, this.camera, { strength: 0.3, radius: 0.5, threshold: 0.96, vignette: 0.3, saturation: 1.1, contrast: 1.06 });
   }
   private carTemplates: Record<string, THREE.Object3D> | null;
+  private readonly adaptive: AdaptiveQuality; private vw = 1; private vh = 1; private decoOn = false;
+  /** 1 후처리 끔 · 2 그림자 끔 · 3 장식(나무·건물·선인장 등 instanced 소품) 숨김 */
+  private setLevel(l: number): void {
+    if (l >= 1 && this.post) { this.post.dispose(); this.post = null; }
+    if (l >= 2) this.sun.castShadow = false;
+    if (l >= 3) this.scene.traverse(o => { if (o.userData.deco) o.visible = false; });
+  }
   private carEnv: THREE.Texture | null = null; private carMats = new Map<string, THREE.Material>();
   /** 하늘을 반사 맵으로 구워 차체 도장·유리에 노을과 하늘이 비치게 합니다. */
   private buildCarEnv(): void {
@@ -320,8 +340,9 @@ export class RaceView {
     const skirtMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(th.ground.base).multiplyScalar(0.7), side: THREE.DoubleSide });
     const skirt = (a: number, b: number): THREE.Mesh => { const g = ribbon(t, a, b, 0, 0); const p = g.attributes.position as THREE.BufferAttribute; for (let k = 1; k < p.count; k += 2) p.setY(k, -0.4); return new THREE.Mesh(g, skirtMat); };
     // 벽 바깥 갓길(자갈·풀·모래)
-    const shMat = new THREE.MeshBasicMaterial({ color: th.shoulder, side: THREE.DoubleSide });
-    const shL = new THREE.Mesh(ribbon(t, -wl - 8, -wl, 0.02, 0.02), shMat), shR = new THREE.Mesh(ribbon(t, wl, wl + 8, 0.02, 0.02), shMat);
+    const shTex = grainTex(128, 128, 2600, g => { for (let i = 0; i < 40; i++) { const x = Math.random() * 128, y = Math.random() * 128, r = 3 + Math.random() * 7, gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, 'rgba(0,0,0,.18)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2); } }); this.disposables.push(shTex);
+    const shMat = new THREE.MeshBasicMaterial({ color: th.shoulder, map: shTex, side: THREE.DoubleSide });
+    const shL = new THREE.Mesh(scaleUv(ribbon(t, -wl - 8, -wl, 0.02, 0.02), 2, 10), shMat), shR = new THREE.Mesh(scaleUv(ribbon(t, wl, wl + 8, 0.02, 0.02), 2, 10), shMat);
     for (const m of [curbL, curbR, wallL, wallR, capL, capR]) m.receiveShadow = true;
     this.scene.add(curbL, curbR, wallL, wallR, capL, capR, shL, shR, skirt(-wl, -wl), skirt(wl, wl));
     this.disposables.push(road.geometry, roadMat, asphalt, curbL.geometry, curbR.geometry, curbMat, wallL.geometry, wallR.geometry, capL.geometry, capR.geometry, shL.geometry, shR.geometry, shMat, wallMat, skirtMat);
@@ -423,7 +444,7 @@ export class RaceView {
   private instanced(geo: THREE.BufferGeometry, mat: THREE.Material, items: Array<{ p: [number, number, number]; s?: [number, number, number]; ry?: number; color?: THREE.ColorRepresentation }>): THREE.InstancedMesh {
     const mesh = new THREE.InstancedMesh(geo, mat, Math.max(1, items.length)), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), col = new THREE.Color();
     items.forEach((it, k) => { m4.compose(new THREE.Vector3(...it.p), q.setFromEuler(e.set(0, it.ry ?? 0, 0)), new THREE.Vector3(...(it.s ?? [1, 1, 1]))); mesh.setMatrixAt(k, m4); if (it.color !== undefined) mesh.setColorAt(k, col.set(it.color)); });
-    mesh.count = items.length; mesh.frustumCulled = false; this.scene.add(mesh); this.disposables.push(geo, mat); return mesh;
+    mesh.count = items.length; mesh.frustumCulled = false; mesh.userData.deco = this.decoOn; this.scene.add(mesh); this.disposables.push(geo, mat); return mesh;
   }
 
   private buildProps(quality: 'high' | 'standard' | 'low'): void {
@@ -484,14 +505,15 @@ export class RaceView {
     }
     const mat = (o: THREE.MeshBasicMaterialParameters): THREE.MeshBasicMaterial => { const m = new THREE.MeshBasicMaterial(o); this.disposables.push(m); return m; };
     // 도로가 높이 올라간 곳은 비탈로 지면까지 내립니다.
+    const embTex = grainTex(128, 128, 3200); this.disposables.push(embTex);
     const emb = (side: 1 | -1): THREE.Mesh => {
-      const n = t.n, pos = new Float32Array((n + 1) * 6), idx: number[] = [];
-      for (let k = 0; k <= n; k++) { const i = k % n, w = Math.max(6, t.y[i] * 2.4 + 4), a = side * (hw + 1.5), b = side * (hw + 1.5 + w), rx = -t.tz[i], rz = t.tx[i]; pos.set([t.x[i] + rx * a, t.y[i], t.z[i] + rz * a, t.x[i] + rx * b, -0.4, t.z[i] + rz * b], k * 6); if (k < n) { const o = k * 2; idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2); } }
-      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setIndex(idx); this.disposables.push(g);
-      return new THREE.Mesh(g, mat({ color: new THREE.Color(th.ground.base).multiplyScalar(0.85), side: THREE.DoubleSide }));
+      const n = t.n, pos = new Float32Array((n + 1) * 6), uvs = new Float32Array((n + 1) * 4), idx: number[] = [];
+      for (let k = 0; k <= n; k++) { const i = k % n, w = Math.max(6, t.y[i] * 2.4 + 4), a = side * (hw + 1.5), b = side * (hw + 1.5 + w), rx = -t.tz[i], rz = t.tx[i]; pos.set([t.x[i] + rx * a, t.y[i], t.z[i] + rz * a, t.x[i] + rx * b, -0.4, t.z[i] + rz * b], k * 6); uvs.set([0, k * t.ds / 5, w / 5, k * t.ds / 5], k * 4); if (k < n) { const o = k * 2; idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2); } }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uvs, 2)); g.setIndex(idx); this.disposables.push(g);
+      return new THREE.Mesh(g, mat({ color: new THREE.Color(th.ground.base).multiplyScalar(0.85), map: embTex, side: THREE.DoubleSide }));
     };
     this.scene.add(emb(1), emb(-1));
-    const sceneryKind = th.scenery;
+    const sceneryKind = th.scenery; this.decoOn = true;
     if (sceneryKind === 'city') {
       // 한 장 = 가로 12m(창 4칸) × 세로 14m(4층). 층마다 슬래브 띠가 있고, 불 켜진 창은 몇 칸씩 이어져 실제 사무실처럼 보입니다.
       // (예전 6×12 칸의 작은 무작위 점은 멀리서 노이즈처럼 번쩍였습니다.)
@@ -520,7 +542,7 @@ export class RaceView {
           if (!ok || placed.some(p => Math.hypot(p[0] - x, p[1] - z) < 34)) continue;
           placed.push([x, z, k.h]); m4.compose(new THREE.Vector3(x, k.h / 2 - 0.4, z), q.setFromEuler(e.set(0, rnd(0, 6.28), 0)), sc.set(1, 1, 1)); mesh.setMatrixAt(count++, m4);
         }
-        mesh.count = count; this.scene.add(mesh); this.disposables.push(g, bmat);
+        mesh.count = count; mesh.userData.deco = true; this.scene.add(mesh); this.disposables.push(g, bmat);
       }
       this.disposables.push(win);
     } else if (sceneryKind === 'harbor') {
@@ -530,9 +552,25 @@ export class RaceView {
         const ry = Math.random() < 0.5 ? 0 : Math.PI / 2, cols = 2 + Math.floor(Math.random() * 3), rows = 1 + Math.floor(Math.random() * 3), stack = 1 + Math.floor(Math.random() * 3);
         for (let a = 0; a < cols; a++) for (let b = 0; b < rows; b++) for (let h = 0; h < stack; h++) { const lx = a * 12.6, lz = b * 2.8, cx = Math.cos(ry), sx = Math.sin(ry); items.push({ p: [x + lx * cx + lz * sx, 1.2 + h * 2.6 - 0.4, z - lx * sx + lz * cx], ry, color: palette[Math.floor(Math.random() * palette.length)] }); }
       }
-      this.instanced(new THREE.BoxGeometry(12, 2.6, 2.4), mat({ color: 0xffffff }), items);
+      const contTex = canvasTex(128, 64, g => { // 골판 컨테이너: 세로 골, 위아래 레일, 번호판, 녹 줄기
+        g.fillStyle = '#f2f2f2'; g.fillRect(0, 0, 128, 64);
+        for (let x = 0; x < 128; x += 5) { g.fillStyle = 'rgba(0,0,0,.2)'; g.fillRect(x, 5, 2, 54); g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(x + 2, 5, 1, 54); }
+        g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(0, 0, 128, 5); g.fillRect(0, 59, 128, 5); g.fillStyle = 'rgba(255,255,255,.3)'; g.fillRect(0, 5, 128, 1);
+        g.fillStyle = 'rgba(255,255,255,.75)'; g.fillRect(14, 12, 34, 9); g.fillStyle = 'rgba(0,0,0,.5)'; for (let k = 0; k < 6; k++) g.fillRect(16 + k * 5, 14, 3, 5);
+        for (let i = 0; i < 7; i++) { const x = Math.random() * 128, gr = g.createLinearGradient(0, 8, 0, 56); gr.addColorStop(0, 'rgba(120,60,20,.28)'); gr.addColorStop(1, 'rgba(120,60,20,0)'); g.fillStyle = gr; g.fillRect(x, 8, 2 + Math.random() * 3, 48); }
+        for (let i = 0; i < 500; i++) { g.fillStyle = `rgba(0,0,0,${Math.random() * 0.12})`; g.fillRect(Math.random() * 128, Math.random() * 64, 2, 2); }
+      }, false);
+      this.disposables.push(contTex);
+      this.instanced(new THREE.BoxGeometry(12, 2.6, 2.4), mat({ color: 0xffffff, map: contTex }), items);
       const sheds = this.scatter(low ? 6 : 14, 0, 320, 30, 90, true, () => 40).map(([x, z]) => ({ p: [x, 6 - 0.4, z] as [number, number, number], s: [rnd(0.9, 1.5), 1, rnd(0.8, 1.3)] as [number, number, number], ry: Math.round(Math.random()) * Math.PI / 2, color: 0x8b95a3 }));
-      this.instanced(new THREE.BoxGeometry(46, 12, 22), mat({ color: 0xffffff }), sheds);
+      const shedTex = canvasTex(128, 64, g => { // 철판 벽: 세로 골과 큰 셔터
+        g.fillStyle = '#f0f0f0'; g.fillRect(0, 0, 128, 64);
+        for (let x = 0; x < 128; x += 4) { g.fillStyle = 'rgba(0,0,0,.14)'; g.fillRect(x, 0, 1.5, 64); }
+        g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(34, 22, 60, 42); for (let y = 24; y < 64; y += 5) { g.fillStyle = 'rgba(255,255,255,.14)'; g.fillRect(34, y, 60, 1.5); }
+        g.fillStyle = 'rgba(0,0,0,.4)'; g.fillRect(0, 0, 128, 4); g.fillRect(0, 60, 128, 4);
+      }, false);
+      this.disposables.push(shedTex);
+      this.instanced(new THREE.BoxGeometry(46, 12, 22), mat({ color: 0xffffff, map: shedTex }), sheds);
       const crane = (x: number, z: number): void => { const g: THREE.BufferGeometry[] = [], col = new THREE.Color(0xe0872a); for (const dx of [-14, 14]) for (const dz of [-6, 6]) g.push(boxGeo(1.6, 46, 1.6, x + dx, 22.6, z + dz, 0, col)); g.push(boxGeo(36, 3, 16, x, 46, z, 0, col), boxGeo(70, 2.4, 3, x, 50, z, 0, col)); const mm = mergeGeometries(g); g.forEach(o => o.dispose()); this.scene.add(new THREE.Mesh(mm, mat({ vertexColors: true }))); this.disposables.push(mm); };
       for (const [x, z] of this.scatter(low ? 2 : 5, 70, 260, 50, 200)) crane(x, z);
     } else if (sceneryKind === 'forest') {
@@ -542,8 +580,11 @@ export class RaceView {
       const crown = mergeGeometries(tiers.map(g => g.toNonIndexed())); tiers.forEach(g => g.dispose());
       const tint = new THREE.Color(th.tint), shade = (): THREE.Color => (snow ? new THREE.Color().setScalar(rnd(0.82, 1.1)) : tint.clone().multiplyScalar(rnd(0.7, 1.25)));
       const sizes = spots.map(() => rnd(0.8, 1.8));
-      this.instanced(trunk, mat({ color: 0x4a3524 }), spots.map(([x, z], k) => ({ p: [x, 2 * sizes[k] - 0.4, z] as [number, number, number], s: [sizes[k], sizes[k], sizes[k]] as [number, number, number] })));
-      this.instanced(crown, mat({ vertexColors: true }), spots.map(([x, z], k) => ({ p: [x, 2 * sizes[k] - 0.4, z] as [number, number, number], s: [sizes[k], sizes[k], sizes[k]] as [number, number, number], ry: rnd(0, 6), color: shade() })));
+      const bark = grainTex(32, 64, 500, g => { for (let x = 0; x < 32; x += 4) { g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(x + Math.random() * 2, 0, 1.5, 64); } });
+      const needles = grainTex(64, 64, 900, g => { for (let y = 6; y < 64; y += 9) { g.fillStyle = 'rgba(0,0,0,.2)'; g.fillRect(0, y, 64, 2); g.fillStyle = 'rgba(255,255,255,.15)'; g.fillRect(0, y + 2, 64, 1); } });
+      needles.repeat.set(3, 1); this.disposables.push(bark, needles);
+      this.instanced(trunk, mat({ color: 0x4a3524, map: bark }), spots.map(([x, z], k) => ({ p: [x, 2 * sizes[k] - 0.4, z] as [number, number, number], s: [sizes[k], sizes[k], sizes[k]] as [number, number, number] })));
+      this.instanced(crown, mat({ vertexColors: true, map: needles }), spots.map(([x, z], k) => ({ p: [x, 2 * sizes[k] - 0.4, z] as [number, number, number], s: [sizes[k], sizes[k], sizes[k]] as [number, number, number], ry: rnd(0, 6), color: shade() })));
       this.addBackdrop(quality, crown, trunk);
     } else {
       // 사막: 메사, 선인장, 모래 언덕, 전봇대
@@ -552,11 +593,15 @@ export class RaceView {
       const cyl = new THREE.CylinderGeometry(0.78, 1, 1, 7); (cyl.attributes.uv as THREE.BufferAttribute).array.forEach((_, i, arr) => { if (i % 2) (arr as Float32Array)[i] *= 2; });
       this.instanced(cyl, mat({ map: strata, color: th.tint }), mesas); this.disposables.push(strata);
       const dunes = this.scatter(low ? 25 : 60, 30, 900, 40, 70, true, () => rnd(80, 200) * 1.25).map(([x, z, , r]) => ({ p: [x, -0.4, z] as [number, number, number], s: [r / 1.25, rnd(8, 22), r / 1.25] as [number, number, number], ry: rnd(0, 6), color: new THREE.Color(0xd9ae72).multiplyScalar(rnd(0.9, 1.08)) }));
-      this.instanced(new THREE.SphereGeometry(1, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), mat({ color: 0xffffff }), dunes);
+      const ripple = grainTex(128, 64, 1400, g => { for (let y = 4; y < 64; y += 7) { g.lineWidth = 1.5; g.strokeStyle = 'rgba(0,0,0,.14)'; g.beginPath(); for (let x = 0; x <= 128; x += 8) g.lineTo(x, y + Math.sin(x * 0.2 + y) * 2); g.stroke(); g.strokeStyle = 'rgba(255,255,255,.3)'; g.beginPath(); for (let x = 0; x <= 128; x += 8) g.lineTo(x, y + 2 + Math.sin(x * 0.2 + y) * 2); g.stroke(); } });
+      this.disposables.push(ripple);
+      this.instanced(scaleUv(new THREE.SphereGeometry(1, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), 3, 1), mat({ color: 0xffffff, map: ripple }), dunes);
       const cg: THREE.BufferGeometry[] = [], green = new THREE.Color(0x4f7a3a);
       cg.push(boxGeo(0.9, 5, 0.9, 0, 2.5, 0, 0, green), boxGeo(2.2, 0.7, 0.7, 1.4, 2.4, 0, 0, green), boxGeo(0.7, 1.8, 0.7, 2.4, 3.2, 0, 0, green), boxGeo(2, 0.7, 0.7, -1.3, 3.2, 0, 0, green), boxGeo(0.7, 1.6, 0.7, -2.2, 3.9, 0, 0, green));
       const cactus = mergeGeometries(cg); cg.forEach(o => o.dispose());
-      this.instanced(cactus, mat({ vertexColors: true }), this.scatter(low ? 70 : 160, 9, 160, 14, 8).map(([x, z]) => { const s = rnd(0.8, 1.6); return { p: [x, -0.4, z] as [number, number, number], s: [s, s, s] as [number, number, number], ry: rnd(0, 6) }; }));
+      const spine = grainTex(32, 32, 160, g => { for (let x = 3; x < 32; x += 6) { g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(x, 0, 2, 32); g.fillStyle = 'rgba(230,240,190,.5)'; for (let y = 2; y < 32; y += 5) g.fillRect(x - 1, y, 1, 1); } });
+      this.disposables.push(spine);
+      this.instanced(cactus, mat({ vertexColors: true, map: spine }), this.scatter(low ? 70 : 160, 9, 160, 14, 8).map(([x, z]) => { const s = rnd(0.8, 1.6); return { p: [x, -0.4, z] as [number, number, number], s: [s, s, s] as [number, number, number], ry: rnd(0, 6) }; }));
       // 길가 군사 초소(FRONTLINE 사막 기지와 같은 공용 소품)
       this.outposts = buildOutposts(this.scene, t, low); this.disposables.push(this.outposts);
       // 전봇대와 전선(오른쪽 길가)
@@ -566,7 +611,7 @@ export class RaceView {
       const wires: number[] = []; for (let k = 0; k < ps.length; k++) { const a = ps[k], b = ps[(k + 1) % ps.length]; for (const dy of [10.4, 9.6, 8.8]) wires.push(a[0], a[1] + dy, a[2], b[0], b[1] + dy, b[2]); }
       const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wires, 3)); const wl = new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x2b2420 })); wl.frustumCulled = false; this.scene.add(wl); this.disposables.push(wg, wl.material as THREE.Material);
     }
-    if (sceneryKind !== 'forest') this.addBackdrop(quality);
+    this.decoOn = false; if (sceneryKind !== 'forest') this.addBackdrop(quality);
   }
 
   /** 코스 둘레 원경 지형(능선·산맥)과 산기슭 숲 */
@@ -575,7 +620,7 @@ export class RaceView {
     this.scene.add(b.group); this.disposables.push(b);
   }
 
-  resize(w: number, h: number): void { this.viewH = h; this.renderer.setSize(w, h, false); this.camera.aspect = w / Math.max(1, h); this.camera.updateProjectionMatrix(); }
+  resize(w: number, h: number): void { this.viewH = h; this.vw = w; this.vh = h; this.renderer.setSize(w, h, false); this.camera.aspect = w / Math.max(1, h); this.camera.updateProjectionMatrix(); }
   kick(power: number): void { this.shake = Math.min(1, this.shake + power); }
   punchFov(v: number): void { this.punch = Math.min(1.2, this.punch + v); }
   worldOf(r: Racer): THREE.Vector3 { return new THREE.Vector3(r.car.x, r.car.y, r.car.z); }
@@ -648,6 +693,7 @@ export class RaceView {
     this.updateStartLights(race);
     if (!this.reducedMotion) this.updateStreaks(dt, p, p.vx, p.vz, speed, bst);
     if (this.post) this.post.render(dt); else this.renderer.render(this.scene, this.camera);
+    this.adaptive.tick();
     return { speedFrac: sf };
   }
 

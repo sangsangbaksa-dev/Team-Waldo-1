@@ -106,3 +106,10 @@ describe('종목별 완주', () => {
     }, 60000);
   }
 });
+
+describe('car art', () => {
+  it('paints each car in its own body and accent colour', async () => {
+    const { carArt } = await import('../../src/race/setup-ui');
+    for (const c of CARS) expect(carArt(c.color, c.accent)).toMatch(new RegExp(`^<svg[^>]*>.*fill="${c.color}".*stroke="${c.accent}"`));
+  });
+});

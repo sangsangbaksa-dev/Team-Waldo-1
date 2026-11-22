@@ -18,6 +18,7 @@ import { Skyline } from './skyline';
 import { StreetFx } from './streetfx';
 import { WetStreet, PROBE_LAYER } from './wetstreet';
 import { BuildGhost } from './buildghost';
+import { lootArt, lootTexture, disposeLootTextures } from './loottex';
 import { BUILD_REACH_MAX, buildDistance, buildMinDistance, clampLabelScreenPos, clampLookPitch, labelSpriteCenter } from './uiMath';
 
 export type ViewMode = 'fp' | 'tp';
@@ -100,7 +101,7 @@ export class Renderer3D {
     if (quality !== 'low') { this.sun.castShadow = true; const s = this.sun.shadow; const m = quality === 'high' ? 2048 : 1024; s.mapSize.set(m, m); s.camera.left = s.camera.bottom = -800; s.camera.right = s.camera.top = 800; s.camera.near = 10; s.camera.far = 3000; s.bias = -0.0012; s.normalBias = 1.5; }
     // 바다 + 지면
     const sea = this.sea = new THREE.Mesh(new THREE.PlaneGeometry(30000, 30000), new THREE.MeshLambertMaterial({ color: 0x2a4558 })); sea.rotation.x = -Math.PI / 2; sea.position.set(SIZE / 2, -6, SIZE / 2); sc.add(sea);
-    const T = quality === 'low' ? 2048 : 4096, k = T / SIZE, gt = canvasTex(T, T, g => {
+    const T = quality === 'high' ? 4096 : 2048, k = T / SIZE, gt = canvasTex(T, T, g => {
       g.fillStyle = '#35343c'; g.fillRect(0, 0, T, T); g.scale(k, k);
       g.strokeStyle = 'rgba(214,186,110,0.7)'; g.lineWidth = 3.5; g.setLineDash([24, 26]); g.beginPath();
       for (let i = 0; i <= BLOCKS; i++) { const c = i * PITCH + ROAD / 2; g.moveTo(c, 0); g.lineTo(c, SIZE); g.moveTo(0, c); g.lineTo(SIZE, c); } g.stroke(); g.setLineDash([]);
@@ -178,7 +179,7 @@ export class Renderer3D {
     this.scene.add(pole, bulb);
   }
   private setPerfLevel(l: number): void {
-    this.perfLevel = l; this.wetStreet.probe = l < 1; this.postOn = l < 3; if (l >= 2) this.sun.castShadow = false; this.settle = 60; this.gaps.length = 0;
+    this.perfLevel = l; this.wetStreet.probe = l < 1; this.postOn = l < 3; if (l >= 2) { this.sun.castShadow = false; this.details.setVisible(false); } this.settle = 60; this.gaps.length = 0;
   }
   /** 해상도(adaptResolution)가 이미 바닥인데도 프레임 간격 중앙값(60프레임)이 28ms 를 넘으면 반사 프로브 → 그림자 → 후처리 순으로 끈다. 탭 전환·일시정지(250ms 초과)와 시작 직후는 세지 않는다. */
   private govern(): void {
@@ -191,7 +192,7 @@ export class Renderer3D {
     if (med > 28 && this.perfLevel < 3) { learnedLevel = this.perfLevel + 1; this.setPerfLevel(learnedLevel); }
   }
   resize(): void { this.w = this.canvas.clientWidth || window.innerWidth; this.h = this.canvas.clientHeight || window.innerHeight; this.renderer.setSize(this.w, this.h, false); this.camera.aspect = this.w / this.h; this.camera.updateProjectionMatrix(); }
-  dispose(): void { this.post?.dispose(); this.ins?.dispose(); this.ins = null; this.environment?.dispose(); this.details.dispose(); this.renderer.dispose(); this.scene.traverse(o => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); }); for (const f of this.floaters) f.el.remove(); }
+  dispose(): void { this.post?.dispose(); this.ins?.dispose(); this.ins = null; this.environment?.dispose(); this.details.dispose(); disposeLootTextures(); this.renderer.dispose(); this.scene.traverse(o => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); }); for (const f of this.floaters) f.el.remove(); }
   /** 조준선이 닿는 지면 좌표 */
   groundPoint(max = 760): { x: number; y: number } {
     const b = this.world.boss(0), ox = b ? b.x : this.camPos.x, oy = b ? b.y : this.camPos.z; let d = this.pitch < -0.03 ? Math.min(max, (this.mode === 'fp' ? EYE : 120) / Math.tan(-this.pitch)) : max * 0.8; d = Math.max(70, d);
@@ -281,9 +282,10 @@ export class Renderer3D {
     let g = this.loots.get(l.id);
     if (!g) {
       g = new THREE.Group(); const tier = l.type === 'weapon' ? WEAPONS[l.weapon!].tier : 0, c = l.type === 'cash' ? 0x4dff9a : l.type === 'armor' ? 0x5aa8ff : l.type === 'medkit' ? 0xff6b6b : l.type === 'crate' ? 0xffd24a : tier >= 3 ? 0xffa53a : tier === 2 ? 0xc59bff : 0xf2f2f2;
-      const item = new THREE.Mesh(this.box, l.type === 'crate' ? this.mat(0xc9a227) : new THREE.MeshLambertMaterial({ color: c, emissive: c, emissiveIntensity: 0.35 })); item.name = 'item';
+      const art = lootArt(l.type), tex = art ? lootTexture(art) : null; // 현금·방탄복·구급 키트는 그린 면을 입힌다
+      const item = new THREE.Mesh(this.box, l.type === 'crate' ? this.mat(0xc9a227) : tex ? new THREE.MeshLambertMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.3 }) : new THREE.MeshLambertMaterial({ color: c, emissive: c, emissiveIntensity: 0.35 })); item.name = 'item';
       if (l.type === 'crate') { item.scale.set(32, 26, 32); const ch = new THREE.Mesh(new THREE.SphereGeometry(34, 12, 8, 0, 6.29, 0, 1.57), new THREE.MeshLambertMaterial({ color: 0xff5d5d, side: THREE.DoubleSide })); ch.position.y = 50; ch.name = 'chute'; g.add(ch); }
-      else if (l.type === 'weapon') item.scale.set(22, 5, 4); else if (l.type === 'cash') item.scale.set(14, 4, 9); else item.scale.set(11, 11, 11);
+      else if (l.type === 'weapon') item.scale.set(22, 5, 4); else if (l.type === 'cash') item.scale.set(16, 5, 10); else item.scale.set(13, 13, 13);
       const beam = new THREE.Mesh(new THREE.CylinderGeometry(l.type === 'crate' ? 6 : 2, l.type === 'crate' ? 6 : 2, l.type === 'crate' ? 1400 : 130, 6), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: l.type === 'crate' ? 0.5 : 0.35, depthWrite: false, fog: false })); beam.position.y = l.type === 'crate' ? 700 : 65; beam.name = 'beam';
       if (this.ml && l.type === 'weapon') { const gm = this.ml.makeLootGun(l.weapon!); if (gm) { gm.name = 'item'; gm.scale.setScalar(22); item.visible = false; item.name = 'item_old'; g.add(gm); } }
       else if (this.ml && l.type === 'crate') { const cm = this.ml.makeCrate(); if (cm) { const chute = cm.getObjectByName('crate_Chute'); if (chute) { cm.remove(chute); chute.name = 'chute'; chute.scale.setScalar(10); chute.position.set(0, 30, 0); g.add(chute); const old = g.getObjectByName('chute'); if (old && old !== chute) old.visible = false; } cm.name = 'item'; cm.scale.setScalar(10); item.visible = false; item.name = 'item_old'; g.add(cm); } }
@@ -307,8 +309,9 @@ export class Renderer3D {
     if (sig !== o.sig) {
       o.sig = sig;
       if (this.ml) { if (o.icon) o.g.remove(o.icon); o.icon = this.ml.makeBiz(z.kind, col); if (o.icon) { const out = o.g.userData.out as [number, number]; o.icon.userData.y = bizIconY(o.icon); o.icon.position.set(out[0] * 8, o.icon.userData.y as number, out[1] * 8); o.g.add(o.icon); } }
-      const css = z.kind === 'gunshop' ? '#ff5d5d' : z.owner >= 0 ? FACTIONS[z.owner].color : '#ffffff', line2 = z.kind === 'gunshop' ? 'E 구매' : z.owner < 0 ? `$${d.price} · +$${d.income}/s` : `${FACTIONS[z.owner].name} ${'★'.repeat(z.level)}`;
-      o.label.material.map?.dispose(); o.label.material.map = canvasTex(320, 120, g => { g.fillStyle = 'rgba(10,16,16,0.82)'; g.beginPath(); g.roundRect(4, 4, 312, 112, 18); g.fill(); g.strokeStyle = css; g.lineWidth = 5; g.stroke(); g.textAlign = 'center'; g.fillStyle = '#fff'; g.font = "900 44px 'Noto Sans KR',sans-serif"; g.fillText(d.name, 160, 54); g.fillStyle = css; g.font = "700 28px 'Noto Sans KR',sans-serif"; g.fillText(line2, 160, 96); }); o.label.material.needsUpdate = true;
+      const css = z.kind === 'gunshop' ? '#ff5d5d' : z.owner >= 0 ? FACTIONS[z.owner].color : '#ffffff', line2 = z.kind === 'gunshop' ? 'E 구매' : z.owner < 0 ? `$${d.price} · +$${d.income}/s` : FACTIONS[z.owner].name, nStar = z.kind !== 'gunshop' && z.owner >= 0 ? z.level : 0;
+      o.label.material.map?.dispose(); o.label.material.map = canvasTex(320, 120, g => { g.fillStyle = 'rgba(10,16,16,0.82)'; g.beginPath(); g.roundRect(4, 4, 312, 112, 18); g.fill(); g.strokeStyle = css; g.lineWidth = 5; g.stroke(); g.textAlign = 'center'; g.fillStyle = '#fff'; g.font = "900 44px 'Noto Sans KR',sans-serif"; g.fillText(d.name, 160, 54); g.fillStyle = css; g.font = "700 28px 'Noto Sans KR',sans-serif"; const tw = g.measureText(line2).width, sw = nStar * 26, x0 = 160 - (tw + (nStar ? 8 + sw : 0)) / 2; g.textAlign = 'left'; g.fillText(line2, x0, 96);
+        for (let i = 0; i < nStar; i++) { const cx = x0 + tw + 8 + i * 26 + 12, cy = 87; g.beginPath(); for (let k = 0; k < 10; k++) { const r = k % 2 ? 5.5 : 12, a = -Math.PI / 2 + k * Math.PI / 5; g.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); } g.closePath(); g.fillStyle = '#f4b73a'; g.fill(); g.strokeStyle = '#6b4300'; g.lineWidth = 2; g.lineJoin = 'round'; g.stroke(); } }); o.label.material.needsUpdate = true;
     }
     if (o.icon) { o.icon.position.y = (o.icon.userData.y as number) + Math.sin(this.t * 1.6 + z.id) * 2.5; o.icon.rotation.y = this.t * 0.7 + z.id; }
     o.g.visible = Math.hypot(z.x - this.camPos.x, z.y - this.camPos.z) < 2600; void w;
@@ -400,7 +403,7 @@ export class Renderer3D {
     const inside = this.world.inside, ib = inside ? this.world.insideBiz() : null;
     if (inside && ib) { this.drawInside(dt, ib.kind, this.world.insideLayout()!, inside); return; }
     if (this.ins) { this.ins.dispose(); this.ins = null; this.insKind = ''; this.camera.aspect = this.w / Math.max(1, this.h); this.camera.updateProjectionMatrix(); }
-    this.govern(); if (this.renderer.shadowMap.enabled && ++this.shadowTick >= (this.perfLevel === 0 ? 2 : 3)) { this.shadowTick = 0; this.renderer.shadowMap.needsUpdate = true; }
+    this.govern(); if (this.renderer.shadowMap.enabled && ++this.shadowTick >= (this.perfLevel === 0 ? (this.quality === 'high' ? 2 : 3) : 6)) { this.shadowTick = 0; this.renderer.shadowMap.needsUpdate = true; }
     const w = this.world, d = this.dummy, col = this.color, pb = w.boss(0), f0 = w.factions[0]; this.t += dt;
     this.shake = Math.max(0, this.shake - dt * 30); this.recoil = Math.max(0, this.recoil - dt * 7); this.flashT -= dt;
     // 카메라

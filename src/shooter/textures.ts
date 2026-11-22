@@ -86,6 +86,35 @@ export function lootCaseTexture(kind: 'medkit' | 'armor' | 'ammo'): THREE.Canvas
   }, false);
   lootTexCache.set(kind, t); return t;
 }
+/** 바위: 흰빛 회색 바탕에 결·금·이끼 얼룩(색은 재질 color 와 인스턴스 색이 곱해집니다). */
+export function rockTexture(): THREE.CanvasTexture {
+  return canvasTex(256, (g, s) => {
+    const rng = makeRng(87); g.fillStyle = '#d9d6cf'; g.fillRect(0, 0, s, s);
+    for (let i = 0; i < 26; i++) { const x = rng() * s, y = rng() * s, r = 14 + rng() * 40, gr = g.createRadialGradient(x, y, 0, x, y, r); const dk = rng() < 0.55; gr.addColorStop(0, dk ? 'rgba(70,66,60,0.28)' : 'rgba(255,255,255,0.3)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2); }
+    speckle(g, s, 5000, rng, '#ffffff', '#3d3a34', 0.3);
+    for (let i = 0; i < 9; i++) { g.strokeStyle = 'rgba(40,38,32,0.45)'; g.lineWidth = 1 + rng(); g.beginPath(); let x = rng() * s, y = rng() * s; g.moveTo(x, y); for (let k = 0; k < 6; k++) { x += (rng() - 0.4) * 34; y += (rng() - 0.2) * 22; g.lineTo(x, y); } g.stroke(); }
+    for (let i = 0; i < 7; i++) { const x = rng() * s, y = rng() * s; g.fillStyle = 'rgba(112,136,70,0.28)'; for (let k = 0; k < 14; k++) { g.beginPath(); g.arc(x + (rng() - 0.5) * 30, y + (rng() - 0.5) * 18, 2 + rng() * 5, 0, 6.3); g.fill(); } }
+  });
+}
+/** 덤불: 잎 뭉치(밝은 잎·그늘 잎·잎맥). 초록 색조는 인스턴스 색이 입힙니다. */
+export function leafTexture(): THREE.CanvasTexture {
+  return canvasTex(256, (g, s) => {
+    const rng = makeRng(93); g.fillStyle = '#8c8c8c'; g.fillRect(0, 0, s, s);
+    for (let i = 0; i < 420; i++) {
+      const x = rng() * s, y = rng() * s, a = rng() * 6.28, l = 6 + rng() * 11, lit = 0.55 + rng() * 0.5, v = Math.round(255 * Math.min(1, lit));
+      g.save(); g.translate(x, y); g.rotate(a); g.fillStyle = `rgb(${v},${v},${v})`; g.strokeStyle = 'rgba(0,0,0,0.35)'; g.lineWidth = 0.8;
+      g.beginPath(); g.ellipse(l / 2, 0, l / 2, l * 0.28, 0, 0, 6.3); g.fill(); g.stroke(); g.beginPath(); g.moveTo(0, 0); g.lineTo(l, 0); g.strokeStyle = 'rgba(0,0,0,0.25)'; g.stroke(); g.restore();
+    }
+  });
+}
+/** 낙하산 천: 구 둘레(u)를 따라 밝은/어두운 조각이 번갈아 나오고, 이음선과 꿰맨 줄이 보입니다. 색은 재질 color 가 입힙니다. */
+export function chuteTexture(): THREE.CanvasTexture {
+  return canvasTex(256, (g, s) => {
+    const n = 12, w = s / n; for (let i = 0; i < n; i++) { g.fillStyle = i % 2 ? '#ffffff' : '#9c9c9c'; g.fillRect(i * w, 0, w, s); g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(i * w, 0, 1.5, s); }
+    const sh = g.createLinearGradient(0, 0, 0, s); sh.addColorStop(0, 'rgba(255,255,255,0.0)'); sh.addColorStop(1, 'rgba(0,0,0,0.32)'); g.fillStyle = sh; g.fillRect(0, 0, s, s);
+    g.strokeStyle = 'rgba(0,0,0,0.18)'; g.lineWidth = 1; for (let y = 24; y < s; y += 28) { g.beginPath(); g.moveTo(0, y); g.lineTo(s, y); g.stroke(); }
+  });
+}
 export function glowTexture(): THREE.CanvasTexture {
   return canvasTex(64, (g, s) => { const r = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2); r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(0.35, 'rgba(255,255,255,0.45)'); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, s, s); }, false);
 }

@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { TEAM_COLORS } from './config';
 import { Pather } from './path';
 import type { Pt, RtsMap } from './map';
+import { riverLine } from './terrain';
 
 type Quality = 'high' | 'standard' | 'low';
 const seeded = (seed: number): (() => number) => { let s = seed >>> 0; return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }; };
@@ -39,7 +40,7 @@ export function buildLanes(map: RtsMap): Lanes {
   };
   const ex = map.expansions, e0 = { x: ex[0].x + 2, y: ex[0].y + 2 }, e1 = ex[1] ? { x: ex[1].x + 2, y: ex[1].y + 2 } : mirror(n - 1, e0);
   // 강: 가운데 대각선을 살짝 휘게 그립니다. 끝은 두 확장 기지에서 떨어져 있고 180도 대칭입니다.
-  const river: Pt[] = []; for (let i = 0; i <= 36; i++) { const t = i / 36, p = 30 + t * 35, w = Math.sin(t * Math.PI * 2) * 2.4; river.push({ x: p + w * 0.7, y: p - w * 0.7 }); }
+  const river: Pt[] = riverLine();
   return { top: via(e0), mid: via(null), bot: via(e1), river };
 }
 
@@ -136,7 +137,7 @@ export class Scenery {
   private pits(): void {
     const r = this.lanes.river, mid = r[Math.floor(r.length / 2)], n = this.map.size - 1;
     const dir = { x: r[r.length - 1].x - r[0].x, y: r[r.length - 1].y - r[0].y }, l = Math.hypot(dir.x, dir.y), ux = dir.x / l, uy = dir.y / l;
-    const spots = [{ x: mid.x - ux * 11, y: mid.y - uy * 11, color: 0xff7a3a, name: 'drake' }, { x: mid.x + ux * 11, y: mid.y + uy * 11, color: 0xb36bff, name: 'baron' }];
+    const spots = [{ x: mid.x - ux * 15, y: mid.y - uy * 15, color: 0xff7a3a, name: 'drake' }, { x: mid.x + ux * 15, y: mid.y + uy * 15, color: 0xb36bff, name: 'baron' }];
     void n;
     for (const s of spots) {
       const g = new THREE.Group(), stone = new THREE.MeshStandardMaterial({ color: 0xa08c6a, roughness: 0.95, flatShading: true }), dark = new THREE.MeshStandardMaterial({ color: 0x1b1814, roughness: 1 });

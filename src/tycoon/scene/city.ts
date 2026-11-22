@@ -4,7 +4,7 @@ import type { LotView, ShopKind, SpotDef, Stage } from '../core/types';
 import { stageIndex } from '../core/data';
 import { GeoBuilder } from './geo';
 import { Colliders, GRID, HALF, PITCH, ROAD, BLOCK, WORLD_HALF, blockTier, blockUnlocked, hash01, type Block, type Box, type Layout, type Lot } from './layout';
-import { asphaltTexture, dirtTexture, facadeMaps, grassTexture, kindColor, puddleTexture, ringTexture, sidewalkTexture, signTexture, type FacadeStyle } from './textures';
+import { asphaltTexture, barkTexture, dirtTexture, facadeMaps, leafTexture, roofTexture, grassTexture, kindColor, puddleTexture, ringTexture, sidewalkTexture, signTexture, type FacadeStyle } from './textures';
 import { StreetDetail } from './street-detail';
 
 export type Quality = 'high' | 'standard' | 'low';
@@ -62,7 +62,7 @@ export class CityView {
   readonly colliders = new Colliders();
   private views = new Map<Block, BlockView>();
   private facade: Record<FacadeStyle, THREE.MeshStandardMaterial>;
-  private roofMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 });
+  private roofMat = new THREE.MeshStandardMaterial({ map: roofTexture(), vertexColors: true, roughness: 0.92 });
   private detailMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.1 });
   private glowMat = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
   private walkMat: THREE.MeshStandardMaterial; private dirtMat: THREE.MeshStandardMaterial; private grassMat: THREE.MeshStandardMaterial; private roadMat: THREE.MeshStandardMaterial;
@@ -112,7 +112,7 @@ export class CityView {
     const uv2 = g.geometry.attributes.uv; void uv2;
     this.group.add(g);
     // 바깥 어두운 땅
-    const outer = new THREE.Mesh(new THREE.CircleGeometry(1400, 48), new THREE.MeshStandardMaterial({ color: 0x20252b, roughness: 1 }));
+    const outer = new THREE.Mesh(new THREE.CircleGeometry(1400, 48), new THREE.MeshStandardMaterial({ map: (() => { const t = dirtTexture(); t.repeat.set(280, 280); return t; })(), color: 0x6a7078, roughness: 1 }));
     outer.rotation.x = -Math.PI / 2; outer.position.y = -0.15; this.group.add(outer);
   }
   private buildRoadMarks(): void {
@@ -155,9 +155,9 @@ export class CityView {
     this.lampMesh.castShadow = false; this.group.add(this.lampMesh, this.lampGlow, this.poolMesh);
     // 나무: 줄기 + 수관(단계에 따라 다시 채움)
     const trunk = new THREE.CylinderGeometry(0.16, 0.24, 2.6, 6); trunk.translate(0, 1.3, 0);
-    this.trunkMesh = new THREE.InstancedMesh(trunk, new THREE.MeshStandardMaterial({ color: 0x4d3a2a, roughness: 1 }), 700);
+    this.trunkMesh = new THREE.InstancedMesh(trunk, new THREE.MeshStandardMaterial({ map: barkTexture(), color: 0x7a604a, roughness: 1 }), 700);
     const crown = new THREE.IcosahedronGeometry(1.7, 1); crown.translate(0, 3.6, 0);
-    this.crownMesh = new THREE.InstancedMesh(crown, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, flatShading: true }), 700);
+    this.crownMesh = new THREE.InstancedMesh(crown, new THREE.MeshStandardMaterial({ map: leafTexture(), color: 0xffffff, roughness: 0.95, flatShading: true }), 700);
     this.trunkMesh.count = this.crownMesh.count = 0; this.trunkMesh.castShadow = this.crownMesh.castShadow = this.quality !== 'low';
     this.group.add(this.trunkMesh, this.crownMesh);
   }

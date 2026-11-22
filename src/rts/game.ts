@@ -15,6 +15,7 @@ import { RtsNet } from './pvp';
 import { RtsSim, type Building, type Cmd, type ResNode, type Unit } from './sim';
 import { RtsView } from './view';
 import { buildLanes } from './scenery';
+import { G_BRIDGE, GROUND_INFO } from './terrain';
 import { preloadUnitKit } from './models';
 import { PVP_ENABLED } from '../net/config';
 import type { RoomLink } from './moba/net';
@@ -39,8 +40,8 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       <div class="rt-vs" id="rt-vs"></div>
       <div class="rt-btns"><button data-act="speed" title="속도" hidden>×1</button><button data-act="pause" class="rt-pause" title="일시정지 (P)">⏸ 일시정지</button><button data-act="mute" title="소리" aria-pressed="${prefs.sound}">${prefs.sound ? '🔊' : '🔇'}</button><button data-act="menu" title="메뉴 (Esc)">☰</button></div></div>
     <div class="rt-obj" id="rt-obj" aria-live="polite"></div><div class="rt-banner" id="rt-banner" role="status" aria-live="assertive"></div>
-    <div class="rt-toast" id="rt-toast" role="status" aria-live="polite"></div><div class="rt-hint" id="rt-hint"></div><div class="rt-shortcuts">. 놀고 있는 일꾼 <span>·</span> F2 대기 병력 <span>·</span> Space 최근 경고</div>
-    <div class="rt-bottom"><div class="rt-mini"><canvas id="rt-mini" width="220" height="220" aria-label="미니맵"></canvas></div><div class="rt-sel" id="rt-sel"></div><div class="rt-cmd" id="rt-cmd"></div></div>
+    <div class="rt-toast" id="rt-toast" role="status" aria-live="polite"></div><div class="rt-hint" id="rt-hint"></div><div class="rt-terrain" id="rt-terrain" role="status"></div><div class="rt-shortcuts">. 놀고 있는 일꾼 <span>·</span> F2 대기 병력 <span>·</span> Space 최근 경고</div>
+    <div class="rt-bottom"><div class="rt-mini"><canvas id="rt-mini" width="220" height="220" aria-label="미니맵"></canvas><div class="rt-legend" title="지형 범례">${GROUND_INFO.slice(1, 5).map(g => `<span title="${g.name}: ${g.tip}"><i style="background:${g.color}"></i>${g.name}</span>`).join('')}<span title="강은 건널 수 없고 다리로만 건넙니다"><i style="background:#4f9fb8"></i>강</span></div></div><div class="rt-sel" id="rt-sel"></div><div class="rt-cmd" id="rt-cmd"></div></div>
     <div class="rt-modal" id="rt-modal"></div>`;
   document.body.append(root);
   const $ = <T extends HTMLElement>(s: string): T => root.querySelector<T>(s)!;
@@ -221,6 +222,14 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
   });
 
   // ---------- 미니맵 ----------
+  /** 커서 아래 지형(숲·언덕·진흙·폐허·다리)의 효과를 한 줄로 알려 줍니다. */
+  let terrainKey = -1;
+  function paintTerrainTip(): void {
+    if (!sim || !view) return; const el = $('#rt-terrain'); let gi = 0;
+    if (pointer.in) { const g = view.ground(pointer.x, pointer.y); if (g) { const n = sim.map.size, cx = Math.floor(g.x), cy = Math.floor(g.y); if (cx >= 0 && cy >= 0 && cx < n && cy < n) gi = sim.map.water[cy * n + cx] ? 6 : sim.map.ground[cy * n + cx]; } }
+    if (gi === terrainKey) return; terrainKey = gi; el.classList.toggle('show', gi > 0);
+    el.textContent = gi === 6 ? '강 · 건널 수 없음(다리로만 건넘)' : gi > 0 ? `${GROUND_INFO[gi].name} · ${GROUND_INFO[gi].tip}` : '';
+  }
   let miniBase: HTMLCanvasElement | null = null;
   const mm = (x: number, y: number): [number, number] => { const n = sim!.map.size, k = mini.width / n; return me === 0 ? [x * k, y * k] : [(n - x) * k, (n - y) * k]; };
   const mmInv = (px: number, py: number): { x: number; y: number } => { const n = sim!.map.size, k = n / mini.width, x = px * k, y = py * k; return me === 0 ? { x, y } : { x: n - x, y: n - y }; };
@@ -231,8 +240,10 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       g.fillStyle = '#c9a76d'; g.fillRect(0, 0, mini.width, mini.width);
       // 길·강을 먼저 깔고, 막힌 칸(협곡 바위)을 그 위에 얹습니다.
       const lanes = buildLanes(sim.map), line = (pts: Array<{ x: number; y: number }>, w: number, c: string): void => { g.strokeStyle = c; g.lineWidth = w; g.lineJoin = g.lineCap = 'round'; g.beginPath(); pts.forEach((p, i) => { const [px, py] = mm(p.x, p.y); if (i) g.lineTo(px, py); else g.moveTo(px, py); }); g.stroke(); };
+      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const gi = sim.map.ground[y * n + x]; if (gi) { const [px, py] = mm(x, y); g.fillStyle = GROUND_INFO[gi].color; g.globalAlpha = 0.8; g.fillRect(me === 0 ? px : px - k, me === 0 ? py : py - k, k + 0.5, k + 0.5); } } g.globalAlpha = 1;
       line(lanes.river, 5, '#4f9fb8'); for (const l of [lanes.top, lanes.mid, lanes.bot]) { line(l, 4, '#55565a'); line(l, 1, '#e8b81c'); }
-      g.fillStyle = '#8a5a36'; for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (sim.map.terrain[y * n + x]) { const [px, py] = mm(x, y); g.fillRect(me === 0 ? px : px - k, me === 0 ? py : py - k, k + 0.5, k + 0.5); }
+      g.fillStyle = '#8a5a36'; for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (sim.map.terrain[y * n + x] && !sim.map.water[y * n + x]) { const [px, py] = mm(x, y); g.fillRect(me === 0 ? px : px - k, me === 0 ? py : py - k, k + 0.5, k + 0.5); }
+      for (const br of sim.map.bridges) { const [px, py] = mm(br.x, br.y); g.save(); g.translate(px, py); g.rotate(Math.atan2(br.ay, br.ax) + (me === 1 ? Math.PI : 0)); g.fillStyle = GROUND_INFO[G_BRIDGE].color; g.strokeStyle = '#3b2610'; g.lineWidth = 1; g.fillRect(-3.5 * k, -1.4 * k, 7 * k, 2.8 * k); g.strokeRect(-3.5 * k, -1.4 * k, 7 * k, 2.8 * k); g.restore(); }
       for (const st of sim.map.starts) { const [px, py] = mm(st.x + 2, st.y + 2); g.fillStyle = 'rgba(70,72,74,.55)'; g.beginPath(); g.arc(px, py, 8 * k, 0, 6.3); g.fill(); }
     }
     mg.drawImage(miniBase, 0, 0);
@@ -627,7 +638,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     const { bs } = own(); const rb = bs.find(b => b.done && BUILDINGS[b.kind].trains.length && (b.rx || b.ry)); view.setRally(rb && bs.length === 1 ? { x: rb.rx, y: rb.ry } : null);
     view.render(dt, Math.min(1, acc * TICK), selected);
     over.style.cursor = mode?.t === 'attack' ? 'crosshair' : mode ? 'cell' : 'default';
-    uiT += dt; miniT += dt; if (uiT > 0.12) { uiT = 0; paintHud(); paintCommands(); paintSelection(); paintObjectives(); view.setMarkers(camp ? camp.markerList() : []); } if (miniT > 0.1) { miniT = 0; drawMini(); } drawOverlay();
+    uiT += dt; miniT += dt; if (uiT > 0.12) { uiT = 0; paintHud(); paintCommands(); paintSelection(); paintObjectives(); view.setMarkers(camp ? camp.markerList() : []); paintTerrainTip(); } if (miniT > 0.1) { miniT = 0; drawMini(); } drawOverlay();
   }
 
   // ---------- 버튼 ----------

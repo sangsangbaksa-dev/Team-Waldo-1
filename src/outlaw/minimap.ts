@@ -2,16 +2,14 @@
 import type { CityMap, Poi, PoiKind } from './types';
 import type { Sim } from './sim';
 import { drawPointer } from '../shared/pointer';
+import { drawPoiIcon } from './poiicons';
 
 const SIZE = 1024;
-const POI_STYLE: Record<PoiKind, { icon: string; color: string }> = {
-  safehouse: { icon: '⌂', color: '#5dff8f' }, gunshop: { icon: 'G', color: '#ffb84d' },
-  paynspray: { icon: 'P', color: '#3df2ff' }, hospital: { icon: '+', color: '#f3f5f6' },
-  police: { icon: '★', color: '#3b82ff' }, bank: { icon: '$', color: '#ffd23f' },
-  casino: { icon: '◆', color: '#ff3d81' }, garage: { icon: '⚙', color: '#c7d0d3' },
-  chopshop: { icon: '⚒', color: '#ff805e' }, club: { icon: '♫', color: '#df70ff' },
-  dock: { icon: '⚓', color: '#3df2ff' }, park: { icon: '♣', color: '#78d78c' }, start: { icon: 'M', color: '#ffd23f' },
-  dealer: { icon: '🚗', color: '#ffd23f' }, arena: { icon: 'F', color: '#ff4545' },
+const POI_STYLE: Record<PoiKind, { color: string }> = {
+  safehouse: { color: '#5dff8f' }, gunshop: { color: '#ffb84d' }, paynspray: { color: '#3df2ff' }, hospital: { color: '#f3f5f6' },
+  police: { color: '#3b82ff' }, bank: { color: '#ffd23f' }, casino: { color: '#ff3d81' }, garage: { color: '#c7d0d3' },
+  chopshop: { color: '#ff805e' }, club: { color: '#df70ff' }, dock: { color: '#3df2ff' }, park: { color: '#78d78c' },
+  start: { color: '#ffd23f' }, dealer: { color: '#ffd23f' }, arena: { color: '#ff4545' },
 };
 const DISTRICT_KO: Record<string, string> = { downtown: '다운타운', commercial: '상업 지구', residential: '주거 지구', industrial: '공업 지구', park: '공원 지구' };
 
@@ -136,13 +134,13 @@ export class Minimap {
     const [x, y] = pos, st = POI_STYLE[poi.kind]; g.save(); g.translate(x, y);
     g.fillStyle = 'rgba(9,15,18,.9)'; g.beginPath(); g.arc(0, 0, size * .72, 0, Math.PI * 2); g.fill();
     g.strokeStyle = st.color; g.lineWidth = Math.max(1, size * .1); g.beginPath(); g.arc(0, 0, size * .62, 0, Math.PI * 2); g.stroke();
-    g.fillStyle = st.color; g.font = `800 ${size}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(st.icon, 0, 0); g.restore();
+    drawPoiIcon(g, poi.kind, size * .5, st.color); g.restore();
   }
   private dot(g: CanvasRenderingContext2D, x: number, y: number, color: string, r: number): void { g.fillStyle = color; g.strokeStyle = 'rgba(8,12,15,.9)'; g.lineWidth = Math.max(1, r * .35); g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); g.stroke(); }
   private drawLegend(g: CanvasRenderingContext2D, left: number, y: number, w: number, font: number): void {
-    const items: Array<[string, string]> = [['⌂ 안전가옥', '#5dff8f'], ['G 총기점', '#ffb84d'], ['+ 병원', '#f3f5f6'], ['P 도색소', '#3df2ff'], ['M 의뢰', '#ffd23f'], ['경찰', '#3b82ff']];
+    const items: Array<[PoiKind, string]> = [['safehouse', '안전가옥'], ['gunshop', '총기점'], ['hospital', '병원'], ['paynspray', '도색소'], ['start', '의뢰'], ['police', '경찰']];
     g.font = `600 ${font}px sans-serif`; g.textAlign = 'left'; g.textBaseline = 'middle';
-    const gap = Math.max(64, (w - left * 2) / items.length); items.forEach(([label, color], i) => { const x = left + i * gap; g.fillStyle = color; g.beginPath(); g.arc(x + font * .45, y, font * .34, 0, Math.PI * 2); g.fill(); g.fillStyle = '#d5dddd'; g.fillText(label, x + font, y); });
+    const gap = Math.max(64, (w - left * 2) / items.length); items.forEach(([kind, label], i) => { const x = left + i * gap; g.save(); g.translate(x + font * .5, y); drawPoiIcon(g, kind, font * .5, POI_STYLE[kind].color); g.restore(); g.fillStyle = '#d5dddd'; g.fillText(label, x + font * 1.2, y); });
   }
 }
 

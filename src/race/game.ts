@@ -29,15 +29,15 @@ const svgIcon = (d: string): string => `<svg viewBox="0 0 24 24" width="20" heig
 const ICON = {
   soundOn: svgIcon('<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor"/><path d="M15.5 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/>'),
   soundOff: svgIcon('<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor"/><path d="M16 9.5l5 5M21 9.5l-5 5"/>'),
-  pause: svgIcon('<path d="M8.5 6v12M15.5 6v12" stroke-width="3"/>'),
+  pause: svgIcon('<rect x="6" y="5" width="4.2" height="14" rx="1.5" fill="currentColor" stroke-width="1"/><rect x="13.8" y="5" width="4.2" height="14" rx="1.5" fill="currentColor" stroke-width="1"/><path d="M7.2 7v4M15 7v4" stroke="#fff" stroke-opacity=".55" stroke-width="1"/>'),
   exit: svgIcon('<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>'),
-  nitro: svgIcon('<path d="M12 2.5c.6 3.2 5.5 5.6 5.5 10.6A5.5 5.5 0 0 1 12 18.6a5.5 5.5 0 0 1-5.5-5.5c0-2 1-3.4 2.2-4.6.2 1.4.9 2.2 1.7 2.7C10.2 8 10.4 5 12 2.5z" fill="currentColor" stroke-width="1.4"/><path d="M12 21.5v-.01" stroke-width="2"/>'),
+  nitro: svgIcon('<path d="M12 2.5c.6 3.2 5.5 5.6 5.5 10.6A5.5 5.5 0 0 1 12 18.6a5.5 5.5 0 0 1-5.5-5.5c0-2 1-3.4 2.2-4.6.2 1.4.9 2.2 1.7 2.7C10.2 8 10.4 5 12 2.5z" fill="currentColor" stroke-width="1.4"/><path d="M12 10.5c.3 1.6 2.4 2.4 2.4 4.4a2.4 2.4 0 0 1-4.8 0c0-1 .5-1.7 1-2.3.2.7.6 1 .9 1.2.1-1 .2-2.3.5-3.3z" fill="#fff" fill-opacity=".75" stroke="none"/>'),
   flag: svgIcon('<path d="M5 21V4"/><path d="M5 4.5h13l-2.6 3.8L18 12H5z" fill="currentColor" stroke-width="1.4"/><path d="M9.5 4.5v7.5M13.8 4.5v7.5" stroke="#0b0b18" stroke-width="1.5"/>'),
-  left: svgIcon('<path d="M14.5 5.5L8 12l6.5 6.5" stroke-width="3"/>'),
-  right: svgIcon('<path d="M9.5 5.5L16 12l-6.5 6.5" stroke-width="3"/>'),
+  left: svgIcon('<path d="M15.5 5 7 12l8.5 7z" fill="currentColor" fill-opacity=".4" stroke-width="2.2"/><path d="M15.5 5 7 12" stroke="#fff" stroke-opacity=".6" stroke-width="1"/>'),
+  right: svgIcon('<path d="M8.5 5 17 12l-8.5 7z" fill="currentColor" fill-opacity=".4" stroke-width="2.2"/><path d="M8.5 5 17 12" stroke="#fff" stroke-opacity=".6" stroke-width="1"/>'),
   gas: svgIcon('<path d="M6 19l3.5-14h5L18 19z" fill="currentColor" stroke-width="1.4"/><path d="M12 8.5v4.5" stroke="#1b0d3e" stroke-width="2"/>'),
-  drift: svgIcon('<path d="M4 19c6 0 8-3 9-6s2.5-5 7-5" stroke-width="2.6"/><path d="M17 4.5L20.5 8 17 11.5"/>'),
-  brake: svgIcon('<circle cx="12" cy="12" r="7.5"/><path d="M12 8v5.2" stroke-width="2.8"/><circle cx="12" cy="16" r=".4" stroke-width="2.6"/>'),
+  drift: svgIcon('<path d="M4 21c6 0 8-3 9-6s2.5-5 7-5" stroke-width="2" stroke-opacity=".4"/><path d="M4 19c6 0 8-3 9-6s2.5-5 7-5" stroke-width="2.6"/><path d="M17 4.5L20.5 8 17 11.5"/>'),
+  brake: svgIcon('<circle cx="12" cy="12" r="7.5" fill="currentColor" fill-opacity=".25"/><path d="M12 8v5.2" stroke-width="2.8"/><circle cx="12" cy="16" r=".4" stroke-width="2.6"/>'),
 };
 
 export function openRace(onExit: () => void): void {

@@ -20,7 +20,15 @@ const BODY: Record<WeaponId, string> = {
   railgun: r(3, 8, 30, 8, '#2a3a63') + line(5, 9.4, 31, 9.4, '#7aa4ff') + r(8, 10, 22, 3, '#58d6ff', 1.5) + p('M33 7l5 5-5 5z', '#c9d6ff') + r(12, 16, 6, 6, DK) + r(5, 6, 6, 2, '#58d6ff', 1),
 };
 
+/** 이모지 대신 쓰는 휴대폰 그림(24x24). */
+export function phoneIcon(): string {
+  return `<svg class="ol-pi" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${r(6, 2, 12, 20, '#2b3440', 3)}${r(8, 5, 8, 12, '#58d6ff', 1)}${line(9, 7, 15, 7, HI)}${line(9, 10, 13, 10, '#c9f1ff')}<circle cx="12" cy="19.5" r="1.2" fill="${HI}" stroke="${O}" stroke-width=".6"/></svg>`;
+}
+
 /** 무기 한 자루를 40x24 그림으로. 글자 높이(1em)에 맞춰 커집니다. */
+const ICONS = new Map<WeaponId, string>();
 export function weaponIcon(id: WeaponId): string {
-  return `<svg class="ol-wi" viewBox="0 0 40 24" aria-hidden="true" focusable="false">${BODY[id]}</svg>`;
+  let svg = ICONS.get(id); // HUD 가 프레임마다 부르므로 한 번만 만듭니다.
+  if (!svg) { svg = `<svg class="ol-wi" viewBox="0 0 40 24" aria-hidden="true" focusable="false">${BODY[id]}</svg>`; ICONS.set(id, svg); }
+  return svg;
 }

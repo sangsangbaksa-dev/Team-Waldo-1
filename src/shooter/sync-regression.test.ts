@@ -74,6 +74,7 @@ describe('network synchronization regressions', () => {
     expect(canAcceptRoomPickup(loot,sender,false)).toBe(true);
     expect(canAcceptRoomPickup({...loot,x:500},sender,false)).toBe(false);
     expect(canAcceptRoomPickup(loot,undefined,false)).toBe(false);
+    expect(canAcceptRoomPickup(loot,undefined,true)).toBe(false);
     expect(canAcceptRoomPickup({...loot,taken:true},sender,false)).toBe(false);
     expect(canAcceptRoomPickup(loot,{...sender,bot:true},false)).toBe(false);
     expect(canAcceptRoomPickup({...loot,x:500},sender,true)).toBe(true);

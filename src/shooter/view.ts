@@ -41,7 +41,7 @@ function worldBox(b: Box, tile = 3.2): THREE.BufferGeometry {
   return g;
 }
 
-interface Rig { chute: THREE.Group; root: THREE.Group; ch: CharacterRig | null; flash: THREE.Sprite; aim: number; lastHurt: number; lastMuzzle: number }
+interface Rig { chute: THREE.Group; root: THREE.Group; ch: CharacterRig | null; low: THREE.Mesh; flash: THREE.Sprite; aim: number; lastHurt: number; lastMuzzle: number }
 interface Fx { mesh: THREE.Mesh; life: number; max: number }
 
 export class ShooterView {
@@ -210,18 +210,22 @@ export class ShooterView {
     else { // 모델을 못 받았을 때의 단순한 병사
       const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 1.0, 4, 8), new THREE.MeshLambertMaterial({ color: p.color })); body.position.y = 1.0; body.castShadow = true; root.add(body);
     }
+    const low = new THREE.Mesh(new THREE.CapsuleGeometry(0.27, 0.9, 2, 5), new THREE.MeshLambertMaterial({ color: p.color })); low.position.y = 0.9; low.visible = false; root.add(low);
     const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, color: 0xffd98a, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false })); flash.scale.set(0.8, 0.8, 1); flash.visible = false; root.add(flash);
     const chute = new THREE.Group(), cm = this.mat(`chute${p.color}`, () => new THREE.MeshLambertMaterial({ color: p.color, map: chuteTexture(), side: THREE.DoubleSide, emissive: 0x111111 })), canopy = new THREE.Mesh(new THREE.SphereGeometry(3.1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2.15), cm);
     canopy.scale.set(1, 0.62, 1); canopy.position.y = 5.2; chute.add(canopy);
     const lm = this.mat('chuteline', () => new THREE.LineBasicMaterial({ color: 0xd9d4c4 })), pts: THREE.Vector3[] = [];
     for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; pts.push(new THREE.Vector3(Math.cos(a) * 2.9, 5.1, Math.sin(a) * 2.9), new THREE.Vector3(0, 1.6, 0)); }
     chute.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), lm)); chute.visible = false; root.add(chute);
-    root.visible = false; this.scene.add(root); this.rigs.set(p.id, { chute, root, ch, flash, aim: 0, lastHurt: 0, lastMuzzle: 0 });
+    root.visible = false; this.scene.add(root); this.rigs.set(p.id, { chute, root, ch, low, flash, aim: 0, lastHurt: 0, lastMuzzle: 0 });
   }
   private poseRig(p: Player, dt: number, dist: number): void {
     const rig = this.rigs.get(p.id)!, ch = rig.ch; rig.aim += (1 - rig.aim) * Math.min(1, dt * 8);
     rig.root.position.set(p.x, 0, p.z); rig.root.rotation.set(0, -p.yaw, 0);
-    if (ch) {
+    const far = !!ch && dist > 75 && p.air !== 2;
+    rig.low.visible = far; if (ch) ch.root.visible = !far;
+    rig.low.scale.y = p.alive ? (p.crouch ? 0.65 : 1) : 0.28; rig.low.position.y = 0.9 * rig.low.scale.y;
+    if (ch && !far) {
       const st = ch.state; st.speed = p.speed; st.walk = p.walk; st.time += dt; st.aim = rig.aim; st.crouch = p.crouch; st.dead = p.alive ? 0 : 1;
       if (p.muzzle > 0 && rig.lastMuzzle <= 0) ch.fire(); rig.lastMuzzle = p.muzzle; st.recoil = Math.max(0, st.recoil - dt * 8);
       if (p.hurt > rig.lastHurt) ch.hurt(); rig.lastHurt = p.hurt; st.hit = Math.max(0, st.hit - dt * 2.5);
@@ -535,6 +539,7 @@ export class ShooterView {
 
   dispose(): void {
     this.scene.traverse(o => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); const mat = m.material as THREE.Material | THREE.Material[] | undefined; if (Array.isArray(mat)) mat.forEach(x => x.dispose()); else mat?.dispose(); });
+    this.vmFlash.material.dispose(); this.tracerGeo.dispose(); this.glow.dispose();
     this.environment?.dispose(); this.post?.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss();
   }
 }

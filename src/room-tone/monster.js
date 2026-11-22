@@ -51,3 +51,47 @@ export function fixMonster(THREE, model) {
     }
   });
 }
+import { clone } from "three/addons/utils/SkeletonUtils.js";
+
+
+export function createCaptureShot(THREE, model) {
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x100a0b);
+  const portrait = clone(model);
+  scene.add(portrait);
+  scene.updateMatrixWorld(true);
+  const head = portrait.getObjectByName(
+    THREE.PropertyBinding.sanitizeNodeName("01 • Portrait | gasp at 3.48 s"),
+  );
+  const bounds = new THREE.Box3().setFromObject(head, true);
+  const center = bounds.getCenter(new THREE.Vector3());
+  const size = bounds.getSize(new THREE.Vector3());
+  // The forehead and chin sit behind the forwardmost part of the face.
+  const faceDepth = (center.z + bounds.max.z) / 2;
+  const faceHeight = center.y - size.y * 0.04;
+
+  scene.add(new THREE.HemisphereLight(0xdad9dc, 0x674044, 0.9));
+  const key = new THREE.DirectionalLight(0xffe3cf, 2.1);
+  key.position.set(-1, 2, 3);
+  scene.add(key);
+  const rim = new THREE.DirectionalLight(0xca343f, 2);
+  rim.position.set(1, 1, -1);
+  scene.add(rim);
+
+  const camera = new THREE.PerspectiveCamera(68, 1, 0.015, 5);
+  return (renderer, aspect, time, reducedMotion) => {
+    const progress = reducedMotion ? 1 : Math.min(1, time / 0.25);
+    const punch = 1 - (1 - progress) ** 3;
+    const shake = (1 - progress) ** 2 * size.y * 0.055;
+    camera.aspect = aspect;
+    camera.fov = THREE.MathUtils.lerp(68, 74, punch);
+    const halfHeight = Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5));
+    const heightDistance = size.y / (2 * halfHeight * THREE.MathUtils.lerp(0.66, 0.88, punch));
+    camera.position.set(center.x, faceHeight, faceDepth + heightDistance);
+    camera.lookAt(center.x, faceHeight, faceDepth);
+    camera.position.x += Math.sin(time * 141) * shake;
+    camera.position.y += Math.cos(time * 113) * shake;
+    camera.updateProjectionMatrix();
+    renderer.render(scene, camera);
+  };
+}

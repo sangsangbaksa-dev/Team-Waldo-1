@@ -45,7 +45,7 @@ export class Crowd {
     let n = 0;
     for (const w of this.walkers) {
       const want = n++ < limit;
-      if (!want) { if (w.active && Math.hypot(w.x - cam.x, w.z - cam.z) > 40) { w.active = false; w.rig.root.visible = false; } else if (!w.active) continue; }
+      if (!want) { if (w.active && Math.hypot(w.x - cam.x, w.z - cam.z) > 40) { w.active = false; w.rig.root.visible = false; continue; } else if (!w.active) continue; }
       if (want && !w.active) { // 열린 구획 모서리에서 등장
         let tries = 0, node: Node = w.from; do { node = { i: Math.floor(Math.random() * 7) - 3, j: Math.floor(Math.random() * 7) - 3, sx: Math.random() < 0.5 ? -1 : 1, sz: Math.random() < 0.5 ? -1 : 1 }; } while (!unlockedAt(node.i, node.j) && ++tries < 30);
         const [x, z] = nodePos(node); if (Math.hypot(x - cam.x, z - cam.z) < 18) continue; w.from = w.to = node; w.prev = null; w.x = x; w.z = z; w.active = true; this.pickNext(w);
@@ -105,5 +105,13 @@ export class Traffic {
     }
     this.lightMat.color.setScalar(0.4 + night * 1.6); this.tailMat.color.setRGB(0.5 + night, 0.1, 0.06);
   }
-  dispose(): void { this.group.removeFromParent(); }
+  dispose(): void {
+    this.group.removeFromParent();
+    this.group.traverse(o => {
+      const mesh = o as THREE.Mesh;
+      mesh.geometry?.dispose();
+      const materials = mesh.material ? (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) : [];
+      for (const material of materials) material.dispose();
+    });
+  }
 }

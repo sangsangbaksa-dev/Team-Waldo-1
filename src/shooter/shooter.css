@@ -307,3 +307,5 @@
 .sz-bar.ar i{background:linear-gradient(180deg,#a6d2ff 0,#3c78d6 45%,#2a58a8 100%);box-shadow:0 0 10px #5aa0ff66}
 .sz-bar{box-shadow:inset 0 2px 5px #000a,0 2px 8px #0007}
 .sz-ammo b{text-shadow:0 2px 0 #000b,0 0 18px #c4df9133}
+
+@media(max-width:480px){.sz-tl{gap:4px;left:max(6px,env(safe-area-inset-left))}.sz-stat{min-width:0;padding:6px 7px}.sz-stat b{font-size:20px}.sz-tc{top:80px;padding:5px 10px}.sz-tc b{font-size:18px}.sz-tr{right:max(6px,env(safe-area-inset-right))}.sz-tr canvas{width:72px;height:72px}}

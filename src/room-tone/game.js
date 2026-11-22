@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { fixMonster } from "./monster.js";
+import { createCaptureShot, fixMonster } from "./monster.js";
 import { modelBytes } from "./assets.js";
 import { chapters, makeLevel, route, neighbors } from "./levels.mjs";
 import { buildEnvironment } from "./environment.js";
@@ -77,6 +77,9 @@ let noticeUntil = 0,
 let guidance = read("rt-guidance") === true;
 let guidePath = [];
 let returnFromMap = resume;
+let renderCaptureShot;
+let captureTime = 0;
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const touch =
   matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
 const px = (t) => String(t).padStart(2, "0");
@@ -165,6 +168,7 @@ function message(msg, sec = 3.2) {
   noticeUntil = now + sec;
 }
 function modal(title, description, body, actions, type = "panel") {
+  if (state === "capture") $("viewWrap").classList.remove("caught-shot");
   state = type;
   leaveLook();
   sound.pause(true);
@@ -284,6 +288,7 @@ async function setup() {
           offset: offset + (side === "L" ? 0 : Math.PI), knee: name === "Shin"});
       }
     }
+    renderCaptureShot = createCaptureShot(THREE, model);
     mixer = new THREE.AnimationMixer(model);
     if (gltf.animations.length) mixer.clipAction(gltf.animations[0]).play();
   }
@@ -1048,8 +1053,14 @@ function interact() {
 }
 $("act").onclick = interact;
 function caught() {
+  state = "capture";
+  leaveLook();
+  captureTime = 0;
+  $("viewWrap").classList.add("caught-shot");
   save();
   sound.caught();
+}
+function caughtModal() {
   modal(
     "신호가 끊겼습니다",
     "회수한 장비와 복원 기록은 보존됩니다. 모퉁이를 돌고 자세를 낮추면 추격을 피하기 쉽습니다.",
@@ -1283,8 +1294,18 @@ function frame(ts) {
   last = ts;
   now = ts / 1000;
   if (document.hidden || !scene || $("game").hidden) return;
-  if (state === "play") {
-    update(dt);
+  const wasPlaying = state === "play";
+  if (wasPlaying) update(dt);
+  if (state === "capture") {
+    const duration = reducedMotion.matches ? 1.2 : 1.45;
+    if (captureTime < duration) {
+      renderCaptureShot(renderer, camera.aspect, captureTime, reducedMotion.matches);
+      if (!wasPlaying) captureTime += dt;
+    } else {
+      renderer.render(scene, camera);
+      caughtModal();
+    }
+  } else if (wasPlaying) {
     renderer.render(scene, camera);
   } else if (["brief", "loading"].includes(state)) {
     camera.position.copy(player);

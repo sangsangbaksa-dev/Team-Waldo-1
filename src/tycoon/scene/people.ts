@@ -99,7 +99,7 @@ export function pedestrianSpeedFactor(cx: number, cz: number, axis: 'x' | 'z', d
  * the intersection are never stopped abruptly by this rule.
  */
 export function crossingTrafficFactor(
-  axis: 'x' | 'z', line: number, position: number, dir: 1 | -1, length: number,
+  line: number, position: number, dir: 1 | -1, length: number,
   crossLine: number, crossPosition: number, crossLength: number,
 ): number {
   const occupied = Math.abs(crossPosition - line) < ROAD / 2 + crossLength / 2 + 1.5;
@@ -169,7 +169,7 @@ export class Traffic {
           // Lights alternate, but a slower car or bus can still be inside the
           // intersection when its approach goes red.
           target = Math.min(target, crossingTrafficFactor(
-            c.axis, c.line, c.t, c.dir, c.length, other.line, other.t, other.length,
+            c.line, c.t, c.dir, c.length, other.line, other.t, other.length,
           ));
         } else if (other.line === c.line && other.dir === c.dir) {
           const gap = (other.t - c.t) * c.dir;

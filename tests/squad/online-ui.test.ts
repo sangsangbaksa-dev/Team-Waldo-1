@@ -33,7 +33,7 @@ vi.mock('../../src/squad/audio', () => ({
     enabled = true;
     place = vi.fn(); remove = vi.fn(); deny = vi.fn(); click = vi.fn();
     ready = vi.fn(); start = vi.fn(); win = vi.fn(); lose = vi.fn();
-    battle = vi.fn(); unlock = vi.fn(); dispose = vi.fn();
+    battle = vi.fn(); unlock = vi.fn(); setPaused = vi.fn(); dispose = vi.fn();
   },
 }));
 

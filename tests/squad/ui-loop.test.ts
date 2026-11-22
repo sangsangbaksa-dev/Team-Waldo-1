@@ -12,7 +12,7 @@ vi.mock('../../src/squad/audio', () => ({
     enabled = true;
     place = vi.fn(); remove = vi.fn(); deny = vi.fn(); click = vi.fn();
     ready = vi.fn(); start = vi.fn(); win = vi.fn(); lose = vi.fn();
-    battle = vi.fn(); unlock = vi.fn(); dispose = vi.fn();
+    battle = vi.fn(); unlock = vi.fn(); setPaused = vi.fn(); dispose = vi.fn();
   },
 }));
 
@@ -257,4 +257,14 @@ it('does not expose deploy-only keyboard instructions on the live battle canvas'
   expect(canvas.hasAttribute('aria-describedby')).toBe(false);
   expect(canvas.getAttribute('aria-label')).toContain('전투');
   button('#pause').click(); button('#exit').click();
+});
+
+it('keeps the local tactical pause/resume controls available', () => {
+  openSquad(vi.fn());
+  button('#start').click(); button('#auto').click(); button('#ready').click();
+  button('#pause').click(); expect(button('#resume')).toBeTruthy();
+  button('#resume').click(); expect(button('#pause')).toBeTruthy();
+  button('#pause').click(); button('#menu').click();
+  expect(button('#start')).toBeTruthy();
+  button('#exit').click();
 });

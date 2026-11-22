@@ -7,6 +7,7 @@ export class SquadAudio {
   get enabled(): boolean { return this.eng.enabled; }
   set enabled(on: boolean) { this.eng.setEnabled(on); }
   unlock(): void { this.eng.unlock(); }
+  setPaused(on: boolean): void { this.eng.setPaused(on); }
   place(): void { tone(this.eng, 520, 0.07, 0.16, 'triangle', 120); }
   remove(): void { tone(this.eng, 360, 0.08, 0.14, 'triangle', -120); }
   deny(): void { tone(this.eng, 160, 0.14, 0.18, 'square', -50); }

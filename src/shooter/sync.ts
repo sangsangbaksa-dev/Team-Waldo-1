@@ -37,7 +37,7 @@ export function easePuppet(o: Player, t: PuppetTarget, dt: number): void {
   if (o.veh < 0) { const far = Math.abs(t.x - o.x) + Math.abs(t.z - o.z) > 25; o.x = far ? t.x : o.x + (t.x - o.x) * k; o.z = far ? t.z : o.z + (t.z - o.z) * k; }
   o.yaw += wrap(t.yaw - o.yaw) * k; o.pitch += (t.pitch - o.pitch) * k;
   o.air = (t.air | 0) as Player['air']; o.alt = o.air ? o.alt + (t.alt - o.alt) * k : 0;
-  o.hp = t.hp; o.speed = t.speed; o.ads = t.ads; o.crouch += ((t.crouch ? 1 : 0) - o.crouch) * Math.min(1, dt * 12); o.reload = t.reload ? 1 : 0;
+  o.hp = t.hp; o.speed = (t.vx !== undefined && t.vz !== undefined && (t.extrapolated ?? 0) >= 0.8) ? 0 : t.speed; o.ads = t.ads; o.crouch += ((t.crouch ? 1 : 0) - o.crouch) * Math.min(1, dt * 12); o.reload = t.reload ? 1 : 0;
   if (o.guns[0]?.id !== t.w) o.guns[0] = { id: t.w, mag: 1, reserve: 0, att: {} }; o.cur = 0;
 }
 
@@ -185,7 +185,9 @@ export class WorldSync {
       t.x += Math.cos(t.yaw) * t.speed * advance; t.z += Math.sin(t.yaw) * t.speed * advance;
       t.extrapolated = (t.extrapolated ?? 0) + advance;
       const far = Math.abs(t.x - v.x) + Math.abs(t.z - v.z) > 20;
-      v.x = far ? t.x : v.x + (t.x - v.x) * k; v.z = far ? t.z : v.z + (t.z - v.z) * k; v.yaw += wrap(t.yaw - v.yaw) * k; v.speed = t.speed;
+      v.x = far ? t.x : v.x + (t.x - v.x) * k; v.z = far ? t.z : v.z + (t.z - v.z) * k; v.yaw += wrap(t.yaw - v.yaw) * k;
+      // Stop wheel and locomotion animation once the packet horizon expires.
+      v.speed = (t.extrapolated ?? 0) >= 0.6 ? 0 : t.speed;
     }
   }
   /** 마지막 소식이 오래된 꼭두각시 차(운전자가 사라짐 등). */

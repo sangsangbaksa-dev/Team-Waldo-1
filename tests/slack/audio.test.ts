@@ -53,3 +53,28 @@ it('restores sound when resume wins the race with a pending suspend', async () =
   expect(ctx.state).toBe('running');
   audio.dispose();
 });
+
+it('does not allocate silent oscillator or noise voices while SFX are muted', () => {
+  const parameter = () => ({ value: 0, setTargetAtTime: vi.fn() });
+  const node = () => ({
+    connect: vi.fn(), gain: parameter(), frequency: parameter(), threshold: parameter(),
+    knee: parameter(), ratio: parameter(), attack: parameter(), release: parameter(),
+  });
+  const ctx = {
+    state: 'running', destination: {},
+    createGain: vi.fn(node), createBiquadFilter: vi.fn(node), createDynamicsCompressor: vi.fn(node),
+    createOscillator: vi.fn(), createBuffer: vi.fn(), createBufferSource: vi.fn(),
+    resume: vi.fn().mockResolvedValue(undefined), close: vi.fn().mockResolvedValue(undefined),
+  };
+  vi.stubGlobal('AudioContext', vi.fn(function () { return ctx; }));
+  const audio = createSlackAudio();
+  audio.resume();
+  audio.setMuted(true);
+  audio.play('click');
+  audio.play('hum');
+  audio.play('footstep');
+  expect(ctx.createBuffer).not.toHaveBeenCalled();
+  expect(ctx.createOscillator).not.toHaveBeenCalled();
+  expect(ctx.createBufferSource).not.toHaveBeenCalled();
+  audio.dispose();
+});

@@ -189,6 +189,38 @@ try {
           "Returning to ROOM TONE must reuse the existing WebGL canvas");
         assert.equal(glb.length,modelDownloads,
           "Resuming from title should not download the monster a second time");
+        // Pagehide persists the live session before the renderer/audio context
+        // is torn down. The next page must offer a valid Continue action.
+        await page.getByRole("button",{name:"구역 진입"}).click();
+        const priorClock=await page.locator("#timer").textContent();
+        await page.waitForFunction(start=>
+          document.querySelector("#timer")?.textContent!==start,
+          priorClock,{timeout:12000,polling:250});
+        const live=await page.evaluate(()=>
+          JSON.parse(localStorage.getItem("waldo.rt03.campaign.v1")));
+        await page.reload({waitUntil:"domcontentloaded"});
+        await page.locator("#continue").waitFor({state:"visible"});
+        const afterPagehide=await page.evaluate(()=>
+          JSON.parse(localStorage.getItem("waldo.rt03.campaign.v1")));
+        assert.ok(afterPagehide?.elapsed>=live.elapsed,
+          "Leaving an active game must persist elapsed time");
+        await page.locator("#new").click();
+        assert.equal(await page.locator("#restartAsk").isVisible(),true,
+          "A saved game requires confirmation before reset");
+        await page.locator("#cancelReset").click();
+        assert.equal(await page.locator("#restartAsk").isVisible(),false,
+          "Cancel should preserve the existing campaign");
+        assert.ok(await page.locator("#continue").isVisible());
+        await page.locator("#new").click();
+        await page.locator("#confirmReset").click();
+        await page.waitForFunction(()=>
+          document.querySelector("#panelTitle")?.textContent?.includes("끊어진 전원"),
+          null,{timeout:90000});
+        const restarted=await page.evaluate(()=>
+          JSON.parse(localStorage.getItem("waldo.rt03.campaign.v1")));
+        assert.equal(restarted?.elapsed,0,"A confirmed new game resets play time");
+        assert.deepEqual(restarted?.found,[false,false,false],
+          "A confirmed new game resets collected items");
       }
       assert.deepEqual(errors,[],"Unexpected browser exceptions");
       assert.deepEqual(shaderErrors,[],"WebGL shader compilation must not emit errors");

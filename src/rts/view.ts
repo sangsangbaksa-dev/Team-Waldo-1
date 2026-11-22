@@ -419,8 +419,11 @@ export class RtsView {
     // Character geometry and materials are shared between rounds; they are not
     // owned by this renderer. Keep them alive when the WebGL context changes.
     for (const visual of this.units.values()) visual.rig.ch?.root.removeFromParent();
-    disposeSceneResources(this.scene, { keepMaterial: isSharedRtsMaterial });
-    this.ringGeo.dispose();
-    this.post?.dispose(); this.fog?.tex.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss();
+    disposeSceneResources(this.scene, {
+      keepMaterial: isSharedRtsMaterial,
+      extraGeometries: [this.ringGeo],
+      extraTextures: this.fog ? [this.fog.tex] : [],
+    });
+    this.post?.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss();
   }
 }

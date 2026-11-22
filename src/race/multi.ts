@@ -5,6 +5,7 @@ import type { Channel, NetMsg } from '../net/types';
 import { CARS } from './config';
 import { encodeSnap, parseSnap, type Snap } from './netcar';
 import type { CarState } from './physics';
+import {adjustPendingSince} from './network-clock';
 
 export interface MultiHooks {
   /** 모두 모여 카운트다운을 시작합니다. players 는 실제로 접속한 참가자(입장 순서, 나 포함)와 그들의 차량입니다. */
@@ -33,7 +34,10 @@ export class RaceMulti {
   private hello(): void { if (!this.dead && !this.started) this.ch.send({ t: 'hello', f: this.session.me.id, car: this.car }); }
   private tick(): void {
     if (this.dead) return; const now = performance.now();
-    if (now - this.lastTick > 2000) for (const id of this.heard.keys()) this.heard.set(id, now); // 내 탭이 멈춘 시간은 상대의 침묵으로 세지 않습니다
+    if (now - this.lastTick > 2000) {
+      this.born=adjustPendingSince(this.born,this.lastTick,now);
+      for (const id of this.heard.keys()) this.heard.set(id, now); // Browser suspension is not peer silence.
+    }
     this.lastTick = now;
     if (!this.started) {
       this.hello();

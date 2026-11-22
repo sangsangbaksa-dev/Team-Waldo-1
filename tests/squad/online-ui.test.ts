@@ -159,3 +159,35 @@ it('can launch matchmaking again after completing the previous online battle', a
   expect(openLobby).toHaveBeenCalledTimes(2);
   button('#exit').click();
 });
+
+it('ignores a stale lobby opening when the player switches to local AI play', async () => {
+  openSquad(vi.fn());
+  button('[data-mode="online"]').click();
+  button('#start').click(); // The lobby module import remains pending until the microtask.
+  button('[data-mode="ai"]').click();
+  button('#start').click();
+  await vi.dynamicImportSettled();
+  expect(openLobby).not.toHaveBeenCalled();
+  expect(button('#ready')).toBeTruthy();
+  button('#pause').click(); button('#exit').click();
+});
+
+it('ignores a delayed matchmaking completion after the player exits the game', async () => {
+  const exit = vi.fn();
+  openSquad(exit);
+  button('[data-mode="online"]').click();
+  button('#start').click();
+  await vi.dynamicImportSettled();
+  expect(openLobby).toHaveBeenCalledTimes(1);
+  button('#exit').click();
+  expect(exit).toHaveBeenCalledTimes(1);
+  callbacks.onMatch!({
+    host: true,
+    me: { id: 'blue', nickname: 'Blue' },
+    opponent: { id: 'red', nickname: 'Red' },
+    match: { id: 'match' },
+    backend: { report: vi.fn() },
+  } as unknown as PvpSession);
+  expect(callbacks.onGone).toBeNull();
+  expect(vi.getTimerCount()).toBe(0);
+});

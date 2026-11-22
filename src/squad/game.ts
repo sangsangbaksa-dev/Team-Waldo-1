@@ -150,10 +150,17 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
   }
   function toast(text: string): void { root.querySelector('.sq-toast')?.remove(); if (toastTimer) window.clearTimeout(toastTimer); const d = document.createElement('div'); d.className = 'sq-toast'; d.textContent = text; root.append(d); toastTimer = window.setTimeout(() => { d.remove(); toastTimer = 0; }, 3000); }
   async function openOnline(): Promise<void> {
-    const { openLobby } = await import('../net/lobby'); if (closed || lobby) return;
-    lobby = openLobby({ game: 'squad', onClose: () => { lobby = undefined; }, onMatch: s => startOnline(s) });
+    try {
+      const { openLobby } = await import('../net/lobby');
+      // The user can switch modes or quit while the networking module loads.
+      if (closed || lobby || mode !== 'online' || stage !== 'menu') return;
+      lobby = openLobby({ game: 'squad', onClose: () => { lobby = undefined; }, onMatch: s => startOnline(s) });
+    } catch {
+      if (!closed && mode === 'online' && stage === 'menu') toast('온라인 대전을 불러오지 못했습니다. 다시 시도해 주세요.');
+    }
   }
   function startOnline(s: PvpSession): void {
+    if (closed || stage !== 'menu' || mode !== 'online') return;
     // The matchmaking lobby closes itself on match, without invoking onClose.
     // Forget its stale handle so the player can queue again after this match.
     lobby = undefined;

@@ -9,7 +9,8 @@ import { DesertProps } from './desert';
 import { Scenery, buildLanes, bushSpots, paintGround } from './scenery';
 import type { Building, ResNode, RtsSim, SimEvent, Unit } from './sim';
 import type { Marker } from './campaign';
-import { FOG_HIDDEN, FOG_SEEN, type Vision } from './vision';
+import { type Vision } from './vision';
+import { blendFogAlpha } from './fog-alpha';
 
 interface UVis { kind: 'unit'; id: number; rig: UnitRig; ring: THREE.Mesh; px: number; py: number; cx: number; cy: number; yaw: number; moved: number; shake: number; aura: THREE.Mesh | null }
 interface BVis { kind: 'building'; id: number; rig: BuildRig; frame: THREE.Group; scaff: THREE.Group; done: boolean; wasDone: boolean; rubble: number }
@@ -35,7 +36,7 @@ export class RtsView {
   private projected = new THREE.Vector3(); private raycaster = new THREE.Raycaster(); private clock = 0; private w = 1; private h = 1; private fxBudget: number;
   private ringMats = [new THREE.MeshBasicMaterial({ color: 0x5dff9a, transparent: true, opacity: 0.9, depthWrite: false }), new THREE.MeshBasicMaterial({ color: 0xff5a4a, transparent: true, opacity: 0.9, depthWrite: false })];
   /** 전장의 안개: 있으면 보이지 않는 적을 숨기고 어둡게 덮습니다. */ vision: Vision | null = null;
-  private fog: { mesh: THREE.Mesh; tex: THREE.DataTexture; data: Uint8Array; cur: Float32Array } | null = null; private marks = new Map<string, MarkVis>();
+  private fog: { mesh: THREE.Mesh; tex: THREE.DataTexture; data: Uint8Array; cur: Float32Array; version: number; settled: boolean } | null = null; private marks = new Map<string, MarkVis>();
   private contact: THREE.InstancedMesh | null = null; private contactDummy = new THREE.Object3D();
   private grid: THREE.Mesh | null = null; private scenery: Scenery | null = null; private desert: DesertProps | null = null;
 
@@ -186,16 +187,17 @@ export class RtsView {
     for (let i = 0; i < n * n; i++) { data[i * 4] = 6; data[i * 4 + 1] = 10; data[i * 4 + 2] = 18; data[i * 4 + 3] = FOG_A_HIDDEN; }
     const tex = new THREE.DataTexture(data, n, n, THREE.RGBAFormat); tex.magFilter = tex.minFilter = THREE.LinearFilter; tex.needsUpdate = true;
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(n, n), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false }));
-    mesh.rotation.x = -Math.PI / 2; mesh.renderOrder = 20; mesh.frustumCulled = false; this.scene.add(mesh); this.fog = { mesh, tex, data, cur };
+    mesh.rotation.x = -Math.PI / 2; mesh.renderOrder = 20; mesh.frustumCulled = false; this.scene.add(mesh); this.fog = { mesh, tex, data, cur, version: -1, settled: false };
   }
   /** 안개가 서서히 걷히고 덮이도록 칸마다 투명도를 목표값으로 이동합니다. */
   private updateFog(dt: number): void {
     const f = this.fog, v = this.vision; if (!f || !v) return;
-    const n = this.sim.map.size, st = v.state, k = Math.min(1, dt * 6);
-    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-      const i = y * n + x, s = st[i], target = s === FOG_HIDDEN ? FOG_A_HIDDEN : s === FOG_SEEN ? FOG_A_SEEN : 0; let c = f.cur[i]; c += (target - c) * k; f.cur[i] = c; f.data[((n - 1 - y) * n + x) * 4 + 3] = Math.round(c);
-    }
-    f.tex.needsUpdate = true;
+    if (f.settled && f.version === v.version) return;
+    const n = this.sim.map.size;
+    const { dirty, settled } = blendFogAlpha(f.data, f.cur, v.state, n, Math.min(1, dt * 6), FOG_A_HIDDEN, FOG_A_SEEN);
+    f.settled = settled;
+    f.version = v.version;
+    if (dirty) f.tex.needsUpdate = true;
   }
   /** 카메라에서 본 땅과 같은 자리에 겹쳐 보이도록, 높이 FOG_Y 의 안개 판을 카메라 쪽으로 줄여 붙입니다. */
   private placeFog(): void {

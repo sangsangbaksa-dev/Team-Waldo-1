@@ -13,7 +13,8 @@ describe('FRONTLINE deferred effect scheduler', () => {
     advanceDeferredFx(pending, ready, 0.15);
     expect(pending).toBe(ref);
     expect(fired).toEqual([1]);
-    expect(pending.map(x => x.left)).toEqual([0.35, 0.05]);
+    expect(pending[0].left).toBeCloseTo(0.35);
+    expect(pending[1].left).toBeCloseTo(0.05);
     expect(ready).toHaveLength(0);
     advanceDeferredFx(pending, ready, 0.36);
     expect(fired).toEqual([1, 2, 3]);

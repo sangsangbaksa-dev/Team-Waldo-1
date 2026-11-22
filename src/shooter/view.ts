@@ -46,6 +46,11 @@ function worldBox(b: Box, tile = 3.2): THREE.BufferGeometry {
 interface Rig { chute: THREE.Group; root: THREE.Group; ch: CharacterRig; flash: THREE.Sprite; aim: number; death: number; lastHurt: number; lastMuzzle: number }
 interface Fx { mesh: THREE.Mesh; life: number; max: number }
 
+/** Keep vehicle GPU resources only near the camera, with a 100m release margin. */
+export function shouldRetainVehicleMesh(taxicabDistance: number, created: boolean): boolean {
+  return Number.isFinite(taxicabDistance) && taxicabDistance <= (created ? 520 : 420);
+}
+
 export class ShooterView {
   post: PostFx | null = null; renderer: THREE.WebGLRenderer; scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(78, 1, 0.08, 1400);
   private vmScene = new THREE.Scene(); private vmCam = new THREE.PerspectiveCamera(64, 1, 0.5, 200);
@@ -441,13 +446,25 @@ export class ShooterView {
   private syncVehicles(dt: number, vx: number, vz: number): void {
     for (const v of this.match.vehicles) {
       let n = this.vehNodes.get(v.id);
+      const dist = Math.abs(v.x - vx) + Math.abs(v.z - vz);
+      // Vehicle meshes are heavy, and a BR map contains cars far beyond the
+      // camera. Build them only when near; keep a hysteresis band so crossing
+      // the draw boundary does not repeatedly allocate GPU geometry.
+      if (!shouldRetainVehicleMesh(dist, !!n)) {
+        if (n) {
+          this.freeNode(n.g);
+          if (n.fire) { n.fire.removeFromParent(); n.fire.material.dispose(); }
+          this.vehNodes.delete(v.id);
+        }
+        continue;
+      }
       if (!n || n.wreck !== v.wreck) {
         if (n) { this.freeNode(n.g); if (n.fire) { this.scene.remove(n.fire); n.fire.material.dispose(); } }
         const g = makeVehicleMesh({ kind: v.kind, w: v.w, d: v.d, h: v.h, c: v.c, v: v.v, wreck: v.wreck }); this.scene.add(g);
         let fire: THREE.Sprite | null = null; if (v.wreck) { fire = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, color: 0xff8a3a, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })); fire.scale.setScalar(3); this.scene.add(fire); g.rotation.z = 0.04; }
         n = { g, wreck: v.wreck, puffT: 0, fire }; this.vehNodes.set(v.id, n);
       }
-      const dist = Math.abs(v.x - vx) + Math.abs(v.z - vz); n.g.visible = dist < 420; if (n.fire) n.fire.visible = n.g.visible; if (!n.g.visible) continue;
+      n.g.visible = dist < 420; if (n.fire) n.fire.visible = n.g.visible; if (!n.g.visible) continue;
       n.g.position.set(v.x, 0, v.z); n.g.rotation.y = -v.yaw;
       if (!v.wreck) { // 달릴 때 차체가 살짝 기웃: 가속하면 뒤로, 핸들 꺾으면 바깥으로 기웁니다
         const sp = Math.abs(v.speed), top = 36, pitch = -Math.sign(v.speed) * Math.min(1, sp / top) * 0.012; n.g.rotation.z += (pitch - n.g.rotation.z) * Math.min(1, dt * 6);

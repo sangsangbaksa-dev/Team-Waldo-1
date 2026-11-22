@@ -253,7 +253,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       if (m.authority) { if (v.remote) { r.sync.vehs.delete(v.id); v.x = x; v.z = z; v.yaw = y; v.speed = Math.max(-40, Math.min(40, sp)); reclaim(v); } }
       else if (v.remote) { if (v.driver === from.p.id) { from.p.veh = -1; v.driver = -1; } r.sync.vehicleState(v, x, z, y, sp, -1, true, now); }
     }
-    else if (msg.t === 'vd') { const v = typeof msg.i === 'number' ? m.vehicles[msg.i] : undefined; if (canAcceptVehicleDamageReport(m.authority, v, from?.p, msg.d)) m.hurtVehicle(v!, Math.min(400, msg.d), -1); }
+    else if (msg.t === 'vd') { const v = typeof msg.i === 'number' ? m.vehicles[msg.i] : undefined; if (v && canAcceptVehicleDamageReport(m.authority, v, from?.p, msg.d)) m.hurtVehicle(v, Math.min(400, msg.d), -1); }
   }
   /** 매 시뮬레이션 단계 전에: 다른 사람·AI·차를 받은 상태로 옮깁니다. */
   function syncRoom(dt: number): void {

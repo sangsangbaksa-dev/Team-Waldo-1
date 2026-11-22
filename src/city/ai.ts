@@ -67,6 +67,11 @@ export function thinkFaction(w: World, f: Faction): void {
       else if (!hq || !inNext(hq.x, hq.y, 0)) { tx = z.nx + (w.rng() - 0.5) * z.nr * 0.5; ty = z.ny + (w.rng() - 0.5) * z.nr * 0.5; if (ai.goal === 'idle' && Math.hypot(ai.tx - z.nx, ai.ty - z.ny) < z.nr * 0.6) { tx = ai.tx; ty = ai.ty; } }
     }
   }
+  // 초반 준비 시간: 유예 시간 안에는 남의 본부 근처(900)로 가지 않고 자기 본부 쪽에서 경제를 굴립니다(자기장 이동은 예외).
+  if (!final && t < diff.grace && goal !== 'zone' && !w.opts.duel && hq) {
+    const near = w.structures.some(s => s.alive && s.kind === 'hq' && s.f !== f.id && Math.hypot(s.x - tx, s.y - ty) < 900);
+    if (near) { goal = 'idle'; tx = hq.x + 60; ty = hq.y + 170; type = 'move'; }
+  }
   ai.goal = goal; ai.tx = tx; ai.ty = ty; b.order = { type, x: tx, y: ty };
   if (f.skillCd <= 0 && hostileNear) { if (f.klass !== 'tycoon' || f.cash > 600) w.useSkill(f.id); }
   void UNITS;

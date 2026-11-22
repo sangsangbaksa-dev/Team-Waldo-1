@@ -1,6 +1,6 @@
 // 내부 상태 → 씬/HUD 가 읽는 스냅샷.
 import { CLOSE_HOUR, CONQUER_SHARE, EVENTS, NIGHT_FROM, NIGHT_TO, OPEN_HOUR, REGIONS, REGION_YIELD, RIVALS, SHOP_KINDS, STAGE_NAMES, WAGES, stageIndex } from './data';
-import { regionInvestCost, rivalValue, takeoverCost } from './actions';
+import { regionInvestCost, rivalValues, takeoverCostForValue } from './actions';
 import { SPOT_BY_ID, absMinute, clock, lotPrice, netWorth, playerShops, serveCapacity, shopValue, stockCap, type ActivityData, type GameData, type ShopData } from './model';
 import { goal } from './sim';
 import type { LotView, ShopView, SpotDef, TycoonState } from './types';
@@ -45,6 +45,7 @@ export function lotView(g: GameData, spot: SpotDef, presence: string | null): Lo
 export function buildState(g: GameData, extra: { presence: string | null; activity: ActivityData | null; speed: number }): TycoonState {
   const shops = playerShops(g);
   const retail = shops.filter(s => s.shop.kind !== 'factory');
+  const values = rivalValues(g);
   const h = g.minute / 60;
   return {
     day: g.day,
@@ -72,8 +73,8 @@ export function buildState(g: GameData, extra: { presence: string | null; activi
     } : null,
     goal: goal(g),
     rivals: RIVALS.map(r => {
-      const { shops: n, value } = rivalValue(g, r.id);
-      return { id: r.id, name: r.name, color: r.color, shops: n, value, takeoverCost: takeoverCost(g, r.id), acquired: !!g.rivals[r.id]?.acquired };
+      const { shops: n, value } = values.get(r.id) ?? { shops: 0, value: 0 };
+      return { id: r.id, name: r.name, color: r.color, shops: n, value, takeoverCost: takeoverCostForValue(value), acquired: !!g.rivals[r.id]?.acquired };
     }),
     regions: REGIONS.map(r => {
       const share = g.regions[r.id] ?? 0;

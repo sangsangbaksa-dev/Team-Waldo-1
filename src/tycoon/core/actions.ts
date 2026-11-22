@@ -265,9 +265,23 @@ export function rivalValue(g: GameData, rivalId: string): { shops: number; value
   }
   return { shops, value };
 }
-export function takeoverCost(g: GameData, rivalId: string): number {
-  const { value } = rivalValue(g, rivalId);
+/** Aggregate all rivals in a single lot traversal for HUD and office menus. */
+export function rivalValues(g: GameData): Map<string, { shops: number; value: number }> {
+  const values = new Map<string, { shops: number; value: number }>();
+  for (const id of LOT_IDS) {
+    const lot = g.lots[id];
+    if (lot.owner !== 'rival' || !lot.rivalId) continue;
+    const stats = values.get(lot.rivalId) ?? { shops: 0, value: 0 };
+    stats.shops++; stats.value += rivalShopValue(SPOT_BY_ID.get(id)!, lot.rivalKind!, lot.rivalLevel ?? 1);
+    values.set(lot.rivalId, stats);
+  }
+  return values;
+}
+export function takeoverCostForValue(value: number): number {
   return Math.round(Math.max(200000, value * 3) * TAKEOVER_PREMIUM);
+}
+export function takeoverCost(g: GameData, rivalId: string): number {
+  return takeoverCostForValue(rivalValue(g, rivalId).value);
 }
 
 function officeActions(ctx: ActionCtx): ActionSpec[] {
@@ -298,9 +312,9 @@ function officeActions(ctx: ActionCtx): ActionSpec[] {
   for (const r of RIVALS) {
     const acquired = g.rivals[r.id]?.acquired;
     if (acquired) continue;
-    const cost = takeoverCost(g, r.id);
+    const stats = rivalValue(g, r.id), cost = takeoverCostForValue(stats.value);
     out.push(spec({
-      id: `takeover_${r.id}`, label: `${r.name} 적대적 인수`, desc: `가게 ${rivalValue(g, r.id).shops}곳을 통째로 삼킨다. 다시는 확장하지 않는다`, cost,
+      id: `takeover_${r.id}`, label: `${r.name} 적대적 인수`, desc: `가게 ${stats.shops}곳을 통째로 삼킨다. 다시는 확장하지 않는다`, cost,
       ...(!g.listed ? off('상장한 대기업만 할 수 있습니다') : {}),
       run: () => {
         g.cash -= cost;

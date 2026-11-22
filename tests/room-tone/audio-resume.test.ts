@@ -26,14 +26,19 @@ describe("ROOM TONE WebAudio suspend and resume",()=>{
     vi.useFakeTimers();
     const {sound,ctx}=harness();
     let completeResume:()=>void=()=>{};
-    ctx.resume=vi.fn(()=>new Promise<void>(resolve=>{
-      completeResume=()=>{
-        ctx.state="running";
-        resolve();
-      };
-    }));
+    let signalStarted:()=>void=()=>{};
+    const started=new Promise<void>(resolve=>{signalStarted=resolve;});
+    ctx.resume=vi.fn(()=>{
+      signalStarted();
+      return new Promise<void>(resolve=>{
+        completeResume=()=>{
+          ctx.state="running";
+          resolve();
+        };
+      });
+    });
     sound.pause(false);
-    await Promise.resolve();
+    await started;
     expect(ctx.resume).toHaveBeenCalledOnce();
     expect(sound.clock).toBeNull();
     completeResume();

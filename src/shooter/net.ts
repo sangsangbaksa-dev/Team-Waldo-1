@@ -42,6 +42,23 @@ export function parseNade(m: NetMsg): NetNade | null {
   return num(m.x, -1000, 1000) && num(m.y, -5, 60) && num(m.z, -1000, 1000) && num(m.vx, -80, 80) && num(m.vy, -80, 80) && num(m.vz, -80, 80) ? { x: m.x, y: m.y, z: m.z, vx: m.vx, vy: m.vy, vz: m.vz } : null;
 }
 export function nadeMsg(n: NetNade, owner: number): NetMsg { const r = (v: number): number => Math.round(v * 100) / 100; return { t: 'nd', o: owner, x: r(n.x), y: r(n.y), z: r(n.z), vx: r(n.vx), vy: r(n.vy), vz: r(n.vz) }; }
+/** Cheap plausibility guard for a human player's relayed shot.
+ * Last known poses may lag the shot, so allow up to 25m of movement instead
+ * of insisting on exact eye coordinates. A client never needs an origin
+ * hundreds of meters away from its player to fire legitimately.
+ */
+export function plausiblePlayerShot(shot: NetShot, pose: Pick<Pose, 'x' | 'z' | 'air'>): boolean {
+  const weapon = WEAPONS[shot.w];
+  if (!weapon || pose.air && pose.air !== 0 || Math.abs(shot.ox - pose.x) > 25 || Math.abs(shot.oz - pose.z) > 25) return false;
+  if (!num(shot.oy, 0, 5) || shot.ends.length !== weapon.pellets * 3) return false;
+  const maxRange2 = (weapon.range + 2) ** 2;
+  for (let i = 0; i < shot.ends.length; i += 3) {
+    const dx = shot.ends[i] - shot.ox, dy = shot.ends[i + 1] - shot.oy, dz = shot.ends[i + 2] - shot.oz;
+    if (!Number.isFinite(dx) || !Number.isFinite(dy) || !Number.isFinite(dz) || dx * dx + dy * dy + dz * dz > maxRange2) return false;
+  }
+  return true;
+}
+
 export function parseShot(m: NetMsg): NetShot | null {
   if (!weapon(m.w) || !num(m.ox) || !num(m.oy, -50, 50) || !num(m.oz) || !Array.isArray(m.e) || m.e.length < 3 || m.e.length > 27 || m.e.length % 3 !== 0 || !m.e.every(v => num(v))) return null;
   return { w: m.w, ox: m.ox, oy: m.oy, oz: m.oz, ends: m.e as number[] };

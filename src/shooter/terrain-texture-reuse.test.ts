@@ -24,7 +24,7 @@ const map = (): GameMap => ({
     { x: 0, z: 0, r: 15, theme: 'industrial' },
     { x: 35, z: 0, r: 24, theme: 'military' },
   ],
-  roads: [],
+  roads: [[0, 1]],
   terrain: {
     rivers: [{ pts: [[-10, 20], [25, 20]], w: 4 }],
     ponds: [
@@ -52,6 +52,8 @@ describe('ZERO ZONE terrain texture source reuse', () => {
   it('paints one concrete image but preserves per-town repeat scale', () => {
     const terrain = new TerrainView(map(), true);
     expect(textures.concreteTexture).toHaveBeenCalledTimes(1);
+    expect(textures.dirtTexture).toHaveBeenCalledTimes(1);
+    expect(textures.fadeDiscTexture).toHaveBeenCalledTimes(4); // low quality skips unused stain textures
     const source = vi.mocked(textures.concreteTexture).mock.results[0].value.source;
     const pads = maps(terrain).filter(t => t.source === source);
     expect(pads).toHaveLength(3);

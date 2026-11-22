@@ -184,3 +184,25 @@ it('lets keyboard and screen-reader users select each dorm music track', () => {
   expect(tracks[0]?.getAttribute('aria-pressed')).toBe('false');
   expect(view.el.querySelector('[data-m-title]')?.textContent).toContain('느린 걸음');
 });
+
+it('releases a dorm study-cover touch when pointer capture is denied outside the control', () => {
+  const sim = createSim('dorm', 7, 1); sim.start();
+  const isolated = createComputerView(sim, audio);
+  document.body.append(isolated.el);
+  sim.doActivity('video'); sim.setCover(false); isolated.frame(0.1);
+  const cover = isolated.el.querySelector<HTMLButtonElement>('.sc-cover-button')!;
+  Object.defineProperty(cover, 'setPointerCapture', {
+    configurable: true, value: () => { throw new Error('capture denied'); },
+  });
+  const touch = (target: EventTarget, type: string) => {
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    Object.assign(event, { pointerId: 23, button: 0 });
+    target.dispatchEvent(event);
+  };
+  touch(cover, 'pointerdown');
+  expect(sim.state.cover).toBe(true);
+  touch(window, 'pointerup');
+  expect(sim.state.cover).toBe(false);
+  isolated.dispose();
+  isolated.el.remove();
+});

@@ -108,3 +108,24 @@ it('keeps tactical map keyboard focus after clicking with a mouse or trackpad', 
   expect(view.el.querySelector('#sl-rts-cursor')?.textContent).toContain('지휘 위치');
   view.dispose();
 });
+
+it('releases the classroom study cover on window pointerup if capture fails outside the button', () => {
+  const sim = createSim('class', 3, 1); sim.start(); sim.doActivity('video');
+  const view = createClassroomView(sim, audio);
+  document.body.append(view.el);
+  const cover = view.el.querySelector<HTMLButtonElement>('.sl-cover')!;
+  Object.defineProperty(cover, 'setPointerCapture', {
+    configurable: true, value: () => { throw new Error('capture denied'); },
+  });
+  const touch = (target: EventTarget, type: string) => {
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    Object.assign(event, { pointerId: 44, button: 0 });
+    target.dispatchEvent(event);
+  };
+  sim.setCover(false);
+  touch(cover, 'pointerdown');
+  expect(sim.state.cover).toBe(true);
+  touch(window, 'pointerup');
+  expect(sim.state.cover).toBe(false);
+  view.dispose();
+});

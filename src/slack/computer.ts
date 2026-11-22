@@ -346,6 +346,9 @@ export const createComputerView: CreateView = (sim, audio) => {
   };
   const pointerup = (event: PointerEvent) => {
     if (coverMiddle === event.pointerId && (event.button === 1 || event.type === 'pointercancel')) { coverMiddle = null; updateCover(); }
+    // A browser without pointer capture can deliver release outside the cover
+    // button. The window listener must end the held cover in that case.
+    if (coverPointer === event.pointerId) { coverPointer = null; updateCover(); }
   };
   const buttonDown = (event: PointerEvent) => {
     if (event.button !== 0 || coverPointer !== null) return;

@@ -187,8 +187,8 @@ export const createClassroomView: CreateView = (sim, audio) => {
   el.addEventListener('focusout', focusout);
   window.addEventListener('blur', release);
   cover.addEventListener('pointerdown', pointerDown);
-  cover.addEventListener('pointerup', pointerUp);
-  cover.addEventListener('pointercancel', pointerUp);
+  window.addEventListener('pointerup', pointerUp);
+  window.addEventListener('pointercancel', pointerUp);
   cover.addEventListener('lostpointercapture', pointerUp);
   gcv.addEventListener('pointerdown', gDown);
   gcv.addEventListener('pointermove', gMove);
@@ -263,7 +263,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
     dispose() {
       resize?.disconnect();
       el.removeEventListener('keydown', keydown); el.removeEventListener('keyup', keyup); el.removeEventListener('focusout', focusout); window.removeEventListener('blur', release);
-      cover.removeEventListener('pointerdown', pointerDown); cover.removeEventListener('pointerup', pointerUp); cover.removeEventListener('pointercancel', pointerUp); cover.removeEventListener('lostpointercapture', pointerUp);
+      cover.removeEventListener('pointerdown', pointerDown); window.removeEventListener('pointerup', pointerUp); window.removeEventListener('pointercancel', pointerUp); cover.removeEventListener('lostpointercapture', pointerUp);
       gcv.removeEventListener('pointerdown', gDown); gcv.removeEventListener('pointermove', gMove);
       el.removeEventListener('click', actionClick);
       release();

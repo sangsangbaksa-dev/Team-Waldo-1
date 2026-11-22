@@ -66,6 +66,9 @@ export class Player {
     if (this.rig) {
       const r = this.rig; r.root.position.set(this.pos.x, 0.18, this.pos.z); r.root.rotation.y = this.facing;
       r.state.speed = this.speed; r.state.wave = this.wave > 0 ? Math.min(1, this.wave * 2) : 0; r.step(dt); r.update(dt);
+      // CharacterRig.update writes the *animation offset* to root.position.y.
+      // Restore the actual ground elevation after its pose has been applied.
+      r.root.position.y += this.pos.y;
     }
     this.bob += this.speed * dt * 1.9;
   }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PerspectiveCamera, Scene } from 'three';
+import { CharacterKit } from '../../src/shared/character';
 import { Colliders, buildLayout } from '../../src/tycoon/scene/layout';
 import { SPOTS } from '../../src/tycoon/core';
 import { Player } from '../../src/tycoon/scene/player';
@@ -49,4 +50,17 @@ describe('HUSTLE smooth camera obstruction checks', () => {
     expect(cols.resolve(camera.position.x, camera.position.z, .5, out)).toBe(false);
     expect(camera.position.toArray().every(Number.isFinite)).toBe(true);
   });
+});
+
+it('keeps HUSTLE player feet above the paved ground after shared rig poses animate', () => {
+  const empty = { fixed: null, team: null, skin: null, glow: null };
+  const kit = new CharacterKit({ civ: { body: empty, leg: empty } });
+  const player = new Player(new Scene(), kit);
+  const colliders = new Colliders();
+  player.teleport(0, 0, 0);
+  player.setOutfit(0);
+  player.update(.016, {mx: 0, mz: 0, run: false}, colliders, false);
+  expect(player.rig?.root.position.y).toBeCloseTo(player.pos.y);
+  player.update(.016, {mx: 0, mz: 1, run: false}, colliders, false);
+  expect(player.rig!.root.position.y).toBeGreaterThanOrEqual(player.pos.y);
 });

@@ -69,6 +69,9 @@ export class Crowd {
       this.visibleWalkers.push(w);
       w.rig.root.position.set(w.x, 0.18, w.z); const cur = w.rig.root.rotation.y; let dy = w.yaw - cur; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2; w.rig.root.rotation.y = cur + dy * Math.min(1, dt * 8);
       w.rig.setDetail(dist > 70 ? 3 : dist > 40 ? 1 : 0); w.rig.step(dt); w.rig.update(dt);
+      // Rig pose writes a 0-based animation bob; its world origin must remain
+      // on the 18cm-high paved sidewalk instead of clipping into the asphalt.
+      w.rig.root.position.y += 0.18;
     }
   }
   /** Stable, allocation-free view; only valid until the next Crowd.update call. */

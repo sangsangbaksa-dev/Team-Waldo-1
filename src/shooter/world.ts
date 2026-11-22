@@ -228,6 +228,19 @@ const THEMES: Record<Theme, ThemeDef> = {
   military:   { cols: [3, 2], rows: 2, lot: { w: 17, d: 14 }, first: 'bunker',    kinds: [['bunker', 4], ['tower', 2], ['garage', 1.5], ['cabin', 1.5]],               names: ['북부기지', '검은 요새', '레이더 고지'] },
 };
 const THEME_LIST = Object.keys(THEMES) as Theme[];
+
+/** Same seed => same town theme order on every JS engine.
+ * Random sort comparators are nontransitive and can consume a different
+ * number of RNG draws in different browser implementations.
+ */
+export function shuffledTownThemes(random: () => number): Theme[] {
+  const themes = [...THEME_LIST];
+  for (let i = themes.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [themes[i], themes[j]] = [themes[j], themes[i]];
+  }
+  return themes;
+}
 const pickKind = (rng: () => number, d: ThemeDef): BuildingType => { let t = 0; for (const [, w] of d.kinds) t += w; let x = rng() * t; for (const [k, w] of d.kinds) { x -= w; if (x <= 0) return k; } return d.first; };
 
 function station(map: GameMap, rng: () => number, cx: number, cz: number): boolean {
@@ -285,7 +298,7 @@ export function generateMap(seed: number, mode: Mode): GameMap {
     if (map.compounds.every(c => Math.hypot(c.x - x, c.z - z) > minGap)) { map.compounds.push({ x, z, r: 0, theme: 'village', name: '' }); }
   }
   // 종류를 골고루: 처음 다섯 곳은 서로 다른 종류, 나머지는 무작위
-  const bag = [...THEME_LIST].sort(() => rng() - 0.5); const used: Record<string, number> = {};
+  const bag = shuffledTownThemes(rng); const used: Record<string, number> = {};
   map.compounds.forEach((c, i) => { c.theme = i < bag.length ? bag[i] : THEME_LIST[Math.floor(rng() * THEME_LIST.length)]; const def = THEMES[c.theme]; const n = used[c.theme] ?? 0; used[c.theme] = n + 1; c.name = def.names[n % def.names.length] });
   for (const c of map.compounds) {
     const def = THEMES[c.theme], cols = mode === 'br' ? def.cols[0] : 2, rows = def.rows, lot = def.lot, n = (mode === 'br' ? 4 : 2) + Math.floor(rng() * 3);

@@ -19,6 +19,7 @@ import { Crowd, Traffic } from './scene/people';
 import { TycoonAudio } from './audio';
 import { drawMap, nearestMapSpot } from './ui/minimap';
 import { readResumePosition } from './scene/resume';
+import { animatedDelta } from './frame-time';
 import { esc, ladderHtml, menuHtml, spotPanelHtml, statusHtml, titleHtml, winHtml } from './ui/render';
 
 interface OpenOptions { loading?: LoadingScreen }
@@ -300,7 +301,10 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   function tick(dt: number, nowS: number): void {
     if (!renderer || !core) return;
     const playing = phase === 'play', s = core.state;
-    if (playing && !paused() && !document.hidden) core.tick(dt);
+    // The menu pauses the *whole* simulation, not just the bank balance:
+    // pedestrians, traffic, rain, crane motion and autosave timers freeze too.
+    const worldDt = animatedDelta(dt, playing, paused(), document.hidden);
+    if (playing && worldDt > 0) core.tick(worldDt);
     const st = core.state;
     if (playing && (checkpointPending || (s.activity && !st.activity))) { checkpointPending = false; save(); }
     // 입력 → 이동
@@ -317,23 +321,25 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (playing && !paused()) audio.step(player.speed, nowS);
     // 월드 갱신
     const minutes = playing ? st.minutes : 17.4 * 60, focus = playing ? player.pos : titleFocus;
-    const sky = atmo.update(dt, camera, focus, minutes, st.day);
+    const sky = atmo.update(worldDt, camera, focus, minutes, st.day);
     city.setNight(sky.night); city.setWet(sky.wet); renderer.toneMappingExposure = atmo.exposure();
-    city.update(dt, focus);
-    crowd?.update(dt, focus, sky.night, sky.wet, (i, j) => city.blockOpen(i, j));
-    traffic?.update(dt, focus, player.pos, sky.night, crowd?.getVisiblePedestrians());
+    if (worldDt > 0) {
+      city.update(worldDt, focus);
+      crowd?.update(worldDt, focus, sky.night, sky.wet, (i, j) => city.blockOpen(i, j));
+      traffic?.update(worldDt, focus, player.pos, sky.night, crowd?.getVisiblePedestrians());
+    }
     if (st.stageIndex !== lastStage && playing) applyStageLook();
     // 카메라
     if (playing) {
       player.placeCamera(camera, dt, colliders);
-      if (cineT > 0) { cineT += dt; const k = Math.sin(Math.min(1, cineT / 4.2) * Math.PI), vx = player.pos.x + 20, vz = player.pos.z + 46, vy = 46 + 30 * k; camera.position.lerp(cinematicTarget.set(vx, vy, vz), k * 0.88); camera.lookAt(player.pos.x - 10 * k, 4 + 6 * k, player.pos.z - 6 * k); if (cineT > 4.2) cineT = 0; }
+      if (cineT > 0) { cineT += worldDt; const k = Math.sin(Math.min(1, cineT / 4.2) * Math.PI), vx = player.pos.x + 20, vz = player.pos.z + 46, vy = 46 + 30 * k; camera.position.lerp(cinematicTarget.set(vx, vy, vz), k * 0.88); camera.lookAt(player.pos.x - 10 * k, 4 + 6 * k, player.pos.z - 6 * k); if (cineT > 4.2) cineT = 0; }
     } else {
-      titleAngle += dt * 0.07; const cx = titleFocus.x, cz = titleFocus.z; camera.position.set(cx + Math.cos(titleAngle) * 52, 26 + Math.sin(titleAngle * 0.7) * 3, cz + Math.sin(titleAngle) * 52); camera.lookAt(cx, 3, cz);
+      titleAngle += worldDt * 0.07; const cx = titleFocus.x, cz = titleFocus.z; camera.position.set(cx + Math.cos(titleAngle) * 52, 26 + Math.sin(titleAngle * 0.7) * 3, cz + Math.sin(titleAngle) * 52); camera.lookAt(cx, 3, cz);
     }
     // 주기 작업
-    syncT += dt; if (syncT > SYNC_EVERY) { syncT = 0; syncCity(false); attachCarry(); }
-    saveT += dt; if (saveT > 25) { saveT = 0; if (playing && !save()) toast('자동 저장 실패 — 저장 공간을 확인하세요.', 'bad', 5); }
-    audio.ambience(sky.daylight, sky.wet, 0); if (sky.wet > 0.8 && Math.random() < dt * 0.04) audio.thunder(); rainSound = sky.wet; void rainSound;
+    syncT += worldDt; if (syncT > SYNC_EVERY) { syncT = 0; syncCity(false); attachCarry(); }
+    saveT += worldDt; if (saveT > 25) { saveT = 0; if (playing && !save()) toast('자동 저장 실패 — 저장 공간을 확인하세요.', 'bad', 5); }
+    audio.ambience(sky.daylight, sky.wet, 0); if (sky.wet > 0.8 && Math.random() < worldDt * 0.04) audio.thunder(); rainSound = sky.wet; void rainSound;
     
     // 토스트 정리
     const nowMs = performance.now(); for (let i = toastList.length - 1; i >= 0; i--) if (toastList[i].at <= nowMs) { toastList[i].el.remove(); toastList.splice(i, 1); }

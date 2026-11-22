@@ -20,7 +20,7 @@ export interface Track {
 }
 
 type V3 = [number, number, number];
-function catmull(p0: V3, p1: V3, p2: V3, p3: V3, t: number): V3 {
+function catmull(p0: ControlPoint, p1: ControlPoint, p2: ControlPoint, p3: ControlPoint, t: number): V3 {
   const t2 = t * t, t3 = t2 * t, out: V3 = [0, 0, 0];
   for (let i = 0; i < 3; i++) out[i] = 0.5 * ((2 * p1[i]) + (-p0[i] + p2[i]) * t + (2 * p0[i] - 5 * p1[i] + 4 * p2[i] - p3[i]) * t2 + (-p0[i] + 3 * p1[i] - 3 * p2[i] + p3[i]) * t3);
   return out;
@@ -30,7 +30,7 @@ export function buildTrack(points: ReadonlyArray<ControlPoint> = MAPS[0].points,
   const m = points.length, dense: V3[] = [], per = 48;
   for (let i = 0; i < m; i++) {
     const a = points[(i + m - 1) % m], b = points[i], c = points[(i + 1) % m], d = points[(i + 2) % m];
-    for (let s = 0; s < per; s++) dense.push(catmull([...a], [...b], [...c], [...d], s / per));
+    for (let s = 0; s < per; s++) dense.push(catmull(a, b, c, d, s / per));
   }
   const cum: number[] = [0];
   for (let i = 1; i <= dense.length; i++) { const p = dense[i - 1], q = dense[i % dense.length]; cum.push(cum[i - 1] + Math.hypot(q[0] - p[0], q[1] - p[1])); }
@@ -60,9 +60,11 @@ export interface Nearest { i: number; lat: number; dist: number }
 /** hint 주변(±win)에서 가장 가까운 샘플과 중심선 기준 좌우 오프셋(오른쪽이 +)을 찾습니다. win<0 이면 전체 탐색. */
 export function nearest(t: Track, px: number, pz: number, hint: number, win = 40): Nearest {
   const n = t.n, full = win < 0 || win * 2 + 1 >= n; let best = 0, bd = Infinity;
+  // Corrupted replay hints must never index outside typed track arrays.
+  const base=Number.isFinite(hint)?((Math.trunc(hint)%n)+n)%n:0;
   const lo = full ? 0 : -win, hi = full ? n - 1 : win;
   for (let o = lo; o <= hi; o++) {
-    const i = full ? o : (hint + o + n * 4) % n, dx = px - t.x[i], dz = pz - t.z[i], d = dx * dx + dz * dz;
+    const i = full ? o : (base + o + n) % n, dx = px - t.x[i], dz = pz - t.z[i], d = dx * dx + dz * dz;
     if (d < bd) { bd = d; best = i; }
   }
   const dx = px - t.x[best], dz = pz - t.z[best];

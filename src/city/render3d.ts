@@ -18,7 +18,7 @@ import { Skyline } from './skyline';
 import { StreetFx } from './streetfx';
 import { WetStreet } from './wetstreet';
 import { buildReach, clampLabelScreenPos, clampLookPitch, labelSpriteCenter } from './uiMath';
-import { wrapNear, wrapRange } from './render-math';
+import { wrapNear, wrapRange, visibleRainStreaks, rainParticleBudget } from './render-math';
 import { addStreetFurniture, parkFurniture } from '../shared/street-furniture';
 import { RoadLightBatch, lightRange, nearVisual } from '../shared/road-lights';
 import { nearbyVehicleLights, frameEmissionChance, lightVehicleCapacity } from './traffic-lighting';
@@ -66,6 +66,10 @@ export class Renderer3D {
   private furniture: { dispose(): void } | null = null;
   private roadLights: RoadLightBatch | null = null;
   private readonly lightCandidates: Vehicle[] = [];
+  private readonly reflectionHidden: THREE.Object3D[] = [];
+  private readonly seenStructures = new Set<number>();
+  private readonly seenVehicles = new Set<number>();
+  private readonly seenLoot = new Set<number>();
   private lastDrawDt = 1 / 60;
   private projected = new THREE.Vector3(); private dummy = new THREE.Object3D(); private color = new THREE.Color();
   private bodies: THREE.InstancedMesh; private heads: THREE.InstancedMesh; private guns: THREE.InstancedMesh; private hulls: THREE.InstancedMesh; private turrets: THREE.InstancedMesh; private barrels: THREE.InstancedMesh;
@@ -358,29 +362,34 @@ export class Renderer3D {
     this.groundMat.shininess = 40 + a.wet * 60; this.groundMat.specular.setRGB(...a.sunColor).multiplyScalar(0.15 + a.wet * 0.25);
     this.skyDome.update(a, cam, this.t, f); this.skyline.update(a, cam, this.t); this.streetFx.update(this.t, a, this.reduced);
     this.moodT -= dt; if (this.moodT <= 0 || snap) { this.moodT = 0.25; this.bfx.setMood(a); this.ml?.setGlow(0.75 + a.lamps * 0.5); }
-    this.wetStreet.update(dt, a, cam, this.renderer, this.scene, [this.rain ?? this.gun, this.gun].filter(Boolean) as THREE.Object3D[]);
+    this.reflectionHidden.length=0;
+    if(this.rain)this.reflectionHidden.push(this.rain);
+    this.reflectionHidden.push(this.gun);
+    this.wetStreet.update(dt, a, cam, this.renderer, this.scene, this.reflectionHidden);
     if (this.post) this.post.set({ strength: 0.36 + a.night * 0.2 + a.rain * 0.08, threshold: 0.9 - a.night * 0.1 });
   }
   /** 사진 촬영·테스트용: 시각·날씨가 막 바뀐 직후 분위기를 서서히 따라가지 않고 한 번에 맞춥니다. */
   snapAtmosphere(): void { this.applyAtmosphere(0, true); }
   private updateRain(dt: number): void {
     if (this.reduced) { if (this.rain) this.rain.visible = false; return; }
-    const R = EYE_HEIGHT * 14, H = EYE_HEIGHT * 9, n = 1600, a = this.atm;
+    const R = EYE_HEIGHT * 14, H = EYE_HEIGHT * 9, n = rainParticleBudget(this.quality), a = this.atm;
+    const visible=visibleRainStreaks(n,a.rain);
+    if (!this.rain && visible===0) return;
     if (!this.rain) {
       this.rainPos = new Float32Array(n * 6); this.rainSeed = new Float32Array(n * 3);
-      for (let i = 0; i < n; i++) this.rainSeed.set([(Math.random() - 0.5) * 2 * R, Math.random() * H, (Math.random() - 0.5) * 2 * R], i * 3);
+      for (let i = 0; i < n; i++) { const at=i*3;this.rainSeed[at]=(Math.random()-0.5)*2*R;this.rainSeed[at+1]=Math.random()*H;this.rainSeed[at+2]=(Math.random()-0.5)*2*R; }
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(this.rainPos, 3));
       this.rain = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0xcfe2ff, transparent: true, opacity: 0.6, depthWrite: false, fog: false }));
       this.rain.frustumCulled = false; this.scene.add(this.rain);
     }
     // 빗줄기: 폭풍우에는 굵고 비스듬하며, 밤에는 가로등·네온에 비쳐 희미한 안개색으로 보인다.
     const mat = this.rain.material as THREE.LineBasicMaterial; mat.color.setRGB(...a.fog).lerp(this.rainTint.set(0.8, 0.88, 1), 0.55 + 0.25 * (1 - a.night)); mat.opacity = 0.28 + a.rain * 0.4;
-    this.rain.visible = a.rain > 0.05;
-    // A line requires two vertices. Never submit a partial raindrop.
-    this.rain.geometry.setDrawRange(0, Math.round(n * a.rain) * 2);
-    if (!this.rain.visible) return;
+    this.rain.visible = visible>0;
+    // A line requires two vertices; skip the invisible subset of the GPU buffer.
+    this.rain.geometry.setDrawRange(0,visible*2);
+    if (!visible) return;
     const cp = this.camera.position, fall = EYE_HEIGHT * (24 + a.wind * 10) * dt, len = EYE_HEIGHT * (0.7 + a.wind * 0.5), slant = 0.12 + a.wind * 0.3;
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < visible; i++) {
       const y = wrapRange(this.rainSeed[i * 3 + 1] - fall, H); this.rainSeed[i * 3 + 1] = y;
       const x = wrapNear(this.rainSeed[i * 3], cp.x, R), z = wrapNear(this.rainSeed[i * 3 + 2], cp.z, R), at = i * 6;
       this.rainPos[at] = x; this.rainPos[at + 1] = y; this.rainPos[at + 2] = z;
@@ -442,10 +451,10 @@ export class Renderer3D {
     // 탄환
     let nt = 0; for (const b of w.bullets) { if (nt >= 500) break; const wd = WEAPONS[b.w], a = Math.atan2(b.vy, b.vx), len = wd.splash ? 12 : wd.pierce ? 150 : 46, th = wd.splash ? 5 : wd.pierce ? 3 : b.boss ? 1.5 : 1.1; d.rotation.set(0, -a, 0); d.position.set(b.x - Math.cos(a) * len / 2, 30, b.y - Math.sin(a) * len / 2); d.scale.set(len, th, th); d.updateMatrix(); this.tracers.setMatrixAt(nt, d.matrix); this.tracers.setColorAt(nt, col.set(wd.color)); nt++; if (wd.splash && Math.random() < frameEmissionChance(55,dt)) this.smoke.add(b.x, 30, b.y, 0, 8, 0, 0.5, 0xcfcfcf); } upd(this.tracers, nt);
     // 동적 오브젝트 동기화
-    const seenS = new Set<number>(); for (const s of w.structures) if (s.alive) { seenS.add(s.id); this.syncStruct(s); } for (const [id, g] of this.structs) if (!seenS.has(id)) { this.lifetime.remove(this.scene,g); this.structs.delete(id); }
-    const seenV = new Set<number>(); for (const v of w.vehicles) if (v.alive) { seenV.add(v.id); if (nearVisual(v.x,v.y,this.camPos.x,this.camPos.z,Math.min(3000,this.atm.fogFar+250))) { this.syncVehicle(v); this.vehs.get(v.id)!.visible=true; } else { const g=this.vehs.get(v.id); if(g)g.visible=false; } } for (const [id, g] of this.vehs) if (!seenV.has(id)) { this.lifetime.remove(this.scene,g); this.vehs.delete(id); }
+    const seenS = this.seenStructures;seenS.clear(); for (const s of w.structures) if (s.alive) { seenS.add(s.id); this.syncStruct(s); } for (const [id, g] of this.structs) if (!seenS.has(id)) { this.lifetime.remove(this.scene,g); this.structs.delete(id); }
+    const seenV = this.seenVehicles;seenV.clear(); for (const v of w.vehicles) if (v.alive) { seenV.add(v.id); if (nearVisual(v.x,v.y,this.camPos.x,this.camPos.z,Math.min(3000,this.atm.fogFar+250))) { this.syncVehicle(v); this.vehs.get(v.id)!.visible=true; } else { const g=this.vehs.get(v.id); if(g)g.visible=false; } } for (const [id, g] of this.vehs) if (!seenV.has(id)) { this.lifetime.remove(this.scene,g); this.vehs.delete(id); }
     this.updateRoadLights();
-    const seenL = new Set<number>(); for (const l of w.loot) if (l.alive) { seenL.add(l.id); if(l.type==='crate'||nearVisual(l.x,l.y,this.camPos.x,this.camPos.z,1600)){this.syncLoot(l);this.loots.get(l.id)!.visible=true;}else{const g=this.loots.get(l.id);if(g)g.visible=false;} } for (const [id, g] of this.loots) if (!seenL.has(id)) { this.lifetime.remove(this.scene,g); this.loots.delete(id); }
+    const seenL = this.seenLoot;seenL.clear(); for (const l of w.loot) if (l.alive) { seenL.add(l.id); if(l.type==='crate'||nearVisual(l.x,l.y,this.camPos.x,this.camPos.z,1600)){this.syncLoot(l);this.loots.get(l.id)!.visible=true;}else{const g=this.loots.get(l.id);if(g)g.visible=false;} } for (const [id, g] of this.loots) if (!seenL.has(id)) { this.lifetime.remove(this.scene,g); this.loots.delete(id); }
     for (const z of w.businesses) this.syncBiz(z);
     // 수송기
     while (this.planes.length < w.planes.length) { const pm = this.ml?.makePlane(); if (pm) { const pg = new THREE.Group(); pg.add(pm); this.scene.add(pg); this.planes.push(pg); continue; } const g = new THREE.Group(), m = this.mat(0xcfd6e0), a = new THREE.Mesh(this.box, m), b = new THREE.Mesh(this.box, m), c = new THREE.Mesh(this.box, m); a.scale.set(150, 22, 24); b.scale.set(34, 5, 190); c.scale.set(18, 30, 5); c.position.set(-64, 22, 0); g.add(a, b, c); this.scene.add(g); this.planes.push(g); }

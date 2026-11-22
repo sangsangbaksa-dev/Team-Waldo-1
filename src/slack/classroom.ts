@@ -191,7 +191,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
       if (v === 'video') {
         const video = getVideo();
         video.update(dt); draw(vctx, video); vt += dt; fl = video.flash;
-        txt(sub, vid.capT > 0 ? vid.cap : ''); sub.classList.toggle('on', vid.capT > 0);
+        txt(sub, video.capT > 0 ? video.cap : ''); sub.classList.toggle('on', video.capT > 0);
         const sec = Math.floor(vt), m = `${String(Math.floor(sec / 60) % 100).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`; txt(vtime, m);
         track.style.transform = `scaleX(${(vt % 90) / 90})`;
       } else if (v === 'game') {

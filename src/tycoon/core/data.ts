@@ -1,6 +1,5 @@
 // 정적 카탈로그: 단계, 구역, 스폿, 업종, 일자리, 이벤트, 해외 시장. 밸런스 숫자는 전부 여기 모은다.
 import type { District, LotSize, ShopKind, SpotDef, Stage } from './types';
-import { stageIndex } from './stages';
 
 export { STAGES, STAGE_NAMES, stageIndex, stageAtLeast } from './stages';
 

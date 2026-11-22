@@ -27,6 +27,7 @@ import { createPointerOwner, tryCapture } from "./input.mjs";
 import { initialMute, reduceRoomToneMotion } from "./preferences.mjs";
 import { createIdLookup } from "./dom.mjs";
 import { lineOfSight, moveWithCollision } from "./collision.mjs";
+import { describeStartupError } from "./startup-error.mjs";
 import { renderingScale } from "./render-quality.mjs";
 
 const $ = createIdLookup(document),
@@ -236,6 +237,7 @@ function modal(title, description, body, actions, type = "panel") {
     }, 1300);
   } else if (type !== "puzzle") sound.pause(true);
   $("dialog").hidden = false;
+  $("dialog").dataset.phase = type;
   $("panelTitle").textContent = title;
   $("panelText").textContent = description;
   $("panelBody").replaceChildren();
@@ -717,6 +719,7 @@ async function start(cont) {
   screens("game");
   state = "load";
   $("dialog").hidden = false;
+  $("dialog").dataset.phase = "load";
   $("panelTitle").textContent = "녹음실 연결 중";
   $("panelText").textContent = "공간과 캐릭터를 불러오고 있습니다.";
   $("panelBody").replaceChildren();
@@ -727,6 +730,9 @@ async function start(cont) {
     const setupPromise = setup();
     void sound.start();
     await setupPromise;
+    $("panelText").textContent = "복도를 구성하고 녹음 장치를 준비하고 있습니다.";
+    // Let the loading overlay paint before generating procedural scene textures.
+    await new Promise((resolve) => requestAnimationFrame(resolve));
     const s = cont ? saved() : null;
     ch = s?.ch ?? 0;
     found = s?.found ?? [false, false, false];
@@ -739,11 +745,14 @@ async function start(cont) {
     brief();
   } catch (e) {
     console.error(e);
+    const failure = describeStartupError(e);
     modal(
-      "게임을 열 수 없습니다",
-      "WebGL 2를 지원하는 브라우저에서 하드웨어 가속을 켜고 다시 열어 주세요.",
+      failure.title,
+      failure.description,
       null,
-      [["타이틀로", homepage]],
+      failure.retryable
+        ? [["다시 시도", () => start(cont)], ["타이틀로", homepage, true]]
+        : [["타이틀로", homepage]],
       "error",
     );
   } finally {

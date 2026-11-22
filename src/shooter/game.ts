@@ -78,7 +78,20 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
 
   // ---------- 자산(백그라운드로 받기) ----------
   const loading = opts.loading;
-  void loadShooterAssets(base, f => { if (closed) return; assetPct = f; loading?.progress(f, '3D 모델을 불러오는 중'); if (phase === 'setup') paintSetup(); }, n => { if (!closed) loading?.note(n); }).then(a => { if (!closed) { assets = a; assetState = 'ready'; } }).catch(() => { if (!closed) assetState = 'failed'; }).finally(() => { if (!closed) { loading?.close(); if (phase === 'setup') paintSetup(); } });
+  void loadShooterAssets(base, f => {
+    if (closed) return;
+    assetPct = f;
+    // Updating a small status label is cheaper than rebuilding the entire setup UI
+    // for every network chunk (which also cancelled clicks on the start button).
+    const status = setupEl.querySelector<HTMLElement>('#sz-asset-status');
+    if (status) status.textContent = `3D 모델 준비 중 · ${Math.floor(f * 100)}%`;
+  }).then(a => {
+    if (!closed) { assets = a; assetState = 'ready'; }
+  }).catch(() => {
+    if (!closed) assetState = 'failed';
+  }).finally(() => {
+    if (!closed && phase === 'setup') paintSetup();
+  });
 
   // ---------- 출격 설정 화면 ----------
   function paintSetup(): void {
@@ -97,7 +110,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
           <p class="sz-note">${pickMode === 'pvp' ? '1대1 대전은 사람끼리 겨루므로 AI가 나오지 않습니다.' : pickMode === 'room' && !roomFill ? '사람만 모이는 방에는 AI가 나오지 않습니다.' : `${b.blurb} (반응 ${b.react.toFixed(2)}초 · 시야 ${b.sight}m)${pickMode === 'room' ? ' · 방을 만든 사람의 난이도로 진행됩니다' : ''}`}</p></section>
         <section><h3>조작</h3><ul class="sz-help">${touch ? '<li>왼쪽 스틱 이동 · 오른쪽 드래그 시점</li><li>사격 · 조준 · 장전 · 줍기 · 교체 버튼 (비행기에서는 <b>줍기</b> 버튼이 점프·낙하산, 차 옆에서는 탑승·하차, 운전 중 <b>웅크림</b> 버튼은 핸드브레이크)</li>' : '<li><b>WASD</b> 이동 · <b>Shift</b> 달리기 · 마우스 시점</li><li><b>좌클릭</b> 사격 · <b>우클릭</b> 조준 · <b>R</b> 장전</li><li><b>Space</b> 비행기에서 뛰기 · 낙하산 펴기(자동 105m) · <b>W</b> 활강 방향</li><li><b>G</b> 수류탄 · <b>E</b> 무기 줍기 · <b>1 / 2 / 휠</b> 무기 교체 · <b>Esc</b> 일시정지</li><li><b>E</b> 차량 타기·내리기 · <b>WASD</b> 운전 · <b>Space</b> 핸드브레이크 · 폭격 구역(붉은 원)에서는 벗어나세요</li>'}<li>탄약·구급상자·방탄복은 닿으면 자동으로 줍습니다.</li></ul></section>
         <footer><button type="button" class="ghost" data-act="exit">메뉴로</button><span class="sz-sum">${career.matches ? `전적 ${career.matches}판 ${career.wins}승 · 최다 처치 ${career.bestKills}` : '첫 출격'}</span>
-          <button type="button" class="primary" data-act="start" ${wait ? 'disabled' : ''}>${assetState === 'failed' ? '도형 모드로 출격' : wait ? `불러오는 중 ${Math.floor(assetPct * 100)}%` : pickMode === 'solo' ? '출격' : pickMode === 'room' ? '방 찾기' : '상대 찾기'}</button></footer>
+          <small id="sz-asset-status" aria-live="polite">${wait ? `3D 모델 준비 중 · ${Math.floor(assetPct * 100)}%` : assetState === 'ready' ? '고화질 3D 모델 준비 완료' : '경량 3D 모델로 플레이 가능'}</small>
+          <button type="button" class="primary" data-act="start">${assetState === 'failed' && pickMode === 'solo' ? '경량 3D로 출격' : pickMode === 'solo' ? '출격' : pickMode === 'room' ? '방 찾기' : '상대 찾기'}</button></footer>
       </div>`;
   }
   setupEl.addEventListener('click', e => {
@@ -107,6 +121,9 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     else if (act?.dataset.act === 'exit') exit(); else if (act?.dataset.act === 'start') { if (pickMode === 'solo') startSolo(); else openPvpLobby(pickMode === 'room'); }
   });
   paintSetup();
+  // The setup is fully usable with procedural 3D models. Do not cover it with
+  // a loading overlay while optional detailed character assets download.
+  loading?.close();
 
   // ---------- 경기 시작 ----------
   function begin(m: Match, my: number): void {

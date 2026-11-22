@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { outlawWorldDelta } from '../../src/outlaw/frame-time';
+import { outlawWorldDelta, worldAudioPaused } from '../../src/outlaw/frame-time';
 
 describe('OUTLAW physics/animation clock consistency', () => {
   it('freezes both city weather and physics when the pause or shop modal opens', () => {
@@ -18,5 +18,13 @@ describe('OUTLAW physics/animation clock consistency', () => {
   it('prevents tab-resume spikes and malformed frame deltas', () => {
     for (const dt of [NaN, Infinity, -Infinity, -1, 0]) expect(outlawWorldDelta(dt, false, false, false, false)).toBe(0);
     expect(outlawWorldDelta(30, false, false, false, false)).toBe(.1);
+  });
+});
+
+describe('OUTLAW paused ambient audio', () => {
+  it('mutes background car and weather loops when the offline world is stopped', () => {
+    expect(worldAudioPaused(true,false)).toBe(true);
+    expect(worldAudioPaused(false,false)).toBe(false);
+    expect(worldAudioPaused(true,true)).toBe(false);
   });
 });

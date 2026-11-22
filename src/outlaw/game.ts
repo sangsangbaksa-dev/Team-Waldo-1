@@ -7,7 +7,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import './outlaw.css';
-import { outlawWorldDelta } from './frame-time';
+import { outlawWorldDelta, worldAudioPaused } from './frame-time';
 import { readPreferences, writePreferences } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import { PVP_ENABLED } from '../net/config';
@@ -597,6 +597,14 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
 
   function audioFrame(car: Vehicle | undefined): void {
     const s = sim!; if (!audio.enabled) return;
+    if (worldAudioPaused(paused, !!versus && !versus.ended)) {
+      // Stop engine/skid/rain/siren loops while an offline shop, map or
+      // pause menu freezes the 3D city; UI sounds and music remain available.
+      audio.setEngine(false, 'sedan', 0, 0);
+      audio.setSkid(0); audio.setWind(0); audio.setSiren(0, 0);
+      audio.setRain(0); audio.setAmbience(0, false);
+      return;
+    }
     if (car) { audio.setEngine(true, car.kind, Math.abs(car.vf), car.input.throttle); audio.setSkid(clamp((Math.abs(car.vl) - 3) / 8, 0, 1) * (Math.abs(car.vf) > 4 ? 1 : 0)); audio.setWind(clamp((Math.abs(car.vf) - 15) / 40, 0, 1)); } else { audio.setEngine(false, 'sedan', 0, 0); audio.setSkid(0); audio.setWind(0); }
     let best = Infinity, pan = 0; const r = audioRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
     for (const v of s.vehicles) if (v.siren && v.alive) { const dx = v.x - camera.position.x, dz = v.z - camera.position.z, d = Math.hypot(dx, dz); if (d < best) { best = d; pan = d > 1 ? clamp((dx * r.x + dz * r.z) / d, -1, 1) : 0; } }

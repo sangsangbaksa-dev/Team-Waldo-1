@@ -6,6 +6,9 @@ const clamp = (v: number, a = 0, b = 1): number => Number.isFinite(v) ? Math.max
 const hz = (note: number): number => 440 * Math.pow(2, (note - 69) / 12);
 const names = ['OFF', 'WALDO FM', 'NEON 88', 'DUST ROAD'];
 const roots = [[45, 41, 48, 43], [45, 41, 48, 43], [40, 45, 47, 45]];
+// Audio.setEngine is called on each render frame; keep immutable profiles
+// outside the hot path instead of allocating a new lookup table at 60 Hz.
+const profiles: Record<VehicleKind, number> = { sedan: 1, sports: 1.35, suv: 0.82, taxi: 0.96, truck: 0.63, van: 0.76, hatch: 1.14, police: 1.12, buggy: 1.22, tank: 0.48, gt: 1.4, muscle: 0.7, hyper: 1.6, ambulance: 0.8 };
 /** 절대 스텝에서 마디, 코드와 음을 계산합니다. */
 export function radioStep(station: number, step: number): { beat: number; bar: number; root: number; note: number; bpm: number } {
   const s = clamp(Math.floor(station), 1, 3), n = Math.max(0, Math.floor(step));
@@ -52,7 +55,6 @@ export class OutlawAudio {
   private target(p: AudioParam, v: number, time = 0.06): void { const c = this.eng.ctx; if (c) p.setTargetAtTime(v, c.currentTime, time); }
   setEngine(on: boolean, kind: VehicleKind, speed: number, throttle: number): void {
     const m = this.motor; if (!m) return;
-    const profiles: Record<VehicleKind, number> = { sedan: 1, sports: 1.35, suv: 0.82, taxi: 0.96, truck: 0.63, van: 0.76, hatch: 1.14, police: 1.12, buggy: 1.22, tank: 0.48, gt: 1.4, muscle: 0.7, hyper: 1.6, ambulance: 0.8 };
     const v = Math.abs(Number.isFinite(speed) ? speed : 0), thr = clamp(throttle), gearWidth = kind === 'tank' ? 5 : kind === 'truck' ? 8 : 12;
     const rpm = Math.min(v / gearWidth, 4.999) % 1, base = (55 + rpm * 135 + thr * 15) * (profiles[kind] || 1);
     this.target(m.a.frequency, base); this.target(m.b.frequency, base * (kind === 'tank' ? 1.03 : 1.51));

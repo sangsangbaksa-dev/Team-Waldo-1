@@ -8,3 +8,9 @@ export function outlawWorldDelta(
   const scale = wheelOpen ? 0.2 : wasted ? 0.45 : 1;
   return Math.min(dt, 0.1) * scale;
 }
+
+/** Only mute spatial world ambience on an actual simulation pause; live
+ * multiplayer menus may still leave gameplay running. */
+export function worldAudioPaused(paused: boolean, versusRunning: boolean): boolean {
+  return paused && !versusRunning;
+}

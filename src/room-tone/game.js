@@ -207,6 +207,7 @@ function clearInputs() {
   runPointer.clear();
   moveStart = lookLast = null;
   mobileRun = false;
+  $("run").setAttribute("aria-pressed", "false");
   $("stickknob").style.transform = "";
 }
 function leaveLook() {
@@ -1629,10 +1630,14 @@ $("run").addEventListener("pointerdown", (e) => {
     return;
   }
   mobileRun = true;
+  $("run").setAttribute("aria-pressed", "true");
 });
 for (const n of ["pointerup", "pointercancel", "lostpointercapture"])
   $("run").addEventListener(n, (e) => {
-    if (runPointer.release(e.pointerId)) mobileRun = false;
+    if (runPointer.release(e.pointerId)) {
+      mobileRun = false;
+      $("run").setAttribute("aria-pressed", "false");
+    }
   });
 document.addEventListener("pointerlockchange", () => {
   const locked = Boolean(renderer && document.pointerLockElement === renderer.domElement);

@@ -145,6 +145,34 @@ try {
         const current=document.querySelector("#timer")?.textContent;
         return current && current!==start;
       },firstTime,{timeout:12000,polling:250});
+      if(config.name==="mobile"){
+        const stickBox=await page.locator("#stick").boundingBox();
+        const runBox=await page.locator("#run").boundingBox();
+        assert.ok(stickBox && runBox,"Mobile joystick and sprint button must be visible");
+        const center={x:stickBox.x+stickBox.width/2,y:stickBox.y+stickBox.height/2,id:1};
+        const moved={...center,y:center.y-35};
+        const run={x:runBox.x+runBox.width/2,y:runBox.y+runBox.height/2,id:2};
+        const cdp=await context.newCDPSession(page);
+        const touch=(type,points)=>cdp.send("Input.dispatchTouchEvent",{type,touchPoints:points});
+        try {
+          await touch("touchStart",[center]);
+          await touch("touchMove",[moved]);
+          await page.waitForFunction(()=>
+            document.querySelector("#stickknob")?.style.transform?.includes("translate("));
+          await touch("touchStart",[moved,run]);
+          await page.waitForFunction(()=>
+            document.querySelector("#run")?.getAttribute("aria-pressed")==="true");
+          await touch("touchEnd",[moved]);
+          assert.equal(await page.locator("#run").getAttribute("aria-pressed"),"false");
+          assert.notEqual(await page.locator("#stickknob").getAttribute("style"),null);
+          await touch("touchEnd",[]);
+          await page.waitForFunction(()=>
+            document.querySelector("#stickknob")?.style.transform==="");
+        } finally {
+          await touch("touchEnd",[]).catch(()=>{});
+          await cdp.detach().catch(()=>{});
+        }
+      }
       if(config.mobile) {
         for (const id of ["#gsound","#mapBtn","#pauseGame","#crouch","#torch","#run","#act"]) {
           const box=await page.locator(id).boundingBox();

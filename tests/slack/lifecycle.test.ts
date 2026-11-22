@@ -11,7 +11,7 @@ vi.mock('../../src/slack/sim', async importOriginal => {
 
 vi.mock('../../src/slack/audio', () => ({
   createSlackAudio: vi.fn(() => ({
-    resume: vi.fn(), play: vi.fn(), ambience: vi.fn(), muffle: vi.fn(), setMuted: vi.fn(), dispose: vi.fn(),
+    resume: vi.fn(), hold: vi.fn(), play: vi.fn(), ambience: vi.fn(), muffle: vi.fn(), setMuted: vi.fn(), dispose: vi.fn(),
   })),
 }));
 

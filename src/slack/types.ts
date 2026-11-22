@@ -72,6 +72,8 @@ export type SfxName =
   | 'click' | 'key' | 'chime' | 'alert' | 'caught' | 'win' | 'fun' | 'snore' | 'lock' | 'hum';
 export interface SlackAudio {
   resume(): void;
+  /** 일시정지·탭 숨김 동안 컨텍스트를 멈춥니다. hold(false)가 resume() 을 다시 허용합니다. */
+  hold(on: boolean): void;
   play(name: SfxName, vol?: number): void;
   /** 배경 소리: 교실=형광등 웅웅+멀리 복도 소리, 기숙사=PC 팬+심야 정적. null 이면 끔 */
   ambience(stage: StageId | null): void;

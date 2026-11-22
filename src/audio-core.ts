@@ -19,11 +19,13 @@ export class AudioEngine {
   noise: AudioBuffer | null = null;
   enabled = true;
   voices = 0;
+  paused = false;
   private wanted = false;
   private unsub: Array<() => void> = [];
   private live = new Set<AudioScheduledSourceNode>();
 
-  constructor() {
+  /** level: 게임별 마스터 보정(1 = 기본). 게임을 바꿔도 체감 음량이 비슷하도록 맞춥니다. */
+  constructor(readonly level = 1) {
     this.watch();
   }
 
@@ -34,19 +36,28 @@ export class AudioEngine {
       document.addEventListener(ev, gesture, { capture: true });
       this.unsub.push(() => document.removeEventListener(ev, gesture, { capture: true }));
     }
-    const vis = (): void => {
-      if (!this.ctx) return;
-      if (document.hidden) void this.ctx.suspend();
-      else if (this.wanted) void this.ctx.resume();
-    };
+    const vis = (): void => { this.sync(); };
     document.addEventListener('visibilitychange', vis);
     this.unsub.push(() => document.removeEventListener('visibilitychange', vis));
+  }
+
+  private sync(): void {
+    if (!this.ctx) return;
+    if ((typeof document !== 'undefined' && document.hidden) || this.paused) void this.ctx.suspend();
+    else if (this.wanted) void this.ctx.resume();
+  }
+
+  /** 일시정지 중에는 컨텍스트를 멈춰 BGM·루프·효과음을 모두 무음으로 만듭니다. */
+  setPaused(on: boolean): void {
+    if (this.paused === on) return;
+    this.paused = on;
+    this.sync();
   }
 
   unlock(): AudioContext | null {
     this.wanted = true;
     if (this.ctx) {
-      if (typeof document === 'undefined' || !document.hidden) void this.ctx.resume();
+      if ((typeof document === 'undefined' || !document.hidden) && !this.paused) void this.ctx.resume();
       return this.ctx;
     }
     const AC = audioCtor();
@@ -61,7 +72,7 @@ export class AudioEngine {
       compressor.attack.value = 0.003;
       compressor.release.value = 0.12;
       const master = ctx.createGain();
-      master.gain.value = this.enabled ? MASTER_GAIN : 0;
+      master.gain.value = this.enabled ? MASTER_GAIN * this.level : 0;
       bus.connect(compressor);
       compressor.connect(master);
       master.connect(ctx.destination);
@@ -73,7 +84,7 @@ export class AudioEngine {
       this.compressor = compressor;
       this.master = master;
       this.noise = noise;
-      if (typeof document !== 'undefined' && document.hidden) void ctx.suspend();
+      if ((typeof document !== 'undefined' && document.hidden) || this.paused) void ctx.suspend();
       else void ctx.resume();
       return ctx;
     } catch {
@@ -86,7 +97,7 @@ export class AudioEngine {
     this.enabled = on;
     if (!this.master || !this.ctx) return;
     this.master.gain.cancelScheduledValues(this.ctx.currentTime);
-    this.master.gain.setTargetAtTime(on ? MASTER_GAIN : 0, this.ctx.currentTime, 0.03);
+    this.master.gain.setTargetAtTime(on ? MASTER_GAIN * this.level : 0, this.ctx.currentTime, 0.03);
   }
 
   admit(): boolean {
@@ -131,7 +142,7 @@ export class AudioEngine {
 
 export function tone(eng: AudioEngine, freq: number, dur: number, vol: number, type: OscillatorType = 'sine', slide = 0, delay = 0): void {
   const c = eng.ctx, dest = eng.bus;
-  if (!c || !dest || !eng.enabled || vol < 0.01 || !eng.admit()) return;
+  if (!c || !dest || !eng.enabled || eng.paused || vol < 0.01 || !eng.admit()) return;
   const t = c.currentTime + delay, o = c.createOscillator(), g = c.createGain();
   o.type = type;
   o.frequency.setValueAtTime(Math.max(20, freq), t);
@@ -148,7 +159,7 @@ export function tone(eng: AudioEngine, freq: number, dur: number, vol: number, t
 
 export function burst(eng: AudioEngine, dur: number, vol: number, freq: number, q = 1, type: BiquadFilterType = 'bandpass'): void {
   const c = eng.ctx, dest = eng.bus;
-  if (!c || !dest || !eng.noise || !eng.enabled || vol < 0.01 || !eng.admit()) return;
+  if (!c || !dest || !eng.noise || !eng.enabled || eng.paused || vol < 0.01 || !eng.admit()) return;
   const t = c.currentTime, s = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
   s.buffer = eng.noise; s.loop = true;
   f.type = type; f.frequency.value = freq; f.Q.value = q;

@@ -64,3 +64,16 @@ it('keeps HUSTLE player feet above the paved ground after shared rig poses anima
   player.update(.016, {mx: 0, mz: 1, run: false}, colliders, false);
   expect(player.rig!.root.position.y).toBeGreaterThanOrEqual(player.pos.y);
 });
+
+it('does not advance the player pose clock or preserve walking momentum through pause', () => {
+  const player = new Player(new Scene(), null), colliders = new Colliders();
+  player.teleport(0, 0, 0);
+  player.update(.1,{mx:0,mz:1,run:true},colliders,false);
+  expect(player.speed).toBeGreaterThan(0);
+  const pos = player.pos.clone();
+  player.halt();
+  expect(player.speed).toBe(0);
+  expect(player.vel.length()).toBe(0);
+  player.update(0,{mx:0,mz:1,run:true},colliders,true);
+  expect(player.pos.toArray()).toEqual(pos.toArray());
+});

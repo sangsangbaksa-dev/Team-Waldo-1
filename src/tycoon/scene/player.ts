@@ -36,6 +36,13 @@ export class Player {
     if (this.rig) { this.rig.root.position.copy(this.pos); this.rig.root.rotation.y = this.facing; }
   }
   celebrate(): void { this.wave = 1.4; }
+  /** Freeze the player without advancing its pose/animation clock. This also
+   * clears residual momentum after a pause menu closes. */
+  halt(): void {
+    this.vel.set(0, 0, 0);
+    this.speed = 0;
+    if (this.rig) this.rig.state.speed = 0;
+  }
   setFirstPerson(on: boolean): void { this.firstPerson = on; this.camInit = false; if (this.rig) this.rig.root.visible = !on; if (on) this.camPitch = 0; else this.camPitch = 0.28; }
 
   update(dt: number, input: MoveInput, colliders: Colliders, frozen: boolean): void {

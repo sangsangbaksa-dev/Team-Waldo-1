@@ -308,13 +308,16 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     const st = core.state;
     if (playing && (checkpointPending || (s.activity && !st.activity))) { checkpointPending = false; save(); }
     // 입력 → 이동
-    const mv = readMove(), frozen = !playing || paused() || document.hidden || !!st.activity?.lockMovement;
+    const mv = readMove(), movementLocked = !!st.activity?.lockMovement;
     if (playing && !paused() && !document.hidden) {
       const turn = (keys.has('ArrowLeft') ? 1 : 0) - (keys.has('ArrowRight') ? 1 : 0), tilt = (keys.has('ArrowDown') ? 1 : 0) - (keys.has('ArrowUp') ? 1 : 0);
       if (turn || tilt) player.look(-turn * dt * 1.8, tilt * dt * 1.2);
       if (st.activity?.lockMovement && Math.hypot(mv.mx, mv.mz) > 0.35) { core.cancelActivity(); toast('중단했습니다'); }
     }
-    if (playing) player.update(dt, mv, colliders, frozen);
+    if (playing) {
+      if (worldDt > 0) player.update(worldDt, mv, colliders, movementLocked);
+      else player.halt();
+    }
     // 가까운 장소
     near = playing ? city.nearestSpot(player.pos.x, player.pos.z, PROMPT_RANGE) : null;
     if (playing) { const id = near && !near.spot.locked ? near.id : null; core.setPresence(id); if (id && id === waypoint && !st.task) { waypoint = null; city.setTarget(navigationTarget()); hudDirty = true; toast('목적지에 도착했습니다', 'good'); } }

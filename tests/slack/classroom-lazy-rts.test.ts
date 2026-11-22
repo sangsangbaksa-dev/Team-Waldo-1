@@ -48,3 +48,26 @@ it('creates each mini RTS only once and keeps the playable world alive under stu
   expect(createBattle).toHaveBeenCalledTimes(2);
   view.dispose();
 });
+
+it('keeps the game-over panel visible and offers retry by button or keyboard', () => {
+  const sim = createSim('class', 17, 1); sim.start();
+  const view = createClassroomView(sim, audio);
+  document.body.append(view.el);
+  sim.doActivity('game'); sim.setCover(false); view.frame(0.1);
+  const game = vi.mocked(createBattle).mock.results[0]?.value;
+  expect(game).toBeTruthy();
+  game!.over = 1; view.frame(0.1);
+  expect(view.el.querySelector('.sl-end.on [data-rts-outcome]')?.textContent).toContain('패배');
+  view.el.querySelector<HTMLButtonElement>('[data-rts-retry]')!.click();
+  expect(game!.over).toBeNull();
+  view.frame(0.1);
+  expect(view.el.querySelector('.sl-end.on')).toBeNull();
+
+  game!.over = 0; view.frame(0.1);
+  const canvas = view.el.querySelector<HTMLCanvasElement>('.sl-win.gm canvas')!;
+  canvas.focus();
+  canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', bubbles: true, cancelable: true }));
+  expect(game!.over).toBeNull();
+  expect(view.el.querySelector('#sl-rts-cursor')?.textContent).toContain('새 전투');
+  view.dispose();
+});

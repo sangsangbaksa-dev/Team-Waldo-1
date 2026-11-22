@@ -34,7 +34,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
               <div class="sl-wbody"><canvas width="${W}" height="${H}"></canvas><div class="sl-sub"></div></div>
               <div class="sl-pbar"><b>▶</b><span class="sl-track"><i></i></span><em>00:00</em></div></div>
             <div class="sl-win gm"><div class="sl-tb"><i></i><span>FRONTLINE · 지휘관 모드</span></div>
-              <div class="sl-wbody"><canvas width="${W}" height="${H}" tabindex="0" aria-describedby="sl-rts-cursor" aria-label="전술 게임 지도. 방향키로 지휘 위치를 이동하고 Enter로 공격 또는 이동을 지시하세요."></canvas><div class="sl-end"></div><span class="sl-rts-cursor-status" id="sl-rts-cursor" role="status" aria-live="polite">지휘 위치 중앙</span></div>
+              <div class="sl-wbody"><canvas width="${W}" height="${H}" tabindex="0" aria-describedby="sl-rts-cursor" aria-label="전술 게임 지도. 방향키로 지휘 위치를 이동하고 Enter로 공격 또는 이동을 지시하세요."></canvas><div class="sl-end"><span data-rts-outcome role="status" aria-live="polite"></span><button type="button" data-rts-retry>다시 지휘하기 (R)</button></div><span class="sl-rts-cursor-status" id="sl-rts-cursor" role="status" aria-live="polite">지휘 위치 중앙</span></div>
               <div class="sl-gbar"><span class="sl-res">광물 <b data-ore>0</b></span><button type="button" data-train="w">일꾼 ${COST.w}</button><button type="button" data-train="i">보병 ${COST.i}</button><button type="button" data-train="t">전차 ${COST.t}</button><span class="sl-sc">점수 <b data-sc>0</b></span></div></div>
             <div class="sl-task"><b class="sl-start"></b><span data-w="doc">문제집</span><span data-w="video">영상</span><span data-w="game">게임</span><em class="sl-tbat">100%</em><em>10:24</em></div>
           </div><i class="sl-label">○○고 학교자산 NO.0231</i></div>
@@ -67,7 +67,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
   };
   const gameWindow = q('.sl-win.gm');
   const sub = q('.sl-sub'), track = q('.sl-track i'), vtime = q('.vid em'), batEl = q('.sl-tbat');
-  const oreEl = q('[data-ore]'), scEl = q('[data-sc]'), endEl = q('.sl-end'), cursorStatus = q('#sl-rts-cursor');
+  const oreEl = q('[data-ore]'), scEl = q('[data-sc]'), endEl = q('.sl-end'), endText = q('[data-rts-outcome]'), cursorStatus = q('#sl-rts-cursor');
   const trainBtns = Array.from(el.querySelectorAll<HTMLButtonElement>('[data-train]'));
   const cache = new Map<string, string>();
   const put = (target: HTMLElement, key: string, v: string) => { const k = (target === room ? 'r.' : 'x.') + key; if (cache.get(k) !== v) { cache.set(k, v); target.dataset[key] = v; } };
@@ -96,6 +96,12 @@ export const createClassroomView: CreateView = (sim, audio) => {
   const train = (k: 'w' | 'i' | 't') => { audio.resume(); if (view() === 'game') getGame().train(k); };
   const keydown = (event: KeyboardEvent) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
+    if (view() === 'game' && event.key.toLowerCase() === 'r' && !event.repeat && getGame().over !== null) {
+      event.preventDefault();
+      getGame().reset();
+      txt(cursorStatus, '새 전투를 시작합니다.');
+      return;
+    }
     if (event.target === gcv && view() === 'game') {
       const shifts: Record<string, [number, number]> = {
         ArrowLeft: [-8, 0], ArrowRight: [8, 0], ArrowUp: [0, -8], ArrowDown: [0, 8],
@@ -141,6 +147,12 @@ export const createClassroomView: CreateView = (sim, audio) => {
   const pointerUp = (event: PointerEvent) => { if (coverPointer === event.pointerId) { coverPointer = null; syncCover(); } };
   const actionClick = (event: MouseEvent) => {
     const t = event.target as HTMLElement;
+    if (t.closest('[data-rts-retry]')) {
+      if (view() === 'game' && getGame().over !== null) {
+        getGame().reset(); txt(cursorStatus, '새 전투를 시작합니다.'); audio.play('click', 0.3);
+      }
+      return;
+    }
     const button = t.closest<HTMLButtonElement>('[data-activity]');
     if (button) { if (event.detail > 0) el.focus({ preventScroll: true }); choose(button.dataset.activity as Pick); return; }
     const tb = t.closest<HTMLButtonElement>('[data-train]');
@@ -222,7 +234,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
         }
         txt(oreEl, String(game.ore)); txt(scEl, String(game.score));
         for (const b of trainBtns) { const c = COST[b.dataset.train as 'w' | 'i' | 't'], off = game.ore < c || game.prod > 0 || game.over !== null; if (b.disabled !== off) b.disabled = off; }
-        txt(endEl, game.over === null ? '' : game.over === 0 ? '승리! 적 본진 파괴' : '패배… 본진이 무너졌다'); endEl.classList.toggle('on', game.over !== null);
+        txt(endText, game.over === null ? '' : game.over === 0 ? '승리! 적 본진 파괴' : '패배… 본진이 무너졌다'); endEl.classList.toggle('on', game.over !== null);
       }
       css('--flash', (Math.round(fl * 12) / 12).toFixed(2));
       css('--hx', (Math.round(gHand * 20) / 20).toFixed(2));

@@ -90,3 +90,18 @@ it('silences the dorm headphone music bed while the study cover is held', () => 
   key('keyup');
   expect(audio.muffle).toHaveBeenLastCalledWith(true);
 });
+
+it('keeps the dorm messenger responsive after many quick replies and app switches', () => {
+  const open = (id: string) => {
+    view.el.querySelector<HTMLButtonElement>(`[data-app="${id}"]`)!.click();
+    view.frame(0.1);
+  };
+  open('chat');
+  const chip = view.el.querySelector<HTMLButtonElement>('[data-chip]')!;
+  for (let i = 0; i < 90; i++) chip.click();
+  const messages = view.el.querySelector('.sc-messages')!;
+  expect(messages.childElementCount).toBe(30);
+  open('video'); open('chat');
+  expect(view.el.querySelector('.sc-messages')!.childElementCount).toBe(30);
+  expect(view.el.querySelectorAll('.sc-app-window')).toHaveLength(2);
+});

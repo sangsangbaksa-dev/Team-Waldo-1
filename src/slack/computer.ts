@@ -112,10 +112,10 @@ export const createComputerView: CreateView = (sim, audio) => {
   };
 
   /* ---------- 영상 ---------- */
-  const V = { cur: 0, pos: 0, playing: true, sub: -1, sec: -1, nextComment: 5, comments: [] as string[] };
+  const V = { cur: 0, pos: 0, playing: true, sub: -1, sec: -1, nextComment: 5 };
   const vidHtml = () => `<div class="sc-video"><div class="sc-video-main"><div class="sc-video-picture" data-vpic><div class="sc-video-sun"></div><div class="sc-video-cloud"></div><div class="sc-video-mountain"></div><div class="sc-video-play">❚❚</div><div class="sc-sub" data-sub></div></div><div class="sc-video-bar"><button type="button" data-vplay aria-label="재생/일시정지">❚❚</button><span class="sc-progress"><i data-vprog></i></span><span data-vtime>0:00</span></div><b data-vtitle></b><small data-vmeta></small><div class="sc-comment" data-comments></div></div><div class="sc-video-list"><b>추천 영상</b>${videos.map((v, i) => `<button type="button" data-vid="${i}" style="--h:${v.h}"><span class="sc-thumb"><i></i></span><span><strong>${v.t}</strong><small>${v.ch} · ${v.views}</small></span></button>`).join('')}</div></div>`;
   const vidSelect = (i: number) => {
-    V.cur = i; V.pos = 0; V.sub = -1; V.sec = -1; V.comments = []; V.nextComment = 3; V.playing = true;
+    V.cur = i; V.pos = 0; V.sub = -1; V.sec = -1; V.nextComment = 3; V.playing = true;
     const w = wins.video; const v = videos[i];
     $('[data-vpic]', w).style.setProperty('--h', String(v.h)); setTxt($('[data-vtitle]', w), v.t); setTxt($('[data-vmeta]', w), `${v.ch} · 조회수 ${v.views}`);
     $('[data-comments]', w).replaceChildren(); w.querySelectorAll('[data-vid]').forEach((b, k) => b.classList.toggle('cur', k === i));
@@ -158,6 +158,9 @@ export const createComputerView: CreateView = (sim, audio) => {
   };
   const chatPush = (i: number, msg: { m: boolean; who: string; t: string }) => {
     const r = rooms[i]; r.msgs.push(msg);
+    // Chat panes render the latest 30 messages. Keep a little extra history,
+    // not an unbounded array, when users repeatedly tap quick replies.
+    if (r.msgs.length > 60) r.msgs.splice(0, r.msgs.length - 60);
     if (!msg.m) {
       if (shown === 'chat' && C.room === i) audio.play('chime', 0.4); else { r.unread++; audio.play('chime', 0.55); if (shown !== 'chat') toast(`${msg.who}: ${msg.t}`); }
     }

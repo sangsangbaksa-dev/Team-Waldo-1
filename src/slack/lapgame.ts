@@ -195,8 +195,8 @@ export function createBattle(player: boolean, on?: (e: BattleEvent) => void) {
       let t = u.tgt && u.tgt.hp > 0 ? u.tgt : null;
       if (!t) {
         let best: number = st.sight;
-        for (const e of units) if (e.team !== u.team && e.hp > 0) { const dx = e.x - u.x, dy = e.y - u.y, squared = dx * dx + dy * dy; if (squared < best * best) { best = Math.sqrt(squared); t = e; } }
-        for (const e of blds) if (e.team !== u.team && e.hp > 0) { const dx = e.x - u.x, dy = e.y - u.y, squared = dx * dx + dy * dy, reach = best + e.r; if (squared < reach * reach) { const dist = Math.sqrt(squared) - e.r; if (dist < best) { best = dist; t = e; } } }
+        for (const e of units) if (e.team !== u.team && e.hp > 0) { const dx = e.x - u.x, dy = e.y - u.y, squared = dx * dx + dy * dy; if (best > 0 && squared < best * best) { best = Math.sqrt(squared); t = e; } }
+        for (const e of blds) if (e.team !== u.team && e.hp > 0) { const dx = e.x - u.x, dy = e.y - u.y, squared = dx * dx + dy * dy, reach = best + e.r; if (reach > 0 && squared < reach * reach) { const dist = Math.sqrt(squared) - e.r; if (dist < best) { best = dist; t = e; } } }
         u.tgt = null;
       }
       if (t) {
@@ -253,7 +253,8 @@ export function createBattle(player: boolean, on?: (e: BattleEvent) => void) {
   };
   // 플레이어 지시: 적을 클릭하면 공격, 땅을 클릭하면 이동(도중 적을 만나면 교전)
   const command = (x: number, y: number): 'atk' | 'move' | null => {
-    if (!player || b.over !== null) return null;
+    if (!player || b.over !== null || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+    x = Math.max(0, Math.min(W, x)); y = Math.max(0, Math.min(H, y));
     let tgt: T | null = null, best = 6;
     for (const e of units) if (e.team === 1) { const d = Math.hypot(e.x - x, e.y - y) - e.r; if (d < best) { best = d; tgt = e; } }
     for (const e of blds) if (e.team === 1) { const d = Math.hypot(e.x - x, e.y - y) - e.r; if (d < best) { best = d; tgt = e; } }

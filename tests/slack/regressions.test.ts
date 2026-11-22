@@ -86,3 +86,16 @@ it('ignores invalid or negative minigame frame deltas without corrupting simulat
   expect(battle.time).toBeCloseTo(0.1);
   expect(Number.isFinite(battle.ore)).toBe(true);
 });
+
+it('rejects invalid mini RTS move coordinates before they corrupt unit orders', () => {
+  const commands: string[] = [];
+  const battle = createBattle(true, event => commands.push(event));
+  expect(battle.command(NaN, 90)).toBeNull();
+  expect(battle.command(120, Infinity)).toBeNull();
+  expect(battle.command(-Infinity, 0)).toBeNull();
+  expect(commands).toHaveLength(0);
+  expect(battle.command(-100, 90)).toBe('move');
+  expect(commands).toEqual(['order']);
+  for (let i = 0; i < 50; i++) battle.update(0.1);
+  expect(Number.isFinite(battle.time)).toBe(true);
+});

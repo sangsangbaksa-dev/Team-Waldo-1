@@ -49,7 +49,7 @@ export function nadeMsg(n: NetNade, owner: number): NetMsg { const r = (v: numbe
  */
 export function plausiblePlayerShot(shot: NetShot, pose: Pick<Pose, 'x' | 'z' | 'air'>): boolean {
   const weapon = WEAPONS[shot.w];
-  if (!weapon || pose.air && pose.air !== 0 || Math.abs(shot.ox - pose.x) > 25 || Math.abs(shot.oz - pose.z) > 25) return false;
+  if (!weapon || (pose.air !== undefined && pose.air !== 0) || !num(shot.ox) || !num(shot.oz) || !num(pose.x) || !num(pose.z) || Math.abs(shot.ox - pose.x) > 25 || Math.abs(shot.oz - pose.z) > 25) return false;
   if (!num(shot.oy, 0, 5) || shot.ends.length !== weapon.pellets * 3) return false;
   const maxRange2 = (weapon.range + 2) ** 2;
   for (let i = 0; i < shot.ends.length; i += 3) {

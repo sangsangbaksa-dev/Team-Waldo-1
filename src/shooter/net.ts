@@ -75,6 +75,29 @@ export class RemoteNadeLimiter {
   }
 }
 
+/** Smooth network delivery can bunch legitimate shots together. Keep a small
+ * two-shot burst budget, refilled at the equipped weapon's actual fire rate,
+ * instead of letting a peer relay unbounded damage events every frame.
+ */
+export class RemoteShotLimiter {
+  private readonly buckets = new Map<number, { tokens: number; at: number }>();
+  allow(owner: number, weaponId: WeaponId, now: number): boolean {
+    const weapon = WEAPONS[weaponId];
+    if (!Number.isInteger(owner) || owner < 0 || !weapon || !num(now, 0, Number.MAX_SAFE_INTEGER)) return false;
+    let bucket = this.buckets.get(owner);
+    if (!bucket) {
+      this.buckets.set(owner, { tokens: 1, at: now });
+      return true;
+    }
+    if (now < bucket.at) return false;
+    const replenished = Math.min(2, bucket.tokens + (now - bucket.at) / (weapon.cd * 1000));
+    bucket.at = now;
+    if (replenished < 0.98) { bucket.tokens = replenished; return false; }
+    bucket.tokens = replenished - 1;
+    return true;
+  }
+}
+
 export function nadeMsg(n: NetNade, owner: number): NetMsg { const r = (v: number): number => Math.round(v * 100) / 100; return { t: 'nd', o: owner, x: r(n.x), y: r(n.y), z: r(n.z), vx: r(n.vx), vy: r(n.vy), vz: r(n.vz) }; }
 /** Cheap plausibility guard for a human player's relayed shot.
  * Last known poses may lag the shot, so allow up to 25m of movement instead

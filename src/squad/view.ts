@@ -4,6 +4,8 @@ import { terrain } from './terrain';
 import type { Battle, Effect, Placement, Side } from './sim';
 
 const TAU = Math.PI * 2;
+const reduceMotion = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+  ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
 
 /** 둥근 체력 막대: 어두운 틀 + 위아래 그라데이션 + 윗면 광택. 체력이 낮으면 주황·빨강으로 바뀝니다. */
 function hpBar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, f: number, side: Side): void {
@@ -55,11 +57,8 @@ function drawEffect(ctx: CanvasRenderingContext2D, e: Effect, cw: number, ch: nu
 export function draw(canvas: HTMLCanvasElement, armies: Placement[][], side: Side, battle: Battle | null, selectedRange: number, hover: { x: number; y: number } | null, ghost?: UnitType): void {
   const ctx = canvas.getContext('2d')!; const w = canvas.width, h = canvas.height, cw = w / 12, ch = h / 20;
   ctx.save();
-  if (battle && battle.effects.some(e => e.kind === 'siege' && e.age > .28 && e.age < .4) && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) ctx.translate(Math.sin(battle.tick * 3) * 3, Math.cos(battle.tick * 4) * 2);
+  if (battle && battle.effects.some(e => e.kind === 'siege' && e.age > .28 && e.age < .4) && !reduceMotion?.matches) ctx.translate(Math.sin(battle.tick * 3) * 3, Math.cos(battle.tick * 4) * 2);
   ctx.drawImage(terrain(w, h), 0, 0);
-  ctx.strokeStyle = '#ffffff0a'; ctx.lineWidth = 1;
-  for (let x = 0; x <= 12; x++) { ctx.beginPath(); ctx.moveTo(x * cw, 0); ctx.lineTo(x * cw, h); ctx.stroke(); }
-  for (let y = 0; y <= 20; y++) { ctx.beginPath(); ctx.moveTo(0, y * ch); ctx.lineTo(w, y * ch); ctx.stroke(); }
   if (!battle) {
     // 상대 진영 가림막: 어두운 그라데이션 + 전선 쪽 점선 경계.
     const oy = side ? h / 2 : 0, vg = ctx.createLinearGradient(0, oy, 0, oy + h / 2); vg.addColorStop(side ? 0 : 1, '#080d14a0'); vg.addColorStop(side ? 1 : 0, '#080d14e6');
@@ -86,7 +85,7 @@ export function draw(canvas: HTMLCanvasElement, armies: Placement[][], side: Sid
     ctx.fillStyle = u.side ? '#a82b3acc' : '#1b5aa6cc'; ctx.beginPath(); ctx.moveTo(x - 7, y - 1); ctx.quadraticCurveTo(x, y - 6, x + 8, y - 2); ctx.lineTo(x + 5, y + 3); ctx.quadraticCurveTo(x - 1, y + 1, x - 6, y + 4); ctx.closePath(); ctx.fill(); ctx.strokeStyle = '#0b1018aa'; ctx.lineWidth = 1; ctx.stroke();
   }
   const units = battle ? battle.units.filter(u => u.hp > 0) : armies[side]!.map((p, i) => ({ ...p, x: p.x + .5, y: p.y + .5, side, hp: UNITS[p.type].hp, id: i }));
-  for (const u of [...units].sort((a, b) => a.y - b.y)) {
+  for (const u of units.sort((a, b) => a.y - b.y)) {
     const x = u.x * cw, y = u.y * ch, d = UNITS[u.type], size = Math.min(cw, ch) * 1.5, bob = battle ? Math.sin(battle.tick * 9 + u.id * 1.7) * 1.6 : 0;
     // 발밑 진영 광원: 바닥에 번지는 빛 + 밝은 테두리.
     const gy = y + size * .3, glow = ctx.createRadialGradient(x, gy, 1, x, gy, size * .42);

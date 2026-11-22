@@ -58,7 +58,7 @@ export class Atmosphere {
   /** 이번 날에 비가 오는가(날짜로 결정). */
   static rainyDay(day: number): boolean { return hash01(day, 4242) < 0.3; }
 
-  constructor(private scene: THREE.Scene, renderer: THREE.WebGLRenderer, quality: Quality) {
+  constructor(private scene: THREE.Scene, renderer: THREE.WebGLRenderer, private quality: Quality) {
     scene.fog = this.fog;
     const mat = new THREE.ShaderMaterial({ vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, side: THREE.BackSide, depthWrite: false, fog: false,
       uniforms: { uTop: { value: C(0x3a78c8) }, uHor: { value: C(0xbcd4ea) }, uGlow: { value: C(0xffb066) }, uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uNight: { value: 0 }, uCloud: { value: 0.2 }, uTime: { value: 0 }, uGlowAmt: { value: 1 } } });

@@ -156,6 +156,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
       css('--near', Math.max(0, Math.min(1, s.watcher.near)).toFixed(2));
       for (let i = 0; i < actions.length; i++) { const b = actions[i], on = b.dataset.activity === s.activity; if (b.classList.contains('is-active') !== on) { b.classList.toggle('is-active', on); b.setAttribute('aria-pressed', String(on)); } }
       cover.classList.toggle('is-active', s.cover);
+      if (cover.getAttribute('aria-pressed') !== String(s.cover)) cover.setAttribute('aria-pressed', String(s.cover));
       txt(batEl, `${Math.round(s.battery)}%`);
       // 게임은 창을 가려도 계속 진행(실시간), 영상은 보는 동안만 흐른다
       game.update(dt);

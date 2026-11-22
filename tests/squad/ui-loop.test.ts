@@ -28,7 +28,7 @@ beforeEach(() => {
   vi.stubGlobal('cancelAnimationFrame', (id: number) => { frames.delete(id); });
   localStorage.clear();
 });
-afterEach(() => { document.body.innerHTML = ''; vi.unstubAllGlobals(); });
+afterEach(() => { document.body.innerHTML = ''; vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 it('schedules animation only during active battles, not menu or deployment', () => {
   const exit = vi.fn();
@@ -149,4 +149,15 @@ it('does not toggle the pause screen when Escape auto-repeats', () => {
   press(false);
   expect(button('#pause')).toBeTruthy();
   button('#pause').click(); button('#exit').click();
+});
+
+it('keeps just one toast timer and clears it when leaving the game', () => {
+  vi.useFakeTimers();
+  openSquad(vi.fn());
+  button('#start').click();
+  button('#ready').click(); button('#ready').click(); button('#ready').click();
+  expect(document.querySelectorAll('.sq-toast')).toHaveLength(1);
+  expect(vi.getTimerCount()).toBe(1);
+  button('#pause').click(); button('#exit').click();
+  expect(vi.getTimerCount()).toBe(0);
 });

@@ -153,3 +153,16 @@ it('exposes only the active title, pause or result dialog to assistive technolog
   advance(100);
   expect(overlays.filter(el => !el.hidden)).toEqual([button('[data-result]')]);
 });
+
+it.each(['dorm', 'class'] as const)('announces the %s hold-to-cover state', async stage => {
+  openSlack(vi.fn());
+  button(`[data-stage="${stage}"]`).click(); button('[data-start]').click();
+  await vi.dynamicImportSettled();
+  const cover = button(stage === 'dorm' ? '.sc-cover-button' : '.sl-cover');
+  advance(100);
+  expect(cover.getAttribute('aria-pressed')).toBe('true');
+  key('1'); advance(100);
+  expect(cover.getAttribute('aria-pressed')).toBe('false');
+  key(' ', 'Space'); advance(100);
+  expect(cover.getAttribute('aria-pressed')).toBe('true');
+});

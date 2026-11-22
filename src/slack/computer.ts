@@ -70,6 +70,7 @@ export const createComputerView: CreateView = (sim, audio) => {
   const applyCover = () => {
     const on = sim.state.cover;
     cover.classList.toggle('visible', on); coverButton.classList.toggle('active', on);
+    if (coverButton.getAttribute('aria-pressed') !== String(on)) coverButton.setAttribute('aria-pressed', String(on));
     if (host.inert !== on) {
       if (on && host.contains(document.activeElement)) el.focus({ preventScroll: true });
       host.inert = on;

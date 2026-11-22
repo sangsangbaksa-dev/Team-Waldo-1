@@ -72,6 +72,16 @@ export interface MatchOptions { seed: number; mode: Mode; difficulty: Difficulty
   /** 온라인 방에서 AI·차량·차 내구도를 이 브라우저가 계산하는지(방장). false 면 AI 는 받은 위치를 따라가는 꼭두각시입니다. 기본 true. */ authority?: boolean;
   /** 이 브라우저가 새로 만드는 전리품 번호의 시작(온라인에서 참가자마다 겹치지 않게). 기본 0. */ lootBase?: number }
 
+/** Stable, unbiased seed-dependent order, independent of browser Array.sort internals. */
+export function shuffledBotNames(names: readonly string[], random: () => number): string[] {
+  const result = [...names];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    const name = result[i]; result[i] = result[j]; result[j] = name;
+  }
+  return result;
+}
+
 export class Match {
   map: GameMap; mode: Mode; difficulty: Difficulty; seed: number;
   players: Player[] = []; loot: Loot[]; t = 0; over = false; winner = -1; events: MatchEvent[] = [];
@@ -120,7 +130,7 @@ export class Match {
       }
     }
     if (o.vehicles && o.mode === 'br') this.initVehicles();
-    const total = o.fill ?? (o.mode === 'br' ? 20 : o.humans.length), names = [...BOT_NAMES].sort(() => this.rng() - 0.5), air = !!this.plane;
+    const total = o.fill ?? (o.mode === 'br' ? 20 : o.humans.length), names = shuffledBotNames(BOT_NAMES, this.rng), air = !!this.plane;
     for (let i = 0; i < total; i++) {
       const h = o.humans[i], sp = air ? this.planeAt(0) : this.map.spawns[i % this.map.spawns.length], bi = i - o.humans.length, cyc = Math.floor(bi / names.length);
       const p: Player = {

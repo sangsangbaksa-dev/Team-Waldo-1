@@ -84,7 +84,22 @@ try {
       await page.locator("#sound").click();
       assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem("waldo.preferences.v1")).sound),false);
 
+      if(config.name==="desktop"){
+        let failures=0;
+        await page.route("**/room-tone.glb",async route=>{
+          if(failures++===0) await route.fulfill({status:503,body:""});
+          else await route.continue();
+        });
+      }
       await page.locator("#new").click();
+      if(config.name==="desktop"){
+        await page.waitForFunction(()=>
+          document.querySelector("#panelTitle")?.textContent?.includes("파일을 불러오지 못했습니다"),
+          null,{timeout:90000});
+        assert.ok(await page.getByRole("button",{name:"다시 시도"}).isVisible(),
+          "Failed GLB requests must offer an actionable retry");
+        await page.getByRole("button",{name:"다시 시도"}).click();
+      }
       await page.waitForFunction(()=>{
         const title=document.querySelector("#panelTitle")?.textContent||"";
         return title.includes("끊어진 전원")||title.includes("게임을 열 수 없습니다");

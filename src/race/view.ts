@@ -11,7 +11,7 @@ import { BOOST_LAG, carEuler, chaseFov, chaseRoll, chaseRumble, chaseShake, chev
 import { wrapAngle, boosting, kmh } from './physics';
 import { SLOTS, type RaceState, type Racer } from './race';
 import { brakeGlow, gridPaint, reflectorIndices } from './track-detail';
-import { sprayRate, emissionStep, wetRoadFinish } from './road-visuals';
+import { sprayRate, emissionStep, rainEmissionStep, wetRoadFinish } from './road-visuals';
 import { addStreetFurniture, startFurniture } from '../shared/street-furniture';
 import { RoadLightBatch } from '../shared/road-lights';
 import { trackLightStrength } from './road-visuals';
@@ -125,7 +125,7 @@ interface CarVis { racer: Racer; group: THREE.Group; flames: THREE.Mesh[]; shado
 export class RaceView {
   post: PostFx | null = null; readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera = new THREE.PerspectiveCamera(64, 1, 0.4, 3200);
   private crew: CharacterRig[] = []; private cars: CarVis[] = []; private ground!: THREE.Mesh; private pads: Array<{ tex: THREE.CanvasTexture }> = [];
-  private rainFx: Particles | null = null; private sparks = new Particles(420, 0.34, THREE.AdditiveBlending); private smoke = new Particles(420, 1.1, THREE.NormalBlending, 0.2); private skids = new SkidMarks(1400); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
+  private rainFx: Particles | null = null; private rainCarry = 0; private sparks = new Particles(420, 0.34, THREE.AdditiveBlending); private smoke = new Particles(420, 1.1, THREE.NormalBlending, 0.2); private skids = new SkidMarks(1400); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
   private skyMesh: THREE.Mesh | null = null;
   private camH = 0; private camInit = false; private camAnchor: ChaseAnchor = { x: 0, y: 0, z: 0, ready: false }; private fov = 64; private shake = 0; private punch = 0; private time = 0; private sun: THREE.DirectionalLight;
   private artRandom:()=>number; private clearance:ClearanceIndex;
@@ -649,7 +649,8 @@ export class RaceView {
     this.roadLights?.end();
     this.skids.flush(); this.sparks.update(dt, 14); this.smoke.update(dt, -1.5); this.spray?.update(dt, 5.8);
     if (this.theme.rain && this.rainFx) {
-      const cp = this.camera.position, n = Math.round(34 * this.theme.rain * Math.min(2, dt * 60));
+      const cp = this.camera.position, scheduled = rainEmissionStep(this.rainCarry, this.theme.rain, this.quality, dt), n = scheduled.count;
+      this.rainCarry = scheduled.carry;
       for (let i = 0; i < n; i++) this.rainFx.emit(cp.x + rnd(-38, 38), cp.y + rnd(-1, 20), cp.z + rnd(-38, 38), rnd(-3, 3), rnd(-44, -36), rnd(-3, 3), 0.45, 0.62, 0.74, 0.88);
       this.rainFx.update(dt, 0);
     }

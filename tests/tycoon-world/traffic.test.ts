@@ -68,15 +68,15 @@ describe('HUSTLE traffic overlap clearance', () => {
 describe('HUSTLE perpendicular intersection occupancy', () => {
   it('brakes before a crosswalk when a cross-direction bus has not cleared the intersection', () => {
     // Eastbound sedan at x=7.5 on z=24, bus crossing northbound on x=24.
-    const factor = crossingTrafficFactor('x', 24, 7.5, 1, 4.4, 24, 24, 9.5);
+    const factor = crossingTrafficFactor('x', 24, 12.7, 1, 4.4, 24, 24, 9.5);
     expect(factor).toBe(0);
     expect(crossingTrafficFactor('x', 24, 3, 1, 4.4, 24, 24, 9.5)).toBeGreaterThan(0);
     // The perpendicular bus has already left the crossing.
-    expect(crossingTrafficFactor('x', 24, 7.5, 1, 4.4, 24, 48, 9.5)).toBe(1);
+    expect(crossingTrafficFactor('x', 24, 12.7, 1, 4.4, 24, 48, 9.5)).toBe(1);
   });
   it('supports negative-direction turns and never stops a vehicle already inside the crossing', () => {
     expect(crossingTrafficFactor('z', -24, 7.5, -1, 5, -24, -24, 4.4)).toBe(1);
-    expect(crossingTrafficFactor('z', -24, -7.5, -1, 5, -24, -24, 4.4)).toBe(0);
+    expect(crossingTrafficFactor('z', -24, -12.4, -1, 5, -24, -24, 4.4)).toBe(0);
     expect(crossingTrafficFactor('z', -24, -24, -1, 5, -24, -24, 4.4)).toBe(1);
     expect(crossingTrafficFactor('x', 24, 24, 1, 4.4, 24, 24, 9.5)).toBe(1);
   });

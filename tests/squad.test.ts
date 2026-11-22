@@ -27,3 +27,27 @@ describe('squad auto placement', () => {
     }
   });
 });
+
+describe('squad nearest-target regressions', () => {
+  it('prefers the closest living enemy without changing tie-breaking', () => {
+    const army: Placement[] = [{ type: 'archer', x: 5, y: 10 }];
+    const enemies: Placement[] = [{ type: 'guard', x: 5, y: 9 }, { type: 'guard', x: 9, y: 9 }];
+    const battle = new Battle(army, enemies);
+    for (let i = 0; i < 30; i++) battle.step();
+    expect(battle.units[1]!.hp).toBeLessThan(250);
+    expect(battle.units[2]!.hp).toBe(250);
+  });
+
+  it('keeps medics focused on wounded allies before attacking', () => {
+    const battle = new Battle(
+      [{ type: 'guard', x: 5, y: 10 }, { type: 'medic', x: 5, y: 13 }],
+      [{ type: 'archer', x: 5, y: 9 }],
+    );
+    let healed = false;
+    for (let i = 0; i < 120 && battle.winner === null; i++) {
+      battle.step();
+      if (battle.effects.some(effect => effect.kind === 'heal')) { healed = true; break; }
+    }
+    expect(healed).toBe(true);
+  });
+});

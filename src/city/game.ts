@@ -26,6 +26,7 @@ import { DuelArmy, parseArmy } from './duelarmy';
 import { CITY_KEY, readCityCareer } from '../records';
 import { PVP_ENABLED } from '../net/config';
 import { ChatLimiter, cleanChat, pushChat, visibleChat, type ChatLine } from './chat';
+import { escapeCityText as esc, safeCityColor } from './markup';
 
 const $ = (n: number): string => Math.floor(n).toLocaleString('en-US');
 const clock = (t: number): string => `${Math.floor(Math.max(0, t) / 60)}:${String(Math.floor(Math.max(0, t) % 60)).padStart(2, '0')}`;
@@ -292,7 +293,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
         + '<p class="c-note">분대를 고르고 Z 집결 · X 사수 · C/우클릭 돌격을 하면 그 분대만 움직입니다. 새로 생산한 병력은 선택한 분대에 들어갑니다. Shift+0 은 전체.</p>';
     } else {
       const rows = [...w.factions].sort((a, b) => Number(b.alive) - Number(a.alive) || w.netWorth(b) - w.netWorth(a));
-      body = '<h3>왕국 순위</h3><table class="c-rank"><tr><th>왕국</th><th>순자산</th><th>병력</th><th>사업</th><th>Lv</th></tr>' + rows.map(r => `<tr class="${r.alive ? '' : 'dead'}"><td><i style="background:${r.color}"></i>${r.name}${w.hq(r.id) ? '' : r.alive ? ' <small>본부 없음</small>' : ''}</td><td>${r.alive ? '$' + $(w.netWorth(r)) : '궤멸'}</td><td>${w.armyOf(r.id).length}</td><td>${w.businesses.filter(b => b.owner === r.id).length}</td><td>${r.level}</td></tr>`).join('') + '</table>';
+      body = '<h3>왕국 순위</h3><table class="c-rank"><tr><th>왕국</th><th>순자산</th><th>병력</th><th>사업</th><th>Lv</th></tr>' + rows.map(r => `<tr class="${r.alive ? '' : 'dead'}"><td><i style="background:${r.color}"></i>${esc(r.name)}${w.hq(r.id) ? '' : r.alive ? ' <small>본부 없음</small>' : ''}</td><td>${r.alive ? '$' + $(w.netWorth(r)) : '궤멸'}</td><td>${w.armyOf(r.id).length}</td><td>${w.businesses.filter(b => b.owner === r.id).length}</td><td>${r.level}</td></tr>`).join('') + '</table>';
     }
     const tabs = ([['train', '생산'], ['build', '건설'], ['research', '연구'], ['market', '시장'], ['assets', '자산'], ['squad', '분대'], ['rank', '순위']] as [string, string][]).filter(([k]) => !((duel || room) && k === 'rank'));
     const head = `<header>${shopOpen ? `<b>${w.insideBiz() ? BIZ[w.insideBiz()!.kind].name : '상점'}</b>` : tabs.map(([k, n]) => `<button data-act="tab:${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}<button data-act="closepanel" class="c-x" aria-label="닫기">✕</button></header>`;
@@ -346,10 +347,10 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     const entries = tut || duel || room ? [] : missionLog(w), summary = missionSummary(entries), current = summary.active;
     put(q('#c-quest'), tut || duel || room ? '' : current ? `<div class="c-quest-head"><span>작전 지령 <b>${summary.completed}/${summary.total}</b></span><button data-act="missions" aria-label="전체 작전 지령 보기"><kbd>J</kbd>전체 보기</button></div><strong>${current.title}</strong><p>${current.objective}</p><div class="c-quest-progress" role="progressbar" aria-label="${current.title} 진행률" aria-valuemin="0" aria-valuemax="${current.target}" aria-valuenow="${current.current}"><i style="width:${current.current / current.target * 100}%"></i></div><small>${current.current}/${current.target}${current.reward ? ' · 완료 보상 $' + $(current.reward) : ' · 최종 작전'}</small>` : '<div class="c-quest-head"><span>작전 지령 완료</span><button data-act="missions">전체 보기</button></div><strong>최후의 왕국!</strong>');
     if (!q('#c-missions').hidden) renderMissions();
-    void z; if (room) { const alive = room.ids.filter(id => !room!.out.has(id) && (room!.deaths.get(id) ?? 0) < ROOM_LIVES).length; put(q('#c-zone'), `<b>${clock(Math.max(0, ROOM_TIME - w.time))}</b><span>남은 목숨 <b>${Math.max(0, ROOM_LIVES - room.myDeaths)}</b>/${ROOM_LIVES}</span><span>생존 <b>${alive}</b>/${room.ids.length}명</span>`); } else if (duel) put(q('#c-zone'), `<b>${clock(Math.max(0, TIME_LIMIT - w.time))}</b><span>나 <b>${duel.oppDeaths}</b> : <b>${duel.myDeaths}</b> ${duel.s.opponent.nickname.replace(/[<>&"]/g, '')}</span><span>${TARGET_KILLS}킬 선취</span>`); else if (tut) put(q('#c-zone'), `<b>튜토리얼</b><span>연습장 · 라이벌 정지</span><span>${Math.min(tut.s.i, STEPS.length - 1) + 1}/${STEPS.length}</span>`); else put(q('#c-zone'), `<b>${clock(w.time)}</b><span>생존 왕국 <b>${w.aliveCount()}</b>/8</span><span class="c-citytime" title="밤에는 클럽·카지노, 낮에는 편의점·공장 수입이 늘고 폭풍우에는 줄어듭니다">${WEATHER_ICON[w.weather]} ${clockLabel(w.hour)} · ${PHASE_LABEL[w.phase]} · ${WEATHER_LABEL[w.weather]}</span>`);
+    void z; if (room) { const alive = room.ids.filter(id => !room!.out.has(id) && (room!.deaths.get(id) ?? 0) < ROOM_LIVES).length; put(q('#c-zone'), `<b>${clock(Math.max(0, ROOM_TIME - w.time))}</b><span>남은 목숨 <b>${Math.max(0, ROOM_LIVES - room.myDeaths)}</b>/${ROOM_LIVES}</span><span>생존 <b>${alive}</b>/${room.ids.length}명</span>`); } else if (duel) put(q('#c-zone'), `<b>${clock(Math.max(0, TIME_LIMIT - w.time))}</b><span>나 <b>${duel.oppDeaths}</b> : <b>${duel.myDeaths}</b> ${esc(duel.s.opponent.nickname)}</span><span>${TARGET_KILLS}킬 선취</span>`); else if (tut) put(q('#c-zone'), `<b>튜토리얼</b><span>연습장 · 라이벌 정지</span><span>${Math.min(tut.s.i, STEPS.length - 1) + 1}/${STEPS.length}</span>`); else put(q('#c-zone'), `<b>${clock(w.time)}</b><span>생존 왕국 <b>${w.aliveCount()}</b>/8</span><span class="c-citytime" title="밤에는 클럽·카지노, 낮에는 편의점·공장 수입이 늘고 폭풍우에는 줄어듭니다">${WEATHER_ICON[w.weather]} ${clockLabel(w.hour)} · ${PHASE_LABEL[w.phase]} · ${WEATHER_LABEL[w.weather]}</span>`);
     put(q('#c-wanted'), f.wanted >= 1 ? `<span class="stars">${'★'.repeat(Math.floor(f.wanted))}${'☆'.repeat(5 - Math.floor(f.wanted))}</span> 수배 중` : '');
     { const live = chatLive(); (q('#c-chatbtn') as HTMLElement).hidden = !live; put(q('#c-chat'), live ? visibleChat(chatLog, chatNow(), chatOpen).map(l => `<div class="${l.mine ? 'me' : ''}"><b>${esc(l.name)}</b> ${esc(l.text)}</div>`).join('') : ''); }
-    put(q('#c-feed'), w.feed.filter(x => w.time - x.t < 7).slice(-5).map(x => `<div style="border-color:${x.color}">${x.text}</div>`).join(''));
+    put(q('#c-feed'), w.feed.filter(x => w.time - x.t < 7).slice(-5).map(x => `<div style="border-color:${safeCityColor(x.color)}">${esc(x.text)}</div>`).join(''));
     const army = w.armyOf(0).length; put(q('#c-squads'), squadBar(w));
     if (b) {
       const s = f.slots[f.cur], wd = WEAPONS[s.id];
@@ -382,7 +383,8 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   }
   // ---------- 1대1 결투 ----------
   const duelCard = (title: string, body: string, actions: string): void => { modal.innerHTML = `<section class="c-pause"><div class="c-kicker">1대1 결투</div><h2>${title}</h2>${body}<div class="c-actions">${actions}</div></section>`; };
-  const esc = (t: string): string => t.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
+
+  // Room and duel names are escaped at every HTML rendering boundary.
   function startDuel(s: PvpSession): void {
     endDuel(); hud.hidden = true; unlock();
     const raw = s.match.config.seed; let seed = typeof raw === 'number' && Number.isInteger(raw) && raw >= 0 && raw < 2 ** 31 ? raw : 0;
@@ -664,8 +666,8 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   }
   function crossTarget(): string {
     const w = world!, b = w.boss(0); if (!b || !R3 || w.inside) return ''; const f = w.factions[0], range = WEAPONS[f.slots[f.cur].id].range, dx = Math.cos(R3.yaw), dy = Math.sin(R3.yaw); let best = range, html = '', hostile = false;
-    for (const a of w.actors) { if (!a.alive || a === b || a.inVeh) continue; const rx = a.x - b.x, ry = a.y - b.y, t = rx * dx + ry * dy; if (t < 0 || t > best || Math.abs(rx * dy - ry * dx) > a.r + 7) continue; if (!w.canSee(b.x, b.y, a.x, a.y)) continue; best = t; hostile = w.hostile(0, a.f); html = `<b style="color:${a.f < 8 ? FACTIONS[a.f].color : a.f === 8 ? '#8fb0ff' : '#ccc'}">${a.f < 8 ? FACTIONS[a.f].name + ' ' : ''}${ACTORS[a.kind].name}</b><i><u style="width:${Math.max(0, a.hp / a.maxHp * 100)}%;background:${a.f === 0 ? '#5dfc9b' : '#ff5d5d'}"></u></i>`; }
-    for (const s of w.structures) { if (!s.alive) continue; const cx = s.x + s.w / 2 - b.x, cy = s.y + s.h / 2 - b.y, t = cx * dx + cy * dy; if (t < 0 || t > best + 60 || Math.abs(cx * dy - cy * dx) > Math.max(s.w, s.h) / 2) continue; best = t; hostile = s.f !== 0; html = `<b style="color:${FACTIONS[s.f].color}">${FACTIONS[s.f].name} ${STRUCTS[s.kind].name}</b><i><u style="width:${Math.max(0, s.hp / s.maxHp * 100)}%"></u></i>`; }
+    for (const a of w.actors) { if (!a.alive || a === b || a.inVeh) continue; const rx = a.x - b.x, ry = a.y - b.y, t = rx * dx + ry * dy; if (t < 0 || t > best || Math.abs(rx * dy - ry * dx) > a.r + 7) continue; if (!w.canSee(b.x, b.y, a.x, a.y)) continue; best = t; hostile = w.hostile(0, a.f); html = `<b style="color:${a.f < 8 ? FACTIONS[a.f].color : a.f === 8 ? '#8fb0ff' : '#ccc'}">${a.f < 8 ? esc(FACTIONS[a.f].name) + ' ' : ''}${ACTORS[a.kind].name}</b><i><u style="width:${Math.max(0, a.hp / a.maxHp * 100)}%;background:${a.f === 0 ? '#5dfc9b' : '#ff5d5d'}"></u></i>`; }
+    for (const s of w.structures) { if (!s.alive) continue; const cx = s.x + s.w / 2 - b.x, cy = s.y + s.h / 2 - b.y, t = cx * dx + cy * dy; if (t < 0 || t > best + 60 || Math.abs(cx * dy - cy * dx) > Math.max(s.w, s.h) / 2) continue; best = t; hostile = s.f !== 0; html = `<b style="color:${FACTIONS[s.f].color}">${esc(FACTIONS[s.f].name)} ${STRUCTS[s.kind].name}</b><i><u style="width:${Math.max(0, s.hp / s.maxHp * 100)}%"></u></i>`; }
     cross.classList.toggle('hostile', hostile && !!html); return html;
   }
 

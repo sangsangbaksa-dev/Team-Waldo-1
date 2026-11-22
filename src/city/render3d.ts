@@ -23,6 +23,7 @@ import { addStreetFurniture, parkFurniture } from '../shared/street-furniture';
 import { RoadLightBatch, lightRange, nearVisual } from '../shared/road-lights';
 import { nearbyVehicleLights, frameEmissionChance, lightVehicleCapacity } from './traffic-lighting';
 import { CityRenderLifetime } from './render-lifecycle';
+import { compactLiveEffects } from './effect-lifetime';
 
 export type ViewMode = 'fp' | 'tp';
 const EYE = EYE_HEIGHT, STRUCT_H: Record<StructKind, number> = { hq: 150, barracks: 86, depot: 58, factory: 104, lab: 96, turret: 50 };
@@ -460,7 +461,9 @@ export class Renderer3D {
     while (this.planes.length < w.planes.length) { const pm = this.ml?.makePlane(); if (pm) { const pg = new THREE.Group(); pg.add(pm); this.scene.add(pg); this.planes.push(pg); continue; } const g = new THREE.Group(), m = this.mat(0xcfd6e0), a = new THREE.Mesh(this.box, m), b = new THREE.Mesh(this.box, m), c = new THREE.Mesh(this.box, m); a.scale.set(150, 22, 24); b.scale.set(34, 5, 190); c.scale.set(18, 30, 5); c.position.set(-64, 22, 0); g.add(a, b, c); this.scene.add(g); this.planes.push(g); }
     this.planes.forEach((g, i) => { const p = w.planes[i]; g.visible = !!p; if (p) { g.position.set(p.x, 620, p.y); g.rotation.y = -Math.atan2(p.vy, p.vx); } });
     // 링·폭발·파티클
-    let nr = 0; for (const r of this.ringList) { r.life -= dt; const k = 1 - Math.max(0, r.life) / r.max, rad = r.r0 + (r.r1 - r.r0) * k; d.rotation.set(0, 0, 0); d.position.set(r.x, 2, r.y); d.scale.set(rad, 1, rad); d.updateMatrix(); this.rings.setMatrixAt(nr, d.matrix); this.rings.setColorAt(nr, col.set(r.color)); nr++; } this.ringList = this.ringList.filter(r => r.life > 0); upd(this.rings, nr);
+    let nr = 0;
+    for (const r of this.ringList) { r.life -= dt; if(r.life<=0)continue; const k = 1 - Math.max(0, r.life) / r.max, rad = r.r0 + (r.r1 - r.r0) * k; d.rotation.set(0, 0, 0); d.position.set(r.x, 2, r.y); d.scale.set(rad, 1, rad); d.updateMatrix(); this.rings.setMatrixAt(nr, d.matrix); this.rings.setColorAt(nr, col.set(r.color)); nr++; }
+    compactLiveEffects(this.ringList);upd(this.rings, nr);
     for (const b of this.booms) { if (b.life <= 0) { b.m.visible = false; continue; } b.life -= dt; const k = 1 - b.life / 0.32; b.m.scale.setScalar(b.r * (0.3 + k * 0.8)); (b.m.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 1 - k) * 0.85; }
     this.lightT -= dt; this.light.intensity = Math.max(0, this.lightT * 22);
     this.sparks.update(dt); this.fire.update(dt); this.smoke.update(dt);
@@ -473,6 +476,6 @@ export class Renderer3D {
     if (this.ml && !third && pb) { this.ml.syncViewCam(this.camera); this.renderer.autoClear = false; this.renderer.clearDepth(); this.renderer.render(this.ml.vmScene, this.ml.vmCam); this.renderer.autoClear = true; }
     // 떠오르는 글자
     for (const f of this.floaters) { f.life -= dt; f.h += dt * 26; const p = this.project(f.x, f.y, f.h); f.el.style.transform = `translate(${p.x}px,${p.y}px) translate(-50%,-50%)`; f.el.style.opacity = p.behind ? '0' : String(Math.min(1, f.life * 2)); if (f.life <= 0) f.el.remove(); }
-    this.floaters = this.floaters.filter(f => f.life > 0);
+    compactLiveEffects(this.floaters);
   }
 }

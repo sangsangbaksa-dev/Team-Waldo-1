@@ -211,7 +211,7 @@ export class WorldSync {
     const d = isInt(driver, -1, m.players.length - 1) ? driver : -1;
     if (d !== v.driver) {
       const old = m.players[v.driver]; if (old?.remote && old.veh === v.id) old.veh = -1;
-      const nu = m.players[d]; if (d >= 0 && nu?.remote && nu.alive && !nu.air) { const previous = m.vehicles[nu.veh]; if (previous && previous !== v && previous.driver === nu.id) previous.driver = -1; v.driver = d; nu.veh = v.id; } else if (d < 0 && (!old || old.remote)) v.driver = -1;
+      const nu = m.players[d]; if (d >= 0 && nu?.remote && nu.alive) { const previous = m.vehicles[nu.veh]; if (previous && previous !== v && previous.driver === nu.id) previous.driver = -1; v.driver = d; nu.veh = v.id; nu.air = 0; nu.alt = 0; } else if (d < 0 && (!old || old.remote)) v.driver = -1;
     }
   }
   /** 꼭두각시 AI·차를 목표로 옮깁니다(매 시뮬레이션 단계 전에). */

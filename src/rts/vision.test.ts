@@ -13,7 +13,7 @@ describe('FRONTLINE fog versioning', () => {
   it('avoids redundant minimap and fog updates when positions have not changed', () => {
     const s = new RtsSim(), v = new Vision(s.map.size, 0);
     v.update(s, true);
-    expect(v.update(s, true)).toBe(false);
+    expect(v.update(s, true)).toBe(true);
     expect(v.version).toBe(1);
   });
   it('detects movement of a friendly scout and ignores movement of an enemy', () => {
@@ -21,7 +21,8 @@ describe('FRONTLINE fog versioning', () => {
     v.update(s, true);
     const enemy = s.units.find(u => u.owner === 1)!;
     enemy.x += 5; enemy.y += 5;
-    expect(v.update(s, true)).toBe(false);
+    expect(v.update(s, true)).toBe(true);
+    expect(v.version).toBe(1);
     const friendly = s.units.find(u => u.owner === 0)!;
     friendly.x += 17;
     expect(v.update(s, true)).toBe(true);

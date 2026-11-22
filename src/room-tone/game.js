@@ -1297,7 +1297,7 @@ function update(dt) {
   );
   moved = Math.hypot(player.x - oldX, player.z - oldZ);
   stepAt += moved;
-  if (stepAt > (running ? 1.02 : 0.86)) {
+  if (stepAt >= (running ? 1.02 : 0.86)) {
     sound.step(running, crouched);
     stepAt %= running ? 1.02 : 0.86;
   }
@@ -1438,18 +1438,29 @@ document.addEventListener("keydown", (e) => {
   }
 });
 document.addEventListener("keyup", (e) => keys.delete(e.code));
+function backgroundSession() {
+  if (state === "play") pauseGame();
+  else if (state === "puzzle" || state === "capture") sound.pause(true);
+  if (level && !["home", "won", "load", "error"].includes(state)) save();
+}
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
-    if (state === "play") pauseGame();
+    backgroundSession();
     if (frameId !== null) cancelAnimationFrame(frameId);
     frameId = null;
   } else {
     last = performance.now();
+    if (state === "puzzle" && document.hasFocus()) sound.pause(false);
     showSceneOnce();
   }
 });
-window.addEventListener("blur", () => {
-  if (state === "play") pauseGame();
+window.addEventListener("blur", backgroundSession);
+window.addEventListener("focus", () => {
+  if (!document.hidden && state === "puzzle") sound.pause(false);
+});
+window.addEventListener("pagehide", () => {
+  if (level && !["home", "won", "load", "error"].includes(state)) save();
+  sound.pause(true);
 });
 function look(dx, dy) {
   if (hiddenSpot) return;

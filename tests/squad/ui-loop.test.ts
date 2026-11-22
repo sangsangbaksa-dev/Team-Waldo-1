@@ -294,3 +294,25 @@ it('keeps held Enter or Space from repeatedly toggling keyboard-placed troops', 
   expect(document.querySelector('.sq-budget strong')?.textContent).toContain('800');
   button('#pause').click(); button('#exit').click();
 });
+
+it('ignores detached previous-screen controls instead of resetting an active match', () => {
+  openSquad(vi.fn());
+  const staleStart = button('#start');
+  const staleMode = button('[data-mode="local"]');
+  staleStart.click();
+  const staleAuto = button('#auto'), staleClear = button('#clear');
+  staleAuto.click(); button('#ready').click();
+  const canvas = document.querySelector('#sq-field-canvas');
+  staleStart.click(); staleMode.click(); staleClear.click(); staleAuto.click();
+  expect(document.querySelector('#sq-field-canvas')).toBe(canvas);
+  const staleSkip = button('#skip');
+  staleSkip.click();
+  expect(button('#next')).toBeTruthy();
+  const staleNext = button('#next');
+  staleNext.click();
+  expect(button('#ready')).toBeTruthy();
+  // A stale result button must not advance another round while deploying.
+  staleNext.click();
+  expect(button('#ready')).toBeTruthy();
+  button('#pause').click(); button('#exit').click();
+});

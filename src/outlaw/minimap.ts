@@ -3,6 +3,10 @@ import type { CityMap, Poi, PoiKind } from './types';
 import type { Sim } from './sim';
 
 const SIZE = 1024;
+/** World north (-Z) projected into the rotating mini-radar's pixel axes. */
+export function radarNorthDirection(mapAngle: number): readonly [number, number] {
+  return [Math.sin(mapAngle), -Math.cos(mapAngle)] as const;
+}
 const POI_STYLE: Record<PoiKind, { icon: string; color: string }> = {
   safehouse: { icon: '⌂', color: '#5dff8f' }, gunshop: { icon: 'G', color: '#ffb84d' },
   paynspray: { icon: 'P', color: '#3df2ff' }, hospital: { icon: '+', color: '#f3f5f6' },
@@ -76,10 +80,14 @@ export class Minimap {
     g.save(); g.beginPath(); g.arc(cx, cy, size * .47, 0, Math.PI * 2); g.clip();
     const r = this.range;
     for (const poi of this.map.pois) if (Math.abs(poi.x - p.x) < r && Math.abs(poi.z - p.z) < r) this.poi(g, point(poi.x, poi.z), poi, size * .046);
-    for (const marker of [...sim.mission.markers, ...sim.activity.markers, ...sim.job.markers]) if (marker.blip) {
-      const [x, y] = point(marker.x, marker.z), dx = x - cx, dy = y - cy, d = Math.hypot(dx, dy), edge = size * .405;
-      if (d > edge) { const a = Math.atan2(dy, dx); g.save(); g.translate(cx + Math.cos(a) * edge, cy + Math.sin(a) * edge); g.rotate(a); g.fillStyle = markerColor(marker.color, marker.kind); g.beginPath(); g.moveTo(8, 0); g.lineTo(-5, -4); g.lineTo(-3, 0); g.lineTo(-5, 4); g.closePath(); g.fill(); g.restore(); }
-      else { g.save(); g.translate(x, y); g.rotate(Math.PI / 4); g.fillStyle = markerColor(marker.color, marker.kind); g.fillRect(-4, -4, 8, 8); g.restore(); }
+    for (let group = 0; group < 3; group++) {
+      const markers = group === 0 ? sim.mission.markers : group === 1 ? sim.activity.markers : sim.job.markers;
+      for (const marker of markers) {
+        if (!marker.blip) continue;
+        const [x, y] = point(marker.x, marker.z), dx = x - cx, dy = y - cy, d = Math.hypot(dx, dy), edge = size * .405;
+        if (d > edge) { const a = Math.atan2(dy, dx); g.save(); g.translate(cx + Math.cos(a) * edge, cy + Math.sin(a) * edge); g.rotate(a); g.fillStyle = markerColor(marker.color, marker.kind); g.beginPath(); g.moveTo(8, 0); g.lineTo(-5, -4); g.lineTo(-3, 0); g.lineTo(-5, 4); g.closePath(); g.fill(); g.restore(); }
+        else { g.save(); g.translate(x, y); g.rotate(Math.PI / 4); g.fillStyle = markerColor(marker.color, marker.kind); g.fillRect(-4, -4, 8, 8); g.restore(); }
+      }
     }
     const wanted = sim.wanted.stars > 0, blink = Math.floor(sim.t * 4) % 2 === 0;
     if (wanted) {
@@ -96,7 +104,10 @@ export class Minimap {
     g.restore();
     // 플레이어 방향은 카메라 기준 고정 화살표여서 조작 중 방향 감각이 흔들리지 않습니다.
     g.save(); g.translate(cx, cy); g.fillStyle = '#fff'; g.strokeStyle = 'rgba(0,0,0,.85)'; g.lineWidth = 2; g.beginPath(); g.moveTo(0, -size * .055); g.lineTo(size * .035, size * .035); g.lineTo(0, size * .02); g.lineTo(-size * .035, size * .035); g.closePath(); g.fill(); g.stroke(); g.restore();
-    g.font = `700 ${Math.max(9, size * .065)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#f3f5f6'; g.shadowColor = '#101619'; g.shadowBlur = 3; g.fillText('N', cx, cy - size * .405); g.shadowBlur = 0;
+    // The map rotates with the camera; its north label must rotate too.
+    const [northX, northY] = radarNorthDirection(angle);
+    g.font = `700 ${Math.max(9, size * .065)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#f3f5f6'; g.shadowColor = '#101619'; g.shadowBlur = 3;
+    g.fillText('N', cx + northX * size * .405, cy + northY * size * .405); g.shadowBlur = 0;
     g.strokeStyle = 'rgba(223,232,231,.8)'; g.lineWidth = Math.max(1.5, size * .009); g.beginPath(); g.arc(cx, cy, size * .47, 0, Math.PI * 2); g.stroke();
     g.fillStyle = 'rgba(8,13,16,.78)'; g.fillRect(cx - size * .32, cy + size * .37, size * .64, size * .075);
     g.font = `600 ${Math.max(8, size * .034)}px sans-serif`; g.fillStyle = '#c4d0d1'; g.fillText(districtName(p.x, p.z, this.map), cx, cy + size * .408);
@@ -119,7 +130,10 @@ export class Minimap {
       const x = px(poi.x), y = pz(poi.z); this.poi(g, [x, y], poi, font * 1.7);
       g.font = `600 ${font}px sans-serif`; g.lineWidth = 3; g.strokeStyle = 'rgba(12,17,20,.9)'; g.strokeText(poi.name, x, y + font * 1.8); g.fillStyle = '#f1f3ef'; g.fillText(poi.name, x, y + font * 1.8);
     }
-    for (const marker of [...sim.mission.markers, ...sim.activity.markers, ...sim.job.markers]) if (marker.blip) { g.save(); g.translate(px(marker.x), pz(marker.z)); g.rotate(Math.PI / 4); g.fillStyle = markerColor(marker.color, marker.kind); g.fillRect(-font * .65, -font * .65, font * 1.3, font * 1.3); g.restore(); }
+    for (let group = 0; group < 3; group++) {
+      const markers = group === 0 ? sim.mission.markers : group === 1 ? sim.activity.markers : sim.job.markers;
+      for (const marker of markers) if (marker.blip) { g.save(); g.translate(px(marker.x), pz(marker.z)); g.rotate(Math.PI / 4); g.fillStyle = markerColor(marker.color, marker.kind); g.fillRect(-font * .65, -font * .65, font * 1.3, font * 1.3); g.restore(); }
+    }
     if (sim.wanted.stars > 0) {
       const color = Math.floor(sim.t * 4) % 2 ? '#3b82ff' : '#ff4545';
       for (const cop of sim.peds) if (cop.alive && cop.team === 'cop') this.dot(g, px(cop.x), pz(cop.z), color, font * .48);

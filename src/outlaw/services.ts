@@ -1,6 +1,6 @@
 // OUTLAW CITY — 상점·부동산·차고·체육관·병원·보석금 같은 돈 쓰는 서비스와 수입·업적 갱신. Sim 위에서 돌아가는 순수 로직입니다.
 import type { Sim } from './sim';
-import { PLAYER_ID, VEHICLES, type VehicleKind } from './types';
+import { PLAYER_ID, VEHICLES, type CityMap, type VehicleKind } from './types';
 import { ACHIEVEMENTS, CAR_SHOP, OUTFITS, OUTFIT_PRICE, PROPERTIES, PROP_CAP_MIN, propertyRate } from './life';
 import { collideBox, groundHeight } from './world';
 
@@ -79,9 +79,43 @@ export function callCar(sim: Sim, index: number): string {
 export const vehicleName = (k: VehicleKind): string => VEHICLES[k].name;
 
 // ---------- 자판기·옷장 ----------
+type VendingSpot = { x: number; z: number };
+interface VendingGrid {
+  source: CityMap['props']; count: number; cell: number; stride: number;
+  buckets: Map<number, VendingSpot[]>;
+}
+const vendingByMap = new WeakMap<CityMap, VendingGrid>();
+/** Static sidewalk props can exceed a thousand objects. Index only relevant
+ * vending stops once per map, then probe nine nearby cells for the prompt. */
+function vendingGrid(map: CityMap): VendingGrid {
+  const old = vendingByMap.get(map);
+  if (old && old.source === map.props && old.count === map.props.length) return old;
+  const cell = Math.max(8, map.pitch), stride = Math.ceil(map.half * 2 / cell) + 4;
+  const buckets = new Map<number, VendingSpot[]>();
+  for (const q of map.props) {
+    if (q.kind !== 'vending' && q.kind !== 'kiosk') continue;
+    const ix = Math.floor((q.x + map.half) / cell) + 2, iz = Math.floor((q.z + map.half) / cell) + 2;
+    const key = ix * stride + iz;
+    let list = buckets.get(key);
+    if (!list) { list = []; buckets.set(key, list); }
+    list.push(q);
+  }
+  const grid = { source: map.props, count: map.props.length, cell, stride, buckets };
+  vendingByMap.set(map, grid);
+  return grid;
+}
 export function nearVending(sim: Sim): boolean {
-  const p = sim.player; if (p.vehicle || p.hp >= p.maxHp) return false;
-  for (const q of sim.map.props) if ((q.kind === 'vending' || q.kind === 'kiosk') && Math.abs(q.x - p.x) < 2.4 && Math.abs(q.z - p.z) < 2.4) return true; return false;
+  const p = sim.player;
+  if (p.vehicle || p.hp >= p.maxHp) return false;
+  const grid = vendingGrid(sim.map);
+  const ix = Math.floor((p.x + sim.map.half) / grid.cell) + 2;
+  const iz = Math.floor((p.z + sim.map.half) / grid.cell) + 2;
+  for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+    const list = grid.buckets.get((ix + dx) * grid.stride + iz + dz);
+    if (!list) continue;
+    for (const q of list) if (Math.abs(q.x - p.x) < 2.4 && Math.abs(q.z - p.z) < 2.4) return true;
+  }
+  return false;
 }
 export function buySnack(sim: Sim): string {
   if (!nearVending(sim)) return '자판기가 없습니다'; const fee = sim.price(8); if (sim.cash < fee) return '돈이 부족합니다';

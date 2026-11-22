@@ -61,23 +61,31 @@ function random(seed) {
     return ((n ^ (n >>> 14)) >>> 0) / 4294967296;
   };
 }
+export function walkable(map, id) {
+  const w = map[0]?.length ?? 0;
+  return w > 0 && Number.isInteger(id) && id >= 0 && id < w * map.length &&
+    map[Math.floor(id / w)]?.[id % w] === ".";
+}
 export function neighbors(map, id) {
-  const w = map[0].length,
-    x = id % w,
-    z = Math.floor(id / w);
-  return [
-    [x + 1, z],
-    [x - 1, z],
-    [x, z + 1],
-    [x, z - 1],
-  ]
-    .filter(([a, b]) => map[b]?.[a] && map[b][a] !== "#")
-    .map(([a, b]) => b * w + a);
+  if (!walkable(map, id)) return [];
+  const w = map[0].length;
+  const x = id % w;
+  const z = Math.floor(id / w);
+  const result = [];
+  // Preserve the right/left/down/up tie-break order. Avoid creating four
+  // coordinate arrays and two intermediary arrays on every BFS expansion.
+  if (map[z]?.[x + 1] === ".") result.push(id + 1);
+  if (map[z]?.[x - 1] === ".") result.push(id - 1);
+  if (map[z + 1]?.[x] === ".") result.push(id + w);
+  if (map[z - 1]?.[x] === ".") result.push(id - w);
+  return result;
 }
 export function paths(map, start) {
-  const prev = new Int32Array(map.length * map[0].length).fill(-2),
+  const prev = new Int32Array(map.length * (map[0]?.length ?? 0)).fill(-2),
     dist = new Int32Array(prev.length).fill(-1),
-    q = [start];
+    q = [];
+  if (!walkable(map, start)) return { prev, dist, q };
+  q.push(start);
   prev[start] = -1;
   dist[start] = 0;
   for (let h = 0; h < q.length; h++) {
@@ -91,12 +99,22 @@ export function paths(map, start) {
   }
   return { prev, dist, q };
 }
-export function route(map, a, b) {
-  const { prev } = paths(map, a);
-  if (prev[b] === -2) return [];
+export function routeFrom(tree, start, goal) {
+  const { prev, dist } = tree;
+  if (!Number.isInteger(start) || !Number.isInteger(goal) ||
+      start < 0 || goal < 0 || start >= prev.length || goal >= prev.length ||
+      dist[start] !== 0 || dist[goal] < 0) return [];
   const out = [];
-  for (let c = b; c !== a && c !== -1; c = prev[c]) out.push(c);
-  return out.reverse();
+  let cursor = goal;
+  for (let n = prev.length; cursor !== start && n > 0; n--) {
+    if (cursor < 0 || cursor >= prev.length) return [];
+    out.push(cursor);
+    cursor = prev[cursor];
+  }
+  return cursor === start ? out.reverse() : [];
+}
+export function route(map, a, b) {
+  return routeFrom(paths(map, a), a, b);
 }
 export function makeLevel(ch) {
   const w = chapters[ch].size,

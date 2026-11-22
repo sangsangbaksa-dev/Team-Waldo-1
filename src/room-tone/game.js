@@ -1,10 +1,30 @@
-import * as THREE from "three";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { createCaptureShot, fixMonster } from "./monster.js";
-import { modelBytes } from "./assets.js";
-import { chapters, makeLevel, route, neighbors } from "./levels.mjs";
-import { buildEnvironment, buildHidingSpot } from "./environment.js";
+// Keep the title screen independent of the heavy 3D engine. The code and
+// monster binary are requested together only when a play session begins.
+let THREE, GLTFLoader, createCaptureShot, fixMonster;
+let enginePromise;
+function loadEngine() {
+  if (!enginePromise) enginePromise = Promise.all([
+    import("three"),
+    import("three/addons/loaders/GLTFLoader.js"),
+    import("./monster.js"),
+  ]).then(([three, loader, monster]) => {
+    THREE = three;
+    GLTFLoader = loader.GLTFLoader;
+    createCaptureShot = monster.createCaptureShot;
+    fixMonster = monster.fixMonster;
+  }).catch((error) => {
+    enginePromise = null;
+    throw error;
+  });
+  return enginePromise;
+}
+import { modelBytes, releaseModelBytes } from "./assets.js";
+import { chapters, makeLevel, paths, route, routeFrom, neighbors } from "./levels.mjs";
+import { buildEnvironment, buildHidingSpot, createHidingSpotKit } from "./environment.js";
 import { Sound } from "./sound.js";
+import { normalizeCampaign } from "./campaign.mjs";
+import { createPointerOwner, tryCapture } from "./input.mjs";
+import { initialMute } from "./preferences.mjs";
 
 const $ = (id) => document.getElementById(id),
   C = 2.7,
@@ -18,6 +38,7 @@ let state = "home",
   level,
   items = [],
   hidingSpots = [],
+  interactables = [],
   hiddenSpot = null,
   hideBreath = 1,
   hideReadyAt = 0,
@@ -37,7 +58,7 @@ let renderer,
   entity,
   environment,
   props,
-  player = new THREE.Vector3(),
+  player = null,
   yaw = 0,
   pitch = 0;
 let moved = 0,
@@ -62,13 +83,17 @@ let moved = 0,
   muted = false;
 let now = 0,
   last = 0,
-  frameStarted = false,
+  frameId = null,
+  sceneDirty = false,
   nearest = null,
-  moveId = -1,
-  lookId = -1,
   moveStart = null,
   lookLast = null,
   mobileRun = false;
+let wasPointerLocked = false;
+const movePointer = createPointerOwner(),
+  lookPointer = createPointerOwner(),
+  runPointer = createPointerOwner();
+let lastPointerType = "mouse";
 let noticeUntil = 0,
   saveAt = 0,
   lastCell = -1,
@@ -84,6 +109,7 @@ let investigation = null, nextFlicker = 0, flickerUntil = 0;
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const touch =
   matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
+lastPointerType = touch ? "touch" : "mouse";
 const px = (t) => String(t).padStart(2, "0");
 const clock = (t) => px(Math.floor(t / 60)) + ":" + px(Math.floor(t % 60));
 const pad = (i) => String(i + 1).padStart(2, "0");
@@ -97,16 +123,10 @@ function read(k) {
 }
 function saved() {
   const s = read(SAVE);
-  return s?.v === 1 &&
-    Number.isInteger(s.ch) &&
-    s.ch >= 0 &&
-    s.ch < 4 &&
-    Array.isArray(s.found) &&
-    s.found.length === 3
-    ? s
-    : null;
+  return normalizeCampaign(s);
 }
 function save() {
+  if (!level) return;
   try {
     localStorage.setItem(
       SAVE,
@@ -115,30 +135,37 @@ function save() {
   } catch { /* Browser storage or pointer lock is optional. */ }
 }
 const PREFS = "waldo.preferences.v1";
-/** 허브와 같은 전역 소리 설정을 읽고 씁니다(허브에서 끄면 여기서도 꺼진 채 시작). */
-function applyMute(next) {
-  muted = next;
-  sound.setMute(muted);
+function syncAudioButtons() {
   for (const b of [$("sound"), $("gsound")]) {
     b.setAttribute("aria-pressed", String(!muted));
     b.querySelector("span").textContent = muted ? "소리 꺼짐" : "소리 켜짐";
   }
 }
+function applyMute(next) {
+  muted = Boolean(next);
+  sound.setMute(muted);
+  if (!muted && !["home", "load"].includes(state)) void sound.start();
+  syncAudioButtons();
+}
 function toggleAudio() {
   applyMute(!muted);
   try {
-    const saved = JSON.parse(localStorage.getItem(PREFS) || "{}");
-    localStorage.setItem(PREFS, JSON.stringify({ ...saved, sound: !muted }));
-  } catch { /* Browser storage or pointer lock is optional. */ }
+    // Share audio with the hub and retain the legacy game key for migration.
+    const stored = read(PREFS);
+    const preferences = stored && typeof stored === "object" && !Array.isArray(stored) ? stored : {};
+    localStorage.setItem(PREFS, JSON.stringify({ ...preferences, sound: !muted }));
+    localStorage.setItem("rt-silent", JSON.stringify(muted));
+  } catch { /* Browser storage is optional. */ }
 }
-applyMute(read(PREFS)?.sound === false);
+applyMute(initialMute(read("rt-silent"), read(PREFS)));
 $("sound").onclick = $("gsound").onclick = toggleAudio;
-// 다른 탭(허브)에서 소리 설정을 바꾸면 바로 따라갑니다.
 window.addEventListener("storage", (e) => {
-  if (e.key === PREFS) applyMute(read(PREFS)?.sound === false);
+  if (e.key === PREFS || (e.key === "rt-silent" && read(PREFS)?.sound === undefined))
+    applyMute(initialMute(read("rt-silent"), read(PREFS)));
 });
 function screens(id) {
   for (const key of ["home", "game"]) $(key).hidden = key !== id;
+  if (id === "game") showSceneOnce();
 }
 function homepage() {
   state = "home";
@@ -152,14 +179,18 @@ function homepage() {
   $("continue").textContent = s
     ? "이어하기 · " + pad(s.ch) + "구역"
     : "이어하기";
-  $("completion").textContent = read(LAST)
-    ? "최근 탈출 기록  " + clock(read(LAST).elapsed)
+  const completed = read(LAST);
+  $("completion").textContent = Number.isFinite(completed?.elapsed) && completed.elapsed >= 0
+    ? "최근 탈출 기록  " + clock(completed.elapsed)
     : "";
 }
 function clearInputs() {
   keys.clear();
   pointer.x = pointer.y = 0;
-  moveId = lookId = -1;
+  movePointer.clear();
+  lookPointer.clear();
+  runPointer.clear();
+  moveStart = lookLast = null;
   mobileRun = false;
   $("stickknob").style.transform = "";
 }
@@ -168,7 +199,7 @@ function leaveLook() {
   if (document.pointerLockElement) document.exitPointerLock();
 }
 function lockLook() {
-  if (touch || !renderer) return;
+  if (state !== "play" || lastPointerType !== "mouse" || !renderer || document.pointerLockElement) return;
   try {
     const p = renderer.domElement.requestPointerLock?.();
     p?.catch(() => {});
@@ -197,13 +228,14 @@ function modal(title, description, body, actions, type = "panel") {
     $("panelActions").append(b);
   }
   $("panelTitle").focus({ preventScroll: true });
+  showSceneOnce();
 }
 function resume() {
   state = "play";
   $("dialog").hidden = true;
   sound.pause(false);
-  lockLook();
   last = performance.now();
+  scheduleFrame();
   $("viewWrap").focus({ preventScroll: true });
 }
 function guide(fromHome = false) {
@@ -253,6 +285,19 @@ function pauseGame() {
 }
 $("pauseGame").onclick = pauseGame;
 async function setup() {
+  // Start the 4.5 MB binary request before dynamic imports and WebGL setup.
+  // Both requests remain optional until a player chooses to start.
+  const monsterBinary = !model ? modelBytes() : null;
+  // Attach the rejection handler immediately: imports can outlast a failed
+  // fetch, and a rejected download should not become an unhandled rejection.
+  if (monsterBinary) void monsterBinary.catch(() => {});
+  try {
+    await loadEngine();
+  } catch (error) {
+    releaseModelBytes();
+    throw error;
+  }
+  if (!player) player = new THREE.Vector3();
   if (!renderer) {
     renderer = new THREE.WebGLRenderer({
       antialias: true,
@@ -263,9 +308,6 @@ async function setup() {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.08;
     $("viewWrap").prepend(renderer.domElement);
-    renderer.domElement.addEventListener("click", () => {
-      if (state === "play") lockLook();
-    });
     renderer.domElement.addEventListener("webglcontextlost", (e) => {
       e.preventDefault();
       save();
@@ -279,7 +321,13 @@ async function setup() {
     });
   }
   if (!model) {
-    const gltf = await new GLTFLoader().parseAsync(await modelBytes(), "");
+    let gltf;
+    try {
+      gltf = await new GLTFLoader().parseAsync(await monsterBinary, "");
+    } finally {
+      // Free the binary after decoding, including on parse failure.
+      releaseModelBytes();
+    }
     model = gltf.scene;
     fixMonster(THREE, model);
     model.traverse((o) => {
@@ -301,13 +349,8 @@ async function setup() {
           offset: offset + (side === "L" ? 0 : Math.PI), knee: name === "Shin"});
       }
     }
-    renderCaptureShot = createCaptureShot(THREE, model);
     mixer = new THREE.AnimationMixer(model);
     if (gltf.animations.length) mixer.clipAction(gltf.animations[0]).play();
-  }
-  if (!frameStarted) {
-    frameStarted = true;
-    requestAnimationFrame(frame);
   }
 }
 function xy(cell) {
@@ -347,6 +390,7 @@ function pointPlayer() {
   const p = xy(level.start);
   const next = xy(neighbors(level.map, level.start)[0]);
   player.set(p.x + (next.x - p.x) * 0.38, 1.58, p.z + (next.z - p.z) * 0.38);
+  camera.position.copy(player);
   yaw = Math.atan2(-(next.x - p.x), -(next.z - p.z));
   pitch = 0;
   camera.rotation.set(0, yaw, 0, "YXZ");
@@ -389,6 +433,7 @@ function resize() {
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h, false);
+  showSceneOnce();
 }
 window.addEventListener("resize", resize);
 function disposeGroup(root) {
@@ -555,6 +600,7 @@ function makeHidingSpots() {
     reserved.every((other) => pathsDistXZ(cell, other) > 2),
   );
   const selected = [];
+  let spotKit;
   for (const cell of candidates) {
     if (selected.some((other) => pathsDistXZ(cell, other) < 5)) continue;
     const x = cell % level.w, z = Math.floor(cell / level.w);
@@ -570,7 +616,8 @@ function makeHidingSpots() {
     root.rotation.y = Math.atan2(dx, dz);
     props.add(root);
     const kind = (selected.length - 1) % 4;
-    buildHidingSpot(THREE, root, kind);
+    if (!spotKit) spotKit = createHidingSpotKit(THREE);
+    buildHidingSpot(THREE, root, kind, spotKit);
     const caption = ["옷장에 숨기", "침대 밑에 숨기", "커튼 뒤에 숨기", "책상 밑에 숨기"][kind];
     hidingSpots.push({ type: "hide", cell, root, dx, dz, caption });
   }
@@ -646,6 +693,8 @@ function loadScene() {
   investigation = null;
   nextFlicker = now + 18 + Math.random() * 25;
   makeHidingSpots();
+  // Static interaction index, rebuilt only when the chapter changes.
+  interactables = items.concat(hidingSpots);
   entity = new THREE.Group();
   entity.add(model);
   scene.add(entity);
@@ -655,6 +704,7 @@ function loadScene() {
   resize();
   sound.ambience(ch);
   renderHUD();
+  showSceneOnce();
 }
 async function start(cont) {
   if (opening) return;
@@ -667,9 +717,11 @@ async function start(cont) {
   $("panelBody").replaceChildren();
   $("panelActions").replaceChildren();
   try {
-    await sound.start();
-    sound.setMute(muted);
-    await setup();
+    // Queue the model fetch and engine imports before the synchronous audio
+    // graph construction; otherwise Sound.build() delays the first network request.
+    const setupPromise = setup();
+    void sound.start();
+    await setupPromise;
     const s = cont ? saved() : null;
     ch = s?.ch ?? 0;
     found = s?.found ?? [false, false, false];
@@ -745,11 +797,14 @@ function refreshGuide() {
     : total() === 3
       ? [level.start]
       : level.items.filter((_, i) => !found[i]);
-  // Compare distances along the corridors so walls don't make a distant target look close.
-  for (const [i, target] of targets.entries()) {
-    const candidate = route(level.map, cell, target);
-    if (i === 0 || candidate.length < guidePath.length) guidePath = candidate;
+  // One shortest-path tree per cell instead of three BFS traversals.
+  const tree = paths(level.map, cell);
+  let nearestGoal = -1;
+  for (const target of targets) {
+    if (tree.dist[target] >= 0 &&
+      (nearestGoal < 0 || tree.dist[target] < tree.dist[nearestGoal])) nearestGoal = target;
   }
+  guidePath = nearestGoal < 0 ? [] : routeFrom(tree, cell, nearestGoal);
   const guideLabel = solved ? "출구" : total() === 3 ? chapters[ch].station : chapters[ch].item;
   $("guideTextLabel").textContent = guideLabel + (guidePath.length ? " 방향" : " 주변");
   drawGuide();
@@ -829,9 +884,9 @@ function drawMap(canvas) {
   ctx.fill();
   ctx.restore();
 }
-function mapPanel(fromBrief = false) {
-  if (!fromBrief && state !== "play") return;
-  returnFromMap = fromBrief ? brief : resume;
+function mapPanel(fromBrief = false, returnAction = null) {
+  if (!fromBrief && !returnAction && state !== "play") return;
+  returnFromMap = returnAction ?? (fromBrief ? brief : resume);
   modal(
     "시설 도면",
     chapters[ch].location + " · " + chapters[ch].goal,
@@ -1021,22 +1076,7 @@ function interact() {
       puzzle();
       return;
     }
-    modal(
-      c.station,
-      "세 개의 " + c.item + "를 회수하면 장치를 복구할 수 있습니다.",
-      notes,
-      [
-        [
-          "도면 보기",
-          () => {
-            state = "play";
-            mapPanel();
-          },
-        ],
-        ["닫기", resume, true],
-      ],
-      "station",
-    );
+    showStation();
   } else if (!solved) {
     message("문이 잠겼습니다. " + c.station + "에서 신호를 먼저 복원하세요.");
   } else if (ch < 3) {
@@ -1070,14 +1110,39 @@ function interact() {
     );
   }
 }
+function showStation() {
+  const c = chapters[ch];
+  modal(
+    c.station,
+    "세 개의 " + c.item + "를 회수하면 장치를 복구할 수 있습니다.",
+    notes,
+    [
+      ["도면 보기", () => mapPanel(false, showStation)],
+      ["닫기", resume, true],
+    ],
+    "station",
+  );
+}
 $("act").onclick = interact;
 function caught() {
+  // Cloning the complete skinned monster is expensive and unnecessary until caught.
+  if (!renderCaptureShot) {
+    try {
+      renderCaptureShot = createCaptureShot(THREE, model);
+    } catch (error) {
+      console.warn("Optional capture portrait unavailable", error);
+      save();
+      caughtModal();
+      return;
+    }
+  }
   state = "capture";
   leaveLook();
   captureTime = 0;
   $("viewWrap").classList.add("caught-shot");
   save();
   sound.caught();
+  scheduleFrame();
 }
 function caughtModal() {
   modal(
@@ -1265,9 +1330,9 @@ function update(dt) {
   );
   moved = Math.hypot(player.x - oldX, player.z - oldZ);
   stepAt += moved;
-  if (stepAt > (running ? 1.02 : 0.86)) {
+  if (stepAt >= (running ? 1.02 : 0.86)) {
     sound.step(running, crouched);
-    stepAt = 0;
+    stepAt %= running ? 1.02 : 0.86;
   }
   if (hiddenSpot) {
     hideBreath = Math.max(0, hideBreath - dt / 18);
@@ -1302,7 +1367,7 @@ function update(dt) {
   }
   nearest = null;
   let reach = 2.16;
-  for (const o of [...items, ...hidingSpots]) {
+  for (const o of interactables) {
     if (!o.root.visible) continue;
     const q = o.root.position,
       d = Math.hypot(q.x - player.x, q.z - player.z);
@@ -1323,18 +1388,28 @@ function update(dt) {
         : chapters[ch].station + " 확인"
     : "";
   $("prompt").hidden = !caption;
-  $("promptText").textContent = caption;
-  $("act").disabled = !nearest && !hiddenSpot;
+  if ($("promptText").textContent !== caption) $("promptText").textContent = caption;
+  if ($("act").disabled !== (!nearest && !hiddenSpot)) $("act").disabled = !nearest && !hiddenSpot;
   $("stamina").style.transform = "scaleX(" + (hiddenSpot ? hideBreath : stamina).toFixed(3) + ")";
-  $("timer").textContent = clock(elapsed);
-  if (now > noticeUntil) $("toast").textContent = "";
+  const timeLabel = clock(elapsed);
+  if ($("timer").textContent !== timeLabel) $("timer").textContent = timeLabel;
+  if (now > noticeUntil && $("toast").textContent) $("toast").textContent = "";
   if (now > saveAt) {
     save();
     saveAt = now + 12;
   }
 }
+function scheduleFrame() {
+  if (frameId !== null || !scene || !renderer || document.hidden || $("game").hidden) return;
+  if (state !== "play" && state !== "capture" && !sceneDirty) return;
+  frameId = requestAnimationFrame(frame);
+}
+function showSceneOnce() {
+  sceneDirty = true;
+  scheduleFrame();
+}
 function frame(ts) {
-  requestAnimationFrame(frame);
+  frameId = null;
   const dt = Math.min(0.075, Math.max(0, (ts - last) / 1000));
   last = ts;
   now = ts / 1000;
@@ -1352,12 +1427,15 @@ function frame(ts) {
     }
   } else if (wasPlaying) {
     renderer.render(scene, camera);
-  } else if (["brief", "loading"].includes(state)) {
-    camera.position.copy(player);
+  } else if (sceneDirty && !["error", "load"].includes(state)) {
     renderer.render(scene, camera);
   }
+  sceneDirty = false;
+  scheduleFrame();
 }
 document.addEventListener("keydown", (e) => {
+  if (e.isComposing) return;
+  if (e.target instanceof HTMLButtonElement && ["Space", "Enter"].includes(e.code)) return;
   if (
     e.target instanceof HTMLInputElement ||
     e.target instanceof HTMLSelectElement
@@ -1393,54 +1471,72 @@ document.addEventListener("keydown", (e) => {
   }
 });
 document.addEventListener("keyup", (e) => keys.delete(e.code));
-// 포인터 고정 중의 Esc 는 브라우저가 먼저 가로채 키 이벤트로 오지 않습니다. 고정이 풀리면 일시정지로 이어 줍니다.
-let wasLocked = false;
-document.addEventListener("pointerlockchange", () => {
-  const locked = Boolean(document.pointerLockElement);
-  if (wasLocked && !locked && state === "play") pauseGame();
-  wasLocked = locked;
-});
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden && state === "play") pauseGame();
-});
-// 허브로 돌아가거나 탭을 닫을 때 저장하고 그래픽·소리를 바로 풀어 이동이 늦어지지 않게 합니다.
-window.addEventListener("pagehide", (e) => {
-  try {
-    if (e.persisted) { if (state === "play") pauseGame(); return; } // 뒤로가기 캐시로 남는 경우엔 그대로 둡니다
-    if (state === "play" || state === "pause") save();
-    sound.pause(true);
-    renderer?.setAnimationLoop?.(null);
-    renderer?.dispose();
-  } catch { /* 떠나는 중이므로 실패해도 무시 */ }
-});
-window.addEventListener("blur", () => {
+function backgroundSession() {
   if (state === "play") pauseGame();
+  else if (state === "puzzle" || state === "capture") sound.pause(true);
+  if (level && !["home", "won", "load", "error"].includes(state)) save();
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    backgroundSession();
+    if (frameId !== null) cancelAnimationFrame(frameId);
+    frameId = null;
+  } else {
+    last = performance.now();
+    if (state === "puzzle" && document.hasFocus()) sound.pause(false);
+    showSceneOnce();
+  }
+});
+window.addEventListener("blur", backgroundSession);
+window.addEventListener("focus", () => {
+  if (!document.hidden && state === "puzzle") sound.pause(false);
+});
+window.addEventListener("pagehide", (e) => {
+  if (e.persisted) {
+    backgroundSession();
+    return;
+  }
+  if (level && !["home", "won", "load", "error"].includes(state)) save();
+  sound.pause(true);
+  if (frameId !== null) cancelAnimationFrame(frameId);
+  frameId = null;
+  renderer?.setAnimationLoop?.(null);
+  renderer?.dispose();
+});
+window.addEventListener("pageshow", (e) => {
+  if (e.persisted && renderer) {
+    last = performance.now();
+    resize();
+    showSceneOnce();
+  }
 });
 function look(dx, dy) {
   if (hiddenSpot) return;
-  yaw -= dx * 0.00245;
+  if (!Number.isFinite(dx) || !Number.isFinite(dy)) return;
+  yaw = Math.atan2(Math.sin(yaw - dx * 0.00245), Math.cos(yaw - dx * 0.00245));
   pitch = THREE.MathUtils.clamp(pitch - dy * 0.0022, -1.18, 1.18);
 }
 document.addEventListener("mousemove", (e) => {
-  if (state === "play" && document.pointerLockElement)
+  if (state === "play" && renderer && document.pointerLockElement === renderer.domElement)
     look(e.movementX, e.movementY);
 });
 const wrap = $("viewWrap");
 wrap.addEventListener("pointerdown", (e) => {
-  if (
-    state !== "play" ||
-    e.target.tagName !== "CANVAS" ||
-    document.pointerLockElement
-  )
-    return;
-  lookId = e.pointerId;
+  if (state !== "play" || !renderer || e.target !== renderer.domElement ||
+      document.pointerLockElement) return;
+  lastPointerType = e.pointerType || "mouse";
+  if (lastPointerType === "mouse") lockLook();
+  if (!lookPointer.claim(e.pointerId)) return;
   lookLast = [e.clientX, e.clientY];
-  wrap.setPointerCapture(e.pointerId);
+  if (!tryCapture(wrap, e.pointerId)) {
+    lookPointer.release(e.pointerId);
+    lookLast = null;
+  }
 });
 wrap.addEventListener("pointermove", (e) => {
   if (
     state === "play" &&
-    e.pointerId === lookId &&
+    lookPointer.owns(e.pointerId) &&
     lookLast &&
     !document.pointerLockElement
   ) {
@@ -1450,22 +1546,22 @@ wrap.addEventListener("pointermove", (e) => {
 });
 for (const n of ["pointerup", "pointercancel"])
   wrap.addEventListener(n, (e) => {
-    if (e.pointerId === lookId) {
-      lookId = -1;
-      lookLast = null;
-    }
+    if (lookPointer.release(e.pointerId)) lookLast = null;
   });
 const stick = $("stick");
 stick.addEventListener("pointerdown", (e) => {
-  if (state !== "play") return;
-  moveId = e.pointerId;
+  if (state !== "play" || !movePointer.claim(e.pointerId)) return;
   const b = stick.getBoundingClientRect();
   moveStart = [b.left + b.width / 2, b.top + b.height / 2];
-  stick.setPointerCapture(moveId);
+  if (!tryCapture(stick, e.pointerId)) {
+    movePointer.release(e.pointerId);
+    moveStart = null;
+    return;
+  }
   stickMove(e);
 });
 function stickMove(e) {
-  if (e.pointerId !== moveId || !moveStart) return;
+  if (!movePointer.owns(e.pointerId) || !moveStart) return;
   let x = (e.clientX - moveStart[0]) / 36,
     y = (e.clientY - moveStart[1]) / 36;
   const a = Math.max(1, Math.hypot(x, y));
@@ -1476,16 +1572,28 @@ function stickMove(e) {
 }
 stick.addEventListener("pointermove", stickMove);
 for (const n of ["pointerup", "pointercancel", "lostpointercapture"])
-  stick.addEventListener(n, () => {
-    moveId = -1;
+  stick.addEventListener(n, (e) => {
+    if (!movePointer.release(e.pointerId)) return;
+    moveStart = null;
     pointer.x = pointer.y = 0;
     $("stickknob").style.transform = "";
   });
 $("run").addEventListener("pointerdown", (e) => {
+  if (state !== "play" || !runPointer.claim(e.pointerId)) return;
+  if (!tryCapture($("run"), e.pointerId)) {
+    runPointer.release(e.pointerId);
+    return;
+  }
   mobileRun = true;
-  $("run").setPointerCapture(e.pointerId);
 });
 for (const n of ["pointerup", "pointercancel", "lostpointercapture"])
-  $("run").addEventListener(n, () => (mobileRun = false));
+  $("run").addEventListener(n, (e) => {
+    if (runPointer.release(e.pointerId)) mobileRun = false;
+  });
+document.addEventListener("pointerlockchange", () => {
+  const locked = Boolean(renderer && document.pointerLockElement === renderer.domElement);
+  if (wasPointerLocked && !locked && state === "play") pauseGame();
+  wasPointerLocked = locked;
+});
 document.body.classList.toggle("touch", touch);
 homepage();

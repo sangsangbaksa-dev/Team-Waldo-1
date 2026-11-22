@@ -70,11 +70,24 @@ export class Sound {
 
   async start() {
     const Audio = globalThis.AudioContext || globalThis.webkitAudioContext;
-    if (!Audio) return;
+    if (!Audio || this.muted) return;
     try {
       if (!this.ctx) {
         this.ctx = new Audio({ latencyHint: "interactive" });
-        this.build();
+        try {
+          this.build();
+        } catch (error) {
+          // A partially built WebAudio graph cannot be reused on the next
+          // gesture. Close it and permit a clean retry after a transient error.
+          const failed = this.ctx;
+          this.ctx = null;
+          this.level = null;
+          this.mix = null;
+          this.radio = null;
+          this.breath = null;
+          try { await failed.close(); } catch { /* Audio is optional. */ }
+          throw error;
+        }
       }
       if (this.ctx.state === "suspended") {
         if (!this.waking)
@@ -166,6 +179,10 @@ export class Sound {
   setMute(muted) {
     this.muted = Boolean(muted);
     this.applyLevel();
+    if (this.muted) {
+      if (this.clock !== null) globalThis.clearInterval(this.clock);
+      this.clock = null;
+    } else if (!this.paused) this.startClock();
   }
 
   pause(paused) {
@@ -183,7 +200,7 @@ export class Sound {
   }
 
   startClock() {
-    if (this.clock !== null) return;
+    if (this.clock !== null || !this.ready()) return;
     this.clock = globalThis.setInterval(() => this.tick(), 210);
   }
 

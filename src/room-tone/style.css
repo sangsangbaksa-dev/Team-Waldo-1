@@ -339,8 +339,13 @@ input[type="range"] {
   overflow: hidden;
 }
 #viewWrap {
+  z-index: 0;
   touch-action: none;
   background: #121b19;
+}
+/* Keep all HUD actions above the full-screen WebGL canvas in mobile WebKit. */
+#game > :is(.hud, .gear, .statusfoot, .touchactions, #stick, #prompt, #toast) {
+  z-index: 1;
 }
 #viewWrap canvas {
   width: 100%;
@@ -874,7 +879,7 @@ button.primary { background: #e1e1dd; border-color: #e1e1dd; color: #151515; }
 }
 .hudleft span, .hudleft strong, .hudright button { color: #fff; text-shadow: 0 1px 4px #000; }
 
-/* 대비 보강: 구역명·목표·하단 안내가 어두운 장면 위에서도 읽히도록 글자를 키우고 받침을 깝니다. */
+/* Strong contrast keeps the game HUD readable without lightening the world. */
 .hud { background: linear-gradient(#050807f0, #050807a0 55%, transparent); }
 .hudleft { background: #050807a8; padding: 0.45rem 0.8rem 0.5rem; border-left: 2px solid #dec099; border-radius: 0 4px 4px 0; }
 .hudleft span { color: #f2d9b2; font-size: 0.92rem; }
@@ -885,3 +890,18 @@ button.primary { background: #e1e1dd; border-color: #e1e1dd; color: #151515; }
 #prompt { color: #fff; background: #0b1512f2; border-color: #9fb5a4; }
 .wordmark { color: inherit; text-decoration: none; }
 .wordmark:hover, .wordmark:focus-visible { text-decoration: underline; text-underline-offset: 4px; }
+
+/* Touch controls must be easy to hit without making the play area brighter. */
+@media (pointer: coarse) {
+  .hudright button {
+    min-width: 44px;
+    min-height: 44px;
+    white-space: nowrap;
+  }
+  .gear button { min-height: 44px; }
+  .touchactions button { min-height: 52px; }
+  #prompt {
+    max-width: calc(100vw - 1.5rem);
+    white-space: normal;
+  }
+}

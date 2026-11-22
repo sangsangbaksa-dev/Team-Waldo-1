@@ -26,6 +26,7 @@ import { normalizeCampaign } from "./campaign.mjs";
 import { createPointerOwner, tryCapture } from "./input.mjs";
 import { initialMute, reduceRoomToneMotion } from "./preferences.mjs";
 import { createIdLookup } from "./dom.mjs";
+import { lineOfSight, moveWithCollision } from "./collision.mjs";
 import { renderingScale } from "./render-quality.mjs";
 
 const $ = createIdLookup(document),
@@ -378,32 +379,11 @@ function xy(cell) {
 function cellOf(v) {
   return Math.round(v.z / C) * level.w + Math.round(v.x / C);
 }
-function pass(x, z) {
-  const col = Math.floor(x / C + 0.5),
-    row = Math.floor(z / C + 0.5);
-  return level.map[row]?.[col] === ".";
-}
 function clearLine(a, b) {
-  const len = Math.hypot(a.x - b.x, a.z - b.z),
-    steps = Math.ceil(len / 0.42);
-  for (let i = 1; i < steps; i++) {
-    const t = i / steps;
-    if (!pass(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t)) return false;
-  }
-  return true;
+  return lineOfSight(level.map, C, a, b);
 }
 function shift(dx, dz) {
-  const r = 0.225;
-  function space(x, z) {
-    return (
-      pass(x - r, z - r) &&
-      pass(x + r, z - r) &&
-      pass(x - r, z + r) &&
-      pass(x + r, z + r)
-    );
-  }
-  if (space(player.x + dx, player.z)) player.x += dx;
-  if (space(player.x, player.z + dz)) player.z += dz;
+  moveWithCollision(level.map, C, player, dx, dz);
 }
 function pointPlayer() {
   const p = xy(level.start);

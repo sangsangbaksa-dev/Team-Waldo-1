@@ -493,7 +493,10 @@ export class ShooterView {
     const pos = this.sparks.geometry.attributes.position as THREE.BufferAttribute, col = this.sparks.geometry.attributes.color as THREE.BufferAttribute;
     for (let i = this.sparkData.length - 1; i >= 0; i--) { const s = this.sparkData[i]; s.life -= dt; s.vy -= 9 * dt; s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt; if (s.y < 0.02) { s.y = 0.02; s.vy *= -0.3; s.vx *= 0.6; s.vz *= 0.6; } if (s.life <= 0) this.sparkData.splice(i, 1); }
     this.sparkData.forEach((s, i) => { pos.setXYZ(i, s.x, s.y, s.z); const k = Math.min(1, s.life * 2.5); col.setXYZ(i, s.r * k, s.g * k, s.b * k); });
-    this.sparks.geometry.setDrawRange(0, this.sparkData.length); pos.needsUpdate = true; col.needsUpdate = true;
+    const active = this.sparkData.length;
+    if (this.sparks.geometry.drawRange.count !== active) this.sparks.geometry.setDrawRange(0, active);
+    // No particle buffers need uploading when every spark has faded out.
+    if (active) { pos.needsUpdate = true; col.needsUpdate = true; }
   }
 
   // ---------- 1인칭 총 ----------

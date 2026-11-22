@@ -80,9 +80,12 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
     const cell = (e: PointerEvent | MouseEvent) => { const r = canvas.getBoundingClientRect(); return { x: Math.floor((e.clientX - r.left) / r.width * 12), y: Math.floor((e.clientY - r.top) / r.height * 20) }; };
     const legal = (p: { x: number; y: number }) => p.y >= (side ? 0 : 10) && p.y < (side ? 10 : 20) && p.x >= 0 && p.x < 12;
     const announce = (text: string) => { const status = root.querySelector('#sq-kb-pos'); if (status) status.textContent = text; };
+    const activeCanvas = () => stage === 'deploy' && canvas.isConnected;
+    let captured = false;
     // Keyboard deployment is independent of pointer capture and follows the same
     // budget, team-zone and occupancy rules as mouse/touch deployment.
     canvas.onkeydown = e => {
+      if (!activeCanvas()) return;
       const moves: Record<string, [number, number]> = {
         ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
       };
@@ -110,14 +113,28 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
         audio.place(); render(); announce(`${p.x + 1}열 ${p.y + 1}행 ${UNITS[selected].name} 배치됨`);
       } else announce(`${p.x + 1}열 ${p.y + 1}행 빈 칸입니다.`);
     };
-    canvas.oncontextmenu = e => { e.preventDefault(); const p = cell(e), before = armies[side]!; const next = before.filter(u => u.x !== p.x || u.y !== p.y); if (next.length === before.length) return; armies[side] = next; audio.remove(); render(); };
-    canvas.onpointerdown = e => { if (e.button !== 0 || drag) return; const p = cell(e); if (!legal(p)) { toast(side ? '위쪽 진영에만 배치할 수 있어요' : '아래쪽 아군 진영에만 배치할 수 있어요'); return; } drag = { ...p, pointerId: e.pointerId }; canvas.setPointerCapture(e.pointerId); };
-    canvas.onpointermove = e => { if (drag && drag.pointerId !== e.pointerId) return; const next = cell(e); if (next.x < 0 || next.x >= 12 || next.y < 0 || next.y >= 20) { if (hover) { hover = null; draw(canvas, armies, side, null, UNITS[selected].range, null, selected); } return; } if (hover?.x === next.x && hover?.y === next.y) return; hover = next; draw(canvas, armies, side, null, UNITS[selected].range, hover, selected); };
-    canvas.onpointerleave = e => { if (drag && drag.pointerId !== e.pointerId) return; hover = null; draw(canvas, armies, side, null, UNITS[selected].range, null); };
-    canvas.onpointercancel = e => { if (drag?.pointerId !== e.pointerId) return; drag = null; hover = null; draw(canvas, armies, side, null, UNITS[selected].range, null); };
-    canvas.onlostpointercapture = e => { if (drag?.pointerId === e.pointerId) drag = null; };
+    canvas.oncontextmenu = e => { e.preventDefault(); if (!activeCanvas()) return; const p = cell(e), before = armies[side]!; const next = before.filter(u => u.x !== p.x || u.y !== p.y); if (next.length === before.length) return; armies[side] = next; audio.remove(); render(); };
+    canvas.onpointerdown = e => {
+      if (!activeCanvas() || e.button !== 0 || drag) return;
+      const p = cell(e);
+      if (!legal(p)) { toast(side ? '위쪽 진영에만 배치할 수 있어요' : '아래쪽 아군 진영에만 배치할 수 있어요'); return; }
+      captured = false;
+      try { canvas.setPointerCapture?.(e.pointerId); captured = !!canvas.setPointerCapture; }
+      catch { /* Some trackpads may deny capture: clicks still work on canvas. */ }
+      drag = { ...p, pointerId: e.pointerId };
+    };
+    canvas.onpointermove = e => { if (!activeCanvas() || (drag && drag.pointerId !== e.pointerId)) return; const next = cell(e); if (next.x < 0 || next.x >= 12 || next.y < 0 || next.y >= 20) { if (hover) { hover = null; draw(canvas, armies, side, null, UNITS[selected].range, null, selected); } return; } if (hover?.x === next.x && hover?.y === next.y) return; hover = next; draw(canvas, armies, side, null, UNITS[selected].range, hover, selected); };
+    canvas.onpointerleave = e => {
+      if (!activeCanvas() || (drag && drag.pointerId !== e.pointerId)) return;
+      if (drag && !captured) drag = null; // No pointer capture: avoid a stuck drag.
+      hover = null; draw(canvas, armies, side, null, UNITS[selected].range, null);
+    };
+    canvas.onpointercancel = e => { if (drag?.pointerId !== e.pointerId) return; drag = null; captured = false; hover = null; if (activeCanvas()) draw(canvas, armies, side, null, UNITS[selected].range, null); };
+    canvas.onlostpointercapture = e => { if (drag?.pointerId === e.pointerId) { drag = null; captured = false; } };
     canvas.onpointerup = e => {
       if (!drag || drag.pointerId !== e.pointerId) return;
+      if (!activeCanvas()) { drag = null; captured = false; return; }
+      captured = false;
       const before = armies[side]!.length;
       const p = cell(e), from = armies[side]!.find(u => u.x === drag!.x && u.y === drag!.y);
       let changed = false;

@@ -375,3 +375,48 @@ it('announces battlefield survivor counts without flooding screen readers every 
   expect(status.textContent).toBe(announced); // Under five seconds: no repeated announcement.
   button('#pause').click(); button('#exit').click();
 });
+
+it('does not apply old-canvas pointer events after a deployment render', () => {
+  openSquad(vi.fn()); button('#start').click();
+  const stale = document.querySelector<HTMLCanvasElement>('#sq-field-canvas')!;
+  Object.defineProperty(stale, 'getBoundingClientRect', {
+    configurable: true, value: () => ({ left: 0, top: 0, width: 600, height: 1000 }),
+  });
+  Object.defineProperty(stale, 'setPointerCapture', { configurable: true, value: vi.fn() });
+  button('#auto').click(); // Replaces the original canvas.
+  const budget = document.querySelector('.sq-budget strong')?.textContent;
+  const emit = (type: string) => {
+    const e = new Event(type);
+    Object.assign(e, { pointerId: 1, button: 0, clientX: 300, clientY: 750 });
+    stale.dispatchEvent(e);
+  };
+  emit('pointerdown'); emit('pointerup'); emit('contextmenu');
+  expect(document.querySelector('.sq-budget strong')?.textContent).toBe(budget);
+  button('#pause').click(); button('#exit').click();
+});
+
+it('falls back safely when touch pointer capture is unavailable', () => {
+  openSquad(vi.fn()); button('#start').click();
+  let canvas = document.querySelector<HTMLCanvasElement>('#sq-field-canvas')!;
+  const prepare = (target: HTMLCanvasElement) => {
+    Object.defineProperty(target, 'getBoundingClientRect', {
+      configurable: true, value: () => ({ left: 0, top: 0, width: 600, height: 1000 }),
+    });
+    Object.defineProperty(target, 'setPointerCapture', {
+      configurable: true, value: vi.fn(() => { throw new Error('capture denied'); }),
+    });
+  };
+  const emit = (target: HTMLCanvasElement, type: string) => {
+    const e = new Event(type);
+    Object.assign(e, { pointerId: 5, button: 0, clientX: 250, clientY: 750 });
+    target.dispatchEvent(e);
+  };
+  prepare(canvas);
+  expect(() => { emit(canvas, 'pointerdown'); emit(canvas, 'pointerup'); }).not.toThrow();
+  expect(document.querySelector('.sq-budget strong')?.textContent).toContain('900');
+  canvas = document.querySelector<HTMLCanvasElement>('#sq-field-canvas')!;
+  prepare(canvas);
+  emit(canvas, 'pointerdown'); emit(canvas, 'pointerleave'); emit(canvas, 'pointerup');
+  expect(document.querySelector('.sq-budget strong')?.textContent).toContain('900');
+  button('#pause').click(); button('#exit').click();
+});

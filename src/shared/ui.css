@@ -67,3 +67,12 @@
 /* 문자 기호 대신 쓰는 작은 그림(shared/glyphs.ts) */
 .wd-ico { display: inline-block; width: 1em; height: 1em; vertical-align: -.16em; }
 .wd-rails-off > .wd-rail { display: none !important; }
+
+/* Rails: keep the main card centered if there is not enough space for side info. */
+@media (min-width: 1240px) {
+  html .wd-has-rails.wd-has-rails.wd-rails-off { grid-template-columns: minmax(0, 1fr); }
+  .wd-has-rails.wd-rails-off > :not(.wd-rail) { grid-column: 1; justify-self: center; }
+}
+.wd-art { background: linear-gradient(145deg, #25272a, #0c0e10 76%); }
+.wd-art img { color: transparent; }
+.wd-rail-note, .wd-card li, .wd-card-big { overflow-wrap: anywhere; }

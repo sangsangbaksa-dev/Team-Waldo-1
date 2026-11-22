@@ -31,7 +31,7 @@ const float NAPE_Y = 1.655;`;
     sh.fragmentShader = sh.fragmentShader
       .replace("#include <common>", head)
       .replace("#include <color_fragment>", `#include <color_fragment>
-float back = smoothstep(NAPE_Z + 0.025, NAPE_Z - 0.01, vRest.z) * smoothstep(NAPE_Y - 0.015, NAPE_Y + 0.02, vRest.y);
+float back = (1.0 - smoothstep(NAPE_Z - 0.01, NAPE_Z + 0.025, vRest.z)) * smoothstep(NAPE_Y - 0.015, NAPE_Y + 0.02, vRest.y);
 diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.035, 0.035, 0.04), back);`);
   };
   m.customProgramCacheKey = () => "nape";

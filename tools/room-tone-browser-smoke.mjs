@@ -43,7 +43,11 @@ try {
     });
     const page=await context.newPage();
     page.setDefaultTimeout(30000);
-    const errors=[],glb=[];
+    const errors=[],shaderErrors=[],glb=[];
+    page.on("console",message=>{
+      if(message.type()==="error" && /(?:WebGLProgram|VALIDATE_STATUS|shader error)/i.test(message.text()))
+        shaderErrors.push(message.text());
+    });
     page.on("pageerror",error=>errors.push(error.message));
     page.on("request",request=>{
       if(request.url().includes("room-tone.glb"))glb.push(request.url());
@@ -165,6 +169,7 @@ try {
       await page.getByRole("button",{name:"닫기"}).click();
       assert.equal(await page.locator("#dialog").isVisible(),false);
       assert.deepEqual(errors,[],"Unexpected browser exceptions");
+      assert.deepEqual(shaderErrors,[],"WebGL shader compilation must not emit errors");
       await page.screenshot({path:"browser-artifacts/room-tone-playing-"+config.name+".png",animations:"disabled"});
       results.push({device:config.name,status:"passed",modelRequests:glb.length});
       console.log("PASS ROOM TONE "+config.name);

@@ -59,6 +59,22 @@ describe('ZERO ZONE terrain texture source reuse', () => {
     expect(new Set(pads.map(t => t.repeat.x)).size).toBe(3);
   });
 
+  it('batches all nine dirt patches per town into two GPU draw calls', () => {
+    const terrain = new TerrainView(map(), false);
+    const batches = terrain.group.children.filter((o): o is THREE.InstancedMesh => o instanceof THREE.InstancedMesh);
+    expect(batches).toHaveLength(2);
+    expect(batches.reduce((n, mesh) => n + mesh.count, 0)).toBe(27);
+    expect(batches[0].geometry).toBe(batches[1].geometry);
+    for (const mesh of batches) {
+      const matrix = new THREE.Matrix4();
+      for (let i = 0; i < mesh.count; i++) {
+        mesh.getMatrixAt(i, matrix);
+        expect(matrix.elements.every(Number.isFinite)).toBe(true);
+      }
+      expect(mesh.boundingSphere).not.toBeNull();
+    }
+  });
+
   it('paints water once for river and ponds while each surface scrolls independently', () => {
     const terrain = new TerrainView(map(), true);
     expect(textures.waterTexture).toHaveBeenCalledTimes(1);

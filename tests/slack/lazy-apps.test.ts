@@ -170,3 +170,17 @@ it('visually marks powerless apps and offers a useful fallback without locking t
   off.dispose();
   off.el.remove();
 });
+
+it('lets keyboard and screen-reader users select each dorm music track', () => {
+  view.el.querySelector<HTMLButtonElement>('[data-app="music"]')!.click();
+  view.frame(0.1);
+  const tracks = Array.from(view.el.querySelectorAll<HTMLButtonElement>('[data-track]'));
+  expect(tracks).toHaveLength(4);
+  expect(tracks[0]?.tagName).toBe('BUTTON');
+  expect(tracks[0]?.getAttribute('aria-pressed')).toBe('true');
+  tracks[2]!.focus();
+  tracks[2]!.click();
+  expect(tracks[2]?.getAttribute('aria-pressed')).toBe('true');
+  expect(tracks[0]?.getAttribute('aria-pressed')).toBe('false');
+  expect(view.el.querySelector('[data-m-title]')?.textContent).toContain('느린 걸음');
+});

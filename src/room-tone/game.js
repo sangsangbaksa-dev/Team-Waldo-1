@@ -5,7 +5,6 @@ import { modelBytes } from "./assets.js";
 import { chapters, makeLevel, route, neighbors } from "./levels.mjs";
 import { buildEnvironment, buildHidingSpot } from "./environment.js";
 import { Sound } from "./sound.js";
-import { readSound, writeSound } from "../prefs";
 
 const $ = (id) => document.getElementById(id),
   C = 2.7,

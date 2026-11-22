@@ -44,23 +44,23 @@ export const makePost = (quality: string, renderer: THREE.WebGLRenderer, scene: 
 
 export class PostFx {
   private composer: EffectComposer; private bloom: UnrealBloomPass; private grade: ShaderPass; private blur: ShaderPass;
-  private sw = 0; private sh = 0;
+  private sw = 0; private sh = 0; private pr = 0;
   constructor(private renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera, o: PostOptions = {}) {
     const sz = renderer.getSize(new THREE.Vector2()), w = Math.max(1, sz.x), h = Math.max(1, sz.y); this.sw = w; this.sh = h;
     const pr = renderer.getPixelRatio(), target = new THREE.WebGLRenderTarget(w * pr, h * pr, { type: THREE.HalfFloatType, samples: 4 });
-    this.composer = new EffectComposer(renderer, target); this.composer.setPixelRatio(pr); this.composer.setSize(w, h);
+    this.pr = pr; this.composer = new EffectComposer(renderer, target); this.composer.setPixelRatio(pr); this.composer.setSize(w, h);
     this.composer.addPass(new RenderPass(scene, camera));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), o.strength ?? 0.5, o.radius ?? 0.6, o.threshold ?? 0.85); this.composer.addPass(this.bloom);
     this.blur = new ShaderPass(SpeedBlur); this.blur.enabled = false; this.composer.addPass(this.blur);
     this.grade = new ShaderPass(Grade); this.grade.uniforms.vig.value = o.vignette ?? 0.28; this.grade.uniforms.sat.value = o.saturation ?? 1.08; this.grade.uniforms.con.value = o.contrast ?? 1.06; this.composer.addPass(this.grade);
     this.composer.addPass(new OutputPass());
   }
-  setSize(w: number, h: number): void { this.composer.setPixelRatio(this.renderer.getPixelRatio()); this.composer.setSize(w, h); }
+  setSize(w: number, h: number): void { w = Math.max(1,w); h = Math.max(1,h); const pr = this.renderer.getPixelRatio(); if (w === this.sw && h === this.sh && pr === this.pr) return; if (pr !== this.pr) this.composer.setPixelRatio(pr); this.composer.setSize(w, h); this.sw=w; this.sh=h; this.pr=pr; }
   /** 속도 블러 세기(0 이면 패스를 끕니다). 0.02~0.06 이 적당합니다. */
-  setSpeedBlur(v: number): void { this.blur.enabled = v > 0.004; this.blur.uniforms.amt.value = v; }
+  setSpeedBlur(v: number): void { const amount = Number.isFinite(v) ? Math.max(0, Math.min(0.15, v)) : 0; this.blur.enabled = amount > 0.004; this.blur.uniforms.amt.value = amount; }
   setCamera(camera: THREE.Camera): void { (this.composer.passes[0] as RenderPass).camera = camera; }
   setScene(scene: THREE.Scene): void { (this.composer.passes[0] as RenderPass).scene = scene; }
-  set(o: PostOptions): void { if (o.strength !== undefined) this.bloom.strength = o.strength; if (o.threshold !== undefined) this.bloom.threshold = o.threshold; if (o.vignette !== undefined) this.grade.uniforms.vig.value = o.vignette; }
-  render(dt: number): void { this.grade.uniforms.time.value = (this.grade.uniforms.time.value + dt * 60) % 997; const sz = this.renderer.getSize(_v); if (sz.x !== this.sw || sz.y !== this.sh) { this.sw = sz.x; this.sh = sz.y; this.setSize(sz.x, sz.y); } this.composer.render(dt); }
+  set(o: PostOptions): void { if (o.strength !== undefined) this.bloom.strength = o.strength; if (o.threshold !== undefined) this.bloom.threshold = o.threshold; if (o.radius !== undefined) this.bloom.radius = o.radius; if (o.vignette !== undefined) this.grade.uniforms.vig.value = o.vignette; if (o.saturation !== undefined) this.grade.uniforms.sat.value = o.saturation; if (o.contrast !== undefined) this.grade.uniforms.con.value = o.contrast; }
+  render(dt: number): void { this.grade.uniforms.time.value = (this.grade.uniforms.time.value + dt * 60) % 997; const sz = this.renderer.getSize(_v); if (sz.x !== this.sw || sz.y !== this.sh || this.renderer.getPixelRatio() !== this.pr) this.setSize(sz.x, sz.y); this.composer.render(dt); }
   dispose(): void { this.composer.dispose(); }
 }

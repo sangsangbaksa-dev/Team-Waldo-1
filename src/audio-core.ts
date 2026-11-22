@@ -21,6 +21,7 @@ export class AudioEngine {
   voices = 0;
   paused = false;
   private wanted = false;
+  private disposed = false;
   private unsub: Array<() => void> = [];
   private live = new Set<AudioScheduledSourceNode>();
 
@@ -42,9 +43,11 @@ export class AudioEngine {
   }
 
   private sync(): void {
-    if (!this.ctx) return;
-    if ((typeof document !== 'undefined' && document.hidden) || this.paused) void this.ctx.suspend();
-    else if (this.wanted) void this.ctx.resume();
+    const ctx = this.ctx;
+    if (!ctx || ctx.state === 'closed') return;
+    const shouldRun = (typeof document === 'undefined' || !document.hidden) && !this.paused && this.wanted;
+    if (shouldRun && ctx.state !== 'running') void ctx.resume().catch(() => undefined);
+    else if (!shouldRun && ctx.state === 'running') void ctx.suspend().catch(() => undefined);
   }
 
   /** 일시정지 중에는 컨텍스트를 멈춰 BGM·루프·효과음을 모두 무음으로 만듭니다. */
@@ -55,15 +58,14 @@ export class AudioEngine {
   }
 
   unlock(): AudioContext | null {
+    if (this.disposed) return null;
     this.wanted = true;
-    if (this.ctx) {
-      if ((typeof document === 'undefined' || !document.hidden) && !this.paused) void this.ctx.resume();
-      return this.ctx;
-    }
+    if (this.ctx) { this.sync(); return this.ctx; }
     const AC = audioCtor();
     if (!AC) return null;
+    let pending: AudioContext | null = null;
     try {
-      const ctx = new AC();
+      const ctx = pending = new AC();
       const bus = ctx.createGain();
       const compressor = ctx.createDynamicsCompressor();
       compressor.threshold.value = -12;
@@ -84,11 +86,11 @@ export class AudioEngine {
       this.compressor = compressor;
       this.master = master;
       this.noise = noise;
-      if ((typeof document !== 'undefined' && document.hidden) || this.paused) void ctx.suspend();
-      else void ctx.resume();
+      this.sync();
       return ctx;
     } catch {
-      this.ctx = null;
+      if (pending && pending.state !== 'closed') void pending.close().catch(() => undefined);
+      this.ctx = null; this.master = this.bus = null; this.compressor = null; this.noise = null;
       return null;
     }
   }
@@ -126,6 +128,8 @@ export class AudioEngine {
   }
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
     this.stopLive();
     for (const off of this.unsub) off();
     this.unsub = [];
@@ -136,13 +140,13 @@ export class AudioEngine {
     this.compressor = null;
     this.noise = null;
     this.wanted = false;
-    if (ctx && ctx.state !== 'closed') void ctx.close();
+    if (ctx && ctx.state !== 'closed') void ctx.close().catch(() => undefined);
   }
 }
 
 export function tone(eng: AudioEngine, freq: number, dur: number, vol: number, type: OscillatorType = 'sine', slide = 0, delay = 0): void {
   const c = eng.ctx, dest = eng.bus;
-  if (!c || !dest || !eng.enabled || eng.paused || vol < 0.01 || !eng.admit()) return;
+  if (!c || !dest || !eng.enabled || eng.paused || vol < 0.01 || dur <= 0 || delay < 0 || ![freq, dur, vol, slide, delay].every(Number.isFinite) || !eng.admit()) return;
   const t = c.currentTime + delay, o = c.createOscillator(), g = c.createGain();
   o.type = type;
   o.frequency.setValueAtTime(Math.max(20, freq), t);
@@ -159,7 +163,7 @@ export function tone(eng: AudioEngine, freq: number, dur: number, vol: number, t
 
 export function burst(eng: AudioEngine, dur: number, vol: number, freq: number, q = 1, type: BiquadFilterType = 'bandpass'): void {
   const c = eng.ctx, dest = eng.bus;
-  if (!c || !dest || !eng.noise || !eng.enabled || eng.paused || vol < 0.01 || !eng.admit()) return;
+  if (!c || !dest || !eng.noise || !eng.enabled || eng.paused || vol < 0.01 || dur <= 0 || ![dur, vol, freq, q].every(Number.isFinite) || !eng.admit()) return;
   const t = c.currentTime, s = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
   s.buffer = eng.noise; s.loop = true;
   f.type = type; f.frequency.value = freq; f.Q.value = q;

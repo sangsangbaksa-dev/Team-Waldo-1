@@ -108,7 +108,8 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   }
   function drawBig(): void { const c = modalEl.querySelector<HTMLCanvasElement>('#ty-bigmap'); if (c) drawMap(c, layout, { stage: core.state.stageIndex, spots: spotViews, px: player.pos.x, pz: player.pos.z, yaw: player.facing, target: core.state.task?.targetSpotId ?? null, time: performance.now() / 1000, names: true }); }
   function openModal(m: Modal): void { modal = m; confirmRestart = false; if (m && document.pointerLockElement) document.exitPointerLock(); resetInput(); renderModal(); audio.open(); }
-  function closeModal(): void { modal = null; confirmRestart = false; renderModal(); if (phase === 'play') lock(); }
+  /** 창을 닫습니다. 마우스 클릭으로 닫을 땐 커서를 다시 잠그지 않아 HUD 버튼을 계속 누를 수 있고, 키보드(E·Tab·Esc)로 닫을 때만 시점 조작을 위해 잠급니다. */
+  function closeModal(relock = false): void { modal = null; confirmRestart = false; renderModal(); if (phase === 'play' && relock) lock(); }
   function openSpot(id: string): void { if (phase !== 'play') return; const spot = core.spot(id); if (!spot) return; openModal({ kind: 'spot', id }); }
   function interact(): void { if (phase !== 'play' || modal) return; if (near) openSpot(near.id); }
 
@@ -134,7 +135,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   function restartGame(): void {
     clearTycoon(); bindCore(createCore());
     modal = null; confirmRestart = false; renderModal(); toastList.length = 0; q('#ty-toasts').replaceChildren(); q('#ty-banner').classList.remove('show');
-    cineT = 0; lastCarry = ''; lastStage = -1; cache.clear(); hudDirty = true; syncCity(false); startPlay(); save(); lock();
+    cineT = 0; lastCarry = ''; lastStage = -1; cache.clear(); hudDirty = true; syncCity(false); startPlay(); save();
   }
   function menuAction(m: string): void {
     if (m !== 'restart') confirmRestart = false;
@@ -156,10 +157,10 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     audio.unlock();
     if (phase === 'title') { if (player && e.code === 'Enter') titleAction(readTycoonSummary().has ? 'continue' : 'new'); return; }
     if (phase !== 'play') return;
-    if (e.code === 'Escape') { e.preventDefault(); if (modal?.kind === 'menu') closeModal(); else openModal({ kind: 'menu' }); return; }
+    if (e.code === 'Escape') { e.preventDefault(); if (modal?.kind === 'menu') closeModal(true); else openModal({ kind: 'menu' }); return; }
     if (modal) {
       if (modal.kind === 'spot' && /^Digit[1-9]$/.test(e.code)) { const a = core.actionsAt(modal.id)[Number(e.code.slice(5)) - 1]; if (a) doAction(modal.id, a.id); e.preventDefault(); }
-      else if ((e.code === 'KeyE' || e.code === 'Tab') && modal.kind !== 'menu') { e.preventDefault(); closeModal(); }
+      else if ((e.code === 'KeyE' || e.code === 'Tab') && modal.kind !== 'menu') { e.preventDefault(); closeModal(true); }
       return;
     }
     if (e.code === 'Tab') { e.preventDefault(); openModal({ kind: 'status' }); return; }
@@ -171,7 +172,8 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     keys.add(e.code);
   };
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.code); };
-  window.addEventListener('keydown', onKeyDown); window.addEventListener('keyup', onKeyUp); window.addEventListener('blur', resetInput); document.addEventListener('visibilitychange', resetInput);
+  window.addEventListener('keydown', onKeyDown); window.addEventListener('keyup', onKeyUp); window.addEventListener('blur', resetInput); const onVisibility = (): void => { resetInput(); if (document.hidden && phase === 'play' && !modal) openModal({ kind: 'menu' }); };
+  document.addEventListener('visibilitychange', onVisibility);
   canvas.addEventListener('pointerdown', e => {
     audio.unlock(); if (phase !== 'play' || modal) return;
     if (e.pointerType === 'touch') {
@@ -239,11 +241,14 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 제목/시작 ----------
   function showTitle(): void {
     const sm = readTycoonSummary();
-    titleEl.innerHTML = titleHtml(sm.has, sm.has ? `${STAGE_NAMES[sm.stage]} · ${sm.day}일차 · ${formatMoney(sm.cash)}` : ''); titleEl.hidden = false; hudEl.hidden = true;
+    titleEl.innerHTML = titleHtml(sm.has, sm.has ? `${STAGE_NAMES[sm.stage]} · ${sm.day}일차 · ${formatMoney(sm.cash)}` : '', confirmNew); titleEl.hidden = false; hudEl.hidden = true;
   }
   titleEl.addEventListener('click', e => { audio.unlock(); const b = (e.target as HTMLElement).closest<HTMLElement>('[data-title]'); if (b) titleAction(b.dataset.title!); });
+  let confirmNew = false;
   function titleAction(a: string): void {
     if (a === 'exit') { exit(); return; }
+    if (a === 'new' && readTycoonSummary().has && !confirmNew) { confirmNew = true; showTitle(); return; } // 저장이 있으면 한 번 더 눌러야 지워집니다
+    confirmNew = false;
     if (a === 'new') { clearTycoon(); bindCore(createCore()); syncCity(false); }
     else if (a === 'continue') { /* 제목 화면에서 이미 저장본으로 만든 코어를 씁니다 */ }
     startPlay();
@@ -321,7 +326,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
         marker.classList.toggle('edge', edge);
         marker.lastElementChild!.textContent = `${Math.round(Math.hypot(target.x - player.pos.x, target.z - player.pos.z))} m`;
       }
-      if (tutorialTime >= 0 && !paused()) tutorialTime += dt;
+      if (tutorialTime >= 0 && !paused()) { tutorialTime += dt; if (tutorialTime < 20 && Math.hypot(mv.mx, mv.mz) > 0.2) tutorialTime = 20; }
       const hint = q('#ty-hint');
       hint.hidden = tutorialTime < 0 || tutorialTime >= 60 || !!modal;
       if (!hint.hidden) hint.textContent = tutorialTime < 20 ? (touch ? '왼쪽을 밀어 이동하고 오른쪽을 움직여 둘러보세요' : 'WASD로 이동 · 마우스로 둘러보기') : tutorialTime < 40 ? (touch ? '장소에 가까이 가서 행동 버튼을 누르세요' : '장소에 가까이 가서 E를 누르세요') : (touch ? '지도를 열어 목적지와 주변 장소를 확인하세요' : 'M으로 지도 열기 · Shift로 달리기');
@@ -384,7 +389,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 종료 ----------
   function exit(): void {
     if (closed) return; save(); closed = true; cancelAnimationFrame(raf);
-    window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', resetInput); document.removeEventListener('visibilitychange', resetInput);
+    window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', resetInput); document.removeEventListener('visibilitychange', onVisibility);
     window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp); window.removeEventListener('wheel', onWheel); window.removeEventListener('resize', resize); document.removeEventListener('pointerlockchange', onLock);
     if (document.pointerLockElement) document.exitPointerLock();
     for (const u of unsub) u();

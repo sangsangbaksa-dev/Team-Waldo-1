@@ -82,9 +82,9 @@
 .sl-options button small{font-size:11px;color:#aebbb0}
 .sl-options button.on{background:#d5c08c;color:#242a25;border-color:#d5c08c;font-weight:700}.sl-options button.on small{color:#4a4630}
 .sl-leveldesc{margin:8px 2px 0;font-size:12px;color:#b8c1b8;min-height:1.4em}
-.sl-keys{display:flex;flex-wrap:wrap;gap:8px 14px;margin:16px 0 0;padding:12px 14px;border-radius:10px;background:#0000002e;font-size:12px;color:#c7cdc4}
-.sl-keys span{display:inline-flex;align-items:center;gap:5px}
-.sl-keys kbd{display:inline-block;min-width:22px;padding:2px 7px;border-radius:5px;border:1px solid #ffffff44;border-bottom-width:2px;background:#ffffff14;color:#fff;font:600 11px system-ui,sans-serif;text-align:center}
+.sl-keyhints{display:flex;flex-wrap:wrap;gap:8px 14px;margin:16px 0 0;padding:12px 14px;border-radius:10px;background:#0000002e;font-size:12px;color:#c7cdc4}
+.sl-keyhints span{display:inline-flex;align-items:center;gap:5px}
+.sl-keyhints kbd{display:inline-block;min-width:22px;padding:2px 7px;border-radius:5px;border:1px solid #ffffff44;border-bottom-width:2px;background:#ffffff14;color:#fff;font:600 11px system-ui,sans-serif;text-align:center}
 .sl-help{font-size:12px;line-height:1.7;color:#aebbb0;margin:10px 2px 0}
 .sl-pause-stats{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 0}
 
@@ -123,8 +123,11 @@
   .sl-modal{padding:12px}.sl-card{padding:18px}
   .sl-art{height:64px}.sl-stage b{font-size:13px}.sl-stage small{font-size:11px}
   .sl-options button{font-size:12px}
-  .sl-keys{font-size:11px;gap:6px 10px;padding:10px}
+  .sl-keyhints{font-size:11px;gap:6px 10px;padding:10px}
   .sl-result-head{gap:12px}.sl-grade{width:72px;height:72px;font-size:42px}
   .sl-result-stats{grid-template-columns:repeat(2,1fr)}
   .sl-actions .sl-soundbtn{margin-left:0}.sl-titlecard .sl-help{display:none}
 }
+
+.sl-touchhint{display:none;margin:14px 0 0;padding:10px 12px;border-radius:10px;background:#0000002e;font-size:12px;color:#c7cdc4}
+@media (pointer:coarse){.sl-keyhints{display:none}.sl-touchhint{display:block}.sl-titlecard .sl-help{display:block}}

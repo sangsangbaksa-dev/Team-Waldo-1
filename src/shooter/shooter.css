@@ -266,9 +266,9 @@
 @keyframes sz-zone-tick{0%{opacity:1;filter:brightness(2)}100%{opacity:1;filter:brightness(1)}}
 @media (prefers-reduced-motion:reduce){.sz-feed li,.sz-zonefx.on.tick{animation:none}}
 .sz-banner{top:calc(max(14px,env(safe-area-inset-top)) + 160px);padding:6px 12px;background:#101a19cc;border-left:2px solid #c4df91;font-size:14px;transition:opacity .35s,transform .35s}
-.sz-keys{bottom:10%;width:min(620px,90vw);gap:5px;font-size:12px}
+.sz-keys{bottom:10%;width:min(620px,90vw);gap:5px;font-size:14px}
 .sz-keys span{border-radius:3px;padding:5px 9px;background:#101a19df}
-.sz-keys b{color:#d4eeab}
+.sz-keys b{color:#d4eeab;font-weight:700;letter-spacing:.06em}
 .sz-count{text-shadow:0 3px 0 #1b2c20,0 8px 30px #000;color:#e8f3df}
 @media(max-width:700px){.sz-setup-inner{padding-top:28px}.sz-seg.three{grid-template-columns:1fr}.sz-seg.three .sz-opt{min-height:92px;padding:15px 15px 15px 52px}.sz-seg.three .sz-opt::before{top:18px}.sz-seg.four{grid-template-columns:repeat(4,1fr)}.sz-help{grid-template-columns:1fr}.sz-setup footer button.primary{min-width:140px}.sz-banner{top:calc(max(14px,env(safe-area-inset-top)) + 140px);font-size:12px}.sz-keys{bottom:9%;font-size:11px}.sz-ammo b{font-size:42px}}
 @media(max-height:500px){.sz-banner{top:calc(max(14px,env(safe-area-inset-top)) + 140px)}.sz-keys{bottom:4%}.sz-count{top:48%;font-size:60px}}
@@ -339,3 +339,33 @@
   .touch .sz-compass{width:min(300px,64vw);top:calc(max(8px,env(safe-area-inset-top)) + 100px)}
   .touch .sz-prompt,.touch .sz-air,.touch .sz-cast{left:calc(50% - 62px);max-width:calc(100vw - 150px);bottom:44%}
 }
+
+/* 2026-11-22 플레이테스트 수정: 출격 설정 화면이 첫 화면에 들어오게(좌우 패널과 같은 줄, 시작 버튼은 아래에 붙음), 조작법은 핵심 6개 + 펼치기 */
+.sz-setup.wd-screen{display:grid;grid-template-columns:minmax(0,1fr);justify-items:center;align-content:safe center}
+html .sz-setup.wd-has-rails.wd-has-rails{align-content:safe center}
+.sz-setup header{padding-bottom:16px;margin-bottom:18px}
+.sz-setup .wd-lead{margin-top:8px}
+.sz-setup section{margin-bottom:18px}
+.sz-setup .sz-seg.three .sz-opt{padding:12px 14px}
+.sz-setup .sz-seg.three .sz-opt em{display:block;margin-top:4px;font-size:12.5px;line-height:1.45}
+.sz-setup .sz-help-main{grid-template-columns:repeat(3,minmax(0,1fr))}
+.sz-setup .sz-help li{min-height:38px;padding:6px 10px;gap:10px}
+.sz-setup .sz-help b{min-width:44px;font-size:11.5px}
+.sz-more{margin-top:8px}
+.sz-more summary{cursor:pointer;width:max-content;padding:6px 2px;font-size:13px;font-weight:600;color:#c9d6c0;list-style:none}
+.sz-more summary::-webkit-details-marker{display:none}
+.sz-more summary::before{content:'+';display:inline-block;width:1.1em;color:#c4df91}
+.sz-more[open] summary::before{content:'−'}
+.sz-more .sz-help{margin-top:6px}
+.sz-more .sz-help-note{margin:10px 2px 0;color:#b9c4b6;font-size:12.5px;line-height:1.65;word-break:keep-all}
+.sz-setup footer{position:sticky;bottom:0;z-index:2;margin:18px calc(-1 * clamp(24px,4.5vw,36px)) calc(-1 * clamp(24px,4.5vw,36px));padding:14px clamp(24px,4.5vw,36px) clamp(20px,3.5vw,30px);border-top:1px solid var(--wd-line);border-radius:0 0 22px 22px;background:#121316f2;backdrop-filter:blur(6px)}
+.sz-sum:empty{display:none}
+@media(max-width:700px){.sz-setup .sz-help-main{grid-template-columns:1fr 1fr}}
+@media(max-width:420px){.sz-setup .sz-help-main{grid-template-columns:1fr}}
+/* 비행기에서는 자기장 타이머를 숨겨 '자동 강하' 타이머 하나만 남깁니다 */
+.sz-tc.hide{display:none}
+/* 낙하 안내는 조작 칩 줄과 떨어뜨리고, 보조 문구를 읽을 수 있게 키웁니다 */
+.sz-air{bottom:calc(10% + 84px);display:grid;justify-items:center;gap:8px}
+.sz-air small{margin:0;padding:5px 12px;border-radius:4px;background:#0d1514d9;color:#e6ece0;font-size:14px;font-weight:500;opacity:1;text-shadow:none;line-height:1.5}
+.sz-air small b{font-size:13px}
+@media(max-height:500px){.sz-air{bottom:calc(4% + 64px)}}

@@ -233,7 +233,15 @@
 .rt-terrain { position: absolute; left: 12px; bottom: 218px; padding: 5px 12px; font-size: 12px; background: rgba(21, 27, 20, .88); color: #e8e2d0; border: 1px solid #667257; border-radius: 999px; opacity: 0; pointer-events: none; transition: opacity .12s; }
 .rt-terrain.show { opacity: 1; }
 @media (max-width: 760px) { .rt-terrain { bottom: 140px; } }
-#rt-fog[aria-pressed="true"] { border-color: #b6d58e; color: #e1f4c7; background: #344a2e; }
-#rt-fog[aria-pressed="false"] { border-color: #888; color: #ddd; background: #303236; }
+/* 켜고 끄는 스위치: 일반 버튼과 다르게 보이도록 오른쪽에 슬라이더를 둡니다. */
+#rt-fog { display: inline-flex; align-items: center; gap: 10px; }
+#rt-fog .rt-sw { position: relative; width: 34px; height: 18px; border-radius: 999px; background: #4a4d52; border: 1px solid #777; flex: none; transition: background .2s; }
+#rt-fog .rt-sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #ddd; transition: transform .2s, background .2s; }
+#rt-fog b { font-weight: 700; min-width: 2.2em; }
+#rt-fog[aria-checked="true"] { border-color: #b6d58e; color: #e1f4c7; background: #344a2e; opacity: 1; }
+#rt-fog[aria-checked="true"] .rt-sw { background: #7fb35a; border-color: #b6d58e; }
+#rt-fog[aria-checked="true"] .rt-sw::after { transform: translateX(16px); background: #fff; }
+#rt-fog[aria-checked="false"] { border-color: #888; color: #bbb; background: #303236; }
+@media (prefers-reduced-motion: reduce) { #rt-fog .rt-sw, #rt-fog .rt-sw::after { transition: none; } }
 .rt-eyebrow { white-space: nowrap; }
 @media (max-width: 390px) { .rt-eyebrow { font-size: 11px; } }

@@ -2,13 +2,14 @@ import './style.css';
 import { retireUpgradeSaves } from './shared/retire-upgrades';
 import { readPreferences, writePreferences } from './prefs';
 import { showLoading, retry, retryNote } from './loading';
+import { deferTileImages } from './shared/lazy-images';
 import { readCityCareer, readRaceRecords, readRtsRecords, fmtTime } from './records';
 import { readShooterCareer } from './shooter/records';
 import { readOutlawSummary } from './outlaw/records';
 import { readSkySummary } from './sky/records';
 import { readSlackRecord } from './slack/records';
-import { readTycoonSummary } from './tycoon/core/save';
-import { STAGE_NAMES } from './tycoon/core/data';
+import { readSquadSummary } from './squad/records';
+import { readTycoonSummary, STAGE_NAMES } from './tycoon/core/summary';
 import { CHAT_ENABLED, PVP_ENABLED } from './net/config';
 import { setRails } from './shared/rails';
 
@@ -44,7 +45,7 @@ const ENTRIES: Entry[] = [
     id: 'squad', name: 'SQUAD CLASH', genre: '도형 병사 배치전',
     summary: '같은 골드로 도형 병사를 배치하고 자동 전투를 지켜보세요. 상성과 진형이 승부를 가릅니다.',
     facts: ['AI · 한 화면 2인 · 온라인', '병사 5종 · 3판 2선승', '마우스 · 키보드 · 터치'],
-    image: `${base}assets/home/squad-clash.jpg`, imageAlt: '위쪽 빨강 진영과 아래쪽 파랑 진영의 병사들이 마주 선 전장', status: () => '',
+    image: `${base}assets/home/squad-clash.jpg`, imageAlt: '위쪽 빨강 진영과 아래쪽 파랑 진영의 병사들이 마주 선 전장', status: () => { const r = readSquadSummary(); return r.has ? `${r.matches}전 · ${r.wins}승` : ''; },
   },
   {
     id: 'city',
@@ -160,7 +161,7 @@ function tile(entry: Entry, index: number): string {
   return `
     <li class="tile-item" style="--tile-index: ${index}">
       <button class="tile" id="start-${entry.id}" type="button" data-game="${entry.id}" aria-describedby="summary-${entry.id}">
-        <span class="tile-media"><img src="${entry.image}" alt="${entry.imageAlt}" width="1280" height="800" ${index === 0 ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async"></span>
+        <span class="tile-media${entry.id === 'room-tone' ? ' is-scary' : ''}"><img ${index === 0 ? `src="${entry.image}" fetchpriority="high"` : `data-deferred-src="${entry.image}" loading="lazy" fetchpriority="low"`} alt="${entry.imageAlt}" width="1280" height="800" decoding="async">${entry.id === 'room-tone' ? '<span class="tile-warn" aria-hidden="true">⚠ 공포 이미지 · 올려 보면 보여요</span>' : ''}</span>
         <span class="tile-body">
           <span class="tile-genre">${entry.genre}${entry.id === 'room-tone' ? ' · 공포 주의' : ''}</span>
           <span class="tile-name">${entry.name}</span>
@@ -173,20 +174,38 @@ function tile(entry: Entry, index: number): string {
 }
 
 let hubScrollY = 0;
+let stopTileImages: (() => void) | undefined;
+const HUB_TITLE = `WALDO · ${ENTRIES.length}편의 브라우저 3D 게임`;
+/** 지금 열려 있는 게임. 뒤로가기·새로고침 경고가 이 값을 봅니다. */
+let activeGame: GameId | null = null;
+/** 게임을 열면서 우리가 기록(history)을 하나 쌓았는지. 목록으로 돌아올 때 한 칸 되돌릴지 정합니다. */
+let pushedEntry = false;
+const gameHash = (id: GameId): string => `#/${id}`;
+const hashGame = (): GameId | null => {
+  const id = location.hash.startsWith('#/') ? location.hash.slice(2) : '';
+  return ENTRIES.find(e => e.id === id)?.id ?? null;
+};
+function leaveGameEntry(): void {
+  if (pushedEntry) { pushedEntry = false; history.back(); }
+  else if (hashGame()) { try { history.replaceState(null, '', location.pathname + location.search); } catch { /* 주소 정리는 선택 사항 */ } }
+}
 function renderMenu(): void {
+  stopTileImages?.(); stopTileImages = undefined;
   setRails(null);
+  activeGame = null;
+  leaveGameEntry();
   generation++;
   unsubscribeAccount?.();
   unsubscribeAccount = undefined;
   const sound = readPreferences().sound;
-  document.title = 'WALDO · 브라우저 3D 게임 모음';
+  document.title = HUB_TITLE;
   app.hidden = false;
   app.innerHTML = `
     <main class="home">
       <header class="home-head">
         <a class="mark" href="${base}" aria-label="WALDO 홈">WALDO</a>
         <div class="head-tools">
-          <button class="sound-toggle" id="sound-toggle" type="button" aria-pressed="${sound}" aria-label="소리 ${sound ? '켜짐' : '꺼짐'}">
+          <button class="sound-toggle" id="sound-toggle" type="button" aria-pressed="${sound}" aria-label="소리 ${sound ? '켜짐' : '꺼짐'}" title="소리 ${sound ? '끄기' : '켜기'}">
             <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M3 8v4h3l4 3.5v-11L6 8z" fill="currentColor"/>${sound
               ? '<path d="M13 7.2a4 4 0 0 1 0 5.6M15.2 5a7 7 0 0 1 0 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'
               : '<path d="M13.2 7.8l4.6 4.4m0-4.4l-4.6 4.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'}</svg>
@@ -220,16 +239,29 @@ function renderMenu(): void {
     const settleImage = (): void => {
       image.parentElement?.classList.add(image.naturalWidth ? 'is-loaded' : 'is-error');
     };
-    if (image.complete) settleImage();
+    if (image.complete && image.hasAttribute('src')) settleImage();
     else {
       image.addEventListener('load', settleImage, { once: true });
       image.addEventListener('error', settleImage, { once: true });
     }
     button.onclick = () => { void launch(game.id); };
   });
+  stopTileImages = deferTileImages(app);
   wireAccount();
   wireChat();
-  if (hubScrollY) requestAnimationFrame(() => window.scrollTo(0, hubScrollY));
+  if (hubScrollY) restoreScroll();
+}
+
+/** 이미지·애니메이션으로 문서 높이가 늦게 정해져도 원래 위치로 돌아가도록 몇 프레임 동안 다시 맞춥니다. */
+function restoreScroll(): void {
+  const target = hubScrollY, gen = generation;
+  let tries = 0;
+  const step = (): void => {
+    if (gen !== generation) return;
+    window.scrollTo({ top: target, behavior: 'instant' });
+    if (Math.abs(window.scrollY - target) > 2 && ++tries < 30) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
 }
 
 /** 허브 오른쪽 아래의 전체 채팅. 첫 화면을 가볍게 두려고 한가할 때 불러옵니다. */
@@ -268,13 +300,19 @@ function wireAccount(): void {
   }, 1200);
 }
 
-async function launch(id: GameId): Promise<void> {
-  hubScrollY = window.scrollY;
+async function launch(id: GameId, fromHistory = false): Promise<void> {
+  if (!fromHistory) hubScrollY = window.scrollY;
+  stopTileImages?.(); stopTileImages = undefined;
   if (id === 'room-tone') {
     location.assign(`${base}room-tone/`);
     return;
   }
   const navigation = ++generation;
+  activeGame = id;
+  // 게임마다 기록 한 칸: 브라우저 뒤로가기가 사이트를 떠나지 않고 게임 목록으로 돌아옵니다. 새로고침해도 같은 게임 화면이 열립니다.
+  if (!hashGame()) { try { history.pushState({ game: id }, '', gameHash(id)); pushedEntry = true; } catch { /* 기록 실패 시 뒤로가기만 기본 동작 */ } }
+  const named = ENTRIES.find(e => e.id === id);
+  if (named) document.title = `${named.name} · WALDO`;
   const buttons = app.querySelectorAll<HTMLButtonElement>('.tile');
   const notice = app.querySelector<HTMLElement>('#home-notice');
   const label = app.querySelector<HTMLElement>(`#start-${id} .tile-cta`);
@@ -366,5 +404,22 @@ function handleAuthRedirect(): void {
   }).catch(() => clean());
 }
 
+window.addEventListener('popstate', () => {
+  const target = hashGame();
+  if (target && !activeGame) { void launch(target, true); return; }
+  // 게임 화면에서 뒤로가기를 누르면 게임 목록으로. 게임이 만든 화면·루프를 확실히 치우도록 페이지를 다시 엽니다.
+  if (!target && activeGame) { pushedEntry = false; try { sessionStorage.setItem('waldo.hubScroll', String(hubScrollY)); } catch { /* 선택 사항 */ } location.reload(); }
+});
+// 게임 중 새로고침·탭 닫기: 진행이 사라진다고 먼저 알립니다.
+window.addEventListener('beforeunload', e => {
+  if (!activeGame) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+
+try { history.scrollRestoration = 'manual'; } catch { /* 선택 사항 */ }
+try { hubScrollY = Number(sessionStorage.getItem('waldo.hubScroll')) || 0; sessionStorage.removeItem('waldo.hubScroll'); } catch { /* 선택 사항 */ }
+const startGame = hashGame();
 renderMenu();
 handleAuthRedirect();
+if (startGame) void launch(startGame, true);

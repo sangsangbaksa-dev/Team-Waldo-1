@@ -50,17 +50,18 @@ function spawn(sim: Sim, parked: boolean): boolean {
   return false;
 }
 export function stepTraffic(sim: Sim, dt: number): void {
-  if (!(dt > 0)) return;
+  if (!Number.isFinite(dt) || !(dt > 0)) return;
   const s = state(sim), p = sim.player, events = sim.events;
   if (events !== s.eventList || events.length < s.events) { s.events = 0; s.eventList = events; }
   const recent = events.slice(s.events); s.events = events.length;
   const grid = new Map<string, Vehicle[]>(), key = (x: number, z: number): string => `${Math.floor(x / 24)},${Math.floor(z / 24)}`;
   for (const v of sim.vehicles) { const k = key(v.x, v.z), bucket = grid.get(k); if (bucket) bucket.push(v); else grid.set(k, [v]); }
+  const removeFromGrid = (v: Vehicle): void => { const k = key(v.x, v.z), bucket = grid.get(k); if (bucket) { const i = bucket.indexOf(v); if (i >= 0) bucket.splice(i, 1); if (!bucket.length) grid.delete(k); } sim.removeVehicle(v); };
   let moving = 0, parked = 0, removed = 0;
   for (const v of sim.vehicles.slice()) {
     if (v.keep || v.driver === PLAYER_ID || p.vehicle === v.id || v.mode === 'police' || v.mode === 'scripted' || v.mode === 'none') continue;
     const dist = Math.hypot(v.x - p.x, v.z - p.z);
-    if (removed < 2 && dist > STREAM_RADIUS * (v.stolen && !v.driver ? 2 : 1.2)) { sim.removeVehicle(v); removed++; continue; }
+    if (removed < 2 && dist > STREAM_RADIUS * (v.stolen && !v.driver ? 2 : 1.2)) { removeFromGrid(v); removed++; continue; }
     if (v.mode === 'parked') { if (!v.stolen) parked++; continue; }
     if (v.mode !== 'traffic' && v.mode !== 'flee') continue;
     moving++;
@@ -90,7 +91,12 @@ export function stepTraffic(sim: Sim, dt: number): void {
     if (target.light >= 0 && v.mode !== 'flee') {
       const light = signal(sim.t, target.light), distance = Math.hypot(target.x - v.x, target.z - v.z), braking = Math.max(0, v.vf) ** 2 / (2 * VEHICLES[v.kind].brake * 0.55) + VEHICLES[v.kind].halfL + 2;
       let occupied = false; const cx = target.x + Math.cos(target.h) * 10, cz = target.z + Math.sin(target.h) * 10;
-      for (const q of sim.vehicles) if (q !== v && q.alive && Math.abs(q.x - cx) < 8 && Math.abs(q.z - cz) < 8) { occupied = true; break; }
+      // Reuse the same broad-phase grid instead of scanning every vehicle at each signal.
+      for (let x = Math.floor((cx - 8) / 24); x <= Math.floor((cx + 8) / 24) && !occupied; x++) {
+        for (let z = Math.floor((cz - 8) / 24); z <= Math.floor((cz + 8) / 24) && !occupied; z++) {
+          for (const q of grid.get(`${x},${z}`) ?? []) if (q !== v && q.alive && Math.abs(q.x - cx) < 8 && Math.abs(q.z - cz) < 8) { occupied = true; break; }
+        }
+      }
       stop = light === 'red' || light === 'yellow' && distance > braking || light === 'green' && occupied;
       if (stop) speed = Math.min(speed, Math.max(0, (distance - VEHICLES[v.kind].halfL - 2) * 1.3));
     }
@@ -99,14 +105,15 @@ export function stepTraffic(sim: Sim, dt: number): void {
       if (q === v || !q.alive) continue; const dx = q.x - v.x, dz = q.z - v.z, f = dx * cos + dz * sin, lateral = Math.abs(-dx * sin + dz * cos);
       if (f > 0 && lateral < 2.5 && Math.cos(q.h - v.h) > 0.7) gap = Math.min(gap, f - VEHICLES[v.kind].halfL - VEHICLES[q.kind].halfL);
     }
-    speed = Math.min(speed, Math.max(0, (gap - 4) * 0.9));
     if (v.mode === 'flee') speed = Math.min(VEHICLES[v.kind].top, Math.max(speed, target.limit * 1.35));
+    // Panic increases desired speed, but must not override collision avoidance.
+    speed = Math.min(speed, Math.max(0, (gap - 4) * 0.9));
     if (nextNode && target.light < 0 && Math.hypot(tx - v.x, tz - v.z) < 8 && turn < 0.3) { tx = nextNode.x; tz = nextNode.z; }
     autoDrive(sim, v, tx, tz, speed, elapsed);
     const waiting = stop || gap < 8; c.blocked = waiting && Math.abs(v.vf) < 1 ? c.blocked + elapsed : Math.max(0, c.blocked - elapsed * 2); v.input.horn = c.blocked > 3 && !stop && Math.floor(c.blocked * 2) % 4 === 0;
     c.idle = !waiting && speed > 2 && Math.abs(v.vf) < 0.7 ? c.idle + elapsed : Math.max(0, c.idle - elapsed);
     if (c.idle > 8 && c.idle - elapsed <= 8) { v.lane = nearestLane(sim.map, v.x, v.z, v.h); v.path = []; }
-    if (c.idle > 20 && removed < 2 && !v.stolen) { sim.removeVehicle(v); removed++; moving--; }
+    if (c.idle > 20 && removed < 2 && !v.stolen) { removeFromGrid(v); removed++; moving--; }
   }
   const d = district(sim, p.x, p.z), goal = d === 'downtown' || d === 'commercial' ? 30 : d === 'residential' ? 18 : 10;
   if (moving < Math.min(36, goal)) spawn(sim, false);

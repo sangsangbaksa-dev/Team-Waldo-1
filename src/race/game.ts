@@ -3,7 +3,7 @@ import './race.css';
 import '../shared/ui.css';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { readPreferences, writePreferences } from '../prefs';
+import { readPreferences, writePreferences, writeSound } from '../prefs';
 import { fmtTime, raceRaceKey, readRaceRecords, readRaceSetupRaw, writeRaceRecords, writeRaceSetupRaw } from '../records';
 import type { PvpSession, RoomSession } from '../net/lobby';
 import { RaceMulti } from './multi';
@@ -349,7 +349,7 @@ export function openRace(onExit: () => void): void {
   }
 
   function frame(now: number): void {
-    if (closed) return; raf = requestAnimationFrame(frame);
+    if (closed) return; raf = requestAnimationFrame(frame); audio.setPaused(paused);
     if (race.player.out !== undefined && finishedShown) return;
     // 시계는 시뮬레이션만 움직입니다. 느린 화면에서도 카운트다운·시계·차가 같은 속도로 가야 하므로, 프레임이 길면 한 프레임에 스텝을 더 돌립니다.
     const elapsed = Math.max(0, (now - last) / 1000 || 0.016), dt = Math.min(MAX_FRAME, elapsed); last = now;
@@ -371,7 +371,7 @@ export function openRace(onExit: () => void): void {
   }
 
   const setPaused = (on: boolean, reason = ''): void => {
-    if (!view || setupUi || pvp || multi || race.phase === 'done' || finishedShown || closed) return; paused = on; modal.className = on ? 'rc-modal show' : 'rc-modal'; if (on) { audio.drive(0, 0, 0, false, false, false); modal.innerHTML = `<div class="rc-card wd-panel"><span class="rc-eyebrow wd-eyebrow">SPEED RUSH</span><h2 class="wd-title">일시정지</h2>${reason ? `<p>${reason}</p>` : ''}<div class="rc-actions"><button class="wd-btn primary" data-act="resume">이어하기</button><button class="wd-btn ghost" data-act="restart">다시 시작</button><button class="wd-btn ghost" data-act="setup">설정</button><button class="wd-btn ghost" data-act="exit">게임 목록으로</button></div></div>`; } else modal.innerHTML = '';
+    if (!view || setupUi || pvp || multi || race.phase === 'done' || finishedShown || closed) return; paused = on; modal.className = on ? 'rc-modal show' : 'rc-modal'; if (on) { audio.drive(0, 0, 0, false, false, false); modal.innerHTML = `<div class="rc-card wd-panel"><span class="rc-eyebrow wd-eyebrow">SPEED RUSH</span><h2 class="wd-title">일시정지</h2>${reason ? `<p>${reason}</p>` : ''}<div class="rc-actions"><button class="wd-btn primary" data-act="resume">이어하기</button><button class="wd-btn ghost" data-act="mute" data-text>소리 ${audio.enabled ? '켜짐' : '꺼짐'}</button><button class="wd-btn ghost" data-act="restart">다시 시작</button><button class="wd-btn ghost" data-act="setup">설정</button><button class="wd-btn ghost" data-act="exit">게임 목록으로</button></div></div>`; } else modal.innerHTML = '';
   };
   const exit = (): void => {
     if (closed) return; closed = true; cancelAnimationFrame(raf); removeEventListener('keydown', onKey); removeEventListener('keyup', onKeyUp); removeEventListener('resize', resize); removeEventListener('blur', onBlur);
@@ -398,9 +398,12 @@ export function openRace(onExit: () => void): void {
     else if (a === 'exit') exit();
     else if (a === 'mute' || a === 'sound-on' || a === 'sound-off') {
       audio.setEnabled(a === 'mute' ? !audio.enabled : a === 'sound-on');
-      const next = { ...readPreferences(), sound: audio.enabled }; prefs.sound = next.sound; writePreferences(next);
+      prefs.sound = audio.enabled; writeSound(audio.enabled);
       // 눌림(aria-pressed)은 '음소거 상태'를 뜻합니다.
-      const mute = root.querySelector<HTMLElement>('.rc-btns [data-act="mute"]'); if (mute) { mute.innerHTML = audio.enabled ? ICON.soundOn : ICON.soundOff; mute.setAttribute('aria-pressed', String(!audio.enabled)); mute.title = audio.enabled ? '소리 끄기 (M)' : '소리 켜기 (M)'; }
+      for (const mute of root.querySelectorAll<HTMLElement>('[data-act="mute"]')) {
+        if (mute.hasAttribute('data-text')) mute.textContent = `소리 ${audio.enabled ? '켜짐' : '꺼짐'}`;
+        else { mute.innerHTML = audio.enabled ? ICON.soundOn : ICON.soundOff; mute.setAttribute('aria-pressed', String(!audio.enabled)); mute.title = audio.enabled ? '소리 끄기 (M)' : '소리 켜기 (M)'; }
+      }
       if (modal.querySelector('.rc-settings')) modal.innerHTML = settingsCard();
     }
   };

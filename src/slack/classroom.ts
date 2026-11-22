@@ -12,6 +12,7 @@ const KIDS = [10, 27, 60, 77].map((x, i) => `<div class="sl-kid" style="left:${x
 const KEYS = Array.from({ length: 4 }, () => '<i></i>').join('');
 
 export const createClassroomView: CreateView = (sim, audio) => {
+  const coarse = (() => { try { return matchMedia('(pointer: coarse)').matches; } catch { return false; } })();
   const el = document.createElement('div');
   el.className = 'sl-class';
   el.tabIndex = -1;
@@ -45,7 +46,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
       <div class="sl-cast"></div><div class="sl-flick"></div><div class="sl-spill"></div><div class="sl-hush"><span>…</span></div>
       <div class="sl-pop"></div><div class="sl-relief">휴…</div><div class="sl-strike"><span>거기, 지금 뭐 하고 있니?</span></div>
     </div>
-    <div class="sl-controls"><div class="sl-activities" aria-label="딴짓 선택">${picks.map((a, i) => `<button type="button" class="sl-action" data-activity="${a.id}" aria-label="${a.name} (${i + 1})"><span>${a.icon}</span><small>${a.name} (${i + 1})</small></button>`).join('')}</div><button type="button" class="sl-cover">수업 자료 <small>길게 누르기 · 스페이스</small></button></div>`;
+    <div class="sl-controls"><div class="sl-activities" aria-label="딴짓 선택">${picks.map((a, i) => `<button type="button" class="sl-action" data-activity="${a.id}" aria-label="${a.name}${coarse ? '' : ` (${i + 1})`}"><span>${a.icon}</span><small>${a.name}${coarse ? '' : ` (${i + 1})`}</small></button>`).join('')}</div><button type="button" class="sl-cover">수업 자료 <small>${coarse ? '길게 누르기' : '길게 누르기 · 스페이스'}</small></button></div>`;
   const q = <T extends HTMLElement>(s: string) => el.querySelector<T>(s)!;
   const room = q('.sl-room');
   const cover = q<HTMLButtonElement>('.sl-cover');

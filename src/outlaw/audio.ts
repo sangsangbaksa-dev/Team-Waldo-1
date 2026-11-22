@@ -29,10 +29,18 @@ export class OutlawAudio {
   private screamIndex = 0;
   get enabled(): boolean { return this.eng.enabled; }
   set enabled(on: boolean) { this.eng.setEnabled(on); }
+  setPaused(on: boolean): void { this.eng.setPaused(on); }
+  private worldOn = false;
+  /** 타이틀에서는 월드 루프(엔진·바람·군중·비)를 만들지 않고, 플레이를 시작할 때 만듭니다. */
+  world(on: boolean): void { this.worldOn = on; if (on) this.build(); }
   unlock(): void {
     if (this.disposed) return;
-    const c = this.eng.unlock(), dest = this.eng.bus;
-    if (!c || !dest || this.motor) return;
+    this.eng.unlock();
+    this.build();
+  }
+  private build(): void {
+    const c = this.eng.ctx, dest = this.eng.bus;
+    if (!this.worldOn || this.disposed || !c || !dest || this.motor) return;
     const a = c.createOscillator(), b = c.createOscillator(), filter = c.createBiquadFilter(), gain = c.createGain();
     a.type = 'sawtooth'; b.type = 'square'; filter.type = 'lowpass'; gain.gain.value = 0;
     a.connect(filter); b.connect(filter); filter.connect(gain); gain.connect(dest); a.start(); b.start(); this.eng.track(a); this.eng.track(b);
@@ -92,7 +100,7 @@ export class OutlawAudio {
   play(name: string, dist = 0, pan = 0): void { this.effect(name, dist, pan, 1); }
   crash(power: number, dist = 0): void { this.effect('crash', dist, 0, clamp(power)); }
   private effect(name: string, dist: number, pan: number, power: number): void {
-    const c = this.eng.ctx, bus = this.eng.bus; if (!c || !bus || !this.enabled || this.disposed) return;
+    const c = this.eng.ctx, bus = this.eng.bus; if (!c || !bus || !this.enabled || this.eng.paused || this.disposed) return;
     const d = Math.max(0, Number.isFinite(dist) ? dist : 0), attenuation = 1 / (1 + (d / 35) ** 2); if (attenuation < 0.01) return;
     const gap = name === 'smg' || name === 'rifle' ? 0.045 : name === 'step' ? 0.16 : name === 'scream' ? 0.5 : 0.08;
     const now = c.currentTime; if (now - (this.last.get(name) ?? -Infinity) < gap) return; this.last.set(name, now);

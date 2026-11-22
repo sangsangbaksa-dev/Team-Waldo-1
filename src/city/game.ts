@@ -17,7 +17,7 @@ import { SHOP, canBuy, itemPrice } from './shop';
 import { PHASE_LABEL, WEATHER_ICON, WEATHER_LABEL, clockLabel } from './clock';
 import { missionLog, missionSummary, sideJobs } from './missions';
 import { EVENT_INFO } from './events';
-import { readPreferences, recordMatch, writePreferences } from '../prefs';
+import { readPreferences, recordMatch, writeSound } from '../prefs';
 import type { PvpSession, RoomSession } from '../net/lobby';
 import { arenaInfo, arenaOf } from './arena';
 import { CityRoom, ROOM_LIVES, ROOM_TIME, roomRanking, roomWinner } from './room';
@@ -171,7 +171,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (!w) return; const f = w.factions[0];
     if (a === 'resume') { paused = false; modal.innerHTML = ''; last = performance.now(); lock(); return; }
     if (a === 'pause') { pause(); return; }
-    if (a === 'sound') { prefs.sound = !prefs.sound; writePreferences(prefs); audio.setEnabled(prefs.sound); pause(); return; }
+    if (a === 'sound') { prefs.sound = !prefs.sound; writeSound(prefs.sound); audio.setEnabled(prefs.sound); pause(); return; }
     if (a === 'perk') { w.pickPerk(Number(arg)); audio.play('levelup'); modal.innerHTML = ''; last = performance.now(); if (f.pending === 0) lock(); return; }
     if (a === 'tutnext') { if (tut) { tut.c.acked = true; lock(); } return; }
     if (a === 'tutskip') { finishTutorial(true); return; }
@@ -242,7 +242,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (!world || world.over || duel || room) return; paused = true; keys.clear(); mouse.down = false; unlock();
     modal.innerHTML = `<section class="c-pause wd-panel"><div class="c-kicker wd-eyebrow">LAST CITY</div><h2 class="wd-title">일시정지</h2>
       <div class="c-help"><div><b>보스 조작</b><p>WASD 이동 · 마우스 시점/사격 · V 시점 전환(1인칭·3인칭·전술뷰) · R 재장전 · 1~3 무기 · Space 대시 · H 회복 키트 · Q 고유 스킬</p></div><div><b>도시</b><p>E 사업체 매입·업그레이드·무기 줍기 · F 차량 탑승/하차 · 적 사업체 패드 위에서 6초 버티면 적대적 인수</p></div><div><b>지휘</b><p>Tab 지휘 패널(생산·건설·연구·시장) · 우클릭/지도 클릭 돌격 · Z 집결 · X 사수</p></div><div><b>승리</b><p>자기장은 점점 줄어듭니다. 적 본부를 부수면 그 보스는 부활하지 못합니다. 마지막까지 살아남는 왕국이 승리합니다.</p></div></div>
-      <div class="c-actions wd-actions"><button data-act="resume" class="c-primary wd-btn primary">이어하기</button><button data-act="sound" class="wd-btn">소리 ${prefs.sound ? '켬' : '끔'}</button><button data-act="retry" class="wd-btn">다시 시작</button><button data-act="exit" class="wd-btn ghost">게임 목록으로</button></div></section>`;
+      <div class="c-actions wd-actions"><button data-act="resume" class="c-primary wd-btn primary">이어하기</button><button data-act="sound" class="wd-btn">소리 ${prefs.sound ? '켜짐' : '꺼짐'}</button><button data-act="retry" class="wd-btn">다시 시작</button><button data-act="exit" class="wd-btn ghost">게임 목록으로</button></div></section>`;
   }
 
   // ---------- HUD ----------
@@ -699,7 +699,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   // ---------- 루프 ----------
   function frame(now: number): void {
     if (closed) return; raf = requestAnimationFrame(frame); const w = world!, r = R!; const dt = Math.min(0.1, (now - last) / 1000); last = now;
-    const f = w.factions[0], b = w.boss(0), three = view !== 'top' && !!R3;
+    const f = w.factions[0], b = w.boss(0), three = view !== 'top' && !!R3; audio.setPaused(paused || f.pending > 0);
     const veh = b && b.inVeh ? w.vehicles.find(v => v.id === b.inVeh) : undefined, spd = veh ? Math.hypot(veh.vx, veh.vy) : 0;
     if (f.pending > 0 && !modal.firstChild) { showPerks(); keys.clear(); mouse.down = false; }
     if (!paused && f.pending === 0 && !w.over) {

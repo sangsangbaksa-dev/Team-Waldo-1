@@ -302,3 +302,18 @@
 .ol-wheel .ws.none .ol-wi{filter:grayscale(1)}
 
 .ol-title .ol-btns button:disabled{opacity:.42;cursor:not-allowed;background:#14171a;color:#a9adb1;border-color:#30343a}.ol-title .ol-btns button:disabled:hover{background:#14171a}.ol-online-group{display:grid;gap:8px;padding-top:15px;border-top:1px solid #393d43}.ol-online-group small{color:#aeb5bc;text-align:left}.ol-tr{background:rgba(8,11,15,.82);padding:9px 12px;border-radius:10px}.ol-slots i{width:40px;height:33px;background:#10151e;border-color:#8b98a8}.ol-slots i .ol-wi{width:35px;height:23px}.ol-slots i u{font-size:11px;line-height:12px;color:#fff;text-shadow:0 1px 3px #000}.ol-slots i.has{border-color:#c3cfdb}.ol-slots i.cur{background:#b83b50;border-color:#fff}
+
+/* 2026-11-22 플레이테스트: 이어하기에 저장 내용 표시, 보조 버튼은 한 줄 고스트, 무기 칸·수배 별·시계 대비 */
+.ol-title .ol-btns .ol-cont{display:grid;gap:2px;justify-items:center}
+.ol-title .ol-btns .ol-cont small{font-size:12px;font-weight:500;font-style:normal;letter-spacing:0;color:#b8bec6}
+.ol-title .ol-btns .ol-cont.saved{border-color:#e8e2d066;background:#22252a}
+.ol-title .ol-btns .ol-cont:disabled small{color:#8c9198}
+.ol-title-sub{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding-top:6px}
+.ol-title .ol-btns .ol-title-sub button{padding:10px 12px;font-size:14px;background:transparent;border-color:#30343a;color:#b9bec5}
+.ol-title .ol-btns .ol-title-sub button:hover{color:#f1eee6;border-color:#4a505a;background:#ffffff08}
+.ol-slots i .ol-wi{opacity:.5;filter:grayscale(1) brightness(1.3)}
+.ol-slots i:not(.has){border-style:dashed;border-color:#5d6876}
+.ol-slots i:not(.has) u{color:#c9d0d8}
+.ol-root .ol-clock{font-size:18px;color:#f2f5f7;text-shadow:0 1px 2px #000}
+.ol-stars{font-size:clamp(24px,3.2vw,32px)}
+.ol-stars i{color:#aab3bf}

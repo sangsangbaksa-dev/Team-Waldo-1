@@ -11,3 +11,8 @@ export function streakDirection(vx:number,vz:number):{x:number;z:number}{
   const length=Math.hypot(vx,vz);
   return length>1e-6?{x:vx/length,z:vz/length}:{x:1,z:0};
 }
+
+/** Avoid uploading hundreds of line vertices while the player is parked. */
+export function speedStreakVisible(speed:number,opacity:number):boolean{
+  return Number.isFinite(speed)&&Number.isFinite(opacity)&&(speed>26||opacity>0.01);
+}

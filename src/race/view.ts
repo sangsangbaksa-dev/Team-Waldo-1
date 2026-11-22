@@ -21,7 +21,7 @@ import { buildOutposts, type Outpost } from './outpost';
 import { makeRng } from '../city/map';
 import { artSeed, ClearanceIndex } from './scenery-index';
 import { FxScheduler, skidSegmentCount } from './fx-scheduling';
-import { writeVec3, writeSpeedStreak, streakDirection } from './fx-buffers';
+import { writeVec3, writeSpeedStreak, streakDirection, speedStreakVisible } from './fx-buffers';
 
 const CAR_LEN = 4.7;
 const rnd = (a: number, b: number): number => a + Math.random() * (b - a);
@@ -669,8 +669,8 @@ export class RaceView {
     this.sun.target.position.set(p.x, p.y, p.z); this.sun.position.set(p.x - 40, p.y + 60, p.z - 90);
     this.updateGhost(race); this.post?.setSpeedBlur(this.reducedMotion ? 0 : Math.max(0, (sf - 0.42) * 0.1 + (bst ? 0.04 : 0)));
     this.updateStartLights(race);
-    this.streak.visible = !this.reducedMotion;
-    if (!this.reducedMotion) this.updateStreaks(dt, p.vx, p.vz, speed, bst);
+    this.streak.visible = !this.reducedMotion && speedStreakVisible(speed,(this.streak.material as THREE.LineBasicMaterial).opacity);
+    if (this.streak.visible) this.updateStreaks(dt, p.vx, p.vz, speed, bst);
     if (this.post) this.post.render(dt); else this.renderer.render(this.scene, this.camera);
     return { speedFrac: sf };
   }

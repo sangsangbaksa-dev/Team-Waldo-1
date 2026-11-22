@@ -24,8 +24,13 @@ import { buildEnvironment, buildHidingSpot, createHidingSpotKit } from "./enviro
 import { Sound } from "./sound.js";
 import { normalizeCampaign } from "./campaign.mjs";
 import { createPointerOwner, tryCapture } from "./input.mjs";
-import { initialMute } from "./preferences.mjs";
+import { initialMute, reduceRoomToneMotion } from "./preferences.mjs";
 import { createIdLookup } from "./dom.mjs";
+import { lineOfSight, moveWithCollision } from "./collision.mjs";
+import { describeStartupError } from "./startup-error.mjs";
+import { renderingScale } from "./render-quality.mjs";
+import { disposeGroup } from "./resources.mjs";
+import { shouldResumeSessionAudio } from "./session-audio.mjs";
 
 const $ = createIdLookup(document),
   C = 2.7,
@@ -107,7 +112,8 @@ let returnFromMap = resume;
 let renderCaptureShot;
 let captureTime = 0;
 let investigation = null, nextFlicker = 0, flickerUntil = 0;
-const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+const motionMedia = matchMedia("(prefers-reduced-motion: reduce)");
+let reducedMotion = motionMedia.matches;
 const touch =
   matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
 lastPointerType = touch ? "touch" : "mouse";
@@ -136,6 +142,11 @@ function save() {
   } catch { /* Browser storage or pointer lock is optional. */ }
 }
 const PREFS = "waldo.preferences.v1";
+function syncMotionPreference() {
+  reducedMotion = reduceRoomToneMotion(read(PREFS), motionMedia.matches);
+  document.body.classList.toggle("rt-reduced-motion", reducedMotion);
+}
+motionMedia.addEventListener?.("change", syncMotionPreference);
 function syncAudioButtons() {
   for (const b of [$("sound"), $("gsound")]) {
     b.setAttribute("aria-pressed", String(!muted));
@@ -159,10 +170,15 @@ function toggleAudio() {
   } catch { /* Browser storage is optional. */ }
 }
 applyMute(initialMute(read("rt-silent"), read(PREFS)));
+syncMotionPreference();
 $("sound").onclick = $("gsound").onclick = toggleAudio;
 window.addEventListener("storage", (e) => {
   if (e.key === PREFS || (e.key === "rt-silent" && read(PREFS)?.sound === undefined))
     applyMute(initialMute(read("rt-silent"), read(PREFS)));
+  if (e.key === PREFS) {
+    syncMotionPreference();
+    if (renderer && camera) resize();
+  }
 });
 function screens(id) {
   for (const key of ["home", "game"]) $(key).hidden = key !== id;
@@ -193,6 +209,7 @@ function clearInputs() {
   runPointer.clear();
   moveStart = lookLast = null;
   mobileRun = false;
+  $("run").setAttribute("aria-pressed", "false");
   $("stickknob").style.transform = "";
 }
 function leaveLook() {
@@ -214,8 +231,16 @@ function modal(title, description, body, actions, type = "panel") {
   if (state === "capture") $("viewWrap").classList.remove("caught-shot");
   state = type;
   leaveLook();
-  sound.pause(true);
+  // A puzzle keeps its sound cues. The victory chime is allowed to finish
+  // before a dramatic silence; suspending the context immediately cuts it off.
+  if (type === "won") {
+    sound.threat(0);
+    window.setTimeout(() => {
+      if (state === "won") sound.pause(true);
+    }, 1300);
+  } else if (type !== "puzzle") sound.pause(true);
   $("dialog").hidden = false;
+  $("dialog").dataset.phase = type;
   $("panelTitle").textContent = title;
   $("panelText").textContent = description;
   $("panelBody").replaceChildren();
@@ -304,7 +329,6 @@ async function setup() {
       antialias: true,
       powerPreference: "high-performance",
     });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, touch ? 1.35 : 1.65));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.08;
@@ -360,32 +384,11 @@ function xy(cell) {
 function cellOf(v) {
   return Math.round(v.z / C) * level.w + Math.round(v.x / C);
 }
-function pass(x, z) {
-  const col = Math.floor(x / C + 0.5),
-    row = Math.floor(z / C + 0.5);
-  return level.map[row]?.[col] === ".";
-}
 function clearLine(a, b) {
-  const len = Math.hypot(a.x - b.x, a.z - b.z),
-    steps = Math.ceil(len / 0.42);
-  for (let i = 1; i < steps; i++) {
-    const t = i / steps;
-    if (!pass(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t)) return false;
-  }
-  return true;
+  return lineOfSight(level.map, C, a, b);
 }
 function shift(dx, dz) {
-  const r = 0.225;
-  function space(x, z) {
-    return (
-      pass(x - r, z - r) &&
-      pass(x + r, z - r) &&
-      pass(x - r, z + r) &&
-      pass(x + r, z + r)
-    );
-  }
-  if (space(player.x + dx, player.z)) player.x += dx;
-  if (space(player.x, player.z + dz)) player.z += dz;
+  moveWithCollision(level.map, C, player, dx, dz);
 }
 function pointPlayer() {
   const p = xy(level.start);
@@ -404,6 +407,12 @@ function pointPlayer() {
   crouched = false;
   eyeHeight = 1.58;
   lightOn = true;
+  // New chapters and post-capture restarts must not inherit a half-completed
+  // footstep or an old monster gait pose from the preceding session.
+  moved = stepAt = stride = 0;
+  mixer?.setTime(0);
+  model.position.y = 0;
+  model.rotation.z = 0;
   const far = xy(level.nest);
   entity.position.set(far.x, 0, far.z);
   path = [];
@@ -431,30 +440,17 @@ function resize() {
   const w = $("viewWrap").clientWidth,
     h = $("viewWrap").clientHeight;
   if (!w || !h) return;
+  const quality = read(PREFS)?.quality;
+  const ratio = renderingScale(w, h, devicePixelRatio, quality, touch);
+  // Avoid invoking WebGLRenderer.setSize twice on every window resize.
+  if (Math.abs(renderer.getPixelRatio() - ratio) > 0.005) renderer.setPixelRatio(ratio);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h, false);
   showSceneOnce();
 }
 window.addEventListener("resize", resize);
-function disposeGroup(root) {
-  if (!root) return;
-  const geo = new Set(),
-    mat = new Set(),
-    tex = new Set();
-  root.traverse((o) => {
-    if (o.geometry) geo.add(o.geometry);
-    for (const m of Array.isArray(o.material) ? o.material : [o.material])
-      if (m) {
-        mat.add(m);
-        if (m.map) tex.add(m.map);
-      }
-  });
-  geo.forEach((g) => g.dispose());
-  mat.forEach((m) => m.dispose());
-  tex.forEach((t) => t.dispose());
-  root.removeFromParent();
-}
+
 function mesh(geo, mat, root, x, y, z) {
   const o = new THREE.Mesh(geo, mat);
   o.position.set(x, y, z);
@@ -631,6 +627,7 @@ function leaveHiding(exhausted = false) {
   hideReadyAt = now + 8;
   exitGrace = 1.5;
   $("lightState").textContent = lightOn ? "켜짐" : "꺼짐";
+  $("torch").setAttribute("aria-pressed", String(lightOn));
   player.x = spot.root.position.x - spot.dx * 0.9;
   player.z = spot.root.position.z - spot.dz * 0.9;
   $("viewWrap").classList.remove("hiding");
@@ -653,6 +650,7 @@ function enterHiding(spot) {
   }
   hiddenSpot = spot;
   $("lightState").textContent = "꺼짐";
+  $("torch").setAttribute("aria-pressed", "false");
   hideBreath = 1;
   player.x = spot.root.position.x;
   player.z = spot.root.position.z;
@@ -663,9 +661,20 @@ function enterHiding(spot) {
 }
 function loadScene() {
   model.removeFromParent();
-  if (environment?.userData?.dispose) environment.userData.dispose();
-  else disposeGroup(environment);
-  disposeGroup(props);
+  // Drop every old chapter reference before constructing its replacement.
+  // This also makes a failed scene build safe to retry without double-disposal.
+  const oldEnvironment = environment;
+  environment = null;
+  if (oldEnvironment?.userData?.dispose) oldEnvironment.userData.dispose();
+  else disposeGroup(oldEnvironment);
+  const oldProps = props;
+  props = null;
+  disposeGroup(oldProps);
+  items = [];
+  hidingSpots = [];
+  interactables = [];
+  nearest = null;
+  entity = null;
   scene = new THREE.Scene();
   scene.background = new THREE.Color(
     [0x111b1b, 0x141d23, 0x211b19, 0x101b18][ch],
@@ -713,6 +722,7 @@ async function start(cont) {
   screens("game");
   state = "load";
   $("dialog").hidden = false;
+  $("dialog").dataset.phase = "load";
   $("panelTitle").textContent = "녹음실 연결 중";
   $("panelText").textContent = "공간과 캐릭터를 불러오고 있습니다.";
   $("panelBody").replaceChildren();
@@ -723,6 +733,9 @@ async function start(cont) {
     const setupPromise = setup();
     void sound.start();
     await setupPromise;
+    $("panelText").textContent = "복도를 구성하고 녹음 장치를 준비하고 있습니다.";
+    // Let the loading overlay paint before generating procedural scene textures.
+    await new Promise((resolve) => requestAnimationFrame(resolve));
     const s = cont ? saved() : null;
     ch = s?.ch ?? 0;
     found = s?.found ?? [false, false, false];
@@ -734,12 +747,18 @@ async function start(cont) {
     save();
     brief();
   } catch (e) {
+    // If renderer creation or procedural scene setup fails before GLTF parsing,
+    // releaseModelBytes also aborts the still-pending model network request.
+    releaseModelBytes();
     console.error(e);
+    const failure = describeStartupError(e);
     modal(
-      "게임을 열 수 없습니다",
-      "WebGL 2를 지원하는 브라우저에서 하드웨어 가속을 켜고 다시 열어 주세요.",
+      failure.title,
+      failure.description,
       null,
-      [["타이틀로", homepage]],
+      failure.retryable
+        ? [["다시 시도", () => start(cont)], ["타이틀로", homepage, true]]
+        : [["타이틀로", homepage]],
       "error",
     );
   } finally {
@@ -771,7 +790,8 @@ function renderHUD() {
     : total() === 3
       ? c.station + "으로 돌아가세요."
       : c.item + " 회수  " + total() + " / 3";
-  $("lightState").textContent = lightOn ? "켜짐" : "꺼짐";
+  $("lightState").textContent = lightOn && !hiddenSpot ? "켜짐" : "꺼짐";
+  $("torch").setAttribute("aria-pressed", String(lightOn && !hiddenSpot));
   $("crouch").setAttribute("aria-pressed", String(crouched));
   refreshGuide();
 }
@@ -813,11 +833,13 @@ function refreshGuide() {
 function drawGuide() {
   if (!guidance) return;
   const arrow = $("guideArrow");
-  arrow.hidden = guidePath.length === 0;
-  if (!guidePath.length) return;
+  const arrowHidden = guidePath.length === 0;
+  if (arrow.hidden !== arrowHidden) arrow.hidden = arrowHidden;
+  if (arrowHidden) return;
   const next = xy(guidePath[0]);
   const angle = Math.atan2(next.x - player.x, -(next.z - player.z));
-  arrow.style.transform = "rotate(" + (angle + yaw) + "rad)";
+  const heading = "rotate(" + (angle + yaw) + "rad)";
+  if (arrow.style.transform !== heading) arrow.style.transform = heading;
 
 }
 function toggleGuide() {
@@ -1046,7 +1068,6 @@ function puzzle(reset = true) {
     "puzzle",
   );
   sound.threat(0);
-  sound.pause(false);
 }
 function interact() {
   if (state !== "play") return;
@@ -1215,7 +1236,9 @@ function enemyUpdate(dt, running) {
       }
     }
   }
-  $("viewWrap").classList.toggle("noticed", now < alertUntil);
+  const noticed = now < alertUntil;
+  const wrap = $("viewWrap");
+  if (wrap.classList.contains("noticed") !== noticed) wrap.classList.toggle("noticed", noticed);
 
   nextPath -= dt;
   const ec = cellOf(e);
@@ -1271,7 +1294,7 @@ function enemyUpdate(dt, running) {
   enemySteps += travel;
   if (enemySteps >= 0.95) {
     sound.monsterStep(dist);
-    enemySteps = 0;
+    enemySteps %= 0.95;
   }
   stride += travel * 5.5;
   model.position.y = 0.009 + 0.009 * Math.abs(Math.sin(stride));
@@ -1286,9 +1309,10 @@ function enemyUpdate(dt, running) {
     ? 0
     : Math.max(0, 1 - dist / 12) * (inSight ? 0.96 : 0.57);
   sound.threat(threat);
-  $("danger").style.opacity = String(threat * 0.53);
-  $("strain").textContent =
-    threat > 0.68 ? "바로 근처" : threat > 0.28 ? "접근 중" : "안정";
+  const dangerOpacity = String(threat * 0.53);
+  if ($("danger").style.opacity !== dangerOpacity) $("danger").style.opacity = dangerOpacity;
+  const strainLabel = threat > 0.68 ? "바로 근처" : threat > 0.28 ? "접근 중" : "안정";
+  if ($("strain").textContent !== strainLabel) $("strain").textContent = strainLabel;
   if (!hiddenSpot && !grace && !exitGrace && Math.hypot(player.x - e.x, player.z - e.z) < 0.73 && clearLine(player, e)) {
     caught();
   }
@@ -1306,8 +1330,11 @@ function update(dt) {
     (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0) -
     pointer.y;
   let r = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0) + pointer.x;
-  if (!hiddenSpot && keys.has("ArrowLeft")) yaw += dt * 1.55;
-  if (!hiddenSpot && keys.has("ArrowRight")) yaw -= dt * 1.55;
+  if (!hiddenSpot && (keys.has("ArrowLeft") || keys.has("ArrowRight"))) {
+    yaw += dt * 1.55 * (Number(keys.has("ArrowLeft")) - Number(keys.has("ArrowRight")));
+    // Keep keyboard-driven orientation finite, just like pointer rotation.
+    yaw = Math.atan2(Math.sin(yaw), Math.cos(yaw));
+  }
   const length = Math.hypot(f, r);
   if (length > 1) {
     f /= length;
@@ -1340,20 +1367,18 @@ function update(dt) {
     if (hideBreath === 0) leaveHiding(true);
   }
   eyeHeight = THREE.MathUtils.damp(eyeHeight, crouched ? 1.12 : 1.58, 12, dt);
-  camera.position.set(
-    player.x,
-    eyeHeight +
-      Math.sin(elapsed * (running ? 12 : 8.3)) * Math.min(moved, 0.05) * 0.38,
-    player.z,
-  );
+  // Reduced motion must also suppress first-person walking camera bob.
+  const cameraBob = reducedMotion ? 0 :
+    Math.sin(elapsed * (running ? 12 : 8.3)) * Math.min(moved, 0.05) * 0.38;
+  camera.position.set(player.x, eyeHeight + cameraBob, player.z);
   const proximity = Math.max(0, 1 - Math.hypot(player.x - entity.position.x, player.z - entity.position.z) / 12);
-  const sway = reducedMotion.matches ? 0 : proximity * 0.006 * Math.sin(now * 2.4);
+  const sway = reducedMotion ? 0 : proximity * 0.006 * Math.sin(now * 2.4);
   camera.rotation.set(pitch + sway * 0.4, yaw, sway, "YXZ");
-  if (!reducedMotion.matches && now >= nextFlicker) {
+  if (!reducedMotion && now >= nextFlicker) {
     flickerUntil = now + 0.18;
     nextFlicker = now + 24 + Math.random() * 35;
   }
-  const flickering = !reducedMotion.matches && now < flickerUntil && Math.sin(now * 55) > 0;
+  const flickering = !reducedMotion && now < flickerUntil && Math.sin(now * 55) > 0;
   lamp.visible = beam.visible = lightOn && !hiddenSpot && !flickering;
   enemyUpdate(dt, running);
   if (state !== "play") return;
@@ -1388,10 +1413,13 @@ function update(dt) {
         ? "출구 작동"
         : chapters[ch].station + " 확인"
     : "";
-  $("prompt").hidden = !caption;
+  const prompt = $("prompt");
+  const promptHidden = !caption;
+  if (prompt.hidden !== promptHidden) prompt.hidden = promptHidden;
   if ($("promptText").textContent !== caption) $("promptText").textContent = caption;
   if ($("act").disabled !== (!nearest && !hiddenSpot)) $("act").disabled = !nearest && !hiddenSpot;
-  $("stamina").style.transform = "scaleX(" + (hiddenSpot ? hideBreath : stamina).toFixed(3) + ")";
+  const staminaScale = "scaleX(" + (hiddenSpot ? hideBreath : stamina).toFixed(3) + ")";
+  if ($("stamina").style.transform !== staminaScale) $("stamina").style.transform = staminaScale;
   const timeLabel = clock(elapsed);
   if ($("timer").textContent !== timeLabel) $("timer").textContent = timeLabel;
   if (now > noticeUntil && $("toast").textContent) $("toast").textContent = "";
@@ -1418,9 +1446,9 @@ function frame(ts) {
   const wasPlaying = state === "play";
   if (wasPlaying) update(dt);
   if (state === "capture") {
-    const duration = reducedMotion.matches ? 1.2 : 1.45;
+    const duration = reducedMotion ? 1.2 : 1.45;
     if (captureTime < duration) {
-      renderCaptureShot(renderer, camera.aspect, captureTime, reducedMotion.matches);
+      renderCaptureShot(renderer, camera.aspect, captureTime, reducedMotion);
       if (!wasPlaying) captureTime += dt;
     } else {
       renderer.render(scene, camera);
@@ -1434,7 +1462,24 @@ function frame(ts) {
   sceneDirty = false;
   scheduleFrame();
 }
+function keepDialogFocus(e) {
+  if (e.key !== "Tab" || $("dialog").hidden) return false;
+  const buttons = [...$("panelBody").querySelectorAll("button:not([disabled])"),
+    ...$("panelActions").querySelectorAll("button:not([disabled])")];
+  if (!buttons.length) {
+    e.preventDefault();
+    $("panelTitle").focus();
+    return true;
+  }
+  const index = buttons.indexOf(document.activeElement);
+  if (e.shiftKey ? index <= 0 : index < 0 || index === buttons.length - 1) {
+    e.preventDefault();
+    (e.shiftKey ? buttons.at(-1) : buttons[0]).focus();
+  }
+  return true;
+}
 document.addEventListener("keydown", (e) => {
+  if (keepDialogFocus(e)) return;
   if (e.isComposing) return;
   if (e.target instanceof HTMLButtonElement && ["Space", "Enter"].includes(e.code)) return;
   if (
@@ -1484,13 +1529,13 @@ document.addEventListener("visibilitychange", () => {
     frameId = null;
   } else {
     last = performance.now();
-    if (state === "puzzle" && document.hasFocus()) sound.pause(false);
+    if (shouldResumeSessionAudio(state, document.hidden, document.hasFocus())) sound.pause(false);
     showSceneOnce();
   }
 });
 window.addEventListener("blur", backgroundSession);
 window.addEventListener("focus", () => {
-  if (!document.hidden && state === "puzzle") sound.pause(false);
+  if (shouldResumeSessionAudio(state, document.hidden, document.hasFocus())) sound.pause(false);
 });
 window.addEventListener("pagehide", (e) => {
   if (e.persisted) {
@@ -1498,7 +1543,11 @@ window.addEventListener("pagehide", (e) => {
     return;
   }
   if (level && !["home", "won", "load", "error"].includes(state)) save();
+  // Leaving for a different document must not keep downloading a model that
+  // can no longer be parsed by this page. bfcache pages retain their request.
+  releaseModelBytes();
   sound.pause(true);
+  sound.dispose();
   if (frameId !== null) cancelAnimationFrame(frameId);
   frameId = null;
   renderer?.setAnimationLoop?.(null);
@@ -1507,6 +1556,9 @@ window.addEventListener("pagehide", (e) => {
 window.addEventListener("pageshow", (e) => {
   if (e.persisted && renderer) {
     last = performance.now();
+    // Page restoration may not dispatch a separate focus event, notably in
+    // iOS WebKit. Puzzle audio must be resumed without advancing gameplay.
+    if (shouldResumeSessionAudio(state, document.hidden, document.hasFocus())) sound.pause(false);
     resize();
     showSceneOnce();
   }
@@ -1545,8 +1597,10 @@ wrap.addEventListener("pointermove", (e) => {
     lookLast = [e.clientX, e.clientY];
   }
 });
-for (const n of ["pointerup", "pointercancel"])
+for (const n of ["pointerup", "pointercancel", "lostpointercapture"])
   wrap.addEventListener(n, (e) => {
+    // Browsers may relinquish capture without a terminal pointer event
+    // (navigation, incoming call, native gesture). Permit a fresh look drag.
     if (lookPointer.release(e.pointerId)) lookLast = null;
   });
 const stick = $("stick");
@@ -1586,10 +1640,14 @@ $("run").addEventListener("pointerdown", (e) => {
     return;
   }
   mobileRun = true;
+  $("run").setAttribute("aria-pressed", "true");
 });
 for (const n of ["pointerup", "pointercancel", "lostpointercapture"])
   $("run").addEventListener(n, (e) => {
-    if (runPointer.release(e.pointerId)) mobileRun = false;
+    if (runPointer.release(e.pointerId)) {
+      mobileRun = false;
+      $("run").setAttribute("aria-pressed", "false");
+    }
   });
 document.addEventListener("pointerlockchange", () => {
   const locked = Boolean(renderer && document.pointerLockElement === renderer.domElement);

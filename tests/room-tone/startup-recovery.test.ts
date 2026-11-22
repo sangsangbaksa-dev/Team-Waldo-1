@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { modelBytes, releaseModelBytes } from "../../src/room-tone/assets.js";
-import { initialMute } from "../../src/room-tone/preferences.mjs";
+import { initialMute, reduceRoomToneMotion } from "../../src/room-tone/preferences.mjs";
 import { neighbors, paths, makeLevel, chapters } from "../../src/room-tone/levels.mjs";
 import { normalizeCampaign } from "../../src/room-tone/campaign.mjs";
 
@@ -51,6 +51,22 @@ describe("ROOM TONE model request lifecycle",()=>{
     await expect(active).resolves.toBeInstanceOf(ArrayBuffer);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+  it("aborts a pending model download when startup releases its request",async()=>{
+    let signal:AbortSignal|undefined;
+    const fetchMock=vi.fn<typeof fetch>((_input,options)=>new Promise<Response>((_,reject)=>{
+      signal=options?.signal as AbortSignal;
+      signal?.addEventListener("abort",()=>reject(new DOMException("Aborted","AbortError")),{once:true});
+    }));
+    vi.stubGlobal("fetch",fetchMock);
+    const pending=modelBytes();
+    releaseModelBytes();
+    expect(signal?.aborted).toBe(true);
+    await expect(pending).rejects.toMatchObject({name:"AbortError"});
+    const buffer=new ArrayBuffer(12);
+    fetchMock.mockResolvedValue({ok:true,arrayBuffer:async()=>buffer} as Response);
+    await expect(modelBytes()).resolves.toBe(buffer);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
   it("retries after network failures",async()=>{
     const fetchMock=vi.fn().mockResolvedValueOnce({ok:false,status:503})
       .mockResolvedValue({ok:true,arrayBuffer:async()=>new ArrayBuffer(3)});
@@ -61,6 +77,15 @@ describe("ROOM TONE model request lifecycle",()=>{
   });
 });
 describe("ROOM TONE allocation-free neighbor expansion",()=>{
+  it("generates identical seeded maps and landmark positions on every visit",()=>{
+    for(let chapter=0;chapter<chapters.length;chapter++){
+      const first=makeLevel(chapter),second=makeLevel(chapter);
+      expect(second.map).toEqual(first.map);
+      expect(second.items).toEqual(first.items);
+      expect(second.exit).toBe(first.exit);
+      expect(second.nest).toBe(first.nest);
+    }
+  });
   it("keeps deterministic neighbor order and path connectivity",()=>{
     const map=["#####","#...#","#.#.#","#...#","#####"];
     expect(neighbors(map,6)).toEqual([7,11]);
@@ -88,5 +113,17 @@ describe("ROOM TONE campaign size derived from actual chapter data",()=>{
     expect(normalizeCampaign({
       v:1,ch:chapters.length,found:[false,false,false],solved:false,elapsed:1,seen:[],
     })).toBeNull();
+  });
+});
+
+describe("ROOM TONE motion accessibility",()=>{
+  it("honors system reduced motion above a permissive hub preference",()=>{
+    expect(reduceRoomToneMotion({reducedMotion:false},true)).toBe(true);
+  });
+  it("supports the arcade reduced-motion setting without trusting invalid types",()=>{
+    expect(reduceRoomToneMotion({reducedMotion:true},false)).toBe(true);
+    expect(reduceRoomToneMotion({reducedMotion:false},false)).toBe(false);
+    expect(reduceRoomToneMotion(null,false)).toBe(false);
+    expect(reduceRoomToneMotion({reducedMotion:"true"},false)).toBe(false);
   });
 });

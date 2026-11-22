@@ -88,13 +88,26 @@ export function paths(map, start) {
   q.push(start);
   prev[start] = -1;
   dist[start] = 0;
+  // Inline the four neighbor checks in BFS. Replanning runs frequently while
+  // the creature pursues the player: no per-cell neighbor arrays are needed.
+  // Keep the existing right, left, down, up tie-breaking order.
+  const width = map[0].length;
   for (let h = 0; h < q.length; h++) {
     const c = q[h];
-    for (const k of neighbors(map, c)) {
-      if (prev[k] !== -2) continue;
-      prev[k] = c;
-      dist[k] = dist[c] + 1;
-      q.push(k);
+    const x = c % width, z = Math.floor(c / width);
+    const row = map[z];
+    const depth = dist[c] + 1;
+    if (row[x + 1] === "." && prev[c + 1] === -2) {
+      prev[c + 1] = c; dist[c + 1] = depth; q.push(c + 1);
+    }
+    if (row[x - 1] === "." && prev[c - 1] === -2) {
+      prev[c - 1] = c; dist[c - 1] = depth; q.push(c - 1);
+    }
+    if (map[z + 1]?.[x] === "." && prev[c + width] === -2) {
+      prev[c + width] = c; dist[c + width] = depth; q.push(c + width);
+    }
+    if (map[z - 1]?.[x] === "." && prev[c - width] === -2) {
+      prev[c - width] = c; dist[c - width] = depth; q.push(c - width);
     }
   }
   return { prev, dist, q };
@@ -165,21 +178,26 @@ export function makeLevel(ch) {
   const map = g.map((row) => row.join(""));
   const start = w + 1;
   const base = paths(map, start);
-  const selected = [start],
-    ds = [base.dist];
+  const ds = [base.dist];
   function far() {
-    let best = -1,
-      score = -1;
+    let best = -1, score = -1;
     for (const cell of base.q) {
-      const v =
-        Math.min(...ds.map((d) => d[cell])) +
-        0.012 * (neighbors(map, cell).length === 1 ? 1 : 0);
+      let nearest = Infinity;
+      for (const distances of ds) {
+        if (distances[cell] < nearest) nearest = distances[cell];
+      }
+      const x = cell % w, z = Math.floor(cell / w);
+      const degree =
+        Number(map[z]?.[x + 1] === ".") +
+        Number(map[z]?.[x - 1] === ".") +
+        Number(map[z + 1]?.[x] === ".") +
+        Number(map[z - 1]?.[x] === ".");
+      const v = nearest + 0.012 * (degree === 1 ? 1 : 0);
       if (v > score) {
         score = v;
         best = cell;
       }
     }
-    selected.push(best);
     ds.push(paths(map, best).dist);
     return best;
   }

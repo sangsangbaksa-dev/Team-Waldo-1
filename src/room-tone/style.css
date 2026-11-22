@@ -181,8 +181,6 @@ button.primary {
 }
 .startrow,
 .panelActions,
-.vactions,
-.vtabs,
 .choiceRow {
   display: flex;
   gap: 0.6rem;
@@ -231,32 +229,11 @@ button.primary {
   color: #b8c5ad;
   margin-top: 0.85rem;
 }
-#viewer {
-  min-height: 100svh;
-  background: radial-gradient(ellipse at 80% 40%, #28372e, #101716 73%);
-}
-.museum {
-  max-width: 1420px;
-  margin: auto;
-  display: grid;
-  grid-template-columns: 30% 1fr;
-  padding: 1rem 5vw 3rem;
-  gap: 3rem;
-}
-.spec {
-  align-self: center;
-}
-.spec h2 {
-  font-size: 3.5rem;
-  margin: 1rem 0;
-}
-.spec p,
 .panel p,
 dialog p {
   line-height: 1.7;
   color: #c0c9bd;
 }
-.spec dl,
 .notes,
 .keys,
 .endstat {
@@ -264,73 +241,10 @@ dialog p {
   grid-template-columns: 1fr auto;
   gap: 0.8rem 1.5rem;
 }
-.spec dl {
-  border-block: 1px solid #48564d;
-  padding: 1.25rem 0;
-}
-.spec dd,
 .notes dd,
 .keys dd {
   margin: 0;
   color: #ddd4b4;
-}
-.vtabs {
-  margin: 1.3rem 0 0.8rem;
-}
-.vtabs button[aria-pressed="true"],
-.vactions button[aria-pressed="true"] {
-  border-color: #c59871;
-  color: #f2caa3;
-}
-.scrublabel {
-  display: flex;
-  justify-content: space-between;
-  margin: 1.3rem 0 0.5rem;
-  color: #cfcaba;
-  font-size: 0.9rem;
-}
-input[type="range"] {
-  width: 100%;
-  accent-color: #d9a276;
-}
-#stage {
-  height: calc(100svh - 158px);
-  min-height: 380px;
-  max-height: 880px;
-  background: radial-gradient(
-    ellipse at 45% 47%,
-    #4a554b,
-    #24312e 57%,
-    #111a18 100%
-  );
-  position: relative;
-  overflow: hidden;
-  border: 1px solid #4f574c;
-}
-#stage canvas,
-#still {
-  position: absolute;
-  inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
-  touch-action: none;
-}
-#still {
-  object-fit: contain;
-  background: #18211f;
-}
-#stage.ready #still {
-  display: none;
-}
-#notice {
-  position: absolute;
-  bottom: 1rem;
-  left: 1rem;
-  color: #e1ded0;
-  background: #141e1cc9;
-  padding: 0.42rem 0.6rem;
-  font-size: 0.85rem;
 }
 #game,
 #viewWrap {
@@ -684,40 +598,6 @@ dialog h2 {
     max-width: 350px;
     font-size: 0.92rem;
   }
-  .museum {
-    grid-template-columns: 1fr;
-    gap: 0.5rem;
-    padding: 0 1rem 1rem;
-  }
-  .spec {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 0.4rem 1rem;
-    align-items: center;
-  }
-  .spec h2 {
-    font-size: 1.5rem;
-    margin: 0;
-  }
-  .spec .kicker,
-  .spec p,
-  .spec dl {
-    display: none;
-  }
-  .vtabs,
-  .vactions {
-    margin: 0;
-  }
-  .scrublabel {
-    margin: 0;
-  }
-  .spec input {
-    grid-column: 1/-1;
-  }
-  #stage {
-    height: calc(100svh - 235px);
-    min-height: 230px;
-  }
   .hudright button {
     padding: 0.45rem 0.5rem;
   }
@@ -954,3 +834,53 @@ button.primary { background: #e1e1dd; border-color: #e1e1dd; color: #151515; }
     height: max(78px, calc(env(safe-area-inset-top) + 54px));
   }
 }
+
+/* Honor the in-game reduced-motion setting even when the OS does not request it. */
+body.rt-reduced-motion #home::after,
+body.rt-reduced-motion #viewWrap::before,
+body.rt-reduced-motion #viewWrap.caught-shot::after,
+body.rt-reduced-motion #viewWrap.noticed::before,
+body.rt-reduced-motion #viewWrap.noticed .lens { animation: none !important; }
+body.rt-reduced-motion #viewWrap.noticed::before { transform: none; }
+
+/* Compact title masthead: one clear brand link and one accessible sound button. */
+@media (max-width: 420px) {
+  .mast {
+    gap: 0.5rem;
+    padding-right: max(0.7rem, env(safe-area-inset-right));
+    padding-left: max(0.7rem, env(safe-area-inset-left));
+  }
+  .mast .wordmark {
+    gap: 0.32rem;
+    font-size: clamp(0.74rem, 3.2vw, 0.92rem);
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .mast .signalMark { flex: 0 0 25px; width: 25px; height: 25px; font-size: 23px; }
+  .mast .bare {
+    flex: 0 0 auto;
+    font-size: 0.78rem;
+    white-space: nowrap;
+    padding: 0.42rem;
+  }
+}
+
+/* Loading progress stays visible during heavy 3D model and texture work. */
+#dialog[data-phase="load"] .panel::after {
+  content: "";
+  display: block;
+  margin-top: 1.1rem;
+  height: 3px;
+  width: 100%;
+  background: linear-gradient(90deg, #deb995 0%, #deb995 36%, #38473e 36%, #38473e 100%);
+  background-size: 180% 100%;
+  animation: rt-loading 1.7s linear infinite;
+}
+@keyframes rt-loading {
+  to { background-position: -180% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #dialog[data-phase="load"] .panel::after { animation: none; }
+}
+body.rt-reduced-motion #dialog[data-phase="load"] .panel::after { animation: none; }

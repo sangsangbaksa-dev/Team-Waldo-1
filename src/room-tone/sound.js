@@ -66,6 +66,7 @@ export class Sound {
     this.stepSide = 1;
     this.clock = null;
     this.waking = null;
+    this.powerQueue = Promise.resolve();
   }
 
   async start() {
@@ -89,7 +90,7 @@ export class Sound {
           throw error;
         }
       }
-      if (this.ctx.state === "suspended") {
+      if (!this.paused && !this.muted && this.ctx.state === "suspended") {
         if (!this.waking)
           this.waking = this.ctx.resume().finally(() => {
             this.waking = null;
@@ -97,7 +98,7 @@ export class Sound {
         await this.waking;
       }
       this.applyLevel();
-      if (!this.paused) this.startClock();
+      this.syncPower();
     } catch {
       // Sound is optional on devices with a locked or unavailable audio output.
     }
@@ -182,21 +183,37 @@ export class Sound {
     if (this.muted) {
       if (this.clock !== null) globalThis.clearInterval(this.clock);
       this.clock = null;
-    } else if (!this.paused) this.startClock();
+    }
+    this.syncPower();
   }
 
   pause(paused) {
     this.paused = Boolean(paused);
     this.applyLevel();
-    if (this.ctx) void (this.paused ? this.ctx.suspend() : this.ctx.resume()).catch(() => {});
     if (this.paused) {
       if (this.clock !== null) globalThis.clearInterval(this.clock);
       this.clock = null;
       this.threat(0);
     } else if (this.ctx && this.level) {
       this.nextDistant = this.ctx.currentTime + 7 + Math.random() * 7;
-      this.startClock();
     }
+    this.syncPower();
+  }
+
+  syncPower() {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    // Serialize transitions to prevent a delayed resume from reactivating
+    // silent oscillators after mute, pause, or tab backgrounding.
+    this.powerQueue = this.powerQueue.catch(() => {}).then(async () => {
+      if (ctx !== this.ctx || ctx.state === "closed") return;
+      if (this.paused || this.muted) {
+        if (ctx.state !== "suspended") await ctx.suspend();
+      } else {
+        if (ctx.state !== "running") await ctx.resume();
+        if (ctx === this.ctx && !this.paused && !this.muted) this.startClock();
+      }
+    }).catch(() => { /* WebAudio permission may change during playback. */ });
   }
 
   startClock() {
@@ -235,6 +252,22 @@ export class Sound {
     return (
       this.ctx?.state === "running" && this.level && !this.paused && !this.muted
     );
+  }
+
+  /** Release the audio graph only on a real page unload (not the bfcache). */
+  dispose() {
+    if (this.clock !== null) globalThis.clearInterval(this.clock);
+    this.clock = null;
+    const ctx = this.ctx;
+    this.ctx = null;
+    this.level = null;
+    this.mix = this.room = this.radio = this.air = this.breath = null;
+    this.hum = this.motor = this.noise = null;
+    this.waking = null;
+    if (ctx && ctx.state !== "closed") {
+      try { void ctx.close().catch(() => {}); }
+      catch { /* The page is unloading; sound cannot block navigation. */ }
+    }
   }
 
   tick() {

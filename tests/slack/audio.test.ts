@@ -177,3 +177,29 @@ it('stops silent ambience generation on mute and restores the selected stage on 
   expect(vi.getTimerCount()).toBe(0);
   audio.dispose();
 });
+
+it('throttles rapid click/key bursts without muting alerts and footsteps', () => {
+  const param = () => ({ value: 0, setTargetAtTime: vi.fn(), setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() });
+  const node = () => ({ connect: vi.fn(), disconnect: vi.fn(), start: vi.fn(), stop: vi.fn(),
+    gain: param(), frequency: param(), Q: param(), threshold: param(), knee: param(),
+    ratio: param(), attack: param(), release: param() });
+  const ctx = {
+    state: 'running', currentTime: 0, sampleRate: 1000, destination: {},
+    createGain: vi.fn(node), createBiquadFilter: vi.fn(node),
+    createDynamicsCompressor: vi.fn(node), createBufferSource: vi.fn(node),
+    createOscillator: vi.fn(node),
+    createBuffer: vi.fn(() => ({ getChannelData: () => new Float32Array(500) })),
+    resume: vi.fn().mockResolvedValue(undefined), close: vi.fn().mockResolvedValue(undefined),
+  };
+  vi.stubGlobal('AudioContext', vi.fn(function () { return ctx; }));
+  const now = vi.spyOn(performance, 'now').mockReturnValue(0);
+  const audio = createSlackAudio(); audio.resume();
+  for (let i = 0; i < 120; i++) audio.play(i % 2 ? 'key' : 'click');
+  expect(ctx.createBuffer).toHaveBeenCalledTimes(1);
+  now.mockReturnValue(45);
+  audio.play('key');
+  expect(ctx.createBuffer).toHaveBeenCalledTimes(2);
+  audio.play('footstep', 0.6);
+  expect(ctx.createBuffer).toHaveBeenCalledTimes(4); // Alert-like ambient cues are not throttled.
+  audio.dispose();
+});

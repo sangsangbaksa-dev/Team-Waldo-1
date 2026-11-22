@@ -10,6 +10,7 @@ export const createSlackAudio: CreateAudio = () => {
   let pendingSuspend: Promise<void> | null = null;
   let background: AudioNode[] = [], ambTimer = 0, bedTimer = 0, step = 0;
   let requestedAmbience: StageId | null = null;
+  let lastUiSoundAt = -Infinity;
   const ensure = (): AudioContext | null => {
     if (disposed) return null;
     if (ctx) return ctx;
@@ -82,6 +83,14 @@ export const createSlackAudio: CreateAudio = () => {
     if (ctx && !muted) bed();
   };
   const play = (name: SfxName, vol = 1): void => {
+    if (muted || held || disposed || ctx?.state !== 'running') return;
+    // Clicking a chip 100 times in a second should not allocate 100
+    // short-lived noise buffers and oscillators. Keep important alert sounds.
+    if (name === 'click' || name === 'key') {
+      const now = performance.now();
+      if (now - lastUiSoundAt < 40) return;
+      lastUiSoundAt = now;
+    }
     const v = Math.max(0, Math.min(1, vol));
     switch (name) {
       case 'footstep': {

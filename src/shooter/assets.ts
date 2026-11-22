@@ -18,11 +18,20 @@ const nodeMap = (root: THREE.Object3D): Record<string, THREE.Object3D> => { cons
 const FILES: Record<string, number> = { characters: 2_870_000, weapons: 1_400_000 };
 
 let cache: Promise<ShooterAssets> | null = null;
+let loadedFraction = 0;
+const progressListeners = new Set<(fraction: number) => void>();
+const progress = (fraction: number): void => {
+  loadedFraction = Math.max(loadedFraction, Math.min(1, fraction));
+  for (const listener of progressListeners) listener(loadedFraction);
+};
+
+/** A single shared download notifies every active game screen, including late subscribers. */
 export function loadShooterAssets(base: string, onProgress?: (fraction: number) => void): Promise<ShooterAssets> {
+  if (onProgress) { progressListeners.add(onProgress); onProgress(loadedFraction); }
   cache ??= (async () => {
     const loader = new GLTFLoader(), dir = `${base}assets/models/`, prog = new Map<string, number>(), total = Object.values(FILES).reduce((a, b) => a + b, 0);
     const get = async (name: string): Promise<THREE.Object3D> => {
-      const buf = await retry(() => fetchBuffer(`${dir}${name}.glb`, loaded => { prog.set(name, loaded); onProgress?.(Math.min(0.95, [...prog.values()].reduce((a, b) => a + b, 0) / total)); }), { maxAttempts: 2 });
+      const buf = await retry(() => fetchBuffer(`${dir}${name}.glb`, loaded => { prog.set(name, loaded); progress(Math.min(0.95, [...prog.values()].reduce((a, b) => a + b, 0) / total)); }), { maxAttempts: 2 });
       return (await loader.parseAsync(buf, dir)).scene;
     };
     const [characters, weapons] = await Promise.all(['characters', 'weapons'].map(get));
@@ -35,9 +44,9 @@ export function loadShooterAssets(base: string, onProgress?: (fraction: number) 
     }
     const groundGuns: Record<string, THREE.Object3D> = {}, viewGuns: Record<string, THREE.Object3D> = {};
     for (const k of ['pistol', 'smg', 'rifle', 'shotgun', 'sniper']) { if (!wn[`g_${k}`] || !wn[`n_${k}`] || !wn[`arms_${k}`]) throw new Error(`missing weapon ${k}`); groundGuns[k] = wn[`g_${k}`]; viewGuns[k] = wn[`n_${k}`]; }
-    onProgress?.(1);
+    progress(1);
     return { kit: new CharacterKit(parts), groundGuns, viewGuns, weaponNodes: wn };
   })();
-  cache.catch(() => { cache = null; });
-  return cache;
+  cache.catch(() => { cache = null; loadedFraction = 0; });
+  return cache.finally(() => { if (onProgress) progressListeners.delete(onProgress); });
 }

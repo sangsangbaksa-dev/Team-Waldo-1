@@ -445,3 +445,15 @@ it('cancels a drag when deployment controls rebuild the canvas mid-gesture', () 
   expect(document.querySelector('.sq-budget strong')?.textContent).toContain('900');
   button('#pause').click(); button('#exit').click();
 });
+
+it('rejects invalid frame timestamps and recovers without corrupting the battle clock', () => {
+  openSquad(vi.fn());
+  button('#start').click(); button('#auto').click(); button('#ready').click();
+  let pending = [...frames.values()]; frames.clear(); pending.forEach(frame => frame(NaN));
+  expect(frames.size).toBe(1);
+  pending = [...frames.values()]; frames.clear(); pending.forEach(frame => frame(100));
+  pending = [...frames.values()]; frames.clear(); pending.forEach(frame => frame(200));
+  expect(frames.size).toBe(1);
+  expect(button('#skip')).toBeTruthy();
+  button('#pause').click(); button('#exit').click();
+});

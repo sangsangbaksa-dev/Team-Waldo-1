@@ -298,7 +298,60 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
     if (e.repeat || e.defaultPrevented || (e.target instanceof Element && e.target.closest('.pvp-root, input, textarea, select, [contenteditable="true"]'))) return;
     if (e.key === 'Escape') { e.preventDefault(); if (stage === 'pause') { audio.setPaused(false); stage = previous; last = 0; render(); } else if (stage === 'menu') exit(); else pause(); } else if (stage === 'deploy' && /^[1-5]$/.test(e.key)) { chooseUnit(TYPES[Number(e.key) - 1]!); } else if (stage === 'deploy' && (e.key === ' ' || e.key === 'Enter') && !(e.target instanceof HTMLElement && e.target.closest('button, input, select, textarea, [contenteditable]'))) { e.preventDefault(); ready(); } }
   function exit(): void { if (closed) return; closed = true; audio.dispose(); quitOnline(); lobby?.close(); if (toastTimer) window.clearTimeout(toastTimer); toastTimer = 0; cancelAnimationFrame(raf); window.removeEventListener('keydown', key); root.remove(); onExit(); }
-  function frame(time: number): void { raf = 0; if (closed) return; if (stage === 'battle' && battle) { if (last) accumulator += Math.min(.1, (time - last) / 1000) * speed; last = time; while (accumulator >= STEP && battle.winner === null) { battle.step(); accumulator -= STEP; audio.battle(battle.effects, time); } if (battle.winner !== null) finish(); else { const canvas = root.querySelector('canvas'); if (canvas && battle.tick !== lastDrawTick) { draw(canvas, armies, side, battle, 0, null); lastDrawTick = battle.tick; } // At 4× speed six simulation ticks arrive four times faster: throttle the
+  function paintBattleStatus(b: Battle): void {
+    const seconds = Math.floor(b.tick / 30);
+    if (seconds === lastBattleSecond) return;
+    lastBattleSecond = seconds;
+    const label = root.querySelector('.sq-battlebar span');
+    const text = `경과 ${seconds}초 / 60초`;
+    if (label && label.textContent !== text) label.textContent = text;
+
+    // Screen readers get a concise soldier count, no more than once per five seconds.
+    if (seconds % 5 !== 0) return;
+    const counts = [0, 0];
+    for (const soldier of b.units) if (soldier.hp > 0) counts[soldier.side]!++;
+    const status = root.querySelector('#sq-battle-status');
+    const report = `전투 ${seconds}초, 파랑 ${counts[0]}명, 빨강 ${counts[1]}명 생존`;
+    if (status && status.textContent !== report) status.textContent = report;
+  }
+  function paintBattleFrame(b: Battle, now: number): void {
+    const canvas = root.querySelector('canvas');
+    if (canvas && b.tick !== lastDrawTick) {
+      draw(canvas, armies, side, b, 0, null);
+      lastDrawTick = b.tick;
+    }
+    // Updating by real time keeps the DOM refresh at 5 Hz, even at 4× speed.
+    if (now - lastRosterTime >= 200) {
+      lastRosterTime = now;
+      const roster = root.querySelector<HTMLElement>('.sq-roster');
+      if (roster) updateRoster(roster, b);
+    }
+    paintBattleStatus(b);
+  }
+  function frame(now: number): void {
+    raf = 0;
+    if (closed) return;
+    if (stage !== 'battle' || !battle) {
+      last = 0;
+      scheduleFrame();
+      return;
+    }
+    if (!Number.isFinite(now)) { scheduleFrame(); return; }
+    const activeBattle = battle;
+    if (last && now > last) accumulator += Math.min(0.1, (now - last) / 1000) * speed;
+    last = now;
+    while (accumulator >= STEP && activeBattle.winner === null) {
+      activeBattle.step();
+      accumulator -= STEP;
+      audio.battle(activeBattle.effects, now);
+    }
+    if (activeBattle.winner !== null) {
+      finish(); // Transitions to the result screen and stops animation.
+      return;
+    }
+    paintBattleFrame(activeBattle, now);
+    scheduleFrame();
+  }
       // roster using real time, not battle ticks, to cap layout updates at 5 Hz.
       if (time - lastRosterTime >= 200) { lastRosterTime = time; const ro = root.querySelector<HTMLElement>('.sq-roster'); if (ro) updateRoster(ro, battle); } const seconds = Math.floor(battle.tick / 30); if (seconds !== lastBattleSecond) { lastBattleSecond = seconds; const label = root.querySelector('.sq-battlebar span'); if (label) label.textContent = `경과 ${seconds}초 / 60초`; if (seconds % 5 === 0) { const counts = [0, 0]; for (const u of battle.units) if (u.hp > 0) counts[u.side]!++; const status = root.querySelector('#sq-battle-status'); if (status) status.textContent = `전투 ${seconds}초, 파랑 ${counts[0]}명, 빨강 ${counts[1]}명 생존`; } } } } else last = 0; scheduleFrame(); }
   window.addEventListener('keydown', key); render();

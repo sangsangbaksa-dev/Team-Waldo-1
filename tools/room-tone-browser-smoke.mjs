@@ -106,6 +106,12 @@ try {
       assert.match(await page.locator("#panelTitle").innerText(),/끊어진 전원/);
       await page.getByRole("button",{name:"구역 진입"}).click();
       assert.equal(await page.locator("#dialog").isVisible(),false);
+      assert.equal(await page.locator("#torch").getAttribute("aria-pressed"),"true",
+        "The flashlight should expose its initial on state to screen readers");
+      await page.locator("#torch").click();
+      assert.equal(await page.locator("#torch").getAttribute("aria-pressed"),"false");
+      await page.locator("#torch").click();
+      assert.equal(await page.locator("#torch").getAttribute("aria-pressed"),"true");
       const firstTime=await page.locator("#timer").textContent();
       // Shader compilation can consume several seconds of CPU on software
       // WebGL. Poll for a clock change instead of relying on a 1.5s sleep.
@@ -138,6 +144,14 @@ try {
       } else await page.locator("#pauseGame").click();
       assert.match(await page.locator("#panelTitle").innerText(),/일시정지/);
       assert.ok(await page.getByRole("button",{name:"게임 목록으로"}).count()>0);
+      if(!config.mobile){
+        await page.keyboard.press("Shift+Tab");
+        assert.equal(await page.evaluate(()=>document.activeElement?.textContent?.trim()),
+          "게임 목록으로","Shift+Tab must wrap to the last modal action");
+        await page.keyboard.press("Tab");
+        assert.equal(await page.evaluate(()=>document.activeElement?.textContent?.trim()),
+          "계속하기","Tab must wrap to the first modal action");
+      }
       const stoppedTime=await page.locator("#timer").textContent();
       await page.waitForTimeout(350);
       assert.equal(await page.locator("#timer").textContent(),stoppedTime,

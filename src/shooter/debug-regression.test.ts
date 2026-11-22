@@ -90,6 +90,41 @@ describe('exact world grid ray traversal', () => {
     const m=emptyMap(); addBox(m,box(-1,-1,1,1));
     expect(rayWorld(m,0,5,0,0,-1,0,10)).toBe(2);
   });
+  it('agrees with a full-scene reference for seeded random directions', () => {
+    let seed = 0x613bd291;
+    const random = (): number => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+    const map = emptyMap();
+    for (let i = 0; i < 90; i++) {
+      const x = random() * 90 - 45, z = random() * 90 - 45, y = random() * 5;
+      addBox(map, { x0:x, x1:x+0.1+random()*6, y0:y, y1:y+0.2+random()*5, z0:z, z1:z+0.1+random()*6, kind:'wall',tex:0 });
+    }
+    const reference = (b: Box, o: [number, number, number], d: [number, number, number], limit: number): number => {
+      let near = 0, far = limit;
+      for (const [origin, direction, min, max] of [
+        [o[0], d[0], b.x0, b.x1], [o[1], d[1], b.y0, b.y1], [o[2], d[2], b.z0, b.z1],
+      ]) {
+        if (Math.abs(direction) < 1e-9) { if (origin < min || origin > max) return Infinity; continue; }
+        const a = (min-origin)/direction, c = (max-origin)/direction;
+        near = Math.max(near, Math.min(a,c)); far = Math.min(far, Math.max(a,c));
+        if (near > far) return Infinity;
+      }
+      return near;
+    };
+    for (let i = 0; i < 600; i++) {
+      const o: [number,number,number] = [random()*120-60, random()*12, random()*120-60];
+      const yaw = random()*Math.PI*2, pitch = (random()-0.5)*2;
+      const d: [number,number,number] = [
+        i%13 === 0 ? 0 : Math.cos(yaw)*Math.cos(pitch),
+        i%17 === 0 ? 0 : Math.sin(pitch),
+        i%19 === 0 ? 0 : Math.sin(yaw)*Math.cos(pitch),
+      ];
+      const limit = random()*110+1;
+      const want = map.boxes.reduce((best, b) => Math.min(best, reference(b,o,d,limit)), Infinity);
+      const got = rayWorld(map,o[0],o[1],o[2],d[0],d[1],d[2],limit);
+      if (want === Infinity) expect(got).toBe(Infinity);
+      else expect(got).toBeCloseTo(want, 7);
+    }
+  });
   it('returns no hit for invalid ray values', () => {
     const m=emptyMap(); expect(rayWorld(m,0,1,0,NaN,0,0,5)).toBe(Infinity);
   });

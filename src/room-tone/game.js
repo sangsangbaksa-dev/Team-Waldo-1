@@ -26,6 +26,7 @@ import { normalizeCampaign } from "./campaign.mjs";
 import { createPointerOwner, tryCapture } from "./input.mjs";
 import { initialMute } from "./preferences.mjs";
 import { createIdLookup } from "./dom.mjs";
+import { renderingScale } from "./render-quality.mjs";
 
 const $ = createIdLookup(document),
   C = 2.7,
@@ -163,6 +164,7 @@ $("sound").onclick = $("gsound").onclick = toggleAudio;
 window.addEventListener("storage", (e) => {
   if (e.key === PREFS || (e.key === "rt-silent" && read(PREFS)?.sound === undefined))
     applyMute(initialMute(read("rt-silent"), read(PREFS)));
+  if (e.key === PREFS && renderer && camera) resize();
 });
 function screens(id) {
   for (const key of ["home", "game"]) $(key).hidden = key !== id;
@@ -304,7 +306,6 @@ async function setup() {
       antialias: true,
       powerPreference: "high-performance",
     });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, touch ? 1.35 : 1.65));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.08;
@@ -431,6 +432,10 @@ function resize() {
   const w = $("viewWrap").clientWidth,
     h = $("viewWrap").clientHeight;
   if (!w || !h) return;
+  const quality = read(PREFS)?.quality;
+  const ratio = renderingScale(w, h, devicePixelRatio, quality, touch);
+  // Avoid invoking WebGLRenderer.setSize twice on every window resize.
+  if (Math.abs(renderer.getPixelRatio() - ratio) > 0.005) renderer.setPixelRatio(ratio);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h, false);

@@ -18,7 +18,7 @@ import { roundLabel } from './round';
 export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } = {}): void {
   const root = document.createElement('div'); root.className = 'sq-root wd-screen'; root.style.setProperty('--wd-hue', '#6ebcff'); document.body.appendChild(root); opts.loading?.close();
   const DEPLOY_MS = 90000, esc = (s: string): string => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
-  interface Online { s: PvpSession; net: SquadPvp; mine: Side; incoming: Map<number, Placement[]>; sent: number; deadline: number; leaving: number; done: boolean; result: string }
+  interface Online { s: PvpSession; net: SquadPvp; mine: Side; incoming: Map<number, Placement[]>; sent: number; deadline: number; leaving: number; done: boolean; result: string; settleTimer: number; wakeSettle: (() => void) | null }
   const audio = new SquadAudio(); audio.enabled = readPreferences().sound;
   let online: Online | null = null, lobby: { close(): void } | undefined;
   type SquadStage = 'menu' | 'cover' | 'deploy' | 'wait' | 'battle' | 'round' | 'result' | 'pause';
@@ -157,7 +157,7 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
       onArmy: (r, a) => { const o = online; if (o?.net === net && !o.incoming.has(r)) { o.incoming.set(r, a); tryStart(); } },
       onGone: why => { if (online?.net === net) handleGone(why); },
     });
-    online = { s, net, mine: s.host ? 0 : 1, incoming: new Map(), sent: 0, deadline: 0, leaving: 0, done: false, result: '' };
+    online = { s, net, mine: s.host ? 0 : 1, incoming: new Map(), sent: 0, deadline: 0, leaving: 0, done: false, result: '', settleTimer: 0, wakeSettle: null };
     mode = 'online'; startMatch();
   }
   /** 내 배치를 제출하고, 상대 배치가 이미 와 있으면 바로 전투를 시작합니다. */
@@ -198,12 +198,31 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
     show('결과를 기록하는 중…');
     try {
       let row = await o.s.backend.report(o.s.match.id, winner);
-      for (let i = 0; i < 8 && row.status === 'playing' && online === o && !closed; i++) { await new Promise(r => window.setTimeout(r, 3000)); row = await o.s.backend.settle(o.s.match.id); }
+      for (let i = 0; i < 8 && row.status === 'playing' && online === o && !closed; i++) {
+        await new Promise<void>(resolve => {
+          o.wakeSettle = resolve;
+          o.settleTimer = window.setTimeout(() => {
+            o.settleTimer = 0; o.wakeSettle = null; resolve();
+          }, 3000);
+        });
+        // Leaving the match must cancel retries without sending another request.
+        if (online !== o || closed) return;
+        row = await o.s.backend.settle(o.s.match.id);
+      }
       const delta = o.s.host ? row.host_delta : row.guest_delta;
       show(row.status === 'finished' && delta !== null ? `레이팅 ${delta >= 0 ? '+' : ''}${delta}` : row.status === 'void' ? '두 쪽의 보고가 달라 이 대전은 기록되지 않았습니다.' : '결과가 아직 확정되지 않았습니다.');
     } catch { show('기록을 저장하지 못했습니다. 네트워크를 확인해 주세요.'); }
   }
-  function leaveOnline(finished: boolean): void { const o = online; online = null; if (onlineTimer) window.clearInterval(onlineTimer); onlineTimer = 0; o?.net.dispose(finished); }
+  function leaveOnline(finished: boolean): void {
+    const o = online; online = null;
+    if (onlineTimer) window.clearInterval(onlineTimer);
+    onlineTimer = 0;
+    if (!o) return;
+    if (o.settleTimer) window.clearTimeout(o.settleTimer);
+    o.settleTimer = 0; const wake = o.wakeSettle; o.wakeSettle = null;
+    wake?.();
+    o.net.dispose(finished);
+  }
   /** 온라인에서 나갑니다. 끝나기 전에 나가면 기권패로 보고합니다. */
   function quitOnline(): void {
     const o = online; if (!o) return;

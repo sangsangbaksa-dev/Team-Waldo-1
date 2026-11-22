@@ -110,3 +110,29 @@ it('clears the online formation timer when the opponent forfeits during deployme
   expect(callbacks.dispose).toHaveBeenCalledTimes(1);
   button('#exit').click();
 });
+
+it('cancels pending rating-settlement retries on exit from an online forfeit', async () => {
+  openSquad(vi.fn());
+  button('[data-mode="online"]').click();
+  button('#start').click();
+  await vi.dynamicImportSettled();
+  const settle = vi.fn().mockResolvedValue({ status: 'playing', host_delta: null, guest_delta: null });
+  const report = vi.fn().mockResolvedValue({ status: 'playing', host_delta: null, guest_delta: null });
+  callbacks.onMatch!({
+    host: true,
+    me: { id: 'blue', nickname: 'Blue' },
+    opponent: { id: 'red', nickname: 'Red' },
+    match: { id: 'match' },
+    backend: { report, settle },
+  } as unknown as PvpSession);
+  callbacks.onGone?.('bye');
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(vi.getTimerCount()).toBe(1); // One 3-second settlement poll.
+  button('#next').click(); // Return to the main menu and dispose networking.
+  expect(vi.getTimerCount()).toBe(0);
+  vi.advanceTimersByTime(5_000);
+  await Promise.resolve();
+  expect(settle).not.toHaveBeenCalled();
+  button('#exit').click();
+});

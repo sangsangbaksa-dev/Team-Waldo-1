@@ -352,3 +352,26 @@ it('invokes the parent navigation callback only once even if an old exit button 
   expect(document.querySelector('.sq-root')).toBeNull();
   expect(frames.size).toBe(0);
 });
+
+it('announces battlefield survivor counts without flooding screen readers every frame', () => {
+  openSquad(vi.fn());
+  button('#start').click(); button('#auto').click(); button('#ready').click();
+  const status = document.querySelector<HTMLElement>('#sq-battle-status')!;
+  expect(status.getAttribute('role')).toBe('status');
+  expect(status.getAttribute('aria-live')).toBe('polite');
+  let time = 100;
+  for (let i = 0; i < 20; i++) {
+    const pending = [...frames.values()]; frames.clear();
+    pending.forEach(fn => fn(time));
+    time += 100;
+  }
+  const announced = status.textContent;
+  expect(announced).toMatch(/전투 0초, 파랑 \d+명, 빨강 \d+명 생존/);
+  for (let i = 0; i < 5; i++) {
+    const pending = [...frames.values()]; frames.clear();
+    pending.forEach(fn => fn(time));
+    time += 100;
+  }
+  expect(status.textContent).toBe(announced); // Under five seconds: no repeated announcement.
+  button('#pause').click(); button('#exit').click();
+});

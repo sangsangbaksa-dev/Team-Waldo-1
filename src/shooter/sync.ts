@@ -76,10 +76,9 @@ export function canAcceptRoomLoot(loot: Loot, senderIndex: number, host: boolean
  * The host is exempt because it forwards AI pickup events as well.
  */
 export function canAcceptRoomPickup(loot: Loot | undefined, sender: Player | undefined, host: boolean): boolean {
-  if (!loot || loot.taken) return false;
+  if (!loot || loot.taken || !sender || !sender.remote || sender.bot) return false;
   if (host) return true;
-  return !!sender && sender.remote && !sender.bot &&
-    Math.abs(loot.x - sender.x) <= 15 && Math.abs(loot.z - sender.z) <= 15;
+  return Math.abs(loot.x - sender.x) <= 15 && Math.abs(loot.z - sender.z) <= 15;
 }
 
 /** Remote damage reports may only affect the car driven by the reporting human.

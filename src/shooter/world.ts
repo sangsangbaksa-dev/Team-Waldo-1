@@ -476,21 +476,21 @@ function boxRayT(b: Box, ox: number, oy: number, oz: number, dx: number, dy: num
   if (Math.abs(dx) < 1e-9) { if (ox < b.x0 || ox > b.x1) return Infinity; }
   else {
     let a = (b.x0 - ox) / dx, z = (b.x1 - ox) / dx;
-    if (a > z) [a, z] = [z, a];
+    if (a > z) { const tmp = a; a = z; z = tmp; }
     near = Math.max(near, a); far = Math.min(far, z);
     if (near > far) return Infinity;
   }
   if (Math.abs(dy) < 1e-9) { if (oy < b.y0 || oy > b.y1) return Infinity; }
   else {
     let a = (b.y0 - oy) / dy, z = (b.y1 - oy) / dy;
-    if (a > z) [a, z] = [z, a];
+    if (a > z) { const tmp = a; a = z; z = tmp; }
     near = Math.max(near, a); far = Math.min(far, z);
     if (near > far) return Infinity;
   }
   if (Math.abs(dz) < 1e-9) { if (oz < b.z0 || oz > b.z1) return Infinity; }
   else {
     let a = (b.z0 - oz) / dz, z = (b.z1 - oz) / dz;
-    if (a > z) [a, z] = [z, a];
+    if (a > z) { const tmp = a; a = z; z = tmp; }
     near = Math.max(near, a); far = Math.min(far, z);
     if (near > far) return Infinity;
   }

@@ -3,21 +3,19 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { fetchBuffer, retry } from '../loading';
-import { bake, type Baked } from '../shared/character/bake';
-import { kitFromScene, type CharacterKit } from '../shared/character';
+import { bake } from '../shared/character/bake';
+import { CharacterKit, type CharPart } from '../shared/character';
 
-/** 병사 한 종류: 몸통 + 다리(허벅지·정강이) + 선택적 팔. 모두 모델 원점(발바닥) 기준입니다. */
-export interface Soldier { body: Baked; leg: Baked; shin: Baked | null; armL: { geo: Baked; pivot: THREE.Vector3 } | null; armR: { geo: Baked; pivot: THREE.Vector3 } | null }
+/** Only the five soldiers used in ZERO ZONE are baked; other games may need more. */
 export interface ShooterAssets {
-  soldiers: Record<string, Soldier>; kit: CharacterKit;
+  kit: CharacterKit;
   /** 바닥에 놓인 총, 1인칭 총 */ groundGuns: Record<string, THREE.Object3D>; viewGuns: Record<string, THREE.Object3D>;
-  props: Record<string, THREE.Object3D>;
   /** weapons.glb 의 모든 노드(n_ 맨 총, arms_ 팔, p_ 교체 부품). 조립 화면과 1인칭 총이 부품을 얹는 데 씁니다. */ weaponNodes: Record<string, THREE.Object3D>;
 }
 export const SOLDIER_KINDS = ['rifle', 'merc', 'swat', 'guard', 'heavy'] as const;
 
 const nodeMap = (root: THREE.Object3D): Record<string, THREE.Object3D> => { const r: Record<string, THREE.Object3D> = {}; root.traverse(o => { if (o.name) r[o.name] = o; }); return r; };
-const FILES: Record<string, number> = { characters: 2_870_000, weapons: 1_400_000, props: 860_000 };
+const FILES: Record<string, number> = { characters: 2_870_000, weapons: 1_400_000 };
 
 let cache: Promise<ShooterAssets> | null = null;
 export function loadShooterAssets(base: string, onProgress?: (fraction: number) => void, onNote?: (note: string) => void): Promise<ShooterAssets> {
@@ -27,15 +25,18 @@ export function loadShooterAssets(base: string, onProgress?: (fraction: number) 
       const buf = await retry(() => fetchBuffer(`${dir}${name}.glb`, loaded => { prog.set(name, loaded); onProgress?.(Math.min(0.95, [...prog.values()].reduce((a, b) => a + b, 0) / total)); }), { maxAttempts: 2, onRetry: n => onNote?.(`연결이 느립니다. 재시도 중입니다 (${n}회)`) });
       return (await loader.parseAsync(buf, dir)).scene;
     };
-    const [c, w, p] = await Promise.all(['characters', 'weapons', 'props'].map(get));
-    const cn = nodeMap(c), wn = nodeMap(w), pn = nodeMap(p), soldiers: Record<string, Soldier> = {};
-    const limb = (n?: THREE.Object3D): { geo: Baked; pivot: THREE.Vector3 } | null => (n ? { geo: bake(n), pivot: n.position.clone() } : null);
-    for (const k of SOLDIER_KINDS) { if (!cn[`${k}_Body`] || !cn[`${k}_Leg`]) throw new Error(`missing ${k}`); soldiers[k] = { body: bake(cn[`${k}_Body`]), leg: bake(cn[`${k}_Leg`]), shin: cn[`${k}_Shin`] ? bake(cn[`${k}_Shin`]) : null, armL: limb(cn[`${k}_ArmL`]), armR: limb(cn[`${k}_ArmR`]) }; }
+    const [characters, weapons] = await Promise.all(['characters', 'weapons'].map(get));
+    const cn = nodeMap(characters), wn = nodeMap(weapons), parts: Record<string, CharPart> = {};
+    const limb = (n?: THREE.Object3D): CharPart['armL'] => (n ? { geo: bake(n), pivot: n.position.clone() } : null);
+    for (const kind of SOLDIER_KINDS) {
+      const body = cn[`${kind}_Body`], leg = cn[`${kind}_Leg`];
+      if (!body || !leg) throw new Error(`missing soldier ${kind}`);
+      parts[kind] = { body: bake(body), leg: bake(leg), shin: cn[`${kind}_Shin`] ? bake(cn[`${kind}_Shin`]) : null, armL: limb(cn[`${kind}_ArmL`]), armR: limb(cn[`${kind}_ArmR`]) };
+    }
     const groundGuns: Record<string, THREE.Object3D> = {}, viewGuns: Record<string, THREE.Object3D> = {};
     for (const k of ['pistol', 'smg', 'rifle', 'shotgun', 'sniper']) { if (!wn[`g_${k}`] || !wn[`n_${k}`] || !wn[`arms_${k}`]) throw new Error(`missing weapon ${k}`); groundGuns[k] = wn[`g_${k}`]; viewGuns[k] = wn[`n_${k}`]; }
-    const props: Record<string, THREE.Object3D> = {}; for (const k of ['tree_round', 'tree_pine', 'crate', 'barrier', 'dumpster', 'lamp']) if (pn[k]) props[k] = pn[k];
     onProgress?.(1);
-    return { soldiers, kit: kitFromScene(c), groundGuns, viewGuns, props, weaponNodes: wn };
+    return { kit: new CharacterKit(parts), groundGuns, viewGuns, weaponNodes: wn };
   })();
   cache.catch(() => { cache = null; });
   return cache;

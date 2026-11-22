@@ -93,6 +93,8 @@ try{
         const v=window.__race.view, original=v.update.bind(v);let draws=0;
         v.update=(...args)=>{draws++;return original(...args);};
         window.__raceViewDraws=()=>draws;
+        window.__race.dbg.auto=true;
+        window.__race.skip(6); // Finish countdown before injecting the test lap crossing.
         const r=window.__race.race;r.player.car.total=r.track.n*r.laps+6;
         window.__race.skip(0.06);
       });

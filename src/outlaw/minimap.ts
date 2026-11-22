@@ -1,6 +1,7 @@
 // OUTLAW CITY — 황혼 도시의 방향 회전 레이더와 일시정지용 전체 지도.
 import type { CityMap, Poi, PoiKind } from './types';
 import type { Sim } from './sim';
+import { districtAt } from './world';
 
 const SIZE = 1024;
 /** World north (-Z) projected into the rotating mini-radar's pixel axes. */
@@ -20,14 +21,12 @@ const DISTRICT_KO: Record<string, string> = { downtown: '다운타운', commerci
 
 /** 좌표에 해당하는 도시 지구 이름. */
 export function districtName(x: number, z: number, map?: CityMap): string {
-  const half = map?.half ?? 800, pitch = map?.pitch ?? 100;
+  if (map) return DISTRICT_KO[districtAt(map, x, z)];
+  const half = 800, pitch = 100;
   const grid = Math.max(1, Math.round(half * 2 / pitch));
   const ix = Math.max(0, Math.min(grid - 1, Math.floor((x + half) / pitch)));
   const iz = Math.max(0, Math.min(grid - 1, Math.floor((z + half) / pitch)));
-  const park = map?.parks.find(p => Math.abs(x - p.x) < p.w / 2 && Math.abs(z - p.z) < p.d / 2);
-  if (park) return DISTRICT_KO.park;
-  // Mirror generateCity's 16×16 grid and two-block facility margin. The old
-  // 12×12 map labels placed downtown 200m away from the actual downtown.
+  // Older callers without a map still get the default 16×16 labels.
   const a = ix - 2, c = iz - 2;
   if (a < 0 || c < 0) return DISTRICT_KO[(ix < 2 && iz < grid - 3) || (iz < 2 && ix < grid - 3) ? 'industrial' : 'residential'];
   return DISTRICT_KO[a < 3 && c < 3 ? 'industrial' : a >= 4 && a <= 6 && c >= 4 && c <= 6 ? 'downtown' : a >= 3 && a <= 7 && c >= 3 && c <= 7 ? 'commercial' : 'residential'];

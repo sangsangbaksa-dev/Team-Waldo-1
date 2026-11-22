@@ -1,7 +1,7 @@
 ﻿// OUTLAW CITY — 시민 배회·공포 반응과 플레이어 주변 인구 스트리밍.
 import type { Sim } from './sim';
 import type { CityMap, Ped } from './types';
-import { surfaceAt, moveCircle } from './world';
+import { surfaceAt, moveCircle, districtAt } from './world';
 
 const RADIUS = 190, CELL = 25;
 type Point = { x: number; z: number };
@@ -42,8 +42,10 @@ export function stepPeds(sim: Sim, dt: number): void {
   for (let i = s.eventIndex; i < end; i++) { const e = events[i]; if (e.t === 'shot' && e.weapon !== 'fist') threats.push({ x: e.ox, z: e.oz, r: 60 }); else if (e.t === 'explosion') threats.push({ x: e.x, z: e.z, r: 90 }); else if (e.t === 'crash' && e.power >= 8) threats.push({ x: e.x, z: e.z, r: 35 }); else if (e.t === 'death') { const p = sim.ped(e.id); if (p) threats.push({ x: p.x, z: p.z, r: 35 }); } }
   s.eventIndex = end;
   if (s.stream <= 0) {
-    s.stream = 0.25; let nearest = Infinity, district = 'residential';
-    for (const b of sim.map.buildings) { const dx = b.x - player.x, dz = b.z - player.z, d = dx * dx + dz * dz; if (d < nearest) { nearest = d; district = b.district; } }
+    s.stream = 0.25;
+    // Parks deliberately have no buildings: nearest-building classification
+    // mislabeled them and spawned the much larger residential crowds.
+    const district = districtAt(sim.map, player.x, player.z);
     s.target = district === 'downtown' || district === 'commercial' ? 62 : district === 'industrial' ? 22 : district === 'park' ? 20 : 38;
     s.count = 0; let removed = 0;
     for (let i = sim.peds.length - 1; i >= 0; i--) { const p = sim.peds[i]; if (!civil(p) || !p.alive) continue; const dx = p.x - player.x, dz = p.z - player.z; if (!p.vehicle && !p.keep && dx * dx + dz * dz > (RADIUS * 1.15) ** 2 && removed < 2) { sim.removePed(p); removed++; } else s.count++; }

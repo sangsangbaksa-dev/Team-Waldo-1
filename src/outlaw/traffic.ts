@@ -1,7 +1,7 @@
 ﻿// OUTLAW CITY — 지구별 차량 스트리밍과 차선·신호·혼잡·패닉 운전.
 import { CIVILIAN_CARS, PLAYER_ID, VEHICLES, WEAPONS, wrapAngle, type District, type LaneNode, type Vehicle, type VehicleKind } from './types';
 import { STREAM_RADIUS, type Sim } from './sim';
-import { isOpen, nearestLane, signal } from './world';
+import { districtAt, isOpen, nearestLane, signal } from './world';
 import { autoDrive } from './vehicle';
 
 interface State { events: number; eventList: Sim['events']; cars: WeakMap<Vehicle, CarState>; cells: Map<string, Vehicle[]>; freeCells: Vehicle[][] }
@@ -9,11 +9,6 @@ interface CarState { panic: number; blocked: number; idle: number; lastCrash: bo
 const states = new WeakMap<Sim, State>();
 function state(sim: Sim): State { let s = states.get(sim); if (!s) { s = { events: 0, eventList: sim.events, cars: new WeakMap(), cells: new Map(), freeCells: [] }; states.set(sim, s); } return s; }
 function carState(s: State, v: Vehicle): CarState { let c = s.cars.get(v); if (!c) { c = { panic: 0, blocked: 0, idle: 0, lastCrash: false, update: 0 }; s.cars.set(v, c); } return c; }
-function district(sim: Sim, x: number, z: number): District {
-  for (const p of sim.map.parks) if (Math.abs(x - p.x) < p.w / 2 && Math.abs(z - p.z) < p.d / 2) return 'park';
-  const ix = Math.max(0, Math.min(11, Math.floor((x + sim.map.half) / sim.map.pitch))), iz = Math.max(0, Math.min(11, Math.floor((z + sim.map.half) / sim.map.pitch)));
-  return ix < 3 && iz < 3 ? 'industrial' : ix >= 4 && ix <= 6 && iz >= 4 && iz <= 6 ? 'downtown' : ix >= 3 && ix <= 7 && iz >= 3 && iz <= 7 ? 'commercial' : 'residential';
-}
 function chooseCar(sim: Sim, d: District): VehicleKind {
   const extra: VehicleKind[] = d === 'industrial' ? ['truck', 'truck', 'van', 'van', 'van'] : d === 'downtown' || d === 'commercial' ? ['taxi', 'taxi', 'sedan', 'sedan'] : ['hatch', 'suv', 'sedan'];
   const pool = [...CIVILIAN_CARS.filter(k => k !== 'sports'), ...extra, 'sports' as VehicleKind]; return pool[Math.floor(sim.rng() * pool.length)];
@@ -41,7 +36,7 @@ function spawn(sim: Sim, parked: boolean): boolean {
     const x = n.x + (b.x - n.x) * f - Math.sin(h) * side, z = n.z + (b.z - n.z) * f + Math.cos(h) * side;
     const dx = x - p.x, dz = z - p.z, distance = Math.hypot(dx, dz); if (distance < 70 || distance > STREAM_RADIUS) continue;
     if (attempt < 30 && dx * Math.cos(p.yaw) + dz * Math.sin(p.yaw) > 0 && sim.canSee(p.x, p.z, x, z)) continue;
-    const kind = chooseCar(sim, district(sim, x, z)), def = VEHICLES[kind];
+    const kind = chooseCar(sim, districtAt(sim.map, x, z)), def = VEHICLES[kind];
     if (!isOpen(sim.map, x, z, def.halfL + 0.3) || sim.vehicles.some(v => Math.hypot(v.x - x, v.z - z) < (parked && v.mode === 'parked' ? 7.5 : 16))) continue;
     const v = sim.spawnVehicle(kind, x, z, h, { mode: parked ? 'parked' : 'traffic', lane: n.id, nextLane: b.id, path: [b.id], locked: parked && sim.rng() < 0.1 });
     if (!parked) { const ped = sim.spawnPed('civ', x, z, { vehicle: v.id, seat: 0 }); v.driver = ped.id; fillPath(sim, v); }
@@ -128,7 +123,7 @@ export function stepTraffic(sim: Sim, dt: number): void {
     if (c.idle > 8 && c.idle - elapsed <= 8) { v.lane = nearestLane(sim.map, v.x, v.z, v.h); v.path = []; }
     if (c.idle > 20 && removed < 2 && !v.stolen) { sim.removeVehicle(v); removed++; moving--; }
   }
-  const d = district(sim, p.x, p.z), goal = d === 'downtown' || d === 'commercial' ? 30 : d === 'residential' ? 18 : 10;
+  const d = districtAt(sim.map, p.x, p.z), goal = d === 'downtown' || d === 'commercial' ? 30 : d === 'residential' ? 18 : 10;
   if (moving < Math.min(36, goal)) spawn(sim, false);
   if (parked < 28) spawn(sim, true);
 }

@@ -32,6 +32,21 @@ function nearby(g: Grid, x0: number, z0: number, x1: number, z1: number, visit: 
 /** 시드로 같은 도시를 만듭니다. */
 /** 한 변의 블록 수(한 블록 100m)와, 핵심 시설이 놓인 안쪽 구역의 바깥 여백 */
 const N = 16, O = 2, HALF = N * 50;
+/** Real 16×16 procedural city district lookup, used by minimap, traffic and
+ * civilian streaming. Keeping one formula prevents AI population/vehicle
+ * spawn density from disagreeing with the actual generated neighborhood. */
+export function districtAt(map: CityMap, x: number, z: number): District {
+  for (const p of map.parks) {
+    if (Math.abs(x - p.x) < p.w / 2 && Math.abs(z - p.z) < p.d / 2) return 'park';
+  }
+  const grid = Math.max(1, Math.round(map.half * 2 / map.pitch));
+  const ix = clamp(Math.floor((x + map.half) / map.pitch), 0, grid - 1);
+  const iz = clamp(Math.floor((z + map.half) / map.pitch), 0, grid - 1);
+  const a = ix - 2, c = iz - 2;
+  if (a < 0 || c < 0) return (ix < 2 && iz < grid - 3) || (iz < 2 && ix < grid - 3) ? 'industrial' : 'residential';
+  return a < 3 && c < 3 ? 'industrial' : a >= 4 && a <= 6 && c >= 4 && c <= 6 ? 'downtown' : a >= 3 && a <= 7 && c >= 3 && c <= 7 ? 'commercial' : 'residential';
+}
+
 export function generateCity(seed: number): CityMap {
   const rng = makeRng(seed), pick = <T>(a: readonly T[]): T => a[Math.floor(rng() * a.length)];
   const map: CityMap = { seed, half: HALF, pitch: 100, roadW: 14, sidewalkW: 3, blockSize: 86, gx: Array.from({ length: N + 1 }, (_, i) => -HALF + i * 100), buildings: [], props: [], roads: [], lanes: [], pois: [], ramps: [], parks: [], walkPoints: [], grid: null };

@@ -35,11 +35,8 @@ describe('FRONTLINE fog texture update optimization', () => {
   });
   it('preserves the untouched hidden channel while other cells change', () => {
     const f = make(2); f.state.fill(FOG_HIDDEN); f.state[3] = FOG_VISIBLE;
-    const original = f.data.slice(0);
     blendFogAlpha(f.data, f.current, f.state, f.size, 0.5, 226, 118);
-    for (let i = 0; i < original.length; i++) {
-      if (i === 3) continue; // red/green/blue remain untouched
-    }
-    for (let i = 0; i < 4; i++) expect(f.data[i * 4 + 3]).toBe(i === 0 ? 113 : 226);
+    // Simulation cell 3 (bottom right) maps to texture pixel 1 (top right).
+    for (let i = 0; i < 4; i++) expect(f.data[i * 4 + 3]).toBe(i === 1 ? 113 : 226);
   });
 });

@@ -21,6 +21,7 @@ describe('HUSTLE lazy weather buffers', () => {
       const rain = probe.rain!;
       expect(probe.scene.children).toEqual([rain]);
       expect((rain.geometry as BufferGeometry).getAttribute('aBase').count).toBe(strips * 2);
+      expect((rain.geometry as BufferGeometry).getAttribute('position')).toBe((rain.geometry as BufferGeometry).getAttribute('aBase'));
       expect((rain.geometry as BufferGeometry).getAttribute('aEnd').count).toBe(strips * 2);
       expect((probe as RainProbe).rainU?.uTime.value).toBe(48);
       probe.createRain();

@@ -72,14 +72,18 @@ export class Atmosphere {
   private createRain(): void {
     if (this.rain) return;
     const N = this.quality === 'low' ? 900 : 2600;
-    const base = new Float32Array(N * 6), end = new Float32Array(N * 2), pos = new Float32Array(N * 6);
+    const base = new Float32Array(N * 6), end = new Float32Array(N * 2);
     for (let k = 0; k < N; k++) {
       const x = Math.random() * 64, y = Math.random() * 46, z = Math.random() * 64;
       for (let e = 0; e < 2; e++) { base.set([x, y, z], (k * 2 + e) * 3); end[k * 2 + e] = e; }
     }
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    geometry.setAttribute('aBase', new THREE.BufferAttribute(base, 3));
+    // The shader displaces aBase directly. Sharing its BufferAttribute with
+    // the required position binding avoids an otherwise unused second buffer
+    // of N × 2 × 3 float coordinates.
+    const positions = new THREE.BufferAttribute(base, 3);
+    geometry.setAttribute('position', positions);
+    geometry.setAttribute('aBase', positions);
     geometry.setAttribute('aEnd', new THREE.BufferAttribute(end, 1));
     const material = new THREE.ShaderMaterial({
       vertexShader: RAIN_VERT, fragmentShader: RAIN_FRAG, transparent: true, depthWrite: false,

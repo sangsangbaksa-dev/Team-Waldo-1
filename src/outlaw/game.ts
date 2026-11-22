@@ -7,6 +7,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import './outlaw.css';
+import { outlawWorldDelta } from './frame-time';
 import { readPreferences, writePreferences } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import { PVP_ENABLED } from '../net/config';
@@ -500,10 +501,13 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (!sim || !chase || !cityView || !actorView || !renderer || !minimap) return;
     const p = sim.player;
     // 시뮬레이션
-    let scale = 1; if (wheelOpen) scale = 0.2; else if (sim.downKind === 'wasted') scale = 0.45;
     const playing = phase === 'play' || phase === 'trans';
-    if (!paused || (versus && !versus.ended)) {
-      acc += Math.min(dt, 0.1) * scale; let n = 0;
+    // Use the same paused/slow-motion clock for physics and the 3D world.
+    // Formerly, opening a modal froze physics but smoke, rain and animated
+    // civilians continued moving at full speed behind it.
+    const worldDt = outlawWorldDelta(dt, paused, !!versus && !versus.ended, wheelOpen, sim.downKind === 'wasted');
+    if (worldDt > 0) {
+      acc += worldDt; let n = 0;
       const inp = playing && !paused && p.alive && !sim.downKind ? gather() : { p: blankPedInput(), c: blankCarInput() };
       while (acc >= STEP && n < 6) { inp.p.enter = n === 0 && playing && !paused && p.alive && !sim.downKind && enterReq; sim.step(STEP, inp.p, inp.c); acc -= STEP; n++; if (n === 1) { enterReq = false; slotReq = -1; reloadReq = false; inp.p.slot = -1; inp.p.reload = false; } }
       if (n === 6) acc = 0;
@@ -528,13 +532,13 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
       const air = !car && !p.grounded, aim = (mouse.aim || tc.aim) && !car;
       if (!paused) chase.update(Math.min(dt, 0.05), car ? 'car' : 'foot', target, { yaw, pitch }, { aim, lookBack: !!car && keys.has('KeyC'), air, fovKick: shakeFov });
       if (phase === 'trans') {
-        transT += dt / 1.5; const k = Math.min(1, transT), e = k * k * (3 - 2 * k); const cp = transitionPos.copy(camera.position), cq = transitionQuat.copy(camera.quaternion);
+        transT += worldDt / 1.5; const k = Math.min(1, transT), e = k * k * (3 - 2 * k); const cp = transitionPos.copy(camera.position), cq = transitionQuat.copy(camera.quaternion);
         camera.position.lerpVectors(orbitPos, cp, Math.min(1, e)); camera.quaternion.slerpQuaternions(orbitQuat, cq, Math.min(1, e)); if (transT >= 1) phase = 'play';
       }
       if (!paused) shakeFov *= Math.exp(-9 * dt);
     }
-    cityView.update(dt, camera, sim.clock, sim.t, sim.rain); actorView.update(dt, camera, sim.clock);
-    if (composer && bloom && activeQuality !== 'low') { const n = cityView?.night ?? 0, r = sim?.rain ?? 0; bloom.strength = .18 + n * .55 + r * .14; composer.render(dt); } else renderer.render(scene, camera);
+    cityView.update(worldDt, camera, sim.clock, sim.t, sim.rain); actorView.update(worldDt, camera, sim.clock);
+    if (composer && bloom && activeQuality !== 'low') { const n = cityView?.night ?? 0, r = sim?.rain ?? 0; bloom.strength = .18 + n * .55 + r * .14; composer.render(worldDt); } else renderer.render(scene, camera);
     if (playing) hud(dt, car);
     if (playing && !paused) { saveT += dt; if (saveT > 30) { saveT = 0; if (p.alive) save(); } }
   }

@@ -20,16 +20,21 @@ function crash(sim: Sim, v: Vehicle, power: number, by: number, scale = 1): void
 // 중심 격자를 틱마다 한 번 만들고 이동 시 갱신해 먼 차끼리 SAT를 하지 않습니다.
 interface Grid {
   frame: number;
-  cells: Map<string, Set<Vehicle>>;
-  keys: Map<Vehicle, string>;
+  cells: Map<number, Set<Vehicle>>;
+  keys: Map<Vehicle, number>;
   // Recycle buckets across frames; a fresh Set per occupied cell per tick
   // otherwise creates a large GC workload in dense city traffic.
   free: Set<Vehicle>[];
 }
 const grids = new WeakMap<Sim, Grid>();
+// The entire 1200m city occupies fewer than 100 grid cells in either axis.
+// A numeric cell key is collision-free here and avoids formatting strings
+// for every physics substep and its nine neighboring cells.
+const gridKey = (x: number, z: number): number => (x + 2048) * 4096 + z + 2048;
 function put(g: Grid, v: Vehicle): void {
-  const key = `${Math.floor(v.x / 12)},${Math.floor(v.z / 12)}`, old = g.keys.get(v); if (old === key) return;
-  if (old) g.cells.get(old)?.delete(v);
+  const key = gridKey(Math.floor(v.x / 12), Math.floor(v.z / 12)), old = g.keys.get(v);
+  if (old === key) return;
+  if (old !== undefined) g.cells.get(old)?.delete(v);
   let bucket = g.cells.get(key);
   if (!bucket) { bucket = g.free.pop() ?? new Set<Vehicle>(); g.cells.set(key, bucket); }
   bucket.add(v); g.keys.set(v, key);
@@ -54,7 +59,11 @@ export function collideVehicles(sim: Sim, a: Vehicle, b: Vehicle): void {
   if (a.y >= b.y + db.height || b.y >= a.y + da.height) return;
   const ac = Math.cos(a.h), as = Math.sin(a.h), bc = Math.cos(b.h), bs = Math.sin(b.h), dx = b.x - a.x, dz = b.z - a.z;
   let depth = Infinity, nx = 0, nz = 0;
-  for (const [x, z] of [[ac, as], [-as, ac], [bc, bs], [-bs, bc]]) {
+  // Four SAT axes: two local axes from each vehicle, no array allocations
+  // inside the hottest narrow-phase collision loop.
+  for (let axis = 0; axis < 4; axis++) {
+    const x = axis === 0 ? ac : axis === 1 ? -as : axis === 2 ? bc : -bs;
+    const z = axis === 0 ? as : axis === 1 ? ac : axis === 2 ? bs : bc;
     const ra = Math.abs(x * ac + z * as) * da.halfL + Math.abs(-x * as + z * ac) * da.halfW;
     const rb = Math.abs(x * bc + z * bs) * db.halfL + Math.abs(-x * bs + z * bc) * db.halfW;
     const along = dx * x + dz * z, overlap = ra + rb - Math.abs(along); if (overlap <= 0) return;
@@ -137,7 +146,7 @@ export function stepVehicle(sim: Sim, v: Vehicle, dt: number): void {
     v.wheel += v.vf * ds / 0.34; pedestrians(sim, v, ds); put(g, v);
     const gx = Math.floor(v.x / 12), gz = Math.floor(v.z / 12);
     for (let x = gx - 1; x <= gx + 1; x++) for (let z = gz - 1; z <= gz + 1; z++) {
-      const bucket = g.cells.get(`${x},${z}`);
+      const bucket = g.cells.get(gridKey(x, z));
       if (!bucket) continue;
       // Set iteration remains valid if an overlapping vehicle moves to another
       // cell; no need to allocate a copied array for each of 9 neighbor cells.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Sim } from '../../src/outlaw/sim';
-import { stepVehicle } from '../../src/outlaw/vehicle';
+import { stepVehicle, collideVehicles } from '../../src/outlaw/vehicle';
 
 describe('vehicle broadphase order and lifetime', () => {
   it('detects a moving newer vehicle hitting an older stationary vehicle after its turn', () => {
@@ -36,4 +36,23 @@ it('reuses the spatial grid safely across frames, including vehicle removal and 
   }
   expect(sim.vehicle(other.id)).toBe(other);
   expect(sim.vehicles).not.toContainEqual(expect.objectContaining({ id: other.id - 1 }));
+});
+
+describe('OUTLAW rotated vehicle collision SAT regression', () => {
+  it('separates crossed vehicle hulls without changing elevation or corrupting velocities', () => {
+    const sim = new Sim(31);
+    const a = sim.spawnVehicle('sedan', 0, 0, Math.PI / 4, { vx: 5 });
+    const b = sim.spawnVehicle('sedan', 2, 0, -Math.PI / 4, { vx: -5 });
+    collideVehicles(sim, a, b);
+    expect([a.x,a.z,b.x,b.z,a.vx,a.vz,b.vx,b.vz].every(Number.isFinite)).toBe(true);
+    expect(Math.hypot(a.x-b.x,a.z-b.z)).toBeGreaterThan(2);
+    expect(a.y).toBe(0); expect(b.y).toBe(0);
+  });
+  it('does not collide vehicles that are separated on one of their own axes', () => {
+    const sim = new Sim(32);
+    const a = sim.spawnVehicle('sedan', 0, 0, Math.PI/4, { vx: 5 });
+    const b = sim.spawnVehicle('sedan', 10, 0, -Math.PI/4);
+    collideVehicles(sim,a,b);
+    expect([a.x,a.z,b.x,b.z]).toEqual([0,0,10,0]);
+  });
 });

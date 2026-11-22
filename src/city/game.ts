@@ -713,7 +713,9 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       if (duel) duelTick(now, dt); else if (room) roomTick(now, dt);
       w.events.length = 0; combat = Math.max(0, combat - dt * 0.25); audio.intensity = combat;
     }
-    audio.setEngine(veh ? Math.min(1, spd / veh.maxSpeed) : -1);
+    // Leaving engine audio running behind a paused mission menu wastes voices
+    // and sounds like the vehicle is still accelerating while the world is frozen.
+    audio.setEngine(!paused && veh ? Math.min(1, spd / veh.maxSpeed) : -1);
     if (hitT > 0) { hitT -= dt; if (hitT <= 0) cross.classList.remove('hit', 'kill'); }
     hurt = Math.max(0, hurt - dt * 1.3); const low = b && b.hp < b.maxHp * 0.35 ? 0.35 + Math.sin(now / 160) * 0.12 : 0, outside = !!b && Math.hypot(b.x - w.zone.x, b.y - w.zone.y) > w.zone.r;
     hurtEl.style.opacity = String(Math.max(hurt * 0.85, low)); hurtEl.classList.toggle('storm', outside && hurt < 0.1);if (outside) hurtEl.style.opacity = String(Math.max(0.45, hurt));

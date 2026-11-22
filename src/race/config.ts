@@ -1,7 +1,7 @@
 // SPEED RUSH — 차량·난이도·종목 정의와 선택 값 검증. 화면과 무관한 순수 데이터입니다.
 import { MAPS, type MapDef } from './maps';
 import { PLAYER_PARAMS, type CarParams } from './physics';
-import { skinById } from './skins';
+import { SKINS, skinById } from './skins';
 
 /** 능력치는 1~5점이고 차량마다 합계가 같습니다(좋은 정도는 같고 성격만 다릅니다). */
 export interface StatPoints { accel: number; top: number; handling: number; drift: number; nitro: number }

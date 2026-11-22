@@ -218,7 +218,7 @@ export class RtsSim {
         p.minerals -= d.cost; p.used += d.supply; b.queue.push({ u: c.u, left: d.time }); return true;
       }
       case 'cancel': {
-        const b = num(c.b) ? this.building(c.b) : undefined; if (!b || b.owner !== owner || !num(c.i)) return false;
+        const b = num(c.b) ? this.building(c.b) : undefined; if (!b || b.hp <= 0 || b.owner !== owner || !Number.isInteger(c.i) || c.i < -2) return false;
         const p = this.players[owner];
         if (c.i === -2) { if (!b.research) return false; p.minerals += RESEARCH[b.research.r].cost; b.research = null; return true; }
         if (c.i < 0) { if (b.done || b.kind === 'hq' && this.buildings.filter(x => x.owner === owner && x.kind === 'hq' && x.hp > 0).length < 2) return false; p.minerals += Math.floor(BUILDINGS[b.kind].cost * 0.75); this.remove(b); this.recount(); return true; }

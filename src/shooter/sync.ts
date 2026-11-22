@@ -83,6 +83,15 @@ export function canAcceptRoomPickup(loot: Loot | undefined, sender: Player | und
   return Math.abs(loot.x - sender.x) <= 15 && Math.abs(loot.z - sender.z) <= 15;
 }
 
+/** A pose packet may update an already-authorized driver's car, but it must
+ * never assign car ownership. Only the host's vehicle approval can do that.
+ */
+export function canApplyRemoteVehiclePose(vehicle: Vehicle | undefined, driver: Player | undefined): boolean {
+  return !!vehicle && !vehicle.wreck && vehicle.remote &&
+    !!driver && driver.remote && !driver.bot && driver.alive &&
+    vehicle.driver === driver.id && driver.veh === vehicle.id;
+}
+
 /** Remote damage reports may only affect the car driven by the reporting human.
  * The sender identity must be resolved from the authenticated room participant,
  * never from an id embedded in the untrusted packet.

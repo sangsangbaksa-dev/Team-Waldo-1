@@ -441,7 +441,14 @@ export class Sim {
   paynspray(): string {
     const p = this.player, v = this.vehMap.get(p.vehicle), poi = this.nearPoi(p.x, p.z); if (!v || !v.alive || v.wrecked || !poi || poi.kind !== 'paynspray') return '도색 가게 안에서 차를 타고 있어야 합니다';
     if (this.wanted.unseenT < 2 && this.wanted.stars > 0) return '경찰이 보고 있어서 지금은 안 됩니다'; const pp = this.price(150); if (this.cash < pp) return '돈이 부족합니다';
-    this.addCash(-pp); v.color = Math.floor(this.rng() * 0xffffff); v.hp = v.maxHp; v.flat = false; this.wanted.heat = 0; this.wanted.evadeT = 0; this.setStars(0); return '새 차가 되었습니다. 수배가 풀렸습니다';
+    this.addCash(-pp); v.color = Math.floor(this.rng() * 0xffffff); v.hp = v.maxHp; v.flat = false;
+    // A purchased car is respawned from the garage record. Store the new paint
+    // there as well; otherwise calling the car discards a paid respray.
+    if (v.tag === 'owned' && Number.isInteger(v.aux) && v.aux >= 100) {
+      const owned = this.life.cars[v.aux - 100];
+      if (owned?.kind === v.kind) owned.color = v.color;
+    }
+    this.wanted.heat = 0; this.wanted.evadeT = 0; this.setStars(0); return '새 차가 되었습니다. 수배가 풀렸습니다';
   }
   respawnPlayer(kind: 'wasted' | 'busted'): void {
     const p = this.player, spot = this.map.pois.find(q => q.kind === (kind === 'wasted' ? 'hospital' : 'police')) ?? this.map.pois.find(q => q.kind === 'safehouse') ?? this.map.pois[0];

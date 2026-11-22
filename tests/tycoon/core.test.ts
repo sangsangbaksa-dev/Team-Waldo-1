@@ -133,3 +133,18 @@ describe('타이쿤 코어: 시작과 빈털터리', () => {
     expect(run()).toBe(run());
   });
 });
+
+
+describe('HUSTLE action proximity enforcement', () => {
+  it('rejects remote or stale actions without modifying game state', () => {
+    const core = createCore({ seed: 7 });
+    const before = core.serialize();
+    expect(core.perform('alley', 'collect')).toMatchObject({ ok: false });
+    core.setPresence('bench');
+    expect(core.perform('alley', 'collect')).toMatchObject({ ok: false });
+    expect(core.serialize()).toEqual(before);
+    expect(core.perform('bench', core.actionsAt('bench')[0].id).ok).toBe(true);
+    core.setPresence(null);
+    expect(core.perform('alley', 'collect')).toMatchObject({ ok: false });
+  });
+});

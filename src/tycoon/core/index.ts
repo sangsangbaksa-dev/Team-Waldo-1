@@ -116,6 +116,9 @@ export function createCore(opts: CoreOptions = {}): TycoonCore & { /** 테스트
     },
     perform(spotId: string, actionId: string): ActionResult {
       if (activity) return { ok: false, message: `${activity.label} 하는 중입니다` };
+      // Modal actions must not outlive proximity: the player may have walked
+      // away or the stage may have locked this location since the UI opened.
+      if (sim.presence !== spotId) return { ok: false, message: '장소에 가까이 가서 실행하세요' };
       const a = buildActions(ctx, spotId).find(x => x.id === actionId);
       if (!a) return { ok: false, message: '여기서는 할 수 없습니다' };
       if (!a.enabled) return { ok: false, message: a.disabledReason ?? '할 수 없습니다' };

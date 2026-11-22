@@ -38,3 +38,27 @@ describe('casino transaction state', () => {
     b.state='play';ui.click({ui:'deal'});expect(s.cash).toBe(10000);
   });
 });
+
+
+describe('owned car respray persistence', () => {
+  it('persists a paid paint job in the garage and saved game', () => {
+    const s = new Sim(7), poi = s.map.pois.find(p => p.kind === 'paynspray')!;
+    s.cash = 10000;
+    s.life.cars = [{ kind: 'sedan', color: 0x123456 }];
+    const v = s.spawnVehicle('sedan', poi.x, poi.z, 0, { tag: 'owned', aux: 100, color: 0x123456 });
+    s.player.x = poi.x; s.player.z = poi.z; s.player.vehicle = v.id; v.driver = s.player.id;
+    expect(s.paynspray()).toContain('새 차');
+    expect(s.life.cars[0].color).toBe(v.color);
+    const restored = new Sim(7, s.exportSave());
+    expect(restored.life.cars[0].color).toBe(v.color);
+  });
+  it('does not accidentally overwrite a garage car when repainting an unrelated car', () => {
+    const s = new Sim(7), poi = s.map.pois.find(p => p.kind === 'paynspray')!;
+    s.cash = 10000;
+    s.life.cars = [{ kind: 'sedan', color: 0x123456 }];
+    const v = s.spawnVehicle('sedan', poi.x, poi.z, 0, { tag: 'stolen', aux: 100, color: 0xaabbcc });
+    s.player.x = poi.x; s.player.z = poi.z; s.player.vehicle = v.id; v.driver = s.player.id;
+    expect(s.paynspray()).toContain('새 차');
+    expect(s.life.cars[0].color).toBe(0x123456);
+  });
+});

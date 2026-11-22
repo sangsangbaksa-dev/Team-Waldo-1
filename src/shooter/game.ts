@@ -7,7 +7,7 @@ import type { PvpSession, RoomSession } from '../net/lobby';
 import { AIR, BOTS, FEEL, BR_PLAYERS, DIFFICULTIES, HELMET_NAMES, ARMOR_NAMES, HEAL, PARTS, PLAYER, VEHICLES, WEAPONS, adsSpread, partHandling, type Difficulty } from './config';
 import { waterDepth } from './terrain';
 import { Match, type Cause, type MatchEvent, type Player, type Vehicle } from './sim';
-import { CAUSES, WorldSync, canAcceptVehicleDamageReport, easePuppet, encodeLoot, parseLoot } from './sync';
+import { CAUSES, WorldSync, canAcceptRoomPickup, canAcceptVehicleDamageReport, easePuppet, encodeLoot, parseLoot } from './sync';
 import type { NetMsg } from '../net/types';
 import { ShooterView } from './view';
 import { loadShooterAssets, type ShooterAssets } from './assets';
@@ -192,7 +192,11 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
         for (let i = 0; i + 2 < sh.ends.length; i += 3) { const dx = sh.ends[i] - sh.ox, dy = sh.ends[i + 1] - sh.oy, dz = sh.ends[i + 2] - sh.oz; aims.push([Math.atan2(dz, dx), Math.atan2(dy, Math.hypot(dx, dz))]); }
         r.p.muzzle = 0.06; r.p.kick = Math.min(1, r.p.kick + 0.3); match.remoteShot(r.p.id, sh.w, sh.ox, sh.oy, sh.oz, aims);
       },
-      onPickup: id => { match?.removeLoot(id); },
+      onPickup: (lootId, senderId) => {
+        const m = match, r = room, sender = roomRemote(senderId)?.p;
+        const loot = m?.loot.find(l => l.id === lootId);
+        if (m && r && canAcceptRoomPickup(loot, sender, senderId === r.net.authority())) m.removeLoot(lootId);
+      },
       onDead: (id, _mt, killer, cause) => { const r = roomRemote(id); if (r && match && r.p.alive) { if (r.target) { r.p.x = r.target.x; r.p.z = r.target.z; } match.kill(r.p, killer, CAUSES[cause] ?? 'rifle'); } },
       onGone: id => {
         const r = roomRemote(id); if (!r || !match || !room) return;

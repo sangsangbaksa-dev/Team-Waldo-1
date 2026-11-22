@@ -59,6 +59,17 @@ export function parseLoot(m: NetMsg): Loot | null {
   return { id: m.i, kind: m.k as LootKind, weapon, part, level: isInt(m.l, 1, 3) ? m.l : m.k === 'helmet' || m.k === 'armor' ? 1 : 0, x: m.x, z: m.z, taken: false, ...(att ? { att } : {}) };
 }
 
+/** Remote damage reports may only affect the car driven by the reporting human.
+ * The sender identity must be resolved from the authenticated room participant,
+ * never from an id embedded in the untrusted packet.
+ */
+export function canAcceptVehicleDamageReport(authority: boolean, vehicle: Vehicle | undefined, reporter: Player | undefined, damage: unknown): damage is number {
+  return authority && !!vehicle && !vehicle.wreck && vehicle.remote &&
+    !!reporter && reporter.remote && !reporter.bot && reporter.alive &&
+    reporter.veh === vehicle.id && vehicle.driver === reporter.id &&
+    typeof damage === 'number' && Number.isFinite(damage) && damage > 0;
+}
+
 /** 방장 쪽: 보낼 세계 상태를 모읍니다. 손님 쪽: 받은 상태를 경기에 넣고 꼭두각시를 따라가게 합니다. */
 export class WorldSync {
   readonly bots = new Map<number, PuppetTarget>();

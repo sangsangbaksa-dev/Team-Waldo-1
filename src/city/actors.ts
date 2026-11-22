@@ -250,7 +250,8 @@ export function updateVehicles(w: World, dt: number): void {
       if (v.burn <= 0) { v.alive = false; if (drv && drv.alive) { w.disembark(v, drv); w.hurtActor(drv, 70, -1, false); } v.driver = 0; w.explode(v.x, v.y, 120, 95, -1, 0.6); w.fx('wreck', v.x, v.y, v.ang); continue; }
     }
     v.throttle = 0; v.brake = false;
-    const player = drv && drv.kind === 'boss' && drv.f === 0 && !w.opts.autoPlayer;
+    // A stale driver lookup must not control an unoccupied car after its link was detached.
+    const player = !!drv && v.driver === drv.id && drv.alive && drv.inVeh === v.id && drv.kind === 'boss' && drv.f === 0 && !w.opts.autoPlayer;
     if (player && drv) {
       const mx=safeMoveAxis(inp.mx),my=safeMoveAxis(inp.my),m=Math.hypot(mx,my); v.wx=mx;v.wy=my;v.throttle=Math.min(1,m);v.brake=inp.brake;
       drv.ang=safeAimAngle(inp.ax,inp.ay,v.x,v.y,drv.ang);const f = w.factions[0];

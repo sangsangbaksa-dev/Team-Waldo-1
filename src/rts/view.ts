@@ -33,7 +33,9 @@ export class RtsView {
   private units = new Map<number, UVis>(); private builds = new Map<number, BVis>(); private nodes = new Map<number, NVis>();
   private fx: Fx[] = []; private delayedFx: DeferredFx[] = []; private readonly readyFx: DeferredFx[] = []; private sun = new THREE.DirectionalLight(0xffe2b4, 2.5); private shadows: boolean;
   private ringGeo = new THREE.RingGeometry(0.9, 1.0, 28); private ghost: { kind: BuildKind; obj: THREE.Group; plane: THREE.Mesh } | null = null; private flag: THREE.Group;
-  private projected = new THREE.Vector3(); private raycaster = new THREE.Raycaster(); private clock = 0; private w = 1; private h = 1; private fxBudget: number;
+  private projected = new THREE.Vector3(); private raycaster = new THREE.Raycaster();
+  private readonly pointerNdc = new THREE.Vector2(); private readonly pickHit = new THREE.Vector3(); private readonly pickCenter = new THREE.Vector3();
+  private readonly pickSphere = new THREE.Sphere(); private readonly pickBox = new THREE.Box3(); private clock = 0; private w = 1; private h = 1; private fxBudget: number;
   private ringMats = [new THREE.MeshBasicMaterial({ color: 0x5dff9a, transparent: true, opacity: 0.9, depthWrite: false }), new THREE.MeshBasicMaterial({ color: 0xff5a4a, transparent: true, opacity: 0.9, depthWrite: false })];
   /** 전장의 안개: 있으면 보이지 않는 적을 숨기고 어둡게 덮습니다. */ vision: Vision | null = null;
   private fog: { mesh: THREE.Mesh; tex: THREE.DataTexture; data: Uint8Array; cur: Float32Array; version: number; settled: boolean } | null = null; private marks = new Map<string, MarkVis>();
@@ -162,7 +164,7 @@ export class RtsView {
 
   /** 화면 좌표(캔버스 안, 픽셀) → 맵 좌표. 하늘을 가리키면 null. */
   ground(sx: number, sy: number): { x: number; y: number } | null {
-    this.raycaster.setFromCamera(new THREE.Vector2(sx / this.w * 2 - 1, -(sy / this.h) * 2 + 1), this.camera); const r = this.raycaster.ray;
+    this.raycaster.setFromCamera(this.pointerNdc.set(sx / this.w * 2 - 1, -(sy / this.h) * 2 + 1), this.camera); const r = this.raycaster.ray;
     if (r.direction.y > -0.001) return null; const t = -r.origin.y / r.direction.y; return { x: r.origin.x + r.direction.x * t, y: r.origin.z + r.direction.z * t };
   }
   /** 맵 좌표(높이 h)를 화면 픽셀로. 카메라 뒤면 null. */
@@ -171,10 +173,11 @@ export class RtsView {
   }
   /** 화면 좌표 아래의 유닛·건물·광물. 겹치면 카메라에 가까운 것. */
   pick(sx: number, sy: number): number {
-    this.raycaster.setFromCamera(new THREE.Vector2(sx / this.w * 2 - 1, -(sy / this.h) * 2 + 1), this.camera); const ray = this.raycaster.ray; let best = 0, bt = Infinity; const v = new THREE.Vector3(), box = new THREE.Box3(), sph = new THREE.Sphere();
-    for (const u of this.sim.units) { if (this.hiddenUnit(u)) continue; sph.set(v.set(u.x, 0.55, u.y).clone(), Math.max(0.55, UNITS[u.kind].radius + 0.2)); if (ray.intersectSphere(sph, v)) { const d = v.distanceTo(ray.origin); if (d < bt) { bt = d; best = u.id; } } }
+    this.raycaster.setFromCamera(this.pointerNdc.set(sx / this.w * 2 - 1, -(sy / this.h) * 2 + 1), this.camera); const ray = this.raycaster.ray; let best = 0, bt = Infinity;
+    const v = this.pickHit, box = this.pickBox, sph = this.pickSphere, center = this.pickCenter;
+    for (const u of this.sim.units) { if (this.hiddenUnit(u)) continue; sph.set(center.set(u.x, 0.55, u.y), Math.max(0.55, UNITS[u.kind].radius + 0.2)); if (ray.intersectSphere(sph, v)) { const d = v.distanceTo(ray.origin); if (d < bt) { bt = d; best = u.id; } } }
     for (const b of this.sim.buildings) { if (this.hiddenBuilding(b)) continue; box.min.set(b.x, 0, b.y); box.max.set(b.x + b.size, b.size < 3 ? 1.8 : 2.4, b.y + b.size); if (ray.intersectBox(box, v)) { const d = v.distanceTo(ray.origin) + 0.4; if (d < bt) { bt = d; best = b.id; } } }
-    for (const nd of this.sim.nodes) { if (this.hiddenNode(nd)) continue; sph.set(v.set(nd.x + 0.5, 0.5, nd.y + 0.5).clone(), 0.85); if (ray.intersectSphere(sph, v)) { const d = v.distanceTo(ray.origin) + 0.6; if (d < bt) { bt = d; best = nd.id; } } }
+    for (const nd of this.sim.nodes) { if (this.hiddenNode(nd)) continue; sph.set(center.set(nd.x + 0.5, 0.5, nd.y + 0.5), 0.85); if (ray.intersectSphere(sph, v)) { const d = v.distanceTo(ray.origin) + 0.6; if (d < bt) { bt = d; best = nd.id; } } }
     return best;
   }
 

@@ -3,6 +3,7 @@ import { ACTORS, BLOCKS, CIV, PITCH, POLICE, ROAD, SIZE, WEAPONS, type WeaponDef
 import { carTarget, pedTarget } from './clock';
 import { clearLine, findPath, lanePoint, navBlocked, resolveCircle, solidAt } from './map';
 import { VEHICLES, type Actor, type Faction, type Vehicle, type World } from './world';
+import { safeMoveAxis, safeAimAngle } from './input-safety';
 
 const wrap = (a: number): number => { if(!Number.isFinite(a))return 0; a%=Math.PI*2; return a>Math.PI?a-Math.PI*2:a< -Math.PI?a+Math.PI*2:a; };
 const DIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]];
@@ -92,9 +93,9 @@ export function updateActors(w: World, dt: number): void {
       sp *= fac.mods.speed;
       if (fac.player && !w.opts.autoPlayer) {
         if (w.inside) { w.moveInside(dt); a.vx = a.vy = 0; continue; }
-        const m = Math.hypot(inp.mx, inp.my), k = m > 1 ? 1 / m : 1;
+        const mx=safeMoveAxis(inp.mx),my=safeMoveAxis(inp.my),m=Math.hypot(mx,my),k=m>1?1/m:1;
         if (inp.dash && fac.dashCd <= 0 && m > 0.1) { fac.dashT = 0.2; fac.dashCd = 2.4 * fac.mods.dash; w.fx('dash', a.x, a.y, 0, undefined, 0); }
-        const s = sp * (fac.dashT > 0 ? 3.3 : 1); a.vx = inp.mx * k * s; a.vy = inp.my * k * s; a.ang = Math.atan2(inp.ay - a.y, inp.ax - a.x);
+        const s = sp * (fac.dashT > 0 ? 3.3 : 1); a.vx = mx * k * s; a.vy = my * k * s; a.ang = safeAimAngle(inp.ax,inp.ay,a.x,a.y,a.ang);
         bossFire(w, a, fac, inp.fire, dt);
         a.x += a.vx * dt; a.y += a.vy * dt; a.walk += Math.hypot(a.vx, a.vy) * dt; resolveCircle(w.map, a, a.r); continue;
       }
@@ -251,8 +252,8 @@ export function updateVehicles(w: World, dt: number): void {
     v.throttle = 0; v.brake = false;
     const player = drv && drv.kind === 'boss' && drv.f === 0 && !w.opts.autoPlayer;
     if (player && drv) {
-      const m = Math.hypot(inp.mx, inp.my); v.wx = inp.mx; v.wy = inp.my; v.throttle = Math.min(1, m); v.brake = inp.brake;
-      drv.ang = Math.atan2(inp.ay - v.y, inp.ax - v.x); const f = w.factions[0];
+      const mx=safeMoveAxis(inp.mx),my=safeMoveAxis(inp.my),m=Math.hypot(mx,my); v.wx=mx;v.wy=my;v.throttle=Math.min(1,m);v.brake=inp.brake;
+      drv.ang=safeAimAngle(inp.ax,inp.ay,v.x,v.y,drv.ang);const f = w.factions[0];
       if (v.kind === 'tank') { v.cd -= dt; if (inp.fire && v.cd <= 0) { v.cd = 1.2; w.shoot(v.x + Math.cos(drv.ang) * 40, v.y + Math.sin(drv.ang) * 40, drv.ang, 'v_cannon', 0, drv.id, f.mods.dmg, true); w.fx('recoil', v.x, v.y); } }
       else { drv.x = v.x; drv.y = v.y; const id = f.slots[f.cur].id; bossFire(w, drv, f, inp.fire && id !== 'rocket' && id !== 'sniper' && id !== 'railgun', dt); }
     } else if (v.ai === 'traffic') {

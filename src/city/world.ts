@@ -9,6 +9,7 @@ import { addSolid, clearLine, generateCity, makeRng, navBlocked, rectFree, remov
 import { PLACE_PROBLEM_TEXT, canPlaceAt, demolishRefund, demolishReject, placeProblem } from './placement';
 import { resolveBountyKill, updateCityEvents, type CityEvent } from './events';
 import { updateActors, updateBullets, updateVehicles, updatePopulation } from './actors';
+import { safeMoveAxis } from './input-safety';
 import { thinkFaction, type AiState } from './ai';
 import { INTERIORS, INTERIOR_SPEED, nearCounter, nearDoor, resolveInterior, type InteriorLayout } from './interior';
 import { purchase, type ShopResult } from './shop';
@@ -515,10 +516,10 @@ export class World {
   autoEnter(dt: number): void {
     this.doorCd = Math.max(0, this.doorCd - dt); const b = this.boss(0);
     if (this.inside || this.doorCd > 0 || !b || b.inVeh) return;
-    const m = Math.hypot(this.input.mx, this.input.my); if (m < 0.2) return;
+    const mx=safeMoveAxis(this.input.mx),my=safeMoveAxis(this.input.my),m=Math.hypot(mx,my); if (m < 0.2) return;
     for (const z of this.businesses) {
       if (Math.hypot(z.x - b.x, z.y - b.y) > 22 || (z.owner >= 0 && z.owner !== 0)) continue;
-      const o = this.doorOut(z); if ((this.input.mx * o.x + this.input.my * o.y) / m > -0.35) continue;
+      const o = this.doorOut(z); if ((mx * o.x + my * o.y) / m > -0.35) continue;
       if (!this.enterBiz(0, z)) { this.enteredByDoor = true; return; }
     }
   }

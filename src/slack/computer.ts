@@ -85,7 +85,18 @@ export const createComputerView: CreateView = (sim, audio) => {
     syncMusicAudio();
   };
   const updateCover = () => { sim.setCover(coverKey || coverPointer !== null || coverMiddle !== null); applyCover(); };
-  const select = (id: DormActivity | null) => { audio.resume(); audio.play('click'); if (id && sim.state.cover) updateCover(); sim.doActivity(id && sim.state.activity === id ? null : id); };
+  const powerApps: DormActivity[] = ['game', 'video', 'music'];
+  const select = (id: DormActivity | null) => {
+    audio.resume();
+    if (id && sim.state.battery <= 0 && powerApps.includes(id)) {
+      toast('배터리가 없어요. 메신저·웹툰·쇼핑을 이용해 보세요.', 3);
+      audio.play('key', 0.3);
+      return;
+    }
+    audio.play('click');
+    if (id && sim.state.cover) updateCover();
+    sim.doActivity(id && sim.state.activity === id ? null : id);
+  };
 
   /* ---------- 게임: 별빛 던전(반응속도) ---------- */
   const G = { score: 0, best: 0, combo: 1, streak: 0, hp: 100, over: false, clock: 0, deadline: 0, nextAt: 0.5, on: false, life: 1.5 };
@@ -379,6 +390,15 @@ export const createComputerView: CreateView = (sim, audio) => {
     elapsed += dt;
     const state = sim.state; const id = apps.some(a => a.id === state.activity) ? state.activity as DormActivity : null;
     if (id !== shown) renderApp(id);
+    const drained = state.battery <= 0;
+    if (cache.batteryDrained !== drained) {
+      cache.batteryDrained = drained;
+      for (const appId of powerApps) {
+        const button = taskBtn(appId);
+        button.setAttribute('aria-disabled', String(drained));
+        button.title = drained ? '배터리 부족 · 사용 불가' : apps.find(a => a.id === appId)!.label;
+      }
+    }
     applyCover();
     const covered = state.cover;
     setCls('sc-covered', covered); setCls('sc-slacking', !!id && !covered);

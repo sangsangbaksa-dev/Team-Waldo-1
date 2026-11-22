@@ -314,3 +314,10 @@
     scroll-behavior:auto!important;
   }
 }
+
+/* Convey a flat battery without making the app button unreachable to a keyboard. */
+.slack-computer .sc-apps button[aria-disabled="true"]{
+  opacity:.46;
+  filter:grayscale(.8);
+  cursor:not-allowed;
+}

@@ -152,3 +152,21 @@ it('still hides the computer when the study cover cannot capture a touch pointer
   pointer('pointerup');
   expect(cover.getAttribute('aria-pressed')).toBe('false');
 });
+
+it('visually marks powerless apps and offers a useful fallback without locking the dorm', () => {
+  const sim = createSim('dorm', 13, 1);
+  sim.start(); sim.state.battery = 0;
+  const off = createComputerView(sim, audio);
+  document.body.append(off.el);
+  off.frame(0);
+  const music = off.el.querySelector<HTMLButtonElement>('[data-app="music"]')!;
+  expect(music.getAttribute('aria-disabled')).toBe('true');
+  music.click();
+  expect(sim.state.activity).toBeNull();
+  expect(off.el.querySelector('.sc-toast')?.textContent).toContain('배터리가 없어요');
+  off.el.querySelector<HTMLButtonElement>('[data-app="webtoon"]')!.click();
+  expect(sim.state.activity).toBe('webtoon');
+  expect(off.el.querySelector<HTMLButtonElement>('[data-app="game"]')?.getAttribute('aria-disabled')).toBe('true');
+  off.dispose();
+  off.el.remove();
+});

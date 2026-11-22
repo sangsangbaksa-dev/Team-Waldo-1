@@ -31,3 +31,16 @@ describe('OUTLAW vehicle view lifecycle', () => {
     view.dispose();
   });
 });
+
+it('does not create invisible 3D rigs for distant gunshots', () => {
+  const sim = new Sim(31);
+  const far = sim.spawnPed('gang', sim.player.x + 400, sim.player.z, { keep: true });
+  const view = new ActorView(new THREE.Scene(), sim, null, 'low');
+  const rigs = (view as unknown as { rigs: Map<number, unknown> }).rigs;
+  const start = rigs.size;
+  view.handle([{ t: 'shot', id: far.id, weapon: 'rifle',
+    ox: far.x, oy: far.y + 1.3, oz: far.z, ex: far.x + 15, ey: far.y + 1.3, ez: far.z }]);
+  expect(rigs.has(far.id)).toBe(false);
+  expect(rigs.size).toBe(start);
+  view.dispose();
+});

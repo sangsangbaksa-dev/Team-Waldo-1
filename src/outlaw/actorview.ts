@@ -3,7 +3,7 @@ import { OUTFITS } from './life';
 import * as THREE from 'three';
 import { blankPose, calmState, computePose } from '../shared/character/pose';
 import { instantiate, type Baked, type CharModel } from '../city/models';
-import { VEHICLES, clamp, type Ped, type Pickup, type SimEvent, type Vehicle, type VehicleDef, type WeaponId } from './types';
+import { VEHICLES, clamp, type Ped, type Pickup, type Poi, type SimEvent, type Vehicle, type VehicleDef, type WeaponId } from './types';
 import { MISSION_LIST, canStart } from './missions';
 import { groundHeight, surfaceAt } from './world';
 import type { Sim } from './sim';
@@ -43,6 +43,8 @@ export class ActorView {
   private readonly liveCars = new Set<number>();
   private readonly liveLoot = new Set<number>();
   private readonly liveRocketIds = new Set<number>();
+  private readonly nearbyPois: Poi[] = [];
+  private readonly poiById = new Map<string, Poi>();
   private readonly rockets = new Map<number, THREE.Group>();
   private readonly beacons: Beacon[] = [];
   private readonly fx: Fx[] = [];
@@ -70,6 +72,7 @@ export class ActorView {
   private readonly skidStart: number;
 
   constructor(readonly scene: THREE.Scene, readonly sim: Sim, readonly assets: OutlawAssets | null, readonly quality: Quality) {
+    for (const poi of sim.map.pois) this.poiById.set(poi.id, poi);
     this.box = this.ownGeo(new THREE.BoxGeometry(1, 1, 1)); this.plane = this.ownGeo(new THREE.PlaneGeometry(1, 1));
     this.ring = this.ownGeo(new THREE.RingGeometry(0.88, 1, 48)); this.ball = this.ownGeo(new THREE.SphereGeometry(1, 10, 6));
     this.capsule = this.ownGeo(new THREE.CapsuleGeometry(0.26, 0.75, 3, 8)); this.cone = this.ownGeo(new THREE.ConeGeometry(1, 1, 12, 1, true)); this.cylinder = this.ownGeo(new THREE.CylinderGeometry(1, 1, 1, 12, 1, true));
@@ -341,9 +344,15 @@ export class ActorView {
     if (this.disposed) return;
     for (const e of events) {
       if (e.t === 'shot') {
-        const p = this.sim.peds.find(p => p.id === e.id), r = p ? this.rigs.get(e.id) ?? this.makeRig(p) : undefined;
-        if (r) r.flashT = e.weapon === 'shotgun' || e.weapon === 'sniper' ? 0.085 : 0.055;
-        if (Math.hypot(e.ox - this.cameraPos.x, e.oz - this.cameraPos.z) > 320 || e.weapon === 'fist') continue;
+        const distanceSq = (e.ox - this.cameraPos.x) ** 2 + (e.oz - this.cameraPos.z) ** 2;
+        // A distant gunshot does not justify constructing an articulated rig.
+        // Rig visibility is capped at 160m in update(), tracer FX at 320m.
+        if (distanceSq < 160 ** 2) {
+          const p = this.sim.ped(e.id);
+          const r = p ? this.rigs.get(e.id) ?? this.makeRig(p) : undefined;
+          if (r) r.flashT = e.weapon === 'shotgun' || e.weapon === 'sniper' ? 0.085 : 0.055;
+        }
+        if (distanceSq > 320 ** 2 || e.weapon === 'fist') continue;
         this.v.set(e.ex - e.ox, e.ey - e.oy, e.ez - e.oz); const distance = this.v.length(); if (distance < 0.001) continue; this.v.divideScalar(distance);
         const long = e.weapon === 'rifle' || e.weapon === 'sniper', len = Math.min(distance, long ? e.weapon === 'sniper' ? 38 : 22 : 9);
         const f = this.emit('tracer', e.ox + this.v.x * len / 2, e.oy + this.v.y * len / 2, e.oz + this.v.z * len / 2, long ? 0xffedbc : 0xffbd77, 1, 0.1);
@@ -480,9 +489,20 @@ export class ActorView {
       b.ring.material.opacity = (mission ? 0.7 : close ? 0.6 : 0.28) * pulse; b.beam.material.opacity = (mission ? 0.075 : close ? 0.045 : 0.02) * pulse;
       b.beam.scale.set(Math.max(0.5, r * 0.8), height, Math.max(0.5, r * 0.8)); b.beam.position.y = height / 2; index++;
     };
-    for (const m of [...this.sim.mission.markers, ...this.sim.activity.markers, ...this.sim.job.markers]) add(m.x, m.z, m.r, m.color, true);
-    for (const m of MISSION_LIST) if (canStart(this.sim, m.id)) { const p = this.sim.map.pois.find(p => p.id === m.startPoi); if (p) add(p.x, p.z, p.r, 0xffd23f, true); }
-    const nearby = this.sim.map.pois.filter(p => POI[p.kind] !== undefined && Math.hypot(p.x - this.cameraPos.x, p.z - this.cameraPos.z) < 100).sort((a, b) => Math.hypot(a.x - this.cameraPos.x, a.z - this.cameraPos.z) - Math.hypot(b.x - this.cameraPos.x, b.z - this.cameraPos.z));
+    for (const m of this.sim.mission.markers) add(m.x, m.z, m.r, m.color, true);
+    for (const m of this.sim.activity.markers) add(m.x, m.z, m.r, m.color, true);
+    for (const m of this.sim.job.markers) add(m.x, m.z, m.r, m.color, true);
+    for (const m of MISSION_LIST) if (canStart(this.sim, m.id)) {
+      const p = this.poiById.get(m.startPoi);
+      if (p) add(p.x, p.z, p.r, 0xffd23f, true);
+    }
+    const nearby = this.nearbyPois, cx = this.cameraPos.x, cz = this.cameraPos.z;
+    nearby.length = 0;
+    for (const p of this.sim.map.pois) {
+      if (POI[p.kind] === undefined || (p.x - cx) ** 2 + (p.z - cz) ** 2 >= 10000) continue;
+      nearby.push(p);
+    }
+    nearby.sort((a, b) => ((a.x - cx) ** 2 + (a.z - cz) ** 2) - ((b.x - cx) ** 2 + (b.z - cz) ** 2));
     for (const p of nearby) add(p.x, p.z, Math.min(2.2, p.r), POI[p.kind], false);
     for (; index < this.beacons.length; index++) this.beacons[index].root.visible = false;
   }
@@ -529,6 +549,6 @@ export class ActorView {
   dispose(): void {
     if (this.disposed) return; this.disposed = true; this.contact.dispose(); this.root.removeFromParent(); this.root.clear();
     for (const g of this.geometries) g.dispose(); for (const m of this.materials) m.dispose(); this.glow.dispose();
-    this.geometries.clear(); this.materials.clear(); this.palette.clear(); this.paletteMaterials.clear(); this.articulated.clear(); this.rigs.clear(); this.cars.clear(); this.loot.clear(); this.rockets.clear(); this.beacons.length = 0; this.fx.length = 0; this.lights.length = 0;
+    this.geometries.clear(); this.materials.clear(); this.palette.clear(); this.paletteMaterials.clear(); this.nearbyPois.length = 0; this.poiById.clear(); this.articulated.clear(); this.rigs.clear(); this.cars.clear(); this.loot.clear(); this.rockets.clear(); this.beacons.length = 0; this.fx.length = 0; this.lights.length = 0;
   }
 }

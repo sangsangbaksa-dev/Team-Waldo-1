@@ -1,8 +1,8 @@
 // OUTLAW CITY — 휴대폰으로 받는 일거리: 배달·응급 이송·자경단·현상 의뢰·차량 회수·지하 격투장, 그리고 소매치기. 화면과 무관한 시뮬레이션 로직입니다.
 import type { Sim } from './sim';
-import { PLAYER_ID, blankJobState, VEHICLES, wrapAngle, type Marker, type Ped, type Vehicle } from './types';
+import { PLAYER_ID, blankJobState, VEHICLES, wrapAngle, type LaneNode, type Marker, type Ped, type Vehicle } from './types';
 import { isOpen, nearestLane } from './world';
-import { openVehicleLane as jobSpawnLane } from './road-spawn';
+import { openVehicleLane as jobSpawnLane, type RoadReservation } from './road-spawn';
 import { autoDrive } from './vehicle';
 
 export interface JobInfo { id: string; name: string; giver: string; desc: string; pay: string; cooldown: number }
@@ -120,22 +120,39 @@ export function startJob(sim: Sim, id: string): string {
     const b = poi(sim, 'bank0'); j.data.x = b.x; j.data.z = b.z; j.timer = 300; j.data.wait = 0;
     const homes = sim.map.pois.filter(q => q.kind === 'safehouse').sort((a, b2) => dist(b2, b) - dist(a, b));
     const h = homes[0] ?? b; j.data.escapeX = h.x; j.data.escapeZ = h.z;
-  } else if (id === 'smuggle') {
-    const c = poi(sim, 'chop0'), lane = sim.map.lanes[nearestLane(sim.map, c.x, c.z)];
-    const v = sim.spawnVehicle('van', lane?.x ?? c.x, lane?.z ?? c.z, lane?.h ?? 0, { keep: true, tag: 'job', locked: false, color: 0x44505c }); v.mode = 'parked'; v.input.brake = 1; j.ids.car = v.id;
-    const t = spotNear(sim, 320, 520, c); j.data.x = t.x; j.data.z = t.z; j.timer = 330;
-  } else if (id === 'cargo') {
-    const c = poi(sim, 'garage0'), lane = sim.map.lanes[nearestLane(sim.map, c.x, c.z)];
-    const v = sim.spawnVehicle('van', lane?.x ?? c.x, lane?.z ?? c.z, lane?.h ?? 0, { keep: true, tag: 'job', locked: false, color: 0xe8e8ea }); v.mode = 'parked'; v.input.brake = 1; j.ids.car = v.id;
-    const t = spotNear(sim, 380, 620, c); j.data.x = t.x; j.data.z = t.z; j.data.hp = 100; j.data.rain = 0; j.timer = 330;
+  } else if (id === 'smuggle' || id === 'cargo') {
+    const cargo = id === 'cargo';
+    const c = poi(sim, cargo ? 'garage0' : 'chop0'), lane = jobSpawnLane(sim, c.x, c.z, 'van');
+    if (!lane) { sim.job = blankJobState(); return '밴을 둘 안전한 도로가 없습니다'; }
+    const v = sim.spawnVehicle('van', lane.x, lane.z, lane.h, { keep: true, tag: 'job', locked: false, color: cargo ? 0xe8e8ea : 0x44505c });
+    v.mode = 'parked'; v.input.brake = 1; j.ids.car = v.id;
+    const t = spotNear(sim, cargo ? 380 : 320, cargo ? 620 : 520, c);
+    j.data.x = t.x; j.data.z = t.z; j.timer = 330;
+    if (cargo) { j.data.hp = 100; j.data.rain = 0; }
   } else if (id === 'demolish') {
-    const pts: Array<{ x: number; z: number }> = []; let from: { x: number; z: number } = p;
-    for (let i = 0; i < 3; i++) { const q = spotNear(sim, 110, 260, from), lane = sim.map.lanes[nearestLane(sim.map, q.x, q.z)]; pts.push(q); from = q; const v = sim.spawnVehicle(sim.rng() < 0.5 ? 'sedan' : 'suv', lane?.x ?? q.x, lane?.z ?? q.z, lane?.h ?? 0, { keep: true, tag: 'job', locked: true, color: 0x2f7d6a }); v.mode = 'parked'; v.input.brake = 1; j.ids[`c${i}`] = v.id; }
+    const planned: Array<{ kind: 'sedan' | 'suv'; lane: LaneNode }> = [];
+    const reserved: RoadReservation[] = [];
+    let from: { x: number; z: number } = p;
+    // Select and reserve all three collision-free cars before spawning any.
+    for (let i = 0; i < 3; i++) {
+      const q = spotNear(sim, 110, 260, from), kind = sim.rng() < 0.5 ? 'sedan' : 'suv';
+      const lane = jobSpawnLane(sim, q.x, q.z, kind, reserved);
+      if (!lane) { sim.job = blankJobState(); return '표적 차량을 둘 안전한 도로가 부족합니다'; }
+      planned.push({ kind, lane });
+      reserved.push({ x: lane.x, z: lane.z, kind });
+      from = q;
+    }
+    planned.forEach(({kind,lane},i) => {
+      const v = sim.spawnVehicle(kind, lane.x, lane.z, lane.h, { keep: true, tag: 'job', locked: true, color: 0x2f7d6a });
+      v.mode = 'parked'; v.input.brake = 1; j.ids[`c${i}`] = v.id;
+    });
     j.data.total = 3; j.timer = 240;
   } else if (id === 'tail') {
-    const q = spotNear(sim, 70, 130), lane = sim.map.lanes[nearestLane(sim.map, q.x, q.z)];
-    const v = sim.spawnVehicle('sedan', lane?.x ?? q.x, lane?.z ?? q.z, lane?.h ?? 0, { keep: true, tag: 'job', locked: false, color: 0x30343b }); v.mode = 'scripted';
-    const d = sim.spawnPed('civ', v.x, v.z, { keep: true, tag: 'job', mode: 'scripted', vehicle: v.id, loot: 0 }); v.driver = d.id; j.ids.car = v.id; j.ids.driver = d.id; j.data.node = lane?.id ?? -1; j.data.prog = 0; j.data.seen = 0; j.data.far = 0; j.timer = 260;
+    const q = spotNear(sim, 70, 130), lane = jobSpawnLane(sim, q.x, q.z, 'sedan');
+    if (!lane) { sim.job = blankJobState(); return '미행 차량을 둘 안전한 도로가 없습니다'; }
+    const v = sim.spawnVehicle('sedan', lane.x, lane.z, lane.h, { keep: true, tag: 'job', locked: false, color: 0x30343b }); v.mode = 'scripted';
+    const d = sim.spawnPed('civ', v.x, v.z, { keep: true, tag: 'job', mode: 'scripted', vehicle: v.id, loot: 0 });
+    v.driver = d.id; j.ids.car = v.id; j.ids.driver = d.id; j.data.node = lane.id; j.data.prog = 0; j.data.seen = 0; j.data.far = 0; j.timer = 260;
   } else if (id === 'fight') {
     const arena = sim.nearPoi(p.x, p.z) ?? poi(sim, 'arena0'); const fee = sim.price(200); if (sim.cash < fee) { sim.job = blankJobState(); return '참가비가 부족합니다'; }
     sim.addCash(-fee); j.data.x = arena.x; j.data.z = arena.z; j.data.round = 0; j.stage = 0; p.cur = 0; p.hp = Math.max(p.hp, p.maxHp * 0.7); j.data.civ0 = sim.civKills;

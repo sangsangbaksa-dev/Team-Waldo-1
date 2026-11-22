@@ -109,3 +109,28 @@ it('places the first arena opponent on walkable ground instead of inside the ent
   expect(foe.mode).toBe('attack');
   expect(foe.hp).toBe(90);
 });
+
+describe('OUTLAW side job parking and start safety', () => {
+  it.each(['smuggle', 'cargo', 'demolish', 'tail'])('%s starts without clipping into city buildings or other cars', id => {
+    const sim = new Sim(91);
+    expect(startJob(sim,id)).toBe('');
+    const cars = sim.vehicles.filter(v=>v.tag==='job');
+    expect(cars.length).toBe(id === 'demolish' ? 3 : 1);
+    for (const v of cars) {
+      const r = Math.hypot(VEHICLES[v.kind].halfL, VEHICLES[v.kind].halfW);
+      expect(isOpen(sim.map,v.x,v.z,r),id).toBe(true);
+    }
+    for(let i=0;i<cars.length;i++) for(let j=i+1;j<cars.length;j++){
+      const a=cars[i],b=cars[j];
+      const safe=Math.hypot(VEHICLES[a.kind].halfL,VEHICLES[a.kind].halfW)+Math.hypot(VEHICLES[b.kind].halfL,VEHICLES[b.kind].halfW);
+      expect(Math.hypot(a.x-b.x,a.z-b.z),id).toBeGreaterThan(safe);
+    }
+  });
+  it.each(['smuggle','cargo','demolish','tail'])('%s refuses to spawn inside an empty road graph', id => {
+    const sim = new Sim(92);
+    sim.map.lanes = [];
+    expect(startJob(sim,id)).toContain('안전한 도로');
+    expect(sim.job.active).toBe('');
+    expect(sim.vehicles.some(v=>v.tag==='job')).toBe(false);
+  });
+});

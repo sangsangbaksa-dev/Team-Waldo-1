@@ -241,6 +241,7 @@ export const createComputerView: CreateView = (sim, audio) => {
   };
   function renderApp(id: DormActivity | null) {
     const prev = shown; shown = id;
+    if (prev !== id) audio.muffle(id === 'music');
     if (prev && prev !== id && wins[prev].contains(document.activeElement)) taskBtn(id ?? prev).focus({ preventScroll: true });
     for (const a of apps) {
       const on = a.id === id;
@@ -362,5 +363,5 @@ export const createComputerView: CreateView = (sim, audio) => {
     }
     if (elapsed > 45 && !cache.newEp) { cache.newEp = true; if (built.webtoon) built.webtoon.querySelector<HTMLElement>('[data-ep="3"]')!.hidden = false; if (shown !== 'webtoon') { setBadge('webtoon', 1); toast('웹툰 「달빛 아래 우리」 13화 업데이트!'); audio.play('chime', 0.4); } }
     const min = 24 + Math.floor(elapsed / 20); setTxt(clockEl, `오전 ${1 + Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`);
-  }, onEvent, dispose() { if (disposed) return; disposed = true; inputs.abort(); blur(); queue.length = 0; } };
+  }, onEvent, dispose() { if (disposed) return; disposed = true; inputs.abort(); blur(); if (shown === 'music') audio.muffle(false); queue.length = 0; } };
 };

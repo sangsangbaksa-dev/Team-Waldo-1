@@ -101,10 +101,12 @@ export class RtsView {
       cells.push([x, y, nb]);
     }
     const rockGeo = new THREE.IcosahedronGeometry(0.9, 0), rocksPerCell = this.quality === 'low' ? 1 : 2, rocks = new THREE.InstancedMesh(rockGeo, new THREE.MeshStandardMaterial({ roughness: 0.95, metalness: 0.05, flatShading: true }), cells.length * rocksPerCell);
-    rocks.castShadow = this.shadows; rocks.receiveShadow = true; const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), col = new THREE.Color(); let idx = 0;
+    rocks.castShadow = this.shadows; rocks.receiveShadow = true; const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), col = new THREE.Color(), position = new THREE.Vector3(), scale = new THREE.Vector3(); let idx = 0;
     for (const [x, y, nb] of cells) for (let r = 0; r < rocksPerCell; r++) {
       const edge = x === 0 || y === 0 || x === n - 1 || y === n - 1, hgt = (0.5 + nb * 0.14 + rnd() * 0.6) * (edge ? 2.6 : 1) * (r ? 0.7 : 1), sx = 0.75 + rnd() * 0.55;
-      e.set(rnd() * 3, rnd() * 6, rnd() * 3); q.setFromEuler(e); m4.compose(new THREE.Vector3(x + 0.5 + (rnd() - 0.5) * 0.5, hgt * 0.35, y + 0.5 + (rnd() - 0.5) * 0.5), q, new THREE.Vector3(sx, hgt, sx));
+      e.set(rnd() * 3, rnd() * 6, rnd() * 3); q.setFromEuler(e);
+      position.set(x + 0.5 + (rnd() - 0.5) * 0.5, hgt * 0.35, y + 0.5 + (rnd() - 0.5) * 0.5);
+      scale.set(sx, hgt, sx); m4.compose(position, q, scale);
       rocks.setMatrixAt(idx, m4); col.setHSL(0.07 + rnd() * 0.035, 0.36 + rnd() * 0.12, 0.36 + rnd() * 0.14 + (nb > 6 ? 0.05 : 0)); rocks.setColorAt(idx++, col);
     }
     rocks.count = idx; rocks.instanceMatrix.needsUpdate = true; if (rocks.instanceColor) rocks.instanceColor.needsUpdate = true; scene.add(rocks);
@@ -115,7 +117,8 @@ export class RtsView {
       const w = 6 + rnd() * 9, dp = 5 + rnd() * 8, h = 5 + rnd() * 13 * (1 + d / 30), hue = 0.04 + rnd() * 0.04;
       for (let t = 0; t < 3; t++) {
         const f = 1 - t * 0.24, th = h * (t === 0 ? 0.52 : t === 1 ? 0.34 : 0.22), yy = t === 0 ? 0 : t === 1 ? h * 0.5 : h * 0.82;
-        m4.compose(new THREE.Vector3(x, yy + th / 2 - 0.6, y), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, rnd() * 0.5, 0)), new THREE.Vector3(w * f, th, dp * f));
+        position.set(x, yy + th / 2 - 0.6, y); e.set(0, rnd() * 0.5, 0); q.setFromEuler(e);
+        scale.set(w * f, th, dp * f); m4.compose(position, q, scale);
         strata.setMatrixAt(sc, m4); col.setHSL(hue + t * 0.006, 0.42 - t * 0.04, 0.32 + t * 0.07 + rnd() * 0.05); strata.setColorAt(sc++, col);
       }
     }

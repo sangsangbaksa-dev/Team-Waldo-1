@@ -20,11 +20,12 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
   interface Online { s: PvpSession; net: SquadPvp; mine: Side; incoming: Map<number, Placement[]>; sent: number; deadline: number; leaving: number; done: boolean; result: string }
   const audio = new SquadAudio(); audio.enabled = readPreferences().sound;
   let online: Online | null = null, lobby: { close(): void } | undefined;
-  let mode: 'ai' | 'local' | 'online' = 'ai', difficulty: Difficulty = 'normal', stage: 'menu' | 'cover' | 'deploy' | 'wait' | 'battle' | 'round' | 'result' | 'pause' = 'menu';
+  type SquadStage = 'menu' | 'cover' | 'deploy' | 'wait' | 'battle' | 'round' | 'result' | 'pause';
+  let mode: 'ai' | 'local' | 'online' = 'ai', difficulty: Difficulty = 'normal', stage: SquadStage = 'menu';
   let previous: 'deploy' | 'battle' = 'deploy', side: Side = 0, armies: Placement[][] = [[], []], selected: UnitType = 'guard', battle: Battle | null = null, score = [0, 0], round = 1, speed = 1, hover: { x: number; y: number } | null = null, drag: { x: number; y: number } | null = null, raf = 0, last = 0, accumulator = 0, closed = false;
   let totals = [{ kills: 0, damage: 0, survivors: 0, gold: 0 }, { kills: 0, damage: 0, survivors: 0, gold: 0 }];
   let lastRosterTick = 0, lastDrawTick = -1, onlineTimer = 0;
-  let renderedStage: typeof stage | null = null;
+  let renderedStage: SquadStage | null = null;
   const cost = (s: Side) => armies[s]!.reduce((n, p) => n + UNITS[p.type].cost, 0);
   const button = (id: string, text: string, cls = '') => `<button id="${id}" class="wd-btn ${cls}">${text}</button>`;
   const seg = (key: string, items: Array<[string, string]>, cur: string) => items.map(([v, t]) => `<button type="button" data-${key}="${v}" aria-pressed="${cur === v}">${t}</button>`).join('');

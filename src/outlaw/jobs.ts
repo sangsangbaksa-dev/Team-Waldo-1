@@ -2,7 +2,7 @@
 import type { Sim } from './sim';
 import { PLAYER_ID, blankJobState, VEHICLES, wrapAngle, type Marker, type Ped, type Vehicle } from './types';
 import { isOpen, nearestLane } from './world';
-import { openVehicleLane } from './road-spawn';
+import { openVehicleLane as jobSpawnLane } from './road-spawn';
 import { autoDrive } from './vehicle';
 
 export interface JobInfo { id: string; name: string; giver: string; desc: string; pay: string; cooldown: number }
@@ -31,8 +31,7 @@ const clock = (t: number): string => { const n = Math.ceil(Math.max(0, t)); retu
 const poi = (s: Sim, id: string) => s.map.pois.find(p => p.id === id) ?? s.map.pois[0]!;
 const cooldowns = new WeakMap<Sim, Record<string, number>>();
 
-export { openVehicleLane as jobSpawnLane } from './road-spawn';
-const jobSpawnLane = openVehicleLane;
+export { jobSpawnLane };
 
 /** 플레이어에게서 min~max 미터 떨어진 인도 지점(없으면 가장 가까운 후보) */
 export function spotNear(sim: Sim, min: number, max: number, from: { x: number; z: number } = sim.player): { x: number; z: number } {

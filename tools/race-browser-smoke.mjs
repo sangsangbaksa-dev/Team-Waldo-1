@@ -61,11 +61,18 @@ try{
       const driving=await page.evaluate(()=>({speed:window.__race.race.player.car.vf,phase:window.__race.race.phase,calls:window.__race.view.renderer.info.render.calls}));
       assert.ok(driving.speed>3&&driving.calls>0,'Race must accelerate and render');
       await page.screenshot({path:'browser-artifacts/speed-rush-driving-'+size.name+'.png',animations:'disabled'});
+      assert.equal(await page.locator('.rc-btns [data-act="mute"]').getAttribute('aria-label'),'소리 켜기');
+      await page.locator('.rc-btns [data-act="mute"]').click();
+      assert.equal(await page.locator('.rc-btns [data-act="mute"]').getAttribute('aria-label'),'소리 끄기');
+      assert.equal(await page.locator('.rc-btns [data-act="mute"]').getAttribute('aria-pressed'),'true');
       await page.locator('.rc-btns [data-act="pause"]').click();
       await page.locator('.rc-modal.show [data-act="resume"]').waitFor();
+      assert.equal(await page.locator('.rc-modal.show').getAttribute('role'),'dialog');
+      assert.equal(await page.evaluate(()=>document.activeElement?.getAttribute('data-act')),'resume','Pause must focus the dialog action');
       assert.equal(await page.locator('.rc-modal.show h2').innerText(),'일시정지');
       await page.locator('.rc-modal.show [data-act="resume"]').click();
       await page.locator('.rc-modal.show').waitFor({state:'hidden'});
+      assert.equal(await page.evaluate(()=>document.activeElement?.getAttribute('data-act')),'pause','Resuming must restore keyboard focus');
       await page.evaluate(()=>{window.__race.savedTrack=window.__race.race.track;});
       await page.locator('.rc-btns [data-act="pause"]').click();
       await page.locator('.rc-modal.show [data-act="restart"]').click();

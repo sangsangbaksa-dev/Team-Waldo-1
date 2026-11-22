@@ -259,7 +259,10 @@ export function updateVehicles(w: World, dt: number): void {
       if (v.kind === 'tank') { v.cd -= dt; if (inp.fire && v.cd <= 0) { v.cd = 1.2; w.shoot(v.x + Math.cos(drv.ang) * 40, v.y + Math.sin(drv.ang) * 40, drv.ang, 'v_cannon', 0, drv.id, f.mods.dmg, true); w.fx('recoil', v.x, v.y); } }
       else { drv.x = v.x; drv.y = v.y; const id = f.slots[f.cur].id; bossFire(w, drv, f, inp.fire && id !== 'rocket' && id !== 'sniper' && id !== 'railgun', dt); }
     } else if (v.ai === 'traffic') {
-      if (v.idle > 50 || v.hp < v.maxHp * 0.55) { if (drv) { w.disembark(v, drv); drv.fleeT = 8; drv.order = { type: 'wander', x: drv.x, y: drv.y }; } v.driver = 0; v.f = -1; v.ai = ''; v.idle = 0; }
+      // A cash convoy must keep escaping after the first hit. Regular traffic may flee,
+      // but abandoning the event truck would otherwise strand the objective forever.
+      const convoy = w.event?.kind === 'convoy' && w.event.vid === v.id;
+      if (!convoy && (v.idle > 50 || v.hp < v.maxHp * 0.55)) { if (drv) { w.disembark(v, drv); drv.fleeT = 8; drv.order = { type: 'wander', x: drv.x, y: drv.y }; } v.driver = 0; v.f = -1; v.ai = ''; v.idle = 0; }
       else traffic(w, v);
     } else if (v.ai === 'chase') chase(w, v, dt);
     if(!v.alive)continue;

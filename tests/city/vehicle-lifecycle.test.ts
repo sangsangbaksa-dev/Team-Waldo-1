@@ -18,6 +18,29 @@ describe('LAST CITY vehicle and bullet lifecycle', () => {
     expect(a.inVeh).toBe(0); expect(v.driver).toBe(0);
     expect(Math.hypot(a.x - v.x, a.y - v.y)).toBeGreaterThan(20);
   });
+  it('convoy objective remains drivable after taking damage even when traffic tries to flee', () => {
+    const w = sandbox(), v = w.spawnVehicle('truck', 400, 400, 0);
+    const driver = w.spawnActor('civ', CIV, 400, 400);
+    v.driver = driver.id; driver.inVeh = v.id; v.f = CIV; v.ai = 'traffic';
+    // Low health and impact-idle are both reasons for ordinary traffic to abandon a car.
+    v.hp = v.maxHp * 0.35; v.idle = 99;
+    w.event = {kind:'convoy',x:400,y:400,t:95,total:95,vid:v.id,prog:0,ids:[],stage:0,tx:0,ty:0,pay:0};
+    updateVehicles(w,1/30);
+    expect(v.alive).toBe(true);
+    expect(v.ai).toBe('traffic');
+    expect(v.driver).toBe(driver.id);
+    expect(driver.inVeh).toBe(v.id);
+  });
+  it('ordinary traffic still evacuates when badly damaged', () => {
+    const w = sandbox(), v = w.spawnVehicle('truck', 400, 400, 0);
+    const driver = w.spawnActor('civ', CIV, 400, 400);
+    v.driver = driver.id; driver.inVeh = v.id; v.f = CIV; v.ai = 'traffic';
+    v.hp = v.maxHp * 0.35;
+    updateVehicles(w,1/30);
+    expect(v.ai).toBe('');
+    expect(v.driver).toBe(0);
+    expect(driver.inVeh).toBe(0);
+  });
   it('a piercing bullet hits a given vehicle only once across substeps', () => {
     const w = sandbox(), v = w.spawnVehicle('truck', 400, 400, 0);
     w.bullets.push({ x: 360, y: 400, px: 360, py: 400, vx: 1000, vy: 0, life: 1, dmg: 100, f: 0, src: 0, w: 'railgun', boss: true });

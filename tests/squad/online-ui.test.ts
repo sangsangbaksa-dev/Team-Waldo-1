@@ -211,3 +211,32 @@ it('shows a recoverable message if the multiplayer transport fails to open', asy
   button('#exit').click();
   expect(vi.getTimerCount()).toBe(0);
 });
+
+it('allows a touch-only player to leave the online opponent-wait screen safely', async () => {
+  openSquad(vi.fn());
+  button('[data-mode="online"]').click();
+  button('#start').click();
+  await vi.dynamicImportSettled();
+  const report = vi.fn().mockResolvedValue(undefined);
+  callbacks.onMatch!({
+    host: true,
+    me: { id: 'blue', nickname: 'Blue' },
+    opponent: { id: 'red', nickname: 'Red' },
+    match: { id: 'match' },
+    backend: { report },
+  } as unknown as PvpSession);
+  button('#auto').click();
+  button('#ready').click();
+  expect(document.querySelector('.sq-cover h2')?.textContent).toContain('상대 배치를 기다리는 중');
+  const leave = button('#leave');
+  expect(leave.textContent).toContain('나가기');
+  leave.click();
+  expect(document.querySelector('.sq-toast')?.textContent).toContain('기권하고');
+  expect(callbacks.dispose).not.toHaveBeenCalled();
+  leave.click();
+  expect(button('#start')).toBeTruthy();
+  expect(callbacks.dispose).toHaveBeenCalledTimes(1);
+  expect(report).toHaveBeenCalledExactlyOnceWith('match', 'red');
+  expect(vi.getTimerCount()).toBe(0);
+  button('#exit').click();
+});

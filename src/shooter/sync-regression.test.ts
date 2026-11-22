@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AIR, PLAYER } from './config';
 import { Match, type Player, type Vehicle } from './sim';
-import { canAcceptRoomLoot, canAcceptVehicleDamageReport, easePuppet, parseLoot, WorldSync, WEAPON_IDS, type PuppetTarget } from './sync';
+import { canAcceptRoomLoot, canAcceptRoomPickup, canAcceptVehicleDamageReport, easePuppet, parseLoot, WorldSync, WEAPON_IDS, type PuppetTarget } from './sync';
 
 function fixture() {
   const m = new Match({seed: 42, mode: 'duel', difficulty: 'normal', humans: [{name:'A'}], fill: 2, authority: false});
@@ -67,6 +67,16 @@ describe('network synchronization regressions', () => {
       const loot = parseLoot({...base,k:'weapon',w:'rifle',i:1_001_000+i,x:150,z:150})!;
       expect(sync.acceptRoomLoot(loot,0,true,host,100)).toBe(true);
     }
+  });
+  it('accepts nearby player pickups but rejects remote item deletion', () => {
+    const sender = {id:1,remote:true,bot:false,x:20,z:-10} as Player;
+    const loot = parseLoot({...base,k:'weapon',w:'rifle',i:2_001_001,x:22,z:-9})!;
+    expect(canAcceptRoomPickup(loot,sender,false)).toBe(true);
+    expect(canAcceptRoomPickup({...loot,x:500},sender,false)).toBe(false);
+    expect(canAcceptRoomPickup(loot,undefined,false)).toBe(false);
+    expect(canAcceptRoomPickup({...loot,taken:true},sender,false)).toBe(false);
+    expect(canAcceptRoomPickup(loot,{...sender,bot:true},false)).toBe(false);
+    expect(canAcceptRoomPickup({...loot,x:500},sender,true)).toBe(true);
   });
   it('does not extrapolate a stale bot indefinitely', () => {
     const {bot} = fixture(); bot.x = bot.z = 0;

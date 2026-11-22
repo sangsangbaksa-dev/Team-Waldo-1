@@ -352,7 +352,5 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
     paintBattleFrame(activeBattle, now);
     scheduleFrame();
   }
-      // roster using real time, not battle ticks, to cap layout updates at 5 Hz.
-      if (time - lastRosterTime >= 200) { lastRosterTime = time; const ro = root.querySelector<HTMLElement>('.sq-roster'); if (ro) updateRoster(ro, battle); } const seconds = Math.floor(battle.tick / 30); if (seconds !== lastBattleSecond) { lastBattleSecond = seconds; const label = root.querySelector('.sq-battlebar span'); if (label) label.textContent = `경과 ${seconds}초 / 60초`; if (seconds % 5 === 0) { const counts = [0, 0]; for (const u of battle.units) if (u.hp > 0) counts[u.side]!++; const status = root.querySelector('#sq-battle-status'); if (status) status.textContent = `전투 ${seconds}초, 파랑 ${counts[0]}명, 빨강 ${counts[1]}명 생존`; } } } } else last = 0; scheduleFrame(); }
   window.addEventListener('keydown', key); render();
 }

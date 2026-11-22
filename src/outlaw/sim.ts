@@ -418,10 +418,20 @@ export class Sim {
       if (!boom) for (const v of this.vehicles) { const d = VEHICLES[v.kind]; if (Math.hypot(v.x - r.x, v.z - r.z) < d.halfL + 0.5 && r.y > v.y && r.y < v.y + d.height) { const dx = r.x - v.x, dz = r.z - v.z, c = Math.cos(v.h), s = Math.sin(v.h); if (Math.abs(dx * c + dz * s) < d.halfL && Math.abs(-dx * s + dz * c) < d.halfW) { boom = true; break; } } }
       if (boom) { r.life = -1; this.explode(r.x, r.y, r.z, 9, WEAPONS.rocket.dmg, r.owner); }
     }
-    this.projectiles = this.projectiles.filter(r => r.life > 0);
+    // Keep a stable array for 3D subscribers, compacting expired projectiles
+    // without allocating a filtered copy on each 60 Hz simulation step.
+    let count = 0;
+    for (let i = 0; i < this.projectiles.length; i++) {
+      const r = this.projectiles[i];
+      if (r.life > 0) this.projectiles[count++] = r;
+    }
+    this.projectiles.length = count;
   }
   private stepFire(dt: number): void {
-    for (const v of this.vehicles.slice()) {
+    // Remove dead wrecks in reverse: this.removeVehicle splices the live
+    // collection, so we must not iterate a copied vehicles array per tick.
+    for (let i = this.vehicles.length - 1; i >= 0; i--) {
+      const v = this.vehicles[i];
       if (!v.wrecked) continue; v.timer += dt;
       if (v.burn > 0) { v.burn -= dt; if (v.burn <= 0) { v.burn = -1; this.explode(v.x, v.y + 1, v.z, 7, 120, v.target); } }
       if (v.timer > 70 || (v.burn < 0 && Math.hypot(v.x - this.player.x, v.z - this.player.z) > STREAM_RADIUS * 1.4)) { if (v.keep && v.timer < 600) continue; this.removeVehicle(v); }

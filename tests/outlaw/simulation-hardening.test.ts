@@ -73,3 +73,26 @@ describe('OUTLAW low-allocation simulation input lifecycle', () => {
     expect(sim.ped(sim.player.id)).toBe(sim.player);
   });
 });
+
+describe('OUTLAW stable projectile and fire cleanup', () => {
+  it('retains the projectile array identity and discards exploded grenades', () => {
+    const sim = new Sim(157);
+    const arr = sim.projectiles;
+    sim.projectiles.push({ id: 9001, kind:'grenade',x:sim.player.x+100,y:1,z:sim.player.z,
+      vx:0,vy:0,vz:0,owner:0,life:.001 });
+    sim.step(1/60,blankPedInput(),blankCarInput());
+    expect(sim.projectiles).toBe(arr);
+    expect(sim.projectiles.some(q=>q.id===9001)).toBe(false);
+    sim.step(1/60,blankPedInput(),blankCarInput());
+    expect(sim.projectiles).toBe(arr);
+  });
+  it('removes adjacent expired wrecks in place without skipping vehicles', () => {
+    const sim = new Sim(159), arr = sim.vehicles;
+    const wrecks = Array.from({length:3},(_,i) => sim.spawnVehicle('sedan',
+      sim.player.x+60+i*15,sim.player.z+35,0));
+    for(const v of wrecks){v.wrecked=true;v.alive=false;v.burn=0;v.timer=100;}
+    sim.step(1/60,blankPedInput(),blankCarInput());
+    expect(sim.vehicles).toBe(arr);
+    for(const v of wrecks) expect(sim.vehicle(v.id)).toBeUndefined();
+  });
+});

@@ -4,6 +4,12 @@ import type { Sim } from './sim';
 import { districtAt } from './world';
 
 const SIZE = 1024;
+/** Actual city grid width, derived from the procedural map geometry rather
+ * than the obsolete 12-cell overview. The current city is 16×16. */
+export function mapGridCount(map: Pick<CityMap, 'half' | 'pitch'>): number {
+  return Number.isFinite(map.half) && Number.isFinite(map.pitch) && map.pitch > 0
+    ? Math.max(1, Math.round(map.half * 2 / map.pitch)) : 1;
+}
 /** World north (-Z) projected into the rotating mini-radar's pixel axes. */
 export function radarNorthDirection(mapAngle: number): readonly [number, number] {
   return [Math.sin(mapAngle), -Math.cos(mapAngle)] as const;
@@ -23,7 +29,7 @@ const DISTRICT_KO: Record<string, string> = { downtown: '다운타운', commerci
 export function districtName(x: number, z: number, map?: CityMap): string {
   if (map) return DISTRICT_KO[districtAt(map, x, z)];
   const half = 800, pitch = 100;
-  const grid = Math.max(1, Math.round(half * 2 / pitch));
+  const grid = mapGridCount({ half, pitch });
   const ix = Math.max(0, Math.min(grid - 1, Math.floor((x + half) / pitch)));
   const iz = Math.max(0, Math.min(grid - 1, Math.floor((z + half) / pitch)));
   // Older callers without a map still get the default 16×16 labels.
@@ -43,7 +49,7 @@ export class Minimap {
     this.paintBase();
   }
 
-  /** 1200m 도시 베이스는 한 번만 래스터화해 프레임 비용을 줄입니다. */
+  /** 도시 전체 베이스는 한 번만 래스터화해 프레임 비용을 줄입니다. */
   private paintBase(): void {
     const g = this.ctx, m = this.map, k = SIZE / (m.half * 2), px = (x: number) => (x + m.half) * k;
     g.fillStyle = '#182126'; g.fillRect(0, 0, SIZE, SIZE);
@@ -125,10 +131,11 @@ export class Minimap {
     g.drawImage(this.base, left, top, side, side);
     g.save(); g.beginPath(); g.rect(left, top, side, side); g.clip();
     g.strokeStyle = 'rgba(207,220,221,.18)'; g.lineWidth = Math.max(1, side / 700); g.setLineDash([4 * k, 4 * k]);
-    for (let i = 0; i < 12; i++) { const x = -this.map.half + i * this.map.pitch + this.map.pitch / 2, z = x; g.beginPath(); g.moveTo(px(x), top); g.lineTo(px(x), top + side); g.stroke(); g.beginPath(); g.moveTo(left, pz(z)); g.lineTo(left + side, pz(z)); g.stroke(); }
+    const gridCount = mapGridCount(this.map);
+    for (let i = 0; i < gridCount; i++) { const x = -this.map.half + i * this.map.pitch + this.map.pitch / 2, z = x; g.beginPath(); g.moveTo(px(x), top); g.lineTo(px(x), top + side); g.stroke(); g.beginPath(); g.moveTo(left, pz(z)); g.lineTo(left + side, pz(z)); g.stroke(); }
     g.setLineDash([]);
     const font = Math.max(8, Math.min(13, side * .018)); g.font = `700 ${font}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#d6dedf';
-    for (let i = 0; i < 12; i++) { g.fillText(String.fromCharCode(65 + i), px(-this.map.half + (i + .5) * this.map.pitch), top - font * 1.2); g.fillText(String(i + 1), left - font * 1.2, pz(-this.map.half + (i + .5) * this.map.pitch)); }
+    for (let i = 0; i < gridCount; i++) { g.fillText(String.fromCharCode(65 + i), px(-this.map.half + (i + .5) * this.map.pitch), top - font * 1.2); g.fillText(String(i + 1), left - font * 1.2, pz(-this.map.half + (i + .5) * this.map.pitch)); }
     for (const poi of this.map.pois) {
       const x = px(poi.x), y = pz(poi.z); this.poi(g, [x, y], poi, font * 1.7);
       g.font = `600 ${font}px sans-serif`; g.lineWidth = 3; g.strokeStyle = 'rgba(12,17,20,.9)'; g.strokeText(poi.name, x, y + font * 1.8); g.fillStyle = '#f1f3ef'; g.fillText(poi.name, x, y + font * 1.8);

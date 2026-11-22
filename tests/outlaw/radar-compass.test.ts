@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { radarNorthDirection, districtName } from '../../src/outlaw/minimap';
+import { mapGridCount, radarNorthDirection, districtName } from '../../src/outlaw/minimap';
 import { generateCity } from '../../src/outlaw/world';
 
 describe('OUTLAW rotating mini-radar compass', () => {
@@ -28,5 +28,14 @@ describe('OUTLAW radar district labels match the actual generated world', () => 
       }
       for (const p of map.parks) expect(districtName(p.x, p.z, map)).toBe('공원 지구');
     }
+  });
+});
+
+describe('OUTLAW full city overview grid', () => {
+  it('shows the entire actual generated 16×16 grid rather than the old 12×12 range', () => {
+    const map = generateCity(23);
+    expect(mapGridCount(map)).toBe(16);
+    expect(mapGridCount({ half: 600, pitch: 100 })).toBe(12);
+    expect(mapGridCount({ half: 0, pitch: 0 })).toBe(1);
   });
 });

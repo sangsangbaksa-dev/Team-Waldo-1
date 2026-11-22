@@ -32,13 +32,12 @@ export class Battle {
       const d = UNITS[u.type]; u.cooldown -= STEP;
       // Find the nearest target in one pass rather than allocating and sorting
       // enemy/ally arrays for every soldier on every simulation tick.
-      const dist2 = (v: Soldier) => (v.x - u.x) ** 2 + (v.y - u.y) ** 2;
       let target: Soldier | undefined, healing = false;
       let nearestEnemy = Infinity, nearestAlly = Infinity;
       let wounded: Soldier | undefined;
       for (const v of alive) {
         if (v.hp <= 0) continue;
-        const distance2 = dist2(v);
+        const dx = v.x - u.x, dy = v.y - u.y, distance2 = dx * dx + dy * dy;
         if (v.side !== u.side) {
           if (distance2 < nearestEnemy || (distance2 === nearestEnemy && v.id < (target?.id ?? Infinity))) {
             nearestEnemy = distance2; target = v;

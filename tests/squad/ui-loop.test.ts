@@ -2,6 +2,8 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { openSquad } from '../../src/squad/game';
 
+const pauseAudio = vi.hoisted(() => vi.fn());
+
 vi.mock('../../src/squad/view', () => ({ draw: vi.fn() }));
 vi.mock('../../src/squad/sprites', () => ({
   spriteUrl: () => 'data:image/png;base64,AA==',
@@ -12,7 +14,7 @@ vi.mock('../../src/squad/audio', () => ({
     enabled = true;
     place = vi.fn(); remove = vi.fn(); deny = vi.fn(); click = vi.fn();
     ready = vi.fn(); start = vi.fn(); win = vi.fn(); lose = vi.fn();
-    battle = vi.fn(); unlock = vi.fn(); setPaused = vi.fn(); dispose = vi.fn();
+    battle = vi.fn(); unlock = vi.fn(); setPaused = pauseAudio; dispose = vi.fn();
   },
 }));
 
@@ -21,7 +23,7 @@ let nextFrame = 0;
 const button = (selector: string) => document.querySelector<HTMLButtonElement>(`.sq-root ${selector}`)!;
 
 beforeEach(() => {
-  nextFrame = 0; frames.clear(); document.body.innerHTML = '';
+  nextFrame = 0; frames.clear(); document.body.innerHTML = ''; pauseAudio.mockClear();
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
     const id = ++nextFrame; frames.set(id, callback); return id;
   });
@@ -259,12 +261,18 @@ it('does not expose deploy-only keyboard instructions on the live battle canvas'
   button('#pause').click(); button('#exit').click();
 });
 
-it('keeps the local tactical pause/resume controls available', () => {
+it('suspends game audio on pause and resumes it through each exit path', () => {
   openSquad(vi.fn());
   button('#start').click(); button('#auto').click(); button('#ready').click();
-  button('#pause').click(); expect(button('#resume')).toBeTruthy();
-  button('#resume').click(); expect(button('#pause')).toBeTruthy();
-  button('#pause').click(); button('#menu').click();
-  expect(button('#start')).toBeTruthy();
+  button('#pause').click();
+  expect(button('#resume')).toBeTruthy();
+  expect(pauseAudio).toHaveBeenLastCalledWith(true);
+  button('#resume').click();
+  expect(button('#pause')).toBeTruthy();
+  expect(pauseAudio).toHaveBeenLastCalledWith(false);
+  button('#pause').click();
+  expect(pauseAudio).toHaveBeenLastCalledWith(true);
+  button('#menu').click();
+  expect(pauseAudio).toHaveBeenLastCalledWith(false);
   button('#exit').click();
 });

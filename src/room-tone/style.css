@@ -339,8 +339,13 @@ input[type="range"] {
   overflow: hidden;
 }
 #viewWrap {
+  z-index: 0;
   touch-action: none;
   background: #121b19;
+}
+/* Keep all HUD actions above the full-screen WebGL canvas in mobile WebKit. */
+#game > :is(.hud, .gear, .statusfoot, .touchactions, #stick, #prompt, #toast) {
+  z-index: 1;
 }
 #viewWrap canvas {
   width: 100%;

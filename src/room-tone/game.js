@@ -92,7 +92,7 @@ let wasPointerLocked = false;
 const movePointer = createPointerOwner(),
   lookPointer = createPointerOwner(),
   runPointer = createPointerOwner();
-let lastPointerType = touch ? "touch" : "mouse";
+let lastPointerType = "mouse";
 let noticeUntil = 0,
   saveAt = 0,
   lastCell = -1,
@@ -108,6 +108,7 @@ let investigation = null, nextFlicker = 0, flickerUntil = 0;
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const touch =
   matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
+lastPointerType = touch ? "touch" : "mouse";
 const px = (t) => String(t).padStart(2, "0");
 const clock = (t) => px(Math.floor(t / 60)) + ":" + px(Math.floor(t % 60));
 const pad = (i) => String(i + 1).padStart(2, "0");

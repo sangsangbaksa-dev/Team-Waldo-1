@@ -76,7 +76,7 @@ export const createSlackAudio: CreateAudio = () => {
     if (!on) return;
     // 이어폰에서 새어 나오는 아주 작은 음악(먹먹 필터를 우회).
     const bed = (): void => { if (Math.random() < 0.7) tone(PENTA[Math.floor(Math.random() * PENTA.length)], 0.55, 0.012, 'sine', undefined, 0, 0, direct ?? undefined); bedTimer = window.setTimeout(bed, 360); };
-    if (ctx) bed();
+    if (ctx && !muted) bed();
   };
   const play = (name: SfxName, vol = 1): void => {
     const v = Math.max(0, Math.min(1, vol));
@@ -137,7 +137,7 @@ export const createSlackAudio: CreateAudio = () => {
       }
     },
     play, ambience, muffle: setMuffle,
-    setMuted(m) { muted = m; if (master && ctx) master.gain.setTargetAtTime(m ? 0 : MASTER, ctx.currentTime, .02); },
+    setMuted(m) { const changed = muted !== m; muted = m; if (master && ctx) master.gain.setTargetAtTime(m ? 0 : MASTER, ctx.currentTime, .02); if (changed && muffled) setMuffle(true); },
     dispose() {
       if (disposed) return;
       disposed = true;

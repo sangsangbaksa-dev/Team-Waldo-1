@@ -18,16 +18,35 @@ function crash(sim: Sim, v: Vehicle, power: number, by: number, scale = 1): void
 }
 
 // 중심 격자를 틱마다 한 번 만들고 이동 시 갱신해 먼 차끼리 SAT를 하지 않습니다.
-interface Grid { frame: number; cells: Map<string, Set<Vehicle>>; keys: Map<Vehicle, string> }
+interface Grid {
+  frame: number;
+  cells: Map<string, Set<Vehicle>>;
+  keys: Map<Vehicle, string>;
+  // Recycle buckets across frames; a fresh Set per occupied cell per tick
+  // otherwise creates a large GC workload in dense city traffic.
+  free: Set<Vehicle>[];
+}
 const grids = new WeakMap<Sim, Grid>();
 function put(g: Grid, v: Vehicle): void {
   const key = `${Math.floor(v.x / 12)},${Math.floor(v.z / 12)}`, old = g.keys.get(v); if (old === key) return;
   if (old) g.cells.get(old)?.delete(v);
-  let bucket = g.cells.get(key); if (!bucket) { bucket = new Set(); g.cells.set(key, bucket); } bucket.add(v); g.keys.set(v, key);
+  let bucket = g.cells.get(key);
+  if (!bucket) { bucket = g.free.pop() ?? new Set<Vehicle>(); g.cells.set(key, bucket); }
+  bucket.add(v); g.keys.set(v, key);
 }
 function gridFor(sim: Sim): Grid {
   let g = grids.get(sim);
-  if (!g || g.frame !== sim.frame) { g = { frame: sim.frame, cells: new Map(), keys: new Map() }; grids.set(sim, g); for (const v of sim.vehicles) put(g, v); } return g;
+  if (!g) {
+    g = { frame: -1, cells: new Map(), keys: new Map(), free: [] };
+    grids.set(sim, g);
+  }
+  if (g.frame !== sim.frame) {
+    g.frame = sim.frame;
+    for (const bucket of g.cells.values()) { bucket.clear(); g.free.push(bucket); }
+    g.cells.clear(); g.keys.clear();
+    for (const v of sim.vehicles) put(g, v);
+  }
+  return g;
 }
 /** 가까운 두 차의 OBB를 분리하고 질량에 따라 반대 충격량을 적용합니다. */
 export function collideVehicles(sim: Sim, a: Vehicle, b: Vehicle): void {
@@ -117,10 +136,16 @@ export function stepVehicle(sim: Sim, v: Vehicle, dt: number): void {
     v.roll += (clamp(bank - v.yawRate * v.vf * 0.008, -0.25, 0.25) - v.roll) * blend(7, ds);
     v.wheel += v.vf * ds / 0.34; pedestrians(sim, v, ds); put(g, v);
     const gx = Math.floor(v.x / 12), gz = Math.floor(v.z / 12);
-    for (let x = gx - 1; x <= gx + 1; x++) for (let z = gz - 1; z <= gz + 1; z++) for (const q of [...(g.cells.get(`${x},${z}`) ?? [])]) {
-      // Each moving body must check its new position against both older and newer cars.
-      // SAT already rejects separated bodies; removed entries in the frame grid are ignored.
-      if (q === v || !q.alive || sim.vehicle(q.id) !== q) continue; collideVehicles(sim, v, q); put(g, q);
+    for (let x = gx - 1; x <= gx + 1; x++) for (let z = gz - 1; z <= gz + 1; z++) {
+      const bucket = g.cells.get(`${x},${z}`);
+      if (!bucket) continue;
+      // Set iteration remains valid if an overlapping vehicle moves to another
+      // cell; no need to allocate a copied array for each of 9 neighbor cells.
+      for (const q of bucket) {
+        if (q === v || !q.alive || sim.vehicle(q.id) !== q) continue;
+        collideVehicles(sim, v, q);
+        put(g, q);
+      }
     }
     const lim = sim.map.half - Math.hypot(d.halfL, d.halfW);
     if (Math.abs(v.x) > lim) { v.x = clamp(v.x, -lim, lim); if (v.vx * v.x > 0) v.vx = 0; }

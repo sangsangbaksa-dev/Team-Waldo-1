@@ -15,9 +15,10 @@ import { SOLDIER_KINDS } from './assets';
 import type { Box, Loot } from './world';
 import { buildProps, buildRoofs, makeDropCrate, makePlane, makeVehicleMesh, partMesh } from './props';
 import { TerrainView, tintGround } from './terrainview';
+import { groundHeight } from './relief';
 import { WeatherFx } from './weatherfx';
 import { waterDepth } from './terrain';
-import { chuteTexture, crateTexture, floorTexture, glowTexture, groundTexture, leafTexture, lootCaseTexture, makeSky, rockTexture, wallTexture } from './textures';
+import { chuteTexture, crateTexture, floorTexture, glowTexture, groundTexture, leafTexture, lootCaseTexture, makeSky, rockTexture, setTextureAnisotropy, wallTexture } from './textures';
 
 export type Quality = 'high' | 'standard' | 'low';
 const LOOT_COLOR: Record<string, number> = { weapon: 0xeaf6ff, ammo: 0xffa53a, medkit: 0x52f08a, armor: 0x5aa8ff, bandage: 0xf2f2f2, attach: 0xc59bff, helmet: 0xffd34d, boost: 0x39e6ff, smoke: 0xb8c0c8, flash: 0xfff2a0 };
@@ -62,9 +63,9 @@ export class ShooterView {
   constructor(readonly canvas: HTMLCanvasElement, readonly match: Match, private assets: ShooterAssets | null, readonly quality: Quality) {
     const hi = quality === 'high';
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(hi ? 2 : quality === 'standard' ? 1.5 : 1, window.devicePixelRatio || 1));
+    this.renderer.setPixelRatio(Math.min(hi ? 2 : quality === 'standard' ? 1.75 : 1, window.devicePixelRatio || 1));
     this.renderer.shadowMap.enabled = hi; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; this.renderer.shadowMap.autoUpdate = false; this.renderer.shadowMap.needsUpdate = true; // 그림자 맵은 두 프레임에 한 번 갱신(frame)
-    this.adapt = new AdaptiveQuality({ max: this.renderer.getPixelRatio(), setPixelRatio: pr => { this.renderer.setPixelRatio(pr); this.applySize(); }, setLevel: l => this.setLevel(l) }); this.renderer.setPixelRatio(this.adapt.pr);
+    this.adapt = new AdaptiveQuality({ max: this.renderer.getPixelRatio(), start: this.renderer.getPixelRatio(), setPixelRatio: pr => { this.renderer.setPixelRatio(pr); this.applySize(); }, setLevel: l => this.setLevel(l) }); this.renderer.setPixelRatio(this.adapt.pr);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.05; this.renderer.autoClear = false;
     const sc = this.scene, sunDir = new THREE.Vector3(0.55, 0.62, 0.38);
     if (hi) { this.environment = makeEnvironment(this.renderer, { top: 0x637e9b, horizon: 0xc9c5b4, ground: 0x43463b, sun: 0xffe4bc, sunDir: [0.55, 0.62, 0.38], sunPower: 3 }); sc.environment = this.environment; this.vmScene.environment = this.environment; }
@@ -72,8 +73,9 @@ export class ShooterView {
     this.hemi = new THREE.HemisphereLight(0xa9bccf, 0x5d5a48, 0.82); sc.add(this.hemi);
     this.sun = new THREE.DirectionalLight(0xdbe4ee, 1.8); this.sun.position.copy(sunDir).multiplyScalar(120); sc.add(this.sun, this.sun.target);
     const rim = new THREE.DirectionalLight(0x8aaed0, 0.3); rim.position.set(-80, 35, -100); sc.add(rim);
-    if (hi) { this.sun.castShadow = true; const s = this.sun.shadow; s.mapSize.set(2048, 2048); s.camera.left = s.camera.bottom = -78; s.camera.right = s.camera.top = 78; s.camera.near = 20; s.camera.far = 320; s.bias = -0.0004; s.normalBias = 0.05; }
+    if (hi) { this.sun.castShadow = true; const s = this.sun.shadow; s.mapSize.set(2048, 2048); s.camera.left = s.camera.bottom = -60; s.camera.right = s.camera.top = 60; s.camera.near = 20; s.camera.far = 320; s.bias = -0.0004; s.normalBias = 0.05; }
     this.post = makePost(quality, this.renderer, this.scene, this.camera, { strength: 0.42, radius: 0.55, threshold: 0.88, vignette: 0.3 });
+    setTextureAnisotropy(quality === 'low' ? 2 : this.renderer.capabilities.getMaxAnisotropy());
     this.buildGround(); this.buildBuildings(); this.buildScatter();
     this.beams = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.09, 0.09, 7, 8, 1, true), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: true }), 400);
     this.beams.count = 0; this.beams.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(400 * 3), 3); this.beams.frustumCulled = false; sc.add(this.beams);
@@ -101,14 +103,18 @@ export class ShooterView {
 
   // ---------- 지형 ----------
   private buildGround(): void {
-    const half = this.match.map.half, size = half * 2 + 900, segs = 120, geo = new THREE.PlaneGeometry(size, size, segs, segs); geo.rotateX(-Math.PI / 2);
+    const half = this.match.map.half, size = half * 2 + 900, segs = this.quality === 'low' ? 120 : 240, geo = new THREE.PlaneGeometry(size, size, segs, segs); geo.rotateX(-Math.PI / 2);
     const n1 = noise2(this.match.seed), n2 = noise2(this.match.seed + 9), pos = geo.attributes.position, col = new Float32Array(pos.count * 3), c = new THREE.Color();
-    const green = new THREE.Color(0.96, 1.02, 0.84), dry = new THREE.Color(1.2, 1.0, 0.7), dark = new THREE.Color(0.72, 0.82, 0.62), sand = new THREE.Color(1.28, 1.12, 0.84);
+    const green = new THREE.Color(0.96, 1.02, 0.84), dry = new THREE.Color(1.2, 1.0, 0.7), dark = new THREE.Color(0.72, 0.82, 0.62), sand = new THREE.Color(1.28, 1.12, 0.84), gravel = new THREE.Color(1.03, 0.98, 0.85);
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), z = pos.getZ(i), a = n1(x / 90 + 32, z / 90 + 32), b = n2(x / 28 + 32, z / 28 + 32);
-      c.copy(green).lerp(dry, Math.max(0, a - 0.4) * 3).lerp(dark, Math.max(0, 0.5 - b) * 2.2).lerp(sand, Math.max(0, Math.hypot(x, z) - half * 1.02) / 120); tintGround(this.match.map, x, z, c);
+      const height = groundHeight(this.match.seed, this.match.map, x, z); pos.setY(i, height);
+      c.copy(green).lerp(dry, Math.min(1, Math.max(0, a - 0.4) * 3)).lerp(dark, Math.min(1, Math.max(0, 0.5 - b) * 2.2)).lerp(gravel, Math.max(0, n2(x / 170 + 12, z / 170 + 12) - 0.62) * 1.8).lerp(sand, Math.min(1, Math.max(0, Math.hypot(x, z) - half * 1.02) / 120)); tintGround(this.match.map, x, z, c);
+      c.multiplyScalar(1 + height * 0.035);
       col.set([c.r, c.g, c.b], i * 3);
     }
+    geo.computeVertexNormals();
+    const normals = geo.attributes.normal; for (let i = 0; i < pos.count; i++) { const shade = 1 - Math.min(0.22, (1 - normals.getY(i)) * 2); col[i * 3] *= shade; col[i * 3 + 1] *= shade; col[i * 3 + 2] *= shade; }
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     const t = groundTexture(); t.repeat.set(size / 6, size / 6);
     const ground = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: t, vertexColors: true, roughness: 1 })); ground.receiveShadow = true; this.scene.add(ground);
@@ -144,10 +150,12 @@ export class ShooterView {
       }
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.computeVertexNormals();
       const n = this.quality === 'low' ? 3000 : map.mode === 'br' ? 14000 : 5000, mesh = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, emissive: 0x2b3618 }), n); let k = 0;
+      const flowerCount = this.quality === 'low' ? 250 : 1000, flowers = new THREE.InstancedMesh(new THREE.ConeGeometry(0.16, 0.28, 5).translate(0, 0.4, 0), new THREE.MeshLambertMaterial({ color: 0xffffff }), flowerCount);
       for (let tries = 0; k < n && tries < n * 3; tries++) {
         const x = (r() * 2 - 1) * (map.half + 20), z = (r() * 2 - 1) * (map.half + 20); if (map.compounds.some(c => Math.hypot(c.x - x, c.z - z) < c.r - 5) || map.sites.some(c => Math.hypot(c.x - x, c.z - z) < c.r + 1) || waterDepth(map.terrain, x, z) || map.terrain.hills.some(h => Math.hypot(h.x - x, h.z - z) < h.r * 1.05)) continue;
-        d.position.set(x, 0, z); d.rotation.set(0, r() * 6.28, 0); d.scale.setScalar(0.8 + r() * 0.7); d.updateMatrix(); mesh.setMatrixAt(k++, d.matrix);
+        d.position.set(x, groundHeight(this.match.seed, map, x, z), z); d.rotation.set(0, r() * 6.28, 0); d.scale.setScalar(0.8 + r() * 0.7); d.updateMatrix(); mesh.setMatrixAt(k, d.matrix); if (k < flowerCount) { flowers.setMatrixAt(k, d.matrix); flowers.setColorAt(k, this.tmpCol.setHex(k % 3 === 0 ? 0xe5bb63 : k % 3 === 1 ? 0xe3dccc : 0xb99cbb)); } k++;
       }
+      flowers.count = Math.min(k, flowerCount); this.chunk(flowers, 90, 150, true);
       mesh.count = k; mesh.receiveShadow = false; this.chunk(mesh, 90, 150, true);
     }
     // 덤불
@@ -155,7 +163,7 @@ export class ShooterView {
       if (bushes.length) {
         const g = new THREE.IcosahedronGeometry(1, 1), p = g.attributes.position; for (let i = 0; i < p.count; i++) { const k = 0.82 + 0.3 * Math.sin(i * 12.9898) ** 2; p.setXYZ(i, p.getX(i) * k, p.getY(i) * k, p.getZ(i) * k); } g.computeVertexNormals();
         const mesh = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ map: leafTexture(), flatShading: true }), bushes.length);
-        bushes.forEach((q, i) => { d.position.set(q.x, q.h * 0.35, q.z); d.rotation.set(0, q.ry, 0); d.scale.set(q.w * 0.5, q.h * 0.55, q.w * 0.5); d.updateMatrix(); mesh.setMatrixAt(i, d.matrix); mesh.setColorAt(i, this.tmpCol.setHex(q.c)); });
+        bushes.forEach((q, i) => { d.position.set(q.x, q.h * 0.35 + groundHeight(this.match.seed, map, q.x, q.z), q.z); d.rotation.set(0, q.ry, 0); d.scale.set(q.w * 0.5, q.h * 0.55, q.w * 0.5); d.updateMatrix(); mesh.setMatrixAt(i, d.matrix); mesh.setColorAt(i, this.tmpCol.setHex(q.c)); });
         mesh.castShadow = true; this.chunk(mesh, 100, 260);
       } }
     // 바위
@@ -164,8 +172,14 @@ export class ShooterView {
       for (let i = 0; i < p.count; i++) { const k = 0.78 + 0.4 * n(p.getX(i) * 2 + 20, p.getZ(i) * 2 + p.getY(i) * 2 + 20); p.setXYZ(i, p.getX(i) * k, p.getY(i) * k * 0.9, p.getZ(i) * k); }
       g.computeVertexNormals();
       const mesh = new THREE.InstancedMesh(g, new THREE.MeshStandardMaterial({ color: 0x9a978f, map: rockTexture(), roughness: 0.95, flatShading: true }), map.rocks.length);
-      map.rocks.forEach((k, i) => { d.position.set(k.x, k.sy * 0.28, k.z); d.rotation.set(0, k.ry, 0); d.scale.set(k.sx, k.sy, k.sz); d.updateMatrix(); mesh.setMatrixAt(i, d.matrix); mesh.setColorAt(i, this.tmpCol.setScalar(0.8 + r() * 0.4)); });
+      map.rocks.forEach((k, i) => { d.position.set(k.x, k.sy * 0.28 + groundHeight(this.match.seed, map, k.x, k.z), k.z); d.rotation.set(0, k.ry, 0); d.scale.set(k.sx, k.sy, k.sz); d.updateMatrix(); mesh.setMatrixAt(i, d.matrix); mesh.setColorAt(i, this.tmpCol.setScalar(0.8 + r() * 0.4)); });
       mesh.castShadow = true; mesh.receiveShadow = true; this.chunk(mesh, 120, 480);
+      const count = Math.min(map.rocks.length, this.quality === 'low' ? 100 : 350), clusters = new THREE.InstancedMesh(g, mesh.material, count * 2);
+      for (let i = 0; i < count * 2; i++) {
+        const rock = map.rocks[i % count], angle = r() * Math.PI * 2, distance = 1.5 + r() * 2.5, x = rock.x + Math.cos(angle) * distance, z = rock.z + Math.sin(angle) * distance;
+        const scale = 0.3 + r() * 0.65; d.position.set(x, groundHeight(this.match.seed, map, x, z) + scale * 0.28, z); d.rotation.set(0, r() * Math.PI * 2, 0); d.scale.set(scale * 1.2, scale, scale); d.updateMatrix(); clusters.setMatrixAt(i, d.matrix);
+      }
+      this.chunk(clusters, 120, 400);
     }
     // 나무: 모델이 있으면 Blender 나무, 없으면 단순한 원뿔
     for (const pine of [false, true]) {
@@ -181,7 +195,7 @@ export class ShooterView {
       let top = 1; if (baked) { const bb = new THREE.Box3(); for (const [g] of geos) { g.computeBoundingBox(); bb.union(g.boundingBox!); } top = Math.max(0.5, bb.max.y); }
       for (const [g, m] of geos) {
         const mesh = new THREE.InstancedMesh(g, m, list.length);
-        list.forEach((t, i) => { const h = (baked ? (pine ? 9 : 7.5) / top : 1) * t.s; d.position.set(t.x, 0, t.z); d.rotation.set(0, r() * 6.28, 0); d.scale.setScalar(h); d.updateMatrix(); mesh.setMatrixAt(i, d.matrix); });
+        list.forEach((t, i) => { const h = (baked ? (pine ? 9 : 7.5) / top : 1) * t.s; d.position.set(t.x, groundHeight(this.match.seed, map, t.x, t.z), t.z); d.rotation.set(0, r() * 6.28, 0); d.scale.setScalar(h); d.updateMatrix(); mesh.setMatrixAt(i, d.matrix); const hue = pine ? 0x819477 : (Math.sin(t.x * 0.028 + t.z * 0.019) > 0.72 ? 0xd7a45c : 0xb6c99c); mesh.setColorAt(i, this.tmpCol.setHex(hue)); });
         mesh.castShadow = true; mesh.receiveShadow = false; this.chunk(mesh, 140, 520);
       }
     }
@@ -526,7 +540,7 @@ export class ShooterView {
     if (!this.reducedMotion) for (const aircraft of [this.plane, this.carrier]) if (aircraft?.visible) aircraft.traverse(o => { if (o.name === 'propeller') o.rotation.x += dt * 24; });
     this.viewmodel(view, !spectate && me.alive && !me.air && me.veh < 0, dt);
     // 그리기: 월드 → 깊이 지우고 1인칭 총
-    this.adapt.tick();
+    if (this.frames > 60) this.adapt.tick();
     if (this.post && this.level < 1) { this.post.setCamera(cam); this.post.render(dt); } else { this.renderer.clear(); this.renderer.render(this.scene, cam); }
     if (this.vm && this.vm.visible) { this.vmCam.fov = cam.fov > 60 ? 64 : 64 * (cam.fov / 60); this.vmCam.aspect = cam.aspect; this.vmCam.updateProjectionMatrix(); this.renderer.clearDepth(); this.renderer.render(this.vmScene, this.vmCam); }
   }

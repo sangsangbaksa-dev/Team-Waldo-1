@@ -118,7 +118,8 @@ const IDLE: CarInput = { throttle: 0, brake: 0, steer: 0, drift: false, nitro: f
 
 export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): RaceEvent[] {
   const ev: RaceEvent[] = [], t = r.track;
-  if (r.phase !== 'done') r.clock += dt;
+  if (r.phase === 'done') return ev;
+  r.clock += dt;
   const pressed = input.throttle > 0.05;
   if (r.phase === 'countdown') {
     const n = Math.ceil(-r.clock); if (n < r.lastCount && n >= 1) { r.lastCount = n; ev.push({ type: 'count', n }); }
@@ -126,8 +127,8 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
     if (!pressed) r.thrDownAt = null;
     if (r.clock >= 0) {
       r.phase = 'racing'; ev.push({ type: 'go' });
-      if (pressed && r.thrDownAt !== null && r.thrDownAt >= -0.5) { r.player.car.boostT = 1.4; ev.push({ type: 'launch' }); }
-      r.clock = 0; for (const k of r.racers) k.lapStart = 0;
+      if (pressed && r.thrDownAt !== null) { r.player.car.boostT = 1.4; ev.push({ type: 'launch' }); }
+      r.clock = Math.max(0, r.clock); for (const k of r.racers) k.lapStart = 0;
     }
   }
   r.thrPrev = pressed;
@@ -152,7 +153,7 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
     if (k.player) {
       if (k.lastEv.hit > 0) ev.push({ type: 'hit', power: k.lastEv.hit });
       if (racing) {
-        const de = stepDrift(r.drift, k.car, dt, k.lastEv.hit > 0);
+        const de = stepDrift(r.drift, k.car, dt, k.lastEv.hit > 8);
         if (de?.type === 'bank') { k.car.nitro = Math.min(1, k.car.nitro + nitroForChain(de.points)); ev.push({ type: 'driftBank', points: de.points, mult: de.mult }); }
         else if (de?.type === 'lost') ev.push({ type: 'driftLost', points: de.points });
       }

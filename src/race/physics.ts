@@ -124,7 +124,7 @@ export function stayOnTrack(c: CarState, t: Track, dt: number, progress: boolean
     // 바깥으로 나가는 성분만 없앱니다. 진행 속도까지 깎거나 차체를 급히 도로 방향으로 돌리면 벽에 붙은 채 속도가 죽습니다.
     const vn = c.vx * px + c.vz * pz;
     if (vn > 0) {
-      c.vx -= px * vn; c.vz -= pz * vn; c.drifting = false; c.driftT = 0;
+      c.vx -= px * vn; c.vz -= pz * vn; if (vn > 8) { c.drifting = false; c.driftT = 0; c.boostT = 0; }
       if (vn > 2.5 && c.wallT <= 0) { hit = vn; c.wallT = 0.18; }
     }
     const want = Math.atan2(t.tz[nr.i], t.tx[nr.i]); c.h = wrapAngle(c.h + wrapAngle(want - c.h) * Math.min(1, WALL_HEADING_RATE * dt));

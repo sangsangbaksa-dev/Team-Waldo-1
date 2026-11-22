@@ -1,4 +1,4 @@
-// LAST CITY — 건물 생성기: Blender 로 구운 외벽 타일 + 1층 상점가 + 돌림띠·벽기둥·셋백·옥상 설비.
+﻿// LAST CITY — 건물 생성기: Blender 로 구운 외벽 타일 + 1층 상점가 + 돌림띠·벽기둥·셋백·옥상 설비.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { World } from './world';
@@ -8,7 +8,7 @@ import type { Emitter } from './streetfx';
 
 export const FACADE_STYLES = ['brick', 'glass', 'deco', 'industrial', 'ribbon'] as const;
 export const BUILDING_SHADOW_LAYER = 2;
-const CHUNKS_PER_AXIS = 4;
+const CHUNKS_PER_AXIS = 8;
 const CHUNK_SIZE = SIZE / CHUNKS_PER_AXIS;
 const GF = 100;                      // 1층 높이 (사람 키 약 40 — scale.ts 의 HUMAN 기준 — 의 2배 이상)
 const DOOR_H = 78, DOOR_W = 22;      // 출입문 높이 · 반폭
@@ -37,8 +37,8 @@ class Mesh {
   }
 }
 
-function buildingChunk(): { facades: Mesh[]; shops: Mesh[]; trim: Mesh } {
-  return { facades: FACADE_STYLES.map(() => new Mesh()), shops: [new Mesh(), new Mesh()], trim: new Mesh() };
+function buildingChunk(): { facades: Mesh[]; shops: Mesh[]; trim: Mesh; proxy: Mesh } {
+  return { facades: FACADE_STYLES.map(() => new Mesh()), shops: [new Mesh(), new Mesh()], trim: new Mesh(), proxy: new Mesh() };
 }
 
 const worldBounds = new THREE.Box3();
@@ -97,7 +97,7 @@ function streakTexture(): THREE.CanvasTexture {
   return new THREE.CanvasTexture(c);
 }
 
-export interface BuildingFx { blink: (t: number) => void; setMood: (atm: Atmosphere) => void; stacks: Emitter[] }
+export interface BuildingFx { blink: (t: number) => void; setMood: (atm: Atmosphere) => void; updateLOD: (x: number, z: number) => void; stacks: Emitter[] }
 
 /** 높은 건물 옥상의 붉은 항공장애등을 두 박자로 번갈아 깜박이게 하는 갱신 함수를 돌려준다. */
 export function buildBuildings(world: World, scene: THREE.Scene, base: string): BuildingFx {
@@ -114,6 +114,7 @@ export function buildBuildings(world: World, scene: THREE.Scene, base: string): 
     if (!chunk) { chunk = buildingChunk(); chunks.set(key, chunk); }
     const { facades, shops, trim } = chunk;
     const r = (k: number): number => hash(i * 31 + k), style = Math.floor(r(1) * FACADE_STYLES.length), F = facades[style], H = 150 + s.height * 1250 + r(2) * 60, tall = H > 520 && r(3) < 0.7;
+    chunk.proxy.box(s.x, 0, s.y, s.x + s.w, H, s.y + s.h, tint(s));
     const tintC = tint(s), light = tintC.clone().lerp(new THREE.Color(0xf1ede4), 0.55), dark = tintC.clone().multiplyScalar(0.55);
     // 층(티어): 높은 건물은 위로 갈수록 좁아지는 셋백
     const tiers: { x0: number; z0: number; x1: number; z1: number; y0: number; y1: number }[] = [];
@@ -220,7 +221,8 @@ export function buildBuildings(world: World, scene: THREE.Scene, base: string): 
   const trimMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
   const buildingMats = [...facadeMats, ...shopMats, trimMat];
   const shadowMat = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
-  for (const { facades, shops, trim } of chunks.values()) {
+  const lods: { building: THREE.Mesh; shadow: THREE.Mesh; proxy: THREE.Mesh; bounds: THREE.Box3 }[] = [];
+  for (const { facades, shops, trim, proxy } of chunks.values()) {
     const parts: THREE.BufferGeometry[] = [], materials: THREE.Material[] = [];
     [...facades, ...shops, trim].forEach((m, k) => {
       if (!m.idx.length) return;
@@ -231,11 +233,15 @@ export function buildBuildings(world: World, scene: THREE.Scene, base: string): 
     geometry.computeBoundingBox();
     const building = new BuildingBatch(geometry, materials);
     building.receiveShadow = true;
-    // A single shadow material draws the same geometry in one call per visible chunk.
-    const shadow = new BuildingBatch(geometry, shadowMat);
+    // Shadow silhouettes use the same low-detail boxes as distant buildings.
+    const proxyGeometry = proxy.geo();
+    const shadow = new BuildingBatch(proxyGeometry, shadowMat);
     shadow.layers.set(BUILDING_SHADOW_LAYER);
     shadow.castShadow = true;
-    scene.add(building, shadow);
+    const simple = new BuildingBatch(proxyGeometry, trimMat);
+    simple.geometry.computeBoundingBox();
+    scene.add(building, shadow, simple);
+    lods.push({ building, shadow, proxy: simple, bounds: geometry.boundingBox! });
   }
   // 네온 돌출 간판(스스로 빛나는 재질)과 반사 줄기(가산 혼합)
   const bladeMats = BLADES.map(([text, color]) => new THREE.MeshBasicMaterial({ map: bladeTexture(text, color), side: THREE.DoubleSide }));
@@ -260,6 +266,14 @@ export function buildBuildings(world: World, scene: THREE.Scene, base: string): 
       const n = 0.3 + atm.neon * 0.95; bladeMats.forEach(m => m.color.setScalar(n)); signMats.forEach(m => m.color.setScalar(0.4 + atm.neon * 0.8));
       streakMat.opacity = Math.min(1, atm.wet * atm.lamps * 0.34); streakMat.visible = streakMat.opacity > 0.02;
       for (const m of beaconMats) m.opacity = 0.7 + atm.night * 0.3;
+    },
+    updateLOD: (x: number, z: number): void => {
+      for (const lod of lods) {
+        const dx = Math.max(lod.bounds.min.x - x, 0, x - lod.bounds.max.x);
+        const dz = Math.max(lod.bounds.min.z - z, 0, z - lod.bounds.max.z);
+        const near = dx * dx + dz * dz < 1800 * 1800;
+        lod.building.visible = near; lod.shadow.visible = near; lod.proxy.visible = !near;
+      }
     },
     stacks,
   };

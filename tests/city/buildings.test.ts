@@ -36,7 +36,8 @@ it('batches static shadow casters by location and culls distant batches', () => 
   for (const [i, caster] of casters.entries()) {
     expect(caster.layers.isEnabled(BUILDING_SHADOW_LAYER)).toBe(true);
     expect(caster.layers.isEnabled(0)).toBe(false);
-    expect(caster.geometry).toBe(buildings[i].geometry);
+    expect(caster.geometry).not.toBe(buildings[i].geometry);
+    expect(caster.geometry.index!.count).toBeLessThan(buildings[i].geometry.index!.count);
     expect(caster.geometry.hasAttribute('color')).toBe(true);
     expect(Array.isArray(caster.material)).toBe(false);
     expect(Array.isArray(buildings[i].material)).toBe(true);

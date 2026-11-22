@@ -122,10 +122,10 @@ describe('SPEED RUSH race flow', () => {
     while (r.phase === 'countdown' && t < COUNTDOWN + 1) { const down = r.clock > -0.3; for (const e of updateRace(r, DT, down ? GAS : { ...GAS, throttle: 0 })) ev.push(e.type); t += DT; }
     expect(ev.filter(e => e === 'count')).toHaveLength(3); expect(ev).toContain('go'); expect(ev).toContain('launch'); expect(r.player.car.boostT).toBeGreaterThan(0);
   });
-  it('does not reward holding the throttle through the countdown', () => {
+  it('rewards holding the throttle through the countdown', () => {
     const r = createRace(track, 3), ev: string[] = [];
     for (let t = 0; t < COUNTDOWN + 0.5; t += DT) for (const e of updateRace(r, DT, GAS)) ev.push(e.type);
-    expect(ev).not.toContain('launch');
+    expect(ev).toContain('launch');
   });
   it('plays a full race: laps counted once each, order resolved, player finishes', () => {
     const r = createRace(track, 2), laps: number[] = []; let t = 0, finish = 0, safety = 0;

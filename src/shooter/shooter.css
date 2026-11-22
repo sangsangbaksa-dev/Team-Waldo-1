@@ -309,3 +309,33 @@
 .sz-ammo b{text-shadow:0 2px 0 #000b,0 0 18px #c4df9133}
 
 @media(max-width:480px){.sz-tl{gap:4px;left:max(6px,env(safe-area-inset-left))}.sz-stat{min-width:0;padding:6px 7px}.sz-stat b{font-size:20px}.sz-tc{top:80px;padding:5px 10px}.sz-tc b{font-size:18px}.sz-tr{right:max(6px,env(safe-area-inset-right))}.sz-tr canvas{width:72px;height:72px}}
+
+/* 모바일/터치 HUD 정리: 겹치던 요소를 구역별로 다시 배치 */
+.touch .sz-tl{top:max(8px,env(safe-area-inset-top));left:max(8px,env(safe-area-inset-left));gap:4px}
+.touch .sz-stat{min-width:0;padding:4px 9px 5px;border-radius:10px}
+.touch .sz-stat b{font-size:20px}
+.touch .sz-stat span{font-size:10px}
+.touch .sz-tc{top:max(8px,env(safe-area-inset-top));padding:4px 12px 5px}
+.touch .sz-tc b{font-size:19px}
+.touch .sz-tc span{font-size:10px}
+.touch .sz-tr{top:max(8px,env(safe-area-inset-top));right:max(8px,env(safe-area-inset-right))}
+.touch .sz-tr canvas{width:84px;height:84px}
+.touch .sz-tbtn{left:max(8px,env(safe-area-inset-left));top:calc(max(8px,env(safe-area-inset-top)) + 52px);transform:none}
+.touch .sz-tbtn button{width:40px;height:40px}
+.touch .sz-compass{top:calc(max(8px,env(safe-area-inset-top)) + 54px);width:min(300px,38vw)}
+.touch .sz-keys{display:none}
+.touch .sz-banner{top:27%;font-size:18px;max-width:70vw}
+.touch .sz-prompt,.touch .sz-air,.touch .sz-cast{max-width:44vw;bottom:36%;font-size:14px}
+.touch .sz-air small{font-size:12px}
+.touch .sz-bl{width:min(200px,30vw);padding:6px}
+.touch .sz-br{padding:6px 9px}
+.touch .sz-tbuttons{bottom:max(84px,calc(env(safe-area-inset-bottom) + 76px));grid-template-columns:repeat(2,54px);gap:8px}
+.touch .sz-tbuttons button{width:54px;height:54px;font-size:12px}
+.touch .sz-tbuttons button.fire{width:76px;height:76px}
+@media (orientation:portrait){
+  .touch .sz-bl{width:min(240px,56vw);bottom:max(150px,calc(env(safe-area-inset-bottom) + 140px))}
+  .touch .sz-br{right:auto;left:max(8px,env(safe-area-inset-left));text-align:left;bottom:max(212px,calc(env(safe-area-inset-bottom) + 202px))}
+  .touch .sz-tbuttons{bottom:max(14px,env(safe-area-inset-bottom))}
+  .touch .sz-compass{width:min(300px,64vw);top:calc(max(8px,env(safe-area-inset-top)) + 100px)}
+  .touch .sz-prompt,.touch .sz-air,.touch .sz-cast{left:calc(50% - 62px);max-width:calc(100vw - 150px);bottom:44%}
+}

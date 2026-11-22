@@ -18,7 +18,8 @@ export class AdaptiveQuality {
   /** 렌더 직전(또는 직후)에 프레임마다 한 번 호출합니다. */
   tick(): void {
     const now = performance.now(), real = this.last ? now - this.last : 16; this.last = now;
-    if (real > 250) { this.gaps.length = 0; return; } // 탭 전환·일시정지·로딩은 세지 않음
+    if (real > 250 && document.hidden) { this.gaps.length = 0; return; } // 탭 전환·일시정지·로딩은 세지 않음
+    if (real > 250) { this.settle = 0; this.cool = 0; if (this.pr > Math.min(0.75, this.max)) { this.pr = Math.min(0.75, this.max); this.o.setPixelRatio(this.pr); } else if (this.level < 3) { this.level++; this.o.setLevel(this.level); } return; }
     this.frameMs += (real - this.frameMs) * 0.08; this.cool -= real / 1000; this.sinceRaise += real / 1000;
     if (this.settle > 0) { this.settle--; return; }
     const floor = Math.min(0.75, this.max);

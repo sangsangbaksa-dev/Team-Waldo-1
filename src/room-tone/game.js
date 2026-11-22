@@ -125,7 +125,7 @@ function toggleAudio() {
     b.querySelector("span").textContent = muted ? "소리 꺼짐" : "소리 켜짐";
   }
 }
-muted = read("rt-silent") !== true;
+muted = read("waldo.preferences.v1")?.sound !== false;
 toggleAudio();
 $("sound").onclick = $("gsound").onclick = toggleAudio;
 function screens(id) {

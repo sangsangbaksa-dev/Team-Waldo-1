@@ -77,13 +77,13 @@ export class Sim {
     for (const pk of this.pickups) if (pk.collect >= 0 && this.collected.has(pk.collect)) pk.taken = true;
     if (s.life) {
       const saved = { ...s.life } as LifeState & { skills?: unknown }; delete saved.skills;
-      this.life = { ...blankLife(), ...saved, ach: (saved.ach ?? []).filter(id => id !== 'trained') };
+      this.life = { ...blankLife(), ...saved, hero: 'h0', ach: (saved.ach ?? []).filter(id => id !== 'trained') };
       this.applyHero(this.life.hero, false); this.player.armor = s.armor;
     }
   }
   /** 주인공 시민을 정하고 능력치를 반영합니다. fresh 면 체력·방탄을 새로 채웁니다. */
-  applyHero(id: string, fresh = true): void {
-    const h = heroById(id); this.life.hero = h.id; this.refreshPerks(); const p = this.player; p.variant = h.variant; p.name = h.name;
+  applyHero(_id: string, fresh = true): void {
+    const h = heroById('h0'); this.life.hero = h.id; this.refreshPerks(); const p = this.player; p.variant = h.variant; p.name = h.name;
     p.maxHp = this.perk.hp; if (fresh) { p.hp = p.maxHp; p.armor = this.perk.armor; } else p.hp = Math.min(p.maxHp, Math.max(p.hp, 1));
   }
   refreshPerks(): void { this.perk = computePerks(this.life); }

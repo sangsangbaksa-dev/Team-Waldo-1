@@ -114,7 +114,8 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
 
   // ── HUD ──────────────────────────────────────────
   function hint(t: string): void { const el = $('sk-hint'); el.textContent = t; hintT = 3; }
-  function banner(t: string, sec = 2.2): void { const el = $('sk-banner'); el.textContent = t; el.classList.add('on'); bannerT = sec; }
+  let bannerTick = 0;
+  function banner(t: string, sec = 2.2): void { const el = $('sk-banner'); el.textContent = t; el.classList.add('on'); bannerT = sec; bannerTick = performance.now(); }
   function alertMsg(t: string, sec = 1): void { $('sk-alert').textContent = t; alertT = sec; }
   const html = new WeakMap<HTMLElement, string>(); const setHtml = (el: HTMLElement, v: string): void => { if (html.get(el) !== v) { html.set(el, v); el.innerHTML = v; } };
   function hud(p: Jet): void {
@@ -127,7 +128,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     $('sk-fuel').style.width = `${p.fuel * 100}%`;
     $('sk-thr').style.width = `${throttle * 100}%`;
     if (alertT > 0) { alertT -= 1 / 60; if (alertT <= 0) $('sk-alert').textContent = ''; }
-    if (bannerT > 0) { bannerT -= 1 / 60; if (bannerT <= 0) $('sk-banner').classList.remove('on'); }
+    if (bannerT > 0) { bannerT -= (performance.now() - bannerTick) / 1000; bannerTick = performance.now(); if (bannerT <= 0) $('sk-banner').classList.remove('on'); }
     if (hintT > 0) { hintT -= 1 / 60; if (hintT <= 0) $('sk-hint').textContent = ''; }
   }
   function overlay(p: Jet): void {

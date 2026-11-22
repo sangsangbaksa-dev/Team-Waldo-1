@@ -3,7 +3,7 @@ import './rts.css';
 import '../shared/ui.css';
 import { readPreferences, writePreferences } from '../prefs';
 import { readRtsRecords, writeRtsRecords } from '../records';
-import type { LoadingScreen } from '../loading';
+import { showLoading, type LoadingScreen } from '../loading';
 import type { PvpSession } from '../net/lobby';
 import { RtsAi } from './ai';
 import { Campaign, MISSIONS, readCampaign, recordResult, unlocked, writeCampaign, type CampaignSave } from './campaign';
@@ -391,7 +391,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     const k = e.key.toUpperCase();
     if (root.dataset.phase === 'paused' && (e.key === 'Escape' || e.key.toLowerCase() === 'p')) { e.preventDefault(); hide(); paused = false; root.dataset.phase = 'play'; last = performance.now(); return; }
     if (e.key.toLowerCase() === 'p' && !e.ctrlKey && !e.metaKey && !e.altKey && sim && !ended) { e.preventDefault(); if (net) toast('온라인 대전은 일시정지할 수 없습니다', true); else openMenu(); return; }
-    if (e.key === 'Escape') { if (mode || submenu) { mode = null; submenu = false; setHint(''); cmdKey = ''; } else if (selected.size) setSel([]); else openMenu(); e.preventDefault(); return; }
+    if (e.key === 'Escape') { if (!net) openMenu(); e.preventDefault(); return; }
     if (!sim || ended) return;
     if (/^[1-9]$/.test(e.key)) {
       const n = Number(e.key); if (e.ctrlKey || e.metaKey) { groups.set(n, [...selected].filter(id => sim!.unit(id)?.owner === me)); e.preventDefault(); toast(`부대 ${n} 지정`); return; }
@@ -600,7 +600,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     const w = root.clientWidth, h = root.clientHeight, dpr = Math.min(window.devicePixelRatio || 1, 2);
     over.width = Math.round(w * dpr); over.height = Math.round(h * dpr); view?.resize(w, h, root.dataset.phase === 'setup' ? 0 : $('.rt-bottom').offsetHeight);
   }
-  const ro = new ResizeObserver(resize); ro.observe(root);
+  let resizeTimer = 0; const ro = new ResizeObserver(() => { window.clearTimeout(resizeTimer); resizeTimer = window.setTimeout(resize, 180); }); ro.observe(root);
   function applyEvents(): void {
     if (!sim || !view) return; const ev = sim.drain(); if (!ev.length) return; view.consume(ev);
     for (const e of ev) {
@@ -643,7 +643,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
 
   // ---------- 버튼 ----------
   function exit(): void {
-    if (closed) return; closed = true; leavePvp(); cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('blur', onBlur); window.removeEventListener('waldo:preferences', onPrefs);
+    if (closed) return; closed = true; leavePvp(); cancelAnimationFrame(raf); ro.disconnect(); window.clearTimeout(resizeTimer); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('blur', onBlur); window.removeEventListener('waldo:preferences', onPrefs);
     view?.dispose(); audio.dispose(); root.remove(); onExit();
   }
   const onPrefs = (): void => { const s = readPreferences().sound; audio.enabled = s; const m = root.querySelector<HTMLElement>('[data-act="mute"]'); if (m) { m.textContent = s ? '🔊' : '🔇'; m.setAttribute('aria-pressed', String(s)); } };
@@ -653,7 +653,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     if (t.dataset.mission) { const id = Number(t.dataset.mission); if (unlocked(campSave, id)) { audio.sfx('click'); briefScreen(id); } else { audio.sfx('error'); toast('앞 작전을 먼저 완수하세요', true); } return; }
     if (t.dataset.diff) { difficulty = t.dataset.diff as Difficulty; modal.querySelectorAll<HTMLElement>('[data-diff]').forEach(b => b.setAttribute('aria-pressed', String(b === t))); $('#rt-diffnote').textContent = LEVELS[difficulty].blurb; audio.sfx('click'); return; }
     switch (t.dataset.act) {
-      case 'start': leavePvp(); begin(); break;
+      case 'start': { const loading = showLoading('FRONTLINE'); loading.progress(null, '전장을 준비하는 중'); requestAnimationFrame(() => requestAnimationFrame(() => { if (!closed) { try { leavePvp(); begin(); } finally { loading.close(); } } else loading.close(); })); break; }
       case 'again': if (camp) beginCampaign(camp.def.id); else { leavePvp(); begin(); } break;
       case 'campaign': campaignScreen(); break;
       case 'camp': dropRound(); campaignScreen(); break;

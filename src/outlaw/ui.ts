@@ -1,6 +1,6 @@
 // OUTLAW CITY — 주인공 선택·휴대폰·자동차 매장·카지노 화면. HTML 문자열을 만들고 버튼 동작을 시뮬레이션에 연결합니다.
 import type { Sim } from './sim';
-import { OUTFITS, ACHIEVEMENTS, CAR_SHOP, HEROES, PROPERTIES, heroById } from './life';
+import { OUTFITS, ACHIEVEMENTS, CAR_SHOP, PROPERTIES, heroById } from './life';
 import { VEHICLES } from './types';
 import { phoneIcon } from './icons';
 import { JOB_LIST, cancelJob, jobBlock, startJob } from './jobs';
@@ -11,16 +11,6 @@ import { MISSION_LIST } from './missions';
 const CLOTH = [0x616b78, 0x8a7066, 0x585e57, 0x857b69, 0x595569, 0x6b7b7b, 0x805d60, 0x414651];
 const hex = (n: number): string => '#' + n.toString(16).padStart(6, '0');
 const money = (n: number): string => '$' + Math.floor(n).toLocaleString('en-US');
-const SKIN = ['#f1c9a5', '#d9a77f', '#b27a54', '#8a5a3c'], HAIR = ['#2b211c', '#5a3a24', '#1c1c22', '#8c6a3f'];
-// 주인공 카드용 흉상 그림: 옷 색은 실제 3D 모델 옷 색과 같음
-const portrait = (cloth: number, v: number): string => {
-  const c = hex(cloth), s = SKIN[v % 4]!, h = HAIR[(v * 3) % 4]!, id = `pg${v}`;
-  return `<svg viewBox="0 0 64 64" width="100%" height="100%" aria-hidden="true"><defs><radialGradient id="${id}" cx=".5" cy=".35" r=".75"><stop offset="0" stop-color="#3a4656"/><stop offset="1" stop-color="#151a22"/></radialGradient></defs>
-    <rect width="64" height="64" rx="10" fill="url(#${id})"/><path d="M8 64c2-14 11-20 24-20s22 6 24 20z" fill="${c}"/><path d="M26 44l6 9 6-9z" fill="#e9e4da" opacity=".85"/>
-    <rect x="27" y="35" width="10" height="9" rx="3" fill="${s}"/><ellipse cx="32" cy="27" rx="11" ry="12.5" fill="${s}"/>
-    <path d="M21 26c0-10 5-14 11-14s11 4 11 14c-3-5-7-7-11-7s-8 2-11 7z" fill="${h}"/><circle cx="28" cy="28" r="1.4" fill="#222"/><circle cx="36" cy="28" r="1.4" fill="#222"/>
-    <path d="M29 34q3 2 6 0" stroke="#7a4a3a" stroke-width="1.3" fill="none" stroke-linecap="round"/><path d="M8 64c2-14 11-20 24-20s22 6 24 20" stroke="#000" stroke-opacity=".35" fill="none"/></svg>`;
-};
 const esc = (s: string): string => s.replace(/[&<>]/g, c => c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;');
 
 export interface Outcome { toast?: string; kind?: string; begin?: boolean; close?: boolean; sound?: string }
@@ -30,23 +20,13 @@ const BETS = [10, 50, 100, 500, 1000, 5000];
 
 export class OutlawUi {
   tab: PhoneTab = 'jobs'; casinoTab: 'slots' | 'bj' | 'roulette' | 'coin' | 'hilo' = 'slots'; hilo: HiLo | null = null; bet = 50; bj: Blackjack | null = null; bjSettled = false; note = '';
-  reels: string[] = ['7', '7', '7']; rbet: RouletteBet['type'] = 'red'; rnum = 7; heroSel = 'h0';
+  reels: string[] = ['7', '7', '7']; rbet: RouletteBet['type'] = 'red'; rnum = 7;
   constructor(private getSim: () => Sim | null) {}
   private get sim(): Sim { return this.getSim()!; }
 
   render(kind: string): string {
-    if (kind === 'hero') return this.hero(); if (kind === 'phone') return this.phone(); if (kind === 'dealer') return this.dealer(); if (kind === 'casino') return this.casino();
+    if (kind === 'phone') return this.phone(); if (kind === 'dealer') return this.dealer(); if (kind === 'casino') return this.casino();
     return '';
-  }
-
-  // ---------- 주인공 선택 ----------
-  private hero(): string {
-    const cards = HEROES.map(h => `<button class="hero-card${h.id === this.heroSel ? ' sel' : ''}" data-ui="hero" data-id="${h.id}" type="button">
-      <i class="sw">${portrait(CLOTH[h.variant]!, h.variant)}</i><b>${esc(h.name)}</b><em>${esc(h.job)}</em><span>${esc(h.perkText)}</span></button>`).join('');
-    const sel = heroById(this.heroSel);
-    return `<h2>누구로 시작할까?</h2><p class="sub">이 도시에 사는 평범한 시민 중 한 명이 주인공이 됩니다.</p><div class="hero-grid">${cards}</div>
-      <p class="hero-bio"><b>${esc(sel.name)}</b> · ${esc(sel.job)} — ${esc(sel.bio)}</p>
-      <div class="ol-btns"><button data-ui="start" type="button">이 사람으로 시작</button><button data-k="resume" type="button" class="ghost">뒤로</button></div>`;
   }
 
   // ---------- 휴대폰 ----------
@@ -129,8 +109,6 @@ export class OutlawUi {
   click(ds: DOMStringMap): Outcome {
     const s = this.sim, id = ds.id ?? '', k = ds.ui, me = (kind: string, toast?: string): Outcome => ({ kind, toast });
     switch (k) {
-      case 'hero': this.heroSel = id; return me('hero');
-      case 'start': s.applyHero(this.heroSel); return { begin: true, close: true };
       case 'tab': this.tab = id as PhoneTab; return me('phone');
       case 'job': { const r = startJob(s, id); return r ? me('phone', r) : { close: true, sound: 'mission_start' }; }
       case 'cancel': cancelJob(s); return me('phone');

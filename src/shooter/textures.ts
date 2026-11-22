@@ -2,9 +2,11 @@
 import * as THREE from 'three';
 import { makeRng } from './config';
 
+let textureAnisotropy = 4;
+export function setTextureAnisotropy(value: number): void { textureAnisotropy = value; }
 export function canvasTex(size: number, draw: (g: CanvasRenderingContext2D, s: number) => void, repeat = true): THREE.CanvasTexture {
   const c = document.createElement('canvas'); c.width = c.height = size; const g = c.getContext('2d')!; draw(g, size);
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; if (repeat) { t.wrapS = t.wrapT = THREE.RepeatWrapping; } t.anisotropy = 4; return t;
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; if (repeat) { t.wrapS = t.wrapT = THREE.RepeatWrapping; } t.anisotropy = textureAnisotropy; return t;
 }
 const speckle = (g: CanvasRenderingContext2D, s: number, n: number, rng: () => number, light: string, dark: string, a = 0.12): void => {
   for (let i = 0; i < n; i++) { g.fillStyle = rng() < 0.5 ? light : dark; g.globalAlpha = a * (0.4 + rng()); const w = 1 + rng() * 3; g.fillRect(rng() * s, rng() * s, w, w * (0.5 + rng())); }
@@ -13,7 +15,7 @@ const speckle = (g: CanvasRenderingContext2D, s: number, n: number, rng: () => n
 
 /** 땅: 풀밭 질감(세밀한 반복 무늬). 큰 색 변화는 정점 색으로 따로 입힙니다. */
 export function groundTexture(): THREE.CanvasTexture {
-  return canvasTex(512, (g, s) => {
+  return canvasTex(1024, (g, s) => {
     const rng = makeRng(11); g.fillStyle = '#8a9a58'; g.fillRect(0, 0, s, s);
     speckle(g, s, 9000, rng, '#a7b86c', '#5f7040', 0.35);
     for (let i = 0; i < 700; i++) { g.strokeStyle = rng() < 0.5 ? '#73863f' : '#a9b86a'; g.globalAlpha = 0.35; g.beginPath(); const x = rng() * s, y = rng() * s; g.moveTo(x, y); g.lineTo(x + (rng() - 0.5) * 5, y - 3 - rng() * 5); g.stroke(); }

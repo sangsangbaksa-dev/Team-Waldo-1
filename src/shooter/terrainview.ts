@@ -105,8 +105,8 @@ export class TerrainView {
       shore.position.y = 0.035; shore.renderOrder = 1; sc(shore); this.group.add(shore);
       const w = new THREE.Mesh(discGeo(p.swamp ? [[0, 0.92], [0.7, 0.88], [0.97, 0.5], [1.03, 0]] : [[0, 0.95], [0.6, 0.92], [0.92, 0.7], [1.02, 0]], 48), this.water(p.swamp ? 0x7f9a62 : 0x3d84a6, p.swamp ? 0.92 : 0.9, 0));
       w.position.y = 0.07; w.renderOrder = 3; sc(w); const mp = (w.material as THREE.MeshPhongMaterial).map!; mp.repeat.set(p.rx / 9, p.rz / 9); this.group.add(w);
-      if (p.swamp && !this.low) { // 갈대
-        const n = 170, g = new THREE.ConeGeometry(0.07, 1.7, 4); g.translate(0, 0.85, 0); const mesh = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ color: 0x8a9440 }), n), d = new THREE.Object3D();
+      { // 갈대
+        const n = this.low ? 35 : p.swamp ? 170 : 85, g = new THREE.ConeGeometry(0.07, 1.7, 4); g.translate(0, 0.85, 0); const mesh = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ color: 0x8a9440 }), n), d = new THREE.Object3D();
         for (let i = 0; i < n; i++) { const a = rng() * Math.PI * 2, q = 0.45 + rng() * 0.8, lx = Math.cos(a) * q * p.rx, lz = Math.sin(a) * q * p.rz, c = Math.cos(p.ry), s = Math.sin(p.ry); d.position.set(p.x + lx * c - lz * s, 0, p.z + lx * s + lz * c); d.rotation.set((rng() - 0.5) * 0.25, rng() * 6, (rng() - 0.5) * 0.25); d.scale.set(1, 0.7 + rng() * 0.9, 1); d.updateMatrix(); mesh.setMatrixAt(i, d.matrix); }
         this.group.add(mesh);
       }

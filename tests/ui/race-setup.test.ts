@@ -48,7 +48,7 @@ describe('SPEED RUSH 선택 화면', () => {
   });
 
   it('선택한 코스·랩 수의 기록을 보여 준다', () => {
-    const rec = { bestLap: { desert: 52.5 }, bestRace: { [raceRaceKey('desert', 2)]: 108.25 }, last: null };
+    const rec = { bestLap: { [`desert:${DEFAULT_SETUP.car}:${DEFAULT_SETUP.mode}`]: 52.5 }, bestRace: { [raceRaceKey('desert', 2)]: 108.25 }, last: null };
     mountSetup(document.body, DEFAULT_SETUP, rec, { value: emptyGarage() }, { onStart: vi.fn(), onExit: vi.fn() });
     expect(document.body.textContent).toContain('기록 없음');
     click('[data-pick="map:desert"]'); click('[data-pick="laps:2"]');

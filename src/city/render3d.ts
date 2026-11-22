@@ -23,7 +23,7 @@ import { BUILD_REACH_MAX, buildDistance, buildMinDistance, clampLabelScreenPos, 
 
 export type ViewMode = 'fp' | 'tp';
 /** 이 탭에서 이미 느리다고 판정된 적응형 화질 단계: 다음 판도 같은 단계로 시작해 첫 몇 초 끊김을 반복하지 않는다. */
-let learnedLevel = 0;
+
 const EYE = EYE_HEIGHT, STRUCT_H: Record<StructKind, number> = { hq: 150, barracks: 86, depot: 58, factory: 104, lab: 96, turret: 50 };
 const CLOTH = [0x8d99ae, 0xb08968, 0x6d8a96, 0xa58fb3, 0x9aa37b, 0xc58f8f], SKIN = [0xf1c9a5, 0xd9a47a, 0xa8744f, 0x7a5236];
 const fcol = (f: number): number => f === POLICE ? 0x3f6fe0 : f === CIV ? 0x9aa3ad : new THREE.Color(FACTIONS[f]?.color ?? '#fff').getHex();
@@ -164,7 +164,7 @@ export class Renderer3D {
     this.gun.add(g1, g2, g3, this.muzzle); this.gun.position.set(6.5, -6.2, -15); this.camera.add(this.gun);
     this.resize();
     this.post = makePost(quality, this.renderer, this.scene, this.camera, { strength: 0.45, radius: 0.6, threshold: 0.88, vignette: 0.3, saturation: 1.05, contrast: 1.06 });
-    this.applyAtmosphere(0); if (learnedLevel > 0) this.setPerfLevel(learnedLevel);
+    this.applyAtmosphere(0);
   }
   private mat(c: number): THREE.MeshLambertMaterial { let m = this.mats.get(c); if (!m) { m = new THREE.MeshLambertMaterial({ color: c }); this.mats.set(c, m); } return m; }
 
@@ -191,7 +191,7 @@ export class Renderer3D {
     if (this.pr > Math.min(0.75, this.prMax) + 0.001) { this.gaps.length = 0; return; }
     this.gaps.push(gap); if (this.gaps.length < 60) return;
     const med = this.gaps.slice().sort((a, b) => a - b)[30]; this.gaps.length = 0;
-    if (med > 28 && this.perfLevel < 3) { learnedLevel = this.perfLevel + 1; this.setPerfLevel(learnedLevel); }
+    if (med > 28 && this.perfLevel < 3) { this.setPerfLevel(this.perfLevel + 1); }
   }
   resize(): void { this.w = this.canvas.clientWidth || window.innerWidth; this.h = this.canvas.clientHeight || window.innerHeight; this.renderer.setSize(this.w, this.h, false); this.camera.aspect = this.w / this.h; this.camera.updateProjectionMatrix(); }
   dispose(): void { this.post?.dispose(); this.ins?.dispose(); this.ins = null; this.environment?.dispose(); this.details.dispose(); disposeLootTextures(); this.renderer.dispose(); this.scene.traverse(o => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); }); for (const f of this.floaters) f.el.remove(); }
@@ -426,6 +426,7 @@ export class Renderer3D {
     { const m = 14, cp2 = this.camera.position; cp2.x = Math.max(m, Math.min(SIZE - m, cp2.x)); cp2.z = Math.max(m, Math.min(SIZE - m, cp2.z)); this.camPos.x = cp2.x; this.camPos.z = cp2.z; }
     if (this.shake > 0 && !this.reduced) { this.camera.position.x += (Math.random() - 0.5) * this.shake; this.camera.position.y += (Math.random() - 0.5) * this.shake; }
     const spd = veh ? Math.hypot(veh.vx, veh.vy) : 0, fov = 74 + Math.min(14, spd / 45); if (Math.abs(fov - this.camera.fov) > 0.2) { this.camera.fov += (fov - this.camera.fov) * 0.1; this.camera.updateProjectionMatrix(); }
+    this.bfx.updateLOD(this.camPos.x, this.camPos.z);
     this.updateRain(dt); this.updateBolt(dt); this.bfx.blink(this.t); this.applyAtmosphere(dt);
     if (this.ml) { this.gun.visible = false; this.ml.viewmodel(!third && !!pb, f0.slots[f0.cur]?.id ?? 'pistol', dt, this.recoil, f0.reloadT > 0, pb ? Math.min(1, Math.hypot(pb.vx, pb.vy) / 160) : 0, this.t, this.flashT > 0); } else { this.gun.visible = !third && !!pb; } if (!this.ml && this.gun.visible) { const tier = WEAPONS[f0.slots[f0.cur]?.id ?? 'pistol'].tier, rl = f0.reloadT > 0 ? 1 : 0; this.gun.scale.setScalar(0.62 + tier * 0.13); this.gun.position.set(5.6, -5.2 - rl * 4, -14 + this.recoil * 2.2); this.gun.rotation.x = this.recoil * 0.12 - rl * 0.7; this.muzzle.visible = this.flashT > 0; this.muzzle.rotation.z = this.t * 40; }
     // 캐릭터
@@ -456,13 +457,13 @@ export class Renderer3D {
     // 동적 오브젝트 동기화
     const seen = this.seenIds;
     seen.clear();
-    for (const s of w.structures) if (s.alive) { seen.add(s.id); this.syncStruct(s); }
+    for (const s of w.structures) if (s.alive) { seen.add(s.id); const dx = s.x - this.camPos.x, dz = s.y - this.camPos.z; const near = dx * dx + dz * dz < 4700 * 4700; const g = this.structs.get(s.id); if (g) g.visible = near; if (near) this.syncStruct(s); }
     this.removeStaleGroups(this.structs);
     seen.clear();
-    for (const v of w.vehicles) if (v.alive) { seen.add(v.id); this.syncVehicle(v); }
+    for (const v of w.vehicles) if (v.alive) { seen.add(v.id); const dx = v.x - this.camPos.x, dz = v.y - this.camPos.z; const near = dx * dx + dz * dz < 2600 * 2600; const g = this.vehs.get(v.id); if (g) g.visible = near; if (near) this.syncVehicle(v); }
     this.removeStaleGroups(this.vehs);
     seen.clear();
-    for (const l of w.loot) if (l.alive) { seen.add(l.id); this.syncLoot(l); }
+    for (const l of w.loot) if (l.alive) { seen.add(l.id); const dx = l.x - this.camPos.x, dz = l.y - this.camPos.z; const near = dx * dx + dz * dz < 1800 * 1800; const g = this.loots.get(l.id); if (g) g.visible = near; if (near) this.syncLoot(l); }
     this.removeStaleGroups(this.loots);
     for (const z of w.businesses) this.syncBiz(z);
     // 수송기

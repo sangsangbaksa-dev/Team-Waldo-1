@@ -211,7 +211,14 @@ export class RtsView {
     f.mesh.scale.set(k, k, 1); f.mesh.position.set(c.x + (n / 2 - c.x) * k, FOG_Y, c.z + (n / 2 - c.z) * k);
   }
   /** 안개 때문에 이 유닛이 보이지 않는가(내 편은 항상 보임). */
-  hiddenUnit(u: { owner: number; x: number; y: number }): boolean { return !!this.vision && u.owner !== this.viewer && !this.vision.visible(u.x, u.y); }
+  /** 시야 경계에서 깜빡이지 않도록, 마지막으로 보인 뒤 HOLD초 동안은 계속 보여 줍니다. */
+  private seenAt = new Map<number, number>();
+  hiddenUnit(u: { id?: number; owner: number; x: number; y: number }): boolean {
+    if (!this.vision || u.owner === this.viewer) return false;
+    if (this.vision.visible(u.x, u.y)) { if (u.id !== undefined) this.seenAt.set(u.id, this.clock); return false; }
+    const t = u.id === undefined ? undefined : this.seenAt.get(u.id);
+    return t === undefined || this.clock - t > 0.6;
+  }
   /** 한 번도 본 적 없는 곳의 적 건물은 숨깁니다(본 적 있으면 마지막 모습 그대로 보임). */
   hiddenBuilding(b: Building): boolean { return !!this.vision && b.owner !== this.viewer && !this.vision.explored(b.x + b.size / 2, b.y + b.size / 2); }
   private hiddenNode(n: ResNode): boolean { return !!this.vision && !this.vision.explored(n.x + 0.5, n.y + 0.5); }

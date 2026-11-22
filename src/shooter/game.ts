@@ -58,7 +58,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     <div class="sz-setup wd-screen" id="sz-setup" style="--wd-hue:#b8cf91"></div>
     <div class="sz-modal" id="sz-modal"></div>`;
   document.body.append(root);
-  const q = <T extends HTMLElement>(sel: string): T => root.querySelector<T>(sel)!;
+  const elements = new Map<string, HTMLElement>();
+  const q = <T extends HTMLElement>(sel: string): T => { const cached = elements.get(sel); if (cached?.isConnected) return cached as T; const el = root.querySelector<T>(sel)!; if (el) elements.set(sel, el); return el; };
   let canvas = q<HTMLCanvasElement>('.sz-canvas'); const hud = q('.sz-hud'), setupEl = q('#sz-setup'), modal = q('#sz-modal'), mapCv = q<HTMLCanvasElement>('#sz-map'), mapCtx = mapCv.getContext('2d')!;
   const audio = new ShooterAudio(); audio.enabled = prefs.sound;
   let career = readShooterCareer();
@@ -83,6 +84,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
 
   // ---------- 자산(백그라운드로 받기) ----------
   const loading = opts.loading;
+  loading?.close();
   void loadShooterAssets(base, f => { assetPct = f; loading?.progress(f, '3D 모델을 불러오는 중'); if (phase === 'setup') paintSetup(); }, n => loading?.note(n)).then(a => { assets = a; assetState = 'ready'; }).catch(() => { assetState = 'failed'; }).finally(() => { loading?.close(); if (phase === 'setup') paintSetup(); });
 
   // ---------- 출격 설정 화면 ----------
@@ -102,7 +104,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
           <p class="sz-note">${pickMode === 'pvp' ? '1대1 대전은 사람끼리 겨루므로 AI가 나오지 않습니다.' : pickMode === 'room' && !roomFill ? '사람만 모이는 방에는 AI가 나오지 않습니다.' : `${b.blurb} (반응 ${b.react.toFixed(2)}초 · 시야 ${b.sight}m)${pickMode === 'room' ? ' · 방을 만든 사람의 난이도로 진행됩니다' : ''}`}</p></section>
         <section><h3>조작</h3><ul class="sz-help">${touch ? '<li><b>왼쪽 스틱</b><span>이동</span></li><li><b>오른쪽 화면</b><span>시점</span></li><li><b>버튼</b><span>사격 · 조준 · 장전</span></li><li><b>점프</b><span>비행기에서 뛰기 · 낙하산</span></li><li><b>투척</b><span>수류탄 · 연막 · 섬광</span></li><li><b>줍기 / 탑승</b><span>무기 · 차량</span></li>' : '<li><b>WASD</b><span>이동 · 마우스 시점</span></li><li><b>Shift</b><span>달리기</span></li><li><b>좌클릭 / 우클릭</b><span>사격 / 조준</span></li><li><b>R</b><span>장전</span></li><li><b>E</b><span>무기 줍기 · 차량 타기/내리기</span></li><li><b>Space</b><span>비행기에서 뛰기 · 낙하산 · 핸드브레이크</span></li><li><b>W</b><span>활강 방향</span></li><li><b>1 / 2 / 휠</b><span>무기 교체</span></li><li><b>G / B / V</b><span>수류탄 / 연막탄 / 섬광탄</span></li><li><b>Tab / L</b><span>총기 조립 · 배낭</span></li><li><b>Esc</b><span>일시정지</span></li>'}<li class="sz-help-note">낙하산은 105m에서 자동으로 펴집니다. 탄약·구급상자·방탄복·총기 파츠는 닿으면 자동으로 줍습니다. 파츠는 가방에 들어가고, ${touch ? '<b>조립</b> 버튼' : '<b>Tab</b>'}으로 들고 있는 총에 조립합니다. 폭격 구역(붉은 원)에서는 벗어나세요. 경기 시간 약 12분.</li></ul></section>
         <footer class="wd-actions"><button type="button" class="ghost wd-btn" data-act="exit">게임 목록으로</button><span class="sz-sum">${career.matches ? `전적 ${career.matches}판 ${career.wins}승 · 최다 처치 ${career.bestKills}` : '첫 출격'}</span>
-          <button type="button" class="primary wd-btn" data-act="start" ${wait ? 'disabled' : ''}>${assetState === 'failed' ? '도형 모드로 시작' : wait ? `불러오는 중 ${Math.floor(assetPct * 100)}%` : pickMode === 'solo' ? '시작' : pickMode === 'room' ? '방 찾기' : '상대 찾기'}</button></footer>
+          <button type="button" class="primary wd-btn" data-act="start" >${assetState === 'failed' ? '도형 모드로 시작' : wait ? `불러오는 중 ${Math.floor(assetPct * 100)}%` : pickMode === 'solo' ? '시작' : pickMode === 'room' ? '방 찾기' : '상대 찾기'}</button></footer>
       </div>`;
   }
   setupEl.addEventListener('click', e => {
@@ -117,7 +119,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   function begin(m: Match, my: number): void {
     endMatch(); match = m; meIdx = my; over = false; resultShown = false; soloRecorded = false; shotsFired = shotsHit = 0; newKillRecord = false; zoneWarningPhase = zoneTick = -1; otherSteps.clear(); spectateId = -1; deadTimer = 0; cache.clear(); feed.length = 0; told.clear(); paused = false; modal.className = 'sz-modal'; modal.innerHTML = '';
     keys.clear(); mouse.fire = mouse.ads = false; tc.fire = tc.ads = tc.crouch = false; tc.move.id = tc.look.id = -1; tc.move.x = tc.move.y = 0; interactHeld = reloadReq = swapReq = nadeReq = smokeReq = flashReq = false; healReq = 0; slotReq = -1; hitT = combo = comboT = rcP = rcY = shotN = stepAcc = bannerT = 0; rcIdle = 9; hitHead = hitKill = false;
-    const p = m.players[my]; yaw = p.yaw; pitch = 0; countdown = 3.4; phase = 'countdown'; mapBase = null;
+    const p = m.players[my]; yaw = p.yaw; pitch = 0; countdown = 3.4; phase = 'countdown'; mapBase = null; lastMapDraw = 0;
     // 지난 경기의 WebGL 컨텍스트는 dispose 에서 끝났으므로, 같은 캔버스를 다시 쓰면 렌더러가 죽은 컨텍스트를 받습니다(다시 시작이 안 됨). 경기마다 새 캔버스를 씁니다.
     const fresh = document.createElement('canvas'); fresh.className = 'sz-canvas'; fresh.addEventListener('contextmenu', noMenu); if (document.pointerLockElement === canvas) { swapUnlock = true; locked = false; } canvas.replaceWith(fresh); canvas = fresh;
     view = new ShooterView(canvas, m, assets, prefs.quality); resize(); setupEl.hidden = true; hud.hidden = false; buildSlots(); say(touch ? '왼쪽 스틱으로 이동' : '화면을 클릭해 조작 시작', 2.4);
@@ -471,6 +473,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     g.fillStyle = '#ff5a3c'; g.beginPath(); g.moveTo(W / 2, 20); g.lineTo(W / 2 + 5, 14); g.lineTo(W / 2 - 5, 14); g.closePath(); g.fill();
   }
 
+  let lastMapDraw = 0;
   function updateHud(dt: number): void {
     const m = match!, p = me(), z = m.zone, g = p.guns[p.cur], def = g ? WEAPONS[g.id] : null, now = performance.now();
     if (!p.alive) audio.engine(false, 0);
@@ -526,7 +529,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     html(q('#sz-feed'), 'feed', feed.map(f => `<li class="${f.mine ? 'mine' : ''}"><span>${esc(f.text)}</span><b>⌖ ${esc(f.weapon)}</b></li>`).join(''));
     q('#sz-keys').classList.toggle('hide', phase !== 'countdown' || touch);
     html(q('#sz-keys'), 'keys', phase === 'countdown' && !touch ? '<span><b>WASD</b> 이동</span><span><b>좌클릭</b> 사격</span><span><b>우클릭</b> 조준</span><span><b>C</b> 웅크리기</span><span><b>E</b> 줍기</span>' : '');
-    drawMap(m, p); drawCompass(m, p);
+    if (now - lastMapDraw >= 150) { drawMap(m, p); lastMapDraw = now; } drawCompass(m, p);
   }
 
   // ---------- 이벤트 처리 ----------

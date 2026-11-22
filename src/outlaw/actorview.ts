@@ -209,7 +209,10 @@ export class ActorView {
     this.mesh(g, this.box, 0x504b48, 0.08, -0.1, 0, 0.09, 0.22, 0.08); return g;
   }
   private cs = calmState(); private cp = blankPose();
-  private pose(p: Ped, r: Rig): void {
+  private pose(p: Ped, r: Rig, dt: number): void {
+    const hero = p.id === this.sim.player.id;
+    const oldHip = r.hip.rotation.z, oldTwist = r.hip.rotation.y;
+    const l0 = r.legs[0].rotation.z, l1 = r.legs[1].rotation.z, s0 = r.shins[0]?.rotation.z ?? 0, s1 = r.shins[1]?.rotation.z ?? 0, a0 = r.arms[0].rotation.z, a1 = r.arms[1].rotation.z;
     // 걷기·달리기·웅크리기·피격 다리/몸통 각도는 공용 캐릭터 모듈(src/shared/character)이 계산합니다.
     const st = this.cs; st.speed = p.speed; st.walk = p.walk; st.time = this.sim.t; st.crouch = p.crouch ? 1 : 0; st.hit = 0;
     const P = computePose(st, this.cp), amp = clamp(p.speed / 3.2, 0, 1), sn = Math.sin(p.walk * 1.35);
@@ -219,6 +222,19 @@ export class ActorView {
     r.arms.forEach((arm, i) => { arm.rotation.set(0, aiming ? -p.pitch * 0.3 : 0, aiming ? 1.42 + p.pitch - p.kick * 0.17 : armed && i ? 0.25 : -sn * (i ? -1 : 1) * amp * 0.55); });
     if (p.punchT > 0) { r.arms[1].rotation.z = punch * 1.9; r.hip.rotation.y -= punch * 0.45; }
     if (p.mode === 'cower') r.arms.forEach(a => { a.rotation.z = 2.7; });
+    if (hero) {
+      if (!p.grounded && p.alive) {
+        r.legs[0].rotation.z = p.vy > 0 ? 0.55 : -0.18; r.legs[1].rotation.z = p.vy > 0 ? -0.3 : 0.35;
+        r.arms[0].rotation.z = 0.45; r.arms[1].rotation.z = -0.3;
+      }
+      r.hip.rotation.z += P.breathe;
+      const k = 1 - Math.exp(-dt * 14), mix = (a: number, b: number): number => a + (b - a) * k;
+      r.hip.rotation.z = mix(oldHip, r.hip.rotation.z); r.hip.rotation.y = mix(oldTwist, r.hip.rotation.y);
+      r.legs[0].rotation.z = mix(l0, r.legs[0].rotation.z); r.legs[1].rotation.z = mix(l1, r.legs[1].rotation.z);
+      if (r.shins[0]) r.shins[0].rotation.z = mix(s0, r.shins[0].rotation.z);
+      if (r.shins[1]) r.shins[1].rotation.z = mix(s1, r.shins[1].rotation.z);
+      r.arms[0].rotation.z = mix(a0, r.arms[0].rotation.z); r.arms[1].rotation.z = mix(a1, r.arms[1].rotation.z);
+    }
   }
   private makeCar(v: Vehicle): CarView {
     const root = new THREE.Group(); root.rotation.order = 'YXZ'; root.name = `vehicle-${v.id}`;
@@ -414,7 +430,7 @@ export class ActorView {
       r.root.position.set(p.x, p.y - sink * 2 + (p.alive && p.grounded ? Math.abs(Math.sin(p.walk * 1.35)) * Math.min(1, p.speed / 3.2) * 0.04 : 0), p.z);
       r.root.scale.set(1, p.crouch || p.mode === 'cower' ? 0.73 : 1, 1); r.root.rotation.set(0, -p.yaw, 0);
       if (!p.alive) { r.root.scale.setScalar(1); const fall = clamp(dead / 0.45, 0, 1); r.root.rotation.z = -Math.PI / 2 * fall; r.root.position.y += 0.27 * fall; }
-      if (player || this.time >= r.nextPose || p.hurt > 0 || p.punchT > 0 || r.flash.visible) { this.pose(p, r); r.nextPose = this.time + (dist > 90 ? 0.22 : dist > 45 ? 0.1 : 0); }
+      if (player || this.time >= r.nextPose || p.hurt > 0 || p.punchT > 0 || r.flash.visible) { this.pose(p, r, dt); r.nextPose = this.time + (dist > 90 ? 0.22 : dist > 45 ? 0.1 : 0); }
       if (r.instances.length) {
         r.root.updateWorldMatrix(true, true);
         for (const m of r.instances) {

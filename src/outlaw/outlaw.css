@@ -300,3 +300,5 @@
 .ol-slots i u{position:absolute;left:2px;top:0;font:800 8px/10px system-ui;text-decoration:none;color:#fff9}
 .ol-wheel .ws .ol-wi{width:56px;height:34px;margin:0 auto 2px}
 .ol-wheel .ws.none .ol-wi{filter:grayscale(1)}
+
+.ol-title .ol-btns button:disabled{opacity:.42;cursor:not-allowed;background:#14171a;color:#a9adb1;border-color:#30343a}.ol-title .ol-btns button:disabled:hover{background:#14171a}.ol-online-group{display:grid;gap:8px;padding-top:15px;border-top:1px solid #393d43}.ol-online-group small{color:#aeb5bc;text-align:left}.ol-tr{background:rgba(8,11,15,.82);padding:9px 12px;border-radius:10px}.ol-slots i{width:40px;height:33px;background:#10151e;border-color:#8b98a8}.ol-slots i .ol-wi{width:35px;height:23px}.ol-slots i u{font-size:11px;line-height:12px;color:#fff;text-shadow:0 1px 3px #000}.ol-slots i.has{border-color:#c3cfdb}.ol-slots i.cur{background:#b83b50;border-color:#fff}

@@ -179,7 +179,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   function showTitle(): void {
     titleEl.hidden = false; const sv = hasSave();
     titleEl.innerHTML = `<div class="ol-title-panel wd-panel"><p class="wd-eyebrow">WALDO · 오픈 월드</p><div class="ol-logo wd-title"><span>OUTLAW</span><span class="b">CITY</span></div><p class="ol-tag wd-lead">도시는 네 것이다. 대가는 네가 치른다.</p>
-      <div class="ol-btns v wd-actions"><button data-t="new" type="button" class="wd-btn primary">시작</button>${sv ? '<button data-t="cont" type="button" class="wd-btn">이어하기</button>' : ''}${PVP_ENABLED ? '<button data-t="duel" type="button">온라인 1대1</button><button data-t="room" type="button">온라인 룸 (2~6인)</button>' : ''}<button data-t="help" type="button">조작법</button><button data-t="exit" type="button" class="ghost wd-btn">게임 목록으로</button></div><p class="ol-title-status" role="status"></p></div>`;
+      <div class="ol-btns v wd-actions"><button data-t="new" type="button" class="wd-btn primary">시작</button><button data-t="cont" type="button" class="wd-btn"${sv ? '' : ' disabled'}>이어하기${sv ? '' : ' · 저장 없음'}</button>${PVP_ENABLED ? '<div class="ol-online-group"><small>\uc628\ub77c\uc778 \u00b7 \ub85c\uadf8\uc778 \ud544\uc694</small><button data-t="duel" type="button">온라인 1대1</button><button data-t="room" type="button">온라인 룸 (2~6인)</button></div>' : ''}<button data-t="help" type="button">조작법</button><button data-t="exit" type="button" class="ghost wd-btn">게임 목록으로</button></div><p class="ol-title-status" role="status"></p></div>`;
   }
   titleEl.addEventListener('click', e => {
     const b = (e.target as HTMLElement).closest('button'); if (!b || !sim || phase !== 'menu' || lobby || openingLobby) return;
@@ -189,7 +189,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     else if (t === 'help') openModal('help', controlsHtml().replace('data-k="back"', 'data-k="resume"'));
     else if (t === 'new') {
       if (hasSave() && !confirmNew) { confirmNew = true; b.textContent = '저장 덮어쓰기? 다시 누르면 시작'; return; }
-      confirmNew = false; b.textContent = '시작'; ui.heroSel = 'h0'; openUi('hero');
+      confirmNew = false; sim.applyHero('h0'); begin(false); save();
     }
     else if (t === 'cont') begin(true);
     else if (t === 'duel' || t === 'room') openVersusLobby(t === 'duel');
@@ -251,7 +251,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (!sim) return;
     if (cont) { try { const s = JSON.parse(localStorage.getItem(OUTLAW_KEY) ?? 'null'); if (s) sim.applySave(s); } catch { /* 새 게임으로 진행 */ } }
     else { sim.clock = 16.6; sim.playSec = 0; }
-    titleEl.hidden = true; hudEl.hidden = false; phase = 'trans'; transT = 0; yaw = sim.player.yaw; pitch = 0;
+    titleEl.hidden = true; hudEl.hidden = false; phase = 'play'; transT = 0; yaw = sim.player.yaw; pitch = -0.3;
     orbitPos.copy(camera.position); orbitQuat.copy(camera.quaternion); chase?.reset({ x: sim.player.x, y: sim.player.y, z: sim.player.z, yaw: sim.player.yaw, speed: 0 }, { yaw, pitch });
     audio.play('mission_start');
     if (acquirePointer) lock();
@@ -263,7 +263,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (e.repeat) { return; }
     if (e.code === 'Escape') {
       if (modalKind) closeModal();
-      else if (phase === 'play' && !locked) openPause();
+      else if (phase === 'play') openPause();
       return;
     }
     if (phase !== 'play') return;
@@ -337,7 +337,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (poi?.kind === 'casino') return { text: 'E · 카지노', run: () => openUi('casino') };
     if (poi?.kind === 'hospital') { if (p.hp < p.maxHp || p.armor < 40) return { text: `E · 치료 (${money(sim.price(120))})`, run: () => { toast(treat(sim!)); audio.play('pickup'); } }; }
     if (poi?.kind === 'arena') return sim.job.active ? null : { text: `E · 지하 격투 참가 (${money(sim.price(200))})`, run: () => { const r = startJob(sim!, 'fight'); if (r) toast(r); } };
-    if (poi?.kind === 'safehouse') return { text: 'E · 쉬기 · 저장', run: () => { const r = sim!.sleep(); toast(r); save(); audio.play('save'); } };
+    if (poi?.kind === 'safehouse' && Math.hypot(p.x - poi.x, p.z - poi.z) < 3 && sim.wanted.stars === 0) return { text: 'E · 쉬기 · 저장', run: () => { const r = sim!.sleep(); toast(r); save(); audio.play('save'); } };
     if (poi?.kind === 'start') { const m = MISSION_LIST.find(x => x.startPoi === poi.id); if (m && canStart(sim, m.id)) return { text: `E · 의뢰: ${m.title}`, run: () => openBrief(m.id) }; }
     if (sim.nearestVehicle(p)) return { text: 'E · 차량 탑승' };
     if (nearVending(sim)) return { text: `E · 음료 (${money(sim.price(8))})`, run: () => { toast(buySnack(sim!)); audio.play('pickup'); } };
@@ -384,7 +384,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
         case 'crash': { const d = camDist(e.x, e.z); audio.crash(clamp(e.power / 18, 0, 1), d); if (d < 25) chase.shake(clamp(e.power / 40, 0, 0.6)); break; }
         case 'death': { if (e.by === PLAYER_ID && e.id !== PLAYER_ID) { hitT = 0.55; q('#ol-hit').classList.add('kill'); audio.play('hitmark'); } if (e.id !== PLAYER_ID) { const v = sim.ped(e.id); if (v) at('scream', v.x, v.z); } break; }
         case 'enter': { if (e.ped === PLAYER_ID) { const v = sim.vehicle(e.vehicle); if (v) { yaw = v.h; pitch = 0.12; } audio.play('door'); } break; }
-        case 'exit': { if (e.ped === PLAYER_ID) { yaw = sim.player.yaw; pitch = 0; audio.setRadio(0); station = 0; audio.play('door'); } break; }
+        case 'exit': { if (e.ped === PLAYER_ID) { yaw = sim.player.yaw; pitch = -0.3; audio.setRadio(0); station = 0; audio.play('door'); } break; }
         case 'honk': { const v = sim.vehicle(e.id); if (v) at('honk', v.x, v.z); break; }
         case 'scream': { const v = sim.ped(e.id); if (v) at('scream', v.x, v.z); break; }
         case 'pickup': { if (e.ped === PLAYER_ID) { audio.play(e.kind === 'weapon' ? 'weapon_pickup' : e.kind === 'cash' ? 'cash' : 'pickup'); if (e.kind !== 'cash') toast(e.kind === 'health' ? '체력 회복' : e.kind === 'armor' ? '방탄복 획득' : e.kind === 'weapon' ? '무기 획득' : e.kind === 'ammo' ? '탄약 획득' : '꾸러미 획득', 2); } break; }

@@ -233,3 +233,7 @@
 .rt-terrain { position: absolute; left: 12px; bottom: 218px; padding: 5px 12px; font-size: 12px; background: rgba(21, 27, 20, .88); color: #e8e2d0; border: 1px solid #667257; border-radius: 999px; opacity: 0; pointer-events: none; transition: opacity .12s; }
 .rt-terrain.show { opacity: 1; }
 @media (max-width: 760px) { .rt-terrain { bottom: 140px; } }
+#rt-fog[aria-pressed="true"] { border-color: #b6d58e; color: #e1f4c7; background: #344a2e; }
+#rt-fog[aria-pressed="false"] { border-color: #888; color: #ddd; background: #303236; }
+.rt-eyebrow { white-space: nowrap; }
+@media (max-width: 390px) { .rt-eyebrow { font-size: 11px; } }

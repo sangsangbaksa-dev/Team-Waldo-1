@@ -73,7 +73,7 @@ export function menuHtml(sound: boolean, firstPerson: boolean, confirmRestart = 
       <button type="button" class="ty-act wd-btn primary" data-menu="resume">이어하기</button>
       <button type="button" class="ty-act wd-btn ghost" data-menu="save">저장하기</button>
       <button type="button" class="ty-act wd-btn ghost" data-menu="view">시점: ${firstPerson ? '1인칭' : '3인칭'} (V)</button>
-      <button type="button" class="ty-act wd-btn ghost" data-menu="sound">소리 ${sound ? '끄기' : '켜기'}</button>
+      <button type="button" class="ty-act wd-btn ghost" data-menu="sound">소리 ${sound ? '켜짐' : '꺼짐'}</button>
       <button type="button" class="ty-act danger wd-btn ghost" data-menu="restart">${confirmRestart ? '다시 시작하려면 한 번 더 누르세요' : '다시 시작'}</button>
       <button type="button" class="ty-act danger wd-btn ghost" data-menu="exit">게임 목록으로</button>
     </div></div></div>`;

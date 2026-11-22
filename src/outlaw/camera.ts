@@ -38,6 +38,11 @@ export class ChaseCamera {
     this.distance = 3.2;
     this.freeLookTime = 0;
     this.shakePower = this.shakeTime = 0;
+    if (target) {
+      this.position.set(target.x - Math.cos(this.yaw) * 3.2 - Math.sin(this.yaw) * 0.42, target.y + 2.75, target.z - Math.sin(this.yaw) * 3.2 + Math.cos(this.yaw) * 0.42);
+      this.camera.position.copy(this.position);
+      this.lastLookYaw = this.yaw; this.lastLookPitch = this.pitch;
+    }
   }
 
   update(dt: number, mode: 'foot' | 'car', target: Target, look: Look, opts: { aim: boolean; lookBack: boolean; air: boolean }): void {

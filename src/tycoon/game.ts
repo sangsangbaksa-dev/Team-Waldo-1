@@ -118,7 +118,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     const act = t.closest<HTMLElement>('[data-act]');
     if (act && modal?.kind === 'spot') { doAction(modal.id, act.dataset.act!); return; }
     const menu = t.closest<HTMLElement>('[data-menu]')?.dataset.menu;
-    if (menu) menuAction(menu);
+    if (menu) { menuAction(menu); return; }
     const title = t.closest<HTMLElement>('[data-title]')?.dataset.title;
     if (title === 'keep') closeModal(); else if (title === 'exit') exit();
   });
@@ -149,14 +149,14 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 입력 ----------
   function resetInput(): void { keys.clear(); tc.moveId = tc.lookId = -1; tc.mx = tc.my = 0; drag = -1; q('#ty-stick').style.opacity = '0'; (q('#ty-stick').firstElementChild as HTMLElement).style.transform = ''; }
   function lock(): void { if (touch || !player || locked) return; try { const r = canvas.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(() => undefined); } catch { /* 선택 사항 */ } }
-  const onLock = (): void => { locked = document.pointerLockElement === canvas; };
+  const onLock = (): void => { const wasLocked = locked; locked = document.pointerLockElement === canvas; if (wasLocked && !locked && phase === 'play' && !modal) openModal({ kind: 'menu' }); };
   document.addEventListener('pointerlockchange', onLock);
   const onKeyDown = (e: KeyboardEvent): void => {
     if (e.target instanceof HTMLInputElement) return;
     audio.unlock();
     if (phase === 'title') { if (player && e.code === 'Enter') titleAction(readTycoonSummary().has ? 'continue' : 'new'); return; }
     if (phase !== 'play') return;
-    if (e.code === 'Escape') { e.preventDefault(); if (modal && modal.kind !== 'menu') closeModal(); else if (modal) closeModal(); else openModal({ kind: 'menu' }); return; }
+    if (e.code === 'Escape') { e.preventDefault(); if (modal?.kind === 'menu') closeModal(); else openModal({ kind: 'menu' }); return; }
     if (modal) {
       if (modal.kind === 'spot' && /^Digit[1-9]$/.test(e.code)) { const a = core.actionsAt(modal.id)[Number(e.code.slice(5)) - 1]; if (a) doAction(modal.id, a.id); e.preventDefault(); }
       else if ((e.code === 'KeyE' || e.code === 'Tab') && modal.kind !== 'menu') { e.preventDefault(); closeModal(); }

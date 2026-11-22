@@ -162,7 +162,7 @@ function tile(entry: Entry, index: number): string {
       <button class="tile" id="start-${entry.id}" type="button" data-game="${entry.id}" aria-describedby="summary-${entry.id}">
         <span class="tile-media"><img src="${entry.image}" alt="${entry.imageAlt}" width="1280" height="800" ${index === 0 ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async"></span>
         <span class="tile-body">
-          <span class="tile-genre">${entry.genre}</span>
+          <span class="tile-genre">${entry.genre}${entry.id === 'room-tone' ? ' · 공포 주의' : ''}</span>
           <span class="tile-name">${entry.name}</span>
           <span class="tile-summary" id="summary-${entry.id}">${entry.summary}</span>
           <span class="tile-facts">${entry.facts.map(f => `<span>${f}</span>`).join('')}</span>
@@ -172,13 +172,14 @@ function tile(entry: Entry, index: number): string {
     </li>`;
 }
 
+let hubScrollY = 0;
 function renderMenu(): void {
   setRails(null);
   generation++;
   unsubscribeAccount?.();
   unsubscribeAccount = undefined;
   const sound = readPreferences().sound;
-  document.title = 'WALDO · 여섯 편의 3D 게임';
+  document.title = 'WALDO · 브라우저 3D 게임 모음';
   app.hidden = false;
   app.innerHTML = `
     <main class="home">
@@ -228,6 +229,7 @@ function renderMenu(): void {
   });
   wireAccount();
   wireChat();
+  if (hubScrollY) requestAnimationFrame(() => window.scrollTo(0, hubScrollY));
 }
 
 /** 허브 오른쪽 아래의 전체 채팅. 첫 화면을 가볍게 두려고 한가할 때 불러옵니다. */
@@ -267,6 +269,7 @@ function wireAccount(): void {
 }
 
 async function launch(id: GameId): Promise<void> {
+  hubScrollY = window.scrollY;
   if (id === 'room-tone') {
     location.assign(`${base}room-tone/`);
     return;

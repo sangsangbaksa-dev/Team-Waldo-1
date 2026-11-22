@@ -1,3 +1,4 @@
+import { Sim } from '../../src/outlaw/sim';
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { openOutlaw } from '../../src/outlaw/game';
@@ -48,23 +49,19 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-it('keeps the previous game on Back and Escape, then replaces it only after confirming a character', async () => {
+it('starts with the fixed hero after confirming a new game', async () => {
   openOutlaw(vi.fn());
   await vi.advanceTimersByTimeAsync(31);
-  const openChooser = () => { click('[data-t="new"]'); click('[data-t="new"]'); };
-
-  openChooser();
-  click('[data-k="resume"]');
+  click('[data-t="new"]');
   expect(localStorage.getItem(OUTLAW_KEY)).toBe(JSON.stringify(previous));
-
-  openChooser();
-  window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' }));
-  expect(document.querySelector<HTMLElement>('#ol-modal')?.hidden).toBe(true);
-  expect(localStorage.getItem(OUTLAW_KEY)).toBe(JSON.stringify(previous));
-
-  openChooser();
-  click('[data-ui="hero"][data-id="h1"]');
-  click('[data-ui="start"]');
+  click('[data-t="new"]');
   const next = JSON.parse(localStorage.getItem(OUTLAW_KEY)!) as SaveData;
-  expect(next).toMatchObject({ cash: 400, completed: [], life: { hero: 'h1' } });
+  expect(next).toMatchObject({ cash: 400, completed: [], life: { hero: 'h0' } });
+});
+
+it('coerces an unknown saved hero to the fixed hero', () => {
+  const sim = new Sim(7);
+  const save = sim.exportSave();
+  sim.applySave({ ...save, life: { ...save.life!, hero: 'unknown' } });
+  expect(sim.life.hero).toBe('h0');
 });

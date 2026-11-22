@@ -872,3 +872,4 @@ button.primary { background: #e1e1dd; border-color: #e1e1dd; color: #151515; }
 @media (prefers-reduced-motion: reduce) {
   #viewWrap.noticed::before { animation: none; transform: none; }
 }
+.hudleft span, .hudleft strong, .hudright button { color: #fff; text-shadow: 0 1px 4px #000; }

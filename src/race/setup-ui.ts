@@ -58,7 +58,7 @@ export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceR
     const map = mapById(cur.map), car = carById(cur.car), lv = levelById(cur.level);
     root.querySelectorAll<HTMLElement>('[data-pick]').forEach(b => { const [k, v] = b.dataset.pick!.split(':'); const on = String(cur[k as keyof RaceSetup]) === v; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
     note('map').textContent = map.blurb; note('level').textContent = lv.blurb; note('car').textContent = `${car.name} · ${car.role} — ${car.blurb}`;
-    const lap = records.bestLap[map.id], race = records.bestRace[raceRaceKey(map.id, cur.laps)];
+    const lap = records.bestLap[`${map.id}:${cur.car}:${cur.mode}`], race = records.bestRace[raceRaceKey(map.id, cur.laps)];
     const ghost = cur.mode === 'trial' ? readGhost(map.id, cur.laps, car.id) : null;
     note('mode').textContent = cur.mode === 'trial' ? `혼자 달리며 내 최고 주행(고스트)과 겨룹니다.${ghost ? ` 저장된 고스트 ${fmtTime(ghost.time)}` : ' 아직 고스트가 없습니다 — 첫 주행이 고스트가 됩니다.'}` : cur.mode === 'knockout' ? '3랩 서바이벌. 선두가 랩을 마칠 때마다 꼴찌 한 대가 탈락하고, 마지막 랩은 남은 두 대의 결승입니다.' : '라이벌 3대와 순위를 겨룹니다. 드리프트를 이어 가면 점수가 쌓이고, 슬립스트림과 부스트 패드로 따라잡으세요.';
     root.querySelector<HTMLElement>('[data-seg="laps"]')?.closest('section')?.toggleAttribute('hidden', cur.mode === 'knockout');

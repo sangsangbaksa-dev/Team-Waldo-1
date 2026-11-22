@@ -6,12 +6,13 @@ import { readCityCareer, readRaceRecords, readRtsRecords, fmtTime } from './reco
 import { readShooterCareer } from './shooter/records';
 import { readOutlawSummary } from './outlaw/records';
 import { readSkySummary } from './sky/records';
+import { readSlackRecord } from './slack/records';
 import { readTycoonSummary } from './tycoon/core/save';
 import { STAGE_NAMES } from './tycoon/core/data';
 import { CHAT_ENABLED, PVP_ENABLED } from './net/config';
 import { setRails } from './shared/rails';
 
-type GameId = 'city' | 'race' | 'rts' | 'shooter' | 'outlaw' | 'tycoon' | 'sky' | 'room-tone' | 'squad';
+type GameId = 'city' | 'race' | 'rts' | 'shooter' | 'outlaw' | 'tycoon' | 'sky' | 'room-tone' | 'squad' | 'slack';
 
 interface Entry {
   id: GameId;
@@ -27,6 +28,18 @@ interface Entry {
 const base = import.meta.env.BASE_URL;
 
 const ENTRIES: Entry[] = [
+  {
+    id: 'slack', name: 'SLACK OFF', genre: '딴짓 시뮬레이션',
+    summary: '자습시간 교실과 심야 기숙사 컴퓨터실에서 선생님과 사감 몰래 진짜 딴짓을 즐기세요. 발소리가 다가오면 공부하는 척!',
+    facts: ['교실 · 컴퓨터실 2개 무대', '난이도 3단계 · 적발 3회 아웃', '키보드 · 마우스 · 터치'],
+    image: `${base}assets/home/slack-off.svg`, imageAlt: '어두운 교실 책상 위 교과서와 몰래 켠 휴대폰, 복도 창에 비친 감독의 그림자',
+    status: () => {
+      const { best } = readSlackRecord();
+      const grades = [best.class?.grade, best.dorm?.grade].filter((grade): grade is string => !!grade);
+      grades.sort((a, b) => 'SABCD'.indexOf(a) - 'SABCD'.indexOf(b));
+      return grades.length ? `최고 ${grades[0]}등급` : '';
+    },
+  },
   {
     id: 'squad', name: 'SQUAD CLASH', genre: '도형 병사 배치전',
     summary: '같은 골드로 도형 병사를 배치하고 자동 전투를 지켜보세요. 상성과 진형이 승부를 가릅니다.',
@@ -267,7 +280,7 @@ async function launch(id: GameId): Promise<void> {
   if (label) label.textContent = '불러오는 중…';
   if (notice) notice.textContent = '';
   // 일시적인 다운로드 오류에는 재시도하고, 계속 실패하면 메뉴로 복귀합니다.
-  const loading = showLoading(id === 'squad' ? 'SQUAD CLASH' : id === 'city' ? 'LAST CITY' : id === 'rts' ? 'FRONTLINE' : id === 'shooter' ? 'ZERO ZONE' : id === 'outlaw' ? 'OUTLAW CITY' : id === 'tycoon' ? 'HUSTLE' : id === 'sky' ? 'SKY WAR' : 'SPEED RUSH');
+  const loading = showLoading(id === 'slack' ? 'SLACK OFF' : id === 'squad' ? 'SQUAD CLASH' : id === 'city' ? 'LAST CITY' : id === 'rts' ? 'FRONTLINE' : id === 'shooter' ? 'ZERO ZONE' : id === 'outlaw' ? 'OUTLAW CITY' : id === 'tycoon' ? 'HUSTLE' : id === 'sky' ? 'SKY WAR' : 'SPEED RUSH');
   loading.progress(null, '게임을 불러오는 중');
   const cancelled = (): boolean => generation !== navigation;
   const fetchGame = <T,>(load: () => Promise<T>): Promise<T> => retry(load, { cancelled, maxAttempts: 4, onRetry: n => loading.note(retryNote(n)) });
@@ -299,6 +312,11 @@ async function launch(id: GameId): Promise<void> {
       if (cancelled()) { loading.close(); return; }
       app.hidden = true;
       openOutlaw(renderMenu, { loading });
+    } else if (id === 'slack') {
+      const { openSlack } = await fetchGame(() => import('./slack/game'));
+      if (cancelled()) { loading.close(); return; }
+      app.hidden = true;
+      openSlack(renderMenu, { loading });
     } else if (id === 'sky') {
       const { openSky } = await fetchGame(() => import('./sky/game'));
       if (cancelled()) { loading.close(); return; }

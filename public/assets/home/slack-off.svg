@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" width="960" height="600">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#141a2c"/><stop offset="1" stop-color="#05070e"/></linearGradient>
+<radialGradient id="glow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#6ee7ff" stop-opacity=".55"/><stop offset="1" stop-color="#6ee7ff" stop-opacity="0"/></radialGradient>
+<linearGradient id="beam" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffe9a8" stop-opacity=".7"/><stop offset="1" stop-color="#ffe9a8" stop-opacity="0"/></linearGradient>
+</defs>
+<rect width="960" height="600" fill="url(#bg)"/>
+<rect x="40" y="40" width="380" height="250" rx="6" fill="#1d3a2e" stroke="#4a3a28" stroke-width="10"/>
+<g stroke="#d9efe3" stroke-opacity=".5" stroke-width="3" fill="none"><path d="M70 90h200M70 120h260M70 150h170"/></g>
+<rect x="600" y="30" width="120" height="190" rx="4" fill="#0b0f1a" stroke="#2c3550" stroke-width="8"/>
+<rect x="614" y="46" width="92" height="70" fill="#cfe6ff" fill-opacity=".14"/>
+<path d="M650 120c-18 0-30 16-30 40v60h80v-60c0-24-12-40-30-40z" fill="#000" fill-opacity=".85"/>
+<circle cx="650" cy="108" r="17" fill="#000" fill-opacity=".85"/>
+<path d="M620 220l-70 230h240z" fill="url(#beam)" opacity=".35"/>
+<ellipse cx="500" cy="420" rx="360" ry="170" fill="url(#glow)"/>
+<rect x="250" y="330" width="460" height="250" rx="10" fill="#27180f"/>
+<rect x="250" y="330" width="460" height="22" fill="#3b2616"/>
+<rect x="320" y="352" width="190" height="130" rx="4" fill="#eee9d9" transform="rotate(-4 415 417)"/>
+<g stroke="#2c2c2c" stroke-opacity=".55" stroke-width="3" transform="rotate(-4 415 417)"><path d="M340 380h150M340 400h120M340 420h150M340 440h90"/></g>
+<rect x="470" y="410" width="120" height="150" rx="16" fill="#0a0d14" stroke="#9aa6c0" stroke-width="5" transform="rotate(12 530 485)"/>
+<rect x="482" y="424" width="96" height="116" rx="8" fill="#ff5d8f" transform="rotate(12 530 485)"/>
+<path d="M530 470c-8-14-26-4-18 10l18 18 18-18c8-14-10-24-18-10z" fill="#fff" transform="rotate(12 530 485)"/>
+<rect x="320" y="352" width="46" height="8" rx="3" fill="#ffd34d" transform="rotate(-18 340 400)"/>
+<text x="480" y="580" text-anchor="middle" font-family="sans-serif" font-size="46" font-weight="800" fill="#fff" fill-opacity=".92" letter-spacing="6">SLACK OFF</text>
+</svg>

@@ -7,6 +7,7 @@ import { readShooterCareer } from './shooter/records';
 import { readOutlawSummary } from './outlaw/records';
 import { readSkySummary } from './sky/records';
 import { readSlackRecord } from './slack/records';
+import { readSquadSummary } from './squad/records';
 import { readTycoonSummary } from './tycoon/core/save';
 import { STAGE_NAMES } from './tycoon/core/data';
 import { CHAT_ENABLED, PVP_ENABLED } from './net/config';
@@ -44,7 +45,7 @@ const ENTRIES: Entry[] = [
     id: 'squad', name: 'SQUAD CLASH', genre: '도형 병사 배치전',
     summary: '같은 골드로 도형 병사를 배치하고 자동 전투를 지켜보세요. 상성과 진형이 승부를 가릅니다.',
     facts: ['AI · 한 화면 2인 · 온라인', '병사 5종 · 3판 2선승', '마우스 · 키보드 · 터치'],
-    image: `${base}assets/home/squad-clash.jpg`, imageAlt: '위쪽 빨강 진영과 아래쪽 파랑 진영의 병사들이 마주 선 전장', status: () => '',
+    image: `${base}assets/home/squad-clash.jpg`, imageAlt: '위쪽 빨강 진영과 아래쪽 파랑 진영의 병사들이 마주 선 전장', status: () => { const r = readSquadSummary(); return r.has ? `${r.matches}전 · ${r.wins}승` : ''; },
   },
   {
     id: 'city',

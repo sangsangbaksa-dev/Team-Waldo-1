@@ -68,3 +68,26 @@
 .sq-budget strong .sq-ico{width:.95em;height:.95em;filter:drop-shadow(0 0 6px #ffd45a88)}
 .sq-palette em .sq-ico{width:.95em;height:.95em;margin-right:.2em}
 .sq-stats span .sq-ico{width:1.15em;height:1.15em}
+/* 점수 색 구분 · 전적 */
+.sq-final-score .sq-s0{color:#6ebcff}.sq-final-score .sq-s1{color:#ff7a70}.sq-final-score{text-shadow:0 3px 0 #0a1a2c}
+.sq-record{margin:14px 0 0;font-size:13px;color:var(--wd-muted)}.sq-record b{color:#e8edf5;font-weight:700}
+/* 모바일/좁은 화면: 상단 바를 한 줄로, 전장 높이를 줄여 병사 카드·배치 완료 버튼이 첫 화면에 보이게 */
+@media (max-width:900px){
+.sq-root{padding:8px 10px;place-items:start center}
+.sq-top{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:6px;margin-bottom:6px}
+.sq-top .sq-kicker{display:none}
+.sq-top h2{font-size:13px;line-height:1.25;margin:0;word-break:keep-all}
+.sq-score{gap:5px}.sq-score img{width:26px;height:26px}.sq-score b{font-size:20px}
+.sq-score span{white-space:nowrap;font-size:10px;text-align:center}
+.sq-top button,.sq-top .wd-btn{white-space:nowrap;padding:7px 10px;font-size:12px}
+.sq-field{width:min(100%,calc((100dvh - 246px) * .6));min-width:min(100%,220px)}
+.sq-deploy{padding:8px 0 0}
+.sq-budget{margin-bottom:6px;gap:10px}.sq-budget strong{font-size:18px}
+.sq-palette{grid-template-columns:repeat(5,minmax(0,1fr));overflow:visible;gap:4px;margin-bottom:6px}
+.sq-palette button{padding:4px 2px 5px;text-align:center;border-radius:10px}
+.sq-palette button>span img{width:30px;height:30px}
+.sq-palette b{font-size:10px;line-height:1.25;letter-spacing:-.02em;word-break:keep-all}
+.sq-palette em{display:block;font-size:10px}
+.sq-hint{display:none}
+.sq-actions{flex-wrap:nowrap}.sq-actions .wd-btn,.sq-deploy .wd-btn{padding:9px 8px;font-size:13px;white-space:nowrap}
+}

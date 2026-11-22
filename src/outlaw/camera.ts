@@ -21,6 +21,8 @@ export class ChaseCamera {
   private readonly focus = new THREE.Vector3();
   private readonly desired = new THREE.Vector3();
   private readonly position = new THREE.Vector3();
+  private readonly allowedPosition = new THREE.Vector3();
+  private readonly displayPosition = new THREE.Vector3();
   private readonly map: CityMap;
   constructor(private readonly camera: THREE.PerspectiveCamera, map: CityMap) { this.map = map; }
 
@@ -28,6 +30,7 @@ export class ChaseCamera {
   get aimPitch(): number { return this.shotPitch; }
 
   shake(power: number): void {
+    if (!Number.isFinite(power) || power <= 0) return;
     this.shakePower = Math.max(this.shakePower, clamp(power, 0, 1));
     this.shakeTime = Math.max(this.shakeTime, 0.24);
   }
@@ -41,7 +44,7 @@ export class ChaseCamera {
   }
 
   update(dt: number, mode: 'foot' | 'car', target: Target, look: Look, opts: { aim: boolean; lookBack: boolean; air: boolean; fovKick?: number }): void {
-    const step = clamp(dt, 0, 0.05);
+    const step = Number.isFinite(dt) ? clamp(dt, 0, 0.05) : 0;
     const changed = Math.abs(angleDiff(this.lastLookYaw, look.yaw)) + Math.abs(look.pitch - this.lastLookPitch) > 0.0008;
     this.lastLookYaw = look.yaw;
     this.lastLookPitch = look.pitch;
@@ -88,7 +91,8 @@ export class ChaseCamera {
     if (rayLength > 0.001) {
       const hit = rayStatic(this.map, this.focus.x, this.focus.y, this.focus.z, dx / rayLength, dy / rayLength, dz / rayLength, rayLength);
       const allowed = Number.isFinite(hit) ? Math.max(0.8, Math.min(rayLength, hit - 0.28)) : rayLength;
-      const wanted = this.focus.clone().addScaledVector(this.desired.clone().sub(this.focus).normalize(), allowed);
+      // Reuse scratch vectors; never allocate two Vector3s for every camera frame.
+      const wanted = this.allowedPosition.copy(this.focus).addScaledVector(this.desired.sub(this.focus), allowed / rayLength);
       const rate = allowed < this.position.distanceTo(this.focus) ? 24 : 6;
       if (!Number.isFinite(this.position.x) || this.position.lengthSq() < 1e-8) this.position.copy(wanted);
       else this.position.lerp(wanted, 1 - Math.exp(-rate * step));
@@ -96,24 +100,27 @@ export class ChaseCamera {
       if (allowed < rayLength && this.position.distanceTo(this.focus) > allowed) this.position.copy(wanted);
     }
     if (mode === 'car' && Math.abs(target.speed) > 25) this.shakePower = Math.max(this.shakePower, Math.min(0.1, (Math.abs(target.speed) - 25) * 0.0015));
+    // Screen shake is visual only. Never feed jitter into the smoothed chase
+    // position: doing so causes long-lasting drift and camera-wall clipping.
+    const screen = this.displayPosition.copy(this.position);
     if (this.shakeTime > 0 && this.shakePower > 0) {
       this.shakeTime = Math.max(0, this.shakeTime - step);
       const fade = this.shakeTime > 0 ? this.shakePower : 0;
-      this.position.x += (Math.random() - 0.5) * fade * 0.12;
-      this.position.y += (Math.random() - 0.5) * fade * 0.1;
-      this.position.z += (Math.random() - 0.5) * fade * 0.12;
+      screen.x += (Math.random() - 0.5) * fade * 0.12;
+      screen.y += (Math.random() - 0.5) * fade * 0.1;
+      screen.z += (Math.random() - 0.5) * fade * 0.12;
       this.shakePower *= Math.exp(-step * 8);
     }
-    this.camera.position.copy(this.position);
+    this.camera.position.copy(screen);
     this.camera.rotation.order = 'YXZ';
     this.camera.rotation.set(this.pitch, -this.yaw - Math.PI / 2, 0);
     // 총구가 아니라 화면 중앙 레이의 실제 명중점을 향해 사격 조준을 맞춥니다.
     const rayX = Math.cos(this.yaw) * Math.cos(this.pitch), rayY = Math.sin(this.pitch), rayZ = Math.sin(this.yaw) * Math.cos(this.pitch);
-    const hit = rayStatic(this.map, this.position.x, this.position.y, this.position.z, rayX, rayY, rayZ, 60);
+    const hit = rayStatic(this.map, screen.x, screen.y, screen.z, rayX, rayY, rayZ, 60);
     const rayEnd = Number.isFinite(hit) ? hit : 60;
-    const aimX = this.position.x + rayX * rayEnd - target.x;
-    const aimY = this.position.y + rayY * rayEnd - (target.y + (mode === 'car' ? 0.7 : 1.2));
-    const aimZ = this.position.z + rayZ * rayEnd - target.z;
+    const aimX = screen.x + rayX * rayEnd - target.x;
+    const aimY = screen.y + rayY * rayEnd - (target.y + (mode === 'car' ? 0.7 : 1.2));
+    const aimZ = screen.z + rayZ * rayEnd - target.z;
     this.shotYaw = Math.atan2(aimZ, aimX);
     this.shotPitch = Math.atan2(aimY, Math.hypot(aimX, aimZ));
     if (mode === 'foot' && aim) wantedFov = 55;

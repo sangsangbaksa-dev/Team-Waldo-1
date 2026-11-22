@@ -97,13 +97,17 @@ export class WorldSync {
       b.push(p.id, r1(p.x), r1(p.z), r2(wrap(p.yaw)), r2(p.pitch), Math.max(0, WEAPON_IDS.indexOf(g?.id ?? 'pistol')), (p.ads ? 1 : 0) | (p.crouch > 0.5 ? 2 : 0) | (p.reload > 0 ? 4 : 0), r1(p.vx), r1(p.vz), p.air, Math.round(p.alt), Math.ceil(p.hp));
     }
     const vv: number[] = [], vh: number[] = [];
+    // Parked cars are broadcast periodically too: a player who joins after a
+    // car was moved and parked must receive its final pose and collision box.
+    const parkedSnapshot = this.tick % (FAR_EVERY * 4) === 0;
     for (const v of m.vehicles) {
       if (v.wreck) { this.wasMoving.delete(v.id); continue; }
       if (v.hp < v.max) vh.push(v.id, Math.max(0, Math.round(v.hp)), v.lastBy + 1);
       if (v.remote) { this.wasMoving.delete(v.id); continue; }
       if (v.moving) this.wasMoving.add(v.id); else if (this.wasMoving.delete(v.id)) this.parked.set(v.id, 5);
       const left = this.parked.get(v.id) ?? 0;
-      if (!v.moving && left <= 0) continue; if (!v.moving) this.parked.set(v.id, left - 1);
+      if (!v.moving && left <= 0 && !parkedSnapshot) continue;
+      if (!v.moving && left > 0) this.parked.set(v.id, left - 1);
       vv.push(v.id, r1(v.x), r1(v.z), r2(wrap(v.yaw)), r1(v.speed), v.driver + 1, v.moving ? 1 : 0);
     }
     for (const v of m.vehicles) if (v.wreck) vh.push(v.id, 0, v.lastBy + 1);

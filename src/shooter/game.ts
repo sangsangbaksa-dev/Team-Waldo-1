@@ -86,7 +86,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     const status = setupEl.querySelector<HTMLElement>('#sz-asset-status');
     if (status) status.textContent = `3D 모델 준비 중 · ${Math.floor(f * 100)}%`;
   }).then(a => {
-    if (!closed) { assets = a; assetState = 'ready'; }
+    if (!closed) { assets = a; assetState = 'ready'; view?.setAssets(a); }
   }).catch(() => {
     if (!closed) assetState = 'failed';
   }).finally(() => {

@@ -176,3 +176,29 @@ it('keeps the same battlefield canvas when selecting units or changing speed', (
   expect(button('#speed4').getAttribute('aria-pressed')).toBe('true');
   button('#pause').click(); button('#exit').click();
 });
+
+it('supports keyboard-only formation placement with intact focus and budget rules', () => {
+  openSquad(vi.fn());
+  button('#start').click();
+  let canvas = document.querySelector<HTMLCanvasElement>('#sq-field-canvas')!;
+  expect(canvas.tabIndex).toBe(0);
+  canvas.focus();
+  const key = (value: string): void => {
+    canvas.dispatchEvent(new KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true }));
+    canvas = document.querySelector<HTMLCanvasElement>('#sq-field-canvas')!;
+  };
+  key('ArrowRight'); // Establish keyboard hover in the friendly deployment zone.
+  key('Enter');
+  expect(document.querySelector('.sq-budget strong')?.textContent).toContain('900');
+  expect(document.activeElement).toBe(canvas);
+  expect(button('#ready')).toBeTruthy(); // Enter did not confirm the entire formation.
+  key('Delete');
+  expect(document.querySelector('.sq-budget strong')?.textContent).toContain('1000');
+  key(' ');
+  expect(document.querySelector('.sq-budget strong')?.textContent).toContain('900');
+  key('ArrowUp'); key('Enter');
+  expect(document.querySelector('.sq-budget strong')?.textContent).toContain('800');
+  expect(document.activeElement).toBe(canvas);
+  button('#pause').click();
+  button('#exit').click();
+});

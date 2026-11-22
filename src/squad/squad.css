@@ -95,3 +95,6 @@
 /* Show keyboard focus on dark tactical controls without changing pointer styling. */
 .sq-root button:focus-visible{outline:3px solid #96d5ff;outline-offset:2px}
 @media(any-pointer:coarse){.sq-root button{min-height:44px}}
+
+/* Focus ring remains visible against both halves of the tactical battlefield. */
+.sq-field canvas:focus-visible{outline:3px solid #bde8ff;outline-offset:3px}

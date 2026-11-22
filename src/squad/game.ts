@@ -55,7 +55,7 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
     if (stage === 'menu') root.innerHTML = `<main class="wd-panel sq-card">${title}<p class="wd-lead">같은 예산, 다른 진형. 배치가 승부를 가릅니다.</p><div class="wd-field"><span class="wd-label">모드</span><div class="wd-seg" role="group" aria-label="모드">${seg('mode', [['ai', 'AI 대전'], ['local', '한 화면 2인'], ...(PVP_ENABLED ? [['online', '온라인'] as [string, string]] : [])], mode)}</div></div>${mode === 'ai' ? `<div class="wd-field"><span class="wd-label">난이도</span><div class="wd-seg" role="group" aria-label="난이도">${seg('diff', [['easy', '쉬움'], ['normal', '보통'], ['hard', '어려움']], difficulty)}</div></div>` : ''}<ul class="wd-facts"><li>1,000G 예산</li><li>3판 2선승</li><li>1–5 병사 선택</li><li>드래그 이동 · 우클릭 삭제</li></ul>${recordLine()}<div class="wd-actions">${button('start', mode === 'online' ? '매치 찾기' : '시작', 'primary')}<div class="wd-row">${button('sound', audio.enabled ? '소리 켜짐' : '소리 꺼짐', 'ghost')}${button('exit', '게임 목록으로', 'ghost')}</div></div></main>`;
     else if (stage === 'cover') root.innerHTML = `<main class="wd-panel sq-card sq-cover">${title}<span class="sq-round">${roundLabel(round)}</span><h2>${side === 0 ? 'P1 배치 중' : 'P2에게 넘겨주세요'}</h2><p>${side === 0 ? 'P2는 화면을 보지 마세요.' : 'P1의 배치가 가려졌습니다. P1은 화면을 보지 마세요.'}</p>${button('uncover', side === 0 ? 'P1 배치 시작' : 'P2 배치 시작', 'primary')}</main>`;
     else if (stage === 'deploy' || stage === 'battle') {
-      root.innerHTML = `${leftRail()}<main class="sq-arena"><header class="sq-top"><div><span class="sq-kicker">SQUAD CLASH</span><h2>${stage === 'deploy' ? `P${side + 1} 진형 배치${online ? ' · <span id="sq-timer"></span>' : ''}` : '전투 진행 중'}</h2></div><div class="sq-score"><img src="${spriteUrl('guard', 0)}" alt=""><b>${score[0]}</b><span>${roundLabel(round)}${round <= 3 ? ' / 3' : ''}</span><b>${score[1]}</b><img src="${spriteUrl('guard', 1)}" alt=""></div>${button('pause', online ? '나가기' : '일시정지')}</header><div class="sq-field"><canvas width="600" height="1000" aria-label="12칸 곱하기 20칸 전장"></canvas><div class="sq-field-label"><span>파랑 · ${online ? esc((online.mine === 0 ? online.s.me : online.s.opponent).nickname) : 'P1'}${online?.mine === 0 ? ' (나)' : ''}</span><span>빨강 · ${online ? esc((online.mine === 1 ? online.s.me : online.s.opponent).nickname) : mode === 'ai' ? 'AI' : 'P2'}${online?.mine === 1 ? ' (나)' : ''}</span></div></div>${stage === 'deploy' ? `<div class="sq-deploy"><div class="sq-budget"><span>남은 골드</span><strong>${ICON.coin}${BUDGET - cost(side)} <small>G</small></strong><div><i style="width:${cost(side) / 10}%"></i></div></div><div class="sq-palette">${TYPES.map((t, i) => `<button data-unit="${t}" aria-pressed="${selected === t}" class="${selected === t ? 'active' : ''}"><span><img src="${spriteUrl(t, side)}" alt=""></span><b>${i + 1}. ${UNITS[t].name} <em>${ICON.coin}${UNITS[t].cost}G</em></b><small>${UNITS[t].role}</small></button>`).join('')}</div><div class="sq-actions">${button('auto', '자동 배치')}${button('clear', '초기화')}${button('ready', '배치 완료', 'primary')}</div><p class="sq-hint">병사를 선택하고 내 진영을 누르세요. 병사를 끌어서 이동하거나 다시 눌러 삭제합니다.</p></div>` : `<div class="sq-battlebar"><span>경과 ${Math.floor((battle?.tick || 0) / 30)}초 / 60초</span><div>${[1, 2, 4].map(n => button('speed' + n, n + '배속', speed === n ? 'active' : '')).join('')}${button('skip', '결과 보기')}</div></div>`}</main>${rightRail(stage, battle)}`;
+      root.innerHTML = `${leftRail()}<main class="sq-arena"><header class="sq-top"><div><span class="sq-kicker">SQUAD CLASH</span><h2>${stage === 'deploy' ? `P${side + 1} 진형 배치${online ? ' · <span id="sq-timer"></span>' : ''}` : '전투 진행 중'}</h2></div><div class="sq-score"><img src="${spriteUrl('guard', 0)}" alt=""><b>${score[0]}</b><span>${roundLabel(round)}${round <= 3 ? ' / 3' : ''}</span><b>${score[1]}</b><img src="${spriteUrl('guard', 1)}" alt=""></div>${button('pause', online ? '나가기' : '일시정지')}</header><div class="sq-field"><canvas id="sq-field-canvas" tabindex="0" width="600" height="1000" aria-label="전장. 방향키로 칸 이동, Enter 또는 스페이스로 병사 배치·제거, Delete로 제거"></canvas><div class="sq-field-label"><span>파랑 · ${online ? esc((online.mine === 0 ? online.s.me : online.s.opponent).nickname) : 'P1'}${online?.mine === 0 ? ' (나)' : ''}</span><span>빨강 · ${online ? esc((online.mine === 1 ? online.s.me : online.s.opponent).nickname) : mode === 'ai' ? 'AI' : 'P2'}${online?.mine === 1 ? ' (나)' : ''}</span></div></div>${stage === 'deploy' ? `<div class="sq-deploy"><div class="sq-budget"><span>남은 골드</span><strong>${ICON.coin}${BUDGET - cost(side)} <small>G</small></strong><div><i style="width:${cost(side) / 10}%"></i></div></div><div class="sq-palette">${TYPES.map((t, i) => `<button data-unit="${t}" aria-pressed="${selected === t}" class="${selected === t ? 'active' : ''}"><span><img src="${spriteUrl(t, side)}" alt=""></span><b>${i + 1}. ${UNITS[t].name} <em>${ICON.coin}${UNITS[t].cost}G</em></b><small>${UNITS[t].role}</small></button>`).join('')}</div><div class="sq-actions">${button('auto', '자동 배치')}${button('clear', '초기화')}${button('ready', '배치 완료', 'primary')}</div><p class="sq-hint">병종을 고르고 전장을 누르세요. 드래그로 이동, 다시 누르거나 우클릭으로 삭제할 수 있습니다. 키보드는 전장에 초점을 맞춘 뒤 방향키로 이동하고 Enter로 배치·제거하세요.</p></div>` : `<div class="sq-battlebar"><span>경과 ${Math.floor((battle?.tick || 0) / 30)}초 / 60초</span><div>${[1, 2, 4].map(n => button('speed' + n, n + '배속', speed === n ? 'active' : '')).join('')}${button('skip', '결과 보기')}</div></div>`}</main>${rightRail(stage, battle)}`;
       const canvas = root.querySelector('canvas')!; draw(canvas, armies, side, battle, UNITS[selected].range, hover, selected);
       if (stage === 'deploy') setupCanvas(canvas);
     } else if (stage === 'round' || stage === 'result') {
@@ -79,6 +79,33 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
   function setupCanvas(canvas: HTMLCanvasElement): void {
     const cell = (e: PointerEvent | MouseEvent) => { const r = canvas.getBoundingClientRect(); return { x: Math.floor((e.clientX - r.left) / r.width * 12), y: Math.floor((e.clientY - r.top) / r.height * 20) }; };
     const legal = (p: { x: number; y: number }) => p.y >= (side ? 0 : 10) && p.y < (side ? 10 : 20) && p.x >= 0 && p.x < 12;
+    // Keyboard deployment is independent of pointer capture and follows the same
+    // budget, team-zone and occupancy rules as mouse/touch deployment.
+    canvas.onkeydown = e => {
+      const moves: Record<string, [number, number]> = {
+        ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
+      };
+      const move = moves[e.key], action = e.key === 'Enter' || e.key === ' ' || e.key === 'Delete' || e.key === 'Backspace';
+      if (!move && !action) return;
+      e.preventDefault(); e.stopPropagation();
+      const p = hover ?? { x: 5, y: side ? 4 : 15 };
+      if (move) {
+        hover = { x: Math.max(0, Math.min(11, p.x + move[0])), y: Math.max(side ? 0 : 10, Math.min(side ? 9 : 19, p.y + move[1])) };
+        draw(canvas, armies, side, null, UNITS[selected].range, hover, selected);
+        return;
+      }
+      hover = p;
+      const before = armies[side]!;
+      const existing = before.find(u => u.x === p.x && u.y === p.y);
+      if (existing) {
+        armies[side] = before.filter(u => u !== existing);
+        audio.remove(); render();
+      } else if (e.key !== 'Delete' && e.key !== 'Backspace') {
+        if (cost(side) + UNITS[selected].cost > BUDGET) { audio.deny(); return; }
+        before.push({ type: selected, ...p });
+        audio.place(); render();
+      }
+    };
     canvas.oncontextmenu = e => { e.preventDefault(); const p = cell(e), before = armies[side]!; const next = before.filter(u => u.x !== p.x || u.y !== p.y); if (next.length === before.length) return; armies[side] = next; audio.remove(); render(); };
     canvas.onpointerdown = e => { if (e.button !== 0 || drag) return; const p = cell(e); if (!legal(p)) { toast(side ? '위쪽 진영에만 배치할 수 있어요' : '아래쪽 아군 진영에만 배치할 수 있어요'); return; } drag = { ...p, pointerId: e.pointerId }; canvas.setPointerCapture(e.pointerId); };
     canvas.onpointermove = e => { const next = cell(e); if (hover?.x === next.x && hover?.y === next.y) return; hover = next; draw(canvas, armies, side, null, UNITS[selected].range, hover, selected); };

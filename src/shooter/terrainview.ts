@@ -15,18 +15,72 @@ const TOWN = new THREE.Color(1.02, 0.97, 0.84), FOREST = new THREE.Color(0.58, 0
 function segDist(px: number, pz: number, ax: number, az: number, bx: number, bz: number): number {
   const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz, t = l2 < 1e-9 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / l2)); return Math.hypot(px - ax - dx * t, pz - az - dz * t);
 }
-/** 풀밭 정점 색에 지형 영향을 섞습니다: 마을 둘레는 흙빛으로, 숲은 어둡게, 늪은 진흙빛, 물가는 모래, 바위 곁은 회갈색. */
+/** Terrain feature bounds and pond rotations are constant for a generated map.
+ * Cache them once rather than recalculating trigonometry and river bounds for
+ * every ground vertex (14k+ vertices at high quality).
+ */
+function prepareGroundTint(map: GameMap) {
+  const ponds = map.terrain.ponds.map(p => ({
+    p, cs: Math.cos(p.ry), sn: Math.sin(p.ry),
+    bound: Math.max(p.rx, p.rz) * (p.swamp ? 1.7 : 1.35),
+  }));
+  const rivers = map.terrain.rivers.map(r => {
+    let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
+    for (const [px, pz] of r.pts) {
+      minX = Math.min(minX, px); maxX = Math.max(maxX, px);
+      minZ = Math.min(minZ, pz); maxZ = Math.max(maxZ, pz);
+    }
+    const pad = r.w / 2 + 14;
+    return { r, minX: minX - pad, minZ: minZ - pad, maxX: maxX + pad, maxZ: maxZ + pad };
+  });
+  return { ponds, rivers };
+}
+const tintCache = new WeakMap<GameMap, ReturnType<typeof prepareGroundTint>>();
+
+/** Preserve the original terrain-color blending but avoid costly distance
+ * and river-segment calculations for features far outside the affected area.
+ */
 export function tintGround(map: GameMap, x: number, z: number, c: THREE.Color): void {
   const t = map.terrain;
-  for (const k of map.compounds) { const d = Math.hypot(x - k.x, z - k.z) - k.r; if (d < 26) c.lerp(TOWN, 0.55 * smooth(1 - Math.max(0, d) / 26)); }
-  for (const f of t.forests) { const d = Math.hypot(x - f.x, z - f.z) / f.r; if (d < 1.2) c.lerp(FOREST, 0.85 * smooth((1.2 - d) / 0.55)); }
-  for (const p of t.ponds) {
-    const cs = Math.cos(p.ry), sn = Math.sin(p.ry), dx = x - p.x, dz = z - p.z, u = (dx * cs + dz * sn) / p.rx, v = (-dx * sn + dz * cs) / p.rz, q = Math.hypot(u, v);
-    if (p.swamp) { if (q < 1.7) c.lerp(MUD, 0.8 * smooth((1.7 - q) / 0.8)); } else if (q < 1.35) c.lerp(SAND, 0.75 * smooth((1.35 - q) / 0.35));
+  let cached = tintCache.get(map);
+  if (!cached) { cached = prepareGroundTint(map); tintCache.set(map, cached); }
+  for (const k of map.compounds) {
+    const dx = x - k.x, dz = z - k.z, limit = k.r + 26;
+    if (Math.abs(dx) > limit || Math.abs(dz) > limit) continue;
+    const d = Math.hypot(dx, dz) - k.r;
+    if (d < 26) c.lerp(TOWN, 0.55 * smooth(1 - Math.max(0, d) / 26));
   }
-  for (const r of t.rivers) { let e = Infinity; for (let i = 0; i + 1 < r.pts.length; i++) e = Math.min(e, segDist(x, z, r.pts[i][0], r.pts[i][1], r.pts[i + 1][0], r.pts[i + 1][1]) - r.w / 2); if (e < 14) c.lerp(SAND, 0.7 * smooth(1 - Math.max(0, e) / 14)); }
-  for (const h of t.hills) { const d = Math.hypot(x - h.x, z - h.z) / h.r; if (d < 1.5) c.lerp(ROCKY, 0.7 * smooth((1.5 - d) / 0.6)); }
-  for (const w of t.cliffs) { const d = Math.max(Math.abs(x - (w.x0 + w.x1) / 2) - (w.x1 - w.x0) / 2, Math.abs(z - (w.z0 + w.z1) / 2) - (w.z1 - w.z0) / 2); if (d < 9) c.lerp(ROCKY, 0.75 * smooth(1 - Math.max(0, d) / 9)); }
+  for (const f of t.forests) {
+    const dx = x - f.x, dz = z - f.z, limit = f.r * 1.2;
+    if (Math.abs(dx) > limit || Math.abs(dz) > limit) continue;
+    const d = Math.hypot(dx, dz) / f.r;
+    if (d < 1.2) c.lerp(FOREST, 0.85 * smooth((1.2 - d) / 0.55));
+  }
+  for (const { p, cs, sn, bound } of cached.ponds) {
+    const dx = x - p.x, dz = z - p.z;
+    if (Math.abs(dx) > bound || Math.abs(dz) > bound) continue;
+    const u = (dx * cs + dz * sn) / p.rx, v = (-dx * sn + dz * cs) / p.rz, q = Math.hypot(u, v);
+    if (p.swamp) { if (q < 1.7) c.lerp(MUD, 0.8 * smooth((1.7 - q) / 0.8)); }
+    else if (q < 1.35) c.lerp(SAND, 0.75 * smooth((1.35 - q) / 0.35));
+  }
+  for (const { r, minX, minZ, maxX, maxZ } of cached.rivers) {
+    if (x < minX || x > maxX || z < minZ || z > maxZ) continue;
+    let e = Infinity;
+    for (let i = 0; i + 1 < r.pts.length; i++) {
+      e = Math.min(e, segDist(x, z, r.pts[i][0], r.pts[i][1], r.pts[i + 1][0], r.pts[i + 1][1]) - r.w / 2);
+    }
+    if (e < 14) c.lerp(SAND, 0.7 * smooth(1 - Math.max(0, e) / 14));
+  }
+  for (const h of t.hills) {
+    const dx = x - h.x, dz = z - h.z, limit = h.r * 1.5;
+    if (Math.abs(dx) > limit || Math.abs(dz) > limit) continue;
+    const d = Math.hypot(dx, dz) / h.r;
+    if (d < 1.5) c.lerp(ROCKY, 0.7 * smooth((1.5 - d) / 0.6));
+  }
+  for (const w of t.cliffs) {
+    const d = Math.max(Math.abs(x - (w.x0 + w.x1) / 2) - (w.x1 - w.x0) / 2, Math.abs(z - (w.z0 + w.z1) / 2) - (w.z1 - w.z0) / 2);
+    if (d < 9) c.lerp(ROCKY, 0.75 * smooth(1 - Math.max(0, d) / 9));
+  }
 }
 
 /** 단위 원판(XZ 평면)을 겹겹의 고리로 만들고 정점 알파를 줍니다. stops = [반지름 비율, 알파] 의 목록. */

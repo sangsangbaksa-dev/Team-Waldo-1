@@ -1542,6 +1542,9 @@ window.addEventListener("pagehide", (e) => {
     return;
   }
   if (level && !["home", "won", "load", "error"].includes(state)) save();
+  // Leaving for a different document must not keep downloading a model that
+  // can no longer be parsed by this page. bfcache pages retain their request.
+  releaseModelBytes();
   sound.pause(true);
   sound.dispose();
   if (frameId !== null) cancelAnimationFrame(frameId);

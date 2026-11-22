@@ -470,9 +470,36 @@ export function pushOut(map: GameMap, p: { x: number; z: number }, r: number): b
   return hit;
 }
 
+/** Slab intersection without creating a closure for each candidate box. */
+function boxRayT(b: Box, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, limit: number): number {
+  let near = 0, far = limit;
+  if (Math.abs(dx) < 1e-9) { if (ox < b.x0 || ox > b.x1) return Infinity; }
+  else {
+    let a = (b.x0 - ox) / dx, z = (b.x1 - ox) / dx;
+    if (a > z) [a, z] = [z, a];
+    near = Math.max(near, a); far = Math.min(far, z);
+    if (near > far) return Infinity;
+  }
+  if (Math.abs(dy) < 1e-9) { if (oy < b.y0 || oy > b.y1) return Infinity; }
+  else {
+    let a = (b.y0 - oy) / dy, z = (b.y1 - oy) / dy;
+    if (a > z) [a, z] = [z, a];
+    near = Math.max(near, a); far = Math.min(far, z);
+    if (near > far) return Infinity;
+  }
+  if (Math.abs(dz) < 1e-9) { if (oz < b.z0 || oz > b.z1) return Infinity; }
+  else {
+    let a = (b.z0 - oz) / dz, z = (b.z1 - oz) / dz;
+    if (a > z) [a, z] = [z, a];
+    near = Math.max(near, a); far = Math.min(far, z);
+    if (near > far) return Infinity;
+  }
+  return near;
+}
+
 /** 광선과 모든 상자의 첫 교차 거리(없으면 Infinity). dx,dy,dz 는 정규화된 방향. */
 export function rayWorld(map: GameMap, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
-  if (!Number.isFinite(maxT) || maxT < 0 || ![ox, oy, oz, dx, dy, dz].every(Number.isFinite)) return Infinity;
+  if (maxT < 0 || !Number.isFinite(maxT) || !Number.isFinite(ox) || !Number.isFinite(oy) || !Number.isFinite(oz) || !Number.isFinite(dx) || !Number.isFinite(dy) || !Number.isFinite(dz)) return Infinity;
   if (seen.length < map.boxes.length) seen = new Uint32Array(Math.max(map.boxes.length, seen.length * 2));
   stamp = (stamp + 1) >>> 0; if (!stamp) { seen.fill(0); stamp = 1; }
   let best = Infinity;
@@ -481,13 +508,8 @@ export function rayWorld(map: GameMap, ox: number, oy: number, oz: number, dx: n
     for (const i of l) {
       if (seen[i] === stamp) continue; seen[i] = stamp;
       const box = map.boxes[i]; if (!box) continue;
-      let t0 = 0, t1 = Math.min(maxT, best);
-      const slab = (o: number, d: number, lo: number, hi: number): boolean => {
-        if (Math.abs(d) < 1e-9) return o >= lo && o <= hi;
-        let a = (lo - o) / d, b = (hi - o) / d; if (a > b) [a, b] = [b, a];
-        t0 = Math.max(t0, a); t1 = Math.min(t1, b); return t0 <= t1;
-      };
-      if (slab(ox, dx, box.x0, box.x1) && slab(oy, dy, box.y0, box.y1) && slab(oz, dz, box.z0, box.z1)) best = Math.min(best, t0);
+      const hit = boxRayT(box, ox, oy, oz, dx, dy, dz, Math.min(maxT, best));
+      if (hit < best) best = hit;
     }
   };
   // Exact grid traversal, including cells touched for only a short distance near corners.

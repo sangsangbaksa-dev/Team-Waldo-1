@@ -138,6 +138,21 @@ try {
       assert.equal(await page.locator("#torch").getAttribute("aria-pressed"),"false");
       await page.locator("#torch").click();
       assert.equal(await page.locator("#torch").getAttribute("aria-pressed"),"true");
+      if(config.name==="desktop"){
+        const churn=await page.evaluate(async()=>{
+          const stamina=document.querySelector("#stamina");
+          const strain=document.querySelector("#strain");
+          let count=0;
+          const observer=new MutationObserver(records=>{count+=records.length;});
+          observer.observe(stamina,{attributes:true,attributeFilter:["style"]});
+          observer.observe(strain,{characterData:true,childList:true,subtree:true});
+          await new Promise(resolve=>setTimeout(resolve,300));
+          observer.disconnect();
+          return count;
+        });
+        assert.equal(churn,0,
+          "An idle, full-stamina HUD should not rewrite the same DOM values each frame");
+      }
       const firstTime=await page.locator("#timer").textContent();
       // Shader compilation can consume several seconds of CPU on software
       // WebGL. Poll for a clock change instead of relying on a 1.5s sleep.

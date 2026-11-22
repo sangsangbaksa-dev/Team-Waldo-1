@@ -838,7 +838,8 @@ function drawGuide() {
   if (!guidePath.length) return;
   const next = xy(guidePath[0]);
   const angle = Math.atan2(next.x - player.x, -(next.z - player.z));
-  arrow.style.transform = "rotate(" + (angle + yaw) + "rad)";
+  const heading = "rotate(" + (angle + yaw) + "rad)";
+  if (arrow.style.transform !== heading) arrow.style.transform = heading;
 
 }
 function toggleGuide() {
@@ -1235,7 +1236,9 @@ function enemyUpdate(dt, running) {
       }
     }
   }
-  $("viewWrap").classList.toggle("noticed", now < alertUntil);
+  const noticed = now < alertUntil;
+  const wrap = $("viewWrap");
+  if (wrap.classList.contains("noticed") !== noticed) wrap.classList.toggle("noticed", noticed);
 
   nextPath -= dt;
   const ec = cellOf(e);
@@ -1306,9 +1309,10 @@ function enemyUpdate(dt, running) {
     ? 0
     : Math.max(0, 1 - dist / 12) * (inSight ? 0.96 : 0.57);
   sound.threat(threat);
-  $("danger").style.opacity = String(threat * 0.53);
-  $("strain").textContent =
-    threat > 0.68 ? "바로 근처" : threat > 0.28 ? "접근 중" : "안정";
+  const dangerOpacity = String(threat * 0.53);
+  if ($("danger").style.opacity !== dangerOpacity) $("danger").style.opacity = dangerOpacity;
+  const strainLabel = threat > 0.68 ? "바로 근처" : threat > 0.28 ? "접근 중" : "안정";
+  if ($("strain").textContent !== strainLabel) $("strain").textContent = strainLabel;
   if (!hiddenSpot && !grace && !exitGrace && Math.hypot(player.x - e.x, player.z - e.z) < 0.73 && clearLine(player, e)) {
     caught();
   }
@@ -1412,7 +1416,8 @@ function update(dt) {
   $("prompt").hidden = !caption;
   if ($("promptText").textContent !== caption) $("promptText").textContent = caption;
   if ($("act").disabled !== (!nearest && !hiddenSpot)) $("act").disabled = !nearest && !hiddenSpot;
-  $("stamina").style.transform = "scaleX(" + (hiddenSpot ? hideBreath : stamina).toFixed(3) + ")";
+  const staminaScale = "scaleX(" + (hiddenSpot ? hideBreath : stamina).toFixed(3) + ")";
+  if ($("stamina").style.transform !== staminaScale) $("stamina").style.transform = staminaScale;
   const timeLabel = clock(elapsed);
   if ($("timer").textContent !== timeLabel) $("timer").textContent = timeLabel;
   if (now > noticeUntil && $("toast").textContent) $("toast").textContent = "";

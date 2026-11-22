@@ -131,7 +131,7 @@ export class RtsSim {
 
   // ---------- 규칙 ----------
   /** 이 진영이 완성한 건물을 가지고 있는가. */
-  has(owner: number, kind: BuildKind): boolean { return this.buildings.some(b => b.owner === owner && b.kind === kind && b.done); }
+  has(owner: number, kind: BuildKind): boolean { return this.buildings.some(b => b.owner === owner && b.kind === kind && b.done && b.hp > 0); }
   canPlace(kind: BuildKind, x: number, y: number): boolean {
     const s = BUILDINGS[kind].size; if (!Number.isInteger(x) || !Number.isInteger(y)) return false;
     for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) if (!this.pather.free(x + i, y + j)) return false;
@@ -154,8 +154,9 @@ export class RtsSim {
   canTrain(owner: number, kind: UnitKind): boolean { const r = UNITS[kind].req; return !r || this.has(owner, r); }
   recount(): void {
     for (const p of this.players) { p.used = 0; p.cap = 0; }
-    for (const u of this.units) this.players[u.owner].used += UNITS[u.kind].supply;
+    for (const u of this.units) if (u.hp > 0) this.players[u.owner].used += UNITS[u.kind].supply;
     for (const b of this.buildings) {
+      if (b.hp <= 0) continue;
       const p = this.players[b.owner]; if (b.done) p.cap += BUILDINGS[b.kind].supply;
       for (const q of b.queue) p.used += UNITS[q.u].supply;
     }
@@ -208,7 +209,7 @@ export class RtsSim {
         if (!(c.q === true && busy)) this.order(w, { t: 'build', x: 0, y: 0, target: b.id, phase: 0, timer: 0 }); return true;
       }
       case 'resume': {
-        const b = num(c.b) ? this.building(c.b) : undefined; if (!b || b.owner !== owner || b.done) return false;
+        const b = num(c.b) ? this.building(c.b) : undefined; if (!b || b.hp <= 0 || b.owner !== owner || b.done) return false;
         const us = mine(c.ids).filter(u => u.kind === 'worker'); for (const u of us) this.order(u, { t: 'build', x: 0, y: 0, target: b.id, phase: 0, timer: 0 }); return us.length > 0;
       }
       case 'train': {
@@ -240,7 +241,7 @@ export class RtsSim {
         p.minerals -= d.cost; b.research = { r: c.r, left: d.time }; return true;
       }
       case 'rally': {
-        const b = num(c.b) ? this.building(c.b) : undefined; if (!b || b.owner !== owner || !num(c.x) || !num(c.y) || !BUILDINGS[b.kind].trains.length) return false;
+        const b = num(c.b) ? this.building(c.b) : undefined; if (!b || b.hp <= 0 || b.owner !== owner || !num(c.x) || !num(c.y) || !BUILDINGS[b.kind].trains.length) return false;
         b.rx = Math.min(Math.max(c.x, 1), this.map.size - 1); b.ry = Math.min(Math.max(c.y, 1), this.map.size - 1); b.rnode = num(c.node) && this.node(c.node) ? c.node : 0; return true;
       }
       case 'surrender': this.players[owner].defeated = true; return true;

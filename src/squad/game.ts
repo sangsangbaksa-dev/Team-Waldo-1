@@ -180,6 +180,7 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
   function endByForfeit(reason: string): void {
     const o = online; if (!o || o.done || stage === 'result') return;
     const opp = 1 - o.mine; if (score[o.mine]! < 2) score[o.mine] = 2; if (score[opp]! >= 2) score[opp] = 1;
+    if (onlineTimer) window.clearInterval(onlineTimer); onlineTimer = 0;
     o.result = reason; stage = 'result'; battle = null; saveResult(true); void concludeOnline(); render();
   }
   function handleGone(why: 'bye' | 'silent' | 'never'): void {

@@ -128,3 +128,33 @@
 .rc-card{max-height:100%;overflow:auto;overscroll-behavior:contain;touch-action:pan-y;scrollbar-width:thin}
 .rc-root button:focus-visible{outline:2px solid #8fb4ff;outline-offset:3px}
 @media(max-height:480px){.rc-card{padding:16px 20px;border-radius:16px}}
+
+
+/* Quality pass: accessible gamepad controls, legible telemetry and low-motion feedback. */
+.rc-root:not(.touch) .rc-speed{
+  border:1px solid rgba(196,215,255,.2);
+  box-shadow:inset 0 1px 0 #ffffff1b,0 8px 30px #08051c55;
+  backdrop-filter:blur(8px);
+}
+.rc-root .rc-btns button{min-width:44px;min-height:44px;width:44px;height:44px}
+.rc-root .rc-btns button:hover,.rc-root .rc-actions button:hover{background:#4b246e}
+.rc-root .rc-btns button:active,.rc-root .rc-actions button:active{background:#69308b}
+.rc-root .rc-btns button:focus-visible,.rc-root .rc-touchpad button:focus-visible{
+  outline:3px solid #7dffe6;outline-offset:3px;
+}
+.rc-tc::after{
+  content:'';position:absolute;bottom:0;left:16%;right:16%;height:2px;
+  background:linear-gradient(90deg,transparent,#63deee,transparent);opacity:.65;
+}
+@keyframes rcpop-static{0%,76%{opacity:1}100%{opacity:0}}
+.rc-root.reduced-motion .rc-wrong{animation:none;opacity:1}
+.rc-root.reduced-motion .rc-count.show{animation:rcpop-static .9s linear forwards;transform:translate(-50%,-50%) scale(1)}
+.rc-root.reduced-motion .rc-msg,.rc-root.reduced-motion .rc-boostfx,
+.rc-root.reduced-motion .rc-draft,.rc-root.reduced-motion .rc-drift{transition:none}
+.rc-root.reduced-motion .rc-touchpad button.down{transform:none}
+@media(prefers-reduced-motion:reduce){
+  .rc-root .rc-count.show{animation:rcpop-static .9s linear forwards;transform:translate(-50%,-50%) scale(1)}
+  .rc-root .rc-msg,.rc-root .rc-boostfx,.rc-root .rc-draft,.rc-root .rc-drift{transition:none}
+  .rc-root .rc-touchpad button.down{transform:none}
+}
+@media(max-height:480px){.rc-root .rc-btns button{min-width:44px;min-height:44px;width:44px;height:44px}}

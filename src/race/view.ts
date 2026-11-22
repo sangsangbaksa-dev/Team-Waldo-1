@@ -223,12 +223,17 @@ export class RaceView {
 
   /** 타임어택 고스트: 반투명 하늘색 차 한 대(없으면 null 로 끕니다). */
   private ghostCar: THREE.Group | null = null;
+  private ghostMaterial: THREE.MeshBasicMaterial | null = null;
+  private ghostGeometry: THREE.BufferGeometry | null = null;
   setGhost(model: string, on: boolean): void {
     if (this.ghostCar) { this.scene.remove(this.ghostCar); this.ghostCar = null; }
+    this.ghostMaterial?.dispose();this.ghostMaterial=null;
+    this.ghostGeometry?.dispose();this.ghostGeometry=null;
     if (!on) return;
     const g = new THREE.Group(), tpl = this.carTemplates?.[model];
     const body = tpl ? instantiate(tpl, { paint: 0x7fe7ff, team: 0xffffff }) : new THREE.Mesh(new THREE.BoxGeometry(CAR_LEN, 1.1, 2));
-    const mat = new THREE.MeshBasicMaterial({ color: 0x7fe7ff, transparent: true, opacity: 0.3, depthWrite: false, fog: false }); this.disposables.push(mat);
+    if(!tpl)this.ghostGeometry=(body as THREE.Mesh).geometry;
+    const mat = this.ghostMaterial = new THREE.MeshBasicMaterial({ color: 0x7fe7ff, transparent: true, opacity: 0.3, depthWrite: false, fog: false });
     body.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) m.material = mat; });
     g.add(body); g.visible = false; g.rotation.order = 'YXZ'; this.scene.add(g); this.ghostCar = g;
   }
@@ -687,6 +692,7 @@ export class RaceView {
   static intensity(race: RaceState): number { return Math.min(1.4, kmh(race.player.car) / 270 + (boosting(race.player.car) ? 0.25 : 0)); }
 
   dispose(): void {
+    this.setGhost('',false);
     this.roadLights?.dispose();this.roadLights=null;
     this.outposts?.dispose();this.outposts=null;
     disposeRenderTrees([this.scene],r=>isSharedModelResource(r)||r===dot||r===this.carEnv,this.disposables);

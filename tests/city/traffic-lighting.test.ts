@@ -3,7 +3,7 @@ import {nearbyVehicleLights,frameEmissionChance} from '../../src/city/traffic-li
 const v=(id:number,x:number,y:number,alive=true,driver=1,burn=0)=>({id,x,y,alive,driver,burn});
 describe('LAST CITY traffic lighting budgets',()=>{
   it('keeps only eligible nearby cars ordered by squared distance',()=>{
-    const fleet=[v(1,50,0),v(2,5,0),v(3,3,0,false),v(4,1,0,true,0),v(5,20,0,true,1,1),v(6,1e4,0),v(7,10,0)];
+    const fleet=[v(1,50,0),v(2,5,0),v(3,3,0,false),v(4,1,0,true,1),v(5,20,0,true,1,1),v(6,1e4,0),v(7,10,0)];
     expect(nearbyVehicleLights(fleet,0,0,100,3).map(x=>x.id)).toEqual([4,2,7]);
   });
   it('uses a bounded reusable result array and drops distant results on the next frame',()=>{

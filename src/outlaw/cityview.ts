@@ -365,8 +365,8 @@ export class CityView {
     l.position.set(0, Math.max(0, pos.y - 18), 0);
     (l.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
   }
-  private lighting(clock: number, position: THREE.Vector3, rain: number): void {
-    const c = tex.skyColors(clock, this.frameSky); this.night = c.night; this.sky.update(c); this.sky.mesh.position.copy(position);
+  private lighting(clock: number, position: THREE.Vector3, rain: number, dt = 0): void {
+    const c = tex.skyColors(clock, this.frameSky); this.night = c.night; this.sky.update(c, dt); this.sky.mesh.position.copy(position);
     // Quantize the material update: rain changes surface response without rewriting geometry.
     const wet = Math.round(Math.max(0, Math.min(1, rain)) * 50) / 50;
     if (wet !== this.wetness) { this.wetness = wet; if (this.roadMat) { this.roadMat.roughness = .96 - .58 * wet; this.roadMat.metalness = .02 + .17 * wet; this.roadMat.color.setRGB(.47 - .15 * wet, .51 - .15 * wet, .53 - .14 * wet); } if (this.pavementMat) this.pavementMat.roughness = .93 - .37 * wet; }
@@ -388,7 +388,7 @@ export class CityView {
     for (const m of this.reflections) m.opacity = Math.min(.55, c.night * .3 + rain * .3);
   }
   update(dt: number, camera: THREE.PerspectiveCamera, clock: number, t: number, rain = 0): void {
-    if (this.disposed) return; this.lightning(dt, rain); this.lighting(clock, camera.position, rain); this.rainFx(dt, camera.position, rain); this.plumes.update(t, camera.position, this.night, rain);
+    if (this.disposed) return; this.lightning(dt, rain); this.lighting(clock, camera.position, rain, dt); this.rainFx(dt, camera.position, rain); this.plumes.update(t, camera.position, this.night, rain);
     const radius = this.quality === 'low' ? 610 : 810, halfChunk = this.map.half / 4;
     for (const c of this.chunks) { const dx = Math.max(0, Math.abs(camera.position.x - c.x) - halfChunk), dz = Math.max(0, Math.abs(camera.position.z - c.z) - halfChunk); c.root.visible = dx * dx + dz * dz < radius * radius; }
     if (this.signals && (Math.abs(t - this.signalTick) >= .25 || this.signalTick === -Infinity)) {

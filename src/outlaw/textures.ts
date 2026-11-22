@@ -120,7 +120,7 @@ export function skyColors(clock: number, out: SkyColors = blankSky()): SkyColors
   return out;
 }
 /** 역면 구와 매 프레임 갱신할 수 있는 셰이더. */
-export function makeSkyDome(): { mesh: THREE.Mesh; update: (colors: ReturnType<typeof skyColors>) => void } {
+export function makeSkyDome(): { mesh: THREE.Mesh; update: (colors: SkyColors, dt?: number) => void } {
   const initial = skyColors(12);
   const uniforms = { top: { value: initial.top }, horizon: { value: initial.horizon }, sunColor: { value: initial.sun }, sunDir: { value: initial.sunDir }, moonDir: { value: initial.moonDir }, night: { value: initial.night }, stars: { value: initial.stars }, time: { value: 0 } };
   const material = new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, fog: false, uniforms,
@@ -138,6 +138,15 @@ export function makeSkyDome(): { mesh: THREE.Mesh; update: (colors: ReturnType<t
         c=mix(c,mix(vec3(.22,.25,.30),vec3(.87,.87,.85),1.0-night),smoothstep(.58,.78,n)*.25*smoothstep(.03,.22,h));
         gl_FragColor=vec4(c,1.0); #include <tonemapping_fragment> #include <colorspace_fragment> }`.replace(/ #include/g, '\n#include').replace(/ }$/, '\n}') });
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(900, 32, 16), material); mesh.renderOrder = -10; mesh.frustumCulled = false;
-  const start = typeof performance !== 'undefined' ? performance.now() : 0;
-  return { mesh, update: (c) => { uniforms.top.value.copy(c.top); uniforms.horizon.value.copy(c.horizon); uniforms.sunColor.value.copy(c.sun); uniforms.sunDir.value.copy(c.sunDir); uniforms.moonDir.value.copy(c.moonDir); uniforms.night.value = c.night; uniforms.stars.value = c.stars; uniforms.time.value = typeof performance !== 'undefined' ? (performance.now() - start) / 1000 : 0; } };
+  // Shader clouds obey the actual game-frame clock, not performance.now():
+  // when a pause menu opens, the weather and procedural sky should both freeze.
+  let time = 0;
+  return { mesh, update: (c, dt = 0) => {
+    uniforms.top.value.copy(c.top); uniforms.horizon.value.copy(c.horizon);
+    uniforms.sunColor.value.copy(c.sun); uniforms.sunDir.value.copy(c.sunDir);
+    uniforms.moonDir.value.copy(c.moonDir); uniforms.night.value = c.night;
+    uniforms.stars.value = c.stars;
+    if (Number.isFinite(dt) && dt > 0) time += Math.min(dt, 0.25);
+    uniforms.time.value = time;
+  } };
 }

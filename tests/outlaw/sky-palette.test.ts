@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { skyColors } from '../../src/outlaw/textures';
+import { skyColors, makeSkyDome } from '../../src/outlaw/textures';
+import { ShaderMaterial } from 'three';
 
 describe('OUTLAW reusable sky palette', () => {
   it('returns the same sky buffers for repeated render frames', () => {
@@ -24,4 +25,17 @@ describe('OUTLAW reusable sky palette', () => {
     expect(noon).not.toBe(dusk);
     expect(noon.night).toBeLessThan(0.01);
   });
+});
+
+it('freezes procedural sky shader cloud time while the game is paused', () => {
+  const dome = makeSkyDome();
+  const mat = dome.mesh.material as ShaderMaterial;
+  const palette = skyColors(12);
+  dome.update(palette, .016);
+  const before = mat.uniforms.time.value as number;
+  for (let n = 0; n < 10; n++) dome.update(skyColors(12, palette), 0);
+  expect(mat.uniforms.time.value).toBe(before);
+  dome.update(palette, .1);
+  expect(mat.uniforms.time.value).toBeCloseTo(before + .1);
+  dome.mesh.geometry.dispose(); mat.dispose();
 });

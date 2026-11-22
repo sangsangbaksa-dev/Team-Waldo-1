@@ -22,7 +22,7 @@ export const createSlackAudio: CreateAudio = () => {
   };
   /** cut: 이 소리만 거는 로우패스(멀리서 들리는 소리). dest: 먹먹 필터를 우회할 때 direct. */
   const tone = (freq: number, duration: number, volume: number, type: OscillatorType = 'sine', end = freq, delay = 0, cut = 0, dest?: AudioNode): void => {
-    const c = ctx; const out = dest ?? filter; if (c?.state !== 'running' || !out) return; const t = c.currentTime + delay, osc = c.createOscillator(), gain = c.createGain();
+    const c = ctx; const out = dest ?? filter; if (muted || c?.state !== 'running' || !out) return; const t = c.currentTime + delay, osc = c.createOscillator(), gain = c.createGain();
     osc.type = type; osc.frequency.setValueAtTime(freq, t); osc.frequency.exponentialRampToValueAtTime(Math.max(1, end), t + duration);
     gain.gain.setValueAtTime(0.0001, t); gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, volume), t + 0.008); gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
     osc.connect(gain);
@@ -32,7 +32,7 @@ export const createSlackAudio: CreateAudio = () => {
     osc.start(t); osc.stop(t + duration + 0.01);
   };
   const noise = (duration: number, volume: number, frequency: number, delay = 0, cut = 0): void => {
-    const c = ctx; if (c?.state !== 'running' || !filter) return; const size = Math.max(1, Math.floor(c.sampleRate * duration)), buffer = c.createBuffer(1, size, c.sampleRate), data = buffer.getChannelData(0);
+    const c = ctx; if (muted || c?.state !== 'running' || !filter) return; const size = Math.max(1, Math.floor(c.sampleRate * duration)), buffer = c.createBuffer(1, size, c.sampleRate), data = buffer.getChannelData(0);
     for (let i = 0; i < size; i++) data[i] = Math.random() * 2 - 1;
     const source = c.createBufferSource(), band = c.createBiquadFilter(), gain = c.createGain(), t = c.currentTime + delay;
     source.buffer = buffer; band.type = 'bandpass'; band.frequency.value = frequency; band.Q.value = 0.7; gain.gain.setValueAtTime(Math.max(0.0002, volume), t); gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);

@@ -70,7 +70,7 @@ export class Sound {
 
   async start() {
     const Audio = globalThis.AudioContext || globalThis.webkitAudioContext;
-    if (!Audio) return;
+    if (!Audio || this.muted) return;
     try {
       if (!this.ctx) {
         this.ctx = new Audio({ latencyHint: "interactive" });
@@ -166,6 +166,10 @@ export class Sound {
   setMute(muted) {
     this.muted = Boolean(muted);
     this.applyLevel();
+    if (this.muted) {
+      if (this.clock !== null) globalThis.clearInterval(this.clock);
+      this.clock = null;
+    } else if (!this.paused) this.startClock();
   }
 
   pause(paused) {
@@ -182,7 +186,7 @@ export class Sound {
   }
 
   startClock() {
-    if (this.clock !== null) return;
+    if (this.clock !== null || !this.ready()) return;
     this.clock = globalThis.setInterval(() => this.tick(), 210);
   }
 

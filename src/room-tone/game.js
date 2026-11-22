@@ -22,6 +22,8 @@ import { modelBytes } from "./assets.js";
 import { chapters, makeLevel, paths, route, routeFrom, neighbors } from "./levels.mjs";
 import { buildEnvironment, buildHidingSpot, createHidingSpotKit } from "./environment.js";
 import { Sound } from "./sound.js";
+import { normalizeCampaign } from "./campaign.mjs";
+import { createPointerOwner, tryCapture } from "./input.mjs";
 
 const $ = (id) => document.getElementById(id),
   C = 2.7,
@@ -116,16 +118,10 @@ function read(k) {
 }
 function saved() {
   const s = read(SAVE);
-  return s?.v === 1 &&
-    Number.isInteger(s.ch) &&
-    s.ch >= 0 &&
-    s.ch < 4 &&
-    Array.isArray(s.found) &&
-    s.found.length === 3
-    ? s
-    : null;
+  return normalizeCampaign(s);
 }
 function save() {
+  if (!level) return;
   try {
     localStorage.setItem(
       SAVE,
@@ -136,6 +132,7 @@ function save() {
 function toggleAudio() {
   muted = !muted;
   sound.setMute(muted);
+  if (!muted && state !== "home") void sound.start();
   try {
     localStorage.setItem("rt-silent", JSON.stringify(muted));
   } catch { /* Browser storage or pointer lock is optional. */ }
@@ -163,8 +160,9 @@ function homepage() {
   $("continue").textContent = s
     ? "이어하기 · " + pad(s.ch) + "구역"
     : "이어하기";
-  $("completion").textContent = read(LAST)
-    ? "최근 탈출 기록  " + clock(read(LAST).elapsed)
+  const completed = read(LAST);
+  $("completion").textContent = Number.isFinite(completed?.elapsed) && completed.elapsed >= 0
+    ? "최근 탈출 기록  " + clock(completed.elapsed)
     : "";
 }
 function clearInputs() {
@@ -851,9 +849,9 @@ function drawMap(canvas) {
   ctx.fill();
   ctx.restore();
 }
-function mapPanel(fromBrief = false) {
-  if (!fromBrief && state !== "play") return;
-  returnFromMap = fromBrief ? brief : resume;
+function mapPanel(fromBrief = false, returnAction = null) {
+  if (!fromBrief && !returnAction && state !== "play") return;
+  returnFromMap = returnAction ?? (fromBrief ? brief : resume);
   modal(
     "시설 도면",
     chapters[ch].location + " · " + chapters[ch].goal,
@@ -1043,22 +1041,7 @@ function interact() {
       puzzle();
       return;
     }
-    modal(
-      c.station,
-      "세 개의 " + c.item + "를 회수하면 장치를 복구할 수 있습니다.",
-      notes,
-      [
-        [
-          "도면 보기",
-          () => {
-            state = "play";
-            mapPanel();
-          },
-        ],
-        ["닫기", resume, true],
-      ],
-      "station",
-    );
+    showStation();
   } else if (!solved) {
     message("문이 잠겼습니다. " + c.station + "에서 신호를 먼저 복원하세요.");
   } else if (ch < 3) {
@@ -1091,6 +1074,19 @@ function interact() {
       "won",
     );
   }
+}
+function showStation() {
+  const c = chapters[ch];
+  modal(
+    c.station,
+    "세 개의 " + c.item + "를 회수하면 장치를 복구할 수 있습니다.",
+    notes,
+    [
+      ["도면 보기", () => mapPanel(false, showStation)],
+      ["닫기", resume, true],
+    ],
+    "station",
+  );
 }
 $("act").onclick = interact;
 function caught() {

@@ -25,8 +25,9 @@ import { Sound } from "./sound.js";
 import { normalizeCampaign } from "./campaign.mjs";
 import { createPointerOwner, tryCapture } from "./input.mjs";
 import { initialMute } from "./preferences.mjs";
+import { createIdLookup } from "./dom.mjs";
 
-const $ = (id) => document.getElementById(id),
+const $ = createIdLookup(document),
   C = 2.7,
   SAVE = "waldo.rt03.campaign.v1",
   LAST = "waldo.rt03.complete.v1";
@@ -1079,7 +1080,7 @@ function interact() {
     showStation();
   } else if (!solved) {
     message("문이 잠겼습니다. " + c.station + "에서 신호를 먼저 복원하세요.");
-  } else if (ch < 3) {
+  } else if (ch < chapters.length - 1) {
     ch++;
     found = [false, false, false];
     solved = false;

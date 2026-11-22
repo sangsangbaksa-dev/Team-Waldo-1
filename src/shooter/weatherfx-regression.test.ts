@@ -22,6 +22,7 @@ describe('ZERO ZONE rain camera-follow behavior', () => {
     fx.update(1 / 60, 20, camera);
     const positions = rainPositions(fx);
     expect(positions.count).toBe(1120); // two vertices per streak
+    expect(positions.usage).toBe(THREE.DynamicDrawUsage); // streamed every frame
     for (let i = 0; i < positions.count; i += 2) {
       expect(Math.abs(positions.getX(i) - camera.x)).toBeLessThanOrEqual(46.01);
       expect(Math.abs(positions.getZ(i) - camera.z)).toBeLessThanOrEqual(46.01);

@@ -152,6 +152,9 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
     lobby = openLobby({ game: 'squad', onClose: () => { lobby = undefined; }, onMatch: s => startOnline(s) });
   }
   function startOnline(s: PvpSession): void {
+    // The matchmaking lobby closes itself on match, without invoking onClose.
+    // Forget its stale handle so the player can queue again after this match.
+    lobby = undefined;
     quitOnline();
     const net: SquadPvp = new SquadPvp(s, {
       onArmy: (r, a) => { const o = online; if (o?.net === net && !o.incoming.has(r)) { o.incoming.set(r, a); tryStart(); } },

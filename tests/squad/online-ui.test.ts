@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { openSquad } from '../../src/squad/game';
-import type { PvpSession } from '../../src/net/lobby';
+import { openLobby, type PvpSession } from '../../src/net/lobby';
 
 const callbacks = vi.hoisted(() => ({
   onMatch: null as null | ((session: PvpSession) => void),
@@ -9,10 +9,10 @@ const callbacks = vi.hoisted(() => ({
   setArmy: vi.fn(), clearArmy: vi.fn(), dispose: vi.fn(),
 }));
 vi.mock('../../src/net/lobby', () => ({
-  openLobby: ({ onMatch }: { onMatch: (session: PvpSession) => void }) => {
+  openLobby: vi.fn(({ onMatch }: { onMatch: (session: PvpSession) => void }) => {
     callbacks.onMatch = onMatch;
     return { close: vi.fn() };
-  },
+  }),
 }));
 vi.mock('../../src/squad/net', () => ({
   SquadPvp: class {
@@ -45,6 +45,7 @@ beforeEach(() => {
   vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));
   vi.stubGlobal('cancelAnimationFrame', vi.fn());
   callbacks.onMatch = null; callbacks.onGone = null;
+  vi.mocked(openLobby).mockClear();
   callbacks.setArmy.mockClear(); callbacks.clearArmy.mockClear(); callbacks.dispose.mockClear();
   localStorage.clear(); document.body.innerHTML = '';
 });
@@ -134,5 +135,27 @@ it('cancels pending rating-settlement retries on exit from an online forfeit', a
   vi.advanceTimersByTime(5_000);
   await Promise.resolve();
   expect(settle).not.toHaveBeenCalled();
+  button('#exit').click();
+});
+
+it('can launch matchmaking again after completing the previous online battle', async () => {
+  openSquad(vi.fn());
+  button('[data-mode="online"]').click();
+  button('#start').click();
+  await vi.dynamicImportSettled();
+  expect(openLobby).toHaveBeenCalledTimes(1);
+  callbacks.onMatch!({
+    host: true,
+    me: { id: 'blue', nickname: 'Blue' },
+    opponent: { id: 'red', nickname: 'Red' },
+    match: { id: 'match' },
+    backend: { report: vi.fn().mockResolvedValue({ status: 'finished', host_delta: 0, guest_delta: 0 }) },
+  } as unknown as PvpSession);
+  callbacks.onGone?.('bye');
+  button('#next').click();
+  expect(button('#start')).toBeTruthy();
+  button('#start').click();
+  await vi.dynamicImportSettled();
+  expect(openLobby).toHaveBeenCalledTimes(2);
   button('#exit').click();
 });

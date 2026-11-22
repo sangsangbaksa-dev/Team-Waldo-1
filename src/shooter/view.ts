@@ -20,6 +20,7 @@ import { waterDepth } from './terrain';
 import { makeFallbackTree } from './vegetation';
 import { resolveChaseCamera } from './camera';
 import { TracerPool, type TracerMesh } from './tracer-pool';
+import { advanceSparks } from './spark-sim';
 import { crateTexture, floorTexture, glowTexture, groundTexture, makeSky, wallTexture } from './textures';
 
 export type Quality = 'high' | 'standard' | 'low';
@@ -514,9 +515,7 @@ export class ShooterView {
     this.updateNades(dt);
     for (let i = this.tracers.length - 1; i >= 0; i--) { const f = this.tracers[i]; f.life -= dt; (f.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, f.life / f.max) * 0.9; if (f.life <= 0) { this.tracerPool.release(f.mesh); this.tracers.splice(i, 1); } }
     const pos = this.sparks.geometry.attributes.position as THREE.BufferAttribute, col = this.sparks.geometry.attributes.color as THREE.BufferAttribute;
-    for (let i = this.sparkData.length - 1; i >= 0; i--) { const s = this.sparkData[i]; s.life -= dt; s.vy -= 9 * dt; s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt; if (s.y < 0.02) { s.y = 0.02; s.vy *= -0.3; s.vx *= 0.6; s.vz *= 0.6; } if (s.life <= 0) this.sparkData.splice(i, 1); }
-    this.sparkData.forEach((s, i) => { pos.setXYZ(i, s.x, s.y, s.z); const k = Math.min(1, s.life * 2.5); col.setXYZ(i, s.r * k, s.g * k, s.b * k); });
-    const active = this.sparkData.length;
+    const active = advanceSparks(this.sparkData, dt, pos, col);
     if (this.sparks.geometry.drawRange.count !== active) this.sparks.geometry.setDrawRange(0, active);
     // No particle buffers need uploading when every spark has faded out.
     if (active) { pos.needsUpdate = true; col.needsUpdate = true; }

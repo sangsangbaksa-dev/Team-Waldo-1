@@ -173,7 +173,7 @@ export function createBattle(player: boolean, on?: (e: BattleEvent) => void) {
     if (!Number.isFinite(dt) || dt <= 0) return;
     dt = Math.min(dt, 0.1);
     b.time += dt; b.flash = Math.max(0, b.flash - dt * 2.2); b.capT = Math.max(0, b.capT - dt);
-    if (b.over !== null) { endT -= dt; if (endT <= 0) reset(); return; }
+    if (b.over !== null) { if (!player) { endT -= dt; if (endT <= 0) reset(); } return; }
     for (const t of [0, 1] as Team[]) {
       prod[t] = Math.max(0, prod[t] - dt);
       if (player && t === 0) continue;

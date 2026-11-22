@@ -99,3 +99,19 @@ it('rejects invalid mini RTS move coordinates before they corrupt unit orders', 
   for (let i = 0; i < 50; i++) battle.update(0.1);
   expect(Number.isFinite(battle.time)).toBe(true);
 });
+
+it('keeps the playable classroom RTS result until retry, while video replay still loops', () => {
+  const playable = createBattle(true);
+  playable.over = 1;
+  for (let i = 0; i < 50; i++) playable.update(0.1);
+  expect(playable.over).toBe(1);
+  expect(playable.train('i')).toBe(false);
+  expect(playable.command(120, 90)).toBeNull();
+  playable.reset();
+  expect(playable.over).toBeNull();
+
+  const video = createBattle(false);
+  video.over = 1;
+  for (let i = 0; i < 50; i++) video.update(0.1);
+  expect(video.over).toBeNull();
+});

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AIR, PLAYER } from './config';
-import { Match } from './sim';
-import { easePuppet, parseLoot, WorldSync, WEAPON_IDS, type PuppetTarget } from './sync';
+import { Match, type Player, type Vehicle } from './sim';
+import { canAcceptVehicleDamageReport, easePuppet, parseLoot, WorldSync, WEAPON_IDS, type PuppetTarget } from './sync';
 
 function fixture() {
   const m = new Match({seed: 42, mode: 'duel', difficulty: 'normal', humans: [{name:'A'}], fill: 2, authority: false});
@@ -65,6 +65,25 @@ describe('network synchronization regressions', () => {
     sync.vehicleState(car, 13, 15, 0, 0, -1, false, 300);
     expect(parkBox).toHaveBeenCalledTimes(1);
     parkBox.mockRestore();
+  });
+  it('accepts damage reports only from the remote human currently driving that car', () => {
+    const reporter = { id: 2, veh: 3, alive: true, remote: true, bot: false } as Player;
+    const vehicle = { id: 3, driver: 2, remote: true, wreck: false } as Vehicle;
+    expect(canAcceptVehicleDamageReport(true, vehicle, reporter, 42)).toBe(true);
+    expect(canAcceptVehicleDamageReport(true, {...vehicle, driver: 4}, reporter, 42)).toBe(false);
+    expect(canAcceptVehicleDamageReport(true, vehicle, {...reporter, veh: -1}, 42)).toBe(false);
+    expect(canAcceptVehicleDamageReport(true, vehicle, {...reporter, bot: true}, 42)).toBe(false);
+  });
+  it('rejects malformed or irrelevant multiplayer vehicle damage events', () => {
+    const reporter = { id: 2, veh: 3, alive: true, remote: true, bot: false } as Player;
+    const vehicle = { id: 3, driver: 2, remote: true, wreck: false } as Vehicle;
+    for (const damage of [0, -10, Infinity, NaN, '100']) {
+      expect(canAcceptVehicleDamageReport(true, vehicle, reporter, damage)).toBe(false);
+    }
+    expect(canAcceptVehicleDamageReport(false, vehicle, reporter, 10)).toBe(false);
+    expect(canAcceptVehicleDamageReport(true, {...vehicle, remote: false}, reporter, 10)).toBe(false);
+    expect(canAcceptVehicleDamageReport(true, {...vehicle, wreck: true}, reporter, 10)).toBe(false);
+    expect(canAcceptVehicleDamageReport(true, vehicle, {...reporter, alive: false}, 10)).toBe(false);
   });
   it('rejects out-of-bounds bot coordinates', () => {
     const {sync,bot}=fixture();

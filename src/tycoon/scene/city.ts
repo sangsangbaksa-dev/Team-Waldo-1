@@ -59,12 +59,32 @@ class BlockView {
   key = ''; rise = 1; riseDelay = 0; crane: THREE.Object3D | null = null; emitters: PlumeEmitter[] = [];
 }
 
+/** Release no-longer-visible storefront sign textures after dynamic lot rebuilds. */
+export function pruneUnusedSignMaterials(cache: Map<string, THREE.MeshBasicMaterial>, scene: THREE.Object3D): number {
+  const visible = new Set<THREE.Material>();
+  scene.traverse(node => {
+    if (!(node instanceof THREE.Mesh)) return;
+    if (Array.isArray(node.material)) for (const m of node.material) visible.add(m);
+    else visible.add(node.material);
+  });
+  let freed = 0;
+  for (const [key, mat] of cache) {
+    if (visible.has(mat)) continue;
+    mat.map?.dispose();
+    mat.dispose();
+    cache.delete(key);
+    freed++;
+  }
+  return freed;
+}
+
 export class CityView {
   readonly group = new THREE.Group();
   readonly colliders = new Colliders();
   private views = new Map<Block, BlockView>();
   /** Numeric grid index keeps crowd path checks O(1), without scanning 49 blocks per neighbor. */
   private blocksByIndex = new Map<number, Block>();
+  private readonly orderedBlocks: Block[];
   private facade: Record<FacadeStyle, THREE.MeshStandardMaterial>;
   private roofMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 });
   private detailMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.1 });
@@ -88,6 +108,9 @@ export class CityView {
 
   constructor(private layout: Layout, private quality: Quality) {
     for (const b of layout.blocks) this.blocksByIndex.set((b.i + HALF) * GRID + b.j + HALF, b);
+    // Rebuilding a block does not change its grid coordinate, so ordering is
+    // stable for the lifetime of this city and only needs sorting once.
+    this.orderedBlocks = [...layout.blocks].sort((a, b) => a.ring - b.ring || Math.abs(a.i) + Math.abs(a.j) - Math.abs(b.i) - Math.abs(b.j));
     const mk = (style: FacadeStyle, rough: number, metal: number): THREE.MeshStandardMaterial => {
       const m = facadeMaps(style);
       return new THREE.MeshStandardMaterial({ map: m.map, emissiveMap: m.emissive, emissive: 0xffffff, emissiveIntensity: 0.05, vertexColors: true, roughness: rough, metalness: metal });
@@ -239,8 +262,7 @@ export class CityView {
     const si = stageIndex(stage), changed = this.stage !== si; this.stage = si;
     this.spotViews.clear(); for (const v of views) this.spotViews.set(v.id, v);
     let order = 0, rebuilt = false;
-    const sorted = [...this.layout.blocks].sort((a, b) => a.ring - b.ring || Math.abs(a.i) + Math.abs(a.j) - Math.abs(b.i) - Math.abs(b.j));
-    for (const b of sorted) {
+    for (const b of this.orderedBlocks) {
       const key = `${blockUnlocked(b, si) ? 1 : 0}${blockTier(b, si)}|${b.lots.map(l => spotSig(l.spot ? this.spotViews.get(l.spot.id) : undefined)).join(',')}`;
       let v = this.views.get(b);
       if (v && v.key === key) continue;
@@ -250,7 +272,12 @@ export class CityView {
       if (animate && fresh && blockUnlocked(b, si)) { v.rise = 0.02; v.riseDelay = order++ * 0.05; v.bld.scale.y = 0.02; }
     }
     if (changed) { this.refillTrees(); this.refillSkyline(); } this.recolorBeacons();
-    if (rebuilt) this.refreshPlumes();
+    if (rebuilt) {
+      this.refreshPlumes();
+      // A shop can change brand or level repeatedly. Reclaim the retired
+      // canvas textures instead of retaining every historic sign in the GPU.
+      pruneUnusedSignMaterials(this.signMats, this.group);
+    }
     if (this.globeAnchor && !this.globe) this.addGlobe(this.globeAnchor.x, this.globeAnchor.y, this.globeAnchor.z);
     if (this.globe) this.globe.visible = si >= 6;
   }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PerspectiveCamera, Scene } from 'three';
-import { Colliders } from '../../src/tycoon/scene/layout';
+import { Colliders, buildLayout } from '../../src/tycoon/scene/layout';
+import { SPOTS } from '../../src/tycoon/core';
 import { Player } from '../../src/tycoon/scene/player';
 
 describe('HUSTLE player regression', () => {
@@ -30,5 +31,22 @@ describe('HUSTLE player regression', () => {
     expect(camera.position.x).toBeCloseTo(20 - Math.cos(player.camPitch) * player.dist);
     expect(camera.position.z).toBeCloseTo(20);
     expect(camera.position.distanceTo(player.pos)).toBeLessThan(10);
+  });
+});
+
+describe('HUSTLE smooth camera obstruction checks', () => {
+  it('does not interpolate the camera through a solid wall when its orbit changes abruptly', () => {
+    const player = new Player(new Scene(), null), camera = new PerspectiveCamera(), cols = new Colliders();
+    const block = buildLayout(SPOTS).blocks.find(b => b.i === 0 && b.j === 0)!;
+    cols.set(block, [{ x0: -1, x1: 1, z0: -1, z1: 1 }]);
+    player.teleport(-5, 0, 0);
+    player.camPitch = .1; player.camYaw = -Math.PI / 2;
+    player.placeCamera(camera, .016, cols);
+    // Simulate a stage-transition camera move without resetting interpolation.
+    player.pos.x = 5; player.camYaw = Math.PI / 2;
+    player.placeCamera(camera, .1, cols);
+    const out = { x: 0, z: 0 };
+    expect(cols.resolve(camera.position.x, camera.position.z, .5, out)).toBe(false);
+    expect(camera.position.toArray().every(Number.isFinite)).toBe(true);
   });
 });

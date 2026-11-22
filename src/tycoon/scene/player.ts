@@ -85,7 +85,19 @@ export class Player {
     }
     const wx = px + sy * cp * d, wy = Math.max(0.6, 0.18 + ty + sp * d), wz = pz + cy * cp * d;
     if (!this.camInit) { this.camPos.set(wx, wy, wz); this.camInit = true; }
-    const k = d < this.dist ? 1 : 1 - Math.pow(0.0005, dt); this.camPos.x += (wx - this.camPos.x) * k; this.camPos.y += (wy - this.camPos.y) * k; this.camPos.z += (wz - this.camPos.z) * k;
+    const k = d < this.dist ? 1 : 1 - Math.pow(0.0005, dt);
+    this.camPos.x += (wx - this.camPos.x) * k;
+    this.camPos.y += (wy - this.camPos.y) * k;
+    this.camPos.z += (wz - this.camPos.z) * k;
+    // The desired orbit is checked above, but its smoothed path can cut
+    // through a different building when the player turns sharply. Revalidate
+    // the actual rendered camera position against nearby geometry too.
+    if (this.camPos.y < 7) {
+      const x = this.camPos.x, z = this.camPos.z;
+      if (colliders.resolve(x, z, 0.5, t)) {
+        this.camPos.x = t.x; this.camPos.z = t.z;
+      }
+    }
     camera.position.copy(this.camPos); camera.lookAt(px, 0.18 + ty, pz);
   }
   look(dx: number, dy: number): void {

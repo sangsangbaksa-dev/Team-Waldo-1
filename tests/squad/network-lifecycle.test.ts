@@ -18,6 +18,9 @@ it('closes an abandoned PVP channel once and ignores late messages', async () =>
   await Promise.resolve();
   receive(null as unknown as NetMsg);
   receive('garbage' as unknown as NetMsg);
+  receive({ t: 'unknown' });
+  receive({ t: 'army', r: 1, a: [{ type: 'invalid', x: 0, y: 1 }] });
+  receive({ t: 'army', r: 9999, a: [{ type: 'guard', x: 0, y: 1 }] });
   expect(net.heard).toBe(false);
   receive({ t: 'bye', fin: false });
   expect(onGone).toHaveBeenCalledExactlyOnceWith('bye');

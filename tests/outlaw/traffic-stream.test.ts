@@ -18,3 +18,15 @@ describe('OUTLAW traffic spatial index lifecycle', () => {
     }
   });
 });
+
+it('prunes distant vehicles during a reusable traffic snapshot without ghost occupants', () => {
+  const sim = new Sim(117);
+  const far = sim.map.half - 10;
+  const cars = Array.from({length:3},(_,i) => sim.spawnVehicle('sedan',far-3*i,far-2*i,0,{mode:'parked'}));
+  for(let step=0;step<3;step++){
+    sim.t += .1;sim.frame++;
+    stepTraffic(sim,.1);
+  }
+  for(const car of cars) expect(sim.vehicle(car.id)).toBeUndefined();
+  expect(sim.vehicles.every(v => Number.isFinite(v.x) && Number.isFinite(v.z))).toBe(true);
+});

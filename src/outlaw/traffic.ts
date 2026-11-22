@@ -4,7 +4,7 @@ import { STREAM_RADIUS, type Sim } from './sim';
 import { districtAt, isOpen, nearestLane, signal } from './world';
 import { autoDrive } from './vehicle';
 
-interface State { events: number; eventList: Sim['events']; cars: WeakMap<Vehicle, CarState>; cells: Map<number, Vehicle[]>; freeCells: Vehicle[][] }
+interface State { events: number; eventList: Sim['events']; cars: WeakMap<Vehicle, CarState>; cells: Map<number, Vehicle[]>; freeCells: Vehicle[][]; snapshot: Vehicle[] }
 interface CarState { panic: number; blocked: number; idle: number; lastCrash: boolean; update: number }
 const states = new WeakMap<Sim, State>();
 // Coordinates never exceed 800m, or ±34 cells at 24m: this 12-bit encoding
@@ -18,7 +18,7 @@ const CAR_POOLS: Record<District, readonly VehicleKind[]> = {
   residential: [...BASE_CAR_POOL, 'hatch', 'suv', 'sedan', 'sports'],
   park: [...BASE_CAR_POOL, 'hatch', 'suv', 'sedan', 'sports'],
 };
-function state(sim: Sim): State { let s = states.get(sim); if (!s) { s = { events: 0, eventList: sim.events, cars: new WeakMap(), cells: new Map(), freeCells: [] }; states.set(sim, s); } return s; }
+function state(sim: Sim): State { let s = states.get(sim); if (!s) { s = { events: 0, eventList: sim.events, cars: new WeakMap(), cells: new Map(), freeCells: [], snapshot: [] }; states.set(sim, s); } return s; }
 function carState(s: State, v: Vehicle): CarState { let c = s.cars.get(v); if (!c) { c = { panic: 0, blocked: 0, idle: 0, lastCrash: false, update: 0 }; s.cars.set(v, c); } return c; }
 function chooseCar(sim: Sim, d: District): VehicleKind {
   const pool = CAR_POOLS[d];
@@ -72,8 +72,13 @@ export function stepTraffic(sim: Sim, dt: number): void {
     if (!bucket) { bucket = s.freeCells.pop() ?? []; grid.set(k, bucket); }
     bucket.push(v);
   }
+  // Preserve the order and membership snapshot even when far cars are
+  // removed mid-update, without allocating a new array at every 60 Hz tick.
+  const snapshot = s.snapshot;
+  snapshot.length = 0;
+  for (const v of sim.vehicles) snapshot.push(v);
   let moving = 0, parked = 0, removed = 0;
-  for (const v of sim.vehicles.slice()) {
+  for (const v of snapshot) {
     if (v.keep || v.driver === PLAYER_ID || p.vehicle === v.id || v.mode === 'police' || v.mode === 'scripted' || v.mode === 'none') continue;
     const dist = Math.hypot(v.x - p.x, v.z - p.z);
     if (removed < 2 && dist > STREAM_RADIUS * (v.stolen && !v.driver ? 2 : 1.2)) { sim.removeVehicle(v); removed++; continue; }
@@ -135,6 +140,7 @@ export function stepTraffic(sim: Sim, dt: number): void {
     if (c.idle > 8 && c.idle - elapsed <= 8) { v.lane = nearestLane(sim.map, v.x, v.z, v.h); v.path = []; }
     if (c.idle > 20 && removed < 2 && !v.stolen) { sim.removeVehicle(v); removed++; moving--; }
   }
+  snapshot.length = 0;
   const d = districtAt(sim.map, p.x, p.z), goal = d === 'downtown' || d === 'commercial' ? 30 : d === 'residential' ? 18 : 10;
   if (moving < Math.min(36, goal)) spawn(sim, false);
   if (parked < 28) spawn(sim, true);

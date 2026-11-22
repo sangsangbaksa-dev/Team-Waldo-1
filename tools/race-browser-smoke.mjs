@@ -113,6 +113,23 @@ try{
       await page.locator('.tile').first().waitFor();
       assert.equal(await page.locator('.rc-root').count(),0,'Exit must clean up race DOM');
       assert.equal(await page.evaluate(()=>window.__race),undefined,'Exit must release debug reference');
+      // Multiplayer lobby is a separate DOM portal. Exiting SPEED RUSH must tear
+      // down an already-open lobby and cancel a still-pending dynamic import.
+      await page.locator('#start-race').click();
+      await page.locator('.rc-setup').waitFor({state:'visible'});
+      if(await page.locator('[data-setup="pvp"]').count()){
+        await page.locator('[data-setup="pvp"]').click();
+        await page.locator('.pvp-root').waitFor({state:'visible'});
+        await page.evaluate(()=>document.querySelector('.rc-btns [data-act="exit"]')?.click());
+        await page.locator('.pvp-root').waitFor({state:'detached'});
+        await page.locator('.tile').first().waitFor();
+        await page.locator('#start-race').click();
+        await page.locator('.rc-setup').waitFor({state:'visible'});
+        await page.locator('[data-setup="pvp"]').click();
+        await page.evaluate(()=>document.querySelector('.rc-btns [data-act="exit"]')?.click());
+        await page.waitForTimeout(500);
+        assert.equal(await page.locator('.pvp-root').count(),0,'Late lobby import must not reopen after game exit');
+      }
       assert.deepEqual(errors,[],'Page errors in '+size.name);
       results.push({size:size.name,status:'passed',start,driving});
       console.log('PASS SPEED RUSH browser: '+size.name);

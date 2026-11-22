@@ -79,7 +79,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 자산(백그라운드로 받기) ----------
   const loading = opts.loading;
   void loadShooterAssets(base, f => {
-    if (closed) return;
+    if (closed || Math.floor(f * 20) === Math.floor(assetPct * 20) && f < 1) return;
     assetPct = f;
     // Updating a small status label is cheaper than rebuilding the entire setup UI
     // for every network chunk (which also cancelled clicks on the start button).

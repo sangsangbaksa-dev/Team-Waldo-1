@@ -1,6 +1,6 @@
 ﻿import './classroom.css';
 import type { CreateView, SlackEvent } from './types';
-import { createBattle, W, H, COST } from './lapgame';
+import { createBattle, resizeBattleCanvas, W, H, COST } from './lapgame';
 
 // 교실 딴짓은 노트북 하나: video = 전략 게임 플레이 영상, game = 같은 전략 게임 직접 플레이. 수업 자료는 보스키(cover) 화면.
 type Pick = 'video' | 'game';
@@ -14,6 +14,7 @@ const KEYS = Array.from({ length: 4 }, () => '<i></i>').join('');
 export const createClassroomView: CreateView = (sim, audio) => {
   const el = document.createElement('div');
   el.className = 'sl-class';
+  el.tabIndex = -1;
   el.innerHTML = `
     <div class="sl-room" aria-label="저녁 자습 교실" data-view="doc">
       <div class="sl-world">
@@ -51,7 +52,19 @@ export const createClassroomView: CreateView = (sim, audio) => {
   const actions = Array.from(el.querySelectorAll<HTMLButtonElement>('.sl-action'));
   const pop = q('.sl-pop');
   const vcv = q<HTMLCanvasElement>('.vid canvas'), gcv = q<HTMLCanvasElement>('.gm canvas');
-  const vctx = vcv.getContext('2d')!, gctx = gcv.getContext('2d')!;
+  const vctx = vcv.getContext('2d'), gctx = gcv.getContext('2d');
+  const sizes = new Map<Element, DOMRectReadOnly>();
+  const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(entries => {
+    for (const entry of entries) sizes.set(entry.target, entry.contentRect);
+  });
+  resize?.observe(vcv); resize?.observe(gcv);
+  const draw = (ctx: CanvasRenderingContext2D | null, battle: ReturnType<typeof createBattle>) => {
+    if (!ctx) return;
+    const size = sizes.get(ctx.canvas);
+    if (size) resizeBattleCanvas(ctx.canvas, size.width, size.height, window.devicePixelRatio);
+    battle.draw(ctx);
+  };
+  const gameWindow = q('.sl-win.gm');
   const sub = q('.sl-sub'), track = q('.sl-track i'), vtime = q('.vid em'), batEl = q('.sl-tbat');
   const oreEl = q('[data-ore]'), scEl = q('[data-sc]'), endEl = q('.sl-end');
   const trainBtns = Array.from(el.querySelectorAll<HTMLButtonElement>('[data-train]'));
@@ -63,42 +76,54 @@ export const createClassroomView: CreateView = (sim, audio) => {
   // 영상 창은 양쪽 AI 가 싸우는 장면, 게임 창은 청군을 내가 지휘한다(점수는 창 안에서만 씀)
   const vid = createBattle(false);
   const game = createBattle(true, e => { if (e === 'train') audio.play('key', 0.4); else if (e === 'order') audio.play('click', 0.3); else if (e === 'hq') audio.play('fun', 0.4); else if (e === 'win') audio.play('chime'); else if (e === 'lose') audio.play('click', 0.5); });
-  let coverKey = false, coverPointer = false;
+  let coverKey = false, coverPointer: number | null = null;
   let step = 0, stepLv = 0, relief = 0, popT = 0, quiet = 0, strike = 0, vt = 0, gHand = 0.5;
-  const syncCover = () => sim.setCover(coverKey || coverPointer);
+  const syncCover = () => sim.setCover(coverKey || coverPointer !== null || !sim.state.activity);
   const choose = (id: Pick) => {
     audio.resume();
     const next = sim.state.activity === id ? null : id;
     sim.doActivity(next);
-    if (next && sim.state.cover && !coverKey && !coverPointer) sim.setCover(false); // 딴짓을 고르면 보스키 해제
+    syncCover();
     if (next && sim.state.activity === next) audio.play('click', 0.5);
   };
   const view = () => (sim.state.cover || !sim.state.activity ? 'doc' : sim.state.activity === 'video' ? 'video' : 'game');
   const train = (k: 'w' | 'i' | 't') => { audio.resume(); if (view() === 'game') game.train(k); };
   const keydown = (event: KeyboardEvent) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.code === 'Space') {
+      if (event.target instanceof HTMLButtonElement && event.target !== cover) return;
       event.preventDefault();
       if (!event.repeat) { audio.resume(); coverKey = true; syncCover(); }
     } else if (!event.repeat && (event.key === '1' || event.key === '2')) {
       event.preventDefault(); choose(picks[Number(event.key) - 1].id);
     } else if (!event.repeat && view() === 'game' && /^[qwe]$/i.test(event.key)) train(({ q: 'w', w: 'i', e: 't' } as const)[event.key.toLowerCase() as 'q' | 'w' | 'e']);
   };
-  const keyup = (event: KeyboardEvent) => { if (event.code === 'Space') { event.preventDefault(); coverKey = false; syncCover(); } };
-  const release = () => { coverKey = false; coverPointer = false; syncCover(); };
-  const pointerDown = (event: PointerEvent) => { event.preventDefault(); audio.resume(); coverPointer = true; cover.setPointerCapture(event.pointerId); syncCover(); };
-  const pointerUp = () => { coverPointer = false; syncCover(); };
-  const actionClick = (event: Event) => {
+  const keyup = (event: KeyboardEvent) => { if (coverKey && event.code === 'Space') { event.preventDefault(); coverKey = false; syncCover(); } };
+  const release = () => {
+    if (!coverKey && coverPointer === null) return;
+    const pointer = coverPointer; coverKey = false; coverPointer = null; syncCover();
+    if (pointer !== null && cover.hasPointerCapture(pointer)) cover.releasePointerCapture(pointer);
+  };
+  const focusout = (event: FocusEvent) => { if (!(event.relatedTarget instanceof Node) || !el.contains(event.relatedTarget)) release(); };
+  const pointerDown = (event: PointerEvent) => {
+    if (event.button !== 0 || coverPointer !== null) return;
+    event.preventDefault(); cover.focus({ preventScroll: true }); audio.resume();
+    coverPointer = event.pointerId; cover.setPointerCapture(event.pointerId); syncCover();
+  };
+  const pointerUp = (event: PointerEvent) => { if (coverPointer === event.pointerId) { coverPointer = null; syncCover(); } };
+  const actionClick = (event: MouseEvent) => {
     const t = event.target as HTMLElement;
     const button = t.closest<HTMLButtonElement>('[data-activity]');
-    if (button) { choose(button.dataset.activity as Pick); return; }
+    if (button) { if (event.detail > 0) el.focus({ preventScroll: true }); choose(button.dataset.activity as Pick); return; }
     const tb = t.closest<HTMLButtonElement>('[data-train]');
-    if (tb) train(tb.dataset.train as 'w' | 'i' | 't');
+    if (tb) { if (event.detail > 0) el.focus({ preventScroll: true }); train(tb.dataset.train as 'w' | 'i' | 't'); }
   };
   const gpos = (e: PointerEvent) => { const r = gcv.getBoundingClientRect(); return [((e.clientX - r.left) / r.width) * W, ((e.clientY - r.top) / r.height) * H, (e.clientX - r.left) / r.width] as const; };
-  const gDown = (e: PointerEvent) => { if (view() !== 'game') return; audio.resume(); const [x, y] = gpos(e); game.command(x, y); };
+  const gDown = (e: PointerEvent) => { if (e.button !== 0 || view() !== 'game') return; el.focus({ preventScroll: true }); audio.resume(); const [x, y] = gpos(e); game.command(x, y); };
   const gMove = (e: PointerEvent) => { gHand = gpos(e)[2]; };
-  window.addEventListener('keydown', keydown);
-  window.addEventListener('keyup', keyup);
+  el.addEventListener('keydown', keydown);
+  el.addEventListener('keyup', keyup);
+  el.addEventListener('focusout', focusout);
   window.addEventListener('blur', release);
   cover.addEventListener('pointerdown', pointerDown);
   cover.addEventListener('pointerup', pointerUp);
@@ -111,6 +136,10 @@ export const createClassroomView: CreateView = (sim, audio) => {
     el,
     frame(dt) {
       const s = sim.state, v = view();
+      if (gameWindow.inert !== (v !== 'game')) {
+        if (v !== 'game' && gameWindow.contains(document.activeElement)) el.focus({ preventScroll: true });
+        gameWindow.inert = v !== 'game';
+      }
       step = Math.max(0, step - dt); relief = Math.max(0, relief - dt); popT = Math.max(0, popT - dt); quiet = Math.max(0, quiet - dt); strike = Math.max(0, strike - dt);
       put(room, 'view', v);
       put(room, 'hint', String(s.watcher.hint));
@@ -131,12 +160,12 @@ export const createClassroomView: CreateView = (sim, audio) => {
       game.update(dt);
       let fl = v === 'doc' ? 0.1 : 0;
       if (v === 'video') {
-        vid.update(dt); vid.draw(vctx); vt += dt; fl = vid.flash;
+        vid.update(dt); draw(vctx, vid); vt += dt; fl = vid.flash;
         txt(sub, vid.capT > 0 ? vid.cap : ''); sub.classList.toggle('on', vid.capT > 0);
         const sec = Math.floor(vt), m = `${String(Math.floor(sec / 60) % 100).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`; txt(vtime, m);
-        track.style.width = `${((vt % 90) / 90 * 100).toFixed(1)}%`;
+        track.style.transform = `scaleX(${(vt % 90) / 90})`;
       } else if (v === 'game') {
-        game.draw(gctx); fl = game.flash;
+        draw(gctx, game); fl = game.flash;
         txt(oreEl, String(game.ore)); txt(scEl, String(game.score));
         for (const b of trainBtns) { const c = COST[b.dataset.train as 'w' | 'i' | 't'], off = game.ore < c || game.prod > 0 || game.over !== null; if (b.disabled !== off) b.disabled = off; }
         txt(endEl, game.over === null ? '' : game.over === 0 ? '승리! 적 본진 파괴' : '패배… 본진이 무너졌다'); endEl.classList.toggle('on', game.over !== null);
@@ -156,11 +185,12 @@ export const createClassroomView: CreateView = (sim, audio) => {
       }
     },
     dispose() {
-      window.removeEventListener('keydown', keydown); window.removeEventListener('keyup', keyup); window.removeEventListener('blur', release);
+      resize?.disconnect();
+      el.removeEventListener('keydown', keydown); el.removeEventListener('keyup', keyup); el.removeEventListener('focusout', focusout); window.removeEventListener('blur', release);
       cover.removeEventListener('pointerdown', pointerDown); cover.removeEventListener('pointerup', pointerUp); cover.removeEventListener('pointercancel', pointerUp); cover.removeEventListener('lostpointercapture', pointerUp);
       gcv.removeEventListener('pointerdown', gDown); gcv.removeEventListener('pointermove', gMove);
       el.removeEventListener('click', actionClick);
-      if (coverKey || coverPointer) sim.setCover(false);
+      release();
     },
   };
 };

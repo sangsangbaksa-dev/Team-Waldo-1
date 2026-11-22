@@ -3,7 +3,7 @@
 import { ABILITIES, BUILDINGS, CARRY, MINE_TICKS, MULT, NODE_AMOUNT, RESEARCH, START_MINERALS, START_WORKERS, STIM_COST, SUPPLY_MAX, TANK_SIEGE, UNITS, type BuildKind, type ResearchKind, type UnitKind } from './config';
 import { buildMap, type RtsMap } from './map';
 import { Pather } from './path';
-import { G_HILL, RULES, coverMult, speedMult } from './terrain';
+import { G_FOREST, G_HILL, RULES, coverMult, speedMult } from './terrain';
 
 export type OrderType = 'idle' | 'move' | 'amove' | 'attack' | 'gather' | 'build';
 export interface Order { t: OrderType; x: number; y: number; target: number; phase: number; timer: number }
@@ -285,10 +285,18 @@ export class RtsSim {
   }
 
   /** 이 진영의 적 중 (x,y) 반경 안에서 가장 먼저 칠 대상. 공격할 수 있는 유닛 > 일꾼 > 건물 순으로 가중합니다. */
+  private targetVisible(x: number, y: number, target: Unit | Building): boolean {
+    if (target.k !== 'unit') return true;
+    const n = this.map.size, gx = Math.floor(target.x), gy = Math.floor(target.y);
+    if (gx < 0 || gy < 0 || gx >= n || gy >= n || this.map.ground[gy * n + gx] !== G_FOREST) return true;
+    const dx = target.x - x, dy = target.y - y;
+    return dx * dx + dy * dy <= RULES.forestSight * RULES.forestSight;
+  }
+
   pick(owner: number, x: number, y: number, range: number, extra = true): Unit | Building | null {
     let best: Unit | Building | null = null, bs = Infinity;
     for (const e of this.units) {
-      if (e.owner === owner || e.hp <= 0) continue; const d = this.dist(x, y, e.x, e.y) - UNITS[e.kind].radius; if (d > range) continue;
+      if (e.owner === owner || e.hp <= 0 || !this.targetVisible(x, y, e)) continue; const d = this.dist(x, y, e.x, e.y) - UNITS[e.kind].radius; if (d > range) continue;
       const s = d + (e.kind === 'worker' ? 2 : 0); if (s < bs) { bs = s; best = e; }
     }
     if (best && !extra) return best;
@@ -338,7 +346,7 @@ export class RtsSim {
       case 'move': if (this.walk(u, o.x, o.y, this.speedOf(u), 0.25)) this.order(u, idle()); break;
       case 'amove': {
         let t = o.target ? this.unit(o.target) ?? this.building(o.target) : undefined;
-        if (t && (t.hp <= 0 || this.gap(u, d.radius, t) > d.range + 6)) { t = undefined; o.target = 0; }
+        if (t && (t.hp <= 0 || !this.targetVisible(u.x, u.y, t) || this.gap(u, d.radius, t) > d.range + 6)) { t = undefined; o.target = 0; }
         if (!t && d.dmg > 0 && (u.id + this.tick) % 3 === 0) { const f = this.pick(u.owner, u.x, u.y, d.range + 3.5); if (f) { t = f; o.target = f.id; u.path = []; } }
         if (t) this.engage(u, t); else if (this.walk(u, o.x, o.y, this.speedOf(u), 0.6)) this.order(u, idle());
         break;
@@ -346,7 +354,7 @@ export class RtsSim {
       case 'attack': {
         const t = this.unit(o.target) ?? this.building(o.target);
         // 자동으로 잡은 목표(phase 1)는 너무 멀어지면 놓아 줍니다.
-        if (!t || t.hp <= 0 || (o.phase === 1 && this.dist(u.x, u.y, o.x, o.y) > 14)) { this.order(u, idle()); break; }
+        if (!t || t.hp <= 0 || !this.targetVisible(u.x, u.y, t) || (o.phase === 1 && this.dist(u.x, u.y, o.x, o.y) > 14)) { this.order(u, idle()); break; }
         this.engage(u, t); break;
       }
       case 'gather': this.gather(u); break;

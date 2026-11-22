@@ -28,7 +28,7 @@ export class Vision {
     const reveal = (cx: number, cy: number, r0: number): void => {
       const gx = Math.floor(cx), gy = Math.floor(cy), here = gx >= 0 && gy >= 0 && gx < n && gy < n ? ground[gy * n + gx] : 0, r = here === G_HILL ? r0 + RULES.hillVision : r0, fs2 = RULES.forestSight * RULES.forestSight;
       const r2 = r * r, x0 = Math.max(0, Math.floor(cx - r)), x1 = Math.min(n - 1, Math.ceil(cx + r)), y0 = Math.max(0, Math.floor(cy - r)), y1 = Math.min(n - 1, Math.ceil(cy + r));
-      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const dx = x + 0.5 - cx, dy = y + 0.5 - cy; const d2 = dx * dx + dy * dy; if (d2 <= r2 && (d2 <= fs2 || here === G_FOREST || ground[y * n + x] !== G_FOREST)) st[y * n + x] = FOG_VISIBLE; }
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const dx = x + 0.5 - cx, dy = y + 0.5 - cy; const d2 = dx * dx + dy * dy; if (d2 <= r2 && (d2 <= fs2 || ground[y * n + x] !== G_FOREST)) st[y * n + x] = FOG_VISIBLE; }
     };
     for (const u of sim.units) if (u.owner === this.owner && u.hp > 0) reveal(u.x, u.y, VISION[u.kind]);
     for (const b of sim.buildings) if (b.owner === this.owner && b.hp > 0) reveal(b.x + b.size / 2, b.y + b.size / 2, VISION[b.kind] + b.size / 2 - 1);

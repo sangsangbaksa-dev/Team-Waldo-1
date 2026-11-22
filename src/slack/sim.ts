@@ -1,5 +1,7 @@
 ﻿import type { ActivityId, CreateSim, SlackEvent, SlackState, WatchMode, WatcherKind } from './types';
 
+export const GOALS = [46, 54, 62] as const;
+
 const activities: Record<'class' | 'dorm', ActivityId[]> = {
   class: ['video', 'game'],
   dorm: ['game', 'video', 'chat', 'webtoon', 'shop', 'music'],
@@ -37,7 +39,7 @@ export const createSim: CreateSim = (stage, seed, level) => {
   const range = (min: number, max: number) => min + random() * (max - min);
   const state: SlackState = {
     stage, level, phase: 'ready', time: 0, limit: 150, cover: true, activity: null,
-    fun: 0, goal: [46, 54, 62][level - 1], sus: 0, sleepy: 0, study: 0, strikes: 0,
+    fun: 0, goal: GOALS[level - 1], sus: 0, sleepy: 0, study: 0, strikes: 0,
     combo: 1, score: 0, friend: 20, watcher: { mode: 'away', t: 0, prog: 0, hint: 0, near: 0 },
     battery: 100, grade: null, caughtBy: null,
   };
@@ -67,6 +69,7 @@ export const createSim: CreateSim = (stage, seed, level) => {
   let mateTimer = range(14, 24), incTimer = range(20, 32);
   let napTime = 0, requestTime = 0, lookoutTime = 0, wifiTime = 0, darkTime = 0;
   let forceCover = 0;
+  let releaseAfterCover = false;
   let bribeCooldown = 0;
   let comboTime = 0;
   let comboBonus = 0;
@@ -76,7 +79,12 @@ export const createSim: CreateSim = (stage, seed, level) => {
   let quiet = false;
   let surprise = surpriseOf(state.watcher.kind);
   const setCover = (on: boolean) => {
-    if (state.phase !== 'play' || (!on && forceCover > 0) || state.cover === on) return;
+    if (state.phase !== 'play') return;
+    if (forceCover > 0) {
+      releaseAfterCover = !on;
+      if (!on) return;
+    }
+    if (state.cover === on) return;
     state.cover = on;
     events.push({ t: 'cover', on });
   };
@@ -225,6 +233,7 @@ export const createSim: CreateSim = (stage, seed, level) => {
     }
     state.score = score();
     if (state.phase === 'play' && state.time >= state.limit - 1e-8) { state.time = state.limit; finish(); }
+    if (forceCover === 0 && releaseAfterCover) { releaseAfterCover = false; setCover(false); }
   };
   return {
     state,

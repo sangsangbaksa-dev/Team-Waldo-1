@@ -123,7 +123,7 @@ export class Scenery {
     g.strokeStyle = 'rgba(220,245,255,.55)'; g.lineWidth = 2; for (let i = 0; i < 26; i++) { const x = 24 + rnd() * 80, y = rnd() * 256, l = 10 + rnd() * 22; g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + 6, y + l / 2, x - 2, y + l); g.stroke(); }
     const tex = new THREE.CanvasTexture(c); tex.wrapT = THREE.RepeatWrapping; tex.colorSpace = THREE.SRGBColorSpace;
     const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.15, metalness: 0.1, emissive: 0x153c36, emissiveIntensity: 0.5, depthWrite: false, side: THREE.DoubleSide });
-    const mesh = new THREE.Mesh(geo, mat); mesh.renderOrder = 1; this.scene.add(mesh); this.tick.push(t => { tex.offset.y = -t * 0.06; });
+    const mesh = new THREE.Mesh(geo, mat); mesh.renderOrder = 1; this.scene.add(mesh); this.tick.push(t => { tex.offset.y = -t * 0.06; mat.emissiveIntensity = 0.5 + 0.08 * Math.sin(t * 1.3); });
     // 강가 돌멩이와 갈대
     const rnd2 = seeded(21), stones = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.45, 0), new THREE.MeshStandardMaterial({ color: 0x8d8d86, roughness: 0.9, flatShading: true }), 90); const m4 = new THREE.Matrix4(); let n = 0;
     for (let i = 0; i < 45; i++) {

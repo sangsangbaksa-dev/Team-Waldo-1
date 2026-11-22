@@ -271,7 +271,12 @@ export class CityView {
     const lit = new THREE.MeshBasicMaterial({ vertexColors: true }); this.materials.add(lit);
     for (const [kind, props] of groups) {
       const source = this.assets?.props[kind];
-      if (source) { const baked = bake(source); for (const [part, g] of Object.entries(baked)) if (g) this.instances(propGeometry(g, props.length > 1000 ? 64 : 130), part === 'glow' ? lit : fixed, props); }
+      if (source) {
+        const baked = bake(source);
+        for (const [part, g] of Object.entries(baked)) if (g) {
+          this.staticProps(propGeometry(g, props.length > 1000 ? 64 : 130), part === 'glow' ? lit : fixed, props);
+        }
+      }
       else {
         const parts: THREE.BufferGeometry[] = [], add = (g: THREE.BufferGeometry, color: number): void => { parts.push(surface(g, 4, color)); };
         if (kind.startsWith('tree')) {
@@ -300,7 +305,7 @@ export class CityView {
           const wide = ['kiosk', 'dumpster', 'barrier'].includes(kind), tall = ['phone_booth', 'kiosk', 'vending'].includes(kind), color = kind === 'hydrant' ? 0xa45d46 : kind === 'mailbox' ? 0x45637d : 0x65716c;
           add(new THREE.BoxGeometry(wide ? 2 : .55, tall ? 2.3 : .9, wide ? 1 : .55).translate(0, tall ? 1.15 : .45, 0), color);
         }
-        const g = mergeGeometries(parts, false)!; parts.forEach(p => p.dispose()); this.instances(g, fixed, props);
+        const g = mergeGeometries(parts, false)!; parts.forEach(p => p.dispose()); this.staticProps(g, fixed, props);
       }
       if (kind === 'billboard') {
         const m = this.mat({ map: this.texture(tex.billboardTexture(2)), side: THREE.DoubleSide, roughness: .8 }); this.instances(new THREE.PlaneGeometry(6.7, 3.2).translate(0, 5, .12), m, props);
@@ -313,6 +318,26 @@ export class CityView {
         }
       }
     }
+  }
+  private staticProps(g: THREE.BufferGeometry, material: THREE.Material, props: Prop[]): void {
+    if (props.length > 200 || material instanceof THREE.MeshBasicMaterial) {
+      this.instances(g, material, props);
+      return;
+    }
+    // Rare prop types share an opaque draw in each chunk. Keep dense props instanced.
+    const flat = g.index ? g.toNonIndexed() : g;
+    for (const name of Object.keys(flat.attributes)) {
+      if (name !== 'position' && name !== 'normal' && name !== 'color') flat.deleteAttribute(name);
+    }
+    for (const p of props) {
+      this.matrix.position.set(p.x, .15, p.z);
+      this.matrix.rotation.set(0, -p.ry, 0);
+      this.matrix.scale.setScalar(p.scale);
+      this.matrix.updateMatrix();
+      this.put(p.x, p.z, material, flat.clone().applyMatrix4(this.matrix.matrix));
+    }
+    if (flat !== g) flat.dispose();
+    g.dispose();
   }
   private buildSignals(): void {
     const props: Prop[] = [], groups: number[] = [], lamps: number[] = [];

@@ -1,5 +1,14 @@
 // 노트북 속 전략 게임(FRONTLINE 풍 탑뷰 RTS). 영상 창은 양쪽 AI 가 싸우는 장면, 게임 창은 왼쪽(0번 팀)을 플레이어가 지시한다. sim 과 무관.
 export const W = 320, H = 180;
+const MAX_DPR = 2;
+export function resizeBattleCanvas(canvas: HTMLCanvasElement, cssWidth: number, cssHeight: number, dpr: number): void {
+  if (cssWidth <= 0 || cssHeight <= 0) return;
+  const scale = Math.min(MAX_DPR, dpr || 1);
+  const width = Math.max(1, Math.round(cssWidth * scale));
+  const height = Math.max(1, Math.round(cssHeight * scale));
+  if (canvas.width !== width) canvas.width = width;
+  if (canvas.height !== height) canvas.height = height;
+}
 type K = 'w' | 'i' | 't';
 type Team = 0 | 1;
 interface T { team: Team; x: number; y: number; hp: number; r: number }
@@ -29,9 +38,12 @@ const isB = (t: T): t is B => 'b' in t;
 
 let terrain: HTMLCanvasElement | null = null, canopy: HTMLCanvasElement | null = null;
 function buildMaps() {
-  const mk = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; return c; };
-  terrain = mk(); canopy = mk();
-  const g = terrain.getContext('2d')!, c = canopy.getContext('2d')!;
+  const mk = () => { const c = document.createElement('canvas'); c.width = W * MAX_DPR; c.height = H * MAX_DPR; return c; };
+  const ground = mk(), crowns = mk();
+  const g = ground.getContext('2d'), c = crowns.getContext('2d');
+  if (!g || !c) return;
+  terrain = ground; canopy = crowns;
+  g.scale(MAX_DPR, MAX_DPR); c.scale(MAX_DPR, MAX_DPR);
   let s = 7; const r = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
   g.fillStyle = '#5a7a42'; g.fillRect(0, 0, W, H);
   for (let i = 0; i < 900; i++) { g.fillStyle = `hsl(${90 + r() * 25} ${30 + r() * 15}% ${27 + r() * 12}%)`; g.fillRect(r() * W, r() * H, 2 + r() * 3, 1 + r() * 2); }
@@ -51,6 +63,8 @@ function buildMaps() {
   g.fillStyle = '#7a5a37'; g.fillRect(RX0 - 4, BY - BH, RX1 - RX0 + 8, BH * 2);
   g.fillStyle = '#5a4128'; for (let x = RX0 - 3; x < RX1 + 4; x += 4) g.fillRect(x, BY - BH, 1, BH * 2);
   g.fillStyle = '#3f2e1d'; g.fillRect(RX0 - 4, BY - BH - 1, RX1 - RX0 + 8, 2); g.fillRect(RX0 - 4, BY + BH - 1, RX1 - RX0 + 8, 2);
+  g.fillStyle = '#d5ad68';
+  for (const x of [RX0 - 4, RX1 + 2]) for (const y of [BY - BH, BY + BH - 1]) g.fillRect(x, y, 2, 1);
   for (const k of ROCKS) {
     g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.ellipse(k[0] + 1.5, k[1] + 2, k[2], k[2] * 0.8, 0, 0, 7); g.fill();
     g.fillStyle = '#8b8f8d'; g.beginPath(); g.arc(k[0], k[1], k[2], 0, 7); g.fill();
@@ -85,7 +99,8 @@ export function createBattle(player: boolean, on?: (e: BattleEvent) => void) {
     units.push(u); return u;
   };
   const reset = () => {
-    units = []; tr.length = 0; bm.length = 0; ping = null; endT = 0; b.over = null; dirty = false;
+    units = []; tr.length = 0; bm.length = 0; ping = null; endT = 0; bridgeT = 2; dirty = false;
+    Object.assign(b, { over: null, time: 0, score: 0, cap: '', capT: 0, flash: 0, ore: 100, army: 2, prod: 0 });
     ore = [100, 100]; prod = [0, 0]; atk = [false, false]; nodeAmt = [1500, 1500, 1500, 1500];
     blds = [];
     for (const t of [0, 1] as Team[]) {
@@ -191,7 +206,7 @@ export function createBattle(player: boolean, on?: (e: BattleEvent) => void) {
             u.cd = st.cd; const dmg = st.dmg * (u.k === 't' && isB(t) ? 1.4 : 1) * (!isB(t) && inForest(t.x, t.y) ? 0.55 : 1);
             t.hp -= dmg; if (tr.length > 60) tr.shift(); tr.push({ x1: u.x, y1: u.y, x2: t.x, y2: t.y, t: 0.12 });
             b.flash = Math.min(1, b.flash + (u.k === 't' ? 0.12 : 0.03));
-            if (t.hp <= 0) kill(t, u);
+            if (t.hp <= 0) { kill(t, u); if (b.over !== null) break; }
           }
         } else move(u, t.x, t.y, dt);
       } else if (u.dest) { move(u, u.dest.x, u.dest.y, dt); if (Math.hypot(u.dest.x - u.x, u.dest.y - u.y) < 4) u.dest = null; }
@@ -204,14 +219,16 @@ export function createBattle(player: boolean, on?: (e: BattleEvent) => void) {
     bridgeT -= dt; if (bridgeT <= 0) { bridgeT = 2; if (band >= 4 && b.capT <= 0) say('다리 위 교전'); }
     if (dirty) { dirty = false; units = units.filter(u => u.hp > 0); blds = blds.filter(d => d.hp > 0 || d.b === 'hq'); }
     for (const f of tr) f.t -= dt; while (tr.length && tr[0].t <= 0) tr.shift();
-    for (const m of bm) m.t -= dt; while (bm.length && bm[0].t <= 0) bm.shift();
+    for (let i = bm.length - 1; i >= 0; i--) { bm[i].t -= dt; if (bm[i].t <= 0) bm.splice(i, 1); }
     if (ping) { ping.t -= dt; if (ping.t <= 0) ping = null; }
     b.ore = Math.floor(ore[0]); b.army = units.filter(u => u.team === 0 && u.k !== 'w').length; b.prod = prod[0];
   };
 
-  const bar = (g: CanvasRenderingContext2D, x: number, y: number, w: number, f: number) => { g.fillStyle = '#000a'; g.fillRect(x - w / 2, y, w, 1.6); g.fillStyle = f > 0.5 ? '#6fe06f' : f > 0.25 ? '#e0c24a' : '#e05a4a'; g.fillRect(x - w / 2, y, w * f, 1.6); };
+  const bar = (g: CanvasRenderingContext2D, x: number, y: number, w: number, f: number) => { g.fillStyle = '#000a'; g.fillRect(x - w / 2, y, w, 1.6); g.fillStyle = f > 0.5 ? '#6fe06f' : f > 0.25 ? '#e0c24a' : '#e05a4a'; g.fillRect(x - w / 2, y, w * Math.max(0, f), 1.6); };
   const draw = (g: CanvasRenderingContext2D) => {
-    g.drawImage(terrain!, 0, 0);
+    if (!terrain || !canopy) return;
+    g.setTransform(g.canvas.width / W, 0, 0, g.canvas.height / H, 0, 0);
+    g.drawImage(terrain, 0, 0, W, H);
     NODES.forEach((n, i) => { const f = Math.max(0.2, nodeAmt[i] / 1500); g.fillStyle = '#69d6e8'; g.beginPath(); g.moveTo(n[0], n[1] - 6 * f); g.lineTo(n[0] + 5 * f, n[1] + 3); g.lineTo(n[0] - 5 * f, n[1] + 3); g.fill(); g.fillStyle = '#d9f8ff'; g.fillRect(n[0] - 1, n[1] - 3 * f, 1.4, 3); });
     for (const d of blds) {
       const x = d.x - d.w / 2, y = d.y - d.h / 2;
@@ -229,7 +246,7 @@ export function createBattle(player: boolean, on?: (e: BattleEvent) => void) {
       if (u.hp < u.max) bar(g, u.x, u.y - u.r - 3, 7, u.hp / u.max);
     }
     g.strokeStyle = '#ffe9a0'; g.lineWidth = 0.9; g.beginPath(); for (const f of tr) { g.moveTo(f.x1, f.y1); g.lineTo(f.x2, f.y2); } g.stroke();
-    g.globalAlpha = 0.8; g.drawImage(canopy!, 0, 0); g.globalAlpha = 1;
+    g.globalAlpha = 0.8; g.drawImage(canopy, 0, 0, W, H); g.globalAlpha = 1;
     for (const m of bm) { const p = 1 - m.t / (m.big ? 0.8 : 0.4), rad = (m.big ? 4 + p * 14 : 2 + p * 6); g.fillStyle = `rgba(255,${Math.round(190 - p * 120)},60,${0.9 - p * 0.9})`; g.beginPath(); g.arc(m.x, m.y, rad, 0, 7); g.fill(); }
     if (ping) { g.strokeStyle = ping.a ? '#ff6a5a' : '#7fd0ff'; g.lineWidth = 1; g.beginPath(); g.arc(ping.x, ping.y, 3 + (1 - ping.t / 0.7) * 7, 0, 7); g.stroke(); }
   };

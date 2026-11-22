@@ -52,7 +52,7 @@ export class RtsView {
     const sky = new THREE.Color(0xe3c898); this.scene.background = sky; this.scene.fog = new THREE.Fog(sky, 105, 290);
     if (quality === 'high') { this.environment = makeEnvironment(this.renderer, { top: 0x729bc0, horizon: 0xf0c28b, ground: 0x574838, sun: 0xffd8a1, sunDir: [0.5, 0.8, 0.35], sunPower: 3 }); this.scene.environment = this.environment; }
     this.scene.add(new THREE.HemisphereLight(0xfff0d4, 0x9a7a52, 1.2));
-    const rim = new THREE.DirectionalLight(0x8eb9e6, 0.55); rim.position.set(30, 18, -35); this.scene.add(rim);
+    const rim = new THREE.DirectionalLight(0x9bbce0, 0.7); rim.position.set(30, 18, -35); this.scene.add(rim);
     this.sun.castShadow = this.shadows; const sc = this.sun.shadow.camera; sc.left = -52; sc.right = 52; sc.top = 52; sc.bottom = -52; sc.near = 1; sc.far = 200;
     this.sun.shadow.mapSize.set(quality === 'high' ? 2048 : 1024, quality === 'high' ? 2048 : 1024); this.sun.shadow.bias = -0.0006; this.sun.shadow.normalBias = 0.04;
     this.scene.add(this.sun, this.sun.target);

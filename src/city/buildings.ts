@@ -1,11 +1,15 @@
 // LAST CITY — 건물 생성기: Blender 로 구운 외벽 타일 + 1층 상점가 + 돌림띠·벽기둥·셋백·옥상 설비.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { World } from './world';
 import { SIZE } from './defs';
 import type { Atmosphere } from './atmosphere';
 import type { Emitter } from './streetfx';
 
 export const FACADE_STYLES = ['brick', 'glass', 'deco', 'industrial', 'ribbon'] as const;
+export const BUILDING_SHADOW_LAYER = 2;
+const CHUNKS_PER_AXIS = 4;
+const CHUNK_SIZE = SIZE / CHUNKS_PER_AXIS;
 const GF = 100;                      // 1층 높이 (사람 키 약 40 — scale.ts 의 HUMAN 기준 — 의 2배 이상)
 const DOOR_H = 78, DOOR_W = 22;      // 출입문 높이 · 반폭
 const AWN = [0xb83a3a, 0x2f6b8f, 0x3f7d45, 0xd9a43a, 0x6b4a8f, 0xc9c2b0];
@@ -30,6 +34,17 @@ class Mesh {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(this.nor, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2)); g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3)); g.setIndex(this.idx); return g;
+  }
+}
+
+function buildingChunk(): { facades: Mesh[]; shops: Mesh[]; trim: Mesh } {
+  return { facades: FACADE_STYLES.map(() => new Mesh()), shops: [new Mesh(), new Mesh()], trim: new Mesh() };
+}
+
+const worldBounds = new THREE.Box3();
+class BuildingBatch extends THREE.Mesh {
+  override intersectsFrustum(frustum: THREE.Frustum): boolean {
+    return frustum.intersectsBox(worldBounds.copy(this.geometry.boundingBox!).applyMatrix4(this.matrixWorld));
   }
 }
 
@@ -87,12 +102,17 @@ export interface BuildingFx { blink: (t: number) => void; setMood: (atm: Atmosph
 /** 높은 건물 옥상의 붉은 항공장애등을 두 박자로 번갈아 깜박이게 하는 갱신 함수를 돌려준다. */
 export function buildBuildings(world: World, scene: THREE.Scene, base: string): BuildingFx {
   const loader = new THREE.TextureLoader(), tex = (n: string): THREE.Texture => { const t = loader.load(`${base}assets/tex/${n}.png`); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; return t; };
-  const facades = FACADE_STYLES.map(() => new Mesh()), shops = [new Mesh(), new Mesh()], trim = new Mesh(), c = new THREE.Color(), wall = new THREE.Color();
+  const chunks = new Map<number, ReturnType<typeof buildingChunk>>(), c = new THREE.Color(), wall = new THREE.Color();
   const tint = (s: { wall: string }): THREE.Color => wall.set(s.wall).lerp(new THREE.Color(0xe2ddd4), 0.5).clone();
   const beacons: [number, number, number][] = [], blades = BLADES.map(() => new Mesh()), streaks = new Mesh(), stacks: Emitter[] = [], white = new THREE.Color(1, 1, 1), signMats: THREE.MeshBasicMaterial[] = [];
   const doors = new Map<number, { x: number; y: number }>(); for (const z of world.businesses) doors.set(z.solid, z);
   world.map.solids.forEach((s, i) => {
     if (s.struct || !s.alive) return;
+    const x = Math.floor((s.x + s.w / 2) / CHUNK_SIZE), z = Math.floor((s.y + s.h / 2) / CHUNK_SIZE);
+    const key = z * CHUNKS_PER_AXIS + x;
+    let chunk = chunks.get(key);
+    if (!chunk) { chunk = buildingChunk(); chunks.set(key, chunk); }
+    const { facades, shops, trim } = chunk;
     const r = (k: number): number => hash(i * 31 + k), style = Math.floor(r(1) * FACADE_STYLES.length), F = facades[style], H = 150 + s.height * 1250 + r(2) * 60, tall = H > 520 && r(3) < 0.7;
     const tintC = tint(s), light = tintC.clone().lerp(new THREE.Color(0xf1ede4), 0.55), dark = tintC.clone().multiplyScalar(0.55);
     // 층(티어): 높은 건물은 위로 갈수록 좁아지는 셋백
@@ -195,12 +215,28 @@ export function buildBuildings(world: World, scene: THREE.Scene, base: string): 
       for (let q = 0; q < 2; q++) { const m = new THREE.Mesh(new THREE.PlaneGeometry(W, W * 0.375), sm); m.position.set(s.x + s.w / 2, top + W * 0.22 + 8, s.y + s.h / 2); m.rotation.y = q * Math.PI / 2; scene.add(m); }
     }
   });
-  const add = (m: Mesh, mat: THREE.Material): void => { if (!m.idx.length) return; const o = new THREE.Mesh(m.geo(), mat); o.castShadow = true; o.receiveShadow = true; scene.add(o); };
   const facadeMats = FACADE_STYLES.map(n => new THREE.MeshLambertMaterial({ map: tex(`facade_${n}`), emissiveMap: tex(`facade_${n}_e`), emissive: 0xffd9a8, emissiveIntensity: 0.5, vertexColors: true, side: THREE.DoubleSide }));
-  FACADE_STYLES.forEach((_, k) => add(facades[k], facadeMats[k]));
-  const shopMats = shops.map((_, k) => new THREE.MeshLambertMaterial({ map: shopTexture(k * 2), emissiveMap: shopEmissive(k * 2), emissive: 0xffffff, emissiveIntensity: 0.2, vertexColors: true, side: THREE.DoubleSide }));
-  shops.forEach((m, k) => add(m, shopMats[k]));
-  add(trim, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+  const shopMats = [0, 2].map(k => new THREE.MeshLambertMaterial({ map: shopTexture(k), emissiveMap: shopEmissive(k), emissive: 0xffffff, emissiveIntensity: 0.2, vertexColors: true, side: THREE.DoubleSide }));
+  const trimMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+  const buildingMats = [...facadeMats, ...shopMats, trimMat];
+  const shadowMat = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+  for (const { facades, shops, trim } of chunks.values()) {
+    const parts: THREE.BufferGeometry[] = [], materials: THREE.Material[] = [];
+    [...facades, ...shops, trim].forEach((m, k) => {
+      if (!m.idx.length) return;
+      parts.push(m.geo());
+      materials.push(buildingMats[k]);
+    });
+    const geometry = mergeGeometries(parts, true)!;
+    geometry.computeBoundingBox();
+    const building = new BuildingBatch(geometry, materials);
+    building.receiveShadow = true;
+    // A single shadow material draws the same geometry in one call per visible chunk.
+    const shadow = new BuildingBatch(geometry, shadowMat);
+    shadow.layers.set(BUILDING_SHADOW_LAYER);
+    shadow.castShadow = true;
+    scene.add(building, shadow);
+  }
   // 네온 돌출 간판(스스로 빛나는 재질)과 반사 줄기(가산 혼합)
   const bladeMats = BLADES.map(([text, color]) => new THREE.MeshBasicMaterial({ map: bladeTexture(text, color), side: THREE.DoubleSide }));
   blades.forEach((m, k) => { if (!m.idx.length) return; const o = new THREE.Mesh(m.geo(), bladeMats[k]); scene.add(o); });

@@ -1,5 +1,6 @@
 // OUTLAW CITY의 관절형 시민·차량·수집품과 네온 표식, 풀링된 전투 이펙트를 그립니다.
 import { OUTFITS } from './life';
+import { ActorBatches } from './actorbatch';
 import * as THREE from 'three';
 import { blankPose, calmState, computePose } from '../shared/character/pose';
 import { instantiate, type Baked, type CharModel } from '../city/models';
@@ -12,10 +13,13 @@ import type { Quality } from './cityview';
 import { standardize } from '../shared/gfx';
 
 interface Rig {
+  instances: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial | THREE.MeshBasicMaterial>[];
   root: THREE.Group; hip: THREE.Group; legs: THREE.Group[]; shins: THREE.Group[]; arms: THREE.Group[];
   hand: THREE.Group; flash: THREE.Sprite; gun: THREE.Object3D | null; weapon: WeaponId; nextPose: number; flashT: number;
 }
 interface CarView {
+  lod: { near: ReturnType<ActorBatches['carParts']>; far: ReturnType<ActorBatches['carParts']> } | null;
+  tier?: 'near' | 'far' | 'wreck';
   root: THREE.Group; body: THREE.Object3D; lamps: THREE.Group; brakes: THREE.Mesh[]; reverse: THREE.Mesh[]; sirens: THREE.Sprite[];
   policeNodes: THREE.Object3D[]; wheels: THREE.Object3D[]; last: number[]; vf: number; emit: number; skidX: number; skidZ: number; scorched: boolean;
 }
@@ -33,6 +37,8 @@ const UP = new THREE.Vector3(0, 1, 0);
 
 export class ActorView {
   private readonly root = new THREE.Group();
+  private readonly batches = new ActorBatches(this.root);
+  private paint: THREE.MeshStandardMaterial | null = null;
   private readonly geometries = new Set<THREE.BufferGeometry>();
   private readonly materials = new Set<THREE.Material>();
   private readonly palette = new Map<string, THREE.Material>();
@@ -187,7 +193,11 @@ export class ActorView {
     }
     const hand = new THREE.Group(); hand.position.set(0.03, -0.57, 0); hand.rotation.z = -1.42; arms[1].add(hand);
     const flash = this.sprite(hand, 0xffdb91, 0.65); flash.position.x = 0.65; flash.visible = false;
-    const r: Rig = { root, hip, legs, shins, arms, hand, flash, gun: null, weapon: 'fist', nextPose: 0, flashT: 0 };
+    const instances: Rig['instances'] = [];
+    if (p.kind !== 'player') root.traverse(o => {
+      if (o instanceof THREE.Mesh) { instances.push(o); o.layers.disableAll(); }
+    });
+    const r: Rig = { root, hip, legs, shins, arms, hand, flash, instances, gun: null, weapon: 'fist', nextPose: 0, flashT: 0 };
     root.name = `ped-${p.id}`; this.root.add(root); this.rigs.set(p.id, r); return r;
   }
   private gun(id: WeaponId): THREE.Object3D {
@@ -245,7 +255,11 @@ export class ActorView {
     }
     body.traverse(o => { if (/police_Light[AB]/i.test(o.name)) policeNodes.push(o); if (/wheel|tyre|tire/i.test(o.name) && !(o.parent && /wheel|tyre|tire/i.test(o.parent.name))) wheels.push(o); });
     root.add(lamps); this.root.add(root);
-    const c: CarView = { root, body, lamps, brakes, reverse, sirens, policeNodes, wheels, last: [], vf: v.vf, emit: 0, skidX: v.x, skidZ: v.z, scorched: false }; this.cars.set(v.id, c); return c;
+    const lod = template ? {
+      near: this.batches.carParts(v.kind + '/near', body, [...policeNodes, ...wheels]),
+      far: this.batches.carParts(v.kind + '/far', body, policeNodes),
+    } : null;
+    const c: CarView = { root, body, lamps, brakes, reverse, sirens, policeNodes, wheels, lod, last: [], vf: v.vf, emit: 0, skidX: v.x, skidZ: v.z, scorched: false }; this.cars.set(v.id, c); return c;
   }
   private makeLoot(p: Pickup): LootView {
     const root = new THREE.Group(), prop = new THREE.Group(), color = LOOT[p.kind]; root.add(prop); root.name = `pickup-${p.id}`;
@@ -339,7 +353,7 @@ export class ActorView {
       m.opacity = braking ? 0.95 : reversing ? tailIdle * 0.55 : tailIdle;
     });
     c.reverse.forEach(r => {
-      r.visible = !v.wrecked;
+      r.visible = reversing;
       (r.material as THREE.MeshBasicMaterial).opacity = reversing ? (night ? 1 : 0.88) : 0;
     });
     const pulse = Math.floor(this.time * 9) % 2; c.sirens.forEach((s, i) => { s.visible = v.siren && !v.wrecked && pulse === i; });
@@ -385,6 +399,7 @@ export class ActorView {
   update(dt: number, camera: THREE.PerspectiveCamera, clock: number): void {
     if (this.disposed) return; dt = Math.max(0, Number.isFinite(dt) ? dt : 0); this.time += dt; camera.getWorldPosition(this.cameraPos); this.sirenWash(); this.spikeStrips();
     const hour = ((clock % 24) + 24) % 24, night = hour >= 20 || hour < 6, livePeds = new Set<number>();
+    this.batches.begin();
     for (const p of this.sim.peds) {
       livePeds.add(p.id); const dist = Math.hypot(p.x - this.cameraPos.x, p.z - this.cameraPos.z), player = p.id === this.sim.player.id;
       let r = this.rigs.get(p.id); if (!r && !player && dist > 160 * this.drawScale) continue; r ??= this.makeRig(p); r.flashT = Math.max(0, r.flashT - dt);
@@ -400,14 +415,40 @@ export class ActorView {
       r.root.scale.set(1, p.crouch || p.mode === 'cower' ? 0.73 : 1, 1); r.root.rotation.set(0, -p.yaw, 0);
       if (!p.alive) { r.root.scale.setScalar(1); const fall = clamp(dead / 0.45, 0, 1); r.root.rotation.z = -Math.PI / 2 * fall; r.root.position.y += 0.27 * fall; }
       if (player || this.time >= r.nextPose || p.hurt > 0 || p.punchT > 0 || r.flash.visible) { this.pose(p, r); r.nextPose = this.time + (dist > 90 ? 0.22 : dist > 45 ? 0.1 : 0); }
+      if (r.instances.length) {
+        r.root.updateWorldMatrix(true, true);
+        for (const m of r.instances) {
+          const material = this.material(0xffffff, m.material.vertexColors, m.material instanceof THREE.MeshBasicMaterial);
+          this.batches.add(m.geometry, material, m.matrixWorld, m.castShadow, m.material.color);
+        }
+      }
     }
     this.prune(this.rigs, livePeds, r => r.root);
     const liveCars = new Set<number>();
     for (const v of this.sim.vehicles) {
-      liveCars.add(v.id); const near = Math.hypot(v.x - this.cameraPos.x, v.z - this.cameraPos.z) <= 320 * this.drawScale;
+      liveCars.add(v.id); const distance = Math.hypot(v.x - this.cameraPos.x, v.z - this.cameraPos.z), near = distance <= 320 * this.drawScale;
       let c = this.cars.get(v.id); if (!c && !near) continue; c ??= this.makeCar(v); c.root.visible = near; if (near) this.car(v, c, dt, night);
+      if (near && c.lod) {
+        const tier = v.wrecked ? 'wreck' : distance > 32 ? 'far' : 'near';
+        if (tier !== c.tier) {
+          for (const source of c.lod.far.sources) source.layers.enable(0);
+          if (tier !== 'wreck') for (const source of c.lod[tier].sources) source.layers.disable(0);
+          c.tier = tier;
+        }
+        if (tier !== 'wreck') {
+          c.root.updateWorldMatrix(true, false);
+          for (const part of c.lod[tier].parts) {
+            const m = part.material as THREE.Material;
+            if (m.name === 'Paint' && m instanceof THREE.MeshStandardMaterial) {
+              if (!this.paint) { this.paint = this.ownMat(m.clone()); this.paint.color.setHex(0xffffff); }
+              this.batches.add(part.geometry, this.paint, c.root.matrixWorld, part.castShadow, m.color);
+            } else this.batches.add(part.geometry, m, c.root.matrixWorld, part.castShadow);
+          }
+        }
+      }
     }
     this.prune(this.cars, liveCars, c => c.root);
+    this.batches.end();
     const liveLoot = new Set<number>();
     for (const p of this.sim.pickups) {
       liveLoot.add(p.id); const dist = Math.hypot(p.x - this.cameraPos.x, p.z - this.cameraPos.z), visible = !p.taken && dist < 90;
@@ -475,7 +516,7 @@ export class ActorView {
   }
   private releaseMaterials(o: THREE.Mesh): void { for (const m of Array.isArray(o.material) ? o.material : [o.material]) if (this.materials.has(m) && ![...this.palette.values()].includes(m)) { m.dispose(); this.materials.delete(m); } }
   dispose(): void {
-    if (this.disposed) return; this.disposed = true; this.root.removeFromParent(); this.root.clear();
+    if (this.disposed) return; this.disposed = true; this.batches.dispose(); this.root.removeFromParent(); this.root.clear();
     for (const g of this.geometries) g.dispose(); for (const m of this.materials) m.dispose(); this.glow.dispose();
     this.geometries.clear(); this.materials.clear(); this.palette.clear(); this.articulated.clear(); this.rigs.clear(); this.cars.clear(); this.loot.clear(); this.rockets.clear(); this.beacons.length = 0; this.fx.length = 0; this.lights.length = 0;
   }

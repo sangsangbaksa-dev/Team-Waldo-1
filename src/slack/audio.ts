@@ -6,8 +6,10 @@ const PENTA = [392, 440, 523, 587, 659, 784];
 
 export const createSlackAudio: CreateAudio = () => {
   let ctx: AudioContext | null = null, master: GainNode | null = null, filter: BiquadFilterNode | null = null, damp: GainNode | null = null, comp: DynamicsCompressorNode | null = null, direct: GainNode | null = null;
-  let muted = false, muffled = false, background: AudioNode[] = [], ambTimer = 0, bedTimer = 0, step = 0;
+  let muted = false, muffled = false, disposed = false, resuming = false;
+  let background: AudioNode[] = [], ambTimer = 0, bedTimer = 0, step = 0;
   const ensure = (): AudioContext | null => {
+    if (disposed) return null;
     if (ctx) return ctx;
     try {
       ctx = new AudioContext(); master = ctx.createGain(); filter = ctx.createBiquadFilter(); damp = ctx.createGain(); comp = ctx.createDynamicsCompressor(); direct = ctx.createGain();
@@ -19,25 +21,29 @@ export const createSlackAudio: CreateAudio = () => {
   };
   /** cut: 이 소리만 거는 로우패스(멀리서 들리는 소리). dest: 먹먹 필터를 우회할 때 direct. */
   const tone = (freq: number, duration: number, volume: number, type: OscillatorType = 'sine', end = freq, delay = 0, cut = 0, dest?: AudioNode): void => {
-    const c = ensure(); const out = dest ?? filter; if (!c || !out) return; const t = c.currentTime + delay, osc = c.createOscillator(), gain = c.createGain();
+    const c = ctx; const out = dest ?? filter; if (c?.state !== 'running' || !out) return; const t = c.currentTime + delay, osc = c.createOscillator(), gain = c.createGain();
     osc.type = type; osc.frequency.setValueAtTime(freq, t); osc.frequency.exponentialRampToValueAtTime(Math.max(1, end), t + duration);
     gain.gain.setValueAtTime(0.0001, t); gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, volume), t + 0.008); gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
     osc.connect(gain);
-    if (cut) { const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = cut; gain.connect(lp); lp.connect(out); } else gain.connect(out);
+    const lp = cut ? c.createBiquadFilter() : null;
+    if (lp) { lp.type = 'lowpass'; lp.frequency.value = cut; gain.connect(lp); lp.connect(out); } else gain.connect(out);
+    osc.onended = () => { osc.disconnect(); gain.disconnect(); lp?.disconnect(); };
     osc.start(t); osc.stop(t + duration + 0.01);
   };
   const noise = (duration: number, volume: number, frequency: number, delay = 0, cut = 0): void => {
-    const c = ensure(); if (!c || !filter) return; const size = Math.max(1, Math.floor(c.sampleRate * duration)), buffer = c.createBuffer(1, size, c.sampleRate), data = buffer.getChannelData(0);
+    const c = ctx; if (c?.state !== 'running' || !filter) return; const size = Math.max(1, Math.floor(c.sampleRate * duration)), buffer = c.createBuffer(1, size, c.sampleRate), data = buffer.getChannelData(0);
     for (let i = 0; i < size; i++) data[i] = Math.random() * 2 - 1;
     const source = c.createBufferSource(), band = c.createBiquadFilter(), gain = c.createGain(), t = c.currentTime + delay;
     source.buffer = buffer; band.type = 'bandpass'; band.frequency.value = frequency; band.Q.value = 0.7; gain.gain.setValueAtTime(Math.max(0.0002, volume), t); gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
     source.connect(band); band.connect(gain);
-    if (cut) { const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = cut; gain.connect(lp); lp.connect(filter); } else gain.connect(filter);
+    const lp = cut ? c.createBiquadFilter() : null;
+    if (lp) { lp.type = 'lowpass'; lp.frequency.value = cut; gain.connect(lp); lp.connect(filter); } else gain.connect(filter);
+    source.onended = () => { source.disconnect(); band.disconnect(); gain.disconnect(); lp?.disconnect(); };
     source.start(t); source.stop(t + duration);
   };
   const stopBackground = (): void => {
     clearTimeout(ambTimer); ambTimer = 0;
-    for (const node of background) { if (node instanceof OscillatorNode || node instanceof AudioBufferSourceNode) { try { node.stop(); } catch { /* already stopped */ } } node.disconnect(); }
+    for (const node of background) { if ('stop' in node) (node as AudioScheduledSourceNode).stop(); node.disconnect(); }
     background = [];
   };
   const loopNoise = (c: AudioContext): AudioBufferSourceNode => {
@@ -49,7 +55,7 @@ export const createSlackAudio: CreateAudio = () => {
     const o = c.createOscillator(), g = c.createGain(); o.frequency.value = rate; g.gain.value = depth; o.connect(g); g.connect(target); o.start(); background.push(o, g);
   };
   const ambience = (next: StageId | null): void => {
-    stopBackground(); if (!next) return; const c = ensure(); if (!c || !filter) return; const cls = next === 'class';
+    stopBackground(); if (!next) return; const c = ctx; if (!c || !filter) return; const cls = next === 'class';
     // 층 1: 전원 험(형광등 웅웅 / PC 팬 저음). 층 2: 방 공기 노이즈. 층 3: 멀리 복도·환풍기 일렁임. 합쳐서 0.03 안팎으로 효과음 아래에 깔리게 한다.
     const hum = c.createOscillator(), hg = c.createGain(); hum.type = 'sine'; hum.frequency.value = cls ? 60 : 95; hg.gain.value = cls ? 0.011 : 0.008; hum.connect(hg); hg.connect(filter); hum.start(); background.push(hum, hg);
     if (cls) { const h2 = c.createOscillator(), g2 = c.createGain(); h2.type = 'sine'; h2.frequency.value = 120; g2.gain.value = 0.004; h2.connect(g2); g2.connect(filter); h2.start(); background.push(h2, g2); lfo(c, 0.31, 0.003, g2.gain); }
@@ -69,7 +75,7 @@ export const createSlackAudio: CreateAudio = () => {
     if (!on) return;
     // 이어폰에서 새어 나오는 아주 작은 음악(먹먹 필터를 우회).
     const bed = (): void => { if (Math.random() < 0.7) tone(PENTA[Math.floor(Math.random() * PENTA.length)], 0.55, 0.012, 'sine', undefined, 0, 0, direct ?? undefined); bedTimer = window.setTimeout(bed, 360); };
-    if (ensure()) bed();
+    if (ctx) bed();
   };
   const play = (name: SfxName, vol = 1): void => {
     const v = Math.max(0, Math.min(1, vol));
@@ -107,9 +113,20 @@ export const createSlackAudio: CreateAudio = () => {
     }
   };
   return {
-    resume() { const c = ensure(); if (c?.state === 'suspended') void c.resume(); },
+    resume() {
+      const c = ensure();
+      if (!c || resuming || c.state === 'running' || c.state === 'closed') return;
+      resuming = true;
+      void c.resume().catch(() => {}).finally(() => { resuming = false; });
+    },
     play, ambience, muffle: setMuffle,
     setMuted(m) { muted = m; if (master && ctx) master.gain.setTargetAtTime(m ? 0 : MASTER, ctx.currentTime, .02); },
-    dispose() { stopBackground(); clearTimeout(bedTimer); if (ctx) void ctx.close(); ctx = null; master = null; filter = null; damp = null; comp = null; direct = null; },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      stopBackground(); clearTimeout(bedTimer); bedTimer = 0;
+      if (ctx && ctx.state !== 'closed') void ctx.close().catch(() => {});
+      ctx = null; master = null; filter = null; damp = null; comp = null; direct = null;
+    },
   };
 };

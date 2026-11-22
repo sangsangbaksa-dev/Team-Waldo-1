@@ -659,10 +659,22 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       let target: { x: number; y: number } | undefined;
       if (active === 1 || active === 2) target = w.hq(0) ?? undefined;
       else if (active === 0 || active === 3 || active === 4 || active === 5) {
-        const candidates = w.businesses.filter(z => active === 3 ? z.kind === 'gunshop' : active === 5 ? z.owner > 0 : z.owner < 0 && z.kind !== 'gunshop');
-        target = candidates.sort((a, c) => Math.hypot(a.x - b.x, a.y - b.y) - Math.hypot(c.x - b.x, c.y - b.y))[0];
+        let nearest = Infinity;
+        for (const z of w.businesses) {
+          const eligible = active === 3 ? z.kind === 'gunshop' : active === 5 ? z.owner > 0 : z.owner < 0 && z.kind !== 'gunshop';
+          if (!eligible) continue;
+          const distance = Math.hypot(z.x - b.x, z.y - b.y);
+          if (distance < nearest) { nearest = distance; target = z; }
+        }
       } else if (active >= 6) {
-        target = w.factions.filter(f => f.id !== 0 && f.alive).map(f => w.hq(f.id)).filter((h): h is NonNullable<typeof h> => !!h).sort((a, c) => Math.hypot(a.x - b.x, a.y - b.y) - Math.hypot(c.x - b.x, c.y - b.y))[0];
+        let nearest = Infinity;
+        for (const f of w.factions) {
+          if (f.id === 0 || !f.alive) continue;
+          const hq = w.hq(f.id);
+          if (!hq) continue;
+          const distance = Math.hypot(hq.x - b.x, hq.y - b.y);
+          if (distance < nearest) { nearest = distance; target = hq; }
+        }
       }
       if (target) list.push({ x: target.x, y: target.y, h: 90, text: '목표', color: '#ffe27a', edge: true });
     }

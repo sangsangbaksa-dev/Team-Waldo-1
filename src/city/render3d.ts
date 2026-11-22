@@ -8,7 +8,7 @@ import { fpCameraSpot, solidAt } from './map';
 import type { Business, Fx, Loot, Structure, Vehicle, World } from './world';
 import type { Ghost } from './render';
 import { ModelLayer } from './modellayer';
-import { buildBuildings, buildPerimeter, type BuildingFx } from './buildings';
+import { BUILDING_SHADOW_LAYER, buildBuildings, buildPerimeter, type BuildingFx } from './buildings';
 import type { Models } from './models';
 import { Interior3D } from './interior3d';
 import { EYE_HEIGHT } from './scale';
@@ -73,10 +73,11 @@ export class Renderer3D {
   private crystals: THREE.InstancedMesh; private tracers: THREE.InstancedMesh; private rings: THREE.InstancedMesh; private ringList: { x: number; y: number; r0: number; r1: number; life: number; max: number; color: number }[] = [];
   private sparks: Points; private fire: Points; private smoke: Points; private ml: ModelLayer | null = null;
   private structs = new Map<number, THREE.Group>(); private vehs = new Map<number, THREE.Group>(); private loots = new Map<number, THREE.Group>(); private biz = new Map<number, { g: THREE.Group; sig: string; label: THREE.Sprite; icon: THREE.Object3D | null }>();
+  private seenIds = new Set<number>();
   private booms: { m: THREE.Mesh; life: number; r: number }[] = []; private light: THREE.PointLight; private lightT = 0;
   private zoneWall: THREE.Mesh; private zoneTex: THREE.Texture; private nextRing: THREE.Mesh; private ghost = new BuildGhost(); private sun: THREE.DirectionalLight; private gun = new THREE.Group(); private muzzle: THREE.Mesh; private planes: THREE.Group[] = [];
   private bossRings: THREE.Mesh[] = []; floaters: { el: HTMLElement; x: number; y: number; h: number; life: number }[] = [];
-  private rainTint = new THREE.Color(); private ins: Interior3D | null = null; private insKind = '';
+  private rainTint = new THREE.Color(); private probeHidden: THREE.Object3D[] = []; private projected = new THREE.Vector3(); private ins: Interior3D | null = null; private insKind = '';
   /** 적응형 화질(0=원본 → 3=가장 가볍게): 프레임 시간 중앙값이 길면 해상도·반사·그림자·후처리를 차례로 줄입니다. */
   perfLevel = 0; adaptive = true; private gaps: number[] = []; private lastT = 0; private settle = 90; private postOn = true; private shadowTick = 0; private camGoal = new THREE.Vector3(); private labelV = new THREE.Vector3(); private labelP = new THREE.Vector3();
   private mats = new Map<number, THREE.MeshLambertMaterial>(); private box = new THREE.BoxGeometry(1, 1, 1); private glow: THREE.Texture;
@@ -99,6 +100,7 @@ export class Renderer3D {
     const fill = this.fill = new THREE.DirectionalLight(0x8aa4c8, 0.48); fill.position.set(520, 280, 620); fill.layers.enable(PROBE_LAYER); sc.add(fill);
     // 표준 화질도 그림자를 켭니다(맵 1024). 부하가 크면 govern() 이 해상도를 먼저 낮춥니다.
     if (quality !== 'low') { this.sun.castShadow = true; const s = this.sun.shadow; const m = quality === 'high' ? 2048 : 1024; s.mapSize.set(m, m); s.camera.left = s.camera.bottom = -800; s.camera.right = s.camera.top = 800; s.camera.near = 10; s.camera.far = 3000; s.bias = -0.0012; s.normalBias = 1.5; }
+    this.sun.shadow.camera.layers.enable(BUILDING_SHADOW_LAYER);
     // 바다 + 지면
     const sea = this.sea = new THREE.Mesh(new THREE.PlaneGeometry(30000, 30000), new THREE.MeshLambertMaterial({ color: 0x2a4558 })); sea.rotation.x = -Math.PI / 2; sea.position.set(SIZE / 2, -6, SIZE / 2); sc.add(sea);
     const T = quality === 'high' ? 4096 : 2048, k = T / SIZE, gt = canvasTex(T, T, g => {
@@ -168,7 +170,7 @@ export class Renderer3D {
 
   private buildCity(): void {
     const w = this.world, n0 = this.scene.children.length; this.bfx = buildBuildings(w, this.scene, import.meta.env.BASE_URL); buildPerimeter(this.scene);
-    for (const o of this.scene.children.slice(n0)) o.traverse(c => c.layers.enable(PROBE_LAYER)); // 웅덩이 반사 프로브가 건물을 비춘다
+    for (const o of this.scene.children.slice(n0)) o.traverse(c => { if (!c.layers.isEnabled(BUILDING_SHADOW_LAYER)) c.layers.enable(PROBE_LAYER); }); // 웅덩이 반사 프로브가 건물을 비춘다
     if (this.models) return;
     // 나무·가로등
     const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(3, 4, 40, 6), this.mat(0x5b4030), w.map.trees.length), leaf = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), this.mat(0x3f7d45), w.map.trees.length);
@@ -204,7 +206,7 @@ export class Renderer3D {
     const d = buildDistance(this.pitch, this.mode === 'fp' ? EYE : 120, buildMinDistance(sd.w, sd.h), max);
     return { x: ox + Math.cos(this.yaw) * d, y: oy + Math.sin(this.yaw) * d };
   }
-  project(x: number, y: number, h: number): { x: number; y: number; behind: boolean } { const v = new THREE.Vector3(x, h, y).project(this.camera); return { x: (v.x + 1) / 2 * this.w, y: (1 - v.y) / 2 * this.h, behind: v.z > 1 }; }
+  project(x: number, y: number, h: number): { x: number; y: number; behind: boolean } { const v = this.projected.set(x, h, y).project(this.camera); return { x: (v.x + 1) / 2 * this.w, y: (1 - v.y) / 2 * this.h, behind: v.z > 1 }; }
   floater(x: number, y: number, h: number, text: string, color: string): void {
     if (this.floaters.length > 24) return; const el = document.createElement('div'); el.className = 'c-float'; el.textContent = text; el.style.color = color; this.layer.append(el); this.floaters.push({ el, x, y, h, life: 1.4 });
   }
@@ -359,7 +361,10 @@ export class Renderer3D {
     this.groundMat.shininess = 40 + a.wet * 60; this.groundMat.specular.setRGB(...a.sunColor).multiplyScalar(0.15 + a.wet * 0.25);
     if (this.ml) this.ml.reach = a.fogFar; this.skyDome.update(a, cam, this.t, f); this.skyline.update(a, cam, this.t); this.streetFx.update(this.t, a, this.reduced); this.details.update(a.lamps, this.t, this.reduced);
     this.moodT -= dt; if (this.moodT <= 0 || snap) { this.moodT = 0.25; this.bfx.setMood(a); this.ml?.setGlow(0.75 + a.lamps * 0.5); }
-    this.wetStreet.update(dt, a, cam, this.renderer, this.scene, [this.rain ?? this.gun, this.gun].filter(Boolean) as THREE.Object3D[]);
+    this.probeHidden.length = 1;
+    this.probeHidden[0] = this.gun;
+    if (this.rain) this.probeHidden.push(this.rain);
+    this.wetStreet.update(dt, a, cam, this.renderer, this.scene, this.probeHidden);
     if (this.post) this.post.set({ strength: 0.36 + a.night * 0.2 + a.rain * 0.08, threshold: 0.9 - a.night * 0.1 });
   }
   /** 사진 촬영·테스트용: 시각·날씨가 막 바뀐 직후 분위기를 서서히 따라가지 않고 한 번에 맞춥니다. */
@@ -449,15 +454,30 @@ export class Renderer3D {
     // 탄환
     let nt = 0; for (const b of w.bullets) { if (nt >= 500) break; const wd = WEAPONS[b.w], a = Math.atan2(b.vy, b.vx), len = wd.splash ? 12 : wd.pierce ? 150 : 46, th = wd.splash ? 5 : wd.pierce ? 3 : b.boss ? 1.5 : 1.1; d.rotation.set(0, -a, 0); d.position.set(b.x - Math.cos(a) * len / 2, 30, b.y - Math.sin(a) * len / 2); d.scale.set(len, th, th); d.updateMatrix(); this.tracers.setMatrixAt(nt, d.matrix); this.tracers.setColorAt(nt, col.set(wd.color)); nt++; if (wd.splash && Math.random() < 0.6) this.smoke.add(b.x, 30, b.y, 0, 8, 0, 0.5, 0xcfcfcf); } upd(this.tracers, nt);
     // 동적 오브젝트 동기화
-    const seenS = new Set<number>(); for (const s of w.structures) if (s.alive) { seenS.add(s.id); this.syncStruct(s); } for (const [id, g] of this.structs) if (!seenS.has(id)) { this.scene.remove(g); this.structs.delete(id); }
-    const seenV = new Set<number>(); for (const v of w.vehicles) if (v.alive) { seenV.add(v.id); this.syncVehicle(v); } for (const [id, g] of this.vehs) if (!seenV.has(id)) { this.scene.remove(g); this.vehs.delete(id); }
-    const seenL = new Set<number>(); for (const l of w.loot) if (l.alive) { seenL.add(l.id); this.syncLoot(l); } for (const [id, g] of this.loots) if (!seenL.has(id)) { this.scene.remove(g); this.loots.delete(id); }
+    const seen = this.seenIds;
+    seen.clear();
+    for (const s of w.structures) if (s.alive) { seen.add(s.id); this.syncStruct(s); }
+    this.removeStaleGroups(this.structs);
+    seen.clear();
+    for (const v of w.vehicles) if (v.alive) { seen.add(v.id); this.syncVehicle(v); }
+    this.removeStaleGroups(this.vehs);
+    seen.clear();
+    for (const l of w.loot) if (l.alive) { seen.add(l.id); this.syncLoot(l); }
+    this.removeStaleGroups(this.loots);
     for (const z of w.businesses) this.syncBiz(z);
     // 수송기
     while (this.planes.length < w.planes.length) { const pm = this.ml?.makePlane(); if (pm) { const pg = new THREE.Group(); pg.add(pm); this.scene.add(pg); this.planes.push(pg); continue; } const g = new THREE.Group(), m = this.mat(0xcfd6e0), a = new THREE.Mesh(this.box, m), b = new THREE.Mesh(this.box, m), c = new THREE.Mesh(this.box, m); a.scale.set(150, 22, 24); b.scale.set(34, 5, 190); c.scale.set(18, 30, 5); c.position.set(-64, 22, 0); g.add(a, b, c); this.scene.add(g); this.planes.push(g); }
     this.planes.forEach((g, i) => { const p = w.planes[i]; g.visible = !!p; if (p) { g.position.set(p.x, 620, p.y); g.rotation.y = -Math.atan2(p.vy, p.vx); } });
     // 링·폭발·파티클
-    let nr = 0; for (const r of this.ringList) { r.life -= dt; const k = 1 - Math.max(0, r.life) / r.max, rad = r.r0 + (r.r1 - r.r0) * k; d.rotation.set(0, 0, 0); d.position.set(r.x, 2, r.y); d.scale.set(rad, 1, rad); d.updateMatrix(); this.rings.setMatrixAt(nr, d.matrix); this.rings.setColorAt(nr, col.set(r.color)); nr++; } this.ringList = this.ringList.filter(r => r.life > 0); upd(this.rings, nr);
+    let nr = 0, liveRings = 0;
+    for (const r of this.ringList) {
+      r.life -= dt;
+      const k = 1 - Math.max(0, r.life) / r.max, rad = r.r0 + (r.r1 - r.r0) * k;
+      d.rotation.set(0, 0, 0); d.position.set(r.x, 2, r.y); d.scale.set(rad, 1, rad); d.updateMatrix();
+      this.rings.setMatrixAt(nr, d.matrix); this.rings.setColorAt(nr++, col.set(r.color));
+      if (r.life > 0) this.ringList[liveRings++] = r;
+    }
+    this.ringList.length = liveRings; upd(this.rings, nr);
     for (const b of this.booms) { if (b.life <= 0) { b.m.visible = false; continue; } b.life -= dt; const k = 1 - b.life / 0.32; b.m.scale.setScalar(b.r * (0.3 + k * 0.8)); (b.m.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 1 - k) * 0.85; }
     this.lightT -= dt; this.light.intensity = Math.max(0, this.lightT * 22);
     this.sparks.update(dt); this.fire.update(dt); this.smoke.update(dt);
@@ -469,7 +489,20 @@ export class Renderer3D {
     if (this.post && this.postOn) this.post.render(dt); else this.renderer.render(this.scene, this.camera);
     if (this.ml && !third && pb) { this.ml.syncViewCam(this.camera); this.renderer.autoClear = false; this.renderer.clearDepth(); this.renderer.render(this.ml.vmScene, this.ml.vmCam); this.renderer.autoClear = true; }
     // 떠오르는 글자
-    for (const f of this.floaters) { f.life -= dt; f.h += dt * 26; const p = this.project(f.x, f.y, f.h); f.el.style.transform = `translate(${p.x}px,${p.y}px) translate(-50%,-50%)`; f.el.style.opacity = p.behind ? '0' : String(Math.min(1, f.life * 2)); if (f.life <= 0) f.el.remove(); }
-    this.floaters = this.floaters.filter(f => f.life > 0);
+    let liveFloaters = 0;
+    for (const f of this.floaters) {
+      f.life -= dt;
+      if (f.life <= 0) { f.el.remove(); continue; }
+      f.h += dt * 26; const p = this.project(f.x, f.y, f.h); f.el.style.transform = `translate(${p.x}px,${p.y}px) translate(-50%,-50%)`; f.el.style.opacity = p.behind ? '0' : String(Math.min(1, f.life * 2));
+      this.floaters[liveFloaters++] = f;
+    }
+    this.floaters.length = liveFloaters;
+  }
+
+  private removeStaleGroups(groups: Map<number, THREE.Group>): void {
+    for (const id of groups.keys()) if (!this.seenIds.has(id)) {
+      this.scene.remove(groups.get(id)!);
+      groups.delete(id);
+    }
   }
 }

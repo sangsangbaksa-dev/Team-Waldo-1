@@ -107,6 +107,7 @@
 .sc-target svg{position:absolute;inset:-8px;width:calc(100% + 16px);height:calc(100% + 16px);pointer-events:none}
 .sc-target circle{fill:none;stroke:#fff;stroke-width:2;stroke-dasharray:113;transform-origin:center;animation:sc-ring var(--life,1.4s) linear forwards}
 .sc-covered .sc-target circle{animation-play-state:paused!important}
+.sc-covered .sc-window-host *{animation-play-state:paused!important}
 .sc-pop{position:absolute;z-index:2;color:#fff2a8;font-weight:800;font-size:14px;opacity:0;pointer-events:none;transform:translate(-50%,-20px)}
 .sc-pop.bad{color:#ff8e9e}
 .sc-pop.go{animation:sc-pop .6s ease-out}
@@ -276,7 +277,22 @@
   .sc-clock{font-size:8px}
   .sc-start{font-size:16px}
   .sc-monitor-stand{height:10%}
-  .sc-room{min-height:340px}
+  .sc-room{min-height:0}
   .sc-app-window .sc-title{height:24px;padding:4px 8px}
   .sc-video,.sc-chat,.sc-webtoon,.sc-shop,.sc-music,.sc-game{height:calc(100% - 24px)}
+}
+
+@media (any-pointer:coarse){
+  .sc-taskbar{height:48px;gap:4px;padding-inline:4px}
+  .sc-apps{justify-content:center;gap:2px}
+  .sc-apps button,.sc-music-controls button{width:44px;height:44px}
+  .sc-window-host,.sc-cover{bottom:51px}
+  .sc-app-window .sc-title{height:44px;align-items:center;padding-block:0}
+  .sc-video,.sc-chat,.sc-webtoon,.sc-shop,.sc-music,.sc-game{height:calc(100% - 44px)}
+  .sc-title-btns button{font-size:18px}
+  .sc-music-controls{flex-wrap:wrap;gap:4px}
+  .sc-video,.sc-rooms,.sc-messages,.sc-wt-scroll,.sc-shop,.sc-music{overscroll-behavior:contain}
+}
+@media (any-pointer:coarse) and (max-width:420px){
+  .sc-start,.sc-clock{display:none}
 }

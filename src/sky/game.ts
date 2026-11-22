@@ -88,6 +88,8 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   };
   const kd = (e: KeyboardEvent): void => onKey(e, true), ku = (e: KeyboardEvent): void => onKey(e, false);
   const noMenu = (e: Event): void => e.preventDefault();
+  const onBlur = (): void => { keys.clear(); mouse.touchId = -1; mouse.x = mouse.y = 0; mouse.active = false; mFire = mMissile = mBoost = flare = false; };
+  addEventListener('blur', onBlur);
   addEventListener('pointermove', onMove); addEventListener('pointerdown', onDown); addEventListener('pointerup', onUp); addEventListener('pointercancel', onUp); document.addEventListener('pointerlockchange', onLock);
   root.addEventListener('wheel', onWheel, { passive: false }); addEventListener('keydown', kd); addEventListener('keyup', ku); root.addEventListener('contextmenu', noMenu);
 
@@ -191,7 +193,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   }
   function exit(): void {
     if (closed) return; closed = true; cancelAnimationFrame(raf); if (!saved && sim && sim.time > 5) { saved = true; recordSkyRun(sim.score, sim.wave, sim.kills, sim.bestCombo, sim.time); } delete (window as unknown as { __sky?: unknown }).__sky;
-    document.removeEventListener('pointerlockchange', onLock); unlock(); removeEventListener('pointermove', onMove); removeEventListener('pointerdown', onDown); removeEventListener('pointerup', onUp); removeEventListener('pointercancel', onUp); removeEventListener('keydown', kd); removeEventListener('keyup', ku); removeEventListener('resize', resize);
+    document.removeEventListener('pointerlockchange', onLock); unlock(); removeEventListener('blur', onBlur); removeEventListener('pointermove', onMove); removeEventListener('pointerdown', onDown); removeEventListener('pointerup', onUp); removeEventListener('pointercancel', onUp); removeEventListener('keydown', kd); removeEventListener('keyup', ku); removeEventListener('resize', resize);
     audio.dispose(); try { view?.dispose(); } catch { /* 정리 실패 무시 */ } renderer?.dispose(); renderer?.forceContextLoss(); root.remove(); onExit();
   }
 

@@ -18,7 +18,7 @@ const videos = [
 ];
 const commentPool = ['이 시간에 보는 사람 손 ✋', '내일의 나야 미안해', '사감 오면 바로 끌 준비 완료', '첫 댓글!', '자막 센스 미쳤다', '오늘 자습 진짜 길다', '추천 알고리즘 고마워요', '새벽 2시 출석체크'];
 
-const rooms = [
+const initialRooms = [
   { name: '우리 반 비밀방', sub: '3명', msgs: [{ m: false, who: '지후', t: '오늘 자습 진짜 길다...' }, { m: true, who: '', t: '그러니까 ㅠㅠ' }, { m: false, who: '서연', t: '끝나고 매점 갈 사람?' }], pool: ['사감 아직 안 왔지?', '나 오늘 진짜 졸려...', '조용히 하자 ㅋㅋ', '끝나면 같이 가자!', '매점 문 닫기 전에 가야 해'], reply: ['ㅋㅋㅋㅋ 인정', '나도 갈래!', '쉿 조용히 해'], unread: 0 },
   { name: '룸메 민수', sub: '1:1', msgs: [{ m: false, who: '민수', t: '지금 뭐 해?' }], pool: ['야 복도 소리 안 났냐', '나 방금 발소리 들은 듯', '창문 열어 놓을까?'], reply: ['오 그래? 조심해', '알았어 망보는 중', 'ㅋㅋㅋ 들키지 마'], unread: 0 },
   { name: '엄마', sub: '1:1', msgs: [{ m: false, who: '엄마', t: '밥은 먹었니?' }], pool: ['공부는 잘 되고 있니?', '너무 늦게 자지 마', '사랑한다 우리 아들딸'], reply: ['오 착하네', '건강이 최고야', '내일 면회 갈게'], unread: 0 },
@@ -44,8 +44,10 @@ const tracks = [
 const title = (label: string) => `<div class="sc-title"><span>${label}</span><span class="sc-title-btns">—　□　<button type="button" data-close aria-label="닫기">×</button></span></div>`;
 
 export const createComputerView: CreateView = (sim, audio) => {
+  const rooms = initialRooms.map(room => ({ ...room, msgs: [...room.msgs] }));
   const el = document.createElement('div');
   el.className = 'slack-computer';
+  el.tabIndex = -1;
   el.innerHTML = `<div class="sc-room"><div class="sc-wall-light"></div><div class="sc-door"><div class="sc-door-window"><div class="sc-door-flash"></div><div class="sc-door-person"></div></div><div class="sc-door-handle"></div><div class="sc-door-gap"></div></div><div class="sc-door-floor"></div><div class="sc-steps" aria-hidden="true"><i></i><i></i><i></i></div><div class="sc-scan-person"><i></i><u></u></div><button class="sc-friend" type="button" aria-label="룸메에게 간식 나눠주기"><span class="sc-friend-head"></span><span class="sc-friend-body"></span><span class="sc-friend-bubble"></span></button><div class="sc-friend-monitor"></div><div class="sc-desk"></div><div class="sc-monitor"><div class="sc-screen"><div class="sc-desktop"><div class="sc-wallpaper"><span>오늘도 무사히</span><small>조용한 밤의 컴퓨터실</small></div><div class="sc-window-host"></div><div class="sc-toast" role="status"></div><div class="sc-cover"><div class="sc-cover-window"><div class="sc-title"><span>수능 필수 개념 인강</span><span>—　□　×</span></div><div class="sc-lecture"><div class="sc-board"><small>오늘의 개념 정리</small><strong>함수의 극한과 연속</strong><div>lim　f(x) = L</div><p>x가 한없이 가까워질 때<br>함숫값의 변화를 살펴봅시다.</p></div><div class="sc-teacher">●<br>▰</div></div><div class="sc-lecture-controls">❚❚ <span class="sc-progress"><i></i></span> 12:34 / 45:00</div></div><div class="sc-notes"><b>개념 필기</b><p>1. 극한값의 뜻</p><p>함수의 값이 가까워지는 값</p><p>2. 좌극한과 우극한</p><p>두 값이 같아야 극한이 존재!</p></div></div><div class="sc-taskbar"><span class="sc-start">▦</span><div class="sc-apps">${apps.map((a, i) => `<button type="button" data-app="${a.id}" aria-label="${a.label} (${i + 1})" title="${a.label}"><span>${a.icon}</span></button>`).join('')}</div><span class="sc-clock">오전 1:24</span></div></div></div><div class="sc-monitor-edge"><span></span></div><div class="sc-monitor-stand"></div></div><div class="sc-keyboard"></div><div class="sc-face-glow"></div><div class="sc-vignette"></div><div class="sc-strike"><strong>거기, 지금 뭐 하고 있니?</strong></div><div class="sc-quiet">순간, 컴퓨터 팬 소리만 남았다.</div></div><div class="sc-controls"><span>숫자 1–6 앱 전환 · F 룸메에게 간식</span><button type="button" class="sc-cover-button">인강 창 <small>누르고 있기 · 스페이스</small></button></div>`;
   const $ = <T extends HTMLElement>(s: string, r: ParentNode = el) => r.querySelector<T>(s)!;
   const host = $('.sc-window-host'); const cover = $('.sc-cover'); const coverButton = $<HTMLButtonElement>('.sc-cover-button');
@@ -54,7 +56,7 @@ export const createComputerView: CreateView = (sim, audio) => {
   const taskBtn = (id: DormActivity) => $<HTMLButtonElement>(`[data-app="${id}"]`);
 
   let shown: DormActivity | null = null;
-  let elapsed = 0; let coverKey = false; let coverPointer = false; let coverMiddle = false; let disposed = false;
+  let elapsed = 0; let coverKey = false; let coverPointer: number | null = null; let coverMiddle: number | null = null; let disposed = false;
   let warningUntil = 0; let strikeUntil = 0; let quietUntil = 0; let toastUntil = 0; let bubbleUntil = 0; let stepUntil = 0; let tickAcc = 0;
   const cache: Record<string, unknown> = {};
   const setCls = (k: string, on: boolean, t: HTMLElement = el) => { if (cache[k] !== on) { cache[k] = on; t.classList.toggle(k, on); } };
@@ -65,8 +67,15 @@ export const createComputerView: CreateView = (sim, audio) => {
   const say = (text: string, s = 2) => { setTxt(bubble, text); bubbleUntil = elapsed + s; };
   const setBadge = (id: DormActivity, n: number) => { const b = taskBtn(id); const v = n > 0 ? String(n) : ''; if (b.dataset.badge !== v) b.dataset.badge = v; };
 
-  const applyCover = () => { cover.classList.toggle('visible', sim.state.cover); coverButton.classList.toggle('active', sim.state.cover); };
-  const updateCover = () => { sim.setCover(coverKey || coverPointer || coverMiddle); applyCover(); };
+  const applyCover = () => {
+    const on = sim.state.cover;
+    cover.classList.toggle('visible', on); coverButton.classList.toggle('active', on);
+    if (host.inert !== on) {
+      if (on && host.contains(document.activeElement)) el.focus({ preventScroll: true });
+      host.inert = on;
+    }
+  };
+  const updateCover = () => { sim.setCover(coverKey || coverPointer !== null || coverMiddle !== null); applyCover(); };
   const select = (id: DormActivity | null) => { audio.resume(); audio.play('click'); if (id && sim.state.cover) updateCover(); sim.doActivity(id && sim.state.activity === id ? null : id); };
 
   /* ---------- 게임: 별빛 던전(반응속도) ---------- */
@@ -111,7 +120,7 @@ export const createComputerView: CreateView = (sim, audio) => {
     $('[data-vpic]', w).classList.remove('paused'); setTxt($('[data-vplay]', w), '❚❚'); setTxt($('.sc-video-play', w), '❚❚');
   };
   const vidTick = (dt: number) => {
-    if (shown !== 'video' || !V.playing) return;
+    if (shown !== 'video' || sim.state.cover || !V.playing) return;
     const w = wins.video; const v = videos[V.cur]; V.pos += dt;
     if (V.pos >= v.len) { vidSelect((V.cur + 1) % videos.length); return; }
     const sub = Math.floor(V.pos / 3.5) % v.subs.length; if (sub !== V.sub) { V.sub = sub; setTxt($('[data-sub]', w), v.subs[sub]); }
@@ -196,8 +205,8 @@ export const createComputerView: CreateView = (sim, audio) => {
   };
   const musicPlay = (on: boolean) => { M.playing = on; wins.music.classList.toggle('paused', !on); setTxt($('[data-m="play"]', wins.music), on ? '❚❚' : '▶'); };
   const musicTick = (dt: number) => {
-    if (shown !== 'music' || !M.playing) return;
-    M.p += (dt * 5) / tracks[M.cur].len; if (M.p >= 1) { musicSet(M.cur + 1); return; }
+    if (shown !== 'music' || sim.state.cover || !M.playing) return;
+    M.p += dt / tracks[M.cur].len; if (M.p >= 1) { musicSet(M.cur + 1); return; }
     const sec = Math.floor(M.p * tracks[M.cur].len); if (sec !== M.sec) { M.sec = sec; setTxt($('[data-m-time]', wins.music), mmss(sec)); $('[data-m-prog]', wins.music).style.transform = `scaleX(${M.p})`; }
   };
 
@@ -218,20 +227,27 @@ export const createComputerView: CreateView = (sim, audio) => {
 
   function renderApp(id: DormActivity | null) {
     const prev = shown; shown = id;
-    for (const a of apps) { wins[a.id].classList.toggle('on', a.id === id); taskBtn(a.id).classList.toggle('active', a.id === id); }
+    if (prev && prev !== id && wins[prev].contains(document.activeElement)) taskBtn(id ?? prev).focus({ preventScroll: true });
+    for (const a of apps) {
+      const on = a.id === id;
+      wins[a.id].classList.toggle('on', on); wins[a.id].inert = !on;
+      taskBtn(a.id).classList.toggle('active', on); taskBtn(a.id).setAttribute('aria-pressed', String(on));
+    }
     if (id) el.style.setProperty('--sc-glow', GLOW[id]);
     if (id === 'chat') chatOpen(C.room); else if (id === 'shop') setBadge('shop', 0); else if (id === 'webtoon') { setBadge('webtoon', 0); toonProgress(); }
-    if (prev === 'game' && id !== 'game') gameEls().target.classList.remove('on');
     if (id === 'game' && !G.over && !G.on) G.nextAt = G.clock + 0.4;
   }
 
   /* ---------- 입력 ---------- */
   const click = (event: MouseEvent) => {
+    audio.resume();
     const target = event.target as Element;
+    if (event.detail > 0 && target.closest('button') !== coverButton) el.focus({ preventScroll: true });
     const app = target.closest<HTMLElement>('[data-app]');
     if (app) { select(app.dataset.app as DormActivity); return; }
-    if (target.closest('[data-close]')) { select(null); return; }
     if (target.closest('.sc-friend')) { audio.resume(); audio.play('click'); say(sim.bribe() ? '냠냠… 고마워!' : '지금은 배불러…', 1.6); return; }
+    if (sim.state.cover) return;
+    if (target.closest('[data-close]')) { select(null); return; }
     if (target.closest('.sc-target')) { audio.resume(); gameHit(); return; }
     if (target.closest('[data-g-retry]')) { audio.play('click'); gameReset(); return; }
     const vid = target.closest<HTMLElement>('[data-vid]'); if (vid) { audio.play('click'); vidSelect(Number(vid.dataset.vid)); return; }
@@ -251,15 +267,49 @@ export const createComputerView: CreateView = (sim, audio) => {
     if (mb) { audio.play('click'); const k = mb.dataset.m; if (k === 'play') musicPlay(!M.playing); else musicSet(M.cur + (k === 'next' ? 1 : -1)); return; }
     const tr = target.closest<HTMLElement>('[data-track]'); if (tr) { audio.play('click'); musicSet(Number(tr.dataset.track)); musicPlay(true); }
   };
-  const keydown = (event: KeyboardEvent) => { if (event.repeat) return; if (event.code === 'Space') { event.preventDefault(); audio.resume(); audio.play('key'); coverKey = true; updateCover(); } else if (/^[1-6]$/.test(event.key)) { select(apps[Number(event.key) - 1].id); } else if (event.key.toLowerCase() === 'f') { audio.resume(); audio.play('key'); say(sim.bribe() ? '냠냠… 고마워!' : '지금은 배불러…', 1.6); } };
-  const keyup = (event: KeyboardEvent) => { if (event.code === 'Space') { event.preventDefault(); coverKey = false; updateCover(); } };
-  const pointerdown = (event: PointerEvent) => { if (event.button === 1) { event.preventDefault(); audio.resume(); audio.play('click'); coverMiddle = true; updateCover(); } };
-  const pointerup = (event: PointerEvent) => { if (event.button === 1) { coverMiddle = false; updateCover(); } };
-  const buttonDown = (event: PointerEvent) => { event.preventDefault(); coverButton.setPointerCapture(event.pointerId); audio.resume(); audio.play('click'); coverPointer = true; updateCover(); };
-  const buttonUp = () => { coverPointer = false; updateCover(); };
-  const blur = () => { coverKey = false; coverPointer = false; coverMiddle = false; updateCover(); };
+  const keydown = (event: KeyboardEvent) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    if (event.code === 'Space') {
+      if (event.target instanceof HTMLButtonElement && event.target !== coverButton) return;
+      event.preventDefault();
+      if (!event.repeat) { audio.resume(); audio.play('key'); coverKey = true; updateCover(); }
+    } else if (!event.repeat && /^[1-6]$/.test(event.key)) {
+      event.preventDefault(); select(apps[Number(event.key) - 1].id);
+    } else if (!event.repeat && event.key.toLowerCase() === 'f') {
+      audio.resume(); audio.play('key'); say(sim.bribe() ? '냠냠… 고마워!' : '지금은 배불러…', 1.6);
+    }
+  };
+  const keyup = (event: KeyboardEvent) => { if (coverKey && event.code === 'Space') { event.preventDefault(); coverKey = false; updateCover(); } };
+  const pointerdown = (event: PointerEvent) => {
+    if (event.button !== 1 || coverMiddle !== null) return;
+    event.preventDefault(); el.focus({ preventScroll: true }); audio.resume(); audio.play('click'); coverMiddle = event.pointerId; updateCover();
+  };
+  const pointerup = (event: PointerEvent) => {
+    if (coverMiddle === event.pointerId && (event.button === 1 || event.type === 'pointercancel')) { coverMiddle = null; updateCover(); }
+  };
+  const buttonDown = (event: PointerEvent) => {
+    if (event.button !== 0 || coverPointer !== null) return;
+    event.preventDefault(); coverButton.focus({ preventScroll: true }); coverButton.setPointerCapture(event.pointerId);
+    audio.resume(); audio.play('click'); coverPointer = event.pointerId; updateCover();
+  };
+  const buttonUp = (event: PointerEvent) => { if (coverPointer === event.pointerId) { coverPointer = null; updateCover(); } };
+  const blur = () => {
+    if (!coverKey && coverPointer === null && coverMiddle === null) return;
+    const pointer = coverPointer; coverKey = false; coverPointer = null; coverMiddle = null; updateCover();
+    if (pointer !== null && coverButton.hasPointerCapture(pointer)) coverButton.releasePointerCapture(pointer);
+  };
+  const focusout = (event: FocusEvent) => { if (!(event.relatedTarget instanceof Node) || !el.contains(event.relatedTarget)) blur(); };
   const scroll = (event: Event) => { if ((event.target as Element).classList?.contains('sc-wt-scroll')) toonProgress(); };
-  el.addEventListener('click', click); host.addEventListener('scroll', scroll, true); window.addEventListener('keydown', keydown); window.addEventListener('keyup', keyup); window.addEventListener('pointerdown', pointerdown); window.addEventListener('pointerup', pointerup); window.addEventListener('blur', blur); coverButton.addEventListener('pointerdown', buttonDown); coverButton.addEventListener('pointerup', buttonUp); coverButton.addEventListener('pointercancel', buttonUp); coverButton.addEventListener('lostpointercapture', buttonUp);
+  const inputs = new AbortController();
+  const options = { signal: inputs.signal };
+  el.addEventListener('click', click, options);
+  el.addEventListener('keydown', keydown, options); el.addEventListener('keyup', keyup, options);
+  el.addEventListener('focusout', focusout, options); el.addEventListener('pointerdown', pointerdown, options);
+  host.addEventListener('scroll', scroll, { ...options, capture: true });
+  window.addEventListener('pointerup', pointerup, options); window.addEventListener('pointercancel', pointerup, options); window.addEventListener('blur', blur, options);
+  coverButton.addEventListener('pointerdown', buttonDown, options); coverButton.addEventListener('pointerup', buttonUp, options);
+  coverButton.addEventListener('pointercancel', buttonUp, options); coverButton.addEventListener('lostpointercapture', buttonUp, options);
+  renderApp(null);
 
   function onEvent(ev: SlackEvent) {
     if (ev.t === 'footstep') { audio.play('footstep', ev.vol); const lv = ev.vol < 0.4 ? 1 : ev.vol < 0.75 ? 2 : 3; stepEls.forEach((s, i) => s.classList.toggle('on', i < lv)); el.style.setProperty('--sc-step', String(ev.vol)); stepUntil = elapsed + 0.9; if (ev.vol > 0.6) say('복도에서 발소리가…', 1.4); }
@@ -297,5 +347,5 @@ export const createComputerView: CreateView = (sim, audio) => {
     }
     if (elapsed > 45 && !cache.newEp) { cache.newEp = true; wins.webtoon.querySelector<HTMLElement>('[data-ep="3"]')!.hidden = false; if (shown !== 'webtoon') { setBadge('webtoon', 1); toast('웹툰 「달빛 아래 우리」 13화 업데이트!'); audio.play('chime', 0.4); } }
     const min = 24 + Math.floor(elapsed / 20); setTxt(clockEl, `오전 ${1 + Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`);
-  }, onEvent, dispose() { if (disposed) return; disposed = true; el.removeEventListener('click', click); host.removeEventListener('scroll', scroll, true); window.removeEventListener('keydown', keydown); window.removeEventListener('keyup', keyup); window.removeEventListener('pointerdown', pointerdown); window.removeEventListener('pointerup', pointerup); window.removeEventListener('blur', blur); coverButton.removeEventListener('pointerdown', buttonDown); coverButton.removeEventListener('pointerup', buttonUp); coverButton.removeEventListener('pointercancel', buttonUp); coverButton.removeEventListener('lostpointercapture', buttonUp); queue.length = 0; } };
+  }, onEvent, dispose() { if (disposed) return; disposed = true; inputs.abort(); blur(); queue.length = 0; } };
 };

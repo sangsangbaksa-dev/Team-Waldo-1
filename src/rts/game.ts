@@ -99,7 +99,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     if (!mode || !view || !sim) return false; const g = view.ground(sx, sy); if (!g) return true;
     if (mode.t === 'attack') { orderMove(g.x, g.y, true); mode = null; setHint(''); }
     else if (mode.t === 'move') { orderMove(g.x, g.y, false); mode = null; setHint(''); }
-    else if (mode.t === 'rally') { const { bs } = own(); for (const b of bs) if (BUILDINGS[b.kind].trains.length) issue({ k: 'rally', b: b.id, x: g.x, y: g.y, node: 0 }); ping(g.x, g.y, 0x5dff9a); audio.sfx('order'); mode = null; setHint(''); }
+    else if (mode.t === 'rally') { const { bs } = own(), e = sim.index.get(view.pick(sx, sy)); for (const b of bs) if (BUILDINGS[b.kind].trains.length) issue({ k: 'rally', b: b.id, x: g.x, y: g.y, node: e?.k === 'node' && b.kind === 'hq' ? e.id : 0 }); ping(g.x, g.y, 0x5dff9a); audio.sfx('order'); mode = null; setHint(''); }
     else tryPlace(g.x, g.y);
     return true;
   }
@@ -278,7 +278,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     if (e.button === 2) { const r = mini.getBoundingClientRect(), p = mmInv((e.clientX - r.left) / r.width * mini.width, (e.clientY - r.top) / r.height * mini.height); orderMove(p.x, p.y, false); return; }
     miniDown = true; miniMove(e);
   });
-  mini.addEventListener('pointermove', e => { if (miniDown) miniMove(e); }); mini.addEventListener('pointerup', () => { miniDown = false; }); mini.addEventListener('contextmenu', e => e.preventDefault());
+  mini.addEventListener('pointermove', e => { if (miniDown) miniMove(e); }); mini.addEventListener('pointerup', () => { miniDown = false; }); mini.addEventListener('pointercancel', () => { miniDown = false; }); mini.addEventListener('lostpointercapture', () => { miniDown = false; }); mini.addEventListener('contextmenu', e => e.preventDefault());
 
   // ---------- 오버레이(체력 막대·선택 상자) ----------
   function drawOverlay(): void {
@@ -371,7 +371,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     if (pointer.drag) { boxSelect(pointer.sx, pointer.sy, p.x, p.y, keys.has('Shift')); return; }
     const now = performance.now(), id = view.pick(p.x, p.y); clickSelect(p.x, p.y, keys.has('Shift'), now - pointer.lastTap < 350); pointer.lastTap = now; pointer.lastTapId = id;
   };
-  over.addEventListener('pointerup', release); over.addEventListener('pointercancel', release);
+  over.addEventListener('pointerup', release); over.addEventListener('pointercancel', e => { touches.delete(e.pointerId); pinch = 0; pointer.down = false; pointer.drag = false; });
   over.addEventListener('pointerleave', () => { pointer.in = false; });
   over.addEventListener('wheel', e => { e.preventDefault(); view?.zoom(e.deltaY > 0 ? 1.1 : 0.91); }, { passive: false });
   /** 터치: 내 유닛을 누르면 선택, 땅·적·광물을 누르면 명령, 선택이 없으면 해제. */

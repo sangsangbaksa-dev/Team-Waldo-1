@@ -4,14 +4,25 @@ import { STREAM_RADIUS, type Sim } from './sim';
 import { districtAt, isOpen, nearestLane, signal } from './world';
 import { autoDrive } from './vehicle';
 
-interface State { events: number; eventList: Sim['events']; cars: WeakMap<Vehicle, CarState>; cells: Map<string, Vehicle[]>; freeCells: Vehicle[][] }
+interface State { events: number; eventList: Sim['events']; cars: WeakMap<Vehicle, CarState>; cells: Map<number, Vehicle[]>; freeCells: Vehicle[][] }
 interface CarState { panic: number; blocked: number; idle: number; lastCrash: boolean; update: number }
 const states = new WeakMap<Sim, State>();
+// Coordinates never exceed 800m, or ±34 cells at 24m: this 12-bit encoding
+// avoids allocating hundreds of "x,z" strings on traffic updates.
+const cellKey = (x: number, z: number): number => (x + 2048) * 4096 + z + 2048;
+const BASE_CAR_POOL = CIVILIAN_CARS.filter(kind => kind !== 'sports');
+const CAR_POOLS: Record<District, readonly VehicleKind[]> = {
+  industrial: [...BASE_CAR_POOL, 'truck', 'truck', 'van', 'van', 'van', 'sports'],
+  downtown: [...BASE_CAR_POOL, 'taxi', 'taxi', 'sedan', 'sedan', 'sports'],
+  commercial: [...BASE_CAR_POOL, 'taxi', 'taxi', 'sedan', 'sedan', 'sports'],
+  residential: [...BASE_CAR_POOL, 'hatch', 'suv', 'sedan', 'sports'],
+  park: [...BASE_CAR_POOL, 'hatch', 'suv', 'sedan', 'sports'],
+};
 function state(sim: Sim): State { let s = states.get(sim); if (!s) { s = { events: 0, eventList: sim.events, cars: new WeakMap(), cells: new Map(), freeCells: [] }; states.set(sim, s); } return s; }
 function carState(s: State, v: Vehicle): CarState { let c = s.cars.get(v); if (!c) { c = { panic: 0, blocked: 0, idle: 0, lastCrash: false, update: 0 }; s.cars.set(v, c); } return c; }
 function chooseCar(sim: Sim, d: District): VehicleKind {
-  const extra: VehicleKind[] = d === 'industrial' ? ['truck', 'truck', 'van', 'van', 'van'] : d === 'downtown' || d === 'commercial' ? ['taxi', 'taxi', 'sedan', 'sedan'] : ['hatch', 'suv', 'sedan'];
-  const pool = [...CIVILIAN_CARS.filter(k => k !== 'sports'), ...extra, 'sports' as VehicleKind]; return pool[Math.floor(sim.rng() * pool.length)];
+  const pool = CAR_POOLS[d];
+  return pool[Math.floor(sim.rng() * pool.length)];
 }
 function next(sim: Sim, node: LaneNode): number {
   if (!node.next.length) return -1;
@@ -48,15 +59,15 @@ export function stepTraffic(sim: Sim, dt: number): void {
   if (!(dt > 0)) return;
   const s = state(sim), p = sim.player, events = sim.events;
   if (events !== s.eventList || events.length < s.events) { s.events = 0; s.eventList = events; }
-  const recent = events.slice(s.events); s.events = events.length;
+  const eventStart = s.events, eventEnd = events.length;
+  s.events = eventEnd;
   // Recycle spatial buckets every simulation frame instead of constructing a
   // new Map and dozens of short-lived arrays for each AI traffic update.
   const grid = s.cells;
   for (const bucket of grid.values()) { bucket.length = 0; s.freeCells.push(bucket); }
   grid.clear();
-  const key = (x: number, z: number): string => `${Math.floor(x / 24)},${Math.floor(z / 24)}`;
   for (const v of sim.vehicles) {
-    const k = key(v.x, v.z);
+    const k = cellKey(Math.floor(v.x / 24), Math.floor(v.z / 24));
     let bucket = grid.get(k);
     if (!bucket) { bucket = s.freeCells.pop() ?? []; grid.set(k, bucket); }
     bucket.push(v);
@@ -72,7 +83,8 @@ export function stepTraffic(sim: Sim, dt: number): void {
     const driver = sim.ped(v.driver);
     if (!driver || !driver.alive || driver.vehicle !== v.id || v.wrecked) { v.mode = 'none'; v.input.throttle = 0; v.input.brake = 1; v.input.handbrake = true; continue; }
     const c = carState(s, v); let danger = v.crashT > 0 && !c.lastCrash; c.lastCrash = v.crashT > 0;
-    for (const e of recent) {
+    for (let ei = eventStart; ei < eventEnd; ei++) {
+      const e = events[ei];
       if (e.t === 'crash' && e.id === v.id) danger = true;
       else if (e.t === 'shot' && e.weapon !== 'fist' && (e.ox - v.x) ** 2 + (e.oz - v.z) ** 2 < Math.min(80, WEAPONS[e.weapon].noise) ** 2) danger = true;
       else if (e.t === 'explosion' && (e.x - v.x) ** 2 + (e.z - v.z) ** 2 < (e.r + 65) ** 2) danger = true;
@@ -101,7 +113,7 @@ export function stepTraffic(sim: Sim, dt: number): void {
     }
     const cos = Math.cos(v.h), sin = Math.sin(v.h), gx = Math.floor(v.x / 24), gz = Math.floor(v.z / 24); let gap = Infinity;
     for (let x = gx - 1; x <= gx + 1; x++) for (let z = gz - 1; z <= gz + 1; z++) {
-      const bucket = grid.get(`${x},${z}`);
+      const bucket = grid.get(cellKey(x, z));
       if (!bucket) continue;
       for (const q of bucket) {
         // Vehicles removed earlier in this same traffic frame can still be in

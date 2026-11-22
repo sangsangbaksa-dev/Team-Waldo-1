@@ -19,7 +19,7 @@ describe('squad online messages', () => {
   });
   it('accepts only well-formed armies', () => {
     expect(parseArmy([{ type: 'guard', x: 3, y: 4 }])).toEqual([{ type: 'guard', x: 3, y: 4 }]);
-    for (const bad of [null, 'x', [{ type: 'dragon', x: 1, y: 1 }], [{ type: 'guard', x: 1.5, y: 1 }], [{ type: 'guard', x: 1 }], Array.from({ length: 41 }, () => ({ type: 'guard', x: 1, y: 1 }))]) expect(parseArmy(bad)).toBeNull();
+    for (const bad of [null, 'x', [{ type: 'dragon', x: 1, y: 1 }], [{ type: '__proto__', x: 1, y: 1 }], [{ type: 'constructor', x: 1, y: 1 }], [{ type: 'guard', x: 1.5, y: 1 }], [{ type: 'guard', x: 1 }], Array.from({ length: 41 }, () => ({ type: 'guard', x: 1, y: 1 }))]) expect(parseArmy(bad)).toBeNull();
   });
 });
 describe('squad auto placement', () => {

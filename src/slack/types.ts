@@ -11,7 +11,9 @@ export type ActivityId = ClassActivity | DormActivity;
 
 /** 감독(교실=자습 감독 선생님, 기숙사=사감). away 멀리 → approach 다가옴(발소리) → peek 문 창/뒤에서 살핌 → scan 안으로 들어와 순회 → leave 떠남. */
 export type WatchMode = 'away' | 'approach' | 'peek' | 'scan' | 'leave';
-export interface Watcher { mode: WatchMode; t: number; prog: number; /** 0 없음 1 희미한 단서(발소리/그림자) 2 확실히 보임 */ hint: 0 | 1 | 2; /** 지금 어디 서 있나: 0 복도 끝 … 1 내 자리 뒤 */ near: number }
+/** 감독 성향(이번 순회 사이클): regular 일정한 리듬 / erratic 들쭉날쭉 / sneaky 발소리 없이 기습이 잦음 */
+export type WatcherKind = 'regular' | 'erratic' | 'sneaky';
+export interface Watcher { kind?: WatcherKind; mode: WatchMode; t: number; prog: number; /** 0 없음 1 희미한 단서(발소리/그림자) 2 확실히 보임 */ hint: 0 | 1 | 2; /** 지금 어디 서 있나: 0 복도 끝 … 1 내 자리 뒤 */ near: number }
 
 export interface SlackState {
   stage: StageId; level: Level; phase: Phase;

@@ -5,61 +5,130 @@ import type { LoadingScreen } from '../loading';
 import { createSim } from './sim';
 import { createSlackAudio } from './audio';
 import { readSlackRecord, recordSlackRun } from './records';
-import type { Level, Sim, StageId, StageView } from './types';
+import type { ActivityId, Level, Sim, SlackState, StageId, StageView } from './types';
+
+const stageInfo: Record<StageId, { name: string; blurb: string }> = {
+  class: { name: '교실 저녁 자습', blurb: '선생님 몰래 폰·만화·쪽지. 졸음도 조심!' },
+  dorm: { name: '기숙사 컴퓨터실', blurb: '사감 몰래 게임·영상·웹툰. 배터리는 없어요.' },
+};
+const levelInfo: Record<Level, string> = {
+  1: '재미 목표 60 · 감독이 드물게, 천천히 와요.',
+  2: '재미 목표 75 · 균형 잡힌 순찰. 처음이라면 추천!',
+  3: '재미 목표 90 · 순찰이 잦고 빨라요. 방심은 금물.',
+};
+const activityName: Record<ActivityId, string> = {
+  phone: '몰래 폰', manga: '만화책', doodle: '낙서', snack: '과자', sleep: '잠자기', note: '쪽지', music: '음악',
+  game: '게임', video: '영상', chat: '메신저', webtoon: '웹툰', shop: '쇼핑',
+};
+const tutorialKey = 'waldo.slack.tutorial.v1';
+const tutorialSeen = (): boolean => { try { return localStorage.getItem(tutorialKey) === '1'; } catch { return false; } };
+const markTutorialSeen = (): void => { try { localStorage.setItem(tutorialKey, '1'); } catch { /* 저장소를 못 써도 게임은 계속 */ } };
+/** 첫 판 안내: 각 단계는 done 이 참이 되면 다음으로. 마지막 단계는 몇 초 뒤 자동 종료. */
+const tutorialSteps: { text: string; done: (s: SlackState, t: number) => boolean }[] = [
+  { text: '먼저 딴짓을 골라 보세요. 숫자 키 또는 화면의 활동 버튼을 누르면 돼요.', done: s => s.activity !== null },
+  { text: '딴짓하는 동안 재미 게이지가 차올라요. 발소리와 문 소리에 귀를 기울이세요.', done: (s, t) => s.watcher.mode !== 'away' || t > 25 },
+  { text: '감독이 다가와요! 스페이스바를 꾹 누르거나(모바일은 공부하는 척 버튼) 공부하는 척하세요.', done: (s, t) => (s.cover && s.watcher.mode !== 'away') || s.watcher.mode === 'leave' || t > 20 },
+  { text: '좋아요! 감독이 떠나면 다시 딴짓하세요. 재미가 목표선(흰 막대)에 닿으면 클리어예요.', done: (_s, t) => t > 7 },
+];
 
 export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } = {}): void {
   const root = document.createElement('div'); root.className = 'sl-root';
   root.innerHTML = `<div class="sl-view"></div><div class="sl-vignette"></div>
-  <div class="sl-hud" hidden><div class="sl-hudclock"><span>끝날 때까지</span><b data-time>02:30</b></div><div class="sl-fun"><div><b>재미</b><span data-fun></span></div><div class="sl-track"><i data-fun-bar></i><em data-goal></em></div></div><div class="sl-numbers"><span>들킴 <b data-strikes>0</b>/3</span><span>배터리 <b data-battery>100</b>%</span><span>연속 <b data-combo>1</b>배</span><span class="sl-risk">긴장 <i><em data-risk></em></i></span></div><div class="sl-tools"><button data-sound>소리 켜짐</button><button data-pause>일시정지</button></div></div><div class="sl-toast" role="status"></div>
-  <div class="sl-modal wd-screen" data-title><div class="sl-card wd-panel"><div class="sl-kicker">오늘도 무사히</div><h1>SLACK OFF <small>딴짓</small></h1><p class="sl-lead">조용한 밤, 눈치를 살피며 나만의 시간을 즐겨 보세요.</p><div class="sl-field"><b>장소</b><div class="sl-options" data-stages><button data-stage="class">교실 저녁 자습</button><button data-stage="dorm">기숙사 컴퓨터실</button></div></div><div class="sl-field"><b>난이도</b><div class="sl-options" data-levels><button data-level="1">느긋하게</button><button data-level="2">보통</button><button data-level="3">아슬아슬</button></div></div><div class="sl-record" data-record></div><p class="sl-help">딴짓을 골라 재미를 채우세요. 발소리와 문을 살피고 스페이스바 또는 화면의 버튼을 누르는 동안 공부하는 척하세요. 숫자 키로 활동을 고르고 P 또는 Esc로 일시정지합니다.</p><div class="sl-actions"><button class="wd-btn primary" data-start>시작하기</button><button class="wd-btn ghost" data-exit>게임 목록으로</button></div></div></div>
-  <div class="sl-modal wd-screen" data-paused hidden><div class="sl-card wd-panel"><div class="sl-kicker">잠깐 쉬어 가요</div><h2>일시정지</h2><div class="sl-actions"><button class="wd-btn primary" data-resume>계속하기</button><button class="wd-btn ghost" data-exit>게임 목록으로</button></div></div></div>
-  <div class="sl-modal wd-screen" data-result hidden><div class="sl-card wd-panel"><div class="sl-kicker">오늘의 기록</div><h2 data-result-title></h2><div class="sl-result-stats" data-stats></div><div class="sl-actions"><button class="wd-btn primary" data-retry>다시 하기</button><button class="wd-btn" data-next>다음 장소</button><button class="wd-btn ghost" data-exit>게임 목록으로</button></div></div></div>`;
+  <div class="sl-hud" hidden><div class="sl-hudclock"><span>남은 시간</span><b data-time>02:30</b></div><div class="sl-fun"><div><b>재미</b><span data-fun></span></div><div class="sl-track"><i data-fun-bar></i><em data-goal></em></div></div><div class="sl-numbers"><span class="sl-chip">들킴 <span class="sl-pips" data-pips><i></i><i></i><i></i></span><b hidden data-strikes>0</b></span><span class="sl-chip" data-battery-chip>배터리 <b data-battery>100</b>%</span><span class="sl-chip">연속 <b data-combo>1</b>배</span><span class="sl-chip" data-risk-chip>긴장 <span class="sl-risk"><i><em data-risk></em></i></span></span></div><div class="sl-tools"><button data-sound>소리 켜짐</button><button data-pause>일시정지</button></div></div>
+  <div class="sl-tip" data-tip hidden role="note"><b data-tip-step>안내</b><span data-tip-text></span><button type="button" data-tip-skip>건너뛰기</button></div><div class="sl-toast" role="status"></div>
+  <div class="sl-modal wd-screen" data-title><div class="sl-card sl-titlecard wd-panel"><div class="sl-kicker">오늘도 무사히</div><h1>SLACK OFF <small>딴짓</small></h1><p class="sl-lead">조용한 밤, 눈치를 살피며 나만의 시간을 즐겨 보세요. 재미 게이지를 목표까지 채우되 세 번 들키면 끝!</p><div class="sl-field"><b>장소</b><div class="sl-stages" data-stages><button type="button" class="sl-stage" data-stage="class"><span class="sl-art class"><i class="a1"></i><i class="a2"></i><i class="a3"></i></span><b>${stageInfo.class.name}</b><small>${stageInfo.class.blurb}</small><em data-rec="class"></em></button><button type="button" class="sl-stage" data-stage="dorm"><span class="sl-art dorm"><i class="a1"></i><i class="a2"></i><i class="a3"></i></span><b>${stageInfo.dorm.name}</b><small>${stageInfo.dorm.blurb}</small><em data-rec="dorm"></em></button></div></div><div class="sl-field"><b>난이도</b><div class="sl-options" data-levels><button type="button" data-level="1">느긋하게<small>목표 60</small></button><button type="button" data-level="2">보통<small>목표 75</small></button><button type="button" data-level="3">아슬아슬<small>목표 90</small></button></div><p class="sl-leveldesc" data-leveldesc></p></div><div class="sl-keys"><span><kbd>Space</kbd> 누르는 동안 공부하는 척</span><span><kbd>1</kbd>~<kbd>7</kbd> 딴짓 고르기</span><span><kbd>P</kbd> 일시정지</span></div><p class="sl-help">발소리와 문 소리가 가까워지면 얼른 공부하는 척! 터치는 화면의 버튼으로 같은 조작을 할 수 있어요.</p><div class="sl-actions"><button class="wd-btn primary" data-start>시작하기</button><button class="wd-btn ghost" data-exit>게임 목록으로</button><button type="button" class="sl-soundbtn" data-sound>소리 켜짐</button></div></div></div>
+  <div class="sl-modal wd-screen" data-paused hidden><div class="sl-card narrow wd-panel"><div class="sl-kicker">잠깐 쉬어 가요</div><h2>일시정지</h2><ul class="sl-hl sl-pause-stats" data-pause-stats></ul><div class="sl-keys"><span><kbd>Space</kbd> 공부하는 척</span><span><kbd>P</kbd> / <kbd>Esc</kbd> 계속하기</span></div><div class="sl-actions"><button class="wd-btn primary" data-resume>계속하기</button><button class="wd-btn" data-restart>처음부터</button><button class="wd-btn ghost" data-exit>게임 목록으로</button><button type="button" class="sl-soundbtn" data-sound>소리 켜짐</button></div></div></div>
+  <div class="sl-modal wd-screen" data-result hidden><div class="sl-card wd-panel"><div class="sl-kicker" data-result-kicker>오늘의 기록</div><div class="sl-result-head"><div class="sl-grade" data-grade></div><div><h2 data-result-title></h2><p class="sl-reason" data-reason></p></div></div><div class="sl-result-stats" data-stats></div><ul class="sl-hl" data-highlights></ul><div class="sl-record" data-record></div><div class="sl-actions"><button class="wd-btn primary" data-retry>다시 도전</button><button class="wd-btn" data-next>다음 장소</button><button class="wd-btn ghost" data-exit>게임 목록으로</button></div></div></div>`;
   document.body.append(root); const $ = <T extends HTMLElement>(selector: string): T => root.querySelector<T>(selector)!;
   const audio = createSlackAudio(); let muted = !readPreferences().sound; audio.setMuted(muted);
   let stage: StageId = 'class', level: Level = 2, sim: Sim | null = null, view: StageView | null = null;
-  let state: 'title' | 'loading' | 'play' | 'paused' | 'result' = 'title', closed = false, raf = 0, last = performance.now(), toastTime = 0, beat = 0, first = true;
+  let state: 'title' | 'loading' | 'play' | 'paused' | 'result' = 'title', closed = false, raf = 0, last = performance.now(), toastTime = 0, beat = 0;
+  let tutorial = !tutorialSeen(), tutStep = 0, tutTime = 0;
+  let tally = { act: {} as Partial<Record<ActivityId, number>>, maxCombo: 1, maxSus: 0, warns: 0, reasons: [] as string[] };
   const toast = (message: string, duration = 3): void => { $('[role="status"]').textContent = message; toastTime = duration; };
+  const endTutorial = (): void => { tutorial = false; markTutorialSeen(); $('[data-tip]').hidden = true; root.classList.remove('tipping'); };
+  const showTutorialStep = (): void => {
+    const tip = $('[data-tip]'); tip.hidden = false; root.classList.add('tipping'); $('[data-tip-step]').textContent = `안내 ${tutStep + 1}/${tutorialSteps.length}`; $('[data-tip-text]').textContent = tutorialSteps[tutStep].text; tutTime = 0;
+  };
   const refreshTitle = (): void => {
     root.querySelectorAll<HTMLButtonElement>('[data-stage]').forEach(b => { const on = b.dataset.stage === stage; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
     root.querySelectorAll<HTMLButtonElement>('[data-level]').forEach(b => { const on = Number(b.dataset.level) === level; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
-    const rec = readSlackRecord().best[stage]; $('[data-record]').textContent = rec ? `이 장소 최고 기록 · ${rec.grade}등급 ${rec.score}점` : '아직 이 장소의 기록이 없어요.';
-    $('[data-sound]').textContent = muted ? '소리 꺼짐' : '소리 켜짐';
+    const best = readSlackRecord().best;
+    root.querySelectorAll<HTMLElement>('[data-rec]').forEach(e => { const r = best[e.dataset.rec as StageId]; e.textContent = r ? `최고 ${r.grade}등급 · ${r.score}점` : '아직 기록 없음'; });
+    $('[data-leveldesc]').textContent = levelInfo[level];
+    root.querySelectorAll<HTMLElement>('[data-sound]').forEach(b => { b.textContent = muted ? '소리 꺼짐' : '소리 켜짐'; b.setAttribute('aria-pressed', String(!muted)); });
   };
   const exit = (): void => { if (closed) return; closed = true; cancelAnimationFrame(raf); window.removeEventListener('keydown', keydown); document.removeEventListener('visibilitychange', visibility); view?.dispose(); audio.dispose(); root.remove(); onExit(); };
-  const pause = (): void => { if (state === 'play') { state = 'paused'; $('[data-paused]').hidden = false; audio.ambience(null); } else if (state === 'paused') { state = 'play'; $('[data-paused]').hidden = true; last = performance.now(); audio.resume(); audio.ambience(stage); } };
+  const pause = (): void => { if (state === 'play') {
+      state = 'paused'; $('[data-paused]').hidden = false; audio.ambience(null);
+      if (sim) { const s = sim.state; $('[data-pause-stats]').innerHTML = `<li>${stageInfo[stage].name}</li><li>재미 <b>${Math.round(s.fun)}</b> / ${Math.round(s.goal)}</li><li>들킴 <b>${s.strikes}</b> / 3</li>`; }
+    } else if (state === 'paused') { state = 'play'; $('[data-paused]').hidden = true; last = performance.now(); audio.resume(); audio.ambience(stage); } };
   const keydown = (e: KeyboardEvent): void => { if (state === 'paused' && e.key !== 'Escape' && e.key.toLowerCase() !== 'p') { e.stopImmediatePropagation(); return; } if (!e.repeat && (e.key === 'Escape' || e.key.toLowerCase() === 'p')) { if (state === 'play' || state === 'paused') { e.preventDefault(); pause(); } } };
   const visibility = (): void => { if (document.hidden && state === 'play') pause(); };
   const start = async (): Promise<void> => {
     if (state === 'loading') return; state = 'loading'; audio.resume(); view?.dispose(); view?.el.remove(); view = null;
-    $('[data-title]').hidden = true; $('[data-result]').hidden = true; $('[data-paused]').hidden = true;
+    $('[data-title]').hidden = true; $('[data-result]').hidden = true; $('[data-paused]').hidden = true; $('[data-tip]').hidden = true; root.classList.remove('tipping');
     try {
       const createView = stage === 'class' ? (await import('./classroom')).createClassroomView : (await import('./computer')).createComputerView;
       if (closed) return; sim = createSim(stage, Math.floor(Math.random() * 2147483647), level); view = createView(sim, audio); $('.sl-view').append(view.el); sim.start(); view.frame(0); state = 'play'; last = performance.now(); beat = 0; $('.sl-hud').hidden = false; audio.ambience(stage);
-      if (first) { toast('발소리가 가까워지면 공부하는 척하세요!', 6); first = false; }
+      audio.muffle(false); tally = { act: {}, maxCombo: 1, maxSus: 0, warns: 0, reasons: [] }; beat = 0;
+      if (tutorial) { tutStep = 0; showTutorialStep(); } else { $('[data-tip]').hidden = true; root.classList.remove('tipping'); }
     } catch (err) { console.error(err); state = 'title'; $('[data-title]').hidden = false; toast('화면을 불러오지 못했어요. 다시 시도해 주세요.'); }
   };
   const finish = (): void => {
-    if (!sim) return; const s = sim.state; state = 'result'; audio.ambience(null); audio.muffle(false); const grade = s.grade ?? 'D'; recordSlackRun(stage, s.score, grade);
-    $('[data-result-title]').textContent = s.phase === 'caught' ? `들켰어요 · ${grade}등급` : `자습 끝! · ${grade}등급`;
-    $('[data-stats]').innerHTML = `<div><b>${Math.round(s.score)}</b><span>점수</span></div><div><b>${Math.round(s.fun)} / ${Math.round(s.goal)}</b><span>재미 / 목표</span></div><div><b>${Math.round(s.study)}</b><span>공부</span></div><div><b>${s.strikes}회</b><span>적발</span></div>`;
-    $('.sl-hud').hidden = true; $('[data-result]').hidden = false; audio.play(s.phase === 'caught' ? 'caught' : 'win'); refreshTitle();
+    if (!sim) return; const s = sim.state, caught = s.phase === 'caught'; state = 'result'; audio.ambience(null); audio.muffle(false); const grade = s.grade ?? 'D';
+    const prev = readSlackRecord().best[stage], isNew = recordSlackRun(stage, s.score, grade) && s.score > 0;
+    if (tutorial) endTutorial(); $('[data-tip]').hidden = true; root.classList.remove('tipping');
+    const gradeEl = $('[data-grade]'); gradeEl.textContent = grade; gradeEl.className = `sl-grade g-${grade}`;
+    $('[data-result-kicker]').textContent = `${stageInfo[stage].name} · ${['느긋하게', '보통', '아슬아슬'][level - 1]}`;
+    $('[data-result-title]').textContent = caught ? '들켰어요!' : grade === 'S' ? '완벽한 딴짓!' : s.fun >= s.goal ? '자습 끝, 무사히 넘겼어요' : '자습 끝, 조금 아쉬워요';
+    const reason = $('[data-reason]'); reason.className = 'sl-reason';
+    if (caught) { reason.classList.add('bad'); reason.textContent = `적발 사유: ${s.caughtBy ?? '들킴'}`; }
+    else if (s.strikes > 0) reason.textContent = `${s.strikes}번 들켰지만 끝까지 버텼어요. (${tally.reasons.join(', ')})`;
+    else reason.textContent = s.fun >= s.goal ? '한 번도 들키지 않았어요!' : `재미 목표까지 ${Math.ceil(s.goal - s.fun)} 모자랐어요.`;
+    if (caught && tally.reasons.length > 1) reason.textContent += ` · 앞선 적발: ${tally.reasons.slice(0, -1).join(', ')}`;
+    $('[data-stats]').innerHTML = `<div><b>${Math.round(s.score)}</b><span>점수</span></div><div><b>${Math.round(s.fun)} / ${Math.round(s.goal)}</b><span>재미 / 목표</span></div><div><b>${Math.round(s.study)}</b><span>공부 진도</span></div><div><b>${s.strikes}회</b><span>적발</span></div>`;
+    const top = (Object.entries(tally.act) as [ActivityId, number][]).sort((a, b) => b[1] - a[1])[0];
+    const hl: string[] = [];
+    if (top) hl.push(`가장 즐긴 딴짓 <b>${activityName[top[0]]}</b> ${Math.round(top[1])}초`);
+    hl.push(`최고 연속 <b>${tally.maxCombo}배</b>`, `가장 아슬아슬했던 긴장 <b>${Math.round(tally.maxSus)}%</b>`);
+    if (tally.warns > 0) hl.push(`친구의 경고 <b>${tally.warns}번</b>`);
+    $('[data-highlights]').innerHTML = hl.map(t => `<li>${t}</li>`).join('');
+    const best = isNew ? { grade, score: Math.round(s.score) } : prev;
+    $('[data-record]').innerHTML = `${best ? `이 장소 최고 기록 · ${best.grade}등급 ${best.score}점` : '이번 판은 기록되지 않았어요.'}${isNew ? `<span class="sl-new">${prev ? '신기록!' : '첫 기록!'}</span>` : ''}`;
+    $('[data-next]').textContent = `다음 장소 · ${stageInfo[stage === 'class' ? 'dorm' : 'class'].name}`;
+    $('.sl-hud').hidden = true; $('[data-result]').hidden = false; audio.play(caught ? 'caught' : 'win'); refreshTitle();
   };
   const frame = (now: number): void => {
     if (closed) return; raf = requestAnimationFrame(frame); const dt = Math.min(.05, Math.max(0, (now - last) / 1000)); last = now;
     if (toastTime > 0) { toastTime -= dt; if (toastTime <= 0) $('[role="status"]').textContent = ''; }
     if (state !== 'play' || !sim || !view) return;
-    sim.update(dt); view.frame(dt); for (const ev of sim.drain()) { view.onEvent(ev); if (ev.t === 'strike') { audio.play('alert'); toast(`들켰어요! ${ev.reason}`); } else if (ev.t === 'toast') toast(ev.text); }
+    sim.update(dt); view.frame(dt);
+    // 모르는 이벤트(다른 담당이 추가)는 view 에만 넘기고 여기선 무시한다.
+    for (const ev of sim.drain()) {
+      view.onEvent(ev);
+      if (ev.t === 'strike') { audio.play('alert'); toast(`들켰어요! ${ev.reason}`); tally.reasons.push(ev.reason); }
+      else if (ev.t === 'toast') toast(ev.text);
+      else if (ev.t === 'friend-warn') tally.warns++;
+    }
+    { const a = sim.state; if (!a.cover && a.activity) tally.act[a.activity] = (tally.act[a.activity] ?? 0) + dt; tally.maxCombo = Math.max(tally.maxCombo, a.combo); tally.maxSus = Math.max(tally.maxSus, a.sus); }
+    if (tutorial) { tutTime += dt; if (tutorialSteps[tutStep].done(sim.state, tutTime)) { if (++tutStep >= tutorialSteps.length) endTutorial(); else showTutorialStep(); } }
     const s = sim.state, left = Math.max(0, Math.ceil(s.limit - s.time)); $('[data-time]').textContent = `${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}`;
     $('[data-fun]').textContent = `${Math.round(s.fun)} / ${Math.round(s.goal)}`; $('[data-fun-bar]').style.width = `${Math.min(100, s.fun)}%`; $('[data-goal]').style.left = `${Math.min(100, s.goal)}%`;
-    $('[data-strikes]').textContent = String(s.strikes); $('[data-battery]').textContent = String(Math.round(s.battery)); $('[data-combo]').textContent = String(s.combo); $('[data-risk]').style.width = `${Math.max(0, Math.min(100, s.sus))}%`;
-    root.style.setProperty('--danger', String(Math.max(0, (s.sus - 25) / 75))); root.style.setProperty('--pulse-speed', `${1.4 - s.sus / 110}s`);
-    beat -= dt; if (s.sus > 45 && beat <= 0) { audio.play('hum', .15 + s.sus / 180); beat = 1.4 - s.sus / 110; }
+    $('[data-strikes]').textContent = String(s.strikes); $('[data-pips]').querySelectorAll('i').forEach((p, i) => p.classList.toggle('on', i < s.strikes));
+    $('[data-battery]').textContent = String(Math.round(s.battery)); $('[data-battery-chip]').classList.toggle('low', s.battery < 25); $('[data-combo]').textContent = String(s.combo);
+    $('[data-risk]').style.width = `${Math.max(0, Math.min(100, s.sus))}%`; $('[data-risk-chip]').classList.toggle('hot', s.sus > 70);
+    // 긴장도 → 비네팅·심장 박동 연동: 45 부터 박동이 시작해 100 에서 0.5초 간격·큰 소리. 박동 간격과 붉은 화면 맥박 속도를 같이 맞춘다.
+    const tension = Math.max(0, Math.min(1, (s.sus - 45) / 55)), interval = 1.15 - tension * 0.65;
+    root.style.setProperty('--danger', String(Math.max(0, (s.sus - 25) / 75))); root.style.setProperty('--pulse-speed', `${s.sus > 45 ? interval : 1.4}s`);
+    beat -= dt; if (s.sus > 45 && beat <= 0) { audio.play('hum', 0.3 + tension * 0.7); beat = interval; }
     if (s.phase === 'caught' || s.phase === 'done') finish();
   };
   root.querySelectorAll<HTMLButtonElement>('[data-stage]').forEach(b => b.onclick = () => { stage = b.dataset.stage as StageId; refreshTitle(); });
   root.querySelectorAll<HTMLButtonElement>('[data-level]').forEach(b => b.onclick = () => { level = Number(b.dataset.level) as Level; refreshTitle(); });
   $('[data-start]').onclick = () => { void start(); }; $('[data-retry]').onclick = () => { void start(); }; $('[data-next]').onclick = () => { stage = stage === 'class' ? 'dorm' : 'class'; void start(); };
-  $('[data-pause]').onclick = pause; $('[data-resume]').onclick = pause; $('[data-sound]').onclick = () => { muted = !muted; audio.setMuted(muted); audio.resume(); refreshTitle(); };
+  $('[data-pause]').onclick = pause; $('[data-resume]').onclick = pause; $('[data-restart]').onclick = () => { void start(); }; $('[data-tip-skip]').onclick = endTutorial;
+  root.querySelectorAll<HTMLElement>('[data-sound]').forEach(b => b.onclick = () => { muted = !muted; audio.setMuted(muted); audio.resume(); refreshTitle(); });
   root.querySelectorAll<HTMLElement>('[data-exit]').forEach(b => b.onclick = exit); window.addEventListener('keydown', keydown); document.addEventListener('visibilitychange', visibility);
   refreshTitle(); opts.loading?.close(); raf = requestAnimationFrame(frame);
 }

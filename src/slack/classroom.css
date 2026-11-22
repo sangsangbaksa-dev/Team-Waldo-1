@@ -1,1 +1,283 @@
-﻿.sl-class{position:relative;display:flex;flex-direction:column;height:100%;min-height:420px;overflow:hidden;background:#202623;color:#eee8d8;font-family:system-ui,sans-serif;user-select:none}.sl-room{position:relative;flex:1;min-height:300px;overflow:hidden;background:linear-gradient(#898e80 0 58%,#444a42 58%);perspective:900px}.sl-ceiling{position:absolute;inset:0 0 auto;height:13%;background:#b5b3a4;display:flex;justify-content:space-evenly;align-items:center}.sl-light{width:24%;height:12%;background:#fff9da;box-shadow:0 0 20px 6px #fff2bd88;animation:sl-flicker 9s infinite}.sl-wall{position:absolute;inset:13% 0 35%;border-bottom:8px solid #50564d}.sl-board{position:absolute;left:15%;top:12%;width:51%;height:73%;background:#263e37;border:8px solid #8c7153;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10%;color:#d7dfcb;font-family:serif}.sl-board small,.sl-board i{font-size:clamp(9px,1vw,14px);opacity:.7}.sl-board span{font-size:clamp(13px,2vw,25px);letter-spacing:.14em}.sl-clock{position:absolute;left:5%;top:15%;border:4px solid #e1dbc5;border-radius:50%;width:clamp(25px,4vw,45px);aspect-ratio:1;display:grid;place-items:center;background:#eee9d8;color:#45433e;font-size:8px}.sl-door{position:absolute;right:7%;bottom:0;width:15%;height:95%;background:#80735f;border:7px solid #615b4e}.sl-window{position:absolute;left:18%;right:18%;top:7%;height:38%;background:linear-gradient(120deg,#b0c0b8,#607970);border:4px solid #4e5149;overflow:hidden}.sl-shadow{position:absolute;inset:5% 10% -40%;border-radius:50% 50% 0 0;background:#202b29;opacity:0;transform:translateX(-120%)}.sl-room[data-hint="1"] .sl-shadow{opacity:.4;animation:sl-shadow 5s infinite}.sl-room[data-hint="2"] .sl-shadow{opacity:.8;transform:none}.sl-face{display:none;position:absolute;inset:25% 23% 5%;border-radius:45%;background:#c7ad91}.sl-face i{position:absolute;top:40%;width:7%;height:5%;background:#3d3631}.sl-face i:first-child{left:25%}.sl-face i:last-child{right:25%}.sl-room[data-hint="2"] .sl-face{display:block}.sl-handle{position:absolute;right:12%;top:56%;width:8%;height:4%;border-radius:50%;background:#d8cfad}.sl-students{position:absolute;left:1%;right:10%;top:44%;height:30%;display:flex;justify-content:space-around;align-items:end}.sl-student{position:relative;width:17%;height:54%;background:#414a50;border-radius:45% 45% 0 0;animation:sl-breathe 3s ease-in-out infinite alternate}.sl-student:nth-child(2){animation-delay:-1s;background:#595c55}.sl-student:nth-child(3){animation-delay:-2s}.sl-student:before{content:'';position:absolute;left:25%;top:-48%;width:50%;height:70%;background:#292a28;border-radius:48%}.sl-student:after{content:'';position:absolute;left:-10%;right:-10%;bottom:-4%;height:15%;background:#9d8063}.sl-room.is-quiet .sl-student{animation-play-state:paused}.sl-teacher{position:absolute;z-index:4;right:10%;bottom:24%;width:12%;height:43%;opacity:0;transform-origin:bottom;transform:scale(calc(.65 + var(--near) * 1.2));transition:opacity .5s,transform .5s;pointer-events:none}.sl-room[data-scan="true"] .sl-teacher{opacity:.95}.sl-teacher-head{position:absolute;left:27%;top:0;width:46%;height:24%;background:#292f30;border-radius:50%}.sl-teacher-body{position:absolute;inset:20% 0 0;background:#303b3b;border-radius:35% 35% 5% 5%}.sl-friend{position:absolute;z-index:5;right:-2%;bottom:5%;width:18%;height:40%;border:0;background:none;cursor:pointer}.sl-friend-head{position:absolute;right:20%;top:0;width:50%;height:40%;border-radius:48%;background:#39322d;box-shadow:inset -8px -5px #765d4f}.sl-friend-body{position:absolute;right:0;bottom:0;width:90%;height:65%;background:#777b70;border-radius:48% 10% 0 0}.sl-friend-arm{position:absolute;right:35%;bottom:8%;width:80%;height:15%;background:#aaa69a;border-radius:20px;transform:rotate(-18deg)}.sl-bubble{display:none;position:absolute;right:30%;top:-20%;white-space:nowrap;padding:7px 10px;border-radius:12px;background:#fff9e8;color:#3b3934;font-size:12px}.is-warning .sl-friend{animation:sl-nudge .22s 4}.is-warning .sl-bubble{display:block}.sl-desk{position:absolute;z-index:3;left:-8%;right:-8%;bottom:-22%;height:58%;background:repeating-linear-gradient(3deg,#a88461 0 2px,#aa8968 3px 25px,#a17f5f 26px 27px);border-top:10px solid #6b533f;transform:perspective(700px) rotateX(14deg);box-shadow:0 -8px 20px #0004}.sl-book{position:absolute;left:25%;top:5%;width:47%;height:55%;display:flex;filter:drop-shadow(0 4px 4px #0005)}.sl-book-page{width:50%;padding:4% 3%;background:#ebe2c8;color:#5d5a50;font-family:serif;font-size:clamp(7px,1vw,13px);overflow:hidden}.sl-book-page:first-child{border-right:2px solid #bcb29c}.sl-book-page b,.sl-book-page em{display:block}.sl-book-page p{margin:8% 0}.sl-manga{display:none;position:absolute;inset:5% 8%;padding:3%;background:#f4efe1;color:#262626;border:3px solid #292929;grid-template-columns:1fr 1fr;gap:3%;transform:rotate(-4deg)}.sl-manga>*{border:1px solid #333;display:grid;place-items:center;font-size:clamp(9px,1.6vw,20px)}.sl-room[data-activity="manga"] .sl-manga{display:grid}.sl-notebook{position:absolute;left:4%;top:17%;width:23%;height:45%;background:repeating-linear-gradient(#f0eadb 0 14px,#b8c4c0 15px 16px);color:#6c6a62;transform:rotate(-8deg);padding:2%;font-size:clamp(8px,1vw,12px);box-shadow:0 3px 6px #0004}.sl-writing{display:block;margin-top:10px;font-size:.8em}.sl-doodle{position:absolute;inset:25% 2% 0;width:95%;height:70%;fill:none;stroke:#555e62;stroke-width:2;stroke-dasharray:600;stroke-dashoffset:calc(600 * (1 - var(--doodle, 0)))}.sl-pencil{position:absolute;left:27%;top:37%;width:21%;height:5px;background:linear-gradient(90deg,#e3be71 0 90%,#463a32 90%);transform:rotate(-35deg);box-shadow:0 2px 2px #0005}.is-cover .sl-pencil{animation:sl-write .5s infinite alternate}.sl-snack{position:absolute;right:10%;top:38%;width:12%;height:21%;background:#ba6846;color:#f9e1a6;display:grid;place-items:center;transform:rotate(12deg);font-size:clamp(9px,1.4vw,17px);box-shadow:0 3px 5px #0004}.sl-snack span{font-size:1.5em}.sl-room[data-activity="snack"] .sl-snack{animation:sl-snack .6s infinite alternate}.sl-earbuds{position:absolute;right:24%;top:56%;color:#eee;font-size:clamp(18px,2.5vw,30px);transform:rotate(-15deg)}.sl-earbuds span{font-size:18px}.sl-room[data-activity="music"] .sl-earbuds{animation:sl-pulse .7s infinite alternate;color:#fff}.sl-paper{display:none;position:absolute;right:14%;top:28%;background:#faf2d9;color:#855b5b;padding:2%;font-size:12px;transform:rotate(9deg)}.sl-room[data-activity="note"] .sl-paper{display:block;animation:sl-note 2s ease-in-out infinite alternate}.sl-lap{position:absolute;left:34%;bottom:-28%;width:33%;height:48%;border-radius:50% 50% 0 0;background:#343b42}.sl-phone{display:none;position:absolute;left:35%;top:0;width:30%;height:85%;padding:5%;border-radius:9px;background:#20242b;box-shadow:0 0 35px 12px #9bc8ed70;transform:rotate(-8deg)}.sl-phone-screen{height:100%;background:linear-gradient(145deg,#dc967c,#6d739d 55%,#303950);border-radius:4px}.sl-video{height:100%;display:flex;flex-direction:column;justify-content:end;align-items:start;padding:8%;font-size:clamp(7px,1vw,12px);color:white}.sl-video b{align-self:end;color:#ff7b89;font-size:clamp(15px,3vw,30px);animation:sl-pulse .8s infinite alternate}.sl-video small{font-size:.7em}.sl-room[data-activity="phone"] .sl-phone{display:block}.sl-sleep{display:none;position:absolute;z-index:7;inset:0;background:linear-gradient(#111a,#111e);color:#e6dfc7;text-align:center;padding-top:10%;font-size:clamp(30px,6vw,70px);letter-spacing:.4em}.sl-room[data-activity="sleep"] .sl-sleep{display:block;animation:sl-pulse 2s infinite alternate}.sl-sleep span{font-size:1.4em}.sl-strike{display:none;position:absolute;z-index:9;inset:0;background:#fff8;place-items:center}.sl-strike span{background:#fff9e8;color:#332a24;padding:12px 18px;border-radius:15px;font-weight:bold}.is-strike .sl-strike{display:grid;animation:sl-flash 2s forwards}.is-strike{animation:sl-nudge .15s 5}.sl-controls{position:relative;z-index:10;display:flex;align-items:stretch;justify-content:space-between;gap:8px;padding:9px;background:#202623}.sl-activities{display:flex;gap:4px;min-width:0;overflow-x:auto}.sl-action,.sl-cover{border:1px solid #626b5d;border-radius:7px;background:#323c34;color:#efeadd;cursor:pointer;touch-action:manipulation}.sl-action{min-width:52px;padding:5px 4px;display:flex;flex-direction:column;align-items:center;gap:2px}.sl-action span{font-size:19px;line-height:1}.sl-action small{font-size:10px;white-space:nowrap}.sl-action.is-active,.sl-cover.is-active{background:#d7c69c;color:#292c25;border-color:#f4e6be}.sl-cover{flex:none;padding:6px 15px;font-weight:700}.sl-cover small{display:block;font-size:10px;font-weight:400;margin-top:3px}.sl-action:focus-visible,.sl-cover:focus-visible,.sl-friend:focus-visible{outline:3px solid #f6dc95;outline-offset:2px}@keyframes sl-flicker{0%,93%,96%,100%{opacity:1}94%,95%{opacity:.45}}@keyframes sl-shadow{0%,100%{transform:translateX(-120%)}50%{transform:translateX(30%)}}@keyframes sl-breathe{to{transform:translateY(3px)}}@keyframes sl-nudge{50%{transform:translateX(-7px)}}@keyframes sl-write{to{transform:rotate(-35deg) translate(5px,3px)}}@keyframes sl-snack{to{transform:rotate(7deg) translateY(-5px)}}@keyframes sl-pulse{to{opacity:.55;transform:scale(1.05)}}@keyframes sl-note{to{transform:translateX(-120%) rotate(-10deg)}}@keyframes sl-flash{0%{opacity:1}20%{background:#fff3}100%{opacity:0}}@media(max-width:600px){.sl-controls{flex-wrap:wrap}.sl-activities{width:100%}.sl-action{flex:1;min-width:43px}.sl-cover{width:100%;padding:6px}.sl-cover small{display:inline;margin-left:8px}.sl-room{min-height:270px}.sl-friend{width:24%}.sl-book{width:52%;left:23%}}
+﻿.sl-class{position:relative;display:flex;flex-direction:column;height:100%;min-height:420px;overflow:hidden;background:#202623;color:#eee8d8;font-family:system-ui,sans-serif;user-select:none;-webkit-user-select:none}
+.sl-room{position:relative;flex:1;min-height:300px;overflow:hidden;background:linear-gradient(#898e80 0 58%,#444a42 58%)}
+.sl-world{position:absolute;inset:0;perspective:900px;filter:blur(var(--blur,0px));transition:filter .6s}
+.sl-room>*{pointer-events:none}
+.sl-room>.sl-world{pointer-events:auto}
+.sl-ceiling{position:absolute;inset:0 0 auto;height:13%;background:#b5b3a4;display:flex;justify-content:space-evenly;align-items:center}
+.sl-light{width:24%;height:12%;background:#fff9da;box-shadow:0 0 20px 6px #fff2bd88;animation:sl-flicker 9s infinite}
+.sl-light+.sl-light{animation-delay:-3.1s}
+.sl-wall{position:absolute;inset:13% 0 35%;border-bottom:8px solid #50564d}
+.sl-board{position:absolute;left:15%;top:12%;width:51%;height:73%;background:#263e37;border:8px solid #8c7153;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10%;color:#d7dfcb;font-family:serif}
+.sl-board small,.sl-board i{font-size:clamp(9px,1vw,14px);opacity:.7}
+.sl-board span{font-size:clamp(13px,2vw,25px);letter-spacing:.14em}
+.sl-clock{position:absolute;left:5%;top:15%;border:4px solid #e1dbc5;border-radius:50%;width:clamp(25px,4vw,45px);aspect-ratio:1;display:grid;place-items:center;background:#eee9d8;color:#45433e;font-size:8px}
+
+/* 문: 유리창 실루엣, 문틈 발 그림자 */
+.sl-door{position:absolute;right:7%;bottom:0;width:15%;height:95%;background:#80735f;border:7px solid #615b4e;transition:filter .4s,box-shadow .4s}
+.is-door .sl-door{filter:brightness(1.5);box-shadow:0 0 30px 12px #fff4b8aa}
+.sl-window{position:absolute;left:18%;right:18%;top:7%;height:38%;background:linear-gradient(120deg,#b0c0b8,#607970);border:4px solid #4e5149;overflow:hidden}
+.sl-shadow{position:absolute;inset:5% 10% -40%;border-radius:50% 50% 0 0;background:#202b29;opacity:0;transform:translateX(-120%)}
+.sl-room[data-hint="1"] .sl-shadow{opacity:.45;animation:sl-shadow 5s infinite}
+.sl-room[data-step="2"] .sl-shadow{opacity:.6}
+.sl-room[data-step="3"] .sl-shadow{opacity:.75;animation-duration:2.6s}
+.sl-room[data-hint="2"] .sl-shadow{opacity:.85;transform:none;animation:none}
+.sl-face{display:none;position:absolute;inset:25% 23% 5%;border-radius:45%;background:#c7ad91}
+.sl-face i{position:absolute;top:40%;width:7%;height:5%;background:#3d3631}
+.sl-face i:first-child{left:25%}
+.sl-face i:last-child{right:25%}
+.sl-room[data-hint="2"] .sl-face{display:block}
+.sl-handle{position:absolute;right:12%;top:56%;width:8%;height:4%;border-radius:50%;background:#d8cfad}
+.sl-gap{position:absolute;left:0;right:0;bottom:0;height:5%;background:#f2e6a4;opacity:.75;overflow:hidden;transition:height .3s}
+.sl-gap i{position:absolute;bottom:0;left:0;width:22%;height:100%;background:#262a27;opacity:0}
+.sl-room:not([data-hint="0"]) .sl-gap i,.sl-room:not([data-step="0"]) .sl-gap i{animation:sl-feet 1.3s linear infinite}
+.sl-gap i:last-child{animation-delay:-.65s!important}
+.sl-room[data-step="2"] .sl-gap,.sl-room[data-step="3"] .sl-gap{height:9%}
+.sl-room[data-step="3"] .sl-gap{opacity:1}
+
+/* 뒤쪽 학생들의 딴짓 */
+.sl-students{position:absolute;left:1%;right:10%;top:44%;height:30%;display:flex;justify-content:space-around;align-items:end}
+.sl-student{position:relative;width:17%;height:54%;background:#414a50;border-radius:45% 45% 0 0;animation:sl-breathe 3s ease-in-out infinite alternate}
+.sl-student:nth-child(2){animation-delay:-1s;background:#595c55}
+.sl-student:nth-child(3){animation-delay:-2s}
+.sl-student:before{content:'';position:absolute;left:25%;top:-48%;width:50%;height:70%;background:#292a28;border-radius:48%;transition:transform .4s}
+.sl-student:after{content:'';position:absolute;left:-10%;right:-10%;bottom:-4%;height:15%;background:#9d8063}
+.sl-student .fx{position:absolute;font-style:normal;transition:opacity .3s}
+.s1:before{animation:sl-sleephead 4.5s ease-in-out infinite}
+.s1 .z{left:70%;top:-95%;font-size:clamp(9px,1.3vw,15px);color:#f5f0d0;animation:sl-zrise 3s linear infinite}
+.s1 .z b{font-size:1.4em}
+.s2:before{transform:translateY(22%)}
+.s2 .glow{left:-5%;right:-5%;bottom:-20%;height:75%;border-radius:50%;background:radial-gradient(#9fd0ffcc,#0000 70%);animation:sl-glowflick .9s steps(2) infinite}
+.s4:before{animation:sl-chewhead .5s ease-in-out infinite alternate}
+.s4 .chips{left:30%;top:-12%;width:6px;height:6px;border-radius:30%;background:#e2a85a;animation:sl-chipbob .5s infinite alternate}
+.is-watched .sl-student:before{animation:none;transform:none}
+.is-watched .sl-student .fx{opacity:0}
+.is-quiet .sl-student,.is-quiet .sl-student:before{animation-play-state:paused}
+.sl-pass{position:absolute;left:62.5%;bottom:34%;width:9px;height:7px;background:#faf2d9;border-radius:1px;transform:rotate(12deg);opacity:0;animation:sl-pass 8s linear infinite}
+.is-watched .sl-pass,.is-quiet .sl-pass{animation-play-state:paused;opacity:0!important}
+
+/* 감독 선생님 */
+.sl-teacher{position:absolute;z-index:4;right:10%;bottom:24%;width:12%;height:43%;opacity:0;transform-origin:bottom;transform:scale(calc(.65 + var(--near) * 1.2));transition:opacity .5s,transform .5s;pointer-events:none}
+.sl-room[data-scan="true"] .sl-teacher{opacity:.95}
+.sl-teacher-head{position:absolute;left:27%;top:0;width:46%;height:24%;background:#292f30;border-radius:50%}
+.sl-room[data-scan="true"] .sl-teacher-head{animation:sl-look 2.4s ease-in-out infinite alternate}
+.sl-teacher-body{position:absolute;inset:20% 0 0;background:#303b3b;border-radius:35% 35% 5% 5%}
+.sl-cast{position:absolute;z-index:5;inset:0}
+.sl-cast:before{content:'';position:absolute;inset:0;background:linear-gradient(to left,#000d,#0000 85%);opacity:0;transition:opacity .5s}
+.sl-room[data-scan="true"] .sl-cast:before{opacity:var(--near)}
+.sl-cast:after{content:'';position:absolute;inset:0;background:#000;opacity:calc(var(--near) * .22)}
+.sl-flick{position:absolute;z-index:6;inset:0;background:#000;opacity:0;animation:sl-flickd 9s infinite}
+.sl-room[data-hint="1"] .sl-light{animation:sl-flicker2 1.9s infinite}
+.sl-room[data-hint="1"] .sl-flick{animation:sl-flickd2 1.9s infinite}
+.sl-room[data-hint="2"] .sl-light,.sl-room[data-scan="true"] .sl-light{animation:sl-flicker2 .8s infinite}
+.sl-room[data-hint="2"] .sl-flick,.sl-room[data-scan="true"] .sl-flick{animation:sl-flickd2 .8s infinite}
+.sl-hush{position:absolute;z-index:8;inset:0;display:grid;place-items:center;background:radial-gradient(#0000 35%,#000c);opacity:0;transition:opacity .6s;font-size:clamp(30px,8vw,70px);letter-spacing:.3em;color:#fff4}
+.is-quiet .sl-hush{opacity:1}
+
+/* 짝꿍: 표정과 제스처 */
+.sl-friend{position:absolute;z-index:5;right:-2%;bottom:5%;width:18%;height:40%;border:0;background:none;cursor:pointer;pointer-events:auto}
+.sl-friend-head{position:absolute;right:20%;top:0;width:50%;height:40%;border-radius:48%;background:linear-gradient(#2e2823 0 38%,#d8b799 38%);box-shadow:inset -6px -4px #0002}
+.sl-friend-head i{position:absolute;top:56%;width:11%;height:10%;border-radius:50%;background:#2d2724;transition:all .2s}
+.sl-friend-head i:first-child{left:25%}
+.sl-friend-head i:nth-child(2){right:25%}
+.sl-friend-head b{position:absolute;left:38%;right:38%;top:80%;height:6%;border-radius:4px;background:#8a5a4b;transition:all .2s}
+.sl-friend[data-mood="happy"] .sl-friend-head i{height:5%;border-radius:50% 50% 0 0;background:none;border-top:3px solid #2d2724;top:56%}
+.sl-friend[data-mood="happy"] .sl-friend-head b{left:30%;right:30%;height:12%;background:#8a5a4b;border-radius:0 0 50% 50%}
+.sl-friend[data-mood="wary"] .sl-friend-head i{height:5%;transform:translateX(-30%)}
+.sl-friend[data-mood="wary"] .sl-friend-head b{left:42%;right:30%;top:84%;height:4%;transform:rotate(-8deg)}
+.sl-friend[data-mood="alert"] .sl-friend-head{animation:sl-shake .18s infinite}
+.sl-friend[data-mood="alert"] .sl-friend-head i{width:16%;height:18%;top:48%;background:#fff;box-shadow:inset 0 0 0 4px #2d2724}
+.sl-friend[data-mood="alert"] .sl-friend-head b{left:38%;right:38%;top:76%;height:14%;border-radius:50%}
+.sl-friend[data-mood="giggle"] .sl-friend-head{animation:sl-shake .3s infinite}
+.sl-friend[data-mood="giggle"] .sl-friend-head i{height:4%;border-radius:0 0 50% 50%;background:none;border-bottom:3px solid #2d2724}
+.sl-friend[data-mood="giggle"] .sl-friend-head b{left:28%;right:28%;height:14%;background:#fff;border-radius:0 0 50% 50%}
+.sl-friend-body{position:absolute;right:0;bottom:0;width:90%;height:65%;background:#777b70;border-radius:48% 10% 0 0}
+.sl-friend-arm{position:absolute;right:35%;bottom:8%;width:80%;height:15%;background:#aaa69a;border-radius:20px;transform:rotate(-18deg);transition:transform .3s}
+.sl-friend-hand{position:absolute;right:calc(35% + 80% - 12px);bottom:14%;width:14px;height:14px;border-radius:50%;background:#d8b799;transform:translateY(-14px);transition:transform .3s}
+.is-warning .sl-friend-arm{animation:sl-poke .45s 5}
+.is-warning .sl-friend-hand{animation:sl-poke .45s 5}
+.sl-room[data-activity="note"] .sl-friend-arm{transform:rotate(-6deg) translateX(-12%)}
+.sl-bubble{display:none;position:absolute;right:30%;top:-20%;white-space:nowrap;padding:7px 10px;border-radius:12px;background:#fff9e8;color:#3b3934;font-size:12px}
+.sl-friend[data-say="1"] .sl-bubble,.sl-friend[data-mood="alert"] .sl-bubble{display:block}
+
+/* 책상 */
+.sl-desk{position:absolute;z-index:3;left:-8%;right:-8%;bottom:-22%;height:58%;background:repeating-linear-gradient(3deg,#a88461 0 2px,#aa8968 3px 25px,#a17f5f 26px 27px);border-top:10px solid #6b533f;transform:perspective(700px) rotateX(14deg);box-shadow:0 -8px 20px #0004;pointer-events:auto}
+.sl-book{position:absolute;left:25%;top:5%;width:47%;height:55%;display:flex;filter:drop-shadow(0 4px 4px #0005);cursor:pointer}
+.sl-book-page{width:50%;padding:4% 3%;background:#ebe2c8;color:#5d5a50;font-family:serif;font-size:clamp(7px,1vw,13px);overflow:hidden}
+.sl-book-page:first-child{border-right:2px solid #bcb29c}
+.sl-book-page b,.sl-book-page em{display:block}
+.sl-book-page p{margin:8% 0}
+
+/* 만화책: 페이지 넘김 */
+.sl-manga{display:none;position:absolute;inset:4% 6%;gap:2%;grid-template-columns:1fr 1fr;transform:rotate(-3deg);perspective:700px}
+.sl-room[data-activity="manga"] .sl-manga{display:grid}
+.sl-pg{position:relative;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:4%;padding:4%;background:#f4efe1;color:#262626;border:3px solid #292929;box-sizing:border-box}
+.sl-pg>span{border:1px solid #333;display:grid;place-items:center;font-size:clamp(8px,1.5vw,18px);background:#fff;overflow:hidden}
+.sl-pg>span:nth-child(2n){background:#f0e6d0}
+.sl-flip{position:absolute;inset:-3px;transform-origin:left center;transform-style:preserve-3d;animation:sl-flip 3.2s ease-in-out infinite}
+.sl-flip .sl-pg{position:absolute;inset:0;backface-visibility:hidden}
+.sl-flip .sl-pg.b{transform:rotateY(180deg)}
+
+/* 낙서 노트: 실제 캔버스 */
+.sl-notebook{position:absolute;left:4%;top:17%;width:23%;height:45%;background:repeating-linear-gradient(#f0eadb 0 14px,#b8c4c0 15px 16px);color:#6c6a62;transform:rotate(-8deg);padding:2%;font-size:clamp(8px,1vw,12px);box-shadow:0 3px 6px #0004;cursor:pointer}
+.sl-writing{display:block;margin-top:10px;font-size:.8em}
+.sl-doodle{position:absolute;inset:25% 2% 0;width:95%;height:70%;touch-action:none;pointer-events:none}
+.sl-room[data-activity="doodle"] .sl-doodle{pointer-events:auto;cursor:crosshair}
+.sl-pen{display:none;position:absolute;width:4px;height:18px;margin:-16px 0 0 -2px;background:linear-gradient(#e3be71 0 70%,#463a32 70%);transform:rotate(25deg);transform-origin:bottom;pointer-events:none}
+.sl-room[data-activity="doodle"] .sl-pen{display:block}
+.sl-pencil{position:absolute;left:27%;top:37%;width:21%;height:5px;background:linear-gradient(90deg,#e3be71 0 90%,#463a32 90%);transform:rotate(-35deg);box-shadow:0 2px 2px #0005}
+.is-cover .sl-pencil{animation:sl-write .5s infinite alternate}
+
+/* 과자: 꺼내기, 씹기, 부스러기 */
+.sl-snack{position:absolute;right:23%;top:38%;width:11%;height:21%;background:#ba6846;color:#f9e1a6;display:grid;place-items:center;transform:rotate(12deg);font-size:clamp(9px,1.4vw,17px);box-shadow:0 3px 5px #0004;cursor:pointer}
+.sl-snack span{font-size:1.5em}
+.sl-snack u{position:absolute;left:0;right:0;top:-9%;height:12%;background:#a35a3a;clip-path:polygon(0 100%,6% 0,14% 100%,22% 0,30% 100%,38% 0,46% 100%,54% 0,62% 100%,70% 0,78% 100%,86% 0,94% 100%,100% 0,100% 100%);transform-origin:bottom;transition:transform .5s}
+.sl-snack.is-open u{transform:rotate(-55deg) translateY(-30%)}
+.sl-room[data-activity="snack"] .sl-snack{animation:sl-snack 1.8s ease-in-out infinite}
+.sl-hand{display:none;position:absolute;z-index:2;width:6%;height:11%;border-radius:40% 40% 30% 30%;background:#d8b799;box-shadow:0 3px 4px #0004;animation:sl-hand 1.8s ease-in-out infinite}
+.sl-hand i{position:absolute;left:25%;top:-35%;width:50%;height:60%;background:#e2a85a;clip-path:polygon(50% 0,100% 100%,0 100%)}
+.sl-room[data-activity="snack"] .sl-hand{display:block}
+.sl-crumb{position:absolute;width:5px;height:4px;border-radius:30%;background:#e2a85a;opacity:0;pointer-events:none}
+.sl-crumb.on{animation:sl-crumb 6s forwards}
+.sl-room[data-activity="snack"] .sl-world{animation:sl-chewbob .55s ease-in-out infinite}
+
+/* 이어폰: 음파 */
+.sl-earbuds{position:absolute;right:24%;top:58%;color:#eee;font-size:clamp(18px,2.5vw,30px);transform:rotate(-15deg);cursor:pointer}
+.sl-earbuds span{font-size:18px}
+.sl-earbuds .ring{display:none;position:absolute;left:50%;top:50%;width:20px;height:20px;margin:-10px;border:2px solid #8ee3d2;border-radius:50%;opacity:0}
+.sl-room[data-activity="music"] .sl-earbuds{color:#fff}
+.sl-room[data-activity="music"] .sl-earbuds .ring{display:block;animation:sl-ring 1.4s linear infinite}
+.sl-room[data-activity="music"] .sl-earbuds .ring+.ring{animation-delay:-.7s}
+.sl-wave{display:none;position:absolute;left:56%;top:44%;width:24%;height:16%;align-items:end;gap:3%}
+.sl-wave i{flex:1;height:100%;background:#8ee3d2;border-radius:2px;transform-origin:bottom;transform:scaleY(.2);animation:sl-bar calc(.45s + var(--i) * 31ms) ease-in-out infinite alternate;animation-delay:calc(var(--i) * -70ms)}
+.sl-room[data-activity="music"] .sl-wave{display:flex}
+.sl-room[data-activity="music"] .sl-world{animation:sl-beat .7s ease-in-out infinite alternate}
+
+/* 쪽지: 접어서 건네기 */
+.sl-paper{display:none;position:absolute;right:22%;top:14%;background:#faf2d9;color:#855b5b;padding:2%;font-size:12px;transform:rotate(9deg);cursor:pointer}
+.sl-room[data-activity="note"] .sl-paper{display:block;animation:sl-fold 7s ease-in-out infinite}
+.sl-reply{display:none;position:absolute;right:22%;top:16%;background:#fde6e6;color:#a04b6b;padding:1.5% 2%;font-size:11px;transform:rotate(-6deg);opacity:0}
+.sl-room[data-activity="note"] .sl-reply{display:block;animation:sl-reply 7s ease-in-out infinite}
+
+/* 폰: 숏폼, 알림 진동, 불빛 번짐 */
+.sl-phone{position:absolute;z-index:2;left:15%;top:48%;width:9%;height:22%;padding:1.2%;border-radius:6px;background:#20242b;transform:rotate(14deg);box-shadow:0 2px 4px #0006;cursor:pointer;transition:left .5s,top .5s,width .5s,height .5s,transform .5s,box-shadow .4s}
+.sl-phone-screen{position:relative;height:100%;background:#0c0f14;border-radius:3px;overflow:hidden;transition:background .4s}
+.sl-sbar{position:absolute;z-index:3;left:0;right:0;top:0;display:none;justify-content:space-between;padding:3% 6%;font-size:clamp(6px,.8vw,10px);color:#fffc;background:#0003}
+.is-lowbat .sl-bat{color:#ff8a8a}
+.sl-feed{--sw:0;position:absolute;inset:0;overflow:hidden;opacity:0}
+.sl-clip{position:absolute;inset:0;background:linear-gradient(160deg,hsl(var(--h,200) 55% 55%),hsl(calc(var(--h,200) + 60) 45% 22%))}
+.sl-clip.a{transform:translateY(calc(var(--sw) * -100%))}
+.sl-clip.b{transform:translateY(calc(100% - var(--sw) * 100%))}
+.sl-fig{position:absolute;left:28%;top:22%;width:44%;height:52%;animation:sl-dance .6s ease-in-out infinite alternate}
+.sl-fig:before{content:'';position:absolute;left:30%;top:0;width:40%;height:28%;border-radius:50%;background:#ffe3c9}
+.sl-fig:after{content:'';position:absolute;left:18%;right:18%;top:32%;bottom:0;border-radius:40% 40% 10% 10%;background:#fff8}
+.sl-cap{position:absolute;left:6%;right:22%;bottom:12%;font-size:clamp(6px,.9vw,11px);color:#fff;font-weight:700;text-shadow:0 1px 2px #0009}
+.sl-side{position:absolute;right:6%;bottom:14%;display:flex;flex-direction:column;align-items:center;color:#ff7b89;font-size:clamp(10px,1.6vw,18px)}
+.sl-side small{font-size:.5em;color:#fff}
+.sl-bar{position:absolute;z-index:3;left:0;bottom:0;height:3px;width:100%;background:#fff;transform:scaleX(0);transform-origin:left;opacity:0}
+.sl-heart{position:absolute;z-index:3;left:50%;top:45%;margin:-15px;font-size:30px;color:#ff5f78;opacity:0;pointer-events:none}
+.sl-heart.on{animation:sl-heart .7s forwards}
+.sl-notif{position:absolute;z-index:4;left:6%;right:6%;top:6%;padding:5% 6%;border-radius:5px;background:#f6f1e0;color:#2a2a2a;font-size:clamp(6px,.8vw,10px);opacity:0;transform:translateY(-30px);transition:opacity .2s,transform .3s}
+.sl-notif small{display:block;opacity:.6}
+.is-buzz .sl-notif{opacity:1;transform:none}
+.is-buzz .sl-phone{animation:sl-buzz .1s 14}
+.is-buzz .sl-phone-screen{background:#2b3547}
+.sl-room[data-activity="phone"] .sl-phone{left:43%;top:4%;width:14%;height:56%;padding:1.2%;transform:rotate(-6deg);box-shadow:0 0 35px 12px #9bc8ed70;z-index:4}
+.sl-room[data-activity="phone"] .sl-phone-screen{background:#000}
+.sl-room[data-activity="phone"] .sl-feed,.sl-room[data-activity="phone"] .sl-sbar,.sl-room[data-activity="phone"] .sl-bar{opacity:1}
+.sl-room[data-activity="phone"] .sl-sbar{display:flex}
+.sl-room.is-lowbat[data-activity="phone"] .sl-feed{filter:brightness(.6)}
+.sl-glow{position:absolute;z-index:6;left:0;right:0;bottom:0;height:62%;background:radial-gradient(ellipse at 50% 100%,#a6d4ffcc,#72a8e688 32%,#0000 72%);opacity:0;transition:opacity .4s}
+.sl-room[data-activity="phone"] .sl-glow{opacity:.85;animation:sl-glowflick 1.3s steps(3) infinite}
+.is-buzz .sl-glow{opacity:.3}
+.sl-room.is-lowbat[data-activity="phone"] .sl-glow{opacity:.4}
+
+/* 엎드려 자기: 팔베개 시점, 눈꺼풀 */
+.sl-sleep{position:absolute;z-index:7;inset:0;overflow:hidden;background:radial-gradient(#0000 25%,#000b);opacity:0;pointer-events:none;transition:opacity .8s}
+.sl-room[data-activity="sleep"] .sl-sleep{opacity:1;pointer-events:auto;cursor:pointer}
+.sl-lid{position:absolute;left:0;right:0;background:#0a0c0d;height:calc(var(--lid,0) * 100%);transition:height 1.4s ease,transform .3s}
+.sl-lid.t{top:0;border-radius:0 0 50% 50%/0 0 18px 18px}
+.sl-lid.b{bottom:0;border-radius:50% 50% 0 0/18px 18px 0 0}
+.sl-room[data-hint="2"] .sl-lid.t{animation:sl-flutter .5s infinite alternate}
+.sl-arms{position:absolute;left:0;right:0;bottom:0;height:40%}
+.sl-arms i{position:absolute;bottom:-8%;height:70%;width:68%;background:linear-gradient(#7b8780,#5e6b64);border-radius:50% 50% 0 0/80% 80% 0 0;box-shadow:0 -4px 10px #0006}
+.sl-arms i:first-child{left:-8%;transform:rotate(6deg)}
+.sl-arms i:last-child{right:-8%;transform:rotate(-6deg);background:linear-gradient(#87938c,#66726b)}
+.sl-zzz{position:absolute;left:0;right:0;top:12%;text-align:center;color:#e6dfc7;font-size:clamp(26px,6vw,64px);letter-spacing:.4em;animation:sl-pulse 2s infinite alternate}
+.sl-zzz span{font-size:1.4em}
+.sl-heard{position:absolute;left:0;right:0;top:50%;text-align:center;color:#d9d3bd;font-size:clamp(10px,1.8vw,16px);letter-spacing:.2em;opacity:0;transition:opacity .4s}
+.sl-room[data-activity="sleep"]:not([data-hint="0"]) .sl-heard{opacity:.8}
+.sl-room.is-nod .sl-world{animation:sl-nod 2.4s ease-in-out infinite}
+
+/* 이벤트 연출 */
+.is-thump .sl-world{animation:sl-thump .35s}
+.sl-pop{position:absolute;z-index:8;left:50%;top:46%;margin-left:-40px;width:80px;text-align:center;color:#ffe9a8;font-weight:800;font-size:15px;text-shadow:0 2px 4px #000a;opacity:0}
+.sl-pop.on{animation:sl-pop 1s forwards}
+.sl-relief{position:absolute;z-index:8;left:50%;top:28%;margin-left:-40px;width:80px;text-align:center;font-size:24px;color:#fff;text-shadow:0 2px 4px #0008;opacity:0}
+.is-relief .sl-relief{animation:sl-pop 1.6s forwards}
+.sl-strike{display:none;position:absolute;z-index:9;inset:0;background:#fff8;place-items:center}
+.sl-strike span{background:#fff9e8;color:#332a24;padding:12px 18px;border-radius:15px;font-weight:bold}
+.is-strike .sl-strike{display:grid;animation:sl-flash 2s forwards}
+.is-strike .sl-world{animation:sl-nudge .15s 5}
+
+/* 조작부 */
+.sl-controls{position:relative;z-index:10;display:flex;align-items:stretch;justify-content:space-between;gap:8px;padding:9px;background:#202623}
+.sl-activities{display:flex;gap:4px;min-width:0;overflow-x:auto}
+.sl-action,.sl-cover{border:1px solid #626b5d;border-radius:7px;background:#323c34;color:#efeadd;cursor:pointer;touch-action:manipulation}
+.sl-action{min-width:52px;padding:5px 4px;display:flex;flex-direction:column;align-items:center;gap:2px}
+.sl-action span{font-size:19px;line-height:1}
+.sl-action small{font-size:10px;white-space:nowrap}
+.sl-action.is-active,.sl-cover.is-active{background:#d7c69c;color:#292c25;border-color:#f4e6be}
+.sl-cover{flex:none;padding:6px 15px;font-weight:700}
+.sl-cover small{display:block;font-size:10px;font-weight:400;margin-top:3px}
+.sl-action:focus-visible,.sl-cover:focus-visible,.sl-friend:focus-visible{outline:3px solid #f6dc95;outline-offset:2px}
+
+@keyframes sl-flicker{0%,93%,96%,100%{opacity:1}94%,95%{opacity:.45}}
+@keyframes sl-flickd{0%,93%,96%,100%{opacity:0}94%,95%{opacity:.3}}
+@keyframes sl-flicker2{0%,12%,18%,40%,46%,100%{opacity:1}14%,16%{opacity:.25}42%,44%{opacity:.5}}
+@keyframes sl-flickd2{0%,12%,18%,40%,46%,100%{opacity:0}14%,16%{opacity:.4}42%,44%{opacity:.25}}
+@keyframes sl-shadow{0%,100%{transform:translateX(-120%)}50%{transform:translateX(30%)}}
+@keyframes sl-feet{0%{left:-25%;opacity:.9}100%{left:105%;opacity:.9}}
+@keyframes sl-breathe{to{transform:translateY(3px)}}
+@keyframes sl-sleephead{0%,100%{transform:translateY(0)}45%{transform:translateY(40%) rotate(6deg)}55%{transform:translateY(40%) rotate(6deg)}}
+@keyframes sl-zrise{0%{opacity:0;transform:translate(0,10px)}30%{opacity:1}100%{opacity:0;transform:translate(8px,-18px)}}
+@keyframes sl-chewhead{to{transform:translateY(7%)}}
+@keyframes sl-chipbob{to{transform:translateY(5px)}}
+@keyframes sl-glowflick{0%,100%{opacity:1}50%{opacity:.6}}
+@keyframes sl-pass{0%,10%{left:62.5%;opacity:0}15%{left:62.5%;opacity:1;transform:translateY(0) rotate(12deg)}35%{left:75%;transform:translateY(-10px) rotate(40deg)}50%{left:87.5%;opacity:1;transform:translateY(0) rotate(12deg)}55%,100%{left:87.5%;opacity:0}}
+@keyframes sl-look{to{transform:rotate(14deg)}}
+@keyframes sl-shake{50%{transform:translateX(-3px)}}
+@keyframes sl-nudge{50%{transform:translateX(-7px)}}
+@keyframes sl-poke{50%{transform:translateX(-30%) rotate(-24deg)}}
+@keyframes sl-write{to{transform:rotate(-35deg) translate(5px,3px)}}
+@keyframes sl-snack{50%{transform:rotate(15deg) translate(-3px,-3px)}}
+@keyframes sl-hand{0%{left:68%;top:46%;opacity:0;transform:scale(1)}15%{left:67%;top:44%;opacity:1}35%{left:66%;top:46%;transform:scale(1)}65%{left:52%;top:80%;transform:scale(1.5);opacity:1}80%{left:52%;top:90%;transform:scale(1.8);opacity:0}100%{left:68%;top:46%;opacity:0}}
+@keyframes sl-crumb{0%{opacity:1;transform:translate(0,-10px)}20%{transform:translate(var(--dx),0)}90%{opacity:.9;transform:translate(var(--dx),0)}100%{opacity:0;transform:translate(var(--dx),0)}}
+@keyframes sl-chewbob{50%{transform:translateY(2px)}}
+@keyframes sl-ring{0%{transform:scale(.4);opacity:.9}100%{transform:scale(3.2);opacity:0}}
+@keyframes sl-bar{to{transform:scaleY(1)}}
+@keyframes sl-beat{to{transform:scale(1.006)}}
+@keyframes sl-fold{0%,12%{transform:rotate(9deg) scale(1,1);opacity:1}24%{transform:rotate(9deg) scale(1,.5);opacity:1}34%{transform:rotate(9deg) scale(.55,.5);opacity:1}62%{transform:translate(260%,-30%) rotate(30deg) scale(.55,.5);opacity:1}72%,100%{transform:translate(260%,-30%) rotate(30deg) scale(.55,.5);opacity:0}}
+@keyframes sl-reply{0%,72%{transform:translate(260%,-30%) rotate(20deg);opacity:0}76%{transform:translate(260%,-30%) rotate(20deg);opacity:1}92%,100%{transform:translate(40%,0) rotate(-6deg);opacity:1}}
+@keyframes sl-flip{0%,55%{transform:rotateY(0)}90%,100%{transform:rotateY(-180deg)}}
+@keyframes sl-dance{0%{transform:rotate(-6deg) translateY(0)}100%{transform:rotate(6deg) translateY(-4px)}}
+@keyframes sl-heart{0%{opacity:0;transform:scale(.3)}30%{opacity:1;transform:scale(1.4)}100%{opacity:0;transform:scale(1) translateY(-14px)}}
+@keyframes sl-buzz{0%,100%{transform:rotate(14deg) translateX(0)}50%{transform:rotate(14deg) translateX(-3px)}}
+@keyframes sl-flutter{to{transform:translateY(-3px)}}
+@keyframes sl-pulse{to{opacity:.55;transform:scale(1.05)}}
+@keyframes sl-nod{0%,100%{transform:translateY(0) rotate(0)}60%{transform:translateY(14px) rotate(.6deg)}70%{transform:translateY(0)}}
+@keyframes sl-thump{20%{transform:translateY(4px)}}
+@keyframes sl-pop{0%{opacity:0;transform:translateY(8px)}20%{opacity:1}100%{opacity:0;transform:translateY(-22px)}}
+@keyframes sl-flash{0%{opacity:1}20%{background:#fff3}100%{opacity:0}}
+
+@media(max-width:600px){
+.sl-controls{flex-wrap:wrap}
+.sl-activities{width:100%}
+.sl-action{flex:1;min-width:43px}
+.sl-cover{width:100%;padding:6px}
+.sl-cover small{display:inline;margin-left:8px}
+.sl-room{min-height:270px}
+.sl-friend{width:24%}
+.sl-book{width:52%;left:23%}
+.sl-pg>span{font-size:8px}
+}
+@media(prefers-reduced-motion:reduce){.sl-class *{animation-duration:.01ms!important;animation-iteration-count:1!important}}

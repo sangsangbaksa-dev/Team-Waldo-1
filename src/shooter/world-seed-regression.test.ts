@@ -5,7 +5,7 @@ import { generateMap, shuffledTownThemes } from './world';
 describe('ZERO ZONE deterministic multiplayer map themes', () => {
   it('uses an engine-independent shuffle without Array.sort random comparisons', () => {
     const spy = vi.spyOn(Array.prototype, 'sort');
-    let themes: ReturnType<typeof shuffledTownThemes>;
+    let themes: ReturnType<typeof shuffledTownThemes> = [];
     try {
       themes = shuffledTownThemes(makeRng(12345));
       expect(spy).not.toHaveBeenCalled();

@@ -296,3 +296,21 @@
 @media (any-pointer:coarse) and (max-width:420px){
   .sc-start,.sc-clock{display:none}
 }
+
+/* Keyboard navigation must remain visible inside the simulated monitor. */
+.slack-computer button:focus-visible,
+.slack-computer [tabindex]:focus-visible{
+  outline:2px solid #b9eaff;
+  outline-offset:2px;
+}
+/* Respect the OS accessibility preference without hiding any actionable UI. */
+@media(prefers-reduced-motion:reduce){
+  .slack-computer,.slack-computer *, .slack-computer *::before,.slack-computer *::after{
+    animation-duration:.01ms!important;
+    animation-delay:0ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:.01ms!important;
+    transition-delay:0ms!important;
+    scroll-behavior:auto!important;
+  }
+}

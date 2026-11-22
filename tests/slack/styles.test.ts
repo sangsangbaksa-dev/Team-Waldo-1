@@ -18,3 +18,18 @@ describe('SLACK OFF animation isolation', () => {
     expect(owners.has('sl-class-pop')).toBe(true);
   });
 });
+
+describe('SLACK OFF keyboard and motion accessibility', () => {
+  it('provides a visible keyboard focus indicator in the dorm app controls', () => {
+    const dorm = styles.find(s => s.name === 'computer.css')!.css;
+    expect(dorm).toMatch(/\.slack-computer button:focus-visible/);
+    expect(dorm).toMatch(/outline:\s*2px solid/);
+  });
+
+  it('honors reduced-motion settings in both the classroom and dorm animations', () => {
+    for (const sheet of styles.filter(s => s.name !== 'slack.css')) {
+      expect(sheet.css, sheet.name).toMatch(/prefers-reduced-motion:\s*reduce/);
+      expect(sheet.css, sheet.name).toMatch(/animation-duration:\s*\.01ms\s*!important/);
+    }
+  });
+});

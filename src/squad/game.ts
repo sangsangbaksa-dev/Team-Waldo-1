@@ -24,6 +24,7 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
   let previous: 'deploy' | 'battle' = 'deploy', side: Side = 0, armies: Placement[][] = [[], []], selected: UnitType = 'guard', battle: Battle | null = null, score = [0, 0], round = 1, speed = 1, hover: { x: number; y: number } | null = null, drag: { x: number; y: number } | null = null, raf = 0, last = 0, accumulator = 0, closed = false;
   let totals = [{ kills: 0, damage: 0, survivors: 0, gold: 0 }, { kills: 0, damage: 0, survivors: 0, gold: 0 }];
   let lastRosterTick = 0, lastDrawTick = -1, onlineTimer = 0;
+  let renderedStage: typeof stage | null = null;
   const cost = (s: Side) => armies[s]!.reduce((n, p) => n + UNITS[p.type].cost, 0);
   const button = (id: string, text: string, cls = '') => `<button id="${id}" class="wd-btn ${cls}">${text}</button>`;
   const seg = (key: string, items: Array<[string, string]>, cur: string) => items.map(([v, t]) => `<button type="button" data-${key}="${v}" aria-pressed="${cur === v}">${t}</button>`).join('');
@@ -39,6 +40,14 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
     if (!raf) raf = requestAnimationFrame(frame);
   }
   function render(): void {
+    const active = root.contains(document.activeElement) ? document.activeElement as HTMLElement : null;
+    // Re-rendered controls used to lose keyboard focus after every selection.
+    const keepFocus = active?.id ? `#${active.id}`
+      : active?.dataset.unit ? `[data-unit="${active.dataset.unit}"]`
+      : active?.dataset.mode ? `[data-mode="${active.dataset.mode}"]`
+      : active?.dataset.diff ? `[data-diff="${active.dataset.diff}"]` : null;
+    const stageChanged = renderedStage !== stage;
+    renderedStage = stage;
     root.classList.toggle('wd-has-rails', stage === 'deploy' || stage === 'battle');
     const title = `<p class="wd-eyebrow">배치 전략 · Formation</p><h1 class="wd-title">SQUAD CLASH</h1>`;
     if (stage === 'menu') root.innerHTML = `<main class="wd-panel sq-card">${title}<p class="wd-lead">같은 예산, 다른 진형. 배치가 승부를 가릅니다.</p><div class="wd-field"><span class="wd-label">모드</span><div class="wd-seg" role="group" aria-label="모드">${seg('mode', [['ai', 'AI 대전'], ['local', '한 화면 2인'], ...(PVP_ENABLED ? [['online', '온라인'] as [string, string]] : [])], mode)}</div></div>${mode === 'ai' ? `<div class="wd-field"><span class="wd-label">난이도</span><div class="wd-seg" role="group" aria-label="난이도">${seg('diff', [['easy', '쉬움'], ['normal', '보통'], ['hard', '어려움']], difficulty)}</div></div>` : ''}<ul class="wd-facts"><li>1,000G 예산</li><li>3판 2선승</li><li>1–5 병사 선택</li><li>드래그 이동 · 우클릭 삭제</li></ul>${recordLine()}<div class="wd-actions">${button('start', mode === 'online' ? '매치 찾기' : '시작', 'primary')}<div class="wd-row">${button('sound', audio.enabled ? '소리 켜짐' : '소리 꺼짐', 'ghost')}${button('exit', '게임 목록으로', 'ghost')}</div></div></main>`;
@@ -52,7 +61,14 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
       root.innerHTML = `<main class="wd-panel sq-card sq-result"><span class="sq-kicker">${stage === 'result' ? '최종 결과' : `라운드 ${round} 결과`}</span><h2>${stage === 'result' ? (online ? (score[online.mine]! > score[1 - online.mine]! ? '최종 승리' : '최종 패배') : score[0] > score[1] ? 'P1 최종 승리' : mode === 'ai' ? 'AI 최종 승리' : 'P2 최종 승리') : result}</h2><div class="sq-final-score"><b class="sq-s0">${score[0]}</b> <span>:</span> <b class="sq-s1">${score[1]}</b></div><div class="sq-stats"><div></div><b>P1</b><b>${mode === 'ai' ? 'AI' : 'P2'}</b>${(['kills', 'damage', 'survivors', 'gold'] as const).map((k, i) => `<span>${[ICON.sword, ICON.drop, ICON.shield, ICON.coin][i]}${['처치', '피해량', '생존 병사', '골드 효율'][i]}</span>${totals.map(t => `<strong>${k === 'gold' ? (t.gold ? (t.damage / t.gold).toFixed(2) : '0') : Math.round(t[k])}</strong>`).join('')}`).join('')}</div><p class="sq-note">골드 효율 = 누적 피해량 ÷ 사용 골드</p>${online?.result ? `<p class="sq-note sq-online-note">${esc(online.result)}</p>` : ''}<div class="sq-actions">${button('next', stage === 'result' ? (online ? '메뉴로' : '다시 대전') : '다음 라운드', 'primary')}${online ? '' : button('menu', '메뉴로')}</div></main>`;
     } else if (stage === 'wait') root.innerHTML = `<main class="wd-panel sq-card sq-cover">${title}<span class="sq-round">라운드 ${round}</span><h2>상대 배치를 기다리는 중</h2><p>내 진형을 제출했습니다. 상대가 배치를 마치면 바로 전투가 시작됩니다.</p></main>`;
     else root.innerHTML = `<main class="wd-panel sq-card"><h2>일시정지</h2><div class="sq-actions">${button('resume', '이어하기', 'primary')}${button('menu', '모드 선택')}${button('exit', '게임 목록으로', 'ghost')}</div></main>`;
-    bind(); scheduleFrame();
+    bind();
+    if (stageChanged) {
+      const first = stage === 'menu' ? '#start' : stage === 'cover' ? '#uncover' : stage === 'deploy' ? '[data-unit]'
+        : stage === 'battle' ? '#pause' : stage === 'pause' ? '#resume'
+        : stage === 'result' || stage === 'round' ? '#next' : null;
+      if (first) root.querySelector<HTMLElement>(first)?.focus({ preventScroll: true });
+    } else if (keepFocus) root.querySelector<HTMLElement>(keepFocus)?.focus({ preventScroll: true });
+    scheduleFrame();
   }
   function beginRound(): void { lastRosterTick = 0; lastDrawTick = -1; armies = [[], []]; side = 0; battle = null; hover = null; if (online) { side = online.mine; online.sent = 0; online.deadline = Date.now() + DEPLOY_MS; online.net.clearArmy(); } stage = mode === 'local' ? 'cover' : 'deploy'; render(); if (online) tickOnline(); }
   function startMatch(): void { score = [0, 0]; round = 1; totals = [{ kills: 0, damage: 0, survivors: 0, gold: 0 }, { kills: 0, damage: 0, survivors: 0, gold: 0 }]; beginRound(); }

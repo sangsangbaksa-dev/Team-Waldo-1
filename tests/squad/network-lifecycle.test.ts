@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { afterEach, expect, it, vi } from 'vitest';
 import { SquadPvp } from '../../src/squad/net';
 import type { PvpSession } from '../../src/net/lobby';
@@ -15,6 +16,9 @@ it('closes an abandoned PVP channel once and ignores late messages', async () =>
   const onArmy = vi.fn(), onGone = vi.fn();
   const net = new SquadPvp(session, { onArmy, onGone });
   await Promise.resolve();
+  receive(null as unknown as NetMsg);
+  receive('garbage' as unknown as NetMsg);
+  expect(net.heard).toBe(false);
   receive({ t: 'bye', fin: false });
   expect(onGone).toHaveBeenCalledExactlyOnceWith('bye');
   expect(channel.close).toHaveBeenCalledTimes(1);

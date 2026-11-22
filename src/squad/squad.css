@@ -91,3 +91,7 @@
 .sq-hint{display:none}
 .sq-actions{flex-wrap:nowrap}.sq-actions .wd-btn,.sq-deploy .wd-btn{padding:9px 8px;font-size:13px;white-space:nowrap}
 }
+
+/* Show keyboard focus on dark tactical controls without changing pointer styling. */
+.sq-root button:focus-visible{outline:3px solid #96d5ff;outline-offset:2px}
+@media(any-pointer:coarse){.sq-root button{min-height:44px}}

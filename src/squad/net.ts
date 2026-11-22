@@ -48,7 +48,7 @@ export class SquadPvp {
     if (!this.heard) { if (now - this.born > NEVER_MS) this.gone('never'); } else if (!this.finished && now - this.last > SILENT_MS) this.gone('silent');
   }
   private onMsg(m: NetMsg): void {
-    if (this.dead) return;
+    if (this.dead || !m || typeof m !== 'object' || typeof m.t !== 'string') return;
     this.last = performance.now(); this.heard = true;
     if (m.t === 'army') { const r = m.r, a = parseArmy(m.a); if (validRound(r) && a) this.hooks.onArmy(r as number, a); }
     else if (m.t === 'bye') { if (m.fin === true) this.finished = true; else this.gone('bye'); }

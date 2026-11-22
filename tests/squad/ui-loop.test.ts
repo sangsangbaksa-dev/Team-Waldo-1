@@ -71,3 +71,23 @@ it('stops scheduling frames after a battle completes', () => {
   expect(frames.size).toBe(0);
   button('#exit').click();
 });
+
+it('keeps keyboard focus through menu, deployment and pause transitions', () => {
+  openSquad(vi.fn());
+  expect(document.activeElement).toBe(button('#start'));
+  button('#start').click();
+  expect(document.activeElement).toBe(button('[data-unit="guard"]'));
+  button('[data-unit="archer"]').focus();
+  button('[data-unit="archer"]').click();
+  expect(document.activeElement).toBe(button('[data-unit="archer"]'));
+  button('#auto').focus();
+  button('#auto').click();
+  expect(document.activeElement).toBe(button('#auto'));
+  button('#ready').click();
+  expect(document.activeElement).toBe(button('#pause'));
+  button('#pause').click();
+  expect(document.activeElement).toBe(button('#resume'));
+  button('#menu').click();
+  expect(document.activeElement).toBe(button('#start'));
+  button('#exit').click();
+});

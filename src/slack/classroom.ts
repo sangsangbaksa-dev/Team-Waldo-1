@@ -75,8 +75,12 @@ export const createClassroomView: CreateView = (sim, audio) => {
   const txt = (n: HTMLElement, v: string) => { if (n.textContent !== v) n.textContent = v; };
   const restart = (n: HTMLElement, cls: string) => { n.classList.remove(cls); void n.offsetWidth; n.classList.add(cls); };
   // 영상 창은 양쪽 AI 가 싸우는 장면, 게임 창은 청군을 내가 지휘한다(점수는 창 안에서만 씀)
-  const vid = createBattle(false);
-  const game = createBattle(true, e => { if (e === 'train') audio.play('key', 0.4); else if (e === 'order') audio.play('click', 0.3); else if (e === 'hq') audio.play('fun', 0.4); else if (e === 'win') audio.play('chime'); else if (e === 'lose') audio.play('click', 0.5); });
+  // Study view opens without either in-screen RTS. Instantiate the two games
+  // only when first viewed; keep their instances for subsequent app switches.
+  let vid: ReturnType<typeof createBattle> | null = null;
+  let game: ReturnType<typeof createBattle> | null = null;
+  const getVideo = (): ReturnType<typeof createBattle> => vid ??= createBattle(false);
+  const getGame = (): ReturnType<typeof createBattle> => game ??= createBattle(true, e => { if (e === 'train') audio.play('key', 0.4); else if (e === 'order') audio.play('click', 0.3); else if (e === 'hq') audio.play('fun', 0.4); else if (e === 'win') audio.play('chime'); else if (e === 'lose') audio.play('click', 0.5); });
   let coverKey = false, coverPointer: number | null = null;
   let step = 0, stepLv = 0, relief = 0, popT = 0, quiet = 0, strike = 0, vt = 0, gHand = 0.5;
   let cursorX = W / 2, cursorY = H / 2;
@@ -89,7 +93,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
     if (next && sim.state.activity === next) audio.play('click', 0.5);
   };
   const view = () => (sim.state.cover || !sim.state.activity ? 'doc' : sim.state.activity === 'video' ? 'video' : 'game');
-  const train = (k: 'w' | 'i' | 't') => { audio.resume(); if (view() === 'game') game.train(k); };
+  const train = (k: 'w' | 'i' | 't') => { audio.resume(); if (view() === 'game') getGame().train(k); };
   const keydown = (event: KeyboardEvent) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.target === gcv && view() === 'game') {
@@ -108,7 +112,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
         event.preventDefault();
         if (!event.repeat) {
           audio.resume();
-          const result = game.command(cursorX, cursorY);
+          const result = getGame().command(cursorX, cursorY);
           txt(cursorStatus, result === 'atk' ? '선택한 위치를 공격합니다.' : result === 'move' ? '선택한 위치로 이동합니다.' : '지시할 유닛이 없습니다.');
         }
         return;
@@ -143,7 +147,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
     if (tb) { if (event.detail > 0) el.focus({ preventScroll: true }); train(tb.dataset.train as 'w' | 'i' | 't'); }
   };
   const gpos = (e: PointerEvent) => { const r = gcv.getBoundingClientRect(); return [((e.clientX - r.left) / r.width) * W, ((e.clientY - r.top) / r.height) * H, (e.clientX - r.left) / r.width] as const; };
-  const gDown = (e: PointerEvent) => { if (e.button !== 0 || view() !== 'game') return; el.focus({ preventScroll: true }); audio.resume(); const [x, y] = gpos(e); game.command(x, y); };
+  const gDown = (e: PointerEvent) => { if (e.button !== 0 || view() !== 'game') return; el.focus({ preventScroll: true }); audio.resume(); const [x, y] = gpos(e); getGame().command(x, y); };
   const gMove = (e: PointerEvent) => { gHand = gpos(e)[2]; };
   el.addEventListener('keydown', keydown);
   el.addEventListener('keyup', keyup);
@@ -182,14 +186,16 @@ export const createClassroomView: CreateView = (sim, audio) => {
       if (cover.getAttribute('aria-pressed') !== String(s.cover)) cover.setAttribute('aria-pressed', String(s.cover));
       txt(batEl, `${Math.round(s.battery)}%`);
       // 게임은 창을 가려도 계속 진행(실시간), 영상은 보는 동안만 흐른다
-      game.update(dt);
+      game?.update(dt);
       let fl = v === 'doc' ? 0.1 : 0;
       if (v === 'video') {
-        vid.update(dt); draw(vctx, vid); vt += dt; fl = vid.flash;
+        const video = getVideo();
+        video.update(dt); draw(vctx, video); vt += dt; fl = video.flash;
         txt(sub, vid.capT > 0 ? vid.cap : ''); sub.classList.toggle('on', vid.capT > 0);
         const sec = Math.floor(vt), m = `${String(Math.floor(sec / 60) % 100).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`; txt(vtime, m);
         track.style.transform = `scaleX(${(vt % 90) / 90})`;
       } else if (v === 'game') {
+        const game = getGame();
         draw(gctx, game); fl = game.flash;
         if (gctx && document.activeElement === gcv) {
           gctx.save();

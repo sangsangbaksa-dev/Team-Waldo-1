@@ -8,6 +8,7 @@ const hyp = (a: number, b: number): number => Math.sqrt(a * a + b * b);
 export const STEP = 1 / 30;
 export const BUDGET = 1000;
 export function validArmy(army: Placement[], side: Side): boolean {
+  if (!Array.isArray(army) || (side !== 0 && side !== 1)) return false;
   const cells = new Set<string>(); let cost = 0;
   for (const p of army) {
     if (!p || !Object.prototype.hasOwnProperty.call(UNITS, p.type) || !Number.isInteger(p.x) || !Number.isInteger(p.y) || p.y < (side ? 0 : 10) || p.y >= (side ? 10 : 20) || p.x < 0 || p.x >= 12) return false;
@@ -87,8 +88,12 @@ export class Battle {
       }
       u.x = Math.max(0.3, Math.min(11.7, u.x + dx * d.speed * STEP)); u.y = Math.max(0.3, Math.min(19.7, u.y + dy * d.speed * STEP));
     }
-    const left = this.units.filter(u => u.side === 0 && u.hp > 0), right = this.units.filter(u => u.side === 1 && u.hp > 0);
-    if (!left.length || !right.length || this.tick >= 1800) {
+    // The win check runs every tick; count survivors without allocating two arrays.
+    let blueAlive = 0, redAlive = 0;
+    for (const unit of this.units) {
+      if (unit.hp > 0) { if (unit.side === 0) blueAlive++; else redAlive++; }
+    }
+    if (!blueAlive || !redAlive || this.tick >= 1800) {
       const ratio = (side: Side) => { const all = this.units.filter(u => u.side === side); return all.reduce((n, u) => n + Math.max(0, u.hp), 0) / all.reduce((n, u) => n + UNITS[u.type].hp, 0); };
       const diff = ratio(0) - ratio(1); this.winner = Math.abs(diff) < 0.001 ? 'draw' : diff > 0 ? 0 : 1;
     }

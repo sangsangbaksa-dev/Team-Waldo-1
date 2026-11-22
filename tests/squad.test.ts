@@ -69,3 +69,22 @@ describe('squad corrupt placement safety', () => {
     }
   });
 });
+
+describe('SQUAD CLASH malformed game-state guards', () => {
+  it('returns false instead of throwing for invalid army envelopes or sides', () => {
+    for (const raw of [undefined, null, false, 'guard', { length: 0 }, 42]) {
+      expect(validArmy(raw as Placement[], 0)).toBe(false);
+      expect(() => new Battle(raw as Placement[], [{ type: 'guard', x: 2, y: 8 }])).toThrow('Invalid army');
+    }
+    expect(validArmy([{ type: 'guard', x: 1, y: 11 }], 3 as 0)).toBe(false);
+  });
+
+  it('still resolves mirrored armies and scores both teams correctly', () => {
+    const blue: Placement[] = [{ type: 'guard', x: 3, y: 11 }];
+    const red: Placement[] = [{ type: 'archer', x: 3, y: 8 }];
+    const b = new Battle(blue, red, 42);
+    while (b.winner === null) b.step();
+    expect(b.tick).toBeLessThanOrEqual(1800);
+    expect(b.winner).toBe(1);
+  });
+});

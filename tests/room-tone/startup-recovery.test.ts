@@ -77,6 +77,15 @@ describe("ROOM TONE model request lifecycle",()=>{
   });
 });
 describe("ROOM TONE allocation-free neighbor expansion",()=>{
+  it("generates identical seeded maps and landmark positions on every visit",()=>{
+    for(let chapter=0;chapter<chapters.length;chapter++){
+      const first=makeLevel(chapter),second=makeLevel(chapter);
+      expect(second.map).toEqual(first.map);
+      expect(second.items).toEqual(first.items);
+      expect(second.exit).toBe(first.exit);
+      expect(second.nest).toBe(first.nest);
+    }
+  });
   it("keeps deterministic neighbor order and path connectivity",()=>{
     const map=["#####","#...#","#.#.#","#...#","#####"];
     expect(neighbors(map,6)).toEqual([7,11]);

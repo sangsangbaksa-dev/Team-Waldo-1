@@ -178,21 +178,20 @@ export function makeLevel(ch) {
   const map = g.map((row) => row.join(""));
   const start = w + 1;
   const base = paths(map, start);
-  const selected = [start],
-    ds = [base.dist];
+  const ds = [base.dist];
   function far() {
-    let best = -1,
-      score = -1;
+    let best = -1, score = -1;
     for (const cell of base.q) {
-      const v =
-        Math.min(...ds.map((d) => d[cell])) +
-        0.012 * (neighbors(map, cell).length === 1 ? 1 : 0);
+      let nearest = Infinity;
+      for (const distances of ds) {
+        if (distances[cell] < nearest) nearest = distances[cell];
+      }
+      const v = nearest + 0.012 * (neighbors(map, cell).length === 1 ? 1 : 0);
       if (v > score) {
         score = v;
         best = cell;
       }
     }
-    selected.push(best);
     ds.push(paths(map, best).dist);
     return best;
   }

@@ -52,6 +52,8 @@ export class ActorView {
   private readonly lights: THREE.PointLight[] = [];
   private readonly v = new THREE.Vector3();
   private readonly q = new THREE.Quaternion();
+  /** Reused immediately by ContactShadows.add (the instancing call copies its values). */
+  private readonly shadowFootprint = { x: 0, y: 0, z: 0, yaw: 0, length: 0, width: 0, gap: 0 };
   private readonly glow: THREE.DataTexture;
   private readonly box: THREE.BoxGeometry;
   private readonly plane: THREE.PlaneGeometry;
@@ -484,7 +486,13 @@ export class ActorView {
         this.car(v, c, dt, night);
         const d = VEHICLES[v.kind], h = groundHeight(this.sim.map, v.x, v.z);
         // No flat decal across sloped ramps or rooftop geometry.
-        if (h < .08) this.contact.add({ x: v.x, y: surfaceAt(this.sim.map, v.x, v.z) === 'road' ? .038 : .185, z: v.z, yaw: -v.h, length: d.halfL * 2.32, width: d.halfW * 2.55, gap: Math.max(0, v.y - h) });
+        if (h < .08) {
+          const f = this.shadowFootprint;
+          f.x = v.x; f.y = surfaceAt(this.sim.map, v.x, v.z) === 'road' ? .038 : .185;
+          f.z = v.z; f.yaw = -v.h; f.length = d.halfL * 2.32;
+          f.width = d.halfW * 2.55; f.gap = Math.max(0, v.y - h);
+          this.contact.add(f);
+        }
       }
     }
     this.contact.end(); this.prune(this.cars, liveCars, c => c.root);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { trafficSpeedFactor, pedestrianSpeedFactor, crossingTrafficFactor } from '../../src/tycoon/scene/people';
+import { Scene, Vector3 } from 'three';
+import { Traffic, trafficSpeedFactor, pedestrianSpeedFactor, crossingTrafficFactor } from '../../src/tycoon/scene/people';
 import { intersectionFactor, signalAspect } from '../../src/tycoon/scene/signals';
 
 describe('HUSTLE traffic safe following', () => {
@@ -80,4 +81,17 @@ describe('HUSTLE perpendicular intersection occupancy', () => {
     expect(crossingTrafficFactor(-24, -24, -1, 5, -24, -24, 4.4)).toBe(1);
     expect(crossingTrafficFactor(24, 24, 1, 4.4, 24, 24, 9.5)).toBe(1);
   });
+});
+
+it('reuses the same contact-shadow descriptor across nearby cars and frames', () => {
+  const scene = new Scene(), traffic = new Traffic(scene, 'high');
+  const collector = (traffic as unknown as { contact: { add: (o: object)=>boolean } }).contact;
+  const original = collector.add.bind(collector);
+  const submitted: object[] = [];
+  collector.add = footprint => { submitted.push(footprint); return original(footprint); };
+  traffic.update(.016, new Vector3(0,0,0), new Vector3(1000,0,1000), 0);
+  traffic.update(.016, new Vector3(0,0,0), new Vector3(1000,0,1000), 0);
+  expect(submitted.length).toBeGreaterThan(1);
+  expect(new Set(submitted).size).toBe(1);
+  traffic.dispose();
 });

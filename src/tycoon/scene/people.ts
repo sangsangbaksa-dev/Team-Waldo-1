@@ -123,6 +123,7 @@ export class Traffic {
   private brakeMat = new THREE.MeshBasicMaterial({ color: 0xff5030, toneMapped: false });
   private poolGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
   private poolTex = headlightTexture();
+  private readonly shadowFootprint = { x: 0, y: .045, z: 0, yaw: 0, length: 0, width: 0 };
   private contact: ContactShadows;
   private poolMat = new THREE.MeshBasicMaterial({ map: this.poolTex, color: 0xffe3b0, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
   private disposed = false;
@@ -183,7 +184,12 @@ export class Traffic {
       placeCar(c); c.mesh.visible = Math.hypot(c.mesh.position.x - cam.x, c.mesh.position.z - cam.z) < 260;
       for (const lamp of c.tailLights) lamp.material = target < .75 ? this.brakeMat : this.tailMat;
       if (c.headPool) c.headPool.visible = night > .12;
-      if (c.mesh.visible) this.contact.add({ x: c.mesh.position.x, y: .045, z: c.mesh.position.z, yaw: c.mesh.rotation.y, length: c.length * 1.16, width: c.width * 1.25 });
+      if (c.mesh.visible) {
+        const f = this.shadowFootprint;
+        f.x = c.mesh.position.x; f.z = c.mesh.position.z; f.yaw = c.mesh.rotation.y;
+        f.length = c.length * 1.16; f.width = c.width * 1.25;
+        this.contact.add(f);
+      }
     }
     this.contact.end(); this.lightMat.color.setRGB(.44 + night * 1.5, .40 + night * 1.32, .30 + night * 1.05);
     this.tailMat.color.setRGB(0.48 + night * .7, 0.07, 0.035);

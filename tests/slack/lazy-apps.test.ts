@@ -136,3 +136,19 @@ it('processes delayed messenger replies in chronological order without ghost typ
   expect(view.el.querySelector('.sc-typing')?.classList.contains('on')).toBe(false);
   expect(view.el.querySelector<HTMLButtonElement>('[data-room="0"] [data-last]')?.textContent).not.toBe('입력 중...');
 });
+
+it('still hides the computer when the study cover cannot capture a touch pointer', () => {
+  const cover = view.el.querySelector<HTMLButtonElement>('.sc-cover-button')!;
+  Object.defineProperty(cover, 'setPointerCapture', {
+    configurable: true, value: () => { throw new Error('capture unavailable'); },
+  });
+  const pointer = (type: string) => {
+    const e = new Event(type, { bubbles: true, cancelable: true });
+    Object.assign(e, { button: 0, pointerId: 17 });
+    cover.dispatchEvent(e);
+  };
+  expect(() => pointer('pointerdown')).not.toThrow();
+  expect(cover.getAttribute('aria-pressed')).toBe('true');
+  pointer('pointerup');
+  expect(cover.getAttribute('aria-pressed')).toBe('false');
+});

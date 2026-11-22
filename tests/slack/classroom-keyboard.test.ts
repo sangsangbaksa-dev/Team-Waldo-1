@@ -62,3 +62,29 @@ it('ignores pointer orders while the in-screen RTS has no measurable canvas size
   expect(audio.play).toHaveBeenCalledWith('click', 0.3);
   view.dispose();
 });
+
+it('supports hold-to-cover on classroom touch controls without pointer capture', () => {
+  const sim = createSim('class', 6, 1); sim.start();
+  const view = createClassroomView(sim, audio);
+  document.body.append(view.el);
+  const cover = view.el.querySelector<HTMLButtonElement>('.sl-cover')!;
+  Object.defineProperty(cover, 'setPointerCapture', {
+    configurable: true, value: () => { throw new Error('capture denied'); },
+  });
+  const pointer = (type: string) => {
+    const e = new Event(type, { bubbles: true, cancelable: true });
+    Object.assign(e, { button: 0, pointerId: 7 });
+    cover.dispatchEvent(e);
+  };
+  expect(() => pointer('pointerdown')).not.toThrow();
+  expect(sim.state.cover).toBe(true);
+  pointer('pointercancel');
+  expect(sim.state.cover).toBe(true); // no selected activity: the study cover stays visible
+  sim.doActivity('game');
+  sim.setCover(false);
+  pointer('pointerdown');
+  expect(sim.state.cover).toBe(true);
+  pointer('pointercancel');
+  expect(sim.state.cover).toBe(false);
+  view.dispose();
+});

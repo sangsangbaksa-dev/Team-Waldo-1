@@ -136,13 +136,19 @@ export const createClassroomView: CreateView = (sim, audio) => {
   const release = () => {
     if (!coverKey && coverPointer === null) return;
     const pointer = coverPointer; coverKey = false; coverPointer = null; syncCover();
-    if (pointer !== null && cover.hasPointerCapture(pointer)) cover.releasePointerCapture(pointer);
+    if (pointer !== null) {
+      try { if (cover.hasPointerCapture?.(pointer)) cover.releasePointerCapture(pointer); }
+      catch { /* Pointer capture may have ended during a browser focus switch. */ }
+    }
   };
   const focusout = (event: FocusEvent) => { if (!(event.relatedTarget instanceof Node) || !el.contains(event.relatedTarget)) release(); };
   const pointerDown = (event: PointerEvent) => {
     if (event.button !== 0 || coverPointer !== null) return;
     event.preventDefault(); cover.focus({ preventScroll: true }); audio.resume();
-    coverPointer = event.pointerId; cover.setPointerCapture(event.pointerId); syncCover();
+    coverPointer = event.pointerId;
+    try { cover.setPointerCapture?.(event.pointerId); }
+    catch { /* Keep hold-to-cover functional even on browsers without capture. */ }
+    syncCover();
   };
   const pointerUp = (event: PointerEvent) => { if (coverPointer === event.pointerId) { coverPointer = null; syncCover(); } };
   const actionClick = (event: MouseEvent) => {

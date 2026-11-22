@@ -338,14 +338,19 @@ export const createComputerView: CreateView = (sim, audio) => {
   };
   const buttonDown = (event: PointerEvent) => {
     if (event.button !== 0 || coverPointer !== null) return;
-    event.preventDefault(); coverButton.focus({ preventScroll: true }); coverButton.setPointerCapture(event.pointerId);
+    event.preventDefault(); coverButton.focus({ preventScroll: true });
+    try { coverButton.setPointerCapture?.(event.pointerId); }
+    catch { /* Still respond to pointerup and lost focus when capture is unavailable. */ }
     audio.resume(); audio.play('click'); coverPointer = event.pointerId; updateCover();
   };
   const buttonUp = (event: PointerEvent) => { if (coverPointer === event.pointerId) { coverPointer = null; updateCover(); } };
   const blur = () => {
     if (!coverKey && coverPointer === null && coverMiddle === null) return;
     const pointer = coverPointer; coverKey = false; coverPointer = null; coverMiddle = null; updateCover();
-    if (pointer !== null && coverButton.hasPointerCapture(pointer)) coverButton.releasePointerCapture(pointer);
+    if (pointer !== null) {
+      try { if (coverButton.hasPointerCapture?.(pointer)) coverButton.releasePointerCapture(pointer); }
+      catch { /* Capture may already have been revoked by the browser. */ }
+    }
   };
   const focusout = (event: FocusEvent) => { if (!(event.relatedTarget instanceof Node) || !el.contains(event.relatedTarget)) blur(); };
   const scroll = (event: Event) => { if ((event.target as Element).classList?.contains('sc-wt-scroll')) toonProgress(); };

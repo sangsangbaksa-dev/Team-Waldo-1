@@ -6,11 +6,13 @@ export interface SceneCleanupOptions {
   keepMaterial?: (material: THREE.Material) => boolean;
   /** Textures not attached directly to a scene material, e.g. particle atlas. */
   extraTextures?: readonly THREE.Texture[];
+  /** Optional geometry retained by a scene object but not currently attached to it. */
+  extraGeometries?: readonly THREE.BufferGeometry[];
 }
 
 /** Deduplicated release of scene-owned GPU resources, including lines, points and textures. */
 export function disposeSceneResources(root: THREE.Object3D, options: SceneCleanupOptions = {}): void {
-  const geometries = new Set<THREE.BufferGeometry>();
+  const geometries = new Set<THREE.BufferGeometry>(options.extraGeometries ?? []);
   const materials = new Set<THREE.Material>();
   const textures = new Set<THREE.Texture>(options.extraTextures ?? []);
   root.traverse(object => {

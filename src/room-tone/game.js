@@ -29,6 +29,7 @@ import { createIdLookup } from "./dom.mjs";
 import { lineOfSight, moveWithCollision } from "./collision.mjs";
 import { describeStartupError } from "./startup-error.mjs";
 import { renderingScale } from "./render-quality.mjs";
+import { disposeGroup } from "./resources.mjs";
 
 const $ = createIdLookup(document),
   C = 2.7,
@@ -448,24 +449,7 @@ function resize() {
   showSceneOnce();
 }
 window.addEventListener("resize", resize);
-function disposeGroup(root) {
-  if (!root) return;
-  const geo = new Set(),
-    mat = new Set(),
-    tex = new Set();
-  root.traverse((o) => {
-    if (o.geometry) geo.add(o.geometry);
-    for (const m of Array.isArray(o.material) ? o.material : [o.material])
-      if (m) {
-        mat.add(m);
-        if (m.map) tex.add(m.map);
-      }
-  });
-  geo.forEach((g) => g.dispose());
-  mat.forEach((m) => m.dispose());
-  tex.forEach((t) => t.dispose());
-  root.removeFromParent();
-}
+
 function mesh(geo, mat, root, x, y, z) {
   const o = new THREE.Mesh(geo, mat);
   o.position.set(x, y, z);
@@ -676,9 +660,20 @@ function enterHiding(spot) {
 }
 function loadScene() {
   model.removeFromParent();
-  if (environment?.userData?.dispose) environment.userData.dispose();
-  else disposeGroup(environment);
-  disposeGroup(props);
+  // Drop every old chapter reference before constructing its replacement.
+  // This also makes a failed scene build safe to retry without double-disposal.
+  const oldEnvironment = environment;
+  environment = null;
+  if (oldEnvironment?.userData?.dispose) oldEnvironment.userData.dispose();
+  else disposeGroup(oldEnvironment);
+  const oldProps = props;
+  props = null;
+  disposeGroup(oldProps);
+  items = [];
+  hidingSpots = [];
+  interactables = [];
+  nearest = null;
+  entity = null;
   scene = new THREE.Scene();
   scene.background = new THREE.Color(
     [0x111b1b, 0x141d23, 0x211b19, 0x101b18][ch],

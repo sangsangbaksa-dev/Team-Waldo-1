@@ -5,6 +5,7 @@ export class Sound {
   paused: boolean;
   muted: boolean;
   clock: ReturnType<typeof setInterval> | null;
+  setMute(muted: boolean): void;
   pause(paused: boolean): void;
   startClock(): void;
   ready(): boolean;

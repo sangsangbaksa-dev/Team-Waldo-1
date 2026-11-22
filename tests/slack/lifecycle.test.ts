@@ -166,3 +166,17 @@ it.each(['dorm', 'class'] as const)('announces the %s hold-to-cover state', asyn
   key(' ', 'Space'); advance(100);
   expect(cover.getAttribute('aria-pressed')).toBe('true');
 });
+
+it('reuses unchanged HUD text nodes across small animation ticks', async () => {
+  openSlack(vi.fn());
+  button('[data-stage="dorm"]').click(); button('[data-start]').click();
+  await vi.dynamicImportSettled();
+  advance(100);
+  const timer = button('[data-time]'), fun = button('[data-fun]');
+  const firstTimerNode = timer.firstChild, firstFunNode = fun.firstChild;
+  expect(firstTimerNode).toBeTruthy();
+  expect(firstFunNode).toBeTruthy();
+  advance(100); // Both displayed numbers remain unchanged.
+  expect(timer.firstChild).toBe(firstTimerNode);
+  expect(fun.firstChild).toBe(firstFunNode);
+});

@@ -72,7 +72,7 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
     if (stageChanged) {
       const first = stage === 'menu' ? '#start' : stage === 'cover' ? '#uncover' : stage === 'deploy' ? '[data-unit]'
         : stage === 'battle' ? '#pause' : stage === 'pause' ? '#resume'
-        : stage === 'result' || stage === 'round' ? '#next' : null;
+        : stage === 'wait' ? '#leave' : stage === 'result' || stage === 'round' ? '#next' : null;
       if (first) root.querySelector<HTMLElement>(first)?.focus({ preventScroll: true });
     } else if (keepFocus) root.querySelector<HTMLElement>(keepFocus)?.focus({ preventScroll: true });
     scheduleFrame();
@@ -182,13 +182,92 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
       b.setAttribute('aria-pressed', String(active));
     });
   }
+  /** Bind only the controls present in the current screen. Callbacks guard
+   * their expected stage because detached buttons can still receive events. */
   function bind(): void {
-    const on = (id: string, fn: () => void) => root.querySelector<HTMLButtonElement>('#' + id)?.addEventListener('click', fn);
-    on('exit', exit); on('sound', () => { if (stage !== 'menu') return; audio.enabled = !audio.enabled; writePreferences({ ...readPreferences(), sound: audio.enabled }); audio.click(); render(); }); on('menu', () => { if (stage !== 'pause' && stage !== 'round' && stage !== 'result') return; audio.setPaused(false); stage = 'menu'; battle = null; render(); }); on('start', () => { if (stage !== 'menu') return; if (mode === 'online') void openOnline(); else startMatch(); });
-    root.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(b => b.onclick = () => { if (stage !== 'menu') return; mode = b.dataset.mode as typeof mode; audio.click(); render(); });
-    root.querySelectorAll<HTMLButtonElement>('[data-diff]').forEach(b => b.onclick = () => { if (stage !== 'menu') return; difficulty = b.dataset.diff as Difficulty; audio.click(); render(); }); on('uncover', () => { if (stage !== 'cover') return; stage = 'deploy'; render(); }); on('ready', ready); on('auto', () => { if (stage !== 'deploy') return; armies[side] = autoArmy(side); audio.place(); render(); }); on('clear', () => { if (stage !== 'deploy') return; armies[side] = []; render(); }); on('pause', pause); on('leave', leaveClick); on('resume', () => { if (stage !== 'pause') return; audio.setPaused(false); stage = previous; last = 0; render(); }); on('next', () => { if (stage !== 'result' && stage !== 'round') return; if (stage === 'result') { if (online) { quitOnline(); stage = 'menu'; battle = null; render(); } else startMatch(); } else { round++; beginRound(); } }); on('skip', () => { if (stage !== 'battle' || !battle) return; while (battle.winner === null) battle.step(); finish(); });
-    for (const n of [1, 2, 4]) on('speed' + n, () => chooseSpeed(n));
-    root.querySelectorAll<HTMLButtonElement>('[data-unit]').forEach(b => b.onclick = () => chooseUnit(b.dataset.unit as UnitType));
+    const on = (id: string, fn: () => void) =>
+      root.querySelector<HTMLButtonElement>('#' + id)?.addEventListener('click', fn);
+
+    on('exit', exit);
+    on('sound', () => {
+      if (stage !== 'menu') return;
+      audio.enabled = !audio.enabled;
+      writePreferences({ ...readPreferences(), sound: audio.enabled });
+      audio.click();
+      render();
+    });
+    on('menu', () => {
+      if (stage !== 'pause' && stage !== 'round' && stage !== 'result') return;
+      audio.setPaused(false);
+      stage = 'menu';
+      battle = null;
+      render();
+    });
+    on('start', () => {
+      if (stage !== 'menu') return;
+      if (mode === 'online') void openOnline();
+      else startMatch();
+    });
+    root.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(button => {
+      button.onclick = () => {
+        if (stage !== 'menu') return;
+        mode = button.dataset.mode as typeof mode;
+        audio.click();
+        render();
+      };
+    });
+    root.querySelectorAll<HTMLButtonElement>('[data-diff]').forEach(button => {
+      button.onclick = () => {
+        if (stage !== 'menu') return;
+        difficulty = button.dataset.diff as Difficulty;
+        audio.click();
+        render();
+      };
+    });
+    on('uncover', () => {
+      if (stage !== 'cover') return;
+      stage = 'deploy';
+      render();
+    });
+    on('ready', ready);
+    on('auto', () => {
+      if (stage !== 'deploy') return;
+      armies[side] = autoArmy(side);
+      audio.place();
+      render();
+    });
+    on('clear', () => {
+      if (stage !== 'deploy') return;
+      armies[side] = [];
+      render();
+    });
+    on('pause', pause);
+    on('leave', leaveClick);
+    on('resume', () => {
+      if (stage !== 'pause') return;
+      audio.setPaused(false);
+      stage = previous;
+      last = 0;
+      render();
+    });
+    on('next', () => {
+      if (stage !== 'result' && stage !== 'round') return;
+      if (stage === 'round') { round++; beginRound(); return; }
+      if (!online) { startMatch(); return; }
+      quitOnline();
+      stage = 'menu';
+      battle = null;
+      render();
+    });
+    on('skip', () => {
+      if (stage !== 'battle' || !battle) return;
+      while (battle.winner === null) battle.step();
+      finish();
+    });
+    for (const speed of [1, 2, 4]) on('speed' + speed, () => chooseSpeed(speed));
+    root.querySelectorAll<HTMLButtonElement>('[data-unit]').forEach(button => {
+      button.onclick = () => chooseUnit(button.dataset.unit as UnitType);
+    });
   }
   function toast(text: string): void { root.querySelector('.sq-toast')?.remove(); if (toastTimer) window.clearTimeout(toastTimer); const d = document.createElement('div'); d.className = 'sq-toast'; d.textContent = text; root.append(d); toastTimer = window.setTimeout(() => { d.remove(); toastTimer = 0; }, 3000); }
   async function openOnline(): Promise<void> {

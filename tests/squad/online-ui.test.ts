@@ -230,6 +230,7 @@ it('allows a touch-only player to leave the online opponent-wait screen safely',
   expect(document.querySelector('.sq-cover h2')?.textContent).toContain('상대 배치를 기다리는 중');
   const leave = button('#leave');
   expect(leave.textContent).toContain('나가기');
+  expect(document.activeElement).toBe(leave);
   leave.click();
   expect(document.querySelector('.sq-toast')?.textContent).toContain('기권하고');
   expect(callbacks.dispose).not.toHaveBeenCalled();

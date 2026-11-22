@@ -2,7 +2,7 @@
 // 시뮬레이션은 각자의 브라우저에서 같은 시드로 돌고, 총알이 맞았는지는 맞는 사람의 쪽에서 판정합니다.
 import type { PvpSession } from '../net/lobby';
 import type { Channel, NetMsg } from '../net/types';
-import { WEAPONS, type WeaponId } from './config';
+import { AIR, PLAYER, WEAPONS, type WeaponId } from './config';
 
 const SILENT_MS = 8000, NEVER_MS = 25000;
 
@@ -22,9 +22,11 @@ export interface NetHooks {
 const num = (v: unknown, lo = -1e6, hi = 1e6): v is number => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
 const weapon = (v: unknown): v is WeaponId => typeof v === 'string' && Object.prototype.hasOwnProperty.call(WEAPONS, v);
 export function parsePose(m: NetMsg): Pose | null {
-  if (!(num(m.x) && num(m.z) && num(m.yaw, -50, 50) && num(m.pitch, -3, 3) && num(m.hp, 0, 1000) && num(m.ar, 0, 1000) && weapon(m.w) && num(m.sp, 0, 50))) return null;
+  // The BR aircraft can start outside the playable square, but never 1000m
+  // away. Do not accept absurd coordinates or health from peer messages.
+  if (!(num(m.x, -1000, 1000) && num(m.z, -1000, 1000) && num(m.yaw, -50, 50) && num(m.pitch, -3, 3) && num(m.hp, 0, PLAYER.hp) && num(m.ar, 0, 500) && weapon(m.w) && num(m.sp, 0, 50))) return null;
   const p: Pose = { x: m.x, z: m.z, yaw: m.yaw, pitch: m.pitch, hp: m.hp, armor: m.ar, w: m.w, speed: m.sp, ads: m.ad === 1, reloading: m.rl === 1, crouch: m.cr === 1 };
-  if (num(m.a, 0, 3) && Number.isInteger(m.a)) p.air = m.a; if (num(m.al, 0, 1000)) p.alt = m.al; if (num(m.v, -1, 10000) && Number.isInteger(m.v)) p.veh = m.v;
+  if (num(m.a, 0, 3) && Number.isInteger(m.a)) p.air = m.a; if (num(m.al, 0, AIR.alt)) p.alt = m.al; if (num(m.v, -1, 10000) && Number.isInteger(m.v)) p.veh = m.v;
   if (Array.isArray(m.vs) && m.vs.length === 4 && m.vs.every(v => num(v))) p.vs = m.vs as [number, number, number, number];
   return p;
 }

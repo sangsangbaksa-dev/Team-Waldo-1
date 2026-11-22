@@ -82,9 +82,12 @@ try {
       await page.getByRole("button",{name:"구역 진입"}).click();
       assert.equal(await page.locator("#dialog").isVisible(),false);
       const firstTime=await page.locator("#timer").textContent();
-      await page.waitForTimeout(1500);
-      const runningTime=await page.locator("#timer").textContent();
-      assert.notEqual(runningTime,firstTime,"The playing clock must keep advancing");
+      // Shader compilation can consume several seconds of CPU on software
+      // WebGL. Poll for a clock change instead of relying on a 1.5s sleep.
+      await page.waitForFunction((start) => {
+        const current=document.querySelector("#timer")?.textContent;
+        return current && current!==start;
+      },firstTime,{timeout:12000,polling:250});
       if(config.mobile) {
         for (const id of ["#gsound","#mapBtn","#pauseGame","#crouch","#torch","#run","#act"]) {
           const box=await page.locator(id).boundingBox();

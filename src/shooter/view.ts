@@ -51,6 +51,7 @@ export class ShooterView {
   private vmScene = new THREE.Scene(); private vmCam = new THREE.PerspectiveCamera(64, 1, 0.5, 200);
   private sun: THREE.DirectionalLight; private glow = glowTexture(); private rigs = new Map<number, Rig>(); private lootNodes = new Map<number, { node: THREE.Object3D; baseY: number; dispose: () => void }>();
   private lootDummy = new THREE.Object3D();
+  private pendingRigUpgrades = new Set<number>();
   private zoneWall: THREE.Mesh; private zoneNext: THREE.Mesh; private tracers: Fx[] = []; private sparks: THREE.Points; private sparkData: { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; r: number; g: number; b: number }[] = [];
   private vm: THREE.Object3D | null = null; private vmOwned = false; private aimBlend = 0; private reloadBlend = 0; private vmId = ''; private vmParts = ''; private vmSwap = 0; private vmFlash: THREE.Sprite; private bob = 0; private shake = 0; private terrainView: TerrainView | null = null; private fovPunch = 0; private flashKick = 0; private roll = 0; private sprintT = 0; private time = 0;
   private mats = new Map<string, THREE.Material>(); private tmpCol = new THREE.Color(); private beams: THREE.InstancedMesh;
@@ -98,6 +99,7 @@ export class ShooterView {
   setAssets(assets: ShooterAssets): void {
     this.assets = assets;
     this.vmParts = '';
+    for (const id of this.rigs.keys()) this.pendingRigUpgrades.add(id);
   }
 
   private mat(key: string, make: () => THREE.Material): THREE.Material { let m = this.mats.get(key); if (!m) { m = make(); this.mats.set(key, m); } return m; }
@@ -208,9 +210,27 @@ export class ShooterView {
   }
 
   // ---------- 병사 ---------- (공용 캐릭터 리그: src/shared/character)
+  private soldierLook(p: Player): { team: number; skin: number; height: number; width: number } {
+    return { team: p.color, skin: p.skin, height: 0.97 + (p.id % 5) * 0.015, width: 1 };
+  }
+
+  /** Upgrade at most a few visible rigs each frame to avoid a frame-time spike. */
+  private upgradeRig(p: Player): void {
+    const rig = this.rigs.get(p.id), kit = this.assets?.kit;
+    if (!rig || !kit) return;
+    const kind = SOLDIER_KINDS[p.id % SOLDIER_KINDS.length];
+    if (!kit.has(kind)) return;
+    const next = kit.create(kind, this.soldierLook(p));
+    rig.ch.root.removeFromParent();
+    rig.ch = next;
+    rig.root.add(next.root);
+    // Preserve current locomotion/aim without making the upgraded soldier T-pose.
+    this.poseRig(p, 0, 0);
+  }
+
   private makeRig(p: Player): void {
     const root = new THREE.Group(), kind = SOLDIER_KINDS[p.id % SOLDIER_KINDS.length],
-      look = { team: p.color, skin: p.skin, height: 0.97 + (p.id % 5) * 0.015, width: 1 };
+      look = this.soldierLook(p);
     const s = this.assets?.kit;
     const ch = s?.has(kind) ? s.create(kind, look) : makeProceduralMilitary(kind, look);
     root.add(ch.root);
@@ -493,6 +513,7 @@ export class ShooterView {
   frame(dt: number, me: Player, spectate: Player | null, zoom: number): void {
     this.time += dt; this.frames++; const m = this.match, z = m.zone, cam = this.camera, view = spectate ?? me;
     const vx = view.x, vz = view.z;
+    let upgradedThisFrame = 0;
     for (const p of m.players) {
       const dist = Math.abs(p.x - vx) + Math.abs(p.z - vz);
       const hide = (!spectate && p.id === me.id) || p.air === 1 || p.veh >= 0 || dist > (p.air ? 520 : 190);
@@ -500,6 +521,10 @@ export class ShooterView {
       if (!this.rigs.has(p.id)) this.makeRig(p);
       const rig = this.rigs.get(p.id)!;
       rig.root.visible = true;
+      if (upgradedThisFrame < 2 && this.pendingRigUpgrades.delete(p.id)) {
+        this.upgradeRig(p);
+        upgradedThisFrame++;
+      }
       this.poseRig(p, dt, dist);
       if (!p.alive) rig.flash.visible = false;
     }
@@ -556,6 +581,7 @@ export class ShooterView {
     // games. Detach the skeletons before releasing this scene's own resources.
     for (const rig of this.rigs.values()) rig.ch.root.removeFromParent();
     this.rigs.clear();
+    this.pendingRigUpgrades.clear();
     disposeSceneResources(this.scene, { extraTextures: [this.glow] });
     this.post?.dispose();
     this.renderer.dispose();

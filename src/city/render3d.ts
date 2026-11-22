@@ -21,6 +21,7 @@ import { buildReach, clampLabelScreenPos, clampLookPitch, labelSpriteCenter } fr
 import { wrapNear, wrapRange } from './render-math';
 import { addStreetFurniture, parkFurniture } from '../shared/street-furniture';
 import { RoadLightBatch, lightRange, nearVisual } from '../shared/road-lights';
+import { nearbyVehicleLights, frameEmissionChance } from './traffic-lighting';
 
 export type ViewMode = 'fp' | 'tp';
 const EYE = EYE_HEIGHT, STRUCT_H: Record<StructKind, number> = { hq: 150, barracks: 86, depot: 58, factory: 104, lab: 96, turret: 50 };
@@ -63,6 +64,8 @@ export class Renderer3D {
   yaw = 0; pitch = -0.05; mode: ViewMode = 'fp'; w = 0; h = 0; shake = 0; t = 0; reduced = false; recoil = 0; flashT = 0; camPos = new THREE.Vector3(); chaseYaw = 0; private focus = new THREE.Vector2(SIZE / 2, SIZE / 2); private deadT = 0;
   private furniture: { dispose(): void } | null = null;
   private roadLights: RoadLightBatch | null = null;
+  private readonly lightCandidates: Vehicle[] = [];
+  private lastDrawDt = 1 / 60;
   private projected = new THREE.Vector3(); private dummy = new THREE.Object3D(); private color = new THREE.Color();
   private bodies: THREE.InstancedMesh; private heads: THREE.InstancedMesh; private guns: THREE.InstancedMesh; private hulls: THREE.InstancedMesh; private turrets: THREE.InstancedMesh; private barrels: THREE.InstancedMesh;
   private crystals: THREE.InstancedMesh; private tracers: THREE.InstancedMesh; private rings: THREE.InstancedMesh; private ringList: { x: number; y: number; r0: number; r1: number; life: number; max: number; color: number }[] = [];
@@ -251,7 +254,7 @@ export class Renderer3D {
     g.position.set(v.x, 0, v.y); g.rotation.y = -v.ang;
     const t = g.getObjectByName('turret') ?? g.getObjectByName('tank_Turret'); if (t) { const d = this.world.byId.get(v.driver); t.rotation.y = -((d ? d.ang : v.ang) - v.ang); }
     const la = g.getObjectByName('la') ?? g.getObjectByName('police_LightA'), lb = g.getObjectByName('lb') ?? g.getObjectByName('police_LightB'); if (la && lb) { const on = v.ai === 'chase' && Math.floor(this.t * 6) % 2 === 0; la.visible = v.ai !== 'chase' || on; lb.visible = v.ai !== 'chase' || !on; }
-    if (v.hp < v.maxHp * 0.5 && Math.random() < 0.25) { if (v.burn > 0) this.fire.add(v.x, 24, v.y, (Math.random() - 0.5) * 30, 60, (Math.random() - 0.5) * 30, 0.6, 0xff7a2a); else this.smoke.add(v.x, 24, v.y, (Math.random() - 0.5) * 16, 50, (Math.random() - 0.5) * 16, 1.2, 0x333338); }
+    if (v.hp < v.maxHp * 0.5 && Math.random() < frameEmissionChance(17, this.lastDrawDt)) { if (v.burn > 0) this.fire.add(v.x, 24, v.y, (Math.random() - 0.5) * 30, 60, (Math.random() - 0.5) * 30, 0.6, 0xff7a2a); else this.smoke.add(v.x, 24, v.y, (Math.random() - 0.5) * 16, 50, (Math.random() - 0.5) * 16, 1.2, 0x333338); }
   }
   /** Ground lights follow nearby traffic; visual only, never modify collision or AI. */
   private updateRoadLights(): void {
@@ -259,7 +262,7 @@ export class Renderer3D {
     lights.begin();
     const {world:w,camPos:cam}=this, night=this.atm.night,wet=this.atm.wet;
     if(night>0.04||wet>0.3){
-      const near=w.vehicles.filter(v=>v.alive&&v.driver&&v.burn<=0&&nearVisual(v.x,v.y,cam.x,cam.z,720)).sort((a,b)=>(a.x-cam.x)**2+(a.y-cam.z)**2-((b.x-cam.x)**2+(b.y-cam.z)**2));
+      const near=nearbyVehicleLights(w.vehicles,cam.x,cam.z,720,Math.floor(lights.remaining/2),this.lightCandidates);
       for(const v of near){
         if(lights.remaining<2)break;
         const fx=Math.cos(v.ang),fz=Math.sin(v.ang),front=v.len/2;
@@ -387,7 +390,7 @@ export class Renderer3D {
     const inside = this.world.inside, ib = inside ? this.world.insideBiz() : null;
     if (inside && ib) { this.drawInside(dt, ib.kind, this.world.insideLayout()!, inside); return; }
     if (this.ins) { this.ins.dispose(); this.ins = null; this.insKind = ''; this.camera.aspect = this.w / Math.max(1, this.h); this.camera.updateProjectionMatrix(); }
-    const w = this.world, d = this.dummy, col = this.color, pb = w.boss(0), f0 = w.factions[0]; this.t += dt;
+    const w = this.world, d = this.dummy, col = this.color, pb = w.boss(0), f0 = w.factions[0]; this.t += dt; this.lastDrawDt=dt;
     this.shake = Math.max(0, this.shake - dt * 30); this.recoil = Math.max(0, this.recoil - dt * 7); this.flashT -= dt;
     // 카메라
     this.pitch = clampLookPitch(this.pitch);
@@ -434,7 +437,7 @@ export class Renderer3D {
     // Avoid rebuilding their instance matrices each frame while count is zero.
     this.crystals.count = 0;
     // 탄환
-    let nt = 0; for (const b of w.bullets) { if (nt >= 500) break; const wd = WEAPONS[b.w], a = Math.atan2(b.vy, b.vx), len = wd.splash ? 12 : wd.pierce ? 150 : 46, th = wd.splash ? 5 : wd.pierce ? 3 : b.boss ? 1.5 : 1.1; d.rotation.set(0, -a, 0); d.position.set(b.x - Math.cos(a) * len / 2, 30, b.y - Math.sin(a) * len / 2); d.scale.set(len, th, th); d.updateMatrix(); this.tracers.setMatrixAt(nt, d.matrix); this.tracers.setColorAt(nt, col.set(wd.color)); nt++; if (wd.splash && Math.random() < 0.6) this.smoke.add(b.x, 30, b.y, 0, 8, 0, 0.5, 0xcfcfcf); } upd(this.tracers, nt);
+    let nt = 0; for (const b of w.bullets) { if (nt >= 500) break; const wd = WEAPONS[b.w], a = Math.atan2(b.vy, b.vx), len = wd.splash ? 12 : wd.pierce ? 150 : 46, th = wd.splash ? 5 : wd.pierce ? 3 : b.boss ? 1.5 : 1.1; d.rotation.set(0, -a, 0); d.position.set(b.x - Math.cos(a) * len / 2, 30, b.y - Math.sin(a) * len / 2); d.scale.set(len, th, th); d.updateMatrix(); this.tracers.setMatrixAt(nt, d.matrix); this.tracers.setColorAt(nt, col.set(wd.color)); nt++; if (wd.splash && Math.random() < frameEmissionChance(55,dt)) this.smoke.add(b.x, 30, b.y, 0, 8, 0, 0.5, 0xcfcfcf); } upd(this.tracers, nt);
     // 동적 오브젝트 동기화
     const seenS = new Set<number>(); for (const s of w.structures) if (s.alive) { seenS.add(s.id); this.syncStruct(s); } for (const [id, g] of this.structs) if (!seenS.has(id)) { this.scene.remove(g); this.structs.delete(id); }
     const seenV = new Set<number>(); for (const v of w.vehicles) if (v.alive) { seenV.add(v.id); if (nearVisual(v.x,v.y,this.camPos.x,this.camPos.z,Math.min(3000,this.atm.fogFar+250))) { this.syncVehicle(v); this.vehs.get(v.id)!.visible=true; } else { const g=this.vehs.get(v.id); if(g)g.visible=false; } } for (const [id, g] of this.vehs) if (!seenV.has(id)) { this.scene.remove(g); this.vehs.delete(id); }

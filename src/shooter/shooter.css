@@ -104,6 +104,8 @@
 .sz-help{display:grid;gap:6px;font-size:14px;color:#c5c9cf;line-height:1.5;padding:0;list-style:none}.sz-help b{padding:1px 7px;border-radius:5px;background:#252a31;font-weight:600;font-size:12.5px}
 .sz-setup footer{position:fixed;left:0;right:0;bottom:0;display:flex;align-items:center;gap:14px;justify-content:space-between;padding:14px max(20px,env(safe-area-inset-right)) max(14px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));background:linear-gradient(0deg,#101318 70%,#10131800)}
 .sz-sum{flex:1;text-align:center;font-size:13px;color:#9aa3b2}
+#sz-asset-status{font-size:12px;font-weight:600;letter-spacing:.01em;white-space:nowrap;color:#adc8b5;flex-shrink:0}
+@media (max-width:700px){#sz-asset-status{position:absolute;bottom:100%;right:12px;border:1px solid #334239;border-radius:9px;padding:6px 10px;background:#17221e;box-shadow:0 3px 12px #0006}}
 .sz-setup footer button,.sz-actions button{appearance:none;cursor:pointer;font:inherit;font-weight:700;font-size:15px;padding:12px 22px;border-radius:999px;border:1px solid #3a4048;background:transparent;color:#e9ecf1}
 .sz-setup footer button.primary,.sz-actions button.primary{background:#e8e2d0;color:#101318;border-color:#e8e2d0}
 .sz-setup footer button:disabled{opacity:.6;cursor:progress}

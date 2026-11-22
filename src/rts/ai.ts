@@ -19,7 +19,7 @@ export class RtsAi {
     const own = (k: BuildKind): Building[] => s.buildings.filter(b => b.owner === me && b.kind === k);
     const home = hqs[0], hx = home.x + 2, hy = home.y + 2;
     // 놀고 있는 일꾼은 캐러 보냅니다.
-    for (const w of workers) if (w.o.t === 'idle') { const nd = s.nearestNode(w.x, w.y, 24, false); if (nd) s.apply(me, { k: 'gather', ids: [w.id], node: nd.id }); }
+    for (const w of workers) if (w.o.t === 'idle' && w.o.phase !== 9) { const nd = s.nearestNode(w.x, w.y, 24, false); if (nd) s.apply(me, { k: 'gather', ids: [w.id], node: nd.id }); }
     if (s.tick < L.delay) return;
 
     // 인구가 막히기 전에 보급소를 짓습니다.
@@ -69,9 +69,9 @@ export class RtsAi {
     const rank = (k: BuildKind): number => (k === 'factory' ? 0 : 1);
     for (const b of [...s.buildings].sort((a, c) => rank(a.kind) - rank(c.kind) || a.id - c.id)) {
       if (b.owner !== me || !b.done || !BUILDINGS[b.kind].trains.length || b.kind === 'hq') continue;
-      if (!b.rx) s.apply(me, { k: 'rally', b: b.id, x: this.rally(s, home).x, y: this.rally(s, home).y, node: 0 });
+      if (!b.rx && !b.ry) { const r = this.rally(s, home); s.apply(me, { k: 'rally', b: b.id, x: r.x, y: r.y, node: 0 }); }
       if (saving || b.queue.length >= 2) continue;
-      if (hold > 0 && b.kind !== 'factory' && p.minerals < hold + 50) continue;
+      if (hold > 0 && p.minerals < hold + 50) continue;
       const opts = ARMY.filter(k => weight(k) > 0 && UNITS[k].from === b.kind && s.canTrain(me, k)).sort((a, c) => counts[a] / weight(a) - counts[c] / weight(c));
       const k = opts[0];
       if (k && s.apply(me, { k: 'train', b: b.id, u: k as UnitKind })) counts[k]++;
@@ -156,8 +156,8 @@ export class RtsAi {
 
   private pickWorker(s: RtsSim, workers: Unit[], x: number, y: number): Unit | null {
     let best: Unit | null = null, bd = Infinity;
-    for (const w of workers) { if (w.o.t === 'build' || w.carry > 0) continue; const d = s.dist(w.x, w.y, x, y); if (d < bd) { bd = d; best = w; } }
-    return best ?? workers.find(w => w.o.t !== 'build') ?? null;
+    for (const w of workers) { if (w.hp <= 0 || w.o.t === 'build' || w.carry > 0 || (w.o.t === 'idle' && w.o.phase === 9)) continue; const d = s.dist(w.x, w.y, x, y); if (d < bd) { bd = d; best = w; } }
+    return best ?? workers.find(w => w.hp > 0 && w.o.t !== 'build' && !(w.o.t === 'idle' && w.o.phase === 9)) ?? null;
   }
 
   private build(s: RtsSim, kind: BuildKind, workers: Unit[], hx: number, hy: number): void {

@@ -103,15 +103,19 @@ export class DesertProps {
   private dustField(): void {
     const count = this.quality === 'low' ? 80 : this.quality === 'standard' ? 160 : 260, n = this.map.size, rnd = seeded(808), pos = new Float32Array(count * 3), seed = new Float32Array(count);
     for (let i = 0; i < count; i++) { pos[i * 3] = rnd() * n; pos[i * 3 + 1] = 0.4 + rnd() * 3.2; pos[i * 3 + 2] = rnd() * n; seed[i] = rnd() * 6.28; }
-    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    // Keep immutable base positions separate from the mutable GPU array:
+    // writing positions back into the source would accumulate wind drift and
+    // slowly move the whole dust field off the map.
+    const base = pos.slice();
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
     const c = document.createElement('canvas'); c.width = c.height = 32; const g = c.getContext('2d')!, gr = g.createRadialGradient(16, 16, 1, 16, 16, 15); gr.addColorStop(0, 'rgba(255,236,200,.8)'); gr.addColorStop(1, 'rgba(255,236,200,0)'); g.fillStyle = gr; g.fillRect(0, 0, 32, 32);
     const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
     const pts = new THREE.Points(geo, new THREE.PointsMaterial({ map: tex, size: 2.2, transparent: true, opacity: 0.22, depthWrite: false, sizeAttenuation: true, color: 0xf0d9aa })); pts.frustumCulled = false; this.dust = pts; this.scene.add(pts);
     this.dustTick = (t: number): void => {
       const a = geo.attributes.position as THREE.BufferAttribute;
-      for (let i = 0; i < count; i++) { const x = (pos[i * 3] + t * (1.6 + (seed[i] % 1))) % n, z = pos[i * 3 + 2] + Math.sin(t * 0.4 + seed[i]) * 0.01; a.setXYZ(i, x, pos[i * 3 + 1] + Math.sin(t * 0.8 + seed[i]) * 0.35, z); }
+      for (let i = 0; i < count; i++) { const x = (base[i * 3] + t * (1.6 + (seed[i] % 1))) % n, z = base[i * 3 + 2] + Math.sin(t * 0.4 + seed[i]) * 0.01; a.setXYZ(i, x, base[i * 3 + 1] + Math.sin(t * 0.8 + seed[i]) * 0.35, z); }
       a.needsUpdate = true;
     };
   }
-  dispose(): void { this.dust?.geometry.dispose(); }
+  dispose(): void { if (this.dust) { this.dust.removeFromParent(); this.dust.geometry.dispose(); const mat = this.dust.material as THREE.PointsMaterial; mat.map?.dispose(); mat.dispose(); } this.dust = null; this.dustTick = null; }
 }

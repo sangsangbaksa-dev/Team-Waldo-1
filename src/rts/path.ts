@@ -3,6 +3,8 @@
 
 export class Pather {
   private g: Float32Array; private from: Int32Array; private seen: Uint32Array; private shut: Uint32Array; private stamp = 0;
+  // Searches are synchronous; reuse the binary heap rather than allocating it for every moving unit.
+  private readonly heap: number[] = [];
   constructor(readonly n: number, readonly grid: Uint8Array) {
     this.g = new Float32Array(n * n); this.from = new Int32Array(n * n); this.seen = new Uint32Array(n * n); this.shut = new Uint32Array(n * n);
   }
@@ -44,7 +46,8 @@ export class Pather {
     const si = Math.floor(start.y) * n + Math.floor(start.x), gi = Math.floor(goal.y) * n + Math.floor(goal.x), gcx = gi % n, gcy = (gi - gcx) / n;
     if (si === gi) return [goal.x, goal.y];
     this.stamp++; const st = this.stamp;
-    const heap: number[] = [], push = (f: number, i: number): void => {
+    const heap = this.heap; heap.length = 0;
+    const push = (f: number, i: number): void => {
       heap.push(f, i); let k = heap.length / 2 - 1;
       while (k > 0) { const p = (k - 1) >> 1; if (heap[p * 2] <= heap[k * 2]) break; const tf = heap[p * 2], ti = heap[p * 2 + 1]; heap[p * 2] = heap[k * 2]; heap[p * 2 + 1] = heap[k * 2 + 1]; heap[k * 2] = tf; heap[k * 2 + 1] = ti; k = p; }
     };

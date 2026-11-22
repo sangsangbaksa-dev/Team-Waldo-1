@@ -1,6 +1,6 @@
 // ZERO ZONE — 봇 AI. 난이도(config.BOTS)에 따라 반응 속도·조준 오차·회전 속도·시야·자기장 대응이 달라집니다.
 // 봇은 사람과 같은 입력(Input)만 만들어 내고, 체력이나 탄을 속이지 않습니다.
-import { canFit, magOf, partFit, PLAYER, WEAPONS, type BotTuning, type PartId } from './config';
+import { ARMOR_PTS, BOOST, magOf, PLAYER, WEAPONS, type BotTuning, type PartId } from './config';
 import { lineClear } from './world';
 import { findPath, navFor, walkable } from './nav';
 import type { Match, Player, ZoneState } from './sim';
@@ -30,14 +30,14 @@ const gauss = (rng: () => number): number => (rng() + rng() + rng() - 1.5) / 0.7
 /** 무기별로 싸우기 좋은 거리 */
 const IDEAL: Record<string, number> = { shotgun: 8, smg: 16, pistol: 18, rifle: 32, sniper: 70 };
 
-function wantLoot(p: Player, kind: string, weapon: string | null, part: PartId | null, lv = 0): number {
+function wantLoot(m: Match, p: Player, kind: string, weapon: string | null, part: PartId | null, lv = 0): number {
   if (kind === 'bandage') return p.bandages < 4 ? 2.2 + (100 - p.hp) / 40 : 0;
   if (kind === 'medkit') return p.kits < 1 ? 2.6 : 0;
-  if (kind === 'armor') return lv > p.armorLv || p.armor < 25 ? 2.4 + lv * 0.3 : 0;
-  if (kind === 'helmet') return p.helmet < 3 ? 2.2 : 0;
+  if (kind === 'armor') { const level = Math.max(1, Math.min(3, lv || 2)); return level > p.armorLv || (level === p.armorLv && p.armor <= ARMOR_PTS[level] * 0.5) ? 2.4 + level * 0.3 : 0; }
+  if (kind === 'helmet') return (lv || 1) > p.helmet ? 2.2 : 0;
   if (kind === 'grenade') return p.nades < 3 ? 1.3 : 0;
-  if (kind === 'boost') return p.boost <= 0 && p.hp < 95 ? 1.6 : 0;
-  if (kind === 'attach') return part && p.guns.some(g => { if (!g || !canFit(g.id, part)) return false; const f = partFit(g.att, part); return f === 'new' || f === 'upgrade'; }) ? 1.4 : 0;
+  if (kind === 'boost') return p.boost <= BOOST.time * 0.6 && p.hp < 95 ? 1.6 : 0;
+  if (kind === 'attach') { const target = part && m.partTarget(p, part); return target && target.fit !== 'swap' ? 1.4 : 0; }
   if (kind === 'ammo') return p.guns.some(g => g && g.reserve < WEAPONS[g.id].mag * 2) ? 2 : 0;
   if (kind === 'weapon' && weapon) {
     const rank = WEAPONS[weapon as keyof typeof WEAPONS].rank;
@@ -50,7 +50,7 @@ function wantLoot(p: Player, kind: string, weapon: string | null, part: PartId |
 }
 
 export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void {
-  const b = p.brain!, T = b.t, inp = p.input, rng = m.rng, eye = PLAYER.eye;
+  const b = p.brain!, T = b.t, inp = p.input, rng = m.rng, eye = PLAYER.eye + (PLAYER.crouchEye - PLAYER.eye) * p.crouch;
   inp.heal = 0; inp.nade = false; inp.fire = false; inp.reload = false; inp.interact = false; inp.sprint = false; inp.ads = false; inp.slot = -1; inp.mx = 0; inp.mz = 0;
   b.goalT -= dt; b.investT -= dt; b.strafeT -= dt; b.errT -= dt; b.detourT -= dt; b.lootT -= dt; b.think -= dt; b.lootScan -= dt;
 
@@ -66,7 +66,7 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
       const retaliate = p.hurt > 0 && p.lastHitBy === q.id;
       if (cautious && !retaliate && d > 9) continue;
       if (!retaliate && d > 9 && Math.abs(angDiff(Math.atan2(dz, dx), p.yaw)) > T.fov) continue;
-      if (d < bestD && lineClear(m.map, p.x, eye, p.z, q.x, 1.2, q.z)) { best = q; bestD = d; }
+      if (d < bestD && lineClear(m.map, p.x, eye, p.z, q.x, 1.2 - q.crouch * 0.35, q.z)) { best = q; bestD = d; }
     }
     if (best) {
       if (b.target !== best.id) { b.target = best.id; b.react = T.react * (0.7 + rng() * 0.6) + (p.guns[p.cur]?.id === 'sniper' ? 0.45 : 0); b.head = rng() < T.headAim; }
@@ -101,7 +101,7 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
   // 싸움이 잠잠하면 다친 몸을 치료합니다(위급하면 구급상자, 가벼우면 붕대).
   if (p.healT <= 0 && !engaged && b.seen > 2.5) { if (p.hp < 50 && p.kits > 0) inp.heal = 2; else if (p.hp < 72 && p.bandages > 0) inp.heal = 1; }
   if (q && engaged) {
-    const tx = visible ? q.x : b.lastX, tz = visible ? q.z : b.lastZ, dx = tx - p.x, dz = tz - p.z, d = Math.hypot(dx, dz) + 1e-6, ty = b.head ? 1.62 : 1.15;
+    const tx = visible ? q.x : b.lastX, tz = visible ? q.z : b.lastZ, dx = tx - p.x, dz = tz - p.z, d = Math.hypot(dx, dz) + 1e-6, ty = b.head ? 1.62 - q.crouch * 0.50 : 1.15 - q.crouch * 0.35;
     if (b.errT <= 0) { b.errT = 0.22 + rng() * 0.15; const k = Math.max(def?.id === 'sniper' ? 0.016 : 0, T.aimErr * (1 + d / 55)) * (q.bot && m.plane ? 2.2 : 1); /* 100명 판: AI끼리는 덜 정확해 초반에 다 쓰러지지 않습니다 */ b.errYaw = gauss(rng) * k; b.errPitch = gauss(rng) * k * 0.7; }
     yawTarget = Math.atan2(dz, dx) + b.errYaw; pitchTarget = Math.atan2(ty - eye, d) + b.errPitch; turn = T.turn;
     if (visible && def && gun) {
@@ -150,12 +150,12 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
         b.lootScan = 0.35 + rng() * 0.3; let bl = -1, bs = 0;
         for (const l of m.loot) {
           if (l.taken || b.skip.has(l.id)) continue; const dx = l.x - p.x, dz = l.z - p.z, d2 = dx * dx + dz * dz; if (d2 > T.lootRadius * T.lootRadius) continue; const d = Math.sqrt(d2);
-          const w = wantLoot(p, l.kind, l.weapon, l.part ?? null, l.level ?? 0); if (w <= 0) continue; const s = w / (1 + d / 28); if (s > bs) { bs = s; bl = l.id; }
+          const w = wantLoot(m, p, l.kind, l.weapon, l.part ?? null, l.level ?? 0); if (w <= 0) continue; const s = w / (1 + d / 28); if (s > bs) { bs = s; bl = l.id; }
         }
         if (bl >= 0) { b.lootId = bl; b.lootT = 18; }
       }
       const l = b.lootId >= 0 ? m.loot.find(x => x.id === b.lootId) : null;
-      if (l) { b.goalX = l.x; b.goalZ = l.z; b.goalT = 0.3; if (l.kind === 'weapon' && Math.hypot(l.x - p.x, l.z - p.z) < PLAYER.pickup - 0.35) inp.interact = true; }
+      if (l) { b.goalX = l.x; b.goalZ = l.z; b.goalT = 0.3; if (l.kind === 'weapon' && Math.hypot(l.x - p.x, l.z - p.z) < PLAYER.pickup - 0.35) inp.interact = !p.interactHeld; }
       else if (b.investT > 0 && Math.hypot(b.investX - p.x, b.investZ - p.z) > 3) { b.goalX = b.investX; b.goalZ = b.investZ; b.goalT = 0.3; }
       else if (b.goalT <= 0 || Math.hypot(b.goalX - p.x, b.goalZ - p.z) < 2.2) {
         // 어슬렁거리기: 다음 원 안쪽의 한 점으로
@@ -180,7 +180,7 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
     }
   }
 
-  if (urgentZone && moveYaw !== null) { inp.fire = false; inp.ads = false; }
+  if ((urgentZone || red || dodge !== null) && moveYaw !== null) { inp.fire = false; inp.ads = false; }
   if (inp.fire && !red && dodge === null) moveYaw = null; // 쏘는 동안에는 멈춰서 맞힙니다(움직이는 건 쉬는 사이)
 
   // ---- 막힘 감지: 0.5초마다 위치를 재서 거의 안 움직였으면 옆으로 돌아갑니다 ----
@@ -196,7 +196,7 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
   if (moveYaw !== null && b.detourT > 0) moveYaw += b.detourDir * 1.3;
 
   // ---- 입력 만들기: 시선은 제한된 속도로 돌고, 이동은 월드 방향을 시선 기준으로 바꿉니다 ----
-  if ((!engaged && b.investT <= 0 || urgentZone) && moveYaw !== null) yawTarget = moveYaw;
+  if ((!engaged && b.investT <= 0 || urgentZone || red || dodge !== null) && moveYaw !== null) yawTarget = moveYaw;
   const step = turn * dt, dyaw = angDiff(yawTarget, p.yaw); p.yaw += clamp(dyaw, -step, step);
   p.pitch += clamp(pitchTarget - p.pitch, -step * 0.8, step * 0.8);
   inp.yaw = p.yaw; inp.pitch = p.pitch;

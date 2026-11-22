@@ -4,7 +4,7 @@
 // 메시지(모두 방 채널, 보낸 사람 id f 는 room.ts 가 붙입니다):
 //   w  방장 → 모두, 8Hz: b AI 상태 · s AI 사격 · vv 방장이 굴리는 차 · vh 상한 차 내구도 · dd 쓰러진 AI(가끔, 놓친 소식 보충)
 //   bd AI 가 쓰러짐 · la 새 전리품 · nd 수류탄 · ve 차 타기 요청 · vg 허락 · vn 거절 · vx 내린 차를 방장에게 넘김 · vd 운전 중 부딪혀 상한 양
-import { PARTS, WEAPONS, type Attachments, type PartId, type PartSlot, type WeaponId } from './config';
+import { AIR, PLAYER, canFit, PARTS, WEAPONS, type Attachments, type PartId, type PartSlot, type WeaponId } from './config';
 import type { Cause, Match, MatchEvent, Player, Vehicle } from './sim';
 import type { Loot, LootKind } from './world';
 import type { NetMsg } from '../net/types';
@@ -18,7 +18,7 @@ export const BOT_STRIDE = 12;
 /** 차 한 대: 번호, x, z, yaw, 속도, 운전자+1, 움직이는 중 */
 export const VEH_STRIDE = 7;
 /** 사람 가까이(이 거리 안)의 AI 는 매번, 먼 AI 는 FAR_EVERY 번에 한 번 보냅니다. */
-const NEAR = 190, FAR_EVERY = 6;
+const NEAR = 190, FAR_EVERY = 4;
 export const WORLD_MS = 125;
 
 const fin = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -27,17 +27,19 @@ const r1 = (v: number): number => Math.round(v * 10), r2 = (v: number): number =
 const wrap = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));
 const numArr = (v: unknown, max: number): v is number[] => Array.isArray(v) && v.length <= max && v.every(fin);
 
-export interface PuppetTarget { x: number; z: number; yaw: number; pitch: number; speed: number; /** 받은 속도(있으면 받은 뒤 지난 시간만큼 앞으로 내다봅니다) */ vx?: number; vz?: number; air: number; alt: number; hp: number; w: WeaponId; ads: boolean; crouch: boolean; reload: boolean }
-export interface VehTarget { x: number; z: number; yaw: number; speed: number; at: number }
+export interface PuppetTarget { x: number; z: number; yaw: number; pitch: number; speed: number; /** 받은 속도(있으면 받은 뒤 지난 시간만큼 앞으로 내다봅니다) */ vx?: number; vz?: number; extrapolated?: number; air: number; alt: number; hp: number; w: WeaponId; ads: boolean; crouch: boolean; reload: boolean }
+export interface VehTarget { x: number; z: number; yaw: number; speed: number; at: number; extrapolated?: number }
 
 /** 선수 상태를 받은 목표로 부드럽게 옮깁니다(사람·AI 꼭두각시 공용). */
 export function easePuppet(o: Player, t: PuppetTarget, dt: number): void {
-  const k = Math.min(1, dt * 14);
-  if (t.vx !== undefined && t.vz !== undefined) { t.x += t.vx * dt; t.z += t.vz * dt; }
+  // Velocity-predicted AI needs a quicker follow rate to avoid visibly
+  // trailing a remote bot between full-state packets (up to 750ms apart).
+  const k = Math.min(1, dt * (t.vx !== undefined && t.vz !== undefined ? 22 : 14));
+  if (t.vx !== undefined && t.vz !== undefined) { const advance = Math.max(0, Math.min(dt, 0.8 - (t.extrapolated ?? 0))); t.x += t.vx * advance; t.z += t.vz * advance; t.extrapolated = (t.extrapolated ?? 0) + advance; }
   if (o.veh < 0) { const far = Math.abs(t.x - o.x) + Math.abs(t.z - o.z) > 25; o.x = far ? t.x : o.x + (t.x - o.x) * k; o.z = far ? t.z : o.z + (t.z - o.z) * k; }
   o.yaw += wrap(t.yaw - o.yaw) * k; o.pitch += (t.pitch - o.pitch) * k;
   o.air = (t.air | 0) as Player['air']; o.alt = o.air ? o.alt + (t.alt - o.alt) * k : 0;
-  o.hp = t.hp; o.speed = t.speed; o.ads = t.ads; o.crouch += ((t.crouch ? 1 : 0) - o.crouch) * Math.min(1, dt * 12); o.reload = t.reload ? 1 : 0;
+  o.hp = t.hp; o.speed = (t.vx !== undefined && t.vz !== undefined && (t.extrapolated ?? 0) >= 0.8) ? 0 : t.speed; o.ads = t.ads; o.crouch += ((t.crouch ? 1 : 0) - o.crouch) * Math.min(1, dt * 12); o.reload = t.reload ? 1 : 0;
   if (o.guns[0]?.id !== t.w) o.guns[0] = { id: t.w, mag: 1, reserve: 0, att: {} }; o.cur = 0;
 }
 
@@ -48,14 +50,57 @@ export function parseLoot(m: NetMsg): Loot | null {
   if (!isInt(m.i, 0, 1e8) || !LOOT_KINDS.includes(m.k as LootKind) || !fin(m.x) || !fin(m.z) || Math.abs(m.x) > 1000 || Math.abs(m.z) > 1000) return null;
   const weapon = m.w === null ? null : WEAPON_IDS.includes(m.w as WeaponId) ? (m.w as WeaponId) : undefined; if (weapon === undefined) return null;
   const part = m.p === null || m.p === undefined ? null : Object.prototype.hasOwnProperty.call(PARTS, m.p as string) ? (m.p as PartId) : undefined; if (part === undefined) return null;
+  if ((m.k === 'weapon') !== (weapon !== null) || (m.k === 'attach') !== (part !== null)) return null;
   let att: Attachments | undefined;
   if (m.a && typeof m.a === 'object') {
     att = {}; for (const [slot, id] of Object.entries(m.a as Record<string, unknown>)) {
-      if (!SLOTS.includes(slot as PartSlot) || typeof id !== 'string' || !Object.prototype.hasOwnProperty.call(PARTS, id) || PARTS[id as PartId].slot !== slot) return null;
+      if (!SLOTS.includes(slot as PartSlot) || typeof id !== 'string' || !Object.prototype.hasOwnProperty.call(PARTS, id) || PARTS[id as PartId].slot !== slot || !weapon || !canFit(weapon, id as PartId)) return null;
       att[slot as PartSlot] = id as PartId;
     }
   }
-  return { id: m.i, kind: m.k as LootKind, weapon, part, level: isInt(m.l, 0, 3) ? m.l : 0, x: m.x, z: m.z, taken: false, ...(att ? { att } : {}) };
+  return { id: m.i, kind: m.k as LootKind, weapon, part, level: isInt(m.l, 1, 3) ? m.l : m.k === 'helmet' || m.k === 'armor' ? 1 : 0, x: m.x, z: m.z, taken: false, ...(att ? { att } : {}) };
+}
+
+/** All locally spawned pickups use the sender's reserved million-ID namespace.
+ * The host may drop AI loot anywhere; a normal client can only drop near its
+ * own last known position. Dynamic loot is restricted to types the simulator
+ * actually creates (swapped weapons, attachments and death-drop helmets).
+ */
+export function canAcceptRoomLoot(loot: Loot, senderIndex: number, host: boolean, sender: Player | undefined): boolean {
+  if (!sender || !sender.remote || sender.bot || !Number.isInteger(senderIndex) || senderIndex < 0 || sender.id !== senderIndex) return false;
+  const base = (senderIndex + 1) * 1_000_000;
+  if (loot.id < base + 1000 || loot.id >= base + 1_000_000) return false;
+  if (loot.kind !== 'weapon' && loot.kind !== 'attach' && loot.kind !== 'helmet') return false;
+  return host || (Math.abs(loot.x - sender.x) <= 45 && Math.abs(loot.z - sender.z) <= 45);
+}
+
+/** Avoid deleting world pickups based on remote clients who cannot reach them.
+ * The host is exempt because it forwards AI pickup events as well.
+ */
+export function canAcceptRoomPickup(loot: Loot | undefined, sender: Player | undefined, host: boolean): boolean {
+  if (!loot || loot.taken || !sender || !sender.remote || sender.bot) return false;
+  if (host) return true;
+  return Math.abs(loot.x - sender.x) <= 15 && Math.abs(loot.z - sender.z) <= 15;
+}
+
+/** A pose packet may update an already-authorized driver's car, but it must
+ * never assign car ownership. Only the host's vehicle approval can do that.
+ */
+export function canApplyRemoteVehiclePose(vehicle: Vehicle | undefined, driver: Player | undefined): boolean {
+  return !!vehicle && !vehicle.wreck && vehicle.remote &&
+    !!driver && driver.remote && !driver.bot && driver.alive &&
+    vehicle.driver === driver.id && driver.veh === vehicle.id;
+}
+
+/** Remote damage reports may only affect the car driven by the reporting human.
+ * The sender identity must be resolved from the authenticated room participant,
+ * never from an id embedded in the untrusted packet.
+ */
+export function canAcceptVehicleDamageReport(authority: boolean, vehicle: Vehicle | undefined, reporter: Player | undefined, damage: unknown): damage is number {
+  return authority && !!vehicle && !vehicle.wreck && vehicle.remote &&
+    !!reporter && reporter.remote && !reporter.bot && reporter.alive &&
+    reporter.veh === vehicle.id && vehicle.driver === reporter.id &&
+    typeof damage === 'number' && Number.isFinite(damage) && damage > 0;
 }
 
 /** 방장 쪽: 보낼 세계 상태를 모읍니다. 손님 쪽: 받은 상태를 경기에 넣고 꼭두각시를 따라가게 합니다. */
@@ -63,7 +108,22 @@ export class WorldSync {
   readonly bots = new Map<number, PuppetTarget>();
   readonly vehs = new Map<number, VehTarget>();
   private tick = 0; private lastSend = 0; private shots: number[][] = []; private parked = new Map<number, number>(); private wasMoving = new Set<number>();
+  private readonly lootQuotas = new Map<number, { since: number; count: number }>();
   constructor(private m: Match) {}
+
+  /** Limit each remote participant's dynamic loot generation to a plausible rate. */
+  acceptRoomLoot(loot: Loot, senderIndex: number, host: boolean, sender: Player | undefined, now: number): boolean {
+    if (!canAcceptRoomLoot(loot, senderIndex, host, sender) || !fin(now)) return false;
+    if (host) return true; // The authority may relay many simultaneous AI deaths.
+    const quota = this.lootQuotas.get(senderIndex);
+    if (!quota || now < quota.since || now - quota.since >= 1000) {
+      this.lootQuotas.set(senderIndex, { since: now, count: 1 });
+      return true;
+    }
+    if (quota.count >= 12) return false;
+    quota.count++;
+    return true;
+  }
 
   // ---------- 방장 ----------
   /** 이번 프레임 사건 중 AI 의 사격을 모아 둡니다(사람 가까이에서 쏜 것만). */
@@ -85,13 +145,17 @@ export class WorldSync {
       b.push(p.id, r1(p.x), r1(p.z), r2(wrap(p.yaw)), r2(p.pitch), Math.max(0, WEAPON_IDS.indexOf(g?.id ?? 'pistol')), (p.ads ? 1 : 0) | (p.crouch > 0.5 ? 2 : 0) | (p.reload > 0 ? 4 : 0), r1(p.vx), r1(p.vz), p.air, Math.round(p.alt), Math.ceil(p.hp));
     }
     const vv: number[] = [], vh: number[] = [];
+    // Parked cars are broadcast periodically too: a player who joins after a
+    // car was moved and parked must receive its final pose and collision box.
+    const parkedSnapshot = this.tick % 24 === 0; // every 3 seconds, independent of bot snapshot cadence
     for (const v of m.vehicles) {
       if (v.wreck) { this.wasMoving.delete(v.id); continue; }
       if (v.hp < v.max) vh.push(v.id, Math.max(0, Math.round(v.hp)), v.lastBy + 1);
       if (v.remote) { this.wasMoving.delete(v.id); continue; }
       if (v.moving) this.wasMoving.add(v.id); else if (this.wasMoving.delete(v.id)) this.parked.set(v.id, 5);
       const left = this.parked.get(v.id) ?? 0;
-      if (!v.moving && left <= 0) continue; if (!v.moving) this.parked.set(v.id, left - 1);
+      if (!v.moving && left <= 0 && !parkedSnapshot) continue;
+      if (!v.moving && left > 0) this.parked.set(v.id, left - 1);
       vv.push(v.id, r1(v.x), r1(v.z), r2(wrap(v.yaw)), r1(v.speed), v.driver + 1, v.moving ? 1 : 0);
     }
     for (const v of m.vehicles) if (v.wreck) vh.push(v.id, 0, v.lastBy + 1);
@@ -108,9 +172,9 @@ export class WorldSync {
     if (numArr(msg.b, BOT_STRIDE * 200) && msg.b.length % BOT_STRIDE === 0) {
       const b = msg.b;
       for (let i = 0; i < b.length; i += BOT_STRIDE) {
-        const id = b[i], p = m.players[id]; if (!isInt(id, 0, n - 1) || !p?.bot || !p.remote || !p.alive) continue;
+        const id = b[i], p = m.players[id]; if (!isInt(id, 0, n - 1) || !p?.bot || !p.remote || !p.alive || Math.abs(b[i + 1]) > 10000 || Math.abs(b[i + 2]) > 10000) continue;
         const w = WEAPON_IDS[b[i + 5]] ?? 'pistol', f = b[i + 6], had = this.bots.has(id);
-        const t: PuppetTarget = { x: b[i + 1] / 10, z: b[i + 2] / 10, yaw: b[i + 3] / 100, pitch: b[i + 4] / 100, w, ads: (f & 1) !== 0, crouch: (f & 2) !== 0, reload: (f & 4) !== 0, vx: Math.max(-90, Math.min(90, b[i + 7] / 10)), vz: Math.max(-90, Math.min(90, b[i + 8] / 10)), speed: 0, air: isInt(b[i + 9], 0, 3) ? b[i + 9] : 0, alt: Math.max(0, b[i + 10]), hp: Math.max(0, b[i + 11]) };
+        const t: PuppetTarget = { x: b[i + 1] / 10, z: b[i + 2] / 10, yaw: b[i + 3] / 100, pitch: b[i + 4] / 100, w, ads: (f & 1) !== 0, crouch: (f & 2) !== 0, reload: (f & 4) !== 0, vx: Math.max(-90, Math.min(90, b[i + 7] / 10)), vz: Math.max(-90, Math.min(90, b[i + 8] / 10)), speed: 0, air: isInt(b[i + 9], 0, 3) ? b[i + 9] : 0, alt: Math.max(0, Math.min(AIR.alt, b[i + 10])), hp: Math.max(0, Math.min(PLAYER.hp, b[i + 11])) };
         t.speed = Math.hypot(t.vx!, t.vz!); if (t.air === 1) t.vx = t.vz = 0;
         this.bots.set(id, t); if (!had) { p.x = t.x; p.z = t.z; p.yaw = t.yaw; p.alt = t.alt; }
       }
@@ -128,8 +192,9 @@ export class WorldSync {
   }
   private shot(s: unknown): void {
     const m = this.m; if (!numArr(s, 5 + 27) || s.length < 8 || (s.length - 5) % 3 !== 0) return;
-    const p = m.players[s[0]], w = WEAPON_IDS[s[1]]; if (!isInt(s[0], 0, m.players.length - 1) || !p?.remote || !p.alive || !w) return;
+    const p = m.players[s[0]], w = WEAPON_IDS[s[1]]; if (!isInt(s[0], 0, m.players.length - 1) || !p?.remote || !p.bot || !p.alive || !w || s.length !== 5 + WEAPONS[w].pellets * 3) return;
     const ox = s[2] / 100, oy = s[3] / 100, oz = s[4] / 100, aims: Array<[number, number]> = [];
+    if (Math.abs(ox) > 1000 || Math.abs(oz) > 1000 || oy < 0 || oy > AIR.alt + 5) return;
     for (let i = 5; i + 2 < s.length; i += 3) { const dx = s[i] / 10 - ox, dy = s[i + 1] / 10 - oy, dz = s[i + 2] / 10 - oz; aims.push([Math.atan2(dz, dx), Math.atan2(dy, Math.hypot(dx, dz))]); }
     p.muzzle = 0.06; p.kick = Math.min(1, p.kick + 0.3); m.remoteShot(p.id, w, ox, oy, oz, aims);
   }
@@ -147,13 +212,17 @@ export class WorldSync {
       if (!this.vehs.has(v.id)) { v.x = x; v.z = z; v.yaw = yaw; }
       this.vehs.set(v.id, { x, z, yaw, speed: Math.max(-40, Math.min(40, speed)), at: now });
     } else {
+      // Parked vehicle packets repeat at network frequency. Rebuilding the
+      // collision grid for an identical box is wasted CPU on every message.
+      const relocated = v.moving || Math.abs(v.x - x) > 0.01 || Math.abs(v.z - z) > 0.01 || Math.abs(wrap(v.yaw - yaw)) > 0.005;
       this.vehs.delete(v.id); v.x = x; v.z = z; v.yaw = yaw; v.speed = 0;
-      if (v.moving) { v.moving = false; m.parkBox(v, true); }
+      v.moving = false;
+      if (relocated) m.parkBox(v, true);
     }
     const d = isInt(driver, -1, m.players.length - 1) ? driver : -1;
     if (d !== v.driver) {
       const old = m.players[v.driver]; if (old?.remote && old.veh === v.id) old.veh = -1;
-      const nu = m.players[d]; if (d >= 0 && nu?.remote) { v.driver = d; nu.veh = v.id; } else if (d < 0 && (!old || old.remote)) v.driver = -1;
+      const nu = m.players[d]; if (d >= 0 && nu?.remote && nu.alive) { const previous = m.vehicles[nu.veh]; if (previous && previous !== v && previous.driver === nu.id) previous.driver = -1; v.driver = d; nu.veh = v.id; nu.air = 0; nu.alt = 0; } else if (d < 0 && (!old || old.remote)) v.driver = -1;
     }
   }
   /** 꼭두각시 AI·차를 목표로 옮깁니다(매 시뮬레이션 단계 전에). */
@@ -164,9 +233,13 @@ export class WorldSync {
     for (const [id, t] of this.vehs) {
       const v = m.vehicles[id]; if (!v || v.wreck || !v.remote) { this.vehs.delete(id); continue; }
       // 받은 뒤 지난 시간만큼 앞으로 내다보고(속도 × 방향) 그 자리로 따라갑니다.
-      t.x += Math.cos(t.yaw) * t.speed * dt; t.z += Math.sin(t.yaw) * t.speed * dt;
+      const advance = Math.max(0, Math.min(dt, 0.6 - (t.extrapolated ?? 0)));
+      t.x += Math.cos(t.yaw) * t.speed * advance; t.z += Math.sin(t.yaw) * t.speed * advance;
+      t.extrapolated = (t.extrapolated ?? 0) + advance;
       const far = Math.abs(t.x - v.x) + Math.abs(t.z - v.z) > 20;
-      v.x = far ? t.x : v.x + (t.x - v.x) * k; v.z = far ? t.z : v.z + (t.z - v.z) * k; v.yaw += wrap(t.yaw - v.yaw) * k; v.speed = t.speed;
+      v.x = far ? t.x : v.x + (t.x - v.x) * k; v.z = far ? t.z : v.z + (t.z - v.z) * k; v.yaw += wrap(t.yaw - v.yaw) * k;
+      // Stop wheel and locomotion animation once the packet horizon expires.
+      v.speed = (t.extrapolated ?? 0) >= 0.6 ? 0 : t.speed;
     }
   }
   /** 마지막 소식이 오래된 꼭두각시 차(운전자가 사라짐 등). */

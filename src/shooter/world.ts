@@ -228,6 +228,19 @@ const THEMES: Record<Theme, ThemeDef> = {
   military:   { cols: [3, 2], rows: 2, lot: { w: 17, d: 14 }, first: 'bunker',    kinds: [['bunker', 4], ['tower', 2], ['garage', 1.5], ['cabin', 1.5]],               names: ['북부기지', '검은 요새', '레이더 고지'] },
 };
 const THEME_LIST = Object.keys(THEMES) as Theme[];
+
+/** Same seed => same town theme order on every JS engine.
+ * Random sort comparators are nontransitive and can consume a different
+ * number of RNG draws in different browser implementations.
+ */
+export function shuffledTownThemes(random: () => number): Theme[] {
+  const themes = [...THEME_LIST];
+  for (let i = themes.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [themes[i], themes[j]] = [themes[j], themes[i]];
+  }
+  return themes;
+}
 const pickKind = (rng: () => number, d: ThemeDef): BuildingType => { let t = 0; for (const [, w] of d.kinds) t += w; let x = rng() * t; for (const [k, w] of d.kinds) { x -= w; if (x <= 0) return k; } return d.first; };
 
 function station(map: GameMap, rng: () => number, cx: number, cz: number): boolean {
@@ -285,7 +298,7 @@ export function generateMap(seed: number, mode: Mode): GameMap {
     if (map.compounds.every(c => Math.hypot(c.x - x, c.z - z) > minGap)) { map.compounds.push({ x, z, r: 0, theme: 'village', name: '' }); }
   }
   // 종류를 골고루: 처음 다섯 곳은 서로 다른 종류, 나머지는 무작위
-  const bag = [...THEME_LIST].sort(() => rng() - 0.5); const used: Record<string, number> = {};
+  const bag = shuffledTownThemes(rng); const used: Record<string, number> = {};
   map.compounds.forEach((c, i) => { c.theme = i < bag.length ? bag[i] : THEME_LIST[Math.floor(rng() * THEME_LIST.length)]; const def = THEMES[c.theme]; const n = used[c.theme] ?? 0; used[c.theme] = n + 1; c.name = def.names[n % def.names.length] });
   for (const c of map.compounds) {
     const def = THEMES[c.theme], cols = mode === 'br' ? def.cols[0] : 2, rows = def.rows, lot = def.lot, n = (mode === 'br' ? 4 : 2) + Math.floor(rng() * 3);
@@ -417,7 +430,7 @@ function spawnNear(map: GameMap, rng: () => number, x: number, z: number): void 
   map.spawns.push({ x, z });
 }
 
-const seen = new Int32Array(1 << 14); let stamp = 0;
+let seen = new Uint32Array(1 << 14); let stamp = 0;
 /** 이 원(반지름 r)이 서 있는 높이에서 막히는 상자와 겹치는지. */
 export function blockedAt(map: GameMap, x: number, z: number, r: number): boolean {
   for (let cx = cellOf(x - r); cx <= cellOf(x + r); cx++) for (let cz = cellOf(z - r); cz <= cellOf(z + r); cz++) {
@@ -470,32 +483,72 @@ export function pushOut(map: GameMap, p: { x: number; z: number }, r: number): b
   return hit;
 }
 
+/** Slab intersection without creating a closure for each candidate box. */
+function boxRayT(b: Box, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, limit: number): number {
+  let near = 0, far = limit;
+  if (Math.abs(dx) < 1e-9) { if (ox < b.x0 || ox > b.x1) return Infinity; }
+  else {
+    let a = (b.x0 - ox) / dx, z = (b.x1 - ox) / dx;
+    if (a > z) { const tmp = a; a = z; z = tmp; }
+    near = Math.max(near, a); far = Math.min(far, z);
+    if (near > far) return Infinity;
+  }
+  if (Math.abs(dy) < 1e-9) { if (oy < b.y0 || oy > b.y1) return Infinity; }
+  else {
+    let a = (b.y0 - oy) / dy, z = (b.y1 - oy) / dy;
+    if (a > z) { const tmp = a; a = z; z = tmp; }
+    near = Math.max(near, a); far = Math.min(far, z);
+    if (near > far) return Infinity;
+  }
+  if (Math.abs(dz) < 1e-9) { if (oz < b.z0 || oz > b.z1) return Infinity; }
+  else {
+    let a = (b.z0 - oz) / dz, z = (b.z1 - oz) / dz;
+    if (a > z) { const tmp = a; a = z; z = tmp; }
+    near = Math.max(near, a); far = Math.min(far, z);
+    if (near > far) return Infinity;
+  }
+  return near;
+}
+
 /** 광선과 모든 상자의 첫 교차 거리(없으면 Infinity). dx,dy,dz 는 정규화된 방향. */
 export function rayWorld(map: GameMap, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
-  stamp++; let best = Infinity;
-  const steps = Math.ceil(Math.min(maxT, best) / (CELL / 4));
-  for (let s = 0; s <= steps; s++) {
-    const t = Math.min(maxT, s * (CELL / 4)), x = ox + dx * t, z = oz + dz * t;
-    for (let cx = cellOf(x - 0.01); cx <= cellOf(x + 0.01); cx++) for (let cz = cellOf(z - 0.01); cz <= cellOf(z + 0.01); cz++) {
-      const l = map.grid.get(key(cx, cz)); if (!l) continue;
-      for (const i of l) {
-        if (seen[i & 16383] === stamp) continue; seen[i & 16383] = stamp;
-        const b = map.boxes[i]; let t0 = 0, t1 = Math.min(maxT, best);
-        const slab = (o: number, d: number, lo: number, hi: number): boolean => {
-          if (Math.abs(d) < 1e-9) return o >= lo && o <= hi;
-          let a = (lo - o) / d, c = (hi - o) / d; if (a > c) { const tmp = a; a = c; c = tmp; }
-          if (a > t0) t0 = a; if (c < t1) t1 = c; return t0 <= t1;
-        };
-        if (slab(ox, dx, b.x0, b.x1) && slab(oy, dy, b.y0, b.y1) && slab(oz, dz, b.z0, b.z1) && t0 < best) best = t0;
-      }
+  if (maxT < 0 || !Number.isFinite(maxT) || !Number.isFinite(ox) || !Number.isFinite(oy) || !Number.isFinite(oz) || !Number.isFinite(dx) || !Number.isFinite(dy) || !Number.isFinite(dz)) return Infinity;
+  if (seen.length < map.boxes.length) seen = new Uint32Array(Math.max(map.boxes.length, seen.length * 2));
+  stamp = (stamp + 1) >>> 0; if (!stamp) { seen.fill(0); stamp = 1; }
+  let best = Infinity;
+  const visit = (cx: number, cz: number): void => {
+    const l = map.grid.get(key(cx, cz)); if (!l) return;
+    for (const i of l) {
+      if (seen[i] === stamp) continue; seen[i] = stamp;
+      const box = map.boxes[i]; if (!box) continue;
+      const hit = boxRayT(box, ox, oy, oz, dx, dy, dz, Math.min(maxT, best));
+      if (hit < best) best = hit;
     }
-    if (t >= maxT || best <= t) break;
+  };
+  // Exact grid traversal, including cells touched for only a short distance near corners.
+  let cx = cellOf(ox), cz = cellOf(oz);
+  const sx = Math.abs(dx) < 1e-9 ? 0 : Math.sign(dx), sz = Math.abs(dz) < 1e-9 ? 0 : Math.sign(dz);
+  const deltaX = sx ? CELL / Math.abs(dx) : Infinity, deltaZ = sz ? CELL / Math.abs(dz) : Infinity;
+  let tx = sx ? ((cx + (sx > 0 ? 1 : 0)) * CELL - ox) / dx : Infinity;
+  let tz = sz ? ((cz + (sz > 0 ? 1 : 0)) * CELL - oz) / dz : Infinity;
+  const boundaryX = !sx && Math.abs(ox - cx * CELL) < 1e-8, boundaryZ = !sz && Math.abs(oz - cz * CELL) < 1e-8;
+  for (;;) {
+    visit(cx, cz);
+    if (boundaryX) visit(cx - 1, cz);
+    if (boundaryZ) visit(cx, cz - 1);
+    if (boundaryX && boundaryZ) visit(cx - 1, cz - 1);
+    const next = Math.min(tx, tz);
+    if (next > Math.min(best, maxT) || !Number.isFinite(next)) break;
+    if (Math.abs(tx - tz) < 1e-8) {
+      visit(cx + sx, cz); visit(cx, cz + sz);
+      cx += sx; cz += sz; tx += deltaX; tz += deltaZ;
+    } else if (tx < tz) { cx += sx; tx += deltaX; } else { cz += sz; tz += deltaZ; }
   }
   return best;
 }
 
 /** 두 점 사이가 벽에 가려지지 않았는지(눈높이 기준 시선). */
 export function lineClear(map: GameMap, ax: number, ay: number, az: number, bx: number, by: number, bz: number): boolean {
-  const dx = bx - ax, dy = by - ay, dz = bz - az, len = Math.hypot(dx, dy, dz); if (len < 1e-6) return true;
+  const dx = bx - ax, dy = by - ay, dz = bz - az, len = Math.hypot(dx, dy, dz); if (len <= 0.05) return true;
   return rayWorld(map, ax, ay, az, dx / len, dy / len, dz / len, len - 0.05) === Infinity;
 }

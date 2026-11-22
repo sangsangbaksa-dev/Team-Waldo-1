@@ -12,10 +12,11 @@ export class Vision {
   /** 칸마다 0=한 번도 못 봄, 1=봤지만 지금은 안 보임, 2=지금 보임. */
   readonly state: Uint8Array;
   private readonly size: number;
+  private readonly previous: Uint8Array;
   /** 값이 바뀔 때마다 늘어납니다. 그리는 쪽이 다시 칠할지 판단하는 데 씁니다. */
   version = 0; private seenTick = -99;
 
-  constructor(readonly n: number, readonly owner: number) { this.size = n; this.state = new Uint8Array(n * n); }
+  constructor(readonly n: number, readonly owner: number) { this.size = n; this.state = new Uint8Array(n * n); this.previous = new Uint8Array(n * n); }
 
   /** 시야를 다시 계산합니다. force 가 아니면 VISION_EVERY 틱마다만 합니다. */
   update(sim: RtsSim, force = false): boolean {
@@ -28,7 +29,16 @@ export class Vision {
     };
     for (const u of sim.units) if (u.owner === this.owner && u.hp > 0) reveal(u.x, u.y, VISION[u.kind]);
     for (const b of sim.buildings) if (b.owner === this.owner && b.hp > 0) reveal(b.x + b.size / 2, b.y + b.size / 2, VISION[b.kind] + b.size / 2 - 1);
-    this.version++; return true;
+    // Rendering clients use the version to avoid rebuilding the minimap and
+    // re-uploading a texture. Only advance it when visibility really changed.
+    let changed = false;
+    for (let i = 0; i < st.length; i++) {
+      if (st[i] !== this.previous[i]) { this.previous[i] = st[i]; changed = true; }
+    }
+    if (changed) this.version++;
+    // Preserve the public contract: true means a scheduled recomputation ran,
+    // while version tracks actual visual changes for minimap/GPU caching.
+    return true;
   }
   at(x: number, y: number): number {
     const cx = Math.floor(x), cy = Math.floor(y); if (cx < 0 || cy < 0 || cx >= this.n || cy >= this.n) return FOG_HIDDEN; return this.state[cy * this.n + cx];

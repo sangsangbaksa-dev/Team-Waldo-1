@@ -7,12 +7,13 @@ import type { PvpSession, RoomSession } from '../net/lobby';
 import { AIR, BOTS, FEEL, BR_PLAYERS, DIFFICULTIES, HELMET_NAMES, ARMOR_NAMES, HEAL, PARTS, PLAYER, VEHICLES, WEAPONS, adsSpread, partHandling, type Difficulty } from './config';
 import { waterDepth } from './terrain';
 import { Match, type Cause, type MatchEvent, type Player, type Vehicle } from './sim';
-import { CAUSES, WorldSync, easePuppet, encodeLoot, parseLoot } from './sync';
+import { CAUSES, WorldSync, canAcceptRoomPickup, canAcceptVehicleDamageReport, canApplyRemoteVehiclePose, easePuppet, encodeLoot, parseLoot } from './sync';
 import type { NetMsg } from '../net/types';
 import { ShooterView } from './view';
 import { loadShooterAssets, type ShooterAssets } from './assets';
 import { ShooterAudio } from './audio';
-import { ShooterNet, decideDeath, nadeMsg, parseNade, seedOf, type Pose } from './net';
+import { WheelSwapGate } from './wheel-switch';
+import { RemoteNadeLimiter, RemoteShotLimiter, ShooterNet, decideDeath, nadeMsg, parseNade, plausibleNadeThrow, plausiblePlayerShot, seedOf, type Pose } from './net';
 import { ShooterRoomNet, ROOM_MAX } from './room';
 import { ChatBox } from './chat';
 import { readShooterCareer, recordShooterMatch, writeShooterCareer } from './records';
@@ -27,7 +28,7 @@ const causeName = (w: Cause): string => (w in CAUSE_NAME ? CAUSE_NAME[w as keyof
 /** 멀티플레이 방의 AI 채우기 선택지(0 = 사람만) */
 const ROOM_FILLS = [0, 30, 60, 100] as const;
 type Phase = 'setup' | 'loading' | 'countdown' | 'play' | 'dead' | 'over';
-interface Room { s: RoomSession; net: ShooterRoomNet; remotes: Map<number, { p: Player; target: Pose | null }>; chat: ChatBox | null; done: boolean; seed: number; mine: number; shown: boolean; sync: WorldSync }
+interface Room { s: RoomSession; net: ShooterRoomNet; remotes: Map<number, { p: Player; target: Pose | null }>; chat: ChatBox | null; done: boolean; seed: number; mine: number; shown: boolean; sync: WorldSync; nadeLimiter: RemoteNadeLimiter }
 interface Pvp { s: PvpSession; net: ShooterNet; opp: Player | null; target: Pose | null; done: boolean; deadAt: number | null; oppDeadMt: number | null; seed: number; begun: boolean }
 
 export interface OpenOptions { loading?: LoadingScreen }
@@ -67,7 +68,9 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   let assets: ShooterAssets | null = null, assetState: 'loading' | 'ready' | 'failed' = 'loading', assetPct = 0;
   let countdown = 0, over = false, deadTimer = 0, resultShown = false, spectateId = -1;
   let soloRecorded = false;
+  let fastForward = false, skipRaf = 0;
   let lastLook = 0, yaw = 0, pitch = 0, locked = false, lockFail = false, hitT = 0, hitHead = false, hitKill = false, combo = 0, comboT = 0, rcP = 0, rcY = 0, rcIdle = 9, shotN = 0, stepAcc = 0, bannerT = 0, mapBase: HTMLCanvasElement | null = null;
+  const wheelSwap = new WheelSwapGate();
   const keys = new Set<string>(), mouse = { fire: false, ads: false }, tc = { fire: false, ads: false, crouch: false, move: { x: 0, y: 0, id: -1, ox: 0, oy: 0 }, look: { id: -1, x: 0, y: 0 } };
   let healReq = 0, nadeReq = false, reloadReq = false, slotReq = -1, swapReq = false, interactHeld = false;
   const feed: Array<{ text: string; at: number; mine: boolean }> = [], told = new Set<number>();
@@ -78,7 +81,20 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
 
   // ---------- 자산(백그라운드로 받기) ----------
   const loading = opts.loading;
-  void loadShooterAssets(base, f => { assetPct = f; loading?.progress(f, '3D 모델을 불러오는 중'); if (phase === 'setup') paintSetup(); }, n => loading?.note(n)).then(a => { assets = a; assetState = 'ready'; }).catch(() => { assetState = 'failed'; }).finally(() => { loading?.close(); if (phase === 'setup') paintSetup(); });
+  void loadShooterAssets(base, f => {
+    if (closed || Math.floor(f * 20) === Math.floor(assetPct * 20) && f < 1) return;
+    assetPct = f;
+    // Updating a small status label is cheaper than rebuilding the entire setup UI
+    // for every network chunk (which also cancelled clicks on the start button).
+    const status = setupEl.querySelector<HTMLElement>('#sz-asset-status');
+    if (status) status.textContent = `3D 모델 준비 중 · ${Math.floor(f * 100)}%`;
+  }).then(a => {
+    if (!closed) { assets = a; assetState = 'ready'; view?.setAssets(a); }
+  }).catch(() => {
+    if (!closed) assetState = 'failed';
+  }).finally(() => {
+    if (!closed && phase === 'setup') paintSetup();
+  });
 
   // ---------- 출격 설정 화면 ----------
   function paintSetup(): void {
@@ -97,7 +113,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
           <p class="sz-note">${pickMode === 'pvp' ? '1대1 대전은 사람끼리 겨루므로 AI가 나오지 않습니다.' : pickMode === 'room' && !roomFill ? '사람만 모이는 방에는 AI가 나오지 않습니다.' : `${b.blurb} (반응 ${b.react.toFixed(2)}초 · 시야 ${b.sight}m)${pickMode === 'room' ? ' · 방을 만든 사람의 난이도로 진행됩니다' : ''}`}</p></section>
         <section><h3>조작</h3><ul class="sz-help">${touch ? '<li>왼쪽 스틱 이동 · 오른쪽 드래그 시점</li><li>사격 · 조준 · 장전 · 줍기 · 교체 버튼 (비행기에서는 <b>줍기</b> 버튼이 점프·낙하산, 차 옆에서는 탑승·하차, 운전 중 <b>웅크림</b> 버튼은 핸드브레이크)</li>' : '<li><b>WASD</b> 이동 · <b>Shift</b> 달리기 · 마우스 시점</li><li><b>좌클릭</b> 사격 · <b>우클릭</b> 조준 · <b>R</b> 장전</li><li><b>Space</b> 비행기에서 뛰기 · 낙하산 펴기(자동 105m) · <b>W</b> 활강 방향</li><li><b>G</b> 수류탄 · <b>E</b> 무기 줍기 · <b>1 / 2 / 휠</b> 무기 교체 · <b>Esc</b> 일시정지</li><li><b>E</b> 차량 타기·내리기 · <b>WASD</b> 운전 · <b>Space</b> 핸드브레이크 · 폭격 구역(붉은 원)에서는 벗어나세요</li>'}<li>탄약·구급상자·방탄복은 닿으면 자동으로 줍습니다.</li></ul></section>
         <footer><button type="button" class="ghost" data-act="exit">메뉴로</button><span class="sz-sum">${career.matches ? `전적 ${career.matches}판 ${career.wins}승 · 최다 처치 ${career.bestKills}` : '첫 출격'}</span>
-          <button type="button" class="primary" data-act="start" ${wait ? 'disabled' : ''}>${assetState === 'failed' ? '도형 모드로 출격' : wait ? `불러오는 중 ${Math.floor(assetPct * 100)}%` : pickMode === 'solo' ? '출격' : pickMode === 'room' ? '방 찾기' : '상대 찾기'}</button></footer>
+          <small id="sz-asset-status" aria-live="polite">${wait ? `3D 모델 준비 중 · ${Math.floor(assetPct * 100)}%` : assetState === 'ready' ? '고화질 3D 모델 준비 완료' : '경량 3D 모델로 플레이 가능'}</small>
+          <button type="button" class="primary" data-act="start">${assetState === 'failed' && pickMode === 'solo' ? '경량 3D로 출격' : pickMode === 'solo' ? '출격' : pickMode === 'room' ? '방 찾기' : '상대 찾기'}</button></footer>
       </div>`;
   }
   setupEl.addEventListener('click', e => {
@@ -107,15 +124,19 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     else if (act?.dataset.act === 'exit') exit(); else if (act?.dataset.act === 'start') { if (pickMode === 'solo') startSolo(); else openPvpLobby(pickMode === 'room'); }
   });
   paintSetup();
+  // The setup is fully usable with procedural 3D models. Do not cover it with
+  // a loading overlay while optional detailed character assets download.
+  loading?.close();
 
   // ---------- 경기 시작 ----------
   function begin(m: Match, my: number): void {
     endMatch(); blur(); tc.ads = tc.crouch = false; root.querySelectorAll('.sz-tbuttons button.down').forEach(b => b.classList.remove('down')); locked = lockFail = false;
     // The previous renderer forces context loss on dispose. Never reuse its canvas.
     const fresh = document.createElement('canvas'); fresh.className = 'sz-canvas'; canvas.replaceWith(fresh); canvas = fresh; canvas.addEventListener('contextmenu', noMenu);
+    hitT = combo = comboT = rcP = rcY = shotN = stepAcc = bannerT = lastLook = 0; wheelSwap.reset(); hitHead = hitKill = false; rcIdle = 9; q('#sz-banner').classList.remove('show'); q('#sz-nums').replaceChildren(); q('#sz-dmgs').replaceChildren();
     match = m; meIdx = my; over = false; resultShown = false; soloRecorded = false; spectateId = -1; deadTimer = 0; cache.clear(); feed.length = 0; told.clear(); paused = false; modal.className = 'sz-modal'; modal.innerHTML = '';
     const p = m.players[my]; yaw = p.yaw; pitch = 0; countdown = 3.4; phase = 'countdown'; mapBase = null;
-    try { view = new ShooterView(canvas, m, assets, prefs.quality); } catch { endMatch(); phase = 'setup'; hud.hidden = true; setupEl.hidden = true; card('ZERO ZONE', '그래픽을 시작하지 못했어요', '<p>브라우저의 그래픽 가속을 확인한 뒤 다시 시도해 주세요.</p>', '<button class="primary" data-act="setup">설정으로</button><button data-act="exit">메뉴로</button>'); return; } resize(); setupEl.hidden = true; hud.hidden = false; buildSlots(); say(touch ? '왼쪽 스틱으로 이동' : '화면을 클릭해 조작 시작', 2.4);
+    try { view = new ShooterView(canvas, m, assets, prefs.quality); } catch { leavePvp(); leaveRoom(); endMatch(); phase = 'setup'; hud.hidden = true; setupEl.hidden = true; card('ZERO ZONE', '그래픽을 시작하지 못했어요', '<p>브라우저의 그래픽 가속을 확인한 뒤 다시 시도해 주세요.</p>', '<button class="primary" data-act="setup">설정으로</button><button data-act="exit">메뉴로</button>'); return; } resize(); setupEl.hidden = true; hud.hidden = false; buildSlots(); say(touch ? '왼쪽 스틱으로 이동' : '화면을 클릭해 조작 시작', 2.4);
     if (!touch) lock(); audio.unlock();
     if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__zz = { get match() { return match; }, get phase() { return phase; }, me, skip, view, go: () => { countdown = Math.min(countdown, 0.45); }, advance: (sec: number) => { const m = match; if (!m) return; let now = performance.now(); for (let t = 0; t < sec && !m.over; t += 1 / 30) { if (room) syncRoom(1 / 30); m.step(1 / 30); now += 1000 / 30; const ev = m.drain(); onEvents(ev); if (room) roomTick(ev, now); } }, fire: (on: boolean) => { mouse.fire = on; }, ads: (on: boolean) => { mouse.ads = on; }, look: (y: number, p: number) => { yaw = y; pitch = p; } };
   }
@@ -136,18 +157,25 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   function startPvp(s: PvpSession): void {
     endPvp(); endMatch(); setupEl.hidden = true; hud.hidden = true; phase = 'loading';
     card('1대1 대전', `${esc(s.opponent.nickname)} 님과 연결하는 중…`, '<p class="sz-sub">상대가 들어오면 바로 시작합니다.</p>', '<button data-act="exit">나가기</button>');
-    const seed = seedOf(s.match.config, s.match.id);
+    const seed = seedOf(s.match.config, s.match.id), nadeLimiter = new RemoteNadeLimiter(), shotLimiter = new RemoteShotLimiter();
     const net: ShooterNet = new ShooterNet(s, {
       onStart: () => beginPvp(),
       onPose: p => { if (pvp) pvp.target = p; },
       onShot: sh => {
-        if (!pvp?.opp || !match) return; const aims: Array<[number, number]> = [];
+        if (!pvp?.opp || !match || !plausiblePlayerShot(sh, pvp.opp) || !shotLimiter.allow(pvp.opp.id, sh.w, performance.now())) return; const aims: Array<[number, number]> = [];
         for (let i = 0; i + 2 < sh.ends.length; i += 3) { const dx = sh.ends[i] - sh.ox, dy = sh.ends[i + 1] - sh.oy, dz = sh.ends[i + 2] - sh.oz; aims.push([Math.atan2(dz, dx), Math.atan2(dy, Math.hypot(dx, dz))]); }
         pvp.opp.muzzle = 0.06; pvp.opp.kick = Math.min(1, pvp.opp.kick + 0.3); match.remoteShot(pvp.opp.id, sh.w, sh.ox, sh.oy, sh.oz, aims);
       },
       onHitAck: () => { /* 명중 표시는 내 쪽 판정으로 이미 보여 줬습니다 */ },
-      onNade: n => { if (match && pvp?.opp) match.addNade(pvp.opp.id, n.x, n.y, n.z, n.vx, n.vy, n.vz); },
-      onPickup: id => { match?.removeLoot(id); },
+      onNade: n => { const opp = pvp?.opp; if (match && opp && plausibleNadeThrow(n, opp) && nadeLimiter.allow(opp.id, performance.now())) match.addNade(opp.id, n.x, n.y, n.z, n.vx, n.vy, n.vz); },
+      onPickup: id => {
+        // A duel opponent may only pick items near their last reported pose.
+        // Otherwise one forged pickup packet could wipe remote ground loot.
+        const m = match, opp = pvp?.opp;
+        if (!m || !opp) return;
+        const loot = m.loot.find(item => item.id === id);
+        if (canAcceptRoomPickup(loot, opp, false)) m.removeLoot(id);
+      },
       onDead: mt => { if (!pvp || !match || !pvp.opp) return; pvp.oppDeadMt = mt; if (pvp.opp.alive) match.kill(pvp.opp, me().id, 'rifle'); if (pvp.deadAt !== null) settleTie(); else void conclude(pvp.s.me.id, '상대를 쓰러뜨렸습니다'); },
       onGone: reason => { if (pvp && !pvp.done) void conclude(pvp.s.me.id, reason === 'never' ? '상대가 접속하지 않았습니다' : '상대와의 연결이 끊어졌습니다'); },
     });
@@ -164,15 +192,20 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   function startRoom(s: RoomSession): void {
     endPvp(); endRoom(); endMatch(); setupEl.hidden = true; hud.hidden = true; phase = 'loading';
     card('멀티플레이 방', `${s.players.length}명이 모이는 중…`, '<p class="sz-sub">모두 연결되면 바로 시작합니다.</p>', '<button data-act="exit">나가기</button>');
+    const shotLimiter = new RemoteShotLimiter();
     const net: ShooterRoomNet = new ShooterRoomNet(s, {
       onStart: ids => beginRoom(ids),
-      onPose: (id, p) => { const r = roomRemote(id); if (r) { r.target = p; if (p.vs && match && p.veh !== undefined && p.veh >= 0) { const v = match.vehicles[p.veh]; if (v) room!.sync.vehicleState(v, p.vs[0], p.vs[1], p.vs[2], p.vs[3], r.p.id, true, performance.now()); } } },
+      onPose: (id, p) => { const r = roomRemote(id); if (r) { r.target = p; if (p.vs && match && p.veh !== undefined && p.veh >= 0) { const v = match.vehicles[p.veh]; if (canApplyRemoteVehiclePose(v, r.p)) room!.sync.vehicleState(v, p.vs[0], p.vs[1], p.vs[2], p.vs[3], r.p.id, true, performance.now()); } } },
       onShot: (id, sh) => {
-        const r = roomRemote(id); if (!r || !match) return; const aims: Array<[number, number]> = [];
+        const r = roomRemote(id); if (!r || !match || !plausiblePlayerShot(sh, r.p) || !shotLimiter.allow(r.p.id, sh.w, performance.now())) return; const aims: Array<[number, number]> = [];
         for (let i = 0; i + 2 < sh.ends.length; i += 3) { const dx = sh.ends[i] - sh.ox, dy = sh.ends[i + 1] - sh.oy, dz = sh.ends[i + 2] - sh.oz; aims.push([Math.atan2(dz, dx), Math.atan2(dy, Math.hypot(dx, dz))]); }
         r.p.muzzle = 0.06; r.p.kick = Math.min(1, r.p.kick + 0.3); match.remoteShot(r.p.id, sh.w, sh.ox, sh.oy, sh.oz, aims);
       },
-      onPickup: id => { match?.removeLoot(id); },
+      onPickup: (lootId, senderId) => {
+        const m = match, r = room, sender = roomRemote(senderId)?.p;
+        const loot = m?.loot.find(l => l.id === lootId);
+        if (m && r && canAcceptRoomPickup(loot, sender, senderId === r.net.authority())) m.removeLoot(lootId);
+      },
       onDead: (id, _mt, killer, cause) => { const r = roomRemote(id); if (r && match && r.p.alive) { if (r.target) { r.p.x = r.target.x; r.p.z = r.target.z; } match.kill(r.p, killer, CAUSES[cause] ?? 'rifle'); } },
       onGone: id => {
         const r = roomRemote(id); if (!r || !match || !room) return;
@@ -184,7 +217,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       onAbort: () => { if (room && !room.done) { room.done = true; card('멀티플레이 방', '시작하지 못했습니다', '<p class="sz-sub">다른 참가자와 연결하지 못했습니다.</p>', '<button data-act="exit">메뉴로</button>'); } },
       onData: (id, msg) => roomData(id, msg),
     });
-    room = { s, net, remotes: new Map(), chat: null, done: false, seed: seedOf(s.room.config, s.room.id), mine: 0, shown: false, sync: null as unknown as WorldSync };
+    room = { s, net, remotes: new Map(), chat: null, done: false, seed: seedOf(s.room.config, s.room.id), mine: 0, shown: false, sync: null as unknown as WorldSync, nadeLimiter: new RemoteNadeLimiter() };
   }
   function roomRemote(id: string): { p: Player; target: Pose | null } | undefined { const i = room?.net.list.indexOf(id) ?? -1; return room?.remotes.get(i); }
   /** 사람(다른 참가자)이 몰고 있는 차인지 */
@@ -202,6 +235,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       : new Match({ seed: r.seed, mode: 'duel', difficulty: 'normal', humans, lootBase: (idx + 1) * 1_000_000 });
     ids.forEach((id, i) => { if (id !== me0) r.remotes.set(i, { p: m.players[i], target: null }); });
     r.mine = idx; r.sync = new WorldSync(m); begin(m, idx);
+    if (match !== m || room !== r) return;
     r.chat = new ChatBox(hud, text => { r.chat?.add('나', me0, text, true, performance.now()); r.net.send({ t: 'ch', x: text }); }, () => { if (!touch && !locked && phase === 'play') lock(); });
   }
   /** 동기화 메시지(sync.ts 형식) */
@@ -210,12 +244,12 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (msg.t === 'ch') r.chat?.add(r.s.players.find(x => x.id === id)?.nickname ?? '참가자', id, msg.x, false, now);
     else if (msg.t === 'w') { if (host && !m.authority) r.sync.apply(msg, now); }
     else if (msg.t === 'bd') { if (host && !m.authority) r.sync.botDead(msg.i, msg.k, msg.c); }
-    else if (msg.t === 'la') { const l = parseLoot(msg); if (l) m.addLoot(l); }
-    else if (msg.t === 'nd') { const n = parseNade(msg), o = typeof msg.o === 'number' && Number.isInteger(msg.o) ? m.players[msg.o] : undefined; if (n && o?.remote) m.addNade(o.id, n.x, n.y, n.z, n.vx, n.vy, n.vz); }
+    else if (msg.t === 'la') { const l = parseLoot(msg), senderIndex = r.net.list.indexOf(id); if (l && r.sync.acceptRoomLoot(l, senderIndex, host, from?.p, now)) m.addLoot(l); }
+    else if (msg.t === 'nd') { const n = parseNade(msg), o = typeof msg.o === 'number' && Number.isInteger(msg.o) ? m.players[msg.o] : undefined; if (n && o?.remote && (o.bot ? host : o === from?.p) && plausibleNadeThrow(n, o) && r.nadeLimiter.allow(o.id, now)) m.addNade(o.id, n.x, n.y, n.z, n.vx, n.vy, n.vz); }
     else if (msg.t === 've') {
       // 손님이 차에 타려고 함: 방장만 판정합니다.
       const v = typeof msg.i === 'number' ? m.vehicles[msg.i] : undefined; if (!m.authority || !from || !v) return; const p = from.p;
-      const ok = !v.wreck && v.driver < 0 && p.alive && !p.air && Math.hypot(p.x - v.x, p.z - v.z) < 9;
+      const ok = !v.wreck && v.driver < 0 && p.alive && !p.air && p.veh < 0 && m.vehicleNear(p) === v;
       if (ok) { m.enterVehicle(p, v); v.remote = true; r.sync.vehs.set(v.id, { x: v.x, z: v.z, yaw: v.yaw, speed: 0, at: now }); }
       r.net.send({ t: ok ? 'vg' : 'vn', i: v.id, d: p.id });
     }
@@ -229,12 +263,12 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     }
     else if (msg.t === 'vx') {
       // 손님이 내린(또는 쓰러진) 차: 방장이 받아 굴리고, 나머지는 운전자만 비웁니다.
-      const v = typeof msg.i === 'number' ? m.vehicles[msg.i] : undefined; if (!v || v.wreck || !from) return;
+      const v = typeof msg.i === 'number' ? m.vehicles[msg.i] : undefined; if (!v || v.wreck || !from || v.driver !== from.p.id) return;
       const x = Number(msg.x), z = Number(msg.z), y = Number(msg.y), sp = Number(msg.s); if (![x, z, y, sp].every(Number.isFinite) || Math.abs(x) > 1000 || Math.abs(z) > 1000) return;
       if (m.authority) { if (v.remote) { r.sync.vehs.delete(v.id); v.x = x; v.z = z; v.yaw = y; v.speed = Math.max(-40, Math.min(40, sp)); reclaim(v); } }
       else if (v.remote) { if (v.driver === from.p.id) { from.p.veh = -1; v.driver = -1; } r.sync.vehicleState(v, x, z, y, sp, -1, true, now); }
     }
-    else if (msg.t === 'vd') { const v = typeof msg.i === 'number' ? m.vehicles[msg.i] : undefined, d = Number(msg.d); if (m.authority && v && from && Number.isFinite(d) && d > 0) m.hurtVehicle(v, Math.min(400, d), -1); }
+    else if (msg.t === 'vd') { const v = typeof msg.i === 'number' ? m.vehicles[msg.i] : undefined; if (v && canAcceptVehicleDamageReport(m.authority, v, from?.p, msg.d)) m.hurtVehicle(v, Math.min(400, msg.d), -1); }
   }
   /** 매 시뮬레이션 단계 전에: 다른 사람·AI·차를 받은 상태로 옮깁니다. */
   function syncRoom(dt: number): void {
@@ -242,9 +276,17 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     for (const { p: o, target: t } of room.remotes.values()) {
       if (!t || !o.alive) continue;
       const veh = t.veh ?? -1;
-      if (veh !== o.veh) {
-        const old = m.vehicles[o.veh]; if (old && old.driver === o.id) old.driver = -1;
-        const nu = m.vehicles[veh]; if (nu && !nu.wreck && (nu.driver < 0 || nu.driver === o.id) && nu.remote) { o.veh = veh; nu.driver = o.id; if (!nu.moving) { nu.moving = true; m.parkBox(nu, false); } } else o.veh = -1;
+      // Position reports are not vehicle boarding/exit requests. Ownership
+      // changes only through the host's vg/vv approval or an authenticated vx.
+      // In particular, do not clear the driver before a delayed vx packet arrives.
+      if (veh !== o.veh && veh >= 0) {
+        const nu = m.vehicles[veh];
+        if (nu && nu.remote && !nu.wreck && nu.driver === o.id) {
+          const old = m.vehicles[o.veh];
+          if (old && old.driver === o.id) old.driver = -1;
+          o.veh = veh;
+          if (!nu.moving) { nu.moving = true; m.parkBox(nu, false); }
+        }
       }
       easePuppet(o, { x: t.x, z: t.z, yaw: t.yaw, pitch: t.pitch, speed: t.speed, air: t.air ?? 0, alt: t.alt ?? 0, hp: t.hp, w: t.w, ads: t.ads, crouch: !!t.crouch, reload: t.reloading }, dt);
       o.armor = t.armor;
@@ -319,11 +361,11 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     endPvp();
   }
   function endPvp(): void { pvp?.net.dispose(); pvp = null; }
-  function endMatch(): void { locked = false; if (document.pointerLockElement === canvas) document.exitPointerLock(); view?.dispose(); view = null; match = null; }
+  function endMatch(): void { fastForward = false; cancelAnimationFrame(skipRaf); skipRaf = 0; locked = false; if (document.pointerLockElement === canvas) document.exitPointerLock(); view?.dispose(); view = null; match = null; }
 
   // ---------- 조작 ----------
   const sens = (): number => 0.0023 / (view && me().ads ? Math.max(1, 78 / view.fov) * 0.9 : 1);
-  function lock(): void { if (touch || locked || lockFail || closed) return; try { const r = canvas.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(() => { lockFail = true; }); } catch { lockFail = true; } }
+  function lock(): void { if (touch || locked || lockFail || closed || paused || !match) return; const target = canvas; try { const r = target.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(() => { if (canvas === target && !closed) lockFail = true; }); } catch { lockFail = true; } }
   document.addEventListener('pointerlockchange', onLock);
   function onLock(): void {
     const wasLocked = locked; locked = document.pointerLockElement === canvas;
@@ -349,12 +391,17 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (paused) return;
     keys.add(e.code);
     if (e.repeat && ['KeyR', 'KeyE', 'KeyQ', 'KeyG', 'KeyH', 'KeyJ', 'Digit1', 'Digit2'].includes(e.code)) return;
-    if (e.code === 'Enter' && room?.chat && !room.done && match && !paused) { keys.clear(); mouse.fire = mouse.ads = false; interactHeld = false; if (document.pointerLockElement) document.exitPointerLock(); room.chat.open(); e.preventDefault(); return; }
+    if (e.code === 'Enter' && room?.chat && !room.done && match && !paused) { keys.clear(); mouse.fire = mouse.ads = false; interactHeld = false; if (document.pointerLockElement === canvas) document.exitPointerLock(); room.chat.open(); e.preventDefault(); return; }
     if (e.code === 'KeyR') reloadReq = true; else if (e.code === 'KeyE') interactHeld = true; else if (e.code === 'Digit1') slotReq = 0; else if (e.code === 'Digit2') slotReq = 1; else if (e.code === 'KeyQ') swapReq = true; else if (e.code === 'KeyG') nadeReq = true; else if (e.code === 'KeyH') healReq = 1; else if (e.code === 'KeyJ') healReq = 2;
     else if (e.code === 'Escape' && phase === 'countdown') setPause(true);
     if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code) && match) e.preventDefault();
   };
-  const onWheel = (e: WheelEvent): void => { if (match && !paused && Math.abs(e.deltaY) > 4) swapReq = true; };
+  const onWheel = (e: WheelEvent): void => {
+    if (!match || closed || paused || phase !== 'play' || room?.chat?.typing || !(locked || e.target === canvas)) return;
+    // Accumulate tiny touchpad deltas; inertia from one continuous gesture
+    // cannot accidentally flip the weapon back again.
+    if (wheelSwap.feed(e.deltaY, performance.now(), e.deltaMode)) swapReq = true;
+  };
   const noMenu = (e: Event): void => e.preventDefault();
   window.addEventListener('mousemove', onMove); window.addEventListener('mousedown', onDown); window.addEventListener('mouseup', onUp);
   window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKey); window.addEventListener('wheel', onWheel, { passive: true }); canvas.addEventListener('contextmenu', noMenu);
@@ -584,8 +631,34 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       `<button class="primary" data-act="again">다시 출격</button>${!win && !match.over ? '<button data-act="spectate">관전 계속</button><button data-act="skip">결과까지 건너뛰기</button>' : ''}<button data-act="setup">설정으로</button><button data-act="exit">메뉴로</button>`, win ? 'win' : '');
   }
 
-  /** 시뮬레이션을 화면 없이 끝까지 돌립니다(내가 쓰러진 뒤 결과만 보고 싶을 때). */
-  function skip(maxSeconds = 600): void { const m = match; if (!m) return; for (let t = 0; t < maxSeconds && !m.over; t += 1 / 30) { m.step(1 / 30); m.drain(); } if (m.over) onOver(m.winner); }
+  /** Let the browser paint and handle cancellation between AI-only fast-forward slices. */
+  function skip(maxSeconds = 600): void {
+    const m = match;
+    if (!m || fastForward || pvp || room) return;
+    fastForward = true;
+    const step = 1 / 30, maxSteps = Math.ceil(maxSeconds * 30);
+    let steps = 0;
+    card('ZERO ZONE', '결과 계산 중',
+      '<p id="sz-skip-progress" class="sz-sub" role="status" aria-live="polite">남은 플레이어의 경기를 계산하고 있습니다…</p>',
+      '<button data-act="setup">설정으로 돌아가기</button><button data-act="exit">메뉴로</button>');
+    const advance = (): void => {
+      if (!fastForward || closed || match !== m) return;
+      const started = performance.now();
+      let batch = 0;
+      while (!m.over && steps < maxSteps && batch < 180 && performance.now() - started < 8) {
+        m.step(step);
+        m.drain();
+        steps++;
+        batch++;
+      }
+      if (m.over) { fastForward = false; skipRaf = 0; onOver(m.winner); return; }
+      if (steps >= maxSteps) { fastForward = false; skipRaf = 0; showResult(false); return; }
+      const status = modal.querySelector<HTMLElement>('#sz-skip-progress');
+      if (status) status.textContent = `결과 계산 중 · 경기 시간 ${clock(m.t)} · 생존 ${m.aliveCount()}명`;
+      skipRaf = requestAnimationFrame(advance);
+    };
+    advance();
+  }
 
   // ---------- 일시정지·메뉴 ----------
   function setPause(on: boolean): void {
@@ -598,7 +671,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     const a = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act; if (!a) return; audio.unlock();
     if (a === 'resume') setPause(false);
     else if (a === 'again') { startSolo(); }
-    else if (a === 'setup') { endMatch(); hud.hidden = true; modal.className = 'sz-modal'; modal.innerHTML = ''; phase = 'setup'; paused = false; setupEl.hidden = false; paintSetup(); }
+    else if (a === 'setup') { leavePvp(); leaveRoom(); endMatch(); hud.hidden = true; modal.className = 'sz-modal'; modal.innerHTML = ''; phase = 'setup'; paused = false; setupEl.hidden = false; paintSetup(); }
     else if (a === 'spectate') { modal.className = 'sz-modal'; modal.innerHTML = ''; resultShown = false; if (room) room.shown = true; }
     else if (a === 'skip') { modal.className = 'sz-modal'; resultShown = false; skip(); }
     else if (a === 'roomagain') { leaveRoom(); endMatch(); hud.hidden = true; modal.className = 'sz-modal'; modal.innerHTML = ''; phase = 'setup'; setupEl.hidden = false; pickMode = 'room'; paintSetup(); openPvpLobby(true); }
@@ -611,7 +684,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   function frame(now: number): void {
     if (closed) return; raf = requestAnimationFrame(frame);
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
-    if (!match || !view) return;
+    if (!match || !view || fastForward) return;
     const m = match, p = me();
     if (phase === 'countdown' && !paused) {
       countdown -= dt; const c = Math.ceil(countdown - 0.4), el = q('#sz-count');
@@ -650,7 +723,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   function syncRemote(dt: number): void {
     const o = pvp!.opp!, t = pvp!.target; if (!t || !o.alive) return; const k = Math.min(1, dt * 14);
     o.x += (t.x - o.x) * k; o.z += (t.z - o.z) * k; let dy = t.yaw - o.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); o.yaw += dy * k; o.pitch += (t.pitch - o.pitch) * k;
-    o.hp = t.hp; o.armor = t.armor; o.speed = t.speed; o.walk += t.speed * dt; o.ads = t.ads; o.crouch += ((t.crouch ? 1 : 0) - o.crouch) * Math.min(1, dt * 12); o.reload = t.reloading ? 1 : 0;
+    o.hp = t.hp; o.armor = t.armor; o.speed = t.speed; o.ads = t.ads; o.crouch += ((t.crouch ? 1 : 0) - o.crouch) * Math.min(1, dt * 12); o.reload = t.reloading ? 1 : 0;
     if (o.guns[0]?.id !== t.w) o.guns[0] = { id: t.w, mag: 1, reserve: 0, att: {} }; o.cur = 0;
   }
 

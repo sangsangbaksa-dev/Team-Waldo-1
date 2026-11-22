@@ -13,7 +13,8 @@ export class WeatherFx {
     if (n) {
       const r = makeRng(map.seed + 311); this.pos = new Float32Array(n * 6); this.off = new Float32Array(n * 3);
       for (let i = 0; i < n; i++) { this.off[i * 3] = (r() - 0.5) * BOX * 2; this.off[i * 3 + 1] = r() * TALL; this.off[i * 3 + 2] = (r() - 0.5) * BOX * 2; }
-      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
+      // Rain positions are rewritten every frame; hint dynamic GPU uploads.
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
       this.rain = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0xb8c6d6, transparent: true, opacity: 0.3, depthWrite: false })); this.rain.frustumCulled = false; this.group.add(this.rain);
     }
     // 안개 덩어리: 지형 곁에만 깔아 마을은 선명하게 둡니다
@@ -31,7 +32,10 @@ export class WeatherFx {
       const n = this.off.length / 3, shown = Math.floor(n * density), p = this.pos, o = this.off; (this.rain.geometry as THREE.BufferGeometry).setDrawRange(0, shown * 2);
       for (let i = 0; i < shown; i++) {
         let y = o[i * 3 + 1] - dt * (24 + (i % 7)); if (y < 0) y += TALL; o[i * 3 + 1] = y;
-        const wx = ((o[i * 3] - cam.x + BOX * 3) % (BOX * 2)) - BOX, wz = ((o[i * 3 + 2] - cam.z + BOX * 3) % (BOX * 2)) - BOX, X = cam.x + wx, Z = cam.z + wz, Y = cam.y - 12 + y;
+        // off[] stores camera-local offsets, not absolute world coordinates.
+        // Subtracting cam.x/z before wrapping pushed rain out of the visible
+        // area as the player moved away from the world origin.
+        const X = cam.x + o[i * 3], Z = cam.z + o[i * 3 + 2], Y = cam.y - 12 + y;
         p[i * 6] = X; p[i * 6 + 1] = Y; p[i * 6 + 2] = Z; p[i * 6 + 3] = X + 0.07; p[i * 6 + 4] = Y + 0.85; p[i * 6 + 5] = Z + 0.02;
       }
       (this.rain.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;

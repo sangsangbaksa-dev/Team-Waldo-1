@@ -2,7 +2,6 @@
 import * as THREE from 'three';
 import { makeRng } from './config';
 import type { GameMap } from './world';
-import { CLIFF_T } from './terrain';
 import { concreteTexture, dirtTexture, fadeDiscTexture, fadeRoadTexture, waterTexture } from './textures';
 
 const smooth = (t: number): number => { const x = Math.max(0, Math.min(1, t)); return x * x * (3 - 2 * x); };
@@ -16,18 +15,72 @@ const TOWN = new THREE.Color(1.02, 0.97, 0.84), FOREST = new THREE.Color(0.58, 0
 function segDist(px: number, pz: number, ax: number, az: number, bx: number, bz: number): number {
   const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz, t = l2 < 1e-9 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / l2)); return Math.hypot(px - ax - dx * t, pz - az - dz * t);
 }
-/** 풀밭 정점 색에 지형 영향을 섞습니다: 마을 둘레는 흙빛으로, 숲은 어둡게, 늪은 진흙빛, 물가는 모래, 바위 곁은 회갈색. */
+/** Terrain feature bounds and pond rotations are constant for a generated map.
+ * Cache them once rather than recalculating trigonometry and river bounds for
+ * every ground vertex (14k+ vertices at high quality).
+ */
+function prepareGroundTint(map: GameMap) {
+  const ponds = map.terrain.ponds.map(p => ({
+    p, cs: Math.cos(p.ry), sn: Math.sin(p.ry),
+    bound: Math.max(p.rx, p.rz) * (p.swamp ? 1.7 : 1.35),
+  }));
+  const rivers = map.terrain.rivers.map(r => {
+    let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
+    for (const [px, pz] of r.pts) {
+      minX = Math.min(minX, px); maxX = Math.max(maxX, px);
+      minZ = Math.min(minZ, pz); maxZ = Math.max(maxZ, pz);
+    }
+    const pad = r.w / 2 + 14;
+    return { r, minX: minX - pad, minZ: minZ - pad, maxX: maxX + pad, maxZ: maxZ + pad };
+  });
+  return { ponds, rivers };
+}
+const tintCache = new WeakMap<GameMap, ReturnType<typeof prepareGroundTint>>();
+
+/** Preserve the original terrain-color blending but avoid costly distance
+ * and river-segment calculations for features far outside the affected area.
+ */
 export function tintGround(map: GameMap, x: number, z: number, c: THREE.Color): void {
   const t = map.terrain;
-  for (const k of map.compounds) { const d = Math.hypot(x - k.x, z - k.z) - k.r; if (d < 26) c.lerp(TOWN, 0.55 * smooth(1 - Math.max(0, d) / 26)); }
-  for (const f of t.forests) { const d = Math.hypot(x - f.x, z - f.z) / f.r; if (d < 1.2) c.lerp(FOREST, 0.85 * smooth((1.2 - d) / 0.55)); }
-  for (const p of t.ponds) {
-    const cs = Math.cos(p.ry), sn = Math.sin(p.ry), dx = x - p.x, dz = z - p.z, u = (dx * cs + dz * sn) / p.rx, v = (-dx * sn + dz * cs) / p.rz, q = Math.hypot(u, v);
-    if (p.swamp) { if (q < 1.7) c.lerp(MUD, 0.8 * smooth((1.7 - q) / 0.8)); } else if (q < 1.35) c.lerp(SAND, 0.75 * smooth((1.35 - q) / 0.35));
+  let cached = tintCache.get(map);
+  if (!cached) { cached = prepareGroundTint(map); tintCache.set(map, cached); }
+  for (const k of map.compounds) {
+    const dx = x - k.x, dz = z - k.z, limit = k.r + 26;
+    if (Math.abs(dx) > limit || Math.abs(dz) > limit) continue;
+    const d = Math.hypot(dx, dz) - k.r;
+    if (d < 26) c.lerp(TOWN, 0.55 * smooth(1 - Math.max(0, d) / 26));
   }
-  for (const r of t.rivers) { let e = Infinity; for (let i = 0; i + 1 < r.pts.length; i++) e = Math.min(e, segDist(x, z, r.pts[i][0], r.pts[i][1], r.pts[i + 1][0], r.pts[i + 1][1]) - r.w / 2); if (e < 14) c.lerp(SAND, 0.7 * smooth(1 - Math.max(0, e) / 14)); }
-  for (const h of t.hills) { const d = Math.hypot(x - h.x, z - h.z) / h.r; if (d < 1.5) c.lerp(ROCKY, 0.7 * smooth((1.5 - d) / 0.6)); }
-  for (const w of t.cliffs) { const d = Math.max(Math.abs(x - (w.x0 + w.x1) / 2) - (w.x1 - w.x0) / 2, Math.abs(z - (w.z0 + w.z1) / 2) - (w.z1 - w.z0) / 2); if (d < 9) c.lerp(ROCKY, 0.75 * smooth(1 - Math.max(0, d) / 9)); }
+  for (const f of t.forests) {
+    const dx = x - f.x, dz = z - f.z, limit = f.r * 1.2;
+    if (Math.abs(dx) > limit || Math.abs(dz) > limit) continue;
+    const d = Math.hypot(dx, dz) / f.r;
+    if (d < 1.2) c.lerp(FOREST, 0.85 * smooth((1.2 - d) / 0.55));
+  }
+  for (const { p, cs, sn, bound } of cached.ponds) {
+    const dx = x - p.x, dz = z - p.z;
+    if (Math.abs(dx) > bound || Math.abs(dz) > bound) continue;
+    const u = (dx * cs + dz * sn) / p.rx, v = (-dx * sn + dz * cs) / p.rz, q = Math.hypot(u, v);
+    if (p.swamp) { if (q < 1.7) c.lerp(MUD, 0.8 * smooth((1.7 - q) / 0.8)); }
+    else if (q < 1.35) c.lerp(SAND, 0.75 * smooth((1.35 - q) / 0.35));
+  }
+  for (const { r, minX, minZ, maxX, maxZ } of cached.rivers) {
+    if (x < minX || x > maxX || z < minZ || z > maxZ) continue;
+    let e = Infinity;
+    for (let i = 0; i + 1 < r.pts.length; i++) {
+      e = Math.min(e, segDist(x, z, r.pts[i][0], r.pts[i][1], r.pts[i + 1][0], r.pts[i + 1][1]) - r.w / 2);
+    }
+    if (e < 14) c.lerp(SAND, 0.7 * smooth(1 - Math.max(0, e) / 14));
+  }
+  for (const h of t.hills) {
+    const dx = x - h.x, dz = z - h.z, limit = h.r * 1.5;
+    if (Math.abs(dx) > limit || Math.abs(dz) > limit) continue;
+    const d = Math.hypot(dx, dz) / h.r;
+    if (d < 1.5) c.lerp(ROCKY, 0.7 * smooth((1.5 - d) / 0.6));
+  }
+  for (const w of t.cliffs) {
+    const d = Math.max(Math.abs(x - (w.x0 + w.x1) / 2) - (w.x1 - w.x0) / 2, Math.abs(z - (w.z0 + w.z1) / 2) - (w.z1 - w.z0) / 2);
+    if (d < 9) c.lerp(ROCKY, 0.75 * smooth(1 - Math.max(0, d) / 9));
+  }
 }
 
 /** 단위 원판(XZ 평면)을 겹겹의 고리로 만들고 정점 알파를 줍니다. stops = [반지름 비율, 알파] 의 목록. */
@@ -53,7 +106,7 @@ function ribbonGeo(pts: Array<[number, number]>, w: number, uvPerM: number, edge
 }
 
 export class TerrainView {
-  readonly group = new THREE.Group(); private flow: THREE.Texture[] = []; private time = 0;
+  readonly group = new THREE.Group(); private flow: THREE.Texture[] = []; private waterSource: THREE.CanvasTexture | null = null; private dirtSource: THREE.CanvasTexture | null = null; private time = 0;
   constructor(private map: GameMap, private low: boolean) {
     this.group.name = 'terrain'; this.buildTowns(); this.buildRoads(); this.buildWater(); this.buildHills(); this.buildCliffs(); this.buildBridges();
   }
@@ -66,21 +119,59 @@ export class TerrainView {
   }
   /** 마을 바닥: 가장자리가 흙빛으로 번지며 풀과 섞이는 울퉁불퉁한 원 + 둘레의 흙 얼룩. */
   private buildTowns(): void {
-    const tints: Record<string, number> = { urban: 0xffffff, industrial: 0xb4b8bc, military: 0xd2c6a0, farm: 0xc8b894, village: 0xeae4d4 }, rng = makeRng(this.map.seed + 17), dirt = dirtTexture();
-    const alpha = [fadeDiscTexture(3, 0.62), fadeDiscTexture(8, 0.62), fadeDiscTexture(13, 0.62)], skirt = fadeDiscTexture(21, 0.2), blot = [fadeDiscTexture(31, 0.15), fadeDiscTexture(37, 0.15)];
+    const tints: Record<string, number> = { urban: 0xffffff, industrial: 0xb4b8bc, military: 0xd2c6a0, farm: 0xc8b894, village: 0xeae4d4 };
+    const rng = makeRng(this.map.seed + 17), dirt = this.dirtSource ??= dirtTexture(), concrete = concreteTexture();
+    const alpha = [fadeDiscTexture(3, 0.62), fadeDiscTexture(8, 0.62), fadeDiscTexture(13, 0.62)];
+    const skirt = fadeDiscTexture(21, 0.2), blot = this.low ? [] : [fadeDiscTexture(31, 0.15), fadeDiscTexture(37, 0.15)];
+    type Stain = { x: number; z: number; size: number; yaw: number; color: number };
+    const stains: [Stain[], Stain[]] = [[], []];
     this.map.compounds.forEach((c, i) => {
-      const tex = concreteTexture(); tex.repeat.set((c.r + 6) / 3, (c.r + 6) / 3);
-      const sk = this.soft(new THREE.PlaneGeometry((c.r + 20) * 2, (c.r + 20) * 2).rotateX(-Math.PI / 2), 0xfff0c8, dirt.clone(), skirt, 0.02, 1, 0.38); sk.position.x = c.x; sk.position.z = c.z; (sk.material as THREE.MeshLambertMaterial).map!.repeat.set((c.r + 20) / 4, (c.r + 20) / 4); (sk.material as THREE.MeshLambertMaterial).map!.needsUpdate = true;
-      const pad = this.soft(new THREE.PlaneGeometry((c.r + 6) * 2, (c.r + 6) * 2).rotateX(-Math.PI / 2), tints[c.theme] ?? 0xffffff, tex, alpha[i % 3], 0.04, 2); pad.position.x = c.x; pad.position.z = c.z; pad.rotation.y = rng() * 6.28;
-      if (!this.low) for (let k = 0; k < 9; k++) { // 둘레의 흙·자갈 얼룩
-        const a = rng() * Math.PI * 2, r = c.r * (0.78 + rng() * 0.55), s = 4 + rng() * 8, b = this.soft(new THREE.PlaneGeometry(s * 2, s * 2).rotateX(-Math.PI / 2), rng() < 0.5 ? 0xfff0c8 : 0xe8e4d6, dirt, blot[k % 2], 0.03, 1, 0.5);
-        b.position.x = c.x + Math.cos(a) * r; b.position.z = c.z + Math.sin(a) * r; b.rotation.y = rng() * 6.28;
+      // Reuse the expensive 6000-speckle concrete canvas for every town.
+      const tex = concrete.clone(); tex.repeat.set((c.r + 6) / 3, (c.r + 6) / 3);
+      const sk = this.soft(new THREE.PlaneGeometry((c.r + 20) * 2, (c.r + 20) * 2).rotateX(-Math.PI / 2), 0xfff0c8, dirt.clone(), skirt, 0.02, 1, 0.38);
+      sk.position.x = c.x; sk.position.z = c.z;
+      (sk.material as THREE.MeshLambertMaterial).map!.repeat.set((c.r + 20) / 4, (c.r + 20) / 4);
+      (sk.material as THREE.MeshLambertMaterial).map!.needsUpdate = true;
+      const pad = this.soft(new THREE.PlaneGeometry((c.r + 6) * 2, (c.r + 6) * 2).rotateX(-Math.PI / 2), tints[c.theme] ?? 0xffffff, tex, alpha[i % 3], 0.04, 2);
+      pad.position.x = c.x; pad.position.z = c.z; pad.rotation.y = rng() * 6.28;
+      if (!this.low) for (let k = 0; k < 9; k++) {
+        const a = rng() * Math.PI * 2, r = c.r * (0.78 + rng() * 0.55), size = 4 + rng() * 8;
+        const color = rng() < 0.5 ? 0xfff0c8 : 0xe8e4d6, yaw = rng() * 6.28;
+        stains[k % 2].push({ x: c.x + Math.cos(a) * r, z: c.z + Math.sin(a) * r, size, yaw, color });
       }
     });
+
+    // The original scene added nine individual transparent dirt meshes per
+    // town. Two material batches draw the same decals with independent sizes,
+    // rotations and colors, without hundreds of draw calls.
+    if (!this.low && (stains[0].length || stains[1].length)) {
+      const geometry = new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2), dummy = new THREE.Object3D(), color = new THREE.Color();
+      for (let i = 0; i < stains.length; i++) {
+        const group = stains[i]; if (!group.length) continue;
+        const material = new THREE.MeshLambertMaterial({
+          map: dirt, alphaMap: blot[i], transparent: true, opacity: 0.5,
+          depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+        });
+        const mesh = new THREE.InstancedMesh(geometry, material, group.length);
+        for (let j = 0; j < group.length; j++) {
+          const s = group[j];
+          dummy.position.set(s.x, 0.03, s.z);
+          dummy.rotation.set(0, s.yaw, 0);
+          dummy.scale.set(s.size, 1, s.size);
+          dummy.updateMatrix();
+          mesh.setMatrixAt(j, dummy.matrix);
+          mesh.setColorAt(j, color.setHex(s.color));
+        }
+        mesh.instanceMatrix.needsUpdate = true;
+        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+        mesh.computeBoundingSphere(); mesh.renderOrder = 1; mesh.receiveShadow = true;
+        this.group.add(mesh);
+      }
+    }
   }
   /** 마을을 잇는 흙길: 양 가장자리가 흐려져 풀밭과 섞입니다. */
   private buildRoads(): void {
-    const dirt = dirtTexture(), fade = fadeRoadTexture(), cs = this.map.compounds;
+    const dirt = this.dirtSource ??= dirtTexture(), fade = fadeRoadTexture(), cs = this.map.compounds;
     for (const [i, j] of this.map.roads) {
       const a = cs[i], b = cs[j], d = Math.hypot(b.x - a.x, b.z - a.z), tex = dirt.clone(); tex.repeat.set(d / 4, 1); tex.needsUpdate = true;
       const af = fade.clone(); af.repeat.set(Math.max(1, d / 40), 1); af.needsUpdate = true;
@@ -88,7 +179,10 @@ export class TerrainView {
     }
   }
   private water(color: number, opacity: number, y: number): THREE.MeshPhongMaterial {
-    const t = waterTexture(); t.repeat.set(1, 1); this.flow.push(t);
+    // A single painted water image powers all independently scrolling rivers
+    // and ponds; cloning reuses its source rather than drawing it repeatedly.
+    const t = this.waterSource ? this.waterSource.clone() : waterTexture();
+    this.waterSource ??= t; t.repeat.set(1, 1); this.flow.push(t);
     return new THREE.MeshPhongMaterial({ color, map: t, vertexColors: true, side: THREE.DoubleSide, transparent: true, opacity, depthWrite: false, shininess: 90, specular: 0x9fb8c4, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 + y * 0 });
   }
   private buildWater(): void {
@@ -138,8 +232,10 @@ export class TerrainView {
       }
       g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.deleteAttribute('uv'); geos.push(g);
     }
-    if (!geos.length) return; void CLIFF_T;
-    const merged = geos.length === 1 ? geos[0] : mergeGeos(geos); merged.computeVertexNormals();
+    if (!geos.length) return;
+    const merged = geos.length === 1 ? geos[0] : mergeGeos(geos);
+    if (geos.length > 1) for (const source of geos) source.dispose();
+    merged.computeVertexNormals();
     const m = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })); m.castShadow = true; m.receiveShadow = true; this.group.add(m);
   }
   /** 길이 물을 건너는 나무 다리. */
@@ -153,8 +249,32 @@ export class TerrainView {
   }
 }
 
+/** Merge static cliff chunks directly into typed buffers, avoiding large temporary JS arrays. */
 function mergeGeos(list: THREE.BufferGeometry[]): THREE.BufferGeometry {
-  const pos: number[] = [], col: number[] = [], idx: number[] = []; let base = 0;
-  for (const g of list) { const p = g.attributes.position, c = g.attributes.color, ix = g.index!; for (let i = 0; i < p.count; i++) { pos.push(p.getX(i), p.getY(i), p.getZ(i)); col.push(c.getX(i), c.getY(i), c.getZ(i)); } for (let i = 0; i < ix.count; i++) idx.push(ix.getX(i) + base); base += p.count; }
-  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx); return g;
+  let vertexCount = 0, indexCount = 0;
+  for (const geometry of list) {
+    vertexCount += geometry.attributes.position.count;
+    indexCount += geometry.index!.count;
+  }
+  const positions = new Float32Array(vertexCount * 3), colors = new Float32Array(vertexCount * 3);
+  const indices = vertexCount > 65535 ? new Uint32Array(indexCount) : new Uint16Array(indexCount);
+  let vertexOffset = 0, indexOffset = 0;
+  for (const geometry of list) {
+    const pos = geometry.attributes.position as THREE.BufferAttribute;
+    const col = geometry.attributes.color as THREE.BufferAttribute;
+    const idx = geometry.index!;
+    for (let i = 0; i < pos.count; i++) {
+      const at = (vertexOffset + i) * 3;
+      positions[at] = pos.getX(i); positions[at + 1] = pos.getY(i); positions[at + 2] = pos.getZ(i);
+      colors[at] = col.getX(i); colors[at + 1] = col.getY(i); colors[at + 2] = col.getZ(i);
+    }
+    for (let i = 0; i < idx.count; i++) indices[indexOffset + i] = idx.getX(i) + vertexOffset;
+    vertexOffset += pos.count;
+    indexOffset += idx.count;
+  }
+  const result = new THREE.BufferGeometry();
+  result.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  result.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  result.setIndex(new THREE.BufferAttribute(indices, 1));
+  return result;
 }

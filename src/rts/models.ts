@@ -5,7 +5,10 @@ import { loadCharacterKit, type CharacterKit, type CharacterRig } from '../share
 import { makeProceduralMilitary, type MilitaryLook } from '../shared/character/procedural';
 import { BUILDINGS, TEAM_COLORS, type BuildKind, type UnitKind } from './config';
 
-const std = (color: number, o: Partial<THREE.MeshStandardMaterialParameters> = {}): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial({ color, roughness: 0.62, metalness: 0.25, flatShading: true, ...o });
+const sharedMaterials = new WeakSet<THREE.Material>();
+const keep = <T extends THREE.Material>(material: T): T => { sharedMaterials.add(material); return material; };
+export const isSharedRtsMaterial = (material: THREE.Material): boolean => sharedMaterials.has(material);
+const std = (color: number, o: Partial<THREE.MeshStandardMaterialParameters> = {}): THREE.MeshStandardMaterial => keep(new THREE.MeshStandardMaterial({ color, roughness: 0.62, metalness: 0.25, flatShading: true, ...o }));
 
 export interface Mats {
   team: THREE.MeshStandardMaterial; teamDark: THREE.MeshStandardMaterial; glow: THREE.MeshStandardMaterial;
@@ -17,19 +20,19 @@ export function matsFor(owner: number): Mats {
   const c = TEAM_COLORS[owner] ?? 0xcccccc, tc = new THREE.Color(c);
   m = {
     team: std(c, { roughness: 0.45, metalness: 0.35 }), teamDark: std(tc.clone().multiplyScalar(0.55).getHex()),
-    glow: new THREE.MeshStandardMaterial({ color: tc.clone().lerp(new THREE.Color(0xffffff), 0.35), emissive: tc, emissiveIntensity: 1.4, roughness: 0.3 }),
+    glow: keep(new THREE.MeshStandardMaterial({ color: tc.clone().lerp(new THREE.Color(0xffffff), 0.35), emissive: tc, emissiveIntensity: 1.4, roughness: 0.3 })),
     armor: std(0x5a6068), steel: std(0x9aa2ac, { metalness: 0.55, roughness: 0.4 }), dark: std(0x23272d, { metalness: 0.4 }), skin: std(0xd6b28f, { metalness: 0, roughness: 0.8 }),
     hull: std(owner === 0 ? 0x6b7787 : 0x7d6c68), concrete: std(owner === 0 ? 0x8a929d : 0x958a86, { metalness: 0.1, roughness: 0.85 }),
   };
   cache.set(owner, m); return m;
 }
-export const crystalMat = new THREE.MeshStandardMaterial({ color: 0x4fd6ff, emissive: 0x1d8fd0, emissiveIntensity: 1.1, roughness: 0.25, metalness: 0.2, flatShading: true });
-const crystalHi = new THREE.MeshStandardMaterial({ color: 0xbff2ff, emissive: 0x57c9f0, emissiveIntensity: 1.5, roughness: 0.2, flatShading: true });
+export const crystalMat = keep(new THREE.MeshStandardMaterial({ color: 0x4fd6ff, emissive: 0x1d8fd0, emissiveIntensity: 1.1, roughness: 0.25, metalness: 0.2, flatShading: true }));
+const crystalHi = keep(new THREE.MeshStandardMaterial({ color: 0xbff2ff, emissive: 0x57c9f0, emissiveIntensity: 1.5, roughness: 0.2, flatShading: true }));
 
 const crystalBase = std(0x3d4650);
 const medicWhite = std(0xf1efe8, { roughness: 0.6, metalness: 0.05 });
 const jeepSand = std(0xb99a62, { roughness: 0.75, metalness: 0.15 });
-const flashMat = new THREE.MeshBasicMaterial({ color: 0xffe9a0 });
+const flashMat = keep(new THREE.MeshBasicMaterial({ color: 0xffe9a0 }));
 
 /** Release only per-model geometry, never the common character kit or team materials. */
 export function releaseModelGeometry(root: THREE.Object3D): void {

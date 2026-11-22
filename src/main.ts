@@ -2,13 +2,13 @@ import './style.css';
 import { retireUpgradeSaves } from './shared/retire-upgrades';
 import { readPreferences, writePreferences } from './prefs';
 import { showLoading, retry, retryNote } from './loading';
+import { deferTileImages } from './shared/lazy-images';
 import { readCityCareer, readRaceRecords, readRtsRecords, fmtTime } from './records';
 import { readShooterCareer } from './shooter/records';
 import { readOutlawSummary } from './outlaw/records';
 import { readSkySummary } from './sky/records';
 import { readSlackRecord } from './slack/records';
-import { readTycoonSummary } from './tycoon/core/save';
-import { STAGE_NAMES } from './tycoon/core/data';
+import { readTycoonSummary, STAGE_NAMES } from './tycoon/core/summary';
 import { CHAT_ENABLED, PVP_ENABLED } from './net/config';
 import { setRails } from './shared/rails';
 
@@ -160,7 +160,7 @@ function tile(entry: Entry, index: number): string {
   return `
     <li class="tile-item" style="--tile-index: ${index}">
       <button class="tile" id="start-${entry.id}" type="button" data-game="${entry.id}" aria-describedby="summary-${entry.id}">
-        <span class="tile-media${entry.id === 'room-tone' ? ' is-scary' : ''}"><img src="${entry.image}" alt="${entry.imageAlt}" width="1280" height="800" ${index === 0 ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async">${entry.id === 'room-tone' ? '<span class="tile-warn" aria-hidden="true">⚠ 공포 이미지 · 올려 보면 보여요</span>' : ''}</span>
+        <span class="tile-media${entry.id === 'room-tone' ? ' is-scary' : ''}"><img ${index === 0 ? `src="${entry.image}" fetchpriority="high"` : `data-deferred-src="${entry.image}" loading="lazy" fetchpriority="low"`} alt="${entry.imageAlt}" width="1280" height="800" decoding="async">${entry.id === 'room-tone' ? '<span class="tile-warn" aria-hidden="true">⚠ 공포 이미지 · 올려 보면 보여요</span>' : ''}</span>
         <span class="tile-body">
           <span class="tile-genre">${entry.genre}${entry.id === 'room-tone' ? ' · 공포 주의' : ''}</span>
           <span class="tile-name">${entry.name}</span>
@@ -173,6 +173,7 @@ function tile(entry: Entry, index: number): string {
 }
 
 let hubScrollY = 0;
+let stopTileImages: (() => void) | undefined;
 const HUB_TITLE = `WALDO · ${ENTRIES.length}편의 브라우저 3D 게임`;
 /** 지금 열려 있는 게임. 뒤로가기·새로고침 경고가 이 값을 봅니다. */
 let activeGame: GameId | null = null;
@@ -188,6 +189,7 @@ function leaveGameEntry(): void {
   else if (hashGame()) { try { history.replaceState(null, '', location.pathname + location.search); } catch { /* 주소 정리는 선택 사항 */ } }
 }
 function renderMenu(): void {
+  stopTileImages?.(); stopTileImages = undefined;
   setRails(null);
   activeGame = null;
   leaveGameEntry();
@@ -236,13 +238,14 @@ function renderMenu(): void {
     const settleImage = (): void => {
       image.parentElement?.classList.add(image.naturalWidth ? 'is-loaded' : 'is-error');
     };
-    if (image.complete) settleImage();
+    if (image.complete && image.hasAttribute('src')) settleImage();
     else {
       image.addEventListener('load', settleImage, { once: true });
       image.addEventListener('error', settleImage, { once: true });
     }
     button.onclick = () => { void launch(game.id); };
   });
+  stopTileImages = deferTileImages(app);
   wireAccount();
   wireChat();
   if (hubScrollY) restoreScroll();
@@ -298,6 +301,7 @@ function wireAccount(): void {
 
 async function launch(id: GameId, fromHistory = false): Promise<void> {
   if (!fromHistory) hubScrollY = window.scrollY;
+  stopTileImages?.(); stopTileImages = undefined;
   if (id === 'room-tone') {
     location.assign(`${base}room-tone/`);
     return;

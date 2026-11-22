@@ -3,7 +3,8 @@ import { ENERGY_MAX, REGIONS, RIVALS, SHOP_KINDS, STAGES } from './data';
 import { LOT_IDS, SPOT_BY_ID, newGame, type GameData, type LotData, type ShopData, type StaffData } from './model';
 import type { ShopKind, Stage, TycoonCore, TycoonSave } from './types';
 
-export const TYCOON_SAVE_KEY = 'waldo.tycoon.v1';
+import { TYCOON_SAVE_KEY } from './summary';
+export { TYCOON_SAVE_KEY, readTycoonSummary } from './summary';
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -106,11 +107,4 @@ export function saveTycoon(core: Pick<TycoonCore, 'serialize'>, storage?: Storag
 
 export function clearTycoon(storage?: Storage): void {
   try { store(storage)?.removeItem(TYCOON_SAVE_KEY); } catch { /* 무시 */ }
-}
-
-/** 허브 카드용: 게임 본체 없이 저장 요약만 읽는다 */
-export function readTycoonSummary(storage?: Storage): { has: boolean; cash: number; stage: Stage; day: number; won: boolean } {
-  const raw = loadTycoon(storage);
-  if (!isObj(raw) || raw.v !== 1) return { has: false, cash: 0, stage: 'broke', day: 1, won: false };
-  return { has: true, cash: num(raw.cash, 0), stage: isStage(raw.stage) ? raw.stage : 'broke', day: Math.round(num(raw.day, 1, 1)), won: bool(raw.won, false) };
 }

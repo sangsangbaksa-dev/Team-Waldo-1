@@ -59,6 +59,19 @@ export function parseLoot(m: NetMsg): Loot | null {
   return { id: m.i, kind: m.k as LootKind, weapon, part, level: isInt(m.l, 1, 3) ? m.l : m.k === 'helmet' || m.k === 'armor' ? 1 : 0, x: m.x, z: m.z, taken: false, ...(att ? { att } : {}) };
 }
 
+/** All locally spawned pickups use the sender's reserved million-ID namespace.
+ * The host may drop AI loot anywhere; a normal client can only drop near its
+ * own last known position. Dynamic loot is restricted to types the simulator
+ * actually creates (swapped weapons, attachments and death-drop helmets).
+ */
+export function canAcceptRoomLoot(loot: Loot, senderIndex: number, host: boolean, sender: Player | undefined): boolean {
+  if (!sender || !sender.remote || sender.bot || !Number.isInteger(senderIndex) || senderIndex < 0 || sender.id !== senderIndex) return false;
+  const base = (senderIndex + 1) * 1_000_000;
+  if (loot.id < base + 1000 || loot.id >= base + 1_000_000) return false;
+  if (loot.kind !== 'weapon' && loot.kind !== 'attach' && loot.kind !== 'helmet') return false;
+  return host || (Math.abs(loot.x - sender.x) <= 45 && Math.abs(loot.z - sender.z) <= 45);
+}
+
 /** Remote damage reports may only affect the car driven by the reporting human.
  * The sender identity must be resolved from the authenticated room participant,
  * never from an id embedded in the untrusted packet.

@@ -22,6 +22,7 @@ import { wrapNear, wrapRange } from './render-math';
 import { addStreetFurniture, parkFurniture } from '../shared/street-furniture';
 import { RoadLightBatch, lightRange, nearVisual } from '../shared/road-lights';
 import { nearbyVehicleLights, frameEmissionChance } from './traffic-lighting';
+import { CityRenderLifetime } from './render-lifecycle';
 
 export type ViewMode = 'fp' | 'tp';
 const EYE = EYE_HEIGHT, STRUCT_H: Record<StructKind, number> = { hq: 150, barracks: 86, depot: 58, factory: 104, lab: 96, turret: 50 };
@@ -75,6 +76,7 @@ export class Renderer3D {
   private zoneWall: THREE.Mesh; private zoneTex: THREE.Texture; private nextRing: THREE.Mesh; private ghost: THREE.Mesh; private sun: THREE.DirectionalLight; private gun = new THREE.Group(); private muzzle: THREE.Mesh; private planes: THREE.Group[] = [];
   private bossRings: THREE.Mesh[] = []; floaters: { el: HTMLElement; x: number; y: number; h: number; life: number }[] = [];
   private rainTint = new THREE.Color(); private ins: Interior3D | null = null; private insKind = '';
+  private lifetime = new CityRenderLifetime();
   private mats = new Map<number, THREE.MeshLambertMaterial>(); private box = new THREE.BoxGeometry(1, 1, 1); private glow: THREE.Texture;
 
   constructor(public canvas: HTMLCanvasElement, public world: World, public quality: 'high' | 'standard' | 'low', public layer: HTMLElement, public models: Models | null = null) {
@@ -83,6 +85,7 @@ export class Renderer3D {
     this.renderer.shadowMap.enabled = quality === 'high'; this.renderer.shadowMap.type = THREE.PCFShadowMap;
     // 필름 톤매핑: 하이라이트가 하얗게 날아가지 않고 노을빛이 부드럽게 번진다.
     if (quality !== 'low') { this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.06; }
+    this.lifetime.retain(this.box);
     const sc = this.scene, w = world;
     this.atm = atmosphereAt(w.hour, w.weather); sc.fog = new THREE.Fog(0xc48a74, 980, 4700); sc.add(this.camera);
     this.hemi = new THREE.HemisphereLight(0xb7c6e8, 0x8a6450, 0.95); sc.add(this.hemi);
@@ -149,7 +152,7 @@ export class Renderer3D {
     this.post = makePost(quality, this.renderer, this.scene, this.camera, { strength: 0.45, radius: 0.6, threshold: 0.88, vignette: 0.3, saturation: 1.05, contrast: 1.06 });
     this.applyAtmosphere(0);
   }
-  private mat(c: number): THREE.MeshLambertMaterial { let m = this.mats.get(c); if (!m) { m = new THREE.MeshLambertMaterial({ color: c }); this.mats.set(c, m); } return m; }
+  private mat(c: number): THREE.MeshLambertMaterial { let m = this.mats.get(c); if (!m) { m = this.lifetime.retain(new THREE.MeshLambertMaterial({ color: c })); this.mats.set(c, m); } return m; }
 
   private buildCity(): void {
     const w = this.world; this.bfx = buildBuildings(w, this.scene, import.meta.env.BASE_URL, this.quality); buildPerimeter(this.scene);
@@ -303,7 +306,7 @@ export class Renderer3D {
     const sig = `${z.owner}:${z.level}`;
     if (sig !== o.sig) {
       o.sig = sig;
-      if (this.ml) { if (o.icon) o.g.remove(o.icon); o.icon = this.ml.makeBiz(z.kind, col); if (o.icon) { const out = o.g.userData.out as [number, number]; o.icon.position.set(out[0] * 8, 100, out[1] * 8); o.g.add(o.icon); } }
+      if (this.ml) { if (o.icon) this.lifetime.remove(o.g,o.icon); o.icon = this.ml.makeBiz(z.kind, col); if (o.icon) { const out = o.g.userData.out as [number, number]; o.icon.position.set(out[0] * 8, 100, out[1] * 8); o.g.add(o.icon); } }
       const css = z.kind === 'gunshop' ? '#ff5d5d' : z.owner >= 0 ? FACTIONS[z.owner].color : '#ffffff', line2 = z.kind === 'gunshop' ? 'E 구매' : z.owner < 0 ? `$${d.price} · +$${d.income}/s` : `${FACTIONS[z.owner].name} ${'★'.repeat(z.level)}`;
       o.label.material.map?.dispose(); o.label.material.map = canvasTex(320, 120, g => { g.fillStyle = 'rgba(10,16,16,0.82)'; g.beginPath(); g.roundRect(4, 4, 312, 112, 18); g.fill(); g.strokeStyle = css; g.lineWidth = 5; g.stroke(); g.textAlign = 'center'; g.fillStyle = '#fff'; g.font = "900 44px 'Noto Sans KR',sans-serif"; g.fillText(d.name, 160, 54); g.fillStyle = css; g.font = "700 28px 'Noto Sans KR',sans-serif"; g.fillText(line2, 160, 96); }); o.label.material.needsUpdate = true;
     }
@@ -439,10 +442,10 @@ export class Renderer3D {
     // 탄환
     let nt = 0; for (const b of w.bullets) { if (nt >= 500) break; const wd = WEAPONS[b.w], a = Math.atan2(b.vy, b.vx), len = wd.splash ? 12 : wd.pierce ? 150 : 46, th = wd.splash ? 5 : wd.pierce ? 3 : b.boss ? 1.5 : 1.1; d.rotation.set(0, -a, 0); d.position.set(b.x - Math.cos(a) * len / 2, 30, b.y - Math.sin(a) * len / 2); d.scale.set(len, th, th); d.updateMatrix(); this.tracers.setMatrixAt(nt, d.matrix); this.tracers.setColorAt(nt, col.set(wd.color)); nt++; if (wd.splash && Math.random() < frameEmissionChance(55,dt)) this.smoke.add(b.x, 30, b.y, 0, 8, 0, 0.5, 0xcfcfcf); } upd(this.tracers, nt);
     // 동적 오브젝트 동기화
-    const seenS = new Set<number>(); for (const s of w.structures) if (s.alive) { seenS.add(s.id); this.syncStruct(s); } for (const [id, g] of this.structs) if (!seenS.has(id)) { this.scene.remove(g); this.structs.delete(id); }
-    const seenV = new Set<number>(); for (const v of w.vehicles) if (v.alive) { seenV.add(v.id); if (nearVisual(v.x,v.y,this.camPos.x,this.camPos.z,Math.min(3000,this.atm.fogFar+250))) { this.syncVehicle(v); this.vehs.get(v.id)!.visible=true; } else { const g=this.vehs.get(v.id); if(g)g.visible=false; } } for (const [id, g] of this.vehs) if (!seenV.has(id)) { this.scene.remove(g); this.vehs.delete(id); }
+    const seenS = new Set<number>(); for (const s of w.structures) if (s.alive) { seenS.add(s.id); this.syncStruct(s); } for (const [id, g] of this.structs) if (!seenS.has(id)) { this.lifetime.remove(this.scene,g); this.structs.delete(id); }
+    const seenV = new Set<number>(); for (const v of w.vehicles) if (v.alive) { seenV.add(v.id); if (nearVisual(v.x,v.y,this.camPos.x,this.camPos.z,Math.min(3000,this.atm.fogFar+250))) { this.syncVehicle(v); this.vehs.get(v.id)!.visible=true; } else { const g=this.vehs.get(v.id); if(g)g.visible=false; } } for (const [id, g] of this.vehs) if (!seenV.has(id)) { this.lifetime.remove(this.scene,g); this.vehs.delete(id); }
     this.updateRoadLights();
-    const seenL = new Set<number>(); for (const l of w.loot) if (l.alive) { seenL.add(l.id); if(l.type==='crate'||nearVisual(l.x,l.y,this.camPos.x,this.camPos.z,1600)){this.syncLoot(l);this.loots.get(l.id)!.visible=true;}else{const g=this.loots.get(l.id);if(g)g.visible=false;} } for (const [id, g] of this.loots) if (!seenL.has(id)) { this.scene.remove(g); this.loots.delete(id); }
+    const seenL = new Set<number>(); for (const l of w.loot) if (l.alive) { seenL.add(l.id); if(l.type==='crate'||nearVisual(l.x,l.y,this.camPos.x,this.camPos.z,1600)){this.syncLoot(l);this.loots.get(l.id)!.visible=true;}else{const g=this.loots.get(l.id);if(g)g.visible=false;} } for (const [id, g] of this.loots) if (!seenL.has(id)) { this.lifetime.remove(this.scene,g); this.loots.delete(id); }
     for (const z of w.businesses) this.syncBiz(z);
     // 수송기
     while (this.planes.length < w.planes.length) { const pm = this.ml?.makePlane(); if (pm) { const pg = new THREE.Group(); pg.add(pm); this.scene.add(pg); this.planes.push(pg); continue; } const g = new THREE.Group(), m = this.mat(0xcfd6e0), a = new THREE.Mesh(this.box, m), b = new THREE.Mesh(this.box, m), c = new THREE.Mesh(this.box, m); a.scale.set(150, 22, 24); b.scale.set(34, 5, 190); c.scale.set(18, 30, 5); c.position.set(-64, 22, 0); g.add(a, b, c); this.scene.add(g); this.planes.push(g); }

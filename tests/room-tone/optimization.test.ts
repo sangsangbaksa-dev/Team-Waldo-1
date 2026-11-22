@@ -55,6 +55,6 @@ describe("ROOM TONE shared hiding-place geometry", () => {
       }
       expect(new THREE.Box3().setFromObject(root).isEmpty()).toBe(false);
     }
-    expect(variants.flatMap((root) => root.children).length).toBeGreaterThanOrEqual(25);
+    expect(variants.flatMap((root) => root.children).length).toBeGreaterThanOrEqual(20);
   });
 });

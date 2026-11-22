@@ -61,29 +61,45 @@ export async function retry<T>(task: (attempt: number) => Promise<T>, opt: Retry
   }
 }
 
-/** 한 번 받기. 일정 시간 아무 데이터도 오지 않으면(연결이 멈춤) 중단하고 오류를 냅니다. */
-export async function fetchBuffer(url: string, onProgress?: (loaded: number, total: number) => void, stallMs = 20000): Promise<ArrayBuffer> {
-  const ctl = new AbortController();
-  let timer = window.setTimeout(() => ctl.abort(), stallMs);
-  const poke = (): void => { window.clearTimeout(timer); timer = window.setTimeout(() => ctl.abort(), stallMs); };
-  try {
-    const res = await fetch(url, { signal: ctl.signal });
-    if (!res.ok) throw new Error(`HTTP ${res.status} ${url}`);
-    poke();
-    const total = Number(res.headers.get('content-length')) || 0;
-    if (!res.body) { const b = await res.arrayBuffer(); onProgress?.(b.byteLength, b.byteLength); return b; }
-    const reader = res.body.getReader(), chunks: Uint8Array[] = [];
-    let loaded = 0;
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value); loaded += value.byteLength; poke(); onProgress?.(loaded, total);
-    }
-    const out = new Uint8Array(loaded);
-    let o = 0; for (const c of chunks) { out.set(c, o); o += c.byteLength; }
-    onProgress?.(loaded, loaded);
-    return out.buffer;
-  } finally { window.clearTimeout(timer); }
+/**
+ * 한 파일을 받습니다. 일정 시간 아무 데이터도 오지 않으면(연결이 멈춤) 그 지점부터 이어 받고(Range),
+ * 이어 받기를 서버가 안 되면 처음부터 다시 받습니다. 연결이 느려도 받은 만큼은 버리지 않습니다.
+ * 이어 받아도 진척이 없는 일이 두 번 연속이면 오류를 내어 바깥 retry 가 처리하게 합니다.
+ */
+export async function fetchBuffer(url: string, onProgress?: (loaded: number, total: number) => void, stallMs = 30000): Promise<ArrayBuffer> {
+  let chunks: Uint8Array[] = [], loaded = 0, total = 0, resumable = true, idle = 0;
+  for (;;) {
+    const ctl = new AbortController(), before = loaded;
+    let timer = window.setTimeout(() => ctl.abort(), stallMs);
+    const poke = (): void => { window.clearTimeout(timer); timer = window.setTimeout(() => ctl.abort(), stallMs); };
+    try {
+      const res = await fetch(url, { signal: ctl.signal, headers: loaded && resumable ? { Range: `bytes=${loaded}-` } : undefined });
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${url}`);
+      poke();
+      if (loaded && res.status !== 206) { chunks = []; loaded = 0; resumable = false; } // 이어 받기를 안 받아 주면 처음부터
+      const len = Number(res.headers.get('content-length')) || 0;
+      if (res.headers.get('content-encoding')) resumable = false; // 압축 전송은 바이트 위치가 안 맞아 이어 받을 수 없습니다
+      total = len ? loaded + len : 0;
+      if (!res.body) { const b = new Uint8Array(await res.arrayBuffer()); chunks.push(b); loaded += b.byteLength; onProgress?.(loaded, loaded); }
+      else {
+        const reader = res.body.getReader();
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value); loaded += value.byteLength; poke(); onProgress?.(loaded, total);
+        }
+      }
+      if (total && loaded < total) throw new Error(`short ${loaded}/${total} ${url}`);
+      const out = new Uint8Array(loaded);
+      let o = 0; for (const c of chunks) { out.set(c, o); o += c.byteLength; }
+      onProgress?.(loaded, loaded);
+      return out.buffer;
+    } catch (e) {
+      if (loaded > before && resumable) { idle = 0; continue; }       // 조금이라도 받았으면 이어서
+      if (!resumable) { chunks = []; loaded = 0; }
+      if (++idle >= 2 || ctl.signal.aborted === false && !(e instanceof TypeError)) throw e;
+    } finally { window.clearTimeout(timer); }
+  }
 }
 
 /** 재시도 안내 문구: 처음엔 조용히, 반복되면 상황을 알려 줍니다. */

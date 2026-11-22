@@ -266,6 +266,14 @@ export class Sound {
         0.032,
       );
     }
+    const cue = Math.floor(Math.random() * 3);
+    if (cue === 0) {
+      for (let i = 0; i < 3; i++) this.note(115, 52, 0.12, 0.035, at + i * 0.24, side);
+    } else if (cue === 1) {
+      for (let i = 0; i < 3; i++) this.rustle(at + i * 0.45, 0.13, 0.035, 300, side, 0.8);
+    } else {
+      this.rustle(at, 0.8, 0.026, 1150, side, 1.8);
+    }
     this.nextDistant = at + 11 + Math.random() * 17;
   }
 

@@ -332,7 +332,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   // 이때 굳혀 버리면 이후 마우스를 움직여도 시점이 돌지 않고 오른쪽 버튼을 누른 채로만 돌았습니다. 클릭으로 요청했다가 연달아 두 번 거절될 때만 대체 조작(오른쪽 버튼 드래그)으로 넘어갑니다.
   let lockFailN = 0, lockRejected = false, swapUnlock = false;
   function lock(byClick = false): void {
-    if (touch || locked || lockFail || closed) return;
+    if (touch || locked || closed) return;
     const fail = (): void => { lockRejected = true; if (byClick && ++lockFailN >= 2) lockFail = true; };
     try { const r = canvas.requestPointerLock() as unknown; if (r instanceof Promise) r.catch(fail); } catch { fail(); }
   }
@@ -351,7 +351,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   const onMove = (e: MouseEvent): void => { if (!match || closed || paused) return; if (locked) look(e.movementX, e.movementY); else if ((lockFail || lockRejected) && (e.buttons & 3)) look(e.movementX, e.movementY); /* 잠금이 거절된 동안은 버튼을 누른 채 끌어서 시점을 돌립니다 */ };
   const onDown = (e: MouseEvent): void => {
     if (closed || !match || e.target !== canvas) return; audio.unlock();
-    if (!locked && !lockFail && !touch) { lock(true); if (paused) setPause(false); return; }
+    if (!locked && !touch && !paused && !closeSmith && (phase === 'play' || phase === 'countdown')) { lock(true); if (!lockFail) return; }
     if (e.button === 0) mouse.fire = true; else if (e.button === 2) mouse.ads = true;
   };
   const onUp = (e: MouseEvent): void => { if (e.button === 0) mouse.fire = false; else if (e.button === 2) mouse.ads = false; };
@@ -545,9 +545,9 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       } else if (e.t === 'hit') {
         if (e.wall) continue;
         if (e.attacker === p.id && e.victim >= 0) {
-          hitT = 0.3; hitHead = e.head; hitKill = false; combo = Math.min(6, combo + 1); comboT = 1.1; audio.play(e.head ? 'headshot' : 'hitmark', 0, combo);
+          hitT = 0.3; hitHead = e.head; hitKill = false; combo = Math.min(6, combo + 1); comboT = 1.8; audio.play(e.head ? 'headshot' : 'hitmark', 0, combo);
           const hm = q('#sz-hitmark'); hm.classList.remove('pop'); void hm.offsetWidth; hm.classList.add('pop');
-          const n = document.createElement('b'); n.textContent = String(e.dmg); n.className = e.head ? 'head' : ''; n.style.left = `${(Math.random() - 0.5) * 70}px`; q('#sz-nums').append(n); window.setTimeout(() => n.remove(), 700);
+          const n = document.createElement('b'); n.textContent = `${e.dmg}${combo > 1 ? ` / ${combo} HIT` : ''}`; n.className = e.head ? 'head' : ''; n.style.left = `${(Math.random() - 0.5) * 70}px`; q('#sz-nums').append(n); window.setTimeout(() => n.remove(), 700);
         }
         if (e.victim === p.id) {
           audio.play('hurt'); const rel = (m.players[e.attacker] ? Math.atan2(m.players[e.attacker].z - p.z, m.players[e.attacker].x - p.x) : p.hurtYaw) - yaw, d = document.createElement('i');
@@ -622,7 +622,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 일시정지·메뉴 ----------
   function setPause(on: boolean): void {
     if (pvpRunning() || (phase !== 'play' && phase !== 'countdown') || closed) return; paused = on;
-    if (on) { mouse.fire = mouse.ads = false; card('ZERO ZONE', '일시정지', '', '<button class="primary" data-act="resume">이어하기</button><button data-act="again">다시 시작</button><button data-act="setup">설정</button><button data-act="exit">게임 목록으로</button>'); }
+    if (on) { mouse.fire = mouse.ads = false; if (document.pointerLockElement === canvas) document.exitPointerLock(); card('ZERO ZONE', '일시정지', '', '<button class="primary" data-act="resume">이어하기</button><button data-act="again">다시 시작</button><button data-act="setup">설정</button><button data-act="exit">게임 목록으로</button>'); }
     else { modal.className = 'sz-modal'; modal.innerHTML = ''; if (!touch) lock(); }
   }
   q('#sz-pause').addEventListener('click', () => { if (pvpRunning()) { say('대전 중에는 멈출 수 없습니다', 1.4); return; } setPause(true); });

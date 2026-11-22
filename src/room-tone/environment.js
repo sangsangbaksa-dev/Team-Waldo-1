@@ -777,3 +777,33 @@ export function buildEnvironment(THREE, scene, map, tile, chapter) {
   };
   return root;
 }
+
+// Compact silhouettes fit the same wall-side footprint as the original wardrobe.
+export function buildHidingSpot(THREE, root, kind) {
+  const dark = new THREE.MeshStandardMaterial({ color: 0x303534, roughness: 0.9 });
+  const mid = new THREE.MeshStandardMaterial({ color: 0x606762, roughness: 0.9 });
+  const cloth = new THREE.MeshStandardMaterial({ color: 0x777b73, roughness: 1 });
+  const box = (w, h, d, x, y, z, material = mid) => {
+    const part = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+    part.position.set(x, y, z);
+    root.add(part);
+  };
+  if (kind === 0) {
+    box(1.02, 2.05, 0.08, 0, 1.025, 0.35);
+    for (const x of [-0.49, 0.49]) box(0.08, 2.05, 0.72, x, 1.025, 0);
+    box(1.02, 0.08, 0.72, 0, 2.05, 0, dark);
+    for (const x of [-0.36, 0.36]) box(0.26, 1.95, 0.06, x, 1, -0.35, dark);
+  } else if (kind === 1) {
+    for (const x of [-0.43, 0.43]) for (const z of [-0.34, 0.34]) box(0.09, 0.42, 0.09, x, 0.21, z, dark);
+    box(1.05, 0.16, 0.88, 0, 0.48, 0, dark);
+    box(1.0, 0.19, 0.82, 0, 0.65, 0, cloth);
+    box(0.42, 0.09, 0.24, 0, 0.79, 0.24, mid);
+  } else if (kind === 2) {
+    box(1.12, 0.07, 0.08, 0, 2.02, 0, dark);
+    for (let x = -0.48; x <= 0.48; x += 0.16) box(0.17, 1.85, 0.09, x, 1.07, Math.abs(x) * 0.12, cloth);
+  } else {
+    box(1.08, 0.12, 0.78, 0, 1.04, 0);
+    for (const x of [-0.47, 0.47]) box(0.09, 1.02, 0.7, x, 0.51, 0, dark);
+    box(0.98, 0.12, 0.08, 0, 0.88, 0.34, dark);
+  }
+}

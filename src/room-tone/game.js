@@ -3,7 +3,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { createCaptureShot, fixMonster } from "./monster.js";
 import { modelBytes } from "./assets.js";
 import { chapters, makeLevel, route, neighbors } from "./levels.mjs";
-import { buildEnvironment } from "./environment.js";
+import { buildEnvironment, buildHidingSpot } from "./environment.js";
 import { Sound } from "./sound.js";
 
 const $ = (id) => document.getElementById(id),
@@ -48,6 +48,7 @@ let moved = 0,
   grace = 0,
   exitGrace = 0,
   wasTracking = false,
+  wasSeeing = false,
   searchRemaining = 0,
   searching = false,
   enemySteps = 0,
@@ -79,6 +80,7 @@ let guidePath = [];
 let returnFromMap = resume;
 let renderCaptureShot;
 let captureTime = 0;
+let investigation = null, nextFlicker = 0, flickerUntil = 0;
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const touch =
   matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
@@ -202,7 +204,7 @@ function guide(fromHome = false) {
   }
   modal(
     "조작 안내",
-    "숙이면 발소리가 줄어듭니다. 모퉁이를 돌아 시야를 끊고, 추격이 멈출 때까지 기다리세요.",
+    "숙이면 발소리가 줄어듭니다. 침대 밑이나 커튼 뒤에 숨을 수 있지만, 괴물이 보면 조사할 수 있습니다.",
     (el) => {
       el.innerHTML = $("guideText").innerHTML;
     },
@@ -354,6 +356,8 @@ function pointPlayer() {
   grace = 22;
   exitGrace = 0;
   wasTracking = false;
+  wasSeeing = false;
+  investigation = null;
   searchRemaining = 0;
   searching = false;
   enemySteps = 0;
@@ -554,20 +558,17 @@ function makeHidingSpots() {
     // Local back points toward the wall; the open front faces the room.
     root.rotation.y = Math.atan2(dx, dz);
     props.add(root);
-    const metal = paint(0x454b49), trim = paint(0x242a29);
-    mesh(new THREE.BoxGeometry(1.02, 2.05, 0.08), metal, root, 0, 1.025, 0.35);
-    for (const side of [-0.49, 0.49])
-      mesh(new THREE.BoxGeometry(0.08, 2.05, 0.72), metal, root, side, 1.025, 0);
-    mesh(new THREE.BoxGeometry(1.02, 0.08, 0.72), trim, root, 0, 2.05, 0);
-    for (const side of [-0.36, 0.36])
-      mesh(new THREE.BoxGeometry(0.26, 1.95, 0.06), trim, root, side, 1, -0.35);
-    hidingSpots.push({ type: "hide", cell, root, dx, dz });
+    const kind = (selected.length - 1) % 4;
+    buildHidingSpot(THREE, root, kind);
+    const caption = ["옷장에 숨기", "침대 밑에 숨기", "커튼 뒤에 숨기", "책상 밑에 숨기"][kind];
+    hidingSpots.push({ type: "hide", cell, root, dx, dz, caption });
   }
 }
 function leaveHiding(exhausted = false) {
   if (!hiddenSpot) return;
   const spot = hiddenSpot;
   hiddenSpot = null;
+  investigation = null;
   hideReadyAt = now + 8;
   exitGrace = 1.5;
   $("lightState").textContent = lightOn ? "켜짐" : "꺼짐";
@@ -582,9 +583,14 @@ function enterHiding(spot) {
     return;
   }
   const distance = Math.hypot(player.x - entity.position.x, player.z - entity.position.z);
-  if (!grace && distance < 9 && clearLine(player, entity)) {
-    message("괴물이 보고 있습니다. 시야에서 벗어난 뒤 숨으세요.", 3);
-    return;
+  const witnessed = !grace && distance <= (lightOn ? 10.7 : 6.1) && clearLine(player, entity.position);
+  investigation = witnessed ? { spot, remaining: 3.5, check: Math.random() < (0.12 + 0.23 * (1 - distance / 10.7)) } : null;
+  if (investigation) {
+    lastKnown = spot.cell;
+    enemyPhase = 5.5;
+    searchRemaining = 0;
+    searching = false;
+    nextPath = 0;
   }
   hiddenSpot = spot;
   $("lightState").textContent = "꺼짐";
@@ -626,6 +632,8 @@ function loadScene() {
   items.forEach((o) => (o.root.visible = !found[o.i]));
   items.push(prop(level.start, "station"), prop(level.exit, "exit"));
   hidingSpots = [];
+  investigation = null;
+  nextFlicker = now + 18 + Math.random() * 25;
   makeHidingSpots();
   entity = new THREE.Group();
   entity.add(model);
@@ -1093,7 +1101,6 @@ function enemyUpdate(dt, running) {
   if (tracking) {
     if (!wasTracking) {
       sound.notice();
-      alertUntil = now + 1.4;
     }
     lastKnown = playerCell;
     enemyPhase = 5.5;
@@ -1111,7 +1118,26 @@ function enemyUpdate(dt, running) {
       enemyPhase = Math.max(0, enemyPhase - dt);
     }
   }
+  if (!grace && inSight && !wasSeeing) alertUntil = now + 1.4;
+  wasSeeing = !grace && inSight;
   wasTracking = tracking;
+  if (investigation && hiddenSpot === investigation.spot) {
+    lastKnown = investigation.spot.cell;
+    enemyPhase = Math.max(enemyPhase, 0.1);
+    searching = false;
+    if (pathsDistXZ(cellOf(e), investigation.spot.cell) === 0) {
+      investigation.remaining -= dt;
+      if (investigation.remaining <= 0) {
+        const check = investigation.check;
+        investigation = null;
+        if (check) { caught(); return; }
+        enemyPhase = 0;
+        searchRemaining = 0;
+        path = [];
+        nextPath = 0;
+      }
+    }
+  }
   $("viewWrap").classList.toggle("noticed", now < alertUntil);
 
   nextPath -= dt;
@@ -1121,7 +1147,7 @@ function enemyUpdate(dt, running) {
     // Replan from the next corridor center. This keeps sharp turns out of walls.
     const anchor = path[0] ?? ec;
     let goal = lastKnown;
-    if (!tracking && searching && searchRemaining > 0) {
+    if (!tracking && !investigation && searching && searchRemaining > 0) {
       const nearby = [lastKnown, ...neighbors(level.map, lastKnown)];
       goal = nearby[Math.floor(Math.random() * nearby.length)];
     }
@@ -1146,7 +1172,8 @@ function enemyUpdate(dt, running) {
   }
   const startX = e.x;
   const startZ = e.z;
-  const destination = tracking && inSight && ec === playerCell ? player
+  const destination = investigation && ec === investigation.spot.cell ? null
+    : tracking && inSight && ec === playerCell ? player
     : path.length ? xy(path[0]) : null;
   if (destination) {
     const x = destination.x - e.x;
@@ -1242,8 +1269,15 @@ function update(dt) {
       Math.sin(elapsed * (running ? 12 : 8.3)) * Math.min(moved, 0.05) * 0.38,
     player.z,
   );
-  camera.rotation.set(pitch, yaw, 0, "YXZ");
-  lamp.visible = beam.visible = lightOn && !hiddenSpot;
+  const proximity = Math.max(0, 1 - Math.hypot(player.x - entity.position.x, player.z - entity.position.z) / 12);
+  const sway = reducedMotion.matches ? 0 : proximity * 0.006 * Math.sin(now * 2.4);
+  camera.rotation.set(pitch + sway * 0.4, yaw, sway, "YXZ");
+  if (!reducedMotion.matches && now >= nextFlicker) {
+    flickerUntil = now + 0.18;
+    nextFlicker = now + 24 + Math.random() * 35;
+  }
+  const flickering = !reducedMotion.matches && now < flickerUntil && Math.sin(now * 55) > 0;
+  lamp.visible = beam.visible = lightOn && !hiddenSpot && !flickering;
   enemyUpdate(dt, running);
   if (state !== "play") return;
   const cell = cellOf(player);

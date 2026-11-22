@@ -53,7 +53,7 @@ describe("ROOM TONE model request lifecycle",()=>{
   });
   it("aborts a pending model download when startup releases its request",async()=>{
     let signal:AbortSignal|undefined;
-    const fetchMock=vi.fn((_url:string,options?:RequestInit)=>new Promise<never>((_,reject)=>{
+    const fetchMock=vi.fn<typeof fetch>((_input,options)=>new Promise<Response>((_,reject)=>{
       signal=options?.signal as AbortSignal;
       signal?.addEventListener("abort",()=>reject(new DOMException("Aborted","AbortError")),{once:true});
     }));

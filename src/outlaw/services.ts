@@ -51,16 +51,20 @@ export function spawnOwned(sim: Sim, index: number, x?: number, z?: number): boo
   const oldSet = new Set(old);
   const otherVehicles = sim.vehicles.filter(v => !oldSet.has(v));
   const pedestrians = sim.peds.filter(q => q.alive && !q.vehicle);
-  const candidates = sim.map.lanes.map(l => ({ l, d2: (l.x - tx) ** 2 + (l.z - tz) ** 2 }))
-    .filter(x => x.d2 < 140 * 140).sort((a, b) => a.d2 - b.d2);
-  const found = candidates.find(({ l }) => {
-    if (Math.abs(l.x) + radius >= sim.map.half || Math.abs(l.z) + radius >= sim.map.half || groundHeight(sim.map, l.x, l.z) > .08) return false;
-    if (collideBox(sim.map, l.x, l.z, l.h, d.halfL + .25, d.halfW + .25, 0, d.height)) return false;
-    if (otherVehicles.some(v => (v.x - l.x) ** 2 + (v.z - l.z) ** 2 <
-      (radius + Math.hypot(VEHICLES[v.kind].halfL, VEHICLES[v.kind].halfW) + 1) ** 2)) return false;
-    return !pedestrians.some(q => (q.x - l.x) ** 2 + (q.z - l.z) ** 2 < (radius + .8) ** 2);
-  });
-  const lane = found?.l;
+  // Choose the nearest valid road in one scan. A car call previously
+  // allocated one object per lane and sorted the entire city graph even when
+  // only a handful of nearby lanes could possibly fit the vehicle.
+  let lane: typeof sim.map.lanes[number] | undefined, bestDistance = 140 ** 2;
+  for (const candidate of sim.map.lanes) {
+    const d2 = (candidate.x - tx) ** 2 + (candidate.z - tz) ** 2;
+    if (d2 >= bestDistance) continue;
+    if (Math.abs(candidate.x) + radius >= sim.map.half || Math.abs(candidate.z) + radius >= sim.map.half || groundHeight(sim.map, candidate.x, candidate.z) > .08) continue;
+    if (collideBox(sim.map, candidate.x, candidate.z, candidate.h, d.halfL + .25, d.halfW + .25, 0, d.height)) continue;
+    if (otherVehicles.some(v => (v.x - candidate.x) ** 2 + (v.z - candidate.z) ** 2 <
+      (radius + Math.hypot(VEHICLES[v.kind].halfL, VEHICLES[v.kind].halfW) + 1) ** 2)) continue;
+    if (pedestrians.some(q => (q.x - candidate.x) ** 2 + (q.z - candidate.z) ** 2 < (radius + .8) ** 2)) continue;
+    lane = candidate; bestDistance = d2;
+  }
   if (!lane) return false;
   // Commit only after a clear position has been found.
   for (const v of old) sim.removeVehicle(v);

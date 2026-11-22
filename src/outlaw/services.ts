@@ -46,14 +46,21 @@ export function spawnOwned(sim: Sim, index: number, x?: number, z?: number): boo
   if (old.some(v => !v.wrecked && (v.driver !== 0 || v.passengers.length > 0))) return false;
   const d = VEHICLES[car.kind], radius = Math.hypot(d.halfL, d.halfW), p = sim.player;
   const tx = x ?? p.x + Math.cos(p.yaw) * 14, tz = z ?? p.z + Math.sin(p.yaw) * 14;
-  const candidates = sim.map.lanes.filter(l => Math.hypot(l.x - tx, l.z - tz) < 140)
-    .sort((a, b) => Math.hypot(a.x - tx, a.z - tz) - Math.hypot(b.x - tx, b.z - tz));
-  const lane = candidates.find(l => {
+  // Compare squared distances and reuse filtered occupants instead of
+  // rescanning and computing square roots for every lane candidate.
+  const oldSet = new Set(old);
+  const otherVehicles = sim.vehicles.filter(v => !oldSet.has(v));
+  const pedestrians = sim.peds.filter(q => q.alive && !q.vehicle);
+  const candidates = sim.map.lanes.map(l => ({ l, d2: (l.x - tx) ** 2 + (l.z - tz) ** 2 }))
+    .filter(x => x.d2 < 140 * 140).sort((a, b) => a.d2 - b.d2);
+  const found = candidates.find(({ l }) => {
     if (Math.abs(l.x) + radius >= sim.map.half || Math.abs(l.z) + radius >= sim.map.half || groundHeight(sim.map, l.x, l.z) > .08) return false;
     if (collideBox(sim.map, l.x, l.z, l.h, d.halfL + .25, d.halfW + .25, 0, d.height)) return false;
-    if (sim.vehicles.some(v => !old.includes(v) && Math.hypot(v.x - l.x, v.z - l.z) < radius + Math.hypot(VEHICLES[v.kind].halfL, VEHICLES[v.kind].halfW) + 1)) return false;
-    return !sim.peds.some(q => q.alive && !q.vehicle && Math.hypot(q.x - l.x, q.z - l.z) < radius + .8);
+    if (otherVehicles.some(v => (v.x - l.x) ** 2 + (v.z - l.z) ** 2 <
+      (radius + Math.hypot(VEHICLES[v.kind].halfL, VEHICLES[v.kind].halfW) + 1) ** 2)) return false;
+    return !pedestrians.some(q => (q.x - l.x) ** 2 + (q.z - l.z) ** 2 < (radius + .8) ** 2);
   });
+  const lane = found?.l;
   if (!lane) return false;
   // Commit only after a clear position has been found.
   for (const v of old) sim.removeVehicle(v);

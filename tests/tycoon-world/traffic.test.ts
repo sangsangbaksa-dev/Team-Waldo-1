@@ -51,3 +51,16 @@ describe('HUSTLE pedestrian-aware car safety', () => {
     expect(pedestrianSpeedFactor(0, 0, 'x', -1, 4.4, -50, 0)).toBe(1);
   });
 });
+
+// Regression: the pedestrian may already be inside the body when the frame runs.
+describe('HUSTLE traffic overlap clearance', () => {
+  it('halts for pedestrians inside the car footprint on both axes', () => {
+    expect(pedestrianSpeedFactor(0, 0, 'x', 1, 4.4, 0, 0)).toBe(0);
+    expect(pedestrianSpeedFactor(0, 0, 'x', 1, 4.4, -1.8, 0)).toBe(0);
+    expect(pedestrianSpeedFactor(0, 0, 'z', -1, 5, 0, 1.8)).toBe(0);
+  });
+  it('ignores people safely behind the rear bumper', () => {
+    expect(pedestrianSpeedFactor(0, 0, 'x', 1, 4.4, -3.6, 0)).toBe(1);
+    expect(pedestrianSpeedFactor(0, 0, 'z', -1, 5, 0, 4)).toBe(1);
+  });
+});

@@ -243,7 +243,16 @@ export interface PickTarget { ped: Ped; behind: boolean }
 export function pickpocketTarget(sim: Sim): PickTarget | null {
   const p = sim.player; if (!p.alive || p.vehicle || sim.job.active === 'fight') return null;
   let best: Ped | null = null, bd = 1.9;
-  for (const q of sim.peds) { if (q.kind !== 'civ' || !q.alive || q.vehicle || q.mode === 'flee' || q.mode === 'cower') continue; const d = dist(q, p); if (d < bd && (lifted.get(sim)?.get(q.id) ?? -1) < sim.t) { bd = d; best = q; } }
+  for (const q of sim.peds) {
+    if (q.kind !== 'civ' || !q.alive || q.vehicle || q.mode === 'flee' || q.mode === 'cower') continue;
+    if (Math.abs(q.y - p.y) > 1.3) continue;
+    const d = dist(q, p);
+    // Do not allow interaction through walls, vehicles on different floors,
+    // or already-picked targets still within their cooldown.
+    if (d < bd && (lifted.get(sim)?.get(q.id) ?? -1) < sim.t && sim.canSee(p.x, p.z, q.x, q.z, p.y + 0.9)) {
+      bd = d; best = q;
+    }
+  }
   if (!best) return null;
   const toPlayer = Math.atan2(p.z - best.z, p.x - best.x); return { ped: best, behind: Math.abs(wrapAngle(toPlayer - best.yaw)) > 2.0 };
 }

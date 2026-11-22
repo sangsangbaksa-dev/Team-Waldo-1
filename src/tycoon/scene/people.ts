@@ -83,9 +83,12 @@ export function trafficSpeedFactor(gap: number, stop = 3, slow = 12): number {
 }
 /** Stop for pedestrians in the road; pedestrians safely on the sidewalk do not stop traffic. */
 export function pedestrianSpeedFactor(cx: number, cz: number, axis: 'x' | 'z', dir: 1 | -1, length: number, px: number, pz: number): number {
-  const ahead = ((axis === 'x' ? px - cx : pz - cz) * dir) - length / 2;
+  const along = (axis === 'x' ? px - cx : pz - cz) * dir;
+  const ahead = along - length / 2;
   const side = Math.abs(axis === 'x' ? pz - cz : px - cx);
-  return ahead > -length / 2 && ahead < 15 && side < 2.55 ? trafficSpeedFactor(ahead) : 1;
+  // Treat an already-overlapping pedestrian as an immediate stop, including
+  // the rear half of the car. A pedestrian behind the rear bumper is ignored.
+  return along > -length / 2 - 0.8 && ahead < 15 && side < 2.55 ? trafficSpeedFactor(ahead) : 1;
 }
 function placeCar(c: Car): void {
   const lane = c.dir > 0 ? c.lane : -c.lane;

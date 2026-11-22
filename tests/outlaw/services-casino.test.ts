@@ -62,3 +62,14 @@ describe('owned car respray persistence', () => {
     expect(s.life.cars[0].color).toBe(0x123456);
   });
 });
+
+it('keeps existing owned-car dispatch semantics after candidate search optimization', () => {
+  const s = new Sim(18); s.life.cars = [{ kind: 'sedan', color: 0xabc123 }];
+  expect(spawnOwned(s, 0)).toBe(true);
+  const first = s.vehicles.find(v => v.tag === 'owned')!;
+  expect(first.color).toBe(0xabc123);
+  expect(spawnOwned(s, 0)).toBe(true);
+  const active = s.vehicles.filter(v => v.tag === 'owned');
+  expect(active).toHaveLength(1);
+  expect(active[0]!.id).not.toBe(first.id);
+});

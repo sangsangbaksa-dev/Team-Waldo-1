@@ -20,7 +20,7 @@ import { MISSION_LIST, canStart, startMission } from './missions';
 import { OutlawUi } from './ui';
 import { pickpocket, pickpocketTarget, startJob } from './jobs';
 import { treat, buySnack, nearVending } from './services';
-import { OUTLAW_KEY } from './records';
+import { OUTLAW_KEY, readOutlawSummary } from './records';
 import { Versus, type VsSession, type VsResult } from './versus';
 import { WEAPONS, WEAPON_ORDER, PLAYER_ID, VEHICLES, blankPedInput, blankCarInput, clamp, wrapAngle, type PedInput, type SimEvent, type Vehicle } from './types';
 import { starIcon } from '../shared/glyphs';
@@ -131,7 +131,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   document.addEventListener('pointerlockchange', onLock);
 
   function controlsHtml(): string {
-    return `<h2>조작법</h2><div class="ol-keys"><div><b>이동</b>WASD · Shift 달리기 · Space 점프 · C 앉기</div><div><b>전투</b>좌클릭 사격 · 우클릭 조준 · R 재장전 · 1~9·0·-/휠 무기 · Q 무기 휠 · 수류탄은 사격 키로 투척</div><div><b>상호작용</b>E / F 차량 · 상점 · 의뢰 · 안전가옥</div><div><b>차량</b>W 가속 · S 브레이크/후진 · A D 조향 · Space 핸드브레이크 · H 경적 · R 라디오 · C 뒤돌아보기</div><div><b>휴대폰</b>P 휴대폰: 일거리·차고·부동산·업적 · 격투장/체육관/카지노/자동차 매장은 E</div><div><b>기타</b>M / Tab 전체 지도 · Esc 일시정지</div></div><p class="hint">아슬아슬한 통과·점프·드리프트·헤드샷은 스타일 보너스가 됩니다. 시민을 해치면 수배 별이 올라갑니다.</p><div class="ol-btns"><button data-k="back" type="button">돌아가기</button></div>`;
+    return `<h2>조작법</h2><div class="ol-keys"><div><b>이동</b>WASD · Shift 달리기 · Space 점프 · C 앉기</div><div><b>전투</b>좌클릭 사격 · 우클릭 조준 · R 재장전 · 1~9·0·-/휠 무기 · Q 무기 휠 · 수류탄은 사격 키로 투척</div><div><b>상호작용</b>E / F 차량 · 상점 · 의뢰 · 안전가옥</div><div><b>차량</b>W 가속 · S 브레이크/후진 · A D 조향 · Space 핸드브레이크 · H 경적 · R 라디오 · C 뒤돌아보기</div><div><b>휴대폰</b>P 휴대폰: 일거리·차고·부동산·업적 · 격투장/체육관/카지노/자동차 매장은 E</div><div><b>기타</b>M / Tab 전체 지도 · Esc 일시정지</div><div><b>무기 ${NW}종</b>${WHEEL_NAMES.map((n, i) => `${i + 1}·${n}`).join(' · ')} — 주먹·권총으로 시작하고 나머지는 총기점(E)·의뢰 보상·길에서 얻습니다. 오른쪽 아래 칸이 밝으면 가진 무기입니다.</div></div><p class="hint">아슬아슬한 통과·점프·드리프트·헤드샷은 스타일 보너스가 됩니다. 시민을 해치면 수배 별이 올라갑니다.</p><div class="ol-btns"><button data-k="back" type="button">돌아가기</button></div>`;
   }
   function openPause(): void {
     openModal('pause', `<p class="wd-eyebrow">OUTLAW CITY</p><h2 class="wd-title">${versus ? '대전 메뉴' : '일시정지'}</h2><div class="ol-btns v wd-actions"><button data-k="resume" type="button" class="wd-btn primary">이어하기</button><button data-k="phone" type="button">휴대폰</button><button data-k="map" type="button">전체 지도</button><button data-k="help" type="button">조작법</button><button data-k="sound" type="button">소리 ${audio.enabled ? '켬' : '끔'}</button><button data-k="quality" type="button">품질: ${prefs.quality === 'high' ? '높음' : prefs.quality === 'standard' ? '보통' : '낮음'} (다음 실행부터)</button><button data-k="quit" type="button" class="danger">${versus ? '대전 나가기' : '저장하고 나가기'}</button></div>`);
@@ -177,9 +177,9 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
 
   // ---------- 타이틀 ----------
   function showTitle(): void {
-    titleEl.hidden = false; const sv = hasSave();
+    titleEl.hidden = false; const sv = hasSave(), sum = sv ? readOutlawSummary() : null;
     titleEl.innerHTML = `<div class="ol-title-panel wd-panel"><p class="wd-eyebrow">WALDO · 오픈 월드</p><div class="ol-logo wd-title"><span>OUTLAW</span><span class="b">CITY</span></div><p class="ol-tag wd-lead">도시는 네 것이다. 대가는 네가 치른다.</p>
-      <div class="ol-btns v wd-actions"><button data-t="new" type="button" class="wd-btn primary">시작</button><button data-t="cont" type="button" class="wd-btn"${sv ? '' : ' disabled'}>이어하기${sv ? '' : ' · 저장 없음'}</button>${PVP_ENABLED ? '<div class="ol-online-group"><small>\uc628\ub77c\uc778 \u00b7 \ub85c\uadf8\uc778 \ud544\uc694</small><button data-t="duel" type="button">온라인 1대1</button><button data-t="room" type="button">온라인 룸 (2~6인)</button></div>' : ''}<button data-t="help" type="button">조작법</button><button data-t="exit" type="button" class="ghost wd-btn">게임 목록으로</button></div><p class="ol-title-status" role="status"></p></div>`;
+      <div class="ol-btns v wd-actions"><button data-t="new" type="button" class="wd-btn primary">시작</button><button data-t="cont" type="button" class="wd-btn ol-cont${sv ? ' saved' : ''}"${sv ? '' : ' disabled aria-disabled="true"'}>이어하기${sv && sum ? `<small>${money(sum.cash)} · 의뢰 ${sum.missions}/7 · 스턴트 ${sum.stunts}/12</small>` : '<small>저장된 게임이 없습니다</small>'}</button>${PVP_ENABLED ? '<div class="ol-online-group"><small>\uc628\ub77c\uc778 \u00b7 \ub85c\uadf8\uc778 \ud544\uc694</small><button data-t="duel" type="button">온라인 1대1</button><button data-t="room" type="button">온라인 룸 (2~6인)</button></div>' : ''}<div class="ol-title-sub"><button data-t="help" type="button" class="ghost wd-btn">조작법</button><button data-t="exit" type="button" class="ghost wd-btn">게임 목록으로</button></div></div><p class="ol-title-status" role="status"></p></div>`;
   }
   titleEl.addEventListener('click', e => {
     const b = (e.target as HTMLElement).closest('button'); if (!b || !sim || phase !== 'menu' || lobby || openingLobby) return;
@@ -518,7 +518,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     set('hpn', String(Math.ceil(Math.max(0, p.hp)))); style('hp', 'width', `${clamp(p.hp / p.maxHp, 0, 1) * 100}%`); set('arn', String(Math.ceil(p.armor))); style('ar', 'width', `${clamp(p.armor, 0, 100)}%`);
     root.classList.toggle('lowhp', p.alive && p.hp < p.maxHp * 0.3);
     const g = s.curGun(p), d = g ? WEAPONS[g.id] : WEAPONS.fist; html('wname', weaponIcon(d.id) + esc(d.name)); set('mag', d.melee ? '∞' : String(g?.mag ?? 0)); set('res', d.melee ? '' : `/ ${g?.reserve ?? 0}`);
-    html('slots', WEAPON_ORDER.map((id, i) => `<i class="${p.guns[i] ? 'has' : ''} ${i === p.cur ? 'cur' : ''}" title="${WHEEL_NAMES[i]}">${weaponIcon(id)}<u>${i + 1}</u></i>`).join(''));
+    html('slots', WEAPON_ORDER.map((id, i) => `<i class="${p.guns[i] ? 'has' : ''} ${i === p.cur ? 'cur' : ''}" title="${WHEEL_NAMES[i]}${p.guns[i] ? '' : ' · 아직 없음'}">${weaponIcon(id)}<u>${i + 1}</u></i>`).join(''));
     set('dname', districtName(p.x, p.z, s.map));
     radarT += dt; if (radarT >= .05) { radarT = 0; minimap!.draw(radar, s, cy); }
     // 속도계

@@ -69,16 +69,16 @@ export function walkable(map, id) {
 export function neighbors(map, id) {
   if (!walkable(map, id)) return [];
   const w = map[0].length;
-  const x = id % w,
-    z = Math.floor(id / w);
-  return [
-    [x + 1, z],
-    [x - 1, z],
-    [x, z + 1],
-    [x, z - 1],
-  ]
-    .filter(([a, b]) => map[b]?.[a] === ".")
-    .map(([a, b]) => b * w + a);
+  const x = id % w;
+  const z = Math.floor(id / w);
+  const result = [];
+  // Preserve the right/left/down/up tie-break order. Avoid creating four
+  // coordinate arrays and two intermediary arrays on every BFS expansion.
+  if (map[z]?.[x + 1] === ".") result.push(id + 1);
+  if (map[z]?.[x - 1] === ".") result.push(id - 1);
+  if (map[z + 1]?.[x] === ".") result.push(id + w);
+  if (map[z - 1]?.[x] === ".") result.push(id - w);
+  return result;
 }
 export function paths(map, start) {
   const prev = new Int32Array(map.length * (map[0]?.length ?? 0)).fill(-2),

@@ -18,12 +18,13 @@ function loadEngine() {
   });
   return enginePromise;
 }
-import { modelBytes } from "./assets.js";
+import { modelBytes, releaseModelBytes } from "./assets.js";
 import { chapters, makeLevel, paths, route, routeFrom, neighbors } from "./levels.mjs";
 import { buildEnvironment, buildHidingSpot, createHidingSpotKit } from "./environment.js";
 import { Sound } from "./sound.js";
 import { normalizeCampaign } from "./campaign.mjs";
 import { createPointerOwner, tryCapture } from "./input.mjs";
+import { initialMute } from "./preferences.mjs";
 
 const $ = (id) => document.getElementById(id),
   C = 2.7,
@@ -133,6 +134,12 @@ function save() {
     );
   } catch { /* Browser storage or pointer lock is optional. */ }
 }
+function syncAudioButtons() {
+  for (const b of [$("sound"), $("gsound")]) {
+    b.setAttribute("aria-pressed", String(!muted));
+    b.querySelector("span").textContent = muted ? "소리 꺼짐" : "소리 켜짐";
+  }
+}
 function toggleAudio() {
   muted = !muted;
   sound.setMute(muted);
@@ -140,13 +147,11 @@ function toggleAudio() {
   try {
     localStorage.setItem("rt-silent", JSON.stringify(muted));
   } catch { /* Browser storage or pointer lock is optional. */ }
-  for (const b of [$("sound"), $("gsound")]) {
-    b.setAttribute("aria-pressed", String(!muted));
-    b.querySelector("span").textContent = muted ? "소리 꺼짐" : "소리 켜짐";
-  }
+  syncAudioButtons();
 }
-muted = read("waldo.preferences.v1")?.sound !== false;
-toggleAudio();
+muted = initialMute(read("rt-silent"), read("waldo.preferences.v1"));
+sound.setMute(muted);
+syncAudioButtons();
 $("sound").onclick = $("gsound").onclick = toggleAudio;
 function screens(id) {
   for (const key of ["home", "game"]) $(key).hidden = key !== id;
@@ -271,7 +276,15 @@ async function setup() {
   // Start the 4.5 MB binary request before dynamic imports and WebGL setup.
   // Both requests remain optional until a player chooses to start.
   const monsterBinary = !model ? modelBytes() : null;
-  await loadEngine();
+  // Attach the rejection handler immediately: imports can outlast a failed
+  // fetch, and a rejected download should not become an unhandled rejection.
+  if (monsterBinary) void monsterBinary.catch(() => {});
+  try {
+    await loadEngine();
+  } catch (error) {
+    releaseModelBytes();
+    throw error;
+  }
   if (!player) player = new THREE.Vector3();
   if (!renderer) {
     renderer = new THREE.WebGLRenderer({
@@ -296,7 +309,13 @@ async function setup() {
     });
   }
   if (!model) {
-    const gltf = await new GLTFLoader().parseAsync(await monsterBinary, "");
+    let gltf;
+    try {
+      gltf = await new GLTFLoader().parseAsync(await monsterBinary, "");
+    } finally {
+      // Free the binary after decoding, including on parse failure.
+      releaseModelBytes();
+    }
     model = gltf.scene;
     fixMonster(THREE, model);
     model.traverse((o) => {

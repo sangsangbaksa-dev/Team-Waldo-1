@@ -14,3 +14,9 @@ export function modelBytes() {
   }
   return request;
 }
+
+// The decoded Three.js scene is the authoritative model after parse.
+// Keeping the source ArrayBuffer cached would retain another ~4.5 MB unnecessarily.
+export function releaseModelBytes() {
+  request = null;
+}

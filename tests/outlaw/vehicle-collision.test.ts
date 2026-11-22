@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Sim } from '../../src/outlaw/sim';
-import { stepVehicle, collideVehicles } from '../../src/outlaw/vehicle';
+import { stepVehicle, collideVehicles, autoDrive } from '../../src/outlaw/vehicle';
 
 describe('vehicle broadphase order and lifetime', () => {
   it('detects a moving newer vehicle hitting an older stationary vehicle after its turn', () => {
@@ -54,5 +54,24 @@ describe('OUTLAW rotated vehicle collision SAT regression', () => {
     const b = sim.spawnVehicle('sedan', 10, 0, -Math.PI/4);
     collideVehicles(sim,a,b);
     expect([a.x,a.z,b.x,b.z]).toEqual([0,0,10,0]);
+  });
+});
+
+describe('OUTLAW AI vehicle steering safety', () => {
+  it('does not pass nonfinite mission waypoints through to physical controls', () => {
+    const sim = new Sim(77), v = sim.spawnVehicle('sedan', 0, 0, 0);
+    v.input.throttle = 1;
+    autoDrive(sim, v, Infinity, 0, 20, .016);
+    expect(v.input.throttle).toBe(0);
+    expect(v.input.brake).toBe(1);
+    expect(v.input.handbrake).toBe(true);
+    autoDrive(sim, v, 10, 0, NaN, .016);
+    expect([v.input.throttle, v.input.brake, v.input.steer].every(Number.isFinite)).toBe(true);
+  });
+  it('keeps steering controls finite for a valid open-road destination', () => {
+    const sim = new Sim(78), v = sim.spawnVehicle('sedan', sim.player.x, sim.player.z, 0);
+    autoDrive(sim, v, sim.player.x + 40, sim.player.z, 12, .016);
+    expect([v.input.throttle, v.input.brake, v.input.steer].every(Number.isFinite)).toBe(true);
+    expect(v.input.throttle).toBeGreaterThanOrEqual(0);
   });
 });

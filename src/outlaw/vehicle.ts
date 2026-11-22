@@ -165,7 +165,13 @@ export function stepVehicle(sim: Sim, v: Vehicle, dt: number): void {
 /** 목표점으로 향하는 조향·정지·회피·후진 재시도 제어. */
 export function autoDrive(sim: Sim, v: Vehicle, tx: number, tz: number, targetSpeed: number, dt: number): void {
   if (!(dt > 0) || !Number.isFinite(dt)) return;
-  const m = motion(v), d = VEHICLES[v.kind], inp = v.input, c = Math.cos(v.h), s = Math.sin(v.h), speed = Math.max(0, v.vf), dist = Math.hypot(tx - v.x, tz - v.z);
+  const m = motion(v), d = VEHICLES[v.kind], inp = v.input;
+  if (!Number.isFinite(tx) || !Number.isFinite(tz) || !Number.isFinite(targetSpeed)) {
+    // A malformed mission waypoint must never poison physics steering.
+    inp.throttle = 0; inp.brake = 1; inp.steer = 0; inp.handbrake = true;
+    return;
+  }
+  const c = Math.cos(v.h), s = Math.sin(v.h), speed = Math.max(0, v.vf), dist = Math.hypot(tx - v.x, tz - v.z);
   const err = wrapAngle(Math.atan2(tz - v.z, tx - v.x) - v.h), look = d.halfL + 4 + speed * 0.8 + speed * speed / (d.brake * 1.2);
   let gap = Infinity, avoid = 0;
   for (const q of sim.vehicles) {
@@ -180,15 +186,16 @@ export function autoDrive(sim: Sim, v: Vehicle, tx: number, tz: number, targetSp
     const dx = p.x - v.x, dz = p.z - v.z, f = dx * c + dz * s, l = -dx * s + dz * c;
     if (f > 0 && f < look && Math.abs(l) < d.halfW + 1) { gap = Math.min(gap, f - d.halfL - 0.6); avoid += l >= 0 ? -0.3 : 0.3; }
   }
-  const rays: number[] = [], rayDirection = m.back > 0 ? -1 : 1;
-  // 양 끝 레이를 조금 벌려 차폭을 지키면서 작은 장애물 옆의 빈 공간도 찾습니다.
-  for (const side of [-1, 0, 1]) {
-    const angle = v.h + side * 0.28;
-    rays.push(rayStatic(sim.map, v.x - s * side * d.halfW, v.y + Math.min(0.8, d.height / 2), v.z + c * side * d.halfW, Math.cos(angle) * rayDirection, 0, Math.sin(angle) * rayDirection, look));
-  }
-  const wall = Math.min(...rays) - d.halfL; gap = Math.min(gap, wall);
-  if (rayDirection > 0 && rays[1] < look && (rays[0] > rays[1] + 1.5 || rays[2] > rays[1] + 1.5)) {
-    avoid += rays[0] === rays[2] ? m.avoid * 0.6 : rays[0] > rays[2] ? -0.6 : 0.6;
+  const rayDirection = m.back > 0 ? -1 : 1, eye = v.y + Math.min(0.8, d.height / 2);
+  // Three scalar sight rays: no temporary array or spread operator for each
+  // police/traffic AI update, preserving the two flank-avoidance readings.
+  const left = rayStatic(sim.map, v.x + s * d.halfW, eye, v.z - c * d.halfW, Math.cos(v.h - 0.28) * rayDirection, 0, Math.sin(v.h - 0.28) * rayDirection, look);
+  const center = rayStatic(sim.map, v.x, eye, v.z, c * rayDirection, 0, s * rayDirection, look);
+  const right = rayStatic(sim.map, v.x - s * d.halfW, eye, v.z + c * d.halfW, Math.cos(v.h + 0.28) * rayDirection, 0, Math.sin(v.h + 0.28) * rayDirection, look);
+  const nearestWall = Math.min(left, center, right);
+  gap = Math.min(gap, nearestWall - d.halfL);
+  if (rayDirection > 0 && center < look && (left > center + 1.5 || right > center + 1.5)) {
+    avoid += left === right ? m.avoid * 0.6 : left > right ? -0.6 : 0.6;
   }
   let desired = Math.min(Math.max(0, targetSpeed), d.top, Math.sqrt(2 * d.brake * 0.45 * Math.max(0, dist - 0.6)), Math.max(0, (dist - 0.5) * 1.8));
   desired *= Math.max(0.15, Math.cos(Math.min(Math.abs(err), Math.PI / 2)));
@@ -198,7 +205,7 @@ export function autoDrive(sim: Sim, v: Vehicle, tx: number, tz: number, targetSp
   inp.handbrake = false;
   if (m.back > 0) {
     m.back -= dt;
-    const rearBlocked = (rayDirection < 0 && Math.min(...rays) < d.halfL + 3) || sim.vehicles.some(q => q !== v && Math.hypot(q.x - v.x + c * 5, q.z - v.z + s * 5) < 3) || sim.peds.some(p => p.alive && !p.vehicle && Math.hypot(p.x - v.x + c * 4, p.z - v.z + s * 4) < 2);
+    const rearBlocked = (rayDirection < 0 && nearestWall < d.halfL + 3) || sim.vehicles.some(q => q !== v && Math.hypot(q.x - v.x + c * 5, q.z - v.z + s * 5) < 3) || sim.peds.some(p => p.alive && !p.vehicle && Math.hypot(p.x - v.x + c * 4, p.z - v.z + s * 4) < 2);
     if (rearBlocked) { inp.throttle = v.vf < -0.1 ? 1 : 0; inp.brake = 0; inp.handbrake = true; m.back = 0; }
     else { inp.throttle = 0; inp.brake = v.vf > -4 ? 0.6 : 0; }
     inp.steer = -m.avoid * 0.8; return;

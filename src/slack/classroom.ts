@@ -146,9 +146,22 @@ export const createClassroomView: CreateView = (sim, audio) => {
     const tb = t.closest<HTMLButtonElement>('[data-train]');
     if (tb) { if (event.detail > 0) el.focus({ preventScroll: true }); train(tb.dataset.train as 'w' | 'i' | 't'); }
   };
-  const gpos = (e: PointerEvent) => { const r = gcv.getBoundingClientRect(); return [((e.clientX - r.left) / r.width) * W, ((e.clientY - r.top) / r.height) * H, (e.clientX - r.left) / r.width] as const; };
-  const gDown = (e: PointerEvent) => { if (e.button !== 0 || view() !== 'game') return; el.focus({ preventScroll: true }); audio.resume(); const [x, y] = gpos(e); getGame().command(x, y); };
-  const gMove = (e: PointerEvent) => { gHand = gpos(e)[2]; };
+  const gpos = (e: PointerEvent) => {
+    const r = gcv.getBoundingClientRect();
+    // The canvas may briefly report a zero size when the simulated laptop
+    // changes windows; never feed NaN or Infinity into the tactical commands.
+    if (r.width <= 0 || r.height <= 0 || !Number.isFinite(r.width) || !Number.isFinite(r.height)) return null;
+    const nx = (e.clientX - r.left) / r.width, ny = (e.clientY - r.top) / r.height;
+    if (!Number.isFinite(nx) || !Number.isFinite(ny)) return null;
+    const x = Math.max(0, Math.min(1, nx)), y = Math.max(0, Math.min(1, ny));
+    return [x * W, y * H, x] as const;
+  };
+  const gDown = (e: PointerEvent) => {
+    if (e.button !== 0 || view() !== 'game') return;
+    const p = gpos(e); if (!p) return;
+    el.focus({ preventScroll: true }); audio.resume(); getGame().command(p[0], p[1]);
+  };
+  const gMove = (e: PointerEvent) => { const p = gpos(e); if (p) gHand = p[2]; };
   el.addEventListener('keydown', keydown);
   el.addEventListener('keyup', keyup);
   el.addEventListener('focusout', focusout);

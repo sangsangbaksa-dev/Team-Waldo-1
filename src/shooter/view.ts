@@ -5,7 +5,7 @@ import { makePost, type PostFx } from '../postfx';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { AIR, PARTS, RED, WEAPONS, makeRng, type WeaponId } from './config';
 import { buildGun, lootPart, muzzleTip } from './gunbuild';
-import { bake, instantiate } from '../city/models';
+import { instantiate } from '../city/models';
 import { eyeOf, type Match, type MatchEvent, type Player } from './sim';
 import type { ShooterAssets } from './assets';
 import type { CharacterRig } from '../shared/character';
@@ -96,7 +96,7 @@ export class ShooterView {
 
   // ---------- 지형 ----------
   private buildGround(): void {
-    const half = this.match.map.half, size = half * 2 + 900, segs = 120, geo = new THREE.PlaneGeometry(size, size, segs, segs); geo.rotateX(-Math.PI / 2);
+    const half = this.match.map.half, size = half * 2 + 900, segs = this.quality === 'low' ? 48 : this.quality === 'standard' ? 80 : 120, geo = new THREE.PlaneGeometry(size, size, segs, segs); geo.rotateX(-Math.PI / 2);
     const n1 = noise2(this.match.seed), n2 = noise2(this.match.seed + 9), pos = geo.attributes.position, col = new Float32Array(pos.count * 3), c = new THREE.Color();
     const green = new THREE.Color(0.96, 1.02, 0.84), dry = new THREE.Color(1.2, 1.0, 0.7), dark = new THREE.Color(0.72, 0.82, 0.62), sand = new THREE.Color(1.28, 1.12, 0.84);
     for (let i = 0; i < pos.count; i++) {
@@ -116,17 +116,21 @@ export class ShooterView {
     const map = this.match.map, byTex: THREE.BufferGeometry[][] = [[], [], [], []], crates: Box[] = [];
     for (const b of map.boxes) { if (b.kind === 'wall') byTex[b.tex % 4].push(worldBox(b)); else if (b.kind === 'crate') crates.push(b); }
     byTex.forEach((list, i) => {
-      if (!list.length) return; const m = new THREE.Mesh(mergeGeometries(list, false), new THREE.MeshLambertMaterial({ map: wallTexture(i) }));
+      if (!list.length) return;
+      const geometry = mergeGeometries(list, false); for (const source of list) source.dispose();
+      if (!geometry) return;
+      const m = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ map: wallTexture(i) }));
       m.castShadow = true; m.receiveShadow = true; this.scene.add(m);
     });
-    const floorTex = floorTexture(), floors: THREE.BufferGeometry[] = [];
+    const floors: THREE.BufferGeometry[] = [];
     for (const b of map.buildings) { const f = new THREE.PlaneGeometry(b.w, b.d); f.rotateX(-Math.PI / 2); f.translate(b.x, 0.05, b.z); const uv = f.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * b.w / 3, uv.getY(i) * b.d / 3); floors.push(f); }
-    if (floors.length) { const m = new THREE.Mesh(mergeGeometries(floors, false), new THREE.MeshLambertMaterial({ map: floorTex })); m.receiveShadow = true; this.scene.add(m); }
+    if (floors.length) { const geometry = mergeGeometries(floors, false); for (const source of floors) source.dispose(); if (geometry) { const m = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ map: floorTexture() })); m.receiveShadow = true; this.scene.add(m); } }
     const detailed = this.quality !== 'low';
     this.scene.add(buildRoofs(map, rngOf(this.match.seed + 3), detailed), buildProps(map, new Set(this.match.vehicles.map(v => v.box))));
     if (detailed) this.scene.add(buildFacadeTrim(map));
     if (crates.length) {
-      const ct = crateTexture(), geos = crates.map(b => worldBox(b, 1.2)); const m = new THREE.Mesh(mergeGeometries(geos, false), new THREE.MeshLambertMaterial({ map: ct })); m.castShadow = true; m.receiveShadow = true; this.scene.add(m);
+      const geos = crates.map(b => worldBox(b, 1.2)), geometry = mergeGeometries(geos, false); for (const source of geos) source.dispose();
+      if (geometry) { const m = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ map: crateTexture() })); m.castShadow = true; m.receiveShadow = true; this.scene.add(m); }
     }
   }
 
@@ -140,9 +144,9 @@ export class ShooterView {
         for (const [x, y, c, l] of [[-w, 0, 0, 0], [w, 0, 0, 0], [0, h, 1, lean]] as const) { pos.push(ox + px * x + Math.cos(a) * l, y, oz + pz * x + Math.sin(a) * l); const k = new THREE.Color().copy(base).lerp(tip, c); col.push(k.r, k.g, k.b); }
       }
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.computeVertexNormals();
-      const n = this.quality === 'low' ? 3000 : map.mode === 'br' ? 14000 : 5000, mesh = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, emissive: 0x2b3618 }), n); let k = 0;
+      const n = this.quality === 'low' ? 2000 : this.quality === 'high' ? (map.mode === 'br' ? 14000 : 5000) : map.mode === 'br' ? 7000 : 3500, mesh = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, emissive: 0x2b3618 }), n); let k = 0;
       for (let tries = 0; k < n && tries < n * 3; tries++) {
-        const x = (r() * 2 - 1) * (map.half + 20), z = (r() * 2 - 1) * (map.half + 20); if (map.compounds.some(c => Math.hypot(c.x - x, c.z - z) < c.r - 5) || map.sites.some(c => Math.hypot(c.x - x, c.z - z) < c.r + 1) || waterDepth(map.terrain, x, z) || map.terrain.hills.some(h => Math.hypot(h.x - x, h.z - z) < h.r * 1.05)) continue;
+        const x = (r() * 2 - 1) * (map.half + 20), z = (r() * 2 - 1) * (map.half + 20); if (map.compounds.some(c => (c.x - x) ** 2 + (c.z - z) ** 2 < (c.r - 5) ** 2) || map.sites.some(c => (c.x - x) ** 2 + (c.z - z) ** 2 < (c.r + 1) ** 2) || waterDepth(map.terrain, x, z) || map.terrain.hills.some(h => (h.x - x) ** 2 + (h.z - z) ** 2 < (h.r * 1.05) ** 2)) continue;
         d.position.set(x, 0, z); d.rotation.set(0, r() * 6.28, 0); d.scale.setScalar(0.8 + r() * 0.7); d.updateMatrix(); mesh.setMatrixAt(k++, d.matrix);
       }
       mesh.count = k; mesh.receiveShadow = false; this.scene.add(mesh);
@@ -164,27 +168,33 @@ export class ShooterView {
       map.rocks.forEach((k, i) => { d.position.set(k.x, k.sy * 0.28, k.z); d.rotation.set(0, k.ry, 0); d.scale.set(k.sx, k.sy, k.sz); d.updateMatrix(); mesh.setMatrixAt(i, d.matrix); mesh.setColorAt(i, this.tmpCol.setScalar(0.8 + r() * 0.4)); });
       mesh.castShadow = true; mesh.receiveShadow = true; this.scene.add(mesh);
     }
-    // 나무: 모델이 있으면 Blender 나무, 없으면 단순한 원뿔
+    // Consistent procedural trees avoid downloading and baking an optional props.glb.
+    // Instancing keeps draw calls constant regardless of tree count.
     for (const pine of [false, true]) {
-      const list = map.trees.filter(t => t.pine === pine); if (!list.length) continue;
-      const tpl = this.assets?.props[pine ? 'tree_pine' : 'tree_round'], baked = tpl ? bake(tpl) : null; let geos: Array<[THREE.BufferGeometry, THREE.Material]> = [];
-      if (baked) {
-        const lam = new THREE.MeshLambertMaterial({ vertexColors: true });
-        for (const part of [baked.fixed, baked.team, baked.skin]) if (part) geos.push([part, lam]);
-      } else {
-        geos = makeFallbackTree(pine, this.quality === 'low');
+      const trees = map.trees.filter(tree => tree.pine === pine);
+      if (!trees.length) continue;
+      const batches = makeFallbackTree(pine, this.quality === 'low');
+      const bounds = new THREE.Box3();
+      for (const [geometry] of batches) {
+        geometry.computeBoundingBox();
+        if (geometry.boundingBox) bounds.union(geometry.boundingBox);
       }
-      let top = 1; { const bb = new THREE.Box3(); for (const [g] of geos) { g.computeBoundingBox(); if (g.boundingBox) bb.union(g.boundingBox); } top = Math.max(0.5, bb.max.y); }
-      for (const [g, m] of geos) {
-        const mesh = new THREE.InstancedMesh(g, m, list.length);
-        list.forEach((t, i) => {
-          // All material batches use identical yaw/scale, so trunk and crowns stay aligned.
-          const rot = rngOf((this.match.seed + Math.imul(i + 1, 937) + (pine ? 17 : 31)) >>> 0);
-          const h = (pine ? 9 : 7.5) / top * t.s;
-          d.position.set(t.x, 0, t.z); d.rotation.set(0, rot() * 6.28, 0); d.scale.setScalar(h); d.updateMatrix(); mesh.setMatrixAt(i, d.matrix);
-          if (!baked) mesh.setColorAt(i, this.tmpCol.setScalar(0.85 + rot() * 0.24));
+      const top = Math.max(0.5, bounds.max.y);
+      for (const [geometry, material] of batches) {
+        const mesh = new THREE.InstancedMesh(geometry, material, trees.length);
+        trees.forEach((tree, i) => {
+          const rand = rngOf((this.match.seed + Math.imul(i + 1, 937) + (pine ? 17 : 31)) >>> 0);
+          const scale = (pine ? 9 : 7.5) / top * tree.s;
+          d.position.set(tree.x, 0, tree.z);
+          d.rotation.set(0, rand() * Math.PI * 2, 0);
+          d.scale.setScalar(scale);
+          d.updateMatrix(); mesh.setMatrixAt(i, d.matrix);
+          mesh.setColorAt(i, this.tmpCol.setScalar(0.85 + rand() * 0.24));
         });
-        mesh.castShadow = true; mesh.receiveShadow = false; this.scene.add(mesh);
+        mesh.instanceMatrix.needsUpdate = true;
+        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+        mesh.castShadow = this.quality === 'high';
+        this.scene.add(mesh);
       }
     }
   }

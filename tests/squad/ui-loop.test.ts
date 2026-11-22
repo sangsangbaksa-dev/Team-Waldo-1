@@ -135,5 +135,18 @@ it('ignores secondary pointers and cancels a deployment when capture is lost', (
   event(nextCanvas, 'lostpointercapture', 13, 300, 750);
   event(nextCanvas, 'pointerup', 13, 300, 750);
   expect(document.querySelector('.sq-budget strong')?.textContent).toContain('900');
-  button('#exit')?.click();
+  button('#pause').click(); button('#exit').click();
+});
+
+it('does not toggle the pause screen when Escape auto-repeats', () => {
+  openSquad(vi.fn());
+  button('#start').click(); button('#auto').click(); button('#ready').click();
+  const press = (repeat: boolean) => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', repeat }));
+  press(false);
+  expect(button('#resume')).toBeTruthy();
+  press(true);
+  expect(button('#resume')).toBeTruthy();
+  press(false);
+  expect(button('#pause')).toBeTruthy();
+  button('#pause').click(); button('#exit').click();
 });

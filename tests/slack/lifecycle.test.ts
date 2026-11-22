@@ -135,3 +135,21 @@ it('runs the danger pulse only during tense, unpaused gameplay', async () => {
   advance(100);
   expect(root.classList.contains('sl-danger')).toBe(false);
 });
+
+it('exposes only the active title, pause or result dialog to assistive technology', async () => {
+  openSlack(vi.fn());
+  const overlays = Array.from(document.querySelectorAll<HTMLElement>('.sl-root .sl-modal'));
+  expect(overlays).toHaveLength(3);
+  expect(overlays.every(el => el.getAttribute('role') === 'dialog' && el.getAttribute('aria-modal') === 'true')).toBe(true);
+  expect(overlays.filter(el => !el.hidden)).toHaveLength(1);
+  button('[data-stage="dorm"]').click(); button('[data-start]').click();
+  await vi.dynamicImportSettled();
+  expect(overlays.filter(el => !el.hidden)).toHaveLength(0);
+  key('p');
+  expect(overlays.filter(el => !el.hidden)).toEqual([button('[data-paused]')]);
+  button('[data-resume]').click();
+  const sim = vi.mocked(createSim).mock.results[0].value;
+  sim.state.time = sim.state.limit - 0.05;
+  advance(100);
+  expect(overlays.filter(el => !el.hidden)).toEqual([button('[data-result]')]);
+});

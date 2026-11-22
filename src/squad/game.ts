@@ -71,7 +71,7 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
     } else if (keepFocus) root.querySelector<HTMLElement>(keepFocus)?.focus({ preventScroll: true });
     scheduleFrame();
   }
-  function beginRound(): void { lastRosterTick = 0; lastDrawTick = -1; lastBattleSecond = -1; armies = [[], []]; side = 0; battle = null; hover = null; if (online) { side = online.mine; online.sent = 0; online.deadline = Date.now() + DEPLOY_MS; online.net.clearArmy(); } stage = mode === 'local' ? 'cover' : 'deploy'; render(); if (online) tickOnline(); }
+  function beginRound(): void { lastRosterTick = 0; lastDrawTick = -1; lastBattleSecond = -1; armies = [[], []]; side = 0; battle = null; hover = null; if (online) { side = online.mine; online.sent = 0; online.deadline = Date.now() + DEPLOY_MS; online.net.clearArmy(); } stage = mode === 'local' ? 'cover' : 'deploy'; render(); if (online) { if (onlineTimer) window.clearInterval(onlineTimer); onlineTimer = window.setInterval(tickOnline, 500); tickOnline(); } }
   function startMatch(): void { score = [0, 0]; round = 1; totals = [{ kills: 0, damage: 0, survivors: 0, gold: 0 }, { kills: 0, damage: 0, survivors: 0, gold: 0 }]; beginRound(); }
   function ready(): void { if (stage !== 'deploy') return; if (!armies[side]!.length) { toast('병사를 1명 이상 배치하세요'); return; } if (online) { audio.ready(); sendArmy(); return; } if (side === 0 && mode === 'local') { side = 1; stage = 'cover'; render(); return; } if (mode === 'ai') armies[1] = buildArmy(1, difficulty, armies[0]); battle = new Battle(armies[0]!, armies[1]!, round); stage = 'battle'; audio.start(); last = 0; accumulator = 0; render(); }
   function finish(): void { if (!battle || battle.winner === null || stage !== 'battle') return; if (battle.winner !== 'draw') score[battle.winner]!++; for (const s of [0, 1] as const) { const units = battle.units.filter(u => u.side === s); totals[s]!.kills += units.reduce((n, u) => n + u.kills, 0); totals[s]!.damage += units.reduce((n, u) => n + u.damage, 0); totals[s]!.survivors += units.filter(u => u.hp > 0).length; totals[s]!.gold += cost(s); } stage = score.some(n => n >= 2) ? 'result' : 'round'; if (stage === 'result') { if (mode !== 'local') saveResult(online ? score[online.mine]! > score[1 - online.mine]! : score[0]! > score[1]!); if (online) void concludeOnline(); } const mine = online ? online.mine : 0; if (battle?.winner === 'draw') audio.click(); else if (battle?.winner === mine) audio.win(); else audio.lose(); render(); }
@@ -106,13 +106,12 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
       onGone: why => { if (online?.net === net) handleGone(why); },
     });
     online = { s, net, mine: s.host ? 0 : 1, incoming: new Map(), sent: 0, deadline: 0, leaving: 0, done: false, result: '' };
-    onlineTimer = window.setInterval(tickOnline, 500);
     mode = 'online'; startMatch();
   }
   /** 내 배치를 제출하고, 상대 배치가 이미 와 있으면 바로 전투를 시작합니다. */
   function sendArmy(): void {
     const o = online; if (!o || stage !== 'deploy' || o.sent === round) return;
-    o.sent = round; o.net.setArmy(round, armies[o.mine]!); stage = 'wait'; render(); tryStart();
+    o.sent = round; if (onlineTimer) window.clearInterval(onlineTimer); onlineTimer = 0; o.net.setArmy(round, armies[o.mine]!); stage = 'wait'; render(); tryStart();
   }
   function tryStart(): void {
     const o = online, theirs = o?.incoming.get(round); if (!o || stage !== 'wait' || o.sent !== round || !theirs) return;
@@ -165,7 +164,9 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
     o.leaving = Date.now(); toast(o.done || stage === 'result' ? '한 번 더 누르면 메뉴로 나갑니다.' : '한 번 더 누르면 기권하고 나갑니다.');
   }
   function pause(): void { if (online && stage !== 'menu') { leaveClick(); return; } if (stage !== 'deploy' && stage !== 'battle') return; previous = stage; stage = 'pause'; render(); }
-  function key(e: KeyboardEvent): void { if (e.key === 'Escape') { e.preventDefault(); if (stage === 'pause') { stage = previous; last = 0; render(); } else if (stage === 'menu') exit(); else pause(); } else if (stage === 'deploy' && /^[1-5]$/.test(e.key)) { selected = TYPES[Number(e.key) - 1]!; render(); } else if (stage === 'deploy' && (e.key === ' ' || e.key === 'Enter') && !(e.target instanceof HTMLElement && e.target.closest('button, input, select, textarea, [contenteditable]'))) { e.preventDefault(); ready(); } }
+  function key(e: KeyboardEvent): void {
+    if (e.repeat || e.defaultPrevented || (e.target instanceof Element && e.target.closest('.pvp-root, input, textarea, select, [contenteditable="true"]'))) return;
+    if (e.key === 'Escape') { e.preventDefault(); if (stage === 'pause') { stage = previous; last = 0; render(); } else if (stage === 'menu') exit(); else pause(); } else if (stage === 'deploy' && /^[1-5]$/.test(e.key)) { selected = TYPES[Number(e.key) - 1]!; render(); } else if (stage === 'deploy' && (e.key === ' ' || e.key === 'Enter') && !(e.target instanceof HTMLElement && e.target.closest('button, input, select, textarea, [contenteditable]'))) { e.preventDefault(); ready(); } }
   function exit(): void { closed = true; audio.dispose(); quitOnline(); lobby?.close(); cancelAnimationFrame(raf); window.removeEventListener('keydown', key); root.remove(); onExit(); }
   function frame(time: number): void { raf = 0; if (closed) return; if (stage === 'battle' && battle) { if (last) accumulator += Math.min(.1, (time - last) / 1000) * speed; last = time; while (accumulator >= STEP && battle.winner === null) { battle.step(); accumulator -= STEP; audio.battle(battle.effects, time); } if (battle.winner !== null) finish(); else { const canvas = root.querySelector('canvas'); if (canvas && battle.tick !== lastDrawTick) { draw(canvas, armies, side, battle, 0, null); lastDrawTick = battle.tick; } if (battle.tick - lastRosterTick >= 6) { lastRosterTick = battle.tick; const ro = root.querySelector('.sq-roster'); if (ro) ro.innerHTML = rosterHtml(battle); } const seconds = Math.floor(battle.tick / 30); if (seconds !== lastBattleSecond) { lastBattleSecond = seconds; const label = root.querySelector('.sq-battlebar span'); if (label) label.textContent = `경과 ${seconds}초 / 60초`; } } } else last = 0; scheduleFrame(); }
   window.addEventListener('keydown', key); render();

@@ -52,6 +52,13 @@ it('keeps an online deployment deadline without running an idle animation loop',
   button('#start').click();
   await vi.dynamicImportSettled();
   expect(callbacks.onMatch).toBeTruthy();
+  // Esc in the login/matchmaking overlay must not close the underlying game.
+  const overlay = document.createElement('div');
+  overlay.className = 'pvp-root'; overlay.innerHTML = '<input aria-label="Nickname">';
+  document.body.append(overlay);
+  overlay.querySelector('input')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  expect(document.querySelector('.sq-root')).toBeTruthy();
+  overlay.remove();
   const report = vi.fn().mockResolvedValue(undefined);
   callbacks.onMatch!({
     host: true,
@@ -61,6 +68,7 @@ it('keeps an online deployment deadline without running an idle animation loop',
     backend: { report },
   } as unknown as PvpSession);
   expect(document.querySelector('#sq-timer')?.textContent).toBe('남은 시간 90초');
+  expect(vi.getTimerCount()).toBe(1);
   expect(requestAnimationFrame).not.toHaveBeenCalled();
   vi.advanceTimersByTime(89_000);
   expect(document.querySelector('#sq-timer')?.textContent).toBe('남은 시간 1초');
@@ -68,6 +76,7 @@ it('keeps an online deployment deadline without running an idle animation loop',
   expect(document.querySelector('.sq-cover h2')?.textContent).toContain('상대 배치를 기다리는 중');
   expect(callbacks.setArmy).toHaveBeenCalledTimes(1);
   expect(callbacks.setArmy.mock.calls[0]?.[0]).toBe(1);
+  expect(vi.getTimerCount()).toBe(0);
   expect(requestAnimationFrame).not.toHaveBeenCalled();
   // Double Escape abandons a waiting match and disposes its timer/channel.
   const leave = () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));

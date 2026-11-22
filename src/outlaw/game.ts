@@ -369,20 +369,29 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   q('#ol-phonebtn').onclick = () => { if (phase === 'play' && !modalKind) openUi('phone'); };
 
   // ---------- 상호작용 ----------
+  /** Keep a confirmed transaction durable without writing on rejected attempts. */
+  function runCashAction(action: () => string): void {
+    if (!sim) return;
+    const before = sim.cash, result = action();
+    toast(result); audio.play('pickup');
+    if (sim.cash !== before && !versus && !save()) {
+      toast('거래 후 저장하지 못했습니다. 브라우저 저장 공간을 확인하세요.');
+    }
+  }
   function interaction(): { text: string; run?: () => void } | null {
     if (!sim) return null; const p = sim.player; if (!p.alive || sim.downKind) return null;
     const poi = sim.nearPoi(p.x, p.z);
-    if (p.vehicle) { if (poi?.kind === 'paynspray') return { text: `E · 도색 & 수배 해제 (${money(sim.price(150))})`, run: () => { toast(sim!.paynspray()); audio.play('pickup'); } }; return { text: 'E · 차량 하차' }; }
+    if (p.vehicle) { if (poi?.kind === 'paynspray') return { text: `E · 도색 & 수배 해제 (${money(sim.price(150))})`, run: () => runCashAction(() => sim!.paynspray()) }; return { text: 'E · 차량 하차' }; }
     if (poi?.kind === 'gunshop') return { text: 'E · 총기점', run: openShop };
     if (poi?.kind === 'dealer') return { text: 'E · 자동차 매장', run: () => openUi('dealer') };
     if (poi?.kind === 'casino') return { text: 'E · 카지노', run: () => openUi('casino') };
-    if (poi?.kind === 'hospital') { if (p.hp < p.maxHp || p.armor < 40) return { text: `E · 치료 (${money(sim.price(120))})`, run: () => { toast(treat(sim!)); audio.play('pickup'); } }; }
+    if (poi?.kind === 'hospital') { if (p.hp < p.maxHp || p.armor < 40) return { text: `E · 치료 (${money(sim.price(120))})`, run: () => runCashAction(() => treat(sim!)) }; }
     if (poi?.kind === 'arena') return sim.job.active ? null : { text: `E · 지하 격투 참가 (${money(sim.price(200))})`, run: () => { const r = startJob(sim!, 'fight'); if (r) toast(r); } };
     if (poi?.kind === 'safehouse') return { text: 'E · 쉬기 · 저장', run: () => { toast(sim!.sleep()); } };
     if (poi?.kind === 'start') { const m = MISSION_LIST.find(x => x.startPoi === poi.id); if (m && canStart(sim, m.id)) return { text: `E · 의뢰: ${m.title}`, run: () => openBrief(m.id) }; }
     if (sim.nearestVehicle(p)) return { text: 'E · 차량 탑승' };
-    if (nearVending(sim)) return { text: `E · 음료 (${money(sim.price(8))})`, run: () => { toast(buySnack(sim!)); audio.play('pickup'); } };
-    if (pickpocketTarget(sim)) return { text: 'E · 소매치기', run: () => { toast(pickpocket(sim!)); audio.play('pickup'); } };
+    if (nearVending(sim)) return { text: `E · 음료 (${money(sim.price(8))})`, run: () => runCashAction(() => buySnack(sim!)) };
+    if (pickpocketTarget(sim)) return { text: 'E · 소매치기', run: () => runCashAction(() => pickpocket(sim!)) };
     return null;
   }
   function useAction(): void { if (!sim?.player.alive || sim.downKind || modalKind) return; const it = interaction(); if (it?.run) { it.run(); audio.play('door'); } else { enterReq = true; } }

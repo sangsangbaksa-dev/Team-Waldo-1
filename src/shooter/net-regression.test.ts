@@ -1,11 +1,45 @@
 import { describe, expect, it } from 'vitest';
 import { WEAPONS } from './config';
-import { parsePose, parseShot, plausiblePlayerShot, type NetShot } from './net';
+import { parseNade, parsePose, parseShot, plausibleNadeThrow, plausiblePlayerShot, RemoteNadeLimiter, type NetShot } from './net';
 
 const human = { x: 14, z: -7, air: 0 };
 const shot = (w: NetShot['w'] = 'rifle'): NetShot => ({
   w, ox: 14, oy: 1.5, oz: -7,
   ends: Array.from({length: WEAPONS[w].pellets}, () => [27, 1.5, -7]).flat(),
+});
+
+describe('ZERO ZONE online grenade sender verification', () => {
+  const player = { x: 12, z: -7, air: 0, veh: -1, alive: true };
+  const nade = { x: 12.5, y: 1.55, z: -6.8, vx: 17, vy: 5, vz: 0 };
+
+  it('accepts ordinary throws and rejects impossible origins or launch speeds', () => {
+    expect(plausibleNadeThrow(nade, player)).toBe(true);
+    expect(plausibleNadeThrow({...nade,x:200},player)).toBe(false);
+    expect(plausibleNadeThrow({...nade,z:400},player)).toBe(false);
+    expect(plausibleNadeThrow({...nade,y:40},player)).toBe(false);
+    expect(plausibleNadeThrow({...nade,vx:75},player)).toBe(false);
+    expect(plausibleNadeThrow({...nade,vy:Infinity},player)).toBe(false);
+  });
+  it('does not allow parachute, vehicle or dead-player grenade spawns', () => {
+    expect(plausibleNadeThrow(nade,{...player,air:3})).toBe(false);
+    expect(plausibleNadeThrow(nade,{...player,veh:2})).toBe(false);
+    expect(plausibleNadeThrow(nade,{...player,alive:false})).toBe(false);
+  });
+  it('throttles forged repeated grenades but preserves different AI owners', () => {
+    const limiter = new RemoteNadeLimiter();
+    expect(limiter.allow(1,100)).toBe(true);
+    expect(limiter.allow(1,100)).toBe(false);
+    expect(limiter.allow(1,200)).toBe(false);
+    expect(limiter.allow(2,200)).toBe(true);
+    expect(limiter.allow(1,1100)).toBe(true);
+    expect(limiter.allow(1,1000)).toBe(false);
+    expect(limiter.allow(1,Infinity)).toBe(false);
+  });
+  it('retains the same accepted throw after network payload parsing', () => {
+    const parsed = parseNade({t:'nd',o:1,...nade});
+    expect(parsed).not.toBeNull();
+    expect(plausibleNadeThrow(parsed!,player)).toBe(true);
+  });
 });
 
 describe('ZERO ZONE remote pose bounds', () => {

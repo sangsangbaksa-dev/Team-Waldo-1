@@ -113,9 +113,33 @@ export function startJob(sim: Sim, id: string): string {
     if (!lane) { sim.job = blankJobState(); return '회수 차량을 둘 안전한 도로가 없습니다'; }
     const v = sim.spawnVehicle(kind, lane.x, lane.z, lane.h, { keep: true, tag: 'job', locked: false, color: 0x8a3fa0 }); v.mode = 'parked'; v.input.brake = 1; j.ids.car = v.id; j.timer = 280;
   } else if (id === 'trial') {
-    const pts: Array<{ x: number; z: number }> = []; let from: { x: number; z: number } = p;
-    for (let i = 0; i < 5; i++) { let best = sim.map.lanes[0]!, bs = Infinity; for (let k = 0; k < 80; k++) { const l = sim.map.lanes[Math.floor(sim.rng() * sim.map.lanes.length)]!, d = dist(l, from), sc = Math.abs(d - 190); if (sc < bs) { bs = sc; best = l; } } pts.push(best); from = best; }
-    pts.forEach((q, i) => { j.data[`x${i}`] = q.x; j.data[`z${i}`] = q.z; }); j.timer = 55 + 5 * 38; j.data.total = 5;
+    const lanes = sim.map.lanes;
+    const checkpoints: LaneNode[] = [], used = new Set<number>();
+    let from: { x: number; z: number } = p;
+    // Do not silently create five identical checkpoints on a malformed or
+    // truncated road graph. Never dereference undefined when no lanes exist.
+    for (let i = 0; i < 5; i++) {
+      let best: LaneNode | null = null, score = Infinity;
+      for (let k = 0; k < 80; k++) {
+        const lane = lanes[Math.floor(sim.rng() * lanes.length)];
+        if (!lane || used.has(lane.id)) continue;
+        const d = dist(lane, from), value = Math.abs(d - 190);
+        if (value < score) { score = value; best = lane; }
+      }
+      if (!best) {
+        // A full deterministic scan recovers valid positions in sparse graphs,
+        // where repeated random samples may miss a last unused lane.
+        for (const lane of lanes) {
+          if (used.has(lane.id)) continue;
+          const value = Math.abs(dist(lane, from) - 190);
+          if (value < score) { score = value; best = lane; }
+        }
+      }
+      if (!best) { sim.job = blankJobState(); return '경주 경로를 찾을 수 없습니다'; }
+      used.add(best.id); checkpoints.push(best); from = best;
+    }
+    checkpoints.forEach((q, i) => { j.data[`x${i}`] = q.x; j.data[`z${i}`] = q.z; });
+    j.timer = 55 + 5 * 38; j.data.total = 5;
   } else if (id === 'getaway') {
     const b = poi(sim, 'bank0'); j.data.x = b.x; j.data.z = b.z; j.timer = 300; j.data.wait = 0;
     const homes = sim.map.pois.filter(q => q.kind === 'safehouse').sort((a, b2) => dist(b2, b) - dist(a, b));

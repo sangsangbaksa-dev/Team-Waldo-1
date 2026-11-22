@@ -134,3 +134,26 @@ describe('OUTLAW side job parking and start safety', () => {
     expect(sim.vehicles.some(v=>v.tag==='job')).toBe(false);
   });
 });
+
+describe('OUTLAW time trial checkpoint integrity', () => {
+  it('refuses to begin without a road graph instead of crashing the game', () => {
+    const sim = new Sim(101);
+    sim.map.lanes = [];
+    expect(startJob(sim,'trial')).toContain('경주 경로');
+    expect(sim.job.active).toBe('');
+    expect(sim.job.markers).toHaveLength(0);
+  });
+  it('never builds five repeated checkpoints from fewer than five lanes', () => {
+    const sim = new Sim(103);
+    sim.map.lanes = sim.map.lanes.slice(0, 3);
+    expect(startJob(sim,'trial')).toContain('경주 경로');
+    expect(sim.job.active).toBe('');
+  });
+  it('keeps all five checkpoints distinct on the real generated city', () => {
+    const sim = new Sim(105);
+    expect(startJob(sim,'trial')).toBe('');
+    const points = Array.from({length:5},(_,i) => [sim.job.data[`x${i}`],sim.job.data[`z${i}`]].join(':'));
+    expect(new Set(points).size).toBe(5);
+    expect(sim.job.data.total).toBe(5);
+  });
+});

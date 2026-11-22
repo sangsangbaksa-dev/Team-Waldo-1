@@ -321,11 +321,13 @@ export function openRace(onExit: () => void): void {
 
   function frame(now: number): void {
     if (closed) return; raf = requestAnimationFrame(frame);
+    if (race.player.out !== undefined && finishedShown) return;
     const elapsed = Math.max(0, (now - last) / 1000 || 0.016), dt = Math.min(0.1, elapsed); last = now;
     if (!paused && view) {
       if (race.phase !== 'done') race.clock += Math.max(0, elapsed - Math.min(dt, 6 * STEP));
       acc += dt; let steps = 0; const input = readInput();
       while (acc >= STEP && steps < 6 && race.phase !== 'done') { handle(updateRace(race, STEP, input, now)); acc -= STEP; steps++; }
+      if (race.player.out !== undefined && finishedShown) { audio.drive(0, 0, 0, false, false, false); hud(0); return; }
       if (steps === 6) acc = 0;
       const c = race.player.car; audio.drive(c.vf, input.throttle, c.slip, boosting(c), c.drifting, wallHit > 0);
       // 니트로를 누르는 순간 쾅 터지고, 드리프트에 들어가는 순간 타이어가 찢어지는 소리가 납니다.

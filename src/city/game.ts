@@ -505,6 +505,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (closed) return; const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, w = world;
     if (!w) return; const f = w.factions[0];
     if (chatOpen) return; // 입력 칸이 자체 키를 처리합니다
+    if (tut && k === 'Enter' && locked && !STEPS[tut.s.i]?.info && !paused && !e.repeat) { e.preventDefault(); act('tutskip'); return; }
     if (k === 'Enter' && chatLive() && !paused && !w.over && f.pending === 0 && !(e.target instanceof Element && e.target.closest('button,a,select,textarea'))) { e.preventDefault(); openChat(); return; }
     if (f.pending > 0) { if (!e.repeat && k >= '1' && k <= '3') act(`perk:${Number(k) - 1}`); return; }
     if (k === 'Escape') { if (ghost) ghost = null; else if (!bigmap.hidden) { bigmap.hidden = true; lock(); } else if (!q('#c-missions').hidden) { q('#c-missions').hidden = true; lock(); } else if (!panel.hidden) { panel.hidden = true; shopOpen = false; lock(); } else if (paused) act('resume'); else pause(); return; }

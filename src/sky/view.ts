@@ -101,7 +101,7 @@ export class SkyView {
   private rings: { mesh: THREE.Mesh; life: number; max: number }[] = [];
   private cloudTex: THREE.CanvasTexture; private sunTex: THREE.CanvasTexture;
   private readonly quality = readPreferences().quality; private readonly reducedMotion = readPreferences().reducedMotion;
-  private seaTime = { value: 0 };
+  private seaTime = { value: 0 }; private seaOrigin = { value: new THREE.Vector2() };
   private atmosphereTextures: THREE.Texture[] = [];
   private environment?: THREE.Texture;
   private readonly v1 = new THREE.Vector3(); private readonly v2 = new THREE.Vector3(); private readonly v3 = new THREE.Vector3(); private readonly v4 = new THREE.Vector3();
@@ -135,9 +135,9 @@ export class SkyView {
     const seaMat = new THREE.MeshStandardMaterial({ color: 0x28687a, metalness: 0.42, roughness: 0.3, normalMap: this.seaNormalMap, normalScale: new THREE.Vector2(0.7, 0.7) });
     this.seaNormalMap.repeat.set(160, 160);
     seaMat.onBeforeCompile = shader => {
-      shader.uniforms.skyTime = this.seaTime;
-      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float skyTime;').replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed.z += sin(position.x * 0.008 + skyTime * 0.7) * 1.2 + cos(position.y * 0.011 - skyTime * 0.5) * 0.8;');
-      shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform float skyTime;').replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nfloat ripple = sin(vViewPosition.x * 0.035 + skyTime * 0.8) * cos(vViewPosition.z * 0.027 - skyTime * 0.6); roughnessFactor = clamp(roughnessFactor + ripple * 0.11, 0.08, 1.0);').replace('#include <color_fragment>', '#include <color_fragment>\nfloat wave = sin(vViewPosition.x * .022 + skyTime * .5) * cos(vViewPosition.z * .034 - skyTime * .4); float foam = smoothstep(.83, .98, wave) * .16; diffuseColor.rgb = mix(diffuseColor.rgb * (.86 + wave * .08), vec3(.65,.79,.77), foam);');
+      shader.uniforms.skyTime = this.seaTime; shader.uniforms.seaOrigin = this.seaOrigin;
+      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float skyTime; uniform vec2 seaOrigin; varying vec2 vSeaW;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvSeaW = vec2(position.x + seaOrigin.x, position.y - seaOrigin.y); transformed.z += sin(vSeaW.x * 0.008 + skyTime * 0.7) * 1.2 + cos(vSeaW.y * 0.011 - skyTime * 0.5) * 0.8;');
+      shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform float skyTime; varying vec2 vSeaW;').replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nfloat ripple = sin(vSeaW.x * 0.035 + skyTime * 0.8) * cos(vSeaW.y * 0.027 - skyTime * 0.6); roughnessFactor = clamp(roughnessFactor + ripple * 0.11, 0.08, 1.0);').replace('#include <color_fragment>', '#include <color_fragment>\nfloat wave = sin(vSeaW.x * .022 + skyTime * .5) * cos(vSeaW.y * .034 - skyTime * .4); float foam = smoothstep(.83, .98, wave) * .16; diffuseColor.rgb = mix(diffuseColor.rgb * (.86 + wave * .08), vec3(.65,.79,.77), foam);');
     };
     const sea = new THREE.Mesh(new THREE.PlaneGeometry(20000, 20000, 80, 80), seaMat); sea.rotation.x = -Math.PI / 2; sea.position.y = -1; sea.receiveShadow = true; sc.add(sea); this.sea = sea;
     // 섬 지형
@@ -260,10 +260,10 @@ export class SkyView {
     // 하늘·바다가 카메라를 따라감(무한한 느낌)
     for (let i = this.rings.length - 1; i >= 0; i--) { const r = this.rings[i]; r.life -= dt; const k = Math.max(0, r.life / 0.45); r.mesh.scale.setScalar(r.max * (1 - k) + 1); (r.mesh.material as THREE.MeshBasicMaterial).opacity = k * 0.7; if (r.life <= 0) { this.scene.remove(r.mesh); this.disposeObject(r.mesh); this.rings.splice(i, 1); } }
     this.seaTime.value = this.reducedMotion ? 0 : time;
-    if (!this.reducedMotion) this.seaNormalMap.offset.set(time * 0.004, time * 0.0027);
     if (this.sun.castShadow) { const pp = sim.player.pos; this.sun.target.position.set(pp.x, 0, pp.z); this.sun.position.copy(this.sun.target.position).addScaledVector(this.shadowSun, 2200); }
     if (!this.reducedMotion) for (const cloud of this.clouds) { cloud.position.x += 6 * dt; if (cloud.position.x > 3600) cloud.position.x -= 7200; }
-    this.dome.position.copy(this.camera.position); this.sunGlow.position.copy(this.camera.position).addScaledVector(this.v1.copy(this.sun.position).normalize(), 7000); this.sea.position.x = this.camera.position.x; this.sea.position.z = this.camera.position.z;
+    this.dome.position.copy(this.camera.position); this.sunGlow.position.copy(this.camera.position).addScaledVector(this.v1.copy(this.sun.position).normalize(), 7000); this.sea.position.x = this.camera.position.x; this.sea.position.z = this.camera.position.z; this.seaOrigin.value.set(this.camera.position.x, this.camera.position.z); // 바다 무늬를 월드에 고정(카메라를 따라다니면 정지한 듯 보임)
+    this.seaNormalMap.offset.set((this.reducedMotion ? 0 : time * 0.004) + this.camera.position.x / 125, (this.reducedMotion ? 0 : time * 0.0027) - this.camera.position.z / 125);
   }
 
   /** 추적 카메라(부드러운 지연 + 속도감 FOV + 폭발 흔들림). boost: 0~1 */

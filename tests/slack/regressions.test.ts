@@ -61,3 +61,28 @@ it('resets the battle HUD immediately for a fresh round', () => {
   battle.reset();
   expect(battle).toMatchObject({ ore: 100, score: 0, time: 0, prod: 0, over: null, cap: '' });
 });
+
+it('ignores NaN/infinite dimensions and invalid scale factors during canvas resizing', () => {
+  const canvas = document.createElement('canvas');
+  resizeBattleCanvas(canvas, 160, 90, 1);
+  expect([canvas.width, canvas.height]).toEqual([160, 90]);
+  for (const n of [NaN, Infinity, -Infinity]) {
+    resizeBattleCanvas(canvas, n, 90, 1);
+    resizeBattleCanvas(canvas, 160, n, 1);
+    expect([canvas.width, canvas.height]).toEqual([160, 90]);
+  }
+  resizeBattleCanvas(canvas, 160, 90, -2);
+  expect([canvas.width, canvas.height]).toEqual([160, 90]);
+  resizeBattleCanvas(canvas, 160, 90, Infinity);
+  expect([canvas.width, canvas.height]).toEqual([160, 90]);
+});
+
+it('ignores invalid or negative minigame frame deltas without corrupting simulation state', () => {
+  const battle = createBattle(true);
+  const initial = { time: battle.time, ore: battle.ore, prod: battle.prod, score: battle.score };
+  for (const dt of [NaN, Infinity, -Infinity, -1, 0]) battle.update(dt);
+  expect({ time: battle.time, ore: battle.ore, prod: battle.prod, score: battle.score }).toEqual(initial);
+  battle.update(0.1);
+  expect(battle.time).toBeCloseTo(0.1);
+  expect(Number.isFinite(battle.ore)).toBe(true);
+});

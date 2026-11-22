@@ -13,7 +13,8 @@ export class WeatherFx {
     if (n) {
       const r = makeRng(map.seed + 311); this.pos = new Float32Array(n * 6); this.off = new Float32Array(n * 3);
       for (let i = 0; i < n; i++) { this.off[i * 3] = (r() - 0.5) * BOX * 2; this.off[i * 3 + 1] = r() * TALL; this.off[i * 3 + 2] = (r() - 0.5) * BOX * 2; }
-      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
+      // Rain positions are rewritten every frame; hint dynamic GPU uploads.
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
       this.rain = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0xb8c6d6, transparent: true, opacity: 0.3, depthWrite: false })); this.rain.frustumCulled = false; this.group.add(this.rain);
     }
     // 안개 덩어리: 지형 곁에만 깔아 마을은 선명하게 둡니다

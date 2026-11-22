@@ -6,13 +6,15 @@ import { surfaceAt, moveCircle, districtAt } from './world';
 const RADIUS = 190, CELL = 25;
 type Point = { x: number; z: number };
 type Memory = { x: number; z: number; stuck: number; speed: number; scream: number; last: number; mode: string };
-type State = { map: CityMap; points: Map<string, Point[]>; memories: WeakMap<Ped, Memory>; eventIndex: number; events: Sim['events']; tick: number; stream: number; count: number; target: number };
+type State = { map: CityMap; points: Map<number, Point[]>; memories: WeakMap<Ped, Memory>; eventIndex: number; events: Sim['events']; tick: number; stream: number; count: number; target: number };
 const states = new WeakMap<Sim, State>();
-const key = (x: number, z: number): string => `${x},${z}`;
+// Compact numeric cell coordinates: avoid allocating strings during every
+// civilian waypoint query in crowded districts.
+const key = (x: number, z: number): number => (x + 2048) * 4096 + z + 2048;
 const civil = (p: Ped): boolean => p.id !== 1 && (p.kind === 'civ' || p.team === 'civ');
 function stateFor(sim: Sim): State {
   let s = states.get(sim); if (s && s.map === sim.map) return s;
-  const points = new Map<string, Point[]>();
+  const points = new Map<number, Point[]>();
   for (const p of sim.map.walkPoints) { const k = key(Math.floor(p.x / CELL), Math.floor(p.z / CELL)), a = points.get(k); if (a) a.push(p); else points.set(k, [p]); }
   s = { map: sim.map, points, memories: new WeakMap(), eventIndex: 0, events: sim.events, tick: 0, stream: 0, count: 0, target: 25 }; states.set(sim, s); return s;
 }
@@ -50,10 +52,10 @@ export function stepPeds(sim: Sim, dt: number): void {
     s.count = 0; let removed = 0;
     for (let i = sim.peds.length - 1; i >= 0; i--) { const p = sim.peds[i]; if (!civil(p) || !p.alive) continue; const dx = p.x - player.x, dz = p.z - player.z; if (!p.vehicle && !p.keep && dx * dx + dz * dz > (RADIUS * 1.15) ** 2 && removed < 2) { sim.removePed(p); removed++; } else s.count++; }
     while (s.count > s.target && removed < 2) { let candidate: Ped | undefined, distance = 35 ** 2; for (const p of sim.peds) { if (!civil(p) || !p.alive || p.vehicle || p.keep) continue; const dx = p.x - player.x, dz = p.z - player.z, d = dx * dx + dz * dz; if (d > distance) { candidate = p; distance = d; } } if (!candidate) break; sim.removePed(candidate); s.count--; removed++; }
-    const pts = sim.map.walkPoints; let spawned = 0;
+    const pts = sim.map.walkPoints, facingX = Math.cos(player.yaw), facingZ = Math.sin(player.yaw); let spawned = 0;
     while (s.count < Math.min(66, s.target) && spawned < 2 && pts.length) {
       let best: Point | undefined, bestScore = -Infinity;
-      for (let i = 0; i < 40; i++) { const q = pts[Math.floor(sim.rng() * pts.length)], dx = q.x - player.x, dz = q.z - player.z, d2 = dx * dx + dz * dz; if (d2 < 35 ** 2 || d2 > RADIUS ** 2) continue; const d = Math.sqrt(d2), score = d / RADIUS - (dx * Math.cos(player.yaw) + dz * Math.sin(player.yaw)) / d + sim.rng() * 0.5; if (score > bestScore) { best = q; bestScore = score; } }
+      for (let i = 0; i < 40; i++) { const q = pts[Math.floor(sim.rng() * pts.length)], dx = q.x - player.x, dz = q.z - player.z, d2 = dx * dx + dz * dz; if (d2 < 35 ** 2 || d2 > RADIUS ** 2) continue; const d = Math.sqrt(d2), score = d / RADIUS - (dx * facingX + dz * facingZ) / d + sim.rng() * 0.5; if (score > bestScore) { best = q; bestScore = score; } }
       if (!best) break; sim.spawnPed('civ', best.x, best.z, { variant: Math.floor(sim.rng() * 9) }); s.count++; spawned++;
     }
   }

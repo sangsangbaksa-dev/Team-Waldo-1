@@ -188,11 +188,14 @@ it('supports keyboard-only formation placement with intact focus and budget rule
     canvas = document.querySelector<HTMLCanvasElement>('#sq-field-canvas')!;
   };
   key('ArrowRight'); // Establish keyboard hover in the friendly deployment zone.
+  expect(document.querySelector('#sq-kb-pos')?.textContent).toBe('7열 16행');
   key('Enter');
+  expect(document.querySelector('#sq-kb-pos')?.textContent).toContain('배치됨');
   expect(document.querySelector('.sq-budget strong')?.textContent).toContain('900');
   expect(document.activeElement).toBe(canvas);
   expect(button('#ready')).toBeTruthy(); // Enter did not confirm the entire formation.
   key('Delete');
+  expect(document.querySelector('#sq-kb-pos')?.textContent).toContain('제거됨');
   expect(document.querySelector('.sq-budget strong')?.textContent).toContain('1000');
   key(' ');
   expect(document.querySelector('.sq-budget strong')?.textContent).toContain('900');

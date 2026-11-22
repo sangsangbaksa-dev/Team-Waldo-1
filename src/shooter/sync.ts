@@ -149,8 +149,12 @@ export class WorldSync {
       if (!this.vehs.has(v.id)) { v.x = x; v.z = z; v.yaw = yaw; }
       this.vehs.set(v.id, { x, z, yaw, speed: Math.max(-40, Math.min(40, speed)), at: now });
     } else {
+      // Parked vehicle packets repeat at network frequency. Rebuilding the
+      // collision grid for an identical box is wasted CPU on every message.
+      const relocated = v.moving || Math.abs(v.x - x) > 0.01 || Math.abs(v.z - z) > 0.01 || Math.abs(wrap(v.yaw - yaw)) > 0.005;
       this.vehs.delete(v.id); v.x = x; v.z = z; v.yaw = yaw; v.speed = 0;
-      v.moving = false; m.parkBox(v, true);
+      v.moving = false;
+      if (relocated) m.parkBox(v, true);
     }
     const d = isInt(driver, -1, m.players.length - 1) ? driver : -1;
     if (d !== v.driver) {

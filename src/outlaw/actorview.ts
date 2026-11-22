@@ -378,11 +378,17 @@ export class ActorView {
         for (let i = 0; i < (this.quality === 'low' ? 6 : 12); i++) this.emit('smoke', e.x + (Math.random() - 0.5) * e.r, e.y + i * 0.45, e.z + (Math.random() - 0.5) * e.r, 0x25262b, 1.8 + Math.random() * 2, 3 + Math.random() * 2, (Math.random() - 0.5) * 0.7, 1.8, 0, 1.8);
         const light = this.lights.find(l => l.intensity < 1) ?? this.lights[0]; if (light) { light.position.set(e.x, e.y + 2, e.z); light.intensity = 55; }
       } else if (e.t === 'crash') {
-        if (Math.hypot(e.x - this.cameraPos.x, e.z - this.cameraPos.z) < 160) this.burst(e.x, (this.sim.vehicles.find(v => v.id === e.id)?.y ?? 0) + 0.6, e.z, Math.ceil(e.power));
+        if (Math.hypot(e.x - this.cameraPos.x, e.z - this.cameraPos.z) < 160) this.burst(e.x, (this.sim.vehicle(e.id)?.y ?? 0) + 0.6, e.z, Math.ceil(e.power));
       } else if (e.t === 'death') {
-        const p = this.sim.peds.find(p => p.id === e.id); if (p) { const f = this.emit('pool', p.x, p.y + 0.025, p.z, 0x641f30, 0.8, 22, 0, 0, 0, 0.035); f.alpha = 0.24; }
+        const p = this.sim.ped(e.id);
+        // Blood decals are not frustum-culled. Distant streaming deaths were
+        // stealing the finite decal pool from nearby visible combat.
+        if (p && (p.x - this.cameraPos.x) ** 2 + (p.z - this.cameraPos.z) ** 2 < 160 ** 2) {
+          const f = this.emit('pool', p.x, p.y + 0.025, p.z, 0x641f30, 0.8, 22, 0, 0, 0, 0.035);
+          f.alpha = 0.24;
+        }
       } else if (e.t === 'wreck') {
-        const v = this.sim.vehicles.find(v => v.id === e.id); if (v && Math.hypot(v.x - this.cameraPos.x, v.z - this.cameraPos.z) < 320) this.burst(v.x, v.y + 1, v.z, 20);
+        const v = this.sim.vehicle(e.id); if (v && Math.hypot(v.x - this.cameraPos.x, v.z - this.cameraPos.z) < 320) this.burst(v.x, v.y + 1, v.z, 20);
       }
     }
   }

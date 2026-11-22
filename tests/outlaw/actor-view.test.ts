@@ -60,3 +60,16 @@ it('shares the marker beam vertex geometry across visible POIs', () => {
   expect(beacons[0].beam.geometry).toBe(beacons[1].beam.geometry);
   view.dispose();
 });
+
+it('ignores distant death decals so nearby firefights keep their finite decal budget', () => {
+  const sim = new Sim(83);
+  const far = sim.spawnPed('gang', sim.player.x + 500, sim.player.z);
+  const view = new ActorView(new THREE.Scene(), sim, null, 'low');
+  const pool = (view as unknown as { fx: Array<{ kind: string; life: number }> }).fx;
+  view.handle([{ t:'death', id:far.id, by:sim.player.id, weapon:'fist' }]);
+  expect(pool.some(f=>f.kind==='pool'&&f.life>0)).toBe(false);
+  const near = sim.spawnPed('gang', sim.player.x + 4, sim.player.z);
+  view.handle([{ t:'death', id:near.id, by:sim.player.id, weapon:'fist' }]);
+  expect(pool.some(f=>f.kind==='pool'&&f.life>0)).toBe(true);
+  view.dispose();
+});

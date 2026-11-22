@@ -10,6 +10,8 @@ export interface SquadHooks {
   onGone(reason: 'bye' | 'silent' | 'never'): void;
 }
 const TICK_MS = 2000, SILENT_MS = 20000, NEVER_MS = 30000, MAX_UNITS = 40, MAX_ROUNDS = 64;
+/** Drawn rounds can extend a best-of-three match; keep messages bounded. */
+export const validRound = (value: unknown): value is number => Number.isSafeInteger(value) && typeof value === 'number' && value >= 1 && value <= MAX_ROUNDS;
 export function parseArmy(raw: unknown): Placement[] | null {
   if (!Array.isArray(raw) || raw.length > MAX_UNITS) return null;
   const out: Placement[] = [];
@@ -47,7 +49,7 @@ export class SquadPvp {
   }
   private onMsg(m: NetMsg): void {
     this.last = performance.now(); this.heard = true;
-    if (m.t === 'army') { const r = m.r, a = parseArmy(m.a); if (Number.isInteger(r) && (r as number) >= 1 && (r as number) <= MAX_ROUNDS && a) this.hooks.onArmy(r as number, a); }
+    if (m.t === 'army') { const r = m.r, a = parseArmy(m.a); if (validRound(r) && a) this.hooks.onArmy(r as number, a); }
     else if (m.t === 'bye') { if (m.fin === true) this.finished = true; else this.gone('bye'); }
   }
 }

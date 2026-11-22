@@ -180,24 +180,53 @@ function startTaxi(sim: Sim, v: Vehicle): boolean {
   begin(sim, 'taxi', 40); const a = sim.activity, p = sim.spawnPed('civ', q.x, q.z, { keep: true, tag: 'activity:taxi', mode: 'scripted', loot: 0 });
   a.ids.customer = p.id; a.ids.taxi = v.id; a.data.goalX = goal.x; a.data.goalZ = goal.z; a.data.taxiHp = v.hp; a.data.fareDistance = distance(v, goal); a.markers = [marker(q.x, q.z, 2, YELLOW, '손님')]; return true;
 }
-function startRace(sim: Sim): boolean {
-  const v = sim.vehicle(sim.player.vehicle); if (!v || v.driver !== PLAYER_ID || v.wrecked || v.hp <= 0) return false;
+/** Choose the legal race loop in a single pass per checkpoint. The old
+ * filter + distance sort allocated and sorted up to thousands of candidates
+ * six times per attempt, causing a visible hitch when street races started. */
+export function selectRaceCheckpoints(sim: Sim, v: Vehicle): Array<{ x: number; z: number }> {
   const lanes = sim.map.lanes.filter(p => p.light === -1 && surfaceAt(sim.map, p.x, p.z) === 'road' && isOpen(sim.map, p.x, p.z, 3));
   const angle = sim.rng() * Math.PI * 2;
   for (let attempt = 0; attempt < 16; attempt++) {
-    const radius = 110 + sim.rng() * 45, turn = angle + attempt * 0.39, points: typeof lanes = [];
+    const radius = 110 + sim.rng() * 45, turn = angle + attempt * 0.39;
+    const points: typeof lanes = [];
     for (let i = 0; i < 6; i++) {
-      const theta = turn + i * Math.PI / 3, x = v.x + radius * (Math.cos(theta) - Math.cos(turn)), z = v.z + radius * (Math.sin(theta) - Math.sin(turn));
-      const candidates = lanes.filter(p => (!points.length ? distance(p, v) < 45 : distance(p, points[points.length - 1]) >= 90 && distance(p, points[points.length - 1]) <= 200) && (i !== 5 || (distance(p, points[0]) >= 90 && distance(p, points[0]) <= 200)));
-      candidates.sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z));
-      if (!candidates.length) break; points.push(candidates[0]);
+      const theta = turn + i * Math.PI / 3;
+      const x = v.x + radius * (Math.cos(theta) - Math.cos(turn));
+      const z = v.z + radius * (Math.sin(theta) - Math.sin(turn));
+      const prev = points[points.length - 1], first = points[0];
+      let chosen: typeof lanes[number] | undefined, nearest = Infinity;
+      for (const p of lanes) {
+        if (!prev) {
+          if ((p.x-v.x)**2 + (p.z-v.z)**2 >= 45**2) continue;
+        } else {
+          const separation = (p.x-prev.x)**2 + (p.z-prev.z)**2;
+          if (separation < 90**2 || separation > 200**2) continue;
+        }
+        if (i === 5) {
+          const closing = (p.x-first.x)**2 + (p.z-first.z)**2;
+          if (closing < 90**2 || closing > 200**2) continue;
+        }
+        const error = (p.x - x)**2 + (p.z - z)**2;
+        if (error < nearest) { chosen = p; nearest = error; }
+      }
+      if (!chosen) break;
+      points.push(chosen);
     }
-    if (points.length !== 6) continue;
-    begin(sim, 'race', 75); const a = sim.activity; a.data.raceOut = 0; a.data.raceIndex = 0;
-    points.forEach((p, i) => { a.data[`raceX${i}`] = p.x; a.data[`raceZ${i}`] = p.z; });
-    a.markers = points.map((p, i) => marker(p.x, p.z, 9, YELLOW, `체크포인트 ${i + 1}`)); return true;
+    if (points.length === 6) return points;
   }
-  return false;
+  return [];
+}
+function startRace(sim: Sim): boolean {
+  const v = sim.vehicle(sim.player.vehicle);
+  if (!v || v.driver !== PLAYER_ID || v.wrecked || v.hp <= 0) return false;
+  const points = selectRaceCheckpoints(sim, v);
+  if (points.length !== 6) return false;
+  begin(sim, 'race', 75);
+  const a = sim.activity;
+  a.data.raceOut = 0; a.data.raceIndex = 0;
+  points.forEach((p, i) => { a.data[`raceX${i}`] = p.x; a.data[`raceZ${i}`] = p.z; });
+  a.markers = points.map((p, i) => marker(p.x, p.z, 9, YELLOW, `체크포인트 ${i + 1}`));
+  return true;
 }
 function startExport(sim: Sim): boolean {
   const dock = sim.map.pois.find(p => p.kind === 'chopshop');

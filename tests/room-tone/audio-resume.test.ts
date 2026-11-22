@@ -25,15 +25,23 @@ describe("ROOM TONE WebAudio suspend and resume",()=>{
   it("starts the heartbeat after asynchronous audio resume",async()=>{
     vi.useFakeTimers();
     const {sound,ctx}=harness();
+    let completeResume:()=>void=()=>{};
+    ctx.resume=vi.fn(()=>new Promise<void>(resolve=>{
+      completeResume=()=>{
+        ctx.state="running";
+        resolve();
+      };
+    }));
     sound.pause(false);
+    await Promise.resolve();
     expect(ctx.resume).toHaveBeenCalledOnce();
     expect(sound.clock).toBeNull();
-    await Promise.resolve();
-    await Promise.resolve();
+    completeResume();
+    await sound.powerQueue;
     expect(sound.clock).not.toBeNull();
     sound.pause(true);
     expect(sound.clock).toBeNull();
-    await Promise.resolve();
+    await sound.powerQueue;
     expect(ctx.suspend).toHaveBeenCalledOnce();
   });
   it("never resurrects a timer after a later pause or mute",async()=>{
@@ -64,8 +72,7 @@ describe("ROOM TONE WebAudio suspend and resume",()=>{
     const close=vi.fn(async()=>{ctx.state="closed";});
     Object.assign(ctx,{close});
     sound.pause(false);
-    await Promise.resolve();
-    await Promise.resolve();
+    await sound.powerQueue;
     expect(sound.clock).not.toBeNull();
     sound.dispose();
     expect(sound.clock).toBeNull();

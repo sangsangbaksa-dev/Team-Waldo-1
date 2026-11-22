@@ -125,8 +125,10 @@ function updateDraft(r: RaceState, dt: number): void {
 
 const IDLE: CarInput = { throttle: 0, brake: 0, steer: 0, drift: false, nitro: false };
 
-export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): RaceEvent[] {
-  const ev: RaceEvent[] = [], t = r.track;
+export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0, output?: RaceEvent[]): RaceEvent[] {
+  // UI runs physics at 90Hz. Reuse its buffer while retaining the old fresh-array public API.
+  const ev: RaceEvent[] = output ?? [], t = r.track;
+  if(output)output.length=0;
   if(!Number.isFinite(dt)||dt<=0)return ev;
   const clockBefore=r.clock;
   if (r.phase !== 'done') r.clock += dt;

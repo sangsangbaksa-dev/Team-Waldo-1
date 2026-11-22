@@ -55,6 +55,7 @@ export function openRace(onExit: () => void): void {
   const keys = new Set<string>(), hold = { left: false, right: false, brake: false, drift: false, nitro: false, gas: false };
   const clearInput = (): void => { keys.clear(); for (const k of Object.keys(hold) as Array<keyof typeof hold>) hold[k] = false; root.querySelectorAll('[data-hold].down').forEach(b => b.classList.remove('down')); };
   let driftBests = readDriftBests(), nitroWas = false, driftWas = false;
+  const tickEvents: RaceEvent[] = [];
   const cache = new Map<string, string>(); const setText = (id: string, v: string): void => { if (cache.get(id) !== v) { cache.set(id, v); $(id).textContent = v; } };
 
   const msg = (text: string, kind = ''): void => { const el = $('#rc-msg'); el.textContent = text; el.className = `rc-msg show ${kind}`; msgT = 1.6; };
@@ -62,7 +63,7 @@ export function openRace(onExit: () => void): void {
 
   const dbg = { auto: false };
   const debugGlobal=window as unknown as {__race?:unknown};
-  const debugHook={get race(){return race;},get view(){return view;},dbg,skip(sec:number){if(!Number.isFinite(sec)||sec<=0)return;for(let t=0;t<Math.min(30,sec);t+=STEP)handle(updateRace(race,STEP,readInput()));}};
+  const debugHook={get race(){return race;},get view(){return view;},dbg,skip(sec:number){if(!Number.isFinite(sec)||sec<=0)return;for(let t=0;t<Math.min(30,sec);t+=STEP)handle(updateRace(race,STEP,readInput(),0,tickEvents));}};
   if(import.meta.env.DEV)debugGlobal.__race=debugHook; // 개발용 후크는 화면 종료 시 함께 정리합니다.
   function readInput(): CarInput {
     if (dbg.auto) { const c = race.player.car, ai = aiInput(c, track, { lane: 0, top: race.player.params.top * 0.97, grip: 38, skill: 1, line: 1 }); return { ...ai, nitro: c.nitro > 0.5 && Math.abs(track.k[c.idx]) < 0.002, }; }
@@ -324,7 +325,7 @@ export function openRace(onExit: () => void): void {
     if (!paused && view && !coveredOfflineResult) {
       const plan = framePlan(acc, elapsed); acc = plan.remainder;
       const steps = plan.steps, input = readInput();
-      for (let i = 0; i < steps; i++) handle(updateRace(race, STEP, input, now));
+      for (let i = 0; i < steps; i++) handle(updateRace(race, STEP, input, now, tickEvents));
       const c = race.player.car; audio.drive(c.vf, input.throttle, c.slip, boosting(c), c.drifting, wallHit > 0);
       // 니트로를 누르는 순간 쾅 터지고, 드리프트에 들어가는 순간 타이어가 찢어지는 소리가 납니다.
       const nitroNow = race.phase === 'racing' && input.nitro && c.nitro > 0 && c.boostT > 0, driftNow = c.drifting && race.phase === 'racing';

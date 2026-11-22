@@ -5,7 +5,7 @@ import { CIVILIANS } from '../../shared/character';
 import { makeVehicleMesh } from '../../shared/vehicle';
 import { ContactShadows } from '../../outlaw/contact-shadows';
 import { intersectionFactor } from './signals';
-import { HALF, PITCH, WALK_EDGE, WORLD_HALF, hash01 } from './layout';
+import { HALF, PITCH, ROAD, WALK_EDGE, WORLD_HALF, hash01 } from './layout';
 import type { Quality } from './city';
 
 interface Node { i: number; j: number; sx: number; sz: number }
@@ -90,6 +90,21 @@ export function pedestrianSpeedFactor(cx: number, cz: number, axis: 'x' | 'z', d
   // the rear half of the car. A pedestrian behind the rear bumper is ignored.
   return along > -length / 2 - 0.8 && ahead < 15 && side < 2.55 ? trafficSpeedFactor(ahead) : 1;
 }
+/** Cars clearing an intersection may still block it when the orthogonal
+ * light turns green. Hold approaching traffic behind the crosswalk until
+ * the perpendicular vehicle has finished crossing. Existing vehicles inside
+ * the intersection are never stopped abruptly by this rule.
+ */
+export function crossingTrafficFactor(
+  axis: 'x' | 'z', line: number, position: number, dir: 1 | -1, length: number,
+  crossLine: number, crossPosition: number, crossLength: number,
+): number {
+  const occupied = Math.abs(crossPosition - line) < ROAD / 2 + crossLength / 2 + 1.5;
+  if (!occupied) return 1;
+  const gap = (crossLine - position) * dir - (ROAD / 2 + 3 + length / 2);
+  if (gap < -0.12 || gap > 18) return 1;
+  return gap <= 0.15 ? 0 : trafficSpeedFactor(gap, 0.15, 13);
+}
 function placeCar(c: Car): void {
   const lane = c.dir > 0 ? c.lane : -c.lane;
   if (c.axis === 'x') { c.mesh.position.set(c.t, .025, c.line + lane); c.mesh.rotation.y = c.dir > 0 ? 0 : Math.PI; }
@@ -144,7 +159,21 @@ export class Traffic {
         if (target <= 0) break;
         target = Math.min(target, pedestrianSpeedFactor(px, pz, c.axis, c.dir, c.length, pedestrian.x, pedestrian.z));
       }
-      for (let i = 0; i < count; i++) { const other = this.cars[i]; if (other === c || other.axis !== c.axis || other.line !== c.line || other.dir !== c.dir) continue; const gap = (other.t - c.t) * c.dir; if (gap > 0) target = Math.min(target, trafficSpeedFactor(gap - (c.length + other.length) / 2)); }
+      for (let i = 0; i < count; i++) {
+        const other = this.cars[i];
+        if (other === c) continue;
+        if (other.axis !== c.axis) {
+          // Lights alternate, but a slower car or bus can still be inside the
+          // intersection when its approach goes red.
+          target = Math.min(target, crossingTrafficFactor(
+            c.axis, c.line, c.t, c.dir, c.length, other.line, other.t, other.length,
+          ));
+        } else if (other.line === c.line && other.dir === c.dir) {
+          const gap = (other.t - c.t) * c.dir;
+          if (gap > 0) target = Math.min(target, trafficSpeedFactor(gap - (c.length + other.length) / 2));
+        }
+        if (target === 0) break;
+      }
       // 감속은 안전 우선, 재출발은 부드럽게 가속한다.
       c.base = target < c.base ? target : c.base + (target - c.base) * Math.min(1, dt * 2.5);
       c.t += c.dir * c.speed * c.base * dt; if (c.t > WORLD_HALF - 6) c.t = -WORLD_HALF + 6; if (c.t < -WORLD_HALF + 6) c.t = WORLD_HALF - 6;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { trafficSpeedFactor, pedestrianSpeedFactor } from '../../src/tycoon/scene/people';
+import { trafficSpeedFactor, pedestrianSpeedFactor, crossingTrafficFactor } from '../../src/tycoon/scene/people';
 import { intersectionFactor, signalAspect } from '../../src/tycoon/scene/signals';
 
 describe('HUSTLE traffic safe following', () => {
@@ -62,5 +62,22 @@ describe('HUSTLE traffic overlap clearance', () => {
   it('ignores people safely behind the rear bumper', () => {
     expect(pedestrianSpeedFactor(0, 0, 'x', 1, 4.4, -3.6, 0)).toBe(1);
     expect(pedestrianSpeedFactor(0, 0, 'z', -1, 5, 0, 4)).toBe(1);
+  });
+});
+
+describe('HUSTLE perpendicular intersection occupancy', () => {
+  it('brakes before a crosswalk when a cross-direction bus has not cleared the intersection', () => {
+    // Eastbound sedan at x=7.5 on z=24, bus crossing northbound on x=24.
+    const factor = crossingTrafficFactor('x', 24, 7.5, 1, 4.4, 24, 24, 9.5);
+    expect(factor).toBe(0);
+    expect(crossingTrafficFactor('x', 24, 3, 1, 4.4, 24, 24, 9.5)).toBeGreaterThan(0);
+    // The perpendicular bus has already left the crossing.
+    expect(crossingTrafficFactor('x', 24, 7.5, 1, 4.4, 24, 48, 9.5)).toBe(1);
+  });
+  it('supports negative-direction turns and never stops a vehicle already inside the crossing', () => {
+    expect(crossingTrafficFactor('z', -24, 7.5, -1, 5, -24, -24, 4.4)).toBe(1);
+    expect(crossingTrafficFactor('z', -24, -7.5, -1, 5, -24, -24, 4.4)).toBe(0);
+    expect(crossingTrafficFactor('z', -24, -24, -1, 5, -24, -24, 4.4)).toBe(1);
+    expect(crossingTrafficFactor('x', 24, 24, 1, 4.4, 24, 24, 9.5)).toBe(1);
   });
 });

@@ -238,7 +238,9 @@ export function stepJobs(sim: Sim, dt: number): void {
 }
 
 // ---------- 소매치기 ----------
-const lifted = new WeakMap<Sim, Map<number, number>>();
+// Keep cooldowns on NPC objects, not numeric IDs: removed, streamed-out citizens
+// must not leak memory or block a later citizen that reuses an ID.
+const lifted = new WeakMap<Sim, WeakMap<Ped, number>>();
 export interface PickTarget { ped: Ped; behind: boolean }
 export function pickpocketTarget(sim: Sim): PickTarget | null {
   const p = sim.player; if (!p.alive || p.vehicle || sim.job.active === 'fight') return null;
@@ -249,7 +251,7 @@ export function pickpocketTarget(sim: Sim): PickTarget | null {
     const d = dist(q, p);
     // Do not allow interaction through walls, vehicles on different floors,
     // or already-picked targets still within their cooldown.
-    if (d < bd && (lifted.get(sim)?.get(q.id) ?? -1) < sim.t && sim.canSee(p.x, p.z, q.x, q.z, p.y + 0.9)) {
+    if (d < bd && (lifted.get(sim)?.get(q) ?? -1) < sim.t && sim.canSee(p.x, p.z, q.x, q.z, p.y + 0.9)) {
       bd = d; best = q;
     }
   }
@@ -258,7 +260,7 @@ export function pickpocketTarget(sim: Sim): PickTarget | null {
 }
 export function pickpocket(sim: Sim): string {
   const t = pickpocketTarget(sim); if (!t) return '소매치기할 대상이 없습니다';
-  const m = lifted.get(sim) ?? new Map<number, number>(); lifted.set(sim, m); m.set(t.ped.id, sim.t + 9999); const q = t.ped;
+  const m = lifted.get(sim) ?? new WeakMap<Ped, number>(); lifted.set(sim, m); m.set(t.ped, sim.t + 9999); const q = t.ped;
   if (t.behind || sim.rng() < 0.2) {
     const n = Math.round((20 + sim.rng() * 90) * sim.perk.loot); sim.addCash(n); sim.count('pickpocket'); return `지갑을 슬쩍 · +$${n}`;
   }

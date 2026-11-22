@@ -18,3 +18,15 @@ describe('OUTLAW City interaction visibility', () => {
     expect(sim.cash).toBe(cash);
   });
 });
+
+it('tracks a pickpocket cooldown per citizen, not per recycled numeric ID', () => {
+  const s = new Sim(23), p = s.player;
+  s.canSee = () => true;
+  const first = s.spawnPed('civ', p.x + 1, p.z, { y: p.y, mode: 'idle' });
+  expect(pickpocketTarget(s)?.ped).toBe(first);
+  pickpocket(s);
+  expect(pickpocketTarget(s)).toBeNull();
+  s.removePed(first);
+  const replacement = s.spawnPed('civ', p.x + 1, p.z, { id: first.id, y: p.y, mode: 'idle' });
+  expect(pickpocketTarget(s)?.ped).toBe(replacement);
+});

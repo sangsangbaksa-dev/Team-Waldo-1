@@ -1,20 +1,8 @@
 // 정적 카탈로그: 단계, 구역, 스폿, 업종, 일자리, 이벤트, 해외 시장. 밸런스 숫자는 전부 여기 모은다.
 import type { District, LotSize, ShopKind, SpotDef, Stage } from './types';
+import { stageIndex } from './stages';
 
-export const STAGES: readonly Stage[] = ['broke', 'parttime', 'smallshop', 'bigshop', 'business', 'corp', 'world'];
-
-export const STAGE_NAMES: Record<Stage, string> = {
-  broke: '빈털터리',
-  parttime: '알바생',
-  smallshop: '작은 가게 사장',
-  bigshop: '큰 가게 사장',
-  business: '사업가',
-  corp: '대기업 회장',
-  world: '세계 정복자',
-};
-
-export function stageIndex(stage: Stage): number { return STAGES.indexOf(stage); }
-export function stageAtLeast(stage: Stage, min: Stage): boolean { return stageIndex(stage) >= stageIndex(min); }
+export { STAGES, STAGE_NAMES, stageIndex, stageAtLeast } from './stages';
 
 // ── 시간 ───────────────────────────────────────────────
 /** 실시간 1초 = 게임 6분. 하루 = 4분 */

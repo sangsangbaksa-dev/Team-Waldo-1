@@ -2,13 +2,13 @@ import './style.css';
 import { retireUpgradeSaves } from './shared/retire-upgrades';
 import { readPreferences, writePreferences } from './prefs';
 import { showLoading, retry, retryNote } from './loading';
+import { deferTileImages } from './shared/lazy-images';
 import { readCityCareer, readRaceRecords, readRtsRecords, fmtTime } from './records';
 import { readShooterCareer } from './shooter/records';
 import { readOutlawSummary } from './outlaw/records';
 import { readSkySummary } from './sky/records';
 import { readSlackRecord } from './slack/records';
-import { readTycoonSummary } from './tycoon/core/save';
-import { STAGE_NAMES } from './tycoon/core/data';
+import { readTycoonSummary, STAGE_NAMES } from './tycoon/core/summary';
 import { CHAT_ENABLED, PVP_ENABLED } from './net/config';
 import { setRails } from './shared/rails';
 
@@ -160,7 +160,7 @@ function tile(entry: Entry, index: number): string {
   return `
     <li class="tile-item" style="--tile-index: ${index}">
       <button class="tile" id="start-${entry.id}" type="button" data-game="${entry.id}" aria-describedby="summary-${entry.id}">
-        <span class="tile-media"><img src="${entry.image}" alt="${entry.imageAlt}" width="1280" height="800" ${index === 0 ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async"></span>
+        <span class="tile-media"><img ${index === 0 ? `src="${entry.image}" fetchpriority="high"` : `data-deferred-src="${entry.image}" loading="lazy" fetchpriority="low"`} alt="${entry.imageAlt}" width="1280" height="800" decoding="async"></span>
         <span class="tile-body">
           <span class="tile-genre">${entry.genre}${entry.id === 'room-tone' ? ' · 공포 주의' : ''}</span>
           <span class="tile-name">${entry.name}</span>
@@ -173,7 +173,10 @@ function tile(entry: Entry, index: number): string {
 }
 
 let hubScrollY = 0;
+let stopTileImages: (() => void) | undefined;
 function renderMenu(): void {
+  stopTileImages?.();
+  stopTileImages = undefined;
   setRails(null);
   generation++;
   unsubscribeAccount?.();
@@ -220,13 +223,14 @@ function renderMenu(): void {
     const settleImage = (): void => {
       image.parentElement?.classList.add(image.naturalWidth ? 'is-loaded' : 'is-error');
     };
-    if (image.complete) settleImage();
+    if (image.complete && image.hasAttribute('src')) settleImage();
     else {
       image.addEventListener('load', settleImage, { once: true });
       image.addEventListener('error', settleImage, { once: true });
     }
     button.onclick = () => { void launch(game.id); };
   });
+  stopTileImages = deferTileImages(app);
   wireAccount();
   wireChat();
   if (hubScrollY) requestAnimationFrame(() => window.scrollTo(0, hubScrollY));
@@ -270,6 +274,8 @@ function wireAccount(): void {
 
 async function launch(id: GameId): Promise<void> {
   hubScrollY = window.scrollY;
+  stopTileImages?.();
+  stopTileImages = undefined;
   if (id === 'room-tone') {
     location.assign(`${base}room-tone/`);
     return;

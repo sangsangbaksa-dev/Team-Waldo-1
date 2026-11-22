@@ -13,7 +13,7 @@ body {
   min-height: 100%;
   background: #0c100f;
   color: #efece0;
-  font-family: Arial, "Noto Sans CJK KR", "Apple SD Gothic Neo", sans-serif;
+  font-family: "Noto Sans KR", "Noto Sans CJK KR", "Apple SD Gothic Neo", "Malgun Gothic", Arial, sans-serif;
   word-break: keep-all;
 }
 button,

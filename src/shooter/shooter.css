@@ -266,9 +266,9 @@
 @keyframes sz-zone-tick{0%{opacity:1;filter:brightness(2)}100%{opacity:1;filter:brightness(1)}}
 @media (prefers-reduced-motion:reduce){.sz-feed li,.sz-zonefx.on.tick{animation:none}}
 .sz-banner{top:calc(max(14px,env(safe-area-inset-top)) + 160px);padding:6px 12px;background:#101a19cc;border-left:2px solid #c4df91;font-size:14px;transition:opacity .35s,transform .35s}
-.sz-keys{bottom:10%;width:min(620px,90vw);gap:5px;font-size:12px}
+.sz-keys{bottom:10%;width:min(620px,90vw);gap:5px;font-size:14px}
 .sz-keys span{border-radius:3px;padding:5px 9px;background:#101a19df}
-.sz-keys b{color:#d4eeab}
+.sz-keys b{color:#d4eeab;font-weight:700;letter-spacing:.06em}
 .sz-count{text-shadow:0 3px 0 #1b2c20,0 8px 30px #000;color:#e8f3df}
 @media(max-width:700px){.sz-setup-inner{padding-top:28px}.sz-seg.three{grid-template-columns:1fr}.sz-seg.three .sz-opt{min-height:92px;padding:15px 15px 15px 52px}.sz-seg.three .sz-opt::before{top:18px}.sz-seg.four{grid-template-columns:repeat(4,1fr)}.sz-help{grid-template-columns:1fr}.sz-setup footer button.primary{min-width:140px}.sz-banner{top:calc(max(14px,env(safe-area-inset-top)) + 140px);font-size:12px}.sz-keys{bottom:9%;font-size:11px}.sz-ammo b{font-size:42px}}
 @media(max-height:500px){.sz-banner{top:calc(max(14px,env(safe-area-inset-top)) + 140px)}.sz-keys{bottom:4%}.sz-count{top:48%;font-size:60px}}

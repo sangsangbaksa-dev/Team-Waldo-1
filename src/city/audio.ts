@@ -21,6 +21,7 @@ export class CityAudio {
     this.startRumble(c);
   }
   setEnabled(on: boolean): void { this.eng.setEnabled(on); }
+  setPaused(on: boolean): void { this.eng.setPaused(on); }
   dispose(): void {
     if (this.music !== null) { clearInterval(this.music); this.music = null; }
     try { this.engine?.osc.stop(); } catch { /* already stopped */ }

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { RaceAudio, gearFor } from '../../src/race/audio';
+import { RACE_LEVEL, RaceAudio, gearFor } from '../../src/race/audio';
 import { MASTER_GAIN } from '../../src/audio-core';
 import { installAudioMock, loopGain, setHidden } from '../helpers/audio-mock';
 
@@ -30,9 +30,9 @@ describe('SPEED RUSH audio', () => {
     expect(gearFor(-70)).toBe(gearFor(70));
   });
 
-  it('ties engine pitch to speed and keeps master at 0.15', () => {
+  it('ties engine pitch to speed and keeps master at the level-scaled gain', () => {
     audio.unlock();
-    expect(audio.master?.gain.value).toBe(MASTER_GAIN);
+    expect(audio.master?.gain.value).toBe(MASTER_GAIN * RACE_LEVEL);
     audio.drive(10, 1, 0, false, false, false);
     const mid = mock.context()!.oscillators[0].frequency.value;
     audio.drive(70, 1, 0, true, false, false);
@@ -51,7 +51,7 @@ describe('SPEED RUSH audio', () => {
     audio.setEnabled(false);
     expect(audio.master?.gain.value).toBe(0);
     audio.setEnabled(true);
-    expect(audio.master?.gain.value).toBe(MASTER_GAIN);
+    expect(audio.master?.gain.value).toBe(MASTER_GAIN * RACE_LEVEL);
   });
 
   it('suspends when hidden and stops sources on dispose', () => {

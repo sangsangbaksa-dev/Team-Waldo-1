@@ -1,6 +1,6 @@
 ﻿import '../shared/ui.css';
 import './slack.css';
-import { readPreferences } from '../prefs';
+import { readPreferences, writeSound } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import { createSim, GOALS } from './sim';
 import { createSlackAudio } from './audio';
@@ -70,12 +70,12 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
   const clearView = (): void => { view?.dispose(); view?.el.remove(); view = null; sim = null; };
   const exit = (): void => { if (closed) return; closed = true; cancelAnimationFrame(raf); root.removeEventListener('keydown', keydown); document.removeEventListener('visibilitychange', visibility); clearView(); audio.dispose(); root.remove(); onExit(); };
   const pause = (): void => { if (state === 'play') {
-      state = 'paused'; $('[data-paused]').hidden = false; audio.ambience(null);
+      state = 'paused'; $('[data-paused]').hidden = false; audio.ambience(null); audio.hold(true);
       $('[data-resume]').focus();
       $('.sl-view').inert = true; $('.sl-hud').inert = true; $('[data-tip]').inert = true;
       root.classList.add('sl-paused');
       if (sim) { const s = sim.state; $('[data-pause-stats]').innerHTML = `<li>${stageInfo[stage].name}</li><li>재미 <b>${Math.round(s.fun)}</b> / ${Math.round(s.goal)}</li><li>들킴 <b>${s.strikes}</b> / 3</li>`; }
-    } else if (state === 'paused' && !document.hidden) { state = 'play'; $('[data-paused]').hidden = true; enablePlay(); audio.resume(); audio.ambience(stage); } };
+    } else if (state === 'paused' && !document.hidden) { state = 'play'; $('[data-paused]').hidden = true; enablePlay(); audio.hold(false); audio.resume(); audio.ambience(stage); } };
   const keydown = (e: KeyboardEvent): void => { if (!e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'Escape' || e.key.toLowerCase() === 'p')) { if (state === 'play' || state === 'paused') { e.preventDefault(); pause(); } } };
   const visibility = (): void => { if (document.hidden && state === 'play') pause(); };
   const enablePlay = (): void => {
@@ -89,7 +89,7 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
     const restarting = state !== 'title';
     state = 'loading'; clearView();
     if (restarting) { audio.dispose(); audio = createSlackAudio(); audio.setMuted(muted); }
-    audio.resume();
+    audio.hold(false); audio.resume();
     $('.sl-hud').hidden = true; $('.sl-toast').textContent = ''; toastTime = 0;
     $('[data-title]').hidden = true; $('[data-result]').hidden = true; $('[data-paused]').hidden = true; $('[data-tip]').hidden = true; root.classList.remove('tipping');
     try {
@@ -176,7 +176,7 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
   root.querySelectorAll<HTMLButtonElement>('[data-level]').forEach(b => b.onclick = () => { level = Number(b.dataset.level) as Level; refreshTitle(); });
   $('[data-start]').onclick = () => { if (state === 'title') void start(); }; $('[data-retry]').onclick = () => { if (state === 'result') void start(); }; $('[data-next]').onclick = () => { if (state !== 'result') return; stage = stage === 'class' ? 'dorm' : 'class'; void start(); };
   $('[data-pause]').onclick = pause; $('[data-resume]').onclick = pause; $('[data-restart]').onclick = () => { void start(); }; $('[data-tip-skip]').onclick = endTutorial;
-  root.querySelectorAll<HTMLElement>('[data-sound]').forEach(b => b.onclick = () => { muted = !muted; audio.setMuted(muted); audio.resume(); refreshTitle(); });
+  root.querySelectorAll<HTMLElement>('[data-sound]').forEach(b => b.onclick = () => { muted = !muted; writeSound(!muted); audio.setMuted(muted); audio.resume(); refreshTitle(); });
   root.addEventListener('contextmenu', event => {
     if ((event.target as Element).closest('.sl-cover,.sc-cover-button,.gm canvas')) event.preventDefault();
   });

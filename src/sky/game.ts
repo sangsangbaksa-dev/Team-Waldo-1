@@ -6,7 +6,7 @@ import { SkySim, DIFFS, forward, GUN_RANGE, LOCK_TIME, MAX_SPEED, MIN_SPEED, ter
 import { SkyView } from './view';
 import { SkyAudio } from './audio';
 import { readSkyRecords, recordSkyRun } from './records';
-import { readPreferences } from '../prefs';
+import { readPreferences, writeSound } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import { drawIcon, svgIcon } from './art';
 import { AdaptiveQuality } from '../shared/adaptive';
@@ -39,7 +39,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     <div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-start">시작</button><button class="wd-btn ghost" id="sk-quit">게임 목록으로</button></div>
   </div></div>
   <div class="sk-modal sk-result wd-screen" id="sk-end" hidden><div class="sk-card wd-panel"><div class="wd-eyebrow">MISSION REPORT</div><h2 class="wd-title" id="sk-end-t"></h2><div id="sk-end-s"></div><div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-again">다시 시작</button><button class="wd-btn ghost" id="sk-quit2">게임 목록으로</button></div></div></div>
-  <div class="sk-modal sk-pause-modal wd-screen" id="sk-paused" hidden><div class="sk-card wd-panel"><div class="wd-eyebrow">FLIGHT SUSPENDED</div><h2 class="wd-title">일시정지</h2><p class="wd-lead">잠시 쉬어가세요.</p><div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-resume">이어하기</button><button class="wd-btn ghost" id="sk-quit3">게임 목록으로</button></div></div></div>`;
+  <div class="sk-modal sk-pause-modal wd-screen" id="sk-paused" hidden><div class="sk-card wd-panel"><div class="wd-eyebrow">FLIGHT SUSPENDED</div><h2 class="wd-title">일시정지</h2><p class="wd-lead">잠시 쉬어가세요.</p><div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-resume">이어하기</button><button class="wd-btn ghost" id="sk-snd">소리 켜짐</button><button class="wd-btn ghost" id="sk-quit3">게임 목록으로</button></div></div></div>`;
   document.body.appendChild(root);
   const $ = <T extends HTMLElement>(id: string): T => root.querySelector('#' + id) as T;
   const canvas = root.querySelector<HTMLCanvasElement>('.sk-canvas')!, ov = root.querySelector<HTMLCanvasElement>('.sk-ov')!, octx = ov.getContext('2d')!;
@@ -251,7 +251,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   const dEl = $('sk-diff'); let sel = 1;
   DIFFS.forEach((d, i) => { const b = document.createElement('button'); b.textContent = ({ easy: '쉬움', normal: '보통', hard: '어려움' })[d.id]; b.className = i === sel ? 'on' : ''; b.setAttribute('aria-pressed', String(i === sel)); b.onclick = () => { sel = i; dEl.querySelectorAll('button').forEach((x, k) => { x.classList.toggle('on', k === i); x.setAttribute('aria-pressed', String(k === i)); }); }; dEl.appendChild(b); });
   const rec = readSkyRecords(); $('sk-rec').textContent = rec.runs ? `최고 점수 ${rec.bestScore} · 최고 웨이브 ${rec.bestWave} · 누적 격추 ${rec.kills}` : '첫 출격을 기다립니다';
-  $('sk-start').onclick = () => start(DIFFS[sel]!); $('sk-again').onclick = () => start(DIFFS[sel]!); $('sk-resume').onclick = togglePause; $('sk-pause').onclick = togglePause;
+  $('sk-start').onclick = () => start(DIFFS[sel]!); $('sk-again').onclick = () => start(DIFFS[sel]!); $('sk-resume').onclick = togglePause; const paintSnd = (): void => { $('sk-snd').textContent = `소리 ${audio.enabled ? '켜짐' : '꺼짐'}`; }; $('sk-snd').onclick = () => { audio.setEnabled(!audio.enabled); writeSound(audio.enabled); paintSnd(); }; paintSnd(); $('sk-pause').onclick = togglePause;
   for (const id of ['sk-quit', 'sk-quit2', 'sk-quit3']) $(id).onclick = exit;
   const hold = (id: string, set: (v: boolean) => void): void => { const b = $(id); b.addEventListener('pointerdown', e => { e.stopPropagation(); audio.unlock(); set(true); b.setPointerCapture(e.pointerId); }); b.addEventListener('pointerup', () => set(false)); b.addEventListener('pointercancel', () => set(false)); };
   hold('sk-b-boost', v => { mBoost = v; }); hold('sk-b-fire', v => { mFire = v; }); hold('sk-b-mis', v => { mMissile = v; }); $('sk-b-flare').addEventListener('pointerdown', e => { e.stopPropagation(); flare = true; });

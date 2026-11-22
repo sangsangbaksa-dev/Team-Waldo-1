@@ -171,6 +171,7 @@ export class Sound {
   pause(paused) {
     this.paused = Boolean(paused);
     this.applyLevel();
+    if (this.ctx) void (this.paused ? this.ctx.suspend() : this.ctx.resume()).catch(() => {});
     if (this.paused) {
       if (this.clock !== null) globalThis.clearInterval(this.clock);
       this.clock = null;

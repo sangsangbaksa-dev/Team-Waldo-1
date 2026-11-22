@@ -5,6 +5,7 @@ import { modelBytes } from "./assets.js";
 import { chapters, makeLevel, route, neighbors } from "./levels.mjs";
 import { buildEnvironment, buildHidingSpot } from "./environment.js";
 import { Sound } from "./sound.js";
+import { readSound, writeSound } from "../prefs";
 
 const $ = (id) => document.getElementById(id),
   C = 2.7,
@@ -114,19 +115,20 @@ function save() {
     );
   } catch { /* Browser storage or pointer lock is optional. */ }
 }
-function toggleAudio() {
-  muted = !muted;
+function applyAudio() {
   sound.setMute(muted);
-  try {
-    localStorage.setItem("rt-silent", JSON.stringify(muted));
-  } catch { /* Browser storage or pointer lock is optional. */ }
   for (const b of [$("sound"), $("gsound")]) {
     b.setAttribute("aria-pressed", String(!muted));
     b.querySelector("span").textContent = muted ? "소리 꺼짐" : "소리 켜짐";
   }
 }
-muted = read("waldo.preferences.v1")?.sound !== false;
-toggleAudio();
+function toggleAudio() {
+  muted = !muted;
+  writeSound(!muted);
+  applyAudio();
+}
+muted = !readSound();
+applyAudio();
 $("sound").onclick = $("gsound").onclick = toggleAudio;
 function screens(id) {
   for (const key of ["home", "game"]) $(key).hidden = key !== id;

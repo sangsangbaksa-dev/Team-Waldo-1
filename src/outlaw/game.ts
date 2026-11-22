@@ -6,7 +6,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import '../shared/ui.css';
 import './outlaw.css';
-import { readPreferences, writePreferences } from '../prefs';
+import { readPreferences, writePreferences, writeSound } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import { PVP_ENABLED } from '../net/config';
 import { Sim } from './sim';
@@ -134,7 +134,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     return `<h2>조작법</h2><div class="ol-keys"><div><b>이동</b>WASD · Shift 달리기 · Space 점프 · C 앉기</div><div><b>전투</b>좌클릭 사격 · 우클릭 조준 · R 재장전 · 1~9·0·-/휠 무기 · Q 무기 휠 · 수류탄은 사격 키로 투척</div><div><b>상호작용</b>E / F 차량 · 상점 · 의뢰 · 안전가옥</div><div><b>차량</b>W 가속 · S 브레이크/후진 · A D 조향 · Space 핸드브레이크 · H 경적 · R 라디오 · C 뒤돌아보기</div><div><b>휴대폰</b>P 휴대폰: 일거리·차고·부동산·업적 · 격투장/체육관/카지노/자동차 매장은 E</div><div><b>기타</b>M / Tab 전체 지도 · Esc 일시정지</div></div><p class="hint">아슬아슬한 통과·점프·드리프트·헤드샷은 스타일 보너스가 됩니다. 시민을 해치면 수배 별이 올라갑니다.</p><div class="ol-btns"><button data-k="back" type="button">돌아가기</button></div>`;
   }
   function openPause(): void {
-    openModal('pause', `<p class="wd-eyebrow">OUTLAW CITY</p><h2 class="wd-title">${versus ? '대전 메뉴' : '일시정지'}</h2><div class="ol-btns v wd-actions"><button data-k="resume" type="button" class="wd-btn primary">이어하기</button><button data-k="phone" type="button">휴대폰</button><button data-k="map" type="button">전체 지도</button><button data-k="help" type="button">조작법</button><button data-k="sound" type="button">소리 ${audio.enabled ? '켬' : '끔'}</button><button data-k="quality" type="button">품질: ${prefs.quality === 'high' ? '높음' : prefs.quality === 'standard' ? '보통' : '낮음'} (다음 실행부터)</button><button data-k="quit" type="button" class="danger">${versus ? '대전 나가기' : '저장하고 나가기'}</button></div>`);
+    openModal('pause', `<p class="wd-eyebrow">OUTLAW CITY</p><h2 class="wd-title">${versus ? '대전 메뉴' : '일시정지'}</h2><div class="ol-btns v wd-actions"><button data-k="resume" type="button" class="wd-btn primary">이어하기</button><button data-k="phone" type="button">휴대폰</button><button data-k="map" type="button">전체 지도</button><button data-k="help" type="button">조작법</button><button data-k="sound" type="button">소리 ${audio.enabled ? '켜짐' : '꺼짐'}</button><button data-k="quality" type="button">품질: ${prefs.quality === 'high' ? '높음' : prefs.quality === 'standard' ? '보통' : '낮음'} (다음 실행부터)</button><button data-k="quit" type="button" class="danger">${versus ? '대전 나가기' : '저장하고 나가기'}</button></div>`);
   }
   function openMap(): void {
     openModal('map', `<canvas id="ol-bigmap" width="900" height="780"></canvas><div class="ol-btns"><button data-k="resume" type="button">닫기 (M)</button></div>`);
@@ -170,7 +170,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     else if (k === 'phone') openUi('phone');
     else if (k === 'help') openModal('help', controlsHtml());
     else if (k === 'back') openPause();
-    else if (k === 'sound') { audio.enabled = !audio.enabled; prefs.sound = audio.enabled; writePreferences(prefs); openPause(); }
+    else if (k === 'sound') { audio.enabled = !audio.enabled; prefs.sound = audio.enabled; writeSound(audio.enabled); openPause(); }
     else if (k === 'quality') { prefs.quality = prefs.quality === 'high' ? 'standard' : prefs.quality === 'standard' ? 'low' : 'high'; writePreferences(prefs); openPause(); }
     else if (k === 'quit' || k === 'vsexit') { save(); exit(); }
   });
@@ -253,7 +253,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     else { sim.clock = 16.6; sim.playSec = 0; }
     titleEl.hidden = true; hudEl.hidden = false; phase = 'play'; transT = 0; yaw = sim.player.yaw; pitch = -0.3;
     orbitPos.copy(camera.position); orbitQuat.copy(camera.quaternion); chase?.reset({ x: sim.player.x, y: sim.player.y, z: sim.player.z, yaw: sim.player.yaw, speed: 0 }, { yaw, pitch });
-    audio.play('mission_start');
+    audio.world(true); audio.play('mission_start');
     if (acquirePointer) lock();
   }
 
@@ -585,7 +585,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   }
 
   function frame(now: number): void {
-    if (closed) return; raf = requestAnimationFrame(frame); const dt = Math.min(0.1, (now - last) / 1000), last0 = now - last; last = now;
+    if (closed) return; raf = requestAnimationFrame(frame); audio.setPaused(paused && !versus); const dt = Math.min(0.1, (now - last) / 1000), last0 = now - last; last = now;
     try { tick(dt); if (phase === 'play') adapt(last0); } catch (err) { console.error(err); }
   }
 

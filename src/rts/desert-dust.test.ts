@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import { DesertProps } from './desert';
 import type { RtsMap } from './map';
@@ -15,6 +15,18 @@ function dustField() {
 }
 
 describe('FRONTLINE streaming dust vertex positions', () => {
+  beforeEach(() => {
+    // This visual-only test runs in Vitest's Node environment. A minimal 2D
+    // context is enough to build a CanvasTexture; no browser is necessary.
+    const gradient = { addColorStop: () => undefined };
+    const context = {
+      createRadialGradient: () => gradient,
+      fillStyle: '',
+      fillRect: () => undefined,
+    };
+    vi.stubGlobal('document', { createElement: () => ({ width: 32, height: 32, getContext: () => context }) });
+  });
+  afterEach(() => vi.unstubAllGlobals());
   it('uses the GPU upload array directly without static draw usage', () => {
     const { props, particles } = dustField();
     const attribute = particles.geometry.attributes.position as THREE.BufferAttribute;

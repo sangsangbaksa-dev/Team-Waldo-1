@@ -187,7 +187,10 @@ export function collideBox(map: CityMap, cx: number, cz: number, h: number, half
     if (y0 >= b.top || y1 <= 0) return;
     const bx = (b.x0 + b.x1) / 2, bz = (b.z0 + b.z1) / 2, ex = (b.x1 - b.x0) / 2, ez = (b.z1 - b.z0) / 2;
     let depth = Infinity, nx = 0, nz = 0;
-    for (const [ax, az] of [[1, 0], [0, 1], [c, s], [-s, c]]) {
+    // Four separating axes without allocating 4 arrays per candidate box.
+    for (let axis = 0; axis < 4; axis++) {
+      const ax = axis === 0 ? 1 : axis === 1 ? 0 : axis === 2 ? c : -s;
+      const az = axis === 0 ? 0 : axis === 1 ? 1 : axis === 2 ? s : c;
       const offset = (cx - bx) * ax + (cz - bz) * az;
       const d = halfL * Math.abs(c * ax + s * az) + halfW * Math.abs(-s * ax + c * az) + ex * Math.abs(ax) + ez * Math.abs(az) - Math.abs(offset);
       if (d <= EPS) return;
@@ -200,7 +203,13 @@ export function collideBox(map: CityMap, cx: number, cz: number, h: number, half
 
 function rayBox(b: Box, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
   let lo = 0, hi = maxT;
-  for (const [o, d, min, max] of [[ox, dx, b.x0, b.x1], [oy, dy, 0, b.top], [oz, dz, b.z0, b.z1]]) {
+  // Scalar slab checks: avoid array construction during every AI sight ray
+  // and chase-camera wall probe.
+  for (let axis = 0; axis < 3; axis++) {
+    const o = axis === 0 ? ox : axis === 1 ? oy : oz;
+    const d = axis === 0 ? dx : axis === 1 ? dy : dz;
+    const min = axis === 0 ? b.x0 : axis === 1 ? 0 : b.z0;
+    const max = axis === 0 ? b.x1 : axis === 1 ? b.top : b.z1;
     if (Math.abs(d) < 1e-12) { if (o < min || o > max) return Infinity; }
     else { let a = (min - o) / d, b = (max - o) / d; if (a > b) [a, b] = [b, a]; lo = Math.max(lo, a); hi = Math.min(hi, b); if (lo > hi) return Infinity; }
   }
@@ -213,7 +222,8 @@ export function rayStatic(map: CityMap, ox: number, oy: number, oz: number, dx: 
   // 무한 광선도 유한한 도시 경계로 잘라 빈 셀을 끝없이 순회하지 않습니다.
   const extent = map.half + 64;
   let enter = 0, end = maxT;
-  for (const [o, d] of [[ox, dx], [oz, dz]]) {
+  for (let axis = 0; axis < 2; axis++) {
+    const o = axis === 0 ? ox : oz, d = axis === 0 ? dx : dz;
     if (!d) { if (Math.abs(o) > extent) return Infinity; continue; }
     let a = (-extent - o) / d, b = (extent - o) / d; if (a > b) [a, b] = [b, a]; enter = Math.max(enter, a); end = Math.min(end, b);
   }

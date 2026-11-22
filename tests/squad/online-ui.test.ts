@@ -5,6 +5,7 @@ import type { PvpSession } from '../../src/net/lobby';
 
 const callbacks = vi.hoisted(() => ({
   onMatch: null as null | ((session: PvpSession) => void),
+  onGone: null as null | ((reason: 'bye' | 'silent' | 'never') => void),
   setArmy: vi.fn(), clearArmy: vi.fn(), dispose: vi.fn(),
 }));
 vi.mock('../../src/net/lobby', () => ({
@@ -15,6 +16,9 @@ vi.mock('../../src/net/lobby', () => ({
 }));
 vi.mock('../../src/squad/net', () => ({
   SquadPvp: class {
+    constructor(_session: unknown, hooks: { onGone(reason: 'bye' | 'silent' | 'never'): void }) {
+      callbacks.onGone = hooks.onGone;
+    }
     heard = true;
     setArmy = callbacks.setArmy; clearArmy = callbacks.clearArmy; dispose = callbacks.dispose;
   },
@@ -40,7 +44,7 @@ beforeEach(() => {
   vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
   vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));
   vi.stubGlobal('cancelAnimationFrame', vi.fn());
-  callbacks.onMatch = null;
+  callbacks.onMatch = null; callbacks.onGone = null;
   callbacks.setArmy.mockClear(); callbacks.clearArmy.mockClear(); callbacks.dispose.mockClear();
   localStorage.clear(); document.body.innerHTML = '';
 });
@@ -83,5 +87,26 @@ it('keeps an online deployment deadline without running an idle animation loop',
   leave(); leave();
   expect(callbacks.dispose).toHaveBeenCalledTimes(1);
   expect(button('#exit')).toBeTruthy();
+  button('#exit').click();
+});
+
+it('clears the online formation timer when the opponent forfeits during deployment', async () => {
+  openSquad(vi.fn());
+  button('[data-mode="online"]').click();
+  button('#start').click();
+  await vi.dynamicImportSettled();
+  callbacks.onMatch!({
+    host: true,
+    me: { id: 'blue', nickname: 'Blue' },
+    opponent: { id: 'red', nickname: 'Red' },
+    match: { id: 'match' },
+    backend: { report: vi.fn().mockResolvedValue({ status: 'finished', host_delta: 0, guest_delta: 0 }) },
+  } as unknown as PvpSession);
+  expect(vi.getTimerCount()).toBe(1);
+  callbacks.onGone?.('bye');
+  expect(document.querySelector('.sq-result h2')?.textContent).toContain('최종 승리');
+  expect(vi.getTimerCount()).toBe(0);
+  button('#next').click();
+  expect(callbacks.dispose).toHaveBeenCalledTimes(1);
   button('#exit').click();
 });

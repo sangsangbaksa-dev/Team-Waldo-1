@@ -61,10 +61,14 @@ function random(seed) {
     return ((n ^ (n >>> 14)) >>> 0) / 4294967296;
   };
 }
-export function neighbors(map, id) {
+export function walkable(map, id) {
   const w = map[0]?.length ?? 0;
-  if (!w || !Number.isInteger(id) || id < 0 || id >= w * map.length ||
-      map[Math.floor(id / w)]?.[id % w] !== ".") return [];
+  return w > 0 && Number.isInteger(id) && id >= 0 && id < w * map.length &&
+    map[Math.floor(id / w)]?.[id % w] === ".";
+}
+export function neighbors(map, id) {
+  if (!walkable(map, id)) return [];
+  const w = map[0].length;
   const x = id % w,
     z = Math.floor(id / w);
   return [
@@ -73,15 +77,14 @@ export function neighbors(map, id) {
     [x, z + 1],
     [x, z - 1],
   ]
-    .filter(([a, b]) => map[b]?.[a] && map[b][a] !== "#")
+    .filter(([a, b]) => map[b]?.[a] === ".")
     .map(([a, b]) => b * w + a);
 }
 export function paths(map, start) {
   const prev = new Int32Array(map.length * (map[0]?.length ?? 0)).fill(-2),
     dist = new Int32Array(prev.length).fill(-1),
     q = [];
-  if (!neighbors(map, start).length && map[Math.floor(start / (map[0]?.length || 1))]?.[start % (map[0]?.length || 1)] !== ".")
-    return { prev, dist, q };
+  if (!walkable(map, start)) return { prev, dist, q };
   q.push(start);
   prev[start] = -1;
   dist[start] = 0;

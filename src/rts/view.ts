@@ -1,9 +1,10 @@
 import { renderPixelRatio } from '../shared/render-budget';
+import { disposeSceneResources } from '../shared/render-cleanup';
 // FRONTLINE — 3D 화면: 지형, 유닛·건물 표시, 이펙트, 카메라와 화면 좌표 변환. 시뮬레이션은 읽기만 합니다.
 import * as THREE from 'three';
 import { makePost, type PostFx } from '../postfx';
-import { BUILDINGS, TEAM_COLORS, UNITS, type BuildKind } from './config';
-import { crystalMat, makeBuilding, makeCrystals, makeUnit, matsFor, releaseModelGeometry, type BuildRig, type UnitRig } from './models';
+import { BUILDINGS, UNITS, type BuildKind } from './config';
+import { crystalMat, isSharedRtsMaterial, makeBuilding, makeCrystals, makeUnit, releaseModelGeometry, type BuildRig, type UnitRig } from './models';
 import { DesertProps } from './desert';
 import { Scenery, buildLanes, bushSpots, paintGround } from './scenery';
 import type { Building, ResNode, RtsSim, SimEvent, Unit } from './sim';
@@ -415,9 +416,11 @@ export class RtsView {
   dispose(): void {
     this.delayedFx = [];
     this.desert?.dispose();
-    if (this.contact) (this.contact.material as THREE.MeshBasicMaterial).map?.dispose();
-    this.scene.traverse(o => { if (o instanceof THREE.Mesh || o instanceof THREE.InstancedMesh) { o.geometry.dispose(); const m = o.material; (Array.isArray(m) ? m : [m]).forEach(x => x.dispose()); } });
+    // Character geometry and materials are shared between rounds; they are not
+    // owned by this renderer. Keep them alive when the WebGL context changes.
+    for (const visual of this.units.values()) visual.rig.ch?.root.removeFromParent();
+    disposeSceneResources(this.scene, { keepMaterial: isSharedRtsMaterial });
+    this.ringGeo.dispose();
     this.post?.dispose(); this.fog?.tex.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss();
   }
 }
-void TEAM_COLORS; void matsFor;

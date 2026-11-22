@@ -49,6 +49,32 @@ export interface NetNade { x: number; y: number; z: number; vx: number; vy: numb
 export function parseNade(m: NetMsg): NetNade | null {
   return num(m.x, -1000, 1000) && num(m.y, -5, 60) && num(m.z, -1000, 1000) && num(m.vx, -80, 80) && num(m.vy, -80, 80) && num(m.vz, -80, 80) ? { x: m.x, y: m.y, z: m.z, vx: m.vx, vy: m.vy, vz: m.vz } : null;
 }
+/** A remote grenade must originate near its sender, not from an arbitrary
+ * point in the BR world. Allow positional latency but reject air/vehicle use,
+ * absurd launch velocity and non-finite values.
+ */
+export function plausibleNadeThrow(n: NetNade, thrower: { x: number; z: number; air: number; veh: number; alive: boolean }): boolean {
+  if (!thrower.alive || thrower.air !== 0 || thrower.veh >= 0 ||
+    !num(thrower.x) || !num(thrower.z)) return false;
+  return num(n.x, -1000, 1000) && num(n.z, -1000, 1000) && num(n.y, 0, 5) &&
+    num(n.vx, -35, 35) && num(n.vy, -35, 35) && num(n.vz, -35, 35) &&
+    Math.abs(n.x - thrower.x) <= 25 && Math.abs(n.z - thrower.z) <= 25;
+}
+
+/** Reject duplicate/rapidly spammed remote grenades in the same network match.
+ * Simulation cooldown is 1.2s; permit 1s due to packet scheduling jitter.
+ */
+export class RemoteNadeLimiter {
+  private readonly last = new Map<number, number>();
+  allow(owner: number, now: number): boolean {
+    if (!Number.isInteger(owner) || owner < 0 || !Number.isFinite(now)) return false;
+    const previous = this.last.get(owner);
+    if (previous !== undefined && (now < previous || now - previous < 1000)) return false;
+    this.last.set(owner, now);
+    return true;
+  }
+}
+
 export function nadeMsg(n: NetNade, owner: number): NetMsg { const r = (v: number): number => Math.round(v * 100) / 100; return { t: 'nd', o: owner, x: r(n.x), y: r(n.y), z: r(n.z), vx: r(n.vx), vy: r(n.vy), vz: r(n.vz) }; }
 /** Cheap plausibility guard for a human player's relayed shot.
  * Last known poses may lag the shot, so allow up to 25m of movement instead

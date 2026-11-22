@@ -646,6 +646,7 @@ function leaveHiding(exhausted = false) {
   hideReadyAt = now + 8;
   exitGrace = 1.5;
   $("lightState").textContent = lightOn ? "켜짐" : "꺼짐";
+  $("torch").setAttribute("aria-pressed", String(lightOn));
   player.x = spot.root.position.x - spot.dx * 0.9;
   player.z = spot.root.position.z - spot.dz * 0.9;
   $("viewWrap").classList.remove("hiding");
@@ -668,6 +669,7 @@ function enterHiding(spot) {
   }
   hiddenSpot = spot;
   $("lightState").textContent = "꺼짐";
+  $("torch").setAttribute("aria-pressed", "false");
   hideBreath = 1;
   player.x = spot.root.position.x;
   player.z = spot.root.position.z;
@@ -786,7 +788,8 @@ function renderHUD() {
     : total() === 3
       ? c.station + "으로 돌아가세요."
       : c.item + " 회수  " + total() + " / 3";
-  $("lightState").textContent = lightOn ? "켜짐" : "꺼짐";
+  $("lightState").textContent = lightOn && !hiddenSpot ? "켜짐" : "꺼짐";
+  $("torch").setAttribute("aria-pressed", String(lightOn && !hiddenSpot));
   $("crouch").setAttribute("aria-pressed", String(crouched));
   refreshGuide();
 }
@@ -1447,7 +1450,24 @@ function frame(ts) {
   sceneDirty = false;
   scheduleFrame();
 }
+function keepDialogFocus(e) {
+  if (e.key !== "Tab" || $("dialog").hidden) return false;
+  const buttons = [...$("panelBody").querySelectorAll("button:not([disabled])"),
+    ...$("panelActions").querySelectorAll("button:not([disabled])")];
+  if (!buttons.length) {
+    e.preventDefault();
+    $("panelTitle").focus();
+    return true;
+  }
+  const index = buttons.indexOf(document.activeElement);
+  if (e.shiftKey ? index <= 0 : index < 0 || index === buttons.length - 1) {
+    e.preventDefault();
+    (e.shiftKey ? buttons.at(-1) : buttons[0]).focus();
+  }
+  return true;
+}
 document.addEventListener("keydown", (e) => {
+  if (keepDialogFocus(e)) return;
   if (e.isComposing) return;
   if (e.target instanceof HTMLButtonElement && ["Space", "Enter"].includes(e.code)) return;
   if (

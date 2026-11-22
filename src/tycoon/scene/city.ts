@@ -45,7 +45,6 @@ const SHOP_SPEC: Record<ShopKind, BSpec> = {
   factory: { floors: [2, 3, 4], style: 'office', w: 12, d: 12, extra: 'chimney' },
 };
 const OPEN_KINDS = new Set(['home', 'scrap', 'recycle']);
-const OPEN_HIDE = new Set<string>();
 const isLot = (v: SpotView | undefined): v is LotView & { locked: boolean } => v?.kind === 'lot';
 const spotSig = (v: SpotView | undefined): string => !v ? '-' : isLot(v) ? `L${v.locked ? 1 : 0}${v.owner}${v.shop ? `${v.shop.kind}${v.shop.level}${v.shop.name}` : ''}${v.rival ? `${v.rival.rivalId}${v.rival.kind}${v.rival.level}` : ''}` : `${v.kind}${v.locked ? 1 : 0}`;
 export const spotColor = (v: SpotView): string => {
@@ -64,6 +63,8 @@ export class CityView {
   readonly group = new THREE.Group();
   readonly colliders = new Colliders();
   private views = new Map<Block, BlockView>();
+  /** Numeric grid index keeps crowd path checks O(1), without scanning 49 blocks per neighbor. */
+  private blocksByIndex = new Map<number, Block>();
   private facade: Record<FacadeStyle, THREE.MeshStandardMaterial>;
   private roofMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 });
   private detailMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.1 });
@@ -86,6 +87,7 @@ export class CityView {
   private disposed = false;
 
   constructor(private layout: Layout, private quality: Quality) {
+    for (const b of layout.blocks) this.blocksByIndex.set((b.i + HALF) * GRID + b.j + HALF, b);
     const mk = (style: FacadeStyle, rough: number, metal: number): THREE.MeshStandardMaterial => {
       const m = facadeMaps(style);
       return new THREE.MeshStandardMaterial({ map: m.map, emissiveMap: m.emissive, emissive: 0xffffff, emissiveIntensity: 0.05, vertexColors: true, roughness: rough, metalness: metal });
@@ -189,11 +191,15 @@ export class CityView {
     this.trunkMesh.computeBoundingSphere(); this.crownMesh.computeBoundingSphere();
   }
   private buildBeacons(): void {
+    // Every beacon has independent color/opacity, but all share immutable geometry and textures.
+    const ringGeometry = new THREE.PlaneGeometry(4.2, 4.2);
+    const beamGeometry = new THREE.CylinderGeometry(0.9, 0.9, 11, 16, 1, true);
+    const beamMap = beamTexture();
     for (const [id, lot] of this.layout.spotLots) {
       const col = new THREE.Color(kindColor(lot.spot!.kind)), g = new THREE.Group(); g.position.set(lot.doorX, 0.22, lot.doorZ);
-      const ring = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 4.2), new THREE.MeshBasicMaterial({ map: this.ringTex, color: col, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
+      const ring = new THREE.Mesh(ringGeometry, new THREE.MeshBasicMaterial({ map: this.ringTex, color: col, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
       ring.rotation.x = -Math.PI / 2;
-      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 11, 16, 1, true), new THREE.MeshBasicMaterial({ map: beamTexture(), color: col, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false }));
+      const beam = new THREE.Mesh(beamGeometry, new THREE.MeshBasicMaterial({ map: beamMap, color: col, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false }));
       beam.position.y = 5.5; g.add(ring, beam); this.group.add(g); this.beacons.set(id, { group: g, ring, beam, lot, open: true });
     }
   }
@@ -223,6 +229,8 @@ export class CityView {
     const s = Math.max(0, this.stage), f = 0.35 + s * 0.14;
     this.skylineData.forEach((d, i) => { const o = this.tmp; o.rotation.set(0, 0, 0); o.position.set(d.x, 0, d.z); o.scale.set(d.w, d.h * f, d.d); o.updateMatrix(); this.skyline.setMatrixAt(i, o.matrix); });
     this.skyline.instanceMatrix.needsUpdate = true;
+    // Tier growth changes skyline instance heights; stale bounds can incorrectly cull towers.
+    this.skyline.computeBoundingSphere();
   }
 
   // ---------- 상태 갱신 ----------
@@ -249,14 +257,18 @@ export class CityView {
   private recolorBeacons(): void {
     for (const [id, b] of this.beacons) {
       const view = this.spotViews.get(id), unlocked = blockUnlocked(b.lot.block, this.stage);
-      b.open = !!view && !view.locked; b.group.visible = unlocked && (view ? !OPEN_HIDE.has(view.kind) || true : true);
+      b.open = !!view && !view.locked; b.group.visible = unlocked;
       const col = id === this.targetId ? '#ffffff' : view ? spotColor(view) : '#7a8088';
       for (const m of [b.ring, b.beam]) (m.material as THREE.MeshBasicMaterial).color.set(col);
     }
   }
   /** 배달 목적지 같은 강조 표지(흰색, 더 밝게). */
   setTarget(id: string | null): void { if (id !== this.targetId) { this.targetId = id; this.recolorBeacons(); } }
-  blockOpen(i: number, j: number): boolean { const b = this.layout.blocks.find(x => x.i === i && x.j === j); return !!b && blockUnlocked(b, this.stage); }
+  blockOpen(i: number, j: number): boolean {
+    if (!Number.isInteger(i) || !Number.isInteger(j) || Math.abs(i) > HALF || Math.abs(j) > HALF) return false;
+    const b = this.blocksByIndex.get((i + HALF) * GRID + j + HALF);
+    return !!b && blockUnlocked(b, this.stage);
+  }
   spotView(id: string): SpotView | undefined { return this.spotViews.get(id); }
   /** 문 앞 표지 위치(없으면 null). */
   doorOf(id: string): { x: number; z: number; fx: number; fz: number } | null { const l = this.layout.spotLots.get(id); return l ? { x: l.doorX, z: l.doorZ, fx: l.fx, fz: l.fz } : null; }
@@ -540,7 +552,7 @@ export class CityView {
     for (const v of this.views.values()) for (const g of v.disposables) geometries.add(g);
     for (const m of materials) { const t = m as THREE.MeshStandardMaterial; for (const tex of [t.map, t.emissiveMap, t.roughnessMap]) if (tex) textures.add(tex); m.dispose(); }
     for (const g of geometries) g.dispose(); for (const t of textures) t.dispose();
-    this.group.removeFromParent(); this.group.clear(); this.views.clear(); this.signMats.clear(); this.beacons.clear(); this.construction.clear();
+    this.group.removeFromParent(); this.group.clear(); this.views.clear(); this.blocksByIndex.clear(); this.signMats.clear(); this.beacons.clear(); this.construction.clear();
   }
 }
 

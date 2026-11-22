@@ -90,6 +90,7 @@ export class CityView {
   private lampPools: THREE.InstancedMesh | null = null;
   private signals: Lamps | null = null;
   private signalTick = -Infinity;
+  private readonly signalColor = new THREE.Color();
   private disposed = false;
   private scratch = new THREE.Vector3();
   private matrix = new THREE.Object3D();
@@ -128,7 +129,8 @@ export class CityView {
     const g = canvas.getContext('2d')!, grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
     grad.addColorStop(0, 'rgba(255,255,255,.8)'); grad.addColorStop(.35, 'rgba(255,255,255,.23)'); grad.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
     const t = new THREE.CanvasTexture(canvas); this.textures.add(t); this.poolMap = t; return t;
-  }  private mat(p: THREE.MeshStandardMaterialParameters): THREE.MeshStandardMaterial { const m = new THREE.MeshStandardMaterial(p); this.materials.add(m); return m; }
+  }
+  private mat(p: THREE.MeshStandardMaterialParameters): THREE.MeshStandardMaterial { const m = new THREE.MeshStandardMaterial(p); this.materials.add(m); return m; }
   private chunk(x: number, z: number): Chunk { const s = this.map.half / 2; return this.chunks[THREE.MathUtils.clamp(Math.floor((z + this.map.half) / s), 0, 3) * 4 + THREE.MathUtils.clamp(Math.floor((x + this.map.half) / s), 0, 3)]; }
   private put(x: number, z: number, m: THREE.Material, g: THREE.BufferGeometry): void { const b = this.chunk(x, z).batch; const a = b.get(m); if (a) a.push(g); else b.set(m, [g]); }
   private flush(batch: Batch, root: THREE.Group): void {
@@ -385,7 +387,7 @@ export class CityView {
     for (const c of this.chunks) { const dx = Math.max(0, Math.abs(camera.position.x - c.x) - halfChunk), dz = Math.max(0, Math.abs(camera.position.z - c.z) - halfChunk); c.root.visible = dx * dx + dz * dz < radius * radius; }
     if (this.signals && (Math.abs(t - this.signalTick) >= .25 || this.signalTick === -Infinity)) {
       this.signalTick = t; const { mesh, groups, lamps } = this.signals, colors = [0xff4545, 0xffd23f, 0x5dff8f];
-      for (let i = 0; i < lamps.length; i++) { const state = signal(t, groups[Math.floor(i / 3)]), active = state === 'red' ? 0 : state === 'yellow' ? 1 : 2; mesh.setColorAt(i, new THREE.Color(lamps[i] === active ? colors[active] : 0x11181b)); }
+      for (let i = 0; i < lamps.length; i++) { const state = signal(t, groups[Math.floor(i / 3)]), active = state === 'red' ? 0 : state === 'yellow' ? 1 : 2; mesh.setColorAt(i, this.signalColor.setHex(lamps[i] === active ? colors[active] : 0x11181b)); }
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     }
   }

@@ -7,6 +7,9 @@ type Axis = 'x' | 'z';
 export type SignalAspect = 'red' | 'yellow' | 'green';
 export const ROAD_CENTERS = Array.from({ length: GRID + 1 }, (_, i) => i * PITCH - (HALF * PITCH + PITCH / 2));
 const CYCLE = 24;
+/** Cached inner intersections avoid allocating two arrays per car every frame. */
+const INNER_ROAD_CENTERS = ROAD_CENTERS.slice(1, -1);
+const SIGNAL_COLORS = [0xff4545, 0xffd34a, 0x4bf49c] as const;
 export function signalAspect(t: number, x: number, z: number, axis: Axis): SignalAspect {
   const offset = Math.round(x / PITCH + z / PITCH) * 3;
   const phase = ((t + offset) % CYCLE + CYCLE) % CYCLE;
@@ -17,8 +20,8 @@ export function signalAspect(t: number, x: number, z: number, axis: Axis): Signa
 export function intersectionFactor(t: number, axis: Axis, line: number, pos: number, dir: 1 | -1, length: number): number {
   // Stop behind the complete crosswalk, not inside its stripes.
   const edge = ROAD / 2 + 3.0 + length / 2;
-  if (!ROAD_CENTERS.slice(1, -1).includes(line)) return 1;
-  for (const cross of ROAD_CENTERS.slice(1, -1)) {
+  if (!INNER_ROAD_CENTERS.includes(line)) return 1;
+  for (const cross of INNER_ROAD_CENTERS) {
     const forward = (cross - pos) * dir, gap = forward - edge;
     if (gap < -.12 || gap > 15) continue;
     const x = axis === 'x' ? cross : line, z = axis === 'z' ? cross : line;
@@ -37,7 +40,7 @@ export class IntersectionLights {
   private disposed = false;
   constructor() {
     const g = new GeoBuilder();
-    for (const x of ROAD_CENTERS.slice(1,-1)) for (const z of ROAD_CENTERS.slice(1,-1)) {
+    for (const x of INNER_ROAD_CENTERS) for (const z of INNER_ROAD_CENTERS) {
       for (const dir of [-1, 1]) {
         this.heads.push({ x: x - dir * 8.0, z: z + dir * 7.65, cx: x, cz: z, nx: -dir, nz: 0, axis: 'x' });
         this.heads.push({ x: x - dir * 7.65, z: z - dir * 8.0, cx: x, cz: z, nx: 0, nz: -dir, axis: 'z' });
@@ -62,10 +65,9 @@ export class IntersectionLights {
   }
   update(t: number): void {
     const tick = Math.floor(t * 4); if (tick === this.last || this.disposed) return; this.last = tick;
-    const colors = [0xff4545,0xffd34a,0x4bf49c];
     this.heads.forEach((h,i)=> {
       const a = signalAspect(t,h.cx,h.cz,h.axis), on = a === 'red' ? 0 : a === 'yellow' ? 1 : 2;
-      for(let k=0;k<3;k++) this.lamps.setColorAt(i*3+k,this.color.setHex(k===on?colors[k]:0x141c1f));
+      for(let k=0;k<3;k++) this.lamps.setColorAt(i*3+k,this.color.setHex(k===on?SIGNAL_COLORS[k]:0x141c1f));
     });
     if (this.lamps.instanceColor) this.lamps.instanceColor.needsUpdate = true;
   }

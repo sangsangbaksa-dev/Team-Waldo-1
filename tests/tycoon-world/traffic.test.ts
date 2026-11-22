@@ -29,3 +29,11 @@ describe('HUSTLE traffic signals', () => {
     expect(intersectionFactor(10,'x',168,12.85,1,4)).toBe(1);
   });
 });
+
+it('uses the existing road-center geometry for each signal cycle', () => {
+  for (const t of [-48, 0, 4, 9, 16, 25, 100]) {
+    expect(['green','yellow','red']).toContain(signalAspect(t,24,24,'x'));
+    const stop = intersectionFactor(t,'x',24,0,1,4);
+    expect(stop).toBeGreaterThanOrEqual(0); expect(stop).toBeLessThanOrEqual(1);
+  }
+});

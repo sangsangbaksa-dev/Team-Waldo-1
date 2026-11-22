@@ -23,3 +23,17 @@ describe('environment plumes', () => {
     const fx = new EnvironmentPlumes('low'); expect(fx.group.children).toHaveLength(0); fx.dispose();
   });
 });
+
+it('refreshes the closest emitter after teleport or emitter replacement without waiting for the throttle', () => {
+  const fx = new EnvironmentPlumes('standard');
+  const positions = () => (fx.group.children[0] as THREE.Points).geometry.attributes.position.array as Float32Array;
+  fx.setEmitters([{...emitter, x:0, z:0}, {...emitter, x:300, z:0}]);
+  fx.update(1, new THREE.Vector3(0,0,0),0,0);
+  expect(positions()[0]).toBeLessThan(30);
+  fx.update(1.01, new THREE.Vector3(300,0,0),0,0);
+  expect(positions()[0]).toBeGreaterThan(250);
+  fx.setEmitters([{...emitter, x:600, z:0}]);
+  fx.update(1.02, new THREE.Vector3(600,0,0),0,0);
+  expect(positions()[0]).toBeGreaterThan(550);
+  fx.dispose();
+});

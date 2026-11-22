@@ -35,6 +35,9 @@ export class EnvironmentPlumes {
   private tex: THREE.DataTexture | null = null;
   private budget: number;
   private selected: { e: PlumeEmitter; distance: number }[] = [];
+  private lastSelection = -Infinity;
+  private focusX = Number.NaN;
+  private focusZ = Number.NaN;
   private disposed = false;
   constructor(quality: PlumeQuality) {
     this.budget = plumeBudget(quality); this.group.name = 'environment plumes';
@@ -51,25 +54,41 @@ export class EnvironmentPlumes {
       this.layers.push({ points, positions, colors, count: 0 });
     }
   }
-  setEmitters(emitters: readonly PlumeEmitter[]): void { this.emitters = emitters; }
+  setEmitters(emitters: readonly PlumeEmitter[]): void {
+    if (this.disposed) return;
+    this.emitters = emitters;
+    this.lastSelection = -Infinity;
+    this.selected.length = 0;
+  }
   update(time: number, focus: THREE.Vector3, night: number, wet: number): void {
     if (this.disposed || !this.budget) return;
-    const maxR = 190, selected = this.selected; selected.length = 0;
-    for (const e of this.emitters) {
-      const distance = (e.x - focus.x) ** 2 + (e.z - focus.z) ** 2;
-      if (distance < maxR * maxR) selected.push({ e, distance });
+    const maxR = 190, selected = this.selected;
+    // A chimney does not change position each frame. Refresh nearest emitters at ~4Hz,
+    // but immediately when a camera teleports, a building changes, or time rewinds.
+    const moved = (focus.x - this.focusX) ** 2 + (focus.z - this.focusZ) ** 2 > 144;
+    if (!Number.isFinite(this.lastSelection) || time < this.lastSelection || time - this.lastSelection >= .25 || moved) {
+      selected.length = 0;
+      for (const e of this.emitters) {
+        const distance = (e.x - focus.x) ** 2 + (e.z - focus.z) ** 2;
+        if (distance < maxR * maxR) selected.push({ e, distance });
+      }
+      selected.sort((a, b) => a.distance - b.distance);
+      this.lastSelection = time; this.focusX = focus.x; this.focusZ = focus.z;
     }
-    selected.sort((a, b) => a.distance - b.distance);
     for (const l of this.layers) l.count = 0;
     const light = 1 - .53 * clamp01(night), steam = .74 * light, smoke = .34 * light;
     for (let i = 0; i < Math.min(this.budget, selected.length); i++) {
-      const { e, distance } = selected[i], fade = Math.min(1, (maxR - Math.sqrt(distance)) / 35);
+      const { e } = selected[i];
+      const distance = (e.x - focus.x) ** 2 + (e.z - focus.z) ** 2;
+      const fade = Math.max(0, Math.min(1, (maxR - Math.sqrt(distance)) / 35));
       for (let p = 0; p < PER_EMITTER; p++) {
         const v = plumeSample(e, time, p, PER_EMITTER, wet);
         const l = this.layers[v.age < .28 ? 0 : v.age < .63 ? 1 : 2], k = l.count++;
-        l.positions.set([v.x, v.y, v.z], k * 3);
+        const pi = k * 3, ci = k * 4;
+        l.positions[pi] = v.x; l.positions[pi + 1] = v.y; l.positions[pi + 2] = v.z;
         const c = e.smoke ? smoke : steam;
-        l.colors.set([c * .91, c * .96, c, v.alpha * fade], k * 4);
+        l.colors[ci] = c * .91; l.colors[ci + 1] = c * .96;
+        l.colors[ci + 2] = c; l.colors[ci + 3] = v.alpha * fade;
       }
     }
     for (const l of this.layers) {

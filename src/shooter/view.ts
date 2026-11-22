@@ -50,7 +50,7 @@ export class ShooterView {
   post: PostFx | null = null; renderer: THREE.WebGLRenderer; scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(78, 1, 0.08, 1400);
   private vmScene = new THREE.Scene(); private vmCam = new THREE.PerspectiveCamera(64, 1, 0.5, 200);
   private sun: THREE.DirectionalLight; private glow = glowTexture(); private rigs = new Map<number, Rig>(); private lootNodes = new Map<number, { node: THREE.Object3D; baseY: number; dispose: () => void }>();
-  private lootDummy = new THREE.Object3D();
+  private lootDummy = new THREE.Object3D(); private beamStamps: Array<{ id: number; x: number; z: number; kind: string }> = [];
   private pendingRigUpgrades = new Set<number>(); private pendingLootUpgrades = new Set<number>();
   private zoneWall: THREE.Mesh; private zoneNext: THREE.Mesh; private tracers: Fx[] = []; private sparks: THREE.Points; private sparkData: { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; r: number; g: number; b: number }[] = [];
   private vm: THREE.Object3D | null = null; private vmOwned = false; private aimBlend = 0; private reloadBlend = 0; private vmId = ''; private vmParts = ''; private vmSwap = 0; private vmFlash: THREE.Sprite; private bob = 0; private shake = 0; private terrainView: TerrainView | null = null; private fovPunch = 0; private flashKick = 0; private roll = 0; private sprintT = 0; private time = 0;
@@ -343,7 +343,7 @@ export class ShooterView {
     return { node: g, baseY, dispose: () => { g.removeFromParent(); const geos = new Set<THREE.BufferGeometry>(), mats = new Set<THREE.Material>(); for (const child of sharedModel ? [ring] : g.children) child.traverse(o => { if (o instanceof THREE.Mesh) { geos.add(o.geometry); for (const mat of Array.isArray(o.material) ? o.material : [o.material]) mats.add(mat); } }); for (const geo of geos) geo.dispose(); for (const mat of mats) mat.dispose(); } };
   }
   private syncLoot(cam: THREE.Vector3): void {
-    const live = new Set<number>(); let nb = 0, upgrades = 0; const d = this.lootDummy;
+    const live = new Set<number>(); let nb = 0, upgrades = 0, beamsDirty = false; const d = this.lootDummy;
     for (const l of this.match.loot) {
       if (l.taken) continue;
       const dx = l.x - cam.x, dz = l.z - cam.z, d2 = dx * dx + dz * dz; let entry = this.lootNodes.get(l.id);
@@ -356,9 +356,19 @@ export class ShooterView {
       if (!entry) { entry = this.lootNode(l); this.lootNodes.set(l.id, entry); }
       const n = entry.node; n.visible = d2 < 150 * 150; if (!n.visible) continue;
       n.children[0].rotation.y = this.time * 1.4 + l.id; n.children[0].position.y = entry.baseY + Math.sin(this.time * 2 + l.id) * 0.06;
-      if (nb < 400) { d.position.set(l.x, 3.4, l.z); d.scale.set(1, 1, 1); d.updateMatrix(); this.beams.setMatrixAt(nb, d.matrix); this.beams.setColorAt(nb, this.tmpCol.setHex(LOOT_COLOR[l.kind])); nb++; }
+      if (nb < 400) {
+        const prev = this.beamStamps[nb];
+        if (!prev || prev.id !== l.id || prev.x !== l.x || prev.z !== l.z || prev.kind !== l.kind) {
+          d.position.set(l.x, 3.4, l.z); d.scale.set(1, 1, 1); d.updateMatrix();
+          this.beams.setMatrixAt(nb, d.matrix); this.beams.setColorAt(nb, this.tmpCol.setHex(LOOT_COLOR[l.kind]));
+          this.beamStamps[nb] = { id: l.id, x: l.x, z: l.z, kind: l.kind };
+          beamsDirty = true;
+        }
+        nb++;
+      }
     }
-    this.beams.count = nb; this.beams.instanceMatrix.needsUpdate = true; if (this.beams.instanceColor) this.beams.instanceColor.needsUpdate = true;
+    this.beamStamps.length = nb; this.beams.count = nb;
+    if (beamsDirty) { this.beams.instanceMatrix.needsUpdate = true; if (this.beams.instanceColor) this.beams.instanceColor.needsUpdate = true; }
     for (const [id, entry] of this.lootNodes) if (!live.has(id)) { entry.dispose(); this.lootNodes.delete(id); this.pendingLootUpgrades.delete(id); }
   }
 
@@ -588,7 +598,7 @@ export class ShooterView {
     // games. Detach the skeletons before releasing this scene's own resources.
     for (const rig of this.rigs.values()) rig.ch.root.removeFromParent();
     this.rigs.clear();
-    this.pendingRigUpgrades.clear(); this.pendingLootUpgrades.clear();
+    this.pendingRigUpgrades.clear(); this.pendingLootUpgrades.clear(); this.beamStamps.length = 0;
     disposeSceneResources(this.scene, { extraTextures: [this.glow] });
     this.post?.dispose();
     this.renderer.dispose();

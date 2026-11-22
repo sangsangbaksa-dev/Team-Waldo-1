@@ -12,7 +12,7 @@ import type { NetMsg } from '../net/types';
 import { ShooterView } from './view';
 import { loadShooterAssets, type ShooterAssets } from './assets';
 import { ShooterAudio } from './audio';
-import { RemoteNadeLimiter, ShooterNet, decideDeath, nadeMsg, parseNade, plausibleNadeThrow, plausiblePlayerShot, seedOf, type Pose } from './net';
+import { RemoteNadeLimiter, RemoteShotLimiter, ShooterNet, decideDeath, nadeMsg, parseNade, plausibleNadeThrow, plausiblePlayerShot, seedOf, type Pose } from './net';
 import { ShooterRoomNet, ROOM_MAX } from './room';
 import { ChatBox } from './chat';
 import { readShooterCareer, recordShooterMatch, writeShooterCareer } from './records';
@@ -156,12 +156,12 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   function startPvp(s: PvpSession): void {
     endPvp(); endMatch(); setupEl.hidden = true; hud.hidden = true; phase = 'loading';
     card('1대1 대전', `${esc(s.opponent.nickname)} 님과 연결하는 중…`, '<p class="sz-sub">상대가 들어오면 바로 시작합니다.</p>', '<button data-act="exit">나가기</button>');
-    const seed = seedOf(s.match.config, s.match.id), nadeLimiter = new RemoteNadeLimiter();
+    const seed = seedOf(s.match.config, s.match.id), nadeLimiter = new RemoteNadeLimiter(), shotLimiter = new RemoteShotLimiter();
     const net: ShooterNet = new ShooterNet(s, {
       onStart: () => beginPvp(),
       onPose: p => { if (pvp) pvp.target = p; },
       onShot: sh => {
-        if (!pvp?.opp || !match || !plausiblePlayerShot(sh, pvp.opp)) return; const aims: Array<[number, number]> = [];
+        if (!pvp?.opp || !match || !plausiblePlayerShot(sh, pvp.opp) || !shotLimiter.allow(pvp.opp.id, sh.w, performance.now())) return; const aims: Array<[number, number]> = [];
         for (let i = 0; i + 2 < sh.ends.length; i += 3) { const dx = sh.ends[i] - sh.ox, dy = sh.ends[i + 1] - sh.oy, dz = sh.ends[i + 2] - sh.oz; aims.push([Math.atan2(dz, dx), Math.atan2(dy, Math.hypot(dx, dz))]); }
         pvp.opp.muzzle = 0.06; pvp.opp.kick = Math.min(1, pvp.opp.kick + 0.3); match.remoteShot(pvp.opp.id, sh.w, sh.ox, sh.oy, sh.oz, aims);
       },
@@ -184,11 +184,12 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   function startRoom(s: RoomSession): void {
     endPvp(); endRoom(); endMatch(); setupEl.hidden = true; hud.hidden = true; phase = 'loading';
     card('멀티플레이 방', `${s.players.length}명이 모이는 중…`, '<p class="sz-sub">모두 연결되면 바로 시작합니다.</p>', '<button data-act="exit">나가기</button>');
+    const shotLimiter = new RemoteShotLimiter();
     const net: ShooterRoomNet = new ShooterRoomNet(s, {
       onStart: ids => beginRoom(ids),
       onPose: (id, p) => { const r = roomRemote(id); if (r) { r.target = p; if (p.vs && match && p.veh !== undefined && p.veh >= 0) { const v = match.vehicles[p.veh]; if (canApplyRemoteVehiclePose(v, r.p)) room!.sync.vehicleState(v, p.vs[0], p.vs[1], p.vs[2], p.vs[3], r.p.id, true, performance.now()); } } },
       onShot: (id, sh) => {
-        const r = roomRemote(id); if (!r || !match || !plausiblePlayerShot(sh, r.p)) return; const aims: Array<[number, number]> = [];
+        const r = roomRemote(id); if (!r || !match || !plausiblePlayerShot(sh, r.p) || !shotLimiter.allow(r.p.id, sh.w, performance.now())) return; const aims: Array<[number, number]> = [];
         for (let i = 0; i + 2 < sh.ends.length; i += 3) { const dx = sh.ends[i] - sh.ox, dy = sh.ends[i + 1] - sh.oy, dz = sh.ends[i + 2] - sh.oz; aims.push([Math.atan2(dz, dx), Math.atan2(dy, Math.hypot(dx, dz))]); }
         r.p.muzzle = 0.06; r.p.kick = Math.min(1, r.p.kick + 0.3); match.remoteShot(r.p.id, sh.w, sh.ox, sh.oy, sh.oz, aims);
       },

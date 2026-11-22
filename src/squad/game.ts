@@ -296,7 +296,7 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
       toast('온라인 연결을 열지 못했습니다. 다시 시도해 주세요.');
       return;
     }
-    online = { s, net, mine: s.host ? 0 : 1, incoming: new Map(), sent: 0, deadline: 0, leaving: 0, done: false, result: '', settleTimer: 0, wakeSettle: null };
+    online = { s, net, mine: s.host ? 0 : 1, incoming: new Map(), sent: 0, deadline: 0, leaving: -Infinity, done: false, result: '', settleTimer: 0, wakeSettle: null };
     mode = 'online'; startMatch();
   }
   /** 내 배치를 제출하고, 상대 배치가 이미 와 있으면 바로 전투를 시작합니다. */
@@ -371,8 +371,9 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
   }
   function leaveClick(): void {
     const o = online; if (!o) return;
-    if (Date.now() - o.leaving < 3000) { quitOnline(); stage = 'menu'; battle = null; render(); return; }
-    o.leaving = Date.now(); toast(o.done || stage === 'result' ? '한 번 더 누르면 메뉴로 나갑니다.' : '한 번 더 누르면 기권하고 나갑니다.');
+    const now = performance.now();
+    if (now - o.leaving < 3000) { quitOnline(); stage = 'menu'; battle = null; render(); return; }
+    o.leaving = now; toast(o.done || stage === 'result' ? '한 번 더 누르면 메뉴로 나갑니다.' : '한 번 더 누르면 기권하고 나갑니다.');
   }
   function pause(): void { if (online && stage !== 'menu') { leaveClick(); return; } if (stage !== 'deploy' && stage !== 'battle') return; previous = stage; stage = 'pause'; audio.setPaused(true); render(); }
   function key(e: KeyboardEvent): void {

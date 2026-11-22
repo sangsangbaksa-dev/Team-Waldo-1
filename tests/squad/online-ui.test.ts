@@ -229,6 +229,7 @@ it('allows a touch-only player to leave the online opponent-wait screen safely',
   button('#ready').click();
   expect(document.querySelector('.sq-cover h2')?.textContent).toContain('상대 배치를 기다리는 중');
   const leave = button('#leave');
+  vi.setSystemTime(new Date(0)); // A monotonic confirmation works even at wall-clock epoch zero.
   expect(leave.textContent).toContain('나가기');
   expect(document.activeElement).toBe(leave);
   leave.click();

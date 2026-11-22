@@ -22,7 +22,7 @@ import { makeRng } from '../city/map';
 import { artSeed, ClearanceIndex } from './scenery-index';
 import { FxScheduler, skidSegmentCount } from './fx-scheduling';
 import { writeSkidQuad } from './skid-geometry';
-import { writeVec3, writeSpeedStreak, streakDirection, speedStreakVisible } from './fx-buffers';
+import { writeVec3, writeSpeedStreak, streakDirection, speedStreakVisible, speedStreakBudget } from './fx-buffers';
 
 const CAR_LEN = 4.7;
 const rnd = (a: number, b: number): number => a + Math.random() * (b - a);
@@ -144,7 +144,7 @@ export class RaceView {
     if(quality!=='low'&&trackLightStrength(theme.light.sunPower,theme.rain)>0){this.roadLights=new RoadLightBatch(this.scene,12);}
     this.scene.add(new THREE.HemisphereLight(theme.light.sky, theme.light.ground, theme.light.hemi)); this.sun.position.set(-40, 60, 90); this.scene.add(this.sun, this.sun.target);
     this.scene.add(this.skids.mesh, this.sparks.points, this.smoke.points); if (theme.rain) { this.rainFx = new Particles(quality === 'low' ? 600 : 1800, 0.32, THREE.NormalBlending, 0.55); this.scene.add(this.rainFx.points); this.spray = new Particles(quality === 'low' ? 160 : 420, 0.8, THREE.NormalBlending, 0.24); this.scene.add(this.spray.points); }
-    const n = 220; this.streakPos = new Float32Array(n * 6); this.streakSeed = new Float32Array(n * 3);
+    const n = speedStreakBudget(quality,reducedMotion); this.streakPos = new Float32Array(n * 6); this.streakSeed = new Float32Array(n * 3);
     const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(this.streakPos, 3));
     this.streak = new THREE.LineSegments(sg, new THREE.LineBasicMaterial({ color: 0xcfe9ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })); this.streak.frustumCulled = false; this.scene.add(this.streak);
     this.carTemplates = carTemplates; this.viewH = window.innerHeight || 1;

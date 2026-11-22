@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {writeVec3,writeSpeedStreak,streakDirection} from '../../src/race/fx-buffers';
+import {writeVec3,writeSpeedStreak,streakDirection,speedStreakBudget} from '../../src/race/fx-buffers';
 describe('SPEED RUSH hot-loop GPU buffer writes',()=>{
   it('writes only the target particle slot',()=>{
     const data=new Float32Array(9).fill(-1);
@@ -21,5 +21,16 @@ describe('SPEED RUSH hot-loop GPU buffer writes',()=>{
     expect(Math.hypot(d.x,d.z)).toBeCloseTo(1);
     expect(streakDirection(0,0)).toEqual({x:1,z:0});
     expect(streakDirection(NaN,4)).toEqual({x:1,z:0});
+  });
+});
+
+describe('SPEED RUSH speed-line quality and motion budgets',()=>{
+  it('reserves fewer line vertices for low-end devices',()=>{
+    expect(speedStreakBudget('high',false)).toBe(220);
+    expect(speedStreakBudget('standard',false)).toBe(144);
+    expect(speedStreakBudget('low',false)).toBe(72);
+  });
+  it('allocates no speed-line vertices when reduced motion is enabled',()=>{
+    for(const q of ['high','standard','low'] as const)expect(speedStreakBudget(q,true)).toBe(0);
   });
 });

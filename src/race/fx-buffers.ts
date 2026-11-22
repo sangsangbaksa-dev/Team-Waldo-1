@@ -16,3 +16,9 @@ export function streakDirection(vx:number,vz:number):{x:number;z:number}{
 export function speedStreakVisible(speed:number,opacity:number):boolean{
   return Number.isFinite(speed)&&Number.isFinite(opacity)&&(speed>26||opacity>0.01);
 }
+
+/** GPU-friendly speed line density per graphics profile; keep reduced motion silent. */
+export function speedStreakBudget(quality:'high'|'standard'|'low',reducedMotion:boolean):number{
+  if(reducedMotion)return 0;
+  return quality==='low'?72:quality==='standard'?144:220;
+}

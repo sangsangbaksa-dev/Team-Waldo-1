@@ -3,6 +3,7 @@ import type { Sim } from './sim';
 import type { Marker, Vehicle } from './types';
 import { autoDrive } from './vehicle';
 import { nearestLane, findPath } from './world';
+import { openVehicleLane } from './road-spawn';
 
 export interface MissionInfo { id: string; title: string; giver: string; brief: string; reward: number; startPoi: string; requires: string[] }
 const entries: Array<[string, string, string, string, number]> = [
@@ -72,10 +73,10 @@ export function startMission(s: Sim, id: string): boolean {
   if (!canStart(s, id)) return false; const m = s.mission, p = s.player; m.active = id; m.stage = 0; m.timer = 0; m.data = {}; m.ids = {}; m.failed = ''; m.markers = [];
   const start = poi(s, id) ?? p;
   if (id === 'm_delivery') { const target = farthestWalkPoint(s.map.walkPoints, start.x, start.z) ?? start; m.data.x = target.x; m.data.z = target.z; m.timer = 180; }
-  if (id === 'm_theft') { const lane = s.map.lanes[nearestLane(s.map, 0, 0)]; const v = car(s, 'sports', lane?.x ?? 0, lane?.z ?? 0, lane?.h); v.color = 0xe32c36; m.ids.car = v.id; m.timer = 240; }
+  if (id === 'm_theft') { const lane = openVehicleLane(s, 0, 0, 'sports'); if (!lane) { m.active = ''; s.say('스포츠카를 배치할 도로가 없습니다'); return false; } const v = car(s, 'sports', lane.x, lane.z, lane.h); v.color = 0xe32c36; m.ids.car = v.id; m.timer = 240; }
   if (id === 'm_debt' || id === 'm_boss') { const center = id === 'm_debt' ? (s.map.buildings.find(b => b.district === 'industrial' && b.kind === 'warehouse') ?? poi(s, 'chop0')) : poi(s, 'casino0'); const points = nearWalk(s, center.x, center.z, id === 'm_debt' ? 5 : 9); points.forEach((q, i) => { gang(s, q.x, q.z, id === 'm_boss' && i === 0); const ped = s.peds[s.peds.length - 1]; if (id === 'm_debt' && i === 0) ped.hp = ped.maxHp = 220; m.ids[`enemy${i}`] = ped.id; }); m.data.count = points.length; }
-  if (id === 'm_chase') { const lane = s.map.lanes[nearestLane(s.map, start.x, start.z)]; const v = car(s, 'sedan', lane?.x ?? start.x, lane?.z ?? start.z, lane?.h); v.mode = 'scripted'; const driver = s.spawnPed('gang', v.x, v.z, { keep: true, tag: id, mode: 'scripted', vehicle: v.id }); v.driver = driver.id; m.ids.car = v.id; m.ids.driver = driver.id; m.data.node = lane?.id ?? -1; }
-  if (id === 'm_heist') { const bank = poi(s, 'bank0'), lane = s.map.lanes[nearestLane(s.map, bank.x, bank.z)]; const v = car(s, 'van', lane?.x ?? bank.x, lane?.z ?? bank.z, lane?.h); m.ids.van = v.id; }
+  if (id === 'm_chase') { const lane = openVehicleLane(s, start.x, start.z, 'sedan'); if (!lane) { m.active = ''; s.say('도주 차량을 배치할 도로가 없습니다'); return false; } const v = car(s, 'sedan', lane.x, lane.z, lane.h); v.mode = 'scripted'; const driver = s.spawnPed('gang', v.x, v.z, { keep: true, tag: id, mode: 'scripted', vehicle: v.id }); v.driver = driver.id; m.ids.car = v.id; m.ids.driver = driver.id; m.data.node = lane?.id ?? -1; }
+  if (id === 'm_heist') { const bank = poi(s, 'bank0'), lane = openVehicleLane(s, bank.x, bank.z, 'van'); if (!lane) { m.active = ''; s.say('은행 근처에 밴을 둘 도로가 없습니다'); return false; } const v = car(s, 'van', lane.x, lane.z, lane.h); m.ids.van = v.id; }
   if (id === 'm_race') { const lane = s.map.lanes[nearestLane(s.map, start.x, start.z)]; const path = route(s, start.x, start.z); path.forEach((n,i) => { m.data[`cp${i}`] = n; }); m.data.total = path.length; for (let i = 0; i < 5; i++) { const v = car(s, 'sports', (lane?.x ?? start.x) - Math.cos(lane?.h ?? 0) * (i * 6), (lane?.z ?? start.z) - Math.sin(lane?.h ?? 0) * (i * 6), lane?.h); m.ids[`race${i}`] = v.id; if (i > 0 && i < 4) { v.mode = 'scripted'; const d = s.spawnPed('gang', v.x, v.z, { keep: true, tag: id, mode: 'scripted', vehicle: v.id }); v.driver = d.id; } } }
   notice(s, 'start', MISSION_LIST.find(q => q.id === id)!.title); stepMissions(s, 0); return true;
 }

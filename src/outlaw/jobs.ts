@@ -1,7 +1,8 @@
 // OUTLAW CITY — 휴대폰으로 받는 일거리: 배달·응급 이송·자경단·현상 의뢰·차량 회수·지하 격투장, 그리고 소매치기. 화면과 무관한 시뮬레이션 로직입니다.
 import type { Sim } from './sim';
-import { PLAYER_ID, blankJobState, VEHICLES, wrapAngle, type LaneNode, type Marker, type Ped, type Vehicle, type VehicleKind } from './types';
-import { isOpen, nearestLane, groundHeight } from './world';
+import { PLAYER_ID, blankJobState, VEHICLES, wrapAngle, type Marker, type Ped, type Vehicle } from './types';
+import { isOpen, nearestLane } from './world';
+import { openVehicleLane } from './road-spawn';
 import { autoDrive } from './vehicle';
 
 export interface JobInfo { id: string; name: string; giver: string; desc: string; pay: string; cooldown: number }
@@ -30,25 +31,8 @@ const clock = (t: number): string => { const n = Math.ceil(Math.max(0, t)); retu
 const poi = (s: Sim, id: string) => s.map.pois.find(p => p.id === id) ?? s.map.pois[0]!;
 const cooldowns = new WeakMap<Sim, Record<string, number>>();
 
-/** Keep newly assigned mission vehicles off existing cars and static props.
- * A single nearest lane can be occupied by streaming traffic or the player.
- * Search progressively farther away without sorting the entire lane graph. */
-export function jobSpawnLane(sim: Sim, x: number, z: number, kind: VehicleKind): LaneNode | undefined {
-  const def = VEHICLES[kind], radius = Math.hypot(def.halfL, def.halfW);
-  let chosen: LaneNode | undefined, nearest = 120 ** 2;
-  for (const lane of sim.map.lanes) {
-    if (lane.light >= 0 || !lane.next.length) continue;
-    const dx = lane.x - x, dz = lane.z - z, d2 = dx * dx + dz * dz;
-    if (d2 >= nearest || groundHeight(sim.map, lane.x, lane.z) > .08) continue;
-    if (!isOpen(sim.map, lane.x, lane.z, radius + .2)) continue;
-    if (sim.vehicles.some(v => v.alive && Math.abs(v.y) < 2 &&
-        (v.x - lane.x) ** 2 + (v.z - lane.z) ** 2 <
-        (radius + Math.hypot(VEHICLES[v.kind].halfL, VEHICLES[v.kind].halfW) + 1) ** 2)) continue;
-    if (sim.peds.some(p => p.alive && !p.vehicle && (p.x-lane.x)**2 + (p.z-lane.z)**2 < (radius+1)**2)) continue;
-    chosen = lane; nearest = d2;
-  }
-  return chosen;
-}
+export { openVehicleLane as jobSpawnLane } from './road-spawn';
+const jobSpawnLane = openVehicleLane;
 
 /** 플레이어에게서 min~max 미터 떨어진 인도 지점(없으면 가장 가까운 후보) */
 export function spotNear(sim: Sim, min: number, max: number, from: { x: number; z: number } = sim.player): { x: number; z: number } {

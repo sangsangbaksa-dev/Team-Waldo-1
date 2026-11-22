@@ -2,6 +2,7 @@
 import { AIR, BAG_MAX, BOOST, BOTS, BOT_NAMES, DIFFICULTIES, DRIVE, HELMET_CUT, HEAL, ARMOR_PTS, ARMOR_ABS, MAP_HALF, PARTS, adsSpread, canFit, partFit, PLAYER, RED, SKIN_TONES, SUPPLY_AT, PACE, PART_FITS, TEAM_COLORS, VEHICLES, WEAPONS, ZONES, magOf, makeRng, partHandling, type Attachments, type Difficulty, type DriveKind, type Mode, type PartId, type PartSlot, type WeaponId } from './config';
 import { blockedAt, circleHits, generateMap, lineClear, moveBox, pushOut, rayWorld, slideMove, type GameMap, type Loot } from './world';
 import { WATER_SLOW, waterDepth } from './terrain';
+import { heightAt } from './relief';
 import { thinkBot, thinkAir, newBrain, type BotBrain } from './bot';
 
 export interface Input { mx: number; mz: number; yaw: number; pitch: number; fire: boolean; sprint: boolean; reload: boolean; interact: boolean; ads: boolean; slot: number; /** 수류탄 던지기(눌린 프레임) */ nade?: boolean; /** 연막탄 던지기(눌린 프레임) */ smoke?: boolean; /** 섬광탄 던지기(눌린 프레임) */ flash?: boolean; /** 웅크리기(누르고 있는 동안) */ crouch?: boolean; /** 점프(비행기에서 뛰어내리기) · 낙하산 펴기 */ jump?: boolean; /** 치료 시작: 1 붕대 · 2 구급상자 */ heal?: number }
@@ -156,6 +157,8 @@ export class Match {
   }
 
   /** 시각 t 의 자기장. */
+  /** (x,z) 의 땅 높이(m). 발·눈·총구·수류탄 높이는 모두 이 위에서 잽니다. */
+  ground(x: number, z: number): number { return heightAt(this.map, x, z); }
   zoneAt(time: number): ZoneState {
     const t = Math.max(0, time - this.zoneDelay), half = this.map.half, phases = ZONES[this.mode];
     let prev = { x: 0, z: 0, r: half * 1.35 };
@@ -477,7 +480,7 @@ export class Match {
   }
 
   private throwNade(p: Player, smoke: boolean, flash = false): void {
-    if (smoke) p.smokes--; else if (flash) p.flashes--; else p.nades--; p.nadeCd = NADE.cd; const cp = Math.cos(p.pitch), eye = eyeOf(p), fx = Math.cos(p.yaw) * cp, fz = Math.sin(p.yaw) * cp;
+    if (smoke) p.smokes--; else if (flash) p.flashes--; else p.nades--; p.nadeCd = NADE.cd; const cp = Math.cos(p.pitch), eye = eyeOf(p) + this.ground(p.x, p.z), fx = Math.cos(p.yaw) * cp, fz = Math.sin(p.yaw) * cp;
     const n: Nade = { id: this.nadeId++, owner: p.id, x: p.x + fx * 0.6, y: eye - 0.1, z: p.z + fz * 0.6, vx: fx * NADE.speed + p.vx * 0.5, vy: Math.sin(p.pitch) * NADE.speed + 4.5, vz: fz * NADE.speed + p.vz * 0.5, fuse: smoke ? SMOKE.fuse : flash ? FLASH.fuse : NADE.fuse, smoke, flash };
     this.nades.push(n); this.sounds.push({ x: p.x, z: p.z, t: this.t, by: p.id, quiet: true }); this.events.push({ t: 'nade', stage: 'throw', id: p.id, smoke, flash, x: n.x, y: n.y, z: n.z, vx: n.vx, vy: n.vy, vz: n.vz });
   }
@@ -492,7 +495,7 @@ export class Match {
       const nx = n.x + n.vx * dt, nz = n.z + n.vz * dt;
       if (blockedAt(this.map, nx, n.z, 0.15)) n.vx *= -0.45; else n.x = nx;
       if (blockedAt(this.map, n.x, nz, 0.15)) n.vz *= -0.45; else n.z = nz;
-      n.y += n.vy * dt; if (n.y < 0.12) { n.y = 0.12; n.vy = Math.abs(n.vy) > 2 ? -n.vy * 0.38 : 0; n.vx *= 0.7; n.vz *= 0.7; }
+      const floor = this.ground(n.x, n.z) + 0.12; n.y += n.vy * dt; if (n.y < floor) { n.y = floor; n.vy = Math.abs(n.vy) > 2 ? -n.vy * 0.38 : 0; n.vx *= 0.7; n.vz *= 0.7; }
       if (n.fuse > 0) continue;
       this.nades.splice(i, 1);
       if (n.smoke) { this.clouds.push({ id: this.cloudId++, x: n.x, z: n.z, age: 0 }); this.events.push({ t: 'nade', stage: 'boom', id: n.owner, smoke: true, x: n.x, y: n.y, z: n.z }); continue; }
@@ -501,8 +504,8 @@ export class Match {
       this.sounds.push({ x: n.x, z: n.z, t: this.t, by: n.owner });
       for (const v of this.vehicles) { if (v.wreck) continue; const d = Math.hypot(v.x - n.x, v.z - n.z); if (d < NADE.radius + 1.5) this.hurtVehicle(v, NADE.dmg * 1.4 * (1 - d / (NADE.radius + 1.5)), n.owner); }
       for (const q of this.players) {
-        if (!q.alive || q.air || q.veh >= 0) continue; const d = Math.hypot(q.x - n.x, q.z - n.z, (1 - n.y) * 0.5); if (d > NADE.radius) continue;
-        let dmg = NADE.dmg * (1 - d / NADE.radius) ** 1.2; if (!lineClear(this.map, n.x, Math.max(0.3, n.y), n.z, q.x, 1.0, q.z)) dmg *= 0.3; if (dmg < 3) continue;
+        if (!q.alive || q.air || q.veh >= 0) continue; const gq = this.ground(q.x, q.z), d = Math.hypot(q.x - n.x, q.z - n.z, (gq + 1 - n.y) * 0.5); if (d > NADE.radius) continue;
+        let dmg = NADE.dmg * (1 - d / NADE.radius) ** 1.2; if (!lineClear(this.map, n.x, Math.max(this.ground(n.x, n.z) + 0.3, n.y), n.z, q.x, gq + 1.0, q.z)) dmg *= 0.3; if (dmg < 3) continue;
         this.damage(q, dmg, n.owner, 'grenade', false, q.x, 1.2, q.z, false);
       }
     }
@@ -512,7 +515,7 @@ export class Match {
     for (const q of this.players) {
       if (!q.alive || q.air) continue;
       const dx = n.x - q.x, dz = n.z - q.z, d = Math.hypot(dx, dz); if (d > FLASH.radius) continue;
-      if (!lineClear(this.map, n.x, Math.max(0.3, n.y), n.z, q.x, 1.4, q.z) || this.smokeBlocks(n.x, n.z, q.x, q.z)) continue;
+      if (!lineClear(this.map, n.x, Math.max(this.ground(n.x, n.z) + 0.3, n.y), n.z, q.x, this.ground(q.x, q.z) + 1.4, q.z) || this.smokeBlocks(n.x, n.z, q.x, q.z)) continue;
       const face = d < 1.2 ? 1 : (Math.cos(q.yaw) * dx + Math.sin(q.yaw) * dz) / d; // 1 = 정면, -1 = 등지고 있음
       const look = 0.35 + 0.65 * Math.max(0, (face + 0.2) / 1.2), near = 1 - 0.55 * (d / FLASH.radius), t = FLASH.time * look * near;
       if (t >= FLASH.min && t > q.blind) q.blind = t;
@@ -608,7 +611,7 @@ export class Match {
     const h = partHandling(gun.att), quiet = gun.att.muzzle === 'suppressor';
     p.kick = Math.max(0, p.kick - def.recoil * 12 * (1 - h.kick));
     const moving = Math.min(1.6, p.speed / PLAYER.walk), spread = def.spread * h.spread * (p.ads ? adsSpread(gun.att) : 1) * (1 + moving * 0.5) * (1 + p.kick * 0.5) * (1 - 0.22 * p.crouch);
-    const ox = p.x, oy = eyeOf(p), oz = p.z, ends: number[] = [], eventStart = this.events.length;
+    const ox = p.x, oy = eyeOf(p) + this.ground(p.x, p.z), oz = p.z, ends: number[] = [], eventStart = this.events.length;
     for (let i = 0; i < def.pellets; i++) {
       const a = this.rng() * Math.PI * 2, r = spread * Math.sqrt(this.rng()), yaw = p.yaw + Math.cos(a) * r, pitch = p.pitch + Math.sin(a) * r;
       this.bullet(p.id, id, ox, oy, oz, yaw, pitch, ends, false);
@@ -624,14 +627,14 @@ export class Match {
     const wallT = rayWorld(this.map, ox, oy, oz, dx, dy, dz, def.range);
     let hitT = Math.min(wallT, def.range), target: Player | null = null, head = false, vcand: Vehicle | null = null, vt = Infinity;
     // 차체: 서 있는 차는 지도 상자가 먼저 막고, 움직이는 차는 여기서 막습니다(상자와 거의 같은 거리면 차가 맞은 것).
-    for (const v of this.vehicles) { if (v.wreck) continue; const t = rayVehicle(v, ox, oy, oz, dx, dy, dz, def.range); if (t < vt) { vt = t; vcand = v; } }
+    for (const v of this.vehicles) { if (v.wreck) continue; const t = rayVehicle(v, ox, oy - this.ground(v.x, v.z), oz, dx, dy, dz, def.range); if (t < vt) { vt = t; vcand = v; } }
     if (vcand && vt <= hitT + 0.9) hitT = Math.min(hitT, vt); else vcand = null;
     for (const q of this.players) {
       if (!q.alive || q.id === shooter || q.air || q.veh >= 0) continue;
       const px = ox - q.x, pz = oz - q.z, a = dx * dx + dz * dz; if (a < 1e-9) continue;
       const R = fromRemote ? 0.62 : 0.5, b = 2 * (px * dx + pz * dz), c = px * px + pz * pz - R * R, disc = b * b - 4 * a * c; if (disc < 0) continue;
       let t = (-b - Math.sqrt(disc)) / (2 * a); if (t < 0) { if (c < 0) t = 0; else continue; }
-      if (t >= hitT) continue; const y = oy + dy * t, cr = q.remote ? q.crouch : q.crouch; if (y < 0 || y > heightOf(cr) + 0.1) continue;
+      if (t >= hitT) continue; const y = oy + dy * t - this.ground(q.x, q.z), cr = q.remote ? q.crouch : q.crouch; if (y < 0 || y > heightOf(cr) + 0.1) continue;
       hitT = t; target = q; head = y > headOf(cr);
     }
     const ex = ox + dx * hitT, ey = oy + dy * hitT, ez = oz + dz * hitT; ends.push(ex, ey, ez);

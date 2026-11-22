@@ -74,7 +74,7 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
       const retaliate = p.hurt > 0 && p.lastHitBy === q.id;
       if (cautious && !retaliate && d > 9) continue;
       if (!retaliate && d > 9 && Math.abs(angDiff(Math.atan2(dz, dx), p.yaw)) > T.fov) continue;
-      if (d < bestD && lineClear(m.map, p.x, eye, p.z, q.x, 1.2, q.z) && !m.smokeBlocks(p.x, p.z, q.x, q.z)) { best = q; bestD = d; }
+      if (d < bestD && lineClear(m.map, p.x, eye + m.ground(p.x, p.z), p.z, q.x, 1.2 + m.ground(q.x, q.z), q.z) && !m.smokeBlocks(p.x, p.z, q.x, q.z)) { best = q; bestD = d; }
     }
     if (best) {
       if (b.target !== best.id || b.seen > 1.2) { b.target = best.id; b.react = T.react * (0.7 + rng() * 0.6) + Math.min(0.35, bestD / 300) + (p.guns[p.cur]?.id === 'sniper' ? 0.45 : 0); b.head = rng() < T.headAim; }
@@ -114,7 +114,7 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
   if (q && engaged) {
     const tx = visible ? q.x : b.lastX, tz = visible ? q.z : b.lastZ, dx = tx - p.x, dz = tz - p.z, d = Math.hypot(dx, dz) + 1e-6, ty = b.head ? 1.62 : 1.15;
     if (b.errT <= 0) { b.errT = 0.22 + rng() * 0.15; const k = Math.max(def?.id === 'sniper' ? 0.016 : 0, T.aimErr * (1 + d / 40)) * (q.bot && m.plane ? 2.2 : 1); /* 100명 판: AI끼리는 덜 정확해 초반에 다 쓰러지지 않습니다 */ b.errYaw = gauss(rng) * k; b.errPitch = gauss(rng) * k * 0.7; }
-    yawTarget = Math.atan2(dz, dx) + b.errYaw; pitchTarget = Math.atan2(ty - eye, d) + b.errPitch; turn = T.turn;
+    yawTarget = Math.atan2(dz, dx) + b.errYaw; pitchTarget = Math.atan2(ty + m.ground(tx, tz) - eye - m.ground(p.x, p.z), d) + b.errPitch; turn = T.turn;
     if (visible && def && gun) {
       b.react -= dt;
       const dy = Math.abs(angDiff(yawTarget, p.yaw)), tol = Math.max(0.03, Math.atan2(0.42, d) * 1.5), inRange = d < Math.min(def.range * 0.85, (IDEAL[def.id] ?? 20) * 1.7) && !(def.id === 'sniper' && d < 14);

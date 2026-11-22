@@ -1,0 +1,41 @@
+name: ROOM TONE browser smoke
+on:
+  pull_request:
+    paths:
+      - 'room-tone/**'
+      - 'src/room-tone/**'
+      - 'tests/room-tone/**'
+      - 'tools/room-tone-browser-smoke.mjs'
+      - '.github/workflows/room-tone-browser-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: room-tone-browser-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium --only-shell
+      - name: Verify desktop and mobile WebGL2 browser interactions
+        timeout-minutes: 6
+        run: node tools/room-tone-browser-smoke.mjs
+      - name: Upload ROOM TONE screenshots and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: room-tone-browser-evidence
+          path: browser-artifacts/room-tone-*
+          if-no-files-found: warn
+          retention-days: 7

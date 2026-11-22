@@ -18,7 +18,7 @@ export class SquadAudio {
   /** 이번 스텝에 새로 생긴 효과(age 0)만 넘기세요. 70ms 에 한 번, 종류별로 하나씩만 소리 냅니다. */
   battle(effects: Effect[], now: number): void {
     if (now - this.lastBattle < 70) return; let hit = false, heal = false, siege = false, death = false;
-    for (const e of effects) { if (e.kind === 'hit') hit = true; else if (e.kind === 'heal') heal = true; else if (e.kind === 'siege') siege = true; else death = true; }
+    for (const e of effects) { if (e.age !== 0) continue; if (e.kind === 'hit') hit = true; else if (e.kind === 'heal') heal = true; else if (e.kind === 'siege') siege = true; else death = true; }
     if (!(hit || heal || siege || death)) return; this.lastBattle = now;
     if (siege) burst(this.eng, 0.25, 0.2, 140, 0.8, 'lowpass');
     if (hit) tone(this.eng, 300 + Math.random() * 120, 0.05, 0.08, 'square', -80);

@@ -106,3 +106,34 @@ it('announces selected units and battle speed to assistive controls', () => {
   expect(button('#speed1').getAttribute('aria-pressed')).toBe('false');
   button('#pause').click(); button('#menu').click(); button('#exit').click();
 });
+
+it('ignores secondary pointers and cancels a deployment when capture is lost', () => {
+  openSquad(vi.fn());
+  button('#start').click();
+  const canvas = document.querySelector<HTMLCanvasElement>('.sq-root canvas')!;
+  const prepare = (target: HTMLCanvasElement) => {
+    Object.defineProperty(target, 'getBoundingClientRect', {
+      configurable: true, value: () => ({ left: 0, top: 0, width: 600, height: 1000 }),
+    });
+    Object.defineProperty(target, 'setPointerCapture', { configurable: true, value: vi.fn() });
+  };
+  const event = (target: HTMLCanvasElement, type: string, pointerId: number, x: number, y: number) => {
+    const e = new Event(type, { bubbles: true });
+    Object.assign(e, { pointerId, button: 0, clientX: x, clientY: y });
+    target.dispatchEvent(e);
+  };
+  prepare(canvas);
+  event(canvas, 'pointerdown', 11, 250, 750);
+  event(canvas, 'pointerdown', 12, 350, 750);
+  event(canvas, 'pointerup', 12, 350, 750);
+  expect(document.querySelector('.sq-budget strong')?.textContent).toContain('1000');
+  event(canvas, 'pointerup', 11, 250, 750);
+  expect(document.querySelector('.sq-budget strong')?.textContent).toContain('900');
+  const nextCanvas = document.querySelector<HTMLCanvasElement>('.sq-root canvas')!;
+  prepare(nextCanvas);
+  event(nextCanvas, 'pointerdown', 13, 300, 750);
+  event(nextCanvas, 'lostpointercapture', 13, 300, 750);
+  event(nextCanvas, 'pointerup', 13, 300, 750);
+  expect(document.querySelector('.sq-budget strong')?.textContent).toContain('900');
+  button('#exit')?.click();
+});

@@ -66,6 +66,7 @@ export class Sound {
     this.stepSide = 1;
     this.clock = null;
     this.waking = null;
+    this.powerQueue = Promise.resolve();
   }
 
   async start() {
@@ -89,7 +90,7 @@ export class Sound {
           throw error;
         }
       }
-      if (this.ctx.state === "suspended") {
+      if (!this.paused && !this.muted && this.ctx.state === "suspended") {
         if (!this.waking)
           this.waking = this.ctx.resume().finally(() => {
             this.waking = null;
@@ -97,7 +98,7 @@ export class Sound {
         await this.waking;
       }
       this.applyLevel();
-      if (!this.paused) this.startClock();
+      this.syncPower();
     } catch {
       // Sound is optional on devices with a locked or unavailable audio output.
     }
@@ -182,7 +183,8 @@ export class Sound {
     if (this.muted) {
       if (this.clock !== null) globalThis.clearInterval(this.clock);
       this.clock = null;
-    } else if (!this.paused) this.startClock();
+    }
+    this.syncPower();
   }
 
   pause(paused) {
@@ -195,17 +197,23 @@ export class Sound {
     } else if (this.ctx && this.level) {
       this.nextDistant = this.ctx.currentTime + 7 + Math.random() * 7;
     }
-    if (!this.ctx) return;
+    this.syncPower();
+  }
+
+  syncPower() {
     const ctx = this.ctx;
-    try {
-      const transition = this.paused ? ctx.suspend() : ctx.resume();
-      // Browser resume() can settle asynchronously. Don't leave the
-      // heartbeat stopped forever just because the context was suspended at
-      // the precise moment the player pressed Resume.
-      void Promise.resolve(transition).then(() => {
+    if (!ctx) return;
+    // Serialize transitions to prevent a delayed resume from reactivating
+    // silent oscillators after mute, pause, or tab backgrounding.
+    this.powerQueue = this.powerQueue.catch(() => {}).then(async () => {
+      if (ctx !== this.ctx || ctx.state === "closed") return;
+      if (this.paused || this.muted) {
+        if (ctx.state !== "suspended") await ctx.suspend();
+      } else {
+        if (ctx.state !== "running") await ctx.resume();
         if (ctx === this.ctx && !this.paused && !this.muted) this.startClock();
-      }).catch(() => { /* An unavailable audio device must not block play. */ });
-    } catch { /* Browser audio is optional. */ }
+      }
+    }).catch(() => { /* WebAudio permission may change during playback. */ });
   }
 
   startClock() {

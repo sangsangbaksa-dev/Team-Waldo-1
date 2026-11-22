@@ -8,5 +8,7 @@ export class Sound {
   pause(paused: boolean): void;
   startClock(): void;
   ready(): boolean;
+  powerQueue: Promise<void>;
+  syncPower(): void;
   dispose(): void;
 }

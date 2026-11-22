@@ -86,3 +86,49 @@ describe("ROOM TONE WebAudio suspend and resume",()=>{
     expect(sound.clock).toBeNull();
   });
 });
+
+describe("ROOM TONE audio mute power management",()=>{
+  afterEach(()=>vi.useRealTimers());
+  it("suspends the active audio graph on mute and resumes after unmuting",async()=>{
+    vi.useFakeTimers();
+    const {sound,ctx}=harness();
+    ctx.state="running";
+    sound.paused=false;
+    sound.startClock();
+    expect(sound.clock).not.toBeNull();
+    sound.setMute(true);
+    await sound.powerQueue;
+    expect(ctx.state).toBe("suspended");
+    expect(sound.clock).toBeNull();
+    expect(ctx.suspend).toHaveBeenCalledOnce();
+    sound.setMute(false);
+    await sound.powerQueue;
+    expect(ctx.state).toBe("running");
+    expect(sound.clock).not.toBeNull();
+    expect(ctx.resume).toHaveBeenCalledOnce();
+    sound.dispose();
+  });
+  it("never wakes a muted graph when a paused game resumes",async()=>{
+    vi.useFakeTimers();
+    const {sound,ctx}=harness();
+    sound.setMute(true);
+    sound.pause(false);
+    await sound.powerQueue;
+    expect(ctx.resume).not.toHaveBeenCalled();
+    expect(sound.clock).toBeNull();
+    sound.dispose();
+  });
+  it("serializes rapidly toggled mute and pause without leaving running sound",async()=>{
+    vi.useFakeTimers();
+    const {sound,ctx}=harness();
+    ctx.state="running";
+    sound.paused=false;
+    sound.setMute(true);
+    sound.pause(true);
+    sound.setMute(false);
+    await sound.powerQueue;
+    expect(ctx.state).toBe("suspended");
+    expect(sound.clock).toBeNull();
+    sound.dispose();
+  });
+});

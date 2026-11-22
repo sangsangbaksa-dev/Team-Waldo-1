@@ -23,8 +23,15 @@ import { driftLive, readDriftBests, writeDriftBests } from './driftscore';
 import { PVP_ENABLED } from '../net/config';
 
 const STEP = 1 / 90;
+/** 한 프레임에 따라잡는 최대 시간(초)과 스텝 수. 이보다 느리면 게임이 느려집니다(카운트다운이 건너뛰어지지 않게). */
+const MAX_FRAME = 0.25, MAX_STEPS = Math.ceil(MAX_FRAME / STEP) + 1;
 const ORD = ['', '1위', '2위', '3위', '4위', '5위', '6위'];
 const lapKey = (map: string, car: string, mode: string): string => `${map}:${car}:${mode}`;
+/** 기록이 없을 때의 표기는 어디서나 '—' 하나로 통일합니다. */
+const NONE = '—';
+const fmtOrNone = (t: number): string => (Number.isFinite(t) ? fmtTime(t) : NONE);
+/** 차이(초)를 부호와 함께. 반올림하면 0.00 이 되는 값은 부호 없이 0.00 으로 씁니다(-0.00 방지). */
+const fmtDelta = (d: number, digits = 2): string => { const v = Math.abs(d).toFixed(digits); return Number(v) === 0 ? v : `${d >= 0 ? '+' : '−'}${v}`; };
 /** HUD 버튼 아이콘(이모지 대신 직접 그린 선 아이콘). */
 const svgIcon = (d: string): string => `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const ICON = {
@@ -41,18 +48,28 @@ const ICON = {
   brake: svgIcon('<circle cx="12" cy="12" r="7.5" fill="currentColor" fill-opacity=".25"/><path d="M12 8v5.2" stroke-width="2.8"/><circle cx="12" cy="16" r=".4" stroke-width="2.6"/>'),
 };
 
+/** 그래픽 가속이 꺼진 소프트웨어 렌더러(SwiftShader·llvmpipe 등)인지. 이런 환경에서는 높은 화질이 초당 1~2프레임이라 낮은 화질로 달립니다. */
+function isSoftwareGL(): boolean {
+  try {
+    const gl = document.createElement('canvas').getContext('webgl'), ext = gl?.getExtension('WEBGL_debug_renderer_info');
+    const name = gl && ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : '';
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
+    return /swiftshader|llvmpipe|softpipe|software/i.test(name);
+  } catch { return false; }
+}
+
 export function openRace(onExit: () => void): void {
-  const prefs = readPreferences(), touch = matchMedia('(pointer: coarse)').matches;
+  const prefs = readPreferences(), touch = matchMedia('(pointer: coarse)').matches, softwareGL = isSoftwareGL();
   const root = document.createElement('div'); root.className = 'rc-root' + (touch ? ' touch' : ''); root.dataset.phase = 'loading';
   root.innerHTML = `<canvas class="rc-canvas"></canvas><canvas class="rc-fx"></canvas><div class="rc-vignette"></div><div class="rc-boostfx"></div><div class="rc-speedlines"></div>
   <div class="rc-hud">
-    <div class="rc-tl"><div class="rc-pos"><b id="rc-pos">4</b><span id="rc-of">/ 4</span></div><div class="rc-lap">${ICON.flag}LAP <b id="rc-lap">1</b>/<span id="rc-laps">3</span></div><div class="rc-ko" id="rc-ko"></div></div>
+    <div class="rc-tl"><div class="rc-pos"><b id="rc-pos">4</b><span id="rc-of">/ 4</span></div><div class="rc-lap">${ICON.flag}<span class="rc-lap-label">랩</span> <b id="rc-lap">1</b>/<span id="rc-laps">3</span></div><div class="rc-ko" id="rc-ko"></div></div>
     <div class="rc-tc"><div class="rc-time" id="rc-time">0:00.000</div><div class="rc-best" id="rc-best"></div></div>
-    <div class="rc-tr"><canvas id="rc-map" width="220" height="220" aria-label="미니맵"></canvas><div class="rc-btns"><button data-act="mute" title="소리 (M)" aria-pressed="${prefs.sound}">${prefs.sound ? ICON.soundOn : ICON.soundOff}</button><button data-act="pause" title="일시정지 (Esc)">${ICON.pause}</button><button data-act="exit" title="나가기">${ICON.exit}</button></div></div>
-    <div class="rc-msg" id="rc-msg"></div><div class="rc-count" id="rc-count"></div><div class="rc-wrong" id="rc-wrong">역주행!</div><div class="rc-draft" id="rc-draft">SLIPSTREAM</div><div class="rc-drift" id="rc-drift"></div>
-    <div class="rc-edge" id="rc-edge">TRACK EDGE <span>SPEED REDUCED</span></div><div class="rc-bottom"><div class="rc-nitro"><span>${ICON.nitro}NITRO</span><div><i id="rc-nitro"></i></div></div><div class="rc-speed"><b id="rc-kmh">0</b><small>km/h</small><em id="rc-gear">N</em></div><div class="rc-rev"><i id="rc-rev"></i></div></div>
+    <div class="rc-tr"><canvas id="rc-map" width="220" height="220" aria-label="미니맵"></canvas><div class="rc-btns"><button data-act="mute" title="소리 (M)" aria-pressed="${!prefs.sound}">${prefs.sound ? ICON.soundOn : ICON.soundOff}</button><button data-act="pause" title="일시정지 (Esc)">${ICON.pause}</button><button data-act="exit" title="나가기">${ICON.exit}</button></div></div>
+    <div class="rc-msg" id="rc-msg"></div><div class="rc-count" id="rc-count"></div><div class="rc-wrong" id="rc-wrong">역주행!</div><div class="rc-draft" id="rc-draft">슬립스트림</div><div class="rc-drift" id="rc-drift"></div>
+    <div class="rc-edge" id="rc-edge">코스 가장자리 <span>속도 감소</span></div><div class="rc-bottom"><div class="rc-nitro"><span>${ICON.nitro}니트로</span><div><i id="rc-nitro"></i></div></div><div class="rc-speed"><b id="rc-kmh">0</b><small>km/h</small><em id="rc-gear">N</em></div><div class="rc-rev"><i id="rc-rev"></i></div></div>
     <div class="rc-keys"><span><kbd>W</kbd><kbd>↑</kbd> 가속</span><span><kbd>S</kbd><kbd>↓</kbd> 브레이크</span><span><kbd>A</kbd><kbd>D</kbd> 조향</span><span><kbd>Space</kbd> 드리프트</span><span><kbd>Shift</kbd> 니트로</span><span><kbd>R</kbd> 복귀</span></div>
-    <div class="rc-touchpad"><div class="rc-steer"><button data-hold="left" aria-label="왼쪽">${ICON.left}</button><button data-hold="right" aria-label="오른쪽">${ICON.right}</button></div><div class="rc-pedals"><button data-hold="gas" class="gas" aria-label="가속">${ICON.gas}가속</button><div class="rc-pedal-row"><button data-hold="nitro">${ICON.nitro}NITRO</button><button data-hold="drift">${ICON.drift}DRIFT</button><button data-hold="brake">${ICON.brake}BRAKE</button></div></div></div>
+    <div class="rc-touchpad"><div class="rc-steer"><button data-hold="left" aria-label="왼쪽">${ICON.left}</button><button data-hold="right" aria-label="오른쪽">${ICON.right}</button></div><div class="rc-pedals"><button data-hold="gas" class="gas" aria-label="가속">${ICON.gas}가속</button><div class="rc-pedal-row"><button data-hold="nitro">${ICON.nitro}니트로</button><button data-hold="drift">${ICON.drift}드리프트</button><button data-hold="brake">${ICON.brake}브레이크</button></div></div></div>
   </div>
   <div class="rc-modal" id="rc-modal"><div class="rc-card"><span class="rc-eyebrow">SPEED RUSH</span><h2>엔진 예열 중…</h2></div></div>`;
   document.body.append(root);
@@ -66,7 +83,7 @@ export function openRace(onExit: () => void): void {
   let multi: { s: RoomSession; net: RaceMulti; myFin: number | null; gone: Set<string>; done: boolean } | null = null;
   let pvp: { s: PvpSession; net: RacePvp; myFin: number | null; oppFin: number | null; done: boolean } | null = null;
   const keys = new Set<string>(), hold = { left: false, right: false, brake: false, drift: false, nitro: false, gas: false };
-  let driftBests = readDriftBests(), nitroWas = false, driftWas = false;
+  let doneKmh: number | null = null, driftBests = readDriftBests(), nitroWas = false, driftWas = false;
   const cache = new Map<string, string>(); const setText = (id: string, v: string): void => { if (cache.get(id) !== v) { cache.set(id, v); $(id).textContent = v; } };
 
   const msg = (text: string, kind = ''): void => { const el = $('#rc-msg'); el.textContent = text; el.className = `rc-msg show ${kind}`; msgT = 1.6; };
@@ -87,15 +104,15 @@ export function openRace(onExit: () => void): void {
     for (const e of ev) switch (e.type) {
       case 'count': bigCount(String(e.n)); audio.sfx('count'); break;
       case 'go': bigCount('출발!', true); audio.sfx('go'); view?.punchFov(0.5); break;
-      case 'finalLap': bigCount('FINAL LAP!', true); msg('FINAL LAP  ·  NITRO +15%', 'gold'); audio.sfx('best'); view?.punchFov(0.6); break;
+      case 'finalLap': bigCount('마지막 랩!', true); msg('마지막 랩  ·  니트로 +15%', 'gold'); audio.sfx('best'); view?.punchFov(0.6); break;
       case 'launch': msg('완벽한 출발!', 'gold'); view?.punchFov(1); audio.sfx('pad'); break;
-      case 'pad': msg('BOOST PAD!', 'cyan'); view?.punchFov(0.8); audio.sfx('pad'); break;
-      case 'driftBoost': msg(`DRIFT BOOST  +${e.secs.toFixed(1)}s`, 'cyan'); view?.punchFov(0.7); audio.sfx('drift'); break;
+      case 'pad': msg('부스트 패드!', 'cyan'); view?.punchFov(0.8); audio.sfx('pad'); break;
+      case 'driftBoost': msg(`드리프트 부스트  +${e.secs.toFixed(1)}초`, 'cyan'); view?.punchFov(0.7); audio.sfx('drift'); break;
       case 'hit': wallHit = e.power; view?.kick(Math.min(1, e.power * 0.05)); audio.sfx('hit', e.power); break;
       case 'bump': view?.kick(Math.min(0.5, e.power * 0.03)); audio.sfx('bump'); break;
-      case 'lap': if (e.lap < race.laps) { msg(e.best ? `LAP ${e.lap}  ${fmtTime(e.time)}  ★ BEST` : `LAP ${e.lap}  ${fmtTime(e.time)}`, e.best ? 'gold' : ''); audio.sfx(e.best ? 'best' : 'lap'); } break;
-      case 'driftBank': msg(`DRIFT +${e.points.toLocaleString('ko-KR')}${e.mult > 1 ? `  ×${e.mult}` : ''}${race.phase === 'racing' ? `  ·  NITRO +${Math.round(Math.min(0.2, e.points / 6000) * 100)}%` : ''}`, 'gold'); audio.sfx('drift'); break;
-      case 'driftLost': if (e.points >= 200) { msg('DRIFT 체인 끊김', 'hint'); msgT = 1.2; } break;
+      case 'lap': if (e.lap < race.laps) { msg(e.best ? `${e.lap}랩  ${fmtTime(e.time)}  ★ 최고 랩` : `${e.lap}랩  ${fmtTime(e.time)}`, e.best ? 'gold' : ''); audio.sfx(e.best ? 'best' : 'lap'); } break;
+      case 'driftBank': msg(`드리프트 +${e.points.toLocaleString('ko-KR')}${e.mult > 1 ? `  ×${e.mult}` : ''}${race.phase === 'racing' ? `  ·  니트로 +${Math.round(Math.min(0.2, e.points / 6000) * 100)}%` : ''}`, 'gold'); audio.sfx('drift'); break;
+      case 'driftLost': if (e.points >= 200) { msg('드리프트 끊김', 'hint'); msgT = 1.2; } break;
       case 'knockout':
         if (e.player) { msg('탈락!', 'hint'); audio.sfx('hit', 6); finishRace(e.place, race.clock, true); }
         else { msg(`${e.name} 탈락!  ${e.left}대 남음`, 'gold'); audio.sfx('best'); }
@@ -104,6 +121,8 @@ export function openRace(onExit: () => void): void {
     }
   }
 
+  /** 타임어택 보상: 첫 완주 또는 신기록에만 주고, 첫 완주 한 번으로 가장 싼 도장(220)을 살 수 있게 합니다. 외형 도장 전용이라 성능에는 영향이 없습니다. */
+  const trialReward = (hadGhost: boolean, laps: number): number => (hadGhost ? 120 : 240) + (laps - 1) * 20;
   function finishRace(place: number, time: number, eliminated = false): void {
     if (finishedShown) return; finishedShown = true;
     const gen = raceGen;
@@ -113,15 +132,15 @@ export function openRace(onExit: () => void): void {
     const trial = !!race.trial, ghostNew = trial && race.rec !== undefined && time < (race.ghost?.time ?? Infinity);
     if (ghostNew && race.rec) writeGhost(map.id, setup.laps, setup.car, race.rec.finish(time, setup.laps, race.player.car));
     const drift = race.drift.total, prevDrift = driftBests[map.id] ?? 0, driftNew = drift > prevDrift; if (driftNew) { driftBests = { ...driftBests, [map.id]: drift }; writeDriftBests(driftBests); }
-    const coins = eliminated ? 0 : trial ? (ghostNew ? (race.ghost ? 60 : 120) : 0) : rewardFor(place, level.id, setup.laps, newBest); garage.value = { ...garage.value, coins: garage.value.coins + coins }; writeGarage(garage.value);
+    const coins = eliminated ? 0 : trial ? (ghostNew ? trialReward(!!race.ghost, setup.laps) : 0) : rewardFor(place, level.id, setup.laps, newBest); garage.value = { ...garage.value, coins: garage.value.coins + coins }; writeGarage(garage.value);
     window.setTimeout(() => {
       if (closed || gen !== raceGen) return;
       modal.className = 'rc-modal show'; root.dataset.phase = 'done';
-      modal.innerHTML = `<div class="rc-card result p${place}"><span class="rc-eyebrow">${map.name} · ${setup.laps}랩 · ${trial ? '타임어택' : ko ? `녹아웃 · ${level.name}` : level.name} · ${car.name}</span><h2>${trial ? (ghostNew ? '고스트 갱신' : '완주') : eliminated ? `탈락 <small>${ORD[place] ?? place + 'TH'} / 4</small>` : `${ORD[place] ?? place + 'TH'} <small>/ 4</small>`}</h2><p class="rc-total">${eliminated ? `생존 시간 ${fmtTime(time)} · 꼴찌로 탈락` : fmtTime(time)}</p>
-        <div class="rc-result-stats"><div><span>최고 랩</span><b>${Number.isFinite(bestLap) ? fmtTime(bestLap) : '—'}</b></div><div><span>개인 최고 기록과 비교</span><b>${eliminated ? '—' : Number.isFinite(prevRace) ? `${time - prevRace >= 0 ? '+' : '−'}${Math.abs(time - prevRace).toFixed(3)}s` : '첫 완주'}</b></div></div><ol class="rc-laps">${race.player.lapTimes.map((l, i) => `<li${l === bestLap ? ' class="best"' : ''}><span>LAP ${i + 1}</span><b>${fmtTime(l)}</b></li>`).join('')}</ol>
-        <p class="rc-record">${trial ? (ghostNew ? '고스트를 갱신했습니다 — 다음 도전에서 이 주행과 겨룹니다' : race.ghost ? `고스트 ${fmtTime(race.ghost.time)} · ${time - race.ghost.time >= 0 ? '+' : '-'}${Math.abs(time - race.ghost.time).toFixed(2)}초` : '') : ''}${trial ? '' : newBest ? '개인 최고 기록 갱신' : `${map.name} 최고 랩 ${fmtTime(records.bestLap[lapKey(map.id, setup.car, setup.mode)] ?? Infinity)}`}</p>
+      modal.innerHTML = `<div class="rc-card result p${place}"><span class="rc-eyebrow">${map.name} · ${setup.laps}랩 · ${trial ? '타임어택' : ko ? `녹아웃 · ${level.name}` : level.name} · ${car.name}</span><h2>${trial ? (ghostNew ? '고스트 갱신' : '완주') : eliminated ? `탈락 <small>${ORD[place] ?? place + '위'} / ${race.racers.length}</small>` : `${ORD[place] ?? place + '위'} <small>/ ${race.racers.length}</small>`}</h2><p class="rc-total">${eliminated ? `생존 시간 ${fmtTime(time)} · ${race.player.lapTimes.length > 0 ? `${race.player.lapTimes.length}랩 완주 후 ` : ''}꼴찌로 탈락` : fmtTime(time)}</p>
+        <div class="rc-result-stats"><div><span>최고 랩</span><b>${fmtOrNone(bestLap)}</b></div><div><span>개인 최고 기록과 비교</span><b>${eliminated ? NONE : Number.isFinite(prevRace) ? `${fmtDelta(time - prevRace, 3)}초` : '첫 완주'}</b></div></div><ol class="rc-laps">${race.player.lapTimes.map((l, i) => `<li${l === bestLap ? ' class="best"' : ''}><span>${i + 1}랩</span><b>${fmtTime(l)}</b></li>`).join('')}</ol>
+        <p class="rc-record">${trial ? (ghostNew ? '고스트를 갱신했습니다 — 다음 도전에서 이 주행과 겨룹니다' : race.ghost ? `고스트 ${fmtTime(race.ghost.time)} · ${fmtDelta(time - race.ghost.time)}초` : '') : ''}${trial ? '' : newBest ? '개인 최고 기록 갱신' : `${map.name} · ${car.name} 최고 랩 ${fmtOrNone(records.bestLap[lapKey(map.id, setup.car, setup.mode)] ?? Infinity)}`}</p>
         <p class="rc-record">드리프트 ${drift.toLocaleString('ko-KR')}점${driftNew && drift > 0 ? ' ★ 코스 최고 기록' : prevDrift > 0 ? ` · 코스 최고 ${prevDrift.toLocaleString('ko-KR')}점` : ''}</p>
-        <p class="rc-reward">+${coins} 코인 <small>(보유 ${garage.value.coins.toLocaleString('ko-KR')})</small></p>
+        ${coins > 0 ? `<p class="rc-reward">+${coins} 코인 <small>(보유 ${garage.value.coins.toLocaleString('ko-KR')})</small></p>` : `<p class="rc-record">코인 보상 없음 <small>(보유 ${garage.value.coins.toLocaleString('ko-KR')})</small></p>`}
         <div class="rc-actions"><button class="primary" data-act="restart">다시 시작</button><button data-act="setup">설정</button><button data-act="exit">게임 목록으로</button></div></div>`;
     }, 1600);
   }
@@ -134,7 +153,7 @@ export function openRace(onExit: () => void): void {
     if (setup.mode === 'knockout' && setup.laps !== 3) setup = { ...setup, laps: 3 }; // 녹아웃은 3랩 고정(1랩·2랩 끝에 한 대씩 탈락)
     const trial = setup.mode === 'trial', ghost = trial ? readGhost(setup.map, setup.laps, setup.car) : null;
     race = createRace(track, setup.laps, records.bestLap[lapKey(setup.map, setup.car, setup.mode)] ?? Infinity, { ...setup, skin: ownsSkin(garage.value, setup.skin) ? setup.skin : 'stock', trial, ghost, knockout: setup.mode === 'knockout' });
-    finishedShown = false; paused = false; acc = 0; lastPlace = trial ? 1 : 4; cache.clear(); setText('#rc-laps', String(setup.laps)); setText('#rc-of', trial ? 'TIME ATTACK' : '/ 4'); setText('#rc-ko', '');
+    finishedShown = false; paused = false; acc = 0; lastPlace = trial ? 1 : 4; cache.clear(); setText('#rc-laps', String(setup.laps)); setText('#rc-of', trial ? '타임어택' : '/ 4'); setText('#rc-ko', '');
     if (!startView(carTemplate)) return;
     modal.className = 'rc-modal'; modal.innerHTML = ''; root.dataset.phase = 'countdown'; msg('', '');
     msg(touch ? '가속 버튼으로 출발 부스트 · 좌우 조향 · 드리프트 · 니트로' : '가속 ↑ · 조향 ← → · 드리프트 Space · 니트로 Shift', 'hint'); msgT = 4; last = performance.now();
@@ -147,6 +166,7 @@ export function openRace(onExit: () => void): void {
     setupUi = mountSetup(root, setup, records, garage, {
       onStart: s => { setup = s; writeRaceSetupRaw(s); setupUi?.destroy(); setupUi = null; begin(); },
       onExit: () => exit(),
+      quality: { get: () => prefs.quality, set: q => { prefs.quality = q; writePreferences(prefs); }, note: softwareGL ? '그래픽 가속이 꺼져 있어 자동으로 낮은 화질로 달립니다.' : undefined },
       onPvp: PVP_ENABLED ? (s => { setup = s; writeRaceSetupRaw(s); openPvpLobby(); }) : undefined,
     });
   }
@@ -177,7 +197,7 @@ export function openRace(onExit: () => void): void {
     if (!pvp || closed) return; const s = pvp.s;
     track = buildMapTrack(mapOf(setup)); prepareMinimap();
     race = createRace(track, setup.laps, Infinity, { ...setup, pvp: { host: s.host, opponent: s.opponent.nickname, opponentCar: oppCar } });
-    acc = 0; cache.clear(); lastPlace = 2; setText('#rc-laps', String(setup.laps)); setText('#rc-of', '/ 2'); setText('#rc-ko', ''); setText('#rc-best', `VS ${s.opponent.nickname}`);
+    acc = 0; cache.clear(); lastPlace = 2; setText('#rc-laps', String(setup.laps)); setText('#rc-of', '/ 2'); setText('#rc-ko', ''); setText('#rc-best', `대전 · ${s.opponent.nickname}`);
     if (!startView(carTemplate)) return;
     modal.className = 'rc-modal'; modal.innerHTML = ''; root.dataset.phase = 'countdown'; msg(`${s.opponent.nickname} 님과 대전 · 먼저 결승선을 통과하면 승리`, 'hint'); msgT = 4; last = performance.now();
   }
@@ -263,7 +283,7 @@ export function openRace(onExit: () => void): void {
     // 해제된 WebGL 컨텍스트는 같은 캔버스에서 다시 열 수 없으므로 캔버스를 새로 만듭니다.
     const fresh = document.createElement('canvas'); fresh.className = 'rc-canvas'; canvas.replaceWith(fresh); canvas = fresh;
     try {
-      view = new RaceView(canvas, track, tpl, prefs.quality, mapOf(setup).theme);
+      view = new RaceView(canvas, track, tpl, softwareGL ? 'low' : prefs.quality, mapOf(setup).theme);
       view.setChaseLift(touch); view.setRacers(race.racers); view.setGhost(carById(setup.car).model, !!race.ghost); resize();
       return true;
     } catch {
@@ -294,27 +314,36 @@ export function openRace(onExit: () => void): void {
   function drawMini(): void {
     if (!mg) return; mg.clearRect(0, 0, 220, 220); mg.lineJoin = 'round'; mg.strokeStyle = 'rgba(8,4,24,.8)'; mg.lineWidth = 9; mg.stroke(mpath); mg.strokeStyle = '#8f7dff'; mg.lineWidth = 4; mg.stroke(mpath);
     mg.fillStyle = '#fff'; mg.fillRect(mx(track.x[0]) - 5, mz(track.z[0]) - 2, 10, 4);
-    for (const r of [...race.racers].reverse()) { if (r.out !== undefined) continue; mg.fillStyle = r.color; mg.beginPath(); mg.arc(mx(r.car.x), mz(r.car.z), r.player ? 6 : 4.5, 0, 7); mg.fill(); if (r.player) { mg.strokeStyle = '#fff'; mg.lineWidth = 2; mg.stroke(); mg.beginPath(); mg.moveTo(mx(r.car.x) + Math.cos(r.car.h) * 13, mz(r.car.z) + Math.sin(r.car.h) * 13); mg.lineTo(mx(r.car.x) + Math.cos(r.car.h + 2.5) * 6, mz(r.car.z) + Math.sin(r.car.h + 2.5) * 6); mg.lineTo(mx(r.car.x) + Math.cos(r.car.h - 2.5) * 6, mz(r.car.z) + Math.sin(r.car.h - 2.5) * 6); mg.closePath(); mg.fillStyle = '#fff'; mg.fill(); } }
+    for (const r of [...race.racers].reverse()) { if (r.out !== undefined) continue; mg.fillStyle = r.color; mg.beginPath(); mg.arc(mx(r.car.x), mz(r.car.z), r.player ? 6 : 4.5, 0, 7); mg.fill(); if (r.player) {
+      // 진행 방향 화살표: 점에서 앞으로 길게 뻗고 끝이 뾰족한 삼각형
+      const ax = mx(r.car.x), az = mz(r.car.z), h = r.car.h, tip = 20, wing = 10;
+      mg.beginPath(); mg.arc(ax, az, 6, 0, 7); mg.fillStyle = r.color; mg.fill(); mg.strokeStyle = '#fff'; mg.lineWidth = 2; mg.stroke();
+      mg.beginPath(); mg.moveTo(ax + Math.cos(h) * tip, az + Math.sin(h) * tip); mg.lineTo(ax + Math.cos(h + 2.4) * wing, az + Math.sin(h + 2.4) * wing); mg.lineTo(ax + Math.cos(h - 2.4) * wing, az + Math.sin(h - 2.4) * wing); mg.closePath();
+      mg.fillStyle = '#fff'; mg.fill(); mg.strokeStyle = 'rgba(8,4,24,.85)'; mg.lineWidth = 1.5; mg.stroke();
+    } }
   }
 
   function hud(dt: number): void {
-    const p = race.player, c = p.car, place = placeOf(race), sp = kmh(c);
+    const p = race.player, c = p.car, gone = p.out !== undefined, place = gone ? p.out! : placeOf(race);
+    // 결승선을 지나거나 탈락한 뒤에는 속도계도 시계처럼 멈춥니다(탈락하면 0).
+    if (race.phase !== 'done') doneKmh = null; else if (doneKmh === null) doneKmh = gone ? 0 : kmh(c);
+    const sp = doneKmh ?? kmh(c);
     setText('#rc-pos', race.trial ? '' : String(place)); setText('#rc-lap', String(currentLap(race))); setText('#rc-kmh', String(Math.round(sp)));
-    setText('#rc-time', race.phase === 'countdown' ? '--:--.---' : fmtTime(Math.max(0, race.clock))); const gd = race.ghost && race.phase === 'racing' ? ghostDelta(race.ghost, c.total, race.clock) : null;
-    setText('#rc-best', race.trial ? (race.ghost ? (gd === null ? `GHOST ${fmtTime(race.ghost.time)}` : `GHOST ${Math.abs(gd) < 0.005 ? '' : gd >= 0 ? '+' : '-'}${Math.abs(gd).toFixed(2)}`) : '첫 기록 — 이 주행이 고스트가 됩니다') : Number.isFinite(race.bestLap) ? `BEST ${fmtTime(race.bestLap)}` : '');
+    setText('#rc-time', race.phase === 'countdown' ? `출발 ${Math.max(0, -race.clock).toFixed(1)}` : fmtTime(Math.max(0, race.clock))); const gd = race.ghost && race.phase === 'racing' ? ghostDelta(race.ghost, c.total, race.clock) : null;
+    setText('#rc-best', race.trial ? (race.ghost ? (gd === null ? `고스트 ${fmtTime(race.ghost.time)}` : `고스트 ${fmtDelta(gd)}`) : '첫 기록 — 이 주행이 고스트가 됩니다') : Number.isFinite(race.bestLap) ? `최고 랩 ${fmtTime(race.bestLap)}` : '');
     $('#rc-best').classList.toggle('ahead', gd !== null && gd < 0);
-    setText('#rc-gear', race.phase === 'countdown' || Math.abs(c.vf) < 1 ? 'N' : c.vf < -0.5 ? 'R' : String(gearFor(c.vf)));
+    setText('#rc-gear', race.phase === 'countdown' || gone || Math.abs(c.vf) < 1 ? 'N' : c.vf < -0.5 ? 'R' : String(gearFor(c.vf)));
     $<HTMLElement>('#rc-nitro').style.width = `${(c.nitro * 100).toFixed(0)}%`; $('#rc-nitro').parentElement!.classList.toggle('on', boosting(c));
     $<HTMLElement>('#rc-draft').style.opacity = String(c.draft > 0.15 ? Math.min(1, c.draft * 1.3) : 0);
     const dr = race.drift;
-    setText('#rc-drift', driftLive(dr) && dr.chain >= 30 ? `DRIFT ${Math.round(dr.chain).toLocaleString('ko-KR')}${dr.mult > 1 ? `  ×${dr.mult}` : ''}` : ''); $('#rc-drift').classList.toggle('live', c.drifting);
-    const rev = Math.min(1, Math.abs(c.vf) / p.params.top); $<HTMLElement>('#rc-rev').style.width = `${(rev * 100).toFixed(0)}%`;
+    setText('#rc-drift', driftLive(dr) && dr.chain >= 30 ? `드리프트 ${Math.round(dr.chain).toLocaleString('ko-KR')}${dr.mult > 1 ? `  ×${dr.mult}` : ''}` : ''); $('#rc-drift').classList.toggle('live', c.drifting);
+    const rev = Math.min(1, sp / 3.6 / p.params.top); $<HTMLElement>('#rc-rev').style.width = `${(rev * 100).toFixed(0)}%`;
     root.dataset.kmh = String(Math.round(sp)); root.dataset.place = String(place); root.dataset.lap = String(currentLap(race)); root.dataset.phase = finishedShown ? 'done' : race.phase;
     const tx = track.tx[c.idx], tz = track.tz[c.idx], dir = c.vx * tx + c.vz * tz; wrongT = race.phase === 'racing' && dir < -6 ? wrongT + dt : 0; $('#rc-wrong').classList.toggle('show', wrongT > 0.35);
     const speedy = Math.min(1.4, sp / 270 + (boosting(c) ? 0.25 : 0)); $<HTMLElement>('.rc-boostfx').style.opacity = boosting(c) ? '1' : '0'; $<HTMLElement>('.rc-vignette').style.opacity = String(Math.min(1, 0.15 + speedy * 0.7));
     $<HTMLElement>('.rc-speedlines').style.opacity = race.phase === 'racing' ? String(Math.max(0, Math.min(0.8, (sp - 130) / 180 + (c.nitroLit ? 0.3 : 0)))) : '0';
     $('#rc-edge').classList.toggle('show', race.phase === 'racing' && Math.abs(c.lat) > track.halfWidth - 2.4 && sp > 25);
-    if (race.knockout) { const left = knockoutsLeft(race), live = activeRacers(race).length, danger = left > 0 && race.phase === 'racing' && place === live; setText('#rc-of', `/ ${race.player.out !== undefined ? race.racers.length : live}`); setText('#rc-ko', left > 0 ? (danger ? '꼴찌 — 이번 랩 끝에 탈락!' : `KNOCKOUT · 이번 랩 꼴찌 탈락`) : '최종 랩 · 결승'); $('#rc-ko').classList.toggle('danger', danger); }
+    if (race.knockout) { const left = knockoutsLeft(race), live = activeRacers(race).length, danger = left > 0 && race.phase === 'racing' && place === live; setText('#rc-of', `/ ${gone ? race.racers.length : live}`); setText('#rc-ko', gone ? '탈락' : left > 0 ? (danger ? '꼴찌 — 이번 랩 끝에 탈락!' : `KNOCKOUT · 이번 랩 꼴찌 탈락`) : '최종 랩 · 결승'); $('#rc-ko').classList.toggle('danger', danger); }
     if (!race.trial && place < lastPlace && race.phase === 'racing') { msg(`추월!  ${ORD[place]}`, 'gold'); view?.punchFov(0.4); }
     lastPlace = place;
   }
@@ -322,13 +351,13 @@ export function openRace(onExit: () => void): void {
   function frame(now: number): void {
     if (closed) return; raf = requestAnimationFrame(frame); audio.setPaused(paused);
     if (race.player.out !== undefined && finishedShown) return;
-    const elapsed = Math.max(0, (now - last) / 1000 || 0.016), dt = Math.min(0.1, elapsed); last = now;
+    // 시계는 시뮬레이션만 움직입니다. 느린 화면에서도 카운트다운·시계·차가 같은 속도로 가야 하므로, 프레임이 길면 한 프레임에 스텝을 더 돌립니다.
+    const elapsed = Math.max(0, (now - last) / 1000 || 0.016), dt = Math.min(MAX_FRAME, elapsed); last = now;
     if (!paused && view) {
-      if (race.phase !== 'done') race.clock += Math.max(0, elapsed - Math.min(dt, 6 * STEP));
       acc += dt; let steps = 0; const input = readInput();
-      while (acc >= STEP && steps < 6 && race.phase !== 'done') { handle(updateRace(race, STEP, input, now)); acc -= STEP; steps++; }
+      while (acc >= STEP && steps < MAX_STEPS && race.phase !== 'done') { handle(updateRace(race, STEP, input, now)); acc -= STEP; steps++; }
       if (race.player.out !== undefined && finishedShown) { audio.drive(0, 0, 0, false, false, false); hud(0); return; }
-      if (steps === 6) acc = 0;
+      if (steps === MAX_STEPS) acc = 0;
       const c = race.player.car; audio.drive(c.vf, input.throttle, c.slip, boosting(c), c.drifting, wallHit > 0);
       // 니트로를 누르는 순간 쾅 터지고, 드리프트에 들어가는 순간 타이어가 찢어지는 소리가 납니다.
       const nitroNow = race.phase === 'racing' && input.nitro && c.nitro > 0 && c.boostT > 0, driftNow = c.drifting && race.phase === 'racing';
@@ -349,17 +378,33 @@ export function openRace(onExit: () => void): void {
     leavePvp(); if (multi) { if (!multi.done) multi.net.bye(); endMulti(); } audio.dispose(); view?.dispose(); setupUi?.destroy(); root.remove(); onExit();
   };
   let settingsBack = '';
+  const QUALITY_LABEL = { low: '낮음', standard: '보통', high: '높음' } as const;
+  /** 일시정지·결과 화면에서 여는 설정(경기를 버리지 않습니다). 소리와 화질을 바꿀 수 있고 화질은 다음 레이스부터 적용됩니다. */
+  function settingsCard(): string {
+    const seg = (['low', 'standard', 'high'] as const).map(q => `<button type="button" data-act="quality-${q}" aria-pressed="${prefs.quality === q}">${QUALITY_LABEL[q]}</button>`).join('');
+    return `<div class="rc-card wd-panel rc-settings"><span class="rc-eyebrow wd-eyebrow">SPEED RUSH</span><h2 class="wd-title">설정</h2>
+      <div class="rc-set-row"><span>소리</span><div class="rc-set-seg wd-seg" role="group" aria-label="소리"><button type="button" data-act="sound-on" aria-pressed="${audio.enabled}">켜짐</button><button type="button" data-act="sound-off" aria-pressed="${!audio.enabled}">꺼짐</button></div></div>
+      <div class="rc-set-row"><span>화질</span><div class="rc-set-seg wd-seg" role="group" aria-label="화질">${seg}</div></div>
+      <p class="rc-note">화질은 다음 레이스부터 적용됩니다.${softwareGL ? ' 그래픽 가속이 꺼져 있어 자동으로 낮춰 달리는 중입니다.' : ''}</p>
+      <div class="rc-actions"><button class="wd-btn primary" data-act="settings-back">돌아가기</button></div></div>`;
+  }
   const act = (a: string | undefined): void => {
     audio.unlock();
     if (a === 'rematch') { endPvp(); showSetup(); openPvpLobby(); return; }
-    if (a === 'pause') setPaused(!paused); else if (a === 'resume') setPaused(false); else if (a === 'restart') restart(); else if (a === 'setup') { const previous = modal.innerHTML; modal.innerHTML = `<div class="rc-card"><h2>설정</h2><p>소리: <button data-act="mute">켜기 / 끄기</button></p><p>화질: ${(['low', 'standard', 'high'] as const).map(q => `<button data-act="quality-${q}" ${prefs.quality === q ? 'disabled' : ''}>${q === 'low' ? '낮음' : q === 'standard' ? '보통' : '높음'}</button>`).join(' ')}</p><p>화질은 다음 레이스부터 적용됩니다.</p><div class="rc-actions"><button data-act="settings-back">돌아가기</button></div></div>`; settingsBack = previous; } else if (a === 'settings-back') modal.innerHTML = settingsBack; else if (a?.startsWith('quality-')) { const q = a.slice(8); if (q === 'low' || q === 'standard' || q === 'high') { prefs.quality = q; writePreferences(prefs); act('settings-back'); act('setup'); } } else if (a === 'exit') exit();
-    else if (a === 'mute') {
-      audio.setEnabled(!audio.enabled);
+    if (a === 'pause') setPaused(!paused); else if (a === 'resume') setPaused(false); else if (a === 'restart') restart();
+    else if (a === 'setup') { if (!modal.querySelector('.rc-settings')) settingsBack = modal.innerHTML; modal.innerHTML = settingsCard(); }
+    else if (a === 'settings-back') modal.innerHTML = settingsBack;
+    else if (a?.startsWith('quality-')) { const q = a.slice(8); if (q === 'low' || q === 'standard' || q === 'high') { prefs.quality = q; writePreferences(prefs); if (modal.querySelector('.rc-settings')) modal.innerHTML = settingsCard(); } }
+    else if (a === 'exit') exit();
+    else if (a === 'mute' || a === 'sound-on' || a === 'sound-off') {
+      audio.setEnabled(a === 'mute' ? !audio.enabled : a === 'sound-on');
       prefs.sound = audio.enabled; writeSound(audio.enabled);
+      // 눌림(aria-pressed)은 '음소거 상태'를 뜻합니다.
       for (const mute of root.querySelectorAll<HTMLElement>('[data-act="mute"]')) {
         if (mute.hasAttribute('data-text')) mute.textContent = `소리 ${audio.enabled ? '켜짐' : '꺼짐'}`;
-        else { mute.innerHTML = audio.enabled ? ICON.soundOn : ICON.soundOff; mute.setAttribute('aria-pressed', String(audio.enabled)); }
+        else { mute.innerHTML = audio.enabled ? ICON.soundOn : ICON.soundOff; mute.setAttribute('aria-pressed', String(!audio.enabled)); mute.title = audio.enabled ? '소리 끄기 (M)' : '소리 켜기 (M)'; }
       }
+      if (modal.querySelector('.rc-settings')) modal.innerHTML = settingsCard();
     }
   };
   const onKey = (e: KeyboardEvent): void => {

@@ -1,6 +1,6 @@
 // SPEED RUSH — 레이스 진행(카운트다운·랩·순위·AI·차량 간 충돌). 화면과 무관한 순수 로직입니다.
 import { CARS, carById, carParams, levelById, paintOf, type CarDef, type LevelDef } from './config';
-import { aiInput, newCar, separateCars, stayOnTrack, stepCar, type AiProfile, type CarInput, type CarParams, type CarState, type StepEvents } from './physics';
+import { GRAZE_LIMIT, aiInput, newCar, separateCars, stayOnTrack, stepCar, type AiProfile, type CarInput, type CarParams, type CarState, type StepEvents } from './physics';
 import { followSnap, type RemoteLink } from './netcar';
 import { type Track } from './track';
 import { mapById } from './maps';
@@ -72,7 +72,7 @@ export function createRace(track: Track, laps = 3, bestLap = Infinity, opts: Rac
   if (opts.trial) return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [player], player, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift(), trial: true, ghost: opts.ghost ?? null, rec: new GhostRecorder() };
   const rivals = FIELD.map((f, i) => {
     const def = CARS[(at + 1 + i) % CARS.length], p = carParams(def), handling = p.grip * p.turn;
-    const ai: AiProfile = { lane: f.lane, top: p.top * f.frac * level.topMul, grip: f.grip * handling * handling * level.gripMul, skill: 1, line: level.line, nitro: level.nitro };
+    const pace = opts.knockout ? level.koPace : 1, ai: AiProfile = { lane: f.lane, top: p.top * f.frac * level.topMul * pace, grip: f.grip * handling * handling * level.gripMul * pace * pace, skill: 1, line: level.line, nitro: level.nitro };
     return mk(i + 1, f.name, def, false, [SLOTS[0], SLOTS[1], SLOTS[3]][i], ai);
   });
   return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [player, ...rivals], player, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift(), ...(opts.knockout ? { knockout: { done: 0 } } : {}) };
@@ -85,9 +85,10 @@ export const activeRacers = (r: RaceState): Racer[] => r.racers.filter(k => k.ou
 export const knockoutsLeft = (r: RaceState): number => (r.knockout ? Math.max(0, Math.min(r.laps - 1, r.racers.length - 1) - r.knockout.done) : 0);
 export function standings(r: RaceState): Racer[] { return [...r.racers].sort((a, b) => score(b) - score(a)); }
 /** 앞선 라이벌은 속도를 깎지 않습니다. 뒤처진 차만 bandHi 까지 따라잡습니다. */
-export function rivalBand(level: LevelDef, gapMeters: number): number {
-  const raw = 1 - gapMeters * level.bandK;
-  const floor = gapMeters > 0 ? Math.max(1, level.bandLo) : level.bandLo;
+export function rivalBand(level: LevelDef, gapMeters: number, knockout = false): number {
+  const raw = 1 - gapMeters * level.bandK * (knockout && gapMeters > 0 ? 2.6 : 1);
+  // 녹아웃에서는 앞선 라이벌도 거리에 따라 속도를 줄여, 뒤처진 플레이어가 꼴찌를 피할 기회를 줍니다.
+  const floor = gapMeters > 0 ? (knockout ? Math.min(1, level.koFloor) : Math.max(1, level.bandLo)) : level.bandLo;
   return Math.max(floor, Math.min(level.bandHi, raw));
 }
 export const placeOf = (r: RaceState, who: Racer = r.player): number => standings(r).indexOf(who) + 1;
@@ -145,7 +146,7 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
     if (racing) {
       if (k.player && k.finishTime === null) inp = input;
       else {
-        const gap = k.player ? 0 : (k.car.total - r.player.car.total) * t.ds, band = k.player ? 1 : rivalBand(r.level, gap);
+        const gap = k.player ? 0 : (k.car.total - r.player.car.total) * t.ds, band = k.player ? 1 : rivalBand(r.level, gap, !!r.knockout);
         inp = aiInput(k.car, t, { ...k.ai, top: k.ai.top * band, grip: k.ai.grip * band * band });
       }
     }
@@ -153,7 +154,7 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
     if (k.player) {
       if (k.lastEv.hit > 0) ev.push({ type: 'hit', power: k.lastEv.hit });
       if (racing) {
-        const de = stepDrift(r.drift, k.car, dt, k.lastEv.hit > 8);
+        const de = stepDrift(r.drift, k.car, dt, k.lastEv.hit > GRAZE_LIMIT);
         if (de?.type === 'bank') { k.car.nitro = Math.min(1, k.car.nitro + nitroForChain(de.points)); ev.push({ type: 'driftBank', points: de.points, mult: de.mult }); }
         else if (de?.type === 'lost') ev.push({ type: 'driftLost', points: de.points });
       }

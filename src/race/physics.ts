@@ -30,6 +30,12 @@ export const BODY_HALF_LENGTH = 2.25;
 export const BODY_HALF_WIDTH = 1.02;
 /** 벽에 닿았을 때 차체 방향을 도로 쪽으로 되돌리는 속도(1/s). 크면 코너 벽에 붙습니다. */
 export const WALL_HEADING_RATE = 1.2;
+/** 벽을 긁으며 달릴 때 차체가 도로 방향에서 벽 쪽으로 틀어질 수 있는 최대 각(rad). 조향을 끝까지 잡고 있어도 벽에 수직으로 박혀 속도가 죽지 않고, 벽을 따라 미끄러집니다. */
+export const SCRAPE_ANGLE = 0.3;
+/** 벽 충돌 세기(m/s): 이 값 이하는 '스침'이라 드리프트·부스트를 일부만 잃고, 넘으면 모두 잃습니다. */
+export const GRAZE_LIMIT = 12;
+/** 벽에 붙어 달릴 때의 마찰(1/s). 조향을 계속 눌러 벽을 타는 것이 정상 주행보다 빨라지지 않게 합니다. */
+export const SCRAPE_DRAG = 0.75;
 export const kmh = (c: Pick<CarState, 'vf'>): number => Math.abs(c.vf) * 3.6;
 export const boosting = (c: CarState): boolean => c.boostT > 0;
 
@@ -74,7 +80,12 @@ export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: Car
   // 조향: 속도에 따라 최소 회전 반경이 커집니다. 드리프트 중에는 차체가 더 많이 돌아갑니다.
   c.steer += (inp.steer - c.steer) * Math.min(1, dt * (Math.abs(inp.steer) > Math.abs(c.steer) ? 8 : 12));
   const av = Math.abs(vf), rmin = 7 + (av * av) / 54, yawMax = (av / rmin) * p.turn * (c.drifting ? 1 + 0.38 * p.drift : 1) * Math.min(1, av / 3);
-  const yawTarget = c.steer * yawMax * (vf >= 0 ? 1 : -1);
+  let yawTarget = c.steer * yawMax * (vf >= 0 ? 1 : -1);
+  // 벽에 붙은 채 이미 벽 쪽으로 SCRAPE_ANGLE 만큼 틀어져 있으면 더 틀지 않습니다. 계속 틀면 차가 벽에 수직으로 박혀 속도가 죽습니다.
+  if (Math.abs(c.lat) > t.halfWidth - BODY_HALF_WIDTH - 0.6 && vf > 0) {
+    const side = Math.sign(c.lat), off = wrapAngle(c.h - Math.atan2(t.tz[c.idx], t.tx[c.idx])) * side;
+    if (off >= SCRAPE_ANGLE && yawTarget * side > 0) yawTarget = 0;
+  }
   c.yawRate += (yawTarget - c.yawRate) * Math.min(1, dt * (c.drifting ? 7 : 11));
   c.vx = fx * vf + rx * vl; c.vz = fz * vf + rz * vl;
   c.h = wrapAngle(c.h + c.yawRate * dt);
@@ -124,11 +135,14 @@ export function stayOnTrack(c: CarState, t: Track, dt: number, progress: boolean
     // 바깥으로 나가는 성분만 없앱니다. 진행 속도까지 깎거나 차체를 급히 도로 방향으로 돌리면 벽에 붙은 채 속도가 죽습니다.
     const vn = c.vx * px + c.vz * pz;
     if (vn > 0) {
-      c.vx -= px * vn; c.vz -= pz * vn; if (vn > 8) { c.drifting = false; c.driftT = 0; c.boostT = 0; }
+      c.vx -= px * vn; c.vz -= pz * vn;
+      if (vn > GRAZE_LIMIT) { c.drifting = false; c.driftT = 0; c.boostT = 0; }
+      else if (vn > 2.5) c.boostT = Math.max(0, c.boostT - vn * 0.03); // 스치기만 해도 부스트가 조금 깎입니다(0 이 되지는 않음)
       if (vn > 2.5 && c.wallT <= 0) { hit = vn; c.wallT = 0.18; }
     }
     const want = Math.atan2(t.tz[nr.i], t.tx[nr.i]); c.h = wrapAngle(c.h + wrapAngle(want - c.h) * Math.min(1, WALL_HEADING_RATE * dt));
     c.lat = Math.sign(nr.lat) * limit;
+    if (progress) { const drag = Math.exp(-SCRAPE_DRAG * dt); c.vx *= drag; c.vz *= drag; c.vf *= drag; c.vl *= drag; }
   }
   return hit;
 }

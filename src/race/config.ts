@@ -49,6 +49,10 @@ export interface LevelDef {
   topMul: number; gripMul: number;
   /** 플레이어와의 거리에 따른 추격·감속 보정 범위 */
   bandLo: number; bandHi: number; bandK: number;
+  /** 녹아웃에서 플레이어보다 앞선 라이벌이 거리에 따라 속도를 줄일 수 있는 하한 배율. 낮을수록 뒤처진 플레이어가 따라잡기 쉽습니다. */
+  koFloor: number;
+  /** 녹아웃에서 라이벌 전체의 속도 배율(쉬운 단계일수록 낮음). */
+  koPace: number;
   /** 코너 안쪽을 파고드는 정도(0~1) */
   line: number;
   /** 니트로를 쓰기 시작하는 잔량. 없으면 쓰지 않음 */
@@ -56,11 +60,11 @@ export interface LevelDef {
 }
 // 이전 버전보다 라이벌이 전반적으로 빨라지고 더 끈질기게 따라붙습니다.
 export const LEVELS: ReadonlyArray<LevelDef> = [
-  { id: 1, name: '쉬움', blurb: '레이싱 라인을 타고 직선에서 니트로를 자주 씁니다', topMul: 1.1, gripMul: 1.2, bandLo: 0.97, bandHi: 1.115, bandK: 0.00034, line: 0.78, nitro: 0.4 },
-  { id: 2, name: '보통', blurb: '라인이 거의 완벽하고 쉽게 떨어지지 않습니다', topMul: 1.135, gripMul: 1.265, bandLo: 0.98, bandHi: 1.13, bandK: 0.0004, line: 0.95, nitro: 0.2 },
-  { id: 3, name: '어려움', blurb: '완벽한 라인과 니트로로 끝까지 압박합니다', topMul: 1.165, gripMul: 1.335, bandLo: 0.988, bandHi: 1.15, bandK: 0.00048, line: 1, nitro: 0.07 },
-  { id: 4, name: '매우 어려움', blurb: '실수 없이 니트로를 아낌없이 쓰며 거의 따라잡을 수 없습니다', topMul: 1.185, gripMul: 1.385, bandLo: 0.995, bandHi: 1.165, bandK: 0.00055, line: 1, nitro: 0.03 },
-  { id: 5, name: '극한', blurb: '드리프트와 니트로를 완벽하게 써야 겨우 이기는 최강의 라이벌입니다', topMul: 1.215, gripMul: 1.44, bandLo: 1, bandHi: 1.18, bandK: 0.0006, line: 1, nitro: 0.02 },
+  { id: 1, name: '쉬움', blurb: '레이싱 라인을 타고 직선에서 니트로를 자주 씁니다', topMul: 1.1, gripMul: 1.2, bandLo: 0.97, bandHi: 1.115, bandK: 0.00034, koFloor: 0.84, koPace: 0.9, line: 0.78, nitro: 0.4 },
+  { id: 2, name: '보통', blurb: '라인이 거의 완벽하고 쉽게 떨어지지 않습니다', topMul: 1.135, gripMul: 1.265, bandLo: 0.98, bandHi: 1.13, bandK: 0.0004, koFloor: 0.9, koPace: 0.94, line: 0.95, nitro: 0.2 },
+  { id: 3, name: '어려움', blurb: '완벽한 라인과 니트로로 끝까지 압박합니다', topMul: 1.165, gripMul: 1.335, bandLo: 0.988, bandHi: 1.15, bandK: 0.00048, koFloor: 0.95, koPace: 0.98, line: 1, nitro: 0.07 },
+  { id: 4, name: '매우 어려움', blurb: '실수 없이 니트로를 아낌없이 쓰며 거의 따라잡을 수 없습니다', topMul: 1.185, gripMul: 1.385, bandLo: 0.995, bandHi: 1.165, bandK: 0.00055, koFloor: 0.98, koPace: 1, line: 1, nitro: 0.03 },
+  { id: 5, name: '극한', blurb: '드리프트와 니트로를 완벽하게 써야 겨우 이기는 최강의 라이벌입니다', topMul: 1.215, gripMul: 1.44, bandLo: 1, bandHi: 1.18, bandK: 0.0006, koFloor: 1, koPace: 1, line: 1, nitro: 0.02 },
 ];
 export const levelById = (id: number): LevelDef => LEVELS.find(l => l.id === id) ?? LEVELS[0];
 

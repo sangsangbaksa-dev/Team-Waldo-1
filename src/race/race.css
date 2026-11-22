@@ -205,3 +205,14 @@
 @media(max-width:760px){.rc-setup footer{flex-wrap:wrap}.rc-setup footer .rc-pick{display:block;order:-1;flex-basis:100%}.rc-setup-inner{padding-bottom:180px}}
 @media(pointer:coarse) and (orientation:portrait){.rc-pedals button{min-width:76px;height:42px}.rc-pedals button.gas{min-width:76px;height:58px}.rc-touchpad button{min-width:64px;height:64px}}
 @media(pointer:coarse) and (max-height:480px){.touch .rc-bottom{top:90px;bottom:auto}.touch .rc-touchpad button{min-width:52px;height:52px}.rc-pedal-row{gap:4px}}
+/* ---- 버그 수정 라운드: 출발 문구가 앞차를 가리지 않게, 짧은 가로 화면·세로 화면 겹침, 설정 카드 ---- */
+.rc-count{top:30%}
+.rc-count.show.go{top:15%;font-size:64px;animation:rcgo .7s ease-out forwards}
+@keyframes rcgo{0%{opacity:0;transform:translate(-50%,-50%) scale(1.2)}15%{opacity:1;transform:translate(-50%,-50%) scale(1)}60%{opacity:1}100%{opacity:0;transform:translate(-50%,-50%) scale(.92)}}
+@media(pointer:coarse) and (max-height:480px){.touch .rc-bottom{top:108px}.rc-count{top:26%}.rc-count.show.go{top:14%;font-size:44px}}
+@media(pointer:coarse) and (orientation:portrait){.rc-pedals button{min-width:64px}.rc-pedals button.gas{min-width:64px}.touch .rc-touchpad{padding-right:max(10px,env(safe-area-inset-right))}}
+.rc-settings .rc-set-row{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:12px 0}
+.rc-settings .rc-set-row>span{font-weight:700;letter-spacing:.04em}
+.rc-settings .rc-set-seg{display:inline-grid;grid-auto-flow:column;grid-auto-columns:minmax(58px,auto)}
+.rc-settings .rc-note{margin:10px 0 0;font-size:12px;opacity:.75;line-height:1.5}
+@media(pointer:coarse) and (orientation:portrait){.touch .rc-msg.hint{top:max(252px,calc(env(safe-area-inset-top) + 238px))}}

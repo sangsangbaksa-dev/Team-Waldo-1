@@ -675,7 +675,7 @@ export class RaceView {
     const hd = p.h; if (!this.camInit) { this.camH = hd; this.camInit = true; }
     this.camH += wrapAngle(hd - this.camH) * Math.min(1, dt * (p.drifting ? 3.2 : 7));
     this.punch = Math.max(0, this.punch - dt * 1.8); this.shake = Math.max(0, this.shake - dt * 2.4);
-    const lift = this.chaseLift, dist = 7.4 + sf * 1.6 + (bst ? 0.9 : 0) + lift * 0.8, height = 2.55 + sf * 0.3 + lift * (this.viewH < 520 ? 1.55 : 1.05);
+    const lift = this.chaseLift, narrow = Math.max(0, 1 - this.camera.aspect), dist = 7.4 + sf * 1.6 + (bst ? 0.9 : 0) + lift * 0.8 + narrow * 3.2, height = 2.55 + sf * 0.3 + lift * (this.viewH < 520 ? 1.55 : 1.05);
     const ahead = 8.2 - lift * 1.5, cx = p.x - Math.cos(this.camH) * dist, cz = p.z - Math.sin(this.camH) * dist, cy = p.y + height;
     stepChaseAnchor(this.camAnchor, cx, cy, cz, dt, sf, bst ? BOOST_LAG : 1);
     const sh = chaseShake(sf, bst, this.shake), tt = this.time;

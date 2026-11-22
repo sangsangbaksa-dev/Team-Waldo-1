@@ -21,6 +21,7 @@ import { buildOutposts, type Outpost } from './outpost';
 import { makeRng } from '../city/map';
 import { artSeed, ClearanceIndex } from './scenery-index';
 import { FxScheduler, skidSegmentCount } from './fx-scheduling';
+import { writeSkidQuad } from './skid-geometry';
 import { writeVec3, writeSpeedStreak, streakDirection, speedStreakVisible } from './fx-buffers';
 
 const CAR_LEN = 4.7;
@@ -86,7 +87,7 @@ class Particles {
 }
 
 /** 타이어 자국: 미끄러지는 뒷바퀴가 지나간 자리에 검은 띠를 남깁니다(오래된 것부터 덮어씁니다). */
-class SkidMarks {
+export class SkidMarks {
   readonly mesh: THREE.Mesh; private pos: Float32Array; private col: Float32Array; private head = 0; private last = new Map<number, [number, number, number]>(); private dirty = false;
   constructor(private cap: number) {
     this.pos = new Float32Array(cap * 6 * 3); this.col = new Float32Array(cap * 6 * 4);
@@ -96,16 +97,20 @@ class SkidMarks {
   }
   /** key 바퀴가 (x,y,z) 에 닿아 있다: 이전 지점과 이어 한 조각을 더합니다. */
   mark(key: number, x: number, y: number, z: number, alpha: number): void {
-    const p = this.last.get(key); this.last.set(key, [x, y, z]); if (!p) return;
-    const dx = x - p[0], dy=y-p[1], dz = z - p[2], len = Math.hypot(dx, dz), segments=skidSegmentCount(len); if (!segments) return;
-    const hx = (-dz / len) * 0.15, hz = (dx / len) * 0.15;
+    if(!Number.isFinite(x)||!Number.isFinite(y)||!Number.isFinite(z)||!Number.isFinite(alpha)){this.lift(key);return;}
+    const p = this.last.get(key);
+    if (!p) {this.last.set(key,[x,y,z]);return;}
+    const px=p[0],py=p[1],pz=p[2];p[0]=x;p[1]=y;p[2]=z;
+    const dx=x-px,dy=y-py,dz=z-pz,len=Math.hypot(dx,dz),segments=skidSegmentCount(len);
+    if (!segments) return;
+    const hx=(-dz/len)*0.15,hz=(dx/len)*0.15;
     for(let n=1;n<=segments;n++){
-      const t0=(n-1)/segments,t1=n/segments,ax=p[0]+dx*t0,ay=p[1]+dy*t0,az=p[2]+dz*t0,bx=p[0]+dx*t1,by=p[1]+dy*t1,bz=p[2]+dz*t1;
-      const i=this.head*18,c=this.head*24;this.head=(this.head+1)%this.cap;
-      this.pos.set([ax-hx,ay,az-hz,ax+hx,ay,az+hz,bx-hx,by,bz-hz,ax+hx,ay,az+hz,bx+hx,by,bz+hz,bx-hx,by,bz-hz],i);
-      for(let k=0;k<6;k++)this.col.set([0.02,0.02,0.03,alpha],c+k*4);
+      const t0=(n-1)/segments,t1=n/segments;
+      writeSkidQuad(this.pos,this.col,this.head,
+        px+dx*t0,py+dy*t0,pz+dz*t0,px+dx*t1,py+dy*t1,pz+dz*t1,hx,hz,alpha);
+      this.head=(this.head+1)%this.cap;
     }
-    this.dirty = true;
+    this.dirty=true;
   }
   /** 바퀴가 지면에서 미끄러지지 않으면 자국을 끊습니다. */
   lift(key: number): void { this.last.delete(key); }

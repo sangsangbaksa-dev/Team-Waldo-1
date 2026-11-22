@@ -21,7 +21,7 @@ import { buildReach, clampLabelScreenPos, clampLookPitch, labelSpriteCenter } fr
 import { wrapNear, wrapRange } from './render-math';
 import { addStreetFurniture, parkFurniture } from '../shared/street-furniture';
 import { RoadLightBatch, lightRange, nearVisual } from '../shared/road-lights';
-import { nearbyVehicleLights, frameEmissionChance } from './traffic-lighting';
+import { nearbyVehicleLights, frameEmissionChance, lightVehicleCapacity } from './traffic-lighting';
 import { CityRenderLifetime } from './render-lifecycle';
 
 export type ViewMode = 'fp' | 'tp';
@@ -265,7 +265,7 @@ export class Renderer3D {
     lights.begin();
     const {world:w,camPos:cam}=this, night=this.atm.night,wet=this.atm.wet;
     if(night>0.04||wet>0.3){
-      const near=nearbyVehicleLights(w.vehicles,cam.x,cam.z,720,Math.floor(lights.remaining/2),this.lightCandidates);
+      const near=nearbyVehicleLights(w.vehicles,cam.x,cam.z,720,lightVehicleCapacity(lights.remaining,wet),this.lightCandidates);
       for(const v of near){
         if(lights.remaining<2)break;
         const fx=Math.cos(v.ang),fz=Math.sin(v.ang),front=v.len/2;

@@ -27,3 +27,9 @@ export function frameEmissionChance(perSecond:number,dt:number):number{
   if(!Number.isFinite(perSecond)||!Number.isFinite(dt)||perSecond<=0||dt<=0)return 0;
   return 1-Math.exp(-perSecond*Math.min(dt,0.1));
 }
+
+/** Every wet car needs a brake pool and a headlight; dry nights need only headlights. */
+export function lightVehicleCapacity(available:number,wet:number):number{
+  if(!Number.isFinite(available)||available<=0||!Number.isFinite(wet))return 0;
+  return Math.floor(available/(wet>0.25?2:1));
+}

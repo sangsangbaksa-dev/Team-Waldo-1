@@ -46,6 +46,20 @@ describe('RTS debugging regressions', () => {
     hq.hp = 0;
     expect(s.apply(0,{k:'rally',b:hq.id,x:20,y:20,node:0})).toBe(false);
   });
+  it('rejects fractional and out-of-range cancellation indices without refunds', () => {
+    const { s, b } = site(), original = s.players[0].minerals;
+    for (const i of [-3, -2.5, -1.5, 0.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(s.apply(0, { k: 'cancel', b: b.id, i })).toBe(false);
+      expect(s.players[0].minerals).toBe(original);
+      expect(s.building(b.id)).toBe(b);
+    }
+  });
+  it('does not refund orders from a building already destroyed in the same tick', () => {
+    const { s, b } = site(), original = s.players[0].minerals;
+    b.hp = 0;
+    expect(s.apply(0, { k:'cancel', b:b.id, i:-1 })).toBe(false);
+    expect(s.players[0].minerals).toBe(original);
+  });
   it('releases the mineral reservation immediately when stopping', () => {
     const { s, n, w } = miner();
     expect(n.miner).toBe(w.id); expect(n.busyUntil).toBeGreaterThan(s.tick);

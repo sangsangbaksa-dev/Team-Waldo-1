@@ -4,6 +4,14 @@ import type { Sim } from './sim';
 import { districtAt } from './world';
 
 const SIZE = 1024;
+/** Resolve mission-tagged IDs from simulation indexes, not linear scans across
+ * every streamed pedestrian and traffic car for every radar/overview redraw. */
+export function trackedMissionEntity(sim: Sim, id: number): { x: number; z: number } | null {
+  const pedestrian = sim.ped(id);
+  if (pedestrian?.alive) return pedestrian;
+  const vehicle = sim.vehicle(id);
+  return vehicle?.alive ? vehicle : null;
+}
 /** Actual city grid width, derived from the procedural map geometry rather
  * than the obsolete 12-cell overview. The current city is 16×16. */
 export function mapGridCount(map: Pick<CityMap, 'half' | 'pitch'>): number {
@@ -105,10 +113,13 @@ export class Minimap {
     } else {
       for (const cop of sim.peds) if (cop.alive && cop.team === 'cop' && (cop.mode === 'chase' || cop.mode === 'attack') && Math.abs(cop.x - p.x) < r && Math.abs(cop.z - p.z) < r) { const [x, y] = point(cop.x, cop.z); this.dot(g, x, y, '#3b82ff', 3); }
     }
-    for (const id of Object.values(sim.mission.ids)) {
-      const ped = sim.peds.find(q => q.id === id && q.alive), car = sim.vehicles.find(q => q.id === id && q.alive);
-      const x = ped?.x ?? car?.x, z = ped?.z ?? car?.z;
-      if (x !== undefined && z !== undefined && Math.abs(x - p.x) < r && Math.abs(z - p.z) < r) { const q = point(x, z); this.dot(g, q[0], q[1], '#ff4545', 3.5); }
+    for (const key in sim.mission.ids) {
+      if (!Object.hasOwn(sim.mission.ids, key)) continue;
+      const entity = trackedMissionEntity(sim, sim.mission.ids[key]);
+      if (entity && Math.abs(entity.x - p.x) < r && Math.abs(entity.z - p.z) < r) {
+        const q = point(entity.x, entity.z);
+        this.dot(g, q[0], q[1], '#ff4545', 3.5);
+      }
     }
     g.restore();
     // 플레이어 방향은 카메라 기준 고정 화살표여서 조작 중 방향 감각이 흔들리지 않습니다.
@@ -149,7 +160,11 @@ export class Minimap {
       for (const cop of sim.peds) if (cop.alive && cop.team === 'cop') this.dot(g, px(cop.x), pz(cop.z), color, font * .48);
       for (const car of sim.vehicles) if (car.alive && car.kind === 'police') this.dot(g, px(car.x), pz(car.z), color, font * .7);
     }
-    for (const id of Object.values(sim.mission.ids)) { const ped = sim.peds.find(q => q.id === id && q.alive), car = sim.vehicles.find(q => q.id === id && q.alive); if (ped) this.dot(g, px(ped.x), pz(ped.z), '#ff4545', font * .55); else if (car) this.dot(g, px(car.x), pz(car.z), '#ff4545', font * .55); }
+    for (const key in sim.mission.ids) {
+      if (!Object.hasOwn(sim.mission.ids, key)) continue;
+      const entity = trackedMissionEntity(sim, sim.mission.ids[key]);
+      if (entity) this.dot(g, px(entity.x), pz(entity.z), '#ff4545', font * .55);
+    }
     const p = sim.player, x = px(p.x), y = pz(p.z); g.save(); g.translate(x, y); g.rotate(Math.PI / 2 + p.yaw); g.fillStyle = '#fff'; g.strokeStyle = '#101619'; g.lineWidth = 2; g.beginPath(); g.moveTo(0, -font * 1.1); g.lineTo(font * .7, font * .7); g.lineTo(0, font * .3); g.lineTo(-font * .7, font * .7); g.closePath(); g.fill(); g.stroke(); g.restore();
     g.restore(); g.strokeStyle = '#aeb9bb'; g.lineWidth = 1.5; g.strokeRect(left, top, side, side);
     this.drawLegend(g, left, top + side + h * .045, w, font);

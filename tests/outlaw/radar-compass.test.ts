@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { mapGridCount, radarNorthDirection, districtName } from '../../src/outlaw/minimap';
+import { mapGridCount, radarNorthDirection, districtName, trackedMissionEntity } from '../../src/outlaw/minimap';
+import { Sim } from '../../src/outlaw/sim';
 import { generateCity } from '../../src/outlaw/world';
 
 describe('OUTLAW rotating mini-radar compass', () => {
@@ -37,5 +38,20 @@ describe('OUTLAW full city overview grid', () => {
     expect(mapGridCount(map)).toBe(16);
     expect(mapGridCount({ half: 600, pitch: 100 })).toBe(12);
     expect(mapGridCount({ half: 0, pitch: 0 })).toBe(1);
+  });
+});
+
+describe('OUTLAW mission radar indexed target lifecycle', () => {
+  it('tracks living NPCs and vehicles and stops showing removed/dead targets', () => {
+    const sim = new Sim(199), {player} = sim;
+    const guard = sim.spawnPed('gang',player.x+10,player.z);
+    const car = sim.spawnVehicle('sedan',player.x+20,player.z,0);
+    expect(trackedMissionEntity(sim, guard.id)).toBe(guard);
+    expect(trackedMissionEntity(sim, car.id)).toBe(car);
+    expect(trackedMissionEntity(sim, 987654321)).toBeNull();
+    guard.alive = false;
+    expect(trackedMissionEntity(sim, guard.id)).toBeNull();
+    sim.removeVehicle(car);
+    expect(trackedMissionEntity(sim, car.id)).toBeNull();
   });
 });

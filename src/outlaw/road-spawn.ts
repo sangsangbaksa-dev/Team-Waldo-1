@@ -6,7 +6,13 @@ import { groundHeight, isOpen } from './world';
 /** Keep newly assigned mission vehicles off existing cars and static props.
  * A single nearest lane can be occupied by streaming traffic or the player.
  * Search progressively farther away without sorting the entire lane graph. */
-export function openVehicleLane(sim: Sim, x: number, z: number, kind: VehicleKind): LaneNode | undefined {
+export interface RoadReservation { x: number; z: number; kind: VehicleKind }
+/** Optional reservations keep a multi-car mission grid overlap-free without
+ * spawning or rolling back partially-created mission vehicles. */
+export function openVehicleLane(
+  sim: Sim, x: number, z: number, kind: VehicleKind,
+  reserved: readonly RoadReservation[] = [],
+): LaneNode | undefined {
   const def = VEHICLES[kind], radius = Math.hypot(def.halfL, def.halfW);
   let chosen: LaneNode | undefined, nearest = 120 ** 2;
   for (const lane of sim.map.lanes) {
@@ -18,6 +24,8 @@ export function openVehicleLane(sim: Sim, x: number, z: number, kind: VehicleKin
         (v.x - lane.x) ** 2 + (v.z - lane.z) ** 2 <
         (radius + Math.hypot(VEHICLES[v.kind].halfL, VEHICLES[v.kind].halfW) + 1) ** 2)) continue;
     if (sim.peds.some(p => p.alive && !p.vehicle && (p.x-lane.x)**2 + (p.z-lane.z)**2 < (radius+1)**2)) continue;
+    if (reserved.some(other => (other.x-lane.x)**2 + (other.z-lane.z)**2 <
+      (radius + Math.hypot(VEHICLES[other.kind].halfL, VEHICLES[other.kind].halfW) + 1)**2)) continue;
     chosen = lane; nearest = d2;
   }
   return chosen;

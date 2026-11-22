@@ -51,3 +51,22 @@ it('rejects mission-start vehicle placement cleanly when the road graph is empty
   expect(sim.mission.active).toBe('');
   expect(sim.vehicles.every(v=>v.tag!=='m_theft')).toBe(true);
 });
+
+it('reserves a collision-free starting grid for five race cars before spawning any', () => {
+  const sim = new Sim(73);
+  sim.mission.completed = ['m_delivery','m_theft','m_debt','m_chase','m_heist'];
+  expect(startMission(sim,'m_race')).toBe(true);
+  const cars = Array.from({length:5},(_,i)=>sim.vehicle(sim.mission.ids[`race${i}`]));
+  expect(cars.every(Boolean)).toBe(true);
+  for (let i=0;i<cars.length;i++) for (let j=i+1;j<cars.length;j++) {
+    expect(Math.hypot(cars[i]!.x-cars[j]!.x,cars[i]!.z-cars[j]!.z)).toBeGreaterThan(5.3);
+  }
+});
+it('never leaves orphaned race cars behind when there is no safe starting grid', () => {
+  const sim = new Sim(74);
+  sim.mission.completed = ['m_delivery','m_theft','m_debt','m_chase','m_heist'];
+  sim.map.lanes = [];
+  expect(startMission(sim,'m_race')).toBe(false);
+  expect(sim.mission.active).toBe('');
+  expect(sim.vehicles.filter(v=>v.tag==='m_race')).toHaveLength(0);
+});

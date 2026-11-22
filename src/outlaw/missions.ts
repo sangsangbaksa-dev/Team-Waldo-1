@@ -3,7 +3,7 @@ import type { Sim } from './sim';
 import type { Marker, Vehicle } from './types';
 import { autoDrive } from './vehicle';
 import { nearestLane, findPath } from './world';
-import { openVehicleLane } from './road-spawn';
+import { openVehicleLane, type RoadReservation } from './road-spawn';
 
 export interface MissionInfo { id: string; title: string; giver: string; brief: string; reward: number; startPoi: string; requires: string[] }
 const entries: Array<[string, string, string, string, number]> = [
@@ -77,7 +77,32 @@ export function startMission(s: Sim, id: string): boolean {
   if (id === 'm_debt' || id === 'm_boss') { const center = id === 'm_debt' ? (s.map.buildings.find(b => b.district === 'industrial' && b.kind === 'warehouse') ?? poi(s, 'chop0')) : poi(s, 'casino0'); const points = nearWalk(s, center.x, center.z, id === 'm_debt' ? 5 : 9); points.forEach((q, i) => { gang(s, q.x, q.z, id === 'm_boss' && i === 0); const ped = s.peds[s.peds.length - 1]; if (id === 'm_debt' && i === 0) ped.hp = ped.maxHp = 220; m.ids[`enemy${i}`] = ped.id; }); m.data.count = points.length; }
   if (id === 'm_chase') { const lane = openVehicleLane(s, start.x, start.z, 'sedan'); if (!lane) { m.active = ''; s.say('도주 차량을 배치할 도로가 없습니다'); return false; } const v = car(s, 'sedan', lane.x, lane.z, lane.h); v.mode = 'scripted'; const driver = s.spawnPed('gang', v.x, v.z, { keep: true, tag: id, mode: 'scripted', vehicle: v.id }); v.driver = driver.id; m.ids.car = v.id; m.ids.driver = driver.id; m.data.node = lane?.id ?? -1; }
   if (id === 'm_heist') { const bank = poi(s, 'bank0'), lane = openVehicleLane(s, bank.x, bank.z, 'van'); if (!lane) { m.active = ''; s.say('은행 근처에 밴을 둘 도로가 없습니다'); return false; } const v = car(s, 'van', lane.x, lane.z, lane.h); m.ids.van = v.id; }
-  if (id === 'm_race') { const lane = s.map.lanes[nearestLane(s.map, start.x, start.z)]; const path = route(s, start.x, start.z); path.forEach((n,i) => { m.data[`cp${i}`] = n; }); m.data.total = path.length; for (let i = 0; i < 5; i++) { const v = car(s, 'sports', (lane?.x ?? start.x) - Math.cos(lane?.h ?? 0) * (i * 6), (lane?.z ?? start.z) - Math.sin(lane?.h ?? 0) * (i * 6), lane?.h); m.ids[`race${i}`] = v.id; if (i > 0 && i < 4) { v.mode = 'scripted'; const d = s.spawnPed('gang', v.x, v.z, { keep: true, tag: id, mode: 'scripted', vehicle: v.id }); v.driver = d.id; } } }
+  if (id === 'm_race') {
+    const lane = s.map.lanes[nearestLane(s.map, start.x, start.z)];
+    const path = route(s, start.x, start.z);
+    if (!lane || !path.length) { cleanup(s); s.say('레이스 경로를 찾지 못했습니다'); return false; }
+    const grid: RoadReservation[] = [];
+    // Reserve all five grid slots first. With the old 6m inline offsets, cars
+    // could start inside traffic and side walls, then collide at race launch.
+    for (let i = 0; i < 5; i++) {
+      const x = lane.x - Math.cos(lane.h) * (i * 6), z = lane.z - Math.sin(lane.h) * (i * 6);
+      const open = openVehicleLane(s, x, z, 'sports', grid);
+      if (!open) { cleanup(s); s.say('레이스 출발선에 차량을 배치할 수 없습니다'); return false; }
+      grid.push({ x: open.x, z: open.z, kind: 'sports' });
+    }
+    path.forEach((n, i) => { m.data[`cp${i}`] = n; });
+    m.data.total = path.length;
+    for (let i = 0; i < grid.length; i++) {
+      const site = grid[i], marker = s.map.lanes.find(n => n.x === site.x && n.z === site.z);
+      const v = car(s, 'sports', site.x, site.z, marker?.h ?? lane.h);
+      m.ids[`race${i}`] = v.id;
+      if (i > 0 && i < 4) {
+        v.mode = 'scripted';
+        const d = s.spawnPed('gang', v.x, v.z, { keep: true, tag: id, mode: 'scripted', vehicle: v.id });
+        v.driver = d.id;
+      }
+    }
+  }
   notice(s, 'start', MISSION_LIST.find(q => q.id === id)!.title); stepMissions(s, 0); return true;
 }
 export function failMission(s: Sim, reason: string): void { if (!s.mission.active) { s.mission.failed = ''; return; } notice(s, 'fail', `MISSION FAILED — ${reason}`); cleanup(s); }

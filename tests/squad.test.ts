@@ -40,14 +40,13 @@ describe('squad nearest-target regressions', () => {
 
   it('keeps medics focused on wounded allies before attacking', () => {
     const battle = new Battle(
-      [{ type: 'guard', x: 5, y: 10 }, { type: 'medic', x: 5, y: 13 }],
-      [{ type: 'archer', x: 5, y: 9 }],
+      [{ type: 'guard', x: 5, y: 11 }, { type: 'medic', x: 5, y: 12 }],
+      [{ type: 'guard', x: 5, y: 9 }],
     );
-    let healed = false;
-    for (let i = 0; i < 120 && battle.winner === null; i++) {
-      battle.step();
-      if (battle.effects.some(effect => effect.kind === 'heal')) { healed = true; break; }
-    }
-    expect(healed).toBe(true);
+    // Start with a wounded ally so the test does not depend on combat timing.
+    battle.units[0]!.hp -= 24;
+    battle.step();
+    expect(battle.effects.some(effect => effect.kind === 'heal')).toBe(true);
+    expect(battle.units[0]!.hp).toBeGreaterThan(226);
   });
 });

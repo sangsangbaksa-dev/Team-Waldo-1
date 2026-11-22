@@ -107,6 +107,11 @@ try {
         assert.equal(touch, 'pan-y', 'Journal should support vertical swipe scrolling');
       }
       await page.screenshot({ path: 'browser-artifacts/last-city-missions-' + size.name + '.png', animations: 'disabled' });
+      // Match-feed contents are untrusted network-derived strings: never render them as HTML.
+      await page.evaluate(() => { window.__city.world.say('<img src=x onerror=window.__cityInjected=true> & CHECK', '#ff5d5d'); });
+      await page.waitForFunction(() => document.querySelector('#c-feed')?.textContent?.includes('<img src=x'));
+      assert.equal(await page.locator('#c-feed img').count(), 0, 'HTML inside match feed must remain escaped text');
+      assert.equal(await page.evaluate(() => window.__cityInjected), undefined, 'No script execution from match feed');
       await page.evaluate(() => {
         window.__city.world.quests[0].done = true;
       });

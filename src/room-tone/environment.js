@@ -779,12 +779,20 @@ export function buildEnvironment(THREE, scene, map, tile, chapter) {
 }
 
 // Compact silhouettes fit the same wall-side footprint as the original wardrobe.
-export function buildHidingSpot(THREE, root, kind) {
-  const dark = new THREE.MeshStandardMaterial({ color: 0x303534, roughness: 0.9 });
-  const mid = new THREE.MeshStandardMaterial({ color: 0x606762, roughness: 0.9 });
-  const cloth = new THREE.MeshStandardMaterial({ color: 0x777b73, roughness: 1 });
+export function createHidingSpotKit(THREE) {
+  return {
+    geometry: new THREE.BoxGeometry(1, 1, 1),
+    dark: new THREE.MeshStandardMaterial({ color: 0x303534, roughness: 0.9 }),
+    mid: new THREE.MeshStandardMaterial({ color: 0x606762, roughness: 0.9 }),
+    cloth: new THREE.MeshStandardMaterial({ color: 0x777b73, roughness: 1 }),
+  };
+}
+
+export function buildHidingSpot(THREE, root, kind, kit) {
+  const { geometry, dark, mid, cloth } = kit;
   const box = (w, h, d, x, y, z, material = mid) => {
-    const part = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+    const part = new THREE.Mesh(geometry, material);
+    part.scale.set(w, h, d);
     part.position.set(x, y, z);
     root.add(part);
   };

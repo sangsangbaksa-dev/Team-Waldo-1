@@ -2,8 +2,8 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { createCaptureShot, fixMonster } from "./monster.js";
 import { modelBytes } from "./assets.js";
-import { chapters, makeLevel, route, neighbors } from "./levels.mjs";
-import { buildEnvironment, buildHidingSpot } from "./environment.js";
+import { chapters, makeLevel, paths, routeFrom, neighbors } from "./levels.mjs";
+import { buildEnvironment, buildHidingSpot, createHidingSpotKit } from "./environment.js";
 import { Sound } from "./sound.js";
 
 const $ = (id) => document.getElementById(id),
@@ -18,6 +18,7 @@ let state = "home",
   level,
   items = [],
   hidingSpots = [],
+  interactables = [],
   hiddenSpot = null,
   hideBreath = 1,
   hideReadyAt = 0,
@@ -62,7 +63,8 @@ let moved = 0,
   muted = false;
 let now = 0,
   last = 0,
-  frameStarted = false,
+  frameId = null,
+  sceneDirty = false,
   nearest = null,
   moveId = -1,
   lookId = -1,
@@ -130,6 +132,7 @@ toggleAudio();
 $("sound").onclick = $("gsound").onclick = toggleAudio;
 function screens(id) {
   for (const key of ["home", "game"]) $(key).hidden = key !== id;
+  if (id === "game") showSceneOnce();
 }
 function homepage() {
   state = "home";
@@ -188,6 +191,7 @@ function modal(title, description, body, actions, type = "panel") {
     $("panelActions").append(b);
   }
   $("panelTitle").focus({ preventScroll: true });
+  showSceneOnce();
 }
 function resume() {
   state = "play";
@@ -195,6 +199,7 @@ function resume() {
   sound.pause(false);
   lockLook();
   last = performance.now();
+  scheduleFrame();
   $("viewWrap").focus({ preventScroll: true });
 }
 function guide(fromHome = false) {
@@ -290,13 +295,8 @@ async function setup() {
           offset: offset + (side === "L" ? 0 : Math.PI), knee: name === "Shin"});
       }
     }
-    renderCaptureShot = createCaptureShot(THREE, model);
     mixer = new THREE.AnimationMixer(model);
     if (gltf.animations.length) mixer.clipAction(gltf.animations[0]).play();
-  }
-  if (!frameStarted) {
-    frameStarted = true;
-    requestAnimationFrame(frame);
   }
 }
 function xy(cell) {
@@ -378,6 +378,7 @@ function resize() {
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h, false);
+  showSceneOnce();
 }
 window.addEventListener("resize", resize);
 function disposeGroup(root) {
@@ -544,6 +545,7 @@ function makeHidingSpots() {
     reserved.every((other) => pathsDistXZ(cell, other) > 2),
   );
   const selected = [];
+  let spotKit;
   for (const cell of candidates) {
     if (selected.some((other) => pathsDistXZ(cell, other) < 5)) continue;
     const x = cell % level.w, z = Math.floor(cell / level.w);
@@ -559,7 +561,8 @@ function makeHidingSpots() {
     root.rotation.y = Math.atan2(dx, dz);
     props.add(root);
     const kind = (selected.length - 1) % 4;
-    buildHidingSpot(THREE, root, kind);
+    if (!spotKit) spotKit = createHidingSpotKit(THREE);
+    buildHidingSpot(THREE, root, kind, spotKit);
     const caption = ["옷장에 숨기", "침대 밑에 숨기", "커튼 뒤에 숨기", "책상 밑에 숨기"][kind];
     hidingSpots.push({ type: "hide", cell, root, dx, dz, caption });
   }
@@ -635,6 +638,8 @@ function loadScene() {
   investigation = null;
   nextFlicker = now + 18 + Math.random() * 25;
   makeHidingSpots();
+  // Static interaction index, rebuilt only when the chapter changes.
+  interactables = items.concat(hidingSpots);
   entity = new THREE.Group();
   entity.add(model);
   scene.add(entity);
@@ -644,6 +649,7 @@ function loadScene() {
   resize();
   sound.ambience(ch);
   renderHUD();
+  showSceneOnce();
 }
 async function start(cont) {
   if (opening) return;
@@ -656,7 +662,8 @@ async function start(cont) {
   $("panelBody").replaceChildren();
   $("panelActions").replaceChildren();
   try {
-    await sound.start();
+    // Audio unlock is optional; never block the large model download on it.
+    void sound.start();
     sound.setMute(muted);
     await setup();
     const s = cont ? saved() : null;
@@ -734,11 +741,14 @@ function refreshGuide() {
     : total() === 3
       ? [level.start]
       : level.items.filter((_, i) => !found[i]);
-  // Compare distances along the corridors so walls don't make a distant target look close.
-  for (const [i, target] of targets.entries()) {
-    const candidate = route(level.map, cell, target);
-    if (i === 0 || candidate.length < guidePath.length) guidePath = candidate;
+  // One shortest-path tree per cell instead of three BFS traversals.
+  const tree = paths(level.map, cell);
+  let nearestGoal = -1;
+  for (const target of targets) {
+    if (tree.dist[target] >= 0 &&
+      (nearestGoal < 0 || tree.dist[target] < tree.dist[nearestGoal])) nearestGoal = target;
   }
+  guidePath = nearestGoal < 0 ? [] : routeFrom(tree, cell, nearestGoal);
   const guideLabel = solved ? "출구" : total() === 3 ? chapters[ch].station : chapters[ch].item;
   $("guideTextLabel").textContent = guideLabel + (guidePath.length ? " 방향" : " 주변");
   drawGuide();
@@ -1061,12 +1071,24 @@ function interact() {
 }
 $("act").onclick = interact;
 function caught() {
+  // Cloning the complete skinned monster is expensive and unnecessary until caught.
+  if (!renderCaptureShot) {
+    try {
+      renderCaptureShot = createCaptureShot(THREE, model);
+    } catch (error) {
+      console.warn("Optional capture portrait unavailable", error);
+      save();
+      caughtModal();
+      return;
+    }
+  }
   state = "capture";
   leaveLook();
   captureTime = 0;
   $("viewWrap").classList.add("caught-shot");
   save();
   sound.caught();
+  scheduleFrame();
 }
 function caughtModal() {
   modal(
@@ -1256,7 +1278,7 @@ function update(dt) {
   stepAt += moved;
   if (stepAt > (running ? 1.02 : 0.86)) {
     sound.step(running, crouched);
-    stepAt = 0;
+    stepAt %= running ? 1.02 : 0.86;
   }
   if (hiddenSpot) {
     hideBreath = Math.max(0, hideBreath - dt / 18);
@@ -1291,7 +1313,7 @@ function update(dt) {
   }
   nearest = null;
   let reach = 2.16;
-  for (const o of [...items, ...hidingSpots]) {
+  for (const o of interactables) {
     if (!o.root.visible) continue;
     const q = o.root.position,
       d = Math.hypot(q.x - player.x, q.z - player.z);
@@ -1312,18 +1334,28 @@ function update(dt) {
         : chapters[ch].station + " 확인"
     : "";
   $("prompt").hidden = !caption;
-  $("promptText").textContent = caption;
-  $("act").disabled = !nearest && !hiddenSpot;
+  if ($("promptText").textContent !== caption) $("promptText").textContent = caption;
+  if ($("act").disabled !== (!nearest && !hiddenSpot)) $("act").disabled = !nearest && !hiddenSpot;
   $("stamina").style.transform = "scaleX(" + (hiddenSpot ? hideBreath : stamina).toFixed(3) + ")";
-  $("timer").textContent = clock(elapsed);
-  if (now > noticeUntil) $("toast").textContent = "";
+  const timeLabel = clock(elapsed);
+  if ($("timer").textContent !== timeLabel) $("timer").textContent = timeLabel;
+  if (now > noticeUntil && $("toast").textContent) $("toast").textContent = "";
   if (now > saveAt) {
     save();
     saveAt = now + 12;
   }
 }
+function scheduleFrame() {
+  if (frameId !== null || !scene || !renderer || document.hidden || $("game").hidden) return;
+  if (state !== "play" && state !== "capture" && !sceneDirty) return;
+  frameId = requestAnimationFrame(frame);
+}
+function showSceneOnce() {
+  sceneDirty = true;
+  scheduleFrame();
+}
 function frame(ts) {
-  requestAnimationFrame(frame);
+  frameId = null;
   const dt = Math.min(0.075, Math.max(0, (ts - last) / 1000));
   last = ts;
   now = ts / 1000;
@@ -1341,10 +1373,11 @@ function frame(ts) {
     }
   } else if (wasPlaying) {
     renderer.render(scene, camera);
-  } else if (["brief", "loading"].includes(state)) {
-    camera.position.copy(player);
+  } else if (sceneDirty && !["error", "load"].includes(state)) {
     renderer.render(scene, camera);
   }
+  sceneDirty = false;
+  scheduleFrame();
 }
 document.addEventListener("keydown", (e) => {
   if (
@@ -1383,7 +1416,14 @@ document.addEventListener("keydown", (e) => {
 });
 document.addEventListener("keyup", (e) => keys.delete(e.code));
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden && state === "play") pauseGame();
+  if (document.hidden) {
+    if (state === "play") pauseGame();
+    if (frameId !== null) cancelAnimationFrame(frameId);
+    frameId = null;
+  } else {
+    last = performance.now();
+    showSceneOnce();
+  }
 });
 window.addEventListener("blur", () => {
   if (state === "play") pauseGame();

@@ -62,8 +62,10 @@ function random(seed) {
   };
 }
 export function neighbors(map, id) {
-  const w = map[0].length,
-    x = id % w,
+  const w = map[0]?.length ?? 0;
+  if (!w || !Number.isInteger(id) || id < 0 || id >= w * map.length ||
+      map[Math.floor(id / w)]?.[id % w] !== ".") return [];
+  const x = id % w,
     z = Math.floor(id / w);
   return [
     [x + 1, z],
@@ -75,9 +77,12 @@ export function neighbors(map, id) {
     .map(([a, b]) => b * w + a);
 }
 export function paths(map, start) {
-  const prev = new Int32Array(map.length * map[0].length).fill(-2),
+  const prev = new Int32Array(map.length * (map[0]?.length ?? 0)).fill(-2),
     dist = new Int32Array(prev.length).fill(-1),
-    q = [start];
+    q = [];
+  if (!neighbors(map, start).length && map[Math.floor(start / (map[0]?.length || 1))]?.[start % (map[0]?.length || 1)] !== ".")
+    return { prev, dist, q };
+  q.push(start);
   prev[start] = -1;
   dist[start] = 0;
   for (let h = 0; h < q.length; h++) {
@@ -91,12 +96,22 @@ export function paths(map, start) {
   }
   return { prev, dist, q };
 }
-export function route(map, a, b) {
-  const { prev } = paths(map, a);
-  if (prev[b] === -2) return [];
+export function routeFrom(tree, start, goal) {
+  const { prev, dist } = tree;
+  if (!Number.isInteger(start) || !Number.isInteger(goal) ||
+      start < 0 || goal < 0 || start >= prev.length || goal >= prev.length ||
+      dist[start] !== 0 || dist[goal] < 0) return [];
   const out = [];
-  for (let c = b; c !== a && c !== -1; c = prev[c]) out.push(c);
-  return out.reverse();
+  let cursor = goal;
+  for (let n = prev.length; cursor !== start && n > 0; n--) {
+    if (cursor < 0 || cursor >= prev.length) return [];
+    out.push(cursor);
+    cursor = prev[cursor];
+  }
+  return cursor === start ? out.reverse() : [];
+}
+export function route(map, a, b) {
+  return routeFrom(paths(map, a), a, b);
 }
 export function makeLevel(ch) {
   const w = chapters[ch].size,

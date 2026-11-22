@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { trafficSpeedFactor } from '../../src/tycoon/scene/people';
+import { trafficSpeedFactor, pedestrianSpeedFactor } from '../../src/tycoon/scene/people';
 import { intersectionFactor, signalAspect } from '../../src/tycoon/scene/signals';
 
 describe('HUSTLE traffic safe following', () => {
@@ -36,4 +36,18 @@ it('uses the existing road-center geometry for each signal cycle', () => {
     const stop = intersectionFactor(t,'x',24,0,1,4);
     expect(stop).toBeGreaterThanOrEqual(0); expect(stop).toBeLessThanOrEqual(1);
   }
+});
+
+describe('HUSTLE pedestrian-aware car safety', () => {
+  it('brakes for people crossing in front of the vehicle', () => {
+    expect(pedestrianSpeedFactor(0, 0, 'x', 1, 4.4, 5, 0)).toBe(0);
+    expect(pedestrianSpeedFactor(0, 0, 'x', 1, 4.4, 10, 0)).toBeLessThan(1);
+    expect(pedestrianSpeedFactor(0, 0, 'z', -1, 5, 0, -5)).toBe(0);
+  });
+  it('does not brake for a pedestrian behind the car or safely on the sidewalk', () => {
+    expect(pedestrianSpeedFactor(0, 0, 'x', 1, 4.4, -5, 0)).toBe(1);
+    expect(pedestrianSpeedFactor(0, 0, 'x', 1, 4.4, 5, 5)).toBe(1);
+    expect(pedestrianSpeedFactor(0, 0, 'z', 1, 5, 5, 5)).toBe(1);
+    expect(pedestrianSpeedFactor(0, 0, 'x', -1, 4.4, -50, 0)).toBe(1);
+  });
 });

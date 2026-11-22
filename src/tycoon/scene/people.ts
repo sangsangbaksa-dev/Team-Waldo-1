@@ -27,6 +27,8 @@ interface Walker { rig: CharacterRig; x: number; z: number; from: Node; to: Node
 export class Crowd {
   readonly group = new THREE.Group();
   private walkers: Walker[] = [];
+  /** Reused references to nearby pedestrians, consumed by the traffic safety controller. */
+  private visibleWalkers: Walker[] = [];
   private target = 0;
   constructor(scene: THREE.Scene, kit: CharacterKit, quality: Quality) {
     scene.add(this.group);
@@ -47,6 +49,7 @@ export class Crowd {
   }
   update(dt: number, cam: THREE.Vector3, night: number, rain: number, unlockedAt: (i: number, j: number) => boolean): void {
     const limit = Math.round(this.target * (1 - night * 0.55) * (1 - rain * 0.45));
+    this.visibleWalkers.length = 0;
     let n = 0;
     for (const w of this.walkers) {
       const want = n++ < limit;
@@ -63,18 +66,26 @@ export class Crowd {
       else { const sp = w.speed; w.x += (dx / d) * sp * dt; w.z += (dz / d) * sp * dt; w.yaw = Math.atan2(-dz, dx); w.rig.state.speed = sp * 1.8; }
       const dist = Math.hypot(w.x - cam.x, w.z - cam.z), vis = dist < 120;
       w.rig.root.visible = vis; if (!vis) continue;
+      this.visibleWalkers.push(w);
       w.rig.root.position.set(w.x, 0.18, w.z); const cur = w.rig.root.rotation.y; let dy = w.yaw - cur; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2; w.rig.root.rotation.y = cur + dy * Math.min(1, dt * 8);
       w.rig.setDetail(dist > 70 ? 3 : dist > 40 ? 1 : 0); w.rig.step(dt); w.rig.update(dt);
     }
   }
-  /** 플레이어 가까이에 있는 사람들(말풍선·부딪힘 회피용). */
-  dispose(): void { this.group.removeFromParent(); }
+  /** Stable, allocation-free view; only valid until the next Crowd.update call. */
+  getVisiblePedestrians(): readonly { x: number; z: number }[] { return this.visibleWalkers; }
+  dispose(): void { this.visibleWalkers.length = 0; this.group.removeFromParent(); }
 }
 
 interface Car { mesh: THREE.Group; axis: 'x' | 'z'; line: number; lane: number; dir: 1 | -1; t: number; speed: number; base: number; length: number; width: number; tailLights: THREE.Mesh[]; headPool: THREE.Mesh | null; }
 /** 장애물 앞에서 서서히 감속하고 안전거리 안에 들어오면 정지한다. */
 export function trafficSpeedFactor(gap: number, stop = 3, slow = 12): number {
   return THREE.MathUtils.clamp((gap - stop) / Math.max(1, slow - stop), 0, 1);
+}
+/** Stop for pedestrians in the road; pedestrians safely on the sidewalk do not stop traffic. */
+export function pedestrianSpeedFactor(cx: number, cz: number, axis: 'x' | 'z', dir: 1 | -1, length: number, px: number, pz: number): number {
+  const ahead = ((axis === 'x' ? px - cx : pz - cz) * dir) - length / 2;
+  const side = Math.abs(axis === 'x' ? pz - cz : px - cx);
+  return ahead > -length / 2 && ahead < 15 && side < 2.55 ? trafficSpeedFactor(ahead) : 1;
 }
 function placeCar(c: Car): void {
   const lane = c.dir > 0 ? c.lane : -c.lane;
@@ -117,16 +128,19 @@ export class Traffic {
     this.setStage(0);
   }
   setStage(stage: number): void { this.target = Math.min(this.cars.length, Math.round(this.cars.length * Math.min(1, 0.3 + stage * 0.14))); }
-  update(dt: number, cam: THREE.Vector3, player: THREE.Vector3, night: number): void {
+  update(dt: number, cam: THREE.Vector3, player: THREE.Vector3, night: number, pedestrians: readonly { x: number; z: number }[] = []): void {
     this.time += dt;
     const count = Math.ceil(this.target * (1 - night * 0.4)); this.contact.begin(night);
     let n = 0;
     for (const c of this.cars) {
       const on = n++ < count; if (!on) { c.mesh.visible = false; continue; }
-      // 앞에 사람이 있으면 멈춥니다
-      const along = c.axis === 'x' ? c.dir : 0, alongZ = c.axis === 'z' ? c.dir : 0, px = c.mesh.position.x, pz = c.mesh.position.z;
-      const rx = player.x - px, rz = player.z - pz, fwd = rx * along + rz * alongZ, side = Math.abs(rx * alongZ * -1 + rz * along * 1);
-      let target = Math.min(fwd > 0 && side < 2.6 ? trafficSpeedFactor(fwd - c.length / 2) : 1, intersectionFactor(this.time, c.axis, c.line, c.t, c.dir, c.length));
+      // Player and visible NPCs use the same crossing clearance rules.
+      const px = c.mesh.position.x, pz = c.mesh.position.z;
+      let target = Math.min(pedestrianSpeedFactor(px, pz, c.axis, c.dir, c.length, player.x, player.z), intersectionFactor(this.time, c.axis, c.line, c.t, c.dir, c.length));
+      for (const pedestrian of pedestrians) {
+        if (target <= 0) break;
+        target = Math.min(target, pedestrianSpeedFactor(px, pz, c.axis, c.dir, c.length, pedestrian.x, pedestrian.z));
+      }
       for (let i = 0; i < count; i++) { const other = this.cars[i]; if (other === c || other.axis !== c.axis || other.line !== c.line || other.dir !== c.dir) continue; const gap = (other.t - c.t) * c.dir; if (gap > 0) target = Math.min(target, trafficSpeedFactor(gap - (c.length + other.length) / 2)); }
       // 감속은 안전 우선, 재출발은 부드럽게 가속한다.
       c.base = target < c.base ? target : c.base + (target - c.base) * Math.min(1, dt * 2.5);

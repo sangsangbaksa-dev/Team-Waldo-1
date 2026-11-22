@@ -18,11 +18,11 @@ const nodeMap = (root: THREE.Object3D): Record<string, THREE.Object3D> => { cons
 const FILES: Record<string, number> = { characters: 2_870_000, weapons: 1_400_000 };
 
 let cache: Promise<ShooterAssets> | null = null;
-export function loadShooterAssets(base: string, onProgress?: (fraction: number) => void, onNote?: (note: string) => void): Promise<ShooterAssets> {
+export function loadShooterAssets(base: string, onProgress?: (fraction: number) => void): Promise<ShooterAssets> {
   cache ??= (async () => {
     const loader = new GLTFLoader(), dir = `${base}assets/models/`, prog = new Map<string, number>(), total = Object.values(FILES).reduce((a, b) => a + b, 0);
     const get = async (name: string): Promise<THREE.Object3D> => {
-      const buf = await retry(() => fetchBuffer(`${dir}${name}.glb`, loaded => { prog.set(name, loaded); onProgress?.(Math.min(0.95, [...prog.values()].reduce((a, b) => a + b, 0) / total)); }), { maxAttempts: 2, onRetry: n => onNote?.(`연결이 느립니다. 재시도 중입니다 (${n}회)`) });
+      const buf = await retry(() => fetchBuffer(`${dir}${name}.glb`, loaded => { prog.set(name, loaded); onProgress?.(Math.min(0.95, [...prog.values()].reduce((a, b) => a + b, 0) / total)); }), { maxAttempts: 2 });
       return (await loader.parseAsync(buf, dir)).scene;
     };
     const [characters, weapons] = await Promise.all(['characters', 'weapons'].map(get));

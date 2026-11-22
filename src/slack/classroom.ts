@@ -218,8 +218,10 @@ export const createClassroomView: CreateView = (sim, audio) => {
       cover.classList.toggle('is-active', s.cover);
       if (cover.getAttribute('aria-pressed') !== String(s.cover)) cover.setAttribute('aria-pressed', String(s.cover));
       txt(batEl, `${Math.round(s.battery)}%`);
-      // 게임은 창을 가려도 계속 진행(실시간), 영상은 보는 동안만 흐른다
-      game?.update(dt);
+      // 게임은 창을 가려도 계속 진행(실시간), 영상은 보는 동안만 흐른다.
+      // A newly opened game also receives its first frame's elapsed time.
+      if (v === 'game') getGame().update(dt);
+      else game?.update(dt);
       let fl = v === 'doc' ? 0.1 : 0;
       if (v === 'video') {
         const video = getVideo();

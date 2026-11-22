@@ -40,6 +40,7 @@ it('creates each mini RTS only once and keeps the playable world alive under stu
   expect(createBattle).toHaveBeenCalledTimes(2);
   const game = vi.mocked(createBattle).mock.results[1]?.value;
   expect(game).toBeTruthy();
+  expect(game!.time).toBeCloseTo(0.1);
   const before = game!.time;
   sim.setCover(true); view.frame(0.1);
   expect(game!.time).toBeGreaterThan(before);

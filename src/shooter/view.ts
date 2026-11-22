@@ -1,4 +1,5 @@
 import { renderPixelRatio } from '../shared/render-budget';
+import { disposeSceneResources } from '../shared/render-cleanup';
 // ZERO ZONE — 3D 장면: 지형·건물·나무·전리품·병사·자기장 벽·1인칭 총과 사격 효과. 경기 상태(Match)를 읽기만 합니다.
 import * as THREE from 'three';
 import { makePost, type PostFx } from '../postfx';
@@ -555,25 +556,7 @@ export class ShooterView {
     // games. Detach the skeletons before releasing this scene's own resources.
     for (const rig of this.rigs.values()) rig.ch.root.removeFromParent();
     this.rigs.clear();
-    const geos = new Set<THREE.BufferGeometry>();
-    const mats = new Set<THREE.Material>();
-    const textures = new Set<THREE.Texture>();
-    this.scene.traverse(o => {
-      const renderable = o as THREE.Object3D & { geometry?: THREE.BufferGeometry; material?: THREE.Material | THREE.Material[] };
-      // Three.js Sprite geometry is global/shared across all Sprite instances.
-      if (!(o instanceof THREE.Sprite) && renderable.geometry) geos.add(renderable.geometry);
-      if (renderable.material) for (const mat of Array.isArray(renderable.material) ? renderable.material : [renderable.material]) mats.add(mat);
-    });
-    for (const mat of mats) {
-      for (const value of Object.values(mat)) if (value instanceof THREE.Texture) textures.add(value);
-      if (mat instanceof THREE.ShaderMaterial) for (const uniform of Object.values(mat.uniforms)) {
-        if (uniform.value instanceof THREE.Texture) textures.add(uniform.value);
-      }
-    }
-    textures.add(this.glow);
-    for (const geo of geos) geo.dispose();
-    for (const mat of mats) mat.dispose();
-    for (const texture of textures) texture.dispose();
+    disposeSceneResources(this.scene, { extraTextures: [this.glow] });
     this.post?.dispose();
     this.renderer.dispose();
     this.renderer.forceContextLoss();

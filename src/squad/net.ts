@@ -16,7 +16,7 @@ export function parseArmy(raw: unknown): Placement[] | null {
   if (!Array.isArray(raw) || raw.length > MAX_UNITS) return null;
   const out: Placement[] = [];
   for (const p of raw as Array<Record<string, unknown>>) {
-    if (!p || typeof p.type !== 'string' || !(p.type in UNITS) || !Number.isInteger(p.x) || !Number.isInteger(p.y)) return null;
+    if (!p || typeof p.type !== 'string' || !Object.prototype.hasOwnProperty.call(UNITS, p.type) || !Number.isInteger(p.x) || !Number.isInteger(p.y)) return null;
     out.push({ type: p.type as Placement['type'], x: p.x as number, y: p.y as number });
   }
   return out;

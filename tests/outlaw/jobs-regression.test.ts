@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Sim } from '../../src/outlaw/sim';
 import { startJob, stepJobs } from '../../src/outlaw/jobs';
+import { isOpen } from '../../src/outlaw/world';
 import { blankPedInput, blankCarInput, WEAPON_ORDER } from '../../src/outlaw/types';
 
 describe('Outlaw job regression', () => {

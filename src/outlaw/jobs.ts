@@ -50,10 +50,11 @@ function gang(s: Sim, x: number, z: number, boss = false, squad: readonly Ped[] 
     isOpen(s.map, px, pz, 0.65) &&
     squad.every(p => (p.x - px) ** 2 + (p.z - pz) ** 2 >= 2.5 ** 2);
   if (!clear(x, z)) {
+    const wantedX = x, wantedZ = z;
     let nearest = Infinity;
     for (const q of s.map.walkPoints) {
-      const d = (q.x - x) ** 2 + (q.z - z) ** 2;
-      if (d >= nearest || d > 30 ** 2 || !clear(q.x, q.z)) continue;
+      const d = (q.x - wantedX) ** 2 + (q.z - wantedZ) ** 2;
+      if (d >= nearest || !clear(q.x, q.z)) continue;
       nearest = d; x = q.x; z = q.z;
     }
   }

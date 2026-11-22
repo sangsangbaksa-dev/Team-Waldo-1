@@ -176,15 +176,26 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
     view.frame(elapsed);
     { const a = sim.state; if (activity) tally.act[activity] = (tally.act[activity] ?? 0) + elapsed; tally.maxCombo = Math.max(tally.maxCombo, a.combo); tally.maxSus = Math.max(tally.maxSus, a.sus); }
     if (tutorial) { tutTime += elapsed; tutWall += dt; const isLast = tutStep === tutorialSteps.length - 1; if (tutorialSteps[tutStep].done(sim.state, tutTime) || tutWall > (isLast ? 9 : 40)) { if (++tutStep >= tutorialSteps.length) endTutorial(); else showTutorialStep(); } }
-    const s = sim.state, left = Math.max(0, Math.ceil(s.limit - s.time)); $('[data-time]').textContent = `${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}`;
-    $('[data-fun]').textContent = `${Math.round(s.fun)} / ${Math.round(s.goal)}`; $('[data-fun-bar]').style.width = `${Math.min(100, s.fun)}%`; $('[data-goal]').style.left = `${Math.min(100, s.goal)}%`;
-    $('[data-strikes]').textContent = String(s.strikes); strikePips.forEach((p, i) => p.classList.toggle('on', i < s.strikes));
-    $('[data-battery]').textContent = String(Math.round(s.battery)); $('[data-battery-chip]').classList.toggle('low', s.battery < 25); $('[data-combo]').textContent = String(s.combo);
-    $('[data-risk]').style.width = `${Math.max(0, Math.min(100, s.sus))}%`; $('[data-risk-chip]').classList.toggle('hot', s.sus > 70);
+    const text = (selector: string, value: string): void => { const node = $(selector); if (node.textContent !== value) node.textContent = value; };
+    const style = (selector: string, property: 'width' | 'left', value: string): void => { const node = $(selector); if (node.style[property] !== value) node.style[property] = value; };
+    const variable = (name: string, value: string): void => { if (root.style.getPropertyValue(name) !== value) root.style.setProperty(name, value); };
+    const s = sim.state, left = Math.max(0, Math.ceil(s.limit - s.time));
+    text('[data-time]', `${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}`);
+    text('[data-fun]', `${Math.round(s.fun)} / ${Math.round(s.goal)}`);
+    style('[data-fun-bar]', 'width', `${Math.min(100, s.fun)}%`);
+    style('[data-goal]', 'left', `${Math.min(100, s.goal)}%`);
+    text('[data-strikes]', String(s.strikes));
+    strikePips.forEach((p, i) => p.classList.toggle('on', i < s.strikes));
+    text('[data-battery]', String(Math.round(s.battery)));
+    $('[data-battery-chip]').classList.toggle('low', s.battery < 25);
+    text('[data-combo]', String(s.combo));
+    style('[data-risk]', 'width', `${Math.max(0, Math.min(100, s.sus))}%`);
+    $('[data-risk-chip]').classList.toggle('hot', s.sus > 70);
     // 긴장도 → 비네팅·심장 박동 연동: 45 부터 박동이 시작해 100 에서 0.5초 간격·큰 소리. 박동 간격과 붉은 화면 맥박 속도를 같이 맞춘다.
     const tension = Math.max(0, Math.min(1, (s.sus - 45) / 55)), interval = 1.15 - tension * 0.65;
     root.classList.toggle('sl-danger', s.sus > 45);
-    root.style.setProperty('--danger', String(Math.max(0, (s.sus - 25) / 75))); root.style.setProperty('--pulse-speed', `${s.sus > 45 ? interval : 1.4}s`);
+    variable('--danger', String(Math.max(0, (s.sus - 25) / 75)));
+    variable('--pulse-speed', `${s.sus > 45 ? interval : 1.4}s`);
     beat -= dt; if (s.sus > 45 && beat <= 0) { audio.play('hum', 0.3 + tension * 0.7); beat = interval; }
     if (s.phase === 'caught' || s.phase === 'done') finish();
     scheduleFrame();

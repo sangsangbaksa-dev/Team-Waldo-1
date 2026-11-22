@@ -45,3 +45,35 @@ it('closes the channel when its connection setup fails', async () => {
   net.dispose();
   expect(channel.close).toHaveBeenCalledTimes(1);
 });
+
+it('does not leave a live interval or throw if the transport rejects sends', async () => {
+  vi.useFakeTimers();
+  const channel = {
+    ready: Promise.resolve(),
+    send: vi.fn(() => { throw new Error('channel closed'); }),
+    close: vi.fn(() => { throw new Error('already closed'); }),
+  };
+  const session = { open: () => channel } as unknown as PvpSession;
+  const onGone = vi.fn();
+  const net = new SquadPvp(session, { onArmy: vi.fn(), onGone });
+  await Promise.resolve();
+  expect(onGone).toHaveBeenCalledExactlyOnceWith('never');
+  expect(channel.close).toHaveBeenCalledTimes(1);
+  expect(() => net.dispose()).not.toThrow();
+  vi.advanceTimersByTime(10_000);
+  expect(channel.send).toHaveBeenCalledTimes(1);
+});
+
+it('always closes the Squad transport when sending final bye fails', () => {
+  vi.useFakeTimers();
+  const channel = {
+    ready: new Promise<void>(() => undefined),
+    send: vi.fn(() => { throw new Error('send failed'); }),
+    close: vi.fn(),
+  };
+  const session = { open: () => channel } as unknown as PvpSession;
+  const net = new SquadPvp(session, { onArmy: vi.fn(), onGone: vi.fn() });
+  expect(() => net.dispose(true)).not.toThrow();
+  expect(channel.close).toHaveBeenCalledTimes(1);
+  expect(vi.getTimerCount()).toBe(0);
+});

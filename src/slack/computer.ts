@@ -205,7 +205,7 @@ export const createComputerView: CreateView = (sim, audio) => {
     M.cur = (i + tracks.length) % tracks.length; M.p = 0; M.sec = -1; const w = wins.music; const t = tracks[M.cur];
     setTxt($('[data-m-title]', w), t.t); setTxt($('[data-m-art]', w), t.a); w.querySelectorAll('[data-track]').forEach((p, k) => p.classList.toggle('cur', k === M.cur));
   };
-  const musicPlay = (on: boolean) => { M.playing = on; wins.music.classList.toggle('paused', !on); setTxt($('[data-m="play"]', wins.music), on ? '❚❚' : '▶'); if (shown === 'music') audio.muffle(on); };
+  const musicPlay = (on: boolean) => { const changed = M.playing !== on; M.playing = on; wins.music.classList.toggle('paused', !on); setTxt($('[data-m="play"]', wins.music), on ? '❚❚' : '▶'); if (changed && shown === 'music') audio.muffle(on); };
   const musicTick = (dt: number) => {
     if (shown !== 'music' || sim.state.cover || !M.playing) return;
     M.p += dt / tracks[M.cur].len; if (M.p >= 1) { musicSet(M.cur + 1); return; }

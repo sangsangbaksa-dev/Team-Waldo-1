@@ -20,21 +20,46 @@ export interface SimContext {
   asleep: boolean;
 }
 
-function competition(g: GameData, spot: SpotDef, kind: ShopKind, selfId: string): number {
-  let rivals = 0, self = 0;
+interface MarketCounts { rivals: number; players: number }
+type MarketIndex = ReadonlyMap<string, MarketCounts>;
+/** Rebuild once per game minute: competitor ownership cannot change while
+ * the store-loop advances. Avoid scanning every other lot for every shop. */
+function buildMarketIndex(g: GameData): MarketIndex {
+  const counts = new Map<string, MarketCounts>();
   for (const id of LOT_IDS) {
-    if (id === selfId) continue;
-    const s = SPOT_BY_ID.get(id)!;
-    if (s.district !== spot.district) continue;
     const lot = g.lots[id];
-    if (lot.owner === 'rival' && lot.rivalKind === kind) rivals += lot.rivalLevel ?? 1;
-    else if (lot.owner === 'player' && lot.shop?.kind === kind) self++;
+    const kind = lot.owner === 'rival' ? lot.rivalKind : lot.owner === 'player' ? lot.shop?.kind : undefined;
+    if (!kind) continue;
+    const spot = SPOT_BY_ID.get(id)!;
+    const key = `${spot.district}|${kind}`;
+    let row = counts.get(key);
+    if (!row) { row = { rivals: 0, players: 0 }; counts.set(key, row); }
+    if (lot.owner === 'rival') row.rivals += lot.rivalLevel ?? 1;
+    else row.players++;
+  }
+  return counts;
+}
+function competition(g: GameData, spot: SpotDef, kind: ShopKind, selfId: string, index?: MarketIndex): number {
+  let rivals = 0, self = 0;
+  const cached = index?.get(`${spot.district}|${kind}`);
+  if (cached) {
+    rivals = cached.rivals;
+    self = cached.players - 1; // The caller is an owned store in this index.
+  } else {
+    for (const id of LOT_IDS) {
+      if (id === selfId) continue;
+      const s = SPOT_BY_ID.get(id)!;
+      if (s.district !== spot.district) continue;
+      const lot = g.lots[id];
+      if (lot.owner === 'rival' && lot.rivalKind === kind) rivals += lot.rivalLevel ?? 1;
+      else if (lot.owner === 'player' && lot.shop?.kind === kind) self++;
+    }
   }
   return 1 / (1 + RIVAL_PRESSURE * rivals * rivalMult(g, spot.district) + SELF_PRESSURE * self);
 }
 
 /** 가게 한 곳의 1분 영업. 반환: 이번 분 응대 수 */
-export function shopMinute(g: GameData, id: string, spot: SpotDef, shop: ShopData, ownerHere: boolean, hour: number): number {
+export function shopMinute(g: GameData, id: string, spot: SpotDef, shop: ShopData, ownerHere: boolean, hour: number, market?: MarketIndex): number {
   if (shop.kind === 'factory') return 0;
   const def = SHOP_KINDS[shop.kind];
   const open = hour >= OPEN_HOUR && hour < CLOSE_HOUR;
@@ -47,7 +72,7 @@ export function shopMinute(g: GameData, id: string, spot: SpotDef, shop: ShopDat
   const appeal = Math.min(2.2, Math.pow(shop.priceMult / d.wealth, -1.5));
   const ratingMult = 0.6 + shop.rating / 100 * 0.8;
   const demand = def.demand / 60 * LEVEL_MULT[shop.level] * d.traffic * demandCurve(def.curve, hour) * trafficMult(g, spot.district)
-    * kindMult(g, shop.kind) * appeal * ratingMult * competition(g, spot, shop.kind, id);
+    * kindMult(g, shop.kind) * appeal * ratingMult * competition(g, spot, shop.kind, id, market);
   const served = Math.max(0, Math.min(demand, cap, shop.stock));
   const lost = Math.max(0, demand - served);
   const revenue = served * def.price * shop.priceMult;
@@ -90,7 +115,9 @@ export function restockIfLow(g: GameData, shop: ShopData, force: boolean): void 
 
 export function advanceMinute(g: GameData, ctx: SimContext, emit: Emit): void {
   const hour = g.minute / 60;
-  for (const { id, spot, shop } of playerShops(g)) shopMinute(g, id, spot, shop, !ctx.asleep && ctx.presence === id, hour);
+  const shops = playerShops(g);
+  const market = shops.length > 1 ? buildMarketIndex(g) : undefined;
+  for (const { id, spot, shop } of shops) shopMinute(g, id, spot, shop, !ctx.asleep && ctx.presence === id, hour, market);
   // 고물 재생(시간당 6개)
   if (g.minute % 10 === 0) for (const k of Object.keys(g.scrap)) g.scrap[k] = Math.min(SCRAP_MAX, g.scrap[k] + 1);
   g.minute++;

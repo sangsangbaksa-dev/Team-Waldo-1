@@ -60,3 +60,18 @@ it('ambulance patient loses health only once for each damage amount', () => {
   for (let i = 0; i < 60; i++) stepJobs(sim, 1 / 60);
   expect(sim.job.data.hp).toBeCloseTo(84.35, 5);
 });
+
+describe('OUTLAW procedural gang encounter spawn safety', () => {
+  it('places all four guards on accessible ground instead of inside map props', () => {
+    for (const seed of [1, 7, 13, 19, 37]) for (const mission of ['vigilante', 'contract']) {
+      const sim = new Sim(seed);
+      expect(startJob(sim, mission)).toBe('');
+      const guards = sim.peds.filter(p => p.tag === 'job');
+      expect(guards, mission).toHaveLength(4);
+      for (const guard of guards) expect(isOpen(sim.map, guard.x, guard.z, .65), `${mission} / seed ${seed} / guard ${guard.id}`).toBe(true);
+      for (let i = 0; i < guards.length; i++) for (let j = i + 1; j < guards.length; j++) {
+        expect(Math.hypot(guards[i].x-guards[j].x,guards[i].z-guards[j].z), `${mission} / seed ${seed}`).toBeGreaterThanOrEqual(2.4);
+      }
+    }
+  });
+});

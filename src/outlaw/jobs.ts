@@ -1,7 +1,7 @@
 // OUTLAW CITY — 휴대폰으로 받는 일거리: 배달·응급 이송·자경단·현상 의뢰·차량 회수·지하 격투장, 그리고 소매치기. 화면과 무관한 시뮬레이션 로직입니다.
 import type { Sim } from './sim';
 import { PLAYER_ID, blankJobState, VEHICLES, wrapAngle, type Marker, type Ped, type Vehicle } from './types';
-import { nearestLane } from './world';
+import { isOpen, nearestLane } from './world';
 import { autoDrive } from './vehicle';
 
 export interface JobInfo { id: string; name: string; giver: string; desc: string; pay: string; cooldown: number }
@@ -43,7 +43,22 @@ function impactLoss(j: Sim['job'], car: Vehicle): number {
   j.data.carHp = car.hp;
   return Math.max(0, previous - car.hp) / Math.max(1, car.maxHp) * 150;
 }
-function gang(s: Sim, x: number, z: number, boss = false): Ped { return s.spawnPed(boss ? 'boss' : 'gang', x, z, { keep: true, tag: 'job', mode: 'guard', tx: x, tz: z, aux: 6 }); }
+/** Job guards must appear on walkable terrain, not inside nearby buildings,
+ * decorative props or one another. A sidewalk fallback stays near the marker. */
+function gang(s: Sim, x: number, z: number, boss = false, squad: readonly Ped[] = []): Ped {
+  const clear = (px: number, pz: number): boolean =>
+    isOpen(s.map, px, pz, 0.65) &&
+    squad.every(p => (p.x - px) ** 2 + (p.z - pz) ** 2 >= 2.5 ** 2);
+  if (!clear(x, z)) {
+    let nearest = Infinity;
+    for (const q of s.map.walkPoints) {
+      const d = (q.x - x) ** 2 + (q.z - z) ** 2;
+      if (d >= nearest || d > 30 ** 2 || !clear(q.x, q.z)) continue;
+      nearest = d; x = q.x; z = q.z;
+    }
+  }
+  return s.spawnPed(boss ? 'boss' : 'gang', x, z, { keep: true, tag: 'job', mode: 'guard', tx: x, tz: z, aux: 6 });
+}
 
 export function jobBlock(sim: Sim, id: string): string {
   const p = sim.player;
@@ -79,7 +94,12 @@ export function startJob(sim: Sim, id: string): string {
     const q = spotNear(sim, 160, 320), pt = sim.spawnPed('civ', q.x, q.z, { keep: true, tag: 'job', mode: 'cower', loot: 0, hp: 40 }); pt.maxHp = 100; j.ids.patient = pt.id; j.data.x = q.x; j.data.z = q.z; j.timer = 200; j.data.hp = 100;
   } else if (id === 'vigilante' || id === 'contract') {
     const c = spotNear(sim, 150, 300), n = id === 'contract' ? 4 : 4; j.data.count = n;
-    for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2, g = gang(sim, c.x + Math.cos(a) * 5, c.z + Math.sin(a) * 5, id === 'contract' && i === 0); j.ids[`e${i}`] = g.id; }
+    const squad: Ped[] = [];
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const g = gang(sim, c.x + Math.cos(a) * 5, c.z + Math.sin(a) * 5, id === 'contract' && i === 0, squad);
+      squad.push(g); j.ids[`e${i}`] = g.id;
+    }
     j.data.x = c.x; j.data.z = c.z; j.data.civ0 = sim.civKills; j.timer = id === 'contract' ? 260 : 220;
   } else if (id === 'repo') {
     const q = spotNear(sim, 200, 380), lane = sim.map.lanes[nearestLane(sim.map, q.x, q.z)];

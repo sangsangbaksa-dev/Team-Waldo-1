@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AIR, PLAYER } from './config';
 import { Match, type Player, type Vehicle } from './sim';
-import { canAcceptRoomLoot, canAcceptRoomPickup, canAcceptVehicleDamageReport, easePuppet, parseLoot, WorldSync, WEAPON_IDS, type PuppetTarget } from './sync';
+import { canAcceptRoomLoot, canAcceptRoomPickup, canAcceptVehicleDamageReport, canApplyRemoteVehiclePose, easePuppet, parseLoot, WorldSync, WEAPON_IDS, type PuppetTarget } from './sync';
 
 function fixture() {
   const m = new Match({seed: 42, mode: 'duel', difficulty: 'normal', humans: [{name:'A'}], fill: 2, authority: false});
@@ -68,6 +68,24 @@ describe('network synchronization regressions', () => {
       expect(sync.acceptRoomLoot(loot,0,true,host,100)).toBe(true);
     }
   });
+  it('requires the host-approved driver before accepting peer car coordinates', () => {
+    const driver = { id: 2, remote: true, bot: false, alive: true, veh: -1 } as Player;
+    const car = { id: 4, remote: true, wreck: false, driver: -1 } as Vehicle;
+    expect(canApplyRemoteVehiclePose(car, driver)).toBe(false);
+    driver.veh = 4;
+    expect(canApplyRemoteVehiclePose(car, driver)).toBe(false);
+    car.driver = 2;
+    expect(canApplyRemoteVehiclePose(car, driver)).toBe(true);
+    expect(canApplyRemoteVehiclePose({ ...car, remote: false }, driver)).toBe(false);
+    expect(canApplyRemoteVehiclePose({ ...car, wreck: true }, driver)).toBe(false);
+    expect(canApplyRemoteVehiclePose({ ...car, driver: 1 }, driver)).toBe(false);
+    expect(canApplyRemoteVehiclePose(car, { ...driver, veh: -1 })).toBe(false);
+    expect(canApplyRemoteVehiclePose(car, { ...driver, remote: false })).toBe(false);
+    expect(canApplyRemoteVehiclePose(car, { ...driver, alive: false })).toBe(false);
+    expect(canApplyRemoteVehiclePose(car, { ...driver, bot: true })).toBe(false);
+    expect(canApplyRemoteVehiclePose(undefined, driver)).toBe(false);
+  });
+
   it('accepts nearby player pickups but rejects remote item deletion', () => {
     const sender = {id:1,remote:true,bot:false,x:20,z:-10} as Player;
     const loot = parseLoot({...base,k:'weapon',w:'rifle',i:2_001_001,x:22,z:-9})!;

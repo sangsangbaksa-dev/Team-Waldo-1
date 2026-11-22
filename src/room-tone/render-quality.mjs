@@ -10,5 +10,5 @@ export function renderingScale(width,height,deviceRatio,quality,touch=false) {
   const h=Number.isFinite(height) && height>0 ? height : 1;
   const ratio=Number.isFinite(deviceRatio) && deviceRatio>0 ? deviceRatio : 1;
   const budgetRatio=Math.sqrt(preset.pixels/(w*h));
-  return Math.max(0.1,Math.round(Math.min(ratio,preset.dpr,budgetRatio)*100)/100);
+  return Math.max(0.1,Math.floor(Math.min(ratio,preset.dpr,budgetRatio)*100)/100);
 }

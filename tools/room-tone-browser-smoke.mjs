@@ -88,8 +88,15 @@ try {
         }
         const left=await page.locator(".hudleft").boundingBox();
         const right=await page.locator(".hudright").boundingBox();
-        assert.ok(left && right && left.x+left.width <= right.x+2,
-          "Mobile HUD text must not overlap the control group");
+        if(config.width <= 359) {
+          assert.ok(left && right && left.y >= right.y+right.height-2,
+            "Narrow HUD information must stack below the button row");
+          assert.ok(left.height < 105,
+            "Narrow HUD must not grow into a tall text column");
+        } else {
+          assert.ok(left && right && left.x+left.width <= right.x+2,
+            "Mobile HUD text must not overlap the control group");
+        }
       }
 
       if(config.mobile){

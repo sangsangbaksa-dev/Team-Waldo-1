@@ -14,3 +14,6 @@ export function framePlan(remainder: number, elapsed: number): { steps: number; 
 export function escapeRaceText(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
+
+/** Build a raw heading; the modal renderer handles HTML escaping exactly once. */
+export const raceDuelHeading=(map:string,laps:number,nickname:string):string=>`${map} · ${laps}랩 · vs ${nickname}`;

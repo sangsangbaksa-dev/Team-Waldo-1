@@ -226,7 +226,9 @@ function modal(title, description, body, actions, type = "panel") {
   if (state === "capture") $("viewWrap").classList.remove("caught-shot");
   state = type;
   leaveLook();
-  sound.pause(true);
+  // A puzzle plays its own audio cues. Suspending/resuming WebAudio on every
+  // dial click races with AudioContext state transitions and loses cues.
+  if (type !== "puzzle") sound.pause(true);
   $("dialog").hidden = false;
   $("panelTitle").textContent = title;
   $("panelText").textContent = description;
@@ -1064,7 +1066,6 @@ function puzzle(reset = true) {
     "puzzle",
   );
   sound.threat(0);
-  sound.pause(false);
 }
 function interact() {
   if (state !== "play") return;

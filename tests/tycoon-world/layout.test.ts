@@ -73,3 +73,20 @@ describe('Colliders', () => {
     expect(Math.abs(out.x - b.cx) >= 2.5 - 1e-6 || Math.abs(out.z - b.cz) >= 2.5 - 1e-6).toBe(true);
   });
 });
+
+describe('HUSTLE collider grid boundary and invalid input', () => {
+  it('reports world-edge clamping as a collision', () => {
+    const cols = new Colliders(), out = {x:0,z:0};
+    expect(cols.resolve(WORLD_HALF + 20, 0, .45, out)).toBe(true);
+    expect(out.x).toBe(WORLD_HALF - 2);
+    expect(cols.resolve(0, -WORLD_HALF - 10, .45, out)).toBe(true);
+    expect(out.z).toBe(-WORLD_HALF + 2);
+  });
+  it('rejects nonfinite movement coordinates instead of leaking NaN into scene transforms', () => {
+    const cols = new Colliders(), out = {x:9,z:9};
+    expect(cols.resolve(NaN, 15, .45, out)).toBe(true);
+    expect(out).toEqual({x:0,z:0});
+    expect(cols.resolve(4, 5, Infinity, out)).toBe(true);
+    expect(out).toEqual({x:0,z:0});
+  });
+});

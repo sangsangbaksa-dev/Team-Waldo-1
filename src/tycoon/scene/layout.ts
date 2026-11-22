@@ -100,14 +100,22 @@ export function recycleFenceSegments(lot: Pick<Lot,'cx'|'cz'|'fx'|'fz'>): Box[] 
 }
 /** 충돌 상자 모음: 구획 단위로 모아 두고 플레이어 주변만 검사합니다. */
 export class Colliders {
-  private byBlock = new Map<string, Box[]>();
-  set(b: Block, boxes: Box[]): void { this.byBlock.set(`${b.i},${b.j}`, boxes); }
+  // Dense, stable numeric grid keys avoid allocating strings for every camera
+  // collision probe (a third-person camera can perform 100+ probes per frame).
+  private byBlock = new Map<number, Box[]>();
+  private key(i: number, j: number): number { return (i + HALF) * GRID + j + HALF; }
+  set(b: Block, boxes: Box[]): void { this.byBlock.set(this.key(b.i, b.j), boxes); }
   /** 원(반지름 r)을 상자 밖으로 밀어냅니다. 밀린 결과를 out 에 담고 충돌했는지 돌려줍니다. */
   resolve(x: number, z: number, r: number, out: { x: number; z: number }): boolean {
+    if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(r) || r <= 0) {
+      out.x = 0; out.z = 0; return true;
+    }
     let hit = false;
     const bi = Math.round(x / PITCH), bj = Math.round(z / PITCH);
     for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
-      const boxes = this.byBlock.get(`${bi + di},${bj + dj}`); if (!boxes) continue;
+      const i = bi + di, j = bj + dj;
+      if (Math.abs(i) > HALF || Math.abs(j) > HALF) continue;
+      const boxes = this.byBlock.get(this.key(i, j)); if (!boxes) continue;
       for (const b of boxes) {
         const nx = Math.max(b.x0, Math.min(x, b.x1)), nz = Math.max(b.z0, Math.min(z, b.z1)), dx = x - nx, dz = z - nz, d2 = dx * dx + dz * dz;
         if (d2 >= r * r) continue;
@@ -120,6 +128,8 @@ export class Colliders {
       }
     }
     out.x = Math.max(-WORLD_HALF + 2, Math.min(WORLD_HALF - 2, x)); out.z = Math.max(-WORLD_HALF + 2, Math.min(WORLD_HALF - 2, z));
-    return hit;
+    // World boundaries are obstacles too; callers use the hit flag to detect
+    // clipping (especially the chase camera and restored player positions).
+    return hit || out.x !== x || out.z !== z;
   }
 }

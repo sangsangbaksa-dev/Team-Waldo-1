@@ -46,7 +46,7 @@ interface Rig { chute: THREE.Group; root: THREE.Group; ch: CharacterRig | null; 
 interface Fx { mesh: THREE.Mesh; life: number; max: number }
 
 export class ShooterView {
-  post: PostFx | null = null; renderer: THREE.WebGLRenderer; scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(78, 1, 0.08, 1400);
+  post: PostFx | null = null; renderer: THREE.WebGLRenderer; scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(78, 1, 0.08, 2400);
   private vmScene = new THREE.Scene(); private vmCam = new THREE.PerspectiveCamera(64, 1, 0.5, 200);
   private sun: THREE.DirectionalLight; private glow = glowTexture(); private rigs = new Map<number, Rig>(); private lootNodes = new Map<number, THREE.Object3D>();
   private zoneWall: THREE.Mesh; private zoneNext: THREE.Mesh; private tracers: Fx[] = []; private sparks: THREE.Points; private sparkData: { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; r: number; g: number; b: number }[] = [];
@@ -105,12 +105,15 @@ export class ShooterView {
   private buildGround(): void {
     const half = this.match.map.half, size = half * 2 + 900, segs = this.quality === 'low' ? 120 : 240, geo = new THREE.PlaneGeometry(size, size, segs, segs); geo.rotateX(-Math.PI / 2);
     const n1 = noise2(this.match.seed), n2 = noise2(this.match.seed + 9), pos = geo.attributes.position, col = new Float32Array(pos.count * 3), c = new THREE.Color();
-    const green = new THREE.Color(0.96, 1.02, 0.84), dry = new THREE.Color(1.2, 1.0, 0.7), dark = new THREE.Color(0.72, 0.82, 0.62), sand = new THREE.Color(1.28, 1.12, 0.84), gravel = new THREE.Color(1.03, 0.98, 0.85);
+    const rockCol = new THREE.Color(0.82, 0.8, 0.74), green = new THREE.Color(0.96, 1.02, 0.84), dry = new THREE.Color(1.2, 1.0, 0.7), dark = new THREE.Color(0.72, 0.82, 0.62), gravel = new THREE.Color(1.03, 0.98, 0.85);
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), z = pos.getZ(i), a = n1(x / 90 + 32, z / 90 + 32), b = n2(x / 28 + 32, z / 28 + 32);
-      const height = groundHeight(this.match.seed, this.match.map, x, z); pos.setY(i, height);
-      c.copy(green).lerp(dry, Math.min(1, Math.max(0, a - 0.4) * 3)).lerp(dark, Math.min(1, Math.max(0, 0.5 - b) * 2.2)).lerp(gravel, Math.max(0, n2(x / 170 + 12, z / 170 + 12) - 0.62) * 1.8).lerp(sand, Math.min(1, Math.max(0, Math.hypot(x, z) - half * 1.02) / 120)); tintGround(this.match.map, x, z, c);
-      c.multiplyScalar(1 + height * 0.035);
+      const out = Math.max(Math.abs(x), Math.abs(z)) - half, rim = out > 8 ? this.rimHeight(x, z, out) : 0;
+      const height = groundHeight(this.match.seed, this.match.map, x, z) + rim; pos.setY(i, height);
+      c.copy(green).lerp(dry, Math.min(1, Math.max(0, a - 0.4) * 3)).lerp(dark, Math.min(1, Math.max(0, 0.5 - b) * 2.2)).lerp(gravel, Math.max(0, n2(x / 170 + 12, z / 170 + 12) - 0.62) * 1.8).lerp(dark, Math.min(0.85, Math.max(0, out) / 70)); tintGround(this.match.map, x, z, c);
+      // 섬 밖은 숲 언덕이 솟아 바위 능선으로 이어집니다(위에서 내려다볼 때 잘라 낸 판처럼 보이지 않게)
+      if (rim > 0) c.lerp(rockCol, Math.min(1, Math.max(0, rim - 34) / 50) * (0.55 + a * 0.45));
+      c.multiplyScalar(1 + Math.min(height, 3) * 0.035);
       col.set([c.r, c.g, c.b], i * 3);
     }
     geo.computeVertexNormals();
@@ -118,9 +121,31 @@ export class ShooterView {
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     const t = groundTexture(); t.repeat.set(size / 6, size / 6);
     const ground = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: t, vertexColors: true, roughness: 1 })); ground.receiveShadow = true; this.scene.add(ground);
+    this.buildRange(half);
     // 마을 바닥·흙길·물·구릉·절벽·다리
     this.terrainView = new TerrainView(this.match.map, this.quality === 'low'); this.scene.add(this.terrainView.group);
     this.wfx = new WeatherFx(this.match.map, this.glow, this.quality); this.scene.add(this.wfx.group);
+  }
+
+  /** 섬 바깥 땅의 높이: 경계에서 조금 떨어진 곳부터 언덕이 솟아 수백 m 밖에서 산줄기가 됩니다. 들어갈 수 없는 곳이라 화면에만 씁니다. */
+  private rimHeight(x: number, z: number, out: number): number {
+    const n = this.rimNoise ??= noise2(this.match.seed + 31), m = this.rimNoise2 ??= noise2(this.match.seed + 47);
+    const ridge = 1 - Math.abs(n(x / 70 + 5, z / 70 + 5) * 2 - 1), rise = Math.min(1, Math.max(0, (out - 8) / 150));
+    return rise * rise * (3 - 2 * rise) * (18 + ridge * 52 + m(x / 23 + 9, z / 23 + 9) * 12) + Math.max(0, out - 160) * 0.12;
+  }
+  private rimNoise: ((x: number, z: number) => number) | undefined; private rimNoise2: ((x: number, z: number) => number) | undefined;
+  /** 지평선을 닫는 먼 산맥: 땅판 끝(경계에서 450m) 너머로 둥글게 둘러 서서 비행기에서 봐도 판 끝이 보이지 않습니다. 안개가 푸르게 덮습니다. */
+  private buildRange(half: number): void {
+    const seg = this.quality === 'low' ? 96 : 180, rows = 6, r0 = half + 380, r1 = half + 1500, n = noise2(this.match.seed + 77), pos: number[] = [], col: number[] = [], idx: number[] = [];
+    const near = new THREE.Color(0.25, 0.32, 0.23), far = new THREE.Color(0.36, 0.42, 0.46), rock = new THREE.Color(0.5, 0.49, 0.46), c = new THREE.Color();
+    for (let j = 0; j <= rows; j++) for (let i = 0; i <= seg; i++) {
+      const a = (i / seg) * Math.PI * 2, t = j / rows, r = r0 + (r1 - r0) * t, x = Math.cos(a) * r, z = Math.sin(a) * r;
+      const peak = 1 - Math.abs(n(Math.cos(a) * 9 + 20 + t * 3, Math.sin(a) * 9 + 20) * 2 - 1), h = j === 0 ? 40 : j === rows ? 30 : 60 + peak * 160 * Math.sin(t * Math.PI) ** 0.7 + n(i * 0.9, j * 2.3) * 40;
+      pos.push(x, h, z); c.copy(near).lerp(far, t).lerp(rock, Math.min(1, Math.max(0, h - 150) / 90) * 0.6); col.push(c.r, c.g, c.b);
+    }
+    for (let j = 0; j < rows; j++) for (let i = 0; i < seg; i++) { const a = j * (seg + 1) + i, b = a + seg + 1; idx.push(a, b, a + 1, a + 1, b, b + 1); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx); g.computeVertexNormals();
+    const range = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true, side: THREE.DoubleSide })); range.name = 'range'; this.scene.add(range);
   }
 
   private buildBuildings(): void {

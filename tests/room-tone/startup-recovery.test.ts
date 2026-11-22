@@ -4,9 +4,10 @@ import { initialMute } from "../../src/room-tone/preferences.mjs";
 import { neighbors, paths, makeLevel } from "../../src/room-tone/levels.mjs";
 
 describe("ROOM TONE persisted audio preferences",()=>{
-  it("prefers the explicit game setting over arcade defaults",()=>{
-    expect(initialMute(true,{sound:true})).toBe(true);
-    expect(initialMute(false,{sound:false})).toBe(false);
+  it("prioritizes explicit arcade-wide settings over the legacy game key",()=>{
+    expect(initialMute(true,{sound:true})).toBe(false);
+    expect(initialMute(false,{sound:false})).toBe(true);
+    expect(initialMute(true,undefined)).toBe(true);
     expect(initialMute(false,undefined)).toBe(false);
   });
   it("falls back to the arcade preference for first-time visitors",()=>{
@@ -14,6 +15,7 @@ describe("ROOM TONE persisted audio preferences",()=>{
     expect(initialMute(null,{sound:true})).toBe(false);
     expect(initialMute(undefined,null)).toBe(false);
     expect(initialMute("false",{sound:false})).toBe(true);
+    expect(initialMute(true,{theme:"night"})).toBe(true);
   });
 });
 describe("ROOM TONE model request lifecycle",()=>{

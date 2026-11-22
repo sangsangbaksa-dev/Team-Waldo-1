@@ -134,25 +134,35 @@ function save() {
     );
   } catch { /* Browser storage or pointer lock is optional. */ }
 }
+const PREFS = "waldo.preferences.v1";
 function syncAudioButtons() {
   for (const b of [$("sound"), $("gsound")]) {
     b.setAttribute("aria-pressed", String(!muted));
     b.querySelector("span").textContent = muted ? "소리 꺼짐" : "소리 켜짐";
   }
 }
-function toggleAudio() {
-  muted = !muted;
+function applyMute(next) {
+  muted = Boolean(next);
   sound.setMute(muted);
-  if (!muted && state !== "home") void sound.start();
-  try {
-    localStorage.setItem("rt-silent", JSON.stringify(muted));
-  } catch { /* Browser storage or pointer lock is optional. */ }
+  if (!muted && !["home", "load"].includes(state)) void sound.start();
   syncAudioButtons();
 }
-muted = initialMute(read("rt-silent"), read("waldo.preferences.v1"));
-sound.setMute(muted);
-syncAudioButtons();
+function toggleAudio() {
+  applyMute(!muted);
+  try {
+    // Share audio with the hub and retain the legacy game key for migration.
+    const stored = read(PREFS);
+    const preferences = stored && typeof stored === "object" && !Array.isArray(stored) ? stored : {};
+    localStorage.setItem(PREFS, JSON.stringify({ ...preferences, sound: !muted }));
+    localStorage.setItem("rt-silent", JSON.stringify(muted));
+  } catch { /* Browser storage is optional. */ }
+}
+applyMute(initialMute(read("rt-silent"), read(PREFS)));
 $("sound").onclick = $("gsound").onclick = toggleAudio;
+window.addEventListener("storage", (e) => {
+  if (e.key === PREFS || (e.key === "rt-silent" && read(PREFS)?.sound === undefined))
+    applyMute(initialMute(read("rt-silent"), read(PREFS)));
+});
 function screens(id) {
   for (const key of ["home", "game"]) $(key).hidden = key !== id;
   if (id === "game") showSceneOnce();
@@ -256,6 +266,7 @@ $("confirmReset").onclick = () => {
   start(false);
 };
 $("continue").onclick = () => start(true);
+const hubUrl = () => new URL("../", location.href).href;
 function pauseGame() {
   if (state !== "play") return;
   save();
@@ -267,6 +278,7 @@ function pauseGame() {
       ["계속하기", resume],
       ["조작 안내", () => guide()],
       ["타이틀로", homepage, true],
+      ["게임 목록으로", () => location.assign(hubUrl()), true],
     ],
     "pause",
   );
@@ -1479,9 +1491,24 @@ window.addEventListener("blur", backgroundSession);
 window.addEventListener("focus", () => {
   if (!document.hidden && state === "puzzle") sound.pause(false);
 });
-window.addEventListener("pagehide", () => {
+window.addEventListener("pagehide", (e) => {
+  if (e.persisted) {
+    backgroundSession();
+    return;
+  }
   if (level && !["home", "won", "load", "error"].includes(state)) save();
   sound.pause(true);
+  if (frameId !== null) cancelAnimationFrame(frameId);
+  frameId = null;
+  renderer?.setAnimationLoop?.(null);
+  renderer?.dispose();
+});
+window.addEventListener("pageshow", (e) => {
+  if (e.persisted && renderer) {
+    last = performance.now();
+    resize();
+    showSceneOnce();
+  }
 });
 function look(dx, dy) {
   if (hiddenSpot) return;

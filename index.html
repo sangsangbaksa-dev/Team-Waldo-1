@@ -9,11 +9,10 @@
     <meta property="og:title" content="WALDO · 브라우저 3D 게임 모음" />
     <meta property="og:description" content="브라우저 3D 게임 모음. 브라우저에서 바로 시작하세요." />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap" />
+    <!-- Pretendard retains the visual design but no longer blocks first paint.
+         Local/system Korean fonts are available until the font stylesheet arrives. -->
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" media="print" onload="this.media='all'" />
     <title>WALDO · 브라우저 3D 게임 모음</title>
   </head>
   <body>

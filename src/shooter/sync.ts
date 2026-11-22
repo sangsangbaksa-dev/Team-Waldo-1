@@ -28,7 +28,7 @@ const wrap = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));
 const numArr = (v: unknown, max: number): v is number[] => Array.isArray(v) && v.length <= max && v.every(fin);
 
 export interface PuppetTarget { x: number; z: number; yaw: number; pitch: number; speed: number; /** 받은 속도(있으면 받은 뒤 지난 시간만큼 앞으로 내다봅니다) */ vx?: number; vz?: number; extrapolated?: number; air: number; alt: number; hp: number; w: WeaponId; ads: boolean; crouch: boolean; reload: boolean }
-export interface VehTarget { x: number; z: number; yaw: number; speed: number; at: number }
+export interface VehTarget { x: number; z: number; yaw: number; speed: number; at: number; extrapolated?: number }
 
 /** 선수 상태를 받은 목표로 부드럽게 옮깁니다(사람·AI 꼭두각시 공용). */
 export function easePuppet(o: Player, t: PuppetTarget, dt: number): void {
@@ -166,7 +166,9 @@ export class WorldSync {
     for (const [id, t] of this.vehs) {
       const v = m.vehicles[id]; if (!v || v.wreck || !v.remote) { this.vehs.delete(id); continue; }
       // 받은 뒤 지난 시간만큼 앞으로 내다보고(속도 × 방향) 그 자리로 따라갑니다.
-      t.x += Math.cos(t.yaw) * t.speed * dt; t.z += Math.sin(t.yaw) * t.speed * dt;
+      const advance = Math.max(0, Math.min(dt, 0.6 - (t.extrapolated ?? 0)));
+      t.x += Math.cos(t.yaw) * t.speed * advance; t.z += Math.sin(t.yaw) * t.speed * advance;
+      t.extrapolated = (t.extrapolated ?? 0) + advance;
       const far = Math.abs(t.x - v.x) + Math.abs(t.z - v.z) > 20;
       v.x = far ? t.x : v.x + (t.x - v.x) * k; v.z = far ? t.z : v.z + (t.z - v.z) * k; v.yaw += wrap(t.yaw - v.yaw) * k; v.speed = t.speed;
     }

@@ -2,7 +2,6 @@
 import * as THREE from 'three';
 import { makeRng } from './config';
 import type { GameMap } from './world';
-import { CLIFF_T } from './terrain';
 import { concreteTexture, dirtTexture, fadeDiscTexture, fadeRoadTexture, waterTexture } from './textures';
 
 const smooth = (t: number): number => { const x = Math.max(0, Math.min(1, t)); return x * x * (3 - 2 * x); };
@@ -138,8 +137,10 @@ export class TerrainView {
       }
       g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.deleteAttribute('uv'); geos.push(g);
     }
-    if (!geos.length) return; void CLIFF_T;
-    const merged = geos.length === 1 ? geos[0] : mergeGeos(geos); merged.computeVertexNormals();
+    if (!geos.length) return;
+    const merged = geos.length === 1 ? geos[0] : mergeGeos(geos);
+    if (geos.length > 1) for (const source of geos) source.dispose();
+    merged.computeVertexNormals();
     const m = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })); m.castShadow = true; m.receiveShadow = true; this.group.add(m);
   }
   /** 길이 물을 건너는 나무 다리. */
@@ -153,8 +154,32 @@ export class TerrainView {
   }
 }
 
+/** Merge static cliff chunks directly into typed buffers, avoiding large temporary JS arrays. */
 function mergeGeos(list: THREE.BufferGeometry[]): THREE.BufferGeometry {
-  const pos: number[] = [], col: number[] = [], idx: number[] = []; let base = 0;
-  for (const g of list) { const p = g.attributes.position, c = g.attributes.color, ix = g.index!; for (let i = 0; i < p.count; i++) { pos.push(p.getX(i), p.getY(i), p.getZ(i)); col.push(c.getX(i), c.getY(i), c.getZ(i)); } for (let i = 0; i < ix.count; i++) idx.push(ix.getX(i) + base); base += p.count; }
-  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx); return g;
+  let vertexCount = 0, indexCount = 0;
+  for (const geometry of list) {
+    vertexCount += geometry.attributes.position.count;
+    indexCount += geometry.index!.count;
+  }
+  const positions = new Float32Array(vertexCount * 3), colors = new Float32Array(vertexCount * 3);
+  const indices = vertexCount > 65535 ? new Uint32Array(indexCount) : new Uint16Array(indexCount);
+  let vertexOffset = 0, indexOffset = 0;
+  for (const geometry of list) {
+    const pos = geometry.attributes.position as THREE.BufferAttribute;
+    const col = geometry.attributes.color as THREE.BufferAttribute;
+    const idx = geometry.index!;
+    for (let i = 0; i < pos.count; i++) {
+      const at = (vertexOffset + i) * 3;
+      positions[at] = pos.getX(i); positions[at + 1] = pos.getY(i); positions[at + 2] = pos.getZ(i);
+      colors[at] = col.getX(i); colors[at + 1] = col.getY(i); colors[at + 2] = col.getZ(i);
+    }
+    for (let i = 0; i < idx.count; i++) indices[indexOffset + i] = idx.getX(i) + vertexOffset;
+    vertexOffset += pos.count;
+    indexOffset += idx.count;
+  }
+  const result = new THREE.BufferGeometry();
+  result.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  result.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  result.setIndex(new THREE.BufferAttribute(indices, 1));
+  return result;
 }

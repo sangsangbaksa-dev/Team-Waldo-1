@@ -1,5 +1,13 @@
 name: ROOM TONE browser smoke
 on:
+  push:
+    branches:
+      - perf/room-tone-startup-20261122
+    paths:
+      - 'room-tone/**'
+      - 'src/room-tone/**'
+      - 'tools/room-tone-browser-smoke.mjs'
+      - '.github/workflows/room-tone-browser-smoke.yml'
   pull_request:
     paths:
       - 'room-tone/**'

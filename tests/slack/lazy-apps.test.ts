@@ -75,3 +75,18 @@ describe('SLACK OFF dorm lazy apps', () => {
   });
 
 });
+
+it('silences the dorm headphone music bed while the study cover is held', () => {
+  vi.mocked(audio.muffle).mockClear();
+  view.el.querySelector<HTMLButtonElement>('[data-app="music"]')!.click();
+  view.frame(0.1);
+  expect(audio.muffle).toHaveBeenLastCalledWith(true);
+  const key = (type: 'keydown' | 'keyup') => {
+    view.el.focus();
+    view.el.dispatchEvent(new KeyboardEvent(type, { key: ' ', code: 'Space', bubbles: true, cancelable: true }));
+  };
+  key('keydown');
+  expect(audio.muffle).toHaveBeenLastCalledWith(false);
+  key('keyup');
+  expect(audio.muffle).toHaveBeenLastCalledWith(true);
+});

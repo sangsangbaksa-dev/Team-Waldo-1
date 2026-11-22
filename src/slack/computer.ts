@@ -75,6 +75,7 @@ export const createComputerView: CreateView = (sim, audio) => {
       if (on && host.contains(document.activeElement)) el.focus({ preventScroll: true });
       host.inert = on;
     }
+    syncMusicAudio();
   };
   const updateCover = () => { sim.setCover(coverKey || coverPointer !== null || coverMiddle !== null); applyCover(); };
   const select = (id: DormActivity | null) => { audio.resume(); audio.play('click'); if (id && sim.state.cover) updateCover(); sim.doActivity(id && sim.state.activity === id ? null : id); };
@@ -205,7 +206,14 @@ export const createComputerView: CreateView = (sim, audio) => {
     M.cur = (i + tracks.length) % tracks.length; M.p = 0; M.sec = -1; const w = wins.music; const t = tracks[M.cur];
     setTxt($('[data-m-title]', w), t.t); setTxt($('[data-m-art]', w), t.a); w.querySelectorAll('[data-track]').forEach((p, k) => p.classList.toggle('cur', k === M.cur));
   };
-  const musicPlay = (on: boolean) => { const changed = M.playing !== on; M.playing = on; wins.music.classList.toggle('paused', !on); setTxt($('[data-m="play"]', wins.music), on ? '❚❚' : '▶'); if (changed && shown === 'music') audio.muffle(on); };
+  let earbudsActive = false;
+  /** The lecture cover pauses the mini-player and its procedural headphone bed. */
+  const syncMusicAudio = () => {
+    const on = shown === 'music' && M.playing && !sim.state.cover;
+    if (on === earbudsActive) return;
+    earbudsActive = on; audio.muffle(on);
+  };
+  const musicPlay = (on: boolean) => { M.playing = on; wins.music.classList.toggle('paused', !on); setTxt($('[data-m="play"]', wins.music), on ? '❚❚' : '▶'); syncMusicAudio(); };
   const musicTick = (dt: number) => {
     if (shown !== 'music' || sim.state.cover || !M.playing) return;
     M.p += dt / tracks[M.cur].len; if (M.p >= 1) { musicSet(M.cur + 1); return; }
@@ -241,7 +249,7 @@ export const createComputerView: CreateView = (sim, audio) => {
   };
   function renderApp(id: DormActivity | null) {
     const prev = shown; shown = id;
-    if (prev !== id) audio.muffle(id === 'music' && M.playing);
+    if (prev !== id) syncMusicAudio();
     if (prev && prev !== id && wins[prev].contains(document.activeElement)) taskBtn(id ?? prev).focus({ preventScroll: true });
     for (const a of apps) {
       const on = a.id === id;
@@ -363,5 +371,5 @@ export const createComputerView: CreateView = (sim, audio) => {
     }
     if (elapsed > 45 && !cache.newEp) { cache.newEp = true; if (built.webtoon) built.webtoon.querySelector<HTMLElement>('[data-ep="3"]')!.hidden = false; if (shown !== 'webtoon') { setBadge('webtoon', 1); toast('웹툰 「달빛 아래 우리」 13화 업데이트!'); audio.play('chime', 0.4); } }
     const min = 24 + Math.floor(elapsed / 20); setTxt(clockEl, `오전 ${1 + Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`);
-  }, onEvent, dispose() { if (disposed) return; disposed = true; inputs.abort(); blur(); if (shown === 'music') audio.muffle(false); queue.length = 0; } };
+  }, onEvent, dispose() { if (disposed) return; disposed = true; inputs.abort(); blur(); if (earbudsActive) { earbudsActive = false; audio.muffle(false); } queue.length = 0; } };
 };

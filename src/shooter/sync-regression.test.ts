@@ -50,6 +50,24 @@ describe('network synchronization regressions', () => {
     expect(canAcceptRoomLoot(loot,0,true,host)).toBe(true);
     expect(canAcceptRoomLoot(loot,0,false,host)).toBe(false);
   });
+  it('accepts a short burst of online loot without allowing unlimited packet flooding', () => {
+    const {sync} = fixture();
+    const sender = {id:1,remote:true,bot:false,x:20,z:30} as Player;
+    for (let i = 0; i < 12; i++) {
+      const loot = parseLoot({...base,k:'weapon',w:'pistol',i:2_001_000+i,x:20,z:30})!;
+      expect(sync.acceptRoomLoot(loot,1,false,sender,100+i)).toBe(true);
+    }
+    expect(sync.acceptRoomLoot(parseLoot({...base,k:'weapon',w:'pistol',i:2_002_000,x:20,z:30})!,1,false,sender,500)).toBe(false);
+    expect(sync.acceptRoomLoot(parseLoot({...base,k:'weapon',w:'pistol',i:2_002_001,x:20,z:30})!,1,false,sender,1200)).toBe(true);
+  });
+  it('does not throttle multiple simultaneous AI death drops from the current host', () => {
+    const {sync} = fixture();
+    const host = {id:0,remote:true,bot:false,x:0,z:0} as Player;
+    for (let i = 0; i < 30; i++) {
+      const loot = parseLoot({...base,k:'weapon',w:'rifle',i:1_001_000+i,x:150,z:150})!;
+      expect(sync.acceptRoomLoot(loot,0,true,host,100)).toBe(true);
+    }
+  });
   it('does not extrapolate a stale bot indefinitely', () => {
     const {bot} = fixture(); bot.x = bot.z = 0;
     const target: PuppetTarget = {x:0,z:0,yaw:0,pitch:0,speed:10,vx:10,vz:0,air:0,alt:0,hp:100,w:'pistol',ads:false,crouch:false,reload:false};

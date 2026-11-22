@@ -52,13 +52,12 @@ export class Battle {
       if (!target) continue;
       if (wounded) { target = wounded; healing = true; }
       const dist = (v: Soldier) => hyp(v.x - u.x, v.y - u.y);
-      const enemies = alive.filter(v => v.side !== u.side && v.hp > 0);
       const distance = dist(target), desired = healing ? 2.2 : d.range;
       if (distance <= desired && u.cooldown <= 0) {
         u.cooldown = d.cooldown;
         if (healing) { const amount = Math.min(24, UNITS[target.type].hp - target.hp); target.hp += amount; this.effects.push({ x: u.x, y: u.y, x2: target.x, y2: target.y, value: amount, side: u.side, kind: 'heal', age: 0 }); }
         else {
-          const victims = u.type === 'siege' ? enemies.filter(v => hyp(v.x - target.x, v.y - target.y) < 1.3) : [target];
+          const victims = u.type === 'siege' ? alive.filter(v => v.side !== u.side && v.hp > 0 && hyp(v.x - target.x, v.y - target.y) < 1.3) : [target];
           for (const v of victims) {
             const counter = (u.type === 'guard' && v.type === 'striker') || (u.type === 'striker' && (v.type === 'archer' || v.type === 'siege')) || (u.type === 'archer' && v.type === 'guard');
             const amount = d.damage * (counter ? 1.8 : 1); const dealt = Math.min(v.hp, amount); v.hp -= amount; u.damage += dealt;

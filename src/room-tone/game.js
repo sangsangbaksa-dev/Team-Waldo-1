@@ -1325,8 +1325,11 @@ function update(dt) {
     (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0) -
     pointer.y;
   let r = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0) + pointer.x;
-  if (!hiddenSpot && keys.has("ArrowLeft")) yaw += dt * 1.55;
-  if (!hiddenSpot && keys.has("ArrowRight")) yaw -= dt * 1.55;
+  if (!hiddenSpot && (keys.has("ArrowLeft") || keys.has("ArrowRight"))) {
+    yaw += dt * 1.55 * (Number(keys.has("ArrowLeft")) - Number(keys.has("ArrowRight")));
+    // Keep keyboard-driven orientation finite, just like pointer rotation.
+    yaw = Math.atan2(Math.sin(yaw), Math.cos(yaw));
+  }
   const length = Math.hypot(f, r);
   if (length > 1) {
     f /= length;
@@ -1580,8 +1583,10 @@ wrap.addEventListener("pointermove", (e) => {
     lookLast = [e.clientX, e.clientY];
   }
 });
-for (const n of ["pointerup", "pointercancel"])
+for (const n of ["pointerup", "pointercancel", "lostpointercapture"])
   wrap.addEventListener(n, (e) => {
+    // Browsers may relinquish capture without a terminal pointer event
+    // (navigation, incoming call, native gesture). Permit a fresh look drag.
     if (lookPointer.release(e.pointerId)) lookLast = null;
   });
 const stick = $("stick");

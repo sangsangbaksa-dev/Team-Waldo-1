@@ -52,8 +52,16 @@ export class WetStreet {
     else { this.mat.opacity = wet * 0.55; this.mat.color.setRGB(...atm.fog).multiplyScalar(0.35); }
     if (!this.cube || !this.mesh.visible) return;
     this.since += dt; if (this.since < 1.3) return; this.since = 0;
-    const vis = hide.map(o => o.visible); this.mesh.visible = false; hide.forEach(o => { o.visible = false; });
-    this.cube.position.set(cam.x, Math.max(14, cam.y * 0.6), cam.z); this.cube.update(renderer, scene);
-    hide.forEach((o, i) => { o.visible = vis[i]; }); this.mesh.visible = true;
+    const vis = hide.map(o => o.visible), ownVisible=this.mesh.visible;
+    this.mesh.visible = false;
+    for(const o of hide)o.visible=false;
+    try {
+      this.cube.position.set(cam.x, Math.max(14, cam.y * 0.6), cam.z);
+      this.cube.update(renderer, scene);
+    } finally {
+      // WebGL context loss or render exceptions must not leave scenery invisible.
+      for(let i=0;i<hide.length;i++)hide[i].visible=vis[i];
+      this.mesh.visible=ownVisible;
+    }
   }
 }

@@ -596,9 +596,12 @@ export class World {
     const b = this.boss(fi); if (!b || (fi === 0 && this.inside)) return;
     if (b.inVeh) { const v = this.vehicles.find(q => q.id === b.inVeh); if (v && v.alive && v.driver===b.id) this.disembark(v, b); else b.inVeh = 0; return; }
     let best: Vehicle | null = null, bd = 78;
-    for (const v of this.vehicles) if (v.alive && v.burn <= 0 && v.ai !== 'chase') { if (v.driver && this.byId.get(v.driver)?.kind === 'boss') continue; const d = Math.hypot(v.x - b.x, v.y - b.y) - v.r; if (d < bd) { bd = d; best = v; } }
+    for (const v of this.vehicles) if (v.alive && v.burn <= 0 && v.ai !== 'chase') { if (v.driver) {const occupant=this.byId.get(v.driver);if(occupant?.alive&&occupant.kind==='boss'&&occupant.inVeh===v.id)continue;} const d = Math.hypot(v.x - b.x, v.y - b.y) - v.r; if (d < bd) { bd = d; best = v; } }
     if (!best) return;
-    if (best.driver) { const d = this.byId.get(best.driver); if (d) { this.disembark(best, d, -1); d.fleeT = 8; } this.crime(fi, best.kind === 'police' ? 1 : 0.5); }
+    if (best.driver) { const d = this.byId.get(best.driver);
+      if (d?.alive && d.inVeh===best.id) { this.disembark(best, d, -1); d.fleeT = 8; }
+      else {best.driver=0;best.f=-1;best.ai='';}
+      this.crime(fi, best.kind === 'police' ? 1 : 0.5); }
     else if (best.kind === 'police') this.crime(fi, 1);
     best.ai = ''; best.driver = b.id; best.f = fi; b.inVeh = best.id; b.vx = b.vy = 0; this.fx('door', b.x, b.y);
   }

@@ -104,3 +104,16 @@ it('keeps an active dorm game target when switching away and back', async () => 
   expect(button('.sc-app-game').inert).toBe(false);
   expect(button('.sc-target').classList.contains('on')).toBe(true);
 });
+
+it('bounds a long foreground frame stall without skipping normal frames', async () => {
+  openSlack(vi.fn());
+  button('[data-stage="dorm"]').click();
+  button('[data-start]').click();
+  await vi.dynamicImportSettled();
+  const sim = vi.mocked(createSim).mock.results[0].value;
+  key('1');
+  advance(5000);
+  expect(sim.state.time).toBeCloseTo(1);
+  advance(100);
+  expect(sim.state.time).toBeCloseTo(1.1);
+});

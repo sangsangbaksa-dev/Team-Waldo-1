@@ -74,7 +74,20 @@ export class Sound {
     try {
       if (!this.ctx) {
         this.ctx = new Audio({ latencyHint: "interactive" });
-        this.build();
+        try {
+          this.build();
+        } catch (error) {
+          // A partially built WebAudio graph cannot be reused on the next
+          // gesture. Close it and permit a clean retry after a transient error.
+          const failed = this.ctx;
+          this.ctx = null;
+          this.level = null;
+          this.mix = null;
+          this.radio = null;
+          this.breath = null;
+          try { await failed.close(); } catch { /* Audio is optional. */ }
+          throw error;
+        }
       }
       if (this.ctx.state === "suspended") {
         if (!this.waking)

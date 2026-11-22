@@ -705,10 +705,11 @@ async function start(cont) {
   $("panelBody").replaceChildren();
   $("panelActions").replaceChildren();
   try {
-    // Audio unlock is optional; never block the large model download on it.
+    // Queue the model fetch and engine imports before the synchronous audio
+    // graph construction; otherwise Sound.build() delays the first network request.
+    const setupPromise = setup();
     void sound.start();
-    sound.setMute(muted);
-    await setup();
+    await setupPromise;
     const s = cont ? saved() : null;
     ch = s?.ch ?? 0;
     found = s?.found ?? [false, false, false];

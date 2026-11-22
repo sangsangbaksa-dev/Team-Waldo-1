@@ -93,6 +93,9 @@ export class CityView {
   private readonly signalColor = new THREE.Color();
   private disposed = false;
   private scratch = new THREE.Vector3();
+  private readonly shadowRight = new THREE.Vector3(); private readonly shadowUp = new THREE.Vector3(); private readonly shadowFocus = new THREE.Vector3();
+  private readonly fogStorm = new THREE.Color(0x56606a); private readonly fogLightning = new THREE.Color(0xdce6ff);
+  private readonly hemiNightTint = new THREE.Color(0x9aaccb);
   private matrix = new THREE.Object3D();
 
   constructor(readonly scene: THREE.Scene, readonly renderer: THREE.WebGLRenderer, readonly map: CityMap, readonly assets: OutlawAssets | null, readonly quality: Quality) {
@@ -343,6 +346,8 @@ export class CityView {
   }
   private rainLines: THREE.LineSegments | null = null;
   private rainFx(dt: number, pos: THREE.Vector3, rain: number): void {
+    // Dry sessions should never allocate GPU rain buffers until the weather needs them.
+    if (!this.rainLines && rain <= .02) return;
     if (!this.rainLines) {
       const n = this.quality === 'low' ? 700 : 1800, g = new THREE.BufferGeometry(), a = new Float32Array(n * 6), r = makeRng(77);
       for (let i = 0; i < n; i++) { a[i * 6] = (r() - .5) * 70; a[i * 6 + 1] = r() * 36; a[i * 6 + 2] = (r() - .5) * 70; }
@@ -364,14 +369,14 @@ export class CityView {
     // Quantize the material update: rain changes surface response without rewriting geometry.
     const wet = Math.round(Math.max(0, Math.min(1, rain)) * 50) / 50;
     if (wet !== this.wetness) { this.wetness = wet; if (this.roadMat) { this.roadMat.roughness = .96 - .58 * wet; this.roadMat.metalness = .02 + .17 * wet; this.roadMat.color.setRGB(.47 - .15 * wet, .51 - .15 * wet, .53 - .14 * wet); } if (this.pavementMat) this.pavementMat.roughness = .93 - .37 * wet; }
-    this.fog.color.copy(c.fog).lerp(new THREE.Color(0x56606a), rain * .75).lerp(new THREE.Color(0xdce6ff), this.bolt * .55); this.fog.density = .00165 + c.night * .00055 + rain * .0042; this.scene.background = this.fog.color;
-    this.hemi.color.copy(c.hemiSky).lerp(new THREE.Color(0x9aaccb), c.night * .4); this.hemi.groundColor.copy(c.hemiGround); this.hemi.intensity = (c.hemiIntensity * 1.35 + c.night * .5) * (1 - rain * .3) + this.bolt * 4;
+    this.fog.color.copy(c.fog).lerp(this.fogStorm, rain * .75).lerp(this.fogLightning, this.bolt * .55); this.fog.density = .00165 + c.night * .00055 + rain * .0042; this.scene.background = this.fog.color;
+    this.hemi.color.copy(c.hemiSky).lerp(this.hemiNightTint, c.night * .4); this.hemi.groundColor.copy(c.hemiGround); this.hemi.intensity = (c.hemiIntensity * 1.35 + c.night * .5) * (1 - rain * .3) + this.bolt * 4;
     this.sun.color.copy(c.sun); this.sun.intensity = c.sunIntensity * 2.2 * (1 - rain * .78);
     this.moon.intensity = c.night * .48; this.moon.position.copy(position).addScaledVector(c.moonDir, 280); this.moon.target.position.copy(position);
     // 광원 좌표계의 그림자 텍셀에 맞춰 카메라 이동 시 떨림을 줄입니다.
     const dir = this.scratch.copy(c.sunDir); if (dir.y < .045) dir.y = .045; dir.normalize();
-    const right = new THREE.Vector3().crossVectors(UP, dir).normalize(), up = new THREE.Vector3().crossVectors(dir, right), step = 180 / 2048;
-    const target = position.clone(); target.y = 0;
+    const right = this.shadowRight.crossVectors(UP, dir).normalize(), up = this.shadowUp.crossVectors(dir, right), step = 180 / 2048;
+    const target = this.shadowFocus.copy(position); target.y = 0;
     target.addScaledVector(right, Math.round(target.dot(right) / step) * step - target.dot(right)); target.addScaledVector(up, Math.round(target.dot(up) / step) * step - target.dot(up));
     this.sun.target.position.copy(target); this.sun.position.copy(target).addScaledVector(dir, 300);
     for (const f of this.facades) f.emissiveIntensity = c.night * 1.15;

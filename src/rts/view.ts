@@ -275,22 +275,26 @@ export class RtsView {
     const rig = makeBuilding(b.kind, b.owner, this.quality !== 'low'), frame = new THREE.Group(), s = b.size;
     for (const [x, z, w, d] of [[0, -s / 2, s, 0.1], [0, s / 2, s, 0.1], [-s / 2, 0, 0.1, s], [s / 2, 0, 0.1, s]] as const) { const bar = new THREE.Mesh(new THREE.BoxGeometry(w, 0.06, d), this.ringMats[b.owner === this.viewer ? 0 : 1]); bar.position.set(x, 0.06, z); frame.add(bar); }
     frame.position.set(b.x + s / 2, 0, b.y + s / 2); frame.visible = false;
-    const scaff = new THREE.Group(), pm = new THREE.MeshStandardMaterial({ color: 0xb8a070, roughness: 0.8, metalness: 0.2 });
-    const rail = new THREE.MeshStandardMaterial({ color: 0x74604a, roughness: 0.72, metalness: 0.22 });
-    const sh = Math.min(3.6, Math.max(1.6, rig.top * 0.90)), edge = s / 2 - 0.08;
-    const beam = (start: THREE.Vector3, end: THREE.Vector3, width: number, mat: THREE.Material): void => {
-      const vec = end.clone().sub(start), p = new THREE.Mesh(new THREE.BoxGeometry(width, vec.length(), width), mat);
-      p.position.copy(start).addScaledVector(vec, 0.5); p.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), vec.normalize()); scaff.add(p);
-    };
-    const corners = [[-edge,-edge],[edge,-edge],[edge,edge],[-edge,edge]];
-    for (const [x,z] of corners) beam(new THREE.Vector3(x,0,z), new THREE.Vector3(x,sh,z), 0.095, pm);
-    if (this.quality !== 'low') {
-      for (let i = 0; i < corners.length; i++) {
-        const [x,z] = corners[i], [nx,nz] = corners[(i+1)%corners.length];
-        for (const h of [sh*0.36, sh*0.82]) beam(new THREE.Vector3(x,h,z), new THREE.Vector3(nx,h,nz), 0.065, pm);
-        beam(new THREE.Vector3(x,sh*0.12,z), new THREE.Vector3(nx,sh*0.82,nz), 0.05, rail);
-      }
-    } else rail.dispose();
+    const scaff = new THREE.Group();
+    // Finished structures never need a hidden scaffold mesh in the GPU scene.
+    if (!b.done) {
+      const pm = new THREE.MeshStandardMaterial({ color: 0xb8a070, roughness: 0.8, metalness: 0.2 });
+      const rail = new THREE.MeshStandardMaterial({ color: 0x74604a, roughness: 0.72, metalness: 0.22 });
+      const sh = Math.min(3.6, Math.max(1.6, rig.top * 0.90)), edge = s / 2 - 0.08;
+      const beam = (start: THREE.Vector3, end: THREE.Vector3, width: number, mat: THREE.Material): void => {
+        const vec = end.clone().sub(start), p = new THREE.Mesh(new THREE.BoxGeometry(width, vec.length(), width), mat);
+        p.position.copy(start).addScaledVector(vec, 0.5); p.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), vec.normalize()); scaff.add(p);
+      };
+      const corners = [[-edge,-edge],[edge,-edge],[edge,edge],[-edge,edge]];
+      for (const [x,z] of corners) beam(new THREE.Vector3(x,0,z), new THREE.Vector3(x,sh,z), 0.095, pm);
+      if (this.quality !== 'low') {
+        for (let i = 0; i < corners.length; i++) {
+          const [x,z] = corners[i], [nx,nz] = corners[(i+1)%corners.length];
+          for (const h of [sh*0.36, sh*0.82]) beam(new THREE.Vector3(x,h,z), new THREE.Vector3(nx,h,nz), 0.065, pm);
+          beam(new THREE.Vector3(x,sh*0.12,z), new THREE.Vector3(nx,sh*0.82,nz), 0.05, rail);
+        }
+      } else rail.dispose();
+    }
     scaff.position.set(b.x + s / 2, 0, b.y + s / 2); rig.root.position.set(b.x + s / 2, 0, b.y + s / 2);
     this.scene.add(rig.root, frame, scaff); this.builds.set(b.id, { kind: 'building', id: b.id, rig, frame, scaff, done: b.done, wasDone: b.done, rubble: 0 });
   }
@@ -322,7 +326,7 @@ export class RtsView {
       const b = s.building(id); if (!b) continue; const hidB = this.hiddenBuilding(b); v.rig.root.visible = !hidB; const p = b.done ? 1 : Math.min(1, 0.12 + 0.88 * b.progress / BUILDINGS[b.kind].time);
       v.rig.root.scale.set(1, b.done ? 1 : Math.max(0.05, p), 1); v.scaff.visible = !b.done && !hidB; v.scaff.scale.y = 0.45 + p * 0.55;
       if (!hidB && b.done && b.hp / b.maxhp < 0.38 && this.quality !== 'low' && this.clock >= v.rubble) { v.rubble = this.clock + 1.0 + (id % 5) * 0.12; this.puff(b.x + b.size * 0.55, b.y + b.size * 0.45, b.size * 0.38, 0x514b43); }
-      if (b.done && !v.wasDone) { v.wasDone = true; if (!hidB) this.puff(b.x + b.size / 2, b.y + b.size / 2, b.size * 0.8, 0xd8cfb8); }
+      if (b.done && !v.wasDone) { v.wasDone = true; this.disposeOwned(v.scaff); v.scaff.clear(); if (!hidB) this.puff(b.x + b.size / 2, b.y + b.size / 2, b.size * 0.8, 0xd8cfb8); }
       for (const l of v.rig.light) l.visible = b.done && (Math.sin(this.clock * 3 + id) > -0.7);
       if (v.rig.spin && b.kind === 'hq') v.rig.spin.rotation.y += dt * 0.8;
       if (v.rig.spin && b.kind === 'tower') { const want = -Math.atan2(b.fy, b.fx); if (tick - b.fired < 40) { const d = want - v.rig.spin.rotation.y; v.rig.spin.rotation.y += Math.atan2(Math.sin(d), Math.cos(d)) * (1 - Math.exp(-dt * 20)); } }

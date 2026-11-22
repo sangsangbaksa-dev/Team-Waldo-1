@@ -1,6 +1,6 @@
 import {describe,it,expect,vi} from 'vitest';
 import * as THREE from 'three';
-import {WetStreet} from '../../src/city/wetstreet';
+import {WetStreet,puddleDetail} from '../../src/city/wetstreet';
 import {atmosphereAt} from '../../src/city/atmosphere';
 
 describe('LAST CITY high-quality road reflection lifecycle',()=>{
@@ -32,5 +32,19 @@ describe('LAST CITY high-quality road reflection lifecycle',()=>{
     expect(cube.update).toHaveBeenCalledTimes(1);
     expect(visible.visible).toBe(true);expect(mesh.visible).toBe(true);
     mesh.geometry.dispose();(mesh.material as THREE.Material).dispose();
+  });
+});
+
+describe('LAST CITY wet-road GPU memory tiers',()=>{
+  it('keeps 2048px high-quality puddle textures and reduces lower-tier allocations',()=>{
+    const high=puddleDetail('high'),standard=puddleDetail('standard'),low=puddleDetail('low');
+    expect(high.resolution).toBe(2048);
+    expect(standard.resolution).toBe(1024);
+    expect(low.resolution).toBe(512);
+    expect(high.roadCount).toBeGreaterThan(standard.roadCount);
+    expect(standard.roadCount).toBeGreaterThan(low.roadCount);
+    // RGBA base level only, before mipmaps, shrinks by 4x per quality step.
+    expect(standard.resolution**2*4).toBe(high.resolution**2);
+    expect(low.resolution**2*4).toBe(standard.resolution**2);
   });
 });

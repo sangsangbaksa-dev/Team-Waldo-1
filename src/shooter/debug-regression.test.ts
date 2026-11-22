@@ -14,6 +14,24 @@ function emptyMap(): GameMap { return {boxes:[],grid:new Map()} as unknown as Ga
 const box = (x0:number,z0:number,x1:number,z1:number):Box => ({x0,z0,x1,z1,y0:0,y1:3,kind:'wall',tex:0});
 
 describe('ZERO ZONE debugging regressions', () => {
+  it('reuses the sound trail buffer while expiring old sound events', () => {
+    const {m} = match();
+    m.sounds = [
+      {x:1,z:1,t:-4,by:0},
+      {x:2,z:2,t:-1,by:0},
+      {x:3,z:3,t:0,by:1},
+    ];
+    const sounds = m.sounds;
+    m.step(1/60);
+    expect(m.sounds).toBe(sounds);
+    expect(m.sounds.map(s => s.x)).toEqual([2,3]);
+    m.step(1/60);
+    expect(m.sounds).toBe(sounds);
+    expect(m.sounds.map(s => s.x)).toEqual([2,3]);
+    m.step(2.6);
+    expect(m.sounds).toBe(sounds);
+    expect(m.sounds.length).toBe(0);
+  });
   it('consumes a slot request when the requested slot is empty', () => {
     const {m,p} = match(); p.input.slot = 1; m.step(1/60);
     expect(p.input.slot).toBe(-1); expect(p.cur).toBe(0);

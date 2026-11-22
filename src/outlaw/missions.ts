@@ -81,20 +81,22 @@ export function startMission(s: Sim, id: string): boolean {
     const lane = s.map.lanes[nearestLane(s.map, start.x, start.z)];
     const path = route(s, start.x, start.z);
     if (!lane || !path.length) { cleanup(s); s.say('레이스 경로를 찾지 못했습니다'); return false; }
-    const grid: RoadReservation[] = [];
+    const grid: Array<RoadReservation & { h: number }> = [];
     // Reserve all five grid slots first. With the old 6m inline offsets, cars
     // could start inside traffic and side walls, then collide at race launch.
     for (let i = 0; i < 5; i++) {
       const x = lane.x - Math.cos(lane.h) * (i * 6), z = lane.z - Math.sin(lane.h) * (i * 6);
       const open = openVehicleLane(s, x, z, 'sports', grid);
       if (!open) { cleanup(s); s.say('레이스 출발선에 차량을 배치할 수 없습니다'); return false; }
-      grid.push({ x: open.x, z: open.z, kind: 'sports' });
+      grid.push({ x: open.x, z: open.z, h: open.h, kind: 'sports' });
     }
     path.forEach((n, i) => { m.data[`cp${i}`] = n; });
     m.data.total = path.length;
     for (let i = 0; i < grid.length; i++) {
-      const site = grid[i], marker = s.map.lanes.find(n => n.x === site.x && n.z === site.z);
-      const v = car(s, 'sports', site.x, site.z, marker?.h ?? lane.h);
+      const site = grid[i];
+      // Preserve the exact directed lane chosen by the reservation scan:
+      // opposing road nodes can share a position but have opposite headings.
+      const v = car(s, 'sports', site.x, site.z, site.h);
       m.ids[`race${i}`] = v.id;
       if (i > 0 && i < 4) {
         v.mode = 'scripted';

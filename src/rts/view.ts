@@ -11,13 +11,13 @@ import type { Building, ResNode, RtsSim, SimEvent, Unit } from './sim';
 import type { Marker } from './campaign';
 import { type Vision } from './vision';
 import { blendFogAlpha } from './fog-alpha';
+import { advanceDeferredFx, type DeferredFx } from './fx-scheduler';
 
 interface UVis { kind: 'unit'; id: number; rig: UnitRig; ring: THREE.Mesh; px: number; py: number; cx: number; cy: number; yaw: number; moved: number; shake: number; aura: THREE.Mesh | null }
 interface BVis { kind: 'building'; id: number; rig: BuildRig; frame: THREE.Group; scaff: THREE.Group; done: boolean; wasDone: boolean; rubble: number }
 interface NVis { kind: 'node'; id: number; obj: THREE.Group; base: number }
 type Quality = 'high' | 'standard' | 'low';
 interface Fx { obj: THREE.Object3D; t: number; life: number; tick: (f: Fx, dt: number) => void }
-interface DelayedFx { left: number; run: () => void }
 
 const FOG_A_HIDDEN = 226, FOG_A_SEEN = 118, FOG_Y = 4;
 const ABILITY_COLOR: Record<string, number> = { marine: 0xffa53d, rocket: 0xff5a3c, tank: 0xffe066, jeep: 0x5de1ff, medic: 0x7dff9e };
@@ -31,7 +31,7 @@ export class RtsView {
   /** 카메라가 바라보는 지점(맵 좌표)과 거리. */
   cam = { x: 48, y: 48, dist: 58 }; readonly yaw: number; private pitch = 0.95;
   private units = new Map<number, UVis>(); private builds = new Map<number, BVis>(); private nodes = new Map<number, NVis>();
-  private fx: Fx[] = []; private delayedFx: DelayedFx[] = []; private sun = new THREE.DirectionalLight(0xffe2b4, 2.5); private shadows: boolean;
+  private fx: Fx[] = []; private delayedFx: DeferredFx[] = []; private readonly readyFx: DeferredFx[] = []; private sun = new THREE.DirectionalLight(0xffe2b4, 2.5); private shadows: boolean;
   private ringGeo = new THREE.RingGeometry(0.9, 1.0, 28); private ghost: { kind: BuildKind; obj: THREE.Group; plane: THREE.Mesh } | null = null; private flag: THREE.Group;
   private projected = new THREE.Vector3(); private raycaster = new THREE.Raycaster(); private clock = 0; private w = 1; private h = 1; private fxBudget: number;
   private ringMats = [new THREE.MeshBasicMaterial({ color: 0x5dff9a, transparent: true, opacity: 0.9, depthWrite: false }), new THREE.MeshBasicMaterial({ color: 0xff5a4a, transparent: true, opacity: 0.9, depthWrite: false })];
@@ -347,8 +347,7 @@ export class RtsView {
   private updateFx(dt: number): void {
     for (let i = this.fx.length - 1; i >= 0; i--) { const f = this.fx[i]; f.t += dt; if (f.t >= f.life) { this.disposeOwned(f.obj); this.fx.splice(i, 1); continue; } f.tick(f, dt); }
     // Separate delayed callbacks from the active mesh list so an explosion cannot mutate it during iteration.
-    const due: DelayedFx[] = []; this.delayedFx = this.delayedFx.filter(f => { f.left -= dt; if (f.left > 0) return true; due.push(f); return false; });
-    for (const f of due) f.run();
+    advanceDeferredFx(this.delayedFx, this.readyFx, dt);
   }
   private glowMat(color: number, opacity = 1): THREE.MeshBasicMaterial { return new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending }); }
   private puff(x: number, y: number, r: number, color: number): void {
@@ -419,7 +418,7 @@ export class RtsView {
   private delay(sec: number, fn: () => void): void { if (this.delayedFx.length >= this.fxBudget) this.delayedFx.shift(); this.delayedFx.push({ left: sec, run: fn }); }
 
   dispose(): void {
-    this.delayedFx = [];
+    this.delayedFx.length = 0; this.readyFx.length = 0;
     this.desert?.dispose();
     // Character geometry and materials are shared between rounds; they are not
     // owned by this renderer. Keep them alive when the WebGL context changes.

@@ -226,9 +226,14 @@ function modal(title, description, body, actions, type = "panel") {
   if (state === "capture") $("viewWrap").classList.remove("caught-shot");
   state = type;
   leaveLook();
-  // A puzzle plays its own audio cues. Suspending/resuming WebAudio on every
-  // dial click races with AudioContext state transitions and loses cues.
-  if (type !== "puzzle") sound.pause(true);
+  // A puzzle keeps its sound cues. The victory chime is allowed to finish
+  // before a dramatic silence; suspending the context immediately cuts it off.
+  if (type === "won") {
+    sound.threat(0);
+    window.setTimeout(() => {
+      if (state === "won") sound.pause(true);
+    }, 1300);
+  } else if (type !== "puzzle") sound.pause(true);
   $("dialog").hidden = false;
   $("panelTitle").textContent = title;
   $("panelText").textContent = description;
@@ -1290,7 +1295,7 @@ function enemyUpdate(dt, running) {
   enemySteps += travel;
   if (enemySteps >= 0.95) {
     sound.monsterStep(dist);
-    enemySteps = 0;
+    enemySteps %= 0.95;
   }
   stride += travel * 5.5;
   model.position.y = 0.009 + 0.009 * Math.abs(Math.sin(stride));
@@ -1545,6 +1550,9 @@ window.addEventListener("pagehide", (e) => {
 window.addEventListener("pageshow", (e) => {
   if (e.persisted && renderer) {
     last = performance.now();
+    // Page restoration may not dispatch a separate focus event, notably in
+    // iOS WebKit. Puzzle audio must be resumed without advancing gameplay.
+    if (state === "puzzle" && !document.hidden && document.hasFocus()) sound.pause(false);
     resize();
     showSceneOnce();
   }

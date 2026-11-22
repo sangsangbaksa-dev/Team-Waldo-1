@@ -61,7 +61,8 @@ export class ShooterView {
   // Scratch sets survive across render frames; avoid fresh sets when dozens
   // of pickups or grenades are tracked at 60fps.
   private readonly liveLootIds = new Set<number>(); private readonly liveNadeIds = new Set<number>();
-  private zoneWall: THREE.Mesh; private zoneNext: THREE.Mesh; private tracers: Fx[] = []; private readonly tracerPool = new TracerPool(); private sparks: THREE.Points; private sparkData: { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; r: number; g: number; b: number }[] = [];
+  private zoneWall: THREE.Mesh; private zoneNext: THREE.Mesh; private tracers: Fx[] = []; private readonly tracerPool = new TracerPool();
+  private readonly tracerDir = new THREE.Vector3(); private readonly tracerUp = new THREE.Vector3(0, 1, 0); private sparks: THREE.Points; private sparkData: { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; r: number; g: number; b: number }[] = [];
   private vm: THREE.Object3D | null = null; private vmOwned = false; private aimBlend = 0; private reloadBlend = 0; private vmId = ''; private vmParts = ''; private vmSwap = 0; private vmFlash: THREE.Sprite; private bob = 0; private shake = 0; private terrainView: TerrainView | null = null; private fovPunch = 0; private flashKick = 0; private roll = 0; private sprintT = 0; private time = 0;
   private mats = new Map<string, THREE.Material>(); private tmpCol = new THREE.Color(); private beams: THREE.InstancedMesh;
   private projected = new THREE.Vector3(); private viewportW = 1; private viewportH = 1; private camPos = new THREE.Vector3(); fov = 78; frames = 0;
@@ -394,10 +395,10 @@ export class ShooterView {
     const cap = this.quality === 'low' ? 64 : 160;
     if (this.tracers.length >= cap) { const old = this.tracers.shift()!; this.tracerPool.release(old.mesh); }
     const mesh = this.tracerPool.acquire(color);
-    const mid = new THREE.Vector3((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2); mesh.position.copy(mid); mesh.scale.set(1, Math.min(len, 60), 1);
+    mesh.position.set((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2); mesh.scale.set(1, Math.min(len, 60), 1);
     // 앞부분만 짧게(총알이 날아가는 느낌): 끝점 쪽 60m 구간
-    const dir = new THREE.Vector3(bx - ax, by - ay, bz - az).normalize(); if (len > 60) mesh.position.set(bx - dir.x * 30, by - dir.y * 30, bz - dir.z * 30);
-    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir); this.scene.add(mesh); this.tracers.push({ mesh, life: 0.09, max: 0.09 });
+    const dir = this.tracerDir.set(bx - ax, by - ay, bz - az).normalize(); if (len > 60) mesh.position.set(bx - dir.x * 30, by - dir.y * 30, bz - dir.z * 30);
+    mesh.quaternion.setFromUnitVectors(this.tracerUp, dir); this.scene.add(mesh); this.tracers.push({ mesh, life: 0.09, max: 0.09 });
   }
   handle(events: MatchEvent[], me: Player): void {
     for (const e of events) {

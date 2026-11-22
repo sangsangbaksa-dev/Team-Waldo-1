@@ -159,7 +159,7 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
     if (closed) return;
     // Avoid simulating a large backlog after a stalled frame or tab throttling.
     // The simulation still advances in small deterministic steps internally.
-    const dt = Math.max(0, Math.min(0.25, (now - last) / 1000)); last = Math.max(now, last);
+    const dt = Math.max(0, Math.min(1, (now - last) / 1000)); last = Math.max(now, last);
     if (toastTime > 0) { toastTime -= dt; if (toastTime <= 0) $('.sl-toast').textContent = ''; }
     if (state !== 'play' || !sim || !view) { scheduleFrame(); return; }
     const before = sim.state.time;

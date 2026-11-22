@@ -46,3 +46,14 @@ describe('OUTLAW full-city lane graph continuity', () => {
     expect(Math.hypot(last.x + 330, last.z + 350)).toBeLessThan(55);
   });
 });
+
+it('supports full-map routes even when the expanded graph has over 5000 nodes', () => {
+  const map = generateCity(19);
+  expect(map.lanes.length).toBeGreaterThan(5000);
+  const start = nearestLane(map, -720, -700), goal = nearestLane(map, 720, 700);
+  expect(start).toBeGreaterThanOrEqual(0); expect(goal).toBeGreaterThanOrEqual(0);
+  const path = findPath(map, start, map.lanes[goal]!.x, map.lanes[goal]!.z);
+  expect(path.length).toBeGreaterThan(20);
+  expect(path[0]).toBe(start);
+  expect(path[path.length - 1]).toBe(goal);
+});

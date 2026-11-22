@@ -287,7 +287,10 @@ export function findPath(map: CityMap, from: number, toX: number, toZ: number): 
   const pop = (): number => { const first = heap[0], last = heap.pop()!; if (heap.length) { let i = 0; while (i * 2 + 1 < heap.length) { let c = i * 2 + 1; if (c + 1 < heap.length && heap[c + 1].f < heap[c].f) c++; if (heap[c].f >= last.f) break; heap[i] = heap[c]; i = c; } heap[i] = last; } return first.id; };
   costs[from] = 0; push(from, Math.hypot(nodes[from].x - target.x, nodes[from].z - target.z));
   let iterations = 0;
-  while (heap.length && iterations < 5000) {
+  // Every lane may be closed at most once. The full 17×17 road network can
+  // contain more than 5000 lane nodes; the former fixed cap stranded valid
+  // long-distance routes. Keep a finite bound based on this map's graph size.
+  while (heap.length && iterations < nodes.length) {
     const id = pop(); if (closed[id]) continue; closed[id] = 1; iterations++;
     if (id === goal) { const path: number[] = []; for (let n = id; n >= 0; n = prev[n]) path.push(n); return path.reverse(); }
     const a = nodes[id];

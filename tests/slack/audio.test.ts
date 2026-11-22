@@ -140,3 +140,40 @@ it('stops earbud loop while paused and does not restart it while muted', async (
   expect(vi.getTimerCount()).toBe(0);
   audio.dispose();
 });
+
+it('stops silent ambience generation on mute and restores the selected stage on unmute', () => {
+  vi.useFakeTimers();
+  const param = () => ({ value: 0, setTargetAtTime: vi.fn() });
+  const node = () => ({
+    connect: vi.fn(), disconnect: vi.fn(), start: vi.fn(), stop: vi.fn(),
+    gain: param(), frequency: param(), Q: param(), threshold: param(),
+    knee: param(), ratio: param(), attack: param(), release: param(),
+  });
+  const ctx = {
+    state: 'running', currentTime: 0, sampleRate: 200, destination: {},
+    createGain: vi.fn(node), createBiquadFilter: vi.fn(node),
+    createDynamicsCompressor: vi.fn(node), createOscillator: vi.fn(node),
+    createBufferSource: vi.fn(node),
+    createBuffer: vi.fn(() => ({ getChannelData: () => new Float32Array(400) })),
+    resume: vi.fn().mockResolvedValue(undefined), close: vi.fn().mockResolvedValue(undefined),
+  };
+  vi.stubGlobal('AudioContext', vi.fn(function () { return ctx; }));
+  const audio = createSlackAudio();
+  audio.resume();
+  audio.setMuted(true);
+  audio.ambience('class');
+  expect(ctx.createBuffer).not.toHaveBeenCalled();
+  expect(ctx.createOscillator).not.toHaveBeenCalled();
+  expect(vi.getTimerCount()).toBe(0);
+  audio.setMuted(false);
+  expect(ctx.createBuffer).toHaveBeenCalledTimes(2);
+  expect(ctx.createOscillator).toHaveBeenCalled();
+  expect(vi.getTimerCount()).toBe(1);
+  audio.setMuted(true);
+  expect(vi.getTimerCount()).toBe(0);
+  audio.setMuted(false);
+  expect(ctx.createBuffer).toHaveBeenCalledTimes(4);
+  audio.ambience(null);
+  expect(vi.getTimerCount()).toBe(0);
+  audio.dispose();
+});

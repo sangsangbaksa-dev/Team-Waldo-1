@@ -9,6 +9,7 @@ export const createSlackAudio: CreateAudio = () => {
   let muted = false, muffled = false, disposed = false, resuming = false, held = false;
   let pendingSuspend: Promise<void> | null = null;
   let background: AudioNode[] = [], ambTimer = 0, bedTimer = 0, step = 0;
+  let requestedAmbience: StageId | null = null;
   const ensure = (): AudioContext | null => {
     if (disposed) return null;
     if (ctx) return ctx;
@@ -56,7 +57,9 @@ export const createSlackAudio: CreateAudio = () => {
     const o = c.createOscillator(), g = c.createGain(); o.frequency.value = rate; g.gain.value = depth; o.connect(g); g.connect(target); o.start(); background.push(o, g);
   };
   const ambience = (next: StageId | null): void => {
-    stopBackground(); if (!next) return; const c = ctx; if (!c || !filter) return; const cls = next === 'class';
+    requestedAmbience = next;
+    stopBackground(); if (!next || muted || disposed) return;
+    const c = ctx; if (!c || !filter) return; const cls = next === 'class';
     // 층 1: 전원 험(형광등 웅웅 / PC 팬 저음). 층 2: 방 공기 노이즈. 층 3: 멀리 복도·환풍기 일렁임. 합쳐서 0.03 안팎으로 효과음 아래에 깔리게 한다.
     const hum = c.createOscillator(), hg = c.createGain(); hum.type = 'sine'; hum.frequency.value = cls ? 60 : 95; hg.gain.value = cls ? 0.011 : 0.008; hum.connect(hg); hg.connect(filter); hum.start(); background.push(hum, hg);
     if (cls) { const h2 = c.createOscillator(), g2 = c.createGain(); h2.type = 'sine'; h2.frequency.value = 120; g2.gain.value = 0.004; h2.connect(g2); g2.connect(filter); h2.start(); background.push(h2, g2); lfo(c, 0.31, 0.003, g2.gain); }
@@ -140,7 +143,16 @@ export const createSlackAudio: CreateAudio = () => {
       }
     },
     play, ambience, muffle: setMuffle,
-    setMuted(m) { const changed = muted !== m; muted = m; if (master && ctx) master.gain.setTargetAtTime(m ? 0 : MASTER, ctx.currentTime, .02); if (changed && muffled) setMuffle(true); },
+    setMuted(m) {
+      if (muted === m) return;
+      muted = m;
+      if (master && ctx) master.gain.setTargetAtTime(m ? 0 : MASTER, ctx.currentTime, .02);
+      // Keep the selected stage but stop expensive noise buffers, oscillators,
+      // and the ambient timer while the user cannot hear anything.
+      if (m) stopBackground();
+      else if (requestedAmbience) ambience(requestedAmbience);
+      if (muffled) setMuffle(true);
+    },
     dispose() {
       if (disposed) return;
       disposed = true;

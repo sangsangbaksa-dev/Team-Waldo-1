@@ -65,6 +65,11 @@ describe('SLACK OFF dorm lazy apps', () => {
     expect(audio.muffle).toHaveBeenLastCalledWith(false);
     click('music'); view.frame(0.1);
     expect(audio.muffle).toHaveBeenLastCalledWith(true);
+    const toggle = view.el.querySelector<HTMLButtonElement>('[data-m="play"]')!;
+    toggle.click();
+    expect(audio.muffle).toHaveBeenLastCalledWith(false);
+    toggle.click();
+    expect(audio.muffle).toHaveBeenLastCalledWith(true);
     view.dispose();
     expect(audio.muffle).toHaveBeenLastCalledWith(false);
   });

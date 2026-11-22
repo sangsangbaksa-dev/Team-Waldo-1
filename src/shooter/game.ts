@@ -69,6 +69,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   let soloRecorded = false;
   let fastForward = false, skipRaf = 0;
   let lastLook = 0, yaw = 0, pitch = 0, locked = false, lockFail = false, hitT = 0, hitHead = false, hitKill = false, combo = 0, comboT = 0, rcP = 0, rcY = 0, rcIdle = 9, shotN = 0, stepAcc = 0, bannerT = 0, mapBase: HTMLCanvasElement | null = null;
+  let lastWeaponWheelAt = -Infinity;
   const keys = new Set<string>(), mouse = { fire: false, ads: false }, tc = { fire: false, ads: false, crouch: false, move: { x: 0, y: 0, id: -1, ox: 0, oy: 0 }, look: { id: -1, x: 0, y: 0 } };
   let healReq = 0, nadeReq = false, reloadReq = false, slotReq = -1, swapReq = false, interactHeld = false;
   const feed: Array<{ text: string; at: number; mine: boolean }> = [], told = new Set<number>();
@@ -131,7 +132,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     endMatch(); blur(); tc.ads = tc.crouch = false; root.querySelectorAll('.sz-tbuttons button.down').forEach(b => b.classList.remove('down')); locked = lockFail = false;
     // The previous renderer forces context loss on dispose. Never reuse its canvas.
     const fresh = document.createElement('canvas'); fresh.className = 'sz-canvas'; canvas.replaceWith(fresh); canvas = fresh; canvas.addEventListener('contextmenu', noMenu);
-    hitT = combo = comboT = rcP = rcY = shotN = stepAcc = bannerT = lastLook = 0; hitHead = hitKill = false; rcIdle = 9; q('#sz-banner').classList.remove('show'); q('#sz-nums').replaceChildren(); q('#sz-dmgs').replaceChildren();
+    hitT = combo = comboT = rcP = rcY = shotN = stepAcc = bannerT = lastLook = 0; lastWeaponWheelAt = -Infinity; hitHead = hitKill = false; rcIdle = 9; q('#sz-banner').classList.remove('show'); q('#sz-nums').replaceChildren(); q('#sz-dmgs').replaceChildren();
     match = m; meIdx = my; over = false; resultShown = false; soloRecorded = false; spectateId = -1; deadTimer = 0; cache.clear(); feed.length = 0; told.clear(); paused = false; modal.className = 'sz-modal'; modal.innerHTML = '';
     const p = m.players[my]; yaw = p.yaw; pitch = 0; countdown = 3.4; phase = 'countdown'; mapBase = null;
     try { view = new ShooterView(canvas, m, assets, prefs.quality); } catch { leavePvp(); leaveRoom(); endMatch(); phase = 'setup'; hud.hidden = true; setupEl.hidden = true; card('ZERO ZONE', '그래픽을 시작하지 못했어요', '<p>브라우저의 그래픽 가속을 확인한 뒤 다시 시도해 주세요.</p>', '<button class="primary" data-act="setup">설정으로</button><button data-act="exit">메뉴로</button>'); return; } resize(); setupEl.hidden = true; hud.hidden = false; buildSlots(); say(touch ? '왼쪽 스틱으로 이동' : '화면을 클릭해 조작 시작', 2.4);
@@ -374,7 +375,14 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     else if (e.code === 'Escape' && phase === 'countdown') setPause(true);
     if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code) && match) e.preventDefault();
   };
-  const onWheel = (e: WheelEvent): void => { if (match && !closed && !paused && phase === 'play' && !room?.chat?.typing && (locked || e.target === canvas) && Math.abs(e.deltaY) > 4) swapReq = true; };
+  const onWheel = (e: WheelEvent): void => {
+    if (!match || closed || paused || phase !== 'play' || room?.chat?.typing || !(locked || e.target === canvas) || Math.abs(e.deltaY) <= 4) return;
+    // Trackpad gestures generate dozens of wheel events plus inertia; switch
+    // at most once per gesture rather than bouncing between two guns.
+    const now = performance.now();
+    if (now - lastWeaponWheelAt > 200) swapReq = true;
+    lastWeaponWheelAt = now;
+  };
   const noMenu = (e: Event): void => e.preventDefault();
   window.addEventListener('mousemove', onMove); window.addEventListener('mousedown', onDown); window.addEventListener('mouseup', onUp);
   window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKey); window.addEventListener('wheel', onWheel, { passive: true }); canvas.addEventListener('contextmenu', noMenu);

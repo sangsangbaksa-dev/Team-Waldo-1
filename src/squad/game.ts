@@ -88,7 +88,7 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
       const move = moves[e.key], action = e.key === 'Enter' || e.key === ' ' || e.key === 'Delete' || e.key === 'Backspace';
       if (!move && !action) return;
       e.preventDefault(); e.stopPropagation();
-      const p = hover ?? { x: 5, y: side ? 4 : 15 };
+      const p = hover && legal(hover) ? hover : { x: 5, y: side ? 4 : 15 };
       if (move) {
         hover = { x: Math.max(0, Math.min(11, p.x + move[0])), y: Math.max(side ? 0 : 10, Math.min(side ? 9 : 19, p.y + move[1])) };
         draw(canvas, armies, side, null, UNITS[selected].range, hover, selected);
@@ -108,7 +108,7 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
     };
     canvas.oncontextmenu = e => { e.preventDefault(); const p = cell(e), before = armies[side]!; const next = before.filter(u => u.x !== p.x || u.y !== p.y); if (next.length === before.length) return; armies[side] = next; audio.remove(); render(); };
     canvas.onpointerdown = e => { if (e.button !== 0 || drag) return; const p = cell(e); if (!legal(p)) { toast(side ? '위쪽 진영에만 배치할 수 있어요' : '아래쪽 아군 진영에만 배치할 수 있어요'); return; } drag = { ...p, pointerId: e.pointerId }; canvas.setPointerCapture(e.pointerId); };
-    canvas.onpointermove = e => { const next = cell(e); if (hover?.x === next.x && hover?.y === next.y) return; hover = next; draw(canvas, armies, side, null, UNITS[selected].range, hover, selected); };
+    canvas.onpointermove = e => { const next = cell(e); if (next.x < 0 || next.x >= 12 || next.y < 0 || next.y >= 20) { if (hover) { hover = null; draw(canvas, armies, side, null, UNITS[selected].range, null, selected); } return; } if (hover?.x === next.x && hover?.y === next.y) return; hover = next; draw(canvas, armies, side, null, UNITS[selected].range, hover, selected); };
     canvas.onpointerleave = () => { hover = null; draw(canvas, armies, side, null, UNITS[selected].range, null); };
     canvas.onpointercancel = e => { if (drag?.pointerId !== e.pointerId) return; drag = null; hover = null; draw(canvas, armies, side, null, UNITS[selected].range, null); };
     canvas.onlostpointercapture = e => { if (drag?.pointerId === e.pointerId) drag = null; };

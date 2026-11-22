@@ -30,15 +30,29 @@ export class Battle {
     for (const u of alive) {
       if (u.hp <= 0) continue;
       const d = UNITS[u.type]; u.cooldown -= STEP;
-      const enemies = alive.filter(v => v.side !== u.side && v.hp > 0);
-      if (!enemies.length) continue;
-      const dist = (v: Soldier) => hyp(v.x - u.x, v.y - u.y);
-      enemies.sort((a, b) => dist(a) - dist(b) || a.id - b.id);
-      let target = enemies[0]!; let healing = false;
-      if (u.type === 'medic') {
-        const hurt = alive.filter(v => v.side === u.side && v.hp > 0 && v.hp < UNITS[v.type].hp && v !== u).sort((a, b) => dist(a) - dist(b) || a.id - b.id);
-        if (hurt.length) { target = hurt[0]!; healing = true; }
+      // Find the nearest target in one pass rather than allocating and sorting
+      // enemy/ally arrays for every soldier on every simulation tick.
+      const dist2 = (v: Soldier) => (v.x - u.x) ** 2 + (v.y - u.y) ** 2;
+      let target: Soldier | undefined, healing = false;
+      let nearestEnemy = Infinity, nearestAlly = Infinity;
+      let wounded: Soldier | undefined;
+      for (const v of alive) {
+        if (v.hp <= 0) continue;
+        const distance2 = dist2(v);
+        if (v.side !== u.side) {
+          if (distance2 < nearestEnemy || (distance2 === nearestEnemy && v.id < (target?.id ?? Infinity))) {
+            nearestEnemy = distance2; target = v;
+          }
+        } else if (u.type === 'medic' && v !== u && v.hp < UNITS[v.type].hp) {
+          if (distance2 < nearestAlly || (distance2 === nearestAlly && v.id < (wounded?.id ?? Infinity))) {
+            nearestAlly = distance2; wounded = v;
+          }
+        }
       }
+      if (!target) continue;
+      if (wounded) { target = wounded; healing = true; }
+      const dist = (v: Soldier) => hyp(v.x - u.x, v.y - u.y);
+      const enemies = alive.filter(v => v.side !== u.side && v.hp > 0);
       const distance = dist(target), desired = healing ? 2.2 : d.range;
       if (distance <= desired && u.cooldown <= 0) {
         u.cooldown = d.cooldown;

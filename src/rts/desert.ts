@@ -103,7 +103,9 @@ export class DesertProps {
   private dustField(): void {
     const count = this.quality === 'low' ? 80 : this.quality === 'standard' ? 160 : 260, n = this.map.size, rnd = seeded(808), pos = new Float32Array(count * 3), seed = new Float32Array(count);
     for (let i = 0; i < count; i++) { pos[i * 3] = rnd() * n; pos[i * 3 + 1] = 0.4 + rnd() * 3.2; pos[i * 3 + 2] = rnd() * n; seed[i] = rnd() * 6.28; }
-    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+    // Dust particles animate every frame; write into the original array and
+    // mark the position attribute for streaming rather than static upload.
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
     const c = document.createElement('canvas'); c.width = c.height = 32; const g = c.getContext('2d')!, gr = g.createRadialGradient(16, 16, 1, 16, 16, 15); gr.addColorStop(0, 'rgba(255,236,200,.8)'); gr.addColorStop(1, 'rgba(255,236,200,0)'); g.fillStyle = gr; g.fillRect(0, 0, 32, 32);
     const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
     const pts = new THREE.Points(geo, new THREE.PointsMaterial({ map: tex, size: 2.2, transparent: true, opacity: 0.22, depthWrite: false, sizeAttenuation: true, color: 0xf0d9aa })); pts.frustumCulled = false; this.dust = pts; this.scene.add(pts);

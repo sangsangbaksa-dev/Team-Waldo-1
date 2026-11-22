@@ -85,11 +85,14 @@ let now = 0,
   frameId = null,
   sceneDirty = false,
   nearest = null,
-  moveId = -1,
-  lookId = -1,
   moveStart = null,
   lookLast = null,
   mobileRun = false;
+let wasPointerLocked = false;
+const movePointer = createPointerOwner(),
+  lookPointer = createPointerOwner(),
+  runPointer = createPointerOwner();
+let lastPointerType = touch ? "touch" : "mouse";
 let noticeUntil = 0,
   saveAt = 0,
   lastCell = -1,
@@ -168,7 +171,10 @@ function homepage() {
 function clearInputs() {
   keys.clear();
   pointer.x = pointer.y = 0;
-  moveId = lookId = -1;
+  movePointer.clear();
+  lookPointer.clear();
+  runPointer.clear();
+  moveStart = lookLast = null;
   mobileRun = false;
   $("stickknob").style.transform = "";
 }
@@ -177,7 +183,7 @@ function leaveLook() {
   if (document.pointerLockElement) document.exitPointerLock();
 }
 function lockLook() {
-  if (touch || !renderer) return;
+  if (state !== "play" || lastPointerType !== "mouse" || !renderer || document.pointerLockElement) return;
   try {
     const p = renderer.domElement.requestPointerLock?.();
     p?.catch(() => {});
@@ -212,7 +218,6 @@ function resume() {
   state = "play";
   $("dialog").hidden = true;
   sound.pause(false);
-  lockLook();
   last = performance.now();
   scheduleFrame();
   $("viewWrap").focus({ preventScroll: true });
@@ -277,9 +282,6 @@ async function setup() {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.08;
     $("viewWrap").prepend(renderer.domElement);
-    renderer.domElement.addEventListener("click", () => {
-      if (state === "play") lockLook();
-    });
     renderer.domElement.addEventListener("webglcontextlost", (e) => {
       e.preventDefault();
       save();
@@ -1399,6 +1401,8 @@ function frame(ts) {
   scheduleFrame();
 }
 document.addEventListener("keydown", (e) => {
+  if (e.isComposing) return;
+  if (e.target instanceof HTMLButtonElement && ["Space", "Enter"].includes(e.code)) return;
   if (
     e.target instanceof HTMLInputElement ||
     e.target instanceof HTMLSelectElement
@@ -1449,29 +1453,31 @@ window.addEventListener("blur", () => {
 });
 function look(dx, dy) {
   if (hiddenSpot) return;
-  yaw -= dx * 0.00245;
+  if (!Number.isFinite(dx) || !Number.isFinite(dy)) return;
+  yaw = Math.atan2(Math.sin(yaw - dx * 0.00245), Math.cos(yaw - dx * 0.00245));
   pitch = THREE.MathUtils.clamp(pitch - dy * 0.0022, -1.18, 1.18);
 }
 document.addEventListener("mousemove", (e) => {
-  if (state === "play" && document.pointerLockElement)
+  if (state === "play" && renderer && document.pointerLockElement === renderer.domElement)
     look(e.movementX, e.movementY);
 });
 const wrap = $("viewWrap");
 wrap.addEventListener("pointerdown", (e) => {
-  if (
-    state !== "play" ||
-    e.target.tagName !== "CANVAS" ||
-    document.pointerLockElement
-  )
-    return;
-  lookId = e.pointerId;
+  if (state !== "play" || !renderer || e.target !== renderer.domElement ||
+      document.pointerLockElement) return;
+  lastPointerType = e.pointerType || "mouse";
+  if (lastPointerType === "mouse") lockLook();
+  if (!lookPointer.claim(e.pointerId)) return;
   lookLast = [e.clientX, e.clientY];
-  wrap.setPointerCapture(e.pointerId);
+  if (!tryCapture(wrap, e.pointerId)) {
+    lookPointer.release(e.pointerId);
+    lookLast = null;
+  }
 });
 wrap.addEventListener("pointermove", (e) => {
   if (
     state === "play" &&
-    e.pointerId === lookId &&
+    lookPointer.owns(e.pointerId) &&
     lookLast &&
     !document.pointerLockElement
   ) {
@@ -1481,22 +1487,22 @@ wrap.addEventListener("pointermove", (e) => {
 });
 for (const n of ["pointerup", "pointercancel"])
   wrap.addEventListener(n, (e) => {
-    if (e.pointerId === lookId) {
-      lookId = -1;
-      lookLast = null;
-    }
+    if (lookPointer.release(e.pointerId)) lookLast = null;
   });
 const stick = $("stick");
 stick.addEventListener("pointerdown", (e) => {
-  if (state !== "play") return;
-  moveId = e.pointerId;
+  if (state !== "play" || !movePointer.claim(e.pointerId)) return;
   const b = stick.getBoundingClientRect();
   moveStart = [b.left + b.width / 2, b.top + b.height / 2];
-  stick.setPointerCapture(moveId);
+  if (!tryCapture(stick, e.pointerId)) {
+    movePointer.release(e.pointerId);
+    moveStart = null;
+    return;
+  }
   stickMove(e);
 });
 function stickMove(e) {
-  if (e.pointerId !== moveId || !moveStart) return;
+  if (!movePointer.owns(e.pointerId) || !moveStart) return;
   let x = (e.clientX - moveStart[0]) / 36,
     y = (e.clientY - moveStart[1]) / 36;
   const a = Math.max(1, Math.hypot(x, y));
@@ -1507,16 +1513,28 @@ function stickMove(e) {
 }
 stick.addEventListener("pointermove", stickMove);
 for (const n of ["pointerup", "pointercancel", "lostpointercapture"])
-  stick.addEventListener(n, () => {
-    moveId = -1;
+  stick.addEventListener(n, (e) => {
+    if (!movePointer.release(e.pointerId)) return;
+    moveStart = null;
     pointer.x = pointer.y = 0;
     $("stickknob").style.transform = "";
   });
 $("run").addEventListener("pointerdown", (e) => {
+  if (state !== "play" || !runPointer.claim(e.pointerId)) return;
+  if (!tryCapture($("run"), e.pointerId)) {
+    runPointer.release(e.pointerId);
+    return;
+  }
   mobileRun = true;
-  $("run").setPointerCapture(e.pointerId);
 });
 for (const n of ["pointerup", "pointercancel", "lostpointercapture"])
-  $("run").addEventListener(n, () => (mobileRun = false));
+  $("run").addEventListener(n, (e) => {
+    if (runPointer.release(e.pointerId)) mobileRun = false;
+  });
+document.addEventListener("pointerlockchange", () => {
+  const locked = Boolean(renderer && document.pointerLockElement === renderer.domElement);
+  if (wasPointerLocked && !locked && state === "play") pauseGame();
+  wasPointerLocked = locked;
+});
 document.body.classList.toggle("touch", touch);
 homepage();

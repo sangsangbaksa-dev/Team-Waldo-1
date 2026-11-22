@@ -112,11 +112,31 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
     };
     canvas.oncontextmenu = e => { e.preventDefault(); const p = cell(e), before = armies[side]!; const next = before.filter(u => u.x !== p.x || u.y !== p.y); if (next.length === before.length) return; armies[side] = next; audio.remove(); render(); };
     canvas.onpointerdown = e => { if (e.button !== 0 || drag) return; const p = cell(e); if (!legal(p)) { toast(side ? '위쪽 진영에만 배치할 수 있어요' : '아래쪽 아군 진영에만 배치할 수 있어요'); return; } drag = { ...p, pointerId: e.pointerId }; canvas.setPointerCapture(e.pointerId); };
-    canvas.onpointermove = e => { const next = cell(e); if (next.x < 0 || next.x >= 12 || next.y < 0 || next.y >= 20) { if (hover) { hover = null; draw(canvas, armies, side, null, UNITS[selected].range, null, selected); } return; } if (hover?.x === next.x && hover?.y === next.y) return; hover = next; draw(canvas, armies, side, null, UNITS[selected].range, hover, selected); };
-    canvas.onpointerleave = () => { hover = null; draw(canvas, armies, side, null, UNITS[selected].range, null); };
+    canvas.onpointermove = e => { if (drag && drag.pointerId !== e.pointerId) return; const next = cell(e); if (next.x < 0 || next.x >= 12 || next.y < 0 || next.y >= 20) { if (hover) { hover = null; draw(canvas, armies, side, null, UNITS[selected].range, null, selected); } return; } if (hover?.x === next.x && hover?.y === next.y) return; hover = next; draw(canvas, armies, side, null, UNITS[selected].range, hover, selected); };
+    canvas.onpointerleave = e => { if (drag && drag.pointerId !== e.pointerId) return; hover = null; draw(canvas, armies, side, null, UNITS[selected].range, null); };
     canvas.onpointercancel = e => { if (drag?.pointerId !== e.pointerId) return; drag = null; hover = null; draw(canvas, armies, side, null, UNITS[selected].range, null); };
     canvas.onlostpointercapture = e => { if (drag?.pointerId === e.pointerId) drag = null; };
-    canvas.onpointerup = e => { if (!drag || drag.pointerId !== e.pointerId) return; const before = armies[side]!.length; const p = cell(e), from = armies[side]!.find(u => u.x === drag!.x && u.y === drag!.y); if (legal(p)) { const at = armies[side]!.find(u => u.x === p.x && u.y === p.y); if (from && (p.x !== drag.x || p.y !== drag.y)) { if (!at) { from.x = p.x; from.y = p.y; } } else if (at) armies[side] = armies[side]!.filter(u => u !== at); else if (cost(side) + UNITS[selected].cost <= BUDGET) armies[side]!.push({ type: selected, ...p }); } drag = null; const after = armies[side]!.length; if (after > before) audio.place(); else if (after < before) audio.remove(); render(); };
+    canvas.onpointerup = e => {
+      if (!drag || drag.pointerId !== e.pointerId) return;
+      const before = armies[side]!.length;
+      const p = cell(e), from = armies[side]!.find(u => u.x === drag!.x && u.y === drag!.y);
+      let changed = false;
+      if (legal(p)) {
+        const at = armies[side]!.find(u => u.x === p.x && u.y === p.y);
+        if (from && (p.x !== drag.x || p.y !== drag.y)) {
+          if (!at) { from.x = p.x; from.y = p.y; changed = true; }
+        } else if (at) {
+          armies[side] = armies[side]!.filter(u => u !== at); changed = true;
+        } else if (cost(side) + UNITS[selected].cost <= BUDGET) {
+          armies[side]!.push({ type: selected, ...p }); changed = true;
+        }
+      }
+      drag = null;
+      if (!changed) { draw(canvas, armies, side, null, UNITS[selected].range, hover, selected); return; }
+      const after = armies[side]!.length;
+      if (after > before) audio.place(); else if (after < before) audio.remove();
+      render();
+    };
   }
   /** Choosing a unit changes only the palette and preview, not the whole battlefield canvas. */
   function chooseUnit(type: UnitType): void {

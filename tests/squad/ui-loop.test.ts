@@ -316,3 +316,28 @@ it('ignores detached previous-screen controls instead of resetting an active mat
   expect(button('#ready')).toBeTruthy();
   button('#pause').click(); button('#exit').click();
 });
+
+it('ignores other fingers during a drag and retains the field after invalid drops', async () => {
+  const { draw } = await import('../../src/squad/view');
+  openSquad(vi.fn()); button('#start').click();
+  const canvas = document.querySelector<HTMLCanvasElement>('#sq-field-canvas')!;
+  Object.defineProperty(canvas, 'getBoundingClientRect', {
+    configurable: true, value: () => ({ left: 0, top: 0, width: 600, height: 1000 }),
+  });
+  Object.defineProperty(canvas, 'setPointerCapture', { configurable: true, value: vi.fn() });
+  const pointer = (type: string, id: number, x: number, y: number) => {
+    const e = new Event(type, { bubbles: true });
+    Object.assign(e, { pointerId: id, button: 0, clientX: x, clientY: y });
+    canvas.dispatchEvent(e);
+  };
+  pointer('pointerdown', 1, 250, 750);
+  vi.mocked(draw).mockClear();
+  pointer('pointermove', 2, 480, 800);
+  expect(vi.mocked(draw)).not.toHaveBeenCalled();
+  pointer('pointermove', 1, 250, 750);
+  expect(vi.mocked(draw)).toHaveBeenCalledTimes(1);
+  pointer('pointerup', 1, -25, -25); // Outside friendly zone: no place/move.
+  expect(document.querySelector('#sq-field-canvas')).toBe(canvas);
+  expect(document.querySelector('.sq-budget strong')?.textContent).toContain('1000');
+  button('#pause').click(); button('#exit').click();
+});

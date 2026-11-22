@@ -16,16 +16,14 @@ describe('SQUAD CLASH long-battle invariants', () => {
           while (battle.winner === null) {
             battle.step();
             for (const u of battle.units) {
-              expect(Number.isFinite(u.x) && Number.isFinite(u.y)).toBe(true);
-              expect(u.x).toBeGreaterThanOrEqual(0.3);
-              expect(u.x).toBeLessThanOrEqual(11.7);
-              expect(u.y).toBeGreaterThanOrEqual(0.3);
-              expect(u.y).toBeLessThanOrEqual(19.7);
-              expect(Number.isFinite(u.hp) && Number.isFinite(u.damage)).toBe(true);
-              expect(u.hp).toBeLessThanOrEqual(UNITS[u.type].hp);
-              expect(u.damage).toBeGreaterThanOrEqual(0);
+              if (!Number.isFinite(u.x) || !Number.isFinite(u.y) ||
+                  u.x < 0.3 || u.x > 11.7 || u.y < 0.3 || u.y > 19.7 ||
+                  !Number.isFinite(u.hp) || !Number.isFinite(u.damage) ||
+                  u.hp > UNITS[u.type].hp || u.damage < 0) {
+                throw new Error(`Invalid soldier state in round ${seed}, tick ${battle.tick}: ${JSON.stringify(u)}`);
+              }
             }
-            expect(battle.tick).toBeLessThanOrEqual(1800);
+            if (battle.tick > 1800) throw new Error('The round never resolved');
           }
           expect([0, 1, 'draw']).toContain(battle.winner);
         }

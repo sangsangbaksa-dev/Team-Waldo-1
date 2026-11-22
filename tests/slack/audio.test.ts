@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { afterEach, expect, it, vi } from 'vitest';
 import { createSlackAudio } from '../../src/slack/audio';
 

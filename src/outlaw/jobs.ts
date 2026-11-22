@@ -273,7 +273,12 @@ export function stepJobs(sim: Sim, dt: number): void {
     const foe = sim.ped(j.ids.foe);
     if (!foe) { // 다음 상대 등장
       if (round >= 3) { end(sim, true, '챔피언 등극', 0); return; }
-      const hp = [90, 150, 230][round]!, f = sim.spawnPed('gang', x + 5, z + 5, { keep: true, tag: 'job', mode: 'attack', target: PLAYER_ID, hp, maxHp: hp, armor: round === 2 ? 40 : 0, loot: 0, name: ['쇠주먹', '코뿔소', '챔피언'][round]! });
+      // The arena entrance sits next to building façades; a fixed +5m offset
+      // can put opponents inside a wall. Use the same walkable squad placement
+      // used for bounty/contract encounters.
+      const hp = [90, 150, 230][round]!, f = gang(sim, x + 5, z + 5);
+      f.mode = 'attack'; f.target = PLAYER_ID; f.hp = f.maxHp = hp; f.armor = round === 2 ? 40 : 0;
+      f.loot = 0; f.name = ['쇠주먹', '코뿔소', '챔피언'][round]!;
       f.guns = f.guns.map((_, i) => (i === 0 ? { id: 'fist' as const, mag: 0, reserve: 0 } : null)); f.cur = 0; j.ids.foe = f.id; j.text = `${round + 1}라운드 · vs ${f.name}`; sim.say(`${round + 1}라운드 · ${f.name}`, 2.5);
     } else if (!foe.alive) {
       const prize = [400, 800, 1600][round]!; j.data.round = round + 1; j.ids.foe = 0; sim.count('fights'); sim.earn(prize); sim.say(`승리! 상금 $${prize.toLocaleString('en-US')}`, 3);

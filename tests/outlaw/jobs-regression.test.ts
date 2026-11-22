@@ -97,3 +97,15 @@ describe('OUTLAW job vehicle spawn clearance', () => {
     expect(sim.vehicles.every(v=>v.tag!=='job')).toBe(true);
   });
 });
+
+it('places the first arena opponent on walkable ground instead of inside the entrance building', () => {
+  const sim = new Sim(67), arena = sim.map.pois.find(p=>p.kind==='arena')!;
+  sim.player.x = arena.x; sim.player.z = arena.z; sim.cash = 1000;
+  expect(startJob(sim,'fight')).toBe('');
+  const foe = sim.ped(sim.job.ids.foe)!;
+  expect(foe).toBeDefined();
+  expect(isOpen(sim.map,foe.x,foe.z,.65)).toBe(true);
+  expect(Math.hypot(foe.x-arena.x,foe.z-arena.z)).toBeLessThan(40);
+  expect(foe.mode).toBe('attack');
+  expect(foe.hp).toBe(90);
+});

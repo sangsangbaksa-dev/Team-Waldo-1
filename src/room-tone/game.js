@@ -751,6 +751,9 @@ async function start(cont) {
     save();
     brief();
   } catch (e) {
+    // If renderer creation or procedural scene setup fails before GLTF parsing,
+    // releaseModelBytes also aborts the still-pending model network request.
+    releaseModelBytes();
     console.error(e);
     const failure = describeStartupError(e);
     modal(

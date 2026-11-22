@@ -51,6 +51,22 @@ describe("ROOM TONE model request lifecycle",()=>{
     await expect(active).resolves.toBeInstanceOf(ArrayBuffer);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+  it("aborts a pending model download when startup releases its request",async()=>{
+    let signal:AbortSignal|undefined;
+    const fetchMock=vi.fn((_url:string,options?:RequestInit)=>new Promise<never>((_,reject)=>{
+      signal=options?.signal as AbortSignal;
+      signal?.addEventListener("abort",()=>reject(new DOMException("Aborted","AbortError")),{once:true});
+    }));
+    vi.stubGlobal("fetch",fetchMock);
+    const pending=modelBytes();
+    releaseModelBytes();
+    expect(signal?.aborted).toBe(true);
+    await expect(pending).rejects.toMatchObject({name:"AbortError"});
+    const buffer=new ArrayBuffer(12);
+    fetchMock.mockResolvedValue({ok:true,arrayBuffer:async()=>buffer} as Response);
+    await expect(modelBytes()).resolves.toBe(buffer);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
   it("retries after network failures",async()=>{
     const fetchMock=vi.fn().mockResolvedValueOnce({ok:false,status:503})
       .mockResolvedValue({ok:true,arrayBuffer:async()=>new ArrayBuffer(3)});

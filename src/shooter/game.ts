@@ -168,7 +168,14 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       },
       onHitAck: () => { /* 명중 표시는 내 쪽 판정으로 이미 보여 줬습니다 */ },
       onNade: n => { const opp = pvp?.opp; if (match && opp && plausibleNadeThrow(n, opp) && nadeLimiter.allow(opp.id, performance.now())) match.addNade(opp.id, n.x, n.y, n.z, n.vx, n.vy, n.vz); },
-      onPickup: id => { match?.removeLoot(id); },
+      onPickup: id => {
+        // A duel opponent may only pick items near their last reported pose.
+        // Otherwise one forged pickup packet could wipe remote ground loot.
+        const m = match, opp = pvp?.opp;
+        if (!m || !opp) return;
+        const loot = m.loot.find(item => item.id === id);
+        if (canAcceptRoomPickup(loot, opp, false)) m.removeLoot(id);
+      },
       onDead: mt => { if (!pvp || !match || !pvp.opp) return; pvp.oppDeadMt = mt; if (pvp.opp.alive) match.kill(pvp.opp, me().id, 'rifle'); if (pvp.deadAt !== null) settleTie(); else void conclude(pvp.s.me.id, '상대를 쓰러뜨렸습니다'); },
       onGone: reason => { if (pvp && !pvp.done) void conclude(pvp.s.me.id, reason === 'never' ? '상대가 접속하지 않았습니다' : '상대와의 연결이 끊어졌습니다'); },
     });

@@ -33,6 +33,26 @@ describe('network synchronization regressions', () => {
     for (let i=0;i<500;i++) easePuppet(bot,target,0.02);
     expect(target.x).toBeCloseTo(8); expect(bot.x).toBeLessThanOrEqual(8.001);
   });
+  it('stops predicting a remote car after 600ms without a new packet', () => {
+    const {m, sync} = fixture();
+    const car = { id: 0, x: 0, z: 0, yaw: 0, speed: 0, remote: true, wreck: false } as (typeof m.vehicles)[number];
+    m.vehicles.push(car);
+    sync.vehs.set(0, { x: 0, z: 0, yaw: 0, speed: 20, at: 0 });
+    for (let i = 0; i < 100; i++) sync.step(0.02);
+    expect(sync.vehs.get(0)?.x).toBeCloseTo(12);
+    expect(car.x).toBeLessThanOrEqual(12.001);
+  });
+  it('starts predicting a remote car again after a fresh packet', () => {
+    const {m, sync} = fixture();
+    const car = { id: 0, x: 0, z: 0, yaw: 0, speed: 0, remote: true, wreck: false } as (typeof m.vehicles)[number];
+    m.vehicles.push(car);
+    sync.vehs.set(0, { x: 0, z: 0, yaw: 0, speed: 20, at: 0, extrapolated: 0.6 });
+    sync.step(0.02);
+    expect(sync.vehs.get(0)?.x).toBe(0);
+    sync.vehs.set(0, { x: 15, z: 0, yaw: 0, speed: 20, at: 1000 });
+    sync.step(0.1);
+    expect(sync.vehs.get(0)?.x).toBeCloseTo(17);
+  });
   it('rejects out-of-bounds bot coordinates', () => {
     const {sync,bot}=fixture();
     sync.apply({t:'w', b:[bot.id, 10001, 0,0,0,0,0,0,0,0,0,100]},0);

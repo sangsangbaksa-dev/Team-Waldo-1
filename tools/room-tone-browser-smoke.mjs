@@ -59,6 +59,13 @@ try {
       assert.equal(await page.locator("#game").isVisible(),false);
       assert.equal(glb.length,0,"GLB should not load on the title screen");
       assert.equal(await page.locator(".mast .wordmark").getAttribute("href"),"../");
+      if(config.width<=420) {
+        const brand=await page.locator(".mast .wordmark").boundingBox();
+        const sound=await page.locator(".mast .bare").boundingBox();
+        assert.ok(brand && sound && brand.height<=36 &&
+          brand.x+brand.width<=sound.x+1 && sound.x+sound.width<=config.width+1,
+          "Compact title header must fit in one row without clipping the sound control");
+      }
       assert.equal(await page.evaluate(()=>document.body.classList.contains("rt-reduced-motion")),true,
         "The hub reduced-motion setting must control ROOM TONE animations");
       if(!config.mobile){

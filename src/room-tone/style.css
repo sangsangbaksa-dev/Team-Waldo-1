@@ -962,3 +962,26 @@ body.rt-reduced-motion #viewWrap.caught-shot::after,
 body.rt-reduced-motion #viewWrap.noticed::before,
 body.rt-reduced-motion #viewWrap.noticed .lens { animation: none !important; }
 body.rt-reduced-motion #viewWrap.noticed::before { transform: none; }
+
+/* Compact title masthead: one clear brand link and one accessible sound button. */
+@media (max-width: 420px) {
+  .mast {
+    gap: 0.5rem;
+    padding-right: max(0.7rem, env(safe-area-inset-right));
+    padding-left: max(0.7rem, env(safe-area-inset-left));
+  }
+  .mast .wordmark {
+    gap: 0.32rem;
+    font-size: clamp(0.74rem, 3.2vw, 0.92rem);
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .mast .signalMark { flex: 0 0 25px; width: 25px; height: 25px; font-size: 23px; }
+  .mast .bare {
+    flex: 0 0 auto;
+    font-size: 0.78rem;
+    white-space: nowrap;
+    padding: 0.42rem;
+  }
+}

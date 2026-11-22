@@ -905,3 +905,52 @@ button.primary { background: #e1e1dd; border-color: #e1e1dd; color: #151515; }
     white-space: normal;
   }
 }
+/* Narrow phones: place the chapter information below the controls instead of
+   shrinking it into a tall unreadable column beside them. */
+@media (max-width: 359px) and (pointer: coarse) {
+  .hud {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.35rem;
+    padding: 0.55rem 0.65rem;
+  }
+  .hudright { order: -1; align-self: flex-end; }
+  .hudleft {
+    align-self: stretch;
+    max-width: 100%;
+    padding: 0.3rem 0.55rem;
+    min-width: 0;
+  }
+  .hudleft span, .hudleft strong {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .hudleft strong { font-size: 0.9rem; margin-top: 0.1rem; }
+  #guide { margin-top: 0.1rem; }
+}
+
+/* iOS viewport-fit=cover may place controls under the notch. Reserve the
+   affected edge in portrait and landscape without changing normal screens. */
+@media (pointer: coarse) {
+  .mast {
+    padding-left: max(1.2rem, env(safe-area-inset-left));
+    padding-right: max(1.2rem, env(safe-area-inset-right));
+  }
+  .hud {
+    padding-top: max(0.8rem, env(safe-area-inset-top));
+    padding-left: max(0.65rem, env(safe-area-inset-left));
+    padding-right: max(0.65rem, env(safe-area-inset-right));
+  }
+  .touch #stick { left: max(1.15rem, env(safe-area-inset-left)); }
+  .touch .touchactions { right: max(1rem, env(safe-area-inset-right)); }
+}
+@media (max-width: 359px) and (pointer: coarse) {
+  .hud { padding-top: max(0.55rem, env(safe-area-inset-top)); }
+}
+@media (pointer: coarse) and (orientation: portrait) {
+  .mast {
+    padding-top: max(1.4rem, env(safe-area-inset-top));
+    height: max(78px, calc(env(safe-area-inset-top) + 54px));
+  }
+}

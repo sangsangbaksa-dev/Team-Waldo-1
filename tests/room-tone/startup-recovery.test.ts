@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { modelBytes, releaseModelBytes } from "../../src/room-tone/assets.js";
 import { initialMute } from "../../src/room-tone/preferences.mjs";
-import { neighbors, paths, makeLevel } from "../../src/room-tone/levels.mjs";
+import { neighbors, paths, makeLevel, chapters } from "../../src/room-tone/levels.mjs";
+import { normalizeCampaign } from "../../src/room-tone/campaign.mjs";
 
 describe("ROOM TONE persisted audio preferences",()=>{
   it("prioritizes explicit arcade-wide settings over the legacy game key",()=>{
@@ -32,6 +33,24 @@ describe("ROOM TONE model request lifecycle",()=>{
     expect(await modelBytes()).toBe(buffer);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+  it("does not let a late rejected request clear a newer in-flight model",async()=>{
+    let failOld:((error:Error)=>void)|undefined;
+    let resolveNew:((response:{ok:boolean,arrayBuffer:()=>Promise<ArrayBuffer>})=>void)|undefined;
+    const staleFetch=new Promise<never>((_,reject)=>{failOld=reject;});
+    const freshFetch=new Promise<{ok:boolean,arrayBuffer:()=>Promise<ArrayBuffer>}>(resolve=>{resolveNew=resolve;});
+    const fetchMock=vi.fn().mockImplementationOnce(()=>staleFetch).mockImplementationOnce(()=>freshFetch);
+    vi.stubGlobal("fetch",fetchMock);
+    const stale=modelBytes();
+    releaseModelBytes();
+    const active=modelBytes();
+    const expectsOld=expect(stale).rejects.toThrow("old network request");
+    failOld?.(new Error("old network request"));
+    await expectsOld;
+    expect(modelBytes()).toBe(active);
+    resolveNew?.({ok:true,arrayBuffer:async()=>new ArrayBuffer(8)});
+    await expect(active).resolves.toBeInstanceOf(ArrayBuffer);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
   it("retries after network failures",async()=>{
     const fetchMock=vi.fn().mockResolvedValueOnce({ok:false,status:503})
       .mockResolvedValue({ok:true,arrayBuffer:async()=>new ArrayBuffer(3)});
@@ -54,5 +73,20 @@ describe("ROOM TONE allocation-free neighbor expansion",()=>{
       for(const end of [...level.items,level.station,level.exit,level.nest])
         expect(tree.dist[end]).toBeGreaterThanOrEqual(0);
     }
+  });
+});
+
+describe("ROOM TONE campaign size derived from actual chapter data",()=>{
+  it("accepts the last cell of each generated map",()=>{
+    for(const [ch,info] of chapters.entries()){
+      const id=info.size**2-1;
+      const result=normalizeCampaign({
+        v:1,ch,found:[false,false,false],solved:false,elapsed:60,seen:[id,id+1],
+      });
+      expect(result?.seen).toEqual([id]);
+    }
+    expect(normalizeCampaign({
+      v:1,ch:chapters.length,found:[false,false,false],solved:false,elapsed:1,seen:[],
+    })).toBeNull();
   });
 });

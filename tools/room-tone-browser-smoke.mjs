@@ -31,6 +31,8 @@ try {
   for(const config of [
     {name:"desktop",width:1280,height:800,mobile:false},
     {name:"mobile",width:390,height:844,mobile:true},
+    {name:"mobile-compact",width:320,height:640,mobile:true},
+    {name:"mobile-landscape",width:844,height:390,mobile:true},
   ]){
     const context=await browser.newContext({
       viewport:{width:config.width,height:config.height},
@@ -79,6 +81,28 @@ try {
       assert.match(await page.locator("#panelTitle").innerText(),/끊어진 전원/);
       await page.getByRole("button",{name:"구역 진입"}).click();
       assert.equal(await page.locator("#dialog").isVisible(),false);
+      const firstTime=await page.locator("#timer").textContent();
+      await page.waitForTimeout(1500);
+      const runningTime=await page.locator("#timer").textContent();
+      assert.notEqual(runningTime,firstTime,"The playing clock must keep advancing");
+      if(config.mobile) {
+        for (const id of ["#gsound","#mapBtn","#pauseGame","#crouch","#torch","#run","#act"]) {
+          const box=await page.locator(id).boundingBox();
+          assert.ok(box && box.width>=40 && box.height>=40,
+            id+" touch target must be at least 40x40 px");
+        }
+        const left=await page.locator(".hudleft").boundingBox();
+        const right=await page.locator(".hudright").boundingBox();
+        if(config.width <= 359) {
+          assert.ok(left && right && left.y >= right.y+right.height-2,
+            "Narrow HUD information must stack below the button row");
+          assert.ok(left.height < 105,
+            "Narrow HUD must not grow into a tall text column");
+        } else {
+          assert.ok(left && right && left.x+left.width <= right.x+2,
+            "Mobile HUD text must not overlap the control group");
+        }
+      }
 
       if(config.mobile){
         assert.equal(await page.evaluate(()=>Boolean(document.pointerLockElement)),false);
@@ -86,6 +110,10 @@ try {
       } else await page.locator("#pauseGame").click();
       assert.match(await page.locator("#panelTitle").innerText(),/일시정지/);
       assert.ok(await page.getByRole("button",{name:"게임 목록으로"}).count()>0);
+      const stoppedTime=await page.locator("#timer").textContent();
+      await page.waitForTimeout(350);
+      assert.equal(await page.locator("#timer").textContent(),stoppedTime,
+        "The game clock must not advance during pause");
       await page.screenshot({path:"browser-artifacts/room-tone-paused-"+config.name+".png",animations:"disabled"});
       await page.getByRole("button",{name:"계속하기"}).click();
       assert.equal(await page.locator("#dialog").isVisible(),false);

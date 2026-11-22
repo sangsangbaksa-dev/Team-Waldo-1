@@ -13,7 +13,7 @@ body {
   min-height: 100%;
   background: #0c100f;
   color: #efece0;
-  font-family: Arial, "Noto Sans CJK KR", "Apple SD Gothic Neo", sans-serif;
+  font-family: "Noto Sans KR", "Noto Sans CJK KR", "Apple SD Gothic Neo", "Malgun Gothic", Arial, sans-serif;
   word-break: keep-all;
 }
 button,
@@ -905,7 +905,6 @@ button.primary { background: #e1e1dd; border-color: #e1e1dd; color: #151515; }
     white-space: normal;
   }
 }
-
 /* Narrow phones: place the chapter information below the controls instead of
    shrinking it into a tall unreadable column beside them. */
 @media (max-width: 359px) and (pointer: coarse) {

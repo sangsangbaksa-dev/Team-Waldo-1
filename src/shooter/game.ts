@@ -1,7 +1,7 @@
 // ZERO ZONE — 배틀로열 총게임 화면: 출격 설정, 조작(키보드·마우스·터치), HUD, 솔로(AI 99명, 비행기 낙하)와 1대1 온라인 대전의 진행.
 import '../shared/ui.css';
 import './shooter.css';
-import { readPreferences } from '../prefs';
+import { readPreferences, writeSound } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import type { PvpSession, RoomSession } from '../net/lobby';
 import { AIR, BAG_MAX, BOTS, FEEL, BR_PLAYERS, DIFFICULTIES, HELMET_NAMES, ARMOR_NAMES, HEAL, PARTS, PLAYER, VEHICLES, WEAPONS, adsSpread, partHandling, type Difficulty } from './config';
@@ -651,13 +651,14 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 일시정지·메뉴 ----------
   function setPause(on: boolean): void {
     if (pvpRunning() || (phase !== 'play' && phase !== 'countdown') || closed) return; paused = on; if (on) pausedAt = performance.now();
-    if (on) { mouse.fire = mouse.ads = false; if (document.pointerLockElement === canvas) document.exitPointerLock(); card('ZERO ZONE', '일시정지', '', '<button class="primary" data-act="resume">이어하기</button><button data-act="again">다시 시작</button><button data-act="setup">설정</button><button data-act="exit">게임 목록으로</button>'); }
+    if (on) { mouse.fire = mouse.ads = false; if (document.pointerLockElement === canvas) document.exitPointerLock(); card('ZERO ZONE', '일시정지', '', `<button class="primary" data-act="resume">이어하기</button><button data-act="again">다시 시작</button><button data-act="sound">소리 ${audio.enabled ? '켜짐' : '꺼짐'}</button><button data-act="setup">설정</button><button data-act="exit">게임 목록으로</button>`); }
     else { modal.className = 'sz-modal'; modal.innerHTML = ''; if (!touch) lock(); }
   }
   q('#sz-pause').addEventListener('click', () => { if (pvpRunning()) { say('대전 중에는 멈출 수 없습니다', 1.4); return; } setPause(true); });
   modal.addEventListener('click', e => {
     const a = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act; if (!a) return; audio.unlock();
     if (a === 'resume') setPause(false);
+    else if (a === 'sound') { audio.setEnabled(!audio.enabled); writeSound(audio.enabled); setPause(true); }
     else if (a === 'again') { startSolo(); }
     else if (a === 'setup') { endMatch(); hud.hidden = true; modal.className = 'sz-modal'; modal.innerHTML = ''; phase = 'setup'; paused = false; setupEl.hidden = false; paintSetup(); }
     else if (a === 'spectate') { modal.className = 'sz-modal'; modal.innerHTML = ''; resultShown = false; if (room) room.shown = true; }
@@ -670,7 +671,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
 
   // ---------- 매 프레임 ----------
   function frame(now: number): void {
-    if (closed) return; raf = requestAnimationFrame(frame);
+    if (closed) return; raf = requestAnimationFrame(frame); audio.setPaused(paused);
     const real = Math.min(0.5, Math.max(0, (now - last) / 1000)), dt = Math.min(0.05, real); last = now;
     if (!match || !view) return;
     const m = match, p = me();

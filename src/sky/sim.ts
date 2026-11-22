@@ -33,7 +33,7 @@ export interface Missile { id: number; owner: number; team: Team; pos: THREE.Vec
 export interface Bullet { pos: THREE.Vector3; vel: THREE.Vector3; life: number; team: Team; owner: number; alive: boolean; }
 export type SimEvent =
   | { t: 'gun'; id: number } | { t: 'missile'; id: number } | { t: 'boom'; pos: THREE.Vector3; big: boolean }
-  | { t: 'hit'; id: number; pos: THREE.Vector3 } | { t: 'kill'; by: number; id: number; points?: number; combo?: number } | { t: 'lock'; id: number } | { t: 'lockdone' }
+  | { t: 'hit'; id: number; pos: THREE.Vector3; by?: number } | { t: 'nolock' } | { t: 'kill'; by: number; id: number; points?: number; combo?: number } | { t: 'lock'; id: number } | { t: 'lockdone' }
   | { t: 'warn' } | { t: 'stall' } | { t: 'wave'; n: number; modifier?: string } | { t: 'crash'; id: number } | { t: 'flare'; id: number } | { t: 'pickup'; kind: 'repair' | 'ammo' | 'shield' } | { t: 'boss' } | { t: 'dodge'; points: number } | { t: 'overdrive' };
 
 export interface Input { pitch: number; roll: number; yaw?: number; throttle: number; fire: boolean; missile: boolean; flare: boolean; boost?: boolean; }
@@ -65,7 +65,7 @@ export class SkySim {
   reset(): void {
     this.bulletPool.length = 0;
     this.jets = []; this.pickups = []; this.missiles = []; this.bullets = []; this.events = []; this.wave = 0; this.score = 0; this.kills = 0; this.time = 0; this.over = false; this.intermission = 2; this.combo = 0; this.comboT = 0; this.bestCombo = 0; this.shots = 0; this.hits = 0; this.shield = 0; this.overdrive = 0; this.missileRegen = 0; this.stallWarnT = 0; this.afterburner = 0;
-    const p = this.makeJet('player', 'fighter', new THREE.Vector3(0, 700, 2200), 1); p.q.identity(); p.speed = CRUISE; p.missiles = 6; p.hp = p.maxHp = 100;
+    const p = this.makeJet('player', 'fighter', new THREE.Vector3(0, 700, 2200), 1); p.q.identity(); p.speed = CRUISE; p.missiles = 6; p.missileCd = 0; p.hp = p.maxHp = 100;
     this.player = p;
   }
 
@@ -149,7 +149,8 @@ export class SkySim {
     p.missileCd -= dt;
     if (inp.missile && p.missileCd <= 0 && p.missiles > 0) {
       const locked = p.lockT >= LOCK_TIME ? this.get(p.lockId) : undefined;
-      this.fireMissile(p, locked ? locked.id : 0); p.missiles--; p.missileCd = 0.8; p.lockT = locked ? 0 : p.lockT;
+      if (locked) { this.fireMissile(p, locked.id); p.missiles--; p.missileCd = 0.8; p.lockT = 0; }
+      else { this.events.push({ t: 'nolock' }); p.missileCd = 0.6; } // 락온 없이는 발사하지 않고 안내(미사일 낭비 방지)
     }
     p.flare -= dt;
     if (inp.flare && p.flare <= 0) { p.flare = 4; this.events.push({ t: 'flare', id: p.id }); for (const m of this.missiles) if (m.alive && m.target === p.id && Math.random() < 0.75) m.target = 0; }
@@ -293,7 +294,7 @@ export class SkySim {
   }
 
   damage(j: Jet, dmg: number, by: number, at: THREE.Vector3): void {
-    if (!j.alive) return; if (j === this.player && this.shield > 0) { const absorbed = Math.min(this.shield, dmg); this.shield -= absorbed; dmg -= absorbed; } if (j.kind === 'boss' && j.hp < j.maxHp * 0.5) dmg *= 1.25; j.hp -= dmg; this.events.push({ t: 'hit', id: j.id, pos: at.clone() });
+    if (!j.alive) return; if (j === this.player && this.shield > 0) { const absorbed = Math.min(this.shield, dmg); this.shield -= absorbed; dmg -= absorbed; } if (j.kind === 'boss' && j.hp < j.maxHp * 0.5) dmg *= 1.25; j.hp -= dmg; this.events.push({ t: 'hit', id: j.id, pos: at.clone(), by });
     if (j.hp <= 0) this.kill(j, by);
   }
   kill(j: Jet, by: number): void {

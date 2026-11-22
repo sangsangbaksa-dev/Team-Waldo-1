@@ -17,7 +17,7 @@ import { SHOP, canBuy, itemPrice } from './shop';
 import { PHASE_LABEL, WEATHER_ICON, WEATHER_LABEL, clockLabel } from './clock';
 import { missionLog, missionSummary, sideJobs } from './missions';
 import { EVENT_INFO } from './events';
-import { readPreferences, recordMatch, writePreferences } from '../prefs';
+import { readPreferences, recordMatch, writeSound } from '../prefs';
 import type { PvpSession, RoomSession } from '../net/lobby';
 import { arenaInfo, arenaOf } from './arena';
 import { CityRoom, ROOM_LIVES, ROOM_TIME, roomRanking, roomWinner } from './room';
@@ -171,7 +171,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (!w) return; const f = w.factions[0];
     if (a === 'resume') { paused = false; modal.innerHTML = ''; last = performance.now(); lock(); return; }
     if (a === 'pause') { pause(); return; }
-    if (a === 'sound') { prefs.sound = !prefs.sound; writePreferences(prefs); audio.setEnabled(prefs.sound); pause(); return; }
+    if (a === 'sound') { prefs.sound = !prefs.sound; writeSound(prefs.sound); audio.setEnabled(prefs.sound); pause(); return; }
     if (a === 'perk') { w.pickPerk(Number(arg)); audio.play('levelup'); modal.innerHTML = ''; last = performance.now(); if (f.pending === 0) lock(); return; }
     if (a === 'tutnext') { if (tut) { tut.c.acked = true; lock(); } return; }
     if (a === 'tutskip') { finishTutorial(true); return; }
@@ -699,7 +699,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   // ---------- 루프 ----------
   function frame(now: number): void {
     if (closed) return; raf = requestAnimationFrame(frame); const w = world!, r = R!; const dt = Math.min(0.1, (now - last) / 1000); last = now;
-    const f = w.factions[0], b = w.boss(0), three = view !== 'top' && !!R3;
+    const f = w.factions[0], b = w.boss(0), three = view !== 'top' && !!R3; audio.setPaused(paused || f.pending > 0);
     const veh = b && b.inVeh ? w.vehicles.find(v => v.id === b.inVeh) : undefined, spd = veh ? Math.hypot(veh.vx, veh.vy) : 0;
     if (f.pending > 0 && !modal.firstChild) { showPerks(); keys.clear(); mouse.down = false; }
     if (!paused && f.pending === 0 && !w.over) {

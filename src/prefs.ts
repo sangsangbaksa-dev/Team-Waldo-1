@@ -14,6 +14,10 @@ export function writePreferences(value: Preferences): void {
   window.dispatchEvent(new Event('waldo:preferences'));
 }
 
+/** 허브 전역 소리 설정을 읽고 쓰는 공용 경로: 모든 게임이 같은 저장소를 씁니다. */
+export function readSound(): boolean { return readPreferences().sound; }
+export function writeSound(on: boolean): void { writePreferences({ ...readPreferences(), sound: on }); }
+
 export interface Career { matches: number; wins: number; bestSurvival: number; bestKills: number; }
 const CAREER_KEY = 'waldo.career.v1';
 export function readCareer(): Career {

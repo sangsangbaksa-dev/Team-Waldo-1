@@ -28,10 +28,11 @@ it('honors a deferred cover release and reports only the third strike at the dea
   expect(sim.state.phase).toBe('caught');
 });
 
-it('keeps the best positive score in memory when storage is blocked', () => {
+it('keeps the best score in memory when storage is blocked', () => {
   const storage = localStorage;
   const blocked = () => { throw new Error('blocked storage'); };
   vi.stubGlobal('localStorage', { getItem: blocked, setItem: blocked });
+  expect(recordSlackRun('dorm', 0, 'D')).toBe(true); // 0점 D 도 첫 기록으로 남는다
   expect(recordSlackRun('dorm', 0, 'D')).toBe(false);
   expect(recordSlackRun('dorm', 42, 'C')).toBe(true);
   expect(recordSlackRun('dorm', 40, 'B')).toBe(false);

@@ -6,7 +6,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import '../shared/ui.css';
 import './outlaw.css';
-import { readPreferences, writePreferences } from '../prefs';
+import { readPreferences, writePreferences, writeSound } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import { PVP_ENABLED } from '../net/config';
 import { Sim } from './sim';
@@ -170,7 +170,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     else if (k === 'phone') openUi('phone');
     else if (k === 'help') openModal('help', controlsHtml());
     else if (k === 'back') openPause();
-    else if (k === 'sound') { audio.enabled = !audio.enabled; prefs.sound = audio.enabled; writePreferences(prefs); openPause(); }
+    else if (k === 'sound') { audio.enabled = !audio.enabled; prefs.sound = audio.enabled; writeSound(audio.enabled); openPause(); }
     else if (k === 'quality') { prefs.quality = prefs.quality === 'high' ? 'standard' : prefs.quality === 'standard' ? 'low' : 'high'; writePreferences(prefs); openPause(); }
     else if (k === 'quit' || k === 'vsexit') { save(); exit(); }
   });
@@ -253,7 +253,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     else { sim.clock = 16.6; sim.playSec = 0; }
     titleEl.hidden = true; hudEl.hidden = false; phase = 'play'; transT = 0; yaw = sim.player.yaw; pitch = -0.3;
     orbitPos.copy(camera.position); orbitQuat.copy(camera.quaternion); chase?.reset({ x: sim.player.x, y: sim.player.y, z: sim.player.z, yaw: sim.player.yaw, speed: 0 }, { yaw, pitch });
-    audio.play('mission_start');
+    audio.world(true); audio.play('mission_start');
     if (acquirePointer) lock();
   }
 
@@ -585,7 +585,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   }
 
   function frame(now: number): void {
-    if (closed) return; raf = requestAnimationFrame(frame); const dt = Math.min(0.1, (now - last) / 1000), last0 = now - last; last = now;
+    if (closed) return; raf = requestAnimationFrame(frame); audio.setPaused(paused && !versus); const dt = Math.min(0.1, (now - last) / 1000), last0 = now - last; last = now;
     try { tick(dt); if (phase === 'play') adapt(last0); } catch (err) { console.error(err); }
   }
 

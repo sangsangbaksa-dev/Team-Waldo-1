@@ -4,8 +4,9 @@ import { AudioEngine, burst, tone } from '../audio-core';
 export class ShooterAudio {
   private eng = new AudioEngine(); private last = new Map<string, number>(); private wind: { gain: GainNode; filt: BiquadFilterNode; src: AudioBufferSourceNode } | null = null;
   get enabled(): boolean { return this.eng.enabled; }
-  set enabled(on: boolean) { this.eng.enabled = on; }
+  set enabled(on: boolean) { this.eng.setEnabled(on); }
   setEnabled(on: boolean): void { this.eng.setEnabled(on); }
+  setPaused(on: boolean): void { this.eng.setPaused(on); }
   unlock(): void {
     const c = this.eng.unlock(); if (!c || !this.eng.bus || !this.eng.noise || this.wind) return;
     const src = c.createBufferSource(), filt = c.createBiquadFilter(), gain = c.createGain(); src.buffer = this.eng.noise; src.loop = true; filt.type = 'bandpass'; filt.frequency.value = 420; filt.Q.value = 0.5; gain.gain.value = 0.035;

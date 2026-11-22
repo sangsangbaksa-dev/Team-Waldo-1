@@ -79,12 +79,12 @@ export function menuHtml(sound: boolean, firstPerson: boolean, confirmRestart = 
     </div></div></div>`;
 }
 
-export function titleHtml(has: boolean, summary: string): string {
+export function titleHtml(has: boolean, summary: string, confirmNew = false): string {
   return `<div class="ty-titlebox wd-panel">
     <p class="kick wd-eyebrow">WALDO / CITY TYCOON</p><h1 class="wd-title">HUSTLE</h1><p class="sub wd-lead">작은 일부터 시작해 나만의 도시를 만들어 보세요.</p>
     <div class="ty-ladder-lg">${STAGES.map(s => `<span>${STAGE_NAMES[s]}</span>`).join('<i>›</i>')}</div>
     <div class="ty-title-btns wd-actions">
-      ${has ? `<button type="button" class="wd-btn primary" data-title="continue">이어하기<small>${esc(summary)}</small></button><button type="button" class="wd-btn ghost" data-title="new">다시 시작</button>` : '<button type="button" class="wd-btn primary" data-title="new">시작</button>'}
+      ${has ? `<button type="button" class="wd-btn primary" data-title="continue">이어하기<small>${esc(summary)}</small></button><button type="button" class="wd-btn ghost" data-title="new">${confirmNew ? '저장이 지워집니다 — 한 번 더 누르면 새로 시작' : '다시 시작'}</button>` : '<button type="button" class="wd-btn primary" data-title="new">시작</button>'}
       <button type="button" class="wd-btn ghost" data-title="exit">게임 목록으로</button>
     </div>
     <p class="keys">WASD 이동 · Shift 달리기 · E 상호작용 · 마우스 드래그로 시점 · V 1인칭 · Tab 현황 · M 지도</p>

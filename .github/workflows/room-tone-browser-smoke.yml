@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - perf/room-tone-startup-20261122
+      - feat/shared-menu-rails
     paths:
       - 'room-tone/**'
       - 'src/room-tone/**'

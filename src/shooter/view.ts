@@ -18,7 +18,8 @@ import { TerrainView, tintGround } from './terrainview';
 import { groundHeight } from './relief';
 import { WeatherFx } from './weatherfx';
 import { waterDepth } from './terrain';
-import { chuteTexture, crateTexture, floorTexture, glowTexture, groundTexture, leafTexture, lootCaseTexture, makeSky, rockTexture, setTextureAnisotropy, wallTexture } from './textures';
+import { FLOOR_Y } from './ground-surfaces';
+import { chuteTexture, crateTexture, concreteTexture, floorTexture, glowTexture, groundTexture, leafTexture, lootCaseTexture, makeSky, rockTexture, setTextureAnisotropy, wallTexture } from './textures';
 
 export type Quality = 'high' | 'standard' | 'low';
 const LOOT_COLOR: Record<string, number> = { weapon: 0xeaf6ff, ammo: 0xffa53a, medkit: 0x52f08a, armor: 0x5aa8ff, bandage: 0xf2f2f2, attach: 0xc59bff, helmet: 0xffd34d, boost: 0x39e6ff, smoke: 0xb8c0c8, flash: 0xfff2a0 };
@@ -155,9 +156,19 @@ export class ShooterView {
       if (!list.length) return; const m = new THREE.Mesh(mergeGeometries(list, false), new THREE.MeshStandardMaterial({ map: wallTexture(i), roughness: 0.88 }));
       m.castShadow = true; m.receiveShadow = true; this.scene.add(m);
     });
-    const floorTex = floorTexture(), floors: THREE.BufferGeometry[] = [];
-    for (const b of map.buildings) { const f = new THREE.PlaneGeometry(b.w, b.d); f.rotateX(-Math.PI / 2); f.translate(b.x, 0.05, b.z); const uv = f.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * b.w / 3, uv.getY(i) * b.d / 3); floors.push(f); }
-    if (floors.length) { const m = new THREE.Mesh(mergeGeometries(floors, false), new THREE.MeshLambertMaterial({ map: floorTex, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 })); m.receiveShadow = true; this.scene.add(m); } // 마을 바닥·흙길 덧씌움(폴리곤 오프셋 -1~-3, 투명)이 건물 안 나무 바닥을 덮지 않도록 바닥이 더 앞에 놓입니다
+    const floors: THREE.BufferGeometry[][] = [[], []];
+    for (const b of map.buildings) {
+      const wood = b.type === 'house' || b.type === 'cabin' || b.type === 'barn' || b.type === 'church';
+      const f = new THREE.PlaneGeometry(b.w, b.d); f.rotateX(-Math.PI / 2); f.translate(b.x, FLOOR_Y, b.z);
+      const uv = f.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * b.w / 3, uv.getY(i) * b.d / 3);
+      floors[wood ? 0 : 1].push(f);
+    }
+    floors.forEach((list, i) => {
+      if (!list.length) return;
+      const g = mergeGeometries(list, false)!; list.forEach(f => f.dispose());
+      const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ map: i === 0 ? floorTexture() : concreteTexture(), depthWrite: true }));
+      m.name = 'interior-floor'; m.receiveShadow = true; this.scene.add(m);
+    });
     this.scene.add(buildRoofs(map, rngOf(this.match.seed + 3)), buildProps(map, new Set(this.match.vehicles.map(v => v.box))));
     if (crates.length) {
       const ct = crateTexture(), geos = crates.map(b => worldBox(b, 1.2)); const m = new THREE.Mesh(mergeGeometries(geos, false), new THREE.MeshLambertMaterial({ map: ct })); m.castShadow = true; m.receiveShadow = true; this.scene.add(m);

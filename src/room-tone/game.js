@@ -30,6 +30,7 @@ import { lineOfSight, moveWithCollision } from "./collision.mjs";
 import { describeStartupError } from "./startup-error.mjs";
 import { renderingScale } from "./render-quality.mjs";
 import { disposeGroup } from "./resources.mjs";
+import { shouldResumeSessionAudio } from "./session-audio.mjs";
 
 const $ = createIdLookup(document),
   C = 2.7,
@@ -1528,13 +1529,13 @@ document.addEventListener("visibilitychange", () => {
     frameId = null;
   } else {
     last = performance.now();
-    if (state === "puzzle" && document.hasFocus()) sound.pause(false);
+    if (shouldResumeSessionAudio(state, document.hidden, document.hasFocus())) sound.pause(false);
     showSceneOnce();
   }
 });
 window.addEventListener("blur", backgroundSession);
 window.addEventListener("focus", () => {
-  if (!document.hidden && state === "puzzle") sound.pause(false);
+  if (shouldResumeSessionAudio(state, document.hidden, document.hasFocus())) sound.pause(false);
 });
 window.addEventListener("pagehide", (e) => {
   if (e.persisted) {
@@ -1557,7 +1558,7 @@ window.addEventListener("pageshow", (e) => {
     last = performance.now();
     // Page restoration may not dispatch a separate focus event, notably in
     // iOS WebKit. Puzzle audio must be resumed without advancing gameplay.
-    if (state === "puzzle" && !document.hidden && document.hasFocus()) sound.pause(false);
+    if (shouldResumeSessionAudio(state, document.hidden, document.hasFocus())) sound.pause(false);
     resize();
     showSceneOnce();
   }

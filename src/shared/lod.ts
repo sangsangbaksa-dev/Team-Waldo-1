@@ -104,3 +104,40 @@ export class BoxProxy {
 
 /** 프록시용 재질: 정점 색만 쓰는 값싼 재질(안개는 그대로 받는다) */
 export function proxyMaterial(): THREE.MeshLambertMaterial { return new THREE.MeshLambertMaterial({ vertexColors: true }); }
+
+export interface HeightTile { x: number; z: number; r: number; full: THREE.BufferGeometry; coarse: THREE.BufferGeometry }
+
+/** 정사각 격자 지형(PlaneGeometry(size,size,segs,segs) 를 눕히고 높이·색을 채운 것)을 tiles×tiles 칸으로 자른다. 칸마다 원본 해상도(full)와 stride 배 성긴 해상도(coarse)를 만들고,
+ *  서로 다른 해상도 칸 사이의 틈은 가장자리 치마(skirt, 아래로 드리운 벽)가 가린다. segs 는 tiles 와 stride 의 배수여야 한다. position/normal/uv/color 는 원본 값을 그대로 옮겨 모양과 색이 같다. */
+export function tileHeightfield(src: THREE.BufferGeometry, segs: number, tiles: number, stride: number, skirt: number): HeightTile[] {
+  if (segs % tiles || (segs / tiles) % stride) throw new Error('segs 는 tiles·stride 의 배수여야 합니다');
+  const g1 = segs + 1, per = segs / tiles, pos = src.getAttribute('position'), nor = src.getAttribute('normal'), uv = src.getAttribute('uv'), col = src.getAttribute('color');
+  const attrs = [pos, nor, uv, col].filter((a): a is THREE.BufferAttribute => !!a);
+  const out: HeightTile[] = [];
+  const make = (i0: number, j0: number, step: number): THREE.BufferGeometry => {
+    const n = per / step + 1, idx: number[] = [], base = attrs.map(() => [] as number[]);
+    const push = (vi: number, dy = 0): number => { attrs.forEach((a, k) => { for (let c = 0; c < a.itemSize; c++) base[k].push(a.array[vi * a.itemSize + c] + (a === pos && c === 1 ? dy : 0)); }); return base[0].length / 3 - 1; };
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) push((j0 * per + j * step) * g1 + i0 * per + i * step);
+    for (let j = 0; j < n - 1; j++) for (let i = 0; i < n - 1; i++) { const a = i + n * j, b = i + n * (j + 1), c = i + 1 + n * (j + 1), d = i + 1 + n * j; idx.push(a, b, d, b, c, d); }
+    // 치마: 가장자리 정점을 복제해 skirt 만큼 내리고, 바깥쪽을 향하게 이어 붙인다
+    const border: [number[], number, number][] = [
+      [Array.from({ length: n }, (_, i) => i), 0, -1], [Array.from({ length: n }, (_, i) => i + n * (n - 1)), 0, 1],
+      [Array.from({ length: n }, (_, j) => j * n), -1, 0], [Array.from({ length: n }, (_, j) => j * n + n - 1), 1, 0],
+    ];
+    const P = base[0], at = (v: number): THREE.Vector3 => new THREE.Vector3(P[v * 3], P[v * 3 + 1], P[v * 3 + 2]);
+    for (const [list, ox, oz] of border) {
+      const drop = list.map(v => { const k = base[0].length / 3; attrs.forEach((a, m) => { for (let c = 0; c < a.itemSize; c++) base[m].push(base[m][v * a.itemSize + c] - (a === pos && c === 1 ? skirt : 0)); }); return k; });
+      for (let s = 0; s < list.length - 1; s++) {
+        const a = list[s], b = list[s + 1], a2 = drop[s], b2 = drop[s + 1], nrm = new THREE.Vector3().crossVectors(at(b).sub(at(a)), at(a2).sub(at(a)));
+        if (nrm.x * ox + nrm.z * oz >= 0) idx.push(a, b, a2, b, b2, a2); else idx.push(a, a2, b, b, a2, b2);
+      }
+    }
+    const g = new THREE.BufferGeometry(); attrs.forEach((a, k) => g.setAttribute(attrName(a, src), new THREE.BufferAttribute(new Float32Array(base[k]), a.itemSize))); g.setIndex(idx); g.computeBoundingSphere(); return g;
+  };
+  for (let tj = 0; tj < tiles; tj++) for (let ti = 0; ti < tiles; ti++) {
+    const full = make(ti, tj, 1), coarse = make(ti, tj, stride), bs = full.boundingSphere!;
+    out.push({ x: bs.center.x, z: bs.center.z, r: bs.radius, full, coarse });
+  }
+  return out;
+}
+function attrName(a: THREE.BufferAttribute, src: THREE.BufferGeometry): string { for (const k of Object.keys(src.attributes)) if (src.attributes[k] === a) return k; return 'position'; }

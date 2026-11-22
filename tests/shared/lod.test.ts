@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { BoxProxy, LodSet, splitInstanced } from '../../src/shared/lod';
+import { BoxProxy, LodSet, splitInstanced, tileHeightfield } from '../../src/shared/lod';
 
 describe('LodSet', () => {
   it('거리에 따라 제대로 → 프록시 → 끔 으로 바꾼다', () => {
@@ -40,4 +40,29 @@ describe('BoxProxy', () => {
     expect(g.getAttribute('position').count).toBe(72); expect(g.getAttribute('color').count).toBe(72);
     expect(new BoxProxy().build()).toBeNull();
   });
+});
+
+describe('tileHeightfield', () => {
+  const plane = (): THREE.BufferGeometry => { const g = new THREE.PlaneGeometry(80, 80, 8, 8); g.rotateX(-Math.PI / 2); const p = g.getAttribute('position'); for (let i = 0; i < p.count; i++) p.setY(i, Math.sin(p.getX(i) * 0.2) * 3); g.computeVertexNormals(); return g; };
+  it('칸·정점·삼각형 수가 맞고 성긴 쪽이 더 가볍다', () => {
+    const t = tileHeightfield(plane(), 8, 2, 2, 1);
+    expect(t.length).toBe(4);
+    expect(t[0].full.getAttribute('position').count).toBe(25 + 4 * 5); expect(t[0].coarse.getAttribute('position').count).toBe(9 + 4 * 3);
+    expect(t[0].full.index!.count / 3).toBe(32 + 32); expect(t[0].coarse.index!.count / 3).toBeLessThan(t[0].full.index!.count / 3);
+    expect(t[0].full.getAttribute('normal').count).toBe(t[0].full.getAttribute('position').count);
+  });
+  it('칸을 합치면 원본 바닥 면적 전체를 덮고(위쪽 면 수 보존) 치마는 바깥을 향한다', () => {
+    const t = tileHeightfield(plane(), 8, 2, 2, 1); let up = 0;
+    for (const tile of t) {
+      const g = tile.full, p = g.getAttribute('position'), ix = g.index!, a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+      for (let k = 0; k < ix.count; k += 3) {
+        a.fromBufferAttribute(p, ix.getX(k)); b.fromBufferAttribute(p, ix.getX(k + 1)); c.fromBufferAttribute(p, ix.getX(k + 2));
+        const n = b.clone().sub(a).cross(c.clone().sub(a)).normalize();
+        if (n.y > 0.5) up++;
+        else { const m = a.clone().add(b).add(c).divideScalar(3); expect((m.x - tile.x) * n.x + (m.z - tile.z) * n.z).toBeGreaterThan(0); } // 치마 면은 칸 바깥쪽
+      }
+    }
+    expect(up).toBe(8 * 8 * 2);
+  });
+  it('나누어떨어지지 않으면 거부한다', () => { expect(() => tileHeightfield(plane(), 8, 3, 2, 1)).toThrow(); });
 });

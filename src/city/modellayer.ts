@@ -25,7 +25,7 @@ export class ModelLayer {
   private st = calmState(); private pose = blankPose(); private torso = new THREE.Matrix4(); private m = new THREE.Matrix4(); private m2 = new THREE.Matrix4(); private down = new THREE.Matrix4().makeTranslation(0, -HIP, 0); private aim = new Map<number, number>();
   private v1 = new THREE.Vector3(); private one = new THREE.Vector3(1, 1, 1); private col = new THREE.Color(); private zAxis = new THREE.Vector3(0, 0, 1); private yAxis = new THREE.Vector3(0, 1, 0);
   /** 정적 소품 칸들과, 이 거리(보통 안개 끝)보다 먼 칸은 그리지 않는 컬링 거리 */
-  readonly statics: ChunkRef[] = []; reach = 4700;
+  readonly statics: ChunkRef[] = []; reach = 4700; /** 화질 단계에 따른 거리 배율(1=기본) */ lodScale = 1;
   private sets: Record<string, CharSet> = {}; private mechs = new Map<number, THREE.Object3D>(); private crystalMesh: THREE.InstancedMesh;
   private lam = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.72, metalness: 0.12 }); private basic = new THREE.MeshBasicMaterial({ vertexColors: true });
   vmScene = new THREE.Scene(); vmCam = new THREE.PerspectiveCamera(64, 1, 0.5, 200); private vm: THREE.Object3D | null = null; private vmId = ''; private vmSwap = 0; private flash: THREE.Sprite;
@@ -65,12 +65,20 @@ export class ModelLayer {
     const CELL = 800, mat = new THREE.Matrix4(), p = new THREE.Vector3();
     for (const m of [...this.scene.children]) {
       if (before.has(m) || !(m instanceof THREE.InstancedMesh) || m.count === 0) continue;
+      // 종류별 최대 거리: 작고 흔한 소품(가로등·신호등·보도 소품)은 일찍, 큰 것(나무·구조물)은 늦게 끈다. 멀리선 안개와 건물 실루엣에 묻혀 티가 나지 않는다.
+      m.geometry.computeBoundingSphere(); m.getMatrixAt(0, mat); const size = (m.geometry.boundingSphere?.radius ?? 20) * Math.cbrt(Math.abs(mat.determinant())), tris = (m.geometry.index?.count ?? m.geometry.getAttribute('position').count) / 3;
+      const far = Math.min(size < 14 ? 1300 : size < 45 ? 2000 : 3000, tris > 1500 ? 1800 : Infinity);
       const cells = new Map<string, number[]>();
       for (let i = 0; i < m.count; i++) { m.getMatrixAt(i, mat); p.setFromMatrixPosition(mat); const key = Math.floor(p.x / CELL) + ',' + Math.floor(p.z / CELL), a = cells.get(key); if (a) a.push(i); else cells.set(key, [i]); }
+      // 삼각형이 많은 종류(나무·구조물 등)는 멀 때 같은 자리에 네모 한 개로 대신한다(공용 src/shared/lod.ts 의 박스 프록시 방식)
+      let boxGeo: THREE.BufferGeometry | null = null, boxMat: THREE.Material | null = null;
+      if (tris > 300) { const bb = (m.geometry.boundingBox ??= (m.geometry.computeBoundingBox(), m.geometry.boundingBox!)), sz = bb.getSize(new THREE.Vector3()), ct = bb.getCenter(new THREE.Vector3()); boxGeo = new THREE.BoxGeometry(sz.x, sz.y, sz.z).translate(ct.x, ct.y, ct.z); boxMat = new THREE.MeshLambertMaterial({ color: averageColor(m.geometry).multiplyScalar(0.9) }); }
       for (const ids of cells.values()) {
         const c = new THREE.InstancedMesh(m.geometry, m.material, ids.length); c.castShadow = m.castShadow; c.receiveShadow = m.receiveShadow; c.renderOrder = m.renderOrder;
         ids.forEach((src, k) => { m.getMatrixAt(src, mat); c.setMatrixAt(k, mat); }); c.instanceMatrix.needsUpdate = true; c.computeBoundingSphere(); this.scene.add(c);
-        const bs = c.boundingSphere!; this.statics.push({ mesh: c, x: bs.center.x, z: bs.center.z, r: bs.radius }); // 안개 너머 칸을 끄기 위해 기억
+        const bs = c.boundingSphere!; let proxy: THREE.InstancedMesh | undefined;
+        if (boxGeo && boxMat) { proxy = new THREE.InstancedMesh(boxGeo, boxMat, ids.length); proxy.instanceMatrix = c.instanceMatrix; proxy.count = ids.length; proxy.visible = false; proxy.castShadow = false; proxy.receiveShadow = false; proxy.layers.mask = c.layers.mask; proxy.boundingSphere = bs; this.scene.add(proxy); }
+        this.statics.push({ mesh: c, x: bs.center.x, z: bs.center.z, r: bs.radius, far, proxy, near: 520 }); // 안개 너머 칸을 끄기 위해 기억
       }
       this.scene.remove(m); m.dispose();
     }
@@ -177,7 +185,7 @@ export class ModelLayer {
   // ---------- 매 프레임 ----------
   update(pb: Actor | null, third: boolean, cam: THREE.Vector3): void {
     const w = this.world, d = this.d, base = this.base, torso = this.torso, m = this.m, now = performance.now() / 1000;
-    cullChunks(this.statics, cam, this.reach);
+    cullChunks(this.statics, cam, this.reach, this.lodScale);
     for (const k of CHAR_KINDS) { const s = this.sets[k]; for (const p of [s.body, s.leg, s.shin, s.armL, s.armR]) if (p) p.n = 0; }
     const seenMech = new Set<number>();
     for (const a of w.actors) {
@@ -233,3 +241,9 @@ export class ModelLayer {
   syncViewCam(cam: THREE.PerspectiveCamera): void { this.vmCam.fov = cam.fov; this.vmCam.aspect = cam.aspect; this.vmCam.updateProjectionMatrix(); }
 }
 export { SIZE, PITCH, ROAD, BLOCKS };
+
+/** 정점 색의 평균(없으면 회색) — 먼 곳 네모 프록시의 색 */
+function averageColor(g: THREE.BufferGeometry): THREE.Color {
+  const a = g.getAttribute('color'), c = new THREE.Color(0x808080); if (!a) return c;
+  let r = 0, gr = 0, b = 0; for (let i = 0; i < a.count; i++) { r += a.getX(i); gr += a.getY(i); b += a.getZ(i); } return c.setRGB(r / a.count, gr / a.count, b / a.count);
+}

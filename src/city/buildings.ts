@@ -5,6 +5,7 @@ import type { World } from './world';
 import { SIZE } from './defs';
 import type { Atmosphere } from './atmosphere';
 import type { Emitter } from './streetfx';
+import { LodSet } from '../shared/lod';
 
 export const FACADE_STYLES = ['brick', 'glass', 'deco', 'industrial', 'ribbon'] as const;
 export const BUILDING_SHADOW_LAYER = 2;
@@ -97,7 +98,7 @@ function streakTexture(): THREE.CanvasTexture {
   return new THREE.CanvasTexture(c);
 }
 
-export interface BuildingFx { blink: (t: number) => void; setMood: (atm: Atmosphere) => void; updateLOD: (x: number, z: number) => void; stacks: Emitter[] }
+export interface BuildingFx { blink: (t: number) => void; setMood: (atm: Atmosphere) => void; updateLOD: (x: number, z: number) => void; /** 건물 LOD 거리(제대로 그리는 반경 1800 · 그 너머는 네모 프록시)를 배율로 줄이거나 늘린다 */ lod: LodSet; stacks: Emitter[] }
 
 /** 높은 건물 옥상의 붉은 항공장애등을 두 박자로 번갈아 깜박이게 하는 갱신 함수를 돌려준다. */
 export function buildBuildings(world: World, scene: THREE.Scene, base: string): BuildingFx {
@@ -221,7 +222,7 @@ export function buildBuildings(world: World, scene: THREE.Scene, base: string): 
   const trimMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
   const buildingMats = [...facadeMats, ...shopMats, trimMat];
   const shadowMat = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
-  const lods: { building: THREE.Mesh; shadow: THREE.Mesh; proxy: THREE.Mesh; bounds: THREE.Box3 }[] = [];
+  const lod = new LodSet({ near: 1800, far: 1e9 }, 0.03);
   for (const { facades, shops, trim, proxy } of chunks.values()) {
     const parts: THREE.BufferGeometry[] = [], materials: THREE.Material[] = [];
     [...facades, ...shops, trim].forEach((m, k) => {
@@ -241,7 +242,8 @@ export function buildBuildings(world: World, scene: THREE.Scene, base: string): 
     const simple = new BuildingBatch(proxyGeometry, trimMat);
     simple.geometry.computeBoundingBox();
     scene.add(building, shadow, simple);
-    lods.push({ building, shadow, proxy: simple, bounds: geometry.boundingBox! });
+    const bb = geometry.boundingBox!, ctr = bb.getCenter(new THREE.Vector3());
+    lod.add({ x: ctr.x, z: ctr.z, r: Math.hypot(bb.max.x - bb.min.x, bb.max.z - bb.min.z) / 2, full: [building, shadow], proxy: [simple] });
   }
   // 네온 돌출 간판(스스로 빛나는 재질)과 반사 줄기(가산 혼합)
   const bladeMats = BLADES.map(([text, color]) => new THREE.MeshBasicMaterial({ map: bladeTexture(text, color), side: THREE.DoubleSide }));
@@ -267,14 +269,8 @@ export function buildBuildings(world: World, scene: THREE.Scene, base: string): 
       streakMat.opacity = Math.min(1, atm.wet * atm.lamps * 0.34); streakMat.visible = streakMat.opacity > 0.02;
       for (const m of beaconMats) m.opacity = 0.7 + atm.night * 0.3;
     },
-    updateLOD: (x: number, z: number): void => {
-      for (const lod of lods) {
-        const dx = Math.max(lod.bounds.min.x - x, 0, x - lod.bounds.max.x);
-        const dz = Math.max(lod.bounds.min.z - z, 0, z - lod.bounds.max.z);
-        const near = dx * dx + dz * dz < 1800 * 1800;
-        lod.building.visible = near; lod.shadow.visible = near; lod.proxy.visible = !near;
-      }
-    },
+    updateLOD: (x: number, z: number): void => { lod.update({ x, z }); },
+    lod,
     stacks,
   };
 }

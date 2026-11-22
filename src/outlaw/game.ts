@@ -7,6 +7,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import './outlaw.css';
+import { transactionChanged } from './transaction';
 import { outlawWorldDelta, worldAudioPaused } from './frame-time';
 import { readPreferences, writePreferences } from '../prefs';
 import type { LoadingScreen } from '../loading';
@@ -160,10 +161,17 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     openModal('brief', `<span class="tag">의뢰</span><h2>${esc(m.title)}</h2><p class="giver">${esc(m.giver)}</p><p class="brief">${esc(m.brief).replace(/\n/g, '<br>')}</p><p class="reward">보상 ${money(m.reward)}</p><div class="ol-btns"><button data-start="${id}" type="button">수락</button><button data-k="resume" type="button">취소</button></div>`);
   }
   function openUi(kind: string): void { if (!sim) return; openModal(kind, ui.render(kind)); }
+  /** Only durable gameplay mutations should write storage. Rejecting an
+   * unaffordable purchase must not trigger a needless localStorage write. */
+  function persistTransaction(beforeCash: number, beforeWagered = sim?.life.counters.wagered ?? 0): void {
+    if (!sim || versus) return;
+    if (transactionChanged(beforeCash, sim.cash, beforeWagered, sim.life.counters.wagered ?? 0) && !save())
+      toast('저장하지 못했습니다. 브라우저 저장 공간을 확인하세요.');
+  }
   function uiClick(ds: DOMStringMap): void {
     if (!sim) return; const cashBefore = sim.cash, wageredBefore = sim.life.counters.wagered ?? 0; const r = ui.click(ds);
     if (r.toast) toast(r.toast); if (r.sound) audio.play(r.sound);
-    if ((['call', 'buyprop', 'collect', 'outfit', 'bribe', 'buycar'].includes(ds.ui ?? '') || (modalKind === 'casino' && (sim.cash !== cashBefore || (sim.life.counters.wagered ?? 0) !== wageredBefore))) && !versus && !save()) toast('저장하지 못했습니다. 브라우저 저장 공간을 확인하세요.');
+    persistTransaction(cashBefore, wageredBefore);
     if (r.begin) { closeModal(); begin(false); if (!save()) toast('저장하지 못했습니다. 브라우저 저장 공간을 확인하세요.'); return; }
     if (r.close) { closeModal(); return; }
     if (r.kind) { const top = modalEl.querySelector('.ol-card'); const sy = top?.scrollTop ?? 0; openUi(r.kind); const nt = modalEl.querySelector('.ol-card'); if (nt) nt.scrollTop = sy; }
@@ -173,8 +181,8 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     audio.unlock(); audio.play('menu_click');
     const k = b.dataset.k;
     if (b.dataset.ui) { uiClick(b.dataset); return; }
-    if (b.dataset.buy) { toast(sim.buyWeapon(b.dataset.buy as never)); save(); openShop(); }
-    else if (b.dataset.armor) { toast(sim.buyArmor()); save(); openShop(); }
+    if (b.dataset.buy) { const cashBefore = sim.cash; toast(sim.buyWeapon(b.dataset.buy as never)); persistTransaction(cashBefore); openShop(); }
+    else if (b.dataset.armor) { const cashBefore = sim.cash; toast(sim.buyArmor()); persistTransaction(cashBefore); openShop(); }
     else if (b.dataset.start) { const id = b.dataset.start; closeModal(); if (startMission(sim, id)) { audio.play('mission_start'); } }
     else if (k === 'resume') closeModal();
     else if (k === 'save' && !versus) { if (save()) { audio.play('save'); toast('저장했습니다'); } else toast('저장하지 못했습니다. 브라우저 저장 공간을 확인하세요.'); }
@@ -387,7 +395,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
     if (poi?.kind === 'dealer') return { text: 'E · 자동차 매장', run: () => openUi('dealer') };
     if (poi?.kind === 'casino') return { text: 'E · 카지노', run: () => openUi('casino') };
     if (poi?.kind === 'hospital') { if (p.hp < p.maxHp || p.armor < 40) return { text: `E · 치료 (${money(sim.price(120))})`, run: () => runCashAction(() => treat(sim!)) }; }
-    if (poi?.kind === 'arena') return sim.job.active ? null : { text: `E · 지하 격투 참가 (${money(sim.price(200))})`, run: () => { const r = startJob(sim!, 'fight'); if (r) toast(r); } };
+    if (poi?.kind === 'arena') return sim.job.active ? null : { text: `E · 지하 격투 참가 (${money(sim.price(200))})`, run: () => { const before = sim!.cash; const r = startJob(sim!, 'fight'); if (r) toast(r); else persistTransaction(before); } };
     if (poi?.kind === 'safehouse') return { text: 'E · 쉬기 · 저장', run: () => { toast(sim!.sleep()); } };
     if (poi?.kind === 'start') { const m = MISSION_LIST.find(x => x.startPoi === poi.id); if (m && canStart(sim, m.id)) return { text: `E · 의뢰: ${m.title}`, run: () => openBrief(m.id) }; }
     if (sim.nearestVehicle(p)) return { text: 'E · 차량 탑승' };

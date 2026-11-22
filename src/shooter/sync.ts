@@ -32,7 +32,9 @@ export interface VehTarget { x: number; z: number; yaw: number; speed: number; a
 
 /** 선수 상태를 받은 목표로 부드럽게 옮깁니다(사람·AI 꼭두각시 공용). */
 export function easePuppet(o: Player, t: PuppetTarget, dt: number): void {
-  const k = Math.min(1, dt * 14);
+  // Velocity-predicted AI needs a quicker follow rate to avoid visibly
+  // trailing a remote bot between full-state packets (up to 750ms apart).
+  const k = Math.min(1, dt * (t.vx !== undefined && t.vz !== undefined ? 22 : 14));
   if (t.vx !== undefined && t.vz !== undefined) { const advance = Math.max(0, Math.min(dt, 0.8 - (t.extrapolated ?? 0))); t.x += t.vx * advance; t.z += t.vz * advance; t.extrapolated = (t.extrapolated ?? 0) + advance; }
   if (o.veh < 0) { const far = Math.abs(t.x - o.x) + Math.abs(t.z - o.z) > 25; o.x = far ? t.x : o.x + (t.x - o.x) * k; o.z = far ? t.z : o.z + (t.z - o.z) * k; }
   o.yaw += wrap(t.yaw - o.yaw) * k; o.pitch += (t.pitch - o.pitch) * k;

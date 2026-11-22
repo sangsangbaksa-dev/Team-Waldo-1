@@ -34,6 +34,18 @@ describe('network synchronization regressions', () => {
     expect(target.x).toBeCloseTo(8); expect(bot.x).toBeLessThanOrEqual(8.001);
     expect(bot.speed).toBe(0);
   });
+  it('periodically re-sends a parked car for peers who join after it stopped', () => {
+    const {m, sync} = fixture();
+    const car = { id:0, x:42, z:-12, yaw:0.7, speed:0, hp:300, max:300,
+      lastBy:-1, driver:-1, remote:false, wreck:false, moving:false } as Vehicle;
+    m.vehicles.push(car);
+    for (let tick=1;tick<24;tick++) {
+      const packet = sync.world(tick*125, []);
+      expect(packet?.vv).toEqual([]);
+    }
+    const packet = sync.world(24*125, []);
+    expect(packet?.vv).toEqual([car.id, 420, -120, 70, 0, 0, 0]);
+  });
   it('stops predicting a remote car after 600ms without a new packet', () => {
     const {m, sync} = fixture();
     const car = { id: 0, x: 0, z: 0, yaw: 0, speed: 0, remote: true, wreck: false } as (typeof m.vehicles)[number];

@@ -12,7 +12,7 @@ import type { NetMsg } from '../net/types';
 import { ShooterView } from './view';
 import { loadShooterAssets, type ShooterAssets } from './assets';
 import { ShooterAudio } from './audio';
-import { ShooterNet, decideDeath, nadeMsg, parseNade, seedOf, type Pose } from './net';
+import { ShooterNet, decideDeath, nadeMsg, parseNade, plausiblePlayerShot, seedOf, type Pose } from './net';
 import { ShooterRoomNet, ROOM_MAX } from './room';
 import { ChatBox } from './chat';
 import { readShooterCareer, recordShooterMatch, writeShooterCareer } from './records';
@@ -161,7 +161,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       onStart: () => beginPvp(),
       onPose: p => { if (pvp) pvp.target = p; },
       onShot: sh => {
-        if (!pvp?.opp || !match) return; const aims: Array<[number, number]> = [];
+        if (!pvp?.opp || !match || !plausiblePlayerShot(sh, pvp.opp)) return; const aims: Array<[number, number]> = [];
         for (let i = 0; i + 2 < sh.ends.length; i += 3) { const dx = sh.ends[i] - sh.ox, dy = sh.ends[i + 1] - sh.oy, dz = sh.ends[i + 2] - sh.oz; aims.push([Math.atan2(dz, dx), Math.atan2(dy, Math.hypot(dx, dz))]); }
         pvp.opp.muzzle = 0.06; pvp.opp.kick = Math.min(1, pvp.opp.kick + 0.3); match.remoteShot(pvp.opp.id, sh.w, sh.ox, sh.oy, sh.oz, aims);
       },
@@ -188,7 +188,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       onStart: ids => beginRoom(ids),
       onPose: (id, p) => { const r = roomRemote(id); if (r) { r.target = p; if (p.vs && match && p.veh !== undefined && p.veh >= 0) { const v = match.vehicles[p.veh]; if (v) room!.sync.vehicleState(v, p.vs[0], p.vs[1], p.vs[2], p.vs[3], r.p.id, true, performance.now()); } } },
       onShot: (id, sh) => {
-        const r = roomRemote(id); if (!r || !match) return; const aims: Array<[number, number]> = [];
+        const r = roomRemote(id); if (!r || !match || !plausiblePlayerShot(sh, r.p)) return; const aims: Array<[number, number]> = [];
         for (let i = 0; i + 2 < sh.ends.length; i += 3) { const dx = sh.ends[i] - sh.ox, dy = sh.ends[i + 1] - sh.oy, dz = sh.ends[i + 2] - sh.oz; aims.push([Math.atan2(dz, dx), Math.atan2(dy, Math.hypot(dx, dz))]); }
         r.p.muzzle = 0.06; r.p.kick = Math.min(1, r.p.kick + 0.3); match.remoteShot(r.p.id, sh.w, sh.ox, sh.oy, sh.oz, aims);
       },

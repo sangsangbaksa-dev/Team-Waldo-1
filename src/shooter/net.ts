@@ -25,9 +25,15 @@ export function parsePose(m: NetMsg): Pose | null {
   // The BR aircraft can start outside the playable square, but never 1000m
   // away. Do not accept absurd coordinates or health from peer messages.
   if (!(num(m.x, -1000, 1000) && num(m.z, -1000, 1000) && num(m.yaw, -50, 50) && num(m.pitch, -3, 3) && num(m.hp, 0, PLAYER.hp) && num(m.ar, 0, 500) && weapon(m.w) && num(m.sp, 0, 50))) return null;
+  if (m.a !== undefined && (!num(m.a, 0, 3) || !Number.isInteger(m.a))) return null;
+  if (num(m.a, 1, 3) && !num(m.al, 0, AIR.alt)) return null;
+  if (m.v !== undefined && (!num(m.v, -1, 10000) || !Number.isInteger(m.v))) return null;
+  if (m.vs !== undefined && (!Array.isArray(m.vs) || m.vs.length !== 4 || !m.vs.every(v => num(v)))) return null;
   const p: Pose = { x: m.x, z: m.z, yaw: m.yaw, pitch: m.pitch, hp: m.hp, armor: m.ar, w: m.w, speed: m.sp, ads: m.ad === 1, reloading: m.rl === 1, crouch: m.cr === 1 };
-  if (num(m.a, 0, 3) && Number.isInteger(m.a)) p.air = m.a; if (num(m.al, 0, AIR.alt)) p.alt = m.al; if (num(m.v, -1, 10000) && Number.isInteger(m.v)) p.veh = m.v;
-  if (Array.isArray(m.vs) && m.vs.length === 4 && m.vs.every(v => num(v))) p.vs = m.vs as [number, number, number, number];
+  if (m.a !== undefined) p.air = m.a as number;
+  if (num(m.al, 0, AIR.alt)) p.alt = m.al;
+  if (m.v !== undefined) p.veh = m.v as number;
+  if (Array.isArray(m.vs)) p.vs = m.vs as [number, number, number, number];
   return p;
 }
 /** 위치 메시지(1대1과 방 공용). 소수 둘째 자리까지 줄여 보냅니다. */

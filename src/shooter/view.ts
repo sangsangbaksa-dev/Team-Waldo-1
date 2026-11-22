@@ -51,7 +51,7 @@ export class ShooterView {
   private vmScene = new THREE.Scene(); private vmCam = new THREE.PerspectiveCamera(64, 1, 0.5, 200);
   private sun: THREE.DirectionalLight; private glow = glowTexture(); private rigs = new Map<number, Rig>(); private lootNodes = new Map<number, { node: THREE.Object3D; baseY: number; dispose: () => void }>();
   private lootDummy = new THREE.Object3D();
-  private pendingRigUpgrades = new Set<number>();
+  private pendingRigUpgrades = new Set<number>(); private pendingLootUpgrades = new Set<number>();
   private zoneWall: THREE.Mesh; private zoneNext: THREE.Mesh; private tracers: Fx[] = []; private sparks: THREE.Points; private sparkData: { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; r: number; g: number; b: number }[] = [];
   private vm: THREE.Object3D | null = null; private vmOwned = false; private aimBlend = 0; private reloadBlend = 0; private vmId = ''; private vmParts = ''; private vmSwap = 0; private vmFlash: THREE.Sprite; private bob = 0; private shake = 0; private terrainView: TerrainView | null = null; private fovPunch = 0; private flashKick = 0; private roll = 0; private sprintT = 0; private time = 0;
   private mats = new Map<string, THREE.Material>(); private tmpCol = new THREE.Color(); private beams: THREE.InstancedMesh;
@@ -100,6 +100,9 @@ export class ShooterView {
     this.assets = assets;
     this.vmParts = '';
     for (const id of this.rigs.keys()) this.pendingRigUpgrades.add(id);
+    // Pickups already created with fallback geometry should also gain the
+    // detailed GLB look without making the player restart the match.
+    for (const loot of this.match.loot) if ((loot.kind === 'weapon' || loot.kind === 'attach') && this.lootNodes.has(loot.id)) this.pendingLootUpgrades.add(loot.id);
   }
 
   private mat(key: string, make: () => THREE.Material): THREE.Material { let m = this.mats.get(key); if (!m) { m = make(); this.mats.set(key, m); } return m; }
@@ -340,19 +343,23 @@ export class ShooterView {
     return { node: g, baseY, dispose: () => { g.removeFromParent(); const geos = new Set<THREE.BufferGeometry>(), mats = new Set<THREE.Material>(); for (const child of sharedModel ? [ring] : g.children) child.traverse(o => { if (o instanceof THREE.Mesh) { geos.add(o.geometry); for (const mat of Array.isArray(o.material) ? o.material : [o.material]) mats.add(mat); } }); for (const geo of geos) geo.dispose(); for (const mat of mats) mat.dispose(); } };
   }
   private syncLoot(cam: THREE.Vector3): void {
-    const live = new Set<number>(); let nb = 0; const d = this.lootDummy;
+    const live = new Set<number>(); let nb = 0, upgrades = 0; const d = this.lootDummy;
     for (const l of this.match.loot) {
       if (l.taken) continue;
       const dx = l.x - cam.x, dz = l.z - cam.z, d2 = dx * dx + dz * dz; let entry = this.lootNodes.get(l.id);
       // Create only nearby pickups; retain a small hysteresis band to avoid churn at the visibility boundary.
       if (d2 >= 180 * 180 || (!entry && d2 >= 150 * 150)) continue;
-      live.add(l.id); if (!entry) { entry = this.lootNode(l); this.lootNodes.set(l.id, entry); }
+      live.add(l.id);
+      if (entry && d2 < 150 * 150 && upgrades < 2 && this.pendingLootUpgrades.delete(l.id)) {
+        entry.dispose(); this.lootNodes.delete(l.id); entry = undefined; upgrades++;
+      }
+      if (!entry) { entry = this.lootNode(l); this.lootNodes.set(l.id, entry); }
       const n = entry.node; n.visible = d2 < 150 * 150; if (!n.visible) continue;
       n.children[0].rotation.y = this.time * 1.4 + l.id; n.children[0].position.y = entry.baseY + Math.sin(this.time * 2 + l.id) * 0.06;
       if (nb < 400) { d.position.set(l.x, 3.4, l.z); d.scale.set(1, 1, 1); d.updateMatrix(); this.beams.setMatrixAt(nb, d.matrix); this.beams.setColorAt(nb, this.tmpCol.setHex(LOOT_COLOR[l.kind])); nb++; }
     }
     this.beams.count = nb; this.beams.instanceMatrix.needsUpdate = true; if (this.beams.instanceColor) this.beams.instanceColor.needsUpdate = true;
-    for (const [id, entry] of this.lootNodes) if (!live.has(id)) { entry.dispose(); this.lootNodes.delete(id); }
+    for (const [id, entry] of this.lootNodes) if (!live.has(id)) { entry.dispose(); this.lootNodes.delete(id); this.pendingLootUpgrades.delete(id); }
   }
 
   // ---------- 효과 ----------
@@ -581,7 +588,7 @@ export class ShooterView {
     // games. Detach the skeletons before releasing this scene's own resources.
     for (const rig of this.rigs.values()) rig.ch.root.removeFromParent();
     this.rigs.clear();
-    this.pendingRigUpgrades.clear();
+    this.pendingRigUpgrades.clear(); this.pendingLootUpgrades.clear();
     disposeSceneResources(this.scene, { extraTextures: [this.glow] });
     this.post?.dispose();
     this.renderer.dispose();

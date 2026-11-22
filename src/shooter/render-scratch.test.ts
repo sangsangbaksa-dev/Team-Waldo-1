@@ -28,7 +28,7 @@ describe('ZERO ZONE render-loop scratch memory', () => {
     view.match.nades.push(grenade as Match['nades'][number]);
     view['updateNades'](1 / 60);
     const mesh = view['nadeMeshes'].get(13)!;
-    const freeGeo = vi.spyOn(mesh.geometry, 'dispose'), freeMat = vi.spyOn(mesh.material, 'dispose');
+    const freeGeo = vi.spyOn(mesh.geometry, 'dispose'), freeMat = vi.spyOn(mesh.material as THREE.Material, 'dispose');
     view['updateNades'](1 / 60);
     expect(view['nadeMeshes'].get(13)).toBe(mesh);
     expect(view['liveNadeIds']).toBe(ids);

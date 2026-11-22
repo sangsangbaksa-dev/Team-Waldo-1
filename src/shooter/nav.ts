@@ -1,4 +1,5 @@
 // ZERO ZONE — 봇 길찾기. 지도를 1m 격자로 나누고 벽·바위·나무 밑동이 닿는 칸을 막은 뒤 A* 로 길을 찾습니다.
+import { MinPriorityQueue } from '../shared/min-priority-queue';
 import { PLAYER } from './config';
 import type { GameMap } from './world';
 
@@ -19,12 +20,30 @@ export function navFor(map: GameMap): Nav {
 }
 
 const cellOf = (nav: Nav, v: number): number => Math.max(0, Math.min(nav.w - 1, Math.floor(v + nav.half)));
-const blockedCell = (nav: Nav, x: number, z: number): boolean => nav.block[cellOf(nav, z) * nav.w + cellOf(nav, x)] === 1;
+const free = (nav: Nav, x: number, z: number): boolean => x >= 0 && z >= 0 && x < nav.w && z < nav.w && nav.block[z * nav.w + x] === 0;
+const inBounds = (nav: Nav, x: number, z: number): boolean => Number.isFinite(x) && Number.isFinite(z) && x >= -nav.half && z >= -nav.half && x < nav.half && z < nav.half;
 
 /** (ax,az)에서 (bx,bz)까지 직선으로 걸어도 막히지 않는지. */
 export function walkable(nav: Nav, ax: number, az: number, bx: number, bz: number): boolean {
-  const d = Math.hypot(bx - ax, bz - az), n = Math.ceil(d / 0.5);
-  for (let i = 1; i <= n; i++) { const t = i / n; if (blockedCell(nav, ax + (bx - ax) * t, az + (bz - az) * t)) return false; }
+  if (!inBounds(nav, ax, az) || !inBounds(nav, bx, bz)) return false;
+  const x0 = ax + nav.half, z0 = az + nav.half, dx = bx - ax, dz = bz - az;
+  let x = Math.floor(x0), z = Math.floor(z0);
+  const endX = cellOf(nav, bx), endZ = cellOf(nav, bz);
+  const sx = Math.sign(dx), sz = Math.sign(dz);
+  const stepX = dx ? 1 / Math.abs(dx) : Infinity, stepZ = dz ? 1 / Math.abs(dz) : Infinity;
+  let tx = dx ? ((sx > 0 ? x + 1 : x) - x0) / dx : Infinity;
+  let tz = dz ? ((sz > 0 ? z + 1 : z) - z0) / dz : Infinity;
+  if (!free(nav, x, z)) return false;
+  // Visit every crossed cell, including both sides of exact diagonal corners.
+  while (x !== endX || z !== endZ) {
+    const nextX = x === endX ? Infinity : tx, nextZ = z === endZ ? Infinity : tz;
+    if (Math.abs(nextX - nextZ) <= 1e-10) {
+      if (!free(nav, x + sx, z) || !free(nav, x, z + sz)) return false;
+      x += sx; z += sz; tx += stepX; tz += stepZ;
+    } else if (nextX < nextZ) { x += sx; tx += stepX; }
+    else { z += sz; tz += stepZ; }
+    if (!free(nav, x, z)) return false;
+  }
   return true;
 }
 
@@ -41,24 +60,26 @@ function freeCell(nav: Nav, cx: number, cz: number): number {
 const SQ2 = Math.SQRT2;
 /** A* 경로(평탄화된 [x,z,x,z,…]). 길이 없으면 null. */
 export function findPath(nav: Nav, sx: number, sz: number, gx: number, gz: number, maxNodes = 40000): number[] | null {
+  if (![sx, sz, gx, gz].every(Number.isFinite) || !Number.isFinite(maxNodes) || maxNodes <= 0) return null;
   const w = nav.w, s = freeCell(nav, cellOf(nav, sx), cellOf(nav, sz)), e = freeCell(nav, cellOf(nav, gx), cellOf(nav, gz)); if (s < 0 || e < 0) return null;
-  const stamp = ++nav.stamp, ex = e % w, ez = (e / w) | 0, open: Array<[number, number]> = [];
-  const push = (f: number, i: number): void => { open.push([f, i]); let k = open.length - 1; while (k > 0) { const p = (k - 1) >> 1; if (open[p][0] <= open[k][0]) break; [open[p], open[k]] = [open[k], open[p]]; k = p; } };
-  const pop = (): number => {
-    const top = open[0][1], last = open.pop()!; if (open.length) { open[0] = last; let k = 0; for (;;) { const l = 2 * k + 1, r = l + 1; let m = k; if (l < open.length && open[l][0] < open[m][0]) m = l; if (r < open.length && open[r][0] < open[m][0]) m = r; if (m === k) break; [open[m], open[k]] = [open[k], open[m]]; k = m; } }
-    return top;
-  };
+  if (s === e) return [(e % w) - nav.half + 0.5, ((e / w) | 0) - nav.half + 0.5];
+  // Two stamp values per search: open and closed, avoiding a per-search Set.
+  nav.stamp = (nav.stamp + 2) >>> 0;
+  if (nav.stamp === 0) { nav.mark.fill(0); nav.stamp = 2; }
+  const stamp = nav.stamp, closedStamp = stamp + 1, ex = e % w, ez = (e / w) | 0;
+  const open = new MinPriorityQueue();
   const h = (x: number, z: number): number => { const dx = Math.abs(x - ex), dz = Math.abs(z - ez); return (dx + dz) + (SQ2 - 2) * Math.min(dx, dz); };
-  nav.g[s] = 0; nav.from[s] = -1; nav.mark[s] = stamp; push(h(s % w, (s / w) | 0), s);
-  const closed = new Set<number>(); let found = false, nodes = 0;
-  while (open.length && nodes++ < maxNodes) {
-    const i = pop(); if (closed.has(i)) continue; closed.add(i); if (i === e) { found = true; break; }
+  nav.g[s] = 0; nav.from[s] = -1; nav.mark[s] = stamp; open.push(h(s % w, (s / w) | 0), s);
+  let found = false, nodes = 0;
+  while (open.size && nodes < maxNodes) {
+    const i = open.pop()!; if (nav.mark[i] === closedStamp) continue;
+    nav.mark[i] = closedStamp; nodes++; if (i === e) { found = true; break; }
     const x = i % w, z = (i / w) | 0;
     for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
       if (!dx && !dz) continue; const nx = x + dx, nz = z + dz; if (nx < 0 || nz < 0 || nx >= w || nz >= w) continue;
-      const j = nz * w + nx; if (nav.block[j]) continue; if (dx && dz && (nav.block[z * w + nx] || nav.block[nz * w + x])) continue; // 모서리 가로지르기 금지
+      const j = nz * w + nx; if (nav.block[j] || nav.mark[j] === closedStamp) continue; if (dx && dz && (nav.block[z * w + nx] || nav.block[nz * w + x])) continue; // 모서리 가로지르기 금지
       const g = nav.g[i] + (dx && dz ? SQ2 : 1); if (nav.mark[j] === stamp && g >= nav.g[j]) continue;
-      nav.mark[j] = stamp; nav.g[j] = g; nav.from[j] = i; push(g + h(nx, nz), j);
+      nav.mark[j] = stamp; nav.g[j] = g; nav.from[j] = i; open.push(g + h(nx, nz), j);
     }
   }
   if (!found) return null;

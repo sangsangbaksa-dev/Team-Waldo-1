@@ -75,3 +75,18 @@ describe('combat rewards', () => {
     expect(sim.shield).toBe(5);
   });
 });
+
+describe('SKY WAR missile and hit feedback', () => {
+  it('lets the player fire at once, but only with a lock; reports the attacker on hits', async () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.step(DT, NEUTRAL);
+    expect(sim.player.missileCd).toBeLessThanOrEqual(0);
+    const before = sim.player.missiles; sim.events.length = 0;
+    sim.step(DT, { ...NEUTRAL, missile: true });
+    expect(sim.player.missiles).toBe(before);
+    expect(sim.events.some(e => e.t === 'nolock')).toBe(true);
+    sim.events.length = 0;
+    sim.damage(sim.player, 1, 4242, sim.player.pos);
+    expect(sim.events.find(e => e.t === 'hit' && e.id === sim.player.id)).toMatchObject({ by: 4242 });
+  });
+});

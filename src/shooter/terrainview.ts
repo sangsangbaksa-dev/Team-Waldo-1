@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { makeRng } from './config';
 import type { GameMap } from './world';
 import { CLIFF_T } from './terrain';
+import { exteriorSurface } from './ground-surfaces';
 import { concreteTexture, dirtTexture, fadeDiscTexture, fadeRoadTexture, waterTexture } from './textures';
 
 const smooth = (t: number): number => { const x = Math.max(0, Math.min(1, t)); return x * x * (3 - 2 * x); };
@@ -64,17 +65,24 @@ export class TerrainView {
     const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color, map, alphaMap, transparent: true, opacity, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -order, polygonOffsetUnits: -order }));
     m.position.y = y; m.renderOrder = order; m.receiveShadow = true; this.group.add(m); return m;
   }
+  /** Clip each exterior decal against building footprints before it enters the transparent render queue. */
+  private exterior(x: number, z: number, w: number, d: number, angle = 0): THREE.BufferGeometry {
+    const data = exteriorSurface(x, z, w, d, angle, this.map.buildings), g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(data.uvs, 2));
+    g.computeVertexNormals(); return g;
+  }
   /** 마을 바닥: 가장자리가 흙빛으로 번지며 풀과 섞이는 울퉁불퉁한 원 + 둘레의 흙 얼룩. */
   private buildTowns(): void {
     const tints: Record<string, number> = { urban: 0xffffff, industrial: 0xb4b8bc, military: 0xd2c6a0, farm: 0xc8b894, village: 0xeae4d4 }, rng = makeRng(this.map.seed + 17), dirt = dirtTexture();
     const alpha = [fadeDiscTexture(3, 0.62), fadeDiscTexture(8, 0.62), fadeDiscTexture(13, 0.62)], skirt = fadeDiscTexture(21, 0.2), blot = [fadeDiscTexture(31, 0.15), fadeDiscTexture(37, 0.15)];
     this.map.compounds.forEach((c, i) => {
       const tex = concreteTexture(); tex.repeat.set((c.r + 6) / 3, (c.r + 6) / 3);
-      const sk = this.soft(new THREE.PlaneGeometry((c.r + 20) * 2, (c.r + 20) * 2).rotateX(-Math.PI / 2), 0xfff0c8, dirt.clone(), skirt, 0.02, 1, 0.38); sk.position.x = c.x; sk.position.z = c.z; (sk.material as THREE.MeshLambertMaterial).map!.repeat.set((c.r + 20) / 4, (c.r + 20) / 4); (sk.material as THREE.MeshLambertMaterial).map!.needsUpdate = true;
-      const pad = this.soft(new THREE.PlaneGeometry((c.r + 6) * 2, (c.r + 6) * 2).rotateX(-Math.PI / 2), tints[c.theme] ?? 0xffffff, tex, alpha[i % 3], 0.04, 2); pad.position.x = c.x; pad.position.z = c.z; pad.rotation.y = rng() * 6.28;
+      const sk = this.soft(this.exterior(c.x, c.z, (c.r + 20) * 2, (c.r + 20) * 2), 0xfff0c8, dirt.clone(), skirt, 0.02, 1, 0.38); (sk.material as THREE.MeshLambertMaterial).map!.repeat.set((c.r + 20) / 4, (c.r + 20) / 4); (sk.material as THREE.MeshLambertMaterial).map!.needsUpdate = true;
+      this.soft(this.exterior(c.x, c.z, (c.r + 6) * 2, (c.r + 6) * 2, rng() * 6.28), tints[c.theme] ?? 0xffffff, tex, alpha[i % 3], 0.04, 2);
       if (!this.low) for (let k = 0; k < 9; k++) { // 둘레의 흙·자갈 얼룩
-        const a = rng() * Math.PI * 2, r = c.r * (0.78 + rng() * 0.55), s = 4 + rng() * 8, b = this.soft(new THREE.PlaneGeometry(s * 2, s * 2).rotateX(-Math.PI / 2), rng() < 0.5 ? 0xfff0c8 : 0xe8e4d6, dirt, blot[k % 2], 0.03, 1, 0.5);
-        b.position.x = c.x + Math.cos(a) * r; b.position.z = c.z + Math.sin(a) * r; b.rotation.y = rng() * 6.28;
+        const a = rng() * Math.PI * 2, r = c.r * (0.78 + rng() * 0.55), s = 4 + rng() * 8, color = rng() < 0.5 ? 0xfff0c8 : 0xe8e4d6;
+        this.soft(this.exterior(c.x + Math.cos(a) * r, c.z + Math.sin(a) * r, s * 2, s * 2, rng() * 6.28), color, dirt, blot[k % 2], 0.03, 1, 0.5);
       }
     });
   }
@@ -84,7 +92,7 @@ export class TerrainView {
     for (const [i, j] of this.map.roads) {
       const a = cs[i], b = cs[j], d = Math.hypot(b.x - a.x, b.z - a.z), tex = dirt.clone(); tex.repeat.set(d / 4, 1); tex.needsUpdate = true;
       const af = fade.clone(); af.repeat.set(Math.max(1, d / 40), 1); af.needsUpdate = true;
-      const road = this.soft(new THREE.PlaneGeometry(d, 6.4).rotateX(-Math.PI / 2), 0xd9cdb4, tex, af, 0.025, 1); road.rotation.y = -Math.atan2(b.z - a.z, b.x - a.x); road.position.x = (a.x + b.x) / 2; road.position.z = (a.z + b.z) / 2;
+      this.soft(this.exterior((a.x + b.x) / 2, (a.z + b.z) / 2, d, 6.4, -Math.atan2(b.z - a.z, b.x - a.x)), 0xd9cdb4, tex, af, 0.025, 1);
     }
   }
   private water(color: number, opacity: number, y: number): THREE.MeshPhongMaterial {

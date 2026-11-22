@@ -16,6 +16,9 @@ const PROFILES: Record<string, EngineProfile> = {
 };
 export const engineProfile = (id: string): EngineProfile => PROFILES[id] ?? PROFILES.arc;
 
+/** SPEED RUSH 는 합성음이 커서 마스터를 낮춰 다른 게임과 체감 음량을 맞춥니다. */
+export const RACE_LEVEL = 0.5;
+
 export class RaceAudio {
   private prof: EngineProfile = PROFILES.arc;
   private subOsc: { o: OscillatorNode; gain: GainNode } | null = null;
@@ -23,7 +26,7 @@ export class RaceAudio {
   private lastThr = 0; private lastPop = 0;
   /** 차량을 바꾸면 엔진 소리 성격이 달라집니다. */
   setCar(id: string): void { this.prof = engineProfile(id); }
-  private eng = new AudioEngine();
+  private eng = new AudioEngine(RACE_LEVEL);
   private motor: { o1: OscillatorNode; o2: OscillatorNode; filt: BiquadFilterNode; gain: GainNode } | null = null;
   private wind: { src: AudioBufferSourceNode; filt: BiquadFilterNode; gain: GainNode } | null = null;
   private skid: { src: AudioBufferSourceNode; filt: BiquadFilterNode; gain: GainNode } | null = null;
@@ -35,6 +38,7 @@ export class RaceAudio {
   gear = 1; private lastShift = 0;
   get enabled(): boolean { return this.eng.enabled; }
   set enabled(on: boolean) { this.eng.setEnabled(on); }
+  setPaused(on: boolean): void { this.eng.setPaused(on); }
   get ctx(): AudioContext | null { return this.eng.ctx; }
   get master(): GainNode | null { return this.eng.master; }
 
@@ -129,7 +133,7 @@ export class RaceAudio {
 
   private tickBed(): void {
     const c = this.eng.ctx;
-    if (!c || !this.enabled || this.done || c.state !== 'running') return;
+    if (!c || !this.enabled || this.done || this.eng.paused || c.state !== 'running') return;
     const s = this.bedStep++ % 8;
     const notes = [196, 0, 246.94, 0, 220, 0, 293.66, 0];
     const f = notes[s];

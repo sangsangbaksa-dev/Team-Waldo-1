@@ -29,8 +29,8 @@ export function dirtTexture(): THREE.CanvasTexture {
 export function concreteTexture(): THREE.CanvasTexture {
   return canvasTex(256, (g, s) => {
     const rng = makeRng(41); g.fillStyle = '#a7a498'; g.fillRect(0, 0, s, s); speckle(g, s, 6000, rng, '#c4c1b5', '#7c796e', 0.3);
-    g.strokeStyle = 'rgba(70,68,60,.55)'; g.lineWidth = 2; g.strokeRect(1, 1, s - 2, s - 2); g.beginPath(); g.moveTo(s / 2, 0); g.lineTo(s / 2, s); g.moveTo(0, s / 2); g.lineTo(s, s / 2); g.stroke();
-    for (let i = 0; i < 6; i++) { g.strokeStyle = 'rgba(60,58,50,.35)'; g.lineWidth = 1; g.beginPath(); let x = rng() * s, y = rng() * s; g.moveTo(x, y); for (let k = 0; k < 5; k++) { x += (rng() - 0.5) * 30; y += (rng() - 0.5) * 30; g.lineTo(x, y); } g.stroke(); }
+    // Continuous worn concrete: no tile borders, grid or repeated black cracks.
+    speckle(g, s, 2400, rng, '#b9b6aa', '#99968a', 0.12);
   });
 }
 
@@ -61,9 +61,10 @@ export function wallTexture(i: number): THREE.CanvasTexture {
 }
 export function floorTexture(): THREE.CanvasTexture {
   return canvasTex(256, (g, s) => {
-    const rng = makeRng(77); g.fillStyle = '#8c6d4a'; g.fillRect(0, 0, s, s);
-    for (let y = 0; y < s; y += 32) { g.fillStyle = `hsl(${28 + rng() * 6}, ${28 + rng() * 10}%, ${34 + rng() * 10}%)`; g.fillRect(0, y, s, 30); g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(0, y + 30, s, 2); }
-    speckle(g, s, 1500, rng, '#d8b98a', '#3b2a18', 0.2);
+    const rng = makeRng(77); g.fillStyle = '#9b846b'; g.fillRect(0, 0, s, s);
+    // Soft wood grain rather than thick, repetitive black seams.
+    for (let i = 0; i < 1800; i++) { g.fillStyle = rng() < .5 ? '#b2a087' : '#78634d'; g.globalAlpha = .05 + rng() * .10; g.fillRect(rng() * s, rng() * s, 3 + rng() * 25, .5 + rng() * 1.2); }
+    g.globalAlpha = 1; speckle(g, s, 1300, rng, '#c8b49c', '#6e5945', 0.12);
   });
 }
 export function crateTexture(): THREE.CanvasTexture {

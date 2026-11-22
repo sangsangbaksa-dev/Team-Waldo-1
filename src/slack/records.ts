@@ -11,7 +11,7 @@ export function readSlackRecord(): SlackRecord {
       for (const stage of ['class', 'dorm'] as const) {
         const entry = best[stage];
         if (entry && typeof entry === 'object' && 'score' in entry && 'grade' in entry &&
-            typeof entry.score === 'number' && Number.isFinite(entry.score) && entry.score > (record.best[stage]?.score ?? 0) &&
+            typeof entry.score === 'number' && Number.isFinite(entry.score) && (!record.best[stage] || entry.score > record.best[stage]!.score) &&
             typeof entry.grade === 'string' && /^[SABCD]$/.test(entry.grade)) {
           record.best[stage] = { score: entry.score, grade: entry.grade };
         }
@@ -21,9 +21,9 @@ export function readSlackRecord(): SlackRecord {
   return record;
 }
 export function recordSlackRun(stage: StageId, score: number, grade: string): boolean {
-  if (!Number.isFinite(score) || score <= 0 || !/^[SABCD]$/.test(grade)) return false;
+  if (!Number.isFinite(score) || score < 0 || !/^[SABCD]$/.test(grade)) return false;
   const record = readSlackRecord();
-  if ((record.best[stage]?.score ?? 0) >= score) return false;
+  const had = record.best[stage]; if (had && had.score >= score) return false;
   const entry = { score, grade };
   record.best[stage] = entry;
   try {

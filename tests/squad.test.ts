@@ -17,3 +17,13 @@ describe('squad online messages', () => {
     for (const bad of [null, 'x', [{ type: 'dragon', x: 1, y: 1 }], [{ type: 'guard', x: 1.5, y: 1 }], [{ type: 'guard', x: 1 }], Array.from({ length: 41 }, () => ({ type: 'guard', x: 1, y: 1 }))]) expect(parseArmy(bad)).toBeNull();
   });
 });
+describe('squad auto placement', () => {
+  it('is legal on both sides and beats the easy and normal AI', async () => {
+    const { autoArmy } = await import('../src/squad/ai');
+    for (const s of [0, 1] as const) expect(validArmy(autoArmy(s), s)).toBe(true);
+    for (const d of ['easy', 'normal'] as const) {
+      const mine = autoArmy(0);
+      expect(run(mine, buildArmy(1, d, mine)).winner).toBe(0);
+    }
+  });
+});

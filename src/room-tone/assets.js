@@ -1,20 +1,20 @@
-let bytes;
-export async function modelBytes() {
-  if (!bytes)
-    bytes = (async () => {
-      const data = document.querySelector("#model")?.textContent.trim();
-      if (data) {
-        const s = atob(data),
-          a = new Uint8Array(s.length);
-        for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i);
-        return a.buffer;
-      }
-      const r = await fetch("./room-tone.glb");
-      if (!r.ok) throw Error("캐릭터 모델 다운로드 실패");
-      return await r.arrayBuffer();
-    })().catch((e) => {
-      bytes = null;
-      throw e;
+let request;
+/** Share the same in-flight download between session start and callers. */
+export function modelBytes() {
+  if (!request) {
+    const pending = fetch("./room-tone.glb").then((response) => {
+      if (!response.ok) throw new Error("캐릭터 모델 다운로드 실패");
+      return response.arrayBuffer();
     });
-  return bytes;
+    // A stale, released download must never clear the newer active request.
+    let attempt;
+    attempt = pending.catch((error) => {
+      if (request === attempt) request = null;
+      throw error;
+    });
+    request = attempt;
+  }
+  return request;
 }
+/** Decoded Three.js geometry replaces the temporary source bytes. */
+export function releaseModelBytes() { request = null; }

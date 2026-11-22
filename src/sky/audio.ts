@@ -6,7 +6,7 @@ export class SkyAudio {
   private motor: { osc: OscillatorNode; gain: GainNode; filt: BiquadFilterNode; noiseGain: GainNode; noiseFilt: BiquadFilterNode; noise: AudioBufferSourceNode } | null = null;
 
   get enabled(): boolean { return this.eng.enabled; }
-  set enabled(on: boolean) { this.eng.enabled = on; }
+  set enabled(on: boolean) { this.eng.setEnabled(on); }
   setEnabled(on: boolean): void { this.eng.setEnabled(on); }
   unlock(): void { this.eng.unlock(); }
 

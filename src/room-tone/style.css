@@ -13,7 +13,7 @@ body {
   min-height: 100%;
   background: #0c100f;
   color: #efece0;
-  font-family: Arial, "Noto Sans CJK KR", "Apple SD Gothic Neo", sans-serif;
+  font-family: "Noto Sans KR", "Noto Sans CJK KR", "Apple SD Gothic Neo", "Malgun Gothic", Arial, sans-serif;
   word-break: keep-all;
 }
 button,
@@ -339,8 +339,13 @@ input[type="range"] {
   overflow: hidden;
 }
 #viewWrap {
+  z-index: 0;
   touch-action: none;
   background: #121b19;
+}
+/* Keep all HUD actions above the full-screen WebGL canvas in mobile WebKit. */
+#game > :is(.hud, .gear, .statusfoot, .touchactions, #stick, #prompt, #toast) {
+  z-index: 1;
 }
 #viewWrap canvas {
   width: 100%;
@@ -873,3 +878,79 @@ button.primary { background: #e1e1dd; border-color: #e1e1dd; color: #151515; }
   #viewWrap.noticed::before { animation: none; transform: none; }
 }
 .hudleft span, .hudleft strong, .hudright button { color: #fff; text-shadow: 0 1px 4px #000; }
+
+/* Strong contrast keeps the game HUD readable without lightening the world. */
+.hud { background: linear-gradient(#050807f0, #050807a0 55%, transparent); }
+.hudleft { background: #050807a8; padding: 0.45rem 0.8rem 0.5rem; border-left: 2px solid #dec099; border-radius: 0 4px 4px 0; }
+.hudleft span { color: #f2d9b2; font-size: 0.92rem; }
+.hudleft strong { color: #fff; font-size: 1.05rem; }
+.statusfoot { color: #f1f1ea; background: #050807b8; padding: 0.4rem 0.75rem; border-radius: 4px; font-size: 0.92rem; }
+.statusfoot strong { color: #fff; }
+.rec { color: #ffc39f; }
+#prompt { color: #fff; background: #0b1512f2; border-color: #9fb5a4; }
+.wordmark { color: inherit; text-decoration: none; }
+.wordmark:hover, .wordmark:focus-visible { text-decoration: underline; text-underline-offset: 4px; }
+
+/* Touch controls must be easy to hit without making the play area brighter. */
+@media (pointer: coarse) {
+  .hudright button {
+    min-width: 44px;
+    min-height: 44px;
+    white-space: nowrap;
+  }
+  .gear button { min-height: 44px; }
+  .touchactions button { min-height: 52px; }
+  #prompt {
+    max-width: calc(100vw - 1.5rem);
+    white-space: normal;
+  }
+}
+/* Narrow phones: place the chapter information below the controls instead of
+   shrinking it into a tall unreadable column beside them. */
+@media (max-width: 359px) and (pointer: coarse) {
+  .hud {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.35rem;
+    padding: 0.55rem 0.65rem;
+  }
+  .hudright { order: -1; align-self: flex-end; }
+  .hudleft {
+    align-self: stretch;
+    max-width: 100%;
+    padding: 0.3rem 0.55rem;
+    min-width: 0;
+  }
+  .hudleft span, .hudleft strong {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .hudleft strong { font-size: 0.9rem; margin-top: 0.1rem; }
+  #guide { margin-top: 0.1rem; }
+}
+
+/* iOS viewport-fit=cover may place controls under the notch. Reserve the
+   affected edge in portrait and landscape without changing normal screens. */
+@media (pointer: coarse) {
+  .mast {
+    padding-left: max(1.2rem, env(safe-area-inset-left));
+    padding-right: max(1.2rem, env(safe-area-inset-right));
+  }
+  .hud {
+    padding-top: max(0.8rem, env(safe-area-inset-top));
+    padding-left: max(0.65rem, env(safe-area-inset-left));
+    padding-right: max(0.65rem, env(safe-area-inset-right));
+  }
+  .touch #stick { left: max(1.15rem, env(safe-area-inset-left)); }
+  .touch .touchactions { right: max(1rem, env(safe-area-inset-right)); }
+}
+@media (max-width: 359px) and (pointer: coarse) {
+  .hud { padding-top: max(0.55rem, env(safe-area-inset-top)); }
+}
+@media (pointer: coarse) and (orientation: portrait) {
+  .mast {
+    padding-top: max(1.4rem, env(safe-area-inset-top));
+    height: max(78px, calc(env(safe-area-inset-top) + 54px));
+  }
+}

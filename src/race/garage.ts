@@ -1,5 +1,5 @@
 // SPEED RUSH — 차고: 코인은 외형 도장에만 사용합니다.
-import { SKINS, skinById } from './config';
+import { SKINS, skinById } from './skins';
 
 export interface Garage { coins: number; /** 산 스킨 id(기본 stock 은 항상 보유) */ skins: string[] }
 

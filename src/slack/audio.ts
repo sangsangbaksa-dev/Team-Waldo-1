@@ -6,7 +6,7 @@ const PENTA = [392, 440, 523, 587, 659, 784];
 
 export const createSlackAudio: CreateAudio = () => {
   let ctx: AudioContext | null = null, master: GainNode | null = null, filter: BiquadFilterNode | null = null, damp: GainNode | null = null, comp: DynamicsCompressorNode | null = null, direct: GainNode | null = null;
-  let muted = false, muffled = false, disposed = false, resuming = false;
+  let muted = false, muffled = false, disposed = false, resuming = false, held = false;
   let background: AudioNode[] = [], ambTimer = 0, bedTimer = 0, step = 0;
   const ensure = (): AudioContext | null => {
     if (disposed) return null;
@@ -115,10 +115,11 @@ export const createSlackAudio: CreateAudio = () => {
   return {
     resume() {
       const c = ensure();
-      if (!c || resuming || c.state === 'running' || c.state === 'closed') return;
+      if (!c || held || resuming || c.state === 'running' || c.state === 'closed') return;
       resuming = true;
       void c.resume().catch(() => {}).finally(() => { resuming = false; });
     },
+    hold(on) { held = on; if (on && ctx && ctx.state === 'running') void ctx.suspend().catch(() => {}); },
     play, ambience, muffle: setMuffle,
     setMuted(m) { muted = m; if (master && ctx) master.gain.setTargetAtTime(m ? 0 : MASTER, ctx.currentTime, .02); },
     dispose() {

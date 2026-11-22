@@ -7,7 +7,10 @@ const PENTA = [392, 440, 523, 587, 659, 784];
 export const createSlackAudio: CreateAudio = () => {
   let ctx: AudioContext | null = null, master: GainNode | null = null, filter: BiquadFilterNode | null = null, damp: GainNode | null = null, comp: DynamicsCompressorNode | null = null, direct: GainNode | null = null;
   let muted = false, muffled = false, disposed = false, resuming = false, held = false;
+  let pendingSuspend: Promise<void> | null = null;
   let background: AudioNode[] = [], ambTimer = 0, bedTimer = 0, step = 0;
+  let requestedAmbience: StageId | null = null;
+  let lastUiSoundAt = -Infinity;
   const ensure = (): AudioContext | null => {
     if (disposed) return null;
     if (ctx) return ctx;
@@ -21,7 +24,7 @@ export const createSlackAudio: CreateAudio = () => {
   };
   /** cut: 이 소리만 거는 로우패스(멀리서 들리는 소리). dest: 먹먹 필터를 우회할 때 direct. */
   const tone = (freq: number, duration: number, volume: number, type: OscillatorType = 'sine', end = freq, delay = 0, cut = 0, dest?: AudioNode): void => {
-    const c = ctx; const out = dest ?? filter; if (c?.state !== 'running' || !out) return; const t = c.currentTime + delay, osc = c.createOscillator(), gain = c.createGain();
+    const c = ctx; const out = dest ?? filter; if (muted || c?.state !== 'running' || !out) return; const t = c.currentTime + delay, osc = c.createOscillator(), gain = c.createGain();
     osc.type = type; osc.frequency.setValueAtTime(freq, t); osc.frequency.exponentialRampToValueAtTime(Math.max(1, end), t + duration);
     gain.gain.setValueAtTime(0.0001, t); gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, volume), t + 0.008); gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
     osc.connect(gain);
@@ -31,7 +34,7 @@ export const createSlackAudio: CreateAudio = () => {
     osc.start(t); osc.stop(t + duration + 0.01);
   };
   const noise = (duration: number, volume: number, frequency: number, delay = 0, cut = 0): void => {
-    const c = ctx; if (c?.state !== 'running' || !filter) return; const size = Math.max(1, Math.floor(c.sampleRate * duration)), buffer = c.createBuffer(1, size, c.sampleRate), data = buffer.getChannelData(0);
+    const c = ctx; if (muted || c?.state !== 'running' || !filter) return; const size = Math.max(1, Math.floor(c.sampleRate * duration)), buffer = c.createBuffer(1, size, c.sampleRate), data = buffer.getChannelData(0);
     for (let i = 0; i < size; i++) data[i] = Math.random() * 2 - 1;
     const source = c.createBufferSource(), band = c.createBiquadFilter(), gain = c.createGain(), t = c.currentTime + delay;
     source.buffer = buffer; band.type = 'bandpass'; band.frequency.value = frequency; band.Q.value = 0.7; gain.gain.setValueAtTime(Math.max(0.0002, volume), t); gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
@@ -55,7 +58,9 @@ export const createSlackAudio: CreateAudio = () => {
     const o = c.createOscillator(), g = c.createGain(); o.frequency.value = rate; g.gain.value = depth; o.connect(g); g.connect(target); o.start(); background.push(o, g);
   };
   const ambience = (next: StageId | null): void => {
-    stopBackground(); if (!next) return; const c = ctx; if (!c || !filter) return; const cls = next === 'class';
+    requestedAmbience = next;
+    stopBackground(); if (!next || muted || disposed) return;
+    const c = ctx; if (!c || !filter) return; const cls = next === 'class';
     // 층 1: 전원 험(형광등 웅웅 / PC 팬 저음). 층 2: 방 공기 노이즈. 층 3: 멀리 복도·환풍기 일렁임. 합쳐서 0.03 안팎으로 효과음 아래에 깔리게 한다.
     const hum = c.createOscillator(), hg = c.createGain(); hum.type = 'sine'; hum.frequency.value = cls ? 60 : 95; hg.gain.value = cls ? 0.011 : 0.008; hum.connect(hg); hg.connect(filter); hum.start(); background.push(hum, hg);
     if (cls) { const h2 = c.createOscillator(), g2 = c.createGain(); h2.type = 'sine'; h2.frequency.value = 120; g2.gain.value = 0.004; h2.connect(g2); g2.connect(filter); h2.start(); background.push(h2, g2); lfo(c, 0.31, 0.003, g2.gain); }
@@ -72,12 +77,20 @@ export const createSlackAudio: CreateAudio = () => {
   const setMuffle = (on: boolean): void => {
     muffled = on; clearTimeout(bedTimer); bedTimer = 0;
     if (ctx && filter && damp) { filter.frequency.setTargetAtTime(on ? MUFFLED : OPEN, ctx.currentTime, 0.1); damp.gain.setTargetAtTime(on ? DAMP : 1, ctx.currentTime, 0.1); }
-    if (!on) return;
+    if (!on || held || muted || disposed) return;
     // 이어폰에서 새어 나오는 아주 작은 음악(먹먹 필터를 우회).
-    const bed = (): void => { if (Math.random() < 0.7) tone(PENTA[Math.floor(Math.random() * PENTA.length)], 0.55, 0.012, 'sine', undefined, 0, 0, direct ?? undefined); bedTimer = window.setTimeout(bed, 360); };
-    if (ctx) bed();
+    const bed = (): void => { if (held || muted || disposed || !muffled) { bedTimer = 0; return; } if (Math.random() < 0.7) tone(PENTA[Math.floor(Math.random() * PENTA.length)], 0.55, 0.012, 'sine', undefined, 0, 0, direct ?? undefined); bedTimer = window.setTimeout(bed, 360); };
+    if (ctx && !muted) bed();
   };
   const play = (name: SfxName, vol = 1): void => {
+    if (muted || held || disposed || ctx?.state !== 'running') return;
+    // Clicking a chip 100 times in a second should not allocate 100
+    // short-lived noise buffers and oscillators. Keep important alert sounds.
+    if (name === 'click' || name === 'key') {
+      const now = performance.now();
+      if (now - lastUiSoundAt < 40) return;
+      lastUiSoundAt = now;
+    }
     const v = Math.max(0, Math.min(1, vol));
     switch (name) {
       case 'footstep': {
@@ -112,16 +125,43 @@ export const createSlackAudio: CreateAudio = () => {
       case 'hum': tone(62, 0.16, 0.22 * v, 'sine', 38, 0, 240); tone(54, 0.2, 0.15 * v, 'sine', 34, 0.19, 240); break;
     }
   };
+  const resumeAudio = (): void => {
+    const c = ensure();
+    if (!c || held || resuming || c.state === 'running' || c.state === 'closed') return;
+    resuming = true;
+    void c.resume().catch(() => {}).finally(() => { resuming = false; });
+  };
   return {
-    resume() {
-      const c = ensure();
-      if (!c || held || resuming || c.state === 'running' || c.state === 'closed') return;
-      resuming = true;
-      void c.resume().catch(() => {}).finally(() => { resuming = false; });
+    resume: resumeAudio,
+    hold(on) {
+      if (held === on) return;
+      held = on;
+      if (on) { clearTimeout(bedTimer); bedTimer = 0; }
+      else if (muffled && !muted) setMuffle(true);
+      if (on && ctx?.state === 'running') {
+        // A quick pause/resume can race a pending suspend; resume *after*
+        // suspension settles so sound is not left disabled.
+        pendingSuspend = ctx.suspend().catch(() => {});
+      } else if (!on && pendingSuspend) {
+        const current = pendingSuspend;
+        void current.then(() => {
+          if (pendingSuspend !== current) return;
+          pendingSuspend = null;
+          if (!held && !disposed) resumeAudio();
+        });
+      }
     },
-    hold(on) { held = on; if (on && ctx && ctx.state === 'running') void ctx.suspend().catch(() => {}); },
     play, ambience, muffle: setMuffle,
-    setMuted(m) { muted = m; if (master && ctx) master.gain.setTargetAtTime(m ? 0 : MASTER, ctx.currentTime, .02); },
+    setMuted(m) {
+      if (muted === m) return;
+      muted = m;
+      if (master && ctx) master.gain.setTargetAtTime(m ? 0 : MASTER, ctx.currentTime, .02);
+      // Keep the selected stage but stop expensive noise buffers, oscillators,
+      // and the ambient timer while the user cannot hear anything.
+      if (m) stopBackground();
+      else if (requestedAmbience) ambience(requestedAmbience);
+      if (muffled) setMuffle(true);
+    },
     dispose() {
       if (disposed) return;
       disposed = true;

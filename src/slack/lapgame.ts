@@ -2,8 +2,8 @@
 export const W = 320, H = 180;
 const MAX_DPR = 2;
 export function resizeBattleCanvas(canvas: HTMLCanvasElement, cssWidth: number, cssHeight: number, dpr: number): void {
-  if (cssWidth <= 0 || cssHeight <= 0) return;
-  const scale = Math.min(MAX_DPR, dpr || 1);
+  if (!Number.isFinite(cssWidth) || !Number.isFinite(cssHeight) || cssWidth <= 0 || cssHeight <= 0) return;
+  const scale = Number.isFinite(dpr) && dpr > 0 ? Math.min(MAX_DPR, dpr) : 1;
   const width = Math.max(1, Math.round(cssWidth * scale));
   const height = Math.max(1, Math.round(cssHeight * scale));
   if (canvas.width !== width) canvas.width = width;
@@ -31,7 +31,7 @@ const NODES: [number, number][] = [[52, 50], [52, 130], [268, 50], [268, 130]];
 const HQ: [number, number][] = [[30, BY], [290, BY]];
 const COL = ['#3f8fe0', '#d9503f'];
 
-const inForest = (x: number, y: number) => FORESTS.some(f => Math.hypot(x - f[0], y - f[1]) < f[2] * 0.9);
+const inForest = (x: number, y: number) => FORESTS.some(f => { const dx = x - f[0], dy = y - f[1], rad = f[2] * 0.9; return dx * dx + dy * dy < rad * rad; });
 const onHill = (x: number, y: number) => HILLS.some(h => ((x - h[0]) / h[2]) ** 2 + ((y - h[1]) / h[3]) ** 2 < 1);
 const inBand = (x: number, r: number) => x + r > RX0 && x - r < RX1;
 const isB = (t: T): t is B => 'b' in t;
@@ -112,7 +112,7 @@ export function createBattle(player: boolean, on?: (e: BattleEvent) => void) {
   const blocked = (x: number, y: number, r: number) => {
     if (x < r || y < r || x > W - r || y > H - r) return true;
     if (inBand(x, r) && Math.abs(y - BY) > BH - r) return true;
-    for (const k of ROCKS) if (Math.hypot(x - k[0], y - k[1]) < k[2] + r) return true;
+    for (const k of ROCKS) { const dx = x - k[0], dy = y - k[1], rad = k[2] + r; if (dx * dx + dy * dy < rad * rad) return true; }
     for (const d of blds) if (Math.abs(x - d.x) < d.w / 2 + r && Math.abs(y - d.y) < d.h / 2 + r) return true;
     return false;
   };
@@ -170,9 +170,10 @@ export function createBattle(player: boolean, on?: (e: BattleEvent) => void) {
   };
 
   const update = (dt: number) => {
+    if (!Number.isFinite(dt) || dt <= 0) return;
     dt = Math.min(dt, 0.1);
     b.time += dt; b.flash = Math.max(0, b.flash - dt * 2.2); b.capT = Math.max(0, b.capT - dt);
-    if (b.over !== null) { endT -= dt; if (endT <= 0) reset(); return; }
+    if (b.over !== null) { if (!player) { endT -= dt; if (endT <= 0) reset(); } return; }
     for (const t of [0, 1] as Team[]) {
       prod[t] = Math.max(0, prod[t] - dt);
       if (player && t === 0) continue;
@@ -194,8 +195,8 @@ export function createBattle(player: boolean, on?: (e: BattleEvent) => void) {
       let t = u.tgt && u.tgt.hp > 0 ? u.tgt : null;
       if (!t) {
         let best: number = st.sight;
-        for (const e of units) if (e.team !== u.team && e.hp > 0) { const d = Math.hypot(e.x - u.x, e.y - u.y); if (d < best) { best = d; t = e; } }
-        for (const e of blds) if (e.team !== u.team && e.hp > 0) { const d = Math.hypot(e.x - u.x, e.y - u.y) - e.r; if (d < best) { best = d; t = e; } }
+        for (const e of units) if (e.team !== u.team && e.hp > 0) { const dx = e.x - u.x, dy = e.y - u.y, squared = dx * dx + dy * dy; if (best > 0 && squared < best * best) { best = Math.sqrt(squared); t = e; } }
+        for (const e of blds) if (e.team !== u.team && e.hp > 0) { const dx = e.x - u.x, dy = e.y - u.y, squared = dx * dx + dy * dy, reach = best + e.r; if (reach > 0 && squared < reach * reach) { const dist = Math.sqrt(squared) - e.r; if (dist < best) { best = dist; t = e; } } }
         u.tgt = null;
       }
       if (t) {
@@ -212,8 +213,8 @@ export function createBattle(player: boolean, on?: (e: BattleEvent) => void) {
       } else if (u.dest) { move(u, u.dest.x, u.dest.y, dt); if (Math.hypot(u.dest.x - u.x, u.dest.y - u.y) < 4) u.dest = null; }
       // 같은 편끼리 겹치지 않게 살짝 밀어냄
       for (let m = n + 1; m < units.length; m++) {
-        const o = units[m], dx = o.x - u.x, dy = o.y - u.y, d = Math.hypot(dx, dy), min = u.r + o.r;
-        if (d > 0 && d < min) { const p = (min - d) * 0.25 / d; if (!blocked(u.x - dx * p, u.y - dy * p, u.r)) { u.x -= dx * p; u.y -= dy * p; } if (!blocked(o.x + dx * p, o.y + dy * p, o.r)) { o.x += dx * p; o.y += dy * p; } }
+        const o = units[m], dx = o.x - u.x, dy = o.y - u.y, squared = dx * dx + dy * dy, min = u.r + o.r;
+        if (squared > 0 && squared < min * min) { const d = Math.sqrt(squared), p = (min - d) * 0.25 / d; if (!blocked(u.x - dx * p, u.y - dy * p, u.r)) { u.x -= dx * p; u.y -= dy * p; } if (!blocked(o.x + dx * p, o.y + dy * p, o.r)) { o.x += dx * p; o.y += dy * p; } }
       }
     }
     bridgeT -= dt; if (bridgeT <= 0) { bridgeT = 2; if (band >= 4 && b.capT <= 0) say('다리 위 교전'); }
@@ -252,7 +253,8 @@ export function createBattle(player: boolean, on?: (e: BattleEvent) => void) {
   };
   // 플레이어 지시: 적을 클릭하면 공격, 땅을 클릭하면 이동(도중 적을 만나면 교전)
   const command = (x: number, y: number): 'atk' | 'move' | null => {
-    if (!player || b.over !== null) return null;
+    if (!player || b.over !== null || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+    x = Math.max(0, Math.min(W, x)); y = Math.max(0, Math.min(H, y));
     let tgt: T | null = null, best = 6;
     for (const e of units) if (e.team === 1) { const d = Math.hypot(e.x - x, e.y - y) - e.r; if (d < best) { best = d; tgt = e; } }
     for (const e of blds) if (e.team === 1) { const d = Math.hypot(e.x - x, e.y - y) - e.r; if (d < best) { best = d; tgt = e; } }

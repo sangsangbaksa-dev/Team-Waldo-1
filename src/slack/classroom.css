@@ -139,9 +139,9 @@
 /* 이벤트 연출 */
 .is-thump .sl-world{animation:sl-thump .35s}
 .sl-pop{position:absolute;z-index:8;left:50%;top:40%;margin-left:-40px;width:80px;text-align:center;color:#ffe9a8;font-weight:800;font-size:15px;text-shadow:0 2px 4px #000a;opacity:0}
-.sl-pop.on{animation:sl-pop 1s forwards}
+.sl-pop.on{animation:sl-class-pop 1s forwards}
 .sl-relief{position:absolute;z-index:8;left:50%;top:24%;margin-left:-40px;width:80px;text-align:center;font-size:24px;color:#fff;text-shadow:0 2px 4px #0008;opacity:0}
-.is-relief .sl-relief{animation:sl-pop 1.6s forwards}
+.is-relief .sl-relief{animation:sl-class-pop 1.6s forwards}
 .sl-strike{display:none;position:absolute;z-index:9;inset:0;background:#fff8;place-items:center}
 .sl-strike span{background:#fff9e8;color:#332a24;padding:12px 18px;border-radius:15px;font-weight:bold}
 .is-strike .sl-strike{display:grid;animation:sl-flash 2s forwards}
@@ -169,7 +169,7 @@
 @keyframes sl-nudge{50%{transform:translateX(-7px)}}
 @keyframes sl-type{to{transform:translateY(-2.5%)}}
 @keyframes sl-thump{20%{transform:translateY(4px)}}
-@keyframes sl-pop{0%{opacity:0;transform:translateY(8px)}20%{opacity:1}100%{opacity:0;transform:translateY(-22px)}}
+@keyframes sl-class-pop{0%{opacity:0;transform:translateY(8px)}20%{opacity:1}100%{opacity:0;transform:translateY(-22px)}}
 @keyframes sl-flash{0%{opacity:1}20%{background:#fff3}100%{opacity:0}}
 
 @media(max-width:600px){
@@ -191,3 +191,14 @@
   .sl-gbar{height:44px;gap:1cqw}
   .sl-gbar button{height:44px;min-width:44px;padding-inline:4px}
 }
+
+/* Make the classroom mini-RTS playable with a keyboard as well as a pointer. */
+.sl-win.gm .sl-wbody:focus-within{outline:2px solid #f8f4c5;outline-offset:2px}
+.sl-rts-cursor-status{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+
+/* Player-triggered retry prevents the playable mini-RTS result from disappearing. */
+.sl-end{align-content:center;justify-items:center;gap:8px;text-align:center}
+.sl-end button{cursor:pointer;border:1px solid #f0e2b3;border-radius:7px;background:#e5ce91;color:#222a22;padding:7px 12px;font-size:clamp(11px,3cqw,15px);font-weight:750;box-shadow:0 4px 14px #0005}
+.sl-end button:hover{background:#ffebb5}
+.sl-end button:focus-visible{outline:2px solid #fff;outline-offset:2px}
+@media(any-pointer:coarse){.sl-end button{min-height:44px}}

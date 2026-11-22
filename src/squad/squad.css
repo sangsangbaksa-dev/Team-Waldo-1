@@ -91,3 +91,25 @@
 .sq-hint{display:none}
 .sq-actions{flex-wrap:nowrap}.sq-actions .wd-btn,.sq-deploy .wd-btn{padding:9px 8px;font-size:13px;white-space:nowrap}
 }
+
+/* Show keyboard focus on dark tactical controls without changing pointer styling. */
+.sq-root button:focus-visible{outline:3px solid #96d5ff;outline-offset:2px}
+@media(any-pointer:coarse){.sq-root button{min-height:44px}}
+
+/* Focus ring remains visible against both halves of the tactical battlefield. */
+/* Parent ring is not clipped by the field's overflow:hidden, unlike a canvas outline. */
+.sq-field:focus-within{outline:3px solid #bde8ff;outline-offset:3px}
+.sq-field canvas:focus-visible{outline:none}
+@media(max-width:900px){.sq-field:focus-within~.sq-deploy .sq-hint{display:block}}
+
+
+/* Accessible announcements are kept for screen readers but never obscure the field. */
+.sq-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+
+@media(prefers-reduced-motion:reduce){
+  .sq-root,.sq-root *, .sq-root *::before,.sq-root *::after{
+    animation-duration:.01ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:.01ms!important;
+  }
+}

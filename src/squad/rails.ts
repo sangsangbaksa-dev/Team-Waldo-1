@@ -32,7 +32,7 @@ export function rosterHtml(battle: Battle): string {
     const rows = TYPES.map(t => {
       const all = battle.units.filter(u => u.side === s && u.type === t); if (!all.length) return '';
       const alive = all.filter(u => u.hp > 0), hp = alive.reduce((n, u) => n + u.hp, 0) / (all.length * UNITS[t].hp);
-      return `<li class="${alive.length ? '' : 'out'}">${dot(t, s)}<b>${alive.length}/${all.length}</b><i style="--hp:${Math.round(hp * 100)}%"></i></li>`;
+      return `<li data-side="${s}" data-unit="${t}" class="${alive.length ? '' : 'out'}">${dot(t, s)}<b>${alive.length}/${all.length}</b><i style="--hp:${Math.round(hp * 100)}%"></i></li>`;
     }).join('');
     return `<div class="wd-card sq-roster-${s}"><h3 class="wd-label">${s === 0 ? '파랑 진영' : '빨강 진영'}</h3><ul class="sq-roster-list">${rows}</ul></div>`;
   }).join('');
@@ -42,4 +42,34 @@ export function rightRail(stage: 'deploy' | 'battle', battle: Battle | null): st
   if (stage === 'battle') return `<aside class="wd-rail wd-rail-r" aria-hidden="true"><div class="sq-roster">${battle ? rosterHtml(battle) : ''}</div></aside>`;
   const tips = [`${UNITS.guard.name}는 체력 ${UNITS.guard.hp}으로 가장 단단한 전열입니다.`, `${UNITS.striker.name}는 속도 ${UNITS.striker.speed}로 가장 빠르지만 체력이 ${UNITS.striker.hp}뿐입니다.`, `${UNITS.siege.name}는 사거리 ${UNITS.siege.range}칸, 대신 느리고 ${UNITS.siege.cost}G입니다.`];
   return `<aside class="wd-rail wd-rail-r" aria-hidden="true"><div class="wd-card"><h3 class="wd-label">배치 팁</h3><ul>${tips.map(t => `<li>${t}</li>`).join('')}</ul></div></aside>`;
+}
+
+/**
+ * Refresh just the changing counts and health bars at 5 Hz.
+ * Replacing roster.innerHTML every 0.2 seconds used to rebuild sprite-backed
+ * images and layout nodes even when only one soldier's HP had changed.
+ * Armies cannot gain new unit types during a battle, so the row structure is fixed.
+ */
+export function updateRoster(root: HTMLElement, battle: Battle): void {
+  type Stat = { count: number; alive: number; hp: number };
+  const stats = new Map<string, Stat>();
+  for (const u of battle.units) {
+    const key = `${u.side}:${u.type}`;
+    let stat = stats.get(key);
+    if (!stat) { stat = { count: 0, alive: 0, hp: 0 }; stats.set(key, stat); }
+    stat.count++;
+    if (u.hp > 0) { stat.alive++; stat.hp += u.hp; }
+  }
+  for (const row of root.querySelectorAll<HTMLLIElement>('li[data-side][data-unit]')) {
+    const type = row.dataset.unit as UnitType;
+    const stat = stats.get(`${row.dataset.side}:${type}`);
+    if (!stat) continue;
+    const label = row.querySelector('b');
+    const text = `${stat.alive}/${stat.count}`;
+    if (label && label.textContent !== text) label.textContent = text;
+    row.classList.toggle('out', stat.alive === 0);
+    const bar = row.querySelector<HTMLElement>('i');
+    const width = `${Math.round(stat.hp / (stat.count * UNITS[type].hp) * 100)}%`;
+    if (bar && bar.style.getPropertyValue('--hp') !== width) bar.style.setProperty('--hp', width);
+  }
 }

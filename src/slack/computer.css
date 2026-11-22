@@ -218,8 +218,8 @@
 .sc-music-controls button{border:0;background:#ffffff1a;color:#e9e9f2;border-radius:50%;width:28px;height:28px;cursor:pointer}
 .sc-music-controls span{color:#a4a8ba;font-variant-numeric:tabular-nums}
 .sc-playlist{grid-column:1/3;border-top:1px solid #ffffff20;font-size:10px}
-.sc-playlist p{margin:2px 0;padding:4px 6px;border-radius:4px;color:#a9adba;cursor:pointer}
-.sc-playlist p:hover{background:#ffffff10}.sc-playlist p.cur{background:#ffffff1f;color:#fff}
+.sc-playlist button{display:block;width:100%;margin:2px 0;padding:4px 6px;border:0;border-radius:4px;background:transparent;color:#a9adba;cursor:pointer;text-align:left;font:inherit}
+.sc-playlist button:hover{background:#ffffff10}.sc-playlist button.cur{background:#ffffff1f;color:#fff}
 .sc-playlist span{float:right}
 /* 연출 */
 .sc-strike{position:absolute;z-index:8;inset:0;display:grid;place-items:center;background:#ffffffa8;color:#301b20;opacity:0;pointer-events:none}
@@ -295,4 +295,29 @@
 }
 @media (any-pointer:coarse) and (max-width:420px){
   .sc-start,.sc-clock{display:none}
+}
+
+/* Keyboard navigation must remain visible inside the simulated monitor. */
+.slack-computer button:focus-visible,
+.slack-computer [tabindex]:focus-visible{
+  outline:2px solid #b9eaff;
+  outline-offset:2px;
+}
+/* Respect the OS accessibility preference without hiding any actionable UI. */
+@media(prefers-reduced-motion:reduce){
+  .slack-computer,.slack-computer *, .slack-computer *::before,.slack-computer *::after{
+    animation-duration:.01ms!important;
+    animation-delay:0ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:.01ms!important;
+    transition-delay:0ms!important;
+    scroll-behavior:auto!important;
+  }
+}
+
+/* Convey a flat battery without making the app button unreachable to a keyboard. */
+.slack-computer .sc-apps button[aria-disabled="true"]{
+  opacity:.46;
+  filter:grayscale(.8);
+  cursor:not-allowed;
 }

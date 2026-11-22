@@ -111,3 +111,35 @@ describe('딴짓 시뮬레이션', () => {
     expect(types.has('toast')).toBe(true);
   });
 });
+
+describe('dorm battery activity restrictions', () => {
+  it('cannot start music or other powered apps with an empty battery', () => {
+    const sim = createSim('dorm', 1, 1); sim.start();
+    sim.state.battery = 0;
+    for (const id of ['game', 'video', 'music'] as const) {
+      sim.doActivity(id);
+      expect(sim.state.activity).toBeNull();
+    }
+    // Offline activities remain available to avoid soft-locking the player.
+    sim.doActivity('webtoon');
+    expect(sim.state.activity).toBe('webtoon');
+  });
+
+  it('automatically shuts down music when the laptop battery runs out', () => {
+    const sim = createSim('dorm', 11, 1); sim.start();
+    sim.state.battery = 0.01;
+    sim.doActivity('music');
+    sim.setCover(false);
+    sim.update(0.1);
+    expect(sim.state.battery).toBe(0);
+    expect(sim.state.activity).toBeNull();
+    expect(sim.drain()).toEqual(expect.arrayContaining([
+      { t: 'activity', id: null },
+      { t: 'toast', text: '배터리가 다 떨어졌어요.' },
+    ]));
+    sim.doActivity('music');
+    expect(sim.state.activity).toBeNull();
+    sim.doActivity('chat');
+    expect(sim.state.activity).toBe('chat');
+  });
+});

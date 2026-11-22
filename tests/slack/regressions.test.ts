@@ -61,3 +61,57 @@ it('resets the battle HUD immediately for a fresh round', () => {
   battle.reset();
   expect(battle).toMatchObject({ ore: 100, score: 0, time: 0, prod: 0, over: null, cap: '' });
 });
+
+it('ignores NaN/infinite dimensions and invalid scale factors during canvas resizing', () => {
+  const canvas = document.createElement('canvas');
+  resizeBattleCanvas(canvas, 160, 90, 1);
+  expect([canvas.width, canvas.height]).toEqual([160, 90]);
+  for (const n of [NaN, Infinity, -Infinity]) {
+    resizeBattleCanvas(canvas, n, 90, 1);
+    resizeBattleCanvas(canvas, 160, n, 1);
+    expect([canvas.width, canvas.height]).toEqual([160, 90]);
+  }
+  resizeBattleCanvas(canvas, 160, 90, -2);
+  expect([canvas.width, canvas.height]).toEqual([160, 90]);
+  resizeBattleCanvas(canvas, 160, 90, Infinity);
+  expect([canvas.width, canvas.height]).toEqual([160, 90]);
+});
+
+it('ignores invalid or negative minigame frame deltas without corrupting simulation state', () => {
+  const battle = createBattle(true);
+  const initial = { time: battle.time, ore: battle.ore, prod: battle.prod, score: battle.score };
+  for (const dt of [NaN, Infinity, -Infinity, -1, 0]) battle.update(dt);
+  expect({ time: battle.time, ore: battle.ore, prod: battle.prod, score: battle.score }).toEqual(initial);
+  battle.update(0.1);
+  expect(battle.time).toBeCloseTo(0.1);
+  expect(Number.isFinite(battle.ore)).toBe(true);
+});
+
+it('rejects invalid mini RTS move coordinates before they corrupt unit orders', () => {
+  const commands: string[] = [];
+  const battle = createBattle(true, event => commands.push(event));
+  expect(battle.command(NaN, 90)).toBeNull();
+  expect(battle.command(120, Infinity)).toBeNull();
+  expect(battle.command(-Infinity, 0)).toBeNull();
+  expect(commands).toHaveLength(0);
+  expect(battle.command(-100, 90)).toBe('move');
+  expect(commands).toEqual(['order']);
+  for (let i = 0; i < 50; i++) battle.update(0.1);
+  expect(Number.isFinite(battle.time)).toBe(true);
+});
+
+it('keeps the playable classroom RTS result until retry, while video replay still loops', () => {
+  const playable = createBattle(true);
+  playable.over = 1;
+  for (let i = 0; i < 50; i++) playable.update(0.1);
+  expect(playable.over).toBe(1);
+  expect(playable.train('i')).toBe(false);
+  expect(playable.command(120, 90)).toBeNull();
+  playable.reset();
+  expect(playable.over).toBeNull();
+
+  const video = createBattle(false);
+  video.over = 1;
+  for (let i = 0; i < 50; i++) video.update(0.1);
+  expect(video.over).toBeNull();
+});

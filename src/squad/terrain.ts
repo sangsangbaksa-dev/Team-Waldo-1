@@ -56,5 +56,11 @@ export function terrain(w: number, h: number): HTMLCanvasElement {
   const fill = c.createRadialGradient(w * .9, h * .95, 0, w * .9, h * .95, h * .7); fill.addColorStop(0, '#7fb4ff99'); fill.addColorStop(1, '#7fb4ff00'); c.fillStyle = fill; c.fillRect(0, 0, w, h);
   c.globalCompositeOperation = 'source-over';
   const v = c.createRadialGradient(w / 2, h / 2, h * .25, w / 2, h / 2, h * .72); v.addColorStop(0, '#0000'); v.addColorStop(1, '#0009'); c.fillStyle = v; c.fillRect(0, 0, w, h);
+  // The cell grid never changes during play. Rasterize it into the cached
+  // terrain once instead of issuing 34 extra strokes on every battle frame.
+  const cw = w / 12, ch = h / 20;
+  c.strokeStyle = '#ffffff0a'; c.lineWidth = 1;
+  for (let x = 0; x <= 12; x++) { c.beginPath(); c.moveTo(x * cw, 0); c.lineTo(x * cw, h); c.stroke(); }
+  for (let y = 0; y <= 20; y++) { c.beginPath(); c.moveTo(0, y * ch); c.lineTo(w, y * ch); c.stroke(); }
   cached = cv; return cv;
 }

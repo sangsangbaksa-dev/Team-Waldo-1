@@ -62,7 +62,14 @@ export const createComputerView: CreateView = (sim, audio) => {
   const setCls = (k: string, on: boolean, t: HTMLElement = el) => { if (cache[k] !== on) { cache[k] = on; t.classList.toggle(k, on); } };
   const setTxt = (t: HTMLElement | null, v: string) => { if (t && t.textContent !== v) t.textContent = v; };
   const queue: { at: number; fn: () => void }[] = [];
-  const later = (s: number, fn: () => void) => queue.push({ at: elapsed + s, fn });
+  // Insert in deadline order. A throttled frame can complete several pending
+  // events at once; processing them backwards leaves phantom typing bubbles.
+  const later = (s: number, fn: () => void): void => {
+    const job = { at: elapsed + s, fn };
+    let i = queue.length;
+    while (i > 0 && queue[i - 1]!.at > job.at) i--;
+    queue.splice(i, 0, job);
+  };
   const toast = (text: string, s = 3) => { setTxt(toastEl, text); toastEl.classList.add('on'); toastUntil = elapsed + s; };
   const say = (text: string, s = 2) => { setTxt(bubble, text); bubbleUntil = elapsed + s; };
   const setBadge = (id: DormActivity, n: number) => { const b = taskBtn(id); const v = n > 0 ? String(n) : ''; if (b.dataset.badge !== v) b.dataset.badge = v; };
@@ -70,13 +77,26 @@ export const createComputerView: CreateView = (sim, audio) => {
   const applyCover = () => {
     const on = sim.state.cover;
     cover.classList.toggle('visible', on); coverButton.classList.toggle('active', on);
+    if (coverButton.getAttribute('aria-pressed') !== String(on)) coverButton.setAttribute('aria-pressed', String(on));
     if (host.inert !== on) {
       if (on && host.contains(document.activeElement)) el.focus({ preventScroll: true });
       host.inert = on;
     }
+    syncMusicAudio();
   };
   const updateCover = () => { sim.setCover(coverKey || coverPointer !== null || coverMiddle !== null); applyCover(); };
-  const select = (id: DormActivity | null) => { audio.resume(); audio.play('click'); if (id && sim.state.cover) updateCover(); sim.doActivity(id && sim.state.activity === id ? null : id); };
+  const powerApps: DormActivity[] = ['game', 'video', 'music'];
+  const select = (id: DormActivity | null) => {
+    audio.resume();
+    if (id && sim.state.battery <= 0 && powerApps.includes(id)) {
+      toast('배터리가 없어요. 메신저·웹툰·쇼핑을 이용해 보세요.', 3);
+      audio.play('key', 0.3);
+      return;
+    }
+    audio.play('click');
+    if (id && sim.state.cover) updateCover();
+    sim.doActivity(id && sim.state.activity === id ? null : id);
+  };
 
   /* ---------- 게임: 별빛 던전(반응속도) ---------- */
   const G = { score: 0, best: 0, combo: 1, streak: 0, hp: 100, over: false, clock: 0, deadline: 0, nextAt: 0.5, on: false, life: 1.5 };
@@ -110,14 +130,14 @@ export const createComputerView: CreateView = (sim, audio) => {
   };
 
   /* ---------- 영상 ---------- */
-  const V = { cur: 0, pos: 0, playing: true, sub: -1, sec: -1, nextComment: 5, comments: [] as string[] };
-  const vidHtml = () => `<div class="sc-video"><div class="sc-video-main"><div class="sc-video-picture" data-vpic><div class="sc-video-sun"></div><div class="sc-video-cloud"></div><div class="sc-video-mountain"></div><div class="sc-video-play">❚❚</div><div class="sc-sub" data-sub></div></div><div class="sc-video-bar"><button type="button" data-vplay aria-label="재생/일시정지">❚❚</button><span class="sc-progress"><i data-vprog></i></span><span data-vtime>0:00</span></div><b data-vtitle></b><small data-vmeta></small><div class="sc-comment" data-comments></div></div><div class="sc-video-list"><b>추천 영상</b>${videos.map((v, i) => `<button type="button" data-vid="${i}" style="--h:${v.h}"><span class="sc-thumb"><i></i></span><span><strong>${v.t}</strong><small>${v.ch} · ${v.views}</small></span></button>`).join('')}</div></div>`;
+  const V = { cur: 0, pos: 0, playing: true, sub: -1, sec: -1, nextComment: 5 };
+  const vidHtml = () => `<div class="sc-video"><div class="sc-video-main"><div class="sc-video-picture" data-vpic><div class="sc-video-sun"></div><div class="sc-video-cloud"></div><div class="sc-video-mountain"></div><div class="sc-video-play">❚❚</div><div class="sc-sub" data-sub></div></div><div class="sc-video-bar"><button type="button" data-vplay aria-label="일시정지">❚❚</button><span class="sc-progress"><i data-vprog></i></span><span data-vtime>0:00</span></div><b data-vtitle></b><small data-vmeta></small><div class="sc-comment" data-comments></div></div><div class="sc-video-list"><b>추천 영상</b>${videos.map((v, i) => `<button type="button" data-vid="${i}" style="--h:${v.h}"><span class="sc-thumb"><i></i></span><span><strong>${v.t}</strong><small>${v.ch} · ${v.views}</small></span></button>`).join('')}</div></div>`;
   const vidSelect = (i: number) => {
-    V.cur = i; V.pos = 0; V.sub = -1; V.sec = -1; V.comments = []; V.nextComment = 3; V.playing = true;
+    V.cur = i; V.pos = 0; V.sub = -1; V.sec = -1; V.nextComment = 3; V.playing = true;
     const w = wins.video; const v = videos[i];
     $('[data-vpic]', w).style.setProperty('--h', String(v.h)); setTxt($('[data-vtitle]', w), v.t); setTxt($('[data-vmeta]', w), `${v.ch} · 조회수 ${v.views}`);
     $('[data-comments]', w).replaceChildren(); w.querySelectorAll('[data-vid]').forEach((b, k) => b.classList.toggle('cur', k === i));
-    $('[data-vpic]', w).classList.remove('paused'); setTxt($('[data-vplay]', w), '❚❚'); setTxt($('.sc-video-play', w), '❚❚');
+    $('[data-vpic]', w).classList.remove('paused'); const playButton = $('[data-vplay]', w); setTxt(playButton, '❚❚'); playButton.setAttribute('aria-label', '일시정지'); setTxt($('.sc-video-play', w), '❚❚');
   };
   const vidTick = (dt: number) => {
     if (shown !== 'video' || sim.state.cover || !V.playing) return;
@@ -132,7 +152,10 @@ export const createComputerView: CreateView = (sim, audio) => {
   };
 
   /* ---------- 메신저 ---------- */
-  const C = { room: 0, typing: -1 };
+  const C = { room: 0 };
+  const typing = rooms.map(() => 0);
+  const pendingReplies = rooms.map(() => 0);
+  const MAX_PENDING_REPLIES = 4;
   const chatHtml = () => `<div class="sc-chat"><div class="sc-rooms">${rooms.map((r, i) => `<button type="button" data-room="${i}"><strong>${r.name}</strong><small data-last>${r.msgs[r.msgs.length - 1].t}</small><i data-unread></i></button>`).join('')}</div><div class="sc-chat-pane"><div class="sc-chat-head"><span data-chat-name></span> <small data-chat-sub></small></div><div class="sc-messages" data-messages></div><div class="sc-typing" data-typing>입력 중<span>...</span></div><div class="sc-chips">${chips.map(c => `<button type="button" data-chip="${c}">${c}</button>`).join('')}</div></div></div>`;
   const chatRow = (m: { m: boolean; who: string; t: string }) => {
     const p = document.createElement('p'); if (m.m) p.className = 'mine'; else { const b = document.createElement('b'); b.textContent = m.who; p.append(b); }
@@ -141,9 +164,10 @@ export const createComputerView: CreateView = (sim, audio) => {
   };
   const chatBadgeTotal = () => rooms.reduce((n, r) => n + r.unread, 0);
   const chatRefresh = () => {
-    const w = wins.chat; w.querySelectorAll<HTMLElement>('[data-room]').forEach((b, i) => {
+    const w = built.chat;
+    if (w) w.querySelectorAll<HTMLElement>('[data-room]').forEach((b, i) => {
       b.classList.toggle('cur', i === C.room); const r = rooms[i];
-      setTxt($('[data-last]', b), C.typing === i ? '입력 중...' : r.msgs[r.msgs.length - 1].t); setTxt($('[data-unread]', b), r.unread ? String(r.unread) : '');
+      setTxt($('[data-last]', b), typing[i]! > 0 ? '입력 중...' : r.msgs[r.msgs.length - 1].t); setTxt($('[data-unread]', b), r.unread ? String(r.unread) : '');
     });
     setBadge('chat', chatBadgeTotal());
   };
@@ -151,23 +175,38 @@ export const createComputerView: CreateView = (sim, audio) => {
     C.room = i; rooms[i].unread = 0; const w = wins.chat; const r = rooms[i];
     setTxt($('[data-chat-name]', w), r.name); setTxt($('[data-chat-sub]', w), r.sub);
     $('[data-messages]', w).replaceChildren(...r.msgs.slice(-30).map(chatRow)); const m = $('[data-messages]', w); m.scrollTop = m.scrollHeight;
-    $('[data-typing]', w).classList.toggle('on', C.typing === i); chatRefresh();
+    $('[data-typing]', w).classList.toggle('on', typing[i]! > 0); chatRefresh();
   };
   const chatPush = (i: number, msg: { m: boolean; who: string; t: string }) => {
     const r = rooms[i]; r.msgs.push(msg);
+    // Chat panes render the latest 30 messages. Keep a little extra history,
+    // not an unbounded array, when users repeatedly tap quick replies.
+    if (r.msgs.length > 60) r.msgs.splice(0, r.msgs.length - 60);
     if (!msg.m) {
       if (shown === 'chat' && C.room === i) audio.play('chime', 0.4); else { r.unread++; audio.play('chime', 0.55); if (shown !== 'chat') toast(`${msg.who}: ${msg.t}`); }
     }
-    if (C.room === i) {
-      const list = $('[data-messages]', wins.chat); const row = chatRow(msg); list.append(row);
+    if (C.room === i && built.chat) {
+      const list = $('[data-messages]', built.chat); const row = chatRow(msg); list.append(row);
       while (list.childElementCount > 30) list.firstElementChild?.remove(); list.scrollTop = list.scrollHeight;
       if (msg.m) later(1.2, () => { const s = row.querySelector('small'); if (s) s.textContent = '읽음'; });
     }
     chatRefresh();
   };
   const chatIncoming = (i: number, text: string, delay: number) => {
-    later(delay, () => { C.typing = i; if (C.room === i) $('[data-typing]', wins.chat).classList.add('on'); chatRefresh(); });
-    later(delay + 1.3, () => { C.typing = -1; $('[data-typing]', wins.chat).classList.remove('on'); chatPush(i, { m: false, who: i === 0 ? pick(['지후', '서연', '태오']) : rooms[i].name.replace('룸메 ', ''), t: text }); });
+    // Don't let repeated quick-reply taps schedule hundreds of overlapping bots.
+    if (pendingReplies[i]! >= MAX_PENDING_REPLIES) return;
+    pendingReplies[i]!++;
+    later(delay, () => {
+      typing[i]!++;
+      if (C.room === i && built.chat) $('[data-typing]', built.chat).classList.add('on');
+      chatRefresh();
+    });
+    later(delay + 1.3, () => {
+      pendingReplies[i] = Math.max(0, pendingReplies[i]! - 1);
+      typing[i] = Math.max(0, typing[i]! - 1);
+      if (C.room === i && built.chat) $('[data-typing]', built.chat).classList.toggle('on', typing[i]! > 0);
+      chatPush(i, { m: false, who: i === 0 ? pick(['지후', '서연', '태오']) : rooms[i].name.replace('룸메 ', ''), t: text });
+    });
   };
   let nextIncoming = 8;
 
@@ -192,18 +231,25 @@ export const createComputerView: CreateView = (sim, audio) => {
   };
   const shopTick = (dt: number) => {
     S.left -= dt;
-    if (S.left <= 0) { S.left = 120; S.deal = (S.deal + 1) % products.length; shopDeal(); if (shown !== 'shop') { setBadge('shop', 1); audio.play('chime', 0.3); toast('새 심야 특가가 열렸어요!'); } }
-    const sec = Math.ceil(S.left); if (sec !== S.lastSec) { S.lastSec = sec; setTxt($('[data-timer]', wins.shop), `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`); }
+    if (S.left <= 0) { S.left = 120; S.deal = (S.deal + 1) % products.length; if (built.shop) shopDeal(); if (shown !== 'shop') { setBadge('shop', 1); audio.play('chime', 0.3); toast('새 심야 특가가 열렸어요!'); } }
+    const sec = Math.ceil(S.left); if (sec !== S.lastSec) { S.lastSec = sec; if (built.shop) setTxt($('[data-timer]', built.shop), `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`); }
   };
 
   /* ---------- 음악 ---------- */
   const M = { cur: 0, p: 0, playing: true, sec: -1 };
-  const musicHtml = () => `<div class="sc-music"><div class="sc-album"><div class="sc-disc">☾</div><span data-m-cap>새벽의 온도</span></div><div class="sc-music-info"><small>지금 재생 중</small><strong data-m-title></strong><span data-m-art></span><div class="sc-visualizer">${Array.from({ length: 20 }, (_, i) => `<i style="--n:${i}"></i>`).join('')}</div><div class="sc-progress"><i data-m-prog></i></div><div class="sc-music-controls"><button type="button" data-m="prev">◀◀</button><button type="button" data-m="play">❚❚</button><button type="button" data-m="next">▶▶</button><span data-m-time>0:00</span></div></div><div class="sc-playlist"><b>재생 목록</b>${tracks.map((t, i) => `<p data-track="${i}">${String(i + 1).padStart(2, '0')}　${t.t} <span>${mmss(t.len)}</span></p>`).join('')}</div></div>`;
+  const musicHtml = () => `<div class="sc-music"><div class="sc-album"><div class="sc-disc">☾</div><span data-m-cap>새벽의 온도</span></div><div class="sc-music-info"><small>지금 재생 중</small><strong data-m-title aria-live="polite"></strong><span data-m-art></span><div class="sc-visualizer">${Array.from({ length: 20 }, (_, i) => `<i style="--n:${i}"></i>`).join('')}</div><div class="sc-progress"><i data-m-prog></i></div><div class="sc-music-controls"><button type="button" data-m="prev" aria-label="이전 곡">◀◀</button><button type="button" data-m="play" aria-label="일시정지">❚❚</button><button type="button" data-m="next" aria-label="다음 곡">▶▶</button><span data-m-time>0:00</span></div></div><div class="sc-playlist"><b>재생 목록</b>${tracks.map((t, i) => `<button type="button" data-track="${i}" aria-pressed="${M.cur === i}" aria-label="${t.t}, ${mmss(t.len)}">${String(i + 1).padStart(2, '0')}　${t.t} <span>${mmss(t.len)}</span></button>`).join('')}</div></div>`;
   const musicSet = (i: number) => {
     M.cur = (i + tracks.length) % tracks.length; M.p = 0; M.sec = -1; const w = wins.music; const t = tracks[M.cur];
-    setTxt($('[data-m-title]', w), t.t); setTxt($('[data-m-art]', w), t.a); w.querySelectorAll('[data-track]').forEach((p, k) => p.classList.toggle('cur', k === M.cur));
+    setTxt($('[data-m-title]', w), t.t); setTxt($('[data-m-art]', w), t.a); w.querySelectorAll('[data-track]').forEach((p, k) => { const current = k === M.cur; p.classList.toggle('cur', current); p.setAttribute('aria-pressed', String(current)); });
   };
-  const musicPlay = (on: boolean) => { M.playing = on; wins.music.classList.toggle('paused', !on); setTxt($('[data-m="play"]', wins.music), on ? '❚❚' : '▶'); };
+  let earbudsActive = false;
+  /** The lecture cover pauses the mini-player and its procedural headphone bed. */
+  const syncMusicAudio = () => {
+    const on = shown === 'music' && M.playing && !sim.state.cover;
+    if (on === earbudsActive) return;
+    earbudsActive = on; audio.muffle(on);
+  };
+  const musicPlay = (on: boolean) => { M.playing = on; wins.music.classList.toggle('paused', !on); const button = $('[data-m="play"]', wins.music); setTxt(button, on ? '❚❚' : '▶'); button.setAttribute('aria-label', on ? '일시정지' : '재생'); syncMusicAudio(); };
   const musicTick = (dt: number) => {
     if (shown !== 'music' || sim.state.cover || !M.playing) return;
     M.p += dt / tracks[M.cur].len; if (M.p >= 1) { musicSet(M.cur + 1); return; }
@@ -211,26 +257,40 @@ export const createComputerView: CreateView = (sim, audio) => {
   };
 
   /* ---------- 창 생성/전환 (한 번만 만들고 켜고 끔) ---------- */
-  const wins = {} as Record<DormActivity, HTMLElement>;
+  // Construct app windows only when first opened. The desktop, taskbar,
+  // notifications and clock remain live without eagerly building every app DOM.
+  const built: Partial<Record<DormActivity, HTMLElement>> = {};
+  const wins = new Proxy({} as Record<DormActivity, HTMLElement>, {
+    get(_target, property: string | symbol): HTMLElement | undefined {
+      if (typeof property !== 'string' || !apps.some(a => a.id === property)) return undefined;
+      const id = property as DormActivity;
+      if (built[id]) return built[id];
+      const app = apps.find(a => a.id === id)!;
+      const w = document.createElement('div');
+      w.className = `sc-app-window sc-app-${id}`;
+      w.innerHTML = title(app.label) + builders[id].html();
+      host.append(w);
+      built[id] = w; // Publish before init: its setup helpers read wins[id].
+      builders[id].init?.();
+      return w;
+    },
+  });
   const builders: Record<DormActivity, { html: () => string; init?: () => void }> = {
     game: { html: gameHtml, init: gameReset },
     video: { html: vidHtml, init: () => vidSelect(0) },
     chat: { html: chatHtml, init: () => chatOpen(0) },
-    webtoon: { html: toonHtml, init: () => toonShow(2) },
-    shop: { html: shopHtml, init: () => { shopDeal(); shopTotals(); } },
+    webtoon: { html: toonHtml, init: () => { toonShow(2); if (cache.newEp) wins.webtoon.querySelector<HTMLElement>('[data-ep="3"]')!.hidden = false; } },
+    shop: { html: shopHtml, init: () => { shopDeal(); shopTotals(); S.lastSec = -1; shopTick(0); } },
     music: { html: musicHtml, init: () => { musicSet(0); musicPlay(true); } },
   };
-  for (const a of apps) {
-    const w = document.createElement('div'); w.className = `sc-app-window sc-app-${a.id}`; w.innerHTML = title(a.label) + builders[a.id].html(); host.append(w); wins[a.id] = w;
-  }
-  for (const a of apps) builders[a.id].init?.();
-
   function renderApp(id: DormActivity | null) {
     const prev = shown; shown = id;
+    if (prev !== id) syncMusicAudio();
     if (prev && prev !== id && wins[prev].contains(document.activeElement)) taskBtn(id ?? prev).focus({ preventScroll: true });
     for (const a of apps) {
       const on = a.id === id;
-      wins[a.id].classList.toggle('on', on); wins[a.id].inert = !on;
+      const w = on ? wins[a.id] : built[a.id];
+      if (w) { w.classList.toggle('on', on); w.inert = !on; }
       taskBtn(a.id).classList.toggle('active', on); taskBtn(a.id).setAttribute('aria-pressed', String(on));
     }
     if (id) el.style.setProperty('--sc-glow', GLOW[id]);
@@ -251,7 +311,7 @@ export const createComputerView: CreateView = (sim, audio) => {
     if (target.closest('.sc-target')) { audio.resume(); gameHit(); return; }
     if (target.closest('[data-g-retry]')) { audio.play('click'); gameReset(); return; }
     const vid = target.closest<HTMLElement>('[data-vid]'); if (vid) { audio.play('click'); vidSelect(Number(vid.dataset.vid)); return; }
-    if (target.closest('[data-vplay]') || target.closest('[data-vpic]')) { audio.play('click'); V.playing = !V.playing; const t = V.playing ? '❚❚' : '▶'; setTxt($('[data-vplay]', wins.video), t); setTxt($('.sc-video-play', wins.video), t); $('[data-vpic]', wins.video).classList.toggle('paused', !V.playing); return; }
+    if (target.closest('[data-vplay]') || target.closest('[data-vpic]')) { audio.play('click'); V.playing = !V.playing; const t = V.playing ? '❚❚' : '▶'; const playButton = $('[data-vplay]', wins.video); setTxt(playButton, t); playButton.setAttribute('aria-label', V.playing ? '일시정지' : '재생'); setTxt($('.sc-video-play', wins.video), t); $('[data-vpic]', wins.video).classList.toggle('paused', !V.playing); return; }
     const room = target.closest<HTMLElement>('[data-room]'); if (room) { audio.play('click'); chatOpen(Number(room.dataset.room)); return; }
     const chip = target.closest<HTMLElement>('[data-chip]');
     if (chip) { audio.play('key', 0.6); chatPush(C.room, { m: true, who: '', t: chip.dataset.chip ?? '' }); chatIncoming(C.room, pick(rooms[C.room].reply), 1.8 + Math.random() * 1.5); return; }
@@ -286,17 +346,25 @@ export const createComputerView: CreateView = (sim, audio) => {
   };
   const pointerup = (event: PointerEvent) => {
     if (coverMiddle === event.pointerId && (event.button === 1 || event.type === 'pointercancel')) { coverMiddle = null; updateCover(); }
+    // A browser without pointer capture can deliver release outside the cover
+    // button. The window listener must end the held cover in that case.
+    if (coverPointer === event.pointerId) { coverPointer = null; updateCover(); }
   };
   const buttonDown = (event: PointerEvent) => {
     if (event.button !== 0 || coverPointer !== null) return;
-    event.preventDefault(); coverButton.focus({ preventScroll: true }); coverButton.setPointerCapture(event.pointerId);
+    event.preventDefault(); coverButton.focus({ preventScroll: true });
+    try { coverButton.setPointerCapture?.(event.pointerId); }
+    catch { /* Still respond to pointerup and lost focus when capture is unavailable. */ }
     audio.resume(); audio.play('click'); coverPointer = event.pointerId; updateCover();
   };
   const buttonUp = (event: PointerEvent) => { if (coverPointer === event.pointerId) { coverPointer = null; updateCover(); } };
   const blur = () => {
     if (!coverKey && coverPointer === null && coverMiddle === null) return;
     const pointer = coverPointer; coverKey = false; coverPointer = null; coverMiddle = null; updateCover();
-    if (pointer !== null && coverButton.hasPointerCapture(pointer)) coverButton.releasePointerCapture(pointer);
+    if (pointer !== null) {
+      try { if (coverButton.hasPointerCapture?.(pointer)) coverButton.releasePointerCapture(pointer); }
+      catch { /* Capture may already have been revoked by the browser. */ }
+    }
   };
   const focusout = (event: FocusEvent) => { if (!(event.relatedTarget instanceof Node) || !el.contains(event.relatedTarget)) blur(); };
   const scroll = (event: Event) => { if ((event.target as Element).classList?.contains('sc-wt-scroll')) toonProgress(); };
@@ -325,6 +393,15 @@ export const createComputerView: CreateView = (sim, audio) => {
     elapsed += dt;
     const state = sim.state; const id = apps.some(a => a.id === state.activity) ? state.activity as DormActivity : null;
     if (id !== shown) renderApp(id);
+    const drained = state.battery <= 0;
+    if (cache.batteryDrained !== drained) {
+      cache.batteryDrained = drained;
+      for (const appId of powerApps) {
+        const button = taskBtn(appId);
+        button.setAttribute('aria-disabled', String(drained));
+        button.title = drained ? '배터리 부족 · 사용 불가' : apps.find(a => a.id === appId)!.label;
+      }
+    }
     applyCover();
     const covered = state.cover;
     setCls('sc-covered', covered); setCls('sc-slacking', !!id && !covered);
@@ -341,11 +418,11 @@ export const createComputerView: CreateView = (sim, audio) => {
     if (tickAcc < 0.1) return;
     const step = tickAcc; tickAcc = 0;
     vidTick(step); musicTick(step); shopTick(step);
-    if (queue.length) for (let i = queue.length - 1; i >= 0; i--) if (queue[i].at <= elapsed) { const { fn } = queue[i]; queue.splice(i, 1); fn(); }
+    while (queue.length && queue[0]!.at <= elapsed) queue.shift()!.fn();
     if (elapsed > nextIncoming && state.phase === 'play') {
       nextIncoming = elapsed + 9 + Math.random() * 7; const r = Math.random() < 0.6 ? 0 : Math.random() < 0.6 ? 1 : 2; chatIncoming(r, pick(rooms[r].pool), 0);
     }
-    if (elapsed > 45 && !cache.newEp) { cache.newEp = true; wins.webtoon.querySelector<HTMLElement>('[data-ep="3"]')!.hidden = false; if (shown !== 'webtoon') { setBadge('webtoon', 1); toast('웹툰 「달빛 아래 우리」 13화 업데이트!'); audio.play('chime', 0.4); } }
+    if (elapsed > 45 && !cache.newEp) { cache.newEp = true; if (built.webtoon) built.webtoon.querySelector<HTMLElement>('[data-ep="3"]')!.hidden = false; if (shown !== 'webtoon') { setBadge('webtoon', 1); toast('웹툰 「달빛 아래 우리」 13화 업데이트!'); audio.play('chime', 0.4); } }
     const min = 24 + Math.floor(elapsed / 20); setTxt(clockEl, `오전 ${1 + Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`);
-  }, onEvent, dispose() { if (disposed) return; disposed = true; inputs.abort(); blur(); queue.length = 0; } };
+  }, onEvent, dispose() { if (disposed) return; disposed = true; inputs.abort(); blur(); if (earbudsActive) { earbudsActive = false; audio.muffle(false); } queue.length = 0; } };
 };

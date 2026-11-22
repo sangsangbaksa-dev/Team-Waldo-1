@@ -11,7 +11,7 @@ export function readSlackRecord(): SlackRecord {
       for (const stage of ['class', 'dorm'] as const) {
         const entry = best[stage];
         if (entry && typeof entry === 'object' && 'score' in entry && 'grade' in entry &&
-            typeof entry.score === 'number' && Number.isFinite(entry.score) && (!record.best[stage] || entry.score > record.best[stage]!.score) &&
+            typeof entry.score === 'number' && Number.isFinite(entry.score) && entry.score >= 0 && (!record.best[stage] || entry.score > record.best[stage]!.score) &&
             typeof entry.grade === 'string' && /^[SABCD]$/.test(entry.grade)) {
           record.best[stage] = { score: entry.score, grade: entry.grade };
         }

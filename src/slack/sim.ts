@@ -19,7 +19,7 @@ const classNoise: Partial<Record<ActivityId, number>> = { game: 0.7, video: 0.12
 const classReasons: Partial<Record<ActivityId, string>> = { game: '수업 중 게임하다 걸림', video: '수업 중 영상 보다가 걸림' };
 const RATE = 0.6; // 전체 재미 속도 보정(헤드리스 시뮬로 클리어율 맞춤)
 const clamp = (n: number, max = 100) => Math.max(0, Math.min(max, n));
-const batteryActivities: ActivityId[] = ['game', 'video'];
+const batteryActivities: ActivityId[] = ['game', 'video', 'music'];
 /** 활동별 개성: noise 접근 중 소음(들킬 위험), vis 감독이 볼 때 눈에 띄는 정도 */
 const noise: Partial<Record<ActivityId, number>> = { game: 0.5, video: 0.3, chat: 0.2 };
 const vis: Record<ActivityId, number> = { game: 1.2, video: 1.1, chat: 0.9, webtoon: 0.9, shop: 0.8, music: 0.7 };
@@ -219,9 +219,9 @@ export const createSim: CreateSim = (stage, seed, level) => {
       }
       if (w.mode === 'approach') state.sus = clamp(state.sus + (N[active] ?? 0) * (0.5 + w.prog) * 4 * sm * dt);
       if (funPending >= 3) { events.push({ t: 'fun', amount: funPending, activity: active }); funPending = 0; }
-      if (!isClass && (batteryActivities.includes(active) || active === 'music')) { // 학교 노트북은 배터리가 없다
+      if (!isClass && batteryActivities.includes(active)) { // 학교 노트북은 배터리가 없다
         state.battery = clamp(state.battery - (active === 'music' ? 0.12 : 0.8) * dt);
-        if (state.battery === 0 && batteryActivities.includes(active)) {
+        if (state.battery === 0) {
           state.activity = null; events.push({ t: 'activity', id: null }, { t: 'toast', text: '배터리가 다 떨어졌어요.' });
         }
       }

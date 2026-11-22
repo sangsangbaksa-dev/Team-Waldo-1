@@ -104,3 +104,95 @@ it('keeps an active dorm game target when switching away and back', async () => 
   expect(button('.sc-app-game').inert).toBe(false);
   expect(button('.sc-target').classList.contains('on')).toBe(true);
 });
+
+it('bounds a long foreground frame stall without skipping normal frames', async () => {
+  openSlack(vi.fn());
+  button('[data-stage="dorm"]').click();
+  button('[data-start]').click();
+  await vi.dynamicImportSettled();
+  const sim = vi.mocked(createSim).mock.results[0].value;
+  key('1');
+  advance(5000);
+  expect(sim.state.time).toBeCloseTo(1);
+  advance(100);
+  expect(sim.state.time).toBeCloseTo(1.1);
+});
+
+it('runs the danger pulse only during tense, unpaused gameplay', async () => {
+  openSlack(vi.fn());
+  button('[data-stage="dorm"]').click(); button('[data-start]').click();
+  await vi.dynamicImportSettled();
+  const sim = vi.mocked(createSim).mock.results[0].value;
+  const root = document.querySelector('.sl-root')!;
+  sim.state.sus = 90;
+  advance(100);
+  expect(root.classList.contains('sl-danger')).toBe(true);
+  key('p');
+  expect(root.classList.contains('sl-danger')).toBe(false);
+  button('[data-resume]').click(); advance(100);
+  expect(root.classList.contains('sl-danger')).toBe(true);
+  sim.state.time = sim.state.limit - 0.05;
+  advance(100);
+  expect(root.classList.contains('sl-danger')).toBe(false);
+});
+
+it('exposes only the active title, pause or result dialog to assistive technology', async () => {
+  openSlack(vi.fn());
+  const overlays = Array.from(document.querySelectorAll<HTMLElement>('.sl-root .sl-modal'));
+  expect(overlays).toHaveLength(3);
+  expect(overlays.every(el => el.getAttribute('role') === 'dialog' && el.getAttribute('aria-modal') === 'true')).toBe(true);
+  expect(overlays.filter(el => !el.hidden)).toHaveLength(1);
+  button('[data-stage="dorm"]').click(); button('[data-start]').click();
+  await vi.dynamicImportSettled();
+  expect(overlays.filter(el => !el.hidden)).toHaveLength(0);
+  key('p');
+  expect(overlays.filter(el => !el.hidden)).toEqual([button('[data-paused]')]);
+  button('[data-resume]').click();
+  const sim = vi.mocked(createSim).mock.results[0].value;
+  sim.state.time = sim.state.limit - 0.05;
+  advance(100);
+  expect(overlays.filter(el => !el.hidden)).toEqual([button('[data-result]')]);
+});
+
+it.each(['dorm', 'class'] as const)('announces the %s hold-to-cover state', async stage => {
+  openSlack(vi.fn());
+  button(`[data-stage="${stage}"]`).click(); button('[data-start]').click();
+  await vi.dynamicImportSettled();
+  const cover = button(stage === 'dorm' ? '.sc-cover-button' : '.sl-cover');
+  advance(100);
+  expect(cover.getAttribute('aria-pressed')).toBe('true');
+  key('1'); advance(100);
+  expect(cover.getAttribute('aria-pressed')).toBe('false');
+  key(' ', 'Space'); advance(100);
+  expect(cover.getAttribute('aria-pressed')).toBe('true');
+});
+
+it('reuses unchanged HUD text nodes across small animation ticks', async () => {
+  openSlack(vi.fn());
+  button('[data-stage="dorm"]').click(); button('[data-start]').click();
+  await vi.dynamicImportSettled();
+  advance(100);
+  const timer = button('[data-time]'), fun = button('[data-fun]');
+  const firstTimerNode = timer.firstChild, firstFunNode = fun.firstChild;
+  expect(firstTimerNode).toBeTruthy();
+  expect(firstFunNode).toBeTruthy();
+  advance(100); // Both displayed numbers remain unchanged.
+  expect(timer.firstChild).toBe(firstTimerNode);
+  expect(fun.firstChild).toBe(firstFunNode);
+});
+
+it('stops the scheduled animation immediately on pause even with a live toast', async () => {
+  openSlack(vi.fn());
+  button('[data-stage="dorm"]').click(); button('[data-start]').click();
+  await vi.dynamicImportSettled();
+  key('1');
+  const sim = vi.mocked(createSim).mock.results[0].value;
+  sim.state.sus = 100;
+  advance(100);
+  expect(button('.sl-toast').textContent).toContain('들켰어요');
+  expect(frames.size).toBe(1);
+  key('p');
+  expect(frames.size).toBe(0);
+  button('[data-resume]').click();
+  expect(frames.size).toBe(1);
+});

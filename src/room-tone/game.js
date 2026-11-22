@@ -404,6 +404,12 @@ function pointPlayer() {
   crouched = false;
   eyeHeight = 1.58;
   lightOn = true;
+  // New chapters and post-capture restarts must not inherit a half-completed
+  // footstep or an old monster gait pose from the preceding session.
+  moved = stepAt = stride = 0;
+  mixer?.setTime(0);
+  model.position.y = 0;
+  model.rotation.z = 0;
   const far = xy(level.nest);
   entity.position.set(far.x, 0, far.z);
   path = [];

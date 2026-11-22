@@ -1533,6 +1533,7 @@ window.addEventListener("pagehide", (e) => {
   }
   if (level && !["home", "won", "load", "error"].includes(state)) save();
   sound.pause(true);
+  sound.dispose();
   if (frameId !== null) cancelAnimationFrame(frameId);
   frameId = null;
   renderer?.setAnimationLoop?.(null);

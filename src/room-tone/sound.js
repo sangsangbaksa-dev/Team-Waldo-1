@@ -246,6 +246,22 @@ export class Sound {
     );
   }
 
+  /** Release the audio graph only on a real page unload (not the bfcache). */
+  dispose() {
+    if (this.clock !== null) globalThis.clearInterval(this.clock);
+    this.clock = null;
+    const ctx = this.ctx;
+    this.ctx = null;
+    this.level = null;
+    this.mix = this.room = this.radio = this.air = this.breath = null;
+    this.hum = this.motor = this.noise = null;
+    this.waking = null;
+    if (ctx && ctx.state !== "closed") {
+      try { void ctx.close().catch(() => {}); }
+      catch { /* The page is unloading; sound cannot block navigation. */ }
+    }
+  }
+
   tick() {
     if (!this.ready()) return;
     const at = this.ctx.currentTime;

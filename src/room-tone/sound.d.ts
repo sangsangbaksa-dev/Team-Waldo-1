@@ -8,4 +8,5 @@ export class Sound {
   pause(paused: boolean): void;
   startClock(): void;
   ready(): boolean;
+  dispose(): void;
 }

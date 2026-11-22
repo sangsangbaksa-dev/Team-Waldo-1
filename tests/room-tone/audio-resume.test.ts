@@ -57,6 +57,25 @@ describe("ROOM TONE WebAudio suspend and resume",()=>{
     await Promise.resolve();
     expect(sound.clock).toBeNull();
   });
+
+  it("releases the context and heartbeat on an actual unload",async()=>{
+    vi.useFakeTimers();
+    const {sound,ctx}=harness();
+    const close=vi.fn(async()=>{ctx.state="closed";});
+    Object.assign(ctx,{close});
+    sound.pause(false);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(sound.clock).not.toBeNull();
+    sound.dispose();
+    expect(sound.clock).toBeNull();
+    expect(sound.ctx).toBeNull();
+    expect(close).toHaveBeenCalledOnce();
+    await Promise.resolve();
+    expect(ctx.state).toBe("closed");
+    sound.dispose();
+    expect(close).toHaveBeenCalledOnce();
+  });
   it("does not throw when an audio output rejects transitions",async()=>{
     vi.useFakeTimers();
     const {sound,ctx}=harness();

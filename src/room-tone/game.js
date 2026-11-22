@@ -358,6 +358,7 @@ function pointPlayer() {
   const p = xy(level.start);
   const next = xy(neighbors(level.map, level.start)[0]);
   player.set(p.x + (next.x - p.x) * 0.38, 1.58, p.z + (next.z - p.z) * 0.38);
+  camera.position.copy(player);
   yaw = Math.atan2(-(next.x - p.x), -(next.z - p.z));
   pitch = 0;
   camera.rotation.set(0, yaw, 0, "YXZ");

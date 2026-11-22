@@ -65,18 +65,55 @@ export class TerrainView {
   }
   /** 마을 바닥: 가장자리가 흙빛으로 번지며 풀과 섞이는 울퉁불퉁한 원 + 둘레의 흙 얼룩. */
   private buildTowns(): void {
-    const tints: Record<string, number> = { urban: 0xffffff, industrial: 0xb4b8bc, military: 0xd2c6a0, farm: 0xc8b894, village: 0xeae4d4 }, rng = makeRng(this.map.seed + 17), dirt = dirtTexture(), concrete = concreteTexture();
-    const alpha = [fadeDiscTexture(3, 0.62), fadeDiscTexture(8, 0.62), fadeDiscTexture(13, 0.62)], skirt = fadeDiscTexture(21, 0.2), blot = [fadeDiscTexture(31, 0.15), fadeDiscTexture(37, 0.15)];
+    const tints: Record<string, number> = { urban: 0xffffff, industrial: 0xb4b8bc, military: 0xd2c6a0, farm: 0xc8b894, village: 0xeae4d4 };
+    const rng = makeRng(this.map.seed + 17), dirt = dirtTexture(), concrete = concreteTexture();
+    const alpha = [fadeDiscTexture(3, 0.62), fadeDiscTexture(8, 0.62), fadeDiscTexture(13, 0.62)];
+    const skirt = fadeDiscTexture(21, 0.2), blot = [fadeDiscTexture(31, 0.15), fadeDiscTexture(37, 0.15)];
+    type Stain = { x: number; z: number; size: number; yaw: number; color: number };
+    const stains: [Stain[], Stain[]] = [[], []];
     this.map.compounds.forEach((c, i) => {
-      // Clone the texture transform, not the 6000-speckle canvas image.
+      // Reuse the expensive 6000-speckle concrete canvas for every town.
       const tex = concrete.clone(); tex.repeat.set((c.r + 6) / 3, (c.r + 6) / 3);
-      const sk = this.soft(new THREE.PlaneGeometry((c.r + 20) * 2, (c.r + 20) * 2).rotateX(-Math.PI / 2), 0xfff0c8, dirt.clone(), skirt, 0.02, 1, 0.38); sk.position.x = c.x; sk.position.z = c.z; (sk.material as THREE.MeshLambertMaterial).map!.repeat.set((c.r + 20) / 4, (c.r + 20) / 4); (sk.material as THREE.MeshLambertMaterial).map!.needsUpdate = true;
-      const pad = this.soft(new THREE.PlaneGeometry((c.r + 6) * 2, (c.r + 6) * 2).rotateX(-Math.PI / 2), tints[c.theme] ?? 0xffffff, tex, alpha[i % 3], 0.04, 2); pad.position.x = c.x; pad.position.z = c.z; pad.rotation.y = rng() * 6.28;
-      if (!this.low) for (let k = 0; k < 9; k++) { // 둘레의 흙·자갈 얼룩
-        const a = rng() * Math.PI * 2, r = c.r * (0.78 + rng() * 0.55), s = 4 + rng() * 8, b = this.soft(new THREE.PlaneGeometry(s * 2, s * 2).rotateX(-Math.PI / 2), rng() < 0.5 ? 0xfff0c8 : 0xe8e4d6, dirt, blot[k % 2], 0.03, 1, 0.5);
-        b.position.x = c.x + Math.cos(a) * r; b.position.z = c.z + Math.sin(a) * r; b.rotation.y = rng() * 6.28;
+      const sk = this.soft(new THREE.PlaneGeometry((c.r + 20) * 2, (c.r + 20) * 2).rotateX(-Math.PI / 2), 0xfff0c8, dirt.clone(), skirt, 0.02, 1, 0.38);
+      sk.position.x = c.x; sk.position.z = c.z;
+      (sk.material as THREE.MeshLambertMaterial).map!.repeat.set((c.r + 20) / 4, (c.r + 20) / 4);
+      (sk.material as THREE.MeshLambertMaterial).map!.needsUpdate = true;
+      const pad = this.soft(new THREE.PlaneGeometry((c.r + 6) * 2, (c.r + 6) * 2).rotateX(-Math.PI / 2), tints[c.theme] ?? 0xffffff, tex, alpha[i % 3], 0.04, 2);
+      pad.position.x = c.x; pad.position.z = c.z; pad.rotation.y = rng() * 6.28;
+      if (!this.low) for (let k = 0; k < 9; k++) {
+        const a = rng() * Math.PI * 2, r = c.r * (0.78 + rng() * 0.55), size = 4 + rng() * 8;
+        const color = rng() < 0.5 ? 0xfff0c8 : 0xe8e4d6, yaw = rng() * 6.28;
+        stains[k % 2].push({ x: c.x + Math.cos(a) * r, z: c.z + Math.sin(a) * r, size, yaw, color });
       }
     });
+
+    // The original scene added nine individual transparent dirt meshes per
+    // town. Two material batches draw the same decals with independent sizes,
+    // rotations and colors, without hundreds of draw calls.
+    if (!this.low && (stains[0].length || stains[1].length)) {
+      const geometry = new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2), dummy = new THREE.Object3D(), color = new THREE.Color();
+      for (let i = 0; i < stains.length; i++) {
+        const group = stains[i]; if (!group.length) continue;
+        const material = new THREE.MeshLambertMaterial({
+          map: dirt, alphaMap: blot[i], transparent: true, opacity: 0.5,
+          depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+        });
+        const mesh = new THREE.InstancedMesh(geometry, material, group.length);
+        for (let j = 0; j < group.length; j++) {
+          const s = group[j];
+          dummy.position.set(s.x, 0.03, s.z);
+          dummy.rotation.set(0, s.yaw, 0);
+          dummy.scale.set(s.size, 1, s.size);
+          dummy.updateMatrix();
+          mesh.setMatrixAt(j, dummy.matrix);
+          mesh.setColorAt(j, color.setHex(s.color));
+        }
+        mesh.instanceMatrix.needsUpdate = true;
+        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+        mesh.computeBoundingSphere(); mesh.renderOrder = 1; mesh.receiveShadow = true;
+        this.group.add(mesh);
+      }
+    }
   }
   /** 마을을 잇는 흙길: 양 가장자리가 흐려져 풀밭과 섞입니다. */
   private buildRoads(): void {

@@ -27,7 +27,7 @@ try {
     })).replaceAll('},{', '}\n{')); }
     if (process.env.SHOT) await page.screenshot({ path: `${process.env.SHOT}-${name}.png` });
     const r = await page.evaluate(() => new Promise(done => {
-      const v = window.__zz.view, R = v.renderer, info = R.info; info.autoReset = false; info.reset(); v.adapt && (v.adapt.tick = () => {}); let n = 0, cpu = 0, depth = 0; const t0 = performance.now(), rr = R.render.bind(R); R.render = (...a) => { const s = performance.now(); depth++; rr(...a); depth--; if (!depth) cpu += performance.now() - s; };
+      const v = window.__zz.view, R = v.renderer, info = R.info; info.autoReset = false; info.reset(); if (v.adapt) v.adapt.tick = () => {}; let n = 0, cpu = 0, depth = 0; const t0 = performance.now(), rr = R.render.bind(R); R.render = (...a) => { const s = performance.now(); depth++; rr(...a); depth--; if (!depth) cpu += performance.now() - s; };
       const tick = () => { if (++n < 30) requestAnimationFrame(tick); else { R.render = rr; info.autoReset = true; done({ calls: info.render.calls / n, trisK: info.render.triangles / n / 1000, cpuMs: cpu / n, fps: n * 1000 / (performance.now() - t0), lod: v.lod?.counts?.() }); } };
       requestAnimationFrame(tick);
     }));

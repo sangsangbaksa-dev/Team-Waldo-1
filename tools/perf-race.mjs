@@ -15,7 +15,7 @@ try {
     await page.evaluate(() => { window.__race.dbg.auto = true; window.__race.skip(14); });
     await sleep(1500);
     const r = await page.evaluate(() => new Promise(done => {
-      const v = window.__race.view, R = v.renderer, info = R.info; info.autoReset = false; info.reset(); v.adaptive && (v.adaptive.tick = () => {}); let n = 0, t0 = performance.now(); const times = [], rr = R.render.bind(R); let depth = 0, cpu = 0; R.render = (...a) => { const s = performance.now(); depth++; rr(...a); depth--; if (!depth) cpu += performance.now() - s; };
+      const v = window.__race.view, R = v.renderer, info = R.info; info.autoReset = false; info.reset(); if (v.adaptive) v.adaptive.tick = () => {}; let n = 0, t0 = performance.now(); const rr = R.render.bind(R); let depth = 0, cpu = 0; R.render = (...a) => { const s = performance.now(); depth++; rr(...a); depth--; if (!depth) cpu += performance.now() - s; };
       const tick = () => { if (++n < 40) requestAnimationFrame(tick); else done({ frames: n, calls: info.render.calls / n, trisK: info.render.triangles / n / 1000, cpuMs: cpu / n, fps: n * 1000 / (performance.now() - t0), lod: v.lod?.counts?.() }); };
       requestAnimationFrame(tick);
     }));

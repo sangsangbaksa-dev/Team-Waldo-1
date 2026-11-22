@@ -22,3 +22,21 @@ describe('SPEED RUSH track sampling and hint resilience',()=>{
     expect(points).toEqual(prev);
   });
 });
+
+describe('SPEED RUSH malformed track input safeguards',()=>{
+  it('rejects incomplete, degenerate and nonfinite track definitions',()=>{
+    const control=MAPS[0].points;
+    expect(()=>buildTrack(control.slice(0,3))).toThrow(RangeError);
+    expect(()=>buildTrack([[0,0,0],[0,0,0],[0,0,0],[0,0,0]])).toThrow(RangeError);
+    expect(()=>buildTrack([[0,0,0],[1,0,0],[1,1,NaN],[0,1,0]])).toThrow(RangeError);
+    expect(()=>buildTrack(control,0)).toThrow(RangeError);
+    expect(()=>buildTrack(control,12,0)).toThrow(RangeError);
+    expect(()=>buildTrack(control,12,1e-9)).toThrow(RangeError);
+    expect(()=>buildTrack(control,12,100000)).toThrow(RangeError);
+  });
+  it('uses whole-circuit search for invalid nearest-point window values',()=>{
+    const t=buildTrack(),a=nearest(t,t.x[8],t.z[8],100,NaN);
+    expect(a.i).toBe(8);
+    expect(a.dist).toBeCloseTo(0);
+  });
+});

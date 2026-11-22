@@ -7,7 +7,7 @@ import type { PvpSession, RoomSession } from '../net/lobby';
 import { AIR, BOTS, FEEL, BR_PLAYERS, DIFFICULTIES, HELMET_NAMES, ARMOR_NAMES, HEAL, PARTS, PLAYER, VEHICLES, WEAPONS, adsSpread, partHandling, type Difficulty } from './config';
 import { waterDepth } from './terrain';
 import { Match, type Cause, type MatchEvent, type Player, type Vehicle } from './sim';
-import { CAUSES, WorldSync, canAcceptRoomPickup, canAcceptVehicleDamageReport, easePuppet, encodeLoot, parseLoot } from './sync';
+import { CAUSES, WorldSync, canAcceptRoomPickup, canAcceptVehicleDamageReport, canApplyRemoteVehiclePose, easePuppet, encodeLoot, parseLoot } from './sync';
 import type { NetMsg } from '../net/types';
 import { ShooterView } from './view';
 import { loadShooterAssets, type ShooterAssets } from './assets';
@@ -186,7 +186,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     card('멀티플레이 방', `${s.players.length}명이 모이는 중…`, '<p class="sz-sub">모두 연결되면 바로 시작합니다.</p>', '<button data-act="exit">나가기</button>');
     const net: ShooterRoomNet = new ShooterRoomNet(s, {
       onStart: ids => beginRoom(ids),
-      onPose: (id, p) => { const r = roomRemote(id); if (r) { r.target = p; if (p.vs && match && p.veh !== undefined && p.veh >= 0) { const v = match.vehicles[p.veh]; if (v) room!.sync.vehicleState(v, p.vs[0], p.vs[1], p.vs[2], p.vs[3], r.p.id, true, performance.now()); } } },
+      onPose: (id, p) => { const r = roomRemote(id); if (r) { r.target = p; if (p.vs && match && p.veh !== undefined && p.veh >= 0) { const v = match.vehicles[p.veh]; if (canApplyRemoteVehiclePose(v, r.p)) room!.sync.vehicleState(v, p.vs[0], p.vs[1], p.vs[2], p.vs[3], r.p.id, true, performance.now()); } } },
       onShot: (id, sh) => {
         const r = roomRemote(id); if (!r || !match || !plausiblePlayerShot(sh, r.p)) return; const aims: Array<[number, number]> = [];
         for (let i = 0; i + 2 < sh.ends.length; i += 3) { const dx = sh.ends[i] - sh.ox, dy = sh.ends[i + 1] - sh.oy, dz = sh.ends[i + 2] - sh.oz; aims.push([Math.atan2(dz, dx), Math.atan2(dy, Math.hypot(dx, dz))]); }
@@ -267,9 +267,17 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     for (const { p: o, target: t } of room.remotes.values()) {
       if (!t || !o.alive) continue;
       const veh = t.veh ?? -1;
-      if (veh !== o.veh) {
-        const old = m.vehicles[o.veh]; if (old && old.driver === o.id) old.driver = -1;
-        const nu = m.vehicles[veh]; if (nu && !nu.wreck && (nu.driver < 0 || nu.driver === o.id) && nu.remote) { o.veh = veh; nu.driver = o.id; if (!nu.moving) { nu.moving = true; m.parkBox(nu, false); } } else o.veh = -1;
+      // Position reports are not vehicle boarding/exit requests. Ownership
+      // changes only through the host's vg/vv approval or an authenticated vx.
+      // In particular, do not clear the driver before a delayed vx packet arrives.
+      if (veh !== o.veh && veh >= 0) {
+        const nu = m.vehicles[veh];
+        if (nu && nu.remote && !nu.wreck && nu.driver === o.id) {
+          const old = m.vehicles[o.veh];
+          if (old && old.driver === o.id) old.driver = -1;
+          o.veh = veh;
+          if (!nu.moving) { nu.moving = true; m.parkBox(nu, false); }
+        }
       }
       easePuppet(o, { x: t.x, z: t.z, yaw: t.yaw, pitch: t.pitch, speed: t.speed, air: t.air ?? 0, alt: t.alt ?? 0, hp: t.hp, w: t.w, ads: t.ads, crouch: !!t.crouch, reload: t.reloading }, dt);
       o.armor = t.armor;

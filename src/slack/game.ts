@@ -48,6 +48,11 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
     if (!node) { node = root.querySelector<T>(selector)!; nodes.set(selector, node); }
     return node as T;
   };
+  // HUD controls are stable across the game instance; skip same-value writes
+  // and allocate the helpers only once, not on each animation frame.
+  const text = (selector: string, value: string): void => { const node = $(selector); if (node.textContent !== value) node.textContent = value; };
+  const style = (selector: string, property: 'width' | 'left', value: string): void => { const node = $(selector); if (node.style[property] !== value) node.style[property] = value; };
+  const variable = (name: string, value: string): void => { if (root.style.getPropertyValue(name) !== value) root.style.setProperty(name, value); };
   const strikePips = Array.from(root.querySelectorAll<HTMLElement>('[data-pips] i'));
   let audio = createSlackAudio(); let muted = !readPreferences().sound; audio.setMuted(muted);
   let stage: StageId = 'class', level: Level = 2, sim: Sim | null = null, view: StageView | null = null;
@@ -176,9 +181,6 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
     view.frame(elapsed);
     { const a = sim.state; if (activity) tally.act[activity] = (tally.act[activity] ?? 0) + elapsed; tally.maxCombo = Math.max(tally.maxCombo, a.combo); tally.maxSus = Math.max(tally.maxSus, a.sus); }
     if (tutorial) { tutTime += elapsed; tutWall += dt; const isLast = tutStep === tutorialSteps.length - 1; if (tutorialSteps[tutStep].done(sim.state, tutTime) || tutWall > (isLast ? 9 : 40)) { if (++tutStep >= tutorialSteps.length) endTutorial(); else showTutorialStep(); } }
-    const text = (selector: string, value: string): void => { const node = $(selector); if (node.textContent !== value) node.textContent = value; };
-    const style = (selector: string, property: 'width' | 'left', value: string): void => { const node = $(selector); if (node.style[property] !== value) node.style[property] = value; };
-    const variable = (name: string, value: string): void => { if (root.style.getPropertyValue(name) !== value) root.style.setProperty(name, value); };
     const s = sim.state, left = Math.max(0, Math.ceil(s.limit - s.time));
     text('[data-time]', `${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}`);
     text('[data-fun]', `${Math.round(s.fun)} / ${Math.round(s.goal)}`);

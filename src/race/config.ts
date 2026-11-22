@@ -1,6 +1,7 @@
 // SPEED RUSH — 차량·난이도·종목 정의와 선택 값 검증. 화면과 무관한 순수 데이터입니다.
 import { MAPS, type MapDef } from './maps';
 import { PLAYER_PARAMS, type CarParams } from './physics';
+import { skinById } from './skins';
 
 /** 능력치는 1~5점이고 차량마다 합계가 같습니다(좋은 정도는 같고 성격만 다릅니다). */
 export interface StatPoints { accel: number; top: number; handling: number; drift: number; nitro: number }
@@ -25,18 +26,8 @@ export const CARS: ReadonlyArray<CarDef> = [
   { id: 'rally', name: 'RALLY', role: '랠리형', blurb: '출발이 빠르고 드리프트가 잘 걸리는 랠리 머신', color: '#f2c230', points: { accel: 4, top: 2, handling: 3, drift: 4, nitro: 2 }, model: 'wide', accent: '#1b1d22' },
 ];
 
-/** 차량 도장(스킨). stock 은 차량 고유색이고, 나머지는 차고에서 코인으로 삽니다. */
-export interface SkinDef { id: string; name: string; color: string; accent: string; cost: number }
-export const SKINS: ReadonlyArray<SkinDef> = [
-  { id: 'stock', name: '기본', color: '', accent: '', cost: 0 },
-  { id: 'night', name: '나이트 블랙', color: '#15171d', accent: '#ff3b5c', cost: 220 },
-  { id: 'pearl', name: '펄 화이트', color: '#f1f3f6', accent: '#2e7dff', cost: 220 },
-  { id: 'sunset', name: '선셋 오렌지', color: '#ff6a2b', accent: '#2a1038', cost: 320 },
-  { id: 'neon', name: '네온 라임', color: '#9cff2e', accent: '#1b1d22', cost: 320 },
-  { id: 'royal', name: '로열 퍼플', color: '#6a35d9', accent: '#f2c230', cost: 420 },
-  { id: 'gold', name: '골드 러시', color: '#d9a62e', accent: '#15171d', cost: 600 },
-];
-export const skinById = (id: string): SkinDef => SKINS.find(s => s.id === id) ?? SKINS[0];
+export { SKINS, skinById } from './skins';
+export type { SkinDef } from './skins';
 /** 스킨을 입힌 차량의 차체색·보조색 */
 export const paintOf = (car: CarDef, skinId: string): { color: string; accent: string } => { const k = skinById(skinId); return k.color ? { color: k.color, accent: k.accent } : { color: car.color, accent: car.accent }; };
 export const carById = (id: string): CarDef => CARS.find(c => c.id === id) ?? CARS[0];

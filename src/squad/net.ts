@@ -9,7 +9,7 @@ export interface SquadHooks {
   /** 상대가 나갔거나 일정 시간 소식이 없습니다. */
   onGone(reason: 'bye' | 'silent' | 'never'): void;
 }
-const TICK_MS = 2000, SILENT_MS = 20000, NEVER_MS = 30000, MAX_UNITS = 40;
+const TICK_MS = 2000, SILENT_MS = 20000, NEVER_MS = 30000, MAX_UNITS = 40, MAX_ROUNDS = 64;
 export function parseArmy(raw: unknown): Placement[] | null {
   if (!Array.isArray(raw) || raw.length > MAX_UNITS) return null;
   const out: Placement[] = [];
@@ -47,7 +47,7 @@ export class SquadPvp {
   }
   private onMsg(m: NetMsg): void {
     this.last = performance.now(); this.heard = true;
-    if (m.t === 'army') { const r = m.r, a = parseArmy(m.a); if (Number.isInteger(r) && (r as number) >= 1 && (r as number) <= 3 && a) this.hooks.onArmy(r as number, a); }
+    if (m.t === 'army') { const r = m.r, a = parseArmy(m.a); if (Number.isInteger(r) && (r as number) >= 1 && (r as number) <= MAX_ROUNDS && a) this.hooks.onArmy(r as number, a); }
     else if (m.t === 'bye') { if (m.fin === true) this.finished = true; else this.gone('bye'); }
   }
 }

@@ -72,7 +72,7 @@ export class RtsView {
   // ---------- 지형 ----------
   private buildTerrain(): void {
     const n = this.sim.map.size, rnd = seeded(7), scene = this.scene;
-    const tex = document.createElement('canvas'); tex.width = tex.height = 1536; const g = tex.getContext('2d')!, k = tex.width / n;
+    const tex = document.createElement('canvas'); tex.width = tex.height = this.quality === 'low' ? 768 : this.quality === 'standard' ? 1024 : 1536; const g = tex.getContext('2d')!, k = tex.width / n;
     g.fillStyle = '#c3a672'; g.fillRect(0, 0, tex.width, tex.height);
     const blot = (c: string, count: number, r0: number, r1: number, a: number): void => { for (let i = 0; i < count; i++) { g.globalAlpha = a * (0.4 + rnd() * 0.6); g.fillStyle = c; g.beginPath(); g.arc(rnd() * tex.width, rnd() * tex.height, (r0 + rnd() * (r1 - r0)) * k, 0, Math.PI * 2); g.fill(); } g.globalAlpha = 1; };
     blot('#b49560', 260, 1.2, 4.8, 0.35); blot('#d4ba86', 240, 0.8, 3.4, 0.32); blot('#a98259', 100, 0.8, 2.8, 0.3); blot('#8f7a58', 190, 0.25, 1.0, 0.4);
@@ -100,16 +100,16 @@ export class RtsView {
       let nb = 0; for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) if (t[Math.min(n - 1, Math.max(0, y + j)) * n + Math.min(n - 1, Math.max(0, x + i))]) nb++;
       cells.push([x, y, nb]);
     }
-    const rockGeo = new THREE.IcosahedronGeometry(0.9, 0), rocks = new THREE.InstancedMesh(rockGeo, new THREE.MeshStandardMaterial({ roughness: 0.95, metalness: 0.05, flatShading: true }), cells.length * 2);
+    const rockGeo = new THREE.IcosahedronGeometry(0.9, 0), rocksPerCell = this.quality === 'low' ? 1 : 2, rocks = new THREE.InstancedMesh(rockGeo, new THREE.MeshStandardMaterial({ roughness: 0.95, metalness: 0.05, flatShading: true }), cells.length * rocksPerCell);
     rocks.castShadow = this.shadows; rocks.receiveShadow = true; const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), col = new THREE.Color(); let idx = 0;
-    for (const [x, y, nb] of cells) for (let r = 0; r < 2; r++) {
+    for (const [x, y, nb] of cells) for (let r = 0; r < rocksPerCell; r++) {
       const edge = x === 0 || y === 0 || x === n - 1 || y === n - 1, hgt = (0.5 + nb * 0.14 + rnd() * 0.6) * (edge ? 2.6 : 1) * (r ? 0.7 : 1), sx = 0.75 + rnd() * 0.55;
       e.set(rnd() * 3, rnd() * 6, rnd() * 3); q.setFromEuler(e); m4.compose(new THREE.Vector3(x + 0.5 + (rnd() - 0.5) * 0.5, hgt * 0.35, y + 0.5 + (rnd() - 0.5) * 0.5), q, new THREE.Vector3(sx, hgt, sx));
       rocks.setMatrixAt(idx, m4); col.setHSL(0.07 + rnd() * 0.035, 0.36 + rnd() * 0.12, 0.36 + rnd() * 0.14 + (nb > 6 ? 0.05 : 0)); rocks.setColorAt(idx++, col);
     }
     rocks.count = idx; rocks.instanceMatrix.needsUpdate = true; if (rocks.instanceColor) rocks.instanceColor.needsUpdate = true; scene.add(rocks);
     // 맵 바깥 협곡 암벽: 층층이 쌓인 붉은 사암 메사(그림자 없이 한 번의 그리기).
-    const mesas = this.quality === 'low' ? 46 : 96, strata = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.46, 0.59, 1, 7, 1), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true }), mesas * 3); let sc = 0;
+    const mesas = this.quality === 'low' ? 46 : this.quality === 'standard' ? 72 : 96, strata = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.46, 0.59, 1, 7, 1), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true }), mesas * 3); let sc = 0;
     for (let i = 0; i < mesas; i++) {
       const side = i % 4, a = rnd() * (n + 40) - 20, d = 5 + rnd() * 20, x = side === 0 ? a : side === 1 ? a : side === 2 ? -d : n + d, y = side === 0 ? -d : side === 1 ? n + d : a;
       const w = 6 + rnd() * 9, dp = 5 + rnd() * 8, h = 5 + rnd() * 13 * (1 + d / 30), hue = 0.04 + rnd() * 0.04;

@@ -121,7 +121,8 @@ export class ShooterView {
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), z = pos.getZ(i), a = n1(x / 90 + 32, z / 90 + 32), b = n2(x / 28 + 32, z / 28 + 32);
       c.copy(green).lerp(dry, Math.max(0, a - 0.4) * 3).lerp(dark, Math.max(0, 0.5 - b) * 2.2).lerp(sand, Math.max(0, Math.hypot(x, z) - half * 1.02) / 120); tintGround(this.match.map, x, z, c);
-      col.set([c.r, c.g, c.b], i * 3);
+      // Avoid one temporary JS array per terrain vertex (14k+ at high quality).
+      const offset = i * 3; col[offset] = c.r; col[offset + 1] = c.g; col[offset + 2] = c.b;
     }
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     const t = groundTexture(); t.repeat.set(size / 6, size / 6);

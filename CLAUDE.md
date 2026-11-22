@@ -14,7 +14,7 @@ Vite + TypeScript + Three.js 게임 허브. 게임 9개가 있습니다.
 | `src/squad` | SQUAD CLASH |
 | `room-tone/` + `src/room-tone` | ROOM TONE (별도 HTML, 허브에서 이동) |
 
-공용: `src/main.ts`(허브), `src/net`(로그인·1대1), `src/shared`, `src/prefs.ts`, `src/records.ts`, `src/loading.ts`, `src/audio-core.ts`.
+공용: `src/main.ts`(허브), `src/net`(로그인·1대1), `src/shared`(`lod.ts` = 청크 분할·거리 LOD·박스 프록시·지형 타일: 3D 렉 줄일 때 먼저 쓰세요), `src/prefs.ts`, `src/records.ts`, `src/loading.ts`, `src/audio-core.ts`.
 
 ## 규칙
 - 작업 중인 게임 폴더만 읽습니다. 다른 게임 폴더·`public/`(바이너리 에셋)은 열지 않습니다.

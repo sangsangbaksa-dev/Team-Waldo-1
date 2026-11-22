@@ -181,7 +181,7 @@ export class Renderer3D {
     this.scene.add(pole, bulb);
   }
   private setPerfLevel(l: number): void {
-    this.perfLevel = l; this.wetStreet.probe = l < 1; this.postOn = l < 3; if (l >= 2) { this.sun.castShadow = false; this.details.setVisible(false); } this.settle = 60; this.gaps.length = 0;
+    this.perfLevel = l; const ls = l >= 2 ? 0.55 : l >= 1 ? 0.75 : 1; this.bfx.lod.scale = ls; if (this.ml) this.ml.lodScale = ls; this.wetStreet.probe = l < 1; this.postOn = l < 3; if (l >= 2) { this.sun.castShadow = false; this.details.setVisible(false); } this.settle = 60; this.gaps.length = 0;
   }
   /** 해상도(adaptResolution)가 이미 바닥인데도 프레임 간격 중앙값(60프레임)이 28ms 를 넘으면 반사 프로브 → 그림자 → 후처리 순으로 끈다. 탭 전환·일시정지(250ms 초과)와 시작 직후는 세지 않는다. */
   private govern(): void {

@@ -19,6 +19,7 @@ import { groundHeight } from './relief';
 import { WeatherFx } from './weatherfx';
 import { waterDepth } from './terrain';
 import { FLOOR_Y } from './ground-surfaces';
+import { LodSet, tileHeightfield } from '../shared/lod';
 import { chuteTexture, crateTexture, concreteTexture, floorTexture, glowTexture, groundTexture, leafTexture, lootCaseTexture, makeSky, rockTexture, setTextureAnisotropy, wallTexture } from './textures';
 
 export type Quality = 'high' | 'standard' | 'low';
@@ -56,7 +57,7 @@ export class ShooterView {
   private camPos = new THREE.Vector3(); fov = 78; frames = 0;
   /** 적응형 화질: 프레임이 길면 해상도 → 후처리 → 그림자 → 원거리 장식 순으로 낮춥니다 */
   private adapt: AdaptiveQuality; level = 0; private vw = 0; private vh = 0;
-  private cullSets: Array<{ m: THREE.InstancedMesh; x: number; z: number; r: number; far: number; grass: boolean }> = []; private tracerGeo = new THREE.CylinderGeometry(0.012, 0.012, 1, 4, 1, true);
+  private readonly groundLod = new LodSet({ near: 150, far: 1e9 }); private cullSets: Array<{ m: THREE.InstancedMesh; x: number; z: number; r: number; far: number; grass: boolean }> = []; private tracerGeo = new THREE.CylinderGeometry(0.012, 0.012, 1, 4, 1, true);
   private environment: THREE.Texture | null = null; private reducedMotion = readPreferences().reducedMotion;
   /** 폭풍우 하늘: 번개(flash)가 가끔 하늘과 안개를 밝힙니다 */
   private wfx: WeatherFx | null = null; private sky: THREE.Mesh; private hemi: THREE.HemisphereLight; private flash = 0; private nextBolt = 6; private carrier: THREE.Group | null = null; private fogBase = new THREE.Color(0x76828a);
@@ -121,7 +122,13 @@ export class ShooterView {
     const normals = geo.attributes.normal; for (let i = 0; i < pos.count; i++) { const shade = 1 - Math.min(0.22, (1 - normals.getY(i)) * 2); col[i * 3] *= shade; col[i * 3 + 1] *= shade; col[i * 3 + 2] *= shade; }
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     const t = groundTexture(); t.repeat.set(size / 6, size / 6);
-    const ground = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: t, vertexColors: true, roughness: 1 })); ground.receiveShadow = true; this.scene.add(ground);
+    // 지형을 8×8 칸으로 잘라 시야 밖 칸은 그리지 않고, 먼 칸은 성긴 격자로 대신한다(공용 src/shared/lod.ts). 한 장이면 섬 전체 11만 삼각형을 매 프레임 그렸다.
+    const gmat = new THREE.MeshStandardMaterial({ map: t, vertexColors: true, roughness: 1 });
+    for (const tile of tileHeightfield(geo, segs, 8, 3, 4)) {
+      const mk = (g: THREE.BufferGeometry, on: boolean): THREE.Mesh => { const m = new THREE.Mesh(g, gmat); m.receiveShadow = true; m.visible = on; this.scene.add(m); return m; };
+      this.groundLod.add({ x: tile.x, z: tile.z, r: tile.r, full: [mk(tile.full, true)], proxy: [mk(tile.coarse, false)] });
+    }
+    geo.dispose();
     this.buildRange(half);
     // 마을 바닥·흙길·물·구릉·절벽·다리
     this.terrainView = new TerrainView(this.match.map, this.quality === 'low'); this.scene.add(this.terrainView.group);
@@ -567,6 +574,7 @@ export class ShooterView {
     // 해와 그림자는 카메라를 따라 이동
     (this.scene.fog as THREE.FogExp2).density = 0.0042 / (1 + view.alt / 110);
     this.sun.position.set(view.x + 66, 92, view.z + 46); this.sun.target.position.set(view.x, 0, view.z); this.sun.target.updateMatrixWorld(); this.renderer.shadowMap.needsUpdate = this.frames < 3 || (this.frames & 1) === 0;
+    this.groundLod.scale = Math.min(3, 1 + view.alt / 110); this.groundLod.update({ x: vx, z: vz });
     const mult = Math.min(3, 1 + view.alt / 110); for (const c of this.cullSets) c.m.visible = !(c.grass && this.level >= 3) && Math.hypot(c.x - vx, c.z - vz) < c.far * mult + c.r;
     // 자기장
     this.zoneWall.scale.set(z.r, 1, z.r); this.zoneWall.position.x = z.cx; this.zoneWall.position.z = z.cz; (this.zoneWall.material as THREE.ShaderMaterial).uniforms.t.value = this.time;

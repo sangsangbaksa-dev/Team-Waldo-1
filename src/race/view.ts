@@ -25,6 +25,7 @@ import { writeSkidQuad } from './skid-geometry';
 import { writeVec3, writeSpeedStreak, streakDirection, speedStreakVisible, speedStreakBudget } from './fx-buffers';
 
 const CAR_LEN = 4.7;
+const SIDE_SIGNS = [-1, 1] as const;
 const rnd = (a: number, b: number): number => a + Math.random() * (b - a);
 
 function canvasTex(w: number, h: number, draw: (g: CanvasRenderingContext2D) => void, repeat = true): THREE.CanvasTexture {
@@ -595,7 +596,7 @@ export class RaceView {
     // 차량 배치
     this.roadLights?.begin();
     for (const v of this.cars) {
-      const c = v.racer.car, sample = t.n > 0 ? ((c.idx % t.n) + t.n) % t.n : 0, pitchRoad = t.pitch[sample] || 0, accel = (c.vf - v.lastV) / Math.max(dt, 1e-4); v.lastV = c.vf;
+      const c = v.racer.car, headingCos = Math.cos(c.h), headingSin = Math.sin(c.h), sample = t.n > 0 ? ((c.idx % t.n) + t.n) % t.n : 0, pitchRoad = t.pitch[sample] || 0, accel = (c.vf - v.lastV) / Math.max(dt, 1e-4); v.lastV = c.vf;
       v.brakeLevel = brakeGlow(v.brakeLevel, accel, dt, Math.abs(c.vf));
       for (const mat of v.brake) mat.color.setRGB(0.85 + v.brakeLevel * 1.65, 0.035 + v.brakeLevel * 0.045, 0.045);
       const roll = Math.max(-0.09, Math.min(0.09, -c.yawRate * c.vf * 0.0028)) + c.slip * -0.08, pitch = pitchRoad - Math.max(-0.04, Math.min(0.04, accel * 0.0012));
@@ -603,12 +604,12 @@ export class RaceView {
       v.group.position.set(c.x, c.y + 0.02, c.z); v.group.rotation.set(pose.x, pose.y, pose.z, pose.order); v.shadow.position.set(c.x, c.y + 0.05, c.z); v.shadow.rotation.y = -c.h;
       const fl = boosting(c), len = fl ? 1.0 + Math.sin(this.time * 90 + v.racer.id) * 0.25 + Math.min(0.9, Math.abs(c.vf) / 90) : 0.001;
       for (const f of v.flames) { f.scale.x += (len - f.scale.x) * Math.min(1, dt * 20); f.visible = fl || f.scale.x > 0.08; (f.material as THREE.MeshBasicMaterial).color.setHex(v.racer.player ? 0x6ec6ff : 0xffa14a); }
-      for(let i=0;i<v.fx.take('nitro',fl?(this.quality==='low'?24:54):0,dt);i++) this.sparks.emit(c.x - Math.cos(c.h) * 2.4, c.y + 0.5, c.z - Math.sin(c.h) * 2.4, -Math.cos(c.h) * 8 + rnd(-2, 2), rnd(0, 2), -Math.sin(c.h) * 8 + rnd(-2, 2), 0.35, 0.4, 0.8, 1);
+      for(let i=0;i<v.fx.take('nitro',fl?(this.quality==='low'?24:54):0,dt);i++) this.sparks.emit(c.x - headingCos * 2.4, c.y + 0.5, c.z - headingSin * 2.4, -headingCos * 8 + rnd(-2, 2), rnd(0, 2), -headingSin * 8 + rnd(-2, 2), 0.35, 0.4, 0.8, 1);
       // 타이어: 드리프트·옆미끄러짐·출발 휠스핀에서 연기와 스키드 마크가 남습니다.
       const wheelspin = v.racer.player && race.phase === 'racing' && c.boostT > 0 && Math.abs(c.vf) < 30 && Math.abs(c.vf) > 1;
       const sliding = Math.abs(c.vf) > 14 && (c.drifting || Math.abs(c.slip) > 0.2), tire = c.drifting ? 1 : Math.min(1, Math.abs(c.slip) * 3.2);
-      for (const s of [-1, 1]) {
-        const bx = c.x - Math.cos(c.h) * 1.4 - Math.sin(c.h) * 0.9 * s * -1, bz = c.z - Math.sin(c.h) * 1.4 + Math.cos(c.h) * 0.9 * s * -1, w = s < 0 ? 0 : 1;
+      for (const s of SIDE_SIGNS) {
+        const bx = c.x - headingCos * 1.4 - headingSin * 0.9 * s * -1, bz = c.z - headingSin * 1.4 + headingCos * 0.9 * s * -1, w = s < 0 ? 0 : 1;
         if (sliding || wheelspin) {
           const k = wheelspin ? 0.8 : tire;
           for(let i=0;i<v.fx.take(s<0?'tireL':'tireR',(this.quality==='low'?25:60)*(0.55+0.45*k),dt);i++)this.smoke.emit(bx, c.y + 0.35, bz, rnd(-1.5, 1.5) - c.vx * 0.12, rnd(0.6, 2.4), rnd(-1.5, 1.5) - c.vz * 0.12, 0.7 + 0.5 * k, 0.62, 0.6, 0.66);
@@ -617,16 +618,16 @@ export class RaceView {
         } else {this.skids.lift(v.racer.id * 2 + w);v.fx.take(s<0?'tireL':'tireR',0,dt);v.fx.take(s<0?'driftL':'driftR',0,dt);}
       }
       if(this.roadLights){
-        const strength=trackLightStrength(this.theme.light.sunPower,this.theme.rain),fx=Math.cos(c.h),fz=Math.sin(c.h);
+        const strength=trackLightStrength(this.theme.light.sunPower,this.theme.rain),fx=headingCos,fz=headingSin,slope=Math.tan(pitchRoad);
         // Small pools stay close to the local road surface, even on the hills.
         const front=CAR_LEN/2+3.2;
-        this.roadLights.add(c.x+fx*front,c.y+Math.tan(pitchRoad)*front+0.10,c.z+fz*front,c.h,6.4,2.9,0xffebc7,strength,pitchRoad);
-        if(this.theme.rain){const back=CAR_LEN/2+1.7;this.roadLights.add(c.x-fx*back,c.y-Math.tan(pitchRoad)*back+0.12,c.z-fz*back,c.h,3.4,2.1,0xff2737,(0.12+v.brakeLevel*0.56)*this.theme.rain,pitchRoad);}
+        this.roadLights.add(c.x+fx*front,c.y+slope*front+0.10,c.z+fz*front,c.h,6.4,2.9,0xffebc7,strength,pitchRoad);
+        if(this.theme.rain){const back=CAR_LEN/2+1.7;this.roadLights.add(c.x-fx*back,c.y-slope*back+0.12,c.z-fz*back,c.h,3.4,2.1,0xff2737,(0.12+v.brakeLevel*0.56)*this.theme.rain,pitchRoad);}
       }
       // On wet tracks, the rear tires leave a low, directional plume of road spray.
       if (this.spray) {
         const e=emissionStep(v.sprayCarry,sprayRate(Math.abs(c.vf),this.theme.rain??0,this.quality==='low'),dt);v.sprayCarry=e.carry;
-        const fx=Math.cos(c.h),fz=Math.sin(c.h),dir=c.vf>=0?1:-1;
+        const fx=headingCos,fz=headingSin,dir=c.vf>=0?1:-1;
         for(let i=0;i<e.count;i++) {
           const side=(i+v.racer.id)%2?1:-1;
           this.spray.emit(c.x-fx*1.45-fz*side*0.78,c.y+0.16,c.z-fz*1.45+fx*side*0.78,-c.vx*0.23-fx*dir*2+rnd(-1,1),rnd(1.5,3.1),-c.vz*0.23-fz*dir*2+rnd(-1,1),0.45+rnd(0,0.3),0.67,0.75,0.83);
@@ -641,7 +642,7 @@ export class RaceView {
       // 슬립스트림: 앞차 뒤에 붙으면 하늘색 바람 줄기가 차 옆으로 빨려 들어갑니다.
       const draftCount=v.fx.take('draft',c.draft>0.35?c.draft*(this.quality==='low'?35:110):0,dt);
       for(let i=0;i<draftCount;i++){const s=i%2?1:-1;
-        const bx = c.x + Math.cos(c.h) * 3 - Math.sin(c.h) * 1.5 * s * -1, bz = c.z + Math.sin(c.h) * 3 + Math.cos(c.h) * 1.5 * s * -1;
+        const bx = c.x + headingCos * 3 - headingSin * 1.5 * s * -1, bz = c.z + headingSin * 3 + headingCos * 1.5 * s * -1;
         this.sparks.emit(bx, c.y + rnd(0.3, 1.3), bz, c.vx * 0.2, 0, c.vz * 0.2, 0.25, 0.7, 0.9, 1);
       }
       if (v.racer.player && wallHit > 0) for (let k = 0; k < 18; k++) this.sparks.emit(c.x, c.y + 0.5, c.z, rnd(-9, 9), rnd(1, 7), rnd(-9, 9), 0.5, 1, 0.8, 0.35);

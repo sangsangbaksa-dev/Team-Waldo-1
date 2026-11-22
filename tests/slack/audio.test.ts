@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { createSlackAudio } from '../../src/slack/audio';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
 it('requires a gesture, retries rejected resumes, and closes only once', async () => {
   const node = () => ({ connect: vi.fn(), gain: { value: 0 }, frequency: { value: 0 },
@@ -76,5 +76,31 @@ it('does not allocate silent oscillator or noise voices while SFX are muted', ()
   expect(ctx.createBuffer).not.toHaveBeenCalled();
   expect(ctx.createOscillator).not.toHaveBeenCalled();
   expect(ctx.createBufferSource).not.toHaveBeenCalled();
+  audio.dispose();
+});
+
+it('suspends procedural earbud note timers while sound is muted', () => {
+  vi.useFakeTimers();
+  vi.spyOn(Math, 'random').mockReturnValue(0.99);
+  const param = () => ({ value: 0, setTargetAtTime: vi.fn() });
+  const node = () => ({
+    connect: vi.fn(), gain: param(), frequency: param(),
+    threshold: param(), knee: param(), ratio: param(), attack: param(), release: param(),
+  });
+  const ctx = {
+    state: 'running', currentTime: 0, destination: {},
+    createGain: vi.fn(node), createBiquadFilter: vi.fn(node), createDynamicsCompressor: vi.fn(node),
+    resume: vi.fn().mockResolvedValue(undefined), close: vi.fn().mockResolvedValue(undefined),
+  };
+  vi.stubGlobal('AudioContext', vi.fn(function () { return ctx; }));
+  const audio = createSlackAudio();
+  audio.resume();
+  audio.setMuted(true);
+  audio.muffle(true);
+  expect(vi.getTimerCount()).toBe(0);
+  audio.setMuted(false);
+  expect(vi.getTimerCount()).toBe(1);
+  audio.setMuted(true);
+  expect(vi.getTimerCount()).toBe(0);
   audio.dispose();
 });

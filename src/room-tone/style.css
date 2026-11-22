@@ -873,3 +873,15 @@ button.primary { background: #e1e1dd; border-color: #e1e1dd; color: #151515; }
   #viewWrap.noticed::before { animation: none; transform: none; }
 }
 .hudleft span, .hudleft strong, .hudright button { color: #fff; text-shadow: 0 1px 4px #000; }
+
+/* 대비 보강: 구역명·목표·하단 안내가 어두운 장면 위에서도 읽히도록 글자를 키우고 받침을 깝니다. */
+.hud { background: linear-gradient(#050807f0, #050807a0 55%, transparent); }
+.hudleft { background: #050807a8; padding: 0.45rem 0.8rem 0.5rem; border-left: 2px solid #dec099; border-radius: 0 4px 4px 0; }
+.hudleft span { color: #f2d9b2; font-size: 0.92rem; }
+.hudleft strong { color: #fff; font-size: 1.05rem; }
+.statusfoot { color: #f1f1ea; background: #050807b8; padding: 0.4rem 0.75rem; border-radius: 4px; font-size: 0.92rem; }
+.statusfoot strong { color: #fff; }
+.rec { color: #ffc39f; }
+#prompt { color: #fff; background: #0b1512f2; border-color: #9fb5a4; }
+.wordmark { color: inherit; text-decoration: none; }
+.wordmark:hover, .wordmark:focus-visible { text-decoration: underline; text-underline-offset: 4px; }

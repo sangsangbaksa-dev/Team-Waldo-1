@@ -33,6 +33,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   document.body.innerHTML = '<div id="game"></div>';
   localStorage.clear();
+  history.replaceState(null, '', '/'); // 이전 테스트가 남긴 #/게임 주소로 자동 실행되지 않게
 });
 
 describe('메인 페이지', () => {
@@ -124,5 +125,23 @@ describe('메인 페이지', () => {
     expect(button('#sound-toggle').getAttribute('aria-pressed')).toBe('false');
     button('#sound-toggle').click();
     expect(JSON.parse(localStorage.getItem('waldo.preferences.v1')!)).toMatchObject({ sound: true, quality: 'low' });
+  });
+});
+
+describe('게임 주소·뒤로가기', () => {
+  it('게임을 열면 #/게임 주소가 붙고, 목록으로 돌아오면 지워진다', async () => {
+    await loadMenu();
+    button('#start-rts').click();
+    await vi.waitFor(() => expect(games.openRts).toHaveBeenCalledTimes(1));
+    expect(location.hash).toBe('#/rts');
+    expect(document.title).toContain('FRONTLINE');
+    games.openRts.mock.calls[0]![0]();
+    expect(location.hash).toBe('');
+    expect(document.title).toContain('10편');
+  });
+  it('주소에 #/게임이 있으면 그 게임 화면을 바로 연다', async () => {
+    history.replaceState(null, '', '/#/sky');
+    await loadMenu();
+    await vi.waitFor(() => expect(games.openSky).toHaveBeenCalledTimes(1));
   });
 });

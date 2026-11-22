@@ -391,7 +391,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
     const k = e.key.toUpperCase();
     if (root.dataset.phase === 'paused' && (e.key === 'Escape' || e.key.toLowerCase() === 'p')) { e.preventDefault(); hide(); paused = false; root.dataset.phase = 'play'; last = performance.now(); return; }
     if (e.key.toLowerCase() === 'p' && !e.ctrlKey && !e.metaKey && !e.altKey && sim && !ended) { e.preventDefault(); if (net) toast('온라인 대전은 일시정지할 수 없습니다', true); else openMenu(); return; }
-    if (e.key === 'Escape') { if (!net) openMenu(); e.preventDefault(); return; }
+    if (e.key === 'Escape') { e.preventDefault(); if (mode) { mode = null; setHint(''); return; } if (!net) openMenu(); return; }
     if (!sim || ended) return;
     if (/^[1-9]$/.test(e.key)) {
       const n = Number(e.key); if (e.ctrlKey || e.metaKey) { groups.set(n, [...selected].filter(id => sim!.unit(id)?.owner === me)); e.preventDefault(); toast(`부대 ${n} 지정`); return; }
@@ -453,7 +453,7 @@ export function openRts(onExit: () => void, options: { loading?: LoadingScreen }
       <p class="rt-diffnote" id="rt-diffnote">${LEVELS[difficulty].blurb}</p>
       <div class="rt-actions"><button data-act="start" id="rt-start">AI와 1대1 대전</button>${PVP_ENABLED ? '<button data-act="pvp" id="rt-pvp">온라인 1대1 대전</button>' : ''}</div>
       <div class="rt-actions"><button data-act="moba" id="rt-moba">라인전 4:4</button>${PVP_ENABLED ? '<button data-act="mobaroom" id="rt-mobaroom">온라인 라인전 · 최대 4명</button>' : ''}</div>
-      <div class="rt-actions sub"><button data-act="fog" id="rt-fog" aria-pressed="${fogOn}" title="적이 보이는 범위를 시야 안으로 제한합니다">전장의 안개 ${fogOn ? '켜짐' : '꺼짐'}</button><button data-act="help">조작법</button><button data-act="exit">게임 목록으로</button></div>
+      <div class="rt-actions sub"><button data-act="fog" id="rt-fog" role="switch" aria-checked="${fogOn}" title="적이 보이는 범위를 시야 안으로 제한합니다"><span>전장의 안개</span><i class="rt-sw" aria-hidden="true"></i><b>${fogOn ? '켜짐' : '꺼짐'}</b></button><button data-act="help">조작법</button><button data-act="exit">게임 목록으로</button></div>
       <p class="rt-rec">${rec.matches ? `AI 대전 ${rec.matches}판 ${rec.wins}승${rec.bestWin[difficulty] ? ` · ${LEVELS[difficulty].label} 최단 승리 ${clock(rec.bestWin[difficulty] * TICK)}` : ''}` : '처음이라면 쉬움 난이도로 시작해 보세요.'}</p></div>`);
     modal.querySelector<HTMLElement>('#rt-campaign')?.focus();
   }

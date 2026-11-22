@@ -114,20 +114,29 @@ function save() {
     );
   } catch { /* Browser storage or pointer lock is optional. */ }
 }
-function toggleAudio() {
-  muted = !muted;
+const PREFS = "waldo.preferences.v1";
+/** 허브와 같은 전역 소리 설정을 읽고 씁니다(허브에서 끄면 여기서도 꺼진 채 시작). */
+function applyMute(next) {
+  muted = next;
   sound.setMute(muted);
-  try {
-    localStorage.setItem("rt-silent", JSON.stringify(muted));
-  } catch { /* Browser storage or pointer lock is optional. */ }
   for (const b of [$("sound"), $("gsound")]) {
     b.setAttribute("aria-pressed", String(!muted));
     b.querySelector("span").textContent = muted ? "소리 꺼짐" : "소리 켜짐";
   }
 }
-muted = read("waldo.preferences.v1")?.sound !== false;
-toggleAudio();
+function toggleAudio() {
+  applyMute(!muted);
+  try {
+    const saved = JSON.parse(localStorage.getItem(PREFS) || "{}");
+    localStorage.setItem(PREFS, JSON.stringify({ ...saved, sound: !muted }));
+  } catch { /* Browser storage or pointer lock is optional. */ }
+}
+applyMute(read(PREFS)?.sound === false);
 $("sound").onclick = $("gsound").onclick = toggleAudio;
+// 다른 탭(허브)에서 소리 설정을 바꾸면 바로 따라갑니다.
+window.addEventListener("storage", (e) => {
+  if (e.key === PREFS) applyMute(read(PREFS)?.sound === false);
+});
 function screens(id) {
   for (const key of ["home", "game"]) $(key).hidden = key !== id;
 }
@@ -225,6 +234,7 @@ $("confirmReset").onclick = () => {
   start(false);
 };
 $("continue").onclick = () => start(true);
+const hubUrl = () => new URL("../", location.href).href;
 function pauseGame() {
   if (state !== "play") return;
   save();
@@ -236,6 +246,7 @@ function pauseGame() {
       ["계속하기", resume],
       ["조작 안내", () => guide()],
       ["타이틀로", homepage, true],
+      ["게임 목록으로", () => location.assign(hubUrl()), true],
     ],
     "pause",
   );
@@ -1382,8 +1393,25 @@ document.addEventListener("keydown", (e) => {
   }
 });
 document.addEventListener("keyup", (e) => keys.delete(e.code));
+// 포인터 고정 중의 Esc 는 브라우저가 먼저 가로채 키 이벤트로 오지 않습니다. 고정이 풀리면 일시정지로 이어 줍니다.
+let wasLocked = false;
+document.addEventListener("pointerlockchange", () => {
+  const locked = Boolean(document.pointerLockElement);
+  if (wasLocked && !locked && state === "play") pauseGame();
+  wasLocked = locked;
+});
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && state === "play") pauseGame();
+});
+// 허브로 돌아가거나 탭을 닫을 때 저장하고 그래픽·소리를 바로 풀어 이동이 늦어지지 않게 합니다.
+window.addEventListener("pagehide", (e) => {
+  try {
+    if (e.persisted) { if (state === "play") pauseGame(); return; } // 뒤로가기 캐시로 남는 경우엔 그대로 둡니다
+    if (state === "play" || state === "pause") save();
+    sound.pause(true);
+    renderer?.setAnimationLoop?.(null);
+    renderer?.dispose();
+  } catch { /* 떠나는 중이므로 실패해도 무시 */ }
 });
 window.addEventListener("blur", () => {
   if (state === "play") pauseGame();

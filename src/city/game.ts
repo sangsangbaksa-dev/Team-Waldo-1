@@ -1,6 +1,7 @@
 // LAST CITY — 게임 루프, 입력, HUD
 import '../shared/ui.css';
 import './city.css';
+import './hud-fixes.css';
 import { BIZ, BUILD_ORDER, CLASSES, DIFFICULTY, DIFFICULTY_ORDER, FACTIONS, PERKS, RESEARCH, STRUCTS, UNITS, WEAPONS, type ClassId, type Difficulty, type ResearchId, type StructKind, type UnitId, type WeaponId } from './defs';
 import { World, type Actor } from './world';
 import { Renderer, type Ghost } from './render';
@@ -32,6 +33,8 @@ import { cityIcon, hudIcon } from './icons';
 const $ = (n: number): string => Math.floor(n).toLocaleString('en-US');
 const clock = (t: number): string => `${Math.floor(Math.max(0, t) / 60)}:${String(Math.floor(Math.max(0, t) % 60)).padStart(2, '0')}`;
 
+/** '으로/로' 고르기: 받침이 없거나 ㄹ 받침이면 '로'. */
+function josaRo(name: string): string { const c = name.charCodeAt(name.length - 1) - 0xac00; if (c < 0 || c > 11171) return '로'; const jong = c % 28; return jong === 0 || jong === 8 ? '로' : '으로'; }
 function readTutDone(): boolean { try { return localStorage.getItem(TUT_KEY) === '1'; } catch { return false; } }
 export function openCity(onExit: () => void, options: { difficulty?: string; loading?: LoadingScreen } = {}): void {
   let diffSel: Difficulty = 'd4'; try { const sv = localStorage.getItem('waldo-city-diff'); if (sv && sv in DIFFICULTY) diffSel = sv as Difficulty; } catch { /* 저장 불가 환경 */ }
@@ -49,7 +52,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     <div class="c-place" id="c-place" hidden><div class="c-place-info"><b id="c-place-name"></b><span id="c-place-msg"></span><small>시선을 돌려 위치 조절 · 우클릭/Esc 취소 · Shift 연속 설치</small></div><div class="c-place-btns"><button data-act="placeok" class="ok">설치</button><button data-act="placecancel">취소</button></div></div>
     <aside class="c-panel" id="c-panel" hidden></aside>
     <aside class="c-missions" id="c-missions" hidden aria-label="작전 지령 목록"><header><div><span>OPERATIONS / LAST CITY</span><h2>도시 작전 지령</h2></div><button data-act="closemissions" aria-label="작전 지령 닫기">닫기 ✕</button></header><div class="c-mission-summary" id="c-mission-summary"></div><div class="c-mission-list" id="c-mission-list"></div><footer>임무를 완료하면 보상이 자동 지급됩니다 · <kbd>J</kbd> 닫기</footer></aside>
-    <div class="c-bigmap" id="c-bigmap" hidden><div><canvas id="c-big" width="620" height="620"></canvas><p>지도를 누르면 전 병력이 그 지점으로 <b>돌격</b>합니다 · M 닫기</p></div></div>
+    <div class="c-bigmap" id="c-bigmap" hidden><div><canvas id="c-big" width="620" height="620"></canvas><ul class="c-legend" aria-label="지도 범례"><li><i class="me"></i>내 위치·방향</li><li><i class="hq"></i>본부</li><li><i class="biz"></i>사업체(세력 색)</li><li><i class="cry"></i>크리스탈</li><li><i class="box"></i>보급 상자</li><li><i class="zone"></i>보라색 = 자기장 밖</li><li><i class="next"></i>흰 점선 = 다음 안전지대</li></ul><p>지도를 누르면 전 병력이 그 지점으로 <b>돌격</b>합니다 · M 닫기</p></div></div>
     <button class="c-fire" id="c-fire">사격</button><div class="c-touch" id="c-touch"><button data-act="interact">E</button><button data-act="vehicle">차량</button><button data-act="skill">스킬</button><button data-act="dash">대시</button><button data-act="weapon">무기</button><button data-act="medkit">회복</button><button data-act="charge">돌격</button><button data-act="order:follow">집결</button><button data-act="panel">지휘</button></div>
   </div>
   <div class="c-modal" id="c-modal"></div>`;
@@ -96,12 +99,12 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
 
   function setup(): void {
     modal.innerHTML = `<section class="c-setup wd-panel"><div class="c-kicker wd-eyebrow">WALDO · LAST CITY</div><h2 class="wd-title">LAST CITY <small>최후의 왕국</small></h2>
-      <p class="c-lead">여덟 왕국이 한 도시에 떨어졌습니다. 직접 총을 들고 뛰고, 차를 빼앗고, 사업체를 사들여 돈을 벌고, 군대를 길러 <b>자기장이 닫히기 전 마지막 왕국</b>이 되세요. <b>J</b>에서 8단계 도시 작전과 보상을 확인할 수 있습니다.</p>
+      <p class="c-lead">여덟 왕국이 한 도시에 떨어졌습니다. 직접 총을 들고 뛰고, 차를 빼앗고, 사업체를 사들여 돈을 벌고, 군대를 길러 <b>자기장이 닫히기 전 마지막 왕국</b>이 되세요. ${touch ? '상단 <b>임무</b> 버튼' : '<b>J</b>'}에서 8단계 도시 작전과 보상을 확인할 수 있습니다.</p>
       <button class="c-tutcard${tutDone ? '' : ' rec'}" data-act="tutorial"><span>${tutDone ? '다시 연습' : '처음이라면 추천 · 약 5분'}</span><b>튜토리얼 시작</b><p>이동·사격·사업체·기지 건설·병력 지휘·차량·시장까지 한 단계씩 안전하게 익힙니다. 연습장에서는 자기장과 라이벌이 멈춰 있습니다.</p></button>
       <div class="c-sub">${tutDone ? '바로 시작할 영웅을 고르세요' : '또는 바로 시작할 영웅을 고르세요'}</div>
       <div class="c-classes">${(Object.keys(CLASSES) as ClassId[]).map(k => `<button class="c-class" data-act="class:${k}"><span>${CLASSES[k].tag}</span><b>${CLASSES[k].name}</b><p>${CLASSES[k].desc}</p><em>Q · ${CLASSES[k].skill}</em><small>${CLASSES[k].skillDesc}</small></button>`).join('')}</div>
       <details class="c-setup-details"><summary>조작법</summary><div class="c-keys">${touch ? '<span>왼쪽 드래그 이동</span><span>오른쪽 드래그 시점</span><span>사격 버튼</span><span>버튼으로 상호작용·지휘</span>' : '<span><b>WASD</b> 이동</span><span><b>마우스</b> 시점·사격</span><span><b>V</b> 1인칭/3인칭/전술뷰</span><span><b>E</b> 매입·줍기</span><span><b>F</b> 차량 탑승</span><span><b>Tab</b> 지휘 패널</span><span><b>우클릭</b> 병력 돌격</span><span><b>Z/X</b> 집결·사수</span><span><b>Space</b> 대시</span><span><b>M</b> 지도</span><span><b>Delete</b> 철거</span>'}</div></details>
-      ${PVP_ENABLED ? `<details class="c-setup-details"><summary>온라인 대전</summary><div class="c-sub">1대1 결투 · 멀티 방(3~6인) · 로그인 필요</div><div class="c-diffs">${(Object.keys(CLASSES) as ClassId[]).map(k => `<button class="c-diff" data-act="duel:${k}" title="${CLASSES[k].desc}">${CLASSES[k].name}으로 대전·방 만들기</button>`).join('')}</div><p class="c-lead c-diffdesc">같은 도시에서 둘만 남아 ${TARGET_KILLS}킬을 먼저 채우면 승리합니다. 병력을 뽑고 건물을 지어 싸우세요. 상대 본부를 무너뜨리면 즉시 승리하고, 내 본부가 무너지면 패배합니다. 제한 시간은 ${clock(TIME_LIMIT)}입니다. 방 만들기로 3~6명이 모이면 병력 없이 영웅끼리 싸우는 난투전(목숨 ${ROOM_LIVES}개, 마지막 생존자 우승)이 열립니다.</p></details>` : ''}
+      ${PVP_ENABLED ? `<details class="c-setup-details"><summary>온라인 대전</summary><div class="c-sub">1대1 결투 · 멀티 방(3~6인) · 로그인 필요</div><div class="c-diffs">${(Object.keys(CLASSES) as ClassId[]).map(k => `<button class="c-diff" data-act="duel:${k}" title="${CLASSES[k].desc}">${CLASSES[k].name}${josaRo(CLASSES[k].name)} 대전·방 만들기</button>`).join('')}</div><p class="c-lead c-diffdesc">같은 도시에서 둘만 남아 ${TARGET_KILLS}킬을 먼저 채우면 승리합니다. 병력을 뽑고 건물을 지어 싸우세요. 상대 본부를 무너뜨리면 즉시 승리하고, 내 본부가 무너지면 패배합니다. 제한 시간은 ${clock(TIME_LIMIT)}입니다. 방 만들기로 3~6명이 모이면 병력 없이 영웅끼리 싸우는 난투전(목숨 ${ROOM_LIVES}개, 마지막 생존자 우승)이 열립니다.</p></details>` : ''}
       <div class="c-sub wd-label">난이도</div><div class="c-diffs wd-seg" role="group" aria-label="난이도">${DIFFICULTY_ORDER.map(d => `<button class="c-diff${d === diffSel ? ' on' : ''}" data-act="diff:${d}" aria-pressed="${d === diffSel}" title="${DIFFICULTY[d].desc}">${DIFFICULTY[d].label}</button>`).join('')}</div><p class="c-lead c-diffdesc">${DIFFICULTY[diffSel].desc}</p>
       <div class="c-setup-foot"><span>난이도 · ${DIFFICULTY[diffSel].label}</span><button data-act="exit" class="c-ghost wd-btn ghost">게임 목록으로</button></div></section>`;
   }
@@ -121,7 +124,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     lastYaw = R3 ? R3.yaw : 0; lastPos = { x: b.x, y: b.y };
     setView(R3 ? (view === 'top' ? 'fp' : view) : 'top'); lock();
     if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__city = { world, renderer: R, r3: R3 };
-    audio.unlock(); if (rm) banner(`멀티 방 ${rm.ids.length}명 · 영웅 난투전 · 목숨 ${ROOM_LIVES}개 · 마지막까지 살아남으세요`); else if (dl) banner(`${dl.s.opponent.nickname} 님과 1대1 · ${arenaInfo(arenaOf(dl.seed)).name} · ${TARGET_KILLS}킬 선취 · 제한 ${Math.round(TIME_LIMIT / 60)}분`); else if (!tutorial) banner('작전 지령 01 · 첫 사업체를 확보하세요 · J 전체 임무');
+    audio.unlock(); if (rm) banner(`멀티 방 ${rm.ids.length}명 · 영웅 난투전 · 목숨 ${ROOM_LIVES}개 · 마지막까지 살아남으세요`); else if (dl) banner(`${dl.s.opponent.nickname} 님과 1대1 · ${arenaInfo(arenaOf(dl.seed)).name} · ${TARGET_KILLS}킬 선취 · 제한 ${Math.round(TIME_LIMIT / 60)}분`); else if (!tutorial) banner(touch ? '작전 지령 01 · 첫 사업체를 확보하세요 · 상단 임무 버튼' : '작전 지령 01 · 첫 사업체를 확보하세요 · J 전체 임무');
     renderCmd(); last = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(frame);
   }
   let everLocked = false, lockErrors = 0, lookMuteUntil = 0, killStreak = 0, lastKillAt = 0;
@@ -148,7 +151,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   function exit(): void {
     if (closed) return; closed = true; cancelAnimationFrame(raf); leaveDuel(); endRoom(); audio.dispose(); unlock(); R3?.dispose(); root.remove();
     document.removeEventListener('pointerlockchange', onLock); document.removeEventListener('pointerlockerror', onLockErr); document.removeEventListener('mousemove', onMouseMove);
-    window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('resize', onResize); window.removeEventListener('blur', onBlur); window.removeEventListener('pointerup', onWindowPointerEnd); window.removeEventListener('pointercancel', onWindowPointerEnd); document.removeEventListener('visibilitychange', onBlur);
+    window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('resize', onResize); window.removeEventListener('blur', onBlur); window.removeEventListener('pointerup', onWindowPointerEnd); window.removeEventListener('pointercancel', onWindowPointerEnd); document.removeEventListener('visibilitychange', onBlur); window.removeEventListener('beforeunload', onUnload);
     onExit();
   }
 
@@ -175,7 +178,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (a === 'perk') { w.pickPerk(Number(arg)); audio.play('levelup'); modal.innerHTML = ''; last = performance.now(); if (f.pending === 0) lock(); return; }
     if (a === 'tutnext') { if (tut) { tut.c.acked = true; lock(); } return; }
     if (a === 'tutskip') { finishTutorial(true); return; }
-    if (a === 'view') { if (world?.inside) return; if (tut) tut.c.viewSwitches++; setView(view === 'fp' ? 'tp' : view === 'tp' ? (duel || room ? 'fp' : 'top') : R3 ? 'fp' : 'top'); if (!paused) lock(); audio.play('click'); return; }
+    if (a === 'view') { if (world?.inside) { toast('건물 안에서는 1인칭 시점만 쓸 수 있어요', false); return; } if (tut) tut.c.viewSwitches++; setView(view === 'fp' ? 'tp' : view === 'tp' ? (duel || room ? 'fp' : 'top') : R3 ? 'fp' : 'top'); if (!paused) lock(); audio.play('click'); return; }
     if (paused || w.over) return;
     if (a === 'missions') {
       const board = q('#c-missions');
@@ -186,11 +189,11 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     }
     if (a === 'closemissions') { q('#c-missions').hidden = true; lock(); audio.play('click'); return; }
     if (a === 'tab') { tab = arg; renderPanel(); audio.play('click'); }
-    else if (a === 'panel') { q('#c-missions').hidden = true; panel.hidden = !panel.hidden; shopOpen = false; if (!panel.hidden) { renderPanel(); unlock(); } else lock(); audio.play('click'); }
+    else if (a === 'panel') { if (w.inside) { toast('건물 안에서는 지휘 패널을 열 수 없어요 — 밖으로 나가서 이용하세요', false); return; } q('#c-missions').hidden = true; panel.hidden = !panel.hidden; shopOpen = false; if (!panel.hidden) { renderPanel(); unlock(); } else lock(); audio.play('click'); }
     else if (a === 'closepanel') { panel.hidden = true; shopOpen = false; lock(); }
     else if (a === 'map') { q('#c-missions').hidden = true; bigmap.hidden = !bigmap.hidden; if (bigmap.hidden) lock(); else unlock(); }
     else if (a === 'train') res(w.train(0, arg as UnitId));
-    else if (a === 'build') { ghost = { kind: arg as StructKind, x: 0, y: 0, ok: false }; if (view !== 'top' || innerWidth < 900) { panel.hidden = true; lock(); } }
+    else if (a === 'build') { if (w.inside) { toast('건물 밖에서 지을 수 있어요', false); return; } ghost = { kind: arg as StructKind, x: 0, y: 0, ok: false }; panel.hidden = true; shopOpen = false; q('#c-missions').hidden = true; bigmap.hidden = true; lock(); }
     else if (a === 'placeok') place();
     else if (a === 'placecancel') ghost = null;
     else if (a === 'demolish') requestDemolish(Number(arg));
@@ -241,8 +244,8 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   function pause(): void {
     if (!world || world.over || duel || room) return; paused = true; keys.clear(); mouse.down = false; unlock();
     modal.innerHTML = `<section class="c-pause wd-panel"><div class="c-kicker wd-eyebrow">LAST CITY</div><h2 class="wd-title">일시정지</h2>
-      <div class="c-help"><div><b>보스 조작</b><p>WASD 이동 · 마우스 시점/사격 · V 시점 전환(1인칭·3인칭·전술뷰) · R 재장전 · 1~3 무기 · Space 대시 · H 회복 키트 · Q 고유 스킬</p></div><div><b>도시</b><p>E 사업체 매입·업그레이드·무기 줍기 · F 차량 탑승/하차 · 적 사업체 패드 위에서 6초 버티면 적대적 인수</p></div><div><b>지휘</b><p>Tab 지휘 패널(생산·건설·연구·시장) · 우클릭/지도 클릭 돌격 · Z 집결 · X 사수</p></div><div><b>승리</b><p>자기장은 점점 줄어듭니다. 적 본부를 부수면 그 보스는 부활하지 못합니다. 마지막까지 살아남는 왕국이 승리합니다.</p></div></div>
-      <div class="c-actions wd-actions"><button data-act="resume" class="c-primary wd-btn primary">이어하기</button><button data-act="sound" class="wd-btn">소리 ${prefs.sound ? '켜짐' : '꺼짐'}</button><button data-act="retry" class="wd-btn">다시 시작</button><button data-act="exit" class="wd-btn ghost">게임 목록으로</button></div></section>`;
+      <div class="c-help"><div><b>보스 조작</b><p>WASD 이동 · 마우스 시점/사격 · V 시점 전환(1인칭·3인칭·전술뷰) · R 재장전 · 1~3 무기 · Space 대시 · H 회복 키트 · Q 고유 스킬 · M 지도 · J 작전 지령</p></div><div><b>도시</b><p>E 사업체 매입·업그레이드·무기 줍기 · F 차량 탑승/하차 · 적 사업체 패드 위에서 6초 버티면 적대적 인수</p></div><div><b>지휘</b><p>Tab 지휘 패널(생산·건설·연구·시장) · B 바로 건설 · Delete 조준한 아군 건물 철거 · 우클릭/지도 클릭 돌격 · Z 집결 · X 사수</p></div><div><b>승리</b><p>자기장은 점점 줄어듭니다. 적 본부를 부수면 그 보스는 부활하지 못합니다. 마지막까지 살아남는 왕국이 승리합니다.</p></div></div>
+      <div class="c-actions wd-actions"><button data-act="resume" class="c-primary wd-btn primary">이어하기</button><button data-act="sound" class="wd-btn">소리 ${prefs.sound ? '켜짐' : '꺼짐'}</button><button data-act="retry" class="wd-btn">다시 시작</button>${tut ? '<button data-act="tutskip" class="wd-btn">튜토리얼 건너뛰기</button>' : ''}<button data-act="exit" class="wd-btn ghost">게임 목록으로</button></div></section>`;
   }
 
   // ---------- HUD ----------
@@ -347,7 +350,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
 
   function renderHud(): void {
     const w = world!, f = w.factions[0], b = w.boss(0), z = w.zone;
-    put(q('#c-res'), `<span class="ca" title="자금">${hudIcon('cash')} <b>${$(f.cash)}</b><small>+${$(f.income)}/s</small></span><span class="cr" title="크리스탈">${gemIcon()} <b>${$(f.crystal)}</b></span><span title="인구">${hudIcon('troops')} 병력 <b>${f.supply}/${f.supplyMax}</b></span>`);
+    put(q('#c-res'), `<span class="ca" title="자금">${hudIcon('cash')} <b>${$(f.cash)}</b><small>+${$(f.income)}/s</small></span><span class="cr" title="크리스탈">${gemIcon()} <b>${$(f.crystal)}</b></span><span title="인구">${hudIcon('troops')} 인구 <b>${f.supply}/${f.supplyMax}</b></span>`);
     const entries = tut || duel || room ? [] : missionLog(w), summary = missionSummary(entries), current = summary.active;
     put(q('#c-quest'), tut || duel || room ? '' : current ? `<div class="c-quest-head"><span>작전 지령 <b>${summary.completed}/${summary.total}</b></span><button data-act="missions" aria-label="전체 작전 지령 보기"><kbd>J</kbd>전체 보기</button></div><strong>${current.title}</strong><p>${current.objective}</p><div class="c-quest-progress" role="progressbar" aria-label="${current.title} 진행률" aria-valuemin="0" aria-valuemax="${current.target}" aria-valuenow="${current.current}"><i style="width:${current.current / current.target * 100}%"></i></div><small>${current.current}/${current.target}${current.reward ? ' · 완료 보상 $' + $(current.reward) : ' · 최종 작전'}</small>` : '<div class="c-quest-head"><span>작전 지령 완료</span><button data-act="missions">전체 보기</button></div><strong>최후의 왕국!</strong>');
     if (!q('#c-missions').hidden) renderMissions();
@@ -361,7 +364,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       put(q('#c-boss'), `<div class="c-bars"><div class="hp"><i style="width:${Math.max(0, b.hp / b.maxHp * 100)}%"></i><span>${Math.ceil(b.hp)} / ${b.maxHp}</span></div><div class="ar"><i style="width:${f.armor}%"></i></div><div class="xp"><i style="width:${f.xp / w.xpNeed(f.level) * 100}%"></i></div></div>
         <div class="c-slots">${f.slots.map((x, i) => `<button data-act="slot:${i}" class="${i === f.cur ? 'on' : ''}"><kbd>${i + 1}</kbd>${hudIcon('w:' + x.id)}${WEAPONS[x.id].name}</button>`).join('')}</div>
         <div class="c-ammo"><b>${f.reloadT > 0 ? '재장전…' : s.mag}</b><small>/ ${wd.ammo > 0 ? s.ammo - s.mag : '∞'}</small><span>Lv.${f.level} · 병력 ${army} · ${hudIcon('kit')} ${f.medkits}</span></div>
-        <div class="c-skills"><span class="${f.skillCd > 0 ? 'cd' : ''}"><kbd>Q</kbd>${CLASSES[f.klass].skill}${f.skillCd > 0 ? ' ' + Math.ceil(f.skillCd) : ''}</span><span class="${f.dashCd > 0 ? 'cd' : ''}"><kbd>␣</kbd>대시</span></div>`);
+        <div class="c-skills"><span class="${f.skillCd > 0 ? 'cd' : ''}"><kbd>Q</kbd>${CLASSES[f.klass].skill}${f.skillCd > 0 ? ' ' + Math.ceil(f.skillCd) : ''}</span><span class="${f.dashCd > 0 ? 'cd' : ''}"><kbd>␣</kbd>대시</span>${f.shieldT > 0 ? `<span class="shield">부활 보호 ${Math.ceil(f.shieldT)}</span>` : ''}</div>`);
     } else put(q('#c-boss'), `<div class="c-down"><b>쓰러짐</b> ${f.respawnT > 0 ? `${Math.ceil(f.respawnT)}초 후 본부에서 부활` : '…'}</div>`);
     // 상호작용 안내
     let prompt = '';
@@ -528,7 +531,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (k === ' ') e.preventDefault();
     if (k === 'e') interact(); else if (k === 'f') w.toggleVehicle(0); else if (k === 'r') reload(w, 0); else if (k === 'q') res(w.useSkill(0)); else if (k === 'h') w.useMedkit(0);
     else if (k === 'z') act('order:follow'); else if (k === 'x') act('order:hold'); else if (k === 'c') { const p = aimPoint(); w.order(0, 'amove', p.x, p.y); } else if (k === 'v') act('view');
-    else if (k === 'j') act('missions'); else if (k === 'm') act('map'); else if (k === 'b') { tab = 'build'; shopOpen = false; panel.hidden = false; renderPanel(); unlock(); }
+    else if (k === 'j') act('missions'); else if (k === 'm') act('map'); else if (k === 'b') { if (w.inside) toast('건물 밖에서 지을 수 있어요', false); else { tab = 'build'; shopOpen = false; panel.hidden = false; renderPanel(); unlock(); } }
     else if (k === 'Delete' || k === 'Backspace') { const t = w.structAt(aimPoint().x, aimPoint().y); if (t) requestDemolish(t.id); else toast('철거할 아군 건물을 조준하세요'); }
     else if (k >= '1' && k <= '3') switchWeapon(w, 0, Number(k) - 1);
   }
@@ -544,6 +547,9 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   chatBox().addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); closeChat(true); } else if (e.key === 'Escape') { e.preventDefault(); closeChat(false); } });
   chatBox().addEventListener('keyup', e => e.stopPropagation());
   chatForm().addEventListener('submit', e => { e.preventDefault(); closeChat(true); });
+  // 진행 중인 판은 저장되지 않으므로 새로고침·탭 닫기 전에 브라우저 확인 창을 띄웁니다.
+  const onUnload = (e: BeforeUnloadEvent): void => { if (closed || !world || world.over || tut || hud.hidden) return; e.preventDefault(); e.returnValue = ''; };
+  window.addEventListener('beforeunload', onUnload);
   window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKeyUp); window.addEventListener('resize', onResize); window.addEventListener('blur', onBlur); document.addEventListener('visibilitychange', onBlur);
   // Click fires for mouse, touch and keyboard activation; pointerdown excluded keyboard users.
   root.addEventListener('click', e => {
@@ -633,7 +639,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (st.info && !tutInfoLock) { tutInfoLock = true; unlock(); } else if (!st.info && tutInfoLock) tutInfoLock = false;
     if (sig !== tutSig) {
       tutSig = sig; card.hidden = false;
-      card.innerHTML = `<header><span>튜토리얼 ${tut.s.i + 1}/${STEPS.length}</span><button data-act="tutskip">건너뛰기</button></header><b>${st.title}</b><p>${body}</p>${pr ? `<div class="bar"><i style="width:${Math.min(100, pr[0] / pr[1] * 100)}%"></i></div>` : ''}${st.info ? `<button class="go" data-act="tutnext">확인${touch ? '' : ' <kbd>Enter</kbd>'}</button>` : ''}`;
+      card.innerHTML = `<header><span>튜토리얼 ${tut.s.i + 1}/${STEPS.length}</span><button data-act="tutskip">건너뛰기${touch ? '' : ' <kbd>Enter</kbd>'}</button></header><b>${st.title}</b><p>${body}</p>${pr ? `<div class="bar"><i style="width:${Math.min(100, pr[0] / pr[1] * 100)}%"></i></div>` : ''}${st.info ? `<button class="go" data-act="tutnext">확인${touch ? '' : ' <kbd>Enter</kbd>'}</button>` : ''}`;
     }
     root.querySelectorAll('.c-pulse').forEach(el => el.classList.remove('c-pulse'));
     for (const sel of st.pulse ?? []) root.querySelectorAll(sel).forEach(el => { if (el instanceof HTMLElement && el.offsetParent !== null) el.classList.add('c-pulse'); });
@@ -724,13 +730,13 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
         const d = Math.hypot(e.x - lx, e.y - ly), vol = Math.max(0, 1 - d / 1200);
         if (e.t === 'shot') { audio.play(e.s!, vol * (e.f === 0 ? 1 : 0.6)); if (vol > 0.3) combat = Math.min(1, combat + 0.08); }
         else if (e.t === 'boom') audio.play('boom', vol); else if (e.t === 'hit') { if (e.a === 1) { hitT = 0.14; cross.classList.add('hit'); audio.play('hit', 0.9); } else audio.play('hit', vol * 0.5); } else if (e.t === 'spark') audio.play('hit', vol * 0.4); else if (e.t === 'death') audio.play('death', vol);
-        else if (e.t === 'kill') { hitT = 0.3; cross.classList.add('hit', 'kill'); audio.play('pickup', 0.8); killStreak = now - lastKillAt <= 8000 ? killStreak + 1 : 1; lastKillAt = now; w.say(`${killStreak > 1 ? `${killStreak} \uC5F0\uC18D \uCC98\uCE58! \u00B7 ` : ''}처치 · ${e.s ?? '적'}`, '#e9c989'); }
+        else if (e.t === 'kill') { hitT = 0.3; cross.classList.add('hit', 'kill'); audio.play('pickup', 0.8); killStreak = !w.boss(0) ? 0 : now - lastKillAt <= 8000 ? killStreak + 1 : 1; lastKillAt = now; w.say(`${killStreak > 1 ? `${killStreak} \uC5F0\uC18D \uCC98\uCE58! \u00B7 ` : ''}처치 · ${e.s ?? '적'}`, '#e9c989'); }
         else if (e.t === 'phurt') { hurt = Math.min(1, hurt + (e.a ?? 10) / 45); audio.play('hurt', 0.7); const el = q('#c-damage'); el.textContent = `−${Math.ceil(e.a ?? 0)}`; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show'); }
-        else if (e.t === 'income') { const el = q('#c-income'); el.textContent = `+$${$(e.a ?? 0)}`; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show'); }
+        else if (e.t === 'income') { const el = q('#c-income'), rr = q('#c-res').getBoundingClientRect(); el.style.left = `${Math.round(rr.right + 8)}px`; el.style.top = `${Math.round(rr.top + 6)}px`; el.textContent = `+$${$(e.a ?? 0)}`; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show'); }
         else if (e.t === 'cash' && e.f === 0) audio.play('cash'); else if (e.t === 'pickup' && d < 60) audio.play('pickup'); else if (e.t === 'levelup' && e.f === 0) audio.play('levelup');
         else if (e.t === 'order') { if (tut) tut.c.orders++; } else if (e.t === 'quest') { audio.play('quest'); banner(`목표 달성 +$${e.a}`); } else if (e.t === 'siren') audio.play('siren'); else if (e.t === 'announce') { audio.play('announce'); banner(e.s!); }
         else if (e.t === 'crash') audio.play('crash', 0.8); else if (e.t === 'reload') audio.play('reload'); else if (e.t === 'dash') audio.play('dash'); else if (e.t === 'door') audio.play('door'); else if ((e.t === 'built' || e.t === 'capture') && e.f === 0) { audio.play('build'); if (e.t === 'capture') { const z = w.businesses.find(z => Math.hypot(z.x - e.x, z.y - e.y) < 1); toast(`${z ? BIZ[z.kind].name : '사업체'} 점령`, false); } }
-        else if (e.t === 'thud') audio.play('boom', vol * 0.5); else if (e.t === 'playerdown') { audio.play('lose'); hurt = 1; }
+        else if (e.t === 'thud') audio.play('boom', vol * 0.5); else if (e.t === 'playerdown') { audio.play('lose'); hurt = 1; killStreak = 0; lastKillAt = 0; }
         else if (e.t === 'crystal') audio.play('crystal', vol); else if (e.t === 'heal' || e.t === 'healbeam') audio.play('heal', vol);
         else if (e.t === 'skid') audio.play('skid', vol); else if (e.t === 'splat') audio.play('splat', vol);
         else if (e.t === 'burn' || e.t === 'wreck') audio.play('burn', vol); else if (e.t === 'spawn' && e.f === 0) audio.play('spawn');
@@ -763,7 +769,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     }
     if (areaT > 0) { areaT -= dt; if (areaT <= 0) q('#c-area').className = 'c-area'; }
     if (f.wanted >= 2 && !paused && now - sirenT > 2400 && w.vehicles.some(v => v.ai === 'chase' && b && Math.hypot(v.x - b.x, v.y - b.y) < 900)) { sirenT = now; audio.play('wail'); }
-    if (tut && !paused && b) { if (!b.inVeh) tut.c.move += Math.hypot(b.x - lastPos.x, b.y - lastPos.y) * (Math.hypot(b.x - lastPos.x, b.y - lastPos.y) < 80 ? 1 : 0); else if (veh) tut.c.vehicleDist += spd * dt; lastPos = { x: b.x, y: b.y }; if (R3) { let dy = R3.yaw - lastYaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2; tut.c.look += Math.min(1, Math.abs(dy)); lastYaw = R3.yaw; } }
+    if (tut && !paused && b) { if (!b.inVeh) tut.c.move += Math.hypot(b.x - lastPos.x, b.y - lastPos.y) * (Math.hypot(b.x - lastPos.x, b.y - lastPos.y) < 80 ? 1 : 0); else if (veh) tut.c.vehicleDist += spd * dt; lastPos = { x: b.x, y: b.y }; if (view === 'top') tut.c.look = Math.max(tut.c.look, 1.2); else if (R3) { let dy = R3.yaw - lastYaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2; tut.c.look += Math.min(1, Math.abs(dy)); lastYaw = R3.yaw; } }
     hudT -= dt; if (hudT <= 0) { hudT = 0.12; renderHud(); if (tut && !paused) tutTick(); q('#c-target').innerHTML = three ? crossTarget() : ''; }
     if (toastT > 0) { toastT -= dt; if (toastT <= 0) q('#c-toast').className = 'c-toast'; }
     if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) q('#c-banner').className = 'c-banner'; }

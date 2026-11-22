@@ -153,7 +153,8 @@ export class Renderer {
       if (z.cap > 0) { ctx.strokeStyle = FACTIONS[z.capBy]?.color ?? '#fff'; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(z.x, z.y, 30, -1.57, -1.57 + 6.283 * Math.min(1, z.cap / 6)); ctx.stroke(); }
       ctx.font = "800 12px 'Noto Sans KR',sans-serif"; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.75)';
       const label = z.kind === 'gunshop' ? '무기상' : z.owner < 0 ? `${d.name} $${d.price}` : `${d.name} ${'★'.repeat(z.level)}`;
-      const pad = this.declutterWorld(z.x + o.x * 20, z.y + o.y * 20 + 4);
+      // 라벨은 출입문 막대 반대쪽(거리 쪽)에 통째로 놓아 막대가 글자를 덮지 않게 합니다.
+      const tw = ctx.measureText(label).width, pad = this.declutterWorld(z.x + o.x * (26 + Math.abs(o.x) * tw / 2), z.y + o.y * (26 + Math.abs(o.y) * 8) + 4);
       ctx.strokeText(label, pad.x, pad.y); ctx.fillStyle = '#fff'; ctx.fillText(label, pad.x, pad.y);
     }
   }

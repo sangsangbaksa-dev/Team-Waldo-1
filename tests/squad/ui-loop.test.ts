@@ -91,3 +91,18 @@ it('keeps keyboard focus through menu, deployment and pause transitions', () => 
   expect(document.activeElement).toBe(button('#start'));
   button('#exit').click();
 });
+
+it('announces selected units and battle speed to assistive controls', () => {
+  openSquad(vi.fn());
+  button('#start').click();
+  expect(button('[data-unit="guard"]').getAttribute('aria-pressed')).toBe('true');
+  button('[data-unit="archer"]').click();
+  expect(button('[data-unit="archer"]').getAttribute('aria-pressed')).toBe('true');
+  expect(button('[data-unit="guard"]').getAttribute('aria-pressed')).toBe('false');
+  button('#auto').click(); button('#ready').click();
+  expect(button('#speed1').getAttribute('aria-pressed')).toBe('true');
+  button('#speed4').click();
+  expect(button('#speed4').getAttribute('aria-pressed')).toBe('true');
+  expect(button('#speed1').getAttribute('aria-pressed')).toBe('false');
+  button('#pause').click(); button('#menu').click(); button('#exit').click();
+});

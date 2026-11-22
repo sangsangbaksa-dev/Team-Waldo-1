@@ -9,7 +9,8 @@
   .sl-root button{min-width:44px;min-height:44px}
 }
 .sl-view{position:absolute;inset:0}.sl-view>div{width:100%;height:100%}
-.sl-vignette{position:absolute;inset:0;pointer-events:none;z-index:4;opacity:var(--danger,0);background:radial-gradient(ellipse,transparent 40%,rgba(153,15,22,.7) 100%);animation:sl-pulse var(--pulse-speed,1.4s) infinite}
+.sl-vignette{position:absolute;inset:0;pointer-events:none;z-index:4;opacity:var(--danger,0);background:radial-gradient(ellipse,transparent 40%,rgba(153,15,22,.7) 100%);animation:none}
+.sl-root.sl-danger .sl-vignette{animation:sl-pulse var(--pulse-speed,1.4s) infinite}
 
 /* HUD: 데스크톱은 한 줄, 모바일은 [시간|도구] / [재미] / [적발·배터리·연속·긴장] 세 줄 */
 .sl-hud{position:absolute;z-index:5;top:0;left:0;right:0;display:flex;align-items:center;gap:16px;padding:10px 16px;background:linear-gradient(#121515ee,#12151500);pointer-events:none}
@@ -110,7 +111,7 @@
 @keyframes sl-pop{from{transform:scale(.3);opacity:0}to{transform:scale(1);opacity:1}}
 @keyframes sl-rise{from{transform:translateY(10px);opacity:0}to{transform:none;opacity:1}}
 @keyframes sl-tipin{from{opacity:0;transform:translate(-50%,-8px)}to{opacity:1;transform:translate(-50%,0)}}
-@media(prefers-reduced-motion:reduce){.sl-grade,.sl-new,.sl-result-stats div,.sl-hl li,.sl-tip,.sl-vignette,.sl-chip.hot{animation:none}}
+@media(prefers-reduced-motion:reduce){.sl-grade,.sl-new,.sl-result-stats div,.sl-hl li,.sl-tip,.sl-vignette,.sl-root.sl-danger .sl-vignette,.sl-chip.hot{animation:none}}
 
 @media(max-width:700px){
   .sl-hud{gap:6px 8px;padding:8px 10px;flex-wrap:wrap;align-items:flex-end}

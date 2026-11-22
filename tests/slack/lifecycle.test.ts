@@ -117,3 +117,21 @@ it('bounds a long foreground frame stall without skipping normal frames', async 
   advance(100);
   expect(sim.state.time).toBeCloseTo(1.1);
 });
+
+it('runs the danger pulse only during tense, unpaused gameplay', async () => {
+  openSlack(vi.fn());
+  button('[data-stage="dorm"]').click(); button('[data-start]').click();
+  await vi.dynamicImportSettled();
+  const sim = vi.mocked(createSim).mock.results[0].value;
+  const root = document.querySelector('.sl-root')!;
+  sim.state.sus = 90;
+  advance(100);
+  expect(root.classList.contains('sl-danger')).toBe(true);
+  key('p');
+  expect(root.classList.contains('sl-danger')).toBe(false);
+  button('[data-resume]').click(); advance(100);
+  expect(root.classList.contains('sl-danger')).toBe(true);
+  sim.state.time = sim.state.limit - 0.05;
+  advance(100);
+  expect(root.classList.contains('sl-danger')).toBe(false);
+});

@@ -84,7 +84,7 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
   const clearView = (): void => { view?.dispose(); view?.el.remove(); view = null; sim = null; };
   const exit = (): void => { if (closed) return; closed = true; cancelAnimationFrame(raf); root.removeEventListener('keydown', keydown); document.removeEventListener('visibilitychange', visibility); clearView(); audio.dispose(); root.remove(); onExit(); };
   const pause = (): void => { if (state === 'play') {
-      state = 'paused'; $('[data-paused]').hidden = false; audio.ambience(null); audio.hold(true);
+      state = 'paused'; root.classList.remove('sl-danger'); $('[data-paused]').hidden = false; audio.ambience(null); audio.hold(true);
       $('[data-resume]').focus();
       $('.sl-view').inert = true; $('.sl-hud').inert = true; $('[data-tip]').inert = true;
       root.classList.add('sl-paused');
@@ -101,7 +101,7 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
   const start = async (): Promise<void> => {
     if (closed || state === 'loading' || state === 'play') return;
     const restarting = state !== 'title';
-    state = 'loading'; clearView();
+    state = 'loading'; root.classList.remove('sl-danger'); clearView();
     if (restarting) { audio.dispose(); audio = createSlackAudio(); audio.setMuted(muted); }
     audio.hold(false); audio.resume();
     $('.sl-hud').hidden = true; $('.sl-toast').textContent = ''; toastTime = 0;
@@ -119,7 +119,7 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
     }
   };
   const finish = (): void => {
-    if (!sim) return; const s = sim.state, caught = s.phase === 'caught'; state = 'result'; audio.ambience(null); audio.muffle(false); const grade = s.grade ?? 'D';
+    if (!sim) return; const s = sim.state, caught = s.phase === 'caught'; state = 'result'; root.classList.remove('sl-danger'); audio.ambience(null); audio.muffle(false); const grade = s.grade ?? 'D';
     const prev = readSlackRecord().best[stage], isNew = recordSlackRun(stage, s.score, grade);
     if (tutorial) endTutorial(); $('[data-tip]').hidden = true; root.classList.remove('tipping');
     const gradeEl = $('[data-grade]'); gradeEl.textContent = grade; gradeEl.className = `sl-grade g-${grade}`;
@@ -183,6 +183,7 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
     $('[data-risk]').style.width = `${Math.max(0, Math.min(100, s.sus))}%`; $('[data-risk-chip]').classList.toggle('hot', s.sus > 70);
     // 긴장도 → 비네팅·심장 박동 연동: 45 부터 박동이 시작해 100 에서 0.5초 간격·큰 소리. 박동 간격과 붉은 화면 맥박 속도를 같이 맞춘다.
     const tension = Math.max(0, Math.min(1, (s.sus - 45) / 55)), interval = 1.15 - tension * 0.65;
+    root.classList.toggle('sl-danger', s.sus > 45);
     root.style.setProperty('--danger', String(Math.max(0, (s.sus - 25) / 75))); root.style.setProperty('--pulse-speed', `${s.sus > 45 ? interval : 1.4}s`);
     beat -= dt; if (s.sus > 45 && beat <= 0) { audio.play('hum', 0.3 + tension * 0.7); beat = interval; }
     if (s.phase === 'caught' || s.phase === 'done') finish();

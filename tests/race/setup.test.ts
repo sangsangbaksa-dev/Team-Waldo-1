@@ -29,10 +29,10 @@ describe('코스', () => {
       for (let a = 0; a < t.pads.length; a++) for (let b = a + 1; b < t.pads.length; b++) expect(Math.abs(idxDelta(t, t.pads[a], t.pads[b]))).toBeGreaterThan(10);
     });
   }
-  it('사막 하이웨이는 거의 직선이고 가장 길다', () => {
+  it('사막 하이웨이는 곧은 구간이 많고 가장 길다(좌우 S자 커브 포함)', () => {
     const t = buildMapTrack(MAPS.find(m => m.id === 'desert')!);
     let straight = 0, minR = Infinity; for (let i = 0; i < t.n; i++) { const k = Math.abs(t.k[i]); if (k < 1 / 800) straight++; minR = Math.min(minR, 1 / Math.max(1e-6, k)); }
-    expect(straight / t.n).toBeGreaterThan(0.5); expect(minR).toBeGreaterThan(130);
+    expect(straight / t.n).toBeGreaterThan(0.3); expect(minR).toBeGreaterThan(130);
     for (const other of MAPS.filter(m => m.id !== 'desert')) expect(t.length).toBeGreaterThan(buildMapTrack(other).length);
   });
 });

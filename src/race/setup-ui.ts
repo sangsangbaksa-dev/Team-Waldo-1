@@ -23,7 +23,7 @@ function outline(id: string): { d: string; km: string } {
 
 export interface SetupHandle { read(): RaceSetup; destroy(): void }
 
-export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceRecords, garage: { value: Garage }, cb: { onStart: (s: RaceSetup) => void; onExit: () => void; onPvp?: (s: RaceSetup) => void }): SetupHandle {
+export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceRecords, garage: { value: Garage }, cb: { onStart: (s: RaceSetup) => void; onExit: () => void; onPvp?: (s: RaceSetup) => void; /** 화질 선택(없으면 항목을 그리지 않음) */ quality?: { get: () => 'low' | 'standard' | 'high'; set: (q: 'low' | 'standard' | 'high') => void; note?: string } }): SetupHandle {
   let cur = sanitizeSetup(initial);
   if (!ownsSkin(garage.value, cur.skin)) cur = { ...cur, skin: 'stock' };
   const root = document.createElement('div'); root.className = 'rc-setup wd-screen'; root.dataset.noRails = ''; root.setAttribute('role', 'dialog'); root.setAttribute('aria-label', '레이스 설정');
@@ -39,6 +39,7 @@ export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceR
           <section><h3>모드</h3><div class="rc-seg wd-seg" data-seg="mode"><button type="button" class="rc-opt" data-pick="mode:race">레이스</button><button type="button" class="rc-opt" data-pick="mode:knockout">녹아웃</button><button type="button" class="rc-opt" data-pick="mode:trial">타임어택</button></div><p class="rc-note" data-note="mode"></p></section>
           <section><h3>랩</h3><div class="rc-seg wd-seg" data-seg="laps">${LAP_OPTIONS.map(n => `<button type="button" class="rc-opt" data-pick="laps:${n}">${n}랩</button>`).join('')}</div><p class="rc-note" data-note="record"></p></section>
           <section><h3>난이도</h3><div class="rc-seg lv wd-seg" data-seg="level">${LEVELS.map(l => `<button type="button" class="rc-opt" data-pick="level:${l.id}"><b>${l.id}</b>${l.name}</button>`).join('')}</div><p class="rc-note" data-note="level"></p></section>
+          ${cb.quality ? `<section><h3>화질</h3><div class="rc-seg wd-seg" data-seg="quality" role="group" aria-label="화질">${(['low', 'standard', 'high'] as const).map(q => `<button type="button" class="rc-opt" data-quality="${q}">${q === 'low' ? '낮음' : q === 'standard' ? '보통' : '높음'}</button>`).join('')}</div><p class="rc-note">${cb.quality.note ?? '화면이 끊기면 낮춰 보세요.'}</p></section>` : ''}
         </div>
         <section class="rc-setup-col"><h3>차량</h3><div class="rc-grid cars">${CARS.map(carCard).join('')}</div><p class="rc-note" data-note="car"></p><div class="rc-garage" data-garage></div></section>
       </div>
@@ -57,18 +58,20 @@ export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceR
     paintGarage();
     const map = mapById(cur.map), car = carById(cur.car), lv = levelById(cur.level);
     root.querySelectorAll<HTMLElement>('[data-pick]').forEach(b => { const [k, v] = b.dataset.pick!.split(':'); const on = String(cur[k as keyof RaceSetup]) === v; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
+    if (cb.quality) root.querySelectorAll<HTMLElement>('[data-quality]').forEach(b => { const on = b.dataset.quality === cb.quality!.get(); b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
     note('map').textContent = map.blurb; note('level').textContent = lv.blurb; note('car').textContent = `${car.name} · ${car.role} — ${car.blurb}`;
     const lap = records.bestLap[`${map.id}:${cur.car}:${cur.mode}`], race = records.bestRace[raceRaceKey(map.id, cur.laps)];
     const ghost = cur.mode === 'trial' ? readGhost(map.id, cur.laps, car.id) : null;
     note('mode').textContent = cur.mode === 'trial' ? `혼자 달리며 내 최고 주행(고스트)과 겨룹니다.${ghost ? ` 저장된 고스트 ${fmtTime(ghost.time)}` : ' 아직 고스트가 없습니다 — 첫 주행이 고스트가 됩니다.'}` : cur.mode === 'knockout' ? '3랩 서바이벌. 선두가 랩을 마칠 때마다 꼴찌 한 대가 탈락하고, 마지막 랩은 남은 두 대의 결승입니다.' : '라이벌 3대와 순위를 겨룹니다. 드리프트를 이어 가면 점수가 쌓이고, 슬립스트림과 부스트 패드로 따라잡으세요.';
     root.querySelector<HTMLElement>('[data-seg="laps"]')?.closest('section')?.toggleAttribute('hidden', cur.mode === 'knockout');
     root.querySelector<HTMLElement>('[data-seg="level"]')?.closest('section')?.toggleAttribute('hidden', cur.mode === 'trial');
-    note('record').textContent = lap !== undefined || race !== undefined ? `${map.name} 최고 랩 ${lap !== undefined ? fmtTime(lap) : '--'} · ${cur.laps}랩 최고 ${race !== undefined ? fmtTime(race) : '--'}` : '기록 없음';
+    note('record').textContent = lap !== undefined || race !== undefined ? `${map.name} 최고 랩 ${lap !== undefined ? fmtTime(lap) : '—'} · ${cur.laps}랩 최고 ${race !== undefined ? fmtTime(race) : '—'}` : '기록 없음';
     note('summary').textContent = `${map.name} · ${cur.mode === 'knockout' ? '녹아웃 3' : cur.laps}랩 · ${cur.mode === 'trial' ? '타임어택' : lv.name} · ${car.name}`;
   }
   root.addEventListener('click', e => {
     const t = e.target as HTMLElement, pick = t.closest<HTMLElement>('[data-pick]'), act = t.closest<HTMLElement>('[data-setup]');
-    const skin = t.closest<HTMLElement>('[data-buyskin]');
+    const skin = t.closest<HTMLElement>('[data-buyskin]'), qual = t.closest<HTMLElement>('[data-quality]');
+    if (qual && cb.quality) { cb.quality.set(qual.dataset.quality as 'low' | 'standard' | 'high'); paint(); return; }
     const focusSkin = (): void => root.querySelector<HTMLButtonElement>(`[data-pick="skin:${cur.skin}"]`)?.focus();
     if (skin) {
       const next = buySkin(garage.value, skin.dataset.buyskin!);

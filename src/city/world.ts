@@ -33,7 +33,7 @@ export interface Faction {
 }
 export interface Structure {
   id: number; kind: StructKind; f: number; x: number; y: number; w: number; h: number; hp: number; maxHp: number; built: number;
-  queue: { unit?: UnitId; research?: ResearchId; t: number; total: number }[]; solid: number; cd: number; hurtT: number; temp: number; ang: number; alive: boolean;
+  queue: { unit?: UnitId; research?: ResearchId; t: number; total: number; paidCrystal?: number; paidCash?: number }[]; solid: number; cd: number; hurtT: number; temp: number; ang: number; alive: boolean;
 }
 export interface Business { id: number; kind: BizKind; x: number; y: number; solid: number; owner: number; level: number; cap: number; capBy: number; guardT: number; pulse: number }
 export interface Vehicle {
@@ -304,10 +304,10 @@ export class World {
     const f = this.factions[s.f], src = srcF >= 0 && srcF < 8 ? this.factions[srcF] : null;
     const queuedResearch: Record<ResearchId, number> = { dmg: 0, armor: 0, eco: 0 };
     for (const q of s.queue) {
-      if (q.unit) { f.crystal += this.cost(f, UNITS[q.unit].crystal); f.cash += this.cost(f, UNITS[q.unit].cash); }
+      if (q.unit) { f.crystal += q.paidCrystal ?? this.cost(f, UNITS[q.unit].crystal); f.cash += q.paidCash ?? this.cost(f, UNITS[q.unit].cash); }
       if (q.research) {
         const lvl = f.up[q.research] + queuedResearch[q.research]; queuedResearch[q.research]++;
-        f.crystal += RESEARCH[q.research].crystal * (lvl + 1); f.cash += RESEARCH[q.research].cash * (lvl + 1);
+        f.crystal += q.paidCrystal ?? RESEARCH[q.research].crystal * (lvl + 1); f.cash += q.paidCash ?? RESEARCH[q.research].cash * (lvl + 1);
       }
     }
     if (src && src !== f) this.gainXp(src, s.kind === 'hq' ? 200 : 40);
@@ -362,7 +362,7 @@ export class World {
     if (f.supply + d.supply > f.supplyMax) return '인구 한도 부족 — 보급고를 지으세요';
     const c = this.cost(f, d.crystal), m = this.cost(f, d.cash);
     if (f.crystal < c) return '크리스탈이 부족합니다'; if (f.cash < m) return '자금이 부족합니다';
-    f.crystal -= c; f.cash -= m; host.queue.push({ unit, t: d.time, total: d.time }); f.supply += d.supply; return '';
+    f.crystal -= c; f.cash -= m; host.queue.push({ unit, t: d.time, total: d.time, paidCrystal: c, paidCash: m }); f.supply += d.supply; return '';
   }
   private placeOpts(fi: number, kind: StructKind, cx: number, cy: number): Parameters<typeof placeProblem>[0] {
     const d = STRUCTS[kind];
@@ -428,7 +428,7 @@ export class World {
     if (lvl >= 3) return '최대 단계입니다'; if (lab.queue.length >= 3) return '연구 대기열이 가득 찼습니다';
     const c = RESEARCH[id].crystal * (lvl + 1), m = RESEARCH[id].cash * (lvl + 1);
     if (f.crystal < c) return '크리스탈이 부족합니다'; if (f.cash < m) return '자금이 부족합니다';
-    f.crystal -= c; f.cash -= m; lab.queue.push({ research: id, t: 22 + lvl * 8, total: 22 + lvl * 8 }); return '';
+    f.crystal -= c; f.cash -= m; lab.queue.push({ research: id, t: 22 + lvl * 8, total: 22 + lvl * 8, paidCrystal: c, paidCash: m }); return '';
   }
   market(fi: number, sell: boolean, amount: number): string {
     const f = this.factions[fi], quantity = Math.floor(amount);

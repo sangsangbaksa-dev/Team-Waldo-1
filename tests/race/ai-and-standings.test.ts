@@ -17,7 +17,7 @@ describe('SPEED RUSH stable rankings and reusable AI control buffers',()=>{
   });
   it('does not share AI buffers between different cars',()=>{
     const race=createRace(track);
-    updateRace(race,1/90,idle);
+    for(let i=0;i<90*4;i++)updateRace(race,1/90,idle); // Include the 3-second countdown.
     expect(race.racers[1].aiControl).toBeDefined();
     expect(race.racers[2].aiControl).toBeDefined();
     expect(race.racers[1].aiControl).not.toBe(race.racers[2].aiControl);

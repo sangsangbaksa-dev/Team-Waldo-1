@@ -5,7 +5,7 @@ import { openLobby, type PvpSession } from '../../src/net/lobby';
 
 const callbacks = vi.hoisted(() => ({
   onMatch: null as null | ((session: PvpSession) => void),
-  onGone: null as null | ((reason: 'bye' | 'silent' | 'never') => void),
+  onGone: null as null | ((reason: 'bye' | 'silent' | 'never') => void), failConnect: false,
   setArmy: vi.fn(), clearArmy: vi.fn(), dispose: vi.fn(),
 }));
 vi.mock('../../src/net/lobby', () => ({
@@ -17,6 +17,7 @@ vi.mock('../../src/net/lobby', () => ({
 vi.mock('../../src/squad/net', () => ({
   SquadPvp: class {
     constructor(_session: unknown, hooks: { onGone(reason: 'bye' | 'silent' | 'never'): void }) {
+      if (callbacks.failConnect) throw new Error('open failed');
       callbacks.onGone = hooks.onGone;
     }
     heard = true;
@@ -44,7 +45,7 @@ beforeEach(() => {
   vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
   vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));
   vi.stubGlobal('cancelAnimationFrame', vi.fn());
-  callbacks.onMatch = null; callbacks.onGone = null;
+  callbacks.onMatch = null; callbacks.onGone = null; callbacks.failConnect = false;
   vi.mocked(openLobby).mockClear();
   callbacks.setArmy.mockClear(); callbacks.clearArmy.mockClear(); callbacks.dispose.mockClear();
   localStorage.clear(); document.body.innerHTML = '';
@@ -189,5 +190,24 @@ it('ignores a delayed matchmaking completion after the player exits the game', a
     backend: { report: vi.fn() },
   } as unknown as PvpSession);
   expect(callbacks.onGone).toBeNull();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it('shows a recoverable message if the multiplayer transport fails to open', async () => {
+  openSquad(vi.fn());
+  button('[data-mode="online"]').click();
+  button('#start').click();
+  await vi.dynamicImportSettled();
+  callbacks.failConnect = true;
+  expect(() => callbacks.onMatch!({
+    host: true,
+    me: { id: 'blue', nickname: 'Blue' },
+    opponent: { id: 'red', nickname: 'Red' },
+    match: { id: 'match' },
+    backend: { report: vi.fn() },
+  } as unknown as PvpSession)).not.toThrow();
+  expect(document.querySelector('.sq-toast')?.textContent).toContain('온라인 연결');
+  expect(button('#start')).toBeTruthy();
+  button('#exit').click();
   expect(vi.getTimerCount()).toBe(0);
 });

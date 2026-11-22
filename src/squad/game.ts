@@ -185,10 +185,16 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
     // Forget its stale handle so the player can queue again after this match.
     lobby = undefined;
     quitOnline();
-    const net: SquadPvp = new SquadPvp(s, {
-      onArmy: (r, a) => { const o = online; if (o?.net === net && !o.incoming.has(r)) { o.incoming.set(r, a); tryStart(); } },
-      onGone: why => { if (online?.net === net) handleGone(why); },
-    });
+    let net: SquadPvp;
+    try {
+      net = new SquadPvp(s, {
+        onArmy: (r, a) => { const o = online; if (o?.net === net && !o.incoming.has(r)) { o.incoming.set(r, a); tryStart(); } },
+        onGone: why => { if (online?.net === net) handleGone(why); },
+      });
+    } catch {
+      toast('온라인 연결을 열지 못했습니다. 다시 시도해 주세요.');
+      return;
+    }
     online = { s, net, mine: s.host ? 0 : 1, incoming: new Map(), sent: 0, deadline: 0, leaving: 0, done: false, result: '', settleTimer: 0, wakeSettle: null };
     mode = 'online'; startMatch();
   }

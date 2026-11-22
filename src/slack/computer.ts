@@ -142,7 +142,8 @@ export const createComputerView: CreateView = (sim, audio) => {
   };
   const chatBadgeTotal = () => rooms.reduce((n, r) => n + r.unread, 0);
   const chatRefresh = () => {
-    const w = wins.chat; w.querySelectorAll<HTMLElement>('[data-room]').forEach((b, i) => {
+    const w = built.chat;
+    if (w) w.querySelectorAll<HTMLElement>('[data-room]').forEach((b, i) => {
       b.classList.toggle('cur', i === C.room); const r = rooms[i];
       setTxt($('[data-last]', b), C.typing === i ? '입력 중...' : r.msgs[r.msgs.length - 1].t); setTxt($('[data-unread]', b), r.unread ? String(r.unread) : '');
     });
@@ -159,16 +160,16 @@ export const createComputerView: CreateView = (sim, audio) => {
     if (!msg.m) {
       if (shown === 'chat' && C.room === i) audio.play('chime', 0.4); else { r.unread++; audio.play('chime', 0.55); if (shown !== 'chat') toast(`${msg.who}: ${msg.t}`); }
     }
-    if (C.room === i) {
-      const list = $('[data-messages]', wins.chat); const row = chatRow(msg); list.append(row);
+    if (C.room === i && built.chat) {
+      const list = $('[data-messages]', built.chat); const row = chatRow(msg); list.append(row);
       while (list.childElementCount > 30) list.firstElementChild?.remove(); list.scrollTop = list.scrollHeight;
       if (msg.m) later(1.2, () => { const s = row.querySelector('small'); if (s) s.textContent = '읽음'; });
     }
     chatRefresh();
   };
   const chatIncoming = (i: number, text: string, delay: number) => {
-    later(delay, () => { C.typing = i; if (C.room === i) $('[data-typing]', wins.chat).classList.add('on'); chatRefresh(); });
-    later(delay + 1.3, () => { C.typing = -1; $('[data-typing]', wins.chat).classList.remove('on'); chatPush(i, { m: false, who: i === 0 ? pick(['지후', '서연', '태오']) : rooms[i].name.replace('룸메 ', ''), t: text }); });
+    later(delay, () => { C.typing = i; if (C.room === i && built.chat) $('[data-typing]', built.chat).classList.add('on'); chatRefresh(); });
+    later(delay + 1.3, () => { C.typing = -1; if (built.chat) $('[data-typing]', built.chat).classList.remove('on'); chatPush(i, { m: false, who: i === 0 ? pick(['지후', '서연', '태오']) : rooms[i].name.replace('룸메 ', ''), t: text }); });
   };
   let nextIncoming = 8;
 
@@ -193,8 +194,8 @@ export const createComputerView: CreateView = (sim, audio) => {
   };
   const shopTick = (dt: number) => {
     S.left -= dt;
-    if (S.left <= 0) { S.left = 120; S.deal = (S.deal + 1) % products.length; shopDeal(); if (shown !== 'shop') { setBadge('shop', 1); audio.play('chime', 0.3); toast('새 심야 특가가 열렸어요!'); } }
-    const sec = Math.ceil(S.left); if (sec !== S.lastSec) { S.lastSec = sec; setTxt($('[data-timer]', wins.shop), `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`); }
+    if (S.left <= 0) { S.left = 120; S.deal = (S.deal + 1) % products.length; if (built.shop) shopDeal(); if (shown !== 'shop') { setBadge('shop', 1); audio.play('chime', 0.3); toast('새 심야 특가가 열렸어요!'); } }
+    const sec = Math.ceil(S.left); if (sec !== S.lastSec) { S.lastSec = sec; if (built.shop) setTxt($('[data-timer]', built.shop), `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`); }
   };
 
   /* ---------- 음악 ---------- */
@@ -212,26 +213,39 @@ export const createComputerView: CreateView = (sim, audio) => {
   };
 
   /* ---------- 창 생성/전환 (한 번만 만들고 켜고 끔) ---------- */
-  const wins = {} as Record<DormActivity, HTMLElement>;
+  // Construct app windows only when first opened. The desktop, taskbar,
+  // notifications and clock remain live without eagerly building every app DOM.
+  const built: Partial<Record<DormActivity, HTMLElement>> = {};
+  const wins = new Proxy({} as Record<DormActivity, HTMLElement>, {
+    get(_target, property: string | symbol): HTMLElement | undefined {
+      if (typeof property !== 'string' || !apps.some(a => a.id === property)) return undefined;
+      const id = property as DormActivity;
+      if (built[id]) return built[id];
+      const app = apps.find(a => a.id === id)!;
+      const w = document.createElement('div');
+      w.className = `sc-app-window sc-app-${id}`;
+      w.innerHTML = title(app.label) + builders[id].html();
+      host.append(w);
+      built[id] = w; // Publish before init: its setup helpers read wins[id].
+      builders[id].init?.();
+      return w;
+    },
+  });
   const builders: Record<DormActivity, { html: () => string; init?: () => void }> = {
     game: { html: gameHtml, init: gameReset },
     video: { html: vidHtml, init: () => vidSelect(0) },
     chat: { html: chatHtml, init: () => chatOpen(0) },
-    webtoon: { html: toonHtml, init: () => toonShow(2) },
-    shop: { html: shopHtml, init: () => { shopDeal(); shopTotals(); } },
+    webtoon: { html: toonHtml, init: () => { toonShow(2); if (cache.newEp) wins.webtoon.querySelector<HTMLElement>('[data-ep="3"]')!.hidden = false; } },
+    shop: { html: shopHtml, init: () => { shopDeal(); shopTotals(); S.lastSec = -1; shopTick(0); } },
     music: { html: musicHtml, init: () => { musicSet(0); musicPlay(true); } },
   };
-  for (const a of apps) {
-    const w = document.createElement('div'); w.className = `sc-app-window sc-app-${a.id}`; w.innerHTML = title(a.label) + builders[a.id].html(); host.append(w); wins[a.id] = w;
-  }
-  for (const a of apps) builders[a.id].init?.();
-
   function renderApp(id: DormActivity | null) {
     const prev = shown; shown = id;
     if (prev && prev !== id && wins[prev].contains(document.activeElement)) taskBtn(id ?? prev).focus({ preventScroll: true });
     for (const a of apps) {
       const on = a.id === id;
-      wins[a.id].classList.toggle('on', on); wins[a.id].inert = !on;
+      const w = on ? wins[a.id] : built[a.id];
+      if (w) { w.classList.toggle('on', on); w.inert = !on; }
       taskBtn(a.id).classList.toggle('active', on); taskBtn(a.id).setAttribute('aria-pressed', String(on));
     }
     if (id) el.style.setProperty('--sc-glow', GLOW[id]);
@@ -346,7 +360,7 @@ export const createComputerView: CreateView = (sim, audio) => {
     if (elapsed > nextIncoming && state.phase === 'play') {
       nextIncoming = elapsed + 9 + Math.random() * 7; const r = Math.random() < 0.6 ? 0 : Math.random() < 0.6 ? 1 : 2; chatIncoming(r, pick(rooms[r].pool), 0);
     }
-    if (elapsed > 45 && !cache.newEp) { cache.newEp = true; wins.webtoon.querySelector<HTMLElement>('[data-ep="3"]')!.hidden = false; if (shown !== 'webtoon') { setBadge('webtoon', 1); toast('웹툰 「달빛 아래 우리」 13화 업데이트!'); audio.play('chime', 0.4); } }
+    if (elapsed > 45 && !cache.newEp) { cache.newEp = true; if (built.webtoon) built.webtoon.querySelector<HTMLElement>('[data-ep="3"]')!.hidden = false; if (shown !== 'webtoon') { setBadge('webtoon', 1); toast('웹툰 「달빛 아래 우리」 13화 업데이트!'); audio.play('chime', 0.4); } }
     const min = 24 + Math.floor(elapsed / 20); setTxt(clockEl, `오전 ${1 + Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`);
   }, onEvent, dispose() { if (disposed) return; disposed = true; inputs.abort(); blur(); queue.length = 0; } };
 };

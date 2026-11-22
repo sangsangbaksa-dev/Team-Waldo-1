@@ -88,7 +88,20 @@ try{
       assert.equal(await page.evaluate(()=>window.__race.race.track===window.__race.savedTrack),false,'Map switch must rebuild its spline');
       assert.equal(await page.evaluate(()=>!!window.__race.view.rainFx),switchMap==='storm','Rain visuals must follow the newly chosen map');
       await page.screenshot({path:'browser-artifacts/speed-rush-switched-'+size.name+'.png',animations:'disabled'});
-      await page.locator('.rc-btns [data-act="exit"]').click();
+      // Complete an offline race in dev mode and check the final modal stops hidden GPU rendering.
+      await page.evaluate(()=>{
+        const v=window.__race.view, original=v.update.bind(v);let draws=0;
+        v.update=(...args)=>{draws++;return original(...args);};
+        window.__raceViewDraws=()=>draws;
+        const r=window.__race.race;r.player.car.total=r.track.n*r.laps+6;
+        window.__race.skip(0.06);
+      });
+      await page.locator('.rc-modal.show .rc-card.result').waitFor();
+      await page.waitForTimeout(130);
+      const frozen=await page.evaluate(()=>window.__raceViewDraws());
+      await page.waitForTimeout(180);
+      assert.equal(await page.evaluate(()=>window.__raceViewDraws()),frozen,'Completed offline race should not render under results');
+      await page.locator('.rc-modal.show [data-act="exit"]').click();
       await page.locator('.tile').first().waitFor();
       assert.equal(await page.locator('.rc-root').count(),0,'Exit must clean up race DOM');
       assert.equal(await page.evaluate(()=>window.__race),undefined,'Exit must release debug reference');

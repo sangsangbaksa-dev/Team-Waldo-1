@@ -318,7 +318,10 @@ export function openRace(onExit: () => void): void {
     if (closed) return; raf = requestAnimationFrame(frame);
     const elapsed = Math.max(0, (now - last) / 1000); last = now;
     const dt = Math.min(0.1, elapsed);
-    if (!paused && view) {
+    // An offline results modal covers the world entirely; freeze its WebGL pass.
+    // Online races must keep sending snapshots until peers and results settle.
+    const coveredOfflineResult=finishedShown && !pvp && !multi && modal.classList.contains('show');
+    if (!paused && view && !coveredOfflineResult) {
       const plan = framePlan(acc, elapsed); acc = plan.remainder;
       const steps = plan.steps, input = readInput();
       for (let i = 0; i < steps; i++) handle(updateRace(race, STEP, input, now));

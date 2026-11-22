@@ -55,4 +55,18 @@ describe('SLACK OFF dorm lazy apps', () => {
     const latestEpisode = view.el.querySelector<HTMLElement>('[data-ep="3"]');
     expect(latestEpisode?.hidden).toBe(false);
   });
+  it('enables the headphone soundscape only while playing music', () => {
+    vi.mocked(audio.muffle).mockClear();
+    const click = (id: string) =>
+      view.el.querySelector<HTMLButtonElement>(`[data-app="${id}"]`)!.click();
+    click('music'); view.frame(0.1);
+    expect(audio.muffle).toHaveBeenLastCalledWith(true);
+    click('chat'); view.frame(0.1);
+    expect(audio.muffle).toHaveBeenLastCalledWith(false);
+    click('music'); view.frame(0.1);
+    expect(audio.muffle).toHaveBeenLastCalledWith(true);
+    view.dispose();
+    expect(audio.muffle).toHaveBeenLastCalledWith(false);
+  });
+
 });

@@ -136,7 +136,7 @@ export class ShooterNet {
     void this.ch.ready.then(() => this.hello(), () => this.gone('never'));
     this.timer = window.setInterval(() => this.tick(), 500);
   }
-  private hello(): void { if (!this.started) this.ch.send({ t: 'hello' }); }
+  private hello(): void { if (!this.dead && !this.started) this.ch.send({ t: 'hello' }); }
   private gone(reason: 'bye' | 'silent' | 'never'): void { if (this.dead) return; this.dead = true; window.clearInterval(this.timer); this.hooks.onGone(reason); }
   private tick(): void {
     if (this.dead) return; const now = performance.now();
@@ -147,8 +147,9 @@ export class ShooterNet {
     if (now - this.lastAlive > 2000) { this.lastAlive = now; this.ch.send({ t: 'ka' }); }
     if (now - this.heard > SILENT_MS) this.gone('silent');
   }
-  private begin(): void { if (this.started) return; this.started = true; this.hooks.onStart(); }
+  private begin(): void { if (this.dead || this.started) return; this.started = true; this.hooks.onStart(); }
   private onMsg(m: NetMsg): void {
+    if (this.dead) return; // Late RTC packets cannot revive a disposed match.
     this.heard = performance.now();
     if (m.t === 'hello') { if (this.session.host && !this.started) { this.ch.send({ t: 'start' }); this.begin(); } }
     else if (m.t === 'start') { if (!this.session.host) this.begin(); }
@@ -156,21 +157,21 @@ export class ShooterNet {
     else if (m.t === 'p') { const p = parsePose(m); if (p) this.hooks.onPose(p); }
     else if (m.t === 'sh') { const s = parseShot(m); if (s) this.hooks.onShot(s); }
     else if (m.t === 'ack') { if (num(m.d, 0, 1000)) this.hooks.onHitAck(m.d, m.h === 1); }
-    else if (m.t === 'pk') { if (num(m.i, 0, 1e8)) this.hooks.onPickup(m.i); }
+    else if (m.t === 'pk') { if (num(m.i, 0, 1e8) && Number.isInteger(m.i)) this.hooks.onPickup(m.i); }
     else if (m.t === 'nd') { const n = parseNade(m); if (n) this.hooks.onNade?.(n); }
     else if (m.t === 'dead') { if (num(m.mt, 0, 100000)) this.hooks.onDead(m.mt); }
     else if (m.t === 'bye') this.gone('bye');
   }
   /** 15Hz 로 내 위치·체력을 보냅니다. */
   sendPose(p: Pose, now: number): void {
-    if (!this.started || now - this.lastPose < 66) return; this.lastPose = now;
+    if (this.dead || !this.started || now - this.lastPose < 66) return; this.lastPose = now;
     this.ch.send(poseMsg(p));
   }
-  sendNade(n: NetNade): void { if (this.started) this.ch.send(nadeMsg(n, 0)); }
-  sendShot(s: NetShot): void { if (this.started) this.ch.send({ t: 'sh', w: s.w, ox: Math.round(s.ox * 100) / 100, oy: Math.round(s.oy * 100) / 100, oz: Math.round(s.oz * 100) / 100, e: s.ends.map(v => Math.round(v * 10) / 10) }); }
-  sendAck(dmg: number, head: boolean): void { this.ch.send({ t: 'ack', d: Math.round(dmg), h: head ? 1 : 0 }); }
-  sendPickup(id: number): void { this.ch.send({ t: 'pk', i: id }); }
-  sendDead(mt: number): void { this.ch.send({ t: 'dead', mt: Math.round(mt * 100) / 100 }); }
-  bye(): void { this.ch.send({ t: 'bye' }); }
+  sendNade(n: NetNade): void { if (this.started && !this.dead) this.ch.send(nadeMsg(n, 0)); }
+  sendShot(s: NetShot): void { if (this.started && !this.dead) this.ch.send({ t: 'sh', w: s.w, ox: Math.round(s.ox * 100) / 100, oy: Math.round(s.oy * 100) / 100, oz: Math.round(s.oz * 100) / 100, e: s.ends.map(v => Math.round(v * 10) / 10) }); }
+  sendAck(dmg: number, head: boolean): void { if (this.dead) return; this.ch.send({ t: 'ack', d: Math.round(dmg), h: head ? 1 : 0 }); }
+  sendPickup(id: number): void { if (this.dead) return; this.ch.send({ t: 'pk', i: id }); }
+  sendDead(mt: number): void { if (this.dead) return; this.ch.send({ t: 'dead', mt: Math.round(mt * 100) / 100 }); }
+  bye(): void { if (this.dead) return; this.ch.send({ t: 'bye' }); }
   dispose(): void { this.dead = true; window.clearInterval(this.timer); this.ch.close(); }
 }

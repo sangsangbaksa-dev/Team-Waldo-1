@@ -166,7 +166,14 @@ export class Match {
     if (this.over) return;
     this.t += dt;
     const zone = this.zone;
-    this.sounds = this.sounds.filter(s => this.t - s.t < 2.5);
+    // Sound trails are checked every simulation tick. Compact in place to avoid
+    // allocating a new array 60 times per second (including 100-player BR).
+    let activeSounds = 0;
+    for (let i = 0; i < this.sounds.length; i++) {
+      const sound = this.sounds[i];
+      if (this.t - sound.t < 2.5) this.sounds[activeSounds++] = sound;
+    }
+    this.sounds.length = activeSounds;
     this.stepDrops(); this.stepNades(dt); this.stepVehicles(dt); this.stepReds(dt);
     // 멀리 있는 AI(사람 시야 밖)는 생각을 0.2초에 한 번만 해서 100명이 뛰어도 가볍게 돕니다.
     const humans: Player[] = []; for (const q of this.players) if (!q.bot && q.alive) humans.push(q);

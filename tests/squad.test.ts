@@ -55,3 +55,17 @@ describe('squad nearest-target regressions', () => {
     expect(battle.units[0]!.hp).toBeGreaterThan(226);
   });
 });
+
+describe('squad corrupt placement safety', () => {
+  it('rejects forged and null placements rather than accepting inherited object properties', () => {
+    const unsafe = [
+      [{ type: '__proto__', x: 0, y: 11 }],
+      [{ type: 'constructor', x: 0, y: 11 }],
+      [null],
+    ] as unknown as Placement[][];
+    for (const army of unsafe) {
+      expect(validArmy(army, 0)).toBe(false);
+      expect(() => new Battle(army, [{ type: 'guard', x: 1, y: 8 }])).toThrow('Invalid army');
+    }
+  });
+});

@@ -105,3 +105,38 @@ it('suspends procedural earbud note timers while sound is muted', () => {
   expect(vi.getTimerCount()).toBe(0);
   audio.dispose();
 });
+
+it('stops earbud loop while paused and does not restart it while muted', async () => {
+  vi.useFakeTimers();
+  vi.spyOn(Math, 'random').mockReturnValue(0.99); // silence note synth, count timers only
+  const node = () => ({
+    connect: vi.fn(), gain: { value: 0, setTargetAtTime: vi.fn() },
+    frequency: { value: 0, setTargetAtTime: vi.fn() },
+    threshold: { value: 0 }, knee: { value: 0 }, ratio: { value: 0 },
+    attack: { value: 0 }, release: { value: 0 },
+  });
+  const ctx = {
+    state: 'running', currentTime: 0, destination: {},
+    createGain: vi.fn(node), createBiquadFilter: vi.fn(node),
+    createDynamicsCompressor: vi.fn(node), resume: vi.fn().mockResolvedValue(undefined),
+    suspend: vi.fn().mockImplementation(() => { ctx.state = 'suspended'; return Promise.resolve(); }),
+    close: vi.fn().mockResolvedValue(undefined),
+  };
+  vi.stubGlobal('AudioContext', vi.fn(function () { return ctx; }));
+  const audio = createSlackAudio();
+  audio.resume();
+  audio.muffle(true);
+  expect(vi.getTimerCount()).toBe(1);
+  audio.hold(true);
+  expect(vi.getTimerCount()).toBe(0);
+  audio.setMuted(true);
+  expect(vi.getTimerCount()).toBe(0);
+  audio.hold(false);
+  await Promise.resolve();
+  expect(vi.getTimerCount()).toBe(0);
+  audio.setMuted(false);
+  expect(vi.getTimerCount()).toBe(1);
+  audio.hold(true);
+  expect(vi.getTimerCount()).toBe(0);
+  audio.dispose();
+});

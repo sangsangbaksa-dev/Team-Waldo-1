@@ -73,9 +73,9 @@ export const createSlackAudio: CreateAudio = () => {
   const setMuffle = (on: boolean): void => {
     muffled = on; clearTimeout(bedTimer); bedTimer = 0;
     if (ctx && filter && damp) { filter.frequency.setTargetAtTime(on ? MUFFLED : OPEN, ctx.currentTime, 0.1); damp.gain.setTargetAtTime(on ? DAMP : 1, ctx.currentTime, 0.1); }
-    if (!on) return;
+    if (!on || held || muted || disposed) return;
     // 이어폰에서 새어 나오는 아주 작은 음악(먹먹 필터를 우회).
-    const bed = (): void => { if (Math.random() < 0.7) tone(PENTA[Math.floor(Math.random() * PENTA.length)], 0.55, 0.012, 'sine', undefined, 0, 0, direct ?? undefined); bedTimer = window.setTimeout(bed, 360); };
+    const bed = (): void => { if (held || muted || disposed || !muffled) { bedTimer = 0; return; } if (Math.random() < 0.7) tone(PENTA[Math.floor(Math.random() * PENTA.length)], 0.55, 0.012, 'sine', undefined, 0, 0, direct ?? undefined); bedTimer = window.setTimeout(bed, 360); };
     if (ctx && !muted) bed();
   };
   const play = (name: SfxName, vol = 1): void => {
@@ -122,7 +122,10 @@ export const createSlackAudio: CreateAudio = () => {
   return {
     resume: resumeAudio,
     hold(on) {
+      if (held === on) return;
       held = on;
+      if (on) { clearTimeout(bedTimer); bedTimer = 0; }
+      else if (muffled && !muted) setMuffle(true);
       if (on && ctx?.state === 'running') {
         // A quick pause/resume can race a pending suspend; resume *after*
         // suspension settles so sound is not left disabled.

@@ -10,7 +10,7 @@ export const BUDGET = 1000;
 export function validArmy(army: Placement[], side: Side): boolean {
   const cells = new Set<string>(); let cost = 0;
   for (const p of army) {
-    if (!UNITS[p.type] || !Number.isInteger(p.x) || !Number.isInteger(p.y) || p.y < (side ? 0 : 10) || p.y >= (side ? 10 : 20) || p.x < 0 || p.x >= 12) return false;
+    if (!p || !Object.prototype.hasOwnProperty.call(UNITS, p.type) || !Number.isInteger(p.x) || !Number.isInteger(p.y) || p.y < (side ? 0 : 10) || p.y >= (side ? 10 : 20) || p.x < 0 || p.x >= 12) return false;
     const key = `${p.x},${p.y}`; if (cells.has(key)) return false; cells.add(key); cost += UNITS[p.type].cost;
   }
   return cost <= BUDGET;

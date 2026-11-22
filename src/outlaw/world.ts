@@ -2,10 +2,13 @@
 import { makeRng, clamp, type CityMap, type LaneNode, type District, type Building, type PoiKind, type PropKind } from './types';
 
 const CELL = 32, EPS = 1e-7;
-const key = (x: number, z: number): string => `${x},${z}`;
+// All generated static geometry lives within 800m of the city center, so its
+// 32m grid coordinates are well inside ±4096. Encode the pair as one number
+// instead of allocating a string during every static ray and collider lookup.
+const key = (x: number, z: number): number => (x + 4096) * 8192 + z + 4096;
 interface Box { x0: number; x1: number; z0: number; z1: number; top: number; building: boolean }
-interface Grid { boxes: Box[]; cells: Map<string, number[]>; lanes: Map<string, number[]>; marks: Uint32Array; stamp: number }
-function bucket(cells: Map<string, number[]>, x: number, z: number, id: number): void {
+interface Grid { boxes: Box[]; cells: Map<number, number[]>; lanes: Map<number, number[]>; marks: Uint32Array; stamp: number }
+function bucket(cells: Map<number, number[]>, x: number, z: number, id: number): void {
   const k = key(x, z), list = cells.get(k); if (list) list.push(id); else cells.set(k, [id]);
 }
 function indexMap(map: CityMap): Grid {

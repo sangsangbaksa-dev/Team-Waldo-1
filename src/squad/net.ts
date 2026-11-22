@@ -26,11 +26,11 @@ export class SquadPvp {
   heard = false;
   /** 상대가 승부를 마치고 나갔습니다. 이후의 침묵은 끊김이 아닙니다. */
   private finished = false;
-  private ch: Channel; private timer: number; private born = performance.now(); private last = performance.now(); private lastTick = performance.now(); private dead = false;
+  private ch: Channel; private timer: number; private born = performance.now(); private last = performance.now(); private lastTick = performance.now(); private dead = false; private connected = false;
   private round = 0; private army: Placement[] = [];
   constructor(readonly session: PvpSession, private hooks: SquadHooks) {
     this.ch = session.open(m => this.onMsg(m));
-    void this.ch.ready.then(() => this.tick(), () => this.gone('never'));
+    void this.ch.ready.then(() => { if (this.dead) return; this.connected = true; this.tick(); }, () => this.gone('never'));
     this.timer = window.setInterval(() => this.tick(), TICK_MS);
   }
   /** 내 배치를 제출합니다. 상대가 늦게 접속해도 받도록 2초마다 다시 보냅니다. */
@@ -45,7 +45,7 @@ export class SquadPvp {
     try { this.ch.close(); } catch { /* cleanup must never block leaving the game */ }
   }
   private send(): void {
-    if (this.dead) return;
+    if (this.dead || !this.connected) return;
     try { this.ch.send(this.round ? { t: 'army', r: this.round, a: this.army } : { t: 'hb' }); }
     catch { this.gone('never'); }
   }
@@ -57,6 +57,7 @@ export class SquadPvp {
   }
   private tick(): void {
     if (this.dead) return; const now = performance.now();
+    if (!this.connected) { if (now - this.born > NEVER_MS) this.gone('never'); return; }
     if (now - this.lastTick > 2 * TICK_MS * 2) this.last = now; // 내 탭이 멈춰 있던 시간은 상대의 침묵으로 세지 않습니다
     this.lastTick = now; this.send();
     if (this.dead) return;

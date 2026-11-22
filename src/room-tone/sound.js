@@ -188,15 +188,24 @@ export class Sound {
   pause(paused) {
     this.paused = Boolean(paused);
     this.applyLevel();
-    if (this.ctx) void (this.paused ? this.ctx.suspend() : this.ctx.resume()).catch(() => {});
     if (this.paused) {
       if (this.clock !== null) globalThis.clearInterval(this.clock);
       this.clock = null;
       this.threat(0);
     } else if (this.ctx && this.level) {
       this.nextDistant = this.ctx.currentTime + 7 + Math.random() * 7;
-      this.startClock();
     }
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    try {
+      const transition = this.paused ? ctx.suspend() : ctx.resume();
+      // Browser resume() can settle asynchronously. Don't leave the
+      // heartbeat stopped forever just because the context was suspended at
+      // the precise moment the player pressed Resume.
+      void Promise.resolve(transition).then(() => {
+        if (ctx === this.ctx && !this.paused && !this.muted) this.startClock();
+      }).catch(() => { /* An unavailable audio device must not block play. */ });
+    } catch { /* Browser audio is optional. */ }
   }
 
   startClock() {

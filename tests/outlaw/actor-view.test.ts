@@ -44,3 +44,19 @@ it('does not create invisible 3D rigs for distant gunshots', () => {
   expect(rigs.size).toBe(start);
   view.dispose();
 });
+
+it('shares the marker beam vertex geometry across visible POIs', () => {
+  const sim = new Sim(11), camera = new THREE.PerspectiveCamera(), scene = new THREE.Scene();
+  camera.position.set(sim.player.x, sim.player.y + 5, sim.player.z);
+  const view = new ActorView(scene, sim, null, 'low');
+  const firstPoi = sim.map.pois[0]!;
+  sim.mission.markers = [
+    { x: firstPoi.x, z: firstPoi.z, r: 2, color: 0xffaa33, label: 'first', blip: true, kind: 'goal' },
+    { x: firstPoi.x + 5, z: firstPoi.z + 5, r: 2, color: 0x33ccff, label: 'second', blip: true, kind: 'goal' },
+  ];
+  view.update(.016, camera, 14);
+  const beacons = (view as unknown as {beacons: Array<{beam: THREE.Mesh}>}).beacons;
+  expect(beacons.length).toBeGreaterThanOrEqual(2);
+  expect(beacons[0].beam.geometry).toBe(beacons[1].beam.geometry);
+  view.dispose();
+});

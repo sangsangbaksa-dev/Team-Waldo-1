@@ -47,6 +47,7 @@ export class ActorView {
   private readonly poiById = new Map<string, Poi>();
   private readonly rockets = new Map<number, THREE.Group>();
   private readonly beacons: Beacon[] = [];
+  private beaconBeamGeometry: THREE.BufferGeometry | null = null;
   private readonly fx: Fx[] = [];
   private readonly lights: THREE.PointLight[] = [];
   private readonly v = new THREE.Vector3();
@@ -313,10 +314,20 @@ export class ActorView {
   }
   private makeBeacon(): Beacon {
     const root = new THREE.Group(), mat = (opacity: number) => this.ownMat(new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true, blending: THREE.AdditiveBlending }));
-    const ring = new THREE.Mesh(this.ring, mat(0.65)), beam = new THREE.Mesh(this.cylinder, mat(0.045));
-    // 상단으로 사라지는 빛으로 하늘과 HUD의 대비를 지킵니다.
-    const geo = this.ownGeo(this.cylinder.clone()), pos = geo.getAttribute('position'), colors = new Float32Array(pos.count * 3);
-    for (let i = 0; i < pos.count; i++) { const a = pos.getY(i) > 0 ? 0 : 1; colors.set([a, a, a], i * 3); } geo.setAttribute('color', new THREE.BufferAttribute(colors, 3)); beam.geometry = geo; beam.material.vertexColors = true;
+    // All marker beams have the same vertex fade. Share the immutable GPU
+    // geometry, retaining separate materials for per-marker colors and opacity.
+    if (!this.beaconBeamGeometry) {
+      const geo = this.ownGeo(this.cylinder.clone());
+      const pos = geo.getAttribute('position'), colors = new Float32Array(pos.count * 3);
+      for (let i = 0; i < pos.count; i++) {
+        const a = pos.getY(i) > 0 ? 0 : 1, j = i * 3;
+        colors[j] = a; colors[j + 1] = a; colors[j + 2] = a;
+      }
+      geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      this.beaconBeamGeometry = geo;
+    }
+    const ring = new THREE.Mesh(this.ring, mat(0.65)), beam = new THREE.Mesh(this.beaconBeamGeometry, mat(0.045));
+    beam.material.vertexColors = true;
     ring.rotation.x = -Math.PI / 2; ring.position.y = 0.065; root.add(ring, beam); this.root.add(root);
     const b = { root, ring, beam }; this.beacons.push(b); return b;
   }
@@ -549,6 +560,6 @@ export class ActorView {
   dispose(): void {
     if (this.disposed) return; this.disposed = true; this.contact.dispose(); this.root.removeFromParent(); this.root.clear();
     for (const g of this.geometries) g.dispose(); for (const m of this.materials) m.dispose(); this.glow.dispose();
-    this.geometries.clear(); this.materials.clear(); this.palette.clear(); this.paletteMaterials.clear(); this.nearbyPois.length = 0; this.poiById.clear(); this.articulated.clear(); this.rigs.clear(); this.cars.clear(); this.loot.clear(); this.rockets.clear(); this.beacons.length = 0; this.fx.length = 0; this.lights.length = 0;
+    this.beaconBeamGeometry = null; this.geometries.clear(); this.materials.clear(); this.palette.clear(); this.paletteMaterials.clear(); this.nearbyPois.length = 0; this.poiById.clear(); this.articulated.clear(); this.rigs.clear(); this.cars.clear(); this.loot.clear(); this.rockets.clear(); this.beacons.length = 0; this.fx.length = 0; this.lights.length = 0;
   }
 }

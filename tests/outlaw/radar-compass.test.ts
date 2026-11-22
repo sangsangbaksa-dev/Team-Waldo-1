@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { radarNorthDirection } from '../../src/outlaw/minimap';
+import { radarNorthDirection, districtName } from '../../src/outlaw/minimap';
+import { generateCity } from '../../src/outlaw/world';
 
 describe('OUTLAW rotating mini-radar compass', () => {
   it('puts north at the top for a north-up map', () => {
@@ -12,6 +13,20 @@ describe('OUTLAW rotating mini-radar compass', () => {
       expect(x).toBeCloseTo(Math.sin(angle));
       expect(y).toBeCloseTo(-Math.cos(angle));
       expect(x*x + y*y).toBeCloseTo(1);
+    }
+  });
+});
+
+describe('OUTLAW radar district labels match the actual generated world', () => {
+  const labels: Record<string, string> = { downtown:'다운타운', commercial:'상업 지구',
+    residential:'주거 지구', industrial:'공업 지구' };
+  it('labels the same district as each real building instead of the obsolete smaller grid', () => {
+    for (const seed of [1, 7, 19]) {
+      const map = generateCity(seed);
+      for (const b of map.buildings) {
+        expect(districtName(b.x, b.z, map), `seed=${seed}, building=${b.id}`).toBe(labels[b.district]);
+      }
+      for (const p of map.parks) expect(districtName(p.x, p.z, map)).toBe('공원 지구');
     }
   });
 });

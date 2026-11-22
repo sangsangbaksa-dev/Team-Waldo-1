@@ -20,13 +20,17 @@ const DISTRICT_KO: Record<string, string> = { downtown: '다운타운', commerci
 
 /** 좌표에 해당하는 도시 지구 이름. */
 export function districtName(x: number, z: number, map?: CityMap): string {
-  const half = map?.half ?? 600, pitch = map?.pitch ?? 100;
-  const ix = Math.max(0, Math.min(11, Math.floor((x + half) / pitch)));
-  const iz = Math.max(0, Math.min(11, Math.floor((z + half) / pitch)));
+  const half = map?.half ?? 800, pitch = map?.pitch ?? 100;
+  const grid = Math.max(1, Math.round(half * 2 / pitch));
+  const ix = Math.max(0, Math.min(grid - 1, Math.floor((x + half) / pitch)));
+  const iz = Math.max(0, Math.min(grid - 1, Math.floor((z + half) / pitch)));
   const park = map?.parks.find(p => Math.abs(x - p.x) < p.w / 2 && Math.abs(z - p.z) < p.d / 2);
   if (park) return DISTRICT_KO.park;
-  // 지도 생성 규칙의 구역 구분을 그대로 따라 이름을 붙입니다.
-  return DISTRICT_KO[ix < 3 && iz < 3 ? 'industrial' : ix >= 4 && ix <= 6 && iz >= 4 && iz <= 6 ? 'downtown' : ix >= 3 && ix <= 7 && iz >= 3 && iz <= 7 ? 'commercial' : 'residential'];
+  // Mirror generateCity's 16×16 grid and two-block facility margin. The old
+  // 12×12 map labels placed downtown 200m away from the actual downtown.
+  const a = ix - 2, c = iz - 2;
+  if (a < 0 || c < 0) return DISTRICT_KO[(ix < 2 && iz < grid - 3) || (iz < 2 && ix < grid - 3) ? 'industrial' : 'residential'];
+  return DISTRICT_KO[a < 3 && c < 3 ? 'industrial' : a >= 4 && a <= 6 && c >= 4 && c <= 6 ? 'downtown' : a >= 3 && a <= 7 && c >= 3 && c <= 7 ? 'commercial' : 'residential'];
 }
 
 export class Minimap {

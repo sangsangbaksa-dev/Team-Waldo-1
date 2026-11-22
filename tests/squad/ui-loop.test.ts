@@ -245,3 +245,16 @@ it('ignores off-grid pointer hover rather than drawing from invalid cells', asyn
   expect(vi.mocked(draw).mock.calls.length).toBe(before + 1);
   button('#pause').click(); button('#exit').click();
 });
+
+it('does not expose deploy-only keyboard instructions on the live battle canvas', () => {
+  openSquad(vi.fn());
+  button('#start').click();
+  expect(document.querySelector<HTMLCanvasElement>('#sq-field-canvas')?.tabIndex).toBe(0);
+  button('#auto').click(); button('#ready').click();
+  const canvas = document.querySelector<HTMLCanvasElement>('#sq-field-canvas')!;
+  expect(canvas.tabIndex).toBe(-1);
+  expect(canvas.getAttribute('role')).toBe('img');
+  expect(canvas.hasAttribute('aria-describedby')).toBe(false);
+  expect(canvas.getAttribute('aria-label')).toContain('전투');
+  button('#pause').click(); button('#exit').click();
+});

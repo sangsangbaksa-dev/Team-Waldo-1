@@ -16,6 +16,11 @@ export interface Outcome { toast?: string; kind?: string; begin?: boolean; close
 export type PhoneTab = 'jobs' | 'garage' | 'estate' | 'me' | 'medals';
 const TABS: Array<[PhoneTab, string]> = [['jobs', '일거리'], ['garage', '차고'], ['estate', '부동산'], ['me', '내 정보'], ['medals', '업적']];
 const BETS = [10, 50, 100, 500, 1000, 5000];
+const CASINO_TABS = ['slots', 'bj', 'roulette', 'coin', 'hilo'] as const;
+const ROULETTE_TYPES = ['red', 'black', 'odd', 'even', 'low', 'high', 'number'] as const;
+const phoneTab = (id: string): id is PhoneTab => TABS.some(([tab]) => tab === id);
+const casinoTab = (id: string): id is typeof CASINO_TABS[number] => CASINO_TABS.some(tab => tab === id);
+const rouletteType = (id: string): id is RouletteBet['type'] => ROULETTE_TYPES.some(type => type === id);
 
 export class OutlawUi {
   tab: PhoneTab = 'jobs'; casinoTab: 'slots' | 'bj' | 'roulette' | 'coin' | 'hilo' = 'slots'; hilo: HiLo | null = null; bet = 50; bj: Blackjack | null = null; bjSettled = false; note = '';
@@ -118,9 +123,9 @@ export class OutlawUi {
   click(ds: DOMStringMap): Outcome {
     const s = this.sim, id = ds.id ?? '', k = ds.ui, me = (kind: string, toast?: string): Outcome => ({ kind, toast });
     switch (k) {
-      case 'hero': this.heroSel = id; return me('hero');
+      case 'hero': if (HEROES.some(h => h.id === id)) this.heroSel = id; return me('hero');
       case 'start': s.applyHero(this.heroSel); return { begin: true, close: true };
-      case 'tab': this.tab = id as PhoneTab; return me('phone');
+      case 'tab': if (phoneTab(id)) this.tab = id; return me('phone');
       case 'job': { const r = startJob(s, id); return r ? me('phone', r) : { close: true, sound: 'mission_start' }; }
       case 'cancel': cancelJob(s); return me('phone');
       case 'call': { const r = callCar(s, Number(id)); return r.includes('도착') ? { close: true, toast: r } : me('phone', r); }
@@ -129,19 +134,19 @@ export class OutlawUi {
       case 'outfit': return me('phone', setOutfit(s, Number(id)));
       case 'bribe': return me('phone', bribe(s));
       case 'buycar': return me('dealer', buyCar(s, Number(id)));
-      case 'ctab': this.casinoTab = id as never; this.note = ''; return me('casino');
+      case 'ctab': if (casinoTab(id)) { this.casinoTab = id; this.note = ''; } return me('casino');
       case 'bet': if (BETS.includes(Number(id))) this.bet = Number(id); return me('casino');
       case 'spin': { if (!this.take()) return me('casino'); const r = slotSpin(s.rng, this.bet); this.reels = r.reels; if (r.payout) s.addCash(r.payout); if (r.jackpot) s.count('jackpot'); this.note = r.payout ? `${r.note} · +${money(r.payout)}` : r.note; return { kind: 'casino', sound: r.payout ? 'cash' : undefined }; }
-      case 'coin': { if (!this.take()) return me('casino'); const r = coinFlip(s.rng, this.bet, id as never); if (r.payout) s.addCash(r.payout); this.note = `${r.side === 'heads' ? '앞면' : '뒷면'} · ${r.payout ? '+' + money(r.payout) : '꽝'}`; return me('casino'); }
+      case 'coin': { if (id !== 'heads' && id !== 'tails') return me('casino'); if (!this.take()) return me('casino'); const r = coinFlip(s.rng, this.bet, id); if (r.payout) s.addCash(r.payout); this.note = `${r.side === 'heads' ? '앞면' : '뒷면'} · ${r.payout ? '+' + money(r.payout) : '꽝'}`; return me('casino'); }
       case 'hdeal': { if (this.hilo?.state === 'play' || !this.take()) return me('casino'); this.hilo = hiloDeal(s.rng, this.bet); this.note = ''; return me('casino'); }
       case 'hhi': case 'hlo': {
         const g = this.hilo; if (!g || g.state !== 'play') return me('casino'); const before = g.streak; hiloGuess(g, s.rng, k === 'hhi' ? 'hi' : 'lo');
         this.note = g.streak === before ? `틀렸습니다 -${money(g.bet)}` : `적중! 연속 ${g.streak}`; return me('casino');
       }
       case 'hcash': { const g = this.hilo; if (!g || g.state !== 'play' || g.streak < 1) return me('casino'); const pay = hiloValue(g); g.state = 'cashed'; s.addCash(pay); this.note = `정산 +${money(pay - g.bet)}`; return me('casino'); }
-      case 'rbet': this.rbet = id as never; return me('casino');
-      case 'rnum': this.rnum = (this.rnum + Number(id) + 37) % 37; this.rbet = 'number'; return me('casino');
-      case 'rspin': { if (!this.take()) return me('casino'); const on: RouletteBet = this.rbet === 'number' ? { type: 'number', n: this.rnum } : { type: this.rbet }; const r = rouletteSpin(s.rng, this.bet, on); if (r.payout) s.addCash(r.payout); this.note = `${r.n} ${rouletteColor(r.n) === 'red' ? '빨강' : rouletteColor(r.n) === 'black' ? '검정' : '초록'} · ${r.payout ? '+' + money(r.payout) : '꽝'}`; return me('casino'); }
+      case 'rbet': if (rouletteType(id)) this.rbet = id; return me('casino');
+      case 'rnum': if (id === '-1' || id === '1') { this.rnum = (this.rnum + Number(id) + 37) % 37; this.rbet = 'number'; } return me('casino');
+      case 'rspin': { if (!rouletteType(this.rbet) || !Number.isInteger(this.rnum) || this.rnum < 0 || this.rnum > 36) return me('casino'); if (!this.take()) return me('casino'); const on: RouletteBet = this.rbet === 'number' ? { type: 'number', n: this.rnum } : { type: this.rbet }; const r = rouletteSpin(s.rng, this.bet, on); if (r.payout) s.addCash(r.payout); this.note = `${r.n} ${rouletteColor(r.n) === 'red' ? '빨강' : rouletteColor(r.n) === 'black' ? '검정' : '초록'} · ${r.payout ? '+' + money(r.payout) : '꽝'}`; return me('casino'); }
       case 'deal': { if (this.bj && !this.bj.over || !this.take()) return me('casino'); this.bj = new Blackjack(s.rng, this.bet); this.bjSettled = false; this.settle(); return me('casino'); }
       case 'hit': this.bj?.hit(); this.settle(); return me('casino');
       case 'stand': this.bj?.stand(); this.settle(); return me('casino');

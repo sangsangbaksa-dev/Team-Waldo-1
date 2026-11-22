@@ -73,3 +73,32 @@ it('keeps existing owned-car dispatch semantics after candidate search optimizat
   expect(active).toHaveLength(1);
   expect(active[0]!.id).not.toBe(first.id);
 });
+
+describe('casino and phone UI input validation', () => {
+  it('does not allow stale tab names to resolve to prototype methods or crash rendering', () => {
+    const s = new Sim(41), ui = new OutlawUi(() => s);
+    ui.click({ui:'tab', id:'constructor'});
+    ui.click({ui:'ctab', id:'prototype'});
+    expect(ui.tab).toBe('jobs'); expect(ui.casinoTab).toBe('slots');
+    expect(() => ui.render('phone')).not.toThrow();
+    expect(() => ui.render('casino')).not.toThrow();
+    ui.click({ui:'tab', id:'garage'});
+    expect(ui.tab).toBe('garage');
+  });
+  it('never spends real money for an invalid coin call or corrupt roulette selection', () => {
+    const s = new Sim(42), ui = new OutlawUi(() => s);
+    s.cash = 1000;
+    ui.click({ui:'coin', id:'unknown'});
+    expect(s.cash).toBe(1000);
+    ui.click({ui:'rbet', id:'bogus'});
+    expect(ui.rbet).toBe('red');
+    ui.click({ui:'rnum', id:'NaN'});
+    expect(ui.rnum).toBe(7);
+    ui.rbet = 'not-a-type' as typeof ui.rbet;
+    ui.click({ui:'rspin'});
+    expect(s.cash).toBe(1000);
+    ui.rbet = 'number'; ui.rnum = NaN;
+    ui.click({ui:'rspin'});
+    expect(s.cash).toBe(1000);
+  });
+});

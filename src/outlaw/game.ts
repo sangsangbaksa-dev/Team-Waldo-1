@@ -75,6 +75,7 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   let closed = false, raf = 0, last = performance.now();
   let phase: 'load' | 'menu' | 'trans' | 'play' = 'load';
   let paused = false, modalKind = '', locked = false, lockFail = false, transT = 0;
+  let worldAudioMuted = false;
   let modalOrigin: HTMLElement | null = null, wheelDelta = 0, lastWheelAt = -Infinity;
   let radarElapsed = Infinity, bigVersion = 0;
   let sim: Sim | null = null, cityView: CityView | null = null, actorView: ActorView | null = null, chase: ChaseCamera | null = null, minimap: Minimap | null = null;
@@ -606,13 +607,17 @@ export function openOutlaw(onExit: () => void, opts: OpenOptions = {}): void {
   function audioFrame(car: Vehicle | undefined): void {
     const s = sim!; if (!audio.enabled) return;
     if (worldAudioPaused(paused, !!versus && !versus.ended)) {
-      // Stop engine/skid/rain/siren loops while an offline shop, map or
-      // pause menu freezes the 3D city; UI sounds and music remain available.
-      audio.setEngine(false, 'sedan', 0, 0);
-      audio.setSkid(0); audio.setWind(0); audio.setSiren(0, 0);
-      audio.setRain(0); audio.setAmbience(0, false);
+      // Web Audio automations should be scheduled on pause entry only; a long
+      // menu session should not queue 60 copies of the same gain ramps/s.
+      if (!worldAudioMuted) {
+        worldAudioMuted = true;
+        audio.setEngine(false, 'sedan', 0, 0);
+        audio.setSkid(0); audio.setWind(0); audio.setSiren(0, 0);
+        audio.setRain(0); audio.setAmbience(0, false);
+      }
       return;
     }
+    worldAudioMuted = false;
     if (car) { audio.setEngine(true, car.kind, Math.abs(car.vf), car.input.throttle); audio.setSkid(clamp((Math.abs(car.vl) - 3) / 8, 0, 1) * (Math.abs(car.vf) > 4 ? 1 : 0)); audio.setWind(clamp((Math.abs(car.vf) - 15) / 40, 0, 1)); } else { audio.setEngine(false, 'sedan', 0, 0); audio.setSkid(0); audio.setWind(0); }
     let best = Infinity, pan = 0; const r = audioRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
     for (const v of s.vehicles) if (v.siren && v.alive) { const dx = v.x - camera.position.x, dz = v.z - camera.position.z, d = Math.hypot(dx, dz); if (d < best) { best = d; pan = d > 1 ? clamp((dx * r.x + dz * r.z) / d, -1, 1) : 0; } }

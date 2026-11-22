@@ -719,12 +719,14 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     hurtEl.style.opacity = String(Math.max(hurt * 0.85, low)); hurtEl.classList.toggle('storm', outside && hurt < 0.1);if (outside) hurtEl.style.opacity = String(Math.max(0.45, hurt));
     if (three && R3) {
       if (ghost) { const p = R3.buildPoint(700); ghost.x = snapBuildCoord(p.x); ghost.y = snapBuildCoord(p.y); ghost.ok = w.canBuild(0, ghost.kind, ghost.x, ghost.y); }
-      R3.draw(paused ? 0 : dt, ghost); overlay(); r.cam.x = b ? b.x : r.cam.x; r.cam.y = b ? b.y : r.cam.y;
+      // Pause/result overlays are DOM-only: do not keep burning WebGL frames behind them.
+      if(!paused&&!resultShown){R3.draw(dt,ghost);overlay();}
+      r.cam.x = b ? b.x : r.cam.x; r.cam.y = b ? b.y : r.cam.y;
     } else {
       if (b) { const look = touch ? { x: 0, y: 0 } : { x: (mouse.x - r.w / 2) * 0.22 / r.cam.zoom, y: (mouse.y - r.h / 2) * 0.22 / r.cam.zoom }; const tx = b.x + look.x + (veh ? veh.vx * 0.35 : 0), ty = b.y + look.y + (veh ? veh.vy * 0.35 : 0); r.cam.x += (tx - r.cam.x) * Math.min(1, dt * 7); r.cam.y += (ty - r.cam.y) * Math.min(1, dt * 7); }
       const base = Math.max(0.55, Math.min(1, Math.min(r.w, r.h * 1.5) / 1100)); r.cam.zoom += (base * userZoom * (1 - Math.min(0.3, spd / 1800)) - r.cam.zoom) * Math.min(1, dt * 3);
       if (ghost) { const p = r.toWorld(mouse.x, mouse.y); ghost.x = snapBuildCoord(p.x); ghost.y = snapBuildCoord(p.y); ghost.ok = w.canBuild(0, ghost.kind, ghost.x, ghost.y); }
-      r.draw(paused ? 0 : dt, ghost, touch || !b ? null : r.toWorld(mouse.x, mouse.y));
+      if(!paused&&!resultShown)r.draw(dt, ghost, touch || !b ? null : r.toWorld(mouse.x, mouse.y));
     }
     root.classList.toggle('down', !b && !w.over);
     if (b) { // 구역 이름

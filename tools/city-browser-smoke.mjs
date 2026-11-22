@@ -121,6 +121,24 @@ try {
       if (size.name === 'desktop') await page.keyboard.press('j');
       else await page.locator('[data-act="closemissions"]').click();
       await page.locator('.c-missions').waitFor({ state: 'hidden' });
+      // Verify that opening pause does not continuously submit costly 3D frames.
+      await page.evaluate(() => {
+        const r3=window.__city.r3;
+        const original=r3.draw.bind(r3);
+        let count=0;
+        r3.draw=(...args)=>{count++;return original(...args);};
+        window.__cityDrawCount=()=>count;
+      });
+      await page.locator('.c-topbtns [data-act="pause"]').click();
+      await page.locator('.c-pause').waitFor({state:'visible'});
+      await page.waitForTimeout(180);
+      const pausedDraws=await page.evaluate(()=>window.__cityDrawCount());
+      await page.waitForTimeout(200);
+      assert.equal(await page.evaluate(()=>window.__cityDrawCount()),pausedDraws,'Paused 3D scene must remain static');
+      await page.locator('.c-pause [data-act="resume"]').click();
+      await page.waitForFunction(()=>window.__cityDrawCount()>0);
+      await page.waitForTimeout(120);
+      assert.ok(await page.evaluate(()=>window.__cityDrawCount())>pausedDraws,'Resume must restore WebGL drawing');
       assert.deepEqual(errors, [], 'Unexpected browser errors');
       results.push({ ...size, status: 'passed', cards: 8, raceStart });
       console.log('PASS Last City mission UI: ' + size.name);

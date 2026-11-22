@@ -22,7 +22,7 @@ import { makeRng } from '../city/map';
 import { artSeed, ClearanceIndex } from './scenery-index';
 import { FxScheduler, skidSegmentCount } from './fx-scheduling';
 import { writeSkidQuad } from './skid-geometry';
-import { writeVec3, writeSpeedStreak, streakDirection, speedStreakVisible, speedStreakBudget } from './fx-buffers';
+import { writeVec3, writeSpeedStreak, streakDirection, speedStreakVisible, speedStreakBudget, raceFxBudget } from './fx-buffers';
 
 const CAR_LEN = 4.7;
 const SIDE_SIGNS = [-1, 1] as const;
@@ -126,7 +126,7 @@ interface CarVis { racer: Racer; group: THREE.Group; flames: THREE.Mesh[]; shado
 export class RaceView {
   post: PostFx | null = null; readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera = new THREE.PerspectiveCamera(64, 1, 0.4, 3200);
   private crew: CharacterRig[] = []; private cars: CarVis[] = []; private ground!: THREE.Mesh; private pads: Array<{ tex: THREE.CanvasTexture }> = [];
-  private rainFx: Particles | null = null; private rainCarry = 0; private sparks = new Particles(420, 0.34, THREE.AdditiveBlending); private smoke = new Particles(420, 1.1, THREE.NormalBlending, 0.2); private skids = new SkidMarks(1400); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
+  private rainFx: Particles | null = null; private rainCarry = 0; private sparks: Particles; private smoke: Particles; private skids: SkidMarks; private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
   private skyMesh: THREE.Mesh | null = null;
   private camH = 0; private camInit = false; private camAnchor: ChaseAnchor = { x: 0, y: 0, z: 0, ready: false }; private fov = 64; private shake = 0; private punch = 0; private time = 0; private sun: THREE.DirectionalLight;
   private artRandom:()=>number; private clearance:ClearanceIndex;
@@ -137,6 +137,10 @@ export class RaceView {
   private disposables: Array<{ dispose(): void }> = []; private outposts: Outpost | null = null;
 
   constructor(canvas: HTMLCanvasElement, private track: Track, carTemplates: Record<string, THREE.Object3D> | null, private quality: 'high' | 'standard' | 'low', private theme: Theme, private reducedMotion = false) {
+    const budget=raceFxBudget(quality);
+    this.sparks=new Particles(budget.sparks,0.34,THREE.AdditiveBlending);
+    this.smoke=new Particles(budget.smoke,1.1,THREE.NormalBlending,0.2);
+    this.skids=new SkidMarks(budget.skids);
     this.artRandom=makeRng(artSeed(track));this.clearance=new ClearanceIndex(track);
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(renderPixelRatio(canvas.clientWidth || innerWidth, canvas.clientHeight || innerHeight, devicePixelRatio, quality));

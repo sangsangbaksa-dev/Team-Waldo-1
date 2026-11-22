@@ -22,3 +22,8 @@ export function speedStreakBudget(quality:'high'|'standard'|'low',reducedMotion:
   if(reducedMotion)return 0;
   return quality==='low'?72:quality==='standard'?144:220;
 }
+
+/** Buffer capacity, not spawn rate. Lower tiers retain visual feedback with less CPU/GPU churn. */
+export function raceFxBudget(quality:'high'|'standard'|'low'):{sparks:number;smoke:number;skids:number}{
+  return quality==='low'?{sparks:180,smoke:180,skids:600}:{sparks:420,smoke:420,skids:1400};
+}

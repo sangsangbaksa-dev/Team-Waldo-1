@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {writeVec3,writeSpeedStreak,streakDirection,speedStreakBudget} from '../../src/race/fx-buffers';
+import {writeVec3,writeSpeedStreak,streakDirection,speedStreakBudget,raceFxBudget} from '../../src/race/fx-buffers';
 describe('SPEED RUSH hot-loop GPU buffer writes',()=>{
   it('writes only the target particle slot',()=>{
     const data=new Float32Array(9).fill(-1);
@@ -32,5 +32,21 @@ describe('SPEED RUSH speed-line quality and motion budgets',()=>{
   });
   it('allocates no speed-line vertices when reduced motion is enabled',()=>{
     for(const q of ['high','standard','low'] as const)expect(speedStreakBudget(q,true)).toBe(0);
+  });
+});
+
+describe('SPEED RUSH particle and tire trail allocation tiers',()=>{
+  it('reduces low-quality scratch and trail buffers',()=>{
+    const low=raceFxBudget('low'),high=raceFxBudget('high');
+    expect(low.sparks).toBeLessThan(high.sparks);
+    expect(low.smoke).toBeLessThan(high.smoke);
+    expect(low.skids).toBeLessThan(high.skids);
+    expect(high).toEqual(raceFxBudget('standard'));
+  });
+  it('retains enough space for more than one racer on low graphics',()=>{
+    const b=raceFxBudget('low');
+    expect(b.sparks).toBeGreaterThan(40);
+    expect(b.smoke).toBeGreaterThan(40);
+    expect(b.skids).toBeGreaterThan(150);
   });
 });

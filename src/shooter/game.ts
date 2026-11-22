@@ -6,6 +6,7 @@ import type { LoadingScreen } from '../loading';
 import type { PvpSession, RoomSession } from '../net/lobby';
 import { AIR, BAG_MAX, BOTS, FEEL, BR_PLAYERS, DIFFICULTIES, HELMET_NAMES, ARMOR_NAMES, HEAL, PARTS, PLAYER, VEHICLES, WEAPONS, adsSpread, partHandling, type Difficulty } from './config';
 import { waterDepth } from './terrain';
+import { heightAt } from './relief';
 import { Match, type Cause, type MatchEvent, type Player, type Vehicle } from './sim';
 import { CAUSES, WorldSync, easePuppet, encodeLoot, parseLoot } from './sync';
 import type { NetMsg } from '../net/types';
@@ -449,6 +450,10 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       b.fillStyle = '#26301f'; b.fillRect(0, 0, S, S); b.fillStyle = 'rgba(255,255,255,.05)'; for (let i = 1; i < 8; i++) { b.fillRect((S / 8) * i, 0, 1, S); b.fillRect(0, (S / 8) * i, S, 1); }
       { // 지형: 숲·구릉·절벽·물
         const t = m.map.terrain; b.fillStyle = 'rgba(40,75,35,.75)'; for (const f of t.forests) { b.beginPath(); b.arc(px(f.x), pz(f.z), f.r * k, 0, Math.PI * 2); b.fill(); }
+        // 높낮이 음영: 북서쪽에서 빛을 받은 듯 언덕은 밝게, 골짜기는 어둡게
+        { const img = b.getImageData(0, 0, S, S), d = img.data, hx = (x: number, z: number): number => heightAt(m.map, x, z), step = (half * 2) / S;
+          for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) { const x = -half + (i + 0.5) * step, z = -half + (j + 0.5) * step, h = hx(x, z); if (h === 0) continue; const sh = (hx(x - step, z - step) - hx(x + step, z + step)) * 0.9 + h * 2.2, o = (j * S + i) * 4; d[o] = Math.max(0, Math.min(255, d[o] + sh)); d[o + 1] = Math.max(0, Math.min(255, d[o + 1] + sh)); d[o + 2] = Math.max(0, Math.min(255, d[o + 2] + sh * 0.6)); }
+          b.putImageData(img, 0, 0); }
         b.fillStyle = '#6d6a60'; for (const h of t.hills) { b.beginPath(); b.arc(px(h.x), pz(h.z), h.r * k, 0, Math.PI * 2); b.fill(); } for (const c of t.cliffs) b.fillRect(px(c.x0), pz(c.z0), Math.max(2, (c.x1 - c.x0) * k), Math.max(2, (c.z1 - c.z0) * k));
         for (const p of t.ponds) { b.fillStyle = p.swamp ? '#59693a' : '#3a78a0'; b.beginPath(); b.ellipse(px(p.x), pz(p.z), p.rx * k, p.rz * k, p.ry, 0, Math.PI * 2); b.fill(); }
         b.strokeStyle = '#3a78a0'; b.lineWidth = Math.max(2, 9 * k); b.lineJoin = 'round'; for (const r of t.rivers) { b.beginPath(); r.pts.forEach(([x, z], i) => (i ? b.lineTo(px(x), pz(z)) : b.moveTo(px(x), pz(z)))); b.stroke(); }

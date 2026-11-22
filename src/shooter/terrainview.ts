@@ -1,4 +1,5 @@
 // ZERO ZONE — 지형 그리기: 강·호수·늪·구릉·절벽·다리, 그리고 마을 바닥·길이 풀밭에 자연스럽게 번지게 하는 부드러운 가장자리.
+import { heightAt } from './relief';
 import * as THREE from 'three';
 import { makeRng } from './config';
 import type { GameMap } from './world';
@@ -92,7 +93,15 @@ export class TerrainView {
     for (const [i, j] of this.map.roads) {
       const a = cs[i], b = cs[j], d = Math.hypot(b.x - a.x, b.z - a.z), tex = dirt.clone(); tex.repeat.set(d / 4, 1); tex.needsUpdate = true;
       const af = fade.clone(); af.repeat.set(Math.max(1, d / 40), 1); af.needsUpdate = true;
-      this.soft(this.exterior((a.x + b.x) / 2, (a.z + b.z) / 2, d, 6.4, -Math.atan2(b.z - a.z, b.x - a.x)), 0xd9cdb4, tex, af, 0.025, 1);
+      // 길은 언덕을 따라 오르내립니다: 3m 마디마다 건물 바닥을 오려 낸 판을 만들고 꼭짓점을 땅 높이에 붙입니다.
+      const ang = -Math.atan2(b.z - a.z, b.x - a.x), n = Math.max(1, Math.ceil(d / 3)), P: number[] = [], U: number[] = [];
+      for (let k = 0; k < n; k++) {
+        const t = (k + 0.5) / n, part = exteriorSurface(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t, d / n + 0.02, 6.4, ang, this.map.buildings);
+        for (let q = 0; q < part.positions.length; q += 3) { const x = part.positions[q], z = part.positions[q + 2]; P.push(x, heightAt(this.map, x, z) + 0.02, z); }
+        for (let q = 0; q < part.uvs.length; q += 2) U.push((k + part.uvs[q]) / n, part.uvs[q + 1]);
+      }
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+      geo.computeVertexNormals(); this.soft(geo, 0xd9cdb4, tex, af, 0.025, 1);
     }
   }
   private water(color: number, opacity: number, y: number): THREE.MeshPhongMaterial {

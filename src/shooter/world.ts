@@ -1,5 +1,6 @@
 // ZERO ZONE — 지도 생성(마을·건물·차량·컨테이너·바위·나무·전리품)과 충돌·광선 검사. 화면과 무관한 순수 로직이라 시드가 같으면 어디서나 같은 지도가 나옵니다.
 import { emptyTerrain, planTerrain, waterDepth, type Terrain } from './terrain';
+import { rayTerrain } from './relief';
 import { MAP_HALF, PLAYER, WEAPON_IDS, makeRng, type Attachments, type Mode, type PartId, type WeaponId } from './config';
 
 /** 위에서 본 직사각형 + 높이 범위. 벽·바위·상자·나무 기둥·차량 모두 이 모양입니다. */
@@ -466,6 +467,8 @@ export function pushOut(map: GameMap, p: { x: number; z: number }, r: number): b
 
 /** 광선과 모든 상자의 첫 교차 거리(없으면 Infinity). dx,dy,dz 는 정규화된 방향. */
 export function rayWorld(map: GameMap, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
+  // 언덕·능선도 총알과 시선을 막습니다. 땅에 먼저 닿으면 그 너머 상자는 볼 필요가 없습니다.
+  const ground = rayTerrain(map, ox, oy, oz, dx, dy, dz, maxT); if (ground < maxT) maxT = ground;
   stamp++; let best = Infinity;
   const steps = Math.ceil(Math.min(maxT, best) / (CELL / 4));
   for (let s = 0; s <= steps; s++) {
@@ -485,7 +488,7 @@ export function rayWorld(map: GameMap, ox: number, oy: number, oz: number, dx: n
     }
     if (t >= maxT || best <= t) break;
   }
-  return best;
+  return Math.min(best, ground);
 }
 
 /** 두 점 사이가 벽에 가려지지 않았는지(눈높이 기준 시선). */

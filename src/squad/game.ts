@@ -55,6 +55,7 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
     canvas.onpointerdown = e => { if (e.button !== 0) return; const p = cell(e); if (!legal(p)) { toast(side ? '위쪽 진영에만 배치할 수 있어요' : '아래쪽 아군 진영에만 배치할 수 있어요'); return; } drag = p; canvas.setPointerCapture(e.pointerId); };
     canvas.onpointermove = e => { hover = cell(e); draw(canvas, armies, side, null, UNITS[selected].range, hover, selected); };
     canvas.onpointerleave = () => { hover = null; draw(canvas, armies, side, null, UNITS[selected].range, null); };
+    canvas.onpointercancel = () => { drag = null; hover = null; draw(canvas, armies, side, null, UNITS[selected].range, null); };
     canvas.onpointerup = e => { if (!drag) return; const before = armies[side]!.length; const p = cell(e), from = armies[side]!.find(u => u.x === drag!.x && u.y === drag!.y); if (legal(p)) { const at = armies[side]!.find(u => u.x === p.x && u.y === p.y); if (from && (p.x !== drag.x || p.y !== drag.y)) { if (!at) { from.x = p.x; from.y = p.y; } } else if (at) armies[side] = armies[side]!.filter(u => u !== at); else if (cost(side) + UNITS[selected].cost <= BUDGET) armies[side]!.push({ type: selected, ...p }); } drag = null; const after = armies[side]!.length; if (after > before) audio.place(); else if (after < before) audio.remove(); render(); };
   }
   function bind(): void {

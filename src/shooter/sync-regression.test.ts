@@ -32,6 +32,7 @@ describe('network synchronization regressions', () => {
     const target: PuppetTarget = {x:0,z:0,yaw:0,pitch:0,speed:10,vx:10,vz:0,air:0,alt:0,hp:100,w:'pistol',ads:false,crouch:false,reload:false};
     for (let i=0;i<500;i++) easePuppet(bot,target,0.02);
     expect(target.x).toBeCloseTo(8); expect(bot.x).toBeLessThanOrEqual(8.001);
+    expect(bot.speed).toBe(0);
   });
   it('stops predicting a remote car after 600ms without a new packet', () => {
     const {m, sync} = fixture();
@@ -41,6 +42,7 @@ describe('network synchronization regressions', () => {
     for (let i = 0; i < 100; i++) sync.step(0.02);
     expect(sync.vehs.get(0)?.x).toBeCloseTo(12);
     expect(car.x).toBeLessThanOrEqual(12.001);
+    expect(car.speed).toBe(0);
   });
   it('starts predicting a remote car again after a fresh packet', () => {
     const {m, sync} = fixture();
@@ -52,6 +54,7 @@ describe('network synchronization regressions', () => {
     sync.vehs.set(0, { x: 15, z: 0, yaw: 0, speed: 20, at: 1000 });
     sync.step(0.1);
     expect(sync.vehs.get(0)?.x).toBeCloseTo(17);
+    expect(car.speed).toBe(20);
   });
   it('only updates collision boxes when a parked remote car actually moves', () => {
     const {m, sync} = fixture();

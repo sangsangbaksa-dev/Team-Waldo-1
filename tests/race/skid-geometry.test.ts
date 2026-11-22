@@ -1,4 +1,4 @@
-import {describe,it,expect,vi} from 'vitest';
+import {describe,it,expect} from 'vitest';
 import {writeSkidQuad} from '../../src/race/skid-geometry';
 import {SkidMarks} from '../../src/race/view';
 import type * as THREE from 'three';

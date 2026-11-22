@@ -71,6 +71,20 @@ try {
       assert.ok(glb.length>0,"Starting the game must request the monster model");
       assert.equal(await page.locator("#viewWrap canvas").evaluate(el=>
         el.width>0 && el.height>0 && Boolean(el.getContext("webgl2"))),true);
+      const lowPixels=await page.locator("#viewWrap canvas").evaluate(el=>el.width*el.height);
+      assert.ok(lowPixels>0 && lowPixels<=680000,
+        "Low-quality setting should keep the WebGL drawing buffer below 680k pixels");
+      if(!config.mobile){
+        await page.evaluate(()=>{
+          const config=JSON.parse(localStorage.getItem("waldo.preferences.v1"));
+          localStorage.setItem("waldo.preferences.v1",JSON.stringify({...config,quality:"high"}));
+          window.dispatchEvent(new StorageEvent("storage",{key:"waldo.preferences.v1"}));
+        });
+        await page.waitForFunction((low)=> {
+          const canvas=document.querySelector("#viewWrap canvas");
+          return canvas && canvas.width*canvas.height>low;
+        },lowPixels,{timeout:10000});
+      }
       await page.screenshot({path:"browser-artifacts/room-tone-brief-"+config.name+".png",animations:"disabled"});
 
       await page.getByRole("button",{name:"도면 보기"}).click();

@@ -10,6 +10,8 @@ import { createDrift, flushDrift, nitroForChain, stepDrift, type DriftScore } fr
 export interface Racer {
   id: number; name: string; color: string; player: boolean; car: CarState; ai: AiProfile; params: CarParams; model: CarDef['model']; accent: string;
   lapTimes: number[]; lapStart: number; finishTime: number | null; lastEv: StepEvents;
+  /** Single mutable AI control buffer, owned by this racer (not by the shared input). */
+  aiControl?: CarInput;
   /** 1대1 대전의 상대 차량: 물리 대신 네트워크 스냅샷을 따라갑니다. */
   link?: RemoteLink;
   /** 멀티플레이 방에서 이 차량을 모는 사람의 계정 id */
@@ -75,14 +77,26 @@ export function createRace(track: Track, laps = 3, bestLap = Infinity, opts: Rac
   return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [player, ...rivals], player, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift()};
 }
 
-export function standings(r: RaceState): Racer[] { return [...r.racers].sort((a,b)=>{if(a.finishTime!==null&&b.finishTime!==null)return a.finishTime-b.finishTime;if(a.finishTime!==null)return -1;if(b.finishTime!==null)return 1;return b.car.total-a.car.total;}); }
+export function compareRacers(a:Racer,b:Racer):number{
+  if(a.finishTime!==null&&b.finishTime!==null)return a.finishTime-b.finishTime;
+  if(a.finishTime!==null)return -1;
+  if(b.finishTime!==null)return 1;
+  return b.car.total-a.car.total;
+}
+export function standings(r: RaceState): Racer[] { return [...r.racers].sort(compareRacers); }
 /** 앞선 라이벌은 속도를 깎지 않습니다. 뒤처진 차만 bandHi 까지 따라잡습니다. */
 export function rivalBand(level: LevelDef, gapMeters: number): number {
   const raw = 1 - gapMeters * level.bandK;
   const floor = gapMeters > 0 ? Math.max(1, level.bandLo) : level.bandLo;
   return Math.max(floor, Math.min(level.bandHi, raw));
 }
-export const placeOf = (r: RaceState, who: Racer = r.player): number => standings(r).indexOf(who) + 1;
+export function placeOf(r:RaceState,who:Racer=r.player):number{
+  const index=r.racers.indexOf(who);if(index<0)return 0;
+  let place=1;
+  // Native Array.sort is stable: break equal-rank ties by original grid order.
+  for(let i=0;i<r.racers.length;i++)if(i!==index){const diff=compareRacers(r.racers[i],who);if(diff<0||(diff===0&&i<index))place++;}
+  return place;
+}
 export const currentLap = (r: RaceState, who: Racer = r.player): number => Math.min(r.laps, Math.max(1, Math.floor(who.car.total / r.track.n) + 1));
 /** 플레이어와 racer 사이의 거리(m). 양수면 racer 가 앞. */
 export const gapMeters = (r: RaceState, who: Racer): number => (who.car.total - r.player.car.total) * r.track.ds;
@@ -144,7 +158,7 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
       if (k.player && k.finishTime === null) inp = input;
       else {
         const gap = k.player ? 0 : (k.car.total - r.player.car.total) * t.ds, band = k.player ? 1 : rivalBand(r.level, gap);
-        inp = aiInput(k.car, t, k.ai, band);
+        inp = aiInput(k.car, t, k.ai, band, k.aiControl ??= { ...IDLE });
       }
     }
         k.lastEv = stepCar(k.car, inp, dt, t, k.params);

@@ -18,7 +18,7 @@ export const BOT_STRIDE = 12;
 /** 차 한 대: 번호, x, z, yaw, 속도, 운전자+1, 움직이는 중 */
 export const VEH_STRIDE = 7;
 /** 사람 가까이(이 거리 안)의 AI 는 매번, 먼 AI 는 FAR_EVERY 번에 한 번 보냅니다. */
-const NEAR = 190, FAR_EVERY = 6;
+const NEAR = 190, FAR_EVERY = 4;
 export const WORLD_MS = 125;
 
 const fin = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -138,7 +138,7 @@ export class WorldSync {
     const vv: number[] = [], vh: number[] = [];
     // Parked cars are broadcast periodically too: a player who joins after a
     // car was moved and parked must receive its final pose and collision box.
-    const parkedSnapshot = this.tick % (FAR_EVERY * 4) === 0;
+    const parkedSnapshot = this.tick % 24 === 0; // every 3 seconds, independent of bot snapshot cadence
     for (const v of m.vehicles) {
       if (v.wreck) { this.wasMoving.delete(v.id); continue; }
       if (v.hp < v.max) vh.push(v.id, Math.max(0, Math.round(v.hp)), v.lastBy + 1);

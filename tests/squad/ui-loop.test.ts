@@ -420,3 +420,28 @@ it('falls back safely when touch pointer capture is unavailable', () => {
   expect(document.querySelector('.sq-budget strong')?.textContent).toContain('900');
   button('#pause').click(); button('#exit').click();
 });
+
+it('cancels a drag when deployment controls rebuild the canvas mid-gesture', () => {
+  openSquad(vi.fn()); button('#start').click();
+  let canvas = document.querySelector<HTMLCanvasElement>('#sq-field-canvas')!;
+  const prepare = (cv: HTMLCanvasElement) => {
+    Object.defineProperty(cv, 'getBoundingClientRect', {
+      configurable: true, value: () => ({ left: 0, top: 0, width: 600, height: 1000 }),
+    });
+    Object.defineProperty(cv, 'setPointerCapture', { configurable: true, value: vi.fn() });
+  };
+  const emit = (cv: HTMLCanvasElement, type: string, pointerId: number, x: number) => {
+    const e = new Event(type);
+    Object.assign(e, { button: 0, pointerId, clientX: x, clientY: 750 });
+    cv.dispatchEvent(e);
+  };
+  prepare(canvas);
+  emit(canvas, 'pointerdown', 1, 100);
+  button('#clear').click(); // Rebuilds deployment while finger/trackpad drag is active.
+  canvas = document.querySelector<HTMLCanvasElement>('#sq-field-canvas')!;
+  prepare(canvas);
+  emit(canvas, 'pointerdown', 2, 250);
+  emit(canvas, 'pointerup', 2, 250);
+  expect(document.querySelector('.sq-budget strong')?.textContent).toContain('900');
+  button('#pause').click(); button('#exit').click();
+});

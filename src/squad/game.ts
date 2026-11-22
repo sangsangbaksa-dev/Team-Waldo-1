@@ -42,6 +42,9 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
     if (!raf) raf = requestAnimationFrame(frame);
   }
   function render(): void {
+    // A full view rebuild invalidates the pointer-capturing canvas. A stale
+    // drag must never block the next canvas from accepting pointer input.
+    drag = null;
     const active = root.contains(document.activeElement) ? document.activeElement as HTMLElement : null;
     // Re-rendered controls used to lose keyboard focus after every selection.
     const keepFocus = active?.id ? `#${active.id}`

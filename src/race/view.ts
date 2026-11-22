@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { makePost, type PostFx } from '../postfx';
 import { AdaptiveQuality } from '../shared/adaptive';
+import { LodSet, splitInstanced } from '../shared/lod';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { instantiate } from '../city/models';
 import { ghostAt } from './ghost';
@@ -141,7 +142,7 @@ export class RaceView {
     this.adaptive = new AdaptiveQuality({ max: Math.min(devicePixelRatio || 1, quality === 'high' ? 2 : quality === 'standard' ? 1.5 : 1), setPixelRatio: pr => { this.renderer.setPixelRatio(pr); this.renderer.setSize(this.vw, this.vh, false); this.post?.setSize(this.vw, this.vh); }, setLevel: l => this.setLevel(l) });
     this.renderer.setPixelRatio(this.adaptive.pr);
     this.scene.fog = new THREE.Fog(theme.fog.color, theme.fog.near, theme.fog.far); this.sun = new THREE.DirectionalLight(theme.light.sun, theme.light.sunPower); this.sunDir.set(...theme.sky.sun); this.sunDir.y = Math.max(0.45, this.sunDir.y + 0.35); this.sunDir.normalize();
-    this.buildSky(); if (quality !== 'low') this.buildCarEnv(); this.buildGround(); this.buildRoad(); this.buildProps(quality);
+    this.buildSky(); if (quality !== 'low') this.buildCarEnv(); this.buildGround(); this.buildRoad(); { const before = new Set(this.scene.children); this.buildProps(quality); this.chunkProps(before); }
     addRaceScenery(this.scene, track, quality);
     this.scene.add(new THREE.HemisphereLight(theme.light.sky, theme.light.ground, theme.light.hemi)); this.sun.position.set(-40, 60, 90); this.scene.add(this.sun, this.sun.target);
     if (this.shadows) {
@@ -158,12 +159,22 @@ export class RaceView {
     this.post = makePost(quality, this.renderer, this.scene, this.camera, { strength: 0.3, radius: 0.5, threshold: 0.96, vignette: 0.3, saturation: 1.1, contrast: 1.06 });
   }
   private carTemplates: Record<string, THREE.Object3D> | null;
-  private readonly adaptive: AdaptiveQuality; private vw = 1; private vh = 1; private decoOn = false;
+  private readonly adaptive: AdaptiveQuality; private vw = 1; private vh = 1; private decoOn = false; private frame = 0;
   /** 1 후처리 끔 · 2 그림자 끔 · 3 장식(나무·건물·선인장 등 instanced 소품) 숨김 */
   private setLevel(l: number): void {
     if (l >= 1 && this.post) { this.post.dispose(); this.post = null; }
     if (l >= 2) this.sun.castShadow = false;
-    if (l >= 3) this.scene.traverse(o => { if (o.userData.deco) o.visible = false; });
+    if (l >= 3) { this.scene.traverse(o => { if (o.userData.deco) o.visible = false; }); this.lod.enabled = false; }
+  }
+  /** 코스 따라 길게 깔린 instanced 소품(가로등·나무·건물·컨테이너…)을 칸으로 쪼개 시야 밖·안개 너머 칸은 그리지 않는다. 한 덩어리일 때는 코스 전체를 매 프레임(그림자 패스 포함) 그렸다. */
+  private readonly lod = new LodSet({ near: 1e9, far: 1e9 });
+  private chunkProps(before: Set<THREE.Object3D>): void {
+    const far = Math.min(3000, this.theme.fog.far * 2 * 0.97); this.lod.ranges = { near: far, far };
+    for (const m of [...this.scene.children]) {
+      if (before.has(m) || !(m instanceof THREE.InstancedMesh) || m.count < 24) continue;
+      m.geometry.computeBoundingSphere(); const small = (m.geometry.boundingSphere?.radius ?? 9) < 3; // 가로등 기둥·말뚝 같은 작은 것은 더 가까이서 끈다
+      for (const c of splitInstanced(m, 150, this.scene)) this.lod.add({ x: c.x, z: c.z, r: c.r, full: [c.mesh], scale: small ? 0.5 : 1 });
+    }
   }
   private carEnv: THREE.Texture | null = null; private carMats = new Map<string, THREE.Material>();
   /** 하늘을 반사 맵으로 구워 차체 도장·유리에 노을과 하늘이 비치게 합니다. */
@@ -626,7 +637,7 @@ export class RaceView {
   worldOf(r: Racer): THREE.Vector3 { return new THREE.Vector3(r.car.x, r.car.y, r.car.z); }
 
   update(race: RaceState, dt: number, wallHit: number): { speedFrac: number } {
-    this.time += dt; const p = race.player.car, t = this.track, speed = Math.abs(p.vf), sf = Math.min(1, speed / 74), bst = boosting(p);
+    this.time += dt; if ((this.frame++ & 3) === 0) this.lod.update(this.camera.position); const p = race.player.car, t = this.track, speed = Math.abs(p.vf), sf = Math.min(1, speed / 74), bst = boosting(p);
     for (const pad of this.pads) pad.tex.offset.x -= dt * 1.4;
     this.outposts?.update(this.time);
     for (const ch of this.crew) { ch.state.time += dt; ch.update(dt); }

@@ -33,7 +33,8 @@ describe('ZERO ZONE disposed session guards', () => {
     net['onMsg']({t: 'pk', i: 23.5});
     net['onMsg']({t: 'pk', i: -1});
     net['onMsg']({t: 'pk', i: 23});
-    expect(picked).toHaveBeenCalledExactlyOnceWith(23);
+    expect(picked).toHaveBeenCalledTimes(1);
+    expect(picked).toHaveBeenCalledWith(23);
     Object.assign(net, {dead: true});
     net['onMsg']({t: 'pk', i: 24});
     expect(picked).toHaveBeenCalledTimes(1);
@@ -72,6 +73,7 @@ describe('ZERO ZONE disposed session guards', () => {
     });
     room['onMsg']({t:'pk',f:'peer',i:8.25});
     room['onMsg']({t:'pk',f:'peer',i:8});
-    expect(picked).toHaveBeenCalledExactlyOnceWith(8, 'peer');
+    expect(picked).toHaveBeenCalledTimes(1);
+    expect(picked).toHaveBeenCalledWith(8, 'peer');
   });
 });

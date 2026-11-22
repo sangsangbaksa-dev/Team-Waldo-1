@@ -1,5 +1,5 @@
-// ZERO ZONE — 3D 자산 불러오기. LAST CITY 와 같은 Blender 모델(characters·weapons·props GLB)을 그대로 씁니다.
-// 필요한 파일 세 개만 받고, 실패하면 게임 쪽에서 단순한 도형으로 대신합니다.
+// ZERO ZONE — 3D 자산 불러오기. 캐릭터와 무기 GLB만 받아서 공용 게임 모델로 사용합니다.
+// 장면 소품은 경량 절차적 모델로 그리며, 다운로드 실패 시 단순 도형으로 대신합니다.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { fetchBuffer, retry } from '../loading';

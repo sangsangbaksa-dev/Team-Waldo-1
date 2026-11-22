@@ -88,7 +88,22 @@ export class WorldSync {
   readonly bots = new Map<number, PuppetTarget>();
   readonly vehs = new Map<number, VehTarget>();
   private tick = 0; private lastSend = 0; private shots: number[][] = []; private parked = new Map<number, number>(); private wasMoving = new Set<number>();
+  private readonly lootQuotas = new Map<number, { since: number; count: number }>();
   constructor(private m: Match) {}
+
+  /** Limit each remote participant's dynamic loot generation to a plausible rate. */
+  acceptRoomLoot(loot: Loot, senderIndex: number, host: boolean, sender: Player | undefined, now: number): boolean {
+    if (!canAcceptRoomLoot(loot, senderIndex, host, sender) || !fin(now)) return false;
+    if (host) return true; // The authority may relay many simultaneous AI deaths.
+    const quota = this.lootQuotas.get(senderIndex);
+    if (!quota || now < quota.since || now - quota.since >= 1000) {
+      this.lootQuotas.set(senderIndex, { since: now, count: 1 });
+      return true;
+    }
+    if (quota.count >= 12) return false;
+    quota.count++;
+    return true;
+  }
 
   // ---------- 방장 ----------
   /** 이번 프레임 사건 중 AI 의 사격을 모아 둡니다(사람 가까이에서 쏜 것만). */

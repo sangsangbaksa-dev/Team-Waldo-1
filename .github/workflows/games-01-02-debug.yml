@@ -1,7 +1,7 @@
 name: Games 01-02 scoped debugging
 on:
   push:
-    branches: [agent/games-01-02-debug20]
+    branches: [agent/games-01-02-debug20, agent/games-01-02-quality-20261122]
   workflow_dispatch:
 permissions:
   contents: read

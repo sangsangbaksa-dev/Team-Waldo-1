@@ -20,6 +20,7 @@ import { type Theme } from './maps';
 import { buildOutposts, type Outpost } from './outpost';
 import { makeRng } from '../city/map';
 import { artSeed, ClearanceIndex } from './scenery-index';
+import { FxScheduler, skidSegmentCount } from './fx-scheduling';
 
 const CAR_LEN = 4.7;
 const rnd = (a: number, b: number): number => a + Math.random() * (b - a);
@@ -93,10 +94,14 @@ class SkidMarks {
   /** key 바퀴가 (x,y,z) 에 닿아 있다: 이전 지점과 이어 한 조각을 더합니다. */
   mark(key: number, x: number, y: number, z: number, alpha: number): void {
     const p = this.last.get(key); this.last.set(key, [x, y, z]); if (!p) return;
-    const dx = x - p[0], dz = z - p[2], len = Math.hypot(dx, dz); if (len < 0.2 || len > 4) return;
-    const hx = (-dz / len) * 0.15, hz = (dx / len) * 0.15, i = this.head * 18, c = this.head * 24; this.head = (this.head + 1) % this.cap;
-    this.pos.set([p[0] - hx, p[1], p[2] - hz, p[0] + hx, p[1], p[2] + hz, x - hx, y, z - hz, p[0] + hx, p[1], p[2] + hz, x + hx, y, z + hz, x - hx, y, z - hz], i);
-    for (let k = 0; k < 6; k++) this.col.set([0.02, 0.02, 0.03, alpha], c + k * 4);
+    const dx = x - p[0], dy=y-p[1], dz = z - p[2], len = Math.hypot(dx, dz), segments=skidSegmentCount(len); if (!segments) return;
+    const hx = (-dz / len) * 0.15, hz = (dx / len) * 0.15;
+    for(let n=1;n<=segments;n++){
+      const t0=(n-1)/segments,t1=n/segments,ax=p[0]+dx*t0,ay=p[1]+dy*t0,az=p[2]+dz*t0,bx=p[0]+dx*t1,by=p[1]+dy*t1,bz=p[2]+dz*t1;
+      const i=this.head*18,c=this.head*24;this.head=(this.head+1)%this.cap;
+      this.pos.set([ax-hx,ay,az-hz,ax+hx,ay,az+hz,bx-hx,by,bz-hz,ax+hx,ay,az+hz,bx+hx,by,bz+hz,bx-hx,by,bz-hz],i);
+      for(let k=0;k<6;k++)this.col.set([0.02,0.02,0.03,alpha],c+k*4);
+    }
     this.dirty = true;
   }
   /** 바퀴가 지면에서 미끄러지지 않으면 자국을 끊습니다. */
@@ -107,7 +112,7 @@ class SkidMarks {
 let driverKit: CharacterKit | null = null;
 /** 공용 캐릭터 키트: 운전석 드라이버와 출발선 피트 크루에 씁니다. 없으면 차만 그립니다. */
 export function setDriverKit(k: CharacterKit | null): void { driverKit = k; }
-interface CarVis { racer: Racer; group: THREE.Group; flames: THREE.Mesh[]; shadow: THREE.Mesh; lastV: number; brake: THREE.MeshBasicMaterial[]; brakeLevel: number; sprayCarry: number }
+interface CarVis { racer: Racer; group: THREE.Group; flames: THREE.Mesh[]; shadow: THREE.Mesh; lastV: number; brake: THREE.MeshBasicMaterial[]; brakeLevel: number; sprayCarry: number; fx: FxScheduler }
 
 export class RaceView {
   post: PostFx | null = null; readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera = new THREE.PerspectiveCamera(64, 1, 0.4, 3200);
@@ -211,7 +216,7 @@ export class RaceView {
         const f = new THREE.Mesh(flameGeo, new THREE.MeshBasicMaterial({ color: 0x66b8ff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
         f.position.set(-CAR_LEN / 2 - 0.05, 0.32, s * 0.34); f.scale.set(0.001, 1, 1); group.add(f); flames.push(f);
       }
-      const shadow = new THREE.Mesh(shGeo, shMat); this.scene.add(group, shadow); this.cars.push({ racer: r, group, flames, shadow, lastV: 0, brake, brakeLevel: 0, sprayCarry: 0 });
+      const shadow = new THREE.Mesh(shGeo, shMat); this.scene.add(group, shadow); this.cars.push({ racer: r, group, flames, shadow, lastV: 0, brake, brakeLevel: 0, sprayCarry: 0, fx: new FxScheduler() });
     }
     this.disposables.push(flameGeo, shGeo, shTex, shMat);
   }
@@ -584,7 +589,7 @@ export class RaceView {
       v.group.position.set(c.x, c.y + 0.02, c.z); v.group.rotation.set(pose.x, pose.y, pose.z, pose.order); v.shadow.position.set(c.x, c.y + 0.05, c.z); v.shadow.rotation.y = -c.h;
       const fl = boosting(c), len = fl ? 1.0 + Math.sin(this.time * 90 + v.racer.id) * 0.25 + Math.min(0.9, Math.abs(c.vf) / 90) : 0.001;
       for (const f of v.flames) { f.scale.x += (len - f.scale.x) * Math.min(1, dt * 20); f.visible = fl || f.scale.x > 0.08; (f.material as THREE.MeshBasicMaterial).color.setHex(v.racer.player ? 0x6ec6ff : 0xffa14a); }
-      if (fl && Math.random() < 0.9) this.sparks.emit(c.x - Math.cos(c.h) * 2.4, c.y + 0.5, c.z - Math.sin(c.h) * 2.4, -Math.cos(c.h) * 8 + rnd(-2, 2), rnd(0, 2), -Math.sin(c.h) * 8 + rnd(-2, 2), 0.35, 0.4, 0.8, 1);
+      for(let i=0;i<v.fx.take('nitro',fl?(this.quality==='low'?24:54):0,dt);i++) this.sparks.emit(c.x - Math.cos(c.h) * 2.4, c.y + 0.5, c.z - Math.sin(c.h) * 2.4, -Math.cos(c.h) * 8 + rnd(-2, 2), rnd(0, 2), -Math.sin(c.h) * 8 + rnd(-2, 2), 0.35, 0.4, 0.8, 1);
       // 타이어: 드리프트·옆미끄러짐·출발 휠스핀에서 연기와 스키드 마크가 남습니다.
       const wheelspin = v.racer.player && race.phase === 'racing' && c.boostT > 0 && Math.abs(c.vf) < 30 && Math.abs(c.vf) > 1;
       const sliding = Math.abs(c.vf) > 14 && (c.drifting || Math.abs(c.slip) > 0.2), tire = c.drifting ? 1 : Math.min(1, Math.abs(c.slip) * 3.2);
@@ -592,10 +597,10 @@ export class RaceView {
         const bx = c.x - Math.cos(c.h) * 1.4 - Math.sin(c.h) * 0.9 * s * -1, bz = c.z - Math.sin(c.h) * 1.4 + Math.cos(c.h) * 0.9 * s * -1, w = s < 0 ? 0 : 1;
         if (sliding || wheelspin) {
           const k = wheelspin ? 0.8 : tire;
-          if (Math.random() < 0.55 + 0.45 * k) this.smoke.emit(bx, c.y + 0.35, bz, rnd(-1.5, 1.5) - c.vx * 0.12, rnd(0.6, 2.4), rnd(-1.5, 1.5) - c.vz * 0.12, 0.7 + 0.5 * k, 0.62, 0.6, 0.66);
-          if (c.drifting && Math.random() < 0.5) this.sparks.emit(bx, c.y + 0.2, bz, rnd(-4, 4) - c.vx * 0.1, rnd(1, 4), rnd(-4, 4) - c.vz * 0.1, 0.4, 1, 0.75, 0.3);
+          for(let i=0;i<v.fx.take(s<0?'tireL':'tireR',(this.quality==='low'?25:60)*(0.55+0.45*k),dt);i++)this.smoke.emit(bx, c.y + 0.35, bz, rnd(-1.5, 1.5) - c.vx * 0.12, rnd(0.6, 2.4), rnd(-1.5, 1.5) - c.vz * 0.12, 0.7 + 0.5 * k, 0.62, 0.6, 0.66);
+          for(let i=0;i<v.fx.take(s<0?'driftL':'driftR',c.drifting?(this.quality==='low'?14:30):0,dt);i++)this.sparks.emit(bx, c.y + 0.2, bz, rnd(-4, 4) - c.vx * 0.1, rnd(1, 4), rnd(-4, 4) - c.vz * 0.1, 0.4, 1, 0.75, 0.3);
           this.skids.mark(v.racer.id * 2 + w, bx, c.y + 0.07, bz, Math.min(0.55, 0.22 + k * 0.4));
-        } else this.skids.lift(v.racer.id * 2 + w);
+        } else {this.skids.lift(v.racer.id * 2 + w);v.fx.take(s<0?'tireL':'tireR',0,dt);v.fx.take(s<0?'driftL':'driftR',0,dt);}
       }
       if(this.roadLights){
         const strength=trackLightStrength(this.theme.light.sunPower,this.theme.rain),fx=Math.cos(c.h),fz=Math.sin(c.h);
@@ -614,12 +619,14 @@ export class RaceView {
         }
       }
       // 벽을 긁으며 달리면 불꽃이 계속 튑니다.
-      if (v.racer.player && Math.abs(c.lat) > t.halfWidth - 1.65 && Math.abs(c.vf) > 22) {
-        const sgn = Math.sign(c.lat) || 1, px = -t.tz[sample] * sgn, pz = t.tx[sample] * sgn;
-        for (let k = 0; k < 3; k++) this.sparks.emit(c.x + px * 1.05, c.y + rnd(0.2, 0.7), c.z + pz * 1.05, -c.vx * 0.2 + rnd(-3, 3) - px * 3, rnd(1, 5), -c.vz * 0.2 + rnd(-3, 3) - pz * 3, 0.45, 1, 0.78, 0.3);
+      const wallRate=v.racer.player && Math.abs(c.lat)>t.halfWidth-1.65&&Math.abs(c.vf)>22?(this.quality==='low'?50:170):0;
+      const wallCount=v.fx.take('wall',wallRate,dt);
+      if(wallCount){const sgn=Math.sign(c.lat)||1,px=-t.tz[sample]*sgn,pz=t.tx[sample]*sgn;
+        for(let k=0;k<wallCount;k++)this.sparks.emit(c.x+px*1.05,c.y+rnd(0.2,0.7),c.z+pz*1.05,-c.vx*0.2+rnd(-3,3)-px*3,rnd(1,5),-c.vz*0.2+rnd(-3,3)-pz*3,0.45,1,0.78,0.3);
       }
       // 슬립스트림: 앞차 뒤에 붙으면 하늘색 바람 줄기가 차 옆으로 빨려 들어갑니다.
-      if (c.draft > 0.35 && Math.random() < c.draft) for (const s of [-1, 1]) {
+      const draftCount=v.fx.take('draft',c.draft>0.35?c.draft*(this.quality==='low'?35:110):0,dt);
+      for(let i=0;i<draftCount;i++){const s=i%2?1:-1;
         const bx = c.x + Math.cos(c.h) * 3 - Math.sin(c.h) * 1.5 * s * -1, bz = c.z + Math.sin(c.h) * 3 + Math.cos(c.h) * 1.5 * s * -1;
         this.sparks.emit(bx, c.y + rnd(0.3, 1.3), bz, c.vx * 0.2, 0, c.vz * 0.2, 0.25, 0.7, 0.9, 1);
       }

@@ -42,6 +42,9 @@ export function rayVsObb(ox: number, oz: number, dx: number, dz: number, cx: num
   return t0;
 }
 
+/** Cached reference-safe input sanitizer; avoid creating per-step closures. */
+const finiteInput = (n: number, fallback = 0): number => Number.isFinite(n) ? n : fallback;
+
 export class Sim {
   map: CityMap; seed: number; t = 0; frame = 0; /** 시각(0~24시) */ clock = 14.8; /** 비 세기(0~1) */ rain = 0; rng: () => number;
   peds: Ped[] = []; vehicles: Vehicle[] = []; pickups: Pickup[] = []; projectiles: Projectile[] = []; events: SimEvent[] = []; crimes: Crime[] = [];
@@ -470,10 +473,32 @@ export class Sim {
     this.t += dt; this.frame++; this.playSec += dt; this.clock = (this.clock + dt * 24 / DAY_SECONDS) % 24; this.rain += (rainTarget(this.t) - this.rain) * Math.min(1, dt * 0.25);
     const p = this.player;
     if (p.alive) {
-      const finite = (n: number, fallback = 0) => Number.isFinite(n) ? n : fallback;
-      p.input = { ...pin, mx: clamp(finite(pin.mx), -1, 1), mz: clamp(finite(pin.mz), -1, 1), yaw: wrapAngle(finite(pin.yaw, p.yaw)), pitch: clamp(finite(pin.pitch, p.pitch), -1.2, 1.2), slot: Number.isInteger(pin.slot) ? pin.slot : -1 };
-      if (p.vehicle) { const v = this.vehMap.get(p.vehicle); if (v) { v.input = { ...cin, throttle: clamp(finite(cin.throttle), 0, 1), brake: clamp(finite(cin.brake), 0, 1), steer: clamp(finite(cin.steer), -1, 1) }; if (pin.enter) this.exitVehicle(p); } else p.vehicle = 0; }
-      else if (pin.enter) { const v = this.nearestVehicle(p); if (v) this.enterVehicle(p, v); }
+      // Copy sanitized controller values into stable objects rather than
+      // allocating fresh PedInput/CarInput objects on every 60 Hz physics step.
+      // This also prevents an external caller from mutating a live input.
+      const input = p.input;
+      input.mx = clamp(finiteInput(pin.mx), -1, 1);
+      input.mz = clamp(finiteInput(pin.mz), -1, 1);
+      input.yaw = wrapAngle(finiteInput(pin.yaw, p.yaw));
+      input.pitch = clamp(finiteInput(pin.pitch, p.pitch), -1.2, 1.2);
+      input.slot = Number.isInteger(pin.slot) && pin.slot >= 0 && pin.slot < WEAPON_ORDER.length ? pin.slot : -1;
+      input.sprint = pin.sprint === true; input.fire = pin.fire === true;
+      input.aim = pin.aim === true; input.jump = pin.jump === true;
+      input.reload = pin.reload === true; input.enter = pin.enter === true;
+      input.crouch = pin.crouch === true;
+      if (p.vehicle) {
+        const v = this.vehMap.get(p.vehicle);
+        if (v) {
+          v.input.throttle = clamp(finiteInput(cin.throttle), 0, 1);
+          v.input.brake = clamp(finiteInput(cin.brake), 0, 1);
+          v.input.steer = clamp(finiteInput(cin.steer), -1, 1);
+          v.input.handbrake = cin.handbrake === true;
+          v.input.horn = cin.horn === true;
+          if (input.enter) this.exitVehicle(p);
+        } else p.vehicle = 0;
+      } else if (input.enter) {
+        const v = this.nearestVehicle(p); if (v) this.enterVehicle(p, v);
+      }
     } else if (this.downKind) { this.deadT += dt; if (this.deadT > (this.downKind === 'wasted' ? 4 : 3)) this.respawnPlayer(this.downKind); }
     stepPeds(this, dt); stepCombat(this, dt); stepTraffic(this, dt); stepPolice(this, dt);
     for (const q of this.peds) {
@@ -485,6 +510,11 @@ export class Sim {
     // Occupants must follow the final, post-collision vehicle pose this tick.
     for (const q of this.peds) if (q.vehicle && !this.remoteDamage.has(q)) this.movePed(q, 0);
     this.stepProjectiles(dt); this.stepPickups(dt); this.stepFire(dt); stepMissions(this, dt); stepActivities(this, dt); stepLife(this, dt); stepJobs(this, dt);
-    for (const q of this.peds.slice()) if (!q.alive && !q.keep && q.id !== PLAYER_ID && this.t - q.diedAt > 25) this.removePed(q);
+    // Reverse traversal remains correct when removePed splices the live array
+    // and avoids an O(pedestrian-count) snapshot allocation on every step.
+    for (let i = this.peds.length - 1; i >= 0; i--) {
+      const q = this.peds[i];
+      if (!q.alive && !q.keep && q.id !== PLAYER_ID && this.t - q.diedAt > 25) this.removePed(q);
+    }
   }
 }

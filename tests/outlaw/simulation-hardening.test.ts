@@ -30,3 +30,46 @@ describe('OUTLAW state and simulation edge cases', () => {
     stepVehicle(s,v,.1);expect(v.x).toBeLessThan(s.map.half-2);expect(v.vx).toBeLessThanOrEqual(0);
   });
 });
+
+describe('OUTLAW low-allocation simulation input lifecycle', () => {
+  it('retains a stable copied input object while clamping invalid controller values', () => {
+    const sim = new Sim(149), input = sim.player.input;
+    const pressed = { ...blankPedInput(), mx: 20, mz: -20, yaw: Infinity, pitch: -99, slot: 500, sprint: true, fire: true, enter: false };
+    sim.step(1 / 60, pressed, blankCarInput());
+    expect(sim.player.input).toBe(input);
+    expect(input.mx).toBe(1); expect(input.mz).toBe(-1);
+    expect(input.pitch).toBe(-1.2); expect(input.slot).toBe(-1);
+    expect(input.fire).toBe(true);
+    pressed.mx = 0;
+    expect(input.mx).toBe(1);
+    sim.step(1 / 60, blankPedInput(), blankCarInput());
+    expect(sim.player.input).toBe(input);
+    expect(input.fire).toBe(false);
+    expect(input.sprint).toBe(false);
+    expect(input.mx).toBe(0);
+  });
+  it('reuses the driven car control input without leaking external mutations', () => {
+    const sim = new Sim(151), p = sim.player;
+    const v = sim.spawnVehicle('sedan', p.x + 2, p.z, 0);
+    expect(sim.enterVehicle(p, v)).toBe(true);
+    const inputs = v.input, carInput = { ...blankCarInput(), throttle: 9, brake: -2, steer: Infinity, horn: true };
+    sim.step(1/60, blankPedInput(), carInput);
+    expect(v.input).toBe(inputs);
+    expect([inputs.throttle,inputs.brake,inputs.steer,inputs.horn]).toEqual([1,0,0,true]);
+    carInput.horn = false;
+    expect(v.input.horn).toBe(true);
+    sim.step(1/60, blankPedInput(), blankCarInput());
+    expect(v.input).toBe(inputs);
+    expect(v.input.horn).toBe(false);
+  });
+  it('removes adjacent expired corpses without skipping survivors', () => {
+    const sim = new Sim(153);
+    const dead = Array.from({ length: 3 }, (_, i) => sim.spawnPed('civ',sim.player.x + 10 + i,sim.player.z,{}));
+    for (const p of dead) { p.alive = false; p.diedAt = -50; }
+    const living = sim.spawnPed('civ',sim.player.x + 20,sim.player.z);
+    sim.step(1/60,blankPedInput(),blankCarInput());
+    for (const p of dead) expect(sim.ped(p.id)).toBeUndefined();
+    expect(sim.ped(living.id)).toBe(living);
+    expect(sim.ped(sim.player.id)).toBe(sim.player);
+  });
+});

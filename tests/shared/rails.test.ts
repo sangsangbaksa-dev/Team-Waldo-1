@@ -81,6 +81,18 @@ describe('WALDO shared side rails', () => {
     expect(obs?.targets.size).toBe(0);
   });
 
+  it('removes stale decoration when the active panel is replaced or removed', async () => {
+    const s = screen();
+    rails.setRails(details);
+    s.querySelector('.wd-panel')?.remove();
+    await vi.waitFor(() => expect(s.querySelectorAll(':scope > .wd-rail')).toHaveLength(0));
+    expect(s.classList.contains('wd-has-rails')).toBe(false);
+    const next = document.createElement('article');
+    next.className = 'wd-panel';
+    s.append(next);
+    await vi.waitFor(() => expect(s.querySelectorAll(':scope > .wd-rail')).toHaveLength(2));
+  });
+
   it('shows a centered panel when the viewport cannot fit 260px rails', () => {
     const s = screen(), p = s.querySelector('.wd-panel')!;
     let viewport = 800;

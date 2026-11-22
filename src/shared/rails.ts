@@ -56,6 +56,10 @@ function prune(): void {
     sizes?.unobserve(screen);
     sizes?.unobserve(panel);
     observed.delete(screen);
+    if (screen.isConnected) {
+      screen.querySelectorAll(':scope > .wd-rail').forEach(rail => rail.remove());
+      screen.classList.remove('wd-has-rails', 'wd-rails-off');
+    }
   }
 }
 function decorate(): void {

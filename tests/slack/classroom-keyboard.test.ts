@@ -36,3 +36,29 @@ it('lets a keyboard user command the classroom mini-RTS without a mouse', () => 
   expect(vi.mocked(audio.play).mock.calls.length).toBe(count);
   view.dispose();
 });
+
+it('ignores pointer orders while the in-screen RTS has no measurable canvas size', () => {
+  const sim = createSim('class', 5, 1);
+  sim.start(); sim.doActivity('game'); sim.setCover(false);
+  const view = createClassroomView(sim, audio);
+  document.body.append(view.el);
+  view.frame(0.1);
+  const canvas = view.el.querySelector<HTMLCanvasElement>('.sl-win.gm canvas')!;
+  const rect = (width: number, height: number) => Object.defineProperty(canvas, 'getBoundingClientRect', {
+    configurable: true,
+    value: () => ({ left: 0, top: 0, width, height }),
+  });
+  const press = (x: number, y: number, type: 'pointerdown' | 'pointermove') => {
+    const e = new Event(type, { bubbles: true });
+    Object.assign(e, { button: 0, clientX: x, clientY: y });
+    canvas.dispatchEvent(e);
+  };
+  rect(0, 0);
+  expect(() => { press(20, 30, 'pointerdown'); press(20, 30, 'pointermove'); }).not.toThrow();
+  expect(audio.play).not.toHaveBeenCalledWith('click', 0.3);
+  rect(320, 180);
+  press(500, 90, 'pointermove');
+  press(500, 90, 'pointerdown'); // Out-of-bounds coordinates are clamped.
+  expect(audio.play).toHaveBeenCalledWith('click', 0.3);
+  view.dispose();
+});

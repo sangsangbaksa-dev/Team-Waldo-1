@@ -12,7 +12,7 @@ import type { NetMsg } from '../net/types';
 import { ShooterView } from './view';
 import { loadShooterAssets, type ShooterAssets } from './assets';
 import { ShooterAudio } from './audio';
-import { ShooterNet, decideDeath, nadeMsg, parseNade, plausiblePlayerShot, seedOf, type Pose } from './net';
+import { RemoteNadeLimiter, ShooterNet, decideDeath, nadeMsg, parseNade, plausibleNadeThrow, plausiblePlayerShot, seedOf, type Pose } from './net';
 import { ShooterRoomNet, ROOM_MAX } from './room';
 import { ChatBox } from './chat';
 import { readShooterCareer, recordShooterMatch, writeShooterCareer } from './records';
@@ -27,7 +27,7 @@ const causeName = (w: Cause): string => (w in CAUSE_NAME ? CAUSE_NAME[w as keyof
 /** 멀티플레이 방의 AI 채우기 선택지(0 = 사람만) */
 const ROOM_FILLS = [0, 30, 60, 100] as const;
 type Phase = 'setup' | 'loading' | 'countdown' | 'play' | 'dead' | 'over';
-interface Room { s: RoomSession; net: ShooterRoomNet; remotes: Map<number, { p: Player; target: Pose | null }>; chat: ChatBox | null; done: boolean; seed: number; mine: number; shown: boolean; sync: WorldSync }
+interface Room { s: RoomSession; net: ShooterRoomNet; remotes: Map<number, { p: Player; target: Pose | null }>; chat: ChatBox | null; done: boolean; seed: number; mine: number; shown: boolean; sync: WorldSync; nadeLimiter: RemoteNadeLimiter }
 interface Pvp { s: PvpSession; net: ShooterNet; opp: Player | null; target: Pose | null; done: boolean; deadAt: number | null; oppDeadMt: number | null; seed: number; begun: boolean }
 
 export interface OpenOptions { loading?: LoadingScreen }
@@ -156,7 +156,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   function startPvp(s: PvpSession): void {
     endPvp(); endMatch(); setupEl.hidden = true; hud.hidden = true; phase = 'loading';
     card('1대1 대전', `${esc(s.opponent.nickname)} 님과 연결하는 중…`, '<p class="sz-sub">상대가 들어오면 바로 시작합니다.</p>', '<button data-act="exit">나가기</button>');
-    const seed = seedOf(s.match.config, s.match.id);
+    const seed = seedOf(s.match.config, s.match.id), nadeLimiter = new RemoteNadeLimiter();
     const net: ShooterNet = new ShooterNet(s, {
       onStart: () => beginPvp(),
       onPose: p => { if (pvp) pvp.target = p; },
@@ -166,7 +166,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
         pvp.opp.muzzle = 0.06; pvp.opp.kick = Math.min(1, pvp.opp.kick + 0.3); match.remoteShot(pvp.opp.id, sh.w, sh.ox, sh.oy, sh.oz, aims);
       },
       onHitAck: () => { /* 명중 표시는 내 쪽 판정으로 이미 보여 줬습니다 */ },
-      onNade: n => { if (match && pvp?.opp) match.addNade(pvp.opp.id, n.x, n.y, n.z, n.vx, n.vy, n.vz); },
+      onNade: n => { const opp = pvp?.opp; if (match && opp && plausibleNadeThrow(n, opp) && nadeLimiter.allow(opp.id, performance.now())) match.addNade(opp.id, n.x, n.y, n.z, n.vx, n.vy, n.vz); },
       onPickup: id => { match?.removeLoot(id); },
       onDead: mt => { if (!pvp || !match || !pvp.opp) return; pvp.oppDeadMt = mt; if (pvp.opp.alive) match.kill(pvp.opp, me().id, 'rifle'); if (pvp.deadAt !== null) settleTie(); else void conclude(pvp.s.me.id, '상대를 쓰러뜨렸습니다'); },
       onGone: reason => { if (pvp && !pvp.done) void conclude(pvp.s.me.id, reason === 'never' ? '상대가 접속하지 않았습니다' : '상대와의 연결이 끊어졌습니다'); },
@@ -208,7 +208,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       onAbort: () => { if (room && !room.done) { room.done = true; card('멀티플레이 방', '시작하지 못했습니다', '<p class="sz-sub">다른 참가자와 연결하지 못했습니다.</p>', '<button data-act="exit">메뉴로</button>'); } },
       onData: (id, msg) => roomData(id, msg),
     });
-    room = { s, net, remotes: new Map(), chat: null, done: false, seed: seedOf(s.room.config, s.room.id), mine: 0, shown: false, sync: null as unknown as WorldSync };
+    room = { s, net, remotes: new Map(), chat: null, done: false, seed: seedOf(s.room.config, s.room.id), mine: 0, shown: false, sync: null as unknown as WorldSync, nadeLimiter: new RemoteNadeLimiter() };
   }
   function roomRemote(id: string): { p: Player; target: Pose | null } | undefined { const i = room?.net.list.indexOf(id) ?? -1; return room?.remotes.get(i); }
   /** 사람(다른 참가자)이 몰고 있는 차인지 */
@@ -236,7 +236,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     else if (msg.t === 'w') { if (host && !m.authority) r.sync.apply(msg, now); }
     else if (msg.t === 'bd') { if (host && !m.authority) r.sync.botDead(msg.i, msg.k, msg.c); }
     else if (msg.t === 'la') { const l = parseLoot(msg), senderIndex = r.net.list.indexOf(id); if (l && r.sync.acceptRoomLoot(l, senderIndex, host, from?.p, now)) m.addLoot(l); }
-    else if (msg.t === 'nd') { const n = parseNade(msg), o = typeof msg.o === 'number' && Number.isInteger(msg.o) ? m.players[msg.o] : undefined; if (n && o?.remote && o.alive && (o.bot ? host : o === from?.p)) m.addNade(o.id, n.x, n.y, n.z, n.vx, n.vy, n.vz); }
+    else if (msg.t === 'nd') { const n = parseNade(msg), o = typeof msg.o === 'number' && Number.isInteger(msg.o) ? m.players[msg.o] : undefined; if (n && o?.remote && (o.bot ? host : o === from?.p) && plausibleNadeThrow(n, o) && r.nadeLimiter.allow(o.id, now)) m.addNade(o.id, n.x, n.y, n.z, n.vx, n.vy, n.vz); }
     else if (msg.t === 've') {
       // 손님이 차에 타려고 함: 방장만 판정합니다.
       const v = typeof msg.i === 'number' ? m.vehicles[msg.i] : undefined; if (!m.authority || !from || !v) return; const p = from.p;

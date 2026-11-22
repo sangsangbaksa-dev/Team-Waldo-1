@@ -10,7 +10,8 @@ let log='';for(const s of [server.stdout,server.stderr])s.on('data',b=>log+=b.to
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const sizes=[
   {name:'desktop',width:1366,height:768,map:'storm',mode:'race',quality:'standard'},
-  {name:'mobile',width:390,height:844,map:'desert',mode:'trial',quality:'low'}
+  {name:'mobile',width:390,height:844,map:'desert',mode:'trial',quality:'low'},
+  {name:'mobile-landscape',width:844,height:390,map:'storm',mode:'race',quality:'low'}
 ];
 const results=[];
 let browser;
@@ -21,7 +22,7 @@ try{
   assert.ok(ready,'Vite did not boot: '+log.slice(-1000));
   browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH||undefined,args:['--no-sandbox','--enable-webgl','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-dev-shm-usage']});
   for(const size of sizes){
-    const context=await browser.newContext({viewport:{width:size.width,height:size.height},isMobile:size.name==='mobile',hasTouch:size.name==='mobile',reducedMotion:'reduce'});
+    const context=await browser.newContext({viewport:{width:size.width,height:size.height},isMobile:size.name!=='desktop',hasTouch:size.name!=='desktop',reducedMotion:'reduce'});
     await context.addInitScript(q=>localStorage.setItem('waldo.preferences.v1',JSON.stringify({quality:q,sound:false,reducedMotion:true})),size.quality);
     const page=await context.newPage();page.setDefaultTimeout(30000);
     const errors=[];page.on('pageerror',err=>errors.push(err.message));
@@ -51,9 +52,14 @@ try{
       assert.equal(start.motion,true,'Reduced motion must reach game');
       assert.equal(await page.locator('#rc-laps').innerText(),'1');
       await page.screenshot({path:'browser-artifacts/speed-rush-start-'+size.name+'.png',animations:'disabled'});
-      if(size.name==='mobile'){
+      if(size.name!=='desktop'){
         assert.ok(await page.locator('.rc-root').evaluate(el=>el.classList.contains('touch')),'Touch controls must be enabled');
-        for(const name of ['left','right','gas','brake','drift','nitro'])assert.equal(await page.locator('[data-hold="'+name+'"]').count(),1,'Missing touch input '+name);
+        for(const name of ['left','right','gas','brake','drift','nitro']){
+          const control=page.locator('[data-hold="'+name+'"]');
+          assert.equal(await control.count(),1,'Missing touch input '+name);
+          const box=await control.boundingBox();
+          assert.ok(box&&box.x>=0&&box.y>=0&&box.x+box.width<=size.width+1&&box.y+box.height<=size.height+1,'Touch control '+name+' is clipped in '+size.name);
+        }
       }
       // The existing development hook allows deterministic speed tests without a time delay.
       await page.evaluate(()=>{window.__race.dbg.auto=true;window.__race.skip(6);});

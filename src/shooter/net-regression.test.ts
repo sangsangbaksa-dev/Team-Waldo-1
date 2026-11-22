@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WEAPONS } from './config';
-import { parseShot, plausiblePlayerShot, type NetShot } from './net';
+import { parsePose, parseShot, plausiblePlayerShot, type NetShot } from './net';
 
 const human = { x: 14, z: -7, air: 0 };
 const shot = (w: NetShot['w'] = 'rifle'): NetShot => ({
@@ -8,6 +8,27 @@ const shot = (w: NetShot['w'] = 'rifle'): NetShot => ({
   ends: Array.from({length: WEAPONS[w].pellets}, () => [27, 1.5, -7]).flat(),
 });
 
+describe('ZERO ZONE remote pose bounds', () => {
+  const valid = {t:'p',x:30,z:-20,yaw:0,pitch:0,hp:100,ar:150,w:'pistol',sp:7,ad:0,rl:0,cr:0};
+  it('preserves valid map poses and the aircraft departure position', () => {
+    expect(parsePose(valid)).not.toBeNull();
+    expect(parsePose({...valid,x:500,a:1,al:320})?.air).toBe(1);
+  });
+  it('rejects absurd remote coordinates, health and malformed parachute altitude', () => {
+    expect(parsePose({...valid,x:1_000_001})).toBeNull();
+    expect(parsePose({...valid,z:-1_000_001})).toBeNull();
+    expect(parsePose({...valid,hp:999})).toBeNull();
+    expect(parsePose({...valid,a:3,al:999})).toBeNull();
+    expect(parsePose({...valid,a:3,al:undefined})).toBeNull();
+    expect(parsePose({...valid,a:2.5,al:300})).toBeNull();
+  });
+  it('rejects invalid vehicle IDs and incomplete vehicle poses', () => {
+    expect(parsePose({...valid,v:1.5})).toBeNull();
+    expect(parsePose({...valid,vs:[5,6,7]})).toBeNull();
+    expect(parsePose({...valid,vs:[5,6,7,Infinity]})).toBeNull();
+    expect(parsePose({...valid,vs:[5,6,7,8],v:0})?.vs).toEqual([5,6,7,8]);
+  });
+});
 describe('ZERO ZONE remote human shot authorization', () => {
   it('allows normal rifle and shotgun pellet counts in both online modes', () => {
     expect(plausiblePlayerShot(shot('rifle'), human)).toBe(true);

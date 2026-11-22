@@ -77,3 +77,37 @@ it('always closes the Squad transport when sending final bye fails', () => {
   expect(channel.close).toHaveBeenCalledTimes(1);
   expect(vi.getTimerCount()).toBe(0);
 });
+
+it('queues the latest formation until the match channel becomes ready', async () => {
+  vi.useFakeTimers();
+  let connect: (() => void) | undefined;
+  const channel = {
+    ready: new Promise<void>(resolve => { connect = resolve; }),
+    send: vi.fn(), close: vi.fn(),
+  };
+  const session = { open: () => channel } as unknown as PvpSession;
+  const net = new SquadPvp(session, { onArmy: vi.fn(), onGone: vi.fn() });
+  const army = [{ type: 'guard' as const, x: 4, y: 12 }];
+  net.setArmy(1, army);
+  vi.advanceTimersByTime(3000);
+  expect(channel.send).not.toHaveBeenCalled();
+  connect?.();
+  await Promise.resolve();
+  expect(channel.send).toHaveBeenCalledExactlyOnceWith({ t: 'army', r: 1, a: army });
+  net.dispose(true);
+  expect(channel.close).toHaveBeenCalledTimes(1);
+});
+
+it('aborts a channel that never becomes ready, even without any send attempts', () => {
+  vi.useFakeTimers();
+  const channel = {
+    ready: new Promise<void>(() => undefined), send: vi.fn(), close: vi.fn(),
+  };
+  const onGone = vi.fn();
+  const net = new SquadPvp({ open: () => channel } as unknown as PvpSession, { onArmy: vi.fn(), onGone });
+  vi.advanceTimersByTime(32_000);
+  expect(onGone).toHaveBeenCalledExactlyOnceWith('never');
+  expect(channel.send).not.toHaveBeenCalled();
+  expect(channel.close).toHaveBeenCalledTimes(1);
+  net.dispose();
+});

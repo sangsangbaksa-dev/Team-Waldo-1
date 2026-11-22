@@ -191,3 +191,7 @@
   .sl-gbar{height:44px;gap:1cqw}
   .sl-gbar button{height:44px;min-width:44px;padding-inline:4px}
 }
+
+/* Make the classroom mini-RTS playable with a keyboard as well as a pointer. */
+.sl-win.gm .sl-wbody:focus-within{outline:2px solid #f8f4c5;outline-offset:2px}
+.sl-rts-cursor-status{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}

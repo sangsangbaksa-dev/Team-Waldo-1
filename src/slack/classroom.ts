@@ -34,7 +34,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
               <div class="sl-wbody"><canvas width="${W}" height="${H}"></canvas><div class="sl-sub"></div></div>
               <div class="sl-pbar"><b>▶</b><span class="sl-track"><i></i></span><em>00:00</em></div></div>
             <div class="sl-win gm"><div class="sl-tb"><i></i><span>FRONTLINE · 지휘관 모드</span></div>
-              <div class="sl-wbody"><canvas width="${W}" height="${H}"></canvas><div class="sl-end"></div></div>
+              <div class="sl-wbody"><canvas width="${W}" height="${H}" tabindex="0" aria-describedby="sl-rts-cursor" aria-label="전술 게임 지도. 방향키로 지휘 위치를 이동하고 Enter로 공격 또는 이동을 지시하세요."></canvas><div class="sl-end"></div><span class="sl-rts-cursor-status" id="sl-rts-cursor" role="status" aria-live="polite">지휘 위치 중앙</span></div>
               <div class="sl-gbar"><span class="sl-res">광물 <b data-ore>0</b></span><button type="button" data-train="w">일꾼 ${COST.w}</button><button type="button" data-train="i">보병 ${COST.i}</button><button type="button" data-train="t">전차 ${COST.t}</button><span class="sl-sc">점수 <b data-sc>0</b></span></div></div>
             <div class="sl-task"><b class="sl-start"></b><span data-w="doc">문제집</span><span data-w="video">영상</span><span data-w="game">게임</span><em class="sl-tbat">100%</em><em>10:24</em></div>
           </div><i class="sl-label">○○고 학교자산 NO.0231</i></div>
@@ -67,7 +67,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
   };
   const gameWindow = q('.sl-win.gm');
   const sub = q('.sl-sub'), track = q('.sl-track i'), vtime = q('.vid em'), batEl = q('.sl-tbat');
-  const oreEl = q('[data-ore]'), scEl = q('[data-sc]'), endEl = q('.sl-end');
+  const oreEl = q('[data-ore]'), scEl = q('[data-sc]'), endEl = q('.sl-end'), cursorStatus = q('#sl-rts-cursor');
   const trainBtns = Array.from(el.querySelectorAll<HTMLButtonElement>('[data-train]'));
   const cache = new Map<string, string>();
   const put = (target: HTMLElement, key: string, v: string) => { const k = (target === room ? 'r.' : 'x.') + key; if (cache.get(k) !== v) { cache.set(k, v); target.dataset[key] = v; } };
@@ -79,6 +79,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
   const game = createBattle(true, e => { if (e === 'train') audio.play('key', 0.4); else if (e === 'order') audio.play('click', 0.3); else if (e === 'hq') audio.play('fun', 0.4); else if (e === 'win') audio.play('chime'); else if (e === 'lose') audio.play('click', 0.5); });
   let coverKey = false, coverPointer: number | null = null;
   let step = 0, stepLv = 0, relief = 0, popT = 0, quiet = 0, strike = 0, vt = 0, gHand = 0.5;
+  let cursorX = W / 2, cursorY = H / 2;
   const syncCover = () => sim.setCover(coverKey || coverPointer !== null || !sim.state.activity);
   const choose = (id: Pick) => {
     audio.resume();
@@ -91,6 +92,28 @@ export const createClassroomView: CreateView = (sim, audio) => {
   const train = (k: 'w' | 'i' | 't') => { audio.resume(); if (view() === 'game') game.train(k); };
   const keydown = (event: KeyboardEvent) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
+    if (event.target === gcv && view() === 'game') {
+      const shifts: Record<string, [number, number]> = {
+        ArrowLeft: [-8, 0], ArrowRight: [8, 0], ArrowUp: [0, -8], ArrowDown: [0, 8],
+      };
+      const shift = shifts[event.key];
+      if (shift) {
+        event.preventDefault();
+        cursorX = Math.max(0, Math.min(W, cursorX + shift[0]));
+        cursorY = Math.max(0, Math.min(H, cursorY + shift[1]));
+        txt(cursorStatus, `지휘 위치 ${Math.round(cursorX)}, ${Math.round(cursorY)}`);
+        return;
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        if (!event.repeat) {
+          audio.resume();
+          const result = game.command(cursorX, cursorY);
+          txt(cursorStatus, result === 'atk' ? '선택한 위치를 공격합니다.' : result === 'move' ? '선택한 위치로 이동합니다.' : '지시할 유닛이 없습니다.');
+        }
+        return;
+      }
+    }
     if (event.code === 'Space') {
       if (event.target instanceof HTMLButtonElement && event.target !== cover) return;
       event.preventDefault();
@@ -168,6 +191,16 @@ export const createClassroomView: CreateView = (sim, audio) => {
         track.style.transform = `scaleX(${(vt % 90) / 90})`;
       } else if (v === 'game') {
         draw(gctx, game); fl = game.flash;
+        if (gctx && document.activeElement === gcv) {
+          gctx.save();
+          gctx.strokeStyle = '#f8f4c5'; gctx.lineWidth = 1.2;
+          gctx.beginPath(); gctx.arc(cursorX, cursorY, 5, 0, Math.PI * 2); gctx.stroke();
+          gctx.beginPath(); gctx.moveTo(cursorX - 9, cursorY); gctx.lineTo(cursorX - 4, cursorY);
+          gctx.moveTo(cursorX + 4, cursorY); gctx.lineTo(cursorX + 9, cursorY);
+          gctx.moveTo(cursorX, cursorY - 9); gctx.lineTo(cursorX, cursorY - 4);
+          gctx.moveTo(cursorX, cursorY + 4); gctx.lineTo(cursorX, cursorY + 9); gctx.stroke();
+          gctx.restore();
+        }
         txt(oreEl, String(game.ore)); txt(scEl, String(game.score));
         for (const b of trainBtns) { const c = COST[b.dataset.train as 'w' | 'i' | 't'], off = game.ore < c || game.prod > 0 || game.over !== null; if (b.disabled !== off) b.disabled = off; }
         txt(endEl, game.over === null ? '' : game.over === 0 ? '승리! 적 본진 파괴' : '패배… 본진이 무너졌다'); endEl.classList.toggle('on', game.over !== null);

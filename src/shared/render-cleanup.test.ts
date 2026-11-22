@@ -38,6 +38,23 @@ describe('scene cleanup across repeated game rounds', () => {
     expect(geoDisposed).toBe(0);
     expect(matDisposed).toBe(1);
   });
+  it('does not release geometry twice when it is both attached and separately tracked', () => {
+    const scene = new THREE.Scene();
+    const ring = new THREE.RingGeometry(0.8, 1, 24);
+    scene.add(new THREE.Mesh(ring, new THREE.MeshBasicMaterial()));
+    let released = 0;
+    ring.addEventListener('dispose', () => released++);
+    disposeSceneResources(scene, { extraGeometries: [ring, ring] });
+    expect(released).toBe(1);
+  });
+  it('cleans up geometry that has not yet been attached to the scene', () => {
+    const scene = new THREE.Scene();
+    const ring = new THREE.RingGeometry(0.8, 1, 24);
+    let released = 0;
+    ring.addEventListener('dispose', () => released++);
+    disposeSceneResources(scene, { extraGeometries: [ring] });
+    expect(released).toBe(1);
+  });
   it('disposes line and particle geometry, not only Mesh geometry', () => {
     const scene = new THREE.Scene();
     const points = new THREE.BufferGeometry(), line = new THREE.BufferGeometry();

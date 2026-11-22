@@ -7,7 +7,7 @@ import type { PvpSession, RoomSession } from '../net/lobby';
 import { AIR, BOTS, FEEL, BR_PLAYERS, DIFFICULTIES, HELMET_NAMES, ARMOR_NAMES, HEAL, PARTS, PLAYER, VEHICLES, WEAPONS, adsSpread, partHandling, type Difficulty } from './config';
 import { waterDepth } from './terrain';
 import { Match, type Cause, type MatchEvent, type Player, type Vehicle } from './sim';
-import { CAUSES, WorldSync, easePuppet, encodeLoot, parseLoot } from './sync';
+import { CAUSES, WorldSync, canAcceptVehicleDamageReport, easePuppet, encodeLoot, parseLoot } from './sync';
 import type { NetMsg } from '../net/types';
 import { ShooterView } from './view';
 import { loadShooterAssets, type ShooterAssets } from './assets';
@@ -229,7 +229,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (msg.t === 'ch') r.chat?.add(r.s.players.find(x => x.id === id)?.nickname ?? '참가자', id, msg.x, false, now);
     else if (msg.t === 'w') { if (host && !m.authority) r.sync.apply(msg, now); }
     else if (msg.t === 'bd') { if (host && !m.authority) r.sync.botDead(msg.i, msg.k, msg.c); }
-    else if (msg.t === 'la') { const l = parseLoot(msg); if (l) m.addLoot(l); }
+    else if (msg.t === 'la') { const l = parseLoot(msg); if (l && (host || from)) m.addLoot(l); }
     else if (msg.t === 'nd') { const n = parseNade(msg), o = typeof msg.o === 'number' && Number.isInteger(msg.o) ? m.players[msg.o] : undefined; if (n && o?.remote && o.alive && (o.bot ? host : o === from?.p)) m.addNade(o.id, n.x, n.y, n.z, n.vx, n.vy, n.vz); }
     else if (msg.t === 've') {
       // 손님이 차에 타려고 함: 방장만 판정합니다.
@@ -253,7 +253,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       if (m.authority) { if (v.remote) { r.sync.vehs.delete(v.id); v.x = x; v.z = z; v.yaw = y; v.speed = Math.max(-40, Math.min(40, sp)); reclaim(v); } }
       else if (v.remote) { if (v.driver === from.p.id) { from.p.veh = -1; v.driver = -1; } r.sync.vehicleState(v, x, z, y, sp, -1, true, now); }
     }
-    else if (msg.t === 'vd') { const v = typeof msg.i === 'number' ? m.vehicles[msg.i] : undefined, d = Number(msg.d); if (m.authority && v && from && Number.isFinite(d) && d > 0) m.hurtVehicle(v, Math.min(400, d), -1); }
+    else if (msg.t === 'vd') { const v = typeof msg.i === 'number' ? m.vehicles[msg.i] : undefined; if (canAcceptVehicleDamageReport(m.authority, v, from?.p, msg.d)) m.hurtVehicle(v!, Math.min(400, msg.d), -1); }
   }
   /** 매 시뮬레이션 단계 전에: 다른 사람·AI·차를 받은 상태로 옮깁니다. */
   function syncRoom(dt: number): void {

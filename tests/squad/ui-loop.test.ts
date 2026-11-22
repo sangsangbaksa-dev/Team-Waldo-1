@@ -202,3 +202,43 @@ it('supports keyboard-only formation placement with intact focus and budget rule
   button('#pause').click();
   button('#exit').click();
 });
+
+it('never inserts an illegal enemy-zone unit after hover switches to keyboard input', () => {
+  openSquad(vi.fn());
+  button('#start').click();
+  const canvas = document.querySelector<HTMLCanvasElement>('#sq-field-canvas')!;
+  Object.defineProperty(canvas, 'getBoundingClientRect', {
+    configurable: true, value: () => ({ left: 0, top: 0, width: 600, height: 1000 }),
+  });
+  const mouse = new Event('pointermove');
+  Object.assign(mouse, { clientX: 200, clientY: 100 }); // Enemy half of the map
+  canvas.dispatchEvent(mouse);
+  canvas.focus();
+  canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  expect(document.querySelector('.sq-budget strong')?.textContent).toContain('900');
+  expect(() => button('#ready').click()).not.toThrow();
+  expect(button('#pause')).toBeTruthy();
+  button('#pause').click(); button('#exit').click();
+});
+
+it('ignores off-grid pointer hover rather than drawing from invalid cells', async () => {
+  const { draw } = await import('../../src/squad/view');
+  openSquad(vi.fn());
+  button('#start').click();
+  const canvas = document.querySelector<HTMLCanvasElement>('#sq-field-canvas')!;
+  Object.defineProperty(canvas, 'getBoundingClientRect', {
+    configurable: true, value: () => ({ left: 0, top: 0, width: 600, height: 1000 }),
+  });
+  const move = (x: number, y: number) => {
+    const e = new Event('pointermove');
+    Object.assign(e, { clientX: x, clientY: y });
+    canvas.dispatchEvent(e);
+  };
+  move(250, 750);
+  const before = vi.mocked(draw).mock.calls.length;
+  move(-20, -20); // One final redraw to clear the previous preview.
+  expect(vi.mocked(draw).mock.calls.length).toBe(before + 1);
+  move(-30, -30);
+  expect(vi.mocked(draw).mock.calls.length).toBe(before + 1);
+  button('#pause').click(); button('#exit').click();
+});

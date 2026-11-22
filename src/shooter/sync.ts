@@ -72,6 +72,16 @@ export function canAcceptRoomLoot(loot: Loot, senderIndex: number, host: boolean
   return host || (Math.abs(loot.x - sender.x) <= 45 && Math.abs(loot.z - sender.z) <= 45);
 }
 
+/** Avoid deleting world pickups based on remote clients who cannot reach them.
+ * The host is exempt because it forwards AI pickup events as well.
+ */
+export function canAcceptRoomPickup(loot: Loot | undefined, sender: Player | undefined, host: boolean): boolean {
+  if (!loot || loot.taken) return false;
+  if (host) return true;
+  return !!sender && sender.remote && !sender.bot &&
+    Math.abs(loot.x - sender.x) <= 15 && Math.abs(loot.z - sender.z) <= 15;
+}
+
 /** Remote damage reports may only affect the car driven by the reporting human.
  * The sender identity must be resolved from the authenticated room participant,
  * never from an id embedded in the untrusted packet.

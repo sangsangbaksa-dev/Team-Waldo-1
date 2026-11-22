@@ -123,3 +123,8 @@
 .sk-btns #sk-b-mis .sk-ic{color:#ffd09a}.sk-btns #sk-b-flare .sk-ic{color:#ffe27a}.sk-btns #sk-b-boost .sk-ic{color:#8fffd0}
 #sk-title .sk-card { padding: clamp(24px, 4vw, 40px); line-height: 1.55; }
 #sk-title .sk-how { line-height: 1.6; }
+/* 게이지 라벨 / 터치 안내 위치 */
+.sk-brow{grid-template-columns:16px 30px 1fr;gap:6px}.sk-bl{font:700 10px/1 system-ui;letter-spacing:.08em;color:#cfeaf3cc;text-shadow:0 1px 3px #000}
+@media (max-width:600px){.sk-brow{grid-template-columns:14px 26px 1fr;gap:4px}.sk-bl{font-size:9px;letter-spacing:.02em}}
+@media (pointer:coarse){.sk-hint{bottom:auto;top:max(96px,calc(env(safe-area-inset-top) + 88px));padding:0 64px}}
+.sk-pause-modal .sk-row{flex-wrap:wrap}

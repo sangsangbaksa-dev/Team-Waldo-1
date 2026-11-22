@@ -83,7 +83,7 @@ it('focuses results, stays quiet on a missed goal, and switches stage once', asy
   advance(100);
   expect(document.activeElement).toBe(button('[data-retry]'));
   expect(audio.play).not.toHaveBeenCalledWith('win');
-  expect(localStorage.getItem('waldo.slack.v1')).toBeNull();
+  expect(JSON.parse(localStorage.getItem('waldo.slack.v1')!).best.dorm.grade).toBe('D'); // 목표를 못 채운 판도 기록에 남는다
   expect(frames.size).toBe(0);
   button('[data-next]').click(); button('[data-next]').click();
   await vi.dynamicImportSettled();

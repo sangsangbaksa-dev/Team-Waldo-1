@@ -73,7 +73,7 @@
 .sc-app-window.on{opacity:1;visibility:visible;pointer-events:auto;transform:none;transition:opacity .16s,transform .2s}
 .sc-app-window:not(.on) *{animation-play-state:paused!important}
 .sc-title{height:28px;padding:6px 10px;background:#e9edf2;color:#344250;display:flex;justify-content:space-between;font-size:11px}
-.sc-title-btns button{border:0;background:none;color:inherit;font-size:13px;line-height:1;cursor:pointer;padding:0 2px}
+.sc-title-btns button{border:0;background:none;color:inherit;font-size:16px;line-height:1;cursor:pointer;padding:0;min-width:28px;min-height:24px;margin:-6px -6px -6px 0;border-radius:6px;vertical-align:middle}
 .sc-title-btns button:hover{color:#d33}
 .sc-cover{z-index:4;display:none;background:linear-gradient(145deg,#2b576b,#7496a6 58%,#b9a7a2);border-radius:7px}
 .sc-cover.visible{display:block}

@@ -89,7 +89,14 @@ export class ShooterView {
     // 1인칭 총 장면
     this.vmScene.add(new THREE.HemisphereLight(0xdbe6ff, 0x6a5a50, 1.9)); const vs = new THREE.DirectionalLight(0xffe2b8, 2.4); vs.position.set(2, 4, 3); this.vmScene.add(vs);
     this.vmFlash = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, color: 0xffd98a, blending: THREE.AdditiveBlending, depthTest: false, transparent: true })); this.vmFlash.scale.set(0.3, 0.3, 1); this.vmFlash.visible = false; this.vmFlash.renderOrder = 10;
-    for (const p of match.players) this.makeRig(p);
+    // Soldier rigs are created only when they first become visible.
+    // In a 100-player drop most players are hidden inside the aircraft at startup.
+  }
+
+  /** Upgrade subsequent on-screen actors and the first-person gun when GLBs arrive. */
+  setAssets(assets: ShooterAssets): void {
+    this.assets = assets;
+    this.vmParts = '';
   }
 
   private mat(key: string, make: () => THREE.Material): THREE.Material { let m = this.mats.get(key); if (!m) { m = make(); this.mats.set(key, m); } return m; }
@@ -485,7 +492,16 @@ export class ShooterView {
   frame(dt: number, me: Player, spectate: Player | null, zoom: number): void {
     this.time += dt; this.frames++; const m = this.match, z = m.zone, cam = this.camera, view = spectate ?? me;
     const vx = view.x, vz = view.z;
-    for (const p of m.players) { const rig = this.rigs.get(p.id)!; const hide = (!spectate && p.id === me.id) || p.air === 1 || p.veh >= 0 || Math.abs(p.x - vx) + Math.abs(p.z - vz) > (p.air ? 520 : 190); rig.root.visible = !hide; if (hide) continue; this.poseRig(p, dt, Math.abs(p.x - vx) + Math.abs(p.z - vz)); if (!p.alive) rig.flash.visible = false; }
+    for (const p of m.players) {
+      const dist = Math.abs(p.x - vx) + Math.abs(p.z - vz);
+      const hide = (!spectate && p.id === me.id) || p.air === 1 || p.veh >= 0 || dist > (p.air ? 520 : 190);
+      if (hide) { const rig = this.rigs.get(p.id); if (rig) rig.root.visible = false; continue; }
+      if (!this.rigs.has(p.id)) this.makeRig(p);
+      const rig = this.rigs.get(p.id)!;
+      rig.root.visible = true;
+      this.poseRig(p, dt, dist);
+      if (!p.alive) rig.flash.visible = false;
+    }
     // 카메라
     this.bob += view.speed * dt * 1.7; this.shake = Math.max(0, this.shake - dt * 6);
     const drv = view.veh >= 0 ? m.vehicles[view.veh] ?? null : null;
@@ -530,9 +546,36 @@ export class ShooterView {
   }
 
   dispose(): void {
-    this.vmFlash.removeFromParent(); this.vmFlash.material.dispose(); if (this.vmOwned && this.vm) this.freeNode(this.vm);
-    for (const entry of this.lootNodes.values()) entry.dispose(); this.lootNodes.clear();
-    this.scene.traverse(o => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); const mat = m.material as THREE.Material | THREE.Material[] | undefined; if (Array.isArray(mat)) mat.forEach(x => x.dispose()); else mat?.dispose(); });
-    this.post?.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss();
+    this.vmFlash.removeFromParent();
+    this.vmFlash.material.dispose();
+    if (this.vm) { if (this.vmOwned) this.freeNode(this.vm); else this.vm.removeFromParent(); }
+    for (const entry of this.lootNodes.values()) entry.dispose();
+    this.lootNodes.clear();
+    // The character kit shares its baked geometry and materials with future
+    // games. Detach the skeletons before releasing this scene's own resources.
+    for (const rig of this.rigs.values()) rig.ch.root.removeFromParent();
+    this.rigs.clear();
+    const geos = new Set<THREE.BufferGeometry>();
+    const mats = new Set<THREE.Material>();
+    const textures = new Set<THREE.Texture>();
+    this.scene.traverse(o => {
+      const renderable = o as THREE.Object3D & { geometry?: THREE.BufferGeometry; material?: THREE.Material | THREE.Material[] };
+      // Three.js Sprite geometry is global/shared across all Sprite instances.
+      if (!(o instanceof THREE.Sprite) && renderable.geometry) geos.add(renderable.geometry);
+      if (renderable.material) for (const mat of Array.isArray(renderable.material) ? renderable.material : [renderable.material]) mats.add(mat);
+    });
+    for (const mat of mats) {
+      for (const value of Object.values(mat)) if (value instanceof THREE.Texture) textures.add(value);
+      if (mat instanceof THREE.ShaderMaterial) for (const uniform of Object.values(mat.uniforms)) {
+        if (uniform.value instanceof THREE.Texture) textures.add(uniform.value);
+      }
+    }
+    textures.add(this.glow);
+    for (const geo of geos) geo.dispose();
+    for (const mat of mats) mat.dispose();
+    for (const texture of textures) texture.dispose();
+    this.post?.dispose();
+    this.renderer.dispose();
+    this.renderer.forceContextLoss();
   }
 }

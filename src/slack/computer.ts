@@ -113,13 +113,13 @@ export const createComputerView: CreateView = (sim, audio) => {
 
   /* ---------- 영상 ---------- */
   const V = { cur: 0, pos: 0, playing: true, sub: -1, sec: -1, nextComment: 5 };
-  const vidHtml = () => `<div class="sc-video"><div class="sc-video-main"><div class="sc-video-picture" data-vpic><div class="sc-video-sun"></div><div class="sc-video-cloud"></div><div class="sc-video-mountain"></div><div class="sc-video-play">❚❚</div><div class="sc-sub" data-sub></div></div><div class="sc-video-bar"><button type="button" data-vplay aria-label="재생/일시정지">❚❚</button><span class="sc-progress"><i data-vprog></i></span><span data-vtime>0:00</span></div><b data-vtitle></b><small data-vmeta></small><div class="sc-comment" data-comments></div></div><div class="sc-video-list"><b>추천 영상</b>${videos.map((v, i) => `<button type="button" data-vid="${i}" style="--h:${v.h}"><span class="sc-thumb"><i></i></span><span><strong>${v.t}</strong><small>${v.ch} · ${v.views}</small></span></button>`).join('')}</div></div>`;
+  const vidHtml = () => `<div class="sc-video"><div class="sc-video-main"><div class="sc-video-picture" data-vpic><div class="sc-video-sun"></div><div class="sc-video-cloud"></div><div class="sc-video-mountain"></div><div class="sc-video-play">❚❚</div><div class="sc-sub" data-sub></div></div><div class="sc-video-bar"><button type="button" data-vplay aria-label="일시정지">❚❚</button><span class="sc-progress"><i data-vprog></i></span><span data-vtime>0:00</span></div><b data-vtitle></b><small data-vmeta></small><div class="sc-comment" data-comments></div></div><div class="sc-video-list"><b>추천 영상</b>${videos.map((v, i) => `<button type="button" data-vid="${i}" style="--h:${v.h}"><span class="sc-thumb"><i></i></span><span><strong>${v.t}</strong><small>${v.ch} · ${v.views}</small></span></button>`).join('')}</div></div>`;
   const vidSelect = (i: number) => {
     V.cur = i; V.pos = 0; V.sub = -1; V.sec = -1; V.nextComment = 3; V.playing = true;
     const w = wins.video; const v = videos[i];
     $('[data-vpic]', w).style.setProperty('--h', String(v.h)); setTxt($('[data-vtitle]', w), v.t); setTxt($('[data-vmeta]', w), `${v.ch} · 조회수 ${v.views}`);
     $('[data-comments]', w).replaceChildren(); w.querySelectorAll('[data-vid]').forEach((b, k) => b.classList.toggle('cur', k === i));
-    $('[data-vpic]', w).classList.remove('paused'); setTxt($('[data-vplay]', w), '❚❚'); setTxt($('.sc-video-play', w), '❚❚');
+    $('[data-vpic]', w).classList.remove('paused'); const playButton = $('[data-vplay]', w); setTxt(playButton, '❚❚'); playButton.setAttribute('aria-label', '일시정지'); setTxt($('.sc-video-play', w), '❚❚');
   };
   const vidTick = (dt: number) => {
     if (shown !== 'video' || sim.state.cover || !V.playing) return;
@@ -204,7 +204,7 @@ export const createComputerView: CreateView = (sim, audio) => {
 
   /* ---------- 음악 ---------- */
   const M = { cur: 0, p: 0, playing: true, sec: -1 };
-  const musicHtml = () => `<div class="sc-music"><div class="sc-album"><div class="sc-disc">☾</div><span data-m-cap>새벽의 온도</span></div><div class="sc-music-info"><small>지금 재생 중</small><strong data-m-title></strong><span data-m-art></span><div class="sc-visualizer">${Array.from({ length: 20 }, (_, i) => `<i style="--n:${i}"></i>`).join('')}</div><div class="sc-progress"><i data-m-prog></i></div><div class="sc-music-controls"><button type="button" data-m="prev">◀◀</button><button type="button" data-m="play">❚❚</button><button type="button" data-m="next">▶▶</button><span data-m-time>0:00</span></div></div><div class="sc-playlist"><b>재생 목록</b>${tracks.map((t, i) => `<p data-track="${i}">${String(i + 1).padStart(2, '0')}　${t.t} <span>${mmss(t.len)}</span></p>`).join('')}</div></div>`;
+  const musicHtml = () => `<div class="sc-music"><div class="sc-album"><div class="sc-disc">☾</div><span data-m-cap>새벽의 온도</span></div><div class="sc-music-info"><small>지금 재생 중</small><strong data-m-title aria-live="polite"></strong><span data-m-art></span><div class="sc-visualizer">${Array.from({ length: 20 }, (_, i) => `<i style="--n:${i}"></i>`).join('')}</div><div class="sc-progress"><i data-m-prog></i></div><div class="sc-music-controls"><button type="button" data-m="prev" aria-label="이전 곡">◀◀</button><button type="button" data-m="play" aria-label="일시정지">❚❚</button><button type="button" data-m="next" aria-label="다음 곡">▶▶</button><span data-m-time>0:00</span></div></div><div class="sc-playlist"><b>재생 목록</b>${tracks.map((t, i) => `<p data-track="${i}">${String(i + 1).padStart(2, '0')}　${t.t} <span>${mmss(t.len)}</span></p>`).join('')}</div></div>`;
   const musicSet = (i: number) => {
     M.cur = (i + tracks.length) % tracks.length; M.p = 0; M.sec = -1; const w = wins.music; const t = tracks[M.cur];
     setTxt($('[data-m-title]', w), t.t); setTxt($('[data-m-art]', w), t.a); w.querySelectorAll('[data-track]').forEach((p, k) => p.classList.toggle('cur', k === M.cur));
@@ -216,7 +216,7 @@ export const createComputerView: CreateView = (sim, audio) => {
     if (on === earbudsActive) return;
     earbudsActive = on; audio.muffle(on);
   };
-  const musicPlay = (on: boolean) => { M.playing = on; wins.music.classList.toggle('paused', !on); setTxt($('[data-m="play"]', wins.music), on ? '❚❚' : '▶'); syncMusicAudio(); };
+  const musicPlay = (on: boolean) => { M.playing = on; wins.music.classList.toggle('paused', !on); const button = $('[data-m="play"]', wins.music); setTxt(button, on ? '❚❚' : '▶'); button.setAttribute('aria-label', on ? '일시정지' : '재생'); syncMusicAudio(); };
   const musicTick = (dt: number) => {
     if (shown !== 'music' || sim.state.cover || !M.playing) return;
     M.p += dt / tracks[M.cur].len; if (M.p >= 1) { musicSet(M.cur + 1); return; }
@@ -278,7 +278,7 @@ export const createComputerView: CreateView = (sim, audio) => {
     if (target.closest('.sc-target')) { audio.resume(); gameHit(); return; }
     if (target.closest('[data-g-retry]')) { audio.play('click'); gameReset(); return; }
     const vid = target.closest<HTMLElement>('[data-vid]'); if (vid) { audio.play('click'); vidSelect(Number(vid.dataset.vid)); return; }
-    if (target.closest('[data-vplay]') || target.closest('[data-vpic]')) { audio.play('click'); V.playing = !V.playing; const t = V.playing ? '❚❚' : '▶'; setTxt($('[data-vplay]', wins.video), t); setTxt($('.sc-video-play', wins.video), t); $('[data-vpic]', wins.video).classList.toggle('paused', !V.playing); return; }
+    if (target.closest('[data-vplay]') || target.closest('[data-vpic]')) { audio.play('click'); V.playing = !V.playing; const t = V.playing ? '❚❚' : '▶'; const playButton = $('[data-vplay]', wins.video); setTxt(playButton, t); playButton.setAttribute('aria-label', V.playing ? '일시정지' : '재생'); setTxt($('.sc-video-play', wins.video), t); $('[data-vpic]', wins.video).classList.toggle('paused', !V.playing); return; }
     const room = target.closest<HTMLElement>('[data-room]'); if (room) { audio.play('click'); chatOpen(Number(room.dataset.room)); return; }
     const chip = target.closest<HTMLElement>('[data-chip]');
     if (chip) { audio.play('key', 0.6); chatPush(C.room, { m: true, who: '', t: chip.dataset.chip ?? '' }); chatIncoming(C.room, pick(rooms[C.room].reply), 1.8 + Math.random() * 1.5); return; }

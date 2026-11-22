@@ -105,3 +105,21 @@ it('keeps the dorm messenger responsive after many quick replies and app switche
   expect(view.el.querySelector('.sc-messages')!.childElementCount).toBe(30);
   expect(view.el.querySelectorAll('.sc-app-window')).toHaveLength(2);
 });
+
+it('labels music and video play controls for keyboard and screen-reader players', () => {
+  const open = (id: string) => {
+    view.el.querySelector<HTMLButtonElement>(`[data-app="${id}"]`)!.click();
+    view.frame(0.1);
+  };
+  open('music');
+  const play = view.el.querySelector<HTMLButtonElement>('[data-m="play"]')!;
+  expect(play.getAttribute('aria-label')).toBe('일시정지');
+  expect(view.el.querySelector('[data-m-title]')?.getAttribute('aria-live')).toBe('polite');
+  play.click(); expect(play.getAttribute('aria-label')).toBe('재생');
+  play.click(); expect(play.getAttribute('aria-label')).toBe('일시정지');
+  open('video');
+  const video = view.el.querySelector<HTMLButtonElement>('[data-vplay]')!;
+  expect(video.getAttribute('aria-label')).toBe('일시정지');
+  video.click(); expect(video.getAttribute('aria-label')).toBe('재생');
+  video.click(); expect(video.getAttribute('aria-label')).toBe('일시정지');
+});

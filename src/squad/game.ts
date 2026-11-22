@@ -23,11 +23,21 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
   let mode: 'ai' | 'local' | 'online' = 'ai', difficulty: Difficulty = 'normal', stage: 'menu' | 'cover' | 'deploy' | 'wait' | 'battle' | 'round' | 'result' | 'pause' = 'menu';
   let previous: 'deploy' | 'battle' = 'deploy', side: Side = 0, armies: Placement[][] = [[], []], selected: UnitType = 'guard', battle: Battle | null = null, score = [0, 0], round = 1, speed = 1, hover: { x: number; y: number } | null = null, drag: { x: number; y: number } | null = null, raf = 0, last = 0, accumulator = 0, closed = false;
   let totals = [{ kills: 0, damage: 0, survivors: 0, gold: 0 }, { kills: 0, damage: 0, survivors: 0, gold: 0 }];
-  let lastRosterTick = 0, lastDrawTick = -1;
+  let lastRosterTick = 0, lastDrawTick = -1, onlineTimer = 0;
   const cost = (s: Side) => armies[s]!.reduce((n, p) => n + UNITS[p.type].cost, 0);
   const button = (id: string, text: string, cls = '') => `<button id="${id}" class="wd-btn ${cls}">${text}</button>`;
   const seg = (key: string, items: Array<[string, string]>, cur: string) => items.map(([v, t]) => `<button type="button" data-${key}="${v}" aria-pressed="${cur === v}">${t}</button>`).join('');
   const recordLine = (): string => { const r = readRecords(); return `<p class="sq-record">${r.matches ? `전적 <b>${r.matches}전 ${r.wins}승 ${r.matches - r.wins}패</b>` : '아직 기록 없음'}</p>`; };
+  // No animation is needed in menus, deployment, pauses, or results.
+  // Online deployment uses a low-frequency timer for its countdown instead.
+  function scheduleFrame(): void {
+    if (closed || stage !== 'battle' || !battle) {
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0; last = 0;
+      return;
+    }
+    if (!raf) raf = requestAnimationFrame(frame);
+  }
   function render(): void {
     root.classList.toggle('wd-has-rails', stage === 'deploy' || stage === 'battle');
     const title = `<p class="wd-eyebrow">배치 전략 · Formation</p><h1 class="wd-title">SQUAD CLASH</h1>`;
@@ -42,9 +52,9 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
       root.innerHTML = `<main class="wd-panel sq-card sq-result"><span class="sq-kicker">${stage === 'result' ? '최종 결과' : `라운드 ${round} 결과`}</span><h2>${stage === 'result' ? (online ? (score[online.mine]! > score[1 - online.mine]! ? '최종 승리' : '최종 패배') : score[0] > score[1] ? 'P1 최종 승리' : mode === 'ai' ? 'AI 최종 승리' : 'P2 최종 승리') : result}</h2><div class="sq-final-score"><b class="sq-s0">${score[0]}</b> <span>:</span> <b class="sq-s1">${score[1]}</b></div><div class="sq-stats"><div></div><b>P1</b><b>${mode === 'ai' ? 'AI' : 'P2'}</b>${(['kills', 'damage', 'survivors', 'gold'] as const).map((k, i) => `<span>${[ICON.sword, ICON.drop, ICON.shield, ICON.coin][i]}${['처치', '피해량', '생존 병사', '골드 효율'][i]}</span>${totals.map(t => `<strong>${k === 'gold' ? (t.gold ? (t.damage / t.gold).toFixed(2) : '0') : Math.round(t[k])}</strong>`).join('')}`).join('')}</div><p class="sq-note">골드 효율 = 누적 피해량 ÷ 사용 골드</p>${online?.result ? `<p class="sq-note sq-online-note">${esc(online.result)}</p>` : ''}<div class="sq-actions">${button('next', stage === 'result' ? (online ? '메뉴로' : '다시 대전') : '다음 라운드', 'primary')}${online ? '' : button('menu', '메뉴로')}</div></main>`;
     } else if (stage === 'wait') root.innerHTML = `<main class="wd-panel sq-card sq-cover">${title}<span class="sq-round">라운드 ${round}</span><h2>상대 배치를 기다리는 중</h2><p>내 진형을 제출했습니다. 상대가 배치를 마치면 바로 전투가 시작됩니다.</p></main>`;
     else root.innerHTML = `<main class="wd-panel sq-card"><h2>일시정지</h2><div class="sq-actions">${button('resume', '이어하기', 'primary')}${button('menu', '모드 선택')}${button('exit', '게임 목록으로', 'ghost')}</div></main>`;
-    bind();
+    bind(); scheduleFrame();
   }
-  function beginRound(): void { lastRosterTick = 0; lastDrawTick = -1; armies = [[], []]; side = 0; battle = null; hover = null; if (online) { side = online.mine; online.sent = 0; online.deadline = Date.now() + DEPLOY_MS; online.net.clearArmy(); } stage = mode === 'local' ? 'cover' : 'deploy'; render(); }
+  function beginRound(): void { lastRosterTick = 0; lastDrawTick = -1; armies = [[], []]; side = 0; battle = null; hover = null; if (online) { side = online.mine; online.sent = 0; online.deadline = Date.now() + DEPLOY_MS; online.net.clearArmy(); } stage = mode === 'local' ? 'cover' : 'deploy'; render(); if (online) tickOnline(); }
   function startMatch(): void { score = [0, 0]; round = 1; totals = [{ kills: 0, damage: 0, survivors: 0, gold: 0 }, { kills: 0, damage: 0, survivors: 0, gold: 0 }]; beginRound(); }
   function ready(): void { if (stage !== 'deploy') return; if (!armies[side]!.length) { toast('병사를 1명 이상 배치하세요'); return; } if (online) { audio.ready(); sendArmy(); return; } if (side === 0 && mode === 'local') { side = 1; stage = 'cover'; render(); return; } if (mode === 'ai') armies[1] = buildArmy(1, difficulty, armies[0]); battle = new Battle(armies[0]!, armies[1]!, round); stage = 'battle'; audio.start(); last = 0; accumulator = 0; render(); }
   function finish(): void { if (!battle || battle.winner === null || stage !== 'battle') return; if (battle.winner !== 'draw') score[battle.winner]!++; for (const s of [0, 1] as const) { const units = battle.units.filter(u => u.side === s); totals[s]!.kills += units.reduce((n, u) => n + u.kills, 0); totals[s]!.damage += units.reduce((n, u) => n + u.damage, 0); totals[s]!.survivors += units.filter(u => u.hp > 0).length; totals[s]!.gold += cost(s); } stage = score.some(n => n >= 2) ? 'result' : 'round'; if (stage === 'result') { if (mode !== 'local') saveResult(online ? score[online.mine]! > score[1 - online.mine]! : score[0]! > score[1]!); if (online) void concludeOnline(); } const mine = online ? online.mine : 0; if (battle?.winner === 'draw') audio.click(); else if (battle?.winner === mine) audio.win(); else audio.lose(); render(); }
@@ -78,6 +88,7 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
       onGone: why => { if (online?.net === net) handleGone(why); },
     });
     online = { s, net, mine: s.host ? 0 : 1, incoming: new Map(), sent: 0, deadline: 0, leaving: 0, done: false, result: '' };
+    onlineTimer = window.setInterval(tickOnline, 500);
     mode = 'online'; startMatch();
   }
   /** 내 배치를 제출하고, 상대 배치가 이미 와 있으면 바로 전투를 시작합니다. */
@@ -122,7 +133,7 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
       show(row.status === 'finished' && delta !== null ? `레이팅 ${delta >= 0 ? '+' : ''}${delta}` : row.status === 'void' ? '두 쪽의 보고가 달라 이 대전은 기록되지 않았습니다.' : '결과가 아직 확정되지 않았습니다.');
     } catch { show('기록을 저장하지 못했습니다. 네트워크를 확인해 주세요.'); }
   }
-  function leaveOnline(finished: boolean): void { const o = online; online = null; o?.net.dispose(finished); }
+  function leaveOnline(finished: boolean): void { const o = online; online = null; if (onlineTimer) window.clearInterval(onlineTimer); onlineTimer = 0; o?.net.dispose(finished); }
   /** 온라인에서 나갑니다. 끝나기 전에 나가면 기권패로 보고합니다. */
   function quitOnline(): void {
     const o = online; if (!o) return;
@@ -138,6 +149,6 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
   function pause(): void { if (online && stage !== 'menu') { leaveClick(); return; } if (stage !== 'deploy' && stage !== 'battle') return; previous = stage; stage = 'pause'; render(); }
   function key(e: KeyboardEvent): void { if (e.key === 'Escape') { e.preventDefault(); if (stage === 'pause') { stage = previous; last = 0; render(); } else if (stage === 'menu') exit(); else pause(); } else if (stage === 'deploy' && /^[1-5]$/.test(e.key)) { selected = TYPES[Number(e.key) - 1]!; render(); } else if (stage === 'deploy' && (e.key === ' ' || e.key === 'Enter') && !(e.target instanceof HTMLElement && e.target.closest('button, input, select, textarea, [contenteditable]'))) { e.preventDefault(); ready(); } }
   function exit(): void { closed = true; audio.dispose(); quitOnline(); lobby?.close(); cancelAnimationFrame(raf); window.removeEventListener('keydown', key); root.remove(); onExit(); }
-  function frame(time: number): void { if (closed) return; if (stage === 'battle' && battle) { if (last) accumulator += Math.min(.1, (time - last) / 1000) * speed; last = time; while (accumulator >= STEP && battle.winner === null) { battle.step(); accumulator -= STEP; audio.battle(battle.effects.filter(e => e.age === 0), time); } if (battle.winner !== null) finish(); else { const canvas = root.querySelector('canvas'); if (canvas && battle.tick !== lastDrawTick) { draw(canvas, armies, side, battle, 0, null); lastDrawTick = battle.tick; } if (battle.tick - lastRosterTick >= 6) { lastRosterTick = battle.tick; const ro = root.querySelector('.sq-roster'); if (ro) ro.innerHTML = rosterHtml(battle); } const label = root.querySelector('.sq-battlebar span'); if (label) label.textContent = `경과 ${Math.floor(battle.tick / 30)}초 / 60초`; } } else last = 0; if (online) tickOnline(); raf = requestAnimationFrame(frame); }
-  window.addEventListener('keydown', key); render(); raf = requestAnimationFrame(frame);
+  function frame(time: number): void { raf = 0; if (closed) return; if (stage === 'battle' && battle) { if (last) accumulator += Math.min(.1, (time - last) / 1000) * speed; last = time; while (accumulator >= STEP && battle.winner === null) { battle.step(); accumulator -= STEP; audio.battle(battle.effects.filter(e => e.age === 0), time); } if (battle.winner !== null) finish(); else { const canvas = root.querySelector('canvas'); if (canvas && battle.tick !== lastDrawTick) { draw(canvas, armies, side, battle, 0, null); lastDrawTick = battle.tick; } if (battle.tick - lastRosterTick >= 6) { lastRosterTick = battle.tick; const ro = root.querySelector('.sq-roster'); if (ro) ro.innerHTML = rosterHtml(battle); } const label = root.querySelector('.sq-battlebar span'); if (label) label.textContent = `경과 ${Math.floor(battle.tick / 30)}초 / 60초`; } } else last = 0; scheduleFrame(); }
+  window.addEventListener('keydown', key); render();
 }

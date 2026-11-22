@@ -40,7 +40,7 @@ export class SquadPvp {
   /** finished=true: 승부가 난 뒤에 나가는 것이므로 상대가 기권승으로 처리하지 않습니다. */
   dispose(finished = false): void { if (this.dead) return; this.dead = true; window.clearInterval(this.timer); this.ch.send({ t: 'bye', fin: finished }); this.ch.close(); }
   private send(): void { this.ch.send(this.round ? { t: 'army', r: this.round, a: this.army } : { t: 'hb' }); }
-  private gone(reason: 'bye' | 'silent' | 'never'): void { if (this.dead) return; this.dead = true; window.clearInterval(this.timer); this.hooks.onGone(reason); }
+  private gone(reason: 'bye' | 'silent' | 'never'): void { if (this.dead) return; this.dead = true; window.clearInterval(this.timer); this.ch.close(); this.hooks.onGone(reason); }
   private tick(): void {
     if (this.dead) return; const now = performance.now();
     if (now - this.lastTick > 2 * TICK_MS * 2) this.last = now; // 내 탭이 멈춰 있던 시간은 상대의 침묵으로 세지 않습니다
@@ -48,6 +48,7 @@ export class SquadPvp {
     if (!this.heard) { if (now - this.born > NEVER_MS) this.gone('never'); } else if (!this.finished && now - this.last > SILENT_MS) this.gone('silent');
   }
   private onMsg(m: NetMsg): void {
+    if (this.dead) return;
     this.last = performance.now(); this.heard = true;
     if (m.t === 'army') { const r = m.r, a = parseArmy(m.a); if (validRound(r) && a) this.hooks.onArmy(r as number, a); }
     else if (m.t === 'bye') { if (m.fin === true) this.finished = true; else this.gone('bye'); }

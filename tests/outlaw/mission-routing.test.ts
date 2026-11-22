@@ -10,7 +10,7 @@ describe('OUTLAW mission target selection and lifecycle', () => {
     ];
     const original = points.slice();
     expect(nearestWalkPoints(points,0,0,3)).toEqual([
-      {x:-1,z:-1}, {x:5,z:0}, {x:0,z:6},
+      {x:1,z:1}, {x:5,z:0}, {x:0,z:6},
     ]);
     expect(points).toEqual(original);
     expect(nearestWalkPoints([],0,0,9)).toEqual([]);

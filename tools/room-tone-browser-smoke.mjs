@@ -36,10 +36,10 @@ try {
   ]){
     const context=await browser.newContext({
       viewport:{width:config.width,height:config.height},
-      isMobile:config.mobile,hasTouch:config.mobile,reducedMotion:"reduce",
+      isMobile:config.mobile,hasTouch:config.mobile,reducedMotion:config.mobile?"reduce":"no-preference",
     });
     await context.addInitScript(()=>{
-      localStorage.setItem("waldo.preferences.v1",JSON.stringify({sound:false,quality:"low"}));
+      localStorage.setItem("waldo.preferences.v1",JSON.stringify({sound:false,quality:"low",reducedMotion:true}));
     });
     const page=await context.newPage();
     page.setDefaultTimeout(30000);
@@ -55,6 +55,17 @@ try {
       assert.equal(await page.locator("#game").isVisible(),false);
       assert.equal(glb.length,0,"GLB should not load on the title screen");
       assert.equal(await page.locator(".mast .wordmark").getAttribute("href"),"../");
+      assert.equal(await page.evaluate(()=>document.body.classList.contains("rt-reduced-motion")),true,
+        "The hub reduced-motion setting must control ROOM TONE animations");
+      if(!config.mobile){
+        await page.evaluate(()=>{
+          const prefs=JSON.parse(localStorage.getItem("waldo.preferences.v1"));
+          localStorage.setItem("waldo.preferences.v1",JSON.stringify({...prefs,reducedMotion:false}));
+          window.dispatchEvent(new StorageEvent("storage",{key:"waldo.preferences.v1"}));
+        });
+        assert.equal(await page.evaluate(()=>document.body.classList.contains("rt-reduced-motion")),false,
+          "Desktop users with no OS motion reduction may re-enable effects");
+      }
       await page.screenshot({path:"browser-artifacts/room-tone-title-"+config.name+".png",animations:"disabled"});
 
       await page.locator("#sound").click();

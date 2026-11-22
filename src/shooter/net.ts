@@ -84,7 +84,7 @@ export class RemoteShotLimiter {
   allow(owner: number, weaponId: WeaponId, now: number): boolean {
     const weapon = WEAPONS[weaponId];
     if (!Number.isInteger(owner) || owner < 0 || !weapon || !num(now, 0, Number.MAX_SAFE_INTEGER)) return false;
-    let bucket = this.buckets.get(owner);
+    const bucket = this.buckets.get(owner);
     if (!bucket) {
       this.buckets.set(owner, { tokens: 1, at: now });
       return true;

@@ -1,11 +1,54 @@
 import { describe, expect, it } from 'vitest';
 import { WEAPONS } from './config';
-import { parseNade, parsePose, parseShot, plausibleNadeThrow, plausiblePlayerShot, RemoteNadeLimiter, type NetShot } from './net';
+import { parseNade, parsePose, parseShot, plausibleNadeThrow, plausiblePlayerShot, RemoteNadeLimiter, RemoteShotLimiter, type NetShot } from './net';
 
 const human = { x: 14, z: -7, air: 0 };
 const shot = (w: NetShot['w'] = 'rifle'): NetShot => ({
   w, ox: 14, oy: 1.5, oz: -7,
   ends: Array.from({length: WEAPONS[w].pellets}, () => [27, 1.5, -7]).flat(),
+});
+
+describe('ZERO ZONE relayed human fire-rate limits', () => {
+  it('accepts buffered rifle shots but not unlimited same-frame duplicates', () => {
+    const limiter = new RemoteShotLimiter();
+    expect(limiter.allow(1, 'rifle', 100)).toBe(true);
+    expect(limiter.allow(1, 'rifle', 100)).toBe(true);
+    expect(limiter.allow(1, 'rifle', 100)).toBe(false);
+    expect(limiter.allow(1, 'rifle', 205)).toBe(true);
+    expect(limiter.allow(1, 'rifle', 205)).toBe(false);
+  });
+
+  it('respects slower shotgun/sniper cooldowns without cross-player interference', () => {
+    const limiter = new RemoteShotLimiter();
+    expect(limiter.allow(1, 'shotgun', 0)).toBe(true);
+    expect(limiter.allow(1, 'shotgun', 0)).toBe(true);
+    expect(limiter.allow(1, 'shotgun', 100)).toBe(false);
+    expect(limiter.allow(2, 'shotgun', 100)).toBe(true);
+    expect(limiter.allow(1, 'shotgun', 800)).toBe(true);
+    expect(limiter.allow(1, 'shotgun', 850)).toBe(false);
+
+    const sniper = new RemoteShotLimiter();
+    expect(sniper.allow(5, 'sniper', 0)).toBe(true);
+    expect(sniper.allow(5, 'sniper', 0)).toBe(true);
+    expect(sniper.allow(5, 'sniper', 1040)).toBe(true);
+  });
+
+  it('rejects invalid shooter metadata and backwards timestamps', () => {
+    const limiter = new RemoteShotLimiter();
+    expect(limiter.allow(-1, 'rifle', 200)).toBe(false);
+    expect(limiter.allow(3, 'rifle', NaN)).toBe(false);
+    expect(limiter.allow(3, 'rifle', 200)).toBe(true);
+    expect(limiter.allow(3, 'rifle', 199)).toBe(false);
+    expect(limiter.allow(3, 'pistol', Infinity)).toBe(false);
+  });
+
+  it('bounds an impossible 40Hz stream while preserving legitimate automatic fire', () => {
+    const limiter = new RemoteShotLimiter();
+    let admitted = 0;
+    for (let t = 0; t < 2000; t += 25) if (limiter.allow(7, 'rifle', t)) admitted++;
+    expect(admitted).toBeGreaterThan(14);
+    expect(admitted).toBeLessThan(23);
+  });
 });
 
 describe('ZERO ZONE online grenade sender verification', () => {

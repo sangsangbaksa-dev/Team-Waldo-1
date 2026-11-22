@@ -276,3 +276,21 @@ it('suspends game audio on pause and resumes it through each exit path', () => {
   expect(pauseAudio).toHaveBeenLastCalledWith(false);
   button('#exit').click();
 });
+
+it('keeps held Enter or Space from repeatedly toggling keyboard-placed troops', () => {
+  openSquad(vi.fn());
+  button('#start').click();
+  const canvas = document.querySelector<HTMLCanvasElement>('#sq-field-canvas')!;
+  const press = (key: string, repeat = false) => {
+    canvas.dispatchEvent(new KeyboardEvent('keydown', { key, repeat, bubbles: true, cancelable: true }));
+  };
+  canvas.focus(); press('Enter');
+  expect(document.querySelector('.sq-budget strong')?.textContent).toContain('900');
+  for (let i = 0; i < 6; i++) press('Enter', true);
+  expect(document.querySelector('.sq-budget strong')?.textContent).toContain('900');
+  press('ArrowRight', true); press(' ', false);
+  expect(document.querySelector('.sq-budget strong')?.textContent).toContain('800');
+  press(' ', true);
+  expect(document.querySelector('.sq-budget strong')?.textContent).toContain('800');
+  button('#pause').click(); button('#exit').click();
+});

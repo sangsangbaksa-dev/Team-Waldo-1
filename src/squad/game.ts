@@ -89,6 +89,8 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
       const move = moves[e.key], action = e.key === 'Enter' || e.key === ' ' || e.key === 'Delete' || e.key === 'Backspace';
       if (!move && !action) return;
       e.preventDefault(); e.stopPropagation();
+      // Holding Enter/Space must not alternate a deployed soldier on every key repeat.
+      if (action && e.repeat) return;
       const p = hover && legal(hover) ? hover : { x: 5, y: side ? 4 : 15 };
       if (move) {
         hover = { x: Math.max(0, Math.min(11, p.x + move[0])), y: Math.max(side ? 0 : 10, Math.min(side ? 9 : 19, p.y + move[1])) };

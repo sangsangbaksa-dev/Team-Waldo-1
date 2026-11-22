@@ -19,7 +19,7 @@ function loadEngine() {
   return enginePromise;
 }
 import { modelBytes } from "./assets.js";
-import { chapters, makeLevel, paths, routeFrom, neighbors } from "./levels.mjs";
+import { chapters, makeLevel, paths, route, routeFrom, neighbors } from "./levels.mjs";
 import { buildEnvironment, buildHidingSpot, createHidingSpotKit } from "./environment.js";
 import { Sound } from "./sound.js";
 

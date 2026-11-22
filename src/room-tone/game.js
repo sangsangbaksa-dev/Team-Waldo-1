@@ -1,6 +1,23 @@
-import * as THREE from "three";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { createCaptureShot, fixMonster } from "./monster.js";
+// Keep the title screen independent of the heavy 3D engine. The code and
+// monster binary are requested together only when a play session begins.
+let THREE, GLTFLoader, createCaptureShot, fixMonster;
+let enginePromise;
+function loadEngine() {
+  if (!enginePromise) enginePromise = Promise.all([
+    import("three"),
+    import("three/addons/loaders/GLTFLoader.js"),
+    import("./monster.js"),
+  ]).then(([three, loader, monster]) => {
+    THREE = three;
+    GLTFLoader = loader.GLTFLoader;
+    createCaptureShot = monster.createCaptureShot;
+    fixMonster = monster.fixMonster;
+  }).catch((error) => {
+    enginePromise = null;
+    throw error;
+  });
+  return enginePromise;
+}
 import { modelBytes } from "./assets.js";
 import { chapters, makeLevel, paths, routeFrom, neighbors } from "./levels.mjs";
 import { buildEnvironment, buildHidingSpot, createHidingSpotKit } from "./environment.js";
@@ -38,7 +55,7 @@ let renderer,
   entity,
   environment,
   props,
-  player = new THREE.Vector3(),
+  player = null,
   yaw = 0,
   pitch = 0;
 let moved = 0,
@@ -247,6 +264,11 @@ function pauseGame() {
 }
 $("pauseGame").onclick = pauseGame;
 async function setup() {
+  // Start the 4.5 MB binary request before dynamic imports and WebGL setup.
+  // Both requests remain optional until a player chooses to start.
+  const monsterBinary = !model ? modelBytes() : null;
+  await loadEngine();
+  if (!player) player = new THREE.Vector3();
   if (!renderer) {
     renderer = new THREE.WebGLRenderer({
       antialias: true,
@@ -273,7 +295,7 @@ async function setup() {
     });
   }
   if (!model) {
-    const gltf = await new GLTFLoader().parseAsync(await modelBytes(), "");
+    const gltf = await new GLTFLoader().parseAsync(await monsterBinary, "");
     model = gltf.scene;
     fixMonster(THREE, model);
     model.traverse((o) => {

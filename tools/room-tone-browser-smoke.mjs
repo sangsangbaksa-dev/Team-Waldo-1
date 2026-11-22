@@ -175,6 +175,21 @@ try {
       assert.match(await page.locator("#panelTitle").innerText(),/시설 도면/);
       await page.getByRole("button",{name:"닫기"}).click();
       assert.equal(await page.locator("#dialog").isVisible(),false);
+      if(config.name==="desktop"){
+        // Return to title and resume the saved chapter using the same WebGL
+        // renderer and monster scene. This covers disposal/re-entry regressions.
+        const modelDownloads=glb.length;
+        await page.locator("#pauseGame").click();
+        await page.getByRole("button",{name:"타이틀로"}).click();
+        await page.locator("#continue").waitFor({state:"visible"});
+        await page.locator("#continue").click();
+        await page.waitForFunction(()=>
+          document.querySelector("#panelTitle")?.textContent?.includes("끊어진 전원"),null,{timeout:90000});
+        assert.equal(await page.locator("#viewWrap canvas").count(),1,
+          "Returning to ROOM TONE must reuse the existing WebGL canvas");
+        assert.equal(glb.length,modelDownloads,
+          "Resuming from title should not download the monster a second time");
+      }
       assert.deepEqual(errors,[],"Unexpected browser exceptions");
       assert.deepEqual(shaderErrors,[],"WebGL shader compilation must not emit errors");
       await page.screenshot({path:"browser-artifacts/room-tone-playing-"+config.name+".png",animations:"disabled"});

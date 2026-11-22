@@ -161,3 +161,18 @@ it('keeps just one toast timer and clears it when leaving the game', () => {
   button('#pause').click(); button('#exit').click();
   expect(vi.getTimerCount()).toBe(0);
 });
+
+it('keeps the same battlefield canvas when selecting units or changing speed', () => {
+  openSquad(vi.fn());
+  button('#start').click();
+  const deployingCanvas = document.querySelector('.sq-root canvas');
+  button('[data-unit="archer"]').click();
+  expect(document.querySelector('.sq-root canvas')).toBe(deployingCanvas);
+  button('#auto').click(); button('#ready').click();
+  const battleCanvas = document.querySelector('.sq-root canvas');
+  button('#speed2').click();
+  button('#speed4').click();
+  expect(document.querySelector('.sq-root canvas')).toBe(battleCanvas);
+  expect(button('#speed4').getAttribute('aria-pressed')).toBe('true');
+  button('#pause').click(); button('#exit').click();
+});

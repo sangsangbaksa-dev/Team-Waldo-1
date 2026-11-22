@@ -87,13 +87,35 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
     canvas.onlostpointercapture = e => { if (drag?.pointerId === e.pointerId) drag = null; };
     canvas.onpointerup = e => { if (!drag || drag.pointerId !== e.pointerId) return; const before = armies[side]!.length; const p = cell(e), from = armies[side]!.find(u => u.x === drag!.x && u.y === drag!.y); if (legal(p)) { const at = armies[side]!.find(u => u.x === p.x && u.y === p.y); if (from && (p.x !== drag.x || p.y !== drag.y)) { if (!at) { from.x = p.x; from.y = p.y; } } else if (at) armies[side] = armies[side]!.filter(u => u !== at); else if (cost(side) + UNITS[selected].cost <= BUDGET) armies[side]!.push({ type: selected, ...p }); } drag = null; const after = armies[side]!.length; if (after > before) audio.place(); else if (after < before) audio.remove(); render(); };
   }
+  /** Choosing a unit changes only the palette and preview, not the whole battlefield canvas. */
+  function chooseUnit(type: UnitType): void {
+    if (stage !== 'deploy' || selected === type) return;
+    selected = type;
+    root.querySelectorAll<HTMLButtonElement>('[data-unit]').forEach(b => {
+      const active = b.dataset.unit === selected;
+      b.classList.toggle('active', active);
+      b.setAttribute('aria-pressed', String(active));
+    });
+    const canvas = root.querySelector('canvas');
+    if (canvas) draw(canvas, armies, side, null, UNITS[selected].range, hover, selected);
+  }
+  /** Switch battle speed without replacing the canvas, scoreboard or keyboard focus. */
+  function chooseSpeed(value: number): void {
+    if (stage !== 'battle' || speed === value) return;
+    speed = value;
+    root.querySelectorAll<HTMLButtonElement>('[id^="speed"]').forEach(b => {
+      const active = b.id === 'speed' + value;
+      b.classList.toggle('active', active);
+      b.setAttribute('aria-pressed', String(active));
+    });
+  }
   function bind(): void {
     const on = (id: string, fn: () => void) => root.querySelector<HTMLButtonElement>('#' + id)?.addEventListener('click', fn);
     on('exit', exit); on('sound', () => { audio.enabled = !audio.enabled; writePreferences({ ...readPreferences(), sound: audio.enabled }); audio.click(); render(); }); on('menu', () => { stage = 'menu'; battle = null; render(); }); on('start', () => { if (mode === 'online') void openOnline(); else startMatch(); });
     root.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(b => b.onclick = () => { mode = b.dataset.mode as typeof mode; audio.click(); render(); });
     root.querySelectorAll<HTMLButtonElement>('[data-diff]').forEach(b => b.onclick = () => { difficulty = b.dataset.diff as Difficulty; audio.click(); render(); }); on('uncover', () => { stage = 'deploy'; render(); }); on('ready', ready); on('auto', () => { armies[side] = autoArmy(side); audio.place(); render(); }); on('clear', () => { armies[side] = []; render(); }); on('pause', pause); on('resume', () => { stage = previous; last = 0; render(); }); on('next', () => { if (stage === 'result') { if (online) { quitOnline(); stage = 'menu'; battle = null; render(); } else startMatch(); } else { round++; beginRound(); } }); on('skip', () => { if (!battle) return; while (battle.winner === null) battle.step(); finish(); });
-    for (const n of [1, 2, 4]) on('speed' + n, () => { speed = n; render(); });
-    root.querySelectorAll<HTMLButtonElement>('[data-unit]').forEach(b => b.onclick = () => { selected = b.dataset.unit as UnitType; render(); });
+    for (const n of [1, 2, 4]) on('speed' + n, () => chooseSpeed(n));
+    root.querySelectorAll<HTMLButtonElement>('[data-unit]').forEach(b => b.onclick = () => chooseUnit(b.dataset.unit as UnitType));
   }
   function toast(text: string): void { root.querySelector('.sq-toast')?.remove(); if (toastTimer) window.clearTimeout(toastTimer); const d = document.createElement('div'); d.className = 'sq-toast'; d.textContent = text; root.append(d); toastTimer = window.setTimeout(() => { d.remove(); toastTimer = 0; }, 3000); }
   async function openOnline(): Promise<void> {
@@ -167,7 +189,7 @@ export function openSquad(onExit: () => void, opts: { loading?: LoadingScreen } 
   function pause(): void { if (online && stage !== 'menu') { leaveClick(); return; } if (stage !== 'deploy' && stage !== 'battle') return; previous = stage; stage = 'pause'; render(); }
   function key(e: KeyboardEvent): void {
     if (e.repeat || e.defaultPrevented || (e.target instanceof Element && e.target.closest('.pvp-root, input, textarea, select, [contenteditable="true"]'))) return;
-    if (e.key === 'Escape') { e.preventDefault(); if (stage === 'pause') { stage = previous; last = 0; render(); } else if (stage === 'menu') exit(); else pause(); } else if (stage === 'deploy' && /^[1-5]$/.test(e.key)) { selected = TYPES[Number(e.key) - 1]!; render(); } else if (stage === 'deploy' && (e.key === ' ' || e.key === 'Enter') && !(e.target instanceof HTMLElement && e.target.closest('button, input, select, textarea, [contenteditable]'))) { e.preventDefault(); ready(); } }
+    if (e.key === 'Escape') { e.preventDefault(); if (stage === 'pause') { stage = previous; last = 0; render(); } else if (stage === 'menu') exit(); else pause(); } else if (stage === 'deploy' && /^[1-5]$/.test(e.key)) { chooseUnit(TYPES[Number(e.key) - 1]!); } else if (stage === 'deploy' && (e.key === ' ' || e.key === 'Enter') && !(e.target instanceof HTMLElement && e.target.closest('button, input, select, textarea, [contenteditable]'))) { e.preventDefault(); ready(); } }
   function exit(): void { closed = true; audio.dispose(); quitOnline(); lobby?.close(); if (toastTimer) window.clearTimeout(toastTimer); toastTimer = 0; cancelAnimationFrame(raf); window.removeEventListener('keydown', key); root.remove(); onExit(); }
   function frame(time: number): void { raf = 0; if (closed) return; if (stage === 'battle' && battle) { if (last) accumulator += Math.min(.1, (time - last) / 1000) * speed; last = time; while (accumulator >= STEP && battle.winner === null) { battle.step(); accumulator -= STEP; audio.battle(battle.effects, time); } if (battle.winner !== null) finish(); else { const canvas = root.querySelector('canvas'); if (canvas && battle.tick !== lastDrawTick) { draw(canvas, armies, side, battle, 0, null); lastDrawTick = battle.tick; } if (battle.tick - lastRosterTick >= 6) { lastRosterTick = battle.tick; const ro = root.querySelector('.sq-roster'); if (ro) ro.innerHTML = rosterHtml(battle); } const seconds = Math.floor(battle.tick / 30); if (seconds !== lastBattleSecond) { lastBattleSecond = seconds; const label = root.querySelector('.sq-battlebar span'); if (label) label.textContent = `경과 ${seconds}초 / 60초`; } } } else last = 0; scheduleFrame(); }
   window.addEventListener('keydown', key); render();

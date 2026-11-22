@@ -5,3 +5,10 @@ export function initialMute(local, global) {
     return !global.sound;
   return typeof local === "boolean" ? local : false;
 }
+
+/** Honor either the arcade-wide or operating-system motion preference. */
+export function reduceRoomToneMotion(preferences, systemReduced) {
+  return Boolean(systemReduced || (
+    preferences && typeof preferences === "object" && preferences.reducedMotion === true
+  ));
+}

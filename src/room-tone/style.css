@@ -954,3 +954,11 @@ button.primary { background: #e1e1dd; border-color: #e1e1dd; color: #151515; }
     height: max(78px, calc(env(safe-area-inset-top) + 54px));
   }
 }
+
+/* Honor the in-game reduced-motion setting even when the OS does not request it. */
+body.rt-reduced-motion #home::after,
+body.rt-reduced-motion #viewWrap::before,
+body.rt-reduced-motion #viewWrap.caught-shot::after,
+body.rt-reduced-motion #viewWrap.noticed::before,
+body.rt-reduced-motion #viewWrap.noticed .lens { animation: none !important; }
+body.rt-reduced-motion #viewWrap.noticed::before { transform: none; }

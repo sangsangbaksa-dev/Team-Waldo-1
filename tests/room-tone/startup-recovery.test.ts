@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { modelBytes, releaseModelBytes } from "../../src/room-tone/assets.js";
-import { initialMute } from "../../src/room-tone/preferences.mjs";
+import { initialMute, reduceRoomToneMotion } from "../../src/room-tone/preferences.mjs";
 import { neighbors, paths, makeLevel, chapters } from "../../src/room-tone/levels.mjs";
 import { normalizeCampaign } from "../../src/room-tone/campaign.mjs";
 
@@ -88,5 +88,17 @@ describe("ROOM TONE campaign size derived from actual chapter data",()=>{
     expect(normalizeCampaign({
       v:1,ch:chapters.length,found:[false,false,false],solved:false,elapsed:1,seen:[],
     })).toBeNull();
+  });
+});
+
+describe("ROOM TONE motion accessibility",()=>{
+  it("honors system reduced motion above a permissive hub preference",()=>{
+    expect(reduceRoomToneMotion({reducedMotion:false},true)).toBe(true);
+  });
+  it("supports the arcade reduced-motion setting without trusting invalid types",()=>{
+    expect(reduceRoomToneMotion({reducedMotion:true},false)).toBe(true);
+    expect(reduceRoomToneMotion({reducedMotion:false},false)).toBe(false);
+    expect(reduceRoomToneMotion(null,false)).toBe(false);
+    expect(reduceRoomToneMotion({reducedMotion:"true"},false)).toBe(false);
   });
 });

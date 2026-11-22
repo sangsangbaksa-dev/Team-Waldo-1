@@ -24,7 +24,7 @@ import { buildEnvironment, buildHidingSpot, createHidingSpotKit } from "./enviro
 import { Sound } from "./sound.js";
 import { normalizeCampaign } from "./campaign.mjs";
 import { createPointerOwner, tryCapture } from "./input.mjs";
-import { initialMute } from "./preferences.mjs";
+import { initialMute, reduceRoomToneMotion } from "./preferences.mjs";
 import { createIdLookup } from "./dom.mjs";
 import { renderingScale } from "./render-quality.mjs";
 
@@ -108,7 +108,8 @@ let returnFromMap = resume;
 let renderCaptureShot;
 let captureTime = 0;
 let investigation = null, nextFlicker = 0, flickerUntil = 0;
-const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+const motionMedia = matchMedia("(prefers-reduced-motion: reduce)");
+let reducedMotion = motionMedia.matches;
 const touch =
   matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
 lastPointerType = touch ? "touch" : "mouse";
@@ -137,6 +138,11 @@ function save() {
   } catch { /* Browser storage or pointer lock is optional. */ }
 }
 const PREFS = "waldo.preferences.v1";
+function syncMotionPreference() {
+  reducedMotion = reduceRoomToneMotion(read(PREFS), motionMedia.matches);
+  document.body.classList.toggle("rt-reduced-motion", reducedMotion);
+}
+motionMedia.addEventListener?.("change", syncMotionPreference);
 function syncAudioButtons() {
   for (const b of [$("sound"), $("gsound")]) {
     b.setAttribute("aria-pressed", String(!muted));
@@ -160,11 +166,15 @@ function toggleAudio() {
   } catch { /* Browser storage is optional. */ }
 }
 applyMute(initialMute(read("rt-silent"), read(PREFS)));
+syncMotionPreference();
 $("sound").onclick = $("gsound").onclick = toggleAudio;
 window.addEventListener("storage", (e) => {
   if (e.key === PREFS || (e.key === "rt-silent" && read(PREFS)?.sound === undefined))
     applyMute(initialMute(read("rt-silent"), read(PREFS)));
-  if (e.key === PREFS && renderer && camera) resize();
+  if (e.key === PREFS) {
+    syncMotionPreference();
+    if (renderer && camera) resize();
+  }
 });
 function screens(id) {
   for (const key of ["home", "game"]) $(key).hidden = key !== id;
@@ -1345,20 +1355,18 @@ function update(dt) {
     if (hideBreath === 0) leaveHiding(true);
   }
   eyeHeight = THREE.MathUtils.damp(eyeHeight, crouched ? 1.12 : 1.58, 12, dt);
-  camera.position.set(
-    player.x,
-    eyeHeight +
-      Math.sin(elapsed * (running ? 12 : 8.3)) * Math.min(moved, 0.05) * 0.38,
-    player.z,
-  );
+  // Reduced motion must also suppress first-person walking camera bob.
+  const cameraBob = reducedMotion ? 0 :
+    Math.sin(elapsed * (running ? 12 : 8.3)) * Math.min(moved, 0.05) * 0.38;
+  camera.position.set(player.x, eyeHeight + cameraBob, player.z);
   const proximity = Math.max(0, 1 - Math.hypot(player.x - entity.position.x, player.z - entity.position.z) / 12);
-  const sway = reducedMotion.matches ? 0 : proximity * 0.006 * Math.sin(now * 2.4);
+  const sway = reducedMotion ? 0 : proximity * 0.006 * Math.sin(now * 2.4);
   camera.rotation.set(pitch + sway * 0.4, yaw, sway, "YXZ");
-  if (!reducedMotion.matches && now >= nextFlicker) {
+  if (!reducedMotion && now >= nextFlicker) {
     flickerUntil = now + 0.18;
     nextFlicker = now + 24 + Math.random() * 35;
   }
-  const flickering = !reducedMotion.matches && now < flickerUntil && Math.sin(now * 55) > 0;
+  const flickering = !reducedMotion && now < flickerUntil && Math.sin(now * 55) > 0;
   lamp.visible = beam.visible = lightOn && !hiddenSpot && !flickering;
   enemyUpdate(dt, running);
   if (state !== "play") return;
@@ -1423,9 +1431,9 @@ function frame(ts) {
   const wasPlaying = state === "play";
   if (wasPlaying) update(dt);
   if (state === "capture") {
-    const duration = reducedMotion.matches ? 1.2 : 1.45;
+    const duration = reducedMotion ? 1.2 : 1.45;
     if (captureTime < duration) {
-      renderCaptureShot(renderer, camera.aspect, captureTime, reducedMotion.matches);
+      renderCaptureShot(renderer, camera.aspect, captureTime, reducedMotion);
       if (!wasPlaying) captureTime += dt;
     } else {
       renderer.render(scene, camera);

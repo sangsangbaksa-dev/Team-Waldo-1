@@ -94,6 +94,7 @@ export class CityView {
   private disposed = false;
   private scratch = new THREE.Vector3();
   private readonly shadowRight = new THREE.Vector3(); private readonly shadowUp = new THREE.Vector3(); private readonly shadowFocus = new THREE.Vector3();
+  private readonly frameSky = tex.skyColors(12);
   private readonly fogStorm = new THREE.Color(0x56606a); private readonly fogLightning = new THREE.Color(0xdce6ff);
   private readonly hemiNightTint = new THREE.Color(0x9aaccb);
   private matrix = new THREE.Object3D();
@@ -365,7 +366,7 @@ export class CityView {
     (l.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
   }
   private lighting(clock: number, position: THREE.Vector3, rain: number): void {
-    const c = tex.skyColors(clock); this.night = c.night; this.sky.update(c); this.sky.mesh.position.copy(position);
+    const c = tex.skyColors(clock, this.frameSky); this.night = c.night; this.sky.update(c); this.sky.mesh.position.copy(position);
     // Quantize the material update: rain changes surface response without rewriting geometry.
     const wet = Math.round(Math.max(0, Math.min(1, rain)) * 50) / 50;
     if (wet !== this.wetness) { this.wetness = wet; if (this.roadMat) { this.roadMat.roughness = .96 - .58 * wet; this.roadMat.metalness = .02 + .17 * wet; this.roadMat.color.setRGB(.47 - .15 * wet, .51 - .15 * wet, .53 - .14 * wet); } if (this.pavementMat) this.pavementMat.roughness = .93 - .37 * wet; }

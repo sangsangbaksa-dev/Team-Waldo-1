@@ -79,15 +79,45 @@ const palettes: Array<{ hour: number; p: SkyPalette }> = [
   { hour: 21, p: { top: 0x0d1730, horizon: 0x34364f, fog: 0x303448, sun: 0x9a9cba, hemiSky: 0x4b5978, hemiGround: 0x303039, sunIntensity: 0, hemiIntensity: .2, night: .95 } },
   { hour: 24, p: { top: 0x071126, horizon: 0x263047, fog: 0x263044, sun: 0x869aba, hemiSky: 0x415578, hemiGround: 0x292a31, sunIntensity: 0, hemiIntensity: .18, night: 1 } },
 ];
-/** 24시간 주기로 이어지는 조명 값. */
-export function skyColors(clock: number) {
-  const h = ((clock % 24) + 24) % 24; let i = 0; while (i < palettes.length - 2 && h >= palettes[i + 1].hour) i++;
-  const a = palettes[i], b = palettes[i + 1]; let t = (h - a.hour) / (b.hour - a.hour); t = t * t * (3 - 2 * t);
-  const color = (key: 'top' | 'horizon' | 'fog' | 'sun' | 'hemiSky' | 'hemiGround') => new THREE.Color(a.p[key]).lerp(new THREE.Color(b.p[key]), t);
-  const number = (key: 'sunIntensity' | 'hemiIntensity' | 'night') => THREE.MathUtils.lerp(a.p[key], b.p[key], t);
-  const angle = h < 5 ? Math.PI + (h + 5) * Math.PI / 10 : h < 19 ? (h - 5) * Math.PI / 14 : Math.PI + (h - 19) * Math.PI / 10; const sunDir = new THREE.Vector3(Math.cos(angle), Math.sin(angle), .25).normalize();
-  const night = number('night');
-  return { top: color('top'), horizon: color('horizon'), fog: color('fog'), sun: color('sun'), sunIntensity: number('sunIntensity'), hemiSky: color('hemiSky'), hemiGround: color('hemiGround'), hemiIntensity: number('hemiIntensity'), night, sunDir, moonDir: sunDir.clone().negate(), stars: THREE.MathUtils.smoothstep(night, .5, .95) };
+export interface SkyColors {
+  top: THREE.Color; horizon: THREE.Color; fog: THREE.Color; sun: THREE.Color;
+  hemiSky: THREE.Color; hemiGround: THREE.Color;
+  sunIntensity: number; hemiIntensity: number; night: number; stars: number;
+  sunDir: THREE.Vector3; moonDir: THREE.Vector3;
+}
+type PaletteColorKey = 'top' | 'horizon' | 'fog' | 'sun' | 'hemiSky' | 'hemiGround';
+const COLOR_KEYS: readonly PaletteColorKey[] = ['top', 'horizon', 'fog', 'sun', 'hemiSky', 'hemiGround'];
+const PALETTE_COLORS = palettes.map(({ p }) => ({
+  top: new THREE.Color(p.top), horizon: new THREE.Color(p.horizon),
+  fog: new THREE.Color(p.fog), sun: new THREE.Color(p.sun),
+  hemiSky: new THREE.Color(p.hemiSky), hemiGround: new THREE.Color(p.hemiGround),
+}));
+const blankSky = (): SkyColors => ({
+  top: new THREE.Color(), horizon: new THREE.Color(), fog: new THREE.Color(),
+  sun: new THREE.Color(), hemiSky: new THREE.Color(), hemiGround: new THREE.Color(),
+  sunIntensity: 0, hemiIntensity: 0, night: 0, stars: 0,
+  sunDir: new THREE.Vector3(), moonDir: new THREE.Vector3(),
+});
+/** 24-hour lighting values. Optional out reuses all Color/Vector buffers;
+ * the default call creates an independent palette for immutable consumers. */
+export function skyColors(clock: number, out: SkyColors = blankSky()): SkyColors {
+  const h = ((clock % 24) + 24) % 24;
+  let i = 0;
+  while (i < palettes.length - 2 && h >= palettes[i + 1].hour) i++;
+  const a = palettes[i].p, b = palettes[i + 1].p;
+  let t = (h - palettes[i].hour) / (palettes[i + 1].hour - palettes[i].hour);
+  t = t * t * (3 - 2 * t);
+  const p0 = PALETTE_COLORS[i], p1 = PALETTE_COLORS[i + 1];
+  for (const key of COLOR_KEYS) out[key].copy(p0[key]).lerp(p1[key], t);
+  out.sunIntensity = THREE.MathUtils.lerp(a.sunIntensity, b.sunIntensity, t);
+  out.hemiIntensity = THREE.MathUtils.lerp(a.hemiIntensity, b.hemiIntensity, t);
+  out.night = THREE.MathUtils.lerp(a.night, b.night, t);
+  out.stars = THREE.MathUtils.smoothstep(out.night, .5, .95);
+  const angle = h < 5 ? Math.PI + (h + 5) * Math.PI / 10
+    : h < 19 ? (h - 5) * Math.PI / 14 : Math.PI + (h - 19) * Math.PI / 10;
+  out.sunDir.set(Math.cos(angle), Math.sin(angle), .25).normalize();
+  out.moonDir.copy(out.sunDir).negate();
+  return out;
 }
 /** 역면 구와 매 프레임 갱신할 수 있는 셰이더. */
 export function makeSkyDome(): { mesh: THREE.Mesh; update: (colors: ReturnType<typeof skyColors>) => void } {

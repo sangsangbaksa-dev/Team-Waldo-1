@@ -19,3 +19,10 @@ export function emissionStep(carry:number,rate:number,dt:number):{count:number;c
 export function trackLightStrength(sunPower:number,rain:number|undefined):number{
   return Math.min(0.62,Math.max(0,(1.1-sunPower)*0.8)+Math.max(0,rain??0)*0.15);
 }
+
+/** Rain streak spawning stays consistent when the display drops below 30 FPS.
+ * Low quality uses fewer particles and less per-frame WebGL buffer churn. */
+export function rainEmissionStep(carry:number,rain:number,quality:'high'|'standard'|'low',dt:number):{count:number;carry:number}{
+  const wet=Number.isFinite(rain)?Math.min(1,Math.max(0,rain)):0;
+  return emissionStep(carry,wet*(quality==='low'?900:2040),dt);
+}

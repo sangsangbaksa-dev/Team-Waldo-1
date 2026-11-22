@@ -32,7 +32,7 @@ export function updateCityEvents(w: World): void {
     startEvent(w, pool[Math.floor(w.rng() * pool.length)], pb.x, pb.y);
     return;
   }
-  const ev = w.event; ev.t -= 1;
+  const ev = w.event; if(ev.t<=0){finish(w,false);return;} ev.t -= 1;
   if (ev.kind === 'convoy') {
     const v = w.vehicles.find(q => q.id === ev.vid);
     if (v && v.alive && v.hp > 0) { ev.x = v.x; ev.y = v.y; }
@@ -71,7 +71,7 @@ export function resolveBountyKill(w: World, target: Actor, killer: number): void
 function pickDrop(w: World, px: number, py: number): { x: number; y: number } | null {
   for (let k = 0; k < 30; k++) {
     const p = lanePoint(w.rng), d = Math.hypot(p.x - px, p.y - py);
-    if (d < 400 || d > 1300 || p.x < 80 || p.y < 80 || p.x > SIZE - 80 || p.y > SIZE - 80 || navBlocked(w.map, p.x, p.y)) continue;
+    if (d < 400 || d > 1300 || p.x < 80 || p.y < 80 || p.x > SIZE - 80 || p.y > SIZE - 80 || navBlocked(w.map, p.x, p.y) || Math.hypot(p.x-w.zone.x,p.y-w.zone.y)>w.zone.r-60) continue;
     return { x: p.x, y: p.y };
   }
   return null;
@@ -85,6 +85,7 @@ const MSG: Record<CityEventKind, [string, string]> = {
 };
 
 export function startEvent(w: World, kind: CityEventKind, px: number, py: number): void {
+  if(w.event || w.opts.tutorial || w.opts.duel)return;
   const z = w.zone, time = kind === 'convoy' ? 110 : kind === 'delivery' ? 140 : kind === 'bounty' ? 120 : 90;
   for (let k = 0; k < 24; k++) {
     const p = lanePoint(w.rng), d = Math.hypot(p.x - px, p.y - py);

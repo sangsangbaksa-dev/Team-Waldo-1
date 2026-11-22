@@ -107,6 +107,11 @@ try {
         assert.equal(touch, 'pan-y', 'Journal should support vertical swipe scrolling');
       }
       await page.screenshot({ path: 'browser-artifacts/last-city-missions-' + size.name + '.png', animations: 'disabled' });
+      // Match-feed contents are untrusted network-derived strings: never render them as HTML.
+      await page.evaluate(() => { window.__city.world.say('<img src=x onerror=window.__cityInjected=true> & CHECK', '#ff5d5d'); });
+      await page.waitForFunction(() => document.querySelector('#c-feed')?.textContent?.includes('<img src=x'));
+      assert.equal(await page.locator('#c-feed img').count(), 0, 'HTML inside match feed must remain escaped text');
+      assert.equal(await page.evaluate(() => window.__cityInjected), undefined, 'No script execution from match feed');
       await page.evaluate(() => {
         window.__city.world.quests[0].done = true;
       });
@@ -116,6 +121,26 @@ try {
       if (size.name === 'desktop') await page.keyboard.press('j');
       else await page.locator('[data-act="closemissions"]').click();
       await page.locator('.c-missions').waitFor({ state: 'hidden' });
+      // Verify that opening pause does not continuously submit costly 3D frames.
+      await page.evaluate(() => {
+        const r3=window.__city.r3;
+        const original=r3.draw.bind(r3);
+        let count=0;
+        r3.draw=(...args)=>{count++;return original(...args);};
+        window.__cityDrawCount=()=>count;
+      });
+      // In desktop first-person mode the pointer is locked to the canvas: Escape is the
+      // real pause shortcut. Mobile users can tap the visible HUD control instead.
+      if(size.name==='desktop')await page.keyboard.press('Escape');
+      else await page.locator('.c-topbtns [data-act="pause"]').click();
+      await page.locator('.c-pause').waitFor({state:'visible'});
+      await page.waitForTimeout(180);
+      const pausedDraws=await page.evaluate(()=>window.__cityDrawCount());
+      await page.waitForTimeout(200);
+      assert.equal(await page.evaluate(()=>window.__cityDrawCount()),pausedDraws,'Paused 3D scene must remain static');
+      await page.locator('.c-pause [data-act="resume"]').click();
+      await page.waitForFunction(previous=>window.__cityDrawCount()>previous,pausedDraws);
+      assert.ok(await page.evaluate(()=>window.__cityDrawCount())>pausedDraws,'Resume must restore WebGL drawing');
       assert.deepEqual(errors, [], 'Unexpected browser errors');
       results.push({ ...size, status: 'passed', cards: 8, raceStart });
       console.log('PASS Last City mission UI: ' + size.name);

@@ -10,6 +10,8 @@ import { createDrift, flushDrift, nitroForChain, stepDrift, type DriftScore } fr
 export interface Racer {
   id: number; name: string; color: string; player: boolean; car: CarState; ai: AiProfile; params: CarParams; model: CarDef['model']; accent: string;
   lapTimes: number[]; lapStart: number; finishTime: number | null; lastEv: StepEvents;
+  /** Single mutable AI control buffer, owned by this racer (not by the shared input). */
+  aiControl?: CarInput;
   /** 1대1 대전의 상대 차량: 물리 대신 네트워크 스냅샷을 따라갑니다. */
   link?: RemoteLink;
   /** 멀티플레이 방에서 이 차량을 모는 사람의 계정 id */
@@ -45,6 +47,7 @@ export interface RaceOptions { level?: number; car?: string; pvp?: PvpOptions; m
 export const wetGrip = (rain: number | undefined): number => 1 - 0.22 * (rain ?? 0);
 
 export function createRace(track: Track, laps = 3, bestLap = Infinity, opts: RaceOptions = {}): RaceState {
+  laps=Number.isFinite(laps)?Math.max(1,Math.min(3,Math.floor(laps))):3;
   const wet = wetGrip(mapById(opts.map ?? '').theme.rain), level = levelById(opts.level ?? 1), mine = carById(opts.car ?? CARS[0].id), at = CARS.indexOf(mine);
   const mk = (id: number, name: string, def: CarDef, player: boolean, slot: [number, number], ai: AiProfile): Racer =>
     ({ id, name, color: def.color, player, car: newCar(track, track.n + slot[0], slot[1]), ai: { ...ai, grip: ai.grip * wet }, params: { ...carParams(def), grip: carParams(def).grip * wet }, model: def.model, accent: def.accent, lapTimes: [], lapStart: 0, finishTime: null, lastEv: { hit: 0, driftBoost: 0, pad: false } });
@@ -56,9 +59,11 @@ export function createRace(track: Track, laps = 3, bestLap = Infinity, opts: Rac
     return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [me, rival], player: me, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift() };
   }
   if (opts.multi) {
-    const ai: AiProfile = { lane: 0, top: 58, grip: 30, skill: 1 }, me = mk(0, 'YOU', mine, true, SLOTS[opts.multi.slot] ?? SLOTS[0], ai);
-    const free = SLOTS.map((_, i) => i).filter(i => i !== opts.multi!.slot);
-    const others = opts.multi.players.map((pl, i) => { const r = mk(i + 1, pl.nickname, carById(pl.car), false, SLOTS[free[i]] ?? SLOTS[0], ai); r.link = { snap: null, at: 0 }; r.peer = pl.id; return r; });
+    const slot=Number.isInteger(opts.multi.slot)&&opts.multi.slot>=0&&opts.multi.slot<SLOTS.length?opts.multi.slot:0;
+    const ai: AiProfile = { lane: 0, top: 58, grip: 30, skill: 1 }, me = mk(0, 'YOU', mine, true, SLOTS[slot], ai);
+    const free = SLOTS.map((_, i) => i).filter(i => i !== slot);
+    const unique=[...new Map(opts.multi.players.filter(p=>p.id).map(p=>[p.id,p])).values()].slice(0,free.length);
+    const others = unique.map((pl, i) => { const r = mk(i + 1, pl.nickname, carById(pl.car), false, SLOTS[free[i]] ?? SLOTS[0], ai); r.link = { snap: null, at: 0 }; r.peer = pl.id; return r; });
     return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [me, ...others], player: me, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift() };
   }
   const player = mk(0, 'YOU', mine, true, SLOTS[2], { lane: 0, top: 58, grip: 30, skill: 1 });
@@ -72,15 +77,26 @@ export function createRace(track: Track, laps = 3, bestLap = Infinity, opts: Rac
   return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [player, ...rivals], player, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift()};
 }
 
-const score = (r: Racer): number => (r.finishTime !== null ? 1e9 - r.finishTime : r.car.total);
-export function standings(r: RaceState): Racer[] { return [...r.racers].sort((a, b) => score(b) - score(a)); }
+export function compareRacers(a:Racer,b:Racer):number{
+  if(a.finishTime!==null&&b.finishTime!==null)return a.finishTime-b.finishTime;
+  if(a.finishTime!==null)return -1;
+  if(b.finishTime!==null)return 1;
+  return b.car.total-a.car.total;
+}
+export function standings(r: RaceState): Racer[] { return [...r.racers].sort(compareRacers); }
 /** 앞선 라이벌은 속도를 깎지 않습니다. 뒤처진 차만 bandHi 까지 따라잡습니다. */
 export function rivalBand(level: LevelDef, gapMeters: number): number {
   const raw = 1 - gapMeters * level.bandK;
   const floor = gapMeters > 0 ? Math.max(1, level.bandLo) : level.bandLo;
   return Math.max(floor, Math.min(level.bandHi, raw));
 }
-export const placeOf = (r: RaceState, who: Racer = r.player): number => standings(r).indexOf(who) + 1;
+export function placeOf(r:RaceState,who:Racer=r.player):number{
+  const index=r.racers.indexOf(who);if(index<0)return 0;
+  let place=1;
+  // Native Array.sort is stable: break equal-rank ties by original grid order.
+  for(let i=0;i<r.racers.length;i++)if(i!==index){const diff=compareRacers(r.racers[i],who);if(diff<0||(diff===0&&i<index))place++;}
+  return place;
+}
 export const currentLap = (r: RaceState, who: Racer = r.player): number => Math.min(r.laps, Math.max(1, Math.floor(who.car.total / r.track.n) + 1));
 /** 플레이어와 racer 사이의 거리(m). 양수면 racer 가 앞. */
 export const gapMeters = (r: RaceState, who: Racer): number => (who.car.total - r.player.car.total) * r.track.ds;
@@ -99,15 +115,22 @@ export function inSlipstream(me: CarState, others: ReadonlyArray<CarState>): boo
   }
   return false;
 }
+const draftLineups = new WeakMap<RaceState, CarState[]>();
 function updateDraft(r: RaceState, dt: number): void {
-  const cars = r.racers.map(k => k.car);
+  // Roster is immutable during a race: allocate the slipstream lineup once, not at 90Hz.
+  let cars=draftLineups.get(r);
+  if (!cars){cars=r.racers.map(k=>k.car);draftLineups.set(r,cars);}
   for (const k of r.racers) if (!k.link) k.car.draft = Math.max(0, Math.min(1, k.car.draft + (inSlipstream(k.car, cars) ? dt * 0.55 : -dt * 1.4)));
 }
 
 const IDLE: CarInput = { throttle: 0, brake: 0, steer: 0, drift: false, nitro: false };
 
-export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): RaceEvent[] {
-  const ev: RaceEvent[] = [], t = r.track;
+export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0, output?: RaceEvent[]): RaceEvent[] {
+  // UI runs physics at 90Hz. Reuse its buffer while retaining the old fresh-array public API.
+  const ev: RaceEvent[] = output ?? [], t = r.track;
+  if(output)output.length=0;
+  if(!Number.isFinite(dt)||dt<=0)return ev;
+  const clockBefore=r.clock;
   if (r.phase !== 'done') r.clock += dt;
   const pressed = input.throttle > 0.05;
   if (r.phase === 'countdown') {
@@ -117,11 +140,14 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
     if (r.clock >= 0) {
       r.phase = 'racing'; ev.push({ type: 'go' });
       if (pressed && r.thrDownAt !== null && r.thrDownAt >= -0.5) { r.player.car.boostT = 1.4; ev.push({ type: 'launch' }); }
-      r.clock = 0; for (const k of r.racers) k.lapStart = 0;
+      // Simulate only the part of this tick after the starting light changes.
+      dt=Math.max(0,clockBefore+dt); r.clock=dt; for (const k of r.racers) k.lapStart = 0;
+      r.rec?.tick(0,r.player.car);
     }
   }
   r.thrPrev = pressed;
-  const racing = r.phase !== 'countdown';
+  if(r.phase==='countdown'||dt<=1e-10)return ev;
+  const racing = true;
   if (r.phase === 'racing') updateDraft(r, dt);
   for (const k of r.racers) {
     if (k.link) {
@@ -134,7 +160,7 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
       if (k.player && k.finishTime === null) inp = input;
       else {
         const gap = k.player ? 0 : (k.car.total - r.player.car.total) * t.ds, band = k.player ? 1 : rivalBand(r.level, gap);
-        inp = aiInput(k.car, t, { ...k.ai, top: k.ai.top * band, grip: k.ai.grip * band * band });
+        inp = aiInput(k.car, t, k.ai, band, k.aiControl ??= { ...IDLE });
       }
     }
         k.lastEv = stepCar(k.car, inp, dt, t, k.params);
@@ -155,7 +181,7 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
     const mine = i === 0 || j === 0, rel = separateCars(r.racers[i].car, r.racers[j].car);
     if (mine && rel > 3) ev.push({ type: 'bump', power: rel });
   }
-  for (const k of r.racers) if (!k.link) { const hit = stayOnTrack(k.car, t, dt, false); if (k.player && hit > 0) ev.push({ type: 'hit', power: hit }); }
+  for (const k of r.racers) if (!k.link) { const hit = stayOnTrack(k.car, t, dt, false); if (k.player && hit > 0) { ev.push({ type: 'hit', power: hit }); if(r.phase==='racing'){const lost=stepDrift(r.drift,k.car,0,true);if(lost?.type==='lost')ev.push({type:'driftLost',points:lost.points});} } }
   // Keep the final result stable during the AI-driven finish animation.
   if (r.phase !== 'racing') return ev;
   // 랩·결승

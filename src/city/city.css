@@ -1,6 +1,6 @@
 .city-root{position:fixed;inset:0;z-index:50;background:#0c1418;color:#f3f1ea;font-family:'Pretendard Variable',Pretendard,'IBM Plex Sans KR','Noto Sans KR',system-ui,sans-serif;font-feature-settings:'ss01' 1;user-select:none;-webkit-user-select:none;touch-action:none;overflow:hidden;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 .city-canvas,.city-canvas3d{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair}.city-root [hidden]{display:none!important}
-.city-hud{position:absolute;inset:0;pointer-events:none;font-size:13px;font-variant-numeric:tabular-nums}
+.city-hud{position:absolute;inset:0;z-index:2;pointer-events:none;font-size:13px;font-variant-numeric:tabular-nums}
 .city-hud>*{position:absolute}
 .city-hud button,.c-modal button{pointer-events:auto;font:inherit;color:inherit;cursor:pointer}
 .city-root button:focus-visible{outline:3px solid #7dffb0;outline-offset:2px}

@@ -57,7 +57,7 @@ export function stepDrift(d: DriftScore, c: Pick<CarState, 'drifting' | 'vf' | '
 export const flushDrift = (d: DriftScore): DriftEvent | null => (d.chain > 0 ? bank(d) : null);
 
 /** 체인을 확정할 때 돌려주는 니트로(0~0.2). 큰 체인일수록 많지만 상한이 있습니다. */
-export const nitroForChain = (points: number): number => Math.min(0.2, points / 6000);
+export const nitroForChain = (points: number): number => Number.isFinite(points)?Math.max(0,Math.min(0.2, points / 6000)):0;
 
 // ---- 코스별 최고 점수 기록(브라우저 localStorage, 읽기·쓰기가 실패해도 게임은 계속됩니다) ----
 export const DRIFT_KEY = 'waldo.race.drift.v1';

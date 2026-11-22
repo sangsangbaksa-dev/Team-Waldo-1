@@ -17,49 +17,55 @@ import { ghostAt, ghostDelta, readGhost, writeGhost } from './ghost';
 import { minimapTransform } from './minimap';
 import { ownsSkin, readGarage, rewardFor, writeGarage } from './garage';
 import { mountSetup, type SetupHandle } from './setup-ui';
-import { buildMapTrack, type Track } from './track';
+import { type Track } from './track';
+import { RecentRaceTrack } from './track-cache';
 import { RaceView, setDriverKit } from './view';
 import { loadCharacterKit } from '../shared/character';
 import { driftLive, readDriftBests, writeDriftBests } from './driftscore';
 import { PVP_ENABLED } from '../net/config';
 import { advanceWrongWay, WRONG_WAY_DELAY } from './hud-timing';
-import { framePlan, STEP, escapeRaceText } from './frame-plan';
+import { framePlan, STEP, escapeRaceText, raceDuelHeading } from './frame-plan';
 const ORD = ['', '1ST', '2ND', '3RD', '4TH', '5TH', '6TH'];
 
 export function openRace(onExit: () => void): void {
   const prefs = readPreferences(), touch = matchMedia('(pointer: coarse)').matches;
-  const root = document.createElement('div'); root.className = 'rc-root' + (touch ? ' touch' : ''); root.dataset.phase = 'loading';
+  const root = document.createElement('div'); root.className = 'rc-root' + (touch ? ' touch' : '') + (prefs.reducedMotion ? ' reduced-motion' : ''); root.dataset.phase = 'loading';
   root.innerHTML = `<canvas class="rc-canvas"></canvas><canvas class="rc-fx"></canvas><div class="rc-vignette"></div><div class="rc-boostfx"></div>
   <div class="rc-hud">
     <div class="rc-tl"><div class="rc-pos"><b id="rc-pos">4</b><span id="rc-of">/ 4</span></div><div class="rc-lap">LAP <b id="rc-lap">1</b>/<span id="rc-laps">3</span></div></div>
     <div class="rc-tc"><div class="rc-time" id="rc-time">0:00.000</div><div class="rc-best" id="rc-best"></div></div>
-    <div class="rc-tr"><canvas id="rc-map" width="220" height="220" aria-label="미니맵"></canvas><div class="rc-btns"><button data-act="mute" title="소리 (M)" aria-pressed="${prefs.sound}">${prefs.sound ? '🔊' : '🔇'}</button><button data-act="pause" title="일시정지 (Esc)">Ⅱ</button><button data-act="exit" title="나가기">✕</button></div></div>
+    <div class="rc-tr"><canvas id="rc-map" width="220" height="220" aria-label="미니맵"></canvas><div class="rc-btns"><button data-act="mute" title="소리 (M)" aria-label="${prefs.sound ? '소리 끄기' : '소리 켜기'}" aria-pressed="${prefs.sound}">${prefs.sound ? '🔊' : '🔇'}</button><button data-act="pause" title="일시정지 (Esc)" aria-label="일시정지">Ⅱ</button><button data-act="exit" title="나가기" aria-label="레이스에서 나가기">✕</button></div></div>
     <div class="rc-msg" id="rc-msg"></div><div class="rc-count" id="rc-count"></div><div class="rc-wrong" id="rc-wrong">역주행!</div><div class="rc-draft" id="rc-draft">SLIPSTREAM</div><div class="rc-drift" id="rc-drift"></div>
     <div class="rc-bottom"><div class="rc-nitro"><span>NITRO</span><div><i id="rc-nitro"></i></div></div><div class="rc-speed"><b id="rc-kmh">0</b><small>km/h</small><em id="rc-gear">N</em></div><div class="rc-rev"><i id="rc-rev"></i></div></div>
     <div class="rc-keys"><span><kbd>W</kbd><kbd>↑</kbd> 가속</span><span><kbd>A</kbd><kbd>D</kbd> 조향</span><span><kbd>Space</kbd> 드리프트</span><span><kbd>Shift</kbd> 니트로</span><span><kbd>R</kbd> 복귀</span></div>
     <div class="rc-touchpad"><div class="rc-steer"><button data-hold="left" aria-label="왼쪽">◀</button><button data-hold="right" aria-label="오른쪽">▶</button></div><div class="rc-pedals"><button data-hold="gas" class="gas" aria-label="가속">가속</button><div class="rc-pedal-row"><button data-hold="nitro">NITRO</button><button data-hold="drift">DRIFT</button><button data-hold="brake">BRAKE</button></div></div></div>
   </div>
-  <div class="rc-modal" id="rc-modal"><div class="rc-card"><span class="rc-eyebrow">SPEED RUSH</span><h2>엔진 예열 중…</h2></div></div>`;
+  <div class="rc-modal" id="rc-modal" role="dialog" aria-modal="true" aria-label="레이스 메뉴"><div class="rc-card"><span class="rc-eyebrow">SPEED RUSH</span><h2>엔진 예열 중…</h2></div></div>`;
   document.body.append(root);
   const $ = <T extends HTMLElement>(s: string): T => root.querySelector<T>(s)!;
   let canvas = $<HTMLCanvasElement>('.rc-canvas'); const fx = $<HTMLCanvasElement>('.rc-fx'), fg = fx.getContext('2d'), mini = $<HTMLCanvasElement>('#rc-map'), mg = mini.getContext('2d'), modal = $('#rc-modal');
   const audio = new RaceAudio(); audio.enabled = prefs.sound;
   const garage = { value: readGarage() };
-  let setup: RaceSetup = sanitizeSetup(readRaceSetupRaw()), records = readRaceRecords(), track: Track = buildMapTrack(mapOf(setup)), setupUi: SetupHandle | null = null;
+  const trackCache=new RecentRaceTrack();
+  let setup: RaceSetup = sanitizeSetup(readRaceSetupRaw()), records = readRaceRecords(), track: Track = trackCache.get(mapOf(setup)), setupUi: SetupHandle | null = null;
   let race: RaceState = createRace(track, setup.laps, Infinity, setup), view: RaceView | null = null, raf = 0, last = 0, acc = 0, paused = false, closed = false, finishedShown = false, lastPlace = 4, msgT = 0, wallHit = 0, fxIntensity = 0, wrongT = 0, raceGen = 0;
+  let lobby: {close():void}|null=null, lobbyGen=0;
   /** 1대1 대전 진행 상태. null 이면 혼자 달리는 모드입니다. */
   let multi: { s: RoomSession; net: RaceMulti; myFin: number | null; gone: Set<string>; done: boolean } | null = null;
   let pvp: { s: PvpSession; net: RacePvp; myFin: number | null; oppFin: number | null; done: boolean } | null = null;
   const keys = new Set<string>(), hold = { left: false, right: false, brake: false, drift: false, nitro: false, gas: false };
   const clearInput = (): void => { keys.clear(); for (const k of Object.keys(hold) as Array<keyof typeof hold>) hold[k] = false; root.querySelectorAll('[data-hold].down').forEach(b => b.classList.remove('down')); };
   let driftBests = readDriftBests(), nitroWas = false, driftWas = false;
+  const tickEvents: RaceEvent[] = [];
   const cache = new Map<string, string>(); const setText = (id: string, v: string): void => { if (cache.get(id) !== v) { cache.set(id, v); $(id).textContent = v; } };
 
   const msg = (text: string, kind = ''): void => { const el = $('#rc-msg'); el.textContent = text; el.className = `rc-msg show ${kind}`; msgT = 1.6; };
   const bigCount = (text: string, go = false): void => { const el = $('#rc-count'); el.textContent = text; el.className = 'rc-count'; void el.offsetWidth; el.className = `rc-count show${go ? ' go' : ''}`; };
 
   const dbg = { auto: false };
-  if (import.meta.env.DEV) (window as unknown as { __race: unknown }).__race = { get race() { return race; }, get view() { return view; }, dbg, skip(sec: number) { for (let t = 0; t < sec; t += STEP) handle(updateRace(race, STEP, readInput())); } }; // 개발 중 화면 캡처용: 시뮬레이션을 앞으로 감습니다.
+  const debugGlobal=window as unknown as {__race?:unknown};
+  const debugHook={get race(){return race;},get view(){return view;},dbg,skip(sec:number){if(!Number.isFinite(sec)||sec<=0)return;for(let t=0;t<Math.min(30,sec);t+=STEP)handle(updateRace(race,STEP,readInput(),0,tickEvents));}};
+  if(import.meta.env.DEV)debugGlobal.__race=debugHook; // 개발용 후크는 화면 종료 시 함께 정리합니다.
   function readInput(): CarInput {
     if (dbg.auto) { const c = race.player.car, ai = aiInput(c, track, { lane: 0, top: race.player.params.top * 0.97, grip: 38, skill: 1, line: 1 }); return { ...ai, nitro: c.nitro > 0.5 && Math.abs(track.k[c.idx]) < 0.002, }; }
     const k = (n: string): boolean => keys.has(n), left = k('ArrowLeft') || k('KeyA') || hold.left, right = k('ArrowRight') || k('KeyD') || hold.right;
@@ -111,7 +117,7 @@ export function openRace(onExit: () => void): void {
   function begin(): void {
     raceGen++; wrongT = 0; clearInput(); nitroWas = driftWas = false; wallHit = fxIntensity = 0;
     if (view) { view.dispose(); view = null; }
-    track = buildMapTrack(mapOf(setup)); prepareMinimap(); audio.setCar(setup.car);
+    track = trackCache.get(mapOf(setup)); prepareMinimap(); audio.setCar(setup.car);
     const trial = setup.mode === 'trial', ghost = trial ? readGhost(setup.map, setup.laps, setup.car) : null;
     race = createRace(track, setup.laps, records.bestLap[setup.map] ?? Infinity, { ...setup, skin: ownsSkin(garage.value, setup.skin) ? setup.skin : 'stock', trial, ghost });
     finishedShown = false; paused = false; acc = 0; lastPlace = trial ? 1 : 4; cache.clear(); setText('#rc-laps', String(setup.laps)); setText('#rc-of', trial ? 'TIME ATTACK' : '/ 4');
@@ -134,9 +140,21 @@ export function openRace(onExit: () => void): void {
 
   // ---------- 1대1 대전 ----------
   function openPvpLobby(): void {
-    if (!PVP_ENABLED) return;
-    void import('../net/lobby').then(({ openLobby }) => openLobby({ game: 'race', maxPlayers: 6, config: () => ({ map: setup.map, laps: setup.laps }), onMatch: startPvp, onRoom: startMulti, onClose: () => undefined }))
-      .catch(() => { modal.className = 'rc-modal show'; modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">1대1 대전</span><h2>대전 기능을 불러오지 못했어요</h2><div class="rc-actions"><button data-act="setup">설정으로</button></div></div>'; });
+    if (!PVP_ENABLED || closed) return;
+    const token=++lobbyGen;
+    void import('../net/lobby').then(({ openLobby }) => {
+      if(closed||token!==lobbyGen)return;
+      lobby?.close();
+      lobby=openLobby({game:'race',maxPlayers:6,config:()=>({map:setup.map,laps:setup.laps}),
+        onMatch:s=>{if(closed)return;lobby=null;startPvp(s);},
+        onRoom:s=>{if(closed)return;lobby=null;startMulti(s);},
+        onClose:()=>{if(token===lobbyGen)lobby=null;}
+      });
+    }).catch(() => {
+      if(closed||token!==lobbyGen)return;
+      modal.className='rc-modal show';
+      modal.innerHTML='<div class="rc-card"><span class="rc-eyebrow">1대1 대전</span><h2>대전 기능을 불러오지 못했어요</h2><div class="rc-actions"><button data-act="setup">설정으로</button></div></div>';
+    });
   }
   function pvpCard(eyebrow: string, title: string, body = '', actions = '<button data-act="exit">메뉴로</button>'): void {
     modal.className = 'rc-modal show'; modal.innerHTML = `<div class="rc-card"><span class="rc-eyebrow">${escapeRaceText(eyebrow)}</span><h2>${title}</h2>${body}<div class="rc-actions">${actions}</div></div>`;
@@ -155,7 +173,7 @@ export function openRace(onExit: () => void): void {
   }
   function beginPvp(oppCar: string): void {
     if (!pvp || closed) return; const s = pvp.s;
-    track = buildMapTrack(mapOf(setup)); prepareMinimap();
+    track = trackCache.get(mapOf(setup)); prepareMinimap();
     wrongT = 0; clearInput(); nitroWas = driftWas = false; wallHit = fxIntensity = 0;
     race = createRace(track, setup.laps, Infinity, { ...setup, pvp: { host: s.host, opponent: s.opponent.nickname, opponentCar: oppCar } });
     acc = 0; cache.clear(); lastPlace = 2; setText('#rc-laps', String(setup.laps)); setText('#rc-of', '/ 2'); setText('#rc-best', `VS ${s.opponent.nickname}`);
@@ -173,7 +191,7 @@ export function openRace(onExit: () => void): void {
   }
   /** 승자를 서버에 보고하고, 확정된 레이팅 변화를 보여 줍니다. 스스로 패배를 보고하면 즉시 확정되고, 승리 보고는 상대의 보고나 15초 대기 뒤에 확정됩니다. */
   async function conclude(winner: string, why: string): Promise<void> {
-    if (!pvp || pvp.done) return; pvp.done = true; finishedShown = true; const p = pvp, win = winner === p.s.me.id, eyebrow = `${mapOf(setup).name} · ${setup.laps}랩 · vs ${p.s.opponent.nickname}`;
+    if (!pvp || pvp.done) return; pvp.done = true; finishedShown = true; const p = pvp, win = winner === p.s.me.id, eyebrow = raceDuelHeading(mapOf(setup).name,setup.laps,p.s.opponent.nickname);
     const mine = p.myFin !== null ? `<p class="rc-total">${fmtTime(p.myFin)}</p>` : '';
     const card = (extra: string, actions = '', voided = false, won = win): void => { window.setTimeout(() => { if (!closed && pvp === p) pvpCard(eyebrow, voided ? '무효' : won ? '승리' : '패배', `${mine}<p class="rc-record">${why}</p><p class="rc-record">${extra}</p>`, actions || '<button data-act="exit">메뉴로</button>'); }, p.myFin !== null ? 900 : 0); };
     card('결과를 기록하는 중…');
@@ -213,7 +231,7 @@ export function openRace(onExit: () => void): void {
   function beginMulti(list: Array<{ id: string; car: string }>): void {
     if (!multi || closed) return; const s = multi.s, meIdx = Math.max(0, list.findIndex(p => p.id === s.me.id));
     const players = list.filter(p => p.id !== s.me.id).map(p => ({ id: p.id, car: p.car, nickname: s.players.find(x => x.id === p.id)?.nickname ?? '플레이어' }));
-    track = buildMapTrack(mapOf(setup)); prepareMinimap();
+    track = trackCache.get(mapOf(setup)); prepareMinimap();
     wrongT = 0; clearInput(); nitroWas = driftWas = false; wallHit = fxIntensity = 0;
     race = createRace(track, setup.laps, Infinity, { ...setup, multi: { slot: meIdx, players } });
     acc = 0; cache.clear(); lastPlace = list.length; setText('#rc-laps', String(setup.laps)); setText('#rc-of', `/ ${list.length}`); setText('#rc-best', `${list.length}인 레이스`);
@@ -314,10 +332,13 @@ export function openRace(onExit: () => void): void {
     if (closed) return; raf = requestAnimationFrame(frame);
     const elapsed = Math.max(0, (now - last) / 1000); last = now;
     const dt = Math.min(0.1, elapsed);
-    if (!paused && view) {
+    // An offline results modal covers the world entirely; freeze its WebGL pass.
+    // Online races must keep sending snapshots until peers and results settle.
+    const coveredOfflineResult=finishedShown && !pvp && !multi && modal.classList.contains('show');
+    if (!paused && view && !coveredOfflineResult) {
       const plan = framePlan(acc, elapsed); acc = plan.remainder;
       const steps = plan.steps, input = readInput();
-      for (let i = 0; i < steps; i++) handle(updateRace(race, STEP, input, now));
+      for (let i = 0; i < steps; i++) handle(updateRace(race, STEP, input, now, tickEvents));
       const c = race.player.car; audio.drive(c.vf, input.throttle, c.slip, boosting(c), c.drifting, wallHit > 0);
       // 니트로를 누르는 순간 쾅 터지고, 드리프트에 들어가는 순간 타이어가 찢어지는 소리가 납니다.
       const nitroNow = race.phase === 'racing' && input.nitro && c.nitro > 0 && c.boostT > 0, driftNow = c.drifting && race.phase === 'racing';
@@ -331,11 +352,14 @@ export function openRace(onExit: () => void): void {
   }
 
   const setPaused = (on: boolean): void => {
-    if (!view || setupUi || pvp || multi || race.phase === 'done' || finishedShown || closed) return; clearInput(); paused = on; modal.className = on ? 'rc-modal show' : 'rc-modal'; if (on) { audio.drive(0, 0, 0, false, false, false); modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">PAUSED</span><h2>일시정지</h2><div class="rc-actions"><button class="primary" data-act="resume">계속하기</button><button data-act="restart">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button></div></div>'; } else modal.innerHTML = '';
+    if (!view || setupUi || pvp || multi || race.phase === 'done' || finishedShown || closed) return; clearInput(); paused = on; modal.className = on ? 'rc-modal show' : 'rc-modal'; if (on) { audio.drive(0, 0, 0, false, false, false); modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">PAUSED</span><h2>일시정지</h2><div class="rc-actions"><button class="primary" data-act="resume">계속하기</button><button data-act="restart">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button></div></div>'; modal.querySelector<HTMLButtonElement>('[data-act="resume"]')?.focus(); }
+    else { modal.innerHTML = ''; root.querySelector<HTMLButtonElement>('.rc-btns [data-act="pause"]')?.focus(); }
   };
   const exit = (): void => {
-    if (closed) return; closed = true; cancelAnimationFrame(raf); removeEventListener('keydown', onKey); removeEventListener('keyup', onKeyUp); removeEventListener('resize', resize); removeEventListener('blur', onBlur); document.removeEventListener('visibilitychange', onVisibility);
-    leavePvp(); if (multi) { if (!multi.done) multi.net.bye(); endMulti(); } audio.dispose(); view?.dispose(); setupUi?.destroy(); root.remove(); onExit();
+    if (closed) return; closed = true; lobbyGen++; lobby?.close(); lobby=null; cancelAnimationFrame(raf); removeEventListener('keydown', onKey); removeEventListener('keyup', onKeyUp); removeEventListener('resize', resize); removeEventListener('blur', onBlur); document.removeEventListener('visibilitychange', onVisibility);
+    leavePvp(); if (multi) { if (!multi.done) multi.net.bye(); endMulti(); } audio.dispose(); view?.dispose(); setupUi?.destroy(); root.remove();
+    if(import.meta.env.DEV && debugGlobal.__race===debugHook)delete debugGlobal.__race;
+    onExit();
   };
   const act = (a: string | undefined): void => {
     audio.unlock();
@@ -344,7 +368,7 @@ export function openRace(onExit: () => void): void {
     else if (a === 'mute') {
       audio.setEnabled(!audio.enabled);
       const next = { ...readPreferences(), sound: audio.enabled }; prefs.sound = next.sound; writePreferences(next);
-      const mute = root.querySelector<HTMLElement>('[data-act="mute"]'); if (mute) { mute.textContent = audio.enabled ? '🔊' : '🔇'; mute.setAttribute('aria-pressed', String(audio.enabled)); }
+      const mute = root.querySelector<HTMLElement>('[data-act="mute"]'); if (mute) { mute.textContent = audio.enabled ? '🔊' : '🔇'; mute.setAttribute('aria-pressed', String(audio.enabled)); mute.setAttribute('aria-label', audio.enabled ? '소리 끄기' : '소리 켜기'); }
     }
   };
   const onKey = (e: KeyboardEvent): void => {
@@ -377,7 +401,10 @@ export function openRace(onExit: () => void): void {
   // 레이싱카 모델(race.glb) 로드 → 실패해도 단순 차체로 계속
   void (async () => {
     try { const gltf = await new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}assets/models/race.glb`), found: Record<string, THREE.Object3D> = {}; gltf.scene.traverse(o => { if (o.name === 'gt' || o.name === 'wide' || o.name === 'long') found[o.name] = o; }); carTemplate = found; } catch { carTemplate = null; }
-    try { setDriverKit(await loadCharacterKit(import.meta.env.BASE_URL)); } catch { setDriverKit(null); }
+    // A previous/closed game must never overwrite the shared character kit of a newer session.
+    if (closed) return;
+    try { const kit=await loadCharacterKit(import.meta.env.BASE_URL); if(!closed)setDriverKit(kit); }
+    catch { if(!closed)setDriverKit(null); }
     if (closed) return; last = performance.now(); raf = requestAnimationFrame(frame); showSetup();
   })();
 }

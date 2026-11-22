@@ -128,6 +128,7 @@ function pushRect(p: { x: number; y: number }, r: number, b: Rect): void {
 }
 /** 벽과 가구·사람에 부딪히지 않도록 위치를 보정합니다. */
 export function resolveInterior(lay: InteriorLayout, p: { x: number; y: number }): void {
+  if(!Number.isFinite(p.x)||!Number.isFinite(p.y)){p.x=lay.spawn.x;p.y=lay.spawn.y;}
   for (let k = 0; k < 2; k++) {
     p.x = Math.max(PLAYER_R, Math.min(lay.w - PLAYER_R, p.x)); p.y = Math.max(PLAYER_R, Math.min(lay.d - PLAYER_R, p.y));
     for (const s of lay.solids) pushRect(p, PLAYER_R, hull(s));

@@ -30,11 +30,12 @@ export class GhostRecorder {
   }
 
   finish(time: number, laps: number, c?: GhostPose): Ghost {
+    if(c&&Number.isFinite(time)&&time>=0&&(!this.previous||time>=this.previous.time))this.tick(time,c);
     const data = this.data.slice();
     if (!c) return { time, laps, data };
     const sample = [r2(c.x), r2(c.z), r2(c.h), r2(c.total)];
     if (Math.abs(time - (count(this) - 1) * GHOST_DT) <= 1e-9 && data.length >= STRIDE) data.splice(-STRIDE, STRIDE, ...sample);
-    else data.push(...sample);
+    else if(data.length+STRIDE<=MAX_DATA)data.push(...sample);
     return { time, laps, data, finalSample: true };
   }
 }
@@ -91,9 +92,10 @@ export function sanitizeGhost(raw: unknown): Ghost | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const r = raw as Record<string, unknown>;
   if (typeof r.time !== 'number' || !Number.isFinite(r.time) || r.time <= 0 || typeof r.laps !== 'number' || !Array.isArray(r.data)) return null;
-  if (r.data.length < STRIDE * 2 || r.data.length % STRIDE !== 0 || r.data.length > MAX_DATA || !r.data.every(v => typeof v === 'number' && Number.isFinite(v))) return null;
+  if (r.data.length < STRIDE * 2 || r.data.length % STRIDE !== 0 || r.data.length > MAX_DATA || !Array.from(r.data).every(v => typeof v === 'number' && Number.isFinite(v) && Math.abs(v)<1e9)) return null;
   if (!Number.isInteger(r.laps) || r.laps <= 0) return null;
   const result: Ghost = { time: r.time, laps: r.laps, data: r.data as number[] };
+  if (r.finalSample !== true && Math.abs(r.time-(count(result)-1)*GHOST_DT)>GHOST_DT+1e-6)return null;
   if (r.finalSample === true) {
     const samples = count(result);
     if (r.time <= (samples - 2) * GHOST_DT || r.time > (samples - 1) * GHOST_DT + 1e-9) return null;

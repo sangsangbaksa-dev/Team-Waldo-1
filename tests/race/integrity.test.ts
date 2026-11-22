@@ -34,3 +34,18 @@ describe('SPEED RUSH race integrity', () => {
     expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeGreaterThan(4);
   });
 });
+
+describe('SPEED RUSH 90Hz event buffer reuse',()=>{
+  it('reuses the UI-provided output array and clears stale events between physics ticks',()=>{
+    const race=createRace(track,1),buffer=[{type:'go'}] as ReturnType<typeof updateRace>;
+    expect(updateRace(race,0,idle,0,buffer)).toBe(buffer);
+    expect(buffer).toEqual([]);
+    for(let i=0;i<90*4;i++){
+      const result=updateRace(race,1/90,idle,i*1000/90,buffer);
+      expect(result).toBe(buffer);
+      expect(buffer.length).toBeLessThan(8);
+    }
+    const fresh=updateRace(race,1/90,idle);
+    expect(fresh).not.toBe(buffer);
+  });
+});

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { Sim } from '../../src/outlaw/sim';
-import { startJob, stepJobs } from '../../src/outlaw/jobs';
-import { isOpen } from '../../src/outlaw/world';
-import { blankPedInput, blankCarInput, WEAPON_ORDER } from '../../src/outlaw/types';
+import { startJob, stepJobs, jobSpawnLane } from '../../src/outlaw/jobs';
+import { isOpen, nearestLane } from '../../src/outlaw/world';
+import { blankPedInput, blankCarInput, VEHICLES, WEAPON_ORDER } from '../../src/outlaw/types';
 
 describe('Outlaw job regression', () => {
   it('counts one collision once for fragile cargo, independent of tick rate', () => {
@@ -74,5 +74,26 @@ describe('OUTLAW procedural gang encounter spawn safety', () => {
         expect(Math.hypot(guards[i].x-guards[j].x,guards[i].z-guards[j].z), `${mission} / seed ${seed}`).toBeGreaterThanOrEqual(2.4);
       }
     }
+  });
+});
+
+describe('OUTLAW job vehicle spawn clearance', () => {
+  it('picks a different road if the nearest lane is already occupied', () => {
+    const sim = new Sim(19);
+    const x = sim.player.x + 8, z = sim.player.z;
+    const closest = sim.map.lanes[nearestLane(sim.map,x,z)]!;
+    const blocker = sim.spawnVehicle('truck', closest.x, closest.z, closest.h);
+    const lane = jobSpawnLane(sim, closest.x, closest.z, 'ambulance');
+    expect(lane).toBeDefined();
+    expect((lane!.x-blocker.x)**2 + (lane!.z-blocker.z)**2)
+      .toBeGreaterThan((Math.hypot(VEHICLES.truck.halfL,VEHICLES.truck.halfW) + Math.hypot(VEHICLES.ambulance.halfL,VEHICLES.ambulance.halfW))**2);
+    expect(isOpen(sim.map,lane!.x,lane!.z,Math.hypot(VEHICLES.ambulance.halfL,VEHICLES.ambulance.halfW))).toBe(true);
+  });
+  it('refuses mission initiation when the road graph has no legal spaces', () => {
+    const sim = new Sim(20);
+    sim.map.lanes = [];
+    expect(startJob(sim,'paramedic')).toContain('안전한 도로');
+    expect(sim.job.active).toBe('');
+    expect(sim.vehicles.every(v=>v.tag!=='job')).toBe(true);
   });
 });

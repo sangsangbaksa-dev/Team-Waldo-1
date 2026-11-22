@@ -1,7 +1,7 @@
 // OUTLAW CITY — 휴대폰으로 받는 일거리: 배달·응급 이송·자경단·현상 의뢰·차량 회수·지하 격투장, 그리고 소매치기. 화면과 무관한 시뮬레이션 로직입니다.
 import type { Sim } from './sim';
-import { PLAYER_ID, blankJobState, VEHICLES, wrapAngle, type Marker, type Ped, type Vehicle } from './types';
-import { isOpen, nearestLane } from './world';
+import { PLAYER_ID, blankJobState, VEHICLES, wrapAngle, type LaneNode, type Marker, type Ped, type Vehicle, type VehicleKind } from './types';
+import { isOpen, nearestLane, groundHeight } from './world';
 import { autoDrive } from './vehicle';
 
 export interface JobInfo { id: string; name: string; giver: string; desc: string; pay: string; cooldown: number }
@@ -29,6 +29,26 @@ const mark = (x: number, z: number, r: number, label: string, kind: Marker['kind
 const clock = (t: number): string => { const n = Math.ceil(Math.max(0, t)); return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`; };
 const poi = (s: Sim, id: string) => s.map.pois.find(p => p.id === id) ?? s.map.pois[0]!;
 const cooldowns = new WeakMap<Sim, Record<string, number>>();
+
+/** Keep newly assigned mission vehicles off existing cars and static props.
+ * A single nearest lane can be occupied by streaming traffic or the player.
+ * Search progressively farther away without sorting the entire lane graph. */
+export function jobSpawnLane(sim: Sim, x: number, z: number, kind: VehicleKind): LaneNode | undefined {
+  const def = VEHICLES[kind], radius = Math.hypot(def.halfL, def.halfW);
+  let chosen: LaneNode | undefined, nearest = 120 ** 2;
+  for (const lane of sim.map.lanes) {
+    if (lane.light >= 0 || !lane.next.length) continue;
+    const dx = lane.x - x, dz = lane.z - z, d2 = dx * dx + dz * dz;
+    if (d2 >= nearest || groundHeight(sim.map, lane.x, lane.z) > .08) continue;
+    if (!isOpen(sim.map, lane.x, lane.z, radius + .2)) continue;
+    if (sim.vehicles.some(v => v.alive && Math.abs(v.y) < 2 &&
+        (v.x - lane.x) ** 2 + (v.z - lane.z) ** 2 <
+        (radius + Math.hypot(VEHICLES[v.kind].halfL, VEHICLES[v.kind].halfW) + 1) ** 2)) continue;
+    if (sim.peds.some(p => p.alive && !p.vehicle && (p.x-lane.x)**2 + (p.z-lane.z)**2 < (radius+1)**2)) continue;
+    chosen = lane; nearest = d2;
+  }
+  return chosen;
+}
 
 /** 플레이어에게서 min~max 미터 떨어진 인도 지점(없으면 가장 가까운 후보) */
 export function spotNear(sim: Sim, min: number, max: number, from: { x: number; z: number } = sim.player): { x: number; z: number } {
@@ -86,12 +106,14 @@ export function startJob(sim: Sim, id: string): string {
     for (let i = 0; i < 3; i++) { const q = sites[i] ?? spotNear(sim, 100 + i * 60, 300 + i * 60); j.data[`x${i}`] = q.x; j.data[`z${i}`] = q.z; }
     j.timer = 360;
   } else if (id === 'roadside') {
-    const q = spotNear(sim, 150, 300), lane = sim.map.lanes[nearestLane(sim.map, q.x, q.z)];
-    const v = sim.spawnVehicle('sedan', lane?.x ?? q.x, lane?.z ?? q.z, lane?.h ?? 0, { keep: true, tag: 'job', locked: true, color: 0x497a98 });
+    const q = spotNear(sim, 150, 300), lane = jobSpawnLane(sim, q.x, q.z, 'sedan');
+    if (!lane) { sim.job = blankJobState(); return '고장 차량을 둘 안전한 도로가 없습니다'; }
+    const v = sim.spawnVehicle('sedan', lane.x, lane.z, lane.h, { keep: true, tag: 'job', locked: true, color: 0x497a98 });
     v.mode = 'parked'; v.input.brake = 1; v.hp = v.maxHp * 0.4; j.ids.car = v.id; j.timer = 240; j.data.repair = 0;
   } else if (id === 'paramedic') {
-    const lane = sim.map.lanes[nearestLane(sim.map, p.x + Math.cos(p.yaw) * 10, p.z + Math.sin(p.yaw) * 10)];
-    const v = sim.spawnVehicle('ambulance', lane?.x ?? p.x + 6, lane?.z ?? p.z, lane?.h ?? p.yaw, { keep: true, tag: 'job', color: 0xf4f6f8, locked: false }); v.mode = 'parked'; v.input.brake = 1; j.ids.car = v.id;
+    const lane = jobSpawnLane(sim, p.x + Math.cos(p.yaw) * 10, p.z + Math.sin(p.yaw) * 10, 'ambulance');
+    if (!lane) { sim.job = blankJobState(); return '구급차를 둘 안전한 도로가 없습니다'; }
+    const v = sim.spawnVehicle('ambulance', lane.x, lane.z, lane.h, { keep: true, tag: 'job', color: 0xf4f6f8, locked: false }); v.mode = 'parked'; v.input.brake = 1; j.ids.car = v.id;
     const q = spotNear(sim, 160, 320), pt = sim.spawnPed('civ', q.x, q.z, { keep: true, tag: 'job', mode: 'cower', loot: 0, hp: 40 }); pt.maxHp = 100; j.ids.patient = pt.id; j.data.x = q.x; j.data.z = q.z; j.timer = 200; j.data.hp = 100;
   } else if (id === 'vigilante' || id === 'contract') {
     const c = spotNear(sim, 150, 300), n = id === 'contract' ? 4 : 4; j.data.count = n;
@@ -103,8 +125,10 @@ export function startJob(sim: Sim, id: string): string {
     }
     j.data.x = c.x; j.data.z = c.z; j.data.civ0 = sim.civKills; j.timer = id === 'contract' ? 260 : 220;
   } else if (id === 'repo') {
-    const q = spotNear(sim, 200, 380), lane = sim.map.lanes[nearestLane(sim.map, q.x, q.z)];
-    const v = sim.spawnVehicle(sim.rng() < 0.5 ? 'suv' : 'sedan', lane?.x ?? q.x, lane?.z ?? q.z, lane?.h ?? 0, { keep: true, tag: 'job', locked: false, color: 0x8a3fa0 }); v.mode = 'parked'; v.input.brake = 1; j.ids.car = v.id; j.timer = 280;
+    const q = spotNear(sim, 200, 380), kind = sim.rng() < 0.5 ? 'suv' : 'sedan';
+    const lane = jobSpawnLane(sim, q.x, q.z, kind);
+    if (!lane) { sim.job = blankJobState(); return '회수 차량을 둘 안전한 도로가 없습니다'; }
+    const v = sim.spawnVehicle(kind, lane.x, lane.z, lane.h, { keep: true, tag: 'job', locked: false, color: 0x8a3fa0 }); v.mode = 'parked'; v.input.brake = 1; j.ids.car = v.id; j.timer = 280;
   } else if (id === 'trial') {
     const pts: Array<{ x: number; z: number }> = []; let from: { x: number; z: number } = p;
     for (let i = 0; i < 5; i++) { let best = sim.map.lanes[0]!, bs = Infinity; for (let k = 0; k < 80; k++) { const l = sim.map.lanes[Math.floor(sim.rng() * sim.map.lanes.length)]!, d = dist(l, from), sc = Math.abs(d - 190); if (sc < bs) { bs = sc; best = l; } } pts.push(best); from = best; }

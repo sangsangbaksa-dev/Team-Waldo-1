@@ -36,7 +36,9 @@ export class Vision {
       if (st[i] !== this.previous[i]) { this.previous[i] = st[i]; changed = true; }
     }
     if (changed) this.version++;
-    return changed;
+    // Preserve the public contract: true means a scheduled recomputation ran,
+    // while version tracks actual visual changes for minimap/GPU caching.
+    return true;
   }
   at(x: number, y: number): number {
     const cx = Math.floor(x), cy = Math.floor(y); if (cx < 0 || cy < 0 || cx >= this.n || cy >= this.n) return FOG_HIDDEN; return this.state[cy * this.n + cx];

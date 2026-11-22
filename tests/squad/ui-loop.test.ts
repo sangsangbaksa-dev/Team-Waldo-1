@@ -341,3 +341,14 @@ it('ignores other fingers during a drag and retains the field after invalid drop
   expect(document.querySelector('.sq-budget strong')?.textContent).toContain('1000');
   button('#pause').click(); button('#exit').click();
 });
+
+it('invokes the parent navigation callback only once even if an old exit button fires twice', () => {
+  const onExit = vi.fn();
+  openSquad(onExit);
+  const staleExit = button('#exit');
+  staleExit.click();
+  staleExit.click();
+  expect(onExit).toHaveBeenCalledTimes(1);
+  expect(document.querySelector('.sq-root')).toBeNull();
+  expect(frames.size).toBe(0);
+});

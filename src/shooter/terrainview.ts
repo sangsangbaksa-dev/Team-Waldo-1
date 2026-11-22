@@ -52,7 +52,7 @@ function ribbonGeo(pts: Array<[number, number]>, w: number, uvPerM: number, edge
 }
 
 export class TerrainView {
-  readonly group = new THREE.Group(); private flow: THREE.Texture[] = []; private waterSource: THREE.CanvasTexture | null = null; private time = 0;
+  readonly group = new THREE.Group(); private flow: THREE.Texture[] = []; private waterSource: THREE.CanvasTexture | null = null; private dirtSource: THREE.CanvasTexture | null = null; private time = 0;
   constructor(private map: GameMap, private low: boolean) {
     this.group.name = 'terrain'; this.buildTowns(); this.buildRoads(); this.buildWater(); this.buildHills(); this.buildCliffs(); this.buildBridges();
   }
@@ -66,9 +66,9 @@ export class TerrainView {
   /** 마을 바닥: 가장자리가 흙빛으로 번지며 풀과 섞이는 울퉁불퉁한 원 + 둘레의 흙 얼룩. */
   private buildTowns(): void {
     const tints: Record<string, number> = { urban: 0xffffff, industrial: 0xb4b8bc, military: 0xd2c6a0, farm: 0xc8b894, village: 0xeae4d4 };
-    const rng = makeRng(this.map.seed + 17), dirt = dirtTexture(), concrete = concreteTexture();
+    const rng = makeRng(this.map.seed + 17), dirt = this.dirtSource ??= dirtTexture(), concrete = concreteTexture();
     const alpha = [fadeDiscTexture(3, 0.62), fadeDiscTexture(8, 0.62), fadeDiscTexture(13, 0.62)];
-    const skirt = fadeDiscTexture(21, 0.2), blot = [fadeDiscTexture(31, 0.15), fadeDiscTexture(37, 0.15)];
+    const skirt = fadeDiscTexture(21, 0.2), blot = this.low ? [] : [fadeDiscTexture(31, 0.15), fadeDiscTexture(37, 0.15)];
     type Stain = { x: number; z: number; size: number; yaw: number; color: number };
     const stains: [Stain[], Stain[]] = [[], []];
     this.map.compounds.forEach((c, i) => {
@@ -117,7 +117,7 @@ export class TerrainView {
   }
   /** 마을을 잇는 흙길: 양 가장자리가 흐려져 풀밭과 섞입니다. */
   private buildRoads(): void {
-    const dirt = dirtTexture(), fade = fadeRoadTexture(), cs = this.map.compounds;
+    const dirt = this.dirtSource ??= dirtTexture(), fade = fadeRoadTexture(), cs = this.map.compounds;
     for (const [i, j] of this.map.roads) {
       const a = cs[i], b = cs[j], d = Math.hypot(b.x - a.x, b.z - a.z), tex = dirt.clone(); tex.repeat.set(d / 4, 1); tex.needsUpdate = true;
       const af = fade.clone(); af.repeat.set(Math.max(1, d / 40), 1); af.needsUpdate = true;

@@ -67,6 +67,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   let assets: ShooterAssets | null = null, assetState: 'loading' | 'ready' | 'failed' = 'loading', assetPct = 0;
   let countdown = 0, over = false, deadTimer = 0, resultShown = false, spectateId = -1;
   let soloRecorded = false;
+  let fastForward = false, skipRaf = 0;
   let lastLook = 0, yaw = 0, pitch = 0, locked = false, lockFail = false, hitT = 0, hitHead = false, hitKill = false, combo = 0, comboT = 0, rcP = 0, rcY = 0, rcIdle = 9, shotN = 0, stepAcc = 0, bannerT = 0, mapBase: HTMLCanvasElement | null = null;
   const keys = new Set<string>(), mouse = { fire: false, ads: false }, tc = { fire: false, ads: false, crouch: false, move: { x: 0, y: 0, id: -1, ox: 0, oy: 0 }, look: { id: -1, x: 0, y: 0 } };
   let healReq = 0, nadeReq = false, reloadReq = false, slotReq = -1, swapReq = false, interactHeld = false;
@@ -338,7 +339,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     endPvp();
   }
   function endPvp(): void { pvp?.net.dispose(); pvp = null; }
-  function endMatch(): void { locked = false; if (document.pointerLockElement === canvas) document.exitPointerLock(); view?.dispose(); view = null; match = null; }
+  function endMatch(): void { fastForward = false; cancelAnimationFrame(skipRaf); skipRaf = 0; locked = false; if (document.pointerLockElement === canvas) document.exitPointerLock(); view?.dispose(); view = null; match = null; }
 
   // ---------- 조작 ----------
   const sens = (): number => 0.0023 / (view && me().ads ? Math.max(1, 78 / view.fov) * 0.9 : 1);
@@ -603,8 +604,34 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       `<button class="primary" data-act="again">다시 출격</button>${!win && !match.over ? '<button data-act="spectate">관전 계속</button><button data-act="skip">결과까지 건너뛰기</button>' : ''}<button data-act="setup">설정으로</button><button data-act="exit">메뉴로</button>`, win ? 'win' : '');
   }
 
-  /** 시뮬레이션을 화면 없이 끝까지 돌립니다(내가 쓰러진 뒤 결과만 보고 싶을 때). */
-  function skip(maxSeconds = 600): void { const m = match; if (!m) return; for (let t = 0; t < maxSeconds && !m.over; t += 1 / 30) { m.step(1 / 30); m.drain(); } if (m.over) onOver(m.winner); }
+  /** Let the browser paint and handle cancellation between AI-only fast-forward slices. */
+  function skip(maxSeconds = 600): void {
+    const m = match;
+    if (!m || fastForward || pvp || room) return;
+    fastForward = true;
+    const step = 1 / 30, maxSteps = Math.ceil(maxSeconds * 30);
+    let steps = 0;
+    card('ZERO ZONE', '결과 계산 중',
+      '<p id="sz-skip-progress" class="sz-sub" role="status" aria-live="polite">남은 플레이어의 경기를 계산하고 있습니다…</p>',
+      '<button data-act="setup">설정으로 돌아가기</button><button data-act="exit">메뉴로</button>');
+    const advance = (): void => {
+      if (!fastForward || closed || match !== m) return;
+      const started = performance.now();
+      let batch = 0;
+      while (!m.over && steps < maxSteps && batch < 180 && performance.now() - started < 8) {
+        m.step(step);
+        m.drain();
+        steps++;
+        batch++;
+      }
+      if (m.over) { fastForward = false; skipRaf = 0; onOver(m.winner); return; }
+      if (steps >= maxSteps) { fastForward = false; skipRaf = 0; showResult(false); return; }
+      const status = modal.querySelector<HTMLElement>('#sz-skip-progress');
+      if (status) status.textContent = `결과 계산 중 · 경기 시간 ${clock(m.t)} · 생존 ${m.aliveCount()}명`;
+      skipRaf = requestAnimationFrame(advance);
+    };
+    advance();
+  }
 
   // ---------- 일시정지·메뉴 ----------
   function setPause(on: boolean): void {
@@ -630,7 +657,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   function frame(now: number): void {
     if (closed) return; raf = requestAnimationFrame(frame);
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
-    if (!match || !view) return;
+    if (!match || !view || fastForward) return;
     const m = match, p = me();
     if (phase === 'countdown' && !paused) {
       countdown -= dt; const c = Math.ceil(countdown - 0.4), el = q('#sz-count');

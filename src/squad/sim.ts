@@ -25,7 +25,16 @@ export class Battle {
   random(): number { this.seed = (Math.imul(this.seed, 1664525) + 1013904223) >>> 0; return this.seed / 4294967296; }
   step(): void {
     if (this.winner !== null) return;
-    this.tick++; this.effects.forEach(e => e.age += STEP); this.effects = this.effects.filter(e => e.age < 0.7);
+    this.tick++;
+    // Age and compact visual effects in place; preserve the array and avoid two
+    // passes plus a fresh allocation on every 30 Hz simulation step.
+    let kept = 0;
+    for (let i = 0; i < this.effects.length; i++) {
+      const effect = this.effects[i]!;
+      effect.age += STEP;
+      if (effect.age < 0.7) this.effects[kept++] = effect;
+    }
+    this.effects.length = kept;
     const alive = this.units.filter(u => u.hp > 0);
     for (const u of alive) {
       if (u.hp <= 0) continue;
@@ -50,8 +59,7 @@ export class Battle {
       }
       if (!target) continue;
       if (wounded) { target = wounded; healing = true; }
-      const dist = (v: Soldier) => hyp(v.x - u.x, v.y - u.y);
-      const distance = dist(target), desired = healing ? 2.2 : d.range;
+      const distance = hyp(target.x - u.x, target.y - u.y), desired = healing ? 2.2 : d.range;
       if (distance <= desired && u.cooldown <= 0) {
         u.cooldown = d.cooldown;
         if (healing) { const amount = Math.min(24, UNITS[target.type].hp - target.hp); target.hp += amount; this.effects.push({ x: u.x, y: u.y, x2: target.x, y2: target.y, value: amount, side: u.side, kind: 'heal', age: 0 }); }
@@ -68,7 +76,15 @@ export class Battle {
       let move = distance > desired * 0.92 ? 1 : ((u.type === 'archer' || u.type === 'siege') && distance < desired * 0.48 ? -1 : 0);
       if (healing && distance < 1.4) move = 0;
       let dx = distance ? (target.x - u.x) / distance * move : 0, dy = distance ? (target.y - u.y) / distance * move : 0;
-      for (const other of alive) { if (other === u || other.hp <= 0) continue; const ox = u.x - other.x, oy = u.y - other.y, gap = hyp(ox, oy); if (gap > 0.001 && gap < 0.6) { dx += ox / gap * (0.6 - gap); dy += oy / gap * (0.6 - gap); } }
+      for (const other of alive) {
+        if (other === u || other.hp <= 0) continue;
+        const ox = u.x - other.x, oy = u.y - other.y, squared = ox * ox + oy * oy;
+        // Most soldiers are much farther apart: skip the square root.
+        if (squared > 0.000001 && squared < 0.36) {
+          const gap = Math.sqrt(squared);
+          dx += ox / gap * (0.6 - gap); dy += oy / gap * (0.6 - gap);
+        }
+      }
       u.x = Math.max(0.3, Math.min(11.7, u.x + dx * d.speed * STEP)); u.y = Math.max(0.3, Math.min(19.7, u.y + dy * d.speed * STEP));
     }
     const left = this.units.filter(u => u.side === 0 && u.hp > 0), right = this.units.filter(u => u.side === 1 && u.hp > 0);

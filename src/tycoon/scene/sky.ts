@@ -47,7 +47,7 @@ export class Atmosphere {
   readonly moon = new THREE.DirectionalLight(0x8aa6ff, 0);
   readonly hemi = new THREE.HemisphereLight(0xbfd8ff, 0x3a3228, 0.6);
   private dome: THREE.Mesh; private skyU: Record<string, THREE.IUniform>;
-  private rain: THREE.LineSegments; private rainU: Record<string, THREE.IUniform>;
+  private rain: THREE.LineSegments | null = null; private rainU: Record<string, THREE.IUniform> | null = null;
   private fog = new THREE.FogExp2(0x9fb6cc, 0.003);
   private env: THREE.WebGLRenderTarget | null = null; private pmrem: THREE.PMREMGenerator;
   private time = 0; private rainLevel = 0; private flash = 0; private nextFlash = 8;
@@ -66,13 +66,29 @@ export class Atmosphere {
     this.sun.castShadow = quality !== 'low';
     const sz = quality === 'high' ? 2048 : 1024, sc = this.sun.shadow.camera; this.sun.shadow.mapSize.set(sz, sz); sc.near = 10; sc.far = 260; sc.left = sc.bottom = -70; sc.right = sc.top = 70; this.sun.shadow.bias = -0.0004; this.sun.shadow.normalBias = 0.6;
     scene.add(this.sun, this.sun.target, this.moon, this.hemi);
-    // 비 줄기
-    const N = quality === 'low' ? 900 : 2600, base = new Float32Array(N * 6), end = new Float32Array(N * 2), pos = new Float32Array(N * 6);
-    for (let k = 0; k < N; k++) { const x = Math.random() * 64, y = Math.random() * 46, z = Math.random() * 64; for (let e = 0; e < 2; e++) { base.set([x, y, z], (k * 2 + e) * 3); end[k * 2 + e] = e; } }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('aBase', new THREE.BufferAttribute(base, 3)); g.setAttribute('aEnd', new THREE.BufferAttribute(end, 1));
-    const rm = new THREE.ShaderMaterial({ vertexShader: RAIN_VERT, fragmentShader: RAIN_FRAG, transparent: true, depthWrite: false, uniforms: { uTime: { value: 0 }, uCenter: { value: new THREE.Vector3() }, uOpacity: { value: 0 } } });
-    this.rainU = rm.uniforms; this.rain = new THREE.LineSegments(g, rm); this.rain.frustumCulled = false; this.rain.visible = false; scene.add(this.rain);
+    // Rain remains unallocated until this particular world actually needs it.
     this.pmrem = new THREE.PMREMGenerator(renderer); this.buildEnv();
+  }
+  private createRain(): void {
+    if (this.rain) return;
+    const N = this.quality === 'low' ? 900 : 2600;
+    const base = new Float32Array(N * 6), end = new Float32Array(N * 2), pos = new Float32Array(N * 6);
+    for (let k = 0; k < N; k++) {
+      const x = Math.random() * 64, y = Math.random() * 46, z = Math.random() * 64;
+      for (let e = 0; e < 2; e++) { base.set([x, y, z], (k * 2 + e) * 3); end[k * 2 + e] = e; }
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geometry.setAttribute('aBase', new THREE.BufferAttribute(base, 3));
+    geometry.setAttribute('aEnd', new THREE.BufferAttribute(end, 1));
+    const material = new THREE.ShaderMaterial({
+      vertexShader: RAIN_VERT, fragmentShader: RAIN_FRAG, transparent: true, depthWrite: false,
+      uniforms: { uTime: { value: this.time }, uCenter: { value: new THREE.Vector3() }, uOpacity: { value: 0 } },
+    });
+    this.rainU = material.uniforms;
+    this.rain = new THREE.LineSegments(geometry, material);
+    this.rain.frustumCulled = false;
+    this.scene.add(this.rain);
   }
   private buildEnv(): void {
     const s = new THREE.Scene(), g = new THREE.SphereGeometry(50, 32, 16);
@@ -108,14 +124,31 @@ export class Atmosphere {
     const fogCol = this.frameFog.copy(hor).lerp(SKY_PALETTE.fogNight, night * 0.5); this.fog.color.copy(fogCol); this.fog.density = lerp(0.0032, 0.0075, wet) + night * 0.0012; (this.scene.background as unknown) = null;
     (this.scene as THREE.Scene & { environmentIntensity: number }).environmentIntensity = lerp(0.18, 0.95, dayK) * (1 - wet * 0.2) + night * 0.22 + wet * 0.15;
     // 비
-    this.rain.visible = wet > 0.04; this.rainU.uTime.value = this.time; this.rainU.uOpacity.value = wet * 0.4; (this.rainU.uCenter.value as THREE.Vector3).copy(camera.position);
+    if (wet > 0.04 && !this.rain) this.createRain();
+    if (this.rain && this.rainU) {
+      this.rain.visible = wet > 0.04;
+      if (this.rain.visible) {
+        this.rainU.uTime.value = this.time;
+        this.rainU.uOpacity.value = wet * 0.4;
+        (this.rainU.uCenter.value as THREE.Vector3).copy(camera.position);
+      }
+    }
     this.state.daylight = dayK; this.state.wet = wet; this.state.night = night; this.state.hour = h;
     return this.state;
   }
   /** 렌더러 노출(밤엔 살짝 올려 어둠이 답답하지 않게). */
   exposure(): number { return lerp(0.95, 1.15, this.state.night); }
   dispose(): void {
-    this.scene.remove(this.dome, this.rain, this.sun, this.sun.target, this.moon, this.hemi); this.sun.shadow.dispose(); this.dome.geometry.dispose(); (this.dome.material as THREE.Material).dispose(); this.rain.geometry.dispose(); (this.rain.material as THREE.Material).dispose();
+    this.scene.remove(this.dome, this.sun, this.sun.target, this.moon, this.hemi);
+    if (this.rain) {
+      this.rain.removeFromParent();
+      this.rain.geometry.dispose();
+      (this.rain.material as THREE.Material).dispose();
+      this.rain = null; this.rainU = null;
+    }
+    this.sun.shadow.dispose();
+    this.dome.geometry.dispose();
+    (this.dome.material as THREE.Material).dispose();
     this.env?.dispose(); this.pmrem.dispose(); this.scene.environment = null;
   }
 }

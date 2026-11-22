@@ -1,5 +1,3 @@
-import type { Object3D } from "three";
-
 /**
  * Dispose a detached chapter group and every unique GPU resource it owns.
  * Materials can share textures and meshes can share geometry, so each

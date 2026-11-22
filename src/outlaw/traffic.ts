@@ -4,10 +4,10 @@ import { STREAM_RADIUS, type Sim } from './sim';
 import { isOpen, nearestLane, signal } from './world';
 import { autoDrive } from './vehicle';
 
-interface State { events: number; eventList: Sim['events']; cars: WeakMap<Vehicle, CarState> }
+interface State { events: number; eventList: Sim['events']; cars: WeakMap<Vehicle, CarState>; cells: Map<string, Vehicle[]>; freeCells: Vehicle[][] }
 interface CarState { panic: number; blocked: number; idle: number; lastCrash: boolean; update: number }
 const states = new WeakMap<Sim, State>();
-function state(sim: Sim): State { let s = states.get(sim); if (!s) { s = { events: 0, eventList: sim.events, cars: new WeakMap() }; states.set(sim, s); } return s; }
+function state(sim: Sim): State { let s = states.get(sim); if (!s) { s = { events: 0, eventList: sim.events, cars: new WeakMap(), cells: new Map(), freeCells: [] }; states.set(sim, s); } return s; }
 function carState(s: State, v: Vehicle): CarState { let c = s.cars.get(v); if (!c) { c = { panic: 0, blocked: 0, idle: 0, lastCrash: false, update: 0 }; s.cars.set(v, c); } return c; }
 function district(sim: Sim, x: number, z: number): District {
   for (const p of sim.map.parks) if (Math.abs(x - p.x) < p.w / 2 && Math.abs(z - p.z) < p.d / 2) return 'park';
@@ -54,8 +54,18 @@ export function stepTraffic(sim: Sim, dt: number): void {
   const s = state(sim), p = sim.player, events = sim.events;
   if (events !== s.eventList || events.length < s.events) { s.events = 0; s.eventList = events; }
   const recent = events.slice(s.events); s.events = events.length;
-  const grid = new Map<string, Vehicle[]>(), key = (x: number, z: number): string => `${Math.floor(x / 24)},${Math.floor(z / 24)}`;
-  for (const v of sim.vehicles) { const k = key(v.x, v.z), bucket = grid.get(k); if (bucket) bucket.push(v); else grid.set(k, [v]); }
+  // Recycle spatial buckets every simulation frame instead of constructing a
+  // new Map and dozens of short-lived arrays for each AI traffic update.
+  const grid = s.cells;
+  for (const bucket of grid.values()) { bucket.length = 0; s.freeCells.push(bucket); }
+  grid.clear();
+  const key = (x: number, z: number): string => `${Math.floor(x / 24)},${Math.floor(z / 24)}`;
+  for (const v of sim.vehicles) {
+    const k = key(v.x, v.z);
+    let bucket = grid.get(k);
+    if (!bucket) { bucket = s.freeCells.pop() ?? []; grid.set(k, bucket); }
+    bucket.push(v);
+  }
   let moving = 0, parked = 0, removed = 0;
   for (const v of sim.vehicles.slice()) {
     if (v.keep || v.driver === PLAYER_ID || p.vehicle === v.id || v.mode === 'police' || v.mode === 'scripted' || v.mode === 'none') continue;
@@ -95,9 +105,19 @@ export function stepTraffic(sim: Sim, dt: number): void {
       if (stop) speed = Math.min(speed, Math.max(0, (distance - VEHICLES[v.kind].halfL - 2) * 1.3));
     }
     const cos = Math.cos(v.h), sin = Math.sin(v.h), gx = Math.floor(v.x / 24), gz = Math.floor(v.z / 24); let gap = Infinity;
-    for (let x = gx - 1; x <= gx + 1; x++) for (let z = gz - 1; z <= gz + 1; z++) for (const q of grid.get(`${x},${z}`) ?? []) {
-      if (q === v || !q.alive) continue; const dx = q.x - v.x, dz = q.z - v.z, f = dx * cos + dz * sin, lateral = Math.abs(-dx * sin + dz * cos);
-      if (f > 0 && lateral < 2.5 && Math.cos(q.h - v.h) > 0.7) gap = Math.min(gap, f - VEHICLES[v.kind].halfL - VEHICLES[q.kind].halfL);
+    for (let x = gx - 1; x <= gx + 1; x++) for (let z = gz - 1; z <= gz + 1; z++) {
+      const bucket = grid.get(`${x},${z}`);
+      if (!bucket) continue;
+      for (const q of bucket) {
+        // Vehicles removed earlier in this same traffic frame can still be in
+        // the cached bucket; never let ghosts force traffic to brake.
+        if (q === v || !q.alive || sim.vehicle(q.id) !== q) continue;
+        const dx = q.x - v.x, dz = q.z - v.z, f = dx * cos + dz * sin;
+        const lateral = Math.abs(-dx * sin + dz * cos);
+        if (f > 0 && lateral < 2.5 && Math.cos(q.h - v.h) > 0.7) {
+          gap = Math.min(gap, f - VEHICLES[v.kind].halfL - VEHICLES[q.kind].halfL);
+        }
+      }
     }
     speed = Math.min(speed, Math.max(0, (gap - 4) * 0.9));
     if (v.mode === 'flee') speed = Math.min(VEHICLES[v.kind].top, Math.max(speed, target.limit * 1.35));

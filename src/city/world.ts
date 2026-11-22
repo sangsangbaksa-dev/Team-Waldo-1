@@ -204,12 +204,13 @@ export class World {
   refreshActorGrid(): void {
     for (const cell of this.hash) cell.length = 0;
     for (const a of this.actors) {
-      if (!a.alive || a.inVeh || this.hidden(a)) continue;
+      if (!a.alive || a.inVeh || this.hidden(a) || !Number.isFinite(a.x) || !Number.isFinite(a.y)) continue;
       const x = Math.min(HN - 1, Math.max(0, Math.floor(a.x / HC))), y = Math.min(HN - 1, Math.max(0, Math.floor(a.y / HC)));
       this.hash[y * HN + x].push(a);
     }
   }
   forNear(x: number, y: number, r: number, fn: (a: Actor) => void): void {
+    if (![x, y, r].every(Number.isFinite) || r < 0) return;
     const x0 = Math.max(0, Math.floor((x - r) / HC)), x1 = Math.min(HN - 1, Math.floor((x + r) / HC)), y0 = Math.max(0, Math.floor((y - r) / HC)), y1 = Math.min(HN - 1, Math.floor((y + r) / HC));
     for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) { const cell = this.hash[cy * HN + cx]; for (let k = 0; k < cell.length; k++) { const a = cell[k]; if (a.alive && !a.inVeh && !this.hidden(a)) fn(a); } }
   }

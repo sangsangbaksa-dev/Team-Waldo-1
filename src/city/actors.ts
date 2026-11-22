@@ -243,8 +243,9 @@ export function updateVehicles(w: World, dt: number): void {
   if(!Number.isFinite(dt)||dt<=0)return;
   const inp = w.input;
   for (const v of w.vehicles) {
-    if (!v.alive) continue; const drv = v.driver ? w.byId.get(v.driver) : undefined;
-    if (v.driver && (!drv || !drv.alive || drv.inVeh!==v.id)) { v.driver = 0; v.f = -1; v.ai = ''; }
+    if (!v.alive) continue; let drv = v.driver ? w.byId.get(v.driver) : undefined;
+    // Never use a stale occupant in the subsequent fire/escape/crash paths.
+    if (v.driver && (!drv || !drv.alive || drv.inVeh!==v.id)) { v.driver = 0; v.f = -1; v.ai = ''; drv = undefined; }
     if (v.burn > 0) {
       v.burn -= dt;
       if (v.burn <= 0) { v.alive = false; if (drv && drv.alive) { w.disembark(v, drv); w.hurtActor(drv, 70, -1, false); } v.driver = 0; w.explode(v.x, v.y, 120, 95, -1, 0.6); w.fx('wreck', v.x, v.y, v.ang); continue; }

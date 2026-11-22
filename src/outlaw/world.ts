@@ -142,7 +142,9 @@ function buildLanes(map: CityMap): void {
     }
   };
   for (let z = 0; z <= N; z++) for (let x = 0; x <= N; x++) { if (x < N) segment(x, z, x + 1, z); if (z < N) segment(x, z, x, z + 1); }
-  for (let j = 0; j < 169; j++) for (const ai of incoming[j]) for (const bi of outgoing[j]) {
+  // Connect all (N + 1)² intersections. Hardcoding 169 cut off roads below
+  // the first ten grid rows in the 17×17 map, creating traffic dead ends.
+  for (let j = 0; j < incoming.length; j++) for (const ai of incoming[j]) for (const bi of outgoing[j]) {
     const a = map.lanes[ai], b = map.lanes[bi], dot = Math.cos(a.h - b.h); if (dot < -0.5) continue;
     if (dot > 0.5) { const mid = node((a.x + b.x) / 2, (a.z + b.z) / 2, b.h, b.road, Math.min(a.limit, b.limit)); a.next.push(mid); map.lanes[mid].next.push(bi); continue; }
     // 진입·출구 접선의 교점을 제어점으로 삼아 차선 안에서 부드럽게 돕니다.

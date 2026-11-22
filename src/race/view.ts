@@ -21,6 +21,7 @@ import { buildOutposts, type Outpost } from './outpost';
 import { makeRng } from '../city/map';
 import { artSeed, ClearanceIndex } from './scenery-index';
 import { FxScheduler, skidSegmentCount } from './fx-scheduling';
+import { writeVec3, writeSpeedStreak, streakDirection } from './fx-buffers';
 
 const CAR_LEN = 4.7;
 const rnd = (a: number, b: number): number => a + Math.random() * (b - a);
@@ -69,7 +70,9 @@ class Particles {
     this.points = new THREE.Points(g, new THREE.PointsMaterial({ size, map: dotTex(), vertexColors: true, transparent: true, opacity, blending, depthWrite: false, sizeAttenuation: true })); this.points.frustumCulled = false;
   }
   emit(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, r: number, g: number, b: number): void {
-    const i = this.head; this.head = (this.head + 1) % this.cap; this.pos.set([x, y, z], i * 3); this.vel.set([vx, vy, vz], i * 3); this.life[i] = life; this.max[i] = life; this.rgb.set([r, g, b], i * 3);
+    const i = this.head; this.head = (this.head + 1) % this.cap;
+    writeVec3(this.pos,i,x,y,z);writeVec3(this.vel,i,vx,vy,vz);
+    this.life[i] = life; this.max[i] = life; writeVec3(this.rgb,i,r,g,b);
   }
   update(dt: number, gravity: number): void {
     for (let i = 0; i < this.cap; i++) {
@@ -118,6 +121,7 @@ export class RaceView {
   post: PostFx | null = null; readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera = new THREE.PerspectiveCamera(64, 1, 0.4, 3200);
   private crew: CharacterRig[] = []; private cars: CarVis[] = []; private ground!: THREE.Mesh; private pads: Array<{ tex: THREE.CanvasTexture }> = [];
   private rainFx: Particles | null = null; private sparks = new Particles(420, 0.34, THREE.AdditiveBlending); private smoke = new Particles(420, 1.1, THREE.NormalBlending, 0.2); private skids = new SkidMarks(1400); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
+  private skyMesh: THREE.Mesh | null = null;
   private camH = 0; private camInit = false; private camAnchor: ChaseAnchor = { x: 0, y: 0, z: 0, ready: false }; private fov = 64; private shake = 0; private punch = 0; private time = 0; private sun: THREE.DirectionalLight;
   private artRandom:()=>number; private clearance:ClearanceIndex;
   private artRnd(a:number,b:number):number{return a+this.artRandom()*(b-a);}
@@ -146,7 +150,7 @@ export class RaceView {
   private carEnv: THREE.Texture | null = null; private carMats = new Map<string, THREE.Material>();
   /** 하늘을 반사 맵으로 구워 차체 도장·유리에 노을과 하늘이 비치게 합니다. */
   private buildCarEnv(): void {
-    const sky = this.scene.getObjectByName('sky') as THREE.Mesh | undefined; if (!sky) return;
+    const sky = this.skyMesh; if (!sky) return;
     const tmp = new THREE.Scene(), pm = new THREE.PMREMGenerator(this.renderer), m = sky.clone(); m.position.set(0, 0, 0); tmp.add(m);
     this.carEnvTarget = pm.fromScene(tmp, 0, 1, 4000);this.carEnv=this.carEnvTarget.texture;pm.dispose();
   }
@@ -263,7 +267,7 @@ export class RaceView {
             c = mix(c, cc, cov * smoothstep(0.02, 0.18, vD.y) * 0.92); }
           gl_FragColor = vec4(c, 1.0); }`,
     });
-    const sky = new THREE.Mesh(new THREE.SphereGeometry(2800, 32, 16), mat); sky.name = 'sky'; this.scene.add(sky); this.disposables.push(sky.geometry, mat);
+    const sky = this.skyMesh = new THREE.Mesh(new THREE.SphereGeometry(2800, 32, 16), mat); sky.name = 'sky'; this.scene.add(sky); this.disposables.push(sky.geometry, mat);
   }
 
   private buildGround(): void {
@@ -657,10 +661,11 @@ export class RaceView {
     this.camera.lookAt(p.x + Math.cos(this.camH) * ahead, p.y + 1.15 + lift * 0.35 + (t.pitch[lookI] || 0) * 8, p.z + Math.sin(this.camH) * ahead);
     const grind = Math.abs(p.lat) > t.halfWidth - 1.65 && speed > 22 ? 1 : 0, rum = chaseRumble(sf, bst, grind);
     if (!this.reducedMotion) { this.camera.rotateZ(chaseRoll(p.yawRate, p.slip) + Math.sin(tt * 71) * rum); this.camera.rotateX(Math.sin(tt * 83 + 1.3) * rum * 0.8); }
-    const targetFov = this.reducedMotion ? 64 : chaseFov(sf, bst, this.punch); this.fov += (targetFov - this.fov) * Math.min(1, dt * fovRate(targetFov, this.fov)); this.camera.fov = this.fov; this.camera.updateProjectionMatrix();
+    const targetFov = this.reducedMotion ? 64 : chaseFov(sf, bst, this.punch); this.fov += (targetFov - this.fov) * Math.min(1, dt * fovRate(targetFov, this.fov));
+    if(Math.abs(this.camera.fov-this.fov)>0.02){this.camera.fov=this.fov;this.camera.updateProjectionMatrix();}
     // 지면·태양광이 카메라를 따라감
     this.ground.position.x = Math.round(this.camera.position.x / 60) * 60; this.ground.position.z = Math.round(this.camera.position.z / 60) * 60;
-    this.scene.getObjectByName('sky')?.position.copy(this.camera.position);
+    this.skyMesh?.position.copy(this.camera.position);
     this.sun.target.position.set(p.x, p.y, p.z); this.sun.position.set(p.x - 40, p.y + 60, p.z - 90);
     this.updateGhost(race); this.post?.setSpeedBlur(this.reducedMotion ? 0 : Math.max(0, (sf - 0.42) * 0.1 + (bst ? 0.04 : 0)));
     this.updateStartLights(race);
@@ -674,7 +679,7 @@ export class RaceView {
   private updateStreaks(dt: number, vx: number, vz: number, speed: number, bst: boolean): void {
     const n = this.streakSeed.length / 3, cam = this.camera.position, mat = this.streak.material as THREE.LineBasicMaterial;
     const target = Math.max(0, (speed - 26) / 50) * (bst ? 1 : 0.75); mat.opacity += (target * 0.8 - mat.opacity) * Math.min(1, dt * 6);
-    const dx = speed > 1 ? vx / speed : 1, dz = speed > 1 ? vz / speed : 0, len = Math.min(42, 2 + speed * (bst ? 0.4 : 0.28));
+    const direction=streakDirection(vx,vz), dx=direction.x,dz=direction.z,len = Math.min(42, 2 + speed * (bst ? 0.4 : 0.28));
     for (let i = 0; i < n; i++) {
       let x = this.streakSeed[i * 3], y = this.streakSeed[i * 3 + 1], z = this.streakSeed[i * 3 + 2];
       const ahead = (x - cam.x) * dx + (z - cam.z) * dz;
@@ -683,7 +688,7 @@ export class RaceView {
         x = cam.x + dx * fwd + Math.cos(a) * rr * -dz + Math.sin(a) * rr * 0; z = cam.z + dz * fwd + Math.cos(a) * rr * dx; y = cam.y + Math.sin(a) * rr * 0.55 - 1.2;
         if (y < 0.4) y = 0.4 + Math.random(); this.streakSeed[i * 3] = x; this.streakSeed[i * 3 + 1] = y; this.streakSeed[i * 3 + 2] = z;
       }
-      this.streakPos.set([x, y, z, x + dx * len, y, z + dz * len], i * 6);
+      writeSpeedStreak(this.streakPos,i,x,y,z,dx,dz,len);
     }
     (this.streak.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
   }

@@ -69,6 +69,12 @@ try {
       await page.locator('[data-act="class:warlord"]').click();
       await page.locator('.city-hud').waitFor({ state: 'visible' });
       await page.waitForFunction(() => !!window.__city?.world);
+      // Both detailed and fallback renderers must actually show active crystals.
+      await page.waitForFunction(() => {
+        const city = window.__city;
+        if (!city?.r3 || !city.world?.crystals?.some(c => c.amount > 0)) return true;
+        return city.r3.ml ? city.r3.ml.crystalMesh.count > 0 : city.r3.crystals.count > 0;
+      });
       if (size.name === 'desktop') await page.keyboard.press('j');
       else await page.locator('.c-topbtns [data-act="missions"]').click();
       await page.locator('.c-missions').waitFor({ state: 'visible' });

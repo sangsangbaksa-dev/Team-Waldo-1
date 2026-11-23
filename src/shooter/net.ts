@@ -66,6 +66,12 @@ export function canAcceptRoomNade(
   // 정상 수류탄의 초기 속도는 약 18~24m/s입니다. 과속 패킷은 무시합니다.
   return Math.hypot(n.vx, n.vy, n.vz) <= 40;
 }
+/** 투척 속도와 별개로 같은 참가자의 위조된 연속 수류탄 메시지를 제한합니다. */
+export function roomNadeCooldownReady(lastAt: number | undefined, now: number, minimumMs: number): boolean {
+  return Number.isFinite(now) && Number.isFinite(minimumMs) && minimumMs > 0 &&
+    (lastAt === undefined || (Number.isFinite(lastAt) && now - lastAt >= minimumMs));
+}
+
 export function nadeMsg(n: NetNade, owner: number): NetMsg { const r = (v: number): number => Math.round(v * 100) / 100; return { t: 'nd', o: owner, x: r(n.x), y: r(n.y), z: r(n.z), vx: r(n.vx), vy: r(n.vy), vz: r(n.vz) }; }
 export function parseShot(m: NetMsg): NetShot | null {
   if (!weapon(m.w) || !num(m.ox) || !num(m.oy, -50, 50) || !num(m.oz) || !Array.isArray(m.e) || m.e.length < 3 || m.e.length > 27 || m.e.length % 3 !== 0 || !m.e.every(v => num(v))) return null;

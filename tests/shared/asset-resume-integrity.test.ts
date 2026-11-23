@@ -93,4 +93,56 @@ describe('resumable asset integrity', () => {
     expect(mock).toHaveBeenCalledTimes(3);
     expect(mock.mock.calls[2][1].headers).toEqual({ Range: 'bytes=5-' });
   });
+
+  it('continues downloading when the server returns only a proper prefix of the remaining range', async () => {
+    const mock = vi.fn()
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abc', length: 10, fail: true }))
+      .mockResolvedValueOnce(response({ status: 206, chunk: 'defg', length: 4, range: 'bytes 3-6/10' }))
+      .mockResolvedValueOnce(response({ status: 206, chunk: 'hij', length: 3, range: 'bytes 7-9/10' }));
+    vi.stubGlobal('fetch', mock);
+    const result = await fetchBuffer('/models/test.glb');
+    expect(dec.decode(result)).toBe('abcdefghij');
+    expect(mock).toHaveBeenCalledTimes(3);
+    expect(mock.mock.calls[2][1].headers).toEqual({ Range: 'bytes=7-' });
+  });
+
+  it('restarts when a CDN resumes bytes from a different resource version', async () => {
+    const mock = vi.fn()
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abc', length: 10, fail: true }))
+      .mockResolvedValueOnce(response({ status: 206, chunk: 'defghij', length: 7, range: 'bytes 3-9/11' }))
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abcdefghijk', length: 11 }));
+    vi.stubGlobal('fetch', mock);
+    expect(dec.decode(await fetchBuffer('/models/test.glb'))).toBe('abcdefghijk');
+    expect(mock).toHaveBeenCalledTimes(3);
+    expect(mock.mock.calls[2][1].headers).toBeUndefined();
+  });
+
+  it('rejects extra bytes beyond the declared complete object length', async () => {
+    const mock = vi.fn()
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abc', length: 10, fail: true }))
+      .mockResolvedValueOnce(response({ status: 206, chunk: 'defghijk', length: 7, range: 'bytes 3-9/10' }))
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abcdefghij', length: 10 }));
+    vi.stubGlobal('fetch', mock);
+    expect(dec.decode(await fetchBuffer('/models/test.glb'))).toBe('abcdefghij');
+    expect(mock).toHaveBeenCalledTimes(3);
+  });
+
+  it('never treats an unknown resumed total size as a complete GLB', async () => {
+    const mock = vi.fn()
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abc', length: 10, fail: true }))
+      .mockResolvedValueOnce(response({ status: 206, chunk: 'defghij', length: 7, range: 'bytes 3-9/*' }))
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abcdefghij', length: 10 }));
+    vi.stubGlobal('fetch', mock);
+    expect(dec.decode(await fetchBuffer('/models/test.glb'))).toBe('abcdefghij');
+    expect(mock).toHaveBeenCalledTimes(3);
+  });
+
+  it('accepts a server ignoring Range only after resetting the prior prefix', async () => {
+    const mock = vi.fn()
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abc', length: 10, fail: true }))
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abcdefghij', length: 10 }));
+    vi.stubGlobal('fetch', mock);
+    expect(dec.decode(await fetchBuffer('/models/test.glb'))).toBe('abcdefghij');
+    expect(mock).toHaveBeenCalledTimes(2);
+  });
 });

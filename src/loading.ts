@@ -110,10 +110,12 @@ export async function fetchBuffer(url: string, onProgress?: (loaded: number, tot
         throw new TypeError('Invalid Content-Length; restarting full download');
       }
       const len = declaredLength || expectedRangeLength;
-      if (res.headers.get('content-encoding')) resumable = false; // 압축 전송은 바이트 위치가 안 맞아 이어 받을 수 없습니다
-      // A server may send only part of the remaining range (e.g. 3-6/10).
-      // Content-Range's complete-object size is the real download target.
-      total = expectedFullLength || (len ? loaded + len : 0);
+      const encoded = !!res.headers.get('content-encoding');
+      if (encoded) resumable = false; // 브라우저 스트림은 압축 해제된 바이트를 전달하므로 Range 와 원본 길이를 신뢰할 수 없습니다
+      // The wire Content-Length of gzip/br responses is not the number of
+      // decoded bytes returned by fetch(). Never compare those two lengths.
+      // For uncompressed ranges, Content-Range gives the full object size.
+      total = encoded ? 0 : expectedFullLength || (len ? loaded + len : 0);
       if (!res.body) { const b = new Uint8Array(await res.arrayBuffer()); chunks.push(b); loaded += b.byteLength; onProgress?.(loaded, loaded); }
       else {
         const reader = res.body.getReader();

@@ -32,6 +32,17 @@ try {
     page.on("pageerror", error => errors.push(error.message));
     try {
       await page.goto(origin + "/room-tone/", { waitUntil: "domcontentloaded" });
+      const titleLayout = await page.evaluate(() => {
+        const title = document.querySelector("#home h1").getBoundingClientRect();
+        const start = document.querySelector("#new").getBoundingClientRect();
+        return {
+          titleVisible: title.width > 0 && title.height > 0,
+          startVisible: start.width >= 40 && start.height >= 40,
+          horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth + 1,
+        };
+      });
+      assert.ok(titleLayout.titleVisible && titleLayout.startVisible, "Home title and start action must be visible");
+      assert.equal(titleLayout.horizontalOverflow, false, "Home must not scroll horizontally");
       await page.locator("#new").click();
       await page.getByRole("button", { name: "구역 진입", exact: true }).waitFor();
       await page.getByRole("button", { name: "구역 진입", exact: true }).click();

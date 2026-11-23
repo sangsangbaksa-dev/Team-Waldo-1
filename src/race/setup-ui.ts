@@ -58,7 +58,7 @@ export function mountSetup(host: HTMLElement, initial: RaceSetup, records: RaceR
     note('map').textContent = map.blurb; note('level').textContent = lv.blurb; note('car').textContent = `${car.name} · ${car.role} — ${car.blurb}`;
     const lap = records.bestLap[map.id], race = records.bestRace[raceRaceKey(map.id, cur.laps)];
     const ghost = cur.mode === 'trial' ? readGhost(map.id, cur.laps, car.id) : null;
-    note('mode').textContent = cur.mode === 'trial' ? `혼자 달리며 내 최고 주행(고스트)과 겨룹니다.${ghost ? ` 저장된 고스트 ${fmtTime(ghost.time)}` : ' 아직 고스트가 없습니다 — 첫 주행이 고스트가 됩니다.'}` : '라이벌 3대와 순위를 겨룹니다. 코스 위 상자를 먹고 E 키로 아이템(니트로 셀·실드·오일·서지)을 쓰세요. 드리프트를 이어 가면 점수가 쌓입니다.';
+    note('mode').textContent = cur.mode === 'trial' ? `혼자 달리며 내 최고 주행(고스트)과 겨룹니다.${ghost ? ` 저장된 고스트 ${fmtTime(ghost.time)}` : ' 아직 고스트가 없습니다 — 첫 주행이 고스트가 됩니다.'}` : '라이벌 3대와 순위를 겨룹니다. 코너에서는 브레이크와 드리프트를 활용하고, 니트로와 부스트 패드로 속도를 높이세요. 드리프트를 이어 가면 점수가 쌓입니다.';
     root.querySelector<HTMLElement>('[data-seg="level"]')?.closest('section')?.toggleAttribute('hidden', cur.mode === 'trial');
     note('record').textContent = lap !== undefined || race !== undefined ? `${map.name} 최고 랩 ${lap !== undefined ? fmtTime(lap) : '--'} · ${cur.laps}랩 최고 ${race !== undefined ? fmtTime(race) : '--'}` : '기록 없음';
     note('summary').textContent = `${map.name} · ${cur.laps}랩 · ${cur.mode === 'trial' ? '타임어택' : lv.name} · ${car.name}`;

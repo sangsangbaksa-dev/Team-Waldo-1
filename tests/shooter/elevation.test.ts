@@ -31,6 +31,17 @@ describe('ZERO ZONE 올라갈 수 있는 고저차', () => {
     expect(groundRayDistance(m.terrain, 0, 10, 0, 0, 1, 0, 20)).toBe(Infinity);
   });
 
+  it('아주 얇게 산 정상에 스치는 수평 총알을 표본 간격과 상관없이 차단한다', () => {
+    const t = emptyTerrain();
+    t.rises.push({ x: 0.37, z: 0, r: 20, h: 4 });
+    const y = 3.9995;
+    const d = groundRayDistance(t, -25, y, 0, 1, 0, 0, 50);
+    expect(d).toBeGreaterThan(24);
+    expect(d).toBeLessThan(26);
+    expect(groundHeight(t, -25 + d, 0)).toBeCloseTo(y, 3);
+    expect(groundRayDistance(t, -25, 4.1, 0, 1, 0, 0, 50)).toBe(Infinity);
+  });
+
   it('오르막 위 표적은 올려 겨냥해야 명중하며 수평 사격은 지형에 막힌다', () => {
     const m = new Match({ seed: 3, mode: 'duel', difficulty: 'normal', humans: [], fill: 2 });
     m.map = slopeMap(); m.map.loot.forEach(l => { l.taken = true; });

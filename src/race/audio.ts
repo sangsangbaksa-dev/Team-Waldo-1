@@ -100,7 +100,7 @@ export class RaceAudio {
     this.boostG.filt.frequency.setTargetAtTime(500 + v * 11, t, 0.1);
   }
 
-  sfx(name: 'count' | 'go' | 'lap' | 'best' | 'hit' | 'bump' | 'pad' | 'drift' | 'nitro' | 'chirp' | 'finish' | 'click', power = 1): void {
+  sfx(name: 'count' | 'go' | 'lap' | 'best' | 'hit' | 'bump' | 'pad' | 'drift' | 'nitro' | 'chirp' | 'finish' | 'nearMiss' | 'click', power = 1): void {
     if (!this.eng.ctx || !this.enabled) return;
     // hit/bump can be emitted twice in one frame (wall + car shove) or every step while cars grind.
     const gap = name === 'hit' || name === 'bump' ? 150 : 0;
@@ -118,6 +118,7 @@ export class RaceAudio {
       case 'bump': burst(this.eng, 0.13, 0.32, 900, 0.8, 'lowpass'); tone(this.eng, 130, 0.1, 0.22, 'square', -60); break;
       case 'pad': tone(this.eng, 300, 0.45, 0.24, 'sawtooth', 1400); burst(this.eng, 0.45, 0.28, 3000, 0.7, 'highpass'); break;
       case 'drift': tone(this.eng, 500, 0.26, 0.24, 'sawtooth', 1200); burst(this.eng, 0.35, 0.24, 2500, 0.7, 'highpass'); break;
+      case 'nearMiss': tone(this.eng, 720, 0.12, 0.14, 'triangle'); tone(this.eng, 1040, 0.17, 0.13, 'triangle', 0, 0.09); break;
       case 'nitro': tone(this.eng, 90, 0.5, 0.42, 'sine', -40); tone(this.eng, 160, 0.7, 0.3, 'sawtooth', 1500); burst(this.eng, 0.8, 0.34, 1800, 0.7, 'highpass'); burst(this.eng, 0.25, 0.3, 500, 0.9, 'lowpass'); break;
       case 'chirp': burst(this.eng, 0.22, 0.26, 2600, 5, 'bandpass'); tone(this.eng, 900, 0.18, 0.1, 'sawtooth', -400); break;
       case 'finish': this.done = true; this.drive(0, 0, 0, false, false, false);

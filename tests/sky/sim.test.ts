@@ -269,3 +269,58 @@ describe('SKY WAR missile terrain and collision ordering', () => {
     expect(far.hp).toBe(farHp);
   });
 });
+
+describe('SKY WAR finite consumables and kill accounting', () => {
+  it('does not consume full-health repair pickups, and reports the actual amount after damage', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.intermission = 1e9;
+    const item = { id: 1201, kind: 'repair' as const, pos: sim.player.pos.clone(), life: 10 };
+    sim.pickups.push(item);
+    sim.step(0.05, neutral);
+    expect(sim.player.hp).toBe(100);
+    expect(sim.pickups).toHaveLength(1);
+    expect(sim.events.some(e => e.t === 'pickup')).toBe(false);
+
+    sim.player.hp = 93;
+    sim.step(0.05, neutral);
+    expect(sim.player.hp).toBe(100);
+    expect(sim.pickups).toHaveLength(0);
+    expect(sim.events.find(e => e.t === 'pickup')).toMatchObject({ kind: 'repair', amount: 7 });
+  });
+
+  it('keeps ammo/shield pickups when full, then applies only the available capacity', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.intermission = 1e9;
+    sim.player.missiles = 8;
+    sim.shield = 50;
+    sim.pickups.push(
+      { id: 1202, kind: 'ammo', pos: sim.player.pos.clone(), life: 10 },
+      { id: 1203, kind: 'shield', pos: sim.player.pos.clone(), life: 10 },
+    );
+    sim.step(0.05, neutral);
+    expect(sim.pickups).toHaveLength(2);
+    sim.events.length = 0;
+    sim.player.missiles = 7;
+    sim.shield = 47;
+    sim.step(0.05, neutral);
+    expect(sim.player.missiles).toBe(8);
+    expect(sim.shield).toBe(50);
+    expect(sim.pickups).toHaveLength(0);
+    expect(sim.events.filter(e => e.t === 'pickup')).toEqual(expect.arrayContaining([
+      { t: 'pickup', kind: 'ammo', amount: 1 },
+      { t: 'pickup', kind: 'shield', amount: 3 },
+    ]));
+  });
+
+  it('refuses duplicate death events and duplicate kill rewards', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    const enemy = sim.makeJet('enemy', 'fighter', new THREE.Vector3(0, 900, -400), 0.8);
+    sim.kill(enemy, sim.player.id);
+    const score = sim.score, kills = sim.kills, events = sim.events.length, drops = sim.pickups.length;
+    sim.kill(enemy, sim.player.id);
+    expect(sim.score).toBe(score);
+    expect(sim.kills).toBe(kills);
+    expect(sim.events.length).toBe(events);
+    expect(sim.pickups.length).toBe(drops);
+  });
+});

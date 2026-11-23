@@ -108,3 +108,271 @@
 
 #game[data-transition="exit"]::after {content:"";position:absolute;inset:0;background:#050807;opacity:var(--exit-fade,0);z-index:3;pointer-events:none;}
 #game[data-transition="exit"] :is(.hudright,.gear,#stick,.touchactions) {pointer-events:none;}
+/* ROOM TONE — editorial layout, restrained materials, clear interaction targets. */
+#home .mast {
+  border-bottom: 1px solid #e3d0b91f;
+  background: #0b1311a8;
+}
+#home .mast .wordmark { font-size: .91rem; letter-spacing: .16em; }
+#home .hub-link,
+#home #sound {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  font-weight: 500;
+  letter-spacing: .01em;
+}
+#home .hub-link { border-bottom: 1px solid transparent; }
+#home .hub-link:hover { text-decoration: none; border-color: #c8a88c; }
+#home #sound { color: #d8d6cd; }
+#home .intro {
+  position: relative;
+  width: min(645px, calc(100% - 10vw));
+  max-width: none;
+  margin: clamp(1.5rem, 6vh, 4rem) 0 2rem clamp(1rem, 5.4vw, 6rem);
+  padding: clamp(1.6rem, 4vw, 3rem);
+  border-left: 2px solid #b99475;
+  background: #0a1412e8;
+}
+#home .intro .kicker { color: #c3b09d; font-size: .74rem; letter-spacing: .13em; }
+#home .intro h1 {
+  font-size: clamp(4.8rem, 8vw, 8.4rem);
+  line-height: .88;
+  letter-spacing: -.035em;
+  margin: 1.35rem 0 .9rem;
+  text-wrap: nowrap;
+}
+#home .intro em { color: #c6ad97; }
+#home .kname { letter-spacing: .28em; font-size: .85rem; font-weight: 500; }
+#home .damaged { margin-top: 1.7rem; font-size: clamp(1.1rem, 1.8vw, 1.45rem); letter-spacing: -.02em; }
+#home .synopsis { max-width: 420px; line-height: 1.7; color: #c5c9c0; }
+#home .startrow { gap: .6rem; margin-top: 1.9rem; }
+#home .startrow button { min-height: 48px; padding: .82rem 1.3rem; border-radius: 2px; }
+#home .startrow #new { border-color: #c9a07e; }
+#home .startrow #continue:not([hidden]) ~ #new {
+  background: #141e1a;
+  color: #e6c8ad;
+}
+#home .startrow .secondary { border-color: #64736b; }
+#home .homefoot { margin-top: 1.5rem; padding-top: .9rem; border-top: 1px solid #afaa992b; }
+#home #completion { line-height: 1.55; font-size: .82rem; }
+
+#viewer .museum { grid-template-columns: minmax(245px, 300px) minmax(0, 1fr); gap: clamp(1.2rem, 4vw, 3.5rem); }
+#viewer .spec { align-self: start; padding-top: clamp(1.8rem, 5vh, 4rem); }
+#viewer .spec h2 { font-size: clamp(2.45rem, 4vw, 3.4rem); line-height: 1.1; letter-spacing: -.05em; }
+#viewer .spec dl { border-color: #5b645b; }
+#viewer #stage { border-color: #7b7769; background: #101815; }
+#viewer #notice { border-left: 2px solid #bf9c80; background: #0d1715e6; }
+#viewer .vtabs button[aria-pressed="true"],
+#viewer .vactions button[aria-pressed="true"] { background: #28332b; color: #f0d4b6; }
+
+#game .hud {
+  pointer-events: none;
+  padding: max(.8rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left));
+  gap: 1rem;
+}
+#game .hudleft {
+  display: block;
+  flex: 0 1 420px;
+  max-width: min(54vw, 420px);
+  padding: .8rem 1rem;
+  border: 1px solid #6c706140;
+  border-left: 2px solid #b49a80;
+  background: #0a1412ed;
+}
+#game #zone {
+  color: #c8b8a3;
+  font: 600 .72rem/1.5 monospace;
+  letter-spacing: .12em;
+  font-variant-numeric: tabular-nums;
+}
+#game #objective { display: block; margin-top: .27rem; color: #f1e8d7; font-size: .96rem; font-weight: 600; line-height: 1.45; }
+#game #guide {
+  margin-top: .7rem;
+  padding: .4rem .5rem;
+  border: 1px solid #7e89764c;
+  border-left-color: #a29f7c;
+  color: #d7e0c3;
+  background: #17221b;
+  font-size: .79rem;
+}
+#game .hudright {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0;
+  align-items: stretch;
+  border: 1px solid #7a807056;
+  background: #0b1512ec;
+}
+#game .hudright button {
+  min-height: 44px;
+  border: 0;
+  border-right: 1px solid #7a80704d;
+  border-radius: 0;
+  padding: .55rem .85rem;
+  background: transparent;
+  font-weight: 500;
+  color: #e1ded3;
+}
+#game .hudright button:last-child { border-right: 0; }
+#game #pauseGame { min-width: 46px; font-size: 1rem; }
+#game .hudright button:hover,
+#game .hudright button:focus-visible { background: #29362e; }
+
+#game .statusfoot {
+  display: flex;
+  align-items: center;
+  gap: .72rem;
+  left: max(1rem, env(safe-area-inset-left));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  padding: .6rem .8rem;
+  border: 1px solid #7277685c;
+  border-radius: 0;
+  background: #0a1412e8;
+  color: #deded1;
+  font: 500 .75rem/1.4 monospace;
+}
+#game .rec { display: inline-flex; align-items: center; color: #d5a181; letter-spacing: .12em; }
+#game .rec::before { width: 5px; height: 5px; background: #ddaa8a; }
+#game #timer { color: #f2e9d8; font-size: .92rem; font-weight: 600; }
+#game .statusline { background: #8c948277; }
+#game .stambar { width: 74px; height: 4px; border-radius: 0; background: #46534d; }
+#game .stambar i { border-radius: 0; background: #d3b68d; }
+#game #strain[data-threat="alert"] { color: #f0c38b; }
+#game #strain[data-threat="near"] { color: #e9a38d; }
+
+#game .gear {
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  display: flex;
+  align-items: stretch;
+  gap: .35rem;
+}
+#game .gear button,
+#game .touchactions button {
+  min-height: 44px;
+  border-radius: 2px;
+  background: #0c1714ed;
+  border-color: #7980718c;
+  color: #e5e0d4;
+  font-size: .81rem;
+  font-weight: 500;
+}
+#game .gear button[aria-pressed="true"] {
+  border-color: #aba485;
+  background: #25342c;
+  color: #eae7cf;
+}
+#game #recorderCount { margin-left: .35rem; font-weight: 650; color: #ebc09d; }
+#game .gear button:disabled { opacity: .72; }
+#game .reticle {
+  width: 4px;
+  height: 4px;
+  border: 1px solid #e1e2d4;
+  background: #c2c8b44d;
+  border-radius: 0;
+  transform: translate(-50%, -50%);
+}
+#game #prompt {
+  top: 61%;
+  padding: .65rem .9rem;
+  border: 1px solid #89958283;
+  border-left: 2px solid #c3ac91;
+  background: #0c1715e8;
+  font-size: .84rem;
+  color: #ede9df;
+  letter-spacing: .005em;
+}
+#game #prompt kbd { margin-right: .35rem; }
+#game #toast { color: #e5cbae; font-size: .91rem; font-weight: 550; line-height: 1.5; }
+
+#game #dialog { background: #080e0cde; }
+#game .panel, dialog {
+  border: 1px solid #746d5f;
+  border-top: 2px solid #b5987b;
+  background: #101b17;
+  border-radius: 2px;
+  box-shadow: 0 18px 36px #0008;
+}
+#game .panel { width: min(540px, 100%); padding: clamp(1.25rem, 3vw, 2.2rem); }
+#game .panel .kicker { color: #bba58e; letter-spacing: .12em; font-size: .71rem; }
+#game .panel h2, dialog h2 { line-height: 1.18; letter-spacing: -.035em; margin-bottom: .7rem; }
+#game .panel p, dialog p { color: #c9d0c3; line-height: 1.68; }
+#game .panelActions { border-top: 1px solid #9da18e32; padding-top: 1rem; gap: .55rem; }
+#game .panelActions button { min-height: 45px; border-radius: 2px; font-weight: 550; }
+#game .taskline, #game .readout { border-left-color: #ae967d; background: #1c2821; }
+#game .record-archive section { background: #19221e; }
+#game .dial-cell .dial-value { background: #19241f; border-color: #697667; }
+#game .dial-cell .dial-prev { background: #101c17; }
+#game .dial-cell .dial-value:hover, #game .choiceRow button:hover { border-color: #c7a789; }
+#game :is(button, input):focus-visible { outline: 2px solid #e1be96; outline-offset: 2px; }
+
+@media (max-width: 700px) {
+  #home .intro {
+    width: auto;
+    margin: 1rem .8rem 1.5rem;
+    padding: clamp(1.25rem, 4vw, 1.8rem);
+    background: #0a1412e8;
+  }
+  #home .intro h1 { font-size: clamp(4.3rem, 16.5vw, 6.6rem); margin-top: 1rem; }
+  #home .synopsis { max-width: 440px; }
+  #home .startrow { margin-top: 1.45rem; }
+  #home .startrow button { flex: 1 1 auto; }
+  #viewer .museum { grid-template-columns: minmax(0, 1fr); gap: 1rem; padding: .6rem 1rem 1.2rem; }
+  #viewer .spec {
+    padding: .4rem 0 0;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: .65rem;
+    align-items: center;
+  }
+  #viewer .spec h2 { font-size: 1.6rem; margin: 0; }
+  #viewer .vtabs { justify-content: flex-end; }
+  #viewer .vactions, #viewer .scrublabel, #viewer #scrub { grid-column: 1 / -1; }
+  #game .hud { gap: .45rem; padding: max(.6rem, env(safe-area-inset-top)) max(.6rem, env(safe-area-inset-right)) 0 max(.6rem, env(safe-area-inset-left)); }
+  #game .hudleft { flex: 1 1 52%; max-width: 55vw; padding: .58rem .65rem; }
+  #game #zone { font-size: .62rem; letter-spacing: .05em; }
+  #game #objective { font-size: .78rem; line-height: 1.35; }
+  #game .hudright button { min-height: 44px; padding: .45rem .55rem; font-size: .73rem; }
+  #game #gsound span { font-size: .7rem; }
+  #game #pauseGame { min-width: 44px; }
+  #game #guide { margin-top: .45rem; font-size: .68rem; }
+  #game #prompt { top: 52%; }
+}
+@media (pointer: coarse) {
+  #game .gear { bottom: calc(max(3.3rem, env(safe-area-inset-bottom)) + 3.55rem); }
+  #game .gear button { min-height: 44px; }
+  #game .statusfoot {
+    left: max(.75rem, env(safe-area-inset-left));
+    bottom: calc(max(3.3rem, env(safe-area-inset-bottom)) + 9rem);
+    padding: .45rem .55rem;
+    font-size: .7rem;
+    gap: .42rem;
+    max-width: calc(100vw - 1.5rem);
+  }
+  #game .touchactions { gap: .45rem; }
+  #game .touchactions button { min-width: 68px; min-height: 52px; }
+  #game #stick { border-color: #a4b1a18c; background: #0f1d19b3; }
+  #game #stickknob { border-color: #c2c9b6ac; background: #687b6d9c; }
+}
+@media (max-width: 390px) {
+  #home .intro h1 { font-size: clamp(3.9rem, 16vw, 5rem); }
+  #home .homefoot { flex-wrap: wrap; }
+  #game .hudleft { max-width: 50vw; }
+  #game .hudright button { padding-inline: .4rem; }
+  #game .gear { max-width: min(84vw, 300px); flex-wrap: wrap; justify-content: flex-end; }
+  #game .gear button { font-size: .76rem; padding: .4rem .55rem; }
+  #game .statusfoot .statusline { display: none; }
+  #game .statusfoot .stambar { width: 48px; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  #home .intro { margin-top: .5rem; padding-block: .75rem; }
+  #home .intro h1 { font-size: clamp(3.3rem, 11vh, 4.3rem); margin: .45rem 0; }
+  #home .damaged { margin-top: .6rem; }
+  #home .synopsis { line-height: 1.4; }
+  #home .homefoot { margin-top: .7rem; padding-top: .55rem; }
+  #game .hudleft { padding: .4rem .6rem; }
+  #game .statusfoot { bottom: max(.5rem, env(safe-area-inset-bottom)); }
+  #game .gear { bottom: max(.5rem, env(safe-area-inset-bottom)); }
+  .touch #game .statusfoot { bottom: calc(max(1rem, env(safe-area-inset-bottom)) + 5rem); }
+  .touch #game .gear { bottom: calc(max(1rem, env(safe-area-inset-bottom)) + 3.5rem); }
+}

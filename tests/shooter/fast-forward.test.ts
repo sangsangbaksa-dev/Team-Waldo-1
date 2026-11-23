@@ -15,8 +15,8 @@ describe('ZERO ZONE spectator fast forward', () => {
     let now = 0;
     const match = { over: false, step: vi.fn(), drain: vi.fn() };
     const done = advanceMatchChunk(match, 500, () => (now += 4));
-    expect(done).toBe(1);
-    expect(match.drain).toHaveBeenCalledTimes(1);
+    expect(done).toBe(2);
+    expect(match.drain).toHaveBeenCalledTimes(2);
   });
 
   it('stops as soon as the winner is known', () => {

@@ -1,0 +1,1 @@
+{"name":"parry-gladiator","version":"1.0.0","type":"module","scripts":{"dev":"vite --host 0.0.0.0","build":"vite build","preview":"vite preview --host 0.0.0.0","server":"node server/index.js","test":"node --test"},"dependencies":{"three":"^0.170.0","ws":"^8.18.0"},"devDependencies":{"vite":"^6.0.0"}}

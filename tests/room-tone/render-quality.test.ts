@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderingScale } from "../../src/room-tone/render-quality.mjs";
+import { renderingScale, selectQuality } from "../../src/room-tone/render-quality.mjs";
 
 describe("ROOM TONE fill-rate budget", () => {
   it("preserves device resolution on small displays", () => {
@@ -32,5 +32,19 @@ describe("ROOM TONE fill-rate budget", () => {
   it("does not return NaN or zero on invalid viewport dimensions", () => {
     expect(renderingScale(0, 0, 0)).toBe(1);
     expect(Number.isFinite(renderingScale(Infinity, NaN, NaN))).toBe(true);
+  });
+});
+
+describe("ROOM TONE shared arcade quality defaults", () => {
+  it("uses standard on compact screens and high on desktops", () => {
+    expect(selectQuality(null,true)).toBe("standard");
+    expect(selectQuality(undefined,false)).toBe("high");
+  });
+  it("preserves explicit user choices and ignores unknown storage values", () => {
+    for(const quality of ["low","standard","high"] as const) {
+      expect(selectQuality({quality},false)).toBe(quality);
+    }
+    expect(selectQuality({quality:"__proto__"},true)).toBe("standard");
+    expect(selectQuality({quality:"invalid"},false)).toBe("high");
   });
 });

@@ -354,6 +354,9 @@
   #game #stick { border-color: #a4b1a18c; background: #0f1d19b3; }
   #game #stickknob { border-color: #c2c9b6ac; background: #687b6d9c; }
 }
+@media (max-width: 700px) and (pointer: fine) {
+  #game .statusfoot { bottom: max(4.75rem, env(safe-area-inset-bottom)); }
+}
 @media (max-width: 390px) {
   #home .intro h1 { font-size: clamp(3.9rem, 16vw, 5rem); }
   #home .homefoot { flex-wrap: wrap; }

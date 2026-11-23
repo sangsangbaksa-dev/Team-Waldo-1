@@ -209,8 +209,9 @@ export function openRace(onExit: () => void): void {
   }
   function beginPvp(oppCar: string): void {
     if (!pvp || closed) return; const s = pvp.s;
-    track = cachedMapTrack(mapOf(setup)); prepareMinimap();
-    race = createRace(track, setup.laps, Infinity, { ...setup, pvp: { host: s.host, opponent: s.opponent.nickname, opponentCar: oppCar } });
+    track = cachedMapTrack(mapOf(setup)); prepareMinimap(); audio.setCar(setup.car);
+    const skin = ownsSkin(garage.value, setup.skin) ? setup.skin : 'stock';
+    race = createRace(track, setup.laps, Infinity, { ...setup, skin, pvp: { host: s.host, opponent: s.opponent.nickname, opponentCar: oppCar } });
     acc = 0; cache.clear(); lastPlace = 2; setText('#rc-laps', String(setup.laps)); setText('#rc-of', '/ 2'); setText('#rc-best', `VS ${s.opponent.nickname}`);
     if (!startView(carTemplate)) return;
     modal.className = 'rc-modal'; modal.innerHTML = ''; root.dataset.phase = 'countdown'; msg(`${s.opponent.nickname} 님과 대전 · 먼저 결승선을 통과하면 승리`, 'hint'); msgT = 4; last = performance.now();
@@ -291,8 +292,9 @@ export function openRace(onExit: () => void): void {
   function beginMulti(list: Array<{ id: string; car: string }>): void {
     if (!multi || closed) return; const s = multi.s, meIdx = Math.max(0, list.findIndex(p => p.id === s.me.id));
     const players = list.filter(p => p.id !== s.me.id).map(p => ({ id: p.id, car: p.car, nickname: s.players.find(x => x.id === p.id)?.nickname ?? '플레이어' }));
-    track = cachedMapTrack(mapOf(setup)); prepareMinimap();
-    race = createRace(track, setup.laps, Infinity, { ...setup, multi: { slot: meIdx, players } });
+    track = cachedMapTrack(mapOf(setup)); prepareMinimap(); audio.setCar(setup.car);
+    const skin = ownsSkin(garage.value, setup.skin) ? setup.skin : 'stock';
+    race = createRace(track, setup.laps, Infinity, { ...setup, skin, multi: { slot: meIdx, players } });
     acc = 0; cache.clear(); lastPlace = list.length; setText('#rc-laps', String(setup.laps)); setText('#rc-of', `/ ${list.length}`); setText('#rc-best', `${list.length}인 레이스`);
     if (!startView(carTemplate)) return;
     modal.className = 'rc-modal'; modal.innerHTML = ''; root.dataset.phase = 'countdown'; msg(`${list.length}명 레이스 · 먼저 결승선을 통과하세요`, 'hint'); msgT = 4; last = performance.now();

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MAPS } from '../../src/race/maps';
+import { CARS, paintOf } from '../../src/race/config';
 import { buildMapTrack } from '../../src/race/track';
 import { createRace, updateRace } from '../../src/race/race';
 import { decideWinner, eligibleForForfeit, encodeSnap, followSnap, parseSnap, plausibleFinishTime, validFinishTime } from '../../src/race/netcar';
@@ -18,6 +19,31 @@ describe('SPEED RUSH 1대1 레이스', () => {
     expect(host.racers[0].car.z).toBeCloseTo(guest.racers[1].car.z, 5);
     expect(host.racers[1].car.x).toBeCloseTo(guest.racers[0].car.x, 5);
     expect(host.racers[1].car.z).toBeCloseTo(guest.racers[0].car.z, 5);
+  });
+
+  it('applies a selected purely cosmetic paint in online duels without painting opponents', () => {
+    const car = CARS.find(c => c.id === 'nova')!;
+    const r = createRace(track, 1, Infinity, {
+      car: car.id, skin: 'neon',
+      pvp: { host: true, opponent: 'B', opponentCar: 'arc' },
+    });
+    expect(r.player.color).toBe(paintOf(car, 'neon').color);
+    expect(r.player.accent).toBe(paintOf(car, 'neon').accent);
+    expect(r.racers[1].color).toBe(CARS[0].color);
+    expect(r.player.params).toEqual(createRace(track, 1, Infinity, {
+      car: car.id, pvp: { host: true, opponent: 'B', opponentCar: 'arc' },
+    }).player.params);
+  });
+
+  it('uses the same purchased cosmetic paint on the multiplayer start grid', () => {
+    const r = createRace(track, 2, Infinity, {
+      car: 'nova', skin: 'royal',
+      multi: { slot: 2, players: [{ id: 'peer-a', nickname: 'Alpha', car: 'bolt' }, { id: 'peer-b', nickname: 'Beta', car: 'arc' }] },
+    });
+    const car = CARS.find(c => c.id === 'nova')!;
+    expect(r.player.color).toBe(paintOf(car, 'royal').color);
+    expect(r.player.accent).toBe(paintOf(car, 'royal').accent);
+    expect(r.racers.slice(1).map(x => x.color)).toEqual([CARS.find(c => c.id === 'bolt')!.color, CARS[0].color]);
   });
 
   it('상대 차량은 AI 가 아니라 받은 스냅샷을 따라간다', () => {

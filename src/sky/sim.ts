@@ -242,7 +242,7 @@ export class SkySim {
     const target = p.alive ? p : null;
     if (!target) { this.flyJet(e, 0, 0.3, 0.5, dt); return; }
     const to = tmpV2.copy(target.pos).sub(e.pos); const dist = to.length();
-    const myFwd = forward(e, aiForward); const align = myFwd.dot(to) / (dist || 1);
+    const myFwd = forward(e, aiForward);
     e.throttle = e.kind === 'bomber' ? 0.4 : THREE.MathUtils.clamp(0.55 + (dist - 500) / 1500, 0.4, 1);
     // 나를 노리는 미사일 회피
     const threatened = this.missiles.some(m => m.alive && m.target === e.id && m.pos.distanceTo(e.pos) < 700);
@@ -264,11 +264,11 @@ export class SkySim {
       return;
     }
     // 전투기: 추격 → 근접하면 사선 이탈(strafe)로 오버슈트 방지
-    const aim = this.leadPoint(e, target, 520, aiAim);
+    const aim = this.leadPoint(e, target, e.speed + 680, aiAim);
     if (dist < 260 && e.strafe <= 0) { e.strafe = rnd(1.6, 3.2); e.bailT = Math.random() < 0.5 ? 1 : -1; }
     if (dist < 300 && e.strafe > 0 && e.strafe < 2) { aim.copy(e.pos).addScaledVector(myFwd, 400); aim.y += 220; aim.x += e.bailT * 240; }
     const a = this.steerTo(e, aim, dt, 0.55 + e.skill * 0.5);
-    if (align > 0.992 && dist < GUN_RANGE * 0.9 && e.gunCd <= 0) { this.fireGun(e, 0.03 * e.aimJitter * (2 - e.skill)); e.gunCd = e.kind === 'ace' ? 0.1 : 0.17; }
+    if (a > 0.992 && dist < GUN_RANGE * 0.9 && e.gunCd <= 0) { this.fireGun(e, 0.03 * e.aimJitter * (2 - e.skill)); e.gunCd = e.kind === 'ace' ? 0.1 : 0.17; }
     if (e.missiles > 0 && e.missileCd <= 0 && a > 0.95 && dist > 500 && dist < 1500) { if (Math.random() < 0.55) { this.fireMissile(e, p.id); e.missiles--; } e.missileCd = rnd(8, 14) / e.skill; }
   }
 
@@ -278,7 +278,7 @@ export class SkySim {
     const dir = forward(j, gunDir); dir.x += rnd(-spread, spread); dir.y += rnd(-spread, spread); dir.z += rnd(-spread, spread); dir.normalize();
     const side = gunSide.set(j.kind === 'bomber' || j.kind === 'boss' ? 0 : (Math.random() < 0.5 ? -4 : 4), -1, 0).applyQuaternion(j.q);
     const b = this.bulletPool.pop() ?? { pos: new THREE.Vector3(), vel: new THREE.Vector3(), life: 0, team: j.team, owner: j.id, alive: true };
-    b.pos.copy(j.pos).add(side).addScaledVector(dir, 12); b.vel.copy(dir).multiplyScalar(j.speed + 680); b.life = GUN_RANGE / 680; b.team = j.team; b.owner = j.id; b.alive = true; this.bullets.push(b);
+    b.pos.copy(j.pos).add(side).addScaledVector(dir, 12); b.vel.copy(dir).multiplyScalar(j.speed + 680); b.life = GUN_RANGE / b.vel.length(); b.team = j.team; b.owner = j.id; b.alive = true; this.bullets.push(b);
     this.events.push({ t: 'gun', id: j.id });
   }
   fireMissile(j: Jet, target: number): void {
@@ -299,8 +299,13 @@ export class SkySim {
 
   private stepMissiles(dt: number): void {
     for (const m of this.missiles) {
-      if (!m.alive) continue; m.life -= dt;
-      if (m.team === 'enemy' && this.player.alive && !m.dodged) { const d = m.pos.distanceTo(this.player.pos); if (d < 120) m.nearPlayer = true; else if (m.nearPlayer && d > 180) { m.dodged = true; this.score += 150; if (this.combo > 0) this.comboT = Math.max(this.comboT, 6); this.shield = Math.min(50, this.shield + 5); this.events.push({ t: 'dodge', points: 150 }); } }
+      if (!m.alive) continue;
+      m.life -= dt;
+      if (m.life <= 0) {
+        this.events.push({ t: 'boom', pos: m.pos.clone(), big: false });
+        m.alive = false; continue; // 이미 소진한 미사일은 다음 프레임에서 충돌하지 않습니다.
+      }
+      if (m.team === 'enemy' && m.target === this.player.id && this.player.alive && !m.dodged) { const d = m.pos.distanceTo(this.player.pos); if (d < 120) m.nearPlayer = true; else if (m.nearPlayer && d > 180) { m.dodged = true; this.score += 150; if (this.combo > 0) this.comboT = Math.max(this.comboT, 6); this.shield = Math.min(50, this.shield + 5); this.events.push({ t: 'dodge', points: 150 }); } }
       const tgt = m.target ? this.get(m.target) : undefined;
       if (tgt) {
         const want = tmpV.copy(tgt.pos).sub(m.pos); const d = want.length() || 1; want.divideScalar(d);
@@ -330,8 +335,11 @@ export class SkySim {
 
   private stepBullets(dt: number): void {
     for (const b of this.bullets) {
-      if (!b.alive) continue; b.life -= dt;
-      const prev = tmpV.copy(b.pos); b.pos.addScaledVector(b.vel, dt);
+      if (!b.alive) continue;
+      const remaining = Math.max(0, Math.min(dt, b.life));
+      b.life -= dt;
+      const prev = tmpV.copy(b.pos);
+      b.pos.addScaledVector(b.vel, remaining);
       for (const j of this.jets) {
         if (!j.alive || j.team === b.team) continue;
         // 선분-구 판정(고속 탄 통과 방지)

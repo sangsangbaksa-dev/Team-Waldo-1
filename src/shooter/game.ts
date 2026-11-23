@@ -131,7 +131,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       .catch(() => { setupEl.querySelector('.sz-note')!.textContent = '대전 화면을 불러오지 못했습니다. 네트워크를 확인해 주세요.'; });
   }
   function card(eyebrow: string, title: string, body = '', actions = '<button data-act="exit">메뉴로</button>', cls = ''): void {
-    modal.className = 'sz-modal show'; modal.innerHTML = `<div class="sz-card ${cls}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><span class="sz-eyebrow">${esc(eyebrow)}</span><h2>${title}</h2>${body}<div class="sz-actions">${actions}</div></div>`;
+    modal.className = 'sz-modal show'; modal.innerHTML = `<div class="sz-card ${cls}" role="dialog" aria-modal="true" aria-labelledby="sz-card-title"><span class="sz-eyebrow">${esc(eyebrow)}</span><h2 id="sz-card-title">${title}</h2>${body}<div class="sz-actions">${actions}</div></div>`;
     modal.querySelector<HTMLButtonElement>('.sz-actions button')?.focus({ preventScroll: true });
   }
   function startPvp(s: PvpSession): void {

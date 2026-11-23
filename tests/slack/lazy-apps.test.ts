@@ -124,10 +124,13 @@ it('keeps the star and timer ring clear of narrow screen edges', () => {
   view.frame(0.6);
   const star = view.el.querySelector<HTMLButtonElement>('.sc-target')!;
   expect(star.classList.contains('on')).toBe(true);
-  expect(star.style.left).toMatch(/^clamp\(31px,/);
-  expect(star.style.top).toMatch(/^clamp\(31px,/);
-  expect(star.style.left).toContain('calc(100% - 31px)');
-  expect(star.style.top).toContain('calc(100% - 31px)');
+  const scene = view.el.querySelector<HTMLElement>('.sc-game-scene')!;
+  const x = Number.parseFloat(scene.style.getPropertyValue('--star-x'));
+  const y = Number.parseFloat(scene.style.getPropertyValue('--star-y'));
+  expect(x).toBeGreaterThanOrEqual(8);
+  expect(x).toBeLessThanOrEqual(82);
+  expect(y).toBeGreaterThanOrEqual(16);
+  expect(y).toBeLessThanOrEqual(58);
   const ringDuration = star.style.getPropertyValue('--life');
   expect(ringDuration).toMatch(/s$/);
 });

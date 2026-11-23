@@ -331,3 +331,23 @@
 /* Decorative guard silhouette and flashlight beam share a stacking context
    above the monitor. Never let either intercept app/taskbar pointer input. */
 .sc-scan-person,.sc-scan-person *{pointer-events:none}
+/* The target and score popup share a responsive coordinate, so phone rotation
+   never cuts off the 46px button or its 8px countdown outline. */
+.sc-game-scene .sc-target,.sc-game-scene .sc-pop{
+  left:clamp(31px,var(--star-x,50%),calc(100% - 31px));
+  top:clamp(31px,var(--star-y,40%),calc(100% - 31px));
+}
+
+/* Portrait: reserve space under the three-row HUD, and keep the roommate
+   beneath the monitor instead of obscuring the cart total and product list. */
+@media (orientation:portrait) and (max-width:600px){
+  .slack-computer .sc-monitor{top:max(126px,18%);height:61%}
+  .slack-computer .sc-friend{bottom:2%;height:13%;min-height:44px}
+}
+
+/* Shallow phone landscape: widen the screen and move it below the HUD.
+   Keep the roommate at the edge so the mini-app remains unobstructed. */
+@media (orientation:landscape) and (min-width:601px) and (max-height:450px){
+  .slack-computer .sc-monitor{left:10%;top:27%;width:80%;height:69%;padding:5px 5px 14px}
+  .slack-computer .sc-friend{left:1%;width:9%;height:36%;bottom:9%}
+}

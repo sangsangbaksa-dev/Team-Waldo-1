@@ -5,6 +5,23 @@ const sheets = ['slack.css', 'classroom.css', 'computer.css'] as const;
 const styles = sheets.map(name => ({ name, css: readFileSync(new URL(`../../src/slack/${name}`, import.meta.url), 'utf8') }));
 const keyframes = (css: string): string[] => [...css.matchAll(/@keyframes\s+([\w-]+)/g)].map(match => match[1]!);
 
+describe('SLACK OFF small-screen game framing', () => {
+  it('keeps target positions and score popups under one clamped scene coordinate', () => {
+    const dorm = styles.find(s => s.name === 'computer.css')!.css;
+    expect(dorm).toContain('.sc-game-scene .sc-target,.sc-game-scene .sc-pop');
+    expect(dorm).toContain('left:clamp(31px,var(--star-x,50%),calc(100% - 31px))');
+    expect(dorm).toContain('top:clamp(31px,var(--star-y,40%),calc(100% - 31px))');
+  });
+  it('places the portrait roommate below the monitor and uses a wider landscape screen', () => {
+    const dorm = styles.find(s => s.name === 'computer.css')!.css;
+    const shared = styles.find(s => s.name === 'slack.css')!.css;
+    expect(dorm).toContain('.slack-computer .sc-monitor{top:max(126px,18%);height:61%}');
+    expect(dorm).toContain('.slack-computer .sc-friend{bottom:2%;height:13%;min-height:44px}');
+    expect(dorm).toContain('.slack-computer .sc-monitor{left:10%;top:27%;width:80%;height:69%;');
+    expect(shared).toContain('.sl-tools button{white-space:nowrap;min-width:78px;');
+  });
+});
+
 describe('SLACK OFF dorm hidden-app lifecycle', () => {
   it('pauses countdown animations while a mini-app is inactive', () => {
     const dorm = styles.find(s => s.name === 'computer.css')!.css;

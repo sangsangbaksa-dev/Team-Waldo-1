@@ -124,6 +124,23 @@ try {
         bounds.y + bounds.height <= size.height + 1,
         'Dorm cover must be reachable in the viewport');
 
+      // In portrait, the HUD must not cover the laptop title and the
+      // roommate must not obscure the product/cart area.
+      const monitorRect = await page.locator('.sc-monitor').boundingBox();
+      const hudRect = await page.locator('.sl-hud').boundingBox();
+      const friendRect = await page.locator('.sc-friend').boundingBox();
+      assert.ok(monitorRect && hudRect && friendRect);
+      if (size.mobile) {
+        assert.ok(monitorRect.y + 4 >= hudRect.y + hudRect.height,
+          'Mobile laptop screen must begin below the status HUD');
+        if (size.width < size.height) {
+          assert.ok(friendRect.y + 3 >= monitorRect.y + monitorRect.height,
+            'Portrait roommate must stay clear of the laptop screen');
+        } else {
+          assert.ok(friendRect.x + friendRect.width <= monitorRect.x + 3,
+            'Landscape roommate must stay clear of the wider laptop');
+        }
+      }
       assert.equal(await page.locator('.sc-apps [data-app]').count(), 6);
       await page.locator('.sc-apps [data-app="shop"]').click();
       await page.locator('.sc-app-shop').waitFor({ state: 'visible' });

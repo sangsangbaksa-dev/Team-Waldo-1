@@ -109,12 +109,13 @@ export const createComputerView: CreateView = (sim, audio) => {
     // Keep the whole 46px star and its 8px countdown ring inside the game.
     // CSS clamp() also follows viewport rotation without forcing layout reads.
     const x = 8 + Math.random() * 74, y = 16 + Math.random() * 42;
-    t.style.left = `clamp(31px, ${x}%, calc(100% - 31px))`;
-    t.style.top = `clamp(31px, ${y}%, calc(100% - 31px))`;
+    const scene = gameEls().scene;
+    scene.style.setProperty('--star-x', `${x}%`);
+    scene.style.setProperty('--star-y', `${y}%`);
     t.style.setProperty('--life', `${G.life}s`);
     t.classList.remove('on'); void t.offsetWidth; t.classList.add('on'); G.on = true; G.deadline = G.clock + G.life;
   };
-  const gamePop = (text: string, good: boolean) => { const p = gameEls().pop; const t = gameEls().target; p.style.left = t.style.left; p.style.top = t.style.top; p.textContent = text; p.classList.toggle('bad', !good); p.classList.remove('go'); void p.offsetWidth; p.classList.add('go'); };
+  const gamePop = (text: string, good: boolean) => { const p = gameEls().pop; p.textContent = text; p.classList.toggle('bad', !good); p.classList.remove('go'); void p.offsetWidth; p.classList.add('go'); };
   const gameHit = () => {
     if (G.over || !G.on) return;
     const gain = 10 * G.combo; G.score += gain; G.streak++; G.combo = Math.min(5, 1 + Math.floor(G.streak / 4)); G.hp = Math.min(100, G.hp + 2);

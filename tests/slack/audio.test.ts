@@ -231,10 +231,21 @@ it('throttles rapid click/key bursts without muting alerts and footsteps', () =>
   const audio = createSlackAudio(); audio.resume();
   for (let i = 0; i < 120; i++) audio.play(i % 2 ? 'key' : 'click');
   expect(ctx.createBuffer).toHaveBeenCalledTimes(1);
+  expect(ctx.createBufferSource).toHaveBeenCalledTimes(1);
   now.mockReturnValue(45);
   audio.play('key');
-  expect(ctx.createBuffer).toHaveBeenCalledTimes(2);
+  expect(ctx.createBuffer).toHaveBeenCalledTimes(1); // The same noise buffer is reused.
+  expect(ctx.createBufferSource).toHaveBeenCalledTimes(2);
   audio.play('footstep', 0.6);
-  expect(ctx.createBuffer).toHaveBeenCalledTimes(4); // Alert-like ambient cues are not throttled.
+  expect(ctx.createBuffer).toHaveBeenCalledTimes(1);
+  expect(ctx.createBufferSource).toHaveBeenCalledTimes(4); // Important footstep cues remain unthrottled.
+  for (const call of ctx.createBufferSource.mock.results) {
+    expect(call.value.start).toHaveBeenCalledTimes(1);
+    const [at, offset, length] = call.value.start.mock.calls[0] as number[];
+    expect(Number.isFinite(at)).toBe(true);
+    expect(offset).toBeGreaterThanOrEqual(0);
+    expect(length).toBeGreaterThan(0);
+    expect(offset + length).toBeLessThanOrEqual(1.000001);
+  }
   audio.dispose();
 });

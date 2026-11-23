@@ -83,8 +83,10 @@ export async function fetchBuffer(url: string, onProgress?: (loaded: number, tot
         // A range is only safe if the server explicitly confirms the exact
         // offset we requested; otherwise retry the whole file without Range.
         const range = /^bytes (\d+)-(\d+)\/(\d+|\*)$/i.exec(res.headers.get('content-range') ?? '');
-        const start = range && Number(range[1]), end = range && Number(range[2]);
-        const size = range && range[3] === '*' ? Infinity : range && Number(range[3]);
+        // Number(undefined) produces NaN, which the finite-integer guards
+        // below reject; this also keeps the types non-nullable.
+        const start = Number(range?.[1]), end = Number(range?.[2]);
+        const size = range?.[3] === '*' ? Infinity : Number(range?.[3]);
         if (!loaded || !range || start !== loaded || !Number.isSafeInteger(start) ||
             !Number.isSafeInteger(end) || end < start || (size !== Infinity && (!Number.isSafeInteger(size) || size <= end))) {
           resumable = false; chunks = []; loaded = 0;
@@ -92,7 +94,7 @@ export async function fetchBuffer(url: string, onProgress?: (loaded: number, tot
         }
         // Content-Range is authoritative even if Content-Length is absent.
         // Never accept a truncated resumed chunk as a complete asset.
-        expectedRangeLength = end! - start! + 1;
+        expectedRangeLength = end - start + 1;
         const declaredLength = Number(res.headers.get('content-length')) || 0;
         if ((declaredLength && declaredLength !== expectedRangeLength) || res.headers.get('content-encoding')) {
           resumable = false; chunks = []; loaded = 0;

@@ -56,6 +56,11 @@ describe('LAST CITY multiplayer session lifecycle', () => {
       room: { host_id: 'me' }, open: net.open,
     } as unknown as ConstructorParameters<typeof CityRoom>[0];
     const room = new CityRoom(session, 'warlord', hooks);
+    net.receive({
+      t: 'start', f: 'op',
+      list: [{ id: 'op', klass: 'other' }, { id: 'op', klass: 'engineer' }, { id: 'me', klass: 'tycoon' }],
+    });
+    expect(hooks.onStart).not.toHaveBeenCalled(); // only host can start the room
     room.started = true;
     net.receive({ ...pose, f: 'op' });
     expect(hooks.onPose).toHaveBeenCalledTimes(1);

@@ -340,6 +340,16 @@ export class SkySim {
       b.life -= dt;
       const prev = tmpV.copy(b.pos);
       b.pos.addScaledVector(b.vel, remaining);
+      // 산과 섬 뒤의 적을 지형 너머로 맞히는 탄환 관통을 차단합니다.
+      // 현 맵의 최고 지형은 380m: 충분히 높은 탄환은 복잡한 지형 검사를 건너뜁니다.
+      if (Math.min(prev.y, b.pos.y) < 400) {
+        const halfX = (prev.x + b.pos.x) * 0.5;
+        const halfY = (prev.y + b.pos.y) * 0.5;
+        const halfZ = (prev.z + b.pos.z) * 0.5;
+        if (b.pos.y <= terrainY(b.pos.x, b.pos.z) + 2 || halfY <= terrainY(halfX, halfZ) + 2) {
+          b.alive = false; continue;
+        }
+      }
       for (const j of this.jets) {
         if (!j.alive || j.team === b.team) continue;
         // 선분-구 판정(고속 탄 통과 방지)

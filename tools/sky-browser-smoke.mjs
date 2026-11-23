@@ -106,6 +106,25 @@ try {
       await page.screenshot({ path: 'browser-artifacts/sky-flight-' + size.name + '.png', animations: 'disabled' });
       await page.waitForFunction(() => !document.querySelector('#sk-banner')?.classList.contains('on'));
       await page.screenshot({ path: 'browser-artifacts/sky-combat-' + size.name + '.png', animations: 'disabled' });
+      if (size.name === 'desktop') {
+        // Simulate a browser that dispatches pointerlockchange before the
+        // Escape keydown. One physical Escape must only pause once.
+        await page.evaluate(() => {
+          const canvas = document.querySelector('.sk-canvas');
+          let pointer = canvas;
+          Object.defineProperty(document, 'pointerLockElement', {
+            configurable: true, get: () => pointer,
+          });
+          document.dispatchEvent(new Event('pointerlockchange'));
+          pointer = null;
+          document.dispatchEvent(new Event('pointerlockchange'));
+          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+          delete document.pointerLockElement;
+        });
+        await page.locator('#sk-paused').waitFor({ state: 'visible' });
+        await page.locator('#sk-resume').click();
+        await page.locator('#sk-paused').waitFor({ state: 'hidden' });
+      }
       const clouds = await page.evaluate(() => {
         const view = window.__sky.view;
         const total = view.clouds.length;

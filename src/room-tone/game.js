@@ -1501,8 +1501,15 @@ function frame(ts) {
   if (state === "capture") {
     const duration = reducedEffects ? 1.2 : 1.45;
     if (captureTime < duration) {
-      renderCaptureShot(renderer, camera.aspect, captureTime, reducedEffects);
-      if (!wasPlaying) captureTime += dt;
+      try {
+        renderCaptureShot(renderer, camera.aspect, captureTime, reducedEffects);
+        if (!wasPlaying) captureTime += dt;
+      } catch (error) {
+        // Failure of the optional capture effect must not soft-lock recovery.
+        console.warn("Capture effect unavailable", error);
+        save();
+        caughtModal();
+      }
     } else {
       renderer.render(scene, camera);
       caughtModal();

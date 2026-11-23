@@ -142,7 +142,8 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   function openSpot(id: string): void { if (phase !== 'play') return; const spot = core.spot(id); if (!spot) return; openModal({ kind: 'spot', id }); }
   function interact(): void { if (phase !== 'play' || modal || rides?.driving) return; if (near && !core.state.activity) openSpot(near.id); }
   function toggleRide(): void {
-    if (phase !== 'play' || modal || !rides || core.state.activity?.lockMovement) return;
+    if (phase !== 'play' || modal || !rides) return;
+    if (core.state.activity) { toast('진행 중인 작업을 끝낸 뒤 차량을 이용하세요', 'bad'); return; }
     const wasDriving = rides.driving;
     const result = rides.toggle(player);
     if (rides.driving !== wasDriving) { resetInput(); hudDirty = true; if (!player.firstPerson && document.pointerLockElement === canvas) document.exitPointerLock(); }
@@ -452,7 +453,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     const rideButton = q<HTMLButtonElement>('#ty-t-ride');
     const nearbyRide = rides?.nearby(player.pos.x, player.pos.z);
     rideButton.textContent = rides?.driving ? '하차' : '탑승';
-    rideButton.disabled = !nearbyRide || !!s.activity?.lockMovement;
+    rideButton.disabled = !nearbyRide || !!s.activity;
     rideButton.setAttribute('aria-label', rides?.driving ? '차량에서 내리기' : '가까운 차량 탑승');
     const drive = q('#ty-drive'); drive.hidden = !rides?.driving;
     if (rides?.driving) { set('drive-speed', String(Math.round(rides.speed * 3.6))); set('drive-name', rides.name ?? '차량'); }

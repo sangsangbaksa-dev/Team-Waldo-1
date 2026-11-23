@@ -324,3 +324,7 @@
   .ty-titlebox { animation:none; }
   .ty-title-btns button { transition:none; }
 }
+
+/* The same thumb control becomes a momentary brake when driving. */
+.ty-root.touch .ty-tfoot button.brake { background:#49312c; border-color:#a76e5c; color:#ffe7d9; }
+.ty-root.touch .ty-tfoot button.brake.on { background:#bd644a; border-color:#e6a088; color:#fff; }

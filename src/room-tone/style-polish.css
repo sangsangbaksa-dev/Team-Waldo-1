@@ -343,7 +343,7 @@
   #game .gear button { min-height: 44px; }
   #game .statusfoot {
     left: max(.75rem, env(safe-area-inset-left));
-    bottom: calc(max(3.3rem, env(safe-area-inset-bottom)) + 9rem);
+    bottom: calc(max(3.3rem, env(safe-area-inset-bottom)) + 10rem);
     padding: .45rem .55rem;
     font-size: .7rem;
     gap: .42rem;

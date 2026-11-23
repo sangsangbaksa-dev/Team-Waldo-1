@@ -51,6 +51,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       <ul class="ty-toasts" id="ty-toasts" role="status" aria-live="polite"></ul>
       <div class="ty-mini"><canvas id="ty-minimap" width="220" height="220"></canvas></div>
       <div class="ty-banner" id="ty-banner"></div>
+      <div class="ty-drive" id="ty-drive" hidden><span id="ty-drive-name"></span><strong><b id="ty-drive-speed">0</b><small>km/h</small></strong><span>W 가속 · S 후진 · A/D 조향 · F 하차</span></div>
       <div class="ty-touchpad"><div class="ty-stick" id="ty-stick"><i></i></div>
         <div class="ty-tfoot"><button type="button" data-t="ride" id="ty-t-ride">탑승</button><button type="button" data-t="use" class="big">행동</button><button type="button" data-t="run" id="ty-t-run">달리기</button><button type="button" data-t="view">시점</button></div></div>
     </div>
@@ -223,7 +224,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-t]'); if (!b) return; audio.unlock(); e.preventDefault();
     const t = b.dataset.t; if (t === 'ride') toggleRide(); else if (t === 'use') interact(); else if (t === 'run') { tc.run = !tc.run; b.classList.toggle('on', tc.run); b.setAttribute('aria-pressed', String(tc.run)); } else if (t === 'view') { player.setFirstPerson(!player.firstPerson); }
   });
-  q('#ty-prompt').addEventListener('click', () => { audio.unlock(); interact(); });
+  q('#ty-prompt').addEventListener('click', () => { audio.unlock(); if (rides?.driving || rides?.nearby(player.pos.x, player.pos.z)) toggleRide(); else interact(); });
   q('#ty-b-status').addEventListener('click', () => { audio.unlock(); if (!modal) openModal({ kind: 'status' }); });
   q('#ty-b-map').addEventListener('click', () => { audio.unlock(); if (!modal) openModal({ kind: 'map' }); });
   q('#ty-b-menu').addEventListener('click', () => { audio.unlock(); if (!modal) openModal({ kind: 'menu' }); });
@@ -382,12 +383,14 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     }
     // 프롬프트
     const p = q<HTMLButtonElement>('#ty-prompt');
-    if (rides?.driving && !modal) { p.hidden = false; html('prompt', '<kbd>F</kbd><b>차량에서 내리기</b>'); } else if (near && !modal && !s.activity) { p.hidden = false; const v = near.spot; const key = touch ? '' : '<kbd>E</kbd>'; const txt = `${key}<span class="ico">${esc(v.icon)}</span><b>${esc(v.name)}</b>${v.locked ? `<em>🔒 ${esc(STAGE_NAMES[v.minStage])} 단계에 열림</em>` : ''}`; html('prompt', txt); } else p.hidden = true;
+    if (rides?.driving && !modal) { p.hidden = false; html('prompt', '<kbd>F</kbd><b>차량에서 내리기</b>'); } else if (rides?.nearby(player.pos.x, player.pos.z) && !modal && !s.activity) { p.hidden = false; html('prompt', `<kbd>F</kbd><b>${esc(rides.nearby(player.pos.x, player.pos.z)!.name)} 탑승</b>`); } else if (near && !modal && !s.activity) { p.hidden = false; const v = near.spot; const key = touch ? '' : '<kbd>E</kbd>'; const txt = `${key}<span class="ico">${esc(v.icon)}</span><b>${esc(v.name)}</b>${v.locked ? `<em>🔒 ${esc(STAGE_NAMES[v.minStage])} 단계에 열림</em>` : ''}`; html('prompt', txt); } else p.hidden = true;
     const rideButton = q<HTMLButtonElement>('#ty-t-ride');
     const nearbyRide = rides?.nearby(player.pos.x, player.pos.z);
     rideButton.textContent = rides?.driving ? '하차' : '탑승';
     rideButton.disabled = !nearbyRide || !!s.activity?.lockMovement;
     rideButton.setAttribute('aria-label', rides?.driving ? '차량에서 내리기' : '가까운 차량 탑승');
+    const drive = q('#ty-drive'); drive.hidden = !rides?.driving;
+    if (rides?.driving) { set('drive-speed', String(Math.round(rides.speed * 3.6))); set('drive-name', rides.nearby(player.pos.x, player.pos.z)?.name ?? '차량'); }
   }
 
   // ---------- 종료 ----------

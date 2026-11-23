@@ -1610,6 +1610,7 @@ window.addEventListener("pageshow", (e) => {
   if (e.persisted && renderer) {
     last = performance.now();
     resize();
+    if (state === "puzzle" && document.hasFocus()) sound.pause(false);
     showSceneOnce();
   }
 });

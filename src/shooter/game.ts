@@ -7,6 +7,7 @@ import type { PvpSession, RoomSession } from '../net/lobby';
 import { AIR, BOTS, FEEL, BR_PLAYERS, DIFFICULTIES, HELMET_NAMES, ARMOR_NAMES, HEAL, PARTS, PLAYER, VEHICLES, WEAPONS, adsSpread, partHandling, type Difficulty } from './config';
 import { groundHeight, waterDepth } from './terrain';
 import { METROPOLIS } from './world';
+import { acceptWheelSwap, newWheelSwapState } from './wheel';
 import { Match, NADE, type Cause, type MatchEvent, type Player, type Vehicle } from './sim';
 import { CAUSES, WorldSync, easePuppet, encodeLoot, parseLoot } from './sync';
 import type { NetMsg } from '../net/types';
@@ -74,6 +75,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   const feed: Array<{ text: string; at: number; mine: boolean }> = [], told = new Set<number>();
   const cache = new Map<string, string>();
   const roomNadeTimes = new Map<number, number>();
+  const wheelSwap = newWheelSwapState();
   const set = (el: HTMLElement, key: string, text: string): void => { if (cache.get(key) !== text) { cache.set(key, text); el.textContent = text; } };
   const html = (el: HTMLElement, key: string, v: string): void => { if (cache.get(key) !== v) { cache.set(key, v); el.innerHTML = v; } };
   const me = (): Player => match!.players[meIdx];
@@ -115,7 +117,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     endMatch(); blur(); tc.ads = tc.crouch = false; root.querySelectorAll('.sz-tbuttons button.down').forEach(b => b.classList.remove('down')); locked = lockFail = false;
     // The previous renderer forces context loss on dispose. Never reuse its canvas.
     const fresh = document.createElement('canvas'); fresh.className = 'sz-canvas'; canvas.replaceWith(fresh); canvas = fresh; canvas.addEventListener('contextmenu', noMenu);
-    match = m; meIdx = my; roomNadeTimes.clear(); over = false; resultShown = false; soloRecorded = false; spectateId = -1; deadTimer = 0; cache.clear(); feed.length = 0; told.clear(); paused = false; modal.className = 'sz-modal'; modal.innerHTML = '';
+    match = m; meIdx = my; roomNadeTimes.clear(); Object.assign(wheelSwap, newWheelSwapState()); over = false; resultShown = false; soloRecorded = false; spectateId = -1; deadTimer = 0; cache.clear(); feed.length = 0; told.clear(); paused = false; modal.className = 'sz-modal'; modal.innerHTML = '';
     const p = m.players[my]; yaw = p.yaw; pitch = 0; countdown = 3.4; phase = 'countdown'; mapBase = null;
     try { view = new ShooterView(canvas, m, assets, prefs.quality); } catch { endMatch(); phase = 'setup'; hud.hidden = true; setupEl.hidden = true; card('ZERO ZONE', '그래픽을 시작하지 못했어요', '<p>브라우저의 그래픽 가속을 확인한 뒤 다시 시도해 주세요.</p>', '<button class="primary" data-act="setup">설정으로</button><button data-act="exit">메뉴로</button>'); return; } resize(); setupEl.hidden = true; hud.hidden = false; buildSlots(); say(touch ? '왼쪽 스틱으로 이동' : '화면을 클릭해 조작 시작', 2.4);
     if (!touch) lock(); audio.unlock();
@@ -363,7 +365,11 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     else if (e.code === 'Escape' && phase === 'countdown') setPause(true);
     if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code) && match) e.preventDefault();
   };
-  const onWheel = (e: WheelEvent): void => { if (match && !paused && Math.abs(e.deltaY) > 4) swapReq = true; };
+  const onWheel = (e: WheelEvent): void => {
+    // Touchpad scroll deltas stream many times per gesture; switch once per gesture.
+    if (!match || closed || paused || phase !== 'play' || (!locked && e.target !== canvas)) return;
+    if (acceptWheelSwap(wheelSwap, e.deltaY, e.deltaMode, performance.now())) swapReq = true;
+  };
   const noMenu = (e: Event): void => e.preventDefault();
   window.addEventListener('mousemove', onMove); window.addEventListener('mousedown', onDown); window.addEventListener('mouseup', onUp);
   window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKey); window.addEventListener('wheel', onWheel, { passive: true }); canvas.addEventListener('contextmenu', noMenu);

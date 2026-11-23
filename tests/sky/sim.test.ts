@@ -447,7 +447,7 @@ describe('SKY WAR 지형 밀착 비행 보너스', () => {
     expect(sea.lowFlightRuns).toBe(0);
 
     const crash = new SkySim(DIFFS[1]!);
-    crash.player.pos.set(1200, terrainY(1200, 300) + 1, 300);
+    crash.player.pos.set(1200, terrainY(1200, 300) - 40, 300);
     crash.step(0.1, neutral);
     expect(crash.over).toBe(true);
     expect(crash.lowFlightRuns).toBe(0);

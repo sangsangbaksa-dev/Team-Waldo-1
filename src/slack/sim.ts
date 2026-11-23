@@ -1,4 +1,5 @@
 ﻿import type { ActivityId, CreateSim, SlackEvent, SlackState, WatchMode, WatcherKind } from './types';
+import { PerfectCoverTracker, PERFECT_COVER_POINTS } from './cover-timing';
 
 export const GOALS = [46, 54, 62] as const;
 
@@ -76,7 +77,7 @@ export const createSim: CreateSim = (stage, seed, level) => {
   let funPending = 0;
   let footstepTimer = 0;
   let warned = false;
-  let coverRewarded = false, exposedTime = 0;
+  const coverTiming = new PerfectCoverTracker();
   let quiet = false;
   let surprise = surpriseOf(state.watcher.kind);
   const setCover = (on: boolean) => {
@@ -86,17 +87,12 @@ export const createSim: CreateSim = (stage, seed, level) => {
       if (!on) return;
     }
     if (state.cover === on) return;
-    const w = state.watcher;
-    if (on && state.activity && exposedTime >= 0.6 && !coverRewarded
-      && ((w.mode === 'approach' && w.prog >= 0.55 && w.prog <= 0.9)
-        || (w.mode === 'peek' && w.t <= 0.3))) {
-      coverRewarded = true;
-      comboBonus += 90;
+    if (on && coverTiming.cover(state.watcher, state.activity !== null, forceCover > 0)) {
+      comboBonus += PERFECT_COVER_POINTS;
       state.sus = clamp(state.sus - 8);
-      events.push({ t: 'perfect-cover', points: 90 });
+      events.push({ t: 'perfect-cover', points: PERFECT_COVER_POINTS });
     }
     state.cover = on;
-    if (on) exposedTime = 0;
     events.push({ t: 'cover', on });
   };
   const strike = (reason: string) => {
@@ -118,7 +114,7 @@ export const createSim: CreateSim = (stage, seed, level) => {
     w.mode = mode; w.t = 0; w.prog = 0;
     if (mode === 'away') {
       w.kind = pickKind(); duration = awayTime(w.kind);
-      w.hint = 0; w.near = 0; warned = false; coverRewarded = false; quiet = false;
+      w.hint = 0; w.near = 0; warned = false; coverTiming.nextPatrol(); quiet = false;
       surprise = surpriseOf(w.kind);
       events.push({ t: 'door', open: false });
     } else if (mode === 'approach') {
@@ -207,7 +203,7 @@ export const createSim: CreateSim = (stage, seed, level) => {
       enter(w.mode === 'away' ? (surprise ? 'peek' : 'approach') : w.mode === 'approach' ? 'peek' : w.mode === 'peek' ? 'scan' : w.mode === 'scan' ? 'leave' : 'away');
     }
     const active = !state.cover ? state.activity : null;
-    exposedTime = active ? exposedTime + dt : 0;
+    coverTiming.advance(dt, active !== null);
     if (state.phase !== 'play') return;
     if (state.cover) {
       state.study = clamp(state.study + 0.6 * dt);
@@ -234,6 +230,7 @@ export const createSim: CreateSim = (stage, seed, level) => {
       if (!isClass && batteryActivities.includes(active)) { // 학교 노트북은 배터리가 없다
         state.battery = clamp(state.battery - (active === 'music' ? 0.12 : 0.8) * dt);
         if (state.battery === 0) {
+          coverTiming.clearExposure();
           state.activity = null; events.push({ t: 'activity', id: null }, { t: 'toast', text: '배터리가 다 떨어졌어요.' });
         }
       }
@@ -264,6 +261,7 @@ export const createSim: CreateSim = (stage, seed, level) => {
         if (lastAct !== null && streak >= 5) novelty = 4; // 5초 이상 한 뒤 바꿨을 때만(연타 방지)
         streak = 0; boredToast = false; lastAct = id; used.add(id);
       }
+      if (id === null) coverTiming.clearExposure();
       state.activity = id; events.push({ t: 'activity', id });
     },
     bribe() {

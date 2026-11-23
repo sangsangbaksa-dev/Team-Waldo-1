@@ -206,6 +206,11 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     renderer.setSize(w, h, false); view.resize(w, h); ov.width = Math.round(w * dpr); ov.height = Math.round(h * dpr); ov.style.width = w + 'px'; ov.style.height = h + 'px';
   }
   function start(d: Difficulty): void {
+    // 일시정지 화면에서 재출격할 때도 이미 달성한 기록을 잃지 않습니다.
+    if (state === 'paused' && sim && !saved && sim.time > 5) {
+      recordSkyRun(sim.score, sim.wave, sim.kills, sim.bestCombo, sim.time);
+      paintRec();
+    }
     diff = d; sim = new SkySim(d); saved = false; state = 'play'; throttle = 0.55; mouse.x = mouse.y = 0; mouse.active = false; flare = mTap = mBoost = mFire = mMissile = false; hitT = 0; hitBy = 0; keys.clear(); bannerT = alertT = 0; cockpit = false; root.classList.remove('cockpit'); view?.setCockpit(false); autoFire = ctl.assist >= 2;
     $('sk-title').hidden = true; $('sk-end').hidden = true; $('sk-paused').hidden = true; root.querySelector<HTMLElement>('.sk-hud')!.hidden = false; audio.unlock(); lock(); hint(matchMedia('(pointer: coarse)').matches ? '화면을 드래그해 조종하세요' : '마우스를 움직여 조종하세요 (Esc: 일시정지)'); banner('출격!', 1.5);
     if (view) { view.resetEffects(); view.camera.position.copy(sim.player.pos).add(new THREE.Vector3(0, 10, 40)); }

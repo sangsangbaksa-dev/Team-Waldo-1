@@ -179,6 +179,8 @@ try {
   });
   const mobile = await mobileContext.newPage();
   mobile.setDefaultTimeout(60_000);
+  const mobileCharacterRequests = [];
+  mobile.on('request', req => { if (req.url().includes('/characters.glb')) mobileCharacterRequests.push(req.url()); });
   mobile.on('pageerror', error => errors.push('mobile: ' + error.message));
   await mobile.goto(origin);
   await mobile.locator('#start-race').click();
@@ -188,6 +190,7 @@ try {
   await mobile.waitForFunction(() => document.querySelector('.rc-root')?.dataset.phase === 'countdown');
   await mobile.evaluate(() => { window.__race.skip(3.3); });
   await mobile.waitForFunction(() => window.__race?.race?.phase === 'racing');
+  assert.deepEqual(mobileCharacterRequests, [], 'Low-quality racing should not download optional crowd models');
   const mobileControls = await mobile.evaluate(() => {
     const buttons = [...document.querySelectorAll('.rc-touchpad button')];
     return buttons.map(b => {

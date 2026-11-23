@@ -78,5 +78,18 @@ export function idxDelta(t: Track, from: number, to: number): number {
   let d = to - from; if (d < -t.n / 2) d += t.n; else if (d > t.n / 2) d -= t.n; return d;
 }
 
-/** 코스 정의로 서킷을 만듭니다. */
+/** 코스 정의로 서킷을 새로 만듭니다(테스트·커스텀 맵에서 사용). */
 export const buildMapTrack = (m: MapDef): Track => buildTrack(m.points, m.halfWidth, SAMPLE_SPACING, m.pads);
+
+/** Production tracks are immutable lookup tables. Reusing them avoids
+ * rebuilding the Catmull-Rom road and AI curvature index on every restart.
+ * Vehicles, race clocks and visual resources still have fresh lifetimes.
+ */
+const runtimeTrackCache = new WeakMap<MapDef, Track>();
+export function cachedMapTrack(map: MapDef): Track {
+  const cached = runtimeTrackCache.get(map);
+  if (cached) return cached;
+  const track = buildMapTrack(map);
+  runtimeTrackCache.set(map, track);
+  return track;
+}

@@ -10,7 +10,7 @@ import type { PvpSession, RoomSession } from '../net/lobby';
 import { RaceMulti } from './multi';
 import { RaceAudio, gearFor } from './audio';
 import { carById, levelById, mapOf, sanitizeSetup, type RaceSetup } from './config';
-import { aiInput, boosting, kmh, type CarInput } from './physics';
+import { aiInput, boosting, kmh, recoverCar, type CarInput } from './physics';
 import { RacePvp } from './pvp';
 import { decideWinner } from './netcar';
 import { createRace, currentLap, placeOf, updateRace, type RaceEvent, type RaceState } from './race';
@@ -238,7 +238,7 @@ export function openRace(onExit: () => void): void {
   }
 
   function recover(): void {
-    const c = race.player.car, i = c.idx; c.x = track.x[i]; c.z = track.z[i]; c.y = track.y[i]; c.h = Math.atan2(track.tz[i], track.tx[i]); c.vx = c.vz = 0; c.vf = c.vl = 0; c.yawRate = 0; c.drifting = false; c.driftT = 0; msg('복귀');
+    recoverCar(race.player.car, track); wrongT = 0; view?.resetChase(); msg('복귀');
   }
 
   let carTemplate: Record<string, THREE.Object3D> | null = null;

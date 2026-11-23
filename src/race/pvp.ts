@@ -2,7 +2,7 @@
 import type { PvpSession } from '../net/lobby';
 import type { Channel, NetMsg } from '../net/types';
 import { CARS } from './config';
-import { encodeSnap, parseSnap, type Snap } from './netcar';
+import { encodeSnap, parseSnap, validFinishTime, type Snap } from './netcar';
 import type { CarState } from './physics';
 
 export interface PvpHooks {
@@ -41,7 +41,7 @@ export class RacePvp {
     if (m.t === 'hello') { if (this.session.host) { this.ch.send({ t: 'start', car: this.car }); this.begin(m.car); } }
     else if (m.t === 'start') { if (!this.session.host) this.begin(m.car); }
     else if (m.t === 's') { const s = parseSnap(m.c); if (s && this.started) this.hooks.onSnap(s); }
-    else if (m.t === 'fin') { if (this.started && typeof m.time === 'number' && Number.isFinite(m.time) && m.time > 0) this.hooks.onFinish(m.time); }
+    else if (m.t === 'fin') { if (this.started && validFinishTime(m.time)) this.hooks.onFinish(m.time); }
     else if (m.t === 'bye') this.gone('bye');
   }
   /** 15Hz 로 내 차량 상태를 보냅니다. */

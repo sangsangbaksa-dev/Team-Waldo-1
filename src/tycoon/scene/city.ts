@@ -61,6 +61,7 @@ export class CityView {
   readonly colliders = new Colliders();
   private views = new Map<Block, BlockView>();
   private blockLookup: Map<string, Block>;
+  private orderedBlocks: Block[];
   private facade: Record<FacadeStyle, THREE.MeshStandardMaterial>;
   private roofMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 });
   private detailMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.1 });
@@ -81,6 +82,7 @@ export class CityView {
 
   constructor(private layout: Layout, private quality: Quality) {
     this.blockLookup = new Map(layout.blocks.map(b => [`${b.i},${b.j}`, b]));
+    this.orderedBlocks = [...layout.blocks].sort((a, b) => a.ring - b.ring || Math.abs(a.i) + Math.abs(a.j) - Math.abs(b.i) - Math.abs(b.j));
     const mk = (style: FacadeStyle, rough: number, metal: number): THREE.MeshStandardMaterial => {
       const m = facadeMaps(style);
       return new THREE.MeshStandardMaterial({ map: m.map, emissiveMap: m.emissive, emissive: 0xffffff, emissiveIntensity: 0.05, vertexColors: true, roughness: rough, metalness: metal });
@@ -221,8 +223,7 @@ export class CityView {
     const si = stageIndex(stage), changed = this.stage !== si; this.stage = si;
     this.spotViews.clear(); for (const v of views) this.spotViews.set(v.id, v);
     let order = 0;
-    const sorted = [...this.layout.blocks].sort((a, b) => a.ring - b.ring || Math.abs(a.i) + Math.abs(a.j) - Math.abs(b.i) - Math.abs(b.j));
-    for (const b of sorted) {
+    for (const b of this.orderedBlocks) {
       const key = `${blockUnlocked(b, si) ? 1 : 0}${blockTier(b, si)}|${b.lots.map(l => spotSig(l.spot ? this.spotViews.get(l.spot.id) : undefined)).join(',')}`;
       let v = this.views.get(b);
       if (v && v.key === key) continue;

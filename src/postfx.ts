@@ -22,7 +22,7 @@ const Grade = {
       c = mix(c, c * vec3(0.94, 1.0, 1.05), (1.0 - smoothstep(0.0, 0.45, l)) * 0.35);
       c = mix(c, c * vec3(1.06, 1.01, 0.93), smoothstep(0.45, 1.0, l) * 0.3);
       c = mix(c, c * c * (3.0 - 2.0 * min(c, vec3(1.0))), 0.1);
-      float v = smoothstep(0.78, 0.2, length(d * vec2(1.0, 0.92))); c *= mix(1.0 - vig, 1.0, v);
+      float v = 1.0 - smoothstep(0.2, 0.78, length(d * vec2(1.0, 0.92))); c *= mix(1.0 - vig, 1.0, v);
       c += (hash(vUv * 1024.0 + time) - 0.5) * 0.011;
       gl_FragColor = vec4(max(c, 0.0), 1.0); }`,
 };

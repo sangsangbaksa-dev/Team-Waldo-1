@@ -103,6 +103,28 @@ describe('결투 병력·건설 동기화', () => {
     void b;
   });
 
+  it('원격 병력과 건물이 로컬에서 제거되어도 다음 스냅샷으로 복구한다', () => {
+    const w = make(0), sync = new DuelArmy(), hq = w.hq(1)!;
+    const msg = {
+      u: [[701, 'rifle', hq.x + 200, hq.y + 150, 0, 50, 70]],
+      s: [[702, 'barracks', hq.x + 260, hq.y + 260, 500, 1, 0]],
+      sh: [],
+    } as Parameters<DuelArmy['receive']>[1];
+    sync.receive(w, msg);
+    const unit = w.actors.find(a => a.alive && a.f === 1 && a.kind === 'rifle')!;
+    const building = w.structures.find(s => s.alive && s.f === 1 && s.kind === 'barracks')!;
+    unit.alive = false; w.byId.delete(unit.id);
+    building.alive = false;
+    sync.receive(w, msg);
+    const nextUnit = w.actors.find(a => a.alive && a.f === 1 && a.kind === 'rifle')!;
+    const nextBuilding = w.structures.find(s => s.alive && s.f === 1 && s.kind === 'barracks')!;
+    expect(nextUnit).not.toBe(unit);
+    expect(nextBuilding).not.toBe(building);
+    expect(w.byId.get(nextUnit.id)).toBe(nextUnit);
+    expect(w.map.solids[building.solid].alive).toBe(false);
+    expect(w.map.solids[nextBuilding.solid].alive).toBe(true);
+  });
+
   it('잘못된 병력·건물·사격 메시지는 걸러 낸다', () => {
     expect(parseArmy({ t: 'a', u: 'x', sh: [] })).toBeNull();
     const m = parseArmy({ t: 'a', u: [[1, 'boss', 0, 0, 0, 10, 10], [2, 'rifle', 0, 0, 0, 10, 10], [3, 'rifle', NaN, 0, 0, 10, 10], [4, 'zzz', 0, 0, 0, 10, 10]], s: [[1, 'nope', 0, 0, 1, 1, 0], [2, 'depot', 5, 5, 600, 1, 0]], sh: [[0, 0, 0, 'pistol', 1], [0, 0, 0, 'laser', 1]] });

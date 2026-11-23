@@ -8,7 +8,6 @@ import { CYL, GLASS, BLACK, STEEL, RED, Pieces, shade, xf } from '../shared/piec
 import { vehicle, makeVehicleMesh } from '../shared/vehicle';
 export { Pieces, xf, makeVehicleMesh };
 
-// ---------- 소품 한 개 ----------
 function prop(p: Pieces, pr: Prop): void {
   const base = xf(pr.x, 0, pr.z, 0, pr.ry + pr.jit, 0), b = (sx: number, sy: number, sz: number, col: number, x: number, y: number, z: number, tr = false): void => p.box(sx, sy, sz, col, base, x, y, z, tr);
   const add = (geo: THREE.BufferGeometry, col: number, m: THREE.Matrix4, tr = false): void => p.add(geo, col, base.clone().multiply(m), tr);
@@ -54,7 +53,6 @@ function prop(p: Pieces, pr: Prop): void {
   }
 }
 
-// ---------- 지붕 ----------
 const ROOF_COLORS = [0x9a4a35, 0x4d5560, 0x6b5239, 0x7a2f26];
 function prism(span: number, ph: number, len: number, shed: boolean): THREE.BufferGeometry {
   const s = new THREE.Shape(); s.moveTo(-span / 2, 0); s.lineTo(span / 2, 0); if (shed) { s.lineTo(span / 2, ph); s.lineTo(-span / 2, ph * 0.25); } else s.lineTo(0, ph); s.closePath();
@@ -173,8 +171,6 @@ export function buildFacadeTrim(map: GameMap): THREE.Group {
 /** 지도의 소품(차량·컨테이너·울타리 등)을 합쳐서 돌려줍니다. */
 export function buildProps(map: GameMap, skipBoxes?: Set<number>): THREE.Group { const p = new Pieces(); for (const pr of map.props) if (pr.kind !== 'bush' && !(skipBoxes && pr.box !== undefined && skipBoxes.has(pr.box))) prop(p, pr); return p.mesh(); }
 
-
-// ---------- 보급 상자와 비행기 ----------
 export function makeDropCrate(): THREE.Group {
   const g = new THREE.Group(), red = new THREE.MeshLambertMaterial({ color: 0xc03a2b, emissive: 0x3a0a06 }), band = new THREE.MeshLambertMaterial({ color: 0xf0e8d2 });
   const crate = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.2, 1.7), red); crate.position.y = 0.6; crate.castShadow = true; g.add(crate);
@@ -222,7 +218,6 @@ export function makePlane(): THREE.Group {
   g.scale.setScalar(1.15); return g;
 }
 
-// ---------- 총기 파츠 ----------
 /** 총 앞쪽이 +x. muzzle 은 총구의 x 좌표. 소음기·조준경·손잡이·탄창을 총 모델 좌표계에 맞춰 만듭니다. */
 export function partMesh(part: PartId, muzzle: number): THREE.Object3D {
   const g = new THREE.Group(), dark = new THREE.MeshLambertMaterial({ color: 0x1d1f22 }), mid = new THREE.MeshLambertMaterial({ color: 0x3a3e44 }), glass = new THREE.MeshBasicMaterial({ color: 0x6fd0ff }), dot = new THREE.MeshBasicMaterial({ color: 0xff3b30 });

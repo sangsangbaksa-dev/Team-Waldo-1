@@ -266,7 +266,7 @@ export function openRace(onExit: () => void): void {
     const fresh = document.createElement('canvas'); fresh.className = 'rc-canvas'; canvas.replaceWith(fresh); canvas = fresh;
     fresh.addEventListener('webglcontextlost', event => {
       event.preventDefault();
-      if (closed || fresh !== canvas || contextLost) return;
+      if (closed || fresh !== canvas || contextLost || view?.isDisposing) return;
       contextLost = true; paused = true; clearControls();
       root.dataset.phase = 'error';
       const online = !!pvp || !!multi;

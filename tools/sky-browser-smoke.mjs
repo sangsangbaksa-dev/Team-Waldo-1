@@ -79,6 +79,11 @@ try {
         await page.locator('#sk-b-flare').dispatchEvent('pointerdown', { pointerId: 12, pointerType: 'touch' });
         await page.waitForFunction(() => window.__sky?.sim?.player?.flare > 0);
       }
+      const runsBefore = await page.evaluate(() => JSON.parse(localStorage.getItem('waldo.sky.v1') || '{}').runs || 0);
+      await page.evaluate(() => {
+        window.__sky.sim.time = 6.5;
+        document.querySelector('#sk-alert').textContent = 'OLD WARNING';
+      });
       if (size.name === 'desktop') await page.keyboard.press('p');
       else await page.locator('#sk-pause').click();
       await page.locator('#sk-paused').waitFor({ state: 'visible' });
@@ -89,8 +94,16 @@ try {
       await page.locator('#sk-restart').click();
       await page.locator('#sk-paused').waitFor({ state: 'hidden' });
       await page.waitForFunction(() => window.__sky?.sim?.time > 0);
-      const health = await page.evaluate(() => window.__sky.sim.player.hp);
-      assert.equal(health, 100, 'Restart must produce a fresh aircraft');
+      const restart = await page.evaluate(() => ({
+        hp: window.__sky.sim.player.hp,
+        runs: JSON.parse(localStorage.getItem('waldo.sky.v1') || '{}').runs || 0,
+        alert: document.querySelector('#sk-alert').textContent,
+        rings: window.__sky.view.rings.length,
+      }));
+      assert.equal(restart.hp, 100, 'Restart must produce a fresh aircraft');
+      assert.equal(restart.runs, runsBefore + 1, 'Restart must preserve the previous sortie record');
+      assert.equal(restart.alert, '', 'Restart must clear stale combat warnings');
+      assert.equal(restart.rings, 0, 'Restart must clear lingering explosion rings');
       if (size.name === 'desktop') await page.keyboard.press('p');
       else await page.locator('#sk-pause').click();
       await page.locator('#sk-quit3').click();

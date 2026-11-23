@@ -2,7 +2,21 @@
 import { BIZ, DIFFICULTY, RESEARCH, STRUCTS, UNITS, type ResearchId, type StructKind, type UnitId } from './defs';
 import type { Faction, World } from './world';
 
-export interface AiState { goal: string; tx: number; ty: number; biz: number; t: number; attackT: number; stuckT: number }
+export interface AiState { goal: string; tx: number; ty: number; biz: number; t: number; attackT: number; stuckT: number; attackDist?: number }
+
+/**
+ * Only abandon an attack after 110 seconds without measurable progress.
+ * The previous timer expired even while the boss was advancing on a target.
+ */
+export function attackStalled(ai: AiState, now: number, tx: number, ty: number, distance: number, final: boolean): boolean {
+  const newTarget = ai.goal !== 'attack' || ai.attackDist === undefined || Math.hypot(ai.tx - tx, ai.ty - ty) > 160;
+  if (newTarget || distance + 15 < (ai.attackDist ?? Infinity) || distance <= 260) {
+    ai.stuckT = now;
+    ai.attackDist = distance;
+    return false;
+  }
+  return !final && now - ai.stuckT > 110;
+}
 
 function tryBuild(w: World, f: Faction, kind: StructKind): boolean {
   const hq = w.hq(f.id); if (!hq) return false; const d = STRUCTS[kind];
@@ -38,6 +52,8 @@ export function thinkFaction(w: World, f: Faction): void {
   }
   for (const a of army) if (a.order.type !== 'follow') a.order = { type: 'follow', x: a.x, y: a.y };
   if (!b) return;
+  // Rival bosses start with a medkit too; don't let it go unused in combat.
+  if (f.medkits > 0 && b.hp <= b.maxHp * 0.45) w.useMedkit(f.id);
   const dist = (x: number, y: number): number => Math.hypot(x - b.x, y - b.y), inNext = (x: number, y: number, m = 80): boolean => Math.hypot(x - z.nx, y - z.ny) < z.nr - m;
   const final = z.nr < 500 || !hq || w.aliveCount() <= 3 || w.endgame;
   let goal = 'idle', tx = hq ? hq.x + 60 : z.nx, ty = hq ? hq.y + 170 : z.ny, type: 'amove' | 'move' = 'amove';
@@ -57,7 +73,13 @@ export function thinkFaction(w: World, f: Faction): void {
       for (const q of w.businesses) if (q.owner >= 0 && q.owner !== f.id && inNext(q.x, q.y, 0)) { const s = dist(q.x, q.y) * (q.kind === 'bank' || q.kind === 'casino' ? 0.75 : 1); if (s < best) { best = s; bx = q.x; by = q.y; found = true; } }
       for (const s of w.structures) if (s.alive && s.kind === 'hq' && s.f !== f.id && (final || army.length >= diff.attackArmy + 3)) { const sc = dist(s.x, s.y) * 0.85; if (sc < best) { best = sc; bx = s.x + 60; by = s.y + 150; found = true; } }
       for (const o of w.factions) if (o.alive && o.id !== f.id) { const ob = w.boss(o.id); if (!ob) continue; const d = dist(ob.x, ob.y); if (d < 1100 || final) { const sc = d * (final ? 0.5 : 0.8); if (sc < best) { best = sc; bx = ob.x; by = ob.y; found = true; } } }
-      if (found && (best < 2600 || final)) { goal = 'attack'; tx = bx; ty = by; if (ai.goal !== 'attack') ai.stuckT = t; if (t - ai.stuckT > 110 && !final) { ai.attackT = t + 140 + w.rng() * 120; goal = 'idle'; } }
+      if (found && (best < 2600 || final)) {
+        goal = 'attack'; tx = bx; ty = by;
+        if (attackStalled(ai, t, tx, ty, dist(tx, ty), final)) {
+          ai.attackT = t + 140 + w.rng() * 120;
+          goal = 'idle';
+        }
+      }
       if (!final && army.length < 3) { ai.attackT = t + 130; goal = 'idle'; }
     }
     if (goal === 'idle') {
@@ -67,6 +89,7 @@ export function thinkFaction(w: World, f: Faction): void {
       else if (!hq || !inNext(hq.x, hq.y, 0)) { tx = z.nx + (w.rng() - 0.5) * z.nr * 0.5; ty = z.ny + (w.rng() - 0.5) * z.nr * 0.5; if (ai.goal === 'idle' && Math.hypot(ai.tx - z.nx, ai.ty - z.ny) < z.nr * 0.6) { tx = ai.tx; ty = ai.ty; } }
     }
   }
+  if (goal !== 'attack') ai.attackDist = undefined;
   ai.goal = goal; ai.tx = tx; ai.ty = ty; b.order = { type, x: tx, y: ty };
   if (f.skillCd <= 0 && hostileNear) { if (f.klass !== 'tycoon' || f.cash > 600) w.useSkill(f.id); }
   void UNITS;

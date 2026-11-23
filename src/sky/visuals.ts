@@ -3,7 +3,9 @@ import { terrainY, type Kind } from './sim';
 import { cloudSprite } from './art';
 
 // Small pieces share geometry within each aircraft; they inherit its transform.
-export function detailJet(jet: THREE.Group, kind: Kind, team: 'player' | 'enemy'): void {
+export function detailJet(jet: THREE.Group, kind: Kind, team: 'player' | 'enemy'): THREE.Group {
+  // 원거리에서 한 번에 숨겨 드로우콜을 줄일 수 있도록 장식만 묶습니다.
+  const detail = new THREE.Group(); detail.name = 'jetDetail';
   const s = kind === 'boss' ? 2.8 : kind === 'bomber' ? 1.7 : 1;
   const span = kind === 'boss' ? 11 : kind === 'bomber' ? 9.5 : kind === 'ace' ? 8.2 : 7.2;
   const panel = new THREE.MeshStandardMaterial({ color: team === 'player' ? 0xaebed0 : 0x343b45, metalness: 0.65, roughness: 0.38 });
@@ -11,12 +13,12 @@ export function detailJet(jet: THREE.Group, kind: Kind, team: 'player' | 'enemy'
   const bright = new THREE.MeshStandardMaterial({ color: 0xc7d9e2, metalness: 0.8, roughness: 0.25 });
   const glass = new THREE.MeshPhysicalMaterial({ color: 0x244b69, metalness: 0.55, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.08, transparent: true, opacity: 0.86 });
   const canopy = new THREE.Mesh(new THREE.SphereGeometry(0.94 * s, 20, 12), glass);
-  canopy.scale.set(0.78, 0.57, 1.8); canopy.position.set(0, 1.01 * s, -2.25 * s); jet.add(canopy);
+  canopy.scale.set(0.78, 0.57, 1.8); canopy.position.set(0, 1.01 * s, -2.25 * s); detail.add(canopy);
   const canopyFrame = new THREE.Mesh(new THREE.TorusGeometry(0.72 * s, 0.045 * s, 5, 24, Math.PI), bright);
-  canopyFrame.position.set(0, 1.04 * s, -2.2 * s); jet.add(canopyFrame);
+  canopyFrame.position.set(0, 1.04 * s, -2.2 * s); detail.add(canopyFrame);
   const stripeGeo = new THREE.BoxGeometry(1, 1, 1);
   const box = (material: THREE.Material, x: number, y: number, z: number, sx: number, sy: number, sz: number, angle = 0): void => {
-    const mesh = new THREE.Mesh(stripeGeo, material); mesh.position.set(x * s, y * s, z * s); mesh.scale.set(sx * s, sy * s, sz * s); mesh.rotation.y = angle; jet.add(mesh);
+    const mesh = new THREE.Mesh(stripeGeo, material); mesh.position.set(x * s, y * s, z * s); mesh.scale.set(sx * s, sy * s, sz * s); mesh.rotation.y = angle; detail.add(mesh);
   };
   for (const side of [-1, 1]) {
     // Wing panels, control surfaces, leading-edge trim and navigation lamps.
@@ -27,18 +29,20 @@ export function detailJet(jet: THREE.Group, kind: Kind, team: 'player' | 'enemy'
     box(seam, side * 1.18, 0.24, -0.3, 0.06, 0.55, 2.7);
     box(bright, side * 0.88, 1.23, 4.3, 0.08, 1.4, 0.09);
     const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.16 * s, 8, 6), new THREE.MeshBasicMaterial({ color: side < 0 ? 0xff4355 : 0x71ffb1 }));
-    lamp.position.set(side * span * 0.94 * s, 0.13 * s, 2 * s); jet.add(lamp);
+    lamp.position.set(side * span * 0.94 * s, 0.13 * s, 2 * s); detail.add(lamp);
     // Underwing stores make the silhouette read as an armed aircraft.
     const store = new THREE.Mesh(new THREE.CylinderGeometry(0.15 * s, 0.22 * s, 2.8 * s, 8), bright);
-    store.rotation.x = Math.PI / 2; store.position.set(side * 2.8 * s, -0.38 * s, 0.55 * s); jet.add(store);
+    store.rotation.x = Math.PI / 2; store.position.set(side * 2.8 * s, -0.38 * s, 0.55 * s); detail.add(store);
     const tip = new THREE.Mesh(new THREE.ConeGeometry(0.15 * s, 0.65 * s, 8), bright);
-    tip.rotation.x = -Math.PI / 2; tip.position.set(side * 2.8 * s, -0.38 * s, -1.15 * s); jet.add(tip);
+    tip.rotation.x = -Math.PI / 2; tip.position.set(side * 2.8 * s, -0.38 * s, -1.15 * s); detail.add(tip);
   }
   for (let i = 0; i < 5; i++) box(seam, 0, 1.04, -0.3 + i * 0.8, 1.2, 0.025, 0.035);
   const exhaust = new THREE.Mesh(new THREE.TorusGeometry(0.71 * s, 0.075 * s, 6, 20), bright);
-  exhaust.position.z = 6.35 * s; jet.add(exhaust);
+  exhaust.position.z = 6.35 * s; detail.add(exhaust);
   const core = new THREE.Mesh(new THREE.ConeGeometry(0.4 * s, 3.4 * s, 10), new THREE.MeshBasicMaterial({ color: 0xd9f5ff, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false }));
-  core.rotation.x = -Math.PI / 2; core.position.z = 7.9 * s; core.name = 'flameCore'; jet.add(core);
+  core.rotation.x = -Math.PI / 2; core.position.z = 7.9 * s; core.name = 'flameCore'; detail.add(core);
+  jet.add(detail);
+  return detail;
 }
 
 export function addAtmosphere(scene: THREE.Scene, quality: 'high' | 'standard' | 'low'): THREE.Texture[] {

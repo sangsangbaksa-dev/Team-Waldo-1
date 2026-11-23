@@ -350,7 +350,7 @@ export class ShooterView {
     return { node: g, baseY, dispose: () => { g.removeFromParent(); const geos = new Set<THREE.BufferGeometry>(), mats = new Set<THREE.Material>(); for (const child of sharedModel ? [ring] : g.children) child.traverse(o => { if (o instanceof THREE.Mesh) { geos.add(o.geometry); for (const mat of Array.isArray(o.material) ? o.material : [o.material]) mats.add(mat); } }); for (const geo of geos) geo.dispose(); for (const mat of mats) mat.dispose(); } };
   }
   private syncLoot(cam: THREE.Vector3): void {
-    const live = new Set<number>(); let nb = 0; const d = this.lootDummy;
+    const live = new Set<number>(); let nb = 0, beamsChanged = false; const d = this.lootDummy;
     for (const l of this.match.loot) {
       if (l.taken) continue;
       const dx = l.x - cam.x, dz = l.z - cam.z, d2 = dx * dx + dz * dz; let entry = this.lootNodes.get(l.id);
@@ -359,9 +359,20 @@ export class ShooterView {
       live.add(l.id); if (!entry) { entry = this.lootNode(l); this.lootNodes.set(l.id, entry); }
       const n = entry.node; n.visible = d2 < 150 * 150; if (!n.visible) continue;
       n.children[0].rotation.y = this.time * 1.4 + l.id; n.children[0].position.y = entry.baseY + Math.sin(this.time * 2 + l.id) * 0.06;
-      if (nb < 400) { d.position.set(l.x, groundHeight(this.match.map.terrain, l.x, l.z) + 0.73, l.z); d.scale.set(1, 1, 1); d.updateMatrix(); this.beams.setMatrixAt(nb, d.matrix); this.beams.setColorAt(nb, this.tmpCol.setHex(LOOT_COLOR[l.kind])); nb++; }
+      if (nb < 400) {
+        if (this.beamIds[nb] !== l.id) beamsChanged = true;
+        if (beamsChanged) {
+          d.position.set(l.x, groundHeight(this.match.map.terrain, l.x, l.z) + 0.73, l.z);
+          d.scale.set(1, 1, 1); d.updateMatrix();
+          this.beams.setMatrixAt(nb, d.matrix); this.beams.setColorAt(nb, this.tmpCol.setHex(LOOT_COLOR[l.kind]));
+          this.beamIds[nb] = l.id;
+        }
+        nb++;
+      }
     }
-    this.beams.count = nb; this.beams.instanceMatrix.needsUpdate = true; if (this.beams.instanceColor) this.beams.instanceColor.needsUpdate = true;
+    this.beams.count = nb;
+    if (beamsChanged) { this.beams.instanceMatrix.needsUpdate = true; if (this.beams.instanceColor) this.beams.instanceColor.needsUpdate = true; }
+    this.beamIds.length = nb;
     for (const [id, entry] of this.lootNodes) if (!live.has(id)) { entry.dispose(); this.lootNodes.delete(id); }
   }
 
@@ -603,7 +614,10 @@ export class ShooterView {
   dispose(): void {
     this.vmFlash.removeFromParent(); this.vmFlash.material.dispose(); if (this.vmOwned && this.vm) this.freeNode(this.vm);
     for (const entry of this.lootNodes.values()) entry.dispose(); this.lootNodes.clear();
-    this.scene.traverse(o => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); const mat = m.material as THREE.Material | THREE.Material[] | undefined; if (Array.isArray(mat)) mat.forEach(x => x.dispose()); else mat?.dispose(); });
+    const geometries = new Set<THREE.BufferGeometry>(), materials = new Set<THREE.Material>();
+    this.scene.traverse(o => { const m = o as THREE.Mesh; if (m.geometry) geometries.add(m.geometry); const mat = m.material as THREE.Material | THREE.Material[] | undefined; if (Array.isArray(mat)) mat.forEach(x => materials.add(x)); else if (mat) materials.add(mat); });
+    for (const geo of geometries) geo.dispose();
+    for (const mat of materials) mat.dispose();
     this.post?.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss();
   }
 }

@@ -60,6 +60,7 @@ export class CityView {
   readonly group = new THREE.Group();
   readonly colliders = new Colliders();
   private views = new Map<Block, BlockView>();
+  private blockLookup: Map<string, Block>;
   private facade: Record<FacadeStyle, THREE.MeshStandardMaterial>;
   private roofMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 });
   private detailMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.1 });
@@ -79,6 +80,7 @@ export class CityView {
   private disposed = false;
 
   constructor(private layout: Layout, private quality: Quality) {
+    this.blockLookup = new Map(layout.blocks.map(b => [`${b.i},${b.j}`, b]));
     const mk = (style: FacadeStyle, rough: number, metal: number): THREE.MeshStandardMaterial => {
       const m = facadeMaps(style);
       return new THREE.MeshStandardMaterial({ map: m.map, emissiveMap: m.emissive, emissive: 0xffffff, emissiveIntensity: 0.05, vertexColors: true, roughness: rough, metalness: metal });
@@ -243,7 +245,7 @@ export class CityView {
   }
   /** 배달 목적지 같은 강조 표지(흰색, 더 밝게). */
   setTarget(id: string | null): void { if (id !== this.targetId) { this.targetId = id; this.recolorBeacons(); } }
-  blockOpen(i: number, j: number): boolean { const b = this.layout.blocks.find(x => x.i === i && x.j === j); return !!b && blockUnlocked(b, this.stage); }
+  blockOpen(i: number, j: number): boolean { const b = this.blockLookup.get(`${i},${j}`); return !!b && blockUnlocked(b, this.stage); }
   spotView(id: string): SpotView | undefined { return this.spotViews.get(id); }
   /** 문 앞 표지 위치(없으면 null). */
   doorOf(id: string): { x: number; z: number; fx: number; fz: number } | null { const l = this.layout.spotLots.get(id); return l ? { x: l.doorX, z: l.doorZ, fx: l.fx, fz: l.fz } : null; }

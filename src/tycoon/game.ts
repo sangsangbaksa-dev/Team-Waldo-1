@@ -534,7 +534,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     } catch (err) { console.error(err); opts.loading?.close(); exit(); return; }
     phase = 'title'; showTitle(); opts.loading?.close(); raf = requestAnimationFrame(frame);
     if (import.meta.env.DEV) {
-      const dbg = { get core() { return core; }, get city() { return city; }, get player() { return player; }, get cam() { return camera; }, get phase() { return phase; }, layout, start: (a: string) => titleAction(a), openSpot, syncCity, atmo: () => atmo, info: () => ({ calls: renderer?.info.render.calls, tris: renderer?.info.render.triangles, geos: renderer?.info.memory.geometries }), hud: hudEl, closeModal, openModal: (k: string) => openModal({ kind: k } as Modal) };
+      const dbg = { get core() { return core; }, get city() { return city; }, get player() { return player; }, get rides() { return rides; }, get cam() { return camera; }, get phase() { return phase; }, layout, start: (a: string) => titleAction(a), openSpot, syncCity, atmo: () => atmo, info: () => ({ calls: renderer?.info.render.calls, tris: renderer?.info.render.triangles, geos: renderer?.info.memory.geometries }), hud: hudEl, closeModal, openModal: (k: string) => openModal({ kind: k } as Modal) };
       (window as unknown as { __ty: typeof dbg }).__ty = dbg;
     }
   })();

@@ -355,6 +355,20 @@ export class SkyView {
   project(v: THREE.Vector3): { x: number; y: number; behind: boolean } {
     const p = this.v1.copy(v).project(this.camera); return { x: (p.x + 1) / 2, y: (1 - p.y) / 2, behind: p.z > 1 };
   }
-  private disposeObject(object: THREE.Object3D): void { object.traverse(o => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); const mat = m.material as THREE.Material | THREE.Material[] | undefined; if (Array.isArray(mat)) mat.forEach(x => x.dispose()); else mat?.dispose?.(); }); }
+  private disposeObject(object: THREE.Object3D): void {
+    // Models, instanced panel batches, and atmosphere sprites share resources.
+    // Disposing each shared geometry/material only once avoids redundant GPU
+    // resource invalidation when a sortie is restarted or the game is closed.
+    const geometries = new Set<THREE.BufferGeometry>(), materials = new Set<THREE.Material>();
+    object.traverse(child => {
+      const mesh = child as THREE.Mesh;
+      if (mesh.geometry && !geometries.has(mesh.geometry)) geometries.add(mesh.geometry);
+      const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
+      if (Array.isArray(mat)) mat.forEach(m => materials.add(m));
+      else if (mat) materials.add(mat);
+    });
+    geometries.forEach(geometry => geometry.dispose());
+    materials.forEach(material => material.dispose());
+  }
   dispose(): void { this.disposeObject(this.scene); this.fire.dispose(); this.smoke.dispose(); this.cloudTex.dispose(); this.sunTex.dispose(); this.environment?.dispose(); this.atmosphereTextures.forEach(t => t.dispose()); disposeArt(); }
 }

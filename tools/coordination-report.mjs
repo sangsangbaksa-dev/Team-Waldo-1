@@ -31,6 +31,9 @@ export function analyzePullRequests(prs, options = {}) {
     title: pr.title ?? '',
     base: typeof pr.base === 'string' ? pr.base : pr.base?.ref ?? '',
     head: typeof pr.head === 'string' ? pr.head : pr.head?.ref ?? '',
+    // A passing check on a previous commit must never be treated as evidence
+    // for the current head of a frequently updated game PR.
+    headSha: pr.head?.sha ?? pr.head_sha ?? '',
     updated: pr.updated_at ?? pr.updated ?? '',
     draft: !!pr.draft,
     files: [...new Set((pr.files ?? []).map(f => typeof f === 'string' ? f : f.filename).filter(Boolean))].sort(),
@@ -105,9 +108,18 @@ export function renderMarkdown(report, repo = 'sangsangbaksa-dev/Team-Waldo-1') 
     '- 통합 기준: \`' + report.target + '\`',
     '- 열린 PR 분석: ' + report.total + '개',
     '- 정확한 파일 중복: ' + report.exactFileCollisions.length + '개 파일 / ' + report.collisionPairs.length + '개 PR 쌍',
-    '',
-    '## 선행 PR 의존 관계',
   ];
+  lines.push('', '## 열린 PR 현재 HEAD (CI 대조용)', '| PR | HEAD SHA | Base | 범위 |', '| --- | --- | --- | --- |');
+  const latest = [...report.prs].sort((a, b) =>
+    (Date.parse(b.updated) || 0) - (Date.parse(a.updated) || 0) || b.number - a.number);
+  for (const pr of latest) {
+    const games = [...new Set(pr.files.map(gameForPath).filter(Boolean))].sort();
+    const scope = games.length ? games.join(', ') : '공용 · 도구 · 문서 또는 미확인';
+    lines.push('| ' + refLink(repo, pr.number) + ' | \`' +
+      escapeText(pr.headSha ? pr.headSha.slice(0, 10) : '미확인') + '\` | \`' +
+      escapeText(pr.base) + '\` | ' + escapeText(scope) + ' |');
+  }
+  lines.push('', '## 선행 PR 의존 관계');
   if (!report.parentEdges.length) lines.push('없음');
   else for (const edge of report.parentEdges) lines.push('- ' + refLink(repo, edge.parent) + ' → ' + refLink(repo, edge.child) + ' (base: \`' + escapeText(edge.branch) + '\`)');
   lines.push('', '## 파일 변경이 겹치는 PR');

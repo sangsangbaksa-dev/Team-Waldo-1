@@ -12,7 +12,7 @@ import { clearTycoon, createCore, formatMoney, loadTycoon, readTycoonSummary, sa
 import { STAGE_NAMES } from './core/data';
 import { readTycoonPosition, type TycoonPosition } from './core/save';
 import type { CoreEvent, SpotDef, TycoonCore, TycoonState } from './core/types';
-import { buildLayout, blockUnlocked, PITCH, type Colliders, WORLD_HALF, type Layout } from './scene/layout';
+import { buildLayout, PITCH, type Colliders, WORLD_HALF, type Layout } from './scene/layout';
 import { CityView, type Quality, type SpotView } from './scene/city';
 import { Atmosphere } from './scene/sky';
 import { Player } from './scene/player';
@@ -119,15 +119,12 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       case 'menu': h = menuHtml(audio.enabled, player.firstPerson); break;
       case 'win': h = winHtml(core.state); break;
       case 'map': {
-        const cars = (rides?.positions() ?? []).map(car => {
-          const block = layout.blocks.reduce((best, cur) =>
-            Math.hypot(cur.cx - car.x, cur.cz - car.z) < Math.hypot(best.cx - car.x, best.cz - car.z) ? cur : best);
-          return {
-            name: car.name, active: car.active,
-            reachable: blockUnlocked(block, core.state.stageIndex),
-            distance: streetDistance(player.pos, car),
-          };
-        });
+        const cars = (rides?.positions() ?? []).map(car => ({
+          name: car.name, active: car.active,
+          // Road travel is free; business access remains gated by the economy.
+          reachable: true,
+          distance: streetDistance(player.pos, car),
+        }));
         h = mapDirectoryHtml(cars, waypoint !== null);
         break;
       }
@@ -192,8 +189,6 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     const mapCanvas = t.closest<HTMLCanvasElement>('#ty-bigmap');
     if (mapCanvas && modal?.kind === 'map' && e instanceof MouseEvent) {
       const point = pointFromMapClick(e.clientX, e.clientY, mapCanvas.getBoundingClientRect());
-      const block = layout.blocks.reduce((best, b) => Math.hypot(b.cx - point.x, b.cz - point.z) < Math.hypot(best.cx - point.x, best.cz - point.z) ? b : best);
-      if (!blockUnlocked(block, core.state.stageIndex)) { toast('아직 열리지 않은 도시 구역입니다', 'bad'); return; }
       const roadX = Math.round((point.x - PITCH / 2) / PITCH) * PITCH + PITCH / 2;
       const roadZ = Math.round((point.z - PITCH / 2) / PITCH) * PITCH + PITCH / 2;
       const snap = Math.abs(point.x - roadX) < Math.abs(point.z - roadZ)

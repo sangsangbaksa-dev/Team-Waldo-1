@@ -324,7 +324,11 @@ export const createComputerView: CreateView = (sim, audio) => {
       const isDeal = add.dataset.add === 'deal'; const i = isDeal ? S.deal : Number(add.dataset.add);
       if (!Number.isInteger(i) || i < 0 || i >= products.length) return;
       audio.play('click'); S.cart[i]++; S.total += price(i, isDeal); shopTotals();
-      add.classList.remove('bump'); void add.offsetWidth; add.classList.add('bump'); if (!isDeal) add.textContent = `담김 ×${S.cart[i]}`; return;
+      add.classList.remove('bump'); void add.offsetWidth; add.classList.add('bump');
+      // Normal and flash-sale buttons add to the same product quantity.
+      const regular = wins.shop.querySelector<HTMLButtonElement>(`[data-add="${i}"]`);
+      if (regular) regular.textContent = `담김 ×${S.cart[i]}`;
+      return;
     }
     if (target.closest('[data-pay]')) { audio.play('key', 0.6); toast(S.cart.some(Boolean) ? '잔액이 부족합니다. (용돈은 이미 야식으로…)' : '장바구니가 비어 있어요.', 2.5); return; }
     const mb = target.closest<HTMLElement>('[data-m]');

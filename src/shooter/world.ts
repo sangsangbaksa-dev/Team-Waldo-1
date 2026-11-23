@@ -437,7 +437,14 @@ export function generateMap(seed: number, mode: Mode): GameMap {
     pushLoot(map, rollLoot(rng, 0), x, z); i++;
   }
   // 차량 곁에도 가끔 전리품
-  for (const p of map.props) if ((p.kind === 'car' || p.kind === 'van' || p.kind === 'truck') && rng() < 0.28 && !blockedAt(map, p.x + 2.6, p.z, 0.5)) pushLoot(map, rollLoot(rng, 0), p.x + 2.6, p.z);
+  for (const p of map.props) {
+    if (p.kind !== 'car' && p.kind !== 'van' && p.kind !== 'truck') continue;
+    if (rng() >= 0.28) continue;
+    const x = p.x + 2.6, z = p.z;
+    // Roadside vehicles beside rivers can otherwise spill their loot into the water.
+    if (waterDepth(map.terrain, x, z) !== 0 || blockedAt(map, x, z, 0.5)) continue;
+    pushLoot(map, rollLoot(rng, 0), x, z);
+  }
   // 출발 지점: 가장자리 쪽에 흩어 놓습니다. 대전은 서로 정반대에서 시작합니다.
   if (mode === 'duel') {
     const a = rng() * Math.PI * 2;

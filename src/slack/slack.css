@@ -132,3 +132,18 @@
 
 .sl-touchhint{display:none;margin:14px 0 0;padding:10px 12px;border-radius:10px;background:#0000002e;font-size:12px;color:#c7cdc4}
 @media (pointer:coarse){.sl-keyhints{display:none}.sl-touchhint{display:block}.sl-titlecard .sl-help{display:block}}
+
+/* viewport-fit=cover: keep HUD and dialogs clear of notches/home indicators. */
+@media (max-width:700px){
+  .sl-hud{
+    padding-top:max(8px,env(safe-area-inset-top,0px));
+    padding-right:max(10px,env(safe-area-inset-right,0px));
+    padding-left:max(10px,env(safe-area-inset-left,0px));
+  }
+  .sl-modal{
+    padding-top:max(12px,env(safe-area-inset-top,0px));
+    padding-bottom:max(12px,env(safe-area-inset-bottom,0px));
+    padding-right:max(12px,env(safe-area-inset-right,0px));
+    padding-left:max(12px,env(safe-area-inset-left,0px));
+  }
+}

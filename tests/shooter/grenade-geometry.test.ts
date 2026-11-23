@@ -45,6 +45,18 @@ describe('ZERO ZONE grenade altitude collision', () => {
     expect(high.nades[0].x).toBeGreaterThan(5.2);
   });
 
+  it('ignores invalid elapsed time and bounds grenade work after a long tab pause', () => {
+    const m = field();
+    m.nades.push({ id: 7, owner: 0, x: 0, y: 2, z: 0, vx: 22, vy: 7, vz: 0, fuse: 3 });
+    const initial = { ...m.nades[0] };
+    for (const bad of [Number.NaN, Infinity, -5, 0]) m.step(bad);
+    expect(m.t).toBe(0);
+    expect(m.nades[0]).toEqual(initial);
+    m.step(60);
+    expect(m.nades).toHaveLength(0);
+    expect(m.drain().some(e => e.t === 'nade' && e.stage === 'boom')).toBe(true);
+  });
+
   it('does not tunnel through a thin overhead slab in a coarse simulation tick', () => {
     const m = field();
     box(m, -1, 1, 3, 3.2);

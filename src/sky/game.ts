@@ -49,7 +49,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   const canvas = root.querySelector<HTMLCanvasElement>('.sk-canvas')!, ov = root.querySelector<HTMLCanvasElement>('.sk-ov')!, octx = ov.getContext('2d')!;
 
   let adaptive: AdaptiveQuality | null = null; let stableQualitySeconds = 0;
-  let idleDrawAt = -Infinity;
+  let titlePreviewRendered = false;
   let renderer: THREE.WebGLRenderer | null = null; let view: SkyView | null = null; let sim: SkySim | null = null;
   let diff: Difficulty = DIFFS[1]!; let state: 'title' | 'play' | 'paused' | 'over' = 'title'; let closed = false; let raf = 0; let last = 0; let saved = false;
   let mTap = false, fireTap = 0, hitT = 0, hitBy = 0, mBoost = false, bannerT = 0, alertT = 0, alertRank = 0, flare = false, mFire = false, mMissile = false, autoFire = false, throttle = 0.55, hintT = 8, cockpit = false;
@@ -377,18 +377,21 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     audio.dispose(); try { view?.dispose(); } catch { /* 정리 실패 무시 */ } renderer?.dispose(); renderer?.forceContextLoss(); root.remove(); onExit();
   }
 
+  // Title/result dialogs have a fully opaque background. Draw once behind
+  // the title to warm GPU programs and textures, then stop burning GPU cycles
+  // until the pilot starts. Pause freezes the last live frame as before.
+  function shouldRenderFrame(): boolean {
+    if (state === 'paused' || state === 'over') return false;
+    if (state === 'title') {
+      if (titlePreviewRendered) return false;
+      titlePreviewRendered = true;
+    }
+    return true;
+  }
   function frame(now: number): void {
     if (closed) return; raf = requestAnimationFrame(frame);
     const frameMs = now - last, dt = Math.min(0.05, frameMs / 1000); last = now; if (!renderer || !view || !sim) return;
-    // While menus cover the world, reduce GPU work drastically while retaining
-    // a subtle animated preview behind translucent UI; the live sortie remains
-    // completely unthrottled. Pause keeps the exact last rendered frame.
-    if (state === 'paused') return;
-    if (state !== 'play') {
-      const interval = state === 'title' ? 125 : 250;
-      if (now - idleDrawAt < interval) return;
-      idleDrawAt = now;
-    }
+    if (!shouldRenderFrame()) return;
     if (state === 'play') {
       const p = sim.player; const inp = readInput(p, dt); sim.step(dt, inp); flare = false; mTap = false; fireTap = Math.max(0, fireTap - dt); hitT = Math.max(0, hitT - dt);
       for (const ev of sim.events) {

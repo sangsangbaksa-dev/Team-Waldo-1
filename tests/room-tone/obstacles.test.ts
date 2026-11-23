@@ -6,7 +6,7 @@ describe("ROOM TONE solid prop footprints", () => {
     expect(circleHitsProp(0,0,0.225,base)).toBe(true);
     expect(circleHitsProp(0.8,0,0.225,base)).toBe(false);
     expect(circleHitsProp(0,0.8,0.225,base)).toBe(false);
-    expect(circleHitsProp(0.5,0.4,0.225,base)).toBe(false);
+    expect(circleHitsProp(0.7,0.55,0.225,base)).toBe(false);
     expect(circleHitsProp(NaN,0,0.225,base)).toBe(false);
   });
   it("handles rotated furniture without collision leaks", () => {

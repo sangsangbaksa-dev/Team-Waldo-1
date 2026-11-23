@@ -356,9 +356,12 @@ export function openRace(onExit: () => void): void {
     }
   };
   const onKey = (e: KeyboardEvent): void => {
+    // Typing in PVP account fields must never trigger shortcuts (especially mute).
+    if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
     if (setupUi && e.code !== 'KeyM') return;
     if (e.target instanceof HTMLElement && e.target.closest('.rc-modal.show button') && (e.code === 'Enter' || e.code === 'Space')) return;
-    if (e.repeat && e.code !== 'KeyR') { if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); return; }
+    // Holding R must recover only once; repeated keydown used to teleport every frame.
+    if (e.repeat) { if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); return; }
     audio.unlock(); if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
     if (e.code === 'Escape' || e.code === 'KeyP') { setPaused(!paused); return; } if (e.code === 'KeyM') { act('mute'); return; } if (e.code === 'KeyR' && !paused && race.phase === 'racing') { recover(); return; }
     if (e.code === 'Enter' && finishedShown && !pvp && !multi) { restart(); return; } if (!paused && view && race.phase !== 'done') keys.add(e.code);

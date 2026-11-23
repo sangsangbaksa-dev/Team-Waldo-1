@@ -143,3 +143,51 @@ describe('dorm battery activity restrictions', () => {
     expect(sim.state.activity).toBe('chat');
   });
 });
+
+describe('SLACK OFF 순간 엄폐 보너스', () => {
+  it('실제 딴짓 중 다가오는 감독을 제때 피하면 한 순찰에서 한 번만 점수를 준다', () => {
+    let rewarded = false;
+    for (let seed = 1; seed <= 30 && !rewarded; seed++) {
+      const sim = createSim('class', seed, 1);
+      sim.start();
+      sim.doActivity('video');
+      sim.setCover(false);
+      for (let i = 0; i < 400 && sim.state.phase === 'play'; i++) {
+        sim.update(0.1);
+        const w = sim.state.watcher;
+        if (w.mode !== 'approach' || w.prog < 0.6 || w.prog > 0.8) continue;
+        const before = sim.state.sus;
+        sim.drain();
+        sim.setCover(true);
+        const first = sim.drain().filter(e => e.t === 'perfect-cover');
+        expect(first).toEqual([{ t: 'perfect-cover', points: 90 }]);
+        expect(sim.state.sus).toBeLessThanOrEqual(before);
+        sim.setCover(false);
+        sim.update(0.7);
+        sim.setCover(true);
+        expect(sim.drain().some(e => e.t === 'perfect-cover')).toBe(false);
+        rewarded = true;
+        break;
+      }
+    }
+    expect(rewarded).toBe(true);
+  });
+
+  it('가리기 연타와 활동 없는 대기는 보상을 발생시키지 않는다', () => {
+    const sim = createSim('class', 1, 1);
+    sim.start();
+    for (let i = 0; i < 400 && sim.state.phase === 'play'; i++) {
+      sim.update(0.1);
+      const w = sim.state.watcher;
+      if (w.mode !== 'approach' || w.prog < 0.6) continue;
+      sim.setCover(false);
+      sim.setCover(true);
+      expect(sim.drain().filter(e => e.t === 'perfect-cover')).toHaveLength(0);
+      sim.doActivity('video');
+      sim.setCover(false);
+      sim.setCover(true);
+      expect(sim.drain().filter(e => e.t === 'perfect-cover')).toHaveLength(0);
+      break;
+    }
+  });
+});

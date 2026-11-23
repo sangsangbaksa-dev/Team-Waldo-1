@@ -34,6 +34,17 @@ describe('ZERO ZONE 중앙 메트로폴리스', () => {
     }
   });
 
+  it('도심의 전리품은 벽·상자 안에 박히지 않는다', () => {
+    for (const seed of [1, 7, 42]) {
+      const map = generateMap(seed, 'br');
+      const towers = map.buildings.filter(b => Math.abs(b.x) < 40 && Math.abs(b.z) < 40);
+      const centerLoot = map.loot.filter(l => towers.some(b =>
+        Math.abs(l.x - b.x) < b.w / 2 && Math.abs(l.z - b.z) < b.d / 2));
+      expect(centerLoot.length).toBeGreaterThan(25);
+      for (const l of centerLoot) expect(blockedAt(map, l.x, l.z, 0.45)).toBe(false);
+    }
+  });
+
   it('중앙 도시는 시드별로 결정적이며, 대전 모드는 기존 구조를 유지한다', () => {
     const a = generateMap(42, 'br');
     const b = generateMap(42, 'br');

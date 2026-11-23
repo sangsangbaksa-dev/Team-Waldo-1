@@ -122,6 +122,18 @@ it('automatically pauses if the user switches windows without hiding the browser
   expect(sim.state.time).toBeGreaterThan(elapsed);
 });
 
+it('pauses after lazy stage loading if the window lost focus during import', async () => {
+  openSlack(vi.fn());
+  button('[data-start]').click();
+  window.dispatchEvent(new Event('blur')); // Before the stage import finishes.
+  await vi.dynamicImportSettled();
+  expect(button('[data-paused]').hidden).toBe(false);
+  expect(frames.size).toBe(0);
+  button('[data-resume]').click();
+  expect(button('[data-paused]').hidden).toBe(true);
+  window.dispatchEvent(new Event('focus'));
+});
+
 it('bounds a long foreground frame stall without skipping normal frames', async () => {
   openSlack(vi.fn());
   button('[data-stage="dorm"]').click();

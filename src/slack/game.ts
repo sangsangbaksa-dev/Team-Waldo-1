@@ -87,7 +87,7 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
     root.querySelectorAll<HTMLElement>('[data-sound]').forEach(b => { b.textContent = muted ? '소리 꺼짐' : '소리 켜짐'; b.setAttribute('aria-pressed', String(!muted)); });
   };
   const clearView = (): void => { view?.dispose(); view?.el.remove(); view = null; sim = null; };
-  const exit = (): void => { if (closed) return; closed = true; cancelAnimationFrame(raf); root.removeEventListener('keydown', keydown); document.removeEventListener('visibilitychange', visibility); window.removeEventListener('blur', focusLost); clearView(); audio.dispose(); root.remove(); onExit(); };
+  const exit = (): void => { if (closed) return; closed = true; cancelAnimationFrame(raf); root.removeEventListener('keydown', keydown); document.removeEventListener('visibilitychange', visibility); window.removeEventListener('blur', focusLost); window.removeEventListener('focus', focusReturned); clearView(); audio.dispose(); root.remove(); onExit(); };
   const pause = (): void => { if (state === 'play') {
       state = 'paused'; if (raf) cancelAnimationFrame(raf); raf = 0;
       root.classList.remove('sl-danger'); $('[data-paused]').hidden = false; audio.ambience(null); audio.hold(true);
@@ -117,7 +117,12 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
       if (state === 'play' || state === 'paused') { e.preventDefault(); pause(); }
     }
   };
-  const focusLost = (): void => { if (state === 'play') pause(); };
+  let lostFocusDuringLoad = false;
+  const focusLost = (): void => {
+    if (state === 'loading') lostFocusDuringLoad = true;
+    if (state === 'play') pause();
+  };
+  const focusReturned = (): void => { lostFocusDuringLoad = false; };
   const visibility = (): void => { if (document.hidden) focusLost(); };
   const enablePlay = (): void => {
     $('.sl-view').inert = false; $('.sl-hud').inert = false; $('[data-tip]').inert = false;
@@ -128,6 +133,7 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
   const start = async (): Promise<void> => {
     if (closed || state === 'loading' || state === 'play') return;
     const restarting = state !== 'title';
+    lostFocusDuringLoad = false;
     state = 'loading'; if (raf) cancelAnimationFrame(raf); raf = 0;
     root.classList.remove('sl-danger'); clearView();
     if (restarting) { audio.dispose(); audio = createSlackAudio(); audio.setMuted(muted); }
@@ -140,7 +146,7 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
       audio.muffle(false); tally = { act: {}, maxCombo: 1, maxSus: 0, warns: 0, reasons: [] }; beat = 0;
       if (tutorial) { tutStep = 0; showTutorialStep(); } else { $('[data-tip]').hidden = true; root.classList.remove('tipping'); }
       enablePlay();
-      if (document.hidden) pause();
+      if (document.hidden || lostFocusDuringLoad) pause();
     } catch (err) {
       console.error(err); clearView(); audio.dispose(); audio = createSlackAudio(); audio.setMuted(muted); $('.sl-hud').hidden = true;
       state = 'title'; $('[data-title]').hidden = false; $('[data-start]').focus(); toast('화면을 불러오지 못했어요. 다시 시도해 주세요.');
@@ -233,6 +239,6 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
   root.addEventListener('contextmenu', event => {
     if ((event.target as Element).closest('.sl-cover,.sc-cover-button,.gm canvas')) event.preventDefault();
   });
-  root.querySelectorAll<HTMLElement>('[data-exit]').forEach(b => b.onclick = exit); root.addEventListener('keydown', keydown); document.addEventListener('visibilitychange', visibility); window.addEventListener('blur', focusLost);
+  root.querySelectorAll<HTMLElement>('[data-exit]').forEach(b => b.onclick = exit); root.addEventListener('keydown', keydown); document.addEventListener('visibilitychange', visibility); window.addEventListener('blur', focusLost); window.addEventListener('focus', focusReturned);
   refreshTitle(); opts.loading?.close(); $('[data-start]').focus({ preventScroll: true });
 }

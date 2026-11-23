@@ -92,6 +92,11 @@ try {
         node => document.activeElement === node), true, 'Paused dialog must trap Tab');
       await page.locator('[data-paused] [data-resume]').click();
       await page.locator('[data-paused]').waitFor({ state: 'hidden' });
+      // The deployed version previously kept advancing after window blur.
+      await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+      await page.locator('[data-paused]:visible').waitFor();
+      await page.locator('[data-paused] [data-resume]').click();
+      await page.locator('[data-paused]').waitFor({ state: 'hidden' });
       await page.locator('.sl-hud [data-pause]').click();
       await page.locator('[data-paused] [data-exit]').click();
       await page.locator('#start-slack').waitFor();

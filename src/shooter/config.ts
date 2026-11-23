@@ -140,10 +140,10 @@ export interface BotTuning {
   /** 주변 전리품을 찾는 반경 */ lootRadius: number;
 }
 export const BOTS: Record<Difficulty, BotTuning> = {
-  easy:   { label: '쉬움',    blurb: '반응이 느리고 자주 빗맞힙니다.',            react: 0.95, aimErr: 0.085, sight: 45,  fov: 0.95, turn: 2.6, speed: 0.82, strafe: 0.0,  burst: 0.5,  pause: 0.9,  headAim: 0.02, zoneMargin: 2,  lootRadius: 45 },
-  normal: { label: '보통',    blurb: '평범한 실력. 가끔 옆으로 움직입니다.',       react: 0.55, aimErr: 0.05,  sight: 62,  fov: 1.05, turn: 3.8, speed: 0.92, strafe: 0.4,  burst: 0.8,  pause: 0.5,  headAim: 0.1,  zoneMargin: 8,  lootRadius: 60 },
-  hard:   { label: '어려움',  blurb: '빠르게 조준하고 좌우로 움직이며 쏩니다.',   react: 0.3,  aimErr: 0.026, sight: 85,  fov: 1.15, turn: 5.6, speed: 1.0,  strafe: 0.8,  burst: 1.2,  pause: 0.25, headAim: 0.3,  zoneMargin: 16, lootRadius: 80 },
-  expert: { label: '매우 어려움', blurb: '거의 놓치지 않습니다. 자기장도 미리 읽습니다.', react: 0.16, aimErr: 0.012, sight: 110, fov: 1.25, turn: 8.5, speed: 1.04, strafe: 1.0,  burst: 1.8,  pause: 0.12, headAim: 0.55, zoneMargin: 26, lootRadius: 100 },
+  easy:   { label: '쉬움',    blurb: '조준이 느리고 명중률이 낮습니다.',            react: 0.95, aimErr: 0.085, sight: 45,  fov: 0.95, turn: 2.6, speed: 0.82, strafe: 0.0,  burst: 0.5,  pause: 0.9,  headAim: 0.02, zoneMargin: 2,  lootRadius: 45 },
+  normal: { label: '보통',    blurb: '기본적인 엄폐와 이동 사격에 대응합니다.',       react: 0.55, aimErr: 0.05,  sight: 62,  fov: 1.05, turn: 3.8, speed: 0.92, strafe: 0.4,  burst: 0.8,  pause: 0.5,  headAim: 0.1,  zoneMargin: 8,  lootRadius: 60 },
+  hard:   { label: '어려움',  blurb: '빠르게 반응하고 움직이며 사격합니다.',   react: 0.3,  aimErr: 0.026, sight: 85,  fov: 1.15, turn: 5.6, speed: 1.0,  strafe: 0.8,  burst: 1.2,  pause: 0.25, headAim: 0.3,  zoneMargin: 16, lootRadius: 80 },
+  expert: { label: '매우 어려움', blurb: '반응이 매우 빠르며 안전 구역을 미리 찾아갑니다.', react: 0.16, aimErr: 0.012, sight: 110, fov: 1.25, turn: 8.5, speed: 1.04, strafe: 1.0,  burst: 1.8,  pause: 0.12, headAim: 0.55, zoneMargin: 26, lootRadius: 100 },
 };
 
 export interface ZonePhase { wait: number; shrink: number; radius: number; dps: number }

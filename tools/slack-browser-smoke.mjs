@@ -78,8 +78,18 @@ try {
     });
     try {
       await page.goto(origin, { waitUntil: 'domcontentloaded' });
+      if (size.motion) {
+        await page.evaluate(() => {
+          const prefs = JSON.parse(localStorage.getItem('waldo.preferences.v1') || '{}');
+          prefs.reducedMotion = false;
+          localStorage.setItem('waldo.preferences.v1', JSON.stringify(prefs));
+        });
+      }
       await page.locator('#start-slack').click();
       await page.locator('[data-title]:visible').waitFor();
+      const savedMotion = await page.locator('.sl-root').evaluate(
+        node => node.classList.contains('sl-reduced-motion'));
+      assert.equal(savedMotion, !size.motion, 'Saved motion preference must be respected');
       await page.locator('[data-stage="class"]').click();
       await page.locator('[data-level="2"]').click();
       await page.locator('[data-title] [data-start]').click();
@@ -224,6 +234,10 @@ try {
       assert.equal(await like12.locator('b').textContent(), '13');
       await like12.click();
       assert.equal(await like12.getAttribute('aria-pressed'), 'false');
+      if (['desktop','compact','short-landscape'].includes(size.name)) {
+        await chapter12.evaluate(node => { node.scrollTop = 0; });
+        await snap('dorm-webtoon');
+      }
 
       // Repeated restart must dispose the old view, rebuild a single set of
       // app windows and clear the previous run's shopping cart.
@@ -261,6 +275,7 @@ try {
         await page.locator('[data-paused] [data-resume]').click();
       }
       await star.waitFor({ state: 'visible', timeout: 3500 });
+      if (['desktop','compact','short-landscape'].includes(size.name)) await snap('dorm-reaction');
       const scoreBeforeKeyboard = Number(await page.locator('.sc-app-game [data-score]').textContent());
       await page.locator('.slack-computer').focus();
       await page.keyboard.press('j');
@@ -273,6 +288,7 @@ try {
       await seek.evaluate(node => { node.value = '120'; node.dispatchEvent(new Event('input', { bubbles: true })); });
       assert.equal(await page.locator('.sc-app-video [data-vtime]').textContent(), '2:00 / 12:08',
         'Video timeline must seek to requested time');
+      if (['desktop','compact','short-landscape'].includes(size.name)) await snap('dorm-video');
       await page.locator('.sc-apps [data-app="chat"]').click();
       await page.locator('.sc-app-chat').waitFor({ state: 'visible' });
       assert.equal(await page.locator('.sc-app-game .sc-target circle')

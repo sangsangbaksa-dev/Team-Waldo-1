@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fetchBuffer } from '../../src/loading';
+import { fetchBuffer, showLoading } from '../../src/loading';
 
 const enc = new TextEncoder(), dec = new TextDecoder();
 type Spec = { status: number; chunk: string; length?: number; range?: string; etag?: string; encoding?: string; fail?: boolean };
@@ -193,5 +193,31 @@ describe('resumable asset integrity', () => {
     vi.stubGlobal('fetch', mock);
     expect(dec.decode(await fetchBuffer('/models/asset.glb'))).toBe('abcdefghij');
     expect(mock.mock.calls[1][1].headers).toEqual({ Range: 'bytes=3-' });
+  });
+
+  it('never writes NaN% or Infinity% to the loading bar and keeps valid progress monotonic', () => {
+    const loading = showLoading('MODEL');
+    try {
+      loading.progress(Number.NaN, '수신 중');
+      const bar = document.querySelector<HTMLElement>('.ld-bar')!;
+      const fill = document.querySelector<HTMLElement>('.ld-bar i')!;
+      const pct = document.querySelector<HTMLElement>('.ld-pct')!;
+      expect(bar.classList.contains('busy')).toBe(true);
+      expect(pct.textContent).toBe('');
+      expect(fill.style.width).not.toContain('NaN');
+
+      loading.progress(0.6);
+      expect(fill.style.width).toBe('60.0%');
+      expect(pct.textContent).toBe('60%');
+      loading.progress(0.15);
+      expect(fill.style.width).toBe('60.0%');
+      loading.progress(Number.POSITIVE_INFINITY);
+      expect(pct.textContent).toBe('');
+      expect(fill.style.width).toBe('60.0%');
+      expect(bar.classList.contains('busy')).toBe(true);
+    } finally {
+      loading.close();
+    }
+    expect(document.querySelector('.ld-screen')).toBeNull();
   });
 });

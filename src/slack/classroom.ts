@@ -2,6 +2,7 @@
 import type { CreateView, SlackEvent } from './types';
 import { createBattle, resizeBattleCanvas, W, H, COST } from './lapgame';
 import { teacherPose } from './teacher-motion';
+import { createDrawBudget } from './render-budget';
 
 type Pick = 'video' | 'game';
 const picks: { id: Pick; icon: string; name: string }[] = [
@@ -78,6 +79,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
   // 영상 창은 양쪽 AI 가 싸우는 장면, 게임 창은 청군을 내가 지휘한다(점수는 창 안에서만 씀)
   // Study view opens without either in-screen RTS. Instantiate the two games
   // only when first viewed; keep their instances for subsequent app switches.
+  const shouldDraw = createDrawBudget(30);
   let vid: ReturnType<typeof createBattle> | null = null;
   let game: ReturnType<typeof createBattle> | null = null;
   const getVideo = (): ReturnType<typeof createBattle> => vid ??= createBattle(false);
@@ -198,7 +200,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
   return {
     el,
     frame(dt) {
-      const s = sim.state, v = view();
+      const s = sim.state, v = view(), renderCanvas = shouldDraw(v, dt);
       if (gameWindow.inert !== (v !== 'game')) {
         if (v !== 'game' && gameWindow.contains(document.activeElement)) el.focus({ preventScroll: true });
         gameWindow.inert = v !== 'game';
@@ -253,14 +255,14 @@ export const createClassroomView: CreateView = (sim, audio) => {
       let fl = v === 'doc' ? 0.1 : 0;
       if (v === 'video') {
         const video = getVideo();
-        video.update(dt); draw(vctx, video); vt += dt; fl = video.flash;
+        video.update(dt); if (renderCanvas) draw(vctx, video); vt += dt; fl = video.flash;
         txt(sub, video.capT > 0 ? video.cap : ''); sub.classList.toggle('on', video.capT > 0);
         const sec = Math.floor(vt), m = `${String(Math.floor(sec / 60) % 100).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`; txt(vtime, m);
         track.style.transform = `scaleX(${(vt % 90) / 90})`;
       } else if (v === 'game') {
         const game = getGame();
-        draw(gctx, game); fl = game.flash;
-        if (gctx && document.activeElement === gcv) {
+        if (renderCanvas) draw(gctx, game); fl = game.flash;
+        if (renderCanvas && gctx && document.activeElement === gcv) {
           gctx.save();
           gctx.strokeStyle = '#f8f4c5'; gctx.lineWidth = 1.2;
           gctx.beginPath(); gctx.arc(cursorX, cursorY, 5, 0, Math.PI * 2); gctx.stroke();

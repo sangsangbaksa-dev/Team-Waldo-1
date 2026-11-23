@@ -166,7 +166,7 @@ export class Rides {
   update(dt: number, input: DriveInput, player: Player, frozen: boolean): boolean {
     const car = this.active;
     if (!car) return false;
-    if (frozen) { car.speed = 0; return false; }
+    if (frozen) return false; // Pause physics without discarding vehicle momentum.
     const impact = stepDrive(car, input, dt, car.tune, (x, z, heading) => this.occupiable(x, z, heading, car));
     car.mesh.position.set(car.x, 0.18, car.z); car.mesh.rotation.y = car.heading;
     this.placeLamp(car);

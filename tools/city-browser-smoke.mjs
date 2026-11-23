@@ -48,6 +48,13 @@ try {
       await page.locator('.tile').first().waitFor();
       const entries = await page.locator('.tile').evaluateAll(tiles => tiles.map(tile => tile.dataset.game));
       assert.deepEqual([...entries].sort(), ['city', 'outlaw', 'race', 'room-tone', 'rts', 'shooter', 'sky', 'slack', 'squad', 'tycoon'], 'The arcade lists all ten games');
+      const fallback = await page.locator('.tile-media').evaluateAll(elements => elements.map(el => ({
+        label: el.dataset.fallback,
+        pseudoContent: getComputedStyle(el, '::after').content,
+      })));
+      assert.equal(fallback.length, 10, 'Every game tile must have a lightweight visual fallback');
+      assert.ok(fallback.every(item => item.label && item.pseudoContent.includes(item.label)),
+        'Deferred thumbnails must display their own game label before the image arrives');
       await page.screenshot({ path: 'browser-artifacts/last-city-home-' + size.name + '.png', animations: 'disabled' });
       await page.locator('#start-race').click();
       await page.locator('.rc-root').waitFor({ state: 'visible' });

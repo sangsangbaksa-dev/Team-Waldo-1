@@ -441,7 +441,7 @@ describe('SKY WAR 지형 밀착 비행 보너스', () => {
   it('바다 위만 날거나 충돌한 기체는 저공 보너스를 받지 않는다', () => {
     const sea = new SkySim(DIFFS[1]!);
     sea.intermission = 1e9;
-    sea.player.pos.set(0, 85, 2100);
+    sea.player.pos.set(0, 85, 2600);
     sea.player.speed = 215;
     for (let i = 0; i < 15; i++) sea.step(0.1, { ...neutral, throttle: 1 });
     expect(sea.lowFlightRuns).toBe(0);

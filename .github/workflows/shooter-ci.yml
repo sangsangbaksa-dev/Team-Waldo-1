@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: zero-zone-${{ github.ref }}
+  group: zero-zone-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 jobs:

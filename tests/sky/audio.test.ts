@@ -37,6 +37,23 @@ describe('SKY WAR muted audio resource usage', () => {
     audio.engine(true, 1);
     expect(ctx.createOscillator).toHaveBeenCalledTimes(1);
     expect(ctx.createBufferSource).toHaveBeenCalledTimes(1);
+
+    const firstOsc = ctx.createOscillator.mock.results[0]!.value;
+    const firstNoise = ctx.createBufferSource.mock.results[0]!.value;
+    audio.stopEngine();
+    expect(firstOsc.stop).toHaveBeenCalledTimes(1);
+    expect(firstNoise.stop).toHaveBeenCalledTimes(1);
+    audio.engine(true, 0.8);
+    expect(ctx.createOscillator).toHaveBeenCalledTimes(2);
+    expect(ctx.createBufferSource).toHaveBeenCalledTimes(2);
+
+    // Muting actively frees the restarted loop rather than leaving it running
+    // behind a zero-gain master, and repeated stops are idempotent.
+    const secondOsc = ctx.createOscillator.mock.results[1]!.value;
+    audio.setEnabled(false);
+    expect(secondOsc.stop).toHaveBeenCalledTimes(1);
+    audio.stopEngine();
+    expect(secondOsc.stop).toHaveBeenCalledTimes(1);
     audio.dispose();
   });
 });

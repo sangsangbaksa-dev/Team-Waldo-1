@@ -11,12 +11,12 @@ const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).
 const pick = <T,>(a: readonly T[]) => a[Math.floor(Math.random() * a.length)];
 
 const videos = [
-  { t: '새벽 감성 모음 ☁', ch: '달빛 라디오', views: '12만회', len: 728, h: 230, subs: ['오늘도 수고 많았어요', '잠시 눈을 감고 숨을 쉬어 봐요', '창밖에는 푸른 새벽이 오고 있어요', '내일의 나에게 맡겨요'] },
+  { t: '기숙사 앞 새벽 풍경', ch: '밤 산책 기록', views: '12만회', len: 728, h: 230, subs: ['정문은 이미 잠겼고', '매점 불은 아직 켜져 있다', '운동장에는 아무도 없다', '멀리 첫 버스 소리가 들린다'] },
   { t: '고양이가 키보드를 밟았을 때', ch: '냥냥TV', views: '88만회', len: 215, h: 20, subs: ['어 저거 내 숙제인데', '엔터를 눌러 버렸다', '전송 완료... 였다', '집사는 말이 없었다'] },
-  { t: '급식 랭킹 TOP 10 (진짜 맛집)', ch: '급식왕', views: '41만회', len: 504, h: 110, subs: ['10위 멸치 볶음', '7위 돈가스는 못 참지', '3위 치킨 나오는 날', '1위는 역시 떡볶이'] },
-  { t: '공부 브이로그 (공부는 안 함)', ch: '열공러', views: '6.2만회', len: 391, h: 300, subs: ['오늘의 계획은 완벽합니다', '일단 책상 정리부터', '그리고 간식 타임', '내일부터 진짜 시작'] },
+  { t: '이번 달 급식 후기', ch: '급식 기록', views: '41만회', len: 504, h: 110, subs: ['오늘은 제육볶음이 나왔다', '국은 조금 짠 편', '반찬은 오이무침', '금요일 치킨은 괜찮았다'] },
+  { t: '시험 전날 책상 정리', ch: '열공러', views: '6.2만회', len: 391, h: 300, subs: ['필통부터 정리했다', '필기 노트는 찾았는데', '정작 문제집은 학교에 두고 왔다', '일단 내일 아침에 일찍 가야겠다'] },
 ];
-const commentPool = ['이 시간에 보는 사람 손 ✋', '내일의 나야 미안해', '사감 오면 바로 끌 준비 완료', '첫 댓글!', '자막 센스 미쳤다', '오늘 자습 진짜 길다', '추천 알고리즘 고마워요', '새벽 2시 출석체크'];
+const commentPool = ['이 영상만 보고 자야지', '나만 아직 안 자냐', '이어폰 한쪽으로 듣는 중', '여기 풍경 우리 동네랑 비슷하네', '이 장면 몇 번 돌려 봤다', '오늘 자습 진짜 길다', '시험 끝나면 다시 보러 올게', '지금 새벽 2시인데'];
 
 const initialRooms = [
   { name: '우리 반 비밀방', sub: '3명', msgs: [{ m: false, who: '지후', t: '오늘 자습 진짜 길다...' }, { m: true, who: '', t: '그러니까 ㅠㅠ' }, { m: false, who: '서연', t: '끝나고 매점 갈 사람?' }], pool: ['사감 아직 안 왔지?', '나 오늘 진짜 졸려...', '조용히 하자 ㅋㅋ', '끝나면 같이 가자!', '매점 문 닫기 전에 가야 해'], reply: ['ㅋㅋㅋㅋ 인정', '나도 갈래!', '쉿 조용히 해'], unread: 0 },
@@ -98,7 +98,6 @@ export const createComputerView: CreateView = (sim, audio) => {
     sim.doActivity(id && sim.state.activity === id ? null : id);
   };
 
-  /* ---------- 게임: 별빛 던전(반응속도) ---------- */
   const G = { score: 0, best: 0, combo: 1, streak: 0, hp: 100, over: false, clock: 0, deadline: 0, nextAt: 0.5, on: false, life: 1.5 };
   const gameHtml = () => `<div class="sc-game"><div class="sc-game-top"><span>별빛 던전</span><span>최고 <b data-g-best>0</b>　점수 <b data-score>0</b></span></div><div class="sc-health">체력 <span><i data-health style="width:100%"></i></span><em data-g-combo>x1</em></div><div class="sc-game-scene"><div class="sc-stars">✦　　·　　 ✧　　　✦</div><button type="button" class="sc-target" aria-label="별 터뜨리기"><b>★</b><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="18"/></svg></button><span class="sc-pop"></span><div class="sc-game-ground"></div><div class="sc-game-over"><strong>게임 오버</strong><span data-g-final></span><button type="button" data-g-retry>다시 하기</button></div></div><div class="sc-game-hint">나타나는 별을 사라지기 전에 눌러요 · 연속 성공 = 콤보!</div></div>`;
   const gameEls = () => ({ score: $('[data-score]', wins.game), best: $('[data-g-best]', wins.game), hp: $('[data-health]', wins.game), combo: $('[data-g-combo]', wins.game), target: $('.sc-target', wins.game), pop: $('.sc-pop', wins.game), scene: $('.sc-game-scene', wins.game), over: $('.sc-game-over', wins.game), final: $('[data-g-final]', wins.game) });
@@ -129,7 +128,6 @@ export const createComputerView: CreateView = (sim, audio) => {
     if (G.on && G.clock > G.deadline) gameMiss(); else if (!G.on && G.clock >= G.nextAt) gameSpawn();
   };
 
-  /* ---------- 영상 ---------- */
   const V = { cur: 0, pos: 0, playing: true, sub: -1, sec: -1, nextComment: 5 };
   const vidHtml = () => `<div class="sc-video"><div class="sc-video-main"><div class="sc-video-picture" data-vpic><div class="sc-video-sun"></div><div class="sc-video-cloud"></div><div class="sc-video-mountain"></div><div class="sc-video-play">❚❚</div><div class="sc-sub" data-sub></div></div><div class="sc-video-bar"><button type="button" data-vplay aria-label="일시정지">❚❚</button><span class="sc-progress"><i data-vprog></i></span><span data-vtime>0:00</span></div><b data-vtitle></b><small data-vmeta></small><div class="sc-comment" data-comments></div></div><div class="sc-video-list"><b>추천 영상</b>${videos.map((v, i) => `<button type="button" data-vid="${i}" style="--h:${v.h}"><span class="sc-thumb"><i></i></span><span><strong>${v.t}</strong><small>${v.ch} · ${v.views}</small></span></button>`).join('')}</div></div>`;
   const vidSelect = (i: number) => {
@@ -151,7 +149,6 @@ export const createComputerView: CreateView = (sim, audio) => {
     }
   };
 
-  /* ---------- 메신저 ---------- */
   const C = { room: 0 };
   const typing = rooms.map(() => 0);
   const pendingReplies = rooms.map(() => 0);
@@ -210,7 +207,6 @@ export const createComputerView: CreateView = (sim, audio) => {
   };
   let nextIncoming = 8;
 
-  /* ---------- 웹툰 ---------- */
   const W = { ep: 2, likes: 12 };
   const toonHtml = () => `<div class="sc-webtoon"><div class="sc-webtoon-head"><b>달빛 아래 우리</b><span class="sc-eps">${episodes.map((e, i) => `<button type="button" data-ep="${i}" ${e.n === 13 ? 'hidden' : ''}>${e.n}화</button>`).join('')}</span><small data-read>0% 읽음</small></div>${episodes.map((e, i) => `<div class="sc-wt-scroll" data-eppane="${i}"><div class="sc-comic-sky"><span>제 ${e.n}화</span><i>☾</i><b>${e.title}</b></div>${e.lines.map((l, k) => `<div class="sc-comic-panel c${(k + i) % 3}"><div class="sc-comic-person">●<br>▰</div><p>${l}</p></div>`).join('')}<button type="button" class="sc-like" data-like>♡ 좋아요 <b>${W.likes}</b></button></div>`).join('')}</div>`;
   const toonShow = (i: number) => {
@@ -220,10 +216,9 @@ export const createComputerView: CreateView = (sim, audio) => {
   };
   const toonProgress = () => { const p = $(`[data-eppane="${W.ep}"]`, wins.webtoon); const max = p.scrollHeight - p.clientHeight; setTxt($('[data-read]', wins.webtoon), `${max > 0 ? Math.round((p.scrollTop / max) * 100) : 0}% 읽음`); };
 
-  /* ---------- 쇼핑 ---------- */
   const S = { cart: products.map(() => 0), deal: 1, left: 120, lastSec: -1 };
   const price = (i: number, deal = false) => Math.round(products[i].price * (deal ? 0.5 : 0.65));
-  const shopHtml = () => `<div class="sc-shop"><div class="sc-shop-head">오늘의 발견 <span>장바구니 <b data-cart>0</b></span></div><div class="sc-sale"><span class="sc-deal-ico" data-deal-ico></span><span class="sc-deal-txt"><small>심야 특가 · 50%</small><b data-deal-name></b><em data-deal-price></em></span><strong data-timer>02:00</strong><button type="button" data-add="deal">특가 담기</button></div><div class="sc-products">${products.map((p, i) => `<div><div class="sc-product p${i % 3}">${p.icon}</div><b>${p.name}</b><small><em>35%</em> ${price(i).toLocaleString('ko-KR')}원</small><button type="button" data-add="${i}">담기</button></div>`).join('')}</div><div class="sc-cartbar"><span data-total>합계 0원</span><button type="button" data-pay>결제하기</button></div></div>`;
+  const shopHtml = () => `<div class="sc-shop"><div class="sc-shop-head">상품 목록 <span>장바구니 <b data-cart>0</b></span></div><div class="sc-sale"><span class="sc-deal-ico" data-deal-ico></span><span class="sc-deal-txt"><small>심야 특가 · 50%</small><b data-deal-name></b><em data-deal-price></em></span><strong data-timer>02:00</strong><button type="button" data-add="deal">특가 담기</button></div><div class="sc-products">${products.map((p, i) => `<div><div class="sc-product p${i % 3}">${p.icon}</div><b>${p.name}</b><small><em>35%</em> ${price(i).toLocaleString('ko-KR')}원</small><button type="button" data-add="${i}">담기</button></div>`).join('')}</div><div class="sc-cartbar"><span data-total>합계 0원</span><button type="button" data-pay>결제하기</button></div></div>`;
   const shopDeal = () => { const w = wins.shop; setTxt($('[data-deal-ico]', w), products[S.deal].icon); setTxt($('[data-deal-name]', w), products[S.deal].name); setTxt($('[data-deal-price]', w), `${price(S.deal, true).toLocaleString('ko-KR')}원`); };
   const shopTotals = () => {
     const n = S.cart.reduce((a, b) => a + b, 0); const sum = S.cart.reduce((a, c, i) => a + c * price(i, i === S.deal), 0);
@@ -231,11 +226,10 @@ export const createComputerView: CreateView = (sim, audio) => {
   };
   const shopTick = (dt: number) => {
     S.left -= dt;
-    if (S.left <= 0) { S.left = 120; S.deal = (S.deal + 1) % products.length; if (built.shop) shopDeal(); if (shown !== 'shop') { setBadge('shop', 1); audio.play('chime', 0.3); toast('새 심야 특가가 열렸어요!'); } }
+    if (S.left <= 0) { S.left = 120; S.deal = (S.deal + 1) % products.length; if (built.shop) shopDeal(); if (shown !== 'shop') { setBadge('shop', 1); audio.play('chime', 0.3); toast('심야 특가 상품이 바뀌었습니다.'); } }
     const sec = Math.ceil(S.left); if (sec !== S.lastSec) { S.lastSec = sec; if (built.shop) setTxt($('[data-timer]', built.shop), `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`); }
   };
 
-  /* ---------- 음악 ---------- */
   const M = { cur: 0, p: 0, playing: true, sec: -1 };
   const musicHtml = () => `<div class="sc-music"><div class="sc-album"><div class="sc-disc">☾</div><span data-m-cap>새벽의 온도</span></div><div class="sc-music-info"><small>지금 재생 중</small><strong data-m-title aria-live="polite"></strong><span data-m-art></span><div class="sc-visualizer">${Array.from({ length: 20 }, (_, i) => `<i style="--n:${i}"></i>`).join('')}</div><div class="sc-progress"><i data-m-prog></i></div><div class="sc-music-controls"><button type="button" data-m="prev" aria-label="이전 곡">◀◀</button><button type="button" data-m="play" aria-label="일시정지">❚❚</button><button type="button" data-m="next" aria-label="다음 곡">▶▶</button><span data-m-time>0:00</span></div></div><div class="sc-playlist"><b>재생 목록</b>${tracks.map((t, i) => `<button type="button" data-track="${i}" aria-pressed="${M.cur === i}" aria-label="${t.t}, ${mmss(t.len)}">${String(i + 1).padStart(2, '0')}　${t.t} <span>${mmss(t.len)}</span></button>`).join('')}</div></div>`;
   const musicSet = (i: number) => {
@@ -256,7 +250,6 @@ export const createComputerView: CreateView = (sim, audio) => {
     const sec = Math.floor(M.p * tracks[M.cur].len); if (sec !== M.sec) { M.sec = sec; setTxt($('[data-m-time]', wins.music), mmss(sec)); $('[data-m-prog]', wins.music).style.transform = `scaleX(${M.p})`; }
   };
 
-  /* ---------- 창 생성/전환 (한 번만 만들고 켜고 끔) ---------- */
   // Construct app windows only when first opened. The desktop, taskbar,
   // notifications and clock remain live without eagerly building every app DOM.
   const built: Partial<Record<DormActivity, HTMLElement>> = {};
@@ -298,7 +291,6 @@ export const createComputerView: CreateView = (sim, audio) => {
     if (id === 'game' && !G.over && !G.on) G.nextAt = G.clock + 0.4;
   }
 
-  /* ---------- 입력 ---------- */
   const click = (event: MouseEvent) => {
     audio.resume();
     const target = event.target as Element;
@@ -322,7 +314,7 @@ export const createComputerView: CreateView = (sim, audio) => {
       audio.play('click'); const i = add.dataset.add === 'deal' ? S.deal : Number(add.dataset.add); S.cart[i]++; shopTotals();
       add.classList.remove('bump'); void add.offsetWidth; add.classList.add('bump'); if (add.dataset.add !== 'deal') add.textContent = `담김 ×${S.cart[i]}`; return;
     }
-    if (target.closest('[data-pay]')) { audio.play('key', 0.6); toast(S.cart.some(Boolean) ? '잔액이 부족합니다. (용돈은 이미 야식으로…)' : '장바구니가 비어 있어요.', 2.5); return; }
+    if (target.closest('[data-pay]')) { audio.play('key', 0.6); toast(S.cart.some(Boolean) ? '잔액이 부족합니다.' : '장바구니가 비어 있어요.', 2.5); return; }
     const mb = target.closest<HTMLElement>('[data-m]');
     if (mb) { audio.play('click'); const k = mb.dataset.m; if (k === 'play') musicPlay(!M.playing); else musicSet(M.cur + (k === 'next' ? 1 : -1)); return; }
     const tr = target.closest<HTMLElement>('[data-track]'); if (tr) { audio.play('click'); musicSet(Number(tr.dataset.track)); musicPlay(true); }
@@ -382,9 +374,9 @@ export const createComputerView: CreateView = (sim, audio) => {
   function onEvent(ev: SlackEvent) {
     if (ev.t === 'footstep') { audio.play('footstep', ev.vol); const lv = ev.vol < 0.4 ? 1 : ev.vol < 0.75 ? 2 : 3; stepEls.forEach((s, i) => s.classList.toggle('on', i < lv)); el.style.setProperty('--sc-step', String(ev.vol)); stepUntil = elapsed + 0.9; if (ev.vol > 0.6) say('복도에서 발소리가…', 1.4); }
     else if (ev.t === 'door') audio.play(ev.open ? 'doorOpen' : 'doorClose');
-    else if (ev.t === 'peek') { audio.play('peek'); say('쉿! 문 앞이야', 1.6); }
+    else if (ev.t === 'peek') { audio.play('peek'); say('쉿, 문 앞이야.', 1.6); }
     else if (ev.t === 'friend-warn') { audio.play('nudge'); audio.play('whisper'); warningUntil = elapsed + 3; say('야, 사감 온다!', 3); }
-    else if (ev.t === 'leave') say('갔다… 휴', 1.6);
+    else if (ev.t === 'leave') say('지나갔다.', 1.6);
     else if (ev.t === 'strike') strikeUntil = elapsed + 2;
     else if (ev.t === 'quiet') quietUntil = elapsed + 3;
   }
@@ -422,7 +414,7 @@ export const createComputerView: CreateView = (sim, audio) => {
     if (elapsed > nextIncoming && state.phase === 'play') {
       nextIncoming = elapsed + 9 + Math.random() * 7; const r = Math.random() < 0.6 ? 0 : Math.random() < 0.6 ? 1 : 2; chatIncoming(r, pick(rooms[r].pool), 0);
     }
-    if (elapsed > 45 && !cache.newEp) { cache.newEp = true; if (built.webtoon) built.webtoon.querySelector<HTMLElement>('[data-ep="3"]')!.hidden = false; if (shown !== 'webtoon') { setBadge('webtoon', 1); toast('웹툰 「달빛 아래 우리」 13화 업데이트!'); audio.play('chime', 0.4); } }
+    if (elapsed > 45 && !cache.newEp) { cache.newEp = true; if (built.webtoon) built.webtoon.querySelector<HTMLElement>('[data-ep="3"]')!.hidden = false; if (shown !== 'webtoon') { setBadge('webtoon', 1); toast('「달빛 아래 우리」 13화가 올라왔습니다.'); audio.play('chime', 0.4); } }
     const min = 24 + Math.floor(elapsed / 20); setTxt(clockEl, `오전 ${1 + Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`);
   }, onEvent, dispose() { if (disposed) return; disposed = true; inputs.abort(); blur(); if (earbudsActive) { earbudsActive = false; audio.muffle(false); } queue.length = 0; } };
 };

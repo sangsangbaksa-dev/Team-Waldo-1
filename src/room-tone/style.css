@@ -28,10 +28,13 @@ button {
   padding: 0.7rem 1rem;
   border-radius: 3px;
   font-size: 0.94rem;
-  font-weight: 650;
+  font-weight: 600;
 }
 button:hover {
-  filter: brightness(1.2);
+  border-color: #b99a7f;
+}
+button.primary:hover {
+  background: #edb68b;
 }
 button:focus-visible,
 input:focus-visible {
@@ -62,10 +65,6 @@ button.primary {
   background: transparent;
   padding: 0.6rem 0 0.6rem 0.6rem;
 }
-.bare b {
-  font-size: 1.3rem;
-  color: #d5a47e;
-}
 .mast {
   position: relative;
   z-index: 2;
@@ -80,32 +79,17 @@ button.primary {
   align-items: center;
   gap: 0.65rem;
   font-family: Barlow, sans-serif;
-  font-size: 1.42rem;
-  letter-spacing: 0.1em;
-}
-.signalMark {
-  display: inline-grid;
-  place-items: center;
-  border: 1px solid #be906f;
-  border-radius: 50%;
-  width: 28px;
-  height: 28px;
-  color: #e4a176;
-  font: 700 27px/1 Georgia;
+  font-size: 1.12rem;
+  letter-spacing: 0.08em;
 }
 .kicker {
   display: flex;
   align-items: center;
   gap: 0.7rem;
-  color: #e7af87;
-  font-weight: 650;
-  font-size: 0.88rem;
-  letter-spacing: 0.12em;
-}
-.kicker i {
-  width: 24px;
-  height: 2px;
-  background: currentColor;
+  color: #b9a38d;
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
 }
 #home {
   position: relative;
@@ -125,23 +109,11 @@ button.primary {
 .heroart {
   object-fit: cover;
   object-position: 65% center;
+  filter: saturate(0.68) contrast(1.04);
 }
 .shade {
   z-index: -1;
-  background:
-    linear-gradient(
-      90deg,
-      rgba(6, 12, 12, 0.61),
-      rgba(6, 12, 12, 0.14) 49%,
-      transparent 76%
-    ),
-    linear-gradient(
-      0deg,
-      #071010aa,
-      transparent 21%,
-      transparent 80%,
-      #07100f73
-    );
+  background: #07100ebd;
 }
 .intro {
   padding: clamp(1.4rem, 5.6vh, 7rem) 5.5vw clamp(3.5rem, 6vh, 7rem);
@@ -149,7 +121,7 @@ button.primary {
 }
 .intro h1 {
   font:
-    700 clamp(6.2rem, min(12.8vw, 16vh), 12rem) / 0.77 Barlow,
+    700 clamp(5.4rem, min(11vw, 15vh), 9.5rem) / 0.83 Barlow,
     Impact,
     sans-serif;
   letter-spacing: -0.028em;
@@ -158,7 +130,7 @@ button.primary {
 }
 .intro em {
   font-style: normal;
-  color: #e0ab84;
+  color: #c9a185;
 }
 .kname {
   font-size: 1.05rem;
@@ -212,20 +184,6 @@ button.primary {
   padding: 0.15rem 0;
   font-size: 0.86rem;
 }
-.filmline {
-  height: 3px;
-  background: linear-gradient(
-    90deg,
-    #b37f5a 0%,
-    #b37f5a 13%,
-    #3c514a 13%,
-    #34433d 100%
-  );
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  width: 100%;
-}
 #completion {
   display: block;
   color: #b8c5ad;
@@ -233,7 +191,7 @@ button.primary {
 }
 #viewer {
   min-height: 100svh;
-  background: radial-gradient(ellipse at 80% 40%, #28372e, #101716 73%);
+  background: #111816;
 }
 .museum {
   max-width: 1420px;
@@ -297,12 +255,7 @@ input[type="range"] {
   height: calc(100svh - 158px);
   min-height: 380px;
   max-height: 880px;
-  background: radial-gradient(
-    ellipse at 45% 47%,
-    #4a554b,
-    #24312e 57%,
-    #111a18 100%
-  );
+  background: #1b2421;
   position: relative;
   overflow: hidden;
   border: 1px solid #4f574c;
@@ -379,7 +332,7 @@ input[type="range"] {
   justify-content: space-between;
   gap: 0.75rem;
   pointer-events: none;
-  background: linear-gradient(#080c0bd0, transparent);
+  background: transparent;
 }
 .hudleft strong,
 .hudleft span {
@@ -525,7 +478,7 @@ dialog {
   background: #17211dfc;
   color: #f0e9d6;
   padding: clamp(1.2rem, 3.7vw, 2.4rem);
-  box-shadow: 0 20px 80px #0005;
+  box-shadow: 0 12px 32px #0007;
 }
 dialog::backdrop {
   background: #09100de8;
@@ -657,12 +610,10 @@ dialog h2 {
   }
   .heroart {
     object-position: 69% center;
-    filter: brightness(0.86);
+    filter: saturate(0.65) contrast(1.04) brightness(0.9);
   }
   .shade {
-    background:
-      linear-gradient(90deg, #08100ed9, #07100e2b 65%),
-      linear-gradient(0deg, #08100ff8 0%, #08100f70 41%, transparent 69%);
+    background: #07100ed1;
   }
   .intro {
     padding: clamp(5.5rem, 16vh, 10rem) 6vw 2.5rem;
@@ -781,7 +732,6 @@ dialog h2 {
   }
 }
 
-/* Compact viewport and keyboard accessibility. */
 #dialog{padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));align-items:safe center;overflow:auto;overscroll-behavior:contain}
 .panel,dialog{max-height:min(92svh,100%);overscroll-behavior:contain;scrollbar-width:thin;touch-action:pan-y}
 @media(prefers-reduced-motion:reduce){.panel,.panelActions button,.hudright button,.gear button{transition:none;animation:none}}

@@ -26,12 +26,12 @@ export function archiveCells(level) {
   return selected;
 }
 export const incidents = [
-  {kind:"knock",caption:"… 벽 너머에서 세 번의 충격음",duration:2.7},
-  {kind:"drop",caption:"… 환경음이 끊겼다",duration:3.2},
-  {kind:"tape",caption:"… 녹음되지 않은 신호가 수신된다",duration:2.8},
-  {kind:"breath",caption:"… 가까운 곳에서 낯선 숨소리",duration:2.5},
-  {kind:"echo",caption:"… 멈춘 발소리가 다시 울린다",duration:3.4},
-  {kind:"relay",caption:"… 비어 있는 회로에서 접점이 움직인다",duration:2.9},
+  {kind:"knock",caption:"벽 너머에서 세 번 두드리는 소리가 난다.",duration:2.7},
+  {kind:"drop",caption:"환풍기 소리가 갑자기 끊겼다.",duration:3.2},
+  {kind:"tape",caption:"수신기에 알 수 없는 신호가 들어온다.",duration:2.8},
+  {kind:"breath",caption:"가까운 곳에서 숨소리가 들린다.",duration:2.5},
+  {kind:"echo",caption:"발걸음을 멈췄는데 복도에선 계속 걷는 소리가 난다.",duration:3.4},
+  {kind:"relay",caption:"전원이 끊긴 회로에서 릴레이가 딸깍인다.",duration:2.9},
 ];
 export function createDread(random=Math.random,chapter=0){
   const stage=Math.max(0,Math.min(3,Math.floor(chapter)||0));

@@ -271,7 +271,7 @@ function pauseGame() {
 }
 function pauseMenu() {
   modal(
-    "녹음 일시정지",
+    "일시정지",
     chapters[ch].location + " · " + clock(elapsed),
     null,
     [
@@ -696,8 +696,8 @@ async function start(cont) {
   screens("game");
   state = "load";
   setGameModal(true);
-  $("panelTitle").textContent = "녹음실 연결 중";
-  $("panelText").textContent = "공간과 캐릭터를 불러오고 있습니다.";
+  $("panelTitle").textContent = "시설 준비 중";
+  $("panelText").textContent = "녹음실을 불러오고 있습니다.";
   $("panelBody").replaceChildren();
   $("panelActions").replaceChildren();
   try {
@@ -1056,7 +1056,7 @@ function puzzle(reset = true) {
             save();
             renderHUD();
             resume();
-            message("신호 복원 완료 · 출구 잠금이 풀렸습니다.", 5);
+            message("신호가 복구되었습니다. 출구 잠금이 풀렸습니다.", 5);
           } else {
             response = "신호가 맞지 않습니다. 회수한 기록을 다시 확인하세요.";
             puzzle(false);
@@ -1189,7 +1189,7 @@ function beginExitSequence(o) {
   $("game").dataset.transition="exit";
   sound.threat(0);
   sound.door();
-  message("출구 개방 중",2);
+  message("출구 잠금 해제 중",2);
   last=performance.now();
   scheduleFrame();
 }

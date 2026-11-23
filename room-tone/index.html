@@ -37,24 +37,24 @@
       <div class="shade"></div>
       <header class="mast">
         <span class="wordmark"
-          ><i class="signalMark" aria-hidden="true">∿</i> TEAM WALDO</span
+          >TEAM WALDO</span
         ><div class="mast-actions"><a class="hub-link" href="../">게임 목록</a><button class="bare" id="sound" type="button">
-          <b aria-hidden="true">◖</b> <span>소리 켜짐</span>
+          <span>소리 켜짐</span>
         </button></div>
       </header>
       <section class="intro">
-        <div class="kicker"><i></i> 1인칭 심리 공포</div>
+        <div class="kicker">1인칭 심리 공포</div>
         <h1>ROOM<br /><em>TONE</em></h1>
         <div class="kname">잔향실</div>
         <p class="damaged">녹음은 끝났다. 숨소리는 남았다.</p>
         <p class="synopsis">
-          폐쇄된 녹음 시설에 홀로 남겨졌다. 네 구역의 신호를 복원하고, 발소리를
-          쫓아오는 잔향을 피해 탈출하라.
+          폐쇄된 녹음 시설에 갇혔다. 네 구역의 장비를 복구해 출구를 열어야 한다.
+          복도에서는 내가 멈춘 뒤에도 발소리가 들린다.
         </p>
         <div class="startrow">
           <button id="continue" class="primary" hidden>이어하기</button
           ><button id="new" class="primary">게임 시작</button
-          ><button class="secondary" id="inspect">괴물 관찰</button>
+          ><button class="secondary" id="inspect">잔향 관찰</button>
         </div>
         <div class="homefoot">
           <span>약 30분</span><i></i><span>1인 플레이</span><i></i
@@ -62,20 +62,20 @@
         </div>
         <small id="completion"></small>
       </section>
-      <div class="filmline" aria-hidden="true"></div>
+      
     </main>
     <main id="viewer" hidden>
       <header class="mast">
-        <span class="wordmark"><i class="signalMark">∿</i> ROOM TONE</span
+        <span class="wordmark">ROOM TONE</span
         ><button class="secondary" id="back">타이틀로</button>
       </header>
       <section class="museum">
         <div class="spec">
-          <div class="kicker"><i></i> 캐릭터 기록</div>
+          <div class="kicker">관찰 기록</div>
           <h2>잔향</h2>
-          <p>눈을 크게 뜨고 입을 벌린 채, 녹음실 밖의 소리를 기다린다.</p>
+          <p>복도를 배회하는 잔향. 불을 켜거나 뛰면 더 빨리 눈치챈다.</p>
           <dl>
-            <dt>원본 영상</dt>
+            <dt>동작 길이</dt>
             <dd>00:03.48</dd>
             <dt>대기 동작</dt>
             <dd>숨 고르기 · 4초</dd>
@@ -99,7 +99,7 @@
             id="still"
             alt="블렌더에서 렌더링한 캐릭터"
             src="./close.jpg"
-          /><span id="notice">3D 모델을 불러오는 중…</span>
+          /><span id="notice">관찰 화면 준비 중…</span>
         </div>
       </section>
     </main>
@@ -148,7 +148,7 @@
           aria-modal="true"
           aria-labelledby="panelTitle"
         >
-          <div class="kicker"><i></i> ROOM TONE</div>
+          <div class="kicker">ROOM TONE</div>
           <h2 tabindex="-1" id="panelTitle"></h2>
           <p id="panelText"></p>
           <div id="panelBody"></div>

@@ -23,9 +23,33 @@ const angleDelta = (a: number, b: number): number => Math.atan2(Math.sin(a - b),
 const RADIUS = 1.03;
 const BODY_LENGTH = 1.95;
 
+/** Three faded lane markings per bay, merged into a single reusable draw geometry. */
+function parkingBayGeometry(): THREE.BufferGeometry {
+  const positions: number[] = [], triangles: number[] = [];
+  const line = (x0: number, x1: number, z0: number, z1: number): void => {
+    const i = positions.length / 3;
+    positions.push(x0, 0, z0, x1, 0, z0, x1, 0, z1, x0, 0, z1);
+    triangles.push(i, i + 1, i + 2, i, i + 2, i + 3);
+  };
+  line(-2.8, 2.7, -1.48, -1.40);
+  line(-2.8, 2.7, 1.40, 1.48);
+  line(-2.8, -2.72, -1.48, 1.48);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(triangles);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
 /** A vehicle is a rounded rectangle, not a single point. Check front and rear ends. */
 export class Rides {
   private cars: Ride[] = [];
+  private parking = new THREE.Group();
+  private parkingGeometry = parkingBayGeometry();
+  private parkingMaterial = new THREE.MeshBasicMaterial({
+    color: 0xded7c8, transparent: true, opacity: 0.28,
+    depthWrite: false, side: THREE.DoubleSide,
+  });
   private active: Ride | null = null;
   private scratch = { x: 0, z: 0 };
   private bodyProbe = { x: 0, z: 0, heading: 0 };
@@ -35,7 +59,8 @@ export class Rides {
   constructor(scene: THREE.Scene, layout: Layout, private colliders: Colliders, trafficBlocks?: (x: number, z: number, radius: number) => boolean) {
     if (trafficBlocks) this.trafficBlocks = trafficBlocks;
     this.lamp.castShadow = false;
-    scene.add(this.lamp, this.lamp.target);
+    this.parking.name = 'HUSTLE parking';
+    scene.add(this.parking, this.lamp, this.lamp.target);
     const nearestVertical = Math.round((layout.spawn.x - PITCH / 2) / PITCH) * PITCH + PITCH / 2;
     const nearestHorizontal = Math.round((layout.spawn.z - PITCH / 2) / PITCH) * PITCH + PITCH / 2;
     const candidates: Array<{ x: number; z: number; heading: number }> = [
@@ -60,6 +85,11 @@ export class Rides {
       const mesh = makeVehicleMesh({ kind: spec.kind, ...dims, c: spec.color, v: i % 2, wreck: false });
       mesh.position.set(spot.x, 0.18, spot.z); mesh.rotation.y = spot.heading;
       mesh.name = 'HUSTLE: ' + spec.name; scene.add(mesh);
+      const lines = new THREE.Mesh(this.parkingGeometry, this.parkingMaterial);
+      lines.position.set(spot.x, 0.035, spot.z);
+      lines.rotation.y = spot.heading;
+      lines.renderOrder = 1;
+      this.parking.add(lines);
       this.cars.push({ ...spot, speed: 0, mesh, name: spec.name, tune: spec.tune });
     }
   }
@@ -212,6 +242,8 @@ export class Rides {
       car.mesh.removeFromParent();
     }
     this.cars.length = 0; this.active = null;
+    this.parking.removeFromParent(); this.parking.clear();
+    this.parkingGeometry.dispose(); this.parkingMaterial.dispose();
     this.lamp.removeFromParent(); this.lamp.target.removeFromParent();
   }
 }

@@ -196,3 +196,18 @@ it('stops the scheduled animation immediately on pause even with a live toast', 
   button('[data-resume]').click();
   expect(frames.size).toBe(1);
 });
+
+it('releases finished scene nodes immediately instead of retaining them until restart', async () => {
+  openSlack(vi.fn());
+  button('[data-start]').click();
+  await vi.dynamicImportSettled();
+  const sim = vi.mocked(createSim).mock.results[0].value;
+  expect(document.querySelector('.sl-view')?.children.length).toBe(1);
+  sim.state.time = sim.state.limit - 0.05;
+  advance(100);
+  expect(document.querySelector('.sl-view')?.children.length).toBe(0);
+  expect(document.activeElement).toBe(button('[data-retry]'));
+  button('[data-retry]').click();
+  await vi.dynamicImportSettled();
+  expect(document.querySelector('.sl-view')?.children.length).toBe(1);
+});

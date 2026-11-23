@@ -26,6 +26,7 @@ import { normalizeCampaign } from "./campaign.mjs";
 import { createPointerOwner, tryCapture } from "./input.mjs";
 import { lineClear, soundTravelDistance } from "./visibility.mjs";
 import { renderingScale } from "./render-quality.mjs";
+import { propClearance } from "./obstacles.mjs";
 import { facingDot, canSeeTarget, stereoPan } from "./awareness.mjs";
 import { initialMute } from "./preferences.mjs";
 import { createIdLookup } from "./dom.mjs";
@@ -43,6 +44,7 @@ let state = "home",
   items = [],
   hidingSpots = [],
   interactables = [],
+  blockingProps = [],
   hiddenSpot = null,
   hideBreath = 1,
   hideReadyAt = 0,
@@ -378,7 +380,8 @@ function shift(dx, dz) {
       pass(x - r, z - r) &&
       pass(x + r, z - r) &&
       pass(x - r, z + r) &&
-      pass(x + r, z + r)
+      pass(x + r, z + r) &&
+      propClearance(x, z, player.x, player.z, r, blockingProps)
     );
   }
   if (space(player.x + dx, player.z)) player.x += dx;
@@ -621,7 +624,7 @@ function makeHidingSpots() {
     if (!spotKit) spotKit = createHidingSpotKit(THREE);
     buildHidingSpot(THREE, root, kind, spotKit);
     const caption = ["옷장에 숨기", "침대 밑에 숨기", "커튼 뒤에 숨기", "책상 밑에 숨기"][kind];
-    hidingSpots.push({ type: "hide", cell, root, dx, dz, caption });
+    hidingSpots.push({ type: "hide", cell, root, dx, dz, kind, caption });
   }
 }
 function leaveHiding(exhausted = false) {
@@ -696,8 +699,18 @@ function loadScene() {
   investigation = null;
   nextFlicker = now + 18 + Math.random() * 25;
   makeHidingSpots();
-  // Static interaction index, rebuilt only when the chapter changes.
+  // Static interaction and collision indexes, rebuilt only per chapter.
   interactables = items.concat(hidingSpots);
+  blockingProps = interactables.map((o) => ({
+    root: o.root,
+    x: o.root.position.x,
+    z: o.root.position.z,
+    rotation: o.root.rotation.y,
+    halfWidth: o.type === "hide" ? 0.57 : o.type === "station" ? 0.46
+      : o.type === "item" ? 0.36 : 0.35,
+    halfDepth: o.type === "hide" ? (o.kind === 2 ? 0.13 : 0.44)
+      : o.type === "station" ? 0.30 : o.type === "item" ? 0.25 : 0.22,
+  }));
   entity = new THREE.Group();
   entity.add(model);
   scene.add(entity);

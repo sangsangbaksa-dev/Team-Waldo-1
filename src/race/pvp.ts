@@ -17,7 +17,7 @@ const SILENT_MS = 6000, NEVER_MS = 25000;
 
 export class RacePvp {
   started = false;
-  private ch: Channel; private timer: number; private born = performance.now(); private heard = performance.now(); private lastSnap = 0; private lastTick = performance.now(); private dead = false; private disposed = false;
+  private ch: Channel; private timer: number; private born = performance.now(); private heard = performance.now(); private lastSnap = 0; private lastTick = performance.now(); private dead = false; private disposed = false; private finished = false;
   constructor(readonly session: PvpSession, private car: string, private hooks: PvpHooks) {
     this.ch = session.open(m => this.onMsg(m));
     void this.ch.ready.then(() => this.hello(), () => this.gone('never'));
@@ -41,7 +41,7 @@ export class RacePvp {
     if (m.t === 'hello') { if (this.session.host) { this.ch.send({ t: 'start', car: this.car }); this.begin(m.car); } }
     else if (m.t === 'start') { if (!this.session.host) this.begin(m.car); }
     else if (m.t === 's') { const s = parseSnap(m.c); if (s && this.started) this.hooks.onSnap(s); }
-    else if (m.t === 'fin') { if (this.started && typeof m.time === 'number' && Number.isFinite(m.time) && m.time > 0) this.hooks.onFinish(m.time); }
+    else if (m.t === 'fin') { if (this.started && !this.finished && typeof m.time === 'number' && Number.isFinite(m.time) && m.time > 0) { this.finished = true; this.hooks.onFinish(m.time); } }
     else if (m.t === 'bye') this.gone('bye');
   }
   /** 15Hz 로 내 차량 상태를 보냅니다. */

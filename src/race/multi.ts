@@ -58,10 +58,17 @@ export class RaceMulti {
     for (const p of list) if (p.id !== this.session.me.id) this.heard.set(p.id, now);
     this.hooks.onStart(list);
   }
-  private leave(id: string): void { if (this.gone.has(id)) return; this.gone.add(id); this.heard.delete(id); this.hooks.onGone(id); }
+  private leave(id: string): void {
+    if (this.gone.has(id)) return;
+    this.gone.add(id); this.heard.delete(id);
+    // Remove a departing driver from the pre-start roster, otherwise the
+    // host can accidentally launch a disconnected player into the race.
+    if (!this.started) this.cars.delete(id);
+    this.hooks.onGone(id);
+  }
   private onMsg(m: NetMsg): void {
     if (this.dead) return;
-    const f = typeof m.f === 'string' ? m.f : ''; if (!f || f === this.session.me.id || !this.ids.includes(f)) return;
+    const f = typeof m.f === 'string' ? m.f : ''; if (!f || f === this.session.me.id || !this.ids.includes(f) || this.gone.has(f)) return;
     if (this.started) { if (this.heard.has(f)) this.heard.set(f, performance.now()); }
     if (m.t === 'hello') { if (this.started && this.session.host) this.ch.send({ t: 'start', f: this.session.me.id, list: this.startList }); else if (!this.started) this.cars.set(f, typeof m.car === 'string' && CARS.some(c => c.id === m.car) ? m.car : CARS[0].id); }
     else if (m.t === 'start') {

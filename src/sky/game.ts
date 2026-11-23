@@ -83,7 +83,13 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     if (e.button === 2) mMissile = true; else mFire = true;
   };
   const onUp = (e: PointerEvent): void => { if (e.pointerType === 'touch') { if (e.pointerId === mouse.touchId) { mouse.touchId = -1; mouse.x = mouse.y = 0; } } else if (e.button === 2) mMissile = false; else mFire = false; };
-  const onWheel = (e: WheelEvent): void => { if (state !== 'play') return; e.preventDefault(); throttle = clamp(throttle - e.deltaY * 0.0016, 0, 1); }; // 두 손가락 위로 = 가속
+  const onWheel = (e: WheelEvent): void => {
+    if (state !== 'play') return;
+    e.preventDefault();
+    if (e.ctrlKey) return; // 터치패드 확대/축소 제스처는 스로틀을 건드리지 않음
+    const deltaPx = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? innerHeight : 1);
+    throttle = clamp(throttle - deltaPx * 0.0016, 0, 1);
+  }; // 두 손가락 스크롤/휠: 브라우저별 deltaMode 차이를 보정
   const onKey = (e: KeyboardEvent, down: boolean): void => {
     const k = e.key.toLowerCase();
     if (down && (k === 'escape' || k === 'p')) { e.preventDefault(); if (!e.repeat) togglePause(); return; }

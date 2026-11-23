@@ -43,6 +43,11 @@ try {
       await page.goto(origin, { waitUntil: 'domcontentloaded' });
       await page.locator('#start-sky').click();
       await page.locator('#sk-title').waitFor({ state: 'visible' });
+      const titleDrawsBefore = await page.evaluate(() => window.__sky.renderer.info.render.frame);
+      await sleep(310);
+      const titleDrawsAfter = await page.evaluate(() => window.__sky.renderer.info.render.frame);
+      assert.ok(titleDrawsAfter - titleDrawsBefore <= 5,
+        'The menu should not draw the 3D world at 60fps behind its overlay');
       if (size.name === 'mobile') {
         assert.equal(await page.locator('.sk-help').evaluate(el => el.open), false, 'Mobile help should be collapsed by default');
         const startButton = await page.locator('#sk-start').boundingBox();
@@ -82,6 +87,14 @@ try {
       assert.ok(flight.enemies > 0, 'The first wave must spawn enemies');
       assert.ok(flight.calls > 0, 'Three.js must issue WebGL draw calls');
       assert.ok(flight.altitude > 100, 'Aircraft must have a valid starting altitude');
+      const seaOffset = await page.evaluate(() => {
+        const view = window.__sky.view, t = view.seaNormalMap, p = view.camera.position;
+        return { x: t.offset.x, y: t.offset.y, expectedX: p.x * t.repeat.x / 20000,
+          expectedY: -p.z * t.repeat.y / 20000 };
+      });
+      assert.ok(Math.abs(seaOffset.x - seaOffset.expectedX) < 0.01 &&
+        Math.abs(seaOffset.y - seaOffset.expectedY) < 0.01,
+      'The sea normal map must remain fixed in world space at every texture quality');
       const playerOnScreen = await page.evaluate(() => window.__sky.view.project(window.__sky.sim.player.pos));
       assert.ok(Math.abs(playerOnScreen.x - 0.5) < 0.12, 'Third-person camera should begin centered behind the jet');
       await page.screenshot({ path: 'browser-artifacts/sky-flight-' + size.name + '.png', animations: 'disabled' });
@@ -217,6 +230,11 @@ try {
       });
       await page.locator('#sk-end').waitFor({ state: 'visible' });
       assert.match(await page.locator('#sk-end-t').innerText(), /격추/, 'Game over report should appear after the aircraft is destroyed');
+      const overDrawsBefore = await page.evaluate(() => window.__sky.renderer.info.render.frame);
+      await sleep(320);
+      const overDrawsAfter = await page.evaluate(() => window.__sky.renderer.info.render.frame);
+      assert.ok(overDrawsAfter - overDrawsBefore <= 3,
+        'The result menu should cap expensive 3D redraws instead of drawing at 60fps');
       await page.locator('#sk-again').click();
       await page.locator('#sk-end').waitFor({ state: 'hidden' });
       await page.waitForFunction(() => window.__sky?.sim?.player?.alive && window.__sky.sim.time > 0.05);

@@ -70,7 +70,7 @@ describe('ZERO ZONE 올라갈 수 있는 고저차', () => {
     expect(pushOut(m, player, 0.4)).toBe(true);
     expect(circleHits(m, player.x, player.z, 0.4)).toBe(false);
     expect(blockedAt(m, -6, 0, 0.4)).toBe(false);
-    expect(rayWorld(m, -6, 2, 0, 0, 1, 0, 10)).toBeCloseTo(6, 5);
+    expect(rayWorld(m, -6, 4, 0, 0, 1, 0, 10)).toBeCloseTo(4, 5);
   });
 
   it('실제 지도에서는 다른 시드의 완만한 구릉이 생성되며 재현 가능하다', () => {

@@ -4,7 +4,7 @@
 .sc-room{position:relative;flex:1 1 auto;min-height:0;overflow:hidden;background:radial-gradient(ellipse at 55% 80%,#283849 0,#151d2d 40%,#0b101c 100%);isolation:isolate}
 .sc-room:before{content:"";position:absolute;inset:0;background:linear-gradient(transparent 73%,#090d15 73%);opacity:.6}
 .sc-wall-light{position:absolute;inset:0;background:radial-gradient(ellipse at 48% 70%,#698bc126,transparent 50%);transition:background .4s}
-.sc-slacking .sc-wall-light{background:radial-gradient(ellipse at 48% 60%,color-mix(in srgb,var(--sc-glow) 28%,transparent),transparent 58%)}
+.sc-slacking .sc-wall-light{background:radial-gradient(ellipse at 48% 60%,color-mix(in srgb,var(--sc-glow) 12%,transparent),transparent 58%)}
 /* 문 / 손전등 / 발소리 */
 .sc-door{position:absolute;right:4%;top:8%;width:15%;height:69%;background:linear-gradient(100deg,#222936,#131b28);border:5px solid #0b1019;box-shadow:0 0 0 2px #394052}
 .sc-door-window{position:absolute;top:10%;left:22%;width:56%;height:28%;overflow:hidden;background:#384353;border:4px solid #111824;transition:background .4s}
@@ -22,7 +22,7 @@
 .sc-steps{position:absolute;z-index:3;right:5%;top:2%;display:flex;gap:3px;align-items:flex-end;height:14px;opacity:.9}
 .sc-steps i{width:5px;background:#3a4558;border-radius:1px;transition:background .15s}
 .sc-steps i:nth-child(1){height:6px}.sc-steps i:nth-child(2){height:10px}.sc-steps i:nth-child(3){height:14px}
-.sc-steps i.on{background:#ffe08a;box-shadow:0 0 6px #ffe08a}
+.sc-steps i.on{background:#ffe08a}
 .sc-scan-person{position:absolute;z-index:3;right:16%;bottom:16%;width:14%;height:45%;background:#080b12;border-radius:45% 45% 10% 10%;opacity:0;transform:scale(calc(.55 + var(--sc-near) * .7));transform-origin:bottom;transition:opacity 1s}
 .sc-scan-person i{position:absolute;top:-25%;left:22%;width:56%;height:40%;border-radius:50%;background:#080b12;transition:box-shadow .3s}
 .sc-scan-person u{position:absolute;top:8%;right:80%;width:420%;height:60%;background:linear-gradient(270deg,#fff3b055,transparent);clip-path:polygon(100% 40%,0 0,0 100%,100% 60%);opacity:0;text-decoration:none;transition:opacity .3s}
@@ -40,11 +40,11 @@
 .sc-warning .sc-friend-body{animation:sc-nudge .35s 3}
 .sc-warning .sc-friend-head{animation:sc-nudge .35s 3 reverse}
 .slack-computer[data-mode=scan] .sc-friend-head,.slack-computer[data-mode=peek] .sc-friend-head{transform:translateY(14%) rotate(10deg)}
-.sc-friend-monitor{position:absolute;left:0;bottom:25%;width:13%;height:21%;border:6px solid #080c12;background:#273e55;transform:skewY(4deg);box-shadow:0 0 35px #719dcb55;transition:background .3s,box-shadow .3s}
-.slack-computer[data-mode=scan] .sc-friend-monitor,.slack-computer[data-mode=peek] .sc-friend-monitor{background:#2c4a42;box-shadow:0 0 18px #7dcab055}
+.sc-friend-monitor{position:absolute;left:0;bottom:25%;width:13%;height:21%;border:6px solid #080c12;background:#273e55;transform:skewY(4deg);box-shadow:0 6px 16px #0006;transition:background .3s,box-shadow .3s}
+.slack-computer[data-mode=scan] .sc-friend-monitor,.slack-computer[data-mode=peek] .sc-friend-monitor{background:#2c4a42;box-shadow:0 6px 16px #0006}
 /* 모니터/책상 */
-.sc-monitor{position:absolute;z-index:2;left:20%;top:7%;width:60%;height:73%;padding:9px 9px 20px;background:#0b0e14;border:2px solid #303c49;border-radius:10px;box-shadow:0 0 70px #749cc456,0 18px 35px #0008;transition:box-shadow .4s}
-.sc-slacking .sc-monitor{box-shadow:0 0 90px color-mix(in srgb,var(--sc-glow) 45%,transparent),0 18px 35px #0008}
+.sc-monitor{position:absolute;z-index:2;left:20%;top:7%;width:60%;height:73%;padding:9px 9px 20px;background:#0b0e14;border:2px solid #303c49;border-radius:10px;box-shadow:0 18px 35px #0008;transition:box-shadow .4s}
+.sc-slacking .sc-monitor{box-shadow:0 18px 35px #0008,0 0 0 2px color-mix(in srgb,var(--sc-glow) 30%,transparent)}
 .sc-screen{width:100%;height:100%;overflow:hidden;background:#537c99}
 .sc-desktop{position:relative;height:100%;overflow:hidden;background:linear-gradient(145deg,#2b576b,#7496a6 58%,#b9a7a2)}
 .sc-wallpaper{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;color:#ffffff9c;letter-spacing:.12em;font-size:clamp(14px,2vw,25px)}
@@ -52,9 +52,9 @@
 .sc-monitor-edge{position:absolute;bottom:4px;left:49%;width:5px;height:5px;border-radius:50%;background:#82b8a6}
 .sc-monitor-stand{position:absolute;top:100%;left:42%;width:16%;height:16%;background:linear-gradient(90deg,#151b24,#333e4b,#151b24);clip-path:polygon(28% 0,72% 0,80% 75%,100% 90%,100% 100%,0 100%,0 90%,20% 75%)}
 .sc-keyboard{position:absolute;bottom:10%;left:35%;width:30%;height:4%;background:repeating-linear-gradient(90deg,#26313e 0 6px,#121922 7px 9px);transform:perspective(60px) rotateX(25deg);border:4px solid #111722}
-.sc-face-glow{position:absolute;z-index:3;bottom:-9%;left:36%;width:28%;height:18%;border-radius:50% 50% 0 0;background:linear-gradient(#1d2a37,#0c1018);box-shadow:0 -8px 35px #85a8c333;transition:box-shadow .4s}
-.sc-slacking .sc-face-glow{box-shadow:0 -10px 30px color-mix(in srgb,var(--sc-glow) 60%,transparent),0 -2px 0 color-mix(in srgb,var(--sc-glow) 70%,transparent)}
-.sc-covered .sc-face-glow{box-shadow:0 -8px 30px #dfe9f044}
+.sc-face-glow{position:absolute;z-index:3;bottom:-9%;left:36%;width:28%;height:18%;border-radius:50% 50% 0 0;background:linear-gradient(#1d2a37,#0c1018);box-shadow:0 -6px 16px #85a8c322;transition:box-shadow .4s}
+.sc-slacking .sc-face-glow{box-shadow:0 -6px 17px color-mix(in srgb,var(--sc-glow) 24%,transparent)}
+.sc-covered .sc-face-glow{box-shadow:0 -6px 14px #dfe9f01f}
 /* 작업표시줄 */
 .sc-taskbar{position:absolute;z-index:5;bottom:0;left:0;right:0;height:34px;display:flex;align-items:center;gap:10px;padding:0 10px;background:#152130ed;backdrop-filter:blur(8px)}
 .sc-start{font-size:20px;color:#b7d7e8}
@@ -68,7 +68,7 @@
 .sc-toast{position:absolute;z-index:3;left:50%;bottom:44px;max-width:92%;transform:translate(-50%,10px);padding:7px 12px;border-radius:8px;background:#101826ee;color:#f1f4fa;font-size:11px;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;text-align:center}
 .sc-toast.on{opacity:1;transform:translate(-50%,0)}
 /* 창 공통 + 전환 */
-.sc-app-window,.sc-cover-window,.sc-notes{height:100%;overflow:hidden;color:#202b38;background:#f7f8fa;border:1px solid #cbd3dc;border-radius:7px;box-shadow:0 8px 30px #0005}
+.sc-app-window,.sc-cover-window,.sc-notes{height:100%;overflow:hidden;color:#202b38;background:#f7f8fa;border:1px solid #cbd3dc;border-radius:3px;box-shadow:0 6px 16px #0004}
 .sc-app-window{position:absolute;inset:0;container-type:inline-size;opacity:0;visibility:hidden;pointer-events:none;transform:translateY(10px) scale(.94);transition:opacity .16s,transform .2s,visibility 0s .2s}
 .sc-app-window.on{opacity:1;visibility:visible;pointer-events:auto;transform:none;transition:opacity .16s,transform .2s}
 .sc-app-window:not(.on) *{animation-play-state:paused!important}

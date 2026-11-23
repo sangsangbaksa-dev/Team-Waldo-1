@@ -25,10 +25,18 @@ try {
     assert.equal(await cash(), 0, 'Starts broke');
     // 걷기
     const p0 = await page.evaluate(() => ({ x: window.__ty.player.pos.x, z: window.__ty.player.pos.z }));
-    await page.evaluate(() => { window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW' })); }); await sleep(900);
-    await page.evaluate(() => { window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyW' })); });
+    // Use real Playwright keydown/keyup rather than synthetic untrusted events
+    // so this exercises the same focus/input pathway as players.
+    await page.keyboard.down('w'); await sleep(1200); await page.keyboard.up('w');
     const p1 = await page.evaluate(() => ({ x: window.__ty.player.pos.x, z: window.__ty.player.pos.z }));
-    assert.ok(Math.hypot(p1.x - p0.x, p1.z - p0.z) > 0.5, 'Pressing W walks the player');
+    const movement = Math.hypot(p1.x - p0.x, p1.z - p0.z);
+    const movementState = await page.evaluate(() => ({
+      phase: window.__ty.phase,
+      modalVisible: !!document.querySelector('.ty-modal:not([hidden])'),
+      pointerLocked: document.pointerLockElement !== null,
+      playerSpeed: window.__ty.player.speed,
+    }));
+    assert.ok(movement > 0.5, 'Pressing W walks the player: ' + JSON.stringify({ p0, p1, movement, movementState }));
     // 쓰레기 골목에서 병 줍기 → 고물상에서 팔기
     const go = id => page.evaluate(id => { const t = window.__ty, d = t.city.doorOf(id); t.player.teleport(d.x + d.fx * 1.5, d.z + d.fz * 1.5, 0); }, id);
     await go('alley'); await page.waitForSelector('#ty-prompt:not([hidden])');

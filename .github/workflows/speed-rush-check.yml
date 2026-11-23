@@ -1,0 +1,35 @@
+name: Speed Rush checks
+on:
+  push:
+    paths:
+      - 'src/race/**'
+      - 'tests/race/**'
+      - '.github/workflows/speed-rush-check.yml'
+  pull_request:
+    paths:
+      - 'src/race/**'
+      - 'tests/race/**'
+      - '.github/workflows/speed-rush-check.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  speed-rush:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx eslint src/race
+      - run: npm run typecheck
+      - run: npm test -- tests/race
+      - run: npm run build

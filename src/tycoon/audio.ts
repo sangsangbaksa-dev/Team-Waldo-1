@@ -4,7 +4,7 @@ import { AudioEngine, burst, tone } from '../audio-core';
 type Loop = { src: AudioBufferSourceNode; filter: BiquadFilterNode; gain: GainNode };
 export class TycoonAudio {
   private eng = new AudioEngine();
-  private city: Loop | null = null; private rain: Loop | null = null; private wind: Loop | null = null; private disposed = false;
+  private city: Loop | null = null; private rain: Loop | null = null; private wind: Loop | null = null; private motor: { osc: OscillatorNode; filter: BiquadFilterNode; gain: GainNode } | null = null; private disposed = false;
   private lastStep = 0;
   get enabled(): boolean { return this.eng.enabled; }
   set enabled(on: boolean) { this.eng.setEnabled(on); }
@@ -15,12 +15,26 @@ export class TycoonAudio {
       src.connect(filter); filter.connect(gain); gain.connect(dest); src.start(); this.eng.track(src); return { src, filter, gain };
     };
     this.city = mk('lowpass', 420, 0.6); this.rain = mk('highpass', 1800, 0.4); this.wind = mk('bandpass', 260, 0.8);
+    // Quiet continuously filtered motor: no sampled loops, pitch follows road speed.
+    const osc = c.createOscillator(), filter = c.createBiquadFilter(), gain = c.createGain();
+    osc.type = 'sawtooth'; osc.frequency.value = 48;
+    filter.type = 'lowpass'; filter.frequency.value = 110; filter.Q.value = 0.7; gain.gain.value = 0;
+    osc.connect(filter); filter.connect(gain); gain.connect(dest);
+    osc.start(); this.eng.track(osc); this.motor = { osc, filter, gain };
   }
   /** 환경음: 낮엔 도시 소음, 밤엔 잔잔하게, 비 오면 빗소리. */
   ambience(daylight: number, rain: number, near: number): void {
     const c = this.eng.ctx; if (!c) return; const t = c.currentTime;
     this.city?.gain.gain.setTargetAtTime((0.05 + daylight * 0.07) * (1 - rain * 0.3) + near * 0.02, t, 0.5);
     this.rain?.gain.gain.setTargetAtTime(rain * 0.07, t, 0.8); this.wind?.gain.gain.setTargetAtTime(0.02 + rain * 0.03, t, 0.8);
+  }
+  drive(speed: number, active: boolean): void {
+    const c = this.eng.ctx, motor = this.motor;
+    if (!c || !motor) return;
+    const t = c.currentTime;
+    motor.osc.frequency.setTargetAtTime(48 + Math.min(120, speed * 4.8), t, 0.16);
+    motor.filter.frequency.setTargetAtTime(140 + Math.min(600, speed * 17), t, 0.18);
+    motor.gain.gain.setTargetAtTime(active ? 0.042 + Math.min(0.055, speed * 0.002) : 0, t, 0.13);
   }
   step(speed: number, now: number): void { if (speed < 0.5 || now - this.lastStep < (speed > 4.5 ? 0.27 : 0.4)) return; this.lastStep = now; burst(this.eng, 0.05, 0.1, 340, 1.2); }
   click(): void { tone(this.eng, 720, 0.05, 0.14, 'triangle'); }

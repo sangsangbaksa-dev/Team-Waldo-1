@@ -64,6 +64,35 @@ function safeSpawn(position: THREE.Vector3): THREE.Vector3 {
   position.y = Math.max(position.y, terrainY(position.x, position.z) + 220);
   return position;
 }
+/**
+ * Earliest point at which a missile's swept path reaches sea or island terrain.
+ * The simulation can cover long distances in one tick (particularly when a
+ * previously-guided projectile flies unguided). End-point-only tests allow it
+ * to pass through mountain ridges; sample the segment and refine first contact.
+ * Returns a [0,1] fraction, or null when the entire path is above ground.
+ */
+function missileTerrainImpact(from: THREE.Vector3, to: THREE.Vector3): number | null {
+  const dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z;
+  const distance = Math.hypot(dx, dy, dz);
+  const subdivisions = Math.min(12, Math.max(2, Math.ceil(distance / 25)));
+  for (let i = 0; i <= subdivisions; i++) {
+    const t = i / subdivisions;
+    const x = from.x + dx * t, y = from.y + dy * t, z = from.z + dz * t;
+    if (y > Math.max(SEA_Y, terrainY(x, z)) + 2) continue;
+    if (i === 0) return 0;
+    // Locate the earliest terrain crossing to compare its order against hits.
+    let lo = (i - 1) / subdivisions, hi = t;
+    for (let k = 0; k < 5; k++) {
+      const mid = (lo + hi) * 0.5;
+      const mx = from.x + dx * mid, my = from.y + dy * mid, mz = from.z + dz * mid;
+      if (my <= Math.max(SEA_Y, terrainY(mx, mz)) + 2) hi = mid;
+      else lo = mid;
+    }
+    return hi;
+  }
+  return null;
+}
+
 const MAX_BULLETS = 400;
 
 export function forward(j: { q: THREE.Quaternion }, out = new THREE.Vector3()): THREE.Vector3 { return out.copy(FWD).applyQuaternion(j.q); }
@@ -314,35 +343,46 @@ export class SkySim {
         const cur = tmpV2.copy(m.vel).normalize(); const sp = Math.min(m.vel.length() + 260 * dt, 520);
         const turn = Math.min(1, dt * 2.4 * (m.team === 'player' ? 1.15 : 0.8)); cur.lerp(want, turn).normalize(); m.vel.copy(cur).multiplyScalar(sp);
               } else m.vel.multiplyScalar(1 + dt * 0.1);
-      // 이전 위치부터 새 위치까지 선분 충돌: 프레임 드롭 때 기체를 관통하지 않습니다.
+      // Both guided and flare-decoyed missiles need continuous collision:
+      // compare *first entry* into an aircraft with the first terrain impact.
       const prev = bulletTest.copy(m.pos);
       m.pos.addScaledVector(m.vel, dt);
       const segment = tmpV2.copy(m.pos).sub(prev);
       const len2 = segment.lengthSq();
-      // Once a flare breaks homing, the missile still has a physical flight path:
-      // use the same swept collision as guided missiles so it cannot tunnel through a jet.
-      const sweptHit = (jet: Jet, radius: number): boolean => {
-        const fraction = len2 > 0 ? THREE.MathUtils.clamp(tmpV.copy(jet.pos).sub(prev).dot(segment) / len2, 0, 1) : 0;
-        return tmpV.copy(prev).addScaledVector(segment, fraction).distanceToSquared(jet.pos) < radius * radius;
+      const terrainAt = missileTerrainImpact(prev, m.pos);
+      const firstAircraftHit = (jet: Jet, radius: number): number => {
+        const relative = tmpV.copy(jet.pos).sub(prev);
+        const c = relative.lengthSq() - radius * radius;
+        if (c <= 0) return 0;
+        if (len2 <= 0) return Infinity;
+        const along = relative.dot(segment);
+        const disc = along * along - len2 * c;
+        if (disc < 0) return Infinity;
+        const entry = (along - Math.sqrt(disc)) / len2;
+        return entry >= 0 && entry <= 1 ? entry : Infinity;
       };
-      if (tgt && sweptHit(tgt, 28)) {
-        this.damage(tgt, m.team === 'player' ? MISSILE_DMG : MISSILE_DMG * 0.6, m.owner, m.pos);
+      let victim: Jet | undefined;
+      let victimAt = Infinity;
+      if (tgt) {
+        const t = firstAircraftHit(tgt, 28);
+        if (t <= (terrainAt ?? Infinity)) { victim = tgt; victimAt = t; }
+      } else {
+        for (const jet of this.jets) {
+          if (!jet.alive || jet.team === m.team) continue;
+          const t = firstAircraftHit(jet, 20);
+          if (t < victimAt && t <= (terrainAt ?? Infinity)) { victim = jet; victimAt = t; }
+        }
+      }
+      if (victim) {
+        m.pos.copy(prev).addScaledVector(segment, victimAt);
+        this.damage(victim, m.team === 'player' ? MISSILE_DMG : MISSILE_DMG * 0.6, m.owner, m.pos);
         this.events.push({ t: 'boom', pos: m.pos.clone(), big: false });
         m.alive = false;
-        continue;
-      }
-      if (m.pos.y < terrainY(m.pos.x, m.pos.z) + 2 || m.pos.y < SEA_Y) {
-        this.events.push({ t: 'boom', pos: m.pos.clone(), big: false }); m.alive = false;
-      } else if (!tgt) {
-        // An unguided missile can still collide with an aircraft; losing lock
-        // must not secretly increase damage against the player.
-        for (const j of this.jets) {
-          if (!j.alive || j.team === m.team || !sweptHit(j, 20)) continue;
-          this.damage(j, m.team === 'player' ? MISSILE_DMG : MISSILE_DMG * 0.6, m.owner, m.pos);
-          this.events.push({ t: 'boom', pos: m.pos.clone(), big: false });
-          m.alive = false;
-          break;
-        }
+      } else if (terrainAt !== null) {
+        // Explode at the ridge/sea surface, not beyond it or inside the island.
+        m.pos.copy(prev).addScaledVector(segment, terrainAt);
+        this.events.push({ t: 'boom', pos: m.pos.clone(), big: false });
+        m.alive = false;
       }
     }
     this.missiles = this.missiles.filter(m => m.alive);

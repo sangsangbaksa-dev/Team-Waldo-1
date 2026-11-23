@@ -58,6 +58,15 @@
 .city-root .c-tutcard.rec{background:#1a302c;border-color:#79af97;box-shadow:none}
 .city-root .c-result.win{box-shadow:0 22px 60px #000a}
 
+/* Middle-width displays leave a fixed lane between resources and the mini-map. */
+@media(min-width:761px) and (max-width:1320px){
+ .city-root .c-tc{left:454px;transform:none;max-width:calc(100vw - 646px);overflow:hidden}
+ .city-root .c-tc .c-citytime{min-width:0;overflow:hidden;text-overflow:ellipsis}
+}
+@media(min-width:761px) and (max-width:1010px){
+ .city-root .c-citytime{display:none}
+ .city-root .c-tc{gap:6px;padding:8px}
+}
 /* Keep controls separated from the health panel at intermediate widths. */
 @media(max-width:1120px) and (min-width:761px){
  .city-root:not(.touch) .c-bc{right:16px;left:auto;transform:none;max-width:calc(100vw - 380px)}

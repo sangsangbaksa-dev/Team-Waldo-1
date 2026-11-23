@@ -110,6 +110,20 @@ export class TerrainView {
         for (let x = x0 + 2; x < x1 - 1; x += 5) p.box(1.6, 0.012, 0.13, stripe, identity, x, 0.113, z);
       }
     }
+    // 도심의 x=0/z=0 교차로를 외곽 마을 연결 도로까지 연장합니다.
+    // 기존에 끝에서 약 5~10m 끊기던 아스팔트가 이제 중앙 블록까지 이어집니다.
+    const extentX = Math.max(4, c.r - halfX + 5), extentZ = Math.max(4, c.r - halfZ + 5);
+    for (const sign of [-1, 1]) {
+      const mz = c.z + sign * (halfZ + extentZ / 2), mx = c.x + sign * (halfX + extentX / 2);
+      p.box(lane, 0.055, extentZ, asphalt, identity, c.x, 0.073, mz);
+      p.box(extentX, 0.055, lane, asphalt, identity, mx, 0.073, c.z);
+      for (const side of [-1, 1]) {
+        p.box(0.18, 0.065, extentZ, curb, identity, c.x + side * (lane / 2 + 0.16), 0.092, mz);
+        p.box(extentX, 0.065, 0.18, curb, identity, mx, 0.092, c.z + side * (lane / 2 + 0.16));
+      }
+      for (let d = 2; d < extentZ - 1; d += 5) p.box(0.13, 0.012, 1.6, stripe, identity, c.x, 0.113, c.z + sign * (halfZ + d));
+      for (let d = 2; d < extentX - 1; d += 5) p.box(1.6, 0.012, 0.13, stripe, identity, c.x + sign * (halfX + d), 0.113, c.z);
+    }
     const mesh = p.mesh(false);
     mesh.name = 'downtown-streets';
     this.group.add(mesh);

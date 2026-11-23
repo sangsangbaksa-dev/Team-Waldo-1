@@ -204,21 +204,21 @@ describe('ZERO ZONE 건물·엄폐물·파츠·보급', () => {
     expect(m.loot.length).toBe(before + 10); expect(m.loot.filter(l => l.kind === 'attach').length).toBeGreaterThanOrEqual(3); expect(m.loot.some(l => l.kind === 'helmet' && l.level === 3)).toBe(true);
   });
 
-  describe('12분 경기 페이싱', () => {
-    it('자기장은 낙하 뒤 약 12분에 걸쳐 닫히고, 폭격과 보급은 그 안에 고르게 나온다', () => {
+  describe('6~7분 경기 페이싱', () => {
+    it('자기장은 낙하 뒤 약 7분 안에 닫히고, 폭격과 보급은 그 안에 고르게 나온다', () => {
       const m = new Match({ seed: 5, mode: 'br', difficulty: 'normal', humans: [{ name: '나' }], fill: 4, air: true, vehicles: true, bombs: true });
       const closes = m.zoneDelay + ZONES.br.reduce((a, ph) => a + ph.wait + ph.shrink, 0);
       expect(closes).toBeGreaterThan(BR_MATCH_SECONDS * 0.95); expect(closes).toBeLessThan(BR_MATCH_SECONDS * 1.15);
       expect(ZONES.br.length).toBeGreaterThanOrEqual(8); expect(m.reds.length).toBe(RED.calls.length); expect(m.drops.length).toBe(SUPPLY_AT.length);
       for (const r of m.reds) expect(r.end).toBeLessThan(closes + 30);
-      for (const d of m.drops) expect(d.at).toBeLessThan(closes); for (let i = 1; i < m.drops.length; i++) expect(m.drops[i].at - m.drops[i - 1].at).toBeGreaterThan(100);
+      for (const d of m.drops) expect(d.at).toBeLessThan(closes); for (let i = 1; i < m.drops.length; i++) expect(m.drops[i].at - m.drops[i - 1].at).toBeGreaterThan(60);
       // 단계마다 원은 줄고, 단계 사이 기다림은 20초 이상이라 숨 돌리고 이동할 틈이 있다
-      let prev = Infinity; for (const ph of ZONES.br) { expect(ph.radius).toBeLessThan(prev); prev = ph.radius; expect(ph.wait).toBeGreaterThanOrEqual(20); expect(ph.shrink / (prev === ph.radius ? 1 : 1)).toBeGreaterThan(20); }
+      let prev = Infinity; for (const ph of ZONES.br) { expect(ph.radius).toBeLessThan(prev); prev = ph.radius; expect(ph.wait).toBeGreaterThanOrEqual(10); expect(ph.shrink).toBeGreaterThan(12); }
     });
-    it('AI 100명끼리만 돌려도 초반에 다 쓰러지지 않고 10~13분쯤 끝난다', () => {
+    it('AI 100명끼리만 돌려도 초반에 다 쓰러지지 않고 6~7분쯤 끝난다', () => {
       const m = new Match({ seed: 11, mode: 'br', difficulty: 'normal', humans: [], fill: BR_PLAYERS, air: true, vehicles: true, bombs: true }); let at3 = 0, at6 = 0;
       while (!m.over && m.t < 1200) { m.step(1 / 30); m.drain(); if (at3 === 0 && m.t >= 180) at3 = m.aliveCount(); if (at6 === 0 && m.t >= 360) at6 = m.aliveCount(); }
-      expect(m.over).toBe(true); expect(at3).toBeGreaterThan(40); expect(at6).toBeGreaterThan(10); expect(m.t).toBeGreaterThan(540); expect(m.t).toBeLessThan(800);
+      expect(m.over).toBe(true); expect(at3).toBeGreaterThan(20); expect(at6).toBeGreaterThanOrEqual(1); expect(m.t).toBeGreaterThan(330); expect(m.t).toBeLessThan(440);
     }, 60000);
   });
 

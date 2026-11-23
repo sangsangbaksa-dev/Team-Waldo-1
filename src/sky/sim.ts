@@ -65,13 +65,13 @@ function safeSpawn(position: THREE.Vector3): THREE.Vector3 {
   return position;
 }
 /**
- * Earliest point at which a missile's swept path reaches sea or island terrain.
+ * Earliest point at which a projectile's swept path reaches sea or island terrain.
  * The simulation can cover long distances in one tick (particularly when a
  * previously-guided projectile flies unguided). End-point-only tests allow it
  * to pass through mountain ridges; sample the segment and refine first contact.
  * Returns a [0,1] fraction, or null when the entire path is above ground.
  */
-function missileTerrainImpact(from: THREE.Vector3, to: THREE.Vector3): number | null {
+function projectileTerrainImpact(from: THREE.Vector3, to: THREE.Vector3): number | null {
   const dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z;
   const distance = Math.hypot(dx, dy, dz);
   const subdivisions = Math.min(12, Math.max(2, Math.ceil(distance / 25)));
@@ -91,6 +91,20 @@ function missileTerrainImpact(from: THREE.Vector3, to: THREE.Vector3): number | 
     return hi;
   }
   return null;
+}
+
+/** Entry time of a projectile path into a jet's hit sphere; Infinity if none. */
+function projectileJetImpact(from: THREE.Vector3, displacement: THREE.Vector3,
+  lengthSq: number, jet: Jet, radius: number): number {
+  const relative = tmpV.copy(jet.pos).sub(from);
+  const c = relative.lengthSq() - radius * radius;
+  if (c <= 0) return 0;
+  if (lengthSq <= 0) return Infinity;
+  const along = relative.dot(displacement);
+  const disc = along * along - lengthSq * c;
+  if (disc < 0) return Infinity;
+  const entry = (along - Math.sqrt(disc)) / lengthSq;
+  return entry >= 0 && entry <= 1 ? entry : Infinity;
 }
 
 const MAX_BULLETS = 400;
@@ -357,27 +371,16 @@ export class SkySim {
       m.pos.addScaledVector(m.vel, dt);
       const segment = tmpV2.copy(m.pos).sub(prev);
       const len2 = segment.lengthSq();
-      const terrainAt = missileTerrainImpact(prev, m.pos);
-      const firstAircraftHit = (jet: Jet, radius: number): number => {
-        const relative = tmpV.copy(jet.pos).sub(prev);
-        const c = relative.lengthSq() - radius * radius;
-        if (c <= 0) return 0;
-        if (len2 <= 0) return Infinity;
-        const along = relative.dot(segment);
-        const disc = along * along - len2 * c;
-        if (disc < 0) return Infinity;
-        const entry = (along - Math.sqrt(disc)) / len2;
-        return entry >= 0 && entry <= 1 ? entry : Infinity;
-      };
+      const terrainAt = Math.min(prev.y, m.pos.y) > 382 ? null : projectileTerrainImpact(prev, m.pos);
       let victim: Jet | undefined;
       let victimAt = Infinity;
       if (tgt) {
-        const t = firstAircraftHit(tgt, 28);
+        const t = projectileJetImpact(prev, segment, len2, tgt, 28);
         if (t <= (terrainAt ?? Infinity)) { victim = tgt; victimAt = t; }
       } else {
         for (const jet of this.jets) {
           if (!jet.alive || jet.team === m.team) continue;
-          const t = firstAircraftHit(jet, 20);
+          const t = projectileJetImpact(prev, segment, len2, jet, 20);
           if (t < victimAt && t <= (terrainAt ?? Infinity)) { victim = jet; victimAt = t; }
         }
       }
@@ -401,28 +404,38 @@ export class SkySim {
       if (!b.alive) continue;
       const remaining = Math.max(0, Math.min(dt, b.life));
       b.life -= dt;
-      const prev = tmpV.copy(b.pos);
+      const prev = bulletTest.copy(b.pos);
       b.pos.addScaledVector(b.vel, remaining);
-      // 산과 섬 뒤의 적을 지형 너머로 맞히는 탄환 관통을 차단합니다.
-      // 현 맵의 최고 지형은 380m: 충분히 높은 탄환은 복잡한 지형 검사를 건너뜁니다.
-      if (Math.min(prev.y, b.pos.y) < 400) {
-        const halfX = (prev.x + b.pos.x) * 0.5;
-        const halfY = (prev.y + b.pos.y) * 0.5;
-        const halfZ = (prev.z + b.pos.z) * 0.5;
-        if (b.pos.y <= terrainY(b.pos.x, b.pos.z) + 2 || halfY <= terrainY(halfX, halfZ) + 2) {
-          b.alive = false; continue;
-        }
-      }
+      const segment = tmpV2.copy(b.pos).sub(prev);
+      const lengthSq = segment.lengthSq();
+      // Above the highest mountain, skip costly land queries altogether.
+      const terrainAt = Math.min(prev.y, b.pos.y) > 382
+        ? null : projectileTerrainImpact(prev, b.pos);
+      let victim: Jet | undefined;
+      let victimAt = terrainAt ?? Infinity;
       for (const j of this.jets) {
         if (!j.alive || j.team === b.team) continue;
-        // 선분-구 판정(고속 탄 통과 방지)
-        const r = j.kind === 'boss' ? 36 : j.kind === 'bomber' ? 22 : 13; const seg = tmpV2.copy(b.pos).sub(prev); const len2 = seg.lengthSq();
-        const tt = len2 > 0 ? THREE.MathUtils.clamp(bulletTest.copy(j.pos).sub(prev).dot(seg) / len2, 0, 1) : 0;
-        if (bulletTest.copy(prev).addScaledVector(seg, tt).distanceTo(j.pos) < r) { if (b.team === 'player') this.hits++; this.damage(j, b.team === 'player' ? GUN_DMG : GUN_DMG * 0.35, b.owner, b.pos); b.alive = false; break; }
+        const radius = j.kind === 'boss' ? 36 : j.kind === 'bomber' ? 22 : 13;
+        const fraction = projectileJetImpact(prev, segment, lengthSq, j, radius);
+        if (fraction < victimAt) { victim = j; victimAt = fraction; }
+      }
+      if (victim) {
+        b.pos.copy(prev).addScaledVector(segment, victimAt);
+        if (b.team === 'player') this.hits++;
+        this.damage(victim, b.team === 'player' ? GUN_DMG : GUN_DMG * 0.35, b.owner, b.pos);
+        b.alive = false;
+      } else if (terrainAt !== null) {
+        b.pos.copy(prev).addScaledVector(segment, terrainAt);
+        b.alive = false;
       }
       if (b.life <= 0 || b.pos.y < SEA_Y) b.alive = false;
     }
-    let live = 0; for (const b of this.bullets) { if (b.alive) this.bullets[live++] = b; else this.bulletPool.push(b); } this.bullets.length = live;
+    let live = 0;
+    for (const b of this.bullets) {
+      if (b.alive) this.bullets[live++] = b;
+      else this.bulletPool.push(b);
+    }
+    this.bullets.length = live;
   }
 
   damage(j: Jet, dmg: number, by: number, at: THREE.Vector3): void {

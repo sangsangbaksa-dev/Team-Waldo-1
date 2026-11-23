@@ -126,6 +126,15 @@ export class Rides {
     }
     out.x = px; out.z = pz;
   }
+  /** Traffic cars yield before reaching a parked or player-controlled vehicle. */
+  blocksTraffic(x: number, z: number, radius: number): boolean {
+    for (const car of this.cars) {
+      if (Math.abs(car.x - x) > 5 + radius || Math.abs(car.z - z) > 5 + radius) continue;
+      const clear = pushWalkerFromCar(x, z, radius, car);
+      if (Math.hypot(clear.x - x, clear.z - z) > 0.03) return true;
+    }
+    return false;
+  }
   nearby(x: number, z: number): { name: string; distance: number } | null {
     if (this.active) return { name: this.active.name, distance: 0 };
     let best: Ride | null = null, distance = 5.3;

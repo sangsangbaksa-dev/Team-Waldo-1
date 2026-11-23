@@ -102,6 +102,24 @@ export class SkyView {
     for (const ring of this.rings) { this.scene.remove(ring.mesh); this.disposeObject(ring.mesh); }
     this.rings.length = 0;
   }
+  /**
+   * Aircraft and projectiles reuse numeric IDs between sorties. Remove all
+   * session-owned models before a restart so an old boss/ace cannot be reused
+   * as the new fighter with the same ID (including its old material).
+   */
+  resetSession(): void {
+    this.resetEffects();
+    for (const collection of [this.meshes, this.missileMeshes, this.pickMeshes]) {
+      for (const mesh of collection.values()) {
+        this.scene.remove(mesh);
+        this.disposeObject(mesh);
+      }
+      collection.clear();
+    }
+    this.jetIds.clear(); this.missileIds.clear(); this.pickupIds.clear();
+    this.tracers.geometry.setDrawRange(0, 0);
+    this.tracerHeads.geometry.setDrawRange(0, 0);
+  }
   private pickMeshes = new Map<number, THREE.Mesh>(); private meshes = new Map<number, THREE.Group>(); private missileMeshes = new Map<number, THREE.Mesh>();
   private firePool!: BillboardPool; private smokePool!: BillboardPool; private level = 0; private readonly tmpColor = new THREE.Color();
   private tracers: THREE.LineSegments; private tracerPos = new Float32Array(400 * 6);

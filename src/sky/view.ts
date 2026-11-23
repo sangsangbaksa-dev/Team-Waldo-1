@@ -123,11 +123,14 @@ export class SkyView {
       }
       collection.clear();
     }
+    for (const mesh of this.missilePool) this.disposeObject(mesh);
+    this.missilePool.length = 0;
     this.jetIds.clear(); this.missileIds.clear(); this.pickupIds.clear();
     this.tracers.geometry.setDrawRange(0, 0);
     this.tracerHeads.geometry.setDrawRange(0, 0);
   }
   private pickMeshes = new Map<number, THREE.Mesh>(); private meshes = new Map<number, THREE.Group>(); private missileMeshes = new Map<number, THREE.Mesh>();
+  private missilePool: THREE.Mesh[] = [];
   private firePool!: BillboardPool; private smokePool!: BillboardPool; private level = 0; private readonly tmpColor = new THREE.Color();
   private tracers: THREE.LineSegments; private tracerPos = new Float32Array(400 * 6);
   private fire = fireSprite(); private smoke = smokeSprite();
@@ -325,16 +328,25 @@ export class SkyView {
     for (const ms of sim.missiles) {
       seen.add(ms.id); let m = this.missileMeshes.get(ms.id);
       if (!m) {
-        const steel = new THREE.MeshStandardMaterial({ color: 0x59616c, metalness: 0.6, roughness: 0.4 });
-        m = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 5, 8), new THREE.MeshStandardMaterial({ map: missileSkin(), metalness: 0.35, roughness: 0.45 })); m.rotation.order = 'YXZ'; // +Y 가 진행 방향
-        const nose = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.6, 8), new THREE.MeshStandardMaterial({ color: 0xd63a3a, metalness: 0.3, roughness: 0.4 })); nose.position.y = 3.3; m.add(nose);
-        for (let f = 0; f < 4; f++) { const fin = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.3, 1.2), steel); fin.position.y = -1.9; fin.rotation.y = f * Math.PI / 2; fin.translateZ(0.8); m.add(fin); }
-        this.scene.add(m); this.missileMeshes.set(ms.id, m); }
+        m = this.missilePool.pop();
+        if (!m) {
+          const steel = new THREE.MeshStandardMaterial({ color: 0x59616c, metalness: 0.6, roughness: 0.4 });
+          m = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 5, 8), new THREE.MeshStandardMaterial({ map: missileSkin(), metalness: 0.35, roughness: 0.45 })); m.rotation.order = 'YXZ';
+          const nose = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.6, 8), new THREE.MeshStandardMaterial({ color: 0xd63a3a, metalness: 0.3, roughness: 0.4 })); nose.position.y = 3.3; m.add(nose);
+          for (let f = 0; f < 4; f++) { const fin = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.3, 1.2), steel); fin.position.y = -1.9; fin.rotation.y = f * Math.PI / 2; fin.translateZ(0.8); m.add(fin); }
+        }
+        this.scene.add(m); this.missileMeshes.set(ms.id, m);
+      }
       m.position.copy(ms.pos); m.lookAt(this.v1.copy(ms.pos).add(ms.vel)); m.rotateX(Math.PI / 2);
       if (Math.random() < Math.min(1, dt * 30)) this.emit(ms.pos, this.v1.set(0, 3, 0), 1.1, 9, 1.8, 'smoke', 0xc8ccd0);
       if (Math.random() < Math.min(1, dt * 24)) this.emit(ms.pos, this.v1.set(0, 0, 0), 0.18, 10, 0.5, 'fire', 0xffa040);
     }
-    for (const [id, m] of this.missileMeshes) if (!seen.has(id)) { this.scene.remove(m); this.disposeObject(m); this.missileMeshes.delete(id); }
+    for (const [id, m] of this.missileMeshes) if (!seen.has(id)) {
+      this.scene.remove(m);
+      if (this.missilePool.length < 24) this.missilePool.push(m);
+      else this.disposeObject(m);
+      this.missileMeshes.delete(id);
+    }
     // 예광탄
     let n = 0; const tp = this.tracerPos;
     const hp = this.tracerHeadPos;
@@ -398,5 +410,5 @@ export class SkyView {
     geometries.forEach(geometry => geometry.dispose());
     materials.forEach(material => material.dispose());
   }
-  dispose(): void { this.disposeObject(this.scene); this.fire.dispose(); this.smoke.dispose(); this.cloudTex.dispose(); this.sunTex.dispose(); this.environment?.dispose(); this.atmosphereTextures.forEach(t => t.dispose()); disposeArt(); }
+  dispose(): void { this.disposeObject(this.scene); for (const mesh of this.missilePool) this.disposeObject(mesh); this.missilePool.length = 0; this.fire.dispose(); this.smoke.dispose(); this.cloudTex.dispose(); this.sunTex.dispose(); this.environment?.dispose(); this.atmosphereTextures.forEach(t => t.dispose()); disposeArt(); }
 }

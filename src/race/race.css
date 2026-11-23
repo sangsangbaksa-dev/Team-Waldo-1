@@ -4,7 +4,6 @@
 .rc-fx{pointer-events:none}
 .rc-vignette{position:absolute;inset:0;pointer-events:none;opacity:.2;background:radial-gradient(ellipse at 50% 46%,transparent 52%,rgba(10,2,30,.62) 100%)}
 .rc-boostfx{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .15s;background:radial-gradient(ellipse at 50% 46%,transparent 40%,rgba(70,170,255,.32) 100%)}
-.rc-speedlines{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .25s;background:repeating-conic-gradient(from 2deg at 50% 50%,transparent 0deg 8deg,rgba(205,235,255,.32) 8.15deg 8.3deg,transparent 8.5deg 18deg);mask-image:radial-gradient(ellipse at center,transparent 42%,#000 100%)}
 .rc-edge{position:absolute;left:50%;bottom:150px;transform:translateX(-50%);padding:7px 13px;border-left:3px solid #ffbd65;background:#21130cdd;color:#ffda9f;font:800 12px/1.2 system-ui;letter-spacing:.12em;opacity:0;transition:opacity .15s;white-space:nowrap}.rc-edge span{font-weight:500;letter-spacing:.04em;margin-left:6px}.rc-edge.show{opacity:1}
 .rc-result-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0}.rc-result-stats div{display:grid;gap:5px;padding:10px;background:#ffffff0d;border:1px solid #ffffff1a;border-radius:8px}.rc-result-stats span{font-size:10px;letter-spacing:.12em;color:#c2b9d1}.rc-result-stats b{font-size:17px;font-variant-numeric:tabular-nums}
 .rc-hud{position:absolute;inset:0;pointer-events:none}

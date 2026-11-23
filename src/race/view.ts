@@ -154,7 +154,10 @@ export class RaceView {
     this.scene.add(this.skids.mesh, this.sparks.points, this.smoke.points); if (theme.rain) this.scene.add(this.rainFx.points);
     const n = 90; this.streakPos = new Float32Array(n * 6); this.streakSeed = new Float32Array(n * 3);
     const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(this.streakPos, 3));
-    this.streak = new THREE.LineSegments(sg, new THREE.LineBasicMaterial({ color: 0xcfe9ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })); this.streak.frustumCulled = false; this.scene.add(this.streak);
+    // 줄기 꼬리(앞쪽 끝)는 검게(= 가산 혼합에서 투명) 칠해 머리(뒤쪽 끝)만 밝은 혜성 모양으로 만듭니다. 흐르는 방향(뒤쪽)이 한눈에 보입니다.
+    const col = new Float32Array(n * 6); for (let i = 0; i < n; i++) col.set([0.9, 0.96, 1, 0, 0, 0], i * 6);
+    sg.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    this.streak = new THREE.LineSegments(sg, new THREE.LineBasicMaterial({ color: 0xffffff, vertexColors: true, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })); this.streak.frustumCulled = false; this.scene.add(this.streak);
     this.carTemplates = carTemplates; this.viewH = window.innerHeight || 1;
     this.post = makePost(quality, this.renderer, this.scene, this.camera, { strength: 0.3, radius: 0.5, threshold: 0.96, vignette: 0.3, saturation: 1.1, contrast: 1.06 });
   }
@@ -708,23 +711,29 @@ export class RaceView {
     return { speedFrac: sf };
   }
 
-  /** 공기 흐름: 내 차 바로 옆·지붕 위로 가는 바람 줄기가 차를 스치며 뒤로 흘러갑니다(화면 전체가 아니라 차 주변에만). */
+  /** 공기 흐름: 차 앞쪽에서 생긴 바람 줄기가 차체 옆·지붕 위를 스치며 차 뒤로 빠르게 흘러갑니다. 줄기 위치는 모두 차 기준(앞뒤·좌우·높이)이라 중심은 항상 차이고, 월드에 고정되지 않습니다. */
   private updateStreaks(dt: number, car: { x: number; y: number; z: number }, vx: number, vz: number, speed: number, bst: boolean): void {
     const n = this.streakSeed.length / 3, mat = this.streak.material as THREE.LineBasicMaterial;
-    const target = Math.min(1, Math.max(0, (speed - 30) / 40)) * (bst ? 1 : 0.7); mat.opacity += (target * 0.5 - mat.opacity) * Math.min(1, dt * 6);
-    const dx = speed > 1 ? vx / speed : 1, dz = speed > 1 ? vz / speed : 0, len = Math.min(16, 1.5 + speed * (bst ? 0.2 : 0.13));
+    const target = Math.min(1, Math.max(0, (speed - 30) / 40)) * (bst ? 1 : 0.7); mat.opacity += (target * 0.85 - mat.opacity) * Math.min(1, dt * 6);
+    const dx = speed > 1 ? vx / speed : 1, dz = speed > 1 ? vz / speed : 0;
+    // 차를 기준으로 뒤로 흐르는 속도(m/s): 달리는 속도보다 약간 빨라 바람이 차를 앞질러 스치는 느낌을 줍니다. 길이는 속도에 비례.
+    const flow = 14 + speed * 0.95, len = Math.min(5.5, 1 + speed * (bst ? 0.07 : 0.045)), tailEnd = -3.4;
+    // streakSeed: [차 기준 앞(+)/뒤(−) m, 좌우 m, 높이 m]. 좌우가 0 이면 아직 놓지 않은 줄기입니다.
     for (let i = 0; i < n; i++) {
-      let x = this.streakSeed[i * 3], y = this.streakSeed[i * 3 + 1], z = this.streakSeed[i * 3 + 2];
-      const rx = x - car.x, rz = z - car.z, ahead = rx * dx + rz * dz, side = -rx * dz + rz * dx;
-      if (ahead < -2.5 || ahead > 40 || Math.abs(side) > 7 || (x === 0 && z === 0)) {
-        // 차 앞쪽에서 생겨 차체 옆(1.2~4m)이나 지붕 위를 지나가도록 놓습니다.
-        const roof = Math.random() < 0.25, lat = roof ? rnd(-0.9, 0.9) : (Math.random() < 0.5 ? -1 : 1) * rnd(1.25, 4), fwd = rnd(2, 34);
-        x = car.x + dx * fwd - dz * lat; z = car.z + dz * fwd + dx * lat; y = car.y + (roof ? rnd(1.45, 2.3) : rnd(0.25, 1.6));
-        this.streakSeed[i * 3] = x; this.streakSeed[i * 3 + 1] = y; this.streakSeed[i * 3 + 2] = z;
+      let ahead = this.streakSeed[i * 3], lat = this.streakSeed[i * 3 + 1], h = this.streakSeed[i * 3 + 2];
+      ahead -= flow * dt * (0.85 + (i % 5) * 0.08);
+      const fresh = lat === 0;
+      if (fresh || ahead < tailEnd) {
+        // 앞코 앞쪽에서 새로 생겨 차체 옆(1.2~3.4m)이나 지붕 위를 지나갑니다. 처음에는 차 전체 길이에 흩어 놓습니다.
+        const roof = Math.random() < 0.25;
+        lat = roof ? (Math.random() < 0.5 ? -1 : 1) * rnd(0.15, 0.9) : (Math.random() < 0.5 ? -1 : 1) * rnd(1.15, 2.9);
+        h = roof ? rnd(1.3, 1.9) : rnd(0.25, 1.5); ahead = fresh ? rnd(tailEnd, 6.5) : rnd(2.8, 6.5);
       }
-      // 꼬리는 차 뒤 3m 까지만: 카메라 앞을 가로지르는 긴 선이 생기지 않게 합니다.
-      const ah = (x - car.x) * dx + (z - car.z) * dz, tail = Math.max(0, Math.min(len, ah + 3));
-      this.streakPos.set([x, y, z, x - dx * tail, y, z - dz * tail], i * 6);
+      this.streakSeed[i * 3] = ahead; this.streakSeed[i * 3 + 1] = lat; this.streakSeed[i * 3 + 2] = h;
+      // 머리(뒤쪽 끝)는 ahead, 꼬리(앞쪽)는 ahead+len. 차 뒤 tailEnd 보다 더 뒤로 나가지 않게 자릅니다.
+      const head = Math.max(tailEnd, ahead), tail = Math.max(head, ahead + len);
+      const bx = car.x - dz * lat, bz = car.z + dx * lat, y = car.y + h;
+      this.streakPos.set([bx + dx * head, y, bz + dz * head, bx + dx * tail, y, bz + dz * tail], i * 6);
     }
     (this.streak.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
   }

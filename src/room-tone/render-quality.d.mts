@@ -1,1 +1,5 @@
-export function renderingScale(width: number, height: number, deviceRatio: number, touch?: boolean): number;
+export type VisualQuality = "low" | "standard" | "high";
+export function renderingScale(
+  width: number, height: number, deviceRatio: number,
+  touch?: boolean, quality?: VisualQuality,
+): number;

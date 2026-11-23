@@ -402,6 +402,15 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       b.fillStyle = '#26301f'; b.fillRect(0, 0, S, S); b.fillStyle = 'rgba(255,255,255,.05)'; for (let i = 1; i < 8; i++) { b.fillRect((S / 8) * i, 0, 1, S); b.fillRect(0, (S / 8) * i, S, 1); }
       { // 지형: 숲·구릉·절벽·물
         const t = m.map.terrain; b.fillStyle = 'rgba(40,75,35,.75)'; for (const f of t.forests) { b.beginPath(); b.arc(px(f.x), pz(f.z), f.r * k, 0, Math.PI * 2); b.fill(); }
+        // 완만한 능선은 등고선으로 표시하고, 오를 수 없는 암벽과 색을 구분합니다.
+        for (const rise of t.rises) {
+          const x = px(rise.x), z = pz(rise.z), radius = rise.r * k;
+          const grad = b.createRadialGradient(x, z, 0, x, z, radius);
+          grad.addColorStop(0, 'rgba(164,157,119,.67)'); grad.addColorStop(0.65, 'rgba(129,145,88,.35)'); grad.addColorStop(1, 'rgba(129,145,88,0)');
+          b.fillStyle = grad; b.beginPath(); b.arc(x, z, radius, 0, Math.PI * 2); b.fill();
+          b.strokeStyle = 'rgba(203,202,151,.45)'; b.lineWidth = 0.75;
+          for (const fraction of [0.48, 0.75]) { b.beginPath(); b.arc(x, z, radius * fraction, 0, Math.PI * 2); b.stroke(); }
+        }
         b.fillStyle = '#6d6a60'; for (const h of t.hills) { b.beginPath(); b.arc(px(h.x), pz(h.z), h.r * k, 0, Math.PI * 2); b.fill(); } for (const c of t.cliffs) b.fillRect(px(c.x0), pz(c.z0), Math.max(2, (c.x1 - c.x0) * k), Math.max(2, (c.z1 - c.z0) * k));
         for (const p of t.ponds) { b.fillStyle = p.swamp ? '#59693a' : '#3a78a0'; b.beginPath(); b.ellipse(px(p.x), pz(p.z), p.rx * k, p.rz * k, p.ry, 0, Math.PI * 2); b.fill(); }
         b.strokeStyle = '#3a78a0'; b.lineWidth = Math.max(2, 9 * k); b.lineJoin = 'round'; for (const r of t.rivers) { b.beginPath(); r.pts.forEach(([x, z], i) => (i ? b.lineTo(px(x), pz(z)) : b.moveTo(px(x), pz(z)))); b.stroke(); }

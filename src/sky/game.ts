@@ -50,7 +50,14 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   let mTap = false, hitT = 0, hitBy = 0, mBoost = false, bannerT = 0, alertT = 0, flare = false, mFire = false, mMissile = false, autoFire = false, throttle = 0.55, hintT = 8, cockpit = false;
   // 조작 설정(저장): assist 0=끔(직접 조준) 1=약 2=강(자동 사격), sens 감도, inv 상하 반전
   const CTL_KEY = 'waldo-sky-ctl'; const ctl = { assist: 2, sens: 1, inv: false };
-  try { Object.assign(ctl, JSON.parse(localStorage.getItem(CTL_KEY) || '{}')); } catch { /* 저장값 무시 */ }
+  try {
+    const stored = JSON.parse(localStorage.getItem(CTL_KEY) || '{}') as Partial<typeof ctl> | null;
+    if (stored && typeof stored === 'object') {
+      if (typeof stored.assist === 'number' && Number.isInteger(stored.assist) && stored.assist >= 0 && stored.assist <= 2) ctl.assist = stored.assist;
+      if (typeof stored.sens === 'number' && Number.isFinite(stored.sens)) ctl.sens = clamp(stored.sens, 0.6, 1.6);
+      if (typeof stored.inv === 'boolean') ctl.inv = stored.inv;
+    }
+  } catch { /* 잘못된 설정값은 기본값으로 복구 */ }
   const saveCtl = (): void => { try { localStorage.setItem(CTL_KEY, JSON.stringify(ctl)); } catch { /* 저장 실패 무시 */ } };
   autoFire = ctl.assist >= 2;
   const mouse = { x: 0, y: 0, active: false, touchId: -1, ox: 0, oy: 0 }; const keys = new Set<string>();
@@ -79,28 +86,28 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   const onWheel = (e: WheelEvent): void => { if (state !== 'play') return; e.preventDefault(); throttle = clamp(throttle - e.deltaY * 0.0016, 0, 1); }; // 두 손가락 위로 = 가속
   const onKey = (e: KeyboardEvent, down: boolean): void => {
     const k = e.key.toLowerCase();
-    if (down && (k === 'escape' || k === 'p')) { togglePause(); return; }
+    if (down && (k === 'escape' || k === 'p')) { e.preventDefault(); if (!e.repeat) togglePause(); return; }
     if (!down) { keys.delete(k); if (k === 'm') mMissile = false; return; }
     if (state !== 'play') return;
     if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
-    if (down) { keys.add(k); audio.unlock(); if (k === 't') { autoFire = !autoFire; hint(autoFire ? '자동 사격 ON' : '자동 사격 OFF'); } if (k === 'f') flare = true; if (k === 'c') { cockpit = !cockpit; root.classList.toggle('cockpit', cockpit); view?.setCockpit(cockpit); hint(cockpit ? '조종석 시점' : '3인칭 시점'); } if (k === 'm') { mMissile = true; mTap = true; } }
+    if (down) { keys.add(k); audio.unlock(); if (e.repeat) return; if (k === 't') { autoFire = !autoFire; hint(autoFire ? '자동 사격 ON' : '자동 사격 OFF'); } if (k === 'f') flare = true; if (k === 'c') { cockpit = !cockpit; root.classList.toggle('cockpit', cockpit); view?.setCockpit(cockpit); hint(cockpit ? '조종석 시점' : '3인칭 시점'); } if (k === 'm') { mMissile = true; mTap = true; } }
     else { keys.delete(k); if (k === 'm') mMissile = false; }
   };
   const kd = (e: KeyboardEvent): void => onKey(e, true), ku = (e: KeyboardEvent): void => onKey(e, false);
   const noMenu = (e: Event): void => e.preventDefault();
-  const onBlur = (): void => { keys.clear(); mouse.touchId = -1; mouse.x = mouse.y = 0; mouse.active = false; mFire = mMissile = mBoost = flare = false; };
+  const onBlur = (): void => { keys.clear(); mouse.touchId = -1; mouse.x = mouse.y = 0; mouse.active = false; mFire = mMissile = mBoost = flare = false; if (state === 'play') togglePause(); };
   addEventListener('blur', onBlur); const onVis = (): void => { if (document.hidden && state === 'play') togglePause(); }; document.addEventListener('visibilitychange', onVis);
   addEventListener('pointermove', onMove); addEventListener('pointerdown', onDown); addEventListener('pointerup', onUp); addEventListener('pointercancel', onUp); document.addEventListener('pointerlockchange', onLock);
   root.addEventListener('wheel', onWheel, { passive: false }); addEventListener('keydown', kd); addEventListener('keyup', ku); root.addEventListener('contextmenu', noMenu);
 
-  function readInput(p: Jet): Input {
+  function readInput(p: Jet, dt: number): Input {
     let pitch = 0, roll = 0;
     const dead = (v: number): number => { const a = Math.abs(v); return a < 0.06 ? 0 : Math.sign(v) * Math.pow((a - 0.06) / 0.94, 1.25); }; // 데드존+곡선: 작은 움직임은 부드럽게
     if (mouse.active) { roll = dead(mouse.x) * ctl.sens; pitch = -dead(mouse.y) * ctl.sens * (ctl.inv ? -1 : 1); }
     const kx = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0), ky = (keys.has('w') || keys.has('arrowup') ? 1 : 0) - (keys.has('s') || keys.has('arrowdown') ? 1 : 0);
     if (kx) roll = kx; if (ky) pitch = ky * (ctl.inv ? -1 : 1);
     const yawIn = (keys.has('e') ? 1 : 0) - (keys.has('q') ? 1 : 0);
-    if (keys.has('control')) throttle = Math.max(0, throttle - 0.01);
+    if (keys.has('control')) throttle = Math.max(0, throttle - 0.6 * dt);
     // 조준 보조: 적이 조준원 안에 들면 조종간을 살짝 적쪽으로 끌어줍니다(터치패드 미세조준 보완)
     const t = ctl.assist > 0 ? sim!.bestTarget(p, ASSIST_CONE, GUN_RANGE) : null; const pull = ctl.assist >= 2 ? 0.3 : 0.1;
     if (t) {
@@ -114,11 +121,10 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
 
   // ── HUD ──────────────────────────────────────────
   function hint(t: string): void { const el = $('sk-hint'); el.textContent = t; hintT = 3; }
-  let bannerTick = 0;
-  function banner(t: string, sec = 2.2): void { const el = $('sk-banner'); el.textContent = t; el.classList.add('on'); bannerT = sec; bannerTick = performance.now(); }
+  function banner(t: string, sec = 2.2): void { const el = $('sk-banner'); el.textContent = t; el.classList.add('on'); bannerT = sec; }
   function alertMsg(t: string, sec = 1): void { $('sk-alert').textContent = t; alertT = sec; }
   const html = new WeakMap<HTMLElement, string>(); const setHtml = (el: HTMLElement, v: string): void => { if (html.get(el) !== v) { html.set(el, v); el.innerHTML = v; } };
-  function hud(p: Jet): void {
+  function hud(p: Jet, dt: number): void {
     $('sk-score').textContent = String(sim!.score); $('sk-combo').textContent = sim!.combo > 1 ? ` ×${sim!.combo}` : '';
     $('sk-wave').textContent = `WAVE ${Math.max(1, sim!.wave)} · 적 ${sim!.enemies().length}`;
     $('sk-hp').style.width = `${Math.max(0, p.hp / p.maxHp * 100)}%`; $('sk-hp').parentElement!.classList.toggle('low', p.hp < 30);
@@ -127,9 +133,9 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     setHtml($('sk-status'), [sim!.shield > 0 ? `${svgIcon('shield')}${Math.ceil(sim!.shield)}` : '', sim!.overdrive > 0 ? `${svgIcon('bolt')}${sim!.overdrive.toFixed(1)}s` : ''].filter(Boolean).join(' '));
     $('sk-fuel').style.width = `${p.fuel * 100}%`;
     $('sk-thr').style.width = `${throttle * 100}%`;
-    if (alertT > 0) { alertT -= 1 / 60; if (alertT <= 0) $('sk-alert').textContent = ''; }
-    if (bannerT > 0) { bannerT -= (performance.now() - bannerTick) / 1000; bannerTick = performance.now(); if (bannerT <= 0) $('sk-banner').classList.remove('on'); }
-    if (hintT > 0) { hintT -= 1 / 60; if (hintT <= 0) $('sk-hint').textContent = ''; }
+    if (alertT > 0) { alertT -= dt; if (alertT <= 0) $('sk-alert').textContent = ''; }
+    if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) $('sk-banner').classList.remove('on'); }
+    if (hintT > 0) { hintT -= dt; if (hintT <= 0) $('sk-hint').textContent = ''; }
   }
   function overlay(p: Jet): void {
     const w = ov.width, h = ov.height, dpr = w / innerWidth; octx.clearRect(0, 0, w, h); octx.save(); octx.scale(dpr, dpr);
@@ -187,7 +193,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     renderer.setSize(w, h, false); view.resize(w, h); ov.width = Math.round(w * dpr); ov.height = Math.round(h * dpr); ov.style.width = w + 'px'; ov.style.height = h + 'px';
   }
   function start(d: Difficulty): void {
-    diff = d; sim = new SkySim(d); saved = false; state = 'play'; throttle = 0.55; mouse.x = mouse.y = 0; mouse.active = false; flare = false; mFire = mMissile = false; keys.clear(); bannerT = alertT = 0; cockpit = false; root.classList.remove('cockpit'); view?.setCockpit(false); autoFire = ctl.assist >= 2;
+    diff = d; sim = new SkySim(d); saved = false; state = 'play'; throttle = 0.55; mouse.x = mouse.y = 0; mouse.active = false; flare = mTap = mBoost = mFire = mMissile = false; hitT = 0; hitBy = 0; keys.clear(); bannerT = alertT = 0; cockpit = false; root.classList.remove('cockpit'); view?.setCockpit(false); autoFire = ctl.assist >= 2;
     $('sk-title').hidden = true; $('sk-end').hidden = true; $('sk-paused').hidden = true; root.querySelector<HTMLElement>('.sk-hud')!.hidden = false; audio.unlock(); lock(); hint(matchMedia('(pointer: coarse)').matches ? '화면을 드래그해 조종하세요' : '마우스를 움직여 조종하세요 (Esc: 일시정지)'); banner('출격!', 1.5);
     if (view) { view.camera.position.copy(sim.player.pos).add(new THREE.Vector3(0, 10, 40)); }
   }
@@ -210,7 +216,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     if (closed) return; raf = requestAnimationFrame(frame);
     const dt = Math.min(0.05, (now - last) / 1000); last = now; if (!renderer || !view || !sim) return;
     if (state === 'play') {
-      const p = sim.player; const inp = readInput(p); sim.step(dt, inp); flare = false; mTap = false; hitT = Math.max(0, hitT - dt);
+      const p = sim.player; const inp = readInput(p, dt); sim.step(dt, inp); flare = false; mTap = false; hitT = Math.max(0, hitT - dt);
       for (const ev of sim.events) {
         const mine = (id: number): boolean => id === p.id, dist = (pos: THREE.Vector3): number => pos.distanceTo(p.pos);
         switch (ev.t) {
@@ -243,7 +249,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     if (state !== 'paused') view.sync(sim, dt, now / 1000);
     if (state === 'play' || state === 'over') { view.follow(sim.player, dt, cameraLook, clamp((throttle - 0.55) * 2, 0, 1)); }
     renderer.render(view.scene, view.camera); if (state !== 'paused') adaptive?.tick();
-    if (state === 'play') { hud(sim.player); overlay(sim.player); } else if (state === 'over') { octx.clearRect(0, 0, ov.width, ov.height); }
+    if (state === 'play') { hud(sim.player, dt); overlay(sim.player); } else if (state === 'over') { octx.clearRect(0, 0, ov.width, ov.height); }
     if (state === 'title') { // 타이틀 배경: 느리게 선회하는 카메라
       const t = now / 4000; view.camera.position.set(Math.cos(t) * 900, 520, Math.sin(t) * 900); view.camera.lookAt(0, 250, 0);
     }

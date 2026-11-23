@@ -1,7 +1,7 @@
 // HUSTLE — reusable urban fleet; no economy unlocks or permanent upgrades.
 import * as THREE from 'three';
 import { makeVehicleMesh } from '../../shared/vehicle';
-import { carBodiesOverlap, pushWalkerFromCar, stepDrive, type DriveState, type DriveInput, type DriveTuning } from './driving';
+import { carBodiesOverlap, pointWithinCar, pushWalkerFromCar, stepDrive, type DriveState, type DriveInput, type DriveTuning } from './driving';
 import type { Colliders, Layout, Zone } from './layout';
 import type { Player } from './player';
 import { PITCH } from './layout';
@@ -28,6 +28,7 @@ export class Rides {
   private cars: Ride[] = [];
   private active: Ride | null = null;
   private scratch = { x: 0, z: 0 };
+  private bodyProbe = { x: 0, z: 0, heading: 0 };
   private night = 0;
   private trafficBlocks: (x: number, z: number, radius: number) => boolean = () => false;
   private lamp = new THREE.SpotLight(0xffe9b8, 0, 46, Math.PI / 5, 0.55, 1.6);
@@ -110,10 +111,11 @@ export class Rides {
       this.colliders.resolve(px, pz, RADIUS, this.scratch);
       if (Math.hypot(this.scratch.x - px, this.scratch.z - pz) > 0.03 || this.trafficBlocks(px, pz, RADIUS)) return false;
     }
-    // The separating-axis test prevents missed corner overlaps at oblique angles.
+    // Reuse one probe to avoid allocating a body per collision test.
+    this.bodyProbe.x = x; this.bodyProbe.z = z; this.bodyProbe.heading = heading;
     for (const other of this.cars) {
       if (other === ignore || Math.hypot(other.x - x, other.z - z) > 7) continue;
-      if (carBodiesOverlap({ x, z, heading }, other)) return false;
+      if (carBodiesOverlap(this.bodyProbe, other)) return false;
     }
     return true;
   }
@@ -131,8 +133,7 @@ export class Rides {
   blocksTraffic(x: number, z: number, radius: number): boolean {
     for (const car of this.cars) {
       if (Math.abs(car.x - x) > 5 + radius || Math.abs(car.z - z) > 5 + radius) continue;
-      const clear = pushWalkerFromCar(x, z, radius, car);
-      if (Math.hypot(clear.x - x, clear.z - z) > 0.03) return true;
+      if (pointWithinCar(x, z, radius, car)) return true;
     }
     return false;
   }
@@ -160,11 +161,7 @@ export class Rides {
         return Math.hypot(this.scratch.x - x, this.scratch.z - z) < 0.04 &&
           worldDistance({ x, z }, car) > 2.3 &&
           !this.trafficBlocks(x, z, 0.48) &&
-          !this.cars.some(other => {
-            if (other === car) return false;
-            const pushed = pushWalkerFromCar(x, z, 0.48, other);
-            return Math.hypot(pushed.x - x, pushed.z - z) > 0.03;
-          });
+          !this.cars.some(other => other !== car && pointWithinCar(x, z, 0.48, other));
       });
       if (!exit) return { ok: false, message: '내릴 공간이 없습니다. 차를 조금 움직여 보세요' };
       this.active = null; this.lamp.intensity = 0;

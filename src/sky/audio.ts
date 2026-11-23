@@ -77,6 +77,7 @@ export class SkyAudio {
     switch (name) {
       case 'gun': n(0.045, 0.34, 2200, 0.9); t(190, 0.05, 0.2, 'square', -90); break;
       case 'missile': n(0.42, 0.28, 900, 0.6, 'lowpass'); t(520, 0.4, 0.16, 'sawtooth', 900); break;
+      case 'flare': n(0.22, 0.24, 1300, 0.8); t(680, 0.25, 0.13, 'triangle', -480); break;
       case 'boom': n(0.65, 0.7, 420, 0.5, 'lowpass'); t(58, 0.65, 0.58, 'sine', -30); break;
       case 'hit': n(0.055, 0.27, 3000, 2); t(1250, 0.06, 0.16, 'triangle', -350); break;
       case 'hurt': n(0.14, 0.3, 500, 0.7, 'lowpass'); t(180, 0.18, 0.24, 'sawtooth', -90); [660, 440].forEach((f, i) => t(f, 0.12, 0.12, 'square', 0, 0.12 + i * 0.16)); break;

@@ -25,7 +25,7 @@ import { Sound } from "./sound.js";
 import { normalizeCampaign } from "./campaign.mjs";
 import { createPointerOwner, tryCapture } from "./input.mjs";
 import { lineClear, soundTravelDistance } from "./visibility.mjs";
-import { renderingScale } from "./render-quality.mjs";
+import { renderingScale, selectQuality } from "./render-quality.mjs";
 import { propClearance } from "./obstacles.mjs";
 import { loadFailureText } from "./loading-error.mjs";
 import { reducedMotionOn } from "./motion-preferences.mjs";
@@ -147,8 +147,7 @@ function save() {
 }
 const PREFS = "waldo.preferences.v1";
 function selectedQuality() {
-  const value = read(PREFS)?.quality;
-  return value === "low" || value === "standard" || value === "high" ? value : "high";
+  return selectQuality(read(PREFS), matchMedia("(max-width: 850px)").matches);
 }
 let reducedEffects = false;
 function syncMotionPreference() {

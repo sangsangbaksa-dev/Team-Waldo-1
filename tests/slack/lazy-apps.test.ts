@@ -145,6 +145,16 @@ it('advances multiple shop promotions without losing elapsed remainder or stale 
   expect(view.el.querySelector('[data-add="deal"]')?.getAttribute('aria-label')).toContain('무선 이어폰 심야 특가 7,950원');
 });
 
+it('ignores invalid dorm frame deltas without corrupting promotion timers', () => {
+  view.el.querySelector<HTMLButtonElement>('[data-app="shop"]')!.click();
+  view.frame(0);
+  for (const dt of [NaN, Infinity, -Infinity, -1]) view.frame(dt);
+  view.frame(1.5);
+  expect(view.el.querySelector('[data-timer]')?.textContent).toBe('01:59');
+  expect(view.el.querySelector('[data-deal-name]')?.textContent).toBe('별빛 무드등');
+  expect(view.el.querySelector('.sc-clock')?.textContent).toBe('오전 1:24');
+});
+
 it('keeps the dorm messenger responsive after many quick replies and app switches', () => {
   const open = (id: string) => {
     view.el.querySelector<HTMLButtonElement>(`[data-app="${id}"]`)!.click();

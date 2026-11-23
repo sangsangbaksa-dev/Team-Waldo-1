@@ -203,6 +203,8 @@ export const createClassroomView: CreateView = (sim, audio) => {
   return {
     el,
     frame(dt) {
+      // Ignore invalid frame deltas before mutating animation timers.
+      if (!Number.isFinite(dt) || dt < 0) return;
       const s = sim.state, v = view();
       if (gameWindow.inert !== (v !== 'game')) {
         if (v !== 'game' && gameWindow.contains(document.activeElement)) el.focus({ preventScroll: true });

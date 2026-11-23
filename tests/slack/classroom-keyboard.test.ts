@@ -89,6 +89,20 @@ it('supports hold-to-cover on classroom touch controls without pointer capture',
   view.dispose();
 });
 
+it('does not corrupt classroom warning animations after a bad frame delta', () => {
+  const sim = createSim('class', 19, 1); sim.start();
+  const stage = createClassroomView(sim, audio);
+  document.body.append(stage.el);
+  stage.onEvent({ t: 'footstep', vol: 0.65 });
+  for (const dt of [NaN, Infinity, -Infinity, -1]) stage.frame(dt);
+  stage.frame(0.1);
+  const room = stage.el.querySelector<HTMLElement>('.sl-room')!;
+  expect(room.dataset.step).toBe('2');
+  stage.frame(0.5);
+  expect(room.dataset.step).toBe('2');
+  stage.dispose(); stage.el.remove();
+});
+
 it('keeps tactical map keyboard focus after clicking with a mouse or trackpad', () => {
   const sim = createSim('class', 3, 1); sim.start();
   const view = createClassroomView(sim, audio);

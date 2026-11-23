@@ -412,6 +412,9 @@ export const createComputerView: CreateView = (sim, audio) => {
   }
   const modes = ['away', 'approach', 'peek', 'scan', 'leave'];
   return { el, frame(dt) {
+    // Bad frame timestamps should not poison clocks, shopping promotions or
+    // the messenger queue for the rest of the game instance.
+    if (!Number.isFinite(dt) || dt < 0) return;
     elapsed += dt;
     const state = sim.state; const id = apps.some(a => a.id === state.activity) ? state.activity as DormActivity : null;
     if (id !== shown) renderApp(id);

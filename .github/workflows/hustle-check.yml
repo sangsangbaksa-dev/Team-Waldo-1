@@ -5,6 +5,7 @@ on:
     paths:
       - "src/tycoon/**"
       - "tests/tycoon/**"
+      - "tests/tycoon-world/**"
       - ".github/workflows/hustle-check.yml"
   workflow_dispatch:
 
@@ -28,13 +29,13 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Lint HUSTLE code and tests
-        run: npx eslint src/tycoon tests/tycoon
+        run: npx eslint src/tycoon tests/tycoon tests/tycoon-world
       - name: Check TypeScript (full app)
         if: always()
         run: npm run typecheck
       - name: Run HUSTLE tests
         if: always()
-        run: npx vitest run tests/tycoon
+        run: npx vitest run tests/tycoon tests/tycoon-world
       - name: Build production app
         if: always()
         run: npm run build

@@ -36,11 +36,13 @@ try {
   ]){
     const context=await browser.newContext({
       viewport:{width:config.width,height:config.height},
-      isMobile:config.mobile,hasTouch:config.mobile,reducedMotion:"reduce",
+      isMobile:config.mobile,hasTouch:config.mobile,
+      reducedMotion:config.name==="desktop"?"no-preference":"reduce",
     });
-    await context.addInitScript(()=>{
-      localStorage.setItem("waldo.preferences.v1",JSON.stringify({sound:false,quality:"low"}));
-    });
+    await context.addInitScript(motion=>{
+      localStorage.setItem("waldo.preferences.v1",
+        JSON.stringify({sound:false,quality:"low",reducedMotion:motion}));
+    },config.name==="desktop");
     const page=await context.newPage();
     page.setDefaultTimeout(30000);
     const errors=[],glb=[];
@@ -54,6 +56,18 @@ try {
       assert.equal(await page.locator("#home").isVisible(),true);
       assert.equal(await page.locator("#game").isVisible(),false);
       assert.equal(glb.length,0,"GLB should not load on the title screen");
+      assert.equal(await page.evaluate(()=>document.body.classList.contains("rt-reduced-motion")),true,
+        "OS or arcade setting must disable UI flicker");
+      if(config.name==="desktop"){
+        for(const value of [false,true]){
+          await page.evaluate(reducedMotion=>{
+            const key="waldo.preferences.v1",current=JSON.parse(localStorage.getItem(key));
+            localStorage.setItem(key,JSON.stringify({...current,reducedMotion}));
+            window.dispatchEvent(new StorageEvent("storage",{key}));
+          },value);
+          assert.equal(await page.evaluate(()=>document.body.classList.contains("rt-reduced-motion")),value);
+        }
+      }
       assert.equal(await page.locator(".mast .wordmark").getAttribute("href"),"../");
       await page.screenshot({path:"browser-artifacts/room-tone-title-"+config.name+".png",animations:"disabled"});
 

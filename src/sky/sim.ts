@@ -34,7 +34,7 @@ export interface Bullet { pos: THREE.Vector3; vel: THREE.Vector3; life: number; 
 export type SimEvent =
   | { t: 'gun'; id: number } | { t: 'missile'; id: number } | { t: 'boom'; pos: THREE.Vector3; big: boolean }
   | { t: 'hit'; id: number; pos: THREE.Vector3; by?: number } | { t: 'nolock' } | { t: 'kill'; by: number; id: number; points?: number; combo?: number } | { t: 'lock'; id: number } | { t: 'lockdone' }
-  | { t: 'warn' } | { t: 'stall' } | { t: 'wave'; n: number; modifier?: string } | { t: 'crash'; id: number } | { t: 'flare'; id: number } | { t: 'pickup'; kind: 'repair' | 'ammo' | 'shield' } | { t: 'boss' } | { t: 'dodge'; points: number } | { t: 'overdrive' };
+  | { t: 'warn' } | { t: 'stall' } | { t: 'wave'; n: number; modifier?: string } | { t: 'crash'; id: number } | { t: 'flare'; id: number } | { t: 'pickup'; kind: 'repair' | 'ammo' | 'shield'; amount: number } | { t: 'boss' } | { t: 'dodge'; points: number } | { t: 'overdrive' };
 
 export interface Input { pitch: number; roll: number; yaw?: number; throttle: number; fire: boolean; missile: boolean; flare: boolean; boost?: boolean; }
 export interface Pickup { id: number; kind: 'repair' | 'ammo' | 'shield'; pos: THREE.Vector3; life: number; } // pitch/roll -1..1
@@ -322,8 +322,16 @@ export class SkySim {
     const p = this.player;
     for (const k of this.pickups) {
       k.life -= dt; if (k.life <= 0 || !p.alive || p.pos.distanceToSquared(k.pos) > 55 * 55) continue;
-      k.life = 0; this.events.push({ t: 'pickup', kind: k.kind });
-      if (k.kind === 'repair') p.hp = Math.min(p.maxHp, p.hp + 30); else if (k.kind === 'ammo') p.missiles = Math.min(8, p.missiles + 2); else this.shield = Math.min(50, this.shield + 30);
+      // Keep full-stat supplies in the world so the pilot can return when
+      // damaged or short on missiles. Never claim '+30' for a capped resource.
+      const amount = k.kind === 'repair' ? Math.min(30, p.maxHp - p.hp)
+        : k.kind === 'ammo' ? Math.min(2, 8 - p.missiles) : Math.min(30, 50 - this.shield);
+      if (amount <= 0) continue;
+      k.life = 0;
+      if (k.kind === 'repair') p.hp += amount;
+      else if (k.kind === 'ammo') p.missiles += amount;
+      else this.shield += amount;
+      this.events.push({ t: 'pickup', kind: k.kind, amount });
     }
     this.pickups = this.pickups.filter(k => k.life > 0);
   }
@@ -422,6 +430,7 @@ export class SkySim {
     if (j.hp <= 0) this.kill(j, by);
   }
   kill(j: Jet, by: number): void {
+    if (!j.alive) return; // repeated collision events must not duplicate drops/points
     j.alive = false; this.events.push({ t: 'boom', pos: j.pos.clone(), big: true });
     let points = 0;
     if (j.team === 'enemy' && (j.kind === 'boss' || Math.random() < 0.25)) { const drop = Math.random(); this.pickups.push({ id: this.nid++, kind: j.kind === 'boss' ? 'repair' : drop < 0.34 ? 'shield' : drop < 0.67 ? 'repair' : 'ammo', pos: j.pos.clone(), life: 25 }); }

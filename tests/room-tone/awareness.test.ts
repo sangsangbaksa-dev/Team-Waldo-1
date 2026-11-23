@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { facingDot, canSeeTarget } from "../../src/room-tone/awareness.mjs";
+import { facingDot, canSeeTarget, stereoPan } from "../../src/room-tone/awareness.mjs";
 
 const point = (x: number, z: number) => ({ x, z });
 describe("ROOM TONE monster vision and stealth", () => {
@@ -25,5 +25,22 @@ describe("ROOM TONE monster vision and stealth", () => {
     expect(facingDot(0, point(0, 0), point(0, 0))).toBe(1);
     expect(facingDot(NaN, point(0, 0), point(1, 1))).toBe(-1);
     expect(canSeeTarget(Infinity, true, true, 1)).toBe(false);
+  });
+});
+
+describe("ROOM TONE positional monster footsteps", () => {
+  it("places footsteps on the player's actual left and right", () => {
+    const player = point(0, 0);
+    expect(stereoPan(player, 0, point(10, 0))).toBe(1);
+    expect(stereoPan(player, 0, point(-10, 0))).toBe(-1);
+    expect(stereoPan(player, 0, point(0, -10))).toBe(0);
+    expect(stereoPan(player, 0, point(0, 10))).toBe(0);
+  });
+  it("rotates the stereo field with first-person look direction", () => {
+    const player = point(0, 0);
+    expect(stereoPan(player, Math.PI / 2, point(0, -3))).toBeCloseTo(1);
+    expect(stereoPan(player, Math.PI / 2, point(0, 3))).toBeCloseTo(-1);
+    expect(stereoPan(player, 0, player)).toBe(0);
+    expect(stereoPan(player, NaN, point(2, 2))).toBe(0);
   });
 });

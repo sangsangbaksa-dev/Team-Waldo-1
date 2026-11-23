@@ -410,13 +410,14 @@ export class Sound {
     this.note(49, 94, 1.15, 0.06, at, 0, "triangle", 0.35);
   }
 
-  monsterStep(distance) {
+  monsterStep(distance, pan = 0) {
     if (!this.ready()) return;
     const volume = Math.pow(limited(1 - distance / 18, 0, 1), 2);
     if (volume < 0.002) return;
     const at = this.ctx.currentTime;
-    this.note(68, 33, 0.2, 0.2 * volume, at);
-    this.rustle(at, 0.16, 0.17 * volume, 220, 0, 0.7);
+    const side = limited(Number(pan) || 0, -1, 1);
+    this.note(68, 33, 0.2, 0.2 * volume, at, side);
+    this.rustle(at, 0.16, 0.17 * volume, 220, side, 0.7);
   }
 
   tone(index) {

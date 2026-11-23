@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { buildLayout, Colliders } from '../../src/tycoon/scene/layout';
+import { buildLayout, Colliders, PITCH } from '../../src/tycoon/scene/layout';
 import { Player } from '../../src/tycoon/scene/player';
 import { Rides } from '../../src/tycoon/scene/rides';
 
@@ -19,6 +19,20 @@ describe('HUSTLE urban fleet', () => {
     expect(positions.length).toBeGreaterThanOrEqual(5);
     expect(positions.some(car => car.name.includes('세단'))).toBe(true);
     expect(Math.hypot(positions[0].x - positions[positions.length - 1].x, positions[0].z - positions[positions.length - 1].z)).toBeGreaterThan(40);
+    rides.dispose();
+  });
+
+  it('does not spawn an occupied sedan inside a building collision box', () => {
+    const scene = new THREE.Scene();
+    const layout = buildLayout([]);
+    const city = new Colliders();
+    const road = Math.round((layout.spawn.x - PITCH / 2) / PITCH) * PITCH + PITCH / 2;
+    const x = road - 3, z = layout.spawn.z + 4;
+    const block = layout.blocks.find(b => b.i === Math.round(x / PITCH) && b.j === Math.round(z / PITCH));
+    expect(block).toBeDefined();
+    if (block) city.set(block, [{ x0: x - 2, x1: x + 2, z0: z - 2, z1: z + 2 }]);
+    const rides = new Rides(scene, layout, city);
+    expect(rides.positions().every(c => Math.hypot(c.x - x, c.z - z) > 0.2)).toBe(true);
     rides.dispose();
   });
 

@@ -55,9 +55,11 @@ export class Rides {
   private bodyProbe = { x: 0, z: 0, heading: 0 };
   private night = 0;
   private trafficBlocks: (x: number, z: number, radius: number) => boolean = () => false;
+  private pedestrianBlocks: (x: number, z: number, radius: number) => boolean = () => false;
   private lamp = new THREE.SpotLight(0xffe9b8, 0, 46, Math.PI / 5, 0.55, 1.6);
-  constructor(scene: THREE.Scene, layout: Layout, private colliders: Colliders, trafficBlocks?: (x: number, z: number, radius: number) => boolean) {
+  constructor(scene: THREE.Scene, layout: Layout, private colliders: Colliders, trafficBlocks?: (x: number, z: number, radius: number) => boolean, pedestrianBlocks?: (x: number, z: number, radius: number) => boolean) {
     if (trafficBlocks) this.trafficBlocks = trafficBlocks;
+    if (pedestrianBlocks) this.pedestrianBlocks = pedestrianBlocks;
     this.lamp.castShadow = false;
     this.parking.name = 'HUSTLE parking';
     scene.add(this.parking, this.lamp, this.lamp.target);
@@ -139,7 +141,7 @@ export class Rides {
     for (const part of [-BODY_LENGTH, 0, BODY_LENGTH]) {
       const px = x + Math.cos(heading) * part, pz = z - Math.sin(heading) * part;
       this.colliders.resolve(px, pz, RADIUS, this.scratch);
-      if (Math.hypot(this.scratch.x - px, this.scratch.z - pz) > 0.03 || this.trafficBlocks(px, pz, RADIUS)) return false;
+      if (Math.hypot(this.scratch.x - px, this.scratch.z - pz) > 0.03 || this.trafficBlocks(px, pz, RADIUS) || this.pedestrianBlocks(px, pz, RADIUS)) return false;
     }
     // Reuse one probe to avoid allocating a body per collision test.
     this.bodyProbe.x = x; this.bodyProbe.z = z; this.bodyProbe.heading = heading;

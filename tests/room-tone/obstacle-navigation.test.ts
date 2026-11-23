@@ -22,6 +22,7 @@ describe("ROOM TONE four-chapter equipment accessibility", () => {
       const candidates = level.reachable.filter(cell => neighbors(level.map, cell).length>=3 &&
         reserved.every(other => distance(cell,other)>2));
       const selected: number[] = [];
+      const hidingPlaces: {x:number;z:number}[] = [];
       for (const cell of candidates) {
         if (selected.some(other=>distance(cell,other)<5)) continue;
         const x=cell%level.w, z=Math.floor(cell/level.w);
@@ -30,10 +31,12 @@ describe("ROOM TONE four-chapter equipment accessibility", () => {
         if (!wall) continue;
         selected.push(cell);
         const [dx,dz]=wall, kind=(selected.length-1)%4;
-        colliders.push({
+        const hide = {
           x:x*C+dx*0.82,z:z*C+dz*0.82,rotation:Math.atan2(dx,dz),
           halfWidth:0.57,halfDepth:kind===2 ? 0.13 : 0.44,
-        });
+        };
+        colliders.push(hide);
+        hidingPlaces.push({x:hide.x,z:hide.z});
       }
       const pass = (x:number,z:number) =>
         level.map[Math.floor(z/C+0.5)]?.[Math.floor(x/C+0.5)]===".";
@@ -61,6 +64,13 @@ describe("ROOM TONE four-chapter equipment accessibility", () => {
         }
       }
       expect(queue.length).toBeGreaterThan(level.reachable.length);
+      for(const hide of hidingPlaces) {
+        expect(queue.some(([ix,iz])=>{
+          const p={x:ix*STEP,z:iz*STEP};
+          return Math.hypot(p.x-hide.x,p.z-hide.z)<2.16 &&
+            lineClear(level.map,C,p,hide);
+        }),`Cannot reach hiding place ${hide.x}, ${hide.z}`).toBe(true);
+      }
       for(const cell of targetCells) {
         const target={x:(cell%level.w)*C,z:Math.floor(cell/level.w)*C};
         expect(queue.some(([ix,iz])=>{

@@ -1095,7 +1095,7 @@ function puzzle(reset = true) {
     "puzzle",
   );
   sound.threat(0);
-  sound.pause(false);
+  if (sound.paused) sound.pause(false);
 }
 function interact() {
   if (state !== "play") return;

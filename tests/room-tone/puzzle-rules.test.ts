@@ -29,5 +29,8 @@ describe("ROOM TONE puzzle solutions follow actual recovered notes",()=>{
     expect(expectedSequence(0,["5 A"])).toEqual([-1,-1,-1]);
     expect(expectedSequence(1,["52 MHz","83.6 MHz","91.8 MHz"])[0]).toBe(-1);
     expect(expectedSequence(8,["0°","90°","180°"])).toEqual([-1,-1,-1]);
+    expect(expectedSequence(1,["72.4 junk","83.6 MHz","91.8 MHz"])[0]).toBe(-1);
+    expect(expectedSequence(2,["wrong","02:00","09:30"])).toEqual([-1,-1,-1]);
+    expect(expectedSequence(3,["90 junk","90°","180°"])[0]).toBe(-1);
   });
 });

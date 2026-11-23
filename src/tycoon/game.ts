@@ -11,14 +11,14 @@ import { clearTycoon, createCore, formatMoney, loadTycoon, readTycoonSummary, sa
 import { STAGE_NAMES } from './core/data';
 import { readTycoonPosition, type TycoonPosition } from './core/save';
 import type { CoreEvent, SpotDef, TycoonCore, TycoonState } from './core/types';
-import { buildLayout, type Colliders, WORLD_HALF, type Layout } from './scene/layout';
+import { buildLayout, blockUnlocked, PITCH, type Colliders, WORLD_HALF, type Layout } from './scene/layout';
 import { CityView, type Quality, type SpotView } from './scene/city';
 import { Atmosphere } from './scene/sky';
 import { Player } from './scene/player';
 import { Rides } from './scene/rides';
 import { Crowd, Traffic } from './scene/people';
 import { TycoonAudio } from './audio';
-import { drawMap } from './ui/minimap';
+import { drawMap, pointFromMapClick } from './ui/minimap';
 import { esc, ladderHtml, menuHtml, spotPanelHtml, statusHtml, titleHtml, winHtml } from './ui/render';
 
 interface OpenOptions { loading?: LoadingScreen }
@@ -51,6 +51,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       <ul class="ty-toasts" id="ty-toasts" role="status" aria-live="polite"></ul>
       <div class="ty-mini"><canvas id="ty-minimap" width="220" height="220"></canvas></div>
       <div class="ty-banner" id="ty-banner"></div>
+      <div class="ty-route" id="ty-route" hidden><span class="ty-route-mark"></span><div><b>내 목적지</b><span id="ty-route-distance">0m</span></div><button type="button" id="ty-route-clear" aria-label="목적지 제거">✕</button></div>
       <div class="ty-drive" id="ty-drive" hidden><span id="ty-drive-name"></span><strong><b id="ty-drive-speed">0</b><small>km/h</small></strong><span>W 가속 · S 후진 · A/D 조향 · F 하차</span></div>
       <div class="ty-touchpad"><div class="ty-stick" id="ty-stick"><i></i></div>
         <div class="ty-tfoot"><button type="button" data-t="ride" id="ty-t-ride">탑승</button><button type="button" data-t="use" class="big">행동</button><button type="button" data-t="run" id="ty-t-run">달리기</button><button type="button" data-t="view">시점</button></div></div>
@@ -78,6 +79,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   let carryGroup: THREE.Group | null = null;
   let modalTrigger: HTMLElement | null = null;
   let resumePosition: TycoonPosition | null = null;
+  let waypoint: { x: number; z: number } | null = null;
 
   // ---------- 알림 ----------
   function toast(text: string, tone: 'info' | 'good' | 'bad' = 'info', sec = 3.4): void {
@@ -109,7 +111,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       case 'status': h = statusHtml(core.state); break;
       case 'menu': h = menuHtml(audio.enabled, player.firstPerson); break;
       case 'win': h = winHtml(core.state); break;
-      case 'map': h = '<div class="ty-bigmap" role="dialog" aria-modal="true" aria-label="도시 지도"><button type="button" class="ty-x" data-close aria-label="닫기">✕</button><canvas id="ty-bigmap" width="720" height="720"></canvas><div class="ty-map-caption">↑ 북쪽 · 흰 화살표: 내 위치 · 점선: 목적지까지 직선 방향</div></div>'; break;
+      case 'map': h = '<div class="ty-bigmap" role="dialog" aria-modal="true" aria-label="도시 지도"><button type="button" class="ty-x" data-close aria-label="닫기">✕</button><canvas id="ty-bigmap" width="720" height="720" aria-label="장소를 터치하거나 클릭해 목적지를 지정"></canvas><div class="ty-map-caption">원하는 지점을 눌러 길찾기 표시 · 흰 화살표: 현재 위치</div><button type="button" class="ty-clear-waypoint" data-waypoint-clear>내 목적지 지우기</button></div>'; break;
     }
     if (h !== modalHtml || modalEl.hidden) { // 내용이 바뀔 때만 교체합니다(누르는 도중 버튼이 바뀌면 클릭이 사라집니다)
       const keep = modalEl.querySelector('.ty-panel')?.scrollTop ?? 0;
@@ -121,7 +123,10 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     }
     if (modal.kind === 'map') drawBig();
   }
-  function drawBig(): void { const c = modalEl.querySelector<HTMLCanvasElement>('#ty-bigmap'); if (c) drawMap(c, layout, { stage: core.state.stageIndex, spots: spotViews, px: player.pos.x, pz: player.pos.z, yaw: player.facing, target: core.state.task?.targetSpotId ?? null, time: performance.now() / 1000, names: true }); }
+  function drawBig(): void {
+    const c = modalEl.querySelector<HTMLCanvasElement>('#ty-bigmap');
+    if (c) drawMap(c, layout, { stage: core.state.stageIndex, spots: spotViews, px: player.pos.x, pz: player.pos.z, yaw: player.facing, target: core.state.task?.targetSpotId ?? null, time: performance.now() / 1000, names: true, waypoint, vehicles: rides?.positions() });
+  }
   function openModal(m: Modal): void {
     if (!modal) modalTrigger = document.activeElement instanceof HTMLElement && root.contains(document.activeElement) ? document.activeElement : null;
     modal = m; if (m && document.pointerLockElement === canvas) document.exitPointerLock(); resetInput(); renderModal();
@@ -134,19 +139,32 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (phase !== 'play' || modal || !rides || core.state.activity?.lockMovement) return;
     const wasDriving = rides.driving;
     const result = rides.toggle(player);
-    if (rides.driving !== wasDriving) { resetInput(); hudDirty = true; }
+    if (rides.driving !== wasDriving) { resetInput(); hudDirty = true; if (!player.firstPerson && document.pointerLockElement === canvas) document.exitPointerLock(); }
     toast(result.message, result.ok ? 'info' : 'bad');
   }
   function toggleView(): void {
     player.setFirstPerson(!player.firstPerson);
     if (rides?.driving && player.rig) player.rig.root.visible = false;
-    if (player.firstPerson) lock();
+    if (player.firstPerson && !modal) lock();
     else if (document.pointerLockElement === canvas) document.exitPointerLock();
   }
 
   modalEl.addEventListener('click', e => {
     const t = e.target as HTMLElement; audio.unlock();
     if (t.closest('[data-close]') || t === modalEl) { closeModal(); return; }
+    if (t.closest('[data-waypoint-clear]')) { waypoint = null; hudDirty = true; closeModal(); toast('자유 이동 목적지를 해제했습니다'); return; }
+    const mapCanvas = t.closest<HTMLCanvasElement>('#ty-bigmap');
+    if (mapCanvas && modal?.kind === 'map' && e instanceof MouseEvent) {
+      const point = pointFromMapClick(e.clientX, e.clientY, mapCanvas.getBoundingClientRect());
+      const block = layout.blocks.reduce((best, b) => Math.hypot(b.cx - point.x, b.cz - point.z) < Math.hypot(best.cx - point.x, best.cz - point.z) ? b : best);
+      if (!blockUnlocked(block, core.state.stageIndex)) { toast('아직 열리지 않은 도시 구역입니다', 'bad'); return; }
+      const roadX = Math.round((point.x - PITCH / 2) / PITCH) * PITCH + PITCH / 2;
+      const roadZ = Math.round((point.z - PITCH / 2) / PITCH) * PITCH + PITCH / 2;
+      const snap = Math.abs(point.x - roadX) < Math.abs(point.z - roadZ)
+        ? { x: roadX, z: point.z } : { x: point.x, z: roadZ };
+      waypoint = { x: clamp(snap.x, -WORLD_HALF + 4, WORLD_HALF - 4), z: clamp(snap.z, -WORLD_HALF + 4, WORLD_HALF - 4) };
+      hudDirty = true; closeModal(); toast('목적지를 지도에 표시했습니다', 'good'); return;
+    }
     const act = t.closest<HTMLElement>('[data-act]');
     if (act && modal?.kind === 'spot') { doAction(modal.id, act.dataset.act!); return; }
     const menu = t.closest<HTMLElement>('[data-menu]')?.dataset.menu;
@@ -200,7 +218,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (e.code === 'KeyE' || e.code === 'Enter') { interact(); return; }
     if (e.code === 'KeyV') { toggleView(); return; }
     if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3') { core.setSpeed(e.code === 'Digit1' ? 1 : e.code === 'Digit2' ? 2 : 4); hudDirty = true; return; }
-    if (e.code.startsWith('Arrow')) e.preventDefault();
+    if (e.code.startsWith('Arrow') || (e.code === 'Space' && rides?.driving)) e.preventDefault();
     keys.add(e.code);
   };
   const onKeyUp = (e: KeyboardEvent): void => { keys.delete(e.code); };
@@ -231,6 +249,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     const t = b.dataset.t; if (t === 'ride') toggleRide(); else if (t === 'use') interact(); else if (t === 'run') { tc.run = !tc.run; b.classList.toggle('on', tc.run); b.setAttribute('aria-pressed', String(tc.run)); } else if (t === 'view') { toggleView(); }
   });
   q('#ty-prompt').addEventListener('click', () => { audio.unlock(); if (rides?.driving || rides?.nearby(player.pos.x, player.pos.z)) toggleRide(); else interact(); });
+  q('#ty-route-clear').addEventListener('click', () => { waypoint = null; hudDirty = true; toast('목적지를 해제했습니다'); });
   q('#ty-b-status').addEventListener('click', () => { audio.unlock(); if (!modal) openModal({ kind: 'status' }); });
   q('#ty-b-map').addEventListener('click', () => { audio.unlock(); if (!modal) openModal({ kind: 'map' }); });
   q('#ty-b-menu').addEventListener('click', () => { audio.unlock(); if (!modal) openModal({ kind: 'menu' }); });
@@ -286,7 +305,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   titleEl.addEventListener('click', e => { audio.unlock(); const b = (e.target as HTMLElement).closest<HTMLElement>('[data-title]'); if (b) titleAction(b.dataset.title!); });
   function titleAction(a: string): void {
     if (a === 'exit') { exit(); return; }
-    if (a === 'new') { if (readTycoonSummary().has && !window.confirm('기존 저장 기록을 지우고 새로 시작할까요?')) return; clearTycoon(); resumePosition = null; bindCore(createCore()); syncCity(false); }
+    if (a === 'new') { waypoint = null; if (readTycoonSummary().has && !window.confirm('기존 저장 기록을 지우고 새로 시작할까요?')) return; clearTycoon(); resumePosition = null; bindCore(createCore()); syncCity(false); }
     else if (a === 'continue') { /* 제목 화면에서 이미 저장본으로 만든 코어를 씁니다 */ }
     startPlay();
   }
@@ -339,7 +358,8 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       const steer = (keys.has('KeyA') ? 1 : 0) - (keys.has('KeyD') ? 1 : 0) - tc.mx;
       const throttle = (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0) - tc.my;
       const impact = rides?.update(dt, { throttle, steer, brake: keys.has('Space') }, player, frozen);
-      if (impact && !frozen) audio.bad(); }
+      if (impact && !frozen) audio.bad();
+    }
     // 가까운 장소
     near = playing && !rides?.driving ? city.nearestSpot(player.pos.x, player.pos.z, PROMPT_RANGE) : null;
     if (playing) { const id = near && !near.spot.locked ? near.id : null; core.setPresence(id); }
@@ -369,13 +389,17 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     hudT += dt; if (playing && (hudDirty || hudT > 0.25)) { hudDirty = false; hudT = 0; updateHud(st); }
     if (playing && modal?.kind === 'spot' && hudT === 0) renderModal();
     if (playing && modal?.kind === 'status' && Math.floor(nowS * 2) % 4 === 0 && hudT === 0) renderModal();
-    clockT += dt; if (playing && clockT > 0.1) { clockT = 0; drawMap(mini, layout, { stage: st.stageIndex, spots: spotViews, px: player.pos.x, pz: player.pos.z, yaw: player.facing, target: st.task?.targetSpotId ?? null, time: nowS, names: false }); if (modal?.kind === 'map') drawBig(); }
+    clockT += dt; if (playing && clockT > 0.1) { clockT = 0; drawMap(mini, layout, { stage: st.stageIndex, spots: spotViews, px: player.pos.x, pz: player.pos.z, yaw: player.facing, target: st.task?.targetSpotId ?? null, time: nowS, names: false, waypoint, vehicles: rides?.positions() }); if (modal?.kind === 'map') drawBig(); }
     void s;
     if (post) post.render(dt); else renderer.render(scene, camera);
   }
   const titleFocus = new THREE.Vector3();
 
   function updateHud(s: TycoonState): void {
+    const route = q('#ty-route');
+    if (waypoint && Math.hypot(player.pos.x - waypoint.x, player.pos.z - waypoint.z) < 8) { waypoint = null; toast('목적지에 도착했습니다', 'good'); }
+    route.hidden = !waypoint;
+    if (waypoint) set('route-distance', Math.round(Math.hypot(player.pos.x - waypoint.x, player.pos.z - waypoint.z)) + 'm 남음');
     set('cash', formatMoney(s.cash)); set('debt', s.debt ? `빚 ${formatMoney(s.debt)}` : ''); set('stage', s.stageName); html('ladder', ladderHtml(s.stage));
     set('clock', s.clock); set('day', `${s.day}일차`); set('sun', s.night ? '☾' : '☀');
     for (const b of q('#ty-speed').children) { const button = b as HTMLElement, active = Number(button.dataset.speed) === s.speed; button.classList.toggle('on', active); button.setAttribute('aria-pressed', String(active)); }

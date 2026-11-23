@@ -62,7 +62,25 @@ try {
       await page.locator("#sound").click();
       assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem("waldo.preferences.v1")).sound),false);
 
+      // Desktop retry regression: the first model request fails and the next
+      // attempt must recover without reloading the title screen.
+      if(config.name==="desktop"){
+        let failOnce=true;
+        await page.route("**/room-tone.glb",async route=>{
+          if(failOnce){
+            failOnce=false;
+            await route.fulfill({status:503,body:"",contentType:"application/octet-stream"});
+          }else await route.continue();
+        });
+      }
       await page.locator("#new").click();
+      if(config.name==="desktop"){
+        await page.waitForFunction(()=>
+          document.querySelector("#panelTitle")?.textContent?.includes("게임을 열 수 없습니다"),
+          null,{timeout:90000});
+        assert.match(await page.locator("#panelText").innerText(),/인터넷 연결/);
+        await page.getByRole("button",{name:"다시 시도"}).click();
+      }
       await page.waitForFunction(()=>{
         const title=document.querySelector("#panelTitle")?.textContent||"";
         return title.includes("끊어진 전원")||title.includes("게임을 열 수 없습니다");

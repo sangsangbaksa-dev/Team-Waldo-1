@@ -43,7 +43,10 @@ export class DuelArmy {
     for (const a of w.actors) if (a.alive && a.f === 0 && a.kind !== 'boss' && a.kind !== 'civ' && u.length < MAX_UNITS) u.push([a.id, a.kind, r(a.x), r(a.y), norm(a.ang), Math.round(a.hp), a.maxHp]);
     let s: ArmyStruct[] | null = null;
     if (this.n++ % 2 === 0) { s = []; for (const t of w.structures) if (t.alive && t.f === 0 && t.temp <= 0 && s.length < MAX_STRUCTS) s.push([t.id, t.kind, t.x, t.y, Math.round(t.hp), Math.round(t.built * 100) / 100, norm(t.ang)]); }
-    const sh = w.armyShots.splice(0, MAX_SHOTS).map(q => [Math.round(q.x), Math.round(q.y), Math.round(q.a * 1000) / 1000, q.w, Math.round(q.m * 100) / 100] as ArmyShot); w.armyShots.length = 0;
+    const sh = w.armyShots.splice(0, MAX_SHOTS).map(q => [Math.round(q.x), Math.round(q.y), Math.round(q.a * 1000) / 1000, q.w, Math.round(q.m * 100) / 100] as ArmyShot);
+    // Never silently discard every shot beyond this packet's limit. Carry a
+    // small backlog to the next 5Hz snapshot, but bound its memory and latency.
+    if (w.armyShots.length > MAX_SHOTS * 2) w.armyShots.splice(0, w.armyShots.length - MAX_SHOTS * 2);
     return { t: 'a', u, ...(s ? { s } : {}), sh };
   }
 

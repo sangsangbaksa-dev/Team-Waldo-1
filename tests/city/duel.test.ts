@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { World } from '../../src/city/world';
 import { TARGET_KILLS, TIME_LIMIT, duelOutcome, parseDuelClass, parsePose, parseShot } from '../../src/city/duel';
-import { DuelArmy, parseArmy } from '../../src/city/duelarmy';
+import { DuelArmy, MAX_SHOTS, parseArmy } from '../../src/city/duelarmy';
 
 const make = (side: 0 | 1, seed = 11, klass: 'warlord' | 'tycoon' | 'engineer' = 'warlord'): World => new World({ seed, difficulty: 'd4', klass, tutorial: true, duel: { side, name: '상대' } });
 const run = (w: World, sec: number): void => { for (let i = 0; i < sec * 60; i++) { w.step(1 / 60); w.events.length = 0; } };
@@ -123,6 +123,20 @@ describe('결투 병력·건설 동기화', () => {
     expect(w.byId.get(nextUnit.id)).toBe(nextUnit);
     expect(w.map.solids[building.solid].alive).toBe(false);
     expect(w.map.solids[nextBuilding.solid].alive).toBe(true);
+  });
+
+  it('한 패킷에 못 담은 병력 사격은 다음 패킷에 보내고 대기열을 제한한다', () => {
+    const w = make(0), sync = new DuelArmy();
+    for (let i = 0; i < MAX_SHOTS + 3; i++) w.armyShots.push({ x: 100 + i, y: 100, a: 0, w: 'u_rifle', m: 1 });
+    const first = parseArmy(sync.snapshot(w, 1000)!)!;
+    expect(first.sh).toHaveLength(MAX_SHOTS);
+    expect(w.armyShots).toHaveLength(3);
+    const second = parseArmy(sync.snapshot(w, 1200)!)!;
+    expect(second.sh.map(s => s[0])).toEqual([160, 161, 162]);
+    expect(w.armyShots).toHaveLength(0);
+    for (let i = 0; i < MAX_SHOTS * 10; i++) w.armyShots.push({ x: 1000 + i, y: 100, a: 0, w: 'u_rifle', m: 1 });
+    expect(sync.snapshot(w, 1400)).not.toBeNull();
+    expect(w.armyShots.length).toBeLessThanOrEqual(MAX_SHOTS * 2);
   });
 
   it('잘못된 병력·건물·사격 메시지는 걸러 낸다', () => {

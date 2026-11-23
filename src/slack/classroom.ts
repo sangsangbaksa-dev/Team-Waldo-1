@@ -179,7 +179,10 @@ export const createClassroomView: CreateView = (sim, audio) => {
     const p = gpos(e); if (!p) return;
     // Keep the tactical map focused so mouse/trackpad users can immediately
     // continue with arrow keys or Enter, without another Tab cycle.
-    gcv.focus({ preventScroll: true }); audio.resume(); getGame().command(p[0], p[1]);
+    gcv.focus({ preventScroll: true }); audio.resume();
+    cursorX = p[0]; cursorY = p[1];
+    const order = getGame().command(cursorX, cursorY);
+    txt(cursorStatus, `지휘 위치 ${Math.round(cursorX)}, ${Math.round(cursorY)} · ${order === 'atk' ? '공격 지시' : order === 'move' ? '이동 지시' : '명령할 유닛 없음'}`);
   };
   const gMove = (e: PointerEvent) => { const p = gpos(e); if (p) gHand = p[2]; };
   el.addEventListener('keydown', keydown);

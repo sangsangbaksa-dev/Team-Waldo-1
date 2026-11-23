@@ -1369,12 +1369,10 @@ function update(dt) {
     if (hideBreath === 0) leaveHiding(true);
   }
   eyeHeight = THREE.MathUtils.damp(eyeHeight, crouched ? 1.12 : 1.58, 12, dt);
-  camera.position.set(
-    player.x,
-    eyeHeight +
-      Math.sin(elapsed * (running ? 12 : 8.3)) * Math.min(moved, 0.05) * 0.38,
-    player.z,
-  );
+  // OS reduced-motion setting also disables movement head bob, not only sway.
+  const headBob = reducedMotion.matches ? 0
+    : Math.sin(elapsed * (running ? 12 : 8.3)) * Math.min(moved, 0.05) * 0.38;
+  camera.position.set(player.x, eyeHeight + headBob, player.z);
   const proximity = Math.max(0, 1 - Math.hypot(player.x - entity.position.x, player.z - entity.position.z) / 12);
   const sway = reducedMotion.matches ? 0 : proximity * 0.006 * Math.sin(now * 2.4);
   camera.rotation.set(pitch + sway * 0.4, yaw, sway, "YXZ");

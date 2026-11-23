@@ -50,6 +50,19 @@ describe('SPEED RUSH 1대1 레이스', () => {
     expect(parseSnap(null)).toBeNull();
   });
 
+  it('rejects malicious remote angles and out-of-range car physics before rendering', () => {
+    const src = encodeSnap(createRace(track, 1).player.car);
+    expect(parseSnap(src)).toEqual(src);
+    for (const [field, value] of [
+      [0, 1_000_000], [3, 1_000_000], [10, 100_000],
+      [9, 2], [11, 1_000_000], [13, -0.5], [13, 2], [14, -1], [15, 2],
+    ]) {
+      const invalid = src.slice();
+      invalid[field] = value;
+      expect(parseSnap(invalid)).toBeNull();
+    }
+  });
+
   it('너무 멀어진 상대는 바로 옮기고 가까우면 부드럽게 따라간다', () => {
     const car = createRace(track, 1, Infinity).player.car, link = { snap: parseSnap(encodeSnap({ ...car, x: car.x + 200 })), at: 0 };
     followSnap(car, link, 0, 1 / 90); expect(car.x).toBeCloseTo(link.snap![0], 5);

@@ -27,7 +27,12 @@ export class RacePvp {
   private gone(reason: 'bye' | 'silent' | 'never'): void { if (this.dead) return; this.dead = true; window.clearInterval(this.timer); this.hooks.onGone(reason); }
   private tick(): void {
     if (this.dead) return; const now = performance.now();
-    if (now - this.lastTick > 2000) this.heard = now; // 내 탭이 멈췄던 시간은 상대의 침묵으로 세지 않습니다
+    if (now - this.lastTick > 2000) {
+      // Resume from browser-tab suspension without treating sleeping time as
+      // opponent silence or an initial connection timeout.
+      this.born += now - this.lastTick;
+      this.heard = now;
+    }
     this.lastTick = now;
     if (!this.started) { this.hello(); if (now - this.born > NEVER_MS) this.gone('never'); } else if (now - this.heard > SILENT_MS) this.gone('silent');
   }

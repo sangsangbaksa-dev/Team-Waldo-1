@@ -954,3 +954,14 @@ button.primary { background: #e1e1dd; border-color: #e1e1dd; color: #151515; }
     height: max(78px, calc(env(safe-area-inset-top) + 54px));
   }
 }
+
+/* The global arcade toggle must also disable nonessential CSS effects when
+   the OS setting alone has not requested reduced motion. */
+body.rt-reduced-motion #home::after,
+body.rt-reduced-motion #viewWrap::before,
+body.rt-reduced-motion #viewWrap.noticed::before,
+body.rt-reduced-motion #viewWrap.noticed .lens,
+body.rt-reduced-motion #viewWrap.caught-shot::after {
+  animation: none;
+}
+body.rt-reduced-motion #viewWrap.noticed::before { transform: none; }

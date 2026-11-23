@@ -392,3 +392,7 @@
 }
 /* Clear but unobtrusive keyboard hint for the reaction minigame. */
 .sc-game-hint kbd{display:inline-block;border:1px solid #c3abd1aa;border-radius:4px;padding:0 4px;background:#ffffff17;color:#f8e6be;font:inherit;font-weight:700}
+/* Native keyboard/touch seek control rather than a decorative video timeline.
+   Keep the thumb visible and focus ring clear inside the simulated laptop. */
+.sc-video-seek{flex:1;min-width:30px;min-height:24px;margin:0;accent-color:#557eaf;cursor:pointer}
+.sc-video-seek:focus-visible{outline:2px solid #3b74bd;outline-offset:2px}

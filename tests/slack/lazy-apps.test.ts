@@ -188,6 +188,28 @@ it('keeps the dorm messenger responsive after many quick replies and app switche
   expect(view.el.querySelectorAll('.sc-app-window')).toHaveLength(2);
 });
 
+it('seeks video by keyboard/touch-friendly range input even while paused', () => {
+  view.el.querySelector<HTMLButtonElement>('[data-app="video"]')!.click();
+  view.frame(0.1);
+  const seek = view.el.querySelector<HTMLInputElement>('[data-vseek]')!;
+  const time = view.el.querySelector<HTMLElement>('[data-vtime]')!;
+  expect(seek.type).toBe('range');
+  expect(seek.getAttribute('aria-label')).toBe('영상 재생 위치');
+  expect(seek.max).toBe('728');
+  seek.value = '120';
+  seek.dispatchEvent(new Event('input', { bubbles: true }));
+  expect(time.textContent).toBe('2:00 / 12:08');
+  expect(seek.getAttribute('aria-valuetext')).toBe('2:00 / 12:08');
+  view.el.querySelector<HTMLButtonElement>('[data-vplay]')!.click();
+  seek.value = '180';
+  seek.dispatchEvent(new Event('input', { bubbles: true }));
+  expect(time.textContent).toBe('3:00 / 12:08');
+  view.el.querySelector<HTMLButtonElement>('[data-vid="1"]')!.click();
+  expect(seek.max).toBe('215');
+  expect(seek.value).toBe('0');
+  expect(time.textContent).toBe('0:00 / 3:35');
+});
+
 it('labels music and video play controls for keyboard and screen-reader players', () => {
   const open = (id: string) => {
     view.el.querySelector<HTMLButtonElement>(`[data-app="${id}"]`)!.click();

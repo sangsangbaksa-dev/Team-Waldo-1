@@ -145,20 +145,34 @@ export const createComputerView: CreateView = (sim, audio) => {
 
   /* ---------- 영상 ---------- */
   const V = { cur: 0, pos: 0, playing: true, sub: -1, sec: -1, nextComment: 5 };
-  const vidHtml = () => `<div class="sc-video"><div class="sc-video-main"><div class="sc-video-picture" data-vpic><div class="sc-video-sun"></div><div class="sc-video-cloud"></div><div class="sc-video-mountain"></div><div class="sc-video-play">❚❚</div><div class="sc-sub" data-sub></div></div><div class="sc-video-bar"><button type="button" data-vplay aria-label="일시정지">❚❚</button><span class="sc-progress"><i data-vprog></i></span><span data-vtime>0:00</span></div><b data-vtitle></b><small data-vmeta></small><div class="sc-comment" data-comments></div></div><div class="sc-video-list"><b>추천 영상</b>${videos.map((v, i) => `<button type="button" data-vid="${i}" style="--h:${v.h}"><span class="sc-thumb"><i></i></span><span><strong>${v.t}</strong><small>${v.ch} · ${v.views}</small></span></button>`).join('')}</div></div>`;
+  const vidHtml = () => `<div class="sc-video"><div class="sc-video-main"><div class="sc-video-picture" data-vpic><div class="sc-video-sun"></div><div class="sc-video-cloud"></div><div class="sc-video-mountain"></div><div class="sc-video-play">❚❚</div><div class="sc-sub" data-sub></div></div><div class="sc-video-bar"><button type="button" data-vplay aria-label="일시정지">❚❚</button><input class="sc-video-seek" type="range" data-vseek min="0" max="728" step="1" value="0" aria-label="영상 재생 위치"><span data-vtime>0:00</span></div><b data-vtitle></b><small data-vmeta></small><div class="sc-comment" data-comments></div></div><div class="sc-video-list"><b>추천 영상</b>${videos.map((v, i) => `<button type="button" data-vid="${i}" style="--h:${v.h}"><span class="sc-thumb"><i></i></span><span><strong>${v.t}</strong><small>${v.ch} · ${v.views}</small></span></button>`).join('')}</div></div>`;
+  const syncVideoTimeline = () => {
+    const w = wins.video, v = videos[V.cur];
+    const sub = Math.floor(V.pos / 3.5) % v.subs.length;
+    if (sub !== V.sub) { V.sub = sub; setTxt($('[data-sub]', w), v.subs[sub]); }
+    const sec = Math.floor(V.pos);
+    if (sec !== V.sec) {
+      V.sec = sec;
+      setTxt($('[data-vtime]', w), `${mmss(V.pos)} / ${mmss(v.len)}`);
+      const seek = $<HTMLInputElement>('[data-vseek]', w);
+      seek.value = String(sec);
+      seek.setAttribute('aria-valuetext', `${mmss(V.pos)} / ${mmss(v.len)}`);
+    }
+  };
   const vidSelect = (i: number) => {
     V.cur = i; V.pos = 0; V.sub = -1; V.sec = -1; V.nextComment = 3; V.playing = true;
     const w = wins.video; const v = videos[i];
     $('[data-vpic]', w).style.setProperty('--h', String(v.h)); setTxt($('[data-vtitle]', w), v.t); setTxt($('[data-vmeta]', w), `${v.ch} · 조회수 ${v.views}`);
+    const slider = $<HTMLInputElement>('[data-vseek]', w); slider.max = String(v.len);
     $('[data-comments]', w).replaceChildren(); w.querySelectorAll('[data-vid]').forEach((b, k) => b.classList.toggle('cur', k === i));
     $('[data-vpic]', w).classList.remove('paused'); const playButton = $('[data-vplay]', w); setTxt(playButton, '❚❚'); playButton.setAttribute('aria-label', '일시정지'); setTxt($('.sc-video-play', w), '❚❚');
+    syncVideoTimeline();
   };
   const vidTick = (dt: number) => {
     if (shown !== 'video' || sim.state.cover || !V.playing) return;
     const w = wins.video; const v = videos[V.cur]; V.pos += dt;
     if (V.pos >= v.len) { vidSelect((V.cur + 1) % videos.length); return; }
-    const sub = Math.floor(V.pos / 3.5) % v.subs.length; if (sub !== V.sub) { V.sub = sub; setTxt($('[data-sub]', w), v.subs[sub]); }
-    const sec = Math.floor(V.pos); if (sec !== V.sec) { V.sec = sec; setTxt($('[data-vtime]', w), `${mmss(V.pos)} / ${mmss(v.len)}`); $('[data-vprog]', w).style.transform = `scaleX(${V.pos / v.len})`; }
+    syncVideoTimeline();
     if (V.pos > V.nextComment) {
       V.nextComment = V.pos + 5 + Math.random() * 4; const list = $('[data-comments]', w); const p = document.createElement('p'); p.textContent = `●　${pick(commentPool)}`; list.append(p);
       while (list.childElementCount > 4) list.firstElementChild?.remove();
@@ -326,7 +340,7 @@ export const createComputerView: CreateView = (sim, audio) => {
   const click = (event: MouseEvent) => {
     audio.resume();
     const target = event.target as Element;
-    if (event.detail > 0 && target.closest('button') !== coverButton) el.focus({ preventScroll: true });
+    if (event.detail > 0 && !target.closest('input,select,textarea') && target.closest('button') !== coverButton) el.focus({ preventScroll: true });
     const app = target.closest<HTMLElement>('[data-app]');
     if (app) { select(app.dataset.app as DormActivity); return; }
     if (target.closest('.sc-friend')) { audio.resume(); audio.play('click'); say(sim.bribe() ? '냠냠… 고마워!' : '지금은 배불러…', 1.6); return; }
@@ -370,6 +384,15 @@ export const createComputerView: CreateView = (sim, audio) => {
     const mb = target.closest<HTMLElement>('[data-m]');
     if (mb) { audio.play('click'); const k = mb.dataset.m; if (k === 'play') musicPlay(!M.playing); else musicSet(M.cur + (k === 'next' ? 1 : -1)); return; }
     const tr = target.closest<HTMLElement>('[data-track]'); if (tr) { audio.play('click'); musicSet(Number(tr.dataset.track)); musicPlay(true); }
+  };
+  const input = (event: Event) => {
+    const seek = (event.target as Element).closest<HTMLInputElement>('[data-vseek]');
+    if (!seek || shown !== 'video' || sim.state.cover) return;
+    const seconds = Number(seek.value), max = videos[V.cur].len;
+    if (!Number.isFinite(seconds)) return;
+    V.pos = Math.min(max - 0.01, Math.max(0, seconds));
+    V.sec = -1; V.sub = -1;
+    syncVideoTimeline();
   };
   const keydown = (event: KeyboardEvent) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
@@ -419,6 +442,7 @@ export const createComputerView: CreateView = (sim, audio) => {
   const inputs = new AbortController();
   const options = { signal: inputs.signal };
   el.addEventListener('click', click, options);
+  el.addEventListener('input', input, options);
   el.addEventListener('keydown', keydown, options); el.addEventListener('keyup', keyup, options);
   el.addEventListener('focusout', focusout, options); el.addEventListener('pointerdown', pointerdown, options);
   host.addEventListener('scroll', scroll, { ...options, capture: true });

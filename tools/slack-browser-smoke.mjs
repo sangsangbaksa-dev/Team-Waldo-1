@@ -252,6 +252,12 @@ try {
       const scoreAfterKeyboard = Number(await page.locator('.sc-app-game [data-score]').textContent());
       assert.equal(scoreAfterKeyboard, scoreBeforeKeyboard + 10,
         'J shortcut must pop an available reaction star for keyboard players');
+      await page.locator('.sc-apps [data-app="video"]').click();
+      const seek = page.locator('.sc-app-video [data-vseek]');
+      await seek.waitFor({ state: 'visible' });
+      await seek.evaluate(node => { node.value = '120'; node.dispatchEvent(new Event('input', { bubbles: true })); });
+      assert.equal(await page.locator('.sc-app-video [data-vtime]').textContent(), '2:00 / 12:08',
+        'Video timeline must seek to requested time');
       await page.locator('.sc-apps [data-app="chat"]').click();
       await page.locator('.sc-app-chat').waitFor({ state: 'visible' });
       assert.equal(await page.locator('.sc-app-game .sc-target circle')

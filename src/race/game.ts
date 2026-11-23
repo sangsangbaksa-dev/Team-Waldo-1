@@ -263,6 +263,9 @@ export function openRace(onExit: () => void): void {
       contextLost = true; paused = true; clearControls();
       root.dataset.phase = 'error';
       const online = !!pvp || !!multi;
+      // An online player cannot fairly continue after a graphics reset.
+      if (pvp) leavePvp();
+      if (multi) { if (!multi.done) multi.net.bye(); endMulti(); }
       modal.className = 'rc-modal show';
       modal.innerHTML = `<div class="rc-card"><span class="rc-eyebrow">SPEED RUSH</span><h2>그래픽 연결이 끊겼습니다</h2><p>${online ? '온라인 경기는 계속할 수 없습니다. 메뉴로 돌아가 주세요.' : '브라우저가 그래픽 장치를 다시 설정했습니다. 새 화면으로 경기를 다시 시작할 수 있습니다.'}</p><div class="rc-actions"><button class="primary" data-act="${online ? 'exit' : 'restart'}">${online ? '메뉴로' : '경기 다시 시작'}</button><button data-act="exit">나가기</button></div></div>`;
     });

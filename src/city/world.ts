@@ -699,10 +699,10 @@ export class World {
     }
     // 시세
     this.price += (this.rng() - 0.5) * 0.8 + (10 - this.price) * 0.03;
-    if (this.rng() < 0.012) { const up = this.rng() < 0.5; this.price *= up ? 1.5 : 0.62; this.say(up ? '📈 크리스탈 시세 급등! 지금 팔면 이득' : '📉 크리스탈 시세 폭락! 사재기 기회', up ? '#7dffb0' : '#ff9d9d'); }
+    if (this.rng() < 0.012) { const up = this.rng() < 0.5; this.price *= up ? 1.5 : 0.62; this.say(up ? '크리스탈 시세 급등 · 매도 가격 확인' : '크리스탈 시세 급락 · 매수 가격 확인', up ? '#7dffb0' : '#ff9d9d'); }
     this.price = Math.max(4, Math.min(26, this.price)); this.priceHistory.push(this.price); if (this.priceHistory.length > 80) this.priceHistory.shift();
     // 총력전: 자기장이 없으므로, 오래 끌린 판은 라이벌이 병력을 모두 내어 서로·플레이어를 공격하게 합니다
-    if (!this.endgame && !this.opts.tutorial && !this.opts.duel && this.time >= DIFFICULTY[this.opts.difficulty].endgame) { this.endgame = true; this.say('⚔️ 총력전 — 라이벌이 병력을 모두 내어 공격합니다', '#ff9d9d'); this.fx('announce', 0, 0, 0, '총력전 개시'); }
+    if (!this.endgame && !this.opts.tutorial && !this.opts.duel && this.time >= DIFFICULTY[this.opts.difficulty].endgame) { this.endgame = true; this.say('총력전 시작 — 적 진영이 남은 병력으로 공격합니다', '#ff9d9d'); this.fx('announce', 0, 0, 0, '총력전 개시'); }
     // 자기장 피해 (1초 단위)
     const dps = ZONE_DPS[Math.min(ZONE_DPS.length - 1, this.zone.phase)], z = this.zone;
     for (const a of this.actors) if (a.alive && Math.hypot(a.x - z.x, a.y - z.y) > z.r) { if (a.f >= 8) { a.alive = false; a.gone = true; this.byId.delete(a.id); } else if (!a.inVeh) this.hurtActor(a, dps * (a.kind === 'boss' ? 1 : 1.6), -1, false); else { const v = this.vehicles.find(q => q.id === a.inVeh); if (v) this.hurtVehicle(v, dps * 4, -1); a.hp -= dps * 0.5; if (a.hp <= 0) { a.inVeh = 0; if (v) { v.driver = 0; v.f = -1; } this.killActor(a, -1); } } }
@@ -712,7 +712,7 @@ export class World {
     this.dropT -= 1;
     if (this.dropT <= 0 && z.nr > 100 && !this.opts.tutorial) {
       this.dropT = 70 + this.rng() * 25;
-      for (let k = 0; k < 30; k++) { const a = this.rng() * 6.28, d = this.rng() * z.nr * 0.75, x = z.nx + Math.cos(a) * d, y = z.ny + Math.sin(a) * d; if (x > 60 && y > 60 && x < SIZE - 60 && y < SIZE - 60 && !navBlocked(this.map, x, y)) { const ang = this.rng() * 6.28; this.planes.push({ x: x - Math.cos(ang) * 2600, y: y - Math.sin(ang) * 2600, vx: Math.cos(ang) * 520, vy: Math.sin(ang) * 520, tx: x, ty: y, dropped: false }); this.say('✈️ 보급 수송기 접근 — 전설 무기 투하 예정', '#ffe27a'); this.fx('announce', 0, 0, 0, '보급 투하'); break; } }
+      for (let k = 0; k < 30; k++) { const a = this.rng() * 6.28, d = this.rng() * z.nr * 0.75, x = z.nx + Math.cos(a) * d, y = z.ny + Math.sin(a) * d; if (x > 60 && y > 60 && x < SIZE - 60 && y < SIZE - 60 && !navBlocked(this.map, x, y)) { const ang = this.rng() * 6.28; this.planes.push({ x: x - Math.cos(ang) * 2600, y: y - Math.sin(ang) * 2600, vx: Math.cos(ang) * 520, vy: Math.sin(ang) * 520, tx: x, ty: y, dropped: false }); this.say('보급 수송기 접근 — 무기 상자 투하 예정', '#ffe27a'); this.fx('announce', 0, 0, 0, '보급 투하'); break; } }
     }
     if (!this.opts.tutorial) for (const q of this.quests) if (!q.done && q.check(this)) { q.done = true; this.factions[0].cash += q.reward; this.fx('quest', 0, 0, q.reward, q.text); }
     if (!this.opts.duel) updatePopulation(this, false);
@@ -729,7 +729,7 @@ export class World {
         z.nr = ph[2]; const room = Math.max(0, z.r - z.nr) * 0.75, a = this.rng() * 6.28, d = this.rng() * Math.min(room, z.phase === 0 ? 900 : 700);
         z.nx = Math.max(z.nr * 0.6 + 200, Math.min(SIZE - z.nr * 0.6 - 200, z.x + Math.cos(a) * d)); z.ny = Math.max(z.nr * 0.6 + 200, Math.min(SIZE - z.nr * 0.6 - 200, z.y + Math.sin(a) * d));
       }
-      if (z.t <= 0) { z.shrinking = true; z.t = ph[1]; z.sx = z.x; z.sy = z.y; z.sr = z.r; this.say(`⚠️ 자기장 ${z.phase + 1}단계 수축 시작!`, '#c9a2ff'); this.fx('announce', 0, 0, 0, '자기장 수축'); this.fx('siren', 0, 0); }
+      if (z.t <= 0) { z.shrinking = true; z.t = ph[1]; z.sx = z.x; z.sy = z.y; z.sr = z.r; this.say(`자기장 ${z.phase + 1}단계 수축 시작`, '#c9a2ff'); this.fx('announce', 0, 0, 0, '자기장 수축'); this.fx('siren', 0, 0); }
     } else {
       const k = 1 - Math.max(0, z.t) / ph[1]; z.x = z.sx + (z.nx - z.sx) * k; z.y = z.sy + (z.ny - z.sy) * k; z.r = z.sr + (z.nr - z.sr) * k;
       if (z.t <= 0) { z.r = z.nr; z.x = z.nx; z.y = z.ny; z.shrinking = false; z.phase++; if (z.phase < ZONE_PHASES.length) z.t = ZONE_PHASES[z.phase][0]; }
@@ -761,7 +761,7 @@ export class World {
       for (const a of this.actors) if (a.alive && a.f === f.id) { a.alive = false; this.byId.delete(a.id); this.fx('death', a.x, a.y, a.r, undefined, a.f); }
       for (const s of this.structures) if (s.alive && s.f === f.id) { s.alive = false; removeSolid(this.map, s.solid); this.fx('boom', s.x + s.w / 2, s.y + s.h / 2, 60); }
       for (const z of this.businesses) if (z.owner === f.id) { z.owner = -1; z.level = 1; }
-      this.say(`☠️ ${f.name} 궤멸 — 남은 조직 ${this.aliveCount()}`, f.color); this.fx('announce', 0, 0, 0, `${f.name} 궤멸 · 남은 조직 ${this.aliveCount()}`);
+      this.say(`${f.name} 궤멸 · 생존 진영 ${this.aliveCount()}`, f.color); this.fx('announce', 0, 0, 0, `${f.name} 궤멸 · 남은 조직 ${this.aliveCount()}`);
     }
     const alive = this.factions.filter(f => f.alive);
     if (alive.length <= 1 || (!this.factions[0].alive && !this.opts.autoPlayer)) {

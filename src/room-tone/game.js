@@ -24,6 +24,7 @@ import { buildEnvironment, buildHidingSpot, createHidingSpotKit } from "./enviro
 import { Sound } from "./sound.js";
 import { normalizeCampaign } from "./campaign.mjs";
 import { createPointerOwner, tryCapture } from "./input.mjs";
+import { lineClear, soundTravelDistance } from "./visibility.mjs";
 import { initialMute } from "./preferences.mjs";
 import { createIdLookup } from "./dom.mjs";
 
@@ -107,6 +108,7 @@ let returnFromMap = resume;
 let renderCaptureShot;
 let captureTime = 0;
 let investigation = null, nextFlicker = 0, flickerUntil = 0;
+let hearingCell = -1, hearingTree = null;
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const touch =
   matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
@@ -366,13 +368,7 @@ function pass(x, z) {
   return level.map[row]?.[col] === ".";
 }
 function clearLine(a, b) {
-  const len = Math.hypot(a.x - b.x, a.z - b.z),
-    steps = Math.ceil(len / 0.42);
-  for (let i = 1; i < steps; i++) {
-    const t = i / steps;
-    if (!pass(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t)) return false;
-  }
-  return true;
+  return lineClear(level.map, C, a, b);
 }
 function shift(dx, dz) {
   const r = 0.225;
@@ -418,6 +414,8 @@ function pointPlayer() {
   searching = false;
   enemySteps = 0;
   alertUntil = 0;
+  hearingCell = -1;
+  hearingTree = null;
   $("viewWrap").classList.remove("noticed");
   enemyPhase = 0;
   lastCell = -1;
@@ -1171,10 +1169,18 @@ function enemyUpdate(dt, running) {
   exitGrace = Math.max(0, exitGrace - dt);
   const visible = dist <= 14 && clearLine(player, e);
   const inSight = !hiddenSpot && visible && dist <= (lightOn ? 10.7 : 6.1);
-  const hearRange = running ? 14 : crouched ? 1.6 : 4.7;
-  const hear = !hiddenSpot && moved > dt * 0.15 && dist < hearRange * (visible ? 1 : 0.55);
-  const tracking = !grace && (inSight || hear);
   const playerCell = cellOf(player);
+  const enemyCell = cellOf(e);
+  // One BFS per monster grid-cell transition. Wall-separated rooms no longer
+  // act as if footsteps can travel straight through solid partitions.
+  if (enemyCell !== hearingCell) {
+    hearingCell = enemyCell;
+    hearingTree = paths(level.map, enemyCell).dist;
+  }
+  const hearRange = running ? 14 : crouched ? 1.6 : 4.7;
+  const acousticDistance = soundTravelDistance(visible, dist, hearingTree?.[playerCell] ?? -1, C);
+  const hear = !hiddenSpot && moved > dt * 0.15 && acousticDistance < hearRange;
+  const tracking = !grace && (inSight || hear);
   if (tracking) {
     if (!wasTracking) {
       sound.notice();
@@ -1218,7 +1224,7 @@ function enemyUpdate(dt, running) {
   $("viewWrap").classList.toggle("noticed", now < alertUntil);
 
   nextPath -= dt;
-  const ec = cellOf(e);
+  const ec = enemyCell;
   if (nextPath <= 0) {
     nextPath = enemyPhase ? 0.65 : 2.5;
     // Replan from the next corridor center. This keeps sharp turns out of walls.
@@ -1499,6 +1505,7 @@ window.addEventListener("pagehide", (e) => {
   }
   if (level && !["home", "won", "load", "error"].includes(state)) save();
   sound.pause(true);
+  sound.dispose();
   if (frameId !== null) cancelAnimationFrame(frameId);
   frameId = null;
   renderer?.setAnimationLoop?.(null);

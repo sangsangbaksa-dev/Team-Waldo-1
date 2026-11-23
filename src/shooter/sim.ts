@@ -120,7 +120,12 @@ export class Match {
       }
     }
     if (o.vehicles && o.mode === 'br') this.initVehicles();
-    const total = o.fill ?? (o.mode === 'br' ? 20 : o.humans.length), names = [...BOT_NAMES].sort(() => this.rng() - 0.5), air = !!this.plane;
+    const total = o.fill ?? (o.mode === 'br' ? 20 : o.humans.length), names = [...BOT_NAMES], air = !!this.plane;
+    // 온라인 호스트/클라이언트마다 sort 비교 호출 횟수가 다르면 봇 명단과 RNG 상태가 어긋납니다.
+    for (let i = names.length - 1; i > 0; i--) {
+      const j = Math.floor(this.rng() * (i + 1));
+      [names[i], names[j]] = [names[j], names[i]];
+    }
     for (let i = 0; i < total; i++) {
       const h = o.humans[i], sp = air ? this.planeAt(0) : this.map.spawns[i % this.map.spawns.length], bi = i - o.humans.length, cyc = Math.floor(bi / names.length);
       const p: Player = {

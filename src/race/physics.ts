@@ -178,13 +178,14 @@ export function separateCars(a: CarState, b: CarState): number {
 /** line: 0 이면 고정 차선, 1 이면 코너 안쪽을 파고드는 레이싱 라인. nitro: 이 값을 넘는 니트로 잔량만 쓴다(없으면 안 씀). */
 export interface AiProfile { lane: number; top: number; grip: number; skill: number; line?: number; nitro?: number }
 /** 중심선을 따라가는 단순 AI. 앞쪽 곡률로 목표 속도를 정합니다. */
-export function aiInput(c: CarState, t: Track, ai: AiProfile): CarInput {
+/** band applies temporary race catch-up scaling without allocating an AI profile per 90Hz tick. */
+export function aiInput(c: CarState, t: Track, ai: AiProfile, band = 1): CarInput {
   const speed = Math.max(c.vf, 0), la = Math.round((11 + speed * 0.42) / t.ds), ti = (c.idx + la) % t.n;
   const line = ai.line ?? 0, inside = clamp(t.k[(ti + 8) % t.n] * 1400, -1, 1) * (t.halfWidth - 7), lane = ai.lane * (1 - line) + inside * line;
   const tx = t.x[ti] - t.tz[ti] * lane, tz = t.z[ti] + t.tx[ti] * lane;
   const err = wrapAngle(Math.atan2(tz - c.z, tx - c.x) - c.h), steer = clamp(err * 2.6, -1, 1);
   const look = Math.max(12, Math.round((speed * 1.7) / t.ds)), kmax = maxLookCurvature(t.k, c.idx, look);
-  const top = ai.top * (c.boostT > 0 ? BOOST_TOP : 1), target = Math.min(top, Math.sqrt(ai.grip / Math.max(kmax, 1e-4)));
+  const top = ai.top * band * (c.boostT > 0 ? BOOST_TOP : 1), target = Math.min(top, Math.sqrt(ai.grip * band * band / Math.max(kmax, 1e-4)));
   const over = speed - target, straight = kmax < 0.005 && speed > 35 && over < 2;
   return { throttle: over < 0 ? 1 : 0, brake: over > 4 ? Math.min(1, over / 12) : 0, steer, drift: false, nitro: ai.nitro !== undefined && straight && c.nitro > ai.nitro };
 }

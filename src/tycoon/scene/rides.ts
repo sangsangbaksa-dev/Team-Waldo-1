@@ -6,7 +6,7 @@ import type { Colliders, Layout, Zone } from './layout';
 import type { Player } from './player';
 import { PITCH } from './layout';
 
-interface Ride extends DriveState { mesh: THREE.Group; name: string; tune: DriveTuning; color: number }
+interface Ride extends DriveState { mesh: THREE.Group; name: string; tune: DriveTuning }
 export interface ParkedVehicle { x: number; z: number; heading: number; active: boolean; name: string }
 interface FleetSpec { name: string; kind: 'car' | 'jeep' | 'van' | 'truck'; color: number; tune: DriveTuning; district?: Zone }
 const FLEET: readonly FleetSpec[] = [
@@ -30,7 +30,7 @@ export class Rides {
   private scratch = { x: 0, z: 0 };
   private night = 0;
   private lamp = new THREE.SpotLight(0xffe9b8, 0, 46, Math.PI / 5, 0.55, 1.6);
-  constructor(private scene: THREE.Scene, layout: Layout, private colliders: Colliders) {
+  constructor(scene: THREE.Scene, layout: Layout, private colliders: Colliders) {
     this.lamp.castShadow = false;
     scene.add(this.lamp, this.lamp.target);
     const nearestVertical = Math.round((layout.spawn.x - PITCH / 2) / PITCH) * PITCH + PITCH / 2;
@@ -57,7 +57,7 @@ export class Rides {
       const mesh = makeVehicleMesh({ kind: spec.kind, ...dims, c: spec.color, v: i % 2, wreck: false });
       mesh.position.set(spot.x, 0.18, spot.z); mesh.rotation.y = spot.heading;
       mesh.name = 'HUSTLE: ' + spec.name; scene.add(mesh);
-      this.cars.push({ ...spot, speed: 0, mesh, name: spec.name, tune: spec.tune, color: spec.color });
+      this.cars.push({ ...spot, speed: 0, mesh, name: spec.name, tune: spec.tune });
     }
   }
   get driving(): boolean { return this.active !== null; }

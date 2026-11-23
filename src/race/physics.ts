@@ -51,7 +51,17 @@ export function recoverCar(c: CarState, t: Track): void {
 }
 
 const clamp = (v: number, a: number, b: number): number => Math.max(a, Math.min(b, v));
-export const wrapAngle = (a: number): number => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
+/** Normalize even corrupted, enormous headings in constant time.
+ * Keep ordinary [-PI, PI] inputs untouched to avoid extra hot-loop modulo. */
+export const wrapAngle = (a: number): number => {
+  if (!Number.isFinite(a)) return 0;
+  if (a >= -Math.PI && a <= Math.PI) return a;
+  const turn = Math.PI * 2;
+  let reduced = (a + Math.PI) % turn;
+  if (reduced < 0) reduced += turn;
+  const out = reduced - Math.PI;
+  return out === -Math.PI && a > 0 ? Math.PI : out;
+};
 
 export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: CarParams = PLAYER_PARAMS): StepEvents {
   const ev: StepEvents = { hit: 0, driftBoost: 0, pad: false };

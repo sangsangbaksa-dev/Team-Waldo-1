@@ -386,7 +386,9 @@ export class SkySim {
       let victimAt = Infinity;
       if (tgt) {
         const t = projectileJetImpact(prev, segment, len2, tgt, 28);
-        if (t <= (terrainAt ?? Infinity)) { victim = tgt; victimAt = t; }
+        // Infinity means no sphere intersection. Infinity <= Infinity must
+        // never count as an impact when there is also no terrain collision.
+        if (Number.isFinite(t) && t <= (terrainAt ?? Infinity)) { victim = tgt; victimAt = t; }
       } else {
         for (const jet of this.jets) {
           if (!jet.alive || jet.team === m.team) continue;

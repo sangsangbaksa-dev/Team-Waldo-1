@@ -244,6 +244,25 @@ export class SkyView {
     for (let i = 0; i < (big ? 10 : 5); i++) this.emit(pos, this.v1.set((Math.random() - 0.5) * 180, Math.random() * 120, (Math.random() - 0.5) * 180), 0.45 + Math.random() * 0.4, 3, -0.3, 'fire', 0xffd07a);
     const d = pos.distanceTo(this.camera.position); if (!this.reducedMotion && d < 700) this.shake = Math.max(this.shake, (big ? 1 : 0.5) * (1 - d / 700));
   }
+  /** Bright countermeasure flares deploy in diverging streaks behind both wings.
+   * Uses the pooled billboards; no new Three.js mesh or texture per activation. */
+  deployFlares(pos: THREE.Vector3, orientation: THREE.Quaternion): void {
+    for (const side of [-1, 1]) {
+      const origin = this.v3.set(side * 5, -1.8, 5).applyQuaternion(orientation).add(pos);
+      for (let i = 0; i < 10; i++) {
+        const velocity = this.v2.set(side * (35 + Math.random() * 25),
+          -12 + Math.random() * 18, 35 + Math.random() * 35).applyQuaternion(orientation);
+        this.emit(origin, velocity, 0.6 + Math.random() * 0.6,
+          10 + Math.random() * 8, -0.6, 'fire', i % 3 === 0 ? 0xfffae1 : 0xffbb66);
+      }
+      for (let i = 0; i < 5; i++) {
+        const velocity = this.v2.set(side * (20 + Math.random() * 14),
+          -5 + Math.random() * 12, 25 + Math.random() * 20).applyQuaternion(orientation);
+        this.emit(origin, velocity, 1.1 + Math.random() * 0.5,
+          12 + Math.random() * 7, 1.1, 'smoke', 0xb0bbc4);
+      }
+    }
+  }
   spark(pos: THREE.Vector3): void { for (let i = 0; i < 3; i++) this.emit(pos, this.v1.set((Math.random() - 0.5) * 60, (Math.random() - 0.5) * 60, (Math.random() - 0.5) * 60), 0.25, 8, 0.2, 'fire', 0xffe08a); }
   kick(a: number): void { if (!this.reducedMotion) this.shake = Math.max(this.shake, a); }
 

@@ -137,12 +137,15 @@ export function readTycoonPosition(raw: unknown): TycoonPosition | null {
     pitch: num(p.pitch, 0.28, -1.3, 1.3),
     distance: num(p.distance, 7.5, 3.5, 14),
     firstPerson: bool(p.firstPerson, false),
-    ride: isObj(p.ride) && typeof p.ride.name === 'string' && p.ride.name.length <= 64 &&
-      typeof p.ride.x === 'number' && Number.isFinite(p.ride.x) &&
-      typeof p.ride.z === 'number' && Number.isFinite(p.ride.z) &&
-      typeof p.ride.heading === 'number' && Number.isFinite(p.ride.heading)
-      ? { name: p.ride.name, x: num(p.ride.x, 0, -1000, 1000), z: num(p.ride.z, 0, -1000, 1000), heading: num(p.ride.heading, 0, -Math.PI * 2, Math.PI * 2) }
-      : null,
+    // Omit the optional property for legacy saves to preserve round-trip shape.
+    ...(Object.hasOwn(p, 'ride') ? {
+      ride: isObj(p.ride) && typeof p.ride.name === 'string' && p.ride.name.length <= 64 &&
+        typeof p.ride.x === 'number' && Number.isFinite(p.ride.x) &&
+        typeof p.ride.z === 'number' && Number.isFinite(p.ride.z) &&
+        typeof p.ride.heading === 'number' && Number.isFinite(p.ride.heading)
+        ? { name: p.ride.name, x: num(p.ride.x, 0, -1000, 1000), z: num(p.ride.z, 0, -1000, 1000), heading: num(p.ride.heading, 0, -Math.PI * 2, Math.PI * 2) }
+        : null,
+    } : {}),
   };
 }
 

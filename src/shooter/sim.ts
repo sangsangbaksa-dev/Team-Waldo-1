@@ -268,7 +268,8 @@ export class Match {
   parkBox(v: Vehicle, on: boolean): void {
     if (!on) { moveBox(this.map, v.box, { y0: 999, y1: 1000 }); return; }
     const c = Math.abs(Math.cos(v.yaw)), s = Math.abs(Math.sin(v.yaw)), hx = c * v.w / 2 + s * v.d / 2, hz = s * v.w / 2 + c * v.d / 2;
-    moveBox(this.map, v.box, { x0: v.x - hx, x1: v.x + hx, z0: v.z - hz, z1: v.z + hz, y0: 0, y1: v.h });
+    const y = groundHeight(this.map.terrain, v.x, v.z);
+    moveBox(this.map, v.box, { x0: v.x - hx, x1: v.x + hx, z0: v.z - hz, z1: v.z + hz, y0: y, y1: y + v.h });
   }
   /** 타기 좋은 차: 차체 가장자리까지 DRIVE.board 이내의 가장 가까운 빈 차(없으면 null). */
   vehicleNear(p: { x: number; z: number }): Vehicle | null {
@@ -319,7 +320,7 @@ export class Match {
   explodeVehicle(v: Vehicle, by: number): void {
     if (v.wreck) return; const drv = v.driver >= 0 ? this.players[v.driver] : null; v.wreck = true; v.hp = 0; v.speed = 0; v.moving = false;
     if (drv) this.leaveVehicle(drv, false); v.driver = -1; this.parkBox(v, true);
-    this.events.push({ t: 'veh', stage: 'boom', id: v.id, x: v.x, z: v.z }); this.events.push({ t: 'nade', stage: 'boom', id: by, x: v.x, y: 1, z: v.z }); this.sounds.push({ x: v.x, z: v.z, t: this.t, by });
+    this.events.push({ t: 'veh', stage: 'boom', id: v.id, x: v.x, z: v.z }); this.events.push({ t: 'nade', stage: 'boom', id: by, x: v.x, y: groundHeight(this.map.terrain, v.x, v.z) + 1, z: v.z }); this.sounds.push({ x: v.x, z: v.z, t: this.t, by });
     for (const q of this.players) {
       if (!q.alive || q.air || q.veh >= 0) continue; const d = Math.hypot(q.x - v.x, q.z - v.z); if (d > DRIVE.boomR) continue;
       let dmg = DRIVE.boomDmg * (1 - d / DRIVE.boomR); if (q === drv) dmg = Math.max(dmg, 55); this.damage(q, dmg, by, 'vehicle', false, q.x, 1.2, q.z, false);
@@ -477,8 +478,9 @@ export class Match {
       this.sounds.push({ x: n.x, z: n.z, t: this.t, by: n.owner });
       for (const v of this.vehicles) { if (v.wreck) continue; const d = Math.hypot(v.x - n.x, v.z - n.z); if (d < NADE.radius + 1.5) this.hurtVehicle(v, NADE.dmg * 1.4 * (1 - d / (NADE.radius + 1.5)), n.owner); }
       for (const q of this.players) {
-        if (!q.alive || q.air || q.veh >= 0) continue; const d = Math.hypot(q.x - n.x, q.z - n.z, (1 - n.y) * 0.5); if (d > NADE.radius) continue;
-        let dmg = NADE.dmg * (1 - d / NADE.radius) ** 1.2; if (!lineClear(this.map, n.x, Math.max(0.3, n.y), n.z, q.x, 1.0, q.z)) dmg *= 0.3; if (dmg < 3) continue;
+        if (!q.alive || q.air || q.veh >= 0) continue; const targetY = groundHeight(this.map.terrain, q.x, q.z) + 1;
+        const d = Math.hypot(q.x - n.x, q.z - n.z, (targetY - n.y) * 0.5); if (d > NADE.radius) continue;
+        let dmg = NADE.dmg * (1 - d / NADE.radius) ** 1.2; if (!lineClear(this.map, n.x, Math.max(groundHeight(this.map.terrain, n.x, n.z) + 0.3, n.y), n.z, q.x, targetY, q.z)) dmg *= 0.3; if (dmg < 3) continue;
         this.damage(q, dmg, n.owner, 'grenade', false, q.x, 1.2, q.z, false);
       }
     }

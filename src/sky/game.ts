@@ -59,6 +59,11 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
 
   let adaptive: AdaptiveQuality | null = null; let stableQualitySeconds = 0;
   let titlePreviewRendered = false;
+  const HUD_REFRESH_INTERVAL = 1 / 15;
+  let hudElapsed = HUD_REFRESH_INTERVAL;
+  let landscapeTouch = false;
+  let radarGradient: CanvasGradient | null = null;
+  let radarGradientKey = '';
   let renderer: THREE.WebGLRenderer | null = null; let view: SkyView | null = null; let sim: SkySim | null = null;
   let diff: Difficulty = DIFFS[1]!; let state: 'title' | 'play' | 'paused' | 'over' = 'title'; let closed = false; let raf = 0; let last = 0; let saved = false;
   let mTap = false, fireTap = 0, hitT = 0, hitBy = 0, mBoost = false, bannerT = 0, alertT = 0, alertRank = 0, flare = false, mFire = false, mMissile = false, autoFire = false, throttle = 0.55, hintT = 8, cockpit = false;
@@ -330,9 +335,17 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     }
     for (const k of sim!.pickups) { const s = view!.project(k.pos); if (s.behind || s.x < 0 || s.x > 1 || s.y < 0 || s.y > 1) continue; octx.strokeStyle = k.kind === 'repair' ? '#5dff8f' : k.kind === 'shield' ? '#ffe27a' : '#6ab8ff'; octx.lineWidth = 2; octx.beginPath(); octx.arc(s.x * W, s.y * H, 14 + (prefs.reducedMotion ? 0 : 3 * Math.sin(performance.now() / 150)), 0, 7); octx.stroke(); octx.fillStyle = octx.strokeStyle; drawIcon(octx, k.kind === 'repair' ? 'hp' : k.kind === 'shield' ? 'shield' : 'missile', s.x * W, s.y * H, 15); }
     // 레이더(내 기수가 위쪽)
-    const landscapeTouch = W > H && H <= 560 && matchMedia('(pointer:coarse)').matches;
     const R = landscapeTouch ? 43 : 58, rx = W - R - 16, ry = landscapeTouch ? H * 0.52 : H - R - 16; octx.fillStyle = 'rgba(8,30,20,.55)'; octx.strokeStyle = 'rgba(120,255,180,.5)'; octx.lineWidth = 1.4; octx.beginPath(); octx.arc(rx, ry, R, 0, 7); octx.fill(); octx.stroke(); octx.beginPath(); octx.arc(rx, ry, R / 2, 0, 7); octx.stroke();
-    { const sw = prefs.reducedMotion ? 0 : performance.now() / 900 % (Math.PI * 2), g = octx.createRadialGradient(rx, ry, 0, rx, ry, R); g.addColorStop(0, 'rgba(120,255,180,0)'); g.addColorStop(1, 'rgba(120,255,180,.28)'); // 레이더 소인선 + 십자선
+    {
+      const sw = prefs.reducedMotion ? 0 : performance.now() / 900 % (Math.PI * 2);
+      const key = `${rx},${ry},${R}`;
+      if (!radarGradient || key !== radarGradientKey) {
+        radarGradient = octx.createRadialGradient(rx, ry, 0, rx, ry, R);
+        radarGradient.addColorStop(0, 'rgba(120,255,180,0)');
+        radarGradient.addColorStop(1, 'rgba(120,255,180,.28)');
+        radarGradientKey = key;
+      }
+      const g = radarGradient;
       octx.save(); octx.beginPath(); octx.arc(rx, ry, R, 0, 7); octx.clip(); octx.fillStyle = g; octx.beginPath(); octx.moveTo(rx, ry); octx.arc(rx, ry, R, sw - 0.7, sw); octx.closePath(); octx.fill(); octx.restore();
       octx.strokeStyle = 'rgba(120,255,180,.25)'; octx.beginPath(); octx.moveTo(rx - R, ry); octx.lineTo(rx + R, ry); octx.moveTo(rx, ry - R); octx.lineTo(rx, ry + R); octx.stroke(); octx.strokeStyle = 'rgba(120,255,180,.5)'; }
     const yaw = p.yaw, cs = Math.cos(yaw), sn = Math.sin(yaw), range = 2400;
@@ -356,6 +369,8 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   // ── 흐름 ─────────────────────────────────────────
   function resize(): void {
     if (!renderer || !view) return; const w = innerWidth, h = innerHeight, dpr = Math.min(devicePixelRatio || 1, 2);
+    landscapeTouch = w > h && h <= 560 && matchMedia('(pointer:coarse)').matches;
+    radarGradient = null; radarGradientKey = '';
     renderer.setSize(w, h, false); view.resize(w, h); ov.width = Math.round(w * dpr); ov.height = Math.round(h * dpr); ov.style.width = w + 'px'; ov.style.height = h + 'px';
   }
   /** A menu/pause can last minutes; keep the selected quality without letting
@@ -379,7 +394,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
       paintRec();
     }
     audio.pause(false); resetQualityClock(); last = performance.now();
-    diff = d; sim = new SkySim(d); saved = false; state = 'play'; throttle = 0.55; mouse.x = mouse.y = 0; mouse.active = false; fireTap = 0; flare = mTap = mBoost = mFire = mMissile = false; mouse.touchId = mouse.secondId = -1; hitT = 0; hitBy = 0; keys.clear(); bannerT = alertT = alertRank = 0; cockpit = false; root.classList.remove('cockpit'); view?.setCockpit(false); const cameraButton = $<HTMLButtonElement>('sk-camera'); cameraButton.setAttribute('aria-pressed', 'false'); cameraButton.setAttribute('aria-label', '조종석 시점으로 전환'); autoFire = ctl.assist >= 2;
+    diff = d; sim = new SkySim(d); saved = false; state = 'play'; hudElapsed = HUD_REFRESH_INTERVAL; throttle = 0.55; mouse.x = mouse.y = 0; mouse.active = false; fireTap = 0; flare = mTap = mBoost = mFire = mMissile = false; mouse.touchId = mouse.secondId = -1; hitT = 0; hitBy = 0; keys.clear(); bannerT = alertT = alertRank = 0; cockpit = false; root.classList.remove('cockpit'); view?.setCockpit(false); const cameraButton = $<HTMLButtonElement>('sk-camera'); cameraButton.setAttribute('aria-pressed', 'false'); cameraButton.setAttribute('aria-label', '조종석 시점으로 전환'); autoFire = ctl.assist >= 2;
     $('sk-title').hidden = true; $('sk-end').hidden = true; $('sk-paused').hidden = true; $('sk-alert').textContent = ''; $('sk-banner').classList.remove('on'); root.querySelector<HTMLElement>('.sk-hud')!.hidden = false; audio.unlock(); lock(); hint(matchMedia('(pointer: coarse)').matches ? '화면을 드래그해 조종하세요' : ctl.pointerLock ? '상대 이동으로 조종 · Esc: 일시정지' : '커서를 화면 중앙 기준으로 움직여 조종 · P: 일시정지'); banner('출격!', 1.5);
     if (view) {
       view.resetSession();
@@ -387,15 +402,18 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
       view.camera.up.set(0, 1, 0);
       view.camera.lookAt(sim.player.pos.clone().addScaledVector(forward(sim.player, new THREE.Vector3()), 120));
     }
+    requestFrame();
   }
   function togglePause(): void {
     if (state === 'play') {
       clearHeldInput();
       audio.pause(true); state = 'paused'; $('sk-paused').hidden = false; unlock(); stableQualitySeconds = 0;
+      cancelAnimationFrame(raf); raf = 0;
     } else if (state === 'paused') {
       state = 'play'; $('sk-paused').hidden = true; audio.pause(false); last = performance.now();
       resetQualityClock();
       lock();
+      requestFrame();
     }
   }
   function finish(): void {
@@ -423,8 +441,10 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     }
     return true;
   }
+  function requestFrame(): void { if (!closed && !raf) raf = requestAnimationFrame(frame); }
   function frame(now: number): void {
-    if (closed) return; raf = requestAnimationFrame(frame);
+    if (closed) return;
+    raf = 0;
     const frameMs = now - last, plan = planSkyFrame(frameMs);
     const dt = Math.min(0.05, plan.elapsed);
     last = now; if (!renderer || !view || !sim) return;
@@ -501,7 +521,15 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
       stableQualitySeconds = recovery.stableSeconds;
       if (recovery.restore) { adaptive.level--; view.setLevel(adaptive.level); }
     } else stableQualitySeconds = 0;
-    if (state === 'play') { hud(sim.player, plan.elapsed); overlay(sim.player); } else if (state === 'over') { octx.clearRect(0, 0, ov.width, ov.height); }
+    if (state === 'play') {
+      hudElapsed += plan.elapsed;
+      if (hudElapsed >= HUD_REFRESH_INTERVAL) {
+        hud(sim.player, hudElapsed);
+        hudElapsed %= HUD_REFRESH_INTERVAL;
+      }
+      overlay(sim.player);
+    } else if (state === 'over') { octx.clearRect(0, 0, ov.width, ov.height); }
+    if (state === 'play') requestFrame();
   }
 
   // 난이도/버튼
@@ -529,6 +557,6 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     renderer.setPixelRatio(adaptive.pr);
     view = new SkyView(renderer); sim = new SkySim(diff); sim.intermission = 1e9; resize();
   } catch (err) { console.error(err); opts.loading?.close(); exit(); return; }
-  opts.loading?.close(); last = performance.now(); raf = requestAnimationFrame(frame);
+  opts.loading?.close(); last = performance.now(); requestFrame();
   (window as unknown as { __sky?: unknown }).__sky = { get sim() { return sim; }, get renderer() { return renderer; }, get view() { return view; }, start };
 }

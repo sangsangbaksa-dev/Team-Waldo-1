@@ -59,6 +59,7 @@ interface Particle { p: THREE.Vector3; v: THREE.Vector3; life: number; max: numb
 /** 파티클 한 종류를 InstancedBufferGeometry 한 장(드로우콜 1)으로 그리는 빌보드 풀. 예전엔 입자마다 Sprite(드로우콜 최대 260)였습니다. */
 class BillboardPool {
   readonly mesh: THREE.Mesh; readonly parts: Particle[] = []; private idx = 0;
+  private activeCount = 0; private dirty = false;
   private readonly off: THREE.InstancedBufferAttribute; private readonly sz: THREE.InstancedBufferAttribute; private readonly col: THREE.InstancedBufferAttribute;
   constructor(tex: THREE.Texture, additive: boolean, readonly n: number) {
     const q = new THREE.PlaneGeometry(1, 1), g = new THREE.InstancedBufferGeometry(); g.index = q.index; g.setAttribute('position', q.attributes.position!); g.setAttribute('uv', q.attributes.uv!); g.instanceCount = n;
@@ -67,24 +68,30 @@ class BillboardPool {
     const m = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending, fog: false, uniforms: { map: { value: tex } },
       vertexShader: 'attribute vec3 aOff;attribute float aSize;attribute vec4 aCol;varying vec2 vUv;varying vec4 vC;void main(){vUv=uv;vC=aCol;vec4 mv=modelViewMatrix*vec4(aOff,1.);mv.xy+=position.xy*aSize;gl_Position=projectionMatrix*mv;}',
       fragmentShader: 'uniform sampler2D map;varying vec2 vUv;varying vec4 vC;void main(){vec4 t=texture2D(map,vUv);gl_FragColor=vec4(t.rgb*vC.rgb,t.a*vC.a);\n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}' });
-    this.mesh = new THREE.Mesh(g, m); this.mesh.frustumCulled = false; this.mesh.renderOrder = 2;
+    this.mesh = new THREE.Mesh(g, m); this.mesh.frustumCulled = false; this.mesh.renderOrder = 2; this.mesh.visible = false;
     for (let i = 0; i < n; i++) this.parts.push({ p: new THREE.Vector3(), v: new THREE.Vector3(), life: 0, max: 1, grow: 1, size: 0, r: 1, g: 1, b: 1, alive: false });
   }
   emit(pos: THREE.Vector3, vel: THREE.Vector3, life: number, size: number, grow: number, color: number, tmp: THREE.Color): void {
-    const q = this.parts[this.idx++ % this.n]!; tmp.setHex(color); q.r = tmp.r; q.g = tmp.g; q.b = tmp.b; q.p.copy(pos); q.v.copy(vel); q.life = q.max = life; q.size = size; q.grow = grow; q.alive = true;
+    const q = this.parts[this.idx++ % this.n]!;
+    if (!q.alive) this.activeCount++;
+    this.dirty = true; this.mesh.visible = true;
+    tmp.setHex(color); q.r = tmp.r; q.g = tmp.g; q.b = tmp.b; q.p.copy(pos); q.v.copy(vel); q.life = q.max = life; q.size = size; q.grow = grow; q.alive = true;
   }
   reset(): void {
-    this.idx = 0;
+    this.idx = 0; this.activeCount = 0; this.dirty = true;
     for (const part of this.parts) { part.alive = false; part.life = 0; }
     this.update(0);
   }
   update(dt: number): void {
+    if (this.activeCount === 0 && !this.dirty) return;
     const o = this.off.array as Float32Array, s = this.sz.array as Float32Array, c = this.col.array as Float32Array;
+    let active = 0;
     for (let i = 0; i < this.n; i++) {
       const q = this.parts[i]!;
       if (q.alive) { q.life -= dt; if (q.life <= 0) q.alive = false; else { q.p.addScaledVector(q.v, dt); q.size *= 1 + q.grow * dt * 0.8; } }
-      if (q.alive) { o[i * 3] = q.p.x; o[i * 3 + 1] = q.p.y; o[i * 3 + 2] = q.p.z; s[i] = q.size; c[i * 4] = q.r; c[i * 4 + 1] = q.g; c[i * 4 + 2] = q.b; c[i * 4 + 3] = q.life / q.max; } else s[i] = 0;
+      if (q.alive) { active++; o[i * 3] = q.p.x; o[i * 3 + 1] = q.p.y; o[i * 3 + 2] = q.p.z; s[i] = q.size; c[i * 4] = q.r; c[i * 4 + 1] = q.g; c[i * 4 + 2] = q.b; c[i * 4 + 3] = q.life / q.max; } else s[i] = 0;
     }
+    this.activeCount = active; this.dirty = false; this.mesh.visible = active > 0;
     this.off.needsUpdate = this.sz.needsUpdate = this.col.needsUpdate = true;
   }
 }
@@ -116,11 +123,14 @@ export class SkyView {
       }
       collection.clear();
     }
+    for (const mesh of this.missilePool) this.disposeObject(mesh);
+    this.missilePool.length = 0;
     this.jetIds.clear(); this.missileIds.clear(); this.pickupIds.clear();
     this.tracers.geometry.setDrawRange(0, 0);
     this.tracerHeads.geometry.setDrawRange(0, 0);
   }
   private pickMeshes = new Map<number, THREE.Mesh>(); private meshes = new Map<number, THREE.Group>(); private missileMeshes = new Map<number, THREE.Mesh>();
+  private missilePool: THREE.Mesh[] = [];
   private firePool!: BillboardPool; private smokePool!: BillboardPool; private level = 0; private readonly tmpColor = new THREE.Color();
   private tracers: THREE.LineSegments; private tracerPos = new Float32Array(400 * 6);
   private fire = fireSprite(); private smoke = smokeSprite();
@@ -187,7 +197,8 @@ export class SkyView {
     };
     const sea = new THREE.Mesh(new THREE.PlaneGeometry(20000, 20000, 80, 80), seaMat); sea.rotation.x = -Math.PI / 2; sea.position.y = -1; sea.receiveShadow = true; sc.add(sea); this.sea = sea;
     // 섬 지형
-    const N = 200, size = 7600, geo = new THREE.PlaneGeometry(size, size, N, N); geo.rotateX(-Math.PI / 2);
+    const N = this.quality === 'low' ? 96 : this.quality === 'standard' ? 144 : 200;
+    const size = 7600, geo = new THREE.PlaneGeometry(size, size, N, N); geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position as THREE.BufferAttribute, col = new Float32Array(pos.count * 3), c = new THREE.Color(), grass = new THREE.Color(0x2c6a2c), rock = new THREE.Color(0x77695a);
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), z = pos.getZ(i), h = terrainY(x, z); pos.setY(i, h - (h < 1 ? 6 : 0));
@@ -273,7 +284,13 @@ export class SkyView {
       let m = this.meshes.get(j.id);
       if (!j.alive) { if (m) { this.scene.remove(m); this.disposeObject(m); this.meshes.delete(j.id); } continue; }
       this.jetIds.add(j.id);
-      if (!m) { m = buildJet(j.kind, j.team); m.userData.team = j.team; this.scene.add(m); this.meshes.set(j.id, m); }
+      if (!m) {
+        m = buildJet(j.kind, j.team);
+        m.userData.team = j.team;
+        m.userData.flame = m.getObjectByName('flame');
+        m.userData.flameCore = m.getObjectByName('flameCore');
+        this.scene.add(m); this.meshes.set(j.id, m);
+      }
       m.visible = !(this.cockpit && j.team === 'player');
       m.position.copy(j.pos); m.quaternion.copy(j.q);
       if (j.team === 'enemy') {
@@ -284,11 +301,11 @@ export class SkyView {
         }
       }
       const throttle = THREE.MathUtils.clamp(j.throttle + (j.boosting ? 0.6 : 0), 0, 1.6);
-      const fl = m.getObjectByName('flame') as THREE.Mesh | undefined; if (fl) {
+      const fl = m.userData.flame as THREE.Mesh | undefined; if (fl) {
         fl.scale.set(0.65 + throttle * 0.55, 0.45 + throttle * 1.4 + Math.sin(time * 40 + j.id) * 0.1, 0.65 + throttle * 0.55);
         (fl.material as THREE.MeshBasicMaterial).opacity = 0.4 + throttle * 0.55;
       }
-      const core = m.getObjectByName('flameCore') as THREE.Mesh | undefined;
+      const core = m.userData.flameCore as THREE.Mesh | undefined;
       if (core) { core.scale.set(0.7 + throttle * 0.3, 0.55 + throttle * 0.8, 0.7 + throttle * 0.3); (core.material as THREE.MeshBasicMaterial).opacity = 0.35 + throttle * 0.32; }
       if ((j.speed > 170 || (j.speed > 120 && Math.abs(j.roll) > 0.8)) && Math.random() < Math.min(1, dt * 24)) {
         const tip = this.v1;
@@ -318,16 +335,25 @@ export class SkyView {
     for (const ms of sim.missiles) {
       seen.add(ms.id); let m = this.missileMeshes.get(ms.id);
       if (!m) {
-        const steel = new THREE.MeshStandardMaterial({ color: 0x59616c, metalness: 0.6, roughness: 0.4 });
-        m = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 5, 8), new THREE.MeshStandardMaterial({ map: missileSkin(), metalness: 0.35, roughness: 0.45 })); m.rotation.order = 'YXZ'; // +Y 가 진행 방향
-        const nose = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.6, 8), new THREE.MeshStandardMaterial({ color: 0xd63a3a, metalness: 0.3, roughness: 0.4 })); nose.position.y = 3.3; m.add(nose);
-        for (let f = 0; f < 4; f++) { const fin = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.3, 1.2), steel); fin.position.y = -1.9; fin.rotation.y = f * Math.PI / 2; fin.translateZ(0.8); m.add(fin); }
-        this.scene.add(m); this.missileMeshes.set(ms.id, m); }
+        m = this.missilePool.pop();
+        if (!m) {
+          const steel = new THREE.MeshStandardMaterial({ color: 0x59616c, metalness: 0.6, roughness: 0.4 });
+          m = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 5, 8), new THREE.MeshStandardMaterial({ map: missileSkin(), metalness: 0.35, roughness: 0.45 })); m.rotation.order = 'YXZ';
+          const nose = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.6, 8), new THREE.MeshStandardMaterial({ color: 0xd63a3a, metalness: 0.3, roughness: 0.4 })); nose.position.y = 3.3; m.add(nose);
+          for (let f = 0; f < 4; f++) { const fin = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.3, 1.2), steel); fin.position.y = -1.9; fin.rotation.y = f * Math.PI / 2; fin.translateZ(0.8); m.add(fin); }
+        }
+        this.scene.add(m); this.missileMeshes.set(ms.id, m);
+      }
       m.position.copy(ms.pos); m.lookAt(this.v1.copy(ms.pos).add(ms.vel)); m.rotateX(Math.PI / 2);
       if (Math.random() < Math.min(1, dt * 30)) this.emit(ms.pos, this.v1.set(0, 3, 0), 1.1, 9, 1.8, 'smoke', 0xc8ccd0);
       if (Math.random() < Math.min(1, dt * 24)) this.emit(ms.pos, this.v1.set(0, 0, 0), 0.18, 10, 0.5, 'fire', 0xffa040);
     }
-    for (const [id, m] of this.missileMeshes) if (!seen.has(id)) { this.scene.remove(m); this.disposeObject(m); this.missileMeshes.delete(id); }
+    for (const [id, m] of this.missileMeshes) if (!seen.has(id)) {
+      this.scene.remove(m);
+      if (this.missilePool.length < 24) this.missilePool.push(m);
+      else this.disposeObject(m);
+      this.missileMeshes.delete(id);
+    }
     // 예광탄
     let n = 0; const tp = this.tracerPos;
     const hp = this.tracerHeadPos;
@@ -391,5 +417,5 @@ export class SkyView {
     geometries.forEach(geometry => geometry.dispose());
     materials.forEach(material => material.dispose());
   }
-  dispose(): void { this.disposeObject(this.scene); this.fire.dispose(); this.smoke.dispose(); this.cloudTex.dispose(); this.sunTex.dispose(); this.environment?.dispose(); this.atmosphereTextures.forEach(t => t.dispose()); disposeArt(); }
+  dispose(): void { this.disposeObject(this.scene); for (const mesh of this.missilePool) this.disposeObject(mesh); this.missilePool.length = 0; this.fire.dispose(); this.smoke.dispose(); this.cloudTex.dispose(); this.sunTex.dispose(); this.environment?.dispose(); this.atmosphereTextures.forEach(t => t.dispose()); disposeArt(); }
 }

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 800" width="1280" height="800">
+<defs>
+<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a1f1a"/><stop offset=".55" stop-color="#8a4a2a"/><stop offset="1" stop-color="#1a0f0d"/></linearGradient>
+<radialGradient id="sun" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#ffd58a" stop-opacity=".9"/><stop offset="1" stop-color="#ffd58a" stop-opacity="0"/></radialGradient>
+<linearGradient id="sand" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6b4a33"/><stop offset="1" stop-color="#2a1b13"/></linearGradient>
+</defs>
+<rect width="1280" height="800" fill="url(#sky)"/>
+<circle cx="640" cy="330" r="260" fill="url(#sun)"/>
+<g fill="#1d1210" opacity=".92"><path d="M0 420h1280v60H0z"/>
+<g><rect x="40" y="330" width="60" height="120"/><rect x="140" y="310" width="60" height="140"/><rect x="240" y="340" width="60" height="110"/><rect x="980" y="340" width="60" height="110"/><rect x="1080" y="310" width="60" height="140"/><rect x="1180" y="330" width="60" height="120"/></g></g>
+<ellipse cx="640" cy="640" rx="620" ry="170" fill="url(#sand)"/>
+<ellipse cx="640" cy="640" rx="620" ry="170" fill="none" stroke="#c9a46a" stroke-opacity=".45" stroke-width="4"/>
+<g transform="translate(400 450)"><ellipse cx="0" cy="190" rx="70" ry="16" fill="#000" opacity=".45"/><rect x="-26" y="40" width="52" height="130" rx="14" fill="#2c4a6b"/><circle cx="0" cy="10" r="30" fill="#d9b48f"/><path d="M-32 -2a32 32 0 0 1 64 0v8h-64z" fill="#8b929c"/><rect x="26" y="70" width="140" height="10" rx="5" fill="#dfe6ee" transform="rotate(-32 26 75)"/><ellipse cx="-34" cy="80" rx="26" ry="38" fill="#4a6a8f" stroke="#c9d3df" stroke-width="4"/></g>
+<g transform="translate(880 450) scale(-1 1)"><ellipse cx="0" cy="190" rx="70" ry="16" fill="#000" opacity=".45"/><rect x="-26" y="40" width="52" height="130" rx="14" fill="#6b2c2c"/><circle cx="0" cy="10" r="30" fill="#d9b48f"/><path d="M-32 -2a32 32 0 0 1 64 0v8h-64z" fill="#b08a4a"/><rect x="26" y="70" width="140" height="10" rx="5" fill="#dfe6ee" transform="rotate(-32 26 75)"/><ellipse cx="-34" cy="80" rx="26" ry="38" fill="#8f4a4a" stroke="#e0c9c9" stroke-width="4"/></g>
+<g stroke="#ffe9a8" stroke-width="5" stroke-linecap="round" opacity=".9"><path d="M600 470l40-30M640 440l40 30M620 430v-40"/></g>
+</svg>

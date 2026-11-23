@@ -13,7 +13,10 @@ import { readTycoonSummary, STAGE_NAMES } from './tycoon/core/summary';
 import { CHAT_ENABLED, PVP_ENABLED } from './net/config';
 import { setRails } from './shared/rails';
 
-type GameId = 'city' | 'race' | 'rts' | 'shooter' | 'outlaw' | 'tycoon' | 'sky' | 'room-tone' | 'squad' | 'slack';
+type GameId = 'city' | 'race' | 'rts' | 'shooter' | 'outlaw' | 'tycoon' | 'sky' | 'room-tone' | 'squad' | 'slack' | 'parry-gladiator' | 'dead-ground';
+
+/** 허브와 따로 빌드되어 자기 주소(/<id>/)에서 열리는 게임. */
+const STANDALONE: ReadonlySet<GameId> = new Set<GameId>(['room-tone', 'parry-gladiator', 'dead-ground']);
 
 interface Entry {
   id: GameId;
@@ -137,6 +140,26 @@ const ENTRIES: Entry[] = [
       const r = readSkySummary();
       return r.has ? `최고 ${r.bestScore}점 · 웨이브 ${r.bestWave}` : '';
     },
+  },
+  {
+    id: 'parry-gladiator',
+    name: 'PARRY GLADIATOR',
+    genre: '1대1 패링 결투',
+    summary: '검투장에서 상대의 공격을 읽고 막고 받아치세요. 패링에 성공하면 반격 기회가 열리고, 먼저 두 라운드를 따내면 승리합니다.',
+    facts: ['AI · 연습 · 온라인 1 VS 1', '친구와 방 코드로 대결', '키보드 · 마우스 · 터치'],
+    image: `${base}assets/home/parry-gladiator.svg`,
+    imageAlt: '노을 진 검투장에서 검과 방패를 든 두 검투사가 마주 선 모습',
+    status: () => '',
+  },
+  {
+    id: 'dead-ground',
+    name: 'DEAD GROUND',
+    genre: '저격 서바이벌 아레나',
+    summary: '무너진 공업 계곡에서 볼트액션 저격총 한 자루로 싸우세요. 탄도 낙차를 읽고 엄폐물 사이를 움직여 12킬을 먼저 채웁니다.',
+    facts: ['AI 5명 · 온라인 2~6명', '방 코드로 친구와 대결', '키보드 · 마우스 (PC)'],
+    image: `${base}assets/home/dead-ground.webp`,
+    imageAlt: '폐허가 된 공업 계곡 위로 저격 조준경이 겨눠진 Dead Ground 타이틀 이미지',
+    status: () => '',
   },
   {
     id: 'room-tone',
@@ -303,8 +326,8 @@ function wireAccount(): void {
 async function launch(id: GameId, fromHistory = false): Promise<void> {
   if (!fromHistory) hubScrollY = window.scrollY;
   stopTileImages?.(); stopTileImages = undefined;
-  if (id === 'room-tone') {
-    location.assign(`${base}room-tone/`);
+  if (STANDALONE.has(id)) {
+    location.assign(`${base}${id}/`);
     return;
   }
   const navigation = ++generation;

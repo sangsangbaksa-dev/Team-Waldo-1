@@ -2,11 +2,15 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "installCommand": "npm ci",
-  "buildCommand": "npm run typecheck && npm run build",
+  "buildCommand": "npm run typecheck && npm run build && npm run build:games",
   "outputDirectory": "dist",
   "git": {
     "deploymentEnabled": false
   },
+  "redirects": [
+    { "source": "/parry-gladiator", "destination": "/parry-gladiator/", "permanent": false },
+    { "source": "/dead-ground", "destination": "/dead-ground/", "permanent": false }
+  ],
   "headers": [
     {
       "source": "/assets/(.*)",

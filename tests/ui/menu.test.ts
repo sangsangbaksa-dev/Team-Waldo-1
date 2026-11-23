@@ -40,7 +40,7 @@ describe('메인 페이지', () => {
   it('10개 게임 타일을 보여 준다', async () => {
     await loadMenu();
     const tiles = [...document.querySelectorAll<HTMLButtonElement>('.tile')];
-    expect(tiles.map(t => t.dataset.game)).toEqual(['slack', 'squad', 'city', 'race', 'rts', 'shooter', 'outlaw', 'tycoon', 'sky', 'room-tone']);
+    expect(tiles.map(t => t.dataset.game)).toEqual(['slack', 'squad', 'city', 'race', 'rts', 'shooter', 'outlaw', 'tycoon', 'sky', 'parry-gladiator', 'dead-ground', 'room-tone']);
     expect(document.body.textContent).not.toMatch(/왕국 전쟁|KINGDOMS|군단전/);
   });
 
@@ -82,7 +82,7 @@ describe('메인 페이지', () => {
     expect(document.querySelector<HTMLElement>('#game')!.hidden).toBe(true);
     games.openOutlaw.mock.calls[0]![0]();
     expect(document.querySelector<HTMLElement>('#game')!.hidden).toBe(false);
-    expect(document.querySelectorAll('.tile')).toHaveLength(10);
+    expect(document.querySelectorAll('.tile')).toHaveLength(12);
   });
 
   it('HUSTLE을 실행하고 나오면 10개 게임이 다시 나타난다', async () => {
@@ -92,7 +92,7 @@ describe('메인 페이지', () => {
     expect(document.querySelector<HTMLElement>('#game')!.hidden).toBe(true);
     games.openTycoon.mock.calls[0]![0]();
     expect(document.querySelector<HTMLElement>('#game')!.hidden).toBe(false);
-    expect(document.querySelectorAll('.tile')).toHaveLength(10);
+    expect(document.querySelectorAll('.tile')).toHaveLength(12);
   });
 
   it('저장된 기록이 있으면 타일에 표시한다', async () => {

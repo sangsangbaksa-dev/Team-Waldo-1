@@ -1,9 +1,7 @@
 name: ZERO ZONE checks
 
 on:
-  push:
-    branches:
-      - feat/zero-zone-central-city-20261123
+  # One PR check per update; branch-push duplicate checks wasted CI minutes.
   pull_request:
     paths:
       - 'src/shooter/**'

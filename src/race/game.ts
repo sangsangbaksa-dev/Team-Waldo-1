@@ -13,8 +13,10 @@ import { aiInput, boosting, kmh, type CarInput } from './physics';
 import { RacePvp } from './pvp';
 import { decideWinner } from './netcar';
 import { createRace, currentLap, placeOf, updateRace, type RaceEvent, type RaceState } from './race';
-import { ghostAt, ghostDelta, readGhost, writeGhost } from './ghost';
-import { minimapTransform } from './minimap';
+import { ghostDelta, readGhost, writeGhost } from './ghost';
+import { RaceMinimap } from './minimap-view';
+import { RaceSpeedEffects } from './speed-effects';
+import { driverInput, type RaceHeldControls } from './input';
 import { ownsSkin, readGarage, rewardFor, writeGarage } from './garage';
 import { mountSetup, type SetupHandle } from './setup-ui';
 import { buildMapTrack, type Track } from './track';
@@ -44,15 +46,19 @@ export function openRace(onExit: () => void): void {
   <div class="rc-modal" id="rc-modal"><div class="rc-card"><span class="rc-eyebrow">SPEED RUSH</span><h2>엔진 예열 중…</h2></div></div>`;
   document.body.append(root);
   const $ = <T extends HTMLElement>(s: string): T => root.querySelector<T>(s)!;
-  let canvas = $<HTMLCanvasElement>('.rc-canvas'); const fx = $<HTMLCanvasElement>('.rc-fx'), fg = fx.getContext('2d'), mini = $<HTMLCanvasElement>('#rc-map'), mg = mini.getContext('2d'), modal = $('#rc-modal');
+  let canvas = $<HTMLCanvasElement>('.rc-canvas');
+  const modal = $('#rc-modal');
+  const effects = new RaceSpeedEffects($<HTMLCanvasElement>('.rc-fx'));
   const audio = new RaceAudio(); audio.enabled = prefs.sound;
   const garage = { value: readGarage() };
   let setup: RaceSetup = sanitizeSetup(readRaceSetupRaw()), records = readRaceRecords(), track: Track = buildMapTrack(mapOf(setup)), setupUi: SetupHandle | null = null;
+  const minimap = new RaceMinimap($<HTMLCanvasElement>('#rc-map'), track);
   let race: RaceState = createRace(track, setup.laps, Infinity, setup), view: RaceView | null = null, raf = 0, last = 0, acc = 0, paused = false, closed = false, finishedShown = false, lastPlace = 4, msgT = 0, wallHit = 0, fxIntensity = 0, wrongT = 0, raceGen = 0;
   /** 1대1 대전 진행 상태. null 이면 혼자 달리는 모드입니다. */
   let multi: { s: RoomSession; net: RaceMulti; myFin: number | null; gone: Set<string>; done: boolean } | null = null;
   let pvp: { s: PvpSession; net: RacePvp; myFin: number | null; oppFin: number | null; done: boolean } | null = null;
-  const keys = new Set<string>(), hold = { left: false, right: false, brake: false, drift: false, nitro: false, gas: false };
+  const keys = new Set<string>();
+  const hold: RaceHeldControls = { left: false, right: false, brake: false, drift: false, nitro: false, gas: false };
   const clearInput = (): void => { keys.clear(); for (const k of Object.keys(hold) as Array<keyof typeof hold>) hold[k] = false; root.querySelectorAll('[data-hold].down').forEach(b => b.classList.remove('down')); };
   let driftBests = readDriftBests(), nitroWas = false, driftWas = false;
   const cache = new Map<string, string>(); const setText = (id: string, v: string): void => { if (cache.get(id) !== v) { cache.set(id, v); $(id).textContent = v; } };
@@ -64,11 +70,7 @@ export function openRace(onExit: () => void): void {
   if (import.meta.env.DEV) (window as unknown as { __race: unknown }).__race = { get race() { return race; }, get view() { return view; }, dbg, skip(sec: number) { for (let t = 0; t < sec; t += STEP) handle(updateRace(race, STEP, readInput())); } }; // 개발 중 화면 캡처용: 시뮬레이션을 앞으로 감습니다.
   function readInput(): CarInput {
     if (dbg.auto) { const c = race.player.car, ai = aiInput(c, track, { lane: 0, top: race.player.params.top * 0.97, grip: 38, skill: 1, line: 1 }); return { ...ai, nitro: c.nitro > 0.5 && Math.abs(track.k[c.idx]) < 0.002, }; }
-    const k = (n: string): boolean => keys.has(n), left = k('ArrowLeft') || k('KeyA') || hold.left, right = k('ArrowRight') || k('KeyD') || hold.right;
-    const brake = k('ArrowDown') || k('KeyS') || hold.brake;
-    // 터치 자동 가속은 출발 후에만. 카운트다운 중에는 가속 버튼을 눌러야 출발 부스트가 납니다.
-    const gas = k('ArrowUp') || k('KeyW') || hold.gas || (touch && race.phase === 'racing' && !brake);
-    return { throttle: gas ? 1 : 0, brake: brake ? 1 : 0, steer: (right ? 1 : 0) - (left ? 1 : 0), drift: k('Space') || hold.drift, nitro: k('ShiftLeft') || k('ShiftRight') || hold.nitro };
+    return driverInput(keys, hold, touch, race.phase);
   }
 
   function handle(ev: RaceEvent[]): void {
@@ -115,7 +117,7 @@ export function openRace(onExit: () => void): void {
   function begin(): void {
     raceGen++; wrongT = 0; clearInput(); nitroWas = driftWas = false; wallHit = fxIntensity = 0;
     if (view) { view.dispose(); view = null; }
-    track = buildMapTrack(mapOf(setup)); prepareMinimap(); audio.setCar(setup.car);
+    track = buildMapTrack(mapOf(setup)); minimap.setTrack(track); audio.setCar(setup.car);
     const trial = setup.mode === 'trial', ghost = trial ? readGhost(setup.map, setup.laps, setup.car) : null;
     race = createRace(track, setup.laps, records.bestLap[setup.map] ?? Infinity, { ...setup, skin: ownsSkin(garage.value, setup.skin) ? setup.skin : 'stock', trial, ghost });
     finishedShown = false; paused = false; acc = 0; lastPlace = trial ? 1 : 4; cache.clear(); setText('#rc-laps', String(setup.laps)); setText('#rc-of', trial ? 'TIME ATTACK' : '/ 4');
@@ -159,7 +161,7 @@ export function openRace(onExit: () => void): void {
   }
   function beginPvp(oppCar: string): void {
     if (!pvp || closed) return; const s = pvp.s;
-    track = buildMapTrack(mapOf(setup)); prepareMinimap();
+    track = buildMapTrack(mapOf(setup)); minimap.setTrack(track);
     wrongT = 0; clearInput(); nitroWas = driftWas = false; wallHit = fxIntensity = 0;
     race = createRace(track, setup.laps, Infinity, { ...setup, pvp: { host: s.host, opponent: s.opponent.nickname, opponentCar: oppCar } });
     acc = 0; cache.clear(); lastPlace = 2; setText('#rc-laps', String(setup.laps)); setText('#rc-of', '/ 2'); setText('#rc-best', `VS ${s.opponent.nickname}`);
@@ -217,7 +219,7 @@ export function openRace(onExit: () => void): void {
   function beginMulti(list: Array<{ id: string; car: string }>): void {
     if (!multi || closed) return; const s = multi.s, meIdx = Math.max(0, list.findIndex(p => p.id === s.me.id));
     const players = list.filter(p => p.id !== s.me.id).map(p => ({ id: p.id, car: p.car, nickname: s.players.find(x => x.id === p.id)?.nickname ?? '플레이어' }));
-    track = buildMapTrack(mapOf(setup)); prepareMinimap();
+    track = buildMapTrack(mapOf(setup)); minimap.setTrack(track);
     wrongT = 0; clearInput(); nitroWas = driftWas = false; wallHit = fxIntensity = 0;
     race = createRace(track, setup.laps, Infinity, { ...setup, multi: { slot: meIdx, players } });
     acc = 0; cache.clear(); lastPlace = list.length; setText('#rc-laps', String(setup.laps)); setText('#rc-of', `/ ${list.length}`); setText('#rc-best', `${list.length}인 레이스`);
@@ -261,36 +263,9 @@ export function openRace(onExit: () => void): void {
     }
   }
   function resize(): void {
-    const w = innerWidth, h = innerHeight; view?.resize(w, h); fx.width = Math.floor(w / 2); fx.height = Math.floor(h / 2);
-  }
-
-  function drawFx(intensity: number): void {
-    if (!fg) return; fg.clearRect(0, 0, fx.width, fx.height); if (prefs.reducedMotion || intensity < 0.22) return;
-    const w = fx.width, h = fx.height, cx = w / 2, cy = h * 0.46, R = Math.hypot(w, h) / 2, a = Math.min(1, (intensity - 0.22) * 1.2), n = 36 + Math.floor(a * 50);
-    fg.lineCap = 'round';
-    for (let i = 0; i < n; i++) {
-      const ang = Math.random() * Math.PI * 2, r1 = R * (0.38 + Math.random() * 0.35), r2 = r1 + R * (0.1 + Math.random() * 0.25) * (0.5 + a);
-      fg.strokeStyle = `rgba(${200 + Math.random() * 55 | 0},${225 + Math.random() * 30 | 0},255,${(0.1 + Math.random() * 0.3) * a})`; fg.lineWidth = 0.6 + Math.random() * 1.8;
-      fg.beginPath(); fg.moveTo(cx + Math.cos(ang) * r1, cy + Math.sin(ang) * r1); fg.lineTo(cx + Math.cos(ang) * r2, cy + Math.sin(ang) * r2); fg.stroke();
-    }
-  }
-
-  // 미니맵(코스마다 한 번 그린 경로를 재사용)
-  let mpath = new Path2D(), mapTransform = minimapTransform(track.x, track.z);
-  const mx = (x: number): number => mapTransform.x + (x - mapTransform.minX) * mapTransform.scale, mz = (z: number): number => mapTransform.z + (z - mapTransform.minZ) * mapTransform.scale;
-  const mapBackground = document.createElement('canvas'); mapBackground.width = mini.width; mapBackground.height = mini.height;
-  function prepareMinimap(): void {
-    mapTransform = minimapTransform(track.x, track.z); mpath = new Path2D();
-    for (let i = 0; i <= track.n; i++) { const j = i % track.n; if (i === 0) mpath.moveTo(mx(track.x[j]), mz(track.z[j])); else mpath.lineTo(mx(track.x[j]), mz(track.z[j])); }
-    const bg = mapBackground.getContext('2d');
-    if (bg) { bg.clearRect(0, 0, 220, 220); bg.lineJoin = 'round'; bg.strokeStyle = 'rgba(8,4,24,.8)'; bg.lineWidth = 9; bg.stroke(mpath); bg.strokeStyle = '#8f7dff'; bg.lineWidth = 4; bg.stroke(mpath); bg.fillStyle = '#fff'; bg.fillRect(mx(track.x[0]) - 5, mz(track.z[0]) - 2, 10, 4); }
-  }
-  prepareMinimap();
-  function drawMini(): void {
-    if (!mg) return; mg.clearRect(0, 0, 220, 220); mg.drawImage(mapBackground, 0, 0);
-    const ghost = race.ghost && race.phase === 'racing' ? ghostAt(race.ghost, race.clock) : null;
-    if (ghost) { mg.beginPath(); mg.arc(mx(ghost.x), mz(ghost.z), 5, 0, Math.PI * 2); mg.strokeStyle = '#75e9ff'; mg.lineWidth = 1.5; mg.stroke(); }
-    for (let i = race.racers.length - 1; i >= 0; i--) { const r = race.racers[i]; mg.fillStyle = r.color; mg.beginPath(); mg.arc(mx(r.car.x), mz(r.car.z), r.player ? 6 : 4.5, 0, 7); mg.fill(); if (r.player) { mg.strokeStyle = '#fff'; mg.lineWidth = 2; mg.stroke(); } }
+    const w = innerWidth, h = innerHeight;
+    view?.resize(w, h);
+    effects.resize(w, h);
   }
 
   function hud(simulatedSeconds: number): void {
@@ -334,8 +309,8 @@ export function openRace(onExit: () => void): void {
       if (nitroNow && !nitroWas) { audio.sfx('nitro'); view.punchFov(0.9); }
       if (driftNow && !driftWas) { audio.sfx('chirp'); view.punchFov(0.25); }
       nitroWas = nitroNow; driftWas = driftNow;
-      view.update(race, dt, wallHit); wallHit = 0; fxIntensity += (RaceView.intensity(race) - fxIntensity) * Math.min(1, dt * 5); drawFx(fxIntensity);
-      pvp?.net.sendSnap(race.player.car, now); multi?.net.sendSnap(race.player.car, now); hud(steps * STEP); drawMini();
+      view.update(race, dt, wallHit); wallHit = 0; fxIntensity += (RaceView.intensity(race) - fxIntensity) * Math.min(1, dt * 5); effects.render(fxIntensity, prefs.reducedMotion);
+      pvp?.net.sendSnap(race.player.car, now); multi?.net.sendSnap(race.player.car, now); hud(steps * STEP); minimap.render(race);
       if (msgT > 0 && (msgT -= dt) <= 0) $('#rc-msg').className = 'rc-msg';
     }
   }

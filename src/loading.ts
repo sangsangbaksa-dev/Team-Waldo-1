@@ -68,14 +68,24 @@ export async function retry<T>(task: (attempt: number) => Promise<T>, opt: Retry
  */
 export async function fetchBuffer(url: string, onProgress?: (loaded: number, total: number) => void, stallMs = 30000): Promise<ArrayBuffer> {
   let chunks: Uint8Array[] = [], loaded = 0, total = 0, resumable = true, idle = 0;
+  let validator: string | null = null; // Strong ETag for conditional byte-range downloads.
   for (;;) {
     const ctl = new AbortController(), before = loaded;
     let timer = window.setTimeout(() => ctl.abort(), stallMs);
     const poke = (): void => { window.clearTimeout(timer); timer = window.setTimeout(() => ctl.abort(), stallMs); };
     try {
-      const res = await fetch(url, { signal: ctl.signal, headers: loaded && resumable ? { Range: `bytes=${loaded}-` } : undefined });
+      const headers = loaded && resumable
+        ? { Range: `bytes=${loaded}-`, ...(validator ? { 'If-Range': validator } : {}) }
+        : undefined;
+      const res = await fetch(url, { signal: ctl.signal, headers });
       if (!res.ok) throw new Error(`HTTP ${res.status} ${url}`);
       poke();
+      if (res.status === 200) {
+        // Strong ETags identify exact bytes even when a CDN replaces an asset
+        // with a different version of the same length during a slow transfer.
+        const etag = res.headers.get('etag');
+        validator = etag?.startsWith('"') && etag.endsWith('"') ? etag : null;
+      }
       let expectedRangeLength = 0, expectedFullLength = 0;
       if (res.status === 206) {
         // A proxy/CDN can return HTTP 206 for a different byte interval.
@@ -87,6 +97,11 @@ export async function fetchBuffer(url: string, onProgress?: (loaded: number, tot
         // below reject; this also keeps the types non-nullable.
         const start = Number(range?.[1]), end = Number(range?.[2]);
         const size = range?.[3] === '*' ? Infinity : Number(range?.[3]);
+        const newTag = res.headers.get('etag');
+        if (validator && newTag && newTag !== validator) {
+          resumable = false; chunks = []; loaded = 0;
+          throw new TypeError('Resumed asset ETag changed; restarting full download');
+        }
         if (!loaded || !range || start !== loaded || !Number.isSafeInteger(start) ||
             !Number.isSafeInteger(end) || end < start || !Number.isSafeInteger(size) ||
             size <= end || (total > 0 && size !== total)) {

@@ -15,7 +15,7 @@ import type { Box, Loot } from './world';
 import { buildFacadeTrim, buildProps, buildRoofs, makeDropCrate, makeFallbackGun, makePlane, makeVehicleMesh, partMesh } from './props';
 import { TerrainView, tintGround } from './terrainview';
 import { WeatherFx } from './weatherfx';
-import { waterDepth } from './terrain';
+import { groundHeight, waterDepth } from './terrain';
 import { makeFallbackTree } from './vegetation';
 import { resolveChaseCamera } from './camera';
 import { crateTexture, floorTexture, glowTexture, groundTexture, makeSky, wallTexture } from './textures';
@@ -143,7 +143,7 @@ export class ShooterView {
       const n = this.quality === 'low' ? 3000 : map.mode === 'br' ? 14000 : 5000, mesh = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, emissive: 0x2b3618 }), n); let k = 0;
       for (let tries = 0; k < n && tries < n * 3; tries++) {
         const x = (r() * 2 - 1) * (map.half + 20), z = (r() * 2 - 1) * (map.half + 20); if (map.compounds.some(c => Math.hypot(c.x - x, c.z - z) < c.r - 5) || map.sites.some(c => Math.hypot(c.x - x, c.z - z) < c.r + 1) || waterDepth(map.terrain, x, z) || map.terrain.hills.some(h => Math.hypot(h.x - x, h.z - z) < h.r * 1.05)) continue;
-        d.position.set(x, 0, z); d.rotation.set(0, r() * 6.28, 0); d.scale.setScalar(0.8 + r() * 0.7); d.updateMatrix(); mesh.setMatrixAt(k++, d.matrix);
+        d.position.set(x, groundHeight(map.terrain, x, z), z); d.rotation.set(0, r() * 6.28, 0); d.scale.setScalar(0.8 + r() * 0.7); d.updateMatrix(); mesh.setMatrixAt(k++, d.matrix);
       }
       mesh.count = k; mesh.receiveShadow = false; this.scene.add(mesh);
     }
@@ -209,7 +209,7 @@ export class ShooterView {
     const aiming = p.alive && !p.air && p.guns[p.cur] && p.speed < 6.1 && p.reload <= 0 ? 1 : 0;
     rig.aim += (aiming - rig.aim) * (1 - Math.exp(-dt * 8));
     rig.death = Math.min(1, Math.max(0, (this.match.t - p.diedAt) / 0.42));
-    rig.root.position.set(p.x, 0, p.z); rig.root.rotation.set(0, -p.yaw, 0);
+    rig.root.position.set(p.x, p.air ? 0 : groundHeight(this.match.map.terrain, p.x, p.z), p.z); rig.root.rotation.set(0, -p.yaw, 0);
     if (ch) {
       const st = ch.state; st.speed = p.speed; st.walk = p.walk; st.time += dt; st.aim = rig.aim; st.crouch = p.crouch; st.dead = p.alive ? 0 : rig.death;
       if (p.muzzle > 0 && rig.lastMuzzle <= 0) ch.fire(); rig.lastMuzzle = p.muzzle; st.recoil = Math.max(0, st.recoil - dt * 8);
@@ -237,7 +237,7 @@ export class ShooterView {
         n = { g, smoke }; this.dropNodes.set(i, n);
       }
       if (!n) return;
-      const k = Math.min(1, Math.max(0, (t - call) / d.fall)); n.g.position.y = 130 * (1 - k) + 0.0; n.g.rotation.y = Math.sin(t * 0.8 + i) * 0.2 * (1 - k);
+      const k = Math.min(1, Math.max(0, (t - call) / d.fall)); n.g.position.y = 130 * (1 - k) + groundHeight(m.map.terrain, d.x, d.z); n.g.rotation.y = Math.sin(t * 0.8 + i) * 0.2 * (1 - k);
       const chute = n.g.getObjectByName('chute'); if (chute) { chute.visible = !d.landed; chute.scale.setScalar(1 + Math.sin(t * 2.4) * 0.03); }
       const live = t < d.at + 150;
       n.smoke.forEach((sp, j) => { sp.visible = live; if (!live) return; const ph = ((t * 0.28 + j / n!.smoke.length) % 1), y = n!.g.position.y + 1.2 + ph * 70; sp.position.set(d.x + Math.sin(ph * 5 + j) * 2 * ph, y, d.z + Math.cos(ph * 4 + j) * 2 * ph); sp.scale.setScalar(2.2 + ph * 9); (sp.material as THREE.SpriteMaterial).opacity = 0.55 * (1 - ph); });
@@ -298,7 +298,7 @@ export class ShooterView {
     for (const part of parts) { part.position.y -= baseY; item.add(part); }
     item.position.y = baseY; g.add(item);
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.7, 28), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false })); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.08; g.add(ring);
-    g.position.set(l.x, 0, l.z); this.scene.add(g);
+    g.position.set(l.x, groundHeight(this.match.map.terrain, l.x, l.z), l.z); this.scene.add(g);
     return { node: g, baseY, dispose: () => { g.removeFromParent(); const geos = new Set<THREE.BufferGeometry>(), mats = new Set<THREE.Material>(); for (const child of sharedModel ? [ring] : g.children) child.traverse(o => { if (o instanceof THREE.Mesh) { geos.add(o.geometry); for (const mat of Array.isArray(o.material) ? o.material : [o.material]) mats.add(mat); } }); for (const geo of geos) geo.dispose(); for (const mat of mats) mat.dispose(); } };
   }
   private syncLoot(cam: THREE.Vector3): void {
@@ -311,7 +311,7 @@ export class ShooterView {
       live.add(l.id); if (!entry) { entry = this.lootNode(l); this.lootNodes.set(l.id, entry); }
       const n = entry.node; n.visible = d2 < 150 * 150; if (!n.visible) continue;
       n.children[0].rotation.y = this.time * 1.4 + l.id; n.children[0].position.y = entry.baseY + Math.sin(this.time * 2 + l.id) * 0.06;
-      if (nb < 400) { d.position.set(l.x, 3.4, l.z); d.scale.set(1, 1, 1); d.updateMatrix(); this.beams.setMatrixAt(nb, d.matrix); this.beams.setColorAt(nb, this.tmpCol.setHex(LOOT_COLOR[l.kind])); nb++; }
+      if (nb < 400) { d.position.set(l.x, groundHeight(this.match.map.terrain, l.x, l.z) + 3.4, l.z); d.scale.set(1, 1, 1); d.updateMatrix(); this.beams.setMatrixAt(nb, d.matrix); this.beams.setColorAt(nb, this.tmpCol.setHex(LOOT_COLOR[l.kind])); nb++; }
     }
     this.beams.count = nb; this.beams.instanceMatrix.needsUpdate = true; if (this.beams.instanceColor) this.beams.instanceColor.needsUpdate = true;
     for (const [id, entry] of this.lootNodes) if (!live.has(id)) { entry.dispose(); this.lootNodes.delete(id); }
@@ -393,7 +393,7 @@ export class ShooterView {
         n = { g, wreck: v.wreck, puffT: 0, fire }; this.vehNodes.set(v.id, n);
       }
       const dist = Math.abs(v.x - vx) + Math.abs(v.z - vz); n.g.visible = dist < 420; if (n.fire) n.fire.visible = n.g.visible; if (!n.g.visible) continue;
-      n.g.position.set(v.x, 0, v.z); n.g.rotation.y = -v.yaw;
+      n.g.position.set(v.x, groundHeight(this.match.map.terrain, v.x, v.z), v.z); n.g.rotation.y = -v.yaw;
       if (!v.wreck) { // 달릴 때 차체가 살짝 기웃: 가속하면 뒤로, 핸들 꺾으면 바깥으로 기웁니다
         const sp = Math.abs(v.speed), top = 36, pitch = -Math.sign(v.speed) * Math.min(1, sp / top) * 0.012; n.g.rotation.z += (pitch - n.g.rotation.z) * Math.min(1, dt * 6);
       }
@@ -403,7 +403,7 @@ export class ShooterView {
         if (sp > 9 && !v.wreck) { n.puffT = 0.07; this.puff(v.x - Math.cos(v.yaw) * v.w * 0.45 * Math.sign(v.speed), 0.35, v.z - Math.sin(v.yaw) * v.w * 0.45 * Math.sign(v.speed), 0x8a8270, 1.4 + sp * 0.03, 0.9, 0.5, 2.2, 0.28); }
         else if (v.wreck || v.hp < v.max * 0.35) { n.puffT = v.wreck ? 0.16 : 0.25; this.puff(v.x + (Math.random() - 0.5) * 0.8, v.h + 0.2, v.z + (Math.random() - 0.5) * 0.8, v.wreck ? 0x202020 : 0x4a4a4a, 1.6, 2.2, 2.4, 2.6, v.wreck ? 0.6 : 0.4); }
       }
-      if (n.fire) { n.fire.position.set(v.x, v.h * 0.8, v.z); const k = 2.2 + Math.sin(this.time * 17 + v.id) * 0.5 + Math.random() * 0.3; n.fire.scale.set(k, k * 1.3, 1); (n.fire.material as THREE.SpriteMaterial).opacity = 0.5 + Math.random() * 0.25; }
+      if (n.fire) { n.fire.position.set(v.x, groundHeight(this.match.map.terrain, v.x, v.z) + v.h * 0.8, v.z); const k = 2.2 + Math.sin(this.time * 17 + v.id) * 0.5 + Math.random() * 0.3; n.fire.scale.set(k, k * 1.3, 1); (n.fire.material as THREE.SpriteMaterial).opacity = 0.5 + Math.random() * 0.25; }
     }
   }
   private syncReds(): void {
@@ -489,10 +489,13 @@ export class ShooterView {
       cam.rotation.set(-0.13 + cp * 0.55 + (Math.random() - 0.5) * sp * 0.0007, -yc - Math.PI / 2 + (Math.random() - 0.5) * sp * 0.0007, this.roll);
     } else if (spectate) {
       const back = 3.6, cx = view.x - Math.cos(view.yaw) * back, cz = view.z - Math.sin(view.yaw) * back;
-      const safe = resolveChaseCamera(m.map, { x: view.x, y: eyeOf(view) + view.alt, z: view.z }, { x: cx, y: 2.3 + view.alt, z: cz });
+      const surface = view.air ? 0 : groundHeight(m.map.terrain, view.x, view.z);
+      const safe = resolveChaseCamera(m.map, { x: view.x, y: eyeOf(view) + view.alt + surface, z: view.z }, { x: cx, y: Math.max(2.3 + view.alt + surface, groundHeight(m.map.terrain, cx, cz) + 1.3), z: cz });
       cam.position.set(safe.x, safe.y, safe.z); cam.rotation.order = 'YXZ'; cam.rotation.set(-0.12, -view.yaw - Math.PI / 2, 0);
     } else {
-      const bobY = Math.sin(this.bob) * 0.035 * Math.min(1, view.speed / 5); cam.position.set(view.x, eyeOf(view) + view.alt + bobY, view.z); cam.rotation.order = 'YXZ';
+      const bobY = Math.sin(this.bob) * 0.035 * Math.min(1, view.speed / 5);
+      const surface = view.air ? 0 : groundHeight(m.map.terrain, view.x, view.z);
+      cam.position.set(view.x, eyeOf(view) + view.alt + surface + bobY, view.z); cam.rotation.order = 'YXZ';
       if (view.air === 1 && m.plane) { const pl = m.plane; cam.position.set(view.x - pl.dx * 58, AIR.alt + 15, view.z - pl.dz * 58); } // 수송기 뒤 위에서 항로를 내려다봅니다
       const lat = view.vx * -Math.sin(view.yaw) + view.vz * Math.cos(view.yaw); this.roll += ((view.air === 0 ? -lat * 0.0022 : 0) - this.roll) * Math.min(1, dt * 9);
       cam.rotation.set(view.pitch + view.kick * 0.03 + (Math.random() - 0.5) * this.shake * 0.012, -view.yaw - Math.PI / 2 + (Math.random() - 0.5) * this.shake * 0.012, this.roll + (Math.random() - 0.5) * this.shake * 0.006);

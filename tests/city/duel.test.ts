@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { World } from '../../src/city/world';
-import { TARGET_KILLS, TIME_LIMIT, duelOutcome, parsePose, parseShot } from '../../src/city/duel';
+import { TARGET_KILLS, TIME_LIMIT, duelOutcome, parseDuelClass, parsePose, parseShot } from '../../src/city/duel';
 import { DuelArmy, parseArmy } from '../../src/city/duelarmy';
 
 const make = (side: 0 | 1, seed = 11, klass: 'warlord' | 'tycoon' | 'engineer' = 'warlord'): World => new World({ seed, difficulty: 'd4', klass, tutorial: true, duel: { side, name: '상대' } });
@@ -108,6 +108,17 @@ describe('결투 병력·건설 동기화', () => {
     const m = parseArmy({ t: 'a', u: [[1, 'boss', 0, 0, 0, 10, 10], [2, 'rifle', 0, 0, 0, 10, 10], [3, 'rifle', NaN, 0, 0, 10, 10], [4, 'zzz', 0, 0, 0, 10, 10]], s: [[1, 'nope', 0, 0, 1, 1, 0], [2, 'depot', 5, 5, 600, 1, 0]], sh: [[0, 0, 0, 'pistol', 1], [0, 0, 0, 'laser', 1]] });
     expect(m!.u.map(r => r[0])).toEqual([2]); expect(m!.s!.map(r => r[0])).toEqual([2]); expect(m!.sh).toHaveLength(1);
     expect(parseArmy({ t: 'a', u: [], sh: [] })!.s).toBeNull();
+  });
+});
+
+describe('멀티플레이 직업 값 검증', () => {
+  it('accepts only the three known hero classes', () => {
+    expect(parseDuelClass('engineer')).toBe('engineer');
+    expect(parseDuelClass('tycoon')).toBe('tycoon');
+    expect(parseDuelClass('warlord')).toBe('warlord');
+    expect(parseDuelClass('__proto__')).toBe('warlord');
+    expect(parseDuelClass('unknown')).toBe('warlord');
+    expect(parseDuelClass(null)).toBe('warlord');
   });
 });
 

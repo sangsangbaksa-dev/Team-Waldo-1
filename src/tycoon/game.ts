@@ -470,6 +470,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       player = new Player(scene, kit);
       rides = new Rides(scene, layout, colliders);
       if (kit) { crowd = new Crowd(scene, kit, quality); traffic = new Traffic(scene, quality); } else traffic = new Traffic(scene, quality);
+      rides.setTrafficBlocker((x, z, r) => traffic?.blocks(x, z, r) ?? false);
       post = makePost(quality, renderer, scene, camera, { strength: 0.42, radius: 0.55, threshold: 0.84, vignette: 0.32, saturation: 1.1, contrast: 1.06 });
       syncCity(false); applyStageLook(); resize();
       const bench = layout.spotLots.get('bench') ?? [...layout.spotLots.values()][0]; titleFocus.set(bench?.cx ?? layout.spawn.x, 0, bench?.cz ?? layout.spawn.z);

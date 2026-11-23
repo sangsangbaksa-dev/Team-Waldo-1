@@ -84,6 +84,7 @@ export class Rides {
     camera.position.set(car.x + Math.cos(car.heading) * forward, 1.68, car.z - Math.sin(car.heading) * forward);
   }
   get speed(): number { return Math.abs(this.active?.speed ?? 0); }
+  get gear(): 'D' | 'N' | 'R' { const v = this.active?.speed ?? 0; return v > 0.25 ? 'D' : v < -0.25 ? 'R' : 'N'; }
   get name(): string | null { return this.active?.name ?? null; }
   positions(): ParkedVehicle[] { return this.cars.map(c => ({ x: c.x, z: c.z, heading: c.heading, name: c.name, active: c === this.active })); }
   snapshot(): { name: string; x: number; z: number; heading: number } | null {

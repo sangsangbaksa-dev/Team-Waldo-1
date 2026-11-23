@@ -47,7 +47,7 @@ try {
       await page.goto(origin, { waitUntil: 'domcontentloaded' });
       await page.locator('.tile').first().waitFor();
       const entries = await page.locator('.tile').evaluateAll(tiles => tiles.map(tile => tile.dataset.game));
-      assert.deepEqual([...entries].sort(), ['city', 'outlaw', 'race', 'rts', 'shooter', 'tycoon'], 'The arcade lists all six games');
+      assert.deepEqual([...entries].sort(), ['city', 'outlaw', 'race', 'room-tone', 'rts', 'shooter', 'sky', 'squad', 'tycoon'], 'The arcade lists all nine games');
       await page.screenshot({ path: 'browser-artifacts/last-city-home-' + size.name + '.png', animations: 'disabled' });
       await page.locator('#start-race').click();
       await page.locator('.rc-root').waitFor({ state: 'visible' });

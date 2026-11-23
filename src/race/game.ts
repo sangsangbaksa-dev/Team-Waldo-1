@@ -247,7 +247,7 @@ export function openRace(onExit: () => void): void {
     // 해제된 WebGL 컨텍스트는 같은 캔버스에서 다시 열 수 없으므로 캔버스를 새로 만듭니다.
     const fresh = document.createElement('canvas'); fresh.className = 'rc-canvas'; canvas.replaceWith(fresh); canvas = fresh;
     try {
-      view = new RaceView(canvas, track, tpl, prefs.quality, mapOf(setup).theme);
+      view = new RaceView(canvas, track, tpl, prefs.quality, mapOf(setup).theme, prefs.reducedMotion);
       view.setChaseLift(touch); view.setRacers(race.racers); view.setGhost(carById(setup.car).model, !!race.ghost); resize();
       return true;
     } catch {
@@ -263,7 +263,7 @@ export function openRace(onExit: () => void): void {
   }
 
   function drawFx(intensity: number): void {
-    if (!fg) return; fg.clearRect(0, 0, fx.width, fx.height); if (intensity < 0.22) return;
+    if (!fg) return; fg.clearRect(0, 0, fx.width, fx.height); if (prefs.reducedMotion || intensity < 0.22) return;
     const w = fx.width, h = fx.height, cx = w / 2, cy = h * 0.46, R = Math.hypot(w, h) / 2, a = Math.min(1, (intensity - 0.22) * 1.2), n = 36 + Math.floor(a * 50);
     fg.lineCap = 'round';
     for (let i = 0; i < n; i++) {

@@ -2,6 +2,7 @@
 // Run: node tools/race-browser-smoke.mjs
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
+import { mkdir } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 
 const port = 5198, origin = `http://127.0.0.1:${port}`;
@@ -29,6 +30,7 @@ try {
       map: 'dusk', laps: 1, level: 1, car: 'nova', skin: 'stock', mode: 'trial',
     }));
   });
+  await mkdir('browser-artifacts/race', { recursive: true });
   const page = await context.newPage();
   page.setDefaultTimeout(60_000);
   const errors = [];
@@ -36,6 +38,7 @@ try {
   await page.goto(origin);
   await page.locator('#start-race').click();
   await page.locator('.rc-setup').waitFor();
+  await page.screenshot({ path: 'browser-artifacts/race/setup.png' });
   await page.locator('[data-setup="start"]').click();
   await page.waitForFunction(() => document.querySelector('.rc-root')?.dataset.phase === 'countdown');
 
@@ -59,6 +62,7 @@ try {
   await page.locator('.rc-modal.show [data-act="resume"]').waitFor();
   await page.locator('.rc-modal.show [data-act="resume"]').click();
   await page.waitForFunction(() => !document.querySelector('.rc-modal')?.classList.contains('show'));
+  await page.screenshot({ path: 'browser-artifacts/race/racing.png' });
 
   // Autopilot is a local development/debug-only input used to reach the finish.
   const completion = await page.evaluate(() => {
@@ -70,6 +74,7 @@ try {
   assert.equal(completion.phase, 'done', JSON.stringify(completion));
   assert.ok(completion.time > 0 && completion.laps === 1, JSON.stringify(completion));
   await page.locator('.rc-card.result').waitFor({ timeout: 15_000 });
+  await page.screenshot({ path: 'browser-artifacts/race/result.png' });
   const result = await page.evaluate(() => ({
     headline: document.querySelector('.rc-card.result h2')?.textContent,
     stored: localStorage.getItem('waldo.race.ghost.v1:dusk:1:nova'),

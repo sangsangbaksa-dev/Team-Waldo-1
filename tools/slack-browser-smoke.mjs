@@ -147,6 +147,24 @@ try {
         }
       }
       await snap('dorm-shop');
+
+      // Repeated restart must dispose the old view, rebuild a single set of
+      // app windows and clear the previous run's shopping cart.
+      await page.locator('.sl-hud [data-pause]').click();
+      await page.locator('[data-paused]:visible').waitFor();
+      await page.locator('[data-paused] [data-restart]').click();
+      await page.locator('.slack-computer').waitFor();
+      assert.equal(await page.locator('.slack-computer').count(), 1, 'Restart should retain one dorm view');
+      await page.locator('.sc-apps [data-app="chat"]').click();
+      await page.locator('.sc-app-chat').waitFor({ state: 'visible' });
+      await page.locator('.sc-apps [data-app="shop"]').click();
+      await page.locator('.sc-app-shop').waitFor({ state: 'visible' });
+      assert.equal(await page.locator('.sc-app-shop [data-total]').textContent(), '합계 0원',
+        'Restart must clear the old shopping cart');
+      await page.locator('.sl-hud [data-pause]').click();
+      await page.locator('[data-paused] [data-exit]').click();
+      await page.locator('.sl-root').waitFor({ state: 'detached' });
+      await page.locator('#start-slack').waitFor();
       assert.deepEqual(errors, [], 'Unexpected unhandled browser errors');
       results.push({ viewport: size.name, status: 'passed', shopTotal: 14835 });
       console.log('PASS SLACK OFF real browser: ' + size.name);

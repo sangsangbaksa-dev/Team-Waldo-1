@@ -116,6 +116,8 @@ export class RaceView {
   private camH = 0; private camInit = false; private camAnchor: ChaseAnchor = { x: 0, y: 0, z: 0, ready: false }; private fov = 64; private shake = 0; private punch = 0; private time = 0; private sun: THREE.DirectionalLight;
   private chaseLift = 0; private viewH = 1; private startLamps: THREE.Mesh[] = [];
   private disposables: Array<{ dispose(): void }> = []; private borrowed = new Set<object>(); private outposts: Outpost | null = null;
+  private disposing = false;
+  get isDisposing(): boolean { return this.disposing; }
   private roadClearance: TrackClearanceIndex | null = null; private skyMesh: THREE.Mesh | null = null;
 
   constructor(canvas: HTMLCanvasElement, private track: Track, carTemplates: Record<string, THREE.Object3D> | null, private quality: 'high' | 'standard' | 'low', private theme: Theme, private reducedMotion = false) {
@@ -600,11 +602,17 @@ export class RaceView {
   static intensity(race: RaceState): number { return Math.min(1.4, kmh(race.player.car) / 270 + (boosting(race.player.car) ? 0.25 : 0)); }
 
   dispose(): void {
+    if (this.disposing) return;
+    this.disposing = true;
     // DesertKit owns extra temporary kit materials beyond the baked meshes.
     // Its group is detached first so the scene-wide cleanup cannot double-free.
     this.outposts?.dispose(); this.outposts = null;
     disposeOwnedTree(this.scene, this.disposables, this.borrowed);
     this.borrowed.clear(); this.rainFx = null;
-    this.carEnvTarget?.dispose(); this.carEnvTarget = null; this.carEnv = null; this.post?.dispose(); this.renderer.dispose();
+    this.carEnvTarget?.dispose(); this.carEnvTarget = null; this.carEnv = null;
+    this.post?.dispose(); this.renderer.dispose();
+    // dispose() frees GL objects but not the browser's context slot. Force loss
+    // only after marking this as intentional so the game does not show an error.
+    this.renderer.forceContextLoss();
   }
 }

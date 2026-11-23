@@ -90,14 +90,14 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     setupEl.hidden = false; setupEl.setAttribute('role', 'dialog'); setupEl.setAttribute('aria-label', 'ZERO ZONE 출격 설정');
     setupEl.innerHTML = `
       <div class="sz-setup-inner">
-        <header><span class="sz-eyebrow">ZERO ZONE / FIELD 01</span><h2>작전 준비</h2><p>강하 지점을 정하고 장비를 확보하세요. 안전 구역은 계속 좁아집니다.</p></header>
+        <header><span class="sz-eyebrow">ZERO ZONE</span><h2>출격 준비</h2><p>강하 지점을 정하고 장비를 확보하세요. 안전 구역은 계속 좁아집니다.</p></header>
         <section><h3><span class="sz-section-no">01</span> 게임 방식</h3><div class="sz-seg three">
-          <button type="button" class="sz-opt ${pickMode === 'solo' ? 'on' : ''}" data-mode="solo" aria-pressed="${pickMode === 'solo'}"><b>배틀로열</b><em>100명 참가 · AI 99명 · 자유 강하</em></button>
+          <button type="button" class="sz-opt ${pickMode === 'solo' ? 'on' : ''}" data-mode="solo" aria-pressed="${pickMode === 'solo'}"><b>배틀로열</b><em>100명 전장 · AI 99명 · 낙하산 강하</em></button>
           ${PVP_ENABLED ? `<button type="button" class="sz-opt ${pickMode === 'pvp' ? 'on' : ''}" data-mode="pvp" aria-pressed="${pickMode === 'pvp'}"><b>1대1 대전</b><em>실시간 매칭 · 방 코드 입장</em></button>` : ''}
           ${PVP_ENABLED ? `<button type="button" class="sz-opt ${pickMode === 'room' ? 'on' : ''}" data-mode="room" aria-pressed="${pickMode === 'room'}"><b>사용자 방</b><em>최대 ${ROOM_MAX}명 · 공개/비공개 · AI 인원 설정</em></button>` : ''}</div></section>
         ${pickMode === 'room' ? `<section><h3><span class="sz-section-no">02</span> AI 인원 <em class="sz-coin">방 생성 시 적용</em></h3><div class="sz-seg four">${ROOM_FILLS.map(f => `<button type="button" class="sz-opt ${f === roomFill ? 'on' : ''}" data-fill="${f}" aria-pressed="${f === roomFill}"><b>${f ? `${f}명까지` : '사람만'}</b></button>`).join('')}</div>
           <p class="sz-note">${roomFill ? `AI 포함 ${roomFill}명으로 시작합니다. 차량, 보급품, 폭격 구역이 활성화됩니다.` : 'AI 없이 참가자끼리 대전합니다.'} 참가자가 2명이면 1대1로 진행됩니다.</p></section>` : ''}
-        <section class="${pickMode === 'pvp' || (pickMode === 'room' && !roomFill) ? 'dim' : ''}"><h3><span class="sz-section-no">${pickMode === 'room' ? '03' : '02'}</span> 상대 수준</h3><div class="sz-seg four">${DIFFICULTIES.map(d => `<button type="button" class="sz-opt ${d === level ? 'on' : ''}" data-level="${d}" aria-pressed="${d === level}" ${pickMode === 'pvp' || (pickMode === 'room' && !roomFill) ? 'disabled' : ''}><b>${BOTS[d].label}</b></button>`).join('')}</div>
+        <section class="${pickMode === 'pvp' || (pickMode === 'room' && !roomFill) ? 'dim' : ''}"><h3><span class="sz-section-no">${pickMode === 'room' ? '03' : '02'}</span> AI 난이도</h3><div class="sz-seg four">${DIFFICULTIES.map(d => `<button type="button" class="sz-opt ${d === level ? 'on' : ''}" data-level="${d}" aria-pressed="${d === level}" ${pickMode === 'pvp' || (pickMode === 'room' && !roomFill) ? 'disabled' : ''}><b>${BOTS[d].label}</b></button>`).join('')}</div>
           <p class="sz-note">${pickMode === 'pvp' ? '상대 플레이어와 대전합니다.' : pickMode === 'room' && !roomFill ? 'AI 없이 진행하는 방입니다.' : `${b.blurb}${pickMode === 'room' ? ' 방장 설정을 따릅니다.' : ''}`}</p></section>
         <section><h3><span class="sz-section-no">${pickMode === 'room' ? '04' : '03'}</span> 조작 안내</h3><ul class="sz-help">${touch ? '<li>왼쪽 스틱 이동 · 오른쪽 드래그 시점</li><li>사격 · 조준 · 장전 · 줍기 · 교체 버튼 (비행기에서는 <b>줍기</b> 버튼이 점프·낙하산, 차 옆에서는 탑승·하차, 운전 중 <b>웅크림</b> 버튼은 핸드브레이크)</li>' : '<li><b>WASD</b> 이동 · <b>Shift</b> 달리기 · 마우스 시점</li><li><b>좌클릭</b> 사격 · <b>우클릭</b> 조준 · <b>R</b> 장전</li><li><b>Space</b> 비행기에서 뛰기 · 낙하산 펴기(자동 105m) · <b>W</b> 활강 방향</li><li><b>G</b> 수류탄 · <b>E</b> 무기 줍기 · <b>1 / 2 / 휠</b> 무기 교체 · <b>Esc</b> 일시정지</li><li><b>E</b> 차량 타기·내리기 · <b>WASD</b> 운전 · <b>Space</b> 핸드브레이크 · 폭격 구역(붉은 원)에서는 벗어나세요</li>'}<li>탄약·구급상자·방탄복은 닿으면 자동으로 줍습니다.</li></ul></section>
         <footer><button type="button" class="ghost" data-act="exit">메뉴로</button><span class="sz-sum">${career.matches ? `${career.matches}전 ${career.wins}승 / 최고 ${career.bestKills}처치` : '기록 없음'}</span>
@@ -621,7 +621,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       career = readShooterCareer();
       soloRecorded = true;
     }
-    card('ZERO ZONE', win ? '최후의 1인' : `${rank}위`, `<p class="sz-big">${win ? '승리' : `${match.players.length}명 중 ${rank}위`}</p><div class="sz-stats"><div><b>${p.kills}</b><span>처치</span></div><div><b>${clock(win ? t : p.diedAt)}</b><span>생존 시간</span></div><div><b>${Math.round(p.dmgDealt)}</b><span>준 피해</span></div><div><b>${p.heads}</b><span>머리 명중</span></div><div><b>${BOTS[level].label}</b><span>난이도</span></div></div>${killerLine(p, win)}`,
+    card('ZERO ZONE', win ? '생존 1위' : `${rank}위`, `<p class="sz-big">${win ? '승리' : `${match.players.length}명 중 ${rank}위`}</p><div class="sz-stats"><div><b>${p.kills}</b><span>처치</span></div><div><b>${clock(win ? t : p.diedAt)}</b><span>생존 시간</span></div><div><b>${Math.round(p.dmgDealt)}</b><span>준 피해</span></div><div><b>${p.heads}</b><span>머리 명중</span></div><div><b>${BOTS[level].label}</b><span>난이도</span></div></div>${killerLine(p, win)}`,
       `<button class="primary" data-act="again">다시 출격</button>${!win && !match.over ? '<button data-act="spectate">관전 계속</button><button data-act="skip">결과까지 건너뛰기</button>' : ''}<button data-act="setup">설정으로</button><button data-act="exit">메뉴로</button>`, win ? 'win' : '');
   }
 

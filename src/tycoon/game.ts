@@ -67,7 +67,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   const style = (id: string, prop: 'width' | 'transform', v: string): void => { const k = id + prop; if (cache.get(k) !== v) { cache.set(k, v); q(`#ty-${id}`).style[prop] = v; } };
 
   const audio = new TycoonAudio(); audio.enabled = prefs.sound;
-  let closed = false, raf = 0, last = performance.now(), phase: Phase = 'load', modal: Modal = null, clockT = 0, syncT = 0, hudT = 0, saveT = 0, titleAngle = 0, cineT = 0, rainSound = 0;
+  let closed = false, raf = 0, last = performance.now(), phase: Phase = 'load', modal: Modal = null, clockT = 0, syncT = 0, hudT = 0, saveT = 0, titleAngle = 0, cineT = 0;
   let core!: TycoonCore, layout!: Layout, city!: CityView, atmo!: Atmosphere, player!: Player, crowd: Crowd | null = null, traffic: Traffic | null = null, post: PostFx | null = null, kit: CharacterKit | null = null;
   let rides: Rides | null = null;
   let renderer: THREE.WebGLRenderer | null = null; const unsub: Array<() => void> = [];
@@ -202,7 +202,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     audio.unlock();
     if (phase === 'title') { if (e.code === 'Enter') titleAction(readTycoonSummary().has ? 'continue' : 'new'); return; }
     if (phase !== 'play') return;
-    if (e.code === 'Escape') { e.preventDefault(); if (modal && modal.kind !== 'menu') closeModal(); else if (modal) closeModal(); else openModal({ kind: 'menu' }); return; }
+    if (e.code === 'Escape') { e.preventDefault(); if (modal) closeModal(); else openModal({ kind: 'menu' }); return; }
     if (modal) {
       if (e.code === 'Tab') {
         const buttons = Array.from(modalEl.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
@@ -348,8 +348,8 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   }
   function tick(dt: number, nowS: number): void {
     if (!renderer || !core) return;
-    const playing = phase === 'play', s = core.state;
-    if (playing && !paused() && !document.hidden) { const hadActivity = !!s.activity; core.tick(dt); if (hadActivity && !core.state.activity) save(); }
+    const playing = phase === 'play', beforeTick = core.state;
+    if (playing && !paused() && !document.hidden) { const hadActivity = !!beforeTick.activity; core.tick(dt); if (hadActivity && !core.state.activity) save(); }
     const st = core.state;
     // 입력 → 이동
     const mv = readMove(), frozen = !playing || paused() || document.hidden || !!st.activity?.lockMovement;
@@ -378,6 +378,8 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     // 카메라
     if (playing) {
       player.placeCamera(camera, dt, colliders);
+      const fov = (innerHeight > innerWidth ? 74 : 66) + (rides?.driving ? Math.min(8, rides.speed * 0.36) : 0);
+      if (Math.abs(camera.fov - fov) > 0.08) { camera.fov = fov; camera.updateProjectionMatrix(); }
       if (cineT > 0) { cineT += dt; const k = Math.sin(Math.min(1, cineT / 4.2) * Math.PI), vx = player.pos.x + 20, vz = player.pos.z + 46, vy = 46 + 30 * k; camera.position.lerp(new THREE.Vector3(vx, vy, vz), k * 0.88); camera.lookAt(player.pos.x - 10 * k, 4 + 6 * k, player.pos.z - 6 * k); if (cineT > 4.2) cineT = 0; }
     } else {
       titleAngle += dt * 0.07; const cx = titleFocus.x, cz = titleFocus.z; camera.position.set(cx + Math.cos(titleAngle) * 52, 26 + Math.sin(titleAngle * 0.7) * 3, cz + Math.sin(titleAngle) * 52); camera.lookAt(cx, 3, cz);
@@ -385,8 +387,9 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     // 주기 작업
     syncT += dt; if (syncT > SYNC_EVERY) { syncT = 0; syncCity(false); attachCarry(); }
     saveT += dt; if (saveT > 25) { saveT = 0; if (playing && !save()) toast('자동 저장 실패 — 저장 공간을 확인하세요.', 'bad', 5); }
-    audio.ambience(sky.daylight, sky.wet, 0); if (sky.wet > 0.8 && Math.random() < dt * 0.04) audio.thunder(); rainSound = sky.wet; void rainSound;
-    const fl = q('#ty-flash'); void fl;
+    audio.ambience(sky.daylight, sky.wet, 0);
+    audio.drive(rides?.speed ?? 0, playing && !!rides?.driving && !paused() && !document.hidden);
+    if (sky.wet > 0.8 && Math.random() < dt * 0.04) audio.thunder();
     // 토스트 정리
     const nowMs = performance.now(); for (let i = toastList.length - 1; i >= 0; i--) if (toastList[i].at <= nowMs) { toastList[i].el.remove(); toastList.splice(i, 1); }
     // HUD
@@ -394,7 +397,6 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (playing && modal?.kind === 'spot' && hudT === 0) renderModal();
     if (playing && modal?.kind === 'status' && Math.floor(nowS * 2) % 4 === 0 && hudT === 0) renderModal();
     clockT += dt; if (playing && clockT > 0.1) { clockT = 0; drawMap(mini, layout, { stage: st.stageIndex, spots: spotViews, px: player.pos.x, pz: player.pos.z, yaw: player.facing, target: st.task?.targetSpotId ?? null, time: nowS, names: false, waypoint, vehicles: rides?.positions() }); if (modal?.kind === 'map') drawBig(); }
-    void s;
     if (post) post.render(dt); else renderer.render(scene, camera);
   }
   const titleFocus = new THREE.Vector3();

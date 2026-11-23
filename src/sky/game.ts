@@ -398,10 +398,16 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     if (state === 'play') {
       const p = sim.player;
       const inp = readInput(p, plan.elapsed);
+      const tapOnly = fireTap > 0 && !mFire && !keys.has(' ')
+        && !(autoFire && sim.bestTarget(p, AIM_CONE, GUN_RANGE * 0.95));
       // A 70–200ms GPU frame must not slow the game's flight clock. Several
       // safe physics ticks catch up; stop if the pilot dies to preserve events.
+      // Do not stretch a buffered micro-click through a whole slow frame.
       for (let tick = 0; tick < plan.steps; tick++) {
-        sim.step(plan.stepDt, inp);
+        const stepInput = tapOnly
+          ? { ...inp, fire: tick * plan.stepDt < fireTap }
+          : inp;
+        sim.step(plan.stepDt, stepInput);
         if (sim.over) break;
       }
       flare = false; mTap = false;

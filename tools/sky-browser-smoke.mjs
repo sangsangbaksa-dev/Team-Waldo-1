@@ -79,10 +79,16 @@ try {
         const total = view.clouds.length;
         view.setLevel(3);
         const hidden = view.clouds.filter(sprite => !sprite.visible).length;
+        const roughInLowTier = view.sea.material.roughness;
         view.setLevel(0);
         const restored = view.clouds.filter(sprite => sprite.visible).length;
-        return { total, hidden, restored };
+        return { total, hidden, restored, roughInLowTier,
+          seaRoughness: view.sea.material.roughness,
+          seaNormalScale: view.sea.material.normalScale.x };
       });
+      assert.ok(clouds.roughInLowTier >= 0.6, 'Adaptive low tier must smooth water highlights');
+      assert.ok(clouds.seaRoughness >= 0.6 && clouds.seaNormalScale <= 0.4,
+        'Low quality mode must avoid high-frequency sea shimmer');
       assert.ok(clouds.total >= 30, 'The atmosphere must register all cloud sprite layers');
       assert.equal(clouds.hidden, clouds.total, 'Low quality must cull both cloud layers');
       assert.equal(clouds.restored, clouds.total, 'Restored quality must show all cloud layers again');

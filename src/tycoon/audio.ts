@@ -5,7 +5,7 @@ type Loop = { src: AudioBufferSourceNode; filter: BiquadFilterNode; gain: GainNo
 export class TycoonAudio {
   private eng = new AudioEngine();
   private city: Loop | null = null; private rain: Loop | null = null; private wind: Loop | null = null; private motor: { osc: OscillatorNode; filter: BiquadFilterNode; gain: GainNode } | null = null; private disposed = false;
-  private lastStep = 0;
+  private lastStep = 0; private lastMotorAt = -1; private lastMotorActive = false;
   get enabled(): boolean { return this.eng.enabled; }
   set enabled(on: boolean) { this.eng.setEnabled(on); }
   unlock(): void {
@@ -32,11 +32,17 @@ export class TycoonAudio {
     const c = this.eng.ctx, motor = this.motor;
     if (!c || !motor) return;
     const t = c.currentTime;
+    if (t - this.lastMotorAt < 0.085 && active === this.lastMotorActive) return;
+    this.lastMotorAt = t; this.lastMotorActive = active;
+    motor.osc.frequency.cancelScheduledValues(t);
+    motor.filter.frequency.cancelScheduledValues(t);
+    motor.gain.gain.cancelScheduledValues(t);
     motor.osc.frequency.setTargetAtTime(48 + Math.min(120, speed * 4.8), t, 0.16);
     motor.filter.frequency.setTargetAtTime(140 + Math.min(600, speed * 17), t, 0.18);
     motor.gain.gain.setTargetAtTime(active ? 0.042 + Math.min(0.055, speed * 0.002) : 0, t, 0.13);
   }
   step(speed: number, now: number): void { if (speed < 0.5 || now - this.lastStep < (speed > 4.5 ? 0.27 : 0.4)) return; this.lastStep = now; burst(this.eng, 0.05, 0.1, 340, 1.2); }
+  impact(): void { burst(this.eng, 0.19, 0.18, 145, 0.6, 'lowpass'); }
   click(): void { tone(this.eng, 720, 0.05, 0.14, 'triangle'); }
   deny(): void { tone(this.eng, 160, 0.14, 0.2, 'square', -50); }
   open(): void { tone(this.eng, 520, 0.08, 0.14, 'sine', 160); }

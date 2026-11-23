@@ -394,3 +394,25 @@ describe('SKY WAR narrow ridge tunneling', () => {
     }
   });
 });
+
+describe('SKY WAR guided missile missed-path regression', () => {
+  it('does not damage a distant locked jet when both missile and terrain contact times are infinite', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.intermission = 1e9;
+    sim.combo = 2;
+    sim.comboT = 1;
+    sim.missiles.push({
+      id: 1999, owner: 999, team: 'enemy',
+      pos: sim.player.pos.clone().add(new THREE.Vector3(0, 0, 200)),
+      vel: new THREE.Vector3(0, 0, 1),
+      target: sim.player.id, life: 10, alive: true, nearPlayer: true,
+    });
+    sim.step(0.05, neutral);
+    expect(sim.player.hp).toBe(100);
+    expect(sim.shield).toBe(5);
+    expect(sim.comboT).toBeGreaterThan(5);
+    expect(sim.missiles).toHaveLength(1);
+    expect(sim.missiles[0]!.pos.toArray().every(Number.isFinite)).toBe(true);
+    expect(sim.events.filter(e => e.t === 'hit')).toHaveLength(0);
+  });
+});

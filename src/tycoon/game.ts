@@ -117,7 +117,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       case 'status': h = statusHtml(core.state); break;
       case 'menu': h = menuHtml(audio.enabled, player.firstPerson); break;
       case 'win': h = winHtml(core.state); break;
-      case 'map': h = '<div class="ty-bigmap" role="dialog" aria-modal="true" aria-label="도시 지도"><button type="button" class="ty-x" data-close aria-label="닫기">✕</button><canvas id="ty-bigmap" width="720" height="720" aria-label="장소를 터치하거나 클릭해 목적지를 지정"></canvas><div class="ty-map-caption">원하는 지점을 눌러 길찾기 표시 · 흰 화살표: 현재 위치</div><button type="button" class="ty-clear-waypoint" data-waypoint-clear>내 목적지 지우기</button></div>'; break;
+      case 'map': h = '<div class="ty-bigmap" role="dialog" aria-modal="true" aria-label="도시 지도"><button type="button" class="ty-x" data-close aria-label="닫기">✕</button><canvas id="ty-bigmap" width="720" height="720" aria-label="장소를 터치하거나 클릭해 목적지를 지정"></canvas><div class="ty-map-caption">지도 터치: 자유 목적지 · 점선: 도로 참고 경로 · 흰 화살표: 현재 위치</div><button type="button" class="ty-clear-waypoint" data-waypoint-clear>내 목적지 지우기</button></div>'; break;
     }
     if (h !== modalHtml || modalEl.hidden) { // 내용이 바뀔 때만 교체합니다(누르는 도중 버튼이 바뀌면 클릭이 사라집니다)
       const keep = modalEl.querySelector('.ty-panel')?.scrollTop ?? 0;
@@ -410,6 +410,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     const route = q('#ty-route');
     if (waypoint && Math.hypot(player.pos.x - waypoint.x, player.pos.z - waypoint.z) < 8) { waypoint = null; toast('목적지에 도착했습니다', 'good'); }
     route.hidden = !waypoint;
+    route.classList.toggle('has-task', !!s.task);
     if (waypoint) set('route-distance', '도로 기준 약 ' + Math.round(streetDistance(player.pos, waypoint)) + 'm');
     set('cash', formatMoney(s.cash)); set('debt', s.debt ? `빚 ${formatMoney(s.debt)}` : ''); set('stage', s.stageName); html('ladder', ladderHtml(s.stage));
     set('clock', s.clock); set('day', `${s.day}일차`); set('sun', s.night ? '☾' : '☀');

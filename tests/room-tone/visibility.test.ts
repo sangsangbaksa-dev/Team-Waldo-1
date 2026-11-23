@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { lineClear, soundTravelDistance } from "../../src/room-tone/visibility.mjs";
+import { makeLevel } from "../../src/room-tone/levels.mjs";
 
 const p = (x: number, z: number) => ({ x, z });
 
@@ -39,5 +40,22 @@ describe("ROOM TONE corridor-aware hearing", () => {
     expect(soundTravelDistance(false, 2, 7, 2.7)).toBeCloseTo(17.55);
     expect(soundTravelDistance(false, 2, -1, 2.7)).toBe(Infinity);
     expect(soundTravelDistance(false, 2, Number.NaN, 2.7)).toBe(Infinity);
+  });
+});
+
+describe("ROOM TONE generated maze line-of-sight regression", () => {
+  it("is symmetric across many real chapter corridors", () => {
+    for (let chapter = 0; chapter < 4; chapter++) {
+      const level = makeLevel(chapter);
+      const point = (cell: number) => ({
+        x: (cell % level.w) * 2.7,
+        z: Math.floor(cell / level.w) * 2.7,
+      });
+      const samples = level.reachable.slice(0, 45);
+      for (const a of samples) for (const b of samples) {
+        expect(lineClear(level.map, 2.7, point(a), point(b)))
+          .toBe(lineClear(level.map, 2.7, point(b), point(a)));
+      }
+    }
   });
 });

@@ -48,7 +48,7 @@
 .sl-kid:nth-child(3) .hd{background:#1c1c1e}
 .sl-kid:after{content:'';position:absolute;left:-6%;right:-6%;bottom:-3%;height:9%;background:#8f7455;box-shadow:none}
 
-.sl-teacher{position:absolute;z-index:1;right:var(--sl-teacher-right,8%);bottom:var(--sl-teacher-bottom,50%);width:clamp(28px,8cqw,90px);height:clamp(62px,27cqh,180px);opacity:var(--sl-teacher-opacity,0);transform-origin:bottom center;transform:scale(var(--sl-teacher-scale,.72));transition:right .07s linear,bottom .07s linear,transform .07s linear,opacity .12s linear;pointer-events:none}
+.sl-teacher{position:absolute;z-index:1;right:8%;bottom:50%;width:clamp(28px,8cqw,90px);height:clamp(62px,27cqh,180px);opacity:var(--sl-teacher-opacity,0);transform-origin:bottom center;transform:translate(var(--sl-teacher-x,0cqw),var(--sl-teacher-y,0cqh)) scale(var(--sl-teacher-scale,.72));transition:transform .07s linear,opacity .12s linear;pointer-events:none}
 .sl-teacher-person{position:absolute;inset:0;transform-origin:50% 80%;transition:transform .35s ease}
 .sl-teacher[data-facing="exit"] .sl-teacher-person{transform:rotateY(165deg)}
 .sl-teacher-head{position:absolute;z-index:3;left:32%;top:7%;width:36%;height:23%;background:#bca58d;border-radius:44% 44% 40% 40%;border:1px solid #75695e;transform-origin:50% 85%}

@@ -196,3 +196,33 @@ it('stops the scheduled animation immediately on pause even with a live toast', 
   button('[data-resume]').click();
   expect(frames.size).toBe(1);
 });
+
+it('traps forward and reverse Tab navigation inside title, pause and result dialogs', async () => {
+  openSlack(vi.fn());
+  const checkTrap = (selector: string) => {
+    const dialog = document.querySelector<HTMLElement>(`.sl-root ${selector}`)!;
+    const controls = Array.from(dialog.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+    const first = controls[0]!, last = controls[controls.length - 1]!;
+    last.focus();
+    const forward = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    last.dispatchEvent(forward);
+    expect(forward.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(first);
+    first.focus();
+    const reverse = new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true });
+    first.dispatchEvent(reverse);
+    expect(reverse.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(last);
+  };
+
+  checkTrap('[data-title]');
+  button('[data-start]').click();
+  await vi.dynamicImportSettled();
+  key('p');
+  checkTrap('[data-paused]');
+  button('[data-resume]').click();
+  const sim = vi.mocked(createSim).mock.results[0].value;
+  sim.state.time = sim.state.limit - 0.05;
+  advance(100);
+  checkTrap('[data-result]');
+});

@@ -21,7 +21,8 @@ describe('ZERO ZONE spectator fast forward', () => {
 
   it('stops as soon as the winner is known', () => {
     let steps = 0;
-    const match = { over: false, step: vi.fn(() => { if (++steps === 3) match.over = true; }), drain: vi.fn() };
+    const match = { over: false, step: vi.fn(), drain: vi.fn() };
+    match.step.mockImplementation(() => { if (++steps === 3) match.over = true; });
     expect(advanceMatchChunk(match, 90, () => 0)).toBe(3);
     expect(advanceMatchChunk(match, 90, () => 0)).toBe(0);
     expect(match.drain).toHaveBeenCalledTimes(3);

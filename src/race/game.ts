@@ -386,8 +386,18 @@ export function openRace(onExit: () => void): void {
 
   // 레이싱카 모델(race.glb) 로드 → 실패해도 단순 차체로 계속
   void (async () => {
-    try { const gltf = await new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}assets/models/race.glb`), found: Record<string, THREE.Object3D> = {}; gltf.scene.traverse(o => { if (o.name === 'gt' || o.name === 'wide' || o.name === 'long') found[o.name] = o; }); carTemplate = found; } catch { carTemplate = null; }
-    try { setDriverKit(await loadCharacterKit(import.meta.env.BASE_URL)); } catch { setDriverKit(null); }
-    if (closed) return; last = performance.now(); raf = requestAnimationFrame(frame); showSetup();
+    // The independent car and driver assets can load concurrently.
+    const [cars, drivers] = await Promise.allSettled([
+      new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}assets/models/race.glb`).then(gltf => {
+        const found: Record<string, THREE.Object3D> = {};
+        gltf.scene.traverse(o => { if (o.name === 'gt' || o.name === 'wide' || o.name === 'long') found[o.name] = o; });
+        return found;
+      }),
+      loadCharacterKit(import.meta.env.BASE_URL),
+    ]);
+    if (closed) return;
+    carTemplate = cars.status === 'fulfilled' ? cars.value : null;
+    setDriverKit(drivers.status === 'fulfilled' ? drivers.value : null);
+    last = performance.now(); raf = requestAnimationFrame(frame); showSetup();
   })();
 }

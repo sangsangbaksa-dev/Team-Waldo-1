@@ -51,6 +51,7 @@ export class TycoonAudio {
     motor.gain.gain.setTargetAtTime(active ? 0.042 + Math.min(0.055, speed * 0.002) : 0, t, 0.13);
   }
   step(speed: number, now: number): void { if (speed < 0.5 || now - this.lastStep < (speed > 4.5 ? 0.27 : 0.4)) return; this.lastStep = now; burst(this.eng, 0.05, 0.1, 340, 1.2); }
+  honk(): void { tone(this.eng, 335, 0.22, 0.085, 'sawtooth'); tone(this.eng, 415, 0.19, 0.065, 'sawtooth'); }
   impact(): void { burst(this.eng, 0.19, 0.18, 145, 0.6, 'lowpass'); }
   click(): void { tone(this.eng, 720, 0.05, 0.14, 'triangle'); }
   deny(): void { tone(this.eng, 160, 0.14, 0.2, 'square', -50); }

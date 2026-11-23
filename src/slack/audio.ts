@@ -10,6 +10,7 @@ export const createSlackAudio: CreateAudio = () => {
   let pendingSuspend: Promise<void> | null = null;
   let background: AudioNode[] = [], ambTimer = 0, bedTimer = 0, step = 0;
   let requestedAmbience: StageId | null = null;
+  let sfxNoise: AudioBuffer | null = null;
   let lastUiSoundAt = -Infinity;
   const ensure = (): AudioContext | null => {
     if (disposed) return null;
@@ -34,15 +35,25 @@ export const createSlackAudio: CreateAudio = () => {
     osc.start(t); osc.stop(t + duration + 0.01);
   };
   const noise = (duration: number, volume: number, frequency: number, delay = 0, cut = 0): void => {
-    const c = ctx; if (muted || c?.state !== 'running' || !filter) return; const size = Math.max(1, Math.floor(c.sampleRate * duration)), buffer = c.createBuffer(1, size, c.sampleRate), data = buffer.getChannelData(0);
-    for (let i = 0; i < size; i++) data[i] = Math.random() * 2 - 1;
+    const c = ctx; if (muted || c?.state !== 'running' || !filter) return;
+    // Reuse one second of white noise across short SFX instead of allocating a
+    // fresh AudioBuffer on every footstep, click, typing burst or ambience cue.
+    // Shift the playback offset so repeated effects do not sound identical.
+    if (!sfxNoise) {
+      const buffer = c.createBuffer(1, Math.max(1, Math.floor(c.sampleRate)), c.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+      sfxNoise = buffer;
+    }
+    const segment = Math.max(0.001, Math.min(duration, sfxNoise.duration || 1));
+    const offset = Math.random() * Math.max(0, (sfxNoise.duration || 1) - segment);
     const source = c.createBufferSource(), band = c.createBiquadFilter(), gain = c.createGain(), t = c.currentTime + delay;
     source.buffer = buffer; band.type = 'bandpass'; band.frequency.value = frequency; band.Q.value = 0.7; gain.gain.setValueAtTime(Math.max(0.0002, volume), t); gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
     source.connect(band); band.connect(gain);
     const lp = cut ? c.createBiquadFilter() : null;
     if (lp) { lp.type = 'lowpass'; lp.frequency.value = cut; gain.connect(lp); lp.connect(filter); } else gain.connect(filter);
     source.onended = () => { source.disconnect(); band.disconnect(); gain.disconnect(); lp?.disconnect(); };
-    source.start(t); source.stop(t + duration);
+    source.start(t, offset, segment); source.stop(t + segment);
   };
   const stopBackground = (): void => {
     clearTimeout(ambTimer); ambTimer = 0;
@@ -175,7 +186,7 @@ export const createSlackAudio: CreateAudio = () => {
       disposed = true;
       stopBackground(); clearTimeout(bedTimer); bedTimer = 0;
       if (ctx && ctx.state !== 'closed') void ctx.close().catch(() => {});
-      ctx = null; master = null; filter = null; damp = null; comp = null; direct = null;
+      ctx = null; master = null; filter = null; damp = null; comp = null; direct = null; sfxNoise = null;
     },
   };
 };

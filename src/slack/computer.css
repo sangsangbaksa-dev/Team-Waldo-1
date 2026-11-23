@@ -383,3 +383,10 @@
   .sc-shop .sc-sale button{grid-column:3;grid-row:1;min-width:62px}
   .sc-shop .sc-sale strong{grid-column:3;grid-row:2;justify-self:end;font-size:12px}
 }
+/* A shallow landscape laptop has only a small viewport for shopping. Sticky
+   checkout UI can occupy the entire scrolling pane and intercept product
+   buttons even after scrollIntoView. Keep checkout in normal flow here. */
+@media (orientation:landscape) and (min-width:601px) and (max-height:450px){
+  .sc-shop .sc-cartbar{position:static;bottom:auto;margin:10px -10px -10px}
+  .sc-shop{scroll-padding-bottom:8px}
+}

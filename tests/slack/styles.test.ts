@@ -22,6 +22,14 @@ describe('SLACK OFF small-screen game framing', () => {
   });
 });
 
+describe('SLACK OFF short-landscape shop interaction', () => {
+  it('places the cart summary in flow so it cannot block product buttons', () => {
+    const css = styles.find(s => s.name === 'computer.css')!.css;
+    expect(css).toContain('(orientation:landscape) and (min-width:601px) and (max-height:450px)');
+    expect(css).toContain('.sc-shop .sc-cartbar{position:static;bottom:auto;');
+  });
+});
+
 describe('SLACK OFF shop responsive design', () => {
   it('displays consistent product cards and a two-column compact catalogue', () => {
     const dorm = styles.find(s => s.name === 'computer.css')!.css;

@@ -162,6 +162,12 @@ try {
           node => getComputedStyle(node).display);
         assert.equal(promoDisplay, 'grid', 'Compact flash deals must avoid narrow name wrapping');
       }
+      if (size.width > size.height) {
+        const cartPosition = await page.locator('.sc-app-shop .sc-cartbar').evaluate(
+          node => getComputedStyle(node).position);
+        assert.equal(cartPosition, 'static',
+          'Short landscape should scroll cart controls in normal flow, not cover products');
+      }
       const total = page.locator('.sc-app-shop [data-total]');
       assert.equal(await total.getAttribute('role'), 'status');
       await page.locator('.sc-app-shop [data-add="1"]').click();

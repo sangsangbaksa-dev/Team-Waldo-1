@@ -325,13 +325,14 @@ export function generateMap(seed: number, mode: Mode): GameMap {
     let reach = 8; const built: Building[] = [];
     slots.slice(0, Math.min(n, slots.length)).forEach(([i, j], idx) => {
       // 고층동과 저층 상업동을 섞어 지붕선이 단조롭지 않게 만듭니다.
-      const type = downtown ? (idx % 5 === 0 ? 'shop' : idx % 7 === 0 ? 'clinic' : 'apartment') : idx === 0 ? def.first : pickKind(rng, def);
+      const landmark = downtown && i === cols - 1 && j === rows - 1;
+      const type = landmark ? 'apartment' : downtown ? (idx % 5 === 0 ? 'shop' : idx % 7 === 0 ? 'clinic' : 'apartment') : idx === 0 ? def.first : pickKind(rng, def);
       const sp = SPEC[type];
       // 도심의 무작위 위치 흔들림은 줄여서 보행로를 꾸준히 4m 이상 남깁니다.
       const jitter = downtown ? 0.8 : 2.5;
       const bx = c.x + (i - (cols - 1) / 2) * lot.w + (rng() - 0.5) * jitter, bz = c.z + (j - (rows - 1) / 2) * lot.d + (rng() - 0.5) * jitter;
-      // 3.2m 층고 기준 3~9층 높이. 기존 벽/사격 충돌 박스에도 동일한 높이를 적용합니다.
-      const towerHeight = downtown && type === 'apartment' ? (3 + Math.floor(rng() * 7)) * 3.2 : undefined;
+      // 건물별 3~9층, 북동쪽 스카이라인 랜드마크는 12층. 모든 높이는 벽/탄환 충돌과 일치합니다.
+      const towerHeight = downtown && type === 'apartment' ? (landmark ? 12 : 3 + Math.floor(rng() * 7)) * 3.2 : undefined;
       const b = build(map, rng, type, bx, bz, towerHeight); built.push(b);
       reach = Math.max(reach, Math.hypot(bx - c.x, bz - c.z) + Math.max(b.w, b.d) / 2);
       // 건물 안 전리품

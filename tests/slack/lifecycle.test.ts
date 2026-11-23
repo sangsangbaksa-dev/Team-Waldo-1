@@ -42,6 +42,32 @@ afterEach(() => {
   vi.unstubAllGlobals(); vi.restoreAllMocks();
 });
 
+it('shows an accessible, cancellable loading screen until the stage import resolves', async () => {
+  openSlack(vi.fn());
+  button('[data-start]').click();
+  const loading = document.querySelector<HTMLElement>('.sl-root [data-loading]')!;
+  expect(loading.hidden).toBe(false);
+  expect(loading.getAttribute('role')).toBe('dialog');
+  expect(document.activeElement).toBe(button('[data-loading] [data-exit]'));
+  await vi.dynamicImportSettled();
+  expect(loading.hidden).toBe(true);
+  expect(document.querySelector('.slack-computer, .sl-class')).not.toBeNull();
+});
+
+it('can exit during a pending stage import without reopening the disposed game', async () => {
+  const onExit = vi.fn();
+  openSlack(onExit);
+  const root = document.querySelector<HTMLElement>('.sl-root')!;
+  button('[data-stage="dorm"]').click();
+  button('[data-start]').click();
+  expect(button('[data-loading]').hidden).toBe(false);
+  button('[data-loading] [data-exit]').click();
+  expect(onExit).toHaveBeenCalledTimes(1);
+  expect(root.isConnected).toBe(false);
+  await vi.dynamicImportSettled();
+  expect(document.querySelector('.sl-root')).toBeNull();
+});
+
 it('starts once, advances by elapsed play time, and cancels the frame on exit', async () => {
   const exit = vi.fn();
   openSlack(exit);

@@ -178,3 +178,15 @@
   .sl-toast{top:94px}
   .sl-root.tipping .sl-toast{top:150px}
 }
+/* The stage is dynamically imported. Keep an accessible, cancellable screen
+   visible on slow networks rather than leaving the player with a blank room. */
+.sl-loading{position:absolute;inset:0;z-index:15;display:grid;place-items:center;padding:24px;background:radial-gradient(ellipse at 50% 25%,#34413ded,#141919f8);color:#f3f0e8}
+.sl-loading[hidden]{display:none}
+.sl-loading-panel{width:min(100%,360px);display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;padding:30px 22px;border:1px solid #ffffff25;border-radius:16px;background:#25302d;box-shadow:0 18px 64px #0008}
+.sl-loading-panel strong{font-size:18px;letter-spacing:-.025em}
+.sl-loading-panel p{font-size:12px;line-height:1.55;color:#c5d0cb;margin:0}
+.sl-loading-panel button{border:1px solid #ffffff55;border-radius:8px;background:#ffffff12;color:#fff;padding:9px 16px;cursor:pointer}
+.sl-loading-panel button:hover{background:#ffffff28}
+.sl-loading-spinner{width:35px;height:35px;border:3px solid #ffffff28;border-top-color:#dfc587;border-radius:50%;animation:sl-loading-turn .8s linear infinite}
+@keyframes sl-loading-turn{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.sl-loading-spinner{animation:none;border-color:#dfc587}}

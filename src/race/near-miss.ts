@@ -31,7 +31,7 @@ export interface NearMissAward {
 export const NEAR_MISS_WINDOW = 11;
 const MIN_SPEED = 30;
 const MIN_RELATIVE_SPEED = 4;
-const MIN_SIDE = 2 * BODY_HALF_WIDTH + 0.45;
+const MIN_SIDE = 2 * BODY_HALF_WIDTH + 0.95;
 const MAX_SIDE = 5.6;
 const PASS_DISTANCE = 4;
 const START_DISTANCE = 15;
@@ -73,7 +73,7 @@ export function stepNearMiss(s: NearMissState, me: NearMissCar, rivals: Readonly
     const lateral = -dx * fz + dz * fx;
     const side = Math.abs(lateral);
     const eligible = me.vf >= MIN_SPEED && me.vf - other.vf >= MIN_RELATIVE_SPEED
-      && Math.cos(me.h - other.h) >= 0.9 && side >= MIN_SIDE && side <= MAX_SIDE;
+      && Math.cos(me.h - other.h) >= 0.985 && side >= MIN_SIDE && side <= MAX_SIDE;
     let target = s.targets.get(rival.id);
 
     if (!target) {

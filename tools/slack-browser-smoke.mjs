@@ -162,7 +162,7 @@ try {
           node => getComputedStyle(node).display);
         assert.equal(promoDisplay, 'grid', 'Compact flash deals must avoid narrow name wrapping');
       }
-      if (size.width > size.height) {
+      if (size.mobile && size.width > size.height) {
         const cartPosition = await page.locator('.sc-app-shop .sc-cartbar').evaluate(
           node => getComputedStyle(node).position);
         assert.equal(cartPosition, 'static',

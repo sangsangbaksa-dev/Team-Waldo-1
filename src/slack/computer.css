@@ -341,8 +341,8 @@
 /* Portrait: reserve space under the three-row HUD, and keep the roommate
    beneath the monitor instead of obscuring the cart total and product list. */
 @media (orientation:portrait) and (max-width:600px){
-  .slack-computer .sc-monitor{top:max(126px,18%);height:61%}
-  .slack-computer .sc-friend{bottom:2%;height:13%;min-height:44px}
+  .slack-computer .sc-monitor{top:max(126px,18%);height:auto;bottom:max(65px,11%)}
+  .slack-computer .sc-friend{bottom:1%;height:7%;min-height:40px}
 }
 
 /* Shallow phone landscape: widen the screen and move it below the HUD.

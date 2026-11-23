@@ -15,8 +15,8 @@ describe('SLACK OFF small-screen game framing', () => {
   it('places the portrait roommate below the monitor and uses a wider landscape screen', () => {
     const dorm = styles.find(s => s.name === 'computer.css')!.css;
     const shared = styles.find(s => s.name === 'slack.css')!.css;
-    expect(dorm).toContain('.slack-computer .sc-monitor{top:max(126px,18%);height:61%}');
-    expect(dorm).toContain('.slack-computer .sc-friend{bottom:2%;height:13%;min-height:44px}');
+    expect(dorm).toContain('.slack-computer .sc-monitor{top:max(126px,18%);height:auto;bottom:max(65px,11%)}');
+    expect(dorm).toContain('.slack-computer .sc-friend{bottom:1%;height:7%;min-height:40px}');
     expect(dorm).toContain('.slack-computer .sc-monitor{left:10%;top:27%;width:80%;height:69%;');
     expect(shared).toContain('.sl-tools button{white-space:nowrap;min-width:78px;');
   });

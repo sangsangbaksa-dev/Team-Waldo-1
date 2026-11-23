@@ -206,6 +206,18 @@ try {
         bubbles: true, pointerId: 42, pointerType: 'touch', button: 0,
       })));
       assert.equal(await cover.getAttribute('aria-pressed'), 'false', 'Off-element release should end the cover hold');
+      // Some touchpads report button=0 on the final pointerup after a
+      // middle-button press. A study hold must not become permanent.
+      await page.locator('.slack-computer').dispatchEvent('pointerdown', {
+        pointerId: 77, pointerType: 'mouse', button: 1, isPrimary: true,
+      });
+      assert.equal(await cover.getAttribute('aria-pressed'), 'true',
+        'Middle-pointer hold must activate the study cover');
+      await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true, pointerId: 77, pointerType: 'mouse', button: 0,
+      })));
+      assert.equal(await cover.getAttribute('aria-pressed'), 'false',
+        'Normalized middle-pointer release must end the study cover');
 
       if (!size.mobile) {
         const segments = await page.evaluate(() => window.__slackNoiseStarts);
@@ -223,6 +235,10 @@ try {
       await chapter12.focus();
       assert.equal(await chapter12.evaluate(node => document.activeElement === node), true,
         'Webtoon chapter should be keyboard focusable');
+      await page.keyboard.press('PageDown');
+      await page.waitForTimeout(150);
+      const scrolled = await chapter12.evaluate(node => node.scrollTop);
+      assert.ok(scrolled > 0, 'Keyboard PageDown must scroll the webtoon reading region');
       const like12 = page.locator('[data-eppane="2"] [data-like]');
       await like12.click();
       assert.equal(await like12.getAttribute('aria-pressed'), 'true');
@@ -288,6 +304,10 @@ try {
       await seek.evaluate(node => { node.value = '120'; node.dispatchEvent(new Event('input', { bubbles: true })); });
       assert.equal(await page.locator('.sc-app-video [data-vtime]').textContent(), '2:00 / 12:08',
         'Video timeline must seek to requested time');
+      await seek.focus();
+      await page.keyboard.press('ArrowRight');
+      assert.equal(await page.locator('.sc-app-video [data-vtime]').textContent(), '2:01 / 12:08',
+        'ArrowRight on the video slider must advance playback by one second');
       if (['desktop','compact','short-landscape'].includes(size.name)) await snap('dorm-video');
       await page.locator('.sc-apps [data-app="chat"]').click();
       await page.locator('.sc-app-chat').waitFor({ state: 'visible' });

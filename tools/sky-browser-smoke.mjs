@@ -210,6 +210,21 @@ try {
       assert.equal(restart.runs, runsBefore + 1, 'Restart must preserve the previous sortie record');
       assert.equal(restart.alert, '', 'Restart must clear stale combat warnings');
       assert.equal(restart.rings, 0, 'Restart must clear lingering explosion rings');
+      // Simultaneous damage and pickup notifications should leave the safety
+      // warning visible; event array ordering must not decide severity.
+      await page.evaluate(() => {
+        const sim = window.__sky.sim;
+        sim.events.push({ t: 'hit', id: sim.player.id, pos: sim.player.pos.clone(), by: 999 });
+        sim.events.push({ t: 'pickup', kind: 'repair' });
+      });
+      await page.waitForFunction(() => document.querySelector('#sk-alert')?.textContent.includes('피격'));
+      assert.equal(await page.locator('#sk-alert').getAttribute('data-level'), 'danger',
+        'Critical damage should remain prominent even after a pickup event');
+      await page.waitForFunction(() => document.querySelector('#sk-alert')?.textContent === '');
+      await page.evaluate(() => window.__sky.sim.events.push({ t: 'pickup', kind: 'repair' }));
+      await page.waitForFunction(() => document.querySelector('#sk-alert')?.textContent.includes('수리'));
+      assert.equal(await page.locator('#sk-alert').getAttribute('data-level'), 'info',
+        'Ordinary pickup notifications should use the non-emergency style');
       assert.equal(await page.evaluate(() => window.__skyPreviousAircraft === window.__sky.view.meshes.get(window.__sky.sim.player.id)), false,
         'Restart must not reuse an old aircraft mesh even when the entity ID is recycled');
       // A true incoming missile warning must survive a simultaneous arena warning.

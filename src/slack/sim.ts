@@ -230,6 +230,7 @@ export const createSim: CreateSim = (stage, seed, level) => {
       if (!isClass && batteryActivities.includes(active)) { // 학교 노트북은 배터리가 없다
         state.battery = clamp(state.battery - (active === 'music' ? 0.12 : 0.8) * dt);
         if (state.battery === 0) {
+          coverTiming.clearExposure();
           state.activity = null; events.push({ t: 'activity', id: null }, { t: 'toast', text: '배터리가 다 떨어졌어요.' });
         }
       }

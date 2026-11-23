@@ -167,9 +167,17 @@ export class TerrainView {
   /** 걸어 올라갈 수 있는 능선은 충돌 엔진과 동일한 riseHeight()로 정점을 만듭니다.
    * 색은 고도에 따라 풀빛에서 노출된 암석으로 바뀌고 전체를 한 메시로 합칩니다. */
   private buildRises(): void {
-    const geos: THREE.BufferGeometry[] = [], base = new THREE.Color(0x879751), crown = new THREE.Color(0x888172), moss = new THREE.Color(0x72854b);
+    const geos: THREE.BufferGeometry[] = [];
+    const palettes = [
+      [0x879751, 0x888172, 0x72854b], // grassy highland
+      [0x9c9569, 0x837b6b, 0x9d8658], // dry ochre rise
+      [0x76878a, 0x767b7d, 0x6a8171], // gray slate ridge
+      [0x65784d, 0x727466, 0x527257], // dense evergreen foothill
+    ] as const;
     const seg = this.low ? 20 : 36, rings = this.low ? 8 : 14, color = new THREE.Color();
     for (const hill of this.map.terrain.rises) {
+      const tone = Math.abs(Math.floor(hill.x * 0.37 + hill.z * 0.21 + this.map.seed)) % palettes.length;
+      const [low, high, mid] = palettes[tone], base = new THREE.Color(low), crown = new THREE.Color(high), moss = new THREE.Color(mid);
       const pos: number[] = [], colors: number[] = [], idx: number[] = [];
       for (let j = 0; j <= rings; j++) {
         const radius = (j / rings) * hill.r, top = 1 - j / rings;

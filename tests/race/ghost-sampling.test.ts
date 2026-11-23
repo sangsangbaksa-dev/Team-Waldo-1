@@ -10,6 +10,20 @@ describe('SPEED RUSH ghost sampling', () => {
     expect(ghostAt(g,0.25)?.x).toBeCloseTo(25);
     expect(ghostAt(g,0.35)?.x).toBeCloseTo(35);
   });
+  it('samples a mutable vehicle state without aliasing its previous position', () => {
+    const recorder = new GhostRecorder();
+    const vehicle = { x: 0, z: 0, h: 0, total: 0 };
+    recorder.tick(0, vehicle);
+    vehicle.x = 5; vehicle.total = 5;
+    recorder.tick(0.05, vehicle);
+    vehicle.x = 20; vehicle.total = 20;
+    recorder.tick(0.2, vehicle);
+    const ghost = recorder.finish(0.2, 1, vehicle);
+    expect(ghostAt(ghost, 0.1)?.x).toBeCloseTo(10);
+    expect(ghostAt(ghost, 0.15)?.x).toBeCloseTo(15);
+    expect(ghostAt(ghost, 0.2)?.x).toBeCloseTo(20);
+  });
+
   it('chooses the short rotation across the angle seam', () => {
     const r = new GhostRecorder(); r.tick(0,p(0,3.1)); r.tick(0.22,p(22,-3.1));
     const g = r.finish(0.22,1,p(22,-3.1));

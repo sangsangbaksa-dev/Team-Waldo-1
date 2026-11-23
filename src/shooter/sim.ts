@@ -188,7 +188,8 @@ export class Match {
   gun(p: Player): Gun | null { return p.guns[p.cur]; }
 
   step(dt: number): void {
-    if (this.over) return;
+    // 숨김 탭이나 잘못된 네트워크 델타에서 NaN/음수 시간이 경기 전체에 전파되지 않게 합니다.
+    if (this.over || !Number.isFinite(dt) || dt <= 0) return;
     this.t += dt;
     const zone = this.zone;
     this.sounds = this.sounds.filter(s => this.t - s.t < 2.5);
@@ -501,11 +502,15 @@ export class Match {
   }
   private stepNades(dt: number): void {
     for (let i = this.nades.length - 1; i >= 0; i--) {
-      const n = this.nades[i]; n.fuse -= dt; n.vy -= 18 * dt;
+      const n = this.nades[i]; n.fuse -= dt;
+      // 탭 전환 후 큰 dt를 한 번에 세분하면 수천 번의 물리 루프가 실행됩니다.
+      // 최대 0.25초만 탄도에 반영하되 퓨즈 시간은 실제 지난 시간 전체를 반영합니다.
+      const physicsDt = Math.min(0.25, dt);
+      n.vy -= 18 * physicsDt;
       const radius = 0.15;
       // 이동 거리보다 얇은 벽·천장을 한 틱에 통과하지 않도록 3축을 작은 단계로 진행합니다.
-      const distance = Math.max(Math.abs(n.vx), Math.abs(n.vy), Math.abs(n.vz)) * dt;
-      const steps = Math.max(1, Math.ceil(distance / 0.12)), tick = dt / steps;
+      const distance = Math.max(Math.abs(n.vx), Math.abs(n.vy), Math.abs(n.vz)) * physicsDt;
+      const steps = Math.max(1, Math.min(64, Math.ceil(distance / 0.12))), tick = physicsDt / steps;
       for (let step = 0; step < steps; step++) {
         const nx = n.x + n.vx * tick, nz = n.z + n.vz * tick;
         if (sphereHits(this.map, nx, n.y, n.z, radius)) n.vx *= -0.45;

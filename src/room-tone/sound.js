@@ -249,7 +249,7 @@ export class Sound {
   }
 
   ready() {
-    return (
+    return Boolean(
       this.ctx?.state === "running" && this.level && !this.paused && !this.muted
     );
   }

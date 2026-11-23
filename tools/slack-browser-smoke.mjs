@@ -167,6 +167,9 @@ try {
       await page.locator('[data-paused] [data-restart]').click();
       await page.locator('.slack-computer').waitFor();
       assert.equal(await page.locator('.slack-computer').count(), 1, 'Restart should retain one dorm view');
+      const guardPassThrough = await page.locator('.sc-scan-person u')
+        .evaluate(node => getComputedStyle(node).pointerEvents);
+      assert.equal(guardPassThrough, 'none', 'Scanning guard must not block taskbar taps');
       await page.locator('.sc-apps [data-app="chat"]').click();
       await page.locator('.sc-app-chat').waitFor({ state: 'visible' });
       await page.locator('.sc-apps [data-app="shop"]').click();

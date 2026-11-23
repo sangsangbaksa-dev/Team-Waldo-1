@@ -20,6 +20,17 @@ describe('SLACK OFF animation isolation', () => {
 });
 
 describe('SLACK OFF phone safe-area layout', () => {
+  it('does not let the guard silhouette steal taps from taskbar apps', () => {
+    const dorm = styles.find(s => s.name === 'computer.css')!.css;
+    expect(dorm).toMatch(/\.sc-scan-person,\.sc-scan-person \*\{pointer-events:none\}/);
+  });
+
+  it('protects landscape HUD and dialog from left/right device cutouts', () => {
+    const shared = styles.find(s => s.name === 'slack.css')!.css;
+    expect(shared).toContain('padding-left:max(16px,env(safe-area-inset-left');
+    expect(shared).toContain('padding-right:max(20px,env(safe-area-inset-right');
+  });
+
   it('keeps the header, dialogs and stage cover controls clear of system UI', () => {
     const shared = styles.find(s => s.name === 'slack.css')!.css;
     const classroom = styles.find(s => s.name === 'classroom.css')!.css;

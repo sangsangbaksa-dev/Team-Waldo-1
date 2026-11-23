@@ -32,6 +32,8 @@ jobs:
         run: npx eslint src/slack tests/slack
       - name: SLACK OFF regression tests
         run: npx vitest run tests/slack
+      - name: Whole-repository Vitest regression
+        run: npm test
       - name: Repository typecheck
         run: npm run typecheck
       - name: Production bundle build

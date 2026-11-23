@@ -328,3 +328,6 @@
   padding-left:max(14px,env(safe-area-inset-left,0px));
   padding-right:max(14px,env(safe-area-inset-right,0px));
 }
+/* Decorative guard silhouette and flashlight beam share a stacking context
+   above the monitor. Never let either intercept app/taskbar pointer input. */
+.sc-scan-person,.sc-scan-person *{pointer-events:none}

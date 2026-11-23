@@ -151,3 +151,15 @@
     padding-left:max(12px,env(safe-area-inset-left,0px));
   }
 }
+/* Landscape phones place the sensor cutout on the left or right edge.
+   Preserve the normal desktop padding when safe-area insets are zero. */
+@media (min-width:701px){
+  .sl-hud{
+    padding-left:max(16px,env(safe-area-inset-left,0px));
+    padding-right:max(16px,env(safe-area-inset-right,0px));
+  }
+  .sl-modal{
+    padding-left:max(20px,env(safe-area-inset-left,0px));
+    padding-right:max(20px,env(safe-area-inset-right,0px));
+  }
+}

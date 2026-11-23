@@ -161,7 +161,7 @@ function tile(entry: Entry, index: number): string {
   return `
     <li class="tile-item" style="--tile-index: ${index}">
       <button class="tile" id="start-${entry.id}" type="button" data-game="${entry.id}" aria-describedby="summary-${entry.id}">
-        <span class="tile-media${entry.id === 'room-tone' ? ' is-scary' : ''}"><img ${index === 0 ? `src="${entry.image}" fetchpriority="high"` : `data-deferred-src="${entry.image}" loading="lazy" fetchpriority="low"`} alt="${entry.imageAlt}" width="1280" height="800" decoding="async">${entry.id === 'room-tone' ? '<span class="tile-warn" aria-hidden="true">⚠ 공포 이미지 · 올려 보면 보여요</span>' : ''}</span>
+        <span class="tile-media${entry.id === 'room-tone' ? ' is-scary' : ''}" data-fallback="${entry.name}"><img ${index === 0 ? `src="${entry.image}" fetchpriority="high"` : `data-deferred-src="${entry.image}" loading="lazy" fetchpriority="low"`} alt="${entry.imageAlt}" width="1280" height="800" decoding="async">${entry.id === 'room-tone' ? '<span class="tile-warn" aria-hidden="true">⚠ 공포 이미지 · 올려 보면 보여요</span>' : ''}</span>
         <span class="tile-body">
           <span class="tile-genre">${entry.genre}${entry.id === 'room-tone' ? ' · 공포 주의' : ''}</span>
           <span class="tile-name">${entry.name}</span>

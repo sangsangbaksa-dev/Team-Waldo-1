@@ -175,3 +175,17 @@
 .rc-root.reduced-motion .rc-drift,
 .rc-root.reduced-motion .rc-draft,
 .rc-root.reduced-motion .rc-boostfx { transition: none; }
+
+/* Very small phones have less room than the two default 84px steering keys,
+   three pedals and safety margins require. Shrink only the control surfaces. */
+@media (max-width: 360px) and (min-height: 481px) {
+  .rc-root.touch .rc-touchpad {
+    padding: 0 max(8px, env(safe-area-inset-right)) 0 max(8px, env(safe-area-inset-left));
+    gap: 6px;
+  }
+  .rc-root.touch .rc-steer { gap: 6px; }
+  .rc-root.touch .rc-touchpad button { min-width: 68px; height: 68px; border-radius: 18px; }
+  .rc-root.touch .rc-pedals button { min-width: 96px; height: 44px; }
+  .rc-root.touch .rc-pedals button.gas { height: 66px; font-size: 16px; }
+  .rc-root.touch .rc-pedal-row { gap: 6px; }
+}

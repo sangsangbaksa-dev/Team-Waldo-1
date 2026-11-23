@@ -14,6 +14,7 @@ import { TrackClearanceIndex, startBannerPose } from './track-queries';
 import { type Theme } from './maps';
 import { buildOutposts, type Outpost } from './outpost';
 import { disposeOwnedTree, markBorrowedTree } from './resource-ownership';
+import { cachedRoadTexture } from './procedural-textures';
 
 const CAR_LEN = 4.7;
 const rnd = (a: number, b: number): number => a + Math.random() * (b - a);
@@ -242,7 +243,7 @@ export class RaceView {
   }
 
   private buildGround(): void {
-    const gr = this.theme.ground, S = gr.noise ? 512 : 128, tex = canvasTex(S, S, g => {
+    const gr = this.theme.ground, S = gr.noise ? 512 : 128, tex = cachedRoadTexture(this.theme, 'ground', S, S, g => {
       g.fillStyle = gr.base; g.fillRect(0, 0, S, S);
       if (gr.noise) {
         // 이음매가 보이지 않도록 가장자리를 넘어가는 얼룩을 반대편에도 그립니다.
@@ -258,7 +259,7 @@ export class RaceView {
   private buildRoad(): void {
     const t = this.track, hw = t.halfWidth, th = this.theme, rd = th.road;
     // 40m 를 한 장으로 쓰는 아스팔트: 굵은 얼룩, 고운 입자, 타이어 자국, 균열, 보수 자국, 가장자리 선
-    const TW = 512, TH = 1024, asphalt = canvasTex(TW, TH, g => {
+    const TW = 512, TH = 1024, asphalt = cachedRoadTexture(this.theme, 'asphalt', TW, TH, g => {
       g.fillStyle = rd.base; g.fillRect(0, 0, TW, TH);
       for (let i = 0; i < 70; i++) { const x = Math.random() * TW, y = Math.random() * TH, r = 40 + Math.random() * 120, gr = g.createRadialGradient(x, y, 0, x, y, r), d = Math.random() < 0.5; gr.addColorStop(0, d ? 'rgba(0,0,0,.10)' : 'rgba(255,255,255,.05)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2); }
       for (let i = 0; i < 9000; i++) { const a = Math.random() * 0.22; g.fillStyle = Math.random() < 0.55 ? `rgba(0,0,0,${a})` : `rgba(255,255,255,${a * 0.6})`; g.fillRect(Math.random() * TW, Math.random() * TH, 1 + Math.random() * 2, 1 + Math.random() * 2); }

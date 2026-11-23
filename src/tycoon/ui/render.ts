@@ -97,4 +97,37 @@ export function winHtml(s: TycoonState): string {
   return `<div class="ty-titlebox win"><p class="kick">THE END?</p><h1>세계 정복</h1><p class="sub">${s.day}일 만에 빈털터리가 세계를 손에 넣었습니다. 순자산 ${formatMoney(s.netWorth)}</p>
     <div class="ty-title-btns"><button type="button" class="primary" data-title="keep">계속 플레이</button><button type="button" data-title="exit">허브로</button></div></div>`;
 }
+/** Accessible map directory: pure HTML renderer, independent of scene and save state. */
+export interface MapCarRow {
+  name: string;
+  active: boolean;
+  reachable: boolean;
+  distance: number;
+}
+
+export function mapDirectoryHtml(cars: readonly MapCarRow[], hasWaypoint: boolean): string {
+  const rows = cars.map((car, index) => {
+    const distance = Number.isFinite(car.distance) ? Math.max(0, Math.round(car.distance)) : 0;
+    const description = car.active ? '현재 운전 중'
+      : car.reachable ? `도로 기준 약 ${distance}미터, 목적지로 설정` : '구역 개방 후 이용 가능';
+    const sub = car.active ? '현재 운전 중' : car.reachable ? `도로 약 ${distance}m` : '구역 개방 후 이용 가능';
+    return `<button type="button" class="ty-map-vehicle" data-vehicle-target="${index}"
+      ${!car.reachable || car.active ? 'disabled' : ''} aria-label="${esc(car.name)} · ${esc(description)}">
+      <span class="ty-map-car-icon" aria-hidden="true">◈</span>
+      <span class="ty-map-car-copy"><strong>${esc(car.name)}</strong><small>${sub}</small></span>
+      <span class="ty-map-car-chevron" aria-hidden="true">${car.reachable && !car.active ? '↗' : '—'}</span></button>`;
+  }).join('');
+  return `<div class="ty-bigmap" role="dialog" aria-modal="true" aria-label="도시 지도">
+    <button type="button" class="ty-x" data-close aria-label="지도 닫기">✕</button>
+    <div class="ty-map-layout">
+      <div class="ty-map-surface"><canvas id="ty-bigmap" width="720" height="720" aria-label="지도를 눌러 원하는 지점에 경로를 표시"></canvas>
+        <div class="ty-map-caption">지도를 눌러 목적지 지정 · 점선은 도로 참고 경로</div></div>
+      <div class="ty-map-aside"><div class="ty-map-aside-head"><small>CITY DIRECTORY</small><h2>이동할 곳을 선택하세요</h2><p>차량을 선택하거나 지도 위의 지점을 눌러 주세요.</p></div>
+        <div class="ty-map-vehicles">${rows || '<p class="ty-map-empty">배치된 차량이 없습니다.</p>'}</div>
+        <button type="button" class="ty-clear-waypoint" data-waypoint-clear ${hasWaypoint ? '' : 'disabled'}>설정한 목적지 지우기</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 export type { SpotDef };

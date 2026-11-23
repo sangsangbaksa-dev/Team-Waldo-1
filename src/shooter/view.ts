@@ -189,7 +189,7 @@ export class ShooterView {
           // All material batches use identical yaw/scale, so trunk and crowns stay aligned.
           const rot = rngOf((this.match.seed + Math.imul(i + 1, 937) + (pine ? 17 : 31)) >>> 0);
           const h = (pine ? 9 : 7.5) / top * t.s;
-          d.position.set(t.x, 0, t.z); d.rotation.set(0, rot() * 6.28, 0); d.scale.setScalar(h); d.updateMatrix(); mesh.setMatrixAt(i, d.matrix);
+          d.position.set(t.x, groundHeight(this.match.map.terrain, t.x, t.z), t.z); d.rotation.set(0, rot() * 6.28, 0); d.scale.setScalar(h); d.updateMatrix(); mesh.setMatrixAt(i, d.matrix);
           if (!baked) mesh.setColorAt(i, this.tmpCol.setScalar(0.85 + rot() * 0.24));
         });
         mesh.castShadow = true; mesh.receiveShadow = false; this.scene.add(mesh);

@@ -29,7 +29,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     <button class="sk-pause" id="sk-pause" aria-label="일시정지">Ⅱ</button><div class="sk-hint" id="sk-hint"></div>
   </div>
   <div class="sk-modal wd-screen" id="sk-title"><div class="sk-card wd-panel">
-    <div class="sk-brand"><span class="sk-eyebrow wd-eyebrow">AIR COMBAT / ENDLESS WAVES</span><h1 class="wd-title">SKY WAR</h1></div><p class="sub wd-lead">끝없이 이어지는 하늘에서 나만의 기록을 세워보세요.</p>
+    <div class="sk-brand"><span class="sk-eyebrow wd-eyebrow">AIR COMBAT / ENDLESS WAVES</span><h1 class="wd-title">SKY WAR</h1></div><p class="sub wd-lead">하늘을 누비며 새로운 기록에 도전하세요.</p>
     <div class="wd-field"><div class="sk-section-label wd-label">난이도</div><div class="sk-diff wd-seg" id="sk-diff"></div></div>
     <div class="wd-field"><div class="sk-section-label wd-label">설정</div><div class="sk-ctl" id="sk-ctl"><label>조준 보조 <button data-k="assist"></button></label><label>감도 <button data-k="sens"></button></label><label>상하 <button data-k="inv"></button></label><label>커서 방식 <button data-k="lock"></button></label></div></div>
     <details class="sk-help" open><summary>조작 방법 보기</summary><ul class="sk-how"><li><b>커서/손가락 위치</b>로 조종 — 클릭 없이 움직이면 기체가 따라갑니다 (화면 가운데 = 직진). 커서 방식에서 잠금을 켜면 상대 이동으로 조종합니다.</li>

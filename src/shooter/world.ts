@@ -581,6 +581,39 @@ export function pushOut(map: GameMap, p: { x: number; z: number }, r: number): b
 /** 광선이 통과하는 CELL 격자를 빠짐없이 순회합니다.
  * 이전 4m 샘플링은 셀 모서리의 짧은 통과 구간을 건너뛰어 얇은 벽을 뚫는 문제가 있었습니다.
  * DDA는 방문한 셀만 검사하므로 긴 시야/총알 광선의 빈 셀 탐색 비용도 낮춥니다. */
+/** 슬랩 기반 3축 Ray/AABB 교차. 광선마다 상자별 클로저/배열을 만들지 않습니다. */
+function rayBoxDistance(b: Box, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, limit: number): number {
+  let near = 0, far = limit;
+  if (Math.abs(dx) < 1e-9) {
+    if (ox < b.x0 || ox > b.x1) return Infinity;
+  } else {
+    let a = (b.x0 - ox) / dx, c = (b.x1 - ox) / dx;
+    if (a > c) { const temp = a; a = c; c = temp; }
+    if (a > near) near = a;
+    if (c < far) far = c;
+    if (near > far) return Infinity;
+  }
+  if (Math.abs(dy) < 1e-9) {
+    if (oy < b.y0 || oy > b.y1) return Infinity;
+  } else {
+    let a = (b.y0 - oy) / dy, c = (b.y1 - oy) / dy;
+    if (a > c) { const temp = a; a = c; c = temp; }
+    if (a > near) near = a;
+    if (c < far) far = c;
+    if (near > far) return Infinity;
+  }
+  if (Math.abs(dz) < 1e-9) {
+    if (oz < b.z0 || oz > b.z1) return Infinity;
+  } else {
+    let a = (b.z0 - oz) / dz, c = (b.z1 - oz) / dz;
+    if (a > c) { const temp = a; a = c; c = temp; }
+    if (a > near) near = a;
+    if (c < far) far = c;
+    if (near > far) return Infinity;
+  }
+  return near;
+}
+
 let rayMarks = new Uint32Array(1 << 14);
 let rayStamp = 0;
 export function rayWorld(map: GameMap, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, hit?: { boxIndex: number }): number {
@@ -612,18 +645,10 @@ export function rayWorld(map: GameMap, ox: number, oy: number, oz: number, dx: n
       for (const i of indices) {
       if (rayMarks[i] === rayStamp) continue;
       rayMarks[i] = rayStamp;
-      const b = map.boxes[i];
-      let t0 = 0, t1 = Math.min(maxT, best);
-      const slab = (o: number, d: number, lo: number, hi: number): boolean => {
-        if (Math.abs(d) < 1e-9) return o >= lo && o <= hi;
-        let a = (lo - o) / d, c = (hi - o) / d;
-        if (a > c) { const tmp = a; a = c; c = tmp; }
-        if (a > t0) t0 = a;
-        if (c < t1) t1 = c;
-        return t0 <= t1;
-      };
-      if (slab(ox, dx, b.x0, b.x1) && slab(oy, dy, b.y0, b.y1) && slab(oz, dz, b.z0, b.z1) && t0 < best) {
-        best = t0; if (hit) hit.boxIndex = i;
+      const t = rayBoxDistance(map.boxes[i], ox, oy, oz, dx, dy, dz, Math.min(maxT, best));
+      if (t < best) {
+        best = t;
+        if (hit) hit.boxIndex = i;
       }
       }
     }

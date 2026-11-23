@@ -150,10 +150,10 @@ export class SkyView {
     // 저사양/모바일에서 높은 주파수의 잔물결과 광택이 반짝임·모아레를 만들지 않도록 부드럽게 조절합니다.
     const lowSea = this.quality === 'low';
     const seaMat = new THREE.MeshStandardMaterial({
-      color: 0x28687a, metalness: lowSea ? 0.2 : 0.42, roughness: lowSea ? 0.62 : 0.3,
-      normalMap: this.seaNormalMap, normalScale: new THREE.Vector2(lowSea ? 0.32 : 0.7, lowSea ? 0.32 : 0.7),
+      color: 0x28687a, metalness: lowSea ? 0.12 : 0.42, roughness: lowSea ? 0.72 : 0.3,
+      normalMap: this.seaNormalMap, normalScale: new THREE.Vector2(lowSea ? 0.18 : 0.7, lowSea ? 0.18 : 0.7),
     });
-    this.seaNormalMap.repeat.set(lowSea ? 72 : 160, lowSea ? 72 : 160);
+    this.seaNormalMap.repeat.set(lowSea ? 32 : 160, lowSea ? 32 : 160);
     seaMat.onBeforeCompile = shader => {
       shader.uniforms.skyTime = this.seaTime; shader.uniforms.seaOrigin = this.seaOrigin;
       shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float skyTime; uniform vec2 seaOrigin; varying vec2 vSeaW;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvSeaW = vec2(position.x + seaOrigin.x, position.y - seaOrigin.y); transformed.z += sin(vSeaW.x * 0.008 + skyTime * 0.7) * 1.2 + cos(vSeaW.y * 0.011 - skyTime * 0.5) * 0.8;');
@@ -197,9 +197,9 @@ export class SkyView {
     this.clouds.forEach((c, i) => { c.visible = l < 3 && (l < 2 || i % 2 === 0); });
     const sea = this.sea.material as THREE.MeshStandardMaterial;
     const smoothWater = this.quality === 'low' || l >= 2;
-    sea.roughness = smoothWater ? 0.62 : 0.3;
-    sea.metalness = smoothWater ? 0.2 : 0.42;
-    sea.normalScale.setScalar(smoothWater ? 0.32 : 0.7);
+    sea.roughness = smoothWater ? 0.72 : 0.3;
+    sea.metalness = smoothWater ? 0.12 : 0.42;
+    sea.normalScale.setScalar(smoothWater ? 0.18 : 0.7);
   }
   resize(w: number, h: number): void { this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); }
 

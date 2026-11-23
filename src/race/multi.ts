@@ -3,7 +3,7 @@
 import type { RoomSession } from '../net/lobby';
 import type { Channel, NetMsg } from '../net/types';
 import { CARS } from './config';
-import { encodeSnap, parseSnap, type Snap } from './netcar';
+import { encodeSnap, parseSnap, validFinishTime, type Snap } from './netcar';
 import type { CarState } from './physics';
 
 export interface MultiHooks {
@@ -71,7 +71,7 @@ export class RaceMulti {
       if (seen.has(this.session.me.id) && seen.has(this.session.room.host_id) && list.length >= 2) this.begin(list);
     }
     else if (m.t === 's') { const s = parseSnap(m.c); if (s && this.started && !this.gone.has(f)) this.hooks.onSnap(f, s); }
-    else if (m.t === 'fin') { if (this.started && this.heard.has(f) && typeof m.time === 'number' && Number.isFinite(m.time) && m.time > 0) this.hooks.onFinish(f, m.time); }
+    else if (m.t === 'fin') { if (this.started && this.heard.has(f) && validFinishTime(m.time)) this.hooks.onFinish(f, m.time); }
     else if (m.t === 'bye') this.leave(f);
   }
   sendSnap(car: CarState, now: number): void { if (this.dead || !this.started || now - this.lastSnap < 66) return; this.lastSnap = now; this.ch.send({ t: 's', f: this.session.me.id, c: encodeSnap(car) }); }

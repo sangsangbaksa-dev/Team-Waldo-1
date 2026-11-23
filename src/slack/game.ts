@@ -96,7 +96,27 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
       root.classList.add('sl-paused');
       if (sim) { const s = sim.state; $('[data-pause-stats]').innerHTML = `<li>${stageInfo[stage].name}</li><li>재미 <b>${Math.round(s.fun)}</b> / ${Math.round(s.goal)}</li><li>들킴 <b>${s.strikes}</b> / 3</li>`; }
     } else if (state === 'paused' && !document.hidden) { state = 'play'; $('[data-paused]').hidden = true; enablePlay(); audio.hold(false); audio.resume(); audio.ambience(stage); } };
-  const keydown = (e: KeyboardEvent): void => { if (!e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'Escape' || e.key.toLowerCase() === 'p')) { if (state === 'play' || state === 'paused') { e.preventDefault(); pause(); } } };
+  const keydown = (e: KeyboardEvent): void => {
+    if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      // A visible aria-modal dialog must keep keyboard focus within it.
+      // The play surface is inert during pause/results, but Tab can otherwise
+      // escape to unrelated page controls at either end of the dialog.
+      const dialog = state === 'title' ? $('[data-title]') : state === 'paused' ? $('[data-paused]') : state === 'result' ? $('[data-result]') : null;
+      if (dialog) {
+        const controls = Array.from(dialog.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])'))
+          .filter(node => !node.hidden && !node.closest('[hidden]'));
+        const first = controls[0], last = controls[controls.length - 1];
+        if (first && last && (e.shiftKey ? document.activeElement === first || !dialog.contains(document.activeElement) : document.activeElement === last || !dialog.contains(document.activeElement))) {
+          e.preventDefault();
+          (e.shiftKey ? last : first).focus();
+          return;
+        }
+      }
+    }
+    if (!e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'Escape' || e.key.toLowerCase() === 'p')) {
+      if (state === 'play' || state === 'paused') { e.preventDefault(); pause(); }
+    }
+  };
   const visibility = (): void => { if (document.hidden && state === 'play') pause(); };
   const enablePlay = (): void => {
     $('.sl-view').inert = false; $('.sl-hud').inert = false; $('[data-tip]').inert = false;

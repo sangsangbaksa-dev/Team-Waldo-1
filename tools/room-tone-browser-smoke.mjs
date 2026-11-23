@@ -103,6 +103,21 @@ try {
       assert.ok(glb.length>0,"Starting the game must request the monster model");
       assert.equal(await page.locator("#viewWrap canvas").evaluate(el=>
         el.width>0 && el.height>0 && Boolean(el.getContext("webgl2"))),true);
+      if(config.name==="desktop"){
+        const lowWidth=await page.locator("#viewWrap canvas").evaluate(el=>el.width);
+        await page.evaluate(()=>{
+          const key="waldo.preferences.v1",current=JSON.parse(localStorage.getItem(key));
+          localStorage.setItem(key,JSON.stringify({...current,quality:"high"}));
+          window.dispatchEvent(new StorageEvent("storage",{key}));
+        });
+        const highWidth=await page.locator("#viewWrap canvas").evaluate(el=>el.width);
+        assert.ok(highWidth>lowWidth,"Changing arcade quality should increase WebGL resolution");
+        await page.evaluate(()=>{
+          const key="waldo.preferences.v1",current=JSON.parse(localStorage.getItem(key));
+          localStorage.setItem(key,JSON.stringify({...current,quality:"low"}));
+          window.dispatchEvent(new StorageEvent("storage",{key}));
+        });
+      }
       await page.screenshot({path:"browser-artifacts/room-tone-brief-"+config.name+".png",animations:"disabled"});
 
       await page.getByRole("button",{name:"도면 보기"}).click();

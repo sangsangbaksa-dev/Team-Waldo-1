@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MAPS } from '../../src/race/maps';
 import { buildMapTrack } from '../../src/race/track';
 import { createRace, updateRace } from '../../src/race/race';
-import { decideWinner, encodeSnap, followSnap, parseSnap } from '../../src/race/netcar';
+import { decideWinner, encodeSnap, followSnap, parseSnap, validFinishTime } from '../../src/race/netcar';
 
 const track = buildMapTrack(MAPS[0]);
 const idle = { throttle: 0, brake: 0, steer: 0, drift: false, nitro: false };
@@ -68,6 +68,15 @@ describe('SPEED RUSH 1대1 레이스', () => {
     followSnap(car, link, 0, 1 / 90); expect(car.x).toBeCloseTo(link.snap![0], 5);
     const near = { snap: parseSnap(encodeSnap({ ...car, x: car.x + 4, vx: 0 })), at: 0 }, x0 = car.x;
     followSnap(car, near, 0, 1 / 90); expect(car.x).toBeGreaterThan(x0); expect(car.x).toBeLessThan(x0 + 4);
+  });
+
+  it('accepts real online lap times and rejects invalid or implausible peer finish packets', () => {
+    expect(validFinishTime(0.001)).toBe(true);
+    expect(validFinishTime(49.654)).toBe(true);
+    expect(validFinishTime(3599)).toBe(true);
+    for (const value of [0, -1, 3601, Infinity, -Infinity, NaN, null, '42', {}, []]) {
+      expect(validFinishTime(value)).toBe(false);
+    }
   });
 
   it('결승 기록이 더 빠른 쪽이 이기고 같으면 방장이 이긴다', () => {

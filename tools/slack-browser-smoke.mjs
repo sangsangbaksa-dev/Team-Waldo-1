@@ -245,12 +245,13 @@ try {
         await page.setViewportSize({ width: size.width, height: size.height });
         await page.locator('[data-paused] [data-resume]').click();
       }
+      await star.waitFor({ state: 'visible', timeout: 3500 });
       const scoreBeforeKeyboard = Number(await page.locator('.sc-app-game [data-score]').textContent());
-      await page.locator('.sc-app-game').focus();
+      await page.locator('.slack-computer').focus();
       await page.keyboard.press('j');
       const scoreAfterKeyboard = Number(await page.locator('.sc-app-game [data-score]').textContent());
-      assert.ok(scoreAfterKeyboard >= scoreBeforeKeyboard,
-        'J shortcut must never reduce reaction-game score');
+      assert.equal(scoreAfterKeyboard, scoreBeforeKeyboard + 10,
+        'J shortcut must pop an available reaction star for keyboard players');
       await page.locator('.sc-apps [data-app="chat"]').click();
       await page.locator('.sc-app-chat').waitFor({ state: 'visible' });
       assert.equal(await page.locator('.sc-app-game .sc-target circle')

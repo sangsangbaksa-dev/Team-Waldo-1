@@ -55,6 +55,41 @@ it('restores sound when resume wins the race with a pending suspend', async () =
   audio.dispose();
 });
 
+it('suspends a delayed audio resume that completes after the player pauses', async () => {
+  const node = () => ({ connect: vi.fn(), gain: { value: 0 }, frequency: { value: 0 },
+    threshold: { value: 0 }, knee: { value: 0 }, ratio: { value: 0 }, attack: { value: 0 }, release: { value: 0 } });
+  let completeResume: (() => void) | undefined;
+  let attempts = 0;
+  const ctx = {
+    state: 'suspended',
+    createGain: node, createBiquadFilter: node, createDynamicsCompressor: node,
+    resume: vi.fn().mockImplementation(() => {
+      if (++attempts === 1) return new Promise<void>(resolve => {
+        completeResume = () => { ctx.state = 'running'; resolve(); };
+      });
+      ctx.state = 'running';
+      return Promise.resolve();
+    }),
+    suspend: vi.fn().mockImplementation(() => { ctx.state = 'suspended'; return Promise.resolve(); }),
+    close: vi.fn().mockResolvedValue(undefined),
+  };
+  vi.stubGlobal('AudioContext', vi.fn(function () { return ctx; }));
+  const audio = createSlackAudio();
+  audio.resume();
+  audio.hold(true); // The delayed AudioContext.resume() has not completed.
+  expect(ctx.suspend).not.toHaveBeenCalled();
+  completeResume?.();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(ctx.suspend).toHaveBeenCalledTimes(1);
+  expect(ctx.state).toBe('suspended');
+
+  audio.hold(false);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(ctx.resume).toHaveBeenCalledTimes(2);
+  expect(ctx.state).toBe('running');
+  audio.dispose();
+});
+
 it('does not allocate silent oscillator or noise voices while SFX are muted', () => {
   const parameter = () => ({ value: 0, setTargetAtTime: vi.fn() });
   const node = () => ({

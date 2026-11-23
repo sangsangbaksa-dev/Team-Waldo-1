@@ -5,7 +5,7 @@ type Loop = { src: AudioBufferSourceNode; filter: BiquadFilterNode; gain: GainNo
 export class TycoonAudio {
   private eng = new AudioEngine();
   private city: Loop | null = null; private rain: Loop | null = null; private wind: Loop | null = null; private motor: { osc: OscillatorNode; filter: BiquadFilterNode; gain: GainNode } | null = null; private disposed = false;
-  private lastStep = 0; private lastMotorAt = -1; private lastMotorActive = false;
+  private lastStep = 0; private lastMotorAt = -1; private lastMotorActive = false; private lastAmbienceAt = -1;
   get enabled(): boolean { return this.eng.enabled; }
   set enabled(on: boolean) { this.eng.setEnabled(on); }
   unlock(): void {
@@ -25,6 +25,9 @@ export class TycoonAudio {
   /** 환경음: 낮엔 도시 소음, 밤엔 잔잔하게, 비 오면 빗소리. */
   ambience(daylight: number, rain: number, near: number): void {
     const c = this.eng.ctx; if (!c) return; const t = c.currentTime;
+    if (t - this.lastAmbienceAt < 0.1) return;
+    this.lastAmbienceAt = t;
+    for (const source of [this.city, this.rain, this.wind]) source?.gain.gain.cancelScheduledValues(t);
     this.city?.gain.gain.setTargetAtTime((0.05 + daylight * 0.07) * (1 - rain * 0.3) + near * 0.02, t, 0.5);
     this.rain?.gain.gain.setTargetAtTime(rain * 0.07, t, 0.8); this.wind?.gain.gain.setTargetAtTime(0.02 + rain * 0.03, t, 0.8);
   }

@@ -53,7 +53,7 @@ describe('ZERO ZONE 레이캐스트 격자 누락 방지', () => {
       const w = 0.2 + rng() * 7, d = 0.2 + rng() * 7;
       addBox(map, { x0: x, x1: x + w, z0: z, z1: z + d, y0: 0, y1: 1 + rng() * 25, kind: 'wall', tex: 0 });
     }
-    for (let i = 0; i < 300; i++) {
+    for (let i = 0; i < 5000; i++) {
       const ox = (rng() * 2 - 1) * 120, oz = (rng() * 2 - 1) * 120, oy = rng() * 22;
       const yaw = rng() * Math.PI * 2, pitch = (rng() - 0.5) * 1.3;
       const dx = Math.cos(yaw) * Math.cos(pitch), dz = Math.sin(yaw) * Math.cos(pitch), dy = Math.sin(pitch);
@@ -64,6 +64,16 @@ describe('ZERO ZONE 레이캐스트 격자 누락 방지', () => {
       if (Number.isFinite(expected)) expect(actual).toBeCloseTo(expected, 5);
       else expect(actual).toBe(Infinity);
     }
+  });
+
+  it('상자 안에서 쏘면 0거리에서 충돌하며 비정상 사거리는 무시한다', () => {
+    const map = emptyMap(), hit = { boxIndex: -1 };
+    addBox(map, { x0: 20, x1: 24, z0: -2, z1: 2, y0: 0, y1: 3, kind: 'wall', tex: 0 });
+    expect(rayWorld(map, 22, 1, 0, 1, 0, 0, 100, hit)).toBe(0);
+    expect(hit.boxIndex).toBe(0);
+    expect(rayWorld(map, 5, 1, 0, 1, 0, 0, Number.POSITIVE_INFINITY, hit)).toBe(Infinity);
+    expect(hit.boxIndex).toBe(-1);
+    expect(rayWorld(map, 5, 1, 0, 1, 0, 0, -2, hit)).toBe(Infinity);
   });
 
   it('격자 경계와 평행한 총알도 경계 건너편 상자의 옆면을 맞힌다', () => {

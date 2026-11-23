@@ -53,7 +53,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       <div class="ty-mini"><canvas id="ty-minimap" width="220" height="220"></canvas></div>
       <div class="ty-banner" id="ty-banner"></div>
       <div class="ty-route" id="ty-route" hidden><span class="ty-route-mark" id="ty-route-mark">➤</span><div><b>내 목적지</b><span id="ty-route-distance">0m</span></div><button type="button" id="ty-route-clear" aria-label="목적지 제거">✕</button></div>
-      <div class="ty-drive" id="ty-drive" hidden><span id="ty-drive-name"></span><strong><b id="ty-drive-speed">0</b><small>km/h</small></strong><span>W 가속 · S 후진 · A/D 조향 · F 하차</span></div>
+      <div class="ty-drive" id="ty-drive" hidden><span id="ty-drive-name"></span><strong><b id="ty-drive-speed">0</b><small>km/h</small></strong><span>W 가속 · S 후진 · A/D 조향 · Space 브레이크 · H 경적 · F 하차</span></div>
       <div class="ty-touchpad"><div class="ty-stick" id="ty-stick"><i></i></div>
         <div class="ty-tfoot"><button type="button" data-t="ride" id="ty-t-ride">탑승</button><button type="button" data-t="use" class="big">행동</button><button type="button" data-t="run" id="ty-t-run">달리기</button><button type="button" data-t="view">시점</button></div></div>
     </div>
@@ -80,7 +80,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   const keys = new Set<string>(); const tc = { moveId: -1, mx: 0, my: 0, ox: 0, oy: 0, lookId: -1, lx: 0, ly: 0, run: false, brakeId: -1, brake: false }; let drag = -1, dragX = 0, dragY = 0, locked = false;
   let near: { id: string; spot: SpotView; dist: number } | null = null, spotViews: SpotView[] = [], lastStage = -1, lastCarry = '', hudDirty = true;
   const toastList: Array<{ el: HTMLElement; at: number }> = [];
-  let bannerTimer = 0, winTimer = 0, lastCrashAt = -100;
+  let bannerTimer = 0, winTimer = 0, lastCrashAt = -100, lastHonkAt = -1000;
   let carryGroup: THREE.Group | null = null;
   let modalTrigger: HTMLElement | null = null;
   let resumePosition: TycoonPosition | null = null;
@@ -174,6 +174,12 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (rides.driving !== wasDriving) { resetInput(); hudDirty = true; if (!player.firstPerson && document.pointerLockElement === canvas) document.exitPointerLock(); }
     toast(result.message, result.ok ? 'info' : 'bad');
   }
+  function honk(): void {
+    if (!rides?.driving || modal || phase !== 'play') return;
+    const now = performance.now();
+    if (now - lastHonkAt < 400) return;
+    lastHonkAt = now; audio.honk();
+  }
   function toggleView(): void {
     player.setFirstPerson(!player.firstPerson);
     if (rides?.driving && player.rig) player.rig.root.visible = false;
@@ -257,6 +263,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (e.code === 'Tab') { e.preventDefault(); openModal({ kind: 'status' }); return; }
     if (e.code === 'KeyM') { openModal({ kind: 'map' }); return; }
     if (e.code === 'KeyF') { e.preventDefault(); toggleRide(); return; }
+    if (e.code === 'KeyH') { e.preventDefault(); honk(); return; }
     if (e.code === 'KeyE' || e.code === 'Enter') { interact(); return; }
     if (e.code === 'KeyV') { toggleView(); return; }
     if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3') { core.setSpeed(e.code === 'Digit1' ? 1 : e.code === 'Digit2' ? 2 : 4); hudDirty = true; return; }
@@ -290,7 +297,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   window.addEventListener('wheel', onWheel, { passive: true });
   q('.ty-touchpad').addEventListener('pointerdown', e => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-t]'); if (!b) return; audio.unlock(); e.preventDefault();
-    const t = b.dataset.t; if (t === 'ride') toggleRide(); else if (t === 'use') interact(); else if (t === 'run') {
+    const t = b.dataset.t; if (t === 'ride') toggleRide(); else if (t === 'use') { if (rides?.driving) honk(); else interact(); } else if (t === 'run') {
       if (rides?.driving) { tc.brakeId = e.pointerId; tc.brake = true; b.classList.add('on'); b.setAttribute('aria-pressed', 'true'); }
       else { tc.run = !tc.run; b.classList.toggle('on', tc.run); b.setAttribute('aria-pressed', String(tc.run)); }
     } else if (t === 'view') { toggleView(); }
@@ -482,6 +489,9 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     // 프롬프트
     const p = q<HTMLButtonElement>('#ty-prompt');
     if (rides?.driving && !modal) { p.hidden = false; html('prompt', '<kbd>F</kbd><b>차량에서 내리기</b>'); } else if (rides?.nearby(player.pos.x, player.pos.z) && !modal && !s.activity) { p.hidden = false; html('prompt', `<kbd>F</kbd><b>${esc(rides.nearby(player.pos.x, player.pos.z)!.name)} 탑승</b>${near ? `<em>E · ${esc(near.spot.name)}</em>` : ''}`); } else if (near && !modal && !s.activity) { p.hidden = false; const v = near.spot; const key = touch ? '' : '<kbd>E</kbd>'; const txt = `${key}<span class="ico">${esc(v.icon)}</span><b>${esc(v.name)}</b>${v.locked ? `<em>🔒 ${esc(STAGE_NAMES[v.minStage])} 단계에 열림</em>` : ''}`; html('prompt', txt); } else p.hidden = true;
+    const actionButton = q<HTMLButtonElement>('[data-t="use"]');
+    actionButton.textContent = rides?.driving ? '경적' : '행동';
+    actionButton.setAttribute('aria-label', rides?.driving ? '차량 경적 울리기' : '가까운 장소와 상호작용');
     const runButton = q<HTMLButtonElement>('#ty-t-run');
     runButton.textContent = rides?.driving ? '브레이크' : '달리기';
     runButton.setAttribute('aria-label', rides?.driving ? '길게 눌러 차량 브레이크' : '달리기 전환');

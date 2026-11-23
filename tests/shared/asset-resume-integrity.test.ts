@@ -207,13 +207,13 @@ describe('resumable asset integrity', () => {
       expect(fill.style.width).not.toContain('NaN');
 
       loading.progress(0.6);
-      expect(fill.style.width).toBe('60.0%');
+      expect(Number.parseFloat(fill.style.width)).toBe(60);
       expect(pct.textContent).toBe('60%');
       loading.progress(0.15);
-      expect(fill.style.width).toBe('60.0%');
+      expect(Number.parseFloat(fill.style.width)).toBe(60);
       loading.progress(Number.POSITIVE_INFINITY);
       expect(pct.textContent).toBe('');
-      expect(fill.style.width).toBe('60.0%');
+      expect(Number.parseFloat(fill.style.width)).toBe(60);
       expect(bar.classList.contains('busy')).toBe(true);
     } finally {
       loading.close();

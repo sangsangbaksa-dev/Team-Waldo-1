@@ -482,8 +482,10 @@ export class ShooterView {
     if (drv) {
       // 운전 중: 차 뒤 위에서 따라가는 시점(마우스로 둘러보고, 달리면 천천히 정면으로 돌아옵니다)
       const yc = spectate ? drv.yaw : view.yaw, dist = 6.4 + drv.w * 0.42, cp = Math.max(-0.5, Math.min(0.7, view.pitch)), sp = Math.abs(drv.speed);
-      const desired = { x: drv.x - Math.cos(yc) * dist, y: Math.max(0.7, drv.h + 1.35 + dist * 0.17 - Math.sin(cp) * 3.2), z: drv.z - Math.sin(yc) * dist };
-      const safe = resolveChaseCamera(m.map, { x: drv.x, y: drv.h + 0.5, z: drv.z }, desired);
+      const floor = groundHeight(m.map.terrain, drv.x, drv.z);
+      const behindX = drv.x - Math.cos(yc) * dist, behindZ = drv.z - Math.sin(yc) * dist;
+      const desired = { x: behindX, y: Math.max(floor + 0.7, floor + drv.h + 1.35 + dist * 0.17 - Math.sin(cp) * 3.2, groundHeight(m.map.terrain, behindX, behindZ) + 1.25), z: behindZ };
+      const safe = resolveChaseCamera(m.map, { x: drv.x, y: floor + drv.h + 0.5, z: drv.z }, desired);
       cam.position.set(safe.x, safe.y, safe.z); cam.rotation.order = 'YXZ';
       this.roll += (0 - this.roll) * Math.min(1, dt * 9);
       cam.rotation.set(-0.13 + cp * 0.55 + (Math.random() - 0.5) * sp * 0.0007, -yc - Math.PI / 2 + (Math.random() - 0.5) * sp * 0.0007, this.roll);

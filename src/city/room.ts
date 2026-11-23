@@ -47,7 +47,7 @@ export class CityRoom {
   }
   private me(): string { return this.session.me.id; }
   private abort(): void { if (this.dead) return; this.dead = true; window.clearInterval(this.timer); this.hooks.onAbort(); }
-  private hello(): void { if (!this.started) this.ch.send({ t: 'hello', f: this.me(), klass: this.klass }); }
+  private hello(): void { if (!this.dead && !this.started) this.ch.send({ t: 'hello', f: this.me(), klass: this.klass }); }
   private tick(): void {
     if (this.dead) return; const now = performance.now();
     if (now - this.lastTick > 2000) for (const id of this.heard.keys()) this.heard.set(id, now); // 내 탭이 멈춘 시간은 상대의 침묵으로 세지 않습니다
@@ -72,6 +72,7 @@ export class CityRoom {
   }
   private leave(id: string): void { if (this.gone.has(id)) return; this.gone.add(id); this.heard.delete(id); this.hooks.onGone(id); }
   private onMsg(m: NetMsg): void {
+    if (this.dead) return;
     const f = typeof m.f === 'string' ? m.f : ''; if (!f || f === this.me() || !this.ids.includes(f)) return;
     if (this.started && this.heard.has(f)) this.heard.set(f, performance.now());
     if (m.t === 'hello') { if (this.started && this.session.host) this.ch.send({ t: 'start', f: this.me(), list: this.startList }); else if (!this.started) this.klasses.set(f, typeof m.klass === 'string' ? m.klass : 'warlord'); }
@@ -89,14 +90,14 @@ export class CityRoom {
     else if (m.t === 'bye') this.leave(f);
   }
   sendPose(p: DuelPose, now: number): void {
-    if (!this.started || now - this.lastPose < 66) return; this.lastPose = now;
+    if (this.dead || !this.started || now - this.lastPose < 66) return; this.lastPose = now;
     const r = (v: number): number => Math.round(v * 10) / 10;
     this.ch.send({ t: 'p', f: this.me(), x: r(p.x), y: r(p.y), a: Math.round(p.a * 100) / 100, hp: Math.round(p.hp), mh: Math.round(p.mh), w: p.w });
   }
-  sendShot(s: DuelShot): void { if (this.started) this.ch.send({ t: 'sh', f: this.me(), x: Math.round(s.x), y: Math.round(s.y), a: Math.round(s.a * 1000) / 1000, w: s.w, m: Math.round(s.m * 100) / 100 }); }
-  sendHqDown(): void { this.ch.send({ t: 'hq', f: this.me() }); }
-  sendChat(text: string): void { const t = cleanChat(text); if (this.started && t) this.ch.send({ t: 'c', f: this.me(), text: t }); }
-  sendDeaths(n: number): void { this.ch.send({ t: 'dead', f: this.me(), n }); }
-  bye(): void { this.ch.send({ t: 'bye', f: this.me() }); }
+  sendShot(s: DuelShot): void { if (!this.dead && this.started) this.ch.send({ t: 'sh', f: this.me(), x: Math.round(s.x), y: Math.round(s.y), a: Math.round(s.a * 1000) / 1000, w: s.w, m: Math.round(s.m * 100) / 100 }); }
+  sendHqDown(): void { if (!this.dead) this.ch.send({ t: 'hq', f: this.me() }); }
+  sendChat(text: string): void { const t = cleanChat(text); if (!this.dead && this.started && t) this.ch.send({ t: 'c', f: this.me(), text: t }); }
+  sendDeaths(n: number): void { if (!this.dead) this.ch.send({ t: 'dead', f: this.me(), n }); }
+  bye(): void { if (!this.dead) this.ch.send({ t: 'bye', f: this.me() }); }
   dispose(): void { this.dead = true; window.clearInterval(this.timer); this.ch.close(); }
 }

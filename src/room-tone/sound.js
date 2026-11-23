@@ -66,6 +66,7 @@ export class Sound {
     this.stepSide = 1;
     this.clock = null;
     this.waking = null;
+    this.powerQueue = Promise.resolve();
   }
 
   async start() {
@@ -89,7 +90,7 @@ export class Sound {
           throw error;
         }
       }
-      if (this.ctx.state === "suspended") {
+      if (!this.paused && !this.muted && this.ctx.state === "suspended") {
         if (!this.waking)
           this.waking = this.ctx.resume().finally(() => {
             this.waking = null;
@@ -97,7 +98,7 @@ export class Sound {
         await this.waking;
       }
       this.applyLevel();
-      if (!this.paused) this.startClock();
+      this.syncPower();
     } catch {
       // Sound is optional on devices with a locked or unavailable audio output.
     }
@@ -182,21 +183,37 @@ export class Sound {
     if (this.muted) {
       if (this.clock !== null) globalThis.clearInterval(this.clock);
       this.clock = null;
-    } else if (!this.paused) this.startClock();
+    }
+    this.syncPower();
   }
 
   pause(paused) {
     this.paused = Boolean(paused);
     this.applyLevel();
-    if (this.ctx) void (this.paused ? this.ctx.suspend() : this.ctx.resume()).catch(() => {});
     if (this.paused) {
       if (this.clock !== null) globalThis.clearInterval(this.clock);
       this.clock = null;
       this.threat(0);
     } else if (this.ctx && this.level) {
       this.nextDistant = this.ctx.currentTime + 7 + Math.random() * 7;
-      this.startClock();
     }
+    this.syncPower();
+  }
+
+  // Resume and suspend are asynchronous. Queue them in order so a late
+  // resume cannot restart sound after the game has paused or been muted.
+  syncPower() {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    this.powerQueue = this.powerQueue.catch(() => {}).then(async () => {
+      if (ctx !== this.ctx || ctx.state === "closed") return;
+      if (this.paused || this.muted) {
+        if (ctx.state !== "suspended") await ctx.suspend();
+      } else {
+        if (ctx.state !== "running") await ctx.resume();
+        if (ctx === this.ctx && !this.paused && !this.muted) this.startClock();
+      }
+    }).catch(() => { /* Audio output permissions can change at runtime. */ });
   }
 
   startClock() {
@@ -235,6 +252,21 @@ export class Sound {
     return (
       this.ctx?.state === "running" && this.level && !this.paused && !this.muted
     );
+  }
+
+  // Release audio resources on a real unload; preserve bfcache sessions.
+  dispose() {
+    if (this.clock !== null) globalThis.clearInterval(this.clock);
+    this.clock = null;
+    const ctx = this.ctx;
+    this.ctx = null;
+    this.level = this.mix = this.room = this.radio = null;
+    this.breath = this.air = this.noise = this.hum = this.motor = null;
+    this.waking = null;
+    if (ctx && ctx.state !== "closed") {
+      try { void ctx.close().catch(() => {}); }
+      catch { /* Do not block navigation on an audio shutdown failure. */ }
+    }
   }
 
   tick() {

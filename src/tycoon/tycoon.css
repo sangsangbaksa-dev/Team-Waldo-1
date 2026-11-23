@@ -256,3 +256,21 @@
   .ty-finance { gap: 5px; }
   .ty-finance > div { padding: 8px; }
 }
+
+/* HUSTLE — instrument-style driving feedback. */
+.ty-drive { position:absolute; bottom:24px; left:50%; transform:translateX(-50%);
+  min-width:220px; display:grid; justify-items:center; gap:3px; padding:12px 24px;
+  border:1px solid rgba(210,225,240,.22); border-radius:12px; background:rgba(9,16,24,.9);
+  box-shadow:0 12px 32px #0006; backdrop-filter:blur(6px); letter-spacing:.015em; }
+.ty-drive[hidden] { display:none; }
+.ty-drive > span:first-child { font-size:11px; color:#c6d0d9; font-weight:700; letter-spacing:.09em; }
+.ty-drive strong { display:flex; align-items:baseline; gap:7px; font-variant-numeric:tabular-nums; }
+.ty-drive strong b { font-size:38px; line-height:1.05; font-weight:750; color:#faf7ef; }
+.ty-drive strong small { color:#d4bb8b; font-size:11px; font-weight:650; }
+.ty-drive > span:last-child { font-size:10px; color:#aab9c8; }
+.ty-tfoot button:disabled { opacity:.38; cursor:not-allowed; }
+.ty-root.touch .ty-drive { bottom:max(18px,env(safe-area-inset-bottom)); left:54%; min-width:140px; padding:8px 10px; }
+.ty-root.touch .ty-drive > span:last-child { display:none; }
+.ty-root.touch .ty-drive strong b { font-size:28px; }
+@media(max-width:860px) { .ty-root.touch .ty-drive { left:50%; bottom:120px; } }
+@media(max-height:500px) and (orientation:landscape) { .ty-root.touch .ty-drive { left:50%; bottom:8px; padding:4px 10px; } }

@@ -4,7 +4,7 @@
 .sl-room>*{pointer-events:none}
 .sl-room>.sl-world{pointer-events:auto}
 .sl-ceiling{position:absolute;inset:0 0 auto;height:9%;background:#aaa89a;display:flex;justify-content:space-evenly;align-items:center}
-.sl-light{width:24%;height:30%;background:#fff9da;box-shadow:0 0 20px 6px #fff2bd88;animation:sl-flicker 9s infinite}
+.sl-light{width:24%;height:30%;background:#fff9da;box-shadow:0 0 12px 3px #fff2bd55;animation:sl-flicker 9s infinite}
 .sl-light+.sl-light{animation-delay:-3.1s}
 .sl-wall{position:absolute;inset:9% 0 auto;height:41%;border-bottom:8px solid #50564d}
 .sl-board{position:absolute;left:24%;top:10%;width:46%;height:66%;background:#263e37;border:7px solid #8c7153;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8%;color:#d7dfcb;font-family:serif}
@@ -14,7 +14,7 @@
 
 /* 문: 유리창 실루엣, 문틈 발 그림자 */
 .sl-door{position:absolute;right:4%;bottom:0;width:15%;height:96%;background:#80735f;border:6px solid #615b4e;transition:filter .4s,box-shadow .4s}
-.is-door .sl-door{filter:brightness(1.5);box-shadow:0 0 30px 12px #fff4b8aa}
+.is-door .sl-door{filter:brightness(1.25);box-shadow:0 0 12px 3px #fff4b855}
 .sl-window{position:absolute;left:14%;right:14%;top:7%;height:38%;background:linear-gradient(120deg,#b0c0b8,#607970);border:4px solid #4e5149;overflow:hidden}
 .sl-shadow{position:absolute;inset:5% 10% -40%;border-radius:50% 50% 0 0;background:#202b29;opacity:0;transform:translateX(-120%)}
 .sl-room[data-hint="1"] .sl-shadow{opacity:.45;animation:sl-shadow 5s infinite}
@@ -41,7 +41,7 @@
 .sl-kid .bd{position:absolute;left:4%;right:4%;bottom:0;height:56%;border-radius:38% 38% 0 0;background:linear-gradient(#2e3b52,#242f42);border-top:3px solid #e8e6dc}
 .sl-kid:nth-child(2) .hd{background:#3b2c22;box-shadow:inset 0 5px #51392b}
 .sl-kid:nth-child(3) .hd{background:#1c1c1e}
-.sl-kid:after{content:'';position:absolute;left:-6%;right:-6%;bottom:-3%;height:9%;background:#8f7455;box-shadow:0 -5px 14px #7fb4ff55}
+.sl-kid:after{content:'';position:absolute;left:-6%;right:-6%;bottom:-3%;height:9%;background:#8f7455;box-shadow:none}
 
 /* 감독 선생님 */
 .sl-teacher{position:absolute;z-index:4;right:8%;bottom:50%;width:11%;height:30%;opacity:0;transform-origin:bottom;transform:scale(calc(.65 + var(--near) * 1.2));transition:opacity .5s,transform .5s;pointer-events:none}

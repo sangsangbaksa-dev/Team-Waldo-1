@@ -3,7 +3,6 @@ import '../shared/game-polish.css';
 import './race.css';
 import { FrameGate } from '../shared/frame-gate';
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { readPreferences, writePreferences } from '../prefs';
 import { fmtTime, raceRaceKey, readRaceRecords, readRaceSetupRaw, writeRaceRecords, writeRaceSetupRaw } from '../records';
 import type { PvpSession, RoomSession } from '../net/lobby';
@@ -24,6 +23,7 @@ import { driftLive, readDriftBests, writeDriftBests } from './driftscore';
 import { PVP_ENABLED } from '../net/config';
 import { framePlan, STEP, escapeRaceText } from './frame-plan';
 import { raceHudSubtitle } from './hud-status';
+import { loadRaceCars } from './car-models';
 
 const ORD = ['', '1ST', '2ND', '3RD', '4TH', '5TH', '6TH'];
 
@@ -433,11 +433,7 @@ export function openRace(onExit: () => void): void {
   void (async () => {
     // The independent car and driver assets can load concurrently.
     const [cars, drivers] = await Promise.allSettled([
-      new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}assets/models/race.glb`).then(gltf => {
-        const found: Record<string, THREE.Object3D> = {};
-        gltf.scene.traverse(o => { if (o.name === 'gt' || o.name === 'wide' || o.name === 'long') found[o.name] = o; });
-        return found;
-      }),
+      loadRaceCars(import.meta.env.BASE_URL),
       loadCharacterKit(import.meta.env.BASE_URL),
     ]);
     if (closed) return;

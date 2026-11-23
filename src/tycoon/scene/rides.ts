@@ -87,7 +87,7 @@ export class Rides {
     const car = this.cars.find(c => c.name === ride.name);
     if (!car || !Number.isFinite(ride.x) || !Number.isFinite(ride.z) || !Number.isFinite(ride.heading) ||
       !this.occupiable(ride.x, ride.z, ride.heading, car)) return false;
-    car.x = ride.x; car.z = ride.z; car.heading = ride.heading; car.speed = 0;
+    car.x = ride.x; car.z = ride.z; car.heading = Math.atan2(Math.sin(ride.heading), Math.cos(ride.heading)); car.speed = 0;
     car.mesh.position.set(car.x, 0.18, car.z); car.mesh.rotation.y = car.heading;
     this.active = car;
     this.placeLamp(car);
@@ -179,6 +179,7 @@ export class Rides {
     player.facing = car.heading;
     const follow = car.heading - Math.PI / 2;
     if (!player.firstPerson) player.camYaw += angleDelta(follow, player.camYaw) * (1 - Math.exp(-3.5 * dt));
+    player.camYaw = Math.atan2(Math.sin(player.camYaw), Math.cos(player.camYaw));
     return impact;
   }
   dispose(): void {

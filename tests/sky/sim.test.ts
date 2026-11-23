@@ -213,3 +213,59 @@ describe('SKY WAR crash and wave transition', () => {
     expect(sim.events.some(event => event.t === 'wave')).toBe(false);
   });
 });
+
+describe('SKY WAR missile terrain and collision ordering', () => {
+  it('a fast unguided missile cannot pass through an island ridge to hit a jet behind it', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.player.pos.set(1950, 110, 300);
+    sim.intermission = 1e9;
+    sim.missiles.push({
+      id: 1001, owner: 99, team: 'enemy',
+      pos: new THREE.Vector3(450, 110, 300),
+      vel: new THREE.Vector3(30000, 0, 0),
+      target: 0, life: 3, alive: true,
+    });
+    sim.step(0.05, neutral);
+    expect(sim.player.hp).toBe(100);
+    expect(sim.missiles).toHaveLength(0);
+    const explosion = sim.events.find(e => e.t === 'boom');
+    expect(explosion?.t).toBe('boom');
+    if (explosion?.t === 'boom') {
+      expect(explosion.pos.x).toBeGreaterThan(450);
+      expect(explosion.pos.x).toBeLessThan(1600);
+    }
+  });
+
+  it('a missile hits an aircraft above a hill before the missile strikes the hill', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    const hill = terrainY(1200, 300);
+    sim.player.pos.set(1200, hill + 45, 300);
+    sim.missiles.push({
+      id: 1002, owner: 99, team: 'enemy',
+      pos: new THREE.Vector3(1200, hill + 140, 300),
+      vel: new THREE.Vector3(0, -4500, 0),
+      target: 0, life: 3, alive: true,
+    });
+    sim.step(0.05, neutral);
+    expect(sim.player.hp).toBeCloseTo(100 - MISSILE_DMG * 0.6);
+    expect(sim.missiles).toHaveLength(0);
+  });
+
+  it('two jets along an unguided missile path are hit in physical travel order', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.player.pos.set(0, 900, 0);
+    const near = sim.makeJet('enemy', 'fighter', new THREE.Vector3(0, 900, -80), 0.8);
+    const far = sim.makeJet('enemy', 'fighter', new THREE.Vector3(0, 900, -150), 0.8);
+    // The enemy jets are created near the player's current flight path.
+    sim.missiles.push({
+      id: 1003, owner: sim.player.id, team: 'player',
+      pos: new THREE.Vector3(0, 900, 40),
+      vel: new THREE.Vector3(0, 0, -5000),
+      target: 0, life: 3, alive: true,
+    });
+    const nearHp = near.hp, farHp = far.hp;
+    sim.step(0.05, neutral);
+    expect(near.hp).toBeLessThan(nearHp);
+    expect(far.hp).toBe(farHp);
+  });
+});

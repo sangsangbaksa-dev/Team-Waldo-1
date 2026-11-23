@@ -226,6 +226,23 @@ it('stops the scheduled animation immediately on pause even with a live toast', 
   expect(frames.size).toBe(1);
 });
 
+it('exposes live fun and risk values to assistive technology without interrupting play', async () => {
+  openSlack(vi.fn());
+  button('[data-start]').click();
+  await vi.dynamicImportSettled();
+  const fun = document.querySelector<HTMLElement>('.sl-root [data-fun-meter]')!;
+  const risk = document.querySelector<HTMLElement>('.sl-root [data-risk-meter]')!;
+  expect(fun.getAttribute('role')).toBe('progressbar');
+  expect(risk.getAttribute('role')).toBe('progressbar');
+  const sim = vi.mocked(createSim).mock.results[0].value;
+  sim.state.fun = 31; sim.state.sus = 72;
+  advance(100);
+  expect(fun.getAttribute('aria-valuenow')).toBe('31');
+  expect(fun.getAttribute('aria-valuetext')).toBe('31 / 54');
+  expect(risk.getAttribute('aria-valuenow')).toBe('72');
+  expect(fun.getAttribute('aria-valuemax')).toBe('100');
+});
+
 it('traps forward and reverse Tab navigation inside title, pause and result dialogs', async () => {
   openSlack(vi.fn());
   const checkTrap = (selector: string) => {

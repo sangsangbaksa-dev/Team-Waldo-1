@@ -145,4 +145,23 @@ describe('resumable asset integrity', () => {
     expect(dec.decode(await fetchBuffer('/models/test.glb'))).toBe('abcdefghij');
     expect(mock).toHaveBeenCalledTimes(2);
   });
+
+  it('accepts decoded gzip streams whose Content-Length is the smaller compressed wire size', async () => {
+    const mock = vi.fn().mockResolvedValueOnce(response({
+      status: 200, chunk: 'abcdefghij', length: 6, encoding: 'gzip',
+    }));
+    vi.stubGlobal('fetch', mock);
+    const result = await fetchBuffer('/models/compressed.glb');
+    expect(dec.decode(result)).toBe('abcdefghij');
+    expect(mock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not resume partially decoded compressed streams with encoded byte offsets', async () => {
+    const mock = vi.fn()
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abc', length: 6, encoding: 'br', fail: true }))
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abcdefghij', length: 6, encoding: 'br' }));
+    vi.stubGlobal('fetch', mock);
+    expect(dec.decode(await fetchBuffer('/models/compressed.glb'))).toBe('abcdefghij');
+    expect(mock.mock.calls[1][1].headers).toBeUndefined();
+  });
 });

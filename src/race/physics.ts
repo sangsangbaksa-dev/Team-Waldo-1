@@ -110,6 +110,14 @@ export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: Car
   return ev;
 }
 
+/** Update speedometer, engine and AI values after an impulse or wall correction. */
+export function syncLocalVelocity(c: CarState): void {
+  const fx = Math.cos(c.h), fz = Math.sin(c.h);
+  c.vf = c.vx * fx + c.vz * fz;
+  c.vl = -c.vx * fz + c.vz * fx;
+  c.slip = Math.atan2(c.vl, Math.max(Math.abs(c.vf), 1));
+}
+
 /** 중심선 진행도를 갱신하고 차체가 연석 밖으로 나가지 못하게 되돌립니다. progress 가 아니면 랩 거리는 더하지 않습니다. */
 export function stayOnTrack(c: CarState, t: Track, dt: number, progress: boolean): number {
   const nr = nearest(t, c.x, c.z, c.idx, 40), delta = idxDelta(t, c.idx, nr.i);
@@ -129,6 +137,7 @@ export function stayOnTrack(c: CarState, t: Track, dt: number, progress: boolean
     }
     const want = Math.atan2(t.tz[nr.i], t.tx[nr.i]); c.h = wrapAngle(c.h + wrapAngle(want - c.h) * Math.min(1, WALL_HEADING_RATE * dt));
     c.lat = Math.sign(nr.lat) * limit;
+    syncLocalVelocity(c);
   }
   return hit;
 }
@@ -150,7 +159,8 @@ export function separateCars(a: CarState, b: CarState): number {
   const push = (need - dist) / 2;
   a.x -= nx * push; a.z -= nz * push; b.x += nx * push; b.z += nz * push;
   const rel = (a.vx - b.vx) * nx + (a.vz - b.vz) * nz;
-  if (rel > 0) { const imp = rel * 0.55; a.vx -= nx * imp; a.vz -= nz * imp; b.vx += nx * imp; b.vz += nz * imp; return rel; }
+  if (rel > 0) { const imp = rel * 0.55; a.vx -= nx * imp; a.vz -= nz * imp; b.vx += nx * imp; b.vz += nz * imp;
+    syncLocalVelocity(a); syncLocalVelocity(b); return rel; }
   return 0;
 }
 

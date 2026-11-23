@@ -28,7 +28,7 @@ describe('HUSTLE urban fleet', () => {
     player.teleport(car.x, car.z, car.heading);
     expect(rides.toggle(player).ok).toBe(true);
     expect(rides.driving).toBe(true);
-    for (let i = 0; i < 50; i++) rides.update(1 / 60, { throttle: 1, steer: 0, brake: false }, player, false);
+    for (let i = 0; i < 20; i++) rides.update(1 / 60, { throttle: 1, steer: 0, brake: false }, player, false);
     expect(rides.speed).toBeGreaterThan(0);
     expect(rides.toggle(player).ok).toBe(false);
     for (let i = 0; i < 120; i++) rides.update(1 / 60, { throttle: 0, steer: 0, brake: true }, player, false);

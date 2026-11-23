@@ -45,6 +45,19 @@ describe('ZERO ZONE 중앙 메트로폴리스', () => {
     }
   });
 
+  it('스폰 위치는 항상 맵 안의 충돌 없는 육지다', () => {
+    for (const mode of ['br', 'duel'] as const) for (const seed of [1, 2, 3, 7, 11, 42]) {
+      const map = generateMap(seed, mode);
+      expect(map.spawns.length).toBeGreaterThanOrEqual(mode === 'br' ? 20 : 8);
+      for (const s of map.spawns) {
+        expect(Math.abs(s.x)).toBeLessThan(map.half - 1.2);
+        expect(Math.abs(s.z)).toBeLessThan(map.half - 1.2);
+        expect(blockedAt(map, s.x, s.z, 1.2)).toBe(false);
+        expect(waterDepth(map.terrain, s.x, s.z)).toBe(0);
+      }
+    }
+  });
+
   it('중앙 도시는 시드별로 결정적이며, 대전 모드는 기존 구조를 유지한다', () => {
     const a = generateMap(42, 'br');
     const b = generateMap(42, 'br');

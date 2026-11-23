@@ -81,7 +81,7 @@ export async function fetchBuffer(url: string, onProgress?: (loaded: number, tot
         // Appending it would produce a full-size but corrupt GLB/media file.
         // A range is only safe if the server explicitly confirms the exact
         // offset we requested; otherwise retry the whole file without Range.
-        const range = /^bytes (\\d+)-(\\d+)\/(\\d+|\\*)$/i.exec(res.headers.get('content-range') ?? '');
+        const range = /^bytes (\d+)-(\d+)\/(\d+|\*)$/i.exec(res.headers.get('content-range') ?? '');
         const start = range && Number(range[1]), end = range && Number(range[2]);
         const size = range && range[3] === '*' ? Infinity : range && Number(range[3]);
         if (!loaded || !range || start !== loaded || !Number.isSafeInteger(start) ||

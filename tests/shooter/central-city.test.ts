@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blockedAt, generateMap, METROPOLIS } from '../../src/shooter/world';
+import { blockedAt, generateMap, METROPOLIS, rayWorld } from '../../src/shooter/world';
 import { findPath, navFor } from '../../src/shooter/nav';
 import { waterDepth } from '../../src/shooter/terrain';
 
@@ -32,6 +32,21 @@ describe('ZERO ZONE 중앙 메트로폴리스', () => {
       }
       const nav = navFor(map);
       expect(findPath(nav, -METROPOLIS.lotW, 0, METROPOLIS.lotW, 0, 30000)).not.toBeNull();
+    }
+  });
+
+  it('고층 내부는 1층 천장이 총알을 막으면서 보행/AI 공간을 유지한다', () => {
+    for (const seed of [1, 42]) {
+      const map = generateMap(seed, 'br');
+      const towers = map.buildings.filter(b => b.type === 'apartment' && b.h >= 9);
+      const ceilings = map.boxes.filter(b => b.kind === 'ceiling');
+      expect(ceilings.length).toBe(towers.length);
+      for (const b of towers) {
+        const ceiling = ceilings.find(c => c.x0 < b.x && c.x1 > b.x && c.z0 < b.z && c.z1 > b.z);
+        expect(ceiling).toBeDefined();
+        expect(ceiling!.y0).toBeGreaterThan(2.5);
+        expect(rayWorld(map, b.x, 2.6, b.z, 0, 1, 0, 2)).toBeCloseTo(ceiling!.y0 - 2.6, 5);
+      }
     }
   });
 

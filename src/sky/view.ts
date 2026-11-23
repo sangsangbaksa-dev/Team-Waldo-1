@@ -59,6 +59,7 @@ interface Particle { p: THREE.Vector3; v: THREE.Vector3; life: number; max: numb
 /** 파티클 한 종류를 InstancedBufferGeometry 한 장(드로우콜 1)으로 그리는 빌보드 풀. 예전엔 입자마다 Sprite(드로우콜 최대 260)였습니다. */
 class BillboardPool {
   readonly mesh: THREE.Mesh; readonly parts: Particle[] = []; private idx = 0;
+  private activeCount = 0; private dirty = false;
   private readonly off: THREE.InstancedBufferAttribute; private readonly sz: THREE.InstancedBufferAttribute; private readonly col: THREE.InstancedBufferAttribute;
   constructor(tex: THREE.Texture, additive: boolean, readonly n: number) {
     const q = new THREE.PlaneGeometry(1, 1), g = new THREE.InstancedBufferGeometry(); g.index = q.index; g.setAttribute('position', q.attributes.position!); g.setAttribute('uv', q.attributes.uv!); g.instanceCount = n;
@@ -67,24 +68,30 @@ class BillboardPool {
     const m = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending, fog: false, uniforms: { map: { value: tex } },
       vertexShader: 'attribute vec3 aOff;attribute float aSize;attribute vec4 aCol;varying vec2 vUv;varying vec4 vC;void main(){vUv=uv;vC=aCol;vec4 mv=modelViewMatrix*vec4(aOff,1.);mv.xy+=position.xy*aSize;gl_Position=projectionMatrix*mv;}',
       fragmentShader: 'uniform sampler2D map;varying vec2 vUv;varying vec4 vC;void main(){vec4 t=texture2D(map,vUv);gl_FragColor=vec4(t.rgb*vC.rgb,t.a*vC.a);\n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}' });
-    this.mesh = new THREE.Mesh(g, m); this.mesh.frustumCulled = false; this.mesh.renderOrder = 2;
+    this.mesh = new THREE.Mesh(g, m); this.mesh.frustumCulled = false; this.mesh.renderOrder = 2; this.mesh.visible = false;
     for (let i = 0; i < n; i++) this.parts.push({ p: new THREE.Vector3(), v: new THREE.Vector3(), life: 0, max: 1, grow: 1, size: 0, r: 1, g: 1, b: 1, alive: false });
   }
   emit(pos: THREE.Vector3, vel: THREE.Vector3, life: number, size: number, grow: number, color: number, tmp: THREE.Color): void {
-    const q = this.parts[this.idx++ % this.n]!; tmp.setHex(color); q.r = tmp.r; q.g = tmp.g; q.b = tmp.b; q.p.copy(pos); q.v.copy(vel); q.life = q.max = life; q.size = size; q.grow = grow; q.alive = true;
+    const q = this.parts[this.idx++ % this.n]!;
+    if (!q.alive) this.activeCount++;
+    this.dirty = true; this.mesh.visible = true;
+    tmp.setHex(color); q.r = tmp.r; q.g = tmp.g; q.b = tmp.b; q.p.copy(pos); q.v.copy(vel); q.life = q.max = life; q.size = size; q.grow = grow; q.alive = true;
   }
   reset(): void {
-    this.idx = 0;
+    this.idx = 0; this.activeCount = 0; this.dirty = true;
     for (const part of this.parts) { part.alive = false; part.life = 0; }
     this.update(0);
   }
   update(dt: number): void {
+    if (this.activeCount === 0 && !this.dirty) return;
     const o = this.off.array as Float32Array, s = this.sz.array as Float32Array, c = this.col.array as Float32Array;
+    let active = 0;
     for (let i = 0; i < this.n; i++) {
       const q = this.parts[i]!;
       if (q.alive) { q.life -= dt; if (q.life <= 0) q.alive = false; else { q.p.addScaledVector(q.v, dt); q.size *= 1 + q.grow * dt * 0.8; } }
-      if (q.alive) { o[i * 3] = q.p.x; o[i * 3 + 1] = q.p.y; o[i * 3 + 2] = q.p.z; s[i] = q.size; c[i * 4] = q.r; c[i * 4 + 1] = q.g; c[i * 4 + 2] = q.b; c[i * 4 + 3] = q.life / q.max; } else s[i] = 0;
+      if (q.alive) { active++; o[i * 3] = q.p.x; o[i * 3 + 1] = q.p.y; o[i * 3 + 2] = q.p.z; s[i] = q.size; c[i * 4] = q.r; c[i * 4 + 1] = q.g; c[i * 4 + 2] = q.b; c[i * 4 + 3] = q.life / q.max; } else s[i] = 0;
     }
+    this.activeCount = active; this.dirty = false; this.mesh.visible = active > 0;
     this.off.needsUpdate = this.sz.needsUpdate = this.col.needsUpdate = true;
   }
 }

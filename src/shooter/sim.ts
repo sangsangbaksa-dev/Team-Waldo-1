@@ -110,6 +110,7 @@ export class Match {
         Math.abs(x) < half - 4 && Math.abs(z) < half - 4 &&
         waterDepth(this.map.terrain, x, z) === 0 &&
         !blockedAt(this.map, x, z, 3.2) &&
+        this.drops.every(d => Math.hypot(x - d.x, z - d.z) > 25) &&
         !this.map.buildings.some(b => Math.abs(x - b.x) < b.w / 2 + 3.2 && Math.abs(z - b.z) < b.d / 2 + 3.2);
       for (const at of [105 + this.zoneDelay, 218 + this.zoneDelay]) {
         let spot: { x: number; z: number } | null = null;

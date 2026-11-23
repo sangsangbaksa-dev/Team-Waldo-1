@@ -69,6 +69,25 @@ try {
       await page.locator('[data-act="class:warlord"]').click();
       await page.locator('.city-hud').waitFor({ state: 'visible' });
       await page.waitForFunction(() => !!window.__city?.world);
+      await page.locator('.c-res .c-resource').first().waitFor();
+      const labels = await page.locator('.c-res .c-resource small').allTextContents();
+      assert.deepEqual(labels, ['자금', '크리스탈', '병력 인구'], 'Resource categories must be labeled');
+      const resourceBox = await page.locator('#c-res').boundingBox();
+      const miniBox = await page.locator('#c-mini').boundingBox();
+      assert.ok(resourceBox && miniBox && resourceBox.x + resourceBox.width + 4 <= miniBox.x,
+        'Resource HUD must not overlap the mini-map');
+      if (size.name === 'mobile') {
+        const [health, fire, controls] = await Promise.all([
+          page.locator('#c-boss').boundingBox(),
+          page.locator('#c-fire').boundingBox(),
+          page.locator('#c-touch').boundingBox(),
+        ]);
+        const overlaps = (a, b) => a && b && a.x < b.x + b.width &&
+          a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+        assert.ok(health && fire && controls && !overlaps(health, fire) &&
+          !overlaps(health, controls) && !overlaps(fire, controls),
+          'Health HUD, fire button and touch controls must not overlap');
+      }
       if (size.name === 'desktop') await page.keyboard.press('j');
       else await page.locator('.c-topbtns [data-act="missions"]').click();
       await page.locator('.c-missions').waitFor({ state: 'visible' });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { generateMap } from '../../src/shooter/world';
+import { blockedAt, generateMap, METROPOLIS } from '../../src/shooter/world';
+import { findPath, navFor } from '../../src/shooter/nav';
 import { waterDepth } from '../../src/shooter/terrain';
 
 describe('ZERO ZONE 중앙 메트로폴리스', () => {
@@ -17,6 +18,20 @@ describe('ZERO ZONE 중앙 메트로폴리스', () => {
     expect(Math.max(...towers.map(b => b.h))).toBeGreaterThanOrEqual(15);
     for (const b of downtown) expect(waterDepth(map.terrain, b.x, b.z)).toBe(0);
     expect(new Set(map.terrain.hills.map(h => Math.floor(h.h))).size).toBeGreaterThan(2);
+  });
+
+  it('도심 3×3 교차로와 도로의 중심선은 엄폐물/건물에 막히지 않는다', () => {
+    for (const seed of [1, 7, 42, 99]) {
+      const map = generateMap(seed, 'br');
+      expect(map.compounds[0].downtown).toBe(true);
+      for (const x of [-METROPOLIS.lotW, 0, METROPOLIS.lotW]) {
+        for (const z of [-METROPOLIS.lotD, 0, METROPOLIS.lotD]) {
+          expect(blockedAt(map, x, z, 0.4)).toBe(false);
+        }
+      }
+      const nav = navFor(map);
+      expect(findPath(nav, -METROPOLIS.lotW, 0, METROPOLIS.lotW, 0, 30000)).not.toBeNull();
+    }
   });
 
   it('중앙 도시는 시드별로 결정적이며, 대전 모드는 기존 구조를 유지한다', () => {

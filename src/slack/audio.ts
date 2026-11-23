@@ -129,7 +129,15 @@ export const createSlackAudio: CreateAudio = () => {
     const c = ensure();
     if (!c || held || resuming || c.state === 'running' || c.state === 'closed') return;
     resuming = true;
-    void c.resume().catch(() => {}).finally(() => { resuming = false; });
+    void c.resume().catch(() => {}).finally(() => {
+      resuming = false;
+      // A delayed resume may resolve after the player paused. The audio context
+      // must not be left running under a held game just because it was still
+      // 'suspended' when hold(true) was originally called.
+      if (held && !disposed && c.state === 'running' && !pendingSuspend) {
+        pendingSuspend = c.suspend().catch(() => {});
+      }
+    });
   };
   return {
     resume: resumeAudio,

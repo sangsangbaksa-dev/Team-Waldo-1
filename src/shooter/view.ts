@@ -1,4 +1,5 @@
 import { renderPixelRatio } from '../shared/render-budget';
+import { SCATTER_CELL, STRUCTURE_CELL, spatialCell, cellIsNear } from './render-spatial';
 // ZERO ZONE — 3D 장면: 지형·건물·나무·전리품·병사·자기장 벽·1인칭 총과 사격 효과. 경기 상태(Match)를 읽기만 합니다.
 import * as THREE from 'three';
 import { makePost, type PostFx } from '../postfx';
@@ -53,6 +54,8 @@ export class ShooterView {
   private zoneWall: THREE.Mesh; private zoneNext: THREE.Mesh; private tracers: Fx[] = []; private sparks: THREE.Points; private sparkData: { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; r: number; g: number; b: number }[] = [];
   private vm: THREE.Object3D | null = null; private vmOwned = false; private aimBlend = 0; private reloadBlend = 0; private vmId = ''; private vmParts = ''; private vmSwap = 0; private vmFlash: THREE.Sprite; private bob = 0; private shake = 0; private terrainView: TerrainView | null = null; private fovPunch = 0; private flashKick = 0; private roll = 0; private sprintT = 0; private time = 0;
   private mats = new Map<string, THREE.Material>(); private tmpCol = new THREE.Color(); private beams: THREE.InstancedMesh;
+  private grassChunks: Array<{ mesh: THREE.InstancedMesh; cx: number; cz: number }> = [];
+  private beamIds: number[] = [];
   private projected = new THREE.Vector3(); private viewportW = 1; private viewportH = 1; private camPos = new THREE.Vector3(); fov = 78; frames = 0;
   /** 폭풍우 하늘: 번개(flash)가 가끔 하늘과 안개를 밝힙니다 */
   private wfx: WeatherFx | null = null; private sky: THREE.Mesh; private hemi: THREE.HemisphereLight; private flash = 0; private nextBolt = 6; private carrier: THREE.Group | null = null; private fogBase = new THREE.Color(0x76828a);
@@ -114,29 +117,49 @@ export class ShooterView {
   }
 
   private buildBuildings(): void {
-    const map = this.match.map, byTex: THREE.BufferGeometry[][] = [[], [], [], []], crates: Box[] = [], ceilings: Box[] = [];
-    for (const b of map.boxes) { if (b.kind === 'wall') byTex[b.tex % 4].push(worldBox(b)); else if (b.kind === 'crate') crates.push(b); else if (b.kind === 'ceiling') ceilings.push(b); }
-    byTex.forEach((list, i) => {
-      if (!list.length) return; const m = new THREE.Mesh(mergeGeometries(list, false), new THREE.MeshLambertMaterial({ map: wallTexture(i) }));
-      m.castShadow = true; m.receiveShadow = true; this.scene.add(m);
-    });
-    if (ceilings.length) {
-      // 모든 건물의 실내 천장을 하나의 머티리얼/메시로 묶어 성능 부담을 줄입니다.
-      const pieces = ceilings.map(b => worldBox(b));
-      const merged = pieces.length === 1 ? pieces[0] : mergeGeometries(pieces, false);
-      const m = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({ color: 0x81888b, side: THREE.DoubleSide }));
-      m.receiveShadow = true; this.scene.add(m);
-      if (pieces.length > 1) for (const g of pieces) g.dispose();
+    const map = this.match.map;
+    const batches = new Map<string, { kind: 'wall' | 'crate' | 'ceiling'; tex: number; geos: THREE.BufferGeometry[] }>();
+    for (const b of map.boxes) {
+      if (b.kind !== 'wall' && b.kind !== 'crate' && b.kind !== 'ceiling') continue;
+      const tex = b.kind === 'wall' ? b.tex % 4 : 0;
+      const cx = spatialCell((b.x0 + b.x1) / 2, STRUCTURE_CELL), cz = spatialCell((b.z0 + b.z1) / 2, STRUCTURE_CELL);
+      const key = `${b.kind}:${tex}:${cx}:${cz}`;
+      let batch = batches.get(key);
+      if (!batch) { batch = { kind: b.kind, tex, geos: [] }; batches.set(key, batch); }
+      batch.geos.push(worldBox(b, b.kind === 'crate' ? 1.2 : 3.2));
     }
-    const floorTex = floorTexture(), floors: THREE.BufferGeometry[] = [];
-    for (const b of map.buildings) { const f = new THREE.PlaneGeometry(b.w, b.d); f.rotateX(-Math.PI / 2); f.translate(b.x, 0.05, b.z); const uv = f.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * b.w / 3, uv.getY(i) * b.d / 3); floors.push(f); }
-    if (floors.length) { const m = new THREE.Mesh(mergeGeometries(floors, false), new THREE.MeshLambertMaterial({ map: floorTex })); m.receiveShadow = true; this.scene.add(m); }
+    for (const { kind, tex, geos } of batches.values()) {
+      const merged = geos.length === 1 ? geos[0] : mergeGeometries(geos, false);
+      if (geos.length > 1) for (const geo of geos) geo.dispose();
+      if (!merged) continue;
+      const material = this.mat(`structure:${kind}:${tex}`, () =>
+        kind === 'wall' ? new THREE.MeshLambertMaterial({ map: wallTexture(tex) }) :
+        kind === 'crate' ? new THREE.MeshLambertMaterial({ map: crateTexture() }) :
+        new THREE.MeshLambertMaterial({ color: 0x81888b, side: THREE.DoubleSide }));
+      const mesh = new THREE.Mesh(merged, material);
+      mesh.castShadow = kind !== 'ceiling'; mesh.receiveShadow = true;
+      this.scene.add(mesh);
+    }
+    const floorBatches = new Map<string, THREE.BufferGeometry[]>();
+    for (const b of map.buildings) {
+      const f = new THREE.PlaneGeometry(b.w, b.d); f.rotateX(-Math.PI / 2); f.translate(b.x, 0.05, b.z);
+      const uv = f.attributes.uv;
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * b.w / 3, uv.getY(i) * b.d / 3);
+      const key = `${spatialCell(b.x, STRUCTURE_CELL)}:${spatialCell(b.z, STRUCTURE_CELL)}`;
+      let batch = floorBatches.get(key);
+      if (!batch) { batch = []; floorBatches.set(key, batch); }
+      batch.push(f);
+    }
+    const floorMat = this.mat('structure:floor', () => new THREE.MeshLambertMaterial({ map: floorTexture() }));
+    for (const geos of floorBatches.values()) {
+      const merged = geos.length === 1 ? geos[0] : mergeGeometries(geos, false);
+      if (geos.length > 1) for (const geo of geos) geo.dispose();
+      if (!merged) continue;
+      const mesh = new THREE.Mesh(merged, floorMat); mesh.receiveShadow = true; this.scene.add(mesh);
+    }
     const detailed = this.quality !== 'low';
     this.scene.add(buildRoofs(map, rngOf(this.match.seed + 3), detailed), buildProps(map, new Set(this.match.vehicles.map(v => v.box))));
     if (detailed) this.scene.add(buildFacadeTrim(map));
-    if (crates.length) {
-      const ct = crateTexture(), geos = crates.map(b => worldBox(b, 1.2)); const m = new THREE.Mesh(mergeGeometries(geos, false), new THREE.MeshLambertMaterial({ map: ct })); m.castShadow = true; m.receiveShadow = true; this.scene.add(m);
-    }
   }
 
   private buildScatter(): void {
@@ -149,12 +172,31 @@ export class ShooterView {
         for (const [x, y, c, l] of [[-w, 0, 0, 0], [w, 0, 0, 0], [0, h, 1, lean]] as const) { pos.push(ox + px * x + Math.cos(a) * l, y, oz + pz * x + Math.sin(a) * l); const k = new THREE.Color().copy(base).lerp(tip, c); col.push(k.r, k.g, k.b); }
       }
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.computeVertexNormals();
-      const n = this.quality === 'low' ? 3000 : map.mode === 'br' ? 14000 : 5000, mesh = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, emissive: 0x2b3618 }), n); let k = 0;
+      const n = this.quality === 'low' ? 3000 : map.mode === 'br' ? 14000 : 5000;
+      const chunks = new Map<string, { cx: number; cz: number; grass: Array<[number, number, number, number, number]> }>();
+      let k = 0;
       for (let tries = 0; k < n && tries < n * 3; tries++) {
-        const x = (r() * 2 - 1) * (map.half + 20), z = (r() * 2 - 1) * (map.half + 20); if (map.compounds.some(c => Math.hypot(c.x - x, c.z - z) < c.r - 5) || map.sites.some(c => Math.hypot(c.x - x, c.z - z) < c.r + 1) || waterDepth(map.terrain, x, z) || map.terrain.hills.some(h => Math.hypot(h.x - x, h.z - z) < h.r * 1.05)) continue;
-        d.position.set(x, groundHeight(map.terrain, x, z), z); d.rotation.set(0, r() * 6.28, 0); d.scale.setScalar(0.8 + r() * 0.7); d.updateMatrix(); mesh.setMatrixAt(k++, d.matrix);
+        const x = (r() * 2 - 1) * (map.half + 20), z = (r() * 2 - 1) * (map.half + 20);
+        if (map.compounds.some(c => Math.hypot(c.x - x, c.z - z) < c.r - 5) || map.sites.some(c => Math.hypot(c.x - x, c.z - z) < c.r + 1) || waterDepth(map.terrain, x, z) || map.terrain.hills.some(h => Math.hypot(h.x - x, h.z - z) < h.r * 1.05)) continue;
+        const cx = spatialCell(x, SCATTER_CELL), cz = spatialCell(z, SCATTER_CELL), key = `${cx}:${cz}`;
+        let chunk = chunks.get(key);
+        if (!chunk) { chunk = { cx, cz, grass: [] }; chunks.set(key, chunk); }
+        chunk.grass.push([x, groundHeight(map.terrain, x, z), z, r() * 6.28, 0.8 + r() * 0.7]);
+        k++;
       }
-      mesh.count = k; mesh.receiveShadow = false; this.scene.add(mesh);
+      const grassMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, emissive: 0x2b3618 });
+      for (const { cx, cz, grass } of chunks.values()) {
+        const mesh = new THREE.InstancedMesh(g, grassMat, grass.length);
+        for (let i = 0; i < grass.length; i++) {
+          const [x, y, z, rotation, scale] = grass[i];
+          d.position.set(x, y, z); d.rotation.set(0, rotation, 0); d.scale.setScalar(scale); d.updateMatrix();
+          mesh.setMatrixAt(i, d.matrix);
+        }
+        mesh.receiveShadow = false;
+        mesh.computeBoundingSphere();
+        this.scene.add(mesh);
+        this.grassChunks.push({ mesh, cx, cz });
+      }
     }
     // 덤불
     { const bushes = map.props.filter(q => q.kind === 'bush');
@@ -536,6 +578,8 @@ export class ShooterView {
     }
     this.terrainView?.update(dt); this.wfx?.update(dt, this.time, cam.position, view.alt > 40 ? 0.35 : 1); this.fovPunch = Math.max(0, this.fovPunch - dt * 6); const targetFov = 78 / zoom - this.fovPunch * (zoom > 1.6 ? 0.6 : 2.2); this.fov += (targetFov - this.fov) * Math.min(1, dt * 14); if (Math.abs(cam.fov - this.fov) > 0.01) { cam.fov = this.fov; cam.updateProjectionMatrix(); }
     this.camPos.copy(cam.position);
+    const grassRange = this.quality === 'low' ? 125 : this.quality === 'high' ? 230 : 185;
+    for (const { mesh, cx, cz } of this.grassChunks) mesh.visible = cellIsNear(cam.position.x, cam.position.z, cx, cz, grassRange);
     // 해와 그림자는 카메라를 따라 이동
     (this.scene.fog as THREE.FogExp2).density = 0.0042 / (1 + view.alt / 110);
     this.sun.position.set(view.x + 66, 92, view.z + 46); this.sun.target.position.set(view.x, 0, view.z); this.sun.target.updateMatrixWorld();

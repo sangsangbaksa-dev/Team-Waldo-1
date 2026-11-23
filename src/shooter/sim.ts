@@ -656,7 +656,7 @@ export class Match {
 
   damage(q: Player, dmg: number, by: number, weapon: Cause, head: boolean, x: number, y: number, z: number, silent: boolean): void {
     if (!q.alive) return;
-    // 100명 판은 12분을 끌어야 하므로 AI끼리의 총격은 약합니다(사람이 맞는 피해는 그대로).
+    // 100명 판이 6~7분 안에 끝나되 초반에 다 쓰러지지 않도록 AI끼리의 총격은 약합니다(사람이 맞는 피해는 그대로).
     if (this.plane && q.bot && by >= 0 && by !== q.id && weapon !== 'zone' && weapon !== 'bomb' && weapon !== 'vehicle' && this.players[by]?.bot) dmg *= PACE.botVsBot;
     const real = !q.remote; if (real && head && q.helmet > 0) dmg *= 1 - HELMET_CUT[q.helmet]; let hp = dmg;
     if (real && weapon !== 'zone' && q.armor > 0) { const soak = Math.min(q.armor, dmg * ARMOR_ABS[q.armorLv || 2]); q.armor -= soak; hp = dmg - soak; if (q.armor <= 0) { q.armor = 0; q.armorLv = 0; } }

@@ -119,7 +119,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       ? [row('웅크림', '웅크리기 · 차 핸드브레이크'), row('교체', '무기 바꾸기'), row('수류탄 · 연막 · 섬광', '투척'), row('붕대 · 구급', '회복'), row('조립', '총기 파츠 조립')]
       : [row('Space', '비행기에서 뛰어내리기 · 낙하산 펴기'), row('C', '웅크리기'), row('1 / 2 · 휠', '무기 바꾸기'), row('G · B · V', '수류탄 · 연막 · 섬광'), row('H · J', '붕대 · 구급상자'), row('Tab', '총기 조립 · 배낭')];
     return `<ul class="sz-help sz-help-main">${main.join('')}</ul><details class="sz-more"><summary>전체 조작 · 낙하 요령</summary><ul class="sz-help">${more.join('')}</ul>
-      <p class="sz-help-note">낙하 중 W 로 앞으로 활강하고 Shift 로 급강하합니다. 낙하산은 ${AIR.open}m 에서 자동으로 펴집니다. 탄약·회복·방탄복은 닿으면 자동으로 줍고, 총기 파츠는 가방에 담겨 ${touch ? '<b>조립</b> 버튼' : '<b>Tab</b>'}으로 끼웁니다. 붉은 원은 폭격 구역입니다. 한 판 약 12분.</p></details>`;
+      <p class="sz-help-note">낙하 중 W 로 앞으로 활강하고 Shift 로 급강하합니다. 낙하산은 ${AIR.open}m 에서 자동으로 펴집니다. 탄약·회복·방탄복은 닿으면 자동으로 줍고, 총기 파츠는 가방에 담겨 ${touch ? '<b>조립</b> 버튼' : '<b>Tab</b>'}으로 끼웁니다. 붉은 원은 폭격 구역입니다. 한 판 약 6~7분.</p></details>`;
   }
   setupEl.addEventListener('click', e => {
     const t = e.target as HTMLElement, mode = t.closest<HTMLElement>('[data-mode]'), lv = t.closest<HTMLElement>('[data-level]'), act = t.closest<HTMLElement>('[data-act]');

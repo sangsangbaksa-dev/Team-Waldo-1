@@ -221,7 +221,7 @@ export class CityView {
   // ---------- 상태 갱신 ----------
   /** 단계·장소 상태가 바뀌면 달라진 구획만 다시 짓습니다. animate=true 면 새로 열리거나 자란 구획이 솟아오릅니다. */
   sync(stage: Stage, views: SpotView[], animate: boolean): void {
-    const si = stageIndex(stage), changed = this.stage !== si; this.stage = si;
+    const si = stageIndex(stage); this.stage = si;
     this.spotViews.clear(); for (const v of views) this.spotViews.set(v.id, v);
     let order = 0;
     for (const b of this.orderedBlocks) {
@@ -231,7 +231,7 @@ export class CityView {
       const fresh = !v || v.key.slice(0, 2) !== key.slice(0, 2);
       if (!v) { v = new BlockView(); this.views.set(b, v); this.group.add(v.group); } else this.clearBlock(v);
       v.key = key; this.buildBlock(b, v, si);
-      if (animate && fresh && blockUnlocked(b, si) && (changed || true)) { v.rise = 0.02; v.riseDelay = order++ * 0.05; v.bld.scale.y = 0.02; }
+      if (animate && fresh && blockUnlocked(b, si)) { v.rise = 0.02; v.riseDelay = order++ * 0.05; v.bld.scale.y = 0.02; }
     }
     this.refillTrees(); this.refillSkyline(); this.recolorBeacons();
     if (this.globeAnchor && !this.globe) this.addGlobe(this.globeAnchor.x, this.globeAnchor.y, this.globeAnchor.z);
@@ -295,7 +295,6 @@ export class CityView {
     for (const g of v.disposables) g.dispose(); v.disposables = [];
     for (const material of v.ownedMaterials) material.dispose(); v.ownedMaterials = [];
     v.group.clear(); v.bld = new THREE.Group();
-    for (const [id, b] of this.beacons) if (b.lot.block && false) void id;
   }
   private addMesh(v: BlockView, parent: THREE.Object3D, gb: GeoBuilder, mat: THREE.Material, cast = true): void {
     const g = gb.build(); if (!g) return; v.disposables.push(g);

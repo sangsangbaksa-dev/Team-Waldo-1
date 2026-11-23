@@ -394,6 +394,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     // 카메라
     if (playing) {
       player.placeCamera(camera, dt, colliders);
+      rides?.positionDriverCamera(camera, player);
       const fov = (innerHeight > innerWidth ? 74 : 66) + (rides?.driving ? Math.min(8, rides.speed * 0.36) : 0);
       if (Math.abs(camera.fov - fov) > 0.08) { camera.fov = fov; camera.updateProjectionMatrix(); }
       if (cineT > 0) { cineT += dt; const k = Math.sin(Math.min(1, cineT / 4.2) * Math.PI), vx = player.pos.x + 20, vz = player.pos.z + 46, vy = 46 + 30 * k; camera.position.lerp(new THREE.Vector3(vx, vy, vz), k * 0.88); camera.lookAt(player.pos.x - 10 * k, 4 + 6 * k, player.pos.z - 6 * k); if (cineT > 4.2) cineT = 0; }

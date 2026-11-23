@@ -6,6 +6,7 @@ import type { LoadingScreen } from '../loading';
 import type { PvpSession, RoomSession } from '../net/lobby';
 import { AIR, BOTS, FEEL, BR_PLAYERS, DIFFICULTIES, HELMET_NAMES, ARMOR_NAMES, HEAL, PARTS, PLAYER, VEHICLES, WEAPONS, adsSpread, partHandling, type Difficulty } from './config';
 import { waterDepth } from './terrain';
+import { METROPOLIS } from './world';
 import { Match, type Cause, type MatchEvent, type Player, type Vehicle } from './sim';
 import { CAUSES, WorldSync, easePuppet, encodeLoot, parseLoot } from './sync';
 import type { NetMsg } from '../net/types';
@@ -406,12 +407,20 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
         b.strokeStyle = '#3a78a0'; b.lineWidth = Math.max(2, 9 * k); b.lineJoin = 'round'; for (const r of t.rivers) { b.beginPath(); r.pts.forEach(([x, z], i) => (i ? b.lineTo(px(x), pz(z)) : b.moveTo(px(x), pz(z)))); b.stroke(); }
         b.strokeStyle = '#a07a45'; b.lineWidth = 2; for (const br of t.bridges) { b.beginPath(); b.moveTo(px(br.x - Math.cos(br.ry) * br.len / 2), pz(br.z - Math.sin(br.ry) * br.len / 2)); b.lineTo(px(br.x + Math.cos(br.ry) * br.len / 2), pz(br.z + Math.sin(br.ry) * br.len / 2)); b.stroke(); }
       }
-      b.fillStyle = '#8f8c80'; for (const bd of m.map.buildings) b.fillRect(px(bd.x - bd.w / 2), pz(bd.z - bd.d / 2), Math.max(3, bd.w * k), Math.max(3, bd.d * k));
       const tint = { urban: '#a9a69b', industrial: '#7b8085', military: '#8a8466', farm: '#a08f6c', village: '#9a9588' } as const;
       for (const c of m.map.compounds) { b.fillStyle = 'rgba(255,255,255,.07)'; b.beginPath(); b.arc(px(c.x), pz(c.z), c.r * k, 0, Math.PI * 2); b.fill(); }
-      for (const bd of m.map.buildings) { const c = m.map.compounds.find(o => Math.hypot(o.x - bd.x, o.z - bd.z) < o.r); b.fillStyle = c ? tint[c.theme] : '#8f8c80'; b.fillRect(px(bd.x - bd.w / 2), pz(bd.z - bd.d / 2), Math.max(3, bd.w * k), Math.max(3, bd.d * k)); }
+      // 고층 도심을 일반 마을보다 알아보기 쉽게: 실제 블록 사이의 거리망을 지도에도 표시합니다.
+      const city = m.map.compounds.find(c => c.downtown);
+      if (city) {
+        const { cols, rows, lotW, lotD, streetWidth } = METROPOLIS;
+        b.strokeStyle = '#434c54'; b.lineWidth = Math.max(1.2, streetWidth * k); b.beginPath();
+        for (let i = 1; i < cols; i++) { const x = city.x + (i - cols / 2) * lotW; b.moveTo(px(x), pz(city.z - rows * lotD / 2)); b.lineTo(px(x), pz(city.z + rows * lotD / 2)); }
+        for (let j = 1; j < rows; j++) { const z0 = city.z + (j - rows / 2) * lotD; b.moveTo(px(city.x - cols * lotW / 2), pz(z0)); b.lineTo(px(city.x + cols * lotW / 2), pz(z0)); }
+        b.stroke();
+      }
+      for (const bd of m.map.buildings) { const c = m.map.compounds.find(o => Math.hypot(o.x - bd.x, o.z - bd.z) < o.r); b.fillStyle = bd.h >= 16 ? '#c3d1d8' : c ? tint[c.theme] : '#8f8c80'; b.fillRect(px(bd.x - bd.w / 2), pz(bd.z - bd.d / 2), Math.max(3, bd.w * k), Math.max(3, bd.d * k)); }
       b.fillStyle = '#5b5f66'; for (const pr of m.map.props) if (pr.kind === 'container') b.fillRect(px(pr.x) - 1.5, pz(pr.z) - 1, 3, 2);
-      b.font = '10px sans-serif'; b.textAlign = 'center'; b.fillStyle = 'rgba(255,255,255,.55)'; for (const c of m.map.compounds) b.fillText(c.name, px(c.x), pz(c.z) - c.r * k - 3);
+      b.font = '10px sans-serif'; b.textAlign = 'center'; for (const c of m.map.compounds) { b.fillStyle = c.downtown ? '#ffe2a0' : 'rgba(255,255,255,.55)'; b.font = c.downtown ? 'bold 11px sans-serif' : '10px sans-serif'; b.fillText(c.name, px(c.x), pz(c.z) - c.r * k - 3); }
       b.fillStyle = '#3d5a2c'; for (const t of m.map.trees) b.fillRect(px(t.x) - 1, pz(t.z) - 1, 2, 2);
     }
     const z = m.zone; g.clearRect(0, 0, S, S); g.drawImage(mapBase, 0, 0);

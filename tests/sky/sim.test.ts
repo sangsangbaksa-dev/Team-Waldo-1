@@ -199,3 +199,17 @@ describe('SKY WAR 열추적 해제 후 안전성', () => {
     expect(sim.missiles).toHaveLength(1);
   });
 });
+
+describe('SKY WAR crash and wave transition', () => {
+  it('the aircraft crash on the intermission deadline ends the run without spawning a phantom wave', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.intermission = 0;
+    sim.player.pos.set(0, -10, 2200);
+    sim.step(1 / 60, neutral);
+    expect(sim.player.alive).toBe(false);
+    expect(sim.over).toBe(true);
+    expect(sim.wave).toBe(0);
+    expect(sim.enemies()).toHaveLength(0);
+    expect(sim.events.some(event => event.t === 'wave')).toBe(false);
+  });
+});

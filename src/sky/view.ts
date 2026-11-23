@@ -124,7 +124,11 @@ export class SkyView {
       this.environment = makeEnvironment(renderer, { top: 0x537ea9, horizon: 0xf2c7a4, ground: 0x234854, sun: 0xffe1b4, sunDir: [0.5, 0.75, 0.3] });
       sc.environment = this.environment;
     }
+    const atmosphereStart = sc.children.length;
     this.atmosphereTextures = addAtmosphere(sc, this.quality);
+    // The original adaptive governor only hid the second cloud layer, leaving
+    // the larger atmosphere cloud set rendering at full cost on slow devices.
+    for (const object of sc.children.slice(atmosphereStart)) if (object instanceof THREE.Sprite) this.clouds.push(object);
     sc.add(new THREE.HemisphereLight(0xdbe7f2, 0x36515b, 1.2));
     this.sun = new THREE.DirectionalLight(0xffd8a1, 2.2); this.sun.position.set(2000, 3000, 1200); sc.add(this.sun, this.sun.target);
     if (renderer && this.quality !== 'low') { // 태양 그림자: 플레이어 주변만 덮고 따라다닙니다

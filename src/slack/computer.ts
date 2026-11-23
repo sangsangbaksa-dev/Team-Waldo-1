@@ -26,9 +26,9 @@ const initialRooms = [
 const chips = ['ㅋㅋㅋ', '나 지금 몰래 하는 중', '사감 어디쯤?'];
 
 const products = [
-  { name: '폭신한 구름 쿠션', icon: '☁', price: 8900 }, { name: '별빛 무드등', icon: '✦', price: 12900 },
-  { name: '말랑 젤리 세트', icon: '◒', price: 4500 }, { name: '야식 라면 박스', icon: '◍', price: 6900 },
-  { name: '무선 이어폰', icon: '♪', price: 15900 }, { name: '곰돌이 담요', icon: '❤', price: 19900 },
+  { name: '의자 방석', icon: '▦', price: 8900 }, { name: '집게형 독서등', icon: '✦', price: 12900 },
+  { name: '젤리 대용량 묶음', icon: '◒', price: 4500 }, { name: '컵라면 6개입', icon: '◍', price: 6900 },
+  { name: '무선 이어폰', icon: '♪', price: 15900 }, { name: '무릎 담요', icon: '▤', price: 19900 },
 ];
 const episodes = [
   { n: 10, title: '첫눈', lines: ['첫눈이 내리던 날,', '네가 먼저 말을 걸었다.', '"같이 걸을래?"', '조용한 골목길.', '발자국이 나란히 남았다.', '다음 화에 계속'] },

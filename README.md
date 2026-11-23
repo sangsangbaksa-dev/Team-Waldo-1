@@ -1,6 +1,6 @@
 # WALDO
 
-브라우저에서 바로 즐기는 다섯 편의 3D 게임입니다. 메인 페이지에서 고릅니다. 혼자 플레이할 때는 로그인 없이 시작할 수 있고, 온라인 대전에는 이메일 계정이 필요합니다.
+브라우저에서 바로 즐기는 **열 편의 게임**입니다. 메인 페이지에서 고릅니다. 혼자 플레이할 때는 로그인 없이 시작할 수 있고, 온라인 대전에는 이메일 계정이 필요합니다.
 
 | 게임 | 소개 | 코드 |
 | --- | --- | --- |
@@ -9,6 +9,13 @@
 | **FRONTLINE** | 실시간 전략(AI 4단계·온라인 1대1·팀 라인전) | `src/rts` |
 | **ZERO ZONE** | 줄어드는 자기장 속 총격전. 솔로(나 + AI 99명, 비행기 낙하산 강하, 난이도 4단계), 온라인 1대1과 멀티플레이 방 | `src/shooter` |
 | **OUTLAW CITY** | 도시 탐험·차량·의뢰. 솔로 저장과 온라인 결투·멀티플레이 방 | `src/outlaw` |
+| **HUSTLE** | 발로 뛰는 도시 타이쿤 | `src/tycoon` |
+| **SKY WAR** | 전투기 공중전 | `src/sky` |
+| **ROOM TONE** | 1인칭 심리 공포 | `room-tone`, `src/room-tone` |
+| **SQUAD CLASH** | 도형 병사 배치 자동 전투 | `src/squad` |
+| **SLACK OFF** | 교실·기숙사 딴짓 시뮬레이션 | `src/slack` |
+
+게임은 **영구적인 스탯 강화 없이** 짧은 시간에도 즐길 수 있도록 개발합니다. 다른 작업자가 같은 파일을 수정 중이면 `docs/TEAM_COORDINATION.md`에 따라 충돌을 조율합니다.
 
 ## LAST CITY
 
@@ -48,7 +55,7 @@ LAST CITY의 스포츠카 모델(`vehicles.glb`)로 달리는 아케이드 레�
 ## 구조
 
 - `src/main.ts`, `src/style.css`: 메인 페이지. 게임 코드는 선택할 때 동적으로 불러옵니다.
-- 각 게임은 `src/city`, `src/race`, `src/rts`, `src/shooter`, `src/outlaw`에 있습니다. 소리·품질 설정은 `src/prefs.ts`, 이메일 로그인과 온라인 방은 `src/net`을 함께 씁니다.
+- 각 게임은 위 표의 코드 경로에 있습니다. `room-tone/`은 별도 진입 HTML이며, 나머지는 허브에서 동적으로 불러옵니다. 소리·품질 설정은 `src/prefs.ts`, 이메일 로그인과 온라인 방은 `src/net`을 함께 씁니다.
 - `public/assets/models`: Blender로 만든 `.glb` 모델. `public/assets/home`: 메인 페이지 대표 이미지(게임 화면 캡처).
 - `tools/blender`: 모델 생성 스크립트. `tools/city-sim.ts`는 AI끼리 한 판을 돌리는 헤드리스 시뮬레이션, `tools/city-browser-smoke.mjs`는 실제 브라우저 점검입니다.
 
@@ -63,4 +70,4 @@ npm run lint && npm run typecheck && npm test
 npm run build        # dist/ 생성
 ```
 
-`main` 계열 브랜치에 푸시하면 GitHub Pages로 배포됩니다(`.github/workflows/pages.yml`). 자세한 내용은 `docs/DEPLOYMENT.md`를 봅니다.
+**배포는 별도 사용자 승인 후 진행합니다.** 2026-11-23 현재 Vercel 서비스 브랜치는 `feat/shared-menu-rails`이며 GitHub 기본 브랜치 `claude/project-thread-hhffi5`와 이력이 다릅니다. Pages 워크플로는 `.github/workflows/pages.yml`을 확인하세요. 배포 전에는 `docs/DEPLOYMENT.md`를 확인하고, 병렬 PR 조율은 `docs/TEAM_COORDINATION.md`를 따릅니다.

@@ -21,7 +21,12 @@ const devices = [
   { name: 'phone', width: 390, height: 844, mobile: true },
   { name: 'compact', width: 320, height: 640, mobile: true },
   { name: 'short-phone', width: 320, height: 568, mobile: true },
+  { name: 'small-phone', width: 360, height: 480, mobile: true },
   { name: 'landscape', width: 844, height: 390, mobile: true },
+  { name: 'short-landscape', width: 640, height: 360, mobile: true },
+  { name: 'wide-landscape', width: 768, height: 360, mobile: true },
+  { name: 'tablet', width: 768, height: 1024, mobile: true },
+  { name: 'desktop-motion', width: 1440, height: 900, mobile: false, motion: true },
 ];
 const results = [];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -45,7 +50,7 @@ try {
   for (const size of devices) {
     const context = await browser.newContext({
       viewport: { width: size.width, height: size.height },
-      isMobile: size.mobile, hasTouch: size.mobile, reducedMotion: 'reduce',
+      isMobile: size.mobile, hasTouch: size.mobile, reducedMotion: size.motion ? 'no-preference' : 'reduce',
     });
     await context.addInitScript(() => {
       // Instrument the native WebAudio source only in this smoke harness.
@@ -134,15 +139,17 @@ try {
       if (size.mobile) {
         assert.ok(monitorRect.y + 4 >= hudRect.y + hudRect.height,
           'Mobile laptop screen must begin below the status HUD');
-        if (size.width < size.height) {
+        if (size.width < size.height && size.width <= 600) {
           assert.ok(friendRect.y + 3 >= monitorRect.y + monitorRect.height,
-            'Portrait roommate must stay clear of the laptop screen');
+            'Narrow portrait roommate must stay below the laptop screen');
         } else {
           assert.ok(friendRect.x + friendRect.width <= monitorRect.x + 3,
-            'Landscape roommate must stay clear of the wider laptop');
+            'Wide or landscape roommate must stay clear of the laptop');
+        }
+        if (size.width > size.height && size.height <= 450) {
           const hudBadges = await page.locator('.sl-numbers').boundingBox();
           assert.ok(hudBadges && monitorRect.y >= hudBadges.y + hudBadges.height + 4,
-            'Landscape laptop must begin below all visible HUD status badges');
+            'Shallow landscape laptop must begin below the HUD badges');
         }
       }
       assert.equal(await page.locator('.sc-apps [data-app]').count(), 6);
@@ -153,11 +160,15 @@ try {
         await page.locator('.sl-hud [data-sound]').click();
         await page.waitForTimeout(150);
       }
-      const productColumns = await page.locator('.sc-app-shop .sc-products').evaluate(
-        node => getComputedStyle(node).gridTemplateColumns.split(' ').filter(Boolean).length);
-      assert.equal(productColumns, size.width <= 420 ? 2 : 3,
-        'The shop product grid should be readable at the selected viewport width');
-      if (size.width <= 420) {
+      const grid = await page.locator('.sc-app-shop .sc-products').evaluate(node => ({
+        count: getComputedStyle(node).gridTemplateColumns.split(' ').filter(Boolean).length,
+        // Container queries are evaluated against the app window, not the
+        // browser viewport (especially important in shallow landscape).
+        width: Number.parseFloat(getComputedStyle(node.closest('.sc-app-window')).width),
+      }));
+      assert.equal(grid.count, grid.width <= 430 ? 2 : 3,
+        'The shop grid must match its actual app container width');
+      if (grid.width <= 430) {
         const promoDisplay = await page.locator('.sc-app-shop .sc-sale').evaluate(
           node => getComputedStyle(node).display);
         assert.equal(promoDisplay, 'grid', 'Compact flash deals must avoid narrow name wrapping');

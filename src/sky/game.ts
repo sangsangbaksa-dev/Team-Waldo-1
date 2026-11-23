@@ -184,6 +184,31 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
         octx.save(); octx.translate(x, y); octx.rotate(a); octx.fillStyle = 'rgba(255,120,80,.85)'; octx.beginPath(); octx.moveTo(12, 0); octx.lineTo(-8, -8); octx.lineTo(-8, 8); octx.fill(); octx.restore();
       }
     }
+    // Incoming missile positions remain visible even when they approach from behind.
+    const threats = sim!.missiles.filter(m => m.alive && m.target === p.id)
+      .sort((a, b) => a.pos.distanceToSquared(p.pos) - b.pos.distanceToSquared(p.pos)).slice(0, 3);
+    for (const missile of threats) {
+      const distance = missile.pos.distanceTo(p.pos);
+      if (distance > 1500) continue;
+      const s = view!.project(missile.pos);
+      const onscreen = !s.behind && s.x > 0.08 && s.x < 0.92 && s.y > 0.08 && s.y < 0.92;
+      const pulse = 0.7 + 0.3 * Math.sin(performance.now() / 100);
+      octx.save(); octx.strokeStyle = `rgba(255,95,75,${pulse})`; octx.fillStyle = '#ffbaa6'; octx.lineWidth = 2;
+      if (onscreen) {
+        const x = s.x * W, y = s.y * H;
+        octx.beginPath(); octx.arc(x, y, 19, -Math.PI / 2, Math.PI * 1.5); octx.stroke();
+        octx.beginPath(); octx.moveTo(x - 29, y); octx.lineTo(x - 16, y);
+        octx.moveTo(x + 16, y); octx.lineTo(x + 29, y); octx.stroke();
+        octx.font = 'bold 10px system-ui'; octx.fillText(`MISSILE ${Math.round(distance)}m`, x + 24, y - 20);
+      } else {
+        const angle = Math.atan2(s.y - 0.5, s.x - 0.5) + (s.behind ? Math.PI : 0);
+        const radius = Math.min(W, H) * 0.32;
+        octx.translate(cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius); octx.rotate(angle);
+        octx.beginPath(); octx.moveTo(20, 0); octx.lineTo(-5, -13); octx.lineTo(-5, 13); octx.closePath(); octx.fill();
+        octx.fillStyle = '#3e0b0b'; octx.font = 'bold 13px system-ui'; octx.fillText('!', 0, 4);
+      }
+      octx.restore();
+    }
     for (const k of sim!.pickups) { const s = view!.project(k.pos); if (s.behind || s.x < 0 || s.x > 1 || s.y < 0 || s.y > 1) continue; octx.strokeStyle = k.kind === 'repair' ? '#5dff8f' : k.kind === 'shield' ? '#ffe27a' : '#6ab8ff'; octx.lineWidth = 2; octx.beginPath(); octx.arc(s.x * W, s.y * H, 14 + 3 * Math.sin(performance.now() / 150), 0, 7); octx.stroke(); octx.fillStyle = octx.strokeStyle; drawIcon(octx, k.kind === 'repair' ? 'hp' : k.kind === 'shield' ? 'shield' : 'missile', s.x * W, s.y * H, 15); }
     // 레이더(내 기수가 위쪽)
     const R = 58, rx = W - R - 16, ry = H - R - 16; octx.fillStyle = 'rgba(8,30,20,.55)'; octx.strokeStyle = 'rgba(120,255,180,.5)'; octx.lineWidth = 1.4; octx.beginPath(); octx.arc(rx, ry, R, 0, 7); octx.fill(); octx.stroke(); octx.beginPath(); octx.arc(rx, ry, R / 2, 0, 7); octx.stroke();

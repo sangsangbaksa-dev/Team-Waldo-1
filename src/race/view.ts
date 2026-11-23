@@ -10,7 +10,7 @@ import { BOOST_LAG, carEuler, chaseFov, chaseRoll, chaseRumble, chaseShake, chev
 import { wrapAngle, boosting, kmh } from './physics';
 import { type RaceState, type Racer } from './race';
 import { type Track } from './track';
-import { TrackClearanceIndex, startBannerPose } from './track-queries';
+import { TrackClearanceIndex, cachedTrackClearanceIndex, startBannerPose } from './track-queries';
 import { type Theme } from './maps';
 import { buildOutposts, type Outpost } from './outpost';
 import { disposeOwnedTree, markBorrowedTree } from './resource-ownership';
@@ -358,7 +358,7 @@ export class RaceView {
   /** 도로에서 clear 미터 이상 떨어진 무작위 위치(x, z, 도로 고도)를 최대 count 개 찾습니다. radius 가 있으면 물체 반지름만큼 더 떨어뜨립니다(큰 메사·언덕이 도로를 덮지 않도록). */
   private scatter(count: number, minOff: number, maxOff: number, clear: number, gap = 0, both = true, radius?: () => number): Array<[number, number, number, number]> {
     const t = this.track, hw = t.halfWidth, out: Array<[number, number, number, number]> = [];
-    const clearance = this.roadClearance ??= new TrackClearanceIndex(t);
+    const clearance = this.roadClearance ??= cachedTrackClearanceIndex(t);
     for (let tries = 0; tries < count * 40 && out.length < count; tries++) {
       const r = radius ? radius() : 0, i = Math.floor(Math.random() * t.n), side = both ? (Math.random() < 0.5 ? -1 : 1) : 1, off = side * (hw + r + rnd(minOff, maxOff)), x = t.x[i] - t.tz[i] * off, z = t.z[i] + t.tx[i] * off;
       // 중심선 표본 사이 간격(ds)만큼 거리가 과대평가되므로 모든 표본을 확인하고 그만큼 여유를 둡니다.
@@ -439,7 +439,7 @@ export class RaceView {
     const sceneryKind = th.scenery;
     if (sceneryKind === 'city') {
       const win = canvasTex(64, 128, g => { g.fillStyle = '#0d0a1f'; g.fillRect(0, 0, 64, 128); for (let y = 4; y < 124; y += 10) for (let x = 4; x < 60; x += 9) { if (Math.random() < 0.62) { const h = Math.random(); g.fillStyle = h < 0.5 ? '#ffd9a0' : h < 0.8 ? '#7be9ff' : '#ff7ad9'; g.fillRect(x, y, 5, 6); } } });
-      const flatClearance = new TrackClearanceIndex(t, 2, false);
+      const flatClearance = cachedTrackClearanceIndex(t, 2, false);
       const classes = [{ h: 45, n: low ? 60 : 110 }, { h: 90, n: low ? 40 : 80 }, { h: 160, n: low ? 18 : 40 }];
       const placed: Array<[number, number, number]> = [];
       for (const k of classes) {

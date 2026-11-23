@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MAPS } from '../src/race/maps';
 import { buildMapTrack } from '../src/race/track';
-import { maxLookCurvature, TrackClearanceIndex } from '../src/race/track-queries';
+import { cachedTrackClearanceIndex, maxLookCurvature, TrackClearanceIndex } from '../src/race/track-queries';
 
 function referenceCurve(k: Float32Array, start: number, look: number): number {
   let max = 0;
@@ -10,6 +10,24 @@ function referenceCurve(k: Float32Array, start: number, look: number): number {
 }
 
 describe('SPEED RUSH indexed lookups', () => {
+  it('reuses immutable road clearance indices across race restarts but separates distinct modes/maps', () => {
+    const road = buildMapTrack(MAPS[0]);
+    const defaultIndex = cachedTrackClearanceIndex(road);
+    const again = cachedTrackClearanceIndex(road);
+    const flat = cachedTrackClearanceIndex(road, 2, false);
+    expect(defaultIndex).toBe(again);
+    expect(defaultIndex).not.toBe(flat);
+    expect(flat).toBe(cachedTrackClearanceIndex(road, 2, false));
+    expect(cachedTrackClearanceIndex(buildMapTrack(MAPS[0]))).not.toBe(defaultIndex);
+    expect(cachedTrackClearanceIndex(buildMapTrack(MAPS[1]))).not.toBe(defaultIndex);
+    for (const i of [0, 50, 100, 200]) {
+      const x = road.x[i], z = road.z[i];
+      for (const need of [1, 10, 50, 250]) {
+        expect(defaultIndex.overlaps(x, z, need)).toBe(new TrackClearanceIndex(road).overlaps(x, z, need));
+      }
+    }
+  });
+
   it('matches the AI look-ahead loop at every sample of every circuit', () => {
     for (const map of MAPS) {
       const t = buildMapTrack(map);

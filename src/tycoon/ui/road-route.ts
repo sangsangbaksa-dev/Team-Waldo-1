@@ -13,6 +13,10 @@ const length = (points: readonly RoadPoint[]): number => points.reduce((sum, p, 
 
 /** Pick the shorter of vertical-first and horizontal-first street routes. */
 export function streetRoute(start: RoadPoint, end: RoadPoint): RoadPoint[] {
+  if (start.x === end.x && start.z === end.z) return [start];
+  // Straight segments already on a street do not need artificial junction detours.
+  if ((start.x === end.x && Math.abs(start.x - vertical(start.x)) < 0.01) ||
+      (start.z === end.z && Math.abs(start.z - horizontal(start.z)) < 0.01)) return [start, end];
   const sx = vertical(start.x), sz = horizontal(start.z), tx = vertical(end.x), tz = horizontal(end.z);
   const verticalFirst: RoadPoint[] = [
     start, { x: sx, z: start.z }, { x: sx, z: tz }, { x: end.x, z: tz }, end,

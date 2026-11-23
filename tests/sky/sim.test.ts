@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { DIFFS, SkySim, WORLD_R, terrainY, type Input } from '../../src/sky/sim';
+import { DIFFS, GUN_RANGE, SkySim, WORLD_R, terrainY, type Input } from '../../src/sky/sim';
 
 const neutral: Input = { pitch: 0, roll: 0, throttle: 0.5, fire: false, missile: false, flare: false };
 
@@ -71,6 +71,50 @@ describe('SKY WAR 발사체·보급품 회귀 테스트', () => {
     const arrival = lead.distanceTo(sim.player.pos) / speed;
     const actual = target.pos.clone().addScaledVector(new THREE.Vector3(0, 0, -1).applyQuaternion(target.q), target.speed * arrival);
     expect(lead.distanceTo(actual)).toBeLessThan(0.001);
+  });
+
+  it('기관포의 최대 사거리는 기체 속도와 관계없이 일정하다', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    for (const speed of [80, 150, 250]) {
+      sim.player.speed = speed;
+      sim.fireGun(sim.player, 0);
+      const bullet = sim.bullets.at(-1)!;
+      expect(bullet.vel.length() * bullet.life).toBeCloseTo(GUN_RANGE, 5);
+    }
+  });
+
+  it('잔여 수명이 짧은 탄환은 남은 비행거리까지만 이동한다', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.fireGun(sim.player, 0);
+    const bullet = sim.bullets[0]!;
+    bullet.life = 0.01;
+    const origin = bullet.pos.clone(), speed = bullet.vel.length();
+    sim.step(0.05, neutral);
+    expect(bullet.pos.distanceTo(origin)).toBeCloseTo(speed * 0.01, 4);
+    expect(sim.bullets).toHaveLength(0);
+  });
+
+  it('수명이 끝난 미사일이 조종석과 겹쳐도 피해를 주지 않는다', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.missiles.push({
+      id: 999, owner: 999, team: 'enemy', pos: sim.player.pos.clone(),
+      vel: new THREE.Vector3(0, 0, -500), target: sim.player.id, life: 0.001, alive: true,
+    });
+    sim.step(0.05, neutral);
+    expect(sim.player.hp).toBe(100);
+    expect(sim.missiles).toHaveLength(0);
+  });
+
+  it('플레어로 유도 해제된 미사일은 회피 점수나 방어막을 공짜로 주지 않는다', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.missiles.push({
+      id: 999, owner: 999, team: 'enemy', pos: sim.player.pos.clone().add(new THREE.Vector3(100, 0, 200)),
+      vel: new THREE.Vector3(0, 0, 500), target: 0, life: 3, alive: true, nearPlayer: true,
+    });
+    sim.step(0.05, neutral);
+    expect(sim.shield).toBe(0);
+    expect(sim.score).toBe(0);
+    expect(sim.events.some(e => e.t === 'dodge')).toBe(false);
   });
 
   it('기한이 지난 보급품은 겹쳐 있어도 획득할 수 없다', () => {

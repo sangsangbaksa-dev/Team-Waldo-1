@@ -388,3 +388,10 @@
   box-shadow:none; min-height:53px; border-radius:7px;
 }
 .ty-root.touch .ty-tfoot button.big.horn:active {background:#485966;color:#fff2cc;}
+
+/* Clear analogue-style transmission indicator, especially on touch screens. */
+.ty-drive strong {align-items:center}
+.ty-drive strong em {font-style:normal;font-size:12px;line-height:1.4;font-weight:800;
+  letter-spacing:.04em;color:#e9c48a;border:1px solid #6e756d;border-radius:3px;
+  background:#212d32;min-width:22px;padding:3px 5px;text-align:center;align-self:center}
+.ty-root.touch .ty-tfoot button[data-t="ride"]:disabled {opacity:.48}

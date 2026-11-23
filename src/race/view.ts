@@ -386,13 +386,13 @@ export class RaceView {
     const bm = new THREE.Mesh(new THREE.PlaneGeometry(hw * 2 + 3, 2.2), new THREE.MeshBasicMaterial({ map: banner, side: THREE.DoubleSide })); bm.position.set(t.x[0], t.y[0] + 15, t.z[0] + 0.01); bm.rotation.y = -Math.atan2(t.tz[0], t.tx[0]) + Math.PI / 2; this.scene.add(bm); this.disposables.push(bm.geometry, banner);
     this.disposables.push(archMat);
     // 도로 옆 기준점(속도감): 가로등 또는 반사 표지
-    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(1, 1, 1), c = new THREE.Color();
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(1, 1, 1), c = new THREE.Color(), instancePos = new THREE.Vector3();
     if (th.lamp.kind === 'lamp') {
       const spacing = 6, lampN = Math.floor(t.n / spacing) * 2, post = new THREE.InstancedMesh(new THREE.BoxGeometry(0.28, 7.5, 0.28), new THREE.MeshBasicMaterial({ color: 0x241a40 }), lampN), head = new THREE.InstancedMesh(new THREE.BoxGeometry(1.4, 0.3, 0.5), new THREE.MeshBasicMaterial({ color: 0xffffff }), lampN); let li = 0;
       for (let i = 0; i < t.n && li < lampN - 1; i += spacing) for (const s of [-1, 1]) {
         const off = (hw + 4.2) * s, x = t.x[i] - t.tz[i] * off, z = t.z[i] + t.tx[i] * off;
-        m4.compose(new THREE.Vector3(x, t.y[i] + 3.75, z), q.identity(), sc); post.setMatrixAt(li, m4);
-        e.set(0, -Math.atan2(t.tz[i], t.tx[i]) + Math.PI / 2, 0); q.setFromEuler(e); m4.compose(new THREE.Vector3(x - (-t.tz[i]) * s * 0.5, t.y[i] + 7.5, z - t.tx[i] * s * 0.5), q, sc); head.setMatrixAt(li, m4);
+        m4.compose(instancePos.set(x, t.y[i] + 3.75, z), q.identity(), sc); post.setMatrixAt(li, m4);
+        e.set(0, -Math.atan2(t.tz[i], t.tx[i]) + Math.PI / 2, 0); q.setFromEuler(e); m4.compose(instancePos.set(x - (-t.tz[i]) * s * 0.5, t.y[i] + 7.5, z - t.tx[i] * s * 0.5), q, sc); head.setMatrixAt(li, m4);
         head.setColorAt(li, c.setHex((i / spacing) % 2 === 0 ? th.lamp.a : th.lamp.b)); li++;
       }
       post.count = head.count = li; this.scene.add(post, head); this.disposables.push(post.geometry, head.geometry);
@@ -422,7 +422,7 @@ export class RaceView {
         for (let tries = 0; tries < k.n * 30 && count < k.n; tries++) {
           const i = Math.floor(Math.random() * t.n), side = Math.random() < 0.5 ? -1 : 1, off = side * (hw + rnd(50, 380)), x = t.x[i] - t.tz[i] * off + rnd(-20, 20), z = t.z[i] + t.tx[i] * off + rnd(-20, 20);
           if (flatClearance.overlaps(x, z, hw + 40) || placed.some(p => Math.hypot(p[0] - x, p[1] - z) < 34)) continue;
-          placed.push([x, z, k.h]); m4.compose(new THREE.Vector3(x, k.h / 2 - 0.4, z), q.setFromEuler(e.set(0, rnd(0, 6.28), 0)), sc.set(1, 1, 1)); mesh.setMatrixAt(count++, m4);
+          placed.push([x, z, k.h]); m4.compose(instancePos.set(x, k.h / 2 - 0.4, z), q.setFromEuler(e.set(0, rnd(0, 6.28), 0)), sc.set(1, 1, 1)); mesh.setMatrixAt(count++, m4);
         }
         mesh.count = count; this.scene.add(mesh); this.disposables.push(g, bmat);
       }

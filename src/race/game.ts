@@ -12,7 +12,7 @@ import { RaceAudio, gearFor } from './audio';
 import { carById, levelById, mapOf, sanitizeSetup, type RaceSetup } from './config';
 import { aiInput, boosting, kmh, recoverCar, type CarInput } from './physics';
 import { RacePvp } from './pvp';
-import { decideWinner } from './netcar';
+import { decideWinner, eligibleForForfeit, plausibleFinishTime } from './netcar';
 import { createRace, currentLap, placeOf, updateRace, type RaceEvent, type RaceState } from './race';
 import { ghostDelta, readGhost, writeGhost } from './ghost';
 import { ownsSkin, readGarage, rewardFor, writeGarage } from './garage';
@@ -180,10 +180,17 @@ export function openRace(onExit: () => void): void {
     const net: RacePvp = new RacePvp(s, setup.car, {
       onStart: car => beginPvp(car),
       onSnap: snap => { const rival = race.racers[1]; if (pvp && rival?.link) rival.link = { snap, at: performance.now() }; },
-      onFinish: time => { if (!pvp || pvp.done || pvp.oppFin !== null) return; pvp.oppFin = time; const r = race.racers[1]; if (r) r.finishTime = time; if (pvp.myFin !== null) decide(); else void conclude(s.opponent.id, '상대가 먼저 결승선을 통과했습니다'); },
+      onFinish: time => {
+        if (!pvp || pvp.done || pvp.oppFin !== null || race.phase === 'countdown'
+          || !plausibleFinishTime(time, race.track.length, race.laps)) return;
+        pvp.oppFin = time;
+        const rival = race.racers[1]; if (rival) rival.finishTime = time;
+        if (pvp.myFin !== null) decide();
+        else void conclude(s.opponent.id, '상대가 먼저 결승선을 통과했습니다');
+      },
       onGone: reason => {
         if (!pvp || pvp.done) return;
-        if (!pvp.net.started) {
+        if (!eligibleForForfeit(pvp.net.started, race.phase)) {
           // A channel failure or early departure is not a race victory.
           // In particular, rejecting our own channel.ready promise must not
           // report an invented win to the rating backend.
@@ -234,8 +241,14 @@ export function openRace(onExit: () => void): void {
   /** 나가기: 대전 중이면 기권으로 처리합니다. */
   function leavePvp(): void {
     const p = pvp; if (!p) return;
-    if (!p.done && p.net.started) { p.net.bye(); void p.s.backend.report(p.s.match.id, p.s.opponent.id).catch(() => undefined); }
-    else if (!p.done) void p.s.backend.cancelMatch(p.s.match.id).catch(() => undefined);
+    if (!p.done) {
+      if (p.net.started) p.net.bye();
+      if (eligibleForForfeit(p.net.started, race.phase)) {
+        void p.s.backend.report(p.s.match.id, p.s.opponent.id).catch(() => undefined);
+      } else {
+        void p.s.backend.cancelMatch(p.s.match.id).catch(() => undefined);
+      }
+    }
     endPvp();
   }
   function endPvp(): void { pvp?.net.dispose(); pvp = null; endMulti(); }
@@ -255,7 +268,13 @@ export function openRace(onExit: () => void): void {
     const net: RaceMulti = new RaceMulti(s, setup.car, {
       onStart: list => beginMulti(list),
       onSnap: (id, snap) => { const r = racerOf(id); if (multi && r?.link) r.link = { snap, at: performance.now() }; },
-      onFinish: (id, time) => { const r = racerOf(id); if (!multi || multi.done || !r || r.finishTime !== null) return; r.finishTime = time; multiCheck(); },
+      onFinish: (id, time) => {
+        const racer = racerOf(id);
+        if (!multi || multi.done || !racer || racer.finishTime !== null || race.phase === 'countdown'
+          || !plausibleFinishTime(time, race.track.length, race.laps)) return;
+        racer.finishTime = time;
+        multiCheck();
+      },
       onGone: id => { if (!multi || multi.done) return; multi.gone.add(id); const r = racerOf(id); if (r) { msg(`${r.name} 님이 나갔습니다`, 'hint'); msgT = 3; } multiCheck(); },
       onAbort: () => {
         if (!multi || multi.done) return;

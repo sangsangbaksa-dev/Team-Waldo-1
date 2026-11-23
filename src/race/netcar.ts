@@ -28,6 +28,21 @@ export function validFinishTime(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= 3600;
 }
 
+/** Reject physically impossible peer finish claims, with a generous 180m/s
+ * speed limit above any car, boost, draft or launch impulse in the game.
+ * This is only a cheap plausibility guard, not authoritative anti-cheat.
+ */
+export function plausibleFinishTime(value: unknown, trackMeters: number, laps: number): value is number {
+  return validFinishTime(value) && Number.isFinite(trackMeters) && trackMeters > 0
+    && Number.isInteger(laps) && laps > 0 && value >= trackMeters * laps / 180;
+}
+
+/** A disconnected peer forfeits only after the race countdown has ended.
+ * Network handshake completion is not the same as the GO signal. */
+export function eligibleForForfeit(connected: boolean, phase: 'countdown' | 'racing' | 'done'): boolean {
+  return connected && phase !== 'countdown';
+}
+
 export interface RemoteLink { snap: Snap | null; at: number }
 
 /** 마지막 스냅샷을 속도로 조금 앞질러 예측한 위치로 부드럽게 따라갑니다. 너무 멀어지면 바로 옮깁니다. */

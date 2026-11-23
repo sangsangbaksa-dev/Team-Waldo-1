@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MAPS } from '../../src/race/maps';
 import { buildMapTrack } from '../../src/race/track';
 import { createRace, updateRace } from '../../src/race/race';
-import { decideWinner, encodeSnap, followSnap, parseSnap, validFinishTime } from '../../src/race/netcar';
+import { decideWinner, eligibleForForfeit, encodeSnap, followSnap, parseSnap, plausibleFinishTime, validFinishTime } from '../../src/race/netcar';
 
 const track = buildMapTrack(MAPS[0]);
 const idle = { throttle: 0, brake: 0, steer: 0, drift: false, nitro: false };
@@ -77,6 +77,27 @@ describe('SPEED RUSH 1대1 레이스', () => {
     for (const value of [0, -1, 3601, Infinity, -Infinity, NaN, null, '42', {}, []]) {
       expect(validFinishTime(value)).toBe(false);
     }
+  });
+
+  it('does not award wins or losses from a network handshake before the GO signal', () => {
+    expect(eligibleForForfeit(false, 'racing')).toBe(false);
+    expect(eligibleForForfeit(false, 'countdown')).toBe(false);
+    expect(eligibleForForfeit(true, 'countdown')).toBe(false);
+    expect(eligibleForForfeit(true, 'racing')).toBe(true);
+    expect(eligibleForForfeit(true, 'done')).toBe(true);
+  });
+
+  it('rejects impossible peer lap times for each race length while retaining valid sprints', () => {
+    expect(validFinishTime(0.001)).toBe(true); // generic packet format is unchanged
+    for (const laps of [1, 2, 3]) {
+      const physicalMinimum = track.length * laps / 180;
+      expect(plausibleFinishTime(0.001, track.length, laps)).toBe(false);
+      expect(plausibleFinishTime(physicalMinimum - 0.01, track.length, laps)).toBe(false);
+      expect(plausibleFinishTime(physicalMinimum + 0.01, track.length, laps)).toBe(true);
+      expect(plausibleFinishTime(physicalMinimum * 2, track.length, laps)).toBe(true);
+    }
+    for (const x of [NaN, Infinity, -1, 0]) expect(plausibleFinishTime(50, x, 1)).toBe(false);
+    for (const laps of [-1, 0, 1.5, NaN]) expect(plausibleFinishTime(50, track.length, laps)).toBe(false);
   });
 
   it('결승 기록이 더 빠른 쪽이 이기고 같으면 방장이 이긴다', () => {

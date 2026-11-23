@@ -16,7 +16,9 @@ export type PropKind = 'car' | 'jeep' | 'truck' | 'van' | 'bus' | 'container' | 
 /** 눈에 보이는 소품. w·d·h 는 ry=0 일 때의 가로(x)·세로(z)·높이이고, 충돌 상자는 world.ts 가 따로 만듭니다. */
 export interface Prop { kind: PropKind; x: number; z: number; ry: number; /** 보기만 하는 작은 기울기 */ jit: number; w: number; d: number; h: number; c: number; /** 컨테이너 층, 차량·울타리 변형 */ v: number; wreck: boolean; /** 솔로 배틀로열에서 이 차량의 충돌 상자 번호(운전하면 옮겨 다닙니다) */ box?: number }
 export type Theme = 'village' | 'urban' | 'industrial' | 'farm' | 'military';
-export interface Compound { x: number; z: number; r: number; theme: Theme; name: string }
+export interface Compound { x: number; z: number; r: number; theme: Theme; name: string; /** 고층 도심 중심지 여부 */ downtown?: boolean }
+/** 중앙 도심 배치와 시각적인 도로 폭은 같은 수치를 공유합니다. */
+export const METROPOLIS = { cols: 4, rows: 4, lotW: 19.5, lotD: 18.5, streetWidth: 4.5 } as const;
 export interface Site { x: number; z: number; r: number }
 
 export interface GameMap {
@@ -259,6 +261,17 @@ function furnish(map: GameMap, rng: () => number, c: Compound, layoutHalf: { x: 
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) addBox(map, { x0: tx + sx * 1.2 - 0.2, x1: tx + sx * 1.2 + 0.2, z0: tz + sz * 1.2 - 0.2, z1: tz + sz * 1.2 + 0.2, y0: 0, y1: 7, kind: 'prop', tex: 0 });
   }
   if (th === 'urban') for (const b of built) if (rng() < 0.8) addProp(map, { kind: 'dumpster', x: b.x + (rng() < 0.5 ? -1 : 1) * (b.w / 2 + 1.6), z: b.z + (rng() - 0.5) * b.d * 0.6, ry: Math.PI / 2, w: 2, d: 1.2, h: 1.25, c: 0x2f6f4b }, { kind: 'prop' }, 0.5);
+  if (c.downtown) {
+    // 도심 내부 중앙 도로의 교차로는 차량/엄폐물로 막지 않습니다.
+    // 엄폐물과 주차 차량은 외곽의 코너에 배치해 이동과 AI 경로를 보장합니다.
+    const edgeX = METROPOLIS.cols * METROPOLIS.lotW / 2 + 4;
+    const edgeZ = METROPOLIS.rows * METROPOLIS.lotD / 2 + 4;
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      coverCluster(map, rng, c.x + sx * edgeX, c.z + sz * edgeZ, COVER_BY.urban, 2);
+      vehicleAt(map, rng, c.x + sx * edgeX, c.z + sz * (edgeZ - 6));
+    }
+    return;
+  }
   // 마을 곳곳의 엄폐물 무리
   for (let k = 0, tries = 0, want = 5 + Math.floor(rng() * 3); k < want && tries < 40; tries++) { const [x, z] = around(5, c.r - 2); const before = map.props.length; coverCluster(map, rng, x, z, COVER_BY[th], 3 + Math.floor(rng() * 2)); if (map.props.length > before) k++; }
   // 마을 입구 표지판과 주차 차량
@@ -280,7 +293,7 @@ export function generateMap(seed: number, mode: Mode): GameMap {
   const map: GameMap = { seed, mode, half, boxes: [], buildings: [], trees: [], rocks: [], props: [], compounds: [], sites: [], roads: [], loot: [], spawns: [], grid: new Map(), terrain: emptyTerrain() };
   // 중앙 랜드마크: 배틀로열은 항상 (0, 0)에 고층 시가지를 둡니다.
   // 별도의 Compound로 관리해 도로 연결, 지형 비침범, 전리품 생성 규칙을 공유합니다.
-  if (mode === 'br') map.compounds.push({ x: 0, z: 0, r: 0, theme: 'urban', name: '중앙 메트로폴리스' });
+  if (mode === 'br') map.compounds.push({ x: 0, z: 0, r: 0, theme: 'urban', name: '중앙 메트로폴리스', downtown: true });
   const towns = mode === 'br' ? 14 : 4, minGap = mode === 'br' ? 74 : 58;
   for (let tries = 0; map.compounds.length < towns && tries < 800; tries++) {
     const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * half * 0.78, x = Math.cos(a) * r, z = Math.sin(a) * r;
@@ -290,9 +303,9 @@ export function generateMap(seed: number, mode: Mode): GameMap {
   const bag = [...THEME_LIST].sort(() => rng() - 0.5); const used: Record<string, number> = {};
   map.compounds.forEach((c, i) => { if (mode === 'br' && i === 0) { used.urban = 1; return; } c.theme = i < bag.length ? bag[i] : THEME_LIST[Math.floor(rng() * THEME_LIST.length)]; const def = THEMES[c.theme]; const n = used[c.theme] ?? 0; used[c.theme] = n + 1; c.name = def.names[n % def.names.length] });
   for (const c of map.compounds) {
-    const downtown = mode === 'br' && c.x === 0 && c.z === 0 && c.name === '중앙 메트로폴리스';
-    const def = THEMES[c.theme], cols = downtown ? 4 : mode === 'br' ? def.cols[0] : 2, rows = downtown ? 4 : def.rows;
-    const lot = downtown ? { w: 19.5, d: 18.5 } : def.lot;
+    const downtown = c.downtown === true;
+    const def = THEMES[c.theme], cols = downtown ? METROPOLIS.cols : mode === 'br' ? def.cols[0] : 2, rows = downtown ? METROPOLIS.rows : def.rows;
+    const lot = downtown ? { w: METROPOLIS.lotW, d: METROPOLIS.lotD } : def.lot;
     const n = downtown ? cols * rows : (mode === 'br' ? 4 : 2) + Math.floor(rng() * 3);
     const slots: Array<[number, number]> = []; for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) slots.push([i, j]);
     for (let i = slots.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [slots[i], slots[j]] = [slots[j], slots[i]]; }
@@ -301,7 +314,9 @@ export function generateMap(seed: number, mode: Mode): GameMap {
       // 고층동과 저층 상업동을 섞어 지붕선이 단조롭지 않게 만듭니다.
       const type = downtown ? (idx % 5 === 0 ? 'shop' : idx % 7 === 0 ? 'clinic' : 'apartment') : idx === 0 ? def.first : pickKind(rng, def);
       const sp = SPEC[type];
-      const bx = c.x + (i - (cols - 1) / 2) * lot.w + (rng() - 0.5) * 2.5, bz = c.z + (j - (rows - 1) / 2) * lot.d + (rng() - 0.5) * 2.5;
+      // 도심의 무작위 위치 흔들림은 줄여서 보행로를 꾸준히 4m 이상 남깁니다.
+      const jitter = downtown ? 0.8 : 2.5;
+      const bx = c.x + (i - (cols - 1) / 2) * lot.w + (rng() - 0.5) * jitter, bz = c.z + (j - (rows - 1) / 2) * lot.d + (rng() - 0.5) * jitter;
       // 3.2m 층고 기준 3~9층 높이. 기존 벽/사격 충돌 박스에도 동일한 높이를 적용합니다.
       const towerHeight = downtown && type === 'apartment' ? (3 + Math.floor(rng() * 7)) * 3.2 : undefined;
       const b = build(map, rng, type, bx, bz, towerHeight); built.push(b);

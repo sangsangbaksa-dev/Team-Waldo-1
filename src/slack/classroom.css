@@ -12,9 +12,11 @@
 .sl-board span{font-size:clamp(13px,2vw,25px);letter-spacing:.14em}
 .sl-clock{position:absolute;left:5%;top:14%;border:4px solid #e1dbc5;border-radius:50%;width:clamp(25px,4vw,45px);aspect-ratio:1;display:grid;place-items:center;background:#eee9d8;color:#45433e;font-size:8px}
 
-/* 문: 유리창 실루엣, 문틈 발 그림자 */
-.sl-door{position:absolute;right:4%;bottom:0;width:15%;height:96%;background:#80735f;border:6px solid #615b4e;transition:filter .4s,box-shadow .4s}
-.is-door .sl-door{filter:brightness(1.25);box-shadow:0 0 12px 3px #fff4b855}
+.sl-door{position:absolute;z-index:2;right:4%;bottom:0;width:15%;height:96%;border:5px solid #625b50;background:#242b28;box-shadow:inset 0 0 0 2px #303934}
+.sl-door-reveal{position:absolute;inset:0;background:linear-gradient(90deg,#1d2524 0%,#343d38 75%,#495148)}
+.sl-door-reveal:after{content:"";position:absolute;left:-20%;right:0;bottom:0;height:12%;background:#a49a7f;opacity:calc(var(--sl-door-open,0) * .55)}
+.sl-door-leaf{position:absolute;inset:-1px;background:#867761;border:2px solid #6d604f;transform-origin:right center;transform:perspective(480px) rotateY(var(--sl-door-angle,0deg));backface-visibility:hidden}
+.sl-door-leaf:after{content:"";position:absolute;inset:0;border-left:3px solid #a09179;box-shadow:inset -5px 0 #564f45;pointer-events:none}
 .sl-window{position:absolute;left:14%;right:14%;top:7%;height:38%;background:linear-gradient(120deg,#b0c0b8,#607970);border:4px solid #4e5149;overflow:hidden}
 .sl-shadow{position:absolute;inset:5% 10% -40%;border-radius:50% 50% 0 0;background:#202b29;opacity:0;transform:translateX(-120%)}
 .sl-room[data-hint="1"] .sl-shadow{opacity:.45;animation:sl-shadow 5s infinite}
@@ -26,13 +28,14 @@
 .sl-face i:first-child{left:25%}
 .sl-face i:last-child{right:25%}
 .sl-room[data-hint="2"] .sl-face{display:block}
-.sl-handle{position:absolute;right:12%;top:56%;width:8%;height:4%;border-radius:50%;background:#d8cfad}
-.sl-gap{position:absolute;left:0;right:0;bottom:0;height:5%;background:#f2e6a4;opacity:.75;overflow:hidden;transition:height .3s}
+.sl-room[data-mode="scan"] .sl-face,.sl-room[data-mode="leave"] .sl-face{display:none}
+.sl-room[data-mode="scan"] .sl-shadow,.sl-room[data-mode="leave"] .sl-shadow{animation:none;opacity:0}
+.sl-handle{position:absolute;right:12%;top:56%;width:12%;height:3.5%;border-radius:3px;background:#d8cfad;border-bottom:2px solid #938775;transform-origin:80% 50%;transform:rotate(var(--sl-handle-angle,0deg))}
+.sl-gap{position:absolute;left:0;right:0;bottom:0;height:5%;background:#e1d3a3;opacity:.65;overflow:hidden}
 .sl-gap i{position:absolute;bottom:0;left:0;width:22%;height:100%;background:#262a27;opacity:0}
-.sl-room:not([data-hint="0"]) .sl-gap i,.sl-room:not([data-step="0"]) .sl-gap i{animation:sl-feet 1.3s linear infinite}
+.sl-room[data-mode="approach"] .sl-gap i,.sl-room[data-mode="peek"] .sl-gap i{animation:sl-feet 1.3s linear infinite}
 .sl-gap i:last-child{animation-delay:-.65s!important}
 .sl-room[data-step="2"] .sl-gap,.sl-room[data-step="3"] .sl-gap{height:9%}
-.sl-room[data-step="3"] .sl-gap{opacity:1}
 
 /* 앞줄 학생들: 조용히 모니터만 보는 정적인 뒷모습 */
 .sl-rows{position:absolute;left:0;right:0;top:31%;height:24%}
@@ -43,12 +46,26 @@
 .sl-kid:nth-child(3) .hd{background:#1c1c1e}
 .sl-kid:after{content:'';position:absolute;left:-6%;right:-6%;bottom:-3%;height:9%;background:#8f7455;box-shadow:none}
 
-/* 감독 선생님 */
-.sl-teacher{position:absolute;z-index:4;right:8%;bottom:50%;width:11%;height:30%;opacity:0;transform-origin:bottom;transform:scale(calc(.65 + var(--near) * 1.2));transition:opacity .5s,transform .5s;pointer-events:none}
-.sl-room[data-scan="true"] .sl-teacher{opacity:.95}
-.sl-teacher-head{position:absolute;left:27%;top:0;width:46%;height:24%;background:#292f30;border-radius:50%}
-.sl-room[data-scan="true"] .sl-teacher-head{animation:sl-look 2.4s ease-in-out infinite alternate}
-.sl-teacher-body{position:absolute;inset:20% 0 0;background:#303b3b;border-radius:35% 35% 5% 5%}
+.sl-teacher{position:absolute;z-index:1;right:var(--sl-teacher-right,8%);bottom:var(--sl-teacher-bottom,50%);width:clamp(28px,8cqw,90px);height:clamp(62px,27cqh,180px);opacity:var(--sl-teacher-opacity,0);transform-origin:bottom center;transform:scale(var(--sl-teacher-scale,.72));transition:right .07s linear,bottom .07s linear,transform .07s linear,opacity .12s linear;pointer-events:none}
+.sl-teacher-person{position:absolute;inset:0;transform-origin:50% 80%;transition:transform .35s ease}
+.sl-teacher[data-facing="exit"] .sl-teacher-person{transform:rotateY(165deg)}
+.sl-teacher-head{position:absolute;z-index:3;left:32%;top:7%;width:36%;height:23%;background:#bca58d;border-radius:44% 44% 40% 40%;border:1px solid #75695e;transform-origin:50% 85%}
+.sl-teacher-head:before{content:"";position:absolute;inset:-5% -4% 62%;border-radius:48% 52% 20% 10%;background:#292d2e}
+.sl-teacher-head:after{content:"";position:absolute;left:23%;right:23%;top:56%;height:2%;background:#665d55}
+.sl-teacher-neck{position:absolute;z-index:1;left:43%;top:27%;width:14%;height:11%;background:#bca58d}
+.sl-teacher-torso{position:absolute;z-index:2;left:22%;right:22%;top:32%;height:41%;background:#444f4b;border-radius:26% 26% 12% 12%;border-bottom:4px solid #343d3a}
+.sl-teacher-torso:before{content:"";position:absolute;left:33%;right:33%;top:0;height:54%;background:#cfcbc0;clip-path:polygon(0 0,100% 0,50% 100%)}
+.sl-teacher-torso:after{content:"";position:absolute;left:49%;top:20%;width:7%;height:48%;background:#596369;transform:skew(8deg)}
+.sl-teacher-arm{position:absolute;z-index:1;top:37%;width:17%;height:37%;background:#394440;border-radius:35% 35% 18% 18%;transform-origin:50% 9%}
+.sl-teacher-arm.l{left:14%}.sl-teacher-arm.r{right:14%}
+.sl-teacher-arm:after{content:"";position:absolute;left:15%;right:15%;bottom:-6%;height:14%;border-radius:0 0 45% 45%;background:#bca58d}
+.sl-teacher-leg{position:absolute;top:69%;width:21%;height:28%;background:#303834;transform-origin:50% 6%;border-radius:4px 4px 2px 2px}
+.sl-teacher-leg.l{left:28%}.sl-teacher-leg.r{right:28%}
+.sl-teacher-leg:after{content:"";position:absolute;bottom:-2%;left:-15%;width:125%;height:11%;background:#1e2625;border-radius:3px}
+.sl-teacher[data-walking="true"] .sl-teacher-leg.l,.sl-teacher[data-walking="true"] .sl-teacher-arm.r{animation:sl-teacher-stride .64s ease-in-out infinite alternate}
+.sl-teacher[data-walking="true"] .sl-teacher-leg.r,.sl-teacher[data-walking="true"] .sl-teacher-arm.l{animation:sl-teacher-stride .64s ease-in-out infinite alternate-reverse}
+.sl-room[data-scan="true"] .sl-teacher:not([data-walking="true"]) .sl-teacher-head{animation:sl-look 2.8s ease-in-out infinite alternate}
+
 .sl-cast{position:absolute;z-index:5;inset:0}
 .sl-cast:before{content:'';position:absolute;inset:0;background:linear-gradient(to left,#000d,#0000 85%);opacity:0;transition:opacity .5s}
 .sl-room[data-scan="true"] .sl-cast:before{opacity:var(--near)}
@@ -56,8 +73,8 @@
 .sl-flick{position:absolute;z-index:6;inset:0;background:#000;opacity:0;animation:sl-flickd 9s infinite}
 .sl-room[data-hint="1"] .sl-light{animation:sl-flicker2 1.9s infinite}
 .sl-room[data-hint="1"] .sl-flick{animation:sl-flickd2 1.9s infinite}
-.sl-room[data-hint="2"] .sl-light,.sl-room[data-scan="true"] .sl-light{animation:sl-flicker2 .8s infinite}
-.sl-room[data-hint="2"] .sl-flick,.sl-room[data-scan="true"] .sl-flick{animation:sl-flickd2 .8s infinite}
+.sl-room[data-hint="2"] .sl-light{animation:sl-flicker 9s infinite}
+.sl-room[data-hint="2"] .sl-flick{animation:sl-flickd 9s infinite}
 .sl-hush{position:absolute;z-index:8;inset:0;display:grid;place-items:center;background:radial-gradient(#0000 35%,#000c);opacity:0;transition:opacity .6s;font-size:clamp(30px,8vw,70px);letter-spacing:.3em;color:#fff4}
 .is-quiet .sl-hush{opacity:1}
 
@@ -165,7 +182,8 @@
 @keyframes sl-flickd2{0%,12%,18%,40%,46%,100%{opacity:0}14%,16%{opacity:.4}42%,44%{opacity:.25}}
 @keyframes sl-shadow{0%,100%{transform:translateX(-120%)}50%{transform:translateX(30%)}}
 @keyframes sl-feet{0%{left:-25%;opacity:.9}100%{left:105%;opacity:.9}}
-@keyframes sl-look{to{transform:rotate(14deg)}}
+@keyframes sl-look{to{transform:rotate(8deg)}}
+@keyframes sl-teacher-stride{from{transform:rotate(-12deg)}to{transform:rotate(12deg)}}
 @keyframes sl-nudge{50%{transform:translateX(-7px)}}
 @keyframes sl-type{to{transform:translateY(-2.5%)}}
 @keyframes sl-thump{20%{transform:translateY(4px)}}
@@ -181,7 +199,7 @@
 .sl-room{min-height:270px}
 .sl-rows{top:28%}
 }
-@media(prefers-reduced-motion:reduce){.sl-class *{animation-duration:.01ms!important;animation-iteration-count:1!important}}
+@media(prefers-reduced-motion:reduce){.sl-class *{animation-duration:.01ms!important;animation-iteration-count:1!important}.sl-door-leaf,.sl-teacher,.sl-teacher-person{transition:none!important}}
 
 .sl-cover{touch-action:none}
 @media (any-pointer:coarse){

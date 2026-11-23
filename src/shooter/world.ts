@@ -1,5 +1,5 @@
 // ZERO ZONE — 지도 생성(마을·건물·차량·컨테이너·바위·나무·전리품)과 충돌·광선 검사. 화면과 무관한 순수 로직이라 시드가 같으면 어디서나 같은 지도가 나옵니다.
-import { emptyTerrain, planTerrain, waterDepth, type Terrain } from './terrain';
+import { emptyTerrain, groundHeight, groundRayDistance, planTerrain, waterDepth, type Terrain } from './terrain';
 import { MAP_HALF, PLAYER, WEAPON_IDS, makeRng, type Attachments, type Mode, type PartId, type WeaponId } from './config';
 
 /** 위에서 본 직사각형 + 높이 범위. 벽·바위·상자·나무 기둥·차량 모두 이 모양입니다. */
@@ -372,7 +372,7 @@ export function generateMap(seed: number, mode: Mode): GameMap {
   // 지형: 강·호수·늪·구릉·절벽·숲. 구릉과 절벽은 충돌 상자가 되고, 물은 걸음을 늦춥니다.
   map.terrain = planTerrain(seed, mode, half, map.compounds, map.sites, map.roads.map(([i, j]) => [cs[i], cs[j]] as [Compound, Compound]), map.boxes);
   buildTerrain(map, rng);
-  const clear = (x: number, z: number, pad: number): boolean => farFromTown(x, z, pad) && waterDepth(map.terrain, x, z) === 0;
+  const clear = (x: number, z: number, pad: number): boolean => farFromTown(x, z, pad) && waterDepth(map.terrain, x, z) === 0 && groundHeight(map.terrain, x, z) < 0.08;
   // 길가의 전봇대, 버려진 차량
   const dir = (a: Compound, b: Compound): number => Math.atan2(b.z - a.z, b.x - a.x);
   for (const [i, j] of map.roads) {
@@ -543,7 +543,7 @@ export function rayWorld(map: GameMap, ox: number, oy: number, oz: number, dx: n
   }
   rayStamp = (rayStamp + 1) >>> 0;
   if (rayStamp === 0) { rayMarks.fill(0); rayStamp = 1; }
-  let cx = cellOf(ox), cz = cellOf(oz), entry = 0, best = Infinity;
+  let cx = cellOf(ox), cz = cellOf(oz), entry = 0, best = groundRayDistance(map.terrain, ox, oy, oz, dx, dy, dz, maxT);
   const stepX = dx > 0 ? 1 : dx < 0 ? -1 : 0;
   const stepZ = dz > 0 ? 1 : dz < 0 ? -1 : 0;
   const intervalX = stepX ? CELL / Math.abs(dx) : Infinity;

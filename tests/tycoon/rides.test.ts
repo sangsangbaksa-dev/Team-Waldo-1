@@ -37,6 +37,18 @@ describe('HUSTLE urban fleet', () => {
     rides.dispose();
   });
 
+  it('stops before moving NPC traffic and never tunnels through it', () => {
+    const { player, rides } = setup();
+    const car = rides.positions()[0]; player.teleport(car.x, car.z, car.heading);
+    expect(rides.toggle(player).ok).toBe(true);
+    const before = rides.snapshot();
+    rides.setTrafficBlocker(() => true);
+    expect(rides.update(.1, { throttle: 1, steer: 0, brake: false }, player, false)).toBe(true);
+    expect(rides.speed).toBe(0);
+    expect(rides.snapshot()).toMatchObject(before!);
+    rides.dispose();
+  });
+
   it('restores only an occupied vehicle with a valid location', () => {
     const { player, rides } = setup();
     const car = rides.positions()[0];

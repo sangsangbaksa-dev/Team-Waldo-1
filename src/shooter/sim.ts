@@ -233,7 +233,8 @@ export class Match {
     let top: number, fall: number;
     if (p.air === 2) {
       const dive = inp.sprint && fwd; top = dive ? AIR.diveH : fwd ? AIR.fallFast : AIR.fallH; fall = dive ? AIR.dive : AIR.fall;
-      if ((wantJump && p.alt <= AIR.manualOpen) || p.alt <= AIR.open) { p.air = 3; this.events.push({ t: 'chute', id: p.id }); }
+      const clearance = p.alt - groundHeight(this.map.terrain, p.x, p.z);
+      if ((wantJump && clearance <= AIR.manualOpen) || clearance <= AIR.open) { p.air = 3; this.events.push({ t: 'chute', id: p.id }); }
     } else { const run = inp.sprint && fwd; top = run ? AIR.chuteRun : fwd ? AIR.chuteGo : AIR.chuteH; fall = run ? AIR.chuteFast : AIR.chute; }
     const k = Math.min(1, dt * 3); p.vx += (wx * top - p.vx) * k; p.vz += (wz * top - p.vz) * k;
     p.x += p.vx * dt; p.z += p.vz * dt;

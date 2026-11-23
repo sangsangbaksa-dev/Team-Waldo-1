@@ -23,6 +23,11 @@ export function parseSnap(raw: unknown): Snap | null {
   return raw as Snap;
 }
 
+/** Finished times are seconds, bounded so malformed peer packets cannot hijack standings. */
+export function validFinishTime(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= 3600;
+}
+
 export interface RemoteLink { snap: Snap | null; at: number }
 
 /** 마지막 스냅샷을 속도로 조금 앞질러 예측한 위치로 부드럽게 따라갑니다. 너무 멀어지면 바로 옮깁니다. */

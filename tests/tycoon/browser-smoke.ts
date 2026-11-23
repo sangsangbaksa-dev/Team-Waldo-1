@@ -61,6 +61,7 @@ async function main(): Promise<void> {
     await desktop.keyboard.up('w');
     await desktop.locator('#ty-drive').waitFor({ state: 'visible' });
     await desktop.screenshot({ path: 'artifacts/hustle-desktop-drive.png', fullPage: false });
+    await desktop.keyboard.press('h');
     await desktop.keyboard.press('m');
     await desktop.locator('#ty-bigmap').waitFor({ state: 'visible' });
     assert.ok(await desktop.locator('.ty-map-vehicle').count() >= 5, 'Vehicle directory should be populated');
@@ -86,6 +87,9 @@ async function main(): Promise<void> {
     });
     await ride.tap();
     assert.equal((await getDebug(mobile)).driving, true, 'Tap must enter vehicle');
+    const horn = mobile.locator('[data-t="use"]');
+    await mobile.waitForFunction(() => document.querySelector('[data-t="use"]')?.textContent === '경적');
+    await horn.tap();
     const brake = mobile.locator('#ty-t-run');
     await brake.dispatchEvent('pointerdown', { pointerId: 121, pointerType: 'touch' });
     assert.ok(await brake.evaluate(el => el.classList.contains('on')), 'Brake press should have feedback');

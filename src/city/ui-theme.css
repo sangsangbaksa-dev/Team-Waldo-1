@@ -37,7 +37,7 @@
 .city-root .c-slots .on{background:var(--lc-accent);border-color:var(--lc-accent);color:#20231e;box-shadow:inset 0 -2px 0 #ae946c}
 .city-root .c-ammo b{font-weight:750}
 .city-root .c-skills span{background:#ffffff0b;border:1px solid #ffffff15;border-radius:5px}
-.city-root .c-bc{bottom:16px;max-width:calc(100vw - 375px);align-items:center;gap:4px;padding:5px;background:var(--lc-surface);border:1px solid var(--lc-line);border-radius:10px;box-shadow:0 12px 25px #0006;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;scrollbar-color:#786950 transparent}
+.city-root .c-bc{bottom:16px;max-width:calc(100vw - 375px);align-items:center;gap:4px;padding:5px;background:var(--lc-surface);border:1px solid var(--lc-line);border-radius:10px;box-shadow:0 12px 25px #0006;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;scrollbar-color:#786950 transparent;pointer-events:auto}
 .city-root .c-bc button{flex-shrink:0;padding:9px 11px;background:transparent;border:1px solid transparent;border-radius:6px;font-weight:650}
 .city-root .c-bc button:hover,.city-root .c-topbtns button:hover{background:rgba(214,189,145,.1);border-color:rgba(214,189,145,.5)}
 .city-root .c-bc .c-cmd-main,.city-root .c-actions .c-primary{background:var(--lc-accent);border-color:var(--lc-accent);color:#20231e}

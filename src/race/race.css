@@ -565,6 +565,15 @@
   .rc-pedals button.gas { min-width: 75px; min-height: 62px; font-size: 14px; }
   .touch .rc-touchpad button { min-width: 57px; min-height: 59px; }
 }
+/* On narrow touch screens the clock docks under the right controls, away from speed. */
+@media (max-width: 400px) {
+  .touch .rc-tc {
+    left: auto;
+    right: max(10px, env(safe-area-inset-right));
+    transform: none;
+    min-width: 128px;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .rc-root *, .rc-root *::before, .rc-root *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }

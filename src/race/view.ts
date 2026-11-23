@@ -495,6 +495,8 @@ export class RaceView {
 
   update(race: RaceState, dt: number, wallHit: number): { speedFrac: number } {
     this.time += dt; const p = race.player.car, t = this.track, speed = Math.abs(p.vf), sf = Math.min(1, speed / 74), bst = boosting(p);
+    // Match 60fps particle density instead of emitting excess FX on high-Hz screens.
+    const fxPerFrame = Math.min(1, dt * 60);
     for (const pad of this.pads) pad.tex.offset.x -= dt * 1.4;
     this.outposts?.update(this.time);
     for (const ch of this.crew) { ch.state.time += dt; ch.update(dt); }
@@ -506,16 +508,16 @@ export class RaceView {
       v.group.position.set(c.x, c.y + 0.02, c.z); v.group.rotation.set(pose.x, pose.y, pose.z, pose.order); v.shadow.position.set(c.x, c.y + 0.05, c.z); v.shadow.rotation.y = -c.h;
       const fl = boosting(c), len = fl ? 1.0 + Math.sin(this.time * 90 + v.racer.id) * 0.25 + Math.min(0.9, speed / 90) : 0.001;
       for (const f of v.flames) { f.scale.x += (len - f.scale.x) * Math.min(1, dt * 20); f.visible = fl || f.scale.x > 0.08; (f.material as THREE.MeshBasicMaterial).color.setHex(v.racer.player ? 0x6ec6ff : 0xffa14a); }
-      if (fl && Math.random() < 0.9) this.sparks.emit(c.x - Math.cos(c.h) * 2.4, c.y + 0.5, c.z - Math.sin(c.h) * 2.4, -Math.cos(c.h) * 8 + rnd(-2, 2), rnd(0, 2), -Math.sin(c.h) * 8 + rnd(-2, 2), 0.35, 0.4, 0.8, 1);
+      if (fl && Math.random() < 0.9 * fxPerFrame) this.sparks.emit(c.x - Math.cos(c.h) * 2.4, c.y + 0.5, c.z - Math.sin(c.h) * 2.4, -Math.cos(c.h) * 8 + rnd(-2, 2), rnd(0, 2), -Math.sin(c.h) * 8 + rnd(-2, 2), 0.35, 0.4, 0.8, 1);
       // 타이어: 드리프트·옆미끄러짐·출발 휠스핀에서 연기와 스키드 마크가 남습니다.
       const wheelspin = v.racer.player && race.phase === 'racing' && c.boostT > 0 && Math.abs(c.vf) < 30 && Math.abs(c.vf) > 1;
       const sliding = Math.abs(c.vf) > 14 && (c.drifting || Math.abs(c.slip) > 0.2), tire = c.drifting ? 1 : Math.min(1, Math.abs(c.slip) * 3.2);
-      for (const s of [-1, 1]) {
+      for (let s = -1; s <= 1; s += 2) {
         const bx = c.x - Math.cos(c.h) * 1.4 - Math.sin(c.h) * 0.9 * s * -1, bz = c.z - Math.sin(c.h) * 1.4 + Math.cos(c.h) * 0.9 * s * -1, w = s < 0 ? 0 : 1;
         if (sliding || wheelspin) {
           const k = wheelspin ? 0.8 : tire;
-          if (Math.random() < 0.55 + 0.45 * k) this.smoke.emit(bx, c.y + 0.35, bz, rnd(-1.5, 1.5) - c.vx * 0.12, rnd(0.6, 2.4), rnd(-1.5, 1.5) - c.vz * 0.12, 0.7 + 0.5 * k, 0.62, 0.6, 0.66);
-          if (c.drifting && Math.random() < 0.5) this.sparks.emit(bx, c.y + 0.2, bz, rnd(-4, 4) - c.vx * 0.1, rnd(1, 4), rnd(-4, 4) - c.vz * 0.1, 0.4, 1, 0.75, 0.3);
+          if (Math.random() < (0.55 + 0.45 * k) * fxPerFrame) this.smoke.emit(bx, c.y + 0.35, bz, rnd(-1.5, 1.5) - c.vx * 0.12, rnd(0.6, 2.4), rnd(-1.5, 1.5) - c.vz * 0.12, 0.7 + 0.5 * k, 0.62, 0.6, 0.66);
+          if (c.drifting && Math.random() < 0.5 * fxPerFrame) this.sparks.emit(bx, c.y + 0.2, bz, rnd(-4, 4) - c.vx * 0.1, rnd(1, 4), rnd(-4, 4) - c.vz * 0.1, 0.4, 1, 0.75, 0.3);
           this.skids.mark(v.racer.id * 2 + w, bx, c.y + 0.07, bz, Math.min(0.55, 0.22 + k * 0.4));
         } else this.skids.lift(v.racer.id * 2 + w);
       }
@@ -525,7 +527,7 @@ export class RaceView {
         for (let k = 0; k < 3; k++) this.sparks.emit(c.x + px * 1.05, c.y + rnd(0.2, 0.7), c.z + pz * 1.05, -c.vx * 0.2 + rnd(-3, 3) - px * 3, rnd(1, 5), -c.vz * 0.2 + rnd(-3, 3) - pz * 3, 0.45, 1, 0.78, 0.3);
       }
       // 슬립스트림: 앞차 뒤에 붙으면 하늘색 바람 줄기가 차 옆으로 빨려 들어갑니다.
-      if (c.draft > 0.35 && Math.random() < c.draft) for (const s of [-1, 1]) {
+      if (c.draft > 0.35 && Math.random() < c.draft * fxPerFrame) for (let s = -1; s <= 1; s += 2) {
         const bx = c.x + Math.cos(c.h) * 3 - Math.sin(c.h) * 1.5 * s * -1, bz = c.z + Math.sin(c.h) * 3 + Math.cos(c.h) * 1.5 * s * -1;
         this.sparks.emit(bx, c.y + rnd(0.3, 1.3), bz, c.vx * 0.2, 0, c.vz * 0.2, 0.25, 0.7, 0.9, 1);
       }
@@ -550,7 +552,7 @@ export class RaceView {
     this.camera.lookAt(p.x + Math.cos(this.camH) * ahead, p.y + 1.15 + lift * 0.35 + (t.pitch[lookI] || 0) * 8, p.z + Math.sin(this.camH) * ahead);
     const grind = Math.abs(p.lat) > t.halfWidth - 1.65 && speed > 22 ? 1 : 0, rum = chaseRumble(sf, bst, grind);
     if (!this.reducedMotion) { this.camera.rotateZ(chaseRoll(p.yawRate, p.slip) + Math.sin(tt * 71) * rum); this.camera.rotateX(Math.sin(tt * 83 + 1.3) * rum * 0.8); }
-    const targetFov = this.reducedMotion ? 64 : chaseFov(sf, bst, this.punch); this.fov += (targetFov - this.fov) * Math.min(1, dt * fovRate(targetFov, this.fov)); this.camera.fov = this.fov; this.camera.updateProjectionMatrix();
+    const targetFov = this.reducedMotion ? 64 : chaseFov(sf, bst, this.punch); this.fov += (targetFov - this.fov) * Math.min(1, dt * fovRate(targetFov, this.fov)); if (Math.abs(this.camera.fov - this.fov) > 0.0005) { this.camera.fov = this.fov; this.camera.updateProjectionMatrix(); }
     // 지면·태양광이 카메라를 따라감
     this.ground.position.x = Math.round(this.camera.position.x / 60) * 60; this.ground.position.z = Math.round(this.camera.position.z / 60) * 60;
     this.skyMesh?.position.copy(this.camera.position);

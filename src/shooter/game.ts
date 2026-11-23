@@ -7,6 +7,7 @@ import { AIR, BOTS, FEEL, BR_PLAYERS, DIFFICULTIES, HELMET_NAMES, ARMOR_NAMES, H
 import { groundHeight, waterDepth } from './terrain';
 import { METROPOLIS } from './world';
 import { acceptWheelSwap, newWheelSwapState } from './wheel';
+import { freshRecon, RECON, useRecon } from './recon';
 import { Match, NADE, type Cause, type MatchEvent, type Player, type Vehicle } from './sim';
 import { CAUSES, WorldSync, easePuppet, encodeLoot, parseLoot } from './sync';
 import type { NetMsg } from '../net/types';
@@ -41,6 +42,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     <div class="sz-hud" hidden>
       <div class="sz-vig" id="sz-vig"></div><div class="sz-zonefx" id="sz-zonefx"></div><div class="sz-redfx" id="sz-redfx"></div><div class="sz-scope" id="sz-scope"></div>
       <div class="sz-tl"><div class="sz-stat"><b id="sz-alive">100</b><span>생존</span></div><div class="sz-stat"><b id="sz-kills">0</b><span>처치</span></div></div>
+      <div class="sz-recon" id="sz-recon" hidden><span>정찰 펄스</span><b id="sz-recon-count">2회 남음</b><button type="button" id="sz-recon-use">정찰 <small>T</small></button><small id="sz-recon-status">착지 후 사용</small></div>
       <canvas class="sz-compass" id="sz-compass" width="420" height="34"></canvas><div class="sz-tc" id="sz-zone"><b id="sz-ztime">0:00</b><span id="sz-zlabel">자기장</span></div>
       <div class="sz-tr"><canvas id="sz-map" width="300" height="300"></canvas><ul class="sz-feed" id="sz-feed"></ul></div>
       <div class="sz-cross" id="sz-cross"><i></i><i></i><i></i><i></i></div><div class="sz-hitmark" id="sz-hitmark"><i></i><i></i><i></i><i></i></div><div class="sz-nums" id="sz-nums"></div>
@@ -68,6 +70,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   let assets: ShooterAssets | null = null, assetState: 'loading' | 'ready' | 'failed' = 'loading', assetPct = 0;
   let countdown = 0, over = false, deadTimer = 0, resultShown = false, spectateId = -1;
   let soloRecorded = false;
+  let recon = freshRecon();
   let lastLook = 0, yaw = 0, pitch = 0, locked = false, lockFail = false, hitT = 0, hitHead = false, hitKill = false, combo = 0, comboT = 0, rcP = 0, rcY = 0, rcIdle = 9, shotN = 0, stepAcc = 0, bannerT = 0, mapBase: HTMLCanvasElement | null = null;
   const keys = new Set<string>(), mouse = { fire: false, ads: false }, tc = { fire: false, ads: false, crouch: false, move: { x: 0, y: 0, id: -1, ox: 0, oy: 0 }, look: { id: -1, x: 0, y: 0 } };
   let healReq = 0, nadeReq = false, reloadReq = false, slotReq = -1, swapReq = false, interactHeld = false;
@@ -99,7 +102,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
           <p class="sz-note">${roomFill ? `AI 포함 ${roomFill}명으로 시작합니다. 차량, 보급품, 폭격 구역이 활성화됩니다.` : 'AI 없이 참가자끼리 대전합니다.'} 참가자가 2명이면 1대1로 진행됩니다.</p></section>` : ''}
         <section class="${pickMode === 'pvp' || (pickMode === 'room' && !roomFill) ? 'dim' : ''}"><h3><span class="sz-section-no">${pickMode === 'room' ? '03' : '02'}</span> AI 난이도</h3><div class="sz-seg four">${DIFFICULTIES.map(d => `<button type="button" class="sz-opt ${d === level ? 'on' : ''}" data-level="${d}" aria-pressed="${d === level}" ${pickMode === 'pvp' || (pickMode === 'room' && !roomFill) ? 'disabled' : ''}><b>${BOTS[d].label}</b></button>`).join('')}</div>
           <p class="sz-note">${pickMode === 'pvp' ? '상대 플레이어와 대전합니다.' : pickMode === 'room' && !roomFill ? 'AI 없이 진행하는 방입니다.' : `${b.blurb}${pickMode === 'room' ? ' 방장 설정을 따릅니다.' : ''}`}</p></section>
-        <section><h3><span class="sz-section-no">${pickMode === 'room' ? '04' : '03'}</span> 조작 안내</h3><ul class="sz-help">${touch ? '<li>왼쪽 스틱 이동 · 오른쪽 드래그 시점</li><li>사격 · 조준 · 장전 · 줍기 · 교체 버튼 (비행기에서는 <b>줍기</b> 버튼이 점프·낙하산, 차 옆에서는 탑승·하차, 운전 중 <b>웅크림</b> 버튼은 핸드브레이크)</li>' : '<li><b>WASD</b> 이동 · <b>Shift</b> 달리기 · 마우스 시점</li><li><b>좌클릭</b> 사격 · <b>우클릭</b> 조준 · <b>R</b> 장전</li><li><b>Space</b> 비행기에서 뛰기 · 낙하산 펴기(자동 105m) · <b>W</b> 활강 방향</li><li><b>G</b> 수류탄 · <b>E</b> 무기 줍기 · <b>1 / 2 / 휠</b> 무기 교체 · <b>Esc</b> 일시정지</li><li><b>E</b> 차량 타기·내리기 · <b>WASD</b> 운전 · <b>Space</b> 핸드브레이크 · 폭격 구역(붉은 원)에서는 벗어나세요</li>'}<li>탄약·구급상자·방탄복은 닿으면 자동으로 줍습니다.</li></ul></section>
+        <section><h3><span class="sz-section-no">${pickMode === 'room' ? '04' : '03'}</span> 조작 안내</h3><ul class="sz-help">${touch ? '<li>왼쪽 스틱 이동 · 오른쪽 드래그 시점</li><li>사격 · 조준 · 장전 · 줍기 · 교체 버튼 (비행기에서는 <b>줍기</b> 버튼이 점프·낙하산, 차 옆에서는 탑승·하차, 운전 중 <b>웅크림</b> 버튼은 핸드브레이크)</li>' : '<li><b>WASD</b> 이동 · <b>Shift</b> 달리기 · 마우스 시점</li><li><b>좌클릭</b> 사격 · <b>우클릭</b> 조준 · <b>R</b> 장전</li><li><b>Space</b> 비행기에서 뛰기 · 낙하산 펴기(자동 105m) · <b>W</b> 활강 방향</li><li><b>G</b> 수류탄 · <b>E</b> 무기 줍기 · <b>1 / 2 / 휠</b> 무기 교체 · <b>Esc</b> 일시정지</li><li><b>E</b> 차량 타기·내리기 · <b>WASD</b> 운전 · <b>Space</b> 핸드브레이크 · 폭격 구역(붉은 원)에서는 벗어나세요</li>'}${pickMode === 'solo' ? '<li>정찰 펄스: ' + (touch ? '화면의 정찰 버튼' : 'T 키') + '로 가까운 적의 마지막 위치를 7초간 탐지합니다. 한 판에 2번, 발신 소음에 적이 접근할 수 있습니다.</li>' : ''}<li>탄약·구급상자·방탄복은 닿으면 자동으로 줍습니다.</li></ul></section>
         <footer><button type="button" class="ghost" data-act="exit">메뉴로</button><span class="sz-sum">${career.matches ? `${career.matches}전 ${career.wins}승 / 최고 ${career.bestKills}처치` : '기록 없음'}</span>
           <button type="button" class="primary" data-act="start" ${wait ? 'disabled' : ''}>${assetState === 'failed' ? '기본 그래픽으로 시작' : wait ? `장비 불러오는 중 ${Math.floor(assetPct * 100)}%` : pickMode === 'solo' ? '작전 시작' : pickMode === 'room' ? '방 찾기' : '상대 찾기'}</button></footer>
       </div>`;
@@ -117,7 +120,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     endMatch(); blur(); tc.ads = tc.crouch = false; root.querySelectorAll('.sz-tbuttons button.down').forEach(b => b.classList.remove('down')); locked = lockFail = false;
     // The previous renderer forces context loss on dispose. Never reuse its canvas.
     const fresh = document.createElement('canvas'); fresh.className = 'sz-canvas'; canvas.replaceWith(fresh); canvas = fresh; canvas.addEventListener('contextmenu', noMenu);
-    match = m; meIdx = my; roomNadeTimes.clear(); pvpNadeAt = -Infinity; Object.assign(wheelSwap, newWheelSwapState()); over = false; resultShown = false; soloRecorded = false; spectateId = -1; deadTimer = 0; cache.clear(); feed.length = 0; told.clear(); paused = false; modal.className = 'sz-modal'; modal.innerHTML = '';
+    match = m; meIdx = my; recon = freshRecon();
+    q('#sz-recon').hidden = !!pvp || !!room || m.mode !== 'br'; roomNadeTimes.clear(); pvpNadeAt = -Infinity; Object.assign(wheelSwap, newWheelSwapState()); over = false; resultShown = false; soloRecorded = false; spectateId = -1; deadTimer = 0; cache.clear(); feed.length = 0; told.clear(); paused = false; modal.className = 'sz-modal'; modal.innerHTML = '';
     const p = m.players[my]; yaw = p.yaw; pitch = 0; countdown = 3.4; phase = 'countdown'; mapBase = null;
     try { view = new ShooterView(canvas, m, assets, prefs.quality); } catch { endMatch(); phase = 'setup'; hud.hidden = true; setupEl.hidden = true; card('ZERO ZONE', '화면을 열 수 없습니다', '<p>브라우저 설정에서 하드웨어 가속을 켠 뒤 다시 시도하세요.</p>', '<button class="primary" data-act="setup">설정으로</button><button data-act="exit">메뉴로</button>'); return; } resize(); setupEl.hidden = true; hud.hidden = false; buildSlots(); say(touch ? '왼쪽 스틱으로 이동' : '화면을 클릭해 조작 시작', 2.4);
     if (!touch) lock(); audio.unlock();
@@ -367,9 +371,9 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (e.code === 'Escape' && !e.repeat && !pvpRunning()) { if (paused || !locked) { setPause(!paused); e.preventDefault(); } return; }
     if (paused) return;
     keys.add(e.code);
-    if (e.repeat && ['KeyR', 'KeyE', 'KeyQ', 'KeyG', 'KeyH', 'KeyJ', 'Digit1', 'Digit2'].includes(e.code)) return;
+    if (e.repeat && ['KeyR', 'KeyE', 'KeyQ', 'KeyG', 'KeyH', 'KeyJ', 'KeyT', 'Digit1', 'Digit2'].includes(e.code)) return;
     if (e.code === 'Enter' && room?.chat && !room.done && match && !paused) { keys.clear(); mouse.fire = mouse.ads = false; interactHeld = false; if (document.pointerLockElement) document.exitPointerLock(); room.chat.open(); e.preventDefault(); return; }
-    if (e.code === 'KeyR') reloadReq = true; else if (e.code === 'KeyE') interactHeld = true; else if (e.code === 'Digit1') slotReq = 0; else if (e.code === 'Digit2') slotReq = 1; else if (e.code === 'KeyQ') swapReq = true; else if (e.code === 'KeyG') nadeReq = true; else if (e.code === 'KeyH') healReq = 1; else if (e.code === 'KeyJ') healReq = 2;
+    if (e.code === 'KeyR') reloadReq = true; else if (e.code === 'KeyE') interactHeld = true; else if (e.code === 'Digit1') slotReq = 0; else if (e.code === 'Digit2') slotReq = 1; else if (e.code === 'KeyQ') swapReq = true; else if (e.code === 'KeyG') nadeReq = true; else if (e.code === 'KeyH') healReq = 1; else if (e.code === 'KeyJ') healReq = 2; else if (e.code === 'KeyT') activateRecon();
     else if (e.code === 'Escape' && phase === 'countdown') setPause(true);
     if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code) && match) e.preventDefault();
   };
@@ -402,6 +406,19 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); audio.unlock(); if (act === 'fire') tc.fire = true; else if (act === 'ads') tc.ads = !tc.ads; else if (act === 'crouch') tc.crouch = !tc.crouch; else if (act === 'reload') reloadReq = true; else if (act === 'interact') interactHeld = true; else if (act === 'swap') swapReq = true; else if (act === 'nade') nadeReq = true; else if (act === 'heal1') healReq = 1; else if (act === 'heal2') healReq = 2; if (act === 'crouch') b.classList.toggle('down', tc.crouch); else if (act === 'ads') b.classList.toggle('down', tc.ads); else b.classList.add('down'); });
     for (const n of ['pointerup', 'pointercancel', 'pointerleave', 'lostpointercapture']) b.addEventListener(n, () => { if (act === 'fire') tc.fire = false; else if (act === 'interact') interactHeld = false; if (act !== 'ads' && act !== 'crouch') b.classList.remove('down'); });
   });
+
+  function activateRecon(): void {
+    const m = match;
+    if (!m || paused || phase !== 'play' || pvp || room || m.mode !== 'br') return;
+    const p = m.players[meIdx], result = useRecon(recon, m.t, p, m.players);
+    if (!result) return;
+    recon = result.state;
+    // 정찰 전파는 사격 소음처럼 AI가 추적합니다. 위치가 드러나는 대가를 치릅니다.
+    m.sounds.push({ x: p.x, z: p.z, t: m.t, by: p.id });
+    audio.play('pickup');
+    say((result.found ? result.found + '명 탐지' : '탐지 신호 없음') + ' · 발신 위치 노출', 2.2);
+  }
+  q<HTMLButtonElement>('#sz-recon-use').addEventListener('click', () => { audio.unlock(); activateRecon(); });
 
   function applyInput(): void {
     const p = me(), i = p.input, kx = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0), kz = (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
@@ -467,6 +484,13 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       g.translate(px(at.x), pz(at.z)); g.rotate(Math.atan2(pl.dz, pl.dx)); g.fillStyle = '#ffd34d'; g.strokeStyle = '#000'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(9, 0); g.lineTo(-6, -7); g.lineTo(-3, 0); g.lineTo(-6, 7); g.closePath(); g.fill(); g.stroke(); g.restore();
     }
     for (const d of m.drops) if (d.called && m.t < d.at + 150) { const x = px(d.x), y = pz(d.z), pulse = 6 + Math.sin(m.t * 5) * 1.5; g.fillStyle = '#ffd34d'; g.strokeStyle = '#000'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x, y - pulse); g.lineTo(x + pulse, y); g.lineTo(x, y + pulse); g.lineTo(x - pulse, y); g.closePath(); g.fill(); g.stroke(); }
+    if (!pvp && !room && m.mode === 'br') for (const mark of recon.marks) {
+      if (mark.expires <= m.t || !m.players[mark.id]?.alive) continue;
+      const fade = Math.min(1, (mark.expires - m.t) / 2), x = px(mark.x), y = pz(mark.z);
+      g.save(); g.globalAlpha = fade; g.strokeStyle = '#e0c28d'; g.lineWidth = 1.8;
+      g.beginPath(); g.arc(x, y, 5.5, 0, Math.PI * 2); g.stroke();
+      g.beginPath(); g.moveTo(x - 8, y); g.lineTo(x - 4, y); g.moveTo(x + 4, y); g.lineTo(x + 8, y); g.moveTo(x, y - 8); g.lineTo(x, y - 4); g.moveTo(x, y + 4); g.lineTo(x, y + 8); g.stroke(); g.restore();
+    }
     for (const s of m.sounds) { if (s.quiet || s.by === p.id || m.t - s.t > 1.6) continue; const d = Math.hypot(s.x - p.x, s.z - p.z); if (d > 110) continue; g.fillStyle = `rgba(255,70,60,${1 - (m.t - s.t) / 1.6})`; g.beginPath(); g.arc(px(s.x), pz(s.z), 5, 0, Math.PI * 2); g.fill(); }
     if (pvp?.opp?.alive && m.mode === 'duel') { /* 상대 위치는 알려 주지 않습니다 */ }
     g.save(); g.translate(px(p.x), pz(p.z)); g.rotate(p.yaw); g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 2; g.beginPath(); g.moveTo(10, 0); g.lineTo(-7, -6); g.lineTo(-4, 0); g.lineTo(-7, 6); g.closePath(); g.stroke(); g.fill(); g.restore();
@@ -493,6 +517,15 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     const m = match!, p = me(), z = m.zone, g = p.guns[p.cur], def = g ? WEAPONS[g.id] : null, now = performance.now();
     if (!p.alive) audio.engine(false, 0);
     set(q('#sz-alive'), 'alive', String(m.aliveCount())); set(q('#sz-kills'), 'kills', String(p.kills));
+    const reconHud = q('#sz-recon');
+    reconHud.hidden = !!pvp || !!room || m.mode !== 'br';
+    if (!reconHud.hidden) {
+      const cooldown = Math.max(0, Math.ceil(recon.readyAt - m.t));
+      const enabled = phase === 'play' && !paused && p.alive && p.air === 0 && p.veh < 0 && recon.charges > 0 && cooldown === 0;
+      q<HTMLButtonElement>('#sz-recon-use').disabled = !enabled;
+      set(q('#sz-recon-count'), 'recon-count', String(recon.charges) + '회 남음');
+      set(q('#sz-recon-status'), 'recon-status', !p.alive ? '사용 종료' : p.air ? '착지 후 사용' : p.veh >= 0 ? '하차 후 사용' : !recon.charges ? '모두 사용' : cooldown ? '재사용 ' + cooldown + '초' : '사용 가능');
+    }
     const delay = m.zoneDelay > 0 && m.t < m.zoneDelay, zl = delay ? '자기장 활성화까지' : z.phase >= 6 ? '마지막 자기장' : z.shrinking ? `자기장 수축 중 · ${z.phase + 1}단계` : `자기장 수축까지 · ${z.phase + 1}단계`;
     set(q('#sz-ztime'), 'zt', delay ? clock(m.zoneDelay - m.t) : z.timeLeft > 0 ? clock(z.timeLeft) : '--'); set(q('#sz-zlabel'), 'zl', zl); q('#sz-zone').classList.toggle('shrink', z.shrinking);
     q('#sz-hp').style.width = `${clamp(p.hp, 0, 100)}%`; set(q('#sz-hpn'), 'hpn', String(Math.ceil(Math.max(0, p.hp)))); q('#sz-ar').style.width = `${clamp(p.armor, 0, 100)}%`; set(q('#sz-arn'), 'arn', String(Math.ceil(p.armor)));

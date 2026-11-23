@@ -128,3 +128,10 @@
 .rc-card{max-height:100%;overflow:auto;overscroll-behavior:contain;touch-action:pan-y;scrollbar-width:thin}
 .rc-root button:focus-visible{outline:2px solid #8fb4ff;outline-offset:3px}
 @media(max-height:480px){.rc-card{padding:16px 20px;border-radius:16px}}
+
+.rc-nearmiss{position:absolute;left:50%;top:43%;transform:translateX(-50%);display:grid;gap:5px;min-width:154px;padding:9px 12px 8px;background:rgba(12,20,29,.88);border:1px solid rgba(175,210,224,.52);border-radius:7px;text-align:center;color:#e7f3f7;font:700 13px/1.15 system-ui,sans-serif;letter-spacing:.09em;opacity:0;pointer-events:none;transition:opacity .15s}
+.rc-nearmiss.active{opacity:1}
+.rc-nearmiss-meter{display:block;height:3px;background:#ffffff27;overflow:hidden}
+.rc-nearmiss-meter i{display:block;height:100%;width:100%;background:#a8d6dc}
+@media(max-width:700px){.rc-nearmiss{top:43%;min-width:124px;font-size:11px;padding:7px 9px}}
+@media(max-height:480px){.rc-nearmiss{top:46%;padding:5px 8px}}

@@ -1281,7 +1281,7 @@ function enemyUpdate(dt, running) {
   const travel = Math.hypot(e.x - startX, e.z - startZ);
   enemySteps += travel;
   if (enemySteps >= 0.95) {
-    sound.monsterStep(dist, stereoPan(player, yaw, e));
+    sound.monsterStep(acousticDistance, stereoPan(player, yaw, e));
     enemySteps = 0;
   }
   stride += travel * 5.5;
@@ -1295,11 +1295,14 @@ function enemyUpdate(dt, running) {
   }
   const threat = grace
     ? 0
-    : Math.max(0, 1 - dist / 12) * (inSight ? 0.96 : 0.57);
+    : Math.max(0, 1 - acousticDistance / 12) * (inSight ? 0.96 : 0.57);
   sound.threat(threat);
   $("danger").style.opacity = String(threat * 0.53);
   $("strain").textContent =
-    threat > 0.68 ? "바로 근처" : threat > 0.28 ? "접근 중" : "안정";
+    threat > 0.68 ? "바로 근처"
+      : tracking ? "추적 중"
+        : searching ? "탐색 중"
+          : threat > 0.28 ? "접근 중" : "안정";
   if (!hiddenSpot && !grace && !exitGrace && Math.hypot(player.x - e.x, player.z - e.z) < 0.73 && clearLine(player, e)) {
     caught();
   }

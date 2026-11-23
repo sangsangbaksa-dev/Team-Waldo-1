@@ -297,12 +297,27 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     if (!renderer || !view) return; const w = innerWidth, h = innerHeight, dpr = Math.min(devicePixelRatio || 1, 2);
     renderer.setSize(w, h, false); view.resize(w, h); ov.width = Math.round(w * dpr); ov.height = Math.round(h * dpr); ov.style.width = w + 'px'; ov.style.height = h + 'px';
   }
+  /** A menu/pause can last minutes; keep the selected quality without letting
+   * the first gameplay frame count as a slow 250+ ms rendering frame. */
+  function resetQualityClock(): void {
+    stableQualitySeconds = 0;
+    if (!adaptive || !renderer) return;
+    const pr = adaptive.pr, level = adaptive.level;
+    const maxPr = Math.min(prefs.quality === 'high' ? 2 : prefs.quality === 'standard' ? 1.5 : 1, devicePixelRatio || 1);
+    adaptive = new AdaptiveQuality({
+      max: maxPr, start: pr,
+      setPixelRatio: next => { renderer?.setPixelRatio(next); resize(); },
+      setLevel: next => view?.setLevel(next),
+    });
+    adaptive.level = level;
+  }
   function start(d: Difficulty): void {
     // 일시정지 화면에서 재출격할 때도 이미 달성한 기록을 잃지 않습니다.
     if (state === 'paused' && sim && !saved && sim.time > 5) {
       recordSkyRun(sim.score, sim.wave, sim.kills, sim.bestCombo, sim.time);
       paintRec();
     }
+    resetQualityClock(); last = performance.now();
     diff = d; sim = new SkySim(d); saved = false; state = 'play'; throttle = 0.55; mouse.x = mouse.y = 0; mouse.active = false; fireTap = 0; flare = mTap = mBoost = mFire = mMissile = false; mouse.touchId = mouse.secondId = -1; hitT = 0; hitBy = 0; keys.clear(); bannerT = alertT = 0; cockpit = false; root.classList.remove('cockpit'); view?.setCockpit(false); autoFire = ctl.assist >= 2;
     $('sk-title').hidden = true; $('sk-end').hidden = true; $('sk-paused').hidden = true; $('sk-alert').textContent = ''; $('sk-banner').classList.remove('on'); root.querySelector<HTMLElement>('.sk-hud')!.hidden = false; audio.unlock(); lock(); hint(matchMedia('(pointer: coarse)').matches ? '화면을 드래그해 조종하세요' : ctl.pointerLock ? '상대 이동으로 조종 · Esc: 일시정지' : '커서를 화면 중앙 기준으로 움직여 조종 · P: 일시정지'); banner('출격!', 1.5);
     if (view) {
@@ -318,13 +333,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
       audio.engine(false, 0); state = 'paused'; $('sk-paused').hidden = false; unlock(); stableQualitySeconds = 0;
     } else if (state === 'paused') {
       state = 'play'; $('sk-paused').hidden = true; last = performance.now();
-      // The adaptive governor must not mistake a long pause for a slow frame.
-      if (adaptive && renderer) {
-        const pr = adaptive.pr, level = adaptive.level;
-        const maxPr = Math.min(prefs.quality === 'high' ? 2 : prefs.quality === 'standard' ? 1.5 : 1, devicePixelRatio || 1);
-        adaptive = new AdaptiveQuality({ max: maxPr, start: pr, setPixelRatio: next => { renderer?.setPixelRatio(next); resize(); }, setLevel: next => view?.setLevel(next) });
-        adaptive.level = level;
-      }
+      resetQualityClock();
       lock();
     }
   }

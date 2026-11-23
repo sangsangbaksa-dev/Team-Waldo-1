@@ -1,7 +1,7 @@
 // HUSTLE — reusable urban fleet; no economy unlocks or permanent upgrades.
 import * as THREE from 'three';
 import { makeVehicleMesh } from '../../shared/vehicle';
-import { stepDrive, type DriveState, type DriveInput, type DriveTuning } from './driving';
+import { pushWalkerFromCar, stepDrive, type DriveState, type DriveInput, type DriveTuning } from './driving';
 import type { Colliders, Layout, Zone } from './layout';
 import type { Player } from './player';
 import { PITCH } from './layout';
@@ -103,6 +103,16 @@ export class Rides {
       if (Math.hypot(other.x - x, other.z - z) < 3.55) return false;
     }
     return true;
+  }
+  resolveWalker(x: number, z: number, r: number, out: { x: number; z: number }): void {
+    if (this.active) { out.x = x; out.z = z; return; }
+    let px = x, pz = z;
+    for (const car of this.cars) {
+      if (Math.abs(car.x - px) > 5 || Math.abs(car.z - pz) > 5) continue;
+      const point = pushWalkerFromCar(px, pz, r, car);
+      px = point.x; pz = point.z;
+    }
+    out.x = px; out.z = pz;
   }
   nearby(x: number, z: number): { name: string; distance: number } | null {
     if (this.active) return { name: this.active.name, distance: 0 };

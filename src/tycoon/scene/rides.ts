@@ -1,7 +1,7 @@
 // HUSTLE — reusable urban fleet; no economy unlocks or permanent upgrades.
 import * as THREE from 'three';
 import { makeVehicleMesh } from '../../shared/vehicle';
-import { pushWalkerFromCar, stepDrive, type DriveState, type DriveInput, type DriveTuning } from './driving';
+import { carBodiesOverlap, pushWalkerFromCar, stepDrive, type DriveState, type DriveInput, type DriveTuning } from './driving';
 import type { Colliders, Layout, Zone } from './layout';
 import type { Player } from './player';
 import { PITCH } from './layout';
@@ -109,14 +109,10 @@ export class Rides {
       this.colliders.resolve(px, pz, RADIUS, this.scratch);
       if (Math.hypot(this.scratch.x - px, this.scratch.z - pz) > 0.03 || this.trafficBlocks(px, pz, RADIUS)) return false;
     }
-    // Use oriented car bodies instead of center distances (a van can overlap nose-to-tail).
+    // The separating-axis test prevents missed corner overlaps at oblique angles.
     for (const other of this.cars) {
       if (other === ignore || Math.hypot(other.x - x, other.z - z) > 7) continue;
-      for (const part of [-BODY_LENGTH, 0, BODY_LENGTH]) {
-        const px = x + Math.cos(heading) * part, pz = z - Math.sin(heading) * part;
-        const pushed = pushWalkerFromCar(px, pz, RADIUS, other);
-        if (Math.hypot(pushed.x - px, pushed.z - pz) > 0.03) return false;
-      }
+      if (carBodiesOverlap({ x, z, heading }, other)) return false;
     }
     return true;
   }

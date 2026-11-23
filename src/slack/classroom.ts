@@ -84,6 +84,11 @@ export const createClassroomView: CreateView = (sim, audio) => {
   let coverKey = false, coverPointer: number | null = null;
   let step = 0, stepLv = 0, relief = 0, popT = 0, quiet = 0, strike = 0, vt = 0, gHand = 0.5;
   let cursorX = W / 2, cursorY = H / 2;
+  const replayBattle = () => {
+    getGame().reset();
+    cursorX = W / 2; cursorY = H / 2;
+    txt(cursorStatus, '지휘 위치 중앙 · 새 전투를 시작합니다.');
+  };
   const syncCover = () => sim.setCover(coverKey || coverPointer !== null || !sim.state.activity);
   const choose = (id: Pick) => {
     audio.resume();
@@ -98,8 +103,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
     if (view() === 'game' && event.key.toLowerCase() === 'r' && !event.repeat && getGame().over !== null) {
       event.preventDefault();
-      getGame().reset();
-      txt(cursorStatus, '새 전투를 시작합니다.');
+      replayBattle();
       return;
     }
     if (event.target === gcv && view() === 'game') {
@@ -155,7 +159,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
     const t = event.target as HTMLElement;
     if (t.closest('[data-rts-retry]')) {
       if (view() === 'game' && getGame().over !== null) {
-        getGame().reset(); txt(cursorStatus, '새 전투를 시작합니다.'); audio.play('click', 0.3);
+        replayBattle(); audio.play('click', 0.3);
       }
       return;
     }

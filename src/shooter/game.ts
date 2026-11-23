@@ -39,17 +39,17 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     <canvas class="sz-canvas"></canvas>
     <div class="sz-hud" hidden>
       <div class="sz-vig" id="sz-vig"></div><div class="sz-zonefx" id="sz-zonefx"></div><div class="sz-redfx" id="sz-redfx"></div><div class="sz-scope" id="sz-scope"></div>
-      <div class="sz-tl"><div class="sz-stat"><b id="sz-alive">100</b><span>생존</span></div><div class="sz-stat"><b id="sz-kills">0</b><span>처치</span></div></div>
-      <canvas class="sz-compass" id="sz-compass" width="420" height="34"></canvas><div class="sz-tc" id="sz-zone"><b id="sz-ztime">0:00</b><span id="sz-zlabel">자기장</span></div>
-      <div class="sz-tr"><canvas id="sz-map" width="300" height="300"></canvas><ul class="sz-feed" id="sz-feed"></ul></div>
+      <div class="sz-tl"><div class="sz-stat"><span>생존 인원</span><b id="sz-alive">100</b></div><div class="sz-stat"><span>처치</span><b id="sz-kills">0</b></div></div>
+      <canvas class="sz-compass" id="sz-compass" width="420" height="34" aria-label="방향 나침반"></canvas><div class="sz-tc" id="sz-zone"><span id="sz-zlabel">자기장</span><b id="sz-ztime">0:00</b></div>
+      <div class="sz-tr"><div class="sz-map-frame"><canvas id="sz-map" width="300" height="300" role="img" aria-label="전장 미니맵"></canvas><span class="sz-map-label" aria-hidden="true">전장 지도</span></div><ul class="sz-feed" id="sz-feed"></ul></div>
       <div class="sz-cross" id="sz-cross"><i></i><i></i><i></i><i></i></div><div class="sz-hitmark" id="sz-hitmark"><i></i><i></i><i></i><i></i></div><div class="sz-nums" id="sz-nums"></div>
       <div class="sz-dmgs" id="sz-dmgs"></div>
       <div class="sz-air" id="sz-air"></div><div class="sz-banner" id="sz-banner"></div><div class="sz-count" id="sz-count"></div><div class="sz-prompt" id="sz-prompt"></div><div class="sz-cast" id="sz-cast"><span id="sz-castl"></span><i><b id="sz-castb"></b></i></div>
-      <div class="sz-bl"><div class="sz-bar hp"><i id="sz-hp"></i><b id="sz-hpn">100</b></div><div class="sz-bar ar"><i id="sz-ar"></i><b id="sz-arn">0</b></div></div>
+      <div class="sz-bl"><div class="sz-bar hp" role="progressbar" aria-label="체력" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i id="sz-hp"></i><span>체력</span><b id="sz-hpn">100</b></div><div class="sz-bar ar" role="progressbar" aria-label="방어구" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="sz-ar"></i><span>방어구</span><b id="sz-arn">0</b></div></div>
       <div class="sz-br"><div class="sz-wname" id="sz-wname"></div><div class="sz-ammo"><b id="sz-mag">0</b><span id="sz-res">/ 0</span></div><div class="sz-slots" id="sz-slots"></div></div>
       <div class="sz-veh" id="sz-veh"><div class="nm" id="sz-vname"></div><div class="spd"><span id="sz-vspd">0</span><small>km/h</small></div><div class="bar" id="sz-vbar"><i id="sz-vhp"></i></div><small class="keys" id="sz-vkeys"></small></div>
       <div class="sz-keys" id="sz-keys"></div>
-      <div class="sz-tbtn"><button id="sz-pause" type="button" aria-label="일시정지">Ⅱ</button></div>
+      <div class="sz-tbtn"><button id="sz-pause" type="button" aria-label="일시정지">일시정지</button></div>
       <div class="sz-touchpad"><div class="sz-stick" id="sz-stick"><i></i></div><div class="sz-tbuttons">
         <button data-act="fire" class="fire" type="button">사격</button><button data-act="ads" type="button">조준</button><button data-act="crouch" type="button">웅크림</button><button data-act="reload" type="button">장전</button><button data-act="interact" type="button">줍기</button><button data-act="swap" type="button">교체</button><button data-act="nade" type="button">수류탄</button><button data-act="heal1" type="button">붕대</button><button data-act="heal2" type="button">구급</button></div></div>
     </div>
@@ -86,8 +86,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     setupEl.hidden = false; setupEl.setAttribute('role', 'dialog'); setupEl.setAttribute('aria-label', 'ZERO ZONE 출격 설정');
     setupEl.innerHTML = `
       <div class="sz-setup-inner">
-        <header><span class="sz-eyebrow">ZERO ZONE</span><h2>출격 설정</h2><p>줄어드는 자기장 안에서 마지막까지 살아남으세요. 총을 줍고, 엄폐하고, 쏩니다.</p></header>
-        <section><h3>모드</h3><div class="sz-seg three">
+        <header class="sz-setup-head"><span class="sz-eyebrow">ZERO ZONE <span class="sz-eyebrow-divider">/</span> BATTLE ROYALE</span><h2>출격 설정</h2><p>무장을 확보하고, 엄폐물을 활용해 마지막까지 살아남으세요.</p></header>
+        <section><h3>게임 모드</h3><div class="sz-seg three">
           <button type="button" class="sz-opt ${pickMode === 'solo' ? 'on' : ''}" data-mode="solo" aria-pressed="${pickMode === 'solo'}"><b>솔로 배틀로열</b><em>나 + AI 99명 · 비행기에서 낙하산 강하 · 마지막 1명이 승리</em></button>
           ${PVP_ENABLED ? `<button type="button" class="sz-opt ${pickMode === 'pvp' ? 'on' : ''}" data-mode="pvp" aria-pressed="${pickMode === 'pvp'}"><b>1대1 온라인 대전</b><em>2인 PvP · 무작위 매칭 또는 방 코드</em></button>` : ''}
           ${PVP_ENABLED ? `<button type="button" class="sz-opt ${pickMode === 'room' ? 'on' : ''}" data-mode="room" aria-pressed="${pickMode === 'room'}"><b>멀티플레이 방</b><em>3~${ROOM_MAX}인 + AI · 방 코드 또는 공개 방 · 차량·폭격까지 함께</em></button>` : ''}</div></section>
@@ -131,7 +131,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       .catch(() => { setupEl.querySelector('.sz-note')!.textContent = '대전 화면을 불러오지 못했습니다. 네트워크를 확인해 주세요.'; });
   }
   function card(eyebrow: string, title: string, body = '', actions = '<button data-act="exit">메뉴로</button>', cls = ''): void {
-    modal.className = 'sz-modal show'; modal.innerHTML = `<div class="sz-card ${cls}"><span class="sz-eyebrow">${eyebrow}</span><h2>${title}</h2>${body}<div class="sz-actions">${actions}</div></div>`;
+    modal.className = 'sz-modal show'; modal.innerHTML = `<div class="sz-card ${cls}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><span class="sz-eyebrow">${esc(eyebrow)}</span><h2>${title}</h2>${body}<div class="sz-actions">${actions}</div></div>`;
+    modal.querySelector<HTMLButtonElement>('.sz-actions button')?.focus({ preventScroll: true });
   }
   function startPvp(s: PvpSession): void {
     endPvp(); endMatch(); setupEl.hidden = true; hud.hidden = true; phase = 'loading';
@@ -454,7 +455,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     set(q('#sz-alive'), 'alive', String(m.aliveCount())); set(q('#sz-kills'), 'kills', String(p.kills));
     const delay = m.zoneDelay > 0 && m.t < m.zoneDelay, zl = delay ? '자기장 활성화까지' : z.phase >= 6 ? '마지막 자기장' : z.shrinking ? `자기장 수축 중 · ${z.phase + 1}단계` : `자기장 수축까지 · ${z.phase + 1}단계`;
     set(q('#sz-ztime'), 'zt', delay ? clock(m.zoneDelay - m.t) : z.timeLeft > 0 ? clock(z.timeLeft) : '--'); set(q('#sz-zlabel'), 'zl', zl); q('#sz-zone').classList.toggle('shrink', z.shrinking);
-    q('#sz-hp').style.width = `${clamp(p.hp, 0, 100)}%`; set(q('#sz-hpn'), 'hpn', String(Math.ceil(Math.max(0, p.hp)))); q('#sz-ar').style.width = `${clamp(p.armor, 0, 100)}%`; set(q('#sz-arn'), 'arn', String(Math.ceil(p.armor)));
+    q('#sz-hp').style.width = `${clamp(p.hp, 0, 100)}%`; set(q('#sz-hpn'), 'hpn', String(Math.ceil(Math.max(0, p.hp)))); q('.sz-bar.hp').setAttribute('aria-valuenow', String(Math.ceil(clamp(p.hp, 0, 100))));
+    q('#sz-ar').style.width = `${clamp(p.armor, 0, 100)}%`; set(q('#sz-arn'), 'arn', String(Math.ceil(p.armor))); q('.sz-bar.ar').setAttribute('aria-valuenow', String(Math.ceil(clamp(p.armor, 0, 100))));
     q('.sz-bl').classList.toggle('low', p.hp < 30);
     { const H = p.healKind === 'kit' ? HEAL.kit : HEAL.bandage, on = p.healT > 0; q('#sz-cast').classList.toggle('show', on); if (on) { set(q('#sz-castl'), 'castl', `${H.name} 사용 중`); q('#sz-castb').style.width = `${clamp((1 - p.healT / H.time) * 100, 0, 100)}%`; } }
     set(q('#sz-wname'), 'wn', def ? def.name + (p.reload > 0 ? ' · 장전 중' : '') : '맨손'); set(q('#sz-mag'), 'mag', g ? String(g.mag) : '-'); set(q('#sz-res'), 'res', g ? `/ ${g.reserve}` : '');

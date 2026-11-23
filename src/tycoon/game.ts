@@ -3,6 +3,7 @@ import '../shared/game-polish.css';
 // TYCOON(HUSTLE) — 게임 조립: 3D 도시·플레이어·HUD·장소 패널·입력·저장. 경제 규칙은 core/ 가 맡습니다.
 import * as THREE from 'three';
 import './tycoon.css';
+import './ui/map-directory.css';
 import { readPreferences, writePreferences } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import { loadCharacterKit, type CharacterKit } from '../shared/character';

@@ -76,7 +76,7 @@ export async function fetchBuffer(url: string, onProgress?: (loaded: number, tot
       const res = await fetch(url, { signal: ctl.signal, headers: loaded && resumable ? { Range: `bytes=${loaded}-` } : undefined });
       if (!res.ok) throw new Error(`HTTP ${res.status} ${url}`);
       poke();
-      let expectedRangeLength = 0;
+      let expectedRangeLength = 0, expectedFullLength = 0;
       if (res.status === 206) {
         // A proxy/CDN can return HTTP 206 for a different byte interval.
         // Appending it would produce a full-size but corrupt GLB/media file.
@@ -88,22 +88,32 @@ export async function fetchBuffer(url: string, onProgress?: (loaded: number, tot
         const start = Number(range?.[1]), end = Number(range?.[2]);
         const size = range?.[3] === '*' ? Infinity : Number(range?.[3]);
         if (!loaded || !range || start !== loaded || !Number.isSafeInteger(start) ||
-            !Number.isSafeInteger(end) || end < start || (size !== Infinity && (!Number.isSafeInteger(size) || size <= end))) {
+            !Number.isSafeInteger(end) || end < start || !Number.isSafeInteger(size) ||
+            size <= end || (total > 0 && size !== total)) {
           resumable = false; chunks = []; loaded = 0;
           throw new TypeError('Invalid resume Content-Range; restarting full download');
         }
         // Content-Range is authoritative even if Content-Length is absent.
         // Never accept a truncated resumed chunk as a complete asset.
         expectedRangeLength = end - start + 1;
+        expectedFullLength = size;
         const declaredLength = Number(res.headers.get('content-length')) || 0;
         if ((declaredLength && declaredLength !== expectedRangeLength) || res.headers.get('content-encoding')) {
           resumable = false; chunks = []; loaded = 0;
           throw new TypeError('Inconsistent resumed response; restarting full download');
         }
       } else if (loaded) { chunks = []; loaded = 0; resumable = false; } // Range ignored: use the complete 200 response
-      const len = Number(res.headers.get('content-length')) || expectedRangeLength;
+      const rawLength = res.headers.get('content-length');
+      const declaredLength = rawLength === null ? 0 : Number(rawLength);
+      if (rawLength !== null && (!Number.isSafeInteger(declaredLength) || declaredLength < 0)) {
+        resumable = false; chunks = []; loaded = 0;
+        throw new TypeError('Invalid Content-Length; restarting full download');
+      }
+      const len = declaredLength || expectedRangeLength;
       if (res.headers.get('content-encoding')) resumable = false; // 압축 전송은 바이트 위치가 안 맞아 이어 받을 수 없습니다
-      total = len ? loaded + len : 0;
+      // A server may send only part of the remaining range (e.g. 3-6/10).
+      // Content-Range's complete-object size is the real download target.
+      total = expectedFullLength || (len ? loaded + len : 0);
       if (!res.body) { const b = new Uint8Array(await res.arrayBuffer()); chunks.push(b); loaded += b.byteLength; onProgress?.(loaded, loaded); }
       else {
         const reader = res.body.getReader();
@@ -112,6 +122,10 @@ export async function fetchBuffer(url: string, onProgress?: (loaded: number, tot
           if (done) break;
           chunks.push(value); loaded += value.byteLength; poke(); onProgress?.(loaded, total);
         }
+      }
+      if (total && loaded > total) {
+        resumable = false; chunks = []; loaded = 0;
+        throw new TypeError(`oversized response for ${url}`);
       }
       if (total && loaded < total) throw new Error(`short ${loaded}/${total} ${url}`);
       const out = new Uint8Array(loaded);

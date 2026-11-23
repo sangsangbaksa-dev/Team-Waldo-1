@@ -155,10 +155,33 @@ try {
       assert.equal(restart.runs, runsBefore + 1, 'Restart must preserve the previous sortie record');
       assert.equal(restart.alert, '', 'Restart must clear stale combat warnings');
       assert.equal(restart.rings, 0, 'Restart must clear lingering explosion rings');
+      // A true incoming missile warning must survive a simultaneous arena warning.
+      await page.evaluate(() => {
+        const sim = window.__sky.sim;
+        sim.player.pos.set(3060, 900, 0);
+        sim.events.push({ t: 'warn' });
+      });
+      await page.waitForFunction(() => document.querySelector('#sk-alert')?.textContent.includes('미사일 접근'));
+      await sleep(180);
+      assert.match(await page.locator('#sk-alert').innerText(), /미사일 접근/,
+        'Arena warning should not immediately overwrite a missile alert');
+      await page.evaluate(() => window.__sky.sim.player.pos.set(0, 900, 2200));
       if (size.name === 'desktop') await page.keyboard.press('p');
       else await page.locator('#sk-pause').click();
       await page.locator('#sk-quit3').click();
       await page.locator('#start-sky').waitFor({ state: 'visible' });
+      assert.equal(await page.locator('.sk-root').count(), 0, 'Leaving SKY WAR removes the old canvas and HUD');
+      assert.equal(await page.evaluate(() => window.__sky === undefined), true, 'Leaving SKY WAR removes diagnostics');
+      await page.locator('#start-sky').click();
+      await page.locator('#sk-title').waitFor({ state: 'visible' });
+      await page.locator('#sk-start').click();
+      await page.waitForFunction(() => !!window.__sky?.sim && window.__sky.sim.time > 0.05 && window.__sky.renderer.info.render.calls > 0);
+      if (size.name === 'desktop') await page.keyboard.press('p');
+      else await page.locator('#sk-pause').click();
+      await page.locator('#sk-paused').waitFor({ state: 'visible' });
+      await page.locator('#sk-quit3').click();
+      await page.locator('#start-sky').waitFor({ state: 'visible' });
+      assert.equal(await page.locator('.sk-root').count(), 0, 'Repeated entry/exit must clean up all SKY WAR DOM');
       assert.deepEqual(errors, [], 'Uncaught browser or shader errors');
       console.log('PASS SKY WAR browser smoke: ' + size.name + ' (' + flight.calls + ' draw calls)');
     } finally {

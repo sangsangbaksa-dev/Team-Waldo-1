@@ -51,10 +51,16 @@ try {
       const fallback = await page.locator('.tile-media').evaluateAll(elements => elements.map(el => ({
         label: el.dataset.fallback,
         pseudoContent: getComputedStyle(el, '::after').content,
+        opacity: Number(getComputedStyle(el, '::after').opacity),
+        loaded: el.classList.contains('is-loaded'),
+        imageWidth: el.querySelector('img')?.naturalWidth ?? 0,
       })));
       assert.equal(fallback.length, 10, 'Every game tile must have a lightweight visual fallback');
       assert.ok(fallback.every(item => item.label && item.pseudoContent.includes(item.label)),
         'Deferred thumbnails must display their own game label before the image arrives');
+      assert.ok(fallback.every(item => item.loaded || item.opacity > 0.5),
+        'Pending/failed cover art must remain visibly labeled: ' + JSON.stringify(fallback));
+      console.log('HUB fallback states ' + size.name + ': ' + JSON.stringify(fallback.slice(0, 4)));
       await page.screenshot({ path: 'browser-artifacts/last-city-home-' + size.name + '.png', animations: 'disabled' });
       await page.locator('#start-race').click();
       await page.locator('.rc-root').waitFor({ state: 'visible' });

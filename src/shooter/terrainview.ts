@@ -1,7 +1,8 @@
 // ZERO ZONE — 지형 그리기: 강·호수·늪·구릉·절벽·다리, 그리고 마을 바닥·길이 풀밭에 자연스럽게 번지게 하는 부드러운 가장자리.
 import * as THREE from 'three';
 import { makeRng } from './config';
-import type { GameMap } from './world';
+import { METROPOLIS, type GameMap } from './world';
+import { Pieces } from '../shared/pieces';
 import { CLIFF_T } from './terrain';
 import { concreteTexture, dirtTexture, fadeDiscTexture, fadeRoadTexture, waterTexture } from './textures';
 
@@ -55,7 +56,7 @@ function ribbonGeo(pts: Array<[number, number]>, w: number, uvPerM: number, edge
 export class TerrainView {
   readonly group = new THREE.Group(); private flow: THREE.Texture[] = []; private time = 0;
   constructor(private map: GameMap, private low: boolean) {
-    this.group.name = 'terrain'; this.buildTowns(); this.buildRoads(); this.buildWater(); this.buildHills(); this.buildCliffs(); this.buildBridges();
+    this.group.name = 'terrain'; this.buildTowns(); this.buildDowntownStreets(); this.buildRoads(); this.buildWater(); this.buildHills(); this.buildCliffs(); this.buildBridges();
   }
   /** 물결을 흘립니다. */
   update(dt: number): void { this.time += dt; for (let i = 0; i < this.flow.length; i++) { this.flow[i].offset.x = -this.time * (0.03 + i * 0.01); this.flow[i].offset.y = Math.sin(this.time * 0.4 + i) * 0.01; } }
@@ -78,6 +79,42 @@ export class TerrainView {
       }
     });
   }
+  /** 중앙 고층 시가지: 건물 사이의 실제 빈 공간에 아스팔트/보도를 깝니다.
+   * 사거리에서 도로 메시가 겹치지 않도록 세로 도로는 통째로,
+   * 가로 도로는 세로 도로 사이의 구간만 채웁니다. 색상별 메시 병합으로 드로우콜을 제한합니다. */
+  private buildDowntownStreets(): void {
+    const c = this.map.compounds.find(t => t.downtown);
+    if (!c) return;
+    const { cols, rows, lotW, lotD, streetWidth: lane } = METROPOLIS;
+    const halfX = cols * lotW / 2, halfZ = rows * lotD / 2;
+    const p = new Pieces(), identity = new THREE.Matrix4();
+    const asphalt = 0x343d43, curb = 0x89918e, stripe = 0xb9b5a3;
+    for (let i = 1; i < cols; i++) {
+      const x = c.x + (i - cols / 2) * lotW;
+      p.box(lane, 0.055, halfZ * 2, asphalt, identity, x, 0.073, c.z);
+      for (const sign of [-1, 1]) p.box(0.18, 0.065, halfZ * 2, curb, identity, x + sign * (lane / 2 + 0.16), 0.092, c.z);
+      for (let block = 0; block < rows; block++) {
+        const z0 = c.z - halfZ + block * lotD + lane / 2;
+        const z1 = z0 + lotD - lane;
+        for (let z = z0 + 2; z < z1 - 1; z += 5) p.box(0.13, 0.012, 1.6, stripe, identity, x, 0.113, z);
+      }
+    }
+    for (let j = 1; j < rows; j++) {
+      const z = c.z + (j - rows / 2) * lotD;
+      for (let block = 0; block < cols; block++) {
+        const x0 = c.x - halfX + block * lotW + (block > 0 ? lane / 2 : 0);
+        const x1 = c.x - halfX + (block + 1) * lotW - (block < cols - 1 ? lane / 2 : 0);
+        const length = x1 - x0, mid = (x0 + x1) / 2;
+        p.box(length, 0.055, lane, asphalt, identity, mid, 0.073, z);
+        for (const sign of [-1, 1]) p.box(length, 0.065, 0.18, curb, identity, mid, 0.092, z + sign * (lane / 2 + 0.16));
+        for (let x = x0 + 2; x < x1 - 1; x += 5) p.box(1.6, 0.012, 0.13, stripe, identity, x, 0.113, z);
+      }
+    }
+    const mesh = p.mesh(false);
+    mesh.name = 'downtown-streets';
+    this.group.add(mesh);
+  }
+
   /** 마을을 잇는 흙길: 양 가장자리가 흐려져 풀밭과 섞입니다. */
   private buildRoads(): void {
     const dirt = dirtTexture(), fade = fadeRoadTexture(), cs = this.map.compounds;

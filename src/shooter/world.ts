@@ -524,6 +524,28 @@ export function circleHits(map: GameMap, x: number, z: number, r: number): boole
   return false;
 }
 
+/** 투척물용 구-상자 충돌. 2D 보행 판정과 달리 고도(y)를 함께 검사합니다.
+ * 높이 4m 이상으로 날아가는 수류탄이 낮은 벽에 걸리거나, 건물 천장을 통과하던 오류를 막습니다. */
+export function sphereHits(map: GameMap, x: number, y: number, z: number, radius: number): boolean {
+  const rr = radius * radius;
+  for (let gx = cellOf(x - radius); gx <= cellOf(x + radius); gx++) {
+    for (let gz = cellOf(z - radius); gz <= cellOf(z + radius); gz++) {
+      const indices = map.grid.get(key(gx, gz));
+      if (!indices) continue;
+      for (const i of indices) {
+        const b = map.boxes[i];
+        if (y + radius < b.y0 || y - radius > b.y1) continue;
+        const nearX = Math.max(b.x0, Math.min(b.x1, x));
+        const nearY = Math.max(b.y0, Math.min(b.y1, y));
+        const nearZ = Math.max(b.z0, Math.min(b.z1, z));
+        const xx = x - nearX, yy = y - nearY, zz = z - nearZ;
+        if (xx * xx + yy * yy + zz * zz < rr - 1e-8) return true;
+      }
+    }
+  }
+  return false;
+}
+
 /** 원을 (dx,dz) 만큼 옮기되 막히는 상자 속으로는 절대 들어가지 않습니다(작은 걸음으로 쪼개 벽을 따라 미끄러짐).
  *  좁은 틈이나 겹친 상자 사이에서 밀어내기만 하면 벽 반대편으로 튕겨 나가 벽을 뚫는 버그가 있어 이동은 이 함수를 씁니다. */
 export function slideMove(map: GameMap, p: { x: number; z: number }, dx: number, dz: number, r: number): boolean {

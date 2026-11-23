@@ -15,6 +15,7 @@ import { type Theme } from './maps';
 import { buildOutposts, type Outpost } from './outpost';
 import { disposeOwnedTree, markBorrowedTree } from './resource-ownership';
 import { cachedRoadTexture } from './procedural-textures';
+import { SkidTrailHistory } from './skid-trails';
 
 const CAR_LEN = 4.7;
 const rnd = (a: number, b: number): number => a + Math.random() * (b - a);
@@ -84,24 +85,43 @@ class Particles {
 
 /** 타이어 자국: 미끄러지는 뒷바퀴가 지나간 자리에 검은 띠를 남깁니다(오래된 것부터 덮어씁니다). */
 class SkidMarks {
-  readonly mesh: THREE.Mesh; private pos: Float32Array; private col: Float32Array; private head = 0; private last = new Map<number, [number, number, number]>(); private dirty = false;
+  readonly mesh: THREE.Mesh; private pos: Float32Array; private col: Float32Array;
+  private head = 0; private history = new SkidTrailHistory(); private dirty = false;
   constructor(private cap: number) {
     this.pos = new Float32Array(cap * 6 * 3); this.col = new Float32Array(cap * 6 * 4);
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(this.col, 4));
     this.mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, side: THREE.DoubleSide }));
     this.mesh.frustumCulled = false; this.mesh.renderOrder = 1;
   }
-  /** key 바퀴가 (x,y,z) 에 닿아 있다: 이전 지점과 이어 한 조각을 더합니다. */
+  /** Small high-Hz movements accumulate; large low-FPS movements subdivide
+   * into contiguous quads. Teleports still break the tire trail. */
   mark(key: number, x: number, y: number, z: number, alpha: number): void {
-    const p = this.last.get(key); this.last.set(key, [x, y, z]); if (!p) return;
-    const dx = x - p[0], dz = z - p[2], len = Math.hypot(dx, dz); if (len < 0.2 || len > 4) return;
-    const hx = (-dz / len) * 0.15, hz = (dx / len) * 0.15, i = this.head * 18, c = this.head * 24; this.head = (this.head + 1) % this.cap;
-    this.pos.set([p[0] - hx, p[1], p[2] - hz, p[0] + hx, p[1], p[2] + hz, x - hx, y, z - hz, p[0] + hx, p[1], p[2] + hz, x + hx, y, z + hz, x - hx, y, z - hz], i);
-    for (let k = 0; k < 6; k++) this.col.set([0.02, 0.02, 0.03, alpha], c + k * 4);
+    const run = this.history.sample(key, x, y, z);
+    if (!run) return;
+    const hx = (-run.dz / run.distance) * 0.15, hz = (run.dx / run.distance) * 0.15;
+    for (let piece = 0; piece < run.pieces; piece++) {
+      const a = piece / run.pieces, b = (piece + 1) / run.pieces;
+      const ax = run.x + run.dx * a, ay = run.y + run.dy * a, az = run.z + run.dz * a;
+      const bx = run.x + run.dx * b, by = run.y + run.dy * b, bz = run.z + run.dz * b;
+      this.writeQuad(ax, ay, az, bx, by, bz, hx, hz, alpha);
+    }
+  }
+  private writeQuad(ax: number, ay: number, az: number, bx: number, by: number, bz: number, hx: number, hz: number, alpha: number): void {
+    const i = this.head * 18, c = this.head * 24; this.head = (this.head + 1) % this.cap;
+    // Write the six vertices directly; temporary 18-number arrays otherwise
+    // allocate once for every visible tire mark in a high-FPS race.
+    this.pos[i] = ax - hx; this.pos[i + 1] = ay; this.pos[i + 2] = az - hz;
+    this.pos[i + 3] = ax + hx; this.pos[i + 4] = ay; this.pos[i + 5] = az + hz;
+    this.pos[i + 6] = bx - hx; this.pos[i + 7] = by; this.pos[i + 8] = bz - hz;
+    this.pos[i + 9] = ax + hx; this.pos[i + 10] = ay; this.pos[i + 11] = az + hz;
+    this.pos[i + 12] = bx + hx; this.pos[i + 13] = by; this.pos[i + 14] = bz + hz;
+    this.pos[i + 15] = bx - hx; this.pos[i + 16] = by; this.pos[i + 17] = bz - hz;
+    for (let k = c; k < c + 24; k += 4) {
+      this.col[k] = 0.02; this.col[k + 1] = 0.02; this.col[k + 2] = 0.03; this.col[k + 3] = alpha;
+    }
     this.dirty = true;
   }
-  /** 바퀴가 지면에서 미끄러지지 않으면 자국을 끊습니다. */
-  lift(key: number): void { this.last.delete(key); }
+  lift(key: number): void { this.history.lift(key); }
   flush(): void { if (!this.dirty) return; this.dirty = false; (this.mesh.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true; (this.mesh.geometry.attributes.color as THREE.BufferAttribute).needsUpdate = true; }
 }
 

@@ -145,3 +145,11 @@
 /* Countermeasure ready state is legible on mobile and does not look tappable during cooldown. */
 .sk-btns #sk-b-flare.cooldown{opacity:.48;filter:saturate(.45);border-color:#8699a355;box-shadow:inset 0 1px #ffffff12}
 .sk-btns #sk-b-flare:disabled{cursor:not-allowed}
+
+/* HUD alerts: use urgency rather than coloring every positive event red. */
+.sk-alert[data-level="info"]{color:#c9eef3;letter-spacing:.04em;text-shadow:0 2px 8px #041725,0 0 12px #65b3d166}
+.sk-alert[data-level="combat"]{color:#ffe0ae;text-shadow:0 2px 7px #241307,0 0 16px #e7a55d88}
+.sk-alert[data-level="danger"]{color:#ffb1a6;text-shadow:0 0 16px #db3f35,0 2px 7px #250707}
+.sk-alert:not([data-level="danger"]){animation:none}
+.sk-alert[data-level="danger"]:not(:empty){animation:sk-alert-pulse 1s ease-in-out infinite}
+@media(prefers-reduced-motion:reduce){.sk-alert[data-level="danger"]{animation:none!important}}

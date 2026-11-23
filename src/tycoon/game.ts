@@ -31,7 +31,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   const root = document.createElement('div'); root.className = 'ty-root' + (touch ? ' touch' : '');
   root.innerHTML = `
     <canvas class="ty-canvas"></canvas>
-    <div class="ty-fx"><div class="ty-vig"></div><div class="ty-flash" id="ty-flash"></div></div>
+    <div class="ty-fx"><div class="ty-vig"></div></div>
     <div class="ty-hud" id="ty-hud" hidden>
       <div class="ty-top">
         <div class="ty-cash"><span class="lbl">현금</span><b id="ty-cash">$0</b><small id="ty-debt"></small></div>

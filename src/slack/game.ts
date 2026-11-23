@@ -150,7 +150,11 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
     }
     $('[data-next]').textContent = `다음 장소 · ${stageInfo[stage === 'class' ? 'dorm' : 'class'].name}`;
     $('.sl-hud').hidden = true; $('[data-result]').hidden = false; $('[data-retry]').focus();
-    view?.dispose(); $('.sl-view').inert = true; root.classList.add('sl-paused');
+    const completedView = view;
+    view = null;
+    completedView?.dispose();
+    completedView?.el.remove();
+    $('.sl-view').inert = true; root.classList.add('sl-paused');
     $('.sl-toast').textContent = ''; toastTime = 0;
     if (caught) audio.play('caught'); else if (s.fun >= s.goal) audio.play('win');
     refreshTitle();

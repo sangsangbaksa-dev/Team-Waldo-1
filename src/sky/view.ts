@@ -197,7 +197,8 @@ export class SkyView {
     };
     const sea = new THREE.Mesh(new THREE.PlaneGeometry(20000, 20000, 80, 80), seaMat); sea.rotation.x = -Math.PI / 2; sea.position.y = -1; sea.receiveShadow = true; sc.add(sea); this.sea = sea;
     // 섬 지형
-    const N = 200, size = 7600, geo = new THREE.PlaneGeometry(size, size, N, N); geo.rotateX(-Math.PI / 2);
+    const N = this.quality === 'low' ? 96 : this.quality === 'standard' ? 144 : 200;
+    const size = 7600, geo = new THREE.PlaneGeometry(size, size, N, N); geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position as THREE.BufferAttribute, col = new Float32Array(pos.count * 3), c = new THREE.Color(), grass = new THREE.Color(0x2c6a2c), rock = new THREE.Color(0x77695a);
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), z = pos.getZ(i), h = terrainY(x, z); pos.setY(i, h - (h < 1 ? 6 : 0));

@@ -1,103 +1,145 @@
-// HUSTLE — session-only drivable cars. The economic simulation does not own vehicles.
+// HUSTLE — reusable urban fleet; no economy unlocks or permanent upgrades.
 import * as THREE from 'three';
 import { makeVehicleMesh } from '../../shared/vehicle';
-import type { Colliders } from './layout';
-import type { Player, MoveInput } from './player';
+import { stepDrive, type DriveState, type DriveInput, type DriveTuning } from './driving';
+import type { Colliders, Layout, Zone } from './layout';
+import type { Player } from './player';
+import { PITCH } from './layout';
 
-interface Ride { mesh: THREE.Group; name: string; x: number; z: number; heading: number; speed: number; maxSpeed: number; steering: number }
-const clamp = THREE.MathUtils.clamp;
+interface Ride extends DriveState { mesh: THREE.Group; name: string; tune: DriveTuning; color: number }
+export interface ParkedVehicle { x: number; z: number; heading: number; active: boolean; name: string }
+interface FleetSpec { name: string; kind: 'car' | 'jeep' | 'van' | 'truck'; color: number; tune: DriveTuning; district?: Zone }
+const FLEET: readonly FleetSpec[] = [
+  { name: '시티 세단', kind: 'car', color: 0x395877, tune: { forward: 21, reverse: 7, turnRate: 1.8, response: 2.7 } },
+  { name: '오프로드 지프', kind: 'jeep', color: 0x86714c, tune: { forward: 17, reverse: 6, turnRate: 2.15, response: 2.3 } },
+  { name: '배송 밴', kind: 'van', color: 0x9bafae, tune: { forward: 15, reverse: 5, turnRate: 1.6, response: 2.2 }, district: 'market' },
+  { name: '항만 픽업', kind: 'truck', color: 0x697c64, tune: { forward: 17, reverse: 6, turnRate: 1.75, response: 2.2 }, district: 'harbor' },
+  { name: '도심 쿠페', kind: 'car', color: 0x973e43, tune: { forward: 26, reverse: 7, turnRate: 1.65, response: 3.25 }, district: 'downtown' },
+  { name: '비즈니스 세단', kind: 'car', color: 0x25292f, tune: { forward: 23, reverse: 7, turnRate: 1.7, response: 2.7 }, district: 'uptown' },
+  { name: '외곽 작업차', kind: 'truck', color: 0xb38a4f, tune: { forward: 18, reverse: 6, turnRate: 1.75, response: 2.2 }, district: 'fringe' },
+] as const;
+const worldDistance = (a: { x: number; z: number }, b: { x: number; z: number }): number => Math.hypot(a.x - b.x, a.z - b.z);
 const angleDelta = (a: number, b: number): number => Math.atan2(Math.sin(a - b), Math.cos(a - b));
+const RADIUS = 0.83;
+const BODY_LENGTH = 1.65;
 
+/** A vehicle is a rounded rectangle, not a single point. Check front and rear ends. */
 export class Rides {
   private cars: Ride[] = [];
   private active: Ride | null = null;
   private scratch = { x: 0, z: 0 };
-  constructor(private scene: THREE.Scene, spawn: { x: number; z: number }, private colliders: Colliders) {
-    const specs = [
-      { name: '시티 세단', kind: 'car', color: 0x2c526b, maxSpeed: 21, steering: 1.85, dx: 4.5, dz: 2 },
-      { name: '오프로드 지프', kind: 'jeep', color: 0x80683f, maxSpeed: 16.5, steering: 2.25, dx: -5, dz: -3 },
-    ] as const;
-    for (const [index, s] of specs.entries()) {
-      const mesh = makeVehicleMesh({ kind: s.kind, w: s.kind === 'jeep' ? 4.3 : 4.5, d: 2, h: 1.7, c: s.color, v: index, wreck: false });
-      const safe = { x: spawn.x + s.dx, z: spawn.z + s.dz };
-      colliders.resolve(safe.x, safe.z, 1.1, safe);
-      mesh.position.set(safe.x, 0.18, safe.z);
-      mesh.rotation.y = index === 0 ? 0 : Math.PI;
-      scene.add(mesh);
-      this.cars.push({ mesh, name: s.name, x: safe.x, z: safe.z, heading: index === 0 ? 0 : Math.PI, speed: 0, maxSpeed: s.maxSpeed, steering: s.steering });
+  constructor(private scene: THREE.Scene, layout: Layout, private colliders: Colliders) {
+    const nearestVertical = Math.round((layout.spawn.x - PITCH / 2) / PITCH) * PITCH + PITCH / 2;
+    const nearestHorizontal = Math.round((layout.spawn.z - PITCH / 2) / PITCH) * PITCH + PITCH / 2;
+    const candidates: Array<{ x: number; z: number; heading: number }> = [
+      { x: nearestVertical - 3, z: layout.spawn.z + 4, heading: -Math.PI / 2 },
+      { x: nearestVertical + 3, z: layout.spawn.z - 4, heading: Math.PI / 2 },
+      { x: layout.spawn.x + 5, z: nearestHorizontal - 3, heading: 0 },
+      { x: layout.spawn.x - 5, z: nearestHorizontal + 3, heading: Math.PI },
+    ];
+    for (const [i, spec] of FLEET.entries()) {
+      const positions = i < 2 ? candidates : (() => {
+        const blocks = layout.blocks.filter(b => b.zone === spec.district);
+        const b = blocks[Math.floor(blocks.length / 2)];
+        return b ? [
+          { x: b.cx + PITCH / 2 - 3, z: b.cz + 5, heading: -Math.PI / 2 },
+          { x: b.cx - PITCH / 2 + 3, z: b.cz - 6, heading: Math.PI / 2 },
+          { x: b.cx - 5, z: b.cz + PITCH / 2 - 3, heading: 0 },
+        ] : [];
+      })();
+      const spot = positions.find(p => this.occupiable(p.x, p.z, p.heading));
+      if (!spot) continue;
+      const dims = spec.kind === 'van' ? { w: 4.9, d: 2.05, h: 2.2 } : spec.kind === 'truck' ? { w: 4.7, d: 2.1, h: 1.8 } : spec.kind === 'jeep' ? { w: 4.35, d: 2.05, h: 1.85 } : { w: 4.45, d: 1.95, h: 1.5 };
+      const mesh = makeVehicleMesh({ kind: spec.kind, ...dims, c: spec.color, v: i % 2, wreck: false });
+      mesh.position.set(spot.x, 0.18, spot.z); mesh.rotation.y = spot.heading;
+      mesh.name = 'HUSTLE: ' + spec.name; scene.add(mesh);
+      this.cars.push({ ...spot, speed: 0, mesh, name: spec.name, tune: spec.tune, color: spec.color });
     }
   }
   get driving(): boolean { return this.active !== null; }
   get speed(): number { return Math.abs(this.active?.speed ?? 0); }
+  get name(): string | null { return this.active?.name ?? null; }
+  positions(): ParkedVehicle[] { return this.cars.map(c => ({ x: c.x, z: c.z, heading: c.heading, name: c.name, active: c === this.active })); }
+  private occupiable(x: number, z: number, heading: number, ignore?: Ride): boolean {
+    for (const part of [-BODY_LENGTH, 0, BODY_LENGTH]) {
+      const px = x + Math.cos(heading) * part, pz = z - Math.sin(heading) * part;
+      this.colliders.resolve(px, pz, RADIUS, this.scratch);
+      if (Math.hypot(this.scratch.x - px, this.scratch.z - pz) > 0.03) return false;
+    }
+    // Keep parked cars solid even though the player character uses city-only collision.
+    for (const other of this.cars) {
+      if (other === ignore) continue;
+      if (Math.hypot(other.x - x, other.z - z) < 3.55) return false;
+    }
+    return true;
+  }
   nearby(x: number, z: number): { name: string; distance: number } | null {
     if (this.active) return { name: this.active.name, distance: 0 };
-    const sorted = this.cars.map(c => ({ car: c, distance: Math.hypot(c.x - x, c.z - z) })).sort((a, b) => a.distance - b.distance);
-    return sorted[0] && sorted[0].distance < 5.2 ? { name: sorted[0].car.name, distance: sorted[0].distance } : null;
+    let best: Ride | null = null, distance = 5.3;
+    for (const car of this.cars) {
+      const d = Math.hypot(car.x - x, car.z - z);
+      if (d < distance) { best = car; distance = d; }
+    }
+    return best ? { name: best.name, distance } : null;
   }
-  toggle(player: Player): string {
+  toggle(player: Player): { ok: boolean; message: string } {
     if (this.active) {
       const car = this.active;
-      if (Math.abs(car.speed) > 2) return '차를 세운 뒤 내릴 수 있습니다';
-      const dx = -Math.sin(car.heading) * 2.7, dz = -Math.cos(car.heading) * 2.7;
-      this.colliders.resolve(car.x + dx, car.z + dz, 0.45, this.scratch);
-      if (Math.hypot(this.scratch.x - car.x, this.scratch.z - car.z) < 1.6) return '내릴 공간이 없습니다';
+      if (Math.abs(car.speed) > 1) return { ok: false, message: '차량을 완전히 멈춘 뒤 하차하세요' };
+      const offsets = [
+        { x: -Math.sin(car.heading) * 2.65, z: -Math.cos(car.heading) * 2.65 },
+        { x: Math.sin(car.heading) * 2.65, z: Math.cos(car.heading) * 2.65 },
+        { x: -Math.cos(car.heading) * 3.2, z: Math.sin(car.heading) * 3.2 },
+      ];
+      const exit = offsets.find(o => {
+        const x = car.x + o.x, z = car.z + o.z;
+        this.colliders.resolve(x, z, 0.48, this.scratch);
+        return Math.hypot(this.scratch.x - x, this.scratch.z - z) < 0.04 &&
+          worldDistance({ x, z }, car) > 2.3;
+      });
+      if (!exit) return { ok: false, message: '내릴 공간이 없습니다. 차를 조금 움직여 보세요' };
       this.active = null;
-      player.teleport(this.scratch.x, this.scratch.z, car.heading);
+      player.teleport(car.x + exit.x, car.z + exit.z, car.heading);
       if (player.rig) player.rig.root.visible = !player.firstPerson;
-      return '차량에서 내렸습니다';
+      return { ok: true, message: '차량에서 내렸습니다' };
     }
-    const nearest = this.cars.map(c => ({ c, d: Math.hypot(c.x - player.pos.x, c.z - player.pos.z) })).sort((a, b) => a.d - b.d)[0];
-    if (!nearest || nearest.d >= 5.2) return '주차된 차량에 가까이 가세요';
-    this.active = nearest.c;
+    let best: Ride | null = null, d = 5.3;
+    for (const car of this.cars) { const n = worldDistance(car, player.pos); if (n < d) { best = car; d = n; } }
+    if (!best) return { ok: false, message: '근처에 주차된 차량이 없습니다' };
+    this.active = best;
     player.setFirstPerson(false);
     if (player.rig) player.rig.root.visible = false;
-    player.pos.set(nearest.c.x, 0.18, nearest.c.z);
-    player.camYaw = -nearest.c.heading - Math.PI / 2;
-    player.camPitch = 0.34;
-    player.dist = 9;
-    return nearest.c.name + ' 탑승 · WASD 운전 · F 하차';
-  }
-  update(dt: number, input: MoveInput, player: Player, frozen: boolean): void {
-    const c = this.active;
-    if (!c) return;
-    if (frozen) { c.speed = 0; return; }
-    const throttle = clamp(input.mz, -1, 1);
-    const target = throttle >= 0 ? throttle * c.maxSpeed : throttle * 7;
-    const response = throttle ? 2.8 : 3.5;
-    c.speed += (target - c.speed) * Math.min(1, dt * response);
-    if (Math.abs(c.speed) < 0.04) c.speed = 0;
-    const steer = clamp(-input.mx, -1, 1);
-    if (Math.abs(c.speed) > 0.15) c.heading += steer * c.steering * (c.speed / c.maxSpeed) * dt;
-    // Sweep movement to avoid tunneling through buildings at low frame rates.
-    const count = Math.max(1, Math.ceil(Math.abs(c.speed * dt) / 0.55));
-    for (let i = 0; i < count; i++) {
-      const nx = c.x + Math.cos(c.heading) * c.speed * dt / count;
-      const nz = c.z - Math.sin(c.heading) * c.speed * dt / count;
-      this.colliders.resolve(nx, nz, 1.13, this.scratch);
-      if (Math.hypot(this.scratch.x - nx, this.scratch.z - nz) > 0.18) { c.speed = 0; break; }
-      c.x = this.scratch.x; c.z = this.scratch.z;
-    }
-    c.mesh.position.set(c.x, 0.18, c.z);
-    c.mesh.rotation.y = c.heading;
-    player.pos.set(c.x, 0.18, c.z);
+    player.pos.set(best.x, 0.18, best.z);
     player.vel.set(0, 0, 0);
-    player.speed = Math.abs(c.speed);
-    player.facing = -c.heading;
-    const desiredYaw = -c.heading - Math.PI / 2;
-    player.camYaw += angleDelta(desiredYaw, player.camYaw) * Math.min(1, dt * 3);
+    player.camYaw = -best.heading - Math.PI / 2;
+    player.camPitch = 0.35; player.dist = 10;
+    return { ok: true, message: best.name + ' · W/S 가감속, A/D 조향, Space 브레이크' };
+  }
+  update(dt: number, input: DriveInput, player: Player, frozen: boolean): boolean {
+    const car = this.active;
+    if (!car) return false;
+    if (frozen) { car.speed = 0; return false; }
+    const impact = stepDrive(car, input, dt, car.tune, (x, z, heading) => this.occupiable(x, z, heading, car));
+    car.mesh.position.set(car.x, 0.18, car.z); car.mesh.rotation.y = car.heading;
+    player.pos.set(car.x, 0.18, car.z);
+    player.vel.set(0, 0, 0);
+    player.speed = Math.abs(car.speed);
+    player.facing = -car.heading;
+    const follow = -car.heading - Math.PI / 2;
+    player.camYaw += angleDelta(follow, player.camYaw) * (1 - Math.exp(-3.5 * dt));
+    return impact;
   }
   dispose(): void {
-    for (const c of this.cars) {
-      c.mesh.traverse(obj => {
+    for (const car of this.cars) {
+      car.mesh.traverse(obj => {
         if (obj instanceof THREE.Mesh) {
           obj.geometry.dispose();
-          const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-          for (const mat of mats) mat.dispose();
+          const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+          for (const material of materials) material.dispose();
         }
       });
-      c.mesh.removeFromParent();
+      car.mesh.removeFromParent();
     }
-    this.cars.length = 0;
-    this.active = null;
+    this.cars.length = 0; this.active = null;
   }
 }

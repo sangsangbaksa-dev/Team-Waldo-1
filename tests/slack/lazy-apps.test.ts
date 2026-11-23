@@ -190,6 +190,36 @@ it('keeps the dorm messenger responsive after many quick replies and app switche
   expect(view.el.querySelectorAll('.sc-app-window')).toHaveLength(2);
 });
 
+it('resets video comments after scrubbing so the old timestamp does not suppress chat', () => {
+  view.el.querySelector<HTMLButtonElement>('[data-app="video"]')!.click();
+  view.frame(0);
+  view.frame(15);
+  const comments = view.el.querySelector<HTMLElement>('[data-comments]')!;
+  expect(comments.childElementCount).toBe(1);
+  const seek = view.el.querySelector<HTMLInputElement>('[data-vseek]')!;
+  seek.value = '3';
+  seek.dispatchEvent(new Event('input', { bubbles: true }));
+  expect(comments.childElementCount).toBe(0);
+  view.frame(5);
+  expect(comments.childElementCount).toBe(1);
+});
+
+it('makes webtoon reading panels keyboard-focusable and names the selected chapter', () => {
+  view.el.querySelector<HTMLButtonElement>('[data-app="webtoon"]')!.click();
+  view.frame(0);
+  const chapter = view.el.querySelector<HTMLElement>('[data-eppane="2"]')!;
+  expect(chapter.tabIndex).toBe(0);
+  expect(chapter.getAttribute('role')).toBe('region');
+  expect(chapter.getAttribute('aria-label')).toBe('12화 웹툰 본문');
+  chapter.focus();
+  expect(document.activeElement).toBe(chapter);
+  const active = view.el.querySelector<HTMLButtonElement>('[data-ep="2"]')!;
+  expect(active.getAttribute('aria-pressed')).toBe('true');
+  view.el.querySelector<HTMLButtonElement>('[data-ep="1"]')!.click();
+  const next = view.el.querySelector<HTMLElement>('[data-eppane="1"]')!;
+  expect(next.getAttribute('aria-label')).toBe('11화 웹툰 본문');
+});
+
 it('seeks video by keyboard/touch-friendly range input even while paused', () => {
   view.el.querySelector<HTMLButtonElement>('[data-app="video"]')!.click();
   view.frame(0.1);

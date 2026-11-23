@@ -244,7 +244,7 @@ export const createComputerView: CreateView = (sim, audio) => {
 
   /* ---------- 웹툰 ---------- */
   const W = { ep: 2, likes: episodes.map(() => 12), liked: episodes.map(() => false) };
-  const toonHtml = () => `<div class="sc-webtoon"><div class="sc-webtoon-head"><b>달빛 아래 우리</b><span class="sc-eps">${episodes.map((e, i) => `<button type="button" data-ep="${i}" ${e.n === 13 ? 'hidden' : ''}>${e.n}화</button>`).join('')}</span><small data-read>0% 읽음</small></div>${episodes.map((e, i) => `<div class="sc-wt-scroll" data-eppane="${i}"><div class="sc-comic-sky"><span>제 ${e.n}화</span><i>☾</i><b>${e.title}</b></div>${e.lines.map((l, k) => `<div class="sc-comic-panel c${(k + i) % 3}"><div class="sc-comic-person">●<br>▰</div><p>${l}</p></div>`).join('')}<button type="button" class="sc-like" data-like aria-label="${e.n}화 좋아요 ${W.likes[i]}개" aria-pressed="${W.liked[i]}">♡ 좋아요 <b>${W.likes[i]}</b></button></div>`).join('')}</div>`;
+  const toonHtml = () => `<div class="sc-webtoon"><div class="sc-webtoon-head"><b>달빛 아래 우리</b><span class="sc-eps">${episodes.map((e, i) => `<button type="button" data-ep="${i}" ${e.n === 13 ? 'hidden' : ''}>${e.n}화</button>`).join('')}</span><small data-read>0% 읽음</small></div>${episodes.map((e, i) => `<div class="sc-wt-scroll" data-eppane="${i}" tabindex="0" role="region" aria-label="${e.n}화 웹툰 본문"><div class="sc-comic-sky"><span>제 ${e.n}화</span><i>☾</i><b>${e.title}</b></div>${e.lines.map((l, k) => `<div class="sc-comic-panel c${(k + i) % 3}"><div class="sc-comic-person">●<br>▰</div><p>${l}</p></div>`).join('')}<button type="button" class="sc-like" data-like aria-label="${e.n}화 좋아요 ${W.likes[i]}개" aria-pressed="${W.liked[i]}">♡ 좋아요 <b>${W.likes[i]}</b></button></div>`).join('')}</div>`;
   const toonShow = (i: number) => {
     W.ep = i; const w = wins.webtoon;
     w.querySelectorAll('[data-ep]').forEach((b, k) => { b.classList.toggle('cur', k === i); b.setAttribute('aria-pressed', String(k === i)); }); w.querySelectorAll('[data-eppane]').forEach((p, k) => p.classList.toggle('cur', k === i));
@@ -344,7 +344,7 @@ export const createComputerView: CreateView = (sim, audio) => {
   const click = (event: MouseEvent) => {
     audio.resume();
     const target = event.target as Element;
-    if (event.detail > 0 && !target.closest('input,select,textarea') && target.closest('button') !== coverButton) el.focus({ preventScroll: true });
+    if (event.detail > 0 && !target.closest('input,select,textarea,[data-eppane]') && target.closest('button') !== coverButton) el.focus({ preventScroll: true });
     const app = target.closest<HTMLElement>('[data-app]');
     if (app) { select(app.dataset.app as DormActivity); return; }
     if (target.closest('.sc-friend')) { audio.resume(); audio.play('click'); say(sim.bribe() ? '냠냠… 고마워!' : '지금은 배불러…', 1.6); return; }
@@ -394,7 +394,14 @@ export const createComputerView: CreateView = (sim, audio) => {
     if (!seek || shown !== 'video' || sim.state.cover) return;
     const seconds = Number(seek.value), max = videos[V.cur].len;
     if (!Number.isFinite(seconds)) return;
-    V.pos = Math.min(max - 0.01, Math.max(0, seconds));
+    const next = Math.min(max - 0.01, Math.max(0, seconds));
+    if (Math.abs(next - V.pos) > 3) {
+      // A seek jumps past the previous comment timeline. Reset simulated live
+      // chat instead of retaining future comments or an outdated deadline.
+      V.nextComment = next + 4;
+      $('[data-comments]', wins.video).replaceChildren();
+    }
+    V.pos = next;
     V.sec = -1; V.sub = -1;
     syncVideoTimeline();
   };

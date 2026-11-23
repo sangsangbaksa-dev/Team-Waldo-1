@@ -209,6 +209,10 @@ try {
       // Likes belong to one comic episode; switching chapters must not
       // silently borrow the selected count from another episode.
       await page.locator('.sc-apps [data-app="webtoon"]').click();
+      const chapter12 = page.locator('.sc-app-webtoon [data-eppane="2"]');
+      await chapter12.focus();
+      assert.equal(await chapter12.evaluate(node => document.activeElement === node), true,
+        'Webtoon chapter should be keyboard focusable');
       const like12 = page.locator('[data-eppane="2"] [data-like]');
       await like12.click();
       assert.equal(await like12.getAttribute('aria-pressed'), 'true');

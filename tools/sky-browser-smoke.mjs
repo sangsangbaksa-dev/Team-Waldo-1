@@ -129,19 +129,37 @@ try {
       if (size.name === 'mobile') {
         await page.locator('#sk-b-flare').dispatchEvent('pointerdown', { pointerId: 12, pointerType: 'touch' });
         await page.waitForFunction(() => window.__sky?.sim?.player?.flare > 0);
+        await page.waitForFunction(() => document.querySelector('#sk-b-flare')?.disabled);
+        assert.match(await page.locator('#sk-b-flare').innerText(), /[1-4]초/,
+          'The touch flare button must show its cooldown');
       }
       const runsBefore = await page.evaluate(() => JSON.parse(localStorage.getItem('waldo.sky.v1') || '{}').runs || 0);
       await page.evaluate(() => {
         window.__sky.sim.time = 6.5;
         document.querySelector('#sk-alert').textContent = 'OLD WARNING';
       });
-      if (size.name === 'desktop') await page.keyboard.press('p');
-      else await page.locator('#sk-pause').click();
+      if (size.name === 'desktop') {
+        // A synthetic held key has no corresponding keyup: pausing must clear it.
+        await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true })));
+        await page.waitForFunction(() => window.__sky.sim.player.boosting === true);
+        await page.keyboard.press('p');
+      } else await page.locator('#sk-pause').click();
       await page.locator('#sk-paused').waitFor({ state: 'visible' });
       const pausedAt = await page.evaluate(() => window.__sky.sim.time);
+      const pausedDraws = await page.evaluate(() => window.__sky.renderer.info.render.frame);
       await sleep(180);
       const afterPause = await page.evaluate(() => window.__sky.sim.time);
+      const afterPausedDraws = await page.evaluate(() => window.__sky.renderer.info.render.frame);
       assert.equal(afterPause, pausedAt, 'Pause must freeze simulation time');
+      assert.equal(afterPausedDraws, pausedDraws, 'Pause must also stop expensive WebGL redraws');
+      if (size.name === 'desktop') {
+        await page.locator('#sk-resume').click();
+        await page.waitForFunction(time => window.__sky.sim.time > time, pausedAt);
+        assert.equal(await page.evaluate(() => window.__sky.sim.player.boosting), false,
+          'Lost keyup during pause must not leave boost engaged on resume');
+        await page.keyboard.press('p');
+        await page.locator('#sk-paused').waitFor({ state: 'visible' });
+      }
       await page.locator('#sk-restart').click();
       await page.locator('#sk-paused').waitFor({ state: 'hidden' });
       await page.waitForFunction(() => window.__sky?.sim?.time > 0);

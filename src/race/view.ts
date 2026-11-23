@@ -10,7 +10,7 @@ import { BOOST_LAG, carEuler, chaseFov, chaseRoll, chaseRumble, chaseShake, chev
 import { wrapAngle, boosting, kmh } from './physics';
 import { type RaceState, type Racer } from './race';
 import { type Track } from './track';
-import { TrackClearanceIndex } from './track-queries';
+import { TrackClearanceIndex, startBannerPose } from './track-queries';
 import { type Theme } from './maps';
 import { buildOutposts, type Outpost } from './outpost';
 import { disposeOwnedTree, markBorrowedTree } from './resource-ownership';
@@ -393,7 +393,7 @@ export class RaceView {
     const t = this.track, hw = t.halfWidth, th = this.theme, parts: THREE.BufferGeometry[] = [], low = quality === 'low';
     // 아치(출발선 + 구간마다)
     const archAt = (i: number, big: boolean): void => {
-      const col = new THREE.Color(big ? th.arch.big : (i / 50) % 2 < 1 ? th.arch.a : th.arch.b), rot = -Math.atan2(t.tz[i], t.tx[i]) + Math.PI / 2, rx = -t.tz[i], rz = t.tx[i], h = big ? 15 : 11, post = hw + 2.6;
+      const col = new THREE.Color(big ? th.arch.big : (i / 50) % 2 < 1 ? th.arch.a : th.arch.b).multiplyScalar(big ? 0.72 : 1), rot = -Math.atan2(t.tz[i], t.tx[i]) + Math.PI / 2, rx = -t.tz[i], rz = t.tx[i], h = big ? 15 : 11, post = hw + 2.6;
       for (const s of [-1, 1]) parts.push(boxGeo(0.9, h, 0.9, t.x[i] + rx * post * s, t.y[i] + h / 2, t.z[i] + rz * post * s, rot, col));
       parts.push(boxGeo(post * 2 + 1.8, big ? 2.4 : 0.8, 0.9, t.x[i], t.y[i] + h, t.z[i], rot, col));
     };
@@ -401,7 +401,14 @@ export class RaceView {
     const archMat = new THREE.MeshBasicMaterial({ vertexColors: true }); this.scene.add(new THREE.Mesh(mergeGeometries(parts), archMat)); parts.forEach(p => p.dispose());
     // START 배너
     const bn = th.banner, banner = canvasTex(512, 96, g => { g.fillStyle = bn.bg; g.fillRect(0, 0, 512, 96); g.fillStyle = bn.fg; g.font = '900 64px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('SPEED RUSH', 256, 52); g.fillStyle = bn.accent; g.fillRect(0, 0, 512, 6); g.fillRect(0, 90, 512, 6); }, false);
-    const bm = new THREE.Mesh(new THREE.PlaneGeometry(hw * 2 + 3, 2.2), new THREE.MeshBasicMaterial({ map: banner, side: THREE.DoubleSide })); bm.position.set(t.x[0], t.y[0] + 15, t.z[0] + 0.01); bm.rotation.y = -Math.atan2(t.tz[0], t.tx[0]) + Math.PI / 2; this.scene.add(bm); this.disposables.push(bm.geometry, banner);
+    // The old billboard was embedded inside the gantry's thick crossbeam,
+    // making the label disappear on every map. Face incoming drivers and
+    // offset 65cm outside the beam instead of adding 1cm to world Z.
+    const sign = startBannerPose(t.tx[0], t.tz[0]);
+    const bm = new THREE.Mesh(new THREE.PlaneGeometry(hw * 2 + 3, 2.2), new THREE.MeshBasicMaterial({ map: banner, side: THREE.DoubleSide }));
+    bm.position.set(t.x[0] + sign.dx, t.y[0] + 15, t.z[0] + sign.dz);
+    bm.rotation.y = sign.yaw;
+    this.scene.add(bm); this.disposables.push(bm.geometry, banner);
     this.disposables.push(archMat);
     // 도로 옆 기준점(속도감): 가로등 또는 반사 표지
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(1, 1, 1), c = new THREE.Color(), instancePos = new THREE.Vector3();

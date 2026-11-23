@@ -72,3 +72,11 @@ export class TrackClearanceIndex {
     return Math.hypot(this.road.x[i] - x, this.road.z[i] - z) < need + this.extra[i];
   }
 }
+
+/** Racing start gantry's sign faces incoming traffic and sits outside its
+ * 90cm-deep crossbeam. This keeps the printed texture visible, not z-fighting.
+ * yaw rotates the Three.js plane normal (+Z) to -track tangent.
+ */
+export function startBannerPose(tx: number, tz: number, clearance = 0.65): { yaw: number; dx: number; dz: number } {
+  return { yaw: -Math.atan2(tz, tx) - Math.PI / 2, dx: -tx * clearance, dz: -tz * clearance };
+}

@@ -182,6 +182,11 @@ try {
   assert.ok(mobileCompletion.time > 0);
   const mobileResult = mobile.locator('.rc-card.result');
   await mobileResult.waitFor({ timeout: 20_000 });
+  const titleLines = await mobileResult.locator('h2').evaluate(el => {
+    const style = getComputedStyle(el);
+    return el.getBoundingClientRect().height / Number.parseFloat(style.lineHeight);
+  });
+  assert.ok(titleLines <= 2.1, 'small-screen result headline wrapped into ' + titleLines.toFixed(1) + ' lines');
   await mobile.screenshot({ path: 'browser-artifacts/race/mobile-small-result.png' });
   // Even when the result card scrolls, its buttons must remain reachable.
   await mobileResult.locator('[data-act="setup"]').click();

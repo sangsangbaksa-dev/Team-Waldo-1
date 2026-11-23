@@ -150,7 +150,7 @@ export function openRace(onExit: () => void): void {
     const net: RacePvp = new RacePvp(s, setup.car, {
       onStart: car => beginPvp(car),
       onSnap: snap => { const rival = race.racers[1]; if (pvp && rival?.link) rival.link = { snap, at: performance.now() }; },
-      onFinish: time => { if (!pvp || pvp.done) return; pvp.oppFin = time; const r = race.racers[1]; if (r) r.finishTime = time; if (pvp.myFin !== null) decide(); else void conclude(s.opponent.id, '상대가 먼저 결승선을 통과했습니다'); },
+      onFinish: time => { if (!pvp || pvp.done || pvp.oppFin !== null) return; pvp.oppFin = time; const r = race.racers[1]; if (r) r.finishTime = time; if (pvp.myFin !== null) decide(); else void conclude(s.opponent.id, '상대가 먼저 결승선을 통과했습니다'); },
       onGone: reason => { if (pvp && !pvp.done) void conclude(s.me.id, reason === 'never' ? '상대가 접속하지 않았습니다' : '상대와의 연결이 끊어졌습니다'); },
     });
     pvp = { s, net, myFin: null, oppFin: null, done: false };
@@ -206,7 +206,7 @@ export function openRace(onExit: () => void): void {
     const net: RaceMulti = new RaceMulti(s, setup.car, {
       onStart: list => beginMulti(list),
       onSnap: (id, snap) => { const r = racerOf(id); if (multi && r?.link) r.link = { snap, at: performance.now() }; },
-      onFinish: (id, time) => { const r = racerOf(id); if (!multi || multi.done || !r) return; r.finishTime = time; multiCheck(); },
+      onFinish: (id, time) => { const r = racerOf(id); if (!multi || multi.done || !r || r.finishTime !== null) return; r.finishTime = time; multiCheck(); },
       onGone: id => { if (!multi || multi.done) return; multi.gone.add(id); const r = racerOf(id); if (r) { msg(`${r.name} 님이 나갔습니다`, 'hint'); msgT = 3; } multiCheck(); },
       onAbort: () => { if (multi && !multi.done) pvpCard('멀티플레이', '연결하지 못했어요', '<p class="rc-record">방 사람들과 연결되지 않았습니다. 네트워크를 확인해 다시 시도해 주세요.</p>', '<button data-act="rematch">다시 시도</button><button data-act="exit">메뉴로</button>'); },
     });

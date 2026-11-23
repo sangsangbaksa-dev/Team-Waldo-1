@@ -87,7 +87,7 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
     root.querySelectorAll<HTMLElement>('[data-sound]').forEach(b => { b.textContent = muted ? '소리 꺼짐' : '소리 켜짐'; b.setAttribute('aria-pressed', String(!muted)); });
   };
   const clearView = (): void => { view?.dispose(); view?.el.remove(); view = null; sim = null; };
-  const exit = (): void => { if (closed) return; closed = true; cancelAnimationFrame(raf); root.removeEventListener('keydown', keydown); document.removeEventListener('visibilitychange', visibility); clearView(); audio.dispose(); root.remove(); onExit(); };
+  const exit = (): void => { if (closed) return; closed = true; cancelAnimationFrame(raf); root.removeEventListener('keydown', keydown); document.removeEventListener('visibilitychange', visibility); window.removeEventListener('blur', focusLost); clearView(); audio.dispose(); root.remove(); onExit(); };
   const pause = (): void => { if (state === 'play') {
       state = 'paused'; if (raf) cancelAnimationFrame(raf); raf = 0;
       root.classList.remove('sl-danger'); $('[data-paused]').hidden = false; audio.ambience(null); audio.hold(true);
@@ -117,7 +117,8 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
       if (state === 'play' || state === 'paused') { e.preventDefault(); pause(); }
     }
   };
-  const visibility = (): void => { if (document.hidden && state === 'play') pause(); };
+  const focusLost = (): void => { if (state === 'play') pause(); };
+  const visibility = (): void => { if (document.hidden) focusLost(); };
   const enablePlay = (): void => {
     $('.sl-view').inert = false; $('.sl-hud').inert = false; $('[data-tip]').inert = false;
     root.classList.remove('sl-paused');
@@ -232,6 +233,6 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
   root.addEventListener('contextmenu', event => {
     if ((event.target as Element).closest('.sl-cover,.sc-cover-button,.gm canvas')) event.preventDefault();
   });
-  root.querySelectorAll<HTMLElement>('[data-exit]').forEach(b => b.onclick = exit); root.addEventListener('keydown', keydown); document.addEventListener('visibilitychange', visibility);
+  root.querySelectorAll<HTMLElement>('[data-exit]').forEach(b => b.onclick = exit); root.addEventListener('keydown', keydown); document.addEventListener('visibilitychange', visibility); window.addEventListener('blur', focusLost);
   refreshTitle(); opts.loading?.close(); $('[data-start]').focus({ preventScroll: true });
 }

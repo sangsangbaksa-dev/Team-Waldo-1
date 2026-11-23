@@ -105,6 +105,23 @@ it('keeps an active dorm game target when switching away and back', async () => 
   expect(button('.sc-target').classList.contains('on')).toBe(true);
 });
 
+it('automatically pauses if the user switches windows without hiding the browser tab', async () => {
+  openSlack(vi.fn());
+  button('[data-stage="dorm"]').click(); button('[data-start]').click();
+  await vi.dynamicImportSettled();
+  const sim = vi.mocked(createSim).mock.results[0].value;
+  advance(250);
+  const elapsed = sim.state.time;
+  window.dispatchEvent(new Event('blur'));
+  expect(button('[data-paused]').hidden).toBe(false);
+  expect(frames.size).toBe(0);
+  advance(2000);
+  expect(sim.state.time).toBe(elapsed);
+  button('[data-resume]').click();
+  advance(100);
+  expect(sim.state.time).toBeGreaterThan(elapsed);
+});
+
 it('bounds a long foreground frame stall without skipping normal frames', async () => {
   openSlack(vi.fn());
   button('[data-stage="dorm"]').click();

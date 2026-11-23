@@ -188,8 +188,8 @@
   .sl-class{min-height:0}
   .sl-room{min-height:0}
   .sl-win.gm{container-type:inline-size}
-  .sl-gbar{height:44px;gap:1cqw}
-  .sl-gbar button{height:44px;min-width:44px;padding-inline:4px}
+  .sl-gbar{height:44px;gap:1cqw;font-size:clamp(10px,2.4cqw,13px)}
+  .sl-gbar button{height:44px;min-width:44px;padding-inline:4px;font-size:clamp(10px,2.4cqw,13px)}
 }
 
 /* Make the classroom mini-RTS playable with a keyboard as well as a pointer. */

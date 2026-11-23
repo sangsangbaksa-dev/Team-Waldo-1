@@ -32,6 +32,11 @@ describe('SLACK OFF phone safe-area layout', () => {
 });
 
 describe('SLACK OFF keyboard and motion accessibility', () => {
+  it('keeps the miniature classroom RTS toolbar labels legible on touch screens', () => {
+    const classroom = styles.find(s => s.name === 'classroom.css')!.css;
+    expect(classroom).toMatch(/\.sl-gbar button\{[^}]*font-size:clamp\(10px/);
+  });
+
   it('provides a visible keyboard focus indicator in the dorm app controls', () => {
     const dorm = styles.find(s => s.name === 'computer.css')!.css;
     expect(dorm).toMatch(/\.slack-computer button:focus-visible/);

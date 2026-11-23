@@ -69,6 +69,11 @@ try {
       await page.locator('.sl-class').waitFor();
       await page.locator('.sl-class [data-activity="game"]').click();
       await page.locator('.sl-room[data-view="game"]').waitFor();
+      if (size.mobile) {
+        const sizePx = await page.locator('.sl-gbar button').first()
+          .evaluate(node => Number.parseFloat(getComputedStyle(node).fontSize));
+        assert.ok(sizePx >= 10, 'Touch RTS toolbar labels should be at least 10 CSS px');
+      }
       const canvas = page.locator('.sl-win.gm canvas');
       await canvas.click({ position: { x: 12, y: 12 } });
       const cursor = page.locator('#sl-rts-cursor');

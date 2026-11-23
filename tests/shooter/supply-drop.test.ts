@@ -9,6 +9,7 @@ describe('ZERO ZONE supply-drop placement safety', () => {
       const a = new Match({ seed, mode: 'br', difficulty: 'normal', humans: [{ name: 'Solo' }], fill: 1, air: false, vehicles: false, bombs: false });
       const b = new Match({ seed, mode: 'br', difficulty: 'normal', humans: [{ name: 'Solo' }], fill: 1, air: false, vehicles: false, bombs: false });
       expect(a.drops.length, `seed=${seed}`).toBe(2);
+      expect(Math.hypot(a.drops[0].x - a.drops[1].x, a.drops[0].z - a.drops[1].z), `seed=${seed} separation`).toBeGreaterThan(25);
       expect(a.drops.map(({ x, z, at }) => ({ x, z, at }))).toEqual(b.drops.map(({ x, z, at }) => ({ x, z, at })));
       for (const d of a.drops) {
         expect(waterDepth(a.map.terrain, d.x, d.z), `seed=${seed} drop water`).toBe(0);

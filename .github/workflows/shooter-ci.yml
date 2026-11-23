@@ -1,0 +1,40 @@
+name: ZERO ZONE checks
+
+on:
+  push:
+    branches:
+      - feat/zero-zone-central-city-20261123
+  pull_request:
+    paths:
+      - 'src/shooter/**'
+      - 'tests/shooter/**'
+      - '.github/workflows/shooter-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zero-zone-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shooter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # The repository-wide CI currently fails on an unrelated FRONTLINE lint error.
+      - name: Lint ZERO ZONE sources and tests
+        run: npx eslint src/shooter tests/shooter
+      - name: Typecheck entire TypeScript project
+        run: npm run typecheck
+      - name: Run ZERO ZONE regression tests
+        run: npx vitest run tests/shooter
+      - name: Verify production bundle
+        run: npm run build

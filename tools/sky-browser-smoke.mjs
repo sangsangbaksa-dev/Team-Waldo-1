@@ -301,7 +301,42 @@ try {
       sceneChildren: window.__sky.view.scene.children.length,
       webglLost: window.__sky.renderer.getContext().isContextLost(),
     }));
-    assert.ok(highShot.length > 120000, 'High-quality canvas appears blank: ' + JSON.stringify(highDiagnostics));
+    if (highShot.length <= 120000) {
+      // Diagnostics for software GPU blank-frame regression. Keep the real
+      // failure, but capture which high-end feature prevents compositing.
+      const modes = [
+        ['full', {}],
+        ['no-shadows', { shadows: false }],
+        ['no-environment', { shadows: false, environment: false }],
+        ['lean', { shadows: false, environment: false, clouds: false }],
+      ];
+      const probes = [];
+      for (const [name, options] of modes) {
+        const info = await highPage.evaluate(options => {
+          const { renderer, view } = window.__sky;
+          if (options.shadows === false) { renderer.shadowMap.enabled = false; view.sun.castShadow = false; }
+          if (options.environment === false) view.scene.environment = null;
+          if (options.clouds === false) view.clouds.forEach(c => { c.visible = false; });
+          const before = performance.now();
+          renderer.render(view.scene, view.camera);
+          const elapsed = performance.now() - before;
+          const gl = renderer.getContext(), px = new Uint8Array(4);
+          gl.readPixels(Math.floor(gl.drawingBufferWidth / 2), Math.floor(gl.drawingBufferHeight / 2), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+          return {
+            elapsedMs: Math.round(elapsed), pixel: [...px], glError: gl.getError(),
+            frame: renderer.info.render.frame, calls: renderer.info.render.calls,
+            triangles: renderer.info.render.triangles,
+            buffer: [gl.drawingBufferWidth, gl.drawingBufferHeight],
+            camera: view.camera.position.toArray().map(x => Math.round(x)),
+            sunShadow: view.sun.castShadow,
+          };
+        }, options);
+        const shot = await highPage.screenshot({ path: 'browser-artifacts/sky-high-diagnostic-' + name + '.png' });
+        probes.push({ name, info, bytes: shot.length });
+      }
+      console.log('SKY WAR HIGH QUALITY DIAG ' + JSON.stringify({ highDiagnostics, probes }));
+      assert.fail('High-quality canvas blank; fallbacks: ' + JSON.stringify(probes));
+    }
     assert.deepEqual(highErrors, [], 'High quality must not throw WebGL or shader errors');
     console.log('PASS SKY WAR high-quality desktop (' + highStats.calls + ' draw calls)');
   } finally {

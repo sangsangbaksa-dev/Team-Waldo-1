@@ -60,7 +60,7 @@ describe("ROOM TONE four-chapter equipment accessibility", () => {
           visited.add(key);queue.push([x,z]);
         }
       }
-      expect(queue.length).toBeGreaterThan(5000);
+      expect(queue.length).toBeGreaterThan(level.reachable.length);
       for(const cell of targetCells) {
         const target={x:(cell%level.w)*C,z:Math.floor(cell/level.w)*C};
         expect(queue.some(([ix,iz])=>{

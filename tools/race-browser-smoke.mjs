@@ -144,6 +144,15 @@ try {
   await page.evaluate(() => window.__race.skip(3.3));
   await page.waitForFunction(() => window.__race.race.phase === 'racing');
   await page.screenshot({ path: 'browser-artifacts/race/context-recovered.png' });
+  // Exercise the desert military outposts' separate kit disposal and scene rebuild.
+  await page.keyboard.press('Escape');
+  await page.locator('.rc-modal.show [data-act="setup"]').click();
+  await page.locator('.rc-setup [data-pick="map:desert"]').click();
+  await page.locator('.rc-setup [data-setup="start"]').click();
+  await page.waitForFunction(() => document.querySelector('.rc-root')?.dataset.phase === 'countdown');
+  await page.evaluate(() => window.__race.skip(3.3));
+  await page.waitForFunction(() => window.__race.race.phase === 'racing');
+  await page.screenshot({ path: 'browser-artifacts/race/desert-racing.png' });
   // Navigate to the home screen and enter again, without refreshing the tab.
   await page.locator('.rc-btns [data-act="exit"]').click();
   await page.waitForFunction(() => !document.querySelector('.rc-root'));

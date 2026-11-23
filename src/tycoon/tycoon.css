@@ -328,3 +328,21 @@
 /* The same thumb control becomes a momentary brake when driving. */
 .ty-root.touch .ty-tfoot button.brake { background:#49312c; border-color:#a76e5c; color:#ffe7d9; }
 .ty-root.touch .ty-tfoot button.brake.on { background:#bd644a; border-color:#e6a088; color:#fff; }
+
+/* HUSTLE visual system: matte materials and clear instrument hierarchy. */
+.ty-root { --gold:#e9c48a; --ink:#edf1f3; --mute:#b4c0cb; --bg:rgba(12,21,31,.94); --line:rgba(193,210,225,.2); }
+.ty-top > div, .ty-left > div, .ty-task, .ty-activity { background:var(--bg); border-color:var(--line); border-radius:7px; box-shadow:0 4px 14px #0004; backdrop-filter:none; -webkit-backdrop-filter:none; }
+.ty-cash { border-top:1px solid var(--line) !important; border-left:3px solid var(--gold) !important; }
+.ty-cash b { color:#f1d7a6; text-shadow:none; letter-spacing:-.03em; }
+.ty-tools button, .ty-speed button { border-radius:5px; background:#ffffff12; }
+.ty-tools button:hover, .ty-speed button:hover { background:#ffffff20; }
+.ty-bar { height:6px; border-radius:3px; }
+.ty-bar > i { background:#74a8c9; transition:width .2s ease-out; }
+.ty-bar.gold > i { background:#e1b978; }
+.ty-prompt { background:#101b27ec; border-radius:7px; border-color:#8e9fa66d; box-shadow:0 6px 18px #0007; animation:none; }
+.ty-prompt kbd { border-radius:4px; background:#e9c48a; }
+.ty-mini { border-radius:8px; box-shadow:0 5px 20px #0007; }
+.ty-toasts li { border-radius:5px; backdrop-filter:none; -webkit-backdrop-filter:none; }
+.ty-panel { box-shadow:0 18px 48px #0009; }
+.ty-titlebox .sub, .ty-banner p { text-shadow:none; }
+@media(max-width:860px) { .ty-top > div, .ty-left > div { box-shadow:0 2px 9px #0004; } }

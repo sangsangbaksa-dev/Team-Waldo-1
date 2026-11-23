@@ -102,6 +102,14 @@ describe('HUSTLE urban fleet', () => {
     rides.dispose();
   });
 
+  it('exposes parked vehicles as obstacles to NPC traffic probes', () => {
+    const { rides } = setup();
+    const car = rides.positions()[0];
+    expect(rides.blocksTraffic(car.x, car.z, 1.5)).toBe(true);
+    expect(rides.blocksTraffic(9999, 9999, 1.5)).toBe(false);
+    rides.dispose();
+  });
+
   it('restores only an occupied vehicle with a valid location', () => {
     const { player, rides } = setup();
     const car = rides.positions()[0];

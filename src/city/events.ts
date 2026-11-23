@@ -35,8 +35,9 @@ export function updateCityEvents(w: World): void {
   const ev = w.event; ev.t -= 1;
   if (ev.kind === 'convoy') {
     const v = w.vehicles.find(q => q.id === ev.vid);
-    if (v && v.alive && v.hp > 0) { ev.x = v.x; ev.y = v.y; }
-    else { finish(w, true); return; }
+    if (!v || !v.alive) { finish(w, false); return; }
+    if (v.hp <= 0) { ev.x = v.x; ev.y = v.y; finish(w, true); return; }
+    ev.x = v.x; ev.y = v.y;
   } else if (ev.kind === 'bounty') {
     const t = w.byId.get(ev.ids[0]);
     if (!t || !t.alive) { finish(w, false); return; }
@@ -67,11 +68,19 @@ export function resolveBountyKill(w: World, target: Actor, killer: number): void
   finish(w, killer === 0);
 }
 
-/** 배달 목적지: 물건 수령 지점에서 400~1300 떨어진 도로 위의 점 */
+/** 수령지와 목적지는 현재 자기장 안에, 다음 원이 예고되면 다음 자기장 안에도 있어야 합니다. */
+function deliveryZoneSafe(w: World, x: number, y: number): boolean {
+  const z = w.zone;
+  const margin = 60;
+  if (Math.hypot(x - z.x, y - z.y) > z.r - margin) return false;
+  return z.nr >= z.r || Math.hypot(x - z.nx, y - z.ny) <= z.nr - margin;
+}
+
+/** 배달 목적지: 물건 수령 지점에서 400~1300 떨어진 안전한 도로 위의 점 */
 function pickDrop(w: World, px: number, py: number): { x: number; y: number } | null {
   for (let k = 0; k < 30; k++) {
     const p = lanePoint(w.rng), d = Math.hypot(p.x - px, p.y - py);
-    if (d < 400 || d > 1300 || p.x < 80 || p.y < 80 || p.x > SIZE - 80 || p.y > SIZE - 80 || navBlocked(w.map, p.x, p.y)) continue;
+    if (d < 400 || d > 1300 || p.x < 80 || p.y < 80 || p.x > SIZE - 80 || p.y > SIZE - 80 || navBlocked(w.map, p.x, p.y) || !deliveryZoneSafe(w, p.x, p.y)) continue;
     return { x: p.x, y: p.y };
   }
   return null;
@@ -89,7 +98,8 @@ export function startEvent(w: World, kind: CityEventKind, px: number, py: number
   for (let k = 0; k < 24; k++) {
     const p = lanePoint(w.rng), d = Math.hypot(p.x - px, p.y - py);
     if (d < 650 || d > 1500 || p.x < 80 || p.y < 80 || p.x > SIZE - 80 || p.y > SIZE - 80 || Math.hypot(p.x - z.x, p.y - z.y) > z.r - 60 || navBlocked(w.map, p.x, p.y)) continue;
-    if (w.vehicles.some(v => Math.hypot(v.x - p.x, v.y - p.y) < 90)) continue;
+    if (kind === 'delivery' && !deliveryZoneSafe(w, p.x, p.y)) continue;
+    if (w.vehicles.some(v => v.alive && Math.hypot(v.x - p.x, v.y - p.y) < 90)) continue;
     const ev: CityEvent = { kind, x: p.x, y: p.y, t: time, total: time, vid: 0, prog: 0, ids: [], stage: 0, tx: 0, ty: 0, pay: 0 };
     if (kind === 'delivery') {
       const q = pickDrop(w, p.x, p.y); if (!q) continue;
@@ -114,6 +124,16 @@ function removeActor(w: World, id: number): void { const a = w.byId.get(id); if 
 function finish(w: World, ok: boolean): void {
   const ev = w.event!, f = w.factions[0]; w.event = null; w.eventT = 80 + w.rng() * 50;
   if (!ok) {
+    if (ev.kind === 'convoy') {
+      const truck = w.vehicles.find(v => v.id === ev.vid);
+      const driver = truck?.driver ? w.byId.get(truck.driver) : undefined;
+      // 실패한 수송차는 도시를 떠납니다. 플레이어가 운전 중이면 차량은 유지합니다.
+      if (truck?.alive && (!driver || driver.kind === 'civ')) {
+        truck.alive = false;
+        if (driver) removeActor(w, driver.id);
+        truck.driver = 0;
+      }
+    }
     w.eventStreak = 0; w.say(`${EVENT_INFO[ev.kind].name} 놓침 — 연속 보너스 초기화`, '#9aa4b2');
     for (const id of ev.ids) { if (ev.kind === 'bounty') removeActor(w, id); else { const a = w.byId.get(id); if (a) a.order = { type: 'wander', x: a.x, y: a.y }; } }
     return;

@@ -22,6 +22,20 @@ describe('HUSTLE urban fleet', () => {
     rides.dispose();
   });
 
+  it('adds subtle parking bays with one shared geometry and cleans them up on exit', () => {
+    const { scene, rides } = setup();
+    const parking = scene.getObjectByName('HUSTLE parking');
+    expect(parking).toBeDefined();
+    expect(parking?.children).toHaveLength(rides.positions().length);
+    const mesh = parking?.children[0] as THREE.Mesh;
+    if (mesh) {
+      for (const entry of parking!.children) expect((entry as THREE.Mesh).geometry).toBe(mesh.geometry);
+      expect((mesh.material as THREE.MeshBasicMaterial).opacity).toBeLessThan(0.4);
+    }
+    rides.dispose();
+    expect(scene.getObjectByName('HUSTLE parking')).toBeUndefined();
+  });
+
   it('does not spawn an occupied sedan inside a building collision box', () => {
     const scene = new THREE.Scene();
     const layout = buildLayout([]);

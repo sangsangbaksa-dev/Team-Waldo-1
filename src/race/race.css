@@ -143,3 +143,35 @@
   .rc-card.result .rc-laps li { padding-block: 4px; }
   .rc-card.result .rc-actions { margin-top: 6px; gap: 6px; }
 }
+
+/* On narrow portrait touch screens the lap panel and timer cannot share the
+   first row. Place the timer beneath the minimap controls, away from pedals. */
+@media (max-width: 480px) and (min-height: 481px) {
+  .rc-root.touch .rc-tc {
+    left: auto;
+    right: max(14px, env(safe-area-inset-right));
+    top: max(144px, calc(env(safe-area-inset-top) + 130px));
+    transform: none;
+    width: min(156px, 42vw);
+    padding: 7px 9px;
+    text-align: right;
+  }
+  .rc-root.touch .rc-tc .rc-best {
+    font-size: 10px;
+    letter-spacing: 0;
+    line-height: 1.25;
+    min-height: 0;
+  }
+}
+/* The stored accessibility setting also suppresses HUD movement. Countdown
+   still uses a stationary opacity pulse so its timing remains understandable. */
+@keyframes rc-count-steady {
+  0%, 80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
+}
+.rc-root.reduced-motion .rc-wrong { animation: none; }
+.rc-root.reduced-motion .rc-count.show { animation: rc-count-steady .9s linear forwards; }
+.rc-root.reduced-motion .rc-msg,
+.rc-root.reduced-motion .rc-drift,
+.rc-root.reduced-motion .rc-draft,
+.rc-root.reduced-motion .rc-boostfx { transition: none; }

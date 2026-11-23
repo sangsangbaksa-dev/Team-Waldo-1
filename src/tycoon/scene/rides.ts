@@ -102,10 +102,14 @@ export class Rides {
       this.colliders.resolve(px, pz, RADIUS, this.scratch);
       if (Math.hypot(this.scratch.x - px, this.scratch.z - pz) > 0.03 || this.trafficBlocks(px, pz, RADIUS)) return false;
     }
-    // Keep parked cars solid even though the player character uses city-only collision.
+    // Use oriented car bodies instead of center distances (a van can overlap nose-to-tail).
     for (const other of this.cars) {
-      if (other === ignore) continue;
-      if (Math.hypot(other.x - x, other.z - z) < 3.55) return false;
+      if (other === ignore || Math.hypot(other.x - x, other.z - z) > 7) continue;
+      for (const part of [-BODY_LENGTH, 0, BODY_LENGTH]) {
+        const px = x + Math.cos(heading) * part, pz = z - Math.sin(heading) * part;
+        const pushed = pushWalkerFromCar(px, pz, RADIUS, other);
+        if (Math.hypot(pushed.x - px, pushed.z - pz) > 0.03) return false;
+      }
     }
     return true;
   }
@@ -143,7 +147,11 @@ export class Rides {
         return Math.hypot(this.scratch.x - x, this.scratch.z - z) < 0.04 &&
           worldDistance({ x, z }, car) > 2.3 &&
           !this.trafficBlocks(x, z, 0.48) &&
-          !this.cars.some(other => other !== car && worldDistance({ x, z }, other) < 2.8);
+          !this.cars.some(other => {
+            if (other === car) return false;
+            const pushed = pushWalkerFromCar(x, z, 0.48, other);
+            return Math.hypot(pushed.x - x, pushed.z - z) > 0.03;
+          });
       });
       if (!exit) return { ok: false, message: '내릴 공간이 없습니다. 차를 조금 움직여 보세요' };
       this.active = null; this.lamp.intensity = 0;

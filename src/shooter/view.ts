@@ -413,7 +413,24 @@ export class ShooterView {
       if (!active) { if (n) { this.freeNode(n); this.redNodes.delete(i); } return; }
       if (!n) {
         n = new THREE.Group(); const wall = new THREE.Mesh(new THREE.CylinderGeometry(r.r, r.r, 150, 64, 1, true), new THREE.MeshBasicMaterial({ color: 0xff2a18, transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })); wall.position.y = 75;
-        const disc = new THREE.Mesh(new THREE.CircleGeometry(r.r, 64), new THREE.MeshBasicMaterial({ color: 0xff2a18, transparent: true, opacity: 0.12, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })); disc.rotation.x = -Math.PI / 2; disc.position.y = 0.25;
+        // 위험 구역 바닥 강조는 계곡/능선의 실제 높이를 따라갑니다.
+        // 수평 CircleGeometry를 그대로 두면 언덕에 경고 원이 묻혀 보이지 않았습니다.
+        const segments = 48, rings = 7, verts: number[] = [], triangles: number[] = [];
+        for (let radial = 0; radial <= rings; radial++) {
+          const radius = r.r * radial / rings;
+          for (let angular = 0; angular < segments; angular++) {
+            const a = angular * Math.PI * 2 / segments, x = Math.cos(a) * radius, z = Math.sin(a) * radius;
+            verts.push(x, groundHeight(m.map.terrain, r.x + x, r.z + z) + 0.27, z);
+          }
+        }
+        for (let radial = 0; radial < rings; radial++) for (let angular = 0; angular < segments; angular++) {
+          const a = radial * segments + angular, b = radial * segments + (angular + 1) % segments, c = a + segments, d = b + segments;
+          triangles.push(a, b, c, b, d, c);
+        }
+        const discGeometry = new THREE.BufferGeometry();
+        discGeometry.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3)); discGeometry.setIndex(triangles);
+        discGeometry.computeVertexNormals();
+        const disc = new THREE.Mesh(discGeometry, new THREE.MeshBasicMaterial({ color: 0xff2a18, transparent: true, opacity: 0.12, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false }));
         n.add(wall, disc); n.position.set(r.x, 0, r.z); this.scene.add(n); this.redNodes.set(i, n);
       }
       const warn = m.t < r.start, pulse = 0.5 + 0.5 * Math.sin(this.time * (warn ? 9 : 4)); ((n.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.05 + pulse * (warn ? 0.13 : 0.07); ((n.children[1] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.06 + pulse * 0.08;
@@ -425,7 +442,7 @@ export class ShooterView {
         g = new THREE.Group(); const streak = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.24, 18, 6, 1, true), new THREE.MeshBasicMaterial({ color: 0xffc060, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
         const ring = new THREE.Mesh(new THREE.RingGeometry(1.6, 2.1, 24), new THREE.MeshBasicMaterial({ color: 0xff3a22, transparent: true, opacity: 0.6, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.3;
         const head = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, color: 0xffb050, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })); head.scale.setScalar(5);
-        g.add(streak, ring, head); g.position.set(sh.x, 0, sh.z); this.scene.add(g); this.shellNodes.set(sh.id, g);
+        g.add(streak, ring, head); g.position.set(sh.x, groundHeight(m.map.terrain, sh.x, sh.z), sh.z); this.scene.add(g); this.shellNodes.set(sh.id, g);
       }
       g.children[0].position.y = 9 + 190 * (1 - frac); g.children[2].position.y = 190 * (1 - frac); g.children[1].scale.setScalar(1 + (1 - frac) * 2.2);
     }

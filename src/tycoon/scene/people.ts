@@ -65,7 +65,7 @@ export class Crowd {
   dispose(): void { this.group.removeFromParent(); }
 }
 
-interface Car { mesh: THREE.Group; axis: 'x' | 'z'; line: number; lane: number; dir: 1 | -1; t: number; speed: number; base: number; lights: THREE.Mesh[] }
+interface Car { mesh: THREE.Group; axis: 'x' | 'z'; line: number; lane: number; dir: 1 | -1; t: number; speed: number }
 const CAR_COLORS = [0xb83a34, 0x2f5f9a, 0xd8d8d2, 0x23262b, 0x3a7a58, 0xd0a23a, 0x6a6e74, 0x8a4aa0];
 
 export class Traffic {
@@ -78,14 +78,19 @@ export class Traffic {
     for (let k = 0; k < total; k++) {
       const kind = hash01(k, 21) < 0.14 ? 'van' : hash01(k, 22) < 0.1 ? 'bus' : hash01(k, 23) < 0.12 ? 'truck' : 'car', c = CAR_COLORS[k % CAR_COLORS.length];
       const spec = kind === 'bus' ? { w: 9.5, d: 2.6, h: 3 } : kind === 'van' ? { w: 5, d: 2.1, h: 2.2 } : kind === 'truck' ? { w: 5.2, d: 2.1, h: 1.9 } : { w: 4.4, d: 1.9, h: 1.5 };
-      const mesh = makeVehicleMesh({ kind, ...spec, c, v: k % 2, wreck: false }), lights: THREE.Mesh[] = [];
+      const mesh = makeVehicleMesh({ kind, ...spec, c, v: k % 2, wreck: false });
       for (const z of [-0.65, 0.65] as const) {
         const hl = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.2, 0.32), this.lightMat), tl = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.18, 0.32), this.tailMat);
-        const sc = spec.d / 1.9; hl.position.set(spec.w / 2 + 0.02, kind === 'bus' ? 0.9 : 0.72, z * sc); tl.position.set(-spec.w / 2 - 0.02, kind === 'bus' ? 0.9 : 0.68, z * sc); mesh.add(hl, tl); lights.push(hl, tl);
+        const sc = spec.d / 1.9; hl.position.set(spec.w / 2 + 0.02, kind === 'bus' ? 0.9 : 0.72, z * sc); tl.position.set(-spec.w / 2 - 0.02, kind === 'bus' ? 0.9 : 0.68, z * sc); mesh.add(hl, tl);
       }
-      mesh.visible = false; this.group.add(mesh);
       const axis = k % 2 ? 'x' : 'z', dir = (hash01(k, 24) < 0.5 ? 1 : -1) as 1 | -1;
-      this.cars.push({ mesh, axis, line: roads[1 + (k * 3) % (roads.length - 2)], lane: 2.9, dir, t: (hash01(k, 25) * 2 - 1) * (WORLD_HALF - 8), speed: 6.5 + hash01(k, 26) * 5, base: 0, lights });
+      const line = roads[1 + (k * 3) % (roads.length - 2)], lane = 2.9;
+      const t = (hash01(k, 25) * 2 - 1) * (WORLD_HALF - 8);
+      // Place traffic at its assigned road immediately to avoid a first-frame jump.
+      if (axis === 'x') { mesh.position.set(t, 0.18, line + dir * lane); mesh.rotation.y = dir > 0 ? 0 : Math.PI; }
+      else { mesh.position.set(line - dir * lane, 0.18, t); mesh.rotation.y = dir > 0 ? -Math.PI / 2 : Math.PI / 2; }
+      mesh.visible = false; this.group.add(mesh);
+      this.cars.push({ mesh, axis, line, lane, dir, t, speed: 6.5 + hash01(k, 26) * 5 });
     }
     this.setStage(0);
   }
@@ -97,7 +102,7 @@ export class Traffic {
       // 앞에 사람이 있으면 멈춥니다
       const along = c.axis === 'x' ? c.dir : 0, alongZ = c.axis === 'z' ? c.dir : 0, px = c.mesh.position.x, pz = c.mesh.position.z;
       const rx = player.x - px, rz = player.z - pz, fwd = rx * along + rz * alongZ, side = Math.abs(rx * alongZ * -1 + rz * along * 1);
-      const blocked = fwd > 0 && fwd < 9 && side < 2.6; c.base += ((blocked ? 0 : 1) - c.base) * Math.min(1, dt * 3);
+      const blocked = fwd > 0 && fwd < 9 && side < 2.6;
       c.t += c.dir * c.speed * (blocked ? 0.0 : 1) * dt; if (c.t > WORLD_HALF - 6) c.t = -WORLD_HALF + 6; if (c.t < -WORLD_HALF + 6) c.t = WORLD_HALF - 6;
       const lane = c.dir > 0 ? c.lane : -c.lane;
       if (c.axis === 'x') { c.mesh.position.set(c.t, 0.18, c.line + lane); c.mesh.rotation.y = c.dir > 0 ? 0 : Math.PI; }
@@ -105,5 +110,15 @@ export class Traffic {
     }
     this.lightMat.color.setScalar(0.4 + night * 1.6); this.tailMat.color.setRGB(0.5 + night, 0.1, 0.06);
   }
-  dispose(): void { this.group.removeFromParent(); }
+  dispose(): void {
+    const materials = new Set<THREE.Material>();
+    for (const car of this.cars) car.mesh.traverse(obj => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      obj.geometry.dispose();
+      for (const mat of Array.isArray(obj.material) ? obj.material : [obj.material]) materials.add(mat);
+    });
+    for (const material of materials) material.dispose();
+    this.cars.length = 0;
+    this.group.removeFromParent();
+  }
 }

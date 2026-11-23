@@ -5,7 +5,7 @@ export interface Chapter {
 export const chapters: Chapter[];
 export interface Level { map:string[]; w:number; start:number; station:number; items:number[]; exit:number; nest:number; reachable:number[] }
 export interface PathTree { prev:Int32Array; dist:Int32Array; q:number[] }
-export interface CampaignSave { v:1; ch:number; found:boolean[]; solved:boolean; seen:number[]; elapsed:number }
+export interface CampaignSave { v:1; ch:number; found:boolean[]; solved:boolean; seen:number[]; elapsed:number; recorderUsed:number }
 export interface Position { x:number; z:number }
 export function makeLevel(ch:number):Level;
 export function walkable(map:string[],id:number):boolean;

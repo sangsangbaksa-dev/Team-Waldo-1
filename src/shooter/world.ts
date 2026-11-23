@@ -298,7 +298,11 @@ function lootCount(rng: () => number, mode: Mode, range: [number, number]): numb
 /** 실내 선반·상자 안에 전리품이 묻히지 않도록 플레이어가 닿을 수 있는 자리만 선택합니다. */
 function interiorLootSpot(map: GameMap, rng: () => number, b: Building): { x: number; z: number } | null {
   for (let i = 0; i < 18; i++) {
-    const x = b.x + (rng() - 0.5) * (b.w - 2.4), z = b.z + (rng() - 0.5) * (b.d - 2.4);
+    // 벙커에는 벽 옆 상자가 좁은 사각 포켓을 만듭니다. 상자가 없더라도
+    // 실제 출입 경로가 막힌 곳에 전리품이 생기지 않도록 문과 연결된 중앙 복도를 우선합니다.
+    const corridorX = b.type === 'bunker' && b.door === 'z' ? Math.min(b.w - 2.4, 1.6) : b.w - 2.4;
+    const corridorZ = b.type === 'bunker' && b.door === 'x' ? Math.min(b.d - 2.4, 1.6) : b.d - 2.4;
+    const x = b.x + (rng() - 0.5) * corridorX, z = b.z + (rng() - 0.5) * corridorZ;
     if (!blockedAt(map, x, z, PLAYER.radius + 0.1)) return { x, z };
   }
   return !blockedAt(map, b.x, b.z, PLAYER.radius + 0.1) ? { x: b.x, z: b.z } : null;

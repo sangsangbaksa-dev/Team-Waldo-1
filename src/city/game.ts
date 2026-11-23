@@ -311,8 +311,11 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     }
     for (let i = ak.length - 1; i >= bk.length; i--) a.removeChild(ak[i]);
   }
+  const lastMarkup = new WeakMap<HTMLElement, string>();
   function put(el: HTMLElement, html: string): void {
+    if (lastMarkup.get(el) === html) return;
     const t = document.createElement('div'); t.innerHTML = html; sync(el, t);
+    lastMarkup.set(el, html);
   }
 
   function renderMissions(): void {

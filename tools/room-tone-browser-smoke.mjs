@@ -47,7 +47,25 @@ try {
           return el.contains(document.elementFromPoint(r.x + r.width/2, r.y + r.height/2));
         });
         assert.ok(hit, "HUD must receive pointer events above the 3D canvas");
-        await page.locator("#pauseGame").click();
+        try {
+          await page.locator("#pauseGame").click({timeout:10000});
+        } catch (error) {
+          const snapshot = await page.evaluate(() => {
+            const button = document.getElementById("pauseGame");
+            const rect = button.getBoundingClientRect();
+            const x = rect.x + rect.width / 2, y = rect.y + rect.height / 2;
+            const ancestors = document.elementsFromPoint(x,y).slice(0,5).map(el => el.tagName.toLowerCase() + "#" + el.id);
+            return {
+              ancestors,
+              parentInert: button.closest("[inert]")?.id ?? null,
+              headerEvents: getComputedStyle(button.closest(".hud")).pointerEvents,
+              rightEvents: getComputedStyle(button.parentElement).pointerEvents,
+              dialogHidden: document.getElementById("dialog").hidden,
+              position: { x, y },
+            };
+          });
+          throw new Error("Mobile pause control blocked: " + JSON.stringify(snapshot) + " / " + String(error));
+        }
       }
       else await page.keyboard.press("p");
       await page.getByRole("button", { name: "조작 설정", exact: true }).click();

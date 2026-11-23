@@ -371,7 +371,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     // 월드 갱신
     const minutes = playing ? st.minutes : 17.4 * 60, focus = playing ? player.pos : titleFocus;
     const sky = atmo.update(dt, camera, focus, minutes, st.day);
-    city.setNight(sky.night); city.setWet(sky.wet); renderer.toneMappingExposure = atmo.exposure();
+    city.setNight(sky.night); city.setWet(sky.wet); rides?.setLighting(sky.night); renderer.toneMappingExposure = atmo.exposure();
     city.update(dt, focus);
     crowd?.update(dt, focus, sky.night, sky.wet, (i, j) => city.blockOpen(i, j)); traffic?.update(dt, focus, player.pos, sky.night);
     if (st.stageIndex !== lastStage && playing) applyStageLook();

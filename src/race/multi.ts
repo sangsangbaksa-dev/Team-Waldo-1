@@ -21,7 +21,7 @@ const SILENT_MS = 6000, GATHER_MS = 12000, NEVER_MS = 25000;
 export class RaceMulti {
   started = false;
   private ch: Channel; private timer: number; private born = performance.now(); private lastSnap = 0; private lastTick = performance.now(); private dead = false; private disposed = false;
-  private startList: Array<{ id: string; car: string }> = []; private cars = new Map<string, string>(); private heard = new Map<string, number>(); private gone = new Set<string>(); private ids: string[];
+  private startList: Array<{ id: string; car: string }> = []; private cars = new Map<string, string>(); private heard = new Map<string, number>(); private gone = new Set<string>(); private finished = new Set<string>(); private ids: string[];
   constructor(readonly session: RoomSession, private car: string, private hooks: MultiHooks) {
     this.ids = session.players.map(p => p.id); this.cars.set(session.me.id, car);
     this.ch = session.open(m => this.onMsg(m));
@@ -53,10 +53,10 @@ export class RaceMulti {
     for (const p of list) if (p.id !== this.session.me.id) this.heard.set(p.id, now);
     this.hooks.onStart(list);
   }
-  private leave(id: string): void { if (this.gone.has(id)) return; this.gone.add(id); this.heard.delete(id); this.hooks.onGone(id); }
+  private leave(id: string): void { if (this.gone.has(id)) return; this.gone.add(id); this.heard.delete(id); if (!this.started) this.cars.delete(id); this.hooks.onGone(id); }
   private onMsg(m: NetMsg): void {
     if (this.dead) return;
-    const f = typeof m.f === 'string' ? m.f : ''; if (!f || f === this.session.me.id || !this.ids.includes(f)) return;
+    const f = typeof m.f === 'string' ? m.f : ''; if (!f || f === this.session.me.id || !this.ids.includes(f) || this.gone.has(f)) return;
     if (this.started) { if (this.heard.has(f)) this.heard.set(f, performance.now()); }
     if (m.t === 'hello') { if (this.started && this.session.host) this.ch.send({ t: 'start', f: this.session.me.id, list: this.startList }); else if (!this.started) this.cars.set(f, typeof m.car === 'string' && CARS.some(c => c.id === m.car) ? m.car : CARS[0].id); }
     else if (m.t === 'start') {
@@ -71,7 +71,7 @@ export class RaceMulti {
       if (seen.has(this.session.me.id) && seen.has(this.session.room.host_id) && list.length >= 2) this.begin(list);
     }
     else if (m.t === 's') { const s = parseSnap(m.c); if (s && this.started && !this.gone.has(f)) this.hooks.onSnap(f, s); }
-    else if (m.t === 'fin') { if (this.started && this.heard.has(f) && typeof m.time === 'number' && Number.isFinite(m.time) && m.time > 0) this.hooks.onFinish(f, m.time); }
+    else if (m.t === 'fin') { if (this.started && this.heard.has(f) && !this.finished.has(f) && typeof m.time === 'number' && Number.isFinite(m.time) && m.time > 0) { this.finished.add(f); this.hooks.onFinish(f, m.time); } }
     else if (m.t === 'bye') this.leave(f);
   }
   sendSnap(car: CarState, now: number): void { if (this.dead || !this.started || now - this.lastSnap < 66) return; this.lastSnap = now; this.ch.send({ t: 's', f: this.session.me.id, c: encodeSnap(car) }); }

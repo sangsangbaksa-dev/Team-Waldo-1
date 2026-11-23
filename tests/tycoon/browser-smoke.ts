@@ -66,7 +66,10 @@ async function main(): Promise<void> {
     assert.ok(await desktop.locator('.ty-map-vehicle').count() >= 5, 'Vehicle directory should be populated');
     await desktop.screenshot({ path: 'artifacts/hustle-desktop-map.png', fullPage: false });
     await desktop.locator('.ty-map-vehicle:not([disabled])').first().click();
-    await desktop.locator('#ty-route').waitFor({ state: 'visible' });
+    await desktop.waitForTimeout(350);
+    const activeRoute = await desktop.locator('#ty-route').isVisible();
+    const routeToast = await desktop.locator('#ty-toasts').textContent();
+    assert.ok(activeRoute || routeToast?.includes('목적지에 도착'), 'Map selection must show a route or recognize immediate arrival');
     await desktop.locator('#ty-b-menu').click();
     await desktop.locator('[data-menu="save"]').click();
     assert.ok((await desktop.locator('#ty-toasts').textContent())?.includes('저장했습니다'), 'Save toast must confirm');
@@ -77,6 +80,10 @@ async function main(): Promise<void> {
     await startGame(mobile);
     await approachFirstCar(mobile);
     const ride = mobile.locator('#ty-t-ride');
+    await mobile.waitForFunction(() => {
+      const el = document.getElementById('ty-t-ride');
+      return el instanceof HTMLButtonElement && !el.disabled;
+    });
     await ride.tap();
     assert.equal((await getDebug(mobile)).driving, true, 'Tap must enter vehicle');
     const brake = mobile.locator('#ty-t-run');

@@ -254,6 +254,29 @@ try {
   await mobileResult.locator('[data-act="setup"]').click();
   await mobile.locator('.rc-setup').waitFor();
   await mobileContext.close();
+
+  // Local online lobby smoke: duplicate launch taps must create only one lobby,
+  // closing it must restore the race setup, and exit must clean up the overlay.
+  const lobbyContext = await browser.newContext({ viewport: { width: 960, height: 600 } });
+  const lobbyPage = await lobbyContext.newPage();
+  lobbyPage.on('pageerror', error => errors.push('online lobby: ' + error.message));
+  await lobbyPage.goto(origin + '/?pvp=local');
+  await lobbyPage.locator('#start-race').click();
+  await lobbyPage.locator('.rc-setup').waitFor();
+  await lobbyPage.evaluate(() => {
+    const button = document.querySelector('.rc-setup [data-setup="pvp"]');
+    button.click(); button.click();
+  });
+  await lobbyPage.locator('.pvp-root').waitFor();
+  assert.equal(await lobbyPage.locator('.pvp-root').count(), 1, 'duplicate online lobby created');
+  await lobbyPage.locator('.pvp-root [data-act="close"]').click();
+  await lobbyPage.locator('.pvp-root').waitFor({ state: 'detached' });
+  await lobbyPage.locator('.rc-setup [data-setup="pvp"]').click();
+  await lobbyPage.locator('.pvp-root').waitFor();
+  await lobbyPage.evaluate(() => document.querySelector('.rc-setup [data-setup="exit"]').click());
+  await lobbyPage.waitForFunction(() => !document.querySelector('.rc-root') && !document.querySelector('.pvp-root'));
+  await lobbyContext.close();
+
   assert.deepEqual(errors, [], 'Uncaught browser errors');
   console.log('SPEED RUSH browser smoke OK:', completion);
 } finally {

@@ -1,6 +1,6 @@
 // ZERO ZONE — 경기 시뮬레이션: 이동·사격·피해·전리품·줄어드는 자기장·승패. 화면과 무관해서 테스트와 봇 대 봇 시뮬레이션에서 그대로 돌립니다.
 import { AIR, BOOST, BOTS, BOT_NAMES, DIFFICULTIES, DRIVE, HELMET_CUT, HEAL, ARMOR_PTS, ARMOR_ABS, MAP_HALF, PARTS, adsSpread, canFit, partFit, PLAYER, RED, SKIN_TONES, TEAM_COLORS, VEHICLES, WEAPONS, ZONES, magOf, makeRng, partHandling, type Attachments, type Difficulty, type DriveKind, type Mode, type PartId, type WeaponId } from './config';
-import { blockedAt, circleHits, generateMap, lineClear, moveBox, pushOut, rayWorld, slideMove, type GameMap, type Loot } from './world';
+import { blockedAt, circleHits, generateMap, lineClear, moveBox, pushOut, rayWorld, slideMove, sphereHits, type GameMap, type Loot } from './world';
 import { WATER_SLOW, groundHeight, waterDepth } from './terrain';
 import { thinkBot, thinkAir, newBrain, type BotBrain } from './bot';
 
@@ -468,12 +468,26 @@ export class Match {
   private stepNades(dt: number): void {
     for (let i = this.nades.length - 1; i >= 0; i--) {
       const n = this.nades[i]; n.fuse -= dt; n.vy -= 18 * dt;
-      const nx = n.x + n.vx * dt, nz = n.z + n.vz * dt;
-      if (blockedAt(this.map, nx, n.z, 0.15)) n.vx *= -0.45; else n.x = nx;
-      if (blockedAt(this.map, n.x, nz, 0.15)) n.vz *= -0.45; else n.z = nz;
-      n.y += n.vy * dt;
-      const floor = groundHeight(this.map.terrain, n.x, n.z) + 0.12;
-      if (n.y < floor) { n.y = floor; n.vy = Math.abs(n.vy) > 2 ? -n.vy * 0.38 : 0; n.vx *= 0.7; n.vz *= 0.7; }
+      const radius = 0.15;
+      // 이동 거리보다 얇은 벽·천장을 한 틱에 통과하지 않도록 3축을 작은 단계로 진행합니다.
+      const distance = Math.max(Math.abs(n.vx), Math.abs(n.vy), Math.abs(n.vz)) * dt;
+      const steps = Math.max(1, Math.ceil(distance / 0.12)), tick = dt / steps;
+      for (let step = 0; step < steps; step++) {
+        const nx = n.x + n.vx * tick, nz = n.z + n.vz * tick;
+        if (sphereHits(this.map, nx, n.y, n.z, radius)) n.vx *= -0.45;
+        else n.x = nx;
+        if (sphereHits(this.map, n.x, n.y, nz, radius)) n.vz *= -0.45;
+        else n.z = nz;
+        const ny = n.y + n.vy * tick;
+        if (sphereHits(this.map, n.x, ny, n.z, radius)) n.vy *= -0.38;
+        else n.y = ny;
+        const floor = groundHeight(this.map.terrain, n.x, n.z) + 0.12;
+        if (n.y < floor) {
+          n.y = floor;
+          n.vy = Math.abs(n.vy) > 2 ? -n.vy * 0.38 : 0;
+          n.vx *= 0.7; n.vz *= 0.7;
+        }
+      }
       if (n.fuse > 0) continue;
       this.nades.splice(i, 1); this.events.push({ t: 'nade', stage: 'boom', id: n.owner, x: n.x, y: n.y, z: n.z });
       this.sounds.push({ x: n.x, z: n.z, t: this.t, by: n.owner });

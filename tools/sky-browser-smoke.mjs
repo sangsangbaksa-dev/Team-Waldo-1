@@ -183,6 +183,22 @@ try {
         await page.waitForFunction(() => document.querySelector('#sk-b-flare')?.disabled);
         assert.match(await page.locator('#sk-b-flare').innerText(), /[1-4]초/,
           'The touch flare button must show its cooldown');
+        await page.evaluate(() => {
+          const button = document.querySelector('#sk-b-boost');
+          button.setPointerCapture = () => {}; // synthetic event has no active browser pointer
+          button.dispatchEvent(new PointerEvent('pointerdown', {
+            bubbles: true, pointerType: 'touch', pointerId: 777, button: 0,
+          }));
+        });
+        await page.waitForFunction(() => window.__sky.sim.player.boosting === true);
+        await page.evaluate(() => {
+          const button = document.querySelector('#sk-b-boost');
+          button.dispatchEvent(new PointerEvent('lostpointercapture', {
+            bubbles: true, pointerType: 'touch', pointerId: 777,
+          }));
+          delete button.setPointerCapture;
+        });
+        await page.waitForFunction(() => window.__sky.sim.player.boosting === false);
       }
       const runsBefore = await page.evaluate(() => JSON.parse(localStorage.getItem('waldo.sky.v1') || '{}').runs || 0);
       await page.evaluate(() => {

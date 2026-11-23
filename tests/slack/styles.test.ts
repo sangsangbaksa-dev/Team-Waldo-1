@@ -5,6 +5,13 @@ const sheets = ['slack.css', 'classroom.css', 'computer.css'] as const;
 const styles = sheets.map(name => ({ name, css: readFileSync(new URL(`../../src/slack/${name}`, import.meta.url), 'utf8') }));
 const keyframes = (css: string): string[] => [...css.matchAll(/@keyframes\s+([\w-]+)/g)].map(match => match[1]!);
 
+describe('SLACK OFF dorm hidden-app lifecycle', () => {
+  it('pauses countdown animations while a mini-app is inactive', () => {
+    const dorm = styles.find(s => s.name === 'computer.css')!.css;
+    expect(dorm).toContain('.sc-app-window:not(.on) *{animation-play-state:paused!important}');
+  });
+});
+
 describe('SLACK OFF animation isolation', () => {
   it('keeps animation names unique across lazy-loaded stage stylesheets', () => {
     // Stage CSS remains mounted after loading. A duplicate global @keyframes name

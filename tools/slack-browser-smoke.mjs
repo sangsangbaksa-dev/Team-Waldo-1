@@ -180,8 +180,26 @@ try {
         && starRect.x + starRect.width <= sceneRect.x + sceneRect.width + 1
         && starRect.y + starRect.height <= sceneRect.y + sceneRect.height + 1,
         'The star must be fully visible and clickable on each screen size');
+      if (size.name === 'phone') {
+        // Keep an existing target onscreen when a mobile device rotates.
+        await page.locator('.sl-hud [data-pause]').click();
+        await page.locator('[data-paused]:visible').waitFor();
+        await page.setViewportSize({ width: 844, height: 390 });
+        const rotatedStar = await star.boundingBox();
+        const rotatedScene = await page.locator('.sc-game-scene').boundingBox();
+        assert.ok(rotatedStar && rotatedScene
+          && rotatedStar.x >= rotatedScene.x - 1 && rotatedStar.y >= rotatedScene.y - 1
+          && rotatedStar.x + rotatedStar.width <= rotatedScene.x + rotatedScene.width + 1
+          && rotatedStar.y + rotatedStar.height <= rotatedScene.y + rotatedScene.height + 1,
+          'An active target must be repositioned safely when a phone rotates');
+        await page.setViewportSize({ width: size.width, height: size.height });
+        await page.locator('[data-paused] [data-resume]').click();
+      }
       await page.locator('.sc-apps [data-app="chat"]').click();
       await page.locator('.sc-app-chat').waitFor({ state: 'visible' });
+      assert.equal(await page.locator('.sc-app-game .sc-target circle')
+        .evaluate(node => getComputedStyle(node).animationPlayState), 'paused',
+        'An inactive game must stop its countdown animation');
       await page.locator('.sc-apps [data-app="shop"]').click();
       await page.locator('.sc-app-shop').waitFor({ state: 'visible' });
       assert.equal(await page.locator('.sc-app-shop [data-total]').textContent(), '합계 0원',

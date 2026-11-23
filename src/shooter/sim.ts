@@ -192,7 +192,15 @@ export class Match {
     if (this.over || !Number.isFinite(dt) || dt <= 0) return;
     this.t += dt;
     const zone = this.zone;
-    this.sounds = this.sounds.filter(s => this.t - s.t < 2.5);
+    // 60fps 경기에서 매 틱 새 배열을 할당하지 않고 최근 총소리만 제자리에서 유지합니다.
+    if (this.sounds.length) {
+      let write = 0;
+      for (let read = 0; read < this.sounds.length; read++) {
+        const sound = this.sounds[read];
+        if (this.t - sound.t < 2.5) this.sounds[write++] = sound;
+      }
+      this.sounds.length = write;
+    }
     this.stepDrops(); this.stepNades(dt); this.stepVehicles(dt); this.stepReds(dt);
     // 멀리 있는 AI(사람 시야 밖)는 생각을 0.2초에 한 번만 해서 100명이 뛰어도 가볍게 돕니다.
     const humans: Player[] = []; for (const q of this.players) if (!q.bot && q.alive) humans.push(q);

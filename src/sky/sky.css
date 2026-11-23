@@ -1,4 +1,3 @@
-/* SKY WAR — 하늘색 계기판 HUD */
 .sk-root{position:fixed;inset:0;z-index:50;background:#0a1626;color:#eaf4ff;font-family:'Pretendard Variable',Pretendard,'Noto Sans KR',system-ui,sans-serif;-webkit-user-select:none;user-select:none;overflow:hidden;touch-action:none;cursor:crosshair}
 .sk-root [hidden]{display:none!important}
 .sk-canvas,.sk-ov{position:absolute;inset:0;width:100%;height:100%;display:block}
@@ -35,16 +34,16 @@
 /* Flight deck */
 .sk-top{gap:4px;top:max(14px,env(safe-area-inset-top))}
 .sk-score{padding:5px 24px 7px;background:linear-gradient(90deg,transparent,#071a2bbd 22%,#071a2bbd 78%,transparent);border-bottom:1px solid #9fdcf455;font-variant-numeric:tabular-nums}
-.sk-score b{letter-spacing:.08em;text-shadow:0 2px 8px #061723,0 0 20px #8fe5ff66}.sk-score span{color:#ffca78}
+.sk-score b{letter-spacing:.06em;text-shadow:0 1px 3px #061723}.sk-score span{color:#ffca78}
 .sk-wave,.sk-combo{color:#d4e9ee;text-shadow:0 2px 5px #102735;font-size:12px;letter-spacing:.16em}
-.sk-bars{gap:7px;padding:10px 12px;background:linear-gradient(105deg,#071b2bd9,#071b2b44);border-left:2px solid #81dbef;border-radius:2px 10px 10px 2px;box-shadow:0 6px 24px #00141d33}
-.sk-bar{height:9px;border-radius:2px;background:#06131dbb;border-color:#c9f3ff38}.sk-bar i,.sk-gauges .thr i{transition:width .2s ease-out,background .25s;box-shadow:0 0 10px #91ffe888}
-.sk-bar i{background:linear-gradient(90deg,#43cdae,#c4f3a7)}.sk-bar.heat i{background:linear-gradient(90deg,#ffcc78,#ff8556)}.sk-bar.fuel i{background:linear-gradient(90deg,#45a9d2,#bcefff)}
-.sk-bar.low,.sk-bar.hot{box-shadow:0 0 12px #ff513f88}.sk-bar.low i,.sk-bar.hot i{background:linear-gradient(90deg,#f05246,#ffad6a);animation:skb .65s infinite}
-.sk-gauges{padding:8px 12px;border-left:2px solid #8bdae8;background:linear-gradient(90deg,#071b2bd9,transparent);font-variant-numeric:tabular-nums;color:#b4d8e1}.sk-gauges b{color:#fff4df}.sk-gauges .thr{border-radius:2px}.sk-gauges .thr i{background:linear-gradient(90deg,#59bdd8,#d1f8ff)}
-.sk-alert{color:#ffb0a0;letter-spacing:.13em;text-shadow:0 0 16px #f3422e,0 2px 5px #220700}
-.sk-banner{text-transform:uppercase;text-shadow:0 0 25px #8edfffa8,0 3px 0 #183c52;transform:scale(.92);transition:opacity .2s,transform .35s cubic-bezier(.2,.8,.2,1)}.sk-banner.on{transform:scale(1)}
-.sk-pause,.sk-btns button{background:linear-gradient(145deg,#16394edb,#081b2cdb);border:1px solid #b3e9f16b;box-shadow:inset 0 1px #ffffff24,0 6px 18px #00131e55;color:#edfaff;touch-action:manipulation}
+.sk-bars{gap:7px;padding:10px 12px;background:#071b2bce;border-left:2px solid #81b7c1;border-radius:3px;box-shadow:none}
+.sk-bar{height:9px;border-radius:2px;background:#06131dbb;border-color:#c9f3ff38}.sk-bar i,.sk-gauges .thr i{transition:width .2s ease-out,background .25s}
+.sk-bar i{background:#79cda9}.sk-bar.heat i{background:#e9a46b}.sk-bar.fuel i{background:#70afcf}
+.sk-bar.low,.sk-bar.hot{border-color:#dc736d}.sk-bar.low i,.sk-bar.hot i{background:#de776b;animation:skb 1s infinite}
+.sk-gauges{padding:8px 12px;border-left:2px solid #81b7c1;background:#071b2bce;font-variant-numeric:tabular-nums;color:#b4d8e1}.sk-gauges b{color:#fff4df}.sk-gauges .thr{border-radius:2px}.sk-gauges .thr i{background:#79aec7}
+.sk-alert{color:#ffb0a0;letter-spacing:.04em;text-shadow:0 2px 5px #220700}
+.sk-banner{text-transform:none;font-style:normal;font-weight:750;font-size:clamp(25px,5vw,50px);letter-spacing:.025em;text-shadow:0 2px 7px #0009;transform:none;transition:opacity .18s}
+.sk-pause,.sk-btns button{background:#122c3bdd;border:1px solid #8cafb66b;box-shadow:none;color:#edfaff;touch-action:manipulation}
 .sk-btns button:active,.sk-card button:active{transform:scale(.96)}
 .sk-modal{background:radial-gradient(ellipse at 50% 30%,#254f5d99,#06121eea);backdrop-filter:blur(7px)}
 .sk-card{position:relative;max-width:560px;padding:28px clamp(20px,4vw,36px);border-radius:12px;background:linear-gradient(145deg,#17374aee,#081826f5);border:1px solid #a9e6ef55;box-shadow:0 24px 70px #0009,inset 0 1px #ffffff20}
@@ -91,9 +90,8 @@
 @keyframes sknew{50%{box-shadow:0 0 18px #ffb85a99}}
 @media (prefers-reduced-motion:reduce){.sk-newrec{animation:none}}
 
-/* Shared arcade screens; flight instruments remain independent. */
-.sk-modal.wd-screen{--wd-hue:#a8c9d1;position:absolute;background:radial-gradient(1100px 560px at 50% -12%,color-mix(in srgb,var(--wd-hue) 13%,transparent),transparent 62%),var(--wd-bg);backdrop-filter:none;touch-action:pan-y}
-.sk-modal .sk-card.wd-panel{width:min(520px,100%);max-width:520px;max-height:none;overflow:visible;margin:auto;text-align:left;padding:clamp(24px,4.5vw,36px);border:1px solid var(--wd-line);border-radius:22px;background:linear-gradient(180deg,#17191d,#121316);box-shadow:0 28px 70px #0009,inset 0 1px 0 #ffffff0a}
+.sk-modal.wd-screen{position:absolute;background:#11161b;backdrop-filter:none;touch-action:pan-y}
+.sk-modal .sk-card.wd-panel{width:min(520px,100%);max-width:520px;max-height:none;overflow:visible;margin:auto;text-align:left;padding:clamp(24px,4.5vw,36px);border:1px solid var(--wd-line);border-radius:10px;background:#191d21;box-shadow:0 16px 44px #0008}
 .sk-modal .sk-brand{padding:0}.sk-modal .sk-eyebrow,.sk-modal .sk-section-label{font-family:inherit;font-size:11px;font-weight:600;line-height:1.4;letter-spacing:.12em;color:var(--wd-muted)}
 .sk-modal .sk-brand h1,.sk-modal .sk-card h2{margin:0;font-family:inherit;font-size:clamp(30px,6vw,42px);font-weight:800;line-height:1.05;letter-spacing:-.035em;text-indent:0;background:none;color:var(--wd-text)}
 .sk-modal .sk-card .sub{margin:14px 0 0;color:var(--wd-muted);letter-spacing:0}
@@ -112,7 +110,6 @@
 .sk-result #sk-end-s{margin-top:22px;border-color:var(--wd-line);background:#0e0f12;border-radius:12px;color:var(--wd-text)}
 .sk-stat b{color:var(--wd-text)}.sk-stat span,.sk-best{color:var(--wd-muted)}.sk-stat.hi b{color:var(--wd-accent);text-shadow:none}.sk-newrec{background:var(--wd-accent);color:var(--wd-accent-ink);animation:none}
 
-/* Drawn HUD icons (SVG paths shared with the canvas overlay) */
 .sk-ic{width:15px;height:15px;flex:none;fill:currentColor;vertical-align:-3px;margin-right:6px;filter:drop-shadow(0 1px 3px #000a)}
 .sk-brow{display:grid;grid-template-columns:16px 1fr;gap:8px;align-items:center}.sk-brow .sk-ic{margin:0;width:16px;height:16px}
 .sk-brow:has(.hp) .sk-ic{color:#7dffb0}.sk-brow:has(.heat) .sk-ic{color:#ffb07a}.sk-brow:has(.fuel) .sk-ic{color:#9fe3ff}.sk-brow:has(.low) .sk-ic{color:#ff6b5a}
@@ -129,11 +126,9 @@
 @media (pointer:coarse){.sk-hint{bottom:auto;top:max(96px,calc(env(safe-area-inset-top) + 88px));padding:0 64px}}
 .sk-pause-modal .sk-row{flex-wrap:wrap}
 
-/* Four control choices fit one row on desktop, two rows on compact touch screens. */
 .sk-modal .sk-ctl{grid-template-columns:repeat(4,minmax(0,1fr))}
 @media(max-width:600px){.sk-modal .sk-ctl{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
-/* Keep the mobile start action visible without hiding the complete controls guide. */
 .sk-help>summary{display:none}
 @media(max-width:600px){
   .sk-help{margin:10px 0}
@@ -142,27 +137,22 @@
   .sk-modal .sk-help .sk-how{margin:0}
 }
 
-/* Countermeasure ready state is legible on mobile and does not look tappable during cooldown. */
 .sk-btns #sk-b-flare.cooldown{opacity:.48;filter:saturate(.45);border-color:#8699a355;box-shadow:inset 0 1px #ffffff12}
 .sk-btns #sk-b-flare:disabled{cursor:not-allowed}
 
-/* HUD alerts: use urgency rather than coloring every positive event red. */
-.sk-alert[data-level="info"]{color:#c9eef3;letter-spacing:.04em;text-shadow:0 2px 8px #041725,0 0 12px #65b3d166}
-.sk-alert[data-level="combat"]{color:#ffe0ae;text-shadow:0 2px 7px #241307,0 0 16px #e7a55d88}
-.sk-alert[data-level="danger"]{color:#ffb1a6;text-shadow:0 0 16px #db3f35,0 2px 7px #250707}
+.sk-alert[data-level="info"]{color:#c9eef3;letter-spacing:.04em;text-shadow:0 2px 5px #041725}
+.sk-alert[data-level="combat"]{color:#ffe0ae;text-shadow:0 2px 5px #241307}
+.sk-alert[data-level="danger"]{color:#ffb1a6;text-shadow:0 2px 6px #250707}
 .sk-alert:not([data-level="danger"]){animation:none}
 .sk-alert[data-level="danger"]:not(:empty){animation:sk-alert-pulse 1s ease-in-out infinite}
 @media(prefers-reduced-motion:reduce){.sk-alert[data-level="danger"]{animation:none!important}}
 
-/* Mobile parity: cockpit camera can be toggled without a physical keyboard. */
-.sk-camera{display:none;position:absolute;right:max(12px,env(safe-area-inset-right));top:max(61px,calc(env(safe-area-inset-top) + 61px));width:44px;min-height:46px;padding:5px 3px;flex-direction:column;align-items:center;justify-content:center;gap:1px;border-radius:10px;border:1px solid #b3e9f16b;background:linear-gradient(145deg,#16394edb,#081b2cdb);box-shadow:inset 0 1px #ffffff24,0 6px 18px #00131e55;color:#edfaff;font:700 10px system-ui;cursor:pointer;touch-action:manipulation}
+.sk-camera{display:none;position:absolute;right:max(12px,env(safe-area-inset-right));top:max(61px,calc(env(safe-area-inset-top) + 61px));width:44px;min-height:46px;padding:5px 3px;flex-direction:column;align-items:center;justify-content:center;gap:1px;border-radius:6px;border:1px solid #8cafb66b;background:#122c3bdd;box-shadow:none;color:#edfaff;font:700 10px system-ui;cursor:pointer;touch-action:manipulation}
 .sk-camera .sk-ic{width:18px;height:18px;margin:0;color:#bfe9ff}
 .sk-camera[aria-pressed="true"]{border-color:#ffcd8e;color:#ffdfb2;background:#283a42ed}
 @media (pointer:coarse){.sk-camera{display:flex}}
 @media (prefers-reduced-motion:reduce){.sk-camera{transition:none}}
 
-/* Landscape phones cannot fit four tall action keys beside the radar.
-   Dock a compact row at the bottom and shift radar vertically in the HUD. */
 @media (pointer:coarse) and (orientation:landscape) and (max-height:560px){
   .sk-btns{flex-direction:row;right:max(12px,env(safe-area-inset-right));bottom:max(10px,env(safe-area-inset-bottom));gap:6px}
   .sk-btns button{width:62px;height:46px;min-height:44px;border-radius:10px;font-size:10px}

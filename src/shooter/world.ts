@@ -485,19 +485,21 @@ function spawnNear(map: GameMap, rng: () => number, x: number, z: number): void 
 
 /** 이 원(반지름 r)이 서 있는 높이에서 막히는 상자와 겹치는지. */
 export function blockedAt(map: GameMap, x: number, z: number, r: number): boolean {
+  const standTop = groundHeight(map.terrain, x, z) + PLAYER.height - 0.3;
   for (let cx = cellOf(x - r); cx <= cellOf(x + r); cx++) for (let cz = cellOf(z - r); cz <= cellOf(z + r); cz++) {
     const l = map.grid.get(key(cx, cz)); if (!l) continue;
-    for (const i of l) { const b = map.boxes[i]; if (b.y0 >= PLAYER.height - 0.3) continue; if (x > b.x0 - r && x < b.x1 + r && z > b.z0 - r && z < b.z1 + r) return true; }
+    for (const i of l) { const b = map.boxes[i]; if (b.y0 >= standTop) continue; if (x > b.x0 - r && x < b.x1 + r && z > b.z0 - r && z < b.z1 + r) return true; }
   }
   return false;
 }
 
 /** 원(반지름 r)이 막히는 상자와 실제로 겹치는지(둥근 모서리 기준). */
 export function circleHits(map: GameMap, x: number, z: number, r: number): boolean {
+  const standTop = groundHeight(map.terrain, x, z) + PLAYER.height - 0.3;
   for (let cx = cellOf(x - r); cx <= cellOf(x + r); cx++) for (let cz = cellOf(z - r); cz <= cellOf(z + r); cz++) {
     const l = map.grid.get(key(cx, cz)); if (!l) continue;
     for (const i of l) {
-      const b = map.boxes[i]; if (b.y0 >= PLAYER.height - 0.3) continue;
+      const b = map.boxes[i]; if (b.y0 >= standTop) continue;
       const dx = x - Math.max(b.x0, Math.min(x, b.x1)), dz = z - Math.max(b.z0, Math.min(z, b.z1)); if (dx * dx + dz * dz < r * r - 1e-6) return true;
     }
   }
@@ -522,7 +524,7 @@ export function pushOut(map: GameMap, p: { x: number; z: number }, r: number): b
   for (let iter = 0; iter < 6; iter++) for (let cx = cellOf(p.x - r); cx <= cellOf(p.x + r); cx++) for (let cz = cellOf(p.z - r); cz <= cellOf(p.z + r); cz++) {
     const l = map.grid.get(key(cx, cz)); if (!l) continue;
     for (const i of l) {
-      const b = map.boxes[i]; if (b.y0 >= PLAYER.height - 0.3) continue;
+      const b = map.boxes[i]; if (b.y0 >= groundHeight(map.terrain, p.x, p.z) + PLAYER.height - 0.3) continue;
       const nx = Math.max(b.x0, Math.min(p.x, b.x1)), nz = Math.max(b.z0, Math.min(p.z, b.z1)), dx = p.x - nx, dz = p.z - nz, d2 = dx * dx + dz * dz;
       if (d2 >= r * r) continue; hit = true;
       if (d2 > 1e-9) { const d = Math.sqrt(d2), k = (r - d) / d; p.x += dx * k; p.z += dz * k; }

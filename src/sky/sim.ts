@@ -151,7 +151,9 @@ export class SkySim {
     for (const j of this.jets) if (j.alive) this.collideTerrain(j);
     this.comboT -= dt; if (this.comboT <= 0) this.combo = 0;
     // 웨이브 관리
-    if (!this.over && this.enemies().length === 0) { this.intermission -= dt; if (this.intermission <= 0) { this.startWave(); this.intermission = 4; if (p.alive) { p.hp = Math.min(p.maxHp, p.hp + 20); p.missiles = Math.min(8, p.missiles + 2); } } }
+    // Do not start another wave in the same tick the player crashes. The
+    // game-over state is finalized below, after projectile and terrain hits.
+    if (p.alive && !this.over && this.enemies().length === 0) { this.intermission -= dt; if (this.intermission <= 0) { this.startWave(); this.intermission = 4; p.hp = Math.min(p.maxHp, p.hp + 20); p.missiles = Math.min(8, p.missiles + 2); } }
     // 미사일 경고
     this.warnT -= dt; let warn = false;
     for (const m of this.missiles) if (m.alive && m.target === p.id) warn = true;

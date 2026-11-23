@@ -3,7 +3,7 @@ import { emptyTerrain, groundHeight, groundRayDistance, planTerrain, waterDepth,
 import { MAP_HALF, PLAYER, WEAPON_IDS, makeRng, type Attachments, type Mode, type PartId, type WeaponId } from './config';
 
 /** 위에서 본 직사각형 + 높이 범위. 벽·바위·상자·나무 기둥·차량 모두 이 모양입니다. */
-export type BoxKind = 'wall' | 'rock' | 'crate' | 'trunk' | 'fence' | 'vehicle' | 'container' | 'prop';
+export type BoxKind = 'wall' | 'ceiling' | 'rock' | 'crate' | 'trunk' | 'fence' | 'vehicle' | 'container' | 'prop';
 export interface Box { x0: number; z0: number; x1: number; z1: number; y0: number; y1: number; kind: BoxKind; tex: number }
 export type BuildingType = 'house' | 'cabin' | 'apartment' | 'warehouse' | 'garage' | 'shop' | 'tower' | 'barn' | 'bunker' | 'station' | 'church' | 'clinic' | 'diner' | 'silo' | 'hangar';
 export type RoofKind = 'flat' | 'gable' | 'shed';
@@ -97,6 +97,13 @@ function build(map: GameMap, rng: () => number, type: BuildingType, cx: number, 
   wallSide(map, tex, 'z', cx + hx, cz - hz, cz + hz, dx === null ? null : cz + dx + (rng() - 0.5) * 1.5, H, dw, dh);
   const b: Building = { x: cx, z: cz, w, d, tex, door, floor: Math.floor(rng() * 3), type, h: H, roof: sp.roof };
   map.buildings.push(b);
+  // 고층 건물 지상 1층의 상부에 실내 천장을 둡니다. 보행과 AI 길찾기는
+  // 낮은 충돌 박스만 보므로 통과하며, 위로 쏜 탄환은 정확히 차단됩니다.
+  if (type === 'apartment' && H >= 9) {
+    addBox(map, { x0: cx - hx + WALL_T / 2, x1: cx + hx - WALL_T / 2,
+      z0: cz - hz + WALL_T / 2, z1: cz + hz - WALL_T / 2,
+      y0: 3.05, y1: 3.25, kind: 'ceiling', tex });
+  }
   // 실내 구성: 상자와 선반. 문이 없는 쪽 벽에 붙여 두어 출입구와 실내 통로를 막지 않게 합니다(봇 길찾기도 이 통로를 씁니다).
   const crate = (px: number, pz: number, sx: number, sz: number, h: number): void => { addBox(map, { x0: px - sx, x1: px + sx, z0: pz - sz, z1: pz + sz, y0: 0, y1: h, kind: 'crate', tex: 0 }); };
   const wallSideOf = (): 1 | -1 => (rng() < 0.5 ? -1 : 1);

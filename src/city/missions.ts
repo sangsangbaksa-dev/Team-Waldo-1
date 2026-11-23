@@ -23,7 +23,19 @@ const BRIEFS = [
   { chapter: '07 · 격파', title: '라이벌 왕국 무력화', hint: '병력을 편성하고 적 본부를 공격하세요. 본부가 무너지면 해당 왕국이 탈락합니다.' },
 ] as const;
 
-export function missionLog(world: World): MissionItem[] {
+/** Replace keyboard-specific hints with touch actions shown in the game UI. */
+export function missionControlHint(text: string, touch: boolean): string {
+  if (!touch) return text;
+  return text
+    .replaceAll('카운터에서 E', '카운터에서 상호작용 버튼')
+    .replaceAll('카운터 앞에서 E를 눌러', '카운터 앞에서 상호작용 버튼을 눌러')
+    .replaceAll('무기를 E로 줍거나', '무기를 상호작용 버튼으로 줍거나')
+    .replaceAll('Tab → ', '지휘 패널 → ')
+    .replaceAll('지휘 패널(Tab)', '지휘 패널')
+    .replaceAll('지도(M)', '지도 버튼');
+}
+
+export function missionLog(world: World, touch = false): MissionItem[] {
   const f = world.factions[0];
   const owned = world.businesses.filter(b => b.owner === 0).length;
   const barracks = world.structures.some(s => s.alive && s.f === 0 && s.kind === 'barracks' && s.built >= 1);
@@ -39,8 +51,8 @@ export function missionLog(world: World): MissionItem[] {
     return {
       chapter: brief?.chapter ?? String(i + 1).padStart(2, '0') + ' · 추가 작전',
       title: brief?.title ?? '추가 임무 ' + (i + 1),
-      objective: q.text,
-      hint: brief?.hint ?? q.text,
+      objective: missionControlHint(q.text, touch),
+      hint: missionControlHint(brief?.hint ?? q.text, touch),
       current: q.done ? target : Math.min(target, observed[i] ?? 0),
       target,
       reward: q.reward,
@@ -52,7 +64,7 @@ export function missionLog(world: World): MissionItem[] {
     chapter: '08 · 결전',
     title: '최후의 왕국',
     objective: '나머지 일곱 왕국을 모두 무너뜨리고 최후까지 살아남으세요.',
-    hint: '지도(M)에서 적 본부를 확인하고 지휘 패널(Tab)과 병력 돌격으로 공격하세요. 오래 끌면 라이벌이 총력전에 들어가니 서두르세요.',
+    hint: missionControlHint('지도(M)에서 적 본부를 확인하고 지휘 패널(Tab)과 병력 돌격으로 공격하세요. 오래 끌면 라이벌이 총력전에 들어가니 서두르세요.', touch),
     current: world.winner === 0 ? 7 : Math.max(0, 7 - rivalsLeft),
     target: 7,
     reward: 0,

@@ -17,6 +17,7 @@ import { CityView, type Quality, type SpotView } from './scene/city';
 import { Atmosphere } from './scene/sky';
 import { Player } from './scene/player';
 import { Rides } from './scene/rides';
+import { WayfindingMarker } from './scene/wayfinding';
 import { Crowd, Traffic } from './scene/people';
 import { TycoonAudio } from './audio';
 import { drawMap, pointFromMapClick } from './ui/minimap';
@@ -71,7 +72,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   const audio = new TycoonAudio(); audio.enabled = prefs.sound;
   let closed = false, raf = 0, last = performance.now(), phase: Phase = 'load', modal: Modal = null, clockT = 0, syncT = 0, hudT = 0, saveT = 0, titleAngle = 0, cineT = 0;
   let core!: TycoonCore, layout!: Layout, city!: CityView, atmo!: Atmosphere, player!: Player, crowd: Crowd | null = null, traffic: Traffic | null = null, post: PostFx | null = null, kit: CharacterKit | null = null;
-  let rides: Rides | null = null;
+  let rides: Rides | null = null, waypointMarker: WayfindingMarker | null = null;
   const resolveParked = (x: number, z: number, r: number, out: { x: number; z: number }): void => {
     if (rides) rides.resolveWalker(x, z, r, out);
     else { out.x = x; out.z = z; }
@@ -414,6 +415,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     const sky = atmo.update(worldDt, camera, focus, minutes, st.day);
     city.setNight(sky.night); city.setWet(sky.wet); rides?.setLighting(sky.night); renderer.toneMappingExposure = atmo.exposure();
     city.update(worldDt, focus);
+    waypointMarker?.update(worldDt, player.pos, playing ? waypoint : null);
     crowd?.update(worldDt, focus, sky.night, sky.wet, (i, j) => city.blockOpen(i, j)); traffic?.update(worldDt, focus, player.pos, sky.night, (x, z, radius) => rides?.blocksTraffic(x, z, radius) ?? false);
     if (st.stageIndex !== lastStage && playing) applyStageLook();
     // 카메라
@@ -498,7 +500,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp); window.removeEventListener('wheel', onWheel); window.removeEventListener('resize', resize); document.removeEventListener('pointerlockchange', onLock);
     if (document.pointerLockElement === canvas) document.exitPointerLock();
     for (const u of unsub) u();
-    try { rides?.dispose(); crowd?.dispose(); traffic?.dispose(); player?.dispose(); city?.dispose(); atmo?.dispose(); } catch { /* 정리 실패는 무시 */ }
+    try { waypointMarker?.dispose(); rides?.dispose(); crowd?.dispose(); traffic?.dispose(); player?.dispose(); city?.dispose(); atmo?.dispose(); } catch { /* 정리 실패는 무시 */ }
     audio.dispose(); post?.dispose(); renderer?.dispose(); renderer?.forceContextLoss(); root.remove(); onExit();
   }
 
@@ -518,6 +520,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       city = new CityView(layout, quality); scene.add(city.group); colliders = city.colliders;
       // Build occupied lots and their colliders before choosing safe parked car locations.
       syncCity(false);
+      waypointMarker = new WayfindingMarker(scene);
       atmo = new Atmosphere(scene, renderer, quality);
       player = new Player(scene, kit);
       rebuildFleet();

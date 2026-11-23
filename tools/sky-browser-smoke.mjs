@@ -1,7 +1,7 @@
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 
 const port = 4188, origin = 'http://127.0.0.1:' + port;
 const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
@@ -294,49 +294,35 @@ try {
     // Rendering calls may have been recorded on the title scene before the
     // high-quality aircraft/world finished drawing. Check the actual result.
     await highPage.waitForTimeout(1000);
-    const highShot = await highPage.screenshot({ path: 'browser-artifacts/sky-high-desktop.png', animations: 'disabled' });
-    const highDiagnostics = await highPage.evaluate(() => ({
-      frame: window.__sky.renderer.info.render.frame,
-      playerMeshCount: window.__sky.view.meshes.size,
-      sceneChildren: window.__sky.view.scene.children.length,
-      webglLost: window.__sky.renderer.getContext().isContextLost(),
-    }));
-    if (highShot.length <= 120000) {
-      // Diagnostics for software GPU blank-frame regression. Keep the real
-      // failure, but capture which high-end feature prevents compositing.
-      const modes = [
-        ['full', {}],
-        ['no-shadows', { shadows: false }],
-        ['no-environment', { shadows: false, environment: false }],
-        ['lean', { shadows: false, environment: false, clouds: false }],
-      ];
-      const probes = [];
-      for (const [name, options] of modes) {
-        const info = await highPage.evaluate(options => {
-          const { renderer, view } = window.__sky;
-          if (options.shadows === false) { renderer.shadowMap.enabled = false; view.sun.castShadow = false; }
-          if (options.environment === false) view.scene.environment = null;
-          if (options.clouds === false) view.clouds.forEach(c => { c.visible = false; });
-          const before = performance.now();
-          renderer.render(view.scene, view.camera);
-          const elapsed = performance.now() - before;
-          const gl = renderer.getContext(), px = new Uint8Array(4);
-          gl.readPixels(Math.floor(gl.drawingBufferWidth / 2), Math.floor(gl.drawingBufferHeight / 2), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
-          return {
-            elapsedMs: Math.round(elapsed), pixel: [...px], glError: gl.getError(),
-            frame: renderer.info.render.frame, calls: renderer.info.render.calls,
-            triangles: renderer.info.render.triangles,
-            buffer: [gl.drawingBufferWidth, gl.drawingBufferHeight],
-            camera: view.camera.position.toArray().map(x => Math.round(x)),
-            sunShadow: view.sun.castShadow,
-          };
-        }, options);
-        const shot = await highPage.screenshot({ path: 'browser-artifacts/sky-high-diagnostic-' + name + '.png' });
-        probes.push({ name, info, bytes: shot.length });
-      }
-      console.log('SKY WAR HIGH QUALITY DIAG ' + JSON.stringify({ highDiagnostics, probes }));
-      assert.fail('High-quality canvas blank; fallbacks: ' + JSON.stringify(probes));
-    }
+    // WebGL defaults to preserveDrawingBuffer=false. Playwright may screenshot
+    // between swaps and capture an empty back-buffer even though the scene
+    // rendered correctly. Render + read pixels + canvas capture in *one* task.
+    const highFrame = await highPage.evaluate(() => {
+      const { renderer, view } = window.__sky;
+      renderer.render(view.scene, view.camera);
+      const gl = renderer.getContext(), pixel = new Uint8Array(4);
+      gl.readPixels(Math.floor(gl.drawingBufferWidth / 2), Math.floor(gl.drawingBufferHeight / 2),
+        1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+      return {
+        png: renderer.domElement.toDataURL('image/png'),
+        rgba: Array.from(pixel),
+        glError: gl.getError(),
+        frame: renderer.info.render.frame,
+        calls: renderer.info.render.calls,
+        triangles: renderer.info.render.triangles,
+        webglLost: gl.isContextLost(),
+      };
+    });
+    const highPng = Buffer.from(highFrame.png.split(',')[1], 'base64');
+    await writeFile('browser-artifacts/sky-high-canvas.png', highPng);
+    // Overlay screenshot is useful for visual review but not pixel validity.
+    await highPage.screenshot({ path: 'browser-artifacts/sky-high-desktop.png', animations: 'disabled' });
+    assert.ok(!highFrame.webglLost && highFrame.glError === 0, 'High quality WebGL context must be healthy');
+    assert.ok(highFrame.calls > 10 && highFrame.triangles > 1000, 'High quality must draw scene geometry');
+    assert.ok(highFrame.rgba[3] === 255 && highFrame.rgba.slice(0, 3).some(v => v > 20),
+      'High quality must produce nonblank opaque pixels: ' + JSON.stringify(highFrame));
+    assert.ok(highPng.length > 100000,
+      'High quality must produce detailed 3D canvas content: ' + JSON.stringify({ bytes: highPng.length, rgba: highFrame.rgba, calls: highFrame.calls }));
     assert.deepEqual(highErrors, [], 'High quality must not throw WebGL or shader errors');
     console.log('PASS SKY WAR high-quality desktop (' + highStats.calls + ' draw calls)');
   } finally {

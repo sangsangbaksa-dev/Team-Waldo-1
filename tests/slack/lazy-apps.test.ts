@@ -275,6 +275,22 @@ it('visually marks powerless apps and offers a useful fallback without locking t
   off.el.remove();
 });
 
+it('does not mark a messenger reply as read behind the study cover', () => {
+  const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+  try {
+    view.el.querySelector<HTMLButtonElement>('[data-app="chat"]')!.click();
+    view.frame(0);
+    expect(view.el.querySelector('[data-room="0"] [data-unread]')?.textContent).toBe('');
+    simHolder.setCover(true); view.frame(0);
+    view.frame(30); view.frame(1.4);
+    expect(view.el.querySelector('[data-room="0"] [data-unread]')?.textContent).toBe('1');
+    expect(view.el.querySelector('[data-app="chat"]')?.getAttribute('aria-label')).toContain('새 알림 1개');
+    simHolder.setCover(false); view.frame(0);
+    expect(view.el.querySelector('[data-room="0"] [data-unread]')?.textContent).toBe('');
+    expect(view.el.querySelector('[data-app="chat"]')?.getAttribute('aria-label')).toBe('메신저 (3)');
+  } finally { random.mockRestore(); }
+});
+
 it('announces the taskbar unread count and clears it on reading the conversation', () => {
   const badge = view.el.querySelector<HTMLButtonElement>('[data-app="chat"]')!;
   expect(badge.getAttribute('aria-label')).toBe('메신저 (3)');

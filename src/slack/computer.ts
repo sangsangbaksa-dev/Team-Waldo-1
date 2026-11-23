@@ -89,6 +89,9 @@ export const createComputerView: CreateView = (sim, audio) => {
     if (host.inert !== on) {
       if (on && host.contains(document.activeElement)) el.focus({ preventScroll: true });
       host.inert = on;
+      // Hidden under study notes is not the same as reading an open chat.
+      // Mark pending messages read only when the chat actually becomes visible.
+      if (!on && shown === 'chat') chatOpen(C.room);
     }
     syncMusicAudio();
   };
@@ -211,7 +214,7 @@ export const createComputerView: CreateView = (sim, audio) => {
     // not an unbounded array, when users repeatedly tap quick replies.
     if (r.msgs.length > 60) r.msgs.splice(0, r.msgs.length - 60);
     if (!msg.m) {
-      if (shown === 'chat' && C.room === i) audio.play('chime', 0.4); else { r.unread++; audio.play('chime', 0.55); if (shown !== 'chat') toast(`${msg.who}: ${msg.t}`); }
+      if (shown === 'chat' && !sim.state.cover && C.room === i) audio.play('chime', 0.4); else { r.unread++; audio.play('chime', 0.55); if (shown !== 'chat') toast(`${msg.who}: ${msg.t}`); }
     }
     if (C.room === i && built.chat) {
       const list = $('[data-messages]', built.chat); const row = chatRow(msg); list.append(row);

@@ -520,11 +520,12 @@ export function slideMove(map: GameMap, p: { x: number; z: number }, dx: number,
 
 /** 원을 상자 밖으로 밀어냅니다. 결과는 out 에 돌려주고 벽에 닿았는지 반환합니다. */
 export function pushOut(map: GameMap, p: { x: number; z: number }, r: number): boolean {
+  const standTop = groundHeight(map.terrain, p.x, p.z) + PLAYER.height - 0.3;
   let hit = false;
   for (let iter = 0; iter < 6; iter++) for (let cx = cellOf(p.x - r); cx <= cellOf(p.x + r); cx++) for (let cz = cellOf(p.z - r); cz <= cellOf(p.z + r); cz++) {
     const l = map.grid.get(key(cx, cz)); if (!l) continue;
     for (const i of l) {
-      const b = map.boxes[i]; if (b.y0 >= groundHeight(map.terrain, p.x, p.z) + PLAYER.height - 0.3) continue;
+      const b = map.boxes[i]; if (b.y0 >= standTop) continue;
       const nx = Math.max(b.x0, Math.min(p.x, b.x1)), nz = Math.max(b.z0, Math.min(p.z, b.z1)), dx = p.x - nx, dz = p.z - nz, d2 = dx * dx + dz * dz;
       if (d2 >= r * r) continue; hit = true;
       if (d2 > 1e-9) { const d = Math.sqrt(d2), k = (r - d) / d; p.x += dx * k; p.z += dz * k; }

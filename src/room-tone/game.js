@@ -27,6 +27,7 @@ import { createPointerOwner, tryCapture } from "./input.mjs";
 import { lineClear, soundTravelDistance } from "./visibility.mjs";
 import { renderingScale } from "./render-quality.mjs";
 import { propClearance } from "./obstacles.mjs";
+import { loadFailureText } from "./loading-error.mjs";
 import { facingDot, canSeeTarget, stereoPan } from "./awareness.mjs";
 import { initialMute } from "./preferences.mjs";
 import { createIdLookup } from "./dom.mjs";
@@ -761,9 +762,12 @@ async function start(cont) {
     console.error(e);
     modal(
       "게임을 열 수 없습니다",
-      "WebGL 2를 지원하는 브라우저에서 하드웨어 가속을 켜고 다시 열어 주세요.",
+      loadFailureText(e),
       null,
-      [["타이틀로", homepage]],
+      [
+        ["다시 시도", () => start(cont)],
+        ["타이틀로", homepage, true],
+      ],
       "error",
     );
   } finally {

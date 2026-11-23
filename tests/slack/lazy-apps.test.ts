@@ -126,7 +126,7 @@ it('lets a keyboard player hit a visible star with J without repeat scoring', ()
   const score = view.el.querySelector<HTMLElement>('[data-score]')!;
   expect(star.classList.contains('on')).toBe(true);
   expect(star.getAttribute('aria-keyshortcuts')).toBe('J');
-  expect(view.el.querySelector('[data-g-left]')?.textContent).toMatch(/^\\d+\\.\\d초$/);
+  expect(view.el.querySelector('[data-g-left]')?.textContent).toMatch(/^\d+\.\d초$/);
   expect(view.el.querySelector('.sc-health [role="progressbar"]')?.getAttribute('aria-valuenow')).toBe('100');
   const j = (repeat = false) => view.el.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', bubbles: true, cancelable: true, repeat }));
   j(); expect(score.textContent).toBe('10');

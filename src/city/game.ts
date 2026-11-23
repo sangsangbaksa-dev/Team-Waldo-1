@@ -1,5 +1,4 @@
 import '../shared/game-polish.css';
-// LAST CITY — 게임 루프, 입력, HUD
 import './city.css';
 import { BIZ, BUILD_ORDER, CLASSES, DIFFICULTY, DIFFICULTY_ORDER, FACTIONS, PERKS, RESEARCH, STRUCTS, UNITS, WEAPONS, type ClassId, type Difficulty, type ResearchId, type StructKind, type UnitId, type WeaponId } from './defs';
 import { World, type Actor } from './world';
@@ -14,7 +13,7 @@ import { ACTORS, BLOCKS, PITCH, ROAD } from './defs';
 import { applyLook, doorFacingYaw, isLookSpike, mapPointerToWorld, wheelPixels, WeaponWheel } from './uiMath';
 import { DEMOLISH_REFUND_RATE, snapBuildCoord } from './placement';
 import { SHOP, canBuy, itemPrice } from './shop';
-import { PHASE_LABEL, WEATHER_ICON, WEATHER_LABEL, clockLabel } from './clock';
+import { PHASE_LABEL, WEATHER_LABEL, clockLabel } from './clock';
 import { missionLog, missionSummary, sideJobs } from './missions';
 import { EVENT_INFO } from './events';
 import { readPreferences, recordMatch, writePreferences } from '../prefs';
@@ -45,7 +44,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     <div class="c-bl" id="c-boss"></div>
     <div class="c-bc" id="c-cmd"></div>
     <aside class="c-panel" id="c-panel" hidden></aside>
-    <aside class="c-missions" id="c-missions" hidden aria-label="작전 지령 목록"><header><div><span>OPERATIONS / LAST CITY</span><h2>도시 작전 지령</h2></div><button data-act="closemissions" aria-label="작전 지령 닫기">닫기 ✕</button></header><div class="c-mission-summary" id="c-mission-summary"></div><div class="c-mission-list" id="c-mission-list"></div><footer>임무를 완료하면 보상이 자동 지급됩니다 · <kbd>J</kbd> 닫기</footer></aside>
+    <aside class="c-missions" id="c-missions" hidden aria-label="작전 지령 목록"><header><div><span>LAST CITY / 작전 기록</span><h2>작전 기록</h2></div><button data-act="closemissions" aria-label="작전 지령 닫기">닫기 ✕</button></header><div class="c-mission-summary" id="c-mission-summary"></div><div class="c-mission-list" id="c-mission-list"></div><footer>완료 보상은 자동 지급됩니다 · <kbd>J</kbd> 닫기</footer></aside>
     <div class="c-bigmap" id="c-bigmap" hidden><div><canvas id="c-big" width="620" height="620"></canvas><p>지도를 누르면 전 병력이 그 지점으로 <b>돌격</b>합니다 · M 닫기</p></div></div>
     <button class="c-fire" id="c-fire">사격</button><div class="c-touch" id="c-touch"><button data-act="interact">E</button><button data-act="vehicle">차량</button><button data-act="skill">스킬</button><button data-act="dash">대시</button><button data-act="weapon">무기</button><button data-act="medkit">회복</button><button data-act="charge">돌격</button><button data-act="order:follow">집결</button><button data-act="panel">지휘</button></div>
   </div>
@@ -63,7 +62,6 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   /** 1대1 결투 진행 상태. null 이면 혼자 하는 게임입니다. */
   interface Duel { s: PvpSession; net: CityDuel; army: DuelArmy; oppHqDown: boolean; hqSent: boolean; myDeaths: number; oppDeaths: number; done: boolean; pose: { x: number; y: number; a: number; hp: number; mh: number; w: WeaponId } | null; rx: number; ry: number; seed: number; oppKlass: string; started: boolean; graceAt: number }
   let duel: Duel | null = null;
-  // ---------- 채팅(결투·멀티 방) ----------
   const chatLog: ChatLine[] = [], chatLim = new ChatLimiter(); let chatOpen = false, chatSent = -1e9;
   const chatForm = (): HTMLFormElement => q('#c-chatin') as HTMLFormElement, chatBox = (): HTMLInputElement => q('#c-chatbox') as HTMLInputElement;
   const chatLive = (): boolean => !!((duel && duel.started && !duel.done) || (room && room.started && !room.done));
@@ -92,10 +90,10 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   const res = (e: string): void => { if (e && e !== 'shop') toast(e); else if (!e) audio.play('click'); };
 
   function setup(): void {
-    modal.innerHTML = `<section class="c-setup"><div class="c-kicker">WALDO · LAST CITY</div><h2>LAST CITY <small>최후의 왕국</small></h2>
-      <p class="c-lead">여덟 왕국이 한 도시에 떨어졌습니다. 직접 총을 들고 뛰고, 차를 빼앗고, 사업체를 사들여 돈을 벌고, 군대를 길러 <b>자기장이 닫히기 전 마지막 왕국</b>이 되세요. <b>J</b>에서 8단계 도시 작전과 보상을 확인할 수 있습니다.</p>
-      <button class="c-tutcard${tutDone ? '' : ' rec'}" data-act="tutorial"><span>${tutDone ? '다시 연습' : '처음이라면 추천 · 약 5분'}</span><b>튜토리얼 시작</b><p>이동·사격·사업체·기지 건설·병력 지휘·차량·시장까지 한 단계씩 안전하게 익힙니다. 연습장에서는 자기장과 라이벌이 멈춰 있습니다.</p></button>
-      <div class="c-sub">${tutDone ? '바로 시작할 영웅을 고르세요' : '또는 바로 시작할 영웅을 고르세요'}</div>
+    modal.innerHTML = `<section class="c-setup"><div class="c-kicker">LAST CITY / 생존전</div><h2>LAST CITY <small>도시 생존전</small></h2>
+      <p class="c-lead">도시에 남은 여덟 왕국 중 하나를 지휘합니다. 사업체로 자금을 확보하고 병력을 훈련하거나 직접 전투에 나서세요. <b>본부를 지키며 마지막까지 생존하면 승리합니다.</b> 진행할 작전은 <b>J</b>에서 확인할 수 있습니다.</p>
+      <button class="c-tutcard${tutDone ? '' : ' rec'}" data-act="tutorial"><span>${tutDone ? '조작 다시 연습' : '첫 플레이 · 약 5분'}</span><b>튜토리얼 시작</b><p>이동, 전투, 사업체 매입과 병력 지휘를 차례로 연습합니다. 연습 중에는 자기장과 적 진영이 움직이지 않습니다.</p></button>
+      <div class="c-sub">지휘관 선택</div>
       <div class="c-classes">${(Object.keys(CLASSES) as ClassId[]).map(k => `<button class="c-class" data-act="class:${k}"><span>${CLASSES[k].tag}</span><b>${CLASSES[k].name}</b><p>${CLASSES[k].desc}</p><em>Q · ${CLASSES[k].skill}</em><small>${CLASSES[k].skillDesc}</small></button>`).join('')}</div>
       <div class="c-keys">${touch ? '<span>왼쪽 드래그 이동</span><span>오른쪽 드래그 시점</span><span>사격 버튼</span><span>버튼으로 상호작용·지휘</span>' : '<span><b>WASD</b> 이동</span><span><b>마우스</b> 시점·사격</span><span><b>V</b> 1인칭/3인칭/전술뷰</span><span><b>E</b> 매입·줍기</span><span><b>F</b> 차량 탑승</span><span><b>Tab</b> 지휘 패널</span><span><b>우클릭</b> 병력 돌격</span><span><b>Z/X</b> 집결·사수</span><span><b>Space</b> 대시</span><span><b>M</b> 지도</span><span><b>Delete</b> 철거</span>'}</div>
       ${PVP_ENABLED ? `<div class="c-sub">1대1 결투 · 멀티 방(3~6인) · 로그인 필요</div><div class="c-diffs">${(Object.keys(CLASSES) as ClassId[]).map(k => `<button class="c-diff" data-act="duel:${k}" title="${CLASSES[k].desc}">${CLASSES[k].name}으로 대전·방 만들기</button>`).join('')}</div><p class="c-lead c-diffdesc">같은 도시에서 둘만 남아 ${TARGET_KILLS}킬을 먼저 채우면 승리합니다. 병력을 뽑고 건물을 지어 싸우세요. 상대 본부를 무너뜨리면 즉시 승리하고, 내 본부가 무너지면 패배합니다. 제한 시간은 ${clock(TIME_LIMIT)}입니다. 방 만들기로 3~6명이 모이면 병력 없이 영웅끼리 싸우는 난투전(목숨 ${ROOM_LIVES}개, 마지막 생존자 우승)이 열립니다.</p>` : ''}
@@ -118,7 +116,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     lastYaw = R3 ? R3.yaw : 0; lastPos = { x: b.x, y: b.y };
     setView(R3 ? (view === 'top' ? 'fp' : view) : 'top'); lock();
     if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__city = { world, renderer: R, r3: R3 };
-    audio.unlock(); if (rm) banner(`멀티 방 ${rm.ids.length}명 · 영웅 난투전 · 목숨 ${ROOM_LIVES}개 · 마지막까지 살아남으세요`); else if (dl) banner(`${dl.s.opponent.nickname} 님과 1대1 · ${arenaInfo(arenaOf(dl.seed)).name} · ${TARGET_KILLS}킬 선취 · 제한 ${Math.round(TIME_LIMIT / 60)}분`); else if (!tutorial) banner('작전 지령 01 · 첫 사업체를 확보하세요 · J 전체 임무');
+    audio.unlock(); if (rm) banner(`멀티 방 ${rm.ids.length}명 · 영웅 난투전 · 목숨 ${ROOM_LIVES}개 · 마지막까지 살아남으세요`); else if (dl) banner(`${dl.s.opponent.nickname} 님과 1대1 · ${arenaInfo(arenaOf(dl.seed)).name} · ${TARGET_KILLS}킬 선취 · 제한 ${Math.round(TIME_LIMIT / 60)}분`); else if (!tutorial) banner('첫 사업체를 확보하세요 · J 작전 기록');
     renderCmd(); last = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(frame);
   }
   let everLocked = false, lockErrors = 0, lookMuteUntil = 0;
@@ -149,7 +147,6 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     onExit();
   }
 
-  // ---------- 동작 ----------
   function act(code: string, ev?: Event): void {
     const [a, ...rest] = code.split(':'), arg = rest.join(':'), w = world; audio.unlock();
     if (a === 'diff') { diffSel = arg as Difficulty; try { localStorage.setItem('waldo-city-diff', arg); } catch { /* 무시 */ } setup(); audio.play('click'); return; }
@@ -235,12 +232,11 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   }
   function pause(): void {
     if (!world || world.over || duel || room) return; paused = true; keys.clear(); mouse.down = false; unlock();
-    modal.innerHTML = `<section class="c-pause"><div class="c-kicker">PAUSED</div><h2>일시정지</h2>
+    modal.innerHTML = `<section class="c-pause"><div class="c-kicker">LAST CITY / 메뉴</div><h2>일시정지</h2>
       <div class="c-help"><div><b>보스 조작</b><p>WASD 이동 · 마우스 시점/사격 · V 시점 전환(1인칭·3인칭·전술뷰) · R 재장전 · 1~3 무기 · Space 대시 · H 회복 키트 · Q 고유 스킬</p></div><div><b>도시</b><p>E 사업체 매입·업그레이드·무기 줍기 · F 차량 탑승/하차 · 적 사업체 패드 위에서 6초 버티면 적대적 인수</p></div><div><b>지휘</b><p>Tab 지휘 패널(생산·건설·연구·시장) · 우클릭/지도 클릭 돌격 · Z 집결 · X 사수</p></div><div><b>승리</b><p>자기장은 점점 줄어듭니다. 적 본부를 부수면 그 보스는 부활하지 못합니다. 마지막까지 살아남는 왕국이 승리합니다.</p></div></div>
       <div class="c-actions"><button data-act="resume" class="c-primary">계속하기</button><button data-act="sound">효과음 ${prefs.sound ? '켜짐' : '꺼짐'}</button><button data-act="retry">새 게임</button><button data-act="exit">메뉴로 나가기</button></div></section>`;
   }
 
-  // ---------- HUD ----------
   function squadBar(w: World): string {
     const n = (i: number): number => w.squadMembers(0, i).length, tot = n(0);
     return `<button data-act="sq:0" class="${w.squadSel === 0 ? 'on' : ''}" title="전체 (Shift+0)">전체 <small>${tot}</small></button>` + [1, 2, 3, 4, 5].map(i => `<button data-act="sq:${i}" class="${w.squadSel === i ? 'on' : ''}" title="${i}분대 (Shift+${i})">${i}<small>${n(i)}</small></button>`).join('');
@@ -257,7 +253,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
         const d = BIZ[z.kind], rows: string[] = [];
         if (z.owner < 0 && z.kind !== 'gunshop') rows.push(`<button class="c-row c-hl" data-act="bizbuy" ${near && f.cash >= w.bizPrice(f, z) ? '' : 'disabled'}><b>${d.name} 매입</b><span>초당 +$${d.income}${d.crystal ? ` · 크리스탈 +${d.crystal}/s` : ''} · 업그레이드하면 경비병이 본부에서 출동</span><i class="ca">$${w.bizPrice(f, z)}</i></button>`);
         else if (z.owner === 0) rows.push(`<button class="c-row c-hl" data-act="bizbuy" ${near && z.level < 3 && f.cash >= w.upgradePrice(z) ? '' : 'disabled'}><b>${d.name} ${'★'.repeat(z.level)}${'☆'.repeat(3 - z.level)}</b><span>${z.level < 3 ? '업그레이드 → 수입 증가 + 경비병 배치' : '최고 등급입니다'}</span>${z.level < 3 ? `<i class="ca">$${w.upgradePrice(z)}</i>` : ''}</button>`);
-        for (const it of SHOP[z.kind]) { const p = itemPrice(w, it); rows.push(`<button class="c-row" data-act="shop:${it.id}" ${near && canBuy(w, 0, it) ? '' : 'disabled'}><b>${it.icon} ${it.name}</b><span>${it.desc}</span><i class="ca">$${$(p)}</i></button>`); }
+        for (const it of SHOP[z.kind]) { const p = itemPrice(w, it); rows.push(`<button class="c-row" data-act="shop:${it.id}" ${near && canBuy(w, 0, it) ? '' : 'disabled'}><b>${it.name}</b><span>${it.desc}</span><i class="ca">$${$(p)}</i></button>`); }
         body = `<h3>${d.name} <small>${near ? '카운터에서 거래 중' : '(카운터 앞에서만 거래 가능)'}</small></h3>` + rows.join('');
       } else body = '<p class="c-note">거래할 수 없습니다.</p>';
     } else if (tab === 'train') {
@@ -315,13 +311,16 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     }
     for (let i = ak.length - 1; i >= bk.length; i--) a.removeChild(ak[i]);
   }
+  const lastMarkup = new WeakMap<HTMLElement, string>();
   function put(el: HTMLElement, html: string): void {
+    if (lastMarkup.get(el) === html) return;
     const t = document.createElement('div'); t.innerHTML = html; sync(el, t);
+    lastMarkup.set(el, html);
   }
 
   function renderMissions(): void {
     const entries = missionLog(world!), summary = missionSummary(entries);
-    put(q('#c-mission-summary'), `<div><span>완료한 작전</span><strong>${summary.completed}<small> / ${summary.total}</small></strong></div><div class="c-overall-progress" role="progressbar" aria-label="전체 작전 진행률" aria-valuemin="0" aria-valuemax="${summary.total}" aria-valuenow="${summary.completed}"><i style="width:${summary.completed / Math.max(1, summary.total) * 100}%"></i></div><p>사업체 확보 → 전력 증강 → 도시 장악 → 최후의 생존</p>`);
+    put(q('#c-mission-summary'), `<div><span>완료한 작전</span><strong>${summary.completed}<small> / ${summary.total}</small></strong></div><div class="c-overall-progress" role="progressbar" aria-label="전체 작전 진행률" aria-valuemin="0" aria-valuemax="${summary.total}" aria-valuenow="${summary.completed}"><i style="width:${summary.completed / Math.max(1, summary.total) * 100}%"></i></div><p>사업체 확보 · 병력 편성 · 도시 장악</p>`);
     put(q('#c-mission-list'), entries.map((entry, i) => {
       const current = entry === summary.active;
       const state = entry.done ? '완료' : current ? '현재 임무' : '진행 가능';
@@ -331,7 +330,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
         <p>${entry.objective}</p>
         <div class="c-mission-bar" role="progressbar" aria-label="${entry.title} 진행률" aria-valuemin="0" aria-valuemax="${entry.target}" aria-valuenow="${entry.current}"><i style="width:${entry.current / entry.target * 100}%"></i></div>
         <div class="c-mission-meta"><span>${entry.done ? '완료됨' : entry.current + ' / ' + entry.target}</span><span>${entry.reward ? '보상 $' + $(entry.reward) : '최종 승리'}</span></div>
-        ${current ? '<div class="c-mission-hint"><b>전술 안내</b> ' + entry.hint + '</div>' : ''}
+        ${current ? '<div class="c-mission-hint"><b>진행 방법</b> ' + entry.hint + '</div>' : ''}
       </article>`;
     }).join('') + sideBoard());
   }
@@ -344,9 +343,9 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     const w = world!, f = w.factions[0], b = w.boss(0), z = w.zone;
     put(q('#c-res'), `<span class="ca" title="자금">$ <b>${$(f.cash)}</b><small>+${$(f.income)}/s</small></span><span class="cr" title="크리스탈">◆ <b>${$(f.crystal)}</b></span><span title="인구">병력 <b>${f.supply}/${f.supplyMax}</b></span>`);
     const entries = tut || duel || room ? [] : missionLog(w), summary = missionSummary(entries), current = summary.active;
-    put(q('#c-quest'), tut || duel || room ? '' : current ? `<div class="c-quest-head"><span>작전 지령 <b>${summary.completed}/${summary.total}</b></span><button data-act="missions" aria-label="전체 작전 지령 보기"><kbd>J</kbd>전체 보기</button></div><strong>${current.title}</strong><p>${current.objective}</p><div class="c-quest-progress" role="progressbar" aria-label="${current.title} 진행률" aria-valuemin="0" aria-valuemax="${current.target}" aria-valuenow="${current.current}"><i style="width:${current.current / current.target * 100}%"></i></div><small>${current.current}/${current.target}${current.reward ? ' · 완료 보상 $' + $(current.reward) : ' · 최종 작전'}</small>` : '<div class="c-quest-head"><span>작전 지령 완료</span><button data-act="missions">전체 보기</button></div><strong>최후의 왕국!</strong>');
+    put(q('#c-quest'), tut || duel || room ? '' : current ? `<div class="c-quest-head"><span>작전 지령 <b>${summary.completed}/${summary.total}</b></span><button data-act="missions" aria-label="전체 작전 지령 보기"><kbd>J</kbd>전체 보기</button></div><strong>${current.title}</strong><p>${current.objective}</p><div class="c-quest-progress" role="progressbar" aria-label="${current.title} 진행률" aria-valuemin="0" aria-valuemax="${current.target}" aria-valuenow="${current.current}"><i style="width:${current.current / current.target * 100}%"></i></div><small>${current.current}/${current.target}${current.reward ? ' · 완료 보상 $' + $(current.reward) : ' · 최종 작전'}</small>` : '<div class="c-quest-head"><span>작전 지령 완료</span><button data-act="missions">전체 보기</button></div><strong>모든 작전 완료</strong>');
     if (!q('#c-missions').hidden) renderMissions();
-    void z; if (room) { const alive = room.ids.filter(id => !room!.out.has(id) && (room!.deaths.get(id) ?? 0) < ROOM_LIVES).length; put(q('#c-zone'), `<b>${clock(Math.max(0, ROOM_TIME - w.time))}</b><span>남은 목숨 <b>${Math.max(0, ROOM_LIVES - room.myDeaths)}</b>/${ROOM_LIVES}</span><span>생존 <b>${alive}</b>/${room.ids.length}명</span>`); } else if (duel) put(q('#c-zone'), `<b>${clock(Math.max(0, TIME_LIMIT - w.time))}</b><span>나 <b>${duel.oppDeaths}</b> : <b>${duel.myDeaths}</b> ${duel.s.opponent.nickname.replace(/[<>&"]/g, '')}</span><span>${TARGET_KILLS}킬 선취</span>`); else if (tut) put(q('#c-zone'), `<b>튜토리얼</b><span>연습장 · 라이벌 정지</span><span>${Math.min(tut.s.i, STEPS.length - 1) + 1}/${STEPS.length}</span>`); else put(q('#c-zone'), `<b>${clock(w.time)}</b><span>생존 왕국 <b>${w.aliveCount()}</b>/8</span><span class="c-citytime" title="밤에는 클럽·카지노, 낮에는 편의점·공장 수입이 늘고 폭풍우에는 줄어듭니다">${WEATHER_ICON[w.weather]} ${clockLabel(w.hour)} · ${PHASE_LABEL[w.phase]} · ${WEATHER_LABEL[w.weather]}</span>`);
+    void z; if (room) { const alive = room.ids.filter(id => !room!.out.has(id) && (room!.deaths.get(id) ?? 0) < ROOM_LIVES).length; put(q('#c-zone'), `<b>${clock(Math.max(0, ROOM_TIME - w.time))}</b><span>남은 목숨 <b>${Math.max(0, ROOM_LIVES - room.myDeaths)}</b>/${ROOM_LIVES}</span><span>생존 <b>${alive}</b>/${room.ids.length}명</span>`); } else if (duel) put(q('#c-zone'), `<b>${clock(Math.max(0, TIME_LIMIT - w.time))}</b><span>나 <b>${duel.oppDeaths}</b> : <b>${duel.myDeaths}</b> ${duel.s.opponent.nickname.replace(/[<>&"]/g, '')}</span><span>${TARGET_KILLS}킬 선취</span>`); else if (tut) put(q('#c-zone'), `<b>튜토리얼</b><span>연습장 · 라이벌 정지</span><span>${Math.min(tut.s.i, STEPS.length - 1) + 1}/${STEPS.length}</span>`); else put(q('#c-zone'), `<b>${clock(w.time)}</b><span>생존 왕국 <b>${w.aliveCount()}</b>/8</span><span class="c-citytime" title="밤에는 클럽·카지노, 낮에는 편의점·공장 수입이 늘고 폭풍우에는 줄어듭니다">${clockLabel(w.hour)} · ${PHASE_LABEL[w.phase]} · ${WEATHER_LABEL[w.weather]}</span>`);
     put(q('#c-wanted'), f.wanted >= 1 ? `<span class="stars">${'★'.repeat(Math.floor(f.wanted))}${'☆'.repeat(5 - Math.floor(f.wanted))}</span> 수배 중` : '');
     { const live = chatLive(); (q('#c-chatbtn') as HTMLElement).hidden = !live; put(q('#c-chat'), live ? visibleChat(chatLog, chatNow(), chatOpen).map(l => `<div class="${l.mine ? 'me' : ''}"><b>${esc(l.name)}</b> ${esc(l.text)}</div>`).join('') : ''); }
     put(q('#c-feed'), w.feed.filter(x => w.time - x.t < 7).slice(-5).map(x => `<div style="border-color:${x.color}">${x.text}</div>`).join(''));
@@ -358,7 +357,6 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
         <div class="c-ammo"><b>${f.reloadT > 0 ? '재장전…' : s.mag}</b><small>/ ${wd.ammo > 0 ? s.ammo - s.mag : '∞'}</small><span>Lv.${f.level} · 병력 ${army} · 키트 ${f.medkits}</span></div>
         <div class="c-skills"><span class="${f.skillCd > 0 ? 'cd' : ''}"><kbd>Q</kbd>${CLASSES[f.klass].skill}${f.skillCd > 0 ? ' ' + Math.ceil(f.skillCd) : ''}</span><span class="${f.dashCd > 0 ? 'cd' : ''}"><kbd>␣</kbd>대시</span></div>`);
     } else put(q('#c-boss'), `<div class="c-down"><b>쓰러짐</b> ${f.respawnT > 0 ? `${Math.ceil(f.respawnT)}초 후 본부에서 부활` : '…'}</div>`);
-    // 상호작용 안내
     let prompt = '';
     if (w.inside) {
       const zi = w.insideBiz(); prompt = w.nearInsideDoor() ? '<kbd>E</kbd> 밖으로 나가기' : w.nearInsideCounter() ? `<kbd>E</kbd> ${zi ? BIZ[zi.kind].name : ''} 카운터 — 거래하기` : '카운터로 가서 <kbd>E</kbd> · 출입문으로 걸어가 <kbd>E</kbd> 나가기';
@@ -378,9 +376,8 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   function showPerks(): void {
     const f = world!.factions[0];
     unlock();
-    modal.innerHTML = `<section class="c-perks"><div class="c-kicker">LEVEL ${f.level}</div><h2>특성을 선택하세요</h2><div class="c-classes">${f.choices.map((c, i) => `<button class="c-class" data-act="perk:${i}"><span>${PERKS[c].icon}</span><b>${PERKS[c].name}</b><p>${PERKS[c].desc}</p><small>${i + 1} 키</small></button>`).join('')}</div></section>`;
+    modal.innerHTML = `<section class="c-perks"><div class="c-kicker">지휘관 / LV.${f.level}</div><h2>특성 선택</h2><div class="c-classes">${f.choices.map((c, i) => `<button class="c-class" data-act="perk:${i}"><span>선택 0${i + 1}</span><b>${PERKS[c].name}</b><p>${PERKS[c].desc}</p><small>${i + 1} 키</small></button>`).join('')}</div></section>`;
   }
-  // ---------- 1대1 결투 ----------
   const duelCard = (title: string, body: string, actions: string): void => { modal.innerHTML = `<section class="c-pause"><div class="c-kicker">1대1 결투</div><h2>${title}</h2>${body}<div class="c-actions">${actions}</div></section>`; };
   const esc = (t: string): string => t.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
   function startDuel(s: PvpSession): void {
@@ -401,7 +398,6 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       onGone: reason => { if (!d.done) void concludeDuel(s.me.id, reason === 'never' ? '상대가 접속하지 않았습니다' : reason === 'bye' ? '상대가 나갔습니다' : '상대와의 연결이 끊어졌습니다'); },
     });
   }
-  // ---------- 멀티플레이 방(영웅 난투전) ----------
   /** 조직 번호: 나는 0, 나머지는 방 순서대로 1.. 입니다. seats[i] 는 그 조직이 시작할 본부 번호(방 순서)입니다. */
   const roomOrder = (r: Room): string[] => [r.s.me.id, ...r.ids.filter(id => id !== r.s.me.id)];
   const roomSeats = (r: Room): number[] => roomOrder(r).map(id => r.ids.indexOf(id));
@@ -490,12 +486,11 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     const w = world!, f = w.factions[0], win = w.winner === 0, place = win ? 1 : f.place || w.aliveCount() + 1; resultShown = true; unlock(); audio.setEngine(-1); audio.play(win ? 'win' : 'lose');
     recordMatch(win, w.time, f.kills);
     try { const c = readCityCareer(); localStorage.setItem(CITY_KEY, JSON.stringify({ matches: c.matches + 1, wins: c.wins + Number(win), best: c.best ? Math.min(c.best, place) : place })); } catch { /* 기록은 선택 사항 */ }
-    modal.innerHTML = `<section class="c-result ${win ? 'win' : ''}"><div class="c-kicker">${win ? 'LAST KINGDOM STANDING' : 'KINGDOM FALLEN'}</div><h2>${win ? '최후의 왕국!' : `#${place} <small>/ 8 왕국</small>`}</h2><p class="c-lead">${win ? '도시의 모든 것이 이제 당신의 것입니다.' : place <= 3 ? '거의 다 왔습니다. 한 판 더!' : '경제를 먼저 굴리고, 병력과 함께 움직여 보세요.'}</p>
+    modal.innerHTML = `<section class="c-result ${win ? 'win' : ''}"><div class="c-kicker">LAST CITY / 전투 결과</div><h2>${win ? '도시 확보' : `#${place} <small>/ 8 왕국</small>`}</h2><p class="c-lead">${win ? '마지막까지 생존했습니다. 도시의 통제권을 확보했습니다.' : place <= 3 ? '끝까지 버텼지만 본부를 지키지 못했습니다.' : '사업체와 병력을 일찍 확보하면 생존 시간을 늘릴 수 있습니다.'}</p>
       <div class="c-stats"><div><b>${clock(w.time)}</b><span>생존 시간</span></div><div><b>${f.kills}</b><span>처치</span></div><div><b>${f.bossKills}</b><span>보스 처치</span></div><div><b>$${$(f.earned)}</b><span>총 수익</span></div><div><b>${f.level}</b><span>보스 레벨</span></div><div><b>${w.eventsDone}</b><span>부업 완료</span></div></div>
       <div class="c-actions"><button data-act="retry" class="c-primary">다시 도전</button><button data-act="exit">메뉴로</button></div></section>`;
   }
 
-  // ---------- 입력 ----------
   function onKey(e: KeyboardEvent): void {
     if (closed) return; const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, w = world;
     if (!w) return; const f = w.factions[0];
@@ -615,11 +610,10 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     const r = c.getBoundingClientRect(), point = mapPointerToWorld(e.clientX, e.clientY, r.left, r.top, r.width, r.height);
     if (!point) return;
     world.order(0, 'amove', point.x, point.y);
-    toast('전 병력 돌격!', false); e.stopPropagation();
+    toast('돌격 명령 전달', false); e.stopPropagation();
   };
   q<HTMLCanvasElement>('#c-mini').addEventListener('pointerdown', mapClick(q<HTMLCanvasElement>('#c-mini'))); q<HTMLCanvasElement>('#c-big').addEventListener('pointerdown', mapClick(q<HTMLCanvasElement>('#c-big')));
 
-  // ---------- 튜토리얼 ----------
   function tutTick(): void {
     if (!tut || !world || !R3 && view !== 'top') return; const w = world, x = { w, c: tut.c, s: tut.s, yaw: R3?.yaw ?? 0 };
     if (w.factions[0].pending > 0) return;
@@ -638,10 +632,9 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   function finishTutorial(skipped: boolean): void {
     try { localStorage.setItem(TUT_KEY, '1'); } catch { /* 기록은 선택 사항 */ }
     tutDone = true; q('#c-tut').hidden = true; root.querySelectorAll('.c-pulse').forEach(el => el.classList.remove('c-pulse')); unlock(); audio.setEngine(-1); paused = true; panel.hidden = true; bigmap.hidden = true;
-    modal.innerHTML = `<section class="c-result win"><div class="c-kicker">${skipped ? 'TUTORIAL SKIPPED' : 'TUTORIAL COMPLETE'}</div><h2>${skipped ? '연습 종료' : '준비 완료!'}</h2><p class="c-lead">${skipped ? '튜토리얼은 시작 화면에서 언제든 다시 할 수 있습니다.' : '이동·사격·사업체·기지·병력·차량·시장을 모두 익혔습니다. 이제 진짜 전쟁입니다. 경제를 먼저 굴리고, 병력과 함께 움직이세요.'}</p><div class="c-actions"><button data-act="tutdone" class="c-primary">영웅 고르고 시작</button><button data-act="tutorial">튜토리얼 다시</button><button data-act="exit">메뉴로</button></div></section>`;
+    modal.innerHTML = `<section class="c-result win"><div class="c-kicker">연습장 / 종료</div><h2>${skipped ? '연습 중단' : '연습 완료'}</h2><p class="c-lead">${skipped ? '시작 화면에서 연습을 다시 선택할 수 있습니다.' : '실전에서는 자기장과 적 진영이 계속 움직입니다. 사업체를 확보하고 병력을 편성해 본부를 지키세요.'}</p><div class="c-actions"><button data-act="tutdone" class="c-primary">지휘관 선택</button><button data-act="tutorial">튜토리얼 다시</button><button data-act="exit">메뉴로</button></div></section>`;
   }
 
-  // ---------- 3D 화면 표식 ----------
   function overlay(): void {
     const w = world!, r3 = R3!, b = w.boss(0), list: { x: number; y: number; h: number; text: string; color: string; edge: boolean }[] = [];
     if (w.inside) { for (const el of marks) el.style.display = 'none'; return; }
@@ -669,7 +662,6 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     cross.classList.toggle('hostile', hostile && !!html); return html;
   }
 
-  // ---------- 루프 ----------
   function frame(now: number): void {
     if (closed) return; raf = requestAnimationFrame(frame); const w = world!, r = R!; const dt = Math.min(0.1, (now - last) / 1000); last = now;
     const f = w.factions[0], b = w.boss(0), three = view !== 'top' && !!R3;
@@ -690,7 +682,6 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
         else { const p = r.toWorld(mouse.x, mouse.y); inp.ax = p.x; inp.ay = p.y; inp.fire = mouse.down && !ghost; }
       }
       acc += dt; let n = 0; while (acc >= 1 / 60 && n < 4) { w.step(1 / 60); acc -= 1 / 60; n++; if (w.enteredByDoor) { w.enteredByDoor = false; enterBuilding(); } } if (n === 4) acc = 0;
-      // 이벤트 → 화면·소리
       if (three) R3!.consume(w.events); else r.consume(w.events);
       const lx = b ? b.x : r.cam.x, ly = b ? b.y : r.cam.y;
       for (const e of w.events) {
@@ -725,7 +716,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
       r.draw(paused ? 0 : dt, ghost, touch || !b ? null : r.toWorld(mouse.x, mouse.y));
     }
     root.classList.toggle('down', !b && !w.over);
-    if (b) { // 구역 이름
+    if (b) {
       const bi = Math.max(0, Math.min(BLOCKS - 1, Math.floor((b.x - ROAD / 2) / PITCH))), bj = Math.max(0, Math.min(BLOCKS - 1, Math.floor((b.y - ROAD / 2) / PITCH))), bl = w.map.blocks[bj * BLOCKS + bi], ring = Math.max(Math.abs(bi - 4), Math.abs(bj - 4));
       const owner = bl.type === 'base' ? w.factions.find(x => { const h = w.hq(x.id); return h && h.x > bl.x && h.x < bl.x + 440 && h.y > bl.y && h.y < bl.y + 440; }) : undefined;
       const name = w.map.arena ? w.map.arena.name : bl.type === 'base' ? (owner ? `${owner.name} 영지` : '폐허가 된 영지') : bl.type === 'plaza' ? '센트럴 플라자' : bl.type === 'park' ? '크리스탈 공원' : bl.type === 'police' ? '경찰청' : bl.type === 'military' ? '군 기지' : bl.type === 'lot' ? '공영 주차장' : ring <= 1 ? '카지노 스트립' : ring === 2 ? '다운타운' : ring === 3 ? '미드타운' : '외곽 항만';
@@ -740,7 +731,6 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     if (w.over && !resultShown) showResult();
   }
   if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__tut = () => tut;
-  // 모델을 다 받을 때까지 로딩 화면을 보여 줍니다. 네트워크가 느리거나 끊겨도 포기하지 않고 계속 받습니다.
   const loading = options.loading ?? showLoading('LAST CITY');
   loading.progress(0, '도시 자산을 불러오는 중');
   const finishLoading = (): void => { if (closed) return; loading.close(); setup(); };

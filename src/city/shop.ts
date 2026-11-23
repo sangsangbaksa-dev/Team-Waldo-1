@@ -1,8 +1,7 @@
-// LAST CITY — 사업체 내부 상점 품목과 구매 규칙. DOM 비의존.
 import { WEAPONS, type BizKind, type WeaponId } from './defs';
 import type { Business, WeaponSlot, World } from './world';
 
-export interface ShopItem { id: string; name: string; desc: string; price: number; icon: string }
+export interface ShopItem { id: string; name: string; desc: string; price: number }
 export interface ShopResult { ok: boolean; msg: string }
 
 const MAX_MEDKITS = 5;
@@ -14,32 +13,32 @@ const needsAmmo = (slot: WeaponSlot): boolean => {
   const def = WEAPONS[slot.id];
   return slot.mag < def.mag || (def.ammo > 0 && slot.ammo < def.ammo);
 };
-const wpn = (id: WeaponId): ShopItem => { const d = WEAPONS[id]; return { id: `gun:${id}`, name: d.name, desc: `피해 ${d.dmg}${d.pellets > 1 ? '×' + d.pellets : ''} · 연사 ${d.rate}/s · 사거리 ${d.range}`, price: d.price, icon: '🔫' }; };
+const wpn = (id: WeaponId): ShopItem => { const d = WEAPONS[id]; return { id: `gun:${id}`, name: d.name, desc: `피해 ${d.dmg}${d.pellets > 1 ? '×' + d.pellets : ''} · 연사 ${d.rate}/s · 사거리 ${d.range}`, price: d.price }; };
 
 /** 사업체 종류별로 파는 물건. 매입·업그레이드는 별도(buyBiz/upgradeBiz)입니다. */
 export const SHOP: Record<BizKind, ShopItem[]> = {
   store: [
-    { id: 'medkit', name: '구급 키트', desc: `체력 +70 (H) · 최대 ${MAX_MEDKITS}개`, price: 120, icon: '🩹' },
-    { id: 'ammo', name: '탄약 세트', desc: '들고 있는 모든 무기의 탄약을 가득 채움', price: 90, icon: '📦' },
-    { id: 'energy', name: '에너지 드링크', desc: '체력 +35 즉시 회복', price: 50, icon: '🥤' },
+    { id: 'medkit', name: '구급 키트', desc: `체력 +70 (H) · 최대 ${MAX_MEDKITS}개`, price: 120 },
+    { id: 'ammo', name: '탄약 세트', desc: '들고 있는 모든 무기의 탄약을 가득 채움', price: 90 },
+    { id: 'energy', name: '에너지 드링크', desc: '체력 +35 즉시 회복', price: 50 },
   ],
   club: [
-    { id: 'mercs', name: '경호 용병 3명', desc: '인구를 차지하지 않는 현금 병력 (최대 9명)', price: 350, icon: '🕶️' },
-    { id: 'champagne', name: 'VIP 샴페인', desc: '8초간 보스와 주변 부하의 연사 속도 +60%', price: 200, icon: '🍾' },
+    { id: 'mercs', name: '경호 용병 3명', desc: '인구를 차지하지 않는 현금 병력 (최대 9명)', price: 350 },
+    { id: 'champagne', name: 'VIP 샴페인', desc: '8초간 보스와 주변 부하의 연사 속도 +60%', price: 200 },
   ],
   plant: [
-    { id: 'crystal:50', name: '정제 크리스탈 50개', desc: '현재 시세 +8% 에 즉시 구매', price: 0, icon: '◆' },
-    { id: 'crystal:200', name: '정제 크리스탈 200개', desc: '대량 구매는 시세를 올립니다', price: 0, icon: '◆' },
+    { id: 'crystal:50', name: '정제 크리스탈 50개', desc: '현재 시세 +8% 에 즉시 구매', price: 0 },
+    { id: 'crystal:200', name: '정제 크리스탈 200개', desc: '대량 구매는 시세를 올립니다', price: 0 },
   ],
-  casino: BETS.map(b => ({ id: `bet:${b}`, name: `룰렛 · $${b} 베팅`, desc: `${Math.round(WIN_CHANCE * 100)}% 확률로 판돈의 두 배, 아니면 잃습니다`, price: b, icon: '🎰' })),
+  casino: BETS.map(b => ({ id: `bet:${b}`, name: `룰렛 · $${b} 베팅`, desc: `${Math.round(WIN_CHANCE * 100)}% 확률로 판돈의 두 배, 아니면 잃습니다`, price: b })),
   bank: [
-    { id: 'sell:50', name: '크리스탈 50개 환전', desc: '현재 시세 −8% 로 현금화', price: 0, icon: '💱' },
-    { id: 'sell:all', name: '크리스탈 전량 환전', desc: '가진 크리스탈을 모두 현금으로', price: 0, icon: '💱' },
+    { id: 'sell:50', name: '크리스탈 50개 환전', desc: '현재 시세 −8% 로 현금화', price: 0 },
+    { id: 'sell:all', name: '크리스탈 전량 환전', desc: '가진 크리스탈을 모두 현금으로', price: 0 },
   ],
   gunshop: [
     ...GUN_IDS.map(wpn),
-    { id: 'armor', name: '방탄복', desc: '방어도 100 (피해 60% 흡수)', price: 300, icon: '🦺' },
-    { id: 'medkit', name: '회복 키트', desc: '체력 +70 (H)', price: 150, icon: '🩹' },
+    { id: 'armor', name: '방탄복', desc: '방어도 100 (피해 60% 흡수)', price: 300 },
+    { id: 'medkit', name: '회복 키트', desc: '체력 +70 (H)', price: 150 },
   ],
 };
 
@@ -74,7 +73,7 @@ export function purchase(w: World, fi: number, biz: Business, id: string): ShopR
   if (id.startsWith('bet:')) {
     if (f.cash < price) return fail('자금이 부족합니다');
     const win = w.rng() < WIN_CHANCE; f.cash += win ? price : -price; w.fx('cash', biz.x, biz.y, win ? price : -price, undefined, fi);
-    return win ? done(`룰렛 적중! +$${price}`) : done(`룰렛 꽝… -$${price}`);
+    return win ? done(`룰렛 적중! +$${price}`) : done(`룰렛 패배 · -$${price}`);
   }
   if (f.cash < price) return fail('자금이 부족합니다');
   if (id === 'medkit') { if (f.medkits >= MAX_MEDKITS) return fail(`키트는 최대 ${MAX_MEDKITS}개입니다`); f.cash -= price; f.medkits++; return done('구급 키트 구매'); }

@@ -23,7 +23,6 @@ export function phaseOf(hour: number): DayPhase {
 }
 export const PHASE_LABEL: Record<DayPhase, string> = { dawn: '새벽', day: '낮', dusk: '해질녘', night: '밤' };
 export const WEATHER_LABEL: Record<Weather, string> = { clear: '비 그침', rain: '비', storm: '폭풍우' };
-export const WEATHER_ICON: Record<Weather, string> = { clear: '🌥️', rain: '🌧️', storm: '⛈️' };
 
 /** 시드와 구간 번호에서 나오는 0~1 값 */
 function hash01(seed: number, n: number): number {

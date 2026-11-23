@@ -25,7 +25,8 @@ import { RoadLightBatch, lightRange, nearVisual } from '../shared/road-lights';
 export type ViewMode = 'fp' | 'tp';
 const EYE = EYE_HEIGHT, STRUCT_H: Record<StructKind, number> = { hq: 150, barracks: 86, depot: 58, factory: 104, lab: 96, turret: 50 };
 const CLOTH = [0x8d99ae, 0xb08968, 0x6d8a96, 0xa58fb3, 0x9aa37b, 0xc58f8f], SKIN = [0xf1c9a5, 0xd9a47a, 0xa8744f, 0x7a5236];
-const fcol = (f: number): number => f === POLICE ? 0x3f6fe0 : f === CIV ? 0x9aa3ad : new THREE.Color(FACTIONS[f]?.color ?? '#fff').getHex();
+const factionColors = FACTIONS.map(f => new THREE.Color(f.color).getHex());
+const fcol = (f: number): number => f === POLICE ? 0x3f6fe0 : f === CIV ? 0x9aa3ad : (factionColors[f] ?? 0xffffff);
 interface P { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; max: number; r: number; g: number; b: number; grav: number }
 
 function canvasTex(w: number, h: number, draw: (g: CanvasRenderingContext2D) => void): THREE.CanvasTexture {
@@ -44,6 +45,7 @@ class Points {
     if (this.parts.length >= this.max) return; this.parts.push({ x, y, z, vx, vy, vz, life, max: life, r: (color >> 16 & 255) / 255, g: (color >> 8 & 255) / 255, b: (color & 255) / 255, grav });
   }
   update(dt: number): void {
+    if (this.parts.length === 0) { this.geo.setDrawRange(0, 0); return; }
     let n = 0;
     for (const p of this.parts) {
       p.life -= dt; if (p.life <= 0) continue; p.vy -= p.grav * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; if (p.y < 1) { p.y = 1; p.vy *= -0.3; p.vx *= 0.6; p.vz *= 0.6; }
@@ -68,6 +70,8 @@ export class Renderer3D {
   private crystals: THREE.InstancedMesh; private tracers: THREE.InstancedMesh; private rings: THREE.InstancedMesh; private ringList: { x: number; y: number; r0: number; r1: number; life: number; max: number; color: number }[] = [];
   private sparks: Points; private fire: Points; private smoke: Points; private ml: ModelLayer | null = null;
   private structs = new Map<number, THREE.Group>(); private vehs = new Map<number, THREE.Group>(); private loots = new Map<number, THREE.Group>(); private biz = new Map<number, { g: THREE.Group; sig: string; label: THREE.Sprite; icon: THREE.Object3D | null }>();
+  private seenStructs = new Set<number>(); private seenVehicles = new Set<number>(); private seenLoot = new Set<number>();
+  private lightCandidates: Vehicle[] = [];
   private booms: { m: THREE.Mesh; life: number; r: number }[] = []; private light: THREE.PointLight; private lightT = 0;
   private zoneWall: THREE.Mesh; private zoneTex: THREE.Texture; private nextRing: THREE.Mesh; private ghost: THREE.Mesh; private sun: THREE.DirectionalLight; private gun = new THREE.Group(); private muzzle: THREE.Mesh; private planes: THREE.Group[] = [];
   private bossRings: THREE.Mesh[] = []; floaters: { el: HTMLElement; x: number; y: number; h: number; life: number }[] = [];
@@ -232,7 +236,13 @@ export class Renderer3D {
       if (s.kind === 'lab') { const d = new THREE.Mesh(new THREE.SphereGeometry(24, 12, 8, 0, 6.29, 0, 1.57), new THREE.MeshLambertMaterial({ color: 0x9fe8ff, emissive: 0x2a6a80 })); d.position.y = H; g.add(d); }
       g.position.set(s.x + s.w / 2, 0, s.y + s.h / 2); this.scene.add(g); this.structs.set(s.id, g);
     }
-    if (g.userData.bakedStructure) { g.scale.set(10, 10 * (0.15 + 0.85 * s.built), 10); const th = g.getObjectByName('turret_Head'); if (th) th.rotation.y = -s.ang; } else { g.scale.y = 0.15 + 0.85 * s.built; const head = g.getObjectByName('head'); if (head) head.rotation.y = -s.ang; }
+    if (g.userData.bakedStructure) g.scale.set(10, 10 * (0.15 + 0.85 * s.built), 10);
+    else g.scale.y = 0.15 + 0.85 * s.built;
+    if (s.kind === 'turret') {
+      if (!('turretHead' in g.userData)) g.userData.turretHead = g.getObjectByName(g.userData.bakedStructure ? 'turret_Head' : 'head') ?? null;
+      const head = g.userData.turretHead as THREE.Object3D | null;
+      if (head) head.rotation.y = -s.ang;
+    }
   }
   private syncVehicle(v: Vehicle): void {
     let g = this.vehs.get(v.id);
@@ -249,8 +259,18 @@ export class Renderer3D {
       this.scene.add(g); this.vehs.set(v.id, g);
     }
     g.position.set(v.x, 0, v.y); g.rotation.y = -v.ang;
-    const t = g.getObjectByName('turret') ?? g.getObjectByName('tank_Turret'); if (t) { const d = this.world.byId.get(v.driver); t.rotation.y = -((d ? d.ang : v.ang) - v.ang); }
-    const la = g.getObjectByName('la') ?? g.getObjectByName('police_LightA'), lb = g.getObjectByName('lb') ?? g.getObjectByName('police_LightB'); if (la && lb) { const on = v.ai === 'chase' && Math.floor(this.t * 6) % 2 === 0; la.visible = v.ai !== 'chase' || on; lb.visible = v.ai !== 'chase' || !on; }
+    if (!g.userData.visualParts) g.userData.visualParts = {
+      turret: g.getObjectByName('turret') ?? g.getObjectByName('tank_Turret') ?? null,
+      lightA: g.getObjectByName('la') ?? g.getObjectByName('police_LightA') ?? null,
+      lightB: g.getObjectByName('lb') ?? g.getObjectByName('police_LightB') ?? null,
+    };
+    const parts = g.userData.visualParts as { turret: THREE.Object3D | null; lightA: THREE.Object3D | null; lightB: THREE.Object3D | null };
+    if (parts.turret) { const d = this.world.byId.get(v.driver); parts.turret.rotation.y = -((d ? d.ang : v.ang) - v.ang); }
+    if (parts.lightA && parts.lightB) {
+      const on = v.ai === 'chase' && Math.floor(this.t * 6) % 2 === 0;
+      parts.lightA.visible = v.ai !== 'chase' || on;
+      parts.lightB.visible = v.ai !== 'chase' || !on;
+    }
     if (v.hp < v.maxHp * 0.5 && Math.random() < 0.25) { if (v.burn > 0) this.fire.add(v.x, 24, v.y, (Math.random() - 0.5) * 30, 60, (Math.random() - 0.5) * 30, 0.6, 0xff7a2a); else this.smoke.add(v.x, 24, v.y, (Math.random() - 0.5) * 16, 50, (Math.random() - 0.5) * 16, 1.2, 0x333338); }
   }
   /** Ground lights follow nearby traffic; visual only, never modify collision or AI. */
@@ -259,7 +279,10 @@ export class Renderer3D {
     lights.begin();
     const {world:w,camPos:cam}=this, night=this.atm.night,wet=this.atm.wet;
     if(night>0.04||wet>0.3){
-      const near=w.vehicles.filter(v=>v.alive&&v.driver&&v.burn<=0&&nearVisual(v.x,v.y,cam.x,cam.z,720)).sort((a,b)=>(a.x-cam.x)**2+(a.y-cam.z)**2-((b.x-cam.x)**2+(b.y-cam.z)**2));
+      const near = this.lightCandidates;
+      near.length = 0;
+      for (const v of w.vehicles) if (v.alive && v.driver && v.burn <= 0 && nearVisual(v.x, v.y, cam.x, cam.z, 720)) near.push(v);
+      near.sort((a, b) => (a.x - cam.x) ** 2 + (a.y - cam.z) ** 2 - ((b.x - cam.x) ** 2 + (b.y - cam.z) ** 2));
       for(const v of near){
         if(lights.remaining<2)break;
         const fx=Math.cos(v.ang),fz=Math.sin(v.ang),front=v.len/2;
@@ -359,7 +382,7 @@ export class Renderer3D {
   snapAtmosphere(): void { this.applyAtmosphere(0, true); }
   private updateRain(dt: number): void {
     if (this.reduced) { if (this.rain) this.rain.visible = false; return; }
-    const R = EYE_HEIGHT * 14, H = EYE_HEIGHT * 9, n = 1600, a = this.atm;
+    const R = EYE_HEIGHT * 14, H = EYE_HEIGHT * 9, n = this.quality === 'low' ? 400 : this.quality === 'standard' ? 900 : 1600, a = this.atm;
     if (!this.rain) {
       this.rainPos = new Float32Array(n * 6); this.rainSeed = new Float32Array(n * 3);
       for (let i = 0; i < n; i++) this.rainSeed.set([(Math.random() - 0.5) * 2 * R, Math.random() * H, (Math.random() - 0.5) * 2 * R], i * 3);
@@ -371,10 +394,11 @@ export class Renderer3D {
     const mat = this.rain.material as THREE.LineBasicMaterial; mat.color.setRGB(...a.fog).lerp(this.rainTint.set(0.8, 0.88, 1), 0.55 + 0.25 * (1 - a.night)); mat.opacity = 0.28 + a.rain * 0.4;
     this.rain.visible = a.rain > 0.05;
     // A line requires two vertices. Never submit a partial raindrop.
-    this.rain.geometry.setDrawRange(0, Math.round(n * a.rain) * 2);
-    if (!this.rain.visible) return;
+    const activeDrops = Math.min(n, Math.max(0, Math.round(n * a.rain)));
+    this.rain.geometry.setDrawRange(0, activeDrops * 2);
+    if (!this.rain.visible || activeDrops === 0) return;
     const cp = this.camera.position, fall = EYE_HEIGHT * (24 + a.wind * 10) * dt, len = EYE_HEIGHT * (0.7 + a.wind * 0.5), slant = 0.12 + a.wind * 0.3;
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < activeDrops; i++) {
       const y = wrapRange(this.rainSeed[i * 3 + 1] - fall, H); this.rainSeed[i * 3 + 1] = y;
       const x = wrapNear(this.rainSeed[i * 3], cp.x, R), z = wrapNear(this.rainSeed[i * 3 + 2], cp.z, R), at = i * 6;
       this.rainPos[at] = x; this.rainPos[at + 1] = y; this.rainPos[at + 2] = z;
@@ -413,9 +437,9 @@ export class Renderer3D {
     for (const m of this.bossRings) m.visible = false;
     for (const a of w.actors) {
       if (!a.alive || a.inVeh) continue; const dx = a.x - this.camPos.x, dz = a.y - this.camPos.z; if (dx * dx + dz * dz > 2600 * 2600) continue;
-      const def = ACTORS[a.kind], c = a.flash > 0 ? 0xffffff : a.f === CIV ? CLOTH[a.slot % CLOTH.length] : fcol(a.f);
       if (a.kind === 'boss') { const r = this.bossRings[a.f]; r.visible = true; r.position.set(a.x, 1.5, a.y); r.scale.setScalar(a.r + 9); }
       if (a === pb && !third) continue; if (this.ml) continue;
+      const def = ACTORS[a.kind], c = a.flash > 0 ? 0xffffff : a.f === CIV ? CLOTH[a.slot % CLOTH.length] : fcol(a.f);
       if (def.mech) {
         if (nm >= 90) continue; const tank = a.kind === 'tank', L = a.r * 2.4, W = a.r * 1.7, H = tank ? 22 : 17;
         d.rotation.set(0, -a.ang, 0); d.position.set(a.x, H / 2 + 4, a.y); d.scale.set(L, H, W); d.updateMatrix(); this.hulls.setMatrixAt(nm, d.matrix); this.hulls.setColorAt(nm, col.set(a.flash > 0 ? 0xffffff : FACTIONS[a.f].dark));
@@ -436,10 +460,10 @@ export class Renderer3D {
     // 탄환
     let nt = 0; for (const b of w.bullets) { if (nt >= 500) break; const wd = WEAPONS[b.w], a = Math.atan2(b.vy, b.vx), len = wd.splash ? 12 : wd.pierce ? 150 : 46, th = wd.splash ? 5 : wd.pierce ? 3 : b.boss ? 1.5 : 1.1; d.rotation.set(0, -a, 0); d.position.set(b.x - Math.cos(a) * len / 2, 30, b.y - Math.sin(a) * len / 2); d.scale.set(len, th, th); d.updateMatrix(); this.tracers.setMatrixAt(nt, d.matrix); this.tracers.setColorAt(nt, col.set(wd.color)); nt++; if (wd.splash && Math.random() < 0.6) this.smoke.add(b.x, 30, b.y, 0, 8, 0, 0.5, 0xcfcfcf); } upd(this.tracers, nt);
     // 동적 오브젝트 동기화
-    const seenS = new Set<number>(); for (const s of w.structures) if (s.alive) { seenS.add(s.id); this.syncStruct(s); } for (const [id, g] of this.structs) if (!seenS.has(id)) { this.scene.remove(g); this.structs.delete(id); }
-    const seenV = new Set<number>(); for (const v of w.vehicles) if (v.alive) { seenV.add(v.id); if (nearVisual(v.x,v.y,this.camPos.x,this.camPos.z,Math.min(3000,this.atm.fogFar+250))) { this.syncVehicle(v); this.vehs.get(v.id)!.visible=true; } else { const g=this.vehs.get(v.id); if(g)g.visible=false; } } for (const [id, g] of this.vehs) if (!seenV.has(id)) { this.scene.remove(g); this.vehs.delete(id); }
+    const seenS = this.seenStructs; seenS.clear(); for (const s of w.structures) if (s.alive) { seenS.add(s.id); this.syncStruct(s); } for (const [id, g] of this.structs) if (!seenS.has(id)) { this.scene.remove(g); this.structs.delete(id); }
+    const seenV = this.seenVehicles; seenV.clear(); for (const v of w.vehicles) if (v.alive) { seenV.add(v.id); if (nearVisual(v.x,v.y,this.camPos.x,this.camPos.z,Math.min(3000,this.atm.fogFar+250))) { this.syncVehicle(v); this.vehs.get(v.id)!.visible=true; } else { const g=this.vehs.get(v.id); if(g)g.visible=false; } } for (const [id, g] of this.vehs) if (!seenV.has(id)) { this.scene.remove(g); this.vehs.delete(id); }
     this.updateRoadLights();
-    const seenL = new Set<number>(); for (const l of w.loot) if (l.alive) { seenL.add(l.id); if(l.type==='crate'||nearVisual(l.x,l.y,this.camPos.x,this.camPos.z,1600)){this.syncLoot(l);this.loots.get(l.id)!.visible=true;}else{const g=this.loots.get(l.id);if(g)g.visible=false;} } for (const [id, g] of this.loots) if (!seenL.has(id)) { this.scene.remove(g); this.loots.delete(id); }
+    const seenL = this.seenLoot; seenL.clear(); for (const l of w.loot) if (l.alive) { seenL.add(l.id); if(l.type==='crate'||nearVisual(l.x,l.y,this.camPos.x,this.camPos.z,1600)){this.syncLoot(l);this.loots.get(l.id)!.visible=true;}else{const g=this.loots.get(l.id);if(g)g.visible=false;} } for (const [id, g] of this.loots) if (!seenL.has(id)) { this.scene.remove(g); this.loots.delete(id); }
     for (const z of w.businesses) this.syncBiz(z);
     // 수송기
     while (this.planes.length < w.planes.length) { const pm = this.ml?.makePlane(); if (pm) { const pg = new THREE.Group(); pg.add(pm); this.scene.add(pg); this.planes.push(pg); continue; } const g = new THREE.Group(), m = this.mat(0xcfd6e0), a = new THREE.Mesh(this.box, m), b = new THREE.Mesh(this.box, m), c = new THREE.Mesh(this.box, m); a.scale.set(150, 22, 24); b.scale.set(34, 5, 190); c.scale.set(18, 30, 5); c.position.set(-64, 22, 0); g.add(a, b, c); this.scene.add(g); this.planes.push(g); }

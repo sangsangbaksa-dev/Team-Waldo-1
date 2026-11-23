@@ -112,7 +112,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     // Pointer cancellation doesn't identify which mouse button was held in
     // every browser; release both weapons so a lost right-click cannot stick.
     if (e.type === 'pointercancel' && e.pointerType !== 'touch') {
-      mFire = mMissile = false; return;
+      mFire = mMissile = mTap = false; fireTap = 0; return;
     }
     // A delayed release after opening the pause modal must not queue a shot.
     if (state !== 'play') return;

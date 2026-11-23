@@ -226,7 +226,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
       if (distance > 1500) continue;
       const s = view!.project(missile.pos);
       const onscreen = !s.behind && s.x > 0.08 && s.x < 0.92 && s.y > 0.08 && s.y < 0.92;
-      const pulse = 0.7 + 0.3 * Math.sin(performance.now() / 100);
+      const pulse = prefs.reducedMotion ? 1 : 0.7 + 0.3 * Math.sin(performance.now() / 100);
       octx.save(); octx.strokeStyle = `rgba(255,95,75,${pulse})`; octx.fillStyle = '#ffbaa6'; octx.lineWidth = 2;
       if (onscreen) {
         const x = s.x * W, y = s.y * H;
@@ -243,10 +243,10 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
       }
       octx.restore();
     }
-    for (const k of sim!.pickups) { const s = view!.project(k.pos); if (s.behind || s.x < 0 || s.x > 1 || s.y < 0 || s.y > 1) continue; octx.strokeStyle = k.kind === 'repair' ? '#5dff8f' : k.kind === 'shield' ? '#ffe27a' : '#6ab8ff'; octx.lineWidth = 2; octx.beginPath(); octx.arc(s.x * W, s.y * H, 14 + 3 * Math.sin(performance.now() / 150), 0, 7); octx.stroke(); octx.fillStyle = octx.strokeStyle; drawIcon(octx, k.kind === 'repair' ? 'hp' : k.kind === 'shield' ? 'shield' : 'missile', s.x * W, s.y * H, 15); }
+    for (const k of sim!.pickups) { const s = view!.project(k.pos); if (s.behind || s.x < 0 || s.x > 1 || s.y < 0 || s.y > 1) continue; octx.strokeStyle = k.kind === 'repair' ? '#5dff8f' : k.kind === 'shield' ? '#ffe27a' : '#6ab8ff'; octx.lineWidth = 2; octx.beginPath(); octx.arc(s.x * W, s.y * H, 14 + (prefs.reducedMotion ? 0 : 3 * Math.sin(performance.now() / 150)), 0, 7); octx.stroke(); octx.fillStyle = octx.strokeStyle; drawIcon(octx, k.kind === 'repair' ? 'hp' : k.kind === 'shield' ? 'shield' : 'missile', s.x * W, s.y * H, 15); }
     // 레이더(내 기수가 위쪽)
     const R = 58, rx = W - R - 16, ry = H - R - 16; octx.fillStyle = 'rgba(8,30,20,.55)'; octx.strokeStyle = 'rgba(120,255,180,.5)'; octx.lineWidth = 1.4; octx.beginPath(); octx.arc(rx, ry, R, 0, 7); octx.fill(); octx.stroke(); octx.beginPath(); octx.arc(rx, ry, R / 2, 0, 7); octx.stroke();
-    { const sw = performance.now() / 900 % (Math.PI * 2), g = octx.createRadialGradient(rx, ry, 0, rx, ry, R); g.addColorStop(0, 'rgba(120,255,180,0)'); g.addColorStop(1, 'rgba(120,255,180,.28)'); // 레이더 소인선 + 십자선
+    { const sw = prefs.reducedMotion ? 0 : performance.now() / 900 % (Math.PI * 2), g = octx.createRadialGradient(rx, ry, 0, rx, ry, R); g.addColorStop(0, 'rgba(120,255,180,0)'); g.addColorStop(1, 'rgba(120,255,180,.28)'); // 레이더 소인선 + 십자선
       octx.save(); octx.beginPath(); octx.arc(rx, ry, R, 0, 7); octx.clip(); octx.fillStyle = g; octx.beginPath(); octx.moveTo(rx, ry); octx.arc(rx, ry, R, sw - 0.7, sw); octx.closePath(); octx.fill(); octx.restore();
       octx.strokeStyle = 'rgba(120,255,180,.25)'; octx.beginPath(); octx.moveTo(rx - R, ry); octx.lineTo(rx + R, ry); octx.moveTo(rx, ry - R); octx.lineTo(rx, ry + R); octx.stroke(); octx.strokeStyle = 'rgba(120,255,180,.5)'; }
     const yaw = p.yaw, cs = Math.cos(yaw), sn = Math.sin(yaw), range = 2400;
@@ -263,7 +263,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
       }
     }
     // 위험 테두리
-    const dng = Math.max(p.hp < 30 ? 0.6 : 0, sim!.missiles.some(m => m.target === p.id) ? 0.8 : 0); if (dng > 0) { const g = octx.createRadialGradient(cx, cy, Math.min(W, H) * 0.35, cx, cy, Math.max(W, H) * 0.75); g.addColorStop(0, 'rgba(255,0,0,0)'); g.addColorStop(1, `rgba(255,30,30,${dng * (0.35 + 0.25 * Math.sin(performance.now() / 90))})`); octx.fillStyle = g; octx.fillRect(0, 0, W, H); }
+    const dng = Math.max(p.hp < 30 ? 0.6 : 0, sim!.missiles.some(m => m.target === p.id) ? 0.8 : 0); if (dng > 0) { const g = octx.createRadialGradient(cx, cy, Math.min(W, H) * 0.35, cx, cy, Math.max(W, H) * 0.75); g.addColorStop(0, 'rgba(255,0,0,0)'); g.addColorStop(1, `rgba(255,30,30,${dng * (prefs.reducedMotion ? 0.35 : 0.35 + 0.25 * Math.sin(performance.now() / 90))})`); octx.fillStyle = g; octx.fillRect(0, 0, W, H); }
     octx.restore();
   }
 

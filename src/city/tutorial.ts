@@ -30,15 +30,15 @@ const aliveCount = (w: World, ids: number[]): number => ids.filter(id => w.byId.
 const armyCount = (w: World): number => w.actors.filter(a => a.alive && a.f === 0 && a.kind === 'rifle').length;
 
 export const STEPS: TutStep[] = [
-  { title: 'LAST CITY에 오신 것을 환영합니다', info: true,
-    body: '여덟 왕국이 한 도시에 떨어졌습니다. <b>직접 총을 들고 싸우고</b>, <b>사업체로 돈을 벌고</b>, <b>군대를 키워</b> 마지막 왕국이 되세요. 지금부터 약 5분 동안 핵심만 하나씩 익힙니다. 이 연습장에서는 자기장이 멈춰 있고 라이벌은 움직이지 않으니 편하게 따라오세요.',
+  { title: '연습장 안내', info: true,
+    body: '실전에서는 사업체 확보, 병력 생산, 직접 전투를 함께 운영해야 합니다. 이 연습장에서는 주요 조작을 차례로 익힙니다. 자기장과 적 진영은 연습이 끝날 때까지 움직이지 않습니다.',
     done: x => x.c.acked },
   { title: '1. 이동과 시점',
-    body: `${k('W')}${k('A')}${k('S')}${k('D')}로 걷고, <b>마우스</b>로 주변을 둘러보세요. 화면 가운데 십자선이 조준점입니다. (마우스가 잠겼다면 ${k('Esc')}로 풀 수 있어요)`,
+    body: `${k('W')}${k('A')}${k('S')}${k('D')}로 걷고, <b>마우스</b>로 주변을 둘러보세요. 화면 가운데 십자선이 조준점입니다. (커서를 해제하려면 ${k('Esc')})`,
     touch: '<b>왼쪽 화면</b>을 드래그해 걷고, <b>오른쪽 화면</b>을 드래그해 시점을 돌리세요.',
     progress: x => [Math.min(1, x.c.move / 120) * 0.5 + Math.min(1, x.c.look / 1.2) * 0.5, 1], done: x => x.c.move >= 120 && x.c.look >= 1.2 },
   { title: '2. 시점 바꾸기', pulse: ['#c-view'],
-    body: `${k('V')}를 눌러 <b>1인칭 → 3인칭 → 전술 탑뷰</b>를 돌아보세요. 세 번 누르면 한 바퀴입니다. 차량을 타면 추격 카메라로 자동 전환됩니다.`,
+    body: `${k('V')}를 눌러 <b>1인칭 → 3인칭 → 전술 탑뷰</b>를 돌아보세요. 세 번 누르면 원래 시점으로 돌아옵니다. 차량을 타면 추격 카메라로 자동 전환됩니다.`,
     touch: '오른쪽 위의 <b>시점 버튼</b>을 세 번 눌러 한 바퀴 돌려 보세요.',
     progress: x => [Math.min(3, x.c.viewSwitches), 3], done: x => x.c.viewSwitches >= 3 },
   { title: '3. 사격과 전투',

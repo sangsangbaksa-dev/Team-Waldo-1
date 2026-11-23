@@ -73,6 +73,11 @@ class BillboardPool {
   emit(pos: THREE.Vector3, vel: THREE.Vector3, life: number, size: number, grow: number, color: number, tmp: THREE.Color): void {
     const q = this.parts[this.idx++ % this.n]!; tmp.setHex(color); q.r = tmp.r; q.g = tmp.g; q.b = tmp.b; q.p.copy(pos); q.v.copy(vel); q.life = q.max = life; q.size = size; q.grow = grow; q.alive = true;
   }
+  reset(): void {
+    this.idx = 0;
+    for (const part of this.parts) { part.alive = false; part.life = 0; }
+    this.update(0);
+  }
   update(dt: number): void {
     const o = this.off.array as Float32Array, s = this.sz.array as Float32Array, c = this.col.array as Float32Array;
     for (let i = 0; i < this.n; i++) {
@@ -90,6 +95,12 @@ export class SkyView {
   setCockpit(on: boolean): void {
     this.cockpit = on;
     for (const mesh of this.meshes.values()) if (mesh.userData.team === 'player') mesh.visible = !on;
+  }
+  /** 새 출격에서 지난 전투의 연기·폭발·카메라 진동을 남기지 않습니다. */
+  resetEffects(): void {
+    this.firePool.reset(); this.smokePool.reset(); this.shake = 0;
+    for (const ring of this.rings) { this.scene.remove(ring.mesh); this.disposeObject(ring.mesh); }
+    this.rings.length = 0;
   }
   private pickMeshes = new Map<number, THREE.Mesh>(); private meshes = new Map<number, THREE.Group>(); private missileMeshes = new Map<number, THREE.Mesh>();
   private firePool!: BillboardPool; private smokePool!: BillboardPool; private level = 0; private readonly tmpColor = new THREE.Color();
@@ -191,10 +202,10 @@ export class SkyView {
     for (let i = 0; i < n; i++) this.emit(pos, this.v1.set((Math.random() - 0.5) * 90, (Math.random() - 0.3) * 80, (Math.random() - 0.5) * 90), 0.6 + Math.random() * 0.6, sz * (0.6 + Math.random() * 0.8), 2.2, 'fire', i % 3 ? 0xffb040 : 0xff5a20);
     for (let i = 0; i < n / 2; i++) this.emit(pos, this.v1.set((Math.random() - 0.5) * 40, 10 + Math.random() * 30, (Math.random() - 0.5) * 40), 2 + Math.random(), sz, 1.6, 'smoke');
     for (let i = 0; i < (big ? 10 : 5); i++) this.emit(pos, this.v1.set((Math.random() - 0.5) * 180, Math.random() * 120, (Math.random() - 0.5) * 180), 0.45 + Math.random() * 0.4, 3, -0.3, 'fire', 0xffd07a);
-    const d = pos.distanceTo(this.camera.position); if (d < 700) this.shake = Math.max(this.shake, (big ? 1 : 0.5) * (1 - d / 700));
+    const d = pos.distanceTo(this.camera.position); if (!this.reducedMotion && d < 700) this.shake = Math.max(this.shake, (big ? 1 : 0.5) * (1 - d / 700));
   }
   spark(pos: THREE.Vector3): void { for (let i = 0; i < 3; i++) this.emit(pos, this.v1.set((Math.random() - 0.5) * 60, (Math.random() - 0.5) * 60, (Math.random() - 0.5) * 60), 0.25, 8, 0.2, 'fire', 0xffe08a); }
-  kick(a: number): void { this.shake = Math.max(this.shake, a); }
+  kick(a: number): void { if (!this.reducedMotion) this.shake = Math.max(this.shake, a); }
 
   sync(sim: SkySim, dt: number, time: number): void {
     this.jetIds.clear();
@@ -273,7 +284,7 @@ export class SkyView {
       const offset = this.v1.set(0, 1.2, -2.5).applyQuaternion(p.q);
       this.camera.position.copy(p.pos).add(offset);
       this.camera.quaternion.copy(p.q);
-      const vibration = 0.025 + Math.max(0, p.speed - 120) * 0.0008 + boost * 0.12 + this.shake * 0.5;
+      const vibration = this.reducedMotion ? 0 : 0.025 + Math.max(0, p.speed - 120) * 0.0008 + boost * 0.12 + this.shake * 0.5;
       this.camera.position.add(this.v1.set((Math.random() - 0.5) * vibration, (Math.random() - 0.5) * vibration, 0).applyQuaternion(p.q));
     } else {
       const fwd = forward(p, this.v1), up = this.v2.copy(this.up).applyQuaternion(p.q);
@@ -282,7 +293,7 @@ export class SkyView {
       const target = this.v4.copy(p.pos).addScaledVector(fwd, 120);
       const q = this.matrix.lookAt(this.camera.position, target, up.lerp(this.up, 0.5)); const tq = this.rotation.setFromRotationMatrix(q);
       this.camera.quaternion.slerp(tq, Math.min(1, dt * 6));
-      if (this.shake > 0) { this.camera.position.x += (Math.random() - 0.5) * this.shake * 5; this.camera.position.y += (Math.random() - 0.5) * this.shake * 5; }
+      if (!this.reducedMotion && this.shake > 0) { this.camera.position.x += (Math.random() - 0.5) * this.shake * 5; this.camera.position.y += (Math.random() - 0.5) * this.shake * 5; }
     }
     this.shake = Math.max(0, this.shake - dt * 2);
     const fov = this.cockpit ? 70 + boost * 5 : 62 + boost * 14 + (p.speed - 140) * 0.06;

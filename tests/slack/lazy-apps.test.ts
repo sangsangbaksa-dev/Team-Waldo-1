@@ -94,7 +94,10 @@ it('silences the dorm headphone music bed while the study cover is held', () => 
 it('locks cart prices to the add action when the midnight flash deal rotates', () => {
   view.el.querySelector<HTMLButtonElement>('[data-app="shop"]')!.click();
   view.frame(0);
-  const total = () => view.el.querySelector('[data-total]')?.textContent;
+  const status = view.el.querySelector<HTMLElement>('[data-total]')!;
+  expect(status.getAttribute('role')).toBe('status');
+  expect(status.getAttribute('aria-live')).toBe('polite');
+  const total = () => status.textContent;
   // Product #1 is initially the flash deal, but its ordinary button
   // must retain the displayed 35% discount (not the 50% flash rate).
   view.el.querySelector<HTMLButtonElement>('[data-add="1"]')!.click();

@@ -6,7 +6,18 @@ import { spotColor, type SpotView } from '../scene/city';
 const ZONE_COLOR: Record<Zone, string> = { slum: '#8b6f55', market: '#c98a3b', harbor: '#3f8aa6', downtown: '#6f78c4', uptown: '#b865a8', fringe: '#566070' };
 export const zoneName = (z: Zone): string => (z === 'fringe' ? '외곽' : DISTRICTS[z].name);
 
-export interface MapView { stage: number; spots: SpotView[]; px: number; pz: number; yaw: number; target: string | null; time: number; names: boolean }
+export interface MapView {
+  stage: number; spots: SpotView[]; px: number; pz: number; yaw: number;
+  target: string | null; time: number; names: boolean;
+  waypoint?: { x: number; z: number } | null;
+  vehicles?: ReadonlyArray<{ x: number; z: number; heading: number; active: boolean }>;
+}
+/** Map clicks use the visible canvas bounds, not pixel density, so they work on mobile too. */
+export function pointFromMapClick(clientX: number, clientY: number, rect: { left: number; top: number; width: number; height: number }): { x: number; z: number } {
+  const x = (Math.max(0, Math.min(1, (clientX - rect.left) / Math.max(1, rect.width))) * 2 - 1) * WORLD_HALF;
+  const z = (Math.max(0, Math.min(1, (clientY - rect.top) / Math.max(1, rect.height))) * 2 - 1) * WORLD_HALF;
+  return { x: Math.max(-WORLD_HALF + 2, Math.min(WORLD_HALF - 2, x)), z: Math.max(-WORLD_HALF + 2, Math.min(WORLD_HALF - 2, z)) };
+}
 
 export function drawMap(canvas: HTMLCanvasElement, layout: Layout, v: MapView): void {
   const g = canvas.getContext('2d'); if (!g) return;
@@ -31,6 +42,26 @@ export function drawMap(canvas: HTMLCanvasElement, layout: Layout, v: MapView): 
   if (destination && v.names) {
     g.save(); g.strokeStyle = '#fff9'; g.lineWidth = 2; g.setLineDash([6, 6]); g.beginPath();
     g.moveTo(X(v.px), Z(v.pz)); g.lineTo(X(destination.doorX), Z(destination.doorZ)); g.stroke(); g.restore();
+  }
+  // Player-selected free-roam route is intentionally distinct from contracted work.
+  if (v.waypoint) {
+    const x = X(v.waypoint.x), z = Z(v.waypoint.z);
+    if (v.names) {
+      g.save(); g.strokeStyle = '#ffda84aa'; g.lineWidth = 2; g.setLineDash([4, 6]);
+      g.beginPath(); g.moveTo(X(v.px), Z(v.pz)); g.lineTo(x, z); g.stroke(); g.restore();
+    }
+    g.save(); g.strokeStyle = '#ffd588'; g.fillStyle = '#1d2831'; g.lineWidth = v.names ? 3 : 2;
+    g.beginPath(); g.arc(x, z, v.names ? 10 : 5.5, 0, 2 * Math.PI); g.fill(); g.stroke();
+    g.fillStyle = '#ffd588'; g.beginPath(); g.arc(x, z, 2.5, 0, 2 * Math.PI); g.fill(); g.restore();
+  }
+  // Fine car markers keep city exploration legible without filling the map with emoji.
+  for (const c of v.vehicles ?? []) {
+    const x = X(c.x), z = Z(c.z);
+    g.save(); g.translate(x, z); g.rotate(-c.heading);
+    g.fillStyle = c.active ? '#ffd588' : '#d4e6eb';
+    g.strokeStyle = '#18232d'; g.lineWidth = 1;
+    const w = v.names ? 9 : 5.5, h = v.names ? 4.5 : 3;
+    g.fillRect(-w / 2, -h / 2, w, h); g.strokeRect(-w / 2, -h / 2, w, h); g.restore();
   }
   // 플레이어 화살표(바라보는 방향)
   const px = X(v.px), pz = Z(v.pz); g.save(); g.translate(px, pz); g.rotate(-v.yaw);

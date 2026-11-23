@@ -21,7 +21,7 @@ import { Crowd, Traffic } from './scene/people';
 import { TycoonAudio } from './audio';
 import { drawMap, pointFromMapClick } from './ui/minimap';
 import { streetDistance } from './ui/road-route';
-import { esc, ladderHtml, menuHtml, spotPanelHtml, statusHtml, titleHtml, winHtml } from './ui/render';
+import { esc, ladderHtml, mapDirectoryHtml, menuHtml, spotPanelHtml, statusHtml, titleHtml, winHtml } from './ui/render';
 
 interface OpenOptions { loading?: LoadingScreen }
 type Phase = 'load' | 'title' | 'play';
@@ -119,29 +119,16 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       case 'menu': h = menuHtml(audio.enabled, player.firstPerson); break;
       case 'win': h = winHtml(core.state); break;
       case 'map': {
-        const fleet = rides?.positions() ?? [];
-        const rows = fleet.map((car, index) => {
+        const cars = (rides?.positions() ?? []).map(car => {
           const block = layout.blocks.reduce((best, cur) =>
             Math.hypot(cur.cx - car.x, cur.cz - car.z) < Math.hypot(best.cx - car.x, best.cz - car.z) ? cur : best);
-          const reachable = blockUnlocked(block, core.state.stageIndex);
-          const distance = Math.round(streetDistance(player.pos, car));
-          return `<button type="button" class="ty-map-vehicle" data-vehicle-target="${index}" ${!reachable || car.active ? 'disabled' : ''}
-            aria-label="${esc(car.name)}${reachable ? `, 도로 기준 약 ${distance}미터, 목적지로 설정` : ', 잠긴 구역'}">
-            <span class="ty-map-car-icon" aria-hidden="true">◈</span>
-            <span class="ty-map-car-copy"><strong>${esc(car.name)}</strong><small>${car.active ? '현재 운전 중' : reachable ? `도로 약 ${distance}m` : '구역 개방 후 이용 가능'}</small></span>
-            <span class="ty-map-car-chevron" aria-hidden="true">${reachable && !car.active ? '↗' : '—'}</span></button>`;
-        }).join('');
-        h = `<div class="ty-bigmap" role="dialog" aria-modal="true" aria-label="도시 지도">
-          <button type="button" class="ty-x" data-close aria-label="지도 닫기">✕</button>
-          <div class="ty-map-layout">
-            <div class="ty-map-surface"><canvas id="ty-bigmap" width="720" height="720" aria-label="지도를 눌러 원하는 지점에 경로를 표시"></canvas>
-              <div class="ty-map-caption">지도를 눌러 목적지 지정 · 점선은 도로 참고 경로</div></div>
-            <div class="ty-map-aside"><div class="ty-map-aside-head"><small>CITY DIRECTORY</small><h2>이동할 곳을 선택하세요</h2><p>차량을 선택하거나 지도 위의 지점을 눌러 주세요.</p></div>
-              <div class="ty-map-vehicles">${rows || '<p class="ty-map-empty">배치된 차량이 없습니다.</p>'}</div>
-              <button type="button" class="ty-clear-waypoint" data-waypoint-clear ${waypoint ? '' : 'disabled'}>설정한 목적지 지우기</button>
-            </div>
-          </div>
-        </div>`;
+          return {
+            name: car.name, active: car.active,
+            reachable: blockUnlocked(block, core.state.stageIndex),
+            distance: streetDistance(player.pos, car),
+          };
+        });
+        h = mapDirectoryHtml(cars, waypoint !== null);
         break;
       }
     }

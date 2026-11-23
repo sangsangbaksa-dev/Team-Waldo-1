@@ -434,7 +434,9 @@ export function openRace(onExit: () => void): void {
     // The independent car and driver assets can load concurrently.
     const [cars, drivers] = await Promise.allSettled([
       loadRaceCars(import.meta.env.BASE_URL),
-      loadCharacterKit(import.meta.env.BASE_URL),
+      // Low quality never needs the optional 2.8MB crowd/driver model, so
+      // skip its download and parser cost on entry-level mobile devices.
+      prefs.quality === 'low' ? Promise.resolve(null) : loadCharacterKit(import.meta.env.BASE_URL),
     ]);
     if (closed) return;
     carTemplate = cars.status === 'fulfilled' ? cars.value : null;

@@ -26,6 +26,11 @@ export interface DuelHooks {
 
 const num = (v: unknown, lo = -1e6, hi = 1e6): v is number => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
 const weapon = (v: unknown): v is WeaponId => typeof v === 'string' && Object.prototype.hasOwnProperty.call(WEAPONS, v);
+/** Keep transmitted aim angles bounded after arbitrarily many full rotations. */
+export function netAngle(a: number, precision = 100): number {
+  if (!Number.isFinite(a)) return 0;
+  return Math.round(Math.atan2(Math.sin(a), Math.cos(a)) * precision) / precision;
+}
 /** Reject unknown remote hero classes instead of indexing CLASSES with arbitrary text. */
 export function parseDuelClass(value: unknown): ClassId {
   return typeof value === 'string' && Object.prototype.hasOwnProperty.call(CLASSES, value) ? value as ClassId : 'warlord';
@@ -77,9 +82,9 @@ export class CityDuel {
   sendPose(p: DuelPose, now: number): void {
     if (this.dead || !this.started || now - this.lastPose < 66) return; this.lastPose = now;
     const r = (v: number): number => Math.round(v * 10) / 10;
-    this.ch.send({ t: 'p', x: r(p.x), y: r(p.y), a: Math.round(p.a * 100) / 100, hp: Math.round(p.hp), mh: Math.round(p.mh), w: p.w });
+    this.ch.send({ t: 'p', x: r(p.x), y: r(p.y), a: netAngle(p.a), hp: Math.round(p.hp), mh: Math.round(p.mh), w: p.w });
   }
-  sendShot(s: DuelShot): void { if (!this.dead && this.started) this.ch.send({ t: 'sh', x: Math.round(s.x), y: Math.round(s.y), a: Math.round(s.a * 1000) / 1000, w: s.w, m: Math.round(s.m * 100) / 100 }); }
+  sendShot(s: DuelShot): void { if (!this.dead && this.started) this.ch.send({ t: 'sh', x: Math.round(s.x), y: Math.round(s.y), a: netAngle(s.a, 1000), w: s.w, m: Math.round(s.m * 100) / 100 }); }
   sendArmy(m: NetMsg): void { if (!this.dead && this.started) this.ch.send(m); }
   sendHqDown(): void { if (!this.dead) this.ch.send({ t: 'hq' }); }
   sendChat(text: string): void { const t = cleanChat(text); if (!this.dead && this.started && t) this.ch.send({ t: 'c', text: t }); }

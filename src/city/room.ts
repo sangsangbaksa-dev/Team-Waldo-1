@@ -3,7 +3,7 @@
 import type { RoomSession } from '../net/lobby';
 import type { Channel, NetMsg } from '../net/types';
 import { cleanChat } from './chat';
-import { parseDuelClass, parsePose, parseShot, type DuelPose, type DuelShot } from './duel';
+import { netAngle, parseDuelClass, parsePose, parseShot, type DuelPose, type DuelShot } from './duel';
 
 export const ROOM_LIVES = 5, ROOM_TIME = 480;
 const SILENT_MS = 8000, GATHER_MS = 12000, NEVER_MS = 25000;
@@ -98,9 +98,9 @@ export class CityRoom {
   sendPose(p: DuelPose, now: number): void {
     if (this.dead || !this.started || now - this.lastPose < 66) return; this.lastPose = now;
     const r = (v: number): number => Math.round(v * 10) / 10;
-    this.ch.send({ t: 'p', f: this.me(), x: r(p.x), y: r(p.y), a: Math.round(p.a * 100) / 100, hp: Math.round(p.hp), mh: Math.round(p.mh), w: p.w });
+    this.ch.send({ t: 'p', f: this.me(), x: r(p.x), y: r(p.y), a: netAngle(p.a), hp: Math.round(p.hp), mh: Math.round(p.mh), w: p.w });
   }
-  sendShot(s: DuelShot): void { if (!this.dead && this.started) this.ch.send({ t: 'sh', f: this.me(), x: Math.round(s.x), y: Math.round(s.y), a: Math.round(s.a * 1000) / 1000, w: s.w, m: Math.round(s.m * 100) / 100 }); }
+  sendShot(s: DuelShot): void { if (!this.dead && this.started) this.ch.send({ t: 'sh', f: this.me(), x: Math.round(s.x), y: Math.round(s.y), a: netAngle(s.a, 1000), w: s.w, m: Math.round(s.m * 100) / 100 }); }
   sendHqDown(): void { if (!this.dead) this.ch.send({ t: 'hq', f: this.me() }); }
   sendChat(text: string): void { const t = cleanChat(text); if (!this.dead && this.started && t) this.ch.send({ t: 'c', f: this.me(), text: t }); }
   sendDeaths(n: number): void { if (!this.dead) this.ch.send({ t: 'dead', f: this.me(), n }); }

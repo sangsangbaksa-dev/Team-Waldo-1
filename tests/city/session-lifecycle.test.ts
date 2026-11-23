@@ -32,6 +32,11 @@ describe('LAST CITY multiplayer session lifecycle', () => {
     const session = { host: true, open: net.open } as unknown as ConstructorParameters<typeof CityDuel>[0];
     const duel = new CityDuel(session, 'warlord', hooks);
     duel.started = true;
+    duel.sendPose({ x: 0, y: 0, a: 1000, hp: 100, mh: 100, w: 'pistol' }, 999);
+    duel.sendShot({ x: 0, y: 0, a: -1000, w: 'pistol', m: 1 });
+    expect(net.sent).toHaveLength(2);
+    expect(net.sent.every(m => typeof m.a === 'number' && Math.abs(m.a) <= Math.PI)).toBe(true);
+    net.sent.length = 0;
     net.receive({ t: 'bye' });
     expect(hooks.onGone).toHaveBeenCalledWith('bye');
     net.receive(pose);
@@ -62,6 +67,11 @@ describe('LAST CITY multiplayer session lifecycle', () => {
     });
     expect(hooks.onStart).not.toHaveBeenCalled(); // only host can start the room
     room.started = true;
+    room.sendPose({ x: 0, y: 0, a: 1000, hp: 100, mh: 100, w: 'pistol' }, 999);
+    room.sendShot({ x: 0, y: 0, a: -1000, w: 'pistol', m: 1 });
+    expect(net.sent).toHaveLength(2);
+    expect(net.sent.every(m => typeof m.a === 'number' && Math.abs(m.a) <= Math.PI)).toBe(true);
+    net.sent.length = 0;
     net.receive({ ...pose, f: 'op' });
     expect(hooks.onPose).toHaveBeenCalledTimes(1);
     room.dispose();

@@ -61,6 +61,22 @@ it('updates the tactical army count after a newly trained unit joins', () => {
   expect(Number.isFinite(battle.ore)).toBe(true);
 });
 
+it('starts AI production on a fresh decision clock after restarting the classroom RTS', () => {
+  const random = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+  try {
+    const battle = createBattle(false);
+    // Team 0 makes its first worker decision at 0.5 seconds.
+    for (let i = 0; i < 6; i++) battle.update(0.1);
+    expect(battle.ore).toBe(80);
+    battle.reset();
+    expect(battle.ore).toBe(100);
+    for (let i = 0; i < 6; i++) battle.update(0.1);
+    expect(battle.ore).toBe(80); // Same initial AI production delay after replay.
+  } finally {
+    random.mockRestore();
+  }
+});
+
 it('resets the battle HUD immediately for a fresh round', () => {
   const battle = createBattle(true);
   expect(battle.ore).toBe(100);

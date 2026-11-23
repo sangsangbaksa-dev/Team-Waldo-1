@@ -172,7 +172,8 @@ export class SkyView {
   /** 적응형 화질: 1 그림자 끔 · 2 구름 절반 · 3 구름 전부 숨김 + 파티클 절반 */
   setLevel(l: number): void {
     this.level = l;
-    if (l >= 1) this.sun.castShadow = false;
+    // 적응형 품질이 회복되면 그림자도 다시 켭니다 (저사양 설정은 계속 비활성).
+    this.sun.castShadow = l < 1 && this.quality !== 'low';
     this.clouds.forEach((c, i) => { c.visible = l < 3 && (l < 2 || i % 2 === 0); });
   }
   resize(w: number, h: number): void { this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); }

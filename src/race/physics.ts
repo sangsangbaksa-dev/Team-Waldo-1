@@ -39,11 +39,39 @@ export function newCar(t: Track, idx: number, lat: number): CarState {
   return { x: t.x[i] - t.tz[i] * lat, z: t.z[i] + t.tx[i] * lat, y: t.y[i], h, vx: 0, vz: 0, vf: 0, vl: 0, slip: 0, steer: 0, yawRate: 0, idx: i, lat, total: idxDelta(t, 0, i), nitro: 0.35, boostT: 0, drifting: false, driftT: 0, padCd: 0, wallT: 0, draft: 0 };
 }
 
+/** Return a stranded car to the track without changing lap progress or resources. */
+export function recoverCar(c: CarState, t: Track): void {
+  const i = ((c.idx % t.n) + t.n) % t.n;
+  c.idx = i;
+  c.x = t.x[i]; c.z = t.z[i]; c.y = t.y[i];
+  c.h = Math.atan2(t.tz[i], t.tx[i]);
+  c.vx = c.vz = c.vf = c.vl = c.slip = c.steer = c.yawRate = c.lat = 0;
+  c.drifting = false; c.driftT = 0; c.wallT = 0; c.draft = 0;
+  c.nitroLit = false;
+}
+
 const clamp = (v: number, a: number, b: number): number => Math.max(a, Math.min(b, v));
-export const wrapAngle = (a: number): number => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
+/** Defensive clamp for future analog/gamepad inputs as well as keyboard.
+ * Nonfinite commands must not propagate NaN into the vehicle integrator. */
+export function safeDriveControl(value: number, steering = false): number {
+  return Number.isFinite(value) ? clamp(value, steering ? -1 : 0, 1) : 0;
+}
+/** Normalize even corrupted, enormous headings in constant time.
+ * Keep ordinary [-PI, PI] inputs untouched to avoid extra hot-loop modulo. */
+export const wrapAngle = (a: number): number => {
+  if (!Number.isFinite(a)) return 0;
+  if (a >= -Math.PI && a <= Math.PI) return a;
+  const turn = Math.PI * 2;
+  let reduced = (a + Math.PI) % turn;
+  if (reduced < 0) reduced += turn;
+  const out = reduced - Math.PI;
+  return out === -Math.PI && a > 0 ? Math.PI : out;
+};
 
 export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: CarParams = PLAYER_PARAMS): StepEvents {
   const ev: StepEvents = { hit: 0, driftBoost: 0, pad: false };
+  if (!Number.isFinite(dt) || dt <= 0) return ev;
+  const throttle = safeDriveControl(inp.throttle), brake = safeDriveControl(inp.brake), steer = safeDriveControl(inp.steer, true);
   let fx = Math.cos(c.h), fz = Math.sin(c.h), rx = -fz, rz = fx;
   let vf = c.vx * fx + c.vz * fz, vl = c.vx * rx + c.vz * rz;
 
@@ -51,7 +79,7 @@ export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: Car
   const nitroOn = inp.nitro && c.nitro > 0;
   if (nitroOn) c.nitro = Math.max(0, c.nitro - dt / (NITRO_SECONDS * p.nitro));
   // 니트로 점화: 꺼져 있다가 켜지는 순간 한 번 등을 떠미는 킥(m/s)을 줍니다. 계속 누르고 있거나 이미 부스트 중이면 주지 않습니다.
-  if (nitroOn && !c.nitroLit && c.boostT <= 0 && vf > 8 && inp.throttle > 0) vf += NITRO_KICK;
+  if (nitroOn && !c.nitroLit && c.boostT <= 0 && vf > 8 && throttle > 0) vf += NITRO_KICK;
   c.nitroLit = nitroOn;
   c.boostT = Math.max(0, c.boostT - dt);
   if (nitroOn) c.boostT = Math.max(c.boostT, dt);
@@ -60,19 +88,19 @@ export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: Car
   const boost = c.boostT > 0, dr = c.draft ?? 0, maxV = p.top * (boost ? BOOST_TOP : 1) * (1 + DRAFT_TOP * dr);
 
   // 종방향: 가속 · 브레이크 · 저항
-  if (inp.throttle > 0) vf += p.accel * (boost ? 1.7 : 1) * (1 + DRAFT_ACCEL * dr) * inp.throttle * Math.max(0, 1 - Math.pow(Math.max(0, vf) / maxV, 2.6)) * dt;
-  if (inp.brake > 0) { if (vf > 1) vf = Math.max(0, vf - p.brake * inp.brake * dt); else vf = Math.max(-13, vf - 16 * inp.brake * dt); }
-  if (inp.throttle <= 0 && inp.brake <= 0) vf -= Math.sign(vf) * Math.min(Math.abs(vf), (1.6 + 0.0016 * vf * vf) * dt);
+  if (throttle > 0) vf += p.accel * (boost ? 1.7 : 1) * (1 + DRAFT_ACCEL * dr) * throttle * Math.max(0, 1 - Math.pow(Math.max(0, vf) / maxV, 2.6)) * dt;
+  if (brake > 0) { if (vf > 1) vf = Math.max(0, vf - p.brake * brake * dt); else vf = Math.max(-13, vf - 16 * brake * dt); }
+  if (throttle <= 0 && brake <= 0) vf -= Math.sign(vf) * Math.min(Math.abs(vf), (1.6 + 0.0016 * vf * vf) * dt);
   if (vf > maxV) vf = Math.max(maxV, vf - 26 * dt);
   if (inp.drift && c.drifting) vf -= Math.min(Math.max(vf, 0), 2.2 * dt);
 
   // 드리프트 상태: 핸드브레이크를 누른 채 속도와 조향이 충분할 때 시작
   const wasDrift = c.drifting;
-  if (!c.drifting && inp.drift && Math.abs(vf) > 20 && Math.abs(inp.steer) > 0.25) c.drifting = true;
+  if (!c.drifting && inp.drift && Math.abs(vf) > 20 && Math.abs(steer) > 0.25) c.drifting = true;
   if (c.drifting && (!inp.drift || Math.abs(vf) < 12)) c.drifting = false;
 
   // 조향: 속도에 따라 최소 회전 반경이 커집니다. 드리프트 중에는 차체가 더 많이 돌아갑니다.
-  c.steer += (inp.steer - c.steer) * Math.min(1, dt * (Math.abs(inp.steer) > Math.abs(c.steer) ? 8 : 12));
+  c.steer += (steer - c.steer) * Math.min(1, dt * (Math.abs(steer) > Math.abs(c.steer) ? 8 : 12));
   const av = Math.abs(vf), rmin = 7 + (av * av) / 54, yawMax = (av / rmin) * p.turn * (c.drifting ? 1 + 0.38 * p.drift : 1) * Math.min(1, av / 3);
   const yawTarget = c.steer * yawMax * (vf >= 0 ? 1 : -1);
   c.yawRate += (yawTarget - c.yawRate) * Math.min(1, dt * (c.drifting ? 7 : 11));
@@ -106,15 +134,24 @@ export function stepCar(c: CarState, inp: CarInput, dt: number, t: Track, p: Car
 
   // 부스트 패드
   c.padCd = Math.max(0, c.padCd - dt);
-  if (c.padCd <= 0 && Math.abs(c.lat) < 7) for (const pad of t.pads) if (Math.abs(idxDelta(t, c.idx, pad)) <= 2) { c.boostT = Math.max(c.boostT, 2); c.padCd = 2; ev.pad = true; break; }
+  if (c.padCd <= 0 && c.vf > 5 && Math.abs(c.lat) < 7) for (const pad of t.pads) if (Math.abs(idxDelta(t, c.idx, pad)) <= 2) { c.boostT = Math.max(c.boostT, 2); c.padCd = 2; ev.pad = true; break; }
   return ev;
 }
 
-/** 중심선 진행도를 갱신하고 차체가 연석 밖으로 나가지 못하게 되돌립니다. progress 가 아니면 랩 거리는 더하지 않습니다. */
+/** Update speedometer, engine and AI values after an impulse or wall correction. */
+export function syncLocalVelocity(c: CarState): void {
+  const fx = Math.cos(c.h), fz = Math.sin(c.h);
+  c.vf = c.vx * fx + c.vz * fz;
+  c.vl = -c.vx * fz + c.vz * fx;
+  c.slip = Math.atan2(c.vl, Math.max(Math.abs(c.vf), 1));
+}
+
+/** Track wall projection. Collision re-projection records small actual shifts
+ * in lap progress; it never counts large teleport-like index jumps. */
 export function stayOnTrack(c: CarState, t: Track, dt: number, progress: boolean): number {
   const nr = nearest(t, c.x, c.z, c.idx, 40), delta = idxDelta(t, c.idx, nr.i);
   if (progress) { c.total += delta; c.idx = nr.i; c.wallT = Math.max(0, c.wallT - dt); }
-  else if (Math.abs(delta) <= 8) c.idx = nr.i;
+  else if (Math.abs(delta) <= 8) { c.idx = nr.i; c.total += delta; }
   c.lat = nr.lat;
   const limit = t.halfWidth - BODY_HALF_WIDTH - 0.28;
   let hit = 0;
@@ -127,8 +164,12 @@ export function stayOnTrack(c: CarState, t: Track, dt: number, progress: boolean
       c.vx -= px * vn; c.vz -= pz * vn; c.drifting = false; c.driftT = 0;
       if (vn > 2.5 && c.wallT <= 0) { hit = vn; c.wallT = 0.18; }
     }
-    const want = Math.atan2(t.tz[nr.i], t.tx[nr.i]); c.h = wrapAngle(c.h + wrapAngle(want - c.h) * Math.min(1, WALL_HEADING_RATE * dt));
+    const forward = Math.atan2(t.tz[nr.i], t.tx[nr.i]);
+    // Don't spin a reversing car around when its rear bumper reaches a wall.
+    const want = Math.abs(wrapAngle(c.h - forward)) > Math.PI / 2 ? wrapAngle(forward + Math.PI) : forward;
+    c.h = wrapAngle(c.h + wrapAngle(want - c.h) * Math.min(1, WALL_HEADING_RATE * dt));
     c.lat = Math.sign(nr.lat) * limit;
+    syncLocalVelocity(c);
   }
   return hit;
 }
@@ -150,20 +191,22 @@ export function separateCars(a: CarState, b: CarState): number {
   const push = (need - dist) / 2;
   a.x -= nx * push; a.z -= nz * push; b.x += nx * push; b.z += nz * push;
   const rel = (a.vx - b.vx) * nx + (a.vz - b.vz) * nz;
-  if (rel > 0) { const imp = rel * 0.55; a.vx -= nx * imp; a.vz -= nz * imp; b.vx += nx * imp; b.vz += nz * imp; return rel; }
+  if (rel > 0) { const imp = rel * 0.55; a.vx -= nx * imp; a.vz -= nz * imp; b.vx += nx * imp; b.vz += nz * imp;
+    syncLocalVelocity(a); syncLocalVelocity(b); return rel; }
   return 0;
 }
 
 /** line: 0 이면 고정 차선, 1 이면 코너 안쪽을 파고드는 레이싱 라인. nitro: 이 값을 넘는 니트로 잔량만 쓴다(없으면 안 씀). */
 export interface AiProfile { lane: number; top: number; grip: number; skill: number; line?: number; nitro?: number }
 /** 중심선을 따라가는 단순 AI. 앞쪽 곡률로 목표 속도를 정합니다. */
-export function aiInput(c: CarState, t: Track, ai: AiProfile): CarInput {
+/** band applies temporary race catch-up scaling without allocating an AI profile per 90Hz tick. */
+export function aiInput(c: CarState, t: Track, ai: AiProfile, band = 1): CarInput {
   const speed = Math.max(c.vf, 0), la = Math.round((11 + speed * 0.42) / t.ds), ti = (c.idx + la) % t.n;
   const line = ai.line ?? 0, inside = clamp(t.k[(ti + 8) % t.n] * 1400, -1, 1) * (t.halfWidth - 7), lane = ai.lane * (1 - line) + inside * line;
   const tx = t.x[ti] - t.tz[ti] * lane, tz = t.z[ti] + t.tx[ti] * lane;
   const err = wrapAngle(Math.atan2(tz - c.z, tx - c.x) - c.h), steer = clamp(err * 2.6, -1, 1);
   const look = Math.max(12, Math.round((speed * 1.7) / t.ds)), kmax = maxLookCurvature(t.k, c.idx, look);
-  const top = ai.top * (c.boostT > 0 ? BOOST_TOP : 1), target = Math.min(top, Math.sqrt(ai.grip / Math.max(kmax, 1e-4)));
+  const top = ai.top * band * (c.boostT > 0 ? BOOST_TOP : 1), target = Math.min(top, Math.sqrt(ai.grip * band * band / Math.max(kmax, 1e-4)));
   const over = speed - target, straight = kmax < 0.005 && speed > 35 && over < 2;
   return { throttle: over < 0 ? 1 : 0, brake: over > 4 ? Math.min(1, over / 12) : 0, steer, drift: false, nitro: ai.nitro !== undefined && straight && c.nitro > ai.nitro };
 }

@@ -1,4 +1,3 @@
-// SPEED RUSH — 차량·난이도·종목 정의와 선택 값 검증. 화면과 무관한 순수 데이터입니다.
 import { MAPS, type MapDef } from './maps';
 import { PLAYER_PARAMS, type CarParams } from './physics';
 
@@ -15,14 +14,14 @@ export interface CarDef {
 }
 
 export const CARS: ReadonlyArray<CarDef> = [
-  { id: 'arc', name: 'ARC', role: '균형형', blurb: '약점이 없는 기본기', color: '#d8323f', points: { accel: 3, top: 3, handling: 3, drift: 3, nitro: 3 }, model: 'gt', accent: '#f2f2f2' },
-  { id: 'bolt', name: 'BOLT', role: '가속형', blurb: '출발과 코너 탈출이 빠름', color: '#f08a1c', points: { accel: 5, top: 2, handling: 3, drift: 2, nitro: 3 }, model: 'wide', accent: '#1b1d22' },
-  { id: 'velox', name: 'VELOX', role: '최고속형', blurb: '직선에서 가장 빠름', color: '#2e7dff', points: { accel: 2, top: 5, handling: 2, drift: 3, nitro: 3 }, model: 'long', accent: '#f2f2f2' },
-  { id: 'orbit', name: 'ORBIT', role: '코너링형', blurb: '코너에서 속도를 덜 잃음', color: '#e5e9ef', points: { accel: 2, top: 3, handling: 5, drift: 2, nitro: 3 }, model: 'gt', accent: '#d8323f' },
-  { id: 'slide', name: 'SLIDE', role: '드리프트형', blurb: '미끄러지며 부스트를 빨리 모음', color: '#8a5cf0', points: { accel: 3, top: 2, handling: 3, drift: 5, nitro: 2 }, model: 'wide', accent: '#f2c230' },
-  { id: 'fuse', name: 'FUSE', role: '니트로형', blurb: '니트로가 오래가고 빨리 참', color: '#2fbf8a', points: { accel: 2, top: 3, handling: 3, drift: 2, nitro: 5 }, model: 'gt', accent: '#1b1d22' },
-  { id: 'nova', name: 'NOVA', role: '고속 코너형', blurb: '직선과 코너가 모두 빠른 만능 스포츠카', color: '#16c7d9', points: { accel: 3, top: 4, handling: 4, drift: 2, nitro: 2 }, model: 'long', accent: '#f2f2f2' },
-  { id: 'rally', name: 'RALLY', role: '랠리형', blurb: '출발이 빠르고 드리프트가 잘 걸리는 랠리 머신', color: '#f2c230', points: { accel: 4, top: 2, handling: 3, drift: 4, nitro: 2 }, model: 'wide', accent: '#1b1d22' },
+  { id: 'arc', name: 'ARC', role: '균형형', blurb: '가속·최고속·조향이 고르게 맞춰진 차량', color: '#d8323f', points: { accel: 3, top: 3, handling: 3, drift: 3, nitro: 3 }, model: 'gt', accent: '#f2f2f2' },
+  { id: 'bolt', name: 'BOLT', role: '가속형', blurb: '출발과 코너 탈출에서 빠르게 가속', color: '#f08a1c', points: { accel: 5, top: 2, handling: 3, drift: 2, nitro: 3 }, model: 'wide', accent: '#1b1d22' },
+  { id: 'velox', name: 'VELOX', role: '최고속형', blurb: '직선 주행에 맞춘 높은 최고속도', color: '#2e7dff', points: { accel: 2, top: 5, handling: 2, drift: 3, nitro: 3 }, model: 'long', accent: '#f2f2f2' },
+  { id: 'orbit', name: 'ORBIT', role: '코너링형', blurb: '연속 코너에서 안정적인 조향', color: '#e5e9ef', points: { accel: 2, top: 3, handling: 5, drift: 2, nitro: 3 }, model: 'gt', accent: '#d8323f' },
+  { id: 'slide', name: 'SLIDE', role: '드리프트형', blurb: '드리프트를 오래 유지하기 쉬운 세팅', color: '#8a5cf0', points: { accel: 3, top: 2, handling: 3, drift: 5, nitro: 2 }, model: 'wide', accent: '#f2c230' },
+  { id: 'fuse', name: 'FUSE', role: '니트로형', blurb: '니트로 유지 시간과 회복 속도에 강점', color: '#2fbf8a', points: { accel: 2, top: 3, handling: 3, drift: 2, nitro: 5 }, model: 'gt', accent: '#1b1d22' },
+  { id: 'nova', name: 'NOVA', role: '고속 코너형', blurb: '고속 코너에서 균형 잡힌 응답', color: '#16c7d9', points: { accel: 3, top: 4, handling: 4, drift: 2, nitro: 2 }, model: 'long', accent: '#f2f2f2' },
+  { id: 'rally', name: 'RALLY', role: '랠리형', blurb: '초반 가속과 드리프트에 맞춘 세팅', color: '#f2c230', points: { accel: 4, top: 2, handling: 3, drift: 4, nitro: 2 }, model: 'wide', accent: '#1b1d22' },
 ];
 
 /** 차량 도장(스킨). stock 은 차량 고유색이고, 나머지는 차고에서 코인으로 삽니다. */
@@ -65,11 +64,11 @@ export interface LevelDef {
 }
 // 이전 버전보다 라이벌이 전반적으로 빨라지고 더 끈질기게 따라붙습니다.
 export const LEVELS: ReadonlyArray<LevelDef> = [
-  { id: 1, name: '쉬움', blurb: '레이싱 라인을 타고 직선에서 니트로를 자주 씁니다', topMul: 1.1, gripMul: 1.2, bandLo: 0.97, bandHi: 1.115, bandK: 0.00034, line: 0.78, nitro: 0.4 },
-  { id: 2, name: '보통', blurb: '라인이 거의 완벽하고 쉽게 떨어지지 않습니다', topMul: 1.135, gripMul: 1.265, bandLo: 0.98, bandHi: 1.13, bandK: 0.0004, line: 0.95, nitro: 0.2 },
-  { id: 3, name: '어려움', blurb: '완벽한 라인과 니트로로 끝까지 압박합니다', topMul: 1.165, gripMul: 1.335, bandLo: 0.988, bandHi: 1.15, bandK: 0.00048, line: 1, nitro: 0.07 },
-  { id: 4, name: '매우 어려움', blurb: '실수 없이 니트로를 아낌없이 쓰며 거의 따라잡을 수 없습니다', topMul: 1.185, gripMul: 1.385, bandLo: 0.995, bandHi: 1.165, bandK: 0.00055, line: 1, nitro: 0.03 },
-  { id: 5, name: '극한', blurb: '드리프트와 니트로를 완벽하게 써야 겨우 이기는 최강의 라이벌입니다', topMul: 1.215, gripMul: 1.44, bandLo: 1, bandHi: 1.18, bandK: 0.0006, line: 1, nitro: 0.02 },
+  { id: 1, name: '쉬움', blurb: '기본 레이싱 라인을 따라 달리며 니트로를 사용합니다.', topMul: 1.1, gripMul: 1.2, bandLo: 0.97, bandHi: 1.115, bandK: 0.00034, line: 0.78, nitro: 0.4 },
+  { id: 2, name: '보통', blurb: '코너 진입이 정확하고 일정한 속도를 유지합니다.', topMul: 1.135, gripMul: 1.265, bandLo: 0.98, bandHi: 1.13, bandK: 0.0004, line: 0.95, nitro: 0.2 },
+  { id: 3, name: '어려움', blurb: '코너 탈출이 빠르고 직선에서도 속도를 유지합니다.', topMul: 1.165, gripMul: 1.335, bandLo: 0.988, bandHi: 1.15, bandK: 0.00048, line: 1, nitro: 0.07 },
+  { id: 4, name: '매우 어려움', blurb: '제동 실수가 적고 추월 기회가 제한적입니다.', topMul: 1.185, gripMul: 1.385, bandLo: 0.995, bandHi: 1.165, bandK: 0.00055, line: 1, nitro: 0.03 },
+  { id: 5, name: '극한', blurb: '코너와 직선 모두 높은 속도를 유지하는 상대입니다.', topMul: 1.215, gripMul: 1.44, bandLo: 1, bandHi: 1.18, bandK: 0.0006, line: 1, nitro: 0.02 },
 ];
 export const levelById = (id: number): LevelDef => LEVELS.find(l => l.id === id) ?? LEVELS[0];
 

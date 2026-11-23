@@ -3,7 +3,7 @@
 import type { RoomSession } from '../net/lobby';
 import type { Channel, NetMsg } from '../net/types';
 import { CARS } from './config';
-import { encodeSnap, parseSnap, type Snap } from './netcar';
+import { encodeSnap, parseSnap, validFinishTime, type Snap } from './netcar';
 import type { CarState } from './physics';
 
 export interface MultiHooks {
@@ -32,7 +32,12 @@ export class RaceMulti {
   private hello(): void { if (!this.dead && !this.started) this.ch.send({ t: 'hello', f: this.session.me.id, car: this.car }); }
   private tick(): void {
     if (this.dead) return; const now = performance.now();
-    if (now - this.lastTick > 2000) for (const id of this.heard.keys()) this.heard.set(id, now); // 내 탭이 멈춘 시간은 상대의 침묵으로 세지 않습니다
+    if (now - this.lastTick > 2000) {
+      // Inactive tabs throttle timers. Sleeping time cannot expire either the
+      // launch/gather deadline or another driver's silence timeout.
+      this.born += now - this.lastTick;
+      for (const id of this.heard.keys()) this.heard.set(id, now);
+    }
     this.lastTick = now;
     if (!this.started) {
       this.hello();
@@ -53,10 +58,23 @@ export class RaceMulti {
     for (const p of list) if (p.id !== this.session.me.id) this.heard.set(p.id, now);
     this.hooks.onStart(list);
   }
-  private leave(id: string): void { if (this.gone.has(id)) return; this.gone.add(id); this.heard.delete(id); this.hooks.onGone(id); }
+  private leave(id: string): void {
+    if (this.gone.has(id)) return;
+    this.gone.add(id); this.heard.delete(id);
+    // Remove a departing driver from the pre-start roster, otherwise the
+    // host can accidentally launch a disconnected player into the race.
+    if (!this.started) this.cars.delete(id);
+    if (!this.started && id === this.session.room.host_id) {
+      // Guests cannot begin a room race without the host's start signal.
+      // Do not strand them on the 25s connection timeout after an explicit bye.
+      this.abort();
+      return;
+    }
+    this.hooks.onGone(id);
+  }
   private onMsg(m: NetMsg): void {
     if (this.dead) return;
-    const f = typeof m.f === 'string' ? m.f : ''; if (!f || f === this.session.me.id || !this.ids.includes(f)) return;
+    const f = typeof m.f === 'string' ? m.f : ''; if (!f || f === this.session.me.id || !this.ids.includes(f) || this.gone.has(f)) return;
     if (this.started) { if (this.heard.has(f)) this.heard.set(f, performance.now()); }
     if (m.t === 'hello') { if (this.started && this.session.host) this.ch.send({ t: 'start', f: this.session.me.id, list: this.startList }); else if (!this.started) this.cars.set(f, typeof m.car === 'string' && CARS.some(c => c.id === m.car) ? m.car : CARS[0].id); }
     else if (m.t === 'start') {
@@ -71,7 +89,7 @@ export class RaceMulti {
       if (seen.has(this.session.me.id) && seen.has(this.session.room.host_id) && list.length >= 2) this.begin(list);
     }
     else if (m.t === 's') { const s = parseSnap(m.c); if (s && this.started && !this.gone.has(f)) this.hooks.onSnap(f, s); }
-    else if (m.t === 'fin') { if (this.started && this.heard.has(f) && typeof m.time === 'number' && Number.isFinite(m.time) && m.time > 0) this.hooks.onFinish(f, m.time); }
+    else if (m.t === 'fin') { if (this.started && this.heard.has(f) && validFinishTime(m.time)) this.hooks.onFinish(f, m.time); }
     else if (m.t === 'bye') this.leave(f);
   }
   sendSnap(car: CarState, now: number): void { if (this.dead || !this.started || now - this.lastSnap < 66) return; this.lastSnap = now; this.ch.send({ t: 's', f: this.session.me.id, c: encodeSnap(car) }); }

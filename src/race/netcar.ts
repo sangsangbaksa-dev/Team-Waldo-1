@@ -9,17 +9,52 @@ const r2 = (v: number): number => Math.round(v * 100) / 100;
 export function encodeSnap(c: CarState): Snap {
   return [r2(c.x), r2(c.z), r2(c.y), Math.round(c.h * 1000) / 1000, r2(c.vx), r2(c.vz), r2(c.vf), r2(c.vl), r2(c.slip), r2(c.steer), r2(c.yawRate), r2(c.total), c.idx, r2(c.nitro), r2(c.boostT), c.drifting ? 1 : 0];
 }
-/** 형식이 맞지 않거나 숫자가 아닌 값이 있으면 버립니다(상대가 보낸 데이터는 믿지 않습니다). */
+/** Defensive per-field bounds prevent implausible packets from stalling angle wrapping or rendering. */
+const SNAP_MAX_ABS: readonly number[] = [
+  100_000, 100_000, 20_000, Math.PI + 0.01,
+  1_000, 1_000, 1_000, 1_000, Math.PI + 0.01,
+  1.01, 100, 100_000, 100_000, 1.01, 100, 1,
+];
+/** 형식이나 물리적으로 허용 가능한 범위를 벗어난 상대 차량 데이터는 버립니다. */
 export function parseSnap(raw: unknown): Snap | null {
   if (!Array.isArray(raw) || raw.length !== SNAP_LEN) return null;
-  return raw.every(v => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 1e7) ? (raw as Snap) : null;
+  // Array.every skips sparse holes. Indexed validation rejects every missing
+  // field and avoids allocating a copy for each 15Hz network packet.
+  for (let i = 0; i < SNAP_LEN; i++) {
+    const value = raw[i];
+    if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > SNAP_MAX_ABS[i]) return null;
+  }
+  if (!Number.isInteger(raw[12]) || raw[12] < 0 || raw[13] < 0 || raw[14] < 0
+    || (raw[15] !== 0 && raw[15] !== 1)) return null;
+  return raw as Snap;
+}
+
+/** Finished times are seconds, bounded so malformed peer packets cannot hijack standings. */
+export function validFinishTime(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= 3600;
+}
+
+/** Reject physically impossible peer finish claims, with a generous 180m/s
+ * speed limit above any car, boost, draft or launch impulse in the game.
+ * This is only a cheap plausibility guard, not authoritative anti-cheat.
+ */
+export function plausibleFinishTime(value: unknown, trackMeters: number, laps: number): value is number {
+  return validFinishTime(value) && Number.isFinite(trackMeters) && trackMeters > 0
+    && Number.isInteger(laps) && laps > 0 && value >= trackMeters * laps / 180;
+}
+
+/** A disconnected peer forfeits only after the race countdown has ended.
+ * Network handshake completion is not the same as the GO signal. */
+export function eligibleForForfeit(connected: boolean, phase: 'countdown' | 'racing' | 'done'): boolean {
+  return connected && phase !== 'countdown';
 }
 
 export interface RemoteLink { snap: Snap | null; at: number }
 
 /** 마지막 스냅샷을 속도로 조금 앞질러 예측한 위치로 부드럽게 따라갑니다. 너무 멀어지면 바로 옮깁니다. */
 export function followSnap(car: CarState, link: RemoteLink, now: number, dt: number): void {
-  const s = link.snap; if (!s) return;
+  const s = link.snap;
+  if (!s || !Number.isFinite(now) || !Number.isFinite(link.at) || !Number.isFinite(dt) || dt <= 0) return;
   const age = Math.min(0.25, Math.max(0, (now - link.at) / 1000)), tx = s[0] + s[4] * age, tz = s[1] + s[5] * age, far = Math.hypot(tx - car.x, tz - car.z) > 30;
   const k = far ? 1 : Math.min(1, dt * 14);
   car.x += (tx - car.x) * k; car.z += (tz - car.z) * k; car.y += (s[2] - car.y) * Math.min(1, dt * 14);

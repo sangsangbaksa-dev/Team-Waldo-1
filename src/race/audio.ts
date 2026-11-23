@@ -34,7 +34,7 @@ export class RaceAudio {
   private lastSfx = new Map<string, number>();
   gear = 1; private lastShift = 0;
   get enabled(): boolean { return this.eng.enabled; }
-  set enabled(on: boolean) { this.eng.setEnabled(on); }
+  set enabled(on: boolean) { this.setEnabled(on); }
   get ctx(): AudioContext | null { return this.eng.ctx; }
   get master(): GainNode | null { return this.eng.master; }
 
@@ -64,7 +64,18 @@ export class RaceAudio {
     this.boostG = loop('bandpass', 600, 0.8);
     this.bed = window.setInterval(() => this.tickBed(), 320);
   }
-  setEnabled(on: boolean): void { this.enabled = on; }
+  setEnabled(on: boolean): void {
+    // A muted game may be paused for minutes. Kill the latent engine/boost
+    // loop levels before the master bus is unmuted again; the next live
+    // drive() call will fade in the correct current values.
+    if (!on && this.eng.enabled && this.eng.ctx) {
+      const at = this.eng.ctx.currentTime;
+      for (const node of [this.motor?.gain, this.subOsc?.gain, this.whistle?.gain, this.wind?.gain, this.skid?.gain, this.boostG?.gain]) {
+        node?.gain.setTargetAtTime(0, at, 0.015);
+      }
+    }
+    this.eng.setEnabled(on);
+  }
   dispose(): void {
     if (this.bed !== null) { clearInterval(this.bed); this.bed = null; }
     for (const src of [this.motor?.o1, this.motor?.o2, this.subOsc?.o, this.whistle?.o, this.wind?.src, this.skid?.src, this.boostG?.src]) {
@@ -77,6 +88,13 @@ export class RaceAudio {
   /** 매 프레임: 속도(m/s), 가속 입력, 옆미끄러짐(rad), 부스트 여부 */
   drive(speed: number, throttle: number, slip: number, boost: boolean, drifting: boolean, wall: boolean): void {
     const c = this.eng.ctx; if (!c || !this.motor || !this.wind || !this.skid || !this.boostG) return;
+    if (!this.enabled) {
+      // The master bus is already silent; avoid scheduling 10+ Web Audio
+      // parameter changes every render while the player has muted sound.
+      this.gear = gearFor(this.done ? 0 : speed);
+      this.lastThr = this.done ? 0 : throttle;
+      return;
+    }
     const t = c.currentTime, v = this.done ? 0 : Math.abs(speed);
     const thr = this.done ? 0 : throttle, go = this.enabled && !this.done;
     const g = gearFor(v);

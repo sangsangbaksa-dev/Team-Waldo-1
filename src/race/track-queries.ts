@@ -72,3 +72,32 @@ export class TrackClearanceIndex {
     return Math.hypot(this.road.x[i] - x, this.road.z[i] - z) < need + this.extra[i];
   }
 }
+
+/** Racing start gantry's sign faces incoming traffic and sits outside its
+ * 90cm-deep crossbeam. This keeps the printed texture visible, not z-fighting.
+ * yaw rotates the Three.js plane normal (+Z) to -track tangent.
+ */
+export function startBannerPose(tx: number, tz: number, clearance = 0.65): { yaw: number; dx: number; dz: number } {
+  return { yaw: -Math.atan2(tz, tx) - Math.PI / 2, dx: -tx * clearance, dz: -tz * clearance };
+}
+
+/** Scene-safe caching of the immutable road's spatial clearance lookups.
+ * Only CPU arrays/indices are shared, never Three.js or WebGL resources.
+ * The source Track owns the cache lifetime through WeakMap identity.
+ */
+const clearanceCache = new WeakMap<RoadSamples, Map<string, TrackClearanceIndex>>();
+
+export function cachedTrackClearanceIndex(road: RoadSamples, stride = 1, slope = true): TrackClearanceIndex {
+  let modes = clearanceCache.get(road);
+  if (!modes) {
+    modes = new Map();
+    clearanceCache.set(road, modes);
+  }
+  const key = `${stride}:${slope}`;
+  let index = modes.get(key);
+  if (!index) {
+    index = new TrackClearanceIndex(road, stride, slope);
+    modes.set(key, index);
+  }
+  return index;
+}

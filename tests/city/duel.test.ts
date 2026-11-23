@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { World } from '../../src/city/world';
-import { TARGET_KILLS, TIME_LIMIT, duelOutcome, parsePose, parseShot } from '../../src/city/duel';
-import { DuelArmy, parseArmy } from '../../src/city/duelarmy';
+import { TARGET_KILLS, TIME_LIMIT, duelOutcome, parseDuelClass, parsePose, parseShot } from '../../src/city/duel';
+import { DuelArmy, MAX_SHOTS, parseArmy } from '../../src/city/duelarmy';
 
 const make = (side: 0 | 1, seed = 11, klass: 'warlord' | 'tycoon' | 'engineer' = 'warlord'): World => new World({ seed, difficulty: 'd4', klass, tutorial: true, duel: { side, name: '상대' } });
 const run = (w: World, sec: number): void => { for (let i = 0; i < sec * 60; i++) { w.step(1 / 60); w.events.length = 0; } };
@@ -103,11 +103,58 @@ describe('결투 병력·건설 동기화', () => {
     void b;
   });
 
+  it('원격 병력과 건물이 로컬에서 제거되어도 다음 스냅샷으로 복구한다', () => {
+    const w = make(0), sync = new DuelArmy(), hq = w.hq(1)!;
+    const msg = {
+      u: [[701, 'rifle', hq.x + 200, hq.y + 150, 0, 50, 70]],
+      s: [[702, 'barracks', hq.x + 260, hq.y + 260, 500, 1, 0]],
+      sh: [],
+    } as Parameters<DuelArmy['receive']>[1];
+    sync.receive(w, msg);
+    const unit = w.actors.find(a => a.alive && a.f === 1 && a.kind === 'rifle')!;
+    const building = w.structures.find(s => s.alive && s.f === 1 && s.kind === 'barracks')!;
+    unit.alive = false; w.byId.delete(unit.id);
+    building.alive = false;
+    sync.receive(w, msg);
+    const nextUnit = w.actors.find(a => a.alive && a.f === 1 && a.kind === 'rifle')!;
+    const nextBuilding = w.structures.find(s => s.alive && s.f === 1 && s.kind === 'barracks')!;
+    expect(nextUnit).not.toBe(unit);
+    expect(nextBuilding).not.toBe(building);
+    expect(w.byId.get(nextUnit.id)).toBe(nextUnit);
+    expect(w.map.solids[building.solid].alive).toBe(false);
+    expect(w.map.solids[nextBuilding.solid].alive).toBe(true);
+  });
+
+  it('한 패킷에 못 담은 병력 사격은 다음 패킷에 보내고 대기열을 제한한다', () => {
+    const w = make(0), sync = new DuelArmy();
+    for (let i = 0; i < MAX_SHOTS + 3; i++) w.armyShots.push({ x: 100 + i, y: 100, a: 0, w: 'u_rifle', m: 1 });
+    const first = parseArmy(sync.snapshot(w, 1000)!)!;
+    expect(first.sh).toHaveLength(MAX_SHOTS);
+    expect(w.armyShots).toHaveLength(3);
+    const second = parseArmy(sync.snapshot(w, 1200)!)!;
+    expect(second.sh.map(s => s[0])).toEqual([160, 161, 162]);
+    expect(w.armyShots).toHaveLength(0);
+    for (let i = 0; i < MAX_SHOTS * 10; i++) w.armyShots.push({ x: 1000 + i, y: 100, a: 0, w: 'u_rifle', m: 1 });
+    expect(sync.snapshot(w, 1400)).not.toBeNull();
+    expect(w.armyShots.length).toBeLessThanOrEqual(MAX_SHOTS * 2);
+  });
+
   it('잘못된 병력·건물·사격 메시지는 걸러 낸다', () => {
     expect(parseArmy({ t: 'a', u: 'x', sh: [] })).toBeNull();
     const m = parseArmy({ t: 'a', u: [[1, 'boss', 0, 0, 0, 10, 10], [2, 'rifle', 0, 0, 0, 10, 10], [3, 'rifle', NaN, 0, 0, 10, 10], [4, 'zzz', 0, 0, 0, 10, 10]], s: [[1, 'nope', 0, 0, 1, 1, 0], [2, 'depot', 5, 5, 600, 1, 0]], sh: [[0, 0, 0, 'pistol', 1], [0, 0, 0, 'laser', 1]] });
     expect(m!.u.map(r => r[0])).toEqual([2]); expect(m!.s!.map(r => r[0])).toEqual([2]); expect(m!.sh).toHaveLength(1);
     expect(parseArmy({ t: 'a', u: [], sh: [] })!.s).toBeNull();
+  });
+});
+
+describe('멀티플레이 직업 값 검증', () => {
+  it('accepts only the three known hero classes', () => {
+    expect(parseDuelClass('engineer')).toBe('engineer');
+    expect(parseDuelClass('tycoon')).toBe('tycoon');
+    expect(parseDuelClass('warlord')).toBe('warlord');
+    expect(parseDuelClass('__proto__')).toBe('warlord');
+    expect(parseDuelClass('unknown')).toBe('warlord');
+    expect(parseDuelClass(null)).toBe('warlord');
   });
 });
 

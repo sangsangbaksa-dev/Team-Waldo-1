@@ -17,14 +17,24 @@ export interface TutStep {
 const k = (t: string): string => `<kbd>${t}</kbd>`;
 const price = (kind: BizKind): number => BIZ[kind].price;
 
-/** 보스 앞쪽(yaw) 근처의 걸을 수 있는 빈 자리를 찾습니다. */
+/** 튜토리얼 표식/적을 보스가 실제로 볼 수 있는 걸을 만한 빈 자리에 놓습니다. */
 export function freeSpot(w: World, yaw: number, minR: number, maxR: number, spread = 0.9): { x: number; y: number } {
   const b = w.boss(0)!;
+  const visible = (x: number, y: number): boolean =>
+    !navBlocked(w.map, x, y) && clearLine(w.map, b.x, b.y, x, y);
   for (let n = 0; n < 80; n++) {
     const a = yaw + (w.rng() - 0.5) * 2 * spread * (n < 40 ? 1 : 3), r = minR + w.rng() * (maxR - minR), x = b.x + Math.cos(a) * r, y = b.y + Math.sin(a) * r;
-    if (!navBlocked(w.map, x, y) && (n > 40 || clearLine(w.map, b.x, b.y, x, y))) return { x, y };
+    if (visible(x, y)) return { x, y };
   }
-  return { x: b.x + 40, y: b.y + 40 };
+  // 길 없는 방향으로 난수가 몰려도, 벽 너머에 목표를 스폰하지 않습니다.
+  for (const radius of [minR, (minR + maxR) / 2, maxR, minR * 0.75, minR * 0.5, 40]) {
+    for (let i = 0; i < 32; i++) {
+      const a = yaw + i * Math.PI / 16, x = b.x + Math.cos(a) * radius, y = b.y + Math.sin(a) * radius;
+      if (visible(x, y)) return { x, y };
+    }
+  }
+  // 근처에 빈 자리가 전혀 없다면 마지막으로 보스의 현재 위치를 사용합니다.
+  return { x: b.x, y: b.y };
 }
 const aliveCount = (w: World, ids: number[]): number => ids.filter(id => w.byId.get(id)?.alive).length;
 const armyCount = (w: World): number => w.actors.filter(a => a.alive && a.f === 0 && a.kind === 'rifle').length;

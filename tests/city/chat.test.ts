@@ -11,6 +11,10 @@ describe('cleanChat', () => {
     expect(cleanChat('  안녕\u0000 하세요\n\n반가워  ')).toBe('안녕 하세요 반가워');
     expect(cleanChat('가'.repeat(500)).length).toBe(CHAT_MAX);
   });
+  it('does not split emoji and strips bidi text-direction controls', () => {
+    expect(cleanChat('가'.repeat(79) + '😀')).toBe('가'.repeat(79) + '😀');
+    expect(cleanChat('안녕\u202e 세계\u2066\u200b!')).toBe('안녕 세계 !');
+  });
   it('keeps markup as plain text (escaping is the renderer\'s job)', () => {
     expect(cleanChat('<b>hi</b>')).toBe('<b>hi</b>');
   });
@@ -38,5 +42,6 @@ describe('chat log', () => {
     expect(visibleChat(log, 100 + 1, false).map(l => l.text)).toEqual(['new']);
     expect(visibleChat(log, 100 + CHAT_SHOW_SEC + 1, false)).toEqual([]);
     expect(visibleChat(log, 100 + CHAT_SHOW_SEC + 1, true).map(l => l.text)).toEqual(['old', 'new']);
+    expect(visibleChat(log, 50, false).map(l => l.text)).toEqual([]); // future messages stay hidden after a clock reset
   });
 });

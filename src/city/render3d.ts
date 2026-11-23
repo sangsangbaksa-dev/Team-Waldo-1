@@ -194,7 +194,28 @@ export class Renderer3D {
     if (med > 28 && this.perfLevel < 3) { this.setPerfLevel(this.perfLevel + 1); }
   }
   resize(): void { this.w = this.canvas.clientWidth || window.innerWidth; this.h = this.canvas.clientHeight || window.innerHeight; this.renderer.setSize(this.w, this.h, false); this.camera.aspect = this.w / this.h; this.camera.updateProjectionMatrix(); }
-  dispose(): void { this.post?.dispose(); this.ins?.dispose(); this.ins = null; this.environment?.dispose(); this.details.dispose(); disposeLootTextures(); this.renderer.dispose(); this.scene.traverse(o => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); }); for (const f of this.floaters) f.el.remove(); }
+  dispose(): void {
+    this.post?.dispose();
+    this.ins?.dispose(); this.ins = null;
+    this.environment?.dispose();
+    this.details.dispose();
+    // These textures and fallback materials belong to this City renderer only.
+    // Do not dispose the shared model-asset cache used for later game entries.
+    for (const b of this.biz.values()) {
+      b.label.material.map?.dispose();
+      b.label.material.dispose();
+    }
+    this.biz.clear();
+    this.zoneTex.dispose();
+    this.glow.dispose();
+    for (const m of this.mats.values()) m.dispose();
+    this.mats.clear();
+    disposeLootTextures();
+    this.renderer.dispose();
+    this.scene.traverse(o => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); });
+    for (const f of this.floaters) f.el.remove();
+    this.floaters.length = 0;
+  }
   /** 조준선이 닿는 지면 좌표 */
   groundPoint(max = 760): { x: number; y: number } {
     const b = this.world.boss(0), ox = b ? b.x : this.camPos.x, oy = b ? b.y : this.camPos.z; let d = this.pitch < -0.03 ? Math.min(max, (this.mode === 'fp' ? EYE : 120) / Math.tan(-this.pitch)) : max * 0.8; d = Math.max(70, d);
@@ -451,7 +472,7 @@ export class Renderer3D {
     const upd = (m: THREE.InstancedMesh, n: number): void => { m.count = n; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; };
     upd(this.bodies, nb); upd(this.heads, nh); upd(this.guns, ng); upd(this.hulls, nm); upd(this.turrets, nm); upd(this.barrels, nm); if (this.ml) this.ml.update(pb, third, this.camPos);
     // 크리스탈
-    let nc = 0; for (const c of w.crystals) { if (c.amount <= 0) continue; const s = 9 + 9 * c.amount / c.max; d.rotation.set(0, c.id, 0); d.position.set(c.x, s * 1.1, c.y); d.scale.set(s * 0.75, s * 1.5, s * 0.75); d.updateMatrix(); this.crystals.setMatrixAt(nc++, d.matrix); } upd(this.crystals, 0); void nc;
+    let nc = 0; for (const c of w.crystals) { if (c.amount <= 0) continue; const s = 9 + 9 * c.amount / c.max; d.rotation.set(0, c.id, 0); d.position.set(c.x, s * 1.1, c.y); d.scale.set(s * 0.75, s * 1.5, s * 0.75); d.updateMatrix(); this.crystals.setMatrixAt(nc++, d.matrix); } upd(this.crystals, this.ml ? 0 : nc);
     // 탄환
     let nt = 0; for (const b of w.bullets) { if (nt >= 500) break; const wd = WEAPONS[b.w], a = Math.atan2(b.vy, b.vx), len = wd.splash ? 12 : wd.pierce ? 150 : 46, th = wd.splash ? 5 : wd.pierce ? 3 : b.boss ? 1.5 : 1.1; d.rotation.set(0, -a, 0); d.position.set(b.x - Math.cos(a) * len / 2, 30, b.y - Math.sin(a) * len / 2); d.scale.set(len, th, th); d.updateMatrix(); this.tracers.setMatrixAt(nt, d.matrix); this.tracers.setColorAt(nt, col.set(wd.color)); nt++; if (wd.splash && Math.random() < 0.6) this.smoke.add(b.x, 30, b.y, 0, 8, 0, 0.5, 0xcfcfcf); } upd(this.tracers, nt);
     // 동적 오브젝트 동기화

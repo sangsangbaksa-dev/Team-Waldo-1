@@ -43,7 +43,10 @@ export class DuelArmy {
     for (const a of w.actors) if (a.alive && a.f === 0 && a.kind !== 'boss' && a.kind !== 'civ' && u.length < MAX_UNITS) u.push([a.id, a.kind, r(a.x), r(a.y), norm(a.ang), Math.round(a.hp), a.maxHp]);
     let s: ArmyStruct[] | null = null;
     if (this.n++ % 2 === 0) { s = []; for (const t of w.structures) if (t.alive && t.f === 0 && t.temp <= 0 && s.length < MAX_STRUCTS) s.push([t.id, t.kind, t.x, t.y, Math.round(t.hp), Math.round(t.built * 100) / 100, norm(t.ang)]); }
-    const sh = w.armyShots.splice(0, MAX_SHOTS).map(q => [Math.round(q.x), Math.round(q.y), Math.round(q.a * 1000) / 1000, q.w, Math.round(q.m * 100) / 100] as ArmyShot); w.armyShots.length = 0;
+    const sh = w.armyShots.splice(0, MAX_SHOTS).map(q => [Math.round(q.x), Math.round(q.y), Math.round(q.a * 1000) / 1000, q.w, Math.round(q.m * 100) / 100] as ArmyShot);
+    // Never silently discard every shot beyond this packet's limit. Carry a
+    // small backlog to the next 5Hz snapshot, but bound its memory and latency.
+    if (w.armyShots.length > MAX_SHOTS * 2) w.armyShots.splice(0, w.armyShots.length - MAX_SHOTS * 2);
     return { t: 'a', u, ...(s ? { s } : {}), sh };
   }
 
@@ -52,6 +55,12 @@ export class DuelArmy {
     const seen = new Set<number>();
     for (const [id, kind, x, y, ang, hp, mh] of army.u) {
       seen.add(id); let p = this.units.get(id);
+      // A unit may have died locally (zone damage, collision, etc.) while
+      // its authoritative remote snapshot still reports it alive.
+      if (p && (!p.a.alive || p.a.kind !== kind)) {
+        if (p.a.alive) this.drop(w, p.a);
+        p = undefined;
+      }
       if (!p) { const a = w.spawnActor(kind, 1, x, y); a.order = { type: 'hold', x, y }; a.sup = 0; p = { a, x, y, ang }; this.units.set(id, p); }
       p.x = x; p.y = y; p.ang = ang; p.a.maxHp = mh; p.a.hp = Math.max(1, hp);
     }
@@ -62,6 +71,13 @@ export class DuelArmy {
         have.add(id);
         if (kind === 'hq') { if (hq) { hq.hp = Math.max(1, hp); hq.built = 1; } continue; }
         let s = this.structs.get(id);
+        // Recreate vanished/mismatched remote structures; stale map solids
+        // must be removed before creating the replacement.
+        if (s && (!s.alive || s.kind !== kind)) {
+          s.alive = false;
+          removeSolid(w.map, s.solid);
+          s = undefined;
+        }
         if (!s) { s = w.addStructure(kind, 1, x, y, false); this.structs.set(id, s); w.fx('build', x + s.w / 2, y + s.h / 2, 0, undefined, 1); }
         s.maxHp = STRUCTS[kind].hp; s.hp = Math.max(1, hp); s.ang = ang;
         if (built >= 1 && s.built < 1) w.fx('built', s.x + s.w / 2, s.y + s.h / 2, 0, STRUCTS[kind].name, 1);

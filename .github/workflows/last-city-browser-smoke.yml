@@ -1,8 +1,24 @@
 name: Last City mission UI smoke
 on:
   push:
+    branches: [feat/shared-menu-rails, claude/project-thread-hhffi5]
+    paths: &city_paths
+      - 'src/city/**'
+      - 'tests/city/**'
+      - 'src/net/**'
+      - 'src/audio-core.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tools/city-browser-smoke.mjs'
+      - '.github/workflows/last-city-browser-smoke.yml'
+      - '.github/workflows/last-city-core-ci.yml'
   pull_request:
+    paths: *city_paths
   workflow_dispatch:
+
+concurrency:
+  group: last-city-browser-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read

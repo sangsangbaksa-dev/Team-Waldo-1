@@ -1,0 +1,44 @@
+name: Last City core checks
+on:
+  push:
+    branches: [feat/shared-menu-rails, claude/project-thread-hhffi5]
+    paths: &city_paths
+      - 'src/city/**'
+      - 'tests/city/**'
+      - 'src/net/**'
+      - 'src/audio-core.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tools/city-browser-smoke.mjs'
+      - '.github/workflows/last-city-browser-smoke.yml'
+      - '.github/workflows/last-city-core-ci.yml'
+  pull_request:
+    paths: *city_paths
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: last-city-core-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  city:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Lint Last City only
+        run: npx eslint src/city tests/city
+      - name: Typecheck project integration
+        run: npm run typecheck
+      - name: Run Last City unit tests
+        run: npx vitest run tests/city
+      - name: Build Vite application
+        run: npm run build

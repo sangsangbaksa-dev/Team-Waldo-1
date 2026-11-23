@@ -1,10 +1,37 @@
 import { describe, expect, it } from 'vitest';
-import { World } from '../../src/city/world';
+import { World, compactAlive } from '../../src/city/world';
 import { findPath, generateCity, makeRng, navBlocked } from '../../src/city/map';
 import { BIZ, DIFFICULTY, BLOCK, FACTION_COUNT, ROAD, SIZE, STRUCTS, SUPPLY_CAP, UNITS } from '../../src/city/defs';
 
 const make = (seed = 7): World => new World({ seed, difficulty: 'd4', klass: 'tycoon' });
 const run = (w: World, seconds: number): void => { for (let i = 0; i < seconds * 30 && !w.over; i++) { w.step(1 / 30); w.events.length = 0; } };
+
+describe('LAST CITY simulation compaction', () => {
+  it('removes dead entities in order without replacing the original array', () => {
+    const a = { alive: true, id: 1 }, b = { alive: false, id: 2 }, c = { alive: true, id: 3 };
+    const entries = [a, b, c], original = entries;
+    compactAlive(entries);
+    expect(entries).toBe(original);
+    expect(entries).toEqual([a, c]);
+    compactAlive(entries);
+    expect(entries).toEqual([a, c]);
+  });
+
+  it('reuses entity arrays across simulation frames', () => {
+    const w = new World({ seed: 11, difficulty: 'd4', klass: 'warlord', tutorial: true });
+    const refs = { vehicles: w.vehicles, loot: w.loot, structures: w.structures };
+    const vehicle = w.spawnVehicle('sedan', 800, 800, 0);
+    const drop = w.spawnLoot('cash', 810, 810, 1);
+    vehicle.alive = false;
+    drop.alive = false;
+    w.step(1 / 60);
+    expect(w.vehicles).toBe(refs.vehicles);
+    expect(w.loot).toBe(refs.loot);
+    expect(w.structures).toBe(refs.structures);
+    expect(w.vehicles).not.toContain(vehicle);
+    expect(w.loot).not.toContain(drop);
+  });
+});
 
 describe('LAST CITY map', () => {
   it('generates the same playable city for the same seed', () => {

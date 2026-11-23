@@ -5,12 +5,14 @@ import { roomCode, validRoom, validSnapshot } from './application/room-protocol.
 import { Scene } from './infrastructure/scene.js';
 import { ArenaAudio } from './infrastructure/audio.js';
 import { Network, parseServerUrl } from './infrastructure/network.js';
+import { RelayNetwork } from './infrastructure/relay-network.js';
 import { Controls } from './ui/input.js';
 import { readSettings, saveSettings } from './ui/settings.js';
 import { View, showGraphicsError } from './ui/view.js';
 
 const settings = readSettings();
 settings.server ||= import.meta.env.VITE_ROOM_SERVER || (['localhost', '127.0.0.1'].includes(location.hostname) ? 'ws://localhost:8080' : '');
+const relayKind = new URLSearchParams(location.search).get('relay') === 'local' ? 'local' : 'supabase';
 const audio = new ArenaAudio();
 audio.configure(settings);
 
@@ -27,6 +29,7 @@ let mode = null;
 let screen = 'home';
 let local = 0;
 let network = null;
+let relayRoom = false;
 let code = '';
 let lastInput = 0;
 let rematchRequested = false;
@@ -172,9 +175,12 @@ function escape() {
 
 function connect(type) {
   if (screen !== 'online') return;
-  let server;
-  try { server = parseServerUrl(view.find('#server-url').value); }
-  catch (error) { view.status(error.message || 'Enter a valid room server address.'); return; }
+  const typed = view.find('#server-url').value.trim();
+  let server = '';
+  if (typed) {
+    try { server = parseServerUrl(typed); }
+    catch (error) { view.status(error.message || 'Enter a valid room server address.'); return; }
+  }
   const entered = roomCode(view.find('#room-code').value);
   if (type === 'join' && !validRoom(entered)) {
     view.status('Enter the five characters shown in your rival’s room.');
@@ -183,19 +189,23 @@ function connect(type) {
   closeNetwork();
   settings.server = server;
   saveSettings(settings);
-  const connection = new Network(receive, status => {
-    if (status === 'connecting') view.status('Connecting to the room server…', true);
-    if (status === 'connected') view.status('Connected. Waiting for room confirmation…', true);
+  const onStatus = status => {
+    if (status === 'connecting') view.status(server ? 'Connecting to the room server…' : 'Opening the room…', true);
+    if (status === 'connected') view.status(server ? 'Connected. Waiting for room confirmation…' : 'Connected. Waiting for your rival…', true);
+    if (status === 'missing') networkLost('missing');
     if (status === 'timeout' || status === 'closed' || status === 'error') networkLost(status);
-  });
+  };
+  const connection = server ? new Network(receive, onStatus) : new RelayNetwork(receive, onStatus, { kind: relayKind });
   network = connection;
+  relayRoom = !server;
   try { connection.connect(server, type, entered); }
   catch { networkLost('error'); }
 }
 
 function networkLost(status) {
-  if (status === 'timeout') disconnected('The room server took too long to respond.');
-  else if (screen === 'online') disconnected('Could not connect. Check the room server address and WebSocket setup.');
+  if (status === 'missing') disconnected('No open room has that code. Check the code and ask your rival to keep the room open.');
+  else if (status === 'timeout') disconnected('The room server took too long to respond.');
+  else if (screen === 'online') disconnected(relayRoom ? 'Could not reach the online relay. Check your connection and try again.' : 'Could not connect. Check the room server address and WebSocket setup.');
   else disconnected('Connection to the room server was lost.');
 }
 
@@ -218,7 +228,7 @@ function receive(message) {
       code = message.code;
       local = 0;
       screen = 'waiting';
-      view.waiting(code);
+      view.waiting(code, relayRoom);
       break;
     case 'joined':
       if (!validRoom(message.code)) return disconnected('The server returned an invalid room code.');

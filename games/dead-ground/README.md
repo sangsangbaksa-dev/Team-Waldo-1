@@ -18,6 +18,7 @@ Open [http://localhost:8080](http://localhost:8080). The Node server serves the 
 
 - **Deploy solo** starts a local round with five bots. It also works on a static host serving `dist/`.
 - **Online rooms** lets a host create a private five-character code. Other players open the same server URL, choose **Join room**, and enter the code. The host can start when at least two players are present, up to six total. Players join before a round starts.
+- **No server needed:** a build with `VITE_ROOM_TRANSPORT=relay` (the Vercel build sets it) lets the player who creates a room host it in their browser. Rivals connect through a Supabase Realtime Broadcast channel using the same five-character code. Keep the host tab open and visible; closing it ends the room. Use `?transport=relay` to try it on any build, or `?transport=local` for two tabs on one machine.
 - For a LAN match, share the host computer’s LAN address and port. For internet play, place the Node server behind an HTTPS proxy that forwards WebSocket upgrades at `/ws`. Use `PORT` to change the server port. For a separately hosted client, set `VITE_WS_URL` to the full `wss://…/ws` endpoint before building.
 - For development, run `npm run dev` for Vite and `npm run dev:server` in another terminal for online rooms. The Vite dev proxy expects the server on port 8080.
 
@@ -44,8 +45,8 @@ A free-for-all round ends at 12 eliminations or after six minutes. Standings use
 | Layer | Responsibility |
 | --- | --- |
 | `src/domain/` | Terrain and cover, movement, projectiles, damage, rounds, and bot decision logic |
-| `src/application/` | Session contract, solo orchestration, and room protocol |
-| `src/infrastructure/` | Three.js rendering, Web Audio, and browser WebSocket transport |
+| `src/application/` | Session contract, solo orchestration, room protocol, and the transport-free room rules (`rooms.ts`) |
+| `src/infrastructure/` | Three.js rendering, Web Audio, and room links (WebSocket, or a player-hosted room over Realtime Broadcast) |
 | `src/ui/` | Menu, input, scope, HUD, field map, and composition |
 | `server/` | Authoritative room state, input validation, fixed-step simulation, and static hosting |
 

@@ -151,9 +151,9 @@ class Game {
 
   private connect(request: Extract<ClientMessage, { type: 'create' | 'join' }>): void {
     this.session?.close();
-    this.session = new OnlineSession(request);
+    this.session = new OnlineSession(request, this.world ??= createWorld());
     this.onlineBusy(true);
-    notice(element('online-status'), 'Connecting to room server…');
+    notice(element('online-status'), 'Connecting…');
   }
 
   private onlineBusy(busy: boolean): void {

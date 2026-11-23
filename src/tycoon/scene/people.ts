@@ -106,15 +106,17 @@ export class Traffic {
     }
     return false;
   }
-  update(dt: number, cam: THREE.Vector3, player: THREE.Vector3, night: number): void {
+  update(dt: number, cam: THREE.Vector3, player: THREE.Vector3, night: number, parkedAhead?: (x: number, z: number, r: number) => boolean): void {
     let n = 0;
     for (const c of this.cars) {
       const on = n++ < this.target * (1 - night * 0.4); c.mesh.visible = on && Math.hypot(c.mesh.position.x - cam.x, c.mesh.position.z - cam.z) < 260; if (!on) continue;
       // 앞에 사람이 있으면 멈춥니다
       const along = c.axis === 'x' ? c.dir : 0, alongZ = c.axis === 'z' ? c.dir : 0, px = c.mesh.position.x, pz = c.mesh.position.z;
       const rx = player.x - px, rz = player.z - pz, fwd = rx * along + rz * alongZ, side = Math.abs(rx * alongZ * -1 + rz * along * 1);
-      const blocked = fwd > 0 && fwd < 9 && side < 2.6;
-      c.t += c.dir * c.speed * (blocked ? 0.0 : 1) * dt; if (c.t > WORLD_HALF - 6) c.t = -WORLD_HALF + 6; if (c.t < -WORLD_HALF + 6) c.t = WORLD_HALF - 6;
+      const probe = c.halfLength + 3.2;
+      const parked = parkedAhead?.(px + along * probe, pz + alongZ * probe, c.halfWidth + 0.6) ?? false;
+      const blocked = (fwd > 0 && fwd < 9 && side < 2.6) || parked;
+      c.t += c.dir * c.speed * (blocked ? 0 : 1) * dt; if (c.t > WORLD_HALF - 6) c.t = -WORLD_HALF + 6; if (c.t < -WORLD_HALF + 6) c.t = WORLD_HALF - 6;
       const lane = c.dir > 0 ? c.lane : -c.lane;
       if (c.axis === 'x') { c.mesh.position.set(c.t, 0.18, c.line + lane); c.mesh.rotation.y = c.dir > 0 ? 0 : Math.PI; }
       else { c.mesh.position.set(c.line - lane, 0.18, c.t); c.mesh.rotation.y = c.dir > 0 ? -Math.PI / 2 : Math.PI / 2; }

@@ -53,7 +53,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       <div class="ty-mini"><canvas id="ty-minimap" width="220" height="220"></canvas></div>
       <div class="ty-banner" id="ty-banner"></div>
       <div class="ty-route" id="ty-route" hidden><span class="ty-route-mark" id="ty-route-mark">➤</span><div><b>내 목적지</b><span id="ty-route-distance">0m</span></div><button type="button" id="ty-route-clear" aria-label="목적지 제거">✕</button></div>
-      <div class="ty-drive" id="ty-drive" hidden><span id="ty-drive-name"></span><strong><b id="ty-drive-speed">0</b><small>km/h</small></strong><span>W 가속 · S 후진 · A/D 조향 · Space 브레이크 · H 경적 · F 하차</span></div>
+      <div class="ty-drive" id="ty-drive" hidden><span id="ty-drive-name"></span><strong><em id="ty-drive-gear" aria-label="기어">N</em><b id="ty-drive-speed">0</b><small>km/h</small></strong><span>W 가속 · S 후진 · A/D 조향 · Space 브레이크 · H 경적 · F 하차</span></div>
       <div class="ty-touchpad"><div class="ty-stick" id="ty-stick"><i></i></div>
         <div class="ty-tfoot"><button type="button" data-t="ride" id="ty-t-ride">탑승</button><button type="button" data-t="use" class="big">행동</button><button type="button" data-t="run" id="ty-t-run">달리기</button><button type="button" data-t="view">시점</button></div></div>
     </div>
@@ -488,7 +488,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     }
     // 프롬프트
     const p = q<HTMLButtonElement>('#ty-prompt');
-    if (rides?.driving && !modal) { p.hidden = false; html('prompt', '<kbd>F</kbd><b>차량에서 내리기</b>'); } else if (rides?.nearby(player.pos.x, player.pos.z) && !modal && !s.activity) { p.hidden = false; html('prompt', `<kbd>F</kbd><b>${esc(rides.nearby(player.pos.x, player.pos.z)!.name)} 탑승</b>${near ? `<em>E · ${esc(near.spot.name)}</em>` : ''}`); } else if (near && !modal && !s.activity) { p.hidden = false; const v = near.spot; const key = touch ? '' : '<kbd>E</kbd>'; const txt = `${key}<span class="ico">${esc(v.icon)}</span><b>${esc(v.name)}</b>${v.locked ? `<em>🔒 ${esc(STAGE_NAMES[v.minStage])} 단계에 열림</em>` : ''}`; html('prompt', txt); } else p.hidden = true;
+    if (rides?.driving && !modal) { p.hidden = false; html('prompt', rides.speed > 1 ? '<b>정차한 뒤 하차하세요</b>' : '<kbd>F</kbd><b>차량에서 내리기</b>'); } else if (rides?.nearby(player.pos.x, player.pos.z) && !modal && !s.activity) { p.hidden = false; html('prompt', `<kbd>F</kbd><b>${esc(rides.nearby(player.pos.x, player.pos.z)!.name)} 탑승</b>${near ? `<em>E · ${esc(near.spot.name)}</em>` : ''}`); } else if (near && !modal && !s.activity) { p.hidden = false; const v = near.spot; const key = touch ? '' : '<kbd>E</kbd>'; const txt = `${key}<span class="ico">${esc(v.icon)}</span><b>${esc(v.name)}</b>${v.locked ? `<em>🔒 ${esc(STAGE_NAMES[v.minStage])} 단계에 열림</em>` : ''}`; html('prompt', txt); } else p.hidden = true;
     const actionButton = q<HTMLButtonElement>('[data-t="use"]');
     actionButton.textContent = rides?.driving ? '경적' : '행동';
     actionButton.classList.toggle('horn', !!rides?.driving);
@@ -499,11 +499,11 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     runButton.classList.toggle('brake', !!rides?.driving);
     const rideButton = q<HTMLButtonElement>('#ty-t-ride');
     const nearbyRide = rides?.nearby(player.pos.x, player.pos.z);
-    rideButton.textContent = rides?.driving ? '하차' : '탑승';
-    rideButton.disabled = !nearbyRide || !!s.activity;
+    rideButton.textContent = rides?.driving ? (rides.speed > 1 ? '정차 후 하차' : '하차') : '탑승';
+    rideButton.disabled = !nearbyRide || !!s.activity || (!!rides?.driving && rides.speed > 1);
     rideButton.setAttribute('aria-label', rides?.driving ? '차량에서 내리기' : '가까운 차량 탑승');
     const drive = q('#ty-drive'); drive.hidden = !rides?.driving;
-    if (rides?.driving) { set('drive-speed', String(Math.round(rides.speed * 3.6))); set('drive-name', rides.name ?? '차량'); }
+    if (rides?.driving) { set('drive-speed', String(Math.round(rides.speed * 3.6))); set('drive-gear', rides.gear); set('drive-name', rides.name ?? '차량'); }
   }
 
   // ---------- 종료 ----------

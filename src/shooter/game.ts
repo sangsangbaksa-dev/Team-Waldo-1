@@ -73,6 +73,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   const feed: Array<{ text: string; at: number; mine: boolean }> = [], told = new Set<number>();
   const cache = new Map<string, string>();
   const set = (el: HTMLElement, key: string, text: string): void => { if (cache.get(key) !== text) { cache.set(key, text); el.textContent = text; } };
+  const setProgress = (el: HTMLElement, key: string, value: string): void => { if (cache.get(key) !== value) { cache.set(key, value); el.setAttribute('aria-valuenow', value); } };
   const html = (el: HTMLElement, key: string, v: string): void => { if (cache.get(key) !== v) { cache.set(key, v); el.innerHTML = v; } };
   const me = (): Player => match!.players[meIdx];
 
@@ -455,8 +456,8 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     set(q('#sz-alive'), 'alive', String(m.aliveCount())); set(q('#sz-kills'), 'kills', String(p.kills));
     const delay = m.zoneDelay > 0 && m.t < m.zoneDelay, zl = delay ? '자기장 활성화까지' : z.phase >= 6 ? '마지막 자기장' : z.shrinking ? `자기장 수축 중 · ${z.phase + 1}단계` : `자기장 수축까지 · ${z.phase + 1}단계`;
     set(q('#sz-ztime'), 'zt', delay ? clock(m.zoneDelay - m.t) : z.timeLeft > 0 ? clock(z.timeLeft) : '--'); set(q('#sz-zlabel'), 'zl', zl); q('#sz-zone').classList.toggle('shrink', z.shrinking);
-    q('#sz-hp').style.width = `${clamp(p.hp, 0, 100)}%`; set(q('#sz-hpn'), 'hpn', String(Math.ceil(Math.max(0, p.hp)))); q('.sz-bar.hp').setAttribute('aria-valuenow', String(Math.ceil(clamp(p.hp, 0, 100))));
-    q('#sz-ar').style.width = `${clamp(p.armor, 0, 100)}%`; set(q('#sz-arn'), 'arn', String(Math.ceil(p.armor))); q('.sz-bar.ar').setAttribute('aria-valuenow', String(Math.ceil(clamp(p.armor, 0, 100))));
+    q('#sz-hp').style.width = `${clamp(p.hp, 0, 100)}%`; set(q('#sz-hpn'), 'hpn', String(Math.ceil(Math.max(0, p.hp)))); setProgress(q('.sz-bar.hp'), 'hp-aria', String(Math.ceil(clamp(p.hp, 0, 100))));
+    q('#sz-ar').style.width = `${clamp(p.armor, 0, 100)}%`; set(q('#sz-arn'), 'arn', String(Math.ceil(p.armor))); setProgress(q('.sz-bar.ar'), 'ar-aria', String(Math.ceil(clamp(p.armor, 0, 100))));
     q('.sz-bl').classList.toggle('low', p.hp < 30);
     { const H = p.healKind === 'kit' ? HEAL.kit : HEAL.bandage, on = p.healT > 0; q('#sz-cast').classList.toggle('show', on); if (on) { set(q('#sz-castl'), 'castl', `${H.name} 사용 중`); q('#sz-castb').style.width = `${clamp((1 - p.healT / H.time) * 100, 0, 100)}%`; } }
     set(q('#sz-wname'), 'wn', def ? def.name + (p.reload > 0 ? ' · 장전 중' : '') : '맨손'); set(q('#sz-mag'), 'mag', g ? String(g.mag) : '-'); set(q('#sz-res'), 'res', g ? `/ ${g.reserve}` : '');

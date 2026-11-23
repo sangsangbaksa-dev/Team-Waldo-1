@@ -290,7 +290,18 @@ try {
     assert.ok(highStats.calls > 0, 'High quality must issue rendered draw calls');
     assert.ok(highStats.cloudCount >= 30, 'High quality must populate atmosphere sprites');
     assert.ok(highStats.roughness < 0.6, 'High quality keeps richer water lighting');
-    await highPage.screenshot({ path: 'browser-artifacts/sky-high-desktop.png', animations: 'disabled' });
+    await highPage.waitForFunction(() => window.__sky?.view?.meshes?.has(window.__sky?.sim?.player?.id));
+    // Rendering calls may have been recorded on the title scene before the
+    // high-quality aircraft/world finished drawing. Check the actual result.
+    await highPage.waitForTimeout(1000);
+    const highShot = await highPage.screenshot({ path: 'browser-artifacts/sky-high-desktop.png', animations: 'disabled' });
+    const highDiagnostics = await highPage.evaluate(() => ({
+      frame: window.__sky.renderer.info.render.frame,
+      playerMeshCount: window.__sky.view.meshes.size,
+      sceneChildren: window.__sky.view.scene.children.length,
+      webglLost: window.__sky.renderer.getContext().isContextLost(),
+    }));
+    assert.ok(highShot.length > 120000, 'High-quality canvas appears blank: ' + JSON.stringify(highDiagnostics));
     assert.deepEqual(highErrors, [], 'High quality must not throw WebGL or shader errors');
     console.log('PASS SKY WAR high-quality desktop (' + highStats.calls + ' draw calls)');
   } finally {

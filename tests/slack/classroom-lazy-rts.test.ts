@@ -59,13 +59,21 @@ it('keeps the game-over panel visible and offers retry by button or keyboard', (
   expect(game).toBeTruthy();
   game!.over = 1; view.frame(0.1);
   expect(view.el.querySelector('.sl-end.on [data-rts-outcome]')?.textContent).toContain('패배');
+  const canvas = view.el.querySelector<HTMLCanvasElement>('.sl-win.gm canvas')!;
+  Object.defineProperty(canvas, 'getBoundingClientRect', {
+    configurable: true, value: () => ({ left: 0, top: 0, width: 320, height: 180 }),
+  });
+  const movePointer = new Event('pointerdown', { bubbles: true, cancelable: true });
+  Object.assign(movePointer, { button: 0, clientX: 75, clientY: 45 });
+  canvas.dispatchEvent(movePointer);
+  expect(view.el.querySelector('#sl-rts-cursor')?.textContent).toContain('75, 45');
   view.el.querySelector<HTMLButtonElement>('[data-rts-retry]')!.click();
   expect(game!.over).toBeNull();
+  expect(view.el.querySelector('#sl-rts-cursor')?.textContent).toContain('지휘 위치 중앙');
   view.frame(0.1);
   expect(view.el.querySelector('.sl-end.on')).toBeNull();
 
   game!.over = 0; view.frame(0.1);
-  const canvas = view.el.querySelector<HTMLCanvasElement>('.sl-win.gm canvas')!;
   canvas.focus();
   canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', bubbles: true, cancelable: true }));
   expect(game!.over).toBeNull();

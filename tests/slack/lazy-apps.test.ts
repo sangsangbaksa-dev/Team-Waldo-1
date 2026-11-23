@@ -138,6 +138,21 @@ it('lets a keyboard player hit a visible star with J without repeat scoring', ()
   j(); expect(score.textContent).toBe('10');
 });
 
+it('reuses the same reaction-game nodes instead of querying the DOM each frame', () => {
+  view.el.querySelector<HTMLButtonElement>('[data-app="game"]')!.click();
+  view.frame(0.1);
+  const windowNode = view.el.querySelector<HTMLElement>('.sc-app-game')!;
+  const query = vi.spyOn(windowNode, 'querySelector');
+  try {
+    for (let i = 0; i < 50; i++) view.frame(0.02);
+    expect(query).not.toHaveBeenCalled();
+    const beforeScore = view.el.querySelector('[data-score]')?.textContent;
+    view.el.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', bubbles: true }));
+    expect(view.el.querySelector('[data-score]')?.textContent).not.toBe(beforeScore);
+    expect(query).not.toHaveBeenCalled();
+  } finally { query.mockRestore(); }
+});
+
 it('keeps the star and timer ring clear of narrow screen edges', () => {
   view.el.querySelector<HTMLButtonElement>('[data-app="game"]')!.click();
   view.frame(0.1);

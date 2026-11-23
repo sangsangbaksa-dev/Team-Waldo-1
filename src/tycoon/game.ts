@@ -75,7 +75,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   const keys = new Set<string>(); const tc = { moveId: -1, mx: 0, my: 0, ox: 0, oy: 0, lookId: -1, lx: 0, ly: 0, run: false }; let drag = -1, dragX = 0, dragY = 0, locked = false;
   let near: { id: string; spot: SpotView; dist: number } | null = null, spotViews: SpotView[] = [], lastStage = -1, lastCarry = '', hudDirty = true;
   const toastList: Array<{ el: HTMLElement; at: number }> = [];
-  let bannerTimer = 0, winTimer = 0;
+  let bannerTimer = 0, winTimer = 0, lastCrashAt = -100;
   let carryGroup: THREE.Group | null = null;
   let modalTrigger: HTMLElement | null = null;
   let resumePosition: TycoonPosition | null = null;
@@ -362,7 +362,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       const steer = (keys.has('KeyA') ? 1 : 0) - (keys.has('KeyD') ? 1 : 0) - tc.mx;
       const throttle = (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0) - tc.my;
       const impact = rides?.update(dt, { throttle, steer, brake: keys.has('Space') }, player, frozen);
-      if (impact && !frozen) audio.bad();
+      if (impact && !frozen && nowS - lastCrashAt > 0.7) { lastCrashAt = nowS; audio.impact(); }
     }
     // 가까운 장소
     near = playing && !rides?.driving ? city.nearestSpot(player.pos.x, player.pos.z, PROMPT_RANGE) : null;

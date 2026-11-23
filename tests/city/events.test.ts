@@ -91,8 +91,9 @@ describe('도시 사건', () => {
     for (let i = 0; i < 40; i++) {
       w.event = null;
       startEvent(w, 'delivery', boss.x, boss.y);
-      if (!w.event) continue;
-      const ev = w.event;
+      // startEvent mutates w.event; preserve the nullable type after the explicit reset.
+      const ev = w.event as World['event'];
+      if (!ev) continue;
       const safe = (x: number, y: number, cx: number, cy: number, radius: number) =>
         Math.hypot(x - cx, y - cy) <= radius - 60;
       expect(safe(ev.x, ev.y, w.zone.x, w.zone.y, w.zone.r)).toBe(true);

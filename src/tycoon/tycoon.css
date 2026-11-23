@@ -313,3 +313,12 @@
 @media(max-height:500px) and (orientation:landscape) {
   .ty-route { top:82px; right:10px; left:auto; transform:none; }
 }
+
+.ty-controls-note { padding:10px 12px; color:#c0cbd4; font-size:11px; line-height:1.65;
+  border:1px solid #3a4857; border-radius:6px; background:#182330; }
+.ty-root.touch .ty-tfoot button { border-radius:9px; min-height:42px; }
+.ty-root.touch .ty-tfoot button.big { border-radius:9px; }
+@media(prefers-reduced-motion:reduce) {
+  .ty-titlebox { animation:none; }
+  .ty-title-btns button { transition:none; }
+}

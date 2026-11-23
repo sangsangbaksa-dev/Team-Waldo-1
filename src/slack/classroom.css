@@ -1,4 +1,4 @@
-﻿.sl-class{position:relative;display:flex;flex-direction:column;height:100%;min-height:420px;overflow:hidden;background:#202623;color:#eee8d8;font-family:system-ui,sans-serif;user-select:none;-webkit-user-select:none}
+﻿.sl-class{position:relative;display:flex;flex-direction:column;height:100%;min-height:420px;overflow:hidden;background:#202623;color:#eee8d8;font-family:inherit;user-select:none;-webkit-user-select:none}
 .sl-room{position:relative;flex:1;min-height:300px;overflow:hidden;container-type:size;background:linear-gradient(#7d8277 0 50%,#3c423b 50%)}
 .sl-world{position:absolute;inset:0}
 .sl-room>*{pointer-events:none}

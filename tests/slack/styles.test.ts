@@ -30,6 +30,14 @@ describe('SLACK OFF short-landscape shop interaction', () => {
   });
 });
 
+describe('SLACK OFF typography consistency', () => {
+  it('inherits the hub Korean typeface instead of overriding with generic system-ui', () => {
+    expect(styles.find(s => s.name === 'slack.css')!.css).toMatch(/\.sl-root\{[^}]*font-family:inherit/);
+    expect(styles.find(s => s.name === 'computer.css')!.css).toMatch(/\.slack-computer\{[^}]*font-family:inherit/);
+    expect(styles.find(s => s.name === 'classroom.css')!.css).toMatch(/\.sl-class\{[^}]*font-family:inherit/);
+  });
+});
+
 describe('SLACK OFF shop responsive design', () => {
   it('displays consistent product cards and a two-column compact catalogue', () => {
     const dorm = styles.find(s => s.name === 'computer.css')!.css;

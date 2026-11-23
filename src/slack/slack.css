@@ -1,4 +1,4 @@
-﻿.sl-root{position:fixed;inset:0;z-index:1000;background:#17191b;color:#f5f1e8;font-family:system-ui,sans-serif;overflow:hidden}
+﻿.sl-root{position:fixed;inset:0;z-index:1000;background:#17191b;color:#f5f1e8;font-family:inherit;overflow:hidden}
 .sl-root{overscroll-behavior:none;touch-action:pan-y}
 .sl-root button{font-family:inherit}
 .sl-root button:focus-visible{outline:2px solid #f6dc95;outline-offset:-2px}

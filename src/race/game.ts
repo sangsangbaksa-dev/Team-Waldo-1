@@ -25,12 +25,12 @@ import { framePlan, STEP, escapeRaceText } from './frame-plan';
 import { raceHudSubtitle } from './hud-status';
 import { loadRaceCars, withAssetDeadline } from './car-models';
 
-const ORD = ['', '1ST', '2ND', '3RD', '4TH', '5TH', '6TH'];
+const ORD = ['', '1위', '2위', '3위', '4위', '5위', '6위'];
 
 export function openRace(onExit: () => void): void {
   const prefs = readPreferences(), touch = matchMedia('(pointer: coarse)').matches;
   const root = document.createElement('div'); root.className = 'rc-root' + (touch ? ' touch' : '') + (prefs.reducedMotion ? ' reduced-motion' : ''); root.dataset.phase = 'loading';
-  root.innerHTML = `<canvas class="rc-canvas"></canvas><canvas class="rc-fx"></canvas><div class="rc-vignette"></div><div class="rc-boostfx"></div>
+  root.innerHTML = `<canvas class="rc-canvas"></canvas><canvas class="rc-fx"></canvas>
   <div class="rc-hud">
     <div class="rc-tl"><div class="rc-pos"><b id="rc-pos">4</b><span id="rc-of">/ 4</span></div><div class="rc-lap">LAP <b id="rc-lap">1</b>/<span id="rc-laps">3</span></div></div>
     <div class="rc-tc"><div class="rc-time" id="rc-time">0:00.000</div><div class="rc-best" id="rc-best"></div></div>
@@ -38,7 +38,7 @@ export function openRace(onExit: () => void): void {
     <div class="rc-msg" id="rc-msg"></div><div class="rc-count" id="rc-count"></div><div class="rc-wrong" id="rc-wrong">역주행</div><div class="rc-draft" id="rc-draft">슬립스트림</div><div class="rc-drift" id="rc-drift"></div>
     <div class="rc-bottom"><div class="rc-nitro"><span>NITRO</span><div><i id="rc-nitro"></i></div></div><div class="rc-speed"><b id="rc-kmh">0</b><small>km/h</small><em id="rc-gear">N</em></div><div class="rc-rev"><i id="rc-rev"></i></div></div>
     <div class="rc-keys"><span><kbd>W</kbd><kbd>↑</kbd> 가속</span><span><kbd>S</kbd><kbd>↓</kbd> 브레이크</span><span><kbd>A</kbd><kbd>D</kbd> 조향</span><span><kbd>Space</kbd> 드리프트</span><span><kbd>Shift</kbd> 니트로</span><span><kbd>R</kbd> 복귀</span></div>
-    <div class="rc-touchpad"><div class="rc-steer"><button data-hold="left" aria-label="왼쪽">◀</button><button data-hold="right" aria-label="오른쪽">▶</button></div><div class="rc-pedals"><button data-hold="gas" class="gas" aria-label="가속">가속</button><div class="rc-pedal-row"><button data-hold="nitro">NITRO</button><button data-hold="drift">DRIFT</button><button data-hold="brake">BRAKE</button></div></div></div>
+    <div class="rc-touchpad"><div class="rc-steer"><button data-hold="left" aria-label="왼쪽">◀</button><button data-hold="right" aria-label="오른쪽">▶</button></div><div class="rc-pedals"><button data-hold="gas" class="gas" aria-label="가속">가속</button><div class="rc-pedal-row"><button data-hold="nitro">니트로</button><button data-hold="drift">드리프트</button><button data-hold="brake">브레이크</button></div></div></div>
   </div>
   <div class="rc-modal" id="rc-modal"><div class="rc-card"><span class="rc-eyebrow">SPEED RUSH</span><h2>차량 데이터 불러오는 중</h2></div></div>`;
   document.body.append(root);
@@ -165,7 +165,7 @@ export function openRace(onExit: () => void): void {
       lobbyOpening = false;
       if (closed || gen !== raceGen) return;
       modal.className = 'rc-modal show';
-      modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">1대1 대전</span><h2>대전 기능을 불러오지 못했어요</h2><div class="rc-actions"><button data-act="setup">설정으로</button></div></div>';
+      modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">1대1 대전</span><h2>대전을 시작할 수 없습니다</h2><div class="rc-actions"><button data-act="setup">설정으로</button></div></div>';
     });
   }
   function pvpCard(eyebrow: string, title: string, body = '', actions = '<button data-act="exit">메뉴로</button>'): void {
@@ -281,7 +281,7 @@ export function openRace(onExit: () => void): void {
         multi.done = true;
         multi.timers.clear();
         multi.net.dispose();
-        pvpCard('멀티플레이', '연결하지 못했어요',
+        pvpCard('멀티플레이', '연결 실패',
           '<p class="rc-record">방 사람들과 연결되지 않았습니다. 네트워크를 확인해 다시 시도해 주세요.</p>',
           '<button data-act="rematch">다시 시도</button><button data-act="exit">메뉴로</button>');
       },
@@ -321,7 +321,7 @@ export function openRace(onExit: () => void): void {
     // Cancel the 30s fallback once the final ranking is settled.
     m.timers.clear(); m.checkQueued = false;
     const rows = [...race.racers].map(r => ({ r, t: r.player ? m.myFin : r.finishTime })).sort((a, b) => (a.t ?? Infinity) - (b.t ?? Infinity));
-    const place = rows.findIndex(x => x.r.player) + 1, body = `<ol class="rc-board">${rows.map((x, i) => `<li class="${x.r.player ? 'me' : ''}"><b>${ORD[i + 1] ?? (i + 1) + 'TH'}</b><span>${x.r.player ? '나' : escapeRaceText(x.r.name)}</span><em>${x.t === null ? (x.r.peer && m.gone.has(x.r.peer) ? '나감' : '기록 없음') : fmtTime(x.t)}</em></li>`).join('')}</ol><p class="rc-record">3명 이상의 방은 순위만 표시하고 레이팅에는 반영되지 않습니다.</p>`;
+    const place = rows.findIndex(x => x.r.player) + 1, body = `<ol class="rc-board">${rows.map((x, i) => `<li class="${x.r.player ? 'me' : ''}"><b>${ORD[i + 1] ?? (i + 1) + '위'}</b><span>${x.r.player ? '나' : escapeRaceText(x.r.name)}</span><em>${x.t === null ? (x.r.peer && m.gone.has(x.r.peer) ? '나감' : '기록 없음') : fmtTime(x.t)}</em></li>`).join('')}</ol><p class="rc-record">3명 이상의 방은 순위만 표시하고 레이팅에는 반영되지 않습니다.</p>`;
     m.timers.schedule(700, () => { if (!closed && multi === m) pvpCard(`${mapOf(setup).name} · ${setup.laps}랩 · ${rows.length}명`, `${place}위 <small>/ ${rows.length}</small>`, body, '<button class="primary" data-act="rematch">다시 대전</button><button data-act="exit">메뉴로</button>'); });
   }
 
@@ -424,8 +424,7 @@ export function openRace(onExit: () => void): void {
     const tx = track.tx[c.idx], tz = track.tz[c.idx], dir = c.vx * tx + c.vz * tz;
     wrongT = race.phase === 'racing' && dir < -6 ? wrongT + dt : 0;
     $('#rc-wrong').classList.toggle('show', wrongT > 1 / 3);
-    const speedy = Math.min(1.4, sp / 270 + (boosting(c) ? 0.25 : 0)); $<HTMLElement>('.rc-boostfx').style.opacity = boosting(c) ? '1' : '0'; $<HTMLElement>('.rc-vignette').style.opacity = String(Math.min(1, 0.15 + speedy * 0.7));
-    if (!race.trial && place < lastPlace && race.phase === 'racing') { msg(`추월!  ${ORD[place]}`, 'gold'); view?.punchFov(0.4); }
+    if (!race.trial && place < lastPlace && race.phase === 'racing') { msg(`${place}위로 올라섰습니다`, 'gold'); view?.punchFov(0.4); }
     lastPlace = place;
   }
 

@@ -317,6 +317,21 @@ it('processes delayed messenger replies in chronological order without ghost typ
   expect(view.el.querySelector<HTMLButtonElement>('[data-room="0"] [data-last]')?.textContent).not.toBe('입력 중...');
 });
 
+it('releases middle-button study cover even when a trackpad reports button zero on pointerup', () => {
+  view.el.querySelector<HTMLButtonElement>('[data-app="video"]')!.click();
+  view.frame(0.1);
+  expect(simHolder.state.cover).toBe(false);
+  const pointer = (target: EventTarget, type: string, button: number) => {
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    Object.assign(event, { pointerId: 72, pointerType: 'mouse', button });
+    target.dispatchEvent(event);
+  };
+  pointer(view.el, 'pointerdown', 1);
+  expect(simHolder.state.cover).toBe(true);
+  pointer(window, 'pointerup', 0);
+  expect(simHolder.state.cover).toBe(false);
+});
+
 it('still hides the computer when the study cover cannot capture a touch pointer', () => {
   const cover = view.el.querySelector<HTMLButtonElement>('.sc-cover-button')!;
   Object.defineProperty(cover, 'setPointerCapture', {

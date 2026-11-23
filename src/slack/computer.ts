@@ -449,7 +449,9 @@ export const createComputerView: CreateView = (sim, audio) => {
     event.preventDefault(); el.focus({ preventScroll: true }); audio.resume(); audio.play('click'); coverMiddle = event.pointerId; updateCover();
   };
   const pointerup = (event: PointerEvent) => {
-    if (coverMiddle === event.pointerId && (event.button === 1 || event.type === 'pointercancel')) { coverMiddle = null; updateCover(); }
+    // Pointerup means the held pointer ended. Some trackpads and browsers
+    // report button=0 on the final release of a middle-button gesture.
+    if (coverMiddle === event.pointerId) { coverMiddle = null; updateCover(); }
     // A browser without pointer capture can deliver release outside the cover
     // button. The window listener must end the held cover in that case.
     if (coverPointer === event.pointerId) { coverPointer = null; updateCover(); }

@@ -164,6 +164,28 @@ try {
   }));
   assert.ok(landscapeControls.every(b => b.x >= -1 && b.right <= 845 && b.y >= -1 && b.bottom <= 391), JSON.stringify(landscapeControls));
   await mobile.screenshot({ path: 'browser-artifacts/race/mobile-landscape.png' });
+  // Small phones need safe inset margins even when all touch buttons are visible.
+  await mobile.setViewportSize({ width: 320, height: 568 });
+  const smallControls = await mobile.evaluate(() => [...document.querySelectorAll('.rc-touchpad button')].map(b => {
+    const r = b.getBoundingClientRect();
+    return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+  }));
+  assert.ok(smallControls.every(b => b.left >= 7 && b.right <= 313 && b.top >= 0 && b.bottom <= 569),
+    '320px touch targets must respect edge margins: ' + JSON.stringify(smallControls));
+  await mobile.screenshot({ path: 'browser-artifacts/race/mobile-small.png' });
+  const mobileCompletion = await mobile.evaluate(() => {
+    window.__race.dbg.auto = true;
+    for (let i = 0; i < 8 && window.__race.race.phase !== 'done'; i++) window.__race.skip(25);
+    return { phase: window.__race.race.phase, time: window.__race.race.player.finishTime };
+  });
+  assert.equal(mobileCompletion.phase, 'done', JSON.stringify(mobileCompletion));
+  assert.ok(mobileCompletion.time > 0);
+  const mobileResult = mobile.locator('.rc-card.result');
+  await mobileResult.waitFor({ timeout: 20_000 });
+  await mobile.screenshot({ path: 'browser-artifacts/race/mobile-small-result.png' });
+  // Even when the result card scrolls, its buttons must remain reachable.
+  await mobileResult.locator('[data-act="setup"]').click();
+  await mobile.locator('.rc-setup').waitFor();
   await mobileContext.close();
   assert.deepEqual(errors, [], 'Uncaught browser errors');
   console.log('SPEED RUSH browser smoke OK:', completion);

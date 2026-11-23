@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createCore, readTycoonSummary, saveTycoon, loadTycoon, TYCOON_SAVE_KEY } from '../../src/tycoon/core';
 import { ENERGY_MAX, OWNER_SERVE_PER_MIN } from '../../src/tycoon/core/data';
+import { readTycoonPosition } from '../../src/tycoon/core/save';
 
 class MemStorage {
   private m = new Map<string, string>();
@@ -90,4 +91,25 @@ describe('타이쿤 저장', () => {
     const ids = g.spots().flatMap(s => g.actionsAt(s.id).map(a => `${a.id} ${a.label}`)).join('\n');
     expect(ids).not.toMatch(/upgrade|perk|skill|업그레이드|능력치/i);
   });
+  it('탑승 중 저장은 차량 위치만 복원하며 경제 데이터는 그대로 유지한다', () => {
+    const core = createCore({ seed: 9 });
+    const storage = new MemStorage() as unknown as Storage;
+    const position = {
+      x: 20, z: -30, facing: 0, yaw: -1.57, pitch: 0.3, distance: 9, firstPerson: false,
+      ride: { name: '시티 세단', x: 20, z: -30, heading: 0 },
+    };
+    expect(saveTycoon(core, storage, position)).toBe(true);
+    const raw = loadTycoon(storage);
+    expect(readTycoonPosition(raw)).toMatchObject(position);
+    expect(createCore({ save: raw }).serialize()).toEqual(core.serialize());
+  });
+
+  it('손상되거나 유효하지 않은 차량 저장 상태는 무시한다', () => {
+    const core = createCore({ seed: 9 });
+    const base = { ...core.serialize(), position: { x: 0, z: 0, facing: 0, yaw: 0, pitch: 0.28, distance: 7.5, firstPerson: false } };
+    expect(readTycoonPosition(base)?.ride).toBeNull();
+    expect(readTycoonPosition({ ...base, position: { ...base.position, ride: { name: '시티 세단', x: 'invalid', z: 0, heading: 0 } } })?.ride).toBeNull();
+    expect(readTycoonPosition({ ...base, position: { ...base.position, ride: { name: '시티 세단', x: 12, z: 15, heading: 999 } } })?.ride?.heading).toBeLessThanOrEqual(Math.PI * 2);
+  });
+
 });

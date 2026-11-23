@@ -104,6 +104,18 @@ try {
   assert.ok(result.headline?.includes('NEW GHOST'), JSON.stringify(result));
   assert.ok(result.stored, 'Time-trial ghost was not persisted');
   assert.ok(JSON.parse(result.stored).data.length > 8, 'Ghost data is empty');
+  // Rebuilding the GL scene must preserve saved ghosts and not leak stale callbacks.
+  await page.locator('.rc-card.result [data-act="restart"]').click();
+  await page.waitForFunction(() => document.querySelector('.rc-root')?.dataset.phase === 'countdown');
+  await page.evaluate(() => window.__race.skip(3.3));
+  await page.waitForFunction(() => window.__race.race.phase === 'racing');
+  const replay = await page.evaluate(() => ({
+    ghost: window.__race.race.ghost?.time ?? null,
+    playerTime: window.__race.race.player.finishTime,
+    webgl: !!document.querySelector('.rc-canvas'),
+  }));
+  assert.ok(replay.webgl && replay.playerTime === null && replay.ghost === completion.time,
+    'Restart failed to reset race while preserving ghost: ' + JSON.stringify(replay));
   // Avoid rendering two SwiftShader scenes at once on slow CI VMs.
   await context.close();
   // Portrait touch layout uses the same game loop and must remain fully usable.

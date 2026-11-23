@@ -56,7 +56,7 @@ export function groundRayDistance(t: Terrain, ox: number, oy: number, oz: number
       const at = from + (to - from) * i / n, altitude = above(at);
       if (altitude <= 0) {
         let low = previousT, high = at;
-        for (let k = 0; k < 12; k++) {
+        for (let k = 0; k < 16; k++) {
           const mid = (low + high) / 2;
           if (above(mid) <= 0) high = mid; else low = mid;
         }

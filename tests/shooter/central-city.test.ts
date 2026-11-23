@@ -10,6 +10,8 @@ describe('ZERO ZONE 중앙 메트로폴리스', () => {
     expect(center).toBeDefined();
     expect(center?.x).toBe(0);
     expect(center?.z).toBe(0);
+    // 중앙 시가지를 별도 카운트해도 5종 지형 테마가 지도에 골고루 나타납니다.
+    expect(new Set(map.compounds.slice(1, 6).map(c => c.theme)).size).toBe(5);
     const downtown = map.buildings.filter(b => Math.abs(b.x) < 45 && Math.abs(b.z) < 45);
     expect(downtown.length).toBeGreaterThanOrEqual(16);
     const towers = downtown.filter(b => b.type === 'apartment');

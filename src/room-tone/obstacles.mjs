@@ -1,10 +1,16 @@
 /** Collision between a circular player footprint and a rotated prop. */
 export function circleHitsProp(x, z, radius, obstacle) {
-  if (![x, z, radius, obstacle?.x, obstacle?.z, obstacle?.rotation,
-        obstacle?.halfWidth, obstacle?.halfDepth].every(Number.isFinite) ||
+  if (!obstacle || !Number.isFinite(x) || !Number.isFinite(z) ||
+      !Number.isFinite(radius) || !Number.isFinite(obstacle.x) ||
+      !Number.isFinite(obstacle.z) || !Number.isFinite(obstacle.rotation) ||
+      !Number.isFinite(obstacle.halfWidth) || !Number.isFinite(obstacle.halfDepth) ||
       radius < 0 || obstacle.halfWidth < 0 || obstacle.halfDepth < 0) return false;
   const dx = x - obstacle.x, dz = z - obstacle.z;
-  const cos = Math.cos(obstacle.rotation), sin = Math.sin(obstacle.rotation);
+  // Most props are far away; reject them before entering the rotated-space math.
+  const reach = obstacle.halfWidth + obstacle.halfDepth + radius;
+  if (Math.abs(dx) > reach || Math.abs(dz) > reach) return false;
+  const cos = obstacle.cos ?? Math.cos(obstacle.rotation);
+  const sin = obstacle.sin ?? Math.sin(obstacle.rotation);
   const localX = dx * cos - dz * sin;
   const localZ = dx * sin + dz * cos;
   const offX = Math.max(0, Math.abs(localX) - obstacle.halfWidth);

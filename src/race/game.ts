@@ -17,7 +17,7 @@ import { createRace, currentLap, placeOf, updateRace, type RaceEvent, type RaceS
 import { ghostDelta, readGhost, writeGhost } from './ghost';
 import { ownsSkin, readGarage, rewardFor, writeGarage } from './garage';
 import { mountSetup, type SetupHandle } from './setup-ui';
-import { buildMapTrack, type Track } from './track';
+import { cachedMapTrack, type Track } from './track';
 import { RaceView, setDriverKit } from './view';
 import { loadCharacterKit } from '../shared/character';
 import { driftLive, readDriftBests, writeDriftBests } from './driftscore';
@@ -46,7 +46,7 @@ export function openRace(onExit: () => void): void {
   let canvas = $<HTMLCanvasElement>('.rc-canvas'); const fx = $<HTMLCanvasElement>('.rc-fx'), fg = fx.getContext('2d'), mini = $<HTMLCanvasElement>('#rc-map'), mg = mini.getContext('2d'), modal = $('#rc-modal');
   const audio = new RaceAudio(); audio.enabled = prefs.sound;
   const garage = { value: readGarage() };
-  let setup: RaceSetup = sanitizeSetup(readRaceSetupRaw()), records = readRaceRecords(), track: Track = buildMapTrack(mapOf(setup)), setupUi: SetupHandle | null = null;
+  let setup: RaceSetup = sanitizeSetup(readRaceSetupRaw()), records = readRaceRecords(), track: Track = cachedMapTrack(mapOf(setup)), setupUi: SetupHandle | null = null;
   let race: RaceState = createRace(track, setup.laps, Infinity, setup), view: RaceView | null = null, raf = 0, last = 0, acc = 0, paused = false, closed = false, finishedShown = false, lastPlace = 4, msgT = 0, wallHit = 0, fxIntensity = 0, wrongT = 0, raceGen = 0;
   /** 1대1 대전 진행 상태. null 이면 혼자 달리는 모드입니다. */
   let multi: { s: RoomSession; net: RaceMulti; myFin: number | null; gone: Set<string>; done: boolean } | null = null;
@@ -112,7 +112,7 @@ export function openRace(onExit: () => void): void {
   function begin(): void {
     clearControls(); nitroWas = driftWas = false; raceGen++;
     if (view) { view.dispose(); view = null; }
-    track = buildMapTrack(mapOf(setup)); prepareMinimap(); audio.setCar(setup.car);
+    track = cachedMapTrack(mapOf(setup)); prepareMinimap(); audio.setCar(setup.car);
     const trial = setup.mode === 'trial', ghost = trial ? readGhost(setup.map, setup.laps, setup.car) : null;
     race = createRace(track, setup.laps, records.bestLap[setup.map] ?? Infinity, { ...setup, skin: ownsSkin(garage.value, setup.skin) ? setup.skin : 'stock', trial, ghost });
     finishedShown = false; paused = false; acc = 0; lastPlace = trial ? 1 : 4; cache.clear(); setText('#rc-laps', String(setup.laps)); setText('#rc-of', trial ? 'TIME ATTACK' : '/ 4');
@@ -158,7 +158,7 @@ export function openRace(onExit: () => void): void {
   }
   function beginPvp(oppCar: string): void {
     if (!pvp || closed) return; const s = pvp.s;
-    track = buildMapTrack(mapOf(setup)); prepareMinimap();
+    track = cachedMapTrack(mapOf(setup)); prepareMinimap();
     race = createRace(track, setup.laps, Infinity, { ...setup, pvp: { host: s.host, opponent: s.opponent.nickname, opponentCar: oppCar } });
     acc = 0; cache.clear(); lastPlace = 2; setText('#rc-laps', String(setup.laps)); setText('#rc-of', '/ 2'); setText('#rc-best', `VS ${s.opponent.nickname}`);
     if (!startView(carTemplate)) return;
@@ -216,7 +216,7 @@ export function openRace(onExit: () => void): void {
   function beginMulti(list: Array<{ id: string; car: string }>): void {
     if (!multi || closed) return; const s = multi.s, meIdx = Math.max(0, list.findIndex(p => p.id === s.me.id));
     const players = list.filter(p => p.id !== s.me.id).map(p => ({ id: p.id, car: p.car, nickname: s.players.find(x => x.id === p.id)?.nickname ?? '플레이어' }));
-    track = buildMapTrack(mapOf(setup)); prepareMinimap();
+    track = cachedMapTrack(mapOf(setup)); prepareMinimap();
     race = createRace(track, setup.laps, Infinity, { ...setup, multi: { slot: meIdx, players } });
     acc = 0; cache.clear(); lastPlace = list.length; setText('#rc-laps', String(setup.laps)); setText('#rc-of', `/ ${list.length}`); setText('#rc-best', `${list.length}인 레이스`);
     if (!startView(carTemplate)) return;

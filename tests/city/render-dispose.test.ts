@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import { Renderer3D } from '../../src/city/render3d';

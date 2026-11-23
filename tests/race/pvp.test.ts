@@ -76,6 +76,31 @@ describe('SPEED RUSH 1대1 레이스', () => {
     expect(parseSnap(null)).toBeNull();
   });
 
+  it('rejects sparse or fractional-index snapshots that could poison the renderer', () => {
+    const src = encodeSnap(createRace(track, 1).player.car);
+    const missing = src.slice() as Array<number | undefined>;
+    delete missing[0];
+    expect(missing.length).toBe(16);
+    expect(parseSnap(missing)).toBeNull();
+    const badIndex = src.slice(); badIndex[12] = 2.5;
+    expect(parseSnap(badIndex)).toBeNull();
+    const negativeIndex = src.slice(); negativeIndex[12] = -1;
+    expect(parseSnap(negativeIndex)).toBeNull();
+  });
+
+  it('never updates a remote car from a nonfinite interpolation clock', () => {
+    const car = createRace(track, 1, Infinity).player.car;
+    const base = structuredClone(car);
+    const remote = encodeSnap({ ...car, x: car.x + 10, vx: 25 });
+    const link = { snap: parseSnap(remote), at: 100 };
+    for (const [now, dt] of [[Infinity, 1 / 90], [NaN, 1 / 90], [100, NaN], [100, 0], [100, -1]]) {
+      followSnap(car, link, now, dt);
+      expect(car).toEqual(base);
+    }
+    followSnap(car, { snap: remote, at: Infinity }, 100, 1 / 90);
+    expect(car).toEqual(base);
+  });
+
   it('rejects malicious remote angles and out-of-range car physics before rendering', () => {
     const src = encodeSnap(createRace(track, 1).player.car);
     expect(parseSnap(src)).toEqual(src);

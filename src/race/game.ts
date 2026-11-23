@@ -7,6 +7,7 @@ import { readPreferences, writePreferences } from '../prefs';
 import { fmtTime, raceRaceKey, readRaceRecords, readRaceSetupRaw, writeRaceRecords, writeRaceSetupRaw } from '../records';
 import type { PvpSession, RoomSession } from '../net/lobby';
 import { RaceMulti } from './multi';
+import { RaceTimeouts } from './race-timeouts';
 import { RaceAudio, gearFor } from './audio';
 import { carById, levelById, mapOf, sanitizeSetup, type RaceSetup } from './config';
 import { aiInput, boosting, kmh, recoverCar, type CarInput } from './physics';
@@ -59,7 +60,7 @@ export function openRace(onExit: () => void): void {
   let setup: RaceSetup = sanitizeSetup(readRaceSetupRaw()), records = readRaceRecords(), track: Track = cachedMapTrack(mapOf(setup)), setupUi: SetupHandle | null = null;
   let race: RaceState = createRace(track, setup.laps, Infinity, setup), view: RaceView | null = null, raf = 0, last = 0, acc = 0, paused = false, closed = false, contextLost = false, finishedShown = false, lastPlace = 4, msgT = 0, wallHit = 0, fxIntensity = 0, wrongT = 0, raceGen = 0;
   /** 1대1 대전 진행 상태. null 이면 혼자 달리는 모드입니다. */
-  let multi: { s: RoomSession; net: RaceMulti; myFin: number | null; gone: Set<string>; done: boolean } | null = null;
+  let multi: { s: RoomSession; net: RaceMulti; myFin: number | null; gone: Set<string>; done: boolean; timers: RaceTimeouts; checkQueued: boolean } | null = null;
   let pvp: { s: PvpSession; net: RacePvp; myFin: number | null; oppFin: number | null; done: boolean } | null = null;
   let lobbyHandle: { close(): void } | null = null, lobbyOpening = false;
   const keys = new Set<string>(), hold = { left: false, right: false, brake: false, drift: false, nitro: false, gas: false };
@@ -240,7 +241,11 @@ export function openRace(onExit: () => void): void {
   function endPvp(): void { pvp?.net.dispose(); pvp = null; endMulti(); }
 
   // ---------- 멀티플레이 방(3~6인) ----------
-  function endMulti(): void { multi?.net.dispose(); multi = null; }
+  function endMulti(): void {
+    multi?.timers.clear();
+    multi?.net.dispose();
+    multi = null;
+  }
   function racerOf(id: string): ReturnType<typeof createRace>['racers'][number] | undefined { return race.racers.find(r => r.peer === id); }
   function startMulti(s: RoomSession): void {
     if (closed) return;
@@ -252,9 +257,17 @@ export function openRace(onExit: () => void): void {
       onSnap: (id, snap) => { const r = racerOf(id); if (multi && r?.link) r.link = { snap, at: performance.now() }; },
       onFinish: (id, time) => { const r = racerOf(id); if (!multi || multi.done || !r || r.finishTime !== null) return; r.finishTime = time; multiCheck(); },
       onGone: id => { if (!multi || multi.done) return; multi.gone.add(id); const r = racerOf(id); if (r) { msg(`${r.name} 님이 나갔습니다`, 'hint'); msgT = 3; } multiCheck(); },
-      onAbort: () => { if (multi && !multi.done) pvpCard('멀티플레이', '연결하지 못했어요', '<p class="rc-record">방 사람들과 연결되지 않았습니다. 네트워크를 확인해 다시 시도해 주세요.</p>', '<button data-act="rematch">다시 시도</button><button data-act="exit">메뉴로</button>'); },
+      onAbort: () => {
+        if (!multi || multi.done) return;
+        multi.done = true;
+        multi.timers.clear();
+        multi.net.dispose();
+        pvpCard('멀티플레이', '연결하지 못했어요',
+          '<p class="rc-record">방 사람들과 연결되지 않았습니다. 네트워크를 확인해 다시 시도해 주세요.</p>',
+          '<button data-act="rematch">다시 시도</button><button data-act="exit">메뉴로</button>');
+      },
     });
-    multi = { s, net, myFin: null, gone: new Set(), done: false };
+    multi = { s, net, myFin: null, gone: new Set(), done: false, timers: new RaceTimeouts(), checkQueued: false };
   }
   function beginMulti(list: Array<{ id: string; car: string }>): void {
     if (!multi || closed) return; const s = multi.s, meIdx = Math.max(0, list.findIndex(p => p.id === s.me.id));
@@ -267,18 +280,29 @@ export function openRace(onExit: () => void): void {
   }
   function multiFinish(time: number): void {
     if (!multi || multi.done) return; multi.myFin = time; multi.net.sendFinish(time); const m = multi;
-    window.setTimeout(() => { if (multi === m && !m.done) showMulti(); }, 30000); multiCheck();
+    m.timers.schedule(30000, () => { if (!closed && multi === m && !m.done) showMulti(); });
+    multiCheck();
   }
   function multiCheck(): void {
     if (!multi || multi.done || multi.myFin === null) return;
     const m = multi;
-    if (race.racers.every(r => r.player || r.finishTime !== null || (r.peer && m.gone.has(r.peer)))) window.setTimeout(() => { if (!closed && multi === m && !m.done) showMulti(); }, 600);
+    // Multiple peers can report a finish in one frame. Only one settle check
+    // should be scheduled, and none should outlive the active room.
+    if (!m.checkQueued && race.racers.every(r => r.player || r.finishTime !== null || (r.peer && m.gone.has(r.peer)))) {
+      m.checkQueued = true;
+      m.timers.schedule(600, () => {
+        m.checkQueued = false;
+        if (!closed && multi === m && !m.done) showMulti();
+      });
+    }
   }
   function showMulti(): void {
     const m = multi; if (!m || m.done) return; m.done = true; finishedShown = true;
+    // Cancel the 30s fallback once the final ranking is settled.
+    m.timers.clear(); m.checkQueued = false;
     const rows = [...race.racers].map(r => ({ r, t: r.player ? m.myFin : r.finishTime })).sort((a, b) => (a.t ?? Infinity) - (b.t ?? Infinity));
     const place = rows.findIndex(x => x.r.player) + 1, body = `<ol class="rc-board">${rows.map((x, i) => `<li class="${x.r.player ? 'me' : ''}"><b>${ORD[i + 1] ?? (i + 1) + 'TH'}</b><span>${x.r.player ? '나' : escapeRaceText(x.r.name)}</span><em>${x.t === null ? (x.r.peer && m.gone.has(x.r.peer) ? '나감' : '기록 없음') : fmtTime(x.t)}</em></li>`).join('')}</ol><p class="rc-record">3명 이상의 방은 순위만 표시하고 레이팅에는 반영되지 않습니다.</p>`;
-    window.setTimeout(() => { if (!closed && multi === m) pvpCard(`${mapOf(setup).name} · ${setup.laps}랩 · ${rows.length}명`, `${ORD[place] ?? place + 'TH'} <small>/ ${rows.length}</small>`, body, '<button class="primary" data-act="rematch">다시 대전</button><button data-act="exit">메뉴로</button>'); }, 700);
+    m.timers.schedule(700, () => { if (!closed && multi === m) pvpCard(`${mapOf(setup).name} · ${setup.laps}랩 · ${rows.length}명`, `${ORD[place] ?? place + 'TH'} <small>/ ${rows.length}</small>`, body, '<button class="primary" data-act="rematch">다시 대전</button><button data-act="exit">메뉴로</button>'); });
   }
 
   function recover(): void {

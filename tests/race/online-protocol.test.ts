@@ -138,6 +138,18 @@ describe('SPEED RUSH network channel lifecycle', () => {
     } finally { multi.dispose(); }
   });
 
+  it('immediately aborts an unstarted room when the host departs', async () => {
+    const wire = fakeLink(), hooks = multiHooks(), multi = new RaceMulti(roomSession(false, wire), 'arc', hooks);
+    try {
+      await Promise.resolve();
+      wire.deliver({ t: 'bye', f: 'host' });
+      expect(hooks.onAbort).toHaveBeenCalledTimes(1);
+      expect(hooks.onStart).not.toHaveBeenCalled();
+      wire.deliver({ t: 'start', f: 'host', list: [{ id: 'host', car: 'arc' }, { id: 'guest', car: 'bolt' }] });
+      expect(hooks.onStart).not.toHaveBeenCalled();
+    } finally { multi.dispose(); }
+  });
+
   it('room guest rejects a spoofed start and unknown player messages', async () => {
     const wire = fakeLink(), hooks = multiHooks(), multi = new RaceMulti(roomSession(false, wire), 'arc', hooks);
     try {

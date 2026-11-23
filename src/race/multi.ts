@@ -64,6 +64,12 @@ export class RaceMulti {
     // Remove a departing driver from the pre-start roster, otherwise the
     // host can accidentally launch a disconnected player into the race.
     if (!this.started) this.cars.delete(id);
+    if (!this.started && id === this.session.room.host_id) {
+      // Guests cannot begin a room race without the host's start signal.
+      // Do not strand them on the 25s connection timeout after an explicit bye.
+      this.abort();
+      return;
+    }
     this.hooks.onGone(id);
   }
   private onMsg(m: NetMsg): void {

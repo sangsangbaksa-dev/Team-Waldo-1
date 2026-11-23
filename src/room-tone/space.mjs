@@ -14,6 +14,17 @@ export function propBlocks(x,z,r,rootX,rootZ,rotation,halfWidth,halfDepth){
   return sx*sx+sz*sz<r*r;
 }
 
+export function bindCollisionObstacles(items){
+  return items.filter(item=>item.collision).map(({root,collision})=>({
+    x:root.position.x,
+    z:root.position.z,
+    ry:root.rotation.y,
+    halfWidth:collision.halfWidth,
+    halfDepth:collision.halfDepth,
+    get visible(){return root.visible;},
+  }));
+}
+
 export function clearanceAllows(x,z,oldX,oldZ,r,obstacles){
   for(const o of obstacles){
     if(!o.visible)continue;

@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { exitWall, propBlocks, clearanceAllows, doorMotion } from "../../src/room-tone/space.mjs";
+import { exitWall, propBlocks, clearanceAllows, bindCollisionObstacles, doorMotion } from "../../src/room-tone/space.mjs";
 import { makeLevel } from "../../src/room-tone/levels.mjs";
 
 test("each exit reserves a solid wall and never a navigable face",()=>{
@@ -37,6 +37,24 @@ test("collected props release collision and overlap recovery only moves outward"
   assert.equal(clearanceAllows(.5,0,.3,0,.285,[o]),true);
   assert.equal(clearanceAllows(.2,0,.3,0,.285,[o]),false);
   assert.equal(clearanceAllows(0,0,.8,0,.285,[{...o,visible:false}]),true);
+});
+
+test("cached equipment collision follows visibility without rebuilding the obstacle list",()=>{
+  const root={position:{x:0,z:0},rotation:{y:0},visible:true};
+  const hidden={position:{x:3,z:0},rotation:{y:0},visible:false};
+  const obstacles=bindCollisionObstacles([
+    {root,collision:{halfWidth:.455,halfDepth:.275}},
+    {root:hidden,collision:{halfWidth:.3,halfDepth:.2}},
+    {root:{position:{x:6,z:0},rotation:{y:0},visible:true}},
+  ]);
+  assert.equal(obstacles.length,2);
+  assert.equal(clearanceAllows(.5,0,.8,0,.285,obstacles),false);
+  root.visible=false;
+  assert.equal(clearanceAllows(.5,0,.8,0,.285,obstacles),true);
+  root.visible=true;
+  assert.equal(clearanceAllows(.5,0,.8,0,.285,obstacles),false);
+  hidden.visible=true;
+  assert.equal(clearanceAllows(3.25,0,4,0,.285,obstacles),false);
 });
 
 test("door motion is monotonic with a delayed fade and bounded progress",()=>{

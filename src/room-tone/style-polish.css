@@ -91,6 +91,9 @@
 #game { isolation:isolate; }
 #game #viewWrap { z-index:0; }
 #game .hud,#game .gear,#game #stick,#game .touchactions { z-index:2; }
+#game .hud { pointer-events:auto; z-index:5; }
+#game .hudleft { pointer-events:none; }
+#game .hudright { position:relative; z-index:1; pointer-events:auto; }
 #game .statusfoot,#game #prompt,#game #toast { z-index:1; pointer-events:none; }
 #game #dialog { z-index:4; }
 

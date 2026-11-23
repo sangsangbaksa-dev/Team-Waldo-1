@@ -11,7 +11,7 @@ import { archiveCells, cleanArchive, createDread, recordings } from "./dread.mjs
 import { openViewer, closeViewer } from "./viewer.js";
 import { enemyPerception, cellDistance, patrolGoal } from "./perception.mjs";
 import { createRoomStorage } from "./storage.mjs";
-import { exitWall, clearanceAllows, doorMotion } from "./space.mjs";
+import { exitWall, clearanceAllows, bindCollisionObstacles, doorMotion } from "./space.mjs";
 
 const $ = (id) => document.getElementById(id),
   C = 2.7,
@@ -24,12 +24,14 @@ let state = "home",
   ch = 0,
   level,
   items = [],
+  collisionObstacles = [],
   solved = false,
   found = [false, false, false],
   seen = new Set(),
   elapsed = 0;
 let archive = [], dread = createDread();
 let enemyShadow, chaseWeight = 0;
+let displayedDanger = -1, displayedWinded = false;
 let exitSequence = null;
 let acousticCell = -1, acousticTree = null, patrolTarget = -1;
 let renderer,
@@ -407,18 +409,15 @@ function clearLine(a, b) {
   return lineOpen(level.map, a, b, C);
 }
 function shift(dx, dz) {
-  const r = 0.285; // Clearance from shallow wall equipment and corner trim.
-  const obstacles = items.map(o=>({
-    ...o.collision,x:o.root.position.x,z:o.root.position.z,
-    ry:o.root.rotation.y,visible:o.root.visible,
-  }));
+  if (dx === 0 && dz === 0) return;
+  const r = 0.285;
   function space(x, z) {
     return (
       pass(x - r, z - r) &&
       pass(x + r, z - r) &&
       pass(x - r, z + r) &&
       pass(x + r, z + r) &&
-      clearanceAllows(x,z,player.x,player.z,r,obstacles)
+      clearanceAllows(x, z, player.x, player.z, r, collisionObstacles)
     );
   }
   if (space(player.x + dx, player.z)) player.x += dx;
@@ -464,11 +463,13 @@ function pointPlayer() {
   stepAt = moved = stride = gaitWeight = 0;
   noticeUntil = 0;
   $("toast").textContent = "";
+  displayedDanger = 0;
   $("danger").style.opacity = "0";
   $("strain").textContent = "안정";
   $("strain").dataset.threat = "safe";
   $("stamina").style.transform = "scaleX(1)";
   $("stamina").classList.remove("winded");
+  displayedWinded = false;
   $("stamina").parentElement.setAttribute("aria-valuenow", "100");
   $("timer").textContent = clock(elapsed);
   sound.threat(0);
@@ -678,6 +679,7 @@ function loadScene() {
     record.root.visible=!archive.includes(ch*2+i);
     items.push(record);
   });
+  collisionObstacles = bindCollisionObstacles(items);
   enemyShadow = addContactShadow(THREE, props, .92, .74, props.userData.contactTexture);
   enemyShadow.material.opacity = .52;
   entity = new THREE.Group();
@@ -1356,10 +1358,16 @@ function enemyUpdate(dt, running) {
     ? 0
     : Math.max(0, 1 - dist / 12) * (inSight ? 0.96 : 0.57);
   sound.threat(threat);
-  $("danger").style.opacity = String(threat * 0.72);
+  const dangerStep = Math.round(threat * 72);
+  if (dangerStep !== displayedDanger) {
+    displayedDanger = dangerStep;
+    $("danger").style.opacity = String(dangerStep / 100);
+  }
   const strain = threat > 0.68 ? "바로 근처" : threat > 0.28 ? "접근 중" : "안정";
-  if ($("strain").textContent !== strain) $("strain").textContent = strain;
-  $("strain").dataset.threat = threat > 0.68 ? "near" : threat > 0.28 ? "alert" : "safe";
+  const status = $("strain");
+  if (status.textContent !== strain) status.textContent = strain;
+  const threatLevel = threat > 0.68 ? "near" : threat > 0.28 ? "alert" : "safe";
+  if (status.dataset.threat !== threatLevel) status.dataset.threat = threatLevel;
   if (!grace && Math.hypot(player.x - e.x, player.z - e.z) < 0.73 && clearLine(player, e)) {
     caught();
   }
@@ -1392,10 +1400,16 @@ function update(dt) {
   moved = Math.hypot(player.x - oldX, player.z - oldZ);
   const exerting = running && moved > dt * 0.15;
   stamina = THREE.MathUtils.clamp(stamina + (exerting ? -0.14 : 0.11) * dt, 0, 1);
-  $("stamina").classList.toggle("winded", winded);
+  if (displayedWinded !== winded) {
+    displayedWinded = winded;
+    $("stamina").classList.toggle("winded", winded);
+  }
   const staminaPercent = String(Math.round(stamina * 100));
   const meter = $("stamina").parentElement;
-  if (meter.getAttribute("aria-valuenow") !== staminaPercent) meter.setAttribute("aria-valuenow", staminaPercent);
+  if (meter.getAttribute("aria-valuenow") !== staminaPercent) {
+    meter.setAttribute("aria-valuenow", staminaPercent);
+    $("stamina").style.transform = "scaleX(" + Number(staminaPercent) / 100 + ")";
+  }
   stepAt += moved;
   if (stepAt > (running ? 1.02 : 0.86)) {
     sound.step(running, crouched);
@@ -1452,7 +1466,6 @@ function update(dt) {
   $("prompt").hidden = !caption;
   if ($("promptText").textContent !== caption) $("promptText").textContent = caption;
   if ($("act").disabled !== !nearest) $("act").disabled = !nearest;
-  $("stamina").style.transform = "scaleX(" + stamina.toFixed(3) + ")";
   const timeText = clock(elapsed);
   if ($("timer").textContent !== timeText) $("timer").textContent = timeText;
   if (now > noticeUntil && $("toast").textContent) $("toast").textContent = "";

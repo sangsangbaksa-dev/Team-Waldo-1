@@ -94,6 +94,25 @@ describe('SPEED RUSH network channel lifecycle', () => {
     } finally { multi.dispose(); }
   });
 
+  it('excludes pre-start leavers instead of launching disconnected cars', async () => {
+    let now = 1000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const wire = fakeLink(), hooks = multiHooks(), multi = new RaceMulti(roomSession(true, wire), 'arc', hooks);
+    try {
+      await Promise.resolve();
+      wire.deliver({ t: 'hello', f: 'guest', car: 'bolt' });
+      wire.deliver({ t: 'hello', f: 'third', car: 'fuse' });
+      wire.deliver({ t: 'bye', f: 'third' });
+      wire.deliver({ t: 'hello', f: 'third', car: 'fuse' });
+      expect(hooks.onGone).toHaveBeenCalledExactlyOnceWith('third');
+      for (let i = 0; i < 26; i++) { now += 500; tick(multi); }
+      expect(hooks.onStart).toHaveBeenCalledTimes(1);
+      const rows = vi.mocked(hooks.onStart).mock.calls[0][0];
+      expect(rows.map(r => r.id)).toEqual(['host', 'guest']);
+      expect(rows.some(r => r.id === 'third')).toBe(false);
+    } finally { multi.dispose(); }
+  });
+
   it('room guest rejects a spoofed start and unknown player messages', async () => {
     const wire = fakeLink(), hooks = multiHooks(), multi = new RaceMulti(roomSession(false, wire), 'arc', hooks);
     try {

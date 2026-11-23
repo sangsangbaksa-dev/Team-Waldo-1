@@ -1,29 +1,39 @@
 name: Deploy GitHub Pages
-# 메인 페이지(LAST CITY, SPEED RUSH)를 GitHub Pages로 배포합니다.
+# User-requested manual deployment only. A push, merge or PR must not publish.
+# Select the intended ref in Actions and confirm the exact build source first.
 on:
-  push:
-    branches:
-      - claude/funny-noether-4uesaj
-      - claude/project-thread-hhffi5
   workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type DEPLOY to confirm publishing this selected ref to GitHub Pages'
+        type: string
+        required: true
+
 permissions:
   contents: read
   pages: write
   id-token: write
+
 concurrency:
   group: pages
   cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Require explicit deployment confirmation
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: test "$CONFIRMATION" = "DEPLOY"
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run lint
       - run: npm run typecheck
       - run: npm test
       - run: npm run build

@@ -19,6 +19,18 @@ describe('SLACK OFF animation isolation', () => {
   });
 });
 
+describe('SLACK OFF phone safe-area layout', () => {
+  it('keeps the header, dialogs and stage cover controls clear of system UI', () => {
+    const shared = styles.find(s => s.name === 'slack.css')!.css;
+    const classroom = styles.find(s => s.name === 'classroom.css')!.css;
+    const dorm = styles.find(s => s.name === 'computer.css')!.css;
+    expect(shared).toContain('safe-area-inset-top');
+    expect(shared).toContain('safe-area-inset-bottom');
+    expect(classroom).toMatch(/\.sl-class \.sl-controls\s*\{[^}]*safe-area-inset-bottom/);
+    expect(dorm).toMatch(/\.slack-computer \.sc-controls\s*\{[^}]*safe-area-inset-bottom/);
+  });
+});
+
 describe('SLACK OFF keyboard and motion accessibility', () => {
   it('provides a visible keyboard focus indicator in the dorm app controls', () => {
     const dorm = styles.find(s => s.name === 'computer.css')!.css;

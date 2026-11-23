@@ -77,6 +77,13 @@ export class RaceAudio {
   /** 매 프레임: 속도(m/s), 가속 입력, 옆미끄러짐(rad), 부스트 여부 */
   drive(speed: number, throttle: number, slip: number, boost: boolean, drifting: boolean, wall: boolean): void {
     const c = this.eng.ctx; if (!c || !this.motor || !this.wind || !this.skid || !this.boostG) return;
+    if (!this.enabled) {
+      // The master bus is already silent; avoid scheduling 10+ Web Audio
+      // parameter changes every render while the player has muted sound.
+      this.gear = gearFor(this.done ? 0 : speed);
+      this.lastThr = this.done ? 0 : throttle;
+      return;
+    }
     const t = c.currentTime, v = this.done ? 0 : Math.abs(speed);
     const thr = this.done ? 0 : throttle, go = this.enabled && !this.done;
     const g = gearFor(v);

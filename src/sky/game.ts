@@ -325,5 +325,5 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     view = new SkyView(renderer); sim = new SkySim(diff); sim.intermission = 1e9; resize();
   } catch (err) { console.error(err); opts.loading?.close(); exit(); return; }
   opts.loading?.close(); last = performance.now(); raf = requestAnimationFrame(frame);
-  (window as unknown as { __sky?: unknown }).__sky = { get sim() { return sim; }, get renderer() { return renderer; }, start };
+  (window as unknown as { __sky?: unknown }).__sky = { get sim() { return sim; }, get renderer() { return renderer; }, get view() { return view; }, start };
 }

@@ -33,7 +33,9 @@
 .sl-handle{position:absolute;right:12%;top:56%;width:12%;height:3.5%;border-radius:3px;background:#d8cfad;border-bottom:2px solid #938775;transform-origin:80% 50%;transform:rotate(var(--sl-handle-angle,0deg))}
 .sl-gap{position:absolute;left:0;right:0;bottom:0;height:5%;background:#e1d3a3;opacity:.65;overflow:hidden}
 .sl-gap i{position:absolute;bottom:0;left:0;width:22%;height:100%;background:#262a27;opacity:0}
-.sl-room[data-mode="approach"] .sl-gap i,.sl-room[data-mode="peek"] .sl-gap i{animation:sl-feet 1.3s linear infinite}
+.sl-room[data-mode="approach"] .sl-gap i{animation:sl-feet 1.3s linear infinite}
+.sl-room[data-mode="peek"] .sl-gap i{opacity:.7;left:24%}
+.sl-room[data-mode="peek"] .sl-gap i:last-child{left:57%}
 .sl-gap i:last-child{animation-delay:-.65s!important}
 .sl-room[data-step="2"] .sl-gap,.sl-room[data-step="3"] .sl-gap{height:9%}
 
@@ -71,10 +73,6 @@
 .sl-room[data-scan="true"] .sl-cast:before{opacity:var(--near)}
 .sl-cast:after{content:'';position:absolute;inset:0;background:#000;opacity:calc(var(--near) * .22)}
 .sl-flick{position:absolute;z-index:6;inset:0;background:#000;opacity:0;animation:sl-flickd 9s infinite}
-.sl-room[data-hint="1"] .sl-light{animation:sl-flicker2 1.9s infinite}
-.sl-room[data-hint="1"] .sl-flick{animation:sl-flickd2 1.9s infinite}
-.sl-room[data-hint="2"] .sl-light{animation:sl-flicker 9s infinite}
-.sl-room[data-hint="2"] .sl-flick{animation:sl-flickd 9s infinite}
 .sl-hush{position:absolute;z-index:8;inset:0;display:grid;place-items:center;background:radial-gradient(#0000 35%,#000c);opacity:0;transition:opacity .6s;font-size:clamp(30px,8vw,70px);letter-spacing:.3em;color:#fff4}
 .is-quiet .sl-hush{opacity:1}
 
@@ -178,8 +176,6 @@
 
 @keyframes sl-flicker{0%,93%,96%,100%{opacity:1}94%,95%{opacity:.45}}
 @keyframes sl-flickd{0%,93%,96%,100%{opacity:0}94%,95%{opacity:.3}}
-@keyframes sl-flicker2{0%,12%,18%,40%,46%,100%{opacity:1}14%,16%{opacity:.25}42%,44%{opacity:.5}}
-@keyframes sl-flickd2{0%,12%,18%,40%,46%,100%{opacity:0}14%,16%{opacity:.4}42%,44%{opacity:.25}}
 @keyframes sl-shadow{0%,100%{transform:translateX(-120%)}50%{transform:translateX(30%)}}
 @keyframes sl-feet{0%{left:-25%;opacity:.9}100%{left:105%;opacity:.9}}
 @keyframes sl-look{to{transform:rotate(8deg)}}

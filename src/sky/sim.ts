@@ -14,7 +14,15 @@ const ISLANDS = [
 ];
 export function terrainY(x: number, z: number): number {
   let h = 0;
-  for (const i of ISLANDS) { const d = Math.hypot(x - i.x, z - i.z) / i.r; if (d < 1) { const k = 1 - d * d; h = Math.max(h, i.h * k * k * (0.8 + 0.2 * Math.sin(x * 0.011) * Math.cos(z * 0.013))); } }
+  for (const island of ISLANDS) {
+    const dx = x - island.x, dz = z - island.z;
+    const radiusSq = island.r * island.r, distanceSq = dx * dx + dz * dz;
+    if (distanceSq >= radiusSq) continue;
+    // Avoid 7 square roots per terrain query (tens of thousands on terrain
+    // generation, and repeated collision samples under active firefights).
+    const k = 1 - distanceSq / radiusSq;
+    h = Math.max(h, island.h * k * k * (0.8 + 0.2 * Math.sin(x * 0.011) * Math.cos(z * 0.013)));
+  }
   return h;
 }
 

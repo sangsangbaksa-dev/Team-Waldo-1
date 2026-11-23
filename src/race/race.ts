@@ -159,13 +159,25 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
       if (k.lastEv.pad) ev.push({ type: 'pad' });
     }
   }
-  // 차량 간 충돌(차체 길이에 맞춘 캡슐). 밀린 뒤에는 다시 도로 안으로 붙입니다.
+  // Each stepCar already projects the car onto the road. Only cars actually
+  // displaced by a body collision need the second (expensive) nearest lookup.
+  // Race rooms cap at six drivers, so a 32-bit flag mask avoids allocations.
+  let movedMask = 0;
   for (let i = 0; i < r.racers.length; i++) for (let j = i + 1; j < r.racers.length; j++) {
-    if (r.racers[i].link || r.racers[j].link) continue; // 상대 차량은 겹쳐 달립니다(충돌 동기화 없음)
-    const mine = i === 0 || j === 0, rel = separateCars(r.racers[i].car, r.racers[j].car);
-    if (live && mine && rel > 3) ev.push({ type: 'bump', power: rel });
+    if (r.racers[i].link || r.racers[j].link) continue; // 원격 차량은 겹쳐 달립니다.
+    const a = r.racers[i].car, b = r.racers[j].car;
+    const ax = a.x, az = a.z, bx = b.x, bz = b.z;
+    const rel = separateCars(a, b);
+    if (a.x !== ax || a.z !== az) movedMask |= 1 << i;
+    if (b.x !== bx || b.z !== bz) movedMask |= 1 << j;
+    if (live && (i === 0 || j === 0) && rel > 3) ev.push({ type: 'bump', power: rel });
   }
-  for (const k of r.racers) if (!k.link) { const hit = stayOnTrack(k.car, t, dt, false); if (live && k.player && hit > 0) ev.push({ type: 'hit', power: hit }); }
+  for (let i = 0; i < r.racers.length; i++) {
+    if (!(movedMask & (1 << i))) continue;
+    const k = r.racers[i]; if (k.link) continue;
+    const hit = stayOnTrack(k.car, t, dt, false);
+    if (live && k.player && hit > 0) ev.push({ type: 'hit', power: hit });
+  }
   // Keep the race result fixed during the post-finish driving animation.
   if (r.phase !== 'racing') return ev;
   // Settle every crossing in this simulation step before resolving final place.

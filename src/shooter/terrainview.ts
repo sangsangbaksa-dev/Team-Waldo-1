@@ -110,6 +110,16 @@ export class TerrainView {
         for (let x = x0 + 2; x < x1 - 1; x += 5) p.box(1.6, 0.012, 0.13, stripe, identity, x, 0.113, z);
       }
     }
+    // 교차로 9곳의 횡단보도. 거리마다 개별 Mesh를 만들지 않고 도로와 한 번에 병합합니다.
+    const crossing = 0xcacbc3;
+    for (let i = 1; i < cols; i++) for (let j = 1; j < rows; j++) {
+      const x = c.x + (i - cols / 2) * lotW, z = c.z + (j - rows / 2) * lotD;
+      for (const sign of [-1, 1]) for (let mark = 0; mark < 4; mark++) {
+        const offset = sign * (lane / 2 + 0.65 + mark * 0.48);
+        p.box(lane - 0.65, 0.012, 0.25, crossing, identity, x, 0.123, z + offset);
+        p.box(0.25, 0.012, lane - 0.65, crossing, identity, x + offset, 0.123, z);
+      }
+    }
     // 도심의 x=0/z=0 교차로를 외곽 마을 연결 도로까지 연장합니다.
     // 기존에 끝에서 약 5~10m 끊기던 아스팔트가 이제 중앙 블록까지 이어집니다.
     const extentX = Math.max(4, c.r - halfX + 5), extentZ = Math.max(4, c.r - halfZ + 5);

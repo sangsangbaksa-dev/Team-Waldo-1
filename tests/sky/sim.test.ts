@@ -23,6 +23,15 @@ describe('SKY WAR 비행 경계와 웨이브', () => {
     expect(enemy.pos.distanceTo(before)).toBeCloseTo(enemy.speed * dt, 4);
   });
 
+  it('적기는 낮은 고도에서 지면을 향해 급강하하지 않고 상승한다', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    const enemy = sim.makeJet('enemy', 'fighter', new THREE.Vector3(0, 50, 100), 0.8);
+    sim.step(0.05, neutral);
+    expect(enemy.pitch).toBeGreaterThan(0);
+    expect(enemy.pos.y).toBeGreaterThan(50);
+    expect(enemy.alive).toBe(true);
+  });
+
   it('플레이어가 외곽에 있어도 적 편대는 작전 구역 안의 안전한 고도에서 생성된다', () => {
     const sim = new SkySim(DIFFS[1]!);
     sim.player.pos.set(0, 1000, WORLD_R * 1.08);

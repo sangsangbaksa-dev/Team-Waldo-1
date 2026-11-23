@@ -89,6 +89,17 @@ function roof(p: Pieces, bd: Building, rng: () => number, detailed: boolean): vo
       }
     }
     if (tall) { p.add(CYL(0.08, 3, 6), 0x5a5a5e, base.clone().multiply(xf(w * 0.25, h + 2, d * 0.25))); p.box(1.6, 0.5, 0.5, 0x3b3f44, base, -w * 0.15, h + 0.65, 0); }
+    if (bd.type === 'apartment' && h >= 34) {
+      // 12층 중앙 랜드마크: 지붕 통신 마스트로 하늘에서 위치를 파악할 수 있습니다.
+      const ax = w * 0.18, az = d * 0.14;
+      p.box(1.8, 0.3, 1.8, 0x606971, base, ax, h + 0.49, az);
+      p.box(0.18, 6.2, 0.18, 0x424c55, base, ax, h + 3.65, az);
+      for (const y of [h + 2.0, h + 4.4, h + 6.3]) {
+        p.box(2.0, 0.08, 0.09, 0x9baab4, base, ax, y, az);
+        p.box(0.09, 0.08, 2.0, 0x9baab4, base, ax, y, az);
+      }
+      p.box(0.38, 0.36, 0.38, 0xb85c44, base, ax, h + 6.9, az);
+    }
     if (bd.type === 'bunker') p.box(w - 1, 0.4, d - 1, 0x58705a, base, 0, h + 0.5, 0);
     if (bd.type === 'clinic') { p.box(2.6, 0.12, 0.8, 0xc9302c, base, 0, h + 0.42, 0); p.box(0.8, 0.12, 2.6, 0xc9302c, base, 0, h + 0.42, 0); p.box(1.4, 0.9, 1.1, 0xb6babd, base, w * 0.3, h + 0.8, d * 0.25); }
     if (bd.type === 'silo') { for (const y of [0.25, 0.5, 0.75]) p.box(w + 0.3, 0.18, d + 0.3, 0x9aa0a4, base, 0, h * y, 0); p.box(w * 0.7, 1.1, d * 0.7, 0xb8bcc0, base, 0, h + 0.85, 0); p.box(w * 0.4, 0.8, d * 0.4, 0x9aa0a4, base, 0, h + 1.8, 0); }

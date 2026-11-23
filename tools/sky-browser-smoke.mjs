@@ -43,6 +43,12 @@ try {
       await page.goto(origin, { waitUntil: 'domcontentloaded' });
       await page.locator('#start-sky').click();
       await page.locator('#sk-title').waitFor({ state: 'visible' });
+      if (size.name === 'mobile') {
+        assert.equal(await page.locator('.sk-help').evaluate(el => el.open), false, 'Mobile help should be collapsed by default');
+        const startButton = await page.locator('#sk-start').boundingBox();
+        assert.ok(startButton && startButton.y >= 0 && startButton.y + startButton.height <= size.height,
+          'Mobile start button should be fully visible without scrolling');
+      }
       await page.screenshot({ path: 'browser-artifacts/sky-title-' + size.name + '.png', animations: 'disabled' });
       const pointerChoice = page.locator('[data-k="lock"]');
       assert.match(await pointerChoice.innerText(), /자유/, 'Absolute pointer steering is the default');

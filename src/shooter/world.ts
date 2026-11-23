@@ -512,8 +512,8 @@ export function blockedAt(map: GameMap, x: number, z: number, r: number): boolea
 }
 
 /** 원(반지름 r)이 막히는 상자와 실제로 겹치는지(둥근 모서리 기준). */
-export function circleHits(map: GameMap, x: number, z: number, r: number): boolean {
-  const standTop = groundHeight(map.terrain, x, z) + PLAYER.height - 0.3;
+export function circleHits(map: GameMap, x: number, z: number, r: number, clearance = PLAYER.height - 0.3): boolean {
+  const standTop = groundHeight(map.terrain, x, z) + clearance;
   for (let cx = cellOf(x - r); cx <= cellOf(x + r); cx++) for (let cz = cellOf(z - r); cz <= cellOf(z + r); cz++) {
     const l = map.grid.get(key(cx, cz)); if (!l) continue;
     for (const i of l) {

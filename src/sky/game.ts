@@ -11,6 +11,7 @@ import type { LoadingScreen } from '../loading';
 import { drawIcon, svgIcon } from './art';
 import { AdaptiveQuality } from '../shared/adaptive';
 import { advanceSkyQualityRecovery } from './quality';
+import { planSkyFrame } from './timing';
 
 const clamp = THREE.MathUtils.clamp;
 const AIM_CONE = Math.cos(THREE.MathUtils.degToRad(5)), ASSIST_CONE = Math.cos(THREE.MathUtils.degToRad(9));
@@ -390,10 +391,22 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   }
   function frame(now: number): void {
     if (closed) return; raf = requestAnimationFrame(frame);
-    const frameMs = now - last, dt = Math.min(0.05, frameMs / 1000); last = now; if (!renderer || !view || !sim) return;
+    const frameMs = now - last, plan = planSkyFrame(frameMs);
+    const dt = Math.min(0.05, plan.elapsed);
+    last = now; if (!renderer || !view || !sim) return;
     if (!shouldRenderFrame()) return;
     if (state === 'play') {
-      const p = sim.player; const inp = readInput(p, dt); sim.step(dt, inp); flare = false; mTap = false; fireTap = Math.max(0, fireTap - dt); hitT = Math.max(0, hitT - dt);
+      const p = sim.player;
+      const inp = readInput(p, plan.elapsed);
+      // A 70–200ms GPU frame must not slow the game's flight clock. Several
+      // safe physics ticks catch up; stop if the pilot dies to preserve events.
+      for (let tick = 0; tick < plan.steps; tick++) {
+        sim.step(plan.stepDt, inp);
+        if (sim.over) break;
+      }
+      flare = false; mTap = false;
+      fireTap = Math.max(0, fireTap - plan.elapsed);
+      hitT = Math.max(0, hitT - plan.elapsed);
       for (const ev of sim.events) {
         const mine = (id: number): boolean => id === p.id, dist = (pos: THREE.Vector3): number => pos.distanceTo(p.pos);
         switch (ev.t) {
@@ -433,7 +446,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
       const t = now / 4000; view.camera.position.set(Math.cos(t) * 900, 520, Math.sin(t) * 900); view.camera.lookAt(0, 250, 0);
     }
     if (state === 'play' || state === 'over') view.follow(sim.player, dt, cameraLook, clamp((throttle - 0.55) * 2, 0, 1));
-    view.sync(sim, dt, now / 1000);
+    view.sync(sim, plan.elapsed, now / 1000);
     renderer.render(view.scene, view.camera);
     // Adaptive FPS measurements must exclude throttled title/result frames.
     if (state === 'play') adaptive?.tick();
@@ -442,7 +455,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
       stableQualitySeconds = recovery.stableSeconds;
       if (recovery.restore) { adaptive.level--; view.setLevel(adaptive.level); }
     } else stableQualitySeconds = 0;
-    if (state === 'play') { hud(sim.player, dt); overlay(sim.player); } else if (state === 'over') { octx.clearRect(0, 0, ov.width, ov.height); }
+    if (state === 'play') { hud(sim.player, plan.elapsed); overlay(sim.player); } else if (state === 'over') { octx.clearRect(0, 0, ov.width, ov.height); }
   }
 
   // 난이도/버튼

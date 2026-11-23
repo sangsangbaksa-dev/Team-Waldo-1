@@ -189,3 +189,15 @@
   .rc-root.touch .rc-pedals button.gas { height: 66px; font-size: 16px; }
   .rc-root.touch .rc-pedal-row { gap: 6px; }
 }
+
+/* Fit large result headlines such as NEW GHOST on a 320px phone without
+   breaking one word into several lines or pushing every action below the fold. */
+@media (max-width: 420px) {
+  .rc-card.result { padding: 20px 18px; }
+  .rc-card.result h2 {
+    font-size: clamp(44px, 17vw, 64px);
+    line-height: 1.04;
+    word-break: keep-all;
+    overflow-wrap: normal;
+  }
+}

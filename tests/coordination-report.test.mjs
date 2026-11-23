@@ -4,11 +4,11 @@ import { analyzePullRequests, gameForPath, renderMarkdown } from '../tools/coord
 const NOW = Date.parse('2026-11-23T02:00:00Z');
 
 const prs = [
-  { number: 195, title: '9 and 10 base', base: { ref: 'feat/shared-menu-rails' }, head: { ref: 'agent/9-10' }, updated_at: '2026-11-22T22:00:00Z', files: ['src/slack/game.ts', 'src/squad/game.ts'] },
-  { number: 202, title: 'SLACK', base: { ref: 'agent/9-10' }, head: { ref: 'fix/slack' }, updated_at: '2026-11-23T01:55:00Z', files: ['src/slack/game.ts', 'tests/slack/lifecycle.test.ts'] },
+  { number: 195, title: '9 and 10 base', base: { ref: 'feat/shared-menu-rails' }, head: { ref: 'agent/9-10', sha: '195aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }, updated_at: '2026-11-22T22:00:00Z', files: ['src/slack/game.ts', 'src/squad/game.ts'] },
+  { number: 202, title: 'SLACK', base: { ref: 'agent/9-10' }, head: { ref: 'fix/slack', sha: '202bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' }, updated_at: '2026-11-23T01:55:00Z', files: ['src/slack/game.ts', 'tests/slack/lifecycle.test.ts'] },
   { number: 208, title: 'SKY', base: { ref: 'agent/9-10' }, head: { ref: 'agent/sky' }, updated_at: '2026-11-23T01:00:00Z', files: ['src/sky/game.ts'] },
   { number: 199, title: 'ZERO relief', base: { ref: 'feat/shared-menu-rails' }, head: { ref: 'feat/relief' }, updated_at: '2026-11-22T20:00:00Z', files: ['src/shooter/world.ts', 'src/shooter/relief.ts'] },
-  { number: 207, title: 'ZERO city', base: { ref: 'claude/project-thread-hhffi5' }, head: { ref: 'feat/city' }, updated_at: '2026-11-23T01:58:00Z', files: ['src/shooter/world.ts', 'src/shooter/terrain.ts', 'src/shooter/world.ts'] },
+  { number: 207, title: 'ZERO city', base: { ref: 'claude/project-thread-hhffi5' }, head: { ref: 'feat/city', sha: '207ccccccccccccccccccccccccccccccccccccc' }, updated_at: '2026-11-23T01:58:00Z', files: ['src/shooter/world.ts', 'src/shooter/terrain.ts', 'src/shooter/world.ts'] },
 ];
 
 describe('Team Waldo coordinator: GitHub PR file overlap', () => {
@@ -29,6 +29,7 @@ describe('Team Waldo coordinator: GitHub PR file overlap', () => {
   it('detects stacked PRs, exact filename overlaps and divergent baselines', () => {
     const result = analyzePullRequests(prs, { target: 'feat/shared-menu-rails', now: NOW });
     expect(result.total).toBe(5);
+    expect(result.prs.find(pr => pr.number === 202)?.headSha).toBe('202bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
     expect(result.parentEdges).toEqual([
       { parent: 195, child: 202, branch: 'agent/9-10' },
       { parent: 195, child: 208, branch: 'agent/9-10' },
@@ -70,6 +71,9 @@ describe('Team Waldo coordinator: GitHub PR file overlap', () => {
     expect(text).toContain('## 파일 변경이 겹치는 PR');
     expect(text).toContain('[#199](https://github.com/sangsangbaksa-dev/Team-Waldo-1/pull/199)');
     expect(text).toContain('src/shooter/world.ts');
+    expect(text).toContain('## 열린 PR 현재 HEAD');
+    expect(text).toContain('202bbbbbbb');
+    expect(text.indexOf('[#207]')).toBeLessThan(text.indexOf('[#195]')); // newer PR appears first
     expect(text).toContain('[독립 PR; 충돌 검토]');
     expect(text).toContain('[선행 PR 상속; 기대되는 중복]');
     expect(text).toContain('실제 diff');

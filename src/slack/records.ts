@@ -17,7 +17,14 @@ export function readSlackRecord(): SlackRecord {
         }
       }
     }
-  } catch { /* 저장소를 사용할 수 없으면 빈 기록을 반환한다. */ }
+  } catch { /* 저장소를 사용할 수 없으면 임시 기록만 사용한다. */ }
+  // Private mode, quota errors and blocked storage must not hide a run from this session.
+  for (const stage of ['class', 'dorm'] as const) {
+    const pending = sessionBest[stage];
+    if (pending && (!record.best[stage] || pending.score > record.best[stage]!.score)) {
+      record.best[stage] = { ...pending };
+    }
+  }
   return record;
 }
 export function recordSlackRun(stage: StageId, score: number, grade: string): boolean {

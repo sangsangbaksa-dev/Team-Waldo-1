@@ -26,7 +26,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
         <div class="sl-desk"></div>
         <div class="sl-laptop">
           <div class="sl-lid"><div class="sl-screen">
-            <div class="sl-win doc"><div class="sl-tb"><i></i><span>EduPlus 학습마당 · 중2 수학 문제집</span></div>
+            <div class="sl-win doc"><div class="sl-tb"><i></i><span>학교 학습실 · 수학 복습 문제집</span></div>
               <div class="sl-docbody"><aside><b>단원</b><u>1. 일차방정식</u><u class="on">2. 연립방정식</u><u>3. 일차함수</u><u>4. 도형의 성질</u></aside>
                 <article><div class="sl-pdfbar"><span>‹ 37 / 120 ›</span><span>100%</span><span>북마크</span></div><h4>p.37 연립방정식의 풀이</h4><p>1. 다음 연립방정식을 가감법으로 풀어 보시오.</p><div class="eq">x + y = 12<br>2x − y = 3</div><p>2. 두 수의 합이 25, 차가 7일 때 두 수를 구하시오.</p><div class="ans"></div><p>3. 대입법을 이용하여 해를 구하시오.</p><div class="eq">y = 2x − 1<br>3x + y = 14</div></article></div></div>
             <div class="sl-win vid"><div class="sl-tb"><i></i><span>FRONTLINE 전술 분석 · 다리 점령전 하이라이트</span></div>

@@ -308,7 +308,8 @@ async function setup() {
   if (!player) player = new THREE.Vector3();
   if (!renderer) {
     renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      // Avoid expensive multisampling on touch GPUs; viewport DPR is budgeted separately.
+      antialias: !touch,
       powerPreference: "high-performance",
     });
     renderer.outputColorSpace = THREE.SRGBColorSpace;

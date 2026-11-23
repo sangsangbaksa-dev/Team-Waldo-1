@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canAcceptRoomNade, type NetNade, type RoomNadeActor } from '../../src/shooter/net';
+import { canAcceptRoomNade, roomNadeCooldownReady, type NetNade, type RoomNadeActor } from '../../src/shooter/net';
 
 const human: RoomNadeActor = {
   id: 2, bot: false, remote: true, alive: true, air: 0, veh: -1,
@@ -26,6 +26,22 @@ describe('ZERO ZONE multiplayer grenade validation', () => {
       expect(canAcceptRoomNade(normal, { ...human, ...update }, { id: 2 }, false, 2)).toBe(false);
     }
   });
+  it('limits one throw per player while letting other players throw independently', () => {
+    const received = new Map<number, number>();
+    const tryThrow = (id: number, at: number): boolean => {
+      if (!roomNadeCooldownReady(received.get(id), at, 1080)) return false;
+      received.set(id, at);
+      return true;
+    };
+    expect(tryThrow(1, 1000)).toBe(true);
+    expect(tryThrow(1, 1001)).toBe(false);
+    expect(tryThrow(2, 1001)).toBe(true);
+    expect(tryThrow(1, 2079)).toBe(false);
+    expect(tryThrow(1, 2080)).toBe(true);
+    expect(roomNadeCooldownReady(2080, Number.NaN, 1080)).toBe(false);
+    expect(roomNadeCooldownReady(2080, 3000, -1)).toBe(false);
+  });
+
   it('rejects grenade teleporting, extreme height, excessive speed and NaN packets', () => {
     for (const update of [
       { x: 50 }, { y: 40 }, { vx: 75 }, { vy: -80 }, { x: Number.NaN },

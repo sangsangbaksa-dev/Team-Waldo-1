@@ -25,6 +25,7 @@ import { Sound } from "./sound.js";
 import { normalizeCampaign } from "./campaign.mjs";
 import { createPointerOwner, tryCapture } from "./input.mjs";
 import { lineClear, soundTravelDistance } from "./visibility.mjs";
+import { renderingScale } from "./render-quality.mjs";
 import { initialMute } from "./preferences.mjs";
 import { createIdLookup } from "./dom.mjs";
 
@@ -306,7 +307,6 @@ async function setup() {
       antialias: true,
       powerPreference: "high-performance",
     });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, touch ? 1.35 : 1.65));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.08;
@@ -431,6 +431,8 @@ function resize() {
   if (!w || !h) return;
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  const pixelRatio = renderingScale(w, h, devicePixelRatio, touch);
+  if (renderer.getPixelRatio() !== pixelRatio) renderer.setPixelRatio(pixelRatio);
   renderer.setSize(w, h, false);
   showSceneOnce();
 }

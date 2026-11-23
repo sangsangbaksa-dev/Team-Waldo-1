@@ -315,20 +315,33 @@ export class SkySim {
       // 이전 위치부터 새 위치까지 선분 충돌: 프레임 드롭 때 기체를 관통하지 않습니다.
       const prev = bulletTest.copy(m.pos);
       m.pos.addScaledVector(m.vel, dt);
-      if (tgt) {
-        const segment = tmpV2.copy(m.pos).sub(prev);
-        const len2 = segment.lengthSq();
-        const fraction = len2 > 0 ? THREE.MathUtils.clamp(tmpV.copy(tgt.pos).sub(prev).dot(segment) / len2, 0, 1) : 0;
-        if (tmpV.copy(prev).addScaledVector(segment, fraction).distanceToSquared(tgt.pos) < 28 * 28) {
-          this.damage(tgt, m.team === 'player' ? MISSILE_DMG : MISSILE_DMG * 0.6, m.owner, m.pos);
+      const segment = tmpV2.copy(m.pos).sub(prev);
+      const len2 = segment.lengthSq();
+      // Once a flare breaks homing, the missile still has a physical flight path:
+      // use the same swept collision as guided missiles so it cannot tunnel through a jet.
+      const sweptHit = (jet: Jet, radius: number): boolean => {
+        const fraction = len2 > 0 ? THREE.MathUtils.clamp(tmpV.copy(jet.pos).sub(prev).dot(segment) / len2, 0, 1) : 0;
+        return tmpV.copy(prev).addScaledVector(segment, fraction).distanceToSquared(jet.pos) < radius * radius;
+      };
+      if (tgt && sweptHit(tgt, 28)) {
+        this.damage(tgt, m.team === 'player' ? MISSILE_DMG : MISSILE_DMG * 0.6, m.owner, m.pos);
+        this.events.push({ t: 'boom', pos: m.pos.clone(), big: false });
+        m.alive = false;
+        continue;
+      }
+      if (m.pos.y < terrainY(m.pos.x, m.pos.z) + 2 || m.pos.y < SEA_Y) {
+        this.events.push({ t: 'boom', pos: m.pos.clone(), big: false }); m.alive = false;
+      } else if (!tgt) {
+        // An unguided missile can still collide with an aircraft; losing lock
+        // must not secretly increase damage against the player.
+        for (const j of this.jets) {
+          if (!j.alive || j.team === m.team || !sweptHit(j, 20)) continue;
+          this.damage(j, m.team === 'player' ? MISSILE_DMG : MISSILE_DMG * 0.6, m.owner, m.pos);
           this.events.push({ t: 'boom', pos: m.pos.clone(), big: false });
           m.alive = false;
-          continue;
+          break;
         }
       }
-      if (m.life <= 0 || m.pos.y < terrainY(m.pos.x, m.pos.z) + 2 || m.pos.y < SEA_Y) { this.events.push({ t: 'boom', pos: m.pos.clone(), big: false }); m.alive = false; }
-      // 우연한 근접 폭발
-      else if (!tgt) for (const j of this.jets) if (j.alive && j.team !== m.team && j.pos.distanceTo(m.pos) < 20) { this.damage(j, MISSILE_DMG, m.owner, m.pos); this.events.push({ t: 'boom', pos: m.pos.clone(), big: false }); m.alive = false; break; }
     }
     this.missiles = this.missiles.filter(m => m.alive);
   }

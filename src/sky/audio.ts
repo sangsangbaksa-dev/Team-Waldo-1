@@ -6,8 +6,11 @@ export class SkyAudio {
   private motor: { osc: OscillatorNode; gain: GainNode; filt: BiquadFilterNode; noiseGain: GainNode; noiseFilt: BiquadFilterNode; noise: AudioBufferSourceNode } | null = null;
 
   get enabled(): boolean { return this.eng.enabled; }
-  set enabled(on: boolean) { this.eng.setEnabled(on); }
-  setEnabled(on: boolean): void { this.eng.setEnabled(on); }
+  set enabled(on: boolean) { this.setEnabled(on); }
+  setEnabled(on: boolean): void {
+    this.eng.setEnabled(on);
+    if (!on) this.stopEngine();
+  }
   unlock(): void { this.eng.unlock(); }
 
   engine(on: boolean, thrust01: number): void {
@@ -42,10 +45,24 @@ export class SkyAudio {
     m.noiseFilt.frequency.setTargetAtTime(500 + k * 1800, c.currentTime, 0.16);
   }
 
+  /** The jet's looping oscillator and noise should not consume CPU beneath
+   * pause/result dialogs. Keep the Web Audio context for one-shot UI sounds. */
+  stopEngine(): void {
+    const motor = this.motor;
+    if (!motor) return;
+    this.motor = null;
+    for (const source of [motor.osc, motor.noise]) {
+      try { source.stop(); } catch { /* already stopped */ }
+      try { source.disconnect(); } catch { /* context closed */ }
+    }
+    for (const node of [motor.filt, motor.gain, motor.noiseFilt, motor.noiseGain]) {
+      try { node.disconnect(); } catch { /* context closed */ }
+    }
+  }
+
   dispose(): void {
-    try { this.motor?.osc.stop(); } catch { /* 이미 종료됨 */ }
-    try { this.motor?.noise.stop(); } catch { /* 이미 종료됨 */ }
-    this.motor = null; this.eng.dispose();
+    this.stopEngine();
+    this.eng.dispose();
   }
 
   play(name: string, dist = 0): void {

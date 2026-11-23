@@ -60,16 +60,16 @@ export function carBodiesOverlap(
   b: { x: number; z: number; heading: number },
   halfLength = 2.35, halfWidth = 1.05,
 ): boolean {
+  // Equivalent to testing four separating axes; no per-frame object allocations.
   const ca = Math.cos(a.heading), sa = Math.sin(a.heading);
   const cb = Math.cos(b.heading), sb = Math.sin(b.heading);
-  const au = { x: ca, z: -sa }, av = { x: sa, z: ca };
-  const bu = { x: cb, z: -sb }, bv = { x: sb, z: cb };
+  const cos = Math.abs(Math.cos(a.heading - b.heading));
+  const sin = Math.abs(Math.sin(a.heading - b.heading));
   const dx = b.x - a.x, dz = b.z - a.z;
-  for (const axis of [au, av, bu, bv]) {
-    const dot = (x: { x: number; z: number }): number => x.x * axis.x + x.z * axis.z;
-    const ra = halfLength * Math.abs(dot(au)) + halfWidth * Math.abs(dot(av));
-    const rb = halfLength * Math.abs(dot(bu)) + halfWidth * Math.abs(dot(bv));
-    if (Math.abs(dx * axis.x + dz * axis.z) > ra + rb) return false;
-  }
-  return true;
+  const forwardRadius = halfLength + halfLength * cos + halfWidth * sin;
+  const sideRadius = halfWidth + halfLength * sin + halfWidth * cos;
+  return Math.abs(dx * ca - dz * sa) <= forwardRadius &&
+    Math.abs(dx * sa + dz * ca) <= sideRadius &&
+    Math.abs(dx * cb - dz * sb) <= forwardRadius &&
+    Math.abs(dx * sb + dz * cb) <= sideRadius;
 }

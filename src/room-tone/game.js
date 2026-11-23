@@ -26,7 +26,7 @@ import { normalizeCampaign } from "./campaign.mjs";
 import { createPointerOwner, tryCapture } from "./input.mjs";
 import { lineClear, soundTravelDistance } from "./visibility.mjs";
 import { renderingScale } from "./render-quality.mjs";
-import { facingDot, canSeeTarget } from "./awareness.mjs";
+import { facingDot, canSeeTarget, stereoPan } from "./awareness.mjs";
 import { initialMute } from "./preferences.mjs";
 import { createIdLookup } from "./dom.mjs";
 
@@ -1281,7 +1281,7 @@ function enemyUpdate(dt, running) {
   const travel = Math.hypot(e.x - startX, e.z - startZ);
   enemySteps += travel;
   if (enemySteps >= 0.95) {
-    sound.monsterStep(dist);
+    sound.monsterStep(dist, stereoPan(player, yaw, e));
     enemySteps = 0;
   }
   stride += travel * 5.5;

@@ -52,7 +52,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       <ul class="ty-toasts" id="ty-toasts" role="status" aria-live="polite"></ul>
       <div class="ty-mini"><canvas id="ty-minimap" width="220" height="220"></canvas></div>
       <div class="ty-banner" id="ty-banner"></div>
-      <div class="ty-route" id="ty-route" hidden><span class="ty-route-mark"></span><div><b>내 목적지</b><span id="ty-route-distance">0m</span></div><button type="button" id="ty-route-clear" aria-label="목적지 제거">✕</button></div>
+      <div class="ty-route" id="ty-route" hidden><span class="ty-route-mark" id="ty-route-mark">➤</span><div><b>내 목적지</b><span id="ty-route-distance">0m</span></div><button type="button" id="ty-route-clear" aria-label="목적지 제거">✕</button></div>
       <div class="ty-drive" id="ty-drive" hidden><span id="ty-drive-name"></span><strong><b id="ty-drive-speed">0</b><small>km/h</small></strong><span>W 가속 · S 후진 · A/D 조향 · F 하차</span></div>
       <div class="ty-touchpad"><div class="ty-stick" id="ty-stick"><i></i></div>
         <div class="ty-tfoot"><button type="button" data-t="ride" id="ty-t-ride">탑승</button><button type="button" data-t="use" class="big">행동</button><button type="button" data-t="run" id="ty-t-run">달리기</button><button type="button" data-t="view">시점</button></div></div>
@@ -421,7 +421,12 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (waypoint && Math.hypot(player.pos.x - waypoint.x, player.pos.z - waypoint.z) < 8) { waypoint = null; toast('목적지에 도착했습니다', 'good'); }
     route.hidden = !waypoint;
     route.classList.toggle('has-task', !!s.task);
-    if (waypoint) set('route-distance', '도로 기준 약 ' + Math.round(streetDistance(player.pos, waypoint)) + 'm');
+    if (waypoint) {
+      set('route-distance', '도로 기준 약 ' + Math.round(streetDistance(player.pos, waypoint)) + 'm');
+      const bearing = Math.atan2(waypoint.x - player.pos.x, waypoint.z - player.pos.z);
+      const angle = player.camYaw - bearing + Math.PI / 2;
+      style('route-mark', 'transform', 'rotate(' + Math.round(angle * 180 / Math.PI) + 'deg)');
+    }
     set('cash', formatMoney(s.cash)); set('debt', s.debt ? `빚 ${formatMoney(s.debt)}` : ''); set('stage', s.stageName); html('ladder', ladderHtml(s.stage));
     set('clock', s.clock); set('day', `${s.day}일차`); set('sun', s.night ? '☾' : '☀');
     for (const b of q('#ty-speed').children) { const button = b as HTMLElement, active = Number(button.dataset.speed) === s.speed; button.classList.toggle('on', active); button.setAttribute('aria-pressed', String(active)); }

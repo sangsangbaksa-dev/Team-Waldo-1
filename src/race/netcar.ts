@@ -12,14 +12,16 @@ export function encodeSnap(c: CarState): Snap {
 /** 형식이 맞지 않거나 숫자가 아닌 값이 있으면 버립니다(상대가 보낸 데이터는 믿지 않습니다). */
 export function parseSnap(raw: unknown): Snap | null {
   if (!Array.isArray(raw) || raw.length !== SNAP_LEN) return null;
-  return raw.every(v => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 1e7) ? (raw as Snap) : null;
+  if (!Array.from(raw).every(v => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 1e7)) return null;
+  if (raw[13] < 0 || raw[13] > 1 || raw[14] < 0 || (raw[15] !== 0 && raw[15] !== 1)) return null;
+  return raw.slice() as Snap;
 }
 
 export interface RemoteLink { snap: Snap | null; at: number }
 
 /** 마지막 스냅샷을 속도로 조금 앞질러 예측한 위치로 부드럽게 따라갑니다. 너무 멀어지면 바로 옮깁니다. */
 export function followSnap(car: CarState, link: RemoteLink, now: number, dt: number): void {
-  const s = link.snap; if (!s) return;
+  const s = link.snap; if (!s || !Number.isFinite(now) || !Number.isFinite(link.at) || !Number.isFinite(dt) || dt <= 0) return;
   const age = Math.min(0.25, Math.max(0, (now - link.at) / 1000)), tx = s[0] + s[4] * age, tz = s[1] + s[5] * age, far = Math.hypot(tx - car.x, tz - car.z) > 30;
   const k = far ? 1 : Math.min(1, dt * 14);
   car.x += (tx - car.x) * k; car.z += (tz - car.z) * k; car.y += (s[2] - car.y) * Math.min(1, dt * 14);

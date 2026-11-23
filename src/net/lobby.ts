@@ -47,6 +47,7 @@ export function openLobby(opts: LobbyOptions): { close(): void } {
   let backend: Backend | null = null, me: Account | null = null, screen: 'load' | 'auth' | 'home' | 'wait' | 'ranks' | 'create' | 'room' = 'load', authMode: 'in' | 'up' = 'in', closed = false;
   let firstEnter = true, msg = opts.notice ?? '', busy = false, waiting: MatchRow | null = null, poll = 0, waitSince = 0, tick = 0, rankGame: GameKind = opts.game ?? 'race', ranks: RankRow[] | null = null, rate: { rating: number; wins: number; losses: number } | null = null;
   const form: Record<string, string> = {};
+  let rankRequest = 0;
   let rooms: RoomListItem[] | null = null, roomInfo: RoomInfo | null = null, roomId = '', roomPoll = 0, pingTimer = 0, listPoll = 0, lastJson = '', launching = false, createMax = 2, createPublic = true;
   const maxP = opts.maxPlayers ?? 2;
   // 채팅: 게임 로비(게임·전체), 방(방·게임·전체). 게임이 시작되면 로비 층은 치우고 게임 중 채팅으로 넘깁니다.
@@ -71,22 +72,24 @@ export function openLobby(opts: LobbyOptions): { close(): void } {
     await enter();
   }
   async function enter(): Promise<void> {
-    if (!backend) return;
+    if (!backend || closed) return;
     if (!me) { set(() => { screen = 'auth'; }); return; }
     if (opts.game) { try { rate = await backend.rating(opts.game); } catch { rate = null; } }
+    if (closed) return;
     set(() => { screen = 'home'; msg = firstEnter ? (opts.notice ?? '') : ''; firstEnter = false; });
     if (!opts.game) void loadRanks(); else { watchList(); chatTabs(lobbyTabs()); }
   }
   async function loadRanks(): Promise<void> {
-    if (!backend) return; ranks = null; paint();
-    try { const rows = await backend.leaderboard(rankGame, 20); if (!closed) { ranks = rows; paint(); } } catch (e) { failure(e); }
+    if (!backend || closed) return; const game = rankGame, seq = ++rankRequest; ranks = null; paint();
+    try { const rows = await backend.leaderboard(game, 20); if (!closed && seq === rankRequest && (screen === 'ranks' || (screen === 'home' && !opts.game))) { ranks = rows; paint(); } } catch (e) { if (!closed && seq === rankRequest) failure(e); }
   }
 
   async function start(m: MatchRow, roomId?: string): Promise<void> {
-    if (!backend || !me || closed) return;
+    if (!backend || !me || closed || m.status !== 'playing' || (m.host_id !== me.id && m.guest_id !== me.id) || (opts.game && m.game !== opts.game)) return;
     const host = m.host_id === me.id, oppId = host ? m.guest_id : m.host_id; if (!oppId) return;
     const b = backend, account = me, nickname = await b.nickname(oppId).catch(() => '상대');
-    if (closed) return; stopPoll(); closed = true; root.remove(); chatTabs([]);
+    if (closed || (!roomId && waiting?.id !== m.id)) { void b.cancelMatch(m.id).catch(() => undefined); return; }
+    stopPoll(); closed = true; root.remove(); chatTabs([]);
     const open = withChat(roomId ? `r:${roomId}` : `m:${m.id}`, `${nickname} 님과 대화`, h => b.open(m.id, h));
     opts.onMatch?.({ backend: b, game: m.game, match: m, me: account, host, opponent: { id: oppId, nickname }, open });
   }
@@ -114,7 +117,8 @@ export function openLobby(opts: LobbyOptions): { close(): void } {
     try {
       const m = await backend.quickMatch(opts.game, opts.config?.() ?? {});
       busy = false;
-      if (m.status === 'playing') { await start(m); return; }
+      if (closed) { await backend.cancelMatch(m.id).catch(() => undefined); return; }
+      if (m.status === 'playing') { waiting = m; await start(m); return; }
       watch(m); set(() => { screen = 'wait'; });
     } catch (e) { failure(e); }
   }
@@ -124,8 +128,9 @@ export function openLobby(opts: LobbyOptions): { close(): void } {
     if (!backend || !opts.game || closed || screen !== 'home') return;
     try { const r = await backend.roomList(opts.game); const j = JSON.stringify(r); if (!closed && screen === 'home' && j !== lastJson) { lastJson = j; rooms = r; paint(); } } catch { /* 다음 주기에 다시 봅니다. */ }
   }
-  function watchList(): void { stopRoomTimers(); lastJson = ''; rooms = null; void loadRooms(); listPoll = window.setInterval(() => void loadRooms(), 3000); }
+  function watchList(): void { stopRoomTimers(); if (closed) return; lastJson = ''; rooms = null; void loadRooms(); listPoll = window.setInterval(() => void loadRooms(), 3000); }
   function enterRoom(room: RoomRow): void {
+    if (closed) { void backend?.roomLeave(room.id).catch(() => undefined); return; }
     stopRoomTimers(); roomId = room.id; roomInfo = null; lastJson = ''; launching = false; set(() => { screen = 'room'; msg = ''; });
     roomPoll = window.setInterval(() => void refreshRoom(), 1000); void refreshRoom(); chatTabs(lobbyTabs(room.id));
     const ping = (): void => { if (backend && roomId) void backend.roomPing(roomId).catch(() => undefined); }; ping(); pingTimer = window.setInterval(ping, 5000);
@@ -141,22 +146,22 @@ export function openLobby(opts: LobbyOptions): { close(): void } {
     } catch { /* 다음 주기에 다시 확인합니다. */ }
   }
   async function launchRoom(info: RoomInfo): Promise<void> {
-    if (launching || !backend || !me) return; launching = true; stopRoomTimers(); roomId = '';
+    if (closed || launching || !backend || !me) return; launching = true; stopRoomTimers();
     const b = backend, account = me;
     try {
-      if (info.room.match_id) { await start(await b.getMatch(info.room.match_id), info.room.id); return; }
+      if (info.room.match_id) { const match = await b.getMatch(info.room.match_id); if (closed) return; if (match.status !== 'playing' || (match.host_id !== account.id && match.guest_id !== account.id) || match.game !== info.room.game) throw new Error('Invalid match'); await start(match, info.room.id); return; }
       if (!opts.onRoom) throw new Error('unsupported');
       closed = true; root.remove(); chatTabs([]);
       opts.onRoom({ backend: b, game: info.room.game, room: info.room, me: account, host: info.room.host_id === account.id, players: info.members.map(m => ({ id: m.user_id, nickname: m.nickname })), open: withChat(`r:${info.room.id}`, `방 채팅 · ${info.members.length}명`, h => b.open(info.room.id, h)) });
-    } catch (e) { launching = false; failure(e); }
+    } catch (e) { launching = false; if (!closed) { failure(e); roomPoll = window.setInterval(() => void refreshRoom(), 1000); const ping = (): void => { if (backend && roomId) void backend.roomPing(roomId).catch(() => undefined); }; ping(); pingTimer = window.setInterval(ping, 5000); } }
   }
   async function makeRoom(): Promise<void> {
     if (!backend || !opts.game || busy) return; busy = true; msg = ''; paint();
-    try { const r = await backend.roomCreate(opts.game, createMax, createPublic, opts.config?.() ?? {}); busy = false; enterRoom(r); } catch (e) { failure(e); }
+    try { const r = await backend.roomCreate(opts.game, createMax, createPublic, opts.config?.() ?? {}); busy = false; if (closed || screen !== 'create') { await backend.roomLeave(r.id).catch(() => undefined); return; } enterRoom(r); } catch (e) { failure(e); }
   }
   async function joinCode(code: string): Promise<void> {
     if (!backend || busy) return; busy = true; msg = ''; paint();
-    try { const r = await backend.roomJoin(code); busy = false; enterRoom(r); } catch (e) { failure(e); }
+    try { const r = await backend.roomJoin(code.trim().toUpperCase()); busy = false; if (closed || (opts.game && r.game !== opts.game)) { await backend.roomLeave(r.id).catch(() => undefined); if (!closed) { msg = '다른 게임의 방입니다.'; paint(); } return; } enterRoom(r); } catch (e) { failure(e); }
   }
   async function roomAct(kind: 'start' | 'ready' | 'leave'): Promise<void> {
     if (!backend || !roomInfo || busy) return; const id = roomInfo.room.id, mine = roomInfo.members.find(m => m.user_id === me?.id);
@@ -179,7 +184,7 @@ export function openLobby(opts: LobbyOptions): { close(): void } {
     try {
       const r = authMode === 'up' ? await backend.signUp(email, password, nick) : await backend.signIn(email, password);
       busy = false;
-      if (r === 'confirm') { set(() => { authMode = 'in'; msg = '가입 확인 메일을 보냈습니다. 메일의 링크를 누른 뒤 로그인해 주세요. 메일이 없거나 링크가 안 되면 아래에서 다시 받을 수 있습니다.'; }); return; }
+      if (r === 'confirm') { form.password = ''; set(() => { authMode = 'in'; msg = '가입 확인 메일을 보냈습니다. 메일의 링크를 누른 뒤 로그인해 주세요. 메일이 없거나 링크가 안 되면 아래에서 다시 받을 수 있습니다.'; }); return; }
       me = r; setAccount(r); form.password = ''; await enter();
     } catch (e) { failure(e); }
   }
@@ -195,7 +200,7 @@ export function openLobby(opts: LobbyOptions): { close(): void } {
     try { me = await backend.setNickname(n); setAccount(me); busy = false; set(() => { msg = '닉네임을 바꿨습니다.'; form.rename = ''; }); } catch (e) { failure(e); }
   }
   async function logout(): Promise<void> {
-    if (!backend) return; await backend.signOut().catch(() => undefined); me = null; setAccount(null); set(() => { screen = 'auth'; msg = ''; });
+    if (!backend || busy || closed) return; busy = true; stopPoll(); chatTabs([]); try { await backend.signOut(); } catch (e) { failure(e); if (!closed && opts.game) { watchList(); chatTabs(lobbyTabs()); } return; } busy = false; me = null; setAccount(null); set(() => { screen = 'auth'; msg = ''; });
   }
   function close(): void { if (closed) return; closed = true; const rid = launching ? '' : roomId; stopPoll(); if (rid && backend) void backend.roomLeave(rid).catch(() => undefined); if (waiting && backend) void backend.cancelMatch(waiting.id).catch(() => undefined); root.remove(); chatTabs([]); opts.onClose(); }
 
@@ -254,9 +259,11 @@ export function openLobby(opts: LobbyOptions): { close(): void } {
   });
   root.addEventListener('click', e => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-act]'); if (!b) return; const [a, arg] = b.dataset.act!.split(':');
-    if (a === 'close') close(); else if (a === 'mode') set(() => { authMode = arg as 'in' | 'up'; msg = ''; }); else if (a === 'quick') void find(); else if (a === 'newroom') { stopRoomTimers(); set(() => { screen = 'create'; msg = ''; }); } else if (a === 'enter') void joinCode(arg ?? '');
+    if (a === 'close') { close(); return; }
+    if (busy && a !== 'back') return;
+    if (a === 'mode') set(() => { authMode = arg as 'in' | 'up'; msg = ''; }); else if (a === 'quick') void find(); else if (a === 'newroom') { stopRoomTimers(); set(() => { screen = 'create'; msg = ''; }); } else if (a === 'enter') void joinCode(arg ?? '');
     else if (a === 'start' || a === 'ready' || a === 'leave') void roomAct(a);
-    else if (a === 'resend') void resend(); else if (a === 'cancel') void cancel(); else if (a === 'logout') void logout(); else if (a === 'ranks') { set(() => { screen = 'ranks'; }); void loadRanks(); }
+    else if (a === 'resend') void resend(); else if (a === 'cancel') void cancel(); else if (a === 'logout') void logout(); else if (a === 'ranks') { stopRoomTimers(); set(() => { screen = 'ranks'; }); void loadRanks(); }
     else if (a === 'back') { set(() => { screen = 'home'; }); if (opts.game) watchList(); } else if (a === 'rank') { rankGame = arg as GameKind; void loadRanks(); }
   });
   root.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } });

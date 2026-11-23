@@ -14,6 +14,9 @@ describe('HUSTLE moving traffic collision', () => {
     expect(first).toBeDefined();
     if (first) {
       expect(traffic.blocks(first.position.x, first.position.z, 0.9)).toBe(true);
+      const before = first.position.clone();
+      traffic.update(0, origin, new THREE.Vector3(200, 0, 200), 0);
+      expect(first.position.distanceTo(before)).toBe(0);
     }
     expect(traffic.blocks(9999, 9999, 0.9)).toBe(false);
     traffic.dispose();

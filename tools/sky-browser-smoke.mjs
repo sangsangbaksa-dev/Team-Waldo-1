@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
+import { mkdir } from 'node:fs/promises';
 
 const port = 4188, origin = 'http://127.0.0.1:' + port;
 const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
@@ -12,6 +13,7 @@ server.on('error', error => { serverLog += error.message; });
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 let browser;
+await mkdir('browser-artifacts', { recursive: true });
 try {
   let ready = false;
   for (let attempt = 0; attempt < 100; attempt++) {
@@ -41,6 +43,7 @@ try {
       await page.goto(origin, { waitUntil: 'domcontentloaded' });
       await page.locator('#start-sky').click();
       await page.locator('#sk-title').waitFor({ state: 'visible' });
+      await page.screenshot({ path: 'browser-artifacts/sky-title-' + size.name + '.png', animations: 'disabled' });
       const pointerChoice = page.locator('[data-k="lock"]');
       assert.match(await pointerChoice.innerText(), /자유/, 'Absolute pointer steering is the default');
       await pointerChoice.click();
@@ -59,6 +62,7 @@ try {
       assert.ok(flight.enemies > 0, 'The first wave must spawn enemies');
       assert.ok(flight.calls > 0, 'Three.js must issue WebGL draw calls');
       assert.ok(flight.altitude > 100, 'Aircraft must have a valid starting altitude');
+      await page.screenshot({ path: 'browser-artifacts/sky-flight-' + size.name + '.png', animations: 'disabled' });
       const clouds = await page.evaluate(() => {
         const view = window.__sky.view;
         const total = view.clouds.length;

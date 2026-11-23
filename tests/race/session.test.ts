@@ -68,7 +68,8 @@ describe('SPEED RUSH online race sessions', () => {
     channel.deliver({ t: 'fin', f: 'a', time: -1 });
     channel.deliver({ t: 'fin', f: 'a', time: 42 });
     channel.deliver({ t: 'fin', f: 'a', time: 21 });
-    expect(onFinish).toHaveBeenCalledExactlyOnceWith('a', 42);
+    expect(onFinish).toHaveBeenCalledTimes(1);
+    expect(onFinish).toHaveBeenCalledWith('a', 42);
     net.dispose();
   });
 
@@ -84,7 +85,8 @@ describe('SPEED RUSH online race sessions', () => {
     channel.deliver({ t: 'fin', time: NaN });
     channel.deliver({ t: 'fin', time: 52 });
     channel.deliver({ t: 'fin', time: 24 });
-    expect(onFinish).toHaveBeenCalledExactlyOnceWith(52);
+    expect(onFinish).toHaveBeenCalledTimes(1);
+    expect(onFinish).toHaveBeenCalledWith(52);
     net.dispose();
   });
 });

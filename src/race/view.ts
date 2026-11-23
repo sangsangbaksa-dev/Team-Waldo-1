@@ -298,10 +298,12 @@ export class RaceView {
     // All pads animate in phase, so they can share one canvas/GPU texture.
     const padTexture = padTexBase();
     this.padTexture = padTexture;
-    this.disposables.push(padTexture);
+    const padGeometry = new THREE.PlaneGeometry(16, 12).rotateX(-Math.PI / 2);
+    const padMaterial = new THREE.MeshBasicMaterial({ map: padTexture, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+    this.disposables.push(padTexture, padGeometry, padMaterial);
     for (const i of t.pads) {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(16, 12).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: padTexture, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
-      m.rotation.order = 'YXZ'; m.rotation.y = -Math.atan2(t.tz[i], t.tx[i]); m.rotation.z = t.pitch[i]; m.position.set(t.x[i], t.y[i] + 0.1, t.z[i]); this.scene.add(m); this.disposables.push(m.geometry);
+      const m = new THREE.Mesh(padGeometry, padMaterial);
+      m.rotation.order = 'YXZ'; m.rotation.y = -Math.atan2(t.tz[i], t.tx[i]); m.rotation.z = t.pitch[i]; m.position.set(t.x[i], t.y[i] + 0.1, t.z[i]); this.scene.add(m);
     }
     // 출발선
     const i0 = 0, check = canvasTex(256, 32, g => { for (let x = 0; x < 16; x++) for (let y = 0; y < 2; y++) { g.fillStyle = (x + y) % 2 ? '#111' : '#fff'; g.fillRect(x * 16, y * 16, 16, 16); } });

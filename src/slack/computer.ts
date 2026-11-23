@@ -41,7 +41,9 @@ const tracks = [
   { t: '느린 걸음', a: '해변의 밤', len: 196 }, { t: '자정의 편의점', a: '네온 라디오', len: 231 },
 ];
 
-const title = (label: string) => `<div class="sc-title"><span>${label}</span><span class="sc-title-btns">—　□　<button type="button" data-close aria-label="닫기">×</button></span></div>`;
+// Never depict fake minimize/maximize controls: this simulated desktop
+// supports taskbar app switching and a real close action, not window resizing.
+const title = (label: string) => `<div class="sc-title"><span>${label}</span><span class="sc-title-btns"><button type="button" data-close aria-label="${label} 창 닫기" title="창 닫기">×</button></span></div>`;
 
 export const createComputerView: CreateView = (sim, audio) => {
   const rooms = initialRooms.map(room => ({ ...room, msgs: [...room.msgs] }));

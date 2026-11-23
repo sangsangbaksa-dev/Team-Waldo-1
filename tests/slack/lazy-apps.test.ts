@@ -26,7 +26,20 @@ describe('SLACK OFF dorm lazy apps', () => {
     expect(view.el.querySelectorAll('[data-app]')).toHaveLength(6);
   });
 
-  it('builds only apps actually opened and keeps their state on switching', () => {
+  it('shows a single working close control with an app-specific accessible name', () => {
+  view.el.querySelector<HTMLButtonElement>('[data-app="video"]')!.click();
+  view.frame(0.1);
+  const windowNode = view.el.querySelector<HTMLElement>('.sc-app-video')!;
+  const close = windowNode.querySelector<HTMLButtonElement>('[data-close]')!;
+  expect(windowNode.querySelectorAll('.sc-title-btns button')).toHaveLength(1);
+  expect(close.getAttribute('aria-label')).toBe('영상 창 닫기');
+  expect(windowNode.querySelector('.sc-title-btns')?.textContent).toBe('×');
+  close.click();
+  view.frame(0);
+  expect(windowNode.classList.contains('on')).toBe(false);
+});
+
+it('builds only apps actually opened and keeps their state on switching', () => {
     const clickApp = (id: string) =>
       view.el.querySelector<HTMLButtonElement>(`[data-app="${id}"]`)!.click();
     clickApp('game');

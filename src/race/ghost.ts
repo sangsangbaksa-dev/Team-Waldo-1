@@ -3,6 +3,7 @@
 /** 기록 간격(초) */
 export const GHOST_DT = 0.1;
 const STRIDE = 4; // x, z, 방향, 누적 진행(샘플 단위)
+const MAX_DATA = 200_000;
 export interface Ghost { time: number; laps: number; data: number[]; finalSample?: true }
 export interface GhostPose { x: number; z: number; h: number; total: number }
 
@@ -11,17 +12,28 @@ const r2 = (v: number): number => Math.round(v * 100) / 100;
 /** 달리는 동안 표본을 쌓습니다. */
 export class GhostRecorder {
   data: number[] = [];
+  private previous: { time: number; pose: GhostPose } | null = null;
 
   tick(clock: number, c: GhostPose): void {
-    if (!Number.isFinite(clock) || clock < count(this) * GHOST_DT || !Number.isFinite(c.x) || !Number.isFinite(c.z) || !Number.isFinite(c.h) || !Number.isFinite(c.total)) return;
-    this.data.push(r2(c.x), r2(c.z), r2(c.h), r2(c.total));
+    if (!Number.isFinite(clock) || clock < 0 || clock > MAX_DATA / STRIDE * GHOST_DT || ![c.x, c.z, c.h, c.total].every(Number.isFinite)) return;
+    const prev = this.previous;
+    if (prev && clock < prev.time) return;
+    // Record at exact time-grid slots instead of assigning a late physics
+    // sample to an earlier timestamp. Fill skipped slots by interpolation.
+    while (this.data.length < MAX_DATA && count(this) * GHOST_DT <= clock + 1e-9) {
+      const t = count(this) * GHOST_DT;
+      const k = prev && clock > prev.time ? Math.max(0, Math.min(1, (t - prev.time) / (clock - prev.time))) : 1;
+      const p = prev?.pose ?? c;
+      this.data.push(r2(p.x + (c.x - p.x) * k), r2(p.z + (c.z - p.z) * k), r2(angleLerp(p.h, c.h, k)), r2(p.total + (c.total - p.total) * k));
+    }
+    this.previous = { time: clock, pose: { x: c.x, z: c.z, h: c.h, total: c.total } };
   }
 
   finish(time: number, laps: number, c?: GhostPose): Ghost {
     const data = this.data.slice();
     if (!c) return { time, laps, data };
     const sample = [r2(c.x), r2(c.z), r2(c.h), r2(c.total)];
-    if (time === (count(this) - 1) * GHOST_DT) data.splice(-STRIDE, STRIDE, ...sample);
+    if (Math.abs(time - (count(this) - 1) * GHOST_DT) <= 1e-9 && data.length >= STRIDE) data.splice(-STRIDE, STRIDE, ...sample);
     else data.push(...sample);
     return { time, laps, data, finalSample: true };
   }
@@ -38,9 +50,9 @@ export function ghostAt(g: Ghost, clock: number): GhostPose | null {
   if (clock <= 0) return pose(g, 0);
   if (clock >= sampleTime(g, n - 1)) return pose(g, n - 1);
   const i = Math.min(n - 2, Math.floor(clock / GHOST_DT));
-  const a = i * STRIDE, b = a + STRIDE, d = g.data;
+  const a = pose(g, i), b = pose(g, i + 1);
   const start = sampleTime(g, i), k = (clock - start) / (sampleTime(g, i + 1) - start);
-  return { x: d[a] + (d[b] - d[a]) * k, z: d[a + 1] + (d[b + 1] - d[a + 1]) * k, h: angleLerp(d[a + 2], d[b + 2], k), total: d[a + 3] + (d[b + 3] - d[a + 3]) * k };
+  return { x: a.x + (b.x - a.x) * k, z: a.z + (b.z - a.z) * k, h: angleLerp(a.h, b.h, k), total: a.total + (b.total - a.total) * k };
 }
 function pose(g: Ghost, i: number): GhostPose { const o = i * STRIDE; return { x: g.data[o], z: g.data[o + 1], h: g.data[o + 2], total: g.data[o + 3] }; }
 
@@ -79,12 +91,12 @@ export function sanitizeGhost(raw: unknown): Ghost | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const r = raw as Record<string, unknown>;
   if (typeof r.time !== 'number' || !Number.isFinite(r.time) || r.time <= 0 || typeof r.laps !== 'number' || !Array.isArray(r.data)) return null;
-  if (r.data.length < STRIDE * 2 || r.data.length % STRIDE !== 0 || r.data.length > 200_000 || !r.data.every(v => typeof v === 'number' && Number.isFinite(v))) return null;
+  if (r.data.length < STRIDE * 2 || r.data.length % STRIDE !== 0 || r.data.length > MAX_DATA || !r.data.every(v => typeof v === 'number' && Number.isFinite(v))) return null;
   if (!Number.isInteger(r.laps) || r.laps <= 0) return null;
   const result: Ghost = { time: r.time, laps: r.laps, data: r.data as number[] };
   if (r.finalSample === true) {
     const samples = count(result);
-    if (r.time <= (samples - 2) * GHOST_DT || r.time > (samples - 1) * GHOST_DT) return null;
+    if (r.time <= (samples - 2) * GHOST_DT || r.time > (samples - 1) * GHOST_DT + 1e-9) return null;
     result.finalSample = true;
   }
   return result;
@@ -95,6 +107,7 @@ export function readGhost(map: string, laps: number, car: string): Ghost | null 
     return ghost?.laps === laps ? ghost : null;
   } catch { return null; }
 }
-export function writeGhost(map: string, laps: number, car: string, g: Ghost): void {
-  try { localStorage.setItem(ghostKey(map, laps, car), JSON.stringify(g)); } catch { /* 저장 불가 환경 */ }
+export function writeGhost(map: string, laps: number, car: string, g: Ghost): boolean {
+  if (g.laps !== laps || !sanitizeGhost(g)) return false;
+  try { localStorage.setItem(ghostKey(map, laps, car), JSON.stringify(g)); return true; } catch { return false; }
 }

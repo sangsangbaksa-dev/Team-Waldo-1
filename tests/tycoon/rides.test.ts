@@ -75,6 +75,21 @@ describe('HUSTLE urban fleet', () => {
     rides.dispose();
   });
 
+  it('rejects nose-to-tail overlap even when car centers are more than 3.5m apart', () => {
+    const { player, rides } = setup();
+    const [first, second] = rides.positions();
+    expect(first).toBeDefined(); expect(second).toBeDefined();
+    const gap = 3.9;
+    const overlapping = {
+      name: second.name,
+      x: first.x + Math.cos(first.heading) * gap,
+      z: first.z - Math.sin(first.heading) * gap,
+      heading: first.heading,
+    };
+    expect(rides.restore(overlapping, player)).toBe(false);
+    rides.dispose();
+  });
+
   it('restores only an occupied vehicle with a valid location', () => {
     const { player, rides } = setup();
     const car = rides.positions()[0];

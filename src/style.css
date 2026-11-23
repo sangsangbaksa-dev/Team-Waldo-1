@@ -125,6 +125,22 @@ body::before {
 .tile-media::before { content: ''; position: absolute; inset: 0; background: linear-gradient(110deg, #202622 20%, #343e35 45%, #202622 70%); background-size: 200% 100%; animation: image-shimmer 1.8s linear infinite; }
 .tile-media.is-loaded::before, .tile-media.is-error::before { animation: none; opacity: 0; }
 .tile-media.is-error { background: linear-gradient(135deg, #28332c, #151a18); }
+/* Deferred (or unavailable) art should read as a designed placeholder, not an
+   empty block. Uses the already-rendered game name; zero extra image requests. */
+.tile-media::after {
+  content: attr(data-fallback);
+  position: absolute; z-index: 1; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  padding: 14px; text-align: center; overflow-wrap: anywhere;
+  color: #d6e3d5; font-size: clamp(11px, 1.35vw, 20px); font-weight: 800;
+  letter-spacing: .09em; line-height: 1.35; text-shadow: 0 2px 16px #0b1713;
+  background: linear-gradient(140deg, rgba(39,70,56,.3), rgba(10,17,15,.15));
+  opacity: .92; transition: opacity .24s ease;
+  pointer-events: none;
+}
+.tile-media.is-loaded::after { opacity: 0; }
+.tile-media.is-error::after { opacity: 1; }
+
 .tile-media img { position: relative; opacity: 0; transition: opacity .35s ease, transform .65s cubic-bezier(.2,.7,.2,1); }
 .tile-media.is-loaded img { opacity: 1; }
 .tile:hover:not(:disabled) .tile-media img, .tile:focus-visible .tile-media img { transform: scale(1.045); }

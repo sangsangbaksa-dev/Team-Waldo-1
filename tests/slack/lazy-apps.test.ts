@@ -102,6 +102,7 @@ it('locks cart prices to the add action when the midnight flash deal rotates', (
   view.el.querySelector<HTMLButtonElement>('[data-add="deal"]')!.click();
   expect(total()).toBe('합계 14,835원');
   expect(view.el.querySelector('[data-cart]')?.textContent).toBe('2');
+  expect(view.el.querySelector<HTMLButtonElement>('[data-add="1"]')?.textContent).toBe('담김 ×2');
 
   // A new deal applies only to future cart additions.
   view.frame(121);
@@ -109,6 +110,7 @@ it('locks cart prices to the add action when the midnight flash deal rotates', (
   expect(total()).toBe('합계 14,835원');
   view.el.querySelector<HTMLButtonElement>('[data-add="deal"]')!.click();
   expect(total()).toBe('합계 17,085원');
+  expect(view.el.querySelector<HTMLButtonElement>('[data-add="2"]')?.textContent).toBe('담김 ×1');
 });
 
 it('keeps the dorm messenger responsive after many quick replies and app switches', () => {

@@ -344,7 +344,7 @@ export class Match {
   private vBlocked(v: Vehicle, x: number, z: number, yaw: number): boolean {
     const lim = this.map.half - 2; if (Math.abs(x) > lim || Math.abs(z) > lim) return true;
     const r = v.d * 0.46, off = Math.max(0, v.w / 2 - r), c = Math.cos(yaw), s = Math.sin(yaw);
-    for (const k of [-off, 0, off]) { const px = x + c * k, pz = z + s * k; if (circleHits(this.map, px, pz, r) || waterDepth(this.map.terrain, px, pz) >= 2) return true; }
+    for (const k of [-off, 0, off]) { const px = x + c * k, pz = z + s * k; if (circleHits(this.map, px, pz, r, v.h) || waterDepth(this.map.terrain, px, pz) >= 2) return true; }
     for (const o of this.vehicles) if (o !== v && !o.wreck && o.moving && Math.hypot(o.x - x, o.z - z) < (v.w + o.w) * 0.28) return true;
     return false;
   }

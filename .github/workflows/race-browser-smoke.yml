@@ -1,0 +1,30 @@
+name: SPEED RUSH browser smoke
+on:
+  pull_request:
+    paths:
+      - 'src/race/**'
+      - 'tests/race/**'
+      - 'tools/race-browser-smoke.mjs'
+      - '.github/workflows/race-browser-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: race-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: node tools/race-browser-smoke.mjs

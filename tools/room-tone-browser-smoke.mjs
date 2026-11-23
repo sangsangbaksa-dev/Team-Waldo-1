@@ -170,6 +170,13 @@ try {
       assert.equal(await page.locator("#dialog").isVisible(),false);
       assert.deepEqual(errors,[],"Unexpected browser exceptions");
       await page.screenshot({path:"browser-artifacts/room-tone-playing-"+config.name+".png",animations:"disabled"});
+      if(config.name==="desktop"){
+        await page.locator("#viewWrap canvas").evaluate(element=>{
+          element.dispatchEvent(new Event("webglcontextlost",{cancelable:true}));
+        });
+        assert.match(await page.locator("#panelTitle").innerText(),/그래픽 연결이 끊겼습니다/);
+        assert.equal(await page.getByRole("button",{name:"다시 불러오기"}).count(),1);
+      }
       results.push({device:config.name,status:"passed",modelRequests:glb.length});
       console.log("PASS ROOM TONE "+config.name);
     } catch(error) {

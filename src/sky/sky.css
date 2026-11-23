@@ -153,3 +153,10 @@
 .sk-alert:not([data-level="danger"]){animation:none}
 .sk-alert[data-level="danger"]:not(:empty){animation:sk-alert-pulse 1s ease-in-out infinite}
 @media(prefers-reduced-motion:reduce){.sk-alert[data-level="danger"]{animation:none!important}}
+
+/* Mobile parity: cockpit camera can be toggled without a physical keyboard. */
+.sk-camera{display:none;position:absolute;right:max(12px,env(safe-area-inset-right));top:max(61px,calc(env(safe-area-inset-top) + 61px));width:44px;min-height:46px;padding:5px 3px;flex-direction:column;align-items:center;justify-content:center;gap:1px;border-radius:10px;border:1px solid #b3e9f16b;background:linear-gradient(145deg,#16394edb,#081b2cdb);box-shadow:inset 0 1px #ffffff24,0 6px 18px #00131e55;color:#edfaff;font:700 10px system-ui;cursor:pointer;touch-action:manipulation}
+.sk-camera .sk-ic{width:18px;height:18px;margin:0;color:#bfe9ff}
+.sk-camera[aria-pressed="true"]{border-color:#ffcd8e;color:#ffdfb2;background:#283a42ed}
+@media (pointer:coarse){.sk-camera{display:flex}}
+@media (prefers-reduced-motion:reduce){.sk-camera{transition:none}}

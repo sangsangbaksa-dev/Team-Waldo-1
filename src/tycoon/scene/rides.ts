@@ -31,7 +31,8 @@ export class Rides {
   private night = 0;
   private trafficBlocks: (x: number, z: number, radius: number) => boolean = () => false;
   private lamp = new THREE.SpotLight(0xffe9b8, 0, 46, Math.PI / 5, 0.55, 1.6);
-  constructor(scene: THREE.Scene, layout: Layout, private colliders: Colliders) {
+  constructor(scene: THREE.Scene, layout: Layout, private colliders: Colliders, trafficBlocks?: (x: number, z: number, radius: number) => boolean) {
+    if (trafficBlocks) this.trafficBlocks = trafficBlocks;
     this.lamp.castShadow = false;
     scene.add(this.lamp, this.lamp.target);
     const nearestVertical = Math.round((layout.spawn.x - PITCH / 2) / PITCH) * PITCH + PITCH / 2;
@@ -140,7 +141,9 @@ export class Rides {
         const x = car.x + o.x, z = car.z + o.z;
         this.colliders.resolve(x, z, 0.48, this.scratch);
         return Math.hypot(this.scratch.x - x, this.scratch.z - z) < 0.04 &&
-          worldDistance({ x, z }, car) > 2.3;
+          worldDistance({ x, z }, car) > 2.3 &&
+          !this.trafficBlocks(x, z, 0.48) &&
+          !this.cars.some(other => other !== car && worldDistance({ x, z }, other) < 2.8);
       });
       if (!exit) return { ok: false, message: '내릴 공간이 없습니다. 차를 조금 움직여 보세요' };
       this.active = null; this.lamp.intensity = 0;

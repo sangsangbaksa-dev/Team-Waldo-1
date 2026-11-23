@@ -6,5 +6,5 @@ export default defineConfig({
     chunkSizeWarningLimit: 2000,
     rollupOptions: { input: { arcade: 'index.html', roomTone: 'room-tone/index.html' } },
   },
-  test: { include: ['tests/**/*.test.ts'] },
+  test: { include: ['tests/**/*.test.ts', 'tests/**/*.test.mjs'] },
 });

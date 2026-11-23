@@ -1,0 +1,82 @@
+import { describe, expect, it } from 'vitest';
+import * as THREE from 'three';
+import { DIFFS, SkySim, WORLD_R, terrainY, type Input } from '../../src/sky/sim';
+
+const neutral: Input = { pitch: 0, roll: 0, throttle: 0.5, fire: false, missile: false, flare: false };
+
+describe('SKY WAR 비행 경계와 웨이브', () => {
+  it('수평 작전 경계에서 기체 고도가 갑자기 낮아지지 않는다', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    const p = sim.player;
+    p.pos.set(WORLD_R * 1.5, 800, 0);
+    sim.flyJet(p, 0, 0, 0.5, 1 / 60);
+    expect(Math.hypot(p.pos.x, p.pos.z)).toBeCloseTo(WORLD_R * 1.12, 4);
+    expect(p.pos.y).toBeCloseTo(800, 4);
+  });
+
+  it('적기가 경계에서 방향을 바꾸더라도 한 프레임에 두 번 이동하지 않는다', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    const enemy = sim.makeJet('enemy', 'fighter', new THREE.Vector3(WORLD_R * 1.05, 900, 0), 0.8);
+    const before = enemy.pos.clone();
+    const dt = 0.05;
+    sim.step(dt, neutral);
+    expect(enemy.pos.distanceTo(before)).toBeCloseTo(enemy.speed * dt, 4);
+  });
+
+  it('플레이어가 외곽에 있어도 적 편대는 작전 구역 안의 안전한 고도에서 생성된다', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.player.pos.set(0, 1000, WORLD_R * 1.08);
+    sim.intermission = 0;
+    sim.step(1 / 60, neutral);
+    expect(sim.wave).toBe(1);
+    const enemies = sim.enemies();
+    expect(enemies.length).toBeGreaterThan(0);
+    for (const enemy of enemies) {
+      expect(Math.hypot(enemy.pos.x, enemy.pos.z)).toBeLessThanOrEqual(WORLD_R * 0.93 + 0.01);
+      expect(enemy.pos.y).toBeGreaterThanOrEqual(terrainY(enemy.pos.x, enemy.pos.z) + 219);
+    }
+  });
+});
+
+describe('SKY WAR 발사체·보급품 회귀 테스트', () => {
+  it('미사일은 프레임 이동 중 목표를 가로질렀다면 명중한다', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.player.pos.set(0, 900, 0);
+    sim.missiles.push({
+      id: 999, owner: 999, team: 'enemy', pos: new THREE.Vector3(0, 900, 45),
+      vel: new THREE.Vector3(0, 0, -520), target: sim.player.id, life: 4, alive: true,
+    });
+    sim.step(0.05, neutral);
+    expect(sim.player.hp).toBeLessThan(100);
+    expect(sim.missiles).toHaveLength(0);
+  });
+
+  it('기한이 지난 보급품은 겹쳐 있어도 획득할 수 없다', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.player.hp = 10;
+    sim.pickups.push({ id: 888, kind: 'repair', pos: sim.player.pos.clone(), life: 0.01 });
+    sim.step(0.05, neutral);
+    expect(sim.player.hp).toBe(10);
+    expect(sim.pickups).toHaveLength(0);
+  });
+
+  it('게임 종료 뒤에는 시간과 기체 위치가 더 진행되지 않는다', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.over = true; sim.time = 20;
+    const before = sim.player.pos.clone();
+    sim.step(0.05, { ...neutral, fire: true, boost: true });
+    expect(sim.time).toBe(20);
+    expect(sim.player.pos.equals(before)).toBe(true);
+    expect(sim.bullets).toHaveLength(0);
+  });
+
+  it('리셋 시 적기 식별 번호와 미사일 경보 타이머도 초기화한다', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.warnT = 9;
+    sim.makeJet('enemy', 'ace', new THREE.Vector3(100, 900, 100), 1);
+    sim.reset();
+    expect(sim.player.id).toBe(1);
+    expect(sim.warnT).toBe(0);
+    expect(sim.enemies()).toHaveLength(0);
+  });
+});

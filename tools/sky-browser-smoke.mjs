@@ -46,8 +46,8 @@ try {
       const titleDrawsBefore = await page.evaluate(() => window.__sky.renderer.info.render.frame);
       await sleep(310);
       const titleDrawsAfter = await page.evaluate(() => window.__sky.renderer.info.render.frame);
-      assert.ok(titleDrawsAfter - titleDrawsBefore <= 5,
-        'The menu should not draw the 3D world at 60fps behind its overlay');
+      assert.ok(titleDrawsAfter - titleDrawsBefore <= 1,
+        'The opaque title screen must not keep drawing hidden WebGL frames');
       if (size.name === 'mobile') {
         assert.equal(await page.locator('.sk-help').evaluate(el => el.open), false, 'Mobile help should be collapsed by default');
         const startButton = await page.locator('#sk-start').boundingBox();
@@ -293,8 +293,8 @@ try {
       const overDrawsBefore = await page.evaluate(() => window.__sky.renderer.info.render.frame);
       await sleep(320);
       const overDrawsAfter = await page.evaluate(() => window.__sky.renderer.info.render.frame);
-      assert.ok(overDrawsAfter - overDrawsBefore <= 3,
-        'The result menu should cap expensive 3D redraws instead of drawing at 60fps');
+      assert.ok(overDrawsAfter - overDrawsBefore <= 1,
+        'The opaque result screen must suspend hidden WebGL redraws');
       const overQualityLevel = await page.evaluate(() => window.__sky.view.level);
       await page.locator('#sk-again').click();
       await page.locator('#sk-end').waitFor({ state: 'hidden' });

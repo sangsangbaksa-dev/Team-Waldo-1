@@ -181,14 +181,18 @@ function toggleAudio() {
 }
 applyMute(initialMute(read("rt-silent"), read(PREFS)));
 $("sound").onclick = $("gsound").onclick = toggleAudio;
+function syncSharedPreferences() {
+  applyMute(initialMute(read("rt-silent"), read(PREFS)));
+  syncMotionPreference();
+  resize();
+}
 window.addEventListener("storage", (e) => {
-  if (e.key === PREFS || (e.key === "rt-silent" && read(PREFS)?.sound === undefined))
+  if (e.key === PREFS) syncSharedPreferences();
+  else if (e.key === "rt-silent" && read(PREFS)?.sound === undefined)
     applyMute(initialMute(read("rt-silent"), read(PREFS)));
-  if (e.key === PREFS) {
-    resize();
-    syncMotionPreference();
-  }
 });
+// The arcade dispatcher also supports settings panels in the current tab.
+window.addEventListener("waldo:preferences", syncSharedPreferences);
 function screens(id) {
   for (const key of ["home", "game"]) $(key).hidden = key !== id;
   if (id === "game") showSceneOnce();

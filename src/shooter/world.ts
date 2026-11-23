@@ -583,8 +583,9 @@ export function pushOut(map: GameMap, p: { x: number; z: number }, r: number): b
  * DDA는 방문한 셀만 검사하므로 긴 시야/총알 광선의 빈 셀 탐색 비용도 낮춥니다. */
 let rayMarks = new Uint32Array(1 << 14);
 let rayStamp = 0;
-export function rayWorld(map: GameMap, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
-  if (!(maxT >= 0) || !Number.isFinite(ox + oy + oz + dx + dy + dz)) return Infinity;
+export function rayWorld(map: GameMap, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, hit?: { boxIndex: number }): number {
+  if (hit) hit.boxIndex = -1; // -1 = 지형 또는 장애물 없음
+  if (!Number.isFinite(maxT) || maxT < 0 || !Number.isFinite(ox + oy + oz + dx + dy + dz)) return Infinity;
   // 커다란 지도나 미래의 추가 건물 때문에 상자가 16k개를 넘어가더라도 중복 인덱스 충돌이 없도록 합니다.
   if (map.boxes.length > rayMarks.length) {
     let size = rayMarks.length;
@@ -621,7 +622,9 @@ export function rayWorld(map: GameMap, ox: number, oy: number, oz: number, dx: n
         if (c < t1) t1 = c;
         return t0 <= t1;
       };
-      if (slab(ox, dx, b.x0, b.x1) && slab(oy, dy, b.y0, b.y1) && slab(oz, dz, b.z0, b.z1) && t0 < best) best = t0;
+      if (slab(ox, dx, b.x0, b.x1) && slab(oy, dy, b.y0, b.y1) && slab(oz, dz, b.z0, b.z1) && t0 < best) {
+        best = t0; if (hit) hit.boxIndex = i;
+      }
       }
     }
     const crossing = Math.min(nextX, nextZ);

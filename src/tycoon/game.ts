@@ -19,6 +19,7 @@ import { Rides } from './scene/rides';
 import { Crowd, Traffic } from './scene/people';
 import { TycoonAudio } from './audio';
 import { drawMap, pointFromMapClick } from './ui/minimap';
+import { streetDistance } from './ui/road-route';
 import { esc, ladderHtml, menuHtml, spotPanelHtml, statusHtml, titleHtml, winHtml } from './ui/render';
 
 interface OpenOptions { loading?: LoadingScreen }
@@ -409,7 +410,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     const route = q('#ty-route');
     if (waypoint && Math.hypot(player.pos.x - waypoint.x, player.pos.z - waypoint.z) < 8) { waypoint = null; toast('목적지에 도착했습니다', 'good'); }
     route.hidden = !waypoint;
-    if (waypoint) set('route-distance', Math.round(Math.hypot(player.pos.x - waypoint.x, player.pos.z - waypoint.z)) + 'm 남음');
+    if (waypoint) set('route-distance', '도로 기준 약 ' + Math.round(streetDistance(player.pos, waypoint)) + 'm');
     set('cash', formatMoney(s.cash)); set('debt', s.debt ? `빚 ${formatMoney(s.debt)}` : ''); set('stage', s.stageName); html('ladder', ladderHtml(s.stage));
     set('clock', s.clock); set('day', `${s.day}일차`); set('sun', s.night ? '☾' : '☀');
     for (const b of q('#ty-speed').children) { const button = b as HTMLElement, active = Number(button.dataset.speed) === s.speed; button.classList.toggle('on', active); button.setAttribute('aria-pressed', String(active)); }
@@ -421,7 +422,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     const t = s.task; q('#ty-task').hidden = !t;
     if (t) {
       const d = city.doorOf(t.targetSpotId); set('task-label', t.label);
-      const distance = d ? ` · ${Math.round(Math.hypot(d.x - player.pos.x, d.z - player.pos.z))}m` : '';
+      const distance = d ? ` · 도로 기준 약 ${Math.round(streetDistance(player.pos, d))}m` : '';
       set('task-sub', `기본 ${formatMoney(t.reward)} · ${t.minutesLeft >= 0 ? `${Math.floor(t.minutesLeft / 60)}시간 ${t.minutesLeft % 60}분 남음` : '지각 — 보수 절반'}${distance}`);
       if (d) { const ang = Math.atan2(d.x - player.pos.x, d.z - player.pos.z), rel = player.camYaw - ang + Math.PI / 2; style('arrow', 'transform', `rotate(${(rel * 180 / Math.PI).toFixed(0)}deg)`); }
     }

@@ -1,5 +1,6 @@
 // SKY WAR — 공중전 시뮬레이션(렌더링과 무관한 순수 로직). 단순화한 비행 모델 + 웨이브 AI.
 import * as THREE from 'three';
+import { LowFlightChallenge } from './low-flight';
 
 export const WORLD_R = 3200;        // 이 반경 밖에서는 경고 후 기수를 안쪽으로 돌립니다
 export const SEA_Y = 0;
@@ -125,12 +126,15 @@ export class SkySim {
   jets: Jet[] = []; pickups: Pickup[] = []; missiles: Missile[] = []; bullets: Bullet[] = []; events: SimEvent[] = [];
   private bulletPool: Bullet[] = [];
   player!: Jet; wave = 0; score = 0; kills = 0; time = 0; over = false; waveDelay = 0; combo = 0; comboT = 0;
-  bestCombo = 0; shots = 0; hits = 0; shield = 0; overdrive = 0; warnT = 0; lowFlightCharge = 0; lowFlightRuns = 0; private lowFlightCooldown = 0; private nid = 1; spawnQueue = 0; intermission = 2;
+  bestCombo = 0; shots = 0; hits = 0; shield = 0; overdrive = 0; warnT = 0; readonly lowFlight = new LowFlightChallenge();
+  private nid = 1; spawnQueue = 0; intermission = 2;
+  get lowFlightCharge(): number { return this.lowFlight.charge; }
+  get lowFlightRuns(): number { return this.lowFlight.runs; }
   constructor(public diff: Difficulty) { this.reset(); }
 
   reset(): void {
     this.bulletPool.length = 0; this.nid = 1; this.warnT = 0;
-    this.jets = []; this.pickups = []; this.missiles = []; this.bullets = []; this.events = []; this.wave = 0; this.score = 0; this.kills = 0; this.time = 0; this.over = false; this.intermission = 2; this.combo = 0; this.comboT = 0; this.bestCombo = 0; this.shots = 0; this.hits = 0; this.shield = 0; this.overdrive = 0; this.missileRegen = 0; this.stallWarnT = 0; this.afterburner = 0; this.lowFlightCharge = 0; this.lowFlightRuns = 0; this.lowFlightCooldown = 0;
+    this.jets = []; this.pickups = []; this.missiles = []; this.bullets = []; this.events = []; this.wave = 0; this.score = 0; this.kills = 0; this.time = 0; this.over = false; this.intermission = 2; this.combo = 0; this.comboT = 0; this.bestCombo = 0; this.shots = 0; this.hits = 0; this.shield = 0; this.overdrive = 0; this.missileRegen = 0; this.stallWarnT = 0; this.afterburner = 0; this.lowFlight.reset();
     const p = this.makeJet('player', 'fighter', new THREE.Vector3(0, 700, 2200), 1); p.q.identity(); p.speed = CRUISE; p.missiles = 6; p.missileCd = 0; p.hp = p.maxHp = 100;
     this.player = p;
   }
@@ -217,23 +221,13 @@ export class SkySim {
   }
 
   private updateLowFlight(dt: number): void {
-    this.lowFlightCooldown = Math.max(0, this.lowFlightCooldown - dt);
     const p = this.player;
     const ground = terrainY(p.pos.x, p.pos.z);
-    const clearance = p.pos.y - Math.max(SEA_Y, ground);
-    if (!p.alive || this.lowFlightCooldown > 0 || p.speed < 155 || ground < 30 || clearance < 18 || clearance > 135) {
-      this.lowFlightCharge = 0;
-      return;
-    }
-    this.lowFlightCharge += dt;
-    if (this.lowFlightCharge < 1.25) return;
-    this.lowFlightCharge = 0;
-    this.lowFlightCooldown = 5;
-    this.lowFlightRuns++;
-    this.score += 180;
-    const fuel = Math.min(0.12, Math.max(0, 1 - p.fuel));
-    p.fuel += fuel;
-    this.events.push({ t: 'stunt', points: 180, fuel });
+    const reward = this.lowFlight.advance(dt, p, ground, p.pos.y - Math.max(SEA_Y, ground));
+    if (!reward) return;
+    this.score += reward.points;
+    p.fuel += reward.fuel;
+    this.events.push({ t: 'stunt', ...reward });
   }
 
   private stepPlayer(p: Jet, inp: Input, dt: number): void {

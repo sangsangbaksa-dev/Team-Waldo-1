@@ -503,8 +503,13 @@ export function rayWorld(map: GameMap, ox: number, oy: number, oz: number, dx: n
   let nextZ = stepZ ? ((cz + (stepZ > 0 ? 1 : 0)) * CELL - oz) / dz : Infinity;
   // 격자 경계 위에서 시작해 반대 방향으로 움직일 경우 0거리 첫 칸을 한 번 처리합니다.
   while (entry <= maxT && entry <= best) {
-    const indices = map.grid.get(key(cx, cz));
-    if (indices) for (const i of indices) {
+    // 격자선과 평행하게 달리는 광선은 경계의 양옆 AABB를 모두 만날 수 있습니다.
+    const adjacentX = dx === 0 && Math.abs(ox - cx * CELL) < 1e-9 ? -1 : 0;
+    const adjacentZ = dz === 0 && Math.abs(oz - cz * CELL) < 1e-9 ? -1 : 0;
+    for (let ix = adjacentX; ix <= 0; ix++) for (let iz = adjacentZ; iz <= 0; iz++) {
+      const indices = map.grid.get(key(cx + ix, cz + iz));
+      if (!indices) continue;
+      for (const i of indices) {
       if (rayMarks[i] === rayStamp) continue;
       rayMarks[i] = rayStamp;
       const b = map.boxes[i];
@@ -518,6 +523,7 @@ export function rayWorld(map: GameMap, ox: number, oy: number, oz: number, dx: n
         return t0 <= t1;
       };
       if (slab(ox, dx, b.x0, b.x1) && slab(oy, dy, b.y0, b.y1) && slab(oz, dz, b.z0, b.z1) && t0 < best) best = t0;
+      }
     }
     const crossing = Math.min(nextX, nextZ);
     if (!Number.isFinite(crossing)) break;

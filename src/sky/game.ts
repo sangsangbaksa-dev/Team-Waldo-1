@@ -220,7 +220,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
       paintRec();
     }
     diff = d; sim = new SkySim(d); saved = false; state = 'play'; throttle = 0.55; mouse.x = mouse.y = 0; mouse.active = false; flare = mTap = mBoost = mFire = mMissile = false; hitT = 0; hitBy = 0; keys.clear(); bannerT = alertT = 0; cockpit = false; root.classList.remove('cockpit'); view?.setCockpit(false); autoFire = ctl.assist >= 2;
-    $('sk-title').hidden = true; $('sk-end').hidden = true; $('sk-paused').hidden = true; root.querySelector<HTMLElement>('.sk-hud')!.hidden = false; audio.unlock(); lock(); hint(matchMedia('(pointer: coarse)').matches ? '화면을 드래그해 조종하세요' : ctl.pointerLock ? '상대 이동으로 조종 · Esc: 일시정지' : '커서를 화면 중앙 기준으로 움직여 조종 · P: 일시정지'); banner('출격!', 1.5);
+    $('sk-title').hidden = true; $('sk-end').hidden = true; $('sk-paused').hidden = true; $('sk-alert').textContent = ''; $('sk-banner').classList.remove('on'); root.querySelector<HTMLElement>('.sk-hud')!.hidden = false; audio.unlock(); lock(); hint(matchMedia('(pointer: coarse)').matches ? '화면을 드래그해 조종하세요' : ctl.pointerLock ? '상대 이동으로 조종 · Esc: 일시정지' : '커서를 화면 중앙 기준으로 움직여 조종 · P: 일시정지'); banner('출격!', 1.5);
     if (view) { view.resetEffects(); view.camera.position.copy(sim.player.pos).add(new THREE.Vector3(0, 10, 40)); }
   }
   function togglePause(): void {

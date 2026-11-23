@@ -106,7 +106,12 @@ export const createComputerView: CreateView = (sim, audio) => {
   const gameReset = () => { Object.assign(G, { score: 0, combo: 1, streak: 0, hp: 100, over: false, on: false, nextAt: G.clock + 0.5, life: 1.5 }); const g = gameEls(); g.over.classList.remove('on'); g.target.classList.remove('on'); gameHud(); };
   const gameSpawn = () => {
     const t = gameEls().target; G.life = Math.max(0.65, 1.6 - G.score / 450);
-    t.style.left = `${8 + Math.random() * 74}%`; t.style.top = `${16 + Math.random() * 42}%`; t.style.setProperty('--life', `${G.life}s`);
+    // Keep the whole 46px star and its 8px countdown ring inside the game.
+    // CSS clamp() also follows viewport rotation without forcing layout reads.
+    const x = 8 + Math.random() * 74, y = 16 + Math.random() * 42;
+    t.style.left = `clamp(31px, ${x}%, calc(100% - 31px))`;
+    t.style.top = `clamp(31px, ${y}%, calc(100% - 31px))`;
+    t.style.setProperty('--life', `${G.life}s`);
     t.classList.remove('on'); void t.offsetWidth; t.classList.add('on'); G.on = true; G.deadline = G.clock + G.life;
   };
   const gamePop = (text: string, good: boolean) => { const p = gameEls().pop; const t = gameEls().target; p.style.left = t.style.left; p.style.top = t.style.top; p.textContent = text; p.classList.toggle('bad', !good); p.classList.remove('go'); void p.offsetWidth; p.classList.add('go'); };

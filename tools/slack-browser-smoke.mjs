@@ -170,6 +170,16 @@ try {
       const guardPassThrough = await page.locator('.sc-scan-person u')
         .evaluate(node => getComputedStyle(node).pointerEvents);
       assert.equal(guardPassThrough, 'none', 'Scanning guard must not block taskbar taps');
+      await page.locator('.sc-apps [data-app="game"]').click();
+      const star = page.locator('.sc-target.on');
+      await star.waitFor({ state: 'visible', timeout: 3500 });
+      const starRect = await star.boundingBox();
+      const sceneRect = await page.locator('.sc-game-scene').boundingBox();
+      assert.ok(starRect && sceneRect
+        && starRect.x >= sceneRect.x - 1 && starRect.y >= sceneRect.y - 1
+        && starRect.x + starRect.width <= sceneRect.x + sceneRect.width + 1
+        && starRect.y + starRect.height <= sceneRect.y + sceneRect.height + 1,
+        'The star must be fully visible and clickable on each screen size');
       await page.locator('.sc-apps [data-app="chat"]').click();
       await page.locator('.sc-app-chat').waitFor({ state: 'visible' });
       await page.locator('.sc-apps [data-app="shop"]').click();

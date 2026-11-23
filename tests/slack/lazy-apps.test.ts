@@ -116,6 +116,20 @@ it('locks cart prices to the add action when the midnight flash deal rotates', (
   expect(view.el.querySelector<HTMLButtonElement>('[data-add="2"]')?.textContent).toBe('담김 ×1');
 });
 
+it('keeps the star and timer ring clear of narrow screen edges', () => {
+  view.el.querySelector<HTMLButtonElement>('[data-app="game"]')!.click();
+  view.frame(0.1);
+  view.frame(0.6);
+  const star = view.el.querySelector<HTMLButtonElement>('.sc-target')!;
+  expect(star.classList.contains('on')).toBe(true);
+  expect(star.style.left).toMatch(/^clamp\(31px,/);
+  expect(star.style.top).toMatch(/^clamp\(31px,/);
+  expect(star.style.left).toContain('calc(100% - 31px)');
+  expect(star.style.top).toContain('calc(100% - 31px)');
+  const ringDuration = star.style.getPropertyValue('--life');
+  expect(ringDuration).toMatch(/s$/);
+});
+
 it('keeps the dorm messenger responsive after many quick replies and app switches', () => {
   const open = (id: string) => {
     view.el.querySelector<HTMLButtonElement>(`[data-app="${id}"]`)!.click();

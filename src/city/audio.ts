@@ -46,7 +46,8 @@ export class CityAudio {
     if (!this.eng.ctx || !this.enabled || vol < 0.03) return;
     const now = performance.now();
     const gap = name === 'smg' || name === 'rifle' ? 45 : name === 'skid' || name === 'hurt' || name === 'phurt' ? 180 : 60;
-    if (now - (this.last.get(name) ?? 0) < gap) return;
+    const previous = this.last.get(name);
+    if (previous !== undefined && now - previous < gap) return;
     this.last.set(name, now);
     const v = vol, t = (f: number, d: number, g: number, typ: OscillatorType = 'sine', slide = 0, delay = 0): void => tone(this.eng, f, d, g, typ, slide, delay);
     const n = (d: number, g: number, f: number, q = 1, typ: BiquadFilterType = 'bandpass'): void => burst(this.eng, d, g, f, q, typ);

@@ -250,7 +250,7 @@ export class SkySim {
     if (e.evade > 0) { this.flyJet(e, 0.7, e.bailT, 1, dt); return; }
     // 지형 회피
     const ahead = tmpV.copy(e.pos).addScaledVector(myFwd, 380);
-    if (ahead.y < terrainY(ahead.x, ahead.z) + 90 || e.pos.y < 90) { this.flyJet(e, -1, 0, 0.9, dt); return; }
+    if (ahead.y < terrainY(ahead.x, ahead.z) + 90 || e.pos.y < 90) { this.flyJet(e, 1, 0, 0.9, dt); return; } // 양의 피치 = 상승
     // 경계 부근에서는 중앙을 향해 한 번만 조종합니다 (이전 재귀 호출의 이중 이동 제거).
     if (Math.hypot(e.pos.x, e.pos.z) > WORLD_R * 0.94) {
       this.steerTo(e, tmpV2.set(0, Math.max(e.pos.y, 650), 0), dt, 1.3);

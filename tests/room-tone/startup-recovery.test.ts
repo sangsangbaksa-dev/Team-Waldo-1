@@ -65,7 +65,9 @@ describe("ROOM TONE model request lifecycle",()=>{
     await rejection;
     const retry=modelBytes();
     expect(retry).not.toBe(pending);
+    const cancelled=expect(retry).rejects.toMatchObject({name:"AbortError"});
     releaseModelBytes();
+    await cancelled;
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
   it("retries after network failures",async()=>{

@@ -1,8 +1,8 @@
 ﻿import './classroom.css';
 import type { CreateView, SlackEvent } from './types';
 import { createBattle, resizeBattleCanvas, W, H, COST } from './lapgame';
+import { teacherPose } from './teacher-motion';
 
-// 교실 딴짓은 노트북 하나: video = 전략 게임 플레이 영상, game = 같은 전략 게임 직접 플레이. 수업 자료는 보스키(cover) 화면.
 type Pick = 'video' | 'game';
 const picks: { id: Pick; icon: string; name: string }[] = [
   { id: 'video', icon: '▶', name: '전략 영상' },
@@ -20,16 +20,16 @@ export const createClassroomView: CreateView = (sim, audio) => {
     <div class="sl-room" aria-label="저녁 자습 교실" data-view="doc">
       <div class="sl-world">
         <div class="sl-ceiling"><div class="sl-light"></div><div class="sl-light"></div></div>
-        <div class="sl-wall"><div class="sl-clock">10:24</div><div class="sl-board"><small>오늘의 자습</small><span>조용히, 끝까지.</span><i>수고했어, 오늘도.</i></div>
-          <div class="sl-door"><div class="sl-window"><div class="sl-shadow"></div><div class="sl-face"><i></i><i></i></div></div><div class="sl-handle"></div><div class="sl-gap"><i></i><i></i></div></div></div>
+        <div class="sl-wall"><div class="sl-clock">10:24</div><div class="sl-board"><small>야간 자습 안내</small><span>복도 이동 금지</span><i>노트북은 학습용으로만 사용</i></div>
+          <div class="sl-door"><div class="sl-door-reveal"></div><div class="sl-door-leaf"><div class="sl-window"><div class="sl-shadow"></div><div class="sl-face"><i></i><i></i></div></div><div class="sl-handle"></div><div class="sl-gap"><i></i><i></i></div></div></div></div>
         <div class="sl-rows">${KIDS}</div>
-        <div class="sl-teacher"><div class="sl-teacher-head"></div><div class="sl-teacher-body"></div></div>
+        <div class="sl-teacher" aria-hidden="true"><div class="sl-teacher-person"><div class="sl-teacher-leg l"></div><div class="sl-teacher-leg r"></div><div class="sl-teacher-arm l"></div><div class="sl-teacher-arm r"></div><div class="sl-teacher-neck"></div><div class="sl-teacher-torso"></div><div class="sl-teacher-head"></div></div></div>
         <div class="sl-desk"></div>
         <div class="sl-laptop">
           <div class="sl-lid"><div class="sl-screen">
-            <div class="sl-win doc"><div class="sl-tb"><i></i><span>EduPlus 학습마당 · 중2 수학 문제집</span></div>
+            <div class="sl-win doc"><div class="sl-tb"><i></i><span>학교 학습실 · 수학 복습 문제집</span></div>
               <div class="sl-docbody"><aside><b>단원</b><u>1. 일차방정식</u><u class="on">2. 연립방정식</u><u>3. 일차함수</u><u>4. 도형의 성질</u></aside>
-                <article><div class="sl-pdfbar"><span>‹ 37 / 120 ›</span><span>100%</span><span>★ 북마크</span></div><h4>p.37 연립방정식의 풀이</h4><p>1. 다음 연립방정식을 가감법으로 풀어 보시오.</p><div class="eq">x + y = 12<br>2x − y = 3</div><p>2. 두 수의 합이 25, 차가 7일 때 두 수를 구하시오.</p><div class="ans"></div><p>3. 대입법을 이용하여 해를 구하시오.</p><div class="eq">y = 2x − 1<br>3x + y = 14</div></article></div></div>
+                <article><div class="sl-pdfbar"><span>‹ 37 / 120 ›</span><span>100%</span><span>북마크</span></div><h4>p.37 연립방정식의 풀이</h4><p>1. 다음 연립방정식을 가감법으로 풀어 보시오.</p><div class="eq">x + y = 12<br>2x − y = 3</div><p>2. 두 수의 합이 25, 차가 7일 때 두 수를 구하시오.</p><div class="ans"></div><p>3. 대입법을 이용하여 해를 구하시오.</p><div class="eq">y = 2x − 1<br>3x + y = 14</div></article></div></div>
             <div class="sl-win vid"><div class="sl-tb"><i></i><span>FRONTLINE 전술 분석 · 다리 점령전 하이라이트</span></div>
               <div class="sl-wbody"><canvas width="${W}" height="${H}"></canvas><div class="sl-sub"></div></div>
               <div class="sl-pbar"><b>▶</b><span class="sl-track"><i></i></span><em>00:00</em></div></div>
@@ -49,6 +49,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
     <div class="sl-controls"><div class="sl-activities" aria-label="딴짓 선택">${picks.map((a, i) => `<button type="button" class="sl-action" data-activity="${a.id}" aria-label="${a.name}${coarse ? '' : ` (${i + 1})`}"><span>${a.icon}</span><small>${a.name}${coarse ? '' : ` (${i + 1})`}</small></button>`).join('')}</div><button type="button" class="sl-cover">수업 자료 <small>${coarse ? '길게 누르기' : '길게 누르기 · 스페이스'}</small></button></div>`;
   const q = <T extends HTMLElement>(s: string) => el.querySelector<T>(s)!;
   const room = q('.sl-room');
+  const teacher = q('.sl-teacher');
   const cover = q<HTMLButtonElement>('.sl-cover');
   const actions = Array.from(el.querySelectorAll<HTMLButtonElement>('.sl-action'));
   const pop = q('.sl-pop');
@@ -83,6 +84,7 @@ export const createClassroomView: CreateView = (sim, audio) => {
   const getGame = (): ReturnType<typeof createBattle> => game ??= createBattle(true, e => { if (e === 'train') audio.play('key', 0.4); else if (e === 'order') audio.play('click', 0.3); else if (e === 'hq') audio.play('fun', 0.4); else if (e === 'win') audio.play('chime'); else if (e === 'lose') audio.play('click', 0.5); });
   let coverKey = false, coverPointer: number | null = null;
   let step = 0, stepLv = 0, relief = 0, popT = 0, quiet = 0, strike = 0, vt = 0, gHand = 0.5;
+  let doorSoundOpen = false, walkingMode = '', lastFootfall = -1;
   let cursorX = W / 2, cursorY = H / 2;
   const syncCover = () => sim.setCover(coverKey || coverPointer !== null || !sim.state.activity);
   const choose = (id: Pick) => {
@@ -207,6 +209,32 @@ export const createClassroomView: CreateView = (sim, audio) => {
       put(room, 'scan', String(s.watcher.mode === 'scan'));
       put(room, 'step', String(step > 0 ? stepLv : 0));
       put(room, 'mode', s.watcher.mode);
+      const motion = teacherPose(s.watcher);
+      css('--sl-door-angle', `${Math.round(-74 * motion.door)}deg`);
+      css('--sl-door-open', motion.door.toFixed(2));
+      css('--sl-handle-angle', `${Math.round(27 * motion.handle)}deg`);
+      css('--sl-teacher-right', `${(8 + 25 * motion.advance).toFixed(1)}%`);
+      css('--sl-teacher-bottom', `${(50 - 9 * motion.advance).toFixed(1)}%`);
+      css('--sl-teacher-scale', (0.72 + 0.52 * motion.advance).toFixed(3));
+      css('--sl-teacher-opacity', motion.presence.toFixed(2));
+      put(teacher, 'walking', String(motion.walking));
+      put(teacher, 'facing', motion.exiting ? 'exit' : 'room');
+      if (motion.walking) {
+        const footfall = Math.floor(s.watcher.t / 0.64);
+        if (walkingMode !== s.watcher.mode || footfall !== lastFootfall) {
+          walkingMode = s.watcher.mode;
+          lastFootfall = footfall;
+          audio.play('footstep', 0.24 + motion.advance * 0.12);
+        }
+      } else {
+        walkingMode = '';
+        lastFootfall = -1;
+      }
+      const doorIsOpen = motion.door > 0.16;
+      if (doorIsOpen !== doorSoundOpen) {
+        doorSoundOpen = doorIsOpen;
+        audio.play(doorIsOpen ? 'doorOpen' : 'doorClose');
+      }
       room.classList.toggle('is-cover', s.cover);
       room.classList.toggle('is-quiet', quiet > 0);
       room.classList.toggle('is-strike', strike > 0);
@@ -252,11 +280,11 @@ export const createClassroomView: CreateView = (sim, audio) => {
     onEvent(ev: SlackEvent) {
       switch (ev.t) {
         case 'footstep': audio.play('footstep', ev.vol); step = 1.3; stepLv = ev.vol < 0.34 ? 1 : ev.vol < 0.68 ? 2 : 3; if (ev.vol > 0.5) restart(room, 'is-thump'); break;
-        case 'door': audio.play(ev.open ? 'doorOpen' : 'doorClose'); room.classList.toggle('is-door', ev.open); break;
+        case 'door': break;
         case 'peek': audio.play('peek'); break;
         case 'quiet': quiet = 3; break;
         case 'strike': strike = 2; break;
-        case 'leave': relief = 2; room.classList.remove('is-door'); break;
+        case 'leave': relief = 2; break;
         case 'fun': if (ev.amount >= 1 && popT <= 0) { popT = 0.8; pop.textContent = `+${Math.round(ev.amount)} 재미`; restart(pop, 'on'); } break;
       }
     },

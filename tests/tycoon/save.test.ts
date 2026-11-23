@@ -107,7 +107,7 @@ describe('타이쿤 저장', () => {
   it('손상되거나 유효하지 않은 차량 저장 상태는 무시한다', () => {
     const core = createCore({ seed: 9 });
     const base = { ...core.serialize(), position: { x: 0, z: 0, facing: 0, yaw: 0, pitch: 0.28, distance: 7.5, firstPerson: false } };
-    expect(readTycoonPosition(base)?.ride).toBeNull();
+    expect(readTycoonPosition(base)?.ride).toBeUndefined();
     expect(readTycoonPosition({ ...base, position: { ...base.position, ride: { name: '시티 세단', x: 'invalid', z: 0, heading: 0 } } })?.ride).toBeNull();
     expect(readTycoonPosition({ ...base, position: { ...base.position, ride: { name: '시티 세단', x: 12, z: 15, heading: 999 } } })?.ride?.heading).toBeLessThanOrEqual(Math.PI * 2);
   });

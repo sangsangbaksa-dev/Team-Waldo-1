@@ -98,6 +98,38 @@ try {
   assert.ok(result.headline?.includes('NEW GHOST'), JSON.stringify(result));
   assert.ok(result.stored, 'Time-trial ghost was not persisted');
   assert.ok(JSON.parse(result.stored).data.length > 8, 'Ghost data is empty');
+  // Portrait touch layout uses the same game loop and must remain fully usable.
+  const mobileContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true, hasTouch: true, deviceScaleFactor: 1,
+    reducedMotion: 'reduce',
+  });
+  await mobileContext.addInitScript(() => {
+    localStorage.setItem('waldo.race.setup.v1', JSON.stringify({
+      map: 'dusk', laps: 1, level: 1, car: 'arc', skin: 'stock', mode: 'trial',
+    }));
+  });
+  const mobile = await mobileContext.newPage();
+  mobile.on('pageerror', error => errors.push('mobile: ' + error.message));
+  await mobile.goto(origin);
+  await mobile.locator('#start-race').click();
+  await mobile.locator('.rc-setup').waitFor();
+  await mobile.screenshot({ path: 'browser-artifacts/race/mobile-setup.png' });
+  await mobile.locator('[data-setup="start"]').click();
+  await mobile.waitForFunction(() => document.querySelector('.rc-root')?.dataset.phase === 'countdown');
+  await mobile.evaluate(() => { window.__race.skip(3.3); });
+  await mobile.waitForFunction(() => window.__race?.race?.phase === 'racing');
+  const mobileControls = await mobile.evaluate(() => {
+    const buttons = [...document.querySelectorAll('.rc-touchpad button')];
+    return buttons.map(b => {
+      const r = b.getBoundingClientRect();
+      return { label: b.textContent, x: r.left, right: r.right, y: r.top, bottom: r.bottom, visible: r.width > 0 && r.height > 0 };
+    });
+  });
+  assert.equal(mobileControls.length, 6, 'expected steering and pedals on mobile');
+  assert.ok(mobileControls.every(b => b.visible && b.x >= -1 && b.right <= 391 && b.y >= -1 && b.bottom <= 845), JSON.stringify(mobileControls));
+  await mobile.screenshot({ path: 'browser-artifacts/race/mobile-racing.png' });
+  await mobileContext.close();
   assert.deepEqual(errors, [], 'Uncaught browser errors');
   console.log('SPEED RUSH browser smoke OK:', completion);
 } finally {

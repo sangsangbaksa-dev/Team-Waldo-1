@@ -209,7 +209,7 @@ describe('ZERO ZONE 건물·엄폐물·파츠·보급', () => {
       expect(landed).toBeGreaterThanOrEqual(95); expect(m.over).toBe(true); expect(m.t).toBeLessThan(650);
     }, 60000);
     it('모든 전리품에 길이 있다(문 앞을 소품이 막지 않는다)', () => {
-      for (const seed of [4, 5]) { const m = generateMap(seed, 'br'), nav = navFor(m), c = m.compounds[0]; for (const l of m.loot.filter((_, i) => i % 3 === 0)) expect(findPath(nav, c.x, c.z, l.x, l.z, 300000), `seed=${seed} loot=${l.id} (${l.x.toFixed(1)},${l.z.toFixed(1)}) kind=${l.kind}`).not.toBeNull(); }
+      for (const seed of [4, 5]) { const m = generateMap(seed, 'br'), nav = navFor(m), c = m.compounds[0]; for (const l of m.loot.filter((_, i) => i % 3 === 0)) const nearest = m.buildings.filter(b => Math.abs(l.x - b.x) < b.w / 2 && Math.abs(l.z - b.z) < b.d / 2)[0]; const cellX = Math.floor(l.x + nav.half), cellZ = Math.floor(l.z + nav.half); expect(findPath(nav, c.x, c.z, l.x, l.z, 300000), `seed=${seed} loot=${l.id} (${l.x.toFixed(1)},${l.z.toFixed(1)}) kind=${l.kind} building=${nearest?.type} at (${nearest?.x.toFixed(1)},${nearest?.z.toFixed(1)}) door=${nearest?.door} navBlocked=${nav.block[cellZ * nav.w + cellX]} centerPath=${nearest ? !!findPath(nav,c.x,c.z,nearest.x,nearest.z,300000):'-'}`).not.toBeNull(); }
     }, 60000);
   });
 });

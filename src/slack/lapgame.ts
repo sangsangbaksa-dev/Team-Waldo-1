@@ -85,7 +85,7 @@ export function createBattle(player: boolean, on?: (e: BattleEvent) => void) {
   const rnd = (a: number, b: number) => a + Math.random() * (b - a);
   let units: U[] = [], blds: B[] = [], nid = 0, endT = 0, bridgeT = 2, dirty = false;
   let ore = [100, 100], prod = [0, 0], atk = [false, false];
-  const thinkT = [rnd(0, 1), rnd(0.5, 1.5)];
+  const thinkT = [0, 0];
   let nodeAmt = [1500, 1500, 1500, 1500];
   const tr: Fx[] = [], bm: Boom[] = [];
   let ping: { x: number; y: number; t: number; a: boolean } | null = null;
@@ -99,6 +99,9 @@ export function createBattle(player: boolean, on?: (e: BattleEvent) => void) {
     units.push(u); return u;
   };
   const reset = () => {
+    // A fresh round must not inherit the old AI's next-decision clock or unit
+    // identifiers. This matters after replay from a previous game-over screen.
+    thinkT[0] = rnd(0, 1); thinkT[1] = rnd(0.5, 1.5); nid = 0;
     units = []; tr.length = 0; bm.length = 0; ping = null; endT = 0; bridgeT = 2; dirty = false;
     Object.assign(b, { over: null, time: 0, score: 0, cap: '', capT: 0, flash: 0, ore: 100, army: 2, prod: 0 });
     ore = [100, 100]; prod = [0, 0]; atk = [false, false]; nodeAmt = [1500, 1500, 1500, 1500];

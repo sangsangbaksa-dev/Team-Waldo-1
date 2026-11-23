@@ -18,7 +18,7 @@ test("recorder placement follows corridors but does not pass walls",()=>{
     for(const cell of cells){
       assert.ok(level.reachable.includes(cell));
       const d=paths(level.map,start).dist[cell];
-      assert.ok(d>=1 && d<=3);
+      assert.ok(d>=0 && d<=3, "Placement may use the player's tile when facing a wall");
     }
   }
 });

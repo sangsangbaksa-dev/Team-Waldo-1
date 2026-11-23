@@ -221,13 +221,15 @@ export const createComputerView: CreateView = (sim, audio) => {
   const toonProgress = () => { const p = $(`[data-eppane="${W.ep}"]`, wins.webtoon); const max = p.scrollHeight - p.clientHeight; setTxt($('[data-read]', wins.webtoon), `${max > 0 ? Math.round((p.scrollTop / max) * 100) : 0}% 읽음`); };
 
   /* ---------- 쇼핑 ---------- */
-  const S = { cart: products.map(() => 0), deal: 1, left: 120, lastSec: -1 };
+  const S = { cart: products.map(() => 0), total: 0, deal: 1, left: 120, lastSec: -1 };
   const price = (i: number, deal = false) => Math.round(products[i].price * (deal ? 0.5 : 0.65));
   const shopHtml = () => `<div class="sc-shop"><div class="sc-shop-head">오늘의 발견 <span>장바구니 <b data-cart>0</b></span></div><div class="sc-sale"><span class="sc-deal-ico" data-deal-ico></span><span class="sc-deal-txt"><small>심야 특가 · 50%</small><b data-deal-name></b><em data-deal-price></em></span><strong data-timer>02:00</strong><button type="button" data-add="deal">특가 담기</button></div><div class="sc-products">${products.map((p, i) => `<div><div class="sc-product p${i % 3}">${p.icon}</div><b>${p.name}</b><small><em>35%</em> ${price(i).toLocaleString('ko-KR')}원</small><button type="button" data-add="${i}">담기</button></div>`).join('')}</div><div class="sc-cartbar"><span data-total>합계 0원</span><button type="button" data-pay>결제하기</button></div></div>`;
   const shopDeal = () => { const w = wins.shop; setTxt($('[data-deal-ico]', w), products[S.deal].icon); setTxt($('[data-deal-name]', w), products[S.deal].name); setTxt($('[data-deal-price]', w), `${price(S.deal, true).toLocaleString('ko-KR')}원`); };
   const shopTotals = () => {
-    const n = S.cart.reduce((a, b) => a + b, 0); const sum = S.cart.reduce((a, c, i) => a + c * price(i, i === S.deal), 0);
-    setTxt($('[data-cart]', wins.shop), String(n)); setTxt($('[data-total]', wins.shop), `합계 ${sum.toLocaleString('ko-KR')}원`);
+    const n = S.cart.reduce((a, b) => a + b, 0);
+    // Lock each item's displayed price at the moment it enters the cart.
+    // A rotating flash deal must never retroactively reprice earlier items.
+    setTxt($('[data-cart]', wins.shop), String(n)); setTxt($('[data-total]', wins.shop), `합계 ${S.total.toLocaleString('ko-KR')}원`);
   };
   const shopTick = (dt: number) => {
     S.left -= dt;
@@ -319,8 +321,10 @@ export const createComputerView: CreateView = (sim, audio) => {
     const like = target.closest('[data-like]'); if (like) { audio.play('chime', 0.3); W.likes++; const b = like.querySelector('b'); setTxt(b as HTMLElement, String(W.likes)); like.classList.add('liked'); return; }
     const add = target.closest<HTMLElement>('[data-add]');
     if (add) {
-      audio.play('click'); const i = add.dataset.add === 'deal' ? S.deal : Number(add.dataset.add); S.cart[i]++; shopTotals();
-      add.classList.remove('bump'); void add.offsetWidth; add.classList.add('bump'); if (add.dataset.add !== 'deal') add.textContent = `담김 ×${S.cart[i]}`; return;
+      const isDeal = add.dataset.add === 'deal'; const i = isDeal ? S.deal : Number(add.dataset.add);
+      if (!Number.isInteger(i) || i < 0 || i >= products.length) return;
+      audio.play('click'); S.cart[i]++; S.total += price(i, isDeal); shopTotals();
+      add.classList.remove('bump'); void add.offsetWidth; add.classList.add('bump'); if (!isDeal) add.textContent = `담김 ×${S.cart[i]}`; return;
     }
     if (target.closest('[data-pay]')) { audio.play('key', 0.6); toast(S.cart.some(Boolean) ? '잔액이 부족합니다. (용돈은 이미 야식으로…)' : '장바구니가 비어 있어요.', 2.5); return; }
     const mb = target.closest<HTMLElement>('[data-m]');

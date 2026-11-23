@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { carBodiesOverlap, pushWalkerFromCar, stepDrive, type DriveInput, type DriveState, type DriveTuning } from '../../src/tycoon/scene/driving';
+import { carBodiesOverlap, pointWithinCar, pushWalkerFromCar, stepDrive, type DriveInput, type DriveState, type DriveTuning } from '../../src/tycoon/scene/driving';
 
 const tune: DriveTuning = { forward: 22, reverse: 7, turnRate: 1.8, response: 2.8 };
 const fresh = (): DriveState => ({ x: 0, z: 0, heading: 0, speed: 0 });
@@ -56,6 +56,19 @@ describe('HUSTLE car motion', () => {
   });
 });
 
+
+describe('HUSTLE allocation-free point occupancy', () => {
+  it('matches the existing parking separation logic across orientations', () => {
+    const car = { x: 5, z: -3, heading: Math.PI / 3 };
+    for (let ix = -8; ix <= 8; ix++) for (let iz = -8; iz <= 8; iz++) {
+      const x = car.x + ix * 0.4, z = car.z + iz * 0.4, r = 0.45;
+      const q = pushWalkerFromCar(x, z, r, car);
+      const pushed = Math.hypot(q.x - x, q.z - z) > 1e-6;
+      expect(pointWithinCar(x, z, r, car)).toBe(pushed);
+    }
+    expect(pointWithinCar(100, 100, 0.45, car)).toBe(false);
+  });
+});
 
 describe('HUSTLE parking collision', () => {
   const parked = { x: 0, z: 0, heading: 0 };

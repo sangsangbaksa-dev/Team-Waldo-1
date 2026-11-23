@@ -1,3 +1,5 @@
+import { recorderUses } from "./recorder.mjs";
+
 export const chapters = [
   {
     title: "끊어진 전원",
@@ -158,7 +160,8 @@ export function normalizeSave(s) {
   const visited = Array.isArray(s.seen) ? s.seen.filter(v =>
     Number.isInteger(v) && v >= 0 && v < w * w) : [];
   return { v: 1, ch: s.ch, found, solved: s.solved === true && found.every(Boolean),
-    seen: [...new Set(visited)], elapsed: Number.isFinite(s.elapsed) && s.elapsed >= 0 ? s.elapsed : 0 };
+    seen: [...new Set(visited)], elapsed: Number.isFinite(s.elapsed) && s.elapsed >= 0 ? s.elapsed : 0,
+    recorderUsed: recorderUses(s.recorderUsed) };
 }
 export function makeLevel(ch) {
   const w = chapters[ch].size,

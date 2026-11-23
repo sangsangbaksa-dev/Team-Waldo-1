@@ -95,7 +95,14 @@
 #game .hudleft { pointer-events:none; }
 #game .hudright { position:relative; z-index:1; pointer-events:auto; }
 #game .statusfoot,#game #prompt,#game #toast { z-index:1; pointer-events:none; }
-#game #dialog { z-index:4; }
+#game #dialog { z-index:6; }
+#game #recorderCount { color:#d9b59a; font-variant-numeric:tabular-nums; }
+#game #recorder:disabled { color:#858a81; border-color:#454e48; background:#111a17; cursor:default; }
+#game #recorder:disabled #recorderCount { color:#8d9388; }
+@media (max-width:540px) {
+  #game .gear { flex-wrap:wrap; justify-content:flex-end; max-width:min(83vw,330px); }
+  #game .gear button { padding-inline:.55rem; }
+}
 
 #game[data-transition="exit"]::after {content:"";position:absolute;inset:0;background:#050807;opacity:var(--exit-fade,0);z-index:3;pointer-events:none;}
 #game[data-transition="exit"] :is(.hudright,.gear,#stick,.touchactions) {pointer-events:none;}

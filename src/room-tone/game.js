@@ -12,6 +12,7 @@ import { openViewer, closeViewer } from "./viewer.js";
 import { enemyPerception, cellDistance, patrolGoal } from "./perception.mjs";
 import { createRoomStorage } from "./storage.mjs";
 import { exitWall, clearanceAllows, bindCollisionObstacles, doorMotion } from "./space.mjs";
+import { RECORDER_LIMIT, placementCell, advanceRecorder, recorderAudible } from "./recorder.mjs";
 
 const $ = (id) => document.getElementById(id),
   C = 2.7,
@@ -30,6 +31,7 @@ let state = "home",
   seen = new Set(),
   elapsed = 0;
 let archive = [], dread = createDread();
+let recorderUsed = 0, recorder = null, recorderTree = null, recorderArt = null;
 let enemyShadow, chaseWeight = 0;
 let displayedDanger = -1, displayedWinded = false;
 let exitSequence = null;
@@ -115,7 +117,7 @@ function saved() {
   return normalized ? { ...normalized, archive: cleanArchive(raw.archive) } : null;
 }
 function save() {
-  savePersistent = roomStorage.write(SAVE, { v: 1, ch, found, solved, seen: [...seen], elapsed, archive });
+  savePersistent = roomStorage.write(SAVE, { v: 1, ch, found, solved, seen: [...seen], elapsed, archive, recorderUsed });
 }
 function toggleAudio() {
   muted = !muted;
@@ -424,6 +426,10 @@ function shift(dx, dz) {
   if (space(player.x, player.z + dz)) player.z += dz;
 }
 function pointPlayer() {
+  recorder = null;
+  recorderTree = null;
+  if (recorderArt) recorderArt.visible = false;
+  updateRecorderHUD();
   dread = createDread(Math.random, ch);
   chaseWeight = 0;
   model.rotation.set(0, 0, 0);
@@ -641,6 +647,25 @@ function prop(cell, type, i = 0) {
     type==="item" ? [.36,.245] : type==="record" ? [.24,.19] : [.38,.23];
   return { cell, type, i, root, bright, exitArt, collision:{halfWidth,halfDepth} };
 }
+function makeRecorderArt() {
+  const root = new THREE.Group();
+  const shell = new THREE.MeshStandardMaterial({ color:0x56554f, roughness:.8, metalness:.27 });
+  const panel = new THREE.MeshStandardMaterial({ color:0x242924, roughness:.72 });
+  const label = new THREE.MeshStandardMaterial({ color:0xa68b73, roughness:.86 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(.34,.10,.23),shell);
+  body.position.y=.14;
+  root.add(body);
+  const face = new THREE.Mesh(new THREE.BoxGeometry(.25,.012,.145),panel);
+  face.position.y=.199;
+  root.add(face);
+  const button = new THREE.Mesh(new THREE.BoxGeometry(.055,.015,.036),label);
+  button.position.set(.095,.210,.045);
+  root.add(button);
+  root.visible = false;
+  props.add(root);
+  return root;
+}
+
 function loadScene() {
   cancelExitSequence();
   model.removeFromParent();
@@ -671,6 +696,7 @@ function loadScene() {
   props = new THREE.Group();
   props.userData.contactTexture = makeContactTexture(THREE);
   scene.add(props);
+  recorderArt = makeRecorderArt();
   items = level.items.map((cell, i) => prop(cell, "item", i));
   items.forEach((o) => (o.root.visible = !found[o.i]));
   items.push(prop(level.start, "station"), prop(level.exit, "exit"));
@@ -713,6 +739,7 @@ async function start(cont) {
     solved = s?.solved ?? false;
     elapsed = s?.elapsed ?? 0;
     archive = s?.archive ?? [];
+    recorderUsed = s?.recorderUsed ?? 0;
     level = makeLevel(ch);
     seen = new Set((s?.seen || []).filter(id => walkable(level.map, id)));
     loadScene();
@@ -739,7 +766,7 @@ function brief() {
       el.innerHTML =
         '<p class="taskline">' +
         chapters[ch].goal +
-        '</p><p class="hint">도면에서 장비와 출구 방향을 확인하세요. 구역마다 숨은 녹음 기록 2개가 있습니다. 진행 상황은 자동 저장됩니다.</p>';
+        '</p><p class="hint">도면에서 장비와 출구 방향을 확인하세요. Q 또는 녹음기 버튼으로 소리 미끼를 놓을 수 있습니다. 구역당 2개이며 사용 기록은 저장됩니다.</p>';
     },
     [
       ["구역 진입", resume],
@@ -756,6 +783,7 @@ function renderHUD() {
     : total() === 3
       ? c.station + "으로 돌아가세요."
       : c.item + " 회수  " + total() + " / 3";
+  updateRecorderHUD();
   $("lightState").textContent = lightOn ? "켜짐" : "꺼짐";
   $("torch").setAttribute("aria-label", lightOn ? "손전등 끄기" : "손전등 켜기");
   for (const item of items) {
@@ -768,6 +796,51 @@ function renderHUD() {
   $("torch").setAttribute("aria-pressed", String(lightOn));
   $("crouch").setAttribute("aria-pressed", String(crouched));
   refreshGuide();
+}
+function updateRecorderHUD() {
+  const remaining = RECORDER_LIMIT - recorderUsed;
+  const button = $("recorder");
+  const status = remaining + "/" + RECORDER_LIMIT;
+  if ($("recorderCount").textContent !== status) $("recorderCount").textContent = status;
+  button.disabled = remaining === 0 || recorder !== null;
+  button.setAttribute("aria-label", recorder
+    ? "녹음기 작동 중"
+    : "녹음기 미끼 사용, 남은 " + remaining + "개");
+}
+function deployRecorder() {
+  if (state !== "play") return;
+  if (recorder) { message("녹음기가 작동 중입니다.", 1.8); return; }
+  if (recorderUsed >= RECORDER_LIMIT) { message("남은 녹음기가 없습니다.", 1.8); return; }
+  const cell = placementCell(level.map, cellOf(player), yaw);
+  if (cell === null) { message("앞쪽 복도가 막혀 있습니다. 방향을 바꾸세요.", 2); return; }
+  recorder = { cell, age:0, pulses:0 };
+  recorderTree = paths(level.map, cell);
+  recorderUsed++;
+  const location = xy(cell);
+  recorderArt.position.set(location.x,0,location.z);
+  recorderArt.visible = true;
+  updateRecorderHUD();
+  save();
+  sound.recording();
+  message("녹음기를 놓았습니다. 재생이 시작되면 다른 길로 이동하세요.", 3);
+}
+$("recorder").onclick = deployRecorder;
+function updateRecorder(dt) {
+  if (!recorder) return;
+  const updated = advanceRecorder(recorder,dt);
+  recorder = updated.recorder;
+  if (updated.pulse && recorder) {
+    const position = xy(recorder.cell);
+    const dx = position.x-player.x, dz = position.z-player.z;
+    const distance = Math.max(.1,Math.hypot(dx,dz));
+    const pan = THREE.MathUtils.clamp((dx*Math.cos(yaw)-dz*Math.sin(yaw))/distance,-.8,.8);
+    sound.recorder(pan);
+  }
+  if (!recorder) {
+    recorderTree = null;
+    recorderArt.visible = false;
+    updateRecorderHUD();
+  }
 }
 function toggleLamp() {
   if (state !== "play") return;
@@ -1140,6 +1213,7 @@ function finishExit() {
     ch++;
     found = [false, false, false];
     solved = false;
+    recorderUsed = 0;
     seen = new Set();
     level = makeLevel(ch);
     loadScene();
@@ -1256,9 +1330,15 @@ function enemyUpdate(dt, running) {
     corridorDistance: cellDistance(acousticTree.dist[ec], C),
   });
   const tracking = !grace && (inSight || hear);
+  const investigating = !tracking && !grace &&
+    recorderAudible(recorder, recorderTree?.dist[ec]);
   if (tracking) {
     lastKnown = playerCell;
     enemyPhase = 5.5;
+  } else if (investigating) {
+    if (lastKnown !== recorder.cell) nextPath = 0;
+    lastKnown = recorder.cell;
+    enemyPhase = Math.max(enemyPhase,2.7);
   } else {
     enemyPhase = Math.max(0, enemyPhase - dt);
   }
@@ -1425,6 +1505,7 @@ function update(dt) {
   camera.rotation.set(pitch, yaw, 0, "YXZ");
   lamp.visible = lightOn;
   beam.intensity = THREE.MathUtils.damp(beam.intensity, lightOn ? 2 : 0.45, 8, dt);
+  updateRecorder(dt);
   enemyUpdate(dt, running);
   if (state !== "play") return;
   const event=dread.tick(dt,!grace && !enemyPhase && moved>dt*.3 && !solved && now>noticeUntil);
@@ -1533,6 +1614,7 @@ document.addEventListener("keydown", (e) => {
       else if (e.code === "KeyF") toggleLamp();
       else if (e.code === "KeyC") toggleCrouch();
       else if (e.code === "KeyG") toggleGuide();
+      else if (e.code === "KeyQ") deployRecorder();
       else if (e.code === "KeyM") mapPanel();
       else if (e.code === "Escape" || e.code === "KeyP") pauseGame();
     }

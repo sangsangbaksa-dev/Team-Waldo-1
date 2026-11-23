@@ -39,12 +39,18 @@ try {
   await page.locator('#start-race').click();
   await page.locator('.rc-setup').waitFor();
   await page.screenshot({ path: 'browser-artifacts/race/setup.png' });
+  await page.locator('[data-pick="mode:race"]').click();
+  const instructions = await page.locator('[data-note="mode"]').innerText();
+  assert.ok(instructions.includes('브레이크') && instructions.includes('부스트 패드'), instructions);
+  assert.ok(!instructions.includes('E 키') && !instructions.includes('오일'), instructions);
+  await page.locator('[data-pick="mode:trial"]').click();
   await page.locator('[data-setup="start"]').click();
   await page.waitForFunction(() => document.querySelector('.rc-root')?.dataset.phase === 'countdown');
 
   // Advance the countdown without waiting for the headless software renderer.
   await page.evaluate(() => { window.__race.skip(3.3); });
   await page.waitForFunction(() => window.__race?.race?.phase === 'racing');
+  assert.match(await page.locator('.rc-keys').innerText(), /브레이크/, 'keyboard guide should show the brake key');
 
   // A recovery must clear the old steering/slip even when invoked mid-race.
   await page.evaluate(() => {
@@ -132,6 +138,23 @@ try {
   });
   assert.equal(mobileControls.length, 6, 'expected steering and pedals on mobile');
   assert.ok(mobileControls.every(b => b.visible && b.x >= -1 && b.right <= 391 && b.y >= -1 && b.bottom <= 845), JSON.stringify(mobileControls));
+  const mobileHud = await mobile.evaluate(() => {
+    const get = selector => {
+      const r = document.querySelector(selector).getBoundingClientRect();
+      return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+    };
+    return { lap: get('.rc-tl'), timer: get('.rc-tc'), minimap: get('.rc-tr'), speed: get('.rc-bottom') };
+  });
+  const intersects = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+  for (const key of ['lap', 'minimap', 'speed']) {
+    assert.ok(!intersects(mobileHud.timer, mobileHud[key]), 'portrait timer overlaps ' + key + ': ' + JSON.stringify(mobileHud));
+  }
+  const motion = await mobile.evaluate(() => ({
+    enabled: document.querySelector('.rc-root').classList.contains('reduced-motion'),
+    wrongAnimation: getComputedStyle(document.querySelector('.rc-wrong')).animationName,
+  }));
+  assert.equal(motion.enabled, true);
+  assert.equal(motion.wrongAnimation, 'none');
   await mobile.screenshot({ path: 'browser-artifacts/race/mobile-racing.png' });
   // Landscape has a separate CSS layout for the pedals.
   await mobile.setViewportSize({ width: 844, height: 390 });

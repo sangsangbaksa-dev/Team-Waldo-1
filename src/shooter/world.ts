@@ -83,12 +83,12 @@ const SPEC: Record<BuildingType, Spec> = {
 const between = (rng: () => number, [a, b]: [number, number]): number => a + rng() * (b - a);
 const pickInt = (rng: () => number, [a, b]: [number, number]): number => a + Math.floor(rng() * (b - a + 1));
 
-function build(map: GameMap, rng: () => number, type: BuildingType, cx: number, cz: number): Building {
+function build(map: GameMap, rng: () => number, type: BuildingType, cx: number, cz: number, heightOverride?: number): Building {
   const sp = SPEC[type], w = between(rng, sp.w), d = between(rng, sp.d), tex = sp.tex[Math.floor(rng() * sp.tex.length)];
   const door: 'x' | 'z' = rng() < 0.5 ? 'x' : 'z', hx = w / 2, hz = d / 2;
   const doorOff = (span: number): number => (rng() - 0.5) * Math.max(0, span - sp.doorW - 2);
   // 문은 마주 보는 두 변에 냅니다(앞뒤로 지나갈 수 있게).
-  const dz = door === 'z' ? doorOff(w) : null, dx = door === 'x' ? doorOff(d) : null, H = sp.h, dw = sp.doorW, dh = sp.doorH;
+  const dz = door === 'z' ? doorOff(w) : null, dx = door === 'x' ? doorOff(d) : null, H = heightOverride ?? sp.h, dw = sp.doorW, dh = sp.doorH;
   wallSide(map, tex, 'x', cz - hz, cx - hx, cx + hx, dz === null ? null : cx + dz, H, dw, dh);
   wallSide(map, tex, 'x', cz + hz, cx - hx, cx + hx, dz === null ? null : cx + dz + (rng() - 0.5) * 1.5, H, dw, dh);
   wallSide(map, tex, 'z', cx - hx, cz - hz, cz + hz, dx === null ? null : cz + dx, H, dw, dh);
@@ -278,24 +278,33 @@ function lootCount(rng: () => number, mode: Mode, range: [number, number]): numb
 export function generateMap(seed: number, mode: Mode): GameMap {
   const rng = makeRng(seed), half = MAP_HALF[mode];
   const map: GameMap = { seed, mode, half, boxes: [], buildings: [], trees: [], rocks: [], props: [], compounds: [], sites: [], roads: [], loot: [], spawns: [], grid: new Map(), terrain: emptyTerrain() };
-  // 마을: 서로 충분히 떨어뜨려 배치
+  // 중앙 랜드마크: 배틀로열은 항상 (0, 0)에 고층 시가지를 둡니다.
+  // 별도의 Compound로 관리해 도로 연결, 지형 비침범, 전리품 생성 규칙을 공유합니다.
+  if (mode === 'br') map.compounds.push({ x: 0, z: 0, r: 0, theme: 'urban', name: '중앙 메트로폴리스' });
   const towns = mode === 'br' ? 14 : 4, minGap = mode === 'br' ? 74 : 58;
   for (let tries = 0; map.compounds.length < towns && tries < 800; tries++) {
     const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * half * 0.78, x = Math.cos(a) * r, z = Math.sin(a) * r;
-    if (map.compounds.every(c => Math.hypot(c.x - x, c.z - z) > minGap)) { map.compounds.push({ x, z, r: 0, theme: 'village', name: '' }); }
+    if (map.compounds.every((c, i) => Math.hypot(c.x - x, c.z - z) > (mode === 'br' && i === 0 ? 102 : minGap))) { map.compounds.push({ x, z, r: 0, theme: 'village', name: '' }); }
   }
   // 종류를 골고루: 처음 다섯 곳은 서로 다른 종류, 나머지는 무작위
   const bag = [...THEME_LIST].sort(() => rng() - 0.5); const used: Record<string, number> = {};
-  map.compounds.forEach((c, i) => { c.theme = i < bag.length ? bag[i] : THEME_LIST[Math.floor(rng() * THEME_LIST.length)]; const def = THEMES[c.theme]; const n = used[c.theme] ?? 0; used[c.theme] = n + 1; c.name = def.names[n % def.names.length] });
+  map.compounds.forEach((c, i) => { if (mode === 'br' && i === 0) { used.urban = 1; return; } c.theme = i < bag.length ? bag[i] : THEME_LIST[Math.floor(rng() * THEME_LIST.length)]; const def = THEMES[c.theme]; const n = used[c.theme] ?? 0; used[c.theme] = n + 1; c.name = def.names[n % def.names.length] });
   for (const c of map.compounds) {
-    const def = THEMES[c.theme], cols = mode === 'br' ? def.cols[0] : 2, rows = def.rows, lot = def.lot, n = (mode === 'br' ? 4 : 2) + Math.floor(rng() * 3);
+    const downtown = mode === 'br' && c.x === 0 && c.z === 0 && c.name === '중앙 메트로폴리스';
+    const def = THEMES[c.theme], cols = downtown ? 4 : mode === 'br' ? def.cols[0] : 2, rows = downtown ? 4 : def.rows;
+    const lot = downtown ? { w: 19.5, d: 18.5 } : def.lot;
+    const n = downtown ? cols * rows : (mode === 'br' ? 4 : 2) + Math.floor(rng() * 3);
     const slots: Array<[number, number]> = []; for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) slots.push([i, j]);
     for (let i = slots.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [slots[i], slots[j]] = [slots[j], slots[i]]; }
     let reach = 8; const built: Building[] = [];
     slots.slice(0, Math.min(n, slots.length)).forEach(([i, j], idx) => {
-      const type = idx === 0 ? def.first : pickKind(rng, def), sp = SPEC[type];
+      // 고층동과 저층 상업동을 섞어 지붕선이 단조롭지 않게 만듭니다.
+      const type = downtown ? (idx % 5 === 0 ? 'shop' : idx % 7 === 0 ? 'clinic' : 'apartment') : idx === 0 ? def.first : pickKind(rng, def);
+      const sp = SPEC[type];
       const bx = c.x + (i - (cols - 1) / 2) * lot.w + (rng() - 0.5) * 2.5, bz = c.z + (j - (rows - 1) / 2) * lot.d + (rng() - 0.5) * 2.5;
-      const b = build(map, rng, type, bx, bz); built.push(b);
+      // 3.2m 층고 기준 3~9층 높이. 기존 벽/사격 충돌 박스에도 동일한 높이를 적용합니다.
+      const towerHeight = downtown && type === 'apartment' ? (3 + Math.floor(rng() * 7)) * 3.2 : undefined;
+      const b = build(map, rng, type, bx, bz, towerHeight); built.push(b);
       reach = Math.max(reach, Math.hypot(bx - c.x, bz - c.z) + Math.max(b.w, b.d) / 2);
       // 건물 안 전리품
       const loots = lootCount(rng, mode, sp.loot);

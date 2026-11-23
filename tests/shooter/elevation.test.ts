@@ -60,6 +60,16 @@ describe('ZERO ZONE 올라갈 수 있는 고저차', () => {
     expect(p.alt).toBe(0); // 0은 낙하산 고도 상태만 표시합니다.
   });
 
+  it('높은 지형 상공에서는 지표면까지 남은 거리로 낙하산을 펼친다', () => {
+    const m = new Match({ seed: 3, mode: 'br', difficulty: 'normal', humans: [{ name: 'Human' }], fill: 1, air: true, vehicles: false, bombs: false });
+    m.map.boxes = []; m.map.grid.clear(); m.map.terrain = emptyTerrain();
+    m.map.terrain.rises.push({ x: 0, z: 0, r: 20, h: 4 });
+    const p = m.players[0]; p.x = 0; p.z = 0; p.air = 2; p.alt = 107; p.vx = p.vz = 0; p.input = blankInput();
+    m.step(0.01);
+    expect(p.air).toBe(3);
+    expect(p.alt).toBeGreaterThan(100);
+  });
+
   it('낙하산은 평지가 아니라 실제 경사면에 도착하면 착지한다', () => {
     const match = new Match({ seed: 3, mode: 'br', difficulty: 'normal', humans: [{ name: 'Human' }], fill: 1, air: true, vehicles: false, bombs: false });
     match.map.boxes = []; match.map.grid.clear();

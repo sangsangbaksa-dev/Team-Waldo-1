@@ -331,7 +331,7 @@ async function setup() {
   if (!renderer) {
     renderer = new THREE.WebGLRenderer({
       // Avoid expensive multisampling on touch GPUs; viewport DPR is budgeted separately.
-      antialias: !touch,
+      antialias: !touch && selectedQuality() === "high",
       powerPreference: "high-performance",
     });
     renderer.outputColorSpace = THREE.SRGBColorSpace;

@@ -1,7 +1,7 @@
 // LAST CITY 1대1 결투 — 네트워크 세션(인사·출발 신호·상태 송수신·끊김 감시)과 승패 규칙. 화면은 game.ts 가 맡습니다.
 import type { PvpSession } from '../net/lobby';
 import type { Channel, NetMsg } from '../net/types';
-import { WEAPONS, type WeaponId } from './defs';
+import { CLASSES, WEAPONS, type ClassId, type WeaponId } from './defs';
 import { cleanChat } from './chat';
 
 export const TARGET_KILLS = 5, TIME_LIMIT = 600;
@@ -26,6 +26,10 @@ export interface DuelHooks {
 
 const num = (v: unknown, lo = -1e6, hi = 1e6): v is number => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
 const weapon = (v: unknown): v is WeaponId => typeof v === 'string' && Object.prototype.hasOwnProperty.call(WEAPONS, v);
+/** Reject unknown remote hero classes instead of indexing CLASSES with arbitrary text. */
+export function parseDuelClass(value: unknown): ClassId {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(CLASSES, value) ? value as ClassId : 'warlord';
+}
 export function parsePose(m: NetMsg): DuelPose | null { return num(m.x) && num(m.y) && num(m.a, -20, 20) && num(m.hp, 0, 1e5) && num(m.mh, 1, 1e5) && weapon(m.w) ? { x: m.x, y: m.y, a: m.a, hp: m.hp, mh: m.mh, w: m.w } : null; }
 export function parseShot(m: NetMsg): DuelShot | null { return num(m.x) && num(m.y) && num(m.a, -20, 20) && num(m.m, 0, 10) && weapon(m.w) ? { x: m.x, y: m.y, a: m.a, w: m.w, m: m.m } : null; }
 
@@ -54,7 +58,7 @@ export class CityDuel {
     this.lastTick = now;
     if (!this.started) { this.hello(); if (now - this.born > NEVER_MS) this.gone('never'); } else if (now - this.heard > SILENT_MS) this.gone('silent');
   }
-  private begin(klass: unknown): void { if (this.started) return; this.started = true; this.hooks.onStart(typeof klass === 'string' ? klass : 'warlord'); }
+  private begin(klass: unknown): void { if (this.started) return; this.started = true; this.hooks.onStart(parseDuelClass(klass)); }
   private onMsg(m: NetMsg): void {
     if (this.dead) return;
     this.heard = performance.now();

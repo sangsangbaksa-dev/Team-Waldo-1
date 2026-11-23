@@ -149,6 +149,15 @@ try {
         await page.locator('.sl-hud [data-sound]').click();
         await page.waitForTimeout(150);
       }
+      const productColumns = await page.locator('.sc-app-shop .sc-products').evaluate(
+        node => getComputedStyle(node).gridTemplateColumns.split(' ').filter(Boolean).length);
+      assert.equal(productColumns, size.width <= 420 ? 2 : 3,
+        'The shop product grid should be readable at the selected viewport width');
+      if (size.width <= 420) {
+        const promoDisplay = await page.locator('.sc-app-shop .sc-sale').evaluate(
+          node => getComputedStyle(node).display);
+        assert.equal(promoDisplay, 'grid', 'Compact flash deals must avoid narrow name wrapping');
+      }
       const total = page.locator('.sc-app-shop [data-total]');
       assert.equal(await total.getAttribute('role'), 'status');
       await page.locator('.sc-app-shop [data-add="1"]').click();

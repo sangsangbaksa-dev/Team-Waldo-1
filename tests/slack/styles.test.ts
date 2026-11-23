@@ -22,6 +22,16 @@ describe('SLACK OFF small-screen game framing', () => {
   });
 });
 
+describe('SLACK OFF shop responsive design', () => {
+  it('displays consistent product cards and a two-column compact catalogue', () => {
+    const dorm = styles.find(s => s.name === 'computer.css')!.css;
+    expect(dorm).toContain('.sc-shop .sc-products{grid-template-columns:repeat(3,minmax(0,1fr))');
+    expect(dorm).toContain('.sc-shop .sc-products{grid-template-columns:repeat(2,minmax(0,1fr))');
+    expect(dorm).toContain('.sc-shop .sc-sale{');
+    expect(dorm).toContain('grid-template-columns:38px minmax(0,1fr) auto');
+  });
+});
+
 describe('SLACK OFF dorm hidden-app lifecycle', () => {
   it('pauses countdown animations while a mini-app is inactive', () => {
     const dorm = styles.find(s => s.name === 'computer.css')!.css;

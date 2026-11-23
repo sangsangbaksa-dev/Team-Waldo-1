@@ -27,6 +27,13 @@ describe('HUSTLE car motion', () => {
     expect(car.heading).toBeGreaterThan(0);
     expect(car.z).toBeLessThan(0);
   });
+  it('keeps heading within [-pi, pi] after repeated loops', () => {
+    const car = fresh();
+    run(car, { throttle: 1, steer: 1, brake: false }, 2400);
+    expect(Math.abs(car.heading)).toBeLessThanOrEqual(Math.PI);
+    expect(Number.isFinite(car.x)).toBe(true);
+    expect(Number.isFinite(car.z)).toBe(true);
+  });
   it('uses swept collision and cannot tunnel through a wall in a low-FPS frame', () => {
     const car = fresh(); car.speed = 22;
     const hit = stepDrive(car, { throttle: 1, steer: 0, brake: false }, .1, tune, x => x < 1);

@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { makeRng } from './config';
 import { METROPOLIS, type GameMap } from './world';
 import { Pieces } from '../shared/pieces';
-import { CLIFF_T } from './terrain';
+import { CLIFF_T, riseHeight } from './terrain';
 import { concreteTexture, dirtTexture, fadeDiscTexture, fadeRoadTexture, waterTexture } from './textures';
 
 const smooth = (t: number): number => { const x = Math.max(0, Math.min(1, t)); return x * x * (3 - 2 * x); };
@@ -56,7 +56,7 @@ function ribbonGeo(pts: Array<[number, number]>, w: number, uvPerM: number, edge
 export class TerrainView {
   readonly group = new THREE.Group(); private flow: THREE.Texture[] = []; private time = 0;
   constructor(private map: GameMap, private low: boolean) {
-    this.group.name = 'terrain'; this.buildTowns(); this.buildDowntownStreets(); this.buildRoads(); this.buildWater(); this.buildHills(); this.buildCliffs(); this.buildBridges();
+    this.group.name = 'terrain'; this.buildTowns(); this.buildDowntownStreets(); this.buildRoads(); this.buildWater(); this.buildRises(); this.buildHills(); this.buildCliffs(); this.buildBridges();
   }
   /** 물결을 흘립니다. */
   update(dt: number): void { this.time += dt; for (let i = 0; i < this.flow.length; i++) { this.flow[i].offset.x = -this.time * (0.03 + i * 0.01); this.flow[i].offset.y = Math.sin(this.time * 0.4 + i) * 0.01; } }
@@ -150,6 +150,40 @@ export class TerrainView {
     }
   }
   /** 구릉: 가파른 옆면과 평평한 풀 윗면의 큰 언덕(충돌 상자는 world.ts). */
+  /** 걸어 올라갈 수 있는 능선은 충돌 엔진과 동일한 riseHeight()로 정점을 만듭니다.
+   * 색은 고도에 따라 풀빛에서 노출된 암석으로 바뀌고 전체를 한 메시로 합칩니다. */
+  private buildRises(): void {
+    const geos: THREE.BufferGeometry[] = [], base = new THREE.Color(0x879751), crown = new THREE.Color(0x888172), moss = new THREE.Color(0x72854b);
+    const seg = this.low ? 20 : 36, rings = this.low ? 8 : 14, color = new THREE.Color();
+    for (const hill of this.map.terrain.rises) {
+      const pos: number[] = [], colors: number[] = [], idx: number[] = [];
+      for (let j = 0; j <= rings; j++) {
+        const radius = (j / rings) * hill.r, top = 1 - j / rings;
+        for (let i = 0; i < seg; i++) {
+          const angle = i * Math.PI * 2 / seg;
+          const x = hill.x + Math.cos(angle) * radius, z = hill.z + Math.sin(angle) * radius;
+          pos.push(x, riseHeight(hill, x, z) + 0.012, z);
+          color.copy(base).lerp(crown, top * top * (0.35 + hill.h * 0.1)).lerp(moss, Math.max(0, 0.3 - top) * 0.3);
+          colors.push(color.r, color.g, color.b);
+        }
+      }
+      for (let j = 0; j < rings; j++) for (let i = 0; i < seg; i++) {
+        const a = j * seg + i, b = j * seg + (i + 1) % seg, c = a + seg, d = b + seg;
+        idx.push(a, b, c, b, d, c);
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+      geo.setIndex(idx); geos.push(geo);
+    }
+    if (!geos.length) return;
+    const merged = geos.length === 1 ? geos[0] : mergeGeos(geos);
+    merged.computeVertexNormals();
+    const m = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+    m.name = 'walkable-rises'; m.receiveShadow = true; this.group.add(m);
+    if (geos.length > 1) for (const geo of geos) geo.dispose();
+  }
+
   private buildHills(): void {
     const n = valueNoise(this.map.seed + 41), top = new THREE.Color(0.5, 0.64, 0.3), rock = new THREE.Color(0.52, 0.49, 0.43), foot = new THREE.Color(0.6, 0.58, 0.46), c = new THREE.Color();
     const hills: THREE.BufferGeometry[] = [];

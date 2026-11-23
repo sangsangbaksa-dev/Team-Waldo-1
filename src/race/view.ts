@@ -1,5 +1,4 @@
 import { renderPixelRatio } from '../shared/render-budget';
-// SPEED RUSH — Three.js 장면: 석양 사이버 서킷, 스포츠카(Last City 의 vehicles.glb), 속도감 연출(FOV·카메라 흔들림·스트릭·불꽃·연기).
 import * as THREE from 'three';
 import { makePost, type PostFx } from '../postfx';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -423,7 +422,12 @@ export class RaceView {
     archAt(0, true); const arches = low ? Math.ceil(th.arch.count / 2) : th.arch.count; for (let k = 1; k < arches; k++) { const i = Math.round((k / arches) * t.n) % t.n; if (!t.pads.some(p => Math.abs(p - i) < 6) && Math.min(i, t.n - i) > 12) archAt(i, false); }
     const archMat = new THREE.MeshBasicMaterial({ vertexColors: true }); this.scene.add(new THREE.Mesh(mergeGeometries(parts), archMat)); parts.forEach(p => p.dispose());
     // START 배너
-    const bn = th.banner, banner = canvasTex(512, 96, g => { g.fillStyle = bn.bg; g.fillRect(0, 0, 512, 96); g.fillStyle = bn.fg; g.font = '900 64px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('SPEED RUSH', 256, 52); g.fillStyle = bn.accent; g.fillRect(0, 0, 512, 6); g.fillRect(0, 90, 512, 6); }, false);
+    const banner = canvasTex(512, 96, g => {
+      g.fillStyle = '#192126'; g.fillRect(0, 0, 512, 96);
+      g.fillStyle = '#c6a77e'; g.fillRect(18, 18, 7, 60);
+      g.fillStyle = '#f1f0e9'; g.font = '800 57px system-ui, sans-serif';
+      g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('SPEED RUSH', 267, 52);
+    }, false);
     // The old billboard was embedded inside the gantry's thick crossbeam,
     // making the label disappear on every map. Face incoming drivers and
     // offset 65cm outside the beam instead of adding 1cm to world Z.

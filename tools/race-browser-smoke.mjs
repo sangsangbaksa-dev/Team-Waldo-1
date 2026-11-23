@@ -115,7 +115,7 @@ try {
     headline: document.querySelector('.rc-card.result h2')?.textContent,
     stored: localStorage.getItem('waldo.race.ghost.v1:dusk:1:nova'),
   }));
-  assert.ok(result.headline?.includes('NEW GHOST'), JSON.stringify(result));
+  assert.ok(result.headline?.includes('최고 기록'), JSON.stringify(result));
   assert.ok(result.stored, 'Time-trial ghost was not persisted');
   assert.ok(JSON.parse(result.stored).data.length > 8, 'Ghost data is empty');
   // Rebuilding the GL scene must preserve saved ghosts and not leak stale callbacks.

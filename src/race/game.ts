@@ -23,6 +23,7 @@ import { loadCharacterKit } from '../shared/character';
 import { driftLive, readDriftBests, writeDriftBests } from './driftscore';
 import { PVP_ENABLED } from '../net/config';
 import { framePlan, STEP, escapeRaceText } from './frame-plan';
+import { raceHudSubtitle } from './hud-status';
 
 const ORD = ['', '1ST', '2ND', '3RD', '4TH', '5TH', '6TH'];
 
@@ -301,7 +302,11 @@ export function openRace(onExit: () => void): void {
     const p = race.player, c = p.car, place = placeOf(race), sp = kmh(c);
     setText('#rc-pos', race.trial ? '' : String(place)); setText('#rc-lap', String(currentLap(race))); setText('#rc-kmh', String(Math.round(sp)));
     setText('#rc-time', fmtTime(Math.max(0, race.clock))); const gd = race.ghost && race.phase === 'racing' ? ghostDelta(race.ghost, c.total, race.clock) : null;
-    setText('#rc-best', race.trial ? (race.ghost ? (gd === null ? `GHOST ${fmtTime(race.ghost.time)}` : `GHOST ${gd >= 0 ? '+' : '-'}${Math.abs(gd).toFixed(2)}`) : '첫 기록 — 이 주행이 고스트가 됩니다') : Number.isFinite(race.bestLap) ? `BEST ${fmtTime(race.bestLap)}` : '');
+    const subtitle = pvp ? raceHudSubtitle({ kind: 'online-duel', opponent: pvp.s.opponent.nickname })
+      : multi ? raceHudSubtitle({ kind: 'online-room', players: race.racers.length })
+      : race.trial ? raceHudSubtitle({ kind: 'time-trial', ghostTime: race.ghost?.time ?? null, delta: gd })
+      : raceHudSubtitle({ kind: 'race', bestLap: race.bestLap });
+    setText('#rc-best', subtitle);
     $('#rc-best').classList.toggle('ahead', gd !== null && gd < 0);
     setText('#rc-gear', race.phase === 'countdown' || Math.abs(c.vf) < 1 ? 'N' : c.vf < -0.5 ? 'R' : String(gearFor(c.vf)));
     $<HTMLElement>('#rc-nitro').style.width = `${(c.nitro * 100).toFixed(0)}%`; $('#rc-nitro').parentElement!.classList.toggle('on', boosting(c));

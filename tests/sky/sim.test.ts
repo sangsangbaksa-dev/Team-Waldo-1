@@ -416,3 +416,40 @@ describe('SKY WAR guided missile missed-path regression', () => {
     expect(sim.events.filter(e => e.t === 'hit')).toHaveLength(0);
   });
 });
+
+describe('SKY WAR 지형 밀착 비행 보너스', () => {
+  it('섬 위를 충분히 빠르고 낮게 통과하면 점수와 연료를 보상하고 연속 지급을 막는다', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.intermission = 1e9;
+    sim.player.pos.set(1200, 100, 650);
+    sim.player.speed = 215;
+    sim.player.fuel = 0.1;
+    for (let i = 0; i < 22; i++) {
+      sim.player.pos.y = terrainY(sim.player.pos.x, sim.player.pos.z) + 85;
+      sim.step(0.1, { ...neutral, throttle: 1 });
+      expect(sim.player.alive).toBe(true);
+    }
+    expect(sim.lowFlightRuns).toBe(1);
+    expect(sim.score).toBe(180);
+    expect(sim.player.fuel).toBeGreaterThan(0.1);
+    expect(sim.events.filter(e => e.t === 'stunt')).toHaveLength(1);
+    sim.reset();
+    expect(sim.lowFlightRuns).toBe(0);
+    expect(sim.lowFlightCharge).toBe(0);
+  });
+
+  it('바다 위만 날거나 충돌한 기체는 저공 보너스를 받지 않는다', () => {
+    const sea = new SkySim(DIFFS[1]!);
+    sea.intermission = 1e9;
+    sea.player.pos.set(0, 85, 2600);
+    sea.player.speed = 215;
+    for (let i = 0; i < 15; i++) sea.step(0.1, { ...neutral, throttle: 1 });
+    expect(sea.lowFlightRuns).toBe(0);
+
+    const crash = new SkySim(DIFFS[1]!);
+    crash.player.pos.set(1200, terrainY(1200, 300) + 1, 300);
+    crash.step(0.1, neutral);
+    expect(crash.over).toBe(true);
+    expect(crash.lowFlightRuns).toBe(0);
+  });
+});

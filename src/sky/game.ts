@@ -36,7 +36,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     <details class="sk-help" open><summary>조작 방법 보기</summary><ul class="sk-how"><li><b>마우스·터치</b> 움직임으로 방향을 조절합니다. 화면 중앙은 직진이며, 커서 잠금을 켜면 상대 이동으로 조종합니다.</li>
     <li><b>터치패드 두 손가락 스크롤</b> 스로틀 · <b>클릭·탭</b> 기관포 · <b>우클릭·두 손가락 탭</b> 미사일</li>
     <li><b>조준 보조</b> 끔: 수동 / 약: 조준 보정 / 강: 자동 사격. T로 자동 사격을 켜고 끌 수 있습니다. 선행 조준점을 따라 사격하고 적을 조준원에 두면 미사일이 락온됩니다.</li>
-    <li>키보드: WASD/방향키 · Q/E 러더 · C 조종석 시점 · Shift 부스트 · Ctrl 감속 · Space 기관포 · M 미사일 · F 플레어 · P 일시정지</li></ul></details>
+    <li>키보드: WASD/방향키 · Q/E 러더 · C 조종석 시점 · Shift 부스트 · Ctrl 감속 · Space 기관포 · M 미사일 · F 플레어 · P 일시정지</li><li>섬의 지형에서 18~135m 위를 시속 560km 이상으로 1.25초 비행하면 저공 돌파 점수와 부스트 연료를 얻습니다.</li></ul></details>
     <div class="sk-record"><span class="sk-section-label">출격 기록</span><div class="sk-rec" id="sk-rec"></div></div>
     <div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-start">시작</button><button class="wd-btn ghost" id="sk-quit">게임 목록으로</button></div>
   </div></div>
@@ -249,7 +249,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     setPercent('sk-hp', p.hp / p.maxHp * 100); $('sk-hp').parentElement!.classList.toggle('low', p.hp < 30);
     setPercent('sk-heat', p.heat / 1.2 * 100); $('sk-heat').parentElement!.classList.toggle('hot', p.heat > 0.9);
     setText('sk-spd', String(Math.round(p.speed * 3.6)) + ' · ' + p.g.toFixed(1) + 'G'); setText('sk-alt', String(Math.round(p.pos.y))); setHtml($('sk-mis'), p.missiles > 0 ? missileIcon.repeat(Math.min(p.missiles, 12)) : '—');
-    setHtml($('sk-status'), [sim!.shield > 0 ? `${shieldIcon}${Math.ceil(sim!.shield)}` : '', sim!.overdrive > 0 ? `${boltIcon}${sim!.overdrive.toFixed(1)}s` : ''].filter(Boolean).join(' '));
+    setHtml($('sk-status'), [sim!.shield > 0 ? `${shieldIcon}${Math.ceil(sim!.shield)}` : '', sim!.overdrive > 0 ? `${boltIcon}${sim!.overdrive.toFixed(1)}s` : '', sim!.lowFlightCharge > 0 ? `저공 ${Math.round(sim!.lowFlightCharge / 1.25 * 100)}%` : ''].filter(Boolean).join(' '));
     setPercent('sk-fuel', p.fuel * 100);
     setPercent('sk-thr', throttle * 100);
     // Flare cooldown is visible instead of silently ignoring repeated touch input.
@@ -421,7 +421,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     unlock(); audio.stopEngine(); audio.play('lose'); paintRec(); const s = sim!, acc = s.shots ? Math.round(s.hits / s.shots * 100) : 0, newBest = s.score > prev.bestScore;
     const cell = (v: string | number, l: string, hi = false): string => `<div class="sk-stat${hi ? ' hi' : ''}"><b>${v}</b><span>${l}</span></div>`;
     $('sk-end-t').textContent = '기체 격추';
-    $('sk-end-s').innerHTML = (newBest ? '<div class="sk-newrec">최고 기록 갱신</div>' : '') + `<div class="sk-stats">${cell(s.score, '점수', newBest)}${cell(s.wave, '웨이브')}${cell(s.kills, '격추')}${cell(acc + '%', '명중률')}${cell(Math.floor(s.time) + '초', '생존')}${cell(s.bestCombo > 0 ? '×' + s.bestCombo : '-', '최고 콤보')}</div><div class="sk-best">최고 기록 · 점수 ${Math.max(prev.bestScore, s.score)} · 콤보 ${Math.max(prev.bestCombo, s.bestCombo) > 0 ? '×' + Math.max(prev.bestCombo, s.bestCombo) : '-'} · 생존 ${Math.floor(Math.max(prev.longestTime, s.time))}초</div>`;
+    $('sk-end-s').innerHTML = (newBest ? '<div class="sk-newrec">최고 기록 갱신</div>' : '') + `<div class="sk-stats">${cell(s.score, '점수', newBest)}${cell(s.wave, '웨이브')}${cell(s.kills, '격추')}${cell(acc + '%', '명중률')}${cell(Math.floor(s.time) + '초', '생존')}${cell(s.bestCombo > 0 ? '×' + s.bestCombo : '-', '최고 콤보')}${cell(s.lowFlightRuns, '저공 돌파')}</div><div class="sk-best">최고 기록 · 점수 ${Math.max(prev.bestScore, s.score)} · 콤보 ${Math.max(prev.bestCombo, s.bestCombo) > 0 ? '×' + Math.max(prev.bestCombo, s.bestCombo) : '-'} · 생존 ${Math.floor(Math.max(prev.longestTime, s.time))}초</div>`;
     $('sk-end').hidden = false;
   }
   function exit(): void {
@@ -490,6 +490,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
           case 'dodge': alertMsg(`근접 회피 +${ev.points}점 · 방어막 +5 · 콤보 연장`, 1.5, 2); audio.play('lockdone'); break;
           case 'stall': audio.play('warn'); alertMsg('실속 · 기수를 내려 속도를 회복하세요', 1, 3); break;
           case 'overdrive': alertMsg('연사 강화 · 5초', 2, 2); audio.play('win'); break;
+          case 'stunt': alertMsg(`저공 돌파 +${ev.points}점${ev.fuel > 0 ? ` · 연료 +${Math.round(ev.fuel * 100)}%` : ''}`, 1.6, 2); audio.play('wave'); break;
           case 'crash': break;
         }
       }

@@ -47,6 +47,7 @@ export type SlackEvent =
   | { t: 'fun'; amount: number; activity: ActivityId }
   | { t: 'activity'; id: ActivityId | null }
   | { t: 'cover'; on: boolean }
+  | { t: 'perfect-cover'; points: number }
   | { t: 'strike'; n: number; reason: string }
   | { t: 'caught'; reason: string }
   | { t: 'done'; grade: string }

@@ -42,7 +42,7 @@ export interface Bullet { pos: THREE.Vector3; vel: THREE.Vector3; life: number; 
 export type SimEvent =
   | { t: 'gun'; id: number } | { t: 'missile'; id: number } | { t: 'boom'; pos: THREE.Vector3; big: boolean }
   | { t: 'hit'; id: number; pos: THREE.Vector3; by?: number } | { t: 'nolock' } | { t: 'kill'; by: number; id: number; points?: number; combo?: number } | { t: 'lock'; id: number } | { t: 'lockdone' }
-  | { t: 'warn' } | { t: 'stall' } | { t: 'wave'; n: number; modifier?: string } | { t: 'crash'; id: number } | { t: 'flare'; id: number } | { t: 'pickup'; kind: 'repair' | 'ammo' | 'shield'; amount: number } | { t: 'boss' } | { t: 'dodge'; points: number } | { t: 'overdrive' };
+  | { t: 'warn' } | { t: 'stall' } | { t: 'wave'; n: number; modifier?: string } | { t: 'crash'; id: number } | { t: 'flare'; id: number } | { t: 'pickup'; kind: 'repair' | 'ammo' | 'shield'; amount: number } | { t: 'boss' } | { t: 'dodge'; points: number } | { t: 'overdrive' } | { t: 'stunt'; points: number; fuel: number };
 
 export interface Input { pitch: number; roll: number; yaw?: number; throttle: number; fire: boolean; missile: boolean; flare: boolean; boost?: boolean; }
 export interface Pickup { id: number; kind: 'repair' | 'ammo' | 'shield'; pos: THREE.Vector3; life: number; } // pitch/roll -1..1
@@ -125,12 +125,12 @@ export class SkySim {
   jets: Jet[] = []; pickups: Pickup[] = []; missiles: Missile[] = []; bullets: Bullet[] = []; events: SimEvent[] = [];
   private bulletPool: Bullet[] = [];
   player!: Jet; wave = 0; score = 0; kills = 0; time = 0; over = false; waveDelay = 0; combo = 0; comboT = 0;
-  bestCombo = 0; shots = 0; hits = 0; shield = 0; overdrive = 0; warnT = 0; private nid = 1; spawnQueue = 0; intermission = 2;
+  bestCombo = 0; shots = 0; hits = 0; shield = 0; overdrive = 0; warnT = 0; lowFlightCharge = 0; lowFlightRuns = 0; private lowFlightCooldown = 0; private nid = 1; spawnQueue = 0; intermission = 2;
   constructor(public diff: Difficulty) { this.reset(); }
 
   reset(): void {
     this.bulletPool.length = 0; this.nid = 1; this.warnT = 0;
-    this.jets = []; this.pickups = []; this.missiles = []; this.bullets = []; this.events = []; this.wave = 0; this.score = 0; this.kills = 0; this.time = 0; this.over = false; this.intermission = 2; this.combo = 0; this.comboT = 0; this.bestCombo = 0; this.shots = 0; this.hits = 0; this.shield = 0; this.overdrive = 0; this.missileRegen = 0; this.stallWarnT = 0; this.afterburner = 0;
+    this.jets = []; this.pickups = []; this.missiles = []; this.bullets = []; this.events = []; this.wave = 0; this.score = 0; this.kills = 0; this.time = 0; this.over = false; this.intermission = 2; this.combo = 0; this.comboT = 0; this.bestCombo = 0; this.shots = 0; this.hits = 0; this.shield = 0; this.overdrive = 0; this.missileRegen = 0; this.stallWarnT = 0; this.afterburner = 0; this.lowFlightCharge = 0; this.lowFlightRuns = 0; this.lowFlightCooldown = 0;
     const p = this.makeJet('player', 'fighter', new THREE.Vector3(0, 700, 2200), 1); p.q.identity(); p.speed = CRUISE; p.missiles = 6; p.missileCd = 0; p.hp = p.maxHp = 100;
     this.player = p;
   }
@@ -202,6 +202,7 @@ export class SkySim {
     for (const j of this.jets) if (j.alive && j.team === 'enemy') this.stepAI(j, dt);
     this.stepMissiles(dt); this.stepBullets(dt); this.stepPickups(dt);
     for (const j of this.jets) if (j.alive) this.collideTerrain(j);
+    this.updateLowFlight(dt);
     this.comboT -= dt; if (this.comboT <= 0) this.combo = 0;
     // 웨이브 관리
     // Do not start another wave in the same tick the player crashes. The
@@ -213,6 +214,26 @@ export class SkySim {
     if (warn && this.warnT <= 0 && p.alive) { this.events.push({ t: 'warn' }); this.warnT = 0.7; }
     this.jets = this.jets.filter(j => j.alive || j.id === p.id);
     if (!p.alive && !this.over) this.over = true;
+  }
+
+  private updateLowFlight(dt: number): void {
+    this.lowFlightCooldown = Math.max(0, this.lowFlightCooldown - dt);
+    const p = this.player;
+    const ground = terrainY(p.pos.x, p.pos.z);
+    const clearance = p.pos.y - Math.max(SEA_Y, ground);
+    if (!p.alive || this.lowFlightCooldown > 0 || p.speed < 155 || ground < 30 || clearance < 18 || clearance > 135) {
+      this.lowFlightCharge = 0;
+      return;
+    }
+    this.lowFlightCharge += dt;
+    if (this.lowFlightCharge < 1.25) return;
+    this.lowFlightCharge = 0;
+    this.lowFlightCooldown = 5;
+    this.lowFlightRuns++;
+    this.score += 180;
+    const fuel = Math.min(0.12, Math.max(0, 1 - p.fuel));
+    p.fuel += fuel;
+    this.events.push({ t: 'stunt', points: 180, fuel });
   }
 
   private stepPlayer(p: Jet, inp: Input, dt: number): void {

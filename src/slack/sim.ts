@@ -76,6 +76,7 @@ export const createSim: CreateSim = (stage, seed, level) => {
   let funPending = 0;
   let footstepTimer = 0;
   let warned = false;
+  let coverRewarded = false, exposedTime = 0;
   let quiet = false;
   let surprise = surpriseOf(state.watcher.kind);
   const setCover = (on: boolean) => {
@@ -85,7 +86,17 @@ export const createSim: CreateSim = (stage, seed, level) => {
       if (!on) return;
     }
     if (state.cover === on) return;
+    const w = state.watcher;
+    if (on && state.activity && exposedTime >= 0.6 && !coverRewarded
+      && ((w.mode === 'approach' && w.prog >= 0.55 && w.prog <= 0.9)
+        || (w.mode === 'peek' && w.t <= 0.3))) {
+      coverRewarded = true;
+      comboBonus += 90;
+      state.sus = clamp(state.sus - 8);
+      events.push({ t: 'perfect-cover', points: 90 });
+    }
     state.cover = on;
+    if (on) exposedTime = 0;
     events.push({ t: 'cover', on });
   };
   const strike = (reason: string) => {
@@ -107,7 +118,7 @@ export const createSim: CreateSim = (stage, seed, level) => {
     w.mode = mode; w.t = 0; w.prog = 0;
     if (mode === 'away') {
       w.kind = pickKind(); duration = awayTime(w.kind);
-      w.hint = 0; w.near = 0; warned = false; quiet = false;
+      w.hint = 0; w.near = 0; warned = false; coverRewarded = false; quiet = false;
       surprise = surpriseOf(w.kind);
       events.push({ t: 'door', open: false });
     } else if (mode === 'approach') {
@@ -196,6 +207,7 @@ export const createSim: CreateSim = (stage, seed, level) => {
       enter(w.mode === 'away' ? (surprise ? 'peek' : 'approach') : w.mode === 'approach' ? 'peek' : w.mode === 'peek' ? 'scan' : w.mode === 'scan' ? 'leave' : 'away');
     }
     const active = !state.cover ? state.activity : null;
+    exposedTime = active ? exposedTime + dt : 0;
     if (state.phase !== 'play') return;
     if (state.cover) {
       state.study = clamp(state.study + 0.6 * dt);

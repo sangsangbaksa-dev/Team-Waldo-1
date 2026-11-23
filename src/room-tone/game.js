@@ -29,6 +29,7 @@ import { renderingScale, selectQuality } from "./render-quality.mjs";
 import { propClearance } from "./obstacles.mjs";
 import { loadFailureText } from "./loading-error.mjs";
 import { reducedMotionOn } from "./motion-preferences.mjs";
+import { dialOptions, expectedSequence } from "./puzzle-rules.mjs";
 import { facingDot, canSeeTarget, stereoPan } from "./awareness.mjs";
 import { initialMute } from "./preferences.mjs";
 import { createIdLookup } from "./dom.mjs";
@@ -986,19 +987,8 @@ function notes(el) {
   }
   el.append(dl);
 }
-const circuitOptions = ["5 A", "10 A", "15 A"],
-  tuneOptions = [
-    ["71.2", "72.4", "73.6", "74.8"],
-    ["80.0", "81.2", "82.4", "83.6"],
-    ["90.6", "91.8", "93.0", "94.2"],
-  ];
 function expected() {
-  return [
-    [0, 1, 2],
-    [1, 3, 1],
-    [1, 2, 0],
-    [2, 1, 0],
-  ][ch];
+  return expectedSequence(ch, chapters[ch].labels);
 }
 function puzzle(reset = true) {
   if (reset) {
@@ -1046,12 +1036,7 @@ function puzzle(reset = true) {
         box.className = "dials";
         for (let i = 0; i < 3; i++) {
           const b = document.createElement("button");
-          const opts =
-            ch === 0
-              ? circuitOptions
-              : ch === 1
-                ? tuneOptions[i]
-                : ["0°", "90°", "180°", "270°"];
+          const opts = dialOptions(ch, i);
           b.innerHTML =
             "<small>" +
             c.names[i] +

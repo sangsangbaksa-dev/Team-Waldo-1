@@ -1003,6 +1003,9 @@ function puzzle(reset = true) {
             choices.push(i);
             sound.tone(i);
             puzzle(false);
+            // Keep keyboard control near the newly filled reel slot.
+            ($("panelBody").querySelector(".choiceRow button:not([disabled])") ??
+              $("panelActions").querySelector("button"))?.focus();
           };
           row.append(b);
         }
@@ -1034,6 +1037,7 @@ function puzzle(reset = true) {
             choices[i] = (choices[i] + 1) % opts.length;
             sound.tone(choices[i]);
             puzzle(false);
+            $("panelBody").querySelectorAll(".dials button")[i]?.focus();
           };
           box.append(b);
         }

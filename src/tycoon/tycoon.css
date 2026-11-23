@@ -274,3 +274,27 @@
 .ty-root.touch .ty-drive strong b { font-size:28px; }
 @media(max-width:860px) { .ty-root.touch .ty-drive { left:50%; bottom:120px; } }
 @media(max-height:500px) and (orientation:landscape) { .ty-root.touch .ty-drive { left:50%; bottom:8px; padding:4px 10px; } }
+
+/* HUSTLE — personal destination card and click-to-navigate city map. */
+.ty-route { position:absolute; left:50%; top:136px; transform:translateX(-50%); display:flex; align-items:center;
+  gap:11px; width:max-content; max-width:min(280px,80vw); padding:9px 10px 9px 12px; border:1px solid #8b7d60;
+  background:#131d27e8; border-radius:9px; box-shadow:0 8px 24px #0005; color:#f0f1eb; }
+.ty-route[hidden] { display:none; }
+.ty-route-mark { display:block; width:10px; height:10px; background:#ebbe6e; border:2px solid #182735; border-radius:50%; box-shadow:0 0 0 2px #d5b47b; }
+.ty-route > div { display:flex; flex-direction:column; line-height:1.25; min-width:100px; }
+.ty-route b { font-size:11px; letter-spacing:.04em; color:#ecd49a; }
+.ty-route > div span { font-size:13px; font-variant-numeric:tabular-nums; }
+.ty-route button { width:28px; height:28px; background:#2b3745; border:1px solid #58697a; border-radius:7px; }
+.ty-route button:hover { background:#415165; }
+.ty-bigmap canvas { cursor:crosshair; touch-action:manipulation; }
+.ty-clear-waypoint { position:absolute; right:12px; bottom:46px; padding:7px 11px; border-radius:7px; border:1px solid #bba77a;
+  background:#1b2634e8; color:#f2dda9; font-size:12px; font-weight:700; }
+.ty-clear-waypoint:hover { background:#344052; }
+.ty-bigmap .ty-map-caption { bottom:5px; left:10px; right:10px; text-align:left; font-size:11px; }
+@media(max-width:860px) {
+  .ty-route { top:calc(max(10px, env(safe-area-inset-top)) + 190px); left:50%; padding:7px 8px; gap:8px; }
+  .ty-bigmap .ty-map-caption { font-size:10px; }
+}
+@media(max-height:500px) and (orientation:landscape) {
+  .ty-route { top:82px; right:10px; left:auto; transform:none; }
+}

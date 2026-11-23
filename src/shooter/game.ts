@@ -377,11 +377,12 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
   const onWheel = (e: WheelEvent): void => {
     // Touchpad scroll deltas stream many times per gesture; switch once per gesture.
     if (!match || closed || paused || phase !== 'play' || (!locked && e.target !== canvas)) return;
+    if (e.cancelable) e.preventDefault(); // 게임 중 터치패드 스크롤이 페이지까지 움직이지 않게 합니다.
     if (acceptWheelSwap(wheelSwap, e.deltaY, e.deltaMode, performance.now())) swapReq = true;
   };
   const noMenu = (e: Event): void => e.preventDefault();
   window.addEventListener('mousemove', onMove); window.addEventListener('mousedown', onDown); window.addEventListener('mouseup', onUp);
-  window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKey); window.addEventListener('wheel', onWheel, { passive: true }); canvas.addEventListener('contextmenu', noMenu);
+  window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKey); window.addEventListener('wheel', onWheel, { passive: false }); canvas.addEventListener('contextmenu', noMenu);
   const blur = (): void => { keys.clear(); mouse.fire = mouse.ads = false; interactHeld = reloadReq = swapReq = nadeReq = false; healReq = 0; slotReq = -1; tc.fire = false; tc.move.id = tc.look.id = -1; tc.move.x = tc.move.y = 0; stickEl.style.opacity = '0'; root.querySelectorAll('.sz-tbuttons button[data-act="fire"].down, .sz-tbuttons button[data-act="interact"].down').forEach(b => b.classList.remove('down')); }; window.addEventListener('blur', blur);
   const onVisibility = (): void => { if (document.hidden) blur(); }; document.addEventListener('visibilitychange', onVisibility);
 

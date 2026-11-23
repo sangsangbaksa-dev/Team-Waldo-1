@@ -132,6 +132,7 @@
       <div id="prompt" hidden><kbd>E</kbd> <span id="promptText"></span></div>
       <div id="toast" role="status" aria-live="polite"></div>
       <div class="gear">
+        <button id="recorder" type="button" aria-label="녹음기 미끼 사용, 남은 2개">녹음기 <span id="recorderCount">2/2</span> <kbd>Q</kbd></button>
         <button id="crouch" aria-pressed="false">숙이기 <kbd>C</kbd></button>
         <button id="torch">
           손전등 <span id="lightState">켜짐</span> <kbd>F</kbd>
@@ -166,8 +167,10 @@
           <dd>E</dd>
           <dt>달리기 · 손전등</dt>
           <dd>Shift · F</dd>
-          <dt>숙이기 · 길 안내</dt>
-          <dd>C · G</dd>
+          <dt>녹음기 미끼 · 숙이기</dt>
+          <dd>Q · C</dd>
+          <dt>길 안내</dt>
+          <dd>G</dd>
           <dt>시설 도면 · 일시정지</dt>
           <dd>M · P</dd>
         </dl>
@@ -179,6 +182,8 @@
           잠긴 문은 구역의 제어 장치에서 엽니다. 도면의 주황색 장비를 찾고,
           청록색 장치로 돌아오세요. 길 안내를 켜면 도면에 경로가 표시되고,
           이동 화면에서 다음 방향을 볼 수 있습니다. 숙이면 느려지지만 발소리가 줄어듭니다.
+          녹음기는 바라보는 복도에 내려놓을 수 있습니다. 한 구역에 두 개만 있으며,
+          소리에 이끌린 잔향도 눈앞의 사람을 놓치지는 않습니다.
         </p>
       </div>
       <button id="howclose" class="primary">닫기</button>

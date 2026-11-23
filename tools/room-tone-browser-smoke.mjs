@@ -40,6 +40,11 @@ try {
       const hasWebgl = await page.locator("#viewWrap canvas").evaluate(canvas=>canvas.width>0&&canvas.height>0&&canvas.getAttribute("data-engine")?.includes("three.js"));
       assert.ok(hasWebgl,"3D renderer must initialize and size the canvas");
       assert.match(await page.locator("#zone").innerText(), /전원 정비동/);
+      assert.equal(await page.locator("#recorderCount").innerText(),"2/2");
+      if (mobile) await page.locator("#recorder").click();
+      else await page.keyboard.press("q");
+      assert.equal(await page.locator("#recorderCount").innerText(),"1/2");
+      assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("waldo.rt03.campaign.v1")).recorderUsed),1);
       await page.screenshot({ path: out + "/room-tone-play-" + device + ".png" });
       if (mobile) {
         const hit = await page.locator("#pauseGame").evaluate(el => {

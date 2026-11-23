@@ -407,6 +407,13 @@ export class Sound {
     this.rustle(at+.025,.24,.15*force,visible?510:235,pan,.8);
     this.rustle(at+.12,.16,.045*force,1070,pan);
   }
+  recorder(pan=0) {
+    if(!this.ready()) return;
+    const at=this.ctx.currentTime;
+    this.rustle(at,.34,.085,790,pan,1.6);
+    this.note(341,329,.18,.052,at+.05,pan,"triangle");
+    this.note(219,221,.2,.029,at+.2,pan,"sine");
+  }
   recording() {
     if(!this.ready()) return;
     const at=this.ctx.currentTime;

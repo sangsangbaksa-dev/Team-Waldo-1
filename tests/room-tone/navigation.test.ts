@@ -45,7 +45,7 @@ test("wall corners block sight; clear corridors work in both directions", () => 
 test("save normalization rejects impossible completion and invalid visited cells", () => {
   assert.equal(normalizeSave({v:1,ch:4,found:[true,true,true]}), null);
   const save = normalizeSave({v:1,ch:0,found:[true,false,true],solved:true,seen:[22,22,-1,9999],elapsed:-1});
-  assert.deepEqual(save,{v:1,ch:0,found:[true,false,true],solved:false,seen:[22],elapsed:0});
+  assert.deepEqual(save,{v:1,ch:0,found:[true,false,true],solved:false,seen:[22],elapsed:0,recorderUsed:0});
   assert.equal(normalizeSave({v:1,ch:0,found:[true,true,true],solved:true})?.solved,true);
 });
 

@@ -330,7 +330,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   function togglePause(): void {
     if (state === 'play') {
       clearHeldInput();
-      audio.engine(false, 0); state = 'paused'; $('sk-paused').hidden = false; unlock(); stableQualitySeconds = 0;
+      audio.stopEngine(); state = 'paused'; $('sk-paused').hidden = false; unlock(); stableQualitySeconds = 0;
     } else if (state === 'paused') {
       state = 'play'; $('sk-paused').hidden = true; last = performance.now();
       resetQualityClock();
@@ -339,7 +339,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   }
   function finish(): void {
     state = 'over'; const prev = readSkyRecords(); if (!saved && sim) { saved = true; recordSkyRun(sim.score, sim.wave, sim.kills, sim.bestCombo, sim.time); }
-    unlock(); audio.engine(false, 0); audio.play('lose'); paintRec(); const s = sim!, acc = s.shots ? Math.round(s.hits / s.shots * 100) : 0, newBest = s.score > prev.bestScore;
+    unlock(); audio.stopEngine(); audio.play('lose'); paintRec(); const s = sim!, acc = s.shots ? Math.round(s.hits / s.shots * 100) : 0, newBest = s.score > prev.bestScore;
     const cell = (v: string | number, l: string, hi = false): string => `<div class="sk-stat${hi ? ' hi' : ''}"><b>${v}</b><span>${l}</span></div>`;
     $('sk-end-t').textContent = '격추당했습니다';
     $('sk-end-s').innerHTML = (newBest ? '<div class="sk-newrec">NEW RECORD</div>' : '') + `<div class="sk-stats">${cell(s.score, '점수', newBest)}${cell(s.wave, '웨이브')}${cell(s.kills, '격추')}${cell(acc + '%', '명중률')}${cell(Math.floor(s.time) + '초', '생존')}${cell(s.bestCombo > 0 ? '×' + s.bestCombo : '-', '최고 콤보')}</div><div class="sk-best">최고 기록 · 점수 ${Math.max(prev.bestScore, s.score)} · 콤보 ${Math.max(prev.bestCombo, s.bestCombo) > 0 ? '×' + Math.max(prev.bestCombo, s.bestCombo) : '-'} · 생존 ${Math.floor(Math.max(prev.longestTime, s.time))}초</div>`;

@@ -96,7 +96,6 @@ export class ShooterView {
 
   private mat(key: string, make: () => THREE.Material): THREE.Material { let m = this.mats.get(key); if (!m) { m = make(); this.mats.set(key, m); } return m; }
 
-  // ---------- 지형 ----------
   private buildGround(): void {
     const half = this.match.map.half, size = half * 2 + 900, segs = 120, geo = new THREE.PlaneGeometry(size, size, segs, segs); geo.rotateX(-Math.PI / 2);
     const n1 = noise2(this.match.seed), n2 = noise2(this.match.seed + 9), pos = geo.attributes.position, col = new Float32Array(pos.count * 3), c = new THREE.Color();
@@ -199,7 +198,6 @@ export class ShooterView {
     }
   }
 
-  // ---------- 병사 ---------- (공용 캐릭터 리그: src/shared/character)
   private makeRig(p: Player): void {
     const root = new THREE.Group(), kind = SOLDIER_KINDS[p.id % SOLDIER_KINDS.length],
       look = { team: p.color, skin: p.skin, height: 0.97 + (p.id % 5) * 0.015, width: 1 };
@@ -235,7 +233,6 @@ export class ShooterView {
     else if (p.air === 3) { rig.root.position.set(p.x, p.alt, p.z); rig.root.rotation.set(0, -p.yaw, 0); }
   }
 
-  // ---------- 보급 투하 ----------
   private dropNodes = new Map<number, { g: THREE.Group; smoke: THREE.Sprite[] }>(); private plane: THREE.Group | null = null;
   private syncDrops(): void {
     const m = this.match, t = m.t; if (!m.drops.length) return;
@@ -275,7 +272,6 @@ export class ShooterView {
     (this.scene.fog as THREE.FogExp2).color.copy(this.fogBase).lerp(this.tmpCol.setHex(0xc4cee8), tw * 0.5);
   }
 
-  // ---------- 전리품 ----------
   private lootNode(l: Loot): { node: THREE.Object3D; baseY: number; dispose: () => void } {
     const g = new THREE.Group(), color = LOOT_COLOR[l.kind]; let sharedModel = false;
     if (l.kind === 'weapon' && l.weapon && this.assets?.groundGuns[l.weapon]) { const m = instantiate(this.assets.groundGuns[l.weapon]); m.scale.setScalar(1.25); m.position.y = 0.9; g.add(m); sharedModel = true; }
@@ -327,7 +323,6 @@ export class ShooterView {
     for (const [id, entry] of this.lootNodes) if (!live.has(id)) { entry.dispose(); this.lootNodes.delete(id); }
   }
 
-  // ---------- 효과 ----------
   private spark(x: number, y: number, z: number, n: number, rgb: [number, number, number], speed: number): void {
     for (let i = 0; i < n && this.sparkData.length < 240; i++) {
       const a = Math.random() * 6.28, up = Math.random() * 0.9 + 0.1, s = speed * (0.4 + Math.random());
@@ -383,7 +378,7 @@ export class ShooterView {
     for (const [id, m] of this.nadeMeshes) if (!live.has(id)) { this.scene.remove(m); m.geometry.dispose(); (m.material as THREE.Material).dispose(); this.nadeMeshes.delete(id); }
     for (let i = this.booms.length - 1; i >= 0; i--) { const b = this.booms[i]; b.t += dt; b.s.scale.setScalar(2 + b.t * 16); (b.s.material as THREE.SpriteMaterial).opacity = Math.max(0, 1 - b.t * 3); if (b.t > 0.35) { this.scene.remove(b.s); (b.s.material as THREE.Material).dispose(); this.booms.splice(i, 1); } }
   }
-  // ---------- 차량 · 폭격 ----------
+
   private vehNodes = new Map<number, { g: THREE.Group; wreck: boolean; puffT: number; fire: THREE.Sprite | null }>();
   private redNodes = new Map<number, THREE.Group>(); private shellNodes = new Map<number, THREE.Group>();
   private puffs: Array<{ s: THREE.Sprite; t: number; life: number; vy: number; grow: number; a: number }> = [];
@@ -479,7 +474,6 @@ export class ShooterView {
     this.sparks.geometry.setDrawRange(0, this.sparkData.length); pos.needsUpdate = true; col.needsUpdate = true;
   }
 
-  // ---------- 1인칭 총 ----------
   private viewmodel(p: Player, show: boolean, dt: number): void {
     const gun = p.guns[p.cur], id = gun?.id ?? '';
     const pk = id + JSON.stringify(gun?.att ?? {});

@@ -18,6 +18,11 @@ describe('HUSTLE moving traffic collision', () => {
       traffic.update(0, origin, new THREE.Vector3(200, 0, 200), 0);
       expect(first.position.distanceTo(before)).toBe(0);
     }
+    if (first) {
+      const beforeParked = first.position.clone();
+      traffic.update(0.5, origin, new THREE.Vector3(-999, 0, -999), 0, () => true);
+      expect(first.position.distanceTo(beforeParked)).toBe(0);
+    }
     expect(traffic.blocks(9999, 9999, 0.9)).toBe(false);
     traffic.dispose();
     expect(traffic.group.parent).toBeNull();

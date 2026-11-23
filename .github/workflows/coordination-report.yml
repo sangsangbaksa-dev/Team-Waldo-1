@@ -1,0 +1,40 @@
+name: Team Waldo PR coordination report
+# Manual read-only inventory of active PR dependencies and shared-file overlap.
+# No deployment, merge, or repo mutation is performed by this workflow.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: team-waldo-coordination-report
+  cancel-in-progress: true
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Fetch PR branch relationships and overlapping filenames
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          node tools/coordination-report.mjs --repo="$REPOSITORY" --target=feat/shared-menu-rails --limit=50 > pr-coordination-report.md
+          test -s pr-coordination-report.md
+          cat pr-coordination-report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload coordination report
+        uses: actions/upload-artifact@v4
+        with:
+          name: team-waldo-pr-coordination
+          path: pr-coordination-report.md
+          if-no-files-found: error
+          retention-days: 14

@@ -38,7 +38,7 @@ export class Player {
   celebrate(): void { this.wave = 1.4; }
   setFirstPerson(on: boolean): void { this.firstPerson = on; this.camInit = false; if (this.rig) this.rig.root.visible = !on; if (on) this.camPitch = 0; else this.camPitch = 0.28; }
 
-  update(dt: number, input: MoveInput, colliders: Colliders, frozen: boolean): void {
+  update(dt: number, input: MoveInput, colliders: Colliders, frozen: boolean, extra?: (x: number, z: number, radius: number, out: { x: number; z: number }) => void): void {
     const len = Math.hypot(input.mx, input.mz), mag = frozen ? 0 : Math.min(1, len);
     const target = mag * (input.run ? RUN : WALK);
     // 카메라 기준 이동 방향
@@ -51,6 +51,7 @@ export class Player {
     for (let i = 0; i < steps; i++) {
       this.pos.x += this.vel.x * sd; this.pos.z += this.vel.z * sd;
       colliders.resolve(this.pos.x, this.pos.z, RADIUS, this.tmp); this.pos.x = this.tmp.x; this.pos.z = this.tmp.z;
+      if (extra) { extra(this.pos.x, this.pos.z, RADIUS, this.tmp); colliders.resolve(this.tmp.x, this.tmp.z, RADIUS, this.tmp); this.pos.x = this.tmp.x; this.pos.z = this.tmp.z; }
     }
     this.speed = Math.hypot(this.vel.x, this.vel.z);
     if (this.firstPerson) this.facing = this.camYaw + Math.PI / 2;

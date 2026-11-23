@@ -12,6 +12,11 @@ export class SkyAudio {
     if (!on) this.stopEngine();
   }
   unlock(): void { this.eng.unlock(); }
+  /** Suspend one-shot sound effects as well as the perpetual engine loop. */
+  pause(on: boolean): void {
+    if (on) this.stopEngine();
+    this.eng.setPaused(on);
+  }
 
   engine(on: boolean, thrust01: number): void {
     const c = this.eng.ctx, bus = this.eng.bus, noise = this.eng.noise;

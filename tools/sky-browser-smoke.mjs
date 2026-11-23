@@ -145,6 +145,10 @@ try {
         await page.keyboard.press('p');
       } else await page.locator('#sk-pause').click();
       await page.locator('#sk-paused').waitFor({ state: 'visible' });
+      // Preserve the old model reference across restart to detect reused IDs.
+      await page.evaluate(() => {
+        window.__skyPreviousAircraft = window.__sky.view.meshes.get(window.__sky.sim.player.id);
+      });
       const pausedAt = await page.evaluate(() => window.__sky.sim.time);
       const pausedDraws = await page.evaluate(() => window.__sky.renderer.info.render.frame);
       await sleep(180);
@@ -173,6 +177,8 @@ try {
       assert.equal(restart.runs, runsBefore + 1, 'Restart must preserve the previous sortie record');
       assert.equal(restart.alert, '', 'Restart must clear stale combat warnings');
       assert.equal(restart.rings, 0, 'Restart must clear lingering explosion rings');
+      assert.equal(await page.evaluate(() => window.__skyPreviousAircraft === window.__sky.view.meshes.get(window.__sky.sim.player.id)), false,
+        'Restart must not reuse an old aircraft mesh even when the entity ID is recycled');
       // A true incoming missile warning must survive a simultaneous arena warning.
       await page.evaluate(() => {
         const sim = window.__sky.sim;

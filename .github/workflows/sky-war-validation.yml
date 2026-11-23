@@ -4,6 +4,8 @@ on:
     paths:
       - 'src/sky/**'
       - 'tests/sky/**'
+      - 'src/slack/**'
+      - 'tests/slack/**'
       - 'tools/sky-browser-smoke.mjs'
       - '.github/workflows/sky-war-validation.yml'
   workflow_dispatch:
@@ -26,9 +28,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx eslint src/sky tests/sky
+      - run: npx eslint src/sky tests/sky src/slack tests/slack
       - run: npm run typecheck
-      - run: npx vitest run tests/sky
+      - run: npx vitest run tests/sky tests/slack
       - run: npm run build
       - run: npx playwright install --with-deps chromium --only-shell
       - name: Browser smoke SKY WAR on desktop and mobile

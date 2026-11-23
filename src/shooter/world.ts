@@ -288,6 +288,15 @@ function furnish(map: GameMap, rng: () => number, c: Compound, layoutHalf: { x: 
 /** 건물 안 전리품 수. 100명이 겨루는 솔로 지도는 1.6배로 늘립니다. */
 function lootCount(rng: () => number, mode: Mode, range: [number, number]): number { const n = pickInt(rng, range); return mode === 'br' ? Math.floor(n * 1.6 + rng()) : n; }
 
+/** 실내 선반·상자 안에 전리품이 묻히지 않도록 플레이어가 닿을 수 있는 자리만 선택합니다. */
+function interiorLootSpot(map: GameMap, rng: () => number, b: Building): { x: number; z: number } | null {
+  for (let i = 0; i < 18; i++) {
+    const x = b.x + (rng() - 0.5) * (b.w - 2.4), z = b.z + (rng() - 0.5) * (b.d - 2.4);
+    if (!blockedAt(map, x, z, PLAYER.radius + 0.1)) return { x, z };
+  }
+  return !blockedAt(map, b.x, b.z, PLAYER.radius + 0.1) ? { x: b.x, z: b.z } : null;
+}
+
 export function generateMap(seed: number, mode: Mode): GameMap {
   const rng = makeRng(seed), half = MAP_HALF[mode];
   const map: GameMap = { seed, mode, half, boxes: [], buildings: [], trees: [], rocks: [], props: [], compounds: [], sites: [], roads: [], loot: [], spawns: [], grid: new Map(), terrain: emptyTerrain() };
@@ -327,7 +336,7 @@ export function generateMap(seed: number, mode: Mode): GameMap {
       reach = Math.max(reach, Math.hypot(bx - c.x, bz - c.z) + Math.max(b.w, b.d) / 2);
       // 건물 안 전리품
       const loots = lootCount(rng, mode, sp.loot);
-      for (let k = 0; k < loots; k++) pushLoot(map, rollLoot(rng, sp.tier), b.x + (rng() - 0.5) * (b.w - 2.4), b.z + (rng() - 0.5) * (b.d - 2.4));
+      for (let k = 0; k < loots; k++) { const at = interiorLootSpot(map, rng, b); if (at) pushLoot(map, rollLoot(rng, sp.tier), at.x, at.z); }
       // 문밖 상자
       if (!downtown && rng() < 0.55) { const s = 0.6 + rng() * 0.4, ox = b.x + (b.w / 2 + 1.6) * (rng() < 0.5 ? -1 : 1), oz = b.z + (rng() - 0.5) * b.d; if (freeRect(map, ox - s, oz - s, ox + s, oz + s, 0.3)) addBox(map, { x0: ox - s, x1: ox + s, z0: oz - s, z1: oz + s, y0: 0, y1: 1.1, kind: 'crate', tex: 0 }); }
     });
@@ -349,7 +358,11 @@ export function generateMap(seed: number, mode: Mode): GameMap {
       const before = map.buildings.length;
       if (type === 'station') { if (!station(map, rng, x, z)) continue; map.sites.push({ x, z: z + 5, r: 18 }); }
       else { if (!freeRect(map, x - 12, z - 10, x + 12, z + 10, 0)) continue; const b = build(map, rng, type, x, z); map.sites.push({ x, z, r: Math.max(b.w, b.d) / 2 + 6 }); }
-      const b = map.buildings[before], sp = SPEC[b.type]; for (let k = 0, n = lootCount(rng, mode, sp.loot); k < n; k++) pushLoot(map, rollLoot(rng, sp.tier), b.x + (rng() - 0.5) * (b.w - 2.4), b.z + (rng() - 0.5) * (b.d - 2.4));
+      const b = map.buildings[before], sp = SPEC[b.type];
+      for (let k = 0, n = lootCount(rng, mode, sp.loot); k < n; k++) {
+        const at = interiorLootSpot(map, rng, b);
+        if (at) pushLoot(map, rollLoot(rng, sp.tier), at.x, at.z);
+      }
       if (type === 'bunker' || type === 'tower') for (let k = 0; k < 3; k++) addProp(map, { kind: 'sandbag', x: b.x + (k - 1) * 2.4, z: b.z + b.d / 2 + 3.2, ry: 0, w: 2.2, d: 0.7, h: 1.1, c: 0xa89b72 }, { kind: 'prop' }, 0.2);
       if (type === 'barn') for (let k = 0; k < 3; k++) addProp(map, { kind: 'hay', x: b.x + b.w / 2 + 3 + k * 1.8, z: b.z + (rng() - 0.5) * 4, ry: 0, w: 1.5, d: 1.4, h: 1.4, c: 0xc9b25a }, { kind: 'prop' }, 0.4);
       break;

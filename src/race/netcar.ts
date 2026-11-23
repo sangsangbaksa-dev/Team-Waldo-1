@@ -9,10 +9,18 @@ const r2 = (v: number): number => Math.round(v * 100) / 100;
 export function encodeSnap(c: CarState): Snap {
   return [r2(c.x), r2(c.z), r2(c.y), Math.round(c.h * 1000) / 1000, r2(c.vx), r2(c.vz), r2(c.vf), r2(c.vl), r2(c.slip), r2(c.steer), r2(c.yawRate), r2(c.total), c.idx, r2(c.nitro), r2(c.boostT), c.drifting ? 1 : 0];
 }
-/** 형식이 맞지 않거나 숫자가 아닌 값이 있으면 버립니다(상대가 보낸 데이터는 믿지 않습니다). */
+/** Defensive per-field bounds prevent implausible packets from stalling angle wrapping or rendering. */
+const SNAP_MAX_ABS: readonly number[] = [
+  100_000, 100_000, 20_000, Math.PI + 0.01,
+  1_000, 1_000, 1_000, 1_000, Math.PI + 0.01,
+  1.01, 100, 100_000, 100_000, 1.01, 100, 1,
+];
+/** 형식이나 물리적으로 허용 가능한 범위를 벗어난 상대 차량 데이터는 버립니다. */
 export function parseSnap(raw: unknown): Snap | null {
   if (!Array.isArray(raw) || raw.length !== SNAP_LEN) return null;
-  return raw.every(v => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 1e7) ? (raw as Snap) : null;
+  if (!raw.every((v, i) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= SNAP_MAX_ABS[i])) return null;
+  if (raw[13] < 0 || raw[14] < 0 || (raw[15] !== 0 && raw[15] !== 1)) return null;
+  return raw as Snap;
 }
 
 export interface RemoteLink { snap: Snap | null; at: number }

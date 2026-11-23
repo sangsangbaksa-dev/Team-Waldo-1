@@ -2,9 +2,12 @@ import type { ClientMessage, ServerMessage } from '../application/protocol.js';
 import type { RoomInfo, Session } from '../application/session.js';
 import type { Input } from '../domain/combat.js';
 import type { Snapshot } from '../domain/match.js';
+import type { World } from '../domain/world.js';
+import { guestLink, hostLink, socketLink, transportChoice, type Link, type LinkEvents } from './link.js';
 
 export class OnlineSession implements Session {
-  private socket: WebSocket;
+  private readonly link: Link;
+  private deadline = 0;
   private sequence = 0;
   private outgoingTime = 0;
   private pingedAt = -Infinity;
@@ -14,41 +17,42 @@ export class OnlineSession implements Session {
   latency?: number;
   error?: string;
 
-  constructor(request: Extract<ClientMessage, { type: 'create' | 'join' }>) {
-    const configured = (import.meta as ImportMeta & { env?: { VITE_WS_URL?: string } }).env?.VITE_WS_URL;
-    const endpoint = configured || `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`;
-    this.socket = new WebSocket(endpoint);
-    const deadline = window.setTimeout(() => {
+  constructor(request: Extract<ClientMessage, { type: 'create' | 'join' }>, world: World) {
+    const transport = transportChoice();
+    const events: LinkEvents = {
+      opened: () => this.send(request),
+      message: message => this.receive(message),
+      failed: reason => { if (!this.stopping) this.error = reason; },
+      closed: () => { if (!this.stopping) this.error ??= 'Disconnected from the room.'; },
+    };
+    if (transport === 'socket') {
+      const configured = (import.meta as ImportMeta & { env?: { VITE_WS_URL?: string } }).env?.VITE_WS_URL;
+      const endpoint = configured || `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`;
+      this.link = socketLink(endpoint, events, () => this.stopping);
+    } else this.link = request.type === 'create' ? hostLink(world, events, transport) : guestLink(events, transport);
+    this.deadline = window.setTimeout(() => {
       if (this.room || this.stopping) return;
       this.error = 'Connection timed out. Check the room server and retry.';
       this.close();
-    }, 6500);
-    this.socket.addEventListener('open', () => this.send(request));
-    this.socket.addEventListener('error', () => {
-      if (!this.stopping) this.error = 'Room server unavailable. Try again or deploy solo.';
-    });
-    this.socket.addEventListener('close', () => {
-      window.clearTimeout(deadline);
-      if (!this.stopping) this.error ??= 'Disconnected from the room.';
-    });
-    this.socket.addEventListener('message', ({ data }) => {
-      const message = JSON.parse(String(data)) as ServerMessage;
-      switch (message.type) {
-        case 'room':
-          window.clearTimeout(deadline);
-          this.room = message.room;
-          break;
-        case 'state':
-          this.snapshot = message.state;
-          break;
-        case 'error':
-          this.error = message.message;
-          break;
-        case 'pong':
-          this.latency = Math.round(performance.now() - message.time);
-          break;
-      }
-    });
+    }, 10000);
+  }
+
+  private receive(message: ServerMessage): void {
+    switch (message.type) {
+      case 'room':
+        window.clearTimeout(this.deadline);
+        this.room = message.room;
+        break;
+      case 'state':
+        this.snapshot = message.state;
+        break;
+      case 'error':
+        this.error = message.message;
+        break;
+      case 'pong':
+        this.latency = Math.round(performance.now() - message.time);
+        break;
+    }
   }
 
   get playerId(): string { return this.room?.self ?? ''; }
@@ -61,8 +65,9 @@ export class OnlineSession implements Session {
       this.send({ type: 'ping', time: now });
     }
     this.outgoingTime += dt;
-    if (this.outgoingTime < 1 / 40 || this.snapshot?.phase !== 'active') return;
-    this.outgoingTime %= 1 / 40;
+    const interval = transportChoice() === 'socket' ? 1 / 40 : 1 / 20;
+    if (this.outgoingTime < interval || this.snapshot?.phase !== 'active') return;
+    this.outgoingTime %= interval;
     const player = this.snapshot.players.find(player => player.id === this.playerId);
     if (player) this.send({ type: 'input', seq: ++this.sequence, generation: player.generation, input });
   }
@@ -71,10 +76,9 @@ export class OnlineSession implements Session {
 
   close(): void {
     this.stopping = true;
-    this.socket.close();
+    window.clearTimeout(this.deadline);
+    this.link.close();
   }
 
-  private send(message: ClientMessage): void {
-    if (this.socket.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify(message));
-  }
+  private send(message: ClientMessage): void { this.link.send(message); }
 }

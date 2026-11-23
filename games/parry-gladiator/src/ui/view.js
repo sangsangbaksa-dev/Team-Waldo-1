@@ -125,8 +125,8 @@ export class View {
   online(settings, notice = '') {
     this.screen('online', 'Online duel', `<p class="lede">Host a private room or enter a friend’s five-character code.</p>
       <form class="online-form" autocomplete="off">
-        <label for="server-url">Room server</label>
-        <input id="server-url" type="url" placeholder="wss://your-room-server" spellcheck="false" required>
+        <label for="server-url">Room server (optional)</label>
+        <input id="server-url" type="url" placeholder="Leave empty to play online with no server" spellcheck="false">
         <label for="room-code">Room code</label>
         <input id="room-code" maxlength="5" placeholder="5 characters" autocapitalize="characters" spellcheck="false">
         <div class="menu-secondary">${btn('Create room', 'create', { primary: true })}<button type="submit" class="button">Join room</button></div>
@@ -142,8 +142,8 @@ export class View {
     if (form) for (const button of form.querySelectorAll('button')) button.disabled = busy;
   }
 
-  waiting(code) {
-    this.screen('waiting', 'Room open', `<p class="lede">Share this code and the room server address with your rival.</p>
+  waiting(code, relay = false) {
+    this.screen('waiting', 'Room open', `<p class="lede">${relay ? 'Share this code with your rival and keep this tab open.' : 'Share this code and the room server address with your rival.'}</p>
       <div class="room-token" id="room-token"></div><div class="menu-actions">${btn('Copy room code', 'copy', { primary: true })}</div>
       <p id="connection-status" class="connection-status" role="status">Waiting for your rival…</p>`, { back: true });
     this.find('#room-token').textContent = code;

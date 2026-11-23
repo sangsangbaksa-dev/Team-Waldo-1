@@ -25,6 +25,12 @@ Touch devices show a movement pad and combat buttons. The Heavy button becomes F
 
 ## Online rooms
 
+### No server needed (default)
+
+Leave the **Room server** field empty. The player who creates the room runs the duel in their browser and the rival connects through a Supabase Realtime Broadcast channel, so a static host such as Vercel is enough. Share the five-character code, keep the host tab open and visible, and the rival joins with the code. The host's browser is authoritative, so the host has no input delay. If the host closes the tab the room closes. For two tabs on one machine add `?relay=local` to the URL.
+
+### Dedicated room server (optional)
+
 Run the persistent Node process separately from the static frontend. Node.js 20 or later is recommended.
 
 ```sh
@@ -50,5 +56,6 @@ The server owns movement, damage, stamina, round results, and rematches. Clients
 - `src/application` runs the fixed-step simulation, opponents, practice, and the room protocol.
 - `src/infrastructure` handles rendering, audio, and WebSocket transport.
 - `src/ui` contains menus, HUD, settings, and control adapters. `src/main.js` connects the layers.
+- `src/application/rooms.js` holds the authoritative room rules. `server` drives them from WebSockets and `src/infrastructure/relay-network.js` drives them from a player's browser.
 - `server` hosts rooms and uses the same simulation as solo mode.
 - `tests` covers combat timing, rounds, practice progression, and the two-client WebSocket flow.

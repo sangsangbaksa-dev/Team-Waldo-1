@@ -1,0 +1,121 @@
+/* Last City visual layer — core layout and game logic stay in city.css. */
+.city-root{--lc-surface:rgba(14,22,25,.95);--lc-line:rgba(227,231,221,.19);--lc-accent:#d6bd91;--lc-muted:#b6c3bf;--lc-green:#94d5b3;--lc-blue:#a6d4dc;color:#eeeae2;background:#10191c}
+.city-root button:focus-visible{outline:2px solid #e6ca9b;outline-offset:3px}
+
+/* Readable, unified resource strip. */
+.city-root .c-tl{top:16px;left:16px;width:min(426px,calc(100vw - 32px));max-width:calc(100vw - 32px);gap:8px}
+.city-root .c-res{display:grid;grid-template-columns:minmax(0,1.3fr) repeat(2,minmax(0,1fr));gap:0;background:var(--lc-surface);border:1px solid var(--lc-line);border-radius:10px;box-shadow:0 8px 22px #0005;backdrop-filter:blur(5px);overflow:hidden}
+.city-root .c-res .c-resource{display:grid;gap:4px;align-content:center;min-width:0;padding:11px 13px;border:0;border-right:1px solid var(--lc-line);border-radius:0;background:transparent;box-shadow:none;color:#ece9df}
+.city-root .c-res .c-resource:last-child{border-right:0}
+.city-root .c-res .c-resource small{display:block;margin:0;color:var(--lc-muted);font-size:10px;font-weight:650;letter-spacing:.02em;line-height:1.3;opacity:1}
+.city-root .c-res .c-resource b{display:block;font-size:18px;line-height:1.15;font-weight:750;letter-spacing:-.025em;white-space:nowrap}
+.city-root .c-res .c-resource .ca{color:var(--lc-green)}
+.city-root .c-res .c-resource .cr{color:var(--lc-blue)}
+.city-root .c-res .c-resource em{color:#aed2bc;font-size:10px;font-style:normal;font-weight:600;white-space:nowrap}
+.city-root .c-res .c-resource i{color:var(--lc-muted);font-size:.82em;font-style:normal;font-weight:500}
+.city-root .c-quest{width:min(390px,100%);max-width:100%;padding:12px 14px;background:var(--lc-surface);border:1px solid var(--lc-line);border-left:3px solid var(--lc-accent);border-radius:8px;box-shadow:0 8px 22px #0005;backdrop-filter:blur(5px)}
+.city-root .c-quest:empty{display:none}
+.city-root .c-quest-head,.city-root .c-mission-top b{color:var(--lc-accent)}
+.city-root .c-quest-progress i,.city-root .c-overall-progress i,.city-root .c-mission-bar i{background:var(--lc-accent);transition:width .25s ease}
+.city-root .c-quest-progress,.city-root .c-overall-progress,.city-root .c-mission-bar{border-radius:3px}
+
+/* Top state line and map controls. */
+.city-root .c-tc{top:16px;background:var(--lc-surface);border:1px solid var(--lc-line);border-radius:9px;padding:9px 13px;gap:10px;box-shadow:0 8px 20px #0005;backdrop-filter:blur(5px);font-weight:600}
+.city-root .c-tc span:nth-child(2){color:#d3c1a2}
+.city-root .c-tr{top:16px;right:16px;gap:7px}
+.city-root #c-mini{width:166px;height:166px;border:1px solid var(--lc-line);border-radius:9px;box-shadow:0 10px 25px #0006}
+.city-root .c-topbtns{gap:5px}
+.city-root .c-topbtns button{min-height:36px;padding:8px 11px;background:var(--lc-surface);border:1px solid var(--lc-line);border-radius:7px;font-weight:650}
+
+/* Combat instrumentation, not decorative glow. */
+.city-root .c-bl{left:16px;bottom:16px;width:min(328px,62vw);padding:12px 14px;gap:8px;background:var(--lc-surface);border:1px solid var(--lc-line);border-radius:10px;box-shadow:0 12px 25px #0007;backdrop-filter:blur(5px)}
+.city-root .c-bars i{background:#75c5a1}
+.city-root .c-bars .ar i{background:#78aaca}
+.city-root .c-bars .xp i{background:var(--lc-accent)}
+.city-root .c-bars .hp.critical i{background:#d7615b}
+.city-root .c-slots button{min-width:0;padding:7px 5px;background:#ffffff0a;border:1px solid var(--lc-line);border-radius:6px;font-weight:650}
+.city-root .c-slots .on{background:var(--lc-accent);border-color:var(--lc-accent);color:#20231e;box-shadow:inset 0 -2px 0 #ae946c}
+.city-root .c-ammo b{font-weight:750}
+.city-root .c-skills span{background:#ffffff0b;border:1px solid #ffffff15;border-radius:5px}
+.city-root .c-bc{bottom:16px;max-width:calc(100vw - 375px);align-items:center;gap:4px;padding:5px;background:var(--lc-surface);border:1px solid var(--lc-line);border-radius:10px;box-shadow:0 12px 25px #0006;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;scrollbar-color:#786950 transparent;pointer-events:auto}
+.city-root .c-bc button{flex-shrink:0;padding:9px 11px;background:transparent;border:1px solid transparent;border-radius:6px;font-weight:650}
+.city-root .c-bc button:hover,.city-root .c-topbtns button:hover{background:rgba(214,189,145,.1);border-color:rgba(214,189,145,.5)}
+.city-root .c-bc .c-cmd-main,.city-root .c-actions .c-primary{background:var(--lc-accent);border-color:var(--lc-accent);color:#20231e}
+
+/* Panel, mission journal and menu share the same surface and emphasis. */
+.city-root .c-panel{left:16px;top:112px;bottom:216px;width:min(360px,calc(100vw - 32px));background:rgba(13,21,24,.97);border:1px solid var(--lc-line);border-radius:10px;box-shadow:0 18px 45px #000b}
+.city-root .c-panel header .on{color:var(--lc-accent)}
+.city-root .c-row{grid-template-columns:minmax(0,1fr) auto;padding:10px 12px;gap:3px 10px;background:#ffffff08;border:1px solid var(--lc-line);border-radius:7px}
+.city-root .c-row:hover:not(:disabled){border-color:rgba(214,189,145,.62);background:rgba(214,189,145,.08)}
+.city-root .c-missions{background:rgba(13,21,24,.98);border:1px solid rgba(214,189,145,.45);border-radius:12px;box-shadow:0 22px 60px #000c}
+.city-root .c-mission-card,.city-root .c-side-card{background:#ffffff08;border:1px solid var(--lc-line);border-radius:8px}
+.city-root .c-mission-card.active{background:rgba(214,189,145,.09);border-color:rgba(214,189,145,.7);border-left:3px solid var(--lc-accent);box-shadow:none}
+.city-root .c-mission-hint{background:#ffffff09;border-color:var(--lc-line)}
+.city-root .c-modal section{background:#111b1e;border:1px solid rgba(214,189,145,.36);border-radius:14px;box-shadow:0 30px 75px #000b}
+.city-root .c-kicker{color:var(--lc-accent)}
+.city-root .c-class{background:#ffffff08;border:1px solid var(--lc-line);border-radius:9px;padding:16px;transition:border-color .15s,background .15s}
+.city-root .c-class:hover{transform:none;border-color:var(--lc-accent);background:rgba(214,189,145,.09)}
+.city-root .c-tutcard.rec{background:#1a302c;border-color:#79af97;box-shadow:none}
+.city-root .c-result.win{box-shadow:0 22px 60px #000a}
+
+/* Middle-width displays leave a fixed lane between resources and the mini-map. */
+@media(min-width:761px) and (max-width:1320px){
+ .city-root .c-tc{left:454px;transform:none;max-width:calc(100vw - 646px);overflow:hidden}
+ .city-root .c-tc .c-citytime{min-width:0;overflow:hidden;text-overflow:ellipsis}
+}
+@media(min-width:761px) and (max-width:1010px){
+ .city-root .c-citytime{display:none}
+ .city-root .c-tc{gap:6px;padding:8px}
+}
+/* Keep controls separated from the health panel at intermediate widths. */
+@media(max-width:1120px) and (min-width:761px){
+ .city-root:not(.touch) .c-bc{right:16px;left:auto;transform:none;max-width:calc(100vw - 380px)}
+}
+@media(max-width:760px){
+ .city-root .c-tl{top:12px;left:12px;width:calc(100vw - 150px);max-width:calc(100vw - 150px)}
+ .city-root .c-res .c-resource{padding:8px 5px;text-align:center}
+ .city-root .c-res .c-resource b{font-size:clamp(11px,3.1vw,14px)}
+ .city-root .c-res .c-resource small{font-size:10px}
+ .city-root .c-res .c-resource em{font-size:9px}
+ .city-root .c-tr{top:12px;right:12px;gap:6px}
+ .city-root #c-mini{width:112px;height:112px}
+ .city-root .c-topbtns{gap:3px}
+ .city-root .c-topbtns button{min-height:34px;padding:7px 8px;font-size:11px}
+ .city-root .c-tc{top:190px;left:12px;transform:none;max-width:calc(100vw - 24px);padding:8px 10px;font-size:11px;gap:8px}
+ .city-root .c-tc>span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+ .city-root .c-feed{top:248px;right:12px;max-width:min(310px,65vw)}
+ .city-root .c-panel{left:12px;top:86px;bottom:12px}
+ .city-root:not(.touch) .c-bc{right:12px;left:auto;bottom:12px;transform:none;max-width:calc(100vw - 284px)}
+ .city-root .c-bl{left:12px;bottom:12px}
+ .city-root .c-missions{top:52px;max-height:calc(100dvh - 64px)}
+}
+@media(max-width:600px){
+ .city-root.touch .c-bl{left:10px;bottom:calc(208px + env(safe-area-inset-bottom));box-sizing:border-box;width:min(248px,calc(100vw - 122px));padding:9px 10px;gap:6px}
+ .city-root.touch .c-slots button{font-size:10px;padding:6px 3px}
+ .city-root.touch .c-ammo b{font-size:22px}
+ .city-root.touch .c-ammo span{font-size:10px}
+ .city-root.touch .c-touch{right:12px;bottom:calc(14px + env(safe-area-inset-bottom))}
+ .city-root.touch .c-fire{right:16px;bottom:calc(208px + env(safe-area-inset-bottom));width:78px;height:78px}
+ .city-root.touch .c-prompt{top:240px;bottom:auto;max-width:calc(100vw - 24px)}
+ .city-root.touch .c-toast{top:296px;bottom:auto;max-width:calc(100vw - 24px)}
+ .city-root.touch .c-feed{display:none}
+}
+@media(max-width:359px){
+ .city-root .c-tl{width:calc(100vw - 135px);max-width:calc(100vw - 135px)}
+ .city-root .c-res .c-resource{padding:7px 3px}
+ .city-root .c-res .c-resource b{font-size:10px}
+ .city-root.touch .c-bl{width:calc(100vw - 105px);bottom:calc(190px + env(safe-area-inset-bottom))}
+ .city-root.touch .c-touch{grid-template-columns:repeat(3,50px);gap:5px}
+ .city-root.touch .c-fire{bottom:calc(190px + env(safe-area-inset-bottom))}
+}
+@media(max-height:540px){
+ .city-root .c-tc{top:6px;left:50%;transform:translateX(-50%);max-width:calc(100vw - 30px)}
+ .city-root .c-feed{display:none}
+ .city-root.touch .c-bl{left:10px;bottom:10px;max-height:44vh;overflow:auto}
+ .city-root.touch .c-fire{right:200px;bottom:20px}
+ .city-root.touch .c-prompt{top:50px;bottom:auto}
+}
+@media(prefers-reduced-motion:reduce){
+ .city-root .c-banner,.city-root .c-toast,.city-root .c-tc .warn{animation:none;transition:none}
+ .city-root .c-class,.city-root .c-quest-progress i,.city-root .c-mission-bar i{transition:none}
+}

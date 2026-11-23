@@ -158,14 +158,6 @@ export function planTerrain(seed: number, mode: Mode, half: number, towns: Zone[
     const h = tall ? 8 + rng() * 5 : 2.5 + rng() * 4.5;
     if (free(x, z, r)) { t.hills.push({ x, z, r, h }); feats.push({ x, z, r }); i++; }
   }
-  // 오를 수 있는 완만한 능선: 고도는 위치 함수만으로 계산하므로
-  // 화면·물리·네트워크에서 동일한 값을 얻고 전용 충돌 상자가 필요하지 않습니다.
-  for (let i = 0, want = br ? 10 : 3, tries = 0; i < want && tries < 440; tries++) {
-    const r = (br ? 23 : 14) + rng() * (br ? 15 : 9), h = 1.7 + rng() * (br ? 2.3 : 1.5);
-    const x = (rng() * 2 - 1) * (half - r - 8), z = (rng() * 2 - 1) * (half - r - 8);
-    if (!free(x, z, r, 4)) continue;
-    t.rises.push({ x, z, r, h }); feats.push({ x, z, r }); i++;
-  }
   // 절벽: 문틈을 낸 긴 암벽
   for (let i = 0, want = br ? 6 : 1, tries = 0; i < want && tries < 300; tries++) {
     const len = (br ? 36 : 24) + rng() * (br ? 38 : 12), horiz = rng() < 0.5, x = (rng() * 2 - 1) * (half - len / 2 - 8), z = (rng() * 2 - 1) * (half - len / 2 - 8), rad = len * 0.5;
@@ -176,6 +168,14 @@ export function planTerrain(seed: number, mode: Mode, half: number, towns: Zone[
       const p0 = (a - 0.5) * len, p1 = (b - 0.5) * len; t.cliffs.push(horiz ? { x0: x + p0, x1: x + p1, z0: z - CLIFF_T / 2, z1: z + CLIFF_T / 2, h } : { x0: x - CLIFF_T / 2, x1: x + CLIFF_T / 2, z0: z + p0, z1: z + p1, h });
     }
     feats.push({ x, z, r: rad }); i++;
+  }
+  // 오를 수 있는 완만한 능선: 고도는 위치 함수만으로 계산하므로
+  // 화면·물리·네트워크에서 동일한 값을 얻고 전용 충돌 상자가 필요하지 않습니다.
+  for (let i = 0, want = br ? 10 : 3, tries = 0; i < want && tries < 440; tries++) {
+    const r = (br ? 23 : 14) + rng() * (br ? 15 : 9), h = 1.7 + rng() * (br ? 2.3 : 1.5);
+    const x = (rng() * 2 - 1) * (half - r - 8), z = (rng() * 2 - 1) * (half - r - 8);
+    if (!free(x, z, r, 4)) continue;
+    t.rises.push({ x, z, r, h }); feats.push({ x, z, r }); i++;
   }
   // 다리: 길이 물을 지나는 곳마다
   for (const [a, b] of roads) {

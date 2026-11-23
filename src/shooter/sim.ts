@@ -605,11 +605,16 @@ export class Match {
   /** 총알 한 발을 날립니다. 맞은 대상에게 피해를 주고 끝점을 ends 에 넣습니다. localOnly: 원격 선수가 쏜 탄은 내 쪽 선수만 맞힙니다. */
   bullet(shooter: number, id: WeaponId, ox: number, oy: number, oz: number, yaw: number, pitch: number, ends: number[], fromRemote: boolean): void {
     const def = WEAPONS[id], cp = Math.cos(pitch), dx = Math.cos(yaw) * cp, dy = Math.sin(pitch), dz = Math.sin(yaw) * cp;
-    const wallT = rayWorld(this.map, ox, oy, oz, dx, dy, dz, def.range);
+    const hit = { boxIndex: -1 };
+    const wallT = rayWorld(this.map, ox, oy, oz, dx, dy, dz, def.range, hit);
     let hitT = Math.min(wallT, def.range), target: Player | null = null, head = false, vcand: Vehicle | null = null, vt = Infinity;
     // 차체: 서 있는 차는 지도 상자가 먼저 막고, 움직이는 차는 여기서 막습니다(상자와 거의 같은 거리면 차가 맞은 것).
     for (const v of this.vehicles) { if (v.wreck) continue; const t = rayVehicle(v, ox, oy, oz, dx, dy, dz, def.range, groundHeight(this.map.terrain, v.x, v.z)); if (t < vt) { vt = t; vcand = v; } }
-    if (vcand && vt <= hitT + 0.9) hitT = Math.min(hitT, vt); else vcand = null;
+    // 주차 차량의 넓은 AABB와 실제 회전 차체 사이의 최대 0.9m 차이만 허용합니다.
+    // 가장 먼저 맞은 것이 벽/지형이면 그 뒤에 바짝 붙은 자동차도 관통 피해를 입지 않습니다.
+    if (vcand && (vt <= hitT + 0.03 || (hit.boxIndex === vcand.box && vt <= hitT + 0.9))) {
+      hitT = Math.min(hitT, vt);
+    } else vcand = null;
     for (const q of this.players) {
       if (!q.alive || q.id === shooter || q.air || q.veh >= 0) continue;
       const px = ox - q.x, pz = oz - q.z, a = dx * dx + dz * dz; if (a < 1e-9) continue;

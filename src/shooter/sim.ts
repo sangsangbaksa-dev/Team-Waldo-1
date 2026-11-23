@@ -295,7 +295,7 @@ export class Match {
   leaveVehicle(p: Player, hurt = true): void {
     const v = this.vehicles[p.veh]; p.veh = -1; if (!v) return; v.driver = -1; const spot = this.exitSpot(v); p.x = spot.x; p.z = spot.z; p.vx = p.vz = 0; p.cd = Math.max(p.cd, 0.45); pushOut(this.map, p, PLAYER.radius);
     this.events.push({ t: 'veh', stage: 'exit', id: v.id, x: v.x, z: v.z });
-    if (hurt && Math.abs(v.speed) > 14) this.damage(p, (Math.abs(v.speed) - 14) * 2.2, -1, 'vehicle', false, p.x, 1, p.z, false);
+    if (hurt && Math.abs(v.speed) > 14) this.damage(p, (Math.abs(v.speed) - 14) * 2.2, -1, 'vehicle', false, p.x, groundHeight(this.map.terrain, p.x, p.z) + 1, p.z, false);
   }
   /** 운전 중인 선수: 위치는 차를 따라가고, E 로 내립니다(발사·치료는 못 합니다). */
   private stepDriver(p: Player, dt: number): void {
@@ -323,7 +323,7 @@ export class Match {
     this.events.push({ t: 'veh', stage: 'boom', id: v.id, x: v.x, z: v.z }); this.events.push({ t: 'nade', stage: 'boom', id: by, x: v.x, y: groundHeight(this.map.terrain, v.x, v.z) + 1, z: v.z }); this.sounds.push({ x: v.x, z: v.z, t: this.t, by });
     for (const q of this.players) {
       if (!q.alive || q.air || q.veh >= 0) continue; const d = Math.hypot(q.x - v.x, q.z - v.z); if (d > DRIVE.boomR) continue;
-      let dmg = DRIVE.boomDmg * (1 - d / DRIVE.boomR); if (q === drv) dmg = Math.max(dmg, 55); this.damage(q, dmg, by, 'vehicle', false, q.x, 1.2, q.z, false);
+      let dmg = DRIVE.boomDmg * (1 - d / DRIVE.boomR); if (q === drv) dmg = Math.max(dmg, 55); this.damage(q, dmg, by, 'vehicle', false, q.x, groundHeight(this.map.terrain, q.x, q.z) + 1.2, q.z, false);
     }
     for (const o of this.vehicles) { if (o === v || o.wreck) continue; const d = Math.hypot(o.x - v.x, o.z - v.z); if (d < DRIVE.boomR + 2) this.hurtVehicle(o, 160 * (1 - d / (DRIVE.boomR + 2)), by); }
   }
@@ -348,7 +348,7 @@ export class Match {
         // 정면 충돌: 튕겨 나오고 속도에 따라 차체와 운전자가 다칩니다
         v.speed = -v.speed * 0.25; this.events.push({ t: 'veh', stage: 'crash', id: v.id, x: v.x, z: v.z }); this.sounds.push({ x: v.x, z: v.z, t: this.t, by: v.driver });
         if (sp > DRIVE.crashMin) {
-          if (drv && sp > 9) this.damage(drv, (sp - 9) * DRIVE.crashDriver, -1, 'vehicle', false, v.x, 1, v.z, false);
+          if (drv && sp > 9) this.damage(drv, (sp - 9) * DRIVE.crashDriver, -1, 'vehicle', false, v.x, groundHeight(this.map.terrain, v.x, v.z) + 1, v.z, false);
           const body = (sp - DRIVE.crashMin) * DRIVE.crashBody; if (this.authority) this.hurtVehicle(v, body, -1); else this.events.push({ t: 'vhurt', id: v.id, dmg: body }); if (v.wreck) continue;
         }
       }
@@ -365,7 +365,7 @@ export class Match {
     for (const q of this.players) {
       if (!q.alive || q.air || q.veh >= 0 || q.id === v.driver) continue; const dx = q.x - v.x, dz = q.z - v.z; if (Math.abs(dx) > 7 || Math.abs(dz) > 7) continue;
       const lx = dx * c + dz * s, lz = -dx * s + dz * c; if (Math.abs(lx) > v.w / 2 + 0.3 || Math.abs(lz) > v.d / 2 + 0.3 || (v.hits.get(q.id) ?? -9) > this.t - DRIVE.runCd) continue;
-      v.hits.set(q.id, this.t); this.damage(q, sp * DRIVE.runDmg, v.driver, 'vehicle', false, q.x, 1, q.z, false); if (!v.remote) v.speed *= 0.94;
+      v.hits.set(q.id, this.t); this.damage(q, sp * DRIVE.runDmg, v.driver, 'vehicle', false, q.x, groundHeight(this.map.terrain, q.x, q.z) + 1, q.z, false); if (!v.remote) v.speed *= 0.94;
     }
   }
 
@@ -390,7 +390,7 @@ export class Match {
       this.events.push({ t: 'nade', stage: 'boom', id: -1, x: sh.x, y: 0.4, z: sh.z });
       for (const q of this.players) {
         if (!q.alive || q.air) continue; const d = Math.hypot(q.x - sh.x, q.z - sh.z); if (d > RED.blast) continue;
-        let dmg = RED.dmg * (1 - d / RED.blast); if (this.map.buildings.some(b => Math.abs(q.x - b.x) < b.w / 2 && Math.abs(q.z - b.z) < b.d / 2)) dmg *= 0.5; if (dmg >= 1) this.damage(q, dmg, -1, 'bomb', false, q.x, 1.2, q.z, false);
+        let dmg = RED.dmg * (1 - d / RED.blast); if (this.map.buildings.some(b => Math.abs(q.x - b.x) < b.w / 2 && Math.abs(q.z - b.z) < b.d / 2)) dmg *= 0.5; if (dmg >= 1) this.damage(q, dmg, -1, 'bomb', false, q.x, groundHeight(this.map.terrain, q.x, q.z) + 1.2, q.z, false);
       }
       for (const v of this.vehicles) { if (v.wreck) continue; const d = Math.hypot(v.x - sh.x, v.z - sh.z); if (d < RED.blast) this.hurtVehicle(v, 170 * (1 - d / RED.blast), -1); }
     }
@@ -481,7 +481,7 @@ export class Match {
         if (!q.alive || q.air || q.veh >= 0) continue; const targetY = groundHeight(this.map.terrain, q.x, q.z) + 1;
         const d = Math.hypot(q.x - n.x, q.z - n.z, (targetY - n.y) * 0.5); if (d > NADE.radius) continue;
         let dmg = NADE.dmg * (1 - d / NADE.radius) ** 1.2; if (!lineClear(this.map, n.x, Math.max(groundHeight(this.map.terrain, n.x, n.z) + 0.3, n.y), n.z, q.x, targetY, q.z)) dmg *= 0.3; if (dmg < 3) continue;
-        this.damage(q, dmg, n.owner, 'grenade', false, q.x, 1.2, q.z, false);
+        this.damage(q, dmg, n.owner, 'grenade', false, q.x, targetY + 0.2, q.z, false);
       }
     }
   }
@@ -574,7 +574,7 @@ export class Match {
       if (hitT < def.range) this.events.push({ t: 'hit', victim: -1, attacker: shooter, dmg: 0, head: false, x: ex, y: ey, z: ez, wall: true });
       if (vcand) {
         const fall = hitT <= def.falloff ? 1 : Math.max(0.4, 1 - 0.6 * (hitT - def.falloff) / Math.max(1, def.range - def.falloff)), dmg = def.dmg * def.pellets * fall;
-        const drv = vcand.driver >= 0 ? this.players[vcand.driver] : null; if (drv && drv.id !== shooter) this.damage(drv, dmg * DRIVE.driverCut, shooter, id, false, drv.x, 1.2, drv.z, false);
+        const drv = vcand.driver >= 0 ? this.players[vcand.driver] : null; if (drv && drv.id !== shooter) this.damage(drv, dmg * DRIVE.driverCut, shooter, id, false, drv.x, groundHeight(this.map.terrain, drv.x, drv.z) + 1.2, drv.z, false);
         this.hurtVehicle(vcand, dmg * DRIVE.shotCut, shooter);
       }
     }

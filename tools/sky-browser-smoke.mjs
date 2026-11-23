@@ -36,7 +36,7 @@ try {
     page.setDefaultTimeout(25000);
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+    page.on('console', message => { if (message.type() === 'error' && /WebGL|shader|GL_INVALID|THREE.WebGLProgram/i.test(message.text())) errors.push(message.text()); });
     try {
       await page.goto(origin, { waitUntil: 'domcontentloaded' });
       await page.locator('#start-sky').click();

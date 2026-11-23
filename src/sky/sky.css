@@ -141,3 +141,32 @@
   .sk-help[open]>summary{margin-bottom:8px}
   .sk-modal .sk-help .sk-how{margin:0}
 }
+
+/* Countermeasure ready state is legible on mobile and does not look tappable during cooldown. */
+.sk-btns #sk-b-flare.cooldown{opacity:.48;filter:saturate(.45);border-color:#8699a355;box-shadow:inset 0 1px #ffffff12}
+.sk-btns #sk-b-flare:disabled{cursor:not-allowed}
+
+/* HUD alerts: use urgency rather than coloring every positive event red. */
+.sk-alert[data-level="info"]{color:#c9eef3;letter-spacing:.04em;text-shadow:0 2px 8px #041725,0 0 12px #65b3d166}
+.sk-alert[data-level="combat"]{color:#ffe0ae;text-shadow:0 2px 7px #241307,0 0 16px #e7a55d88}
+.sk-alert[data-level="danger"]{color:#ffb1a6;text-shadow:0 0 16px #db3f35,0 2px 7px #250707}
+.sk-alert:not([data-level="danger"]){animation:none}
+.sk-alert[data-level="danger"]:not(:empty){animation:sk-alert-pulse 1s ease-in-out infinite}
+@media(prefers-reduced-motion:reduce){.sk-alert[data-level="danger"]{animation:none!important}}
+
+/* Mobile parity: cockpit camera can be toggled without a physical keyboard. */
+.sk-camera{display:none;position:absolute;right:max(12px,env(safe-area-inset-right));top:max(61px,calc(env(safe-area-inset-top) + 61px));width:44px;min-height:46px;padding:5px 3px;flex-direction:column;align-items:center;justify-content:center;gap:1px;border-radius:10px;border:1px solid #b3e9f16b;background:linear-gradient(145deg,#16394edb,#081b2cdb);box-shadow:inset 0 1px #ffffff24,0 6px 18px #00131e55;color:#edfaff;font:700 10px system-ui;cursor:pointer;touch-action:manipulation}
+.sk-camera .sk-ic{width:18px;height:18px;margin:0;color:#bfe9ff}
+.sk-camera[aria-pressed="true"]{border-color:#ffcd8e;color:#ffdfb2;background:#283a42ed}
+@media (pointer:coarse){.sk-camera{display:flex}}
+@media (prefers-reduced-motion:reduce){.sk-camera{transition:none}}
+
+/* Landscape phones cannot fit four tall action keys beside the radar.
+   Dock a compact row at the bottom and shift radar vertically in the HUD. */
+@media (pointer:coarse) and (orientation:landscape) and (max-height:560px){
+  .sk-btns{flex-direction:row;right:max(12px,env(safe-area-inset-right));bottom:max(10px,env(safe-area-inset-bottom));gap:6px}
+  .sk-btns button{width:62px;height:46px;min-height:44px;border-radius:10px;font-size:10px}
+  .sk-btns button .sk-ic{width:18px;height:18px}
+  .sk-camera{top:max(61px,calc(env(safe-area-inset-top) + 61px))}
+  .sk-gauges{bottom:max(10px,env(safe-area-inset-bottom))}
+}

@@ -102,6 +102,24 @@ export class SkyView {
     for (const ring of this.rings) { this.scene.remove(ring.mesh); this.disposeObject(ring.mesh); }
     this.rings.length = 0;
   }
+  /**
+   * Aircraft and projectiles reuse numeric IDs between sorties. Remove all
+   * session-owned models before a restart so an old boss/ace cannot be reused
+   * as the new fighter with the same ID (including its old material).
+   */
+  resetSession(): void {
+    this.resetEffects();
+    for (const collection of [this.meshes, this.missileMeshes, this.pickMeshes]) {
+      for (const mesh of collection.values()) {
+        this.scene.remove(mesh);
+        this.disposeObject(mesh);
+      }
+      collection.clear();
+    }
+    this.jetIds.clear(); this.missileIds.clear(); this.pickupIds.clear();
+    this.tracers.geometry.setDrawRange(0, 0);
+    this.tracerHeads.geometry.setDrawRange(0, 0);
+  }
   private pickMeshes = new Map<number, THREE.Mesh>(); private meshes = new Map<number, THREE.Group>(); private missileMeshes = new Map<number, THREE.Mesh>();
   private firePool!: BillboardPool; private smokePool!: BillboardPool; private level = 0; private readonly tmpColor = new THREE.Color();
   private tracers: THREE.LineSegments; private tracerPos = new Float32Array(400 * 6);
@@ -151,13 +169,21 @@ export class SkyView {
     const lowSea = this.quality === 'low';
     const seaMat = new THREE.MeshStandardMaterial({
       color: 0x28687a, metalness: lowSea ? 0.12 : 0.42, roughness: lowSea ? 0.72 : 0.3,
-      normalMap: this.seaNormalMap, normalScale: new THREE.Vector2(lowSea ? 0.18 : 0.7, lowSea ? 0.18 : 0.7),
+      normalMap: this.seaNormalMap, normalScale: new THREE.Vector2(lowSea ? 0.18 : 0.52, lowSea ? 0.18 : 0.52),
     });
-    this.seaNormalMap.repeat.set(lowSea ? 32 : 160, lowSea ? 32 : 160);
+    // The previous 160 repeats across the ocean caused dense, shimmering
+    // interference at the horizon. Keep broad-scale waves with softer detail.
+    this.seaNormalMap.repeat.set(lowSea ? 32 : 72, lowSea ? 32 : 72);
     seaMat.onBeforeCompile = shader => {
       shader.uniforms.skyTime = this.seaTime; shader.uniforms.seaOrigin = this.seaOrigin;
       shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float skyTime; uniform vec2 seaOrigin; varying vec2 vSeaW;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvSeaW = vec2(position.x + seaOrigin.x, position.y - seaOrigin.y); transformed.z += sin(vSeaW.x * 0.008 + skyTime * 0.7) * 1.2 + cos(vSeaW.y * 0.011 - skyTime * 0.5) * 0.8;');
-      shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform float skyTime; varying vec2 vSeaW;').replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nfloat ripple = sin(vSeaW.x * 0.035 + skyTime * 0.8) * cos(vSeaW.y * 0.027 - skyTime * 0.6); roughnessFactor = clamp(roughnessFactor + ripple * 0.11, 0.08, 1.0);').replace('#include <color_fragment>', '#include <color_fragment>\nfloat wave = sin(vSeaW.x * .022 + skyTime * .5) * cos(vSeaW.y * .034 - skyTime * .4); float foam = smoothstep(.83, .98, wave) * .16; diffuseColor.rgb = mix(diffuseColor.rgb * (.86 + wave * .08), vec3(.65,.79,.77), foam);');
+      // Avoid the repeated oval whitecaps created by a single low-frequency
+      // sine/cosine threshold. Layer broad and small nonaligned swells instead.
+      const roughnessRipple = lowSea ? 0.018 : 0.055;
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform float skyTime; varying vec2 vSeaW;')
+        .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>\nfloat ripple = sin(vSeaW.x * 0.028 + vSeaW.y * 0.015 + skyTime * 0.32) * cos(vSeaW.y * 0.021 - skyTime * 0.25); roughnessFactor = clamp(roughnessFactor + ripple * ${roughnessRipple.toFixed(3)}, 0.08, 1.0);`)
+        .replace('#include <color_fragment>', `#include <color_fragment>\nfloat swellA = sin(vSeaW.x * 0.008 + vSeaW.y * 0.004 + skyTime * 0.23); float swellB = sin(vSeaW.x * 0.004 - vSeaW.y * 0.013 - skyTime * 0.19); float fine = sin(vSeaW.x * 0.035 + skyTime * 0.46) * cos(vSeaW.y * 0.029 - skyTime * 0.41); diffuseColor.rgb *= 0.96 + swellA * 0.025 + swellB * 0.025 + fine * 0.012;`);
     };
     const sea = new THREE.Mesh(new THREE.PlaneGeometry(20000, 20000, 80, 80), seaMat); sea.rotation.x = -Math.PI / 2; sea.position.y = -1; sea.receiveShadow = true; sc.add(sea); this.sea = sea;
     // 섬 지형
@@ -199,7 +225,7 @@ export class SkyView {
     const smoothWater = this.quality === 'low' || l >= 2;
     sea.roughness = smoothWater ? 0.72 : 0.3;
     sea.metalness = smoothWater ? 0.12 : 0.42;
-    sea.normalScale.setScalar(smoothWater ? 0.18 : 0.7);
+    sea.normalScale.setScalar(smoothWater ? 0.18 : 0.52);
   }
   resize(w: number, h: number): void { this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); }
 
@@ -217,6 +243,25 @@ export class SkyView {
     for (let i = 0; i < n / 2; i++) this.emit(pos, this.v1.set((Math.random() - 0.5) * 40, 10 + Math.random() * 30, (Math.random() - 0.5) * 40), 2 + Math.random(), sz, 1.6, 'smoke');
     for (let i = 0; i < (big ? 10 : 5); i++) this.emit(pos, this.v1.set((Math.random() - 0.5) * 180, Math.random() * 120, (Math.random() - 0.5) * 180), 0.45 + Math.random() * 0.4, 3, -0.3, 'fire', 0xffd07a);
     const d = pos.distanceTo(this.camera.position); if (!this.reducedMotion && d < 700) this.shake = Math.max(this.shake, (big ? 1 : 0.5) * (1 - d / 700));
+  }
+  /** Bright countermeasure flares deploy in diverging streaks behind both wings.
+   * Uses the pooled billboards; no new Three.js mesh or texture per activation. */
+  deployFlares(pos: THREE.Vector3, orientation: THREE.Quaternion): void {
+    for (const side of [-1, 1]) {
+      const origin = this.v3.set(side * 5, -1.8, 5).applyQuaternion(orientation).add(pos);
+      for (let i = 0; i < 10; i++) {
+        const velocity = this.v2.set(side * (35 + Math.random() * 25),
+          -12 + Math.random() * 18, 35 + Math.random() * 35).applyQuaternion(orientation);
+        this.emit(origin, velocity, 0.6 + Math.random() * 0.6,
+          10 + Math.random() * 8, -0.6, 'fire', i % 3 === 0 ? 0xfffae1 : 0xffbb66);
+      }
+      for (let i = 0; i < 5; i++) {
+        const velocity = this.v2.set(side * (20 + Math.random() * 14),
+          -5 + Math.random() * 12, 25 + Math.random() * 20).applyQuaternion(orientation);
+        this.emit(origin, velocity, 1.1 + Math.random() * 0.5,
+          12 + Math.random() * 7, 1.1, 'smoke', 0xb0bbc4);
+      }
+    }
   }
   spark(pos: THREE.Vector3): void { for (let i = 0; i < 3; i++) this.emit(pos, this.v1.set((Math.random() - 0.5) * 60, (Math.random() - 0.5) * 60, (Math.random() - 0.5) * 60), 0.25, 8, 0.2, 'fire', 0xffe08a); }
   kick(a: number): void { if (!this.reducedMotion) this.shake = Math.max(this.shake, a); }
@@ -295,8 +340,14 @@ export class SkyView {
     this.seaTime.value = this.reducedMotion ? 0 : time;
     if (this.sun.castShadow) { const pp = sim.player.pos; this.sun.target.position.set(pp.x, 0, pp.z); this.sun.position.copy(this.sun.target.position).addScaledVector(this.shadowSun, 2200); }
     if (!this.reducedMotion) for (const cloud of this.clouds) { cloud.position.x += 6 * dt; if (cloud.position.x > 3600) cloud.position.x -= 7200; }
-    this.dome.position.copy(this.camera.position); this.sunGlow.position.copy(this.camera.position).addScaledVector(this.v1.copy(this.sun.position).normalize(), 7000); this.sea.position.x = this.camera.position.x; this.sea.position.z = this.camera.position.z; this.seaOrigin.value.set(this.camera.position.x, this.camera.position.z); // 바다 무늬를 월드에 고정(카메라를 따라다니면 정지한 듯 보임)
-    this.seaNormalMap.offset.set((this.reducedMotion ? 0 : time * 0.004) + this.camera.position.x / 125, (this.reducedMotion ? 0 : time * 0.0027) - this.camera.position.z / 125);
+    this.dome.position.copy(this.camera.position); this.sunGlow.position.copy(this.camera.position).addScaledVector(this.shadowSun, 7000); this.sea.position.x = this.camera.position.x; this.sea.position.z = this.camera.position.z; this.seaOrigin.value.set(this.camera.position.x, this.camera.position.z); // 바다 무늬를 월드에 고정(카메라를 따라다니면 정지한 듯 보임)
+    // The low-quality sea uses fewer repeated normal-map tiles. Keep texture
+    // motion world-anchored using the actual repeat count instead of the
+    // high-quality 125m tile width, or low-end devices see sliding ripples.
+    const normalTileX = this.seaNormalMap.repeat.x / 20000;
+    const normalTileZ = this.seaNormalMap.repeat.y / 20000;
+    this.seaNormalMap.offset.set((this.reducedMotion ? 0 : time * 0.004) + this.camera.position.x * normalTileX,
+      (this.reducedMotion ? 0 : time * 0.0027) - this.camera.position.z * normalTileZ);
   }
 
   /** 추적 카메라(부드러운 지연 + 속도감 FOV + 폭발 흔들림). boost: 0~1 */
@@ -325,6 +376,20 @@ export class SkyView {
   project(v: THREE.Vector3): { x: number; y: number; behind: boolean } {
     const p = this.v1.copy(v).project(this.camera); return { x: (p.x + 1) / 2, y: (1 - p.y) / 2, behind: p.z > 1 };
   }
-  private disposeObject(object: THREE.Object3D): void { object.traverse(o => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); const mat = m.material as THREE.Material | THREE.Material[] | undefined; if (Array.isArray(mat)) mat.forEach(x => x.dispose()); else mat?.dispose?.(); }); }
+  private disposeObject(object: THREE.Object3D): void {
+    // Models, instanced panel batches, and atmosphere sprites share resources.
+    // Disposing each shared geometry/material only once avoids redundant GPU
+    // resource invalidation when a sortie is restarted or the game is closed.
+    const geometries = new Set<THREE.BufferGeometry>(), materials = new Set<THREE.Material>();
+    object.traverse(child => {
+      const mesh = child as THREE.Mesh;
+      if (mesh.geometry && !geometries.has(mesh.geometry)) geometries.add(mesh.geometry);
+      const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
+      if (Array.isArray(mat)) mat.forEach(m => materials.add(m));
+      else if (mat) materials.add(mat);
+    });
+    geometries.forEach(geometry => geometry.dispose());
+    materials.forEach(material => material.dispose());
+  }
   dispose(): void { this.disposeObject(this.scene); this.fire.dispose(); this.smoke.dispose(); this.cloudTex.dispose(); this.sunTex.dispose(); this.environment?.dispose(); this.atmosphereTextures.forEach(t => t.dispose()); disposeArt(); }
 }

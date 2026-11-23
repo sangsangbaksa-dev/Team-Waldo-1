@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { DIFFS, GUN_RANGE, SkySim, WORLD_R, terrainY, type Input } from '../../src/sky/sim';
+import { DIFFS, GUN_RANGE, MISSILE_DMG, SkySim, WORLD_R, terrainY, type Input } from '../../src/sky/sim';
 
 const neutral: Input = { pitch: 0, roll: 0, throttle: 0.5, fire: false, missile: false, flare: false };
 
@@ -166,5 +166,253 @@ describe('SKY WAR 발사체·보급품 회귀 테스트', () => {
     expect(sim.player.id).toBe(1);
     expect(sim.warnT).toBe(0);
     expect(sim.enemies()).toHaveLength(0);
+  });
+});
+
+describe('SKY WAR 열추적 해제 후 안전성', () => {
+  it('플레어로 락온이 풀린 미사일도 고속으로 기체를 가로지르면 실제 충돌한다', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.player.pos.set(0, 900, 0);
+    sim.missiles.push({
+      id: 901, owner: 77, team: 'enemy',
+      pos: new THREE.Vector3(0, 900, 70),
+      vel: new THREE.Vector3(0, 0, -4000),
+      target: 0, life: 3, alive: true,
+    });
+    sim.step(0.05, neutral);
+    // Unguided missiles share the same damage balance as guided enemy missiles.
+    expect(sim.player.hp).toBeCloseTo(100 - MISSILE_DMG * 0.6);
+    expect(sim.missiles).toHaveLength(0);
+  });
+
+  it('락온 해제된 미사일은 비행 경로가 충분히 떨어진 기체에 맞지 않는다', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.player.pos.set(0, 900, 0);
+    sim.missiles.push({
+      id: 902, owner: 77, team: 'enemy',
+      pos: new THREE.Vector3(100, 900, 70),
+      vel: new THREE.Vector3(0, 0, -4000),
+      target: 0, life: 3, alive: true,
+    });
+    sim.step(0.05, neutral);
+    expect(sim.player.hp).toBe(100);
+    expect(sim.missiles).toHaveLength(1);
+  });
+});
+
+describe('SKY WAR crash and wave transition', () => {
+  it('the aircraft crash on the intermission deadline ends the run without spawning a phantom wave', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.intermission = 0;
+    sim.player.pos.set(0, -10, 2200);
+    sim.step(1 / 60, neutral);
+    expect(sim.player.alive).toBe(false);
+    expect(sim.over).toBe(true);
+    expect(sim.wave).toBe(0);
+    expect(sim.enemies()).toHaveLength(0);
+    expect(sim.events.some(event => event.t === 'wave')).toBe(false);
+  });
+});
+
+describe('SKY WAR missile terrain and collision ordering', () => {
+  it('a fast unguided missile cannot pass through an island ridge to hit a jet behind it', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.player.pos.set(1950, 110, 300);
+    sim.intermission = 1e9;
+    sim.missiles.push({
+      id: 1001, owner: 99, team: 'enemy',
+      pos: new THREE.Vector3(450, 110, 300),
+      vel: new THREE.Vector3(30000, 0, 0),
+      target: 0, life: 3, alive: true,
+    });
+    sim.step(0.05, neutral);
+    expect(sim.player.hp).toBe(100);
+    expect(sim.missiles).toHaveLength(0);
+    const explosion = sim.events.find(e => e.t === 'boom');
+    expect(explosion?.t).toBe('boom');
+    if (explosion?.t === 'boom') {
+      expect(explosion.pos.x).toBeGreaterThan(450);
+      expect(explosion.pos.x).toBeLessThan(1600);
+    }
+  });
+
+  it('a missile hits an aircraft above a hill before the missile strikes the hill', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    const hill = terrainY(1200, 300);
+    sim.player.pos.set(1200, hill + 45, 300);
+    sim.missiles.push({
+      id: 1002, owner: 99, team: 'enemy',
+      pos: new THREE.Vector3(1200, hill + 140, 300),
+      vel: new THREE.Vector3(0, -4500, 0),
+      target: 0, life: 3, alive: true,
+    });
+    sim.step(0.05, neutral);
+    expect(sim.player.hp).toBeCloseTo(100 - MISSILE_DMG * 0.6);
+    expect(sim.missiles).toHaveLength(0);
+  });
+
+  it('two jets along an unguided missile path are hit in physical travel order', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.player.pos.set(0, 900, 0);
+    const near = sim.makeJet('enemy', 'fighter', new THREE.Vector3(0, 900, -80), 0.8);
+    const far = sim.makeJet('enemy', 'fighter', new THREE.Vector3(0, 900, -150), 0.8);
+    // The enemy jets are created near the player's current flight path.
+    sim.missiles.push({
+      id: 1003, owner: sim.player.id, team: 'player',
+      pos: new THREE.Vector3(0, 900, 40),
+      vel: new THREE.Vector3(0, 0, -5000),
+      target: 0, life: 3, alive: true,
+    });
+    const nearHp = near.hp, farHp = far.hp;
+    sim.step(0.05, neutral);
+    expect(near.hp).toBeLessThan(nearHp);
+    expect(far.hp).toBe(farHp);
+  });
+});
+
+describe('SKY WAR finite consumables and kill accounting', () => {
+  it('does not consume full-health repair pickups, and reports the actual amount after damage', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.intermission = 1e9;
+    const item = { id: 1201, kind: 'repair' as const, pos: sim.player.pos.clone(), life: 10 };
+    sim.pickups.push(item);
+    sim.step(0.05, neutral);
+    expect(sim.player.hp).toBe(100);
+    expect(sim.pickups).toHaveLength(1);
+    expect(sim.events.some(e => e.t === 'pickup')).toBe(false);
+
+    sim.player.hp = 93;
+    sim.step(0.05, neutral);
+    expect(sim.player.hp).toBe(100);
+    expect(sim.pickups).toHaveLength(0);
+    expect(sim.events.find(e => e.t === 'pickup')).toMatchObject({ kind: 'repair', amount: 7 });
+  });
+
+  it('keeps ammo/shield pickups when full, then applies only the available capacity', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.intermission = 1e9;
+    sim.player.missiles = 8;
+    sim.shield = 50;
+    sim.pickups.push(
+      { id: 1202, kind: 'ammo', pos: sim.player.pos.clone(), life: 10 },
+      { id: 1203, kind: 'shield', pos: sim.player.pos.clone(), life: 10 },
+    );
+    sim.step(0.05, neutral);
+    expect(sim.pickups).toHaveLength(2);
+    sim.events.length = 0;
+    sim.player.missiles = 7;
+    sim.shield = 47;
+    sim.step(0.05, neutral);
+    expect(sim.player.missiles).toBe(8);
+    expect(sim.shield).toBe(50);
+    expect(sim.pickups).toHaveLength(0);
+    expect(sim.events.filter(e => e.t === 'pickup')).toEqual(expect.arrayContaining([
+      { t: 'pickup', kind: 'ammo', amount: 1 },
+      { t: 'pickup', kind: 'shield', amount: 3 },
+    ]));
+  });
+
+  it('refuses duplicate death events and duplicate kill rewards', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    const enemy = sim.makeJet('enemy', 'fighter', new THREE.Vector3(0, 900, -400), 0.8);
+    sim.kill(enemy, sim.player.id);
+    const score = sim.score, kills = sim.kills, events = sim.events.length, drops = sim.pickups.length;
+    sim.kill(enemy, sim.player.id);
+    expect(sim.score).toBe(score);
+    expect(sim.kills).toBe(kills);
+    expect(sim.events.length).toBe(events);
+    expect(sim.pickups.length).toBe(drops);
+  });
+});
+
+describe('SKY WAR cannon terrain and first-impact order', () => {
+  function launchBullet(sim: SkySim): void {
+    sim.fireGun(sim.player, 0);
+    const bullet = sim.bullets[0]!;
+    bullet.pos.set(450, 110, 300);
+    bullet.vel.set(30000, 0, 0);
+    bullet.life = 1;
+  }
+
+  it('cannon fire is stopped by a mountain before hitting a jet behind it', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.intermission = 1e9;
+    const behind = sim.makeJet('enemy', 'fighter', new THREE.Vector3(1910, 110, 300), 0.8);
+    launchBullet(sim);
+    const hp = behind.hp;
+    sim.step(0.05, neutral);
+    expect(behind.hp).toBe(hp);
+    expect(sim.hits).toBe(0);
+    expect(sim.bullets).toHaveLength(0);
+  });
+
+  it('a near-side jet takes cannon damage even if the same bullet would subsequently hit terrain', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.intermission = 1e9;
+    const near = sim.makeJet('enemy', 'fighter', new THREE.Vector3(650, 110, 300), 0.8);
+    const hp = near.hp;
+    launchBullet(sim);
+    sim.step(0.05, neutral);
+    expect(near.hp).toBeLessThan(hp);
+    expect(sim.hits).toBe(1);
+    expect(sim.bullets).toHaveLength(0);
+  });
+
+  it('the first of two aircraft in the same bullet path takes the impact', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.intermission = 1e9;
+    const near = sim.makeJet('enemy', 'fighter', new THREE.Vector3(650, 110, 300), 0.8);
+    const farther = sim.makeJet('enemy', 'fighter', new THREE.Vector3(730, 110, 300), 0.8);
+    const nearHp = near.hp, fartherHp = farther.hp;
+    launchBullet(sim);
+    sim.step(0.05, neutral);
+    expect(near.hp).toBeLessThan(nearHp);
+    expect(farther.hp).toBe(fartherHp);
+    expect(sim.hits).toBe(1);
+  });
+});
+
+describe('SKY WAR narrow ridge tunneling', () => {
+  it('intercepts a very fast projectile crossing a narrow high-altitude island crest', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.intermission = 1e9;
+    const from = new THREE.Vector3(1670.3, 139.7, -1832.2);
+    const to = new THREE.Vector3(3719.1, 139.7, -1251.9);
+    sim.missiles.push({
+      id: 1291, owner: 999, team: 'enemy',
+      pos: from.clone(), vel: to.clone().sub(from).divideScalar(0.05),
+      target: 0, life: 3, alive: true,
+    });
+    sim.step(0.05, neutral);
+    expect(sim.missiles).toHaveLength(0);
+    const explosion = sim.events.find(e => e.t === 'boom');
+    expect(explosion?.t).toBe('boom');
+    if (explosion?.t === 'boom') {
+      expect(explosion.pos.x).toBeGreaterThan(1900);
+      expect(explosion.pos.x).toBeLessThan(2300);
+      expect(explosion.pos.y).toBeCloseTo(139.7, 3);
+    }
+  });
+});
+
+describe('SKY WAR guided missile missed-path regression', () => {
+  it('does not damage a distant locked jet when both missile and terrain contact times are infinite', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.intermission = 1e9;
+    sim.combo = 2;
+    sim.comboT = 1;
+    sim.missiles.push({
+      id: 1999, owner: 999, team: 'enemy',
+      pos: sim.player.pos.clone().add(new THREE.Vector3(0, 0, 200)),
+      vel: new THREE.Vector3(0, 0, 1),
+      target: sim.player.id, life: 10, alive: true, nearPlayer: true,
+    });
+    sim.step(0.05, neutral);
+    expect(sim.player.hp).toBe(100);
+    expect(sim.shield).toBe(5);
+    expect(sim.comboT).toBeGreaterThan(5);
+    expect(sim.missiles).toHaveLength(1);
+    expect(sim.missiles[0]!.pos.toArray().every(Number.isFinite)).toBe(true);
+    expect(sim.events.filter(e => e.t === 'hit')).toHaveLength(0);
   });
 });

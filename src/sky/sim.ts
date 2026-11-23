@@ -14,7 +14,15 @@ const ISLANDS = [
 ];
 export function terrainY(x: number, z: number): number {
   let h = 0;
-  for (const i of ISLANDS) { const d = Math.hypot(x - i.x, z - i.z) / i.r; if (d < 1) { const k = 1 - d * d; h = Math.max(h, i.h * k * k * (0.8 + 0.2 * Math.sin(x * 0.011) * Math.cos(z * 0.013))); } }
+  for (const island of ISLANDS) {
+    const dx = x - island.x, dz = z - island.z;
+    const radiusSq = island.r * island.r, distanceSq = dx * dx + dz * dz;
+    if (distanceSq >= radiusSq) continue;
+    // Avoid 7 square roots per terrain query (tens of thousands on terrain
+    // generation, and repeated collision samples under active firefights).
+    const k = 1 - distanceSq / radiusSq;
+    h = Math.max(h, island.h * k * k * (0.8 + 0.2 * Math.sin(x * 0.011) * Math.cos(z * 0.013)));
+  }
   return h;
 }
 
@@ -34,7 +42,7 @@ export interface Bullet { pos: THREE.Vector3; vel: THREE.Vector3; life: number; 
 export type SimEvent =
   | { t: 'gun'; id: number } | { t: 'missile'; id: number } | { t: 'boom'; pos: THREE.Vector3; big: boolean }
   | { t: 'hit'; id: number; pos: THREE.Vector3; by?: number } | { t: 'nolock' } | { t: 'kill'; by: number; id: number; points?: number; combo?: number } | { t: 'lock'; id: number } | { t: 'lockdone' }
-  | { t: 'warn' } | { t: 'stall' } | { t: 'wave'; n: number; modifier?: string } | { t: 'crash'; id: number } | { t: 'flare'; id: number } | { t: 'pickup'; kind: 'repair' | 'ammo' | 'shield' } | { t: 'boss' } | { t: 'dodge'; points: number } | { t: 'overdrive' };
+  | { t: 'warn' } | { t: 'stall' } | { t: 'wave'; n: number; modifier?: string } | { t: 'crash'; id: number } | { t: 'flare'; id: number } | { t: 'pickup'; kind: 'repair' | 'ammo' | 'shield'; amount: number } | { t: 'boss' } | { t: 'dodge'; points: number } | { t: 'overdrive' };
 
 export interface Input { pitch: number; roll: number; yaw?: number; throttle: number; fire: boolean; missile: boolean; flare: boolean; boost?: boolean; }
 export interface Pickup { id: number; kind: 'repair' | 'ammo' | 'shield'; pos: THREE.Vector3; life: number; } // pitch/roll -1..1
@@ -64,6 +72,51 @@ function safeSpawn(position: THREE.Vector3): THREE.Vector3 {
   position.y = Math.max(position.y, terrainY(position.x, position.z) + 220);
   return position;
 }
+/**
+ * Earliest point at which a projectile's swept path reaches sea or island terrain.
+ * The simulation can cover long distances in one tick (particularly when a
+ * previously-guided projectile flies unguided). End-point-only tests allow it
+ * to pass through mountain ridges; sample the segment and refine first contact.
+ * Returns a [0,1] fraction, or null when the entire path is above ground.
+ */
+function projectileTerrainImpact(from: THREE.Vector3, to: THREE.Vector3): number | null {
+  const dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z;
+  const distance = Math.hypot(dx, dy, dz);
+  // Ordinary 50ms ticks need only 2-3 samples; a rare very long segment
+  // needs more to avoid tunneling through a narrow mountain summit.
+  const subdivisions = Math.min(64, Math.max(2, Math.ceil(distance / 25)));
+  for (let i = 0; i <= subdivisions; i++) {
+    const t = i / subdivisions;
+    const x = from.x + dx * t, y = from.y + dy * t, z = from.z + dz * t;
+    if (y > Math.max(SEA_Y, terrainY(x, z)) + 2) continue;
+    if (i === 0) return 0;
+    // Locate the earliest terrain crossing to compare its order against hits.
+    let lo = (i - 1) / subdivisions, hi = t;
+    for (let k = 0; k < 5; k++) {
+      const mid = (lo + hi) * 0.5;
+      const mx = from.x + dx * mid, my = from.y + dy * mid, mz = from.z + dz * mid;
+      if (my <= Math.max(SEA_Y, terrainY(mx, mz)) + 2) hi = mid;
+      else lo = mid;
+    }
+    return hi;
+  }
+  return null;
+}
+
+/** Entry time of a projectile path into a jet's hit sphere; Infinity if none. */
+function projectileJetImpact(from: THREE.Vector3, displacement: THREE.Vector3,
+  lengthSq: number, jet: Jet, radius: number): number {
+  const relative = tmpV.copy(jet.pos).sub(from);
+  const c = relative.lengthSq() - radius * radius;
+  if (c <= 0) return 0;
+  if (lengthSq <= 0) return Infinity;
+  const along = relative.dot(displacement);
+  const disc = along * along - lengthSq * c;
+  if (disc < 0) return Infinity;
+  const entry = (along - Math.sqrt(disc)) / lengthSq;
+  return entry >= 0 && entry <= 1 ? entry : Infinity;
+}
+
 const MAX_BULLETS = 400;
 
 export function forward(j: { q: THREE.Quaternion }, out = new THREE.Vector3()): THREE.Vector3 { return out.copy(FWD).applyQuaternion(j.q); }
@@ -151,7 +204,9 @@ export class SkySim {
     for (const j of this.jets) if (j.alive) this.collideTerrain(j);
     this.comboT -= dt; if (this.comboT <= 0) this.combo = 0;
     // 웨이브 관리
-    if (!this.over && this.enemies().length === 0) { this.intermission -= dt; if (this.intermission <= 0) { this.startWave(); this.intermission = 4; if (p.alive) { p.hp = Math.min(p.maxHp, p.hp + 20); p.missiles = Math.min(8, p.missiles + 2); } } }
+    // Do not start another wave in the same tick the player crashes. The
+    // game-over state is finalized below, after projectile and terrain hits.
+    if (p.alive && !this.over && this.enemies().length === 0) { this.intermission -= dt; if (this.intermission <= 0) { this.startWave(); this.intermission = 4; p.hp = Math.min(p.maxHp, p.hp + 20); p.missiles = Math.min(8, p.missiles + 2); } }
     // 미사일 경고
     this.warnT -= dt; let warn = false;
     for (const m of this.missiles) if (m.alive && m.target === p.id) warn = true;
@@ -291,8 +346,16 @@ export class SkySim {
     const p = this.player;
     for (const k of this.pickups) {
       k.life -= dt; if (k.life <= 0 || !p.alive || p.pos.distanceToSquared(k.pos) > 55 * 55) continue;
-      k.life = 0; this.events.push({ t: 'pickup', kind: k.kind });
-      if (k.kind === 'repair') p.hp = Math.min(p.maxHp, p.hp + 30); else if (k.kind === 'ammo') p.missiles = Math.min(8, p.missiles + 2); else this.shield = Math.min(50, this.shield + 30);
+      // Keep full-stat supplies in the world so the pilot can return when
+      // damaged or short on missiles. Never claim '+30' for a capped resource.
+      const amount = k.kind === 'repair' ? Math.min(30, p.maxHp - p.hp)
+        : k.kind === 'ammo' ? Math.min(2, 8 - p.missiles) : Math.min(30, 50 - this.shield);
+      if (amount <= 0) continue;
+      k.life = 0;
+      if (k.kind === 'repair') p.hp += amount;
+      else if (k.kind === 'ammo') p.missiles += amount;
+      else this.shield += amount;
+      this.events.push({ t: 'pickup', kind: k.kind, amount });
     }
     this.pickups = this.pickups.filter(k => k.life > 0);
   }
@@ -312,23 +375,38 @@ export class SkySim {
         const cur = tmpV2.copy(m.vel).normalize(); const sp = Math.min(m.vel.length() + 260 * dt, 520);
         const turn = Math.min(1, dt * 2.4 * (m.team === 'player' ? 1.15 : 0.8)); cur.lerp(want, turn).normalize(); m.vel.copy(cur).multiplyScalar(sp);
               } else m.vel.multiplyScalar(1 + dt * 0.1);
-      // 이전 위치부터 새 위치까지 선분 충돌: 프레임 드롭 때 기체를 관통하지 않습니다.
+      // Both guided and flare-decoyed missiles need continuous collision:
+      // compare *first entry* into an aircraft with the first terrain impact.
       const prev = bulletTest.copy(m.pos);
       m.pos.addScaledVector(m.vel, dt);
+      const segment = tmpV2.copy(m.pos).sub(prev);
+      const len2 = segment.lengthSq();
+      const terrainAt = Math.min(prev.y, m.pos.y) > 382 ? null : projectileTerrainImpact(prev, m.pos);
+      let victim: Jet | undefined;
+      let victimAt = Infinity;
       if (tgt) {
-        const segment = tmpV2.copy(m.pos).sub(prev);
-        const len2 = segment.lengthSq();
-        const fraction = len2 > 0 ? THREE.MathUtils.clamp(tmpV.copy(tgt.pos).sub(prev).dot(segment) / len2, 0, 1) : 0;
-        if (tmpV.copy(prev).addScaledVector(segment, fraction).distanceToSquared(tgt.pos) < 28 * 28) {
-          this.damage(tgt, m.team === 'player' ? MISSILE_DMG : MISSILE_DMG * 0.6, m.owner, m.pos);
-          this.events.push({ t: 'boom', pos: m.pos.clone(), big: false });
-          m.alive = false;
-          continue;
+        const t = projectileJetImpact(prev, segment, len2, tgt, 28);
+        // Infinity means no sphere intersection. Infinity <= Infinity must
+        // never count as an impact when there is also no terrain collision.
+        if (Number.isFinite(t) && t <= (terrainAt ?? Infinity)) { victim = tgt; victimAt = t; }
+      } else {
+        for (const jet of this.jets) {
+          if (!jet.alive || jet.team === m.team) continue;
+          const t = projectileJetImpact(prev, segment, len2, jet, 20);
+          if (t < victimAt && t <= (terrainAt ?? Infinity)) { victim = jet; victimAt = t; }
         }
       }
-      if (m.life <= 0 || m.pos.y < terrainY(m.pos.x, m.pos.z) + 2 || m.pos.y < SEA_Y) { this.events.push({ t: 'boom', pos: m.pos.clone(), big: false }); m.alive = false; }
-      // 우연한 근접 폭발
-      else if (!tgt) for (const j of this.jets) if (j.alive && j.team !== m.team && j.pos.distanceTo(m.pos) < 20) { this.damage(j, MISSILE_DMG, m.owner, m.pos); this.events.push({ t: 'boom', pos: m.pos.clone(), big: false }); m.alive = false; break; }
+      if (victim) {
+        m.pos.copy(prev).addScaledVector(segment, victimAt);
+        this.damage(victim, m.team === 'player' ? MISSILE_DMG : MISSILE_DMG * 0.6, m.owner, m.pos);
+        this.events.push({ t: 'boom', pos: m.pos.clone(), big: false });
+        m.alive = false;
+      } else if (terrainAt !== null) {
+        // Explode at the ridge/sea surface, not beyond it or inside the island.
+        m.pos.copy(prev).addScaledVector(segment, terrainAt);
+        this.events.push({ t: 'boom', pos: m.pos.clone(), big: false });
+        m.alive = false;
+      }
     }
     this.missiles = this.missiles.filter(m => m.alive);
   }
@@ -338,28 +416,38 @@ export class SkySim {
       if (!b.alive) continue;
       const remaining = Math.max(0, Math.min(dt, b.life));
       b.life -= dt;
-      const prev = tmpV.copy(b.pos);
+      const prev = bulletTest.copy(b.pos);
       b.pos.addScaledVector(b.vel, remaining);
-      // 산과 섬 뒤의 적을 지형 너머로 맞히는 탄환 관통을 차단합니다.
-      // 현 맵의 최고 지형은 380m: 충분히 높은 탄환은 복잡한 지형 검사를 건너뜁니다.
-      if (Math.min(prev.y, b.pos.y) < 400) {
-        const halfX = (prev.x + b.pos.x) * 0.5;
-        const halfY = (prev.y + b.pos.y) * 0.5;
-        const halfZ = (prev.z + b.pos.z) * 0.5;
-        if (b.pos.y <= terrainY(b.pos.x, b.pos.z) + 2 || halfY <= terrainY(halfX, halfZ) + 2) {
-          b.alive = false; continue;
-        }
-      }
+      const segment = tmpV2.copy(b.pos).sub(prev);
+      const lengthSq = segment.lengthSq();
+      // Above the highest mountain, skip costly land queries altogether.
+      const terrainAt = Math.min(prev.y, b.pos.y) > 382
+        ? null : projectileTerrainImpact(prev, b.pos);
+      let victim: Jet | undefined;
+      let victimAt = terrainAt ?? Infinity;
       for (const j of this.jets) {
         if (!j.alive || j.team === b.team) continue;
-        // 선분-구 판정(고속 탄 통과 방지)
-        const r = j.kind === 'boss' ? 36 : j.kind === 'bomber' ? 22 : 13; const seg = tmpV2.copy(b.pos).sub(prev); const len2 = seg.lengthSq();
-        const tt = len2 > 0 ? THREE.MathUtils.clamp(bulletTest.copy(j.pos).sub(prev).dot(seg) / len2, 0, 1) : 0;
-        if (bulletTest.copy(prev).addScaledVector(seg, tt).distanceTo(j.pos) < r) { if (b.team === 'player') this.hits++; this.damage(j, b.team === 'player' ? GUN_DMG : GUN_DMG * 0.35, b.owner, b.pos); b.alive = false; break; }
+        const radius = j.kind === 'boss' ? 36 : j.kind === 'bomber' ? 22 : 13;
+        const fraction = projectileJetImpact(prev, segment, lengthSq, j, radius);
+        if (fraction < victimAt) { victim = j; victimAt = fraction; }
+      }
+      if (victim) {
+        b.pos.copy(prev).addScaledVector(segment, victimAt);
+        if (b.team === 'player') this.hits++;
+        this.damage(victim, b.team === 'player' ? GUN_DMG : GUN_DMG * 0.35, b.owner, b.pos);
+        b.alive = false;
+      } else if (terrainAt !== null) {
+        b.pos.copy(prev).addScaledVector(segment, terrainAt);
+        b.alive = false;
       }
       if (b.life <= 0 || b.pos.y < SEA_Y) b.alive = false;
     }
-    let live = 0; for (const b of this.bullets) { if (b.alive) this.bullets[live++] = b; else this.bulletPool.push(b); } this.bullets.length = live;
+    let live = 0;
+    for (const b of this.bullets) {
+      if (b.alive) this.bullets[live++] = b;
+      else this.bulletPool.push(b);
+    }
+    this.bullets.length = live;
   }
 
   damage(j: Jet, dmg: number, by: number, at: THREE.Vector3): void {
@@ -367,6 +455,7 @@ export class SkySim {
     if (j.hp <= 0) this.kill(j, by);
   }
   kill(j: Jet, by: number): void {
+    if (!j.alive) return; // repeated collision events must not duplicate drops/points
     j.alive = false; this.events.push({ t: 'boom', pos: j.pos.clone(), big: true });
     let points = 0;
     if (j.team === 'enemy' && (j.kind === 'boss' || Math.random() < 0.25)) { const drop = Math.random(); this.pickups.push({ id: this.nid++, kind: j.kind === 'boss' ? 'repair' : drop < 0.34 ? 'shield' : drop < 0.67 ? 'repair' : 'ammo', pos: j.pos.clone(), life: 25 }); }

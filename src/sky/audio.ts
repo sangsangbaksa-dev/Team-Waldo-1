@@ -6,15 +6,25 @@ export class SkyAudio {
   private motor: { osc: OscillatorNode; gain: GainNode; filt: BiquadFilterNode; noiseGain: GainNode; noiseFilt: BiquadFilterNode; noise: AudioBufferSourceNode } | null = null;
 
   get enabled(): boolean { return this.eng.enabled; }
-  set enabled(on: boolean) { this.eng.setEnabled(on); }
-  setEnabled(on: boolean): void { this.eng.setEnabled(on); }
+  set enabled(on: boolean) { this.setEnabled(on); }
+  setEnabled(on: boolean): void {
+    this.eng.setEnabled(on);
+    if (!on) this.stopEngine();
+  }
   unlock(): void { this.eng.unlock(); }
+  /** Suspend one-shot sound effects as well as the perpetual engine loop. */
+  pause(on: boolean): void {
+    if (on) this.stopEngine();
+    this.eng.setPaused(on);
+  }
 
   engine(on: boolean, thrust01: number): void {
     const c = this.eng.ctx, bus = this.eng.bus, noise = this.eng.noise;
     if (!c || !bus || !noise) return;
     if (!this.motor) {
-      if (!on) return;
+      // Muted sessions should not start two permanent oscillator/noise sources
+      // just to send them through a zero-gain bus. They start if sound is enabled.
+      if (!on || !this.enabled) return;
       const osc = c.createOscillator(), filt = c.createBiquadFilter(), gain = c.createGain();
       const src = c.createBufferSource(), noiseFilt = c.createBiquadFilter(), noiseGain = c.createGain();
       osc.type = 'sawtooth'; osc.frequency.value = 48; filt.type = 'lowpass'; filt.frequency.value = 300; gain.gain.value = 0;
@@ -40,10 +50,24 @@ export class SkyAudio {
     m.noiseFilt.frequency.setTargetAtTime(500 + k * 1800, c.currentTime, 0.16);
   }
 
+  /** The jet's looping oscillator and noise should not consume CPU beneath
+   * pause/result dialogs. Keep the Web Audio context for one-shot UI sounds. */
+  stopEngine(): void {
+    const motor = this.motor;
+    if (!motor) return;
+    this.motor = null;
+    for (const source of [motor.osc, motor.noise]) {
+      try { source.stop(); } catch { /* already stopped */ }
+      try { source.disconnect(); } catch { /* context closed */ }
+    }
+    for (const node of [motor.filt, motor.gain, motor.noiseFilt, motor.noiseGain]) {
+      try { node.disconnect(); } catch { /* context closed */ }
+    }
+  }
+
   dispose(): void {
-    try { this.motor?.osc.stop(); } catch { /* 이미 종료됨 */ }
-    try { this.motor?.noise.stop(); } catch { /* 이미 종료됨 */ }
-    this.motor = null; this.eng.dispose();
+    this.stopEngine();
+    this.eng.dispose();
   }
 
   play(name: string, dist = 0): void {
@@ -58,6 +82,7 @@ export class SkyAudio {
     switch (name) {
       case 'gun': n(0.045, 0.34, 2200, 0.9); t(190, 0.05, 0.2, 'square', -90); break;
       case 'missile': n(0.42, 0.28, 900, 0.6, 'lowpass'); t(520, 0.4, 0.16, 'sawtooth', 900); break;
+      case 'flare': n(0.22, 0.24, 1300, 0.8); t(680, 0.25, 0.13, 'triangle', -480); break;
       case 'boom': n(0.65, 0.7, 420, 0.5, 'lowpass'); t(58, 0.65, 0.58, 'sine', -30); break;
       case 'hit': n(0.055, 0.27, 3000, 2); t(1250, 0.06, 0.16, 'triangle', -350); break;
       case 'hurt': n(0.14, 0.3, 500, 0.7, 'lowpass'); t(180, 0.18, 0.24, 'sawtooth', -90); [660, 440].forEach((f, i) => t(f, 0.12, 0.12, 'square', 0, 0.12 + i * 0.16)); break;

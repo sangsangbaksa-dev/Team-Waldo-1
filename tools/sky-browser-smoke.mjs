@@ -1,7 +1,7 @@
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 
 const port = 4188, origin = 'http://127.0.0.1:' + port;
 const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
@@ -43,6 +43,11 @@ try {
       await page.goto(origin, { waitUntil: 'domcontentloaded' });
       await page.locator('#start-sky').click();
       await page.locator('#sk-title').waitFor({ state: 'visible' });
+      const titleDrawsBefore = await page.evaluate(() => window.__sky.renderer.info.render.frame);
+      await sleep(310);
+      const titleDrawsAfter = await page.evaluate(() => window.__sky.renderer.info.render.frame);
+      assert.ok(titleDrawsAfter - titleDrawsBefore <= 1,
+        'The opaque title screen must not keep drawing hidden WebGL frames');
       if (size.name === 'mobile') {
         assert.equal(await page.locator('.sk-help').evaluate(el => el.open), false, 'Mobile help should be collapsed by default');
         const startButton = await page.locator('#sk-start').boundingBox();
@@ -62,6 +67,17 @@ try {
       await page.locator('.sk-hud').waitFor({ state: 'visible' });
       await page.waitForFunction(() => !!window.__sky?.sim);
       assert.equal(await page.evaluate(() => document.pointerLockElement === null), true, 'Default controls should not lock pointer');
+      if (size.name === 'desktop') {
+        // A canceled mouse event must not leave its queued missile press active.
+        await page.evaluate(() => {
+          const canvas = document.querySelector('.sk-canvas');
+          canvas.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 2, pointerType: 'mouse' }));
+          canvas.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, button: -1, pointerType: 'mouse' }));
+        });
+        await sleep(140);
+        assert.doesNotMatch(await page.locator('#sk-alert').innerText(), /락온 대상 없음/,
+          'A canceled right-click must not queue a phantom missile press');
+      }
       await page.evaluate(() => { window.__sky.sim.intermission = 0; });
       await page.waitForFunction(() => window.__sky?.sim?.wave >= 1);
       const flight = await page.evaluate(() => {
@@ -71,9 +87,75 @@ try {
       assert.ok(flight.enemies > 0, 'The first wave must spawn enemies');
       assert.ok(flight.calls > 0, 'Three.js must issue WebGL draw calls');
       assert.ok(flight.altitude > 100, 'Aircraft must have a valid starting altitude');
+      const seaOffset = await page.evaluate(() => {
+        const view = window.__sky.view, t = view.seaNormalMap, p = view.camera.position;
+        return { x: t.offset.x, y: t.offset.y, expectedX: p.x * t.repeat.x / 20000,
+          expectedY: -p.z * t.repeat.y / 20000 };
+      });
+      assert.ok(Math.abs(seaOffset.x - seaOffset.expectedX) < 0.01 &&
+        Math.abs(seaOffset.y - seaOffset.expectedY) < 0.01,
+      'The sea normal map must remain fixed in world space at every texture quality');
       const playerOnScreen = await page.evaluate(() => window.__sky.view.project(window.__sky.sim.player.pos));
       assert.ok(Math.abs(playerOnScreen.x - 0.5) < 0.12, 'Third-person camera should begin centered behind the jet');
+      const sunDirectionError = await page.evaluate(() => {
+        const v = window.__sky.view;
+        return v.sunGlow.position.clone().sub(v.camera.position).distanceTo(v.shadowSun.clone().multiplyScalar(7000));
+      });
+      assert.ok(sunDirectionError < 0.01,
+        'The visible sky sun must use the fixed directional-light vector, not the player offset');
       await page.screenshot({ path: 'browser-artifacts/sky-flight-' + size.name + '.png', animations: 'disabled' });
+      await page.waitForFunction(() => !document.querySelector('#sk-banner')?.classList.contains('on'));
+      await page.screenshot({ path: 'browser-artifacts/sky-combat-' + size.name + '.png', animations: 'disabled' });
+      if (size.name === 'mobile') {
+        const viewButton = page.locator('#sk-camera');
+        assert.equal(await viewButton.isVisible(), true, 'Mobile pilots need a cockpit toggle');
+        await viewButton.click();
+        await page.waitForFunction(() => document.querySelector('.sk-root')?.classList.contains('cockpit'));
+        assert.equal(await viewButton.getAttribute('aria-pressed'), 'true');
+        await page.waitForFunction(() => window.__sky.view.meshes.get(window.__sky.sim.player.id)?.visible === false);
+        await page.screenshot({ path: 'browser-artifacts/sky-cockpit-mobile.png', animations: 'disabled' });
+        await viewButton.click();
+        await page.waitForFunction(() => !document.querySelector('.sk-root')?.classList.contains('cockpit'));
+        await page.waitForFunction(() => window.__sky.view.meshes.get(window.__sky.sim.player.id)?.visible === true);
+        assert.equal(await viewButton.getAttribute('aria-pressed'), 'false');
+        // Landscape touch layouts need a horizontal action dock, not a tall
+        // column overlapping the view/pause keys or the right-hand radar.
+        await page.setViewportSize({ width: 844, height: 390 });
+        const landscape = await page.evaluate(() => {
+          const fire = document.querySelector('#sk-b-fire').getBoundingClientRect();
+          const boost = document.querySelector('#sk-b-boost').getBoundingClientRect();
+          const camera = document.querySelector('#sk-camera').getBoundingClientRect();
+          return { fire: { x: fire.x, y: fire.y, right: fire.right, bottom: fire.bottom },
+            boost: { x: boost.x, y: boost.y, right: boost.right, bottom: boost.bottom },
+            camera: { x: camera.x, y: camera.y, right: camera.right, bottom: camera.bottom } };
+        });
+        assert.ok(landscape.fire.y > 295 && landscape.boost.y > 295 &&
+          landscape.fire.x < landscape.boost.x && landscape.boost.right <= 844,
+          'Landscape touch controls must form a reachable bottom row');
+        assert.ok(landscape.camera.bottom < landscape.boost.y,
+          'Cockpit switch must not overlap landscape boost key');
+        await page.screenshot({ path: 'browser-artifacts/sky-landscape-mobile.png', animations: 'disabled' });
+        await page.setViewportSize({ width: 390, height: 844 });
+      }
+      if (size.name === 'desktop') {
+        // Simulate a browser that dispatches pointerlockchange before the
+        // Escape keydown. One physical Escape must only pause once.
+        await page.evaluate(() => {
+          const canvas = document.querySelector('.sk-canvas');
+          let pointer = canvas;
+          Object.defineProperty(document, 'pointerLockElement', {
+            configurable: true, get: () => pointer,
+          });
+          document.dispatchEvent(new Event('pointerlockchange'));
+          pointer = null;
+          document.dispatchEvent(new Event('pointerlockchange'));
+          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+          delete document.pointerLockElement;
+        });
+        await page.locator('#sk-paused').waitFor({ state: 'visible' });
+        await page.locator('#sk-resume').click();
+        await page.locator('#sk-paused').waitFor({ state: 'hidden' });
+      }
       const clouds = await page.evaluate(() => {
         const view = window.__sky.view;
         const total = view.clouds.length;
@@ -127,21 +209,65 @@ try {
           'Two-finger missile tap should not trigger the gun as well');
       }
       if (size.name === 'mobile') {
+        const particlesBeforeFlare = await page.evaluate(() => window.__sky.view.firePool.idx);
         await page.locator('#sk-b-flare').dispatchEvent('pointerdown', { pointerId: 12, pointerType: 'touch' });
+        // Adaptive tier 3 intentionally culls roughly half of visual particles,
+        // so assert a visible burst without assuming the highest quality tier.
+        await page.waitForFunction(before => window.__sky.view.firePool.idx >= before + 4, particlesBeforeFlare);
+        await page.screenshot({ path: 'browser-artifacts/sky-flare-mobile.png', animations: 'disabled' });
         await page.waitForFunction(() => window.__sky?.sim?.player?.flare > 0);
+        await page.waitForFunction(() => document.querySelector('#sk-b-flare')?.disabled);
+        assert.match(await page.locator('#sk-b-flare').innerText(), /[1-4]초/,
+          'The touch flare button must show its cooldown');
+        await page.evaluate(() => {
+          const button = document.querySelector('#sk-b-boost');
+          button.setPointerCapture = () => {}; // synthetic event has no active browser pointer
+          button.dispatchEvent(new PointerEvent('pointerdown', {
+            bubbles: true, pointerType: 'touch', pointerId: 777, button: 0,
+          }));
+        });
+        await page.waitForFunction(() => window.__sky.sim.player.boosting === true);
+        await page.evaluate(() => {
+          const button = document.querySelector('#sk-b-boost');
+          button.dispatchEvent(new PointerEvent('lostpointercapture', {
+            bubbles: true, pointerType: 'touch', pointerId: 777,
+          }));
+          delete button.setPointerCapture;
+        });
+        await page.waitForFunction(() => window.__sky.sim.player.boosting === false);
       }
       const runsBefore = await page.evaluate(() => JSON.parse(localStorage.getItem('waldo.sky.v1') || '{}').runs || 0);
       await page.evaluate(() => {
         window.__sky.sim.time = 6.5;
         document.querySelector('#sk-alert').textContent = 'OLD WARNING';
       });
-      if (size.name === 'desktop') await page.keyboard.press('p');
-      else await page.locator('#sk-pause').click();
+      if (size.name === 'desktop') {
+        // A synthetic held key has no corresponding keyup: pausing must clear it.
+        await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true })));
+        await page.waitForFunction(() => window.__sky.sim.player.boosting === true);
+        await page.keyboard.press('p');
+      } else await page.locator('#sk-pause').click();
       await page.locator('#sk-paused').waitFor({ state: 'visible' });
+      await page.screenshot({ path: 'browser-artifacts/sky-paused-' + size.name + '.png', animations: 'disabled' });
+      // Preserve the old model reference across restart to detect reused IDs.
+      await page.evaluate(() => {
+        window.__skyPreviousAircraft = window.__sky.view.meshes.get(window.__sky.sim.player.id);
+      });
       const pausedAt = await page.evaluate(() => window.__sky.sim.time);
+      const pausedDraws = await page.evaluate(() => window.__sky.renderer.info.render.frame);
       await sleep(180);
       const afterPause = await page.evaluate(() => window.__sky.sim.time);
+      const afterPausedDraws = await page.evaluate(() => window.__sky.renderer.info.render.frame);
       assert.equal(afterPause, pausedAt, 'Pause must freeze simulation time');
+      assert.equal(afterPausedDraws, pausedDraws, 'Pause must also stop expensive WebGL redraws');
+      if (size.name === 'desktop') {
+        await page.locator('#sk-resume').click();
+        await page.waitForFunction(time => window.__sky.sim.time > time, pausedAt);
+        assert.equal(await page.evaluate(() => window.__sky.sim.player.boosting), false,
+          'Lost keyup during pause must not leave boost engaged on resume');
+        await page.keyboard.press('p');
+        await page.locator('#sk-paused').waitFor({ state: 'visible' });
+      }
       await page.locator('#sk-restart').click();
       await page.locator('#sk-paused').waitFor({ state: 'hidden' });
       await page.waitForFunction(() => window.__sky?.sim?.time > 0);
@@ -155,6 +281,23 @@ try {
       assert.equal(restart.runs, runsBefore + 1, 'Restart must preserve the previous sortie record');
       assert.equal(restart.alert, '', 'Restart must clear stale combat warnings');
       assert.equal(restart.rings, 0, 'Restart must clear lingering explosion rings');
+      // Simultaneous damage and pickup notifications should leave the safety
+      // warning visible; event array ordering must not decide severity.
+      await page.evaluate(() => {
+        const sim = window.__sky.sim;
+        sim.events.push({ t: 'hit', id: sim.player.id, pos: sim.player.pos.clone(), by: 999 });
+        sim.events.push({ t: 'pickup', kind: 'repair', amount: 20 });
+      });
+      await page.waitForFunction(() => document.querySelector('#sk-alert')?.textContent.includes('피격'));
+      assert.equal(await page.locator('#sk-alert').getAttribute('data-level'), 'danger',
+        'Critical damage should remain prominent even after a pickup event');
+      await page.waitForFunction(() => document.querySelector('#sk-alert')?.textContent === '');
+      await page.evaluate(() => window.__sky.sim.events.push({ t: 'pickup', kind: 'repair', amount: 20 }));
+      await page.waitForFunction(() => document.querySelector('#sk-alert')?.textContent.includes('수리'));
+      assert.equal(await page.locator('#sk-alert').getAttribute('data-level'), 'info',
+        'Ordinary pickup notifications should use the non-emergency style');
+      assert.equal(await page.evaluate(() => window.__skyPreviousAircraft === window.__sky.view.meshes.get(window.__sky.sim.player.id)), false,
+        'Restart must not reuse an old aircraft mesh even when the entity ID is recycled');
       // A true incoming missile warning must survive a simultaneous arena warning.
       await page.evaluate(() => {
         const sim = window.__sky.sim;
@@ -181,10 +324,19 @@ try {
         sim.damage(sim.player, 99999, -5, sim.player.pos);
       });
       await page.locator('#sk-end').waitFor({ state: 'visible' });
+      await page.screenshot({ path: 'browser-artifacts/sky-result-' + size.name + '.png', animations: 'disabled' });
       assert.match(await page.locator('#sk-end-t').innerText(), /격추/, 'Game over report should appear after the aircraft is destroyed');
+      const overDrawsBefore = await page.evaluate(() => window.__sky.renderer.info.render.frame);
+      await sleep(320);
+      const overDrawsAfter = await page.evaluate(() => window.__sky.renderer.info.render.frame);
+      assert.ok(overDrawsAfter - overDrawsBefore <= 1,
+        'The opaque result screen must suspend hidden WebGL redraws');
+      const overQualityLevel = await page.evaluate(() => window.__sky.view.level);
       await page.locator('#sk-again').click();
       await page.locator('#sk-end').waitFor({ state: 'hidden' });
       await page.waitForFunction(() => window.__sky?.sim?.player?.alive && window.__sky.sim.time > 0.05);
+      assert.equal(await page.evaluate(() => window.__sky.view.level), overQualityLevel,
+        'Restart after a long game-over screen must not downgrade adaptive quality');
       if (size.name === 'desktop') await page.keyboard.press('p');
       else await page.locator('#sk-pause').click();
       await page.locator('#sk-paused').waitFor({ state: 'visible' });
@@ -196,6 +348,71 @@ try {
     } finally {
       await context.close();
     }
+  }
+  // The regular smoke loop exercises low quality on two form factors. Also
+  // compile the more expensive high-quality sea/shadow shaders in Chromium.
+  const highContext = await browser.newContext({ viewport: { width: 960, height: 640 }, reducedMotion: 'reduce' });
+  try {
+    await highContext.addInitScript(() => {
+      localStorage.setItem('waldo.preferences.v1', JSON.stringify({ sound: false, quality: 'high', reducedMotion: true }));
+    });
+    const highPage = await highContext.newPage();
+    highPage.setDefaultTimeout(30000);
+    const highErrors = [];
+    highPage.on('pageerror', error => highErrors.push(error.message));
+    highPage.on('console', msg => {
+      if (msg.type() === 'error' && /WebGL|shader|GL_INVALID|THREE.WebGLProgram/i.test(msg.text())) highErrors.push(msg.text());
+    });
+    await highPage.goto(origin, { waitUntil: 'domcontentloaded' });
+    await highPage.locator('#start-sky').click();
+    await highPage.locator('#sk-title').waitFor({ state: 'visible' });
+    await highPage.locator('#sk-start').click();
+    await highPage.waitForFunction(() => window.__sky?.sim?.time > 0.05 && window.__sky.renderer.info.render.calls > 0);
+    const highStats = await highPage.evaluate(() => ({
+      calls: window.__sky.renderer.info.render.calls,
+      cloudCount: window.__sky.view.clouds.length,
+      roughness: window.__sky.view.sea.material.roughness,
+    }));
+    assert.ok(highStats.calls > 0, 'High quality must issue rendered draw calls');
+    assert.ok(highStats.cloudCount >= 30, 'High quality must populate atmosphere sprites');
+    assert.ok(highStats.roughness < 0.6, 'High quality keeps richer water lighting');
+    await highPage.waitForFunction(() => window.__sky?.view?.meshes?.has(window.__sky?.sim?.player?.id));
+    // Rendering calls may have been recorded on the title scene before the
+    // high-quality aircraft/world finished drawing. Check the actual result.
+    await highPage.waitForTimeout(1000);
+    // WebGL defaults to preserveDrawingBuffer=false. Playwright may screenshot
+    // between swaps and capture an empty back-buffer even though the scene
+    // rendered correctly. Render + read pixels + canvas capture in *one* task.
+    const highFrame = await highPage.evaluate(() => {
+      const { renderer, view } = window.__sky;
+      renderer.render(view.scene, view.camera);
+      const gl = renderer.getContext(), pixel = new Uint8Array(4);
+      gl.readPixels(Math.floor(gl.drawingBufferWidth / 2), Math.floor(gl.drawingBufferHeight / 2),
+        1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+      return {
+        png: renderer.domElement.toDataURL('image/png'),
+        rgba: Array.from(pixel),
+        glError: gl.getError(),
+        frame: renderer.info.render.frame,
+        calls: renderer.info.render.calls,
+        triangles: renderer.info.render.triangles,
+        webglLost: gl.isContextLost(),
+      };
+    });
+    const highPng = Buffer.from(highFrame.png.split(',')[1], 'base64');
+    await writeFile('browser-artifacts/sky-high-canvas.png', highPng);
+    // Overlay screenshot is useful for visual review but not pixel validity.
+    await highPage.screenshot({ path: 'browser-artifacts/sky-high-desktop.png', animations: 'disabled' });
+    assert.ok(!highFrame.webglLost && highFrame.glError === 0, 'High quality WebGL context must be healthy');
+    assert.ok(highFrame.calls > 10 && highFrame.triangles > 1000, 'High quality must draw scene geometry');
+    assert.ok(highFrame.rgba[3] === 255 && highFrame.rgba.slice(0, 3).some(v => v > 20),
+      'High quality must produce nonblank opaque pixels: ' + JSON.stringify(highFrame));
+    assert.ok(highPng.length > 100000,
+      'High quality must produce detailed 3D canvas content: ' + JSON.stringify({ bytes: highPng.length, rgba: highFrame.rgba, calls: highFrame.calls }));
+    assert.deepEqual(highErrors, [], 'High quality must not throw WebGL or shader errors');
+    console.log('PASS SKY WAR high-quality desktop (' + highStats.calls + ' draw calls)');
+  } finally {
+    await highContext.close();
   }
 } finally {
   await browser?.close().catch(() => undefined);

@@ -8,7 +8,10 @@ describe('SKY WAR 항공기 장식 LOD', () => {
     const detail = detailJet(jet, 'fighter', 'enemy');
     expect(jet.children).toContain(detail);
     expect(detail.name).toBe('jetDetail');
-    expect(detail.children.length).toBeGreaterThan(20);
+    const batched = detail.children.filter(child => child instanceof THREE.InstancedMesh) as THREE.InstancedMesh[];
+    expect(batched).toHaveLength(3);
+    expect(batched.reduce((count, mesh) => count + mesh.count, 0)).toBeGreaterThan(20);
+    expect(detail.children.length).toBeLessThan(20);
     expect(detail.getObjectByName('flameCore')).toBeDefined();
     detail.visible = false;
     expect(jet.visible).toBe(true);
@@ -20,6 +23,13 @@ describe('SKY WAR 항공기 장식 LOD', () => {
     const group = detailJet(jet, kind, 'player');
     expect(group.parent).toBe(jet);
     expect(group.getObjectByName('flameCore')).toBeDefined();
-    expect(group.children.length).toBeGreaterThan(20);
+    const batches = group.children.filter(child => child instanceof THREE.InstancedMesh) as THREE.InstancedMesh[];
+    expect(batches).toHaveLength(3);
+    expect(batches.reduce((count, mesh) => count + mesh.count, 0)).toBeGreaterThan(20);
+    const matrix = new THREE.Matrix4();
+    for (const mesh of batches) {
+      mesh.getMatrixAt(0, matrix);
+      expect(Number.isFinite(matrix.determinant())).toBe(true);
+    }
   });
 });

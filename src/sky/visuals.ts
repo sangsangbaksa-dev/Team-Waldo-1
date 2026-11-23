@@ -16,9 +16,24 @@ export function detailJet(jet: THREE.Group, kind: Kind, team: 'player' | 'enemy'
   canopy.scale.set(0.78, 0.57, 1.8); canopy.position.set(0, 1.01 * s, -2.25 * s); detail.add(canopy);
   const canopyFrame = new THREE.Mesh(new THREE.TorusGeometry(0.72 * s, 0.045 * s, 5, 24, Math.PI), bright);
   canopyFrame.position.set(0, 1.04 * s, -2.2 * s); detail.add(canopyFrame);
+  // All thin panel lines use identical box geometry and only three materials.
+  // Draw one static InstancedMesh per material instead of 20+ independent meshes
+  // for every aircraft, without changing the original cockpit/wing silhouette.
   const stripeGeo = new THREE.BoxGeometry(1, 1, 1);
+  const batches = [
+    { material: panel, transforms: [] as THREE.Matrix4[] },
+    { material: seam, transforms: [] as THREE.Matrix4[] },
+    { material: bright, transforms: [] as THREE.Matrix4[] },
+  ];
+  const axis = new THREE.Vector3(0, 1, 0), position = new THREE.Vector3();
+  const rotation = new THREE.Quaternion(), scaling = new THREE.Vector3();
+  const matrix = new THREE.Matrix4();
   const box = (material: THREE.Material, x: number, y: number, z: number, sx: number, sy: number, sz: number, angle = 0): void => {
-    const mesh = new THREE.Mesh(stripeGeo, material); mesh.position.set(x * s, y * s, z * s); mesh.scale.set(sx * s, sy * s, sz * s); mesh.rotation.y = angle; detail.add(mesh);
+    position.set(x * s, y * s, z * s);
+    scaling.set(sx * s, sy * s, sz * s);
+    rotation.setFromAxisAngle(axis, angle);
+    matrix.compose(position, rotation, scaling);
+    batches.find(batch => batch.material === material)!.transforms.push(matrix.clone());
   };
   for (const side of [-1, 1]) {
     // Wing panels, control surfaces, leading-edge trim and navigation lamps.
@@ -37,6 +52,14 @@ export function detailJet(jet: THREE.Group, kind: Kind, team: 'player' | 'enemy'
     tip.rotation.x = -Math.PI / 2; tip.position.set(side * 2.8 * s, -0.38 * s, -1.15 * s); detail.add(tip);
   }
   for (let i = 0; i < 5; i++) box(seam, 0, 1.04, -0.3 + i * 0.8, 1.2, 0.025, 0.035);
+  for (const batch of batches) {
+    if (batch.transforms.length === 0) continue;
+    const instances = new THREE.InstancedMesh(stripeGeo, batch.material, batch.transforms.length);
+    instances.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+    batch.transforms.forEach((transform, i) => instances.setMatrixAt(i, transform));
+    instances.instanceMatrix.needsUpdate = true;
+    detail.add(instances);
+  }
   const exhaust = new THREE.Mesh(new THREE.TorusGeometry(0.71 * s, 0.075 * s, 6, 20), bright);
   exhaust.position.z = 6.35 * s; detail.add(exhaust);
   const core = new THREE.Mesh(new THREE.ConeGeometry(0.4 * s, 3.4 * s, 10), new THREE.MeshBasicMaterial({ color: 0xd9f5ff, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false }));

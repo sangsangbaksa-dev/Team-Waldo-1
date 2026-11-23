@@ -369,11 +369,11 @@ export function openRace(onExit: () => void): void {
 
   function drawFx(intensity: number): void {
     if (!fg) return; fg.clearRect(0, 0, fx.width, fx.height); if (prefs.reducedMotion || intensity < 0.22) return;
-    const w = fx.width, h = fx.height, cx = w / 2, cy = h * 0.46, R = Math.hypot(w, h) / 2, a = Math.min(1, (intensity - 0.22) * 1.2), n = 36 + Math.floor(a * 50);
+    const w = fx.width, h = fx.height, cx = w / 2, cy = h * 0.46, R = Math.hypot(w, h) / 2, a = Math.min(1, (intensity - 0.22) * 1.2), n = 20 + Math.floor(a * 28);
     fg.lineCap = 'round';
     for (let i = 0; i < n; i++) {
       const ang = Math.random() * Math.PI * 2, r1 = R * (0.38 + Math.random() * 0.35), r2 = r1 + R * (0.1 + Math.random() * 0.25) * (0.5 + a);
-      fg.strokeStyle = `rgba(${200 + Math.random() * 55 | 0},${225 + Math.random() * 30 | 0},255,${(0.1 + Math.random() * 0.3) * a})`; fg.lineWidth = 0.6 + Math.random() * 1.8;
+      fg.strokeStyle = `rgba(226,233,233,${(0.08 + Math.random() * 0.18) * a})`; fg.lineWidth = 0.6 + Math.random() * 1.3;
       fg.beginPath(); fg.moveTo(cx + Math.cos(ang) * r1, cy + Math.sin(ang) * r1); fg.lineTo(cx + Math.cos(ang) * r2, cy + Math.sin(ang) * r2); fg.stroke();
     }
   }
@@ -391,8 +391,9 @@ export function openRace(onExit: () => void): void {
     if (miniBaseCtx) { miniBaseCtx.clearRect(0, 0, 220, 220); paintMiniTrack(miniBaseCtx); }
   }
   function paintMiniTrack(g: CanvasRenderingContext2D): void {
-    g.lineJoin = 'round'; g.strokeStyle = 'rgba(8,4,24,.8)'; g.lineWidth = 9; g.stroke(mpath); g.strokeStyle = '#8f7dff'; g.lineWidth = 4; g.stroke(mpath);
-    g.fillStyle = '#fff'; g.fillRect(mx(track.x[0]) - 5, mz(track.z[0]) - 2, 10, 4);
+    g.lineJoin = 'round'; g.strokeStyle = '#0d151b'; g.lineWidth = 9; g.stroke(mpath);
+    g.strokeStyle = '#aebcc1'; g.lineWidth = 3.5; g.stroke(mpath);
+    g.fillStyle = '#d6b789'; g.fillRect(mx(track.x[0]) - 5, mz(track.z[0]) - 2, 10, 4);
   }
   prepareMinimap();
   const miniGate = new FrameGate(1000 / 30);
@@ -401,7 +402,7 @@ export function openRace(onExit: () => void): void {
   function drawMini(): void {
     if (!mg) return; mg.clearRect(0, 0, 220, 220);
     if (miniBaseCtx) mg.drawImage(miniBase, 0, 0); else paintMiniTrack(mg);
-    for (let i = race.racers.length - 1; i >= 0; i--) { const r = race.racers[i]; mg.fillStyle = r.color; mg.beginPath(); mg.arc(mx(r.car.x), mz(r.car.z), r.player ? 6 : 4.5, 0, 7); mg.fill(); if (r.player) { mg.strokeStyle = '#fff'; mg.lineWidth = 2; mg.stroke(); } }
+    for (let i = race.racers.length - 1; i >= 0; i--) { const r = race.racers[i]; mg.fillStyle = r.player ? '#d6b789' : '#8299a3'; mg.beginPath(); mg.arc(mx(r.car.x), mz(r.car.z), r.player ? 6 : 4.5, 0, Math.PI * 2); mg.fill(); if (r.player) { mg.strokeStyle = '#10181e'; mg.lineWidth = 2; mg.stroke(); } }
   }
 
   function hud(dt: number): void {
@@ -418,7 +419,7 @@ export function openRace(onExit: () => void): void {
     $<HTMLElement>('#rc-nitro').style.width = `${(c.nitro * 100).toFixed(0)}%`; $('#rc-nitro').parentElement!.classList.toggle('on', boosting(c));
     $<HTMLElement>('#rc-draft').style.opacity = String(c.draft > 0.15 ? Math.min(1, c.draft * 1.3) : 0);
     const dr = race.drift;
-    setText('#rc-drift', driftLive(dr) && dr.chain >= 30 ? `DRIFT ${Math.round(dr.chain).toLocaleString('ko-KR')}${dr.mult > 1 ? `  ×${dr.mult}` : ''}` : ''); $('#rc-drift').classList.toggle('live', c.drifting);
+    setText('#rc-drift', driftLive(dr) && dr.chain >= 30 ? `드리프트 ${Math.round(dr.chain).toLocaleString('ko-KR')}${dr.mult > 1 ? ` · ${dr.mult}배` : ''}` : ''); $('#rc-drift').classList.toggle('live', c.drifting);
     const rev = Math.min(1, Math.abs(c.vf) / p.params.top); $<HTMLElement>('#rc-rev').style.width = `${(rev * 100).toFixed(0)}%`;
     root.dataset.kmh = String(Math.round(sp)); root.dataset.place = String(place); root.dataset.lap = String(currentLap(race)); root.dataset.phase = finishedShown ? 'done' : race.phase;
     const tx = track.tx[c.idx], tz = track.tz[c.idx], dir = c.vx * tx + c.vz * tz;

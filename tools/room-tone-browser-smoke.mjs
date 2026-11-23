@@ -32,6 +32,17 @@ try {
     page.on("pageerror", error => errors.push(error.message));
     try {
       await page.goto(origin + "/room-tone/", { waitUntil: "domcontentloaded" });
+      const titleLayout = await page.evaluate(() => {
+        const title = document.querySelector("#home h1").getBoundingClientRect();
+        const start = document.querySelector("#new").getBoundingClientRect();
+        return {
+          titleVisible: title.width > 0 && title.height > 0,
+          startVisible: start.width >= 40 && start.height >= 40,
+          horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth + 1,
+        };
+      });
+      assert.ok(titleLayout.titleVisible && titleLayout.startVisible, "Home title and start action must be visible");
+      assert.equal(titleLayout.horizontalOverflow, false, "Home must not scroll horizontally");
       await page.locator("#new").click();
       await page.getByRole("button", { name: "구역 진입", exact: true }).waitFor();
       await page.getByRole("button", { name: "구역 진입", exact: true }).click();
@@ -40,6 +51,48 @@ try {
       const hasWebgl = await page.locator("#viewWrap canvas").evaluate(canvas=>canvas.width>0&&canvas.height>0&&canvas.getAttribute("data-engine")?.includes("three.js"));
       assert.ok(hasWebgl,"3D renderer must initialize and size the canvas");
       assert.match(await page.locator("#zone").innerText(), /전원 정비동/);
+      const hudLayout = await page.evaluate(() => {
+        const bySelector = selector => document.querySelector(selector).getBoundingClientRect();
+        const overlap = (a, b) => a.left < b.right && b.left < a.right &&
+          a.top < b.bottom && b.top < a.bottom;
+        const hit = selector => {
+          const el = document.querySelector(selector);
+          const box = el.getBoundingClientRect();
+          return el.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2));
+        };
+        const touch = document.body.classList.contains("touch");
+        return {
+          pauseClickable: hit("#pauseGame"),
+          recorderClickable: hit("#recorder"),
+          mapClickable: hit("#mapBtn"),
+          cameraTopFree: getComputedStyle(document.querySelector("#game .hud")).pointerEvents === "none",
+          controlsClear: !touch || (
+            !overlap(bySelector(".statusfoot"), bySelector("#stick")) &&
+            !overlap(bySelector(".statusfoot"), bySelector(".gear")) &&
+            !overlap(bySelector("#stick"), bySelector(".touchactions")) &&
+            !overlap(bySelector(".gear"), bySelector(".touchactions"))
+          ),
+          widthOk: document.documentElement.scrollWidth <= window.innerWidth + 1,
+        };
+      });
+      assert.ok(hudLayout.pauseClickable && hudLayout.recorderClickable && hudLayout.mapClickable,
+        "HUD and gear controls must receive clicks above WebGL: " + JSON.stringify(hudLayout));
+      assert.equal(hudLayout.cameraTopFree, true, "HUD container must not block camera look input");
+      assert.equal(hudLayout.controlsClear, true, "Mobile control regions must not overlap: " + JSON.stringify(hudLayout));
+      assert.equal(hudLayout.widthOk, true, "Game HUD must not overflow horizontally");
+      if (!mobile) {
+        await page.setViewportSize({ width: 620, height: 700 });
+        const narrowLayout = await page.evaluate(() => {
+          const status = document.querySelector(".statusfoot").getBoundingClientRect();
+          const gear = document.querySelector(".gear").getBoundingClientRect();
+          const separated = status.right <= gear.left || gear.right <= status.left ||
+            status.bottom <= gear.top || gear.bottom <= status.top;
+          return { separated, noOverflow: document.documentElement.scrollWidth <= innerWidth + 1 };
+        });
+        assert.ok(narrowLayout.separated && narrowLayout.noOverflow,
+          "Narrow desktop HUD must remain separated: " + JSON.stringify(narrowLayout));
+        await page.setViewportSize({ width: 1280, height: 800 });
+      }
       assert.equal(await page.locator("#recorderCount").innerText(),"2/2");
       if (mobile) {
         const hit = await page.locator("#recorder").evaluate(el => {

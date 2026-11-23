@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#151713">
+  <meta name="description" content="Dead Ground is a browser-based 3D sniper arena for solo practice and private online matches.">
+  <title>Dead Ground</title>
+</head>
+<body>
+  <main id="landing" class="landing">
+    <header class="masthead">
+      <a href="./" class="wordmark" aria-label="Dead Ground home"><i class="sigil"></i> DEAD GROUND</a>
+      <button type="button" class="quiet-button" data-guide>Controls</button>
+    </header>
+
+    <div class="landing-main">
+      <p class="eyebrow"><i></i> FREE-FOR-ALL SNIPER ARENA</p>
+      <h1>Dead<br><span>Ground</span></h1>
+      <p class="lede">Hunt across a shattered industrial valley.<br>First to 12 eliminations wins.</p>
+
+      <div class="callsign">
+        <label for="callsign">CALLSIGN</label>
+        <input id="callsign" type="text" value="NOMAD" maxlength="16" spellcheck="false" autocomplete="nickname">
+      </div>
+      <div class="deploy-actions">
+        <button id="solo" class="button primary"><strong>Deploy solo</strong><small>5 AI opponents</small></button>
+        <button id="multiplayer" class="button"><strong>Online rooms</strong><small>2–6 players</small></button>
+      </div>
+      <p id="menu-status" class="notice" role="status" hidden></p>
+    </div>
+
+    <footer class="landing-footer">
+      <span class="desktop-note"><span class="signal"></span> KEYBOARD + MOUSE</span>
+      <div class="sector"><span>THE FOUNDRY</span><small>1,024 × 1,024 M FIELD</small></div>
+    </footer>
+  </main>
+
+  <section id="field" class="field" aria-label="Dead Ground battlefield" hidden>
+    <canvas id="game" aria-label="3D battlefield"></canvas>
+    <div id="hud" class="hud">
+      <div id="hit-flash" class="hit-flash"></div>
+      <canvas id="glass" class="glass" aria-hidden="true"></canvas>
+      <div class="top-hud">
+        <div class="field-id"><i class="sigil"></i><div><strong id="mode-label">SOLO FIELD</strong><span id="network-label">5 AI</span></div></div>
+        <div class="navigation">
+          <div class="clock"><span>ROUND <b id="round-number">1</b></span><strong id="clock">06:00</strong><span><b id="kills-top">0</b> / 12</span></div>
+          <div class="compass"><div id="bearing-ticks"></div><i></i></div>
+          <div id="sector-label" class="sector-label"></div>
+        </div>
+        <ol id="killfeed" class="killfeed" aria-label="Kill feed"></ol>
+      </div>
+
+      <div id="reticle" class="reticle" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <div id="hit-marker" class="hit-marker" aria-hidden="true"></div>
+      <div id="hit-note" class="hit-note" hidden></div>
+      <div id="scope-readout" class="scope-readout" hidden><strong id="scope-zoom">16×</strong><span id="scope-range">— M</span></div>
+      <div id="combat-status" class="combat-status" role="status" hidden></div>
+
+      <div class="bottom-hud">
+        <div class="vitals">
+          <div class="hud-title"><span>VITALS</span><small id="protection" hidden>SPAWN SHIELD</small></div>
+          <div class="health-line"><strong id="health">100</strong><div class="meter"><i id="health-bar"></i></div></div>
+          <div id="breath-status" class="breath"><span>BREATH</span><div class="meter"><i id="breath-bar"></i></div></div>
+        </div>
+        <div class="field-keys"><span><kbd>TAB</kbd> Score</span><span><kbd>M</kbd> Map</span><span><kbd>ESC</kbd> Menu</span></div>
+        <div class="weapon">
+          <div class="hud-title">DG-16 <span>BOLT ACTION</span></div>
+          <div class="ammunition"><strong id="ammo">05</strong><span>/ <b id="reserve">30</b></span></div>
+          <div class="cartridges" id="cartridges" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+        </div>
+      </div>
+
+      <aside id="map-panel" class="map-panel block" hidden aria-label="Field map">
+        <div class="panel-kicker">FIELD MAP</div>
+        <h2>The Foundry</h2>
+        <canvas id="tactical-map" width="460" height="460"></canvas>
+        <p><span class="map-key"></span> You <span>WASD to move · M to close</span></p>
+      </aside>
+
+      <div id="score-panel" class="overlay score-overlay" hidden>
+        <section class="block scoreboard" aria-label="Scoreboard">
+          <p class="panel-kicker">ROUND STANDINGS</p><h2>Scoreboard</h2>
+          <table><thead><tr><th>OPERATOR</th><th>K</th><th>D</th><th>HS</th></tr></thead><tbody id="score-rows"></tbody></table>
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <div id="overlay" class="overlay modal-overlay" hidden>
+    <section id="online-panel" class="block modal" aria-labelledby="online-heading" hidden>
+      <p class="panel-kicker">MULTIPLAYER</p><h2 id="online-heading">Online rooms</h2>
+      <p>Host a private match or enter a friend’s room code.</p>
+      <button class="button primary wide" id="create-room">Create room</button>
+      <form id="join-form" class="join-form">
+        <label for="room-code">ROOM CODE</label>
+        <div><input id="room-code" placeholder="ABCDE" maxlength="5" spellcheck="false" autocomplete="off" required>
+        <button type="submit" class="button">Join room</button></div>
+      </form>
+      <p id="online-status" class="notice" role="status" hidden></p>
+      <button id="online-back" class="quiet-button">Back to menu</button>
+    </section>
+
+    <section id="room-panel" class="block modal" aria-labelledby="room-heading" hidden>
+      <p class="panel-kicker">PRIVATE MATCH</p><h2 id="room-heading">Room lobby</h2>
+      <button id="copy-code" class="room-code" title="Copy room code"><strong id="assigned-code"></strong><small id="copy-label">COPY CODE</small></button>
+      <ul id="roster" class="roster"></ul>
+      <p id="lobby-status" class="notice" role="status"></p>
+      <div class="modal-actions">
+        <button type="button" id="start-room" class="button primary">Start round</button>
+        <button type="button" class="button" data-leave>Leave room</button>
+      </div>
+    </section>
+
+    <section id="pause-panel" class="block modal" aria-labelledby="pause-heading" hidden>
+      <p id="pause-kicker" class="panel-kicker">SOLO FIELD</p><h2 id="pause-heading">Field menu</h2>
+      <p id="pause-note">Resume when you’re ready.</p>
+      <button id="resume" class="button primary wide">Resume field</button>
+      <div class="settings">
+        <label for="sensitivity">Look sensitivity <input id="sensitivity" type="range" min="0.4" max="2.6" step="0.1" value="1"></label>
+        <label for="low-detail">Performance mode <input id="low-detail" type="checkbox"></label>
+        <label for="mute">Mute audio <input id="mute" type="checkbox"></label>
+      </div>
+      <div class="modal-actions"><button class="button" data-guide>Controls</button><button class="button" data-leave>Main menu</button></div>
+    </section>
+
+    <section id="controls-panel" class="block modal controls-panel" aria-labelledby="controls-heading" hidden>
+      <p class="panel-kicker">FIELD GUIDE</p><h2 id="controls-heading">Controls</h2>
+      <dl class="controls-list">
+        <div><dt>Move</dt><dd><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></dd></div>
+        <div><dt>Look</dt><dd><kbd>MOUSE</kbd></dd></div>
+        <div><dt>Sprint</dt><dd><kbd>SHIFT</kbd></dd></div>
+        <div><dt>Crouch</dt><dd><kbd>C</kbd></dd></div>
+        <div><dt>Fire</dt><dd><kbd>LEFT CLICK</kbd></dd></div>
+        <div><dt>Scope</dt><dd><kbd>HOLD RIGHT CLICK</kbd></dd></div>
+        <div><dt>Change zoom</dt><dd><kbd>SCROLL</kbd> <kbd>Z</kbd></dd></div>
+        <div><dt>Hold breath</dt><dd><kbd>SPACE</kbd></dd></div>
+        <div><dt>Reload</dt><dd><kbd>R</kbd></dd></div>
+        <div><dt>Map / Score</dt><dd><kbd>M</kbd> <kbd>TAB</kbd></dd></div>
+      </dl>
+      <p>Allow for flight time and aim above distant targets. Headshots eliminate in one hit. Firing drops your spawn shield.</p>
+      <button id="close-guide" class="button primary wide">Back</button>
+    </section>
+
+    <section id="result-panel" class="block modal scoreboard" aria-labelledby="result-heading" hidden>
+      <p class="panel-kicker">ROUND COMPLETE</p><h2 id="result-heading">Debrief</h2>
+      <p id="round-winner" class="round-winner"></p>
+      <table><thead><tr><th>OPERATOR</th><th>K</th><th>D</th><th>HS</th></tr></thead><tbody id="result-rows"></tbody></table>
+      <div class="modal-actions"><button class="button primary" id="rematch">Play again</button><button class="button" data-leave>Main menu</button></div>
+      <p id="rematch-note" class="notice" hidden></p>
+    </section>
+  </div>
+  <script type="module" src="/src/ui/main.ts"></script>
+</body>
+</html>

@@ -14,7 +14,7 @@ function context() {
   const ctx = new Proxy(base, {
     get(target, key) { return target[key] ?? (() => undefined); },
     set(target, key, value: unknown) { target[key] = value; return true; },
-  }) as CanvasRenderingContext2D;
+  }) as unknown as CanvasRenderingContext2D;
   return { ctx, drawImage, arc };
 }
 

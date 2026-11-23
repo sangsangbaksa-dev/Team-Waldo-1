@@ -178,6 +178,8 @@ let stopTileImages: (() => void) | undefined;
 const HUB_TITLE = `WALDO · ${ENTRIES.length}편의 브라우저 3D 게임`;
 /** 지금 열려 있는 게임. 뒤로가기·새로고침 경고가 이 값을 봅니다. */
 let activeGame: GameId | null = null;
+/** Browser Back to our own hub is intentional, unlike reloading mid-game. */
+let returningToHubViaHistory = false;
 /** 게임을 열면서 우리가 기록(history)을 하나 쌓았는지. 목록으로 돌아올 때 한 칸 되돌릴지 정합니다. */
 let pushedEntry = false;
 const gameHash = (id: GameId): string => `#/${id}`;
@@ -408,14 +410,27 @@ window.addEventListener('popstate', () => {
   const target = hashGame();
   if (target && !activeGame) { void launch(target, true); return; }
   // 게임 화면에서 뒤로가기를 누르면 게임 목록으로. 게임이 만든 화면·루프를 확실히 치우도록 페이지를 다시 엽니다.
-  if (!target && activeGame) { pushedEntry = false; try { sessionStorage.setItem('waldo.hubScroll', String(hubScrollY)); } catch { /* 선택 사항 */ } location.reload(); }
+  if (!target && activeGame) {
+    // This reload is a deliberate in-site Back action, not an accidental
+    // refresh. Avoid displaying the "unsaved progress" beforeunload prompt.
+    returningToHubViaHistory = true;
+    pushedEntry = false;
+    try { sessionStorage.setItem('waldo.hubScroll', String(hubScrollY)); } catch { /* 선택 사항 */ }
+    location.reload();
+  }
 });
 // 게임 중 새로고침·탭 닫기: 진행이 사라진다고 먼저 알립니다.
 window.addEventListener('beforeunload', e => {
+  if (returningToHubViaHistory) {
+    // Individual games may register their own beforeunload warnings. The hub
+    // must handle our intentional Back navigation before those listeners run.
+    e.stopImmediatePropagation();
+    return;
+  }
   if (!activeGame) return;
   e.preventDefault();
   e.returnValue = '';
-});
+}, { capture: true });
 
 try { history.scrollRestoration = 'manual'; } catch { /* 선택 사항 */ }
 try { hubScrollY = Number(sessionStorage.getItem('waldo.hubScroll')) || 0; sessionStorage.removeItem('waldo.hubScroll'); } catch { /* 선택 사항 */ }

@@ -92,6 +92,18 @@ try {
       if (size.name === 'desktop') await page.keyboard.press('j');
       else await page.locator('[data-act="closemissions"]').click();
       await page.locator('.c-missions').waitFor({ state: 'hidden' });
+      // Browser Back should return to the hub without showing an unrelated
+      // "unsaved progress" confirmation. An intentional in-site navigation
+      // must not be treated as closing the game tab.
+      const backDialogs = [];
+      page.on('dialog', async dialog => {
+        backDialogs.push(dialog.type());
+        await dialog.dismiss();
+      });
+      await page.goBack({ waitUntil: 'domcontentloaded' });
+      await page.locator('.tile').first().waitFor({ state: 'visible', timeout: 15000 });
+      assert.ok(!new URL(page.url()).hash.startsWith('#/'), 'Back must restore the hub URL');
+      assert.equal(backDialogs.includes('beforeunload'), false, 'Back to hub must not open beforeunload dialog');
       assert.deepEqual(errors, [], 'Unexpected browser errors');
       results.push({ ...size, status: 'passed', cards: 8 });
       console.log('PASS Last City mission UI: ' + size.name);

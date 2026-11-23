@@ -236,7 +236,13 @@ export class Renderer3D {
       if (s.kind === 'lab') { const d = new THREE.Mesh(new THREE.SphereGeometry(24, 12, 8, 0, 6.29, 0, 1.57), new THREE.MeshLambertMaterial({ color: 0x9fe8ff, emissive: 0x2a6a80 })); d.position.y = H; g.add(d); }
       g.position.set(s.x + s.w / 2, 0, s.y + s.h / 2); this.scene.add(g); this.structs.set(s.id, g);
     }
-    if (g.userData.bakedStructure) { g.scale.set(10, 10 * (0.15 + 0.85 * s.built), 10); const th = g.getObjectByName('turret_Head'); if (th) th.rotation.y = -s.ang; } else { g.scale.y = 0.15 + 0.85 * s.built; const head = g.getObjectByName('head'); if (head) head.rotation.y = -s.ang; }
+    if (g.userData.bakedStructure) g.scale.set(10, 10 * (0.15 + 0.85 * s.built), 10);
+    else g.scale.y = 0.15 + 0.85 * s.built;
+    if (s.kind === 'turret') {
+      if (!('turretHead' in g.userData)) g.userData.turretHead = g.getObjectByName(g.userData.bakedStructure ? 'turret_Head' : 'head') ?? null;
+      const head = g.userData.turretHead as THREE.Object3D | null;
+      if (head) head.rotation.y = -s.ang;
+    }
   }
   private syncVehicle(v: Vehicle): void {
     let g = this.vehs.get(v.id);
@@ -253,8 +259,18 @@ export class Renderer3D {
       this.scene.add(g); this.vehs.set(v.id, g);
     }
     g.position.set(v.x, 0, v.y); g.rotation.y = -v.ang;
-    const t = g.getObjectByName('turret') ?? g.getObjectByName('tank_Turret'); if (t) { const d = this.world.byId.get(v.driver); t.rotation.y = -((d ? d.ang : v.ang) - v.ang); }
-    const la = g.getObjectByName('la') ?? g.getObjectByName('police_LightA'), lb = g.getObjectByName('lb') ?? g.getObjectByName('police_LightB'); if (la && lb) { const on = v.ai === 'chase' && Math.floor(this.t * 6) % 2 === 0; la.visible = v.ai !== 'chase' || on; lb.visible = v.ai !== 'chase' || !on; }
+    if (!g.userData.visualParts) g.userData.visualParts = {
+      turret: g.getObjectByName('turret') ?? g.getObjectByName('tank_Turret') ?? null,
+      lightA: g.getObjectByName('la') ?? g.getObjectByName('police_LightA') ?? null,
+      lightB: g.getObjectByName('lb') ?? g.getObjectByName('police_LightB') ?? null,
+    };
+    const parts = g.userData.visualParts as { turret: THREE.Object3D | null; lightA: THREE.Object3D | null; lightB: THREE.Object3D | null };
+    if (parts.turret) { const d = this.world.byId.get(v.driver); parts.turret.rotation.y = -((d ? d.ang : v.ang) - v.ang); }
+    if (parts.lightA && parts.lightB) {
+      const on = v.ai === 'chase' && Math.floor(this.t * 6) % 2 === 0;
+      parts.lightA.visible = v.ai !== 'chase' || on;
+      parts.lightB.visible = v.ai !== 'chase' || !on;
+    }
     if (v.hp < v.maxHp * 0.5 && Math.random() < 0.25) { if (v.burn > 0) this.fire.add(v.x, 24, v.y, (Math.random() - 0.5) * 30, 60, (Math.random() - 0.5) * 30, 0.6, 0xff7a2a); else this.smoke.add(v.x, 24, v.y, (Math.random() - 0.5) * 16, 50, (Math.random() - 0.5) * 16, 1.2, 0x333338); }
   }
   /** Ground lights follow nearby traffic; visual only, never modify collision or AI. */
@@ -378,7 +394,7 @@ export class Renderer3D {
     const mat = this.rain.material as THREE.LineBasicMaterial; mat.color.setRGB(...a.fog).lerp(this.rainTint.set(0.8, 0.88, 1), 0.55 + 0.25 * (1 - a.night)); mat.opacity = 0.28 + a.rain * 0.4;
     this.rain.visible = a.rain > 0.05;
     // A line requires two vertices. Never submit a partial raindrop.
-    const activeDrops = Math.round(n * a.rain);
+    const activeDrops = Math.min(n, Math.max(0, Math.round(n * a.rain)));
     this.rain.geometry.setDrawRange(0, activeDrops * 2);
     if (!this.rain.visible || activeDrops === 0) return;
     const cp = this.camera.position, fall = EYE_HEIGHT * (24 + a.wind * 10) * dt, len = EYE_HEIGHT * (0.7 + a.wind * 0.5), slant = 0.12 + a.wind * 0.3;
@@ -421,9 +437,9 @@ export class Renderer3D {
     for (const m of this.bossRings) m.visible = false;
     for (const a of w.actors) {
       if (!a.alive || a.inVeh) continue; const dx = a.x - this.camPos.x, dz = a.y - this.camPos.z; if (dx * dx + dz * dz > 2600 * 2600) continue;
-      const def = ACTORS[a.kind], c = a.flash > 0 ? 0xffffff : a.f === CIV ? CLOTH[a.slot % CLOTH.length] : fcol(a.f);
       if (a.kind === 'boss') { const r = this.bossRings[a.f]; r.visible = true; r.position.set(a.x, 1.5, a.y); r.scale.setScalar(a.r + 9); }
       if (a === pb && !third) continue; if (this.ml) continue;
+      const def = ACTORS[a.kind], c = a.flash > 0 ? 0xffffff : a.f === CIV ? CLOTH[a.slot % CLOTH.length] : fcol(a.f);
       if (def.mech) {
         if (nm >= 90) continue; const tank = a.kind === 'tank', L = a.r * 2.4, W = a.r * 1.7, H = tank ? 22 : 17;
         d.rotation.set(0, -a.ang, 0); d.position.set(a.x, H / 2 + 4, a.y); d.scale.set(L, H, W); d.updateMatrix(); this.hulls.setMatrixAt(nm, d.matrix); this.hulls.setColorAt(nm, col.set(a.flash > 0 ? 0xffffff : FACTIONS[a.f].dark));

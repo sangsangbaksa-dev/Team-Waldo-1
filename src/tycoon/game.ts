@@ -296,7 +296,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   // ---------- 코어 연결 ----------
   function rebuildFleet(): void {
     rides?.dispose();
-    rides = new Rides(scene, layout, colliders, (x, z, r) => traffic?.blocks(x, z, r) ?? false);
+    rides = new Rides(scene, layout, colliders, (x, z, r) => traffic?.blocks(x, z, r) ?? false, (x, z, r) => crowd?.blocks(x, z, r) ?? false);
   }
   function bindCore(c: TycoonCore): void {
     for (const u of unsub.splice(0)) u();

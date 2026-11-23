@@ -14,7 +14,9 @@ export class SkyAudio {
     const c = this.eng.ctx, bus = this.eng.bus, noise = this.eng.noise;
     if (!c || !bus || !noise) return;
     if (!this.motor) {
-      if (!on) return;
+      // Muted sessions should not start two permanent oscillator/noise sources
+      // just to send them through a zero-gain bus. They start if sound is enabled.
+      if (!on || !this.enabled) return;
       const osc = c.createOscillator(), filt = c.createBiquadFilter(), gain = c.createGain();
       const src = c.createBufferSource(), noiseFilt = c.createBiquadFilter(), noiseGain = c.createGain();
       osc.type = 'sawtooth'; osc.frequency.value = 48; filt.type = 'lowpass'; filt.frequency.value = 300; gain.gain.value = 0;

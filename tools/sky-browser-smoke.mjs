@@ -176,6 +176,15 @@ try {
       await page.locator('#sk-title').waitFor({ state: 'visible' });
       await page.locator('#sk-start').click();
       await page.waitForFunction(() => !!window.__sky?.sim && window.__sky.sim.time > 0.05 && window.__sky.renderer.info.render.calls > 0);
+      await page.evaluate(() => {
+        const sim = window.__sky.sim;
+        sim.damage(sim.player, 99999, -5, sim.player.pos);
+      });
+      await page.locator('#sk-end').waitFor({ state: 'visible' });
+      assert.match(await page.locator('#sk-end-t').innerText(), /격추/, 'Game over report should appear after the aircraft is destroyed');
+      await page.locator('#sk-again').click();
+      await page.locator('#sk-end').waitFor({ state: 'hidden' });
+      await page.waitForFunction(() => window.__sky?.sim?.player?.alive && window.__sky.sim.time > 0.05);
       if (size.name === 'desktop') await page.keyboard.press('p');
       else await page.locator('#sk-pause').click();
       await page.locator('#sk-paused').waitFor({ state: 'visible' });

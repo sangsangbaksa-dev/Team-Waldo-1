@@ -17,6 +17,18 @@ export class RetriableAssetCache<T> {
   }
 }
 
+/** Never leave the setup screen blocked by a stalled asset request.
+ * Late successful assets can still be used on the next race restart. */
+export function withAssetDeadline<T>(request: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => resolve(fallback), ms);
+    void request.then(
+      value => { clearTimeout(timer); resolve(value); },
+      error => { clearTimeout(timer); reject(error); },
+    );
+  });
+}
+
 const carAssets = new RetriableAssetCache<Record<string, THREE.Object3D>>();
 /** Parse once per browser tab; local view instances own their own render
  * materials and borrow these templates' shared geometry, not their lifecycle.

@@ -24,7 +24,7 @@ import { driftLive, readDriftBests, writeDriftBests } from './driftscore';
 import { PVP_ENABLED } from '../net/config';
 import { framePlan, STEP, escapeRaceText } from './frame-plan';
 import { raceHudSubtitle } from './hud-status';
-import { loadRaceCars } from './car-models';
+import { loadRaceCars, withAssetDeadline } from './car-models';
 
 const ORD = ['', '1ST', '2ND', '3RD', '4TH', '5TH', '6TH'];
 
@@ -450,7 +450,20 @@ export function openRace(onExit: () => void): void {
   }
 
   const setPaused = (on: boolean): void => {
-    if (!view || setupUi || pvp || multi || contextLost || race.phase === 'done' || finishedShown || closed) return; paused = on; modal.className = on ? 'rc-modal show' : 'rc-modal'; if (on) { clearControls(); audio.drive(0, 0, 0, false, false, false); modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">PAUSED</span><h2>일시정지</h2><div class="rc-actions"><button class="primary" data-act="resume">계속하기</button><button data-act="restart">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button></div></div>'; } else modal.innerHTML = '';
+    if (!view || setupUi || pvp || multi || contextLost || race.phase === 'done' || finishedShown || closed) return;
+    paused = on;
+    modal.className = on ? 'rc-modal show' : 'rc-modal';
+    if (on) {
+      clearControls();
+      audio.drive(0, 0, 0, false, false, false);
+      modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">PAUSED</span><h2>일시정지</h2><div class="rc-actions"><button class="primary" data-act="resume">계속하기</button><button data-act="restart">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button></div></div>';
+    } else {
+      modal.innerHTML = '';
+      // The browser may suspend requestAnimationFrame while tabbed out.
+      // Resume from the current time rather than replaying stale frame debt.
+      last = performance.now();
+      acc = 0;
+    }
   };
   const exit = (): void => {
     if (closed) return; closed = true; cancelAnimationFrame(raf); removeEventListener('keydown', onKey); removeEventListener('keyup', onKeyUp); removeEventListener('resize', resize); removeEventListener('blur', onBlur); document.removeEventListener('visibilitychange', onVisibility);
@@ -474,8 +487,11 @@ export function openRace(onExit: () => void): void {
   const onKey = (e: KeyboardEvent): void => {
     // Typing in PVP account fields must never trigger shortcuts (especially mute).
     if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+    // Enter/Space on any focused HUD or dialog button must activate that
+    // button normally, never trigger simultaneous throttle/drift shortcuts.
+    if ((e.code === 'Enter' || e.code === 'Space') && e.target instanceof HTMLElement
+      && e.target.closest('button, [role="button"]')) return;
     if (setupUi && e.code !== 'KeyM') return;
-    if (e.target instanceof HTMLElement && e.target.closest('.rc-modal.show button') && (e.code === 'Enter' || e.code === 'Space')) return;
     // Holding R must recover only once; repeated keydown used to teleport every frame.
     if (e.repeat) { if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); return; }
     audio.unlock(); if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
@@ -512,9 +528,14 @@ export function openRace(onExit: () => void): void {
     else void loadCharacterKit(import.meta.env.BASE_URL)
       .then(kit => { if (!closed) setDriverKit(kit); })
       .catch(() => { if (!closed) setDriverKit(null); });
-    const cars = await loadRaceCars(import.meta.env.BASE_URL);
+    const request = loadRaceCars(import.meta.env.BASE_URL);
+    // A stalled network cannot trap the entire game on "warming up" forever.
+    const cars = await withAssetDeadline(request, 8000, null);
     if (closed) return;
     carTemplate = cars;
+    // If the request eventually finishes, a subsequent race restart may use
+    // the real model without replacing a live WebGL scene underneath the player.
+    if (!cars) void request.then(loaded => { if (!closed && loaded) carTemplate = loaded; });
     last = performance.now(); raf = requestAnimationFrame(frame); showSetup();
   })();
 }

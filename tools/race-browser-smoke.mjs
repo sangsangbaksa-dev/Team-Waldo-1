@@ -51,6 +51,20 @@ try {
   await page.evaluate(() => { window.__race.skip(3.3); });
   await page.waitForFunction(() => window.__race?.race?.phase === 'racing');
   assert.match(await page.locator('.rc-keys').innerText(), /브레이크/, 'keyboard guide should show the brake key');
+  // Keyboard navigation must be able to activate HUD buttons with Space/Enter,
+  // rather than accidentally entering drift and cancelling native clicks.
+  const muteControl = page.locator('.rc-btns [data-act="mute"]');
+  await muteControl.focus();
+  const firstMuteState = await muteControl.getAttribute('aria-pressed');
+  await page.keyboard.press('Space');
+  assert.notEqual(await muteControl.getAttribute('aria-pressed'), firstMuteState, 'Space should activate focused mute button');
+  await page.keyboard.press('Space');
+  assert.equal(await muteControl.getAttribute('aria-pressed'), firstMuteState, 'Second Space should restore sound');
+  const pauseControl = page.locator('.rc-btns [data-act="pause"]');
+  await pauseControl.focus();
+  await page.keyboard.press('Enter');
+  await page.locator('.rc-modal.show [data-act="resume"]').waitFor();
+  await page.locator('.rc-modal.show [data-act="resume"]').click();
 
   // A recovery must clear the old steering/slip even when invoked mid-race.
   await page.evaluate(() => {

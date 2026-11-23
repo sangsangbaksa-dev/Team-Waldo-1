@@ -99,7 +99,7 @@ let cameraMotion = savedControls?.cameraMotion !== false;
 const motionAllowed = () => cameraMotion && !reducedMotion.matches;
 function persistControls() {
   $("viewWrap").dataset.motion = cameraMotion ? "normal" : "reduced";
-  try { localStorage.setItem("rt-controls", JSON.stringify({ sensitivity, cameraMotion })); } catch { /* Session settings still apply. */ }
+  roomStorage.write("rt-controls", { sensitivity, cameraMotion });
 }
 $("viewWrap").dataset.motion = cameraMotion ? "normal" : "reduced";
 let lastPointerType = matchMedia("(pointer:coarse)").matches ? "touch" : "mouse";
@@ -119,19 +119,20 @@ function saved() {
 function save() {
   savePersistent = roomStorage.write(SAVE, { v: 1, ch, found, solved, seen: [...seen], elapsed, archive, recorderUsed });
 }
-function toggleAudio() {
-  muted = !muted;
+function updateAudioControls() {
   sound.setMute(muted);
-  try {
-    localStorage.setItem("rt-silent", JSON.stringify(muted));
-  } catch { /* Browser storage or pointer lock is optional. */ }
   for (const b of [$("sound"), $("gsound")]) {
     b.setAttribute("aria-pressed", String(!muted));
     b.querySelector("span").textContent = muted ? "소리 꺼짐" : "소리 켜짐";
   }
 }
-muted = read("rt-silent") !== true;
-toggleAudio();
+function toggleAudio() {
+  muted = !muted;
+  roomStorage.write("rt-silent", muted);
+  updateAudioControls();
+}
+muted = read("rt-silent") === true;
+updateAudioControls();
 $("sound").onclick = $("gsound").onclick = toggleAudio;
 function screens(id) {
   if (id !== "viewer") closeViewer();
@@ -888,9 +889,7 @@ function drawGuide() {
 }
 function toggleGuide() {
   guidance = !guidance;
-  try {
-    localStorage.setItem("rt-guidance", JSON.stringify(guidance));
-  } catch { /* The preference applies for this session when storage is unavailable. */ }
+  roomStorage.write("rt-guidance", guidance);
   refreshGuide();
 }
 function drawMap(canvas) {

@@ -255,6 +255,10 @@ export function openRace(onExit: () => void): void {
   let carTemplate: Record<string, THREE.Object3D> | null = null;
   function startView(tpl: Record<string, THREE.Object3D> | null): boolean {
     clearControls(); nitroWas = driftWas = false; wrongT = 0;
+    wallHit = 0; fxIntensity = 0; msgT = 0;
+    // The previous race may have left impact sparks or speed streaks behind.
+    fg?.clearRect(0, 0, fx.width, fx.height);
+    miniGate.reset(); fxGate.reset();
     // 해제된 WebGL 컨텍스트는 같은 캔버스에서 다시 열 수 없으므로 캔버스를 새로 만듭니다.
     const fresh = document.createElement('canvas'); fresh.className = 'rc-canvas'; canvas.replaceWith(fresh); canvas = fresh;
     fresh.addEventListener('webglcontextlost', event => {
@@ -315,6 +319,8 @@ export function openRace(onExit: () => void): void {
   }
   prepareMinimap();
   const miniGate = new FrameGate(1000 / 30);
+  // 2D speed streaks are cosmetic and need not run at full 60-144Hz render FPS.
+  const fxGate = new FrameGate(1000 / (prefs.quality === 'low' ? 20 : 30));
   function drawMini(): void {
     if (!mg) return; mg.clearRect(0, 0, 220, 220);
     if (miniBaseCtx) mg.drawImage(miniBase, 0, 0); else paintMiniTrack(mg);
@@ -360,7 +366,8 @@ export function openRace(onExit: () => void): void {
       if (nitroNow && !nitroWas) { audio.sfx('nitro'); view.punchFov(0.9); }
       if (driftNow && !driftWas) { audio.sfx('chirp'); view.punchFov(0.25); }
       nitroWas = nitroNow; driftWas = driftNow;
-      view.update(race, dt, wallHit); wallHit = 0; fxIntensity += (RaceView.intensity(race) - fxIntensity) * Math.min(1, dt * 5); drawFx(fxIntensity);
+      view.update(race, dt, wallHit); wallHit = 0; fxIntensity += (RaceView.intensity(race) - fxIntensity) * Math.min(1, dt * 5);
+      if (fxGate.due(now)) drawFx(fxIntensity);
       pvp?.net.sendSnap(race.player.car, now); multi?.net.sendSnap(race.player.car, now); hud(steps * STEP); if (miniGate.due(now)) drawMini();
       if (msgT > 0 && (msgT -= dt) <= 0) $('#rc-msg').className = 'rc-msg';
     }

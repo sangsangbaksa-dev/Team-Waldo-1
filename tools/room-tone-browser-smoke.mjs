@@ -51,6 +51,35 @@ try {
       const hasWebgl = await page.locator("#viewWrap canvas").evaluate(canvas=>canvas.width>0&&canvas.height>0&&canvas.getAttribute("data-engine")?.includes("three.js"));
       assert.ok(hasWebgl,"3D renderer must initialize and size the canvas");
       assert.match(await page.locator("#zone").innerText(), /전원 정비동/);
+      const hudLayout = await page.evaluate(() => {
+        const bySelector = selector => document.querySelector(selector).getBoundingClientRect();
+        const overlap = (a, b) => a.left < b.right && b.left < a.right &&
+          a.top < b.bottom && b.top < a.bottom;
+        const hit = selector => {
+          const el = document.querySelector(selector);
+          const box = el.getBoundingClientRect();
+          return el.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2));
+        };
+        const touch = document.body.classList.contains("touch");
+        return {
+          pauseClickable: hit("#pauseGame"),
+          recorderClickable: hit("#recorder"),
+          mapClickable: hit("#mapBtn"),
+          cameraTopFree: getComputedStyle(document.querySelector("#game .hud")).pointerEvents === "none",
+          controlsClear: !touch || (
+            !overlap(bySelector(".statusfoot"), bySelector("#stick")) &&
+            !overlap(bySelector(".statusfoot"), bySelector(".gear")) &&
+            !overlap(bySelector("#stick"), bySelector(".touchactions")) &&
+            !overlap(bySelector(".gear"), bySelector(".touchactions"))
+          ),
+          widthOk: document.documentElement.scrollWidth <= window.innerWidth + 1,
+        };
+      });
+      assert.ok(hudLayout.pauseClickable && hudLayout.recorderClickable && hudLayout.mapClickable,
+        "HUD and gear controls must receive clicks above WebGL: " + JSON.stringify(hudLayout));
+      assert.equal(hudLayout.cameraTopFree, true, "HUD container must not block camera look input");
+      assert.equal(hudLayout.controlsClear, true, "Mobile control regions must not overlap: " + JSON.stringify(hudLayout));
+      assert.equal(hudLayout.widthOk, true, "Game HUD must not overflow horizontally");
       assert.equal(await page.locator("#recorderCount").innerText(),"2/2");
       if (mobile) {
         const hit = await page.locator("#recorder").evaluate(el => {

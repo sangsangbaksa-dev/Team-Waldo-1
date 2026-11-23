@@ -145,6 +145,10 @@ function save() {
   } catch { /* Browser storage or pointer lock is optional. */ }
 }
 const PREFS = "waldo.preferences.v1";
+function selectedQuality() {
+  const value = read(PREFS)?.quality;
+  return value === "low" || value === "standard" || value === "high" ? value : "high";
+}
 function syncAudioButtons() {
   for (const b of [$("sound"), $("gsound")]) {
     b.setAttribute("aria-pressed", String(!muted));
@@ -172,6 +176,7 @@ $("sound").onclick = $("gsound").onclick = toggleAudio;
 window.addEventListener("storage", (e) => {
   if (e.key === PREFS || (e.key === "rt-silent" && read(PREFS)?.sound === undefined))
     applyMute(initialMute(read("rt-silent"), read(PREFS)));
+  if (e.key === PREFS) resize();
 });
 function screens(id) {
   for (const key of ["home", "game"]) $(key).hidden = key !== id;
@@ -443,7 +448,7 @@ function resize() {
   if (!w || !h) return;
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  const pixelRatio = renderingScale(w, h, devicePixelRatio, touch);
+  const pixelRatio = renderingScale(w, h, devicePixelRatio, touch, selectedQuality());
   if (renderer.getPixelRatio() !== pixelRatio) renderer.setPixelRatio(pixelRatio);
   renderer.setSize(w, h, false);
   showSceneOnce();

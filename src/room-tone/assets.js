@@ -1,8 +1,9 @@
-let request;
+let request, activeController;
 /** Share one in-flight model download, but never wait forever on a stalled CDN. */
 export function modelBytes() {
   if (!request) {
     const controller = typeof AbortController === "function" ? new AbortController() : null;
+    activeController = controller;
     const timer = controller ? globalThis.setTimeout(() => controller.abort(), 90_000) : null;
     const pending = fetch("./room-tone.glb", controller ? { signal: controller.signal } : undefined)
       .then((response) => {
@@ -14,7 +15,10 @@ export function modelBytes() {
     // A stale, released download must never clear a newer active request.
     let attempt;
     attempt = pending.catch((error) => {
-      if (request === attempt) request = null;
+      if (request === attempt) {
+        request = null;
+        activeController = null;
+      }
       throw error;
     });
     request = attempt;
@@ -22,4 +26,8 @@ export function modelBytes() {
   return request;
 }
 /** Parsed Three.js geometry replaces the temporary source bytes. */
-export function releaseModelBytes() { request = null; }
+export function releaseModelBytes() {
+  request = null;
+  activeController?.abort();
+  activeController = null;
+}

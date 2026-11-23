@@ -111,7 +111,7 @@ interface CarVis { racer: Racer; group: THREE.Group; flames: THREE.Mesh[]; shado
 
 export class RaceView {
   post: PostFx | null = null; readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera = new THREE.PerspectiveCamera(64, 1, 0.4, 3200);
-  private crew: CharacterRig[] = []; private cars: CarVis[] = []; private ground!: THREE.Mesh; private pads: Array<{ tex: THREE.CanvasTexture }> = [];
+  private crew: CharacterRig[] = []; private cars: CarVis[] = []; private ground!: THREE.Mesh; private padTexture: THREE.CanvasTexture | null = null;
   private rainFx: Particles | null = null; private sparks = new Particles(420, 0.34, THREE.AdditiveBlending); private smoke = new Particles(420, 1.1, THREE.NormalBlending, 0.2); private skids = new SkidMarks(1400); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
   private camH = 0; private camInit = false; private camAnchor: ChaseAnchor = { x: 0, y: 0, z: 0, ready: false }; private fov = 64; private shake = 0; private punch = 0; private time = 0; private sun: THREE.DirectionalLight;
   private chaseLift = 0; private viewH = 1; private startLamps: THREE.Mesh[] = [];
@@ -295,9 +295,13 @@ export class RaceView {
       g.fillStyle = 'rgba(20,10,40,.55)'; g.fillRect(0, 0, 256, 128); g.strokeStyle = th.pad; g.lineWidth = 14; g.lineJoin = 'round';
       for (let k = 0; k < 3; k++) { g.beginPath(); g.moveTo(30 + k * 78, 14); g.lineTo(78 + k * 78, 64); g.lineTo(30 + k * 78, 114); g.stroke(); }
     });
+    // All pads animate in phase, so they can share one canvas/GPU texture.
+    const padTexture = padTexBase();
+    this.padTexture = padTexture;
+    this.disposables.push(padTexture);
     for (const i of t.pads) {
-      const tex = padTexBase(), m = new THREE.Mesh(new THREE.PlaneGeometry(16, 12).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
-      m.rotation.order = 'YXZ'; m.rotation.y = -Math.atan2(t.tz[i], t.tx[i]); m.rotation.z = t.pitch[i]; m.position.set(t.x[i], t.y[i] + 0.1, t.z[i]); this.scene.add(m); this.pads.push({ tex }); this.disposables.push(m.geometry, tex);
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(16, 12).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: padTexture, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+      m.rotation.order = 'YXZ'; m.rotation.y = -Math.atan2(t.tz[i], t.tx[i]); m.rotation.z = t.pitch[i]; m.position.set(t.x[i], t.y[i] + 0.1, t.z[i]); this.scene.add(m); this.disposables.push(m.geometry);
     }
     // 출발선
     const i0 = 0, check = canvasTex(256, 32, g => { for (let x = 0; x < 16; x++) for (let y = 0; y < 2; y++) { g.fillStyle = (x + y) % 2 ? '#111' : '#fff'; g.fillRect(x * 16, y * 16, 16, 16); } });
@@ -312,7 +316,7 @@ export class RaceView {
     }
     this.disposables.push(lampGeo);
     if (driverKit) { // 출발선 옆 피트 크루·관중: 코스를 바라보며 손을 흔듭니다
-      for (let n = 0; n < 8; n++) {
+      for (let n = 0; n < (this.quality === 'low' ? 4 : 8); n++) {
         const side = n % 2 ? 1 : -1, ahead = 1 + Math.floor(n / 2) * 2, j = Math.min(t.n - 1, ahead), ch = driverKit.create(['civ', 'civ3', 'worker', 'civ5', 'guard'][n % 5], 40 + n, [0xe8e6df, 0xd9a23a, 0x2f6fd0, 0xc23b3b][n % 4]), dx = t.x[j] - t.tz[j] * side * (hw + 3.4), dz = t.z[j] + t.tx[j] * side * (hw + 3.4);
         ch.root.position.set(dx, t.y[j], dz); ch.root.rotation.y = -Math.atan2(t.tx[j] * side, -t.tz[j] * side) + Math.PI; ch.state.wave = n % 3 === 0 ? 1 : 0; ch.state.time = n; ch.update(0); markBorrowedTree(ch.root, this.borrowed); this.scene.add(ch.root); this.crew.push(ch);
       }
@@ -503,7 +507,7 @@ export class RaceView {
     this.time += dt; const p = race.player.car, t = this.track, speed = Math.abs(p.vf), sf = Math.min(1, speed / 74), bst = boosting(p);
     // Match 60fps particle density instead of emitting excess FX on high-Hz screens.
     const fxPerFrame = Math.min(1, dt * 60);
-    for (const pad of this.pads) pad.tex.offset.x -= dt * 1.4;
+    if (this.padTexture) this.padTexture.offset.x -= dt * 1.4;
     this.outposts?.update(this.time);
     for (const ch of this.crew) { ch.state.time += dt; ch.update(dt); }
     // 차량 배치

@@ -35,7 +35,6 @@ export function analyzePullRequests(prs, options = {}) {
     draft: !!pr.draft,
     files: [...new Set((pr.files ?? []).map(f => typeof f === 'string' ? f : f.filename).filter(Boolean))].sort(),
   })).sort((a, b) => a.number - b.number);
-  const byNumber = new Map(normalized.map(pr => [pr.number, pr]));
   const byHead = new Map(normalized.filter(pr => pr.head).map(pr => [pr.head, pr]));
   const parentEdges = normalized.flatMap(pr => {
     const parent = byHead.get(pr.base);
@@ -71,7 +70,7 @@ export function analyzePullRequests(prs, options = {}) {
     const date = Date.parse(pr.updated);
     return Number.isFinite(date) && now >= date && now - date < freshMinutes * 60_000;
   }).map(pr => pr.number);
-  return { target, total: normalized.length, prs: normalized, parentEdges, exactFileCollisions, collisionPairs, multipleGames, foreignBases, recentlyUpdated,
+  return { target, freshMinutes, total: normalized.length, prs: normalized, parentEdges, exactFileCollisions, collisionPairs, multipleGames, foreignBases, recentlyUpdated,
     missingFileLists: normalized.filter(pr => !pr.files.length).map(pr => pr.number) };
 }
 
@@ -105,7 +104,7 @@ export function renderMarkdown(report, repo = 'sangsangbaksa-dev/Team-Waldo-1') 
   lines.push('', '## 한 PR에서 여러 게임을 변경');
   if (!report.multipleGames.length) lines.push('없음');
   else for (const row of report.multipleGames) lines.push('- ' + refLink(repo, row.number) + ': ' + row.games.join(', '));
-  lines.push('', '## 최근 ' + 10 + '분 이내 갱신된 PR', report.recentlyUpdated.length ? report.recentlyUpdated.map(n => refLink(repo, n)).join(', ') : '없음');
+  lines.push('', '## 최근 ' + report.freshMinutes + '분 이내 갱신된 PR', report.recentlyUpdated.length ? report.recentlyUpdated.map(n => refLink(repo, n)).join(', ') : '없음');
   if (report.missingFileLists.length) lines.push('', '주의: 변경 파일 목록이 비어 있는 PR: ' + report.missingFileLists.join(', '));
   lines.push('', '병합 전에 실제 diff, 운영 HEAD, CI 결과를 개별적으로 확인하세요.');
   return lines.join('\n') + '\n';

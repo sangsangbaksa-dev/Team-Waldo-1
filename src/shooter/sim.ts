@@ -387,7 +387,7 @@ export class Match {
     }
     for (let i = this.shells.length - 1; i >= 0; i--) {
       const sh = this.shells[i]; if (this.t < sh.land) continue; this.shells.splice(i, 1);
-      this.events.push({ t: 'nade', stage: 'boom', id: -1, x: sh.x, y: 0.4, z: sh.z });
+      this.events.push({ t: 'nade', stage: 'boom', id: -1, x: sh.x, y: groundHeight(this.map.terrain, sh.x, sh.z) + 0.4, z: sh.z });
       for (const q of this.players) {
         if (!q.alive || q.air) continue; const d = Math.hypot(q.x - sh.x, q.z - sh.z); if (d > RED.blast) continue;
         let dmg = RED.dmg * (1 - d / RED.blast); if (this.map.buildings.some(b => Math.abs(q.x - b.x) < b.w / 2 && Math.abs(q.z - b.z) < b.d / 2)) dmg *= 0.5; if (dmg >= 1) this.damage(q, dmg, -1, 'bomb', false, q.x, groundHeight(this.map.terrain, q.x, q.z) + 1.2, q.z, false);

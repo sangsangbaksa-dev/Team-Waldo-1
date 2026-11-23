@@ -13,8 +13,9 @@ describe('Zero Zone spatial rendering buckets', () => {
   it('keeps cells visible when their edges intersect the draw radius', () => {
     expect(cellIsNear(0, 0, 0, 0, 0)).toBe(true);
     expect(cellIsNear(0, 0, -1, 0, 0)).toBe(true);
-    expect(cellIsNear(0, 0, 2, 0, 64)).toBe(true);
-    expect(cellIsNear(0, 0, 2, 0, 63.9)).toBe(false);
+    expect(cellIsNear(0, 0, 1, 0, 64)).toBe(true);
+    expect(cellIsNear(0, 0, 1, 0, 63.9)).toBe(false);
+    expect(cellIsNear(0, 0, 2, 0, 127.9)).toBe(false);
     expect(cellIsNear(-10, -10, -1, -1, 1)).toBe(true);
     expect(cellIsNear(-10, -10, 1, 1, 100)).toBe(false);
   });

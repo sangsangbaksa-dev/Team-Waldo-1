@@ -37,6 +37,18 @@ describe('HUSTLE urban fleet', () => {
     rides.dispose();
   });
 
+  it('freezes without erasing momentum during a map or menu pause', () => {
+    const { player, rides } = setup();
+    const car = rides.positions()[0]; player.teleport(car.x, car.z, car.heading);
+    expect(rides.toggle(player).ok).toBe(true);
+    for (let i = 0; i < 12; i++) rides.update(1 / 60, { throttle: 1, steer: 0, brake: false }, player, false);
+    const speed = rides.speed, position = rides.snapshot();
+    rides.update(1 / 30, { throttle: 1, steer: 1, brake: false }, player, true);
+    expect(rides.speed).toBe(speed);
+    expect(rides.snapshot()).toEqual(position);
+    rides.dispose();
+  });
+
   it('stops before moving NPC traffic and never tunnels through it', () => {
     const { player, rides } = setup();
     const car = rides.positions()[0]; player.teleport(car.x, car.z, car.heading);

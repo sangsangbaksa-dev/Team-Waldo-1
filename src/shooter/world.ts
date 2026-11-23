@@ -426,7 +426,7 @@ function spawnNear(map: GameMap, rng: () => number, x: number, z: number): void 
   map.spawns.push({ x, z });
 }
 
-const seen = new Int32Array(1 << 14); let stamp = 0;
+
 /** 이 원(반지름 r)이 서 있는 높이에서 막히는 상자와 겹치는지. */
 export function blockedAt(map: GameMap, x: number, z: number, r: number): boolean {
   for (let cx = cellOf(x - r); cx <= cellOf(x + r); cx++) for (let cz = cellOf(z - r); cz <= cellOf(z + r); cz++) {
@@ -479,26 +479,51 @@ export function pushOut(map: GameMap, p: { x: number; z: number }, r: number): b
   return hit;
 }
 
-/** 광선과 모든 상자의 첫 교차 거리(없으면 Infinity). dx,dy,dz 는 정규화된 방향. */
+/** 광선이 통과하는 CELL 격자를 빠짐없이 순회합니다.
+ * 이전 4m 샘플링은 셀 모서리의 짧은 통과 구간을 건너뛰어 얇은 벽을 뚫는 문제가 있었습니다.
+ * DDA는 방문한 셀만 검사하므로 긴 시야/총알 광선의 빈 셀 탐색 비용도 낮춥니다. */
+let rayMarks = new Uint32Array(1 << 14);
+let rayStamp = 0;
 export function rayWorld(map: GameMap, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
-  stamp++; let best = Infinity;
-  const steps = Math.ceil(Math.min(maxT, best) / (CELL / 4));
-  for (let s = 0; s <= steps; s++) {
-    const t = Math.min(maxT, s * (CELL / 4)), x = ox + dx * t, z = oz + dz * t;
-    for (let cx = cellOf(x - 0.01); cx <= cellOf(x + 0.01); cx++) for (let cz = cellOf(z - 0.01); cz <= cellOf(z + 0.01); cz++) {
-      const l = map.grid.get(key(cx, cz)); if (!l) continue;
-      for (const i of l) {
-        if (seen[i & 16383] === stamp) continue; seen[i & 16383] = stamp;
-        const b = map.boxes[i]; let t0 = 0, t1 = Math.min(maxT, best);
-        const slab = (o: number, d: number, lo: number, hi: number): boolean => {
-          if (Math.abs(d) < 1e-9) return o >= lo && o <= hi;
-          let a = (lo - o) / d, c = (hi - o) / d; if (a > c) { const tmp = a; a = c; c = tmp; }
-          if (a > t0) t0 = a; if (c < t1) t1 = c; return t0 <= t1;
-        };
-        if (slab(ox, dx, b.x0, b.x1) && slab(oy, dy, b.y0, b.y1) && slab(oz, dz, b.z0, b.z1) && t0 < best) best = t0;
-      }
+  if (!(maxT >= 0) || !Number.isFinite(ox + oy + oz + dx + dy + dz)) return Infinity;
+  // 커다란 지도나 미래의 추가 건물 때문에 상자가 16k개를 넘어가더라도 중복 인덱스 충돌이 없도록 합니다.
+  if (map.boxes.length > rayMarks.length) {
+    let size = rayMarks.length;
+    while (size < map.boxes.length) size *= 2;
+    rayMarks = new Uint32Array(size);
+  }
+  rayStamp = (rayStamp + 1) >>> 0;
+  if (rayStamp === 0) { rayMarks.fill(0); rayStamp = 1; }
+  let cx = cellOf(ox), cz = cellOf(oz), entry = 0, best = Infinity;
+  const stepX = dx > 0 ? 1 : dx < 0 ? -1 : 0;
+  const stepZ = dz > 0 ? 1 : dz < 0 ? -1 : 0;
+  const intervalX = stepX ? CELL / Math.abs(dx) : Infinity;
+  const intervalZ = stepZ ? CELL / Math.abs(dz) : Infinity;
+  let nextX = stepX ? ((cx + (stepX > 0 ? 1 : 0)) * CELL - ox) / dx : Infinity;
+  let nextZ = stepZ ? ((cz + (stepZ > 0 ? 1 : 0)) * CELL - oz) / dz : Infinity;
+  // 격자 경계 위에서 시작해 반대 방향으로 움직일 경우 0거리 첫 칸을 한 번 처리합니다.
+  while (entry <= maxT && entry <= best) {
+    const indices = map.grid.get(key(cx, cz));
+    if (indices) for (const i of indices) {
+      if (rayMarks[i] === rayStamp) continue;
+      rayMarks[i] = rayStamp;
+      const b = map.boxes[i];
+      let t0 = 0, t1 = Math.min(maxT, best);
+      const slab = (o: number, d: number, lo: number, hi: number): boolean => {
+        if (Math.abs(d) < 1e-9) return o >= lo && o <= hi;
+        let a = (lo - o) / d, c = (hi - o) / d;
+        if (a > c) { const tmp = a; a = c; c = tmp; }
+        if (a > t0) t0 = a;
+        if (c < t1) t1 = c;
+        return t0 <= t1;
+      };
+      if (slab(ox, dx, b.x0, b.x1) && slab(oy, dy, b.y0, b.y1) && slab(oz, dz, b.z0, b.z1) && t0 < best) best = t0;
     }
-    if (t >= maxT || best <= t) break;
+    if (nextX === Infinity && nextZ === Infinity) break;
+    // 모서리를 정확히 통과할 때는 양쪽 경계를 동시에 넘습니다.
+    if (nextX <= nextZ) { entry = nextX; nextX += intervalX; cx += stepX; }
+    if (nextZ <= entry) { entry = nextZ; nextZ += intervalZ; cz += stepZ; }
+    // X 경계만 넘은 경우에는 다음 Z 경계를 향해 계속 진행합니다.
   }
   return best;
 }

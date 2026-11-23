@@ -16,7 +16,7 @@ export function placementCell(map, origin, yaw) {
     if (map[z]?.[x] !== ".") break;
     target = z * width + x;
   }
-  return target;
+  return target ?? origin;
 }
 export function advanceRecorder(recorder, dt) {
   if (!recorder || !Number.isFinite(dt) || dt <= 0) return { recorder, pulse: false };

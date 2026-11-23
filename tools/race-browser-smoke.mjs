@@ -57,6 +57,22 @@ try {
     return { vx: c.vx, vf: c.vf, steer: c.steer, slip: c.slip, lat: c.lat, drifting: c.drifting };
   });
   assert.deepEqual(recovered, { vx: 0, vf: 0, steer: 0, slip: 0, lat: 0, drifting: false });
+  // Repeated R keydowns from a long key hold must not reset vehicle movement.
+  await page.evaluate(() => {
+    const c = window.__race.race.player.car;
+    c.vf = c.vx = 21;
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', code: 'KeyR', repeat: true, bubbles: true }));
+    if (c.vf !== 21) throw new Error('Repeat recovery teleported car');
+    c.vf = c.vx = 0;
+    const root = document.querySelector('.rc-root');
+    const input = document.createElement('input');
+    root.append(input); input.focus();
+    const mute = root.querySelector('[data-act="mute"]');
+    const original = mute.getAttribute('aria-pressed');
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', code: 'KeyM', bubbles: true }));
+    if (mute.getAttribute('aria-pressed') !== original) throw new Error('Typing triggered mute');
+    input.remove();
+  });
 
   await page.keyboard.press('Escape');
   await page.locator('.rc-modal.show [data-act="resume"]').waitFor();

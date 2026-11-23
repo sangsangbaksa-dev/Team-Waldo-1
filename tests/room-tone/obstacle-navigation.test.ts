@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeLevel, neighbors } from "../../src/room-tone/levels.mjs";
-import { circleHitsProp } from "../../src/room-tone/obstacles.mjs";
+import { circleHitsProp, propClearance } from "../../src/room-tone/obstacles.mjs";
 import { lineClear } from "../../src/room-tone/visibility.mjs";
 
 const C = 2.7, STEP = 0.45, RADIUS = 0.225;
@@ -51,6 +51,23 @@ describe("ROOM TONE four-chapter equipment accessibility", () => {
         (Math.floor(next/level.w)-Math.floor(level.start/level.w))*C*0.38;
       const first:[number,number]=[Math.round(x0/STEP),Math.round(z0/STEP)];
       expect(free(first[0]*STEP,first[1]*STEP)).toBe(true);
+      // Repeat the gameplay's axis-by-axis collision test using deterministic
+      // random footstep deltas; each accepted move must remain fully outside
+      // solid furniture and world walls.
+      const player={x:first[0]*STEP,z:first[1]*STEP};
+      let seed=763219+chapter*17;
+      const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;
+        return seed/4294967296;};
+      const canShift=(x:number,z:number)=>
+        [[-1,-1],[1,-1],[-1,1],[1,1]].every(([sx,sz])=>
+          pass(x+sx*RADIUS,z+sz*RADIUS)) &&
+        propClearance(x,z,player.x,player.z,RADIUS,colliders);
+      for(let step=0;step<2000;step++){
+        const dx=(random()-0.5)*0.48,dz=(random()-0.5)*0.48;
+        if(canShift(player.x+dx,player.z))player.x+=dx;
+        if(canShift(player.x,player.z+dz))player.z+=dz;
+        expect(free(player.x,player.z)).toBe(true);
+      }
       const width=(level.w-1)*6+1, visited=new Set<number>();
       const queue:[number,number][]=[first];
       visited.add(first[1]*width+first[0]);

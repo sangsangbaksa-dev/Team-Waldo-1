@@ -15,7 +15,12 @@ export class TycoonAudio {
       src.connect(filter); filter.connect(gain); gain.connect(dest); src.start(); this.eng.track(src); return { src, filter, gain };
     };
     this.city = mk('lowpass', 420, 0.6); this.rain = mk('highpass', 1800, 0.4); this.wind = mk('bandpass', 260, 0.8);
-    // Quiet continuously filtered motor: no sampled loops, pitch follows road speed.
+  }
+  /** Create the engine voice on demand, keeping pedestrian scenes CPU-light. */
+  private ensureMotor(): void {
+    if (this.motor) return;
+    const c = this.eng.ctx, dest = this.eng.bus;
+    if (!c || !dest) return;
     const osc = c.createOscillator(), filter = c.createBiquadFilter(), gain = c.createGain();
     osc.type = 'sawtooth'; osc.frequency.value = 48;
     filter.type = 'lowpass'; filter.frequency.value = 110; filter.Q.value = 0.7; gain.gain.value = 0;
@@ -32,6 +37,7 @@ export class TycoonAudio {
     this.rain?.gain.gain.setTargetAtTime(rain * 0.07, t, 0.8); this.wind?.gain.gain.setTargetAtTime(0.02 + rain * 0.03, t, 0.8);
   }
   drive(speed: number, active: boolean): void {
+    if (active) this.ensureMotor();
     const c = this.eng.ctx, motor = this.motor;
     if (!c || !motor) return;
     const t = c.currentTime;

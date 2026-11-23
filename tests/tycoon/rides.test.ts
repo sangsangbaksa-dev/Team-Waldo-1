@@ -63,6 +63,21 @@ describe('HUSTLE urban fleet', () => {
     rides.dispose();
   });
 
+  it('indicates drive, neutral and reverse without persisting a gear upgrade', () => {
+    const { player, rides } = setup();
+    const car = rides.positions()[0];
+    player.teleport(car.x, car.z, car.heading);
+    expect(rides.toggle(player).ok).toBe(true);
+    expect(rides.gear).toBe('N');
+    for (let i = 0; i < 20; i++) rides.update(1 / 60, { throttle: 1, steer: 0, brake: false }, player, false);
+    expect(rides.gear).toBe('D');
+    for (let i = 0; i < 100; i++) rides.update(1 / 60, { throttle: 0, steer: 0, brake: true }, player, false);
+    expect(rides.gear).toBe('N');
+    for (let i = 0; i < 20; i++) rides.update(1 / 60, { throttle: -1, steer: 0, brake: false }, player, false);
+    expect(rides.gear).toBe('R');
+    rides.dispose();
+  });
+
   it('freezes without erasing momentum during a map or menu pause', () => {
     const { player, rides } = setup();
     const car = rides.positions()[0]; player.teleport(car.x, car.z, car.heading);

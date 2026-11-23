@@ -41,6 +41,20 @@ describe('SPEED RUSH audio', () => {
     expect(audio.gear).toBeGreaterThan(1);
   });
 
+  it('does not continuously schedule Web Audio controls while muted', () => {
+    audio.unlock();
+    const ctx = mock.context()!;
+    audio.drive(25, 1, 0, false, false, false);
+    const beforeMute = ctx.oscillators[0].frequency.value;
+    audio.setEnabled(false);
+    audio.drive(75, 1, 0, true, true, true);
+    expect(ctx.oscillators[0].frequency.value).toBe(beforeMute);
+    expect(audio.gear).toBe(gearFor(75));
+    audio.setEnabled(true);
+    audio.drive(75, 1, 0, true, true, true);
+    expect(ctx.oscillators[0].frequency.value).toBeGreaterThan(beforeMute);
+  });
+
   it('plays countdown, boost, collision, lap and finish, then quiets the engine', () => {
     audio.unlock();
     for (const name of RACE_SFX) audio.sfx(name, 8);

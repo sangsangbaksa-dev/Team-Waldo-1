@@ -92,9 +92,9 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       <div class="sz-setup-inner">
         <header><span class="sz-eyebrow">ZERO ZONE</span><h2>출격 준비</h2><p>강하 지점을 정하고 장비를 확보하세요. 안전 구역은 계속 좁아집니다.</p></header>
         <section><h3><span class="sz-section-no">01</span> 게임 방식</h3><div class="sz-seg three">
-          <button type="button" class="sz-opt ${pickMode === 'solo' ? 'on' : ''}" data-mode="solo" aria-pressed="${pickMode === 'solo'}"><b>배틀로열</b><em>100명 전장 · AI 99명 · 낙하산 강하</em></button>
+          <button type="button" class="sz-opt ${pickMode === 'solo' ? 'on' : ''}" data-mode="solo" aria-pressed="${pickMode === 'solo'}"><b>배틀로열</b><em>100인 생존전 · AI 99명 · 낙하산 강하</em></button>
           ${PVP_ENABLED ? `<button type="button" class="sz-opt ${pickMode === 'pvp' ? 'on' : ''}" data-mode="pvp" aria-pressed="${pickMode === 'pvp'}"><b>1대1 대전</b><em>실시간 매칭 · 방 코드 입장</em></button>` : ''}
-          ${PVP_ENABLED ? `<button type="button" class="sz-opt ${pickMode === 'room' ? 'on' : ''}" data-mode="room" aria-pressed="${pickMode === 'room'}"><b>사용자 방</b><em>최대 ${ROOM_MAX}명 · 공개/비공개 · AI 인원 설정</em></button>` : ''}</div></section>
+          ${PVP_ENABLED ? `<button type="button" class="sz-opt ${pickMode === 'room' ? 'on' : ''}" data-mode="room" aria-pressed="${pickMode === 'room'}"><b>멀티플레이</b><em>최대 ${ROOM_MAX}명 · 공개/비공개 · AI 인원 설정</em></button>` : ''}</div></section>
         ${pickMode === 'room' ? `<section><h3><span class="sz-section-no">02</span> AI 인원 <em class="sz-coin">방 생성 시 적용</em></h3><div class="sz-seg four">${ROOM_FILLS.map(f => `<button type="button" class="sz-opt ${f === roomFill ? 'on' : ''}" data-fill="${f}" aria-pressed="${f === roomFill}"><b>${f ? `${f}명까지` : '사람만'}</b></button>`).join('')}</div>
           <p class="sz-note">${roomFill ? `AI 포함 ${roomFill}명으로 시작합니다. 차량, 보급품, 폭격 구역이 활성화됩니다.` : 'AI 없이 참가자끼리 대전합니다.'} 참가자가 2명이면 1대1로 진행됩니다.</p></section>` : ''}
         <section class="${pickMode === 'pvp' || (pickMode === 'room' && !roomFill) ? 'dim' : ''}"><h3><span class="sz-section-no">${pickMode === 'room' ? '03' : '02'}</span> AI 난이도</h3><div class="sz-seg four">${DIFFICULTIES.map(d => `<button type="button" class="sz-opt ${d === level ? 'on' : ''}" data-level="${d}" aria-pressed="${d === level}" ${pickMode === 'pvp' || (pickMode === 'room' && !roomFill) ? 'disabled' : ''}><b>${BOTS[d].label}</b></button>`).join('')}</div>
@@ -306,7 +306,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
     if (m.over) r.done = true;
     const rank = win ? 1 : p.place || m.players.length, n = m.players.length;
     audio.play(win ? 'win' : 'lose');
-    card(`멀티플레이 방 · ${n}명`, win ? '최후의 1인' : `${rank}위`, `<p class="sz-big">${win ? '승리' : `${n}명 중 ${rank}위`}</p><div class="sz-stats"><div><b>${p.kills}</b><span>처치</span></div><div><b>${clock(win ? m.t : p.diedAt)}</b><span>생존 시간</span></div><div><b>${Math.round(p.dmgDealt)}</b><span>준 피해</span></div><div><b>${p.heads}</b><span>머리 명중</span></div></div>${win ? '' : killerLine(p, false)}`,
+    card(`멀티플레이 방 · ${n}명`, `${rank}위`, `<p class="sz-big">${win ? '승리' : `${n}명 중 ${rank}위`}</p><div class="sz-stats"><div><b>${p.kills}</b><span>처치</span></div><div><b>${clock(win ? m.t : p.diedAt)}</b><span>생존 시간</span></div><div><b>${Math.round(p.dmgDealt)}</b><span>준 피해</span></div><div><b>${p.heads}</b><span>머리 명중</span></div></div>${win ? '' : killerLine(p, false)}`,
       `${!m.over ? '<button data-act="spectate">관전 계속</button>' : '<button class="primary" data-act="roomagain">다시 방 찾기</button>'}<button data-act="exit">메뉴로</button>`, win ? 'win' : '');
   }
   function leaveRoom(): void { const r = room; if (!r) return; if (r.net.started && !r.done) r.net.bye(); endRoom(); }
@@ -621,7 +621,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       career = readShooterCareer();
       soloRecorded = true;
     }
-    card('ZERO ZONE', win ? '생존 1위' : `${rank}위`, `<p class="sz-big">${win ? '승리' : `${match.players.length}명 중 ${rank}위`}</p><div class="sz-stats"><div><b>${p.kills}</b><span>처치</span></div><div><b>${clock(win ? t : p.diedAt)}</b><span>생존 시간</span></div><div><b>${Math.round(p.dmgDealt)}</b><span>준 피해</span></div><div><b>${p.heads}</b><span>머리 명중</span></div><div><b>${BOTS[level].label}</b><span>난이도</span></div></div>${killerLine(p, win)}`,
+    card('ZERO ZONE', `${rank}위`, `<p class="sz-big">${win ? '승리' : `${match.players.length}명 중 ${rank}위`}</p><div class="sz-stats"><div><b>${p.kills}</b><span>처치</span></div><div><b>${clock(win ? t : p.diedAt)}</b><span>생존 시간</span></div><div><b>${Math.round(p.dmgDealt)}</b><span>준 피해</span></div><div><b>${p.heads}</b><span>머리 명중</span></div><div><b>${BOTS[level].label}</b><span>난이도</span></div></div>${killerLine(p, win)}`,
       `<button class="primary" data-act="again">다시 출격</button>${!win && !match.over ? '<button data-act="spectate">관전 계속</button><button data-act="skip">결과까지 건너뛰기</button>' : ''}<button data-act="setup">설정으로</button><button data-act="exit">메뉴로</button>`, win ? 'win' : '');
   }
 
@@ -631,7 +631,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
 
   function setPause(on: boolean): void {
     if (pvpRunning() || (phase !== 'play' && phase !== 'countdown') || closed || paused === on) return; paused = on;
-    if (on) { blur(); if (document.pointerLockElement === canvas) document.exitPointerLock(); card('ZERO ZONE / PAUSE', '일시정지', '', '<button class="primary" data-act="resume">계속하기</button><button data-act="again">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button>'); }
+    if (on) { blur(); if (document.pointerLockElement === canvas) document.exitPointerLock(); card('ZERO ZONE', '일시정지', '', '<button class="primary" data-act="resume">계속하기</button><button data-act="again">처음부터</button><button data-act="setup">설정 변경</button><button data-act="exit">메뉴로</button>'); }
     else { modal.className = 'sz-modal'; modal.innerHTML = ''; if (!touch) lock(); }
   }
   q('#sz-pause').addEventListener('click', () => { if (pvpRunning()) { say('대전 중에는 멈출 수 없습니다', 1.4); return; } setPause(true); });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Match, blankInput } from '../../src/shooter/sim';
 import { emptyTerrain, groundHeight, groundRayDistance, riseHeight } from '../../src/shooter/terrain';
-import { generateMap, lineClear, rayWorld, type GameMap } from '../../src/shooter/world';
+import { addBox, blockedAt, circleHits, generateMap, lineClear, pushOut, rayWorld, type GameMap } from '../../src/shooter/world';
 
 function slopeMap(): GameMap {
   const m = generateMap(1, 'duel');
@@ -57,6 +57,20 @@ describe('ZERO ZONE 올라갈 수 있는 고저차', () => {
     expect(p.air).toBe(0);
     expect(p.alt).toBe(0);
     expect(groundHeight(match.map.terrain, p.x, p.z)).toBeGreaterThan(3.5);
+  });
+
+  it('높은 능선에 주차된 차량도 발밑 충돌로 처리하고, 머리 위 천장은 통과한다', () => {
+    const m = slopeMap();
+    addBox(m, { x0: -1, x1: 1, z0: -1, z1: 1, y0: 4, y1: 5.5, kind: 'vehicle', tex: 0 });
+    addBox(m, { x0: -8, x1: -5, z0: -1, z1: 1, y0: 8, y1: 8.3, kind: 'ceiling', tex: 0 });
+    expect(groundHeight(m.terrain, 0, 0)).toBe(4);
+    expect(blockedAt(m, 0, 0, 0.4)).toBe(true);
+    expect(circleHits(m, 0, 0, 0.4)).toBe(true);
+    const player = { x: 0, z: 0 };
+    expect(pushOut(m, player, 0.4)).toBe(true);
+    expect(circleHits(m, player.x, player.z, 0.4)).toBe(false);
+    expect(blockedAt(m, -6, 0, 0.4)).toBe(false);
+    expect(rayWorld(m, -6, 2, 0, 0, 1, 0, 10)).toBeCloseTo(6, 5);
   });
 
   it('실제 지도에서는 다른 시드의 완만한 구릉이 생성되며 재현 가능하다', () => {

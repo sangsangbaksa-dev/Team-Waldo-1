@@ -102,10 +102,11 @@ it('keeps tactical map keyboard focus after clicking with a mouse or trackpad', 
   Object.assign(e, { button: 0, clientX: 100, clientY: 90 });
   canvas.dispatchEvent(e);
   expect(document.activeElement).toBe(canvas);
+  expect(view.el.querySelector('#sl-rts-cursor')?.textContent).toContain('지휘 위치 100, 90 · 이동 지시');
   const arrow = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'ArrowRight' });
   canvas.dispatchEvent(arrow);
   expect(arrow.defaultPrevented).toBe(true);
-  expect(view.el.querySelector('#sl-rts-cursor')?.textContent).toContain('지휘 위치');
+  expect(view.el.querySelector('#sl-rts-cursor')?.textContent).toBe('지휘 위치 108, 90');
   view.dispose();
 });
 

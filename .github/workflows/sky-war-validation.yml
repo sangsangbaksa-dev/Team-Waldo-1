@@ -4,6 +4,7 @@ on:
     paths:
       - 'src/sky/**'
       - 'tests/sky/**'
+      - 'tools/sky-browser-smoke.mjs'
       - '.github/workflows/sky-war-validation.yml'
   workflow_dispatch:
 

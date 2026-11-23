@@ -46,6 +46,16 @@ try {
       isMobile: size.mobile, hasTouch: size.mobile, reducedMotion: 'reduce',
     });
     await context.addInitScript(() => {
+      // Instrument the native WebAudio source only in this smoke harness.
+      // A three-argument start() proves the cached random-offset noise path ran.
+      window.__slackNoiseStarts = [];
+      if (globalThis.AudioBufferSourceNode?.prototype?.start) {
+        const originalStart = AudioBufferSourceNode.prototype.start;
+        AudioBufferSourceNode.prototype.start = function (...args) {
+          if (args.length === 3) window.__slackNoiseStarts.push(args);
+          return originalStart.apply(this, args);
+        };
+      }
       localStorage.setItem('waldo.slack.tutorial.v1', '1');
       localStorage.setItem('waldo.preferences.v1', JSON.stringify({
         sound: false, quality: 'low', reducedMotion: true,
@@ -116,6 +126,11 @@ try {
       assert.equal(await page.locator('.sc-apps [data-app]').count(), 6);
       await page.locator('.sc-apps [data-app="shop"]').click();
       await page.locator('.sc-app-shop').waitFor({ state: 'visible' });
+      if (!size.mobile) {
+        // Exercise real WebAudio in Chromium (not only the mocked unit tests).
+        await page.locator('.sl-hud [data-sound]').click();
+        await page.waitForTimeout(150);
+      }
       const total = page.locator('.sc-app-shop [data-total]');
       assert.equal(await total.getAttribute('role'), 'status');
       await page.locator('.sc-app-shop [data-add="1"]').click();
@@ -123,6 +138,14 @@ try {
       await page.locator('.sc-app-shop [data-add="deal"]').click();
       assert.equal(await total.textContent(), '합계 14,835원', 'Flash deal should be 50% off');
       assert.equal(await page.locator('.sc-app-shop [data-add="1"]').textContent(), '담김 ×2');
+      if (!size.mobile) {
+        const segments = await page.evaluate(() => window.__slackNoiseStarts);
+        assert.ok(segments.length >= 1, 'An audible shopping click should use the native cached noise source');
+        for (const [when, offset, duration] of segments) {
+          assert.ok(Number.isFinite(when) && offset >= 0 && duration > 0 &&
+            offset + duration <= 1.001, 'Noise source must read a valid one-second buffer segment');
+        }
+      }
       await snap('dorm-shop');
       assert.deepEqual(errors, [], 'Unexpected unhandled browser errors');
       results.push({ viewport: size.name, status: 'passed', shopTotal: 14835 });

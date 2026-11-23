@@ -424,7 +424,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     const sky = atmo.update(worldDt, camera, focus, minutes, st.day);
     city.setNight(sky.night); city.setWet(sky.wet); rides?.setLighting(sky.night); renderer.toneMappingExposure = atmo.exposure();
     city.update(worldDt, focus);
-    crowd?.update(worldDt, focus, sky.night, sky.wet, (i, j) => city.blockOpen(i, j)); traffic?.update(worldDt, focus, player.pos, sky.night);
+    crowd?.update(worldDt, focus, sky.night, sky.wet, (i, j) => city.blockOpen(i, j)); traffic?.update(worldDt, focus, player.pos, sky.night, (x, z, radius) => rides?.blocksTraffic(x, z, radius) ?? false);
     if (st.stageIndex !== lastStage && playing) applyStageLook();
     // 카메라
     if (playing) {

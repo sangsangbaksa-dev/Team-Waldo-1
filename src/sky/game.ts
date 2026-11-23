@@ -52,7 +52,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   let idleDrawAt = -Infinity;
   let renderer: THREE.WebGLRenderer | null = null; let view: SkyView | null = null; let sim: SkySim | null = null;
   let diff: Difficulty = DIFFS[1]!; let state: 'title' | 'play' | 'paused' | 'over' = 'title'; let closed = false; let raf = 0; let last = 0; let saved = false;
-  let mTap = false, fireTap = 0, hitT = 0, hitBy = 0, mBoost = false, bannerT = 0, alertT = 0, flare = false, mFire = false, mMissile = false, autoFire = false, throttle = 0.55, hintT = 8, cockpit = false;
+  let mTap = false, fireTap = 0, hitT = 0, hitBy = 0, mBoost = false, bannerT = 0, alertT = 0, alertRank = 0, flare = false, mFire = false, mMissile = false, autoFire = false, throttle = 0.55, hintT = 8, cockpit = false;
   // 조작 설정(저장): 기본은 위치 기반 터치패드/마우스 조종, 필요하면 상대 이동 포인터 잠금 사용.
   const CTL_KEY = 'waldo-sky-ctl'; const ctl = { assist: 2, sens: 1, inv: false, pointerLock: false };
   try {
@@ -182,7 +182,15 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   // ── HUD ──────────────────────────────────────────
   function hint(t: string): void { const el = $('sk-hint'); el.textContent = t; hintT = 3; }
   function banner(t: string, sec = 2.2): void { const el = $('sk-banner'); el.textContent = t; el.classList.add('on'); bannerT = sec; }
-  function alertMsg(t: string, sec = 1): void { $('sk-alert').textContent = t; alertT = sec; }
+  /** Safety alerts take precedence over pickups, lock messages and hints.
+   * Rank 4: incoming missile; 3: collision/stall; 2: combat; 1: information. */
+  function alertMsg(t: string, sec = 1, rank = 1): void {
+    if (alertT > 0 && rank < alertRank) return;
+    const el = $('sk-alert');
+    el.textContent = t;
+    el.dataset.level = rank >= 3 ? 'danger' : rank === 2 ? 'combat' : 'info';
+    alertT = sec; alertRank = rank;
+  }
   const html = new WeakMap<HTMLElement, string>(); const setHtml = (el: HTMLElement, v: string): void => { if (html.get(el) !== v) { html.set(el, v); el.innerHTML = v; } };
   function hud(p: Jet, dt: number): void {
     $('sk-score').textContent = String(sim!.score); $('sk-combo').textContent = sim!.combo > 1 ? ` ×${sim!.combo}` : '';
@@ -200,7 +208,10 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     flareButton.classList.toggle('cooldown', !flareReady);
     flareButton.querySelector('span')!.textContent = flareReady ? '플레어' : `${Math.ceil(p.flare)}초`;
     flareButton.setAttribute('aria-label', flareReady ? '플레어 사용 가능' : `플레어 재사용까지 ${Math.ceil(p.flare)}초`);
-    if (alertT > 0) { alertT -= dt; if (alertT <= 0) $('sk-alert').textContent = ''; }
+    if (alertT > 0) {
+      alertT -= dt;
+      if (alertT <= 0) { $('sk-alert').textContent = ''; alertRank = 0; }
+    }
     if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) $('sk-banner').classList.remove('on'); }
     if (hintT > 0) { hintT -= dt; if (hintT <= 0) $('sk-hint').textContent = ''; }
   }
@@ -318,7 +329,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
       paintRec();
     }
     resetQualityClock(); last = performance.now();
-    diff = d; sim = new SkySim(d); saved = false; state = 'play'; throttle = 0.55; mouse.x = mouse.y = 0; mouse.active = false; fireTap = 0; flare = mTap = mBoost = mFire = mMissile = false; mouse.touchId = mouse.secondId = -1; hitT = 0; hitBy = 0; keys.clear(); bannerT = alertT = 0; cockpit = false; root.classList.remove('cockpit'); view?.setCockpit(false); autoFire = ctl.assist >= 2;
+    diff = d; sim = new SkySim(d); saved = false; state = 'play'; throttle = 0.55; mouse.x = mouse.y = 0; mouse.active = false; fireTap = 0; flare = mTap = mBoost = mFire = mMissile = false; mouse.touchId = mouse.secondId = -1; hitT = 0; hitBy = 0; keys.clear(); bannerT = alertT = alertRank = 0; cockpit = false; root.classList.remove('cockpit'); view?.setCockpit(false); autoFire = ctl.assist >= 2;
     $('sk-title').hidden = true; $('sk-end').hidden = true; $('sk-paused').hidden = true; $('sk-alert').textContent = ''; $('sk-banner').classList.remove('on'); root.querySelector<HTMLElement>('.sk-hud')!.hidden = false; audio.unlock(); lock(); hint(matchMedia('(pointer: coarse)').matches ? '화면을 드래그해 조종하세요' : ctl.pointerLock ? '상대 이동으로 조종 · Esc: 일시정지' : '커서를 화면 중앙 기준으로 움직여 조종 · P: 일시정지'); banner('출격!', 1.5);
     if (view) {
       view.resetSession();
@@ -371,17 +382,17 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
           case 'gun': audio.play('gun', mine(ev.id) ? 0 : (sim.get(ev.id) ? dist(sim.get(ev.id)!.pos) : 900)); break;
           case 'missile': audio.play('missile', mine(ev.id) ? 0 : 300); break;
           case 'boom': view.boom(ev.pos, ev.big); audio.play('boom', dist(ev.pos)); break;
-          case 'hit': { view.spark(ev.pos); if (mine(ev.id)) { audio.play('hurt'); view.kick(0.45); hitT = 1; hitBy = ev.by ?? 0; alertMsg('피격!', 0.7); } else audio.play('hit', dist(ev.pos)); break; }
+          case 'hit': { view.spark(ev.pos); if (mine(ev.id)) { audio.play('hurt'); view.kick(0.45); hitT = 1; hitBy = ev.by ?? 0; alertMsg('피격!', 0.7, 3); } else audio.play('hit', dist(ev.pos)); break; }
           case 'kill': if (ev.by === p.id) banner(`격추! +${ev.points ?? 0}점${(ev.combo ?? 0) > 1 ? ` · 콤보 ×${ev.combo}` : ''}${ev.combo === 3 ? ' · 미사일 +1' : ''}`, 1); break;
-          case 'nolock': audio.play('lock'); alertMsg('락온 대상 없음 — 적을 조준원에 두세요', 1.2); break; case 'lock': audio.play('lock'); break; case 'lockdone': audio.play('lockdone'); alertMsg('락온 — 미사일 발사!', 1.2); break;
-          case 'warn': audio.play('warn'); alertMsg('⚠ 미사일 접근 — 플레어(F)/기동!', 1); break;
+          case 'nolock': audio.play('lock'); alertMsg('락온 대상 없음 — 적을 조준원에 두세요', 1.2); break; case 'lock': audio.play('lock'); break; case 'lockdone': audio.play('lockdone'); alertMsg('락온 — 미사일 발사!', 1.2, 2); break;
+          case 'warn': audio.play('warn'); alertMsg('⚠ 미사일 접근 — 플레어(F)/기동!', 1, 4); break;
           case 'wave': audio.play('wave'); banner(`WAVE ${ev.n}${ev.modifier ? ` · ${ev.modifier}` : ''}`, 2.4); break;
           case 'flare': alertMsg('플레어 투하', 0.8); break;
           case 'pickup': audio.play('wave'); alertMsg(ev.kind === 'repair' ? '수리 +30' : ev.kind === 'shield' ? '방어막 +30' : '미사일 +2', 1); break;
           case 'boss': banner('BOSS — 중폭격기 접근', 3); audio.play('warn'); break;
-          case 'dodge': alertMsg(`아슬아슬 회피! +${ev.points}점 · 방어막 +5 · 콤보 연장`, 1.5); audio.play('lockdone'); break;
-          case 'stall': audio.play('warn'); alertMsg('STALL — 기수를 내려 속도 회복!', 1); break;
-          case 'overdrive': alertMsg('오버드라이브! 연사 강화 5초', 2); audio.play('win'); break;
+          case 'dodge': alertMsg(`아슬아슬 회피! +${ev.points}점 · 방어막 +5 · 콤보 연장`, 1.5, 2); audio.play('lockdone'); break;
+          case 'stall': audio.play('warn'); alertMsg('STALL — 기수를 내려 속도 회복!', 1, 3); break;
+          case 'overdrive': alertMsg('오버드라이브! 연사 강화 5초', 2, 2); audio.play('win'); break;
           case 'crash': break;
         }
       }
@@ -390,7 +401,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
       const gy = terrainY(p.pos.x, p.pos.z), agl = p.pos.y - Math.max(0, gy);
       // 위치 경고는 비긴급 안내이므로 피격·미사일 접근·락온 등 중요한 경고를 덮지 않습니다.
       if (alertT <= 0.1) {
-        if (agl < 140 && forward(p, scratch).y < 0.05) alertMsg('PULL UP!', 0.3);
+        if (agl < 140 && forward(p, scratch).y < 0.05) alertMsg('PULL UP!', 0.3, 3);
         else if (sim.edge(p) > 0.05) alertMsg('작전 구역 이탈 — 선회하세요!', 0.3);
       }
       // 구역 밖으로 나가면 서서히 기체를 안쪽으로 끌어줌

@@ -63,4 +63,32 @@ describe('LAST CITY rival AI', () => {
     });
     expect(snapshot(a)).toEqual(snapshot(b));
   });
+  it('moves toward the next safe zone before seeking loot', () => {
+    const world = makeWorld();
+    const faction = world.factions[1];
+    const boss = world.boss(faction.id)!;
+    world.zone.nx = boss.x + 800;
+    world.zone.ny = boss.y;
+    world.zone.nr = 200;
+    world.zone.shrinking = true;
+    world.spawnLoot('crate', boss.x + 20, boss.y, 0);
+
+    thinkFaction(world, faction);
+
+    expect(faction.ai.goal).toBe('zone');
+    expect(Number.isFinite(faction.ai.tx + faction.ai.ty)).toBe(true);
+  });
+
+  it('attacks a rival when the endgame begins and no loot is available', () => {
+    const world = makeWorld();
+    const faction = world.factions[1];
+    world.endgame = true;
+    world.loot.length = 0;
+
+    thinkFaction(world, faction);
+
+    expect(faction.ai.goal).toBe('attack');
+    expect(world.boss(faction.id)!.order.type).toBe('amove');
+  });
+
 });

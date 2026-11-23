@@ -6,6 +6,7 @@ import { type Track } from './track';
 import { mapById } from './maps';
 import { GhostRecorder, type Ghost } from './ghost';
 import { createDrift, flushDrift, nitroForChain, stepDrift, type DriftScore } from './driftscore';
+import { createNearMiss, stepNearMiss, type NearMissState } from './near-miss';
 
 export interface Racer {
   id: number; name: string; color: string; player: boolean; car: CarState; ai: AiProfile; params: CarParams; model: CarDef['model']; accent: string;
@@ -19,7 +20,8 @@ export type RaceEvent =
   | { type: 'count'; n: number } | { type: 'go' } | { type: 'launch' }
   | { type: 'lap'; lap: number; time: number; best: boolean } | { type: 'finish'; place: number; time: number }
   | { type: 'hit'; power: number } | { type: 'driftBoost'; secs: number } | { type: 'pad' } | { type: 'bump'; power: number }
-  | { type: 'driftBank'; points: number; mult: number } | { type: 'driftLost'; points: number };
+  | { type: 'driftBank'; points: number; mult: number } | { type: 'driftLost'; points: number }
+  | { type: 'nearMiss'; chain: number; nitro: number };
 export interface RaceState {
   track: Track; laps: number; clock: number; phase: 'countdown' | 'racing' | 'done'; racers: Racer[]; player: Racer;
   thrDownAt: number | null; thrPrev: boolean; bestLap: number; lastCount: number; level: LevelDef;
@@ -27,6 +29,7 @@ export interface RaceState {
   trial?: boolean; ghost?: Ghost | null; rec?: GhostRecorder;
   /** 드리프트 점수(모든 모드) */
   drift: DriftScore;
+  nearMiss: NearMissState;
 }
 export const COUNTDOWN = 3;
 /** 라이벌 세 명: 이름, 고정 차선, 자기 차량 최고속 대비 목표 속도 비율, 코너 한계. 1단계 값은 이전 버전과 같습니다. */
@@ -53,23 +56,23 @@ export function createRace(track: Track, laps = 3, bestLap = Infinity, opts: Rac
     const them = carById(opts.pvp.opponentCar), ai: AiProfile = { lane: 0, top: 58, grip: 30, skill: 1 };
     const me = mk(0, 'YOU', mine, true, SLOTS[opts.pvp.host ? 0 : 1], ai), rival = mk(1, opts.pvp.opponent, them, false, SLOTS[opts.pvp.host ? 1 : 0], ai);
     rival.link = { snap: null, at: 0 };
-    return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [me, rival], player: me, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift() };
+    return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [me, rival], player: me, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift(), nearMiss: createNearMiss() };
   }
   if (opts.multi) {
     const ai: AiProfile = { lane: 0, top: 58, grip: 30, skill: 1 }, me = mk(0, 'YOU', mine, true, SLOTS[opts.multi.slot] ?? SLOTS[0], ai);
     const free = SLOTS.map((_, i) => i).filter(i => i !== opts.multi!.slot);
     const others = opts.multi.players.map((pl, i) => { const r = mk(i + 1, pl.nickname, carById(pl.car), false, SLOTS[free[i]] ?? SLOTS[0], ai); r.link = { snap: null, at: 0 }; r.peer = pl.id; return r; });
-    return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [me, ...others], player: me, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift() };
+    return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [me, ...others], player: me, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift(), nearMiss: createNearMiss() };
   }
   const player = mk(0, 'YOU', mine, true, SLOTS[2], { lane: 0, top: 58, grip: 30, skill: 1 });
   if (opts.skin) Object.assign(player, paintOf(mine, opts.skin));
-  if (opts.trial) return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [player], player, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift(), trial: true, ghost: opts.ghost ?? null, rec: new GhostRecorder() };
+  if (opts.trial) return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [player], player, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift(), nearMiss: createNearMiss(), trial: true, ghost: opts.ghost ?? null, rec: new GhostRecorder() };
   const rivals = FIELD.map((f, i) => {
     const def = CARS[(at + 1 + i) % CARS.length], p = carParams(def), handling = p.grip * p.turn;
     const ai: AiProfile = { lane: f.lane, top: p.top * f.frac * level.topMul, grip: f.grip * handling * handling * level.gripMul, skill: 1, line: level.line, nitro: level.nitro };
     return mk(i + 1, f.name, def, false, [SLOTS[0], SLOTS[1], SLOTS[3]][i], ai);
   });
-  return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [player, ...rivals], player, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift()};
+  return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [player, ...rivals], player, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift(), nearMiss: createNearMiss()};
 }
 
 const score = (r: Racer): number => (r.finishTime !== null ? 1e9 - r.finishTime : r.car.total);
@@ -156,6 +159,13 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
     if (mine && rel > 3) ev.push({ type: 'bump', power: rel });
   }
   for (const k of r.racers) if (!k.link) { const hit = stayOnTrack(k.car, t, dt, false); if (k.player && hit > 0) ev.push({ type: 'hit', power: hit }); }
+  if (r.phase === 'racing') {
+    const crashed = ev.some(e => e.type === 'hit' || e.type === 'bump');
+    for (const award of stepNearMiss(r.nearMiss, r.player.car, r.racers, r.clock, crashed)) {
+      r.player.car.nitro = Math.min(1, r.player.car.nitro + award.nitro);
+      ev.push({ type: 'nearMiss', ...award });
+    }
+  }
   // Keep the final result stable during the AI-driven finish animation.
   if (r.phase !== 'racing') return ev;
   // 랩·결승

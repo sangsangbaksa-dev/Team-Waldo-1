@@ -65,7 +65,7 @@ export class Crowd {
   dispose(): void { this.group.removeFromParent(); }
 }
 
-interface Car { mesh: THREE.Group; axis: 'x' | 'z'; line: number; lane: number; dir: 1 | -1; t: number; speed: number }
+interface Car { mesh: THREE.Group; axis: 'x' | 'z'; line: number; lane: number; dir: 1 | -1; t: number; speed: number; halfLength: number; halfWidth: number }
 const CAR_COLORS = [0xb83a34, 0x2f5f9a, 0xd8d8d2, 0x23262b, 0x3a7a58, 0xd0a23a, 0x6a6e74, 0x8a4aa0];
 
 export class Traffic {
@@ -90,11 +90,22 @@ export class Traffic {
       if (axis === 'x') { mesh.position.set(t, 0.18, line + dir * lane); mesh.rotation.y = dir > 0 ? 0 : Math.PI; }
       else { mesh.position.set(line - dir * lane, 0.18, t); mesh.rotation.y = dir > 0 ? -Math.PI / 2 : Math.PI / 2; }
       mesh.visible = false; this.group.add(mesh);
-      this.cars.push({ mesh, axis, line, lane, dir, t, speed: 6.5 + hash01(k, 26) * 5 });
+      this.cars.push({ mesh, axis, line, lane, dir, t, speed: 6.5 + hash01(k, 26) * 5, halfLength: spec.w / 2, halfWidth: spec.d / 2 });
     }
     this.setStage(0);
   }
   setStage(stage: number): void { this.target = Math.min(this.cars.length, Math.round(this.cars.length * Math.min(1, 0.3 + stage * 0.14))); }
+  /** Hit test against visible traffic. The render group stores world coordinates even before first update. */
+  blocks(x: number, z: number, radius: number): boolean {
+    for (const c of this.cars) {
+      if (!c.mesh.visible) continue;
+      const dx = Math.abs(x - c.mesh.position.x), dz = Math.abs(z - c.mesh.position.z);
+      const along = c.axis === 'x' ? dx : dz;
+      const across = c.axis === 'x' ? dz : dx;
+      if (along < c.halfLength + radius && across < c.halfWidth + radius) return true;
+    }
+    return false;
+  }
   update(dt: number, cam: THREE.Vector3, player: THREE.Vector3, night: number): void {
     let n = 0;
     for (const c of this.cars) {

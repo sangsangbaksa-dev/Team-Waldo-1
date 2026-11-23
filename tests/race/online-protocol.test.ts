@@ -42,6 +42,31 @@ beforeEach(() => { vi.useFakeTimers(); });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe('SPEED RUSH network channel lifecycle', () => {
+  it('reports a local channel rejection as a pre-start failure, not a completed race', async () => {
+    const wire = fakeLink(), hooks = pvpHooks();
+    wire.channel.ready = Promise.reject(new Error('websocket unavailable'));
+    const pvp = new RacePvp(pvpSession(true, wire), 'arc', hooks);
+    try {
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(hooks.onGone).toHaveBeenCalledExactlyOnceWith('never');
+      expect(pvp.started).toBe(false);
+      expect(hooks.onStart).not.toHaveBeenCalled();
+      expect(wire.messages.filter(m => m.t === 'start')).toHaveLength(0);
+    } finally { pvp.dispose(); }
+  });
+
+  it('keeps a pre-start goodbye separate from an in-progress departure', async () => {
+    const wire = fakeLink(), hooks = pvpHooks();
+    const pvp = new RacePvp(pvpSession(true, wire), 'arc', hooks);
+    try {
+      await Promise.resolve();
+      wire.deliver({ t: 'bye' });
+      expect(pvp.started).toBe(false);
+      expect(hooks.onGone).toHaveBeenCalledExactlyOnceWith('bye');
+    } finally { pvp.dispose(); }
+  });
+
   it('host sends one start per hello but enters the race only once', async () => {
     const wire = fakeLink(), hooks = pvpHooks(), pvp = new RacePvp(pvpSession(true, wire), 'arc', hooks);
     try {

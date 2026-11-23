@@ -180,7 +180,22 @@ export function openRace(onExit: () => void): void {
       onStart: car => beginPvp(car),
       onSnap: snap => { const rival = race.racers[1]; if (pvp && rival?.link) rival.link = { snap, at: performance.now() }; },
       onFinish: time => { if (!pvp || pvp.done || pvp.oppFin !== null) return; pvp.oppFin = time; const r = race.racers[1]; if (r) r.finishTime = time; if (pvp.myFin !== null) decide(); else void conclude(s.opponent.id, '상대가 먼저 결승선을 통과했습니다'); },
-      onGone: reason => { if (pvp && !pvp.done) void conclude(s.me.id, reason === 'never' ? '상대가 접속하지 않았습니다' : '상대와의 연결이 끊어졌습니다'); },
+      onGone: reason => {
+        if (!pvp || pvp.done) return;
+        if (!pvp.net.started) {
+          // A channel failure or early departure is not a race victory.
+          // In particular, rejecting our own channel.ready promise must not
+          // report an invented win to the rating backend.
+          const abandoned = pvp.s;
+          endPvp();
+          void abandoned.backend.cancelMatch(abandoned.match.id).catch(() => undefined);
+          pvpCard('1대1 대전', '대전 연결 실패',
+            '<p class="rc-record">출발 전에 연결이 끊겼습니다. 승패 결과를 전송하지 않았습니다.</p>',
+            '<button class="primary" data-act="rematch">다시 대전</button><button data-act="exit">메뉴로</button>');
+          return;
+        }
+        void conclude(s.me.id, reason === 'bye' ? '상대가 경기를 나갔습니다' : '상대와의 연결이 끊어졌습니다');
+      },
     });
     pvp = { s, net, myFin: null, oppFin: null, done: false };
   }

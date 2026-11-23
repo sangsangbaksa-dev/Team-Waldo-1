@@ -144,6 +144,16 @@ try {
   await page.evaluate(() => window.__race.skip(3.3));
   await page.waitForFunction(() => window.__race.race.phase === 'racing');
   await page.screenshot({ path: 'browser-artifacts/race/context-recovered.png' });
+  // Navigate to the home screen and enter again, without refreshing the tab.
+  await page.locator('.rc-btns [data-act="exit"]').click();
+  await page.waitForFunction(() => !document.querySelector('.rc-root'));
+  assert.equal(await page.evaluate(() => window.__race), undefined, 'old game held through debug globals');
+  await page.locator('#start-race').click();
+  await page.locator('.rc-setup').waitFor();
+  await page.locator('.rc-setup [data-setup="start"]').click();
+  await page.waitForFunction(() => document.querySelector('.rc-root')?.dataset.phase === 'countdown');
+  assert.ok(await page.evaluate(() => !!window.__race?.race), 're-entry did not create a new game instance');
+  await page.screenshot({ path: 'browser-artifacts/race/re-entered.png' });
   // Avoid rendering two SwiftShader scenes at once on slow CI VMs.
   await context.close();
   // Portrait touch layout uses the same game loop and must remain fully usable.

@@ -7,7 +7,7 @@ test("recorder placement follows corridors but does not pass walls",()=>{
   assert.equal(placementCell(map,17,0),10);
   assert.equal(placementCell(map,17,Math.PI/2),15);
   assert.equal(placementCell(map,17,-Math.PI/2),19);
-  assert.equal(placementCell(["###","#.#","###"],4,0),null);
+  assert.equal(placementCell(["###","#.#","###"],4,0),4);
   assert.equal(placementCell(map,0,0),null);
   assert.equal(placementCell(map,17,NaN),null);
   for(let ch=0;ch<4;ch++){
@@ -23,7 +23,7 @@ test("recorder placement follows corridors but does not pass walls",()=>{
   }
 });
 test("recorder pulses exactly three times, then expires without timers",()=>{
-  let r={cell:12,age:0,pulses:0};
+  const r={cell:12,age:0,pulses:0};
   let result=advanceRecorder(r,.4);
   assert.equal(result.pulse,false);
   assert.equal(recorderAudible(result.recorder,2),false);

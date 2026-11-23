@@ -37,7 +37,10 @@ describe('Team Waldo coordinator: GitHub PR file overlap', () => {
       { filename: 'src/shooter/world.ts', prs: [199, 207] },
       { filename: 'src/slack/game.ts', prs: [195, 202] },
     ]);
-    expect(result.collisionPairs.map(x => [x.first, x.second])).toEqual([[195, 202], [199, 207]]);
+    expect(result.collisionPairs.map(x => [x.first, x.second, x.relationship])).toEqual([
+      [199, 207, 'independent'],
+      [195, 202, 'stacked'],
+    ]);
     expect(result.foreignBases).toEqual([
       { number: 202, base: 'agent/9-10', stackedOn: 195 },
       { number: 207, base: 'claude/project-thread-hhffi5', stackedOn: null },
@@ -67,6 +70,8 @@ describe('Team Waldo coordinator: GitHub PR file overlap', () => {
     expect(text).toContain('## 파일 변경이 겹치는 PR');
     expect(text).toContain('[#199](https://github.com/sangsangbaksa-dev/Team-Waldo-1/pull/199)');
     expect(text).toContain('src/shooter/world.ts');
+    expect(text).toContain('[독립 PR; 충돌 검토]');
+    expect(text).toContain('[선행 PR 상속; 기대되는 중복]');
     expect(text).toContain('실제 diff');
     expect(text.endsWith('\n')).toBe(true);
   });

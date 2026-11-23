@@ -164,8 +164,10 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
     if (mine && rel > 3) ev.push({ type: 'bump', power: rel });
   }
   for (const k of r.racers) if (!k.link) { const hit = stayOnTrack(k.car, t, dt, false); if (k.player && hit > 0) ev.push({ type: 'hit', power: hit }); }
-  // 랩·결승
-  if (r.rec && r.phase === 'racing') r.rec.tick(r.clock, r.player.car);
+  // Keep the race result fixed during the post-finish driving animation.
+  if (r.phase !== 'racing') return ev;
+  // Settle every crossing in this simulation step before resolving final place.
+  if (r.rec) r.rec.tick(r.clock, r.player.car);
   for (const k of r.racers) {
     if (k.finishTime !== null || k.link) continue;
     const lapDone = Math.floor(k.car.total / t.n);
@@ -173,10 +175,13 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
       const lt = r.clock - k.lapStart; k.lapTimes.push(lt); k.lapStart = r.clock;
       if (k.player) { const best = lt < r.bestLap; if (best) r.bestLap = lt; ev.push({ type: 'lap', lap: k.lapTimes.length, time: lt, best }); }
     }
-    if (k.lapTimes.length >= r.laps) {
-      k.finishTime = r.clock;
-      if (k.player) { const fl = flushDrift(r.drift); if (fl?.type === 'bank') ev.push({ type: 'driftBank', points: fl.points, mult: fl.mult }); r.phase = 'done'; ev.push({ type: 'finish', place: standings(r).indexOf(k) + 1, time: r.clock }); }
-    }
+    if (k.lapTimes.length >= r.laps) k.finishTime = r.clock;
+  }
+  if (r.player.finishTime !== null) {
+    const fl = flushDrift(r.drift);
+    if (fl?.type === 'bank') ev.push({ type: 'driftBank', points: fl.points, mult: fl.mult });
+    r.phase = 'done';
+    ev.push({ type: 'finish', place: placeOf(r), time: r.player.finishTime });
   }
   return ev;
 }

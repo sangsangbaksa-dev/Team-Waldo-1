@@ -147,8 +147,13 @@ export class SkyView {
       fragmentShader: 'uniform vec3 sd;varying vec3 p;void main(){float h=clamp(p.y,-.2,1.);vec3 hor=vec3(.91,.69,.57),top=vec3(.16,.30,.50);vec3 c=mix(hor,top,pow(max(h,0.),.55));if(p.y<0.)c=mix(hor,vec3(.35,.48,.53),min(1.,-p.y*4.));float s=max(0.,dot(normalize(p),sd));c+=vec3(1.,.62,.32)*pow(s,6.)*.28+vec3(1.,.8,.5)*pow(s,40.)*.5+vec3(1.,.95,.8)*pow(s,900.)*3.;c=mix(c,vec3(.97,.82,.72),exp(-abs(p.y)*14.)*.35);gl_FragColor=vec4(c,1.);}' }));
     sc.add(dome); this.dome = dome;
     // 바다
-    const seaMat = new THREE.MeshStandardMaterial({ color: 0x28687a, metalness: 0.42, roughness: 0.3, normalMap: this.seaNormalMap, normalScale: new THREE.Vector2(0.7, 0.7) });
-    this.seaNormalMap.repeat.set(160, 160);
+    // 저사양/모바일에서 높은 주파수의 잔물결과 광택이 반짝임·모아레를 만들지 않도록 부드럽게 조절합니다.
+    const lowSea = this.quality === 'low';
+    const seaMat = new THREE.MeshStandardMaterial({
+      color: 0x28687a, metalness: lowSea ? 0.2 : 0.42, roughness: lowSea ? 0.62 : 0.3,
+      normalMap: this.seaNormalMap, normalScale: new THREE.Vector2(lowSea ? 0.32 : 0.7, lowSea ? 0.32 : 0.7),
+    });
+    this.seaNormalMap.repeat.set(lowSea ? 72 : 160, lowSea ? 72 : 160);
     seaMat.onBeforeCompile = shader => {
       shader.uniforms.skyTime = this.seaTime; shader.uniforms.seaOrigin = this.seaOrigin;
       shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float skyTime; uniform vec2 seaOrigin; varying vec2 vSeaW;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvSeaW = vec2(position.x + seaOrigin.x, position.y - seaOrigin.y); transformed.z += sin(vSeaW.x * 0.008 + skyTime * 0.7) * 1.2 + cos(vSeaW.y * 0.011 - skyTime * 0.5) * 0.8;');
@@ -190,6 +195,11 @@ export class SkyView {
     // 적응형 품질이 회복되면 그림자도 다시 켭니다 (저사양 설정은 계속 비활성).
     this.sun.castShadow = l < 1 && this.quality !== 'low';
     this.clouds.forEach((c, i) => { c.visible = l < 3 && (l < 2 || i % 2 === 0); });
+    const sea = this.sea.material as THREE.MeshStandardMaterial;
+    const smoothWater = this.quality === 'low' || l >= 2;
+    sea.roughness = smoothWater ? 0.62 : 0.3;
+    sea.metalness = smoothWater ? 0.2 : 0.42;
+    sea.normalScale.setScalar(smoothWater ? 0.32 : 0.7);
   }
   resize(w: number, h: number): void { this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); }
 

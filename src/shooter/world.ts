@@ -453,7 +453,35 @@ export function generateMap(seed: number, mode: Mode): GameMap {
   } else {
     for (let i = 0; i < 20; i++) { const a = (i / 20) * Math.PI * 2 + (rng() - 0.5) * 0.25, r = half * (0.42 + rng() * 0.45); spawnNear(map, rng, Math.cos(a) * r, Math.sin(a) * r); }
   }
+  repairBlockedLoot(map);
   return map;
+}
+
+/** 전리품 뒤에 생성된 검문소·엄폐물·나무 때문에 접근 불가 상태가 되면
+ * 결정적으로 가장 가까운 안전 지점으로 이동합니다. RNG 소비 없이 온라인 맵을 일치시킵니다. */
+function repairBlockedLoot(map: GameMap): void {
+  const safe = (x: number, z: number): boolean =>
+    Math.abs(x) < map.half - 1 && Math.abs(z) < map.half - 1 &&
+    waterDepth(map.terrain, x, z) === 0 && !blockedAt(map, x, z, PLAYER.radius + 0.1);
+  for (const item of map.loot) {
+    if (safe(item.x, item.z)) continue;
+    const ox = item.x, oz = item.z;
+    let moved = false;
+    // 원래 생성 장소 부근 8.4m 안에서 가까운 후보부터 탐색합니다.
+    for (let ring = 1; ring <= 24 && !moved; ring++) {
+      const radius = ring * 0.35;
+      for (let j = 0; j < 24; j++) {
+        const angle = j * Math.PI / 12, x = ox + Math.cos(angle) * radius, z = oz + Math.sin(angle) * radius;
+        if (!safe(x, z)) continue;
+        item.x = x; item.z = z; moved = true; break;
+      }
+    }
+    if (!moved) {
+      // 모든 인접 공간이 차단된 비정상 시드에서도 바위/물속 전리품을 남기지 않습니다.
+      const fallback = map.spawns.find(sp => safe(sp.x, sp.z));
+      if (fallback) { item.x = fallback.x; item.z = fallback.z; }
+    }
+  }
 }
 
 /** 구릉·절벽을 충돌 상자로 만들고 숲에 나무와 쓰러진 통나무를 심습니다. */

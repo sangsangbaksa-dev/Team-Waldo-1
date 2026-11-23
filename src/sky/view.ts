@@ -49,7 +49,7 @@ export function buildJet(kind: Kind, team: 'player' | 'enemy'): THREE.Group {
     const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.22 * s, 0.12 * s, 7 * s), mAcc); stripe.position.set(0, 1.12 * s, 0); g.add(stripe);
   }
   const fl = new THREE.Mesh(new THREE.ConeGeometry(0.75 * s, 5 * s, 8), new THREE.MeshBasicMaterial({ color: team === 'player' ? 0x6ab8ff : 0xff8a30, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false })); fl.rotation.x = -Math.PI / 2; fl.position.z = 8.5 * s; fl.name = 'flame'; g.add(fl);
-  detailJet(g, kind, team);
+  g.userData.detailGroup = detailJet(g, kind, team);
   g.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh && (m.material instanceof THREE.MeshStandardMaterial)) { m.castShadow = true; m.receiveShadow = true; } }); // 불꽃·램프(Basic)는 그림자 없음
   return g;
 }
@@ -217,6 +217,13 @@ export class SkyView {
       if (!m) { m = buildJet(j.kind, j.team); m.userData.team = j.team; this.scene.add(m); this.meshes.set(j.id, m); }
       m.visible = !(this.cockpit && j.team === 'player');
       m.position.copy(j.pos); m.quaternion.copy(j.q);
+      if (j.team === 'enemy') {
+        const detail = m.userData.detailGroup as THREE.Group | undefined;
+        if (detail) {
+          const maxDistance = this.level >= 2 ? 850 : this.level === 1 ? 1250 : this.quality === 'high' ? 2400 : this.quality === 'standard' ? 1700 : 1100;
+          detail.visible = j.pos.distanceToSquared(sim.player.pos) <= maxDistance * maxDistance;
+        }
+      }
       const throttle = THREE.MathUtils.clamp(j.throttle + (j.boosting ? 0.6 : 0), 0, 1.6);
       const fl = m.getObjectByName('flame') as THREE.Mesh | undefined; if (fl) {
         fl.scale.set(0.65 + throttle * 0.55, 0.45 + throttle * 1.4 + Math.sin(time * 40 + j.id) * 0.1, 0.65 + throttle * 0.55);

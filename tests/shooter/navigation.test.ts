@@ -7,15 +7,17 @@ afterEach(() => vi.unstubAllGlobals());
 function context() {
   const drawImage = vi.fn();
   const arc = vi.fn();
+  const fillRect = vi.fn();
+  const fillText = vi.fn();
   const base: Record<PropertyKey, unknown> = {
-    drawImage, arc,
+    drawImage, arc, fillRect, fillText,
     createRadialGradient: () => ({ addColorStop: () => undefined }),
   };
   const ctx = new Proxy(base, {
     get(target, key) { return target[key] ?? (() => undefined); },
     set(target, key, value: unknown) { target[key] = value; return true; },
   }) as unknown as CanvasRenderingContext2D;
-  return { ctx, drawImage, arc };
+  return { ctx, drawImage, arc, fillRect, fillText };
 }
 
 function canvas(ctx: CanvasRenderingContext2D | null): HTMLCanvasElement {
@@ -48,7 +50,8 @@ describe('ZERO ZONE navigation renderer', () => {
     hud.draw(match, player);
     expect(map.drawImage).toHaveBeenCalledTimes(2);
     expect(create).toHaveBeenCalledTimes(1);
-    expect(compass.arc).toHaveBeenCalled();
+    expect(compass.fillRect).toHaveBeenCalled();
+    expect(compass.fillText).toHaveBeenCalled();
     hud.reset();
     hud.draw(match, player);
     expect(create).toHaveBeenCalledTimes(2);
@@ -67,12 +70,12 @@ describe('ZERO ZONE navigation renderer', () => {
       { id: 2, x: 50, z: 50, expires: match.t + 7 },
       { id: 1, x: 60, z: 60, expires: match.t - 1 },
     ]);
-    expect(map.arc).toHaveBeenCalled();
-    const count = map.arc.mock.calls.length;
+    // Two circles for the zone, exactly one extra circle for the valid mark.
+    expect(map.arc).toHaveBeenCalledTimes(3);
     hud.draw(match, player, []);
-    // Subsequent empty snapshot must not leave a persistent overlay.
+    // The second frame draws only the two zone circles; stale markers are gone.
     expect(map.drawImage).toHaveBeenCalledTimes(2);
-    expect(map.arc.mock.calls.length).toBeGreaterThan(count);
+    expect(map.arc).toHaveBeenCalledTimes(5);
   });
 
   it('fails fast when the browser does not offer a 2D context', () => {

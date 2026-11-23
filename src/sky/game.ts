@@ -382,18 +382,21 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
       audio.engine(true, throttle); audio.wind((p.speed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED));
       if (!p.alive) finish();
     }
-    if (state !== 'paused') view.sync(sim, dt, now / 1000);
-    if (state === 'play' || state === 'over') { view.follow(sim.player, dt, cameraLook, clamp((throttle - 0.55) * 2, 0, 1)); }
-    renderer.render(view.scene, view.camera); if (state !== 'paused') adaptive?.tick();
+    // Move the camera first. The sky dome, sea and sun are anchored to its
+    // position in sync(); updating them before follow() caused a frame of lag.
+    if (state === 'title') {
+      const t = now / 4000; view.camera.position.set(Math.cos(t) * 900, 520, Math.sin(t) * 900); view.camera.lookAt(0, 250, 0);
+    }
+    if (state === 'play' || state === 'over') view.follow(sim.player, dt, cameraLook, clamp((throttle - 0.55) * 2, 0, 1));
+    view.sync(sim, dt, now / 1000);
+    renderer.render(view.scene, view.camera);
+    adaptive?.tick();
     if (state === 'play' && adaptive) {
       const recovery = advanceSkyQualityRecovery(stableQualitySeconds, frameMs, dt, adaptive.level);
       stableQualitySeconds = recovery.stableSeconds;
       if (recovery.restore) { adaptive.level--; view.setLevel(adaptive.level); }
     } else stableQualitySeconds = 0;
     if (state === 'play') { hud(sim.player, dt); overlay(sim.player); } else if (state === 'over') { octx.clearRect(0, 0, ov.width, ov.height); }
-    if (state === 'title') { // 타이틀 배경: 느리게 선회하는 카메라
-      const t = now / 4000; view.camera.position.set(Math.cos(t) * 900, 520, Math.sin(t) * 900); view.camera.lookAt(0, 250, 0);
-    }
   }
 
   // 난이도/버튼

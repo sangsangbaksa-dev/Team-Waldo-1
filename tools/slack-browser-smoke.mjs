@@ -20,6 +20,7 @@ const devices = [
   { name: 'desktop', width: 1280, height: 800, mobile: false },
   { name: 'phone', width: 390, height: 844, mobile: true },
   { name: 'compact', width: 320, height: 640, mobile: true },
+  { name: 'landscape', width: 844, height: 390, mobile: true },
 ];
 const results = [];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));

@@ -117,7 +117,19 @@ export function rectHitsRoad(x: number, y: number, w: number, h: number): boolea
 export function rectFree(map: CityMap, x: number, y: number, w: number, h: number): boolean {
   if (x < 20 || y < 20 || x + w > SIZE - 20 || y + h > SIZE - 20) return false;
   const pad = SOLID_CLEARANCE;
-  for (const s of map.solids) if (s.alive && x < s.x + s.w + pad && x + w > s.x - pad && y < s.y + s.h + pad && y + h > s.y - pad) return false;
+  // Construction ghosts call this frequently. Query nearby spatial buckets
+  // instead of scanning every solid across the entire city each time.
+  const gx0 = Math.max(0, Math.floor((x - pad) / GC));
+  const gy0 = Math.max(0, Math.floor((y - pad) / GC));
+  const gx1 = Math.min(GN - 1, Math.floor((x + w + pad) / GC));
+  const gy1 = Math.min(GN - 1, Math.floor((y + h + pad) / GC));
+  for (let gy = gy0; gy <= gy1; gy++) for (let gx = gx0; gx <= gx1; gx++) {
+    const cell = map.grid[gy * GN + gx];
+    for (let k = 0; k < cell.length; k++) {
+      const s = map.solids[cell[k]];
+      if (s.alive && x < s.x + s.w + pad && x + w > s.x - pad && y < s.y + s.h + pad && y + h > s.y - pad) return false;
+    }
+  }
   // 도로 침범 금지 (블록 안 보도는 허용)
   if (rectHitsRoad(x, y, w, h)) return false;
   return true;

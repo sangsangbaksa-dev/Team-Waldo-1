@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BLOCK, PITCH, ROAD, STRUCTS } from '../../src/city/defs';
-import { addSolid, emptyMap, rangeHitsRoad, rectFree, rectHitsRoad, SOLID_CLEARANCE } from '../../src/city/map';
+import { addSolid, emptyMap, generateCity, makeRng, rangeHitsRoad, rectFree, rectHitsRoad, removeSolid, SOLID_CLEARANCE } from '../../src/city/map';
 import {
   ANCHOR_BUILD_RANGE, blockedByCrystal, canPlaceAt, demolishRefund, demolishReject,
   HQ_BUILD_RANGE, inBuildRange, snapBuildCoord, structCenter,
@@ -23,6 +23,31 @@ describe('road and footprint checks', () => {
     const map = emptyMap(), x0 = ROAD, y0 = ROAD, end = x0 + BLOCK;
     expect(rectFree(map, end - STRUCTS.barracks.w, y0 + 80, STRUCTS.barracks.w, STRUCTS.barracks.h)).toBe(true);
     expect(rectFree(map, end - STRUCTS.barracks.w + 1, y0 + 80, STRUCTS.barracks.w, STRUCTS.barracks.h)).toBe(false);
+  });
+
+  it('matches an exhaustive collision check over many city layouts', () => {
+    const reference = (map: ReturnType<typeof emptyMap>, x: number, y: number, w: number, h: number): boolean => {
+      if (x < 20 || y < 20 || x + w > 5140 || y + h > 5140) return false;
+      const pad = SOLID_CLEARANCE;
+      if (map.solids.some(s => s.alive && x < s.x + s.w + pad && x + w > s.x - pad && y < s.y + s.h + pad && y + h > s.y - pad)) return false;
+      return !rectHitsRoad(x, y, w, h);
+    };
+    for (const seed of [3, 23, 120]) {
+      const map = generateCity(makeRng(seed)), random = makeRng(seed + 500);
+      for (let i = 0; i < 800; i++) {
+        const x = random() * 5200 - 20, y = random() * 5200 - 20;
+        const w = 20 + random() * 160, h = 20 + random() * 160;
+        expect(rectFree(map, x, y, w, h)).toBe(reference(map, x, y, w, h));
+      }
+    }
+  });
+
+  it('updates the spatial index when a building is demolished', () => {
+    const map = emptyMap();
+    const id = addSolid(map, { x: 316, y: 196, w: 40, h: 40, height: 1, wall: '#000', roof: '#000', struct: 0, alive: true });
+    expect(rectFree(map, 350, 196, 20, 20)).toBe(false);
+    removeSolid(map, id);
+    expect(rectFree(map, 350, 196, 20, 20)).toBe(true);
   });
 
   it('rejects overlapping buildings but allows a small clearance gap', () => {

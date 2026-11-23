@@ -396,10 +396,18 @@ export function openRace(onExit: () => void): void {
     b.addEventListener('contextmenu', e => e.preventDefault());
   });
 
-  // 레이싱카 모델(race.glb) 로드 → 실패해도 단순 차체로 계속
+  // 차와 캐릭터 모델을 동시에 읽습니다. 어느 한쪽이 실패해도 레이스는 시작할 수 있습니다.
   void (async () => {
-    try { const gltf = await new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}assets/models/race.glb`), found: Record<string, THREE.Object3D> = {}; gltf.scene.traverse(o => { if (o.name === 'gt' || o.name === 'wide' || o.name === 'long') found[o.name] = o; }); carTemplate = found; } catch { carTemplate = null; }
-    try { setDriverKit(await loadCharacterKit(import.meta.env.BASE_URL)); } catch { setDriverKit(null); }
-    if (closed) return; last = performance.now(); raf = requestAnimationFrame(frame); showSetup();
+    const cars = new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}assets/models/race.glb`)
+      .then(gltf => {
+        const found: Record<string, THREE.Object3D> = {};
+        gltf.scene.traverse(o => { if (o.name === 'gt' || o.name === 'wide' || o.name === 'long') found[o.name] = o; });
+        return found;
+      }).catch(() => null);
+    const characters = loadCharacterKit(import.meta.env.BASE_URL).catch(() => null);
+    const [models, kit] = await Promise.all([cars, characters]);
+    if (closed) return;
+    carTemplate = models; setDriverKit(kit);
+    last = performance.now(); raf = requestAnimationFrame(frame); showSetup();
   })();
 }

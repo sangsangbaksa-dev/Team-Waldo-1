@@ -22,6 +22,20 @@ describe('SPEED RUSH finish settlement', () => {
     expect(finish[0]).toMatchObject({ type: 'finish', place: placeOf(r) });
   });
 
+  it('does not emit new crash, pad or drift rewards during the post-finish camera animation', () => {
+    const r = createRace(t, 1);
+    r.phase = 'done'; r.clock = 45; r.player.finishTime = 45;
+    const c = r.player.car, i = 60, off = t.halfWidth + 6;
+    c.idx = i;
+    c.x = t.x[i] - t.tz[i] * off; c.z = t.z[i] + t.tx[i] * off;
+    c.vx = -t.tz[i] * 50; c.vz = t.tx[i] * 50; c.vf = 50;
+    r.drift.chain = 250;
+    expect(updateRace(r, DT, IDLE)).toEqual([]);
+    expect(r.clock).toBe(45);
+    expect(r.player.finishTime).toBe(45);
+    expect(r.drift.chain).toBe(250);
+  });
+
   it('does not award new AI lap times after the race is already over', () => {
     const r = createRace(t, 1);
     r.phase = 'done';

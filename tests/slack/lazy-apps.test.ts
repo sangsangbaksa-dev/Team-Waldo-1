@@ -91,6 +91,26 @@ it('silences the dorm headphone music bed while the study cover is held', () => 
   expect(audio.muffle).toHaveBeenLastCalledWith(true);
 });
 
+it('locks cart prices to the add action when the midnight flash deal rotates', () => {
+  view.el.querySelector<HTMLButtonElement>('[data-app="shop"]')!.click();
+  view.frame(0);
+  const total = () => view.el.querySelector('[data-total]')?.textContent;
+  // Product #1 is initially the flash deal, but its ordinary button
+  // must retain the displayed 35% discount (not the 50% flash rate).
+  view.el.querySelector<HTMLButtonElement>('[data-add="1"]')!.click();
+  expect(total()).toBe('합계 8,385원');
+  view.el.querySelector<HTMLButtonElement>('[data-add="deal"]')!.click();
+  expect(total()).toBe('합계 14,835원');
+  expect(view.el.querySelector('[data-cart]')?.textContent).toBe('2');
+
+  // A new deal applies only to future cart additions.
+  view.frame(121);
+  expect(view.el.querySelector('[data-deal-name]')?.textContent).toBe('말랑 젤리 세트');
+  expect(total()).toBe('합계 14,835원');
+  view.el.querySelector<HTMLButtonElement>('[data-add="deal"]')!.click();
+  expect(total()).toBe('합계 17,085원');
+});
+
 it('keeps the dorm messenger responsive after many quick replies and app switches', () => {
   const open = (id: string) => {
     view.el.querySelector<HTMLButtonElement>(`[data-app="${id}"]`)!.click();

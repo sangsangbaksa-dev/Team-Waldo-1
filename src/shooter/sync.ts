@@ -48,6 +48,8 @@ export function parseLoot(m: NetMsg): Loot | null {
   if (!isInt(m.i, 0, 1e8) || !LOOT_KINDS.includes(m.k as LootKind) || !fin(m.x) || !fin(m.z) || Math.abs(m.x) > 1000 || Math.abs(m.z) > 1000) return null;
   const weapon = m.w === null ? null : WEAPON_IDS.includes(m.w as WeaponId) ? (m.w as WeaponId) : undefined; if (weapon === undefined) return null;
   const part = m.p === null || m.p === undefined ? null : Object.prototype.hasOwnProperty.call(PARTS, m.p as string) ? (m.p as PartId) : undefined; if (part === undefined) return null;
+  // The HUD and pickup logic dereference weapon and part when kind requires them.
+  if ((m.k === 'weapon') !== (weapon !== null) || (m.k === 'attach') !== (part !== null)) return null;
   let att: Attachments | undefined;
   if (m.a && typeof m.a === 'object') {
     att = {}; for (const [slot, id] of Object.entries(m.a as Record<string, unknown>)) {
@@ -59,6 +61,23 @@ export function parseLoot(m: NetMsg): Loot | null {
 }
 
 /** 방장 쪽: 보낼 세계 상태를 모읍니다. 손님 쪽: 받은 상태를 경기에 넣고 꼭두각시를 따라가게 합니다. */
+/** 다른 참가자가 생성한 아이템의 ID와 위치를 검증합니다. */
+export function canAcceptRoomLoot(
+  loot: Loot,
+  senderIndex: number,
+  half: number,
+  authority: boolean,
+  sender?: Pick<Player, 'x' | 'z'>,
+): boolean {
+  if (!Number.isInteger(senderIndex) || senderIndex < 0 || senderIndex >= 100 || !Number.isFinite(half) || half <= 0) return false;
+  const start = (senderIndex + 1) * 1_000_000;
+  if (loot.id < start + 1000 || loot.id >= start + 1_000_000 ||
+      !Number.isFinite(loot.x) || !Number.isFinite(loot.z) ||
+      Math.abs(loot.x) > half || Math.abs(loot.z) > half) return false;
+  // AI 사망 전리품은 방장만 원거리에서 생성할 수 있습니다.
+  return authority || !!sender && Math.hypot(loot.x - sender.x, loot.z - sender.z) <= 20;
+}
+
 export class WorldSync {
   readonly bots = new Map<number, PuppetTarget>();
   readonly vehs = new Map<number, VehTarget>();

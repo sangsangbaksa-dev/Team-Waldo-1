@@ -45,3 +45,29 @@ jobs:
       - name: Build production app
         if: always()
         run: npm run build
+
+  browser:
+    name: HUSTLE desktop/mobile WebGL smoke
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Software-rendered WebGL availability depends on the CI runner image.
+    # Keep the browser diagnostic non-blocking until its environment is validated.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Play HUSTLE on desktop and mobile
+        run: node --import tsx tests/tycoon/browser-smoke.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hustle-browser-screenshots
+          path: artifacts/*.png
+          if-no-files-found: ignore
+          retention-days: 3

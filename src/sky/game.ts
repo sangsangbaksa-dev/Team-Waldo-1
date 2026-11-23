@@ -223,22 +223,33 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   // markup at 60 fps when only the player's missile count changes.
   const missileIcon = svgIcon('missile', 'sk-ic mini');
   const shieldIcon = svgIcon('shield'), boltIcon = svgIcon('bolt');
+  const setText = (id: string, value: string): void => {
+    const el = $(id);
+    if (el.textContent !== value) el.textContent = value;
+  };
+  const setPercent = (id: string, value: number): void => {
+    const el = $(id), width = `${Math.round(clamp(value, 0, 100))}%`;
+    if (el.style.width !== width) el.style.width = width;
+  };
   function hud(p: Jet, dt: number): void {
-    $('sk-score').textContent = String(sim!.score); $('sk-combo').textContent = sim!.combo > 1 ? ` ×${sim!.combo}` : '';
-    $('sk-wave').textContent = `WAVE ${Math.max(1, sim!.wave)} · 적 ${sim!.enemies().length}`;
-    $('sk-hp').style.width = `${Math.max(0, p.hp / p.maxHp * 100)}%`; $('sk-hp').parentElement!.classList.toggle('low', p.hp < 30);
-    $('sk-heat').style.width = `${clamp(p.heat / 1.2 * 100, 0, 100)}%`; $('sk-heat').parentElement!.classList.toggle('hot', p.heat > 0.9);
-    $('sk-spd').textContent = String(Math.round(p.speed * 3.6)) + ' · ' + p.g.toFixed(1) + 'G'; $('sk-alt').textContent = String(Math.round(p.pos.y)); setHtml($('sk-mis'), p.missiles > 0 ? missileIcon.repeat(Math.min(p.missiles, 12)) : '—');
+    setText('sk-score', String(sim!.score)); setText('sk-combo', sim!.combo > 1 ? ` ×${sim!.combo}` : '');
+    setText('sk-wave', `WAVE ${Math.max(1, sim!.wave)} · 적 ${sim!.enemies().length}`);
+    setPercent('sk-hp', p.hp / p.maxHp * 100); $('sk-hp').parentElement!.classList.toggle('low', p.hp < 30);
+    setPercent('sk-heat', p.heat / 1.2 * 100); $('sk-heat').parentElement!.classList.toggle('hot', p.heat > 0.9);
+    setText('sk-spd', String(Math.round(p.speed * 3.6)) + ' · ' + p.g.toFixed(1) + 'G'); setText('sk-alt', String(Math.round(p.pos.y))); setHtml($('sk-mis'), p.missiles > 0 ? missileIcon.repeat(Math.min(p.missiles, 12)) : '—');
     setHtml($('sk-status'), [sim!.shield > 0 ? `${shieldIcon}${Math.ceil(sim!.shield)}` : '', sim!.overdrive > 0 ? `${boltIcon}${sim!.overdrive.toFixed(1)}s` : ''].filter(Boolean).join(' '));
-    $('sk-fuel').style.width = `${p.fuel * 100}%`;
-    $('sk-thr').style.width = `${throttle * 100}%`;
+    setPercent('sk-fuel', p.fuel * 100);
+    setPercent('sk-thr', throttle * 100);
     // Flare cooldown is visible instead of silently ignoring repeated touch input.
     const flareButton = $<HTMLButtonElement>('sk-b-flare');
     const flareReady = p.flare <= 0;
     flareButton.disabled = !flareReady;
     flareButton.classList.toggle('cooldown', !flareReady);
-    flareButton.querySelector('span')!.textContent = flareReady ? '플레어' : `${Math.ceil(p.flare)}초`;
-    flareButton.setAttribute('aria-label', flareReady ? '플레어 사용 가능' : `플레어 재사용까지 ${Math.ceil(p.flare)}초`);
+    const flareText = flareReady ? '플레어' : `${Math.ceil(p.flare)}초`;
+    const flareSpan = flareButton.querySelector('span')!;
+    if (flareSpan.textContent !== flareText) flareSpan.textContent = flareText;
+    const flareLabel = flareReady ? '플레어 사용 가능' : `플레어 재사용까지 ${Math.ceil(p.flare)}초`;
+    if (flareButton.getAttribute('aria-label') !== flareLabel) flareButton.setAttribute('aria-label', flareLabel);
     if (alertT > 0) {
       alertT -= dt;
       if (alertT <= 0) { $('sk-alert').textContent = ''; alertRank = 0; }

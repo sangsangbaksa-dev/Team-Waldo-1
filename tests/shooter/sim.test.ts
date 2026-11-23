@@ -57,6 +57,20 @@ describe('ZERO ZONE 자기장', () => {
   });
 });
 
+describe('ZERO ZONE transient sound performance', () => {
+  it('expires sound events in-place without allocating a new array per frame', () => {
+    const m = field('normal', 1), sounds = m.sounds;
+    sounds.push({ x: 0, z: 0, t: 0, by: 0 });
+    sounds.push({ x: 1, z: 1, t: -4, by: 0 });
+    m.step(0.1);
+    expect(m.sounds).toBe(sounds);
+    expect(m.sounds).toHaveLength(1);
+    m.step(2.5);
+    expect(m.sounds).toBe(sounds);
+    expect(m.sounds).toHaveLength(0);
+  });
+});
+
 describe('ZERO ZONE 사격', () => {
   it('정면의 적에게 맞으면 체력이 깎이고 탄이 줄어든다', () => {
     const m = field(); const [a, b] = m.players; a.x = 0; a.z = 0; b.x = 15; b.z = 0; a.yaw = 0; a.pitch = Math.atan2(1.2 - PLAYER.eye, 15); a.guns[0] = { id: 'rifle', mag: 30, reserve: 60, att: {} };

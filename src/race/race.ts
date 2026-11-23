@@ -149,12 +149,12 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
         inp = aiInput(k.car, t, { ...k.ai, top: k.ai.top * band, grip: k.ai.grip * band * band });
       }
     }
-        k.lastEv = stepCar(k.car, inp, dt, t, k.params);
+    k.lastEv = stepCar(k.car, inp, dt, t, k.params);
     if (k.player && live) {
       if (k.lastEv.hit > 0) ev.push({ type: 'hit', power: k.lastEv.hit });
       const de = stepDrift(r.drift, k.car, dt, k.lastEv.hit > 0);
-        if (de?.type === 'bank') { k.car.nitro = Math.min(1, k.car.nitro + nitroForChain(de.points)); ev.push({ type: 'driftBank', points: de.points, mult: de.mult }); }
-        else if (de?.type === 'lost') ev.push({ type: 'driftLost', points: de.points });
+      if (de?.type === 'bank') { k.car.nitro = Math.min(1, k.car.nitro + nitroForChain(de.points)); ev.push({ type: 'driftBank', points: de.points, mult: de.mult }); }
+      else if (de?.type === 'lost') ev.push({ type: 'driftLost', points: de.points });
       if (k.lastEv.driftBoost > 0) ev.push({ type: 'driftBoost', secs: k.lastEv.driftBoost });
       if (k.lastEv.pad) ev.push({ type: 'pad' });
     }

@@ -119,10 +119,26 @@ export class SkySim {
     return best;
   }
 
-  /** 적의 정확한 추적 조준점(총알 리드). */
+  /** 대상의 진행 속도까지 고려한 선행 조준점 (2차 방정식의 가장 빠른 양의 교차 시각). */
   leadPoint(from: Jet, target: Jet, speed: number, out: THREE.Vector3): THREE.Vector3 {
-    const d = from.pos.distanceTo(target.pos), t = d / speed;
-    return out.copy(target.pos).addScaledVector(forward(target, tmpV2), target.speed * t);
+    const relative = tmpV.copy(target.pos).sub(from.pos);
+    const velocity = forward(target, tmpV2).multiplyScalar(target.speed);
+    const a = velocity.lengthSq() - speed * speed;
+    const b = 2 * relative.dot(velocity);
+    const c = relative.lengthSq();
+    let t = Math.sqrt(c) / Math.max(1, speed);
+    if (Math.abs(a) < 1e-6) {
+      if (b < -1e-6) t = -c / b;
+    } else {
+      const discriminant = b * b - 4 * a * c;
+      if (discriminant >= 0) {
+        const sqrt = Math.sqrt(discriminant);
+        const first = (-b - sqrt) / (2 * a), second = (-b + sqrt) / (2 * a);
+        const hit = Math.min(first > 0 ? first : Infinity, second > 0 ? second : Infinity);
+        if (Number.isFinite(hit)) t = hit;
+      }
+    }
+    return out.copy(target.pos).addScaledVector(velocity, THREE.MathUtils.clamp(t, 0, 4));
   }
 
   step(dt: number, input: Input): void {

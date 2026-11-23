@@ -137,6 +137,26 @@ export function buildFacadeTrim(map: GameMap): THREE.Group {
     p.box(wide, 0.09, deep, 0x9b9e99, base, x, b.y1 - 0.07, z);
     if (b.y0 >= 2) p.box(wide, 0.12, deep, 0x737b7d, base, x, b.y0 + 0.07, z);
   }
+  // 고층 아파트는 층마다 창문/수평 분절을 넣어 단순한 긴 벽처럼 보이지 않게 합니다.
+  // 장식은 충돌을 만들지 않고 하나의 병합 메시로 그려 드로우콜을 억제합니다.
+  for (const b of map.buildings) {
+    if (b.type !== 'apartment' || b.h < 9) continue;
+    const floors = Math.floor(b.h / 3.2);
+    for (let level = 1; level < floors; level++) {
+      const y = level * 3.2;
+      p.box(b.w + 0.16, 0.10, 0.12, 0x56616c, base, b.x, y, b.z + b.d / 2 + 0.10);
+      p.box(b.w + 0.16, 0.10, 0.12, 0x56616c, base, b.x, y, b.z - b.d / 2 - 0.10);
+      p.box(0.12, 0.10, b.d + 0.16, 0x56616c, base, b.x + b.w / 2 + 0.10, y, b.z);
+      p.box(0.12, 0.10, b.d + 0.16, 0x56616c, base, b.x - b.w / 2 - 0.10, y, b.z);
+      // 창은 반사 없는 짙은 청회색으로: 멀리서도 층 구분이 읽힙니다.
+      for (const side of [-1, 1]) {
+        for (const offset of [-0.28, 0, 0.28]) {
+          p.box(1.15, 1.30, 0.055, 0x283b48, base, b.x + b.w * offset, y + 1.35, b.z + side * (b.d / 2 + 0.205));
+          p.box(0.055, 1.30, 1.15, 0x283b48, base, b.x + side * (b.w / 2 + 0.205), y + 1.35, b.z + b.d * offset);
+        }
+      }
+    }
+  }
   return p.mesh(false);
 }
 /** 지도의 소품(차량·컨테이너·울타리 등)을 합쳐서 돌려줍니다. */

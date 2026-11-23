@@ -23,12 +23,12 @@ function fakeLink(): FakeLink {
 const account = (id: string) => ({ id, nickname: id, email: id + '@example.invalid' });
 function pvpSession(host: boolean, wire: FakeLink): PvpSession {
   return { host, me: account(host ? 'host' : 'guest'), opponent: { id: host ? 'guest' : 'host', nickname: 'Rival' },
-    open: cb => wire.open(cb) } as unknown as PvpSession;
+    open: (cb: (message: NetMsg) => void) => wire.open(cb) } as unknown as PvpSession;
 }
 function roomSession(host: boolean, wire: FakeLink): RoomSession {
   const players = ['host', 'guest', 'third'].map(id => ({ id, nickname: id }));
   return { host, me: account(host ? 'host' : 'guest'), players, room: { host_id: 'host' },
-    open: cb => wire.open(cb) } as unknown as RoomSession;
+    open: (cb: (message: NetMsg) => void) => wire.open(cb) } as unknown as RoomSession;
 }
 function pvpHooks(): PvpHooks {
   return { onStart: vi.fn(), onSnap: vi.fn(), onFinish: vi.fn(), onGone: vi.fn() };

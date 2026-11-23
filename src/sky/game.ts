@@ -10,6 +10,7 @@ import { readPreferences, writeSound } from '../prefs';
 import type { LoadingScreen } from '../loading';
 import { drawIcon, svgIcon } from './art';
 import { AdaptiveQuality } from '../shared/adaptive';
+import { advanceSkyQualityRecovery } from './quality';
 
 const clamp = THREE.MathUtils.clamp;
 const AIM_CONE = Math.cos(THREE.MathUtils.degToRad(5)), ASSIST_CONE = Math.cos(THREE.MathUtils.degToRad(9));
@@ -44,7 +45,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   const $ = <T extends HTMLElement>(id: string): T => root.querySelector('#' + id) as T;
   const canvas = root.querySelector<HTMLCanvasElement>('.sk-canvas')!, ov = root.querySelector<HTMLCanvasElement>('.sk-ov')!, octx = ov.getContext('2d')!;
 
-  let adaptive: AdaptiveQuality | null = null;
+  let adaptive: AdaptiveQuality | null = null; let stableQualitySeconds = 0;
   let renderer: THREE.WebGLRenderer | null = null; let view: SkyView | null = null; let sim: SkySim | null = null;
   let diff: Difficulty = DIFFS[1]!; let state: 'title' | 'play' | 'paused' | 'over' = 'title'; let closed = false; let raf = 0; let last = 0; let saved = false;
   let mTap = false, hitT = 0, hitBy = 0, mBoost = false, bannerT = 0, alertT = 0, flare = false, mFire = false, mMissile = false, autoFire = false, throttle = 0.55, hintT = 8, cockpit = false;
@@ -221,7 +222,21 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     $('sk-title').hidden = true; $('sk-end').hidden = true; $('sk-paused').hidden = true; root.querySelector<HTMLElement>('.sk-hud')!.hidden = false; audio.unlock(); lock(); hint(matchMedia('(pointer: coarse)').matches ? '화면을 드래그해 조종하세요' : '마우스를 움직여 조종하세요 (Esc: 일시정지)'); banner('출격!', 1.5);
     if (view) { view.resetEffects(); view.camera.position.copy(sim.player.pos).add(new THREE.Vector3(0, 10, 40)); }
   }
-  function togglePause(): void { if (state === 'play') { audio.engine(false, 0); state = 'paused'; $('sk-paused').hidden = false; unlock(); } else if (state === 'paused') { state = 'play'; $('sk-paused').hidden = true; last = performance.now(); lock(); } }
+  function togglePause(): void {
+    if (state === 'play') {
+      audio.engine(false, 0); state = 'paused'; $('sk-paused').hidden = false; unlock(); stableQualitySeconds = 0;
+    } else if (state === 'paused') {
+      state = 'play'; $('sk-paused').hidden = true; last = performance.now();
+      // The adaptive governor must not mistake a long pause for a slow frame.
+      if (adaptive && renderer) {
+        const pr = adaptive.pr, level = adaptive.level;
+        const maxPr = Math.min(prefs.quality === 'high' ? 2 : prefs.quality === 'standard' ? 1.5 : 1, devicePixelRatio || 1);
+        adaptive = new AdaptiveQuality({ max: maxPr, start: pr, setPixelRatio: next => { renderer?.setPixelRatio(next); resize(); }, setLevel: next => view?.setLevel(next) });
+        adaptive.level = level;
+      }
+      lock();
+    }
+  }
   function finish(): void {
     state = 'over'; const prev = readSkyRecords(); if (!saved && sim) { saved = true; recordSkyRun(sim.score, sim.wave, sim.kills, sim.bestCombo, sim.time); }
     unlock(); audio.engine(false, 0); audio.play('lose'); paintRec(); const s = sim!, acc = s.shots ? Math.round(s.hits / s.shots * 100) : 0, newBest = s.score > prev.bestScore;
@@ -238,7 +253,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
 
   function frame(now: number): void {
     if (closed) return; raf = requestAnimationFrame(frame);
-    const dt = Math.min(0.05, (now - last) / 1000); last = now; if (!renderer || !view || !sim) return;
+    const frameMs = now - last, dt = Math.min(0.05, frameMs / 1000); last = now; if (!renderer || !view || !sim) return;
     if (state === 'play') {
       const p = sim.player; const inp = readInput(p, dt); sim.step(dt, inp); flare = false; mTap = false; hitT = Math.max(0, hitT - dt);
       for (const ev of sim.events) {
@@ -273,6 +288,11 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     if (state !== 'paused') view.sync(sim, dt, now / 1000);
     if (state === 'play' || state === 'over') { view.follow(sim.player, dt, cameraLook, clamp((throttle - 0.55) * 2, 0, 1)); }
     renderer.render(view.scene, view.camera); if (state !== 'paused') adaptive?.tick();
+    if (state === 'play' && adaptive) {
+      const recovery = advanceSkyQualityRecovery(stableQualitySeconds, frameMs, dt, adaptive.level);
+      stableQualitySeconds = recovery.stableSeconds;
+      if (recovery.restore) { adaptive.level--; view.setLevel(adaptive.level); }
+    } else stableQualitySeconds = 0;
     if (state === 'play') { hud(sim.player, dt); overlay(sim.player); } else if (state === 'over') { octx.clearRect(0, 0, ov.width, ov.height); }
     if (state === 'title') { // 타이틀 배경: 느리게 선회하는 카메라
       const t = now / 4000; view.camera.position.set(Math.cos(t) * 900, 520, Math.sin(t) * 900); view.camera.lookAt(0, 250, 0);

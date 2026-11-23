@@ -49,6 +49,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   const canvas = root.querySelector<HTMLCanvasElement>('.sk-canvas')!, ov = root.querySelector<HTMLCanvasElement>('.sk-ov')!, octx = ov.getContext('2d')!;
 
   let adaptive: AdaptiveQuality | null = null; let stableQualitySeconds = 0;
+  let idleDrawAt = -Infinity;
   let renderer: THREE.WebGLRenderer | null = null; let view: SkyView | null = null; let sim: SkySim | null = null;
   let diff: Difficulty = DIFFS[1]!; let state: 'title' | 'play' | 'paused' | 'over' = 'title'; let closed = false; let raf = 0; let last = 0; let saved = false;
   let mTap = false, fireTap = 0, hitT = 0, hitBy = 0, mBoost = false, bannerT = 0, alertT = 0, flare = false, mFire = false, mMissile = false, autoFire = false, throttle = 0.55, hintT = 8, cockpit = false;
@@ -344,9 +345,15 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   function frame(now: number): void {
     if (closed) return; raf = requestAnimationFrame(frame);
     const frameMs = now - last, dt = Math.min(0.05, frameMs / 1000); last = now; if (!renderer || !view || !sim) return;
-    // Keep the final WebGL frame under the pause dialog without redrawing the
-    // entire 3D scene 60 times a second on battery-powered devices.
+    // While menus cover the world, reduce GPU work drastically while retaining
+    // a subtle animated preview behind translucent UI; the live sortie remains
+    // completely unthrottled. Pause keeps the exact last rendered frame.
     if (state === 'paused') return;
+    if (state !== 'play') {
+      const interval = state === 'title' ? 125 : 250;
+      if (now - idleDrawAt < interval) return;
+      idleDrawAt = now;
+    }
     if (state === 'play') {
       const p = sim.player; const inp = readInput(p, dt); sim.step(dt, inp); flare = false; mTap = false; fireTap = Math.max(0, fireTap - dt); hitT = Math.max(0, hitT - dt);
       for (const ev of sim.events) {
@@ -390,7 +397,8 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     if (state === 'play' || state === 'over') view.follow(sim.player, dt, cameraLook, clamp((throttle - 0.55) * 2, 0, 1));
     view.sync(sim, dt, now / 1000);
     renderer.render(view.scene, view.camera);
-    adaptive?.tick();
+    // Adaptive FPS measurements must exclude throttled title/result frames.
+    if (state === 'play') adaptive?.tick();
     if (state === 'play' && adaptive) {
       const recovery = advanceSkyQualityRecovery(stableQualitySeconds, frameMs, dt, adaptive.level);
       stableQualitySeconds = recovery.stableSeconds;

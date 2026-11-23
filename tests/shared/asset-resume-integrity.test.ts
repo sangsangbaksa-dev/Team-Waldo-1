@@ -3,14 +3,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fetchBuffer } from '../../src/loading';
 
 const enc = new TextEncoder(), dec = new TextDecoder();
-type Spec = { status: number; chunk: string; length?: number; range?: string; encoding?: string; fail?: boolean };
+type Spec = { status: number; chunk: string; length?: number; range?: string; etag?: string; encoding?: string; fail?: boolean };
 
 // Minimal streaming Response mock. A first read can succeed while a later read
 // rejects, exactly as happens when a connection breaks mid-download.
-function response({ status, chunk, length, range, encoding, fail }: Spec): Response {
+function response({ status, chunk, length, range, etag, encoding, fail }: Spec): Response {
   const headers = new Headers();
   if (length !== undefined) headers.set('content-length', String(length));
   if (range !== undefined) headers.set('content-range', range);
+  if (etag !== undefined) headers.set('etag', etag);
   if (encoding !== undefined) headers.set('content-encoding', encoding);
   return {
     ok: status >= 200 && status < 300, status, headers,
@@ -163,5 +164,34 @@ describe('resumable asset integrity', () => {
     vi.stubGlobal('fetch', mock);
     expect(dec.decode(await fetchBuffer('/models/compressed.glb'))).toBe('abcdefghij');
     expect(mock.mock.calls[1][1].headers).toBeUndefined();
+  });
+
+  it('sends If-Range with a strong ETag and accepts matching resumed bytes', async () => {
+    const mock = vi.fn()
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abc', length: 10, etag: '"edition-a"', fail: true }))
+      .mockResolvedValueOnce(response({ status: 206, chunk: 'defghij', length: 7, range: 'bytes 3-9/10', etag: '"edition-a"' }));
+    vi.stubGlobal('fetch', mock);
+    expect(dec.decode(await fetchBuffer('/models/asset.glb'))).toBe('abcdefghij');
+    expect(mock.mock.calls[1][1].headers).toEqual({ Range: 'bytes=3-', 'If-Range': '"edition-a"' });
+  });
+
+  it('restarts when a same-length asset version changes between byte ranges', async () => {
+    const mock = vi.fn()
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abc', length: 10, etag: '"edition-a"', fail: true }))
+      .mockResolvedValueOnce(response({ status: 206, chunk: 'DEFGHIJ', length: 7, range: 'bytes 3-9/10', etag: '"edition-b"' }))
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'ABCDEFGHIJ', length: 10, etag: '"edition-b"' }));
+    vi.stubGlobal('fetch', mock);
+    expect(dec.decode(await fetchBuffer('/models/asset.glb'))).toBe('ABCDEFGHIJ');
+    expect(mock.mock.calls[1][1].headers).toEqual({ Range: 'bytes=3-', 'If-Range': '"edition-a"' });
+    expect(mock.mock.calls[2][1].headers).toBeUndefined();
+  });
+
+  it('does not send invalid weak ETags as If-Range validators', async () => {
+    const mock = vi.fn()
+      .mockResolvedValueOnce(response({ status: 200, chunk: 'abc', length: 10, etag: 'W/"edition-a"', fail: true }))
+      .mockResolvedValueOnce(response({ status: 206, chunk: 'defghij', length: 7, range: 'bytes 3-9/10' }));
+    vi.stubGlobal('fetch', mock);
+    expect(dec.decode(await fetchBuffer('/models/asset.glb'))).toBe('abcdefghij');
+    expect(mock.mock.calls[1][1].headers).toEqual({ Range: 'bytes=3-' });
   });
 });

@@ -437,7 +437,13 @@ export class Match {
       this.events.push({ t: 'nade', stage: 'boom', id: -1, x: sh.x, y: groundHeight(this.map.terrain, sh.x, sh.z) + 0.4, z: sh.z });
       for (const q of this.players) {
         if (!q.alive || q.air) continue; const d = Math.hypot(q.x - sh.x, q.z - sh.z); if (d > RED.blast) continue;
-        let dmg = RED.dmg * (1 - d / RED.blast); if (this.map.buildings.some(b => Math.abs(q.x - b.x) < b.w / 2 && Math.abs(q.z - b.z) < b.d / 2)) dmg *= 0.5; if (dmg >= 1) this.damage(q, dmg, -1, 'bomb', false, q.x, groundHeight(this.map.terrain, q.x, q.z) + 1.2, q.z, false);
+        let dmg = RED.dmg * (1 - d / RED.blast);
+        if (this.map.buildings.some(b => Math.abs(q.x - b.x) < b.w / 2 && Math.abs(q.z - b.z) < b.d / 2)) dmg *= 0.5;
+        // 폭발과 플레이어 사이에 산능선/건물 벽이 있으면 직격이 아닌 감쇠 피해만 줍니다.
+        const shellY = groundHeight(this.map.terrain, sh.x, sh.z) + 0.4;
+        const targetY = groundHeight(this.map.terrain, q.x, q.z) + 1.2;
+        if (!lineClear(this.map, sh.x, shellY, sh.z, q.x, targetY, q.z)) dmg *= 0.35;
+        if (dmg >= 1) this.damage(q, dmg, -1, 'bomb', false, q.x, targetY, q.z, false);
       }
       for (const v of this.vehicles) { if (v.wreck) continue; const d = Math.hypot(v.x - sh.x, v.z - sh.z); if (d < RED.blast) this.hurtVehicle(v, 170 * (1 - d / RED.blast), -1); }
     }

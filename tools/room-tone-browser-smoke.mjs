@@ -131,6 +131,11 @@ try {
       } else await page.locator("#pauseGame").click();
       assert.match(await page.locator("#panelTitle").innerText(),/일시정지/);
       assert.ok(await page.getByRole("button",{name:"게임 목록으로"}).count()>0);
+      await page.locator("#panelActions button").last().focus();
+      await page.keyboard.press("Tab");
+      assert.equal(await page.evaluate(()=>
+        document.activeElement===document.querySelector("#panelActions button")),
+        true,"Tab must wrap within the pause dialog");
       await page.getByRole("button",{name:"조작 안내"}).click();
       assert.match(await page.locator("#panelTitle").innerText(),/조작 안내/);
       if (config.mobile) await page.getByRole("button",{name:"돌아가기"}).click();

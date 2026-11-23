@@ -20,7 +20,7 @@ describe("ROOM TONE persisted audio preferences",()=>{
   });
 });
 describe("ROOM TONE model request lifecycle",()=>{
-  afterEach(()=>{releaseModelBytes();vi.unstubAllGlobals()});
+  afterEach(()=>{releaseModelBytes();vi.unstubAllGlobals();vi.useRealTimers()});
   it("coalesces simultaneous downloads and releases decoded bytes",async()=>{
     const buffer=new Uint8Array([1,2,3]).buffer;
     const fetchMock=vi.fn(async()=>({ok:true,arrayBuffer:async()=>buffer}));
@@ -49,6 +49,23 @@ describe("ROOM TONE model request lifecycle",()=>{
     expect(modelBytes()).toBe(active);
     resolveNew?.({ok:true,arrayBuffer:async()=>new ArrayBuffer(8)});
     await expect(active).resolves.toBeInstanceOf(ArrayBuffer);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+  it("aborts a stalled download and allows a fresh retry",async()=>{
+    vi.useFakeTimers();
+    const fetchMock=vi.fn((_url:string, options?:{signal?:AbortSignal})=>
+      new Promise<never>((_resolve,reject)=>{
+        options?.signal?.addEventListener("abort",()=>
+          reject(new DOMException("The download timed out","AbortError")));
+      }));
+    vi.stubGlobal("fetch",fetchMock);
+    const pending=modelBytes();
+    const rejection=expect(pending).rejects.toMatchObject({name:"AbortError"});
+    await vi.advanceTimersByTimeAsync(90_000);
+    await rejection;
+    const retry=modelBytes();
+    expect(retry).not.toBe(pending);
+    releaseModelBytes();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
   it("retries after network failures",async()=>{

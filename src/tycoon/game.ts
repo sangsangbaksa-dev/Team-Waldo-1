@@ -491,6 +491,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (rides?.driving && !modal) { p.hidden = false; html('prompt', '<kbd>F</kbd><b>차량에서 내리기</b>'); } else if (rides?.nearby(player.pos.x, player.pos.z) && !modal && !s.activity) { p.hidden = false; html('prompt', `<kbd>F</kbd><b>${esc(rides.nearby(player.pos.x, player.pos.z)!.name)} 탑승</b>${near ? `<em>E · ${esc(near.spot.name)}</em>` : ''}`); } else if (near && !modal && !s.activity) { p.hidden = false; const v = near.spot; const key = touch ? '' : '<kbd>E</kbd>'; const txt = `${key}<span class="ico">${esc(v.icon)}</span><b>${esc(v.name)}</b>${v.locked ? `<em>🔒 ${esc(STAGE_NAMES[v.minStage])} 단계에 열림</em>` : ''}`; html('prompt', txt); } else p.hidden = true;
     const actionButton = q<HTMLButtonElement>('[data-t="use"]');
     actionButton.textContent = rides?.driving ? '경적' : '행동';
+    actionButton.classList.toggle('horn', !!rides?.driving);
     actionButton.setAttribute('aria-label', rides?.driving ? '차량 경적 울리기' : '가까운 장소와 상호작용');
     const runButton = q<HTMLButtonElement>('#ty-t-run');
     runButton.textContent = rides?.driving ? '브레이크' : '달리기';

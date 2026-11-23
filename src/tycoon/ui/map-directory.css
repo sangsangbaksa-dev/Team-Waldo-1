@@ -1,0 +1,34 @@
+/* City directory: matte map with accessible vehicle index. */
+.ty-bigmap {width:min(980px,96vw);max-height:calc(100dvh - 32px);overflow:auto;padding:14px;background:#101a25f2;border:1px solid #354454;border-radius:10px;box-shadow:0 20px 60px #000b}
+.ty-bigmap .ty-x {z-index:2;right:22px;top:22px;border-radius:5px}
+.ty-map-layout {display:grid;grid-template-columns:minmax(0,1fr) 252px;align-items:start;gap:12px}
+.ty-map-surface {position:relative;min-width:0}
+.ty-map-surface canvas {width:100%;height:auto;border-radius:5px;border:1px solid #3e5061}
+.ty-map-surface .ty-map-caption {position:absolute;left:8px;right:8px;bottom:8px;max-width:max-content;padding:6px 10px;border-radius:3px;background:#111e2ae8;color:#d9e3e7;pointer-events:none;font-size:11px;line-height:1.45}
+.ty-map-aside {display:flex;flex-direction:column;min-width:0;max-height:min(670px,calc(100dvh - 72px));padding:10px 2px 0 0;overflow:hidden}
+.ty-map-aside-head {padding:2px 34px 16px 8px;border-bottom:1px solid #3a4b5b}
+.ty-map-aside-head small {font-size:10px;color:#d1b580;letter-spacing:.17em;font-weight:800}
+.ty-map-aside-head h2 {font-size:18px;font-weight:760;letter-spacing:-.025em;line-height:1.25;margin:8px 0;color:#f1f1ed}
+.ty-map-aside-head p {margin:0;font-size:11px;line-height:1.5;color:#b2bec9}
+.ty-map-vehicles {flex:1;min-height:0;overflow:auto;padding:7px 0;scrollbar-width:thin}
+.ty-map-vehicle {width:100%;display:flex;align-items:center;gap:9px;min-height:53px;text-align:left;padding:9px 8px;background:transparent;border:0;border-bottom:1px solid #ffffff13;border-radius:4px;color:#ecf0f3;transition:background .13s}
+.ty-map-vehicle:not(:disabled):hover,.ty-map-vehicle:not(:disabled):focus-visible {background:#2c3d4d}
+.ty-map-vehicle:disabled {opacity:.43;cursor:not-allowed}
+.ty-map-car-icon {display:grid;place-items:center;flex:0 0 30px;width:30px;height:30px;background:#243441;border:1px solid #50616b;border-radius:4px;color:#e7c88e;font-size:15px}
+.ty-map-car-copy {display:flex;flex-direction:column;flex:1;min-width:0;gap:2px}
+.ty-map-car-copy strong {font-size:12px;font-weight:720;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ty-map-car-copy small {font-size:10px;font-weight:520;color:#aabac7}
+.ty-map-car-chevron {flex:none;color:#dcc08b;font-size:15px}
+.ty-map-empty {padding:12px 8px;font-size:12px;color:#aabac7}
+.ty-map-aside .ty-clear-waypoint {position:static;display:block;width:100%;min-height:38px;margin:10px 0 0;border-radius:4px;background:#273747;color:#f0d5a0;border:1px solid #7c735e;padding:9px;text-align:center;font-size:12px;font-weight:700}
+.ty-map-aside .ty-clear-waypoint:disabled {opacity:.38;cursor:not-allowed}
+@media(max-width:700px) {
+  .ty-bigmap {width:100%;max-height:calc(100dvh - 24px);padding:10px}
+  .ty-map-layout {grid-template-columns:minmax(0,1fr);gap:8px}
+  .ty-map-aside {max-height:none;padding:0;overflow:visible}
+  .ty-map-aside-head {padding:12px 35px 10px 4px}
+  .ty-map-vehicles {max-height:188px;overflow:auto}
+  .ty-map-aside .ty-clear-waypoint {margin-top:6px}
+  .ty-map-surface .ty-map-caption {font-size:10px;padding:4px 6px}
+}
+@media(prefers-reduced-motion:reduce) {.ty-map-vehicle {transition:none}}

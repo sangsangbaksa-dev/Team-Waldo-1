@@ -1,0 +1,68 @@
+name: HUSTLE focused checks
+
+on:
+  pull_request:
+    paths:
+      - "src/tycoon/**"
+      - "tests/tycoon/**"
+      - "tests/tycoon-world/**"
+      - ".github/workflows/hustle-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hustle-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: HUSTLE lint, types, tests and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Lint HUSTLE code and tests
+        run: npx eslint src/tycoon tests/tycoon tests/tycoon-world
+      - name: Check TypeScript (full app)
+        if: always()
+        run: npm run typecheck
+      - name: Run HUSTLE tests
+        if: always()
+        run: npx vitest run tests/tycoon tests/tycoon-world
+      - name: Build production app
+        if: always()
+        run: npm run build
+
+  browser:
+    name: HUSTLE desktop/mobile WebGL smoke
+    needs: verify
+    # Playwright 1.56.1 Chromium installer supports Ubuntu 24.04, not 26.04.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    # Software-rendered WebGL availability depends on the CI runner image.
+    # Keep the browser diagnostic non-blocking until its environment is validated.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Play HUSTLE on desktop and mobile
+        run: node --import tsx tests/tycoon/browser-smoke.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hustle-browser-screenshots
+          path: artifacts/*.png
+          if-no-files-found: ignore
+          retention-days: 3

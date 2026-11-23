@@ -67,7 +67,7 @@ describe('combat rewards', () => {
   it('rewards a missile dodge once and extends an active combo', () => {
     const sim = new SkySim(DIFFS[1]);
     sim.combo = 2; sim.comboT = 1;
-    sim.missiles.push({ id: 100, owner: 999, team: 'enemy', pos: sim.player.pos.clone().add(new THREE.Vector3(0, 0, 200)), vel: new THREE.Vector3(0, 0, 1), target: 0, life: 10, alive: true, nearPlayer: true });
+    sim.missiles.push({ id: 100, owner: 999, team: 'enemy', pos: sim.player.pos.clone().add(new THREE.Vector3(0, 0, 200)), vel: new THREE.Vector3(0, 0, 1), target: sim.player.id, life: 10, alive: true, nearPlayer: true });
     sim.step(DT, NEUTRAL);
     expect(sim.shield).toBe(5);
     expect(sim.comboT).toBeGreaterThan(5);

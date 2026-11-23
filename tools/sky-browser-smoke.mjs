@@ -106,6 +106,19 @@ try {
       await page.screenshot({ path: 'browser-artifacts/sky-flight-' + size.name + '.png', animations: 'disabled' });
       await page.waitForFunction(() => !document.querySelector('#sk-banner')?.classList.contains('on'));
       await page.screenshot({ path: 'browser-artifacts/sky-combat-' + size.name + '.png', animations: 'disabled' });
+      if (size.name === 'mobile') {
+        const viewButton = page.locator('#sk-camera');
+        assert.equal(await viewButton.isVisible(), true, 'Mobile pilots need a cockpit toggle');
+        await viewButton.click();
+        await page.waitForFunction(() => document.querySelector('.sk-root')?.classList.contains('cockpit'));
+        assert.equal(await viewButton.getAttribute('aria-pressed'), 'true');
+        await page.waitForFunction(() => window.__sky.view.meshes.get(window.__sky.sim.player.id)?.visible === false);
+        await page.screenshot({ path: 'browser-artifacts/sky-cockpit-mobile.png', animations: 'disabled' });
+        await viewButton.click();
+        await page.waitForFunction(() => !document.querySelector('.sk-root')?.classList.contains('cockpit'));
+        await page.waitForFunction(() => window.__sky.view.meshes.get(window.__sky.sim.player.id)?.visible === true);
+        assert.equal(await viewButton.getAttribute('aria-pressed'), 'false');
+      }
       if (size.name === 'desktop') {
         // Simulate a browser that dispatches pointerlockchange before the
         // Escape keydown. One physical Escape must only pause once.

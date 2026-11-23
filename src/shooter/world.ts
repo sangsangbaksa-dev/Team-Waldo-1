@@ -321,7 +321,14 @@ export function generateMap(seed: number, mode: Mode): GameMap {
   const bag = [...THEME_LIST];
   for (let i = bag.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [bag[i], bag[j]] = [bag[j], bag[i]]; }
   const used: Record<string, number> = {};
-  map.compounds.forEach((c, i) => { if (mode === 'br' && i === 0) { used.urban = 1; return; } c.theme = i < bag.length ? bag[i] : THEME_LIST[Math.floor(rng() * THEME_LIST.length)]; const def = THEMES[c.theme]; const n = used[c.theme] ?? 0; used[c.theme] = n + 1; c.name = def.names[n % def.names.length] });
+  map.compounds.forEach((c, i) => {
+    if (mode === 'br' && i === 0) { used.urban = 1; return; }
+    // 고정 중앙 도시를 제외한 첫 다섯 마을은 서로 다른 테마를 보장합니다.
+    const ordinaryIndex = mode === 'br' ? i - 1 : i;
+    c.theme = ordinaryIndex < bag.length ? bag[ordinaryIndex] : THEME_LIST[Math.floor(rng() * THEME_LIST.length)];
+    const def = THEMES[c.theme], n = used[c.theme] ?? 0;
+    used[c.theme] = n + 1; c.name = def.names[n % def.names.length];
+  });
   for (const c of map.compounds) {
     const downtown = c.downtown === true;
     const def = THEMES[c.theme], cols = downtown ? METROPOLIS.cols : mode === 'br' ? def.cols[0] : 2, rows = downtown ? METROPOLIS.rows : def.rows;

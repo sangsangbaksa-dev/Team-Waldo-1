@@ -2,6 +2,7 @@
 // 봇은 사람과 같은 입력(Input)만 만들어 내고, 체력이나 탄을 속이지 않습니다.
 import { canFit, magOf, partFit, PLAYER, WEAPONS, type BotTuning, type PartId } from './config';
 import { lineClear } from './world';
+import { groundHeight } from './terrain';
 import { findPath, navFor, walkable } from './nav';
 import type { Match, Player, ZoneState } from './sim';
 
@@ -50,7 +51,8 @@ function wantLoot(p: Player, kind: string, weapon: string | null, part: PartId |
 }
 
 export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void {
-  const b = p.brain!, T = b.t, inp = p.input, rng = m.rng, eye = PLAYER.eye;
+  const b = p.brain!, T = b.t, inp = p.input, rng = m.rng;
+  const eye = PLAYER.eye - (PLAYER.eye - PLAYER.crouchEye) * p.crouch + groundHeight(m.map.terrain, p.x, p.z);
   inp.heal = 0; inp.nade = false; inp.fire = false; inp.reload = false; inp.interact = false; inp.sprint = false; inp.ads = false; inp.slot = -1; inp.mx = 0; inp.mz = 0;
   b.goalT -= dt; b.investT -= dt; b.strafeT -= dt; b.errT -= dt; b.detourT -= dt; b.lootT -= dt; b.think -= dt; b.lootScan -= dt;
 
@@ -66,7 +68,7 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
       const retaliate = p.hurt > 0 && p.lastHitBy === q.id;
       if (cautious && !retaliate && d > 9) continue;
       if (!retaliate && d > 9 && Math.abs(angDiff(Math.atan2(dz, dx), p.yaw)) > T.fov) continue;
-      if (d < bestD && lineClear(m.map, p.x, eye, p.z, q.x, 1.2, q.z)) { best = q; bestD = d; }
+      if (d < bestD && lineClear(m.map, p.x, eye, p.z, q.x, 1.2 + groundHeight(m.map.terrain, q.x, q.z), q.z)) { best = q; bestD = d; }
     }
     if (best) {
       if (b.target !== best.id) { b.target = best.id; b.react = T.react * (0.7 + rng() * 0.6) + (p.guns[p.cur]?.id === 'sniper' ? 0.45 : 0); b.head = rng() < T.headAim; }
@@ -101,7 +103,7 @@ export function thinkBot(m: Match, p: Player, dt: number, zone: ZoneState): void
   // 싸움이 잠잠하면 다친 몸을 치료합니다(위급하면 구급상자, 가벼우면 붕대).
   if (p.healT <= 0 && !engaged && b.seen > 2.5) { if (p.hp < 50 && p.kits > 0) inp.heal = 2; else if (p.hp < 72 && p.bandages > 0) inp.heal = 1; }
   if (q && engaged) {
-    const tx = visible ? q.x : b.lastX, tz = visible ? q.z : b.lastZ, dx = tx - p.x, dz = tz - p.z, d = Math.hypot(dx, dz) + 1e-6, ty = b.head ? 1.62 : 1.15;
+    const tx = visible ? q.x : b.lastX, tz = visible ? q.z : b.lastZ, dx = tx - p.x, dz = tz - p.z, d = Math.hypot(dx, dz) + 1e-6, ty = (b.head ? 1.62 : 1.15) + groundHeight(m.map.terrain, tx, tz);
     if (b.errT <= 0) { b.errT = 0.22 + rng() * 0.15; const k = Math.max(def?.id === 'sniper' ? 0.016 : 0, T.aimErr * (1 + d / 55)) * (q.bot && m.plane ? 2.2 : 1); /* 100명 판: AI끼리는 덜 정확해 초반에 다 쓰러지지 않습니다 */ b.errYaw = gauss(rng) * k; b.errPitch = gauss(rng) * k * 0.7; }
     yawTarget = Math.atan2(dz, dx) + b.errYaw; pitchTarget = Math.atan2(ty - eye, d) + b.errPitch; turn = T.turn;
     if (visible && def && gun) {

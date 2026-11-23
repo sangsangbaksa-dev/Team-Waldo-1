@@ -1,8 +1,9 @@
 // ZERO ZONE — 지형 그리기: 강·호수·늪·구릉·절벽·다리, 그리고 마을 바닥·길이 풀밭에 자연스럽게 번지게 하는 부드러운 가장자리.
 import * as THREE from 'three';
 import { makeRng } from './config';
-import type { GameMap } from './world';
-import { CLIFF_T } from './terrain';
+import { METROPOLIS, type GameMap } from './world';
+import { Pieces } from '../shared/pieces';
+import { CLIFF_T, riseHeight } from './terrain';
 import { concreteTexture, dirtTexture, fadeDiscTexture, fadeRoadTexture, waterTexture } from './textures';
 
 const smooth = (t: number): number => { const x = Math.max(0, Math.min(1, t)); return x * x * (3 - 2 * x); };
@@ -55,7 +56,7 @@ function ribbonGeo(pts: Array<[number, number]>, w: number, uvPerM: number, edge
 export class TerrainView {
   readonly group = new THREE.Group(); private flow: THREE.Texture[] = []; private time = 0;
   constructor(private map: GameMap, private low: boolean) {
-    this.group.name = 'terrain'; this.buildTowns(); this.buildRoads(); this.buildWater(); this.buildHills(); this.buildCliffs(); this.buildBridges();
+    this.group.name = 'terrain'; this.buildTowns(); this.buildDowntownStreets(); this.buildRoads(); this.buildWater(); this.buildRises(); this.buildHills(); this.buildCliffs(); this.buildBridges();
   }
   /** 물결을 흘립니다. */
   update(dt: number): void { this.time += dt; for (let i = 0; i < this.flow.length; i++) { this.flow[i].offset.x = -this.time * (0.03 + i * 0.01); this.flow[i].offset.y = Math.sin(this.time * 0.4 + i) * 0.01; } }
@@ -78,6 +79,66 @@ export class TerrainView {
       }
     });
   }
+  /** 중앙 고층 시가지: 건물 사이의 실제 빈 공간에 아스팔트/보도를 깝니다.
+   * 사거리에서 도로 메시가 겹치지 않도록 세로 도로는 통째로,
+   * 가로 도로는 세로 도로 사이의 구간만 채웁니다. 색상별 메시 병합으로 드로우콜을 제한합니다. */
+  private buildDowntownStreets(): void {
+    const c = this.map.compounds.find(t => t.downtown);
+    if (!c) return;
+    const { cols, rows, lotW, lotD, streetWidth: lane } = METROPOLIS;
+    const halfX = cols * lotW / 2, halfZ = rows * lotD / 2;
+    const p = new Pieces(), identity = new THREE.Matrix4();
+    const asphalt = 0x343d43, curb = 0x89918e, stripe = 0xb9b5a3;
+    for (let i = 1; i < cols; i++) {
+      const x = c.x + (i - cols / 2) * lotW;
+      p.box(lane, 0.055, halfZ * 2, asphalt, identity, x, 0.073, c.z);
+      for (const sign of [-1, 1]) p.box(0.18, 0.065, halfZ * 2, curb, identity, x + sign * (lane / 2 + 0.16), 0.092, c.z);
+      for (let block = 0; block < rows; block++) {
+        const z0 = c.z - halfZ + block * lotD + lane / 2;
+        const z1 = z0 + lotD - lane;
+        for (let z = z0 + 2; z < z1 - 1; z += 5) p.box(0.13, 0.012, 1.6, stripe, identity, x, 0.113, z);
+      }
+    }
+    for (let j = 1; j < rows; j++) {
+      const z = c.z + (j - rows / 2) * lotD;
+      for (let block = 0; block < cols; block++) {
+        const x0 = c.x - halfX + block * lotW + (block > 0 ? lane / 2 : 0);
+        const x1 = c.x - halfX + (block + 1) * lotW - (block < cols - 1 ? lane / 2 : 0);
+        const length = x1 - x0, mid = (x0 + x1) / 2;
+        p.box(length, 0.055, lane, asphalt, identity, mid, 0.073, z);
+        for (const sign of [-1, 1]) p.box(length, 0.065, 0.18, curb, identity, mid, 0.092, z + sign * (lane / 2 + 0.16));
+        for (let x = x0 + 2; x < x1 - 1; x += 5) p.box(1.6, 0.012, 0.13, stripe, identity, x, 0.113, z);
+      }
+    }
+    // 교차로 9곳의 횡단보도. 거리마다 개별 Mesh를 만들지 않고 도로와 한 번에 병합합니다.
+    const crossing = 0xcacbc3;
+    for (let i = 1; i < cols; i++) for (let j = 1; j < rows; j++) {
+      const x = c.x + (i - cols / 2) * lotW, z = c.z + (j - rows / 2) * lotD;
+      for (const sign of [-1, 1]) for (let mark = 0; mark < 4; mark++) {
+        const offset = sign * (lane / 2 + 0.65 + mark * 0.48);
+        p.box(lane - 0.65, 0.012, 0.25, crossing, identity, x, 0.123, z + offset);
+        p.box(0.25, 0.012, lane - 0.65, crossing, identity, x + offset, 0.123, z);
+      }
+    }
+    // 도심의 x=0/z=0 교차로를 외곽 마을 연결 도로까지 연장합니다.
+    // 기존에 끝에서 약 5~10m 끊기던 아스팔트가 이제 중앙 블록까지 이어집니다.
+    const extentX = Math.max(4, c.r - halfX + 5), extentZ = Math.max(4, c.r - halfZ + 5);
+    for (const sign of [-1, 1]) {
+      const mz = c.z + sign * (halfZ + extentZ / 2), mx = c.x + sign * (halfX + extentX / 2);
+      p.box(lane, 0.055, extentZ, asphalt, identity, c.x, 0.073, mz);
+      p.box(extentX, 0.055, lane, asphalt, identity, mx, 0.073, c.z);
+      for (const side of [-1, 1]) {
+        p.box(0.18, 0.065, extentZ, curb, identity, c.x + side * (lane / 2 + 0.16), 0.092, mz);
+        p.box(extentX, 0.065, 0.18, curb, identity, mx, 0.092, c.z + side * (lane / 2 + 0.16));
+      }
+      for (let d = 2; d < extentZ - 1; d += 5) p.box(0.13, 0.012, 1.6, stripe, identity, c.x, 0.113, c.z + sign * (halfZ + d));
+      for (let d = 2; d < extentX - 1; d += 5) p.box(1.6, 0.012, 0.13, stripe, identity, c.x + sign * (halfX + d), 0.113, c.z);
+    }
+    const mesh = p.mesh(false);
+    mesh.name = 'downtown-streets';
+    this.group.add(mesh);
+  }
+
   /** 마을을 잇는 흙길: 양 가장자리가 흐려져 풀밭과 섞입니다. */
   private buildRoads(): void {
     const dirt = dirtTexture(), fade = fadeRoadTexture(), cs = this.map.compounds;
@@ -113,16 +174,74 @@ export class TerrainView {
     }
   }
   /** 구릉: 가파른 옆면과 평평한 풀 윗면의 큰 언덕(충돌 상자는 world.ts). */
+  /** 걸어 올라갈 수 있는 능선은 충돌 엔진과 동일한 riseHeight()로 정점을 만듭니다.
+   * 색은 고도에 따라 풀빛에서 노출된 암석으로 바뀌고 전체를 한 메시로 합칩니다. */
+  private buildRises(): void {
+    const geos: THREE.BufferGeometry[] = [];
+    const palettes = [
+      [0x879751, 0x888172, 0x72854b], // grassy highland
+      [0x9c9569, 0x837b6b, 0x9d8658], // dry ochre rise
+      [0x76878a, 0x767b7d, 0x6a8171], // gray slate ridge
+      [0x65784d, 0x727466, 0x527257], // dense evergreen foothill
+    ] as const;
+    const seg = this.low ? 20 : 36, rings = this.low ? 8 : 14, color = new THREE.Color();
+    for (const hill of this.map.terrain.rises) {
+      const tone = Math.abs(Math.floor(hill.x * 0.37 + hill.z * 0.21 + this.map.seed)) % palettes.length;
+      const [low, high, mid] = palettes[tone], base = new THREE.Color(low), crown = new THREE.Color(high), moss = new THREE.Color(mid);
+      const pos: number[] = [], colors: number[] = [], idx: number[] = [];
+      for (let j = 0; j <= rings; j++) {
+        const radius = (j / rings) * hill.r, top = 1 - j / rings;
+        for (let i = 0; i < seg; i++) {
+          const angle = i * Math.PI * 2 / seg;
+          const x = hill.x + Math.cos(angle) * radius, z = hill.z + Math.sin(angle) * radius;
+          pos.push(x, riseHeight(hill, x, z) + 0.012, z);
+          color.copy(base).lerp(crown, top * top * (0.35 + hill.h * 0.1)).lerp(moss, Math.max(0, 0.3 - top) * 0.3);
+          colors.push(color.r, color.g, color.b);
+        }
+      }
+      for (let j = 0; j < rings; j++) for (let i = 0; i < seg; i++) {
+        const a = j * seg + i, b = j * seg + (i + 1) % seg, c = a + seg, d = b + seg;
+        idx.push(a, b, c, b, d, c);
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+      geo.setIndex(idx); geos.push(geo);
+    }
+    if (!geos.length) return;
+    const merged = geos.length === 1 ? geos[0] : mergeGeos(geos);
+    merged.computeVertexNormals();
+    const m = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+    m.name = 'walkable-rises'; m.receiveShadow = true; this.group.add(m);
+    if (geos.length > 1) for (const geo of geos) geo.dispose();
+  }
+
   private buildHills(): void {
     const n = valueNoise(this.map.seed + 41), top = new THREE.Color(0.5, 0.64, 0.3), rock = new THREE.Color(0.52, 0.49, 0.43), foot = new THREE.Color(0.6, 0.58, 0.46), c = new THREE.Color();
+    const hills: THREE.BufferGeometry[] = [];
     for (const h of this.map.terrain.hills) {
-      const prof = [[1.0, 0.0], [0.94, h.h * 0.22], [0.86, h.h * 0.62], [0.74, h.h * 0.93], [0.5, h.h * 0.995], [0.001, h.h]].map(([r, y]) => new THREE.Vector2(r * h.r, y)), g = new THREE.LatheGeometry(prof, 26, 0, Math.PI * 2), p = g.attributes.position, col = new Float32Array(p.count * 3);
+      // 높은 바위산은 가파르고 낮은 둔덕은 넓게 완만한 능선으로 렌더링합니다.
+      const steep = h.h > 7.5;
+      const profile = steep
+        ? [[1.0, 0.0], [0.94, h.h * 0.12], [0.86, h.h * 0.52], [0.74, h.h * 0.91], [0.5, h.h * 0.99], [0.001, h.h]]
+        : [[1.0, 0.0], [0.91, h.h * 0.23], [0.76, h.h * 0.56], [0.57, h.h * 0.86], [0.33, h.h * 0.98], [0.001, h.h]];
+      const prof = profile.map(([r, y]) => new THREE.Vector2(r * h.r, y));
+      const g = new THREE.LatheGeometry(prof, 26, 0, Math.PI * 2), p = g.attributes.position, col = new Float32Array(p.count * 3);
       for (let i = 0; i < p.count; i++) {
         const x = p.getX(i), y = p.getY(i), z = p.getZ(i), r = Math.hypot(x, z), k = 1 + (n((x + h.x) / 6, (z + h.z) / 6) - 0.5) * 0.16 * Math.min(1, r / h.r); p.setXYZ(i, x * k, y * (1 + (n((x + h.x) / 5 + 9, (z + h.z) / 5) - 0.5) * 0.12), z * k);
         const t = y / h.h; c.copy(foot).lerp(rock, smooth(t * 3)).lerp(top, smooth((t - 0.6) * 4)).multiplyScalar(0.7 + n(x / 2.5 + 40, z / 2.5) * 0.14); col.set([c.r, c.g, c.b], i * 3);
       }
-      g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.computeVertexNormals();
-      const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })); m.position.set(h.x, 0, h.z); m.castShadow = true; m.receiveShadow = true; this.group.add(m);
+      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      g.translate(h.x, 0, h.z);
+      hills.push(g);
+    }
+    if (hills.length) {
+      const merged = hills.length === 1 ? hills[0] : mergeGeos(hills);
+      merged.computeVertexNormals();
+      const m = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+      m.name = 'terrain-hills';
+      m.castShadow = true; m.receiveShadow = true; this.group.add(m);
+      if (hills.length > 1) for (const h of hills) h.dispose();
     }
   }
   /** 절벽: 층층이 갈라진 바위 벽. */

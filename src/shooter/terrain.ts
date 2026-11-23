@@ -4,6 +4,8 @@ import { makeRng, type Mode } from './config';
 
 /** 속이 꽉 찬 바위 언덕. 올라갈 수는 없지만 시선과 총알을 막는 큰 엄폐물입니다. */
 export interface Hill { x: number; z: number; r: number; h: number }
+/** 밟고 올라갈 수 있는 완만한 지형 고도. 경계에서는 높이와 기울기가 0이 됩니다. */
+export interface Rise { x: number; z: number; r: number; h: number }
 /** 호수(swamp=false)와 늪(swamp=true). 타원이며 ry 만큼 돌아 있습니다. */
 export interface Pond { x: number; z: number; rx: number; rz: number; ry: number; swamp: boolean }
 export interface River { pts: Array<[number, number]>; w: number }
@@ -12,8 +14,81 @@ export interface Cliff { x0: number; z0: number; x1: number; z1: number; h: numb
 export interface Forest { x: number; z: number; r: number }
 /** 길이 물을 건너는 자리: 다리 위는 물 속도 저하가 없습니다. */
 export interface Bridge { x: number; z: number; ry: number; len: number }
-export interface Terrain { hills: Hill[]; ponds: Pond[]; rivers: River[]; cliffs: Cliff[]; forests: Forest[]; bridges: Bridge[] }
-export const emptyTerrain = (): Terrain => ({ hills: [], ponds: [], rivers: [], cliffs: [], forests: [], bridges: [] });
+export interface Terrain { hills: Hill[]; rises: Rise[]; ponds: Pond[]; rivers: River[]; cliffs: Cliff[]; forests: Forest[]; bridges: Bridge[] }
+export const emptyTerrain = (): Terrain => ({ hills: [], rises: [], ponds: [], rivers: [], cliffs: [], forests: [], bridges: [] });
+
+/** 유한하고 매끄러운 언덕 프로필. 경계에서 0으로 수렴하므로 기지/도로 경계에 단차가 없습니다. */
+export function riseHeight(r: Rise, x: number, z: number): number {
+  const dx = (x - r.x) / r.r, dz = (z - r.z) / r.r;
+  const d2 = dx * dx + dz * dz;
+  return d2 >= 1 ? 0 : r.h * (1 - d2) ** 2;
+}
+
+/** (x,z)의 실제 지면 고도. 순수 시드 데이터만 사용하며, 렌더링과 전투 판정이 공유합니다. */
+export function groundHeight(t: Terrain, x: number, z: number): number {
+  let y = 0;
+  for (const r of t.rises) y = Math.max(y, riseHeight(r, x, z));
+  return y;
+}
+
+/** 지면과 광선의 최초 교차점. 납작한 기본 땅과 완만한 능선을 모두 검사합니다.
+ * 능선과 만나는 XZ 구간만 샘플링하고, 최초 교차는 이분탐색해 총알이 산을 뚫지 않게 합니다. */
+export function groundRayDistance(t: Terrain, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
+  let best = dy < -1e-9 && oy >= 0 ? oy / -dy : Infinity;
+  if (best > maxT) best = Infinity;
+  const horizSq = dx * dx + dz * dz;
+  // 위를 향한 광선이 모든 능선보다 높게 출발하면 지면을 절대 맞히지 않습니다.
+  if (dy >= 0 && oy > 0) {
+    let tallest = 0;
+    for (const r of t.rises) if (r.h > tallest) tallest = r.h;
+    if (oy > tallest) return Infinity;
+  }
+  for (const r of t.rises) {
+    const rx = ox - r.x, rz = oz - r.z, b = rx * dx + rz * dz;
+    let from = 0, to = Math.min(maxT, best);
+    if (horizSq > 1e-12) {
+      const disc = b * b - horizSq * (rx * rx + rz * rz - r.r * r.r);
+      if (disc < 0) continue;
+      const root = Math.sqrt(disc);
+      from = Math.max(0, (-b - root) / horizSq);
+      to = Math.min(to, (-b + root) / horizSq);
+    } else if (rx * rx + rz * rz >= r.r * r.r) continue;
+    if (to < from) continue;
+    const above = (d: number): number => oy + dy * d - riseHeight(r, ox + dx * d, oz + dz * d);
+    let previousT = from, previousY = above(from);
+    if (previousY <= 0) { best = Math.min(best, from); continue; }
+    // 수평 사격은 능선 중심선에 가장 가까운 점이 가장 높은 지점입니다.
+    // 그 정점만 검사하고 양분 탐색하면 1m 표본 사이의 얕은 접선도 놓치지 않습니다.
+    if (Math.abs(dy) < 1e-12 && horizSq > 1e-12) {
+      const peak = Math.min(to, Math.max(from, -b / horizSq));
+      if (above(peak) <= 0) {
+        let low = from, high = peak;
+        for (let k = 0; k < 18; k++) {
+          const mid = (low + high) / 2;
+          if (above(mid) <= 0) high = mid; else low = mid;
+        }
+        best = Math.min(best, high);
+      }
+      continue;
+    }
+    const n = Math.max(1, Math.ceil((to - from) / Math.max(0.5, r.r / 24)));
+    for (let i = 1; i <= n; i++) {
+      const at = from + (to - from) * i / n, altitude = above(at);
+      if (altitude <= 0) {
+        let low = previousT, high = at;
+        for (let k = 0; k < 16; k++) {
+          const mid = (low + high) / 2;
+          if (above(mid) <= 0) high = mid; else low = mid;
+        }
+        best = Math.min(best, high);
+        break;
+      }
+      previousT = at; previousY = altitude;
+    }
+    void previousY;
+  }
+  return best;
+}
 
 /** 물에서 걸을 때 속도 배율: [뭍, 얕은 물(강·늪), 깊은 물(호수 가운데)] */
 export const WATER_SLOW = [1, 0.62, 0.42] as const;
@@ -94,16 +169,28 @@ export function planTerrain(seed: number, mode: Mode, half: number, towns: Zone[
   };
   for (let i = 0; i < (br ? 3 : 1); i++) pond(false, 120);
   for (let i = 0; i < (br ? 3 : 0); i++) pond(true, 120);
-  // 구릉(올라갈 수 없는 큰 언덕)
-  for (let i = 0, want = br ? 9 : 2, tries = 0; i < want && tries < 300; tries++) {
-    const r = (br ? 13 : 9) + rng() * (br ? 12 : 5), x = (rng() * 2 - 1) * (half - r - 8), z = (rng() * 2 - 1) * (half - r - 8);
-    if (free(x, z, r)) { t.hills.push({ x, z, r, h: 4 + rng() * 3 }); feats.push({ x, z, r }); i++; }
+  // 낮은 바위 둔덕부터 높은 절벽형 언덕까지 다양한 실루엣을 섞습니다.
+  // 현재 물리 시스템에서 언덕은 올라갈 수 없는 엄폐물이며, 경사 이동은 별도 작업입니다.
+  for (let i = 0, want = br ? 13 : 3, tries = 0; i < want && tries < 400; tries++) {
+    const tall = rng() < 0.3;
+    const r = (br ? 10 : 8) + rng() * (tall ? 15 : 13);
+    const x = (rng() * 2 - 1) * (half - r - 8), z = (rng() * 2 - 1) * (half - r - 8);
+    const h = tall ? 8 + rng() * 5 : 2.5 + rng() * 4.5;
+    if (free(x, z, r)) { t.hills.push({ x, z, r, h }); feats.push({ x, z, r }); i++; }
+  }
+  // 오를 수 있는 완만한 능선: 고도는 위치 함수만으로 계산하므로
+  // 화면·물리·네트워크에서 동일한 값을 얻고 전용 충돌 상자가 필요하지 않습니다.
+  for (let i = 0, want = br ? 10 : 3, tries = 0; i < want && tries < 440; tries++) {
+    const r = (br ? 23 : 14) + rng() * (br ? 15 : 9), h = 1.7 + rng() * (br ? 2.3 : 1.5);
+    const x = (rng() * 2 - 1) * (half - r - 8), z = (rng() * 2 - 1) * (half - r - 8);
+    if (!free(x, z, r, 4)) continue;
+    t.rises.push({ x, z, r, h }); feats.push({ x, z, r }); i++;
   }
   // 절벽: 문틈을 낸 긴 암벽
   for (let i = 0, want = br ? 6 : 1, tries = 0; i < want && tries < 300; tries++) {
     const len = (br ? 36 : 24) + rng() * (br ? 38 : 12), horiz = rng() < 0.5, x = (rng() * 2 - 1) * (half - len / 2 - 8), z = (rng() * 2 - 1) * (half - len / 2 - 8), rad = len * 0.5;
     if (!free(x, z, rad, 3)) continue;
-    const h = 4.5 + rng() * 3.5, gaps = len > 50 ? 2 : 1, cuts = [0, ...Array.from({ length: gaps }, (_, g) => (g + 0.5 + (rng() - 0.5) * 0.3) / gaps), 1], gw = 6 / len;
+    const h = 4.5 + rng() * 3.5, gaps = br || len > 50 ? 2 : 1, cuts = [0, ...Array.from({ length: gaps }, (_, g) => (g + 0.5 + (rng() - 0.5) * 0.3) / gaps), 1], gw = 6 / len;
     for (let k = 0; k + 1 < cuts.length; k++) {
       const a = cuts[k] + (k > 0 ? gw / 2 : 0), b = cuts[k + 1] - (k + 2 < cuts.length ? gw / 2 : 0); if (b - a < 0.05) continue;
       const p0 = (a - 0.5) * len, p1 = (b - 0.5) * len; t.cliffs.push(horiz ? { x0: x + p0, x1: x + p1, z0: z - CLIFF_T / 2, z1: z + CLIFF_T / 2, h } : { x0: x - CLIFF_T / 2, x1: x + CLIFF_T / 2, z0: z + p0, z1: z + p1, h });

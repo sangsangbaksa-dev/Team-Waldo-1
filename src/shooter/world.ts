@@ -1,9 +1,9 @@
 // ZERO ZONE — 지도 생성(마을·건물·차량·컨테이너·바위·나무·전리품)과 충돌·광선 검사. 화면과 무관한 순수 로직이라 시드가 같으면 어디서나 같은 지도가 나옵니다.
-import { emptyTerrain, planTerrain, waterDepth, type Terrain } from './terrain';
+import { emptyTerrain, groundHeight, groundRayDistance, planTerrain, waterDepth, type Terrain } from './terrain';
 import { MAP_HALF, PLAYER, WEAPON_IDS, makeRng, type Attachments, type Mode, type PartId, type WeaponId } from './config';
 
 /** 위에서 본 직사각형 + 높이 범위. 벽·바위·상자·나무 기둥·차량 모두 이 모양입니다. */
-export type BoxKind = 'wall' | 'rock' | 'crate' | 'trunk' | 'fence' | 'vehicle' | 'container' | 'prop';
+export type BoxKind = 'wall' | 'ceiling' | 'rock' | 'crate' | 'trunk' | 'fence' | 'vehicle' | 'container' | 'prop';
 export interface Box { x0: number; z0: number; x1: number; z1: number; y0: number; y1: number; kind: BoxKind; tex: number }
 export type BuildingType = 'house' | 'cabin' | 'apartment' | 'warehouse' | 'garage' | 'shop' | 'tower' | 'barn' | 'bunker' | 'station' | 'church' | 'clinic' | 'diner' | 'silo' | 'hangar';
 export type RoofKind = 'flat' | 'gable' | 'shed';
@@ -16,7 +16,9 @@ export type PropKind = 'car' | 'jeep' | 'truck' | 'van' | 'bus' | 'container' | 
 /** 눈에 보이는 소품. w·d·h 는 ry=0 일 때의 가로(x)·세로(z)·높이이고, 충돌 상자는 world.ts 가 따로 만듭니다. */
 export interface Prop { kind: PropKind; x: number; z: number; ry: number; /** 보기만 하는 작은 기울기 */ jit: number; w: number; d: number; h: number; c: number; /** 컨테이너 층, 차량·울타리 변형 */ v: number; wreck: boolean; /** 솔로 배틀로열에서 이 차량의 충돌 상자 번호(운전하면 옮겨 다닙니다) */ box?: number }
 export type Theme = 'village' | 'urban' | 'industrial' | 'farm' | 'military';
-export interface Compound { x: number; z: number; r: number; theme: Theme; name: string }
+export interface Compound { x: number; z: number; r: number; theme: Theme; name: string; /** 고층 도심 중심지 여부 */ downtown?: boolean }
+/** 중앙 도심 배치와 시각적인 도로 폭은 같은 수치를 공유합니다. */
+export const METROPOLIS = { cols: 4, rows: 4, lotW: 19.5, lotD: 18.5, streetWidth: 4.5 } as const;
 export interface Site { x: number; z: number; r: number }
 
 export interface GameMap {
@@ -83,18 +85,25 @@ const SPEC: Record<BuildingType, Spec> = {
 const between = (rng: () => number, [a, b]: [number, number]): number => a + rng() * (b - a);
 const pickInt = (rng: () => number, [a, b]: [number, number]): number => a + Math.floor(rng() * (b - a + 1));
 
-function build(map: GameMap, rng: () => number, type: BuildingType, cx: number, cz: number): Building {
+function build(map: GameMap, rng: () => number, type: BuildingType, cx: number, cz: number, heightOverride?: number): Building {
   const sp = SPEC[type], w = between(rng, sp.w), d = between(rng, sp.d), tex = sp.tex[Math.floor(rng() * sp.tex.length)];
   const door: 'x' | 'z' = rng() < 0.5 ? 'x' : 'z', hx = w / 2, hz = d / 2;
   const doorOff = (span: number): number => (rng() - 0.5) * Math.max(0, span - sp.doorW - 2);
   // 문은 마주 보는 두 변에 냅니다(앞뒤로 지나갈 수 있게).
-  const dz = door === 'z' ? doorOff(w) : null, dx = door === 'x' ? doorOff(d) : null, H = sp.h, dw = sp.doorW, dh = sp.doorH;
+  const dz = door === 'z' ? doorOff(w) : null, dx = door === 'x' ? doorOff(d) : null, H = heightOverride ?? sp.h, dw = sp.doorW, dh = sp.doorH;
   wallSide(map, tex, 'x', cz - hz, cx - hx, cx + hx, dz === null ? null : cx + dz, H, dw, dh);
   wallSide(map, tex, 'x', cz + hz, cx - hx, cx + hx, dz === null ? null : cx + dz + (rng() - 0.5) * 1.5, H, dw, dh);
   wallSide(map, tex, 'z', cx - hx, cz - hz, cz + hz, dx === null ? null : cz + dx, H, dw, dh);
   wallSide(map, tex, 'z', cx + hx, cz - hz, cz + hz, dx === null ? null : cz + dx + (rng() - 0.5) * 1.5, H, dw, dh);
   const b: Building = { x: cx, z: cz, w, d, tex, door, floor: Math.floor(rng() * 3), type, h: H, roof: sp.roof };
   map.buildings.push(b);
+  // 고층 건물 지상 1층의 상부에 실내 천장을 둡니다. 보행과 AI 길찾기는
+  // 낮은 충돌 박스만 보므로 통과하며, 위로 쏜 탄환은 정확히 차단됩니다.
+  if (type === 'apartment' && H >= 9) {
+    addBox(map, { x0: cx - hx + WALL_T / 2, x1: cx + hx - WALL_T / 2,
+      z0: cz - hz + WALL_T / 2, z1: cz + hz - WALL_T / 2,
+      y0: 3.05, y1: 3.25, kind: 'ceiling', tex });
+  }
   // 실내 구성: 상자와 선반. 문이 없는 쪽 벽에 붙여 두어 출입구와 실내 통로를 막지 않게 합니다(봇 길찾기도 이 통로를 씁니다).
   const crate = (px: number, pz: number, sx: number, sz: number, h: number): void => { addBox(map, { x0: px - sx, x1: px + sx, z0: pz - sz, z1: pz + sz, y0: 0, y1: h, kind: 'crate', tex: 0 }); };
   const wallSideOf = (): 1 | -1 => (rng() < 0.5 ? -1 : 1);
@@ -134,7 +143,6 @@ function rollLoot(rng: () => number, tier: 0 | 1): LootSpec {
   return { kind: 'ammo', weapon: null, part: null, level: 0 };
 }
 
-// ---------- 소품 배치 ----------
 const VEH: Record<string, { w: number; d: number; h: number }> = { car: { w: 4.4, d: 1.9, h: 1.5 }, jeep: { w: 4.0, d: 1.9, h: 1.95 }, truck: { w: 5.4, d: 2.1, h: 2.05 }, van: { w: 5.0, d: 2.1, h: 2.3 }, bus: { w: 9.6, d: 2.6, h: 3.1 } };
 const VEH_COLORS = [0xb83a32, 0x2f5d9a, 0xd9d4c6, 0x3d4a3a, 0xd8a229, 0x2e2e32, 0x7e8a93, 0x8a5a2b, 0x4f8a6b];
 const BOX_COLORS = [0xb5412f, 0x2f6aa0, 0x3f7b4a, 0xd0a02c, 0x7c4a2d, 0x8a8f94];
@@ -193,7 +201,6 @@ function fenceLine(map: GameMap, rng: () => number, x0: number, z0: number, x1: 
   void rng;
 }
 
-// ---------- 엄폐물 ----------
 /** 엄폐물: 가슴 높이(1.0~1.3m)라 뒤에 웅크려 막고, 위로 머리를 내밀어 쏠 수 있습니다. 충돌과 총알 차단이 모두 됩니다. */
 function coverPiece(map: GameMap, rng: () => number, x: number, z: number, kinds: PropKind[]): boolean {
   const kind = kinds[Math.floor(rng() * kinds.length)], ry = rng() < 0.5 ? 0 : Math.PI / 2, jit = (rng() - 0.5) * 0.4;
@@ -218,7 +225,6 @@ function coverCluster(map: GameMap, rng: () => number, x: number, z: number, kin
   for (let i = 0, tries = 0; i < n && tries < n * 6; tries++) { const a = rng() * Math.PI * 2, r = 1.2 + rng() * 4.5; if (coverPiece(map, rng, x + Math.cos(a) * r, z + Math.sin(a) * r, kinds)) i++; }
 }
 
-// ---------- 마을 ----------
 interface ThemeDef { cols: [number, number]; rows: number; lot: { w: number; d: number }; first: BuildingType; kinds: Array<[BuildingType, number]>; names: string[] }
 const THEMES: Record<Theme, ThemeDef> = {
   village:    { cols: [3, 2], rows: 2, lot: { w: 17, d: 15 }, first: 'house',     kinds: [['house', 5], ['cabin', 2], ['garage', 1.4], ['shop', 1], ['church', 0.8]],                 names: ['안개촌', '돌고개', '새벽마을', '버드나무골'] },
@@ -258,7 +264,18 @@ function furnish(map: GameMap, rng: () => number, c: Compound, layoutHalf: { x: 
     const tx = c.x + layoutHalf.x + 2, tz = c.z - layoutHalf.z - 1; addProp(map, { kind: 'tank', x: tx, z: tz, ry: 0, w: 3.4, d: 3.4, h: 9, c: 0xa7aeb2 }, null, 0.5);
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) addBox(map, { x0: tx + sx * 1.2 - 0.2, x1: tx + sx * 1.2 + 0.2, z0: tz + sz * 1.2 - 0.2, z1: tz + sz * 1.2 + 0.2, y0: 0, y1: 7, kind: 'prop', tex: 0 });
   }
-  if (th === 'urban') for (const b of built) if (rng() < 0.8) addProp(map, { kind: 'dumpster', x: b.x + (rng() < 0.5 ? -1 : 1) * (b.w / 2 + 1.6), z: b.z + (rng() - 0.5) * b.d * 0.6, ry: Math.PI / 2, w: 2, d: 1.2, h: 1.25, c: 0x2f6f4b }, { kind: 'prop' }, 0.5);
+  if (th === 'urban' && !c.downtown) for (const b of built) if (rng() < 0.8) addProp(map, { kind: 'dumpster', x: b.x + (rng() < 0.5 ? -1 : 1) * (b.w / 2 + 1.6), z: b.z + (rng() - 0.5) * b.d * 0.6, ry: Math.PI / 2, w: 2, d: 1.2, h: 1.25, c: 0x2f6f4b }, { kind: 'prop' }, 0.5);
+  if (c.downtown) {
+    // 도심 내부 중앙 도로의 교차로는 차량/엄폐물로 막지 않습니다.
+    // 엄폐물과 주차 차량은 외곽의 코너에 배치해 이동과 AI 경로를 보장합니다.
+    const edgeX = METROPOLIS.cols * METROPOLIS.lotW / 2 + 4;
+    const edgeZ = METROPOLIS.rows * METROPOLIS.lotD / 2 + 4;
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      coverCluster(map, rng, c.x + sx * edgeX, c.z + sz * edgeZ, COVER_BY.urban, 2);
+      vehicleAt(map, rng, c.x + sx * edgeX, c.z + sz * (edgeZ - 6));
+    }
+    return;
+  }
   // 마을 곳곳의 엄폐물 무리
   for (let k = 0, tries = 0, want = 5 + Math.floor(rng() * 3); k < want && tries < 40; tries++) { const [x, z] = around(5, c.r - 2); const before = map.props.length; coverCluster(map, rng, x, z, COVER_BY[th], 3 + Math.floor(rng() * 2)); if (map.props.length > before) k++; }
   // 마을 입구 표지판과 주차 차량
@@ -275,33 +292,69 @@ function furnish(map: GameMap, rng: () => number, c: Compound, layoutHalf: { x: 
 /** 건물 안 전리품 수. 100명이 겨루는 솔로 지도는 1.6배로 늘립니다. */
 function lootCount(rng: () => number, mode: Mode, range: [number, number]): number { const n = pickInt(rng, range); return mode === 'br' ? Math.floor(n * 1.6 + rng()) : n; }
 
+/** 실내 선반·상자 안에 전리품이 묻히지 않도록 플레이어가 닿을 수 있는 자리만 선택합니다. */
+function interiorLootSpot(map: GameMap, rng: () => number, b: Building): { x: number; z: number } | null {
+  for (let i = 0; i < 18; i++) {
+    // 벙커에는 벽 옆 상자가 좁은 사각 포켓을 만듭니다. 상자가 없더라도
+    // 실제 출입 경로가 막힌 곳에 전리품이 생기지 않도록 문과 연결된 중앙 복도를 우선합니다.
+    const corridorX = b.type === 'bunker' && b.door === 'z' ? Math.min(b.w - 2.4, 1.6) : b.w - 2.4;
+    const corridorZ = b.type === 'bunker' && b.door === 'x' ? Math.min(b.d - 2.4, 1.6) : b.d - 2.4;
+    const x = b.x + (rng() - 0.5) * corridorX, z = b.z + (rng() - 0.5) * corridorZ;
+    if (!blockedAt(map, x, z, PLAYER.radius + 0.1)) return { x, z };
+  }
+  return !blockedAt(map, b.x, b.z, PLAYER.radius + 0.1) ? { x: b.x, z: b.z } : null;
+}
+
 export function generateMap(seed: number, mode: Mode): GameMap {
   const rng = makeRng(seed), half = MAP_HALF[mode];
   const map: GameMap = { seed, mode, half, boxes: [], buildings: [], trees: [], rocks: [], props: [], compounds: [], sites: [], roads: [], loot: [], spawns: [], grid: new Map(), terrain: emptyTerrain() };
-  // 마을: 서로 충분히 떨어뜨려 배치
+  // 중앙 랜드마크: 배틀로열은 항상 (0, 0)에 고층 시가지를 둡니다.
+  // 별도의 Compound로 관리해 도로 연결, 지형 비침범, 전리품 생성 규칙을 공유합니다.
+  if (mode === 'br') map.compounds.push({ x: 0, z: 0, r: 0, theme: 'urban', name: '중앙 메트로폴리스', downtown: true });
   const towns = mode === 'br' ? 14 : 4, minGap = mode === 'br' ? 74 : 58;
   for (let tries = 0; map.compounds.length < towns && tries < 800; tries++) {
     const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * half * 0.78, x = Math.cos(a) * r, z = Math.sin(a) * r;
-    if (map.compounds.every(c => Math.hypot(c.x - x, c.z - z) > minGap)) { map.compounds.push({ x, z, r: 0, theme: 'village', name: '' }); }
+    if (map.compounds.every((c, i) => Math.hypot(c.x - x, c.z - z) > (mode === 'br' && i === 0 ? 102 : minGap))) { map.compounds.push({ x, z, r: 0, theme: 'village', name: '' }); }
   }
   // 종류를 골고루: 처음 다섯 곳은 서로 다른 종류, 나머지는 무작위
-  const bag = [...THEME_LIST].sort(() => rng() - 0.5); const used: Record<string, number> = {};
-  map.compounds.forEach((c, i) => { c.theme = i < bag.length ? bag[i] : THEME_LIST[Math.floor(rng() * THEME_LIST.length)]; const def = THEMES[c.theme]; const n = used[c.theme] ?? 0; used[c.theme] = n + 1; c.name = def.names[n % def.names.length] });
+  // 난수 비교자로 sort하면 브라우저의 정렬 구현마다 RNG 호출 횟수가 달라져
+  // 온라인 이용자의 지형/전리품 맵이 불일치할 수 있습니다. 정해진 횟수의 Fisher–Yates 사용.
+  const bag = [...THEME_LIST];
+  for (let i = bag.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [bag[i], bag[j]] = [bag[j], bag[i]]; }
+  const used: Record<string, number> = {};
+  map.compounds.forEach((c, i) => {
+    if (mode === 'br' && i === 0) { used.urban = 1; return; }
+    // 고정 중앙 도시를 제외한 첫 다섯 마을은 서로 다른 테마를 보장합니다.
+    const ordinaryIndex = mode === 'br' ? i - 1 : i;
+    c.theme = ordinaryIndex < bag.length ? bag[ordinaryIndex] : THEME_LIST[Math.floor(rng() * THEME_LIST.length)];
+    const def = THEMES[c.theme], n = used[c.theme] ?? 0;
+    used[c.theme] = n + 1; c.name = def.names[n % def.names.length];
+  });
   for (const c of map.compounds) {
-    const def = THEMES[c.theme], cols = mode === 'br' ? def.cols[0] : 2, rows = def.rows, lot = def.lot, n = (mode === 'br' ? 4 : 2) + Math.floor(rng() * 3);
+    const downtown = c.downtown === true;
+    const def = THEMES[c.theme], cols = downtown ? METROPOLIS.cols : mode === 'br' ? def.cols[0] : 2, rows = downtown ? METROPOLIS.rows : def.rows;
+    const lot = downtown ? { w: METROPOLIS.lotW, d: METROPOLIS.lotD } : def.lot;
+    const n = downtown ? cols * rows : (mode === 'br' ? 4 : 2) + Math.floor(rng() * 3);
     const slots: Array<[number, number]> = []; for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) slots.push([i, j]);
     for (let i = slots.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [slots[i], slots[j]] = [slots[j], slots[i]]; }
     let reach = 8; const built: Building[] = [];
     slots.slice(0, Math.min(n, slots.length)).forEach(([i, j], idx) => {
-      const type = idx === 0 ? def.first : pickKind(rng, def), sp = SPEC[type];
-      const bx = c.x + (i - (cols - 1) / 2) * lot.w + (rng() - 0.5) * 2.5, bz = c.z + (j - (rows - 1) / 2) * lot.d + (rng() - 0.5) * 2.5;
-      const b = build(map, rng, type, bx, bz); built.push(b);
+      // 고층동과 저층 상업동을 섞어 지붕선이 단조롭지 않게 만듭니다.
+      const landmark = downtown && i === cols - 1 && j === rows - 1;
+      const type = landmark ? 'apartment' : downtown ? (idx % 5 === 0 ? 'shop' : idx % 7 === 0 ? 'clinic' : 'apartment') : idx === 0 ? def.first : pickKind(rng, def);
+      const sp = SPEC[type];
+      // 도심의 무작위 위치 흔들림은 줄여서 보행로를 꾸준히 4m 이상 남깁니다.
+      const jitter = downtown ? 0.8 : 2.5;
+      const bx = c.x + (i - (cols - 1) / 2) * lot.w + (rng() - 0.5) * jitter, bz = c.z + (j - (rows - 1) / 2) * lot.d + (rng() - 0.5) * jitter;
+      // 건물별 3~9층, 북동쪽 스카이라인 랜드마크는 12층. 모든 높이는 벽/탄환 충돌과 일치합니다.
+      const towerHeight = downtown && type === 'apartment' ? (landmark ? 12 : 3 + Math.floor(rng() * 7)) * 3.2 : undefined;
+      const b = build(map, rng, type, bx, bz, towerHeight); built.push(b);
       reach = Math.max(reach, Math.hypot(bx - c.x, bz - c.z) + Math.max(b.w, b.d) / 2);
       // 건물 안 전리품
       const loots = lootCount(rng, mode, sp.loot);
-      for (let k = 0; k < loots; k++) pushLoot(map, rollLoot(rng, sp.tier), b.x + (rng() - 0.5) * (b.w - 2.4), b.z + (rng() - 0.5) * (b.d - 2.4));
+      for (let k = 0; k < loots; k++) { const at = interiorLootSpot(map, rng, b); if (at) pushLoot(map, rollLoot(rng, sp.tier), at.x, at.z); }
       // 문밖 상자
-      if (rng() < 0.55) { const s = 0.6 + rng() * 0.4, ox = b.x + (b.w / 2 + 1.6) * (rng() < 0.5 ? -1 : 1), oz = b.z + (rng() - 0.5) * b.d; if (freeRect(map, ox - s, oz - s, ox + s, oz + s, 0.3)) addBox(map, { x0: ox - s, x1: ox + s, z0: oz - s, z1: oz + s, y0: 0, y1: 1.1, kind: 'crate', tex: 0 }); }
+      if (!downtown && rng() < 0.55) { const s = 0.6 + rng() * 0.4, ox = b.x + (b.w / 2 + 1.6) * (rng() < 0.5 ? -1 : 1), oz = b.z + (rng() - 0.5) * b.d; if (freeRect(map, ox - s, oz - s, ox + s, oz + s, 0.3)) addBox(map, { x0: ox - s, x1: ox + s, z0: oz - s, z1: oz + s, y0: 0, y1: 1.1, kind: 'crate', tex: 0 }); }
     });
     c.r = reach + 6;
     furnish(map, rng, c, { x: (cols * lot.w) / 2, z: (rows * lot.d) / 2 }, built);
@@ -321,7 +374,11 @@ export function generateMap(seed: number, mode: Mode): GameMap {
       const before = map.buildings.length;
       if (type === 'station') { if (!station(map, rng, x, z)) continue; map.sites.push({ x, z: z + 5, r: 18 }); }
       else { if (!freeRect(map, x - 12, z - 10, x + 12, z + 10, 0)) continue; const b = build(map, rng, type, x, z); map.sites.push({ x, z, r: Math.max(b.w, b.d) / 2 + 6 }); }
-      const b = map.buildings[before], sp = SPEC[b.type]; for (let k = 0, n = lootCount(rng, mode, sp.loot); k < n; k++) pushLoot(map, rollLoot(rng, sp.tier), b.x + (rng() - 0.5) * (b.w - 2.4), b.z + (rng() - 0.5) * (b.d - 2.4));
+      const b = map.buildings[before], sp = SPEC[b.type];
+      for (let k = 0, n = lootCount(rng, mode, sp.loot); k < n; k++) {
+        const at = interiorLootSpot(map, rng, b);
+        if (at) pushLoot(map, rollLoot(rng, sp.tier), at.x, at.z);
+      }
       if (type === 'bunker' || type === 'tower') for (let k = 0; k < 3; k++) addProp(map, { kind: 'sandbag', x: b.x + (k - 1) * 2.4, z: b.z + b.d / 2 + 3.2, ry: 0, w: 2.2, d: 0.7, h: 1.1, c: 0xa89b72 }, { kind: 'prop' }, 0.2);
       if (type === 'barn') for (let k = 0; k < 3; k++) addProp(map, { kind: 'hay', x: b.x + b.w / 2 + 3 + k * 1.8, z: b.z + (rng() - 0.5) * 4, ry: 0, w: 1.5, d: 1.4, h: 1.4, c: 0xc9b25a }, { kind: 'prop' }, 0.4);
       break;
@@ -330,7 +387,7 @@ export function generateMap(seed: number, mode: Mode): GameMap {
   // 지형: 강·호수·늪·구릉·절벽·숲. 구릉과 절벽은 충돌 상자가 되고, 물은 걸음을 늦춥니다.
   map.terrain = planTerrain(seed, mode, half, map.compounds, map.sites, map.roads.map(([i, j]) => [cs[i], cs[j]] as [Compound, Compound]), map.boxes);
   buildTerrain(map, rng);
-  const clear = (x: number, z: number, pad: number): boolean => farFromTown(x, z, pad) && waterDepth(map.terrain, x, z) === 0;
+  const clear = (x: number, z: number, pad: number): boolean => farFromTown(x, z, pad) && waterDepth(map.terrain, x, z) === 0 && groundHeight(map.terrain, x, z) < 0.08;
   // 길가의 전봇대, 버려진 차량
   const dir = (a: Compound, b: Compound): number => Math.atan2(b.z - a.z, b.x - a.x);
   for (const [i, j] of map.roads) {
@@ -342,9 +399,12 @@ export function generateMap(seed: number, mode: Mode): GameMap {
   // 들판: 바위
   const rocks = mode === 'br' ? 60 : 22;
   for (let i = 0, tries = 0; i < rocks && tries < 800; tries++) {
-    const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * half * 0.94, x = Math.cos(a) * r, z = Math.sin(a) * r; if (!clear(x, z, 3) || blockedAt(map, x, z, 2.2)) continue;
-    const sx = 1.2 + rng() * 2.2, sz = 1.2 + rng() * 2.2, sy = 0.9 + rng() * 1.5;
-    map.rocks.push({ x, z, sx, sy, sz, ry: rng() * Math.PI }); addBox(map, { x0: x - sx * 0.8, x1: x + sx * 0.8, z0: z - sz * 0.8, z1: z + sz * 0.8, y0: 0, y1: sy, kind: 'rock', tex: 0 }); i++;
+    const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * half * 0.94, x = Math.cos(a) * r, z = Math.sin(a) * r; if (!clear(x, z, 3)) continue;
+    const sx = 1.2 + rng() * 2.2, sz = 1.2 + rng() * 2.2, sy = 0.9 + rng() * 1.5, hx = sx * 0.8, hz = sz * 0.8;
+    // 충돌 판정 반경 2.2m보다 큰 바위는 주변 지형과 겹칠 수 있었습니다.
+    // 실제 바위 AABB 전체를 확인해 언덕/절벽과의 겹침을 방지합니다.
+    if (!freeRect(map, x - hx, z - hz, x + hx, z + hz, 0.15)) continue;
+    map.rocks.push({ x, z, sx, sy, sz, ry: rng() * Math.PI }); addBox(map, { x0: x - hx, x1: x + hx, z0: z - hz, z1: z + hz, y0: 0, y1: sy, kind: 'rock', tex: 0 }); i++;
   }
   // 나무: 무리 지어 심고 밑동만 충돌
   const groves = mode === 'br' ? 22 : 8;
@@ -374,7 +434,14 @@ export function generateMap(seed: number, mode: Mode): GameMap {
     pushLoot(map, rollLoot(rng, 0), x, z); i++;
   }
   // 차량 곁에도 가끔 전리품
-  for (const p of map.props) if ((p.kind === 'car' || p.kind === 'van' || p.kind === 'truck') && rng() < 0.28 && !blockedAt(map, p.x + 2.6, p.z, 0.5)) pushLoot(map, rollLoot(rng, 0), p.x + 2.6, p.z);
+  for (const p of map.props) {
+    if (p.kind !== 'car' && p.kind !== 'van' && p.kind !== 'truck') continue;
+    if (rng() >= 0.28) continue;
+    const x = p.x + 2.6, z = p.z;
+    // Roadside vehicles beside rivers can otherwise spill their loot into the water.
+    if (waterDepth(map.terrain, x, z) !== 0 || blockedAt(map, x, z, 0.5)) continue;
+    pushLoot(map, rollLoot(rng, 0), x, z);
+  }
   // 출발 지점: 가장자리 쪽에 흩어 놓습니다. 대전은 서로 정반대에서 시작합니다.
   if (mode === 'duel') {
     const a = rng() * Math.PI * 2;
@@ -383,7 +450,35 @@ export function generateMap(seed: number, mode: Mode): GameMap {
   } else {
     for (let i = 0; i < 20; i++) { const a = (i / 20) * Math.PI * 2 + (rng() - 0.5) * 0.25, r = half * (0.42 + rng() * 0.45); spawnNear(map, rng, Math.cos(a) * r, Math.sin(a) * r); }
   }
+  repairBlockedLoot(map);
   return map;
+}
+
+/** 전리품 뒤에 생성된 검문소·엄폐물·나무 때문에 접근 불가 상태가 되면
+ * 결정적으로 가장 가까운 안전 지점으로 이동합니다. RNG 소비 없이 온라인 맵을 일치시킵니다. */
+function repairBlockedLoot(map: GameMap): void {
+  const safe = (x: number, z: number): boolean =>
+    Math.abs(x) < map.half - 1 && Math.abs(z) < map.half - 1 &&
+    waterDepth(map.terrain, x, z) === 0 && !blockedAt(map, x, z, PLAYER.radius + 0.1);
+  for (const item of map.loot) {
+    if (safe(item.x, item.z)) continue;
+    const ox = item.x, oz = item.z;
+    let moved = false;
+    // 원래 생성 장소 부근 8.4m 안에서 가까운 후보부터 탐색합니다.
+    for (let ring = 1; ring <= 24 && !moved; ring++) {
+      const radius = ring * 0.35;
+      for (let j = 0; j < 24; j++) {
+        const angle = j * Math.PI / 12, x = ox + Math.cos(angle) * radius, z = oz + Math.sin(angle) * radius;
+        if (!safe(x, z)) continue;
+        item.x = x; item.z = z; moved = true; break;
+      }
+    }
+    if (!moved) {
+      // 모든 인접 공간이 차단된 비정상 시드에서도 바위/물속 전리품을 남기지 않습니다.
+      const fallback = map.spawns.find(sp => safe(sp.x, sp.z));
+      if (fallback) { item.x = fallback.x; item.z = fallback.z; }
+    }
+  }
 }
 
 /** 구릉·절벽을 충돌 상자로 만들고 숲에 나무와 쓰러진 통나무를 심습니다. */
@@ -410,30 +505,67 @@ function buildTerrain(map: GameMap, rng: () => number): void {
 
 function pushLoot(map: GameMap, spec: LootSpec, x: number, z: number): void { map.loot.push({ ...spec, id: map.loot.length, x, z, taken: false }); }
 function spawnNear(map: GameMap, rng: () => number, x: number, z: number): void {
+  const safe = (px: number, pz: number): boolean =>
+    Math.abs(px) < map.half - 1.2 && Math.abs(pz) < map.half - 1.2 &&
+    !blockedAt(map, px, pz, 1.2) && waterDepth(map.terrain, px, pz) === 0;
   for (let i = 0; i < 40; i++) {
     const px = x + (rng() - 0.5) * 14 * (1 + i / 10), pz = z + (rng() - 0.5) * 14 * (1 + i / 10);
-    if (Math.abs(px) < map.half && Math.abs(pz) < map.half && !blockedAt(map, px, pz, 1.2) && waterDepth(map.terrain, px, pz) === 0) { map.spawns.push({ x: px, z: pz }); return; }
+    if (safe(px, pz)) { map.spawns.push({ x: px, z: pz }); return; }
   }
-  map.spawns.push({ x, z });
+  // 무작위 탐색이 모두 실패해도 최초 목표 좌표(물속/건물 속)에 억지로 스폰하지 않습니다.
+  // 가까운 곳부터 결정적으로 탐색해 온라인 참가자도 같은 안전한 착지점을 사용합니다.
+  for (let ring = 0; ring <= Math.ceil(map.half / 4); ring++) {
+    const radius = ring * 4;
+    for (let j = 0; j < 24; j++) {
+      const a = j * (Math.PI * 2 / 24), px = x + Math.cos(a) * radius, pz = z + Math.sin(a) * radius;
+      if (safe(px, pz)) { map.spawns.push({ x: px, z: pz }); return; }
+    }
+  }
+  // 지형이 모두 막힌 비정상적인 지도는 조용히 잘못된 출발점을 만드는 대신 즉시 표시합니다.
+  throw new Error('ZERO ZONE: unable to find a safe spawn position');
 }
 
-const seen = new Int32Array(1 << 14); let stamp = 0;
+
 /** 이 원(반지름 r)이 서 있는 높이에서 막히는 상자와 겹치는지. */
 export function blockedAt(map: GameMap, x: number, z: number, r: number): boolean {
+  const standTop = groundHeight(map.terrain, x, z) + PLAYER.height - 0.3;
   for (let cx = cellOf(x - r); cx <= cellOf(x + r); cx++) for (let cz = cellOf(z - r); cz <= cellOf(z + r); cz++) {
     const l = map.grid.get(key(cx, cz)); if (!l) continue;
-    for (const i of l) { const b = map.boxes[i]; if (b.y0 >= PLAYER.height - 0.3) continue; if (x > b.x0 - r && x < b.x1 + r && z > b.z0 - r && z < b.z1 + r) return true; }
+    for (const i of l) { const b = map.boxes[i]; if (b.y0 >= standTop) continue; if (x > b.x0 - r && x < b.x1 + r && z > b.z0 - r && z < b.z1 + r) return true; }
   }
   return false;
 }
 
 /** 원(반지름 r)이 막히는 상자와 실제로 겹치는지(둥근 모서리 기준). */
-export function circleHits(map: GameMap, x: number, z: number, r: number): boolean {
+export function circleHits(map: GameMap, x: number, z: number, r: number, clearance = PLAYER.height - 0.3): boolean {
+  const standTop = groundHeight(map.terrain, x, z) + clearance;
   for (let cx = cellOf(x - r); cx <= cellOf(x + r); cx++) for (let cz = cellOf(z - r); cz <= cellOf(z + r); cz++) {
     const l = map.grid.get(key(cx, cz)); if (!l) continue;
     for (const i of l) {
-      const b = map.boxes[i]; if (b.y0 >= PLAYER.height - 0.3) continue;
+      const b = map.boxes[i]; if (b.y0 >= standTop) continue;
       const dx = x - Math.max(b.x0, Math.min(x, b.x1)), dz = z - Math.max(b.z0, Math.min(z, b.z1)); if (dx * dx + dz * dz < r * r - 1e-6) return true;
+    }
+  }
+  return false;
+}
+
+/** 투척물용 구-상자 충돌. 2D 보행 판정과 달리 고도(y)를 함께 검사합니다.
+ * 높이 4m 이상으로 날아가는 수류탄이 낮은 벽에 걸리거나, 건물 천장을 통과하던 오류를 막습니다. */
+export function sphereHits(map: GameMap, x: number, y: number, z: number, radius: number): boolean {
+  const rr = radius * radius;
+  for (let gx = cellOf(x - radius); gx <= cellOf(x + radius); gx++) {
+    for (let gz = cellOf(z - radius); gz <= cellOf(z + radius); gz++) {
+      const indices = map.grid.get(key(gx, gz));
+      if (!indices) continue;
+      for (const i of indices) {
+        const b = map.boxes[i];
+        if (y + radius < b.y0 || y - radius > b.y1) continue;
+        const nearX = Math.max(b.x0, Math.min(b.x1, x));
+        const nearY = Math.max(b.y0, Math.min(b.y1, y));
+        const nearZ = Math.max(b.z0, Math.min(b.z1, z));
+        const xx = x - nearX, yy = y - nearY, zz = z - nearZ;
+        if (xx * xx + yy * yy + zz * zz < rr - 1e-8) return true;
+      }
     }
   }
   return false;
@@ -453,11 +585,12 @@ export function slideMove(map: GameMap, p: { x: number; z: number }, dx: number,
 
 /** 원을 상자 밖으로 밀어냅니다. 결과는 out 에 돌려주고 벽에 닿았는지 반환합니다. */
 export function pushOut(map: GameMap, p: { x: number; z: number }, r: number): boolean {
+  const standTop = groundHeight(map.terrain, p.x, p.z) + PLAYER.height - 0.3;
   let hit = false;
   for (let iter = 0; iter < 6; iter++) for (let cx = cellOf(p.x - r); cx <= cellOf(p.x + r); cx++) for (let cz = cellOf(p.z - r); cz <= cellOf(p.z + r); cz++) {
     const l = map.grid.get(key(cx, cz)); if (!l) continue;
     for (const i of l) {
-      const b = map.boxes[i]; if (b.y0 >= PLAYER.height - 0.3) continue;
+      const b = map.boxes[i]; if (b.y0 >= standTop) continue;
       const nx = Math.max(b.x0, Math.min(p.x, b.x1)), nz = Math.max(b.z0, Math.min(p.z, b.z1)), dx = p.x - nx, dz = p.z - nz, d2 = dx * dx + dz * dz;
       if (d2 >= r * r) continue; hit = true;
       if (d2 > 1e-9) { const d = Math.sqrt(d2), k = (r - d) / d; p.x += dx * k; p.z += dz * k; }
@@ -470,26 +603,86 @@ export function pushOut(map: GameMap, p: { x: number; z: number }, r: number): b
   return hit;
 }
 
-/** 광선과 모든 상자의 첫 교차 거리(없으면 Infinity). dx,dy,dz 는 정규화된 방향. */
-export function rayWorld(map: GameMap, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
-  stamp++; let best = Infinity;
-  const steps = Math.ceil(Math.min(maxT, best) / (CELL / 4));
-  for (let s = 0; s <= steps; s++) {
-    const t = Math.min(maxT, s * (CELL / 4)), x = ox + dx * t, z = oz + dz * t;
-    for (let cx = cellOf(x - 0.01); cx <= cellOf(x + 0.01); cx++) for (let cz = cellOf(z - 0.01); cz <= cellOf(z + 0.01); cz++) {
-      const l = map.grid.get(key(cx, cz)); if (!l) continue;
-      for (const i of l) {
-        if (seen[i & 16383] === stamp) continue; seen[i & 16383] = stamp;
-        const b = map.boxes[i]; let t0 = 0, t1 = Math.min(maxT, best);
-        const slab = (o: number, d: number, lo: number, hi: number): boolean => {
-          if (Math.abs(d) < 1e-9) return o >= lo && o <= hi;
-          let a = (lo - o) / d, c = (hi - o) / d; if (a > c) { const tmp = a; a = c; c = tmp; }
-          if (a > t0) t0 = a; if (c < t1) t1 = c; return t0 <= t1;
-        };
-        if (slab(ox, dx, b.x0, b.x1) && slab(oy, dy, b.y0, b.y1) && slab(oz, dz, b.z0, b.z1) && t0 < best) best = t0;
+/** 광선이 통과하는 CELL 격자를 빠짐없이 순회합니다.
+ * 이전 4m 샘플링은 셀 모서리의 짧은 통과 구간을 건너뛰어 얇은 벽을 뚫는 문제가 있었습니다.
+ * DDA는 방문한 셀만 검사하므로 긴 시야/총알 광선의 빈 셀 탐색 비용도 낮춥니다. */
+/** 슬랩 기반 3축 Ray/AABB 교차. 광선마다 상자별 클로저/배열을 만들지 않습니다. */
+function rayBoxDistance(b: Box, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, limit: number): number {
+  let near = 0, far = limit;
+  if (Math.abs(dx) < 1e-9) {
+    if (ox < b.x0 || ox > b.x1) return Infinity;
+  } else {
+    let a = (b.x0 - ox) / dx, c = (b.x1 - ox) / dx;
+    if (a > c) { const temp = a; a = c; c = temp; }
+    if (a > near) near = a;
+    if (c < far) far = c;
+    if (near > far) return Infinity;
+  }
+  if (Math.abs(dy) < 1e-9) {
+    if (oy < b.y0 || oy > b.y1) return Infinity;
+  } else {
+    let a = (b.y0 - oy) / dy, c = (b.y1 - oy) / dy;
+    if (a > c) { const temp = a; a = c; c = temp; }
+    if (a > near) near = a;
+    if (c < far) far = c;
+    if (near > far) return Infinity;
+  }
+  if (Math.abs(dz) < 1e-9) {
+    if (oz < b.z0 || oz > b.z1) return Infinity;
+  } else {
+    let a = (b.z0 - oz) / dz, c = (b.z1 - oz) / dz;
+    if (a > c) { const temp = a; a = c; c = temp; }
+    if (a > near) near = a;
+    if (c < far) far = c;
+    if (near > far) return Infinity;
+  }
+  return near;
+}
+
+let rayMarks = new Uint32Array(1 << 14);
+let rayStamp = 0;
+export function rayWorld(map: GameMap, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, hit?: { boxIndex: number }): number {
+  if (hit) hit.boxIndex = -1; // -1 = 지형 또는 장애물 없음
+  if (!Number.isFinite(maxT) || maxT < 0 || !Number.isFinite(ox + oy + oz + dx + dy + dz)) return Infinity;
+  // 커다란 지도나 미래의 추가 건물 때문에 상자가 16k개를 넘어가더라도 중복 인덱스 충돌이 없도록 합니다.
+  if (map.boxes.length > rayMarks.length) {
+    let size = rayMarks.length;
+    while (size < map.boxes.length) size *= 2;
+    rayMarks = new Uint32Array(size);
+  }
+  rayStamp = (rayStamp + 1) >>> 0;
+  if (rayStamp === 0) { rayMarks.fill(0); rayStamp = 1; }
+  let cx = cellOf(ox), cz = cellOf(oz), entry = 0, best = groundRayDistance(map.terrain, ox, oy, oz, dx, dy, dz, maxT);
+  const stepX = dx > 0 ? 1 : dx < 0 ? -1 : 0;
+  const stepZ = dz > 0 ? 1 : dz < 0 ? -1 : 0;
+  const intervalX = stepX ? CELL / Math.abs(dx) : Infinity;
+  const intervalZ = stepZ ? CELL / Math.abs(dz) : Infinity;
+  let nextX = stepX ? ((cx + (stepX > 0 ? 1 : 0)) * CELL - ox) / dx : Infinity;
+  let nextZ = stepZ ? ((cz + (stepZ > 0 ? 1 : 0)) * CELL - oz) / dz : Infinity;
+  // 격자 경계 위에서 시작해 반대 방향으로 움직일 경우 0거리 첫 칸을 한 번 처리합니다.
+  while (entry <= maxT && entry <= best) {
+    // 격자선과 평행하게 달리는 광선은 경계의 양옆 AABB를 모두 만날 수 있습니다.
+    const adjacentX = dx === 0 && Math.abs(ox - cx * CELL) < 1e-9 ? -1 : 0;
+    const adjacentZ = dz === 0 && Math.abs(oz - cz * CELL) < 1e-9 ? -1 : 0;
+    for (let ix = adjacentX; ix <= 0; ix++) for (let iz = adjacentZ; iz <= 0; iz++) {
+      const indices = map.grid.get(key(cx + ix, cz + iz));
+      if (!indices) continue;
+      for (const i of indices) {
+      if (rayMarks[i] === rayStamp) continue;
+      rayMarks[i] = rayStamp;
+      const t = rayBoxDistance(map.boxes[i], ox, oy, oz, dx, dy, dz, Math.min(maxT, best));
+      if (t < best) {
+        best = t;
+        if (hit) hit.boxIndex = i;
+      }
       }
     }
-    if (t >= maxT || best <= t) break;
+    const crossing = Math.min(nextX, nextZ);
+    if (!Number.isFinite(crossing)) break;
+    // 모서리를 정확히 통과할 때는 두 축을 동시에 넘습니다.
+    if (nextX <= crossing) { nextX += intervalX; cx += stepX; }
+    if (nextZ <= crossing) { nextZ += intervalZ; cz += stepZ; }
+    entry = crossing;
   }
   return best;
 }

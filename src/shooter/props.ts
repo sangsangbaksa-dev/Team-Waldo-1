@@ -8,7 +8,6 @@ import { CYL, GLASS, BLACK, STEEL, RED, Pieces, shade, xf } from '../shared/piec
 import { vehicle, makeVehicleMesh } from '../shared/vehicle';
 export { Pieces, xf, makeVehicleMesh };
 
-// ---------- 소품 한 개 ----------
 function prop(p: Pieces, pr: Prop): void {
   const base = xf(pr.x, 0, pr.z, 0, pr.ry + pr.jit, 0), b = (sx: number, sy: number, sz: number, col: number, x: number, y: number, z: number, tr = false): void => p.box(sx, sy, sz, col, base, x, y, z, tr);
   const add = (geo: THREE.BufferGeometry, col: number, m: THREE.Matrix4, tr = false): void => p.add(geo, col, base.clone().multiply(m), tr);
@@ -54,7 +53,6 @@ function prop(p: Pieces, pr: Prop): void {
   }
 }
 
-// ---------- 지붕 ----------
 const ROOF_COLORS = [0x9a4a35, 0x4d5560, 0x6b5239, 0x7a2f26];
 function prism(span: number, ph: number, len: number, shed: boolean): THREE.BufferGeometry {
   const s = new THREE.Shape(); s.moveTo(-span / 2, 0); s.lineTo(span / 2, 0); if (shed) { s.lineTo(span / 2, ph); s.lineTo(-span / 2, ph * 0.25); } else s.lineTo(0, ph); s.closePath();
@@ -89,6 +87,17 @@ function roof(p: Pieces, bd: Building, rng: () => number, detailed: boolean): vo
       }
     }
     if (tall) { p.add(CYL(0.08, 3, 6), 0x5a5a5e, base.clone().multiply(xf(w * 0.25, h + 2, d * 0.25))); p.box(1.6, 0.5, 0.5, 0x3b3f44, base, -w * 0.15, h + 0.65, 0); }
+    if (bd.type === 'apartment' && h >= 34) {
+      // 12층 중앙 랜드마크: 지붕 통신 마스트로 하늘에서 위치를 파악할 수 있습니다.
+      const ax = w * 0.18, az = d * 0.14;
+      p.box(1.8, 0.3, 1.8, 0x606971, base, ax, h + 0.49, az);
+      p.box(0.18, 6.2, 0.18, 0x424c55, base, ax, h + 3.65, az);
+      for (const y of [h + 2.0, h + 4.4, h + 6.3]) {
+        p.box(2.0, 0.08, 0.09, 0x9baab4, base, ax, y, az);
+        p.box(0.09, 0.08, 2.0, 0x9baab4, base, ax, y, az);
+      }
+      p.box(0.38, 0.36, 0.38, 0xb85c44, base, ax, h + 6.9, az);
+    }
     if (bd.type === 'bunker') p.box(w - 1, 0.4, d - 1, 0x58705a, base, 0, h + 0.5, 0);
     if (bd.type === 'clinic') { p.box(2.6, 0.12, 0.8, 0xc9302c, base, 0, h + 0.42, 0); p.box(0.8, 0.12, 2.6, 0xc9302c, base, 0, h + 0.42, 0); p.box(1.4, 0.9, 1.1, 0xb6babd, base, w * 0.3, h + 0.8, d * 0.25); }
     if (bd.type === 'silo') { for (const y of [0.25, 0.5, 0.75]) p.box(w + 0.3, 0.18, d + 0.3, 0x9aa0a4, base, 0, h * y, 0); p.box(w * 0.7, 1.1, d * 0.7, 0xb8bcc0, base, 0, h + 0.85, 0); p.box(w * 0.4, 0.8, d * 0.4, 0x9aa0a4, base, 0, h + 1.8, 0); }
@@ -137,13 +146,31 @@ export function buildFacadeTrim(map: GameMap): THREE.Group {
     p.box(wide, 0.09, deep, 0x9b9e99, base, x, b.y1 - 0.07, z);
     if (b.y0 >= 2) p.box(wide, 0.12, deep, 0x737b7d, base, x, b.y0 + 0.07, z);
   }
+  // 고층 아파트는 층마다 창문/수평 분절을 넣어 단순한 긴 벽처럼 보이지 않게 합니다.
+  // 장식은 충돌을 만들지 않고 하나의 병합 메시로 그려 드로우콜을 억제합니다.
+  for (const b of map.buildings) {
+    if (b.type !== 'apartment' || b.h < 9) continue;
+    const floors = Math.floor(b.h / 3.2);
+    for (let level = 1; level < floors; level++) {
+      const y = level * 3.2;
+      p.box(b.w + 0.16, 0.10, 0.12, 0x56616c, base, b.x, y, b.z + b.d / 2 + 0.10);
+      p.box(b.w + 0.16, 0.10, 0.12, 0x56616c, base, b.x, y, b.z - b.d / 2 - 0.10);
+      p.box(0.12, 0.10, b.d + 0.16, 0x56616c, base, b.x + b.w / 2 + 0.10, y, b.z);
+      p.box(0.12, 0.10, b.d + 0.16, 0x56616c, base, b.x - b.w / 2 - 0.10, y, b.z);
+      // 창은 반사 없는 짙은 청회색으로: 멀리서도 층 구분이 읽힙니다.
+      for (const side of [-1, 1]) {
+        for (const offset of [-0.28, 0, 0.28]) {
+          p.box(1.15, 1.30, 0.055, 0x283b48, base, b.x + b.w * offset, y + 1.35, b.z + side * (b.d / 2 + 0.205));
+          p.box(0.055, 1.30, 1.15, 0x283b48, base, b.x + side * (b.w / 2 + 0.205), y + 1.35, b.z + b.d * offset);
+        }
+      }
+    }
+  }
   return p.mesh(false);
 }
 /** 지도의 소품(차량·컨테이너·울타리 등)을 합쳐서 돌려줍니다. */
 export function buildProps(map: GameMap, skipBoxes?: Set<number>): THREE.Group { const p = new Pieces(); for (const pr of map.props) if (pr.kind !== 'bush' && !(skipBoxes && pr.box !== undefined && skipBoxes.has(pr.box))) prop(p, pr); return p.mesh(); }
 
-
-// ---------- 보급 상자와 비행기 ----------
 export function makeDropCrate(): THREE.Group {
   const g = new THREE.Group(), red = new THREE.MeshLambertMaterial({ color: 0xc03a2b, emissive: 0x3a0a06 }), band = new THREE.MeshLambertMaterial({ color: 0xf0e8d2 });
   const crate = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.2, 1.7), red); crate.position.y = 0.6; crate.castShadow = true; g.add(crate);
@@ -191,7 +218,6 @@ export function makePlane(): THREE.Group {
   g.scale.setScalar(1.15); return g;
 }
 
-// ---------- 총기 파츠 ----------
 /** 총 앞쪽이 +x. muzzle 은 총구의 x 좌표. 소음기·조준경·손잡이·탄창을 총 모델 좌표계에 맞춰 만듭니다. */
 export function partMesh(part: PartId, muzzle: number): THREE.Object3D {
   const g = new THREE.Group(), dark = new THREE.MeshLambertMaterial({ color: 0x1d1f22 }), mid = new THREE.MeshLambertMaterial({ color: 0x3a3e44 }), glass = new THREE.MeshBasicMaterial({ color: 0x6fd0ff }), dot = new THREE.MeshBasicMaterial({ color: 0xff3b30 });

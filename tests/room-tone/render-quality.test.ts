@@ -19,6 +19,16 @@ describe("ROOM TONE fill-rate budget", () => {
     expect(touch).toBeLessThan(desktop);
     expect(touch).toBeLessThanOrEqual(1.35);
   });
+  it("honors shared low, standard and high quality presets", () => {
+    const low = renderingScale(1920, 1080, 3, false, "low");
+    const standard = renderingScale(1920, 1080, 3, false, "standard");
+    const high = renderingScale(1920, 1080, 3, false, "high");
+    expect(low).toBeLessThan(standard);
+    expect(standard).toBeLessThan(high);
+    const touchLow = renderingScale(1600, 900, 3, true, "low");
+    const touchHigh = renderingScale(1600, 900, 3, true, "high");
+    expect(touchLow).toBeLessThan(touchHigh);
+  });
   it("does not return NaN or zero on invalid viewport dimensions", () => {
     expect(renderingScale(0, 0, 0)).toBe(1);
     expect(Number.isFinite(renderingScale(Infinity, NaN, NaN))).toBe(true);

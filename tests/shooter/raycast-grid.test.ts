@@ -64,6 +64,13 @@ describe('ZERO ZONE 레이캐스트 격자 누락 방지', () => {
     }
   });
 
+  it('격자 경계와 평행한 총알도 경계 건너편 상자의 옆면을 맞힌다', () => {
+    const map = emptyMap();
+    addBox(map, { x0: 15.5, x1: 16, z0: 30, z1: 32, y0: 0, y1: 4, kind: 'wall', tex: 0 });
+    expect(rayWorld(map, 16, 1, 0, 0, 0, 1, 100)).toBe(30);
+    expect(rayWorld(map, 16.01, 1, 0, 0, 0, 1, 100)).toBe(Infinity);
+  });
+
   it('수직·역방향·영벡터를 처리하고 최대 사거리 뒤의 물체는 제외한다', () => {
     const map = emptyMap();
     addBox(map, { x0: -1, x1: 1, z0: -1, z1: 1, y0: 0, y1: 3, kind: 'wall', tex: 0 });

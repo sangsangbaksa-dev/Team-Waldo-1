@@ -344,7 +344,11 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
       sim.events.length = 0;
       // 경고
       const gy = terrainY(p.pos.x, p.pos.z), agl = p.pos.y - Math.max(0, gy);
-      if (sim.edge(p) > 0.05) alertMsg('작전 구역 이탈 — 선회하세요!', 0.3); else if (agl < 140 && forward(p, scratch).y < 0.05) alertMsg('PULL UP!', 0.3);
+      // 위치 경고는 비긴급 안내이므로 피격·미사일 접근·락온 등 중요한 경고를 덮지 않습니다.
+      if (alertT <= 0.1) {
+        if (agl < 140 && forward(p, scratch).y < 0.05) alertMsg('PULL UP!', 0.3);
+        else if (sim.edge(p) > 0.05) alertMsg('작전 구역 이탈 — 선회하세요!', 0.3);
+      }
       // 구역 밖으로 나가면 서서히 기체를 안쪽으로 끌어줌
       if (sim.edge(p) > 0.9) { const toC = scratch.set(-p.pos.x, 0, -p.pos.z).normalize(); const wantYaw = Math.atan2(-toC.x, -toC.z); let dy = wantYaw - p.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); p.yaw += clamp(dy, -1, 1) * dt * 0.9; }
       audio.engine(true, throttle); audio.wind((p.speed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED));

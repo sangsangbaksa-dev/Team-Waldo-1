@@ -1,13 +1,6 @@
 name: HUSTLE focused checks
 
 on:
-  push:
-    branches:
-      - "agent/hustle-*"
-    paths:
-      - "src/tycoon/**"
-      - "tests/tycoon/**"
-      - ".github/workflows/hustle-check.yml"
   pull_request:
     paths:
       - "src/tycoon/**"
@@ -49,7 +42,8 @@ jobs:
   browser:
     name: HUSTLE desktop/mobile WebGL smoke
     needs: verify
-    runs-on: ubuntu-latest
+    # Playwright 1.56.1 Chromium installer supports Ubuntu 24.04, not 26.04.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     # Software-rendered WebGL availability depends on the CI runner image.
     # Keep the browser diagnostic non-blocking until its environment is validated.

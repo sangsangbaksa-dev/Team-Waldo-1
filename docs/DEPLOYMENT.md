@@ -18,7 +18,7 @@ Team Waldo는 Vite 정적 빌드(`dist/`)를 제공하는 브라우저 게임 �
 
 현재 `.github/workflows/pages.yml`에는 `push` 트리거가 남아 있으며, 대상 브랜치는 `claude/funny-noether-4uesaj`, `claude/project-thread-hhffi5`입니다. 따라서 이 브랜치에 직접 푸시하면 **의도하지 않은 Pages 자동 배포**가 일어날 수 있습니다. 사용자의 수동 배포 원칙과 맞게 운영하려면 해당 워크플로를 별도 검토·변경해야 하며, 반영 전에는 푸시를 피합니다. `workflow_dispatch`로 수동 실행하는 경로도 있습니다.
 
-Vercel은 Git 연동 설정에 따라 푸시가 새 배포를 만들 수 있으므로, 프로덕션에 직접 푸시하기보다 PR에서 검증하고 명시적 배포 승인 후 반영합니다.
+현재 운영 기준 `vercel.json`에는 `git.deploymentEnabled=false`가 설정되어 있어 **Vercel의 Git 푸시 자동 배포를 사용하지 않습니다**. 단, 이 설정과 실제 Vercel 프로젝트 설정은 배포 직전에 다시 확인해야 합니다. GitHub Pages 워크플로는 별도이므로 위 두 브랜치의 `push` 트리거가 제거되기 전에는 수동 배포만 보장되지 않습니다. 프로덕션 브랜치에는 직접 푸시하지 않고 검증된 PR을 거쳐 작업합니다.
 
 ## 검증 순서
 

@@ -143,7 +143,6 @@ function rollLoot(rng: () => number, tier: 0 | 1): LootSpec {
   return { kind: 'ammo', weapon: null, part: null, level: 0 };
 }
 
-// ---------- 소품 배치 ----------
 const VEH: Record<string, { w: number; d: number; h: number }> = { car: { w: 4.4, d: 1.9, h: 1.5 }, jeep: { w: 4.0, d: 1.9, h: 1.95 }, truck: { w: 5.4, d: 2.1, h: 2.05 }, van: { w: 5.0, d: 2.1, h: 2.3 }, bus: { w: 9.6, d: 2.6, h: 3.1 } };
 const VEH_COLORS = [0xb83a32, 0x2f5d9a, 0xd9d4c6, 0x3d4a3a, 0xd8a229, 0x2e2e32, 0x7e8a93, 0x8a5a2b, 0x4f8a6b];
 const BOX_COLORS = [0xb5412f, 0x2f6aa0, 0x3f7b4a, 0xd0a02c, 0x7c4a2d, 0x8a8f94];
@@ -202,7 +201,6 @@ function fenceLine(map: GameMap, rng: () => number, x0: number, z0: number, x1: 
   void rng;
 }
 
-// ---------- 엄폐물 ----------
 /** 엄폐물: 가슴 높이(1.0~1.3m)라 뒤에 웅크려 막고, 위로 머리를 내밀어 쏠 수 있습니다. 충돌과 총알 차단이 모두 됩니다. */
 function coverPiece(map: GameMap, rng: () => number, x: number, z: number, kinds: PropKind[]): boolean {
   const kind = kinds[Math.floor(rng() * kinds.length)], ry = rng() < 0.5 ? 0 : Math.PI / 2, jit = (rng() - 0.5) * 0.4;
@@ -227,7 +225,6 @@ function coverCluster(map: GameMap, rng: () => number, x: number, z: number, kin
   for (let i = 0, tries = 0; i < n && tries < n * 6; tries++) { const a = rng() * Math.PI * 2, r = 1.2 + rng() * 4.5; if (coverPiece(map, rng, x + Math.cos(a) * r, z + Math.sin(a) * r, kinds)) i++; }
 }
 
-// ---------- 마을 ----------
 interface ThemeDef { cols: [number, number]; rows: number; lot: { w: number; d: number }; first: BuildingType; kinds: Array<[BuildingType, number]>; names: string[] }
 const THEMES: Record<Theme, ThemeDef> = {
   village:    { cols: [3, 2], rows: 2, lot: { w: 17, d: 15 }, first: 'house',     kinds: [['house', 5], ['cabin', 2], ['garage', 1.4], ['shop', 1], ['church', 0.8]],                 names: ['안개촌', '돌고개', '새벽마을', '버드나무골'] },

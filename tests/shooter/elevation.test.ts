@@ -31,6 +31,20 @@ describe('ZERO ZONE 올라갈 수 있는 고저차', () => {
     expect(groundRayDistance(m.terrain, 0, 10, 0, 0, 1, 0, 20)).toBe(Infinity);
   });
 
+  it('오르막 위 표적은 올려 겨냥해야 명중하며 수평 사격은 지형에 막힌다', () => {
+    const m = new Match({ seed: 3, mode: 'duel', difficulty: 'normal', humans: [], fill: 2 });
+    m.map = slopeMap(); m.map.loot.forEach(l => { l.taken = true; });
+    const [shooter, target] = m.players;
+    shooter.bot = false; shooter.brain = null; shooter.x = -25; shooter.z = 0; shooter.air = 0;
+    target.bot = false; target.brain = null; target.x = 0; target.z = 0; target.air = 0;
+    const hp = target.hp;
+    m.bullet(shooter.id, 'rifle', -25, 1.65, 0, 0, 0, [], false);
+    expect(target.hp).toBe(hp);
+    const raised = groundHeight(m.map.terrain, target.x, target.z);
+    m.bullet(shooter.id, 'rifle', -25, 1.65, 0, 0, Math.atan2(raised, 25), [], false);
+    expect(target.hp).toBeLessThan(hp);
+  });
+
   it('캐릭터는 점프 없이 경사를 지나갈 수 있으며 지면 고도가 변화한다', () => {
     const match = new Match({ seed: 1, mode: 'duel', difficulty: 'normal', humans: [{ name: 'Human' }], fill: 1 });
     match.map = slopeMap();

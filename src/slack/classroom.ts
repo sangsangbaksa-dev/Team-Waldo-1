@@ -215,8 +215,8 @@ export const createClassroomView: CreateView = (sim, audio) => {
       css('--sl-door-angle', `${Math.round(-74 * motion.door)}deg`);
       css('--sl-door-open', motion.door.toFixed(2));
       css('--sl-handle-angle', `${Math.round(27 * motion.handle)}deg`);
-      css('--sl-teacher-right', `${(8 + 25 * motion.advance).toFixed(1)}%`);
-      css('--sl-teacher-bottom', `${(50 - 9 * motion.advance).toFixed(1)}%`);
+      css('--sl-teacher-x', `${(-25 * motion.advance).toFixed(1)}cqw`);
+      css('--sl-teacher-y', `${(9 * motion.advance).toFixed(1)}cqh`);
       css('--sl-teacher-scale', (0.72 + 0.52 * motion.advance).toFixed(3));
       css('--sl-teacher-opacity', motion.presence.toFixed(2));
       put(teacher, 'walking', String(motion.walking));

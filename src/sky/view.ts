@@ -175,7 +175,13 @@ export class SkyView {
     seaMat.onBeforeCompile = shader => {
       shader.uniforms.skyTime = this.seaTime; shader.uniforms.seaOrigin = this.seaOrigin;
       shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float skyTime; uniform vec2 seaOrigin; varying vec2 vSeaW;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvSeaW = vec2(position.x + seaOrigin.x, position.y - seaOrigin.y); transformed.z += sin(vSeaW.x * 0.008 + skyTime * 0.7) * 1.2 + cos(vSeaW.y * 0.011 - skyTime * 0.5) * 0.8;');
-      shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform float skyTime; varying vec2 vSeaW;').replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nfloat ripple = sin(vSeaW.x * 0.035 + skyTime * 0.8) * cos(vSeaW.y * 0.027 - skyTime * 0.6); roughnessFactor = clamp(roughnessFactor + ripple * 0.11, 0.08, 1.0);').replace('#include <color_fragment>', '#include <color_fragment>\nfloat wave = sin(vSeaW.x * .022 + skyTime * .5) * cos(vSeaW.y * .034 - skyTime * .4); float foam = smoothstep(.83, .98, wave) * .16; diffuseColor.rgb = mix(diffuseColor.rgb * (.86 + wave * .08), vec3(.65,.79,.77), foam);');
+      // Avoid the repeated oval whitecaps created by a single low-frequency
+      // sine/cosine threshold. Layer broad and small nonaligned swells instead.
+      const roughnessRipple = lowSea ? 0.018 : 0.055;
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform float skyTime; varying vec2 vSeaW;')
+        .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>\nfloat ripple = sin(vSeaW.x * 0.028 + vSeaW.y * 0.015 + skyTime * 0.32) * cos(vSeaW.y * 0.021 - skyTime * 0.25); roughnessFactor = clamp(roughnessFactor + ripple * ${roughnessRipple.toFixed(3)}, 0.08, 1.0);`)
+        .replace('#include <color_fragment>', `#include <color_fragment>\nfloat swellA = sin(vSeaW.x * 0.008 + vSeaW.y * 0.004 + skyTime * 0.23); float swellB = sin(vSeaW.x * 0.004 - vSeaW.y * 0.013 - skyTime * 0.19); float fine = sin(vSeaW.x * 0.035 + skyTime * 0.46) * cos(vSeaW.y * 0.029 - skyTime * 0.41); diffuseColor.rgb *= 0.96 + swellA * 0.025 + swellB * 0.025 + fine * 0.012;`);
     };
     const sea = new THREE.Mesh(new THREE.PlaneGeometry(20000, 20000, 80, 80), seaMat); sea.rotation.x = -Math.PI / 2; sea.position.y = -1; sea.receiveShadow = true; sc.add(sea); this.sea = sea;
     // 섬 지형

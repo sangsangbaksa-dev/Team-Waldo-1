@@ -164,9 +164,12 @@ function syncAudioButtons() {
   }
 }
 function applyMute(next) {
-  muted = Boolean(next);
-  sound.setMute(muted);
-  if (!muted && !["home", "load"].includes(state)) void sound.start();
+  const shouldMute = Boolean(next);
+  if (muted !== shouldMute) {
+    muted = shouldMute;
+    sound.setMute(muted);
+    if (!muted && !["home", "load"].includes(state)) void sound.start();
+  }
   syncAudioButtons();
 }
 function toggleAudio() {

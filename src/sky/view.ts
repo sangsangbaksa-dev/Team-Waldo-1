@@ -49,7 +49,7 @@ export function buildJet(kind: Kind, team: 'player' | 'enemy'): THREE.Group {
     const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.22 * s, 0.12 * s, 7 * s), mAcc); stripe.position.set(0, 1.12 * s, 0); g.add(stripe);
   }
   const fl = new THREE.Mesh(new THREE.ConeGeometry(0.75 * s, 5 * s, 8), new THREE.MeshBasicMaterial({ color: team === 'player' ? 0x6ab8ff : 0xff8a30, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false })); fl.rotation.x = -Math.PI / 2; fl.position.z = 8.5 * s; fl.name = 'flame'; g.add(fl);
-  detailJet(g, kind, team);
+  g.userData.detailGroup = detailJet(g, kind, team);
   g.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh && (m.material instanceof THREE.MeshStandardMaterial)) { m.castShadow = true; m.receiveShadow = true; } }); // 불꽃·램프(Basic)는 그림자 없음
   return g;
 }
@@ -73,6 +73,11 @@ class BillboardPool {
   emit(pos: THREE.Vector3, vel: THREE.Vector3, life: number, size: number, grow: number, color: number, tmp: THREE.Color): void {
     const q = this.parts[this.idx++ % this.n]!; tmp.setHex(color); q.r = tmp.r; q.g = tmp.g; q.b = tmp.b; q.p.copy(pos); q.v.copy(vel); q.life = q.max = life; q.size = size; q.grow = grow; q.alive = true;
   }
+  reset(): void {
+    this.idx = 0;
+    for (const part of this.parts) { part.alive = false; part.life = 0; }
+    this.update(0);
+  }
   update(dt: number): void {
     const o = this.off.array as Float32Array, s = this.sz.array as Float32Array, c = this.col.array as Float32Array;
     for (let i = 0; i < this.n; i++) {
@@ -90,6 +95,12 @@ export class SkyView {
   setCockpit(on: boolean): void {
     this.cockpit = on;
     for (const mesh of this.meshes.values()) if (mesh.userData.team === 'player') mesh.visible = !on;
+  }
+  /** 새 출격에서 지난 전투의 연기·폭발·카메라 진동을 남기지 않습니다. */
+  resetEffects(): void {
+    this.firePool.reset(); this.smokePool.reset(); this.shake = 0;
+    for (const ring of this.rings) { this.scene.remove(ring.mesh); this.disposeObject(ring.mesh); }
+    this.rings.length = 0;
   }
   private pickMeshes = new Map<number, THREE.Mesh>(); private meshes = new Map<number, THREE.Group>(); private missileMeshes = new Map<number, THREE.Mesh>();
   private firePool!: BillboardPool; private smokePool!: BillboardPool; private level = 0; private readonly tmpColor = new THREE.Color();
@@ -113,7 +124,11 @@ export class SkyView {
       this.environment = makeEnvironment(renderer, { top: 0x537ea9, horizon: 0xf2c7a4, ground: 0x234854, sun: 0xffe1b4, sunDir: [0.5, 0.75, 0.3] });
       sc.environment = this.environment;
     }
+    const atmosphereStart = sc.children.length;
     this.atmosphereTextures = addAtmosphere(sc, this.quality);
+    // The original adaptive governor only hid the second cloud layer, leaving
+    // the larger atmosphere cloud set rendering at full cost on slow devices.
+    for (const object of sc.children.slice(atmosphereStart)) if (object instanceof THREE.Sprite) this.clouds.push(object);
     sc.add(new THREE.HemisphereLight(0xdbe7f2, 0x36515b, 1.2));
     this.sun = new THREE.DirectionalLight(0xffd8a1, 2.2); this.sun.position.set(2000, 3000, 1200); sc.add(this.sun, this.sun.target);
     if (renderer && this.quality !== 'low') { // 태양 그림자: 플레이어 주변만 덮고 따라다닙니다
@@ -132,8 +147,13 @@ export class SkyView {
       fragmentShader: 'uniform vec3 sd;varying vec3 p;void main(){float h=clamp(p.y,-.2,1.);vec3 hor=vec3(.91,.69,.57),top=vec3(.16,.30,.50);vec3 c=mix(hor,top,pow(max(h,0.),.55));if(p.y<0.)c=mix(hor,vec3(.35,.48,.53),min(1.,-p.y*4.));float s=max(0.,dot(normalize(p),sd));c+=vec3(1.,.62,.32)*pow(s,6.)*.28+vec3(1.,.8,.5)*pow(s,40.)*.5+vec3(1.,.95,.8)*pow(s,900.)*3.;c=mix(c,vec3(.97,.82,.72),exp(-abs(p.y)*14.)*.35);gl_FragColor=vec4(c,1.);}' }));
     sc.add(dome); this.dome = dome;
     // 바다
-    const seaMat = new THREE.MeshStandardMaterial({ color: 0x28687a, metalness: 0.42, roughness: 0.3, normalMap: this.seaNormalMap, normalScale: new THREE.Vector2(0.7, 0.7) });
-    this.seaNormalMap.repeat.set(160, 160);
+    // 저사양/모바일에서 높은 주파수의 잔물결과 광택이 반짝임·모아레를 만들지 않도록 부드럽게 조절합니다.
+    const lowSea = this.quality === 'low';
+    const seaMat = new THREE.MeshStandardMaterial({
+      color: 0x28687a, metalness: lowSea ? 0.12 : 0.42, roughness: lowSea ? 0.72 : 0.3,
+      normalMap: this.seaNormalMap, normalScale: new THREE.Vector2(lowSea ? 0.18 : 0.7, lowSea ? 0.18 : 0.7),
+    });
+    this.seaNormalMap.repeat.set(lowSea ? 32 : 160, lowSea ? 32 : 160);
     seaMat.onBeforeCompile = shader => {
       shader.uniforms.skyTime = this.seaTime; shader.uniforms.seaOrigin = this.seaOrigin;
       shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float skyTime; uniform vec2 seaOrigin; varying vec2 vSeaW;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvSeaW = vec2(position.x + seaOrigin.x, position.y - seaOrigin.y); transformed.z += sin(vSeaW.x * 0.008 + skyTime * 0.7) * 1.2 + cos(vSeaW.y * 0.011 - skyTime * 0.5) * 0.8;');
@@ -172,8 +192,14 @@ export class SkyView {
   /** 적응형 화질: 1 그림자 끔 · 2 구름 절반 · 3 구름 전부 숨김 + 파티클 절반 */
   setLevel(l: number): void {
     this.level = l;
-    if (l >= 1) this.sun.castShadow = false;
+    // 적응형 품질이 회복되면 그림자도 다시 켭니다 (저사양 설정은 계속 비활성).
+    this.sun.castShadow = l < 1 && this.quality !== 'low';
     this.clouds.forEach((c, i) => { c.visible = l < 3 && (l < 2 || i % 2 === 0); });
+    const sea = this.sea.material as THREE.MeshStandardMaterial;
+    const smoothWater = this.quality === 'low' || l >= 2;
+    sea.roughness = smoothWater ? 0.72 : 0.3;
+    sea.metalness = smoothWater ? 0.12 : 0.42;
+    sea.normalScale.setScalar(smoothWater ? 0.18 : 0.7);
   }
   resize(w: number, h: number): void { this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); }
 
@@ -190,10 +216,10 @@ export class SkyView {
     for (let i = 0; i < n; i++) this.emit(pos, this.v1.set((Math.random() - 0.5) * 90, (Math.random() - 0.3) * 80, (Math.random() - 0.5) * 90), 0.6 + Math.random() * 0.6, sz * (0.6 + Math.random() * 0.8), 2.2, 'fire', i % 3 ? 0xffb040 : 0xff5a20);
     for (let i = 0; i < n / 2; i++) this.emit(pos, this.v1.set((Math.random() - 0.5) * 40, 10 + Math.random() * 30, (Math.random() - 0.5) * 40), 2 + Math.random(), sz, 1.6, 'smoke');
     for (let i = 0; i < (big ? 10 : 5); i++) this.emit(pos, this.v1.set((Math.random() - 0.5) * 180, Math.random() * 120, (Math.random() - 0.5) * 180), 0.45 + Math.random() * 0.4, 3, -0.3, 'fire', 0xffd07a);
-    const d = pos.distanceTo(this.camera.position); if (d < 700) this.shake = Math.max(this.shake, (big ? 1 : 0.5) * (1 - d / 700));
+    const d = pos.distanceTo(this.camera.position); if (!this.reducedMotion && d < 700) this.shake = Math.max(this.shake, (big ? 1 : 0.5) * (1 - d / 700));
   }
   spark(pos: THREE.Vector3): void { for (let i = 0; i < 3; i++) this.emit(pos, this.v1.set((Math.random() - 0.5) * 60, (Math.random() - 0.5) * 60, (Math.random() - 0.5) * 60), 0.25, 8, 0.2, 'fire', 0xffe08a); }
-  kick(a: number): void { this.shake = Math.max(this.shake, a); }
+  kick(a: number): void { if (!this.reducedMotion) this.shake = Math.max(this.shake, a); }
 
   sync(sim: SkySim, dt: number, time: number): void {
     this.jetIds.clear();
@@ -205,6 +231,13 @@ export class SkyView {
       if (!m) { m = buildJet(j.kind, j.team); m.userData.team = j.team; this.scene.add(m); this.meshes.set(j.id, m); }
       m.visible = !(this.cockpit && j.team === 'player');
       m.position.copy(j.pos); m.quaternion.copy(j.q);
+      if (j.team === 'enemy') {
+        const detail = m.userData.detailGroup as THREE.Group | undefined;
+        if (detail) {
+          const maxDistance = this.level >= 2 ? 850 : this.level === 1 ? 1250 : this.quality === 'high' ? 2400 : this.quality === 'standard' ? 1700 : 1100;
+          detail.visible = j.pos.distanceToSquared(sim.player.pos) <= maxDistance * maxDistance;
+        }
+      }
       const throttle = THREE.MathUtils.clamp(j.throttle + (j.boosting ? 0.6 : 0), 0, 1.6);
       const fl = m.getObjectByName('flame') as THREE.Mesh | undefined; if (fl) {
         fl.scale.set(0.65 + throttle * 0.55, 0.45 + throttle * 1.4 + Math.sin(time * 40 + j.id) * 0.1, 0.65 + throttle * 0.55);
@@ -272,7 +305,7 @@ export class SkyView {
       const offset = this.v1.set(0, 1.2, -2.5).applyQuaternion(p.q);
       this.camera.position.copy(p.pos).add(offset);
       this.camera.quaternion.copy(p.q);
-      const vibration = 0.025 + Math.max(0, p.speed - 120) * 0.0008 + boost * 0.12 + this.shake * 0.5;
+      const vibration = this.reducedMotion ? 0 : 0.025 + Math.max(0, p.speed - 120) * 0.0008 + boost * 0.12 + this.shake * 0.5;
       this.camera.position.add(this.v1.set((Math.random() - 0.5) * vibration, (Math.random() - 0.5) * vibration, 0).applyQuaternion(p.q));
     } else {
       const fwd = forward(p, this.v1), up = this.v2.copy(this.up).applyQuaternion(p.q);
@@ -281,7 +314,7 @@ export class SkyView {
       const target = this.v4.copy(p.pos).addScaledVector(fwd, 120);
       const q = this.matrix.lookAt(this.camera.position, target, up.lerp(this.up, 0.5)); const tq = this.rotation.setFromRotationMatrix(q);
       this.camera.quaternion.slerp(tq, Math.min(1, dt * 6));
-      if (this.shake > 0) { this.camera.position.x += (Math.random() - 0.5) * this.shake * 5; this.camera.position.y += (Math.random() - 0.5) * this.shake * 5; }
+      if (!this.reducedMotion && this.shake > 0) { this.camera.position.x += (Math.random() - 0.5) * this.shake * 5; this.camera.position.y += (Math.random() - 0.5) * this.shake * 5; }
     }
     this.shake = Math.max(0, this.shake - dt * 2);
     const fov = this.cockpit ? 70 + boost * 5 : 62 + boost * 14 + (p.speed - 140) * 0.06;

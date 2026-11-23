@@ -51,6 +51,19 @@ const rnd = (a: number, b: number): number => a + Math.random() * (b - a);
 const tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3(), eul = new THREE.Euler();
 const aiForward = new THREE.Vector3(), aiAim = new THREE.Vector3(), bulletTest = new THREE.Vector3();
 const gunDir = new THREE.Vector3(), gunSide = new THREE.Vector3();
+const ARENA_SPAWN_R = WORLD_R * 0.93;
+
+/** 적기 편대는 작전 구역 안에 생성하고, 산에 파묻히지 않게 고도를 확보합니다. */
+function safeSpawn(position: THREE.Vector3): THREE.Vector3 {
+  const radius = Math.hypot(position.x, position.z);
+  if (radius > ARENA_SPAWN_R) {
+    const scale = ARENA_SPAWN_R / radius;
+    position.x *= scale;
+    position.z *= scale;
+  }
+  position.y = Math.max(position.y, terrainY(position.x, position.z) + 220);
+  return position;
+}
 const MAX_BULLETS = 400;
 
 export function forward(j: { q: THREE.Quaternion }, out = new THREE.Vector3()): THREE.Vector3 { return out.copy(FWD).applyQuaternion(j.q); }
@@ -63,7 +76,7 @@ export class SkySim {
   constructor(public diff: Difficulty) { this.reset(); }
 
   reset(): void {
-    this.bulletPool.length = 0;
+    this.bulletPool.length = 0; this.nid = 1; this.warnT = 0;
     this.jets = []; this.pickups = []; this.missiles = []; this.bullets = []; this.events = []; this.wave = 0; this.score = 0; this.kills = 0; this.time = 0; this.over = false; this.intermission = 2; this.combo = 0; this.comboT = 0; this.bestCombo = 0; this.shots = 0; this.hits = 0; this.shield = 0; this.overdrive = 0; this.missileRegen = 0; this.stallWarnT = 0; this.afterburner = 0;
     const p = this.makeJet('player', 'fighter', new THREE.Vector3(0, 700, 2200), 1); p.q.identity(); p.speed = CRUISE; p.missiles = 6; p.missileCd = 0; p.hp = p.maxHp = 100;
     this.player = p;
@@ -83,10 +96,10 @@ export class SkySim {
     this.wave++; const modifier = this.wave % 5 === 0 ? '' : this.wave % 3 === 0 ? '폭격기 편대' : this.wave % 3 === 1 && this.wave > 1 ? '에이스 편대' : ''; this.events.push({ t: 'wave', n: this.wave, modifier });
     const n = Math.min(10, Math.round((1 + this.wave * 1.3) * this.diff.count));
     const p = this.player.pos;
-    if (this.wave % 5 === 0) { this.events.push({ t: 'boss' }); const a = rnd(0, Math.PI * 2); const bp = new THREE.Vector3(p.x + Math.cos(a) * 2200, 900, p.z + Math.sin(a) * 2200); const bj = this.makeJet('enemy', 'boss', bp, this.diff.skill); const dd = p.clone().sub(bp).normalize(); bj.yaw = Math.atan2(-dd.x, -dd.z); bj.q.setFromEuler(eul.set(0, bj.yaw, 0, 'YXZ')); }
+    if (this.wave % 5 === 0) { this.events.push({ t: 'boss' }); const a = rnd(0, Math.PI * 2); const bp = safeSpawn(new THREE.Vector3(p.x + Math.cos(a) * 2200, 900, p.z + Math.sin(a) * 2200)); const bj = this.makeJet('enemy', 'boss', bp, this.diff.skill); const dd = p.clone().sub(bp).normalize(); bj.yaw = Math.atan2(-dd.x, -dd.z); bj.q.setFromEuler(eul.set(0, bj.yaw, 0, 'YXZ')); }
     for (let i = 0; i < n; i++) {
       const a = rnd(0, Math.PI * 2), d = rnd(1500, 2300);
-      const pos = new THREE.Vector3(p.x + Math.cos(a) * d, rnd(450, 1100), p.z + Math.sin(a) * d);
+      const pos = safeSpawn(new THREE.Vector3(p.x + Math.cos(a) * d, rnd(450, 1100), p.z + Math.sin(a) * d));
       const roll = Math.random();
       const kind: Kind = modifier === '에이스 편대' ? (roll < Math.min(0.6, 0.25 + this.wave * 0.04) ? 'ace' : 'fighter') : modifier === '폭격기 편대' ? (roll < 0.65 ? 'bomber' : 'fighter') : this.wave >= 3 && roll < 0.18 ? 'ace' : this.wave >= 2 && roll < 0.35 ? 'bomber' : 'fighter';
       const e = this.makeJet('enemy', kind, pos, this.diff.skill * (kind === 'ace' ? 1.25 : 1) * rnd(0.85, 1.1));
@@ -106,14 +119,30 @@ export class SkySim {
     return best;
   }
 
-  /** 적의 정확한 추적 조준점(총알 리드). */
+  /** 대상의 진행 속도까지 고려한 선행 조준점 (2차 방정식의 가장 빠른 양의 교차 시각). */
   leadPoint(from: Jet, target: Jet, speed: number, out: THREE.Vector3): THREE.Vector3 {
-    const d = from.pos.distanceTo(target.pos), t = d / speed;
-    return out.copy(target.pos).addScaledVector(forward(target, tmpV2), target.speed * t);
+    const relative = tmpV.copy(target.pos).sub(from.pos);
+    const velocity = forward(target, tmpV2).multiplyScalar(target.speed);
+    const a = velocity.lengthSq() - speed * speed;
+    const b = 2 * relative.dot(velocity);
+    const c = relative.lengthSq();
+    let t = Math.sqrt(c) / Math.max(1, speed);
+    if (Math.abs(a) < 1e-6) {
+      if (b < -1e-6) t = -c / b;
+    } else {
+      const discriminant = b * b - 4 * a * c;
+      if (discriminant >= 0) {
+        const sqrt = Math.sqrt(discriminant);
+        const first = (-b - sqrt) / (2 * a), second = (-b + sqrt) / (2 * a);
+        const hit = Math.min(first > 0 ? first : Infinity, second > 0 ? second : Infinity);
+        if (Number.isFinite(hit)) t = hit;
+      }
+    }
+    return out.copy(target.pos).addScaledVector(velocity, THREE.MathUtils.clamp(t, 0, 4));
   }
 
   step(dt: number, input: Input): void {
-    if (this.over) { this.events.length = 0; }
+    if (this.over || dt <= 0) { this.events.length = 0; return; }
     this.time += dt; this.overdrive = Math.max(0, this.overdrive - dt);
     const p = this.player;
     if (p.alive) this.stepPlayer(p, input, dt);
@@ -157,7 +186,7 @@ export class SkySim {
     // 미사일 자연 보충
     if (p.missiles < 6) { p.missileCd = Math.max(p.missileCd, 0); this.missileRegen += dt; if (this.missileRegen > 14) { this.missileRegen = 0; p.missiles++; } }
   }
-  private missileRegen = 0; private edging = false; private stallWarnT = 0; private afterburner = 0;
+  private missileRegen = 0; private stallWarnT = 0; private afterburner = 0;
 
   /** 공용 비행 모델: 뱅크(기울기)가 선회를 만들고, 피치는 기수 상하. 입력 -1..1 */
   flyJet(j: Jet, pitchIn: number, rollIn: number, throttle: number, dt: number, yawIn = 0): void {
@@ -184,8 +213,14 @@ export class SkySim {
     j.pitch = THREE.MathUtils.clamp(j.pitch, -1.2, 1.2);
     j.q.setFromEuler(eul.set(j.pitch, j.yaw, -j.roll, 'YXZ'));
     forward(j, tmpV); j.pos.addScaledVector(tmpV, j.speed * dt);
-    if (j.team !== 'player' && !this.edging && Math.hypot(j.pos.x, j.pos.z) > WORLD_R) { this.edging = true; this.steerTo(j, tmpV2.set(0, j.pos.y, 0), dt, 1.2); this.edging = false; } // 재귀 방지
-    else if (j.team === 'player') { const r = Math.hypot(j.pos.x, j.pos.z); if (r > WORLD_R * 1.12) j.pos.multiplyScalar(WORLD_R * 1.12 / r); } // 플레이어는 경계 밖으로 못 나감
+    if (j.team === 'player') {
+      const r = Math.hypot(j.pos.x, j.pos.z);
+      if (r > WORLD_R * 1.12) {
+        // 수평 경계만 제한합니다. y까지 줄이면 고도가 급강하해 지형에 충돌합니다.
+        const scale = WORLD_R * 1.12 / r;
+        j.pos.x *= scale; j.pos.z *= scale;
+      }
+    }
   }
 
   /** 월드 가장자리 경고 정도(0~1) */
@@ -207,7 +242,7 @@ export class SkySim {
     const target = p.alive ? p : null;
     if (!target) { this.flyJet(e, 0, 0.3, 0.5, dt); return; }
     const to = tmpV2.copy(target.pos).sub(e.pos); const dist = to.length();
-    const myFwd = forward(e, aiForward); const align = myFwd.dot(to) / (dist || 1);
+    const myFwd = forward(e, aiForward);
     e.throttle = e.kind === 'bomber' ? 0.4 : THREE.MathUtils.clamp(0.55 + (dist - 500) / 1500, 0.4, 1);
     // 나를 노리는 미사일 회피
     const threatened = this.missiles.some(m => m.alive && m.target === e.id && m.pos.distanceTo(e.pos) < 700);
@@ -215,7 +250,12 @@ export class SkySim {
     if (e.evade > 0) { this.flyJet(e, 0.7, e.bailT, 1, dt); return; }
     // 지형 회피
     const ahead = tmpV.copy(e.pos).addScaledVector(myFwd, 380);
-    if (ahead.y < terrainY(ahead.x, ahead.z) + 90 || e.pos.y < 90) { this.flyJet(e, -1, 0, 0.9, dt); return; }
+    if (ahead.y < terrainY(ahead.x, ahead.z) + 90 || e.pos.y < 90) { this.flyJet(e, 1, 0, 0.9, dt); return; } // 양의 피치 = 상승
+    // 경계 부근에서는 중앙을 향해 한 번만 조종합니다 (이전 재귀 호출의 이중 이동 제거).
+    if (Math.hypot(e.pos.x, e.pos.z) > WORLD_R * 0.94) {
+      this.steerTo(e, tmpV2.set(0, Math.max(e.pos.y, 650), 0), dt, 1.3);
+      return;
+    }
     if (e.kind === 'bomber' || e.kind === 'boss') {
       // 폭격기: 느린 직선 순항, 플레이어 쪽으로 선회하며 후방 기총(느린 탄)
       const a = this.steerTo(e, target.pos, dt, 0.5);
@@ -224,22 +264,21 @@ export class SkySim {
       return;
     }
     // 전투기: 추격 → 근접하면 사선 이탈(strafe)로 오버슈트 방지
-    const aim = this.leadPoint(e, target, 520, aiAim);
+    const aim = this.leadPoint(e, target, e.speed + 680, aiAim);
     if (dist < 260 && e.strafe <= 0) { e.strafe = rnd(1.6, 3.2); e.bailT = Math.random() < 0.5 ? 1 : -1; }
     if (dist < 300 && e.strafe > 0 && e.strafe < 2) { aim.copy(e.pos).addScaledVector(myFwd, 400); aim.y += 220; aim.x += e.bailT * 240; }
     const a = this.steerTo(e, aim, dt, 0.55 + e.skill * 0.5);
-    if (align > 0.992 && dist < GUN_RANGE * 0.9 && e.gunCd <= 0) { this.fireGun(e, 0.03 * e.aimJitter * (2 - e.skill)); e.gunCd = e.kind === 'ace' ? 0.1 : 0.17; }
+    if (a > 0.992 && dist < GUN_RANGE * 0.9 && e.gunCd <= 0) { this.fireGun(e, 0.03 * e.aimJitter * (2 - e.skill)); e.gunCd = e.kind === 'ace' ? 0.1 : 0.17; }
     if (e.missiles > 0 && e.missileCd <= 0 && a > 0.95 && dist > 500 && dist < 1500) { if (Math.random() < 0.55) { this.fireMissile(e, p.id); e.missiles--; } e.missileCd = rnd(8, 14) / e.skill; }
   }
 
   fireGun(j: Jet, spread: number): void {
+    if (this.bullets.length >= MAX_BULLETS) return;
     if (j.team === 'player') this.shots++;
     const dir = forward(j, gunDir); dir.x += rnd(-spread, spread); dir.y += rnd(-spread, spread); dir.z += rnd(-spread, spread); dir.normalize();
     const side = gunSide.set(j.kind === 'bomber' || j.kind === 'boss' ? 0 : (Math.random() < 0.5 ? -4 : 4), -1, 0).applyQuaternion(j.q);
-    if (this.bullets.length < MAX_BULLETS) {
-      const b = this.bulletPool.pop() ?? { pos: new THREE.Vector3(), vel: new THREE.Vector3(), life: 0, team: j.team, owner: j.id, alive: true };
-      b.pos.copy(j.pos).add(side).addScaledVector(dir, 12); b.vel.copy(dir).multiplyScalar(j.speed + 680); b.life = GUN_RANGE / 680; b.team = j.team; b.owner = j.id; b.alive = true; this.bullets.push(b);
-    }
+    const b = this.bulletPool.pop() ?? { pos: new THREE.Vector3(), vel: new THREE.Vector3(), life: 0, team: j.team, owner: j.id, alive: true };
+    b.pos.copy(j.pos).add(side).addScaledVector(dir, 12); b.vel.copy(dir).multiplyScalar(j.speed + 680); b.life = GUN_RANGE / b.vel.length(); b.team = j.team; b.owner = j.id; b.alive = true; this.bullets.push(b);
     this.events.push({ t: 'gun', id: j.id });
   }
   fireMissile(j: Jet, target: number): void {
@@ -251,7 +290,7 @@ export class SkySim {
   private stepPickups(dt: number): void {
     const p = this.player;
     for (const k of this.pickups) {
-      k.life -= dt; if (!p.alive || p.pos.distanceTo(k.pos) > 55) continue;
+      k.life -= dt; if (k.life <= 0 || !p.alive || p.pos.distanceToSquared(k.pos) > 55 * 55) continue;
       k.life = 0; this.events.push({ t: 'pickup', kind: k.kind });
       if (k.kind === 'repair') p.hp = Math.min(p.maxHp, p.hp + 30); else if (k.kind === 'ammo') p.missiles = Math.min(8, p.missiles + 2); else this.shield = Math.min(50, this.shield + 30);
     }
@@ -260,16 +299,33 @@ export class SkySim {
 
   private stepMissiles(dt: number): void {
     for (const m of this.missiles) {
-      if (!m.alive) continue; m.life -= dt;
-      if (m.team === 'enemy' && this.player.alive && !m.dodged) { const d = m.pos.distanceTo(this.player.pos); if (d < 120) m.nearPlayer = true; else if (m.nearPlayer && d > 180) { m.dodged = true; this.score += 150; if (this.combo > 0) this.comboT = Math.max(this.comboT, 6); this.shield = Math.min(50, this.shield + 5); this.events.push({ t: 'dodge', points: 150 }); } }
+      if (!m.alive) continue;
+      m.life -= dt;
+      if (m.life <= 0) {
+        this.events.push({ t: 'boom', pos: m.pos.clone(), big: false });
+        m.alive = false; continue; // 이미 소진한 미사일은 다음 프레임에서 충돌하지 않습니다.
+      }
+      if (m.team === 'enemy' && m.target === this.player.id && this.player.alive && !m.dodged) { const d = m.pos.distanceTo(this.player.pos); if (d < 120) m.nearPlayer = true; else if (m.nearPlayer && d > 180) { m.dodged = true; this.score += 150; if (this.combo > 0) this.comboT = Math.max(this.comboT, 6); this.shield = Math.min(50, this.shield + 5); this.events.push({ t: 'dodge', points: 150 }); } }
       const tgt = m.target ? this.get(m.target) : undefined;
       if (tgt) {
         const want = tmpV.copy(tgt.pos).sub(m.pos); const d = want.length() || 1; want.divideScalar(d);
         const cur = tmpV2.copy(m.vel).normalize(); const sp = Math.min(m.vel.length() + 260 * dt, 520);
         const turn = Math.min(1, dt * 2.4 * (m.team === 'player' ? 1.15 : 0.8)); cur.lerp(want, turn).normalize(); m.vel.copy(cur).multiplyScalar(sp);
-        if (d < 28) { this.damage(tgt, m.team === 'player' ? MISSILE_DMG : MISSILE_DMG * 0.6, m.owner, m.pos); this.events.push({ t: 'boom', pos: m.pos.clone(), big: false }); m.alive = false; continue; }
-      } else m.vel.multiplyScalar(1 + dt * 0.1);
+              } else m.vel.multiplyScalar(1 + dt * 0.1);
+      // 이전 위치부터 새 위치까지 선분 충돌: 프레임 드롭 때 기체를 관통하지 않습니다.
+      const prev = bulletTest.copy(m.pos);
       m.pos.addScaledVector(m.vel, dt);
+      if (tgt) {
+        const segment = tmpV2.copy(m.pos).sub(prev);
+        const len2 = segment.lengthSq();
+        const fraction = len2 > 0 ? THREE.MathUtils.clamp(tmpV.copy(tgt.pos).sub(prev).dot(segment) / len2, 0, 1) : 0;
+        if (tmpV.copy(prev).addScaledVector(segment, fraction).distanceToSquared(tgt.pos) < 28 * 28) {
+          this.damage(tgt, m.team === 'player' ? MISSILE_DMG : MISSILE_DMG * 0.6, m.owner, m.pos);
+          this.events.push({ t: 'boom', pos: m.pos.clone(), big: false });
+          m.alive = false;
+          continue;
+        }
+      }
       if (m.life <= 0 || m.pos.y < terrainY(m.pos.x, m.pos.z) + 2 || m.pos.y < SEA_Y) { this.events.push({ t: 'boom', pos: m.pos.clone(), big: false }); m.alive = false; }
       // 우연한 근접 폭발
       else if (!tgt) for (const j of this.jets) if (j.alive && j.team !== m.team && j.pos.distanceTo(m.pos) < 20) { this.damage(j, MISSILE_DMG, m.owner, m.pos); this.events.push({ t: 'boom', pos: m.pos.clone(), big: false }); m.alive = false; break; }
@@ -279,8 +335,21 @@ export class SkySim {
 
   private stepBullets(dt: number): void {
     for (const b of this.bullets) {
-      if (!b.alive) continue; b.life -= dt;
-      const prev = tmpV.copy(b.pos); b.pos.addScaledVector(b.vel, dt);
+      if (!b.alive) continue;
+      const remaining = Math.max(0, Math.min(dt, b.life));
+      b.life -= dt;
+      const prev = tmpV.copy(b.pos);
+      b.pos.addScaledVector(b.vel, remaining);
+      // 산과 섬 뒤의 적을 지형 너머로 맞히는 탄환 관통을 차단합니다.
+      // 현 맵의 최고 지형은 380m: 충분히 높은 탄환은 복잡한 지형 검사를 건너뜁니다.
+      if (Math.min(prev.y, b.pos.y) < 400) {
+        const halfX = (prev.x + b.pos.x) * 0.5;
+        const halfY = (prev.y + b.pos.y) * 0.5;
+        const halfZ = (prev.z + b.pos.z) * 0.5;
+        if (b.pos.y <= terrainY(b.pos.x, b.pos.z) + 2 || halfY <= terrainY(halfX, halfZ) + 2) {
+          b.alive = false; continue;
+        }
+      }
       for (const j of this.jets) {
         if (!j.alive || j.team === b.team) continue;
         // 선분-구 판정(고속 탄 통과 방지)

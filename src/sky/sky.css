@@ -128,3 +128,16 @@
 @media (max-width:600px){.sk-brow{grid-template-columns:14px 26px 1fr;gap:4px}.sk-bl{font-size:9px;letter-spacing:.02em}}
 @media (pointer:coarse){.sk-hint{bottom:auto;top:max(96px,calc(env(safe-area-inset-top) + 88px));padding:0 64px}}
 .sk-pause-modal .sk-row{flex-wrap:wrap}
+
+/* Four control choices fit one row on desktop, two rows on compact touch screens. */
+.sk-modal .sk-ctl{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media(max-width:600px){.sk-modal .sk-ctl{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Keep the mobile start action visible without hiding the complete controls guide. */
+.sk-help>summary{display:none}
+@media(max-width:600px){
+  .sk-help{margin:10px 0}
+  .sk-help>summary{display:block;padding:12px 14px;border:1px solid var(--wd-line);border-radius:10px;background:#1e2228;color:var(--wd-text);font-size:13px;font-weight:700;cursor:pointer}
+  .sk-help[open]>summary{margin-bottom:8px}
+  .sk-modal .sk-help .sk-how{margin:0}
+}

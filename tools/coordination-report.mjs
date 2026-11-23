@@ -58,7 +58,26 @@ export function analyzePullRequests(prs, options = {}) {
       pairs.get(key).files.push(row.filename);
     }
   }
-  const collisionPairs = [...pairs.values()].sort((a, b) => b.files.length - a.files.length || a.first - b.first || a.second - b.second);
+  // A child PR inherits its parent's diff. Overlapping filenames inside the
+  // same PR stack are expected and should not be presented as independent edits.
+  const parents = new Map(parentEdges.map(edge => [edge.child, edge.parent]));
+  const isAncestor = (ancestor, descendant) => {
+    const visited = new Set();
+    let current = descendant;
+    while (parents.has(current) && !visited.has(current)) {
+      visited.add(current);
+      current = parents.get(current);
+      if (current === ancestor) return true;
+    }
+    return false;
+  };
+  const collisionPairs = [...pairs.values()].map(pair => ({
+    ...pair,
+    relationship: isAncestor(pair.first, pair.second) || isAncestor(pair.second, pair.first)
+      ? 'stacked' : 'independent',
+  })).sort((a, b) =>
+    (a.relationship === b.relationship ? 0 : a.relationship === 'independent' ? -1 : 1) ||
+    b.files.length - a.files.length || a.first - b.first || a.second - b.second);
   const multipleGames = normalized.map(pr => ({
     number: pr.number,
     games: [...new Set(pr.files.map(gameForPath).filter(Boolean))].sort(),
@@ -96,7 +115,8 @@ export function renderMarkdown(report, repo = 'sangsangbaksa-dev/Team-Waldo-1') 
   else for (const pair of report.collisionPairs) {
     const files = pair.files.slice(0, 8).map(filename => '\`' + escapeText(filename) + '\`').join(', ');
     const suffix = pair.files.length > 8 ? ' 외 ' + (pair.files.length - 8) + '개' : '';
-    lines.push('- ' + refLink(repo, pair.first) + ' ↔ ' + refLink(repo, pair.second) + ': ' + pair.files.length + '개 — ' + files + suffix);
+    const relation = pair.relationship === 'stacked' ? '[선행 PR 상속; 기대되는 중복]' : '[독립 PR; 충돌 검토]';
+    lines.push('- ' + relation + ' ' + refLink(repo, pair.first) + ' ↔ ' + refLink(repo, pair.second) + ': ' + pair.files.length + '개 — ' + files + suffix);
   }
   lines.push('', '## 대상 브랜치 불일치');
   if (!report.foreignBases.length) lines.push('없음');

@@ -41,9 +41,23 @@ try {
       assert.ok(hasWebgl,"3D renderer must initialize and size the canvas");
       assert.match(await page.locator("#zone").innerText(), /전원 정비동/);
       assert.equal(await page.locator("#recorderCount").innerText(),"2/2");
-      if (mobile) await page.locator("#recorder").click();
-      else await page.keyboard.press("q");
-      assert.equal(await page.locator("#recorderCount").innerText(),"1/2");
+      if (mobile) {
+        const hit = await page.locator("#recorder").evaluate(el => {
+          const r = el.getBoundingClientRect();
+          return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+        });
+        assert.ok(hit, "Recorder button must receive touches above the game canvas");
+        await page.locator("#recorder").click();
+      } else {
+        await page.keyboard.press("q");
+      }
+      const remaining = await page.locator("#recorderCount").innerText();
+      assert.equal(remaining,"1/2", "Recorder action did not consume a charge: " +
+        JSON.stringify({
+          toast: await page.locator("#toast").innerText(),
+          buttonDisabled: await page.locator("#recorder").isDisabled(),
+          focus: await page.evaluate(() => document.activeElement?.id ?? null),
+        }));
       assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("waldo.rt03.campaign.v1")).recorderUsed),1);
       await page.screenshot({ path: out + "/room-tone-play-" + device + ".png" });
       if (mobile) {

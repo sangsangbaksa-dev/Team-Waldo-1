@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CityAudio } from '../../src/city/audio';
 import { MASTER_GAIN } from '../../src/audio-core';
 import { installAudioMock, setHidden } from '../helpers/audio-mock';
@@ -45,6 +45,21 @@ describe('LAST CITY audio', () => {
     expect(ctx?.state).toBe('suspended');
     setHidden(false);
     expect(ctx?.state).toBe('running');
+  });
+
+  it('plays the first sound even before the startup cooldown has elapsed', () => {
+    audio.unlock();
+    const now = vi.spyOn(performance, 'now').mockReturnValue(5);
+    try {
+      audio.play('click');
+      expect(audio.last.get('click')).toBe(5);
+      const voices = mock.context()!.oscillators.filter(o => o.started);
+      expect(voices.length).toBeGreaterThan(0);
+      audio.play('click'); // retrigger is still suppressed
+      expect(audio.last.get('click')).toBe(5);
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it('plays known event sounds and caps overlapping voices', () => {

@@ -1,0 +1,40 @@
+name: Last City core checks
+on:
+  push:
+    paths:
+      - 'src/city/**'
+      - 'tests/city/**'
+      - '.github/workflows/last-city-core-ci.yml'
+  pull_request:
+    paths:
+      - 'src/city/**'
+      - 'tests/city/**'
+      - '.github/workflows/last-city-core-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: last-city-core-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  city:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Lint Last City only
+        run: npx eslint src/city tests/city
+      - name: Typecheck project integration
+        run: npm run typecheck
+      - name: Run Last City unit tests
+        run: npx vitest run tests/city
+      - name: Build Vite application
+        run: npm run build

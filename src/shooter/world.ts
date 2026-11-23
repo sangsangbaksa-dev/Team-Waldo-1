@@ -451,11 +451,24 @@ function buildTerrain(map: GameMap, rng: () => number): void {
 
 function pushLoot(map: GameMap, spec: LootSpec, x: number, z: number): void { map.loot.push({ ...spec, id: map.loot.length, x, z, taken: false }); }
 function spawnNear(map: GameMap, rng: () => number, x: number, z: number): void {
+  const safe = (px: number, pz: number): boolean =>
+    Math.abs(px) < map.half - 1.2 && Math.abs(pz) < map.half - 1.2 &&
+    !blockedAt(map, px, pz, 1.2) && waterDepth(map.terrain, px, pz) === 0;
   for (let i = 0; i < 40; i++) {
     const px = x + (rng() - 0.5) * 14 * (1 + i / 10), pz = z + (rng() - 0.5) * 14 * (1 + i / 10);
-    if (Math.abs(px) < map.half && Math.abs(pz) < map.half && !blockedAt(map, px, pz, 1.2) && waterDepth(map.terrain, px, pz) === 0) { map.spawns.push({ x: px, z: pz }); return; }
+    if (safe(px, pz)) { map.spawns.push({ x: px, z: pz }); return; }
   }
-  map.spawns.push({ x, z });
+  // 무작위 탐색이 모두 실패해도 최초 목표 좌표(물속/건물 속)에 억지로 스폰하지 않습니다.
+  // 가까운 곳부터 결정적으로 탐색해 온라인 참가자도 같은 안전한 착지점을 사용합니다.
+  for (let ring = 0; ring <= Math.ceil(map.half / 4); ring++) {
+    const radius = ring * 4;
+    for (let j = 0; j < 24; j++) {
+      const a = j * (Math.PI * 2 / 24), px = x + Math.cos(a) * radius, pz = z + Math.sin(a) * radius;
+      if (safe(px, pz)) { map.spawns.push({ x: px, z: pz }); return; }
+    }
+  }
+  // 지형이 모두 막힌 비정상적인 지도는 조용히 잘못된 출발점을 만드는 대신 즉시 표시합니다.
+  throw new Error('ZERO ZONE: unable to find a safe spawn position');
 }
 
 

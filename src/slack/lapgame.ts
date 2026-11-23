@@ -85,7 +85,7 @@ export function createBattle(player: boolean, on?: (e: BattleEvent) => void) {
   const rnd = (a: number, b: number) => a + Math.random() * (b - a);
   let units: U[] = [], blds: B[] = [], nid = 0, endT = 0, bridgeT = 2, dirty = false;
   let ore = [100, 100], prod = [0, 0], atk = [false, false];
-  const thinkT = [rnd(0, 1), rnd(0.5, 1.5)];
+  const thinkT = [0, 0];
   let nodeAmt = [1500, 1500, 1500, 1500];
   const tr: Fx[] = [], bm: Boom[] = [];
   let ping: { x: number; y: number; t: number; a: boolean } | null = null;
@@ -99,6 +99,9 @@ export function createBattle(player: boolean, on?: (e: BattleEvent) => void) {
     units.push(u); return u;
   };
   const reset = () => {
+    // A fresh round must not inherit the old AI's next-decision clock or unit
+    // identifiers. This matters after replay from a previous game-over screen.
+    thinkT[0] = rnd(0, 1); thinkT[1] = rnd(0.5, 1.5); nid = 0;
     units = []; tr.length = 0; bm.length = 0; ping = null; endT = 0; bridgeT = 2; dirty = false;
     Object.assign(b, { over: null, time: 0, score: 0, cap: '', capT: 0, flash: 0, ore: 100, army: 2, prod: 0 });
     ore = [100, 100]; prod = [0, 0]; atk = [false, false]; nodeAmt = [1500, 1500, 1500, 1500];
@@ -181,10 +184,12 @@ export function createBattle(player: boolean, on?: (e: BattleEvent) => void) {
     }
     let band = 0;
     for (let n = 0; n < units.length; n++) {
-      const u = units[n], st = S[u.k], hq = blds.find(x => x.team === u.team && x.b === 'hq');
+      const u = units[n], st = S[u.k];
       if (u.hp <= 0) continue;
       u.cd -= dt;
       if (u.k === 'w') {
+        // Combat units do not need an HQ lookup on every simulation tick.
+        const hq = blds.find(x => x.team === u.team && x.b === 'hq');
         if (!hq) continue;
         if (u.carry >= 10) { if (Math.hypot(u.x - hq.x, u.y - hq.y) < 20) { ore[u.team] += u.carry; u.carry = 0; } else move(u, hq.x, hq.y, dt); }
         else { const ni = u.team * 2 + (u.id % 2), nd = NODES[ni]; if (Math.hypot(u.x - nd[0], u.y - nd[1]) < 7) { u.gt += dt; if (u.gt >= 1.6 && nodeAmt[ni] > 0) { u.gt = 0; u.carry = 10; nodeAmt[ni] -= 10; } } else move(u, nd[0], nd[1], dt); }
@@ -213,7 +218,8 @@ export function createBattle(player: boolean, on?: (e: BattleEvent) => void) {
       } else if (u.dest) { move(u, u.dest.x, u.dest.y, dt); if (Math.hypot(u.dest.x - u.x, u.dest.y - u.y) < 4) u.dest = null; }
       // 같은 편끼리 겹치지 않게 살짝 밀어냄
       for (let m = n + 1; m < units.length; m++) {
-        const o = units[m], dx = o.x - u.x, dy = o.y - u.y, squared = dx * dx + dy * dy, min = u.r + o.r;
+        const o = units[m]; if (o.hp <= 0) continue;
+        const dx = o.x - u.x, dy = o.y - u.y, squared = dx * dx + dy * dy, min = u.r + o.r;
         if (squared > 0 && squared < min * min) { const d = Math.sqrt(squared), p = (min - d) * 0.25 / d; if (!blocked(u.x - dx * p, u.y - dy * p, u.r)) { u.x -= dx * p; u.y -= dy * p; } if (!blocked(o.x + dx * p, o.y + dy * p, o.r)) { o.x += dx * p; o.y += dy * p; } }
       }
     }
@@ -222,7 +228,10 @@ export function createBattle(player: boolean, on?: (e: BattleEvent) => void) {
     for (const f of tr) f.t -= dt; while (tr.length && tr[0].t <= 0) tr.shift();
     for (let i = bm.length - 1; i >= 0; i--) { bm[i].t -= dt; if (bm[i].t <= 0) bm.splice(i, 1); }
     if (ping) { ping.t -= dt; if (ping.t <= 0) ping = null; }
-    b.ore = Math.floor(ore[0]); b.army = units.filter(u => u.team === 0 && u.k !== 'w').length; b.prod = prod[0];
+    // Count in place rather than allocating a fresh filtered army array at 10 Hz.
+    let army = 0;
+    for (const unit of units) if (unit.team === 0 && unit.k !== 'w') army++;
+    b.ore = Math.floor(ore[0]); b.army = army; b.prod = prod[0];
   };
 
   const bar = (g: CanvasRenderingContext2D, x: number, y: number, w: number, f: number) => { g.fillStyle = '#000a'; g.fillRect(x - w / 2, y, w, 1.6); g.fillStyle = f > 0.5 ? '#6fe06f' : f > 0.25 ? '#e0c24a' : '#e05a4a'; g.fillRect(x - w / 2, y, w * Math.max(0, f), 1.6); };

@@ -10,6 +10,10 @@ export const createSlackAudio: CreateAudio = () => {
   let pendingSuspend: Promise<void> | null = null;
   let background: AudioNode[] = [], ambTimer = 0, bedTimer = 0, step = 0;
   let requestedAmbience: StageId | null = null;
+  let sfxNoise: AudioBuffer | null = null;
+  // Keep two distinct air/vent noise textures per AudioContext. Switching
+  // stages or toggling mute must not regenerate multi-second sample buffers.
+  let ambienceNoise: AudioBuffer[] = [];
   let lastUiSoundAt = -Infinity;
   const ensure = (): AudioContext | null => {
     if (disposed) return null;
@@ -34,23 +38,39 @@ export const createSlackAudio: CreateAudio = () => {
     osc.start(t); osc.stop(t + duration + 0.01);
   };
   const noise = (duration: number, volume: number, frequency: number, delay = 0, cut = 0): void => {
-    const c = ctx; if (muted || c?.state !== 'running' || !filter) return; const size = Math.max(1, Math.floor(c.sampleRate * duration)), buffer = c.createBuffer(1, size, c.sampleRate), data = buffer.getChannelData(0);
-    for (let i = 0; i < size; i++) data[i] = Math.random() * 2 - 1;
+    const c = ctx; if (muted || c?.state !== 'running' || !filter) return;
+    // Reuse one second of white noise across short SFX instead of allocating a
+    // fresh AudioBuffer on every footstep, click, typing burst or ambience cue.
+    // Shift the playback offset so repeated effects do not sound identical.
+    if (!sfxNoise) {
+      const buffer = c.createBuffer(1, Math.max(1, Math.floor(c.sampleRate)), c.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+      sfxNoise = buffer;
+    }
+    const segment = Math.max(0.001, Math.min(duration, sfxNoise.duration || 1));
+    const offset = Math.random() * Math.max(0, (sfxNoise.duration || 1) - segment);
     const source = c.createBufferSource(), band = c.createBiquadFilter(), gain = c.createGain(), t = c.currentTime + delay;
-    source.buffer = buffer; band.type = 'bandpass'; band.frequency.value = frequency; band.Q.value = 0.7; gain.gain.setValueAtTime(Math.max(0.0002, volume), t); gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
+    source.buffer = sfxNoise; band.type = 'bandpass'; band.frequency.value = frequency; band.Q.value = 0.7; gain.gain.setValueAtTime(Math.max(0.0002, volume), t); gain.gain.exponentialRampToValueAtTime(0.0001, t + segment);
     source.connect(band); band.connect(gain);
     const lp = cut ? c.createBiquadFilter() : null;
     if (lp) { lp.type = 'lowpass'; lp.frequency.value = cut; gain.connect(lp); lp.connect(filter); } else gain.connect(filter);
     source.onended = () => { source.disconnect(); band.disconnect(); gain.disconnect(); lp?.disconnect(); };
-    source.start(t); source.stop(t + duration);
+    source.start(t, offset, segment); source.stop(t + segment);
   };
   const stopBackground = (): void => {
     clearTimeout(ambTimer); ambTimer = 0;
     for (const node of background) { if ('stop' in node) (node as AudioScheduledSourceNode).stop(); node.disconnect(); }
     background = [];
   };
-  const loopNoise = (c: AudioContext): AudioBufferSourceNode => {
-    const buffer = c.createBuffer(1, c.sampleRate * 2, c.sampleRate), data = buffer.getChannelData(0); for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  const loopNoise = (c: AudioContext, layer: 0 | 1): AudioBufferSourceNode => {
+    let buffer = ambienceNoise[layer];
+    if (!buffer) {
+      buffer = c.createBuffer(1, Math.max(1, Math.floor(c.sampleRate * 2)), c.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+      ambienceNoise[layer] = buffer;
+    }
     const src = c.createBufferSource(); src.buffer = buffer; src.loop = true; return src;
   };
   /** 느린 떨림(형광등·복도 소리의 일렁임)을 target 에 얹는다. */
@@ -64,8 +84,8 @@ export const createSlackAudio: CreateAudio = () => {
     // 층 1: 전원 험(형광등 웅웅 / PC 팬 저음). 층 2: 방 공기 노이즈. 층 3: 멀리 복도·환풍기 일렁임. 합쳐서 0.03 안팎으로 효과음 아래에 깔리게 한다.
     const hum = c.createOscillator(), hg = c.createGain(); hum.type = 'sine'; hum.frequency.value = cls ? 60 : 95; hg.gain.value = cls ? 0.011 : 0.008; hum.connect(hg); hg.connect(filter); hum.start(); background.push(hum, hg);
     if (cls) { const h2 = c.createOscillator(), g2 = c.createGain(); h2.type = 'sine'; h2.frequency.value = 120; g2.gain.value = 0.004; h2.connect(g2); g2.connect(filter); h2.start(); background.push(h2, g2); lfo(c, 0.31, 0.003, g2.gain); }
-    const air = loopNoise(c), low = c.createBiquadFilter(), ag = c.createGain(); low.type = 'lowpass'; low.frequency.value = cls ? 260 : 800; ag.gain.value = cls ? 0.011 : 0.016; air.connect(low); low.connect(ag); ag.connect(filter); air.start(); background.push(air, low, ag);
-    const far = loopNoise(c), band = c.createBiquadFilter(), fg = c.createGain(); band.type = 'bandpass'; band.frequency.value = cls ? 520 : 240; band.Q.value = 0.9; fg.gain.value = cls ? 0.005 : 0.004; far.connect(band); band.connect(fg); fg.connect(filter); far.start(); background.push(far, band, fg); lfo(c, cls ? 0.06 : 0.11, cls ? 0.004 : 0.003, fg.gain);
+    const air = loopNoise(c, 0), low = c.createBiquadFilter(), ag = c.createGain(); low.type = 'lowpass'; low.frequency.value = cls ? 260 : 800; ag.gain.value = cls ? 0.011 : 0.016; air.connect(low); low.connect(ag); ag.connect(filter); air.start(); background.push(air, low, ag);
+    const far = loopNoise(c, 1), band = c.createBiquadFilter(), fg = c.createGain(); band.type = 'bandpass'; band.frequency.value = cls ? 520 : 240; band.Q.value = 0.9; fg.gain.value = cls ? 0.005 : 0.004; far.connect(band); band.connect(fg); fg.connect(filter); far.start(); background.push(far, band, fg); lfo(c, cls ? 0.06 : 0.11, cls ? 0.004 : 0.003, fg.gain);
     // 생활 소음: 아주 작게 가끔(주의를 끌지 않을 정도). 발소리와 헷갈리지 않게 걸음 종류는 쓰지 않는다.
     const life = (): void => {
       if (cls) { const pick = Math.random(); if (pick < 0.5) for (let i = 0; i < 3; i++) noise(0.09, 0.012, 2600, i * 0.11); else if (pick < 0.8) noise(0.3, 0.014, 1800); else { noise(0.25, 0.012, 900); tone(170, 0.25, 0.005, 'sawtooth', 110); } }
@@ -129,7 +149,15 @@ export const createSlackAudio: CreateAudio = () => {
     const c = ensure();
     if (!c || held || resuming || c.state === 'running' || c.state === 'closed') return;
     resuming = true;
-    void c.resume().catch(() => {}).finally(() => { resuming = false; });
+    void c.resume().catch(() => {}).finally(() => {
+      resuming = false;
+      // A delayed resume may resolve after the player paused. The audio context
+      // must not be left running under a held game just because it was still
+      // 'suspended' when hold(true) was originally called.
+      if (held && !disposed && c.state === 'running' && !pendingSuspend) {
+        pendingSuspend = c.suspend().catch(() => {});
+      }
+    });
   };
   return {
     resume: resumeAudio,
@@ -167,7 +195,7 @@ export const createSlackAudio: CreateAudio = () => {
       disposed = true;
       stopBackground(); clearTimeout(bedTimer); bedTimer = 0;
       if (ctx && ctx.state !== 'closed') void ctx.close().catch(() => {});
-      ctx = null; master = null; filter = null; damp = null; comp = null; direct = null;
+      ctx = null; master = null; filter = null; damp = null; comp = null; direct = null; sfxNoise = null; ambienceNoise = [];
     },
   };
 };

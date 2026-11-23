@@ -41,7 +41,9 @@ const tracks = [
   { t: '느린 걸음', a: '해변의 밤', len: 196 }, { t: '자정의 편의점', a: '네온 라디오', len: 231 },
 ];
 
-const title = (label: string) => `<div class="sc-title"><span>${label}</span><span class="sc-title-btns">—　□　<button type="button" data-close aria-label="닫기">×</button></span></div>`;
+// Never depict fake minimize/maximize controls: this simulated desktop
+// supports taskbar app switching and a real close action, not window resizing.
+const title = (label: string) => `<div class="sc-title"><span>${label}</span><span class="sc-title-btns"><button type="button" data-close aria-label="${label} 창 닫기" title="창 닫기">×</button></span></div>`;
 
 export const createComputerView: CreateView = (sim, audio) => {
   const rooms = initialRooms.map(room => ({ ...room, msgs: [...room.msgs] }));
@@ -72,7 +74,15 @@ export const createComputerView: CreateView = (sim, audio) => {
   };
   const toast = (text: string, s = 3) => { setTxt(toastEl, text); toastEl.classList.add('on'); toastUntil = elapsed + s; };
   const say = (text: string, s = 2) => { setTxt(bubble, text); bubbleUntil = elapsed + s; };
-  const setBadge = (id: DormActivity, n: number) => { const b = taskBtn(id); const v = n > 0 ? String(n) : ''; if (b.dataset.badge !== v) b.dataset.badge = v; };
+  const setBadge = (id: DormActivity, n: number) => {
+    const button = taskBtn(id), value = n > 0 ? String(n) : '';
+    if (button.dataset.badge !== value) button.dataset.badge = value;
+    // CSS ::after badges are invisible to assistive technology. Keep the
+    // notification total in the accessible name of its taskbar button.
+    const index = apps.findIndex(app => app.id === id);
+    const label = `${apps[index].label} (${index + 1})${n > 0 ? ` · 새 알림 ${n}개` : ''}`;
+    if (button.getAttribute('aria-label') !== label) button.setAttribute('aria-label', label);
+  };
 
   const applyCover = () => {
     const on = sim.state.cover;
@@ -81,6 +91,9 @@ export const createComputerView: CreateView = (sim, audio) => {
     if (host.inert !== on) {
       if (on && host.contains(document.activeElement)) el.focus({ preventScroll: true });
       host.inert = on;
+      // Hidden under study notes is not the same as reading an open chat.
+      // Mark pending messages read only when the chat actually becomes visible.
+      if (!on && shown === 'chat') chatOpen(C.room);
     }
     syncMusicAudio();
   };
@@ -100,26 +113,36 @@ export const createComputerView: CreateView = (sim, audio) => {
 
   /* ---------- 게임: 별빛 던전(반응속도) ---------- */
   const G = { score: 0, best: 0, combo: 1, streak: 0, hp: 100, over: false, clock: 0, deadline: 0, nextAt: 0.5, on: false, life: 1.5 };
-  const gameHtml = () => `<div class="sc-game"><div class="sc-game-top"><span>별빛 던전</span><span>최고 <b data-g-best>0</b>　점수 <b data-score>0</b></span></div><div class="sc-health">체력 <span><i data-health style="width:100%"></i></span><em data-g-combo>x1</em></div><div class="sc-game-scene"><div class="sc-stars">✦　　·　　 ✧　　　✦</div><button type="button" class="sc-target" aria-label="별 터뜨리기"><b>★</b><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="18"/></svg></button><span class="sc-pop"></span><div class="sc-game-ground"></div><div class="sc-game-over"><strong>게임 오버</strong><span data-g-final></span><button type="button" data-g-retry>다시 하기</button></div></div><div class="sc-game-hint">나타나는 별을 사라지기 전에 눌러요 · 연속 성공 = 콤보!</div></div>`;
-  const gameEls = () => ({ score: $('[data-score]', wins.game), best: $('[data-g-best]', wins.game), hp: $('[data-health]', wins.game), combo: $('[data-g-combo]', wins.game), target: $('.sc-target', wins.game), pop: $('.sc-pop', wins.game), scene: $('.sc-game-scene', wins.game), over: $('.sc-game-over', wins.game), final: $('[data-g-final]', wins.game) });
-  const gameHud = () => { const g = gameEls(); setTxt(g.score, String(G.score)); setTxt(g.best, String(G.best)); setTxt(g.combo, `x${G.combo}`); g.hp.style.width = `${Math.max(0, G.hp)}%`; };
-  const gameReset = () => { Object.assign(G, { score: 0, combo: 1, streak: 0, hp: 100, over: false, on: false, nextAt: G.clock + 0.5, life: 1.5 }); const g = gameEls(); g.over.classList.remove('on'); g.target.classList.remove('on'); gameHud(); };
+  const gameHtml = () => `<div class="sc-game"><div class="sc-game-top"><span>별빛 던전</span><span>최고 <b data-g-best>0</b>　점수 <b data-score>0</b></span></div><div class="sc-health">체력 <span role="progressbar" aria-label="별빛 던전 체력" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i data-health style="width:100%"></i></span><small class="sc-game-left" data-g-left role="timer" aria-label="별 제한시간"></small><em data-g-combo>x1</em></div><div class="sc-game-scene"><div class="sc-stars">✦　　·　　 ✧　　　✦</div><button type="button" class="sc-target" aria-label="별 터뜨리기" aria-keyshortcuts="J"><b>★</b><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="18"/></svg></button><span class="sc-pop"></span><div class="sc-game-ground"></div><div class="sc-game-over"><strong>게임 오버</strong><span data-g-final></span><button type="button" data-g-retry>다시 하기</button></div></div><div class="sc-game-hint">별을 누르거나 <kbd>J</kbd> 키로 터뜨리세요 · 연속 성공은 콤보!</div></div>`;
+  // These ten nodes are stable for the life of the lazily constructed game
+  // window. Cache them once; the reaction timer runs on every animation frame.
+  const locateGameEls = () => ({ score: $('[data-score]', wins.game), best: $('[data-g-best]', wins.game), hp: $('[data-health]', wins.game), combo: $('[data-g-combo]', wins.game), remaining: $('[data-g-left]', wins.game), target: $('.sc-target', wins.game), pop: $('.sc-pop', wins.game), scene: $('.sc-game-scene', wins.game), over: $('.sc-game-over', wins.game), final: $('[data-g-final]', wins.game) });
+  let cachedGameEls: ReturnType<typeof locateGameEls> | null = null;
+  const gameEls = () => cachedGameEls ??= locateGameEls();
+  const gameHud = () => { const g = gameEls(); setTxt(g.score, String(G.score)); setTxt(g.best, String(G.best)); setTxt(g.combo, `x${G.combo}`); g.hp.style.width = `${Math.max(0, G.hp)}%`; const meter = g.hp.parentElement; if (meter?.getAttribute('aria-valuenow') !== String(G.hp)) meter?.setAttribute('aria-valuenow', String(G.hp)); };
+  const gameReset = () => { Object.assign(G, { score: 0, combo: 1, streak: 0, hp: 100, over: false, on: false, nextAt: G.clock + 0.5, life: 1.5 }); const g = gameEls(); g.over.classList.remove('on'); g.target.classList.remove('on'); setTxt(g.remaining, ''); gameHud(); };
   const gameSpawn = () => {
     const t = gameEls().target; G.life = Math.max(0.65, 1.6 - G.score / 450);
-    t.style.left = `${8 + Math.random() * 74}%`; t.style.top = `${16 + Math.random() * 42}%`; t.style.setProperty('--life', `${G.life}s`);
-    t.classList.remove('on'); void t.offsetWidth; t.classList.add('on'); G.on = true; G.deadline = G.clock + G.life;
+    // Keep the whole 46px star and its 8px countdown ring inside the game.
+    // CSS clamp() also follows viewport rotation without forcing layout reads.
+    const x = 8 + Math.random() * 74, y = 16 + Math.random() * 42;
+    const scene = gameEls().scene;
+    scene.style.setProperty('--star-x', `${x}%`);
+    scene.style.setProperty('--star-y', `${y}%`);
+    t.style.setProperty('--life', `${G.life}s`);
+    t.classList.remove('on'); void t.offsetWidth; t.classList.add('on'); G.on = true; G.deadline = G.clock + G.life; setTxt(gameEls().remaining, `${G.life.toFixed(1)}초`);
   };
-  const gamePop = (text: string, good: boolean) => { const p = gameEls().pop; const t = gameEls().target; p.style.left = t.style.left; p.style.top = t.style.top; p.textContent = text; p.classList.toggle('bad', !good); p.classList.remove('go'); void p.offsetWidth; p.classList.add('go'); };
+  const gamePop = (text: string, good: boolean) => { const p = gameEls().pop; p.textContent = text; p.classList.toggle('bad', !good); p.classList.remove('go'); void p.offsetWidth; p.classList.add('go'); };
   const gameHit = () => {
     if (G.over || !G.on) return;
     const gain = 10 * G.combo; G.score += gain; G.streak++; G.combo = Math.min(5, 1 + Math.floor(G.streak / 4)); G.hp = Math.min(100, G.hp + 2);
     audio.play('fun', 0.35 + G.combo * 0.08); gamePop(`+${gain}`, true);
     if (G.score > G.best) { if (G.best > 0 && G.score - gain <= G.best) audio.play('chime', 0.35); G.best = G.score; }
-    gameEls().target.classList.remove('on'); G.on = false; G.nextAt = G.clock + 0.25 + Math.random() * 0.45; gameHud();
+    gameEls().target.classList.remove('on'); setTxt(gameEls().remaining, ''); G.on = false; G.nextAt = G.clock + 0.25 + Math.random() * 0.45; gameHud();
   };
   const gameMiss = () => {
     G.on = false; G.hp -= 14; G.streak = 0; G.combo = 1; audio.play('key', 0.7); gamePop('놓침', false);
-    const g = gameEls(); g.target.classList.remove('on'); g.scene.classList.remove('shake'); void g.scene.offsetWidth; g.scene.classList.add('shake');
+    const g = gameEls(); g.target.classList.remove('on'); setTxt(g.remaining, ''); g.scene.classList.remove('shake'); void g.scene.offsetWidth; g.scene.classList.add('shake');
     if (G.hp <= 0) { G.over = true; G.hp = 0; audio.play('lock', 0.4); setTxt(g.final, `점수 ${G.score} · 최고 ${G.best}`); g.over.classList.add('on'); }
     G.nextAt = G.clock + 0.7; gameHud();
   };
@@ -127,24 +150,39 @@ export const createComputerView: CreateView = (sim, audio) => {
     if (shown !== 'game' || sim.state.cover || G.over) return;
     G.clock += dt;
     if (G.on && G.clock > G.deadline) gameMiss(); else if (!G.on && G.clock >= G.nextAt) gameSpawn();
+    if (G.on) setTxt(gameEls().remaining, `${Math.max(0, G.deadline - G.clock).toFixed(1)}초`);
   };
 
   /* ---------- 영상 ---------- */
   const V = { cur: 0, pos: 0, playing: true, sub: -1, sec: -1, nextComment: 5 };
-  const vidHtml = () => `<div class="sc-video"><div class="sc-video-main"><div class="sc-video-picture" data-vpic><div class="sc-video-sun"></div><div class="sc-video-cloud"></div><div class="sc-video-mountain"></div><div class="sc-video-play">❚❚</div><div class="sc-sub" data-sub></div></div><div class="sc-video-bar"><button type="button" data-vplay aria-label="일시정지">❚❚</button><span class="sc-progress"><i data-vprog></i></span><span data-vtime>0:00</span></div><b data-vtitle></b><small data-vmeta></small><div class="sc-comment" data-comments></div></div><div class="sc-video-list"><b>추천 영상</b>${videos.map((v, i) => `<button type="button" data-vid="${i}" style="--h:${v.h}"><span class="sc-thumb"><i></i></span><span><strong>${v.t}</strong><small>${v.ch} · ${v.views}</small></span></button>`).join('')}</div></div>`;
+  const vidHtml = () => `<div class="sc-video"><div class="sc-video-main"><div class="sc-video-picture" data-vpic><div class="sc-video-sun"></div><div class="sc-video-cloud"></div><div class="sc-video-mountain"></div><div class="sc-video-play">❚❚</div><div class="sc-sub" data-sub></div></div><div class="sc-video-bar"><button type="button" data-vplay aria-label="일시정지">❚❚</button><input class="sc-video-seek" type="range" data-vseek min="0" max="728" step="1" value="0" aria-label="영상 재생 위치"><span data-vtime>0:00</span></div><b data-vtitle></b><small data-vmeta></small><div class="sc-comment" data-comments></div></div><div class="sc-video-list"><b>추천 영상</b>${videos.map((v, i) => `<button type="button" data-vid="${i}" style="--h:${v.h}"><span class="sc-thumb"><i></i></span><span><strong>${v.t}</strong><small>${v.ch} · ${v.views}</small></span></button>`).join('')}</div></div>`;
+  const syncVideoTimeline = () => {
+    const w = wins.video, v = videos[V.cur];
+    const sub = Math.floor(V.pos / 3.5) % v.subs.length;
+    if (sub !== V.sub) { V.sub = sub; setTxt($('[data-sub]', w), v.subs[sub]); }
+    const sec = Math.floor(V.pos);
+    if (sec !== V.sec) {
+      V.sec = sec;
+      setTxt($('[data-vtime]', w), `${mmss(V.pos)} / ${mmss(v.len)}`);
+      const seek = $<HTMLInputElement>('[data-vseek]', w);
+      seek.value = String(sec);
+      seek.setAttribute('aria-valuetext', `${mmss(V.pos)} / ${mmss(v.len)}`);
+    }
+  };
   const vidSelect = (i: number) => {
     V.cur = i; V.pos = 0; V.sub = -1; V.sec = -1; V.nextComment = 3; V.playing = true;
     const w = wins.video; const v = videos[i];
     $('[data-vpic]', w).style.setProperty('--h', String(v.h)); setTxt($('[data-vtitle]', w), v.t); setTxt($('[data-vmeta]', w), `${v.ch} · 조회수 ${v.views}`);
+    const slider = $<HTMLInputElement>('[data-vseek]', w); slider.max = String(v.len);
     $('[data-comments]', w).replaceChildren(); w.querySelectorAll('[data-vid]').forEach((b, k) => b.classList.toggle('cur', k === i));
     $('[data-vpic]', w).classList.remove('paused'); const playButton = $('[data-vplay]', w); setTxt(playButton, '❚❚'); playButton.setAttribute('aria-label', '일시정지'); setTxt($('.sc-video-play', w), '❚❚');
+    syncVideoTimeline();
   };
   const vidTick = (dt: number) => {
     if (shown !== 'video' || sim.state.cover || !V.playing) return;
     const w = wins.video; const v = videos[V.cur]; V.pos += dt;
     if (V.pos >= v.len) { vidSelect((V.cur + 1) % videos.length); return; }
-    const sub = Math.floor(V.pos / 3.5) % v.subs.length; if (sub !== V.sub) { V.sub = sub; setTxt($('[data-sub]', w), v.subs[sub]); }
-    const sec = Math.floor(V.pos); if (sec !== V.sec) { V.sec = sec; setTxt($('[data-vtime]', w), `${mmss(V.pos)} / ${mmss(v.len)}`); $('[data-vprog]', w).style.transform = `scaleX(${V.pos / v.len})`; }
+    syncVideoTimeline();
     if (V.pos > V.nextComment) {
       V.nextComment = V.pos + 5 + Math.random() * 4; const list = $('[data-comments]', w); const p = document.createElement('p'); p.textContent = `●　${pick(commentPool)}`; list.append(p);
       while (list.childElementCount > 4) list.firstElementChild?.remove();
@@ -172,7 +210,11 @@ export const createComputerView: CreateView = (sim, audio) => {
     setBadge('chat', chatBadgeTotal());
   };
   const chatOpen = (i: number) => {
-    C.room = i; rooms[i].unread = 0; const w = wins.chat; const r = rooms[i];
+    C.room = i;
+    // The chat window may be built or switched to while the player is
+    // holding the study cover. Nothing behind that cover has been read yet.
+    if (!sim.state.cover) rooms[i].unread = 0;
+    const w = wins.chat; const r = rooms[i];
     setTxt($('[data-chat-name]', w), r.name); setTxt($('[data-chat-sub]', w), r.sub);
     $('[data-messages]', w).replaceChildren(...r.msgs.slice(-30).map(chatRow)); const m = $('[data-messages]', w); m.scrollTop = m.scrollHeight;
     $('[data-typing]', w).classList.toggle('on', typing[i]! > 0); chatRefresh();
@@ -183,7 +225,7 @@ export const createComputerView: CreateView = (sim, audio) => {
     // not an unbounded array, when users repeatedly tap quick replies.
     if (r.msgs.length > 60) r.msgs.splice(0, r.msgs.length - 60);
     if (!msg.m) {
-      if (shown === 'chat' && C.room === i) audio.play('chime', 0.4); else { r.unread++; audio.play('chime', 0.55); if (shown !== 'chat') toast(`${msg.who}: ${msg.t}`); }
+      if (shown === 'chat' && !sim.state.cover && C.room === i) audio.play('chime', 0.4); else { r.unread++; audio.play('chime', 0.55); if (shown !== 'chat') toast(`${msg.who}: ${msg.t}`); }
     }
     if (C.room === i && built.chat) {
       const list = $('[data-messages]', built.chat); const row = chatRow(msg); list.append(row);
@@ -211,36 +253,51 @@ export const createComputerView: CreateView = (sim, audio) => {
   let nextIncoming = 8;
 
   /* ---------- 웹툰 ---------- */
-  const W = { ep: 2, likes: 12 };
-  const toonHtml = () => `<div class="sc-webtoon"><div class="sc-webtoon-head"><b>달빛 아래 우리</b><span class="sc-eps">${episodes.map((e, i) => `<button type="button" data-ep="${i}" ${e.n === 13 ? 'hidden' : ''}>${e.n}화</button>`).join('')}</span><small data-read>0% 읽음</small></div>${episodes.map((e, i) => `<div class="sc-wt-scroll" data-eppane="${i}"><div class="sc-comic-sky"><span>제 ${e.n}화</span><i>☾</i><b>${e.title}</b></div>${e.lines.map((l, k) => `<div class="sc-comic-panel c${(k + i) % 3}"><div class="sc-comic-person">●<br>▰</div><p>${l}</p></div>`).join('')}<button type="button" class="sc-like" data-like>♡ 좋아요 <b>${W.likes}</b></button></div>`).join('')}</div>`;
+  const W = { ep: 2, likes: episodes.map(() => 12), liked: episodes.map(() => false) };
+  const toonHtml = () => `<div class="sc-webtoon"><div class="sc-webtoon-head"><b>달빛 아래 우리</b><span class="sc-eps">${episodes.map((e, i) => `<button type="button" data-ep="${i}" ${e.n === 13 ? 'hidden' : ''}>${e.n}화</button>`).join('')}</span><small data-read>0% 읽음</small></div>${episodes.map((e, i) => `<div class="sc-wt-scroll" data-eppane="${i}" tabindex="0" role="region" aria-label="${e.n}화 웹툰 본문"><div class="sc-comic-sky"><span>제 ${e.n}화</span><i>☾</i><b>${e.title}</b></div>${e.lines.map((l, k) => `<div class="sc-comic-panel c${(k + i) % 3}"><div class="sc-comic-person">●<br>▰</div><p>${l}</p></div>`).join('')}<button type="button" class="sc-like" data-like aria-label="${e.n}화 좋아요 ${W.likes[i]}개" aria-pressed="${W.liked[i]}">♡ 좋아요 <b>${W.likes[i]}</b></button></div>`).join('')}</div>`;
   const toonShow = (i: number) => {
     W.ep = i; const w = wins.webtoon;
-    w.querySelectorAll('[data-ep]').forEach((b, k) => b.classList.toggle('cur', k === i)); w.querySelectorAll('[data-eppane]').forEach((p, k) => p.classList.toggle('cur', k === i));
+    w.querySelectorAll('[data-ep]').forEach((b, k) => { b.classList.toggle('cur', k === i); b.setAttribute('aria-pressed', String(k === i)); }); w.querySelectorAll('[data-eppane]').forEach((p, k) => p.classList.toggle('cur', k === i));
     toonProgress();
   };
   const toonProgress = () => { const p = $(`[data-eppane="${W.ep}"]`, wins.webtoon); const max = p.scrollHeight - p.clientHeight; setTxt($('[data-read]', wins.webtoon), `${max > 0 ? Math.round((p.scrollTop / max) * 100) : 0}% 읽음`); };
 
   /* ---------- 쇼핑 ---------- */
-  const S = { cart: products.map(() => 0), deal: 1, left: 120, lastSec: -1 };
+  const S = { cart: products.map(() => 0), total: 0, deal: 1, left: 120, lastSec: -1 };
   const price = (i: number, deal = false) => Math.round(products[i].price * (deal ? 0.5 : 0.65));
-  const shopHtml = () => `<div class="sc-shop"><div class="sc-shop-head">오늘의 발견 <span>장바구니 <b data-cart>0</b></span></div><div class="sc-sale"><span class="sc-deal-ico" data-deal-ico></span><span class="sc-deal-txt"><small>심야 특가 · 50%</small><b data-deal-name></b><em data-deal-price></em></span><strong data-timer>02:00</strong><button type="button" data-add="deal">특가 담기</button></div><div class="sc-products">${products.map((p, i) => `<div><div class="sc-product p${i % 3}">${p.icon}</div><b>${p.name}</b><small><em>35%</em> ${price(i).toLocaleString('ko-KR')}원</small><button type="button" data-add="${i}">담기</button></div>`).join('')}</div><div class="sc-cartbar"><span data-total>합계 0원</span><button type="button" data-pay>결제하기</button></div></div>`;
-  const shopDeal = () => { const w = wins.shop; setTxt($('[data-deal-ico]', w), products[S.deal].icon); setTxt($('[data-deal-name]', w), products[S.deal].name); setTxt($('[data-deal-price]', w), `${price(S.deal, true).toLocaleString('ko-KR')}원`); };
+  const shopHtml = () => `<div class="sc-shop"><div class="sc-shop-head">오늘의 발견 <span>장바구니 <b data-cart>0</b></span></div><div class="sc-sale"><span class="sc-deal-ico" data-deal-ico></span><span class="sc-deal-txt"><small>심야 특가 · 50%</small><b data-deal-name></b><em data-deal-price></em></span><strong data-timer>02:00</strong><button type="button" data-add="deal" aria-label="심야 특가 상품 담기">특가 담기</button></div><div class="sc-products">${products.map((p, i) => `<div><div class="sc-product p${i % 3}">${p.icon}</div><b>${p.name}</b><small><em>35%</em> ${price(i).toLocaleString('ko-KR')}원</small><button type="button" data-add="${i}" aria-label="${p.name} 35% 할인가 ${price(i).toLocaleString('ko-KR')}원에 담기">담기</button></div>`).join('')}</div><div class="sc-cartbar"><span data-total role="status" aria-live="polite" aria-atomic="true">합계 0원</span><button type="button" data-pay>결제하기</button></div></div>`;
+  const shopDeal = () => { const w = wins.shop; setTxt($('[data-deal-ico]', w), products[S.deal].icon); setTxt($('[data-deal-name]', w), products[S.deal].name); setTxt($('[data-deal-price]', w), `${price(S.deal, true).toLocaleString('ko-KR')}원`); $('[data-add="deal"]', w).setAttribute('aria-label', `${products[S.deal].name} 심야 특가 ${price(S.deal, true).toLocaleString('ko-KR')}원에 담기`); };
   const shopTotals = () => {
-    const n = S.cart.reduce((a, b) => a + b, 0); const sum = S.cart.reduce((a, c, i) => a + c * price(i, i === S.deal), 0);
-    setTxt($('[data-cart]', wins.shop), String(n)); setTxt($('[data-total]', wins.shop), `합계 ${sum.toLocaleString('ko-KR')}원`);
+    const n = S.cart.reduce((a, b) => a + b, 0);
+    // Lock each item's displayed price at the moment it enters the cart.
+    // A rotating flash deal must never retroactively reprice earlier items.
+    setTxt($('[data-cart]', wins.shop), String(n)); setTxt($('[data-total]', wins.shop), `합계 ${S.total.toLocaleString('ko-KR')}원`);
   };
   const shopTick = (dt: number) => {
     S.left -= dt;
-    if (S.left <= 0) { S.left = 120; S.deal = (S.deal + 1) % products.length; if (built.shop) shopDeal(); if (shown !== 'shop') { setBadge('shop', 1); audio.play('chime', 0.3); toast('새 심야 특가가 열렸어요!'); } }
+    if (S.left <= 0) {
+      // A large elapsed-time step can cross several two-minute deals. Do not
+      // throw away remainder time or incorrectly display an older promotion.
+      const rotations = 1 + Math.floor(-S.left / 120);
+      S.left += rotations * 120;
+      S.deal = (S.deal + rotations) % products.length;
+      if (built.shop) shopDeal();
+      if (shown !== 'shop') { setBadge('shop', 1); audio.play('chime', 0.3); toast('새 심야 특가가 열렸어요!'); }
+    }
     const sec = Math.ceil(S.left); if (sec !== S.lastSec) { S.lastSec = sec; if (built.shop) setTxt($('[data-timer]', built.shop), `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`); }
   };
 
   /* ---------- 음악 ---------- */
   const M = { cur: 0, p: 0, playing: true, sec: -1 };
-  const musicHtml = () => `<div class="sc-music"><div class="sc-album"><div class="sc-disc">☾</div><span data-m-cap>새벽의 온도</span></div><div class="sc-music-info"><small>지금 재생 중</small><strong data-m-title aria-live="polite"></strong><span data-m-art></span><div class="sc-visualizer">${Array.from({ length: 20 }, (_, i) => `<i style="--n:${i}"></i>`).join('')}</div><div class="sc-progress"><i data-m-prog></i></div><div class="sc-music-controls"><button type="button" data-m="prev" aria-label="이전 곡">◀◀</button><button type="button" data-m="play" aria-label="일시정지">❚❚</button><button type="button" data-m="next" aria-label="다음 곡">▶▶</button><span data-m-time>0:00</span></div></div><div class="sc-playlist"><b>재생 목록</b>${tracks.map((t, i) => `<button type="button" data-track="${i}" aria-pressed="${M.cur === i}" aria-label="${t.t}, ${mmss(t.len)}">${String(i + 1).padStart(2, '0')}　${t.t} <span>${mmss(t.len)}</span></button>`).join('')}</div></div>`;
+  const musicHtml = () => `<div class="sc-music"><div class="sc-album"><div class="sc-disc">☾</div><span data-m-cap>새벽의 온도</span></div><div class="sc-music-info"><small>지금 재생 중</small><strong data-m-title aria-live="polite"></strong><span data-m-art></span><div class="sc-visualizer">${Array.from({ length: 20 }, (_, i) => `<i style="--n:${i}"></i>`).join('')}</div><div class="sc-progress" role="progressbar" aria-label="음악 재생 진행도" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i data-m-prog></i></div><div class="sc-music-controls"><button type="button" data-m="prev" aria-label="이전 곡">◀◀</button><button type="button" data-m="play" aria-label="일시정지">❚❚</button><button type="button" data-m="next" aria-label="다음 곡">▶▶</button><span data-m-time>0:00</span></div></div><div class="sc-playlist"><b>재생 목록</b>${tracks.map((t, i) => `<button type="button" data-track="${i}" aria-pressed="${M.cur === i}" aria-label="${t.t}, ${mmss(t.len)}">${String(i + 1).padStart(2, '0')}　${t.t} <span>${mmss(t.len)}</span></button>`).join('')}</div></div>`;
   const musicSet = (i: number) => {
     M.cur = (i + tracks.length) % tracks.length; M.p = 0; M.sec = -1; const w = wins.music; const t = tracks[M.cur];
-    setTxt($('[data-m-title]', w), t.t); setTxt($('[data-m-art]', w), t.a); w.querySelectorAll('[data-track]').forEach((p, k) => { const current = k === M.cur; p.classList.toggle('cur', current); p.setAttribute('aria-pressed', String(current)); });
+    setTxt($('[data-m-title]', w), t.t); setTxt($('[data-m-art]', w), t.a);
+    setTxt($('[data-m-time]', w), '0:00');
+    $('[data-m-prog]', w).style.transform = 'scaleX(0)';
+    const progress = $('.sc-progress[role="progressbar"]', w);
+    progress.setAttribute('aria-valuenow', '0');
+    w.querySelectorAll('[data-track]').forEach((p, k) => { const current = k === M.cur; p.classList.toggle('cur', current); p.setAttribute('aria-pressed', String(current)); });
   };
   let earbudsActive = false;
   /** The lecture cover pauses the mini-player and its procedural headphone bed. */
@@ -253,7 +310,14 @@ export const createComputerView: CreateView = (sim, audio) => {
   const musicTick = (dt: number) => {
     if (shown !== 'music' || sim.state.cover || !M.playing) return;
     M.p += dt / tracks[M.cur].len; if (M.p >= 1) { musicSet(M.cur + 1); return; }
-    const sec = Math.floor(M.p * tracks[M.cur].len); if (sec !== M.sec) { M.sec = sec; setTxt($('[data-m-time]', wins.music), mmss(sec)); $('[data-m-prog]', wins.music).style.transform = `scaleX(${M.p})`; }
+    const sec = Math.floor(M.p * tracks[M.cur].len); if (sec !== M.sec) {
+      M.sec = sec; const w = wins.music;
+      setTxt($('[data-m-time]', w), mmss(sec));
+      $('[data-m-prog]', w).style.transform = `scaleX(${M.p})`;
+      const progress = $('.sc-progress[role="progressbar"]', w);
+      const value = String(Math.min(100, Math.round(M.p * 100)));
+      if (progress.getAttribute('aria-valuenow') !== value) progress.setAttribute('aria-valuenow', value);
+    }
   };
 
   /* ---------- 창 생성/전환 (한 번만 만들고 켜고 끔) ---------- */
@@ -302,7 +366,7 @@ export const createComputerView: CreateView = (sim, audio) => {
   const click = (event: MouseEvent) => {
     audio.resume();
     const target = event.target as Element;
-    if (event.detail > 0 && target.closest('button') !== coverButton) el.focus({ preventScroll: true });
+    if (event.detail > 0 && !target.closest('input,select,textarea,[data-eppane]') && target.closest('button') !== coverButton) el.focus({ preventScroll: true });
     const app = target.closest<HTMLElement>('[data-app]');
     if (app) { select(app.dataset.app as DormActivity); return; }
     if (target.closest('.sc-friend')) { audio.resume(); audio.play('click'); say(sim.bribe() ? '냠냠… 고마워!' : '지금은 배불러…', 1.6); return; }
@@ -316,16 +380,52 @@ export const createComputerView: CreateView = (sim, audio) => {
     const chip = target.closest<HTMLElement>('[data-chip]');
     if (chip) { audio.play('key', 0.6); chatPush(C.room, { m: true, who: '', t: chip.dataset.chip ?? '' }); chatIncoming(C.room, pick(rooms[C.room].reply), 1.8 + Math.random() * 1.5); return; }
     const ep = target.closest<HTMLElement>('[data-ep]'); if (ep) { audio.play('click'); toonShow(Number(ep.dataset.ep)); return; }
-    const like = target.closest('[data-like]'); if (like) { audio.play('chime', 0.3); W.likes++; const b = like.querySelector('b'); setTxt(b as HTMLElement, String(W.likes)); like.classList.add('liked'); return; }
+    const like = target.closest<HTMLButtonElement>('[data-like]');
+    if (like) {
+      const i = Number(like.closest<HTMLElement>('[data-eppane]')?.dataset.eppane);
+      if (!Number.isInteger(i) || i < 0 || i >= episodes.length) return;
+      W.liked[i] = !W.liked[i];
+      W.likes[i] += W.liked[i] ? 1 : -1;
+      audio.play('chime', 0.3);
+      like.classList.toggle('liked', W.liked[i]);
+      like.setAttribute('aria-pressed', String(W.liked[i]));
+      like.setAttribute('aria-label', `${episodes[i].n}화 좋아요 ${W.likes[i]}개`);
+      const count = like.querySelector<HTMLElement>('b');
+      setTxt(count, String(W.likes[i]));
+      like.firstChild!.textContent = W.liked[i] ? '♥ 좋아요 ' : '♡ 좋아요 ';
+      return;
+    }
     const add = target.closest<HTMLElement>('[data-add]');
     if (add) {
-      audio.play('click'); const i = add.dataset.add === 'deal' ? S.deal : Number(add.dataset.add); S.cart[i]++; shopTotals();
-      add.classList.remove('bump'); void add.offsetWidth; add.classList.add('bump'); if (add.dataset.add !== 'deal') add.textContent = `담김 ×${S.cart[i]}`; return;
+      const isDeal = add.dataset.add === 'deal'; const i = isDeal ? S.deal : Number(add.dataset.add);
+      if (!Number.isInteger(i) || i < 0 || i >= products.length) return;
+      audio.play('click'); S.cart[i]++; S.total += price(i, isDeal); shopTotals();
+      add.classList.remove('bump'); void add.offsetWidth; add.classList.add('bump');
+      // Normal and flash-sale buttons add to the same product quantity.
+      const regular = wins.shop.querySelector<HTMLButtonElement>(`[data-add="${i}"]`);
+      if (regular) { regular.textContent = `담김 ×${S.cart[i]}`; regular.setAttribute('aria-label', `${products[i].name} · 장바구니 ${S.cart[i]}개 · 35% 할인가 ${price(i).toLocaleString('ko-KR')}원에 담기`); }
+      return;
     }
     if (target.closest('[data-pay]')) { audio.play('key', 0.6); toast(S.cart.some(Boolean) ? '잔액이 부족합니다. (용돈은 이미 야식으로…)' : '장바구니가 비어 있어요.', 2.5); return; }
     const mb = target.closest<HTMLElement>('[data-m]');
     if (mb) { audio.play('click'); const k = mb.dataset.m; if (k === 'play') musicPlay(!M.playing); else musicSet(M.cur + (k === 'next' ? 1 : -1)); return; }
     const tr = target.closest<HTMLElement>('[data-track]'); if (tr) { audio.play('click'); musicSet(Number(tr.dataset.track)); musicPlay(true); }
+  };
+  const input = (event: Event) => {
+    const seek = (event.target as Element).closest<HTMLInputElement>('[data-vseek]');
+    if (!seek || shown !== 'video' || sim.state.cover) return;
+    const seconds = Number(seek.value), max = videos[V.cur].len;
+    if (!Number.isFinite(seconds)) return;
+    const next = Math.min(max - 0.01, Math.max(0, seconds));
+    if (Math.abs(next - V.pos) > 3) {
+      // A seek jumps past the previous comment timeline. Reset simulated live
+      // chat instead of retaining future comments or an outdated deadline.
+      V.nextComment = next + 4;
+      $('[data-comments]', wins.video).replaceChildren();
+    }
+    V.pos = next;
+    V.sec = -1; V.sub = -1;
+    syncVideoTimeline();
   };
   const keydown = (event: KeyboardEvent) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
@@ -337,6 +437,10 @@ export const createComputerView: CreateView = (sim, audio) => {
       event.preventDefault(); select(apps[Number(event.key) - 1].id);
     } else if (!event.repeat && event.key.toLowerCase() === 'f') {
       audio.resume(); audio.play('key'); say(sim.bribe() ? '냠냠… 고마워!' : '지금은 배불러…', 1.6);
+    } else if (!event.repeat && event.key.toLowerCase() === 'j' && shown === 'game' && !sim.state.cover) {
+      // An accessible alternative to chasing a transient star with Tab.
+      // Repeat events cannot score more than one hit per spawn.
+      event.preventDefault(); audio.resume(); gameHit();
     }
   };
   const keyup = (event: KeyboardEvent) => { if (coverKey && event.code === 'Space') { event.preventDefault(); coverKey = false; updateCover(); } };
@@ -345,7 +449,9 @@ export const createComputerView: CreateView = (sim, audio) => {
     event.preventDefault(); el.focus({ preventScroll: true }); audio.resume(); audio.play('click'); coverMiddle = event.pointerId; updateCover();
   };
   const pointerup = (event: PointerEvent) => {
-    if (coverMiddle === event.pointerId && (event.button === 1 || event.type === 'pointercancel')) { coverMiddle = null; updateCover(); }
+    // Pointerup means the held pointer ended. Some trackpads and browsers
+    // report button=0 on the final release of a middle-button gesture.
+    if (coverMiddle === event.pointerId) { coverMiddle = null; updateCover(); }
     // A browser without pointer capture can deliver release outside the cover
     // button. The window listener must end the held cover in that case.
     if (coverPointer === event.pointerId) { coverPointer = null; updateCover(); }
@@ -371,6 +477,7 @@ export const createComputerView: CreateView = (sim, audio) => {
   const inputs = new AbortController();
   const options = { signal: inputs.signal };
   el.addEventListener('click', click, options);
+  el.addEventListener('input', input, options);
   el.addEventListener('keydown', keydown, options); el.addEventListener('keyup', keyup, options);
   el.addEventListener('focusout', focusout, options); el.addEventListener('pointerdown', pointerdown, options);
   host.addEventListener('scroll', scroll, { ...options, capture: true });
@@ -390,6 +497,9 @@ export const createComputerView: CreateView = (sim, audio) => {
   }
   const modes = ['away', 'approach', 'peek', 'scan', 'leave'];
   return { el, frame(dt) {
+    // Bad frame timestamps should not poison clocks, shopping promotions or
+    // the messenger queue for the rest of the game instance.
+    if (!Number.isFinite(dt) || dt < 0) return;
     elapsed += dt;
     const state = sim.state; const id = apps.some(a => a.id === state.activity) ? state.activity as DormActivity : null;
     if (id !== shown) renderApp(id);

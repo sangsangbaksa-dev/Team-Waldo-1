@@ -89,6 +89,20 @@ it('supports hold-to-cover on classroom touch controls without pointer capture',
   view.dispose();
 });
 
+it('does not corrupt classroom warning animations after a bad frame delta', () => {
+  const sim = createSim('class', 19, 1); sim.start();
+  const stage = createClassroomView(sim, audio);
+  document.body.append(stage.el);
+  stage.onEvent({ t: 'footstep', vol: 0.65 });
+  for (const dt of [NaN, Infinity, -Infinity, -1]) stage.frame(dt);
+  stage.frame(0.1);
+  const room = stage.el.querySelector<HTMLElement>('.sl-room')!;
+  expect(room.dataset.step).toBe('2');
+  stage.frame(0.5);
+  expect(room.dataset.step).toBe('2');
+  stage.dispose(); stage.el.remove();
+});
+
 it('keeps tactical map keyboard focus after clicking with a mouse or trackpad', () => {
   const sim = createSim('class', 3, 1); sim.start();
   const view = createClassroomView(sim, audio);
@@ -102,10 +116,11 @@ it('keeps tactical map keyboard focus after clicking with a mouse or trackpad', 
   Object.assign(e, { button: 0, clientX: 100, clientY: 90 });
   canvas.dispatchEvent(e);
   expect(document.activeElement).toBe(canvas);
+  expect(view.el.querySelector('#sl-rts-cursor')?.textContent).toContain('지휘 위치 100, 90 · 이동 지시');
   const arrow = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'ArrowRight' });
   canvas.dispatchEvent(arrow);
   expect(arrow.defaultPrevented).toBe(true);
-  expect(view.el.querySelector('#sl-rts-cursor')?.textContent).toContain('지휘 위치');
+  expect(view.el.querySelector('#sl-rts-cursor')?.textContent).toBe('지휘 위치 108, 90');
   view.dispose();
 });
 

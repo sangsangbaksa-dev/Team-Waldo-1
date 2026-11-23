@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readSlackRecord, recordSlackRun } from '../../src/slack/records';
 
 afterEach(() => localStorage.clear());
@@ -15,6 +15,41 @@ describe('SLACK OFF best-score validation', () => {
     expect(readSlackRecord().best).toEqual({ class: undefined, dorm: { score: 81, grade: 'A' } });
     expect(recordSlackRun('class', 22, 'C')).toBe(true);
     expect(readSlackRecord().best.class).toEqual({ score: 22, grade: 'C' });
+  });
+
+  it('keeps the best score visible if localStorage refuses writes, then persists it on recovery', () => {
+    const blocked = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('Storage access denied');
+    });
+    try {
+      expect(recordSlackRun('class', 4721, 'A')).toBe(true);
+      expect(readSlackRecord().best.class).toEqual({ score: 4721, grade: 'A' });
+      expect(recordSlackRun('class', 4000, 'B')).toBe(false);
+    } finally {
+      blocked.mockRestore();
+    }
+    expect(recordSlackRun('dorm', 18, 'C')).toBe(true);
+    expect(readSlackRecord().best).toEqual({
+      class: { score: 4721, grade: 'A' },
+      dorm: { score: 18, grade: 'C' },
+    });
+    expect(JSON.parse(localStorage.getItem('waldo.slack.v1')!).best.class.score).toBe(4721);
+  });
+
+  it('flushes a pending best score when storage recovers even after a lower-scoring run', () => {
+    const blocked = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('Storage temporarily disabled');
+    });
+    try {
+      expect(recordSlackRun('dorm', 520, 'S')).toBe(true);
+      expect(readSlackRecord().best.dorm?.score).toBe(520);
+    } finally {
+      blocked.mockRestore();
+    }
+    // Lower-scoring attempt should not count as a new record, but must
+    // still write the in-memory best now that storage has recovered.
+    expect(recordSlackRun('dorm', 300, 'B')).toBe(false);
+    expect(JSON.parse(localStorage.getItem('waldo.slack.v1')!).best.dorm).toEqual({ score: 520, grade: 'S' });
   });
 
   it('handles corrupted scores, grades and JSON without throwing', () => {

@@ -1,4 +1,4 @@
-﻿.sl-class{position:relative;display:flex;flex-direction:column;height:100%;min-height:420px;overflow:hidden;background:#202623;color:#eee8d8;font-family:system-ui,sans-serif;user-select:none;-webkit-user-select:none}
+﻿.sl-class{position:relative;display:flex;flex-direction:column;height:100%;min-height:420px;overflow:hidden;background:#202623;color:#eee8d8;font-family:inherit;user-select:none;-webkit-user-select:none}
 .sl-room{position:relative;flex:1;min-height:300px;overflow:hidden;container-type:size;background:linear-gradient(#7d8277 0 50%,#3c423b 50%)}
 .sl-world{position:absolute;inset:0}
 .sl-room>*{pointer-events:none}
@@ -188,8 +188,8 @@
   .sl-class{min-height:0}
   .sl-room{min-height:0}
   .sl-win.gm{container-type:inline-size}
-  .sl-gbar{height:44px;gap:1cqw}
-  .sl-gbar button{height:44px;min-width:44px;padding-inline:4px}
+  .sl-gbar{height:44px;gap:1cqw;font-size:clamp(10px,2.4cqw,13px)}
+  .sl-gbar button{height:44px;min-width:44px;padding-inline:4px;font-size:clamp(10px,2.4cqw,13px)}
 }
 
 /* Make the classroom mini-RTS playable with a keyboard as well as a pointer. */
@@ -202,3 +202,10 @@
 .sl-end button:hover{background:#ffebb5}
 .sl-end button:focus-visible{outline:2px solid #fff;outline-offset:2px}
 @media(any-pointer:coarse){.sl-end button{min-height:44px}}
+
+/* Extra bottom space only on devices where the home indicator consumes it. */
+.sl-class .sl-controls{
+  padding-bottom:max(9px,env(safe-area-inset-bottom,0px));
+  padding-left:max(9px,env(safe-area-inset-left,0px));
+  padding-right:max(9px,env(safe-area-inset-right,0px));
+}

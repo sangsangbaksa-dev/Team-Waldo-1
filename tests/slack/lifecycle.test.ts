@@ -42,6 +42,48 @@ afterEach(() => {
   vi.unstubAllGlobals(); vi.restoreAllMocks();
 });
 
+it('honors the stored reduced-motion preference independently of the OS setting', () => {
+  localStorage.setItem('waldo.preferences.v1', JSON.stringify({
+    sound: false, quality: 'low', reducedMotion: true,
+  }));
+  openSlack(vi.fn());
+  expect(document.querySelector('.sl-root')?.classList.contains('sl-reduced-motion')).toBe(true);
+});
+
+it('shows an accessible, cancellable loading screen until the stage import resolves', async () => {
+  openSlack(vi.fn());
+  button('[data-start]').click();
+  const loading = document.querySelector<HTMLElement>('.sl-root [data-loading]')!;
+  expect(loading.hidden).toBe(false);
+  expect(loading.getAttribute('role')).toBe('dialog');
+  expect(document.activeElement).toBe(button('[data-loading] [data-exit]'));
+  await vi.dynamicImportSettled();
+  expect(loading.hidden).toBe(true);
+  expect(document.querySelector('.slack-computer, .sl-class')).not.toBeNull();
+});
+
+it('can exit during a pending stage import without reopening the disposed game', async () => {
+  const onExit = vi.fn();
+  openSlack(onExit);
+  const root = document.querySelector<HTMLElement>('.sl-root')!;
+  button('[data-stage="dorm"]').click();
+  button('[data-start]').click();
+  expect(button('[data-loading]').hidden).toBe(false);
+  button('[data-loading] [data-exit]').click();
+  expect(onExit).toHaveBeenCalledTimes(1);
+  expect(root.isConnected).toBe(false);
+  await vi.dynamicImportSettled();
+  expect(document.querySelector('.sl-root')).toBeNull();
+});
+
+it('explains that meeting the fun goal still requires surviving the full round', () => {
+  openSlack(vi.fn());
+  const intro = document.querySelector<HTMLElement>('.sl-root .sl-lead')!;
+  expect(intro.textContent).toContain('2분 30초');
+  expect(intro.textContent).toContain('끝까지 버티세요');
+  expect(intro.textContent).toContain('세 번 들키면');
+});
+
 it('starts once, advances by elapsed play time, and cancels the frame on exit', async () => {
   const exit = vi.fn();
   openSlack(exit);
@@ -103,6 +145,35 @@ it('keeps an active dorm game target when switching away and back', async () => 
   key('1'); advance(100);
   expect(button('.sc-app-game').inert).toBe(false);
   expect(button('.sc-target').classList.contains('on')).toBe(true);
+});
+
+it('automatically pauses if the user switches windows without hiding the browser tab', async () => {
+  openSlack(vi.fn());
+  button('[data-stage="dorm"]').click(); button('[data-start]').click();
+  await vi.dynamicImportSettled();
+  const sim = vi.mocked(createSim).mock.results[0].value;
+  advance(250);
+  const elapsed = sim.state.time;
+  window.dispatchEvent(new Event('blur'));
+  expect(button('[data-paused]').hidden).toBe(false);
+  expect(frames.size).toBe(0);
+  advance(2000);
+  expect(sim.state.time).toBe(elapsed);
+  button('[data-resume]').click();
+  advance(100);
+  expect(sim.state.time).toBeGreaterThan(elapsed);
+});
+
+it('pauses after lazy stage loading if the window lost focus during import', async () => {
+  openSlack(vi.fn());
+  button('[data-start]').click();
+  window.dispatchEvent(new Event('blur')); // Before the stage import finishes.
+  await vi.dynamicImportSettled();
+  expect(button('[data-paused]').hidden).toBe(false);
+  expect(frames.size).toBe(0);
+  button('[data-resume]').click();
+  expect(button('[data-paused]').hidden).toBe(true);
+  window.dispatchEvent(new Event('focus'));
 });
 
 it('bounds a long foreground frame stall without skipping normal frames', async () => {
@@ -195,4 +266,51 @@ it('stops the scheduled animation immediately on pause even with a live toast', 
   expect(frames.size).toBe(0);
   button('[data-resume]').click();
   expect(frames.size).toBe(1);
+});
+
+it('exposes live fun and risk values to assistive technology without interrupting play', async () => {
+  openSlack(vi.fn());
+  button('[data-start]').click();
+  await vi.dynamicImportSettled();
+  const fun = document.querySelector<HTMLElement>('.sl-root [data-fun-meter]')!;
+  const risk = document.querySelector<HTMLElement>('.sl-root [data-risk-meter]')!;
+  expect(fun.getAttribute('role')).toBe('progressbar');
+  expect(risk.getAttribute('role')).toBe('progressbar');
+  const sim = vi.mocked(createSim).mock.results[0].value;
+  sim.state.fun = 31; sim.state.sus = 72;
+  advance(100);
+  expect(fun.getAttribute('aria-valuenow')).toBe('31');
+  expect(fun.getAttribute('aria-valuetext')).toBe('31 / 54');
+  expect(risk.getAttribute('aria-valuenow')).toBe('72');
+  expect(fun.getAttribute('aria-valuemax')).toBe('100');
+});
+
+it('traps forward and reverse Tab navigation inside title, pause and result dialogs', async () => {
+  openSlack(vi.fn());
+  const checkTrap = (selector: string) => {
+    const dialog = document.querySelector<HTMLElement>(`.sl-root ${selector}`)!;
+    const controls = Array.from(dialog.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+    const first = controls[0]!, last = controls[controls.length - 1]!;
+    last.focus();
+    const forward = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    last.dispatchEvent(forward);
+    expect(forward.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(first);
+    first.focus();
+    const reverse = new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true });
+    first.dispatchEvent(reverse);
+    expect(reverse.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(last);
+  };
+
+  checkTrap('[data-title]');
+  button('[data-start]').click();
+  await vi.dynamicImportSettled();
+  key('p');
+  checkTrap('[data-paused]');
+  button('[data-resume]').click();
+  const sim = vi.mocked(createSim).mock.results[0].value;
+  sim.state.time = sim.state.limit - 0.05;
+  advance(100);
+  checkTrap('[data-result]');
 });

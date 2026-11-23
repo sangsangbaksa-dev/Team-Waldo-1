@@ -1,0 +1,53 @@
+name: SLACK OFF regression
+
+on:
+  pull_request:
+    paths:
+      - 'src/slack/**'
+      - 'tests/slack/**'
+      - 'tools/slack-browser-smoke.mjs'
+      - '.github/workflows/slack-off-regression.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: slack-off-regression-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  slack:
+    name: SLACK OFF lint, tests, typecheck and build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Lint SLACK OFF only
+        run: npx eslint src/slack tests/slack
+      - name: SLACK OFF regression tests
+        run: npx vitest run tests/slack
+      - name: Whole-repository Vitest regression
+        run: npm test
+      - name: Repository typecheck
+        run: npm run typecheck
+      - name: Production bundle build
+        run: npm run build
+      - name: Install Chromium headless shell
+        run: npx playwright install --with-deps chromium --only-shell
+      - name: Real browser SLACK OFF regression
+        timeout-minutes: 6
+        run: node tools/slack-browser-smoke.mjs
+      - name: Upload SLACK OFF browser screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: slack-off-browser-evidence
+          path: browser-artifacts/slack-off-*
+          if-no-files-found: warn
+          retention-days: 7

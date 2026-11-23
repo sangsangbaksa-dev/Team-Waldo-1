@@ -28,15 +28,18 @@ const tutorialSteps: { text: string; classText?: string; done: (s: SlackState, t
   { text: '먼저 딴짓을 골라 보세요. 숫자 키 또는 화면의 활동 버튼을 누르면 돼요.', classText: '먼저 딴짓을 골라 보세요. 1 게임 영상 시청 · 2 게임 플레이 (키 또는 노트북 화면의 버튼).', done: s => s.activity !== null },
   { text: '딴짓하는 동안 재미 게이지가 차올라요. 발소리와 문 소리에 귀를 기울이세요.', classText: '재미 게이지가 차올라요. 발소리와 유리창 너머 그림자를 살피세요. 게임은 재미가 크지만 소리가 커서 더 위험해요.', done: (s, t) => s.watcher.mode !== 'away' || t > 25 },
   { text: '감독이 다가와요! 스페이스바를 꾹 누르거나(모바일은 공부하는 척 버튼) 공부하는 척하세요.', classText: '감독이 다가와요! 스페이스바를 꾹 눌러(모바일은 버튼) 수업 자료 창으로 전환하세요.', done: (s, t) => (s.cover && s.watcher.mode !== 'away') || s.watcher.mode === 'leave' || t > 20 },
-  { text: '좋아요! 감독이 떠나면 다시 딴짓하세요. 재미가 목표선(흰 막대)에 닿으면 클리어예요.', done: (_s, t) => t > 7 },
+  { text: '좋아요! 감독이 떠나면 다시 딴짓하세요. 목표선까지 재미를 채우고 남은 시간도 무사히 버텨야 성공이에요.', done: (_s, t) => t > 7 },
 ];
 
 export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } = {}): void {
+  const preferences = readPreferences();
   const root = document.createElement('div'); root.className = 'sl-root';
+  root.classList.toggle('sl-reduced-motion', preferences.reducedMotion);
   root.innerHTML = `<div class="sl-view"></div><div class="sl-vignette"></div>
-  <div class="sl-hud" hidden><div class="sl-hudclock"><span>남은 시간</span><b data-time>02:30</b></div><div class="sl-fun"><div><b>재미</b><span data-fun></span></div><div class="sl-track"><i data-fun-bar></i><em data-goal></em></div></div><div class="sl-numbers"><span class="sl-chip">들킴 <span class="sl-pips" data-pips><i></i><i></i><i></i></span><b hidden data-strikes>0</b></span><span class="sl-chip" data-battery-chip>배터리 <b data-battery>100</b>%</span><span class="sl-chip">연속 <b data-combo>1</b>배</span><span class="sl-chip" data-risk-chip>긴장 <span class="sl-risk"><i><em data-risk></em></i></span></span></div><div class="sl-tools"><button data-sound>소리 켜짐</button><button data-pause>일시정지</button></div></div>
+  <div class="sl-hud" hidden><div class="sl-hudclock"><span>남은 시간</span><b data-time>02:30</b></div><div class="sl-fun"><div><b>재미</b><span data-fun></span></div><div class="sl-track" data-fun-meter role="progressbar" aria-label="재미" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i data-fun-bar></i><em data-goal></em></div></div><div class="sl-numbers"><span class="sl-chip">들킴 <span class="sl-pips" data-pips><i></i><i></i><i></i></span><b hidden data-strikes>0</b></span><span class="sl-chip" data-battery-chip>배터리 <b data-battery>100</b>%</span><span class="sl-chip">연속 <b data-combo>1</b>배</span><span class="sl-chip" data-risk-chip>긴장 <span class="sl-risk"><i data-risk-meter role="progressbar" aria-label="긴장도" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><em data-risk></em></i></span></span></div><div class="sl-tools"><button data-sound>소리 켜짐</button><button data-pause>일시정지</button></div></div>
   <div class="sl-tip" data-tip hidden role="note"><b data-tip-step>안내</b><span data-tip-text></span><button type="button" data-tip-skip>건너뛰기</button></div><div class="sl-toast" role="status"></div>
-  <div class="sl-modal wd-screen" data-title role="dialog" aria-modal="true" aria-label="SLACK OFF 시작 메뉴"><div class="sl-card sl-titlecard wd-panel"><div class="sl-kicker">오늘도 무사히</div><h1>SLACK OFF <small>딴짓</small></h1><p class="sl-lead">조용한 밤, 눈치를 살피며 나만의 시간을 즐겨 보세요. 재미 게이지를 목표까지 채우되 세 번 들키면 끝!</p><div class="sl-field"><b>장소</b><div class="sl-stages" data-stages><button type="button" class="sl-stage" data-stage="class"><span class="sl-art class"><i class="a1"></i><i class="a2"></i><i class="a3"></i></span><b>${stageInfo.class.name}</b><small>${stageInfo.class.blurb}</small><em data-rec="class"></em></button><button type="button" class="sl-stage" data-stage="dorm"><span class="sl-art dorm"><i class="a1"></i><i class="a2"></i><i class="a3"></i></span><b>${stageInfo.dorm.name}</b><small>${stageInfo.dorm.blurb}</small><em data-rec="dorm"></em></button></div></div><div class="sl-field"><b>난이도</b><div class="sl-options" data-levels><button type="button" data-level="1">느긋하게<small>목표 ${GOALS[0]}</small></button><button type="button" data-level="2">보통<small>목표 ${GOALS[1]}</small></button><button type="button" data-level="3">아슬아슬<small>목표 ${GOALS[2]}</small></button></div><p class="sl-leveldesc" data-leveldesc></p></div><div class="sl-keyhints"><span data-key-cover><kbd>Space</kbd> 누르는 동안 공부하는 척</span><span data-key-pick><kbd>1</kbd>~<kbd>6</kbd> 딴짓 고르기</span><span><kbd>P</kbd> 일시정지</span></div><p class="sl-help">발소리와 문 소리가 가까워지면 얼른 공부하는 척! 터치는 화면의 버튼으로 같은 조작을 할 수 있어요.</p><div class="sl-actions"><button class="wd-btn primary" data-start>시작하기</button><button class="wd-btn ghost" data-exit>게임 목록으로</button><button type="button" class="sl-soundbtn" data-sound>소리 켜짐</button></div></div></div>
+  <div class="sl-loading" data-loading hidden role="dialog" aria-modal="true" aria-label="SLACK OFF 장소 로딩"><div class="sl-loading-panel"><span class="sl-loading-spinner" aria-hidden="true"></span><strong>장소를 준비하고 있어요</strong><p>잠시 후 게임이 시작됩니다.</p><button type="button" data-exit>게임 목록으로</button></div></div>
+  <div class="sl-modal wd-screen" data-title role="dialog" aria-modal="true" aria-label="SLACK OFF 시작 메뉴"><div class="sl-card sl-titlecard wd-panel"><div class="sl-kicker">오늘도 무사히</div><h1>SLACK OFF <small>딴짓</small></h1><p class="sl-lead">조용한 밤, 눈치를 살피며 나만의 시간을 즐겨 보세요. 2분 30초 동안 재미 목표를 채우고 끝까지 버티세요. 세 번 들키면 즉시 종료!</p><div class="sl-field"><b>장소</b><div class="sl-stages" data-stages><button type="button" class="sl-stage" data-stage="class"><span class="sl-art class"><i class="a1"></i><i class="a2"></i><i class="a3"></i></span><b>${stageInfo.class.name}</b><small>${stageInfo.class.blurb}</small><em data-rec="class"></em></button><button type="button" class="sl-stage" data-stage="dorm"><span class="sl-art dorm"><i class="a1"></i><i class="a2"></i><i class="a3"></i></span><b>${stageInfo.dorm.name}</b><small>${stageInfo.dorm.blurb}</small><em data-rec="dorm"></em></button></div></div><div class="sl-field"><b>난이도</b><div class="sl-options" data-levels><button type="button" data-level="1">느긋하게<small>목표 ${GOALS[0]}</small></button><button type="button" data-level="2">보통<small>목표 ${GOALS[1]}</small></button><button type="button" data-level="3">아슬아슬<small>목표 ${GOALS[2]}</small></button></div><p class="sl-leveldesc" data-leveldesc></p></div><div class="sl-keyhints"><span data-key-cover><kbd>Space</kbd> 누르는 동안 공부하는 척</span><span data-key-pick><kbd>1</kbd>~<kbd>6</kbd> 딴짓 고르기</span><span><kbd>P</kbd> 일시정지</span></div><p class="sl-help">발소리와 문 소리가 가까워지면 얼른 공부하는 척! 터치는 화면의 버튼으로 같은 조작을 할 수 있어요.</p><div class="sl-actions"><button class="wd-btn primary" data-start>시작하기</button><button class="wd-btn ghost" data-exit>게임 목록으로</button><button type="button" class="sl-soundbtn" data-sound>소리 켜짐</button></div></div></div>
   <div class="sl-modal wd-screen" data-paused hidden role="dialog" aria-modal="true" aria-label="SLACK OFF 일시정지"><div class="sl-card narrow wd-panel"><div class="sl-kicker">잠깐 쉬어 가요</div><h2>일시정지</h2><ul class="sl-hl sl-pause-stats" data-pause-stats></ul><div class="sl-keyhints"><span><kbd>Space</kbd> 공부하는 척</span><span><kbd>P</kbd> / <kbd>Esc</kbd> 계속하기</span></div><p class="sl-touchhint">공부하는 척은 화면의 버튼을, 일시정지는 위쪽 버튼을 눌러요.</p><div class="sl-actions"><button class="wd-btn primary" data-resume>계속하기</button><button class="wd-btn" data-restart>처음부터</button><button class="wd-btn ghost" data-exit>게임 목록으로</button><button type="button" class="sl-soundbtn" data-sound>소리 켜짐</button></div></div></div>
   <div class="sl-modal wd-screen" data-result hidden role="dialog" aria-modal="true" aria-label="SLACK OFF 결과"><div class="sl-card wd-panel"><div class="sl-kicker" data-result-kicker>오늘의 기록</div><div class="sl-result-head"><div class="sl-grade" data-grade></div><div><h2 data-result-title></h2><p class="sl-reason" data-reason></p></div></div><div class="sl-result-stats" data-stats></div><ul class="sl-hl" data-highlights></ul><div class="sl-record" data-record></div><div class="sl-actions"><button class="wd-btn primary" data-retry>다시 도전</button><button class="wd-btn" data-next>다음 장소</button><button class="wd-btn ghost" data-exit>게임 목록으로</button></div></div></div>`;
   document.body.append(root);
@@ -54,7 +57,8 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
   const style = (selector: string, property: 'width' | 'left', value: string): void => { const node = $(selector); if (node.style[property] !== value) node.style[property] = value; };
   const variable = (name: string, value: string): void => { if (root.style.getPropertyValue(name) !== value) root.style.setProperty(name, value); };
   const strikePips = Array.from(root.querySelectorAll<HTMLElement>('[data-pips] i'));
-  let audio = createSlackAudio(); let muted = !readPreferences().sound; audio.setMuted(muted);
+  const funMeter = $('[data-fun-meter]'), riskMeter = $('[data-risk-meter]');
+  let audio = createSlackAudio(); let muted = !preferences.sound; audio.setMuted(muted);
   let stage: StageId = 'class', level: Level = 2, sim: Sim | null = null, view: StageView | null = null;
   let state: 'title' | 'loading' | 'play' | 'paused' | 'result' = 'title', closed = false, raf = 0, last = performance.now(), toastTime = 0, beat = 0;
   let tutorial = !tutorialSeen(), tutStep = 0, tutTime = 0, tutWall = 0;
@@ -87,7 +91,7 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
     root.querySelectorAll<HTMLElement>('[data-sound]').forEach(b => { b.textContent = muted ? '소리 꺼짐' : '소리 켜짐'; b.setAttribute('aria-pressed', String(!muted)); });
   };
   const clearView = (): void => { view?.dispose(); view?.el.remove(); view = null; sim = null; };
-  const exit = (): void => { if (closed) return; closed = true; cancelAnimationFrame(raf); root.removeEventListener('keydown', keydown); document.removeEventListener('visibilitychange', visibility); clearView(); audio.dispose(); root.remove(); onExit(); };
+  const exit = (): void => { if (closed) return; closed = true; cancelAnimationFrame(raf); root.removeEventListener('keydown', keydown); document.removeEventListener('visibilitychange', visibility); window.removeEventListener('blur', focusLost); window.removeEventListener('focus', focusReturned); clearView(); audio.dispose(); root.remove(); onExit(); };
   const pause = (): void => { if (state === 'play') {
       state = 'paused'; if (raf) cancelAnimationFrame(raf); raf = 0;
       root.classList.remove('sl-danger'); $('[data-paused]').hidden = false; audio.ambience(null); audio.hold(true);
@@ -96,8 +100,34 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
       root.classList.add('sl-paused');
       if (sim) { const s = sim.state; $('[data-pause-stats]').innerHTML = `<li>${stageInfo[stage].name}</li><li>재미 <b>${Math.round(s.fun)}</b> / ${Math.round(s.goal)}</li><li>들킴 <b>${s.strikes}</b> / 3</li>`; }
     } else if (state === 'paused' && !document.hidden) { state = 'play'; $('[data-paused]').hidden = true; enablePlay(); audio.hold(false); audio.resume(); audio.ambience(stage); } };
-  const keydown = (e: KeyboardEvent): void => { if (!e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'Escape' || e.key.toLowerCase() === 'p')) { if (state === 'play' || state === 'paused') { e.preventDefault(); pause(); } } };
-  const visibility = (): void => { if (document.hidden && state === 'play') pause(); };
+  const keydown = (e: KeyboardEvent): void => {
+    if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      // A visible aria-modal dialog must keep keyboard focus within it.
+      // The play surface is inert during pause/results, but Tab can otherwise
+      // escape to unrelated page controls at either end of the dialog.
+      const dialog = state === 'title' ? $('[data-title]') : state === 'loading' ? $('[data-loading]') : state === 'paused' ? $('[data-paused]') : state === 'result' ? $('[data-result]') : null;
+      if (dialog) {
+        const controls = Array.from(dialog.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])'))
+          .filter(node => !node.hidden && !node.closest('[hidden]'));
+        const first = controls[0], last = controls[controls.length - 1];
+        if (first && last && (e.shiftKey ? document.activeElement === first || !dialog.contains(document.activeElement) : document.activeElement === last || !dialog.contains(document.activeElement))) {
+          e.preventDefault();
+          (e.shiftKey ? last : first).focus();
+          return;
+        }
+      }
+    }
+    if (!e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'Escape' || e.key.toLowerCase() === 'p')) {
+      if (state === 'play' || state === 'paused') { e.preventDefault(); pause(); }
+    }
+  };
+  let lostFocusDuringLoad = false;
+  const focusLost = (): void => {
+    if (state === 'loading') lostFocusDuringLoad = true;
+    if (state === 'play') pause();
+  };
+  const focusReturned = (): void => { lostFocusDuringLoad = false; };
+  const visibility = (): void => { if (document.hidden) focusLost(); };
   const enablePlay = (): void => {
     $('.sl-view').inert = false; $('.sl-hud').inert = false; $('[data-tip]').inert = false;
     root.classList.remove('sl-paused');
@@ -107,22 +137,26 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
   const start = async (): Promise<void> => {
     if (closed || state === 'loading' || state === 'play') return;
     const restarting = state !== 'title';
+    lostFocusDuringLoad = false;
     state = 'loading'; if (raf) cancelAnimationFrame(raf); raf = 0;
     root.classList.remove('sl-danger'); clearView();
     if (restarting) { audio.dispose(); audio = createSlackAudio(); audio.setMuted(muted); }
     audio.hold(false); audio.resume();
     $('.sl-hud').hidden = true; $('.sl-toast').textContent = ''; toastTime = 0;
     $('[data-title]').hidden = true; $('[data-result]').hidden = true; $('[data-paused]').hidden = true; $('[data-tip]').hidden = true; root.classList.remove('tipping');
+    $('[data-loading]').hidden = false; $('[data-loading] [data-exit]').focus({ preventScroll: true });
     try {
       const createView = stage === 'class' ? (await import('./classroom')).createClassroomView : (await import('./computer')).createComputerView;
-      if (closed) return; sim = createSim(stage, Math.floor(Math.random() * 2147483647), level); view = createView(sim, audio); $('.sl-view').append(view.el); sim.start(); view.frame(0); state = 'play'; $('.sl-hud').hidden = false; $('[data-battery-chip]').style.display = stage === 'class' ? 'none' : ''; audio.ambience(stage);
+      if (closed) return;
+      $('[data-loading]').hidden = true;
+      sim = createSim(stage, Math.floor(Math.random() * 2147483647), level); view = createView(sim, audio); $('.sl-view').append(view.el); sim.start(); view.frame(0); state = 'play'; $('.sl-hud').hidden = false; $('[data-battery-chip]').style.display = stage === 'class' ? 'none' : ''; audio.ambience(stage);
       audio.muffle(false); tally = { act: {}, maxCombo: 1, maxSus: 0, warns: 0, reasons: [] }; beat = 0;
       if (tutorial) { tutStep = 0; showTutorialStep(); } else { $('[data-tip]').hidden = true; root.classList.remove('tipping'); }
       enablePlay();
-      if (document.hidden) pause();
+      if (document.hidden || lostFocusDuringLoad) pause();
     } catch (err) {
       console.error(err); clearView(); audio.dispose(); audio = createSlackAudio(); audio.setMuted(muted); $('.sl-hud').hidden = true;
-      state = 'title'; $('[data-title]').hidden = false; $('[data-start]').focus(); toast('화면을 불러오지 못했어요. 다시 시도해 주세요.');
+      state = 'title'; $('[data-loading]').hidden = true; $('[data-title]').hidden = false; $('[data-start]').focus(); toast('화면을 불러오지 못했어요. 다시 시도해 주세요.');
     }
   };
   const finish = (): void => {
@@ -185,7 +219,12 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
     if (tutorial) { tutTime += elapsed; tutWall += dt; const isLast = tutStep === tutorialSteps.length - 1; if (tutorialSteps[tutStep].done(sim.state, tutTime) || tutWall > (isLast ? 9 : 40)) { if (++tutStep >= tutorialSteps.length) endTutorial(); else showTutorialStep(); } }
     const s = sim.state, left = Math.max(0, Math.ceil(s.limit - s.time));
     text('[data-time]', `${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}`);
-    text('[data-fun]', `${Math.round(s.fun)} / ${Math.round(s.goal)}`);
+    const funValue = String(Math.round(s.fun)), riskValue = String(Math.round(s.sus));
+    const funLabel = `${funValue} / ${Math.round(s.goal)}`;
+    text('[data-fun]', funLabel);
+    if (funMeter.getAttribute('aria-valuenow') !== funValue) funMeter.setAttribute('aria-valuenow', funValue);
+    if (funMeter.getAttribute('aria-valuetext') !== funLabel) funMeter.setAttribute('aria-valuetext', funLabel);
+    if (riskMeter.getAttribute('aria-valuenow') !== riskValue) riskMeter.setAttribute('aria-valuenow', riskValue);
     style('[data-fun-bar]', 'width', `${Math.min(100, s.fun)}%`);
     style('[data-goal]', 'left', `${Math.min(100, s.goal)}%`);
     text('[data-strikes]', String(s.strikes));
@@ -212,6 +251,6 @@ export function openSlack(onExit: () => void, opts: { loading?: LoadingScreen } 
   root.addEventListener('contextmenu', event => {
     if ((event.target as Element).closest('.sl-cover,.sc-cover-button,.gm canvas')) event.preventDefault();
   });
-  root.querySelectorAll<HTMLElement>('[data-exit]').forEach(b => b.onclick = exit); root.addEventListener('keydown', keydown); document.addEventListener('visibilitychange', visibility);
+  root.querySelectorAll<HTMLElement>('[data-exit]').forEach(b => b.onclick = exit); root.addEventListener('keydown', keydown); document.addEventListener('visibilitychange', visibility); window.addEventListener('blur', focusLost); window.addEventListener('focus', focusReturned);
   refreshTitle(); opts.loading?.close(); $('[data-start]').focus({ preventScroll: true });
 }

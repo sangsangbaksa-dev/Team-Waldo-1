@@ -55,6 +55,41 @@ it('restores sound when resume wins the race with a pending suspend', async () =
   audio.dispose();
 });
 
+it('suspends a delayed audio resume that completes after the player pauses', async () => {
+  const node = () => ({ connect: vi.fn(), gain: { value: 0 }, frequency: { value: 0 },
+    threshold: { value: 0 }, knee: { value: 0 }, ratio: { value: 0 }, attack: { value: 0 }, release: { value: 0 } });
+  let completeResume: (() => void) | undefined;
+  let attempts = 0;
+  const ctx = {
+    state: 'suspended',
+    createGain: node, createBiquadFilter: node, createDynamicsCompressor: node,
+    resume: vi.fn().mockImplementation(() => {
+      if (++attempts === 1) return new Promise<void>(resolve => {
+        completeResume = () => { ctx.state = 'running'; resolve(); };
+      });
+      ctx.state = 'running';
+      return Promise.resolve();
+    }),
+    suspend: vi.fn().mockImplementation(() => { ctx.state = 'suspended'; return Promise.resolve(); }),
+    close: vi.fn().mockResolvedValue(undefined),
+  };
+  vi.stubGlobal('AudioContext', vi.fn(function () { return ctx; }));
+  const audio = createSlackAudio();
+  audio.resume();
+  audio.hold(true); // The delayed AudioContext.resume() has not completed.
+  expect(ctx.suspend).not.toHaveBeenCalled();
+  completeResume?.();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(ctx.suspend).toHaveBeenCalledTimes(1);
+  expect(ctx.state).toBe('suspended');
+
+  audio.hold(false);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(ctx.resume).toHaveBeenCalledTimes(2);
+  expect(ctx.state).toBe('running');
+  audio.dispose();
+});
+
 it('does not allocate silent oscillator or noise voices while SFX are muted', () => {
   const parameter = () => ({ value: 0, setTargetAtTime: vi.fn() });
   const node = () => ({
@@ -172,7 +207,9 @@ it('stops silent ambience generation on mute and restores the selected stage on 
   audio.setMuted(true);
   expect(vi.getTimerCount()).toBe(0);
   audio.setMuted(false);
-  expect(ctx.createBuffer).toHaveBeenCalledTimes(4);
+  expect(ctx.createBuffer).toHaveBeenCalledTimes(2); // Reuse both air textures after unmute.
+  audio.ambience('dorm');
+  expect(ctx.createBuffer).toHaveBeenCalledTimes(2); // Switching stages also reuses buffers.
   audio.ambience(null);
   expect(vi.getTimerCount()).toBe(0);
   audio.dispose();
@@ -196,10 +233,21 @@ it('throttles rapid click/key bursts without muting alerts and footsteps', () =>
   const audio = createSlackAudio(); audio.resume();
   for (let i = 0; i < 120; i++) audio.play(i % 2 ? 'key' : 'click');
   expect(ctx.createBuffer).toHaveBeenCalledTimes(1);
+  expect(ctx.createBufferSource).toHaveBeenCalledTimes(1);
   now.mockReturnValue(45);
   audio.play('key');
-  expect(ctx.createBuffer).toHaveBeenCalledTimes(2);
+  expect(ctx.createBuffer).toHaveBeenCalledTimes(1); // The same noise buffer is reused.
+  expect(ctx.createBufferSource).toHaveBeenCalledTimes(2);
   audio.play('footstep', 0.6);
-  expect(ctx.createBuffer).toHaveBeenCalledTimes(4); // Alert-like ambient cues are not throttled.
+  expect(ctx.createBuffer).toHaveBeenCalledTimes(1);
+  expect(ctx.createBufferSource).toHaveBeenCalledTimes(4); // Important footstep cues remain unthrottled.
+  for (const call of ctx.createBufferSource.mock.results) {
+    expect(call.value.start).toHaveBeenCalledTimes(1);
+    const [at, offset, length] = call.value.start.mock.calls[0] as number[];
+    expect(Number.isFinite(at)).toBe(true);
+    expect(offset).toBeGreaterThanOrEqual(0);
+    expect(length).toBeGreaterThan(0);
+    expect(offset + length).toBeLessThanOrEqual(1.000001);
+  }
   audio.dispose();
 });

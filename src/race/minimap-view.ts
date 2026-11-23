@@ -8,7 +8,6 @@ type Transform = ReturnType<typeof minimapTransform>;
 export class RaceMinimap {
   private readonly ctx: CanvasRenderingContext2D | null;
   private readonly background: HTMLCanvasElement;
-  private track: Track;
   private transform: Transform;
 
   constructor(private readonly canvas: HTMLCanvasElement, track: Track) {
@@ -16,7 +15,6 @@ export class RaceMinimap {
     this.background = document.createElement('canvas');
     this.background.width = canvas.width;
     this.background.height = canvas.height;
-    this.track = track;
     this.transform = minimapTransform(track.x, track.z, canvas.width);
     this.setTrack(track);
   }
@@ -30,7 +28,6 @@ export class RaceMinimap {
   }
 
   setTrack(track: Track): void {
-    this.track = track;
     this.transform = minimapTransform(track.x, track.z, this.canvas.width);
     const ctx = this.background.getContext('2d');
     if (!ctx) return;

@@ -359,7 +359,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
       recordSkyRun(sim.score, sim.wave, sim.kills, sim.bestCombo, sim.time);
       paintRec();
     }
-    resetQualityClock(); last = performance.now();
+    audio.pause(false); resetQualityClock(); last = performance.now();
     diff = d; sim = new SkySim(d); saved = false; state = 'play'; throttle = 0.55; mouse.x = mouse.y = 0; mouse.active = false; fireTap = 0; flare = mTap = mBoost = mFire = mMissile = false; mouse.touchId = mouse.secondId = -1; hitT = 0; hitBy = 0; keys.clear(); bannerT = alertT = alertRank = 0; cockpit = false; root.classList.remove('cockpit'); view?.setCockpit(false); autoFire = ctl.assist >= 2;
     $('sk-title').hidden = true; $('sk-end').hidden = true; $('sk-paused').hidden = true; $('sk-alert').textContent = ''; $('sk-banner').classList.remove('on'); root.querySelector<HTMLElement>('.sk-hud')!.hidden = false; audio.unlock(); lock(); hint(matchMedia('(pointer: coarse)').matches ? '화면을 드래그해 조종하세요' : ctl.pointerLock ? '상대 이동으로 조종 · Esc: 일시정지' : '커서를 화면 중앙 기준으로 움직여 조종 · P: 일시정지'); banner('출격!', 1.5);
     if (view) {
@@ -372,9 +372,9 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   function togglePause(): void {
     if (state === 'play') {
       clearHeldInput();
-      audio.stopEngine(); state = 'paused'; $('sk-paused').hidden = false; unlock(); stableQualitySeconds = 0;
+      audio.pause(true); state = 'paused'; $('sk-paused').hidden = false; unlock(); stableQualitySeconds = 0;
     } else if (state === 'paused') {
-      state = 'play'; $('sk-paused').hidden = true; last = performance.now();
+      state = 'play'; $('sk-paused').hidden = true; audio.pause(false); last = performance.now();
       resetQualityClock();
       lock();
     }

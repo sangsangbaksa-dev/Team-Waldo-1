@@ -97,7 +97,15 @@ try {
       'The sea normal map must remain fixed in world space at every texture quality');
       const playerOnScreen = await page.evaluate(() => window.__sky.view.project(window.__sky.sim.player.pos));
       assert.ok(Math.abs(playerOnScreen.x - 0.5) < 0.12, 'Third-person camera should begin centered behind the jet');
+      const sunDirectionError = await page.evaluate(() => {
+        const v = window.__sky.view;
+        return v.sunGlow.position.clone().sub(v.camera.position).distanceTo(v.shadowSun.clone().multiplyScalar(7000));
+      });
+      assert.ok(sunDirectionError < 0.01,
+        'The visible sky sun must use the fixed directional-light vector, not the player offset');
       await page.screenshot({ path: 'browser-artifacts/sky-flight-' + size.name + '.png', animations: 'disabled' });
+      await page.waitForFunction(() => !document.querySelector('#sk-banner')?.classList.contains('on'));
+      await page.screenshot({ path: 'browser-artifacts/sky-combat-' + size.name + '.png', animations: 'disabled' });
       const clouds = await page.evaluate(() => {
         const view = window.__sky.view;
         const total = view.clouds.length;
@@ -169,6 +177,7 @@ try {
         await page.keyboard.press('p');
       } else await page.locator('#sk-pause').click();
       await page.locator('#sk-paused').waitFor({ state: 'visible' });
+      await page.screenshot({ path: 'browser-artifacts/sky-paused-' + size.name + '.png', animations: 'disabled' });
       // Preserve the old model reference across restart to detect reused IDs.
       await page.evaluate(() => {
         window.__skyPreviousAircraft = window.__sky.view.meshes.get(window.__sky.sim.player.id);
@@ -229,6 +238,7 @@ try {
         sim.damage(sim.player, 99999, -5, sim.player.pos);
       });
       await page.locator('#sk-end').waitFor({ state: 'visible' });
+      await page.screenshot({ path: 'browser-artifacts/sky-result-' + size.name + '.png', animations: 'disabled' });
       assert.match(await page.locator('#sk-end-t').innerText(), /격추/, 'Game over report should appear after the aircraft is destroyed');
       const overDrawsBefore = await page.evaluate(() => window.__sky.renderer.info.render.frame);
       await sleep(320);

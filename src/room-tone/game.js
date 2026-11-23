@@ -1634,7 +1634,7 @@ wrap.addEventListener("pointermove", (e) => {
     lookLast = [e.clientX, e.clientY];
   }
 });
-for (const n of ["pointerup", "pointercancel"])
+for (const n of ["pointerup", "pointercancel", "lostpointercapture"])
   wrap.addEventListener(n, (e) => {
     if (lookPointer.release(e.pointerId)) lookLast = null;
   });

@@ -250,13 +250,13 @@ try {
       await page.evaluate(() => {
         const sim = window.__sky.sim;
         sim.events.push({ t: 'hit', id: sim.player.id, pos: sim.player.pos.clone(), by: 999 });
-        sim.events.push({ t: 'pickup', kind: 'repair' });
+        sim.events.push({ t: 'pickup', kind: 'repair', amount: 20 });
       });
       await page.waitForFunction(() => document.querySelector('#sk-alert')?.textContent.includes('피격'));
       assert.equal(await page.locator('#sk-alert').getAttribute('data-level'), 'danger',
         'Critical damage should remain prominent even after a pickup event');
       await page.waitForFunction(() => document.querySelector('#sk-alert')?.textContent === '');
-      await page.evaluate(() => window.__sky.sim.events.push({ t: 'pickup', kind: 'repair' }));
+      await page.evaluate(() => window.__sky.sim.events.push({ t: 'pickup', kind: 'repair', amount: 20 }));
       await page.waitForFunction(() => document.querySelector('#sk-alert')?.textContent.includes('수리'));
       assert.equal(await page.locator('#sk-alert').getAttribute('data-level'), 'info',
         'Ordinary pickup notifications should use the non-emergency style');

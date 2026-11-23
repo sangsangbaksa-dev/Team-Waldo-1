@@ -16,7 +16,7 @@ export const DIFFICULTY: Record<Difficulty, { label: string; desc: string; incom
   d1: { label: '1단계 · 입문', desc: '라이벌이 아주 느리게 크고 약하게 공격합니다.', income: 0.35, dmg: 0.45, cap: 10, attackArmy: 16, endgame: 1260 },
   d2: { label: '2단계 · 쉬움', desc: '라이벌 성장이 느리고 공격이 드뭅니다.', income: 0.5, dmg: 0.6, cap: 14, attackArmy: 14, endgame: 1080 },
   d3: { label: '3단계 · 보통', desc: '경제와 전투를 함께 굴리면 충분히 이길 수 있습니다.', income: 0.65, dmg: 0.72, cap: 17, attackArmy: 13, endgame: 960 },
-  d4: { label: '4단계 · 어려움', desc: '기존 난이도. 라이벌이 꾸준히 확장하고 압박합니다.', income: 0.78, dmg: 0.85, cap: 20, attackArmy: 11, endgame: 840 },
+  d4: { label: '4단계 · 어려움', desc: '라이벌이 꾸준히 확장하고 공격합니다.', income: 0.78, dmg: 0.85, cap: 20, attackArmy: 11, endgame: 840 },
   d5: { label: '5단계 · 극한', desc: '라이벌이 빠르게 확장하고 일찍 쳐들어옵니다. 숙련자용.', income: 1.0, dmg: 1.05, cap: 28, attackArmy: 9, endgame: 720 },
 };
 
@@ -124,22 +124,22 @@ export const RESEARCH: Record<ResearchId, { name: string; desc: string; crystal:
 
 export interface Mods { dmg: number; rate: number; hp: number; regen: number; speed: number; income: number; unitDmg: number; unitHp: number; cost: number; steal: number; dash: number; armor: number; xp: number; reload: number }
 export const baseMods = (): Mods => ({ dmg: 1, rate: 1, hp: 0, regen: 0, speed: 1, income: 1, unitDmg: 1, unitHp: 1, cost: 1, steal: 0, dash: 1, armor: 0, xp: 1, reload: 1 });
-export interface Perk { id: string; name: string; desc: string; icon: string; apply: (m: Mods) => void }
+export interface Perk { id: string; name: string; desc: string; apply: (m: Mods) => void }
 export const PERKS: Perk[] = [
-  { id: 'dmg', name: '헤드헌터', desc: '보스 무기 피해 +20%', icon: '🎯', apply: m => { m.dmg += 0.2; } },
-  { id: 'rate', name: '방아쇠 손가락', desc: '연사 속도 +18%', icon: '⚡', apply: m => { m.rate += 0.18; } },
-  { id: 'hp', name: '강철 심장', desc: '최대 체력 +50', icon: '❤️', apply: m => { m.hp += 50; } },
-  { id: 'regen', name: '야전 의학', desc: '초당 체력 +3 재생', icon: '🩹', apply: m => { m.regen += 3; } },
-  { id: 'speed', name: '거리의 질주', desc: '이동 속도 +12%', icon: '👟', apply: m => { m.speed += 0.12; } },
-  { id: 'income', name: '돈세탁의 달인', desc: '사업 수입 +25%', icon: '💰', apply: m => { m.income += 0.25; } },
-  { id: 'unitDmg', name: '전쟁 군주', desc: '부하 공격력 +20%', icon: '🪖', apply: m => { m.unitDmg += 0.2; } },
-  { id: 'unitHp', name: '정예 훈련', desc: '부하 체력 +25%', icon: '🛡️', apply: m => { m.unitHp += 0.25; } },
-  { id: 'cost', name: '암시장 인맥', desc: '훈련·건설 비용 -15%', icon: '🏷️', apply: m => { m.cost *= 0.85; } },
-  { id: 'steal', name: '흡혈 탄환', desc: '입힌 피해의 8% 회복', icon: '🩸', apply: m => { m.steal += 0.08; } },
-  { id: 'dash', name: '그림자 걸음', desc: '대시 재사용 -35%', icon: '💨', apply: m => { m.dash *= 0.65; } },
-  { id: 'armor', name: '방탄 코트', desc: '받는 피해 -12%', icon: '🧥', apply: m => { m.armor += 0.12; } },
-  { id: 'reload', name: '빠른 손', desc: '재장전 속도 +30%', icon: '🔄', apply: m => { m.reload *= 0.7; } },
-  { id: 'xp', name: '악명', desc: '경험치 획득 +30%', icon: '⭐', apply: m => { m.xp += 0.3; } },
+  { id: 'dmg', name: '정밀 사격', desc: '보스 무기 피해 +20%', apply: m => { m.dmg += 0.2; } },
+  { id: 'rate', name: '속사 훈련', desc: '연사 속도 +18%', apply: m => { m.rate += 0.18; } },
+  { id: 'hp', name: '체력 증강', desc: '최대 체력 +50', apply: m => { m.hp += 50; } },
+  { id: 'regen', name: '야전 의학', desc: '초당 체력 +3 재생', apply: m => { m.regen += 3; } },
+  { id: 'speed', name: '거리의 질주', desc: '이동 속도 +12%', apply: m => { m.speed += 0.12; } },
+  { id: 'income', name: '사업 수익', desc: '사업 수입 +25%', apply: m => { m.income += 0.25; } },
+  { id: 'unitDmg', name: '전술 화력', desc: '부하 공격력 +20%', apply: m => { m.unitDmg += 0.2; } },
+  { id: 'unitHp', name: '정예 훈련', desc: '부하 체력 +25%', apply: m => { m.unitHp += 0.25; } },
+  { id: 'cost', name: '암시장 인맥', desc: '훈련·건설 비용 -15%', apply: m => { m.cost *= 0.85; } },
+  { id: 'steal', name: '흡혈 탄환', desc: '입힌 피해의 8% 회복', apply: m => { m.steal += 0.08; } },
+  { id: 'dash', name: '기동 훈련', desc: '대시 재사용 -35%', apply: m => { m.dash *= 0.65; } },
+  { id: 'armor', name: '방탄 코트', desc: '받는 피해 -12%', apply: m => { m.armor += 0.12; } },
+  { id: 'reload', name: '빠른 손', desc: '재장전 속도 +30%', apply: m => { m.reload *= 0.7; } },
+  { id: 'xp', name: '악명', desc: '경험치 획득 +30%', apply: m => { m.xp += 0.3; } },
 ];
 
 export type ClassId = 'warlord' | 'tycoon' | 'engineer';

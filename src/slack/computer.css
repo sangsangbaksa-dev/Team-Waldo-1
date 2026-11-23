@@ -403,3 +403,9 @@
 .sc-title-btns{display:flex;align-items:center;gap:5px;flex:none}
 .sc-title-btns [data-close]{display:grid;place-items:center;min-width:28px;min-height:24px;line-height:1;border-radius:5px}
 .sc-title-btns [data-close]:hover{background:#e9534e1a}
+/* The 768px portrait tablet is wider than the phone breakpoint, but its
+   touch-sized HUD needs a lower, wider monitor with a clear header gap. */
+@media (orientation:portrait) and (min-width:701px) and (max-width:900px){
+  .slack-computer .sc-monitor{left:13%;width:74%;top:118px;height:auto;bottom:10%}
+  .slack-computer .sc-friend{left:0;width:12%;height:25%;bottom:14%}
+}

@@ -38,6 +38,16 @@ describe('SLACK OFF typography consistency', () => {
   });
 });
 
+describe('SLACK OFF tablet and shallow landscape status spacing', () => {
+  it('uses compact two-row HUD grids and keeps the tablet monitor below them', () => {
+    const shared = styles.find(s => s.name === 'slack.css')!.css;
+    const dorm = styles.find(s => s.name === 'computer.css')!.css;
+    expect(shared).toContain('(orientation:portrait) and (min-width:701px) and (max-width:900px)');
+    expect(shared).toContain('(orientation:landscape) and (min-width:601px) and (max-width:700px) and (max-height:450px)');
+    expect(dorm).toContain('.slack-computer .sc-monitor{left:13%;width:74%;top:118px;height:auto;bottom:10%}');
+  });
+});
+
 describe('SLACK OFF shop responsive design', () => {
   it('displays consistent product cards and a two-column compact catalogue', () => {
     const dorm = styles.find(s => s.name === 'computer.css')!.css;

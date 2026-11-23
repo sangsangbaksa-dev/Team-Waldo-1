@@ -196,3 +196,31 @@
   animation-duration:.01ms!important;animation-iteration-count:1!important;
   transition-duration:.01ms!important;scroll-behavior:auto!important
 }
+/* Medium portrait touch screens need a two-row status bar; a single long
+   desktop flex row wraps the action buttons into the laptop below. */
+@media (orientation:portrait) and (min-width:701px) and (max-width:900px){
+  .sl-hud{display:grid;grid-template-columns:90px minmax(0,1fr) auto;grid-template-rows:auto auto;gap:5px 9px;padding:8px 12px;
+    padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px))}
+  .sl-hudclock{grid-column:1;grid-row:1}
+  .sl-fun{grid-column:2;grid-row:1;max-width:none;width:100%}
+  .sl-tools{grid-column:3;grid-row:1;margin:0}
+  .sl-tools button{white-space:nowrap}
+  .sl-numbers{grid-column:1/-1;grid-row:2;justify-content:center}
+  .sl-tip{top:110px}
+  .sl-toast{top:114px}
+  .sl-root.tipping .sl-toast{top:174px}
+}
+/* Phone landscape at 640px otherwise inherits the tall three-row mobile
+   header and leaves too little height for the laptop below it. */
+@media (orientation:landscape) and (min-width:601px) and (max-width:700px) and (max-height:450px){
+  .sl-hud{display:grid;grid-template-columns:76px minmax(0,1fr) auto;grid-template-rows:auto auto;gap:2px 8px;
+    padding:4px 8px;padding-top:max(4px,env(safe-area-inset-top,0px))}
+  .sl-hudclock{grid-column:1;grid-row:1}
+  .sl-hudclock b{font-size:20px}
+  .sl-fun{grid-column:2;grid-row:1;width:100%;max-width:none}
+  .sl-tools{grid-column:3;grid-row:1;margin:0}
+  .sl-tools button{white-space:nowrap;padding:5px 7px}
+  .sl-numbers{grid-column:1/-1;grid-row:2;justify-content:center;gap:4px}
+  .sl-chip{padding:3px 6px}
+  .sl-tip{top:91px}
+}

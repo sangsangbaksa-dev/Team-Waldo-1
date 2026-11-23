@@ -53,3 +53,23 @@ export function pushWalkerFromCar(
     z: car.z - forward * sn + sideways * cs,
   };
 }
+
+/** Separating-axis test for two rotated car body footprints. */
+export function carBodiesOverlap(
+  a: { x: number; z: number; heading: number },
+  b: { x: number; z: number; heading: number },
+  halfLength = 2.35, halfWidth = 1.05,
+): boolean {
+  const ca = Math.cos(a.heading), sa = Math.sin(a.heading);
+  const cb = Math.cos(b.heading), sb = Math.sin(b.heading);
+  const au = { x: ca, z: -sa }, av = { x: sa, z: ca };
+  const bu = { x: cb, z: -sb }, bv = { x: sb, z: cb };
+  const dx = b.x - a.x, dz = b.z - a.z;
+  for (const axis of [au, av, bu, bv]) {
+    const dot = (x: { x: number; z: number }): number => x.x * axis.x + x.z * axis.z;
+    const ra = halfLength * Math.abs(dot(au)) + halfWidth * Math.abs(dot(av));
+    const rb = halfLength * Math.abs(dot(bu)) + halfWidth * Math.abs(dot(bv));
+    if (Math.abs(dx * axis.x + dz * axis.z) > ra + rb) return false;
+  }
+  return true;
+}

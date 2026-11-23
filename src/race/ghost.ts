@@ -15,7 +15,7 @@ export class GhostRecorder {
   private previous: { time: number; pose: GhostPose } | null = null;
 
   tick(clock: number, c: GhostPose): void {
-    if (!Number.isFinite(clock) || clock < 0 || clock > MAX_DATA / STRIDE * GHOST_DT || ![c.x, c.z, c.h, c.total].every(Number.isFinite)) return;
+    if (!Number.isFinite(clock) || clock < 0 || clock > MAX_DATA / STRIDE * GHOST_DT || !Number.isFinite(c.x) || !Number.isFinite(c.z) || !Number.isFinite(c.h) || !Number.isFinite(c.total)) return;
     const prev = this.previous;
     if (prev && clock < prev.time) return;
     // Record at exact time-grid slots instead of assigning a late physics
@@ -26,7 +26,14 @@ export class GhostRecorder {
       const p = prev?.pose ?? c;
       this.data.push(r2(p.x + (c.x - p.x) * k), r2(p.z + (c.z - p.z) * k), r2(angleLerp(p.h, c.h, k)), r2(p.total + (c.total - p.total) * k));
     }
-    this.previous = { time: clock, pose: { x: c.x, z: c.z, h: c.h, total: c.total } };
+    // CarState is mutable, so keep a snapshot but reuse it in place rather
+    // than allocating two small objects on every 90Hz physics tick.
+    if (prev) {
+      prev.time = clock;
+      prev.pose.x = c.x; prev.pose.z = c.z; prev.pose.h = c.h; prev.pose.total = c.total;
+    } else {
+      this.previous = { time: clock, pose: { x: c.x, z: c.z, h: c.h, total: c.total } };
+    }
   }
 
   finish(time: number, laps: number, c?: GhostPose): Ghost {

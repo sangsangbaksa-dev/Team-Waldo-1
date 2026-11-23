@@ -113,6 +113,7 @@ let renderCaptureShot;
 let captureTime = 0;
 let investigation = null, nextFlicker = 0, flickerUntil = 0;
 let hearingCell = -1, hearingTree = null;
+let previousMeterValue = -1, previousMeterLabel = "";
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const touch =
   matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
@@ -1418,7 +1419,18 @@ function update(dt) {
   $("prompt").hidden = !caption;
   if ($("promptText").textContent !== caption) $("promptText").textContent = caption;
   if ($("act").disabled !== (!nearest && !hiddenSpot)) $("act").disabled = !nearest && !hiddenSpot;
-  $("stamina").style.transform = "scaleX(" + (hiddenSpot ? hideBreath : stamina).toFixed(3) + ")";
+  const meterFraction = hiddenSpot ? hideBreath : stamina;
+  $("stamina").style.transform = "scaleX(" + meterFraction.toFixed(3) + ")";
+  const meterValue = Math.round(meterFraction * 100);
+  if (meterValue !== previousMeterValue) {
+    $("staminaMeter").setAttribute("aria-valuenow", String(meterValue));
+    previousMeterValue = meterValue;
+  }
+  const meterLabel = hiddenSpot ? "숨 참기 잔량" : "달리기 체력";
+  if (meterLabel !== previousMeterLabel) {
+    $("staminaMeter").setAttribute("aria-label", meterLabel);
+    previousMeterLabel = meterLabel;
+  }
   const timeLabel = clock(elapsed);
   if ($("timer").textContent !== timeLabel) $("timer").textContent = timeLabel;
   if (now > noticeUntil && $("toast").textContent) $("toast").textContent = "";

@@ -235,6 +235,21 @@ it('visually marks powerless apps and offers a useful fallback without locking t
   off.el.remove();
 });
 
+it('announces the taskbar unread count and clears it on reading the conversation', () => {
+  const badge = view.el.querySelector<HTMLButtonElement>('[data-app="chat"]')!;
+  expect(badge.getAttribute('aria-label')).toBe('메신저 (3)');
+  view.frame(30);
+  view.frame(1.4);
+  expect(badge.getAttribute('aria-label')).toContain('새 알림 1개');
+  expect(badge.dataset.badge).toBe('1');
+  badge.click(); view.frame(0);
+  const unread = [...view.el.querySelectorAll<HTMLButtonElement>('[data-room]')]
+    .find(room => room.querySelector('[data-unread]')?.textContent === '1');
+  if (unread) unread.click();
+  expect(badge.getAttribute('aria-label')).toBe('메신저 (3)');
+  expect(badge.dataset.badge).toBe('');
+});
+
 it('tracks webtoon reactions independently for each episode and lets users undo a like', () => {
   view.el.querySelector<HTMLButtonElement>('[data-app="webtoon"]')!.click();
   view.frame(0);
@@ -246,6 +261,7 @@ it('tracks webtoon reactions independently for each episode and lets users undo 
   like(2).click();
   expect(like(2).getAttribute('aria-pressed')).toBe('true');
   expect(like(2).querySelector('b')?.textContent).toBe('13');
+  expect(like(2).getAttribute('aria-label')).toBe('12화 좋아요 13개');
   tab(1).click();
   expect(tab(1).getAttribute('aria-pressed')).toBe('true');
   expect(tab(2).getAttribute('aria-pressed')).toBe('false');

@@ -72,7 +72,15 @@ export const createComputerView: CreateView = (sim, audio) => {
   };
   const toast = (text: string, s = 3) => { setTxt(toastEl, text); toastEl.classList.add('on'); toastUntil = elapsed + s; };
   const say = (text: string, s = 2) => { setTxt(bubble, text); bubbleUntil = elapsed + s; };
-  const setBadge = (id: DormActivity, n: number) => { const b = taskBtn(id); const v = n > 0 ? String(n) : ''; if (b.dataset.badge !== v) b.dataset.badge = v; };
+  const setBadge = (id: DormActivity, n: number) => {
+    const button = taskBtn(id), value = n > 0 ? String(n) : '';
+    if (button.dataset.badge !== value) button.dataset.badge = value;
+    // CSS ::after badges are invisible to assistive technology. Keep the
+    // notification total in the accessible name of its taskbar button.
+    const index = apps.findIndex(app => app.id === id);
+    const label = `${apps[index].label} (${index + 1})${n > 0 ? ` · 새 알림 ${n}개` : ''}`;
+    if (button.getAttribute('aria-label') !== label) button.setAttribute('aria-label', label);
+  };
 
   const applyCover = () => {
     const on = sim.state.cover;
@@ -218,7 +226,7 @@ export const createComputerView: CreateView = (sim, audio) => {
 
   /* ---------- 웹툰 ---------- */
   const W = { ep: 2, likes: episodes.map(() => 12), liked: episodes.map(() => false) };
-  const toonHtml = () => `<div class="sc-webtoon"><div class="sc-webtoon-head"><b>달빛 아래 우리</b><span class="sc-eps">${episodes.map((e, i) => `<button type="button" data-ep="${i}" ${e.n === 13 ? 'hidden' : ''}>${e.n}화</button>`).join('')}</span><small data-read>0% 읽음</small></div>${episodes.map((e, i) => `<div class="sc-wt-scroll" data-eppane="${i}"><div class="sc-comic-sky"><span>제 ${e.n}화</span><i>☾</i><b>${e.title}</b></div>${e.lines.map((l, k) => `<div class="sc-comic-panel c${(k + i) % 3}"><div class="sc-comic-person">●<br>▰</div><p>${l}</p></div>`).join('')}<button type="button" class="sc-like" data-like aria-label="${e.n}화 좋아요" aria-pressed="${W.liked[i]}">♡ 좋아요 <b>${W.likes[i]}</b></button></div>`).join('')}</div>`;
+  const toonHtml = () => `<div class="sc-webtoon"><div class="sc-webtoon-head"><b>달빛 아래 우리</b><span class="sc-eps">${episodes.map((e, i) => `<button type="button" data-ep="${i}" ${e.n === 13 ? 'hidden' : ''}>${e.n}화</button>`).join('')}</span><small data-read>0% 읽음</small></div>${episodes.map((e, i) => `<div class="sc-wt-scroll" data-eppane="${i}"><div class="sc-comic-sky"><span>제 ${e.n}화</span><i>☾</i><b>${e.title}</b></div>${e.lines.map((l, k) => `<div class="sc-comic-panel c${(k + i) % 3}"><div class="sc-comic-person">●<br>▰</div><p>${l}</p></div>`).join('')}<button type="button" class="sc-like" data-like aria-label="${e.n}화 좋아요 ${W.likes[i]}개" aria-pressed="${W.liked[i]}">♡ 좋아요 <b>${W.likes[i]}</b></button></div>`).join('')}</div>`;
   const toonShow = (i: number) => {
     W.ep = i; const w = wins.webtoon;
     w.querySelectorAll('[data-ep]').forEach((b, k) => { b.classList.toggle('cur', k === i); b.setAttribute('aria-pressed', String(k === i)); }); w.querySelectorAll('[data-eppane]').forEach((p, k) => p.classList.toggle('cur', k === i));
@@ -341,6 +349,7 @@ export const createComputerView: CreateView = (sim, audio) => {
       audio.play('chime', 0.3);
       like.classList.toggle('liked', W.liked[i]);
       like.setAttribute('aria-pressed', String(W.liked[i]));
+      like.setAttribute('aria-label', `${episodes[i].n}화 좋아요 ${W.likes[i]}개`);
       const count = like.querySelector<HTMLElement>('b');
       setTxt(count, String(W.likes[i]));
       like.firstChild!.textContent = W.liked[i] ? '♥ 좋아요 ' : '♡ 좋아요 ';

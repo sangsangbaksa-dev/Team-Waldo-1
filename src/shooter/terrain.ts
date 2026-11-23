@@ -94,10 +94,14 @@ export function planTerrain(seed: number, mode: Mode, half: number, towns: Zone[
   };
   for (let i = 0; i < (br ? 3 : 1); i++) pond(false, 120);
   for (let i = 0; i < (br ? 3 : 0); i++) pond(true, 120);
-  // 구릉(올라갈 수 없는 큰 언덕)
-  for (let i = 0, want = br ? 9 : 2, tries = 0; i < want && tries < 300; tries++) {
-    const r = (br ? 13 : 9) + rng() * (br ? 12 : 5), x = (rng() * 2 - 1) * (half - r - 8), z = (rng() * 2 - 1) * (half - r - 8);
-    if (free(x, z, r)) { t.hills.push({ x, z, r, h: 4 + rng() * 3 }); feats.push({ x, z, r }); i++; }
+  // 낮은 바위 둔덕부터 높은 절벽형 언덕까지 다양한 실루엣을 섞습니다.
+  // 현재 물리 시스템에서 언덕은 올라갈 수 없는 엄폐물이며, 경사 이동은 별도 작업입니다.
+  for (let i = 0, want = br ? 13 : 3, tries = 0; i < want && tries < 400; tries++) {
+    const tall = rng() < 0.3;
+    const r = (br ? 10 : 8) + rng() * (tall ? 15 : 13);
+    const x = (rng() * 2 - 1) * (half - r - 8), z = (rng() * 2 - 1) * (half - r - 8);
+    const h = tall ? 8 + rng() * 5 : 2.5 + rng() * 4.5;
+    if (free(x, z, r)) { t.hills.push({ x, z, r, h }); feats.push({ x, z, r }); i++; }
   }
   // 절벽: 문틈을 낸 긴 암벽
   for (let i = 0, want = br ? 6 : 1, tries = 0; i < want && tries < 300; tries++) {

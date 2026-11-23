@@ -46,8 +46,9 @@ export const wetGrip = (rain: number | undefined): number => 1 - 0.22 * (rain ??
 
 export function createRace(track: Track, laps = 3, bestLap = Infinity, opts: RaceOptions = {}): RaceState {
   const wet = wetGrip(mapById(opts.map ?? '').theme.rain), level = levelById(opts.level ?? 1), mine = carById(opts.car ?? CARS[0].id), at = CARS.indexOf(mine);
+  const paint = paintOf(mine, opts.skin ?? 'stock');
   const mk = (id: number, name: string, def: CarDef, player: boolean, slot: [number, number], ai: AiProfile): Racer =>
-    ({ id, name, color: def.color, player, car: newCar(track, track.n + slot[0], slot[1]), ai: { ...ai, grip: ai.grip * wet }, params: { ...carParams(def), grip: carParams(def).grip * wet }, model: def.model, accent: def.accent, lapTimes: [], lapStart: 0, finishTime: null, lastEv: { hit: 0, driftBoost: 0, pad: false } });
+    ({ id, name, color: player ? paint.color : def.color, player, car: newCar(track, track.n + slot[0], slot[1]), ai: { ...ai, grip: ai.grip * wet }, params: { ...carParams(def), grip: carParams(def).grip * wet }, model: def.model, accent: player ? paint.accent : def.accent, lapTimes: [], lapStart: 0, finishTime: null, lastEv: { hit: 0, driftBoost: 0, pad: false } });
   if (opts.pvp) {
     // 같은 줄의 왼쪽·오른쪽 칸에서 나란히 출발합니다. 상대는 AI 가 아니라 네트워크 스냅샷으로 움직입니다.
     const them = carById(opts.pvp.opponentCar), ai: AiProfile = { lane: 0, top: 58, grip: 30, skill: 1 };
@@ -62,7 +63,6 @@ export function createRace(track: Track, laps = 3, bestLap = Infinity, opts: Rac
     return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [me, ...others], player: me, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift() };
   }
   const player = mk(0, 'YOU', mine, true, SLOTS[2], { lane: 0, top: 58, grip: 30, skill: 1 });
-  if (opts.skin) Object.assign(player, paintOf(mine, opts.skin));
   if (opts.trial) return { track, laps, clock: -COUNTDOWN, phase: 'countdown', racers: [player], player, thrDownAt: null, thrPrev: false, bestLap, lastCount: COUNTDOWN + 1, level, drift: createDrift(), trial: true, ghost: opts.ghost ?? null, rec: new GhostRecorder() };
   const rivals = FIELD.map((f, i) => {
     const def = CARS[(at + 1 + i) % CARS.length], p = carParams(def), handling = p.grip * p.turn;

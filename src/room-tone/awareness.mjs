@@ -14,3 +14,13 @@ export function canSeeTarget(distance, unobstructed, lightOn, facing) {
   return Boolean(unobstructed) && Number.isFinite(distance) && distance >= 0 &&
     distance <= range && (distance <= 2.4 || facing >= -0.12);
 }
+
+/** Relative source direction for stereo footsteps (left=-1, right=1). */
+export function stereoPan(listener, yaw, source) {
+  if (!Number.isFinite(yaw) ||
+      ![listener?.x, listener?.z, source?.x, source?.z].every(Number.isFinite)) return 0;
+  const dx = source.x - listener.x, dz = source.z - listener.z;
+  const distance = Math.hypot(dx, dz);
+  if (distance < 1e-6) return 0;
+  return Math.max(-1, Math.min(1, (dx * Math.cos(yaw) - dz * Math.sin(yaw)) / distance));
+}

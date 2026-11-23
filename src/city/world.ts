@@ -57,6 +57,12 @@ export const VEHICLES: Record<string, { hp: number; max: number; accel: number; 
   tank: { hp: 2600, max: 235, accel: 260, r: 38, len: 90, wid: 56, colors: ['#5c6b45'] },
 };
 
+function retainAlive<T extends { alive: boolean }>(items: T[]): void {
+  let write = 0;
+  for (const item of items) if (item.alive) items[write++] = item;
+  items.length = write;
+}
+
 export class World {
   time = 0; rng: Rng; map: CityMap; opts: WorldOptions; factions: Faction[] = []; actors: Actor[] = []; byId = new Map<number, Actor>();
   structures: Structure[] = []; businesses: Business[] = []; vehicles: Vehicle[] = []; loot: Loot[] = []; bullets: Bullet[] = []; crystals: Crystal[] = [];
@@ -601,8 +607,8 @@ export class World {
     this.updateBusinesses(dt); this.updateZone(dt); this.updateLoot(dt);
     this.secT += dt; if (this.secT >= 1) { this.secT -= 1; this.everySecond(); }
     this.checkElimination();
-    if (this.actors.length > 60 && this.actors.some(a => !a.alive)) this.actors = this.actors.filter(a => a.alive);
-    this.vehicles = this.vehicles.filter(v => v.alive); this.loot = this.loot.filter(l => l.alive); this.structures = this.structures.filter(s => s.alive);
+    if (this.actors.length > 60 && this.actors.some(a => !a.alive)) retainAlive(this.actors);
+    retainAlive(this.vehicles); retainAlive(this.loot); retainAlive(this.structures);
   }
   respawn(f: Faction): void {
     const hq = this.hq(f.id); if (!hq) return;

@@ -141,3 +141,7 @@
   .sk-help[open]>summary{margin-bottom:8px}
   .sk-modal .sk-help .sk-how{margin:0}
 }
+
+/* Countermeasure ready state is legible on mobile and does not look tappable during cooldown. */
+.sk-btns #sk-b-flare.cooldown{opacity:.48;filter:saturate(.45);border-color:#8699a355;box-shadow:inset 0 1px #ffffff12}
+.sk-btns #sk-b-flare:disabled{cursor:not-allowed}

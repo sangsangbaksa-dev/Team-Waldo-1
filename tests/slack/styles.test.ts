@@ -17,7 +17,7 @@ describe('SLACK OFF small-screen game framing', () => {
     const shared = styles.find(s => s.name === 'slack.css')!.css;
     expect(dorm).toContain('.slack-computer .sc-monitor{top:max(126px,18%);height:auto;bottom:max(65px,11%)}');
     expect(dorm).toContain('.slack-computer .sc-friend{bottom:1%;height:7%;min-height:40px}');
-    expect(dorm).toContain('.slack-computer .sc-monitor{left:10%;top:27%;width:80%;height:69%;');
+    expect(dorm).toContain('.slack-computer .sc-monitor{left:10%;top:calc(27% + 26px);bottom:4%;width:80%;height:auto;');
     expect(shared).toContain('.sl-tools button{white-space:nowrap;min-width:78px;');
   });
 });

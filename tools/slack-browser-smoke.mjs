@@ -140,6 +140,9 @@ try {
         } else {
           assert.ok(friendRect.x + friendRect.width <= monitorRect.x + 3,
             'Landscape roommate must stay clear of the wider laptop');
+          const hudBadges = await page.locator('.sl-numbers').boundingBox();
+          assert.ok(hudBadges && monitorRect.y >= hudBadges.y + hudBadges.height + 4,
+            'Landscape laptop must begin below all visible HUD status badges');
         }
       }
       assert.equal(await page.locator('.sc-apps [data-app]').count(), 6);

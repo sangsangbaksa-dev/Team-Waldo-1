@@ -1,11 +1,62 @@
 name: Last City mission UI smoke
+# This Chromium/WebGL check is expensive. Run for production-branch changes and
+# PRs that could affect Last City, the shared runtime, or the smoke harness.
+# Other games still receive the general CI workflow.
 on:
   push:
+    branches:
+      - feat/shared-menu-rails
+    paths:
+      - 'src/city/**'
+      - 'tests/city/**'
+      - 'src/shared/**'
+      - 'src/net/**'
+      - 'src/main.ts'
+      - 'src/style.css'
+      - 'src/loading.ts'
+      - 'src/prefs.ts'
+      - 'src/records.ts'
+      - 'src/audio-core.ts'
+      - 'src/postfx.ts'
+      - 'public/assets/models/**'
+      - 'public/assets/home/last-city.*'
+      - 'index.html'
+      - 'vite.config.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tools/city-browser-smoke.mjs'
+      - '.github/workflows/last-city-browser-smoke.yml'
   pull_request:
+    paths:
+      - 'src/city/**'
+      - 'tests/city/**'
+      - 'src/shared/**'
+      - 'src/net/**'
+      - 'src/main.ts'
+      - 'src/style.css'
+      - 'src/loading.ts'
+      - 'src/prefs.ts'
+      - 'src/records.ts'
+      - 'src/audio-core.ts'
+      - 'src/postfx.ts'
+      - 'public/assets/models/**'
+      - 'public/assets/home/last-city.*'
+      - 'index.html'
+      - 'vite.config.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tools/city-browser-smoke.mjs'
+      - '.github/workflows/last-city-browser-smoke.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
+
+# Do not let a newer commit queue a second Chromium installation/smoke
+# while an outdated check for the same PR or branch is still running.
+concurrency:
+  group: last-city-smoke-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   browser:

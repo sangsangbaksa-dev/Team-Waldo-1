@@ -5,6 +5,7 @@ on:
     paths:
       - 'src/slack/**'
       - 'tests/slack/**'
+      - 'tools/slack-browser-smoke.mjs'
       - '.github/workflows/slack-off-regression.yml'
   workflow_dispatch:
 
@@ -35,3 +36,16 @@ jobs:
         run: npm run typecheck
       - name: Production bundle build
         run: npm run build
+      - name: Install Chromium headless shell
+        run: npx playwright install --with-deps chromium --only-shell
+      - name: Real browser SLACK OFF regression
+        timeout-minutes: 6
+        run: node tools/slack-browser-smoke.mjs
+      - name: Upload SLACK OFF browser screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: slack-off-browser-evidence
+          path: browser-artifacts/slack-off-*
+          if-no-files-found: warn
+          retention-days: 7

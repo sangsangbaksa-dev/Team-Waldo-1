@@ -42,7 +42,17 @@ export function openRace(onExit: () => void): void {
   </div>
   <div class="rc-modal" id="rc-modal"><div class="rc-card"><span class="rc-eyebrow">SPEED RUSH</span><h2>엔진 예열 중…</h2></div></div>`;
   document.body.append(root);
-  const $ = <T extends HTMLElement>(s: string): T => root.querySelector<T>(s)!;
+  // HUD nodes survive every race restart. Cache selectors on the hot render
+  // path while invalidating nodes that an overlay or canvas replacement removes.
+  const elementCache = new Map<string, HTMLElement>();
+  const $ = <T extends HTMLElement>(selector: string): T => {
+    const found = elementCache.get(selector);
+    if (found && root.contains(found)) return found as T;
+    const next = root.querySelector<T>(selector);
+    if (!next) throw new Error(`SPEED RUSH missing UI element: ${selector}`);
+    elementCache.set(selector, next);
+    return next;
+  };
   let canvas = $<HTMLCanvasElement>('.rc-canvas'); const fx = $<HTMLCanvasElement>('.rc-fx'), fg = fx.getContext('2d'), mini = $<HTMLCanvasElement>('#rc-map'), mg = mini.getContext('2d'), modal = $('#rc-modal');
   const audio = new RaceAudio(); audio.enabled = prefs.sound;
   const garage = { value: readGarage() };

@@ -270,6 +270,22 @@ it('seeks video by keyboard/touch-friendly range input even while paused', () =>
   expect(time.textContent).toBe('0:00 / 3:35');
 });
 
+it('resets the music elapsed time and accessible progress when switching tracks', () => {
+  view.el.querySelector<HTMLButtonElement>('[data-app="music"]')!.click();
+  view.frame(0.1);
+  const bar = view.el.querySelector<HTMLElement>('.sc-app-music .sc-progress[role="progressbar"]')!;
+  const label = view.el.querySelector<HTMLElement>('[data-m-time]')!;
+  expect(bar.getAttribute('aria-label')).toBe('음악 재생 진행도');
+  expect(bar.getAttribute('aria-valuenow')).toBe('0');
+  view.frame(25);
+  expect(Number(bar.getAttribute('aria-valuenow'))).toBeGreaterThan(0);
+  expect(label.textContent).toBe('0:25');
+  view.el.querySelector<HTMLButtonElement>('[data-m="next"]')!.click();
+  expect(label.textContent).toBe('0:00');
+  expect(bar.getAttribute('aria-valuenow')).toBe('0');
+  expect(view.el.querySelector<HTMLElement>('[data-m-prog]')!.style.transform).toBe('scaleX(0)');
+});
+
 it('labels music and video play controls for keyboard and screen-reader players', () => {
   const open = (id: string) => {
     view.el.querySelector<HTMLButtonElement>(`[data-app="${id}"]`)!.click();

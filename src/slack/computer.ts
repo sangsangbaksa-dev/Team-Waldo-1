@@ -285,10 +285,15 @@ export const createComputerView: CreateView = (sim, audio) => {
 
   /* ---------- 음악 ---------- */
   const M = { cur: 0, p: 0, playing: true, sec: -1 };
-  const musicHtml = () => `<div class="sc-music"><div class="sc-album"><div class="sc-disc">☾</div><span data-m-cap>새벽의 온도</span></div><div class="sc-music-info"><small>지금 재생 중</small><strong data-m-title aria-live="polite"></strong><span data-m-art></span><div class="sc-visualizer">${Array.from({ length: 20 }, (_, i) => `<i style="--n:${i}"></i>`).join('')}</div><div class="sc-progress"><i data-m-prog></i></div><div class="sc-music-controls"><button type="button" data-m="prev" aria-label="이전 곡">◀◀</button><button type="button" data-m="play" aria-label="일시정지">❚❚</button><button type="button" data-m="next" aria-label="다음 곡">▶▶</button><span data-m-time>0:00</span></div></div><div class="sc-playlist"><b>재생 목록</b>${tracks.map((t, i) => `<button type="button" data-track="${i}" aria-pressed="${M.cur === i}" aria-label="${t.t}, ${mmss(t.len)}">${String(i + 1).padStart(2, '0')}　${t.t} <span>${mmss(t.len)}</span></button>`).join('')}</div></div>`;
+  const musicHtml = () => `<div class="sc-music"><div class="sc-album"><div class="sc-disc">☾</div><span data-m-cap>새벽의 온도</span></div><div class="sc-music-info"><small>지금 재생 중</small><strong data-m-title aria-live="polite"></strong><span data-m-art></span><div class="sc-visualizer">${Array.from({ length: 20 }, (_, i) => `<i style="--n:${i}"></i>`).join('')}</div><div class="sc-progress" role="progressbar" aria-label="음악 재생 진행도" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i data-m-prog></i></div><div class="sc-music-controls"><button type="button" data-m="prev" aria-label="이전 곡">◀◀</button><button type="button" data-m="play" aria-label="일시정지">❚❚</button><button type="button" data-m="next" aria-label="다음 곡">▶▶</button><span data-m-time>0:00</span></div></div><div class="sc-playlist"><b>재생 목록</b>${tracks.map((t, i) => `<button type="button" data-track="${i}" aria-pressed="${M.cur === i}" aria-label="${t.t}, ${mmss(t.len)}">${String(i + 1).padStart(2, '0')}　${t.t} <span>${mmss(t.len)}</span></button>`).join('')}</div></div>`;
   const musicSet = (i: number) => {
     M.cur = (i + tracks.length) % tracks.length; M.p = 0; M.sec = -1; const w = wins.music; const t = tracks[M.cur];
-    setTxt($('[data-m-title]', w), t.t); setTxt($('[data-m-art]', w), t.a); w.querySelectorAll('[data-track]').forEach((p, k) => { const current = k === M.cur; p.classList.toggle('cur', current); p.setAttribute('aria-pressed', String(current)); });
+    setTxt($('[data-m-title]', w), t.t); setTxt($('[data-m-art]', w), t.a);
+    setTxt($('[data-m-time]', w), '0:00');
+    $('[data-m-prog]', w).style.transform = 'scaleX(0)';
+    const progress = $('.sc-progress[role="progressbar"]', w);
+    progress.setAttribute('aria-valuenow', '0');
+    w.querySelectorAll('[data-track]').forEach((p, k) => { const current = k === M.cur; p.classList.toggle('cur', current); p.setAttribute('aria-pressed', String(current)); });
   };
   let earbudsActive = false;
   /** The lecture cover pauses the mini-player and its procedural headphone bed. */
@@ -301,7 +306,14 @@ export const createComputerView: CreateView = (sim, audio) => {
   const musicTick = (dt: number) => {
     if (shown !== 'music' || sim.state.cover || !M.playing) return;
     M.p += dt / tracks[M.cur].len; if (M.p >= 1) { musicSet(M.cur + 1); return; }
-    const sec = Math.floor(M.p * tracks[M.cur].len); if (sec !== M.sec) { M.sec = sec; setTxt($('[data-m-time]', wins.music), mmss(sec)); $('[data-m-prog]', wins.music).style.transform = `scaleX(${M.p})`; }
+    const sec = Math.floor(M.p * tracks[M.cur].len); if (sec !== M.sec) {
+      M.sec = sec; const w = wins.music;
+      setTxt($('[data-m-time]', w), mmss(sec));
+      $('[data-m-prog]', w).style.transform = `scaleX(${M.p})`;
+      const progress = $('.sc-progress[role="progressbar"]', w);
+      const value = String(Math.min(100, Math.round(M.p * 100)));
+      if (progress.getAttribute('aria-valuenow') !== value) progress.setAttribute('aria-valuenow', value);
+    }
   };
 
   /* ---------- 창 생성/전환 (한 번만 만들고 켜고 끔) ---------- */

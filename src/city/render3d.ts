@@ -194,7 +194,28 @@ export class Renderer3D {
     if (med > 28 && this.perfLevel < 3) { this.setPerfLevel(this.perfLevel + 1); }
   }
   resize(): void { this.w = this.canvas.clientWidth || window.innerWidth; this.h = this.canvas.clientHeight || window.innerHeight; this.renderer.setSize(this.w, this.h, false); this.camera.aspect = this.w / this.h; this.camera.updateProjectionMatrix(); }
-  dispose(): void { this.post?.dispose(); this.ins?.dispose(); this.ins = null; this.environment?.dispose(); this.details.dispose(); disposeLootTextures(); this.renderer.dispose(); this.scene.traverse(o => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); }); for (const f of this.floaters) f.el.remove(); }
+  dispose(): void {
+    this.post?.dispose();
+    this.ins?.dispose(); this.ins = null;
+    this.environment?.dispose();
+    this.details.dispose();
+    // These textures and fallback materials belong to this City renderer only.
+    // Do not dispose the shared model-asset cache used for later game entries.
+    for (const b of this.biz.values()) {
+      b.label.material.map?.dispose();
+      b.label.material.dispose();
+    }
+    this.biz.clear();
+    this.zoneTex.dispose();
+    this.glow.dispose();
+    for (const m of this.mats.values()) m.dispose();
+    this.mats.clear();
+    disposeLootTextures();
+    this.renderer.dispose();
+    this.scene.traverse(o => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); });
+    for (const f of this.floaters) f.el.remove();
+    this.floaters.length = 0;
+  }
   /** 조준선이 닿는 지면 좌표 */
   groundPoint(max = 760): { x: number; y: number } {
     const b = this.world.boss(0), ox = b ? b.x : this.camPos.x, oy = b ? b.y : this.camPos.z; let d = this.pitch < -0.03 ? Math.min(max, (this.mode === 'fp' ? EYE : 120) / Math.tan(-this.pitch)) : max * 0.8; d = Math.max(70, d);

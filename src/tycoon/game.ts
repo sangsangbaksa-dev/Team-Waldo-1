@@ -259,7 +259,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   }
   function applyStageLook(): void {
     disposeCarry();
-    const si = core.state.stageIndex; player.setOutfit(si); crowd?.setStage(si); traffic?.setStage(si); lastStage = si; attachCarry(true);
+    const si = core.state.stageIndex; player.setOutfit(si); if (rides?.driving && player.rig) player.rig.root.visible = false; crowd?.setStage(si); traffic?.setStage(si); lastStage = si; attachCarry(true);
   }
   function attachCarry(force = false): void {
     const s = core.state, key = `${s.cargo?.units ? s.cargo.kind : ''}${s.cargo?.units ?? 0}|${s.bottles}`; if (!force && key === lastCarry) return; lastCarry = key;

@@ -113,12 +113,20 @@ export class ShooterView {
   }
 
   private buildBuildings(): void {
-    const map = this.match.map, byTex: THREE.BufferGeometry[][] = [[], [], [], []], crates: Box[] = [];
-    for (const b of map.boxes) { if (b.kind === 'wall') byTex[b.tex % 4].push(worldBox(b)); else if (b.kind === 'crate') crates.push(b); }
+    const map = this.match.map, byTex: THREE.BufferGeometry[][] = [[], [], [], []], crates: Box[] = [], ceilings: Box[] = [];
+    for (const b of map.boxes) { if (b.kind === 'wall') byTex[b.tex % 4].push(worldBox(b)); else if (b.kind === 'crate') crates.push(b); else if (b.kind === 'ceiling') ceilings.push(b); }
     byTex.forEach((list, i) => {
       if (!list.length) return; const m = new THREE.Mesh(mergeGeometries(list, false), new THREE.MeshLambertMaterial({ map: wallTexture(i) }));
       m.castShadow = true; m.receiveShadow = true; this.scene.add(m);
     });
+    if (ceilings.length) {
+      // 모든 건물의 실내 천장을 하나의 머티리얼/메시로 묶어 성능 부담을 줄입니다.
+      const pieces = ceilings.map(b => worldBox(b));
+      const merged = pieces.length === 1 ? pieces[0] : mergeGeometries(pieces, false);
+      const m = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({ color: 0x81888b, side: THREE.DoubleSide }));
+      m.receiveShadow = true; this.scene.add(m);
+      if (pieces.length > 1) for (const g of pieces) g.dispose();
+    }
     const floorTex = floorTexture(), floors: THREE.BufferGeometry[] = [];
     for (const b of map.buildings) { const f = new THREE.PlaneGeometry(b.w, b.d); f.rotateX(-Math.PI / 2); f.translate(b.x, 0.05, b.z); const uv = f.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * b.w / 3, uv.getY(i) * b.d / 3); floors.push(f); }
     if (floors.length) { const m = new THREE.Mesh(mergeGeometries(floors, false), new THREE.MeshLambertMaterial({ map: floorTex })); m.receiveShadow = true; this.scene.add(m); }

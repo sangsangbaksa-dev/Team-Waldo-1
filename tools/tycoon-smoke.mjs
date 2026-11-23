@@ -20,13 +20,23 @@ try {
     await page.click('#start-tycoon'); await page.waitForFunction(() => window.__ty?.phase === 'title');
     await page.click('[data-title="new"]'); await page.waitForFunction(() => window.__ty.phase === 'play');
     assert.equal(await page.locator('#ty-hud').isVisible(), true, 'HUD visible');
-    assert.equal(await page.locator('#ty-cash').textContent(), '$0', 'Starts broke');
+    // Currency labels vary by locale/design ('0', '$0', '₩0'); verify amount.
+    const cash = async () => Number((await page.locator('#ty-cash').textContent() || '').replace(/[^0-9-]/g, ''));
+    assert.equal(await cash(), 0, 'Starts broke');
     // 걷기
     const p0 = await page.evaluate(() => ({ x: window.__ty.player.pos.x, z: window.__ty.player.pos.z }));
-    await page.evaluate(() => { window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW' })); }); await sleep(900);
-    await page.evaluate(() => { window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyW' })); });
+    // Use real Playwright keydown/keyup rather than synthetic untrusted events
+    // so this exercises the same focus/input pathway as players.
+    await page.keyboard.down('w'); await sleep(1200); await page.keyboard.up('w');
     const p1 = await page.evaluate(() => ({ x: window.__ty.player.pos.x, z: window.__ty.player.pos.z }));
-    assert.ok(Math.hypot(p1.x - p0.x, p1.z - p0.z) > 0.5, 'Pressing W walks the player');
+    const movement = Math.hypot(p1.x - p0.x, p1.z - p0.z);
+    const movementState = await page.evaluate(() => ({
+      phase: window.__ty.phase,
+      modalVisible: !!document.querySelector('.ty-modal:not([hidden])'),
+      pointerLocked: document.pointerLockElement !== null,
+      playerSpeed: window.__ty.player.speed,
+    }));
+    assert.ok(movement > 0.5, 'Pressing W walks the player: ' + JSON.stringify({ p0, p1, movement, movementState }));
     // 쓰레기 골목에서 병 줍기 → 고물상에서 팔기
     const go = id => page.evaluate(id => { const t = window.__ty, d = t.city.doorOf(id); t.player.teleport(d.x + d.fx * 1.5, d.z + d.fz * 1.5, 0); }, id);
     await go('alley'); await page.waitForSelector('#ty-prompt:not([hidden])');
@@ -34,7 +44,10 @@ try {
     await page.click('.ty-act[data-act="collect"]'); await page.waitForFunction(() => !document.querySelector('#ty-activity')?.hidden === false || document.querySelector('#ty-carry')?.textContent.includes('빈 병'), null, { timeout: 20000 });
     await page.waitForFunction(() => document.querySelector('#ty-carry')?.textContent.includes('빈 병'));
     await go('junkyard'); await page.waitForSelector('#ty-prompt:not([hidden])'); await page.keyboard.press('KeyE');
-    await page.click('.ty-act[data-act="sell_bottles"]'); await page.waitForFunction(() => document.querySelector('#ty-cash')?.textContent !== '$0');
+    await page.click('.ty-act[data-act="sell_bottles"]'); await page.waitForFunction(() => {
+      const label = document.querySelector('#ty-cash')?.textContent || '';
+      return Number(label.replace(/[^0-9-]/g, '')) > 0;
+    });
     // 현황·지도·메뉴
     await page.keyboard.press('Escape'); await page.waitForSelector('.ty-modal', { state: 'hidden' });
     await page.keyboard.press('Tab'); await page.waitForSelector('.ty-panel[aria-label="현황"]'); await page.keyboard.press('Escape'); await page.waitForSelector('.ty-modal', { state: 'hidden' });
@@ -44,7 +57,7 @@ try {
     // 처음부터 다시 시작: 한 번 누르면 확인만 받고, 두 번째에 저장이 지워지고 첫날로 돌아간다.
     await page.click('[data-menu="restart"]'); assert.ok(await page.evaluate(() => window.__ty.core.state.cash > 0), 'The first press only asks for confirmation');
     await page.click('[data-menu="restart"]'); await page.waitForSelector('.ty-modal', { state: 'hidden' });
-    assert.equal(await page.locator('#ty-cash').textContent(), '$0', 'Restart brings back the broke start');
+    assert.equal(await cash(), 0, 'Restart brings back the broke start');
     assert.equal(await page.evaluate(() => window.__ty.core.state.day), 1, 'Restart returns to day 1');
     await page.keyboard.press('Escape'); await page.waitForSelector('.ty-panel[aria-label="일시정지"]');
     await page.click('[data-menu="exit"]'); await page.waitForSelector('#start-tycoon');

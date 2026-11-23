@@ -1,0 +1,47 @@
+name: HUSTLE desktop and mobile browser smoke
+# Scope the expensive WebGL check to actual HUSTLE, hub and shared-runtime changes.
+on:
+  pull_request:
+    paths: &hustle_paths
+      - 'src/tycoon/**'
+      - 'tests/tycoon/**'
+      - 'src/shared/**'
+      - 'src/main.ts'
+      - 'src/loading.ts'
+      - 'src/prefs.ts'
+      - 'src/postfx.ts'
+      - 'public/assets/models/vehicles.glb'
+      - 'public/assets/models/characters.glb'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.ts'
+      - 'tools/tycoon-smoke.mjs'
+      - '.github/workflows/hustle-browser-smoke.yml'
+  push:
+    branches:
+      - feat/shared-menu-rails
+    paths: *hustle_paths
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hustle-browser-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium --only-shell
+      - name: HUSTLE walk, interaction, menu, save and touch regressions
+        timeout-minutes: 7
+        run: node tools/tycoon-smoke.mjs

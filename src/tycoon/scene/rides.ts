@@ -20,8 +20,8 @@ const FLEET: readonly FleetSpec[] = [
 ] as const;
 const worldDistance = (a: { x: number; z: number }, b: { x: number; z: number }): number => Math.hypot(a.x - b.x, a.z - b.z);
 const angleDelta = (a: number, b: number): number => Math.atan2(Math.sin(a - b), Math.cos(a - b));
-const RADIUS = 0.83;
-const BODY_LENGTH = 1.65;
+const RADIUS = 1.03;
+const BODY_LENGTH = 1.95;
 
 /** A vehicle is a rounded rectangle, not a single point. Check front and rear ends. */
 export class Rides {
@@ -100,6 +100,8 @@ export class Rides {
       if (!exit) return { ok: false, message: '내릴 공간이 없습니다. 차를 조금 움직여 보세요' };
       this.active = null;
       player.teleport(car.x + exit.x, car.z + exit.z, car.heading);
+      player.camYaw = car.heading - Math.PI / 2;
+      player.camPitch = 0.28; player.dist = 7.5;
       if (player.rig) player.rig.root.visible = !player.firstPerson;
       return { ok: true, message: '차량에서 내렸습니다' };
     }
@@ -111,7 +113,7 @@ export class Rides {
     if (player.rig) player.rig.root.visible = false;
     player.pos.set(best.x, 0.18, best.z);
     player.vel.set(0, 0, 0);
-    player.camYaw = -best.heading - Math.PI / 2;
+    player.camYaw = best.heading - Math.PI / 2;
     player.camPitch = 0.35; player.dist = 10;
     return { ok: true, message: best.name + ' · W/S 가감속, A/D 조향, Space 브레이크' };
   }
@@ -124,9 +126,9 @@ export class Rides {
     player.pos.set(car.x, 0.18, car.z);
     player.vel.set(0, 0, 0);
     player.speed = Math.abs(car.speed);
-    player.facing = -car.heading;
-    const follow = -car.heading - Math.PI / 2;
-    player.camYaw += angleDelta(follow, player.camYaw) * (1 - Math.exp(-3.5 * dt));
+    player.facing = car.heading;
+    const follow = car.heading - Math.PI / 2;
+    if (!player.firstPerson) player.camYaw += angleDelta(follow, player.camYaw) * (1 - Math.exp(-3.5 * dt));
     return impact;
   }
   dispose(): void {

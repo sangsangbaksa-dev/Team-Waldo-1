@@ -706,6 +706,8 @@ function loadScene() {
     x: o.root.position.x,
     z: o.root.position.z,
     rotation: o.root.rotation.y,
+    cos: Math.cos(o.root.rotation.y),
+    sin: Math.sin(o.root.rotation.y),
     halfWidth: o.type === "hide" ? 0.57 : o.type === "station" ? 0.46
       : o.type === "item" ? 0.36 : 0.35,
     halfDepth: o.type === "hide" ? (o.kind === 2 ? 0.13 : 0.44)

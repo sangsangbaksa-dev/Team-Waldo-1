@@ -51,6 +51,19 @@ describe('SKY WAR 발사체·보급품 회귀 테스트', () => {
     expect(sim.missiles).toHaveLength(0);
   });
 
+  it('선행 조준점은 이동하는 적과 발사체가 같은 시각에 만나는 지점을 가리킨다', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.player.pos.set(0, 900, 0);
+    const target = sim.makeJet('enemy', 'fighter', new THREE.Vector3(400, 900, -500), 0.8);
+    target.q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2);
+    target.speed = 180;
+    const speed = 700;
+    const lead = sim.leadPoint(sim.player, target, speed, new THREE.Vector3());
+    const arrival = lead.distanceTo(sim.player.pos) / speed;
+    const actual = target.pos.clone().addScaledVector(new THREE.Vector3(0, 0, -1).applyQuaternion(target.q), target.speed * arrival);
+    expect(lead.distanceTo(actual)).toBeLessThan(0.001);
+  });
+
   it('기한이 지난 보급품은 겹쳐 있어도 획득할 수 없다', () => {
     const sim = new SkySim(DIFFS[1]!);
     sim.player.hp = 10;

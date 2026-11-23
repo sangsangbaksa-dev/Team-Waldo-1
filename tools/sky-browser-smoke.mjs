@@ -41,9 +41,15 @@ try {
       await page.goto(origin, { waitUntil: 'domcontentloaded' });
       await page.locator('#start-sky').click();
       await page.locator('#sk-title').waitFor({ state: 'visible' });
+      const pointerChoice = page.locator('[data-k="lock"]');
+      assert.match(await pointerChoice.innerText(), /자유/, 'Absolute pointer steering is the default');
+      await pointerChoice.click();
+      assert.match(await pointerChoice.innerText(), /잠금/, 'Pointer lock can be enabled');
+      await pointerChoice.click();
       await page.locator('#sk-start').click();
       await page.locator('.sk-hud').waitFor({ state: 'visible' });
       await page.waitForFunction(() => !!window.__sky?.sim);
+      assert.equal(await page.evaluate(() => document.pointerLockElement === null), true, 'Default controls should not lock pointer');
       await page.evaluate(() => { window.__sky.sim.intermission = 0; });
       await page.waitForFunction(() => window.__sky?.sim?.wave >= 1);
       const flight = await page.evaluate(() => {

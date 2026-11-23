@@ -2,6 +2,7 @@
 import { DISTRICTS } from '../core/data';
 import { BLOCK, WORLD_HALF, blockUnlocked, type Layout, type Zone } from '../scene/layout';
 import { spotColor, type SpotView } from '../scene/city';
+import { streetRoute } from './road-route';
 
 const ZONE_COLOR: Record<Zone, string> = { slum: '#8b6f55', market: '#c98a3b', harbor: '#3f8aa6', downtown: '#6f78c4', uptown: '#b865a8', fringe: '#566070' };
 export const zoneName = (z: Zone): string => (z === 'fringe' ? '외곽' : DISTRICTS[z].name);
@@ -41,14 +42,16 @@ export function drawMap(canvas: HTMLCanvasElement, layout: Layout, v: MapView): 
   const destination = v.target ? layout.spotLots.get(v.target) : undefined;
   if (destination && v.names) {
     g.save(); g.strokeStyle = '#fff9'; g.lineWidth = 2; g.setLineDash([6, 6]); g.beginPath();
-    g.moveTo(X(v.px), Z(v.pz)); g.lineTo(X(destination.doorX), Z(destination.doorZ)); g.stroke(); g.restore();
+    const route = streetRoute({ x: v.px, z: v.pz }, { x: destination.doorX, z: destination.doorZ });
+    route.forEach((point, index) => index ? g.lineTo(X(point.x), Z(point.z)) : g.moveTo(X(point.x), Z(point.z))); g.stroke(); g.restore();
   }
   // Player-selected free-roam route is intentionally distinct from contracted work.
   if (v.waypoint) {
     const x = X(v.waypoint.x), z = Z(v.waypoint.z);
     if (v.names) {
       g.save(); g.strokeStyle = '#ffda84aa'; g.lineWidth = 2; g.setLineDash([4, 6]);
-      g.beginPath(); g.moveTo(X(v.px), Z(v.pz)); g.lineTo(x, z); g.stroke(); g.restore();
+      g.beginPath(); const route = streetRoute({ x: v.px, z: v.pz }, v.waypoint);
+      route.forEach((point, index) => index ? g.lineTo(X(point.x), Z(point.z)) : g.moveTo(X(point.x), Z(point.z))); g.stroke(); g.restore();
     }
     g.save(); g.strokeStyle = '#ffd588'; g.fillStyle = '#1d2831'; g.lineWidth = v.names ? 3 : 2;
     g.beginPath(); g.arc(x, z, v.names ? 10 : 5.5, 0, 2 * Math.PI); g.fill(); g.stroke();

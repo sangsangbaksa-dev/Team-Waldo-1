@@ -74,7 +74,9 @@ function safeSpawn(position: THREE.Vector3): THREE.Vector3 {
 function projectileTerrainImpact(from: THREE.Vector3, to: THREE.Vector3): number | null {
   const dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z;
   const distance = Math.hypot(dx, dy, dz);
-  const subdivisions = Math.min(12, Math.max(2, Math.ceil(distance / 25)));
+  // Ordinary 50ms ticks need only 2-3 samples; a rare very long segment
+  // needs more to avoid tunneling through a narrow mountain summit.
+  const subdivisions = Math.min(64, Math.max(2, Math.ceil(distance / 25)));
   for (let i = 0; i <= subdivisions; i++) {
     const t = i / subdivisions;
     const x = from.x + dx * t, y = from.y + dy * t, z = from.z + dz * t;

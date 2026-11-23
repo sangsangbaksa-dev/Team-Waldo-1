@@ -33,7 +33,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     <div class="wd-field"><div class="sk-section-label wd-label">설정</div><div class="sk-ctl" id="sk-ctl"><label>조준 보조 <button data-k="assist"></button></label><label>감도 <button data-k="sens"></button></label><label>상하 <button data-k="inv"></button></label></div></div>
     <ul class="sk-how"><li><b>커서/손가락 위치</b>로 조종 — 클릭 없이 움직이면 기체가 따라갑니다 (화면 가운데 = 직진)</li>
     <li><b>두 손가락 스크롤</b> = 스로틀 · <b>탭/클릭</b> = 기관포 · <b>두 손가락 탭(우클릭)</b> = 미사일</li>
-    <li><b>조준 보조</b>는 위 설정에서 조절 (끔=직접 조준, 약=조준 끌어줌, 강=조준원 안의 적에게 자동 사격 · T로 자동 사격 토글) · 적을 가운데 두면 락온 후 미사일 발사</li>
+    <li><b>조준 보조</b>는 위 설정에서 조절 (끔=직접 조준, 약=조준 끌어줌, 강=조준원 안의 적에게 자동 사격 · T로 자동 사격 토글) · 청록색 LEAD 표식을 향해 조준하세요 · 적을 가운데 두면 락온 후 미사일 발사</li>
     <li>키보드: WASD/방향키 · Q/E 러더 · C 조종석 시점 · Shift 부스트 · Ctrl 감속 · Space 기관포 · M 미사일 · F 플레어 · P 일시정지</li></ul>
     <div class="sk-record"><span class="sk-section-label">FLIGHT RECORD</span><div class="sk-rec" id="sk-rec"></div></div>
     <div class="sk-row wd-actions"><button class="wd-btn primary" id="sk-start">시작</button><button class="wd-btn ghost" id="sk-quit">게임 목록으로</button></div>
@@ -111,7 +111,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     // 조준 보조: 적이 조준원 안에 들면 조종간을 살짝 적쪽으로 끌어줍니다(터치패드 미세조준 보완)
     const t = ctl.assist > 0 ? sim!.bestTarget(p, ASSIST_CONE, GUN_RANGE) : null; const pull = ctl.assist >= 2 ? 0.3 : 0.1;
     if (t) {
-      const lead = sim!.leadPoint(p, t, 700, scratch); const l = lead.sub(p.pos).normalize().applyQuaternion(inverse.copy(p.q).invert());
+      const lead = sim!.leadPoint(p, t, p.speed + 680, scratch); const l = lead.sub(p.pos).normalize().applyQuaternion(inverse.copy(p.q).invert());
       roll += clamp(l.x * 2.2, -pull, pull); pitch += clamp(l.y * 2.2, -pull, pull);
     }
     // 자동 사격: 조준원에 들어오면 발사(클릭/스페이스는 수동)
@@ -148,6 +148,19 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
       octx.restore();
     }
     if (mouse.active) { const sx = Math.min(W, H * 1.4) * 0.34, sy = H * 0.32, px = mouse.touchId >= 0 ? mouse.ox + mouse.x * 90 : cx + mouse.x * sx, py = mouse.touchId >= 0 ? mouse.oy + mouse.y * 90 : cy + mouse.y * sy; octx.fillStyle = 'rgba(255,255,255,.75)'; octx.beginPath(); octx.arc(px, py, 5, 0, 7); octx.fill(); octx.strokeStyle = 'rgba(255,255,255,.2)'; octx.beginPath(); octx.moveTo(cx, cy); octx.lineTo(px, py); octx.stroke(); }
+    // 이동 목표의 예측 선행 조준점: 자동 사격을 끄더라도 직접 맞힐 수 있게 안내합니다.
+    const leadTarget = sim!.bestTarget(p, ASSIST_CONE, GUN_RANGE);
+    if (leadTarget) {
+      const lead = sim!.leadPoint(p, leadTarget, p.speed + 680, scratch);
+      const s = view!.project(lead);
+      if (!s.behind && s.x > 0.04 && s.x < 0.96 && s.y > 0.04 && s.y < 0.96) {
+        const lx = s.x * W, ly = s.y * H;
+        octx.save(); octx.strokeStyle = 'rgba(120,255,218,.78)'; octx.fillStyle = 'rgba(120,255,218,.9)';
+        octx.lineWidth = 1.3; octx.setLineDash([4, 4]); octx.beginPath(); octx.arc(lx, ly, 12, 0, Math.PI * 2); octx.stroke();
+        octx.setLineDash([]); octx.font = '600 10px system-ui'; octx.fillText('LEAD', lx + 16, ly - 10);
+        octx.restore();
+      }
+    }
     // 적 표시
     for (const e of sim!.jets) {
       if (!e.alive || e.team !== 'enemy') continue; const d = e.pos.distanceTo(p.pos); const s = view!.project(e.pos);

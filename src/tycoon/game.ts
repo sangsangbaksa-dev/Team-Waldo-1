@@ -268,6 +268,11 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   mini.addEventListener('click', () => { if (!modal && phase === 'play') openModal({ kind: 'map' }); });
 
   // ---------- 코어 연결 ----------
+  function rebuildFleet(): void {
+    rides?.dispose();
+    rides = new Rides(scene, layout, colliders);
+    rides.setTrafficBlocker((x, z, r) => traffic?.blocks(x, z, r) ?? false);
+  }
   function bindCore(c: TycoonCore): void {
     for (const u of unsub.splice(0)) u();
     core = c; unsub.push(c.subscribe(() => { hudDirty = true; }), c.onEvent(onEvent));
@@ -316,7 +321,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   titleEl.addEventListener('click', e => { audio.unlock(); const b = (e.target as HTMLElement).closest<HTMLElement>('[data-title]'); if (b) titleAction(b.dataset.title!); });
   function titleAction(a: string): void {
     if (a === 'exit') { exit(); return; }
-    if (a === 'new') { waypoint = null; if (readTycoonSummary().has && !window.confirm('기존 저장 기록을 지우고 새로 시작할까요?')) return; clearTycoon(); resumePosition = null; bindCore(createCore()); syncCity(false); }
+    if (a === 'new') { waypoint = null; if (readTycoonSummary().has && !window.confirm('기존 저장 기록을 지우고 새로 시작할까요?')) return; clearTycoon(); resumePosition = null; bindCore(createCore()); syncCity(false); rebuildFleet(); }
     else if (a === 'continue') { /* 제목 화면에서 이미 저장본으로 만든 코어를 씁니다 */ }
     startPlay();
   }
@@ -479,9 +484,8 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
       syncCity(false);
       atmo = new Atmosphere(scene, renderer, quality);
       player = new Player(scene, kit);
-      rides = new Rides(scene, layout, colliders);
+      rebuildFleet();
       if (kit) { crowd = new Crowd(scene, kit, quality); traffic = new Traffic(scene, quality); } else traffic = new Traffic(scene, quality);
-      rides.setTrafficBlocker((x, z, r) => traffic?.blocks(x, z, r) ?? false);
       post = makePost(quality, renderer, scene, camera, { strength: 0.42, radius: 0.55, threshold: 0.84, vignette: 0.32, saturation: 1.1, contrast: 1.06 });
       applyStageLook(); resize();
       const bench = layout.spotLots.get('bench') ?? [...layout.spotLots.values()][0]; titleFocus.set(bench?.cx ?? layout.spawn.x, 0, bench?.cz ?? layout.spawn.z);

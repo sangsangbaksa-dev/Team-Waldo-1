@@ -519,11 +519,12 @@ export function rayWorld(map: GameMap, ox: number, oy: number, oz: number, dx: n
       };
       if (slab(ox, dx, b.x0, b.x1) && slab(oy, dy, b.y0, b.y1) && slab(oz, dz, b.z0, b.z1) && t0 < best) best = t0;
     }
-    if (nextX === Infinity && nextZ === Infinity) break;
-    // 모서리를 정확히 통과할 때는 양쪽 경계를 동시에 넘습니다.
-    if (nextX <= nextZ) { entry = nextX; nextX += intervalX; cx += stepX; }
-    if (nextZ <= entry) { entry = nextZ; nextZ += intervalZ; cz += stepZ; }
-    // X 경계만 넘은 경우에는 다음 Z 경계를 향해 계속 진행합니다.
+    const crossing = Math.min(nextX, nextZ);
+    if (!Number.isFinite(crossing)) break;
+    // 모서리를 정확히 통과할 때는 두 축을 동시에 넘습니다.
+    if (nextX <= crossing) { nextX += intervalX; cx += stepX; }
+    if (nextZ <= crossing) { nextZ += intervalZ; cz += stepZ; }
+    entry = crossing;
   }
   return best;
 }

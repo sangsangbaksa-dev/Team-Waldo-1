@@ -131,8 +131,10 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
     }
   }
   r.thrPrev = pressed;
-  const racing = r.phase !== 'countdown';
-  if (racing) updateDraft(r, dt);
+  // Keep coast/AI motion after the finish, but do not emit new gameplay
+  // events or build further drafting and drift rewards on the results screen.
+  const racing = r.phase !== 'countdown', live = r.phase === 'racing';
+  if (live) updateDraft(r, dt);
   for (const k of r.racers) {
     if (k.link) {
       followSnap(k.car, k.link, now, dt);
@@ -148,13 +150,11 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
       }
     }
         k.lastEv = stepCar(k.car, inp, dt, t, k.params);
-    if (k.player) {
+    if (k.player && live) {
       if (k.lastEv.hit > 0) ev.push({ type: 'hit', power: k.lastEv.hit });
-      if (racing) {
-        const de = stepDrift(r.drift, k.car, dt, k.lastEv.hit > 0);
+      const de = stepDrift(r.drift, k.car, dt, k.lastEv.hit > 0);
         if (de?.type === 'bank') { k.car.nitro = Math.min(1, k.car.nitro + nitroForChain(de.points)); ev.push({ type: 'driftBank', points: de.points, mult: de.mult }); }
         else if (de?.type === 'lost') ev.push({ type: 'driftLost', points: de.points });
-      }
       if (k.lastEv.driftBoost > 0) ev.push({ type: 'driftBoost', secs: k.lastEv.driftBoost });
       if (k.lastEv.pad) ev.push({ type: 'pad' });
     }
@@ -163,9 +163,9 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
   for (let i = 0; i < r.racers.length; i++) for (let j = i + 1; j < r.racers.length; j++) {
     if (r.racers[i].link || r.racers[j].link) continue; // 상대 차량은 겹쳐 달립니다(충돌 동기화 없음)
     const mine = i === 0 || j === 0, rel = separateCars(r.racers[i].car, r.racers[j].car);
-    if (mine && rel > 3) ev.push({ type: 'bump', power: rel });
+    if (live && mine && rel > 3) ev.push({ type: 'bump', power: rel });
   }
-  for (const k of r.racers) if (!k.link) { const hit = stayOnTrack(k.car, t, dt, false); if (k.player && hit > 0) ev.push({ type: 'hit', power: hit }); }
+  for (const k of r.racers) if (!k.link) { const hit = stayOnTrack(k.car, t, dt, false); if (live && k.player && hit > 0) ev.push({ type: 'hit', power: hit }); }
   // Keep the race result fixed during the post-finish driving animation.
   if (r.phase !== 'racing') return ev;
   // Settle every crossing in this simulation step before resolving final place.

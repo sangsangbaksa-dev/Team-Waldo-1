@@ -116,6 +116,16 @@ try {
   }));
   assert.ok(replay.webgl && replay.playerTime === null && replay.ghost === completion.time,
     'Restart failed to reset race while preserving ghost: ' + JSON.stringify(replay));
+  // A different scenery/weather map must rebuild cleanly after the first race.
+  await page.keyboard.press('Escape');
+  await page.locator('.rc-modal.show [data-act="setup"]').click();
+  await page.locator('.rc-setup [data-pick="map:storm"]').click();
+  await page.locator('.rc-setup [data-setup="start"]').click();
+  await page.waitForFunction(() => document.querySelector('.rc-root')?.dataset.phase === 'countdown');
+  await page.evaluate(() => window.__race.skip(3.3));
+  await page.waitForFunction(() => window.__race.race.phase === 'racing');
+  assert.equal(await page.evaluate(() => window.__race.race.track.n > 0), true);
+  await page.screenshot({ path: 'browser-artifacts/race/storm-racing.png' });
   // Avoid rendering two SwiftShader scenes at once on slow CI VMs.
   await context.close();
   // Portrait touch layout uses the same game loop and must remain fully usable.

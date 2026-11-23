@@ -447,16 +447,16 @@ export function openRace(onExit: () => void): void {
 
   // 레이싱카 모델(race.glb) 로드 → 실패해도 단순 차체로 계속
   void (async () => {
-    // The independent car and driver assets can load concurrently.
-    const [cars, drivers] = await Promise.allSettled([
-      loadRaceCars(import.meta.env.BASE_URL),
-      // Low quality never needs the optional 2.8MB crowd/driver model, so
-      // skip its download and parser cost on entry-level mobile devices.
-      prefs.quality === 'low' ? Promise.resolve(null) : loadCharacterKit(import.meta.env.BASE_URL),
-    ]);
+    // Optional pit-crew characters must never block the race setup screen:
+    // an unreachable characters.glb previously kept the loading modal up
+    // indefinitely due to the character loader's retry policy.
+    if (prefs.quality === 'low') setDriverKit(null);
+    else void loadCharacterKit(import.meta.env.BASE_URL)
+      .then(kit => { if (!closed) setDriverKit(kit); })
+      .catch(() => { if (!closed) setDriverKit(null); });
+    const cars = await loadRaceCars(import.meta.env.BASE_URL);
     if (closed) return;
-    carTemplate = cars.status === 'fulfilled' ? cars.value : null;
-    setDriverKit(drivers.status === 'fulfilled' ? drivers.value : null);
+    carTemplate = cars;
     last = performance.now(); raf = requestAnimationFrame(frame); showSetup();
   })();
 }

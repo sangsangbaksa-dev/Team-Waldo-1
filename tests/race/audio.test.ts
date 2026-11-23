@@ -41,6 +41,27 @@ describe('SPEED RUSH audio', () => {
     expect(audio.gear).toBeGreaterThan(1);
   });
 
+  it('never revives stale boost and skid noise when unmuting without another frame', () => {
+    audio.unlock();
+    const ctx = mock.context()!;
+    audio.drive(70, 1, 0.3, true, true, false);
+    expect(loopGain(ctx.sources[0])).toBeGreaterThan(0);
+    expect(loopGain(ctx.sources[1])).toBeGreaterThan(0);
+    expect(loopGain(ctx.sources[2])).toBeGreaterThan(0);
+    audio.enabled = false;
+    expect(loopGain(ctx.sources[0])).toBe(0);
+    expect(loopGain(ctx.sources[1])).toBe(0);
+    expect(loopGain(ctx.sources[2])).toBe(0);
+    audio.drive(70, 1, 0.3, true, true, false);
+    audio.enabled = true;
+    // The game can still be paused: no drive() callback means loops stay quiet.
+    expect(loopGain(ctx.sources[0])).toBe(0);
+    expect(loopGain(ctx.sources[1])).toBe(0);
+    expect(loopGain(ctx.sources[2])).toBe(0);
+    audio.drive(40, 1, 0, false, false, false);
+    expect(loopGain(ctx.sources[0])).toBeGreaterThan(0);
+  });
+
   it('does not continuously schedule Web Audio controls while muted', () => {
     audio.unlock();
     const ctx = mock.context()!;

@@ -277,6 +277,22 @@ try {
   await lobbyPage.waitForFunction(() => !document.querySelector('.rc-root') && !document.querySelector('.pvp-root'));
   await lobbyContext.close();
 
+  // An optional character GLB outage must never trap the racing mode on
+  // the loading dialog. The fallback car remains available without crowds.
+  const assetContext = await browser.newContext({ viewport: { width: 960, height: 600 } });
+  const assetPage = await assetContext.newPage();
+  assetPage.on('pageerror', error => errors.push('optional asset: ' + error.message));
+  let rejectedCharacters = 0;
+  await assetPage.route('**/assets/models/characters.glb', route => {
+    rejectedCharacters++;
+    return route.abort('failed');
+  });
+  await assetPage.goto(origin);
+  await assetPage.locator('#start-race').click();
+  await assetPage.locator('.rc-setup').waitFor({ timeout: 15_000 });
+  assert.ok(rejectedCharacters > 0, 'character asset failure was not exercised');
+  await assetContext.close();
+
   assert.deepEqual(errors, [], 'Uncaught browser errors');
   console.log('SPEED RUSH browser smoke OK:', completion);
 } finally {

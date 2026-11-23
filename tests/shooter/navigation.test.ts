@@ -70,12 +70,12 @@ describe('ZERO ZONE navigation renderer', () => {
       { id: 2, x: 50, z: 50, expires: match.t + 7 },
       { id: 1, x: 60, z: 60, expires: match.t - 1 },
     ]);
-    // Two circles for the zone, exactly one extra circle for the valid mark.
-    expect(map.arc).toHaveBeenCalledTimes(3);
+    // Current zone, next zone, outside overlay, plus the valid recon mark.
+    expect(map.arc).toHaveBeenCalledTimes(4);
     hud.draw(match, player, []);
-    // The second frame draws only the two zone circles; stale markers are gone.
+    // The second frame draws only the three zone circles; no stale recon markers.
     expect(map.drawImage).toHaveBeenCalledTimes(2);
-    expect(map.arc).toHaveBeenCalledTimes(5);
+    expect(map.arc).toHaveBeenCalledTimes(7);
   });
 
   it('fails fast when the browser does not offer a 2D context', () => {

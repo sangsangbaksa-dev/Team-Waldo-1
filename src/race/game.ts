@@ -34,7 +34,7 @@ export function openRace(onExit: () => void): void {
   <div class="rc-hud">
     <div class="rc-tl"><div class="rc-pos"><b id="rc-pos">4</b><span id="rc-of">/ 4</span></div><div class="rc-lap">LAP <b id="rc-lap">1</b>/<span id="rc-laps">3</span></div></div>
     <div class="rc-tc"><div class="rc-time" id="rc-time">0:00.000</div><div class="rc-best" id="rc-best"></div></div>
-    <div class="rc-tr"><canvas id="rc-map" width="220" height="220" aria-label="미니맵"></canvas><div class="rc-btns"><button data-act="mute" title="소리 (M)" aria-pressed="${prefs.sound}">${prefs.sound ? '🔊' : '🔇'}</button><button data-act="pause" title="일시정지 (Esc)">Ⅱ</button><button data-act="exit" title="나가기">✕</button></div></div>
+    <div class="rc-tr"><canvas id="rc-map" width="220" height="220" aria-label="미니맵"></canvas><div class="rc-btns"><button type="button" data-act="mute" title="소리 (M)" aria-label="${prefs.sound ? '소리 끄기' : '소리 켜기'}" aria-pressed="${prefs.sound}">${prefs.sound ? 'SND ON' : 'SND OFF'}</button><button type="button" data-act="pause" title="일시정지 (Esc)" aria-label="일시정지">Ⅱ</button><button type="button" data-act="exit" title="나가기" aria-label="나가기">✕</button></div></div>
     <div class="rc-msg" id="rc-msg"></div><div class="rc-count" id="rc-count"></div><div class="rc-wrong" id="rc-wrong">역주행!</div><div class="rc-draft" id="rc-draft">SLIPSTREAM</div><div class="rc-drift" id="rc-drift"></div>
     <div class="rc-bottom"><div class="rc-nitro"><span>NITRO</span><div><i id="rc-nitro"></i></div></div><div class="rc-speed"><b id="rc-kmh">0</b><small>km/h</small><em id="rc-gear">N</em></div><div class="rc-rev"><i id="rc-rev"></i></div></div>
     <div class="rc-keys"><span><kbd>W</kbd><kbd>↑</kbd> 가속</span><span><kbd>A</kbd><kbd>D</kbd> 조향</span><span><kbd>Space</kbd> 드리프트</span><span><kbd>Shift</kbd> 니트로</span><span><kbd>R</kbd> 복귀</span></div>
@@ -287,8 +287,8 @@ export function openRace(onExit: () => void): void {
     if (miniBaseCtx) { miniBaseCtx.clearRect(0, 0, 220, 220); paintMiniTrack(miniBaseCtx); }
   }
   function paintMiniTrack(g: CanvasRenderingContext2D): void {
-    g.lineJoin = 'round'; g.strokeStyle = 'rgba(8,4,24,.8)'; g.lineWidth = 9; g.stroke(mpath); g.strokeStyle = '#8f7dff'; g.lineWidth = 4; g.stroke(mpath);
-    g.fillStyle = '#fff'; g.fillRect(mx(track.x[0]) - 5, mz(track.z[0]) - 2, 10, 4);
+    g.lineJoin = 'round'; g.strokeStyle = 'rgba(8,16,20,.9)'; g.lineWidth = 9; g.stroke(mpath); g.strokeStyle = '#bbc9c9'; g.lineWidth = 3; g.stroke(mpath);
+    g.fillStyle = '#f28a5b'; g.fillRect(mx(track.x[0]) - 5, mz(track.z[0]) - 2, 10, 4);
   }
   prepareMinimap();
   const miniGate = new FrameGate(1000 / 30);
@@ -352,7 +352,7 @@ export function openRace(onExit: () => void): void {
     else if (a === 'mute') {
       audio.setEnabled(!audio.enabled);
       const next = { ...readPreferences(), sound: audio.enabled }; prefs.sound = next.sound; writePreferences(next);
-      const mute = root.querySelector<HTMLElement>('[data-act="mute"]'); if (mute) { mute.textContent = audio.enabled ? '🔊' : '🔇'; mute.setAttribute('aria-pressed', String(audio.enabled)); }
+      const mute = root.querySelector<HTMLElement>('[data-act="mute"]'); if (mute) { mute.textContent = audio.enabled ? 'SND ON' : 'SND OFF'; mute.setAttribute('aria-pressed', String(audio.enabled)); mute.setAttribute('aria-label', audio.enabled ? '소리 끄기' : '소리 켜기'); }
     }
   };
   const onKey = (e: KeyboardEvent): void => {

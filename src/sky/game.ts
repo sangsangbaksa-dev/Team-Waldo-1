@@ -109,6 +109,8 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     else { mFire = true; fireTap = 0.14; }
   };
   const onUp = (e: PointerEvent): void => {
+    // A delayed release after opening the pause modal must not queue a shot.
+    if (state !== 'play') return;
     if (e.pointerType === 'touch') {
       if (e.pointerId === mouse.secondId) {
         if (e.type === 'pointerup' && !mouse.secondDragged && performance.now() - mouse.secondAt < 400) mTap = true;
@@ -137,8 +139,18 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   };
   const kd = (e: KeyboardEvent): void => onKey(e, true), ku = (e: KeyboardEvent): void => onKey(e, false);
   const noMenu = (e: Event): void => e.preventDefault();
-  const onBlur = (): void => { keys.clear(); mouse.touchId = mouse.secondId = -1; mouse.x = mouse.y = 0; mouse.active = false; fireTap = 0; mTap = mFire = mMissile = mBoost = flare = false; if (state === 'play') togglePause(); };
-  addEventListener('blur', onBlur); const onVis = (): void => { if (document.hidden && state === 'play') togglePause(); }; document.addEventListener('visibilitychange', onVis);
+  // Window blur, tab hiding and pause must all release held controls. Otherwise
+  // lost keyup/pointerup events can leave the jet turning, firing or boosting on resume.
+  const clearHeldInput = (): void => {
+    keys.clear(); mouse.touchId = mouse.secondId = -1;
+    mouse.x = mouse.y = 0; mouse.active = false;
+    mouse.touchDragged = mouse.secondDragged = false;
+    fireTap = 0; mTap = mFire = mMissile = mBoost = flare = false;
+  };
+  const onBlur = (): void => { clearHeldInput(); if (state === 'play') togglePause(); };
+  addEventListener('blur', onBlur);
+  const onVis = (): void => { if (document.hidden) onBlur(); };
+  document.addEventListener('visibilitychange', onVis);
   addEventListener('pointermove', onMove); addEventListener('pointerdown', onDown); addEventListener('pointerup', onUp); addEventListener('pointercancel', onUp); document.addEventListener('pointerlockchange', onLock);
   root.addEventListener('wheel', onWheel, { passive: false }); addEventListener('keydown', kd); addEventListener('keyup', ku); root.addEventListener('contextmenu', noMenu);
 
@@ -175,6 +187,13 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
     setHtml($('sk-status'), [sim!.shield > 0 ? `${svgIcon('shield')}${Math.ceil(sim!.shield)}` : '', sim!.overdrive > 0 ? `${svgIcon('bolt')}${sim!.overdrive.toFixed(1)}s` : ''].filter(Boolean).join(' '));
     $('sk-fuel').style.width = `${p.fuel * 100}%`;
     $('sk-thr').style.width = `${throttle * 100}%`;
+    // Flare cooldown is visible instead of silently ignoring repeated touch input.
+    const flareButton = $<HTMLButtonElement>('sk-b-flare');
+    const flareReady = p.flare <= 0;
+    flareButton.disabled = !flareReady;
+    flareButton.classList.toggle('cooldown', !flareReady);
+    flareButton.querySelector('span')!.textContent = flareReady ? '플레어' : `${Math.ceil(p.flare)}초`;
+    flareButton.setAttribute('aria-label', flareReady ? '플레어 사용 가능' : `플레어 재사용까지 ${Math.ceil(p.flare)}초`);
     if (alertT > 0) { alertT -= dt; if (alertT <= 0) $('sk-alert').textContent = ''; }
     if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) $('sk-banner').classList.remove('on'); }
     if (hintT > 0) { hintT -= dt; if (hintT <= 0) $('sk-hint').textContent = ''; }
@@ -289,6 +308,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   }
   function togglePause(): void {
     if (state === 'play') {
+      clearHeldInput();
       audio.engine(false, 0); state = 'paused'; $('sk-paused').hidden = false; unlock(); stableQualitySeconds = 0;
     } else if (state === 'paused') {
       state = 'play'; $('sk-paused').hidden = true; last = performance.now();
@@ -319,6 +339,9 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
   function frame(now: number): void {
     if (closed) return; raf = requestAnimationFrame(frame);
     const frameMs = now - last, dt = Math.min(0.05, frameMs / 1000); last = now; if (!renderer || !view || !sim) return;
+    // Keep the final WebGL frame under the pause dialog without redrawing the
+    // entire 3D scene 60 times a second on battery-powered devices.
+    if (state === 'paused') return;
     if (state === 'play') {
       const p = sim.player; const inp = readInput(p, dt); sim.step(dt, inp); flare = false; mTap = false; fireTap = Math.max(0, fireTap - dt); hitT = Math.max(0, hitT - dt);
       for (const ev of sim.events) {

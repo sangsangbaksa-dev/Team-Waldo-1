@@ -102,6 +102,8 @@ export function inSlipstream(me: CarState, others: ReadonlyArray<CarState>): boo
   const fx = Math.cos(me.h), fz = Math.sin(me.h);
   for (const o of others) {
     if (o === me || o.vf < DRAFT_MIN_SPEED * 0.8) continue;
+    // Airflow does not draft behind an oncoming or sideways-moving car.
+    if (Math.cos(o.h - me.h) < 0.5) continue;
     const dx = o.x - me.x, dz = o.z - me.z, ahead = dx * fx + dz * fz, side = Math.abs(-dx * fz + dz * fx);
     if (ahead > DRAFT_NEAR && ahead < DRAFT_FAR && side < DRAFT_SIDE + ahead * 0.03) return true;
   }

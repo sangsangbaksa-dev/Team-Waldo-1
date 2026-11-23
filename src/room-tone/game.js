@@ -26,6 +26,7 @@ import { normalizeCampaign } from "./campaign.mjs";
 import { createPointerOwner, tryCapture } from "./input.mjs";
 import { lineClear, soundTravelDistance } from "./visibility.mjs";
 import { renderingScale } from "./render-quality.mjs";
+import { facingDot, canSeeTarget } from "./awareness.mjs";
 import { initialMute } from "./preferences.mjs";
 import { createIdLookup } from "./dom.mjs";
 
@@ -642,7 +643,8 @@ function enterHiding(spot) {
     return;
   }
   const distance = Math.hypot(player.x - entity.position.x, player.z - entity.position.z);
-  const witnessed = !grace && distance <= (lightOn ? 10.7 : 6.1) && clearLine(player, entity.position);
+  const facing = facingDot(entity.rotation.y, entity.position, player);
+  const witnessed = !grace && canSeeTarget(distance, clearLine(player, entity.position), lightOn, facing);
   investigation = witnessed ? { spot, remaining: 3.5, check: Math.random() < (0.12 + 0.23 * (1 - distance / 10.7)) } : null;
   if (investigation) {
     lastKnown = spot.cell;
@@ -1170,7 +1172,8 @@ function enemyUpdate(dt, running) {
   grace = Math.max(0, grace - dt);
   exitGrace = Math.max(0, exitGrace - dt);
   const visible = dist <= 14 && clearLine(player, e);
-  const inSight = !hiddenSpot && visible && dist <= (lightOn ? 10.7 : 6.1);
+  const inSight = !hiddenSpot && canSeeTarget(dist, visible, lightOn,
+    facingDot(entity.rotation.y, e, player));
   const playerCell = cellOf(player);
   const enemyCell = cellOf(e);
   // One BFS per monster grid-cell transition. Wall-separated rooms no longer

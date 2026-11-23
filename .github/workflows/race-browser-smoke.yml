@@ -28,3 +28,10 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: node tools/race-browser-smoke.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: speed-rush-smoke-screenshots
+          path: browser-artifacts/race/
+          if-no-files-found: ignore
+          retention-days: 5

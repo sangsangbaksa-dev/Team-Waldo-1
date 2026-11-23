@@ -300,7 +300,11 @@ export function generateMap(seed: number, mode: Mode): GameMap {
     if (map.compounds.every((c, i) => Math.hypot(c.x - x, c.z - z) > (mode === 'br' && i === 0 ? 102 : minGap))) { map.compounds.push({ x, z, r: 0, theme: 'village', name: '' }); }
   }
   // 종류를 골고루: 처음 다섯 곳은 서로 다른 종류, 나머지는 무작위
-  const bag = [...THEME_LIST].sort(() => rng() - 0.5); const used: Record<string, number> = {};
+  // 난수 비교자로 sort하면 브라우저의 정렬 구현마다 RNG 호출 횟수가 달라져
+  // 온라인 이용자의 지형/전리품 맵이 불일치할 수 있습니다. 정해진 횟수의 Fisher–Yates 사용.
+  const bag = [...THEME_LIST];
+  for (let i = bag.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [bag[i], bag[j]] = [bag[j], bag[i]]; }
+  const used: Record<string, number> = {};
   map.compounds.forEach((c, i) => { if (mode === 'br' && i === 0) { used.urban = 1; return; } c.theme = i < bag.length ? bag[i] : THEME_LIST[Math.floor(rng() * THEME_LIST.length)]; const def = THEMES[c.theme]; const n = used[c.theme] ?? 0; used[c.theme] = n + 1; c.name = def.names[n % def.names.length] });
   for (const c of map.compounds) {
     const downtown = c.downtown === true;

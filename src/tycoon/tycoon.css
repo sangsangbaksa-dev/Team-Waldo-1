@@ -122,22 +122,37 @@
 .ty-bigmap { position: relative; width: min(92vmin, 760px); } .ty-bigmap canvas { width: 100%; border-radius: 16px; border: 1px solid rgba(255, 255, 255, .25); display: block; }
 .ty-bigmap .ty-x { position: absolute; right: 10px; top: 10px; background: rgba(0, 0, 0, .5); }
 
-/* 제목 */
-.ty-title { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at 30% 50%, rgba(8, 12, 20, .15), rgba(5, 8, 14, .72)); padding: 20px; }
-.ty-title[hidden] { display: none; }
-.ty-titlebox { text-align: center; max-width: 760px; animation: ty-panel .5s ease-out; }
-.ty-titlebox .kick { margin: 0; letter-spacing: .5em; font-size: 12px; color: var(--mute); }
-.ty-titlebox h1 { margin: 4px 0 6px; font-size: clamp(54px, 12vw, 120px); line-height: 1; letter-spacing: .06em; font-weight: 900; background: linear-gradient(180deg, #fff, #ffcf5a 70%, #e8932a); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 6px 30px rgba(255, 170, 40, .35)); }
-.ty-titlebox .sub { margin: 0 0 18px; font-size: clamp(14px, 2vw, 19px); color: #dfe6f1; }
-.ty-ladder-lg { display: flex; flex-wrap: wrap; gap: 6px 8px; justify-content: center; align-items: center; margin-bottom: 26px; font-size: 13px; color: var(--mute); }
-.ty-ladder-lg span { padding: 3px 11px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255, 255, 255, .05); } .ty-ladder-lg i { font-style: normal; opacity: .5; }
-.ty-title-btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
-.ty-title-btns button { min-width: 150px; padding: 13px 24px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, .25); background: rgba(255, 255, 255, .09); font-size: 16px; font-weight: 700; backdrop-filter: blur(6px); }
-.ty-title-btns button:hover { background: rgba(255, 255, 255, .18); }
-.ty-title-btns button.primary { background: linear-gradient(180deg, #ffd96a, #f0a82e); color: #1b1405; border-color: transparent; box-shadow: 0 8px 30px rgba(240, 168, 46, .35); }
-.ty-title-btns button small { display: block; font-size: 11px; font-weight: 600; opacity: .75; }
-.ty-titlebox .keys { margin-top: 22px; color: var(--mute); font-size: 12px; }
-.ty-titlebox.win { padding: 28px; background: rgba(10, 14, 22, .9); border: 1px solid var(--line); border-radius: 24px; }
+/* Editorial opening: quiet surfaces, visible city, deliberate typography. */
+.ty-title { position:absolute; inset:0; display:flex; align-items:center; justify-content:flex-start;
+  padding:clamp(24px,5vw,84px); background:linear-gradient(90deg,rgba(6,13,21,.96) 0%,rgba(6,13,21,.79) 48%,rgba(6,13,21,.2) 100%); }
+.ty-title[hidden] { display:none; }
+.ty-titlebox { text-align:left; width:min(710px,92vw); max-width:100%; animation:ty-panel .38s ease-out; }
+.ty-titlebox .kick { margin:0 0 22px; display:inline-block; padding-bottom:10px; border-bottom:1px solid #ae9470;
+  font-size:11px; color:#d3be93; letter-spacing:.24em; font-weight:750; }
+.ty-titlebox h1 { margin:0 0 18px; font-size:clamp(62px,11vw,112px); line-height:.88; letter-spacing:-.06em;
+  font-weight:830; color:#f6f0e5; background:none; filter:none; text-shadow:0 6px 16px #0005; }
+.ty-titlebox .sub { margin:0 0 24px; max-width:560px; font-size:clamp(15px,2vw,19px); color:#c9d1d8; line-height:1.55; }
+.ty-ladder-lg { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-start; gap:6px 7px;
+  margin:0 0 30px; font-size:12px; color:#a8b4bd; }
+.ty-ladder-lg span { padding:0; border:0; background:none; border-radius:0; }
+.ty-ladder-lg i { font-style:normal; opacity:.4; color:#d5bb84; }
+.ty-title-btns { display:flex; justify-content:flex-start; flex-wrap:wrap; gap:8px; }
+.ty-title-btns button { min-width:136px; min-height:48px; padding:12px 20px; border-radius:5px; border:1px solid #556273;
+  background:#1a2531e8; font-size:14px; font-weight:720; backdrop-filter:none; transition:background .16s,border-color .16s; }
+.ty-title-btns button:hover { background:#344458; border-color:#a3b0be; }
+.ty-title-btns button.primary { background:#edc884; color:#111923; border-color:#edc884; box-shadow:none; }
+.ty-title-btns button.primary:hover { background:#f5d7a3; border-color:#f5d7a3; }
+.ty-title-btns button small { display:block; font-size:11px; font-weight:600; opacity:.78; }
+.ty-titlebox .keys { margin:30px 0 0; max-width:630px; padding-top:14px; border-top:1px solid #75808a55; color:#adbac5; font-size:12px; line-height:1.8; }
+.ty-titlebox.win { padding:28px; background:#0a111ce8; border:1px solid #445162; border-radius:9px; }
+@media(max-width:600px) {
+  .ty-title { padding:clamp(18px,6vw,28px); background:linear-gradient(90deg,#09121deb,#09121dd1); }
+  .ty-titlebox .kick { margin-bottom:14px; }
+  .ty-titlebox h1 { margin-bottom:12px; font-size:clamp(55px,15vw,85px); }
+  .ty-ladder-lg { margin-bottom:20px; font-size:10px; }
+  .ty-title-btns button { min-width:112px; padding:11px 13px; }
+  .ty-titlebox .keys { margin-top:20px; font-size:11px; }
+}
 
 /* 터치 */
 .ty-touchpad { display: none; }

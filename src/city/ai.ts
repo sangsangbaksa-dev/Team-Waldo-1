@@ -1,41 +1,14 @@
-// LAST CITY — 라이벌 조직 AI: 경제 확장, 병력 생산, 사업 인수, 총력전
-import { BIZ, DIFFICULTY, RESEARCH, STRUCTS, UNITS, type ResearchId, type StructKind, type UnitId } from './defs';
+// LAST CITY — 라이벌 조직의 이동·교전 판단
+import { BIZ, DIFFICULTY } from './defs';
+import { runAiEconomy } from './ai-economy';
 import type { Faction, World } from './world';
 
 export interface AiState { goal: string; tx: number; ty: number; biz: number; t: number; attackT: number; stuckT: number }
 
-function tryBuild(w: World, f: Faction, kind: StructKind): boolean {
-  const hq = w.hq(f.id); if (!hq) return false; const d = STRUCTS[kind];
-  if (f.crystal < w.cost(f, d.crystal) || f.cash < w.cost(f, d.cash)) return false;
-  for (let k = 0; k < 16; k++) { const x = hq.x + 60 + (w.rng() - 0.5) * 380, y = hq.y + 60 + (w.rng() - 0.5) * 380; if (w.build(f.id, kind, x, y) === '') return true; }
-  return false;
-}
-
 export function thinkFaction(w: World, f: Faction): void {
   const b = w.boss(f.id), hq = w.hq(f.id), diff = DIFFICULTY[w.opts.difficulty], ai = f.ai, t = w.time, z = w.zone;
-  const mine = w.structures.filter(s => s.alive && s.f === f.id), count = (k: StructKind): number => mine.filter(s => s.kind === k).length, built = (k: StructKind): boolean => mine.some(s => s.kind === k && s.built >= 1);
   const army = w.armyOf(f.id);
-  if (hq) {
-    const workers = w.actors.filter(a => a.alive && a.f === f.id && a.kind === 'worker').length + hq.queue.length;
-    if (!w.endgame && workers < Math.min(9, 5 + Math.floor(t / 80))) w.train(f.id, 'worker');
-    w.recomputeSupply(f);
-    if (!count('barracks')) tryBuild(w, f, 'barracks');
-    else if (f.supplyMax - f.supply <= 2 && f.supplyMax < w.aiCap() && !mine.some(s => s.kind === 'depot' && s.built < 1)) tryBuild(w, f, 'depot');
-    else if (t > 110 && count('turret') < (t > 320 ? 2 : 1)) tryBuild(w, f, 'turret');
-    else if (t > 160 && !count('lab')) tryBuild(w, f, 'lab');
-    else if (t > 270 && !count('factory') && f.cash > 500) tryBuild(w, f, 'factory');
-    else if (t > 340 && count('barracks') < 2 && f.crystal > 400) tryBuild(w, f, 'barracks');
-    else if (t > 520 && count('barracks') < 3 && f.cash > 1800 && f.crystal > 700) tryBuild(w, f, 'barracks');
-    else if (t > 520 && count('turret') < 4 && f.cash > 2500) tryBuild(w, f, 'turret');
-    if (built('barracks')) {
-      const queued = mine.reduce((n, s) => n + (s.kind === 'barracks' ? s.queue.length : 0), 0);
-      if (queued < (f.cash > 2000 ? 4 : 2)) { const r = w.rng(), medics = army.filter(a => a.kind === 'medic').length; const u: UnitId = r < 0.2 ? 'heavy' : r < 0.32 && medics < 3 ? 'medic' : r < 0.45 && built('lab') ? 'sniper' : 'rifle'; if (w.train(f.id, u) !== '' && u !== 'rifle') w.train(f.id, 'rifle'); }
-    }
-    if (built('factory') && f.crystal > 250) { if (built('lab') && f.cash > 900 && w.rng() < 0.5) w.train(f.id, 'tank'); else if (f.cash > 400) w.train(f.id, 'buggy'); }
-    if (built('lab') && f.crystal > 420 && f.cash > 900 && w.rng() < 0.3) w.research(f.id, (Object.keys(RESEARCH) as ResearchId[])[Math.floor(w.rng() * 3)]);
-    if (f.crystal > 520 && f.cash < 500) w.market(f.id, true, 150); else if (f.cash > 2600 && f.crystal < 140) w.market(f.id, false, 100);
-    if (w.rng() < 0.15) { const own = w.businesses.filter(q => q.owner === f.id && q.level < 3); const q = own[Math.floor(w.rng() * own.length)]; if (q && f.cash > w.upgradePrice(q) * 2) w.upgradeBiz(f.id, q); }
-  }
+  runAiEconomy(w, f, hq, army, t);
   for (const a of army) if (a.order.type !== 'follow') a.order = { type: 'follow', x: a.x, y: a.y };
   if (!b) return;
   const dist = (x: number, y: number): number => Math.hypot(x - b.x, y - b.y), inNext = (x: number, y: number, m = 80): boolean => Math.hypot(x - z.nx, y - z.ny) < z.nr - m;
@@ -69,5 +42,4 @@ export function thinkFaction(w: World, f: Faction): void {
   }
   ai.goal = goal; ai.tx = tx; ai.ty = ty; b.order = { type, x: tx, y: ty };
   if (f.skillCd <= 0 && hostileNear) { if (f.klass !== 'tycoon' || f.cash > 600) w.useSkill(f.id); }
-  void UNITS;
 }

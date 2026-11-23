@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { DIFFS, GUN_RANGE, SkySim, WORLD_R, terrainY, type Input } from '../../src/sky/sim';
+import { DIFFS, GUN_RANGE, MISSILE_DMG, SkySim, WORLD_R, terrainY, type Input } from '../../src/sky/sim';
 
 const neutral: Input = { pitch: 0, roll: 0, throttle: 0.5, fire: false, missile: false, flare: false };
 
@@ -166,5 +166,36 @@ describe('SKY WAR 발사체·보급품 회귀 테스트', () => {
     expect(sim.player.id).toBe(1);
     expect(sim.warnT).toBe(0);
     expect(sim.enemies()).toHaveLength(0);
+  });
+});
+
+describe('SKY WAR 열추적 해제 후 안전성', () => {
+  it('플레어로 락온이 풀린 미사일도 고속으로 기체를 가로지르면 실제 충돌한다', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.player.pos.set(0, 900, 0);
+    sim.missiles.push({
+      id: 901, owner: 77, team: 'enemy',
+      pos: new THREE.Vector3(0, 900, 70),
+      vel: new THREE.Vector3(0, 0, -4000),
+      target: 0, life: 3, alive: true,
+    });
+    sim.step(0.05, neutral);
+    // Unguided missiles share the same damage balance as guided enemy missiles.
+    expect(sim.player.hp).toBeCloseTo(100 - MISSILE_DMG * 0.6);
+    expect(sim.missiles).toHaveLength(0);
+  });
+
+  it('락온 해제된 미사일은 비행 경로가 충분히 떨어진 기체에 맞지 않는다', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.player.pos.set(0, 900, 0);
+    sim.missiles.push({
+      id: 902, owner: 77, team: 'enemy',
+      pos: new THREE.Vector3(100, 900, 70),
+      vel: new THREE.Vector3(0, 0, -4000),
+      target: 0, life: 3, alive: true,
+    });
+    sim.step(0.05, neutral);
+    expect(sim.player.hp).toBe(100);
+    expect(sim.missiles).toHaveLength(1);
   });
 });

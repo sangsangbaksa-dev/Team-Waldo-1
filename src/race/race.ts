@@ -146,7 +146,7 @@ export function updateRace(r: RaceState, dt: number, input: CarInput, now = 0): 
       if (k.player && k.finishTime === null) inp = input;
       else {
         const gap = k.player ? 0 : (k.car.total - r.player.car.total) * t.ds, band = k.player ? 1 : rivalBand(r.level, gap);
-        inp = aiInput(k.car, t, { ...k.ai, top: k.ai.top * band, grip: k.ai.grip * band * band });
+        inp = aiInput(k.car, t, k.ai, band);
       }
     }
     k.lastEv = stepCar(k.car, inp, dt, t, k.params);

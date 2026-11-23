@@ -80,6 +80,19 @@ try {
       assert.equal(hudLayout.cameraTopFree, true, "HUD container must not block camera look input");
       assert.equal(hudLayout.controlsClear, true, "Mobile control regions must not overlap: " + JSON.stringify(hudLayout));
       assert.equal(hudLayout.widthOk, true, "Game HUD must not overflow horizontally");
+      if (!mobile) {
+        await page.setViewportSize({ width: 620, height: 700 });
+        const narrowLayout = await page.evaluate(() => {
+          const status = document.querySelector(".statusfoot").getBoundingClientRect();
+          const gear = document.querySelector(".gear").getBoundingClientRect();
+          const separated = status.right <= gear.left || gear.right <= status.left ||
+            status.bottom <= gear.top || gear.bottom <= status.top;
+          return { separated, noOverflow: document.documentElement.scrollWidth <= innerWidth + 1 };
+        });
+        assert.ok(narrowLayout.separated && narrowLayout.noOverflow,
+          "Narrow desktop HUD must remain separated: " + JSON.stringify(narrowLayout));
+        await page.setViewportSize({ width: 1280, height: 800 });
+      }
       assert.equal(await page.locator("#recorderCount").innerText(),"2/2");
       if (mobile) {
         const hit = await page.locator("#recorder").evaluate(el => {

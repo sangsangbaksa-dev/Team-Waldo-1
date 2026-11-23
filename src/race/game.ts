@@ -61,6 +61,7 @@ export function openRace(onExit: () => void): void {
   /** 1대1 대전 진행 상태. null 이면 혼자 달리는 모드입니다. */
   let multi: { s: RoomSession; net: RaceMulti; myFin: number | null; gone: Set<string>; done: boolean } | null = null;
   let pvp: { s: PvpSession; net: RacePvp; myFin: number | null; oppFin: number | null; done: boolean } | null = null;
+  let lobbyHandle: { close(): void } | null = null, lobbyOpening = false;
   const keys = new Set<string>(), hold = { left: false, right: false, brake: false, drift: false, nitro: false, gas: false };
   const heldPointers = new Map<keyof typeof hold, Set<number>>();
   let driftBests = readDriftBests(), nitroWas = false, driftWas = false;
@@ -148,10 +149,24 @@ export function openRace(onExit: () => void): void {
 
   // ---------- 1대1 대전 ----------
   function openPvpLobby(): void {
-    if (!PVP_ENABLED) return;
+    if (!PVP_ENABLED || lobbyOpening || lobbyHandle) return;
+    lobbyOpening = true;
     const gen = raceGen;
-    void import('../net/lobby').then(({ openLobby }) => { if (!closed && gen === raceGen) openLobby({ game: 'race', maxPlayers: 6, config: () => ({ map: setup.map, laps: setup.laps }), onMatch: startPvp, onRoom: startMulti, onClose: () => undefined }); })
-      .catch(() => { if (closed || gen !== raceGen) return; modal.className = 'rc-modal show'; modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">1대1 대전</span><h2>대전 기능을 불러오지 못했어요</h2><div class="rc-actions"><button data-act="setup">설정으로</button></div></div>'; });
+    void import('../net/lobby').then(({ openLobby }) => {
+      lobbyOpening = false;
+      if (closed || gen !== raceGen) return;
+      lobbyHandle = openLobby({
+        game: 'race', maxPlayers: 6, config: () => ({ map: setup.map, laps: setup.laps }),
+        onMatch: s => { lobbyHandle = null; startPvp(s); },
+        onRoom: s => { lobbyHandle = null; startMulti(s); },
+        onClose: () => { lobbyHandle = null; },
+      });
+    }).catch(() => {
+      lobbyOpening = false;
+      if (closed || gen !== raceGen) return;
+      modal.className = 'rc-modal show';
+      modal.innerHTML = '<div class="rc-card"><span class="rc-eyebrow">1대1 대전</span><h2>대전 기능을 불러오지 못했어요</h2><div class="rc-actions"><button data-act="setup">설정으로</button></div></div>';
+    });
   }
   function pvpCard(eyebrow: string, title: string, body = '', actions = '<button data-act="exit">메뉴로</button>'): void {
     modal.className = 'rc-modal show'; modal.innerHTML = `<div class="rc-card"><span class="rc-eyebrow">${escapeRaceText(eyebrow)}</span><h2>${title}</h2>${body}<div class="rc-actions">${actions}</div></div>`;
@@ -381,6 +396,7 @@ export function openRace(onExit: () => void): void {
   };
   const exit = (): void => {
     if (closed) return; closed = true; cancelAnimationFrame(raf); removeEventListener('keydown', onKey); removeEventListener('keyup', onKeyUp); removeEventListener('resize', resize); removeEventListener('blur', onBlur); document.removeEventListener('visibilitychange', onVisibility);
+    lobbyHandle?.close(); lobbyHandle = null;
     leavePvp(); if (multi) { if (!multi.done) multi.net.bye(); endMulti(); } audio.dispose(); view?.dispose(); setupUi?.destroy(); root.remove();
     // A stale dev-only global would keep the entire previous WebGL session alive.
     const w = window as Window & { __race?: unknown };

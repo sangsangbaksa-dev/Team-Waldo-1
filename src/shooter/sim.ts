@@ -106,9 +106,28 @@ export class Match {
     }
     if (o.mode === 'br') {
       const dr = makeRng(o.seed ^ 0x51ed270b);
-      for (const at of [105 + this.zoneDelay, 218 + this.zoneDelay]) for (let i = 0; i < 30; i++) {
-        const a = dr() * Math.PI * 2, r = Math.sqrt(dr()) * half * 0.62, x = Math.cos(a) * r, z = Math.sin(a) * r;
-        if (!blockedAt(this.map, x, z, 3.2) || i === 29) { const k = this.drops.length; this.drops.push({ x, z, at, fall: 16, called: false, landed: false, ids: 900000 + k * 32, rng: makeRng(o.seed ^ (0x6a09e667 + k * 7919)) }); break; }
+      const freeDrop = (x: number, z: number): boolean =>
+        Math.abs(x) < half - 4 && Math.abs(z) < half - 4 &&
+        waterDepth(this.map.terrain, x, z) === 0 &&
+        !blockedAt(this.map, x, z, 3.2) &&
+        !this.map.buildings.some(b => Math.abs(x - b.x) < b.w / 2 + 3.2 && Math.abs(z - b.z) < b.d / 2 + 3.2);
+      for (const at of [105 + this.zoneDelay, 218 + this.zoneDelay]) {
+        let spot: { x: number; z: number } | null = null;
+        for (let i = 0; i < 80 && !spot; i++) {
+          const a = dr() * Math.PI * 2, radius = Math.sqrt(dr()) * half * 0.62;
+          const x = Math.cos(a) * radius, z = Math.sin(a) * radius;
+          if (freeDrop(x, z)) spot = { x, z };
+        }
+        // 기존 마지막 후보 강제 사용은 보급품을 건물/물속에 떨어뜨렸습니다.
+        if (!spot) {
+          for (const spawn of this.map.spawns) {
+            if (freeDrop(spawn.x, spawn.z)) { spot = { x: spawn.x, z: spawn.z }; break; }
+          }
+        }
+        if (!spot) continue; // 맵 전체가 막혔다면 위험한 보급 대신 해당 투하를 건너뜁니다.
+        const k = this.drops.length;
+        this.drops.push({ ...spot, at, fall: 16, called: false, landed: false, ids: 900000 + k * 32,
+          rng: makeRng(o.seed ^ (0x6a09e667 + k * 7919)) });
       }
     }
     if (o.mode === 'br' && o.bombs) {
@@ -253,7 +272,21 @@ export class Match {
           { kind: 'attach', weapon: null, part: 'scope4', level: 0 }, { kind: 'attach', weapon: null, part: 'extmag', level: 0 }, { kind: 'attach', weapon: null, part: 'suppressor', level: 0 },
           { kind: 'helmet', weapon: null, part: null, level: 3 }, { kind: 'armor', weapon: null, part: null, level: 3 }, { kind: 'medkit', weapon: null, part: null, level: 0 }, { kind: 'boost', weapon: null, part: null, level: 0 },
         ];
-        goods.forEach((g, i) => { const a = (i / goods.length) * Math.PI * 2; this.loot.push({ ...g, id: d.ids + i, x: d.x + Math.cos(a) * 1.7, z: d.z + Math.sin(a) * 1.7, taken: false }); });
+        const used: Array<{ x: number; z: number }> = [];
+        goods.forEach((g, i) => {
+          let x = d.x, z = d.z;
+          // 가장 가까운 물가나 장애물에 투하되더라도 모든 전리품은 땅에 놓습니다.
+          for (let trial = 0; trial < 32; trial++) {
+            const a = (i / goods.length + trial * 0.38196601125) * Math.PI * 2;
+            const r = 1.7 + Math.floor(trial / 8) * 0.3;
+            const px = d.x + Math.cos(a) * r, pz = d.z + Math.sin(a) * r;
+            if (waterDepth(this.map.terrain, px, pz) || blockedAt(this.map, px, pz, 0.45)) continue;
+            if (used.some(p => (p.x - px) ** 2 + (p.z - pz) ** 2 < 0.65 * 0.65)) continue;
+            x = px; z = pz; break;
+          }
+          used.push({ x, z });
+          this.loot.push({ ...g, id: d.ids + i, x, z, taken: false });
+        });
       }
     }
   }

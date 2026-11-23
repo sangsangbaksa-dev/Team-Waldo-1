@@ -55,6 +55,9 @@ try {
       await pointerChoice.click();
       assert.match(await pointerChoice.innerText(), /잠금/, 'Pointer lock can be enabled');
       await pointerChoice.click();
+      const assistChoice = page.locator('[data-k="assist"]');
+      await assistChoice.click();
+      assert.match(await assistChoice.innerText(), /끔/, 'Manual mode is enabled for click tests');
       await page.locator('#sk-start').click();
       await page.locator('.sk-hud').waitFor({ state: 'visible' });
       await page.waitForFunction(() => !!window.__sky?.sim);
@@ -83,6 +86,40 @@ try {
       assert.ok(clouds.total >= 30, 'The atmosphere must register all cloud sprite layers');
       assert.equal(clouds.hidden, clouds.total, 'Low quality must cull both cloud layers');
       assert.equal(clouds.restored, clouds.total, 'Restored quality must show all cloud layers again');
+
+      // Trackpad micro-clicks and short touch taps must not be lost between RAF frames.
+      if (size.name === 'desktop') {
+        const before = await page.evaluate(() => window.__sky.sim.shots);
+        await page.evaluate(() => {
+          const canvas = document.querySelector('.sk-canvas');
+          canvas.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, buttons: 1, pointerType: 'mouse' }));
+          canvas.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, buttons: 0, pointerType: 'mouse' }));
+        });
+        await page.waitForFunction(previous => window.__sky.sim.shots > previous, before);
+        const afterClick = await page.evaluate(() => window.__sky.sim.shots);
+        await page.evaluate(() => {
+          window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+          window.dispatchEvent(new KeyboardEvent('keyup', { key: ' ', bubbles: true }));
+        });
+        await page.waitForFunction(previous => window.__sky.sim.shots > previous, afterClick);
+      } else {
+        const before = await page.evaluate(() => window.__sky.sim.shots);
+        await page.locator('.sk-canvas').tap({ position: { x: size.width / 2, y: size.height * 0.4 } });
+        await page.waitForFunction(previous => window.__sky.sim.shots > previous, before);
+        const beforeTwoFingers = await page.evaluate(() => window.__sky.sim.shots);
+        await page.evaluate(() => {
+          window.__sky.sim.player.lockId = 0; window.__sky.sim.player.lockT = 0; window.__sky.sim.player.missileCd = 0;
+          const canvas = document.querySelector('.sk-canvas');
+          const emit = (type, id, x) => canvas.dispatchEvent(new PointerEvent(type, {
+            bubbles: true, pointerId: id, pointerType: 'touch', clientX: x, clientY: 320,
+          }));
+          emit('pointerdown', 101, 130); emit('pointerdown', 102, 185);
+          emit('pointerup', 102, 185); emit('pointerup', 101, 130);
+        });
+        await page.waitForFunction(() => document.querySelector('#sk-alert')?.textContent.includes('락온 대상 없음'));
+        assert.equal(await page.evaluate(() => window.__sky.sim.shots), beforeTwoFingers,
+          'Two-finger missile tap should not trigger the gun as well');
+      }
       if (size.name === 'mobile') {
         await page.locator('#sk-b-flare').dispatchEvent('pointerdown', { pointerId: 12, pointerType: 'touch' });
         await page.waitForFunction(() => window.__sky?.sim?.player?.flare > 0);

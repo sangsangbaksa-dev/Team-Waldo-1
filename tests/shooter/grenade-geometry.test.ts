@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Match } from '../../src/shooter/sim';
 import { emptyTerrain } from '../../src/shooter/terrain';
-import { addBox, sphereHits, type GameMap } from '../../src/shooter/world';
+import { addBox, sphereHits } from '../../src/shooter/world';
 
 function field(): Match {
   const m = new Match({

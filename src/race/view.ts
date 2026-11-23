@@ -13,6 +13,7 @@ import { type Track } from './track';
 import { TrackClearanceIndex } from './track-queries';
 import { type Theme } from './maps';
 import { buildOutposts, type Outpost } from './outpost';
+import { disposeOwnedTree, markBorrowedTree } from './resource-ownership';
 
 const CAR_LEN = 4.7;
 const rnd = (a: number, b: number): number => a + Math.random() * (b - a);
@@ -114,10 +115,12 @@ export class RaceView {
   private rainFx: Particles | null = null; private sparks = new Particles(420, 0.34, THREE.AdditiveBlending); private smoke = new Particles(420, 1.1, THREE.NormalBlending, 0.2); private skids = new SkidMarks(1400); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
   private camH = 0; private camInit = false; private camAnchor: ChaseAnchor = { x: 0, y: 0, z: 0, ready: false }; private fov = 64; private shake = 0; private punch = 0; private time = 0; private sun: THREE.DirectionalLight;
   private chaseLift = 0; private viewH = 1; private startLamps: THREE.Mesh[] = [];
-  private disposables: Array<{ dispose(): void }> = []; private outposts: Outpost | null = null;
+  private disposables: Array<{ dispose(): void }> = []; private borrowed = new Set<object>(); private outposts: Outpost | null = null;
   private roadClearance: TrackClearanceIndex | null = null; private skyMesh: THREE.Mesh | null = null;
 
   constructor(canvas: HTMLCanvasElement, private track: Track, carTemplates: Record<string, THREE.Object3D> | null, private quality: 'high' | 'standard' | 'low', private theme: Theme, private reducedMotion = false) {
+    // The tiny dot sprite is a module-level cache reused across view lifetimes.
+    this.borrowed.add(dotTex());
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(renderPixelRatio(canvas.clientWidth || innerWidth, canvas.clientHeight || innerHeight, devicePixelRatio, quality));
     this.scene.fog = new THREE.Fog(theme.fog.color, theme.fog.near, theme.fog.far); this.sun = new THREE.DirectionalLight(theme.light.sun, theme.light.sunPower);
@@ -178,7 +181,7 @@ export class RaceView {
       const group = new THREE.Group(); group.rotation.order = 'YXZ';
       let body: THREE.Object3D;
       const tpl = this.carTemplates?.[r.model];
-      if (tpl) { body = instantiate(tpl, { paint: new THREE.Color(r.color).getHex(), team: new THREE.Color(r.accent).getHex() }); this.polishCar(body); }
+      if (tpl) { body = instantiate(tpl, { paint: new THREE.Color(r.color).getHex(), team: new THREE.Color(r.accent).getHex() }); markBorrowedTree(body, this.borrowed); this.polishCar(body); }
       else { const m = new THREE.Mesh(new THREE.BoxGeometry(CAR_LEN, 1.1, 2), new THREE.MeshLambertMaterial({ color: r.color })); m.position.y = 0.6; body = m; }
       group.add(body);
       const flames: THREE.Mesh[] = [];
@@ -198,6 +201,7 @@ export class RaceView {
     if (!on) return;
     const g = new THREE.Group(), tpl = this.carTemplates?.[model];
     const body = tpl ? instantiate(tpl, { paint: 0x7fe7ff, team: 0xffffff }) : new THREE.Mesh(new THREE.BoxGeometry(CAR_LEN, 1.1, 2));
+    if (tpl) markBorrowedTree(body, this.borrowed);
     const mat = new THREE.MeshBasicMaterial({ color: 0x7fe7ff, transparent: true, opacity: 0.3, depthWrite: false, fog: false }); this.disposables.push(mat);
     body.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) m.material = mat; });
     g.add(body); g.visible = false; g.rotation.order = 'YXZ'; this.scene.add(g); this.ghostCar = g;
@@ -310,7 +314,7 @@ export class RaceView {
     if (driverKit) { // 출발선 옆 피트 크루·관중: 코스를 바라보며 손을 흔듭니다
       for (let n = 0; n < 8; n++) {
         const side = n % 2 ? 1 : -1, ahead = 1 + Math.floor(n / 2) * 2, j = Math.min(t.n - 1, ahead), ch = driverKit.create(['civ', 'civ3', 'worker', 'civ5', 'guard'][n % 5], 40 + n, [0xe8e6df, 0xd9a23a, 0x2f6fd0, 0xc23b3b][n % 4]), dx = t.x[j] - t.tz[j] * side * (hw + 3.4), dz = t.z[j] + t.tx[j] * side * (hw + 3.4);
-        ch.root.position.set(dx, t.y[j], dz); ch.root.rotation.y = -Math.atan2(t.tx[j] * side, -t.tz[j] * side) + Math.PI; ch.state.wave = n % 3 === 0 ? 1 : 0; ch.state.time = n; ch.update(0); this.scene.add(ch.root); this.crew.push(ch);
+        ch.root.position.set(dx, t.y[j], dz); ch.root.rotation.y = -Math.atan2(t.tx[j] * side, -t.tz[j] * side) + Math.PI; ch.state.wave = n % 3 === 0 ? 1 : 0; ch.state.time = n; ch.update(0); markBorrowedTree(ch.root, this.borrowed); this.scene.add(ch.root); this.crew.push(ch);
       }
     }
     const drawChev = (g: CanvasRenderingContext2D, mirror: boolean): void => {
@@ -590,17 +594,11 @@ export class RaceView {
   static intensity(race: RaceState): number { return Math.min(1.4, kmh(race.player.car) / 270 + (boosting(race.player.car) ? 0.25 : 0)); }
 
   dispose(): void {
-    const seen = new Set<object>();
-    const once = (d: { dispose(): void } | null | undefined): void => { if (!d || seen.has(d)) return; seen.add(d); d.dispose(); };
-    // Dry tracks never attach the rain emitter to the scene, but still own it.
-    if (this.rainFx) { once(this.rainFx.points.geometry); once(this.rainFx.points.material as THREE.Material); this.rainFx = null; }
-    this.scene.traverse(o => {
-      const m = o as THREE.Mesh;
-      if (m.geometry) once(m.geometry);
-      const mats = m.material == null ? [] : Array.isArray(m.material) ? m.material : [m.material];
-      for (const mat of mats) { once(mat); const maps = mat as THREE.MeshBasicMaterial; once(maps.map); if (maps.alphaMap) once(maps.alphaMap); }
-    });
-    for (const d of this.disposables) once(d);
+    // DesertKit owns extra temporary kit materials beyond the baked meshes.
+    // Its group is detached first so the scene-wide cleanup cannot double-free.
+    this.outposts?.dispose(); this.outposts = null;
+    disposeOwnedTree(this.scene, this.disposables, this.borrowed);
+    this.borrowed.clear(); this.rainFx = null;
     this.carEnvTarget?.dispose(); this.carEnvTarget = null; this.carEnv = null; this.post?.dispose(); this.renderer.dispose();
   }
 }

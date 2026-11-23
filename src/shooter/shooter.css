@@ -1,5 +1,5 @@
 
-.sz-root{position:fixed;inset:0;z-index:50;background:#111613;color:#ecece2;font-family:'Pretendard Variable',Pretendard,'IBM Plex Sans KR','Noto Sans KR',system-ui,sans-serif;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums;user-select:none;-webkit-user-select:none;touch-action:none;overflow:hidden}
+.sz-root{--game-focus:#d4c49f;position:fixed;inset:0;z-index:50;background:#111613;color:#ecece2;font-family:'Pretendard Variable',Pretendard,'IBM Plex Sans KR','Noto Sans KR',system-ui,sans-serif;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums;user-select:none;-webkit-user-select:none;touch-action:none;overflow:hidden}
 .sz-root[hidden],.sz-root [hidden]{display:none!important}
 .sz-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .sz-hud{position:absolute;inset:0;pointer-events:none}
@@ -115,6 +115,7 @@
 .sz-modal{position:absolute;inset:0;z-index:6;display:none;place-items:center;background:rgba(10,14,12,.94)}
 .sz-modal.show{display:grid}
 .sz-card{width:min(480px,90vw);padding:30px;border-radius:2px;border:1px solid #596257;border-top:3px solid #c3b58c;background:#18211b;text-align:left;box-shadow:none}
+.sz-root .sz-card{border-color:#596257;border-top-color:#c3b58c;box-shadow:none;scrollbar-color:#929a8c transparent}
 .sz-card h2{margin:10px 0 14px;font-size:clamp(28px,7vw,40px);font-weight:680;letter-spacing:-.055em}.sz-card.win h2{color:#d6c696}
 .sz-sub{margin:9px 0;color:#b6c0b4;font-size:13px;line-height:1.7}.sz-big{margin:0 0 18px;font-size:17px;font-weight:650;color:#e5e5d9}
 .sz-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;margin:18px 0 12px;border:1px solid #3a453b;background:#3a453b}.sz-stats div{padding:12px 10px;border-radius:0;background:#1c2720}.sz-stats b{display:block;font-size:21px;font-weight:650}.sz-stats span{font-size:10px;color:#b3baae}

@@ -188,9 +188,9 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       onDead: (id, _mt, killer, cause) => { const r = roomRemote(id); if (r && match && r.p.alive) { if (r.target) { r.p.x = r.target.x; r.p.z = r.target.z; } match.kill(r.p, killer, CAUSES[cause] ?? 'rifle'); } },
       onGone: id => {
         const r = roomRemote(id); if (!r || !match || !room) return;
-        if (r.p.alive) { match.kill(r.p, -1, 'zone'); say(`${r.p.name} 님의 연결이 끊어졌습니다`, 2); }
+        if (r.p.alive) { match.kill(r.p, -1, 'zone'); say(`${r.p.name}님의 연결이 끊어졌습니다`, 2); }
         // 방장이 나가면 남은 사람 중 명단의 첫 사람이 AI 와 차량을 넘겨받습니다.
-        if (!match.authority && room.net.authority() === room.s.me.id) { match.takeAuthority(v => humanDriver(v)); say('방장이 나가 이제 내 브라우저가 AI를 계산합니다', 3); }
+        if (!match.authority && room.net.authority() === room.s.me.id) { match.takeAuthority(v => humanDriver(v)); say('방장이 나갔습니다 · 경기는 계속됩니다', 3); }
         if (match.authority) for (const v of match.vehicles) if (v.remote && v.driver === r.p.id) reclaim(v);
       },
       onAbort: () => { if (room && !room.done) { room.done = true; card('멀티플레이 방', '시작하지 못했습니다', '<p class="sz-sub">다른 참가자와 연결하지 못했습니다.</p>', '<button data-act="exit">메뉴로</button>'); } },
@@ -575,7 +575,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
       } else if (e.t === 'pickup') {
         if (e.id === p.id) { audio.play(e.kind === 'medkit' || e.kind === 'bandage' ? 'heal' : e.kind === 'armor' ? 'armor' : 'pickup'); say(e.kind === 'attach' && e.part ? `${PARTS[e.part].name} 장착` : e.kind === 'helmet' ? `${HELMET_NAMES[e.level ?? 1]} 착용` : e.kind === 'boost' ? '에너지 드링크 · 부스트' : e.kind === 'grenade' ? '수류탄 +2' : e.kind === 'weapon' ? `${WEAPONS[e.weapon!].name} 획득` : e.kind === 'bandage' ? `붕대 +${HEAL.bandage.pick}` : e.kind === 'medkit' ? '구급상자 +1' : e.kind === 'armor' ? `${ARMOR_NAMES[Math.max(1, Math.min(3, e.level || 2))]} 장착` : '탄약 +', 1.1); if (pvp && e.loot < m.map.loot.length) pvp.net.sendPickup(e.loot); else if (room) room.net.sendPickup(e.loot); }
       } else if (e.t === 'heal') { if (e.id === p.id) { if (e.stage === 'done') { audio.play('heal'); say(`${e.kind === 'kit' ? '구급상자' : '붕대'} 사용 완료`, 1.2); } else if (e.stage === 'cancel') say('치료 중단', 1); } }
-      else if (e.t === 'drop') { if (e.stage === 'call') { say('보급 투하! 지도의 노란 표시를 확인하세요', 3); audio.play('armor'); } else say('보급 상자 착륙 · 최상급 전리품', 3); }
+      else if (e.t === 'drop') { if (e.stage === 'call') { say('보급품 투하 · 지도에 위치 표시', 3); audio.play('armor'); } else say('보급 상자 도착', 3); }
       else if (e.t === 'jump') { if (e.id === p.id) { audio.play('go'); say('강하 시작', 1.4); } }
       else if (e.t === 'chute') { if (e.id === p.id) { audio.play('pickup'); say('낙하산 펼침', 1.4); } }
       else if (e.t === 'land') { if (e.id === p.id) { audio.play('armor'); say('착지 · 총을 찾으세요', 2.4); } }
@@ -586,7 +586,7 @@ export function openShooter(onExit: () => void, opts: OpenOptions = {}): void {
         else if (e.stage === 'exit' && v && p.veh < 0 && !p.air) { if (dd < 5) audio.play('pickup'); }
         else if (e.stage === 'crash') audio.play('crash', dd);
       }
-      else if (e.t === 'red') { if (e.stage === 'call') { say('폭격 경고! 지도의 붉은 구역에서 벗어나세요', 3.4); audio.play('siren'); } }
+      else if (e.t === 'red') { if (e.stage === 'call') { say('폭격 예고 · 붉은 구역에서 벗어나세요', 3.4); audio.play('siren'); } }
       else if (e.t === 'reload') { if (e.id === p.id) audio.play('reload'); }
       else if (e.t === 'empty') { if (e.id === p.id) audio.play('empty'); }
       else if (e.t === 'over') { onOver(e.winner); }

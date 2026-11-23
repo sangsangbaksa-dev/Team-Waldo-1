@@ -73,7 +73,7 @@ export class Renderer3D {
   private seenStructs = new Set<number>(); private seenVehicles = new Set<number>(); private seenLoot = new Set<number>();
   private lightCandidates: Vehicle[] = [];
   private booms: { m: THREE.Mesh; life: number; r: number }[] = []; private light: THREE.PointLight; private lightT = 0;
-  private zoneWall: THREE.Mesh; private zoneTex: THREE.Texture; private nextRing: THREE.Mesh; private ghost: THREE.Mesh; private sun: THREE.DirectionalLight; private gun = new THREE.Group(); private muzzle: THREE.Mesh; private planes: THREE.Group[] = [];
+  private zoneWall: THREE.Mesh; private zoneTex: THREE.Texture; private nextRing: THREE.Mesh; private relaySite = new THREE.Group(); private ghost: THREE.Mesh; private sun: THREE.DirectionalLight; private gun = new THREE.Group(); private muzzle: THREE.Mesh; private planes: THREE.Group[] = [];
   private bossRings: THREE.Mesh[] = []; floaters: { el: HTMLElement; x: number; y: number; h: number; life: number }[] = [];
   private rainTint = new THREE.Color(); private ins: Interior3D | null = null; private insKind = '';
   private mats = new Map<number, THREE.MeshLambertMaterial>(); private box = new THREE.BoxGeometry(1, 1, 1); private glow: THREE.Texture;
@@ -141,6 +141,18 @@ export class Renderer3D {
     this.zoneWall = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 96, 1, true), new THREE.MeshBasicMaterial({ map: this.zoneTex, transparent: true, opacity: 0.42, side: THREE.DoubleSide, depthWrite: false, fog: false })); this.zoneWall.renderOrder = 5; sc.add(this.zoneWall);
     this.nextRing = new THREE.Mesh(new THREE.RingGeometry(0.992, 1, 128).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.9, depthWrite: false, fog: false })); sc.add(this.nextRing);
     this.ghost = new THREE.Mesh(this.box, new THREE.MeshBasicMaterial({ color: 0x66ff9c, transparent: true, opacity: 0.45, depthWrite: false })); this.ghost.visible = false; sc.add(this.ghost);
+    const relayPad = new THREE.Mesh(new THREE.CylinderGeometry(28, 32, 6, 10), this.mat(0x313e3c));
+    relayPad.position.y = 3;
+    const relayMast = new THREE.Mesh(this.box, this.mat(0x8d9187));
+    relayMast.position.y = 45; relayMast.scale.set(5, 80, 5);
+    const relayDish = new THREE.Mesh(new THREE.CylinderGeometry(18, 18, 5, 12), this.mat(0xc6ac80));
+    relayDish.position.set(0, 87, 0);
+    const relayBoundary = new THREE.Mesh(new THREE.RingGeometry(88, 105, 48).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0xbba780, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }));
+    relayBoundary.position.y = 1.4;
+    this.relaySite.add(relayPad, relayMast, relayDish, relayBoundary);
+    this.relaySite.visible = false;
+    sc.add(this.relaySite);
     // 1인칭 무기 모델
     const gm = new THREE.MeshLambertMaterial({ color: 0x24272c }), g1 = new THREE.Mesh(this.box, gm), g2 = new THREE.Mesh(this.box, gm), g3 = new THREE.Mesh(this.box, new THREE.MeshLambertMaterial({ color: 0xd9a47a }));
     g1.scale.set(1.5, 2, 13); g1.position.set(0, 0, -6); g2.scale.set(1.4, 4.2, 2.2); g2.position.set(0, -2.6, -0.5); g3.scale.set(2.6, 2.8, 7); g3.position.set(0.3, -4, 3.5);
@@ -476,6 +488,9 @@ export class Renderer3D {
     // 자기장
     const z = w.zone; this.zoneWall.visible = false; this.nextRing.visible = false; this.zoneWall.position.set(z.x, 450, z.y); this.zoneWall.scale.set(Math.max(1, z.r), 900, Math.max(1, z.r)); this.zoneTex.repeat.set(Math.max(8, z.r / 30), 14); this.zoneTex.offset.y = -this.t * 0.25;
     this.nextRing.position.set(z.nx, 3, z.ny); this.nextRing.scale.set(Math.max(2, z.nr), 1, Math.max(2, z.nr));
+    const relay = w.event?.kind === 'relay' ? w.event : null;
+    this.relaySite.visible = !!relay;
+    if (relay) this.relaySite.position.set(relay.x, 0, relay.y);
     // 건설 고스트
     this.ghost.visible = !!ghost; if (ghost) { const sd = STRUCTS[ghost.kind], H = STRUCT_H[ghost.kind]; this.ghost.position.set(ghost.x, H / 2, ghost.y); this.ghost.scale.set(sd.w, H, sd.h); (this.ghost.material as THREE.MeshBasicMaterial).color.setHex(ghost.ok ? 0x66ff9c : 0xff5a5a); }
     if (this.post) this.post.render(dt); else this.renderer.render(this.scene, this.camera);

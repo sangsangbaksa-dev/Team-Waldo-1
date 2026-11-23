@@ -1,0 +1,39 @@
+name: Last City feature verification
+
+on:
+  push:
+    paths:
+      - 'src/city/**'
+      - 'tests/city/**'
+      - '.github/workflows/last-city-feature.yml'
+  pull_request:
+    paths:
+      - 'src/city/**'
+      - 'tests/city/**'
+      - '.github/workflows/last-city-feature.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  city:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: TypeScript
+        run: npm run typecheck
+      - name: Last City event regression
+        run: npx vitest run tests/city/relay.test.ts tests/city/events.test.ts tests/city/career.test.ts tests/city/performance.test.ts
+      - name: Production build
+        run: npm run build

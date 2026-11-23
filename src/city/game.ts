@@ -15,7 +15,7 @@ import { DEMOLISH_REFUND_RATE, snapBuildCoord } from './placement';
 import { SHOP, canBuy, itemPrice } from './shop';
 import { PHASE_LABEL, WEATHER_LABEL, clockLabel } from './clock';
 import { missionLog, missionSummary, sideJobs } from './missions';
-import { EVENT_INFO } from './events';
+import { EVENT_INFO, RELAY_CAPTURE_TIME, relayPresence } from './events';
 import { readPreferences, recordMatch, writePreferences } from '../prefs';
 import type { PvpSession, RoomSession } from '../net/lobby';
 import { arenaInfo, arenaOf } from './arena';
@@ -37,7 +37,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
   const root = document.createElement('div'); root.className = 'city-root' + (touch ? ' touch' : '');
   root.innerHTML = `<canvas class="city-canvas3d"></canvas><canvas class="city-canvas" hidden></canvas><div class="c-layer" id="c-layer"></div><div class="c-hurt" id="c-hurt"></div><div class="c-cross" id="c-cross"><i></i><b></b></div>
   <div class="city-hud" hidden>
-    <div class="c-tl"><div class="c-res" id="c-res"></div><div class="c-quest" id="c-quest"></div></div>
+    <div class="c-tl"><div class="c-res" id="c-res"></div><div class="c-quest" id="c-quest"></div><aside class="c-event" id="c-event" aria-live="off"></aside></div>
     <div class="c-tc" id="c-zone"></div>
     <div class="c-tr"><canvas id="c-mini" width="200" height="200" aria-label="미니맵"></canvas><div id="c-wanted"></div><div class="c-topbtns"><button data-act="view" id="c-view" title="시점 전환 (V)">1인칭</button><button data-act="missions" title="작전 지령 (J)">임무</button><button data-act="map" title="전술 지도 (M)">지도</button><button data-act="chat" id="c-chatbtn" title="채팅 (Enter)" hidden>채팅</button><button data-act="pause" title="일시정지 (Esc)">Ⅱ</button></div></div>
     <div class="c-target" id="c-target"></div><aside class="c-tut" id="c-tut" hidden></aside><div class="c-area" id="c-area"></div><div class="c-feed" id="c-feed"></div><div class="c-chat" id="c-chat" aria-live="polite"></div><form class="c-chatin" id="c-chatin" hidden><input id="c-chatbox" maxlength="80" autocomplete="off" placeholder="메시지 입력 후 Enter · Esc 취소" aria-label="채팅 입력"></form><div class="c-banner" id="c-banner"></div><div class="c-prompt" id="c-prompt"></div><div class="c-toast" id="c-toast"></div>
@@ -345,6 +345,15 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     const entries = tut || duel || room ? [] : missionLog(w), summary = missionSummary(entries), current = summary.active;
     put(q('#c-quest'), tut || duel || room ? '' : current ? `<div class="c-quest-head"><span>작전 지령 <b>${summary.completed}/${summary.total}</b></span><button data-act="missions" aria-label="전체 작전 지령 보기"><kbd>J</kbd>전체 보기</button></div><strong>${current.title}</strong><p>${current.objective}</p><div class="c-quest-progress" role="progressbar" aria-label="${current.title} 진행률" aria-valuemin="0" aria-valuemax="${current.target}" aria-valuenow="${current.current}"><i style="width:${current.current / current.target * 100}%"></i></div><small>${current.current}/${current.target}${current.reward ? ' · 완료 보상 $' + $(current.reward) : ' · 최종 작전'}</small>` : '<div class="c-quest-head"><span>작전 지령 완료</span><button data-act="missions">전체 보기</button></div><strong>모든 작전 완료</strong>');
     if (!q('#c-missions').hidden) renderMissions();
+    const event = !tut && !duel && !room ? w.event : null;
+    if (event) {
+      const status = event.kind === 'relay' ? relayPresence(w, event) : null;
+      const detail = event.kind === 'relay'
+        ? status!.contested ? '적 병력이 점령을 방해합니다' : status!.allied ? '중계기 확보 중' : '지휘관 또는 아군 병력 2명이 필요합니다'
+        : event.kind === 'convoy' ? '수송차를 제압하세요' : event.kind === 'rescue' ? '생존자에게 접근하세요'
+          : event.kind === 'delivery' ? (event.stage ? '목적지로 운송하세요' : '물건을 수령하세요') : '현상금 대상을 제거하세요';
+      put(q('#c-event'), `<div class="c-event-head"><span>긴급 작전</span><b>${Math.max(0, Math.ceil(event.t))}초</b></div><strong>${EVENT_INFO[event.kind].name}</strong><p>${detail}</p>${event.kind === 'relay' ? `<div class="c-event-track" role="progressbar" aria-label="중계기 점령 진행률" aria-valuemin="0" aria-valuemax="${RELAY_CAPTURE_TIME}" aria-valuenow="${event.prog}"><i style="width:${event.prog / RELAY_CAPTURE_TIME * 100}%"></i></div><small>${event.prog} / ${RELAY_CAPTURE_TIME}초 · 점령 시 보급금과 지원 병력</small>` : ''}`);
+    } else put(q('#c-event'), '');
     void z; if (room) { const alive = room.ids.filter(id => !room!.out.has(id) && (room!.deaths.get(id) ?? 0) < ROOM_LIVES).length; put(q('#c-zone'), `<b>${clock(Math.max(0, ROOM_TIME - w.time))}</b><span>남은 목숨 <b>${Math.max(0, ROOM_LIVES - room.myDeaths)}</b>/${ROOM_LIVES}</span><span>생존 <b>${alive}</b>/${room.ids.length}명</span>`); } else if (duel) put(q('#c-zone'), `<b>${clock(Math.max(0, TIME_LIMIT - w.time))}</b><span>나 <b>${duel.oppDeaths}</b> : <b>${duel.myDeaths}</b> ${duel.s.opponent.nickname.replace(/[<>&"]/g, '')}</span><span>${TARGET_KILLS}킬 선취</span>`); else if (tut) put(q('#c-zone'), `<b>튜토리얼</b><span>연습장 · 라이벌 정지</span><span>${Math.min(tut.s.i, STEPS.length - 1) + 1}/${STEPS.length}</span>`); else put(q('#c-zone'), `<b>${clock(w.time)}</b><span>생존 왕국 <b>${w.aliveCount()}</b>/8</span><span class="c-citytime" title="밤에는 클럽·카지노, 낮에는 편의점·공장 수입이 늘고 폭풍우에는 줄어듭니다">${clockLabel(w.hour)} · ${PHASE_LABEL[w.phase]} · ${WEATHER_LABEL[w.weather]}</span>`);
     put(q('#c-wanted'), f.wanted >= 1 ? `<span class="stars">${'★'.repeat(Math.floor(f.wanted))}${'☆'.repeat(5 - Math.floor(f.wanted))}</span> 수배 중` : '');
     { const live = chatLive(); (q('#c-chatbtn') as HTMLElement).hidden = !live; put(q('#c-chat'), live ? visibleChat(chatLog, chatNow(), chatOpen).map(l => `<div class="${l.mine ? 'me' : ''}"><b>${esc(l.name)}</b> ${esc(l.text)}</div>`).join('') : ''); }
@@ -639,7 +648,7 @@ export function openCity(onExit: () => void, options: { difficulty?: string; loa
     const w = world!, r3 = R3!, b = w.boss(0), list: { x: number; y: number; h: number; text: string; color: string; edge: boolean }[] = [];
     if (w.inside) { for (const el of marks) el.style.display = 'none'; return; }
     const hq = w.hq(0); if (hq && b && (Math.hypot(hq.x + 60 - b.x, hq.y + 60 - b.y) > 420 || w.time - hq.hurtT < 5)) list.push({ x: hq.x + 60, y: hq.y + 60, h: 190, text: w.time - hq.hurtT < 5 ? '본부 피격!' : '본부', color: w.time - hq.hurtT < 5 ? '#ff6b6b' : FACTIONS[0].color, edge: true });
-    if (w.event) list.push({ x: w.event.x, y: w.event.y, h: 70, text: `${EVENT_INFO[w.event.kind].name}${w.event.kind === 'delivery' ? (w.event.stage ? ' · 목적지' : ' · 수령지') : ''} ${w.event.t}s`, color: EVENT_INFO[w.event.kind].color, edge: true });
+    if (w.event) list.push({ x: w.event.x, y: w.event.y, h: 70, text: `${EVENT_INFO[w.event.kind].name}${w.event.kind === 'relay' ? ` · ${w.event.prog}/${RELAY_CAPTURE_TIME}` : w.event.kind === 'delivery' ? (w.event.stage ? ' · 목적지' : ' · 수령지') : ''} ${w.event.t}s`, color: EVENT_INFO[w.event.kind].color, edge: true });
     for (const l of w.loot) if (l.alive && l.type === 'crate') list.push({ x: l.x, y: l.y, h: 60, text: '보급 상자', color: '#ffe27a', edge: true });
     const z = w.zone; if (b && Math.hypot(b.x - z.nx, b.y - z.ny) > z.nr && z.nr < 3800) list.push({ x: z.nx, y: z.ny, h: 40, text: '안전지대', color: '#c9a2ff', edge: true });
     if (b && !w.businesses.some(q2 => q2.owner === 0)) { let best: { x: number; y: number } | null = null, bd = 1e9; for (const q2 of w.businesses) if (q2.owner < 0 && q2.kind !== 'gunshop') { const d = Math.hypot(q2.x - b.x, q2.y - b.y); if (d < bd) { bd = d; best = q2; } } if (best) list.push({ x: best.x, y: best.y, h: 60, text: '매입 가능', color: '#ffffff', edge: true }); }

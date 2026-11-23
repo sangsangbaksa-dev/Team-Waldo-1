@@ -487,6 +487,8 @@ export class RaceView {
   }
 
   resize(w: number, h: number): void { w = Math.max(1, w); h = Math.max(1, h); this.viewH = h; const ratio = renderPixelRatio(w, h, devicePixelRatio, this.quality); if (ratio !== this.renderer.getPixelRatio()) this.renderer.setPixelRatio(ratio); this.renderer.setSize(w, h, false); this.camera.aspect = w / Math.max(1, h); this.camera.updateProjectionMatrix(); }
+  /** Snap the chase rig after a recovery teleport instead of easing from the crash. */
+  resetChase(): void { this.camInit = false; this.camAnchor.ready = false; this.shake = 0; this.punch = 0; }
   kick(power: number): void { this.shake = Math.min(1, this.shake + power); }
   punchFov(v: number): void { this.punch = Math.min(1.2, this.punch + v); }
   worldOf(r: Racer): THREE.Vector3 { return new THREE.Vector3(r.car.x, r.car.y, r.car.z); }

@@ -39,9 +39,16 @@ try {
   await page.locator('#start-race').click();
   await page.locator('.rc-setup').waitFor();
   await page.screenshot({ path: 'browser-artifacts/race/setup.png' });
+  const setupStyle = await page.locator('.rc-setup').evaluate(el => {
+    const option = el.querySelector('.rc-opt.on') || el.querySelector('.rc-opt');
+    const s = getComputedStyle(option);
+    return { background: s.backgroundImage, shadow: s.boxShadow, radius: s.borderRadius };
+  });
+  assert.equal(setupStyle.background, 'none', 'setup options must use a flat surface, not a gradient');
+  assert.equal(setupStyle.shadow, 'none', 'setup option selection must not glow');
   await page.locator('[data-pick="mode:race"]').click();
   const instructions = await page.locator('[data-note="mode"]').innerText();
-  assert.ok(instructions.includes('브레이크') && instructions.includes('부스트 패드'), instructions);
+  assert.ok(instructions.includes('제동 지점') && instructions.includes('코너 탈출'), instructions);
   assert.ok(!instructions.includes('E 키') && !instructions.includes('오일'), instructions);
   await page.locator('[data-pick="mode:trial"]').click();
   await page.locator('[data-setup="start"]').click();
@@ -110,6 +117,12 @@ try {
   assert.equal(completion.phase, 'done', JSON.stringify(completion));
   assert.ok(completion.time > 0 && completion.laps === 1, JSON.stringify(completion));
   await page.locator('.rc-card.result').waitFor({ timeout: 15_000 });
+  const resultStyle = await page.locator('.rc-card.result').evaluate(el => {
+    const s = getComputedStyle(el);
+    return { background: s.backgroundImage, shadow: s.boxShadow };
+  });
+  assert.equal(resultStyle.background, 'none', 'results need a flat background');
+  assert.equal(resultStyle.shadow, 'none', 'results must not regain template glow');
   await page.screenshot({ path: 'browser-artifacts/race/result.png' });
   const result = await page.evaluate(() => ({
     headline: document.querySelector('.rc-card.result h2')?.textContent,

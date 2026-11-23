@@ -1,8 +1,6 @@
 .rc-root{--game-focus:#d6b789;--rc-panel:rgba(14,22,27,.88);--rc-border:rgba(229,234,234,.22);--rc-ink:#f3f1ea;--rc-muted:#acb8bd;--rc-accent:#d6b789;position:fixed;inset:0;z-index:50;background:#10181e;color:var(--rc-ink);font-family:'Pretendard Variable',Pretendard,'IBM Plex Sans KR',system-ui,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;font-feature-settings:'tnum' 1;overflow:hidden;user-select:none;-webkit-user-select:none;touch-action:none;word-break:keep-all;overflow-wrap:break-word}
 .rc-canvas,.rc-fx{position:absolute;inset:0;width:100%;height:100%;display:block}
 .rc-fx{pointer-events:none}
-.rc-vignette{display:none}
-.rc-boostfx{display:none}
 .rc-hud{position:absolute;inset:0;pointer-events:none}
 .rc-hud button{pointer-events:auto}
 .rc-tl{position:absolute;left:max(18px,env(safe-area-inset-left));top:max(14px,env(safe-area-inset-top));background:var(--rc-panel);border:1px solid var(--rc-border);border-left:3px solid var(--rc-accent);border-radius:5px;padding:8px 13px 10px}
@@ -171,3 +169,6 @@
 .rc-card.result{text-align:left}
 .rc-root .rc-card h2,.rc-root .rc-card.result h2{overflow-wrap:normal;text-wrap:pretty}
 @media (hover:hover){.rc-actions button:hover,.rc-setup footer button:hover{border-color:#aab6bc}.rc-actions button.primary:hover,.rc-setup footer .primary:hover{background:#efd5a7;border-color:#efd5a7}}
+
+.rc-root .rc-card{box-shadow:none;border-color:#4b575e}
+.rc-root .rc-speed b{text-shadow:none}

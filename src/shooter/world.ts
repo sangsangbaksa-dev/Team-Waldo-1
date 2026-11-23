@@ -384,9 +384,12 @@ export function generateMap(seed: number, mode: Mode): GameMap {
   // 들판: 바위
   const rocks = mode === 'br' ? 60 : 22;
   for (let i = 0, tries = 0; i < rocks && tries < 800; tries++) {
-    const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * half * 0.94, x = Math.cos(a) * r, z = Math.sin(a) * r; if (!clear(x, z, 3) || blockedAt(map, x, z, 2.2)) continue;
-    const sx = 1.2 + rng() * 2.2, sz = 1.2 + rng() * 2.2, sy = 0.9 + rng() * 1.5;
-    map.rocks.push({ x, z, sx, sy, sz, ry: rng() * Math.PI }); addBox(map, { x0: x - sx * 0.8, x1: x + sx * 0.8, z0: z - sz * 0.8, z1: z + sz * 0.8, y0: 0, y1: sy, kind: 'rock', tex: 0 }); i++;
+    const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * half * 0.94, x = Math.cos(a) * r, z = Math.sin(a) * r; if (!clear(x, z, 3)) continue;
+    const sx = 1.2 + rng() * 2.2, sz = 1.2 + rng() * 2.2, sy = 0.9 + rng() * 1.5, hx = sx * 0.8, hz = sz * 0.8;
+    // 충돌 판정 반경 2.2m보다 큰 바위는 주변 지형과 겹칠 수 있었습니다.
+    // 실제 바위 AABB 전체를 확인해 언덕/절벽과의 겹침을 방지합니다.
+    if (!freeRect(map, x - hx, z - hz, x + hx, z + hz, 0.15)) continue;
+    map.rocks.push({ x, z, sx, sy, sz, ry: rng() * Math.PI }); addBox(map, { x0: x - hx, x1: x + hx, z0: z - hz, z1: z + hz, y0: 0, y1: sy, kind: 'rock', tex: 0 }); i++;
   }
   // 나무: 무리 지어 심고 밑동만 충돌
   const groves = mode === 'br' ? 22 : 8;

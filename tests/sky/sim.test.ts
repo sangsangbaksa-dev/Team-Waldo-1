@@ -117,6 +117,28 @@ describe('SKY WAR 발사체·보급품 회귀 테스트', () => {
     expect(sim.events.some(e => e.t === 'dodge')).toBe(false);
   });
 
+  it('기관포 탄환은 산을 통과하지 못하고 지형에 닿으면 소멸한다', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.fireGun(sim.player, 0);
+    const bullet = sim.bullets[0]!;
+    const hill = terrainY(1200, 300);
+    expect(hill).toBeGreaterThan(50);
+    bullet.pos.set(1200, hill - 30, 300);
+    bullet.vel.set(0, 0, -600);
+    sim.step(0.05, neutral);
+    expect(sim.bullets).toHaveLength(0);
+  });
+
+  it('지형보다 높은 고도의 기관포 탄환은 정상적으로 진행한다', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.fireGun(sim.player, 0);
+    const bullet = sim.bullets[0]!;
+    bullet.pos.set(1200, 600, 300);
+    bullet.vel.set(0, 0, -600);
+    sim.step(0.05, neutral);
+    expect(sim.bullets).toHaveLength(1);
+  });
+
   it('기한이 지난 보급품은 겹쳐 있어도 획득할 수 없다', () => {
     const sim = new SkySim(DIFFS[1]!);
     sim.player.hp = 10;

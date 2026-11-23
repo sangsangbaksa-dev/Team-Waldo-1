@@ -1,7 +1,13 @@
 name: CI
+# Feature branches are tested through their PRs. Avoid running the same
+# lint/test/build matrix twice for every push + pull_request on active PRs.
 on:
   pull_request:
   push:
+    branches:
+      - feat/shared-menu-rails
+      - claude/project-thread-hhffi5
+      - claude/funny-noether-4uesaj
   workflow_dispatch:
 
 permissions:

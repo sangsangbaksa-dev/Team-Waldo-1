@@ -23,7 +23,7 @@ export function expectedSequence(chapter, labels) {
       labels.some(label => typeof label !== "string")) return [-1, -1, -1];
   if (chapter === 0) return labels.map(label => circuitOptions.indexOf(label));
   if (chapter === 1) return labels.map((label, i) => {
-    const match = /^(\\d+(?:\\.\\d+)?) MHz$/.exec(label);
+    const match = /^(\d+(?:\.\d+)?) MHz$/.exec(label);
     return match
       ? tuneOptions[i].findIndex(option => Number(option) === Number(match[1]))
       : -1;
@@ -34,7 +34,7 @@ export function expectedSequence(chapter, labels) {
       tapeTime(labels[b]) - tapeTime(labels[a]) || a - b);
   }
   if (chapter === 3) return labels.map(label => {
-    const match = /^(\\d+)°$/.exec(label);
+    const match = /^(\d+)°$/.exec(label);
     return match
       ? phaseOptions.indexOf(((Number(match[1]) + 180) % 360 + 360) % 360 + "°")
       : -1;

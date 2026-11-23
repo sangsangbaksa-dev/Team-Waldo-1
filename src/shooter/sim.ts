@@ -77,6 +77,8 @@ export class Match {
   players: Player[] = []; loot: Loot[]; t = 0; over = false; winner = -1; events: MatchEvent[] = [];
   /** 프레임마다 재활용하는 사람 목록. 원격 AI 최적화에서만 사용합니다. */
   private humansScratch: Player[] = [];
+  /** 총알 하나마다 최초 충돌 상자 번호를 담는 재사용 버퍼. */
+  private rayHitScratch = { boxIndex: -1 };
   /** 최근 총소리(봇이 듣습니다) */ sounds: Array<{ x: number; z: number; t: number; by: number; quiet?: boolean }> = [];
   /** 보급 투하(솔로 배틀로열만) */ drops: Drop[] = [];
   /** 날아다니는 수류탄 */ nades: Nade[] = []; private nadeId = 1;
@@ -622,7 +624,7 @@ export class Match {
   /** 총알 한 발을 날립니다. 맞은 대상에게 피해를 주고 끝점을 ends 에 넣습니다. localOnly: 원격 선수가 쏜 탄은 내 쪽 선수만 맞힙니다. */
   bullet(shooter: number, id: WeaponId, ox: number, oy: number, oz: number, yaw: number, pitch: number, ends: number[], fromRemote: boolean): void {
     const def = WEAPONS[id], cp = Math.cos(pitch), dx = Math.cos(yaw) * cp, dy = Math.sin(pitch), dz = Math.sin(yaw) * cp;
-    const hit = { boxIndex: -1 };
+    const hit = this.rayHitScratch;
     const wallT = rayWorld(this.map, ox, oy, oz, dx, dy, dz, def.range, hit);
     let hitT = Math.min(wallT, def.range), target: Player | null = null, head = false, vcand: Vehicle | null = null, vt = Infinity;
     // 차체: 서 있는 차는 지도 상자가 먼저 막고, 움직이는 차는 여기서 막습니다(상자와 거의 같은 거리면 차가 맞은 것).

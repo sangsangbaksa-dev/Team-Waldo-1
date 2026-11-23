@@ -29,6 +29,7 @@ export class Rides {
   private active: Ride | null = null;
   private scratch = { x: 0, z: 0 };
   private night = 0;
+  private trafficBlocks: (x: number, z: number, radius: number) => boolean = () => false;
   private lamp = new THREE.SpotLight(0xffe9b8, 0, 46, Math.PI / 5, 0.55, 1.6);
   constructor(scene: THREE.Scene, layout: Layout, private colliders: Colliders) {
     this.lamp.castShadow = false;
@@ -61,6 +62,9 @@ export class Rides {
     }
   }
   get driving(): boolean { return this.active !== null; }
+  setTrafficBlocker(blocker: (x: number, z: number, radius: number) => boolean): void {
+    this.trafficBlocks = blocker;
+  }
   setLighting(night: number): void {
     this.night = Math.max(0, Math.min(1, night));
     this.lamp.intensity = this.active ? this.night * 1.5 : 0;
@@ -95,7 +99,7 @@ export class Rides {
     for (const part of [-BODY_LENGTH, 0, BODY_LENGTH]) {
       const px = x + Math.cos(heading) * part, pz = z - Math.sin(heading) * part;
       this.colliders.resolve(px, pz, RADIUS, this.scratch);
-      if (Math.hypot(this.scratch.x - px, this.scratch.z - pz) > 0.03) return false;
+      if (Math.hypot(this.scratch.x - px, this.scratch.z - pz) > 0.03 || this.trafficBlocks(px, pz, RADIUS)) return false;
     }
     // Keep parked cars solid even though the player character uses city-only collision.
     for (const other of this.cars) {

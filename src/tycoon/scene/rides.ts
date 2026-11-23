@@ -28,7 +28,11 @@ export class Rides {
   private cars: Ride[] = [];
   private active: Ride | null = null;
   private scratch = { x: 0, z: 0 };
+  private night = 0;
+  private lamp = new THREE.SpotLight(0xffe9b8, 0, 46, Math.PI / 5, 0.55, 1.6);
   constructor(private scene: THREE.Scene, layout: Layout, private colliders: Colliders) {
+    this.lamp.castShadow = false;
+    scene.add(this.lamp, this.lamp.target);
     const nearestVertical = Math.round((layout.spawn.x - PITCH / 2) / PITCH) * PITCH + PITCH / 2;
     const nearestHorizontal = Math.round((layout.spawn.z - PITCH / 2) / PITCH) * PITCH + PITCH / 2;
     const candidates: Array<{ x: number; z: number; heading: number }> = [
@@ -57,6 +61,16 @@ export class Rides {
     }
   }
   get driving(): boolean { return this.active !== null; }
+  setLighting(night: number): void {
+    this.night = Math.max(0, Math.min(1, night));
+    this.lamp.intensity = this.active ? this.night * 1.5 : 0;
+  }
+  private placeLamp(car: Ride): void {
+    const cs = Math.cos(car.heading), sn = -Math.sin(car.heading);
+    this.lamp.position.set(car.x + cs * 1.8, 1.22, car.z + sn * 1.8);
+    this.lamp.target.position.set(car.x + cs * 22, 0.8, car.z + sn * 22);
+    this.lamp.intensity = this.night * 1.5;
+  }
   get speed(): number { return Math.abs(this.active?.speed ?? 0); }
   get name(): string | null { return this.active?.name ?? null; }
   positions(): ParkedVehicle[] { return this.cars.map(c => ({ x: c.x, z: c.z, heading: c.heading, name: c.name, active: c === this.active })); }
@@ -71,6 +85,7 @@ export class Rides {
     car.x = ride.x; car.z = ride.z; car.heading = ride.heading; car.speed = 0;
     car.mesh.position.set(car.x, 0.18, car.z); car.mesh.rotation.y = car.heading;
     this.active = car;
+    this.placeLamp(car);
     player.pos.set(car.x, 0.18, car.z); player.vel.set(0, 0, 0);
     player.facing = car.heading;
     if (player.rig) player.rig.root.visible = false;
@@ -114,7 +129,7 @@ export class Rides {
           worldDistance({ x, z }, car) > 2.3;
       });
       if (!exit) return { ok: false, message: '내릴 공간이 없습니다. 차를 조금 움직여 보세요' };
-      this.active = null;
+      this.active = null; this.lamp.intensity = 0;
       player.teleport(car.x + exit.x, car.z + exit.z, car.heading);
       player.camYaw = car.heading - Math.PI / 2;
       player.camPitch = 0.28; player.dist = 7.5;
@@ -125,6 +140,7 @@ export class Rides {
     for (const car of this.cars) { const n = worldDistance(car, player.pos); if (n < d) { best = car; d = n; } }
     if (!best) return { ok: false, message: '근처에 주차된 차량이 없습니다' };
     this.active = best;
+    this.placeLamp(best);
     player.setFirstPerson(false);
     if (player.rig) player.rig.root.visible = false;
     player.pos.set(best.x, 0.18, best.z);
@@ -139,6 +155,7 @@ export class Rides {
     if (frozen) { car.speed = 0; return false; }
     const impact = stepDrive(car, input, dt, car.tune, (x, z, heading) => this.occupiable(x, z, heading, car));
     car.mesh.position.set(car.x, 0.18, car.z); car.mesh.rotation.y = car.heading;
+    this.placeLamp(car);
     player.pos.set(car.x, 0.18, car.z);
     player.vel.set(0, 0, 0);
     player.speed = Math.abs(car.speed);
@@ -159,5 +176,6 @@ export class Rides {
       car.mesh.removeFromParent();
     }
     this.cars.length = 0; this.active = null;
+    this.lamp.removeFromParent(); this.lamp.target.removeFromParent();
   }
 }

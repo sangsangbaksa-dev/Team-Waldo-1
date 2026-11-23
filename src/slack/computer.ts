@@ -108,9 +108,9 @@ export const createComputerView: CreateView = (sim, audio) => {
 
   /* ---------- 게임: 별빛 던전(반응속도) ---------- */
   const G = { score: 0, best: 0, combo: 1, streak: 0, hp: 100, over: false, clock: 0, deadline: 0, nextAt: 0.5, on: false, life: 1.5 };
-  const gameHtml = () => `<div class="sc-game"><div class="sc-game-top"><span>별빛 던전</span><span>최고 <b data-g-best>0</b>　점수 <b data-score>0</b></span></div><div class="sc-health">체력 <span><i data-health style="width:100%"></i></span><em data-g-combo>x1</em></div><div class="sc-game-scene"><div class="sc-stars">✦　　·　　 ✧　　　✦</div><button type="button" class="sc-target" aria-label="별 터뜨리기"><b>★</b><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="18"/></svg></button><span class="sc-pop"></span><div class="sc-game-ground"></div><div class="sc-game-over"><strong>게임 오버</strong><span data-g-final></span><button type="button" data-g-retry>다시 하기</button></div></div><div class="sc-game-hint">나타나는 별을 사라지기 전에 눌러요 · 연속 성공 = 콤보!</div></div>`;
+  const gameHtml = () => `<div class="sc-game"><div class="sc-game-top"><span>별빛 던전</span><span>최고 <b data-g-best>0</b>　점수 <b data-score>0</b></span></div><div class="sc-health">체력 <span role="progressbar" aria-label="별빛 던전 체력" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i data-health style="width:100%"></i></span><em data-g-combo>x1</em></div><div class="sc-game-scene"><div class="sc-stars">✦　　·　　 ✧　　　✦</div><button type="button" class="sc-target" aria-label="별 터뜨리기" aria-keyshortcuts="J"><b>★</b><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="18"/></svg></button><span class="sc-pop"></span><div class="sc-game-ground"></div><div class="sc-game-over"><strong>게임 오버</strong><span data-g-final></span><button type="button" data-g-retry>다시 하기</button></div></div><div class="sc-game-hint">별을 누르거나 <kbd>J</kbd> 키로 터뜨리세요 · 연속 성공은 콤보!</div></div>`;
   const gameEls = () => ({ score: $('[data-score]', wins.game), best: $('[data-g-best]', wins.game), hp: $('[data-health]', wins.game), combo: $('[data-g-combo]', wins.game), target: $('.sc-target', wins.game), pop: $('.sc-pop', wins.game), scene: $('.sc-game-scene', wins.game), over: $('.sc-game-over', wins.game), final: $('[data-g-final]', wins.game) });
-  const gameHud = () => { const g = gameEls(); setTxt(g.score, String(G.score)); setTxt(g.best, String(G.best)); setTxt(g.combo, `x${G.combo}`); g.hp.style.width = `${Math.max(0, G.hp)}%`; };
+  const gameHud = () => { const g = gameEls(); setTxt(g.score, String(G.score)); setTxt(g.best, String(G.best)); setTxt(g.combo, `x${G.combo}`); g.hp.style.width = `${Math.max(0, G.hp)}%`; const meter = g.hp.parentElement; if (meter?.getAttribute('aria-valuenow') !== String(G.hp)) meter?.setAttribute('aria-valuenow', String(G.hp)); };
   const gameReset = () => { Object.assign(G, { score: 0, combo: 1, streak: 0, hp: 100, over: false, on: false, nextAt: G.clock + 0.5, life: 1.5 }); const g = gameEls(); g.over.classList.remove('on'); g.target.classList.remove('on'); gameHud(); };
   const gameSpawn = () => {
     const t = gameEls().target; G.life = Math.max(0.65, 1.6 - G.score / 450);
@@ -381,6 +381,10 @@ export const createComputerView: CreateView = (sim, audio) => {
       event.preventDefault(); select(apps[Number(event.key) - 1].id);
     } else if (!event.repeat && event.key.toLowerCase() === 'f') {
       audio.resume(); audio.play('key'); say(sim.bribe() ? '냠냠… 고마워!' : '지금은 배불러…', 1.6);
+    } else if (!event.repeat && event.key.toLowerCase() === 'j' && shown === 'game' && !sim.state.cover) {
+      // An accessible alternative to chasing a transient star with Tab.
+      // Repeat events cannot score more than one hit per spawn.
+      event.preventDefault(); audio.resume(); gameHit();
     }
   };
   const keyup = (event: KeyboardEvent) => { if (coverKey && event.code === 'Space') { event.preventDefault(); coverKey = false; updateCover(); } };

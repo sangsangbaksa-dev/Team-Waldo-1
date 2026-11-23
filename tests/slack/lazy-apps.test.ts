@@ -9,11 +9,12 @@ const audio: SlackAudio = {
   muffle: vi.fn(), setMuted: vi.fn(), dispose: vi.fn(),
 };
 let view: ReturnType<typeof createComputerView>;
+let simHolder: ReturnType<typeof createSim>;
 
 beforeEach(() => {
   document.body.innerHTML = '';
   const sim = createSim('dorm', 7, 2);
-  sim.start();
+  simHolder = sim; sim.start();
   view = createComputerView(sim, audio);
   document.body.append(view.el);
 });
@@ -116,6 +117,23 @@ it('locks cart prices to the add action when the midnight flash deal rotates', (
   view.el.querySelector<HTMLButtonElement>('[data-add="deal"]')!.click();
   expect(total()).toBe('합계 17,085원');
   expect(view.el.querySelector<HTMLButtonElement>('[data-add="2"]')?.textContent).toBe('담김 ×1');
+});
+
+it('lets a keyboard player hit a visible star with J without repeat scoring', () => {
+  view.el.querySelector<HTMLButtonElement>('[data-app="game"]')!.click();
+  view.frame(0.1); view.frame(0.6);
+  const star = view.el.querySelector<HTMLButtonElement>('.sc-target')!;
+  const score = view.el.querySelector<HTMLElement>('[data-score]')!;
+  expect(star.classList.contains('on')).toBe(true);
+  expect(star.getAttribute('aria-keyshortcuts')).toBe('J');
+  expect(view.el.querySelector('.sc-health [role="progressbar"]')?.getAttribute('aria-valuenow')).toBe('100');
+  const j = (repeat = false) => view.el.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', bubbles: true, cancelable: true, repeat }));
+  j(); expect(score.textContent).toBe('10');
+  j(true); expect(score.textContent).toBe('10');
+  view.frame(0.8);
+  expect(star.classList.contains('on')).toBe(true);
+  simHolder.state.cover = true;
+  j(); expect(score.textContent).toBe('10');
 });
 
 it('keeps the star and timer ring clear of narrow screen edges', () => {

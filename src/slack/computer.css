@@ -390,3 +390,5 @@
   .sc-shop .sc-cartbar{position:static;bottom:auto;margin:10px -10px -10px}
   .sc-shop{scroll-padding-bottom:8px}
 }
+/* Clear but unobtrusive keyboard hint for the reaction minigame. */
+.sc-game-hint kbd{display:inline-block;border:1px solid #c3abd1aa;border-radius:4px;padding:0 4px;background:#ffffff17;color:#f8e6be;font:inherit;font-weight:700}

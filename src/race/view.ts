@@ -112,7 +112,7 @@ interface CarVis { racer: Racer; group: THREE.Group; flames: THREE.Mesh[]; shado
 export class RaceView {
   post: PostFx | null = null; readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera = new THREE.PerspectiveCamera(64, 1, 0.4, 3200);
   private crew: CharacterRig[] = []; private cars: CarVis[] = []; private ground!: THREE.Mesh; private padTexture: THREE.CanvasTexture | null = null;
-  private rainFx: Particles | null = null; private sparks = new Particles(420, 0.34, THREE.AdditiveBlending); private smoke = new Particles(420, 1.1, THREE.NormalBlending, 0.2); private skids = new SkidMarks(1400); private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
+  private rainFx: Particles | null = null; private sparks: Particles; private smoke: Particles; private skids: SkidMarks; private streak: THREE.LineSegments; private streakPos: Float32Array; private streakSeed: Float32Array;
   private camH = 0; private camInit = false; private camAnchor: ChaseAnchor = { x: 0, y: 0, z: 0, ready: false }; private fov = 64; private shake = 0; private punch = 0; private time = 0; private sun: THREE.DirectionalLight;
   private chaseLift = 0; private viewH = 1; private startLamps: THREE.Mesh[] = [];
   private disposables: Array<{ dispose(): void }> = []; private borrowed = new Set<object>(); private outposts: Outpost | null = null;
@@ -121,6 +121,10 @@ export class RaceView {
   private roadClearance: TrackClearanceIndex | null = null; private skyMesh: THREE.Mesh | null = null;
 
   constructor(canvas: HTMLCanvasElement, private track: Track, carTemplates: Record<string, THREE.Object3D> | null, private quality: 'high' | 'standard' | 'low', private theme: Theme, private reducedMotion = false) {
+    const low = quality === 'low';
+    this.sparks = new Particles(low ? 220 : 420, 0.34, THREE.AdditiveBlending);
+    this.smoke = new Particles(low ? 220 : 420, 1.1, THREE.NormalBlending, 0.2);
+    this.skids = new SkidMarks(low ? 700 : 1400);
     // The tiny dot sprite is a module-level cache reused across view lifetimes.
     this.borrowed.add(dotTex());
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
@@ -130,8 +134,8 @@ export class RaceView {
     this.scene.add(new THREE.HemisphereLight(theme.light.sky, theme.light.ground, theme.light.hemi)); this.sun.position.set(-40, 60, 90); this.scene.add(this.sun, this.sun.target);
     this.scene.add(this.skids.mesh, this.sparks.points, this.smoke.points);
     // Only wet maps need 1,800 rain particles and their GPU buffers.
-    if (theme.rain) { this.rainFx = new Particles(1800, 0.32, THREE.NormalBlending, 0.55); this.scene.add(this.rainFx.points); }
-    const n = 220; this.streakPos = new Float32Array(n * 6); this.streakSeed = new Float32Array(n * 3);
+    if (theme.rain) { this.rainFx = new Particles(low ? 850 : 1800, 0.32, THREE.NormalBlending, 0.55); this.scene.add(this.rainFx.points); }
+    const n = low ? 110 : 220; this.streakPos = new Float32Array(n * 6); this.streakSeed = new Float32Array(n * 3);
     const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(this.streakPos, 3));
     this.streak = new THREE.LineSegments(sg, new THREE.LineBasicMaterial({ color: 0xcfe9ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })); this.streak.frustumCulled = false; this.scene.add(this.streak);
     this.carTemplates = carTemplates; this.viewH = window.innerHeight || 1;

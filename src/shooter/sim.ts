@@ -75,6 +75,8 @@ export interface MatchOptions { seed: number; mode: Mode; difficulty: Difficulty
 export class Match {
   map: GameMap; mode: Mode; difficulty: Difficulty; seed: number;
   players: Player[] = []; loot: Loot[]; t = 0; over = false; winner = -1; events: MatchEvent[] = [];
+  /** 프레임마다 재활용하는 사람 목록. 원격 AI 최적화에서만 사용합니다. */
+  private humansScratch: Player[] = [];
   /** 최근 총소리(봇이 듣습니다) */ sounds: Array<{ x: number; z: number; t: number; by: number; quiet?: boolean }> = [];
   /** 보급 투하(솔로 배틀로열만) */ drops: Drop[] = [];
   /** 날아다니는 수류탄 */ nades: Nade[] = []; private nadeId = 1;
@@ -203,7 +205,8 @@ export class Match {
     }
     this.stepDrops(); this.stepNades(dt); this.stepVehicles(dt); this.stepReds(dt);
     // 멀리 있는 AI(사람 시야 밖)는 생각을 0.2초에 한 번만 해서 100명이 뛰어도 가볍게 돕니다.
-    const humans: Player[] = []; for (const q of this.players) if (!q.bot && q.alive) humans.push(q);
+    const humans = this.humansScratch; humans.length = 0;
+    for (const q of this.players) if (!q.bot && q.alive) humans.push(q);
     for (const p of this.players) {
       if (!p.alive) continue;
       if (p.remote) { this.stepPuppet(p, dt); continue; }

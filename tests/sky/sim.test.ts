@@ -453,3 +453,66 @@ describe('SKY WAR 지형 밀착 비행 보너스', () => {
     expect(crash.lowFlightRuns).toBe(0);
   });
 });
+
+describe('SKY WAR projectile lifetime and dodge regressions', () => {
+  it('ignores non-finite physics time without corrupting game state', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    const start = sim.player.pos.clone();
+    for (const dt of [Number.NaN, Infinity, -Infinity]) {
+      sim.step(dt, neutral);
+      expect(sim.player.pos.equals(start)).toBe(true);
+      expect(sim.time).toBe(0);
+      expect(Number.isFinite(sim.player.speed)).toBe(true);
+    }
+  });
+
+  it('never lets an expired cannon round damage an overlapping aircraft', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.intermission = 1e9;
+    sim.player.pos.set(0, 900, 0);
+    const enemy = sim.makeJet('enemy', 'fighter', new THREE.Vector3(0, 900, -50), 0.8);
+    const hp = enemy.hp;
+    sim.bullets.push({
+      pos: enemy.pos.clone(), vel: new THREE.Vector3(0, 0, -600),
+      life: 0, team: 'player', owner: sim.player.id, alive: true,
+    });
+    sim.step(0.05, neutral);
+    expect(enemy.hp).toBe(hp);
+    expect(sim.hits).toBe(0);
+    expect(sim.bullets).toHaveLength(0);
+  });
+
+  it('does not award missile dodge points on the same tick as a collision', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.intermission = 1e9;
+    sim.player.pos.set(0, 900, 0);
+    sim.missiles.push({
+      id: 7101, owner: 7100, team: 'enemy', pos: new THREE.Vector3(0, 900, 195),
+      vel: new THREE.Vector3(0, 0, -520), target: sim.player.id,
+      life: 3, alive: true, nearPlayer: true,
+    });
+    sim.step(0.5, neutral);
+    expect(sim.player.hp).toBeLessThan(100);
+    expect(sim.score).toBe(0);
+    expect(sim.shield).toBe(0);
+    expect(sim.events.filter(e => e.t === 'dodge')).toHaveLength(0);
+  });
+
+  it('reports the actual shield gained for a safe near miss with full shields', () => {
+    const sim = new SkySim(DIFFS[1]!);
+    sim.intermission = 1e9;
+    sim.shield = 50;
+    sim.player.pos.set(0, 900, 0);
+    sim.missiles.push({
+      id: 7201, owner: 7200, team: 'enemy', pos: new THREE.Vector3(0, 900, 200),
+      vel: new THREE.Vector3(0, 0, 500), target: sim.player.id,
+      life: 3, alive: true, nearPlayer: true,
+    });
+    sim.step(0.05, neutral);
+    expect(sim.score).toBe(150);
+    expect(sim.shield).toBe(50);
+    expect(sim.events.filter(e => e.t === 'dodge')).toEqual([{ t: 'dodge', points: 150, shield: 0 }]);
+    sim.step(0.05, neutral);
+    expect(sim.score).toBe(150);
+  });
+});

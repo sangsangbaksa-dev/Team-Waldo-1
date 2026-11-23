@@ -33,6 +33,7 @@ export class LowFlightChallenge {
   }
 
   advance(dt: number, aircraft: AircraftStatus, terrainHeight: number, clearance: number): LowFlightReward | null {
+    if (!Number.isFinite(dt) || dt <= 0) return null;
     this.cooldown = Math.max(0, this.cooldown - dt);
     if (!aircraft.alive || this.cooldown > 0 || aircraft.speed < LOW_FLIGHT_RULES.minSpeed
       || terrainHeight < LOW_FLIGHT_RULES.minTerrainHeight

@@ -488,7 +488,7 @@ export function openSky(onExit: () => void, opts: { loading?: LoadingScreen } = 
           }
           case 'pickup': audio.play('wave'); alertMsg(ev.kind === 'repair' ? `수리 +${ev.amount}` : ev.kind === 'shield' ? `방어막 +${ev.amount}` : `미사일 +${ev.amount}`, 1); break;
           case 'boss': banner('중폭격기 접근', 3); audio.play('warn'); break;
-          case 'dodge': alertMsg(`근접 회피 +${ev.points}점 · 방어막 +5 · 콤보 연장`, 1.5, 2); audio.play('lockdone'); break;
+          case 'dodge': alertMsg(`근접 회피 +${ev.points}점${ev.shield > 0 ? ` · 방어막 +${ev.shield}` : ''} · 콤보 연장`, 1.5, 2); audio.play('lockdone'); break;
           case 'stall': audio.play('warn'); alertMsg('실속 · 기수를 내려 속도를 회복하세요', 1, 3); break;
           case 'overdrive': alertMsg('연사 강화 · 5초', 2, 2); audio.play('win'); break;
           case 'stunt': alertMsg(`저공 돌파 +${ev.points}점${ev.fuel > 0 ? ` · 연료 +${Math.round(ev.fuel * 100)}%` : ''}`, 1.6, 2); audio.play('wave'); break;

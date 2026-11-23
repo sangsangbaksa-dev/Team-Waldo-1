@@ -52,3 +52,13 @@ describe('terrain-skimming challenge', () => {
     expect(challenge.cooldown).toBe(0);
   });
 });
+
+it('does not award a challenge or modify timers on invalid frame deltas', () => {
+  const challenge = new LowFlightChallenge();
+  for (const dt of [Number.NaN, Infinity, -Infinity, 0]) {
+    expect(challenge.advance(dt, jet(), 140, 75)).toBeNull();
+    expect(challenge.charge).toBe(0);
+    expect(challenge.cooldown).toBe(0);
+    expect(challenge.runs).toBe(0);
+  }
+});

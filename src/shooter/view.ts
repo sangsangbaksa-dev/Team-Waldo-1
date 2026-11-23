@@ -72,11 +72,11 @@ export class ShooterView {
     this.buildGround(); this.buildBuildings(); this.buildScatter();
     this.beams = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.035, 0.035, 1.15, 6, 1, true), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.68, blending: THREE.NormalBlending, depthWrite: false, side: THREE.DoubleSide, fog: true }), 400);
     this.beams.count = 0; this.beams.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(400 * 3), 3); this.beams.frustumCulled = false; sc.add(this.beams);
-    // 자기장 벽: 파란 반투명 원통과 다음 원을 알리는 바닥 고리
+    // The boundary remains visible without the old animated glow.
     this.zoneWall = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 90, 128, 1, true), new THREE.ShaderMaterial({
-      transparent: true, side: THREE.DoubleSide, depthWrite: false, blending: THREE.NormalBlending, fog: false, uniforms: { t: { value: 0 } },
+      transparent: true, side: THREE.DoubleSide, depthWrite: false, blending: THREE.NormalBlending, fog: false,
       vertexShader: 'varying vec3 vP; varying float vH; void main(){ vP = position; vH = position.y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-      fragmentShader: `varying vec3 vP; varying float vH; uniform float t;
+      fragmentShader: `varying vec3 vP; varying float vH;
         void main(){ float a = atan(vP.z, vP.x);
           float seam = step(0.985, fract((a + 3.14159265) * 18.0));
           float fade = 1.0 - smoothstep(8.0, 90.0, vH);
@@ -540,7 +540,7 @@ export class ShooterView {
     (this.scene.fog as THREE.FogExp2).density = 0.0042 / (1 + view.alt / 110);
     this.sun.position.set(view.x + 66, 92, view.z + 46); this.sun.target.position.set(view.x, 0, view.z); this.sun.target.updateMatrixWorld();
     // 자기장
-    this.zoneWall.scale.set(z.r, 1, z.r); this.zoneWall.position.x = z.cx; this.zoneWall.position.z = z.cz; (this.zoneWall.material as THREE.ShaderMaterial).uniforms.t.value = this.time;
+    this.zoneWall.scale.set(z.r, 1, z.r); this.zoneWall.position.x = z.cx; this.zoneWall.position.z = z.cz;
     this.zoneNext.visible = z.nextR < z.r - 0.5; this.zoneNext.scale.set(z.nextR, z.nextR, 1); this.zoneNext.position.x = z.nextCx; this.zoneNext.position.z = z.nextCz;
     this.syncLoot(cam.position); this.syncDrops(); this.syncVehicles(dt, vx, vz); this.syncReds(); this.updateFx(dt);
     this.syncCarrier(); this.weather(dt);

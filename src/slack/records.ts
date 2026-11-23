@@ -30,7 +30,18 @@ export function readSlackRecord(): SlackRecord {
 export function recordSlackRun(stage: StageId, score: number, grade: string): boolean {
   if (!Number.isFinite(score) || score < 0 || !/^[SABCD]$/.test(grade)) return false;
   const record = readSlackRecord();
-  const had = record.best[stage]; if (had && had.score >= score) return false;
+  const had = record.best[stage];
+  if (had && had.score >= score) {
+    // A previously blocked save may become writable after a browser permission
+    // change. Persist that pending best even if this run is not a new record.
+    if (sessionBest.class || sessionBest.dorm) {
+      try {
+        localStorage.setItem(key, JSON.stringify(record));
+        sessionBest.class = undefined; sessionBest.dorm = undefined;
+      } catch { /* Continue showing the pending record in this session. */ }
+    }
+    return false;
+  }
   const entry = { score, grade };
   record.best[stage] = entry;
   try {

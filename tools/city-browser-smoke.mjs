@@ -76,6 +76,11 @@ try {
       const miniBox = await page.locator('#c-mini').boundingBox();
       assert.ok(resourceBox && miniBox && resourceBox.x + resourceBox.width + 4 <= miniBox.x,
         'Resource HUD must not overlap the mini-map');
+      const zoneBox = await page.locator('#c-zone').boundingBox();
+      const rectanglesOverlap = (a, b) => a && b && a.x < b.x + b.width &&
+        a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+      assert.ok(zoneBox && !rectanglesOverlap(resourceBox, zoneBox) &&
+        !rectanglesOverlap(miniBox, zoneBox), 'Match status must stay clear of resources and map');
       if (size.name === 'mobile') {
         const [health, fire, controls] = await Promise.all([
           page.locator('#c-boss').boundingBox(),

@@ -59,3 +59,51 @@ describe("ROOM TONE generated maze line-of-sight regression", () => {
     }
   });
 });
+
+describe("ROOM TONE independent geometry-ray oracle", () => {
+  // A separate segment-versus-rectangle implementation catches symmetrical
+  // false positives in the supercover grid traversal.
+  const intersects = (a:{x:number;z:number}, b:{x:number;z:number},
+    xmin:number,xmax:number,zmin:number,zmax:number) => {
+    let lower=0,upper=1;
+    for(const [start,delta,low,high] of [
+      [a.x,b.x-a.x,xmin,xmax],[a.z,b.z-a.z,zmin,zmax],
+    ]){
+      if(Math.abs(delta)<1e-12) {
+        if(start<low||start>high)return false;
+      } else {
+        const t1=(low-start)/delta,t2=(high-start)/delta;
+        lower=Math.max(lower,Math.min(t1,t2));
+        upper=Math.min(upper,Math.max(t1,t2));
+        if(lower>upper)return false;
+      }
+    }
+    return true;
+  };
+  it("agrees with world-space wall rectangles on all four chapters", () => {
+    let seed=20041;
+    const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;
+      return seed/4294967296;};
+    const C=2.7;
+    for(let chapter=0;chapter<4;chapter++){
+      const level=makeLevel(chapter);
+      for(let sample=0;sample<128;sample++){
+        const pick=()=> {
+          const id=level.reachable[Math.floor(random()*level.reachable.length)];
+          return {x:(id%level.w+random()*0.82-0.41)*C,
+            z:(Math.floor(id/level.w)+random()*0.82-0.41)*C};
+        };
+        const a=pick(),b=pick();
+        let blocked=false;
+        for(let z=0;z<level.map.length&&!blocked;z++)
+          for(let x=0;x<level.w;x++)
+            if(level.map[z][x]==="#" &&
+                intersects(a,b,(x-0.5)*C,(x+0.5)*C,(z-0.5)*C,(z+0.5)*C)){
+              blocked=true;
+              break;
+            }
+        expect(lineClear(level.map,C,a,b)).toBe(!blocked);
+      }
+    }
+  });
+});

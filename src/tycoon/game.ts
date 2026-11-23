@@ -364,6 +364,7 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
   function tick(dt: number, nowS: number): void {
     if (!renderer || !core) return;
     const playing = phase === 'play', beforeTick = core.state;
+    const worldDt = playing && (paused() || document.hidden) ? 0 : dt;
     if (playing && !paused() && !document.hidden) { const hadActivity = !!beforeTick.activity; core.tick(dt); if (hadActivity && !core.state.activity) save(); }
     const st = core.state;
     // 입력 → 이동
@@ -385,10 +386,10 @@ export function openTycoon(onExit: () => void, opts: OpenOptions = {}): void {
     if (playing && !paused() && !rides?.driving) audio.step(player.speed, nowS);
     // 월드 갱신
     const minutes = playing ? st.minutes : 17.4 * 60, focus = playing ? player.pos : titleFocus;
-    const sky = atmo.update(dt, camera, focus, minutes, st.day);
+    const sky = atmo.update(worldDt, camera, focus, minutes, st.day);
     city.setNight(sky.night); city.setWet(sky.wet); rides?.setLighting(sky.night); renderer.toneMappingExposure = atmo.exposure();
-    city.update(dt, focus);
-    crowd?.update(dt, focus, sky.night, sky.wet, (i, j) => city.blockOpen(i, j)); traffic?.update(dt, focus, player.pos, sky.night);
+    city.update(worldDt, focus);
+    crowd?.update(worldDt, focus, sky.night, sky.wet, (i, j) => city.blockOpen(i, j)); traffic?.update(worldDt, focus, player.pos, sky.night);
     if (st.stageIndex !== lastStage && playing) applyStageLook();
     // 카메라
     if (playing) {
